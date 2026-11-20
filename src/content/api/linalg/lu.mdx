@@ -13,7 +13,7 @@ params:
     desc: 분해할 행렬. 모양은 (..., M, N)이고 정사각이 아니어도 돼요. 앞쪽 축이 있으면 행렬 여러 개로 봐요.
 returns:
   type: LUResult(L, U, perm)
-  desc: "이름 있는 튜플. K = min(M, N)일 때 L은 대각이 1인 아래 삼각 (..., M, K), U는 위 삼각 (..., K, N), perm은 행의 순서를 담은 int64 배열 (..., M)이에요. x[perm]이 L @ U와 같아요."
+  desc: "이름 있는 튜플. K = min(M, N)일 때 L은 대각이 1인 아래 삼각 (..., M, K), U는 위 삼각 (..., K, N), perm은 행의 순서를 담은 int64 배열 (..., M)이에요. x[perm]이 L @ U와 같아요. 세 배열은 쓰기 금지예요."
 raises:
   - type: TypeError
     desc: x가 배열이 아닐 때(리스트, Python 숫자 포함).
@@ -397,7 +397,7 @@ ValueError: lu(): 'x' must have at least 2 dimensions, got 1
 
 ### 결과는 새 배열이에요
 
-`L`, `U`, `perm`은 모두 새로 만든 배열이에요. 입력 `x`는 바뀌지 않고, 결과를 고쳐도 `x`에 영향이 없어요. 에러의 종류와 메시지 전체는 [실패와 에러](/api/linalg/errors/)에, 배치와 결과 dtype의 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
+`L`, `U`, `perm`은 모두 새로 만든 배열이에요. 입력 `x`와 메모리를 함께 쓰지 않아요. 세 배열은 쓰기 금지라서, 고쳐 쓰려면 `.copy()`로 복사해요(이름 있는 튜플에 담긴 결과는 모두 그래요). 에러의 종류와 메시지 전체는 [실패와 에러](/api/linalg/errors/)에, 배치와 결과 dtype의 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
 
 ## 비슷한 함수와의 차이
 

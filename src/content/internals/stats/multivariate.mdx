@@ -50,7 +50,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 매개변수의 마지막 축(벡터)이나 마지막 두 축(행렬) 앞에는 배치 축이 올 수 있어요. `mu`의 모양이 (3, 2)이고 `cov`가 (2, 2)이면 배치 모양은 (3,)이고, 세 분포가 같은 공분산을 함께 써요. Python 쪽 `_rows`가 매개변수를 배치 모양 + 꼬리 모양으로 브로드캐스트하고 (B, …)로 펼쳐요. B는 배치 원소의 수예요.
 
-매개변수는 `_param`이 받아요. 벡터와 행렬 매개변수(`mu`, `cov`, `shape`, `p`, `alpha`)는 `sd.ndarray`여야 하고, 스칼라 매개변수(`df`, `n`)는 Python 실수도 돼요. 리스트, 튜플, numpy 배열은 단변량 분포와 같이 `TypeError`예요. 생성자의 에러는 모두 `MultivariateNormal(): …`처럼 클래스 이름으로 시작해요.
+매개변수는 `_param`이 받아요. 벡터와 행렬 매개변수(`mu`, `cov`, `shape`, `p`, `alpha`)는 `sd.ndarray`여야 하고, 스칼라 매개변수(`df`, `n`)는 실수 하나도 돼요(numpy의 실수 스칼라는 Python float로 받아요). 리스트, 튜플, numpy 배열은 단변량 분포와 같이 `TypeError`예요. 배열 매개변수는 만들 때 한 번 복사해 읽기 전용으로 들어요(`_kept`). 그래서 만든 뒤 준 배열을 고쳐도 분해와 속성이 어긋나지 않아요. 생성자의 에러는 모두 `MultivariateNormal(): …`처럼 클래스 이름으로 시작해요.
 
 ```python
 >>> X = sd.stats.MultivariateNormal(mu=sd.asarray([[0.0, 0.0], [1.0, -1.0], [2.0, 0.5]]),
@@ -407,6 +407,17 @@ nan
 ```
 
 첫 값은 Arb로 만든 참값과 $10^{-14}$ 안이에요(`tests/stats/test_multivariate.py`). 같은 매개변수에서 scipy 1.18.1은 12.597520883893594로 $6 \times 10^{-9}$이 틀려요.
+
+### 공분산의 대각
+
+다항의 공분산 대각 $np_i(1 - p_i)$를 그대로 계산하면 $p_i$가 1에 가까울 때 $1 - p_i$에서 자리를 잃어요. 그래서 $np_i\sum_{j \ne i}p_j$로 계산해요. 나머지 성분의 합 $\sum_{j \ne i}p_j$는 앞에서 누적한 합과 뒤에서 누적한 합을 더해 뺄셈 없이 만들어요. 디리클레도 같은 꼴로 $m_i\sum_{j \ne i}(a_j/a_0)/(a_0 + 1)$($m = a/a_0$)이에요. 분모를 $a_0^2(a_0 + 1)$로 쓰면 $a_0 \gtrsim 5 \times 10^{102}$에서 넘쳐요. 요약값의 배열은 읽기 전용으로 돌려줘요.
+
+```python
+>>> sd.stats.Multinomial(n=10, p=sd.asarray([1 - 1e-12, 1e-12])).covariance()[0, 0]
+9.999999999989999e-12
+>>> sd.stats.Dirichlet(alpha=sd.asarray([1e8, 1e-8])).covariance()[0, 0]
+9.999999899999997e-25
+```
 
 ## 디리클레 분포
 

@@ -353,7 +353,7 @@ std::copy(a.begin(), a.begin() + k, o);          // permutation은 k = n
 - **결과는 (키, pos, n)만으로 정해져요.** 걸음마다 기각이 몇 번 일어나든 다음 걸음의 단어는 바뀌지 않아요. 그래서 `permutation(n)`은 언제나 위치를 정확히 $n$개 예약해요.
 - **스레드 수와 무관해요.** 이 루프는 순차라서 스레드를 쓰지 않아요. 앞 걸음의 교환이 뒤 걸음이 읽을 칸을 바꾸므로 걸음을 나눠 병렬로 할 수 없어요. 단어는 미리 정해져 있지만 교환의 순서가 결과를 정해요.
 - **GIL을 놓아요.** 원소 $10^6$개면 수 ms 걸리므로, 그동안 다른 Python 스레드가 돌 수 있게 해요. 크기와 상관없이 놓아요. 결과 배열 객체를 만드는 `wrap()`은 GIL이 필요해서 루프 밖에서 해요.
-- **결과 배열을 먼저 할당해요.** 할당은 루프 전에, GIL을 쥔 채 해요. 그보다 앞서 Python 쪽이 위치를 예약하기 전에 결과의 바이트 수(원소당 8바이트)를 이 컴퓨터의 물리 메모리와 비교해요. `permutation(2**40)`(8TB)처럼 더 큰 요청은 `MemoryError`(`permutation(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`)이고, 위치는 움직이지 않아요. $n \ge 2^{63}$은 그 전에 `OverflowError`(`permutation(): 'x' is out of range`)로 걸러요. `choice`의 `a`도 같아요.
+- **결과 배열을 먼저 할당하고, 그 안에서 바로 섞어요.** 따로 받는 작업 메모리가 없어요. 할당은 루프 전에, GIL을 쥔 채 해요. 그보다 앞서 Python 쪽이 위치를 예약하기 전에 호출이 받을 메모리 전체를 이 컴퓨터의 물리 메모리와 비교해요(`_take`). `permutation(n)`은 결과의 $8n$바이트이고, 배열 `x`를 섞으면 섞은 복사본($n$ × 한 행의 바이트)을 더해요. `permutation(2**40)`(8TB)처럼 더 큰 요청은 `MemoryError`(`permutation(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`)이고, 위치는 움직이지 않아요. $n \ge 2^{63}$은 그 전에 `OverflowError`(`permutation(): 'x' is out of range`)로 걸러요. `choice`의 `a`도 같아요.
 
 다음 걸음의 $j$는 배열 내용과 상관없이 단어만으로 정해져요. 그래서 CPU는 앞 걸음의 교환이 끝나기를 기다리지 않고 다음 걸음의 단어 계산과 메모리 읽기를 미리 시작할 수 있어요. 배열의 무작위 위치를 읽고 쓰는 것이 이 루프에서 가장 비싼 일이라, 여러 걸음의 메모리 접근이 겹치는 것이 중요해요.
 
@@ -368,7 +368,9 @@ std::copy(a.begin(), a.begin() + k, o);          // permutation은 k = n
 | 무작위 키 정렬 (병렬) | 8.6ms | 3.8ms |
 | Fisher–Yates (순차) | 3.0ms | 3.0ms |
 
-Fisher–Yates가 10스레드 정렬보다도 빨라요. Fisher–Yates는 원소마다 교환 한 번으로 한 바퀴에 끝나지만, 정렬은 (키, 인덱스) 쌍(16바이트)을 만들고 여러 번 훑어야 해요([정렬과 집합](/internals/array/sorting/)의 기수 정렬은 자리마다 한 번씩 흩뿌려요). 정렬은 키가 겹칠 때 동점 처리 규칙이 순열을 아주 조금 치우치게 한다는 문제도 있어요. 64비트 키 $10^6$개가 겹칠 확률은 약 $n^2 / 2^{65} \approx 2.7 \times 10^{-8}$로 작지만 0은 아니에요. 그래서 섞기는 순차 Fisher–Yates예요.
+이 크기에서는 Fisher–Yates가 10스레드 정렬보다도 빨라요. Fisher–Yates는 원소마다 교환 한 번으로 한 바퀴에 끝나지만, 정렬은 (키, 인덱스) 쌍(16바이트)을 만들고 여러 번 훑어야 해요([정렬과 집합](/internals/array/sorting/)의 기수 정렬은 자리마다 한 번씩 흩뿌려요). 정렬은 키가 겹칠 때 동점 처리 규칙이 순열을 아주 조금 치우치게 한다는 문제도 있어요. 64비트 키 $10^6$개가 겹칠 확률은 약 $n^2 / 2^{65} \approx 2.7 \times 10^{-8}$로 작지만 0은 아니에요. 그래서 섞기는 순차 Fisher–Yates예요.
+
+$n$이 캐시를 넘으면 사정이 달라져요. Fisher–Yates는 걸음마다 배열의 임의 위치를 읽고 쓰므로, 10스레드 정렬 방식이 $10^7$에서 1.8배, $3 \cdot 10^7$에서 2.7배 빨랐어요. 그래도 Fisher–Yates 하나로 둬요. 크기에 따라 방법이 바뀌면 `choice(n, shape=k, replace=False)`가 `permutation(n)`의 앞 $k$개라는 관계(아래)가 깨지기 때문이에요.
 
 ### shuffle이 없는 이유와 배열의 permutation
 
@@ -482,6 +484,20 @@ $n = 8$, $k = 3$의 예로 두 경로를 나란히 보면 이래요.
 
 - 해시 맵 경로는 시간과 메모리가 $O(k)$라서 모집단 크기와 무관해요. 원소 $10^6$개에서 1000개를 뽑는 데 0.03ms예요([성능과 검증](/internals/random/performance/)).
 - 배열 경로는 $O(n)$의 초기화와 $8n$바이트가 들지만 걸음마다 연속한 배열을 읽고 써요. 해시 맵의 찾기·넣기는 배열 접근보다 훨씬 비싸서, 표본이 모집단의 상당 부분이면 배열이 나아요. 둘을 가르는 기준이 $k \le n/16$이에요.
+- **메모리 검사는 작업 메모리까지 세요.** 결과만 보면 안 돼요. 섞기의 작업 메모리가 결과보다 클 수 있어요. 결과 $8k$바이트에 해시 맵 경로는 원소당 64바이트(노드와 버킷의 상한, $10^6$개에서 잰 값은 약 45바이트), 배열 경로는 $8n$바이트를 더해 물리 메모리와 비교해요(`_shuffle_bytes`). 배열 모집단이면 고른 원소($k$ × 원소 크기)도 더해요. 넘으면 위치를 예약하기 전에 `MemoryError`예요.
+
+```python
+# src/stardust/random/__init__.py
+def _shuffle_bytes(n, k):
+    """The memory _k.fisher_yates(…, n, k) takes, by its path (csrc/random/random.cpp): the
+    result (8 k) and, for k < n, the shuffled entries -- a hash map of at most k entries
+    (64 bytes each, nodes and buckets) for k <= n / 16, else an array of n."""
+    if k == n:
+        return 8 * k
+    if k <= n // 16:
+        return 8 * k + 64 * k
+    return 8 * k + 8 * n
+```
 
 ### 비복원, 가중치: Efraimidis–Spirakis의 지수 경주
 
@@ -541,7 +557,7 @@ array([0, 1, 2], dtype=int64)
 `p`가 있으면 인덱스를 뽑기 전에 Python이 검사해요.
 
 1. `p`는 배열이어야 하고(아니면 `TypeError`), 1차원이고 길이가 원소 수 $n$이어야 해요.
-2. float64로 바꿔요. 정수나 bool 배열도 받아요. complex128 배열은 확률이 될 수 없어서 바꾸기 전에 `TypeError`예요(`choice(): 'p' must be a real array, not an array of complex128`).
+2. float64로 바꿔요. 정수나 bool 배열도 받아요. complex128 배열은 확률이 될 수 없어서 바꾸기 전에 `TypeError`예요(`choice(): 'p' must be a real array, not complex128`).
 3. NaN이나 음수가 하나라도 있으면 `ValueError`예요.
 4. 합이 1에서 $\sqrt{\varepsilon} \approx 1.49 \times 10^{-8}$($\varepsilon$은 float64의 기계 엡실론 $2^{-52}$) 넘게 벗어나면 `ValueError`예요. numpy와 같은 허용치예요. `1/3`을 세 번 더한 것처럼 반올림으로 생긴 작은 차이는 받아 주고, 손으로 반올림한 `[0.333, 0.333, 0.333]`처럼 큰 차이는 받지 않아요. 합은 `sd.sum`(pairwise 합)으로 구하고 numpy는 Kahan 합을 쓰므로, 허용치 경계에 아주 가까운 `p`에서는 두 라이브러리의 판정이 갈릴 수 있어요.
 5. 비복원이면 $k$가 0이 아닌 확률의 수(`count_nonzero(p)`) 이하인지 봐요.

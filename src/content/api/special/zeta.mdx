@@ -334,6 +334,13 @@ array([8.934802200544679, 9.379246644989124], dtype=float64)
 nan
 ```
 
+x가 아주 커서 0 옆의 항이 float64를 넘는 곳도 값이나 ±inf를 내요. q가 반정수이고 x가 홀수이면 0 옆의 두 항이 정확히 지워져서, 값이 `zeta(x, 1 - q)`와 같아요.
+
+```python
+>>> sd.special.zeta(1025.0, -0.5), sd.special.zeta(1025.0, 1.5)
+(3.2096632370232837e-181, 3.2096632370232837e-181)
+```
+
 ## 특수값
 
 | 입력 | 값 | 이유 |
@@ -388,7 +395,7 @@ array([[1.6449340668482266,  1.202056903159594],
 Traceback (most recent call last):
     ...
 TypeError: zeta(): incompatible function arguments. The following argument types are supported:
-    1. zeta(arg0: object | None, arg1: object | None = None, /, *, out: object | None = None) -> object
+    1. zeta(x, q=None, /, *, out=None)
 
 Invoked with types: float, kwargs = { q: float }
 ```
@@ -436,6 +443,7 @@ TypeError: zeta(): 'x' must be an sd.ndarray or a bool, int, float or complex, n
 - 이름과 뜻(`q`가 없으면 리만, 있으면 후르비츠), 후르비츠의 x가 1보다 작으면 NaN인 점은 `scipy.special.zeta`와 같아요.
 - **`q`는 위치로만 넘겨요.** scipy는 `zeta(2, q=1)`처럼 이름으로도 받지만 여기서는 `TypeError`예요.
 - `zeta(inf, q)`는 q가 1보다 크면 `0.0`이에요(scipy는 NaN).
+- 음수 q에서 x가 아주 커도 값을 내요. `zeta(1025, -0.5)`는 `3.2e-181`이에요(scipy는 NaN).
 - 그 밖의 값은 scipy와 마지막 몇 자리가 다를 수 있어요. 예를 들어 `zeta(-1)`은 `-0.08333333333333333`(scipy `-0.08333333333333338`)이에요.
 - **복소수를 받지 않아요.** scipy는 리만 제타에 복소수 x도 받지만(`zeta(2+1j)`) 여기서는 `TypeError`예요.
 - 리스트나 numpy 배열은 받지 않고, `out`은 keyword-only예요.

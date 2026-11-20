@@ -67,6 +67,7 @@ $$
                     return _sd.where(_expand(df == 0.0, 2), math.nan, c)
                 return c * math.nan if df == 0 else c
             return self._per(self._scale_s(), 2) * c
+
         return self._cached("cov_s", make)
 ```
 
@@ -75,12 +76,14 @@ $$
 ```python
     def cov_params(self):
         """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
+
         def make():
             g = self._colfactor()
             c = self._cov_s()
             if g is None:
                 return c
             return c * (_sd.expand_dims(g, axis=-1) * _sd.expand_dims(g, axis=-2))
+
         return self._cached("cov_params", make)
 ```
 
@@ -92,7 +95,7 @@ $$
 p_j = 2\,\bar F_{t(\nu)}(\lvert t_j \rvert), \qquad \hat\beta_j \pm \bar F_{t(\nu)}^{-1}(\alpha/2)\cdot\operatorname{se}_j
 $$
 
-열이나 $y$를 2의 거듭제곱으로 옮겨 적합했으면 t는 데이터 단위의 계수와 `bse`로 나누지 않고, 적합의 단위의 계수와 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. t는 단위와 상관없는 비인데, 데이터 단위의 계수나 표준오차는 하나만으로도 double을 넘치거나 아래로 넘칠 수 있기 때문이에요. 그래서 계수가 inf로 넘친 회귀에서도 t와 p는 유한한 참값이에요([최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도). 신뢰구간도 그때는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구해 계수처럼 되돌려요. 넘친 끝은 제 부호의 $\pm\infty$, 아래로 넘친 끝은 0이고, $\infty - \infty$의 NaN은 나오지 않아요.
+열이나 $y$를 2의 거듭제곱으로 옮겨 적합했으면 t는 데이터 단위의 계수와 `bse`로 나누지 않고, 적합의 단위의 계수와 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. t는 단위와 상관없는 비인데, 데이터 단위의 계수나 표준오차는 하나만으로도 double을 넘치거나 아래로 넘칠 수 있기 때문이에요. 그래서 계수가 inf로 넘친 회귀에서도 t와 p는 유한한 참값이에요([최소제곱 풀이](/internals/regression/least-squares/)의 극단적인 척도). 신뢰구간도 그때는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구해 계수처럼 되돌려요. 넘친 끝은 제 부호의 $\pm\infty$, 아래로 넘친 끝은 0이고, $\infty - \infty$의 NaN은 나오지 않아요. 척도를 추정하는 모형이 완전 적합(척도 0, `df_resid` > 0)이면 t와 p는 NaN이에요([최소제곱 풀이](/internals/regression/least-squares/#완전-적합의-판정)의 `_perfect`).
 
 $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예요. $1 - F$(`1 - cdf`)로 구하지 않으므로 아주 작은 p값도 상대 정확도가 있어요. 두 함수는 sd.stats의 보장 영역에서 상대오차 10⁻¹⁴ 안이에요([Student t 분포](/api/stats/student-t/)).
 
@@ -106,11 +109,20 @@ $\bar F$는 위꼬리 확률(`ccdf`), $\bar F^{-1}$은 그 역함수(`iccdf`)예
         (alpha keyword-only)."""
         alpha = _check_alpha(alpha, "conf_int")
         q = self._dist().iccdf(alpha / 2)
-        half = q * self.bse
-        return _sd.stack([self.params - half, self.params + half], axis=-1)
+        if "beff_params_s" not in self._extra:
+            half = q * self.bse
+            return _sd.stack([self.params - half, self.params + half], axis=-1)
+        # the ends in the fit's own units, beta' -+ q sqrt(C'), then scaled as the parameter is:
+        # each end keeps its sign and may overflow to +-inf, never inf - inf = NaN
+        b = self._extra["beff_params_s"]
+        half = q * _sd.sqrt(_linalg.diagonal(self._cov_s()))
+        fy = self._fy()
+        fy1 = _expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy
+        fxk = self._xfactor()
+        return _sd.stack([(b - half) * fy1 / fxk, (b + half) * fy1 / fxk], axis=-1)
 ```
 
-위 `conf_int`는 기본 클래스(`_RegressionResult`)의 것이고, 척도를 옮겨 적합한 `ols`·`wls`·`gls`의 결과만 `_LinearResult`가 적합 단위의 계산으로 덮어써요. `_dist()`는 자유도 `df_resid_inference`의 `sd.stats.StudentT`예요. `alpha`는 키워드로만 받아요. 회귀 영역에서 `alpha`는 정규화의 벌점, `theilslopes`의 신뢰수준이기도 해서, 위치 인자로 받으면 `conf_int(0.1)`이 무엇을 뜻하는지 읽는 쪽이 헷갈리기 때문이에요.
+위 `conf_int`는 모든 회귀 결과가 함께 쓰는 기본 클래스(`_RegressionResult`)의 것이에요. 척도를 옮겨 적합한 결과(`beff_params_s`가 있음)는 뒤의 갈래로, 그 밖에는 앞의 갈래로 가요. `_dist()`는 자유도 `df_resid_inference`의 `sd.stats.StudentT`예요. `alpha`는 키워드로만 받아요. 회귀 영역에서 `alpha`는 정규화의 벌점이기도 해서, 위치 인자로 받으면 `conf_int(0.1)`이 무엇을 뜻하는지 읽는 쪽이 헷갈리기 때문이에요.
 
 ```python
 >>> x = sd.arange(20.0)
@@ -213,9 +225,11 @@ $$
         cblas_dsyrk(CblasColMajor, CblasUpper, CblasTrans, kk, m, 1.0, Q, m, 0.0, M, kk);
         const lint Le = static_cast<lint>(std::min<std::int64_t>(L, m - 1));  // lags with a pair of rows
         if (Le > 0) {
-            double* wl = sc.get<double>(static_cast<std::size_t>(Le + 1) + static_cast<std::size_t>(kHacChunk * kk) +
-                                            static_cast<std::size_t>(kk * kk),
-                                        3);
+            double* wl = sc.get<double>(
+                static_cast<std::size_t>(Le + 1) + static_cast<std::size_t>(kHacChunk * kk) +
+                    static_cast<std::size_t>(kk * kk),
+                3
+            );
             double* Vc = wl + Le + 1;
             double* C = Vc + kHacChunk * kk;
             for (lint l = 1; l <= Le; ++l) wl[l] = 1.0 - static_cast<double>(l) / (static_cast<double>(L) + 1.0);
@@ -402,19 +416,23 @@ $$
     def resid_studentized_external(self):
         """e~_t / (s_(t) sqrt(1 - h_t)) with s_(t) the residual scale without row t (statsmodels'
         resid_studentized_external, R's rstudent): r sqrt((df - 1) / (df - r^2)), r the internal one."""
+
         def make():
             r = self.resid_studentized_internal
             df = self._per(self.df_resid)
             return r * _sd.sqrt((df - 1.0) / (df - r * r))
+
         return self._cached("resid_studentized_external", make)
 
     @property
     def cooks_distance(self):
         """Cook's distance r_t^2 / rank * h_t / (1 - h_t), r the internal studentized residual
         (R's cooks.distance; statsmodels' cooks_distance[0])."""
+
         def make():
             r, h = self.resid_studentized_internal, self.leverage
             return r * r / self._per(self._stat(_RANK)) * (h / (1.0 - h))
+
         return self._cached("cooks_distance", make)
 ```
 
@@ -432,7 +450,7 @@ $$
 >>> float(r.resid_studentized_external[t])
 1.0168598318244313
 >>> float(sd.sum((r.fittedvalues - r_t.predict(X)) ** 2)) / (r.rank * r.scale)
-0.017164633066568402
+0.0171646330665684
 >>> float(r.cooks_distance[t])
 0.01716463306656841
 ```

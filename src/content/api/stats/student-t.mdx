@@ -256,6 +256,15 @@ nan
 nan
 ```
 
+가운데인 확률 1/2의 역함수는 네 메서드 모두 0.0이에요(−0.0이 아니에요). `ilogcdf`에 `logcdf(0)`의 값, 곧 반올림한 $\log\frac12$를 넣어도 0.0이 나와서 `ilogcdf(logcdf(0))`이 0으로 돌아와요.
+
+```python
+>>> T.icdf(0.5), T.iccdf(0.5)
+(0.0, 0.0)
+>>> T.ilogcdf(T.logcdf(0.0)), T.ilogccdf(T.logccdf(0.0))
+(0.0, 0.0)
+```
+
 `cdf`, `ccdf`, `icdf` 등 메서드의 공통 의미와 `out=` 인자는 [분포의 메서드](/api/stats/methods/)에 모아 두었어요.
 
 ## 요약값

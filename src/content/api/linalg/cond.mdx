@@ -249,6 +249,14 @@ inf
 2.161727821137838e+17
 ```
 
+특이 행렬이 아니어도 역행렬이 float64에 담기지 않을 만큼 크면 `ord=2`, `-2`가 아닌 `ord`의 조건수는 `inf`예요. 아래 행렬의 역행렬에는 `1 / 5e-324`가 들어가야 하는데, 이 값은 float64의 범위를 넘어요.
+
+```python
+>>> tiny = sd.asarray([[1.0, 0.0], [0.0, 5e-324]])
+>>> sd.linalg.cond(tiny, ord=1)
+inf
+```
+
 `ord=-2`는 방향이 거꾸로예요. 0과 1 사이의 값이고, 작을수록 나빠요. 특이 행렬이면 `0.0`이에요.
 
 ```python
@@ -346,7 +354,7 @@ array([], dtype=float64)
 >>> sd.linalg.cond(good, ord=3)
 Traceback (most recent call last):
     ...
-ValueError: cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf
+ValueError: cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf, not 3
 >>> sd.linalg.cond(good, ord=None)
 Traceback (most recent call last):
     ...

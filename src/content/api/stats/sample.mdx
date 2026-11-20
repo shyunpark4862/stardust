@@ -131,7 +131,7 @@ TypeError: sample(): 'shape' must be an int or a tuple of ints, not list
 >>> Z.sample(-1, rng=rng)
 Traceback (most recent call last):
     ...
-ValueError: sample(): 'shape' must be non-negative
+ValueError: sample(): negative dimensions are not allowed
 ```
 
 빈 튜플 `()`도 `ValueError`예요. stardust에는 0차원 배열이 없어서, `()` 모양의 결과를 만들 수 없기 때문이에요. 표본 하나가 필요하면 `shape`를 생략하거나 `None`을 넣으세요. 생성기의 메서드 [`rng.random(shape)`](/api/random/random/)과 같은 규칙이에요.
@@ -140,7 +140,7 @@ ValueError: sample(): 'shape' must be non-negative
 >>> Z.sample((), rng=rng)
 Traceback (most recent call last):
     ...
-ValueError: sample(): 'shape' must not be () (stardust has no 0-d arrays; None gives one sample)
+ValueError: sample(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)
 >>> type(Z.sample(None, rng=rng))
 <class 'float'>
 ```

@@ -503,19 +503,32 @@ Apple M4 Pro, float64예요. 배율은 1스레드 대비 10스레드이고, nump
 
 ### vecdot: matmul이 아니에요
 
-`sd.vecdot`은 최상위에도 있지만 실제로는 linalg의 함수예요(`csrc/linalg/ops/basic.cpp`, `sd.vecdot is sd.linalg.vecdot`). Array API가 같은 함수를 두 곳에 두도록 정했기 때문이에요. 이름은 비슷해도 matmul 위에 서 있지 않고, 계산 방식도 달라요.
+최상위 `sd.vecdot`은 배열의 dtype 규칙을 따르는 함수예요(`csrc/array/ops/matmul.cpp`). 선형대수의 `sd.linalg.vecdot`과는 다른 함수이고, 정수와 bool 입력에서 결과의 dtype이 달라요. 이름은 비슷해도 matmul 위에 서 있지 않고, 계산 방식도 달라요.
 
-| | 벡터 `x @ y` (matmul) | `vecdot(x, y)` |
+| | 벡터 `x @ y` (matmul) | `sd.vecdot(x, y)` |
 |---|---|---|
-| 계산 | BLAS `ddot` / `zdotu` | 곱을 pairwise 합으로 더함 (연속 float64는 잎 안에서 바로, 그 밖은 버퍼를 거쳐) |
+| 계산 | BLAS `ddot` / `zdotu` | float·complex: `sd.linalg.vecdot`에 넘겨 곱을 합에 융합한 pairwise 합. 정수·bool: `sum(x1 * x2, axis)` |
 | complex | 켤레 없음 | x1에 켤레(Array API) |
-| int64 입력 | int64 결과 | float64 결과 |
-| 비트 | Accelerate의 합 순서 | `sd.sum(conj(x1) * x2, axis=-1)`과 같음 |
-| 배치 | matmul의 배치 규칙 | 나머지 축을 브로드캐스트, linalg의 비용 모델로 병렬 |
+| int64 입력 | int64 결과 | int64 결과(wrap). `sd.linalg.vecdot`은 float64 |
+| 비트 | Accelerate의 합 순서 | float·complex는 `sd.linalg.vecdot`과 같음 |
+| 배치 | matmul의 배치 규칙 | 나머지 축을 브로드캐스트 |
 
-- `vecdot`은 항의 곱을 numpy와 같은 pairwise 합(`base/pairwise.hpp`)으로 더해요. 그래서 결과가 `sd.sum(conj(x1) * x2, axis=-1)`과 비트까지 같아요([집계](/internals/array/reductions/)). 보통은 잎 하나 분량(최대 128개)의 곱을 버퍼에 채운 뒤 합산 루프로 더해요. 버퍼는 연속이라, 입력 레이아웃이 무엇이든 같은 합산 루프 하나가 벡터화된 채로 돌아요.
-- 연속 float64는 버퍼를 거치지 않아요. 두 입력이 모두 연속 float64이고 축 길이가 병렬 기준보다 짧으면, 잎 안에서 `a[i] * b[i]`를 바로 더해요. 같은 항을 같은 순서로 더하고 FMA 축약이 꺼져 있으므로 버퍼를 거친 결과와 비트가 같아요. 1000×1000 `vecdot(f2, g2)`(길이 1000인 내적 1000개)는 이렇게 1스레드 153µs, 10스레드 22µs예요. numpy는 131µs라 1스레드에서는 0.86배예요. 합 순서를 `sum`과 같게 맞추는 pairwise 합의 비용이에요.
-- int64 입력이 float64 결과가 되는 것은 linalg 영역이 BLAS/LAPACK 위에서 돌고, BLAS/LAPACK은 float에서만 돌기 때문이에요. 정수를 정수로 계산하고 싶으면 matmul이나 `sum`을 써요.
+```cpp
+// csrc/array/ops/matmul.cpp (발췌)
+nb::object vecdot(nb::handle x1, nb::handle x2, nb::handle axis_obj) {
+    const bool integral =
+        is_ndarray(x1) && is_ndarray(x2) && promote(as_ndarray(x1).dtype, as_ndarray(x2).dtype) <= DType::Int64;
+    if (!integral) {
+        static PyObject* const linalg_vecdot =
+            nb::object(nb::module_::import_("stardust.linalg").attr("vecdot")).release().ptr();  // kept for the process
+        nb::dict kw;
+        kw["axis"] = axis_obj;
+        return nb::handle(linalg_vecdot)(x1, x2, **kw);
+    }
+```
+
+- float64와 complex128 입력은 두 함수가 같은 계산이라, `sd.linalg.vecdot`을 그대로 불러요. 그래서 결과의 비트, 모양 규칙, 메시지가 같아요. 그쪽은 곱을 합에 융합하는 잎(`fma_dot_leaf`)으로 pairwise 트리를 지나요. 곱마다의 반올림 하나가 없어서 `sd.sum(conj(x1) * x2, axis=-1)`과는 끝 비트가 다를 수 있어요([linalg의 기본 연산](/internals/linalg/basic/)).
+- 정수와 bool 입력은 `multiply`와 `sum`으로 계산해요. 켤레는 정수에서 아무 일도 하지 않아요. 축 길이와 브로드캐스트를 먼저 검사해서 메시지는 float 경로와 같아요. 결과는 `matmul`, `tensordot`처럼 int64이고 넘치면 wrap해요.
 
 ## 성능
 

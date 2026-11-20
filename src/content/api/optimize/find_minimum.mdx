@@ -340,11 +340,11 @@ ValueError: bracket_minimum(): 'factor' must be > 1
 ## 정확도와 비용
 
 - 원소 하나의 계산은 그 원소만 풀 때와 같아요. 배치의 다른 원소나 스레드 수와 상관없이 결과의 비트가 같아요.
-- 최솟값의 위치는 상대 $\sqrt{u} \approx 10^{-8}$ 근처까지만 정해져요(f가 최솟값 근처에서 평평하기 때문이에요). `fun`은 끝자리 근처까지 맞아요.
+- 최솟값의 위치는 상대 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$($\varepsilon = 2^{-52}$) 근처까지만 정해져요(f가 최솟값 근처에서 평평하기 때문이에요). `fun`은 끝자리 근처까지 맞아요.
 - 10⁶ 원소에서 `find_minimum` 한 번이 1스레드 189 ms, 10스레드 57 ms, `bracket_minimum`이 54 ms, 27 ms였어요(Apple M4 Pro, $(x - c)^2 + 0.01\,c\,x^4$). 자세한 방법은 [배치 스칼라의 구현](/internals/optimize/batched/)에 있어요.
 
 ## scipy를 아는 분께
 
-- scipy 1.18.1의 `scipy.optimize.elementwise.find_minimum`, `bracket_minimum`과 같은 방법, 같은 걸음이에요. 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때). 최솟값 근처에서는 f의 끝자리가 걸음을 바꾸므로, f 안의 수학 함수가 다르면(`sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요. 위의 $e^x - 5x$도 `np.exp`로 쓴 scipy는 반복 14번, 이쪽은 13번이에요.
+- scipy 1.18.1의 `scipy.optimize.elementwise.find_minimum`, `bracket_minimum`과 같은 방법, 같은 걸음이에요. 지금은 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때; 비트까지 같지만 약속은 아니에요). 최솟값 근처에서는 f의 끝자리가 걸음을 바꾸므로, f 안의 수학 함수가 다르면(`sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요. 위의 $e^x - 5x$도 `np.exp`로 쓴 scipy는 반복 14번, 이쪽은 13번이에요.
 - scipy의 `f_x`는 `fun`, `success`는 `converged`, `nit`은 `n_iter`예요. 허용오차는 `tolerances` dict 대신 키워드이고, `maxiter`는 `max_iter`, `callback`은 없어요(status −4도 없어요).
 - 처음 세 점의 호출도 늘 1차원 배열 (k,)이에요. 입력이 모두 실수이면 필드는 Python 수예요.

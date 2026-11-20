@@ -256,12 +256,25 @@ $$
 잔차는 double이라 기저 행이 아닌데 해에서 정확히 0이어야 할 잔차(예: 완전 적합의 점들)가 $\pm10^{-17}$로 나와요. 그 부호를 믿으면 쓸데없는 피벗이 생겨요. 그래서 아래 기준 안의 잔차는 0으로 보고 그 행의 쪽을 그대로 둬요.
 
 ```cpp
-inline double snap_tol(const QP& P, lint i, double bn) {
-    return (static_cast<double>(P.k) + 16.0) * kU * (std::fabs(P.y[i]) + P.l1[i] * bn);
+// The snapping tolerance of a residual: (k + 16) u (|y_i| + sum_c |x_ic| |beta_c|), the
+// size by which rounding beta moves x_i beta. A residual within it is taken as exactly 0 and
+// keeps its side (residuals are plain double; they decide signs only beyond it). The bound
+// (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf) (bn: ||beta||_inf) is tried first, so that the
+// row's sum is formed only for a residual near 0.
+inline bool snaps(const QP& P, lint i, double ri, const double* beta, double bn) {
+    const double c = (static_cast<double>(P.k) + 16.0) * kU;
+    const double a = std::fabs(ri), ay = std::fabs(P.y[i]);
+    if (a > c * (ay + P.l1[i] * bn)) return false;
+    const double* xi = P.row(i);
+    double xb = 0.0;
+    for (lint j = 0; j < P.k; ++j) xb += std::fabs(xi[j] * beta[j]);
+    return a <= c * (ay + xb);
 }
 ```
 
-$(k + 16)u(\lvert y_i\rvert + \lVert x_i\rVert_1\lVert\beta\rVert_\infty)$는 내적 $x_i^{\mathsf T}\beta$의 반올림 오차의 상한($k$개 곱의 합)에 여유를 둔 값이에요. $\lvert x_i^{\mathsf T}d\rvert$도 같은 꼴의 기준($(k + 16)u\lVert x_i\rVert_1\lVert d\rVert_\infty$) 밑이면 그 행은 움직이지 않는다고 봐요.
+$(k + 16)u(\lvert y_i\rvert + \sum_c\lvert x_{ic}\rvert\lvert\beta_c\rvert)$는 $\beta$를 반올림해 내적 $x_i^{\mathsf T}\beta$가 움직이는 크기($k$개 곱의 합의 반올림 오차의 상한)에 여유를 둔 값이에요. [최소제곱의 완전 적합](/internals/regression/least-squares/#완전-적합의-판정)과 [강건 회귀](/internals/regression/robust/)의 척도 0 판정도 같은 식이에요. 먼저 더 큰 쪽인 $\lVert x_i\rVert_1\lVert\beta\rVert_\infty$로 걸러서, 0 가까운 잔차의 행만 항마다의 합을 만들어요.
+
+$\lvert x_i^{\mathsf T}d\rvert$는 $(k + 16)u\cdot\min\bigl(\lVert x_i\rVert_1\lVert d\rVert_\infty,\ \max(\sum_c\lvert x_{ic}\rvert\lvert d_c\rvert,\ \max_b\sum_c\lvert x_{bc}\rvert\lvert d_c\rvert)\bigr)$ 밑이면 그 행은 움직이지 않는다고 봐요($b$는 기저 행). 앞은 $x_i^{\mathsf T}d$의 반올림이고, 뒤의 기저 행 항은 $X_B d = \sigma e_a$를 풀며 $d$ 자체에 남는 반올림이에요. $\lVert x_i\rVert_1\lVert d\rVert_\infty$만 쓰면, 시각 같은 큰 값의 열과 그 열을 상쇄하는 $d$의 큰 성분이 다른 열일 때 기준이 $10^{12}$배쯤 커져요. 그러면 'nid'의 $q \pm h$ 다시 적합에서 어떤 행도 움직이지 않는다고 보아 실패하고 `bse`가 NaN이 돼요.
 
 ### 퇴화와 순환
 
@@ -346,7 +359,7 @@ True
     const double eps_y = kSqrtEps * (ymax > 0.0 ? ymax : 1.0);
 ```
 
-그래서 $y$에 $c$를 곱하면 `params`와 `bse`가 반올림 수준에서 정확히 $c$배예요. R과는 $\max\lvert y_i\rvert = 1$일 때 같은 값이에요.
+그래서 $y$에 $c$를 곱하면 `params`와 `bse`가 반올림 수준에서 정확히 $c$배예요. R과는 $\max\lvert y_i\rvert = 1$일 때 같은 값이에요. $y$의 크기가 $[2^{-256}, 2^{256}]$ 밖이면 [선형 모형](/internals/regression/least-squares/#극단적인-척도)처럼 Python 층이 $y$를 2의 거듭제곱으로 나눈 문제를 풀고, 계수·`bse`·`objective`를 그 배수로 돌려놓아요. 공분산은 적합의 단위로 두고 t와 구간을 거기서 만들므로, 계수 자체가 double을 넘치는 크기에서도 t와 p는 그대로예요.
 
 ```python
 >>> a = sd.regression.quantreg(y, x)

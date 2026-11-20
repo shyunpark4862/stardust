@@ -9,7 +9,7 @@ signatures:
 summary: 데이터 분포의 모양을 숫자 하나로 재요. skew(왜도)는 좌우가 얼마나 비대칭인지, kurtosis(첨도)는 꼬리가 얼마나 두꺼운지예요. 첨도는 기본으로 정규분포를 0으로 맞춘 초과 첨도예요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 데이터. bool·정수는 float64로 바꿔서 계산해요.
   - name: axis
@@ -37,7 +37,7 @@ returns:
   desc: 왜도 또는 첨도. 언제나 float64이고, 남는 축이 없으면 Python float예요. 값이 둘 미만이거나 모두 같으면 NaN이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, fisher·bias·keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아닐 때, 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, fisher·bias·keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
 seeAlso: [describe, moment, zscore, sem]

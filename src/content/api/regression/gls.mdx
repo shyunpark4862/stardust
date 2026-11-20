@@ -245,7 +245,7 @@ array([1.3203718845692922, 0.5921648968669377], dtype=float64)
 ```python
 >>> c = sd.regression.gls(sd.full(n, 2.5), t, sigma=S)
 >>> c.params, c.bse, c.tvalues
-(array([2.5, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([inf, nan], dtype=float64))
+(array([2.5, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
 >>> c.ssr, float(sd.max(sd.abs(c.resid))), c.rsquared
 (0.0, 0.0, nan)
 ```

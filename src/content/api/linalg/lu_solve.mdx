@@ -260,7 +260,7 @@ array([2.25, 1.25], dtype=float64)
 >>> sd.linalg.lu_solve(L, U, sd.asarray([1.0, 0.0]), b)
 Traceback (most recent call last):
     ...
-TypeError: lu_solve(): 'perm' must be an int64 array
+TypeError: lu_solve(): 'perm' must be an int64 array, not float64
 >>> sd.linalg.lu_solve(L, U, [1, 0], b)
 Traceback (most recent call last):
     ...

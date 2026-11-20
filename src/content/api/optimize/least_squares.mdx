@@ -13,7 +13,7 @@ params:
     kind: positional-only
     desc: "잔차 함수 fun(x). x는 새 float64 sd.ndarray (n,)이고, 길이 m(1 이상)의 1차원 값(sd.ndarray, 실수의 시퀀스, numpy 배열)을 돌려줘요. m은 x0에서 정해지고 그 뒤로 같아야 해요."
   - name: x0
-    type: ndarray 또는 실수의 시퀀스
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series
     kind: positional-only
     desc: 시작점. 1차원이고 비어 있지 않으며 유한해야 해요. 길이가 변수의 수 n이에요.
   - name: jac
@@ -31,7 +31,7 @@ params:
   - name: ftol, xtol, gtol
     type: float
     kind: keyword-only
-    desc: 멈춤 판정의 허용오차(제곱합의 상대 감소, 걸음의 상대 크기, 기울기). 0 이상이고 셋 가운데 하나는 2.2e-16 이상이어야 해요. 기본값은 모두 1e-8이에요.
+    desc: 멈춤 판정의 허용오차(제곱합의 상대 감소, 걸음의 상대 크기, 기울기). 0 이상이고 셋 가운데 하나는 2.2e-16 이상이어야 해요('lm'은 셋 모두). 기본값은 모두 1e-8이에요.
   - name: diff_step
     type: float, 실수의 시퀀스, 또는 None
     kind: keyword-only
@@ -47,7 +47,9 @@ raises:
   - type: TypeError
     desc: fun이 호출 가능하지 않을 때, jac가 문자열도 호출 가능한 객체도 아닐 때, x0이 복소수일 때, 허용오차가 수가 아닐 때, max_nfev가 int가 아닐 때, fun이나 jac이 숫자가 아닌 것을 돌려줄 때. fun과 jac 안에서 난 에러도 그대로 나와요.
   - type: ValueError
-    desc: x0이 비었거나 1차원이 아니거나 유한하지 않을 때, x0이 bounds 밖일 때, lower가 upper보다 작지 않을 때, method나 jac의 이름이 틀렸을 때, method='lm'에 경계를 줬을 때, method='lm'인데 잔차가 변수보다 적을 때, 허용오차가 음수이거나 셋 모두 2.2e-16보다 작을 때, diff_step을 호출 가능한 jac과 함께 줬을 때, max_nfev가 1보다 작을 때, fun이 x0에서 유한하지 않을 때, fun이 1차원이 아니거나 개수가 바뀐 값을 돌려줄 때, jac이 (m, n)이 아닌 모양을 돌려줄 때, 반복 중 야코비안이 유한하지 않을 때.
+    desc: x0이 비었거나 1차원이 아니거나 유한하지 않을 때, x0이 bounds 밖일 때, lower가 upper보다 작지 않을 때, method나 jac의 이름이 틀렸을 때, method='lm'에 경계를 줬을 때, method='lm'인데 잔차가 변수보다 적을 때, bounds를 변수마다의 (low, high) 쌍으로 줬을 때, 허용오차가 음수이거나 셋 모두 2.2e-16보다 작을 때('lm'은 하나라도 작을 때), diff_step을 호출 가능한 jac과 함께 줬을 때, max_nfev가 1보다 작을 때, fun이 x0에서 유한하지 않을 때, fun이 1차원이 아니거나 개수가 바뀐 값을 돌려줄 때, jac이 (m, n)이 아닌 모양을 돌려줄 때, 반복 중 야코비안이 유한하지 않을 때.
+  - type: LinAlgError
+    desc: "'trf'의 SVD가 수렴하지 않을 때(sd.linalg.LinAlgError)."
 seeAlso: [lsq_linear, nnls, root, minimize, results, basics]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -157,12 +159,12 @@ OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1.0 
 - 돌려주는 값은 길이 m의 1차원 값이에요. `sd.ndarray`, 실수의 리스트·튜플, numpy 배열 모두 돼요. 위의 `rosen`처럼 리스트를 돌려줘도 괜찮아요.
 - m은 처음 `x0`에서 부른 결과로 정해져요. 그 뒤에 개수가 바뀌면 `ValueError`예요.
 - 상수(데이터 같은)는 클로저로 넘겨요. 위의 `resid`가 바깥의 `t`, `y`를 쓰는 것처럼요. scipy의 `args=` 같은 추가 인자는 없어요. 함수가 따로 있으면 `lambda p: model(p, t, y)`처럼 감싸요.
-- 잔차는 변수보다 적어도 돼요(m < n, `'trf'`만). 그때는 답이 하나로 정해지지 않고, 제곱합을 0으로 만드는 점 가운데 하나에 닿아요.
+- 잔차는 변수보다 적어도 돼요(m < n, `'trf'`만). 그때는 답이 하나로 정해지지 않고, 제곱합을 0으로 만드는 점 가운데 하나에 닿아요. 야코비안의 열이 서로 독립이 아니라서 걸음이 늘 신뢰 영역의 경계까지 가고, 근을 넘었다 돌아오기를 되풀이해요. 그래서 아래처럼 일차인 잔차 하나에도 반복이 여러 번 걸려요.
 
 ```python
 >>> ru = sd.optimize.least_squares(lambda x: [x[0] + x[1] + x[2] - 3], [0.0, 0.0, 0.0])
->>> ru.converged, [round(v, 6) for v in ru.x.tolist()]
-(True, [1.0, 1.0, 1.0])
+>>> ru.converged, ru.n_iter, [round(v, 6) for v in ru.x.tolist()]
+(True, 15, [1.0, 1.0, 1.0])
 ```
 
 ## 방법 고르기: method
@@ -174,7 +176,6 @@ OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1.0 
 | 방법 | 신뢰 영역 반사법(Trust Region Reflective) | Levenberg–Marquardt(MINPACK) |
 | 경계 | 받아요 | 받지 않아요(`ValueError`) |
 | 잔차 수 | m < n도 돼요 | m ≥ n이어야 해요 |
-| scipy와 | 같은 걸음, 끝자리가 다를 수 있어요 | 부르는 점이 비트까지 같아요 |
 
 - **`'lm'`** 은 가장 오래 쓰여 온 방법이에요. 걸음 $(J^{\mathsf T}J + \lambda D^2)s = -J^{\mathsf T}f$에서 $\lambda$가 0이면 가우스–뉴턴, 크면 짧은 경사 하강 걸음이고, $\lambda$를 신뢰 영역의 반지름에 맞춰 정해요. 경계가 없고 잔차가 변수보다 적지 않은 문제에 써요.
 - **`'trf'`** 는 경계가 있어도 되는 방법이에요. 경계 가까이에서는 그쪽 방향의 걸음을 줄이고, 걸음이 경계에 부딪히면 공이 벽에서 튕기듯 방향을 뒤집은 걸음(반사)도 후보로 봐요. 반복점은 늘 경계 안쪽에 있어요. 경계가 없으면 보통의 신뢰 영역 가우스–뉴턴과 같아요.
@@ -199,7 +200,7 @@ OptimizeResult(method='lm', converged=True, cost=0, n_iter=16, nfev=53, x=[1.0 1
   />
 </Fig>
 
-어느 쪽을 쓸지 정하기 어렵다면 기본값 `'trf'`로 충분해요. 경계가 필요하면 `'trf'`만 돼요. 잔차가 아주 많으면(m ≫ n) `'trf'`의 반복 하나가 더 싸요. 두 방법의 자세한 알고리즘은 [최소제곱의 구현](/internals/optimize/least-squares/)에 있어요.
+어느 쪽을 쓸지 정하기 어렵다면 기본값 `'trf'`로 충분해요. 경계가 필요하면 `'trf'`만 돼요. 잔차가 아주 많아도(m ≫ n) 두 방법 모두 야코비안마다 m 크기의 일은 QR 분해 하나라서, 반복 하나의 비용은 비슷해요. 두 방법의 자세한 알고리즘은 [최소제곱의 구현](/internals/optimize/least-squares/)에 있어요.
 
 ## 야코비안: jac와 diff_step
 
@@ -257,12 +258,13 @@ array([0, 0, 1], dtype=int64)
 - 경계에서 차분 간격이 경계를 넘으면 반대쪽(`'2-point'`)이나 한쪽 꼴(`'3-point'`)로 바꿔요. 그래서 `fun`은 경계 밖의 x를 받지 않아요.
 - lower < upper여야 해요. 같은 값으로 변수를 고정하는 것은 안 돼요(그 변수를 상수로 빼서 풀어요).
 - `method='lm'`은 무한한 경계(`(-inf, inf)`)만 받아요.
+- 변수마다의 쌍 `[(l1, u1), (l2, u2), ...]`는 받지 않아요. 쌍이 셋 이상이면 `'bounds' must be a pair (lower, upper), not a sequence of (low, high) pairs`라는 `ValueError`이고, 쌍이 둘이면 `(lower, upper)`로 읽어요. 변수마다 범위를 줄 때는 `([l1, l2, l3], [u1, u2, u3])`로 써요.
 
 ```python
 >>> sd.optimize.least_squares(resid, [1.0, 1.0, 0.0], method='lm', bounds=(0, 10))
 Traceback (most recent call last):
     ...
-ValueError: least_squares(): method='lm' takes no bounds (method='trf' does)
+ValueError: least_squares(): method='lm' takes no 'bounds' (method='trf' does)
 ```
 
 ## 허용오차와 멈춤
@@ -275,7 +277,14 @@ ValueError: least_squares(): method='lm' takes no bounds (method='trf' does)
 | `xtol` | 걸음이 x의 크기에 비해 `xtol`의 비율보다 작아요 | 3 |
 | `gtol` | 기울기 $J^{\mathsf T}f$(척도를 맞춘 것)가 `gtol`보다 작아요 | 1 |
 
-`ftol`과 `xtol`이 함께 통과하면 4예요. 정확한 식은 방법마다 조금 달라요([구현](/internals/optimize/least-squares/)). 기본값 $10^{-8}$에서 멈춘 점은 해와 상대 $10^{-8}$ 남짓 떨어져 있을 수 있어요. 허용오차는 "언제 그만할지"이지 "답이 몇 자리 맞는지"가 아니라는 점을 기억해요. 더 작게 주면 반복이 조금 더 가요. 셋 다 0으로 끄면 끝나지 않을 수 있어서, 셋 가운데 하나는 $2.2\times10^{-16}$ 이상이어야 해요.
+`ftol`과 `xtol`이 함께 통과하면 4예요. 정확한 식은 방법마다 조금 달라요([구현](/internals/optimize/least-squares/)). 기본값 $10^{-8}$에서 멈춘 점은 해와 상대 $10^{-8}$ 남짓 떨어져 있을 수 있어요. 허용오차는 "언제 그만할지"이지 "답이 몇 자리 맞는지"가 아니라는 점을 기억해요. 더 작게 주면 반복이 조금 더 가요. 셋 다 0으로 끄면 끝나지 않을 수 있어서, 셋 가운데 하나는 $2.2\times10^{-16}$ 이상이어야 해요. `'lm'`은 셋 모두 그 이상이어야 해요. 그보다 작으면 MINPACK이 "허용오차가 너무 작다"로 멈추기 때문이에요.
+
+```python
+>>> sd.optimize.least_squares(resid, [1.0, 1.0, 0.0], method='lm', gtol=0.0)
+Traceback (most recent call last):
+    ...
+ValueError: least_squares(): 'ftol', 'xtol' and 'gtol' must each be >= 2.2e-16 (the machine epsilon) when method='lm'
+```
 
 `max_nfev`는 `fun`을 부르는 수의 상한이에요. 차분의 호출도 세요. 기본값은 반복 100n번쯤에 닿도록 정해져 있어요. 닿으면 그때의 점을 돌려주고 `status`가 0, `converged`가 False예요. 예외는 나지 않아요.
 
@@ -315,7 +324,7 @@ ValueError: least_squares(): method='lm' takes no bounds (method='trf' does)
 | 3 | `` `xtol` termination condition is satisfied.`` |
 | 4 | ``Both `ftol` and `xtol` termination conditions are satisfied.`` |
 
-`converged`는 `status > 0`이고 `cost`가 유한할 때 True예요. 판정을 통과했는데 제곱합이 넘쳐 inf인 경우(척도가 극단적인 문제)는 수렴으로 보지 않아요. 모든 필드는 읽기 전용이고, 배열 필드는 읽을 때마다 새 복사본이에요. 공통 규칙은 [결과 객체](/api/optimize/results/)에 있어요.
+`converged`는 `status > 0`이고 `cost`가 유한할 때 True예요. 판정을 통과했는데 제곱합이 넘쳐 inf인 경우(척도가 극단적인 문제)는 수렴으로 보지 않아요. 모든 필드는 읽기 전용이고, 배열 필드도 읽기 전용 배열이에요(고치려면 `.copy()`). `cost`, `grad`, `optimality`는 `fun`과 `jac`으로 다시 계산한 값이라, 같은 `fun`을 직접 제곱해 더한 값과 끝자리가 다를 수 있어요. 공통 규칙은 [결과 객체](/api/optimize/results/)에 있어요.
 
 ```python
 >>> [f'{v:.1e}' for v in r.grad.tolist()]
@@ -361,6 +370,14 @@ ValueError: least_squares(): 'fun' is not finite at 'x0'
 (True, array([0.9999999999999846], dtype=float64))
 >>> [round(c, 4) for c in calls[:4]]
 [3.0, 0.0, 2.25, 0.75]
+```
+
+`'trf'`에서 잔차가 유한해도 아주 크면(대략 $\lvert f\rvert \gtrsim 10^{154}$) 제곱합이나 기울기가 넘쳐 inf가 돼요. 그러면 더 나아갈 수 없으니 그 자리에서 `status` 0으로 멈추고, `cost`가 inf라 `converged`는 False예요. 이런 문제는 잔차의 척도를 줄여서 풀어요.
+
+```python
+>>> ro = sd.optimize.least_squares(lambda x: [1e160 * (x[0] - 1), x[1]], [0.0, 1.0])
+>>> ro.converged, ro.status, ro.cost
+(False, 0, inf)
 ```
 
 반복 중에 **야코비안**이 유한하지 않으면 그 점을 적은 `ValueError`예요(`'jac' is not finite at x = [...]`, 차분이면 `the differences of 'fun' are not finite at x = [...]`). 야코비안 없이는 걸음을 정할 수 없기 때문이에요.
@@ -423,13 +440,13 @@ array([ 5.030580751301966, 0.4048767917071542, 0.5239091983451125], dtype=float6
 
 ## 스레드와 GIL
 
-`fun`과 `jac`은 Python 함수라, 반복은 GIL을 쥔 채 돌아요. 다른 Python 스레드에서 따로 푸는 문제들도 사용자 함수 부분은 번갈아 돌아요. 큰 야코비안의 분해만 GIL을 놓고 여러 스레드로 나눠 해요. 사용자 함수 안의 sd 연산은 그 연산의 규칙대로 스레드를 써요. 같은 입력이면 스레드 수와 상관없이 결과가 비트까지 같아요.
+`fun`과 `jac`은 Python 함수라, 반복은 GIL을 쥔 채 돌아요. 다른 Python 스레드에서 따로 푸는 문제들도 사용자 함수 부분은 번갈아 돌아요. 큰 야코비안의 분해 같은 큰 선형대수만 GIL을 놓고 여러 스레드로 나눠 해요. 사용자 함수 안의 sd 연산은 그 연산의 규칙대로 스레드를 써요. 같은 입력이면 스레드 수와 상관없이 결과가 비트까지 같아요.
 
 ## scipy를 아는 분께
 
 - 이름과 꼴: `fun`, `x0`는 위치로만, 나머지는 키워드로만 받아요. `args`·`kwargs`는 없어요(클로저로 넘겨요). 결과는 `success` 대신 `converged`이고, `n_iter`와 `method`가 더 있어요. 결과는 dict처럼 쓸 수 없어요(`r['x']` 없음).
 - 받지 않는 것: `method='dogbox'`, `jac='cs'`, `x_scale`, `loss`·`f_scale`, `tr_solver`·`tr_options`, `jac_sparsity`, `callback`, `workers`, `verbose`. `bounds`의 기본값은 `None`이에요(scipy는 `(-inf, inf)`). 방법 이름은 소문자만 받아요.
-- `'lm'`은 scipy와 같은 점에서 `fun`을 같은 순서로 불러 `x`, `fun`, `jac`, `status`가 비트까지 같아요(사용자 함수가 두 쪽에서 같은 값을 돌려줄 때). `'trf'`는 같은 걸음을 하지만 첫 시험점부터 끝자리가 다를 수 있어요. 경계 없는 `'trf'`도 scipy의 경계 없는 판과 같은 걸음이에요.
+- 두 방법 모두 scipy 1.18.1과 같은 알고리즘과 멈춤 판정이에요. `'lm'`은 지금은 scipy와 같은 점에서 `fun`을 같은 순서로 불러 `x`, `fun`, `jac`, `status`가 비트까지 같아요(사용자 함수가 두 쪽에서 같은 값을 돌려줄 때; 약속은 아니에요). 다만 잔차가 변수보다 아주 많으면(m ≥ 10n이고 mn ≥ 2000) 더 빠른 계산 순서를 써서 끝자리가 다르고 반복 수가 가끔 하나 둘 달라요. `'trf'`는 같은 걸음을 하지만 첫 시험점부터 끝자리가 다를 수 있어요. 경계 없는 `'trf'`도 scipy의 경계 없는 판과 같은 걸음이에요. `cost`, `grad`, `optimality`는 `x`가 같아도 끝자리가 다를 수 있어요.
 - **`nfev`가 차분의 호출을 세요.** scipy의 `least_squares`는 세지 않아서, 차분을 쓰면 scipy의 `nfev`는 이쪽의 `nfev − (2점 n, 3점 2n)·njev`예요. `max_nfev`도 차분의 호출을 센 상한이고, 기본값을 그만큼 키워서 상한에 닿는 반복 수가 scipy와 같아요. scipy는 `'lm'`에 차분을 쓰면 `njev`가 None인데, 여기서는 늘 수예요.
 
 ```python
@@ -445,6 +462,6 @@ array([ 5.030580751301966, 0.4048767917071542, 0.5239091983451125], dtype=float6
 (True, 41, 11, None)
 ```
 
-- 시험점의 잔차가 유한하지 않으면 `'lm'`도 그 걸음을 거절하고 반지름을 줄여요(scipy의 `'lm'`은 NaN으로 계속 가요). 반복 중의 야코비안이 유한하지 않으면 `ValueError`예요(scipy는 계속 가요).
-- `'lm'`에서도 허용오차 셋 가운데 하나만 $2.2\times10^{-16}$ 이상이면 돼요(scipy는 `'lm'`에서 셋 모두를 요구해요). 호출 가능한 `jac`과 `diff_step`을 함께 주면 `ValueError`예요(scipy는 `diff_step`을 버려요).
+- 시험점의 잔차가 유한하지 않으면 `'lm'`도 그 걸음을 거절하고 반지름을 줄여요(scipy의 `'lm'`은 NaN으로 계속 가요). 반복 중의 야코비안이 유한하지 않으면 `ValueError`예요(scipy는 계속 가요). `'trf'`에서 제곱합이 넘치면 바로 `status` 0으로 멈춰요(scipy는 진전 없이 `max_nfev`까지 같은 점에서 돌아요).
+- 호출 가능한 `jac`과 `diff_step`을 함께 주면 `ValueError`예요(scipy는 `diff_step`을 버려요).
 - 곡선 맞추기의 `curve_fit`은 없어요. [sd.regression.nls](/api/regression/nls/)가 추론까지 해요. `leastsq`도 없어요. `least_squares(method='lm')`이 같은 MINPACK 방법이에요.

@@ -50,7 +50,17 @@ import Steps from '../../../components/fig/Steps.astro';
 
 `axis`는 배열 영역의 리덕션과 같은 꼴(int, int의 튜플이나 리스트)이고, 에러 문구도 같아요(중복이면 `skew(): repeated axis`). `keepdims=True`면 줄인 축을 길이 1로 남긴 모양(`keep_shape`)으로 돌려줘요. `rankdata`는 `axis=None`일 때 먼저 1차원으로 펴서 축 0을 따라 계산하고(결과가 1차원인 것은 scipy와 같아요), 축은 하나만 받아요. `operator.index`가 받는 값(int, numpy 정수)만 축이고 bool은 아니에요. 그 밖은 튜플이든 float이든 `rankdata(): 'axis' must be an int or None, not float`처럼 이 함수가 받는 것을 말하는 `TypeError`예요. `iqr`과 `entropy`는 `_Lanes`를 쓰지 않아요. `axis`를 `_axes`로 정규화한 튜플로 바꿔 배열 영역의 `quantile`, `sum`에 넘겨서, 축 에러가 다른 기술통계와 같은 이름과 문구로 나와요.
 
-데이터는 `sd.ndarray`가 아니어도 돼요. Python 실수와 실수의 시퀀스(리스트, 튜플)를 `sd.asarray`로 바꿔 받아요(`_as_array`). 배열 함수와 분포의 메서드는 리스트를 받지 않지만, 기술통계는 가진 데이터를 바로 요약하는 함수라 scipy.stats처럼 리스트를 그대로 넘기는 쓰임이 흔해서 일부러 받아요.
+데이터는 `sd.ndarray`가 아니어도 돼요(`_as_array`). 실수 하나(Python과 numpy의 스칼라, 0차원 numpy 배열)는 원소 하나짜리 배열로, 실수의 시퀀스(리스트, 튜플)와 numpy 배열은 `sd.asarray`로, frame의 `Series`·`DataFrame`은 `to_array(dtype=sd.float64, na_value=math.nan)`으로 바꿔요. frame의 결측값은 NaN이 되어 `nan_policy`를 따르고, 문자열 열이 있으면 `skew(): 'x' must have numeric columns`(`TypeError`)예요. 들쭉날쭉한 리스트는 `sd.asarray`의 `ValueError`를 함수 이름으로 바꿔 다시 내요. 배열 함수와 분포의 메서드는 `sd.ndarray`만 받지만, 기술통계는 가진 데이터를 바로 요약하는 함수라 scipy.stats처럼 리스트나 표의 열을 그대로 넘기는 쓰임이 흔해서 일부러 받아요. sd.regression도 같은 형을 받아요. 입력 모양을 지키는 `zscore`와 `rankdata`는 실수 하나를 받으면 결과도 Python float예요.
+
+```python
+>>> s = sd.frame.Series([1.0, 2.0, None, 4.0])
+>>> sd.stats.skew(s), sd.stats.skew(s, nan_policy='omit')
+(nan, 0.38180177416060623)
+>>> sd.stats.skew({'a': 1})
+Traceback (most recent call last):
+    ...
+TypeError: skew(): 'x' must be an sd.ndarray, a sequence of numbers or a frame Series or DataFrame, not dict
+```
 
 ### nan_policy
 
@@ -153,15 +163,20 @@ TypeError: moment(): 'order' must be an int or a sequence of ints, not NoneType
 
 ### 호출 모양의 에러
 
-모르는 키워드, 빠진 필수 키워드, 너무 많은 위치 인자는 함수 본문에 들어가기 전에 Python이 직접 내는 에러예요. 그대로 두면 `moment() missing 1 required keyword-only argument: 'order'`처럼 앞머리가 `moment()` 뒤에 콜론이 없는 Python의 꼴이라, 함수 자신의 검사가 내는 `moment(): ...`와 모양이 달라요. 그래서 공개 함수 열한 개를 모두 `_library_call_errors`로 감싸요. 분포 생성자의 `_keyword_constructor`([통계 영역의 구조](/internals/stats/overview/#만들-때-형과-모양만))와 같은 방식이에요. `TypeError`의 앞머리가 `moment() `이면 `moment(): `로 바꾸고 `got an `을 떼어 다시 내요. 함수 자신의 검사가 낸 에러는 이미 `moment(): `로 시작하므로 그대로 지나가요.
+모르는 키워드, 빠진 필수 키워드, 너무 많은 위치 인자는 함수 본문에 들어가기 전에 Python이 직접 내는 에러예요. 그대로 두면 `moment() missing 1 required keyword-only argument: 'order'`처럼 앞머리가 `moment()` 뒤에 콜론이 없는 Python의 꼴이라, 함수 자신의 검사가 내는 `moment(): ...`와 모양이 달라요. 그래서 공개 함수 열한 개를 모두 `_calls.function`으로 감싸요. `_calls`는 모든 영역의 모듈 함수, 생성자, 회귀, optimize가 함께 쓰는 모듈이고, 분포 생성자의 `keyword_init`([통계 영역의 구조](/internals/stats/overview/#만들-때-형과-모양만))도 여기에 있어요. `TypeError`의 앞머리가 `moment() `이고 그 에러가 함수 본문이 아니라 호출을 묶는 단계에서 났으면(트레이스백에 함수의 프레임이 없으면) `message`가 `moment(): `로 바꾸고 `got an `을 떼어 다시 내요. 함수 자신의 검사가 낸 에러는 이미 `moment(): `로 시작하고, 함수 안에서 난 다른 `TypeError`도 그대로 지나가요.
 
 ```python
-# src/stardust/stats/_descriptive.py
-def _library_call_errors(fn):
-    """fn with Python's own call-shape errors in the library's form (as the distributions'
-    constructors): "moment(): missing 1 required keyword-only argument: 'order'",
-    "skew(): unexpected keyword argument 'ddof'", not "moment() missing ...".
-    The function's own checks already say "moment(): ..." and pass through."""
+# src/stardust/_calls.py (발췌)
+def _converted(e, head, name, self_counted):
+    """The library's form of e when e is the binding error of the function named by `head` (no
+    frame of the function beneath the wrapper's), else None."""
+    msg = str(e)
+    if not msg.startswith(head) or e.__traceback__.tb_next is not None:
+        return None
+    return TypeError(message(name, msg[len(head) :], self_counted))
+
+
+def _wrap(fn, name, self_counted):
     head = f"{fn.__qualname__}() "
 
     @functools.wraps(fn)
@@ -169,19 +184,23 @@ def _library_call_errors(fn):
         try:
             return fn(*args, **kwargs)
         except TypeError as e:
-            msg = str(e)
-            if not msg.startswith(head):
+            c = _converted(e, head, name, self_counted)
+            if c is None:
                 raise
-            rest = msg[len(head):]
-            if rest.startswith("got an unexpected"):
-                rest = rest[len("got an "):]
-            raise TypeError(f"{fn.__name__}(): {rest}") from None
+            raise c from None
 
     return call
 
 
-describe = _library_call_errors(describe)
-skew = _library_call_errors(skew)
+def function(fn):
+    """fn (a module function) with its call-shape errors as "fn(): ..."."""
+    return _wrap(fn, fn.__name__, False)
+```
+
+```python
+# src/stardust/stats/_descriptive.py (발췌)
+describe = _calls.function(describe)
+skew = _calls.function(skew)
 ...
 ```
 
@@ -337,9 +356,31 @@ $$
 
 Neumaier의 방법은 $\lvert s\rvert \ge \lvert x\rvert$인지에 따라 $e = (s - t) + x$ 또는 $(x - t) + s$로 같은 오차를 세 번의 연산과 비교 하나로 구해요[4]. 두 방법 모두 합 $s$와 별도로 오차를 $c$에 더해 가다가 끝에 $s + c$를 돌려줘요. 이렇게 하면 결과의 오차는 $u\lvert S\rvert + \gamma_{n-1}^2\sum\lvert x_i\rvert$ 정도예요($u = 2^{-53}$, $\gamma_k = ku/(1 - ku)$). 첫 항은 결과를 double로 한 번 반올림한 만큼이고, 두 번째 항은 보통의 합의 오차 $\gamma_{n-1}\sum\lvert x_i\rvert$를 한 번 더 $u$배로 줄인 크기예요(Ogita–Rump–Oishi의 Sum2 [6]). 원소 $10^6$개면 $\gamma_{n-1}^2 \approx 10^{-20}$이라, 항이 크게 상쇄하지 않는 한 결과는 올바르게 반올림한 값과 거의 같아요.
 
+합이 유한하지 않으면 보정은 뜻이 없어요. 항에 inf가 있거나 합이 넘치면 TwoSum의 오차 항이 $\infty - \infty$ = NaN이 되기 때문이에요. 그래서 그때는 보정을 버리고 단순 합 $s$를 값으로 써요. +inf만 있으면 inf이고, +inf와 −inf가 함께면 NaN이에요(`sd.sum`과 같아요). 합은 한번 유한하지 않으면 다시 유한해지지 않으므로, 유한한 합의 보정은 그대로 믿을 수 있고 유한한 데이터의 비트는 바뀌지 않아요.
+
+```cpp
+// csrc/bind/stats_desc.cpp, Neumaier
+struct Neumaier {
+    double s = 0.0, c = 0.0;
+    void add(double x) {
+        const double t = s + x;
+        c += std::fabs(s) >= std::fabs(x) ? (s - t) + x : (x - t) + s;
+        s = t;
+    }
+    double value() const { return std::isfinite(s) ? s + c : s; }
+};
+```
+
+```python
+>>> sd.stats.describe([1.0, sd.inf, 2.0]).mean
+inf
+>>> sd.stats.moment([1e160, 2e160, -1e160], order=2, center=0)
+inf
+```
+
 ### 여덟 사슬과 NEON
 
-보상 합 하나는 한 원소의 덧셈이 앞 원소의 결과를 기다리는 의존 사슬이에요. 그래서 커널은 사슬 여덟 개를 나란히 둬요(`Neu4`). 원소 $j$는 사슬 $j \bmod 8$에 더해지고, 끝에 여덟 사슬의 $s$와 $c$를 차례로 Neumaier 합 하나에 모아요. 사슬 안의 덧셈은 TwoSum이에요. 분기가 없어서 벡터로 바꿀 수 있기 때문이에요.
+보상 합 하나는 한 원소의 덧셈이 앞 원소의 결과를 기다리는 의존 사슬이에요. 그래서 커널은 사슬 여덟 개를 나란히 둬요(`Neu4`). 원소 $j$는 사슬 $j \bmod 8$에 더해지고, 끝에 여덟 사슬의 $s$와 $c$를 차례로 Neumaier 합 하나에 모아요(`into`). 합이 유한하지 않은 사슬의 $c$는 NaN이라 빼고 더해요. 사슬 안의 덧셈은 TwoSum이에요. 분기가 없어서 벡터로 바꿀 수 있기 때문이에요.
 
 ```cpp
 // csrc/bind/stats_desc.cpp, Neu4 (발췌)

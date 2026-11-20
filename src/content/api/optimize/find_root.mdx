@@ -6,7 +6,7 @@ group: 스칼라
 order: 3
 signatures:
   - "sd.optimize.find_root(f, init, /, *, args=(), xatol=None, xrtol=None, fatol=None, frtol=None, max_iter=None)"
-  - "sd.optimize.bracket_root(f, xl0, xr0=None, /, *, xmin=None, xmax=None, factor=None, args=(), max_iter=1000)"
+  - "sd.optimize.bracket_root(f, xl0, /, xr0=None, *, xmin=None, xmax=None, factor=None, args=(), max_iter=1000)"
 summary: 같은 꼴의 스칼라 방정식 여럿을 원소마다 따로, 한꺼번에 풀어요. 사용자 함수를 남은 원소의 배열로 한 번씩 불러서 원소마다 root_scalar를 부르는 것보다 훨씬 빨라요. bracket_root는 근을 끼는 구간을 찾아요.
 params:
   - name: f
@@ -20,7 +20,7 @@ params:
   - name: xl0, xr0
     type: 실수 또는 배열
     kind: positional-only
-    desc: "bracket_root가 넓히기 시작할 구간. xr0의 기본값은 xl0 + min((xmax − xl0)/8, 1)이에요. xmin ≤ xl0 < xr0 ≤ xmax여야 해요(아니면 그 원소의 status가 −5)."
+    desc: "bracket_root가 넓히기 시작할 구간. xl0는 위치로만, xr0는 위치나 키워드로 줘요. xr0의 기본값은 xl0 + min((xmax − xl0)/8, 1)이에요. xmin ≤ xl0 < xr0 ≤ xmax여야 해요(아니면 그 원소의 status가 −5)."
   - name: args
     type: tuple
     kind: keyword-only
@@ -50,7 +50,7 @@ returns:
   desc: "find_root는 x, fun, bracket, f_bracket, converged, status, n_iter, nfev, bracket_root는 bracket, f_bracket, converged, status, n_iter, nfev가 든 결과 객체예요. 필드마다 배치 모양의 sd.ndarray이고, 입력이 모두 실수이면 Python 수예요. message와 method는 없어요."
 raises:
   - type: TypeError
-    desc: f가 호출 가능하지 않을 때, init이 튜플·리스트·배열이 아닐 때, 입력이 실수나 배열이 아닐 때(bool, complex 포함), args가 튜플이 아니거나 그 값이 수나 배열이 아닐 때, 허용오차가 수가 아닐 때, max_iter가 정수가 아닐 때, f가 수의 배열이 아닌 것이나 complex 값을 돌려줄 때. f 안에서 난 에러도 그대로 나와요.
+    desc: f가 호출 가능하지 않을 때, init이 튜플·리스트·배열이 아닐 때, 입력이 실수나 배열이 아닐 때(bool, complex 포함), args가 튜플이 아니거나 그 값이 수나 배열이 아닐 때, 허용오차가 수가 아닐 때, max_iter가 정수가 아닐 때, f가 수의 배열이 아닌 것이나 complex·bool 값을 돌려줄 때. f 안에서 난 에러도 그대로 나와요.
   - type: ValueError
     desc: init의 값이 두 개가 아닐 때, 입력과 args가 서로 브로드캐스트되지 않을 때, f가 받은 x와 다른 모양(스칼라 포함)을 돌려줄 때, 허용오차가 음수이거나 유한하지 않을 때, max_iter가 음수일 때, factor가 1 이하일 때.
 seeAlso: [basics, results, root_scalar, find_minimum]
@@ -263,7 +263,7 @@ array([3.141592653589793, 6.283185307179586,  9.42477796076938], dtype=float64)
 | `n_iter` | 그 원소가 멈출 때까지의 반복 수 |
 | `nfev` | 그 원소의 함수값 수(f를 부른 횟수가 아니에요. 처음 두 끝 포함, 보통 n_iter + 2) |
 
-필드는 읽기 전용이고, 배열 필드는 읽을 때마다 새 복사본이에요. `message`와 `method`는 없어요. `repr`는 수렴한 원소 수를 보여 줘요.
+필드는 읽기 전용이고, 배열 필드도 읽기 전용 배열이에요(고치려면 `.copy()`). `message`와 `method`는 없어요. `repr`는 수렴한 원소 수를 보여 줘요.
 
 | status | 뜻 | x, fun |
 |---|---|---|
@@ -336,7 +336,8 @@ OptimizeResult(converged=True, fun=-1.39067e-309, n_iter=114, nfev=116, x=-4.814
 
 - 양쪽을 따로 넓혀요. 한계가 없는 쪽은 반대쪽 처음 점에서의 거리를 `factor`(기본 2)배씩 늘려요. 왼쪽 끝은 xr0 − 2(xr0 − xl0), xr0 − 4(xr0 − xl0), …으로 가요.
 - 한계(`xmin`, `xmax`)가 있는 쪽은 한계까지의 거리를 1/factor씩 줄이며 다가가요. 한계를 넘지는 않아요.
-- 한쪽에서 부호가 바뀌면 그 원소는 끝나요. 결과는 그 쪽의 마지막 두 점이에요.
+- 한쪽에서 부호가 바뀌면 그 원소는 끝나요. 결과는 그 쪽의 마지막 두 점이에요. 두 쪽이 같은 반복에서 부호 바뀜을 찾으면 좁은 쪽의 구간이고, 너비가 같으면 왼쪽 구간이에요.
+- 결과의 구간은 언제나 xl ≤ xr로 정렬돼 있어요. `status`가 0이면 그 구간이 근을 껴요(f(xl)과 f(xr)의 부호가 다르거나 한쪽이 정확히 0이에요).
 
 <Fig caption="f(x) = x³ − 2x − 5에서 xl0 = 0으로 bracket_root를 부를 때. xr0 = 1에서 시작해 왼쪽은 −1, −3으로, 오른쪽은 2, 4로 넓혀요. 진한 점은 f > 0, 옅은 점은 f < 0이에요. 오른쪽의 2와 4 사이에서 부호가 바뀌어 (2, 4)가 결과예요.">
   <Sketch
@@ -397,7 +398,7 @@ f는 두 쪽의 점을 한 배열로 받아요(왼쪽 끝들 다음에 오른쪽
 | −1 | 한쪽이 한계(`xmin` 또는 `xmax`)에 닿았는데 부호가 바뀌지 않았어요 |
 | −2 | `max_iter`에 닿았어요 |
 | −3 | 끝이나 f 값이 유한하지 않아요(넘침 등) |
-| −5 | 처음 구간이 xmin ≤ xl0 < xr0 ≤ xmax가 아니에요 |
+| −5 | 처음 구간이 xmin ≤ xl0 < xr0 ≤ xmax가 아니에요. `bracket`은 처음 두 점을 정렬한 것이에요 |
 
 `n_iter`는 두 쪽 가운데 오래 간 쪽의 반복 수, `nfev`는 두 쪽의 함수값 수를 합한 것이에요. 근이 없으면 끝이 넘칠 때까지(−3) 넓혀요.
 
@@ -405,12 +406,21 @@ f는 두 쪽의 점을 한 배열로 받아요(왼쪽 끝들 다음에 오른쪽
 >>> r = sd.optimize.bracket_root(lambda x: x*x + 1, 0.0)
 >>> r.status, r.n_iter
 (-3, 512)
->>> sd.optimize.bracket_root(lambda x: x, 1.0, 0.5).status
--5
+>>> r = sd.optimize.bracket_root(lambda x: x, 1.0, xr0=0.5)
+>>> r.status, r.bracket
+(-5, (0.5, 1.0))
 >>> sd.optimize.bracket_root(lambda x: x, 0.0, factor=1.0)
 Traceback (most recent call last):
     ...
 ValueError: bracket_root(): 'factor' must be > 1
+```
+
+두 쪽이 같은 반복에서 같은 너비로 부호 바뀜을 찾으면 왼쪽 구간을 돌려줘요. $x^3 - 2x - 1 = (x + 1)(x^2 - x - 1)$을 0에서 시작하면(xr0 = 1) 첫 반복에 왼쪽 (−1, 0)과 오른쪽 (1, 2)에서 함께 부호 바뀜을 찾아요(−1에서는 f가 정확히 0이에요). 두 구간의 너비가 같으니 왼쪽 구간이에요.
+
+```python
+>>> r = sd.optimize.bracket_root(lambda x: x**3 - 2*x - 1, 0.0)
+>>> r.bracket, r.f_bracket, r.status
+((-1.0, 0.0), (0.0, -1.0), 0)
 ```
 
 `factor`를 크게 하면 먼 근을 빨리 끼지만 구간이 넓어져요.
@@ -429,8 +439,9 @@ ValueError: bracket_root(): 'factor' must be > 1
 
 ## scipy를 아는 분께
 
-- scipy 1.18.1의 `scipy.optimize.elementwise.find_root`, `bracket_root`와 같은 방법, 같은 걸음이에요. 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때). f 안의 수학 함수가 끝자리에서 다르면(예: `sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요.
+- scipy 1.18.1의 `scipy.optimize.elementwise.find_root`, `bracket_root`와 같은 방법, 같은 걸음이에요. 지금은 원소 하나마다 scipy와 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`, `status`를 내요(같은 f일 때; 비트까지 같지만 약속은 아니에요). f 안의 수학 함수가 끝자리에서 다르면(예: `sd.exp`와 `np.exp`) 걸음이 갈릴 수 있어요.
 - scipy의 `f_x`는 `fun`, `success`는 `converged`, `nit`은 `n_iter`예요. `bracket`, `f_bracket`은 이름이 같아요.
+- `bracket_root`의 구간은 일부러 scipy와 다르게 정해요. 두 쪽이 같은 너비로 함께 부호 바뀜을 찾으면 scipy는 두 쪽의 끝을 섞어 뒤집힌 구간을 `status` 0으로 돌려줘요. 위의 $x^3 - 2x - 1$에서 scipy는 (1, 0), f (−2, −1)이라 근을 끼지 않아요. 여기서는 왼쪽 구간 (−1, 0)이에요. `status` −5일 때도 scipy는 처음 두 점을 준 순서 그대로 돌려주고, 여기서는 정렬해요. 호출하는 점과 셈은 같아요.
 - 허용오차는 scipy의 `tolerances` dict 대신 키워드 `xatol`, `xrtol`, `fatol`, `frtol`이에요. `maxiter`는 `max_iter`예요. `callback`은 없어서 scipy의 status −4도 없어요.
 - scipy는 처음 구간 끝의 호출에 입력 모양 그대로의 배열을 넘기지만, 여기서는 그 호출도 1차원 배열이에요. f는 늘 (k,)를 받아요.
 - 입력이 모두 실수이면 scipy는 numpy 스칼라(`np.float64`, `np.int32` 등)를, 여기서는 Python 수를 돌려줘요. 배열 필드의 `status`·`n_iter`·`nfev`는 int64예요.

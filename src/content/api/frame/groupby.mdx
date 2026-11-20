@@ -326,7 +326,7 @@ TypeError: groupby(): 'by' must be a column name or a list of them, not Series
 >>> sales.groupby(by="fruit")
 Traceback (most recent call last):
     ...
-TypeError: DataFrame.groupby() got some positional-only arguments passed as keyword arguments: 'by'
+TypeError: groupby(): got some positional-only arguments passed as keyword arguments: 'by'
 >>> sales.groupby("fruit", sort=1)
 Traceback (most recent call last):
     ...

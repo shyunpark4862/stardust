@@ -40,6 +40,7 @@ Series와 DataFrame의 행에는 **라벨**이 붙어 있어요. 라벨은 두 �
 라벨을 따로 주지 않으면 행 라벨은 `0, 1, 2, …`예요. 이런 라벨을 실제로 배열에 담아 두면 1M 행이면 8MB예요. 그래서 `RangeIndex`는 `(start, stop, step)` 세 정수만 저장해요. Python의 `range` 객체 하나예요.
 
 - 스칼라 조회와 `in`은 산술이에요. `5 in idx`는 `range`의 `in`(나눗셈 한 번)이고, `idx._position_of(5)`는 `range.index(5)`예요. 라벨 배열도 해시 테이블도 만들지 않아요. `5 in RangeIndex(30_000_000)`을 해시 테이블로 답하면 라벨 3천만 개와 테이블을 만드는 데 158ms가 들어요.
+- `_position_of`는 라벨을 `operator.index`로 Python `int`로 바꾼 뒤 `range`에 물어요. `range`는 정확히 `int`일 때만 산술로 답하고, numpy 정수(`np.int64(5)`)를 받으면 처음부터 훑어요. 3천만 행이면 1.5초예요.
 - 라벨을 한꺼번에 봐야 할 때만 라벨 배열을 만들어요. 정렬(alignment), 여러 라벨 조회, 두 Index 비교(`equals`)가 그래요. 이때 `_column()`이 `arange(start, step, n)` 커널로 int64 Column을 만들고, 조회 엔진이 필요하면 그 위에 만들어 캐시해요.
 - 위치로 고른 결과의 라벨은 산술로 만들어요. `_take(positions)`는 `positions × step + start`를 원소별 커널 두 번으로 계산해요. 기본 RangeIndex(`start = 0`, `step = 1`)라면 위치 배열 자체가 라벨이에요. 곱하고 더할 필요도 없이, 위치 Column을 그대로 결과 Index의 라벨로 써요. Column은 불변으로 다루므로 공유해도 안전해요.
 
@@ -251,7 +252,9 @@ Polars 2.1.0에는 행 라벨이 없어요. 사용자 안내서는 "Polars는 in
 
 - 정수는 음수면 `n`을 더하고 `[0, n)`을 벗어나면 IndexError예요.
 - 슬라이스는 Python의 `slice.indices(n)`이 그대로 `(start, stop, step)`을 줘요.
-- 정수 리스트(또는 1차원 numpy 배열, `sd.ndarray`)는 원소마다 정수인지와 범위를 Python에서 검사한 뒤 int64 Column으로 바꿔요. 위치 키의 형태가 틀리면(bool, float, str) 배열의 인덱싱처럼 IndexError예요. bool 배열은 마스크가 아니에요. 마스크는 bool Series만이에요.
+- 슬라이스의 양 끝과 step은 int나 `None`이어야 해요. 아니면 `cannot select rows by position with a slice of str; the ends and the step must be ints or None`처럼 IndexError예요.
+- 원소가 모두 int인 위치 리스트(Python `int`만 든 list, uint64가 아닌 정수 numpy 배열, int64 `sd.ndarray`)는 한 번에 int64 Column으로 바꾸고, 범위 검사와 음수 보정을 커널 하나(`wrap_positions`)가 해요. list는 원소의 값이 아니라 타입의 집합(`set(map(type, key))`, C 안에서 한 번 훑기)만 봐요. 범위 밖 위치가 있으면 `parallel::FirstRow`로 가장 앞의 것을 찾아 메시지에 써요. 1M 위치를 원소마다 Python으로 검사하면 100~170ms이고, 커널로는 몇 ms예요.
+- 그 밖의 키(bool, float이 섞인 list 등)만 원소마다 검사해 메시지를 만들어요. 위치 키의 형태가 틀리면(bool, float, str) 배열의 인덱싱처럼 IndexError예요. bool 배열은 마스크가 아니에요. 마스크는 bool Series만이에요.
 
 ### 라벨 키 (`by_label`)
 
@@ -570,7 +573,7 @@ def _assign(self, sel, value):
     self._col.set_rows(_select.positions_column(sel), values) # 3. 쓰기 (Copy-on-Write)
 ```
 
-1. **값 맞추기**: 스칼라는 `implicit_scalar`로, list는 추론한 뒤 `implicit`로 컬럼 dtype에 맞춰요. list와 tuple은 추론하기 전에 bool과 수(int, float, numpy 정수·실수)가 섞였는지 봐요(`_check_no_bool_mix`). 원소마다 값을 보지 않고 타입의 집합(`set(map(type, values))`, C 안에서 한 번 훑기)만 봐요. 섞였으면 TypeError예요. 생성자의 추론처럼 `[True, 2]`를 int64 `[1, 2]`로 승격하면 int 컬럼에 넣을 때 `True`가 아무 말 없이 `1`이 되기 때문이에요. 컬럼을 통째로 새로 만드는 `df["c"] = [True, 2]`는 이 길이 아니라서 생성과 같이 int64예요. 규칙은 dtype만 보고 위로만(`bool → int64 → float64`)이에요. int 컬럼에 `2.0`은 값과 상관없이 TypeError예요. 값이 Series면 고른 행의 라벨로 `reindexed`(정렬)한 뒤 같은 규칙을 적용해요. 마스크로 골랐으면 `select_index`가 남은 행의 라벨을 만들어 그 라벨로 맞춰요.
+1. **값 맞추기**: 스칼라는 `implicit_scalar`로, list는 추론한 뒤 `implicit`로 컬럼 dtype에 맞춰요. list와 tuple은 추론하기 전에 bool과 수(int, float, numpy 정수·실수)가 섞였는지 봐요(`_check_no_bool_mix`). 원소마다 값을 보지 않고 타입의 집합(`set(map(type, values))`, C 안에서 한 번 훑기)만 봐요. 섞였으면 TypeError예요. object dtype의 numpy 배열도 Python 객체를 담고 있으니 list로 바꿔 같은 검사를 해요. 생성자의 추론처럼 `[True, 2]`를 int64 `[1, 2]`로 승격하면 int 컬럼에 넣을 때 `True`가 아무 말 없이 `1`이 되기 때문이에요. 컬럼을 통째로 새로 만드는 `df["c"] = [True, 2]`는 이 길이 아니라서 생성과 같이 int64예요. 규칙은 dtype만 보고 위로만(`bool → int64 → float64`)이에요. int 컬럼에 `2.0`은 값과 상관없이 TypeError예요. 값이 Series면 고른 행의 라벨로 `reindexed`(정렬)한 뒤 같은 규칙을 적용해요. 마스크로 골랐으면 `select_index`가 남은 행의 라벨을 만들어 그 라벨로 맞춰요.
 2. **자기 Column 객체 갖기**: Python 객체 둘이 같은 C++ Column 객체를 가리킬 수 있어요(`df["a"]`로 꺼낸 Series와 DataFrame). 그 객체를 고치면 둘 다 바뀌므로, 쓰는 쪽이 먼저 `share()`(Buffer를 공유하는 새 Column 객체, `shared_ptr` 셋의 복사)로 자기 객체를 만들어요. 이전 객체를 쥔 다른 주인이 없으면 이 대입으로 해제되고, Buffer의 참조 수가 함께 줄어요.
 3. **`set_rows`**가 Buffer의 참조 수를 보고 필요할 때만 복사해요.
 

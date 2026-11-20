@@ -147,7 +147,7 @@ OptimizeResult(method='l-bfgs-b', converged=True, fun=2.80765e-12, n_iter=36, nf
 True
 >>> r = sd.optimize.minimize(rosen_n, sd.zeros(100), jac=rosen_n_grad)
 >>> r.converged, r.n_iter, r.nfev
-(True, 489, 648)
+(True, 485, 644)
 ```
 
 손으로 계산한 기울기는 틀리기 쉬워요. 틀린 기울기를 주면 선 탐색이 내리막을 찾지 못해 status 2로 멈추거나 엉뚱한 점에서 멈춰요. 처음 한 번은 [`check_grad`](/api/optimize/check_grad/)로 차분과 견줘 봐요. 맞는 기울기면 차이가 $10^{-6}$보다 훨씬 작아요.
@@ -166,7 +166,7 @@ True
 ...     return float(sd.sum(100.0 * d**2 + e**2)), g
 >>> r = sd.optimize.minimize(rosen_n_both, sd.zeros(100), jac=True)
 >>> r.converged, r.n_iter, r.nfev, r.njev
-(True, 489, 648, 648)
+(True, 485, 644, 644)
 ```
 
 ### 차분
@@ -285,7 +285,7 @@ lower = upper인 변수는 그 값에 고정돼요. 모든 변수가 고정이�
 | `ftol` | 2.220446049250313e-09 | $(f_k - f_{k+1}) / \max(\lvert f_k\rvert, \lvert f_{k+1}\rvert, 1) \le$ `ftol`이면 멈춰요 |
 | `gtol` | 1e-05 | 투영된 기울기의 가장 큰 성분이 이 값 이하이면 멈춰요 |
 | `max_iter` | 15000 | 반복 수의 상한 |
-| `max_nfev` | 15000 | `fun`을 부른 수의 상한(반복이 끝날 때 넘었는지 봐서 조금 넘을 수 있어요) |
+| `max_nfev` | 15000 | `fun`을 부른 수의 상한(반복이 끝날 때 넘었는지 봐서 반복 하나만큼 넘을 수 있어요. 차분의 기울기면 선 탐색의 시험점마다 n + 1번이라 많이 넘기도 해요) |
 | `max_ls` | 20 | 반복 하나에서 선 탐색이 시험하는 점의 상한 |
 | `eps` | 1e-08 | `jac=None` 차분의 절대 간격 |
 | `finite_diff_rel_step` | None | `'2-point'`·`'3-point'`의 상대 간격 |
@@ -329,7 +329,7 @@ BFGS의 $H_k$는 n × n 행렬이라 n = 10⁴이면 800 MB이고 반복마다 n
 ```
 
 <Callout type="warn">
-L-BFGS-B에서 정의역 밖을 `math.inf`로 막지 마세요. 시험점의 값이 inf면 차분의 기울기가 NaN이 되고, 선 탐색이 실패한 뒤 "f가 줄지 않았다"를 상대 감소 판정으로 읽어 해가 아닌 곳에서 `converged=True`로 멈출 수 있어요. 범위는 `bounds`로 주세요. BFGS와 Nelder–Mead는 inf를 돌려주는 점을 피해 가요([`minimize`](/api/optimize/minimize/)의 예).
+L-BFGS-B에서 정의역 밖을 `math.inf`로 막지 마세요. 시험점의 값이 inf면 차분의 기울기가 NaN이 되고, 선 탐색이 걸음 없이 끝난 뒤 "f가 줄지 않았다"가 상대 감소 판정을 통과해 해가 아닌 곳에서 멈춰요. 그때 `status`와 `message`는 수렴의 것(`CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH`)이지만 `converged`는 False예요. 범위는 `bounds`로 주세요. BFGS와 Nelder–Mead는 inf를 돌려주는 점을 피해 가요([`minimize`](/api/optimize/minimize/)의 예).
 </Callout>
 
 ## BFGS와 L-BFGS-B 고르기
@@ -349,7 +349,7 @@ L-BFGS-B에서 정의역 밖을 `math.inf`로 막지 마세요. 시험점의 값
 
 - 기울기 함수를 주면 해의 정확도는 `gtol`이 정하고, 허용오차를 줄이면 반올림 가까이까지 가요. 차분의 기울기로는 해가 $10^{-5}$–$10^{-8}$ 안팎에서 막혀요.
 - 비용은 대개 `fun`과 `jac`을 부르는 수예요. 방법 자체의 계산(선 탐색, 갱신)은 C++이라 작은 n에서 반복 하나에 몇 µs예요. BFGS의 n × n 갱신, L-BFGS-B의 방향 계산처럼 큰 계산은 GIL을 놓고 해요.
-- L-BFGS-B는 scipy 1.18.1의 `method='L-BFGS-B'`와 같은 점에서 사용자 함수를 같은 차례로 불러, `x`의 비트까지 같은 결과를 줘요. BFGS는 $H_k$의 갱신을 n²의 계산 순서로 해서 scipy와 걸음이 반올림만큼 다르고, 반복 수와 `nfev`가 가끔 몇 번 달라요. 자세한 알고리즘은 [구현 글](/internals/optimize/quasi-newton/)에 있어요.
+- 두 방법 모두 scipy 1.18.1과 같은 알고리즘과 멈춤 판정이에요. L-BFGS-B는 지금은 scipy와 같은 점에서 사용자 함수를 같은 차례로 불러 `x`까지 비트까지 같아요(약속은 아니에요). BFGS는 $H_k$의 갱신을 n²의 계산 순서로 해서 scipy와 걸음이 반올림만큼 다르고, 반복 수와 `nfev`가 가끔 몇 번 달라요. 자세한 알고리즘은 [구현 글](/internals/optimize/quasi-newton/)에 있어요.
 
 ## scipy를 아는 분께
 
@@ -358,4 +358,5 @@ L-BFGS-B에서 정의역 밖을 `math.inf`로 막지 마세요. 시험점의 값
 - BFGS에 `bounds`를 주면 scipy는 경고하고 무시하지만 여기서는 `ValueError`예요.
 - `bounds`는 `(lower, upper)` 꼴이고, `x0`가 경계 밖이면 `ValueError`예요(scipy는 말없이 경계 안으로 옮겨요).
 - L-BFGS-B의 `hess_inv`는 scipy의 `LbfgsInvHessProduct` 객체가 아니라 (n, n) 배열이에요. scipy의 `.todense()`가 만드는 행렬과 반올림만큼만 달라요. `ABNORMAL`에서 `fun`은 돌려주는 `x`의 값이에요(scipy는 마지막 시험점의 값).
+- L-BFGS-B가 걸음 없이 상대 감소 판정을 통과하면 `status`와 `message`는 scipy와 같지만 `converged`는 False예요(scipy의 `success`는 True). `max_iter=0`이면 반복 없이 x0에서 멈춰요(`n_iter` 0, status 1; scipy는 한 번 반복해요).
 - BFGS의 걸음은 scipy와 반올림만큼 달라요. `jac`를 준 Rosenbrock에서는 반복 수와 `nfev`가 같지만, 차분에서는 scipy가 `nit=32`, `nfev=117`, 여기는 31, 114예요.

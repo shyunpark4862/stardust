@@ -296,9 +296,11 @@ $$
 1.0
 ```
 
-배열 영역의 함수는 정수를 정수로 계산해요. 같은 내적을 구하는 세 가지 방법을 나란히 놓으면 값은 같고 타입이 달라요.
+배열 영역의 함수는 정수를 정수로 계산해요. 배열 영역의 [`sd.vecdot`](/api/array/vecdot/)을 포함해 같은 내적을 구하는 네 가지 방법을 나란히 놓으면 값은 같고 타입이 달라요.
 
 ```python
+>>> sd.vecdot(a, b)
+32
 >>> a @ b
 32
 >>> sd.sum(a * b)
@@ -307,12 +309,12 @@ $$
 32
 ```
 
-| 입력 | `sd.linalg.vecdot` | `@`, `sd.tensordot`, `sd.sum(x1 * x2)` |
+| 입력 | `sd.linalg.vecdot` | `sd.vecdot`, `@`, `sd.tensordot`, `sd.sum(x1 * x2)` |
 |:---:|:---:|:---:|
 | bool | float64 | int64 |
 | int64 | float64 | int64 |
 | float64 | float64 | float64 |
-| complex128 | complex128 (`x1`의 켤레) | complex128 (켤레 없음) |
+| complex128 | complex128 (`x1`의 켤레) | complex128 (켤레는 `sd.vecdot`만) |
 
 dtype은 입력의 dtype만으로 정해져요. 값이 모두 정수여도, 허수부가 모두 0이어도 바뀌지 않아요. 공통 규칙은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
 
@@ -329,20 +331,18 @@ float64는 약 2⁵³(9 × 10¹⁵)을 넘는 정수를 모두 정확히 담지�
 9007199254740993
 ```
 
-정확한 정수 결과가 필요하면 `@`나 `sd.sum(x1 * x2, axis=-1)`을 쓰세요.
+정확한 정수 결과가 필요하면 배열 영역의 `sd.vecdot`이나 `@`를 쓰세요.
 
-## `sd.vecdot`과 같은 함수예요
+## `sd.vecdot`과의 차이
 
-`vecdot`은 배열 영역(`sd`)과 선형대수 영역(`sd.linalg`) 양쪽에 이름이 있어요. 서로 다른 구현이 아니라 같은 함수 하나라서, 어느 쪽으로 불러도 결과와 dtype, 에러가 똑같아요.
+`vecdot`은 배열 영역(`sd`)과 선형대수 영역(`sd.linalg`) 양쪽에 있지만, 둘은 서로 다른 함수예요.
 
 ```python
 >>> sd.linalg.vecdot is sd.vecdot
-True
->>> sd.vecdot(a, b)
-32.0
+False
 ```
 
-위에서 배열 영역의 함수는 정수를 유지한다고 했는데, `sd.vecdot`만은 예외예요. `sd.`로 불러도 정수 입력의 결과는 float64이고, 복소수면 첫째 인자의 켤레를 써요.
+계산하는 식(`x1`의 켤레와 `x2`를 곱해 더하기)과 인자, 브로드캐스팅, 에러는 같아요. 다른 것은 정수와 bool 입력의 dtype뿐이에요. `sd.vecdot`은 배열 영역의 다른 함수처럼 정수를 int64로 계산하고(int64 범위를 넘으면 값이 한 바퀴 돌아요), `sd.linalg.vecdot`은 float64로 계산해요. float64와 complex128 입력에서는 두 함수가 같은 계산이라 결과가 비트까지 같아요.
 
 ## 조심할 점
 
@@ -365,6 +365,21 @@ inf
 ```
 
 어떤 함수가 검사하고 어떤 함수가 그대로 계산하는지는 [실패와 에러](/api/linalg/errors/)에 정리돼 있어요.
+
+### `sd.sum(sd.conj(x1) * x2)`와 끝자리가 다를 수 있어요
+
+`vecdot`은 곱한 값을 따로 반올림해 두지 않고, 곱하면서 바로 더해요. 곱 하나마다 반올림이 한 번 적어서 정확도는 같거나 나아요. 대신 곱한 배열을 만들어 `sd.sum`으로 더한 값과는 마지막 자리가 다를 수 있어요.
+
+```python
+>>> x = sd.sin(sd.arange(1000) * 0.1)
+>>> y = sd.cos(sd.arange(1000) * 0.3)
+>>> sd.linalg.vecdot(x, y)
+0.5977817582610464
+>>> sd.sum(x * y)
+0.5977817582610481
+```
+
+같은 입력이면 스레드 수, 메모리 배치와 상관없이 `vecdot`의 결과는 언제나 같아요.
 
 ### 빈 벡터의 내적은 0
 
@@ -422,7 +437,7 @@ array([[ 7.0, 10.0],
 
 - `np.vecdot`, `np.linalg.vecdot`처럼 첫째 인자의 켤레를 써요.
 - **`axis`는 두 배열을 브로드캐스팅한 모양에서 세요.** numpy는 각 배열에서 따로 세서, `(3, 4)`와 `(3,)`에 `axis=0`을 주면 numpy에서는 되지만 여기서는 `ValueError`예요.
-- **정수와 bool 입력의 결과가 float64예요.** numpy는 정수를 유지해요.
+- **정수와 bool 입력의 결과가 float64예요.** numpy는 정수를 유지해요. 정수를 유지하는 내적은 배열 영역의 `sd.vecdot`이에요.
 - `axis`는 keyword-only이고 int 하나만 받아요.
 - 1차원끼리의 결과는 numpy 스칼라가 아니라 Python `float`·`complex`예요.
 - 리스트와 numpy 배열은 받지 않아요(`TypeError`). `out=` 인자도 없어요.

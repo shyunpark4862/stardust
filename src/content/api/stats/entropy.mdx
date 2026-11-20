@@ -8,11 +8,11 @@ signatures:
 summary: 이산 확률분포의 섀넌 엔트로피(불확실성의 크기)를 구해요. 두 번째 분포 qk를 주면 KL 발산(상대 엔트로피)을 구해요. 확률 대신 개수를 넣어도 합이 1이 되게 맞춰서 계산해요.
 params:
   - name: pk
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 범주마다의 확률이나 개수. 0 이상이어야 하고, 합이 1이 아니어도 돼요(axis를 따라 합으로 나눠요).
   - name: qk
-    type: ndarray, 실수의 시퀀스, 또는 None
+    type: ndarray, 실수의 시퀀스, numpy 배열, frame의 Series·DataFrame, 또는 None
     kind: positional-only
     desc: 비교할 두 번째 분포. 주면 KL 발산 D(p ‖ q)를 구해요. pk와 브로드캐스트될 수 있어야 하고, 마찬가지로 합으로 나눠요.
   - name: base
@@ -36,7 +36,7 @@ returns:
   desc: 엔트로피 또는 KL 발산. 언제나 float64이고, 남는 축이 없으면 Python float예요.
 raises:
   - type: TypeError
-    desc: pk·qk가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, qk를 이름으로 줬을 때, axis·keepdims의 타입이 틀렸을 때, base가 수나 None이 아닐 때(문자열·bool), nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: pk·qk가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, qk를 이름으로 줬을 때, axis·keepdims의 타입이 틀렸을 때, base가 수나 None이 아닐 때(문자열·bool), nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: base가 양수가 아닐 때(0, 음수, NaN), pk와 qk를 브로드캐스트할 수 없을 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
   - type: OverflowError
@@ -309,7 +309,7 @@ nan
 >>> P.entropy()
 1.9314701981485687
 >>> sd.stats.entropy(P.pmf(sd.arange(0, 100).astype(sd.float64)))
-1.931470198148569
+1.9314701981485687
 ```
 
 연속 분포의 `X.entropy()`는 밀도로 정의하는 미분 엔트로피라서 `entropy`와 다른 양이에요. 연속적인 데이터에서 그 값을 어림하는 함수는 [`differential_entropy`](/api/stats/differential-entropy/)예요.

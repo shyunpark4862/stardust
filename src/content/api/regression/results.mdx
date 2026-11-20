@@ -338,7 +338,7 @@ $$R^2_{\text{adj}} = 1 - \frac{n - 1}{\text{df\_resid}}(1 - R^2)$$
 절편이 있으면 이때의 해는 정확히 $(y_0, 0, \dots, 0)$이에요(겹친 열은 그대로 NaN). 적합값이 모두 $y_0$이고 잔차가 0인 [완전 적합](/api/regression/collinearity/#완전-적합)이라서, 다른 필드도 정해진 값이 돼요.
 
 - `scale`과 `bse`는 0이에요. 강건 공분산도 0이고, `cov_type='cluster'`에 군집이 하나뿐이면 [군집의 규칙](/api/regression/covariance/#groups)대로 NaN이에요.
-- `tvalues`는 절편이 ±inf($y_0 = 0$이면 0 ÷ 0이라 NaN)이고, 기울기는 0 ÷ 0이라 NaN이에요.
+- `tvalues`와 `pvalues`는 절편까지 모두 NaN이에요([완전 적합](/api/regression/collinearity/#완전-적합)의 규칙이에요).
 - `llf`는 +inf, 스튜던트화 잔차는 NaN이에요.
 
 `wls`는 가중치가 0보다 큰 행의 `y`가 모두 같을 때 같은 규칙을 따르고, 가중치가 0인 행의 잔차는 $y - y_0$이에요. [`rlm`](/api/regression/rlm/)도 같은 정확한 해를 내요. 절편이 있고 offset이 없는 [`glm`](/api/regression/glm/)은 정규분포·identity 링크에서 이 해를 그대로 내고, 다른 분포족과 링크에서도 절편이 $g(y_0)$(링크로 옮긴 $y_0$)이고 기울기가 0인 정확한 해를 내요([glm의 상수 y](/api/regression/glm/#상수-y와-완전-적합)).
@@ -350,7 +350,7 @@ $$R^2_{\text{adj}} = 1 - \frac{n - 1}{\text{df\_resid}}(1 - R^2)$$
 >>> rc.rsquared, rc.rsquared_adj, rc.fvalue, rc.f_pvalue
 (nan, nan, nan, nan)
 >>> rc.params, rc.bse, rc.tvalues
-(array([3.0, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([inf, nan], dtype=float64))
+(array([3.0, 0.0], dtype=float64), array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
 >>> rc.scale, rc.llf
 (0.0, inf)
 >>> rc.resid_studentized_internal
@@ -572,7 +572,7 @@ TypeError: predict(): missing 1 required positional argument: 'X_new'
 
 결과에는 계산한 값 말고도 적합을 어떻게 했는지 적은 필드가 있어요. `param_names`, `cov_type`과 함수에 따라 `family`, `link`, `alpha`, `l1_ratio`, `standardize`, `method`, `norm`, `q`예요. 이 필드에는 대입할 수 없어요. 결과의 다른 값은 모두 그 설정으로 계산한 것이라, 설정만 바꾸면 결과 안의 값끼리 어긋나기 때문이에요. 다른 설정이 필요하면 그 설정으로 다시 맞추세요.
 
-리스트나 배열인 필드(`param_names`, 배열로 준 `alpha`·`q`)는 읽을 때마다 새 복사본을 돌려줘요. 돌려받은 리스트나 배열을 고쳐도 결과는 그대로예요.
+리스트인 `param_names`는 읽을 때마다 새 리스트를 돌려줘서, 돌려받은 리스트를 고쳐도 결과는 그대로예요. 배열로 준 `alpha`·`q`는 다른 결과 배열처럼 쓰기 금지 배열이라 원소에 값을 넣을 수 없어요([결과의 형](/api/regression/basics/#결과의-형)).
 
 ```python
 >>> r.cov_type = 'HC3'
@@ -585,6 +585,24 @@ AttributeError: property 'cov_type' of 'OLSResult' object has no setter
 >>> names[0] = 'intercept'
 >>> names, r.param_names
 (['intercept', 'temp', 'rain'], ['const', 'temp', 'rain'])
+```
+
+## 결과의 배열은 쓰기 금지
+
+`params`, `bse`, `resid`, `fittedvalues` 같은 배열 필드와 `cov_params()`는 결과가 들고 있는 배열을 복사하지 않고 쓰기 금지로 돌려줘요. 원소에 값을 넣으면 `ValueError`이고, 그 배열에서 잘라 낸 뷰도 쓰기 금지예요. 돌려받은 배열을 고쳐서 나중에 읽는 `bse`, t값, 구간, `predict`가 바뀌는 일이 없게 하려는 거예요. 고쳐 쓰려면 `.copy()`로 복사본을 만들어요. `conf_int()`, `predict()`, `predict_interval()`처럼 부를 때마다 새로 계산하는 메서드의 결과는 보통 배열이에요.
+
+```python
+>>> b = r.bse
+>>> b[1:][0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> b2 = r.bse.copy()
+>>> b2[1] = 0.0
+>>> bool(r.bse[1] > 0.0)
+True
+>>> ci = r.conf_int()
+>>> ci[0, 0] = 0.0
 ```
 
 ## 처음 읽을 때 계산하는 필드

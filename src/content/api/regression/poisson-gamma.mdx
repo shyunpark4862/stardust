@@ -202,7 +202,7 @@ array([0.21868920096482952, -0.8248250045351452], dtype=float64)
 >>> p1.bse
 array([0.21117510898262576, 0.05495599941346568], dtype=float64)
 >>> p1.pvalues
-array([3.2849178982898504e-10, 1.7768789051247722e-12], dtype=float64)
+array([3.2849178982898504e-10, 1.7768789051247728e-12], dtype=float64)
 ```
 
 산포가 약 6배예요. 이대로 믿으면 기울기의 p값 1.8e-12는 과장이에요. `scale='X2'`를 주면 척도 $\phi$를 Pearson χ²/`df_resid`로 추정해서 분산을 $\phi\mu$로 둬요(**준포아송** 모형). 계수는 그대로이고, 표준오차가 $\sqrt{\phi}$배 커지고, 척도를 추정했으니 검정이 t(`df_resid`)로 바뀌어요.
@@ -272,12 +272,12 @@ array([-inf, -inf], dtype=float64)
 
 `separation=True`이고 계수와 그 추론은 NaN이에요. 0만 있는 군의 적합값은 극한값 0, 선형 예측값은 −inf이고, 나머지 군은 그 군의 평균 3으로 맞춰요. `deviance`도 그 극한의 값이에요. 이 군의 비율이 "0"이라고 결론 낼 수는 있지만, 비율비를 숫자로 보고할 수는 없어요.
 
-identity 링크에서는 평균 0이 유한한 계수로 닿을 수 있는 값이라 분리가 아니에요. 계수는 경계(절편 0)에 붙은 해예요.
+identity 링크에서는 평균 0이 유한한 계수로 닿을 수 있는 값이라 분리가 아니에요. 계수는 경계(절편 0)에 붙은 해예요. 반복은 평균이 음수가 되려는 걸음을 반씩 줄이다 경계에 막혀 멈추므로 `converged`는 False예요([`glm`의 수렴](/api/regression/glm/#max_iter와-tol-수렴)).
 
 ```python
 >>> zi = sd.regression.glm(yc, g, family='poisson', link='identity')
 >>> zi.separation, zi.converged
-(False, True)
+(False, False)
 >>> zi.params
 array([1.0982353830909853e-17,                    3.0], dtype=float64)
 ```
@@ -289,7 +289,7 @@ array([1.0982353830909853e-17,                    3.0], dtype=float64)
 ```python
 >>> same = sd.regression.glm([2] * 10, g, family='poisson')
 >>> same.params, same.pvalues
-(array([0.6931471805599453,                0.0], dtype=float64), array([0.02838500603904046,                 1.0], dtype=float64))
+(array([0.6931471805599453,                0.0], dtype=float64), array([0.028385006039040456,                  1.0], dtype=float64))
 >>> z0 = sd.regression.glm([0] * 10, g, family='poisson', link='identity')
 >>> z0.params, z0.separation, z0.n_iter, z0.bse
 (array([0.0, 0.0], dtype=float64), False, 0, array([nan, nan], dtype=float64))

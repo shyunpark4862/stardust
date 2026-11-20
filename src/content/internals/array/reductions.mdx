@@ -2,7 +2,7 @@
 title: 집계
 group: 집계와 통계
 order: 1
-summary: 합, 곱, 최댓값, 누적 합 같은 리덕션이 원소를 어떤 순서로 접는지 설명해요. float 합은 numpy의 pairwise 순서를 그대로 따라 비트까지 같고, 그 순서로는 나눌 수 없을 때만 모양으로 정한 고정 구조로 바꿔 스레드 수와 상관없이 같은 비트를 내요.
+summary: 합, 곱, 최댓값, 누적 합 같은 리덕션이 원소를 어떤 순서로 접는지 설명해요. float 합은 numpy의 pairwise 알고리즘을 잎을 넓혀 쓰고, 트리로 나눌 수 없을 때는 모양으로 정한 고정 구조로 바꿔 스레드 수와 상관없이 같은 비트를 내요. int64 평균은 정확한 정수 합이에요.
 seeAlso: [statistics, engine, accuracy, performance]
 ---
 import Tree from '../../../components/fig/Tree.astro';
@@ -27,20 +27,21 @@ export const lin = (xs, ys, x) => {
 이 장의 설계는 네 가지 원칙으로 요약돼요.
 
 1. **리덕션도 원소별 연산과 같은 이터레이터 위에서 돌아요.** 출력을 입력 모양으로 브로드캐스트해서(줄이는 축의 stride가 0) 커널이 `out = f(out, x)`만 하면 되게 만들어요. 커널은 이터레이터가 넘겨 준 구간의 모양을 보고 "구간 하나를 값 하나로 접기"와 "행을 행에 더하기" 중 하나를 골라요.
-2. **float 합은 numpy와 같은 알고리즘, 같은 순서로 더해요.** numpy의 pairwise 합을 그대로 옮겼어요. 그래서 출력이 하나인 긴 합은 numpy와 비트까지 같고, 반올림 오차는 $n$이 아니라 $\log n$에 비례해 자라요. 병렬로 돌릴 때도 같은 트리를 따라 합쳐서 스레드 수와 상관없이 numpy와 비트가 같아요.
+2. **float 합은 numpy와 같은 알고리즘을 잎을 넓혀 써요.** numpy의 pairwise 합에서 잎의 누산기를 8개에서 16개로, 잎을 128개에서 512개로 넓혔어요. 반올림 오차는 $n$이 아니라 $\log n$에 비례해 자라고, 마지막 비트는 numpy와 다를 수 있어요. 트리는 $n$만으로 정해져서, 병렬로 돌릴 때도 같은 트리를 따라 합치면 스레드 수와 상관없이 같은 비트가 나와요.
 3. **순서와 상관없는 접기는 마음대로 나눠요.** 넘치면 한 바퀴 도는(wrap) 정수 덧셈·곱셈, max/min, and/or는 어떤 순서로 접어도 결과가 같으니 고정 조각으로 나눠 병렬로 접어요.
 4. **순서가 결과를 바꾸는데 numpy의 순서로는 나눌 수 없으면, 모양만으로 정한 고정 구조로 바꿔요.** 블록 리덕션, float `prod`, 긴 float 스캔이 여기에 해당해요. 구조가 데이터 크기와 레이아웃으로만 정해지므로 결과는 언제나 결정적이지만, numpy와는 마지막 비트가 다를 수 있어요.
 
 | 연산 | 접는 방법 | numpy와의 관계 | 병렬로 나누는 단위 |
 |---|---|---|---|
-| float/complex `sum` (출력 하나, 형변환 없음) | pairwise 트리 | 비트까지 같음 | 트리의 부분 트리(잎 4096개) |
-| `sum(axis=-1)` 같은 안쪽 축 합 | 행마다 pairwise | 비트까지 같음 | 출력 축 |
-| `sum(axis=0)` 같은 바깥 축 합 | 행을 행에 더함 | 같음, 블록으로 나누면 다를 수 있음 | 출력 축, 또는 줄이는 축의 고정 블록 |
+| float/complex `sum` (출력 하나, 형변환 없음) | pairwise 트리 (잎 512개) | 마지막 비트가 다를 수 있음 | 트리의 부분 트리(4096개) |
+| `sum(axis=-1)` 같은 안쪽 축 합 | 행마다 pairwise | 마지막 비트가 다를 수 있음 | 출력 축 |
+| `sum(axis=0)` 같은 바깥 축 합 | 행을 행에 더함 | 지금은 같음, 블록으로 나누면 다를 수 있음 | 출력 축, 또는 줄이는 축의 고정 블록 |
 | 정수 합·곱, max/min, any/all | 순서대로, NEON | 같음 | 고정 조각 |
 | float/complex `prod` | 조각 안에 누산기 8개 | 다를 수 있음 | 4096원소 조각 |
 | `argmax`/`argmin` | 레인마다 (값, 위치) 추적 | 같음 | 레인, 또는 긴 레인의 조각 |
 | `cumulative_sum`/`cumulative_prod` | 레인마다 스캔, 길면 2단계 블록 스캔 | 8192원소 미만은 같음, 이상은 다를 수 있음 | 레인, 또는 블록 묶음 |
-| `mean`, `var`, `std` | 합 → 나누기, 두 패스 | float64 연속 배열 전체는 같음 | 합과 같음 |
+| `mean`, `var`, `std` | 합 → 나누기, 두 패스(편차 제곱은 FMA) | 마지막 비트가 다를 수 있음 | 합과 같음 |
+| int64·bool `mean` (전체, 안쪽 축) | 정확한 정수 합 → 한 번 반올림 | 합이 2⁵³ 이하면 같음, 넘으면 stardust가 더 정확 | 고정 조각 |
 
 호출 하나가 지나가는 길은 이래요.
 
@@ -145,7 +146,7 @@ nb::object fold(const NDArray& x, const Axes& ax, DType loop_dtype, bool keepdim
 
 ### 형변환이 있는 리덕션
 
-`mean(int64)`나 `sum(x, dtype=float64)`처럼 입력과 루프의 dtype이 다르면 `run_fold`가 커널을 `BufferedLoop`로 감싸요. 입력을 4096원소씩 L1에 들어가는 버퍼로 변환하고 그 버퍼에 커널을 돌려요. 입력 전체를 임시 배열로 바꾸는 것보다 메모리를 두 번 덜 지나요(자세한 것은 [연산 엔진](/internals/array/engine/)). 이 경우 커널이 받는 구간은 4096원소씩이고, 구간마다 `acc = acc + pairwise(구간)`으로 접혀요. 그래서 덧셈 순서가 numpy와 달라질 수 있어요([numpy와 비트가 달라지는 경우](#numpy와-비트가-달라지는-경우)).
+`sum(x, dtype=float64)`나 바깥 축의 `mean(int64)`처럼 입력과 루프의 dtype이 다르면 `run_fold`가 커널을 `BufferedLoop`로 감싸요. 입력을 4096원소씩 L1에 들어가는 버퍼로 변환하고 그 버퍼에 커널을 돌려요. 입력 전체를 임시 배열로 바꾸는 것보다 메모리를 두 번 덜 지나요(자세한 것은 [연산 엔진](/internals/array/engine/)). 이 경우 커널이 받는 구간은 4096원소씩이고, 구간마다 `acc = acc + pairwise(구간)`으로 접혀요. 그래서 덧셈 순서가 numpy와 달라질 수 있어요([numpy와 비트가 달라지는 경우](#numpy와-비트가-달라지는-경우)).
 
 ## pairwise 합
 
@@ -177,37 +178,44 @@ $$
 
 예요. 오차 한계는 **가장 긴 덧셈 경로의 길이** $h$에 비례해요. 순차 합은 $h = n-1$이에요. 덧셈을 이진 트리 모양으로 하면 $h \approx \log_2 n$이 돼요(Higham [1] 4장의 pairwise summation).
 
-### 알고리즘: numpy의 블록 pairwise 합
+### 알고리즘: 잎이 넓은 블록 pairwise 합
 
-stardust는 numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`(numpy 소스 `numpy/_core/src/umath/loops_utils.h.src`의 `@TYPE@_pairwise_sum` [2])과 같은 알고리즘을 같은 순서로 써요. 순수한 이진 트리가 아니라 잎이 큰 트리예요.
+stardust는 numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`(numpy 소스 `numpy/_core/src/umath/loops_utils.h.src`의 `@TYPE@_pairwise_sum` [2])과 같은 알고리즘을 써요. 순수한 이진 트리가 아니라 잎이 큰 트리예요. 다른 점은 잎의 크기예요. numpy는 누산기 8개, 잎 128개이고, stardust는 누산기 16개, 잎 512개예요.
 
-- $n < 8$: `0.0`에서 시작해 순서대로 더해요.
-- $8 \le n \le 128$ (`kBlock`, numpy의 `PW_BLOCKSIZE`): 누산기 8개가 원소를 8칸 간격으로 나눠 맡아요. 누산기 $j$는 $x_j, x_{j+8}, x_{j+16}, \dots$를 순서대로 더해요. 끝나면 `((r0+r1)+(r2+r3))+((r4+r5)+(r6+r7))`로 합치고, 8로 나누고 남은 원소는 그 뒤에 순서대로 더해요.
-- $n > 128$: 반으로 나눠요. 이때 자르는 위치는 8의 배수로 내려요($n_2 = \lfloor n/2 \rfloor - (\lfloor n/2 \rfloor \bmod 8)$). 양쪽을 재귀로 더한 뒤 둘을 더해요.
+- $n < 16$: `0.0`에서 시작해 순서대로 더해요.
+- $16 \le n \le 512$ (`kBlock`): 누산기 16개(`kLanes`)가 원소를 16칸 간격으로 나눠 맡아요. 누산기 $j$는 $x_j, x_{j+16}, x_{j+32}, \dots$를 순서대로 더해요. 끝나면 이웃끼리, 그 쌍끼리 고정된 트리로 합치고(`fold_lanes`), 16으로 나누고 남은 원소는 그 뒤에 순서대로 더해요.
+- $n > 512$: 반으로 나눠요. 이때 자르는 위치는 16의 배수로 내려요($n_2 = \lfloor n/2 \rfloor - (\lfloor n/2 \rfloor \bmod 16)$). 양쪽을 재귀로 더한 뒤 둘을 더해요.
 
 ```cpp
 // base/pairwise.hpp (발췌)
-inline constexpr std::int64_t kBlock = 128;          // numpy의 PW_BLOCKSIZE
+inline constexpr std::int64_t kBlock = 512;  // in doubles
+inline constexpr int kLanes = 16;            // accumulators of a real leaf (8 per part for complex)
 
-inline std::int64_t split(std::int64_t n) {           // 반, 8의 배수로 내림
+inline std::int64_t split(std::int64_t n) {
     const std::int64_t m = n / 2;
-    return m - m % 8;
+    return m - m % kLanes;
+}
+
+[[gnu::always_inline]] inline double fold_lanes(double* r) {
+    for (int w = 1; w < kLanes; w *= 2)
+        for (int j = 0; j < kLanes; j += 2 * w) r[j] += r[j + w];
+    return r[0];
 }
 
 template <typename Get>
 [[gnu::always_inline]] inline double leaf(std::int64_t n, const Get& get) {
-    if (n < 8) {
+    if (n < kLanes) {
         double res = 0.;
         for (std::int64_t i = 0; i < n; ++i) res += get(i);
         return res;
     }
-    double r[8];
-    for (int j = 0; j < 8; ++j) r[j] = get(j);
-    std::int64_t i = 8;
-    for (; i < n - (n % 8); i += 8)
-        for (int j = 0; j < 8; ++j) r[j] += get(i + j);     // 독립 사슬 8개
-    double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
-    for (; i < n; ++i) res += get(i);                    // 나머지는 순서대로
+    double r[kLanes];
+    for (int j = 0; j < kLanes; ++j) r[j] = get(j);
+    std::int64_t i = kLanes;
+    for (; i + kLanes <= n; i += kLanes)
+        for (int j = 0; j < kLanes; ++j) r[j] += get(i + j);  // 16 independent chains
+    double res = fold_lanes(r);
+    for (; i < n; ++i) res += get(i);
     return res;
 }
 
@@ -219,42 +227,42 @@ double tree(std::int64_t begin, std::int64_t n, const LeafSum& leaf_sum) {
 }
 ```
 
-원소 1000개의 트리는 이런 모양이에요. 왼쪽 자식은 언제나 8의 배수이고, 잎은 64~128개 사이예요.
+`fold_lanes`는 `w = 1`에서 `r[0] += r[1]`, `r[2] += r[3]`, …, `w = 2`에서 `r[0] += r[2]`, `r[4] += r[6]`, …처럼 네 단계로 16개를 하나로 모아요. 원소 4000개의 트리는 이런 모양이에요. 왼쪽 자식은 언제나 16의 배수이고, 잎은 256~512개 사이예요.
 
-<Fig column caption="n = 1000의 pairwise 트리. 128개 이하가 되면 잎(진한 칸)이고, 잎 안에서는 차례로 더해요.">
+<Fig column caption="n = 4000의 pairwise 트리. 512개 이하가 되면 잎(진한 칸)이고, 잎 안에서는 누산기 16개가 차례로 더해요.">
   <Tree
     root={{
-      label: '1000',
+      label: '4000',
       children: [
-        { label: '496', children: [
-          { label: '248', children: [{ label: '120', tone: 'b' }, { label: '128', tone: 'b' }] },
-          { label: '248', children: [{ label: '120', tone: 'b' }, { label: '128', tone: 'b' }] },
+        { label: '2000', children: [
+          { label: '1000', children: [{ label: '496', tone: 'b' }, { label: '504', tone: 'b' }] },
+          { label: '1000', children: [{ label: '496', tone: 'b' }, { label: '504', tone: 'b' }] },
         ] },
-        { label: '504', children: [
-          { label: '248', children: [{ label: '120', tone: 'b' }, { label: '128', tone: 'b' }] },
-          { label: '256', children: [{ label: '128', tone: 'b' }, { label: '128', tone: 'b' }] },
+        { label: '2000', children: [
+          { label: '1000', children: [{ label: '496', tone: 'b' }, { label: '504', tone: 'b' }] },
+          { label: '1000', children: [{ label: '496', tone: 'b' }, { label: '504', tone: 'b' }] },
         ] },
       ],
     }}
   />
 </Fig>
 
-complex는 numpy가 double 개수로 세기 때문에 잎이 complex 64개이고, 실수부와 허수부에 누산기가 4개씩이에요. 자르는 위치도 double 단위로 계산한 것을 complex 단위로 되돌린 $(n - n \bmod 8)/2$예요(`split_complex`). 이것까지 똑같이 해야 complex 합이 numpy와 비트가 같아요.
+complex는 double 개수로 세서 잎이 complex 256개이고, 실수부와 허수부에 누산기가 8개씩이에요. 자르는 위치도 double 단위로 계산한 것을 complex 단위로 되돌린 $(n - n \bmod 16)/2$예요(`split_complex`).
 
 ### 이 알고리즘의 경로 길이
 
-잎 하나($m \le 128$)에서 누산기 하나는 $\lfloor m/8 \rfloor$개의 항을 받아 $\lfloor m/8 \rfloor - 1$번 더하고, 합치는 데 3단계, 나머지 항이 있으면 최대 7번을 더 거쳐요. $m$이 8의 배수이면 최대 $15 + 3 = 18$, 나머지가 있으면 최대 $14 + 3 + 7 = 24$예요. 나머지가 있는 잎은 트리의 오른쪽 끝에만 생겨요(왼쪽 자식은 언제나 8의 배수). 트리의 깊이는 약 $\lceil \log_2(n/128) \rceil$이에요. 그래서
+잎 하나($m \le 512$)에서 누산기 하나는 $\lfloor m/16 \rfloor$개의 항을 받아 $\lfloor m/16 \rfloor - 1$번 더하고, 합치는 데 4단계, 나머지 항이 있으면 최대 15번을 더 거쳐요. $m$이 16의 배수이면 최대 $31 + 4 = 35$, 나머지가 있으면 최대 $30 + 4 + 15 = 49$예요. 나머지가 있는 잎은 트리의 오른쪽 끝에만 생겨요(왼쪽 자식은 언제나 16의 배수). 트리의 깊이는 약 $\lceil \log_2(n/512) \rceil$이에요. 그래서
 
 $$
-h \lesssim 24 + \left\lceil \log_2 \frac{n}{128} \right\rceil
+h \lesssim 49 + \left\lceil \log_2 \frac{n}{512} \right\rceil
 $$
 
-이고, 원소 100만 개면 $h \lesssim 37$, 오차 한계는 약 $37u \approx 4 \times 10^{-15}$ 곱하기 $\sum |x_i|$예요. 순차 합의 한계 $(n-1)u \approx 1.1 \times 10^{-10}$보다 약 3만 배 작아요. 마지막의 `0 + 트리 합`은 0을 더하는 것이라 반올림이 없어요.
+이고, 원소 100만 개면 $h \lesssim 60$, 오차 한계는 약 $60u \approx 7 \times 10^{-15}$ 곱하기 $\sum |x_i|$예요. 순차 합의 한계 $(n-1)u \approx 1.1 \times 10^{-10}$보다 약 1.7만 배 작아요. 마지막의 `0 + 트리 합`은 0을 더하는 것이라 반올림이 없어요.
 
 <Plot
   curves={[
     { f: (x) => Math.log10(10 ** x - 1), label: '순차 합: h = n - 1' },
-    { f: (x) => Math.log10(24 + Math.ceil(Math.max(0, Math.log2(10 ** x / 128)))), label: 'pairwise (numpy, stardust): h ≲ 24 + ⌈log₂(n/128)⌉' },
+    { f: (x) => Math.log10(49 + Math.ceil(Math.max(0, Math.log2(10 ** x / 512)))), label: 'pairwise: h ≲ 49 + ⌈log₂(n/512)⌉' },
   ]}
   domain={[2, 8]}
   range={[0, 8]}
@@ -262,25 +270,15 @@ $$
   yTicks={[{ v: 0, label: '1' }, { v: 2, label: '100' }, { v: 4, label: '10⁴' }, { v: 6, label: '10⁶' }, { v: 8, label: '10⁸' }]}
 />
 
-위 그래프는 오차 한계의 계수 $h$를 로그 눈금으로 그린 거예요. 순차 합은 $n$과 함께 곧게 올라가고, pairwise는 $n$이 백만 배 커져도 24~44 사이에 머물러요. 이 값은 최악의 경우의 한계이고, 반올림 오차가 서로 독립인 무작위 값처럼 행동한다고 보면 실제 오차는 이보다 훨씬 작아요(Higham [1] 4장의 통계적 관점). 정규분포 원소 1000만 개를 시드 4개로 더해 보면 상대오차가 순차 합은 4.0e-16~2.9e-13, pairwise는 0~4.2e-16이에요.
+위 그래프는 오차 한계의 계수 $h$를 로그 눈금으로 그린 거예요. 순차 합은 $n$과 함께 곧게 올라가고, pairwise는 $n$이 백만 배 커져도 49~67 사이에 머물러요. 이 값은 최악의 경우의 한계이고, 반올림 오차가 서로 독립인 무작위 값처럼 행동한다고 보면 실제 오차는 이보다 훨씬 작아요(Higham [1] 4장의 통계적 관점). 정규분포 원소 1000만 개를 시드 4개로 더해 보면 상대오차가 순차 합은 4.0e-16~2.9e-13, pairwise는 1.3e-16~8.4e-16이에요.
 
 ### 이 모양을 고른 이유
 
-- **속도.** 잎 안에서 누산기 8개는 서로 의존하지 않는 사슬 8개예요. 덧셈 하나의 지연을 다른 7개가 덮어서 FP 유닛이 쉬지 않아요. 순차 합보다 5.6배 빨라요. 재귀는 128원소마다 한 번이라 함수 호출 비용은 무시할 만해요.
-- **정확도.** 위에서 본 것처럼 경로 길이가 $\log n$으로 줄어요.
-- **numpy와 같은 비트.** 알고리즘과 순서가 같으니 결과도 같아요. stardust는 시작값 `+0`에 구간 전체의 pairwise 합을 더하고, numpy도 이런 구간을 pairwise 한 번으로 더해요(numpy 2.5.4 기준).
+- **속도.** 잎 안에서 누산기 16개는 서로 의존하지 않는 사슬 16개예요. 덧셈 하나의 지연을 다른 사슬이 덮어서 FP 유닛이 쉬지 않고, 컴파일러가 16개를 NEON 레지스터 8개에 묶어요. numpy의 잎(누산기 8개, 128개)도 순차 합보다 5.6배 빠른데, 잎을 넓히면 그보다 원소 4096개에서 1.59배, 32768개 이상에서 1.16~1.20배 빨라요(다른 작업이 함께 돌던 기계에서 잰 거친 값이에요). 재귀는 512원소마다 한 번이라 함수 호출 비용은 무시할 만해요.
+- **정확도.** 위에서 본 것처럼 경로 길이가 $\log n$으로 줄어요. 잎을 넓혀서 바뀌는 것은 잎 안 사슬의 길이뿐이고, 오차는 같은 수준이에요.
+- **numpy와의 관계.** 알고리즘은 같지만 잎의 크기가 달라서 덧셈 순서가 달라요. 그래서 마지막 비트가 numpy와 다를 수 있어요. 정확도 계약 안의 차이이고, 결과는 여전히 $n$만으로 정해져 스레드 수와 상관없어요.
 
-이론상 더 정확한 다른 합(예: Kahan의 보정 합, Higham [1] 4장)은 쓰지 않아요. 다른 알고리즘은 numpy와 다른 비트를 내서, numpy로 얻은 결과와 stardust의 결과를 그대로 맞대 볼 수 없게 돼요.
-
-numpy 2.5.4와 비교한 결과예요(정규분포 1,000,003개, 1스레드와 10스레드).
-
-| 경우 | numpy와 비트가 같은가 |
-|---|:---:|
-| `sum(f)` | 같음 |
-| `sum(f[::2])` (stride 16바이트) | 같음 |
-| `sum(m, axis=1)`, (1000, 1000) | 같음 |
-| complex `sum`, 30만 개 | 같음 |
-| `mean(f)`, `var(f)`, `std(f)` | 같음 |
+numpy 2.5.4와 비교하면 정규분포 원소 100개, 1000개, 1만 개, 100만 개의 `sum`이 모두 마지막 비트에서 달랐어요. 차이는 위의 오차 한계 안이에요.
 
 ### 항을 접근자로 넘기기
 
@@ -304,15 +302,15 @@ acc = acc + pairwise_sum_mt(n, at);
 
 - strided 입력: `x + i * stride`에서 읽어요.
 - NaN을 건너뛰는 합(`nansum`): NaN이면 `0`을 돌려줘요.
-- `var`의 두 번째 패스: $(x_i - m)^2$를 그 자리에서 계산해요.
+- `var`의 두 번째 패스: 편차 $d_i = x_i - m$을 그 자리에서 계산해요. 이 패스는 잎만 다른 것(`leaf_squares`)을 써서 제곱을 `fma(d, d, acc)`로 더해요([var](#var-두-패스)).
 
-모두 같은 트리를 지나므로 "그 값들로 만든 배열의 `sum`"과 비트가 같아요.
+strided 입력과 `nansum`은 같은 트리, 같은 잎을 지나므로 "그 값들로 만든 배열의 `sum`"과 비트가 같아요.
 
 람다가 여러 겹(트리 → 잎 람다 → 잎 → 접근자 람다)이라 컴파일러가 모두 인라인해야 원소마다 함수 호출이 남지 않아요. 잎 함수 `pairwise::leaf`에 `[[gnu::always_inline]]`을 붙인 이유예요. 이 표시가 없으면 1스레드 `sum(f)`(원소 100만 개)가 110µs에서 152µs로 느려져요.
 
 ### 정의는 한 벌, 모든 영역이 함께 써요
 
-트리 모양, 잎의 합, 병렬 계획과 합치기는 `base/pairwise.hpp` 한 파일에 있어요. 배열 영역은 위처럼 접근자로 부르고, linalg와 frame도 같은 정의를 불러요(linalg는 잎마다 버퍼를 채워 넘겨요). float 합의 비트를 정하는 코드가 이 파일 하나뿐이라서 `sd.sum`, `sd.linalg`의 합, frame의 float `sum`/`mean`이 같은 데이터에 같은 비트를 내요.
+트리 모양, 잎의 합, 병렬 계획과 합치기는 `base/pairwise.hpp` 한 파일에 있어요. 배열 영역은 위처럼 접근자로 부르고, linalg와 frame도 같은 정의를 불러요(linalg는 잎마다 버퍼를 채워 넘겨요). float 합의 비트를 정하는 코드가 이 파일 하나뿐이라서 `sd.sum`, `sd.linalg`의 그냥 합(`trace`, 1-노름 등), frame의 float `sum`/`mean`이 같은 데이터에 같은 비트를 내요. 곱의 합(`vecdot`, 2-노름)은 linalg가 곱을 합에 융합하는 자기 잎을 쓰고, 트리와 병렬 계획만 이 파일의 것을 써요([linalg의 기본 연산](/internals/linalg/basic/)).
 
 ### 긴 합 하나를 여러 스레드로, 같은 비트로
 
@@ -352,7 +350,7 @@ T combine(std::int64_t n, std::int64_t task, const std::vector<T>& parts) {
 
 재귀 람다는 자기 자신을 첫 인자(`auto&& self`)로 받아요. 람다 안에서는 자기 이름을 볼 수 없어서 쓰는 C++ 관용구예요. `std::function`을 거치지 않으므로 호출이 인라인될 수 있어요.
 
-덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서이므로 스레드 수와 상관없이 직렬 트리와, 곧 numpy와 비트가 같아요. 부분 트리의 최대 크기(`kLeaf`)는 `kParallelTask` = 4096원소(complex는 2048개)예요. 이 경로는 $n \ge$ `kParallelThreshold` = 32768이고 풀을 쓸 수 있을 때만 타요. 원소 100만 개면 부분 트리가 수백 개예요. 테스트는 원소 300만 개에서 1스레드와 10스레드 모두 `sum(x) == np.sum(x)`를 확인해요.
+덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서이므로 스레드 수와 상관없이 직렬 트리와 비트가 같아요. 부분 트리의 최대 크기(`kLeaf`)는 `kParallelTask` = 4096원소(complex는 2048개)예요. 이 경로는 $n \ge$ `kParallelThreshold` = 32768이고 풀을 쓸 수 있을 때만 타요. 원소 100만 개면 부분 트리가 수백 개예요. 테스트는 원소 300만 개에서 1스레드와 10스레드의 `sum(x)`가 같은지 확인해요.
 
 <Callout title="부분 트리의 경계도 트리가 정해요">
 병렬 조각을 "4096개씩 앞에서부터"로 자르면 트리의 자르는 위치와 맞지 않아 덧셈 순서가 바뀌어요. 그래서 조각을 트리를 따라 내려가며 만들어요. 조각의 크기가 들쭉날쭉(대략 2000~4096개)해지지만, 비트를 지키는 데 필요한 대가예요.
@@ -382,7 +380,7 @@ double neon_fold(const double* x, std::int64_t n, double acc) {
 }
 ```
 
-- 레지스터 4개를 독립 누산기로 써서 `FMAX`의 지연을 덮어요. 덧셈의 누산기 8개와 같은 생각이에요.
+- 레지스터 4개를 독립 누산기로 써서 `FMAX`의 지연을 덮어요. 덧셈의 누산기 16개와 같은 생각이에요.
 - max/min은 결합·교환 법칙이 정확히 성립하므로(NaN 전파와 ±0 처리를 포함해서) 순서를 바꿔도 결과가 같아요. 그래서 결과가 numpy와 같아요.
 - 순차 비교보다 14배 빠르고 numpy와 같은 속도예요. 원소 100만 개 `max(f)`가 numpy 75µs, 1스레드 72µs, 10스레드 23µs예요.
 - `nanmax`/`nanmin`은 같은 함수의 `SkipNan` 판이고, NaN을 건너뛰는 `FMAXNM`/`FMINNM`(`vmaxnmq_f64`)을 써요.
@@ -804,9 +802,52 @@ numpy보다 이만큼 빠른 데는 두 가지 이유가 있어요. 첫째, star
 
 ### mean
 
-결과 dtype(float64 또는 complex128)으로 합한 뒤 개수로 나눠요. 합은 `sum`과 같은 `run_reduce`이므로 pairwise, 블록, 병렬이 모두 그대로 적용돼요. 빈 입력은 `0/0 = nan`이에요. 정수 입력은 버퍼 캐스팅으로 float64가 되어 4096원소씩 합해져요. 그래서 `mean(int64)`는 형변환이 있는 리덕션이고 numpy와 비트가 다를 수 있어요. 예를 들어 $\pm 2^{62}$ 범위의 int64 100만 개 `j`로 `sum(j, dtype=float64)`를 구하면 난수 입력 20개 모두에서 numpy와 비트가 달라요. 값이 작아서 부분합이 모두 $2^{53}$ 아래의 정수로 정확히 표현되면 어떤 순서로 더해도 같으니 차이가 없어요.
+결과 dtype(float64 또는 complex128)으로 합한 뒤 개수로 나눠요. 합은 `sum`과 같은 `run_reduce`이므로 pairwise, 블록, 병렬이 모두 그대로 적용돼요. 빈 입력은 `0/0 = nan`이에요.
 
-frame의 int64 `mean`도 `sd.sum(x, dtype=sd.float64)`을 개수로 나누는 같은 계산이라, 두 영역의 결과가 비트까지 같아요.
+### 정수의 mean: 정확한 정수 합
+
+int64와 bool의 평균은 float로 바꿔 더하지 않고, 정수 그대로 정확히 더한 뒤 마지막에 한 번만 double로 반올림해 개수로 나눠요(`base/int_sum.hpp`의 `IntSum`).
+
+- 값 $v$를 위 32비트(부호 있음)와 아래 32비트로 나눠요. $v = h \cdot 2^{32} + l$, $|h| \le 2^{31}$, $0 \le l < 2^{32}$예요.
+- 두 반쪽을 int64 둘에 따로 더해요. 값이 $2^{31}$개까지는 어느 쪽도 넘치지 않아요. 안쪽 루프는 정수 덧셈 두 개라 벡터화돼요.
+- $2^{31}$개마다, 그리고 마지막에 두 반쪽을 `__int128` 하나로 옮겨요. 배열이 가질 수 있는 어떤 개수의 int64를 더해도 `__int128`에 정확히 담겨요.
+
+```cpp
+// base/int_sum.hpp (발췌)
+void add_range(const std::int64_t* p, std::int64_t n) {
+    while (n > 0) {
+        const std::int64_t m = n < kFlush - pending_ ? n : kFlush - pending_;
+        std::int64_t hi = 0;
+        std::uint64_t lo = 0;
+        for (std::int64_t i = 0; i < m; ++i) {
+            hi += p[i] >> 32;
+            lo += static_cast<std::uint64_t>(p[i]) & 0xFFFFFFFFu;
+        }
+        hi_ += hi;
+        lo_ += lo;
+        pending_ += m;
+        if (pending_ == kFlush) flush();
+        p += m;
+        n -= m;
+    }
+}
+
+__int128 value() const { return total_ + (static_cast<__int128>(hi_) << 32) + static_cast<__int128>(lo_); }
+
+// Round to nearest (the compiler's __int128 -> double conversion rounds correctly).
+double to_double() const { return static_cast<double>(value()); }
+```
+
+정수 덧셈은 순서와 상관없으므로, 조각을 어떻게 나누고 어느 순서로 합쳐도 같은 비트예요. 전체 평균은 32KB 분량(int64 4096개)의 조각을 풀에서 따로 더하고 `merge`로 합쳐요. 반올림이 한 번뿐이라 결과는 참 평균에 가장 가까운 double을 개수로 한 번 나눈 값이에요. 합이 $2^{53}$을 넘지 않으면 float로 바꿔 더한 값과 같고, 넘으면 이쪽이 더 정확해요. 원소마다 float로 바꾸는 일이 없어서 빠르기도 해요. 원소 100만 개를 1스레드에서 float로 바꿔 더하면 200µs가 들고, 같은 배열의 정수 `sum`은 72µs예요.
+
+정확한 합을 쓰는 곳은 둘이에요(`int_mean`).
+
+- **전체 리덕션.** 배열 전체가 값 하나로 접힐 때예요.
+- **메모리에서 가장 안쪽인 축 하나의 리덕션.** C 순서 배열의 `axis=-1`처럼, 줄이는 축의 stride가 다른 어느 축보다 작을 때예요. 레인마다 `IntSum` 하나를 써요(`run_lanes`).
+
+그 밖의 축(바깥 축, 여러 축)은 버퍼 캐스팅으로 float64가 되어 4096원소씩 합해져요. 바깥 축에서는 레인이 메모리에서 떨어져 있어서, 위·아래 반쪽을 따로 쌓는 쪽이 1.65배 느렸어요.
+
+frame의 Series와 groupby의 int64 평균도 같은 `IntSum`을 써요. 그래서 그룹의 평균이 그 행들만 고른 Series의 평균과 그룹 크기에 상관없이 비트까지 같아요.
 
 ### var: 두 패스
 
@@ -819,27 +860,45 @@ $$
 $c$는 `correction`(기본 0)이에요. $N - c \le 0$이면 NaN이에요(빈 입력 포함, Array API). numpy는 이때 경고를 내고 0으로 나눠요.
 
 1. 첫 패스: 위의 `mean`을 keepdims 모양으로 구해요(`mean_keepdims`).
-2. 둘째 패스: `sq_dev_loop`가 입력과 (브로드캐스트한) 평균을 읽어 $\lvert x - m \rvert^2$를 그 자리에서 계산하고 접어요. 임시 배열은 만들지 않아요. 안쪽 축이면 접근자 람다로 pairwise 트리에 넣고, 바깥 축이면 원소마다 더하고, 필요하면 블록 리덕션으로 나눠요.
+2. 둘째 패스: `sq_dev_loop`가 입력과 (브로드캐스트한) 평균을 읽어 편차를 그 자리에서 계산하고 제곱을 접어요. 임시 배열은 만들지 않아요. 안쪽 축이면 접근자 람다로 pairwise 트리에 넣고, 바깥 축이면 원소마다 더하고, 필요하면 블록 리덕션으로 나눠요.
+
+편차의 제곱은 반올림 한 번으로 더해요. 실수는 `fma(d, d, acc)`, complex는 `fma(re, re, im·im)`을 더해요. 실수의 안쪽 축은 제곱을 잎 안의 누산기에 바로 융합하는 잎(`pairwise::leaf_squares`)을 써요. 트리 모양과 병렬 계획은 `sum`과 같아요.
 
 ```cpp
-// array/kernels/reduce.hpp의 sq_dev_loop (발췌)
-template <typename T, bool SkipNan = false>
-void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
-    auto sq = [&](std::int64_t i) {
-        const T d = load_as<T>(x + i * s[0]) - load_as<T>(m + i * s[1]);
-        double sq;
-        if constexpr (ops::is_cplx<T>) sq = d.real() * d.real() + d.imag() * d.imag();
-        else sq = d * d;
-        return sq;                                   // (SkipNan이면 NaN 자리에 +0.0)
-    };
-    if (s[2] == 0) { *out += pairwise_sum_mt(n, sq); return; }   // 안쪽 축: sum과 같은 pairwise
-    for (std::int64_t i = 0; i < n; ++i) out[i * s[2]] += sq(i);  // 바깥 축
+// base/pairwise.hpp (발췌)
+template <typename Dev>
+[[gnu::always_inline]] inline double leaf_squares(std::int64_t n, const Dev& dev) {
+    if (n < kLanes) {
+        double res = 0.;
+        for (std::int64_t i = 0; i < n; ++i) {
+            const double d = dev(i);
+            res = std::fma(d, d, res);
+        }
+        return res;
+    }
+    double r[kLanes];
+    for (int j = 0; j < kLanes; ++j) {
+        const double d = dev(j);
+        r[j] = d * d;
+    }
+    std::int64_t i = kLanes;
+    for (; i + kLanes <= n; i += kLanes)
+        for (int j = 0; j < kLanes; ++j) {
+            const double d = dev(i + j);
+            r[j] = std::fma(d, d, r[j]);
+        }
+    double res = fold_lanes(r);
+    for (; i < n; ++i) {
+        const double d = dev(i);
+        res = std::fma(d, d, res);
+    }
+    return res;
 }
 ```
 
-`std = sqrt(var)`예요. complex 입력의 편차 제곱은 $\mathrm{re}^2 + \mathrm{im}^2$이고 결과는 float64예요. `-ffp-contract=off`로 빌드하므로 `d * d`나 `re*re + im*im`이 FMA로 합쳐지지 않아요.
+`std = sqrt(var)`예요. complex 입력의 결과는 float64예요. `-ffp-contract=off`로 빌드하므로 컴파일러가 스스로 FMA를 만들지 않고, FMA는 코드에 `std::fma`로 적은 이 자리에서만 쓰여요. `nanvar`는 NaN 자리의 편차를 `+0.0`으로 읽어서, 더해도 부분합이 그대로예요. 그래서 NaN이 없으면 `var`와 비트가 같아요.
 
-정수 입력의 두 번째 패스는 `as_dtype(x, float64)`로 입력 전체의 float64 복사본을 먼저 만들어요. 첫 패스(`mean`)는 버퍼 캐스팅이라 복사본이 없지만, 두 번째 패스는 복사본을 거쳐요.
+정수 입력의 두 번째 패스는 `as_dtype(x, float64)`로 입력 전체의 float64 복사본을 먼저 만들어요. 편차 커널이 평균과 같은 dtype을 읽기 때문이에요.
 
 ### 두 패스를 쓰는 이유: 정확도
 
@@ -854,30 +913,31 @@ Chan, Golub, LeVeque [3]의 분석에서는 조건수 $\kappa = \lVert x \rVert_
 
 평균이 분산보다 크면 $\kappa^2 \approx 1 + N\bar x^2 / S$가 커져요. 한 패스 공식의 오차는 $\kappa^2$에 비례해 커지지만, 두 패스에서는 $\kappa^2$ 항에 $u^2$가 곱해져 있어요. stardust는 두 합을 모두 pairwise로 하므로 위 식의 $N$이 합의 경로 길이 $h$(약 $\log_2 N$ 크기)로 줄어요.
 
-Welford [4]의 한 패스 갱신 공식은 메모리를 한 번만 읽지만, numpy와 다른 연산을 하므로 비트가 같을 수 없어요. 그래서 numpy와 같은 두 패스를 써요.
+Welford [4]의 한 패스 갱신 공식은 메모리를 한 번만 읽지만 원소마다 나눗셈이 들어가요. stardust는 numpy와 같은 두 패스를 써요.
 
-### numpy와의 비트 관계, 그리고 속도
+### numpy와의 관계, 그리고 속도
 
-numpy 2.5.4의 `_var`(`numpy/_core/_methods.py` [5])는 평균을 `umr_sum` 후 `true_divide`로 구하고, `x = subtract(arr, arrmean)`으로 새 배열을 만든 뒤 `square(x, out=x)`로 제자리에서 제곱하고, `umr_sum(x)`로 더해요. 값으로는 stardust와 같은 연산을 같은 순서로 해요. 편차 제곱이 같은 값이고 같은 pairwise 트리로 더해지니, 연속 float64 배열 전체의 `var`/`std`는 numpy와 비트가 같아요(1스레드, 10스레드 모두). 블록으로 나뉘는 축 리덕션이나 형변환이 있는 경우는 합의 순서가 달라 다를 수 있어요.
-
-complex 입력은 합이 numpy와 비트까지 같아도 `mean`과 `var`/`std`의 마지막 비트가 다를 수 있어요. 합을 개수 $N$으로 나누는 방법이 다르기 때문이에요. numpy의 complex 나눗셈은 분모의 역수를 먼저 구해 실수부와 허수부에 곱하고($a \cdot (1/N)$), stardust는 실수부와 허수부를 $N$으로 직접 나눠요($a / N$). 두 결과는 마지막 비트에서 갈릴 수 있고, 평균이 다르면 편차 제곱합도 달라져요. 길이가 제각각인 난수 입력 300개 가운데 `mean`은 120개, `var`는 77개가 numpy와 달라요.
+numpy 2.5.4의 `_var`(`numpy/_core/_methods.py` [5])는 평균을 `umr_sum` 후 `true_divide`로 구하고, `x = subtract(arr, arrmean)`으로 새 배열을 만든 뒤 `square(x, out=x)`로 제자리에서 제곱하고, `umr_sum(x)`로 더해요. 두 패스라는 구조는 같아요. 다른 것은 셋이에요. 합의 잎이 넓고(누산기 16개, 512개), 편차의 제곱을 FMA로 더해 반올림이 한 번 적고, complex의 평균을 나누는 방법이 달라요. numpy의 complex 나눗셈은 분모의 역수를 먼저 구해 실수부와 허수부에 곱하고($a \cdot (1/N)$), stardust는 실수부와 허수부를 $N$으로 직접 나눠요($a / N$). 그래서 `mean`, `var`, `std`는 numpy와 마지막 비트가 다를 수 있어요. 오차는 위의 두 패스 한계 안이에요.
 
 속도는 메모리 왕복 수에서 갈려요. numpy는 평균 패스(읽기) + 빼기(읽기, 새 배열 쓰기와 그 페이지 폴트) + 제곱(읽기, 쓰기) + 합(읽기)이고, stardust는 평균 패스(읽기) + 편차 제곱합 패스(읽기)예요. 원소 100만 개 `var(f)`는 numpy 478µs, 1스레드 312µs(1.53배), 10스레드 58µs(8.3배)예요.
 
 ## numpy와 비트가 달라지는 경우
 
-결정성(스레드 수와 상관없이 같은 비트)은 모든 경우에 지켜요. numpy와 비트를 맞추는 일은 아래 경우에만 포기하는데, 이유는 모두 같아요. numpy의 순서를 지키면 병렬로 나눌 수 없거나, 사슬 하나에 묶여 느려요.
+결정성(스레드 수와 상관없이 같은 비트)은 모든 경우에 지켜요. numpy와는 반올림 크기의 차이만 허용하고, 아래 경우에는 numpy와 다른 순서나 다른 계산을 써요. 더 빠르거나 더 정확해서예요. numpy의 순서를 지키면 병렬로 나눌 수 없거나, 사슬 하나에 묶여 느리거나, 반올림이 하나 더 들어가요.
 
 | 경우 | stardust의 순서 | 얻는 것 |
 |---|---|---|
 | 줄이는 축이 바깥에 있어 남는 축만으로 나눌 수 없는 리덕션 (`sum`/`mean`/`var`/`prod(axis=0)` 등) | 줄이는 축을 고정 블록으로 | 1000×1000 `sum(axis=0)`이 10스레드에서 numpy의 4.0배 |
 | float/complex `prod` | 4096원소 조각 안에 누산기 8개 | 1스레드에서 numpy의 7.3배 |
 | 8192원소 이상의 float/complex `cumulative_sum`/`cumulative_prod` | 4096원소 블록 2단계 스캔 | 순차 스캔 대비 1스레드 1.3배, 10스레드 7배 |
-| 형변환이 필요한 리덕션 (`mean(int64)`, `sum(x, dtype=float64)` 등) | 4096원소 버퍼 단위로 접고, 전체 리덕션은 고정 블록으로 | 메모리 왕복 감소, 병렬화 |
+| 긴 float/complex 합 (`sum`, `mean`) | 넓은 잎(누산기 16개, 512개)의 pairwise 트리 | 1스레드 1.2~1.6배 |
+| `var`, `std`의 편차 제곱합 | 제곱을 `fma`로 더해요 | 반올림 하나 덜 |
+| int64·bool `mean`의 전체·안쪽 축 | 정확한 정수 합을 한 번 반올림 | 더 정확하고 빨라요. 합이 $2^{53}$을 넘지 않으면 numpy와 같아요 |
+| 형변환이 필요한 리덕션 (`sum(x, dtype=float64)`, 바깥 축의 `mean(int64)` 등) | 4096원소 버퍼 단위로 접고, 전체 리덕션은 고정 블록으로 | 메모리 왕복 감소, 병렬화 |
 
-numpy의 기본 버퍼 크기는 `np.getbufsize()` = 8192원소이고(numpy 2.5.4), stardust의 버퍼는 L1에 맞춘 4096원소예요. 버퍼 경계가 다르니 덧셈 순서도 달라서, 위에서 본 것처럼 큰 정수의 float64 합은 numpy와 비트가 달라요.
+numpy의 기본 버퍼 크기는 `np.getbufsize()` = 8192원소이고(numpy 2.5.4), stardust의 버퍼는 L1에 맞춘 4096원소예요. 버퍼 경계가 다르니 덧셈 순서도 달라요. 부분합이 모두 $2^{53}$ 아래의 정수로 정확히 표현되면 어떤 순서로 더해도 같으니 차이가 없지만, 큰 정수의 float64 합은 numpy와 마지막 비트가 달라요.
 
-정수 결과(`sum(bool)`, 정수 합·곱)는 순서와 상관없으므로 언제나 같아요. 형변환이 없고 출력이 하나인 긴 합(`sum(f)`)은 numpy와 비트가 같아요.
+정수 결과(`sum(bool)`, 정수 합·곱)는 순서와 상관없으므로 언제나 같아요.
 
 ## 성능
 
@@ -954,15 +1014,15 @@ numpy의 기본 버퍼 크기는 `np.getbufsize()` = 8192원소이고(numpy 2.5.
 
 | 연산 | numpy 2.5.4와의 관계 | 오차 한계 |
 |---|---|---|
-| float/complex `sum` (출력 하나, 형변환 없음) | 비트까지 같음, 스레드 수와 무관 | $\gamma_h \sum \lvert x_i \rvert$, $h \lesssim 24 + \lceil \log_2(n/128) \rceil$ |
-| 안쪽 축 합 (`axis=-1`, C 순서) | 비트까지 같음 | 같음 |
+| float/complex `sum` (출력 하나, 형변환 없음) | 마지막 비트가 다를 수 있음 (잎의 크기 차이) | $\gamma_h \sum \lvert x_i \rvert$, $h \lesssim 49 + \lceil \log_2(n/512) \rceil$ |
+| 안쪽 축 합 (`axis=-1`, C 순서) | 마지막 비트가 다를 수 있음 | 같음 |
 | 블록 리덕션 (`sum(axis=0)` 등) | 다를 수 있음 (1000×1000 정규분포에서 최대 상대 차이 $10^{-13}$ ~ $10^{-12}$) | 블록 길이 + 블록 수로 줄어 순차 합보다 작음 |
 | 정수 합·곱, max/min, any/all, argmax/argmin | 같음 | 정확 (정수는 wrap) |
 | float/complex `prod` | 다를 수 있음, 넘침·언더플로 시점도 다를 수 있음 | $\gamma_{n-1} \lvert p \rvert$ (numpy와 같은 한계) |
 | 누적 스캔, 8192원소 미만 | 같음 | — |
 | 누적 스캔, 8192원소 이상 (float/complex) | 다를 수 있음 (최대 상대 차이 4.2e-13) | 경로 길이 $(i \bmod 4096) + \lfloor i/4096 \rfloor + 1$ |
-| `mean`, `var`, `std` (연속 float64 전체) | 비트까지 같음 | 두 패스 [3] |
-| complex `mean`, `var`, `std` | 마지막 비트가 다를 수 있음 (개수로 나누는 방법 차이) | 두 패스 [3] |
+| `mean`, `var`, `std` | 마지막 비트가 다를 수 있음 (잎, 편차 제곱의 FMA, complex는 나누는 방법) | 두 패스 [3] |
+| int64·bool `mean` (전체, 안쪽 축) | 합이 $2^{53}$ 이하면 같음, 넘으면 다를 수 있음 | 반올림 한 번: 참 평균의 double을 개수로 나눈 오차 |
 | 형변환이 있는 리덕션 | 다를 수 있음 | 버퍼 4096원소 단위의 pairwise |
 
 테스트도 이 구분을 따라요. 같다고 한 것은 비트로 비교하고, 다를 수 있다고 한 것은 상대오차로 비교하면서, 1·2·3·7·10스레드의 결과가 바이트까지 같은지 따로 확인해요. 자세한 것은 [정확도와 검증](/internals/array/accuracy/)에 있어요.

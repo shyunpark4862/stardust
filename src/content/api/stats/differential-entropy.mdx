@@ -8,7 +8,7 @@ signatures:
 summary: 연속적인 값의 표본에서, 그 값이 나온 분포의 미분 엔트로피를 어림해요. 정렬한 표본의 간격으로 계산하는 네 가지 방법이 있고, 기본값 'auto'는 표본 크기에 따라 골라요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 연속 분포에서 뽑은 표본. 순서는 상관없어요(안에서 정렬해요). bool·정수는 float64로 바꿔요.
   - name: window_length
@@ -40,11 +40,11 @@ returns:
   desc: 미분 엔트로피의 어림값. 언제나 float64이고, 남는 축이 없으면 Python float예요. 음수일 수도 있어요. 간격이 0인 곳이 있으면(같은 값이 많으면) -inf, 표본에 inf가 있어 간격이 inf이면 inf, 둘이 함께 있거나 표본이 너무 작으면 NaN이에요.
 raises:
   - type: TypeError
-    desc: window_length가 int나 None이 아닐 때(float·bool 포함), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때, base가 수나 None이 아닐 때(문자열·bool), method·nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: window_length가 int나 None이 아닐 때(float·bool 포함), x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis·keepdims의 타입이 틀렸을 때, base가 수나 None이 아닐 때(문자열·bool), method·nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: window_length가 1보다 작을 때, method 이름이 틀렸을 때, base가 양수가 아닐 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
   - type: OverflowError
-    desc: base가 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등).
+    desc: base가 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등), window_length가 int64 범위를 벗어날 때.
 seeAlso: [entropy, describe, iqr]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -162,13 +162,13 @@ $m$이 `window_length`예요. 작으면 간격 하나하나가 우연히 넓거�
 0.9597804812780563
 ```
 
-`window_length`는 1 이상의 정수여야 해요. `2.0` 같은 실수도 받지 않아요.
+`window_length`는 1 이상의 정수여야 해요. `2.0` 같은 실수도 받지 않고, int64 범위를 넘는 정수는 `OverflowError`예요.
 
 ```python
 >>> sd.stats.differential_entropy(sample, window_length=0)
 Traceback (most recent call last):
     ...
-ValueError: differential_entropy(): 'window_length' must be positive
+ValueError: differential_entropy(): 'window_length' must be >= 1
 >>> sd.stats.differential_entropy(sample, window_length=2.0)
 Traceback (most recent call last):
     ...

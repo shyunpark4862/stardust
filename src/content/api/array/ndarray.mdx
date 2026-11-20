@@ -425,7 +425,7 @@ array([[1.0, 2.0, 3.0],
 >>> row += grid
 Traceback (most recent call last):
     ...
-ValueError: operand has more dimensions than the iteration shape
+ValueError: operand of shape (2, 3) cannot be broadcast to (3,)
 ```
 
 `@=`도 결과가 `x`와 같은 모양일 때만 돼요. 정사각 행렬끼리는 되지만, 1차원끼리는 결과가 숫자 하나라서 안 돼요.

@@ -19,14 +19,16 @@ import pathlib
 
 SITE = pathlib.Path(__file__).resolve().parents[1]
 OUT = SITE / "src" / "data" / "accuracy.json"
-AREAS = ("special", "stats", "regression")
+AREAS = ("special", "stats", "multivariate", "regression")
 
 # The output: {"fields": FIELDS, "areas": {area: {"summary": {...}, "regions": [names],
 # "sweeps": [[name, points, [row, ...]], ...]}}}, the sweeps sorted by name.
 #
 # The columns of a region row, in this order; trailing missing values are dropped, so the
 # measures most rows have come first. "region" is an index into the area's "regions" list
-# (the region names: guaranteed, loose, mixed; for regression the result's field names).
+# (the region names: guaranteed, loose, mixed; for multivariate also tiny, "exact d<=3" and
+# "atol=..."; for regression the result's field names). The last four measures are newer and
+# only some areas have them, so they come last and the earlier indices stay put.
 FIELDS = (
     "region",
     "points",
@@ -40,6 +42,10 @@ FIELDS = (
     "ulp_cond_p999",
     "mixed_max",
     "mixed_p999",
+    "nonfinite",
+    "abs_max",
+    "rel_cond_max",
+    "est_ratio_max",
 )
 
 

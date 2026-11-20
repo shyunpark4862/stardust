@@ -27,7 +27,7 @@ params:
   - name: tol
     type: float 또는 None
     kind: keyword-only
-    desc: "멈춤 판정의 허용오차(0 이상). brent·golden의 options['xtol'], bounded의 options['xatol']과 같아요. 함께 주면 ValueError예요."
+    desc: "멈춤 판정의 허용오차(0 이상). brent·golden의 options['xtol'], bounded의 options['xatol']과 같아요. 둘 다 None이 아닌 값으로 주면 ValueError예요. 옵션의 값이 None이면 기본값이에요."
   - name: options
     type: dict 또는 None
     kind: keyword-only
@@ -253,11 +253,11 @@ ValueError: minimize_scalar(): the lower bound must not be greater than the uppe
 >>> sd.optimize.minimize_scalar(f, bracket=(0, 1), bounds=(0, 3))
 Traceback (most recent call last):
     ...
-ValueError: minimize_scalar(): method='bounded' takes no bracket (it searches 'bounds')
+ValueError: minimize_scalar(): method='bounded' takes no 'bracket' (it searches 'bounds')
 >>> sd.optimize.minimize_scalar(f, bounds=(0, 3), method='brent')
 Traceback (most recent call last):
     ...
-ValueError: minimize_scalar(): method='brent' takes no bounds (method='bounded' does)
+ValueError: minimize_scalar(): method='brent' takes no 'bounds' (method='bounded' does)
 ```
 
 ## 허용오차와 반복 상한
@@ -311,13 +311,13 @@ ValueError: minimize_scalar(): method='brent' has no option 'xatol'
 
 ## 정확도의 한계
 
-최솟값에서는 f의 기울기가 0이라, 그 근처에서 f가 아주 평평해요. 최소점 $x^*$에서 δ만큼 떨어지면 f는 대략 $\tfrac12 f''(x^*)\,\delta^2$만큼만 커져요. 이 차이가 f를 계산할 때의 반올림(대략 $u\,|f(x^*)|$, $u = 2^{-53}$)보다 작으면 두 점의 f를 구별할 수 없어요. 그래서 x는
+최솟값에서는 f의 기울기가 0이라, 그 근처에서 f가 아주 평평해요. 최소점 $x^*$에서 δ만큼 떨어지면 f는 대략 $\tfrac12 f''(x^*)\,\delta^2$만큼만 커져요. 이 차이가 f를 계산할 때의 반올림(대략 $\tfrac{\varepsilon}{2}\,|f(x^*)|$, $\varepsilon = 2^{-52}$)보다 작으면 두 점의 f를 구별할 수 없어요. 그래서 x는
 
 $$
-|\delta| \approx \sqrt{\frac{2u\,|f(x^*)|}{f''(x^*)}}
+|\delta| \approx \sqrt{\frac{\varepsilon\,|f(x^*)|}{f''(x^*)}}
 $$
 
-보다 정확히 정해지지 않아요. 상대 정확도로 대략 $\sqrt{u} \approx 10^{-8}$이에요. 근 찾기는 끝자리까지 갈 수 있지만, 최솟값의 위치는 그 절반쯤의 자리만 믿을 수 있다는 뜻이에요. 기본 허용오차(1.48e-8)가 이 크기인 것도 그래서예요.
+보다 정확히 정해지지 않아요. 상대 정확도로 대략 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$이에요. 근 찾기는 끝자리까지 갈 수 있지만, 최솟값의 위치는 그 절반쯤의 자리만 믿을 수 있다는 뜻이에요. 기본 허용오차(1.48e-8)가 이 크기인 것도 그래서예요.
 
 ```python
 >>> x0 = math.log(5)
@@ -393,7 +393,7 @@ ValueError: minimize_scalar(): 'fun' must return a real number, not shape (2,)
 
 ## scipy를 아는 분께
 
-- 세 방법 모두 scipy 1.18.1과 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`를 내요(같은 f일 때). `bracket` 찾기(scipy의 `bracket()`)도 같아요.
+- 세 방법 모두 scipy 1.18.1과 같은 알고리즘과 멈춤 판정이고, 지금은 같은 점에서 f를 불러 같은 x, `n_iter`, `nfev`를 내요(같은 f일 때; 비트까지 같지만 약속은 아니에요). `bracket` 찾기(scipy의 `bracket()`)도 같아요.
 - scipy의 `success`는 `converged`, `nit`은 `n_iter`예요. scipy의 brent·golden 결과에는 `status`가 없는데, 여기서는 bounded의 번호(0, 1, 2)에 3(세 점을 못 찾음)과 4(찾기의 상한)를 더해 써요. `message`는 scipy의 글 그대로예요.
 - scipy는 세 점 찾기가 1,000번을 넘으면 `RuntimeError`를 내요. 여기서는 예외 없이 `status` 4의 결과예요. 세 점을 못 찾을 때(scipy의 `BracketError`)는 scipy처럼 가장 낮은 점과 `converged=False`예요.
 - 옵션의 `maxiter`는 `max_iter`예요. scipy의 `disp`는 없어요. 방법이 모르는 옵션은 scipy처럼 경고가 아니라 `ValueError`예요.

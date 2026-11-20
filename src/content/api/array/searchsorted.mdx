@@ -32,7 +32,7 @@ raises:
   - type: ValueError
     desc: x1이 1차원이 아닐 때, side가 'left'·'right'가 아닐 때, sorter의 길이가 x1과 다를 때.
   - type: IndexError
-    desc: sorter에 x1의 범위를 벗어난 위치가 있을 때.
+    desc: sorter에 x1의 범위를 벗어난 위치(음수 포함)가 있을 때.
 seeAlso: [sort, histogram, unique, take, quantile]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -194,6 +194,15 @@ Traceback (most recent call last):
 ValueError: searchsorted(): 'sorter' must be a 1-D int64 array as long as 'x1'
 ```
 
+`sorter`의 위치는 0부터 `len(x1) - 1`까지여야 해요. 인덱싱과 달리 음수를 뒤에서 세지 않아요. `argsort`가 주는 위치에는 음수가 없으니, 음수가 있다면 무언가 잘못 만든 `sorter`예요.
+
+```python
+>>> sd.searchsorted(u, 15, sorter=sd.asarray([1, 2, -1]))
+Traceback (most recent call last):
+    ...
+IndexError: searchsorted(): index -1 is out of bounds for axis 0 with size 3
+```
+
 ## NaN과 무한대
 
 크고 작음을 따지는 기준은 [`sort`](/api/array/sort/)와 같아요. **NaN(숫자가 아님)은 무한대보다도 큰 값**으로 쳐요. 그래서 NaN이 섞인 배열을 정렬하면 NaN이 맨 끝에 오고, `searchsorted`도 그 순서를 그대로 따라요.
@@ -284,5 +293,6 @@ ValueError: searchsorted(): 'side' must be 'left' or 'right', not 'middle'
 - `x1`, `x2`에 리스트를 받지 않아요. `x2`는 `sd.ndarray`나 Python 숫자예요.
 - `x2`가 숫자면 numpy 스칼라가 아니라 Python `int`를 돌려줘요.
 - `side`, `sorter`는 keyword-only예요.
+- `sorter`에 음수나 범위 밖의 위치가 있으면 `IndexError`예요. numpy는 음수 위치를 에러 없이 받아요.
 - NaN의 순서는 numpy와 같아요(가장 큰 값).
 - `ndarray.searchsorted` 메서드는 없어요. `sd.searchsorted(x1, x2)`로 쓰세요.

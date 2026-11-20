@@ -39,7 +39,9 @@ raises:
   - type: TypeError
     desc: A나 b가 배열로 바꿀 수 없을 때나 복소수일 때, tol이 수가 아닐 때, max_iter가 int가 아닐 때, bounds가 쌍의 꼴이 아닐 때.
   - type: ValueError
-    desc: A가 2차원이 아니거나 비었을 때, b가 1차원이 아니거나 길이가 A의 행 수와 다를 때, A나 b에 NaN·inf가 있을 때, bounds의 길이가 맞지 않을 때, lower가 upper보다 작지 않을 때, method 이름이 틀렸을 때, tol이 음수이거나 유한하지 않을 때, max_iter가 1보다 작을 때.
+    desc: A가 2차원이 아니거나 비었을 때, b가 1차원이 아니거나 길이가 A의 행 수와 다를 때, A나 b에 NaN·inf가 있을 때, bounds의 길이가 맞지 않을 때, lower가 upper보다 작지 않을 때, method 이름이 틀렸을 때, bounds를 변수마다의 (low, high) 쌍으로 줬을 때, tol이 음수이거나 유한하지 않을 때, max_iter가 1보다 작을 때.
+  - type: LinAlgError
+    desc: "경계 없는 해를 구하는 SVD가 수렴하지 않을 때(sd.linalg.LinAlgError)."
 seeAlso: [nnls, least_squares, results, basics]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -147,7 +149,7 @@ True
 | | `'trf'` (기본값) | `'bvls'` |
 |---|---|---|
 | 생각 | 상자 안쪽에서 출발해 안쪽에 머물며 다가가요(신뢰 영역 반사법) | 경계에 붙일 변수와 풀 변수를 나눠, 풀 변수만의 최소제곱을 되풀이해요(활성 집합법) |
-| 경계 위의 해 | 경계 바로 안쪽(위의 5.7e-13) | 경계값(드물게 $10^{-17}$ 수준의 반올림 찌꺼기) |
+| 경계 위의 해 | 경계 바로 안쪽(위의 5.7e-13) | 정확히 경계값 |
 | 멈춤 | 1차 최적성 < `tol` 또는 비용의 상대 감소 < `tol` | 같아요(KKT 조건의 위반 < `tol`) |
 | `max_iter` 기본 | 100 | n(처음 단계의 반복에 더해요) |
 
@@ -164,7 +166,7 @@ OptimizeResult(method='bvls', converged=True, cost=0.00686803, n_iter=2, x=[ 0.9
 True
 ```
 
-두 방법의 `cost`는 상대 $10^{-11}$ 안에서 같아요. 경계 위의 값이 필요하거나(이 값을 다른 계산에 넘길 때), `active_mask`를 정확히 읽고 싶으면 `'bvls'`를 써요. 다만 `'bvls'`가 걸음으로 경계에 닿게 한 변수는 그 걸음의 반올림 때문에 경계값과 $10^{-17}$ 남짓 다를 수 있어요(경계를 아주 조금 넘기도 해요). 경계가 x ≥ 0뿐이고 정확한 0이 필요하면 [nnls](/api/optimize/nnls/)가 맞아요. 알고리즘의 자세한 내용은 [선형 최소제곱의 구현](/internals/optimize/linear-least-squares/)에 있어요.
+두 방법의 `cost`는 상대 $10^{-11}$ 안에서 같아요. 경계 위의 값이 필요하거나(이 값을 다른 계산에 넘길 때), `active_mask`를 정확히 읽고 싶으면 `'bvls'`를 써요. 걸음 $x + \alpha(z - x)$로 경계에 닿은 변수는 반올림으로 경계를 아주 조금 넘을 수 있는데, `'bvls'`는 끝에 그 변수를 경계값으로 옮기고 `fun`, `cost`, `optimality`를 옮긴 x에서 다시 계산해요. 그래서 돌려주는 x는 언제나 경계 안이고, 경계에 걸린 변수(`active_mask`가 ±1)는 정확히 경계값이에요. 경계가 x ≥ 0뿐이면 [nnls](/api/optimize/nnls/)도 0인 성분을 정확히 0.0으로 줘요. 알고리즘의 자세한 내용은 [선형 최소제곱의 구현](/internals/optimize/linear-least-squares/)에 있어요.
 
 ## tol과 max_iter
 
@@ -192,7 +194,7 @@ True
 | `fun` | 잔차 Ax − b (m,) |
 | `optimality` | 1차 최적성의 척도. `'trf'`는 경계까지의 거리를 곱한 기울기의 ‖·‖∞, `'bvls'`와 경계 없는 해는 KKT 조건의 최대 위반 |
 | `active_mask` | 변수마다 경계에 걸렸는지 (n,) int64. −1 아래, 0 안쪽, 1 위 |
-| `converged` | `status > 0`인지 |
+| `converged` | `status > 0`이고 `cost`가 유한한지 |
 | `status`, `message` | 멈춘 이유(아래 표) |
 | `n_iter` | 반복 수. 경계 없는 해로 끝나면 0 |
 | `method` | `'trf'` 또는 `'bvls'` |
@@ -232,7 +234,13 @@ ValueError: lsq_linear(): 'b' must have 6 values (one per row of 'A'), not 5
 Traceback (most recent call last):
     ...
 ValueError: lsq_linear(): each lower bound must be less than its upper bound
+>>> sd.optimize.lsq_linear(A, b, bounds=([0, 0], [1, 1]))
+Traceback (most recent call last):
+    ...
+ValueError: lsq_linear(): 'bounds' must have 3 values (one per column of 'A'), not 2
 ```
+
+`bounds`는 `(lower, upper)` 꼴이에요. 변수마다의 쌍 `[(0, 1), (0, 1), (0, 1)]`은 `ValueError`이고(쌍이 둘이면 `(lower, upper)`로 읽어요), 변수마다 범위를 줄 때는 `([l1, l2, l3], [u1, u2, u3])`로 써요.
 
 ## 다른 함수와 비교
 
@@ -246,7 +254,7 @@ ValueError: lsq_linear(): each lower bound must be less than its upper bound
 
 ## scipy를 아는 분께
 
-- 결과는 scipy 1.18.1과 비트까지 같아요(`x`, `cost`, `fun`, `optimality`, `active_mask`, `status`, `message`, 반복 수).
+- 같은 알고리즘이고, 지금은 결과가 scipy 1.18.1과 비트까지 같아요(`x`, `cost`, `fun`, `optimality`, `active_mask`, `status`, `message`, 반복 수; 약속은 아니에요). 다만 `'bvls'`에서 scipy의 x가 경계를 반올림만큼 넘는 경우는 여기서 x를 경계로 옮기므로 `x`, `fun`, `cost`, `optimality`의 끝자리가 달라요(반복 수와 `status`는 같아요).
 - 이름: `nit`는 `n_iter`, `success`는 `converged`예요. `A`, `b`는 위치로만, 나머지는 키워드로만 받아요.
 - 받지 않는 것: `lsq_solver='lsmr'`, `lsmr_tol`, `lsmr_maxiter`, `verbose`, 희소 행렬과 `LinearOperator`. 결과에 `unbounded_sol`이 없어요. `bounds`의 기본값은 `None`이에요.
 - `active_mask`는 늘 int64예요(scipy는 `'bvls'`와 경계 없는 해에서 float).

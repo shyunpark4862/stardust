@@ -15,7 +15,7 @@ params:
     kind: positional-only
     desc: 값을 담은 배열. bool, int64, float64를 받아요. 정렬돼 있지 않아도 돼요.
   - name: q
-    type: int, float, 또는 1차원 실수 배열
+    type: int, float, 또는 1차원 int64·float64 배열
     kind: "positional-only, quantile·nanquantile에만"
     desc: 구할 지점의 비율. 모두 0 이상 1 이하여야 해요. 리스트는 받지 않아요.
   - name: axis
@@ -35,7 +35,7 @@ returns:
   desc: 언제나 float64. q가 배열이면 q의 축이 결과의 맨 앞에 붙어요. 남는 축이 없으면 Python float예요.
 raises:
   - type: TypeError
-    desc: x가 배열이 아니거나 복소수일 때, q가 리스트·bool처럼 숫자도 배열도 아닐 때, method가 문자열이 아닐 때.
+    desc: x가 배열이 아니거나 복소수일 때, q가 리스트·bool처럼 숫자도 배열도 아닐 때, q가 bool이나 복소수 배열일 때, method가 문자열이 아닐 때.
   - type: ValueError
     desc: q가 0과 1 사이를 벗어나거나 NaN일 때, q가 2차원 이상일 때, method 이름이 틀렸을 때, axis가 범위를 벗어났을 때.
 seeAlso: [sort, mean, nan-reductions, histogram, min-max]
@@ -381,7 +381,7 @@ ValueError: quantile(): 'q' must be in the range [0, 1]
 
 ### `q`는 숫자 또는 1차원 배열
 
-2차원 이상의 `q`는 받지 않아요. `True`, `False`도 숫자로 치지 않아요.
+2차원 이상의 `q`는 받지 않아요. `True`, `False`도 숫자로 치지 않아요. bool 배열도 마찬가지예요. 배열은 int64나 float64여야 해요.
 
 ```python
 >>> sd.quantile(x, sd.asarray([[0.5]]))
@@ -392,6 +392,10 @@ ValueError: quantile(): 'q' must be a scalar or 1-D
 Traceback (most recent call last):
     ...
 TypeError: quantile(): 'q' must be an int, a float or an sd.ndarray, not bool
+>>> sd.quantile(x, sd.asarray([True, False]))
+Traceback (most recent call last):
+    ...
+TypeError: quantile(): 'q' must be an int64 or float64 array, not bool
 ```
 
 ### `method`는 이름을 붙여서
@@ -440,4 +444,4 @@ TypeError: median(): not supported for complex128
 - 빈 배열이나 모두 NaN인 묶음은 경고 없이 NaN이에요. numpy의 `quantile`은 빈 배열에서 `IndexError`를 내요.
 - `percentile`, `nanpercentile`은 없어요. `q`를 100으로 나눠서 `quantile`을 쓰세요.
 - `method`, `axis`, `keepdims`는 keyword-only예요. `out=`, `overwrite_input=`, `weights=`, 옛 이름 `interpolation=`은 없어요.
-- 값은 numpy와 마지막 자리까지 같아요. 다만 `-0.0`과 `0.0`이 섞인 묶음에서 결과의 부호는 numpy와 다를 수 있어요(stardust는 `-0.0`을 `0.0`보다 작게 쳐서 언제나 같은 결과를 내요).
+- 값은 지금은 numpy와 마지막 자리까지 같아요(약속은 아니에요). 다만 `-0.0`과 `0.0`이 섞인 묶음에서 결과의 부호는 numpy와 다를 수 있어요(stardust는 `-0.0`을 `0.0`보다 작게 쳐서 언제나 같은 결과를 내요).

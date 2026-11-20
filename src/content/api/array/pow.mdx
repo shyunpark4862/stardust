@@ -433,7 +433,7 @@ TypeError: sqrt(): 'x' must be an sd.ndarray or a bool, int, float or complex, n
 - 정수의 음수 지수는 numpy와 달리 에러가 아니라 정수 결과예요(`1`, `±1`, 나머지는 `0`).
 - `reciprocal`은 정수를 넣어도 float64예요. numpy는 정수 나눗셈을 해서 `reciprocal(2) == 0`이에요.
 - `hypot`은 복소수를 받지 않아요(`TypeError`). 음수의 `sqrt`나 분수 제곱은 경고 없이 NaN이에요.
-- `pow`의 실수 결과는 numpy와 같은 함수로 계산해서 비트까지 같아요. 다른 경우는 둘이에요.
+- `pow`의 실수 결과는 numpy와 같은 함수로 계산해서 지금은 비트까지 같아요(약속은 아니에요). 다른 경우는 둘이에요.
   - 지수가 숫자 0.5일 때 numpy는 `sqrt`를 써서 `(-0.0) ** 0.5`가 `-0.0`, `(-inf) ** 0.5`가 NaN이에요. 여기는 `0.0`, `inf`예요.
   - 지수가 배열이면 numpy는 2, −1, 0.5인 자리에서도 일반 거듭제곱을 계산해서, 원소의 약 0.1%가 마지막 자리 하나 달라요. 여기는 지수가 숫자든 배열이든 `x * x`, `1 / x`, `sqrt(x)`와 같은 값이에요.
-- `sqrt`, `square`, `reciprocal`, `hypot`은 numpy와 비트까지 같아요.
+- `sqrt`, `square`, `reciprocal`, `hypot`도 지금은 numpy와 비트까지 같아요.

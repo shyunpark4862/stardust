@@ -8,7 +8,7 @@ signatures:
 summary: 값마다 평균에서 표준편차 몇 개만큼 떨어져 있는지(표준 점수)를 구해요. 결과는 입력과 모양이 같은 배열이고, 평균 0·표준편차 1로 맞춰져요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 표준화할 데이터. bool·정수는 float64로 바꿔서 계산해요.
   - name: axis
@@ -24,11 +24,11 @@ params:
     kind: keyword-only
     desc: "'propagate'(NaN이 있는 줄 전체가 NaN), 'omit'(NaN은 NaN으로 두고 나머지로 평균·표준편차를 구함), 'raise'(ValueError) 중 하나예요."
 returns:
-  type: ndarray
-  desc: x와 모양이 같은 float64 배열. Python 숫자 하나를 넣으면 원소 하나짜리 1차원 배열이에요. 줄의 값이 모두 같으면 그 줄은 NaN이에요.
+  type: ndarray 또는 Python float
+  desc: x와 모양이 같은 float64 배열. 숫자 하나를 넣으면 Python float예요. 줄의 값이 모두 같으면 그 줄은 NaN이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
   - type: OverflowError
@@ -141,13 +141,13 @@ array([nan, nan, nan], dtype=float64)
 array([nan, nan], dtype=float64)
 ```
 
-### Python 숫자 하나는 원소 하나짜리 배열이 돼요
+### 숫자 하나를 넣으면 Python float예요
 
-결과가 언제나 배열이라서, 숫자 하나를 넣으면 `array([nan])`이 나와요(값이 하나라 표준편차가 0이에요).
+결과는 입력과 모양이 같아서, 숫자 하나를 넣으면 Python `float` 하나가 나와요. 값이 하나라 표준편차가 0이므로 NaN이에요.
 
 ```python
 >>> sd.stats.zscore(3.0)
-array([nan], dtype=float64)
+nan
 ```
 
 ### 평균이 아주 커도 정확해요
@@ -171,7 +171,7 @@ array([nan], dtype=float64)
 
 ```python
 >>> sd.stats.Normal().ccdf(2.0)
-0.02275013194817921
+0.022750131948179212
 ```
 
 ## 분포로 표준화하는 것과의 차이

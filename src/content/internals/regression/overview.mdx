@@ -155,13 +155,14 @@ Python 층의 결과 클래스는 두 갈래예요.
 
 ### 형과 모양
 
-`_as_real`(`src/stardust/regression/_linear.py`)이 y, X, 가중치를 float64 `sd.ndarray`로 바꿔요.
+`_as_real_owned`(`src/stardust/regression/_linear.py`)가 y, X, 가중치를 float64 `sd.ndarray`로 바꿔요. 바꾼 배열이 새로 만든 메모리인지도 함께 돌려줘서, 결과가 입력을 복사할지 정하는 데 써요([결과 객체와 지연 계산](#결과-객체와-지연-계산)). 리스트, 튜플, numpy 배열, frame의 열을 받아요.
 
 ```python
-def _as_real(x, func, arg, per_row=None):
-    """(x as a float64 sd.ndarray, its column names or None). Takes sd.ndarrays, sequences of
-    numbers and frame Series/DataFrames (missing values become NaN). per_row: for an argument
-    with a value per row, what it must have (e.g. "5 values like 'y'"), said for a scalar."""
+def _as_real_owned(x, func, arg, per_row=None):
+    """_as_real's (array, names) and whether the array is new memory of its own (a list's
+    conversion, a dtype conversion, a DataFrame's to_array), which no caller's object can
+    change later; False for the caller's sd.ndarray, a view of a numpy array (asarray shares
+    a buffer's memory) or a Series' view of its column."""
     names = None
     if isinstance(x, (_frame.Series, _frame.DataFrame)):
         if isinstance(x, _frame.Series):
@@ -172,7 +173,7 @@ def _as_real(x, func, arg, per_row=None):
             a = x.to_array(dtype=_sd.float64, na_value=math.nan)
         except TypeError, ValueError:  # a string column is a ValueError of to_array
             raise TypeError(f"{func}(): '{arg}' must have numeric columns") from None
-        return a, names
+        return a, names, isinstance(x, _frame.DataFrame)
 ```
 
 - frame은 `to_array(dtype=float64, na_value=NaN)`로 바꾸고 컬럼 이름만 따로 챙겨요. frame의 결측은 여기서 NaN이 되므로 뒤의 NaN 정책을 그대로 따라요. 문자열 열은 `to_array`가 숫자로 읽을 수 있을 때("1", "2.5" 같은)만 받고, 아니면 `TypeError`("'X' must have numeric columns")예요.
@@ -331,13 +332,37 @@ enum Stat : int {
     def _cached(self, name, make):
         c = self._cache
         if name not in c:
-            c[name] = make()
+            c[name] = _ro(make())
         return c[name]
 ```
 
 배치 결과에서는 스칼라 필드가 배치 모양의 배열이고, 회귀 하나면 Python float예요. `_stat(i)`와 `_scalar(v)`가 그 둘을 가려요.
 
-`_fitargs`의 y, X, 가중치는 적합할 때 복사해 둔 것이에요(`_own`). 그래서 적합 뒤에 넘긴 배열(이나 그 배열이 가리키는 numpy 배열)을 고쳐도 나중에 읽는 진단은 바뀌지 않아요. 메모리는 X 하나만큼 더 들어요. GLS는 백색화한 y와 X를 새로 만들어 보관하므로 따로 복사하지 않아요. 척도를 바꿔 적합했으면 보관하는 것도 바꾼 y와 X라서, 진단이 커널을 다시 불러도 적합과 같은 단위의 문제를 풀어요. 정규화의 결과도 적합값을 읽을 때 쓰는 y, X, 가중치를 같은 방식으로 복사해 둬요.
+캐시에 남기는 값과 커널이 낸 배열(`_RegressionResult.__init__`이 `raw`의 모든 배열에)은 `_ro`를 거쳐요. `_ro`는 배열을 복사하지 않고 그 자리에서 쓰기 금지로 표시해요. 그 배열로 나중에 만든 뷰도 쓰기 금지예요. 그래서 사용자가 돌려받은 `params`나 `bse`를 고쳐 나중에 계산하는 t, 구간, `predict`가 바뀌는 일이 없고, 복사 비용도 들지 않아요. 부를 때마다 새로 계산하는 메서드(`conf_int()`, `predict()`)의 결과는 캐시를 거치지 않으니 보통 배열이에요.
+
+```python
+def _ro(v):
+    """v as a result keeps and gives it (API.md §2): an sd.ndarray is made read-only in
+    place (no copy; views made from it later are read-only too), so that changing a returned
+    field cannot change the fields computed from it later; a tuple's arrays too (a cached pair,
+    a result namedtuple). Other values pass."""
+    if isinstance(v, _sd.ndarray):
+        v._set_readonly()
+    elif isinstance(v, tuple):
+        for e in v:
+            _ro(e)
+    return v
+```
+
+```python
+>>> rr = sd.regression.ols(sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1]), sd.arange(6.0))
+>>> rr.params[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+`_fitargs`의 y, X, 가중치는 결과가 혼자 가진 배열이에요(`_prepare`의 `own=True`). 입력 정리의 `_as_real_owned`가 바꾼 배열이 새로 만든 메모리인지(리스트의 변환, dtype 변환, `DataFrame`의 `to_array`)를 함께 알려 주고, 사용자의 `sd.ndarray`나 numpy 배열의 뷰처럼 남과 나누는 메모리일 때만 복사해요. 그래서 적합 뒤에 넘긴 배열(이나 그 배열이 가리키는 numpy 배열)을 고쳐도 나중에 읽는 진단은 바뀌지 않아요. 메모리는 많아야 X 하나만큼 더 들어요. GLS는 백색화한 y와 X를 새로 만들어 보관하므로 따로 복사하지 않아요. 척도를 바꿔 적합했으면 보관하는 것도 바꾼 y와 X라서, 진단이 커널을 다시 불러도 적합과 같은 단위의 문제를 풀어요. 정규화의 결과도 적합값을 읽을 때 쓰는 y, X, 가중치를 같은 방식으로 복사해 둬요.
 
 ```python
 >>> y = sd.asarray([1.0, 2.1, 2.9, 4.2, 4.8, 6.1])
@@ -350,16 +375,15 @@ True
 
 적합 뒤에 `y`를 고쳤지만, 처음 읽는 `durbin_watson`은 적합할 때의 값으로 계산돼요.
 
-적합의 설정을 적은 필드(`param_names`, `cov_type`, `family`, `link`, `alpha`, `l1_ratio`, `standardize`, `method`, `norm`, `q`)는 `__slots__`의 밑줄 붙은 자리에 두고 setter 없는 속성으로 내보여요. 지연 계산한 필드는 그 설정으로 만든 값이라, 설정을 나중에 바꿀 수 있으면 캐시와 어긋나기 때문이에요. 바꾸려 하면 `AttributeError`예요. 다만 대입을 막는 것만으로는 리스트나 배열 필드의 내용을 고치는 것(`r.param_names.append(...)`, `r.q[0] = ...`)까지 막지 못해요. 그래서 리스트나 배열인 설정 필드(`param_names`, 경로의 배열 `alpha`, 분위 배열 `q`)는 읽을 때마다 `_fresh`가 새 복사본을 만들어 돌려줘요. 돌려받은 것을 고쳐도 결과가 보관한 설정은 그대로예요. 넘긴 배열을 적합 뒤에 고쳐도 마찬가지예요(적합할 때 복사해 둬요).
+적합의 설정을 적은 필드(`param_names`, `cov_type`, `family`, `link`, `alpha`, `l1_ratio`, `standardize`, `method`, `norm`, `q`)는 `__slots__`의 밑줄 붙은 자리에 두고 setter 없는 속성으로 내보여요. 지연 계산한 필드는 그 설정으로 만든 값이라, 설정을 나중에 바꿀 수 있으면 캐시와 어긋나기 때문이에요. 바꾸려 하면 `AttributeError`예요. 다만 대입을 막는 것만으로는 리스트 필드의 내용을 고치는 것(`r.param_names.append(...)`)까지 막지 못해요. 그래서 리스트인 `param_names`는 읽을 때마다 `_fresh`가 새 리스트를 만들어 돌려줘요. 배열인 설정 필드(경로의 배열 `alpha`, 분위 배열 `q`)는 다른 결과 배열처럼 쓰기 금지라 그대로 돌려줘요. 넘긴 배열을 적합 뒤에 고쳐도 결과의 설정은 그대로예요(적합할 때 복사해 둬요).
 
 ```python
 def _fresh(v):
-    """A configuration field as the result gives it: a new list or array at each
-    access, so that changing what was returned does not change the result."""
+    """A configuration field as the result gives it: a list is copied at each access, so that
+    changing the list returned does not change the result. Any other value is returned as it
+    is (an array field is a read-only view, which cannot be changed)."""
     if isinstance(v, list):
         return list(v)
-    if isinstance(v, _sd.ndarray):
-        return v.copy()
     return v
 ```
 
@@ -371,11 +395,14 @@ def _fresh(v):
 >>> rq = sd.regression.quantreg(y, x, q=[0.3, 0.6])
 >>> qq = rq.q
 >>> qq[0] = 0.9
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
 >>> rq.q
 array([0.3, 0.6], dtype=float64)
 ```
 
-설정 필드는 작아서(열 이름 몇 개, alpha나 분위 몇 개) 읽을 때마다 복사해도 비용이 거의 없어요.
+`param_names`는 작아서(열 이름 몇 개) 읽을 때마다 복사해도 비용이 거의 없어요.
 
 결과를 만들 때 계수에 $+0.0$을 더해요(`_RegressionResult.__init__`과 `_PenalizedResult.__init__`). QR 풀이나 꼭짓점 계산이 내는 $-0.0$은 연산 순서가 남긴 부호일 뿐이라, 정확히 0인 계수는 어느 함수에서나 $+0.0$이에요.
 
@@ -413,9 +440,11 @@ ValueError: predict(): 'X_new' contains infinity
         the model, whatever their coefficient (a NaN in X_new there gives NaN, also under a
         coefficient 0), and 0.0 for the aliased ones, which take no part (R's predict.lm); every
         column of a NaN regression, whose NaN params give NaN."""
+
         def make():
             keep = _sd.logical_or(self._raw[5], self._per(self._isnan(), 1))
             return self.params, _sd.where(keep, 1.0, 0.0)
+
         return self._cached("pred_args", make)
 ```
 
@@ -648,30 +677,37 @@ LAPACK 호출(`geqrf`, `orgqr`, `trtrs` 등)의 결과도 스레드 수와 상�
 
 메시지의 앞은 공개 함수 이름이고(`fit`의 첫 인자), 배치면 `(at batch index (1,))`가 붙어요. linalg와 같은 꼴이에요. 형과 모양의 에러(`TypeError`, `ValueError`)는 커널에 가기 전에 Python이 같은 꼴로 내요.
 
-결과 메서드의 호출 모양이 틀린 경우(키워드 전용 옵션을 위치로 줌, 인자가 빠지거나 모르는 키워드)는 Python 자신이 `TypeError`를 내는데, 그 메시지는 `_RegressionResult.conf_int() takes 1 positional argument but 2 were given`처럼 내부 클래스 이름이 붙고 `self`까지 세요. 그래서 모듈을 읽을 때 `_call_errors(cls)`가 클래스에 정의된 공개 메서드를 하나씩 감싸요. 감싼 메서드는 원래 메서드를 부르고, `TypeError`가 나면 두 가지를 봐요.
+호출 모양이 틀린 경우(위치로만 받는 데이터를 키워드로 줌, 키워드 전용 옵션을 위치로 줌, 인자가 빠지거나 모르는 키워드)는 Python 자신이 `TypeError`를 내요. 그 메시지는 `ols() got an unexpected keyword argument 'foo'`처럼 다른 에러의 `ols(): …` 꼴과 다르고, 결과 메서드에서는 `_RegressionResult.conf_int() takes 1 positional argument but 2 were given`처럼 내부 클래스 이름이 붙고 `self`까지 세요. 그래서 라이브러리 공통의 `stardust._calls`가 공개 함수(`@_calls.function`)와 결과 클래스의 공개 메서드(`_calls.methods(cls)`)를 감싸요. 감싼 함수는 원래 함수를 부르고, `TypeError`가 나면 두 가지를 봐요(`src/stardust/_calls.py`).
 
-- 메시지가 그 메서드의 `__qualname__`과 `() `로 시작하는지.
-- 트레이스백에 감싼 함수 아래의 프레임이 없는지. 인자를 묶는 데 실패한 에러는 원래 메서드의 본문에 들어가기 전에 나므로 프레임이 하나뿐이에요. 본문이 낸 `TypeError`(`'alpha' must be an int or a float` 같은 검사)는 아래에 프레임이 있어 그대로 지나가요.
+- 메시지가 그 함수의 `__qualname__`과 `() `로 시작하는지.
+- 트레이스백에 감싼 함수 아래의 프레임이 없는지. 인자를 묶는 데 실패한 에러는 원래 함수의 본문에 들어가기 전에 나므로 프레임이 하나뿐이에요. 본문이 낸 `TypeError`(`'alpha' must be an int or a float` 같은 검사)는 아래에 프레임이 있어 그대로 지나가요.
 
-둘 다 맞으면 `_call_message`가 정규식으로 개수를 읽어 `self`를 뺀 수로 다시 쓰고(`takes 1 ... but 2 were given` → `takes 0 ... but 1 was given`, 단수와 복수도 맞춰요), 앞에 메서드 이름을 붙여요. 다른 에러와 같은 `conf_int(): …` 꼴이에요. `functools.wraps`로 감싸므로 `inspect.signature`와 도움말은 원래 메서드의 것이에요.
+둘 다 맞으면 `message`가 정규식으로 개수를 읽어, 메서드면 `self`를 뺀 수로 다시 쓰고(`takes 1 ... but 2 were given` → `takes 0 ... but 1 was given`, 단수와 복수도 맞춰요), `got an unexpected`는 `unexpected`로 줄인 뒤 앞에 이름을 붙여요. 다른 에러와 같은 `ols(): …`, `conf_int(): …` 꼴이에요. `functools.wraps`로 감싸므로 `inspect.signature`와 도움말은 원래 함수의 것이에요. 감싸는 비용이 호출마다 60 ns쯤이라, 몇백 ns에 끝나는 작은 메서드(배열의 메서드 등)는 Python의 꼴을 그대로 두고 회귀의 함수와 결과 메서드처럼 한 번에 일이 많은 곳에만 써요.
 
 ```python
-        def make(fn=fn, name=name):
-            head = f"{fn.__qualname__}() "
+def _converted(e, head, name, self_counted):
+    """The library's form of e when e is the binding error of the function named by `head` (no
+    frame of the function beneath the wrapper's), else None."""
+    msg = str(e)
+    if not msg.startswith(head) or e.__traceback__.tb_next is not None:
+        return None
+    return TypeError(message(name, msg[len(head) :], self_counted))
 
-            @functools.wraps(fn)
-            def method(self, *args, **kwargs):
-                try:
-                    return fn(self, *args, **kwargs)
-                except TypeError as e:
-                    msg = str(e)
-                    # only the call's own binding error (no frame of fn beneath this one)
-                    if not msg.startswith(head) or e.__traceback__.tb_next is not None:
-                        raise
-                    raise TypeError(_call_message(name, msg[len(head) :])) from None
 
-            method._call_errors = True
-            return method
+def _wrap(fn, name, self_counted):
+    head = f"{fn.__qualname__}() "
+
+    @functools.wraps(fn)
+    def call(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except TypeError as e:
+            c = _converted(e, head, name, self_counted)
+            if c is None:
+                raise
+            raise c from None
+
+    return call
 ```
 
 ```python
@@ -683,6 +719,10 @@ TypeError: conf_int(): takes 0 positional arguments but 1 was given
 Traceback (most recent call last):
     ...
 TypeError: predict(): unexpected keyword argument 'foo'
+>>> sd.regression.ols([1.0, 2.0, 3.0], [0.0, 1.0, 2.0], foo=1)
+Traceback (most recent call last):
+    ...
+TypeError: ols(): unexpected keyword argument 'foo'
 ```
 
 ```python
@@ -697,5 +737,5 @@ ValueError: wls(): 'weights' must be >= 0
 ```
 
 <Callout type="note">
-값 때문에 생기는 상태는 에러가 아니에요. 겹친 열은 그 계수가 NaN이고 `rank`가 줄어요. 모든 잔차가 반올림 수준 안인 완전 적합은 `bse`가 0, t가 ±inf예요. 남은 자유도가 없으면(`df_resid` = 0) 척도가 0/0이라 추론 전부가 NaN이에요. NaN이 있는 회귀는 모든 값이 NaN이고, 쓰인 행이 없는 회귀는 NaN에 `nobs` 0이에요. 이런 상태에서 경고도 내지 않아요.
+값 때문에 생기는 상태는 에러가 아니에요. 겹친 열은 그 계수가 NaN이고 `rank`가 줄어요. 모든 잔차가 반올림 수준 안인 완전 적합은 `bse`가 0, t와 p가 NaN이에요. 남은 자유도가 없으면(`df_resid` = 0) 척도가 0/0이라 추론 전부가 NaN이에요. NaN이 있는 회귀는 모든 값이 NaN이고, 쓰인 행이 없는 회귀는 NaN에 `nobs` 0이에요. 이런 상태에서 경고도 내지 않아요.
 </Callout>

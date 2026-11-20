@@ -252,7 +252,7 @@ array([ 1.414213562373095, 1.7320508075688774,   2.23606797749979], dtype=float6
 >>> A = sd.asarray([[1.0, 0.0], [1, 1], [1, 2], [1, 3]])
 >>> b = sd.asarray([1.0, 0.4, -0.3, -0.9])
 >>> sd.optimize.nnls(A, b)
-OptimizeResult(converged=True, cost=1.025, n_iter=1, x=[0.04999999999999998                 0.0])
+OptimizeResult(method='nnls', converged=True, cost=1.025, n_iter=1, x=[0.04999999999999998                 0.0])
 >>> sd.optimize.lsq_linear(A, b, bounds=([0.0, -0.5], [2.0, 0.0]), method='bvls')
 OptimizeResult(method='bvls', converged=True, cost=0.05, n_iter=2, x=[ 0.8 -0.5])
 ```
@@ -466,7 +466,7 @@ ValueError: least_squares(): 'fun' must return a 1-dimensional array, not shape 
 >>> sd.optimize.minimize(dist, [0.0, 0.0], args=(1.0,))
 Traceback (most recent call last):
     ...
-TypeError: minimize() got an unexpected keyword argument 'args'
+TypeError: minimize(): unexpected keyword argument 'args'
 >>> sd.optimize.minimize(lambda x: dist(x, 1.0), [0.0, 0.0]).converged
 True
 ```
@@ -479,14 +479,14 @@ True
 >>> sd.optimize.minimize(rosen, x0=[-1.2, 1.0])
 Traceback (most recent call last):
     ...
-TypeError: minimize() got some positional-only arguments passed as keyword arguments: 'x0'
+TypeError: minimize(): got some positional-only arguments passed as keyword arguments: 'x0'
 >>> sd.optimize.minimize(rosen, [-1.2, 1.0], 'bfgs')
 Traceback (most recent call last):
     ...
-TypeError: minimize() takes 2 positional arguments but 3 were given
+TypeError: minimize(): takes 2 positional arguments but 3 were given
 ```
 
-`x0`는 1차원이고 비어 있지 않고 유한해야 해요. 실수의 리스트, `sd.ndarray`, numpy 배열을 받고, bool과 정수는 float64로 바꿔요. 복소수는 받지 않아요.
+`x0`는 1차원이고 비어 있지 않고 유한해야 해요. 실수의 리스트, `sd.ndarray`, numpy 배열, `sd.frame`의 `Series`를 받고, bool과 정수는 float64로 바꿔요. 복소수는 받지 않아요. `Series`의 빠진 값은 NaN이라 유한하지 않아서 `ValueError`예요.
 
 ```python
 >>> sd.optimize.minimize(rosen, [1.0, sd.nan])
@@ -524,7 +524,7 @@ ValueError: minimize(): 'method' must be 'nelder-mead', 'bfgs', 'l-bfgs-b', 'new
 >>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='bfgs', bounds=(0.0, 2.0))
 Traceback (most recent call last):
     ...
-ValueError: minimize(): method='bfgs' takes no bounds (method='l-bfgs-b' and method='nelder-mead' do)
+ValueError: minimize(): method='bfgs' takes no 'bounds' (method='l-bfgs-b' and method='nelder-mead' do)
 >>> sd.optimize.root_scalar(f, method='newton')
 Traceback (most recent call last):
     ...
@@ -567,6 +567,13 @@ Traceback (most recent call last):
 ValueError: minimize(): give 'tol' or options['gtol'], not both
 ```
 
+어느 옵션이든 값이 `None`이면 그 옵션의 기본값을 써요. 그래서 `tol`과 함께 준 같은 키가 `None`이면 충돌이 아니에요.
+
+```python
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], tol=1e-8, options={'gtol': None}).converged
+True
+```
+
 옵션 값의 검사는 다른 영역과 같은 꼴이에요. 정수 옵션에 float를, bool 옵션에 정수를 주면 `TypeError`이고, 허용오차는 0 이상의 유한한 수여야 해요.
 
 ```python
@@ -604,7 +611,7 @@ ValueError: minimize(): 'gtol' must be a finite number >= 0
 (-2.220446049250313e-16, 10)
 ```
 
-기울기나 함숫값의 판정은 해의 위치와 간접적으로만 이어져요. 최솟값 근처에서는 함수가 $f(x^*) + \tfrac12 f''(x^*)(x - x^*)^2$처럼 평평하니, $x$가 $\delta$만큼 떨어져도 함숫값은 $\delta^2$만큼만 달라요. 그래서 함숫값만 보는 방법은 위치를 상대 $\sqrt{u} \approx 10^{-8}$보다 정확히 정하기 어려워요($u = 2^{-53}$, 단위 반올림). Rosenbrock의 결과 `x`가 $1$에서 $10^{-5}$쯤 떨어진 것도 `gtol=1e-5`의 판정에서 멈췄기 때문이에요. 더 정확한 해가 필요하면 허용오차를 줄이고, 결과의 기울기(`r.jac`)나 잔차로 확인해요.
+기울기나 함숫값의 판정은 해의 위치와 간접적으로만 이어져요. 최솟값 근처에서는 함수가 $f(x^*) + \tfrac12 f''(x^*)(x - x^*)^2$처럼 평평하니, $x$가 $\delta$만큼 떨어져도 함숫값은 $\delta^2$만큼만 달라요. 그래서 함숫값만 보는 방법은 위치를 상대 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$보다 정확히 정하기 어려워요($\varepsilon = 2^{-52}$, 기계 엡실론). Rosenbrock의 결과 `x`가 $1$에서 $10^{-5}$쯤 떨어진 것도 `gtol=1e-5`의 판정에서 멈췄기 때문이에요. 더 정확한 해가 필요하면 허용오차를 줄이고, 결과의 기울기(`r.jac`)나 잔차로 확인해요.
 
 ### 상한에 닿으면 멈춰요
 
@@ -657,7 +664,7 @@ ValueError: least_squares(): 'fun' is not finite at 'x0'
 
 `sd.optimize`가 내는 에러의 메시지는 `함수 이름(): `으로 시작하고, 어떤 인자가 왜 틀렸는지 적어요. 다른 영역과 같은 규칙이에요.
 
-- `TypeError`: 인자의 종류가 틀렸을 때. 호출할 수 없는 `fun`, dict가 아닌 `options`, 정수 자리의 float, 복소수 입력
+- `TypeError`: 인자의 종류가 틀렸을 때. 호출할 수 없는 `fun`, dict가 아닌 `options`, 정수 자리의 float, 복소수 입력, 사용자 함수가 돌려준 bool(비교식을 돌려준 실수 같은 것), 모르는 키워드나 빠진 인자 같은 호출 모양의 잘못
 - `ValueError`: 종류는 맞는데 값이 틀렸을 때. 모양, 범위, 모르는 방법 이름이나 옵션 키, 방법과 맞지 않는 인자, 근을 끼지 않는 구간, 시작점에서 유한하지 않은 값
 
 ```python
@@ -675,9 +682,7 @@ ValueError: root_scalar(): 'bracket' does not enclose a root: f(a) and f(b) have
 
 ### 같은 입력이면 같은 비트
 
-같은 입력이면 스레드 수와 상관없이 결과가 비트까지 같아요. 사용자 함수가 같은 입력에 같은 값을 돌려주면 결과도 늘 같아요.
-
-각 방법은 scipy 1.18.1의 같은 이름의 방법과 같은 순서로 계산해요. 그래서 같은 문제에서 사용자 함수를 부르는 점, 반복 수, 멈춘 이유가 scipy와 같아요. 대부분의 방법은 부르는 점이 차례대로 비트까지 같아요. BFGS(역헤시안을 갱신하는 순서)와 `least_squares`의 `'trf'`(야코비안을 분해하는 순서)는 반올림의 순서가 달라서 끝자리가 다를 수 있고, BFGS는 그 차이로 반복 수가 달라지기도 해요. 함수마다 같은 범위는 각 페이지와 [정확도와 성능](/internals/optimize/accuracy-performance/)에 있어요.
+같은 입력이면 스레드 수와 상관없이 결과가 비트까지 같아요. 사용자 함수가 같은 입력에 같은 값을 돌려주면, 반복점도 셈도 결과도 늘 같아요.
 
 ```python
 >>> calls = []
@@ -687,9 +692,14 @@ ValueError: root_scalar(): 'bracket' does not enclose a root: f(a) and f(b) have
 >>> r = sd.optimize.minimize(rec, [-1.2, 1.0], method='l-bfgs-b')
 >>> r.n_iter, r.nfev, len(calls)
 (37, 138, 138)
+>>> first = list(calls)
+>>> calls.clear()
+>>> r2 = sd.optimize.minimize(rec, [-1.2, 1.0], method='l-bfgs-b')
+>>> calls == first, r2.x.tolist() == r.x.tolist()
+(True, True)
 ```
 
-scipy의 `minimize(method='L-BFGS-B')`도 이 문제에서 37번 반복하고 같은 138개의 점에서 함수를 불러요. 아래 [scipy를 아는 분께](#scipy를-아는-분께)에 직접 견주는 예가 있어요.
+결과의 정확도는 멈춤 판정이 정해요([허용오차](#허용오차는-멈춤-판정이에요)). 이 영역이 약속하는 것은 스레드 수와 상관없이 같은 비트, 그리고 그 판정을 통과한 결과의 정확도예요. scipy와 견주면 어디까지 같은지는 [scipy를 아는 분께](#scipy와-같은-알고리즘-끝자리는-다를-수-있어요)에 있어요.
 
 ### 스레드와 GIL
 
@@ -724,7 +734,19 @@ scipy의 `minimize(method='L-BFGS-B')`도 이 문제에서 37번 반복하고 �
 - **경계 밖의 x0**: scipy의 `minimize`는 말없이 경계 안으로 옮기지만 여기서는 `ValueError`예요.
 - **셈**: `least_squares`의 `nfev`는 차분 야코비안의 호출도 세고(scipy는 세지 않아요), `root`의 `nfev`는 scipy보다 2 적어요(scipy는 시작점에서 두 번 더 부르고 그것을 세요). 자세한 것은 [결과 객체 읽기](/api/optimize/results/#scipy를-아는-분께)에 있어요.
 
-Nelder–Mead처럼 부르는 점이 비트까지 같은 방법은 같은 문제를 두 라이브러리로 풀면 반복 수, 호출 수, 결과가 같아요.
+### scipy와 같은 알고리즘, 끝자리는 다를 수 있어요
+
+각 방법은 scipy 1.18.1의 같은 이름의 방법과 같은 알고리즘, 같은 멈춤 판정을 써요. `status`의 번호와 뜻, 옵션의 기본값도 scipy의 것이에요. 그래서 같은 문제에서 반복점, 반복 수, 멈춘 이유가 scipy와 같아요. 다만 반올림 크기의 결과는 정확도 안이면 되고 scipy와 끝자리가 다를 수 있어요. 반복 방법에서는 그 끝자리 차이로 반복 경로와 반복 수가 조금 달라질 수 있어요.
+
+지금은 대부분의 방법이 scipy와 사용자 함수를 부르는 점까지 차례대로 비트까지 같아요. Nelder–Mead, L-BFGS-B, `hess`나 `hessp`를 준 newton-cg, trust-ncg, trust-exact, `root_scalar`와 `minimize_scalar`, 배치 함수, `root`, `lsq_linear`과 `nnls`, 잔차가 변수보다 아주 많지는 않은 `least_squares(method='lm')`이 그래요. 다만 약속하는 것은 아니에요(약속은 스레드 수와 상관없이 같은 비트와 정확도예요). 다음은 지금도 반올림만큼 달라요.
+
+- BFGS: 역헤시안을 더 싼 순서로 갱신해요. 그 차이로 반복 수와 `nfev`가 가끔 몇 번 달라요. 위의 [Rosenbrock](#최솟값-찾기)을 scipy는 32번 반복, `nfev` 117로 풀어요.
+- `least_squares`의 `'trf'`: 야코비안을 분해하는 순서가 달라요. 잔차가 변수보다 아주 많은 `'lm'`도 그래요.
+- `hess`와 `hessp`가 없는 newton-cg: 헤시안과 벡터의 곱을 기울기의 차분으로 만들 때 기울기를 덜 불러서 부르는 점이 달라요.
+
+scipy를 일부러 따르지 않는 곳도 있어요. 유한하지 않은 값을 만났거나 scipy가 해가 아닌 점에서 수렴을 알리는 경로, 몇 가지 셈, `max_iter=0`, `bracket_root`의 구간 정렬, `lsq_linear(method='bvls')`의 경계 밖 반올림이에요. 각 함수 페이지의 scipy 절에 있어요.
+
+아래는 Nelder–Mead를 두 라이브러리로 푼 거예요. 부르는 점과 결과가 같아요. 반복 수만 세는 법이 달라서, scipy의 `nit`는 한 반복 수보다 하나 많아요.
 
 ```python
 >>> import numpy as np
@@ -732,7 +754,7 @@ Nelder–Mead처럼 부르는 점이 비트까지 같은 방법은 같은 문제
 >>> a = so.minimize(rosen, np.array([-1.2, 1.0]), method='Nelder-Mead')
 >>> b = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead')
 >>> (a.nit, a.nfev, a.success), (b.n_iter, b.nfev, b.converged)
-((85, 159, True), (85, 159, True))
+((85, 159, True), (84, 159, True))
 >>> a.x.tolist() == b.x.tolist()
 True
 ```

@@ -255,13 +255,23 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
 새 결과 배열은 입력의 메모리 축 순서를 따라야 해요(numpy의 `order='K'`). 그래서 strides의 절댓값이 큰 축부터 정렬하는데, 같은 값이면 원래 순서를 지켜야 하므로 안정 정렬이어야 해요. `std::stable_sort`는 안정성을 위해 호출마다 임시 버퍼를 할당해요. 축은 많아야 32개이므로 할당이 없는 insertion sort를 써요. 시간 복잡도는 $O(d^2)$($d$는 차원 수)이지만 $d \le 32$이고 보통 1~3이라 할당 하나보다 훨씬 싸요(`array/ndarray.cpp`의 `new_array_like`).
 
 ```cpp
+// array/ndarray.cpp의 new_array_like (발췌)
 std::array<int, kMaxNdim> order;
 std::iota(order.begin(), order.begin() + proto.ndim, 0);
-for (int i = 1; i < proto.ndim; ++i)              // 안정 insertion sort, 할당 없음
-    for (int j = i; j > 0 && std::llabs(proto.strides[order[j]]) >
-                             std::llabs(proto.strides[order[j - 1]]); --j)
-        std::swap(order[j], order[j - 1]);
+std::array<int, kMaxNdim> slots;  // the places of the axes with a stride
+int live = 0;
+for (int d = 0; d < proto.ndim; ++d)
+    if (proto.strides[d] != 0) slots[live++] = d;
+std::array<int, kMaxNdim> axes = slots;
+// Insertion sort (stable): at most 32 axes, and std::stable_sort would
+// allocate a scratch buffer on every call (docs/design/array.md §11).
+for (int i = 1; i < live; ++i)
+    for (int j = i; j > 0 && std::llabs(proto.strides[axes[j]]) > std::llabs(proto.strides[axes[j - 1]]); --j)
+        std::swap(axes[j], axes[j - 1]);
+for (int i = 0; i < live; ++i) order[slots[i]] = axes[i];
 ```
+
+stride가 0인 축(브로드캐스트)은 정렬에서 빼고 C 자리에 그대로 둬요. 자세한 것은 [데이터 모델](/internals/array/data-model/)에 있어요.
 
 여러 shape의 브로드캐스트 결과도 `std::vector`가 아니라 고정 배열 `Dims`에 쓰고 차원 수를 돌려줘요(`broadcast_into`). ufunc의 피연산자 목록과 shape 목록도 `std::array<…, kMaxInputs>`예요.
 

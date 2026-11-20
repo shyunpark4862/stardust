@@ -56,8 +56,8 @@ $$\operatorname{ndtr}(x) = \Phi(x) = \frac{1}{\sqrt{2\pi}} \int_{-\infty}^{x} e^
 ```python
 >>> import stardust as sd
 >>> sd.special.ndtr(sd.asarray([-2.0, -1.0, 0.0, 1.0, 2.0]))
-array([0.02275013194817921, 0.15865525393145707,                 0.5,
-        0.8413447460685429,  0.9772498680518208], dtype=float64)
+array([0.022750131948179212,  0.15865525393145707,                  0.5,
+         0.8413447460685429,   0.9772498680518208], dtype=float64)
 ```
 
 가운데 0에서 정확히 0.5(절반)이고, x가 커지면 1에, 작아지면 0에 다가가요. 표준편차 2배 아래(x = -2)에 있을 확률은 약 2.3%예요.
@@ -148,7 +148,7 @@ array([0.15865525393145707,   0.691462461274013,  0.9772498680518208], dtype=flo
 >>> 1 - sd.special.ndtr(x)
 array([0.0013498980316301035,                   0.0], dtype=float64)
 >>> sd.special.ndtr(-x)
-array([0.0013498980316300944, 7.619853024160524e-24], dtype=float64)
+array([ 0.001349898031630094, 7.619853024160528e-24], dtype=float64)
 ```
 
 x = 3에서 `1 - ndtr(x)`는 이미 열넷째 자리부터 틀렸고, x = 10에서는 0이에요.
@@ -201,7 +201,7 @@ array([-15.064998393988725,  -804.6084420137538, -500007.82669481216], dtype=flo
 >>> sd.log(sd.special.ndtr(sd.asarray([10.0, 20.0])))
 array([0.0, 0.0], dtype=float64)
 >>> sd.special.log_ndtr(sd.asarray([10.0, 20.0]))
-array([ -7.619853024160524e-24, -2.7536241186062334e-89], dtype=float64)
+array([ -7.619853024160528e-24, -2.7536241186062327e-89], dtype=float64)
 ```
 
 ### 언제 필요한가요
@@ -221,7 +221,7 @@ $$\operatorname{ndtri}(p) = \Phi^{-1}(p) = x \quad\Longleftrightarrow\quad \Phi(
 
 ```python
 >>> sd.special.ndtri(sd.asarray([0.025, 0.5, 0.975]))
-array([-1.9599639845400538,                 0.0,  1.9599639845400536], dtype=float64)
+array([-1.9599639845400538,                 0.0,  1.9599639845400534], dtype=float64)
 ```
 
 95% 신뢰구간에 쓰는 ±1.96이 바로 이 값이에요. 2.5%와 97.5% 분위수가 정확히 부호만 다르지 않은 것은 입력 `0.975`가 float64로 정확히 0.975가 아니기 때문이에요.
@@ -261,16 +261,16 @@ array([-1.9599639845400538,                 0.0,  1.9599639845400536], dtype=flo
 ```python
 >>> q = sd.asarray([1e-10, 1e-20])
 >>> sd.special.ndtri(1 - q)
-array([6.361340889697421,               inf], dtype=float64)
+array([6.361340889697423,               inf], dtype=float64)
 >>> -sd.special.ndtri(q)
-array([6.361340902404056, 9.262340089798405], dtype=float64)
+array([6.361340902404057, 9.262340089798407], dtype=float64)
 ```
 
 아래쪽은 처음부터 정확해요. 서브노멀 수를 포함한 아주 작은 p도 받아요.
 
 ```python
 >>> sd.special.ndtri(sd.asarray([1e-300, 5e-324]))
-array([ -37.0470962993612, -38.46740561714434], dtype=float64)
+array([  -37.0470962993612, -38.467405617144344], dtype=float64)
 ```
 
 ## ndtri_exp: 로그 확률에서 값으로
@@ -282,9 +282,9 @@ array([ -37.0470962993612, -38.46740561714434], dtype=float64)
 ```python
 >>> x = sd.asarray([-40.0, -1000.0, 2.0])
 >>> sd.special.ndtri(sd.special.ndtr(x))
-array([-inf, -inf,  2.0], dtype=float64)
+array([              -inf,               -inf, 1.9999999999999998], dtype=float64)
 >>> sd.special.ndtri_exp(sd.special.log_ndtr(x))
-array([  -40.0, -1000.0,     2.0], dtype=float64)
+array([             -40.0,            -1000.0, 1.9999999999999998], dtype=float64)
 ```
 
 로그 확률은 0 이하라서, y가 0보다 크면 NaN이에요. y = 0은 확률 1이라 `inf`, `-inf`는 확률 0이라 `-inf`예요. 아주 큰 음수도 float64가 담는 끝(약 -1.8e308)까지 계산해요.
@@ -329,10 +329,10 @@ array([-inf,  0.0,  inf,  nan,  nan,  nan], dtype=float64)
 
 ```python
 >>> sd.special.ndtr(sd.asarray([-37.0, -38.0, -38.5]))
-array([5.725571222524578e-300,        2.88542835e-316,
+array([5.725571222524575e-300,        2.88542835e-316,
                           0.0], dtype=float64)
 >>> sd.special.log_ndtr(sd.asarray([37.0, 38.0, 38.5]))
-array([-5.725571222524578e-300,        -2.88542835e-316,
+array([-5.725571222524575e-300,        -2.88542835e-316,
                           -0.0], dtype=float64)
 ```
 
@@ -340,7 +340,7 @@ array([-5.725571222524578e-300,        -2.88542835e-316,
 
 네 함수 모두 정의역 전체에서 상대오차가 1e-14 이하예요. 결과의 앞자리 14자리 정도가 맞는다는 뜻이에요. 범위는 `ndtr`, `log_ndtr`은 유한한 모든 x, `ndtri`은 $0 < p < 1$(서브노멀 수 포함), `ndtri_exp`는 $-10^{300} \le y < 0$이에요. 꼬리를 1에서 빼지 않고 직접 계산해서, 양쪽 꼬리의 아주 작은 확률에서도 이 정확도가 유지돼요.
 
-실제로 잰 가장 큰 오차는 마지막 자리 단위(ULP, [특수함수의 기본](/api/special/basics/)에서 설명해요)로 `ndtr` 6.7, `log_ndtr` 7.0, `ndtri` 5.4, `ndtri_exp` 6.5예요. 결과가 서브노멀 수인 곳에서는 상대오차 대신 아주 작은 절대오차로 재요.
+실제로 잰 가장 큰 오차는 마지막 자리 단위(ULP, [특수함수의 기본](/api/special/basics/)에서 설명해요)로 `ndtr` 8.1, `log_ndtr` 5.3, `ndtri` 4.7, `ndtri_exp` 3.6이에요. 결과가 서브노멀 수인 곳에서는 상대오차 대신 아주 작은 절대오차로 재요.
 
 ## 조심할 점
 
@@ -385,6 +385,6 @@ array([               0.5, 0.8413447460685429], dtype=float64)
 
 - 이름과 정의는 `scipy.special.ndtr`, `log_ndtr`, `ndtri`, `ndtri_exp`와 같아요.
 - **아주 먼 꼬리에서 0 대신 실제 값을 내요.** scipy의 `ndtr(x)`는 $x < -37.7$에서 0, `log_ndtr(x)`는 $x > 37.7$에서 `-0.0`이지만, stardust는 x = ∓38.47까지 서브노멀 수를 내요(`ndtr(-38.0)`이 scipy는 0.0, stardust는 2.88542835e-316).
-- **왼쪽 꼬리의 `ndtr`이 더 정확해요.** scipy는 왼쪽 꼬리로 갈수록 오차가 커져서, `ndtr(-10)`에서 약 30 ULP, `ndtr(-20)`에서 약 130 ULP(마지막 세 자리 정도)가 틀려요. stardust는 잰 최대 오차가 7 ULP 이내예요.
+- **왼쪽 꼬리의 `ndtr`이 더 정확해요.** scipy는 왼쪽 꼬리로 갈수록 오차가 커져서, `ndtr(-10)`에서 약 30 ULP, `ndtr(-20)`에서 약 130 ULP(마지막 세 자리 정도)가 틀려요. stardust는 잰 최대 오차가 9 ULP 이내예요.
 - **복소수를 받지 않아요.** scipy의 `ndtr`, `log_ndtr`은 복소수를 받지만 stardust는 `TypeError`예요. 복소수의 오차함수가 필요하면 [`erf`](/api/special/erf/), [`erfc`](/api/special/erf/)를 쓰세요(`ndtr(z) = erfc(-z/√2) / 2`).
 - 리스트와 numpy 배열은 받지 않아요. `out`은 keyword-only예요. Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요.

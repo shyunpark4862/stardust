@@ -71,7 +71,7 @@ Series의 대괄호는 행 라벨을 받아요. 라벨(label)은 출력 왼쪽�
 | 대상 | 대괄호 안 | 결과 |
 |---|---|---|
 | DataFrame | 컬럼 이름 `"a"` | 그 컬럼의 Series |
-| DataFrame | 컬럼 이름 리스트 `["a", "b"]` | 그 컬럼들의 DataFrame (적은 순서대로) |
+| DataFrame | 컬럼 이름 리스트 `["a", "b"]` (tuple, Index도) | 그 컬럼들의 DataFrame (적은 순서대로) |
 | DataFrame | bool Series (마스크) | 조건에 맞는 행만 담은 DataFrame |
 | Series | 라벨, 라벨 리스트, 라벨 슬라이스, bool Series | `s.loc[...]`와 같아요 |
 
@@ -168,20 +168,18 @@ Traceback (most recent call last):
 ValueError: column names must be unique
 ```
 
-<Callout type="warn" title="tuple이 아니라 리스트로 주세요">
-
-`df["fruit", "qty"]`처럼 대괄호 안에 쉼표로 이름을 늘어놓으면 Python은 이것을 tuple 하나로 넘겨요. 대괄호는 tuple을 컬럼 목록으로 읽지 않아요. 대괄호를 한 겹 더 씌워 `df[["fruit", "qty"]]`로 써요.
+이름의 목록은 리스트 말고도 tuple이나 [Index](/api/frame/index/)로 줘도 돼요. [`.loc`](/api/frame/loc-iloc/)의 열 자리가 받는 것과 같아요. `df["fruit", "qty"]`처럼 대괄호 안에 쉼표로 이름을 늘어놓으면 Python은 이것을 tuple 하나로 넘기므로, 리스트로 준 것과 같은 결과가 나와요.
 
 ```python
 >>> df["fruit", "qty"]
-Traceback (most recent call last):
-    ...
-TypeError: column names must be str, not tuple
+    fruit  qty
+0   apple    3
+1  banana   12
+2  cherry    1
+3   grape    4
 ```
 
-</Callout>
-
-컬럼 이름을 담은 1차원 numpy 배열은 리스트와 똑같이 받아요. 다른 계산에서 이름을 배열로 얻었을 때 그대로 줄 수 있어요.
+컬럼 이름을 담은 1차원 numpy 배열도 리스트와 똑같이 받아요. 다른 계산에서 이름을 배열로 얻었을 때 그대로 줄 수 있어요.
 
 ```python
 >>> import numpy as np
@@ -378,5 +376,6 @@ Name: price, dtype: int64
 - Series의 `s[1:3]`은 라벨 슬라이스예요(끝 포함). pandas 3.1.1은 `s[1:3]`을 정수 라벨이어도 위치로 자르므로(`pd.Series([10, 20, 30, 40])[1:3]`은 두 행), 같은 코드가 다른 행을 골라요.
 - `df[[True, False, ...]]`처럼 bool 리스트나 bool numpy 배열로 행을 거를 수 없어요. 라벨이 붙은 bool Series만 받아요.
 - `df[["a", "a"]]`처럼 같은 컬럼을 두 번 고르면 `ValueError`예요. pandas는 같은 이름의 컬럼 두 개를 만들어요.
+- `df["a", "b"]`는 두 컬럼을 담은 DataFrame이에요. pandas는 tuple `("a", "b")`를 컬럼 이름 하나로 보고 `KeyError`를 내요.
 - 칸 하나를 꺼내면 numpy 스칼라(`np.int64(800)`)가 아니라 Python `int`예요.
 - 두 단계 대입(`df["a"].iloc[0] = 0`)은 pandas 3처럼 원래 표를 바꾸지 않지만, pandas와 달리 경고도 내지 않아요.

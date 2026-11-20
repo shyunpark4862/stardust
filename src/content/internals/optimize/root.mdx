@@ -131,12 +131,16 @@ $$
                 wa1[j] = diag[j] * ((diag[j] * wa1[j]) / pnorm);
                 if (ratio >= 1e-4) qtf[j] = sum;
             }
-            r1updt(n, r.data(), wa1.data(), wa2.data(), wa3.data());
-            r1mpyq(n, n, fjac.data(), n, wa2.data(), wa3.data());
-            r1mpyq(1, n, qtf.data(), 1, wa2.data(), wa3.data());
+            {
+                std::optional<nb::gil_scoped_release> rel;
+                if (big2) rel.emplace();
+                r1updt(n, r.data(), wa1.data(), wa2.data(), wa3.data());
+                r1mpyq(n, n, fjac.data(), n, wa2.data(), wa3.data());
+                r1mpyq(1, n, qtf.data(), 1, wa2.data(), wa3.data());
+            }
 ```
 
-`fjac`은 Q이고, `wa3`는 그 앞에서 계산한 모형의 값 $Q^{\mathsf T}F + Rs$, `sum`은 $(Q^{\mathsf T}F(x + s))_j$예요. 그래서 `wa2`가 u, `wa1`이 v예요. 갱신은 걸음을 받지 않았을 때도 해요. 거절한 시험점의 함숫값도 야코비안에 대한 정보이기 때문이에요. $Q^{\mathsf T}F$는 받았을 때만 새 점의 것으로 바꿔요.
+`fjac`은 Q이고, `wa3`는 그 앞에서 계산한 모형의 값 $Q^{\mathsf T}F + Rs$, `sum`은 $(Q^{\mathsf T}F(x + s))_j$예요. 그래서 `wa2`가 u, `wa1`이 v예요. 회전은 n이 크면(`big2`, 10 µs 규칙) GIL을 놓고 해요. 갱신은 걸음을 받지 않았을 때도 해요. 거절한 시험점의 함숫값도 야코비안에 대한 정보이기 때문이에요. $Q^{\mathsf T}F$는 받았을 때만 새 점의 것으로 바꿔요.
 
 Broyden 갱신은 정칙인 근 근처에서 초선형 수렴을 내요(Broyden, Dennis, Moré 1973). 걸음이 근에 다가갈수록 고친 야코비안이 걸음 방향에서 참 야코비안에 가까워지기 때문이에요. [root의 문서](/api/optimize/root/)의 원과 포물선 문제에서 해석적 야코비안을 한 번만 구하고 푼 ‖F‖의 비를 보면, 비가 0으로 줄어요(선형 수렴이면 비가 일정해요).
 
@@ -219,15 +223,15 @@ info 1은 "x가 상대 `xtol` 안에서 정해졌다"는 판정이에요. 근 �
 
 `side` 고리는 MINPACK에 없는 것이에요. 한쪽에서 F가 유한하지 않으면 반대쪽으로 한 번 더 해 봐요(`least_squares`의 2점 차분과 같은 규칙). 양쪽 모두 안 되면 에러예요.
 
-## scipy와 부르는 점까지 같게
+## scipy와 같은 반올림의 꼴
 
-scipy 1.15부터의 MINPACK은 C 판(`_minpack` 모듈)이고 clang의 기본 축약(`-ffp-contract=on`)으로 빌드되어 있어요. 그 소스는 설치되어 있지 않아요. 커널은 netlib의 Fortran 원본을 0부터 세는 C++로 적은 것이고, 반올림의 꼴 셋은 scipy의 기계어에서 읽은 것을 따라요.
+scipy 1.15부터의 MINPACK은 C 판(`_minpack` 모듈)이고 clang의 기본 축약(`-ffp-contract=on`)으로 빌드되어 있어요. 그 소스는 설치되어 있지 않아요. 커널은 netlib의 Fortran 원본을 0부터 세는 C++로 적은 것이고, 반올림의 꼴 셋은 scipy의 기계어에서 읽은 것을 따라요. 그래서 지금은 부르는 점까지 scipy와 비트까지 같아요(약속은 아니에요).
 
 - **enorm의 상수**: $r_\text{dwarf} = 2^{-64.5}$, $r_\text{giant} = 2^{63.5}$를 double로 반올림한 값(원본의 3.834e-20, 1.304e19와 끝자리가 달라요). enorm의 생각은 [비선형 최소제곱의 구현](/internals/optimize/least-squares/)에 있어요.
 - **따로 반올림하는 제곱**: MINPACK에서 `t**2`로 적힌 제곱(dogleg의 α 식, r1updt의 회전, actred·prered, enorm의 척도)은 합에 합쳐지지 않아요(`minpack::sq`).
 - **누적 합의 FMA**: 합의 고리는 모두 FMA인데, qrfac의 내적만 clang이 벡터화해서 8개씩의 곱을 따로 반올림해 더해요.
 
-이 파일은 같은 축약을 켜고(`#pragma clang fp contract(on)`), 합은 `std::fma`로 적어요. 이쪽 clang도 합의 고리를 벡터화하며 FMA를 풀 수 있어서, 그 자리를 명시적으로 막는 거예요. 이 셋을 맞추지 않고 원본의 식만 옮기면 55경우 가운데 12경우가 첫 시험점부터 끝자리가 달라요(n ≥ 9의 가우스–뉴턴 걸음, 컴파일러가 합의 고리를 벡터화하며 FMA를 푼 곳).
+이 파일은 같은 축약을 켜고(`#pragma clang fp contract(on)`), 합은 `std::fma`로 적어요. 이쪽 clang도 합의 고리를 벡터화하며 FMA를 풀 수 있어서, 그 자리를 명시적으로 적어요. 이 셋 없이 원본의 식만 옮기면 55경우 가운데 12경우가 첫 시험점부터 끝자리가 달라요(n ≥ 9의 가우스–뉴턴 걸음, 컴파일러가 합의 고리를 벡터화하며 FMA를 푼 곳).
 
 그 결과 HYBRD·HYBRJ 드라이버의 14개 방정식계 55경우 × (해석적, 차분)의 110번 모두, `fun`과 `jac`을 부른 점이 차례대로 scipy와 비트까지 같고 `x`, `fun`, `status`, `message`, `njev`도 같아요. 옵션 7가지(`factor`, `xtol`, `max_nfev`, `diag`, `eps`, `band` 둘)를 6계에서 바꾼 42번과 `jac=True`도 같아요. `'lm'`도 55계 × 2의 110번과 옵션 6가지 × 6계가 같아요.
 
@@ -260,7 +264,8 @@ lm True True 16 18
 - 차분은 MINPACK `fdjac2`(lmdif)라 $h_j = \sqrt{\max(\text{eps}, \varepsilon)}\,\lvert x_j\rvert$로 나눠요(`least_squares`는 scipy의 2점 차분이에요).
 - `factor`와 `diag`(`mode` 2)를 받아요.
 - 결과는 lmder의 info 1–8 그대로예요. `least_squares`는 이것을 자기 status(0–4)로 바꾸고 6–8을 수렴으로 세지만, `root`는 scipy의 `leastsq`처럼 1–4만 수렴이에요.
-- `jac=True`이면 Python의 작은 감싸개가 마지막으로 부른 x의 (F, J)를 기억해서, 커널이 F와 J를 따로 달라고 해도 같은 점에서는 한 번만 불러요(scipy의 `MemoizeJac`).
+- `jac=True`이면 Python의 작은 감싸개가 마지막으로 부른 x의 (F, J)를 기억해서, 커널이 F와 J를 따로 달라고 해도 같은 점에서는 한 번만 불러요(scipy의 `MemoizeJac`). n ≥ 2에서 둘째 항목이 수 하나이면 쌍이 아니라 F만 돌려준 것으로 보고 `TypeError`예요. n = 1이면 `jac`이 수 하나를 돌려줘도 (1, 1) 야코비안이에요.
+- 옵션은 모두 사용자 함수를 부르기 전에 검사해요(`'lm'`의 `ftol`·`gtol`도).
 
 `n_iter`는 `'hybr'`에서 시험한 걸음 수, `'lm'`에서 반복이 계산한 야코비안 수예요. `njev`는 차분 야코비안도 세요.
 

@@ -501,6 +501,7 @@ class DataFrame(Reductions):
 - 컬럼 하나를 꺼내는 것(`df["a"]`)은 Column 객체 하나를 넘기는 일이에요. `Series._new(self._cols["a"], self._index, "a")`이고, 새 Series의 `_col`은 DataFrame의 사전에 든 바로 그 Python 객체예요. 복사도, 블록에서 뷰를 만드는 일도 없어요.
 - 행 하나를 고르면 1행 DataFrame이에요. object dtype이 없어서 서로 다른 dtype의 값을 한 Series에 담을 수 없으니까요. 컬럼마다 1행 슬라이스를 만들면 각자 dtype을 지켜요. `df.sum()` 같은 리덕션도 컬럼마다 1행 Column을 모은 1행 DataFrame이에요(행 라벨은 연산 이름).
 - 컬럼 추가와 교체(`df["c"] = ...`)는 사전의 항목 하나를 바꾸는 일이에요. 블록을 다시 짜거나 합치는 일이 없어요. 통째로 바꾸는 것이라 dtype이 바뀌어도 돼요.
+- 스칼라로 컬럼을 채울 때(`df["c"] = 0`, dict의 스칼라 값, 모두 NA인 컬럼)는 1행 Column으로 dtype을 정하고 커널(`full`)이 n행으로 넓혀요. 길이 n의 Python list를 만들지 않아요.
 - 같은 dtype 컬럼 여럿에 대한 연산은 컬럼마다 커널을 한 번씩 불러요. pandas의 BlockManager는 같은 dtype 컬럼을 2차원 배열 하나로 합쳐 numpy 호출 한 번으로 처리하는데 [2], stardust는 그 구조를 두지 않아요. 비교는 [데이터프레임 영역의 구조](/internals/frame/overview/)에 있어요.
 
 ## Copy-on-Write
@@ -689,7 +690,7 @@ array([ 1, -1,  3], dtype=int64)
 
 `copy=`는 배열 영역의 `asarray`와 같은 세 값이에요. `None`은 꼭 필요할 때만 복사(dtype 변환이나 결측 채우기), `True`는 언제나 복사, `False`는 복사가 필요하면 ValueError예요. `dtype=`으로 바꾸면 `astype`이 이미 새 Column을 만들었으므로 한 번 더 복사하지 않아요. 그 Column의 Buffer는 이 호출 말고는 주인이 없어서, 그 위에 쓸 수 있는 배열을 만들어 내줘요(`_column.to_numpy`의 `fresh` 표시, 아래 `to_array`와 같은 규칙). 결측을 채운 배열도 복사본이라 쓸 수 있어요. 읽기 전용은 컬럼의 Buffer를 그대로 보여 주는 뷰뿐이에요.
 
-문자열 컬럼은 numpy에 맞는 고정 크기 표현이 없어서 object 배열을 만들고 원소마다 str을 넣어요. numpy가 str을 다른 dtype으로 해석하지 않도록 `np.empty(n, dtype=object)`에 채워 넣어요. `DataFrame.to_numpy()`는 컬럼마다 배열을 만들어 `np.stack(..., axis=1)`으로 쌓은 새 C 순서 2차원 배열이에요. 컬럼이 따로 떨어진 Buffer라서 공유할 2차원 메모리가 없거든요.
+문자열 컬럼은 numpy에 맞는 고정 크기 표현이 없어서 object 배열을 만들고 원소마다 str을 넣어요. numpy가 str을 다른 dtype으로 해석하지 않도록 `np.empty(n, dtype=object)`에 채워 넣어요. `DataFrame.to_numpy()`는 새 C 순서 2차원 배열이에요. 컬럼이 따로 떨어진 Buffer라서 공유할 2차원 메모리가 없거든요. 숫자 컬럼은 컬럼마다 결과 dtype의 배열을 얻되(NA가 없고 dtype이 같으면 복사 없는 뷰), 그 배열들을 커널 하나(`rows_from_columns`)가 행 순서로 한 번에 써요. 컬럼마다 복사본을 만든 뒤 쌓지 않아서 컬럼 하나를 한 번만 읽어요. 문자열이 든 결과는 object 배열에 컬럼마다 채워요.
 
 ### numpy에서 들어올 때: 언제나 복사
 
@@ -734,14 +735,13 @@ pickle은 Column의 `__getstate__`가 자기 행만 바이트로 내요. `(dtype
 
 ## 배열 영역과의 경계
 
-데이터프레임이 배열 영역(`sd.ndarray`)을 만나는 곳은 `frame/interop.{hpp,cpp}` 하나예요. `array/`의 헤더(`ndarray.hpp`, `ops/reduction.hpp`)를 include하는 frame 파일은 이것뿐이에요. 다른 frame 코드는 배열 영역을 모르므로, 배열 쪽 구조가 바뀌어도 고칠 곳이 이 파일 하나예요. 하는 일은 넷이에요.
+데이터프레임이 배열 영역(`sd.ndarray`)을 만나는 곳은 `frame/interop.{hpp,cpp}` 하나예요. `array/`의 헤더(`ndarray.hpp`)를 include하는 frame 파일은 이것뿐이에요. 다른 frame 코드는 배열 영역을 모르므로, 배열 쪽 구조가 바뀌어도 고칠 곳이 이 파일 하나예요. 하는 일은 셋이에요.
 
 | 함수 | 하는 일 | 쓰는 곳 |
 |---|---|---|
 | `to_array_view(col, writeable)` | 결측 없는 bool·int64·float64 컬럼의 값 위에 1차원 `NDArray`를 만들어요. 복사 없음 | `Series.to_array` |
 | `from_array(arr)` | 1차원 배열을 새 Column으로 복사해요. complex128은 TypeError | `Series(arr)`, `DataFrame(arr2d)`(열마다) |
 | `columns_to_array(cols, n)` | 같은 dtype, 결측 없는 k개 컬럼으로 (n, k) F 순서 배열을 만들어요 | `DataFrame.to_array` |
-| `array_sum_float64(col)` | int64·bool 컬럼 위의 읽기 전용 뷰로 배열의 `sd.sum(x, dtype=sd.float64)`을 불러요 | int64 `mean` |
 
 ### 나갈 때: 같은 Buffer를 가리키는 뷰
 
@@ -788,7 +788,7 @@ ValueError: assignment destination is read-only
 
 ### 들어올 때: 언제나 복사
 
-`Series(sd_array)`도 언제나 복사해요. 이유는 numpy와 같아요. 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있고, frame의 Copy-on-Write는 그 쓰기를 볼 수 없어요. 연속인 배열은 `memcpy` 한 번, stride가 있으면 원소마다 복사해요.
+`Series(sd_array)`도 언제나 복사해요. 이유는 numpy와 같아요. 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있고, frame의 Copy-on-Write는 그 쓰기를 볼 수 없어요. 연속인 배열은 `memcpy` 한 번, stride가 있으면 원소마다 복사해요. 복사는 일이 기준값 이상이면 GIL을 놓고 해요. 넘겨받은 배열 객체가 살아 있는 동안이라 바이트만 옮기면 돼요.
 
 ```python
 >>> a = sd.arange(4)
@@ -808,22 +808,20 @@ ValueError: assignment destination is read-only
 (8, 16)
 ```
 
-C 순서였다면 컬럼의 원소를 `k`바이트 간격으로 흩어 써야 해요. F 순서는 `sd.linalg`가 가장 빨리 읽는 배치이기도 해요. 선형대수 함수는 LAPACK이 요구하는 열 우선 배치로 입력을 옮기는데(패킹), F 순서 입력은 열마다 복사와 유한성 검사를 한 번에 하는 경로로 가요([패킹과 결과 레이아웃](/internals/linalg/packing/)). 그래서 `sd.linalg.lstsq(df.to_array(), y)` 같은 코드가 복사 한 번으로 이어져요.
+결과 배열(`NDArray`)은 Python 객체라서 GIL을 쥔 채 만들고, 컬럼을 옮기는 `memcpy`만 GIL을 놓고 해요. C 순서였다면 컬럼의 원소를 `k`바이트 간격으로 흩어 써야 해요. F 순서는 `sd.linalg`가 가장 빨리 읽는 배치이기도 해요. 선형대수 함수는 LAPACK이 요구하는 열 우선 배치로 입력을 옮기는데(패킹), F 순서 입력은 열마다 복사와 유한성 검사를 한 번에 하는 경로로 가요([패킹과 결과 레이아웃](/internals/linalg/packing/)). 그래서 `sd.linalg.lstsq(df.to_array(), y)` 같은 코드가 복사 한 번으로 이어져요.
 
-### int64 평균이 배열의 합을 부르는 이유
+### 두 영역이 함께 쓰는 합
 
-int64 컬럼의 `mean()`은 frame 안에서 계산하지 않고, 컬럼 위의 읽기 전용 뷰로 배열 영역의 `sd.sum(view, dtype=sd.float64)`을 부른 뒤 결측이 아닌 행 수로 나눠요. 결측 행은 0이라 그대로 더해도 돼요.
+두 영역이 같은 비트를 내야 하는 합은 interop을 거치지 않아요. 그 정의가 공통 바닥 `base/`에 있어서 두 영역이 각자 불러요.
 
-`Series.mean()`과 `sd.mean(s.to_array())`가 마지막 비트까지 같아야 하기 때문이에요. 배열의 int → float64 합은 4,096원소 버퍼 단위로 형변환하며 접는 고유한 순서로 더해요([리덕션](/internals/array/reductions/)). 같은 계산을 frame에 다시 쓰면 그 순서를 똑같이 흉내 내야 하고, 배열 쪽이 바뀔 때마다 따라 바꿔야 해요. 배열의 함수를 그대로 부르면 순서가 저절로 같아요.
+- **float 합**은 `base/pairwise.hpp` 한 벌이에요. 트리 모양과 잎의 합이 같고, 두 영역은 같은 트리를 서로 다른 높이에서 잘라 태스크로 돌릴 뿐이라 비트가 같아요([원소별 연산과 리덕션](/internals/frame/elementwise/)).
+- **int64 평균**은 `base/int_sum.hpp`의 `IntSum`으로 정수 합을 정확히 구한 뒤 한 번 반올림해 개수로 나눠요. 배열의 `sd.mean(int 배열)`도 같은 `IntSum`이라 `Series.mean()`과 `sd.mean(s.to_array())`가 비트까지 같아요. 정수 덧셈에는 순서가 없으니 두 영역이 데이터를 나누는 방법이 달라도 상관없고, groupby의 그룹 평균도 같은 값이 나와요. 결측 행은 0이라 그대로 더해도 돼요.
 
-대가는 둘이에요.
-
-- 이 호출에는 GIL이 필요해요. Python 객체(읽기 전용 뷰)를 하나 만들고 배열의 공개 함수를 거치기 때문이에요. 합 자체는 배열 영역의 규칙대로 원소가 배열의 기준값(float64 덧셈 32,768개 분량) 이상이면 스레드 수와 상관없이 GIL을 놓고 돌아요. 뷰를 만들고 결과를 받는 앞뒤만 GIL을 쥐어요.
-- frame의 float 합과 순서가 달라요. frame의 float 합은 pairwise 트리이고, int64 평균은 배열의 버퍼 단위 순서예요. 그래서 int64 그룹 평균(그룹의 행을 float64로 바꿔 frame의 pairwise 합으로 더해요)이 Series의 `mean()`과 비트까지 같은 것은 그룹이 4,096행 이하일 때예요.
+둘 다 Python 객체를 만지지 않아서, frame의 다른 리덕션처럼 frame의 기준값으로 나누고 GIL을 놓고 돌아요.
 
 ### 테스트
 
-`tests/interop/test_frame_array.py`가 경계를 확인해요. 나갈 때 공유하고 들어올 때 복사하는지, 뷰가 읽기 전용인지, 뷰가 살아 있을 때 frame 쪽 대입이 복사하는지, F 순서 strides, `sd.linalg.lstsq(df.to_array(), ...)`, int 평균의 비트, int–float 비교와 float → int 변환이 두 영역에서 같은지예요.
+`tests/interop/test_frame_array.py`가 경계를 확인해요. 나갈 때 공유하고 들어올 때 복사하는지, 뷰가 읽기 전용인지, 뷰가 살아 있을 때 frame 쪽 대입이 복사하는지, F 순서 strides, `sd.linalg.lstsq(df.to_array(), ...)`, int 평균의 비트, int–float 비교와 float → int 변환이 두 영역에서 같은지예요. float 합과 `mean`, `var`, `std`가 같은 배열의 `sd.sum`, `sd.mean`, `sd.var`, `sd.std`와 비트까지 같은지는 `tests/frame/test_reduce.py`가 봐요.
 
 ## 성능
 

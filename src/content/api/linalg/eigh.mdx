@@ -18,7 +18,7 @@ params:
     desc: 주면 일반화 문제 a v = λ b v를 풀어요. 대칭(에르미트)이면서 양정치여야 하고, a와 같은 크기의 정사각 행렬이어야 해요. 아래 삼각만 읽어요.
 returns:
   type: EighResult(eigenvalues, eigenvectors) 또는 ndarray
-  desc: eigh는 고유값 (..., N)과 고유벡터 (..., N, N)의 이름 있는 튜플, eigvalsh는 고유값 (..., N)만. 고유값은 언제나 float64이고 작은 값부터 놓여요.
+  desc: eigh는 고유값 (..., N)과 고유벡터 (..., N, N)의 이름 있는 튜플, eigvalsh는 고유값 (..., N)만. 고유값은 언제나 float64이고 작은 값부터 놓여요. eigh의 두 배열은 쓰기 금지예요.
 raises:
   - type: TypeError
     desc: a나 b가 sd.ndarray가 아닐 때(리스트, numpy 배열 등), 인자를 키워드로 넘겼을 때.

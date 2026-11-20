@@ -13,7 +13,7 @@ params:
     kind: positional-only
     desc: "목적함수 fun(x). x는 길이 n의 새 float64 sd.ndarray이고, 실수 하나(Python이나 numpy의 수)를 돌려줘요. jac=True이면 (값, 기울기) 쌍을 돌려줘요."
   - name: x0
-    type: ndarray, 실수의 시퀀스, 또는 numpy 배열
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series
     kind: positional-only
     desc: 시작점. 1차원이고 비어 있지 않으며 유한해야 해요. float64로 바꿔서 계산해요. bounds를 주면 그 안(경계 위도 돼요)이어야 해요.
   - name: method
@@ -49,9 +49,9 @@ returns:
   desc: 해(x), 그 점의 값(fun), 수렴 여부(converged), 멈춘 이유(status, message), 반복 수(n_iter), 함수와 도함수의 계산 수(nfev, njev, nhev), 방법(method)과 방법마다의 필드(jac, hess, hess_inv, final_simplex)가 들어 있는 결과 객체예요.
 raises:
   - type: TypeError
-    desc: fun, jac, hess, hessp가 호출 가능한 객체나 받는 문자열이 아닐 때, x0가 복소수이거나 수가 아닐 때, options가 dict가 아닐 때, 옵션의 값이 맞는 형(int, bool, 수)이 아닐 때, bounds가 쌍의 꼴이 아닐 때, 사용자 함수가 수가 아닌 것을 돌려줄 때. 사용자 함수 안에서 난 에러도 그대로 나와요.
+    desc: fun, jac, hess, hessp가 호출 가능한 객체나 받는 문자열이 아닐 때, x0가 복소수이거나 수가 아닐 때, options가 dict가 아닐 때, 옵션의 값이 맞는 형(int, bool, 수)이 아닐 때, bounds가 쌍의 꼴이 아닐 때, 사용자 함수가 수가 아닌 것이나 bool을 돌려줄 때. 사용자 함수 안에서 난 에러도 그대로 나와요.
   - type: ValueError
-    desc: method 이름이 틀렸거나 소문자가 아닐 때, 방법이 받지 않는 jac·hess·hessp·bounds·옵션을 줬을 때, 방법에 꼭 필요한 jac·hess가 없을 때, x0가 비었거나 1차원이 아니거나 유한하지 않을 때, x0가 bounds 밖일 때, lower > upper이거나 bounds에 NaN이 있을 때, tol과 같은 옵션을 options에도 줬을 때, 옵션의 값이 범위 밖일 때, fun이 실수 하나가 아닌 것을, jac·hess가 틀린 모양을 돌려줄 때, x0에서 fun·jac·hess가 유한하지 않을 때, 반복 중에 받아들인 점의 기울기나 헤시안이 유한하지 않을 때.
+    desc: method 이름이 틀렸거나 소문자가 아닐 때, 방법이 받지 않는 jac·hess·hessp·bounds·옵션을 줬을 때, 방법에 꼭 필요한 jac·hess가 없을 때, x0가 비었거나 1차원이 아니거나 유한하지 않을 때, x0가 bounds 밖일 때, lower > upper이거나 bounds에 NaN이 있을 때, tol과 같은 옵션을 options에도 줬을 때, 옵션의 값이 범위 밖일 때, fun이 실수 하나가 아닌 것을, jac·hess가 틀린 모양을 돌려줄 때, bounds를 변수마다의 (low, high) 쌍으로 줬을 때, x0에서 fun·jac·hess가 유한하지 않을 때, 반복 중에 받아들인 점의 기울기나 trust-ncg의 헤시안 곱이 유한하지 않을 때.
 seeAlso: [nelder-mead, quasi-newton, newton-methods, results, least_squares, minimize_scalar, check_grad]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -350,7 +350,7 @@ OptimizeResult(method='trust-exact', converged=True, fun=3.33125e-19, n_iter=25,
 >>> sd.optimize.minimize(rosen, [-1.2, 1.0], hess=rosen_hess)
 Traceback (most recent call last):
     ...
-ValueError: minimize(): method='bfgs' takes no 'hess'
+ValueError: minimize(): method=None (bfgs) takes no 'hess' (method='newton-cg', 'trust-ncg' and 'trust-exact' do)
 ```
 
 ### bounds
@@ -381,10 +381,19 @@ array([0.9999999954190891,                1.0], dtype=float64)
 >>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='bfgs', bounds=(-2.0, 2.0))
 Traceback (most recent call last):
     ...
-ValueError: minimize(): method='bfgs' takes no bounds (method='l-bfgs-b' and method='nelder-mead' do)
+ValueError: minimize(): method='bfgs' takes no 'bounds' (method='l-bfgs-b' and method='nelder-mead' do)
 ```
 
-`bounds`는 언제나 `(lower, upper)` 두 개짜리예요. 변수마다의 쌍 `[(l1, u1), (l2, u2), ...]`가 아니에요. 변수가 셋 이상이면 쌍의 목록은 길이가 2가 아니라서 `ValueError`가 나지만, 변수가 둘이면 `[(0, 2), (0, 2)]`가 lower = (0, 2), upper = (0, 2)로 읽혀 두 변수가 모두 고정돼요. 변수마다 범위를 줄 때는 `([l1, l2], [u1, u2])`로 써요.
+`bounds`는 언제나 `(lower, upper)` 두 개짜리예요. 변수마다의 쌍 `[(l1, u1), (l2, u2), ...]`가 아니에요. 쌍이 셋 이상이면 그 꼴을 짚는 `ValueError`예요.
+
+```python
+>>> sd.optimize.minimize(rosen, [-1.2, 1.0], bounds=[(0, 2), (0, 2), (0, 2)])
+Traceback (most recent call last):
+    ...
+ValueError: minimize(): 'bounds' must be a pair (lower, upper), not a sequence of (low, high) pairs
+```
+
+쌍이 둘이면 `(lower, upper)`와 구별할 수 없어서 그렇게 읽어요. 변수가 둘인 문제에 `[(0, 2), (0, 2)]`를 주면 lower = (0, 2), upper = (0, 2)라서, `x0`가 (0, 2)가 아니면 `'x0' must be within 'bounds'`이고, (0, 2)이면 두 변수가 모두 그 값에 고정돼요. 변수마다 범위를 줄 때는 `([l1, l2], [u1, u2])`로 써요.
 
 ### tol과 options
 
@@ -533,7 +542,7 @@ array([     0.9999999777808422, -2.2591758443137532e-08], dtype=float64)
 ...     return (x[0] - 3e-6)**2 + (x[1] + 2e-6)**2
 >>> r = sd.optimize.minimize(tiny, [1e-5, 1e-5], method='nelder-mead')
 >>> r.x, r.n_iter
-(array([1e-05, 1e-05], dtype=float64), 1)
+(array([1e-05, 1e-05], dtype=float64), 0)
 ```
 
 변수를 1 안팎의 크기로 바꿔서 풀고 결과를 되돌리면 모든 방법이 제대로 움직여요. 값의 크기도 마찬가지로 1 안팎이 좋아요.
@@ -557,18 +566,20 @@ array([     0.9999999777808422, -2.2591758443137532e-08], dtype=float64)
 OptimizeResult(method='bfgs', converged=True, fun=-3.71828, n_iter=9, nfev=33, x=[ 0.999998352983895 2.7182851639401058])
 ```
 
-L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되고, 선 탐색이 실패한 뒤 f가 줄지 않은 것을 "상대 감소가 `ftol` 이하"로 읽어 해가 아닌 점에서 `converged=True`로 멈출 수 있어요. L-BFGS-B에서는 범위를 `bounds`로 줘요.
+L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되고, 선 탐색이 걸음 없이 끝난 뒤 f가 줄지 않은 것이 "상대 감소가 `ftol` 이하"의 판정을 통과해 해가 아닌 점에서 멈춰요. 그때 `status`와 `message`는 수렴의 것이지만 `converged`는 False예요. L-BFGS-B에서는 범위를 `bounds`로 줘요.
 
 ```python
 >>> r = sd.optimize.minimize(entropy_like, [5.0, 5.0], method='l-bfgs-b')
->>> r.converged, [round(v, 3) for v in r.x.tolist()]
-(True, [4.065, 4.646])
+>>> r.converged, r.status, [round(v, 3) for v in r.x.tolist()]
+(False, 0, [4.065, 4.646])
+>>> r.message
+'CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH'
 >>> r = sd.optimize.minimize(entropy_like, [5.0, 5.0], bounds=(1e-12, math.inf))
 >>> r.converged, [round(v, 4) for v in r.x.tolist()]
 (True, [1.0, 2.7183])
 ```
 
-시작점에서 유한하지 않으면 `ValueError`예요. trust-ncg·trust-exact에서 받아들인 점의 기울기나 헤시안이 유한하지 않으면 그 점을 적은 `ValueError`가 나요(`'jac' is not finite at x = [...]`). 마지막 `fun`이 유한하지 않으면 `converged=False`예요.
+시작점에서 유한하지 않으면 `ValueError`예요. 신뢰 영역의 두 방법은 시험점의 `fun`이 inf나 NaN이면 그 걸음을 받지 않고 신뢰 영역을 줄여요. trust-exact는 시험점의 헤시안이 유한하지 않을 때도 그래요. 받아들인 점의 기울기나 trust-ncg의 헤시안 곱이 유한하지 않으면 그 점을 적은 `ValueError`가 나요(`'jac' is not finite at x = [...]`). newton-cg는 선 탐색이 NaN인 점에서 끝나면 그 걸음을 받지 않고 마지막 유한한 점을 status 3(`NaN result encountered.`)으로 돌려줘요. 마지막 `fun`이 유한하지 않으면 `converged=False`예요.
 
 ### 수렴하지 않을 때
 
@@ -579,9 +590,9 @@ L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되
 - 신뢰 영역 방법의 status 3은 헤시안이 대칭이 아니거나 계산이 무너졌을 때예요.
 
 ```python
->>> r = sd.optimize.minimize(rosen_n, sd.zeros(10))
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(5))
 >>> r.converged, r.status, r.fun
-(False, 2, 5.666719760853182e-11)
+(False, 2, 5.090121939973636e-11)
 ```
 
 결과의 `x`는 그때까지 찾은 가장 좋은 점이라 다시 풀 때 시작점으로 쓸 수 있어요.
@@ -606,7 +617,7 @@ L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되
 - **정확도**: 결과는 "멈춤 판정을 만족한 점"이에요. 기울기 함수를 주고 허용오차를 줄이면 해를 반올림 가까이까지 구할 수 있어요(위의 `tol=1e-8`에서 $10^{-12}$). 차분의 기울기로는 $10^{-5}$–$10^{-8}$ 안팎에서 막혀요. 해 근처에서 f는 x의 오차의 제곱만큼만 변하므로, `fun`은 `x`보다 훨씬 많은 자리가 맞아 보여도 x의 정확도를 뜻하지 않아요.
 - **비용**: 반복의 계산은 C++에서 하고, `fun`·`jac`·`hess`만 Python으로 불러요. 그래서 시간은 대부분 사용자 함수의 몫이고, 방법끼리의 비용은 `nfev`, `njev`, `nhev`로 견줄 수 있어요. 같은 점에서는 다시 부르지 않아요(같은 x의 값과 기울기는 기억해 둬요).
 - **스레드와 GIL**: 사용자 함수가 Python이라 반복은 GIL을 쥔 채 돌아요. BFGS의 행렬 갱신, trust-exact의 Cholesky처럼 큰 선형대수만 계산하는 동안 GIL을 놓아요. 사용자 함수 안의 sd 연산은 그 영역의 규칙대로 스레드를 써요. 결과는 스레드 수와 상관없이 같은 비트예요.
-- **scipy와 같은 걸음**: `'nelder-mead'`, `'l-bfgs-b'`, `'newton-cg'`, `'trust-ncg'`, `'trust-exact'`는 scipy 1.18.1과 같은 점에서 사용자 함수를 같은 차례로 불러, `x`의 비트, `fun`, `nfev`, 반복 수, `status`가 scipy와 같아요. `'bfgs'`는 행렬 갱신을 더 싼 순서로 해서 걸음이 scipy와 반올림만큼 다르고, 반복 수와 `nfev`가 가끔 몇 번 달라요(멈춘 이유는 거의 언제나 같아요).
+- **scipy와 같은 걸음**: 여섯 방법 모두 scipy 1.18.1과 같은 알고리즘과 멈춤 판정이에요. `'nelder-mead'`, `'l-bfgs-b'`, `'trust-ncg'`, `'trust-exact'`, `hess`나 `hessp`를 준 `'newton-cg'`는 지금은 scipy와 같은 점에서 사용자 함수를 같은 차례로 불러 `x`, `fun`, `nfev`, `status`가 비트까지 같아요(약속은 아니에요, [기본 개념](/api/optimize/basics/#scipy와-같은-알고리즘-끝자리는-다를-수-있어요)). `'bfgs'`는 행렬 갱신을 더 싼 순서로 해서 걸음이 scipy와 반올림만큼 다르고, 반복 수와 `nfev`가 가끔 몇 번 달라요(멈춘 이유는 거의 언제나 같아요).
 
 ## scipy를 아는 분께
 
@@ -622,5 +633,8 @@ L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되
   - `'bfgs'`의 걸음은 반올림만큼 달라요. 위의 기본 사용에서 scipy는 `nit=32`, `nfev=117`이에요.
   - `'newton-cg'`의 `jac`은 `x`에서의 기울기예요(scipy는 마지막 반복을 시작한 점의 것). 그 기울기를 새로 계산하면 `njev`가 하나 많아요.
   - `nhev`는 실제로 부른 수예요. `hessp`만 준 trust-ncg는 scipy보다 하나 적고(scipy는 부르지 않은 자리도 하나로 세요), `hess`를 준 trust-ncg는 결과의 `hess`를 위해 끝에 부른 것을 세어 하나 많을 수 있어요.
-  - 신뢰 영역 두 방법에 `max_iter=0`을 주면 반복 없이 x0에서 멈춰요(scipy는 한 번 반복해요).
+  - 신뢰 영역 두 방법과 L-BFGS-B에 `max_iter=0`을 주면 반복 없이 x0에서 멈춰요(scipy는 한 번 반복해요).
+  - Nelder–Mead의 `n_iter`는 한 반복 수라 scipy의 `nit`보다 하나 작아요.
+  - `hess`와 `hessp`가 없는 newton-cg는 헤세 곱의 차분마다 g(x)를 다시 부르지 않아서 `njev`가 scipy의 절반쯤이에요.
   - L-BFGS-B가 `ABNORMAL`로 멈추면 `fun`은 돌려주는 `x`에서의 값이에요(scipy는 마지막 시험점의 값).
+  - 유한하지 않은 값과 거짓 수렴의 경로는 일부러 scipy를 따르지 않아요. L-BFGS-B가 걸음 없이 상대 감소 판정을 통과하면 `converged=False`예요(scipy는 True). 신뢰 영역의 시험점에서 f가 NaN이면 신뢰 영역을 줄여요(scipy는 같은 걸음을 `max_iter`까지 되풀이해요). trust-exact는 시험점의 헤시안이 유한하지 않으면 걸음을 거절해요(scipy는 예외). newton-cg는 NaN인 점에서 마지막 유한한 점을 돌려주고, 첫 CG 걸음의 곡률이 0이면(안장점, 선형인 부분) 가장 가파른 내리막으로 선 탐색을 해요(scipy는 걸음 0으로 수렴을 알려요).

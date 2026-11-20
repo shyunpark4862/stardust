@@ -27,7 +27,7 @@ raises:
   - type: KeyError
     desc: ".loc에 없는 라벨이나 컬럼 이름을 줬을 때, 여러 행에 있는 라벨 하나로 골랐을 때, 슬라이스 끝 라벨이 없거나 고유하지 않을 때."
   - type: IndexError
-    desc: ".iloc의 위치가 범위를 벗어났을 때, 위치 자리에 정수·슬라이스·정수 리스트가 아닌 것(bool, float, str 등)을 줬을 때."
+    desc: ".iloc의 위치가 범위를 벗어났을 때, 위치 자리에 정수·슬라이스·정수 리스트가 아닌 것(bool, float, str 등)이나 양 끝이 정수가 아닌 슬라이스를 줬을 때."
   - type: TypeError
     desc: ".loc의 라벨 타입이 Index의 dtype과 맞지 않을 때(정수 라벨에 2.0이나 True, 문자열 라벨에 숫자), tuple을 행 라벨로 줬을 때, 마스크가 bool Series가 아닐 때."
   - type: ValueError
@@ -273,6 +273,15 @@ IndexError: cannot select rows by position with str; use an int, a slice or a li
 Traceback (most recent call last):
     ...
 IndexError: positions must be ints, not float
+```
+
+슬라이스의 양 끝과 `step`도 정수나 `None`이어야 해요. 라벨로 자르는 `"mon":"wed"`를 `.iloc`에 주면 `IndexError`예요. 라벨로 자를 때는 `.loc`을 써요.
+
+```python
+>>> df.iloc["mon":"wed"]
+Traceback (most recent call last):
+    ...
+IndexError: cannot select rows by position with a slice of str; the ends and the step must be ints or None
 ```
 
 슬라이스의 `step`이 0이면 `ValueError`예요. `.loc`의 라벨 슬라이스도 같아요.

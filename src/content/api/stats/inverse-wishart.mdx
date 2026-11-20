@@ -134,7 +134,7 @@ p = 2라 지수가 −3이에요. 마지막 자리가 다른 것은 역행렬과
 |---|---|---|
 | `mean()` | $\Psi / (\nu - p - 1)$ (ν > p + 1) | 그 밖은 발산 |
 | `mode()` | $\Psi / (\nu + p + 1)$ | |
-| `var()` | 원소별 분산 (ν > p + 3, 아래 식) | p + 1 < ν ≤ p + 3이면 inf, ν ≤ p + 1이면 NaN |
+| `variance()` | 원소별 분산 (ν > p + 3, 아래 식) | p + 1 < ν ≤ p + 3이면 inf, ν ≤ p + 1이면 NaN |
 | `entropy()` | 미분 엔트로피(nat) | |
 
 원소별 분산은 이래요.
@@ -152,7 +152,7 @@ array([[  0.25, 0.0625],
        [0.0625,  0.125]], dtype=float64)
 >>> IW.entropy()
 0.11326605064607614
->>> sd.stats.InverseWishart(df=8.0, scale=V).var()
+>>> sd.stats.InverseWishart(df=8.0, scale=V).variance()
 array([[ 0.10666666666666667, 0.026111111111111113],
        [0.026111111111111113,  0.02666666666666667]], dtype=float64)
 ```
@@ -162,7 +162,7 @@ array([[ 0.10666666666666667, 0.026111111111111113],
 역Wishart 분포는 오른쪽 꼬리가 두꺼워서 자유도가 작으면 평균이나 분산이 무한대예요. 단변량 [`InverseGamma`](/api/stats/inverse-gamma/)와 같은 규칙이에요.
 
 - `mean()`: ν ≤ p + 1이면 발산해요. 원소마다 `scale`의 부호를 따라 +inf나 −inf이고, `scale`의 원소가 0인 곳은 0이에요.
-- `var()`: 평균은 유한하지만 분산이 발산하는 p + 1 < ν ≤ p + 3에서는 inf, 평균부터 발산하는 ν ≤ p + 1에서는 NaN이에요.
+- `variance()`: 평균은 유한하지만 분산이 발산하는 p + 1 < ν ≤ p + 3에서는 inf, 평균부터 발산하는 ν ≤ p + 1에서는 NaN이에요.
 
 ```python
 >>> sd.stats.InverseWishart(df=3.0, scale=sd.asarray([[2.0, -0.5], [-0.5, 1.0]])).mean()
@@ -171,10 +171,10 @@ array([[ inf, -inf],
 >>> sd.stats.InverseWishart(df=3.0, scale=sd.eye(2)).mean()
 array([[inf, 0.0],
        [0.0, inf]], dtype=float64)
->>> IW.var()
+>>> IW.variance()
 array([[inf, inf],
        [inf, inf]], dtype=float64)
->>> sd.stats.InverseWishart(df=3.0, scale=V).var()
+>>> sd.stats.InverseWishart(df=3.0, scale=V).variance()
 array([[nan, nan],
        [nan, nan]], dtype=float64)
 ```
@@ -223,11 +223,11 @@ array([[1.7491886578591809, 0.5338264110260644],
 
 ## 정확도와 범위
 
-[`Wishart`](/api/stats/wishart/#정확도와-범위)와 같아요. κ(scale) ≤ 1e9, p ≤ 100에서 `logpdf`와 `entropy`는 |오차| ≤ 1e-14 · max(1, |값|)이고, `logpdf`의 이 보장은 df ≤ 1e30까지예요. 그보다 크면 반올림 오차의 상한이 기준을 넘는 곳에서 NaN이고, 그 자유도는 점마다 달라요. 원소가 반올림된 점은 df가 약 1e31–3e35부터, 분포에서 뽑은 점은 약 2.4e32–1e35부터예요. 역Wishart의 평균과 최빈값은 scale = I여도 원소가 반올림된 점이라 이 범위에 들어요. 가장 이른 것은 p = 10, κ(scale) = 1e4인 평균의 df ≈ 1e31이에요. df ≤ 1e30에서는 이런 NaN이 나오지 않아요. 자세한 방법은 [행렬 분포](/internals/stats/matrix/)에 있어요.
+[`Wishart`](/api/stats/wishart/#정확도와-범위)와 같아요. κ(scale) ≤ 1e9, p ≤ 100에서 `logpdf`와 `entropy`는 |오차| ≤ 1e-14 · max(1, |값|)이고, `logpdf`의 이 보장은 df ≤ 1e30까지예요. 재 본 오차는 df = 1e9–1e30에서 1.1e-16 이하이고, 보장 밖인 df = 1e35–1e300에서도 같아요. 남는 반올림 오차의 상한이 기준을 넘으면 NaN을 내지만, 그 상한이 `logpdf`의 크기와 함께 커져서 df = 1e306까지 재 본 어느 점에서도 NaN이 나오지 않았어요. 자세한 방법은 [행렬 분포](/internals/stats/matrix/)에 있어요.
 
 ## scipy를 아는 분께
 
-- `scipy.stats.invwishart(df, scale)`에 해당해요. 클래스 이름은 `InverseWishart`이고, 키워드로만 받고 기본값이 없어요. scipy는 `scale`과 `x`에 리스트도 받지만, stardust는 `sd.ndarray`만 받아요.
+- `scipy.stats.invwishart(df, scale)`에 해당해요. 클래스 이름은 `InverseWishart`이고, 키워드로만 받고 기본값이 없어요. 원소별 분산의 메서드 이름은 scipy의 `var` 대신 단변량 분포와 같은 `variance`예요. scipy는 `scale`과 `x`에 리스트도 받지만, stardust는 `sd.ndarray`만 받아요.
 - 평균이나 분산이 발산하면 inf나 NaN이에요. scipy 1.18.1은 `None`을 돌려줘요.
 - df ≤ p − 1이면 NaN이에요. scipy 1.18.1은 `ValueError`를 내요.
 

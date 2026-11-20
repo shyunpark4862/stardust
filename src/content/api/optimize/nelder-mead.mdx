@@ -115,7 +115,7 @@ Nelder–Mead(1965)는 기울기 없이 **함수값의 크기 비교만으로** 
 
 반복 하나에 함수를 보통 한두 번 불러요. 축소할 때만 n + 2번이에요. 아래 그림은 Rosenbrock 함수에서 단체가 골짜기를 따라 기어가는 모습이에요. 골짜기 방향으로 길쭉해지며 나아가다가 바닥 근처에서 오그라들어요.
 
-<Fig caption="Rosenbrock 함수에서 (−1.2, 1)에서 출발한 Nelder–Mead의 단체. 반복 0, 7, 12, 17, 23, 29, 40, 49, 59번 뒤의 삼각형이고, 85번째에 (1, 1)에서 멈췄어요.">
+<Fig caption="Rosenbrock 함수에서 (−1.2, 1)에서 출발한 Nelder–Mead의 단체. 반복 0, 7, 12, 17, 23, 29, 40, 49, 59번 뒤의 삼각형이고, 84번 반복한 뒤 (1, 1)에서 멈췄어요.">
   <Valley
     id="nm-simplex"
     label="Rosenbrock 등고선 위에 그린 Nelder-Mead 단체의 변화"
@@ -135,12 +135,12 @@ Nelder–Mead(1965)는 기울기 없이 **함수값의 크기 비교만으로** 
 ...     return 100.0 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead')
 >>> r
-OptimizeResult(method='nelder-mead', converged=True, fun=8.17766e-10, n_iter=85, nfev=159, x=[1.0000220217835696 1.0000422197517715])
+OptimizeResult(method='nelder-mead', converged=True, fun=8.17766e-10, n_iter=84, nfev=159, x=[1.0000220217835696 1.0000422197517715])
 >>> r.message
 'Optimization terminated successfully.'
 ```
 
-`n_iter`는 1에서 세요. 위 결과는 84번 반복하고 85에서 멈췄다는 뜻이에요. `nfev`는 처음 꼭짓점 n + 1개를 계산한 것을 포함한 함수 호출 수예요.
+`n_iter`는 반복한 수예요. 위 결과는 84번 반복하고 멈췄다는 뜻이에요. `nfev`는 처음 꼭짓점 n + 1개를 계산한 것을 포함한 함수 호출 수예요.
 
 결과에는 기울기(`jac`)가 없고, 대신 마지막 단체 `final_simplex`가 있어요. 꼭짓점 (n + 1, n)과 그 값 (n + 1,)의 튜플이고 값이 작은 순서예요. `x`는 첫 꼭짓점, `fun`은 값의 최솟값이에요.
 
@@ -249,7 +249,7 @@ n = 10에서는 기본 상한(fun 200n = 2,000번)에 닿았어요. 상한을 �
 
 ### max_iter, max_nfev: 상한
 
-둘 다 주지 않으면 각각 200n이에요. 하나만 주면 다른 하나는 상한이 없어요. 상한에 닿으면 에러 없이 그때의 가장 좋은 점과 `converged=False`를 돌려줘요. `max_nfev`를 넘는 호출은 하지 않아요(그 반복은 중간에 끝나요).
+둘 다 주지 않으면 각각 200n이에요. 하나만 주면 다른 하나는 상한이 없어요. 상한에 닿으면 에러 없이 그때의 가장 좋은 점과 `converged=False`를 돌려줘요. `max_nfev`를 넘는 호출은 하지 않아요(그 반복은 중간에 끝나요). `max_iter`로 멈출 때는 `max_iter − 1`번 반복하고 멈춰요. `max_iter=30`이면 29번이에요.
 
 ```python
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead', options={'max_nfev': 50})
@@ -257,7 +257,7 @@ n = 10에서는 기본 상한(fun 200n = 2,000번)에 닿았어요. 상한을 �
 (50, 1, 'Maximum number of function evaluations has been exceeded.')
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead', options={'max_iter': 30})
 >>> r.n_iter, r.status, r.message
-(30, 2, 'Maximum number of iterations has been exceeded.')
+(29, 2, 'Maximum number of iterations has been exceeded.')
 ```
 
 ### adaptive: 차원이 클 때
@@ -326,11 +326,11 @@ ValueError: minimize(): 'initial_simplex' must have shape (N + 1, N), not (2, 2)
 
 - 해는 멈춘 단체의 크기만큼 정확해요(`xatol` 안팎). Nelder–Mead는 해 근처에서도 빨라지지 않아서, 자릿수 하나를 더 얻는 데 드는 반복이 거의 일정해요(위 그림의 기울기). 기울기를 쓰는 방법은 해에 가까울수록 빨라져요.
 - 반복 하나의 계산은 무게중심(n² 덧셈)과 비교뿐이라 작아요. 시간은 거의 `fun`을 부르는 데 들어요.
-- scipy 1.18.1의 `method='Nelder-Mead'`와 같은 점에서 `fun`을 같은 차례로 불러, 결과의 `x`, `fun`, `nfev`, `n_iter`, `status`가 같아요. 자세한 계산은 [구현 글](/internals/optimize/nelder-mead/)에 있어요.
+- scipy 1.18.1의 `method='Nelder-Mead'`와 같은 알고리즘이고, 지금은 같은 점에서 `fun`을 같은 차례로 불러 `x`, `fun`, `nfev`, `status`가 비트까지 같아요(약속은 아니에요). 자세한 계산은 [구현 글](/internals/optimize/nelder-mead/)에 있어요.
 
 ## scipy를 아는 분께
 
 - 옵션 이름: `maxiter`는 `max_iter`, `maxfev`는 `max_nfev`예요. `xatol`, `fatol`, `adaptive`, `initial_simplex`는 같고 기본값도 같아요. `disp`, `return_all`은 없어요.
 - `jac`를 주면 scipy는 경고하고 무시하지만 여기서는 `ValueError`예요.
 - `bounds`는 `(lower, upper)` 꼴이고, `x0`가 경계 밖이면 `ValueError`예요(scipy는 경계 안으로 옮겨요).
-- `n_iter`는 scipy의 `nit`와 같은 수예요(1에서 세요).
+- `n_iter`는 한 반복 수라 scipy의 `nit`보다 하나 작아요(scipy는 1에서 세요). 멈추는 곳은 같아서, `max_iter=k`이면 두 라이브러리 모두 k − 1번 반복하고 멈춰요.

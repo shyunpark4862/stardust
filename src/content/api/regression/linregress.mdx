@@ -27,7 +27,7 @@ raises:
   - type: TypeError
     desc: x·y가 배열·숫자의 시퀀스·frame이 아니거나 복소수일 때, 인자를 하나만 줬을 때, nan_policy가 문자열이 아닐 때.
   - type: ValueError
-    desc: x·y가 0차원일 때, 길이가 다를 때, 점이 2개보다 적을 때('omit'으로 뺀 뒤 포함), inf가 있을 때(nan_policy='omit'이어도), nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, 앞 축(배치 모양)이 서로 브로드캐스트하지 않을 때.
+    desc: x·y가 0차원일 때, 길이가 다를 때, inf가 있을 때(nan_policy='omit'이어도), nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, 앞 축(배치 모양)이 서로 브로드캐스트하지 않을 때.
 seeAlso: [ols, theilslopes, siegelslopes, results, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -146,15 +146,15 @@ LinregressResult(slope=0.0, intercept=0.0, rvalue=nan, pvalue=nan, stderr=nan, i
 
 ### 점이 한 직선 위에 있을 때
 
-완전 적합이라 표준오차가 0이고 `pvalue`도 0이에요. `rvalue`는 ±1이에요. 계산한 잔차가 반올림 때문에 1e-16 크기로 남아도 [`ols`의 완전 적합 기준](/api/regression/ols/#특수한-경우) 안이면 같아요.
+완전 적합이라 표준오차가 0이에요. `pvalue`는 NaN이에요. 기울기도 반올림을 품은 값이라 표준오차 0으로 나눈 t는 뜻이 없어서, p값을 정할 수 없다고 알려 줘요. `rvalue`는 ±1이에요. 계산한 잔차가 반올림 때문에 1e-16 크기로 남아도 [`ols`의 완전 적합 기준](/api/regression/ols/#특수한-경우) 안이면 같아요.
 
 ```python
 >>> sd.regression.linregress([1.0, 2.0, 3.0, 4.0, 5.0], [3.0, 5.0, 7.0, 9.0, 11.0])
-LinregressResult(slope=2.0, intercept=1.0, rvalue=1.0, pvalue=0.0, stderr=0.0, intercept_stderr=0.0)
+LinregressResult(slope=2.0, intercept=1.0, rvalue=1.0, pvalue=nan, stderr=0.0, intercept_stderr=0.0)
 >>> sd.regression.linregress([1.0, 2.0, 3.0, 4.0, 5.0], [11.0, 9.0, 7.0, 5.0, 3.0]).rvalue
 -1.0
 >>> sd.regression.linregress([0.0, 1.0, 2.0, 3.0, 4.0, 5.0], [0.1 + v / 3.0 for v in range(6)])
-LinregressResult(slope=0.33333333333333337, intercept=0.09999999999999998, rvalue=1.0, pvalue=0.0, stderr=0.0, intercept_stderr=0.0)
+LinregressResult(slope=0.33333333333333337, intercept=0.09999999999999998, rvalue=1.0, pvalue=nan, stderr=0.0, intercept_stderr=0.0)
 ```
 
 ### 점이 둘일 때
@@ -166,13 +166,11 @@ LinregressResult(slope=0.33333333333333337, intercept=0.09999999999999998, rvalu
 LinregressResult(slope=2.5, intercept=0.5, rvalue=1.0, pvalue=nan, stderr=nan, intercept_stderr=nan)
 ```
 
-점이 하나뿐이거나 없으면 직선을 정할 수 없어서 `ValueError`예요.
+점이 하나뿐이거나 없으면 직선을 정할 수 없어서 모든 칸이 NaN이에요. 에러는 아니에요.
 
 ```python
 >>> sd.regression.linregress([1.0], [2.0])
-Traceback (most recent call last):
-    ...
-ValueError: linregress(): 'x' and 'y' must have length at least 2
+LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
 ```
 
 ## `nan_policy`: NaN이 있을 때
@@ -207,13 +205,11 @@ LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, i
 LinregressResult(slope=0.0, intercept=3.0, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
 ```
 
-`'omit'`으로 뺀 뒤 남은 점이 2개보다 적으면 `ValueError`예요. 배치에 `'omit'`을 주거나 이름이 틀려도 `ValueError`예요.
+`'omit'`으로 뺀 뒤 남은 점이 2개보다 적어도 모든 칸이 NaN이에요. 그래서 같은 코드가 데이터의 NaN 개수에 따라 에러를 내는 일이 없어요. 배치에 `'omit'`을 주거나 이름이 틀리면 `ValueError`예요.
 
 ```python
 >>> sd.regression.linregress([1.0, 2.0, 3.0], [3.0, float('nan'), float('nan')], nan_policy='omit')
-Traceback (most recent call last):
-    ...
-ValueError: linregress(): 'x' and 'y' must have length at least 2
+LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
 >>> sd.regression.linregress(sd.asarray([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]), sd.asarray([[3.0, 5.0, 7.0], [1.0, 2.0, 4.0]]), nan_policy='omit')
 Traceback (most recent call last):
     ...
@@ -243,7 +239,7 @@ Traceback (most recent call last):
 ValueError: linregress(): 'y' contains infinity
 ```
 
-길이가 다르거나 비어 있으면 `ValueError`, 인자를 하나만 주면 `TypeError`예요.
+길이가 다르면 `ValueError`, 인자를 하나만 주면 `TypeError`예요. 비어 있으면 점이 2개보다 적을 때처럼 모든 칸이 NaN이에요.
 
 ```python
 >>> sd.regression.linregress([1.0, 2.0, 3.0], [1.0, 2.0])
@@ -251,13 +247,11 @@ Traceback (most recent call last):
     ...
 ValueError: linregress(): 'x' must have 2 values like 'y', not 3
 >>> sd.regression.linregress([], [])
-Traceback (most recent call last):
-    ...
-ValueError: linregress(): 'x' and 'y' must have length at least 2
+LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
 >>> sd.regression.linregress([1.0, 2.0, 3.0])
 Traceback (most recent call last):
     ...
-TypeError: linregress() missing 1 required positional argument: 'y'
+TypeError: linregress(): missing 1 required positional argument: 'y'
 ```
 
 ## 배치: 직선 여러 개
@@ -307,7 +301,7 @@ array([1.5, nan], dtype=float64)
 | 상관계수 | `rvalue` | 없음(`rsquared`의 제곱근에 기울기의 부호) |
 | 신뢰구간·예측 구간·진단 | 없음 | `conf_int`, `predict_interval`, `leverage` 등 |
 | 강건 표준오차 | 없음 | `cov_type=` |
-| 점이 2개보다 적을 때 | `ValueError` | 에러 없이 맞춤(점 하나면 기울기가 겹친 열로 NaN, 점이 없으면 NaN 결과) |
+| 점이 2개보다 적을 때 | 모든 칸이 NaN | 에러 없이 맞춤(점 하나면 기울기가 겹친 열로 NaN, 점이 없으면 NaN 결과) |
 
 이상값에 덜 흔들리는 직선이 필요하면 [`theilslopes`](/api/regression/theilslopes/)나 [`siegelslopes`](/api/regression/siegelslopes/)를 보세요.
 
@@ -318,7 +312,7 @@ array([1.5, nan], dtype=float64)
 ```python
 >>> years = [2000.0, 2001.0, 2002.0, 2003.0, 2004.0]
 >>> sd.regression.linregress(years, [1.0 + 0.5 * (v - 2000.0) for v in years])
-LinregressResult(slope=0.5, intercept=-999.0, rvalue=1.0, pvalue=0.0, stderr=0.0, intercept_stderr=0.0)
+LinregressResult(slope=0.5, intercept=-999.0, rvalue=1.0, pvalue=nan, stderr=0.0, intercept_stderr=0.0)
 >>> big = sd.regression.linregress(hours, [v * 1e300 for v in score])
 >>> big.rvalue, big.pvalue
 (0.9697368963556728, 3.5381164280859763e-06)
@@ -334,10 +328,10 @@ scipy 1.18.1의 `scipy.stats.linregress` 기준이에요.
 - 이름, 인자 순서(`x`, `y`), 칸 이름이 같아요. 값은 반올림 차이 안에서 같아요.
 - scipy의 결과는 튜플로 풀면 다섯 칸(`slope` … `stderr`)이고 `intercept_stderr`는 속성으로만 있어요. sd는 여섯 칸 모두 튜플의 칸이에요.
 - 값의 형이 Python `float`(배치면 `sd.ndarray`)예요. scipy는 `numpy.float64`예요.
-- 점이 한 직선 위에 있으면 sd의 `pvalue`는 0이에요. scipy는 t를 구하는 식의 분모에 1e-20을 더하기 때문에 `[1, 2, 3, 4, 5]`, `[3, 5, 7, 9, 11]`에서 1.2e-30을 줘요.
+- 점이 한 직선 위에 있으면 sd의 `pvalue`는 NaN이에요. scipy는 t를 구하는 식의 분모에 1e-20을 더하기 때문에 `[1, 2, 3, 4, 5]`, `[3, 5, 7, 9, 11]`에서 1.2e-30을 줘요.
 - `nan_policy`의 세 이름과 뜻이 같고, `'omit'`의 값도 반올림 차이 안에서 같아요. scipy의 `alternative=`(한 꼬리 p값), `axis=`, `keepdims=`는 없어요. sd는 언제나 두 꼬리, 마지막 축이에요. scipy의 `axis` 기본값은 0이라 (배치, n) 모양의 배열은 `axis=-1`을 줘야 sd와 같은 축을 따라 맞춰요.
 - scipy는 배치에도 `nan_policy='omit'`을 받아 직선마다 다른 점을 빼요. sd는 `ValueError`예요.
-- 점이 2개보다 적으면(처음부터, 또는 `'omit'`으로 뺀 뒤) scipy는 경고와 함께 모든 칸이 NaN인 결과를 내요. sd는 `ValueError`예요.
+- 점이 2개보다 적으면(처음부터, 또는 `'omit'`으로 뺀 뒤) 둘 다 모든 칸이 NaN인 결과예요. scipy는 경고를 내고, sd는 내지 않아요.
 - `'omit'`에서 inf가 있으면 scipy는 경고와 함께 모든 칸이 NaN이에요. sd는 `ValueError`예요.
 - `x`나 `y`가 모두 같을 때, 점이 둘일 때 NaN이 되는 칸은 scipy와 같아요. `y`가 모두 같을 때의 기울기 0.0과 절편(그 값, −0.0이면 +0.0)도 같고, `y`가 모두 같아도 `x`에 NaN이 있으면 모두 NaN인 것도 같아요.
 - 극단 척도: 위 데이터의 `y`에 1e300을 곱하면 scipy는 `rvalue` 0.0, `pvalue` 1.0을 내요. sd는 원래 데이터와 같은 0.970과 3.5e-6이에요. 위의 `down`(`x`에 1e300, `y`에 −1e-300)에서도 scipy는 `rvalue` 0.0, `pvalue` 1.0, `intercept_stderr` NaN이고, sd는 −0.970, 3.5e-6, 1.7e-300이에요.

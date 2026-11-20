@@ -2,7 +2,7 @@
 title: 경계 있는 선형 최소제곱
 group: 최소제곱과 방정식계
 order: 2
-summary: 경계가 있는 선형 최소제곱을 푸는 lsq_linear의 두 방법과 nnls를 설명해요. scipy가 부르는 numpy·LAPACK 호출을 같은 꼴로 불러서, 결과의 모든 필드가 scipy와 비트까지 같아요.
+summary: 경계가 있는 선형 최소제곱을 푸는 lsq_linear의 두 방법과 nnls를 설명해요. scipy가 부르는 numpy·LAPACK 호출을 같은 꼴로 불러서, 지금은 결과가 scipy와 비트까지 같아요.
 seeAlso: [least-squares, overview, accuracy-performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -63,7 +63,7 @@ scipy처럼 먼저 경계를 잊고 풀어요. 그 해가 이미 상자 안이�
                 status = 3;
 ```
 
-`dgelsd`는 A의 SVD로 최소제곱 해를 구하는 LAPACK 루틴이에요. 먼저 A를 이중 대각 꼴로 줄이고, 분할 정복으로 특이값 분해를 한 뒤, 기준(`rcond`·최대 특이값) 이하인 특이값의 방향을 버린 해를 내요. `rcond`가 음수면 LAPACK이 기계 정밀도를 기준으로 써요. 그래서 열이 반올림 수준에서 겹칠 때만 방향을 버리고, 그때 답은 노름이 가장 작은 최소제곱 해예요. 이 결과의 `optimality`는 $\lVert A^{\mathsf T}r\rVert_\infty$예요(반올림 수준).
+`dgelsd`는 A의 SVD로 최소제곱 해를 구하는 LAPACK 루틴이에요. 먼저 A를 이중 대각 꼴로 줄이고, 분할 정복으로 특이값 분해를 한 뒤, 기준(`rcond`·최대 특이값) 이하인 특이값의 방향을 버린 해를 내요. `rcond`가 음수면 LAPACK이 기계 정밀도를 기준으로 써요. 그래서 열이 반올림 수준에서 겹칠 때만 방향을 버리고, 그때 답은 노름이 가장 작은 최소제곱 해예요. 이 결과의 `optimality`는 $\lVert A^{\mathsf T}r\rVert_\infty$예요(반올림 수준). `dgelsd`의 특이값 분해가 수렴하지 않으면(info > 0) numpy처럼 `LinAlgError`(`lsq_linear(): SVD did not converge`)예요.
 
 ## 'trf': 신뢰 영역 반사법을 이차 함수에
 
@@ -197,7 +197,30 @@ $$
 
 반복마다 비용이 줄고 같은 활성 집합이 다시 나오지 않으므로 유한한 단계에서 끝나요. 자유 변수의 `lstsq`는 numpy의 기본(`rcond=None`, 기준 $\varepsilon\cdot\max(m, k)$)이에요.
 
-4의 갱신은 경계에 닿는 변수도 $(1 - \alpha)x_j + \alpha z_j$로 계산하고 경계값을 대입하지 않아요. 그래서 그 변수는 경계와 반올림만큼 다를 수 있어요. [nnls의 문서](/api/optimize/nnls/)의 지수 성분 문제를 `bounds=(0, inf)`로 풀면 고정된 변수 하나가 $-1.4\times10^{-17}$이에요(scipy와 같은 비트예요).
+4의 갱신은 경계에 닿는 변수도 $(1 - \alpha)x_j + \alpha z_j$로 계산하고 경계값을 대입하지 않아요. 그래서 그 변수는 반올림으로 경계를 아주 조금 넘을 수 있어요. scipy는 그 값을 그대로 고정해 돌려줘요. [nnls의 문서](/api/optimize/nnls/)의 지수 성분 문제를 `bounds=(0, inf)`로 풀면 scipy의 x에는 고정된 변수 하나가 $-1.4\times10^{-17}$이에요. 무작위 300문제 가운데 84문제가 그래요.
+
+여기서는 반복이 끝난 뒤 x를 경계 안으로 옮겨요. 고정된 변수(`on_bound` ±1)는 정확히 그 경계값으로, 그 밖에 반올림만큼 넘은 값은 경계로 잘라요. x가 바뀌었으면 잔차, 기울기, `cost`, KKT 최적성을 옮긴 x에서 다시 계산해요. 반복과 `status`는 scipy 그대로예요.
+
+```cpp
+    // csrc/optimize/linear.cpp
+    bool moved = false;
+    for (lint j = 0; j < n; ++j) {
+        double v = on_bound[j] < 0 ? lb[j] : on_bound[j] > 0 ? ub[j] : std::min(std::max(x[j], lb[j]), ub[j]);
+        if (v != x[j]) {
+            x[j] = v;
+            moved = true;
+        }
+    }
+    if (moved) {
+        np_matvec(P.A.data(), m, n, x.data(), r.data());
+        for (lint i = 0; i < m; ++i) r[i] = r[i] - P.b[i];
+        cost = 0.5 * npdot(r.data(), r.data(), m);
+        np_rmatvec(P.A.data(), m, n, r.data(), g.data());
+        optimality = kkt();
+    }
+```
+
+그래서 돌려주는 x는 언제나 경계 안이고, `active_mask`가 ±1인 변수는 정확히 그 경계값이에요. 그런 경우만 `x`, `fun`, `cost`, `optimality`의 끝자리가 scipy와 달라요(`cost`는 상대 $10^{-12}$ 안). 같은 무작위 문제에서 `'trf'`(안쪽 점)와 `nnls`는 경계를 넘지 않았어요.
 
 ## nnls: Lawson–Hanson
 
@@ -213,13 +236,13 @@ Lawson–Hanson(1974)의 NNLS는 x ≥ 0 전용의 활성 집합법이에요. �
 P가 바뀔 때마다 비용이 엄격히 줄고 P가 되풀이되지 않으므로 유한한 단계에서 끝나요. 끝난 x는 KKT 조건을 반올림 안에서 만족해요. 섞임 문제의 x를 반복마다 보면(`max_iter`로 끊어서) 이래요.
 
 ```python
->>> [[round(v, 4) for v in sd.optimize.nnls(A, b, max_iter=k).x.tolist()] for k in (1, 2, 3)]
-[[0.0, 0.0, 0.0], [1.2026, 0.0, 0.0], [0.9014, 0.5111, 0.0]]
+>>> [[round(v, 4) for v in sd.optimize.nnls(A, b, max_iter=k).x.tolist()] for k in (1, 2)]
+[[1.2026, 0.0, 0.0], [0.9014, 0.5111, 0.0]]
 >>> [round(v, 3) for v in sd.matmul(A.T, b).tolist()]
 [2.285, 1.955, 0.93]
 ```
 
-x = 0에서 $w = A^{\mathsf T}b$가 가장 큰 첫째 변수를 넣고, 다음에 둘째를 넣어요. 그 뒤 셋째의 $w_3$는 0 이하라 끝나요(`n_iter` 2).
+`max_iter=k`이면 3의 풀이를 k번까지 해요. x = 0에서 $w = A^{\mathsf T}b$가 가장 큰 첫째 변수를 넣고(풀이 1번), 다음에 둘째를 넣어요(풀이 2번). 그 뒤 셋째의 $w_3$는 0 이하라 끝나요(`n_iter` 2).
 
 ### 삼각화를 늘려 가기
 
@@ -273,11 +296,11 @@ scipy 1.18.1의 `nnls`는 Lawson–Hanson의 Fortran(H12, G1)을 LAPACK으로 �
             }
 ```
 
-셈과 상한도 scipy의 판이에요. 안쪽 고리를 한 번 돌 때마다(3의 풀이마다) 하나를 세고 `iter >= max_iter`에서 status 3으로 멈춰요(원본의 `> itmax`보다 하나 일찍). 기본 `max_iter`는 3n이에요. 다른 곳이 하나 있어요. 열을 빼다가 P가 비면 scipy의 고리는 음수의 개수로 계속 가며 색인 배열 앞을 써요. 여기서는 그 자리에서 안쪽 고리를 끝내요. 무작위 문제 800개에서는 그런 경우가 나오지 않아요.
+셈은 scipy의 판처럼 안쪽 고리를 한 번 돌 때마다(3의 풀이마다) 하나예요. 상한은 Lawson–Hanson 원본처럼 `iter > max_iter`에서 status 0(`The maximum number of iterations is exceeded.`, `lsq_linear`의 글)으로 멈춰요. scipy의 C 판은 `iter >= maxiter`라 하나 일찍 멈추고 `RuntimeError`를 내요. 기본 `max_iter`는 3n − 1이라 scipy의 기본 3n과 같은 곳에서 멈춰요. 상한에 닿지 않는 문제의 x는 같아요. 다른 곳이 하나 있어요. 열을 빼다가 P가 비면 scipy의 고리는 음수의 개수로 계속 가며 색인 배열 앞을 써요. 여기서는 그 자리에서 안쪽 고리를 끝내요. 무작위 문제 800개에서는 그런 경우가 나오지 않아요.
 
-## scipy와 비트까지 같게
+## scipy와 같은 호출의 꼴
 
-세 방법의 산술은 scipy가 numpy와 LAPACK을 부르는 꼴을 그대로 따라요. 같은 연산이라도 부르는 루틴과 메모리 배치가 다르면 Accelerate(macOS의 BLAS·LAPACK)의 결과가 끝자리에서 달라지기 때문이에요.
+세 방법의 산술은 scipy가 numpy와 LAPACK을 부르는 꼴을 그대로 따라요. 그래서 지금은 결과가 scipy와 비트까지 같아요(약속은 아니에요). 같은 연산이라도 부르는 루틴과 메모리 배치가 다르면 Accelerate(macOS의 BLAS·LAPACK)의 결과가 끝자리에서 달라지기 때문이에요.
 
 - `A.dot(x)`는 C 순서 A의 `cblas_dgemv`(행 우선), `A.T.dot(r)`은 같은 메모리를 열 우선으로 본 `dgemv`예요. 행이나 열이 하나면 numpy처럼 `ddot`·곱의 길로 가요.
 - 벡터 둘의 `np.dot`은 `0.0 + cblas_ddot`이에요(원소가 하나면 곱). BLAS가 돌려주는 −0.0이 +0.0이 되는 것까지 같아요.
@@ -294,7 +317,7 @@ double npdot(const double* a, const double* b, lint n) {
 - Accelerate의 `ddot`과 `dgelsd`는 넘겨받은 배열의 정렬(16바이트 경계에 놓였는지)에 따라 합의 순서가 달라요. 그래서 numpy의 `lstsq`가 만드는 버퍼 배치(a, b, s를 한 덩어리에, work와 iwork를 다른 덩어리에)와 scipy `nnls` 감싸개의 작업 버퍼 배치(x, A, b, w, zz를 한 덩어리에)를 그대로 써요. 따로 잡은 배열로 하면 무작위 400문제 가운데 m이 홀수이고 m < n인 7문제에서 `dgelsd`의 끝자리가 갈려요.
 - 스칼라 계산은 Python의 산술(FMA 없음)이고, scipy가 컴파일한 부분(`givens_elimination`의 v 회전, `nnls`)만 그 빌드의 FMA를 `std::fma`로 적어요.
 
-그 결과 scipy의 시험 문제 12개 × 세 방법의 모든 필드, 무작위 문제 `'trf'`·`'bvls'` 각 824개(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양(1 × 1부터 2 × 2까지) 480개, 큰 크기((1000, 100), (300, 120), (10⁴, 100))에서 x, fun, cost, optimality, active_mask, status, message, 반복 수가 모두 scipy와 같아요. `nnls`는 무작위 801개(반복 상한을 준 100개 포함)에서 x가 비트까지 같아요. scipy의 `rnorm`은 회전한 b의 꼬리 노름이라 $\sqrt{2\cdot\text{cost}}$와 끝자리가 다를 수 있어요.
+그 결과 scipy의 시험 문제 12개 × 세 방법의 모든 필드, 무작위 문제 `'trf'`·`'bvls'` 각 824개(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양(1 × 1부터 2 × 2까지) 480개, 큰 크기((1000, 100), (300, 120), (10⁴, 100))에서 x, fun, cost, optimality, active_mask, status, message, 반복 수가 모두 scipy와 같아요. 다만 `'bvls'`에서 scipy의 x가 경계를 반올림만큼 넘은 경우(테스트의 무작위 300번 가운데 84번)는 x가 그것을 경계로 옮긴 값과 비트까지 같고, `fun`·`cost`·`optimality`는 옮긴 x의 것이에요. `nnls`는 무작위 801개(반복 상한을 준 100개 포함)에서 x가 비트까지 같아요. scipy의 `rnorm`은 회전한 b의 꼬리 노름이라 $\sqrt{2\cdot\text{cost}}$와 끝자리가 다를 수 있어요.
 
 ```python
 >>> import numpy as np
@@ -328,7 +351,7 @@ True
 />
 
 - 작은 문제의 `'trf'`는 8배쯤 빨라요. scipy는 반복마다 `LinearOperator`를 만들고 numpy 연산 수십 개를 Python에서 불러요. `'bvls'`는 반복마다의 `lstsq`(`dgelsd`)가 대부분이라 차이가 작아요.
-- 큰 문제는 같은 LAPACK·BLAS 호출이 시간의 대부분이라 같아요. 같은 호출을 같은 꼴로 해야 비트가 같으므로 줄일 곳이 없어요.
+- 큰 문제는 같은 LAPACK·BLAS 호출이 시간의 대부분이라 같아요. 같은 호출이라 줄일 곳이 거의 없어요.
 - `nnls` (100, 10)은 scipy보다 조금 느려요. 커널은 같은 시간이고 차이는 Python 층(입력 확인, 결과 객체)이에요.
 
 ## 참고 문헌

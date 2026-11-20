@@ -409,4 +409,4 @@ TypeError: kve(): not supported for float64 and complex128
 - x = 0: `iv(-1.5, 0)`처럼 $\sin(a\pi) < 0$인 음의 비정수 차수 $-a$에서 `iv`는 −inf예요. scipy는 언제나 +inf예요. `ive(v, 0)`은 `iv(v, 0)`과 같은 값이에요. scipy는 결과가 ±inf가 되는 음의 비정수 차수에서 NaN이에요.
 - 정수 차수 함수 `kn`은 없어요. `kv`가 정수 차수도 받아요.
 - 리스트와 numpy 배열은 받지 않아요. `out`은 keyword-only이고, Python 숫자를 넣으면 Python `float`가 나와요.
-- 그 밖의 특수값은 scipy와 비트까지 같아요. 일반 값은 마지막 몇 자리가 다를 수 있어요.
+- 그 밖의 특수값은 scipy와 같아요. 일반 값은 마지막 몇 자리가 다를 수 있어요.

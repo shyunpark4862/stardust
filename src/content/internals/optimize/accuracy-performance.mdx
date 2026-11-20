@@ -2,7 +2,7 @@
 title: 정확도와 성능
 group: 정확도와 성능
 order: 1
-summary: sd.optimize가 맞게 푸는지를 MGH 35 같은 시험 문제와 scipy·Fortran 원본의 기록으로 확인하는 방법을 모았어요. 대부분의 방법은 scipy와 같은 점에서 함수를 부르고, 다른 곳은 그 이유를 밝혀요.
+summary: sd.optimize가 맞게 푸는지를 MGH 35 같은 시험 문제와 scipy·Fortran 원본의 기록으로 확인하는 방법을 모았어요. 대부분의 방법은 지금 scipy와 같은 점에서 함수를 부르고, 다른 곳은 그 이유를 밝혀요.
 seeAlso: [overview, derivatives, scalar-roots, batched, quasi-newton, least-squares, root]
 ---
 import Bench from '../../../components/fig/Bench.astro';
@@ -14,7 +14,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 최적화의 결과는 "멈춤 판정을 만족한 점"이에요. 정확한 답 하나가 있는 특수함수나 선형 회귀와 달리, 같은 문제도 허용오차와 반복의 경로에 따라 다른 점에서 멈춰요. 그래서 이 영역은 정확도를 세 가지로 확인해요.
 
-1. **같은 걸음인가.** 각 방법은 scipy 1.18.1과 같은 순서로 계산해요. 같은 문제에서 사용자 함수를 부르는 점을 차례대로 기록해 scipy의 것과 견주고, 대부분의 방법은 그 점들이 비트까지 같아요.
+1. **같은 걸음인가.** 각 방법은 scipy 1.18.1과 같은 알고리즘과 같은 멈춤 판정을 써요. 같은 문제에서 사용자 함수를 부르는 점을 차례대로 기록해 scipy의 것과 견줘요. scipy와의 비트 동일은 약속이 아니지만(약속은 스레드 수와 상관없이 같은 비트, 자기 골든 출력과의 비트, 정확도예요), 지금은 대부분의 방법이 그 점들까지 비트로 같아요.
 2. **원본에서 얼마나 떨어져 있나.** scipy의 MINPACK과 L-BFGS-B는 Fortran 원본을 C로 옮긴 것이에요. 원본을 gfortran으로 돌린 결과를 고정 데이터로 두고, scipy와 이 라이브러리가 원본에서 얼마나 떨어지는지 재요.
 3. **멈춘 점이 판정의 뜻대로 정답 가까이 있나.** 스칼라 근은 Arb(구간 산술)로 찾은 참값과 견주고, 최소화는 기울기와 KKT 조건의 잔차로 봐요.
 
@@ -22,14 +22,14 @@ import Steps from '../../../components/fig/Steps.astro';
 |---|---|---|
 | `root_scalar` 6방법 | scipy 1,244번, Arb 근 204개 | 부르는 점까지 비트로 같음. 기본 허용오차의 근은 모두 Arb 근에서 `xtol` + `rtol`·\|x\| 안 |
 | `minimize_scalar` 3방법 | scipy 399번 | 비트로 같음 |
-| `find_root`, `bracket_root`, `find_minimum`, `bracket_minimum` | scipy `elementwise` 621번, 2,000원소 배치 | 원소마다 비트로 같음 |
+| `find_root`, `bracket_root`, `find_minimum`, `bracket_minimum` | scipy `elementwise` 621번, 2,000원소 배치 | 원소마다 비트로 같음(`bracket_root`가 두 쪽에서 같은 너비로 함께 끝난 6번은 구간을 정렬해 왼쪽 것을 주므로 구간만 달라요) |
 | `minimize` nelder-mead, l-bfgs-b | scipy 114경우와 상자 경계 51경우, 옵션 328번 | 비트로 같음 |
 | `minimize` newton-cg, trust-ncg, trust-exact | scipy 339번과 부르는 점 1,130번, 무작위 문제 2,100번 | 비트로 같음 |
 | `minimize` bfgs | scipy 114경우 | 반올림만큼 달라요. 같은 `status` 113, x가 상대 10⁻⁶ 안 89 |
 | `least_squares` 'lm' | scipy 110경우 × (해석적, 2점) | 해석적 108, 2점 104경우가 비트로 같음 |
 | `least_squares` 'trf' | scipy 110경우, 상자 47경우 | 끝자리부터 달라요. 해석적 야코비안에서 같은 `status` 110, 부르는 점이 모두 10⁻¹⁰ 안 103 |
 | `root` hybr, lm | scipy 55계 × (해석적, 차분) | 비트로 같음 |
-| `lsq_linear`, `nnls` | scipy 12문제, 무작위 문제 2,449번 | 비트로 같음 |
+| `lsq_linear`, `nnls` | scipy 12문제, 무작위 문제 2,449번 | 비트로 같음('bvls'가 경계를 반올림만큼 넘은 x를 경계로 옮긴 경우는 그 x의 값) |
 | `approx_fprime` | scipy(`epsilon=2**-26`) MGH 47경우 | 비트로 같음. 기본 5점 차분은 해석적 도함수와 상대 1.2×10⁻¹¹ 안 |
 
 속도는 대부분 사용자 함수가 정해요. 그래서 방법끼리는 사용자 함수 밖의 시간, 곧 반복 하나(스칼라는 호출 하나, 배치는 함수값 하나)에 방법 자신이 쓰는 시간으로 견줘요. 작은 문제에서 이 값은 scipy의 1/2–1/60이에요. 반복 전체가 C++이고 Python은 사용자 함수뿐이기 때문이에요. 같은 LAPACK·BLAS 호출이 시간의 대부분인 큰 선형 최소제곱과 L-BFGS-B n = 10⁴는 scipy와 같아요([속도](#속도)).
@@ -213,11 +213,13 @@ bisect 51 True
 
 - 구간법의 근: 위의 Arb 표예요.
 - `lsq_linear`·`nnls`: 무작위 100문제(긴 모양)에서 'bvls'와 `nnls`의 결과는 KKT 조건을 상대 10⁻⁹ 안에서 만족하고, 'trf'의 `cost`는 'bvls'의 것과 상대 1.2×10⁻¹¹ 안이에요. 'trf'는 안쪽 점 방법이라 척도를 곱한 기울기로 멈추기 때문이에요.
-- `approx_fprime`과 `check_grad`의 기본(5점 차분): MGH 47경우에서 해석적 도함수와의 상대 차이가 야코비안 최대 1.2×10⁻¹¹, 기울기 최대 6.4×10⁻¹¹이에요. `epsilon=2**-26`의 앞쪽 차분은 scipy와 비트까지 같고 10⁻⁸ 근처예요([수치 미분](/internals/optimize/derivatives/)).
-- `minimize_scalar`: 최솟값 근처에서 $f$가 평평해서 위치의 상대 정확도는 $\sqrt u$ 근처에서 막혀요. 기본 허용오차가 그 크기예요.
+- `approx_fprime`과 `check_grad`의 기본(5점 차분): MGH 47경우에서 해석적 도함수와의 상대 차이가 야코비안 최대 1.2×10⁻¹¹, 기울기 최대 6.4×10⁻¹¹이에요. `epsilon=2**-26`의 앞쪽 차분은 지금 scipy와 비트까지 같고 10⁻⁸ 근처예요([수치 미분](/internals/optimize/derivatives/)).
+- `minimize_scalar`: 최솟값 근처에서 $f$가 평평해서 위치의 상대 정확도는 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$ 근처에서 막혀요. 기본 허용오차가 그 크기예요.
 - [`nls`](/internals/regression/nls/)는 같은 반복 커널을 쓰지만 멈춘 뒤 정확한 야코비안으로 다듬으므로, 결과가 멈춤 판정과 거의 상관없이 반올림 수준이에요. 그 약속은 회귀 영역의 것이에요.
 
 ## scipy와 비트까지 같은 범위
+
+scipy와의 비트 동일은 약속이 아니에요. 같은 알고리즘을 지금 같은 계산 순서로 하고 있어서 같은 것이고, 고치거나 빠르게 하는 데 필요하면 바뀔 수 있어요. 이 절은 지금 그런 범위예요.
 
 ### 같은 점에서 부르는 방법
 
@@ -262,7 +264,7 @@ l-bfgs-b True True 66 66
 nelder-mead True True 640 640
 ```
 
-이렇게 부르는 점이 차례대로 비트까지 같은 방법과, 견준 실행이에요.
+지금 부르는 점이 차례대로 비트까지 같은 방법과, 견준 실행이에요.
 
 | 함수 | 방법 | scipy를 실행하며 견준 것 |
 |---|---|---|
@@ -273,7 +275,7 @@ nelder-mead True True 640 640
 | `minimize` | newton-cg, trust-ncg, trust-exact | 헤시안을 주는 꼴 10묶음(`hess`, `hessp`, `'2-point'`, `'3-point'`, 없음) 1,130번, 옵션 525번, 무작위 비볼록 사차 함수 2,100번(비대칭 헤시안 포함)과 Rosenbrock n = 64–200 28번 |
 | `least_squares` | lm | MGH 110경우 가운데 해석적 108, 2점 104경우. NIST StRD 54적합 가운데 해석적 52, 2점 52 |
 | `root` | hybr, lm | 55계 × (해석적, 차분) 110번씩, 옵션을 바꾼 6계(hybr 7가지, lm 6가지) |
-| `lsq_linear` | trf, bvls | 12문제, 무작위 824번씩(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양 480번, 큰 모양 셋 |
+| `lsq_linear` | trf, bvls | 12문제, 무작위 824번씩(넓고 긴 모양, 계수 부족, 반쪽·상자·무한이 섞인 경계), 작은 모양 480번, 큰 모양 셋. 'bvls'에서 scipy의 x가 경계를 반올림만큼 넘은 경우(테스트의 무작위 300번 가운데 84번)는 x가 그것을 경계로 옮긴 값과 비트까지 같고, `fun`·`cost`·`optimality`는 옮긴 x의 것이에요 |
 | `nnls` | Lawson–Hanson(scipy의 C 판) | 12문제, 무작위 801번 |
 | `approx_fprime` | `epsilon=2**-26`의 앞쪽 차분 | MGH 47경우의 기울기와 야코비안 |
 
@@ -288,24 +290,24 @@ nelder-mead True True 640 640
 (True, True, [8, 8, 8, 8, 8])
 ```
 
-### 같게 하려고 맞춘 것
+### 같은 계산 순서의 세부
 
-같은 알고리즘을 같은 순서로 옮기는 것만으로는 끝자리가 같아지지 않아요. scipy의 결과는 scipy를 빌드한 컴파일러와 scipy가 부르는 numpy·BLAS의 세부까지 담고 있어서, 그것까지 맞춰요. 자세한 것은 [영역의 구조](/internals/optimize/overview/)와 방법마다의 글에 있고, 여기서는 무엇이 결과를 바꾸는지만 모아요.
+같은 알고리즘을 같은 순서로 옮기는 것만으로는 끝자리가 같아지지 않아요. scipy의 결과는 scipy를 빌드한 컴파일러와 scipy가 부르는 numpy·BLAS의 세부까지 담고 있어요. 지금 비트까지 같은 방법들은 그 세부도 scipy와 같은 꼴로 계산해요. 자세한 것은 [영역의 구조](/internals/optimize/overview/)와 방법마다의 글에 있고, 여기서는 무엇이 결과를 바꾸는지만 모아요.
 
-| 맞춘 것 | 왜 결과가 달라지나 | 어디 |
+| 같은 꼴로 한 것 | 왜 결과가 달라지나 | 어디 |
 |---|---|---|
 | FMA 축약 | scipy의 C 코드(brentq, bisect, MINPACK, L-BFGS-B)는 clang의 기본(`-ffp-contract=on`)으로 빌드되어 한 식의 `a*b + c`를 FMA 하나로 계산해요. 이 라이브러리는 모듈 전체에서 축약을 끄므로 그 자리를 `std::fma`로 적거나, 파일에서 같은 축약을 켜요. 축약 없이 계산하면 스칼라 근 204문제 가운데 192문제, 경계 없는 L-BFGS-B 114경우 가운데 13경우만 부르는 점이 같아요 | `scalar.cpp`, `lsq.cpp`의 lmder(`Fu = true`), `hybrd.cpp`, `lbfgsb.cpp` |
-| 기계어에서 읽은 반올림의 꼴 | 설치된 scipy에는 MINPACK과 `nnls`의 C 소스가 없어요. 기계어(`otool -tv`)에서 MINPACK `t**2`의 제곱은 따로 반올림하고, clang이 벡터화한 두 고리(qrfac의 내적, gtol 판정)는 8개씩의 곱을 따로 반올림해 더한다는 것을 읽어 같은 꼴로 적었어요 | `minpack.hpp`의 `enorm`, `dot8` |
-| Accelerate `ddot`의 정렬 | Accelerate의 `ddot`은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 달라요(길이 5부터 끝자리가 달라져요). scipy는 작업 배열 하나를 나눠 쓰므로 부분마다 정렬이 달라요. 같은 위치로 나눠야 상자 경계의 L-BFGS-B가 51경우 모두 같아요 | `lbfgsb.cpp`의 작업 공간, `nnls`의 버퍼, `lstsq`(gelsd)의 버퍼 |
-| numpy의 `np.dot` | 두 벡터의 `np.dot`은 `0.0 + cblas_ddot`이라 BLAS가 돌려준 −0.0이 +0.0이 돼요. trust-ncg의 경계 교점은 $b = 2z^{\mathsf T}d$의 부호를 `copysign`으로 보므로 $z = 0$에서 이 차이가 걸음을 바꿔요(MGH 8경우) | `hessian.hpp`, `trust.cpp`, `linear.cpp` |
+| 기계어에서 읽은 반올림의 꼴 | 설치된 scipy에는 MINPACK과 `nnls`의 C 소스가 없어요. 기계어(`otool -tv`)에서 MINPACK `t**2`의 제곱은 따로 반올림하고, clang이 벡터화한 두 고리(qrfac의 내적, gtol 판정)는 8개씩의 곱을 따로 반올림해 더해요. 읽은 꼴 그대로 적어요 | `minpack.hpp`의 `enorm`, `dot8` |
+| Accelerate `ddot`의 정렬 | Accelerate의 `ddot`은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 달라요(길이 5부터 끝자리가 달라져요). scipy는 작업 배열 하나를 나눠 쓰므로 부분마다 정렬이 달라요. 여기서도 같은 위치로 나눠서 상자 경계의 L-BFGS-B가 51경우 모두 같아요 | `lbfgsb.cpp`의 작업 공간, `nnls`의 버퍼, `lstsq`(gelsd)의 버퍼 |
+| numpy의 `np.dot` | 두 벡터의 `np.dot`은 `0.0 + cblas_ddot`이라 BLAS가 돌려준 −0.0이 +0.0이 돼요. trust-ncg의 경계 교점은 $b = 2z^{\mathsf T}d$의 부호를 `copysign`으로 보므로 $z = 0$에서 이 차이가 걸음을 바꿔요(빼면 MGH 8경우가 갈려요) | `hessian.hpp`, `trust.cpp`, `linear.cpp` |
 | numpy의 정렬과 합 | Nelder–Mead는 numpy `argsort`의 introsort를 옮겨 같은 값의 순서까지 같게 하고(17개 미만은 삽입 정렬), 무게중심은 numpy처럼 +0.0에서 행을 차례로 더해요. trust 계열의 합은 numpy의 쌍별 합이에요 | `nelder_mead.cpp`, `trust.cpp` |
 | 넘침의 판정 | BFGS의 zoom 보간은 scipy가 `np.errstate(divide, over, invalid='raise')` 안에서 하고 그 에러에서 보간을 버려요. 연산마다 numpy의 규칙으로 같은 판정을 해요 | `wolfe.hpp` |
 
 ### 끝자리가 다른 방법
 
-두 방법은 scipy와 같은 알고리즘이지만 반올림의 순서가 달라요.
+BFGS와 'trf'는 scipy와 같은 알고리즘이지만 지금 반올림의 순서가 달라요. 그 밖에 잔차가 아주 많은($m \ge 10n$이고 $mn \ge 2000$) `least_squares('lm')`은 LAPACK QR을 먼저 하는 nls의 빌드를 써서 끝자리가 다르고 반복 수가 가끔 하나 둘 달라요. `hess`와 `hessp`가 없는 newton-cg는 헤세 곱의 차분마다 $g(x)$를 다시 부르지 않아서 부르는 점 자체가 scipy와 달라요.
 
-**BFGS.** 역헤시안 근사 $H$의 갱신을 같은 BFGS 식의 싼 순서로 계산해요. scipy는 $(I - \rho s y^{\mathsf T})H(I - \rho y s^{\mathsf T}) + \rho s s^{\mathsf T}$를 행렬곱 두 번($n^3$)으로 만들고, 여기서는 $v = Hy$로 $H - \rho(s v^{\mathsf T} + v s^{\mathsf T}) + (\rho^2 y^{\mathsf T}v + \rho)\, s s^{\mathsf T}$를 $O(n^2)$로 만들어요. 반복 하나의 자기 비용이 n = 1000에서 scipy의 11 ms 대신 0.28 ms예요. 갱신 한 번 뒤의 $H$는 scipy의 것과 상대 1.7×10⁻¹⁵ 안이지만, 그 끝자리 차이가 다음 걸음으로 이어져요.
+**BFGS.** 역헤시안 근사 $H$의 갱신을 같은 BFGS 식의 싼 순서로 계산해요. scipy는 $(I - \rho s y^{\mathsf T})H(I - \rho y s^{\mathsf T}) + \rho s s^{\mathsf T}$를 행렬곱 두 번($n^3$)으로 만들고, 여기서는 $v = Hy$로 $H - \rho(s v^{\mathsf T} + v s^{\mathsf T}) + (\rho^2 y^{\mathsf T}v + \rho)\, s s^{\mathsf T}$를 $O(n^2)$로 만들어요. 반복 하나의 자기 비용이 n = 1000에서 scipy의 11 ms 대신 0.29 ms예요. 갱신 한 번 뒤의 $H$는 scipy의 것과 상대 1.7×10⁻¹⁵ 안이지만, 그 끝자리 차이가 다음 걸음으로 이어져요.
 
 ```python
 >>> x0 = [-1.2, 1.0] * 5
@@ -365,6 +367,11 @@ MGH 110경우(상자 경계는 47경우)를 scipy의 기록과 견준 수예요.
 | `minimize('newton-cg')` | `njev`가 하나 많을 수 있어요 | 결과의 `jac`이 돌려준 x의 기울기예요(scipy는 마지막 반복을 시작한 점의 것) |
 | `minimize` trust-ncg | `nhev` | 실제로 부른 수만 세요(scipy는 `hessp`만 주면 부르지 않은 1을 더하고, 끝의 `hess` 호출을 세지 않아요) |
 | `minimize('l-bfgs-b')` | 선 탐색이 실패한 결과의 `fun` | 돌려주는 x의 값이에요(scipy는 마지막 시험점의 값). 걸음은 같아요 |
+| `minimize('l-bfgs-b')` | 걸음 없이 상대 감소 판정을 통과한 결과의 `converged` | 시험점의 값이 유한하지 않아 선 탐색이 제자리에서 끝난 것이라 해가 아니에요. `status`·`message`는 scipy의 것이고 `converged`만 False예요 |
+| `minimize('nelder-mead')` | `n_iter`가 scipy의 `nit`보다 하나 적어요 | `n_iter`는 한 반복 수예요. scipy는 1에서 세요. 멈추는 곳은 같아요 |
+| `minimize` l-bfgs-b, trust-ncg, trust-exact | `max_iter=0` | 반복 없이 $x_0$에서 멈춰요(scipy는 상한을 첫 반복 뒤에 봐서 한 번 반복해요) |
+| `bracket_root` | 두 쪽이 같은 너비로 함께 부호 바뀜을 찾은 원소의 `bracket` | 왼쪽 구간을 정렬해 돌려줘요. scipy는 두 쪽의 끝을 섞어 뒤집힌 구간을 줘요(기록된 실행 가운데 6번) |
+| `nnls` | 상한의 `status`와 `max_iter`의 뜻 | 상한은 예외가 아니라 status 0이에요. `max_iter`는 Lawson–Hanson 원본처럼 그 수까지 반복하고, 기본 3n − 1이 scipy의 3n과 같은 곳에서 멈춰요 |
 | `root_scalar` newton·secant | 도함수 0, 같은 두 값에서의 `message` | scipy가 경고로 내는 글을 `message`에 둬요 |
 
 ```python
@@ -419,9 +426,9 @@ scipy가 부른 점에서 앞의 둘($x_0$의 두 호출)을 빼면 이 라이�
 |---:|---|---:|---:|---:|
 | 10³ | `find_root` | 0.128 / 0.142 | 0.766 / 0.817 | 6.9 / 70.5 |
 | 10³ | `find_minimum` | 0.240 / 0.248 | 1.97 / 2.02 | 5.6 / 96.8 |
-| 10⁶ | `find_root` | 123 / 31 | 286 / 290 | 7.1 / 23.9 |
+| 10⁶ | `find_root` | 123 / 32 | 286 / 290 | 7.1 / 23.9 |
 | 10⁶ | `bracket_root` | 58.6 / 40.5 | 95.7 / 97.3 | 7.4 / 15.0 |
-| 10⁶ | `find_minimum` | 189 / 55 | 588 / 592 | 4.4 / 26.1 |
+| 10⁶ | `find_minimum` | 189 / 57 | 588 / 592 | 4.4 / 26.1 |
 | 10⁶ | `bracket_minimum` | 54.0 / 26.7 | 61.7 / 62.7 | 4.5 / 6.5 |
 
 함수값 하나에 커널이 쓰는 시간은 크기와 거의 상관없이 4–10 ns예요. 10스레드가 빨라지는 것은 사용자 함수 안의 sd 연산이 나뉘고, 아직 끝나지 않은 원소가 2¹⁵개 이상인 동안 원소 패스도 나뉘기 때문이에요. 원소마다 `root_scalar`(brentq)를 부르는 Python 고리는 10⁴ 원소에서 61.3 ms(원소마다 scipy `brentq`를 부르는 고리 72.1 ms)이고, 같은 일을 `find_root` 한 번으로 하면 1.19 ms예요.
@@ -433,14 +440,14 @@ scipy가 부른 점에서 앞의 둘($x_0$의 두 호출)을 빼면 이 라이�
 | 방법 | n = 2 sd / scipy | n = 10 | n = 100 | n = 1000 |
 |---|---:|---:|---:|---:|
 | nelder-mead | 0.45 / 7.6 | 0.32 / 7.0 | 1.8 / 16.3 | 140 / 747 |
-| bfgs, 해석적 기울기 | 0.87 / 23 | 0.74 / 22.6 | 6.2 / 70.8 | 280 / 11,000 |
+| bfgs, 해석적 기울기 | 0.87 / 23 | 0.74 / 22.6 | 6.2 / 70.8 | 289 / 11,000 |
 | bfgs, 차분 | 0.91 / 52.2 | 2.3 / 79.8 | 32.2 / 480 | 711 / 16,600 |
 | l-bfgs-b, 해석적 | 2.3 / 7.4 | 2.6 / 7.7 | 4.9 / 9.9 | 47 / 54 |
 | l-bfgs-b, 차분 | 2.6 / 35.1 | 4.2 / 60.2 | 26.8 / 370 | 337 / 4,230 |
-| newton-cg, `hess` | 0.94 / 25.6 | 0.95 / 25.3 | 7.0 / 56.7 | 149 / 216 |
+| newton-cg, `hess` | 0.94 / 25.6 | 0.95 / 25.3 | 7.0 / 56.7 | 240 / 216 |
 | newton-cg, `hessp` | 1.2 / 22.0 | 1.6 / 22.9 | 4.6 / 40.0 | 27 / 79 |
 | newton-cg, `hess='2-point'` | 1.1 / 58.2 | 1.3 / 75.1 | 4.3 / 147 | 33 / 307 |
-| trust-ncg, `hess` | 1.2 / 17.1 | 1.1 / 22.5 | 5.6 / 37.9 | 101 / 135 |
+| trust-ncg, `hess` | 1.2 / 17.1 | 1.1 / 22.5 | 5.6 / 37.9 | 200 / 135 |
 | trust-ncg, `hessp` | 1.8 / 15.7 | 2.1 / 22.0 | 3.4 / 26.2 | 19 / 50 |
 | trust-exact | 1.4 / 40.9 | 2.1 / 60.0 | 49 / 143 | 5,130 / 7,240 |
 
@@ -461,36 +468,36 @@ scipy가 부른 점에서 앞의 둘($x_0$의 두 호출)을 빼면 이 라이�
 - n = 2–100에서는 scipy의 1/2–1/60이에요. scipy는 반복마다 Python에서 numpy 연산, `ScalarFunction`의 기억, 선 탐색의 Python 코드를 거치고, 여기서는 반복 전체가 C++이에요. L-BFGS-B는 scipy도 반복의 계산이 C라서 차이가 작아요(scipy의 몫은 setulb를 부르는 Python 고리와 `ScalarFunction`이에요).
 - 차분 기울기와 차분 헤세 곱은 차이가 더 커요(L-BFGS-B 차분 n = 1000: 0.34 ms 대 4.2 ms). scipy는 `approx_derivative`가 변수마다 numpy 배열을 복사하고 Python에서 나눠요.
 - BFGS n = 1000의 차이는 $H$ 갱신의 순서 때문이에요(위의 [끝자리가 다른 방법](#끝자리가-다른-방법)). 전체 시간은 40회에 12.1 ms 대 441 ms예요.
-- `hess` 행렬을 쓰는 n = 1000의 Newton-CG·trust-ncg는 CG 걸음마다의 같은 dgemv(8 MB 행렬)가 대부분이라 차이가 작아요. 사용자가 돌려준 C 순서 float64 행렬은 복사하지 않고 그대로 써요.
+- `hess` 행렬을 쓰는 n = 1000의 Newton-CG·trust-ncg는 CG 걸음마다의 같은 dgemv(8 MB 행렬)가 대부분이에요. 사용자가 돌려준 행렬은 언제나 C 순서로 복사해 둬요. 같은 버퍼를 다시 채워 돌려주는 `hess`나 그 배열을 나중에 고치는 사용자 코드가 쥐고 있던 행렬을 바꾸지 못하게 하려는 것이에요. 그 복사만큼 scipy보다 느려요(scipy는 `np.asarray`로 그 배열을 그대로 쥐어요).
 - trust-exact n = 1000은 반복마다 $H + \lambda I$의 Cholesky(같은 Accelerate `potrf`)가 대부분이에요. 여기서는 `potrf`가 읽는 위 삼각만 열 우선으로 옮기고, scipy는 반복마다 n × n 행렬 넷을 새로 만들어요.
 - L-BFGS-B n = 10⁴는 0.347 ms 대 0.361 ms로 같아요. 같은 C 알고리즘이고 BLAS 호출도 같아요.
 
 ### 최소제곱과 방정식계
 
-`least_squares` 반복 하나의 자기 비용(ms, 1스레드)이에요.
+`least_squares` 반복 하나의 자기 비용(ms, 1스레드)이에요. 'lm'의 아래 세 줄($m \ge 10n$이고 $mn \ge 2000$)은 그 모양에서 쓰는 nls의 빌드로 잰 값이에요.
 
 | 문제 (m, n) | trf 해석적 sd / scipy | trf 2점 | lm 해석적 | lm 2점 |
 |---|---:|---:|---:|---:|
 | Rosenbrock (2, 2) | 0.0034 / 0.041 | 0.0032 / 0.069 | 0.0015 / 0.0077 | 0.0017 / 0.022 |
 | Osborne 2 (65, 11) | 0.016 / 0.048 | 0.018 / 0.10 | 0.0083 / 0.016 | 0.0096 / 0.051 |
-| Brown almost-linear (40, 40) | 0.077 / 0.084 | 0.083 / 0.20 | 0.036 / 0.055 | 0.025 / 0.14 |
-| $y - \exp(X\theta)$ (10³, 10) | 0.066 / 0.11 | 0.070 / 0.18 | 0.077 / 0.088 | 0.072 / 0.14 |
-| $y - \exp(X\theta)$ (10⁵, 10) | 3.8 / 5.1 | 3.7 / 5.3 | 6.5 / 6.9 | 6.3 / 6.3 |
-| $y - \exp(X\theta)$ (10⁴, 100) | 6.8 / 18.1 | 7.0 / 18.8 | 17 / 37 | 17.9 / 30.5 |
+| Brown almost-linear (40, 40) | 0.077 / 0.084 | 0.083 / 0.20 | 0.035 / 0.051 | 0.025 / 0.14 |
+| $y - \exp(X\theta)$ (10³, 10) | 0.066 / 0.11 | 0.070 / 0.18 | 0.057 / 0.088 | 0.062 / 0.14 |
+| $y - \exp(X\theta)$ (10⁵, 10) | 3.8 / 5.1 | 3.7 / 5.3 | 4.0 / 6.9 | 3.8 / 6.3 |
+| $y - \exp(X\theta)$ (10⁴, 100) | 6.8 / 18.1 | 7.0 / 18.8 | 6.6 / 36.8 | 6.8 / 30.5 |
 
 - 'trf'는 야코비안마다 $m$ 크기의 일이 블록 Householder QR 하나이고 나머지가 $n$ 크기라서, 큰 $m$에서 scipy보다 2.6배까지 빨라요.
-- 'lm'은 scipy와 같은 점을 부르려고 $m \times n$의 $J$에 MINPACK의 열 피벗 QR을 바로 해요. 열마다의 합을 MINPACK의 순서로 하는 블록이 아닌 계산이라 $m \gg n$에서 비용이 커요. (10⁴, 100)에서 1스레드 17 ms, 10스레드 7.8 ms이고(열을 스레드에 나눠요), 같은 문제를 `nls`의 빌드(LAPACK QR 뒤 $n \times n$)로 풀면 반복당 6.6 ms예요. 그래도 scipy(37 ms)보다 빨라요. $m = n$에서는 QR이 한 번이라 'trf'보다 싸요(Brown almost-linear 0.036 ms).
+- 'lm'의 scipy 빌드는 scipy처럼 $m \times n$의 $J$에 MINPACK의 열 피벗 QR을 바로 해요. 열마다의 합을 MINPACK의 순서로 하는 블록이 아닌 계산이라 $m \gg n$에서 비용이 커요. (10⁴, 100)에서 이 빌드는 1스레드 17.7 ms, 10스레드 7.8 ms이고(열을 스레드에 나눠요), `nls`의 빌드(LAPACK QR 뒤 $n \times n$)는 6.6 ms예요. 그래서 $m \ge 10n$이고 $mn \ge 2000$이면 `least_squares('lm')`은 `nls`의 빌드를 써요(모양으로만 정해서 스레드 수와 상관없이 같은 빌드예요). 야코비안 하나의 시간(사용자 함수 포함)이 (1000, 100)에서 1.9배, (10⁵, 10)에서 1.7배 빠르고, 그보다 작은 모양에서는 scipy의 빌드가 빨라요(m = n = 40에서 2배). $m = n$에서는 QR이 한 번이라 'trf'보다 싸요(Brown almost-linear 0.035 ms).
 - 'trf' $m = n = 40$은 scipy와 비슷해요(0.077 대 0.084 ms). 반복의 대부분이 40 × 40의 LAPACK QR과 80 × 40의 SVD이고, 그 결과가 비트를 정해요.
 
 `root`는 scipy도 반복 전체가 C(MINPACK의 C 판)라서 자기 비용이 비슷해요.
 
 | 방법 | n = 2 sd / scipy (µs) | n = 10 | n = 100 |
 |---|---:|---:|---:|
-| hybr, `jac` | 0.69 / 0.68 | 0.98 / 0.92 | 25 / 27.8 |
+| hybr, `jac` | 0.69 / 0.68 | 0.98 / 0.92 | 24.1 / 27.8 |
 | hybr, 차분 | 0.69 / 0.65 | 0.99 / 0.94 | 26.1 / 29.2 |
-| lm, `jac` | 1.4 / 1.9 | 2.2 / 3.6 | 110 / 170 |
+| lm, `jac` | 1.4 / 1.9 | 2.2 / 3.6 | 114 / 169 |
 
-hybr의 QR(`qrfac`, `qform`)은 서로 독립인 열 여덟 개를 함께 반사해요. 열마다의 합은 제 순서 그대로라 비트가 같고, n = 300에서 자기 비용 전체가 scipy의 0.55배예요(19.6 ms 대 35.4 ms). 작은 n의 lm이 scipy보다 싼 것은 scipy의 `root(method='lm')`이 `fun`을 호출 수를 세는 Python 함수로 한 번 더 감싸기 때문이에요.
+hybr의 QR(`qrfac`, `qform`)은 서로 독립인 열 여덟 개를 함께 반사해요. 열마다의 합은 제 순서 그대로라 열을 하나씩 반사한 것과 비트가 같고, n = 300에서 자기 비용 전체가 scipy의 0.55배예요(19.6 ms 대 35.4 ms). 작은 n의 lm이 scipy보다 싼 것은 scipy의 `root(method='lm')`이 `fun`을 호출 수를 세는 Python 함수로 한 번 더 감싸기 때문이에요.
 
 선형 최소제곱은 사용자 함수가 없으므로 전체 시간이에요(ms, 1스레드).
 
@@ -510,10 +517,10 @@ hybr의 QR(`qrfac`, `qform`)은 서로 독립인 열 여덟 개를 함께 반사
 | 100 | 0.60 / 0.68 | 9.7 |
 | 1000 | 8.6 / 9.6 | 184 |
 
-앞쪽 차분은 scipy와 비트까지 같고 시간도 비슷해요(호출 n + 1번). 기본은 변수 하나에 함수를 10–12번 불러요(간격을 고르며 5점 차분을 두세 번). 그만큼 느리고, 정확도는 앞쪽 차분의 10⁻⁸ 근처 대신 10⁻¹¹–10⁻¹³이에요. `check_grad`도 같은 비율이에요.
+앞쪽 차분은 지금 scipy와 비트까지 같고 시간도 비슷해요(호출 n + 1번). 기본은 변수 하나에 함수를 8번 이상 불러요(처음 두 간격의 5점 차분에 8번, 간격을 하나 더 볼 때마다 4번). 그만큼 느리고, 정확도는 앞쪽 차분의 10⁻⁸ 근처 대신 10⁻¹¹–10⁻¹³이에요. `check_grad`도 같은 비율이에요.
 
 <Callout type="note" title="느리거나 비슷한 곳">
-`root` n = 10(hybr, lm 차분)은 전체 시간이 scipy의 1.06–1.1배예요. 자기 비용은 같고, 차이는 사용자 함수(sd 배열 연산과 numpy)와 `fun` 호출 하나의 고정 비용(새 `sd.ndarray` 하나를 만들어 넘기고 돌려받은 값을 확인)이에요. 큰 `lsq_linear`·`nnls`와 L-BFGS-B n = 10⁴는 같은 LAPACK·BLAS 호출이거나 같은 C 알고리즘이라 같아요. 결과의 비트를 지키며 줄일 곳이 없어요.
+`root` n = 10(hybr, lm 차분)은 전체 시간이 scipy의 1.06–1.1배예요. 자기 비용은 같고, 차이는 사용자 함수(sd 배열 연산과 numpy)와 `fun` 호출 하나의 고정 비용(새 `sd.ndarray` 하나를 만들어 넘기고 돌려받은 값을 확인)이에요. 큰 `lsq_linear`·`nnls`와 L-BFGS-B n = 10⁴는 같은 LAPACK·BLAS 호출이거나 같은 C 알고리즘이라 같아요. 같은 계산이라 줄일 곳이 거의 없어요. `hess` 행렬을 쓰는 n = 1000의 Newton-CG·trust-ncg는 사용자 행렬을 복사하는 만큼 scipy보다 느려요(0.24 대 0.22 ms, 0.20 대 0.14 ms).
 </Callout>
 
 ## 참고 문헌

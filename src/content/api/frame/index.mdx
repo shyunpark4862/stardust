@@ -49,7 +49,7 @@ raises:
   - type: TypeError
     desc: 라벨이 float·bool이거나 int와 str이 섞였을 때, 받지 않는 data(제너레이터, Series 등), RangeIndex 인자가 int가 아닐 때, name이 str이 아닐 때, ==·bool()·hash()를 쓸 때.
   - type: ValueError
-    desc: 라벨에 NA(None)가 있을 때, RangeIndex의 step이 0일 때.
+    desc: 라벨에 NA(None)가 있을 때, RangeIndex의 step이 0이거나 라벨이 2⁶³ − 1개보다 많을 때.
   - type: OverflowError
     desc: 라벨이나 RangeIndex 인자가 int64 범위를 벗어날 때.
 seeAlso: [series, dataframe, alignment, attributes, loc-iloc, reindex, iteration]
@@ -189,10 +189,10 @@ True
 >>> sd.frame.RangeIndex(stop=3)
 Traceback (most recent call last):
     ...
-TypeError: RangeIndex.__init__() got some positional-only arguments passed as keyword arguments: 'stop'
+TypeError: RangeIndex(): got some positional-only arguments passed as keyword arguments: 'stop'
 ```
 
-세 인자는 모두 int예요. Python int와 numpy 정수(`np.int64(3)`)를 받고, `True`나 `3.0`처럼 int가 아닌 값은 `TypeError`예요. `step=0`은 라벨이 끝나지 않으니 `ValueError`, int64 범위 밖은 `OverflowError`예요. 배열 영역의 다른 int 인자와 같은 규칙이에요.
+세 인자는 모두 int예요. Python int와 numpy 정수(`np.int64(3)`)를 받고, `True`나 `3.0`처럼 int가 아닌 값은 `TypeError`예요. `step=0`은 라벨이 끝나지 않으니 `ValueError`, int64 범위 밖은 `OverflowError`예요. 배열 영역의 다른 int 인자와 같은 규칙이에요. 라벨이 2⁶³ − 1개보다 많아지는 범위도 `ValueError`예요. 행의 위치가 int64라서 그 뒤의 라벨에는 닿을 수 없어요.
 
 ```python
 >>> sd.frame.RangeIndex(np.int64(3))
@@ -209,6 +209,10 @@ ValueError: RangeIndex(): 'step' must not be zero
 Traceback (most recent call last):
     ...
 OverflowError: RangeIndex(): 'start' is out of range
+>>> sd.frame.RangeIndex(-2**62, 2**62)
+Traceback (most recent call last):
+    ...
+ValueError: RangeIndex(): the range has more than 2**63 - 1 labels
 ```
 
 RangeIndex는 라벨이 몇 개든 세 숫자만 기억해요. 라벨을 주지 않은 Series와 DataFrame의 기본 라벨이 RangeIndex이고, `.iloc[1:3]`처럼 위치 슬라이스로 행을 잘라도 RangeIndex로 남아요. 라벨 목록이나 조건으로 행을 고르면 남은 라벨이 이어져 있더라도 Index가 돼요. 결과가 RangeIndex인지는 무엇으로 골랐는지로 정해지고, 값에 따라 달라지지 않아요([loc과 iloc](/api/frame/loc-iloc/)).

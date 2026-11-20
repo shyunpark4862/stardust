@@ -258,7 +258,7 @@ array([-inf,  nan,  0.0], dtype=float64)
 >>> sd.prod(p)
 0.0
 >>> sd.sum(sd.log(p))
--921.0340371976183
+-921.0340371976179
 ```
 
 로그로 바꾸면 곱셈이 덧셈이 되고, 값도 `-921` 정도라 편하게 다룰 수 있어요. 그래서 확률 계산은 흔히 **로그 확률**로 해요.
@@ -378,5 +378,5 @@ TypeError: exp(): cannot implicitly convert float64 to int64 (that would lose in
 
 - `exp2`, `logaddexp2` 함수는 없어요. `2.0 ** x`와 `logaddexp(a * log(2), b * log(2)) / log(2)`처럼 계산하세요.
 - 0이나 음수의 로그는 경고 없이 `-inf`나 NaN이에요. `errstate`도 없어요.
-- `exp`, `log`, `log2`, `log10`은 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요. `expm1`, `log1p`, `logaddexp`는 numpy와 비트까지 같아요.
+- `exp`, `log`, `log2`, `log10`은 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요. `expm1`, `log1p`, `logaddexp`는 지금은 numpy와 비트까지 같아요(약속은 아니에요).
 - `out`은 keyword-only이고 `where=` 인자는 없어요. Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`·`complex`가 나와요.

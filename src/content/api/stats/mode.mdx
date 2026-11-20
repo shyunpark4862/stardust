@@ -8,7 +8,7 @@ signatures:
 summary: 가장 자주 나온 값(최빈값)과 그 횟수를 구해요. 횟수가 같은 값이 여럿이면 가장 작은 값을 골라요. 결과는 (mode, count) 이름 붙은 튜플 ModeResult예요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 데이터. bool·정수는 float64로 바꿔서 세요.
   - name: axis
@@ -28,7 +28,7 @@ returns:
   desc: "(mode, count) 두 칸의 이름 붙은 튜플. mode는 float64, count는 정수예요. 남는 축이 없으면 Python float와 int, 있으면 float64 배열과 int64 배열이에요. 빈 줄은 (nan, 0)이에요."
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
 seeAlso: [describe, rankdata, entropy, iqr]
@@ -130,7 +130,7 @@ ModeResult(mode=nan, count=0)
 
 ## `axis`와 `keepdims`
 
-기본값 `axis=None`은 모든 원소를 한 묶음으로 세요(`sd.mean` 등과 같아요). 행마다, 열마다 따로 세려면 `axis`를 줘요. 그러면 `mode`와 `count`가 모두 배열이 돼요. 여러 축을 함께 줄이려면 tuple이나 리스트로 줘요.
+기본값 `axis=None`은 모든 원소를 한 묶음으로 세요(`sd.mean` 등과 같아요). 행마다, 열마다 따로 세려면 `axis`를 줘요. 그러면 `mode`와 `count`가 모두 배열이 돼요. 이 배열은 읽기 전용이라, 고쳐 쓰려면 `.copy()`로 사본을 만들어요. 여러 축을 함께 줄이려면 tuple이나 리스트로 줘요.
 
 ```python
 >>> t = sd.asarray([[1, 1, 2],

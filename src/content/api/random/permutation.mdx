@@ -22,7 +22,7 @@ raises:
   - type: OverflowError
     desc: x가 int64 범위를 넘는 정수(2**63 이상)일 때.
   - type: MemoryError
-    desc: 결과 배열이 이 컴퓨터의 물리 메모리보다 클 때(예 permutation(2**40)).
+    desc: 호출이 받을 메모리(섞은 위치와, 배열이면 섞은 복사본)가 이 컴퓨터의 물리 메모리보다 클 때(예 permutation(2**40)).
 seeAlso: [choice, integers, generator, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -286,7 +286,7 @@ array([], dtype=int64)
 
 ### 큰 배열은 그만큼 메모리를 더 써요
 
-결과가 언제나 새 배열이라서, 큰 배열을 섞으면 같은 크기의 배열이 하나 더 생겨요. 정수 `n`을 넘겨도 길이 `n`인 int64 배열(원소당 8바이트)을 만들어요. 그 크기가 이 컴퓨터의 물리 메모리보다 크면(`rng.permutation(2**40)`은 8TB예요) 아무것도 만들기 전에 `MemoryError`예요. 이때 생성기는 수열에서 아무것도 꺼내지 않아서, 위치가 그대로예요.
+결과가 언제나 새 배열이라서, 큰 배열을 섞으면 같은 크기의 배열이 하나 더 생겨요. 정수 `n`을 넘기면 길이 `n`인 int64 배열(원소당 8바이트)을 만들고, 그 배열 안에서 바로 섞어서 메모리를 더 쓰지 않아요. 배열을 넘기면 섞은 위치(행당 8바이트)와 섞은 복사본을 함께 받아요. 이 합이 이 컴퓨터의 물리 메모리보다 크면(`rng.permutation(2**40)`은 8TB예요) 아무것도 만들기 전에 `MemoryError`예요. 이때 생성기는 수열에서 아무것도 꺼내지 않아서, 위치가 그대로예요.
 
 ```python
 >>> big = sd.random.default_rng(0)

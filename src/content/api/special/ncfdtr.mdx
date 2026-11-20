@@ -4,10 +4,10 @@ names: [ncfdtr, ncfdtrc, ncfdtri]
 group: 비중심 분포 함수
 order: 3
 signatures:
-  - "sd.special.ncfdtr(dfn, dfd, nc, f, /, *, out=None)"
-  - "sd.special.ncfdtrc(dfn, dfd, nc, f, /, *, out=None)"
+  - "sd.special.ncfdtr(dfn, dfd, nc, x, /, *, out=None)"
+  - "sd.special.ncfdtrc(dfn, dfd, nc, x, /, *, out=None)"
   - "sd.special.ncfdtri(dfn, dfd, nc, p, /, *, out=None)"
-summary: 비중심 F 분포의 아래꼬리 확률 P(F ≤ f), 위꼬리 확률 P(F > f), 아래꼬리 확률의 역함수예요. 분산분석과 회귀분석 F 검정의 검정력과 표본 크기를 계산할 때 써요. 경계값 f가 맨 뒤에 와요.
+summary: 비중심 F 분포의 아래꼬리 확률 P(F ≤ x), 위꼬리 확률 P(F > x), 아래꼬리 확률의 역함수예요. 분산분석과 회귀분석 F 검정의 검정력과 표본 크기를 계산할 때 써요. 경계값 x가 맨 뒤에 와요.
 params:
   - name: dfn
     type: ndarray 또는 Python 숫자
@@ -21,7 +21,7 @@ params:
     type: ndarray 또는 Python 숫자
     kind: positional-only
     desc: 비중심 모수 λ. 0 이상. 0이면 보통(중심) F 분포예요. 음수면 결과가 NaN이에요.
-  - name: f
+  - name: x
     type: ndarray 또는 Python 숫자
     kind: "positional-only (ncfdtr, ncfdtrc)"
     desc: 확률을 구할 경계값. 0 이상. 음수면 결과가 NaN이에요.
@@ -35,7 +35,7 @@ params:
     desc: 결과를 담을 float64 배열. 주면 그 배열에 쓰고 그 배열을 돌려줘요.
 returns:
   type: ndarray 또는 Python float
-  desc: "ncfdtr: P(F ≤ f), ncfdtrc: P(F > f), ncfdtri: ncfdtr(dfn, dfd, nc, f) = p인 f. 인자가 모두 Python 숫자면 Python float, 하나라도 배열이면 브로드캐스팅한 모양의 float64 배열이에요."
+  desc: "ncfdtr: P(F ≤ x), ncfdtrc: P(F > x), ncfdtri: ncfdtr(dfn, dfd, nc, x) = p인 x. 인자가 모두 Python 숫자면 Python float, 하나라도 배열이면 브로드캐스팅한 모양의 float64 배열이에요."
 raises:
   - type: TypeError
     desc: 인자가 배열도 숫자도 아닐 때(리스트 포함), 복소수가 섞였을 때, out이 float64 배열이 아닐 때. 값이 정의역 밖인 것은 에러가 아니라 NaN이에요.
@@ -64,9 +64,9 @@ export const fPow04 = [[8, 0.085978], [10, 0.10861], [12, 0.13243], [14, 0.15717
 
 | 함수 | 돌려주는 것 |
 |---|---|
-| `ncfdtr(dfn, dfd, nc, f)` | 아래꼬리 확률 $P(F \le f)$ (누적분포함수) |
-| `ncfdtrc(dfn, dfd, nc, f)` | 위꼬리 확률 $P(F > f)$ |
-| `ncfdtri(dfn, dfd, nc, p)` | `ncfdtr(dfn, dfd, nc, f) = p`가 되는 $f$ (아래꼬리의 역함수) |
+| `ncfdtr(dfn, dfd, nc, x)` | 아래꼬리 확률 $P(F \le x)$ (누적분포함수) |
+| `ncfdtrc(dfn, dfd, nc, x)` | 위꼬리 확률 $P(F > x)$ |
+| `ncfdtri(dfn, dfd, nc, p)` | `ncfdtr(dfn, dfd, nc, x) = p`가 되는 $x$ (아래꼬리의 역함수) |
 
 ```python
 >>> import stardust as sd
@@ -80,9 +80,9 @@ export const fPow04 = [[8, 0.085978], [10, 0.10861], [12, 0.13243], [14, 0.15717
 
 분자 자유도 3, 분모 자유도 20, $\lambda = 5$인 분포에서 값이 2 이하일 확률은 약 40%예요. 확률 0.5를 주면 중앙값 2.42가 나와요.
 
-<Callout title="경계값 f가 맨 뒤예요">
+<Callout title="경계값 x가 맨 뒤예요">
 
-세 함수 모두 **분포의 모수(`dfn`, `dfd`, `nc`)가 앞, 경계값(`f` 또는 `p`)이 맨 뒤**예요. 이 순서는 scipy의 `ncfdtr`, `ncfdtri`과 같아요. 다만 같은 비중심 함수인 [`chndtr`](/api/special/chndtr/)는 scipy가 `chndtr(x, df, nc)`로 경계값을 맨 앞에 두고, stardust는 맨 뒤에 둬요. stardust 안에서는 비중심 함수 모두 경계값이 맨 뒤라고 기억하면 돼요.
+세 함수 모두 **분포의 모수(`dfn`, `dfd`, `nc`)가 앞, 경계값(`x` 또는 `p`)이 맨 뒤**예요. 이 순서는 scipy의 `ncfdtr`, `ncfdtri`과 같아요. 다만 같은 비중심 함수인 [`chndtr`](/api/special/chndtr/)는 scipy가 `chndtr(x, df, nc)`로 경계값을 맨 앞에 두고, stardust는 맨 뒤에 둬요. stardust 안에서는 비중심 함수 모두 경계값이 맨 뒤라고 기억하면 돼요.
 
 </Callout>
 
@@ -105,7 +105,7 @@ $$F = \frac{X_1 / d_1}{X_2 / d_2}$$
 
 가 비중심 F 분포를 따라요. $\lambda = 0$이면 보통의 F 분포예요. 누적분포함수는 [정칙화된 불완전 베타 함수](/api/special/betainc/) $I_y(a, b)$를 포아송 확률로 섞은 꼴이에요.
 
-$$\texttt{ncfdtr}(d_1, d_2, \lambda, f) = \sum_{j=0}^{\infty} e^{-\lambda/2}\,\frac{(\lambda/2)^j}{j!}\; I_{y}\!\left(\frac{d_1}{2} + j,\ \frac{d_2}{2}\right), \qquad y = \frac{d_1 f}{d_1 f + d_2}$$
+$$\texttt{ncfdtr}(d_1, d_2, \lambda, x) = \sum_{j=0}^{\infty} e^{-\lambda/2}\,\frac{(\lambda/2)^j}{j!}\; I_{y}\!\left(\frac{d_1}{2} + j,\ \frac{d_2}{2}\right), \qquad y = \frac{d_1 x}{d_1 x + d_2}$$
 
 아래 그래프는 분자 자유도 3, 분모 자유도 20에서 $\lambda$만 바꾼 밀도(값이 그 근처에 있을 가능성)예요.
 
@@ -252,16 +252,16 @@ True
 | 입력 | 결과 | 뜻 |
 |---|---|---|
 | `nc = 0` | `fdtr`, `fdtrc`, `fdtri`과 비트까지 같음 | 중심 F 분포 |
-| `f = 0` | `ncfdtr` 0, `ncfdtrc` 1 | 값은 0보다 작을 수 없어요 |
-| `f = inf` | `ncfdtr` 1, `ncfdtrc` 0 | |
-| `dfd = inf` | `chndtr(dfn, nc, dfn·f)` | 분모가 1로 고정돼서 비중심 카이제곱을 `dfn`으로 나눈 것이 돼요 |
-| `dfn = inf` | `fdtr(inf, dfd, f)` | 분자가 1로 고정돼요 |
-| `nc = inf` | `ncfdtr` 0, `ncfdtrc` 1 | 분포가 무한대로 밀려나요. `f`도 inf이면 NaN |
-| `dfn`이 아주 작음(약 1e-300 아래) | $e^{-\lambda/2}$ × `fdtr(dfn, dfd, f)` | 확률 $e^{-\lambda/2}$만큼은 중심 F처럼 움직이고, 나머지는 아주 큰 `f` 쪽에 있어요. `ncfdtrc`은 그 나머지 |
+| `x = 0` | `ncfdtr` 0, `ncfdtrc` 1 | 값은 0보다 작을 수 없어요 |
+| `x = inf` | `ncfdtr` 1, `ncfdtrc` 0 | |
+| `dfd = inf` | `chndtr(dfn, nc, dfn·x)` | 분모가 1로 고정돼서 비중심 카이제곱을 `dfn`으로 나눈 것이 돼요 |
+| `dfn = inf` | `fdtr(inf, dfd, x)` | 분자가 1로 고정돼요 |
+| `nc = inf` | `ncfdtr` 0, `ncfdtrc` 1 | 분포가 무한대로 밀려나요. `x`도 inf이면 NaN |
+| `dfn`이 아주 작음(약 1e-300 아래) | $e^{-\lambda/2}$ × `fdtr(dfn, dfd, x)` | 확률 $e^{-\lambda/2}$만큼은 중심 F처럼 움직이고, 나머지는 아주 큰 `x` 쪽에 있어요. `ncfdtrc`은 그 나머지 |
 | `ncfdtri`의 `p = 0`, `p = 1` | 0, inf | 정의역의 두 끝 |
 | `ncfdtri`의 `p`가 0보다 크고 2.2e-308보다 작음(서브노멀), `nc > 0` | NaN | 이렇게 작은 확률에서는 근을 믿을 만하게 구할 수 없어요 |
 | `ncfdtri`의 근이 float64로 나타낼 수 있는 범위 밖 | inf 또는 0 | 가장 큰 float64 값에서도 `ncfdtr`이 `p`에 못 미치면 inf, 가장 작은 양수에서 이미 `p`를 넘으면 0이에요 |
-| `dfn ≤ 0`, `dfd ≤ 0`, `nc < 0`, `f < 0` | NaN | 정의역 밖 |
+| `dfn ≤ 0`, `dfd ≤ 0`, `nc < 0`, `x < 0` | NaN | 정의역 밖 |
 | `p < 0` 또는 `p > 1` | NaN | 확률이 아니에요 |
 | 인자에 NaN | NaN | |
 
@@ -289,9 +289,9 @@ inf
 **보장 영역**은 두 자유도 0.01–10⁴, 비중심 모수 0.001–10⁴이고, 확률은 1e-300까지예요. 이 안에서 약속하는 정확도는 이래요.
 
 - `ncfdtr`, `ncfdtrc`: 참값 대비 상대오차 1e-14 이하. 결과의 앞자리 14자리 정도가 맞는다는 뜻이에요. 작은 꼬리 확률도 상대오차로 재므로 앞자리가 그만큼 맞아요.
-- `ncfdtri`: 결과 $f$의 상대오차가 $10^{-14} \times \max(1, \kappa)$ 이하예요. $\kappa$는 "확률 $p$가 아주 조금 바뀔 때 $f$가 몇 배나 크게 바뀌는가"를 나타내는 수(조건수)예요. 입력 $p$ 자체가 마지막 자리에 반올림 오차를 품고 있으니 $\kappa$가 큰 곳에서는 그만큼은 어쩔 수 없어요.
+- `ncfdtri`: 결과 $x$의 상대오차가 $10^{-14} \times \max(1, \kappa)$ 이하예요. $\kappa$는 "확률 $p$가 아주 조금 바뀔 때 $x$가 몇 배나 크게 바뀌는가"를 나타내는 수(조건수)예요. 입력 $p$ 자체가 마지막 자리에 반올림 오차를 품고 있으니 $\kappa$가 큰 곳에서는 그만큼은 어쩔 수 없어요.
 
-잰 최대 오차는 `ncfdtr` 6.6 ULP, `ncfdtrc` 15 ULP, `ncfdtri` 9.9 ULP(조건수로 나눈 값)예요. ULP는 실수 한 칸의 간격으로, 1e-14는 대략 45 ULP예요. 자세한 뜻은 [특수함수의 기본](/api/special/basics/)에 있어요. 보장 영역 밖도 값을 계산하지만 이 정확도를 약속하지는 않아요. 자유도가 10⁻¹⁰ 정도로 아주 작은 곳에서는, 한쪽 확률이 1에 너무 가까워서 다른 쪽을 믿을 만하게 구할 수 없으면 NaN을 내요. 결과가 서브노멀(1e-308보다 작은 아주 작은 수)일 때는 상대오차 대신 절대오차로 따져요.
+잰 최대 오차는 `ncfdtr` 6.6 ULP, `ncfdtrc` 15 ULP, `ncfdtri` 9.9 ULP(조건수로 나눈 값)예요. ULP는 실수 한 칸의 간격으로, 1e-14는 대략 45 ULP예요. 자세한 뜻은 [특수함수의 기본](/api/special/basics/)에 있어요. 보장 영역 밖도 값을 계산하지만 이 정확도를 약속하지는 않아요. 자유도가 10⁻¹⁰ 정도로 아주 작은 곳에서는, 한쪽 확률이 1에 너무 가까워서 다른 쪽을 믿을 만하게 구할 수 없으면 NaN을 내요. 비중심 모수가 아주 크면(약 $1.5 \times 10^9$ 이상) 분포의 가운데 근처에서도 NaN이에요. 어떤 입력이든 정해진 시간 안에 끝나는데, 그 안에 값을 구할 수 없는 곳이에요. 결과가 서브노멀(1e-308보다 작은 아주 작은 수)일 때는 상대오차 대신 절대오차로 따져요.
 
 ## 조심할 점
 
@@ -324,22 +324,23 @@ Cohen의 $f$나 $f^2$를 `nc`에 그대로 넣으면 안 돼요. 분산분석과
 >>> sd.special.ncfdtr(3, 20, 5, [1, 2])
 Traceback (most recent call last):
     ...
-TypeError: ncfdtr(): 'f' must be an sd.ndarray or a bool, int, float or complex, not list
+TypeError: ncfdtr(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list
 ```
 
 ## 비슷한 함수와의 차이
 
 | 하고 싶은 일 | 쓸 것 | 차이 |
 |---|---|---|
-| 효과가 없을 때의 F 확률, p값, 기준값 | [`fdtr`, `fdtrc`, `fdtri`](/api/special/fdtr/) | 비중심 모수가 없어요. `ncfdtr(dfn, dfd, 0, f)`와 같아요 |
+| 효과가 없을 때의 F 확률, p값, 기준값 | [`fdtr`, `fdtrc`, `fdtri`](/api/special/fdtr/) | 비중심 모수가 없어요. `ncfdtr(dfn, dfd, 0, x)`와 같아요 |
 | 효과가 있을 때의 F 확률, 검정력 | `ncfdtr`, `ncfdtrc` | |
-| 분모 자유도가 아주 클 때 | [`chndtr`](/api/special/chndtr/) | `ncfdtr(dfn, inf, nc, f) = chndtr(dfn, nc, dfn·f)` |
+| 분모 자유도가 아주 클 때 | [`chndtr`](/api/special/chndtr/) | `ncfdtr(dfn, inf, nc, x) = chndtr(dfn, nc, dfn·x)` |
 | t 검정의 검정력 | [`nctdtr`](/api/special/nctdtr/) | 양측이면 `ncfdtrc(1, df, δ², c²)`와 같아요 |
 | 베타 분포 꼴의 일반 확률 | [`betainc`](/api/special/betainc/) | 중심 F는 불완전 베타 하나로 쓸 수 있어요 |
 
 ## scipy를 아는 분께
 
-- **인자 순서는 scipy와 같아요.** `ncfdtr(dfn, dfd, nc, f)`, `ncfdtri(dfn, dfd, nc, p)`예요. 비중심 카이제곱만 scipy가 `chndtr(x, df, nc)`이고 stardust는 `chndtr(df, nc, x)`라서 달라요.
+- **인자 순서는 scipy와 같아요.** `ncfdtr(dfn, dfd, nc, x)`, `ncfdtri(dfn, dfd, nc, p)`예요. 비중심 카이제곱만 scipy가 `chndtr(x, df, nc)`이고 stardust는 `chndtr(df, nc, x)`라서 달라요.
+- 경계값 인자의 이름은 `x`예요(scipy는 `f`). 인자는 자리로만 넘기므로 이름은 `help()`와 에러 메시지에만 보여요.
 - `ncfdtrc`은 scipy.special에 없는 함수예요. scipy에서 `1 - ncfdtr(...)`로 쓰던 계산을 이것으로 바꾸면 작은 꼬리가 정확해져요(`1 - scipy.special.ncfdtr(3, 20, 5, 200)`은 1.784017e-12로, 참값 1.784081e-12와 여섯째 자리부터 달라요).
 - 모수를 푸는 `ncfdtridfd`, `ncfdtridfn`, `ncfdtrinc`는 없어요.
 - 끝점의 값이 달라요. `dfd = inf`, `dfn = inf`, `nc = inf`에서 scipy는 NaN을, stardust는 위 표의 극한값을 돌려줘요.

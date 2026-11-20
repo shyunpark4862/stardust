@@ -2,7 +2,7 @@
 title: 영역의 구조
 group: 구조
 order: 1
-summary: sd.optimize가 Python 층과 C++ 커널로 나뉜 모습, 사용자 함수를 부르는 경계와 GIL, 같은 점을 다시 계산하지 않는 기억, 셈과 결과 객체, 그리고 scipy와 같은 걸음을 어떻게 맞추고 지키는지 설명해요.
+summary: sd.optimize가 Python 층과 C++ 커널로 나뉜 모습, 사용자 함수를 부르는 경계와 GIL, 같은 점을 다시 계산하지 않는 기억, 셈과 결과 객체, 그리고 scipy와 같은 알고리즘을 어떻게 따르고 확인하는지 설명해요.
 seeAlso: [derivatives, batched, quasi-newton, least-squares, root, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -144,11 +144,12 @@ True
 
 | 커널 | GIL을 놓는 계산 | 기준 |
 |---|---|---|
-| BFGS | 역헤시안 갱신 | $8n^2 > 2 \times 10^5$ ($n \ge 159$) |
+| BFGS | 방향 $Hg$와 역헤시안 갱신 | $8n^2 > 2 \times 10^5$ ($n \ge 159$) |
 | Nelder–Mead | 무게중심과 멈춤 판정 | $N^2 > 2 \times 10^5$ |
 | L-BFGS-B | 방향 계산과 메모리 갱신 | $10n(m + 1) > 2 \times 10^5$ |
 | Newton-CG | 헤시안과 벡터의 곱 | $2n^2 > 2 \times 10^5$ |
-| trust-exact | Cholesky 분해와 풀이 | $n^3/3 > 2 \times 10^5$ |
+| trust-ncg, trust-exact | 헤시안과 벡터의 곱, 삼각 풀이 | $2n^2 > 2 \times 10^5$ |
+| trust-exact | Cholesky 분해 | $n^3/3 > 2 \times 10^5$ |
 | `least_squares`(nls의 길) | 야코비안의 QR | $2mn^2 > 2 \times 10^5$ |
 | `lsq_linear`, `nnls` | 계산 전체 | $2mn^2 > 2 \times 10^5$ |
 
@@ -285,25 +286,19 @@ void for_elements(std::size_t k, Fn&& fn) {
 
 ## 결과 객체
 
-`OptimizeResult`는 필드 이름의 고정된 목록(`FIELDS`)과 dict 하나(`_fields`)로 된 작은 클래스예요. 필드마다 읽기 전용 프로퍼티를 만들어 붙이고, 그 프로퍼티가 없는 필드에는 `AttributeError`를, 배열에는 새 복사본을 돌려줘요.
+`OptimizeResult`는 필드 이름의 고정된 목록(`FIELDS`)과 dict 하나(`_fields`)로 된 작은 클래스예요. 필드마다 읽기 전용 프로퍼티를 만들어 붙이고, 그 프로퍼티가 없는 필드에는 `AttributeError`를, 배열에는 읽기 전용으로 만든 그 배열을 돌려줘요.
 
 ```python
 # src/stardust/optimize/_result.py
-class _Lazy:
-    """A field computed when first read: make() gives its value."""
-
-    __slots__ = ("make",)
-
-    def __init__(self, make):
-        self.make = make
-
-
-def _fresh(v):
-    """An array field as the result gives it: a new array (or a tuple of new arrays)."""
+def _own(v, copy=False):
+    """An array field (or a tuple of them) made read-only, as the result keeps and gives it:
+    copied first when copy (an array the caller may still hold), else taken as it is."""
     if isinstance(v, _core.ndarray):
-        return v.copy()
-    if isinstance(v, tuple):
-        return tuple(_fresh(e) for e in v)
+        if copy:
+            v = v.copy()
+        v._set_readonly()
+    elif isinstance(v, tuple):
+        v = tuple(_own(e, copy) for e in v)
     return v
 
 
@@ -316,15 +311,12 @@ def _field(name):
                 f"'OptimizeResult' object has no attribute '{name}' (its method does not give it)"
             ) from None
         if isinstance(v, _Lazy):
-            v = self._fields[name] = v.make()
-        return _fresh(v)
-
-    get.__name__ = name
-    return property(get, doc=f"The result's '{name}' (read-only; arrays are new copies).")
+            v = self._fields[name] = _own(v.make())
+        return v
 ```
 
 - **없는 필드**: 방법이 주지 않는 필드는 `_fields`에 없어서 `AttributeError`예요. `None`을 넣어 두지 않으니 `hasattr`가 "이 방법이 주는가"를 정확히 답해요.
-- **복사본**: 결과가 만들어질 때 받은 배열도 복사해 두고(`_fresh`), 읽을 때마다 또 복사해요. 결과를 읽은 쪽이 배열을 고쳐도 결과는 그대로예요.
+- **읽기 전용 배열**: 결과의 배열은 쓰기를 막아 두고, 읽을 때마다 복사하지 않고 같은 배열을 돌려줘요. 원소에 쓰면 `ValueError: assignment destination is read-only`이고, 고치려면 `.copy()`를 해요. 풀이 함수는 커널이 막 만든 배열을 `OptimizeResult._make`로 복사 없이 넘기고, 사용자가 `OptimizeResult(...)`를 직접 만들면 받은 배열을 한 번 복사해요(그 배열을 사용자가 아직 쥐고 있으니까요). 다른 영역의 결과 객체와 같은 규칙이에요.
 - **처음 읽을 때 계산**: L-BFGS-B의 `hess_inv`는 저장해 둔 걸음의 쌍으로 $(n, n)$ 행렬을 만들어야 해요. $n = 10^4$이면 800 MB라, 결과를 만들 때는 계산하지 않고 `_Lazy`로 두었다가 처음 읽을 때 만들어 `_fields`에 넣어요.
 
 `repr`는 한 줄 요약이에요. `method`, `converged`, `cost`나 `fun`(실수일 때만, 6자리), `n_iter`, `nfev`, `x`를 있는 것만 차례로 보여 주고, 배치 결과는 모양과 수렴한 수만 보여 줘요.
@@ -339,20 +331,16 @@ def _field(name):
         return {}
     if not isinstance(options, dict):
         raise TypeError(f"{func}(): 'options' must be a dict or None, not {_type_name(options)}")
+    table = _CAP_HINTS if hints is None else {**_CAP_HINTS, **hints}
     for key in options:
         if key not in known:
-            hint = ""
-            if key == "maxiter":
-                hint = " (the iteration cap is 'max_iter')"
-            elif key in ("maxfev", "maxfun"):
-                hint = " (the cap on function evaluations is 'max_nfev')"
-            elif key == "maxls":
-                hint = " (the cap on line-search steps is 'max_ls')"
-            elif key == "subproblem_maxiter":
-                hint = " (the cap on the subproblem's iterations is 'subproblem_max_iter')"
-            raise ValueError(f"{func}(): method={method!r} has no option {key!r}{hint}")
-    return dict(options)
+            raise ValueError(f"{func}(): method={method!r} has no option {key!r}{table.get(key, '')}")
+    return {k: v for k, v in options.items() if v is not None}
 ```
+
+`_CAP_HINTS`는 scipy의 상한 이름(`maxiter`, `maxfev`, `maxfun`, `maxls`, `subproblem_maxiter`)마다 이쪽 이름을 짚는 꼬리말이에요. `root`처럼 상한이 `max_nfev` 하나뿐인 함수는 `hints`로 `maxiter`의 꼬리말을 바꿔요. 값이 `None`인 키는 돌려주는 dict에서 빼요. 그래서 어느 옵션이든 `None`은 기본값이고, `tol`과의 충돌도 `None`이 아닌 값끼리만 봐요.
+
+인자를 잘못 넘긴 호출(모르는 키워드, 빠진 인자, 위치 인자의 수)은 Python 자신의 `TypeError`인데, 공개 함수마다 얇은 감싸개(`src/stardust/_calls.py`)를 씌워 그 에러만 `minimize(): unexpected keyword argument 'foo'`처럼 같은 꼴로 바꿔요. 함수 안에서 난 `TypeError`는 그대로 지나가요.
 
 방법 이름은 소문자만 받고, 대소문자만 다르면 소문자 꼴을 짚어 줘요.
 
@@ -365,7 +353,11 @@ def _field(name):
 
 ## scipy와 같은 걸음
 
-각 방법은 scipy 1.18.1의 같은 방법과 **같은 순서로 계산**해요. 그래서 같은 문제에서 사용자 함수를 부르는 점, 반복 수, 멈춘 이유가 scipy와 같아요. 이 영역에서 가장 큰 설계 선택이에요. 대부분의 방법은 한 걸음 더 나아가 부르는 점이 차례대로 **비트까지** 같아요.
+각 방법은 scipy 1.18.1의 같은 방법과 **같은 알고리즘, 같은 멈춤 판정**을 써요. `status`의 번호와 뜻, 옵션의 기본값도 scipy의 것이에요. 그래서 같은 문제에서 사용자 함수를 부르는 점, 반복 수, 멈춘 이유가 scipy와 같아요. 이 영역에서 가장 큰 설계 선택이에요.
+
+반올림 크기의 결과는 정확도 안이면 돼요. 이 라이브러리가 약속하는 것은 스레드 수와 상관없이 같은 비트, 자신의 골든 출력과 같은 비트, 그리고 정확도예요. scipy와의 비트 동일은 약속이 아니에요. 그래서 더 빠르거나 더 정확한 계산 순서가 있으면 그것을 쓸 수 있고, 그때는 끝자리가 scipy와 다르며 반복 방법에서는 그 차이로 반복 경로와 반복 수가 조금 달라질 수 있어요.
+
+그래도 지금은 대부분의 방법이 scipy와 같은 계산 순서를 써서, 부르는 점이 차례대로 **비트까지** 같아요. 일부러 깨지는 않지만, 고치거나 빠르게 하는 데 필요하면 바꿔요.
 
 ```python
 >>> import numpy as np
@@ -388,17 +380,17 @@ l-bfgs-b     scipy 138  sd 138  same points 138
 bfgs         scipy 117  sd 114  same points 9
 ```
 
-Nelder–Mead와 L-BFGS-B는 159개, 138개의 점이 모두 같아요. BFGS는 처음 9개(시작점과 그 차분, 첫 선 탐색)가 같고, 첫 역헤시안 갱신 뒤부터 끝자리가 갈려요. 그 이유는 [아래](#예외-bfgs와-trf)에 있어요.
+Nelder–Mead와 L-BFGS-B는 159개, 138개의 점이 모두 같아요. BFGS는 처음 9개(시작점과 그 차분, 첫 선 탐색)가 같고, 첫 역헤시안 갱신 뒤부터 끝자리가 갈려요. 그 이유는 [아래](#반올림만큼-다른-곳)에 있어요.
 
-### 비트까지 맞추려면 맞춰야 하는 것
+### 비트가 같은 곳에서 맞춘 것
 
-같은 알고리즘을 같은 식으로 적어도 비트가 저절로 같아지지는 않아요. 부동소수점 계산은 순서와 반올림의 횟수에 따라 끝자리가 달라지고, 반복 방법은 그 차이를 다음 걸음으로 키워요. 맞춰야 했던 것은 이래요.
+같은 알고리즘을 같은 식으로 적어도 비트가 저절로 같아지지는 않아요. 부동소수점 계산은 순서와 반올림의 횟수에 따라 끝자리가 달라지고, 반복 방법은 그 차이를 다음 걸음으로 키워요. 지금 비트까지 같은 방법들은 다음을 scipy와 같게 계산해요.
 
 **계산의 순서.** 합의 순서, 괄호, 나눗셈과 곱셈의 순서를 scipy의 소스 그대로 적어요. numpy의 합(`np.sum`)은 쌍별 합이라 그것도 따르고, Nelder–Mead의 꼭짓점 정렬은 numpy `argsort`의 introsort와 같은 정렬을 해요(17개 미만은 삽입 정렬이라 같은 값의 순서가 그대로이고, 그 위는 아니에요).
 
-**FMA.** scipy의 C 코드(Brent법, 이분법, L-BFGS-B, MINPACK)는 clang의 기본값 `-ffp-contract=on`으로 빌드되어 있어요. 한 식 안의 $ab + c$를 곱셈과 덧셈을 한 번에 반올림하는 FMA 하나로 계산해요. 이 라이브러리는 기본으로 축약을 끄고 빌드하므로, scipy의 C 코드를 따르는 커널은 FMA를 직접 적거나 파일 단위로 축약을 켜요. 반대로 scipy의 Python 코드(BFGS, Newton-CG, 신뢰 영역, Nelder–Mead)에는 FMA가 없으니 그 커널은 축약 없이 빌드해요.
+**FMA.** scipy의 C 코드(Brent법, 이분법, L-BFGS-B, MINPACK)는 clang의 기본값 `-ffp-contract=on`으로 빌드되어 있어요. 한 식 안의 $ab + c$를 곱셈과 덧셈을 한 번에 반올림하는 FMA 하나로 계산해요. 이 라이브러리는 기본으로 축약을 끄고 빌드하고 FMA는 코드가 정한 곳에서만 쓰므로, scipy의 C 코드를 따르는 커널은 FMA를 직접 적거나 파일 단위로 축약을 켜요. 반대로 scipy의 Python 코드(BFGS, Newton-CG, 신뢰 영역, Nelder–Mead)에는 FMA가 없으니 그 커널은 축약 없이 빌드해요.
 
-Brent법의 외삽은 분자 $f_{\text{blk}} d_{\text{blk}} - f_{\text{pre}} d_{\text{pre}}$를 FMA 하나로 계산해야 scipy와 같아요.
+scipy의 빌드는 Brent법의 외삽 분자 $f_{\text{blk}} d_{\text{blk}} - f_{\text{pre}} d_{\text{pre}}$를 FMA 하나로 계산해요. 커널도 그 자리에 `fma`를 적어요.
 
 ```cpp
                 // csrc/optimize/scalar.cpp
@@ -412,7 +404,7 @@ Brent법의 외삽은 분자 $f_{\text{blk}} d_{\text{blk}} - f_{\text{pre}} d_{
 #pragma clang fp contract(on)
 ```
 
-L-BFGS-B는 이 축약 없이는 경계 없는 114경우 가운데 13경우만 부르는 점이 같아요. MINPACK의 C 판은 소스가 scipy에 설치되어 있지 않아서, 설치된 기계어를 읽어 축약의 꼴을 맞췄어요. 한 식의 $ab + c$는 FMA, MINPACK에서 `t**2`로 적힌 제곱은 따로 반올림, 누적 합은 FMA인데 clang이 벡터화한 `qrfac`의 내적만 8개씩의 곱을 따로 반올림해 차례로 더해요. 노름 `enorm`의 상수도 기계어의 값이에요.
+L-BFGS-B는 이 축약 없이는 경계 없는 114경우 가운데 13경우만 부르는 점이 같아요. MINPACK의 C 판은 소스가 scipy에 설치되어 있지 않아서, 설치된 기계어에서 읽은 축약의 꼴을 따라요. 한 식의 $ab + c$는 FMA, MINPACK에서 `t**2`로 적힌 제곱은 따로 반올림, 누적 합은 FMA인데 clang이 벡터화한 `qrfac`의 내적만 8개씩의 곱을 따로 반올림해 차례로 더해요. 노름 `enorm`의 상수도 기계어의 값이에요.
 
 ```cpp
 // csrc/optimize/minpack.hpp
@@ -421,7 +413,7 @@ inline const double kRdwarf = std::bit_cast<double>(std::uint64_t{0x3be6a09e667f
 inline const double kRgiant = std::bit_cast<double>(std::uint64_t{0x43e6a09e667f3bcdULL});
 ```
 
-**BLAS 호출.** numpy와 `scipy.linalg`가 부르는 BLAS·LAPACK 루틴을 같은 꼴로 불러요. 벡터 둘의 `np.dot`은 원소가 하나면 곱, 아니면 `0.0 + cblas_ddot`이에요. 앞의 `0.0 +`가 BLAS가 돌려주는 $-0.0$을 $+0.0$으로 바꿔요. trust-ncg의 경계 교점은 $2z^{\mathsf T}d$의 부호를 `copysign`으로 보므로 $z = 0$에서 이 차이가 걸음을 바꿔요(MGH 8경우가 이 때문에 끝자리에서 갈렸어요).
+**BLAS 호출.** numpy와 `scipy.linalg`가 부르는 BLAS·LAPACK 루틴을 같은 꼴로 불러요. 벡터 둘의 `np.dot`은 원소가 하나면 곱, 아니면 `0.0 + cblas_ddot`이에요. 앞의 `0.0 +`가 BLAS가 돌려주는 $-0.0$을 $+0.0$으로 바꿔요. trust-ncg의 경계 교점은 $2z^{\mathsf T}d$의 부호를 `copysign`으로 보므로 $z = 0$에서 이 차이가 걸음을 바꿔요(`0.0 +`를 빼면 MGH 8경우가 끝자리에서 갈려요).
 
 ```cpp
 // csrc/optimize/hessian.hpp
@@ -433,25 +425,38 @@ inline double np_dot(const double* a, const double* b, std::size_t n) {
 
 **작업 배열의 자리.** Accelerate의 `ddot`은 둘째 인자가 16바이트 정렬인지에 따라 합의 순서가 달라서, 길이 5 이상에서 끝자리가 달라져요. scipy의 L-BFGS-B는 numpy 배열 하나를 작업 공간으로 나눠 쓰므로 부분마다 정렬이 달라요. 그래서 여기서도 작업 공간 하나를 scipy와 같은 위치로 나눠요. `nnls`와 `lsq_linear`이 쓰는 numpy `lstsq`의 버퍼 배치도 같은 이유로 따라요.
 
-**기억의 판정.** 앞 절의 `Objective`처럼, 같은 점을 다시 부를지의 판정이 scipy와 같아야 호출의 차례가 같아요.
+**기억의 판정.** 앞 절의 `Objective`처럼, 같은 점을 다시 부를지의 판정이 scipy와 같아서 호출의 차례도 같아요.
 
-### 예외: BFGS와 trf
+### 반올림만큼 다른 곳
 
-같은 걸음에서 비트까지 같지 않은 곳은 둘이에요.
+같은 알고리즘이지만 지금 계산 순서가 scipy와 달라 끝자리가 다른 곳이에요.
 
-- **BFGS**: 역헤시안 $H$의 갱신 $(I - \rho s y^{\mathsf T}) H (I - \rho y s^{\mathsf T}) + \rho s s^{\mathsf T}$을 scipy는 행렬곱 두 번($n^3$)으로 계산해요. 여기서는 같은 식을 $v = Hy$를 써서 $H - \rho(s v^{\mathsf T} + v s^{\mathsf T}) + (\rho^2 y^{\mathsf T} v + \rho) s s^{\mathsf T}$로 펼쳐 $n^2$으로 계산해요. $n = 1000$에서 반복 하나의 자기 비용이 행렬곱 꼴로는 8.8 ms, 펼친 꼴로는 0.28 ms예요(Apple M4 Pro, 1스레드). 반올림의 순서가 달라서 첫 갱신 뒤부터 끝자리가 갈리고, 반복 수가 조금 다를 수 있어요. MGH 110경우와 Rosenbrock 4경우에서 멈춘 이유가 같은 것은 114경우 가운데 113경우, 반복 수와 `nfev`까지 같은 것은 80경우예요. 자세한 것은 [준뉴턴 방법](/internals/optimize/quasi-newton/)에 있어요.
+- **BFGS**: 역헤시안 $H$의 갱신 $(I - \rho s y^{\mathsf T}) H (I - \rho y s^{\mathsf T}) + \rho s s^{\mathsf T}$을 scipy는 행렬곱 두 번($n^3$)으로 계산해요. 여기서는 같은 식을 $v = Hy$를 써서 $H - \rho(s v^{\mathsf T} + v s^{\mathsf T}) + (\rho^2 y^{\mathsf T} v + \rho) s s^{\mathsf T}$로 펼쳐 $n^2$으로 계산해요. $n = 1000$에서 반복 하나의 자기 비용이 행렬곱 꼴로는 8.8 ms, 펼친 꼴로는 0.29 ms예요(Apple M4 Pro, 1스레드). 반올림의 순서가 달라서 첫 갱신 뒤부터 끝자리가 갈리고, 반복 수가 조금 다를 수 있어요. MGH 110경우와 Rosenbrock 4경우에서 멈춘 이유가 같은 것은 114경우 가운데 113경우, 반복 수와 `nfev`까지 같은 것은 80경우예요. 자세한 것은 [준뉴턴 방법](/internals/optimize/quasi-newton/)에 있어요.
 - **`least_squares`의 `'trf'`**: 야코비안 $J$ $(m \times n)$를 먼저 LAPACK의 Householder QR로 $R_0$ $(n \times n)$까지 줄이고 그 뒤를 $n$ 크기에서 계산해요. scipy는 $m \times n$에서 SVD를 해요. 같은 문제의 계산이지만 반올림의 순서가 달라서, 시작점과 첫 야코비안의 점은 같고 첫 시험점부터 끝자리가 달라요. 해석적 야코비안으로 푼 MGH 110경우 가운데 103경우는 호출 수가 같고 부른 점이 모두 상대 $10^{-10}$ 안이에요. 이 길은 `sd.regression.nls`와 같은 계산이고, 야코비안마다 $m$ 크기의 일이 QR 하나뿐이에요([최소제곱](/internals/optimize/least-squares/)).
+- **잔차가 아주 많은 `least_squares('lm')`**: $m \ge 10n$이고 $mn \ge 2000$이면 아래의 nls 빌드를 써요. 야코비안 하나에 (1000, 100)에서 1.9배 빨라서예요. 끝자리가 scipy와 다르고 반복 수가 가끔 하나 둘 달라요.
+- **`hess`와 `hessp`가 없는 newton-cg**: 헤세 곱의 차분 $(g(x + hp) - g(x))/h$마다 $g(x)$를 다시 부르지 않고 그 반복의 기울기를 써요. scipy는 곱마다 $g(x)$를 다시 불러요. 기울기 호출이 절반쯤으로 줄고, 부르는 점이 scipy와 달라요.
+- **'lm'의 파생 필드**: `cost`, `grad`, `optimality`는 이 라이브러리의 내적과 행렬곱으로 계산해서, 같은 `x`·`fun`·`jac`에서도 scipy와 끝자리가 다를 수 있어요.
+- **F 순서로 돌려준 헤시안**: 커널은 언제나 C 순서로 복사해 계산하고, scipy는 그 배치 그대로 곱하고 더해서 끝자리가 다를 수 있어요.
 
-그 밖에 다른 것은 결정한 자리뿐이에요. 사용자 함수의 값이 유한하지 않을 때의 처리, 셈의 정의, scipy가 끝나지 않거나 예외를 내는 경우(trust-ncg의 CG 상한, trust-exact의 부분문제 상한 등)예요. 각 방법의 구현 글에 적었어요.
+### scipy를 일부러 따르지 않는 곳
 
-### 같은 걸음을 지키는 방법
+scipy가 끝나지 않거나, 예외를 내거나, 해가 아닌 점에서 수렴을 알리는 경로는 일부러 다르게 했어요. 성공 경로의 걸음은 그대로 두고 그 경로만 달라요.
 
-scipy와 같은지는 테스트가 두 가지로 확인해요.
+- **유한하지 않은 값과 거짓 수렴**: 신뢰 영역의 ρ가 NaN이면 반지름을 줄여요(scipy는 같은 부분문제를 `max_iter`까지 되풀이해요). trust-exact는 시험점의 헤시안이 유한하지 않으면 걸음을 거절해요(scipy는 예외). newton-cg는 NaN인 시험점에서 마지막 유한한 반복점을 돌려주고, 첫 CG 걸음의 곡률이 0이면 가장 가파른 내리막으로 선 탐색을 해요(scipy는 걸음 0으로 수렴을 알려요). L-BFGS-B가 걸음 없이 상대 감소 판정을 통과하면 `converged=False`예요(scipy는 True).
+- **`bracket_root`의 구간**: 언제나 xl ≤ xr로 정렬하고, `status` 0이면 근을 껴요. scipy는 두 쪽이 같은 너비로 함께 끝나면 두 쪽의 끝을 섞은 뒤집힌 구간을 돌려줘요.
+- **`'bvls'`의 끝 x**: 반올림으로 경계를 조금 넘은 x를 경계로 옮겨요(scipy는 그 값 그대로예요).
+- **셈과 상한**: `least_squares`·`root`의 `nfev`, `nhev`, newton-cg 끝의 기울기 호출 하나, `max_iter=0`에서 반복 없이 멈추기, Nelder–Mead의 `n_iter`(scipy의 `nit` − 1), 상한을 예외가 아니라 `converged=False`로 알리기(`nnls`)예요.
+
+각 방법의 구현 글에 자세히 적었어요.
+
+### scipy와 견주는 방법
+
+scipy와 같은 걸음인지는 테스트가 두 가지로 확인해요.
 
 - **기록과 견주기**: scipy 1.18.1을 문제 모음(Moré–Garbow–Hillstrom 35문제의 110경우, MINPACK의 방정식계 55경우, 스칼라 근 204개와 최솟값 57개, scipy의 시험 함수)에 기본값으로 돌린 결과 3,781번을 `tests/optimize/data/scipy_*.json`에 고정해 두고, 결과의 모든 필드를 견줘요. 설치된 scipy가 기록과 같은지도 표본으로 다시 확인해요.
 - **실행하며 견주기**: scipy와 이 라이브러리를 같은 문제에 나란히 돌리며 사용자 함수가 불린 점을 차례대로 기록해, 두 목록이 비트까지 같은지 봐요. 위의 예와 같은 방법이에요. 옵션과 가장자리(차분의 꼴, 상한, 고정 변수, 시험점의 NaN과 무한대 등)도 같은 식으로 견줘요.
 
-방법마다 확인한 범위는 이래요(수는 견준 실행의 수).
+지금 방법마다 확인한 범위는 이래요(수는 견준 실행의 수).
 
 | 방법 | 부르는 점이 비트까지 같음 |
 |---|---|
@@ -462,7 +467,7 @@ scipy와 같은지는 테스트가 두 가지로 확인해요.
 | `minimize` newton-cg, trust-ncg, trust-exact | 열 묶음 1,130번과 무작위 사차 함수 2,100번 모두 |
 | `least_squares` lm | MGH 110경우 가운데 해석적 야코비안 108, 2점 차분 104(나머지는 결정한 자리) |
 | `root` hybr, lm | 55계 × (해석적, 차분) 모두 |
-| `lsq_linear`, `nnls` | 무작위 문제 수천 번에서 결과의 모든 필드 |
+| `lsq_linear`, `nnls` | 무작위 문제 수천 번에서 결과의 모든 필드(`'bvls'`가 경계 밖의 x를 옮긴 경우는 빼고) |
 | `approx_fprime(epsilon=2**-26)` | MGH 47경우 모두 |
 
 측정의 자세한 내용과 Fortran 원본(MINPACK, L-BFGS-B 3.0)과의 거리, 속도는 [정확도와 성능](/internals/optimize/accuracy-performance/)에 있어요.
@@ -488,7 +493,7 @@ inline double norm(lint n, const double* v) {
 }
 ```
 
-- `Fu = true`는 scipy의 빌드예요. FMA와 MINPACK의 `enorm`을 쓰고 $m \times n$의 $J$를 MINPACK의 열 피벗 QR로 바로 분해해요. `least_squares('lm')`과 `root('lm')`이 이것을 써서 scipy와 부르는 점이 비트까지 같아요.
+- `Fu = true`는 scipy의 빌드예요. FMA와 MINPACK의 `enorm`을 쓰고 $m \times n$의 $J$를 MINPACK의 열 피벗 QR로 바로 분해해요. `root('lm')`과 `least_squares('lm')`이 이것을 써서 지금은 scipy와 부르는 점이 비트까지 같아요. 다만 `least_squares('lm')`은 $m \ge 10n$이고 $mn \ge 2000$이면 아래의 nls 빌드를 써요. 모양으로만 정하므로 스레드 수와 상관없이 같은 빌드예요.
 - `Fu = false`는 nls의 빌드예요. 축약 없이, LAPACK의 QR로 $J$를 $n \times n$의 $R_0$까지 줄인 뒤 그것에 MINPACK의 피벗 QR을 해요. nls의 결과는 이 빌드로 늘 같은 비트예요(NIST StRD 27문제 등 338적합의 골든 출력이 바이트까지 같아요).
 
 두 벌을 복사하지 않고 템플릿 인자 하나로 갈라서, 알고리즘을 고치면 두 빌드가 함께 바뀌어요. `'trf'`는 빌드가 하나라 `least_squares`와 nls가 같은 계산을 해요.

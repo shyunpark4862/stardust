@@ -69,7 +69,7 @@ $$
 >>> 1 - sd.special.erf(5.0)
 1.5374368445009168e-12
 >>> sd.special.erfc(5.0)
-1.5374597944280347e-12
+1.5374597944280353e-12
 ```
 
 참값은 $1.5374597944280348 \times 10^{-12}$이에요. 위의 줄은 상대오차 $1.5 \times 10^{-5}$(약 $1.1 \times 10^{11}$ ULP)이고, `erfc`는 0.4 ULP예요. 소거로 잃는 자릿수는 대략 $\log_{10}(\text{빼는 수의 크기} / \text{답의 크기})$예요. 여기서는 $\log_{10}(1 / 1.5 \times 10^{-12}) \approx 12$자리예요.
@@ -170,9 +170,9 @@ $$
 p(x) = (\cdots((c_0 x + c_1) x + c_2) x + \cdots) x + c_{N-1}
 $$
 
-곱셈과 덧셈이 계수마다 한 번씩이고, 오차 분석이 잘 알려져 있어요[5]. `-ffp-contract=off`로 빌드하므로 컴파일러가 `r * x + c`를 몰래 FMA 하나로 합치지 않아요. 그래서 스칼라 코드와 NEON 코드가 같은 식을 같은 순서로 계산해 비트가 같아요. `horner1`은 맨 앞 계수 1을 저장하지 않는 형태(Cephes의 `p1evl`)예요.
+계수마다 곱셈-덧셈 한 번이고, 오차 분석이 잘 알려져 있어요[5]. stardust는 그 한 단계를 FMA 하나 `std::fma(r, x, c)`로 계산해요. 곱과 합을 반올림 한 번으로 하므로 단계마다 반올림이 하나 줄고, 의존 사슬도 곱셈과 덧셈을 따로 할 때보다 약 1.6배 짧아요. `-ffp-contract=off`로 빌드하므로 컴파일러가 다른 곳의 `a * b + c`를 스스로 FMA로 합치지 않고, FMA는 이렇게 코드에 적은 곳에서만 생겨요. NEON 레인의 `simd::horner`도 같은 식이라 스칼라 코드와 NEON 코드의 비트가 같아요. `horner1`은 맨 앞 계수 1을 저장하지 않는 형태(Cephes의 `p1evl`)예요.
 
-Horner는 한 줄로 이어진 의존 사슬이라 CPU의 여러 실행 유닛을 놀려요. **Estrin** 방법은 $p(x) = (c_0 x + c_1) x^2 + (c_2 x + c_3)$처럼 짝을 지어 트리로 계산해서 병렬도가 높아요. `erfc`에서 두 방법을 재면 속도는 같고(NEON 고르기 방식에서 원소당 4.02–4.14 대 4.15–4.20 ns), 최대 오차는 Estrin이 조금 컸어요(9.13 대 7.77 ULP, `bench/special/s2/variants.md`, 원소 $10^6$개, 1스레드). 그래서 Horner를 써요. NEON 쪽 이야기는 [원소별 엔진과 병렬화](/internals/special/engine/)에 있어요.
+Horner는 한 줄로 이어진 의존 사슬이라 CPU의 여러 실행 유닛을 놀려요. **Estrin** 방법은 $p(x) = (c_0 x + c_1) x^2 + (c_2 x + c_3)$처럼 짝을 지어 트리로 계산해서 병렬도가 높아요. `erfc`에서 두 방법을 재면 속도는 같았고(NEON 고르기 방식에서 원소당 4.02–4.14 대 4.15–4.20 ns, 곱셈과 덧셈을 따로 하는 Horner와 견준 값, `bench/special/s2/variants.md`, 원소 $10^6$개, 1스레드), 오차는 Estrin이 커요(지금 빌드에서 최대 9.13 대 6.11 ULP). 그래서 Horner를 써요. NEON 쪽 이야기는 [원소별 엔진과 병렬화](/internals/special/engine/)에 있어요.
 
 Boost.Math는 clang에서 **2차 Horner**를 써요(`BOOST_MATH_POLY_METHOD` 3, `tools/detail/polynomial_horner3_20.hpp`). 짝수 차수 항과 홀수 차수 항을 $x^2$에 대한 Horner 사슬 두 개로 나눠 동시에 계산하고 마지막에 합쳐요.
 
@@ -342,13 +342,20 @@ $E$는 처음부터 작은 값으로 계산돼요. $\mu(t)$는 $t \to 0$에서 $
 
 ```cpp
 // csrc/special/gamma_core.hpp (발췌)
-struct Scaled { double m; std::int64_t e; };   // 값 = m · 2^e, 0.5 <= |m| < 1
+struct Scaled {
+    double m;        // 0.5 <= |m| < 1, or 0, inf, NaN
+    std::int64_t e;  // 값 = m · 2^e
+};
 inline Scaled operator*(Scaled a, Scaled b) {
     Scaled r = scaled(a.m * b.m);             // 가수끼리 곱하고 frexp로 다시 정규화
     r.e += a.e + b.e;                         // 지수는 정수로 더한다
     return r;
 }
-inline double value(Scaled s) { return std::ldexp(s.m, s.e); }  // 마지막에 한 번만 반올림
+inline double value(Scaled s) {                // 마지막에 한 번만 반올림
+    if (s.m == 0.0 || !std::isfinite(s.m)) return s.m;
+    const std::int64_t e = std::clamp<std::int64_t>(s.e, -2200, 2200);
+    return std::ldexp(s.m, static_cast<int>(e));
+}
 ```
 
 가수끼리의 곱은 보통 float64 곱이라 반올림이 한 번이고, 지수는 정수 덧셈이라 넘치지 않아요. 마지막 `ldexp`는 서브노멀 범위까지 올바르게 반올림해요. 큰 지수함수는 `exp_scaled`가 Cody–Waite 방식으로 나눠요. $x = n\log 2 + r$에서 $n$을 고르고 $r = x - n\log 2$를 $\log 2$의 두 조각(hi, lo)으로 FMA 두 번에 계산하면, $e^x = 2^n e^r$에서 $e^r$만 libm이 계산해요. 거대한 결과(`gamma`의 서브노멀 꼬리, `beta`, 음수 `zeta`, `polygamma`, 비중심 분포의 항)가 이 길을 써요.
@@ -440,11 +447,15 @@ $C_n D_n$이 1에서 $2^{-53}$ 안으로 들어오면 멈춰요. 항 수를 미�
 ```cpp
 // csrc/special/cf.hpp, lentz (발췌)
 constexpr double tiny = 0x1p-1000;            // 0이 된 분모 대신
-double f = b0 == 0.0 ? tiny : b0, c = f, d = 0.0;
+double f = b0 == 0.0 ? tiny : b0;
+double c = f;
+double d = 0.0;
 for (int n = 1; n <= max_terms; ++n) {
     const auto [a, b] = term(n);              // a_n, b_n
-    d = b + a * d;  if (d == 0.0) d = tiny;
-    c = b + a / c;  if (c == 0.0) c = tiny;
+    d = b + a * d;
+    if (d == 0.0) d = tiny;
+    c = b + a / c;
+    if (c == 0.0) c = tiny;
     d = 1.0 / d;
     const double delta = c * d;
     f *= delta;

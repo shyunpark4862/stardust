@@ -332,7 +332,7 @@ ValueError: ridge(): the model has no parameters (no columns in 'X' and intercep
 | `fittedvalues` | 적합값 $b_0 + x_i^\top\beta$. 가중치 0인 행에도 있어요. |
 | `resid` | 잔차 `y - fittedvalues` |
 | `ssr` | 적합에 쓴 행의 $\sum_i w_i r_i^2$ |
-| `rsquared` | 결정계수 1 − `ssr`/TSS. TSS는 가중 평균에 대한 $\sum_i w_i (y_i - \bar y)^2$(절편이 없으면 $\sum_i w_i y_i^2$). TSS가 0이면 NaN이에요(아래 특수한 경우). |
+| `rsquared` | 결정계수 1 − `ssr`/TSS. TSS는 가중 평균에 대한 $\sum_i w_i (y_i - \bar y)^2$(절편이 없으면 $\sum_i w_i y_i^2$). TSS가 0이면 NaN이에요(아래 특수한 경우). 기울기 열이 없거나 기울기 계수가 모두 정확히 0이면 0이에요(절편만인 모형과 같아요). |
 | `predict(X_new, /)` | 새 행의 예측 |
 
 R²(결정계수)는 반응의 흩어짐 가운데 모형이 설명한 몫이에요. 1이면 완전히 맞고 0이면 평균만큼만 맞아요. 자세한 풀이는 [결과 객체 읽기](/api/regression/results/)에 있어요.
@@ -354,7 +354,7 @@ frame의 `DataFrame`을 주면 열 이름이 `param_names`가 돼요.
 ['const', 'height', 'weight']
 ```
 
-`alpha`, `l1_ratio`, `standardize`, `param_names`는 적합의 설정을 알려 주는 읽기 전용 필드예요. 값을 대입하면 `AttributeError`예요. 다른 `alpha`가 필요하면 새로 적합하세요. `param_names`와 배열 `alpha`는 읽을 때마다 새 복사본이라, 돌려받은 것을 고쳐도 결과는 그대로예요.
+`alpha`, `l1_ratio`, `standardize`, `param_names`는 적합의 설정을 알려 주는 읽기 전용 필드예요. 값을 대입하면 `AttributeError`예요. 다른 `alpha`가 필요하면 새로 적합하세요. `param_names`는 읽을 때마다 새 리스트라 돌려받은 것을 고쳐도 결과는 그대로이고, 배열 `alpha`는 원소에 값을 넣을 수 없는 쓰기 금지 배열이에요.
 
 ```python
 >>> r.alpha = 1.0

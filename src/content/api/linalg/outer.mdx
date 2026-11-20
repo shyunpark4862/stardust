@@ -22,7 +22,7 @@ raises:
   - type: TypeError
     desc: x1이나 x2가 배열이 아닐 때(리스트, Python 숫자 포함).
   - type: ValueError
-    desc: 앞쪽 배치 축끼리 브로드캐스팅이 안 될 때.
+    desc: 앞쪽 배치 축끼리 브로드캐스팅이 안 될 때, 입력이 32차원이라 결과가 33차원이 될 때.
 seeAlso: [kron, vecdot, cross, matrix_rank, basics]
 ---
 import Callout from '../../../components/Callout.astro';

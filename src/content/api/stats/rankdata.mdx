@@ -8,7 +8,7 @@ signatures:
 summary: 값마다 크기 순위(가장 작은 값이 1)를 매겨요. 같은 값(동점)에 순위를 주는 다섯 가지 방법이 있고, 결과는 언제나 float64예요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 순위를 매길 데이터. bool·정수는 float64로 바꿔서 비교해요.
   - name: method
@@ -24,11 +24,11 @@ params:
     kind: keyword-only
     desc: "'propagate'(NaN이 있는 줄 전체가 NaN), 'omit'(NaN 자리는 NaN, 나머지끼리 순위), 'raise'(ValueError) 중 하나예요."
 returns:
-  type: ndarray
-  desc: 순위를 담은 float64 배열. axis=None이면 1차원(원소 수만큼), axis를 주면 x와 같은 모양이에요.
+  type: ndarray 또는 Python float
+  desc: 순위를 담은 float64 배열. axis=None이면 1차원(원소 수만큼), axis를 주면 x와 같은 모양이에요. 숫자 하나를 넣으면 Python float 1.0이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·None이 아닐 때(tuple·리스트 포함), method·nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·None이 아닐 때(tuple·리스트 포함), method·nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: method나 nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어났을 때.
 seeAlso: [zscore, mode, iqr, describe]
@@ -199,13 +199,13 @@ array([[2.0, nan, 1.0],
 array([4.0, 1.0, 5.0, 2.5, 2.5], dtype=float64)
 ```
 
-빈 배열은 빈 배열을, Python 숫자 하나는 `array([1.0])`을 줘요.
+빈 배열은 빈 배열을 줘요. 숫자 하나를 넣으면 Python `float` 1.0이에요.
 
 ```python
 >>> sd.stats.rankdata([])
 array([], dtype=float64)
 >>> sd.stats.rankdata(5.0)
-array([1.0], dtype=float64)
+1.0
 ```
 
 ### `method` 이름
@@ -244,4 +244,5 @@ array([3, 5, 1, 6, 2, 4, 7], dtype=int64)
 ## scipy를 아는 분께
 
 - 다섯 방법의 이름, 결과가 모두 float64인 것, `axis=None`이면 1차원으로 펴는 것, `nan_policy`의 동작은 scipy와 같아요.
+- 숫자 하나를 넣으면 Python `float`예요. scipy는 원소 하나짜리 배열 `array([1.])`을 줘요.
 - `x`는 위치로만, 옵션은 이름으로만 받아요.

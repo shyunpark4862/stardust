@@ -340,13 +340,15 @@ $$
 ```cpp
 // expm.cpp: R = I + 2 (V - U)^-1 U
 T* Q = buf[4];
-for (lint k = 0; k < nn; ++k) Q[k] = P[k] - U[k];               // V - U
-lint* ipiv = s.get_ints(n);
-if (lapack::getrf(n, n, Q, n, ipiv) > 0) return kSingular;
-lapack::getrs('N', n, n, Q, n, ipiv, U, n);                     // U <- (V - U)^-1 U
+for (lint k = 0; k < nn; ++k) Q[k] = P[k] - U[k];
+lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+if (lapack::lu_in_place(n, n, Q, n, ipiv) > 0) return kSingular;  // not seen: V - U is well conditioned here
+lapack::getrs('N', n, n, Q, n, ipiv, U, n);
 for (lint k = 0; k < nn; ++k) P[k] = U[k] * 2.0;
 for (lint d = 0; d < n; ++d) P[d * n + d] += 1.0;
 ```
+
+$V - U$의 분해는 다른 LU와 같은 `lu_in_place`예요. 행렬이 32–46이면 `getf2`로 분해해요([LU 분해와 선형 시스템](/internals/linalg/lu/)).
 
 풀기는 부분 피벗 LU(`getrf`, $\tfrac{2}{3}n^3$ flop)와 우변 $n$개의 삼각 풀기(`getrs`, $2n^3$ flop)예요([LU 분해와 선형 시스템](/internals/linalg/lu/)). 이 차수와 노름의 범위에서는 $V - U = q_m(B)$가 특이해지지 않아요. 그래도 `getrf`가 정확한 0 피벗을 보고하면 `LinAlgError("singular matrix")`를 내요.
 

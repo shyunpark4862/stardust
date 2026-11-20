@@ -68,7 +68,7 @@ OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39
 | `minimize` trust-ncg, trust-exact | ✓ | ✓ | ✓ | `hess`(`hess`를 줬을 때) | ✓ | ✓ | ✓ | ✓ |
 | `least_squares` | ✓ | ✓ | ✓ | `cost`, `grad`, `optimality`, `active_mask` | ✓ | ✓ | ✓ | |
 | `lsq_linear` | ✓ | ✓ | | `cost`, `optimality`, `active_mask` | ✓ | | | |
-| `nnls` | ✓ | ✓ | | `cost` | `message`만 | | | |
+| `nnls` | ✓ | ✓ | | `cost` | ✓ | | | |
 | `root` | ✓ | ✓ | | | ✓ | ✓ | ✓ | |
 
 표에서 헷갈리기 쉬운 곳이 몇 군데 있어요.
@@ -105,7 +105,7 @@ AttributeError: 'OptimizeResult' object has no attribute 'hess' (its method does
 | `root` | $F(x)$, $(n,)$. 근이면 0에 가까워요 |
 | `find_root`, `find_minimum` | 원소마다의 $f(x)$ |
 
-최소제곱의 `fun`이 벡터라서, 제곱합은 따로 `cost` $= \tfrac12\sum_i r_i^2$로 줘요.
+최소제곱의 `fun`이 벡터라서, 제곱합은 따로 `cost` $= \tfrac12\sum_i r_i^2$로 줘요. 더하는 순서가 다르면 반올림이 달라서, 직접 더한 값과 끝자리가 다를 수 있어요.
 
 ```python
 >>> t = sd.asarray([0.0, 1, 2, 3, 4, 5, 6, 7])
@@ -116,14 +116,14 @@ array([  -0.0216789709833467,   0.06616311727569979,  -0.04872746168977771,
         0.017752017755227723,  -0.04512931114061425,   0.02747002863499104,
        -0.023979796460838088,   0.01854084054282526], dtype=float64)
 >>> ls.cost, 0.5 * float(sd.sum(ls.fun**2))
-(0.00562354306560838, 0.00562354306560838)
+(0.005623543065608379, 0.00562354306560838)
 ```
 
 ## 멈춘 이유: converged, status, message
 
 ### converged
 
-`converged`는 방법이 정한 멈춤 판정을 통과했는지예요. 최솟값을 찾는 방법이면 기울기나 걸음이 충분히 작아졌다는 뜻, 근을 찾는 방법이면 구간이나 걸음이 충분히 작아졌다는 뜻이에요. 여기에 `minimize`와 `least_squares`는 마지막 값(`fun`, `cost`)이 유한하다는 조건을 더해요.
+`converged`는 방법이 정한 멈춤 판정을 통과했는지예요. 최솟값을 찾는 방법이면 기울기나 걸음이 충분히 작아졌다는 뜻, 근을 찾는 방법이면 구간이나 걸음이 충분히 작아졌다는 뜻이에요. 여기에 `minimize`, `least_squares`, `lsq_linear`, `nnls`는 마지막 값(`fun`, `cost`)이 유한하다는 조건을 더해요. L-BFGS-B는 한 걸음도 가지 못한 채 상대 감소의 판정을 통과하면(시험점의 값이 유한하지 않아 선 탐색이 제자리에서 끝났을 때) `status`와 `message`는 수렴의 것이어도 `converged=False`예요.
 
 `converged=True`가 말하지 않는 것도 있어요.
 
@@ -160,7 +160,7 @@ array([  -0.0216789709833467,   0.06616311727569979,  -0.04872746168977771,
 | `minimize` trust-ncg, trust-exact | 0 | 1 `max_iter`, 2 모형이 감소를 예측하지 못함, 3 부분문제의 실패(헤시안이 양정치가 아님 등) |
 | `least_squares` | 1 `gtol`, 2 `ftol`, 3 `xtol`, 4 `ftol`과 `xtol` | 0 `max_nfev` |
 | `lsq_linear` | 1 최적성 `< tol`, 2 비용의 상대 변화 `< tol`, 3 경계 없는 해가 답 | 0 `max_iter`, −1 마지막 반복에서 진전 없음 |
-| `nnls` | 1 | 3 `max_iter` |
+| `nnls` | 1 | 0 `max_iter` |
 | `root` hybr | 1 | 2 `max_nfev`, 3 `xtol`이 너무 작음, 4·5 진전이 없음 |
 | `root` lm | 1–4 | 5 `max_nfev`, 6–8 허용오차가 너무 작음 |
 
@@ -230,7 +230,7 @@ array([  -0.0216789709833467,   0.06616311727569979,  -0.04872746168977771,
 
 ### 상한과 셈
 
-반복 상한은 `max_iter`, 함수 계산 수의 상한은 `max_nfev`이고, 각각 `n_iter`와 `nfev`에 대한 상한이에요. 셈이 상한을 조금 넘길 때가 있어요. `least_squares`는 마지막 반복점의 야코비안을 상한을 넘겨 계산할 수 있고(차분이면 변수마다 한두 번), L-BFGS-B는 `max_nfev`를 반복이 끝날 때 봐요.
+반복 상한은 `max_iter`, 함수 계산 수의 상한은 `max_nfev`이고, 각각 `n_iter`와 `nfev`에 대한 상한이에요. 셈이 상한을 넘길 때가 있어요. `least_squares`는 마지막 반복점의 야코비안을 상한을 넘겨 계산할 수 있고(차분이면 변수마다 한두 번), L-BFGS-B는 `max_nfev`를 반복이 끝날 때 봐서 반복 하나만큼 넘을 수 있어요. 기울기가 차분이면 선 탐색의 시험점마다 $n + 1$번이라 많이 넘기도 해요.
 
 ```python
 >>> r = sd.optimize.least_squares(lambda x: [x[0]**2 - 2], [1.0], max_nfev=3)
@@ -352,7 +352,7 @@ OptimizeResult(converged=True, fun=-4.44089e-16, n_iter=10, nfev=12, x=1.4142135
 (<class 'float'>, <class 'int'>)
 ```
 
-## 읽기 전용이고 배열은 복사본
+## 읽기 전용이에요
 
 필드는 읽기만 할 수 있어요.
 
@@ -363,15 +363,20 @@ Traceback (most recent call last):
 AttributeError: property 'x' of 'OptimizeResult' object has no setter
 ```
 
-배열 필드는 읽을 때마다 새 복사본이에요. 돌려받은 배열을 고쳐도 결과는 그대로예요. 반복문에서 같은 배열을 여러 번 쓸 때는 한 번 읽어 변수에 두면 복사를 줄일 수 있어요.
+배열 필드도 읽기 전용 배열이에요. 읽을 때마다 복사하지 않고 같은 배열을 돌려줘서, 큰 `hess_inv`나 `jac`을 여러 번 읽어도 비용이 없어요. 값을 고쳐 쓰고 싶으면 `.copy()`로 복사해요.
 
 ```python
 >>> x = r.x
 >>> x[0] = 99.0
->>> r.x
-array([1.0000220217835696, 1.0000422197517715], dtype=float64)
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
 >>> r.x is r.x
-False
+True
+>>> x = r.x.copy()
+>>> x[0] = 99.0
+>>> x
+array([              99.0, 1.0000422197517715], dtype=float64)
 ```
 
 ## 출력하기
@@ -395,10 +400,10 @@ OptimizeResult(method='trf', converged=True, cost=0.00562354, n_iter=7, nfev=21,
 
 scipy의 `OptimizeResult`와 견주면 이래요.
 
-- **이름**: `success`는 `converged`, `nit`는 `n_iter`예요. 별칭은 없어서 `r.success`는 `AttributeError`예요. `find_root` 등의 `f_x`는 `fun`이에요.
+- **이름**: `success`는 `converged`, `nit`는 `n_iter`예요. Nelder–Mead의 `n_iter`는 한 반복 수라 scipy의 `nit`보다 하나 작아요. 별칭은 없어서 `r.success`는 `AttributeError`예요. `find_root` 등의 `f_x`는 `fun`이에요.
 - **dict가 아니에요**: `r['x']`, `r.keys()`, `r.get(...)`이 없어요. 필드가 있는지는 `hasattr`로 물어요.
 - **`root_scalar`**: scipy는 `RootResults`(`root`, `iterations`, `function_calls`, `converged`, `flag`)를 주지만 여기서는 `OptimizeResult`(`x`, `n_iter`, `nfev`·`njev`·`nhev`, `converged`, `message`)예요. scipy의 `function_calls`는 세 함수의 호출을 합한 수라서, `fprime`을 주면 `nfev + njev + nhev`와 같아요.
-- **`nnls`**: scipy는 `(x, rnorm)` 튜플을 주고, 반복 상한에 닿으면 `RuntimeError`를 내요. 여기서는 `OptimizeResult`이고 상한은 `status=3`, `converged=False`예요. `rnorm` 대신 `cost` $= \tfrac12\lVert Ax - b\rVert^2$을 줘요.
+- **`nnls`**: scipy는 `(x, rnorm)` 튜플을 주고, 반복 상한에 닿으면 `RuntimeError`를 내요. 여기서는 `OptimizeResult`이고 상한은 `status=0`, `converged=False`예요. `rnorm` 대신 `cost` $= \tfrac12\lVert Ax - b\rVert^2$을 줘요.
 - **`root`**: MINPACK의 내부 값 `fjac`, `r`, `qtf`는 없고, `n_iter`와 (차분일 때도) `njev`가 있어요. `nfev`는 scipy보다 2 적어요. scipy는 시작점에서 함수를 두 번 더 부르고 그것도 세어요.
 - **`least_squares`의 `nfev`**: 차분 야코비안의 호출도 세요. scipy는 세지 않아서, `'2-point'`이면 scipy의 `nfev`는 이쪽의 `nfev − n·njev`예요. `n_iter`는 scipy의 결과에 없는 필드예요. `minimize`의 `nfev`는 scipy도 차분의 호출을 세므로 같아요.
 - **`lsq_linear`**: `unbounded_sol`이 없고, `active_mask`는 언제나 int64예요.

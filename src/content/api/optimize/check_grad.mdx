@@ -15,9 +15,9 @@ params:
   - name: grad
     type: 호출 가능한 객체
     kind: positional-only
-    desc: "확인할 기울기 grad(x). 값 n개(sd.ndarray, 실수의 시퀀스, numpy 배열)를 돌려줘요. x0에서 한 번만 불러요."
+    desc: "확인할 기울기 grad(x). 값 n개(sd.ndarray, 실수의 시퀀스, numpy 배열)를 돌려줘요. n = 1이면 수 하나도 돼요(minimize의 jac과 같은 규칙). x0에서 한 번만 불러요."
   - name: x0
-    type: ndarray 또는 실수의 시퀀스
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series
     kind: positional-only
     desc: 확인할 점 (n,). 1차원이고 비어 있지 않고 유한해야 해요.
   - name: epsilon
@@ -165,7 +165,7 @@ $$
 (4.953007685757822e-09, 1201)
 >>> calls.clear()
 >>> sd.optimize.check_grad(counted, grad_n, x0, direction='random', rng=sd.random.default_rng(0)), len(calls)
-(1.503508428868372e-09, 13)
+(1.3468479664879851e-09, 13)
 ```
 
 방향 하나는 기울기의 오류를 그 방향의 성분으로만 보므로, 오류가 $v$와 거의 수직이면 놓칠 수 있어요. 시드를 바꿔 몇 번 확인하거나, 마지막에 `'all'`로 한 번 확인하세요.
@@ -218,7 +218,7 @@ TypeError: check_grad(): 'rng' must be an sd.random.Generator (sd.random.default
 
 ## scipy를 아는 분께
 
-- **기본 차분이 달라요.** scipy는 간격 $\sqrt{\varepsilon} = 2^{-26}$($\varepsilon = 2^{-52}$, 기계 엡실론)의 앞쪽 차분이고, 여기서는 간격을 고르는 5점 차분이에요. 그래서 맞는 기울기에 대한 결과가 scipy보다 훨씬 작아요(위의 예에서 $1.8 \times 10^{-12}$ 대 $9.7 \times 10^{-6}$). `epsilon=2**-26`을 주면 scipy와 같은 값이에요.
+- **기본 차분이 달라요.** scipy는 간격 $\sqrt{\varepsilon} = 2^{-26}$($\varepsilon = 2^{-52}$, 기계 엡실론)의 앞쪽 차분이고, 여기서는 간격을 고르는 5점 차분이에요. 그래서 맞는 기울기에 대한 결과가 scipy보다 훨씬 작아요(위의 예에서 $1.8 \times 10^{-12}$ 대 $9.7 \times 10^{-6}$). `epsilon=2**-26`을 주면 scipy와 같은 계산이고, 지금은 값도 비트까지 같아요(약속은 아니에요).
 - **`rng`**: `direction='random'`에서 scipy는 `rng`(numpy의 `Generator`)를 주지 않으면 새로 만들지만, 여기서는 `sd.random.Generator`를 꼭 줘야 해요. 난수가 달라서 같은 시드라도 scipy와 방향이 다르고 결과도 달라요.
 - **`direction='all'`에 `rng`**: scipy는 무시하지만 여기서는 `ValueError`예요.
 - 사용자 함수의 추가 인자 `*args`는 없어요. `lambda`로 묶어 주세요.

@@ -19,14 +19,14 @@ import Steps from '../../../components/fig/Steps.astro';
 | 함수 | 푸는 문제 | LAPACK | 비용 |
 |---|---|---|:---:|
 | `solve_tridiagonal(dl, d, du, b)` | 삼중대각 $A x = b$ | `gtsv` | $O(n)$ |
-| `solve_banded(ab, b, *, lower_bandwidth, upper_bandwidth)` | 띠 행렬 $A x = b$ | `gbsv`, 대역폭이 (1, 1)이면 `gtsv` | $O(n\,k_l(k_l + k_u))$ |
+| `solve_banded(ab, b, *, lower_bandwidth, upper_bandwidth)` | 띠 행렬 $A x = b$ | `gbsv`, 대역폭이 (1, 1)이면 `gtsv`, 행이 8개 이하면 밀집 LU | $O(n\,k_l(k_l + k_u))$ |
 | `solve_sylvester(a, b, c)` | $a x + x b = c$ | `gees` 두 번 + `trsyl3` + `gemm` 네 번 | $O(m^3 + n^3)$ |
 
 뼈대는 이래요.
 
 - 띠 행렬은 띠만 저장하고 띠 안에서만 계산해요. $n \times n$ 행렬을 만들지 않으니 메모리가 $O(n)$이고, 소거도 띠 안에서 끝나서 시간도 $n$에 비례해요. 일반 LU의 $\tfrac23 n^3$과 비교하면 $n = 10^5$에서 차이가 수십억 배예요.
 - 부분 피벗은 띠를 넓혀요. 행을 바꾸면 위쪽 띠가 아래쪽 대역폭만큼 넓어져요. `gbsv`가 입력 배열 위에 $k_l$개의 빈 행을 요구하는 이유예요.
-- 드라이버는 함수마다 하나이고, 대역폭 (1, 1)만 `gtsv`로 가요. 대역폭은 입력 값이 아니라 사용자가 정하는 옵션이에요. 그 결과 `solve_banded(ab, b, 1, 1)`은 `solve_tridiagonal`과, 그리고 scipy와 비트까지 같아요.
+- 드라이버는 모양으로만 골라요. 대역폭 (1, 1)은 `gtsv`, 행이 8개 이하인 작은 띠는 밀집 행렬의 LU, 그 밖은 `gbsv`예요. 대역폭과 크기는 입력 값이 아니라 모양이에요. 그 결과 `solve_banded(ab, b, 1, 1)`은 `solve_tridiagonal`과 비트까지 같아요(지금은 scipy와도 같아요).
 - Sylvester 방정식은 두 행렬을 각각 삼각화해서 풀어요(Bartels–Stewart). $mn$개의 미지수를 하나의 $mn \times mn$ 시스템으로 풀면 $O(m^3n^3)$이지만, Schur 분해 두 번과 삼각 Sylvester 풀기로 $O(m^3 + n^3)$이 돼요.
 - 해가 하나로 정해지지 않으면 에러예요. `a`와 `-b`에 공통(또는 eps 수준으로 가까운) 고유값이 있으면 LAPACK은 값을 살짝 바꾼 방정식을 풀어 주는데, stardust는 그 해를 돌려주지 않고 `LinAlgError`를 내요.
 
@@ -137,12 +137,13 @@ $k_l$이 블록 크기 이상으로 넓으면 블록 경로를 써요. `nb`열�
 
 ### stardust의 `solve_banded`
 
-<Fig column caption="solve_banded의 배치 원소 하나. 대역폭이 (1, 1)이면 ab의 세 행을 dl, d, du로 읽어 gtsv로 가고, 아니면 gbsv의 작업 배열을 만들어요.">
+<Fig column caption="solve_banded의 배치 원소 하나. 대역폭이 (1, 1)이면 ab의 세 행을 dl, d, du로 읽어 gtsv로 가고, 행이 8개 이하면 밀집 행렬을 만들어 LU로, 아니면 gbsv의 작업 배열을 만들어요.">
   <Steps
     steps={[
       { label: 'solve_banded(ab, b, kl, ku)', where: 'ops/special.cpp', note: 'kl, ku가 0 이상의 int인지, ab의 행 수가 kl + ku + 1인지, b의 행 수가 n인지 봐요.' },
       { label: 'kl = ku = 1', depth: 1, note: 'du = ab[0, 1:], d = ab[1, :], dl = ab[2, :-1]을 stride로 읽어 tri_body로 가요. 모서리 두 칸은 읽지 않아요.' },
       { label: 'tri_body → gtsv', depth: 2, where: 'ops/special.cpp', note: 'solve_tridiagonal과 같은 함수예요.' },
+      { label: 'n ≤ 8', depth: 1, note: 'n × n 행렬을 0으로 채우고 띠 안의 칸만 패킹해요. lu_in_place와 getrs로 풀어요.' },
       { label: '그 밖', depth: 1, note: '(2kl + ku + 1) × n 작업 배열을 0으로 채우고, 열마다 행렬 안의 칸만 kl번 행 아래에 패킹해요.' },
       { label: 'gbsv', depth: 2, where: 'lapack.hpp', note: 'b는 결과 자리에 패킹해 두고, gbsv가 그 자리를 해로 덮어써요.' },
     ]}
@@ -162,7 +163,10 @@ for (lint j = 0; j < n; ++j) {
         return kNonFinite;
 }
 const bool b_ok = pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true);
-if (n > 0 && lapack::gbsv(n, kl, ku, r.k, w, ldab, ipiv, x, n) > 0) return kSingular;
+if (n > 0) {
+    lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+    if (lapack::gbsv(n, kl, ku, r.k, w, ldab, ipiv, x, n) > 0) return kSingular;
+}
 return b_ok ? 0 : kNonFiniteB;
 ```
 
@@ -184,22 +188,56 @@ return b_ok ? 0 : kNonFiniteB;
 
 - **빨라요.** 같은 삼중대각에서 `gtsv`가 4–5배 빨라요. `gtsv`는 피벗 배열도, 띠 저장의 2차원 인덱싱도, 채움용 빈 행도 없이 세 배열을 한 번 훑어요.
 - **비트가 달라요.** 같은 부분 피벗 소거지만 계산 순서가 달라요. 예를 들어 `gtsv`는 승수를 나눗셈 $dl_i / d_i$로 구하고, `gbtf2`는 $1/\text{피벗}$을 곱해요. 그래서 두 결과는 반올림 수준에서 달라요.
-- **scipy도 그렇게 해요.** scipy 1.18.1의 `solve_banded`는 `(l, u) == (1, 1)`이면 `gtsv`를, 그 밖에는 `gbsv`를 불러요. stardust가 같은 경계를 쓰면 `solve_banded`가 모든 대역폭에서 scipy와 비트까지 같아요.
+- **scipy도 그렇게 해요.** scipy 1.18.1의 `solve_banded`는 `(l, u) == (1, 1)`이면 `gtsv`를, 그 밖에는 `gbsv`를 불러요. 같은 경계라서 지금은 `solve_banded`가 행이 8개를 넘는 모든 대역폭에서 scipy와 비트까지 같아요.
 
-그 결과 `solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)`은 같은 행렬의 `solve_tridiagonal`과 비트까지 같아요. "항상 `gbsv`"는 규칙이 더 단순하지만 (1, 1)에서 scipy보다 느리고 비트도 달라서 쓰지 않아요.
+그 결과 `solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)`은 같은 행렬의 `solve_tridiagonal`과 비트까지 같아요. "항상 `gbsv`"는 규칙이 더 단순하지만 (1, 1)에서 4–5배 느려서 쓰지 않아요.
 
-"함수마다 드라이버 하나"의 예외인데도 받아들이는 이유는, 갈림길이 **입력 값이 아니라 옵션**이기 때문이에요. 같은 `(lower_bandwidth, upper_bandwidth)`로 부르면 행렬 값이 무엇이든 언제나 같은 루틴이에요. 사용자가 대역폭 (1, 1)을 적는 것은 "이 행렬은 삼중대각"이라고 함수 이름으로 말하는 것과 같아요.
+"함수마다 드라이버 하나"의 예외인데도 받아들이는 이유는, 갈림길이 **입력 값이 아니라 옵션과 모양**이기 때문이에요. 같은 `(lower_bandwidth, upper_bandwidth)`로 부르면 행렬 값이 무엇이든 언제나 같은 루틴이에요. 사용자가 대역폭 (1, 1)을 적는 것은 "이 행렬은 삼중대각"이라고 함수 이름으로 말하는 것과 같아요.
+
+### 행이 8개 이하면 밀집 LU로
+
+`gbsv`에는 호출마다 약 1µs의 고정비가 있어요. 행이 몇 개뿐인 띠 행렬에서는 이 고정비가 계산보다 커요. 그래서 $n \le 8$(`kBandDenseMax`)이고 대역폭이 (1, 1)이 아니면, 띠 밖을 0으로 채운 $n \times n$ 행렬을 만들어 LU(`lu_in_place`)와 `getrs`로 풀어요.
+
+```cpp
+// csrc/linalg/ops/special.cpp, solve_banded의 배치 몸체 (발췌)
+if (dense) {
+    // The n x n matrix itself, zero outside the band: a[i, j] = ab[ku + i - j, j]. Only
+    // the band's elements inside the matrix are read and checked, as for gbsv.
+    T* d = s.get<T>(static_cast<std::size_t>(n * n));
+    std::fill(d, d + n * n, T(0));
+    for (lint j = 0; j < n; ++j) {
+        const lint r0 = std::max<lint>(0, ku - j), r1 = std::min<lint>(kl + ku, ku + n - 1 - j);
+        if (!pack(
+                a.dtype(), base + r0 * rs + j * cs, r1 - r0 + 1, 1, rs, 0, d + j * n + (r0 - ku + j), n,
+                true
+            ))
+            return kNonFinite;
+    }
+    const bool b_ok = pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true);
+    if (n > 0) {
+        lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+        if (lapack::lu_in_place(n, n, d, n, ipiv) > 0) return kSingular;
+        if (r.k > 0) lapack::getrs('N', n, r.k, d, n, ipiv, x, n);
+    }
+    return b_ok ? 0 : kNonFiniteB;
+}
+```
+
+- **측정** (`gbsv` 대 밀집, 대역폭 (0, 0)–(5, 5), (0, 4)): $n = 8$에서 행렬 하나 2.2–2.5배, 1스레드 배치 3.4–3.6배, $n = 4$에서 2.7–3.2배와 6.2–6.4배 빨라요. $n = 12$는 행렬 하나 1.7–2.1배라 2배를 넘지 않아서 경계를 8로 뒀어요. $n = 24$부터는 `gbsv`가 빨라요.
+- **크기로 경로를 바꾸는 것은 이득이 2배를 넘을 때만이에요.** 경로가 바뀌면 같은 함수의 결과가 크기에 따라 다른 계산에서 나오기 때문이에요. 고르는 것은 모양(크기, 대역폭)뿐이라, 같은 모양이면 언제나 같은 경로이고 레이아웃·배치 위치·스레드 수와 무관한 비트도 그대로예요.
+- **읽고 검사하는 원소는 `gbsv`와 같아요.** 행렬 안의 띠 원소만 읽으므로 모서리의 NaN은 결과에 영향이 없어요. 특이는 똑같이 정확한 0 피벗이에요. 결과는 `gbsv`(그리고 scipy)와 반올림 수준에서 달라요.
+- 밀집 경로는 `gbsv`의 고정비가 없으므로 비용 모델(`kLU`)대로 나눠요. 10스레드 배치는 $n = 8$에서 21–23배예요.
 
 ### 배치 분할: 작은 띠의 gbsv는 나누지 않아요
 
 배치는 비용 모델 `kBanded`(원소 하나 $20 + 3w$ ns, $w = n(k_l + k_u + 1)$)로 어림해서, 배치 전체가 10µs를 넘으면 태스크로 나눠요([배치와 병렬화](/internals/linalg/batch/)). `solve_tridiagonal`은 $w = 3n$이에요.
 
-`gbsv`만 예외가 있어요. `gbsv`에는 호출마다 약 1µs의 고정비가 있고, 이 부분은 스레드를 늘려도 빨라지지 않았어요. 작은 띠의 배치를 나누면 오히려 1.1–2.7배 느려졌고, 나누는 쪽이 이기는 지점은 $k_l = k_u = 2$에서 $n = 64$–96, $k_l = k_u = 5$에서 $n = 32$–48이었어요. 그래서 $n(k_l + k_u + 1) \ge 400$(`kBandSplitMin`)일 때만 나누고, 그 이상에서는 2–4배 빨라져요. 그 아래는 비용을 0으로 넘겨서(나누지 않음) 차례로 돌아요. 대역폭 (1, 1)은 `gtsv`로 가므로 이 문제가 없어서 언제나 비용 모델대로 해요.
+`gbsv`만 예외가 있어요. `gbsv`에는 호출마다 약 1µs의 고정비가 있고, 이 부분은 스레드를 늘려도 빨라지지 않았어요. 작은 띠의 배치를 나누면 오히려 1.1–2.7배 느려졌고, 나누는 쪽이 이기는 지점은 $k_l = k_u = 2$에서 $n = 64$–96, $k_l = k_u = 5$에서 $n = 32$–48이었어요. 그래서 $n(k_l + k_u + 1) \ge 400$(`kBandSplitMin`)일 때만 나누고, 그 이상에서는 2–4배 빨라져요. 그 아래는 `max_tasks = 1`(나누지 않음)을 넘겨서 차례로 돌아요. 비용은 그대로 넘기므로, 배치 전체의 추정 시간이 기준 이상이면 나누지 않아도 GIL을 놓아요. 대역폭 (1, 1)은 `gtsv`로, 행이 8개 이하면 밀집 LU로 가므로 이 문제가 없어서 언제나 비용 모델대로 해요.
 
-예를 들어 `solve_banded`의 $k_l = k_u = 2$, (1000, 3, 3)과 (100, 32, 32) 배치는 $w$가 15, 160이라 10스레드에서도 나누지 않아요.
+예를 들어 `solve_banded`의 $k_l = k_u = 2$, (100, 5, 32) 배치는 $w$가 160이라 10스레드에서도 나누지 않아요. 행이 3개인 (1000, 5, 3) 배치는 밀집 LU로 가서 비용 모델대로 나눠요.
 
 <Callout type="warn">
-  결과를 바꾸는 대안은 쓰지 않아요. 작은 띠($n \le 8$)를 일반 LU로 풀면 2–54배 빨랐지만, 결과가 scipy의 `gbsv`와 비트가 달라지고 같은 함수의 계산 경로가 $n$에 따라 바뀌어요. 작은 띠 전용 소거를 직접 짜면 `gbsv`의 고정비는 없앨 수 있지만, LAPACK이 검증해 온 피벗·특이 판정과 scipy와의 비트 일치를 직접 다시 보장해야 해요.
+  작은 띠 전용 소거를 직접 짜면 `gbsv`의 고정비를 없앨 수 있지만, LAPACK이 검증해 온 피벗·특이 판정을 직접 다시 보장해야 해요. 그래서 이미 있는 밀집 LU를 써요.
 </Callout>
 
 ## Sylvester 방정식
@@ -447,14 +485,14 @@ numpy에는 세 함수가 없어서 기준은 scipy 1.18.1이에요. `solve_trid
 
 | 관계 | 이유 |
 |---|---|
-| `solve_tridiagonal` == scipy 1.18.1 `solve_banded((1, 1), …)` | 같은 `gtsv` |
-| `solve_banded` == scipy 1.18.1 `solve_banded` (모든 대역폭, $n \ge 2$) | 같은 `gbsv`, (1, 1)이면 같은 `gtsv` |
+| `solve_tridiagonal` == scipy 1.18.1 `solve_banded((1, 1), …)` (지금의 사실) | 같은 `gtsv` |
+| `solve_banded` == scipy 1.18.1 `solve_banded` ($n > 8$ 또는 대역폭 (1, 1), 지금의 사실) | 같은 `gbsv`, (1, 1)이면 같은 `gtsv`. $n \le 8$은 밀집 LU라 반올림 수준에서 달라요 |
 | `solve_banded(ab, b, 1, 1)` == `solve_tridiagonal(...)` | 같은 `tri_body` |
 | 모서리 칸에 NaN을 넣어도 결과가 같음 | 행렬 안의 칸만 읽어요 |
 | `solve_sylvester`: Schur 쌍을 동시에 돌려도 차례로 돌려도 같음 | 같은 배열, 같은 작업 배열 크기 |
 | 메모리 배치, 배치 안의 위치, 스레드 수와 무관 | 패킹, 16바이트 정렬, 원소마다 같은 계산 |
 
-$n = 1$인 띠 행렬은 scipy가 LAPACK을 부르지 않고 바로 나누므로 비교에서 빼요. `solve_sylvester`는 scipy와 비트까지 같지 않아요. Schur 분해할 행렬($b$ 대 $b^\mathsf{H}$), 삼각 풀기 루틴(`trsyl3` 대 `trsyl`), 행렬곱 순서가 달라요.
+scipy와의 비트 관계는 약속이 아니라 지금의 사실이에요. 고침이나 최적화로 달라지면 허용오차 비교로 바뀌어요. $n = 1$인 띠 행렬은 scipy가 LAPACK을 부르지 않고 바로 나누므로 비교에서 빼요. `solve_sylvester`는 scipy와 비트까지 같지 않아요. Schur 분해할 행렬($b$ 대 $b^\mathsf{H}$), 삼각 풀기 루틴(`trsyl3` 대 `trsyl`), 행렬곱 순서가 달라요.
 
 ## 참고 문헌
 

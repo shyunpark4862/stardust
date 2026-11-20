@@ -264,7 +264,7 @@ ValueError: wls(): 'weights' contains infinity
 >>> sd.regression.wls(y, x)
 Traceback (most recent call last):
     ...
-TypeError: wls() missing 1 required keyword-only argument: 'weights'
+TypeError: wls(): missing 1 required keyword-only argument: 'weights'
 >>> sd.regression.wls(y, x, weights=None)
 Traceback (most recent call last):
     ...
@@ -318,7 +318,7 @@ array([nan, nan], dtype=float64)
 >>> r.ssr
 1.951614013293164
 >>> float(sd.sum(w * r.resid * r.resid))
-1.951614013293164
+1.9516140132931643
 >>> r.rsquared, o.rsquared
 (0.9761201089667729, 0.9514853492852073)
 ```

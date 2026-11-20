@@ -147,6 +147,14 @@ array([[6, 4, 5],
        [3, 1, 2]], dtype=int64)
 ```
 
+반대로 `shift`가 tuple이고 `axis`가 int 하나이면, 그 축을 `shift`를 모두 더한 칸 수만큼 밀어요. 아래는 `sd.roll(m, 3, axis=0)`과 같아요. 행이 두 개라 3칸은 1칸과 같아요.
+
+```python
+>>> sd.roll(m, (1, 2), axis=0)
+array([[4, 5, 6],
+       [1, 2, 3]], dtype=int64)
+```
+
 ## 결과는 새 배열이에요
 
 `roll`은 언제나 원소를 옮겨 담은 새 배열을 만들어요. [`flip`](/api/array/flip/)과 달리 원본과 메모리를 함께 쓰지 않아서, 결과를 고쳐도 원본은 그대로예요.
@@ -186,14 +194,14 @@ array([  0, 100, 102, 101], dtype=int64)
 
 ### 한 줄로 밀 때 `shift`는 int 하나예요
 
-`axis=None`이면 축이 하나뿐인 것처럼 다루므로 `shift`에 tuple을 줄 수 없어요. `shift`를 tuple로 주면 `axis`도 같은 길이의 tuple이나 리스트로 줘야 해요.
+`axis=None`이면 축이 하나뿐인 것처럼 다루므로 `shift`에 tuple을 줄 수 없어요. `shift`와 `axis`를 둘 다 tuple이나 리스트로 주면 길이가 같아야 해요.
 
 ```python
 >>> sd.roll(m, (1, 2))
 Traceback (most recent call last):
     ...
 TypeError: roll(): 'shift' must be an int when 'axis' is None
->>> sd.roll(m, (1, 2), axis=0)
+>>> sd.roll(m, (1, 2), axis=(0,))
 Traceback (most recent call last):
     ...
 ValueError: roll(): 'shift' and 'axis' must have the same length when both are sequences

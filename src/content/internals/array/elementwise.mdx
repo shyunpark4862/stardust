@@ -2,7 +2,7 @@
 title: 원소별 커널
 group: 연산 엔진
 order: 2
-summary: 덧셈, 비교, 초월함수 같은 원소별 연산이 원소 하나를 어떻게 계산하는지 설명해요. NEON 커널이든 strided 루프든 어느 경로를 타도 값이 같고, vForce에 맡긴 초월함수를 빼면 numpy와 비트까지 같아요.
+summary: 덧셈, 비교, 초월함수 같은 원소별 연산이 원소 하나를 어떻게 계산하는지 설명해요. NEON 커널이든 strided 루프든 어느 경로를 타도 값이 같고, 대부분은 numpy와 같은 식을 같은 순서로 써요. vForce 초월함수와 complex 절댓값은 정확도 계약으로 정해요.
 seeAlso: [engine, conversion, accuracy, performance, reductions]
 ---
 import Tree from '../../../components/fig/Tree.astro';
@@ -21,10 +21,10 @@ import Bench from '../../../components/fig/Bench.astro';
 | 경로 | 언제 | 어디 | 결과 |
 |---|---|---|---|
 | vForce | float64 초월함수 15개 (`exp`, `log`, `sin`, `atan2` …), 모든 레이아웃 | `array/kernels/vforce.hpp`, `accelerate/vforce.hpp` | numpy와 최대 8 ULP (계약), 잰 최대 4 ULP |
-| libm `pow`와 정확한 꼴 | float64 `pow`, 모든 레이아웃 | `array/kernels/elementwise.hpp`, `array/kernels/scalar_ops.hpp` | 보통 지수는 numpy와 비트까지 같음. 지수 2, 0, 1, −1, 0.5는 정확한 꼴 |
-| 손으로 짠 NEON | float64 `maximum`/`minimum`/`clip`, complex128 곱셈. 연속 또는 스칼라 브로드캐스트 | `array/kernels/neon.hpp` | numpy와 비트까지 같음 |
-| 인덱스 루프 (컴파일러가 벡터화) | 그 밖의 연산, 모두 연속이거나 한쪽이 스칼라(stride 0) | `array/kernels/elementwise.hpp` | 비트까지 같음 |
-| 일반 strided 루프 | 그 밖의 레이아웃 | `array/kernels/elementwise.hpp` | 비트까지 같음 |
+| libm `pow`와 정확한 꼴 | float64 `pow`, 모든 레이아웃 | `array/kernels/elementwise.hpp`, `array/kernels/scalar_ops.hpp` | 보통 지수는 지금 numpy와 비트까지 같음. 지수 2, 0, 1, −1, 0.5는 정확한 꼴 |
+| 손으로 짠 NEON | float64 `maximum`/`minimum`/`clip`, complex128 곱셈. 연속 또는 스칼라 브로드캐스트 | `array/kernels/neon.hpp` | 스칼라 정의와 비트까지 같음 |
+| 인덱스 루프 (컴파일러가 벡터화) | 그 밖의 연산, 모두 연속이거나 한쪽이 스칼라(stride 0) | `array/kernels/elementwise.hpp` | 스칼라 정의와 비트까지 같음 |
+| 일반 strided 루프 | 그 밖의 레이아웃 | `array/kernels/elementwise.hpp` | 스칼라 정의와 비트까지 같음 |
 
 이항 연산의 커널(`binary_loop<Op, T>`)이 경로를 고르는 순서는 이래요.
 
@@ -49,8 +49,8 @@ import Bench from '../../../components/fig/Bench.astro';
 지키는 규칙은 셋이에요.
 
 1. 어느 경로를 타든 값이 같아요. NEON 커널과 인덱스 루프는 스칼라 정의 `Op::f`와 비트까지 같아야 해요. 테스트가 연속, 스칼라 브로드캐스트, strided 세 레이아웃을 모두 numpy와 비트로 비교하므로, 경로가 갈려도 결과는 갈리지 않아요.
-2. numpy와 비트까지 같게 맞춰요. vForce를 쓰는 15개와 float64 `pow`의 두 경우([아래](#float64-pow-libm과-정확한-꼴))를 빼면 모든 원소별 연산이 numpy 2.5.4와 비트까지 같아요. numpy가 식을 적어 둔 연산은 같은 식을 같은 순서로 쓰고, 컴파일러가 식을 바꾸지 못하게 막아요.
-3. vForce는 정확도를 계약으로 정해요. 초월함수는 속도를 위해 Apple의 vForce를 쓰고, numpy와의 차이는 최대 8 ULP로 계약해 둬요. 대신 특수값은 비트까지 같고, 결과가 원소의 위치·배열 길이·스레드 수에 의존하지 않아요.
+2. numpy가 식을 적어 둔 연산은 같은 식을 같은 순서로 쓰고, 컴파일러가 식을 바꾸지 못하게 막아요. 그래서 지금은 대부분의 원소별 연산이 numpy 2.5.4와 비트까지 같아요. 다만 이것은 지금의 사실이고 목표는 아니에요. 더 빠르거나 더 정확한 식이 있으면 정확도 계약 안에서 그 식을 써요. complex `abs`([아래](#z-complex-함수-pow))와 complex `expm1`이 그런 경우예요.
+3. 정확도는 계약으로 정해요. 초월함수는 속도를 위해 Apple의 vForce를 쓰고, numpy와의 차이는 최대 8 ULP로 계약해 둬요. complex `abs`는 참값과 1.5 ULP 이하예요. 특수값은 비트까지 같고, 결과가 원소의 위치·배열 길이·스레드 수에 의존하지 않아요.
 
 ## 연속 fast path
 
@@ -319,12 +319,12 @@ for (std::int64_t i = 0; i < n; ++i) {
 
 ### 원칙
 
-numpy가 식을 적어 둔 연산은 같은 식을 같은 순서로 써요. 부동소수점 연산은 결합법칙이 성립하지 않으므로, 수학적으로 같은 식이라도 순서가 다르면 마지막 비트가 달라질 수 있어요. 그리고 컴파일러가 식을 바꾸지 못하게 컴파일 옵션을 고정해요(`CMakeLists.txt`).
+numpy가 식을 적어 둔 연산은 같은 식을 같은 순서로 써요. 부동소수점 연산은 결합법칙이 성립하지 않으므로, 수학적으로 같은 식이라도 순서가 다르면 마지막 비트가 달라질 수 있어요. 그리고 컴파일러가 식을 바꾸지 못하게 컴파일 옵션을 고정해요(`CMakeLists.txt`). 식을 정하는 것은 소스 코드여야, 같은 식이 어느 경로에서든 같은 비트를 내요.
 
 | 옵션 | 막는 것 |
 |---|---|
-| `-ffp-contract=off` | clang이 `a + b*c`를 FMA 하나로 합치는 것(반올림이 한 번 줄어 결과가 달라짐). FMA가 필요한 곳은 코드에 `std::fma`로 적어요 [4] |
-| `-fno-builtin-sin -fno-builtin-cos` | clang이 같은 인자의 `sin`과 `cos`를 `__sincos_stret` 호출 하나로 합치는 것. 합친 함수는 따로 부른 결과(numpy)와 1 ULP 다를 수 있어요. complex `expm1`이 같은 인자의 `sin`과 `cos`를 써요 |
+| `-ffp-contract=off` | clang이 `a + b*c`를 인라인 상황에 따라 FMA 하나로 합치는 것. 그러면 같은 식이 경로마다 다른 비트를 낼 수 있어요(`f(x)[i] == f(x[i])`, NEON 커널 = 스칼라 정의가 깨져요). FMA를 쓰는 곳은 컴파일러가 아니라 코드가 정해요. 필요한 곳은 `std::fma`나 `vfmaq`로 적어요(complex 곱셈, `abs`, pairwise 잎, `var`의 편차 제곱) [4] |
+| `-fno-builtin-sin -fno-builtin-cos` | 같은 이유예요. clang이 같은 인자의 `sin`과 `cos`를 인라인 상황에 따라 `__sincos_stret` 호출 하나로 합치는 것. 합친 함수는 따로 부른 결과와 1 ULP 다를 수 있어요. 합친 호출이 필요한 곳은 코드에 `sd::sincos`(`special/sincos.hpp`)로 적어요. 한 번의 인자 축소로 둘을 구해 약 1.5배 빨라요 |
 | `-ffast-math` 쓰지 않음 | NaN/inf가 없다는 가정, 컴파일러의 재배치. 재배치가 필요하면 코드에서 명시적으로 해요 |
 
 ### 정수: 감싸기(wrap)와 0으로 나누기
@@ -387,7 +387,7 @@ $$
 
 ### 명시적 FMA
 
-numpy의 바이너리는 컴파일러 기본값인 FMA 축약(contraction)을 켠 채로 빌드되어 있어요. 그래서 numpy 소스의 `a*b - c*d`는 실제로는 `fma(a, b, -(c*d))`로 계산돼요. 반면 stardust는 `-ffp-contract=off`로 축약을 막아요. 둘을 맞추려면 numpy에서 축약이 일어나는 자리에 `std::fma`를 명시해야 해요.
+numpy의 바이너리는 컴파일러 기본값인 FMA 축약(contraction)을 켠 채로 빌드되어 있어요. 그래서 numpy 소스의 `a*b - c*d`는 실제로는 `fma(a, b, -(c*d))`로 계산돼요. 반면 stardust는 `-ffp-contract=off`로 축약을 막고, FMA를 쓸 자리를 코드에 `std::fma`로 적어요. complex 곱셈과 나눗셈은 numpy에서 축약이 일어나는 자리와 같은 곳에 적었어요.
 
 ```cpp
 // array/kernels/scalar_ops.hpp (발췌)
@@ -402,11 +402,37 @@ inline c128 cdiv(c128 a, c128 b) {   // |br| >= |bi| 쪽
 }
 ```
 
-이 자리에 FMA를 두면 무작위 곱 4000개가 모두 numpy와 비트까지 같아요. `fma`를 명시한 곳은 complex 곱셈, 나눗셈, 제곱(`square`), `expm1`, `reciprocal`이에요. 컴파일 옵션으로 어디서나 축약을 켜는 방법은 맞지 않아요. 축약이 어느 식에서 일어날지를 컴파일러가 정하게 되어, numpy와 같은 자리에서 일어난다는 보장이 없어요. 명시하면 소스 코드가 곧 결과의 정의가 돼요.
+그래서 지금은 무작위 곱 4000개가 모두 numpy와 비트까지 같아요. `fma`를 명시한 곳은 complex 곱셈, 나눗셈, 제곱(`square`), `abs`, `expm1`, `reciprocal`이에요. 컴파일 옵션으로 어디서나 축약을 켜는 방법은 맞지 않아요. 축약이 어느 식에서 일어날지를 컴파일러가 인라인 상황에 따라 정하게 되어, 같은 식이 연속 경로와 strided 경로에서 다른 비트를 낼 수 있어요. 명시하면 소스 코드가 곧 결과의 정의가 돼요.
 
 ### `|z|`, complex 함수, `pow`
 
-- `abs(z)`: numpy의 SIMD `absolute` 루프와 같은 공식 $\max(\lvert a \rvert, \lvert b \rvert) \cdot \sqrt{1 + (\min/\max)^2}$를 써요. 제곱근 안은 `std::fma(ratio, ratio, 1.0)`이에요. 한 부분이 inf이면 다른 부분이 NaN이어도 inf예요. libm의 `hypot`과는 최대 1 ULP 달라서 쓰지 않아요.
+- `abs(z)`: $\sqrt{\operatorname{fma}(a, a, b \cdot b)}$예요. 제곱합을 반올림 한 번으로 구하고, 나눗셈이 없어요. 큰 쪽의 절댓값이 $[2^{-500}, 2^{500}]$ 밖이면 두 부분에 $2^{-600}$이나 $2^{600}$을 곱해 제곱이 넘치거나 정밀도를 잃지 않게 한 뒤, 결과에 되돌려 곱해요. 2의 거듭제곱을 곱하는 것은 정확하므로 반올림이 늘지 않아요. 한 부분이 inf이면 다른 부분이 NaN이어도 inf예요.
+
+  ```cpp
+  // array/kernels/scalar_ops.hpp (발췌)
+  inline double complex_abs(c128 z) {
+      constexpr double inf = std::numeric_limits<double>::infinity();
+      constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+      double re = std::fabs(z.real()), im = std::fabs(z.imag());
+      if (re == inf || im == inf) return inf;
+      if (re != re || im != im) return nan;
+      const double larger = std::max(re, im);
+      constexpr double kBig = 0x1p500, kSmall = 0x1p-500;
+      if (larger > kBig) [[unlikely]] {
+          re *= 0x1p-600;
+          im *= 0x1p-600;
+          return std::sqrt(std::fma(re, re, im * im)) * 0x1p600;
+      }
+      if (larger < kSmall) [[unlikely]] {  // also 0: sqrt(0) * 2^-600 = 0
+          re *= 0x1p600;
+          im *= 0x1p600;
+          return std::sqrt(std::fma(re, re, im * im)) * 0x1p-600;
+      }
+      return std::sqrt(std::fma(re, re, im * im));
+  }
+  ```
+
+  계약은 1.5 ULP 이하예요. Arb(구간 산술)로 만든 참값과 비교하면 무작위 20만 개(지수 폭 $e^{\pm 5}$)에서 최대 1.16 ULP예요. numpy의 SIMD `absolute` 루프가 쓰는 공식 $\max(\lvert a \rvert, \lvert b \rvert) \cdot \sqrt{1 + (\min/\max)^2}$는 같은 입력에서 최대 1.90 ULP였고, 나눗셈과 분기 둘이 있어 계산 부분이 약 2.7배 느렸어요(원소당 0.71 대 0.26ns). 그래서 numpy와 끝자리가 다를 수 있어요.
 - complex 초월함수: C 라이브러리의 C99 함수(`cexp`, `clog`, `csin` …)를 스칼라로 불러요. numpy가 그 함수들을 부르기 때문이에요. libc++의 `std::exp(std::complex)`는 자체 구현이라 결과가 달라요. C++에는 `<complex.h>`가 없어서 직접 선언하고, `std::complex<double>`과 C의 `double _Complex`가 같은 메모리 배치(`double[2]`)라는 점을 이용해 `memcpy`로 오가요.
 
 ```cpp
@@ -416,7 +442,7 @@ extern "C" { c99_t cexp(c99_t); c99_t clog(c99_t); c99_t cpow(c99_t, c99_t); /* 
 inline c128 call(c99_t (*f)(c99_t), c128 z) { return from_c99(f(to_c99(z))); }   // memcpy 두 번
 ```
 
-- C99에 없는 complex 함수는 numpy의 공식을 그대로 옮겨요. `expm1(z)`의 실수부는 $\operatorname{fma}(\operatorname{expm1}(x), \cos y, -2\sin^2(y/2))$, 허수부는 $e^x \sin y$예요. `-fno-builtin-sin/cos`가 필요한 곳이 여기예요(같은 $y$의 `sin`과 `cos`).
+- C99에 없는 complex 함수는 numpy의 공식을 그대로 옮겨요. `expm1(z)`의 실수부는 $\operatorname{fma}(\operatorname{expm1}(x), \cos y, -2\sin^2(y/2))$, 허수부는 $e^x \sin y$예요. 같은 $y$의 `sin`과 `cos`는 `sd::sincos`로 한 번에 구해요. 따로 부른 `sin`, `cos`와 마지막 자리가 다를 수 있어서, numpy와도 끝자리가 다를 수 있어요(정규분포 complex 2만 개 가운데 72개).
 - complex `pow`: numpy의 `nc_pow`(`numpy/_core/src/umath/funcs.inc.src`)처럼, 지수가 절댓값 100보다 작은 정수이면 반복 곱셈(이진 거듭제곱, 음수면 마지막에 $1/\text{acc}$)으로 하고 나머지는 `cpow`예요. 지수 2와 3은 곱하는 순서(`cmul(a, cmul(a, a))`)까지 numpy와 같아요. FMA가 끼면 피연산자 순서가 결과를 바꿔요.
 
 ### 부호, NaN, 반올림
@@ -428,7 +454,7 @@ inline c128 call(c99_t (*f)(c99_t), c128 z) { return from_c99(f(to_c99(z))); }  
 
 ### numpy와의 비트 비교
 
-무작위 입력 20만 개(크기가 $e^{\pm 50}$에 걸치는 값)에 특수값(±0, ±inf, NaN, ±최소 서브노멀, 최대 유한값)의 모든 쌍을 더해 numpy 2.5.4와 비트로 비교하면, complex 곱셈·나눗셈·제곱·`abs`·`sign`, float `floor_divide`·`remainder`·`maximum`, complex `pow(z, 3)`과 `expm1`, 그리고 아래의 Array API 2024 함수가 모두 비트까지 같아요. 테스트 묶음(`tests/array/`)은 이것을 dtype 쌍과 세 레이아웃마다 고정해 둬요.
+무작위 입력 20만 개(크기가 $e^{\pm 50}$에 걸치는 값)에 특수값(±0, ±inf, NaN, ±최소 서브노멀, 최대 유한값)의 모든 쌍을 더해 numpy 2.5.4와 비트로 비교하면, complex 곱셈·나눗셈·제곱·`sign`, float `floor_divide`·`remainder`·`maximum`, complex `pow(z, 3)`, 그리고 아래의 Array API 2024 함수가 지금 모두 비트까지 같아요. complex `abs`와 `expm1`은 위의 이유로 끝자리가 다를 수 있어요. 테스트 묶음(`tests/array/`)은 지금 같은 것을 dtype 쌍과 세 레이아웃마다 비트로 비교해요. 고침이나 최적화 때문에 달라지면 그 비교는 허용오차 비교로 바뀌어요.
 
 ## vForce: float64 초월함수
 
@@ -473,7 +499,7 @@ if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {
 
 직접 짠 SIMD 초월함수는 없어요. ULP 단위로 튜닝한 SIMD 초월함수는 함수마다 정확도와 특수값을 따로 맞추고 검증해야 하는 큰 작업이라, 그 자리를 vForce에 맡겨요.
 
-`asinh`/`acosh`는 절충이에요. 두 함수는 입력에 따라 승패가 갈려요. vForce는 입력과 상관없이 거의 일정하고, libm은 입력에 따라 크게 달라요. 작은 입력에서 vForce가 1.8–3.3배 빠르고, 큰 입력에서 libm이 10–20% 빨라요. 입력 값을 보고 구현을 고르면 같은 연산이 데이터에 따라 다른 코드를 타고, 결과도 몇 ULP씩 달라져요. 그래서 하나로 고정하고, 이득이 큰 쪽인 vForce를 써요.
+`asinh`/`acosh`는 절충이에요. 두 함수는 입력에 따라 승패가 갈려요. vForce는 입력과 상관없이 거의 일정하고, libm은 입력에 따라 크게 달라요. 큰 입력에서는 libm이 빨라요(`acosh`, $1 + [0, 10^6)$에서 16%). 작은 입력에서는 vForce가 빨라요. 입력 값을 보고 구현을 고르면 같은 연산이 데이터에 따라 다른 코드를 타고, 결과도 몇 ULP씩 달라져요. 그래서 하나로 고정하고, 이득이 큰 쪽인 vForce를 써요.
 
 ### vForce를 써도 되는 근거
 
@@ -788,9 +814,11 @@ numpy의 arm64 빌드는 분모 $d = z_r + z_i r$를 FMA 하나로 묶어요. �
 
 | 범주 | numpy 2.5.4와의 관계 |
 |---|---|
-| 산술, 비교, 논리, 비트, 반올림, `abs`, `sign`, `sqrt`, `maximum`/`minimum`/`clip`, `where` | 비트까지 같아요 (의도적으로 다른 정수 규칙 제외: `% 0`, 음수 지수, bool 산술) |
-| complex 곱셈·나눗셈·제곱·`abs`·`pow`, complex 초월함수 | 비트까지 같아요 (같은 식, 같은 FMA 자리, 같은 C99 함수) |
-| float64 `expm1`, `log1p`, `cos`, `tan` | 비트까지 같아요 (libm) |
+| 산술, 비교, 논리, 비트, 반올림, 실수 `abs`, `sign`, `sqrt`, `maximum`/`minimum`/`clip`, `where` | 비트까지 같아요 (의도적으로 다른 정수 규칙 제외: `% 0`, 음수 지수, bool 산술) |
+| complex 곱셈·나눗셈·제곱·`pow`, complex 초월함수(`expm1` 제외) | 지금은 비트까지 같아요 (같은 식, 같은 FMA 자리, 같은 C99 함수) |
+| complex `abs` | 1.5 ULP 이하 (계약), 잰 최대 1.16 ULP. 끝자리가 다를 수 있어요 |
+| complex `expm1` | 끝자리가 다를 수 있어요 (`sd::sincos`) |
+| float64 `expm1`, `log1p`, `cos`, `tan` | 지금은 비트까지 같아요 (libm) |
 | vForce 15개 | 최대 8 ULP (계약), 잰 최대 4 ULP (`atanh`). 특수값은 비트까지 같아요 |
 | float64 `pow` | 비트까지 같아요 (libm `pow`). 지수 2, −1, 0.5를 배열로 줄 때와 스칼라 지수 0.5의 $-0$, $-\infty$만 달라요(정확한 꼴) |
 | Array API 2024 함수 6개 | 비트까지 같아요 (`reciprocal`의 정수 입력은 float64 결과로 의도적으로 달라요) |

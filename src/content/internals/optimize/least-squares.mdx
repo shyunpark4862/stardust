@@ -2,7 +2,7 @@
 title: 비선형 최소제곱
 group: 최소제곱과 방정식계
 order: 1
-summary: least_squares, nls, root의 lm이 함께 쓰는 반복 커널 하나가 호출하는 쪽마다 어떻게 갈리는지 설명해요. 같은 Levenberg–Marquardt를 scipy와 비트까지 같은 판과 nls의 판, 두 가지로 빌드해요.
+summary: least_squares, nls, root의 lm이 함께 쓰는 반복 커널 하나가 호출하는 쪽마다 어떻게 갈리는지 설명해요. 같은 Levenberg–Marquardt를 scipy의 빌드를 따른 판과 nls의 판, 두 가지로 빌드해요.
 seeAlso: [overview, derivatives, linear-least-squares, root, accuracy-performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -16,7 +16,7 @@ import Bench from '../../../components/fig/Bench.astro';
 - `'lm'`: MINPACK `lmder`(Moré 1978)의 Levenberg–Marquardt. 반복마다 야코비안의 열 피벗 QR을 만들고, 걸음 한계 Δ 안에서 $(J^{\mathsf T}J + \lambda D^2)s = -J^{\mathsf T}f$의 λ를 고르고(`lmpar`), 실제 감소와 예측 감소의 비로 Δ를 고쳐요.
 - `'trf'`: scipy 1.18.1의 신뢰 영역 반사법(Branch–Coleman–Li 1999). Coleman–Li 척도로 경계를 방정식 $v \odot g = 0$에 넣고, 신뢰 영역 부분문제를 SVD로 풀고, 경계에 부딪힌 걸음을 반사해요.
 
-두 방법의 유도(lmpar의 Hebden 뉴턴, qrsolv의 Givens 회전, 멈춤 판정 info 1–8, Coleman–Li 척도, SVD 부분문제, 반사 걸음)는 [nls의 구현](/internals/regression/nls/)에 자세히 있어요. 같은 반복이기 때문이에요. 반복 커널 `lsq_solve`(`csrc/optimize/lsq.cpp`) 하나를 [`sd.regression.nls`](/api/regression/nls/), `least_squares`, [`root`](/api/optimize/root/)의 `'lm'`이 함께 써요. 이 글은 그 위에서 `sd.optimize`에만 있는 것을 다뤄요. 커널이 호출자마다 무엇을 다르게 하는지, scipy와 부르는 점까지 같으려면 무엇이 같아야 하는지예요.
+두 방법의 유도(lmpar의 Hebden 뉴턴, qrsolv의 Givens 회전, 멈춤 판정 info 1–8, Coleman–Li 척도, SVD 부분문제, 반사 걸음)는 [nls의 구현](/internals/regression/nls/)에 자세히 있어요. 같은 반복이기 때문이에요. 반복 커널 `lsq_solve`(`csrc/optimize/lsq.cpp`) 하나를 [`sd.regression.nls`](/api/regression/nls/), `least_squares`, [`root`](/api/optimize/root/)의 `'lm'`이 함께 써요. 이 글은 그 위에서 `sd.optimize`에만 있는 것을 다뤄요. 커널이 호출자마다 무엇을 다르게 하는지, 지금 scipy와 부르는 점까지 같은 판이 무엇을 scipy와 같게 계산하는지예요.
 
 <Fig column caption="least_squares 한 번의 흐름. 반복은 C++ 커널이고, fun과 jac은 Python 콜백이에요.">
   <Steps steps={[
@@ -31,7 +31,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 | 호출자 | 방법 | lmder 빌드 | 반복의 차분 | x로 넘기는 것 | x0의 값 |
 |---|---|---|---|---|---|
-| `least_squares` | `'lm'`, `'trf'` | scipy의 빌드(`Fu = true`) | scipy `approx_derivative`의 2점·3점 | 새 float64 `sd.ndarray` | Python이 먼저 계산 |
+| `least_squares` | `'lm'`, `'trf'` | scipy의 빌드(`Fu = true`). $m \ge 10n$이고 $mn \ge 2000$이면 nls의 빌드 | scipy `approx_derivative`의 2점·3점 | 새 float64 `sd.ndarray` | Python이 먼저 계산 |
 | `root(method='lm')` | lmder, m = n | scipy의 빌드 | MINPACK `fdjac2`(h로 나눔) | 새 float64 `sd.ndarray` | Python이 먼저 계산 |
 | `nls` | `'lm'`, `'trf'` | nls의 빌드(`Fu = false`) | MINPACK `fdjac2`(실제 간격으로 나눔) | Python `float`의 리스트 | 커널이 계산 |
 
@@ -69,9 +69,9 @@ $$
 \operatorname{fl}(a \cdot b + c) = \operatorname{fl}\bigl(\operatorname{fl}(a b) + c\bigr) \quad\text{대신}\quad \operatorname{fma}(a, b, c) = \operatorname{fl}(a b + c)
 $$
 
-둘은 끝자리가 다를 수 있고, 반복 방법에서는 끝자리 차이가 다음 걸음의 차이로 이어져요. stardust는 축약을 끄고 빌드해요(`-ffp-contract=off`, 같은 코드가 어느 컴파일러에서나 같은 비트를 내게). 그래서 scipy와 같은 점을 부르려면 scipy의 빌드가 FMA를 쓴 자리에 `std::fma`를 직접 적어야 해요.
+둘은 끝자리가 다를 수 있고, 반복 방법에서는 끝자리 차이가 다음 걸음의 차이로 이어져요. stardust는 축약을 끄고 빌드하고(`-ffp-contract=off`, 같은 코드가 어느 컴파일러에서나 같은 비트를 내게), FMA는 코드가 정한 곳에서만 써요. scipy의 빌드를 따르는 판은 scipy의 빌드가 FMA를 쓴 자리에 `std::fma`를 직접 적어요.
 
-한편 `nls`는 그 전부터 축약 없는 lmder와 "LAPACK QR 먼저"의 길로 계산해 왔고, 그 결과(모수, 표준오차, 요약의 글자까지)를 바이트까지 그대로 지켜요. 두 요구를 함께 맞추려고 lmder는 한 소스의 두 템플릿 인스턴스예요. 템플릿 인자 `Fu`가 산술의 꼴을 정해요.
+한편 `nls`는 축약 없는 lmder와 "LAPACK QR 먼저"의 길로 계산하고, 그 결과(모수, 표준오차, 요약의 글자까지)가 자기 골든 출력과 바이트까지 같아요. 그래서 lmder는 한 소스의 두 템플릿 인스턴스예요. 템플릿 인자 `Fu`가 산술의 꼴을 정해요.
 
 ```cpp
 // csrc/optimize/lsq.cpp
@@ -91,7 +91,7 @@ inline double norm(lint n, const double* v) {
 
 `lmpar`, `qrsolv`, `qrfac`와 반복의 몸통이 모두 `mad<Fu>`, `norm<Fu>`로 적혀 있어요. 코드는 한 벌이고, 두 빌드가 갈라지는 자리는 이것뿐이에요.
 
-| | `Fu = true` (`least_squares`, `root`) | `Fu = false` (`nls`) |
+| | `Fu = true` (`root`, `least_squares`) | `Fu = false` (`nls`, $m \gg n$의 `least_squares`) |
 |---|---|---|
 | 야코비안의 QR | MINPACK `qrfac`를 m × n의 J에 바로, $Q^{\mathsf T}f$는 그 반사로 | LAPACK `geqrf`로 $J = Q_0R_0$, `qrfac`은 n × n의 $R_0$에 |
 | $a\cdot b + c$ | `std::fma` | 곱과 합을 따로 반올림 |
@@ -141,9 +141,9 @@ inline double dot8(lint len, const double* a, const double* b) {
 
 끝에서 큰 무리가 있으면 $x_\text{1max}\sqrt{s_1 + s_2/x_\text{1max}^2}$, 없으면 중간과 작은 무리를 같은 방법으로 합쳐요. 원본의 상수는 $r_\text{dwarf} = 3.834\times10^{-20}$, $r_\text{giant} = 1.304\times10^{19}$인데, scipy의 C 판에는 $2^{-64.5}$와 $2^{63.5}$를 double로 반올림한 값이 들어 있고 이쪽도 그 비트를 써요(`minpack::kRdwarf`, `kRgiant`). 이 상수는 경계에 걸린 성분이 어느 무리로 가는지를 바꿔서 결과의 끝자리를 바꿀 수 있어요.
 
-### 부르는 점까지 같아요
+### 지금은 부르는 점까지 같아요
 
-이렇게 맞춘 `'lm'`은 scipy와 같은 점에서 같은 순서로 `fun`을 불러요. 아래는 감쇠 모형의 잔차를 Python `float`로 계산해(두 라이브러리가 같은 비트의 잔차를 받게) 부른 점을 차례대로 적고 견준 거예요.
+scipy의 빌드를 따른 `'lm'`은 지금 scipy와 같은 점에서 같은 순서로 `fun`을 불러요(약속은 아니에요. 약속은 스레드 수와 상관없는 같은 비트와 정확도예요). 아래는 감쇠 모형의 잔차를 Python `float`로 계산해(두 라이브러리가 같은 비트의 잔차를 받게) 부른 점을 차례대로 적고 견준 거예요.
 
 ```python
 >>> import math
@@ -171,7 +171,7 @@ trf 11 11 3
 
 `'lm'`은 11점이 모두 비트까지 같아요. `'trf'`는 같은 걸음을 하지만 첫 시험점부터 끝자리가 달라요(첫 시험점의 성분이 scipy의 것과 1 ULP씩 달라요). `'trf'`는 nls와 같은 길(LAPACK QR 뒤 n 크기의 SVD)이고 scipy는 m × n 행렬의 SVD를 하기 때문이에요. 반올림의 순서가 달라도 걸음은 같아서 점들은 서로 $10^{-15}$ 안이고, 반복 수와 멈춘 이유가 같아요.
 
-Moré–Garbow–Hillstrom의 시험 문제 110경우에서, `'lm'`은 해석적 야코비안 108경우, 2점 차분 104경우에서 부른 점과 결과의 `x`, `fun`, `jac`, `status`가 scipy와 비트까지 같아요. 이때 두 가지 호출은 빼고 견줘요. 하나는 걸음이 반올림에 묻혀 x가 그대로인 시험점이에요. MINPACK은 그 점을 다시 부르고, scipy의 감싸개는 마지막 x의 값을 기억해 두었다가 부르지 않아요. 다른 하나는 결과의 야코비안을 위한 끝의 호출(아래 셈 절)이에요. 나머지 경우는 이 라이브러리가 일부러 다르게 정한 두 자리에서 갈려요.
+Moré–Garbow–Hillstrom의 시험 문제 110경우(모두 scipy의 빌드를 쓰는 모양이에요)에서, `'lm'`은 지금 해석적 야코비안 108경우, 2점 차분 104경우에서 부른 점과 결과의 `x`, `fun`, `jac`, `status`가 scipy와 비트까지 같아요. 이때 두 가지 호출은 빼고 견줘요. 하나는 걸음이 반올림에 묻혀 x가 그대로인 시험점이에요. MINPACK은 그 점을 다시 부르고, scipy의 감싸개는 마지막 x의 값을 기억해 두었다가 부르지 않아요. 다른 하나는 결과의 야코비안을 위한 끝의 호출(아래 셈 절)이에요. 나머지 경우는 이 라이브러리가 일부러 다르게 정한 두 자리에서 갈려요.
 
 - 시험점의 잔차가 유한하지 않을 때 걸음을 거절해요(scipy의 `'lm'`은 NaN으로 계속 가요). Gaussian 100x0, Biggs EXP6 10x0이 그래요.
 - `max_nfev`가 차분의 호출을 세서 상한에 닿는 곳이 달라요. Powell badly scaled, Beale의 먼 시작점 등이 그래요.
@@ -180,7 +180,7 @@ Moré–Garbow–Hillstrom의 시험 문제 110경우에서, `'lm'`은 해석적
 
 ### 값의 비용
 
-scipy의 빌드는 MINPACK처럼 m × n의 J에 바로 피벗 QR을 해요. 열마다의 합이 MINPACK의 순서를 따라야 하니 LAPACK의 블록 QR을 쓸 수 없어서, 잔차가 아주 많으면(m ≫ n) nls의 길보다 반복 하나가 비싸요. 그 대신 서로 독립인 열 여덟 개를 한 번에 반사하고(두 행씩의 곱, 열마다 따로 이어 가는 합 사슬), 큰 단계(약 $4\times10^5$ 플롭부터)는 열을 스레드에 나눠요. 열 하나의 합은 늘 제 순서라 어떻게 나눠도 비트가 같아요.
+scipy의 빌드는 MINPACK처럼 m × n의 J에 바로 피벗 QR을 해요. 열마다의 합이 MINPACK의 순서라 LAPACK의 블록 QR이 아니어서, 잔차가 아주 많으면(m ≫ n) nls의 길보다 반복 하나가 비싸요. 그 대신 서로 독립인 열 여덟 개를 한 번에 반사하고(두 행씩의 곱, 열마다 따로 이어 가는 합 사슬), 큰 단계(약 $4\times10^5$ 플롭부터)는 열을 스레드에 나눠요. 열 하나의 합은 늘 제 순서라 어떻게 나눠도 비트가 같아요.
 
 ```cpp
 // csrc/optimize/lsq.cpp
@@ -191,11 +191,11 @@ template <bool Fu>
 void qrfac_columns(lint m, lint j, double* a, lint lda, double* rdiag, double* wa, lint k0, lint k1) {
 ```
 
-m = n이면 거꾸로 QR이 두 번(LAPACK, 그 뒤 R₀의 피벗 QR)에서 한 번이 되어 nls의 길보다 싸요. 반복 하나의 자기 비용(사용자 함수 밖의 시간)은 아래 성능 절에 있어요.
+m = n이면 거꾸로 QR이 두 번(LAPACK, 그 뒤 R₀의 피벗 QR)에서 한 번이 되어 nls의 길보다 싸요. 그래서 `least_squares('lm')`은 모양으로 빌드를 골라요. $m \ge 10n$이고 $mn \ge 2000$이면 nls의 빌드예요. 모양으로만 정하므로 스레드 수와 상관없이 같은 빌드이고 같은 비트예요. 야코비안 하나에 드는 시간(사용자 함수 포함, 1스레드)이 nls의 빌드에서 (100, 10) 1.0배, (300, 100) 1.1배, (1000, 100) 1.9배, (4000, 40) 1.4배, (10⁵, 10) 1.7배 빠르고, 그 아래에서는 scipy의 빌드가 빨라요(m = n = 40에서 2배, (80, 40)에서 2배). nls의 빌드를 쓰는 모양에서는 끝자리가 scipy와 다르고 반복 수가 가끔 하나 둘 달라요. 반복 하나의 자기 비용(사용자 함수 밖의 시간)은 아래 성능 절에 있어요.
 
 ## 반복 안의 차분: scipy의 2점과 3점
 
-`least_squares`의 반복은 scipy 1.18.1 `approx_derivative`의 차분을 C++로 옮긴 것을 써요(`csrc/optimize/diff.hpp`). 간격의 규칙과 경계에 맞추는 방법이 scipy와 같아야 부르는 점이 같아요.
+`least_squares`의 반복은 scipy 1.18.1 `approx_derivative`의 차분을 C++로 옮긴 것을 써요(`csrc/optimize/diff.hpp`). 간격의 규칙과 경계에 맞추는 방법이 scipy와 같아서 부르는 점도 같아요.
 
 ### 간격
 
@@ -310,23 +310,23 @@ scipy는 경계가 모두 무한이면 `trf_bounds` 대신 따로 적힌 `trf_no
 
 `'lm'`은 m ≥ n이 필요해요. lmder의 피벗 QR은 열마다 아래쪽 행으로 반사를 만드는데, m < n이면 n번째 열까지 갈 행이 없어요(MINPACK은 이 입력을 잘못된 입력으로 돌려보내요). 그래서 Python 층에서 `ValueError`예요.
 
-`'trf'`는 m < n도 받아요. QR을 할 때 J와 f에 0인 행을 n개까지 붙여요. 0인 행은 $\lVert J s + f\rVert$에 아무것도 더하지 않으니 같은 문제예요.
+`'trf'`는 m < n도 받아요. 그때는 QR을 하지 않고 scipy처럼 야코비안 자체를 써요. 경계가 없으면 $J_h$($m \times n$)의, 경계가 있으면 $\begin{bmatrix} J_h \\ \operatorname{diag}(\sqrt{dh}) \end{bmatrix}$($(m + n) \times n$)의 SVD예요. 기울기 $g = J^{\mathsf T}f$도 $J$로 바로 계산해요.
 
 ```cpp
-    // csrc/optimize/lsq.cpp, Model::qr
-    void qr(double* J, const double* r, double* R0, double* qtf) {
-        if (m < p) {
-            const auto up = static_cast<std::size_t>(p);
-            vec Jp(up * up, 0.0), rp(up, 0.0);
-            for (lint j = 0; j < p; ++j)
-                for (lint i = 0; i < m; ++i) Jp[static_cast<std::size_t>(i + j * p)] = J[i + j * m];
-            for (lint i = 0; i < m; ++i) rp[static_cast<std::size_t>(i)] = r[i];
-            qr_rows(p, Jp.data(), rp.data(), R0, qtf);
-            return;
+        // csrc/optimize/lsq.cpp
+        if (wide) {
+            R0.assign(J.begin(), J.end());
+            qtf.assign(f.begin(), f.end());
+            for (lint j = 0; j < p; ++j) {
+                double t = 0;
+                for (lint i = 0; i < m; ++i) t += R0[i + j * m] * qtf[i];
+                g[j] = t;
+            }
+            return true;
         }
-        qr_rows(m, J, r, R0, qtf);
-    }
 ```
+
+m × n 행렬의 SVD라서 n이 커도 반복 하나가 싸요. m = 5, n = 1000에서 반복당 0.1 ms예요(scipy 0.2 ms). 0인 행을 n개까지 붙여 n × n에서 계산하면 같은 문제에서 반복당 72 ms가 들어요.
 
 이때 부분문제 풀이 `solve_lsq_trust_region`은 scipy처럼 야코비안을 "완전 랭크가 아님"으로 봐요(`full_rank`는 m ≥ n일 때만 참이 될 수 있어요). 완전 랭크가 아니면 가우스–뉴턴 걸음을 먼저 시도하지 않고, λ(코드의 α)를 고른 뒤 걸음을 **반지름 Δ의 길이로 맞춰** 돌려줘요.
 
@@ -370,6 +370,8 @@ scipy는 경계가 모두 무한이면 `trf_bounds` 대신 따로 적힌 `trf_no
 - x0에서 `fun`이 유한하지 않으면 Python 층이 커널을 부르기 전에 `ValueError`를 내요.
 - 시험점의 잔차가 유한하지 않으면 걸음을 거절하고 신뢰 영역을 줄여요. `'trf'`는 scipy와 같은 규칙($\Delta \leftarrow \tfrac14\lVert s_h\rVert$)이에요. `'lm'`은 그 점의 잔차 노름을 $+\infty$로 두어 lmder의 규칙이 그대로 걸음을 거절하고 Δ를 1/10로 줄이게 해요. scipy의 `'lm'`은 NaN을 그대로 산술에 넣어요.
 - 야코비안이 유한하지 않으면 커널이 상태 −1을 돌려주고 Python 층이 그 점을 적은 `ValueError`를 내요. 걸음을 정할 수 없는 상태라 계속 갈 방법이 없어요.
+- `'trf'`에서 잔차가 유한해도 아주 크면($\lvert f\rvert \gtrsim 10^{154}$) 제곱합이나 기울기가 넘쳐 inf가 돼요. 그러면 부분문제를 만들 수 없으니 SVD 전에 status 0으로 끝내요. scipy는 진전 없이 같은 점에서 `max_nfev`까지 돌다가 status 0이 돼요. 결과의 `cost`가 inf라 `converged`는 False예요.
+- SVD(LAPACK `gesdd`)가 수렴하지 않으면 `LinAlgError`(`least_squares(): SVD did not converge`)예요.
 
 ## 결과의 필드
 
@@ -398,7 +400,7 @@ scipy는 `cost`를 `np.dot(f, f)`로, `grad`를 `J.T.dot(f)`로 계산해요. BL
 
 ## 성능
 
-반복 하나의 자기 비용(사용자 함수 밖의 시간을 반복 수로 나눈 것)을 scipy와 견주면 이래요. Apple M4 Pro, 1스레드, scipy 1.18.1·numpy 2.5.4(Accelerate), 해석적 야코비안이에요(`bench/optimize/o6/speed.md`).
+반복 하나의 자기 비용(사용자 함수 밖의 시간을 반복 수로 나눈 것)을 scipy와 견주면 이래요. Apple M4 Pro, 1스레드, scipy 1.18.1·numpy 2.5.4(Accelerate), 해석적 야코비안이에요(`bench/optimize/o6/speed.md`). `'lm'`의 (1000, 10)과 (10⁴, 100)은 그 모양에서 쓰는 nls의 빌드로 잰 값이에요.
 
 <Bench
   series={['scipy 1.18.1', 'stardust 1스레드']}
@@ -408,14 +410,14 @@ scipy는 `cost`를 `np.dot(f, f)`로, `grad`를 `J.T.dot(f)`로 계산해요. BL
     { label: "trf, m = n = 40", times: [83.7e-6, 76.5e-6] },
     { label: "lm, m = n = 40", times: [51.0e-6, 35.3e-6] },
     { label: "trf, (1000, 10)", times: [112e-6, 66.1e-6] },
-    { label: "lm, (1000, 10)", times: [88.3e-6, 77.3e-6] },
+    { label: "lm, (1000, 10)", times: [88.3e-6, 57.2e-6] },
     { label: "trf, (10⁴, 100)", times: [18.1e-3, 6.83e-3] },
-    { label: "lm, (10⁴, 100)", times: [36.8e-3, 17.7e-3] },
+    { label: "lm, (10⁴, 100)", times: [36.8e-3, 6.57e-3] },
   ]}
 />
 
 - 작은 문제에서 scipy는 반복마다 Python에서 numpy 연산과 `VectorFunction`의 감싸기를 거쳐요. 이 커널은 반복 전체가 C++이고 콜백만 Python이라 5–12배 싸요.
-- m ≫ n에서 `'trf'`는 야코비안마다 LAPACK의 블록 QR 하나가 대부분이고 그 뒤는 n 크기예요. `'lm'`은 MINPACK 순서의 피벗 QR이라 같은 크기에서 `'trf'`의 2.6배예요((10⁴, 100), 10스레드에서는 7.8 ms).
+- m ≫ n에서는 `'trf'`와 `'lm'` 모두 야코비안마다 LAPACK의 블록 QR 하나가 대부분이고 그 뒤는 n 크기예요(`'lm'`은 nls의 빌드). 그 모양에서 scipy의 빌드로 풀면 MINPACK 순서의 피벗 QR이라 (10⁴, 100)에서 반복당 17.7 ms(10스레드 7.8 ms)가 들어요.
 - m = n = 40의 `'trf'`는 40 × 40의 QR(18 µs)과 80 × 40의 SVD(47 µs)가 반복의 대부분이라 scipy와 비슷해요.
 
 ## 참고 문헌

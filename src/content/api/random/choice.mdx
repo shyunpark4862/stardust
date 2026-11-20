@@ -33,6 +33,8 @@ raises:
     desc: a가 1차원이 아닌 배열이거나 음수일 때, shape가 ()일 때, 빈 대상에서 하나 이상 고를 때, shape에 음수가 있을 때, p의 모양이 틀렸거나 음수·NaN이 있거나 합이 1이 아닐 때, replace=False인데 고를 개수가 원소 수(p가 있으면 확률이 0이 아닌 원소 수)보다 많을 때.
   - type: OverflowError
     desc: a가 int64 범위를 넘는 정수(2**63 이상)일 때.
+  - type: MemoryError
+    desc: 호출이 받을 메모리(고른 결과와 비복원 추출에 쓰는 자리)가 이 컴퓨터의 물리 메모리보다 클 때.
 seeAlso: [integers, random, permutation, generator, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -357,7 +359,7 @@ OverflowError: choice(): 'a' is out of range
 >>> rng.choice(3, p=[0.7, 0.2, 0.1])
 Traceback (most recent call last):
     ...
-TypeError: choice(): 'p' must be an array, not list
+TypeError: choice(): 'p' must be an sd.ndarray, not list
 ```
 
 확률은 실수라서 복소수 배열도 `TypeError`예요. 정수·bool 배열은 받아요.
@@ -366,7 +368,7 @@ TypeError: choice(): 'p' must be an array, not list
 >>> rng.choice(3, p=sd.asarray([0.5 + 0j, 0.5, 0.0]))
 Traceback (most recent call last):
     ...
-TypeError: choice(): 'p' must be a real array, not an array of complex128
+TypeError: choice(): 'p' must be a real array, not complex128
 ```
 
 ### `p`의 길이, 음수, NaN
@@ -398,6 +400,12 @@ ValueError: choice(): cannot choose from an empty population
 >>> rng.choice(0, shape=0)
 array([], dtype=int64)
 ```
+
+### 비복원 추출은 메모리를 더 써요
+
+`replace=False`로 고르면 결과 말고도 이미 고른 원소를 기억할 자리가 필요해요. 고를 개수가 후보 수의 16분의 1 이하이면 고른 원소당 64바이트쯤, 그보다 많으면 후보 `n`개의 자리(8 × `n`바이트)를 더 써요. 결과와 이 자리를 합한 크기가 이 컴퓨터의 물리 메모리보다 크면, 아무것도 고르기 전에 `MemoryError`예요. 이때 생성기의 위치는 그대로예요.
+
+그래서 아주 큰 범위에서 몇 개만 고르는 일은 가볍지만(`rng.choice(2**40, shape=3, replace=False)`), 범위의 상당 부분을 고르면 범위 전체만큼의 메모리가 필요해요.
 
 ### 옵션은 이름을 붙여서
 

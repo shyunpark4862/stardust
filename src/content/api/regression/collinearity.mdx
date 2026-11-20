@@ -262,7 +262,7 @@ array([ 2.912521645037168, 283686833508115.25, -141843416754056.9], dtype=float6
 
 ## 완전 적합
 
-점이 모형 위에 정확히 놓이면 잔차가 모두 0이에요. 그러면 표준오차를 만드는 오차의 어림이 0이라서, 추론 필드는 0으로 나누는 극한값이 돼요. 에러나 경고는 없어요.
+점이 모형 위에 정확히 놓이면 잔차가 모두 0이에요. 그러면 표준오차를 만드는 오차의 어림이 0이라서 표준오차도 0이에요. 에러나 경고는 없어요.
 
 ```python
 >>> xp = [0.0, 1, 2, 3, 4, 5]
@@ -271,7 +271,7 @@ array([ 2.912521645037168, 283686833508115.25, -141843416754056.9], dtype=float6
 >>> rp.params, rp.ssr
 (array([1.0, 2.0], dtype=float64), 0.0)
 >>> rp.bse, rp.tvalues, rp.pvalues
-(array([0.0, 0.0], dtype=float64), array([inf, inf], dtype=float64), array([0.0, 0.0], dtype=float64))
+(array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64), array([nan, nan], dtype=float64))
 >>> rp.llf, rp.aic, rp.rsquared
 (inf, -inf, 1.0)
 >>> rp.fvalue, rp.f_pvalue
@@ -281,8 +281,7 @@ array([ 2.912521645037168, 283686833508115.25, -141843416754056.9], dtype=float6
 | 필드 | 완전 적합일 때 | 뜻 |
 |---|---|---|
 | `ssr`, `scale`, `bse` | 0 | 흔들림이 없어요 |
-| `tvalues` | ±inf(계수가 0이면 NaN) | 계수 ÷ 0 |
-| `pvalues` | 0(계수가 0이면 NaN) | |
+| `tvalues`, `pvalues` | NaN | 아래 설명 |
 | `conf_int()`, `predict_interval()` | 폭 0인 구간 | 아래 끝 = 위 끝 |
 | `llf`, `aic`, `bic` | +inf, −inf, −inf | 잔차 0의 정규 우도 |
 | `rsquared`, `fvalue` | 1, inf | 반응이 모두 같으면(TSS 0) 0 ÷ 0이라 NaN |
@@ -295,6 +294,8 @@ array([[1.0, 1.0],
 array([[13.0, 13.0]], dtype=float64)
 ```
 
+t값은 계수 ÷ 표준오차라서 0으로 나누면 ±inf가 되겠지만, 그 값을 내지 않고 NaN으로 둬요. 계수도 반올림을 품은 값이라서, 참값이 0인 계수가 반올림 크기의 값으로 나와도 ÷ 0은 inf가 돼요. 그러면 p값 0이 "아주 유의하다"는 가짜 결론이 되니, 완전 적합에서는 t와 p를 정할 수 없다고 NaN으로 알려 줘요.
+
 스튜던트화 잔차, Cook 거리, Durbin–Watson 같은 진단 값은 0 ÷ 0이라 NaN이에요([회귀 진단](/api/regression/diagnostics/)). 관측 수와 계수 수가 같아 `df_resid`가 0이면 위의 표와 달리 `scale`과 추론 전부가 0 ÷ 0이라 NaN이에요([열이 행보다 많을 때](#열이-행보다-많을-때)).
 
 ```python
@@ -303,14 +304,14 @@ array([[13.0, 13.0]], dtype=float64)
 (nan, array([nan, nan], dtype=float64), inf)
 ```
 
-반응이 모두 같은 값 $y_0$이면 절편이 있는 모형은 늘 완전 적합이에요. 해가 정확히 $(y_0, 0, \dots, 0)$이라 $y_0$가 어떤 소수여도 잔차가 정확히 0이에요. 기울기는 0이라 t가 0 ÷ 0, NaN이고 p도 NaN이에요. 오차의 크기를 자료로 어림하는 모형이라, 흔들림이 0인 자료에서는 기울기가 0이라는 것을 검정할 수 없어요.
+반응이 모두 같은 값 $y_0$이면 절편이 있는 모형은 늘 완전 적합이에요. 해가 정확히 $(y_0, 0, \dots, 0)$이라 $y_0$가 어떤 소수여도 잔차가 정확히 0이에요. 다른 완전 적합처럼 t와 p는 절편까지 모두 NaN이에요. 오차의 크기를 자료로 어림하는 모형이라, 흔들림이 0인 자료에서는 기울기가 0이라는 것을 검정할 수 없어요.
 
 ```python
 >>> rf = sd.regression.ols([0.1] * 6, xp)
 >>> rf.params, rf.ssr, rf.tvalues
-(array([0.1, 0.0], dtype=float64), 0.0, array([inf, nan], dtype=float64))
+(array([0.1, 0.0], dtype=float64), 0.0, array([nan, nan], dtype=float64))
 >>> rf.pvalues
-array([0.0, nan], dtype=float64)
+array([nan, nan], dtype=float64)
 ```
 
 척도를 1로 고정하는 [`glm`](/api/regression/glm/#상수-y와-완전-적합)의 이항·포아송은 다르게 나와요. 표준오차가 척도 1로 정해지니, 상수 `y`에서 기울기의 t는 0, p는 1이에요.
@@ -321,9 +322,9 @@ array([0.0, nan], dtype=float64)
 
 기준은 관측마다예요. 쓰인 열이 k개이고 $u = 2^{-53} \approx 1.1 \times 10^{-16}$일 때, 모든 관측에서
 
-$$|e_i| \le (k + 16)\, u \left(|y_i| + \textstyle\sum_j |x_{ij}| \cdot \max_j |\hat\beta_j|\right)$$
+$$|e_i| \le (k + 16)\, u \left(|y_i| + \textstyle\sum_j |x_{ij}|\,|\hat\beta_j|\right)$$
 
-이면 완전 적합이에요. 오른쪽은 그 관측의 값을 계산할 때 생길 수 있는 반올림의 크기예요. 이때 `ssr`은 0이고, 위의 표대로 `bse` 0, t ±inf, p 0이에요. `resid` 필드는 계산한 값 그대로라서 반올림 크기의 수가 남아 있어요.
+이면 완전 적합이에요. 오른쪽은 그 관측의 값을 계산할 때 생길 수 있는 반올림의 크기예요. 계수 하나하나가 반올림되면 $x_{ij}\hat\beta_j$가 그만큼 움직이니, 항마다 따로 더해요. 그래서 연도나 금액처럼 값이 큰 열과 그 열을 상쇄하는 큰 절편이 함께 있어도 기준이 부풀지 않고, 잡음이 있는 자료를 완전 적합으로 잘못 보지 않아요. 완전 적합이면 `ssr`은 0이고, 위의 표대로 `bse` 0, t와 p는 NaN이에요. `resid` 필드는 계산한 값 그대로라서 반올림 크기의 수가 남아 있어요.
 
 ```python
 >>> yd = [0.1 + 0.2 * v for v in xp]
@@ -333,7 +334,7 @@ array([0.1, 0.2], dtype=float64)
 >>> rd.ssr
 0.0
 >>> rd.tvalues
-array([inf, inf], dtype=float64)
+array([nan, nan], dtype=float64)
 >>> rd.resid
 array([                    0.0,  2.7755575615628914e-17,
        -2.7755575615628914e-17,  2.7755575615628914e-17,
@@ -383,4 +384,4 @@ array([84.26666666666665,               nan], dtype=float64)
 - 겹친 열: statsmodels의 `OLS`는 유사역행렬로 풀어서 겹친 열에 계수를 나눠 줘요. 위 키 예에서 statsmodels 0.15.0은 경고(`SingularMatrixWarning`)와 함께 센티미터 0.97705, 미터 0.0097705를 내고 둘 다 표준오차가 있어요. 여기서는 뒤의 열을 빼고 NaN을 내요. 남은 열의 계수와 적합값은 R의 `lm`과 같아요. R도 `m`의 계수를 `NA`로 내요.
 - 남는 열을 고르는 방식(앞 열이 남음)은 R의 `lm`과 같아요. R의 허용오차는 `tol = 1e-7`이고, 같은 판정을 하려면 `rtol=1e-7`을 주세요. 기본 `rtol`은 그보다 훨씬 작아서 반올림 수준의 겹침만 빼요.
 - 관계를 깨는 새 데이터에서 statsmodels는 나눠 준 계수로 예측해서 값이 달라지고(위 예에서 미터 열이 0이면 84.248), R의 `predict`는 경고(`prediction from rank-deficient fit`)와 함께 여기와 같은 84.267을 내요.
-- 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아서 위의 `yp`에서 표준오차 $5 \times 10^{-16}$, t $2 \times 10^{15}$, p $3 \times 10^{-61}$, `llf` 202를 내고, `yd`에서는 t $8 \times 10^{14}$, $5 \times 10^{15}$를 내요. 여기서는 잔차가 반올림 수준이면 완전 적합으로 보고 IEEE의 극한값(0, inf, 0, inf)을 내요. 반응이 모두 같을 때도 statsmodels는 기울기에 반올림을 남겨요(위의 `rf`에서 기울기 $-8.7 \times 10^{-18}$, 그 t −1.23).
+- 완전 적합: statsmodels는 잔차가 반올림 수준으로 남아서 위의 `yp`에서 표준오차 $5 \times 10^{-16}$, t $2 \times 10^{15}$, p $3 \times 10^{-61}$, `llf` 202를 내고, `yd`에서는 t $8 \times 10^{14}$, $5 \times 10^{15}$를 내요. 여기서는 잔차가 반올림 수준이면 완전 적합으로 보고 표준오차 0, `llf` inf를 내고, t와 p는 NaN이에요. 반응이 모두 같을 때도 statsmodels는 기울기에 반올림을 남겨요(위의 `rf`에서 기울기 $-8.7 \times 10^{-18}$, 그 t −1.23).

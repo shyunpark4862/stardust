@@ -40,7 +40,7 @@ import Tree from '../../../components/fig/Tree.astro';
 2. 나눌지는 시간으로 정해요. 함수 계열마다 원소 하나의 직렬 비용을 `a + c·w` ns로 추정하고, 배치 전체가 10µs를 넘으면 나눠요. 태스크 하나는 약 5µs 분량이에요.
 3. 원소 하나는 어디서 돌든 같은 비트를 내요. 이를 위해 세 가지를 지켜요. 태스크마다 자기 작업 메모리를 쓰고, LAPACK에 주는 workspace 크기를 행렬마다 물었을 때와 같게 하고, LAPACK에 넘기는 배열을 16바이트 정렬해요(`lstsq`의 우변만 numpy와 같은 자리에 둬요). 마지막 것은 Accelerate가 정렬에 따라 반올림을 다르게 하기 때문에 필요해요.
 4. 실패는 가장 작은 인덱스를 보고해요. 병렬로 돌아도 메시지가 스레드 수와 상관없이 같아요.
-5. 합은 numpy의 pairwise 합이고, 긴 합은 트리의 잎 단위로 나눠요. 같은 트리 순서로 합치므로 직렬, 그리고 numpy와 비트까지 같아요.
+5. 합은 배열과 같은 pairwise 트리이고, 긴 합은 트리의 잎 단위로 나눠요. 같은 트리 순서로 합치므로 직렬과 비트까지 같아요.
 
 스레드풀 자체(상주 워커, atomic 카운터, spin 대기, GIL 해제)는 모든 영역이 함께 쓰는 것이라 [스레드풀과 결정성](/internals/core/threads/)에서 다뤄요. 이 글은 그 풀 위에서 linalg가 정하는 정책을 다뤄요.
 
@@ -113,20 +113,23 @@ void Batch::offsets(std::int64_t idx, std::int64_t* out) const {
 - `scratch`: 작업 메모리. 직렬이면 배치 전체가 하나를, 나누면 태스크마다 하나를 써요.
 - 돌려주는 값: 성공이면 0, 실패면 양수 코드(`kSingular`, `kNonFinite` 등, `ops/common.hpp`). 몸체는 첫 실패에서 바로 돌아와요.
 
-몸체는 Python 객체를 만지지 않아요. 배치의 추정 시간(원소 하나의 추정 시간 × 원소 수)이 `kParallelMinNs`(10µs) 이상이면 몸체는 GIL 없이 돌기 때문이에요. 나눈 배치는 워커 스레드에서 `parallel_for`가 GIL을 놓은 채로, 나누지 않은 배치(행렬 하나, 1스레드, 바쁜 풀)는 호출 스레드에서 `parallel::Unlocked`로 GIL을 놓은 채로 돌아요. 원소 하나의 추정 시간이 0인 함수(나누지 않기로 한 것)는 GIL을 쥔 채 돌아요. 결과 배열과 namedtuple은 `run_batch` 앞뒤에서 만들어요.
+몸체는 Python 객체를 만지지 않아요. 배치의 추정 시간(원소 하나의 추정 시간 × 원소 수)이 `kParallelMinNs`(10µs) 이상이면 몸체는 GIL 없이 돌기 때문이에요. 나눈 배치는 워커 스레드에서 `parallel_for`가 GIL을 놓은 채로, 나누지 않은 배치(행렬 하나, 1스레드, 바쁜 풀)는 호출 스레드에서 `parallel::Unlocked`로 GIL을 놓은 채로 돌아요. 나누지 않기로 한 경로(`max_tasks = 1`, 아래의 작은 띠 `gbsv`)도 같은 기준으로 GIL을 놓아요. 나눌지와 GIL을 놓을지는 따로 정해요. 결과 배열과 namedtuple은 `run_batch` 앞뒤에서 만들어요.
 
 `solve`의 몸체는 이렇게 생겼어요.
 
 ```cpp
 // linalg/ops/lu.cpp의 solve (발췌)
-const Failure f = run_batch(b, cost(kLU, double(n) * n),
+const Failure f = run_batch(
+    b, cost(kLU, double(n) * n) + rhs_cost(n, k),
     [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
-        T* lu; lint* ipiv;
-        if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;   // 패킹 + getrf
+        T* lu;
+        lint* ipiv;
+        if (const int code = lu_factor<T>(a, off[0], n, s, lu, ipiv)) return code;   // 패킹 + LU 분해
         // ... b를 결과 자리에 패킹하고 getrs ...
         return 0;
     },
-    lu_task_cap(n, k, true));
+    lu_task_cap(n, k)
+);
 if (f) raise(b, f, "solve", "a");
 ```
 
@@ -137,7 +140,8 @@ if (f) raise(b, f, "solve", "a");
 template <class F>
 Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0) {
     const std::int64_t n = b.size();
-    if (n >= 2 && element_ns > 0 && element_ns * n >= kParallelMinNs && detail::begin_parallel()) {
+    if (n >= 2 && max_tasks != 1 && element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs &&
+        detail::begin_parallel()) {
         std::int64_t per = std::max<std::int64_t>(1, static_cast<std::int64_t>(kTaskNs / element_ns));
         if (max_tasks > 0 && (n + per - 1) / per > max_tasks) per = (n + max_tasks - 1) / max_tasks;
         const std::int64_t ntasks = (n + per - 1) / per;
@@ -151,6 +155,7 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
         });
         /* ... 가장 작은 실패 고르기 ... */
     }
+    const parallel::Unlocked unlocked(element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs);
     Scratch scratch;                               // 직렬: 하나로 차례로
     std::int64_t offs[kMaxOperands];
     for (std::int64_t i = 0; i < n; ++i) {
@@ -161,20 +166,21 @@ Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0
 }
 ```
 
-아래 네 조건이 모두 맞을 때 나눠요.
+아래 다섯 조건이 모두 맞을 때 나눠요.
 
 | 조건 | 이유 |
 |---|---|
 | 배치 원소가 2개 이상 | 원소 하나는 쪼갤 수 없어요 |
-| `element_ns > 0` | 0은 "나누지 않음"의 표시예요(작은 띠 행렬의 `gbsv`, 아래) |
+| `max_tasks ≠ 1` | 1은 "나누지 않음"의 표시예요(작은 띠 행렬의 `gbsv`, 아래) |
+| `element_ns > 0` | 원소 하나의 추정 시간이 있어야 몇 개씩 묶을지 정할 수 있어요 |
 | `element_ns × n ≥ kParallelMinNs` (10µs) | 배치 전체의 추정 직렬 시간이 이보다 작으면 나누는 비용이 이득보다 커요 |
 | `begin_parallel()` | 스레드가 둘 이상이고, 이미 태스크 안이 아니고(중첩 금지), 다른 Python 스레드가 풀을 쓰고 있지 않을 때 참이에요(`parallel::available()`) |
 
 태스크 하나는 `max(1, ⌊kTaskNs / element_ns⌋)`개의 원소를 맡아요. 연속한 원소 묶음이라 태스크 `t`는 원소 `[t·per, (t+1)·per)`를 맡아요. 태스크를 어느 스레드가 집어 가는지는 실행마다 다르지만, 태스크가 맡는 원소 범위는 배치 크기와 비용 추정만으로 정해져요.
 
-<Fig caption="solve (1000, 3, 3)의 분할. 원소 하나의 추정 비용은 70 + 3·9 = 97ns라서 태스크 하나에 ⌊5000/97⌋ = 51개씩, 태스크 20개가 돼요(마지막 태스크는 31개). 스레드 10개가 카운터에서 태스크 번호를 하나씩 집어 가요.">
-  <ArrayFig name="배치 원소" data={['0…50', '51…101', '102…152', '…', '969…999']} tones={['a', '', 'a', 'm', '']} note="1000개" />
-  <Op note="51개씩">→</Op>
+<Fig caption="solve (1000, 3, 3), 우변 1열의 분할. 원소 하나의 추정 비용은 행렬 항 70 + 3·9 = 97ns에 우변 항 1·3·1 = 3ns를 더한 100ns라서 태스크 하나에 ⌊5000/100⌋ = 50개씩, 태스크 20개가 돼요. 스레드 10개가 카운터에서 태스크 번호를 하나씩 집어 가요.">
+  <ArrayFig name="배치 원소" data={['0…49', '50…99', '100…149', '…', '950…999']} tones={['a', '', 'a', 'm', '']} note="1000개" />
+  <Op note="50개씩">→</Op>
   <ArrayFig name="태스크" data={['t0', 't1', 't2', '…', 't19']} tones={['a', '', 'a', 'm', '']} note="20개" />
 </Fig>
 
@@ -194,11 +200,11 @@ $$
 ```cpp
 // linalg/cost.hpp (발췌)
 struct Family { double a, c; };
-inline constexpr Family kLU{70, 3.0};          // solve, inv, det, slogdet, lu, cholesky, ldl, matrix_power
+inline constexpr Family kLU{70, 3.0};          // solve, inv, det, slogdet, lu, cholesky, ldl, matrix_power, cond(±2 외)
 inline constexpr Family kTriangular{30, 0.5};  // solve_triangular, cholesky_solve, lu_solve
 inline constexpr Family kQR{180, 10};          // qr, qr_pivoted, hessenberg
 inline constexpr Family kEigh{250, 45};        // eigh, eigvalsh (일반화 포함)
-inline constexpr Family kSVD{1000, 80};        // svd, svdvals, matrix_rank, pinv, cond, lstsq, matrix_norm 2/-2/nuc
+inline constexpr Family kSVD{1000, 80};        // svd, svdvals, matrix_rank, pinv, cond ±2, lstsq, matrix_norm 2/-2/nuc
 inline constexpr Family kEig{700, 200};        // eig, eigvals, schur
 inline constexpr Family kSylvester{500, 370};  // solve_sylvester, w = (m² + n²) / 2
 inline constexpr Family kBanded{20, 3};        // solve_tridiagonal, solve_banded, w = n·(대역폭 + 1)
@@ -207,7 +213,14 @@ inline constexpr Family kCopy{2, 0.5};         // diagonal, outer, kron, cross: 
 inline constexpr Family kExpm{600, 15};        // expm
 
 inline double cost(Family f, double w) { return f.a + f.c * w; }
+
+inline constexpr double kRhsNs = 1.0;
+inline double rhs_cost(double n, double k) { return kRhsNs * n * k; }
 ```
+
+풀이 계열(`solve`, `lstsq`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `solve_tridiagonal`, `solve_banded`)은 행렬 항에 우변 항 `rhs_cost(n, k)`(우변 $n \times k$ 원소마다 1ns, `lstsq`는 $m \times k$)를 더해요. 행렬 항만으로 재면 작은 행렬에 우변이 많은 호출(3×3 행렬과 우변 $3 \cdot 10^6$열)을 100ns 남짓으로 보고 GIL을 쥔 채 돌게 돼요. 실제로는 수 ms가 걸려요. 1ns는 $n = 3$–4에서 잰 우변 원소 하나의 시간(0.9–1.6ns, 패킹과 대입)이에요. 큰 $n$에서는 과소 추정하지만 그때는 행렬 항이 커요. 배치 원소 하나는 나누지 않으므로 결과는 그대로이고, 배치를 나누는 크기만 달라져요.
+
+`cond`는 `ord`가 ±2가 아니면 LU와 역행렬로 계산하므로 `kLU`, ±2는 `kSVD`예요.
 
 ### 상수를 맞춘 방법과 오차
 
@@ -254,17 +267,17 @@ inline double cost(Family f, double w) { return f.a + f.c * w; }
 
 | 호출 | 계열 | $w$ | 원소 하나 | 태스크당 원소 | 태스크 수 |
 |---|:---:|:---:|:---:|:---:|:---:|
-| `solve` (1000, 3, 3) | `kLU` | 9 | 97ns | 51 | 20 |
+| `solve` (1000, 3, 3), 우변 1열 | `kLU` | 9 | 100ns | 50 | 20 |
 | `eigh` (1000, 3, 3) | `kEigh` | 9 | 655ns | 7 | 143 |
 | `svd` (1000, 3, 3) | `kSVD` | 9 | 1.72µs | 2 | 500 |
 | `eigh` (100, 32, 32) | `kEigh` | 1024 | 46µs | 1 | 100 |
-| `solve` (100, 32, 32), 우변 1열 | `kLU` | 1024 | 3.1µs | 20 (상한 5) | 5 |
-| `inv` (100, 32, 32) | `kLU` | 1024 | 3.1µs | 34 (상한 3) | 3 |
+| `solve` (100, 32, 32), 우변 1열 | `kLU` | 1024 | 3.2µs | 1 | 100 |
+| `inv` (100, 32, 32) | `kLU` | 1024 | 4.2µs | 34 (상한 3) | 3 |
 | `vecdot` (1000, 3, 3)의 행 | `kStream` | 3 | 12.9ns | 387 | 8 |
 | `matrix_norm` (1000, 3, 3) | `kStream` | 9 | 14.7ns | 340 | 3 |
 | `diagonal` (1000, 3, 3) | `kCopy` | 3 | 3.5ns | — | 직렬 (3.5µs) |
 
-`vecdot`의 행은 `(1000, 3, 3)`의 마지막 축을 따라 내적하므로 배치 원소가 3000개예요. 32×32 `solve`와 `inv`의 상한은 아래 "태스크 수 상한" 절의 것이에요.
+`solve`와 `inv`의 원소 하나에는 우변 항이 들어 있어요(`inv`는 우변이 단위행렬이라 $k = n$). `vecdot`의 행은 `(1000, 3, 3)`의 마지막 축을 따라 내적하므로 배치 원소가 3000개예요. 32×32 `inv`의 상한은 아래 "태스크 수 상한" 절의 것이에요.
 
 ### 크기 기준은 없어요
 
@@ -274,7 +287,9 @@ inline double cost(Family f, double w) { return f.a + f.c * w; }
 
 ### 예외: 작은 띠의 `gbsv`
 
-`solve_banded`가 부르는 `gbsv`(띠 행렬 LU)에는 호출마다 약 1µs의 고정비가 있고, 이 부분은 스레드를 늘려도 빨라지지 않았어요. 작은 띠에서 나누면 오히려 1.1–2.7배 느려졌어요. 교차점은 kl = ku = 2에서 $n = 64$–96, kl = ku = 5에서 $n = 32$–48이에요. 그래서 $n \cdot (k_l + k_u + 1) \ge 400$(`kBandSplitMin`)일 때만 비용 모델대로 하고, 그 아래에서는 `element_ns = 0`(나누지 않음)을 넘겨요. 그 이상에서는 나누면 2–4배 빨라져요.
+`solve_banded`가 부르는 `gbsv`(띠 행렬 LU)에는 호출마다 약 1µs의 고정비가 있고, 이 부분은 스레드를 늘려도 빨라지지 않았어요. 작은 띠에서 나누면 오히려 1.1–2.7배 느려졌어요. 교차점은 kl = ku = 2에서 $n = 64$–96, kl = ku = 5에서 $n = 32$–48이에요. 그래서 $n \cdot (k_l + k_u + 1) \ge 400$(`kBandSplitMin`)일 때만 비용 모델대로 하고, 그 아래에서는 `max_tasks = 1`(나누지 않음)을 넘겨요. 그 이상에서는 나누면 2–4배 빨라져요. 비용은 그대로 넘기므로, 나누지 않아도 배치 전체의 추정 시간이 기준 이상이면 GIL을 놓아요.
+
+행이 8개 이하인 `solve_banded`는 `gbsv`를 부르지 않고 밀집 행렬의 LU로 풀어서 이 고정비가 없어요. 그 경로는 비용 모델(`kLU`)대로 나눠요([띠 행렬과 Sylvester 방정식](/internals/linalg/special/)).
 
 대역폭 (1, 1)은 `gbsv`가 아니라 삼중대각 전용 `gtsv`로 풀어서 이 고정비가 없고, 항상 비용 모델대로 해요([띠 행렬과 Sylvester 방정식](/internals/linalg/special/)).
 
@@ -291,42 +306,50 @@ Accelerate가 작은 LAPACK 호출 일부를 이 장치로 보내는 것으로 �
 
 Accelerate의 내부 구현은 공개돼 있지 않으므로, "AMX에서 직렬로 돈다"는 것은 측정의 모양(어느 크기에서 확장이 멈추는지, 몇 스레드에서 가장 빠른지)으로 판단한 것이에요.
 
+### LU 분해는 `getf2`로 피해요
+
+$n = 32$–46의 LU 분해는 `getrf` 대신 블록이 없는 `getf2`로 해요(`lapack::lu_in_place`, `kGetf2Min`/`kGetf2Max`). `getf2`는 AMX 경로를 타지 않아요. 행과 열이 모두 이 범위일 때예요(`lu`의 직사각 입력도 같아요). LU를 쓰는 모든 곳이 같은 규칙이에요: `solve`, `inv`, `det`, `slogdet`, `lu`, `cond`(±2 외), `matrix_power`(음수 지수), `expm`의 Padé 풀기.
+
+```cpp
+// linalg/lapack.hpp (발췌)
+inline lint kGetf2Min = 32, kGetf2Max = 46;
+inline bool use_getf2(lint m, lint n) { return m >= kGetf2Min && m <= kGetf2Max && n >= kGetf2Min && n <= kGetf2Max; }
+```
+
+`getrf`에 태스크 상한을 둔 것과 `getf2`를 `det` 배치로 견주면, 10스레드에서 $n = 32$–46이 2.1–4.4배, 47은 1.96배, 48은 1.7배였어요. 1스레드에서도 1.2–1.6배, 행렬 하나는 1.2–1.7배예요. $n \le 31$은 같고, $n \ge 64$는 `getf2`가 느려요($n = 128$에서 0.4배). 그래서 이득이 2배를 넘는 46까지를 경계로 했어요.
+
+크기에 따라 다른 루틴을 부르면 같은 함수의 결과가 크기에 따라 다른 계산에서 나와요. 그래서 크기로 경로를 바꾸는 것은 이득이 2배를 넘을 때만이에요. `getf2`의 결과는 `getrf`와 반올림 수준에서 다를 수 있지만, 피벗 규칙(부분 피벗)과 특이의 판정(정확한 0 피벗)은 같아요. 고르는 것은 모양뿐이라 같은 모양이면 언제나 같은 경로이고, 레이아웃·배치 위치·스레드 수와 무관한 비트도 그대로예요. 경계 양쪽의 크기($n$ = 31, 32, 46, 47)를 테스트해요.
+
 ### 규칙: `lu_task_cap`
 
-태스크 수가 곧 동시에 일하는 스레드 수의 상한이에요. 그래서 이 경로에 걸리는 배치는 태스크 수를 줄여요. 각 크기에서 가장 빨랐던 스레드 수에 맞춘 값이에요.
+우변이 8개 이상인 삼각 풀기는 루틴을 바꾸지 않고 태스크 수만 줄여요. 태스크 수가 곧 동시에 일하는 스레드 수의 상한이에요. 각 크기에서 가장 빨랐던 스레드 수에 맞춘 값이에요.
 
 | 경로 | 크기 | 태스크 수 상한 |
 |---|:---:|:---:|
-| `getrf`로 분해 | $n = 32$–35 | 5 |
 | 우변 $k \ge 8$의 삼각 풀기 | $n = 24$–34 | 3 |
 | 우변 $k \ge 8$의 삼각 풀기 | $n = 35$–40 | 5 |
 
 ```cpp
 // linalg/cost.hpp
-inline int lu_task_cap(std::int64_t n, std::int64_t k, bool factors) {
-    if (!kLuTaskCapOn) return 0;                       // 실험용 스위치
-    int cap = 0;
-    auto tighten = [&](int c) { cap = cap == 0 ? c : (c < cap ? c : cap); };
-    if (factors && n >= 32 && n <= 35) tighten(5);
-    if (k >= 8 && n >= 24 && n <= 34) tighten(3);
-    if (k >= 8 && n >= 35 && n <= 40) tighten(5);
-    return cap;                                        // 0 = 상한 없음
+inline int lu_task_cap(std::int64_t n, std::int64_t k) {
+    if (!kLuTaskCapOn) return 0;
+    if (k >= 8 && n >= 24 && n <= 34) return 3;
+    if (k >= 8 && n >= 35 && n <= 40) return 5;
+    return 0;
 }
 ```
 
-함수마다 `n`(행렬 크기), `k`(우변 열 수), `factors`(`getrf`를 부르는지)를 넘겨요. `inv`는 우변이 단위행렬이라 `k = n`이고, `matrix_power`는 지수가 음수일 때만(역행렬을 `getrf + getrs`로 구할 때만) 넘겨요. 적용 대상은 `solve`, `inv`, `det`, `slogdet`, `lu`, `lu_solve`, `solve_triangular`, `cholesky_solve`, `matrix_power`(음수 지수), `cond`(±2 외의 `ord`)예요.
+함수마다 `n`(행렬 크기)과 `k`(우변 열 수)를 넘겨요. `inv`는 우변이 단위행렬이라 `k = n`이고, `matrix_power`는 지수가 음수일 때만(역행렬을 구할 때만) 넘겨요. 적용 대상은 `solve`, `inv`, `det`, `slogdet`, `lu`, `lu_solve`, `solve_triangular`, `cholesky_solve`, `matrix_power`(음수 지수), `cond`(±2 외의 `ord`)예요.
 
-`getrf` 규칙이 측정된 범위(32–40)보다 좁게 35까지인 이유는 `lu` 때문이에요. `lu`는 분해 뒤에 L과 U를 따로 풀어 쓰는 일이 있는데, 이 부분은 스레드 수만큼 잘 빨라져요. $n = 36$–40에서 상한을 두면 `lu`가 5–12% 느려졌어요.
+`run_batch`는 상한이 있으면 태스크당 원소 수를 늘려서 태스크 수를 맞춰요. 태스크가 `max_tasks`개를 넘으면 `per = ⌈n / max_tasks⌉`로 둬요. 상한을 끈 것과 켠 것을 같은 자리에서 번갈아 재면, 해당 크기에서 1.1–1.5배 빨라지고(`inv` (100, 32, 32)는 1.39배) 그 밖의 크기에서는 같아요. 태스크 수 상한은 **어느 원소가 어느 스레드에서 도는지만** 바꾸므로 결과에 영향이 없어요.
 
-`run_batch`는 상한이 있으면 태스크당 원소 수를 늘려서 태스크 수를 맞춰요. 태스크가 `max_tasks`개를 넘으면 `per = ⌈n / max_tasks⌉`로 둬요. 상한을 끈 것과 켠 것을 같은 자리에서 번갈아 재면, 해당 크기에서 1.1–1.5배 빨라지고(`inv` (100, 32, 32)는 1.39배) 그 밖의 크기에서는 같아요.
+### 우변 쪽 경로를 피하지 않는 이유
 
-### 이 경로를 피하지 않는 이유
-
-경로 자체를 피하는 방법도 있어요. 우변을 4열씩 나눠 풀면 블록 경로를 타지 않고, $n \approx 32$의 `getrf`를 블록이 아닌 `getf2`로 하면 AMX를 거치지 않아요. 둘 다 빨라지지만(`getrf` 부분은 6배) 결과의 비트가 바뀌어요. 계산 순서가 달라지기 때문이에요. 게다가 "어느 크기에서 다른 루틴을 부른다"는 규칙은 같은 함수의 결과가 행렬 크기에 따라 다른 계산에서 나오게 만들어요. 태스크 수 상한은 **어느 원소가 어느 스레드에서 도는지만** 바꾸므로 결과에 영향이 없어요. 그래서 이쪽을 택했어요.
+우변을 4열씩 나눠 풀면 블록 경로를 타지 않아요. $n, k = 24$–48, $k = 8$에서 1스레드 1.2–2배, 10스레드 4.6–17배 빨라요. 하지만 $k$가 $n$만큼 많으면 1스레드에서 0.4–0.8배로 느리고, $n, k \ge 64$이면 10스레드에서도 블록 경로가 3–7배 나아요. 쓰려면 $n$, $k$, 스레드 수에 따른 규칙이 필요해서 하지 않았어요.
 
 ### 관찰: 일부 크기에서 확장성이 낮아요
 
-배치 512, 10스레드의 속도 향상은 대부분 5–9배인데, `det` $n = 32$(2.1배), `cholesky` $n = 48$(3.2배), `matrix_power` $n \ge 48$(3.6–4.3배)이 낮아요. Accelerate의 블록 알고리즘이 행렬 곱 부분을 AMX에서 돌린다고 보면, 블록 경로가 시작되는 크기에서 확장성이 떨어지는 것과 맞아요. 다만 측정 모양에서 추론한 가설이고, stardust 코드로 바꿀 수 있는 부분이 아니라서 상한을 두지 않았어요. 위의 두 경로는 스레드 수별 시간을 직접 재서 "몇 스레드에서 가장 빠른지"가 분명했기 때문에 상한을 둔 경우예요. 배열 영역의 작은 행렬 배치 `matmul`도 32×32부터 약 2배에서 멈춰요([행렬 곱](/internals/array/matmul/)).
+배치 512, 10스레드의 속도 향상은 대부분 5–9배인데, `cholesky` $n = 48$(3.2배), `matrix_power` $n \ge 48$(3.6–4.3배)이 낮아요. Accelerate의 블록 알고리즘이 행렬 곱 부분을 AMX에서 돌린다고 보면, 블록 경로가 시작되는 크기에서 확장성이 떨어지는 것과 맞아요. 다만 측정 모양에서 추론한 가설이고, stardust 코드로 바꿀 수 있는 부분이 아니라서 상한을 두지 않았어요. 위의 두 경로는 스레드 수별 시간을 직접 재서 "몇 스레드에서 가장 빠른지"가 분명했기 때문에 따로 다룬 경우예요. 배열 영역의 작은 행렬 배치 `matmul`도 32×32부터 약 2배에서 멈춰요([행렬 곱](/internals/array/matmul/)).
 
 ## 작업 메모리: `Scratch`
 
@@ -544,45 +567,48 @@ for (const Failure& f : fails)
 
 ## 합: pairwise와 긴 합
 
-### numpy의 pairwise 합 그대로
+### 배열과 같은 pairwise 트리
 
-linalg의 부동소수점 합은 모두 numpy의 pairwise 합이에요. 대상은 `vecdot`, `trace`, `vector_norm`(1, 2, p), `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)의 합이에요.
+linalg의 부동소수점 합은 모두 pairwise 합이에요. 대상은 `vecdot`, `trace`, `vector_norm`(1, 2, p), `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)의 합이에요.
 
-알고리즘은 배열의 합과 같은 한 벌의 정의(`base/pairwise.hpp`)예요. 128개 이하는 누산기 8개로 더하고, 더 길면 8의 배수에서 반으로 나눠 재귀해요. complex는 잎이 64개이고 실수부, 허수부에 누산기가 4개씩이에요. 합은 `0.0 + 트리`예요. 덧셈 경로의 길이가 $\log n$ 정도라 오차 한계가 $n$이 아니라 $\log n$에 비례해요 [2]. numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘, 같은 순서예요 [3]. 자세한 알고리즘과 오차 분석은 [집계](/internals/array/reductions/)에 있어요.
+트리는 배열의 합과 같은 한 벌의 정의(`base/pairwise.hpp`)예요. 512개 이하는 잎 하나로 더하고, 더 길면 16의 배수에서 반으로 나눠 재귀해요. 합은 `0.0 + 트리`예요. 덧셈 경로의 길이가 $\log n$ 정도라 오차 한계가 $n$이 아니라 $\log n$에 비례해요 [2]. numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘이고, 잎이 더 넓어요 [3]. 자세한 알고리즘과 오차 분석은 [집계](/internals/array/reductions/)에 있어요.
 
-항의 순서는 **논리적 C 순서**예요(마지막 축이 가장 빨리 변해요). 메모리 레이아웃과 상관없는 순서라서 결과도 레이아웃과 상관없어요. 그래서 같은 항이면 numpy와, 그리고 배열의 `sd.sum`과 비트까지 같아요. 예를 들어 `vecdot(x, y)`는 `sum(conj(x) * y, axis=-1)`과, `trace(x)`는 `sum(diagonal(x))`와 같아요.
+잎은 두 가지예요.
+
+- **그냥 합**(`trace`, 1-노름과 $p$-노름, `matrix_norm`의 ±1, ±inf): 배열의 잎(`pairwise::leaf`, `leaf_complex`)이에요. 누산기 16개(complex는 부분마다 8개)예요. 같은 항이면 `sd.sum`과 비트까지 같아요. 예를 들어 `trace(x)`는 `sum(diagonal(x))`와 같아요.
+- **곱의 합**(`vecdot`, 2-노름과 'fro'의 제곱): 곱을 잎 안에서 합에 융합해요(`fma_dot_leaf`, `fma_cdot_leaf`). NEON 레지스터 8개(레인 16개)에 `vfmaq`로 곱-덧셈을 한 번 반올림하고, 레인은 pairwise로 더해요. 곱마다의 반올림 하나가 없어서 오차는 같거나 작아요. 대신 `sum(conj(x) * y)`나 `sqrt(sum(x * x))`와는 끝 비트가 다를 수 있어요.
+
+항의 순서는 **논리적 C 순서**예요(마지막 축이 가장 빨리 변해요). 메모리 레이아웃과 상관없는 순서라서 결과도 레이아웃과 상관없어요.
 
 ### linalg만의 것: 잎 버퍼
 
-배열 영역은 트리에 접근자 `get(i)`를 넘겨 원소를 그 자리에서 읽어요. linalg는 항을 먼저 잎 하나 분량(최대 128개)의 버퍼에 채우고, 그 버퍼를 더해요.
+배열 영역은 트리에 접근자 `get(i)`를 넘겨 원소를 그 자리에서 읽어요. linalg의 그냥 합은 항을 먼저 잎 하나 분량(최대 512개)의 버퍼에 채우고, 그 버퍼를 더해요.
 
 ```cpp
 // linalg/pairwise.hpp (발췌)
 template <class Fill>
 double pairwise(std::int64_t begin, std::int64_t n, Fill& fill) {
     return pairwise::tree(begin, n, [&fill](std::int64_t b, std::int64_t m) {
-        double buf[kPairwiseBlock];            // 잎 하나 = 최대 128개
-        fill(b, m, buf);                       // 항 b … b+m-1을 버퍼에
-        return pairwise_leaf(buf, m);          // 같은 잎 합
+        double buf[kPairwiseBlock];
+        fill(b, m, buf);
+        return pairwise_leaf(buf, m);
     });
 }
 ```
 
-`fill(begin, len, out)`은 항 `begin`부터 `len`개를 차례로 `out`에 써요. 항이 무엇인지는 함수가 정해요. `vecdot`은 `conj(x[i]) * y[i]`(bool/int64를 float64로 바꾸면서), 노름은 `|x|`나 `|x|²`(임의의 strides와 축 수를 걸으면서)예요. linalg의 항은 종류가 많고 출처의 레이아웃도 제각각이에요. 버퍼를 거치면 **더하는 루프가 하나**가 되고, 그 루프는 연속 배열 위의 단순한 루프라서 벡터화돼요.
+`fill(begin, len, out)`은 항 `begin`부터 `len`개를 차례로 `out`에 써요. 항이 무엇인지는 함수가 정해요. 노름은 `|x|`(임의의 strides와 축 수를 걸으면서), `trace`는 대각선 원소예요. linalg의 항은 종류가 많고 출처의 레이아웃도 제각각이에요. 버퍼를 거치면 **더하는 루프가 하나**가 되고, 그 루프는 연속 배열 위의 단순한 루프라서 벡터화돼요.
 
-대가로 메모리를 두 번 지나요(채우기, 더하기). 1스레드의 긴 합은 그만큼 numpy보다 느려요(아래 성능 절).
+곱의 합은 계산 dtype의 연속 입력이면 버퍼 없이 입력을 바로 읽고, 그 밖(strided, 다른 dtype)은 두 버퍼에 값을 바꿔 채운 뒤 같은 잎을 불러요. 잎은 항의 값만의 함수라서 두 길의 비트가 같아요([LAPACK 없이 계산하는 함수](/internals/linalg/basic/)).
 
 ### 짧은 합은 트리를 부르지 않아요
 
-`pairwise_sum`은 $n \le 128$(complex는 64)이면 트리 함수를 부르지 않고 채운 뒤 바로 잎 합을 해요. 3×3 행렬의 열 합처럼 짧은 합이 배치마다 반복되면 재귀 함수 호출 자체가 드러나기 때문이에요. 이 길이 없으면 (1000, 3, 3)의 `matrix_norm(ord=1)`이 1스레드에서 약 1.3배 느려요. 트리를 부르든 안 부르든 잎 하나짜리 합은 같은 덧셈이라 비트는 같아요.
-
-연속 float64 `vecdot`은 한 걸음 더 가서 버퍼도 쓰지 않아요. 잎 합의 접근자가 곱 `a[i] * c[i]`를 그 자리에서 계산해요. 같은 항을 같은 순서로 더하고, 빌드에서 FMA 축약을 꺼 두었으므로(`-ffp-contract=off`) 곱과 덧셈이 하나의 FMA로 합쳐지지 않아 비트가 같아요. 버퍼를 거치면 (1000, 1000)의 행마다 내적이 약 1.3배 느려요.
+`pairwise_sum`은 $n \le 512$(complex는 256)이면 트리 함수를 부르지 않고 채운 뒤 바로 잎 합을 해요. 3×3 행렬의 열 합처럼 짧은 합이 배치마다 반복되면 재귀 함수 호출 자체가 드러나기 때문이에요. 이 길이 없으면 (1000, 3, 3)의 `matrix_norm(ord=1)`이 1스레드에서 17µs, 있으면 13µs예요. 트리를 부르든 안 부르든 잎 하나짜리 합은 같은 덧셈이라 비트는 같아요.
 
 ### 출력 하나의 긴 합은 잎 단위로 나눠요
 
-배치를 나누는 것과 별개로, **출력 하나**의 합이 길면 그 합 자체를 나눠요. 기준은 배열 영역과 같아요. 항이 2¹⁵개(`kSumParallelMin`) 이상이면, 트리를 2¹²항(`kSumLeaf`) 이하의 부분 트리까지 내려가 그것들을 병렬로 더하고 같은 트리 순서로 합쳐요(`pairwise_plan`, `pairwise_run`, `pairwise_combine`).
+배치를 나누는 것과 별개로, **출력 하나**의 합이 길면 그 합 자체를 나눠요. 기준은 배열 영역과 같아요. 항이 2¹⁵개(`kSumParallelMin`) 이상이면, 트리를 2¹²항(`kSumLeaf`) 이하의 부분 트리까지 내려가 그것들을 병렬로 더하고 같은 트리 순서로 합쳐요(`pairwise_plan`, `pairwise_run`, `pairwise_combine`). 곱의 합도 같은 계획을 써요(`pairwise_tree_mt`).
 
-<Fig column caption="원소 100만 개짜리 vecdot의 트리를 나누는 방법(일부). 크기가 4096 이하가 되면 거기서 멈추고 그 부분 트리 하나가 태스크 하나예요. 8단계를 내려가 크기 3904–3912인 잎 256개가 돼요. 트리의 자르는 위치는 직렬 트리와 같아요.">
+<Fig column caption="원소 100만 개짜리 vecdot의 트리를 나누는 방법(일부). 크기가 4096 이하가 되면 거기서 멈추고 그 부분 트리 하나가 태스크 하나예요. 8단계를 내려가 크기 3904–3920인 잎 256개가 돼요. 트리의 자르는 위치는 직렬 트리와 같아요.">
   <Tree
     root={{
       label: '[0, 1000000)', note: '반으로',
@@ -597,28 +623,35 @@ double pairwise(std::int64_t begin, std::int64_t n, Fill& fill) {
   />
 </Fig>
 
-덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서이므로 결과는 직렬과, 그리고 numpy와 비트까지 같아요. 잎을 앞에서부터 4096개씩 자르면 트리의 경계와 어긋나서 덧셈 순서가 바뀌므로, 잎도 트리를 따라 내려가며 만들어요. 이 방법은 [스레드풀과 결정성](/internals/core/threads/)에 자세히 있어요.
+덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서이므로 결과는 직렬과 비트까지 같아요. 잎을 앞에서부터 4096개씩 자르면 트리의 경계와 어긋나서 덧셈 순서가 바뀌므로, 잎도 트리를 따라 내려가며 만들어요. 이 방법은 [스레드풀과 결정성](/internals/core/threads/)에 자세히 있어요.
 
 ```cpp
 // linalg/pairwise.hpp의 pairwise_sum_mt (발췌)
 template <class T, class Fill>
 T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
-    if (n < kSumParallelMin) return pairwise_sum<T>(n, fill);   // 짧으면: 계획도, 할당도 없음
-    const auto plan = pairwise_plan(n, complex);                // 잎들의 (시작, 길이)
-    if (plan.size() == 1) return pairwise_sum<T>(n, fill);      // 풀을 못 쓰면
+    constexpr bool complex = std::is_same_v<T, cplx>;
+    if (n < kSumParallelMin) return pairwise_sum<T>(n, fill);  // short: no plan, no allocation
+    const auto plan = pairwise_plan(n, complex);
+    if (plan.size() == 1) {  // no pool: the serial sum, without the GIL like the split one
+        const parallel::Unlocked unlocked(true);
+        return pairwise_sum<T>(n, fill);
+    }
     std::vector<T> parts(plan.size());
     pairwise_run(plan, [&](std::int64_t t) {
-        auto f = fill;                                          // 태스크마다 복사본
-        parts[t] = detail::pairwise(plan[t].first, plan[t].second, f);
+        auto f = fill;  // a copy per task
+        if constexpr (complex) parts[t] = detail::pairwise_complex(plan[t].first, plan[t].second, f);
+        else parts[t] = detail::pairwise(plan[t].first, plan[t].second, f);
     });
-    return 0. + pairwise_combine(n, complex, parts);
+    const T s = pairwise_combine(n, complex, parts);
+    if constexpr (complex) return {0. + s.real(), 0. + s.imag()};
+    else return 0. + s;
 }
 ```
 
 - **짧은 합에는 아무것도 할당하지 않아요.** 2¹⁵항 미만이면 계획(`std::vector`)을 만들지 않고 바로 직렬 함수로 가요. 출력이 많은 짧은 노름(예: (1000, 3, 3)의 행렬마다 노름)에서 출력마다 벡터를 두세 개 만들면, 할당이 계산보다 비싸지고 나눈 배치의 태스크 안에서는 할당끼리 경쟁까지 해요.
 - `fill`은 여러 스레드에서 동시에 불리므로 공유 상태에 쓰면 안 돼요. 태스크마다 복사본을 써요.
 
-노름은 합과 함께 최댓값, NaN 여부, 0이 아닌 원소 수도 구해요. 이것들은 순서와 상관없는 값이라 잎마다 따로 구해 합쳐요. 단, 잎마다 **자기 칸**(`Side`)에 써요. 공유 변수 하나에 여러 스레드가 쓰면 경쟁이 생기기 때문이에요. 자세한 것은 [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)에 있어요.
+노름은 합과 함께 최댓값, NaN 여부, 0이 아닌 원소 수도 구해요. 이것들은 순서와 상관없는 값이라 잎마다 따로 구해 합쳐요. 단, 잎마다 **자기 칸**에 써요. 공유 변수 하나에 여러 스레드가 쓰면 경쟁이 생기기 때문이에요. 자세한 것은 [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)에 있어요.
 
 `matrix_norm`의 1, inf는 큰 행렬 하나의 열(행) 합들을 태스크로 나눠요. 줄 하나의 합은 직렬과 같고, 그 합들의 max/min은 순서와 상관없으므로 결과가 같아요.
 
@@ -650,6 +683,7 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 
 - `test_parallel.py`: 36개 호출 × float64·complex128 × 배치 세 가지(`(400,)`의 3×3, `(4, 30)`의 5×5, `(48,)`의 16×16, 모두 나눌 만큼 큼)를 스레드 1, 3, 10에서 바이트로 비교해요. 실패 메시지, 긴 합(4만 개, 100만 3개), Python 스레드 4개의 동시 호출도 봐요.
 - `test_optimizations.py`: 배치 결과와 하나씩 부른 결과의 바이트 비교(위의 정렬 테스트)와, 비공개 함수(`_set_tuning`, `_set_lu_task_cap` 등)로 분할·상한을 끈 경로와 켠 경로의 비트 비교를 해요.
+- `test_review_fixes_2.py`: 크기로 고르는 경로의 경계를 봐요. LU 계열의 $n$ = 31, 32, 46, 47과 직사각 `lu`, `solve_banded`의 $n$ = 7, 8, 9, 12에서 답(잔차, numpy와의 허용오차), 레이아웃·배치 위치·스레드 수와 무관한 비트, 특이의 판정을 확인해요. 경계는 비공개 함수(`_set_getf2_range`, `_set_band_dense_max`)로 옮겨 볼 수 있어요.
 
 ## 성능
 
@@ -685,7 +719,7 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 | `vector_norm` (1000000,) | ⟦BENCH vector_norm (1000000,) t10⟧ | ⟦BENCH vector_norm (1000000,) t1⟧ |
 | `vector_norm` inf (1000000,) | ⟦BENCH vector_norm inf (1000000,) t10⟧ | ⟦BENCH vector_norm inf (1000000,) t1⟧ |
 
-1스레드의 긴 합은 numpy보다 느릴 수 있어요. 잎 버퍼를 채우고 다시 읽는 두 단계 때문이에요. numpy 2.5.4의 `np.vecdot`은 BLAS 내적(`np.dot`과 같은 값)을 쓰고, `np.linalg.vector_norm`은 `x*x`를 만든 뒤 numpy의 합을 불러요. 곱과 잎 합을 NEON 레지스터 안에서 한 번에 하면 같은 트리 그대로(비트를 바꾸지 않고) 이 차이를 줄일 수 있지만, 지금 구현은 그렇게 하지 않아요.
+그냥 합은 잎 버퍼를 채우고 다시 읽는 두 단계라, 1스레드의 긴 합은 numpy보다 느릴 수 있어요. 곱의 합(`vecdot`, 2-노름)은 연속 입력이면 곱과 잎 합을 NEON 레지스터 안에서 한 번에 해요. numpy 2.5.4의 `np.vecdot`은 BLAS 내적(`np.dot`과 같은 값)을 쓰고, `np.linalg.vector_norm`은 `x*x`를 만든 뒤 numpy의 합을 불러요.
 
 부분별 비용은 이래요.
 
@@ -703,7 +737,7 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 
 배치와 병렬화는 값을 바꾸지 않아요. 원소 하나의 결과는 그 행렬을 혼자 불렀을 때와 비트까지 같고, 스레드 수, 배치 안의 위치, 분할 방식과 상관없어요. 정확도는 각 함수가 부르는 LAPACK 루틴이 정해요(각 알고리즘 글).
 
-합은 pairwise 트리라서 $n$개 항의 합의 오차가 $\gamma_h \sum |x_i|$ 이하이고, $h$는 덧셈 경로의 최대 길이로 대략 $24 + \lceil \log_2(n/128) \rceil$이에요 [2]. 원소 100만 개면 $h \le 37$ 정도라, 순차 합의 $h = n - 1$보다 수만 배 작아요. 병렬로 나눠도 같은 트리라서 이 한계도, 결과 비트도 그대로예요.
+합은 pairwise 트리라서 $n$개 항의 합의 오차가 $\gamma_h \sum |x_i|$ 이하이고, $h$는 덧셈 경로의 최대 길이로 대략 $49 + \lceil \log_2(n/512) \rceil$이에요 [2]. 원소 100만 개면 $h \le 60$ 정도라, 순차 합의 $h = n - 1$보다 수만 배 작아요. 병렬로 나눠도 같은 트리라서 이 한계도, 결과 비트도 그대로예요.
 
 ## 참고 문헌
 

@@ -2,7 +2,7 @@
 title: 원소별 연산과 리덕션
 group: 연산
 order: 1
-summary: 원소별 연산과 리덕션이 컬럼 안에서 어떻게 계산되는지 설명해요. dtype과 연산 종류를 행 루프 밖에서 골라 루프를 분기 없이 벡터화하고, 결측 자리를 0으로 둔 덕분에 float 합은 NA를 건너뛰지 않고도 numpy와 비트까지 같아요.
+summary: 원소별 연산과 리덕션이 컬럼 안에서 어떻게 계산되는지 설명해요. dtype과 연산 종류를 행 루프 밖에서 골라 루프를 분기 없이 벡터화하고, 결측 자리를 0으로 둔 덕분에 float 합은 NA를 건너뛰는 분기 없이 배열 영역의 합과 비트까지 같아요.
 seeAlso: [columns, parallel, csv, groupby-sort, performance, overview]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -28,7 +28,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 1. **행 루프 안에서 아무것도 고르지 않아요.** dtype, 스칼라인지 컬럼인지, 연산 종류는 루프에 들어가기 전에 템플릿 인자로 정해요. 그러면 루프 몸통이 분기 없는 한 줄이 되어 컴파일러가 NEON으로 벡터화해요. 행마다 고르는 구현은 같은 일을 하는데 아래 표들처럼 커널에 따라 1.5배에서 10배 넘게 느려요.
 2. **결측은 비트맵으로, NA 자리의 값은 언제나 0으로 둬요.** 두 입력의 비트맵은 바이트 단위 AND로 합치고, 커널은 NA인지 묻지 않고 모든 행을 계산한 뒤 마지막에 NA 자리를 0으로 지워요. NA 자리가 0이라는 약속 덕분에 float 합은 NA를 건너뛰는 분기 없이 그냥 더해요.
-3. **numpy·pandas와 비트까지 맞춰야 하는 곳은 같은 알고리즘을 같은 순서로 써요.** float 합·평균·분산은 numpy의 pairwise 합, float `//`와 `%`는 numpy의 `npy_divmod`, float min/max는 IEEE 754-2019의 minimum/maximum, float → 문자열은 Python `str(float)`이에요.
+3. **잘 알려진 알고리즘을 그대로 써요.** float `//`와 `%`는 numpy의 `npy_divmod`, float min/max는 IEEE 754-2019의 minimum/maximum, float → 문자열은 Python `str(float)`이고, 지금 셋 다 상대와 비트까지 같아요. float 합·평균·분산은 모든 영역이 함께 쓰는 pairwise 합이에요. numpy와 같은 알고리즘에 잎이 넓어서 numpy와는 마지막 자리가 다를 수 있고, 배열 영역의 합과는 비트까지 같아요.
 4. **문자열 → 숫자는 엄격한 ASCII 문법 하나예요.** `astype`과 `read_csv`가 같은 코드를 써서, 같은 글자는 어디서 읽어도 같은 값이 되거나 같은 에러가 나요.
 
 `s + 1` 한 번이 지나는 길은 이래요.
@@ -559,52 +559,53 @@ dtype: float64
 
 ### float 합: pairwise 합
 
-float의 `sum`, `mean`, `var`, `std`는 모두 numpy와 같은 **pairwise 합**으로 더해요 [1, 11]. 128개 이하의 구간은 누산기 8개가 8칸 간격으로 나눠 더하고(서로 의존하지 않는 사슬 8개), 더 긴 구간은 반(8의 배수로 내림)씩 잘라 재귀해요. 반올림 오차의 한계가 $n$이 아니라 $\log_2 n$에 비례하고, 사슬 8개가 덧셈 장치를 쉬지 않게 해요. 알고리즘, 트리 모양, 오차 한계의 유도, 여러 스레드로 같은 비트를 내는 방법(부분 트리를 태스크로 돌리고 같은 트리 모양으로 합치기)은 [집계](/internals/array/reductions/)에 자세히 있어요. 정의는 모든 영역이 함께 쓰는 `base/pairwise.hpp` 한 벌이고, frame은 항을 접근자 람다로 넘겨요.
+float의 `sum`, `mean`, `var`, `std`는 모두 **pairwise 합**으로 더해요 [1, 11]. 512개 이하의 구간은 누산기 16개가 16칸 간격으로 나눠 더하고(서로 의존하지 않는 사슬 16개), 더 긴 구간은 반(16의 배수로 내림)씩 잘라 재귀해요. 반올림 오차의 한계가 $n$이 아니라 $\log_2 n$에 비례하고, 사슬 16개가 덧셈 장치를 쉬지 않게 해요. numpy의 pairwise 합과 같은 알고리즘이고 잎만 넓어요(numpy는 누산기 8개, 블록 128개). 그래서 numpy와는 마지막 자리가 다를 수 있어요. 알고리즘, 트리 모양, 오차 한계의 유도, 여러 스레드로 같은 비트를 내는 방법(부분 트리를 태스크로 돌리고 같은 트리 모양으로 합치기)은 [집계](/internals/array/reductions/)에 자세히 있어요. 정의는 모든 영역이 함께 쓰는 `base/pairwise.hpp` 한 벌이고, frame은 항을 접근자 람다로 넘겨요.
 
 ```cpp
-// ops/pairwise.hpp (발췌)
+// csrc/frame/ops/pairwise.hpp (발췌)
 inline constexpr std::int64_t kPairwiseLeaf = 1 << 14;    // 병렬 태스크 하나의 최대 항 수
 
-template <class Get>
-double pairwise_sum_parallel(std::int64_t n, const Get& get, std::int64_t cost = 1) {
-    if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return pairwise_sum(0, n, get);
+template <class Tree>
+double pairwise_parallel(std::int64_t n, const Tree& tree, std::int64_t cost) {
+    if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return tree(0, n);
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    run_unlocked(part.size(), [&](std::int64_t t) {          // GIL을 놓고 parallel_for
-        part[t] = pairwise_sum(leaves[t].first, leaves[t].second, get);
+    run_unlocked(static_cast<std::int64_t>(part.size()), [&](std::int64_t t) {   // GIL을 놓고 parallel_for
+        const auto k = static_cast<std::size_t>(t);
+        part[k] = tree(leaves[k].first, leaves[k].second);
     });
     return pairwise::combine(n, kPairwiseLeaf, part);
 }
 
 template <class Get>
-double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {
-    return 0.0 + pairwise_sum_parallel(n, get, cost);       // numpy reduce는 항등원 0.0에서 시작
+double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {   // 항등원 0.0에서 시작
+    return 0.0 + pairwise_parallel(n, [&get](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); }, cost);
 }
 ```
 
 - frame의 태스크 크기는 $2^{14}$항, 배열은 4,096항이에요. 둘 다 같은 트리를 서로 다른 높이에서 자른 것이라, 잎의 덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서예요. 그래서 비트가 같아요. frame은 병렬로 나누는 기준값이 $2^{17}$행이라 태스크도 크게 잡았어요([병렬화와 결정성](/internals/frame/parallel/)).
-- 합은 `0.0 +`에서 시작해요. numpy의 `add.reduce`는 항등원 `+0.0`에서 시작해요. `np.sum([-0.0] * 9)`가 `-0.0`이 아니라 `+0.0`인 이유이고, stardust도 같은 시작으로 같은 값을 내요.
-- 테스트(`tests/frame/test_reduce.py`)는 길이 0~5,000의 무작위 입력(NA 포함, `-0.0`, 아주 작은 값 포함)에서 `sum`, `mean`, `var`, `std`를 numpy로 한 단계씩 재현한 값과 비트 단위로 비교하고, NA가 없으면 pandas와도 비교해요.
+- 합은 `0.0 +`에서 시작해요. 배열 영역과 numpy의 `add.reduce`도 항등원 `+0.0`에서 시작해요. `np.sum([-0.0] * 9)`가 `-0.0`이 아니라 `+0.0`인 이유이고, stardust도 같은 시작으로 같은 값을 내요.
+- 테스트(`tests/frame/test_reduce.py`)는 길이 0~5,000의 무작위 입력(NA 포함, `-0.0`, 아주 작은 값 포함)에서 `sum`, `mean`, `var`, `std`를 같은 값의 배열에 쓴 `sd.sum`, `sd.mean`, `sd.var`, `sd.std`와 비트 단위로 비교해요. numpy, pandas와는 반올림 오차의 허용 범위 안에서 비교하고, `-0.0`과 NaN처럼 반올림이 아닌 동작은 비트로 비교해요.
 
 ### NA 자리의 0이 하는 일
 
 float 합의 접근자는 그냥 `v[i]`예요. NA 행을 건너뛰지 않고 그 자리의 `0.0`을 더해요.
 
 ```cpp
-// reduce.cpp: float sum
+// csrc/frame/ops/reduce.cpp, float sum
 const double* v = c.data<double>();
 return scalar(DType::Float64, float_sum(c.length, [v](std::int64_t i) { return v[i]; }));
 ```
 
 `0.0`을 더해도 합은 변하지 않으니(유일한 예외인 `-0.0 + 0.0 = +0.0`은 어차피 `0.0 +` 시작이 같은 결과를 내요) 결과는 "NA를 뺀 값의 합"이에요. 이렇게 단순하게 두면 좋은 점이 셋이에요.
 
-1. 분기가 없어요. NA 여부를 묻지 않으니 NA가 있든 없든 같은 루프이고, 같은 속도예요. NA 10%인 1M 행 float `sum`은 86µs예요(1스레드, Apple M4 Pro). pandas의 nullable `Float64`는 마스크로 값을 골라내요.
+1. 분기가 없어요. NA 여부를 묻지 않으니 NA가 있든 없든 같은 루프이고, 같은 속도예요. NA 10%인 1M 행 float `sum`은 86µs예요(1스레드, Apple M4 Pro, 잎의 누산기를 8개로 두고 잰 값). pandas의 nullable `Float64`는 마스크로 값을 골라내요.
 2. 트리가 길이로만 정해져요. NA를 빼고 남은 값만 모아 더하면 뒤쪽 값의 트리 위치가 NA의 개수와 위치에 따라 바뀌어요. 0을 남겨 두면 트리는 $n$만으로 정해지고, 병렬 계획(`pairwise::plan`)도 $n$만 보면 돼요. 그래서 스레드 수와 상관없는 결정성이 NA가 있어도 그대로 성립해요.
-3. 정답이 하나로 정해져요. 결과는 "NA 자리에 0.0을 넣은 배열의 `np.sum`"과 비트까지 같아요.
+3. 정답이 하나로 정해져요. 결과는 "NA 자리에 0.0을 넣은 배열의 `sd.sum`"과 비트까지 같아요.
 
 pandas 3.1.1과의 관계는 dtype에 따라 달라요.
 
-- **numpy 기반 `float64`(결측이 NaN):** `nanops.nansum`이 결측 자리를 0으로 채운 배열(`_get_values(..., fill_value=0)`)의 `sum`을 불러요 [10]. 같은 생각이라 stardust의 NA 있는 합과 비트까지 같아요. `mean`과 `var(ddof=0)`도 같은 연산을 같은 순서로 해서 비트까지 같아요.
+- **numpy 기반 `float64`(결측이 NaN):** `nanops.nansum`이 결측 자리를 0으로 채운 배열(`_get_values(..., fill_value=0)`)의 `sum`을 불러요 [10]. 같은 생각이라 stardust의 NA 있는 합과 반올림 오차 안에서 같아요. 덧셈 트리의 잎 폭이 달라서 마지막 자리는 다를 수 있어요. `mean`과 `var(ddof=0)`도 같아요.
 - **nullable `Float64`(결측이 마스크):** `masked_reductions`가 `np.sum(values, where=~mask)`를 불러요. numpy 2.5.4의 `where=` 리덕션은 마스크가 True인 연속 구간마다 pairwise 합을 구해 그것을 차례로 더한 것과 비트까지 같은 값을 내요. 구간 사이는 순차 합이라서 덧셈 경로가 구간 수만큼 길어져요. NA 비율이 $p$이면 연속 구간은 약 $n\,p\,(1-p)$개, 1M 행에 NA 10%면 약 9만 개예요. 그래서 결과의 비트가 stardust와 다르고, 오차도 커요.
 
 [1, 2)의 균등분포 1M 개에 NA 10%를 섞어 `math.fsum`(올바르게 반올림된 정확한 합)과 비교하면, stardust의 합은 `fsum`과 같거나 상대오차 $2 \times 10^{-16}$ 이하(마지막 비트 하나)이고, pandas `Float64`의 합은 입력에 따라 상대오차가 $10^{-16}$에서 $2 \times 10^{-14}$까지 퍼져요(시드 0~5).
@@ -613,7 +614,9 @@ pandas 3.1.1과의 관계는 dtype에 따라 달라요.
 
 - **float64**: `float_sum` / NA가 아닌 개수.
 - **bool**: True의 개수(정수 합) / 개수.
-- **int64**: 배열 영역의 `sd.sum(x, dtype=sd.float64)` / 개수예요(`mean_of` → `interop.cpp`의 `array_sum_float64`). 컬럼 위에 읽기 전용 배열 뷰를 씌워 배열의 리덕션을 그대로 불러요. NA 행은 0이라 그대로 더해요. 그래서 `Series.mean()`과 `sd.mean(s.to_array())`가 비트까지 같아요. 배열의 형변환이 있는 합은 4,096원소 버퍼 단위로 접혀서, 긴 컬럼에서는 numpy와 마지막 비트가 다를 수 있어요([집계](/internals/array/reductions/)). int64 평균만 frame의 pairwise가 아니라 배열의 합을 쓰는 것은, 같은 데이터의 평균이 두 영역에서 같은 비트로 나오게 하려는 거예요.
+- **int64**: 정확한 정수 합을 한 번 반올림해 개수로 나눠요(`mean_of` → `int_sum`, `csrc/base/int_sum.hpp`의 `IntSum`). 값을 위 32비트와 아래 32비트로 나눠 int64 두 개에 더하고(벡터화되는 정수 덧셈 둘), 청크의 합은 `__int128`로 합쳐요. 정수 덧셈이라 청크를 어느 순서로 합쳐도 비트가 같아요. 합을 double로 한 번 반올림하고 NA가 아닌 개수로 한 번 나눠요(`sd::mean_of`). NA 행은 0이라 그대로 더해요.
+  - 배열의 `sd.mean(int 배열)`도 같은 `IntSum`을 써요. 그래서 `Series.mean()`과 `sd.mean(s.to_array())`가 비트까지 같고, groupby의 그룹 평균도 같은 합이라 그룹 크기와 상관없이 Series와 같아요.
+  - $2^{53}$을 넘는 값도 더하기 전에 반올림되지 않아요. numpy와 pandas는 값마다 float64로 바꿔 더하므로 큰 값이나 긴 컬럼에서는 마지막 자리가 다를 수 있고, stardust 쪽이 더 정확해요. 예를 들어 `[2**53 + 1, 1]`의 평균은 stardust가 참값 `4503599627370497.0`, numpy가 `4503599627370496.0`이에요.
 
 ### `var`와 `std`: 두 번 훑기
 
@@ -623,24 +626,28 @@ $$
 \bar x = \frac{1}{N} \sum_{i \in \text{값}} x_i, \qquad \operatorname{var} = \frac{1}{N - c} \sum_{i \in \text{값}} (x_i - \bar x)^2
 $$
 
-교과서의 한 번 훑는 식 $\sum x_i^2 - (\sum x_i)^2/N$은 큰 두 수의 차라서 평균이 표준편차보다 크면 자릿수가 사라져요. 두 번 훑는 방법의 오차 분석(Chan, Golub, LeVeque [6])과 예는 [집계](/internals/array/reductions/)에 있어요. 한 번 훑는 Welford 갱신식도 쓰지 않아요. numpy, pandas와 다른 연산을 하니 비트가 같을 수 없어요.
+교과서의 한 번 훑는 식 $\sum x_i^2 - (\sum x_i)^2/N$은 큰 두 수의 차라서 평균이 표준편차보다 크면 자릿수가 사라져요. 두 번 훑는 방법의 오차 분석(Chan, Golub, LeVeque [6])과 예는 [집계](/internals/array/reductions/)에 있어요. 한 번 훑는 Welford 갱신식도 쓰지 않아요. 두 번 훑기는 numpy, pandas, 배열 영역이 쓰는 식이기도 해요.
 
-두 번째 훑기에서는 NA 행을 따로 다뤄야 해요. NA 행의 값은 0이지만 $(0 - \bar x)^2$은 0이 아니니, NA 행을 골라 0으로 바꿔요.
+두 번째 훑기에서는 NA 행을 따로 다뤄야 해요. NA 행의 값은 0이지만 $(0 - \bar x)^2$은 0이 아니니, NA 행의 편차를 골라 0으로 바꿔요. 제곱은 잎에서 `fma(d, d, acc)` 하나로 더해요(`squares_sum`, `pairwise::leaf_squares`). 곱과 덧셈 사이의 반올림이 하나 줄고, 배열 영역의 `var`와 같은 계산이라 NA가 없으면 `sd.var(s.to_array())`와 비트까지 같아요.
 
 ```cpp
-// reduce.cpp (발췌)
+// csrc/frame/ops/reduce.cpp (발췌)
 const std::vector<std::uint8_t> m = valid_bytes(c);          // 행마다 1바이트 (NA 없으면 모두 1)
-const double ssd = float_sum(c.length, [&](std::int64_t i) {
-    const double d = as_double(c, i) - mean;
-    return m[i] ? d * d : 0.0;                               // 선택이지 분기가 아니에요
-}, 4);
+const double ssd = squares_sum(
+    c.length,
+    [&](std::int64_t i) {
+        const double d = as_double(c, i) - mean;
+        return m[i] ? d : 0.0;                               // 선택이지 분기가 아니에요
+    },
+    4
+);
 const double var = ssd / (static_cast<double>(count) - correction);
 ```
 
-- `m[i] ? d * d : 0.0`은 `d * d`를 언제나 계산하고 고르는 식이라 분기 없는 `FCSEL`로 컴파일돼요. 비트맵을 바이트로 펼쳐 둔 덕분이에요.
-- 항은 접근자에서 바로 계산되어 트리로 흘러가므로 편차 제곱 배열을 만들지 않아요. pandas의 `nanops.nanvar`는 값 배열을 복사하고(결측 자리를 0으로), `(avg - values) ** 2`로 새 배열을 만들고, 결측 자리를 다시 0으로 바꾼 뒤 더해요. 값으로는 같은 연산을 같은 순서로 하므로 결과가 비트까지 같고, 메모리 왕복은 stardust가 적어요.
+- `m[i] ? d : 0.0`은 `d`를 언제나 계산하고 고르는 식이라 분기 없는 `FCSEL`로 컴파일돼요. 비트맵을 바이트로 펼쳐 둔 덕분이에요.
+- 항은 접근자에서 바로 계산되어 트리로 흘러가므로 편차 제곱 배열을 만들지 않아요. pandas의 `nanops.nanvar`는 값 배열을 복사하고(결측 자리를 0으로), `(avg - values) ** 2`로 새 배열을 만들고, 결측 자리를 다시 0으로 바꾼 뒤 더해요. pandas는 제곱과 덧셈을 따로 반올림하고 트리의 잎 폭도 달라서 마지막 자리가 다를 수 있어요. 메모리 왕복은 stardust가 적어요.
 - `cost = 4`는 이 항이 덧셈 한 번보다 4배 정도 일이 많다는 뜻이에요. 병렬로 나누는 기준을 $2^{17} / 4$행으로 낮춰요. 트리는 바꾸지 않아요.
-- `correction`은 배열처럼 int나 float를 받아 double로 계산해요. 기본값은 0(모분산)이고, pandas의 기본값 `ddof=1`과 달라요. NA가 없고 같은 자유도를 주면 pandas와 비트까지 같아요.
+- `correction`은 배열처럼 int나 float를 받아 double로 계산해요. 기본값은 0(모분산)이고, pandas의 기본값 `ddof=1`과 달라요. NA가 없고 같은 자유도를 주면 pandas와 반올림 오차 안에서 같아요.
 
 ### float `min`/`max`: IEEE 754-2019의 minimum/maximum
 
@@ -977,15 +984,14 @@ pandas 3.1.1, Polars 2.1.0과 비교한 시간이에요(Apple M4 Pro). Polars는
 | float `+ - * /`, 비교 | numpy, pandas | `-ffp-contract=off`로 FMA 합치기를 막아요 |
 | float `//`, `%` | numpy, pandas | `npy_divmod`의 단계 그대로 |
 | int64 산술 | numpy, Python (wrap, 바닥 나눗셈) | 0으로 나누기와 음수 지수만 NA |
-| float `sum`, `mean`, `var`, `std` | numpy를 한 단계씩 재현한 값 | 언제나. NA 자리는 0.0으로 |
-| 〃 | pandas `float64` | 언제나(같은 자유도). nullable `Float64`와는 NA가 없을 때만 |
-| int64 `mean` | 배열 영역의 `sd.mean` | 언제나. numpy와는 짧은 컬럼에서 |
+| float `sum`, `mean`, `var`, `std` | 배열 영역의 `sd.sum`, `sd.mean`, `sd.var`, `sd.std` | 언제나. NA가 있으면 NA 자리에 0.0을 넣은 배열의 합. numpy, pandas와는 반올림 오차 안(마지막 자리가 다를 수 있음) |
+| int64 `mean` | 배열 영역의 `sd.mean`, groupby의 그룹 평균 | 언제나. 정확한 정수 합이라 numpy, pandas와는 마지막 자리가 다를 수 있음 |
 | float `min`, `max` | numpy | NaN 전파, `-0.0 < 0.0` |
 | float → string | Python `str(float)` | 모든 double |
 | string → float | Python `float(text)` | 받는 문법 안의 모든 글자 |
 | 모든 결과 | 1스레드의 결과 | 스레드 수와 무관 (청크와 트리가 길이로만 정해짐) |
 
-float 합의 오차 한계는 $\gamma_h \sum |x_i|$, $h \lesssim 24 + \lceil \log_2(n/128) \rceil$이에요(1M 행이면 $h \lesssim 37$, 유도는 [집계](/internals/array/reductions/)). NA 자리의 0은 덧셈 경로를 늘리지 않아요. 트리의 모양이 NA와 상관없이 길이로만 정해지기 때문이에요.
+float 합의 오차 한계는 $\gamma_h \sum |x_i|$, $h \lesssim 49 + \lceil \log_2(n/512) \rceil$이에요(1M 행이면 $h \lesssim 60$). 잎 하나($m \le 512$)에서 항 하나가 거치는 덧셈은 16의 배수인 잎이면 최대 $31 + 4 = 35$번(누산기 하나에 32항, 누산기 16개를 합치는 4단계), 나머지가 있는 잎이면 최대 $30 + 4 + 15 = 49$번이에요. 유도의 자세한 과정은 [집계](/internals/array/reductions/)에 있어요. NA 자리의 0은 덧셈 경로를 늘리지 않아요. 트리의 모양이 NA와 상관없이 길이로만 정해지기 때문이에요.
 
 ## 참고 문헌
 

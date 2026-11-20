@@ -253,7 +253,7 @@ array([[11, 22, 33],
 >>> row += y
 Traceback (most recent call last):
     ...
-ValueError: operand has more dimensions than the iteration shape
+ValueError: operand of shape (2, 3) cannot be broadcast to (3,)
 ```
 
 대입도 같아요. 오른쪽 값이 선택한 영역의 모양으로 늘어날 수 있어야 해요.

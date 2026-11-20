@@ -173,6 +173,14 @@ import Button from './Button.astro';
   }
   .hero[data-sim] .hero__sim {
     display: flex;
+    transition:
+      opacity 1.6s var(--ease),
+      visibility 0s linear 1.6s;
+  }
+  /* The run has settled into the steady galaxy: the clock is no longer news. */
+  .hero[data-sim-done] .hero__sim {
+    opacity: 0;
+    visibility: hidden;
   }
   .sim {
     display: flex;

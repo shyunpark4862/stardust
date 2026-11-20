@@ -13,7 +13,7 @@ params:
     kind: positional-only
     desc: "방정식계 fun(x). x는 새 float64 sd.ndarray (n,)이고, 길이 n의 1차원 값(sd.ndarray, 실수의 시퀀스, numpy 배열)을 돌려줘요. jac=True이면 (F, J) 쌍을 돌려줘요."
   - name: x0
-    type: ndarray 또는 실수의 시퀀스
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series
     kind: positional-only
     desc: 시작점. 1차원이고 비어 있지 않으며 유한해야 해요. 길이가 변수와 식의 수 n이에요.
   - name: method
@@ -23,7 +23,7 @@ params:
   - name: jac
     type: 호출 가능한 객체, True, 또는 None
     kind: keyword-only
-    desc: "야코비안. 호출 가능한 객체면 jac(x)가 (n, n)을 돌려줘요(n = 1이면 (1,)도). True면 fun이 (F, J)를 함께 돌려줘요. None(기본값)이면 앞쪽 차분이에요."
+    desc: "야코비안. 호출 가능한 객체면 jac(x)가 (n, n)을 돌려줘요(n = 1이면 (1,)이나 수 하나도). True면 fun이 (F, J)를 함께 돌려줘요. None(기본값)이면 앞쪽 차분이에요."
   - name: tol
     type: float 또는 None
     kind: keyword-only
@@ -216,7 +216,14 @@ The iteration is not making good progress, as measured by the
 (True, 9, 1)
 ```
 
-`jac=True`면 `fun`이 $(F, J)$를 함께 돌려줘요. $F$와 $J$가 같은 계산을 나눠 쓸 때 편해요. 마지막으로 부른 점의 $F$와 $J$를 기억해 두고, 다른 점에서만 다시 불러요.
+`jac=True`면 `fun`이 $(F, J)$를 함께 돌려줘요. $F$와 $J$가 같은 계산을 나눠 쓸 때 편해요. 마지막으로 부른 점의 $F$와 $J$를 기억해 두고, 다른 점에서만 다시 불러요. `jac=True`인데 $F$만 돌려주면 쌍이 아니라서 `TypeError`예요.
+
+```python
+>>> sd.optimize.root(lambda x: [x[0] - 1, x[1] - 2], [0.0, 0.0], jac=True)
+Traceback (most recent call last):
+    ...
+TypeError: root(): 'fun' must return a pair (F, J) when jac=True, not a list of 2 numbers
+```
 
 ## 허용오차와 옵션
 
@@ -260,7 +267,7 @@ array([1.5174898689910765, 1.3027758054254226], dtype=float64)
 (21, 14)
 ```
 
-`band`와 `eps`는 차분에만 쓰는 옵션이라 `jac`과 함께 주면 `ValueError`예요. `factor`와 `diag`는 양수여야 해요.
+`band`와 `eps`는 차분에만 쓰는 옵션이라 `jac`과 함께 주면 `ValueError`예요. `factor`와 `diag`는 양수여야 해요. 옵션은 모두 `fun`을 부르기 전에 검사해요. 값이 `None`인 옵션은 기본값을 써요.
 
 ```python
 >>> sd.optimize.root(F, [1.0, 1.0], jac=J, options={'eps': 1e-10})
@@ -326,11 +333,11 @@ ValueError: root(): 'fun' is not finite at 'x0'
 | 변수에 경계가 있음 | `least_squares(method='trf')`로 ‖F‖²를 줄이고 `fun`이 0인지 확인 |
 | 변수 하나 | [root_scalar](/api/optimize/root_scalar/), 같은 식을 여러 매개변수로 풀면 [find_root](/api/optimize/find_root/) |
 
-정방 계에서 `root(method='lm')`과 `least_squares(method='lm')`은 같은 커널이에요. 해석적 `jac`을 주고 허용오차를 맞추면 같은 점을 지나 같은 x에 닿아요. 다른 점은 셈과 멈춤 번호의 꼴이에요(`least_squares`는 결과의 `jac`을 위해 x에서 야코비안을 한 번 더 구하고, `status`를 자기 번호로 바꿔요). 차분일 때는 간격의 규칙이 달라서(`root`는 MINPACK의 $\sqrt{\varepsilon}\,\lvert x_j\rvert$, `least_squares`는 $\sqrt{\varepsilon}\max(1, \lvert x_j\rvert)$) 경로가 끝자리에서 갈려요.
+정방 계에서 `root(method='lm')`과 `least_squares(method='lm')`은 같은 커널이에요. 해석적 `jac`을 주고 허용오차를 맞추면 같은 점을 지나 같은 x에 닿아요. `root`의 `gtol` 기본값 0은 기울기 판정을 끈다는 뜻인데, `least_squares`의 `'lm'`은 허용오차가 모두 기계 엡실론 이상이어야 해서 가장 작은 값 $\varepsilon$을 줬어요. 다른 점은 셈과 멈춤 번호의 꼴이에요(`least_squares`는 결과의 `jac`을 위해 x에서 야코비안을 한 번 더 구하고, `status`를 자기 번호로 바꿔요). 차분일 때는 간격의 규칙이 달라서(`root`는 MINPACK의 $\sqrt{\varepsilon}\,\lvert x_j\rvert$, `least_squares`는 $\sqrt{\varepsilon}\max(1, \lvert x_j\rvert)$) 경로가 끝자리에서 갈려요.
 
 ```python
 >>> a = sd.optimize.root(F, [1.0, 1.0], method='lm', jac=J)
->>> b = sd.optimize.least_squares(F, [1.0, 1.0], method='lm', jac=J, ftol=1.49012e-08, xtol=1.49012e-08, gtol=0.0)
+>>> b = sd.optimize.least_squares(F, [1.0, 1.0], method='lm', jac=J, ftol=1.49012e-08, xtol=1.49012e-08, gtol=2.220446049250313e-16)
 >>> a.x.tolist() == b.x.tolist(), (a.n_iter, a.njev), (b.n_iter, b.njev)
 (True, (5, 5), (5, 6))
 ```
@@ -342,7 +349,7 @@ ValueError: root(): 'fun' is not finite at 'x0'
 ## scipy를 아는 분께
 
 - 방법은 `'hybr'`와 `'lm'`뿐이에요. `broyden1`, `broyden2`, `anderson`, `linearmixing`, `diagbroyden`, `excitingmixing`, `krylov`, `df-sane`은 없어요. `fsolve`도 없어요(`root`의 `'hybr'`가 같은 루틴이에요). 방법 이름은 소문자만 받아요.
-- `'hybr'`와 `'lm'` 모두 scipy 1.18.1과 같은 점에서 `fun`·`jac`을 같은 순서로 불러, `x`, `fun`, `status`, `message`가 비트까지 같아요(사용자 함수가 같은 값을 돌려줄 때).
+- `'hybr'`와 `'lm'` 모두 scipy 1.18.1과 같은 MINPACK 알고리즘이에요. 지금은 같은 점에서 `fun`·`jac`을 같은 순서로 불러 `x`, `fun`, `status`, `message`가 비트까지 같아요(사용자 함수가 같은 값을 돌려줄 때; 약속은 아니에요).
 - **`nfev`가 2 적어요.** scipy는 x0에서 `fun`을 두 번 더 부르고(모양 확인과 감싸개) 그것도 세요. 호출 수의 상한 `maxfev`는 `max_nfev`라는 이름이에요(`'lm'`의 scipy 이름 `maxiter`도 실제로는 호출 수의 상한이라 여기서는 `max_nfev`예요).
 - 결과에 `n_iter`가 있고, 차분일 때도 `njev`가 있어요. scipy가 주는 MINPACK의 내부 값(`fjac`, `r`, `qtf`, `'lm'`의 `ipvt`, `cov_x`)은 없어요. `success`는 `converged`예요.
 - 받지 않는 것: `args`, `callback`, `col_deriv`(야코비안은 늘 (n, n), 행이 식이에요). 모르는 옵션 키는 경고가 아니라 `ValueError`이고, `band`·`eps`를 `jac`과 함께 주거나 `factor`·`diag`가 양수가 아니면 `ValueError`예요(scipy는 무시하거나 status 0이에요).

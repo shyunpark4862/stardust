@@ -624,7 +624,7 @@ array([[7.209971860239741, 8.029501823970785]], dtype=float64)
 
 ### 완전 적합
 
-점의 절반 넘게(MM은 (n + p)/2개 이상, p는 계수의 수)가 한 직선 위에 정확히 있으면 척도가 0이 돼요. 그러면 반복을 멈추고 그 직선을 내요. 공분산은 0(`bse`, `pvalues`가 0)이고, 가중치는 직선 위의 점이 1, 나머지가 0이에요. 직선 위에 있다는 것은 반올림 오차 수준 안에서 맞는다는 뜻이에요.
+점의 절반 넘게(MM은 (n + p)/2개 이상, p는 계수의 수)가 한 직선 위에 정확히 있으면 척도가 0이 돼요. 그러면 반복을 멈추고 그 직선을 내요. 공분산은 0이라 `bse`가 0이고, `tvalues`와 `pvalues`는 NaN이에요([완전 적합](/api/regression/collinearity/#완전-적합)의 규칙). 가중치는 직선 위의 점이 1, 나머지가 0이에요. 직선 위에 있다는 것은 반올림 오차 수준 안에서 맞는다는 뜻이에요.
 
 ```python
 >>> xp = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
@@ -670,14 +670,14 @@ huber의 가중치는 0이 되지 않아서, 직선 밖의 점도 매번 조금�
 
 ### y가 모두 같을 때, 점이 계수 수만큼일 때
 
-절편이 있고 y가 모두 같으면 반복하지 않고 정확한 답 (y₀, 0, …, 0)을 내요. 척도는 0, `n_iter`는 0, `converged`는 True예요. 기울기는 정확히 0이라 t가 0/0이 되어 NaN이고, 절편의 t는 inf, p는 0이에요(완전 적합의 규칙). 반올림이 남긴 아주 작은 기울기로 가짜 유의성이 나오지 않아요. MM도 같아요.
+절편이 있고 y가 모두 같으면 반복하지 않고 정확한 답 (y₀, 0, …, 0)을 내요. 척도는 0, `n_iter`는 0, `converged`는 True예요. 완전 적합의 규칙대로 t와 p는 절편까지 모두 NaN이에요. 반올림이 남긴 아주 작은 기울기로 가짜 유의성이 나오지 않아요. MM도 같아요.
 
 ```python
 >>> rc = sd.regression.rlm([4.0] * 12, x)
 >>> rc.params, rc.scale, rc.n_iter, rc.converged
 (array([4.0, 0.0], dtype=float64), 0.0, 0, True)
 >>> rc.tvalues, rc.pvalues
-(array([inf, nan], dtype=float64), array([0.0, nan], dtype=float64))
+(array([nan, nan], dtype=float64), array([nan, nan], dtype=float64))
 ```
 
 점의 수가 쓰인 열의 수(`rank`)와 같으면 직선이 모든 점을 정확히 지나요. 이때도 그 직선을 반복 없이 내고 척도는 0이에요. 다만 잔차 자유도 `df_resid`가 0이라 공분산은 0/0이 되어, `bse`, `tvalues`, `pvalues`, `conf_int()`, `cov_params()`가 모두 NaN이에요. M(`'mad'`, `'huber'`)과 MM이 같은 규칙이에요.
@@ -717,7 +717,7 @@ huber의 가중치는 0이 되지 않아서, 직선 밖의 점도 매번 조금�
 >>> sd.regression.rlm(y, x, weights=[1.0] * 12)
 Traceback (most recent call last):
     ...
-TypeError: rlm() got an unexpected keyword argument 'weights'
+TypeError: rlm(): unexpected keyword argument 'weights'
 ```
 
 ### 절편과 frame 입력
@@ -857,7 +857,7 @@ statsmodels의 `RLM`과 대응은 이래요.
 - 값: 같은 추정이에요. statsmodels를 `tol=1e-15`로 돌리면 이 페이지의 예에서 계수·척도·표준오차·가중치가 $1.5\times10^{-14}$ 안에서 같아요. statsmodels의 기본 판정(목적함수의 절대 변화 1e-8)에서는 계수가 $10^{-11}$ 정도까지만 맞아요. sd는 판정 뒤에도 해까지 다듬어요.
 - `scale_est='huber'`: statsmodels의 `HuberScale()`은 기본으로 고정점 반복을 30번(허용오차 1e-8)까지만 해서 척도가 정확한 해와 조금 달라요. 이 페이지의 예에서 statsmodels 0.3996602, sd 0.3996606이에요. `HuberScale(tol=1e-15, maxiter=10000)`으로 주면 같아져요.
 - p값과 신뢰구간: statsmodels는 정규분포(`z`, `P>|z|`)를 쓰고 sd는 t(`df_resid`)를 써요(R의 요약과 같아요). 표준오차는 같지만 p값과 구간은 달라요. 위 예에서 절편의 p값이 statsmodels 1.5e-07, sd 3.7e-04예요.
-- 완전 적합: 위의 완전 적합 예에서 statsmodels도 직선 [1, 2]에 닿지만, 척도와 표준오차는 0이 아니라 반올림 수준의 값이에요(huber에서 척도 2.6e-15, 절편의 표준오차 2.0e-15). sd는 직선 위의 점이 반올림 수준 안에서 맞으면 척도·표준오차를 0으로 내요. `scale_est='huber'`의 예(척도 18.87)는 `HuberScale(tol=1e-15, maxiter=10000)`로 준 statsmodels와 같아요.
+- 완전 적합: 위의 완전 적합 예에서 statsmodels도 직선 [1, 2]에 닿지만, 척도와 표준오차는 0이 아니라 반올림 수준의 값이에요(huber에서 척도 2.6e-15, 절편의 표준오차 2.0e-15). sd는 직선 위의 점이 반올림 수준 안에서 맞으면 척도·표준오차를 0으로, t·p를 NaN으로 내요. `scale_est='huber'`의 예(척도 18.87)는 `HuberScale(tol=1e-15, maxiter=10000)`로 준 statsmodels와 같아요.
 - y가 모두 같을 때: statsmodels는 반복으로 풀어 기울기에 반올림 크기의 값(y = 3이 12개면 −1.2e-16)과 척도 2.6e-15를 남기고, 기울기의 t를 −0.72로 내요. sd는 정확한 답 (3, 0)과 척도 0을 내고 기울기의 t·p는 NaN이에요.
 - `conf_int`의 `alpha`: statsmodels는 `conf_int(0.1)`처럼 위치로도 받지만, sd는 `conf_int(alpha=0.1)`처럼 키워드로만 받아요.
 - `scale`: statsmodels RLM의 `scale`과 같은 퍼짐 σ예요. statsmodels OLS의 `scale`(σ²)과 단위가 다른 것도 같아요. 두 이름 모두 statsmodels를 따랐어요.

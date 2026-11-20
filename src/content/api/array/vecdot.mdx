@@ -5,7 +5,7 @@ group: 행렬곱
 order: 3
 signatures:
   - "sd.vecdot(x1, x2, /, *, axis=-1)"
-summary: 두 배열에서 한 축을 따라 놓인 벡터끼리 내적(짝지어 곱한 뒤 더하기)을 계산해요. 복소수면 첫째 인자의 켤레를 써요. sd.linalg.vecdot과 같은 함수예요.
+summary: 두 배열에서 한 축을 따라 놓인 벡터끼리 내적(짝지어 곱한 뒤 더하기)을 계산해요. 복소수면 첫째 인자의 켤레를 써요.
 params:
   - name: x1
     type: ndarray
@@ -21,7 +21,7 @@ params:
     desc: 내적할 축. 기본값 -1은 마지막 축이에요. 브로드캐스팅한 모양 기준이에요.
 returns:
   type: ndarray 또는 Python 숫자
-  desc: 내적한 축이 빠진 배열. 남는 축이 없으면 Python 숫자예요. 실수 입력(bool, int64 포함)은 float64, 복소수 입력은 complex128이에요.
+  desc: 내적한 축이 빠진 배열. 남는 축이 없으면 Python 숫자예요. dtype은 @와 같아요. bool과 int64끼리는 int64, float64가 섞이면 float64, 복소수가 섞이면 complex128이에요.
 raises:
   - type: TypeError
     desc: x1이나 x2가 배열이 아닐 때(리스트, Python 숫자 포함), axis가 int가 아닐 때(tuple, None, bool 포함).
@@ -65,7 +65,7 @@ array([7.0, 2.0, 6.0], dtype=float64)
   <ArrayFig data={[7.0, 2.0, 6.0]} tones={['b', '', '']} note="shape (3,)" />
 </Fig>
 
-`sd.sum(m * n, axis=-1)`과 같은 값이에요. `vecdot`은 곱한 중간 배열을 따로 만들지 않아요.
+뜻은 `sd.sum(m * n, axis=-1)`과 같아요. `vecdot`은 곱한 중간 배열을 따로 만들지 않고 곱하면서 바로 더해요. 그래서 실수에서는 반올림이 한 번 적어, 긴 벡터에서는 `sd.sum(m * n, axis=-1)`과 끝자리가 다를 수 있어요.
 
 <Reference />
 
@@ -181,48 +181,49 @@ array([0.6, 1.0, 0.0], dtype=float64)
 
 실수 배열에서는 순서가 상관없어요.
 
-## 결과의 dtype: 언제나 실수나 복소수
+## 결과의 dtype: `@`와 같아요
 
-정수나 bool 배열을 넣어도 결과는 float64예요. 복소수가 하나라도 있으면 complex128이에요.
+결과의 dtype은 [`@`(`matmul`)](/api/array/matmul/)와 같은 규칙으로 정해요. 정수나 bool 배열끼리면 결과도 정수(int64)예요. float64가 섞이면 float64, 복소수가 섞이면 complex128이에요.
 
 ```python
 >>> sd.vecdot(sd.asarray([1, 2, 3]), sd.asarray([4, 5, 6]))
-32.0
->>> sd.vecdot(sd.asarray([True, False]), sd.asarray([True, True]))
-1.0
-```
-
-정수 배열끼리 `@`를 쓰면 정수 결과가 나오는 것과 달라요. `vecdot`은 `sd.linalg`의 함수이기도 해서, 다른 선형대수 함수처럼 언제나 실수나 복소수로 계산해요.
-
-```python
->>> sd.asarray([1, 2, 3]) @ sd.asarray([4, 5, 6])
 32
+>>> sd.vecdot(sd.asarray([True, False]), sd.asarray([True, True]))
+1
+>>> sd.vecdot(sd.asarray([1, 2]), sd.asarray([1.5, 2.0]))
+5.5
 ```
 
 | 입력 | `sd.vecdot` | `@` |
 |---|---|---|
-| bool | float64 | int64 |
-| int64 | float64 | int64 |
+| bool | int64 | int64 |
+| int64 | int64 | int64 |
 | float64 | float64 | float64 |
 | complex128 | complex128 (`x1`의 켤레) | complex128 (켤레 없음) |
 
-실수로 계산하기 때문에 아주 큰 정수에서는 끝자리가 정확하지 않을 수 있어요. float64는 약 2⁵³(9 × 10¹⁵)을 넘는 정수를 정확히 담지 못해요.
+정수끼리의 내적은 정수로 정확히 계산해서, 2⁵³(약 9 × 10¹⁵)을 넘는 큰 정수도 끝자리까지 맞아요. 대신 int64 범위를 넘으면 `@`나 `sd.sum`처럼 값이 한 바퀴 돌아요(wrap). 에러는 나지 않아요.
 
 ```python
 >>> sd.vecdot(sd.asarray([2**53 + 1]), sd.asarray([1]))
-9007199254740992.0
+9007199254740993
+>>> sd.vecdot(sd.asarray([2**62]), sd.asarray([4]))
+0
 ```
 
-정확한 정수 결과가 필요하면 `@`나 `sd.sum(x1 * x2, axis=-1)`을 쓰세요.
+`2⁶² × 4 = 2⁶⁴`은 int64에 담기지 않아서 0이 됐어요. 이렇게 큰 값을 다룬다면 `sd.astype(x, sd.float64)`로 바꿔서 계산하세요.
 
-## `sd.linalg.vecdot`과 같은 함수예요
+## `sd.linalg.vecdot`과의 차이
 
-`vecdot`은 배열 영역(`sd`)과 선형대수 영역(`sd.linalg`) 양쪽에 있어요. 이름만 두 군데 있을 뿐 같은 함수라서, 어느 쪽으로 불러도 결과와 에러가 똑같아요.
+선형대수 영역에도 [`sd.linalg.vecdot`](/api/linalg/vecdot/)이 있어요. 계산하는 식(`x1`의 켤레와 `x2`를 곱해 더하기)과 인자, 에러는 같지만 서로 다른 함수예요. 정수와 bool 입력에서 결과의 dtype이 달라요. `sd.linalg.vecdot`은 다른 선형대수 함수처럼 언제나 실수나 복소수로 계산해요.
 
 ```python
 >>> sd.linalg.vecdot is sd.vecdot
-True
+False
+>>> sd.linalg.vecdot(sd.asarray([1, 2, 3]), sd.asarray([4, 5, 6]))
+32.0
 ```
+
+float64와 complex128 입력에서는 두 함수가 같은 계산이라 결과가 비트까지 같아요. 정수를 정수로 남기고 싶으면 `sd.vecdot`, 선형대수 계산의 한 단계로 실수 결과가 필요하면 `sd.linalg.vecdot`을 쓰면 돼요.
 
 ## 조심할 점
 
@@ -267,15 +268,15 @@ TypeError: vecdot(): 'x2' must be an sd.ndarray, not list
 
 | 하고 싶은 일 | 쓸 것 | `vecdot`과 다른 점 |
 |---|---|---|
-| 행렬곱, 행렬과 벡터의 곱 | `@` (`sd.matmul`) | 행과 열을 짝지어요. 켤레를 취하지 않고, 정수는 정수로 계산해요. |
+| 행렬곱, 행렬과 벡터의 곱 | `@` (`sd.matmul`) | 행과 열을 짝지어요. 켤레를 취하지 않아요. |
 | 여러 축을 짝지어 줄이기, 모든 조합 | `sd.tensordot` | 남은 축을 모두 조합해요. 브로드캐스팅하지 않아요. |
-| 같은 자리끼리 곱한 뒤 더하기 | `sd.sum(x1 * x2, axis=...)` | 여러 축을 줄일 수 있고, 정수는 정수로 남아요. 켤레는 직접 `sd.conj`로 해요. |
+| 같은 자리끼리 곱한 뒤 더하기 | `sd.sum(x1 * x2, axis=...)` | 여러 축을 줄일 수 있어요. 곱한 중간 배열을 만들어요. 켤레는 직접 `sd.conj`로 해요. |
 | 벡터의 길이 | `sd.linalg.vector_norm` | `sqrt(vecdot(x, x))`를 바로 구해 줘요. |
 
 ## numpy를 아는 분께
 
 - `np.vecdot`처럼 첫째 인자의 켤레를 써요.
-- 정수와 bool 입력의 결과가 float64예요. numpy는 정수를 유지해요.
+- 정수 입력의 결과는 numpy처럼 int64예요. bool끼리는 numpy가 bool을 내지만, stardust는 `@`처럼 int64예요.
 - `axis`는 keyword-only이고 int 하나만 받아요.
-- 1차원끼리의 결과는 numpy 스칼라가 아니라 Python `float`·`complex`예요.
-- `sd.linalg.vecdot`과 같은 객체예요.
+- 1차원끼리의 결과는 numpy 스칼라가 아니라 Python `int`·`float`·`complex`예요.
+- `sd.linalg.vecdot`은 다른 함수예요. 정수와 bool 입력을 float64로 계산해요.

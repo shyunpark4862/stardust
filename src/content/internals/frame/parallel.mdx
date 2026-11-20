@@ -28,7 +28,7 @@ import Tree from '../../../components/fig/Tree.astro';
 
 1. **일이 작으면 나누지 않아요.** 행 수(에 커널의 무게를 곱한 값)가 2¹⁷보다 작으면 호출한 스레드에서 차례로 돌아요. 풀을 깨우는 고정 비용이 계산 시간보다 클 수 있는 크기예요.
 2. **자르는 위치는 행 수로만 정해요.** 청크는 언제나 16,384행씩이고 마지막 청크만 짧아요. 스레드가 몇 개든 청크의 경계는 같아요.
-3. **부분 결과는 고정된 순서로 합쳐요.** 청크 순서, 또는 numpy의 pairwise 합과 같은 트리 순서예요. 그래서 float 합, 행 순서, factorize 코드, 에러 메시지가 스레드 수와 상관없이 비트까지 같아요.
+3. **부분 결과는 고정된 순서로 합쳐요.** 청크 순서, 또는 pairwise 합의 트리 순서예요. 그래서 float 합, 행 순서, factorize 코드, 에러 메시지가 스레드 수와 상관없이 비트까지 같아요.
 4. **결과가 나누는 방식과 무관하게 정확히 정해지는 연산은 예외예요.** factorize, 기수 정렬, counting sort, CSV 읽기는 1스레드일 때 나누지 않는 직렬 알고리즘을 써요. 어떻게 나눠도 답이 하나뿐이라서 결과가 같고, 1스레드가 쓸데없는 패스를 내지 않아요.
 5. **일이 기준값 이상이면 계산하는 동안 GIL을 놓아요.** 스레드 수와 상관없어요. 풀로 나눠 돌든, 1스레드라서 호출 스레드가 청크를 차례로 돌든, 나누지 않는 직렬 구간이든 놓아요. 그동안 다른 Python 스레드가 돌아요. 기준값 아래의 작은 호출은 GIL을 쥔 채 돌아서 놓고 다시 잡는 비용을 내지 않아요.
 
@@ -272,7 +272,7 @@ GIL을 놓고 다시 잡는 일은 공용 풀의 `parallel::GilRelease`(생성�
 |---|---|
 | `for_chunks`의 일이 기준값 아래 | 쥔 채 돌아요 |
 | `for_chunks`의 일이 기준값 이상 | 놓아요(`run_unlocked`). 풀로 나누든, 1스레드라서 청크를 차례로 돌든 같아요 |
-| float 합의 잎 병렬(`pairwise_sum_parallel`), groupby의 그룹 묶음(`for_groups`) | 기준값 이상에서만 나누고, 나눌 때는 `run_unlocked`라서 놓아요 |
+| float 합의 잎 병렬(`pairwise_parallel`), groupby의 그룹 묶음(`for_groups`) | 기준값 이상에서만 나누고, 나눌 때는 `run_unlocked`라서 놓아요 |
 | 풀이 다른 Python 스레드의 일로 바빠서 혼자 직렬로 돎 | 놓아요. 바쁜 쪽이 일을 끝내고 결과를 Python 객체로 돌려주려면 GIL이 필요해요 |
 | `Unlocked(work)`로 감싼 직렬 구간, `work`가 기준값 이상 | 놓아요 |
 
@@ -302,22 +302,21 @@ GilRelease::GilRelease() {
 
 - 태스크가 둘 이상이면 `parallel_for`가 직접 놓아요. 스레드가 1개여도 놓고, 태스크를 호출 스레드에서 차례로 돌려요.
 - 태스크가 하나면 GIL을 건드리지 않아요. 태스크를 하나로 정한 것은 부르는 쪽이 일의 크기를 보고 정한 것이라서, 풀은 그 자리에서 함수 한 번을 부를 뿐이에요. 그래서 일의 크기는 기준값 이상인데 태스크가 하나일 수 있는 곳은 부르는 쪽이 GIL을 놓아야 해요. frame에서는 그룹이 하나뿐인 groupby(`for_groups`)가 그래요. `run_unlocked`가 이 일을 맡아요. 먼저 `Unlocked`로 GIL을 놓고 `parallel_for`를 불러요. `for_chunks`는 기준값 이상이면 청크가 언제나 8개 이상이지만, 같은 함수를 써서 GIL 규칙이 태스크 수에 기대지 않게 해요.
-- 겹쳐도 안전해요. `GilRelease`는 이 스레드가 지금 GIL을 쥐고 있을 때만 놓아요. 태스크 안이거나 이미 다른 `GilRelease`(`Unlocked`, `run_unlocked`) 아래이면 아무 일도 하지 않아요. 그래서 `for_groups`의 태스크 하나가 다시 `pairwise_sum_parallel`을 불러도, `read_csv`가 `Unlocked` 아래에서 청크를 나눠 돌려도 GIL을 두 번 놓지 않아요. 이미 놓은 곳 안의 `parallel_for`(병렬 factorize와 counting sort의 파티션 단계, CSV의 청크)는 그대로 불러요.
+- 겹쳐도 안전해요. `GilRelease`는 이 스레드가 지금 GIL을 쥐고 있을 때만 놓아요. 태스크 안이거나 이미 다른 `GilRelease`(`Unlocked`, `run_unlocked`) 아래이면 아무 일도 하지 않아요. 그래서 `for_groups`의 태스크 하나가 다시 `float_sum`을 불러도, `read_csv`가 `Unlocked` 아래에서 청크를 나눠 돌려도 GIL을 두 번 놓지 않아요. 이미 놓은 곳 안의 `parallel_for`(병렬 factorize와 counting sort의 파티션 단계, CSV의 청크)는 그대로 불러요.
 
 나누지 않는 직렬 구간은 `Unlocked(work)`로 감싸요. 다음이 그런 구간이에요.
 
-- 직렬 factorize(`Partitioned::build`의 P = 1 경로)와 그룹별 개수(`group_counts`), `value_counts`의 정렬(`stable_order`)
+- 직렬 factorize(`Partitioned::build`의 P = 1 경로)와 그룹별 개수(`group_counts`)
 - 직렬 기수 정렬(`radix_sort_serial`, `Unlocked(n * 2)`)과 직렬 counting sort
 - 라벨 여러 개로 모든 위치를 찾는 조회(`LabelTable::all_positions`)의 조회 부분
 - merge에서 오른쪽 조인을 위해 처음 나타난 순서로 번호를 다시 매기는 구간
 - `concat`의 버퍼 이어 붙이기
 - `read_csv` 전체(토큰화, 추론, 값 만들기)
+- 큰 복사: numpy 배열과 `sd.ndarray`에서 컬럼 만들기(`from_numpy`의 넓히기, `from_array`), `to_array`의 `columns_to_array`, NA 없는 `isna`, 스칼라로 컬럼 채우기(`full`), 다중 키 merge의 압축, 그룹 순서의 순위 매기기. 배열(`NDArray`)을 만들고 없애는 일은 GIL을 쥔 채 해요. 그 `base`가 Python 참조이기 때문이에요.
 
 그래서 1스레드에서도 큰 호출은 모두 GIL을 놓아요. `sd.set_num_threads(1)`에서 1,600만 행 float64 Series의 `s + s`(약 11ms), `s.sum()`(약 8ms), `s[s > 0]`(약 50ms)을 부르는 동안, 옆의 Python 스레드가 `while` 루프로 카운터를 각각 약 43만 번, 28만 번, 190만 번 올렸어요(Apple M4 Pro). GIL을 쥔 채였다면 0번이에요.
 
 1스레드에서 더 드는 비용은 기준값 이상인 호출마다 GIL을 한 번 놓고 다시 잡는 것이에요. 호출 하나에 0.1µs 안팎이고, 기준값 크기의 호출도 계산에 수 µs가 걸려서 보이지 않아요. 131,072행부터 1M 행까지 여덟 연산(`f + f`, `sum`, `min`, 필터, groupby `sum` 등)을 GIL을 쥐는 빌드와 번갈아 쟀을 때 기하평균 차이가 +0.6%였고, 경우별 차이(대부분 ±3% 안)는 실행마다 부호가 바뀌는 잡음이었어요. 다른 Python 스레드가 Python 코드를 돌리고 있으면, 계산을 마친 호출이 GIL을 돌려받을 때까지 기다리는 시간은 따로 있어요(최대 `sys.getswitchinterval()`, 기본 5ms). 이것은 GIL을 놓는 모든 확장 모듈이 같아요.
-
-int64 `mean`(과 그 평균을 쓰는 `var`, `std`)은 배열 영역의 `sd::sum`을 불러 합을 구해요(배열의 합과 비트를 맞추기 위해서예요). 그 합은 배열 영역의 기준값(float64 덧셈 32,768개 분량)부터 GIL을 놓아요. 배열을 만들어 넘기는 앞뒤 부분은 Python 객체를 다루므로 GIL을 쥐어요([컬럼과 메모리](/internals/frame/columns/)).
 
 ### 태스크는 Python 객체를 만지지 않아요
 
@@ -372,15 +371,15 @@ float `min`/`max`는 IEEE 754-2019의 minimum/maximum이에요. NaN이 하나라
 
 ### float 합: pairwise 트리의 잎을 나눠요
 
-float 덧셈은 결합적이지 않아요. $(a + b) + c$와 $a + (b + c)$가 반올림 때문에 다를 수 있어요. 그래서 "청크마다 부분 합을 내고 청크 순서로 더하기"는 결과가 청크 크기에 따라 달라지고, numpy와도 달라요.
+float 덧셈은 결합적이지 않아요. $(a + b) + c$와 $a + (b + c)$가 반올림 때문에 다를 수 있어요. 그래서 "청크마다 부분 합을 내고 청크 순서로 더하기"는 결과가 청크 크기에 따라 달라지고, 배열 영역의 합과도 달라요.
 
-stardust의 float 합은 numpy의 pairwise 합과 같은 트리예요 [1][2]. 길이 $n$의 구간을 반으로(8의 배수로 내림해서) 계속 나누고, 128개 이하가 되면 8개의 누산기로 더해요. 이 트리는 $n$만으로 정해지므로, 트리의 부분 트리를 태스크로 나누면 돼요.
+stardust의 float 합은 모든 영역이 함께 쓰는 pairwise 합(`base/pairwise.hpp`)이에요. numpy의 pairwise 합과 같은 알고리즘에 잎이 더 넓어요 [1][2]. 길이 $n$의 구간을 반으로(16의 배수로 내림해서) 계속 나누고, 512개 이하가 되면 16개의 누산기로 더해요. 이 트리는 $n$만으로 정해지므로, 트리의 부분 트리를 태스크로 나누면 돼요.
 
 - `pairwise::plan(n, 2¹⁴)`이 트리를 따라 내려가며 원소 16,384개 이하의 부분 트리(잎)를 왼쪽부터 나열해요.
 - 태스크마다 잎 하나를 직렬 트리로 더해요.
 - `pairwise::combine`이 같은 트리를 다시 따라 내려가며, 잎의 부분 합을 직렬 재귀와 같은 자리에서 더해요.
 
-<Fig column caption="길이 200,003의 float 합이 나뉘는 모양(위 세 단계만). 자르는 위치는 직렬 재귀가 자르는 위치와 같고, 원소 12,496~12,507개짜리 잎 16개가 태스크가 돼요.">
+<Fig column caption="길이 200,003의 float 합이 나뉘는 모양(위 세 단계만). 자르는 위치는 직렬 재귀가 자르는 위치와 같고, 원소 12,496~12,515개짜리 잎 16개가 태스크가 돼요.">
   <Tree
     root={{
       label: '[0, 200003)',
@@ -411,27 +410,29 @@ stardust의 float 합은 numpy의 pairwise 합과 같은 트리예요 [1][2]. �
 // csrc/frame/ops/pairwise.hpp (발췌)
 inline constexpr std::int64_t kPairwiseLeaf = 1 << 14;
 
-template <class Get>
-double pairwise_sum_parallel(std::int64_t n, const Get& get, std::int64_t cost = 1) {
-    if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return pairwise_sum(0, n, get);  // 직렬 트리
+// tree(0, n)과 비트까지 같다. 부분 트리를 병렬로. tree(b, m)은 pairwise_sum이나 pairwise_squares.
+template <class Tree>
+double pairwise_parallel(std::int64_t n, const Tree& tree, std::int64_t cost) {
+    if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return tree(0, n);   // 직렬 트리
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    run_unlocked(part.size(), [&](std::int64_t t) {
-        part[t] = pairwise_sum(leaves[t].first, leaves[t].second, get);
+    run_unlocked(static_cast<std::int64_t>(part.size()), [&](std::int64_t t) {
+        const auto k = static_cast<std::size_t>(t);
+        part[k] = tree(leaves[k].first, leaves[k].second);
     });
     return pairwise::combine(n, kPairwiseLeaf, part);   // 같은 트리 모양으로 합치기
 }
 
-// numpy의 add.reduce처럼 0.0에서 시작한다: -0.0만의 합이 +0.0인 이유.
+// 합은 항등원 0.0에서 시작한다(배열 영역과 numpy의 add.reduce처럼): -0.0만의 합이 +0.0인 이유.
 template <class Get>
 double float_sum(std::int64_t n, const Get& get, std::int64_t cost = 1) {
-    return 0.0 + pairwise_sum_parallel(n, get, cost);
+    return 0.0 + pairwise_parallel(n, [&get](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); }, cost);
 }
 ```
 
-잎의 크기 2¹⁴는 트리의 모양을 바꾸지 않아요. 트리는 직렬 재귀와 같고, 잎 크기는 "어느 깊이에서 태스크로 끊을지"만 정해요. 그래서 이 값을 바꿔도 결과의 비트는 같아요. 트리와 numpy 비트 일치의 자세한 설명은 [스레드풀과 결정성](/internals/core/threads/)과 [집계](/internals/array/reductions/)에 있어요.
+잎의 크기 2¹⁴는 트리의 모양을 바꾸지 않아요. 트리는 직렬 재귀와 같고, 잎 크기는 "어느 깊이에서 태스크로 끊을지"만 정해요. 그래서 이 값을 바꿔도 결과의 비트는 같아요. 배열 영역의 잎 크기(2¹²)와 달라도 배열의 합과 비트가 같은 것도 같은 이유예요. 트리의 자세한 설명은 [스레드풀과 결정성](/internals/core/threads/)과 [집계](/internals/array/reductions/)에 있어요.
 
-NA가 있는 float 컬럼의 합은 NA 행을 0.0으로 보는 접근자로 같은 트리를 돌아요. `var`/`std`는 평균을 먼저 구하고, 제곱 편차를 같은 트리로 한 번 더 더해요(두 번 훑기).
+NA가 있는 float 컬럼의 합은 NA 행을 0.0으로 보는 접근자로 같은 트리를 돌아요. `var`/`std`는 평균을 먼저 구하고, 제곱 편차를 같은 트리로 한 번 더 더해요(두 번 훑기, `squares_sum`). 잎에서 제곱마다 fma 하나로 더하는 것만 달라요.
 
 ### 결과가 하나뿐인 연산은 나누는 방식이 스레드 수를 따라요
 
@@ -440,13 +441,13 @@ NA가 있는 float 컬럼의 합은 NA 행을 0.0으로 보는 접근자로 같�
 | 연산 | 1스레드 (또는 `available()`이 거짓) | 나눌 때 | 결과가 하나뿐인 이유 |
 |---|---|---|---|
 | factorize | 해시 테이블 하나로 한 번 훑기 | 해시 위쪽 8비트로 256 파티션 | 코드는 "처음 나타난 순서"로 정의돼요 |
-| 기수 정렬 | 한 번 읽어 8자리 히스토그램을 모두 세고 8패스 | 자리마다 청크별 히스토그램 → 흩뿌리기 | 안정 정렬의 결과는 유일해요 |
+| 기수 정렬 | 한 번 읽어 모든 자리의 히스토그램을 세고 자리마다 한 패스 | 자리마다 청크별 히스토그램 → 흩뿌리기 | 안정 정렬의 결과는 유일해요 |
 | counting sort | 개수 → 누적합 → 제자리에 | 256 버킷에 안정적으로 흩뿌린 뒤 버킷마다 | 안정 정렬이에요 |
-| `read_csv` | 청크 하나 | 512KB 바이트 청크 | 파일의 레코드 순서 그대로예요 |
+| `read_csv` | 토크나이저 하나가 순서대로(512KB마다 새 청크) | 512KB 바이트 청크, 따옴표 홀짝으로 시작 상태 | 파일의 레코드 순서 그대로예요 |
 
 이 연산들을 나누면 직렬 한 번보다 메모리를 여러 번 지나는 단계가 생겨요. 1스레드에서도 나누면 그 비용만 내고 이득이 없어요. 1M 행, 키 1,000종의 factorize를 1스레드로 잴 때, 직렬 패스가 2.0ms이고 256 파티션으로 나눈 경로가 4.5ms였어요(Apple M4 Pro). 이런 연산 전반에서 나눈 경로는 1스레드에서 1.5~2.5배 느려요. 결정성 규칙이 지키려는 것은 같은 결과이고, 이 연산들은 어느 경로로 가도 결과가 같으므로 1스레드는 직렬 경로를 써요.
 
-float 합은 이 예외에 들 수 없어요. 나누는 방식이 곧 덧셈의 순서이고, 순서가 비트를 바꾸기 때문이에요. 그래서 float 합은 1스레드에서도 같은 트리를 써요(그 트리 자체가 numpy의 직렬 알고리즘이라 1스레드에 손해가 없어요).
+float 합은 이 예외에 들 수 없어요. 나누는 방식이 곧 덧셈의 순서이고, 순서가 비트를 바꾸기 때문이에요. 그래서 float 합은 1스레드에서도 같은 트리를 써요(그 트리 자체가 직렬 pairwise 합이라 1스레드에 손해가 없어요).
 
 ### factorize: 파티션으로 나눠도 처음 나타난 순서
 
@@ -520,10 +521,10 @@ CSV는 아무 바이트에서나 자를 수 없어요. 따옴표 안의 줄바�
 
 1. 본문을 512KB(2¹⁹바이트) 청크로 자르고, 청크마다 따옴표 개수의 홀짝을 세요. 병렬.
 2. 그 홀짝의 누적 XOR이 각 청크의 시작이 따옴표 안인지 알려 줘요. 추측이 아니라 정확한 값이에요.
-3. 청크마다 자기 안에서 시작하는 레코드를 토큰화해요. 첫 레코드는 따옴표 밖 줄바꿈 다음이고, 마지막 레코드는 경계를 넘어 끝까지 읽어요. 병렬.
-4. 열마다, 청크마다 타입을 추론하고 값을 최종 버퍼에 써요. 청크의 종류(`int < float < text`)를 열 전체 규칙으로 합쳐요.
+3. 청크마다 자기 안에서 시작하는 레코드를 토큰화하며, 필드를 바로 그 청크의 컬럼 조각에 값으로 써요(타입 추론 포함). 첫 레코드는 따옴표 밖 줄바꿈 다음이고, 마지막 레코드는 경계를 넘어 끝까지 읽어요. 병렬.
+4. 열마다 청크들의 종류(`int < float < text`)를 열 전체 규칙으로 합치고, 조각을 최종 버퍼로 옮겨요. 청크마다 병렬.
 
-`nrows`가 있으면(앞에서부터 `nrows`개 레코드) 청크 하나, 곧 직렬로 읽어요. 앞 청크의 레코드 수를 알아야 어디서 멈출지 알기 때문이에요. 풀을 쓸 수 없을 때(1스레드 등)도 청크 하나예요. 결과가 자르는 방식과 무관하므로 청크 수가 스레드 수를 따라도 돼요. 512KB보다 작은 파일은 언제나 청크 하나예요. 자세한 토크나이저 설명은 [read_csv](/internals/frame/csv/)에 있어요.
+`nrows`가 있으면(앞에서부터 `nrows`개 레코드) 토크나이저 하나가 순서대로 읽어요. 앞 청크의 레코드 수를 알아야 어디서 멈출지 알기 때문이에요. 풀을 쓸 수 없을 때(1스레드 등)도 같아요. 이때도 512KB를 지날 때마다 다음 레코드에서 새 청크를 열어, 조각을 512KB씩 끊어요. 결과가 자르는 방식과 무관하므로 청크를 나누는 방식이 스레드 수를 따라도 돼요. 512KB보다 작은 파일은 언제나 청크 하나예요. 자세한 토크나이저 설명은 [read_csv](/internals/frame/csv/)에 있어요.
 
 ### 에러: 첫 번째 행 (`FirstRow`)
 
@@ -575,7 +576,7 @@ df = pl.DataFrame({"k": rng.integers(0, 10, n), "f": f})
 g = df.group_by("k").agg(pl.col("f").sum()).sort("k")   # 14스레드: 실행마다 다른 비트
 ```
 
-stardust는 같은 계산을 스레드 수 1, 3, 기본값으로 하면 모두 같고, 전체 합은 numpy의 `np.add.reduce`와, 그룹 합은 그 그룹만 골라 numpy로 더한 값과 비트까지 같아요.
+stardust는 같은 계산을 스레드 수 1, 3, 기본값으로 하면 모두 같고, 전체 합은 배열 영역의 `sd.sum`과, 그룹 합은 그 그룹만 골라 `sd.sum`으로 더한 값과 비트까지 같아요. numpy의 `np.add.reduce`와는 반올림 오차 안에서 같고 마지막 자리가 다를 수 있어요(잎의 폭이 달라요).
 
 ```python
 >>> import numpy as np
@@ -592,9 +593,9 @@ stardust는 같은 계산을 스레드 수 1, 3, 기본값으로 하면 모두 �
 >>> sd.set_num_threads(default)
 >>> all(r == results[0] for r in results)
 True
->>> results[0][0] == float(np.add.reduce(f))
+>>> results[0][0] == sd.sum(sd.asarray(f))
 True
->>> results[0][1][3] == float(np.add.reduce(f[k == 3]))
+>>> results[0][1][3] == sd.sum(sd.asarray(f[k == 3]))
 True
 ```
 
@@ -604,7 +605,7 @@ True
 
 - 입력은 200,003행이에요. 청크 크기(16,384)의 배수가 아니고 기준값을 넘어서, 마지막의 짧은 청크와 여러 청크 경계를 모두 지나요. int, float(NaN 1%, `-0.0` 1%), string, bool 컬럼에 NA가 10% 섞여 있어요.
 - 연산마다 1, 3, 기본 스레드 수로 실행해 결과를 비교해요. float은 `struct.pack("<d", v)`로 바이트를 비교하고, Series와 DataFrame은 dtype, 값, 라벨까지 비교해요. 원소별 연산 19종, 리덕션(`sum`, `mean`, `min`, `max`, `std`, `var`, `count` × 네 dtype), 해시(unique, `nunique`, `value_counts`, `duplicated`, `drop_duplicates`, groupby 셋, merge 넷, 라벨 조회), 정렬 여섯 가지가 대상이에요.
-- 스레드 수와 무관하다는 것만으로는 부족해요. 1스레드도 같은 청크를 지나므로, 청크 경계에서 행을 잃거나 두 번 쓰는 버그는 모든 스레드 수에서 똑같이 틀려요. 그래서 numpy·Python과 따로 비교해요. float 합은 길이 16,384, 16,385, 200,003, 1,048,583에서 `np.add.reduce`와 비트가 같은지, factorize 순서는 `dict.fromkeys`(처음 나타난 순서)와 같은지, string 정렬은 Python `sorted()`와 같은지 봐요.
+- 스레드 수와 무관하다는 것만으로는 부족해요. 1스레드도 같은 청크를 지나므로, 청크 경계에서 행을 잃거나 두 번 쓰는 버그는 모든 스레드 수에서 똑같이 틀려요. 그래서 numpy·Python과 따로 비교해요. float 합은 길이 16,384, 16,385, 200,003, 1,048,583에서 배열의 `sd.sum`과 비트가 같은지, `np.add.reduce`와 반올림 오차 한계($64\varepsilon \sum |x_i|$) 안인지, factorize 순서는 `dict.fromkeys`(처음 나타난 순서)와 같은지, string 정렬은 Python `sorted()`와 같은지 봐요.
 - **에러 위치**: string 컬럼의 행 90,000과 180,000에 숫자가 아닌 값을 넣고 `astype("int64")`의 메시지가 모든 스레드 수에서 행 90,000의 값(`'x2'`)을 말하는지 봐요.
 - **CSV**: 512KB 청크 여럿에 걸친 파일(따옴표 안 줄바꿈, `""`, CRLF, 한글, 빈 문자열)을 직렬 정답(`test_csv.py`의 참조 구현)과 비교해요. 따옴표 필드 하나가 1.5MB로 세 청크에 걸치는 파일, 앞뒤에 에러가 둘 있는 파일(파일 순서로 앞의 것을 알려야 해요)도 있어요.
 - **스냅샷**: 한 스레드가 `s.iloc[k] = 1`을 k = 0, 1, 2, …로 쓰는 동안 다른 스레드가 `s + 0`을 되풀이해요. 모든 결과가 "앞의 k개만 1"인 꼴이어야 해요.
@@ -662,7 +663,7 @@ True
 
 ## 참고 문헌
 
-1. numpy 소스의 `@TYPE@_pairwise_sum` 함수(`numpy/_core/src/umath/loops_utils.h.src`, `PW_BLOCKSIZE` = 128), numpy 2.5.4 기준. stardust의 `base/pairwise.hpp`가 같은 트리 모양과 순서를 따라요.
+1. numpy 소스의 `@TYPE@_pairwise_sum` 함수(`numpy/_core/src/umath/loops_utils.h.src`, `PW_BLOCKSIZE` = 128), numpy 2.5.4 기준. stardust의 `base/pairwise.hpp`는 같은 알고리즘을 잎을 넓혀(누산기 16개, 블록 512개) 써요.
 2. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (4장, 합의 반올림 오차와 pairwise 합)
 3. Polars 소스 `crates/polars-core/src/runtime.rs`의 `THREAD_POOL`(rayon `ThreadPoolBuilder`), Python API `polars.thread_pool_size`의 문서(`POLARS_MAX_THREADS`). Polars 2.1.0.
 4. rayon 크레이트 문서, https://docs.rs/rayon (작업 훔치기 스레드풀)

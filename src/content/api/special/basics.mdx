@@ -111,6 +111,43 @@ Traceback (most recent call last):
 ValueError: beta(): shapes could not be broadcast together: (2,) (3,)
 ```
 
+### 인자는 자리로 넘겨요
+
+입력 인자는 모두 자리로만 넘겨요. 이름을 붙여 넘기면 `TypeError`예요. 인자의 이름은 `help()`와 에러 메시지에서 어느 인자인지 알려 주는 데만 쓰여요.
+
+```python
+>>> sd.special.gammainc(2.0, 1.0)
+0.2642411176571153
+>>> sd.special.gammainc(a=2.0, x=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: gammainc(): incompatible function arguments. The following argument types are supported:
+    1. gammainc(a, x, /, *, out=None)
+<BLANKLINE>
+Invoked with types: kwargs = { a: float, x: float }
+```
+
+그래서 순서를 바꿔 넣으면 에러 없이 다른 값이 나와요. `gammainc(1.0, 2.0)`은 0.8646647167633873이에요. 인자가 둘 이상인 함수의 순서는 아래와 같아요.
+
+| 함수 | 인자 순서 |
+|---|---|
+| `polygamma`, `expn` | (n, x) |
+| `beta`, `betaln`, `binom` | (a, b), (a, b), (n, k) |
+| `gammainc`, `gammaincc`, `gammaincinv`, `gammainccinv` | (a, x), (a, x), (a, p), (a, q) |
+| `betainc`, `betaincc`, `betaincinv`, `betainccinv` | (a, b, x), (a, b, x), (a, b, p), (a, b, q) |
+| `xlogy`, `xlog1py`, `rel_entr` | (x, y) |
+| `zeta` | (x, q) |
+| `jv`, `yv`, `iv`, `kv`, `jve`, `yve`, `ive`, `kve` | (v, x) |
+| `hyp1f1`, `hyp2f1` | (a, b, x), (a, b, c, z) |
+| `stdtr`, `stdtrit` | (df, t), (df, p) |
+| `chdtr`, `chdtrc`, `chdtri` | (df, x), (df, x), (df, q) |
+| `fdtr`, `fdtrc`, `fdtri` | (dfn, dfd, x), (dfn, dfd, x), (dfn, dfd, p) |
+| `pdtr`, `pdtrc` | (k, m) |
+| `bdtr`, `bdtrc`, `nbdtr`, `nbdtrc` | (k, n, p) |
+| `chndtr`, `chndtrc`, `chndtrix` | (df, nc, x), (df, nc, x), (df, nc, p) |
+| `nctdtr`, `nctdtrc`, `nctdtrit` | (df, nc, t), (df, nc, t), (df, nc, p) |
+| `ncfdtr`, `ncfdtrc`, `ncfdtri` | (dfn, dfd, nc, x), (dfn, dfd, nc, x), (dfn, dfd, nc, p) |
+
 ### 결과는 float64예요
 
 bool과 정수는 float64로 바꿔서 계산하고, 결과는 언제나 float64예요. 위의 `binom(10, 3)`이 `120`이 아니라 `120.0`인 것도 그래서예요. 특수함수는 대부분 정수에서도 정수가 아닌 값을 내니까요.
@@ -408,6 +445,7 @@ True
 ## scipy를 아는 분께
 
 - 이름과 뜻은 scipy.special을 따라요. 그 일부(89개)이고, 특수값(±0, ±inf, NaN, 극점, 경계)도 대부분 scipy와 같아요. 다른 곳은 각 함수 문서의 `scipy를 아는 분께`에 적었어요.
+- 그 밖의 값은 정확도 약속 안이면 되고, scipy와 마지막 자리가 다를 수 있어요. 지금 scipy와 비트까지 같은 값도 있지만 약속하는 것은 아니에요(약속은 스레드 수와 상관없이 같은 비트와 [정확도](#정확도-약속)예요).
 - scipy가 0이나 inf, NaN을 내는 곳 가운데 참값이 있으면 참값을 내요. 서브노멀 꼬리(`erfc`, `ndtr`, `expit` 등), 무한대 인자의 극한(Bessel 함수의 `x = inf` 등), 분포 함수의 극단 인자가 그래요.
 - 정수 차수 인자를 잘라 쓰지 않아요. scipy의 `expn(1.5, 1.0)`은 n을 1로 잘라 계산하지만, stardust는 NaN이에요. `bdtr`, `nbdtr`의 n도 내리지 않아요.
 - 복소수는 여섯 함수만 받아요. scipy의 `gamma`, `ndtr`, `log_ndtr`, `jv` 등은 복소수를 받지만 stardust는 `TypeError`예요. `lambertw`는 실수 입력이면 float64를 돌려주고 `tol=`이 없어요.

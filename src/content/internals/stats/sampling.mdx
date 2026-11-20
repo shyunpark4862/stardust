@@ -181,7 +181,7 @@ bool in_domain(P... p) {
 >>> sd.stats.Normal().sample((), rng=rng)
 Traceback (most recent call last):
   ...
-ValueError: sample(): 'shape' must not be () (stardust has no 0-d arrays; None gives one sample)
+ValueError: sample(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)
 >>> sd.stats.Normal().sample(10**15, rng=rng)
 Traceback (most recent call last):
   ...
@@ -247,9 +247,11 @@ inline double std_normal(Words& w) {
     const bool neg = r & 1;
     const std::uint64_t rabs = (r >> 1) & 0x000fffffffffffffULL;
     // the sign by its bit (a branch on a random bit mispredicts half the time: 3 ns)
-    const double x = std::bit_cast<double>(std::bit_cast<std::uint64_t>(static_cast<double>(rabs) * z.wi[idx]) |
-                                           (static_cast<std::uint64_t>(neg) << 63));
-    if (rabs < z.ki[idx]) [[likely]] return x;  // inside the layer's rectangle (~99%)
+    const double x = std::bit_cast<double>(
+        std::bit_cast<std::uint64_t>(static_cast<double>(rabs) * z.wi[idx]) | (static_cast<std::uint64_t>(neg) << 63)
+    );
+    if (rabs < z.ki[idx]) [[likely]]
+        return x;  // inside the layer's rectangle (~99%)
     return std_normal_rest(w, idx, neg, x);
 }
 ```
@@ -301,7 +303,8 @@ inline double gamma_mt(Words& w, double d, double c) {
     const double x = std_normal(w), v1 = 1.0 + c * x;
     if (v1 > 0.0) [[likely]] {
         const double v = v1 * v1 * v1, u = w.u01(), x2 = x * x;
-        if (u < 1.0 - 0.0331 * x2 * x2) [[likely]] return d * v;
+        if (u < 1.0 - 0.0331 * x2 * x2) [[likely]]
+            return d * v;
         if (std::log(u) < 0.5 * x2 + d * (1.0 - v + std::log(v))) return d * v;
     }
     return gamma_mt_loop(w, d, c);
@@ -435,8 +438,10 @@ F는 두 자유도 중 하나라도 이 경계 아래이면 NaN이에요(`lim` =
 static State prep(double dfn, double dfd) {
     const bool tiny = dfn < kMinSampleDf || dfd < kMinSampleDf;
     const int lim = dfd == kInf ? (tiny ? 3 : 1) : (dfn == kInf ? 2 : (tiny ? 3 : 0));
-    return {gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
-            lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim};
+    return {
+        gamma_prep(lim == 2 ? 1.0 : 0.5 * dfn), gamma_prep(lim == 1 ? 1.0 : 0.5 * dfd),
+        lim == 0 ? log_ratio(dfd, dfn) : 0.0, lim
+    };
 }
 static double draw(Words& w, const State& s) {
     if (s.lim == 3) return std::numeric_limits<double>::quiet_NaN();
@@ -597,7 +602,9 @@ $\ell_d$는 Stirling 급수($1/(1260k^5)$까지, 16 미만은 표)로 만든 $\l
 ```cpp
 // csrc/stats/sample_dist.hpp
 template <class Up, class Down>
-double from_mode(double u, double mode, double lo, double hi, double pmode, double nl, double nh, Up&& up, Down&& down) {
+double from_mode(
+    double u, double mode, double lo, double hi, double pmode, double nl, double nh, Up&& up, Down&& down
+) {
     double s = pmode;
     if (u < s) return mode;
     double kl = mode, kh = mode, pl = pmode, ph = pmode;

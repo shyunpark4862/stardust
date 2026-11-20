@@ -209,6 +209,10 @@ scipy의 Wishart `logpdf`는 $p = 2$, df $= 1.5$, $\kappa = 10^8$에서 $4.9 \ti
 
 scipy 1.18.1과는 기본값끼리 비교하면 정규 $d = 3$에서 최대 $3.7 \times 10^{-5}$, t $d = 2$에서 $1.8 \times 10^{-4}$, t $d = 3$에서 $2.2 \times 10^{-4}$ 차이가 나요(`bench/stats/t9/cdf_speed.md`). stardust의 $d \le 3$은 정확한 공식이라 이 차이는 scipy의 준몬테카를로 오차예요. 정규 $d = 2$는 차이가 $2.2 \times 10^{-16}$이에요. 방법은 [다변량 정규·t의 누적확률](/internals/stats/mvcdf/)에 있어요.
 
+### 다변량·행렬 분포를 한 표로
+
+`bench/stats/accuracy_multivariate.md`는 단변량과 같은 측정 틀(`python -m bench.accuracy`)로 다변량·행렬 분포의 밀도·엔트로피와 다변량 `cdf`를 한 표에 모아요. 밀도와 엔트로피의 점은 모두 보장 영역($\kappa \le 10^9$, $d$와 $p$는 100 이하, Wishart의 df $\le 10^{30}$) 안이고, 참값은 위의 Arb 값이에요. 계약 대비(1 이하가 계약 안)로 보면 밀도와 엔트로피는 모두 0.1 아래이고, 가장 큰 것이 역Wishart `entropy`의 0.098이에요. `cdf`는 이변량 정규의 보장 영역이 0.52, 삼변량 정규가 0.95, 이변량·삼변량 t가 0.094·0.34예요. 준몬테카를로는 정규가 `atol` $10^{-6}$에서 0.87(실제 오차 최대 $2.4 \times 10^{-7}$), 한 인자 t가 `atol` $10^{-5}$에서 0.81이에요.
+
 ### 기술통계
 
 참값 파일 대신 유리수 산술의 정확한 값과 비교해요. 평균 $10^8$·퍼짐 1인 데이터 2000개에서 `skew` $3.2 \times 10^{-16}$, `kurtosis`와 2차 모멘트 0이고, scipy는 `skew` $1.2 \times 10^{-8}$, `kurtosis` $1.1 \times 10^{-8}$이에요. 자세한 것은 [기술통계](/internals/stats/descriptive/)에 있어요.

@@ -21,7 +21,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | `glm` | 점수 방정식의 뉴턴 + Krawczyk | 17개 문제에서 계수 $1.1 \times 10^{-16}$, 표준오차 $4.5 \times 10^{-16}$ | statsmodels 정준 링크 $10^{-11}$, 정준이 아닌 링크 $10^{-6}$ |
 | `ridge`·`lasso`·`elastic_net`·`penalized_glm` | 활성 집합의 정상 조건 + 엄격한 KKT | $6.9 \times 10^{-16}$–$1.5 \times 10^{-15}$ | scikit-learn `tol=1e-4`에서 $3.6 \times 10^{-6}$–$7.8 \times 10^{-5}$ |
 | `rlm` | ψ 조각을 고정한 방정식 + Krawczyk | 계수 $1.1 \times 10^{-16}$ | statsmodels 기본값과 그쪽 수렴 오차($10^{-5}$ 이하)만큼 |
-| `theilslopes`·`siegelslopes` | scipy, 정확한 유리수 기울기 | scipy와 비트까지 같음 | |
+| `theilslopes`·`siegelslopes` | scipy, 정확한 유리수 기울기 | 정확한 유리수 기울기의 중앙값과 4ulp 안. 잰 자료에서 지금 scipy와 비트까지 같음(0의 부호 빼고) | |
 | `quantreg` | 유리수로 다시 푼 꼭짓점 + 쌍대 증명서 | 계수 $8.6 \times 10^{-17}$, 78개 적합 모두 증명서 성립 | statsmodels $1.2 \times 10^{-7}$–$9.6 \times 10^{-2}$ |
 | `nls` | Arb 320비트 가우스–뉴턴 | `jac` $3.1 \times 10^{-13}$, 차분 $3.0 \times 10^{-10}$(최대) | scipy·R의 계수 LRE 중앙값 5.9–6.8 |
 
@@ -52,7 +52,7 @@ OLS·WLS(와 백색화한 GLS, ridge)의 참값은 `tools/regref.py`의 `ols`가
         with ar.precision(p):
             try:
                 vals, meta = _fit(y, X, weights, intercept, alpha, t_guess, groups, maxlags)
-            except (ar.NotSettled, ValueError):
+            except ar.NotSettled, ValueError:
                 vals = None
             if vals is not None and _all_settled(vals):
                 conv = {k: ([ar.to_dd(x) for x in v] if isinstance(v, list) else ar.to_dd(v)) for k, v in vals.items()}
@@ -198,7 +198,7 @@ NIST의 통계 참조 자료(StRD)는 공인된 참값과 극단적인 조건수
 
 - Filip은 세 참조 라이브러리 모두 맞는 자릿수가 없어요. scikit-learn은 다항식 문제(Pontius, Wampler)에서 크게 틀려요.
 - 잔차가 큰 문제(Longley, Wampler4·5)는 QR 해에 $\kappa^2 u\,\lVert r\rVert$ 꼴의 항이 남아요. 증강 시스템의 반복 개선이 그 항을 지워요([최소제곱 풀이](/internals/regression/least-squares/)).
-- 표준오차는 개선해도 $R$이 그대로라 상대오차가 대략 $\kappa u$예요(Filip $7 \times 10^{-8}$). Wampler2는 double 입력의 참 제곱합이 아주 작아, $\beta$를 double로 반올림한 것만으로 잔차가 바뀌어 표준오차에 상대 정확도가 없어요. 잔차가 모두 반올림 크기 안이라 sd는 완전 적합으로 판정하고 `bse` 0을 내요([최소제곱 풀이](/internals/regression/least-squares/)).
+- 표준오차는 개선해도 $R$이 그대로라 상대오차가 대략 $\kappa u$예요(Filip $7 \times 10^{-8}$). Wampler2는 double 입력의 참 제곱합이 아주 작아, $\beta$를 double로 반올림한 것만으로 잔차가 바뀌어 표준오차에 상대 정확도가 없어요. 잔차가 모두 반올림 크기 안이라 sd는 완전 적합으로 판정하고 `bse` 0과 NaN인 t·p를 내요([최소제곱 풀이](/internals/regression/least-squares/)).
 
 **조건수를 바꾼 무작위 문제**($X = U\operatorname{diag}(s)V^{\mathsf T}$, $n = 100$, $k = 8$, 잔차는 $X$에 수직이고 $\lVert r\rVert = \rho\lVert X\beta\rVert$, $\rho = 10^{-10}, 1, 100$, $\kappa$마다 9개의 최대).
 
@@ -223,7 +223,7 @@ $10^{11}$까지가 약속이고, 그 위는 잰 값이에요. 개선 한 번에 
 [inf, inf]
 ```
 
-마지막 적합은 기울기의 참값($6.4\times10^{599}$)이 double 밖이라 그 계수와 표준오차만 inf이고, t와 p는 적합의 단위에서 구해 같은 값이에요. 신뢰구간도 두 끝을 적합의 단위에서 구해 되돌리므로, 기울기의 구간은 두 끝이 제 부호대로 넘친 $[\infty, \infty]$이고 NaN이 아니에요.
+마지막 적합은 기울기의 참값($6.4\times10^{599}$)이 double 밖이라 그 계수와 표준오차만 inf이고, t와 p는 적합의 단위에서 구해 같은 값이에요. 신뢰구간도 두 끝을 적합의 단위에서 구해 되돌리므로, 기울기의 구간은 두 끝이 제 부호대로 넘친 $[\infty, \infty]$이고 NaN이 아니에요. [`glm`](/internals/regression/glm/#극단적인-척도)(열, 정규·감마의 $y$), [`rlm`](/internals/regression/robust/)·[`quantreg`](/internals/regression/quantile/)($y$), [정규화](/internals/regression/penalized/#극단적인-척도)($y$와 벌점)도 같은 방법으로 옮겨 풀어요.
 
 **R과의 비교**(R 4.6.2 `lm`, sandwich 3.1.3, lmtest 0.9.40; `tests/regression/test_against_r.py`): 조건이 좋은 7개 문제에서 계수·표준오차·R²·F·잔차·`hatvalues`·`rstandard`·`rstudent`·`cooks.distance`·`vcovHC`·`NeweyWest`·`vcovCL`이 $4 \times 10^{-15}$, `coeftest`의 p값 $10^{-13}$, `dwtest` $5 \times 10^{-16}$, `bptest` $8 \times 10^{-15}$ 안이에요. 조건이 나쁘면 R 쪽이 틀려요. $\kappa = 10^8$($n = 100$, 절편 없음)에서 R `lm`의 계수가 $3 \times 10^{-9}$, 강건 표준오차가 0.01–0.18 틀리고(빵과 고기를 $X^{\mathsf T}X$ 꼴로 곱해 $\kappa^2 u$), sd는 계수 0, 표준오차 $7 \times 10^{-10}$ 안이에요.
 
@@ -308,7 +308,7 @@ Fisher 득점법은 정준이 아닌 링크에서 선형으로 수렴해, 수렴
 - 뉴턴 걸음 없이 IRLS만이면 두 문제가 `max_iter` 50에 닿아 계수 오차가 $6.7 \times 10^{-10}$, $8.7 \times 10^{-11}$이에요. MM의 avar1을 $X^{\mathsf T}\Psi'X$로 직접 만들면 스택 손실의 표준오차가 $8 \times 10^{-14}$(얇은 Q 좌표에서 $6.7 \times 10^{-16}$)예요.
 - **statsmodels**(`tol=1e-15`, `maxiter=1000`): 계수 $2.3 \times 10^{-15}$, 척도 $2.1 \times 10^{-15}$, 표준오차 $1.3 \times 10^{-15}$, 가중치 $4.7 \times 10^{-15}$ 안이에요. 기본값(목적함수의 절대 변화 $10^{-8}$)과는 그쪽의 수렴 오차만큼($10^{-5}$ 이하) 달라요.
 - **R**(4.6.2, MASS 7.3.66, robustbase 0.99.7): `MASS::rlm(scale.est='proposal 2', acc=1e-15)`와 계수 $4.1 \times 10^{-15}$, 척도 $1.7 \times 10^{-14}$, 표준오차 $10^{-14}$ 안이에요(MASS가 var ψ′를 $n - 1$로 나누는 비를 맞춰서). robustbase의 M 단계를 증명한 S 시작에서 `rel.tol` 1e-15로 부르면 계수 $1.1 \times 10^{-15}$, `.vcov.avar1` $7.2 \times 10^{-15}$ 안이고(스택 손실만 $1.5 \times 10^{-13}$: robustbase가 $X^{\mathsf T}\Psi'X$를 직접 역행렬로 풀어서, sd는 Arb와 $6.7 \times 10^{-16}$), `lmrob` 자체(자기 부분표본, S의 `refine.tol` 1e-7)와는 계수 $1.1 \times 10^{-9}$–$1.2 \times 10^{-7}$, 척도 $1.3 \times 10^{-8}$–$1.1 \times 10^{-5}$ 달라요.
-- **Theil–Sen·Siegel**: $n = 2$–$5{,}000$의 무작위·동률·격자·평평한 자료, 두 방법, 여러 `alpha`, 배치에서 scipy와 비트까지 같아요(0의 부호 빼고). 쌍의 정확한 유리수 기울기의 중앙값과는 4ulp 안이에요([Theil–Sen과 Siegel](/internals/regression/slopes/)).
+- **Theil–Sen·Siegel**: $n = 2$–$5{,}000$의 무작위·동률·격자·평평한 자료, 두 방법, 여러 `alpha`, 배치에서 지금 scipy와 비트까지 같아요(0의 부호 빼고, 같은 식과 정확한 선택을 써서요). 쌍의 정확한 유리수 기울기의 중앙값과는 4ulp 안이에요([Theil–Sen과 Siegel](/internals/regression/slopes/)).
 
 ### 분위 회귀
 
@@ -483,7 +483,7 @@ MM(n > 2000은 robustbase의 큰 n fast-S로 행 400개의 묶음 5개, 병합, 
 
 †는 S 고정점에 뉴턴 걸음을 넣은 지금 커널의 값이에요(측정 파일 240 ms, 64.6 ms). lmrob과의 계수 차이는 lmrob의 `refine.tol` 1e-7 때문이에요.
 
-Theil–Sen과 Siegel이에요(y = 2x + 표준정규 잡음, scipy와 결과가 비트까지 같아요).
+Theil–Sen과 Siegel이에요(y = 2x + 표준정규 잡음, 결과는 지금 scipy와 비트까지 같아요).
 
 | n | 함수 | sd 1스레드 | sd 10스레드 | scipy | 배 (1 / 10) |
 |---:|---|---:|---:|---:|---:|

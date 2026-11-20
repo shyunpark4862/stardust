@@ -8,9 +8,9 @@ signatures:
 summary: 데이터의 개수, 최솟값과 최댓값, 평균, 분산, 왜도, 첨도를 한 번에 구해요. 결과는 이름으로도 꺼낼 수 있는 튜플 DescribeResult예요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
-    desc: 요약할 데이터. bool·정수는 float64로 바꿔서 계산해요. 비어 있으면 안 돼요.
+    desc: 요약할 데이터. bool·정수는 float64로 바꿔서 계산해요. frame의 결측값은 NaN으로 읽어요.
   - name: axis
     type: int, int의 tuple·리스트, 또는 None
     kind: keyword-only
@@ -32,9 +32,9 @@ returns:
   desc: "(nobs, minmax, mean, variance, skewness, kurtosis) 여섯 칸의 이름 붙은 튜플. minmax는 (최솟값, 최댓값) 튜플이에요. 남는 축이 없으면 칸마다 Python 숫자, 있으면 배열이에요. kurtosis는 초과 첨도(정규분포에서 0)예요."
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아닐 때, 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, bias가 True·False가 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아닐 때, 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, bias가 True·False가 아닐 때, correction이 int·float가 아닐 때(bool 포함), 없는 옵션(keepdims 등)을 줬을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
-    desc: x가 비어 있을 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+    desc: 중첩 리스트의 길이가 들쭉날쭉할 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
   - type: OverflowError
     desc: correction이 float로 나타낼 수 없을 만큼 큰 int일 때(10**400 등).
 seeAlso: [skew-kurtosis, moment, sem, iqr, mode, zscore]
@@ -65,12 +65,25 @@ DescribeResult(nobs=8, minmax=(61.0, 95.0), mean=79.0, variance=141.714285714285
 | `skewness` | −0.23 | 왜도. 0보다 조금 작아서 왼쪽(낮은 점수 쪽) 꼬리가 약간 길어요. |
 | `kurtosis` | −1.22 | 초과 첨도. 0보다 작아서 정규분포보다 꼬리가 얇고 고르게 퍼져 있어요. |
 
-리스트를 바로 넣어도 돼요. 정수는 실수로 바꿔서 계산해요. [`sd.mean`](/api/array/mean/) 같은 배열 함수는 `sd.ndarray`만 받지만, 기술통계 함수는 눈앞의 데이터를 바로 요약하는 함수라 리스트도 받아요.
+리스트를 바로 넣어도 돼요. 정수는 실수로 바꿔서 계산해요. [`sd.mean`](/api/array/mean/) 같은 배열 함수는 `sd.ndarray`만 받지만, 기술통계 함수는 눈앞의 데이터를 바로 요약하는 함수라 리스트, numpy 배열, [frame](/api/frame/series/)의 열도 받아요.
 
 ```python
 >>> sd.stats.describe([1, 2, 3, 4])
 DescribeResult(nobs=4, minmax=(1.0, 4.0), mean=2.5, variance=1.6666666666666667, skewness=0.0, kurtosis=-1.36)
 ```
+
+frame의 `Series`를 그대로 넣으면 그 열을 요약해요. 빈 칸(결측값)은 NaN으로 읽으므로, 아래의 `nan_policy`를 따라요.
+
+```python
+>>> df = sd.frame.DataFrame({'math': [72.0, 85.0, 90.0, None],
+...                          'art': [85.0, 78.0, 95.0, 61.0]})
+>>> sd.stats.describe(df['art'])
+DescribeResult(nobs=4, minmax=(61.0, 95.0), mean=79.75, variance=204.91666666666666, skewness=-0.3812932509682595, kurtosis=-1.1112221729573628)
+>>> sd.stats.describe(df['math'], nan_policy='omit')
+DescribeResult(nobs=3, minmax=(72.0, 90.0), mean=82.33333333333333, variance=86.33333333333334, skewness=-0.4838211809911218, kurtosis=-1.5000000000000002)
+```
+
+`DataFrame`은 행이 0번 축, 열이 1번 축인 2차원 데이터로 읽어요. 열마다 요약하려면 `axis=0`을 줘요.
 
 <Reference />
 
@@ -188,6 +201,19 @@ array([78.25, 79.75], dtype=float64)
 (array([66.0, 61.0], dtype=float64), array([90.0, 95.0], dtype=float64))
 ```
 
+배열인 칸은 읽기 전용이에요. 값을 고쳐 쓰려면 `.copy()`로 사본을 만들어요.
+
+```python
+>>> r.mean[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> m = r.mean.copy()
+>>> m[0] = 0.0
+>>> m
+array([  0.0, 79.75], dtype=float64)
+```
+
 `axis=1`은 1번 축(열이 늘어선 방향)을 따라 요약하고 그 축을 없애요. 그래서 행마다 값이 하나씩 남아요. 축 고르는 법은 [`sd.sum`](/api/array/sum/)의 `axis`와 같아요. `axis=(0, 1)`이나 `axis=[0, 1]`처럼 tuple이나 리스트로 여러 축을 한꺼번에 줄일 수도 있어요.
 
 ```python
@@ -244,15 +270,13 @@ array([               2.0, 2.3333333333333335], dtype=float64)
 
 ## 조심할 점
 
-### 빈 입력은 에러예요
+### 빈 입력은 개수 0과 NaN이에요
 
-요약할 값이 하나도 없으면 `ValueError`예요.
+요약할 값이 하나도 없으면 `nobs`는 0이고 나머지 칸은 모두 NaN이에요. 다른 기술통계 함수가 빈 데이터에 NaN을 내는 것과 같아요.
 
 ```python
 >>> sd.stats.describe([])
-Traceback (most recent call last):
-    ...
-ValueError: describe(): the input must not be empty
+DescribeResult(nobs=0, minmax=(nan, nan), mean=nan, variance=nan, skewness=nan, kurtosis=nan)
 ```
 
 ### 값이 하나뿐이거나 모두 같으면 NaN이 섞여요
@@ -367,5 +391,6 @@ ValueError: describe(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not
 - `axis`의 기본값이 `None`(전체)이에요. scipy는 `axis=0`이라 2차원 배열을 열마다 요약하지만, stardust는 `axis=0`을 직접 줘야 열마다 요약해요.
 - 자유도 인자 `ddof`는 `correction`이에요(`sd.var`와 같은 이름). 기본값 1은 scipy와 같아요.
 - `DescribeResult`의 칸 이름과 순서, `bias=True` 기본값, 초과 첨도는 scipy와 같아요. 칸 값은 numpy 스칼라가 아니라 Python `int`·`float`이고, `nobs`는 `nan_policy='omit'`에 축이 남을 때만 int64 배열이에요.
+- 빈 데이터는 scipy에서 `ValueError`지만, stardust에서는 `nobs=0`이고 나머지 칸이 NaN이에요.
 - 평균이 퍼짐보다 아주 큰 데이터에서 scipy보다 정확해요. 위의 `small + 1e8` 예에서 scipy의 왜도는 `0.8978957111981068`(여덟째 자리부터 틀림)이에요.
 - `x`는 위치로만, 나머지 옵션은 이름으로만 받아요.

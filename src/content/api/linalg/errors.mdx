@@ -135,7 +135,7 @@ ValueError: svd(): 'mode' must be 'reduced' or 'complete', not 'full'
 >>> sd.linalg.matrix_norm(a, ord=3)
 Traceback (most recent call last):
     ...
-ValueError: matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf
+ValueError: matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf, not 3
 >>> sd.linalg.matrix_rank(a, rtol=-1)
 Traceback (most recent call last):
     ...
@@ -143,6 +143,16 @@ ValueError: matrix_rank(): 'rtol' must be a finite number >= 0
 ```
 
 같은 옵션이라도 타입이 틀리면 `TypeError`, 타입은 맞고 값이 틀리면 `ValueError`예요. `mode=None`은 문자열이 아니라서 `TypeError`, `mode='full'`은 문자열이지만 없는 값이라서 `ValueError`예요.
+
+결과가 너무 커도 `ValueError`예요. 배열을 만들 때와 같은 검사를 하고 메시지도 같아요(`array is too big`, `arrays may have at most 32 dimensions`). 브로드캐스팅으로 맞춘 배치 모양의 원소 수가 int64를 넘을 때나, 결과가 입력보다 한 차원 많은 `outer`에 32차원 입력을 줄 때 나요.
+
+```python
+>>> v = sd.ones((1,) * 32)
+>>> sd.linalg.outer(v, v)
+Traceback (most recent call last):
+    ...
+ValueError: outer(): arrays may have at most 32 dimensions
+```
 
 입력에 NaN이나 무한대가 들어 있을 때와 빈 행렬의 조건수를 구할 때의 `ValueError`는 아래 절에서 따로 설명해요. `lu_solve`의 `perm`이 0부터 N-1까지를 한 번씩 담은 순열이 아닐 때도 `ValueError`예요.
 

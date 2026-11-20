@@ -97,7 +97,7 @@ Cephes의 `j0`·`j1`은 $x \le 5$에서 첫 두 영점을 인수로 빼서 그 �
 
 ## 0·1차 J와 Y (Cephes)
 
-`j0 j1 y0 y1`은 Cephes [1]의 `j0.c`, `j1.c` 식이에요. 계수는 scipy 1.15.1이 포함한 Cephes(BSD 3조항)의 십진 값을 그대로 옮겨 `coeffs/cephes_bessel.hpp`에 두었어요. Boost.Math에도 같은 함수가 있고 최대 오차는 조금 작았지만(`y1` 17.9 대 46.4 ULP, 포락선 기준), 1스레드에서 20–50% 느렸어요(`bench/special/boost/compare.md`, Boost는 C++ 루프). 계약을 지키는 두 구현 중에서는 빠른 쪽을 고르므로 이 넷은 우리 코드예요.
+`j0 j1 y0 y1`은 Cephes [1]의 `j0.c`, `j1.c` 식이에요. 계수는 scipy 1.15.1이 포함한 Cephes(BSD 3조항)의 십진 값을 그대로 옮겨 `coeffs/cephes_bessel.hpp`에 두었어요. Boost.Math에도 같은 함수가 있고 최대 오차는 조금 작았지만(`y1` 17.9 대 48.4 ULP, 포락선 기준), 1스레드에서 20–50% 느렸어요(`bench/special/boost/compare.md`, Boost는 C++ 루프). 계약을 지키는 두 구현 중에서는 빠른 쪽을 고르므로 이 넷은 우리 코드예요.
 
 ### x ≤ 5: 영점을 뺀 유리식
 
@@ -118,7 +118,7 @@ Y_0(x) = \frac{P(z)}{Q(z)} + \frac{2}{\pi} \log x \cdot J_0(x), \qquad
 Y_1(x) = x \frac{P(z)}{Q(z)} + \frac{2}{\pi}\left(J_1(x) \log x - \frac1x\right)
 $$
 
-이 꼴은 $Y$의 영점에서 두 항이 상쇄해요. 영점 근처는 포락선 기준이라 문제가 되지 않지만, 잰 최대 오차가 나오는 곳도 여기예요. `y0`은 $x = 4.67$에서 21.1(포락선 기준, scipy 1.18.1은 같은 점에서 17.8), `y1`은 $x = 2.17$에서 46.4 ULP(상대, $10^{-14}$ 안)예요. 두 항이 부분적으로 상쇄하는 곳이에요.
+이 꼴은 $Y$의 영점에서 두 항이 상쇄해요. 영점 근처는 포락선 기준이라 문제가 되지 않지만, 잰 최대 오차가 나오는 곳도 여기예요. `y0`은 $x = 4.67$에서 17.8(포락선 기준, scipy 1.18.1도 같은 점에서 같은 값), `y1`은 $x = 2.17$에서 48.4 ULP(상대, $10^{-14}$ 안)예요. 두 항이 부분적으로 상쇄하는 곳이에요.
 
 ### x > 5: Hankel의 진폭과 위상
 
@@ -162,24 +162,29 @@ $x = 5$에서는 점근급수만으로 다섯 자리밖에 얻지 못해요. 그
 
 여기까지는 Cephes와 같아요. 다른 곳은 $\cos\chi$, $\sin\chi$를 만드는 방법이에요. Cephes는 $\chi = x - \pi/4$를 float64로 만든 뒤 `cos(χ)`를 불러요. 이 빼기의 반올림은 $\mathrm{ulp}(x)/2$이고, 그만큼 위상이 틀려요. $x = 3828$이면 $\mathrm{ulp}(x) = 4.5 \times 10^{-13}$이라 위상 오차가 $2 \times 10^{-13}$ 라디안, 진폭 대비 상대오차로 약 $10^{3}$ ULP예요. $x$가 커질수록 정비례로 나빠져요.
 
-stardust는 $\chi$를 아예 만들지 않아요. libm의 `sin(x)`, `cos(x)`는 $\pi$의 수백 비트를 써서 인자를 정확히 줄이므로 $x$가 얼마나 커도 거의 정확해요. 거기에 덧셈정리를 써요.
+stardust는 $\chi$를 아예 만들지 않아요. libm의 사인과 코사인은 $\pi$의 수백 비트를 써서 인자를 정확히 줄이므로 $x$가 얼마나 커도 거의 정확해요. 같은 $x$의 둘은 `special/sincos.hpp`의 `sincos`가 Apple libm의 `__sincos_stret`으로 한 번에 구해요(인자 축소 한 번). 컴파일러가 `sin`과 `cos`를 스스로 합치지 못하게 빌드하고 합치는 곳을 코드에 적어서, 어느 경로에서 불러도 같은 함수가 같은 비트를 내요. 거기에 덧셈정리를 써요.
 
 $$
 \cos\!\left(x - \frac{\pi}{4}\right) = \frac{\cos x + \sin x}{\sqrt2}, \qquad
 \sin\!\left(x - \frac{\pi}{4}\right) = \frac{\sin x - \cos x}{\sqrt2}
 $$
 
-$\tfrac{3\pi}{4}$(1차)도 같은 식으로 풀어요. 그 결과 `j0`은 Hankel 쪽 공식을 이렇게 계산해요(`ops/bessel01.hpp`의 `j0_large`).
+$\tfrac{3\pi}{4}$(1차)도 같은 식으로 풀어요. 그 결과 `j0`은 Hankel 쪽 공식을 이렇게 계산해요. `hankel0`의 `p`는 $P_0(x)$, `q`는 $x Q_0(x)/5$이고, `s`, `c`는 $\sin x$, $\cos x$예요.
 
 ```cpp
-// x > 5: Cephes의 진폭 유리식, 위상은 sin x, cos x의 덧셈정리로
-inline double j0_large(double x) {
+// ops/bessel01.hpp: x > 5, Cephes의 진폭 유리식과 sin x, cos x
+inline Hankel hankel0(double x) {
     const double w = 5.0 / x, z = w * w;
-    const double p = horner(z, kJ0Pp) / horner(z, kJ0Pq);   // P0(x)
-    const double q = horner(z, kJ0Qp) / p1evl(z, kJ0Qq);    // x Q0(x) / 5
-    const double s = std::sin(x), c = std::cos(x);           // 정확한 인자 축소
-    // sqrt(2/(pi x)) [P cos(x - pi/4) - Q sin(x - pi/4)]
-    return (p * (c + s) - w * q * (s - c)) / (kSqrtPi * std::sqrt(x));
+    const SinCos sc = sincos(x);
+    return {
+        horner(z, cephes::kJ0Pp) / horner(z, cephes::kJ0Pq), horner(z, cephes::kJ0Qp) / p1evl(z, cephes::kJ0Qq), w,
+        sc.s, sc.c
+    };
+}
+// sqrt(2/(pi x)) [P cos(x - pi/4) - Q sin(x - pi/4)]를 덧셈정리로 푼 꼴
+inline double j0_large(double x) {
+    const Hankel h = hankel0(x);
+    return (h.p * (h.c + h.s) - h.w * h.q * (h.s - h.c)) / (kSqrtPi * std::sqrt(x));
 }
 ```
 
@@ -486,7 +491,7 @@ Hankel이 거절되는 것은 $x < (\nu + 1)^2/4$일 때예요. 차수가 크면
 | 반복 | 상한 | 닿는 곳 |
 |---|---|---|
 | 차수에 대한 점화(`jy_temme`의 아래로·위로, `jy_upward`, `ik_temme`) | $10^7$걸음 (`kMaxOrderSteps`) | $J$, $Y$에서 $\nu - x > 10^7$(또는 $x < 2$이고 $\nu > 10^7$), $\nu < x$이면 $\nu > 10^7$ |
-| CF1 (Lentz) | $10^7$항 (`kMaxCfTerms`) | $\nu \ge x$이고 둘 다 아주 클 때(`jv(1e100, 1e100)`) |
+| CF1 (Lentz) | $10^7$항 (`kMaxCfTerms`) | $x \approx \nu$이고 둘 다 아주 클 때. $x \ge 2^{53}$이면 넘을 것이 미리 보여 걷지 않아요(`jv(1e300, 1e300)`) |
 | Steed CF2 | $10^5$항 (`kMaxCf2Terms`) | 보장 영역에서는 닿지 않아요($x \ge 2$에서 보통 수백 항) |
 | Temme 급수, 거듭제곱급수 | 1000항, 500항 | 닿지 않아요(항이 $1/k!$이나 매 항 4배 이상 줄어요) |
 
@@ -494,7 +499,7 @@ Hankel이 거절되는 것은 $x < (\nu + 1)^2/4$일 때예요. 차수가 크면
 
 - $x$가 $\nu$보다 한참 작으면 `order_saturates`가 $J = 0$, $Y = -\infty$를 바로 내요.
 - $\nu - x > 10^7$인데 `order_saturates`가 판정하지 못하면, `jv`는 `j_underflows`가 0을 증명하면 0이고(`jv(3e7, 1.9e7)`), `yv`는 점화가 상한을 넘으므로 NaN이에요(`yv(3e7, 1.9e7)`). `j_underflows`의 지수 $\nu(a - \tanh a)$는 $x$가 $\nu$에 가까우면 대략 $(2(\nu - x))^{3/2}/(3\sqrt\nu)$라서, $\nu - x$가 $10^7$을 조금 넘는 곳에서 746을 넘기려면 $\nu$가 약 $1.6\times10^{15}$ 아래여야 해요. 그보다 큰 차수에서는 `jv`도 NaN인 띠가 남아요(`jv(1e16, 1e16 - 1.1e7)`는 상한이 약 $e^{-344}$라 0을 증명하지 못해요).
-- $x \le \nu$이고 $\nu - x \le 10^7$이면 Temme 경로가 계산해요. 예를 들어 `jv(2e7, 2e7)`은 0.0016479예요. 전이 영역의 점근식 $J_\nu(\nu) \approx 0.4473\,\nu^{-1/3}$과 맞아요. 걸음 수가 많으면 시간이 들어요. `yv(2e7, 1e7)`은 약 0.23초가 걸려 −inf를 내고, 같은 점의 `jv`는 `j_underflows`가 바로 0을 내요. $x = \nu$에서는 `jv(1e12, 1e12)`까지 값을 내고, $10^{14}$쯤부터는 연분수가 상한 안에 수렴하지 않아 NaN이에요.
+- $x \le \nu$이고 $\nu - x \le 10^7$이면 Temme 경로가 계산해요. 예를 들어 `jv(2e7, 2e7)`은 0.0016479예요. 전이 영역의 점근식 $J_\nu(\nu) \approx 0.4473\,\nu^{-1/3}$과 맞아요. 걸음 수가 많으면 시간이 들어요. `yv(2e7, 1e7)`은 약 0.23초가 걸려 −inf를 내고, 같은 점의 `jv`는 `j_underflows`가 바로 0을 내요. $x = \nu$에서 CF1의 항 수는 약 $6\nu^{1/3}$이고, $\nu \gtrsim 10^{12}$이면 그 뒤의 $Y$ 연분수와 점화가 상한 안에 끝나지 않아요. 그래서 $\nu - x \lesssim 1000\,\nu^{1/3}$인 전이 구간은 $10^{12}$–$2 \times 10^{12}$에서 점마다 다르고(`jv(1e12, 1e12)`은 $4.473 \times 10^{-5}$), $2 \times 10^{12}$부터는 구간 전체가 NaN이에요. $x \ge 2^{53}$이면 CF1의 걸음 $2/x$가 $b = 2\nu/x$의 반 ULP 아래라 $b$가 상수 $2 + \delta$로 남고, 상수 $b$의 연분수는 약 $18/\sqrt\delta$항에서야 수렴해요. $\nu - x < 10^{-12}x$($\delta < 2 \times 10^{-12}$)이면 상한 $10^7$항을 넘는 것이 미리 보이므로 걷지 않고 바로 NaN이에요(`jv(1e300, 1e300)`).
 - $x > \nu$이면 Hankel이 거절되는 한 NaN이에요(`jv(2e7, 2e7 + 10)`, `jv(2e7, 3e7)`). 위로 점화는 걸음 수 상한에, Temme의 CF1은 위에서 말한 정확도 문제에 걸려요.
 - $x \ge (\nu + 1)^2/4$가 되어 Hankel이 받아들여지면 다시 값을 내요(`jv(2e7, 9e13)`은 NaN, `jv(2e7, 2e14)`는 $4.54 \times 10^{-8}$).
 
@@ -722,15 +727,15 @@ Boost.Math에도 Airy 함수가 있지만 쓰지 않아요. Boost는 네 값을 
 | `i0e` / `i1e` | 1.79 / 1.65 | 5.39 / 3.73 | |
 | `k0` / `k1` | 2.3 / 2.13 | 6.84 / 4.37 | |
 | `k0e` / `k1e` | 1.83 / 2.05 | 4.33 / 2.3 | |
-| `j0` / `j1` | 10.9 / 9.32 | 11.9 / 11.3 | `j0`: $x = 2.35$ (첫 영점 앞) |
-| `y0` / `y1` | 21.1 / 46.4 | 17.8 / 1.6e16 | $x = 4.67$, $2.17$ (두 항의 부분 상쇄) |
+| `j0` / `j1` | 11.9 / 11.3 | 11.9 / 11.3 | `j0`: $x = 2.35$ (첫 영점 앞), `j1`: $x = 3.78$ |
+| `y0` / `y1` | 17.8 / 48.4 | 17.8 / 1.6e16 | $x = 4.67$, $2.17$ (두 항의 부분 상쇄) |
 | `jv` | 23.2 | inf | $\nu = -3.7$, $x = 27.6$ (반사) |
 | `yv` | 13.8 | inf | $\nu = -19.6$, $x = 29.3$ (반사) |
 | `iv` / `ive` | 38.8 / 44.6 | inf / 5.2e15 | $\nu = 15.6$, $x = 0.042$ (Boost의 거듭제곱급수) |
 | `kv` / `kve` | 22.2 / 16 | inf / inf | `kv`: $\nu = 332$, $x = 112$ (Boost 구간) |
 | `airy` Ai / Ai′ / Bi / Bi′ | 57.3 / 34.8 / 43.5 / 50.3 | inf | $x \approx -8.5 \times 10^{11}$ (보장 영역의 끝) |
 
-45 ULP를 넘는 줄(`y1`, `airy` Ai, Bi′)도 상대오차(포락선 기준)로는 $6.9$–$9.0 \times 10^{-15}$라 $10^{-14}$ 계약 안이에요. ULP 한 칸은 가수에 따라 상대 $1.1$–$2.2 \times 10^{-16}$이라 같은 상대오차가 ULP로는 두 배까지 달라요.
+45 ULP를 넘는 줄(`y1`, `airy` Ai, Bi′)도 상대오차(포락선 기준)로는 $7.2$–$9.0 \times 10^{-15}$라 $10^{-14}$ 계약 안이에요. ULP 한 칸은 가수에 따라 상대 $1.1$–$2.2 \times 10^{-16}$이라 같은 상대오차가 ULP로는 두 배까지 달라요.
 
 scipy가 크게 틀리는 곳은 대부분 위에서 설명한 것들이에요. `y1`의 큰 $x$(위상 반올림, $x \approx 10^{156}$에서 완전히 틀림), `airy`의 음의 큰 $x$(위상), `iv`·`kv`의 넘침 근처와 큰 차수, `jv`·`yv`의 큰 $x$·큰 $\nu$($x \approx 5 \times 10^4$, $\nu \approx 900$)예요.
 

@@ -15,7 +15,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
-stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `pool.cpp`, 합쳐서 약 350줄이에요. 배열(`sd`), 선형대수(`sd.linalg`), 데이터프레임(`sd.frame`), 특수함수(`sd.special`), 통계(`sd.stats`), 난수(`sd.random`), 회귀(`sd.regression`), 최적화(`sd.optimize`)가 모두 이 풀 위에서 돌아요. 특수함수와 통계의 원소별 함수는 배열의 이터레이터로, 난수와 통계의 표본·기술통계·다변량 커널은 배열의 조각 실행기(`for_pieces`)나 `parallel_for`로, 회귀는 linalg의 배치 드라이버(`run_batch`)와 회귀 하나 안의 행 합으로, 최적화는 배치 스칼라의 원소 패스와 lmder의 열 피벗 QR을 `parallel_for`로 풀에 일을 보내요.
+stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `pool.cpp`, 합쳐서 약 400줄이에요. 배열(`sd`), 선형대수(`sd.linalg`), 데이터프레임(`sd.frame`), 특수함수(`sd.special`), 통계(`sd.stats`), 난수(`sd.random`), 회귀(`sd.regression`), 최적화(`sd.optimize`)가 모두 이 풀 위에서 돌아요. 특수함수와 통계의 원소별 함수는 배열의 이터레이터로, 난수와 통계의 표본·기술통계·다변량 커널은 배열의 조각 실행기(`for_pieces`)나 `parallel_for`로, 회귀는 linalg의 배치 드라이버(`run_batch`)와 회귀 하나 안의 행 합으로, 최적화는 배치 스칼라의 원소 패스와 lmder의 열 피벗 QR을 `parallel_for`로 풀에 일을 보내요.
 
 이 페이지의 내용은 세 층으로 나뉘어요.
 
@@ -28,7 +28,7 @@ stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `po
 핵심 아이디어는 네 가지예요.
 
 1. **상주 워커와 atomic 카운터 하나.** 워커 스레드는 처음 한 번 만들어 두고 계속 살려 둬요. 일이 오면 워커와 호출한 스레드 자신이 공유 카운터에서 "다음 태스크 번호"를 하나씩 집어 가요. 빠른 스레드가 더 많이 집어 갈 뿐, 누가 어떤 태스크를 할지는 미리 정하지 않아요.
-2. **spin 후 잠들기, mutex 없는 시작.** 일이 끝난 워커는 바로 잠들지 않고 최대 100µs 동안 다음 일을 기다리며 돌아요(spin). 그동안 새 일이 오면 잠금(mutex) 없이 바로 시작해요. 그래서 연달아 오는 병렬 호출의 고정 비용이 약 1.5µs예요. 잠든 워커를 깨워야 하면 약 25µs가 들어요.
+2. **spin 후 잠들기, mutex 없는 시작.** 일이 끝난 워커는 바로 잠들지 않고 최대 100µs 동안 다음 일을 기다리며 돌아요(spin). 그동안 새 일이 오면 잠금(mutex) 없이 바로 시작해요. 그래서 연달아 오는 병렬 호출의 고정 비용이 약 1.5µs예요. 잠든 워커를 깨워야 하면 약 25µs가 들어서, 태스크가 16개 이하인 짧은 일에는 잠든 워커를 깨우지 않아요(spin 중인 워커는 그래도 들어와요).
 3. **나눌지는 영역이 정해요.** 배열은 일이 float64 원소 2¹⁵개(256KB) 분량 이상이어야 나누고, 태스크 하나는 2¹²개(32KB) 분량이에요. 두 값 모두 이 기계에서 잰 값이에요.
 4. **결과는 스레드 수와 무관하게 비트까지 같아요.** 자르는 위치는 데이터의 크기와 레이아웃만으로 정하고, 부분 결과는 늘 같은 순서로 합쳐요. 스레드 수가 1이든 10이든 14이든 같은 덧셈을 같은 순서로 해요.
 
@@ -42,9 +42,9 @@ stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `po
 
 1. 호출하는 쪽(예: 원소별 연산의 이터레이터)이 일의 양을 보고 나눌 가치가 있는지 정해요. 가치가 없으면 `parallel_for`를 부르지 않고 GIL을 쥔 채 그 자리에서 돌아요.
 2. `parallel_for(ntasks, fn)`은 태스크가 하나이거나 태스크 안에서 다시 불린 경우면 GIL을 그대로 두고 그 자리에서 평범한 루프로 돌아요. 그 밖이면 GIL을 놓아요. 스레드 수가 1이면 GIL을 놓은 채 호출 스레드가 태스크를 차례로 돌고 끝나요.
-3. 풀이 비어 있으면 일의 내용(`fn`, `ntasks`)을 기록하고 세대 번호를 하나 올려요. spin 중이던 워커는 이것을 보고 곧바로 시작하고, 잠든 워커는 condition variable로 깨워요.
+3. 풀이 비어 있으면 일의 내용(`fn`, `ntasks`)을 기록하고 세대 번호를 하나 올려요. spin 중이던 워커는 이것을 보고 곧바로 일에 들어오고, 잠든 워커는 태스크가 16개를 넘는 일일 때만 condition variable로 깨워요.
 4. 호출 스레드도 같은 카운터에서 태스크를 집어 처리해요.
-5. 모든 워커가 "끝났음"을 보고하면 GIL을 다시 잡고 돌아와요. 태스크에서 난 예외가 있으면 여기서 다시 던져요.
+5. 태스크를 다 집으면 일을 닫고, 그 일에 들어온 워커가 모두 나가기를 기다려요. 그다음 GIL을 다시 잡고 돌아와요. 태스크에서 난 예외가 있으면 여기서 다시 던져요.
 
 ## 풀의 구조
 
@@ -58,8 +58,7 @@ stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `po
 | `job_` | `const std::function<void(int64_t)>*` | 지금 일의 태스크 함수. 호출자 스택에 있는 객체를 가리켜요 |
 | `ntasks_` | `int64_t` | 지금 일의 태스크 수 |
 | `next_` | `std::atomic<int64_t>` | 다음에 집어 갈 태스크 번호 |
-| `pending_` | `std::atomic<int>` | 아직 "끝났음"을 보고하지 않은 워커 수 |
-| `generation_` | `std::atomic<uint64_t>` | 일의 세대 번호. 새 일이 올 때마다 1씩 올라가요 |
+| `state_` | `std::atomic<uint64_t>` | 일의 상태를 한 단어에 담아요. 위 32비트는 세대 번호(새 일마다 1씩 올라가요), 31번 비트는 "닫힘"(태스크를 다 집어 호출 스레드가 기다리는 중), 아래 31비트는 이 일에 들어와 아직 나가지 않은 워커 수예요 |
 | `busy_` | `std::atomic<bool>` | 지금 어떤 호출이 풀을 쓰고 있는지 |
 | `nthreads_` | `std::atomic<int>` | 스레드 수(워커 수 + 1)의 복사본 |
 | `m_`, `cv_work_`, `cv_done_` | mutex 하나, condition variable 둘 | 잠들 때와 깨울 때만 써요 |
@@ -70,27 +69,38 @@ stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `po
 
 ### 작업 하나의 흐름: `run()`
 
-호출 스레드 쪽 코드예요. 실제 코드를 줄이고 주석을 단 발췌예요(`parallel/pool.cpp`의 `Pool::run`).
+호출 스레드 쪽 코드예요. 주석만 한국어로 줄여 바꾼 발췌예요.
 
 ```cpp
-void run(int64_t ntasks, const std::function<void(int64_t)>& fn) {
-    if (busy_.exchange(true)) {          // 다른 Python 스레드의 일이 풀을 쓰는 중
-        serial(ntasks, fn);              //   → 기다리지 않고 이 스레드 혼자 처리
+// csrc/parallel/pool.cpp (Pool::run)
+void run(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
+    if (busy_.exchange(true)) {  // 다른 Python 스레드의 일이 풀을 쓰는 중: 기다리지 않고 혼자 처리
+        serial(ntasks, fn);
         return;
     }
-    if (workers_.empty()) { busy_ = false; serial(ntasks, fn); return; }  // 1스레드
+    if (workers_.empty()) {  // 1스레드
+        busy_ = false;
+        serial(ntasks, fn);
+        return;
+    }
     {
         std::lock_guard lock(m_);
-        job_ = &fn;  ntasks_ = ntasks;  next_ = 0;
-        pending_ = workers_.size();  error_ = nullptr;
-        generation_.fetch_add(1, std::memory_order_release);  // 일의 내용을 "발행"
+        job_ = &fn;
+        ntasks_ = ntasks;
+        next_ = 0;
+        error_ = nullptr;
+        // 새 세대, 열림, 아직 아무도 들어오지 않음 (release: 위의 내용이 이것을 본 워커에게 보여요)
+        state_.store((generation(state_.load()) + 1) << kGenShift, std::memory_order_release);
     }
-    cv_work_.notify_all();               // 잠든 워커가 있으면 깨운다
-    work();                              // 호출 스레드도 태스크를 집는다
-    spin_until([&] { return pending_.load(std::memory_order_acquire) == 0; });
-    if (pending_.load(std::memory_order_acquire) != 0) {      // 100µs 안에 안 끝났으면
+    if (ntasks > kWakeTasks) cv_work_.notify_all();  // 잠든 워커는 긴 일에만 깨워요
+    work();  // 호출 스레드도 태스크를 집어요
+    // 태스크를 다 집었어요: 일을 닫고, 이 일에 들어온 워커만 기다려요
+    state_.fetch_or(kClosed, std::memory_order_acq_rel);
+    auto done = [&] { return (state_.load(std::memory_order_acquire) & kCount) == 0; };
+    spin_until(done);
+    if (!done()) {
         std::unique_lock lock(m_);
-        cv_done_.wait(lock, [&] { return pending_.load() == 0; });
+        cv_done_.wait(lock, done);
     }
     job_ = nullptr;
     std::exception_ptr error = error_;
@@ -102,13 +112,15 @@ void run(int64_t ntasks, const std::function<void(int64_t)>& fn) {
 태스크를 집는 `work()`는 호출 스레드와 워커가 똑같이 써요.
 
 ```cpp
+// csrc/parallel/pool.cpp (Pool::work)
 void work() {
-    t_in_task = true;                    // 이 스레드는 지금 태스크 안이다 (중첩 금지용)
-    for (int64_t t; (t = next_.fetch_add(1)) < ntasks_;) {
-        try { (*job_)(t); }
-        catch (...) {
+    t_in_task = true;  // 이 스레드는 지금 태스크 안이에요 (중첩 금지용)
+    for (std::int64_t t; (t = next_.fetch_add(1)) < ntasks_;) {
+        try {
+            (*job_)(t);
+        } catch (...) {
             std::lock_guard lock(m_);
-            if (!error_) error_ = std::current_exception();  // 첫 예외만 남긴다
+            if (!error_) error_ = std::current_exception();  // 첫 예외만 남겨요
         }
     }
     t_in_task = false;
@@ -119,25 +131,33 @@ void work() {
 
 ### 워커의 일생: `worker_main()`
 
-워커는 만들어질 때 시작해서 풀의 스레드 수가 바뀌거나 프로세스가 끝날 때까지 이 루프를 돌아요(발췌).
+워커는 만들어질 때 시작해서 풀의 스레드 수가 바뀌거나 프로세스가 끝날 때까지 이 루프를 돌아요. 주석만 한국어로 바꾼 발췌예요.
 
 ```cpp
-void worker_main(uint64_t seen) {        // seen: 만들어질 때의 세대 번호
+// csrc/parallel/pool.cpp (Pool::worker_main)
+void worker_main(std::uint64_t seen) {  // seen: 만들어질 때의 세대 번호
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);  // P코어에 머물게
     for (;;) {
-        // 1) 최대 100µs 동안 새 세대가 오는지 지켜본다 (mutex 없음)
-        spin_until([&] { return generation_.load(std::memory_order_acquire) != seen || stop_flag_; });
-        // 2) 안 왔으면 잠든다. mutex는 여기서만 잡는다
-        if (generation_.load(std::memory_order_acquire) == seen && !stop_flag_) {
+        // 1) 최대 100µs 동안 새 세대가 오는지 지켜봐요 (mutex 없음)
+        auto fresh = [&] { return generation(state_.load(std::memory_order_acquire)) != seen; };
+        spin_until([&] { return fresh() || stop_flag_; });
+        if (!fresh() && !stop_flag_) {
+            // 2) 안 왔으면 잠들어요. mutex는 여기서만 잡아요
             std::unique_lock lock(m_);
-            cv_work_.wait(lock, [&] { return stop_ || generation_.load() != seen; });
+            cv_work_.wait(lock, [&] { return stop_ || fresh(); });
         }
         if (stop_flag_) return;
-        // 3) 새 일. acquire로 읽었으므로 job_, ntasks_가 보인다
-        seen = generation_.load(std::memory_order_acquire);
+        // 3) 본 일에 들어가요. 일이 아직 열려 있을 때만, 세대·닫힘·인원을 compare-and-swap 한 번으로
+        std::uint64_t s = state_.load(std::memory_order_acquire);
+        seen = generation(s);
+        bool joined = false;
+        while (!joined && !(s & kClosed) && generation(s) == seen)
+            joined = state_.compare_exchange_weak(s, s + 1, std::memory_order_acq_rel);
+        if (!joined) continue;  // 늦었어요: 호출 스레드가 이미 혼자 끝냈어요
         work();
-        // 4) 끝났다고 보고. 마지막 보고자면 호출 스레드를 깨운다
-        if (pending_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        // 4) 나가요. 일이 닫혔고 마지막으로 나가는 워커면 호출 스레드를 깨워요
+        const std::uint64_t left = state_.fetch_sub(1, std::memory_order_acq_rel) - 1;
+        if ((left & kClosed) && (left & kCount) == 0) {
             std::lock_guard lock(m_);
             cv_done_.notify_one();
         }
@@ -184,9 +204,10 @@ TBB나 Rayon 같은 범용 풀은 스레드마다 큐를 두고 남의 큐에서
 
 | 도구 | 쓰는 곳 | 고른 이유 |
 |---|---|---|
-| `generation_`의 release 쓰기 / acquire 읽기 | 일의 발행과 수신 | mutex 없이 일의 내용(`job_`, `ntasks_`, `next_ = 0` …)을 워커에게 보이게 해요 |
+| `state_`의 release 쓰기 / acquire 읽기 | 일의 발행과 수신 | mutex 없이 일의 내용(`job_`, `ntasks_`, `next_ = 0` …)을 워커에게 보이게 해요 |
+| `state_`의 compare-and-swap | 일에 들어가기 | 세대, 닫힘, 인원을 한 번에 봐요. 이미 닫힌 일이나 다음 일에 자기를 세어 넣는 일이 없어요 |
 | `next_.fetch_add` | 태스크 번호 나눠 주기 | 원자적 증가 하나로 중복 없는 번호를 줘요. 잠금이 필요 없어요 |
-| `pending_.fetch_sub` (acq_rel) | 완료 보고 | 워커가 태스크에서 쓴 결과가, 0을 본 호출 스레드에게 보이게 해요 |
+| `state_.fetch_sub` (acq_rel) | 일에서 나가기 | 워커가 태스크에서 쓴 결과가, 인원 0을 본 호출 스레드에게 보이게 해요 |
 | `busy_.exchange(true)` | 풀 차지하기 | 읽고 쓰기를 한 번에 해서, 두 호출이 동시에 "비었다"고 판단하는 일이 없어요 |
 | mutex + condition variable | 잠들기와 깨우기만 | OS의 대기 기능을 쓰려면 필요해요. 빠른 경로에서는 잡지 않아요 |
 | `nthreads_` (atomic 복사본) | `get_num_threads()` | 다른 스레드가 `workers_`를 다시 만드는 중에도 안전하게 읽어요 |
@@ -194,9 +215,9 @@ TBB나 Rayon 같은 범용 풀은 스레드마다 큐를 두고 남의 큐에서
 
 **release/acquire가 하는 일.** C++의 메모리 모델에서, 스레드 A가 atomic 변수에 release로 쓰고 스레드 B가 그 값을 acquire로 읽으면, A가 그 쓰기 전에 한 모든 메모리 쓰기가 B에게 그 읽기 뒤에 보이도록 보장돼요 [1]. 풀은 이 보장을 이렇게 써요.
 
-1. 호출 스레드가 `job_ = &fn; ntasks_ = …; next_ = 0; pending_ = …`를 평범하게 써요.
-2. 그다음 `generation_.fetch_add(1, release)`.
-3. spin 중인 워커가 `generation_.load(acquire)`로 바뀐 값을 보면, 1에서 쓴 값이 모두 보여요.
+1. 호출 스레드가 `job_ = &fn; ntasks_ = …; next_ = 0; error_ = nullptr`를 평범하게 써요.
+2. 그다음 새 세대 번호를 `state_`에 release로 써요.
+3. spin 중인 워커가 `state_.load(acquire)`로 바뀐 세대를 보면, 1에서 쓴 값이 모두 보여요.
 
 그래서 `job_`과 `ntasks_`는 atomic이 아니어도 돼요. 코드에서 1~2를 `lock_guard` 안에서 하는 것은 잠든 워커 때문이에요. 잠든 워커는 mutex를 잡은 채 조건을 검사하므로, 발행도 mutex 아래에서 해야 "검사하고 잠드는 사이에 신호를 놓치는" 일이 없어요. spin 중인 워커는 mutex를 잡지 않으므로 이 잠금과 다투지 않아요(mutex를 잡은 쪽은 호출 스레드 하나뿐이에요).
 
@@ -214,11 +235,11 @@ TBB나 Rayon 같은 범용 풀은 스레드마다 큐를 두고 남의 큐에서
 
 ### 완료 기다리기
 
-호출 스레드는 자기 몫의 태스크를 다 집은 뒤(카운터가 바닥나면) `pending_`이 0이 되기를 기다려요. 워커는 대개 몇 µs 안에 끝나므로 먼저 spin하고, 100µs가 지나도 안 끝나면 `cv_done_`에서 잠들어요. 마지막으로 보고한 워커(`fetch_sub`가 1을 돌려준 워커)가 `cv_done_`을 깨워요.
+호출 스레드는 자기 몫의 태스크를 다 집은 뒤(카운터가 바닥나면) `state_`에 닫힘 비트를 세우고, 그 일에 들어온 워커 수가 0이 되기를 기다려요. 워커는 대개 몇 µs 안에 끝나므로 먼저 spin하고, 100µs가 지나도 안 끝나면 `cv_done_`에서 잠들어요. 일이 닫힌 뒤 마지막으로 나간 워커가 `cv_done_`을 깨워요.
 
-`pending_`의 초깃값은 "남은 태스크 수"가 아니라 워커 수예요. 태스크를 하나도 집지 못한 워커도 `work()`를 한 번 돌고(카운터가 이미 바닥이라 바로 빠져나와요) 보고해야 해요. 이유는 `job_`이 가리키는 `fn`의 수명이에요. `fn`은 호출자의 스택에 있는 객체라서 `run()`이 돌아오면 사라져요. 모든 워커가 보고하기 전에 돌아오면, 늦게 깨어난 워커가 이미 사라진 `fn`이나 다음 일의 `ntasks_`를 읽을 수 있어요. 모든 워커의 보고를 기다리는 것이 이 문제를 가장 단순하게 막는 방법이에요.
+기다리는 것은 모든 워커가 아니라 **그 일에 들어온 워커**뿐이에요. 이유는 `job_`이 가리키는 `fn`의 수명이에요. `fn`은 호출자의 스택에 있는 객체라서 `run()`이 돌아오면 사라져요. 일에 들어온 워커는 아직 `fn`을 부르는 중일 수 있으니 나갈 때까지 기다려야 해요. 들어오지 않은 워커는 `fn`을 만지지 않아요. 늦게 깨어난 워커는 일이 이미 닫힌 것을 보고 들어가지 않으므로, 사라진 `fn`이나 다음 일의 `ntasks_`를 읽을 일이 없어요. 들어가기(인원 +1)와 닫힘 확인을 compare-and-swap 한 번으로 하는 것이 이 보장의 중심이에요. 둘을 따로 하면 "열린 것을 보고, 닫힌 뒤에 인원을 올리는" 틈이 생겨요.
 
-이 때문에 생기는 성질이 하나 있어요. 직전 일에서 100µs 넘게 쉬어서 워커가 잠들어 있으면, 그 워커는 태스크를 집지 못하더라도 깨어나서 보고할 때까지 호출이 기다려요. 그래서 쉬다가 처음 부르는 병렬 호출은 깨우기 비용(수십 µs)을 내고, 연달아 부르는 호출이 약 1.5µs예요.
+그래서 늦게 깨는 워커가 호출을 붙잡지 않아요. 잠든 워커를 깨우는 신호는 도착하는 데 약 25µs, 보내는 호출 스레드 쪽에서도 약 5µs가 들어요. 태스크 하나는 0.5–1.5µs라서, 태스크가 몇 개 안 되는 일은 깨운 워커가 시작하기 전에 호출 스레드 혼자 끝내요. 그래서 태스크가 16개(`kWakeTasks`) 이하인 일은 잠든 워커를 깨우지 않아요. spin 중인 워커는 신호 없이도 새 세대를 보고 들어와요. 2ms 쉰 뒤의 원소 4만 개 `x + x`는 깨우면 16µs, 깨우지 않으면 11µs였어요(1스레드 12µs). 어느 스레드가 어느 태스크를 하든 결과는 같아요.
 
 ### 예외
 
@@ -286,7 +307,7 @@ void resize(int n) {
 
 여기에는 함정이 두 개 있어요.
 
-- **새 워커의 세대 번호.** 새 워커가 `seen = 0`에서 시작하면, 세대 번호는 이미 수백, 수천까지 올라가 있으므로 "0 ≠ 지금 세대"를 보고 이미 끝난 일을 새 일로 착각해요. 그 워커가 `pending_`을 한 번 더 줄이면, 다음 일에서 보고 수가 어긋나 호출 스레드가 영원히 기다려요. 그래서 `start()`가 현재 세대 번호를 읽어 새 워커에 넘겨요. "계산 중에 스레드 수 바꾸기" 스트레스 테스트가 이 경우를 지켜요.
+- **새 워커의 세대 번호.** 새 워커가 `seen = 0`에서 시작하면, 세대 번호는 이미 수백, 수천까지 올라가 있으므로 "0 ≠ 지금 세대"를 보고 이미 끝난 일을 새 일로 착각해요. 그래서 `start()`가 현재 세대 번호를 읽어 새 워커에 넘겨요. "계산 중에 스레드 수 바꾸기" 스트레스 테스트가 이 경우를 지켜요.
 - **스레드 수 읽기.** `get_num_threads()`가 `workers_.size() + 1`을 바로 읽으면, 다른 스레드가 `resize()`로 vector를 다시 만드는 중일 때 데이터 경쟁이에요. `run()`이 `busy_`를 잡기 전에 `workers_.empty()`를 보는 것도 같은 경쟁이에요. 그래서 스레드 수를 atomic 복사본 `nthreads_`에 두고, `run()`은 `busy_`를 차지한 뒤에만 `workers_`를 봐요. `resize()`도 `busy_`를 쥐고 `workers_`를 바꾸므로 둘이 겹치지 않아요.
 
 인자는 1부터 1024까지의 int예요. 범위 밖이면 ValueError, int가 아니면 TypeError이고, 위치 인자로만 받아요([`set_num_threads`](/api/array/threads/)).
@@ -294,14 +315,35 @@ void resize(int n) {
 ### 풀의 수명
 
 ```cpp
+// csrc/parallel/pool.cpp (줄인 발췌)
+std::atomic<Pool*> g_pool{nullptr};
+std::atomic<int> g_threads{0};  // 나중에 만드는 풀의 스레드 수 (0: 기본값)
+
+void after_fork_in_child() {
+    if (Pool* old = g_pool.load(std::memory_order_relaxed)) {
+        g_threads.store(old->threads(), std::memory_order_relaxed);
+        g_pool.store(nullptr, std::memory_order_relaxed);  // leaked on purpose
+    }
+    t_in_task = false;
+}
+
 Pool& pool() {
-    static Pool* p = new Pool(performance_cores());  // 처음 쓸 때 한 번 만든다
+    Pool* p = g_pool.load(std::memory_order_acquire);
+    if (p) [[likely]]
+        return *p;
+    static const bool registered = [] { return pthread_atfork(nullptr, nullptr, &after_fork_in_child) == 0; }();
+    (void)registered;
+    const int n = g_threads.load(std::memory_order_relaxed);
+    Pool* made = new Pool(n > 0 ? n : performance_cores());
+    if (g_pool.compare_exchange_strong(p, made, std::memory_order_acq_rel)) return *made;
+    delete made;  // another thread made one first
     return *p;
 }
 ```
 
-- **처음 쓸 때 만들어요.** 함수 안의 `static` 변수는 C++11부터 여러 스레드가 동시에 처음 불러도 한 번만 초기화돼요. `import stardust` 자체는 풀을 만들지 않고, 처음으로 풀에 무언가를 묻는 순간 만들어져요. 작은 원소별 연산도 이터레이터가 `available()`을 부르므로, 실제로는 첫 연산에서 워커가 생겨요.
+- **처음 쓸 때 만들어요.** `import stardust` 자체는 풀을 만들지 않고, 처음으로 풀에 무언가를 묻는 순간 만들어져요. 작은 원소별 연산도 이터레이터가 `available()`을 부르므로, 실제로는 첫 연산에서 워커가 생겨요. 여러 스레드가 동시에 처음 부르면 각자 만들어 보고 compare-and-swap에서 이긴 하나만 남아요.
 - **없애지 않아요.** `new`로 만들고 `delete`하지 않아요. 정적 객체로 두면 인터프리터가 끝날 때 소멸자가 돌면서 워커를 `join`하는데, 인터프리터 종료 중에 스레드를 기다리는 것은 순서 문제로 불안정해요. 프로세스가 끝나면 OS가 스레드와 메모리를 회수해요.
+- **`fork()` 뒤의 자식은 새 풀을 만들어요.** `fork()`한 자식 프로세스에는 fork를 부른 스레드 하나만 있어요. 워커는 없는데 옛 풀이 그대로 있으면 첫 병렬 호출이 오지 않을 워커를 영원히 기다려요. 그래서 `pthread_atfork`로 등록한 함수가 자식에서 옛 풀을 건드리지 않고 잊어요(`join`도 소멸자도 부르지 않아요. 그 스레드와 mutex 상태는 부모의 것이에요). 스레드 수만 기억해 두었다가 첫 사용 때 같은 스레드 수로 새 풀을 만들어요. OpenBLAS와 OpenMP 런타임도 같은 방법을 써요.
 
 ## GIL
 
@@ -397,7 +439,7 @@ macOS는 코어를 성능 등급별로 알려 줘요. `hw.perflevel0`이 가장 
 
 `sd.set_num_threads`가 정하는 것은 우리 풀의 스레드 수예요. 큰 BLAS·LAPACK 호출(`matmul`, `cov`, linalg의 분해)은 Accelerate가 안에서 스레드를 정하고, 이 설정을 따르지 않아요. 그래서 `cov` 1000×1000은 1스레드 설정에서 1.78ms, 10스레드 설정에서 1.52ms로 거의 같아요(numpy 2.16ms). 일부러 이렇게 둬요.
 
-- **결과가 바뀌지 않아요.** Accelerate의 스레드 수는 결과의 비트를 바꾸지 않아요. 1스레드로 고정한 Accelerate와 기본 설정의 결과는 n = 64, 512, 1024에서 비트까지 같아요(내부 스레드를 쓰는 LU 분해 n = 1024 포함). 그러니 스레드 수와 무관한 결정성은 Accelerate 쪽에서도 지켜져요.
+- **결과는 Accelerate의 스레드 모드가 같을 때 비트까지 같아요.** `sd.set_num_threads`로 우리 풀의 스레드 수를 바꿔도 BLAS·LAPACK을 부르는 계산(행렬 곱, 분해, 회귀의 QR 등)의 비트는 그대로예요. Accelerate가 한 스레드로 돌지 여러 스레드로 돌지는 환경 변수 `VECLIB_MAXIMUM_THREADS`가 정하고, 두 모드 사이에서는 마지막 자리 몇 개가 다를 수 있어요(`ols`의 `bse`가 상대 $2 \times 10^{-16}$, `lstsq`가 $3 \times 10^{-14}$). Accelerate가 안에서 일을 나누는 방식은 stardust가 정하지 않아요. stardust가 모드를 고정하면 사용자의 설정을 덮고 큰 행렬 곱이 느려질 수 있어서, 모드는 바꾸지 않아요.
 - **고칠 수단이 프로세스 전체에 걸려요.** Accelerate의 스레드를 제한하는 함수(`BLASSetThreading`)는 호출 하나가 아니라 프로세스 전체의 설정이에요. 호출마다 바꾸고 되돌리면 같은 프로세스에서 Accelerate를 쓰는 다른 코드(numpy, 다른 Python 스레드의 호출)까지 그 사이에 설정이 바뀌어요.
 - **두 풀이 겹치지 않아요.** 큰 BLAS 호출은 우리 풀의 태스크 안에서 부르지 않고 호출한 스레드에서 차례로 불러요. 그동안 우리 풀은 쉬고 있으므로, Accelerate가 코어를 여러 개 써도 과다 구독이 생기지 않아요. Accelerate가 한 스레드로 도는 작은 행렬의 배치만 우리 풀로 나눠요([행렬곱](/internals/array/matmul/)).
 - **Accelerate는 필요할 때만 스레드를 써요.** 정사각 `dgemm`은 256까지 한 스레드이고, LAPACK 루틴은 n = 1024까지 대부분 한 스레드예요(LU 분해 `getrf`의 n ≥ 768만 여러 스레드). 그래서 이 설정이 실제로 차이를 내는 것은 큰 행렬 곱 정도예요.
@@ -521,7 +563,9 @@ parallel::parallel_for(p.tasks, [&](int64_t t) {
 
 **결과는 스레드 수와 무관하게 비트까지 같아요.** 이를 위해 두 가지를 지켜요. 나누는 방식은 데이터의 크기와 레이아웃(그리고 dtype)으로만 정하고, 부분 결과는 고정된 순서로 합쳐요. "스레드가 있을 때만 다른 경로"는 쓰지 않아요. 결과가 같다고 보장되는 경우만 예외예요.
 
-배열뿐 아니라 linalg, frame, special이 모두 이렇게 동작해요. 그래서 사용자는 노트북에서 1스레드로 디버깅한 결과와 서버에서 10스레드로 돌린 결과를 그대로 비교할 수 있고, 테스트는 정답을 하나만 두면 돼요.
+모든 영역이 이렇게 동작해요. 그래서 1스레드로 디버깅한 결과와 10스레드로 돌린 결과를 그대로 비교할 수 있고, 테스트는 정답을 하나만 두면 돼요. BLAS·LAPACK을 부르는 계산은 Accelerate의 스레드 모드가 같다는 조건이 하나 더 붙어요(위 "Accelerate는 따르지 않아요").
+
+이것이 stardust가 비트로 약속하는 것이에요. numpy와 비트까지 같은 것은 약속이 아니에요. 아래 pairwise 합처럼 numpy와 같은 알고리즘을 쓰더라도 더 빠른 잎을 쓰면 마지막 자리가 달라질 수 있고, 그 대신 스레드 수와 상관없이 같은 비트는 언제나 지켜요([전체 구조](/internals/core/overview/)의 "결과의 비트").
 
 ### 부동소수점 덧셈은 결합법칙이 성립하지 않아요
 
@@ -542,16 +586,16 @@ $$
 | 3등분 | `998.5706494386214` | 다름 |
 | 7등분 | `998.570649438621` | 다름 |
 | 10등분 | `998.5706494386216` | 다름 |
-| `sd.sum(x)`, 1·3·10스레드 | `998.5706494386213` | 같음 |
+| `sd.sum(x)`, 1·3·10스레드 | `998.5706494386211` | 다름 (세 스레드 수에서 서로 같음) |
 
-차이는 마지막 한두 자리뿐이지만, 스레드 수에 따라 결과가 바뀌면 디버깅이 어려워져요. 2등분이 같은 것은 우연이 아니에요. 아래에서 보듯 numpy의 합 트리가 100만 개를 정확히 50만/50만으로 나누기 때문이에요.
+차이는 마지막 한두 자리뿐이지만, 스레드 수에 따라 결과가 바뀌면 디버깅이 어려워져요. 2등분이 같은 것은 우연이 아니에요. numpy의 합 트리가 100만 개를 정확히 50만/50만으로 나누기 때문이에요. `sd.sum`은 numpy와 잎의 크기가 달라서(아래) 마지막 자리가 numpy와 다르지만, 스레드 수를 바꿔도 같은 값이에요.
 
 ### 실제 예 1: 긴 합 하나 (pairwise 트리의 잎)
 
-stardust의 float 합은 numpy와 같은 **pairwise 합**이에요([집계](/internals/array/reductions/)). numpy의 `DOUBLE_pairwise_sum`(`numpy/_core/src/umath/loops_utils.h.src`)과 같은 알고리즘이에요 [5].
+stardust의 float 합은 **pairwise 합**이에요([집계](/internals/array/reductions/)). numpy의 `DOUBLE_pairwise_sum`(`numpy/_core/src/umath/loops_utils.h.src`)과 같은 알고리즘이고 잎만 더 넓어요 [5].
 
-- 원소가 128개(`kBlock`) 이하면 누산기 8개로 더하고 `((r0+r1)+(r2+r3))+((r4+r5)+(r6+r7))`로 합쳐요.
-- 그보다 길면 반으로 나누되, 자르는 위치를 8의 배수로 내려요($\text{split}(n) = \lfloor n/2 \rfloor - (\lfloor n/2 \rfloor \bmod 8)$). 양쪽을 재귀로 더한 뒤 왼쪽 + 오른쪽.
+- 원소가 512개(`kBlock`) 이하면 누산기 16개로 더하고, 누산기는 이웃끼리, 그 쌍끼리 고정된 트리로 합쳐요. numpy는 누산기 8개, 128개예요.
+- 그보다 길면 반으로 나누되, 자르는 위치를 16의 배수로 내려요($\text{split}(n) = \lfloor n/2 \rfloor - (\lfloor n/2 \rfloor \bmod 16)$). 양쪽을 재귀로 더한 뒤 왼쪽 + 오른쪽.
 
 이렇게 더하면 반올림 오차가 n이 아니라 $\log n$에 비례해 자라요 [6]. 이 재귀 트리의 모양은 n에만 의존해요. 그래서 병렬화는 이렇게 해요(`base/pairwise.hpp`의 `plan`, `combine`).
 
@@ -559,7 +603,7 @@ stardust의 float 합은 numpy와 같은 **pairwise 합**이에요([집계](/int
 2. **병렬 계산:** 잎마다 태스크 하나. 잎 안에서는 직렬 pairwise 합과 똑같이 더해요. 어느 스레드가 어느 잎을 언제 더하든 각 잎의 결과는 같아요.
 3. **합치기:** 같은 트리를 다시 내려가면서, 잎 자리에 2의 결과를 차례로 끼워 넣고 왼쪽 + 오른쪽을 해요.
 
-덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서예요. 그래서 결과는 1스레드와도, numpy와도 비트까지 같아요. n = 40,000이면 이렇게 돼요.
+덧셈 하나하나가 직렬 트리와 같은 피연산자, 같은 순서예요. 그래서 결과는 1스레드와 비트까지 같아요. n = 40,000이면 이렇게 돼요.
 
 <Fig column caption="n = 40000을 반으로 나눠 가는 트리. 4096개 이하가 되면 잎(p0…p15)이고, 결과는 트리 모양 그대로 왼쪽부터 합쳐요.">
   <Tree
@@ -567,14 +611,14 @@ stardust의 float 합은 numpy와 같은 **pairwise 합**이에요([집계](/int
       label: '[0, 40000)', note: 'split(40000) = 20000',
       children: [
         { label: '[0, 20000)', note: 'split(20000) = 10000', children: [
-          { label: '[0, 10000)', note: 'split(10000) = 5000', children: [
-            { label: '[0, 5000)', note: 'split(5000) = 2500 - 4 = 2496', children: [
+          { label: '[0, 10000)', note: 'split(10000) = 5000 - 8 = 4992', children: [
+            { label: '[0, 4992)', note: 'split(4992) = 2496', children: [
               { label: 'p0  [0, 2496)', note: '2496개 ≤ 4096', tone: 'b' },
-              { label: 'p1  [2496, 5000)', note: '2504개', tone: 'b' },
+              { label: 'p1  [2496, 4992)', note: '2496개', tone: 'b' },
             ] },
-            { label: '[5000, 10000)', children: [
-              { label: 'p2  [5000, 7496)', tone: 'b' },
-              { label: 'p3  [7496, 10000)', tone: 'b' },
+            { label: '[4992, 10000)', note: 'split(5008) = 2504 - 8 = 2496', children: [
+              { label: 'p2  [4992, 7488)', tone: 'b' },
+              { label: 'p3  [7488, 10000)', note: '2512개', tone: 'b' },
             ] },
           ] },
           { label: '[10000, 20000)', note: '→ 잎 p4 … p7', tone: 'a' },
@@ -590,16 +634,16 @@ stardust의 float 합은 numpy와 같은 **pairwise 합**이에요([집계](/int
 ```
 
 <Fig caption="n = 40,000의 잎 16개(앞쪽 8개만 그림). 잎의 경계는 n으로만 정해져요. 잎 안의 합(태스크)은 아무 스레드나 아무 순서로 계산해도 되고, 합치는 순서는 트리가 정해요.">
-  <ArrayFig name="잎 (시작 위치)" data={[0, 2496, 5000, 7496, 10000, 12496, 15000, 17496]} tones={['a', '', 'a', '', 'a', '', 'a', '']} note="크기 2496, 2504가 번갈아" />
+  <ArrayFig name="잎 (시작 위치)" data={[0, 2496, 4992, 7488, 10000, 12496, 14992, 17488]} tones={['a', '', 'a', '', 'a', '', 'a', '']} note="크기 2496 셋, 2512 하나가 되풀이" />
   <Op note="태스크 16개">→</Op>
   <ArrayFig name="부분합" data={['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']} note="순서 무관하게 계산" />
   <Op note="트리 순서">→</Op>
   <ArrayFig name="합" data={['Σ']} tones={['b']} note="직렬과 같은 비트" />
 </Fig>
 
-원소 100만 개면 트리가 8단계 내려가서 크기 3904~3912인 잎 256개가 돼요. 첫 단계가 정확히 50만/50만이라서, 위 표의 "2등분"은 트리의 첫 단계와 같은 순서로 더한 것이에요.
+원소 100만 개면 트리가 8단계 내려가서 크기 3904~3920인 잎 256개가 돼요.
 
-이 정의는 `base/pairwise.hpp` 한 벌을 linalg(`vecdot`, `trace`, 노름의 합)와 frame(float `sum`, `mean`, `var`, `std`)도 같이 써요. 그래서 세 영역의 float 합은 같은 항이면 서로, 그리고 numpy와 비트까지 같아요. frame은 잎 크기만 2¹⁴로 달라요(잎 크기는 직렬 트리의 경계가 아니라 병렬 계획의 단위일 뿐이라 결과에 영향이 없어요).
+이 정의는 `base/pairwise.hpp` 한 벌을 linalg(`vecdot`, `trace`, 노름의 합)와 frame(float `sum`, `mean`, `var`, `std`)도 같이 써요. 그래서 세 영역의 float 합은 같은 항이면 서로 비트까지 같아요. frame은 병렬 계획의 잎 크기만 2¹⁴로 달라요(이 잎은 직렬 트리의 경계가 아니라 병렬 계획의 단위일 뿐이라 결과에 영향이 없어요). linalg의 `vecdot`과 2-노름은 곱의 합이라 잎에서 곱을 FMA로 더하지만, 트리와 병렬 계획은 같아요.
 
 ### 실제 예 2: 바깥 축 리덕션 (고정 블록)
 
@@ -658,16 +702,16 @@ private:
 };
 ```
 
-- `offer`는 compare-and-swap 루프로 "지금 값보다 작을 때만 바꾸기"를 원자적으로 해요. 여러 태스크가 동시에 내도 가장 작은 값이 남아요. 값 하나의 최솟값만 필요하고 다른 메모리와의 순서는 상관없어서 relaxed로 충분해요. 결과는 `parallel_for`가 돌아온 뒤에 읽는데, 그때는 완료 보고(`pending_`)의 acquire가 순서를 보장해요.
+- `offer`는 compare-and-swap 루프로 "지금 값보다 작을 때만 바꾸기"를 원자적으로 해요. 여러 태스크가 동시에 내도 가장 작은 값이 남아요. 값 하나의 최솟값만 필요하고 다른 메모리와의 순서는 상관없어서 relaxed로 충분해요. 결과는 `parallel_for`가 돌아온 뒤에 읽는데, 그때는 워커가 일에서 나갈 때의 `state_` 갱신(acq_rel)과 호출 스레드의 acquire 읽기가 순서를 보장해요.
 - `failed_before(row)`가 true면 앞쪽에서 이미 실패했으므로 뒤쪽 태스크는 일찍 멈춰도 돼요.
 - frame(문자열 → 숫자 변환 등)이 쓰고, linalg는 같은 원리로 "배치에서 가장 작은 실패 인덱스"를 보고해요. 메시지는 병렬 구간이 끝나고 GIL을 다시 잡은 뒤에 만들어요.
 
 ### 테스트
 
 - `tests/array/test_threads.py`는 연산 묶음 36개(원소별, 리덕션, 블록 리덕션, `prod`, 긴 스캔, 정렬 조각, 마스크 청크, 작은 BLAS 배치 …)를 1, 2, 3, 7, 10스레드에서 돌려 결과의 바이트가 모두 같은지 확인해요. 입력은 기준값을 넘는 크기이고, 연속·전치·strided 레이아웃과 NaN이 섞여 있어요.
-- 원소 3,000,001개에서 1스레드와 10스레드 모두 `sd.sum(x) == np.sum(x)`인지 봐요. complex 200만 개도 같이 봐요.
+- 원소 3,000,001개에서 1스레드와 10스레드의 `sd.sum(x)`가 비트까지 같은지 봐요. complex 200만 개도 같이 봐요. numpy의 `np.sum(x)`와는 상대 $10^{-12}$ 안인지만 봐요.
 - 여러 Python 스레드가 동시에 풀을 쓰는 경우, 계산 중에 `set_num_threads`를 부르는 경우도 시험해요.
-- 골든 출력(`bench/merge/golden/`)도 1, 3, 10스레드에서 바이트로 비교해요.
+- 골든 출력(`tests/golden/data/`)도 1, 3, 10스레드에서 비트까지 비교해요([테스트 체계](/internals/core/testing/)).
 
 ## 성능
 
@@ -817,5 +861,5 @@ private:
 2. OpenMP Architecture Review Board, *OpenMP Application Programming Interface* 명세의 환경 변수 `OMP_WAIT_POLICY`.
 3. LLVM OpenMP 런타임(libomp)의 환경 변수 `KMP_BLOCKTIME`(스레드가 잠들기 전에 기다리는 시간, 기본 200ms).
 4. Apple, `pthread_set_qos_class_self_np`와 QoS 등급(`QOS_CLASS_USER_INTERACTIVE` 등), macOS SDK의 `<pthread/qos.h>`와 `<sys/qos.h>`.
-5. numpy 소스의 `@TYPE@_pairwise_sum` 함수(`numpy/_core/src/umath/loops_utils.h.src`). stardust의 `base/pairwise.hpp`가 같은 트리 모양과 순서를 따르고, numpy 2.5.4와 비트까지 같은지 테스트로 확인해요.
+5. numpy 소스의 `@TYPE@_pairwise_sum` 함수(`numpy/_core/src/umath/loops_utils.h.src`), numpy 2.5.4 기준. stardust의 `base/pairwise.hpp`는 같은 재귀 구조에 누산기 16개, 잎 512개를 써요.
 6. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM, 2002. (4장, 합의 반올림 오차와 pairwise 합)

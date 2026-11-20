@@ -359,10 +359,13 @@ $$
         }
     } else {
         std::vector<double> r = s.rv;
-        for (lint q = 0; q < a; ++q) cblas_daxpy(static_cast<int>(s.m), -bA[q], s.Z.data() + A[q] * s.m, 1, r.data(), 1);
+        for (lint q = 0; q < a; ++q)
+            cblas_daxpy(static_cast<int>(s.m), -bA[q], s.Z.data() + A[q] * s.m, 1, r.data(), 1);
         if (s.pc > 0)
-            cblas_dgemv(CblasColMajor, CblasTrans, static_cast<int>(s.m), static_cast<int>(s.pc), 1.0, s.Z.data(),
-                        static_cast<int>(s.m), r.data(), 1, 0.0, grad.data(), 1);
+            cblas_dgemv(
+                CblasColMajor, CblasTrans, static_cast<int>(s.m), static_cast<int>(s.pc), 1.0, s.Z.data(),
+                static_cast<int>(s.m), r.data(), 1, 0.0, grad.data(), 1
+            );
     }
     for (lint j = 0; j < s.pc; ++j) {
         if (in[j] || !(s.d[j] > 0.0)) continue;
@@ -392,9 +395,46 @@ True
 
 활성 열의 기울기는 정확히 $\pm\alpha$이고, 0인 열(셋째와 여섯째)은 $\alpha$ 아래예요. 0인 계수는 정확히 0이에요. 같은 자료의 scikit-learn `Lasso(alpha=0.1)`(기본 `tol=1e-4`)은 계수가 이 해와 $1.6\times10^{-6}$(최대 계수 대비) 다르고, `tol=1e-12`로 조이면 $6.7\times10^{-14}$예요. 결과의 `dual_gap`은 돌려준 해에서 잰 간격(위 목적함수 단위)이에요. scikit-learn 1.9.1의 `dual_gap_`도 n_samples로 나눈 같은 단위예요.
 
+### 똑같은 열
+
+$L_2$ 항이 없으면(lasso, `l1_ratio = 1`) 똑같은 열 둘이 함께 활성일 때 Gram 블록이 특이해요. 두 열의 합(같은 부호)만 정해지고, 어떻게 나눠도 최소점이라서요. 그래서 연마는 활성 집합 $A$를 만들 때 앞서 들어온 열의 사본을 넣지 않아요. 사본은 적합에 쓰인 행에서 값이 비트까지 같고 중심과 척도도 같은 열, 곧 $z_j$가 비트까지 같은 열이에요.
+
+```cpp
+// Whether the solver's columns j and k are exact copies: the same values over the fit's rows
+// and the same center and scale (so the same z, bit for bit).
+bool same_column(const Src& src, const Prep& P, lint j, lint k) {
+    const lint cj = P.cols[j], ck = P.cols[k];
+    if (P.cx[cj] != P.cx[ck] || P.sc[cj] != P.sc[ck]) return false;
+    for (lint t = 0; t < P.m; ++t) {
+        const std::byte* row = src.X + P.idx[t] * src.xrs;
+        if (rd(row + cj * src.xcs) != rd(row + ck * src.xcs)) return false;
+    }
+    return true;
+}
+```
+
+```cpp
+    for (lint j = 0; j < s.pc; ++j) {
+        // without an L1 term every column is in the system and the signs are free
+        if (!(s.b[j] != 0.0 || (l1 == 0.0 && s.d[j] > 0.0))) continue;
+        bool copy = false;
+        if (l2 == 0.0 && l1 > 0.0)
+            for (const lint q : A)
+                if (s.d[q] == s.d[j] && same_column(src, P, q, j)) {
+                    copy = true;
+                    break;
+                }
+        if (!copy) A.push_back(j), sg.push_back(s.b[j] > 0 ? 1.0 : -1.0);
+    }
+```
+
+그러면 앞의 사본이 합을 받고 뒤의 사본은 0이에요. 뒤의 사본의 기울기는 앞의 것과 같아 정확히 $l_1$이라, 비활성 열의 KKT 검사가 그 점을 확인해요. 연마한 점은 좌표 하강이 사본에 남긴 몫과 상관없으므로, 두 사본이 모두 몫을 가진 채 연마에 오면 경로(따뜻한 시작)와 단일 적합이 같은 비트예요. 좌표 하강이 앞의 사본을 0으로 두고 뒤의 사본에만 몫을 주었으면 앞의 사본은 $A$에 들지 않아서, 뒤의 사본이 합을 가진 채 남아요. 특이한 블록을 그대로 풀면 연마가 실패하고, 간격이 이미 반올림 수준인데도 좌표 하강을 `max_iter`까지 이어 가 `converged=False`가 돼요. 엘라스틱 넷($l_2 \gt 0$)은 사본이 같은 몫을 받는 해가 하나뿐이라 이 규칙이 필요 없어요.
+
+거의 같은 열(0.01 크기의 차이)은 이 규칙에 들지 않아요. 그런 열에서는 좌표 하강의 수렴비가 $1 - O(1/\kappa^2)$로 느려 기본 `max_iter` = 1000에 닿고 `converged=False`일 수 있어요. `max_iter`를 늘리면 scikit-learn과 같은 해에 닿아요.
+
 ### 연마를 시도하는 때
 
-- **간격 판정을 통과했을 때.** 연마가 실패하면(alpha_max 바로 아래처럼 아직 활성 집합이 다르면) 허용오차를 $10^{-6}$배로 줄여 좌표 하강을 이어 간 뒤 다시 연마해요(최대 2번). 끝내 통과하지 못하면(똑같은 열이 둘이라 해가 하나가 아니고 Gram 블록이 특이한 경우 등) 좌표 하강의 해를 내요. 다시 도는 좌표 하강이 `max_iter`에 닿으면 거기서 멈추고, 연마하지 않은 마지막 반복의 계수와 그 간격을 내며 `converged`를 False로 둬요. 처음의 간격 판정을 통과했어도 그 해는 좁힌 허용오차에도, 연마한 해에도 이르지 못했기 때문이에요. 다시 도는 좌표 하강이 좁힌 판정을 통과했더라도, 그 사이에 `max_iter`를 다 써서 연마를 더 시도할 수 없으면 같은 이유로 False예요. `converged=True`는 언제나 "연마한 해, 또는 연마할 수 없음이 밝혀질 때까지 좁힌 해"라는 뜻이에요. 반복 수의 상한이 alpha마다라서 경로에서도 alpha마다 따로 정해져요.
+- **간격 판정을 통과했을 때.** 연마가 실패하면(alpha_max 바로 아래처럼 아직 활성 집합이 다르면) 허용오차를 $10^{-6}$배로 줄여 좌표 하강을 이어 간 뒤 다시 연마해요(최대 2번). 끝내 통과하지 못하면 좌표 하강의 해를 내요. 다시 도는 좌표 하강이 `max_iter`에 닿으면 거기서 멈추고, 연마하지 않은 마지막 반복의 계수와 그 간격을 내며 `converged`를 False로 둬요. 처음의 간격 판정을 통과했어도 그 해는 좁힌 허용오차에도, 연마한 해에도 이르지 못했기 때문이에요. 다시 도는 좌표 하강이 좁힌 판정을 통과했더라도, 그 사이에 `max_iter`를 다 써서 연마를 더 시도할 수 없으면 같은 이유로 False예요. `converged=True`는 언제나 "연마한 해, 또는 연마할 수 없음이 밝혀질 때까지 좁힌 해"라는 뜻이에요. 반복 수의 상한이 alpha마다라서 경로에서도 alpha마다 따로 정해져요.
 - **좌표 하강 도중, 두 스윕 연달아 모든 계수의 부호가 같을 때**(활성 집합이 자리를 잡았을 때). 부호 꼴마다 한 번만 시도해요. 통과하면 그 해의 간격으로 수렴을 판정해요. 좌표 하강은 조건이 나쁜 활성 집합에서 선형으로만 수렴하는데, 연마는 그것을 한 번에 풀어요.
 
 ```cpp
@@ -469,9 +509,10 @@ alpha를 큰 것부터 풀고 앞의 해에서 시작해요(따뜻한 시작). �
 std::vector<lint> path_order(const double* alphas, std::int64_t as, lint L) {
     std::vector<lint> ord(static_cast<std::size_t>(L));
     std::iota(ord.begin(), ord.end(), lint(0));
-    std::stable_sort(ord.begin(), ord.end(),
-                     [&](lint a, lint b) { return rd(reinterpret_cast<const std::byte*>(alphas) + a * as) >
-                                                  rd(reinterpret_cast<const std::byte*>(alphas) + b * as); });
+    std::stable_sort(ord.begin(), ord.end(), [&](lint a, lint b) {
+        return rd(reinterpret_cast<const std::byte*>(alphas) + a * as) >
+               rd(reinterpret_cast<const std::byte*>(alphas) + b * as);
+    });
     return ord;
 }
 ```
@@ -488,15 +529,15 @@ True
 
 기본 격자는 scikit-learn과 같은 $\alpha_{\max}\,\epsilon^{i/(L-1)}$($\epsilon$ = `eps`, $L$ = 100)이에요. `eps`의 기본은 lasso·엘라스틱 넷이 $10^{-3}$, ridge가 $10^{-6}$이에요(이유는 아래). $\alpha_{\max}$는 해가 0이 되는 가장 작은 alpha로, 닫힌 꼴 $\max_j\lvert\sum_i w_i(x_{ij} - \bar x_j)(y_i - \bar y)\rvert/(s_w\,s_j\,\rho)$이에요. $b = 0$이 KKT 조건 $\lvert z_j^{\mathsf T}\Omega v\rvert \le l_1$을 모든 열에서 만족하는 가장 작은 $l_1$이 그것이기 때문이에요. ridge의 격자는 $\rho = 10^{-3}$으로 계산한 $\alpha_{\max}$에서 시작해요(glmnet이 alpha = 0에 쓰는 규칙).
 
-ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso의 $\alpha_{\max}$를 1,000배 한 값일 뿐이에요. 그래서 `eps`가 $10^{-3}$이면 격자의 작은 끝이 바로 lasso의 $\alpha_{\max}$이고, 신호가 뚜렷한 자료의 최적 alpha는 대개 그보다 작아 격자 끝에 걸려요. ridge는 (겹마다) SVD 하나로 모든 alpha를 닫힌 꼴로 풀므로 격자를 넓혀도 분해를 다시 하지 않아요. 그래서 ridge의 기본 `eps`는 $10^{-6}$이고, 격자가 lasso의 $\alpha_{\max}$보다 세 자릿수 아래까지 가요. 위 50행 자료에서 보면 이래요.
+ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso의 $\alpha_{\max}$를 1,000배 한 값일 뿐이에요. 그래서 `eps`가 $10^{-3}$이면 격자의 작은 끝이 바로 lasso의 $\alpha_{\max}$이고, 신호가 뚜렷한 자료의 최적 alpha는 대개 그보다 작아 격자 끝에 걸려요. ridge는 (겹마다) SVD 하나로 모든 alpha를 닫힌 꼴로 풀므로 격자를 넓혀도 분해를 다시 하지 않아요. 그래서 ridge의 기본 `eps`는 $10^{-6}$이고, 격자가 lasso의 $\alpha_{\max}$보다 세 자릿수 아래까지 가요. 위 50행 자료를 5겹으로 고르면 이래요(`ridge_cv`의 기본은 겹 없는 [GCV](#gcv)라서 `cv=5`를 줬어요).
 
 ```python
->>> rc = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0))
+>>> rc = sd.regression.ridge_cv(y, X, cv=5, rng=sd.random.default_rng(0))
 >>> float(rc.alphas[0]), float(rc.alphas[-1])
 (2053.5292001606126, 0.0020535292001606126)
 >>> int(sd.argmin(rc.cv_error)), rc.alpha_min
 (86, 0.012600264755431832)
->>> narrow = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0), eps=1e-3)
+>>> narrow = sd.regression.ridge_cv(y, X, cv=5, rng=sd.random.default_rng(0), eps=1e-3)
 >>> int(sd.argmin(narrow.cv_error)), float(narrow.alphas[-1])
 (99, 2.0535292001606127)
 ```
@@ -557,15 +598,29 @@ ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso�
         # bit (its SVD; coordinate descent would stop at one of the minimizers of an aliased
         # design, and needs no iterations here; the kernel skips it): converged, n_iter 0,
         # dual_gap 0, df_model the number of nonzero coefficients
-        P0, S0 = _k.penalized_path(func, _RIDGE, y, X, aux, w is not None, tw is not None, _sd.asarray([0.0]),
-                                   0.0, _FAMILY_CODE[family], intercept, standardize, 1, 1.0)
+        P0, S0 = _k.penalized_path(
+            func,
+            _RIDGE,
+            y,
+            X,
+            aux,
+            w is not None,
+            tw is not None,
+            _sd.asarray([0.0]),
+            0.0,
+            _FAMILY_CODE[family],
+            intercept,
+            standardize,
+            1,
+            1.0,
+        )
         ok = S0[..., _ISNAN] == 0.0
         cols = [S0[..., j] for j in range(S0.shape[-1])]
         cols[_CONV] = _sd.where(ok, 1.0, 0.0)
         cols[_NITER] = _sd.where(ok, 0.0, math.nan)
         cols[_GAP] = _sd.where(ok, 0.0, math.nan)
         cols[_POLISHED] = _sd.where(ok, 0.0, math.nan)
-        nonzero = _sd.where(P0[..., (1 if intercept else 0):] != 0.0, 1.0, 0.0)
+        nonzero = _sd.where(P0[..., (1 if intercept else 0) :] != 0.0, 1.0, 0.0)
         cols[_DF] = _sd.where(ok, _sd.sum(nonzero, axis=-1), math.nan)
         S0 = _sd.stack(cols, axis=-1)
         z = _sd.expand_dims(alphas == 0.0, axis=-1)
@@ -600,14 +655,14 @@ ridge에는 해가 0이 되는 alpha가 없어서 이 $\alpha_{\max}$는 lasso�
 [0.97794791845251, 1.9953298155720627, nan, -0.9960953609050907]
 ```
 
-alpha = 0.01의 lasso에서 사본(둘째 열)은 정확히 0이에요(위 문턱의 반올림 여유). 사본을 셋째 열로 옮겨 사이에 `zz`가 끼면, 첫 열을 갱신한 뒤 `zz`가 움직여 사본의 상관이 $l_1$을 반올림보다 크게 넘을 수 있고, 여기서는 사본이 같은 부호의 진짜 몫을 받아요. 두 몫의 합은 위의 1.986147817261111과 반올림 안에서 같아서(L1 노름과 예측이 같은 다른 최소점), 해가 하나가 아닌 문제의 결과예요. 활성 집합에 똑같은 열이 둘이라 연마는 성공하지 못하고 `df_model`은 둘을 다 세요.
+alpha = 0.01의 lasso에서 사본(둘째 열)은 정확히 0이에요(위 문턱의 반올림 여유). 사본을 셋째 열로 옮겨 사이에 `zz`가 끼면, 첫 열을 갱신한 뒤 `zz`가 움직여 사본의 상관이 $l_1$을 반올림보다 크게 넘을 수 있어서, 좌표 하강은 사본에 같은 부호의 진짜 몫을 줘요. 두 몫을 어떻게 나눠도 L1 노름과 예측이 같은 최소점이에요. 연마는 [똑같은 열](#똑같은-열)의 규칙대로 합을 앞의 열에 모으므로, 결과는 사본이 붙어 있을 때와 비트까지 같고 `df_model`도 사본을 세지 않아요.
 
 ```python
 >>> lx = sd.regression.lasso(yz, sd.stack([xz, zz, xz], axis=1), alpha=0.01)
 >>> lx.params.tolist(), lx.df_model
-([0.9760269144014908, 1.9677459916710869, -0.9874908708702548, 0.01840182559002283], 3.0)
->>> float(lx.params[1] + lx.params[3])
-1.9861478172611098
+([0.9760269144014911, 1.986147817261111, -0.9874908708702548, 0.0], 2.0)
+>>> lx.params[1] == lz.params[0][1]
+True
 ```
 
 열이 행보다 많아도 같아요. 행 8개, 열 12개면 최소제곱 해가 모든 행을 맞추는 무한히 많은 해이고, lasso·엘라스틱 넷의 alpha = 0은 그 가운데 최소 노름 해예요. 작은 alpha의 좌표 하강은 상한에 닿지만, alpha = 0은 반복 없이 수렴이에요. 최소 노름 해의 계수는 12개가 모두 0이 아니라 `df_model`이 12예요(ridge의 `df_model`은 랭크 7).
@@ -631,7 +686,7 @@ $$
 \text{df} = \operatorname{tr}\, Z_A(Z_A^{\mathsf T}\Omega Z_A + l_2 I)^{-1}Z_A^{\mathsf T}\Omega = a - l_2\operatorname{tr}H^{-1}, \qquad H = Z_A^{\mathsf T}\Omega Z_A + l_2 I
 $$
 
-예요. $l_2 = 0$이면 $a$(lasso, Zou–Hastie–Tibshirani 2007[5])이고, $A$가 모든 열이면 ridge의 $\sum s^2/(s^2 + l_2)$예요. 엘라스틱 넷의 이 식은 Zou–Hastie 2005[6]의 것이에요. glmnet의 `df`는 0 아닌 계수의 수예요. $\operatorname{tr}H^{-1}$은 연마의 Gram 블록을 `potrf`·`potri`로 뒤집어 구해요. lasso·엘라스틱 넷의 alpha = 0도 $l_2 = 0$이라 $a$이고, 그 자리는 좌표 하강 없이 ridge 커널의 해로 채우므로 Python 층이 그 해의 0 아닌 계수를 세요(위 alpha = 0 절).
+예요. $l_2 = 0$이면 $a$(lasso, Zou–Hastie–Tibshirani 2007[5])이고, $A$가 모든 열이면 ridge의 $\sum s^2/(s^2 + l_2)$예요. 엘라스틱 넷의 이 식은 Zou–Hastie 2005[6]의 것이에요. glmnet의 `df`는 0 아닌 계수의 수예요. $\operatorname{tr}H^{-1}$은 연마의 Gram 블록을 `potrf`·`potri`로 뒤집어 구해요. lasso·엘라스틱 넷의 alpha = 0은 좌표 하강 없이 ridge 커널의 해로 채우므로 Python 층이 그 해의 0 아닌 계수 $a$를 세요(위 alpha = 0 절). 똑같은 열이 있으면 최소 노름 해가 두 사본에 같은 몫을 주어 둘 다 세는데, 두 사본이 만드는 방향은 하나라서 이 값은 위 식으로 셀 값과 달라요.
 
 ```cpp
 // csrc/regression/penalized.cpp
@@ -673,7 +728,7 @@ double effective_df(std::vector<double> H, lint a, double l2) {
         test = _sd.where(fold == ks, 1.0, 0.0)  # (cv, 1..., n)
         tw = test * base
         trw = (1.0 - test) * base
-        _, S = _run(func, kind, y, X, trw, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol, tw=tw)
+        _, S, _ = _run(func, kind, y, X, trw, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol, tw=tw)
         sw = S[..., _TEST_SW]
         mse = S[..., _TEST_SSE] / sw  # (cv, batch..., L)
         empty = sw == 0.0
@@ -741,7 +796,7 @@ True
 
 ## GCV
 
-`ridge_cv(cv='gcv')`는 겹 없이 일반화 교차검증(Golub–Heath–Wahba 1979[8])으로 골라요. 단일 관측 제외 교차검증의 회전 불변 판이고, ridge의 닫힌 꼴에서 바로 나와요.
+`ridge_cv`는 기본(`cv='gcv'`)으로 겹 없이 일반화 교차검증(Golub–Heath–Wahba 1979[8])으로 골라요. 겹을 나누지 않으니 `rng`도 받지 않아요. 단일 관측 제외 교차검증의 회전 불변 판이고, ridge의 닫힌 꼴에서 바로 나와요.
 
 $$
 \text{GCV}(\alpha) = \frac{\text{RSS}(\alpha)}{\bigl(1 - (\text{df}(\alpha) + c_0)/m\bigr)^2}
@@ -908,8 +963,8 @@ IRLS가 수렴하면 $A$와 부호를 고정한 매끄러운 문제를 뉴턴법
         const double mu0 = constant ? y0 : ybar;
         const DD nd = dd_chunk_sum(m, [&](lint t) {
             const double y = src.yv(P.idx[t]);
-            const double dv = fam == fBinomial ? (y == 1.0 ? -2.0 * std::log(mu0) : -2.0 * std::log1p(-mu0))
-                                               : poisson_dev(y, mu0);
+            const double dv =
+                fam == fBinomial ? (y == 1.0 ? -2.0 * std::log(mu0) : -2.0 * std::log1p(-mu0)) : poisson_dev(y, mu0);
             return DD{P.wt[t] * dv, 0.0};
         });
         null_dev = nd.hi;
@@ -947,6 +1002,24 @@ True
 ```
 
 결과는 예측에 맞춘 것이라 표준오차와 p값이 없고, 진단(편차 잔차 등)과 강건 공분산도 두지 않아요.
+
+## 극단적인 척도
+
+선형 정규화(ridge, lasso, 엘라스틱 넷)에서 $y$의 크기가 $[2^{-256}, 2^{256}]$ 밖이면, [선형 모형](/internals/regression/least-squares/#극단적인-척도)처럼 회귀마다 $y$를 2의 거듭제곱 $f$로 나눈 문제를 풀어요. 계수가 $1/f$배가 될 뿐 같은 해가 되려면 벌점도 옮겨야 해요. 목적함수를 $1/f^2$배로 두면 $L_1$ 항은 alpha·`l1_ratio`$/f$, $L_2$ 항은 alpha$(1 - $`l1_ratio`$)$ 그대로예요. 그래서 ridge는 같은 alpha, lasso는 alpha$/f$이고, 엘라스틱 넷은 alpha와 `l1_ratio`를 함께 바꿔요.
+
+```python
+def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol, tw=None):
+    """The kernel's path. A linear fit whose y is far outside [2^-256, 2^256] is solved in
+    power-of-two units (exact), as the linear models: y / fy with the penalty that makes the
+    objective times 1/fy^2, the l1 part alpha l1_ratio / fy and the l2 part alpha
+    (1 - l1_ratio) unchanged (ridge keeps alpha; the lasso takes alpha / fy; the elastic net
+    alpha (l1_ratio / fy + 1 - l1_ratio) and l1_ratio / (l1_ratio + (1 - l1_ratio) fy)). The
+    coefficients come back times fy; the scalars in the units of y^2 (_SQUARED) stay in the fit's
+    units, which the result and the cross-validation scale as they read them. Returns (P, S,
+    fy), fy None for a fit as given."""
+```
+
+계수는 $f$배로 돌려놓고, $y^2$의 단위인 값(쌍대 간격, 잔차 제곱합, TSS, 교차검증의 오차, GCV)은 적합의 단위로 두었다가 필드를 읽을 때 $f^2$를 곱해요. $R^2$와 교차검증의 고르기는 적합의 단위에서 해요. 엘라스틱 넷의 새 `l1_ratio`는 $f$마다 달라서, $f$가 서로 다른 배치는 회귀를 하나씩 풀어요(하나씩 부른 것과 비트까지 같아요). 엘라스틱 넷은 alpha와 `l1_ratio`를 바꾸는 곱셈에 반올림이 들어가므로, 척도에 등변인 것은 반올림 수준에서예요. 정규화 GLM의 $y$(0·1, 개수)와 X의 열은 옮기지 않아요. 벌점이 열의 척도에 등변이 아니기 때문이에요(`standardize=True`만 등변이에요).
 
 ## 결정성
 

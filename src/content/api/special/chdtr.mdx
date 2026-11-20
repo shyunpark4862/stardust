@@ -4,12 +4,12 @@ names: [chdtr, chdtrc, chdtri]
 group: 분포 함수
 order: 2
 signatures:
-  - "sd.special.chdtr(v, x, /, *, out=None)"
-  - "sd.special.chdtrc(v, x, /, *, out=None)"
-  - "sd.special.chdtri(v, p, /, *, out=None)"
+  - "sd.special.chdtr(df, x, /, *, out=None)"
+  - "sd.special.chdtrc(df, x, /, *, out=None)"
+  - "sd.special.chdtri(df, q, /, *, out=None)"
 summary: 카이제곱 분포의 누적확률 P(X ≤ x), 위꼬리 확률 P(X > x), 그리고 위꼬리의 역함수를 계산해요. 적합도 검정과 독립성 검정의 p값, 분산의 신뢰구간에 써요.
 params:
-  - name: v
+  - name: df
     type: ndarray 또는 Python 숫자
     kind: positional-only
     desc: 자유도. 0 이상의 실수예요(정수가 아니어도 돼요).
@@ -17,7 +17,7 @@ params:
     type: ndarray 또는 Python 숫자
     kind: "positional-only, chdtr·chdtrc에만"
     desc: 확률을 잴 지점. 0 이상이에요. inf도 받아요.
-  - name: p
+  - name: q
     type: ndarray 또는 Python 숫자
     kind: "positional-only, chdtri에만"
     desc: 위꼬리 확률 P(X > x). 0 이상 1 이하예요.
@@ -27,7 +27,7 @@ params:
     desc: 결과를 써 넣을 float64 배열. 모양이 인자들을 브로드캐스트한 모양과 같아야 해요.
 returns:
   type: ndarray 또는 Python float
-  desc: "chdtr은 P(X ≤ x), chdtrc는 P(X > x), chdtri는 chdtrc(v, x) = p가 되는 x. 언제나 float64이고, 인자가 모두 Python 숫자면 Python float예요."
+  desc: "chdtr은 P(X ≤ x), chdtrc는 P(X > x), chdtri는 chdtrc(df, x) = q가 되는 x. 언제나 float64이고, 인자가 모두 Python 숫자면 Python float예요."
 raises:
   - type: TypeError
     desc: 인자가 복소수이거나, 리스트·문자열처럼 배열도 숫자도 아닐 때, 인자 개수가 틀렸을 때. 값이 정의역 밖인 것은 에러가 아니라 NaN이에요.
@@ -42,7 +42,7 @@ export const chi4Sf = [[0, 1], [0.1, 0.99879], [0.2, 0.99532], [0.3, 0.98981], [
 
 ## 한눈에 보기
 
-**카이제곱 분포**(chi-square, χ² 분포)는 표준정규분포를 따르는 값 여러 개를 제곱해서 더한 값의 분포예요. 제곱해서 더했으니 언제나 0 이상이고, 오른쪽으로 꼬리가 길게 늘어진 모양이에요. 더한 값의 개수를 **자유도**(`v`)라고 불러요.
+**카이제곱 분포**(chi-square, χ² 분포)는 표준정규분포를 따르는 값 여러 개를 제곱해서 더한 값의 분포예요. 제곱해서 더했으니 언제나 0 이상이고, 오른쪽으로 꼬리가 길게 늘어진 모양이에요. 더한 값의 개수를 **자유도**(`df`)라고 불러요.
 
 "관찰한 것과 기대한 것의 차이를 제곱해서 모은 값"이 이 분포를 따르는 경우가 많아서, 통계 검정 곳곳에 나와요.
 
@@ -54,9 +54,9 @@ export const chi4Sf = [[0, 1], [0.1, 0.99879], [0.2, 0.99532], [0.3, 0.98981], [
 
 세 함수가 한 묶음이에요.
 
-- `chdtr(v, x)`: X가 `x` 이하일 확률 P(X ≤ x), 곧 **누적분포함수**(cdf)
-- `chdtrc(v, x)`: X가 `x`보다 클 확률 P(X > x), 곧 **생존함수**(survival function). 이름 끝의 `c`는 보수(complement, 1에서 뺀 나머지)라는 뜻이에요.
-- `chdtri(v, p)`: 위꼬리 확률이 `p`가 되는 지점 `x`. `chdtrc`의 역함수예요.
+- `chdtr(df, x)`: X가 `x` 이하일 확률 P(X ≤ x), 곧 **누적분포함수**(cdf)
+- `chdtrc(df, x)`: X가 `x`보다 클 확률 P(X > x), 곧 **생존함수**(survival function). 이름 끝의 `c`는 보수(complement, 1에서 뺀 나머지)라는 뜻이에요.
+- `chdtri(df, q)`: 위꼬리 확률이 `q`가 되는 지점 `x`. `chdtrc`의 역함수예요.
 
 ```python
 >>> import stardust as sd
@@ -73,9 +73,9 @@ export const chi4Sf = [[0, 1], [0.1, 0.99879], [0.2, 0.99532], [0.3, 0.98981], [
 <Fig caption="카이제곱 분포의 밀도. 자유도가 커질수록 봉우리가 오른쪽으로 옮겨 가고 넓게 퍼져요. 평균은 자유도와 같아요.">
   <Plot
     curves={[
-      { f: (x) => Math.exp(-x / 2) / 2, label: 'v = 2' },
-      { f: (x) => x * Math.exp(-x / 2) / 4, label: 'v = 4' },
-      { f: (x) => x * x * x * Math.exp(-x / 2) / 96, label: 'v = 8' },
+      { f: (x) => Math.exp(-x / 2) / 2, label: 'df = 2' },
+      { f: (x) => x * Math.exp(-x / 2) / 4, label: 'df = 4' },
+      { f: (x) => x * x * x * Math.exp(-x / 2) / 96, label: 'df = 8' },
     ]}
     domain={[0, 20]}
     range={[0, 0.5]}
@@ -100,22 +100,22 @@ export const chi4Sf = [[0, 1], [0.1, 0.99879], [0.2, 0.99532], [0.3, 0.98981], [
 
 ## 카이제곱 분포의 정의
 
-$Z_1, \dots, Z_v$가 서로 독립이고 각각 표준정규분포를 따르면
+$Z_1, \dots, Z_k$가 서로 독립이고 각각 표준정규분포를 따르면
 
 $$
-X = Z_1^2 + Z_2^2 + \cdots + Z_v^2
+X = Z_1^2 + Z_2^2 + \cdots + Z_k^2
 $$
 
-는 자유도 $v$인 카이제곱 분포를 따라요. 밀도는
+는 자유도 $k$인 카이제곱 분포를 따라요. 자유도는 정수가 아니어도 돼요. 자유도 $\nu > 0$인 카이제곱 분포의 밀도는
 
 $$
-f_v(s) = \frac{s^{v/2 - 1}\, e^{-s/2}}{2^{v/2}\, \Gamma(v/2)}, \qquad s > 0
+f_\nu(s) = \frac{s^{\nu/2 - 1}\, e^{-s/2}}{2^{\nu/2}\, \Gamma(\nu/2)}, \qquad s > 0
 $$
 
 이고, `chdtr`은 이 곡선 아래 0부터 `x`까지의 넓이예요. 이 넓이는 [정칙화된 불완전 감마 함수](/api/special/gammainc/)로 바로 쓸 수 있어요.
 
 $$
-\mathrm{chdtr}(v, x) = \int_0^x f_v(s)\, ds = P\!\left(\tfrac{v}{2}, \tfrac{x}{2}\right) = \texttt{gammainc}(v/2,\ x/2)
+\mathrm{chdtr}(\nu, x) = \int_0^x f_\nu(s)\, ds = P\!\left(\tfrac{\nu}{2}, \tfrac{x}{2}\right) = \texttt{gammainc}(\nu/2,\ x/2)
 $$
 
 ```python
@@ -125,7 +125,7 @@ $$
 0.5247089166569794
 ```
 
-`chdtrc`은 마찬가지로 `gammaincc(v/2, x/2)`예요. 감마 함수로 직접 써도 되지만, 자유도와 지점을 그대로 넣는 `chdtr` 쪽이 읽기 쉽고 반으로 나누는 실수를 막아 줘요.
+`chdtrc`은 마찬가지로 `gammaincc(df/2, x/2)`예요. 감마 함수로 직접 써도 되지만, 자유도와 지점을 그대로 넣는 `chdtr` 쪽이 읽기 쉽고 반으로 나누는 실수를 막아 줘요.
 
 자유도가 1이면 표준정규분포를 제곱한 값의 분포라, 정규분포의 양쪽 꼬리와 이어져요. `chdtrc(1, z**2)`는 `2 * ndtr(-abs(z))`와 같아요(실수 계산이라 마지막 자리는 다를 수 있어요).
 
@@ -160,7 +160,7 @@ p값은 "공정한 주사위로 던져도 이만큼 이상 벗어날 확률"이�
 약 2%예요. 기준을 5%로 잡으면 "공정하지 않다"고 판단해요. 임계값으로 봐도 같아요. 13.4는 앞에서 구한 5% 임계값 11.07보다 커요.
 
 <Callout type="tip" title="p값에는 chdtrc">
-  카이제곱 검정은 거의 언제나 위꼬리 검정이에요. p값은 `chdtrc(v, 통계량)`이고, `chdtr`(아래꼬리)을 쓰면 정반대의 확률이 나와요.
+  카이제곱 검정은 거의 언제나 위꼬리 검정이에요. p값은 `chdtrc(df, 통계량)`이고, `chdtr`(아래꼬리)을 쓰면 정반대의 확률이 나와요.
 </Callout>
 
 ## 누적확률과 위꼬리 확률
@@ -191,7 +191,7 @@ p값은 "공정한 주사위로 던져도 이만큼 이상 벗어날 확률"이�
   />
 </Fig>
 
-`chdtrc`이 따로 있는 것은 `1 - chdtr(v, x)`로 계산하면 꼬리에서 자릿수를 잃기 때문이에요. `x`가 크면 `chdtr`은 1에 아주 가까워지고, float64는 1 근처에서 약 1.1e-16 간격으로만 수를 나타내요. 1에서 빼면 그 간격보다 작은 부분은 남지 않아요.
+`chdtrc`이 따로 있는 것은 `1 - chdtr(df, x)`로 계산하면 꼬리에서 자릿수를 잃기 때문이에요. `x`가 크면 `chdtr`은 1에 아주 가까워지고, float64는 1 근처에서 약 1.1e-16 간격으로만 수를 나타내요. 1에서 빼면 그 간격보다 작은 부분은 남지 않아요.
 
 ```python
 >>> sd.special.chdtrc(4, 60.0)
@@ -213,7 +213,7 @@ p값은 "공정한 주사위로 던져도 이만큼 이상 벗어날 확률"이�
 
 ## 임계값: `chdtri`은 위꼬리의 역함수
 
-`chdtri(v, p)`는 위꼬리 확률 `chdtrc(v, x)`가 `p`가 되는 `x`를 돌려줘요. 검정의 유의수준(보통 0.05)을 그대로 넣으면 임계값이 나와서 편해요.
+`chdtri(df, q)`는 위꼬리 확률 `chdtrc(df, x)`가 `q`가 되는 `x`를 돌려줘요. 검정의 유의수준(보통 0.05)을 그대로 넣으면 임계값이 나와서 편해요.
 
 ```python
 >>> x05 = sd.special.chdtri(5, 0.05)
@@ -231,7 +231,7 @@ p값은 "공정한 주사위로 던져도 이만큼 이상 벗어날 확률"이�
 
 ### 아래꼬리 분위수가 필요하면
 
-아래 5% 지점은 위꼬리 확률이 95%인 지점이라 `chdtri(5, 0.95)`로 구해요. 같은 값을 [`gammaincinv`](/api/special/gammainc/)로도 구할 수 있어요. 카이제곱의 누적확률이 `gammainc(v/2, x/2)`이니, 그 역함수에 2를 곱하면 돼요.
+아래 5% 지점은 위꼬리 확률이 95%인 지점이라 `chdtri(5, 0.95)`로 구해요. 같은 값을 [`gammaincinv`](/api/special/gammainc/)로도 구할 수 있어요. 카이제곱의 누적확률이 `gammainc(df/2, x/2)`이니, 그 역함수에 2를 곱하면 돼요.
 
 ```python
 >>> sd.special.chdtri(5, 0.95)
@@ -311,9 +311,9 @@ array([ 0.0500435212487051, 0.14660696213035015,  0.2792676171186102,
 
 ## 정확도
 
-- 보장 영역: 자유도 0.01부터 1e5(10만)까지, `x`와 `p`는 모든 값
+- 보장 영역: 자유도 0.01부터 1e5(10만)까지, `x`와 `q`는 모든 값
 - `chdtr`, `chdtrc`: 정밀한 참값과의 상대오차가 1e-14 이하예요. 앞자리 14자리 정도가 맞는다는 뜻이고, `3.76e-42` 같은 먼 꼬리에서도 마찬가지예요.
-- `chdtri`: 결과 x의 상대오차가 1e-14에 "입력 p가 마지막 자리만큼 흔들릴 때 x가 흔들리는 배율"을 곱한 값 이하예요. p가 실수로 저장되면서 생기는 불확실성이 허용하는 만큼은 정확하다는 뜻이에요. 대부분의 p에서 배율은 1 근처예요. 자유도가 아주 작으면 x가 p의 거듭제곱처럼 변해서 배율이 커질 수 있어요.
+- `chdtri`: 결과 x의 상대오차가 1e-14에 "입력 q가 마지막 자리만큼 흔들릴 때 x가 흔들리는 배율"을 곱한 값 이하예요. q가 실수로 저장되면서 생기는 불확실성이 허용하는 만큼은 정확하다는 뜻이에요. 대부분의 q에서 배율은 1 근처예요. 자유도가 아주 작으면 x가 q의 거듭제곱처럼 변해서 배율이 커질 수 있어요.
 
 잰 최대 오차는 `chdtr` 5.3, `chdtrc` 9.7, `chdtri` 5.4 ULP(위의 배율로 나눈 값)예요. 1e-14는 약 45 ULP라 약속보다 한참 작아요. ULP는 [특수함수의 기본](/api/special/basics/)에서 풀어 놓았어요. 범위 밖(자유도 1e5 초과)도 값을 계산하지만 정확도를 약속하지는 않아요.
 
@@ -321,15 +321,15 @@ array([ 0.0500435212487051, 0.14660696213035015,  0.2792676171186102,
 
 | 입력 | 결과 | 뜻 |
 |---|:---:|---|
-| `chdtr(v, 0)`, `chdtr(v, inf)` | 0, 1 | 분포의 양 끝 (`chdtrc`은 1, 0) |
+| `chdtr(df, 0)`, `chdtr(df, inf)`, `df > 0` | 0, 1 | 분포의 양 끝 (`chdtrc`은 1, 0). 자유도가 아주 작은 양수(5e-324)여도 같아요 |
 | `chdtr(0, x)`, `x > 0` | 1 | 0에 몰린 분포 (`chdtrc`은 0) |
 | `chdtr(0, 0)` | NaN | 정해지지 않아요 |
 | `chdtr(inf, x)`, 유한한 `x` | 0 | 분포가 무한대로 가요 (`chdtrc`은 1) |
-| `chdtri(v, 0)`, `chdtri(v, 1)` | inf, 0 | 위꼬리 0이면 오른쪽 끝, 1이면 왼쪽 끝 |
-| `chdtri(0, p)`, `chdtri(inf, p)` | NaN | 근을 정할 수 없어요 |
-| `v < 0` | NaN | 자유도는 0 이상이어야 해요 |
+| `chdtri(df, 0)`, `chdtri(df, 1)` | inf, 0 | 위꼬리 0이면 오른쪽 끝, 1이면 왼쪽 끝 |
+| `chdtri(0, q)`, `chdtri(inf, q)` | NaN | 근을 정할 수 없어요 |
+| `df < 0` | NaN | 자유도는 0 이상이어야 해요 |
 | `x < 0` | NaN | |
-| `p < 0` 또는 `p > 1` | NaN | 확률이 아니에요 |
+| `q < 0` 또는 `q > 1` | NaN | 확률이 아니에요 |
 | 인자 중 NaN | NaN | |
 
 ## 조심할 점
@@ -366,7 +366,7 @@ TypeError: chdtr(): not supported for int64 and complex128
 >>> sd.special.chdtrc([1, 2], 3.84)
 Traceback (most recent call last):
     ...
-TypeError: chdtrc(): 'v' must be an sd.ndarray or a bool, int, float or complex, not list
+TypeError: chdtrc(): 'df' must be an sd.ndarray or a bool, int, float or complex, not list
 ```
 
 ### 자유도는 칸 수에서 빼요
@@ -377,8 +377,8 @@ TypeError: chdtrc(): 'v' must be an sd.ndarray or a bool, int, float or complex,
 
 | 하고 싶은 일 | 쓸 것 | 차이 |
 |---|---|---|
-| 감마 분포의 누적확률 | [`gammainc`, `gammaincc`](/api/special/gammainc/) | `chdtr(v, x)`는 `gammainc(v/2, x/2)`예요. 모양 모수가 임의인 감마 분포는 이쪽을 써요. |
-| 아래꼬리 분위수 | `chdtri(v, 1 - p)` 또는 `2 * gammaincinv(v/2, p)` | `chdtri`은 위꼬리의 역함수예요. 아주 작은 `p`는 뒤쪽이 정확해요. |
+| 감마 분포의 누적확률 | [`gammainc`, `gammaincc`](/api/special/gammainc/) | `chdtr(df, x)`는 `gammainc(df/2, x/2)`예요. 모양 모수가 임의인 감마 분포는 이쪽을 써요. |
+| 아래꼬리 분위수 | `chdtri(df, 1 - p)` 또는 `2 * gammaincinv(df/2, p)` | `chdtri`은 위꼬리의 역함수예요. 아주 작은 `p`는 뒤쪽이 정확해요. |
 | 검정력 계산(가정이 틀렸을 때의 통계량 분포) | [`chndtr`](/api/special/chndtr/) | 비중심 카이제곱이에요. 비중심 모수가 0이면 `chdtr`과 같아요. |
 | 분산 둘의 비율 | [`fdtr`](/api/special/fdtr/) | 카이제곱 둘을 각자 자유도로 나눈 비율의 분포예요. |
 | 자유도 1의 꼬리 | [`ndtr`](/api/special/ndtr/) | `chdtrc(1, z**2)`는 `2 * ndtr(-abs(z))`예요. |

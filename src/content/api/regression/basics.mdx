@@ -144,11 +144,11 @@ t값, p값, R² 같은 나머지 필드와 그 뜻은 [결과 객체 읽기](/ap
 >>> sd.regression.ols(y=score, X=hours)
 Traceback (most recent call last):
     ...
-TypeError: ols() got some positional-only arguments passed as keyword arguments: 'y, X'
+TypeError: ols(): got some positional-only arguments passed as keyword arguments: 'y, X'
 >>> sd.regression.ols(score, hours, True)
 Traceback (most recent call last):
     ...
-TypeError: ols() takes 2 positional arguments but 3 were given
+TypeError: ols(): takes 2 positional arguments but 3 were given
 ```
 
 `y`, `X`를 차례로 주는 이 꼴은 `ols`, `wls`, `gls`, `glm`, 정규화 함수, `rlm`, `quantreg`에 공통이에요. 데이터 인자의 꼴이 다른 함수가 넷 있는데, 다른 라이브러리에서 널리 쓰는 꼴을 그대로 따랐어요.
@@ -163,7 +163,7 @@ TypeError: ols() takes 2 positional arguments but 3 were given
 
 - `y`는 길이 n인 1차원이에요.
 - `X`는 n × k 2차원(열 하나가 설명변수 하나)이거나, 설명변수가 하나면 길이 n인 1차원이어도 돼요.
-- `sd.ndarray`, 실수의 리스트(2차원은 리스트의 리스트), `sd.frame`의 `Series`와 `DataFrame`을 받아요. 열이 하나인 `DataFrame`은 `y`로 줘도 돼요. 그 열을 `y`로 읽어요.
+- `sd.ndarray`, 실수의 리스트나 튜플(2차원은 리스트의 리스트), numpy 배열, `sd.frame`의 `Series`와 `DataFrame`을 받아요. 열이 하나인 `DataFrame`은 `y`로 줘도 돼요. 그 열을 `y`로 읽어요.
 - 계산은 float64로 해요. bool과 정수는 float64로 바꿔서 써요.
 
 ```python
@@ -362,13 +362,11 @@ ValueError: ols(): 'X' contains infinity
 
 `nan_policy='propagate'`의 NaN 결과와 달리 `nobs`가 NaN이 아니라 0이라서, "데이터가 없다"와 "데이터에 NaN이 있다"를 구별할 수 있어요.
 
-`linregress`, `theilslopes`, `siegelslopes`는 예외예요. 점 두 개로 직선이 정해지는 함수라서 점이 2개보다 적으면 `ValueError`예요.
+점 두 개로 직선이 정해지는 `linregress`, `theilslopes`, `siegelslopes`는 점이 2개보다 적을 때도 같은 규칙이에요. 에러 대신 모든 필드가 NaN인 결과가 나와요. `nan_policy='omit'`이 점을 빼서 2개보다 적게 남아도 그래요.
 
 ```python
 >>> sd.regression.linregress([1.0], [2.0])
-Traceback (most recent call last):
-    ...
-ValueError: linregress(): 'x' and 'y' must have length at least 2
+LinregressResult(slope=nan, intercept=nan, rvalue=nan, pvalue=nan, stderr=nan, intercept_stderr=nan)
 ```
 
 ## 배치: 회귀 여러 개를 한 번에
@@ -474,27 +472,40 @@ ValueError: summary(): takes one regression, not a batch of shape (3,)
 (int64, float64)
 ```
 
+결과의 배열 필드(`params`, `bse`, `resid`, `fittedvalues` 등)와 `cov_params()`는 결과가 들고 있는 배열을 복사하지 않고 쓰기 금지로 돌려줘요. 원소에 값을 넣으면 `ValueError`예요. 그래서 돌려받은 배열을 실수로 고쳐도 나중에 읽는 표준오차, 구간, `predict`가 바뀌지 않아요. 고쳐 쓰려면 `.copy()`로 복사본을 만들어요. `conf_int()`, `predict()`처럼 부를 때마다 새로 계산하는 메서드의 결과는 보통 배열이에요.
+
+```python
+>>> r.params[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> p = r.params.copy()
+>>> p[0] = 0.0
+>>> p, r.params
+(array([               0.0, 3.9761904761904763], dtype=float64), array([47.607142857142854, 3.9761904761904763], dtype=float64))
+```
+
 ## 같은 이름, 다른 뜻
 
 몇몇 이름은 다른 라이브러리에서 쓰는 이름을 그대로 따르느라, 자리에 따라 뜻이 달라요.
 
 | 이름 | 자리 | 뜻 |
 |---|---|---|
-| `alpha` | `conf_int`, `predict_interval`, `summary` | 유의수준. 0과 1 사이이고, 구간은 1 − alpha예요 |
+| `alpha` | `conf_int`, `predict_interval`, `summary`, `theilslopes` | 유의수준. 0과 1 사이이고, 구간은 1 − alpha예요 |
 | `alpha` | `ridge`, `lasso`, `elastic_net`, `penalized_glm`의 인자와 결과 필드 | 벌점의 세기. 0 이상이에요 |
-| `alpha` | `theilslopes`의 인자 | 신뢰수준. 기본 0.95예요 |
+| `rtol` | `ols`, `glm`, `rlm`, `quantreg`, `nls` 등의 인자 | 겹친 열을 가르는 기준. 열마다 그 열의 크기와 견줘요([겹친 열](/api/regression/collinearity/#rtol-겹친다고-보는-기준)). [sd.linalg](/api/linalg/matrix_rank/)의 `rtol`은 가장 큰 특이값과 견주는 랭크 기준이고, [`sd.optimize.root_scalar`](/api/optimize/root_scalar/)의 `rtol`은 근의 상대 허용오차로 이름만 같아요 |
 | `weights` | `wls`, 정규화 함수, `nls`의 인자 | 행의 가중치. 오차의 분산이 1/w인 행이에요 |
 | `weights` | `rlm`의 결과 필드 | 적합이 행마다 준 무게. 이상값일수록 작아요 |
 
 ```python
 >>> r = sd.regression.ols(score, hours)
 >>> r.conf_int(alpha=0.1)[1]
-array([ 3.26268030973007, 4.689700642650882], dtype=float64)
+array([3.2626803097300705,  4.689700642650882], dtype=float64)
 >>> sd.regression.ridge(score, hours, alpha=0.1).alpha
 0.1
 ```
 
-`glm`의 행 가중치는 뜻이 둘이라 이름을 `var_weights`와 `freq_weights`로 나눴어요([glm](/api/regression/glm/)).
+`glm`의 행 가중치는 뜻이 둘이라 이름을 `var_weights`와 `freq_weights`로 나눴어요([glm](/api/regression/glm/)). 거꾸로 이름이 다른 것도 있어요. 적합도를 재는 pseudo R²는 `quantreg`에서 속성 `prsquared`, `glm`에서 메서드 `pseudo_rsquared()`예요. 둘 다 statsmodels의 이름을 따랐어요.
 
 ## 같은 입력이면 같은 비트
 
@@ -515,14 +526,16 @@ array([ 3.26268030973007, 4.689700642650882], dtype=float64)
 
 난수를 쓰는 함수(`rlm(method='MM')`, 교차검증)도 같은 상태의 생성기를 주면 같은 비트예요.
 
+약속하는 것은 이 두 가지예요. 스레드 수와 상관없이 같은 비트, 그리고 각 페이지의 정확도 절에 적은 정확도예요. statsmodels, scipy, R과는 반올림이 끼지 않는 동작(기본값, NaN과 ±0의 규칙, 상태 필드의 뜻, 멈춤 규칙)을 맞추고, 다르게 정한 곳은 각 페이지에 이유와 함께 적어요. 반올림 크기의 결과는 정확도 약속 안에 있으면 마지막 자리가 그 라이브러리와 다를 수 있어요. 반복으로 푸는 함수는 같은 알고리즘과 멈춤 규칙을 써도 마지막 자리의 차이 때문에 반복 횟수가 조금 달라질 수 있어요. `theilslopes`와 `siegelslopes`처럼 지금은 scipy와 비트까지 같은 함수도 있지만, 그것을 약속하는 것은 아니에요(약속은 스레드 수와 상관없이 같은 비트와 정확도예요).
+
 ## 에러의 꼴
 
-에러 메시지는 부른 함수의 이름으로 시작하고, 어느 인자가 문제인지 이름으로 알려 줘요. 결과의 메서드(`conf_int`, `summary`, `predict` 등)를 틀린 꼴로 불러도 그 메서드의 이름으로 시작해요. 옵션의 메시지는 다른 영역과 같은 꼴이에요.
+에러 메시지는 부른 함수의 이름으로 시작하고, 어느 인자가 문제인지 이름으로 알려 줘요. 인자를 틀린 꼴로 준 에러(위치와 키워드를 바꿔 줌, 없는 옵션, 빠뜨린 옵션)도 함수 이름으로 시작하고, 결과의 메서드(`conf_int`, `summary`, `predict` 등)를 틀린 꼴로 불러도 그 메서드의 이름으로 시작해요. 옵션의 메시지는 다른 영역과 같은 꼴이에요.
 
 | 에러 | 언제 나나요 |
 |---|---|
 | `TypeError` | 데이터를 키워드로 줌, 옵션을 위치로 줌, 받지 않는 타입(복소수, 문자열의 리스트 등), 옵션의 타입이 틀림(`intercept=1`, `maxlags=2.0`), 꼭 줘야 하는 키워드를 빠뜨림, 결과의 메서드에 옵션을 위치로 줌(`conf_int(0.1)`) |
-| `ValueError` | 행 수가 다름, 0차원 입력, 계수가 없는 모형, NaN과 `nan_policy='raise'`, inf, 음수 가중치, 옵션의 값이 틀림, 함께 쓸 수 없는 옵션, 배치 모양이 맞지 않음, 배치에서 `'omit'`이나 `summary()`, `linregress` 등에 점이 2개보다 적음 |
+| `ValueError` | 행 수가 다름, 0차원 입력, 계수가 없는 모형, NaN과 `nan_policy='raise'`, inf, 음수 가중치, 옵션의 값이 틀림, 함께 쓸 수 없는 옵션, 배치 모양이 맞지 않음, 배치에서 `'omit'`이나 `summary()` |
 | `sd.linalg.LinAlgError` | `gls`의 `sigma`가 양정치가 아님. `ValueError`의 하위 클래스예요 |
 
 ```python
@@ -567,11 +580,13 @@ stardust.linalg.LinAlgError: gls(): 'sigma' is not positive definite
 - 표준오차의 상대오차는 대략 조건수 × $1.1 \times 10^{-16}$이에요. 조건수가 $10^6$이면 열 자리쯤 맞아요.
 - p값과 신뢰구간은 [sd.stats](/api/stats/student-t/)의 분포로 계산해서, 아주 작은 p값도 앞자리가 맞아요.
 
-정밀한 참값은 Arb(구간 산술)로 만들었어요. NIST의 선형 회귀 시험 문제 11개(조건수가 $10^{15}$인 Filip 포함)에서도 계수의 상대오차가 $1.3 \times 10^{-17}$ 아래예요.
+정밀한 참값은 Arb(구간 산술)로 만들었어요. NIST의 선형 회귀 시험 문제 11개(조건수가 $10^{15}$인 Filip 포함)에서도 계수의 상대오차가 $9.3 \times 10^{-17}$ 아래예요.
 
 ### 아주 크거나 작은 값
 
 `ols`, `wls`, `gls`, `linregress`는 열이나 `y`의 크기가 $10^{\pm 300}$ 범위의 어디에 있어도 t값, p값, R²가 같아요. 계수와 표준오차, 신뢰구간은 단위만큼 바뀌고요. 제곱하면 float64를 넘거나 0이 되는 크기($10^{160}$, $10^{-165}$ 같은)의 자료도 단위를 바꿔 줄 필요가 없어요.
+
+다른 함수도 단위를 따라 움직여요. `glm`은 열의 단위와 상관없이(정규·감마 분포족은 `y`의 단위와도), `rlm`과 `quantreg`는 `y`의 단위와 상관없이 같은 t값과 p값을 내요. `y`에 $10^{\pm 200}$ 같은 배수를 곱하면 `ridge`는 같은 `alpha`에서, `lasso`는 `alpha`에도 같은 배수를 곱하면, 계수에 그 배수를 곱한 해를 내요.
 
 ```python
 >>> big = sd.regression.ols(score, sd.asarray(hours) * 1e160)
@@ -605,4 +620,4 @@ stardust.linalg.LinAlgError: gls(): 'sigma' is not positive definite
 - 행이 없는 입력에서 statsmodels의 `OLS`는 numpy의 `ValueError`(`zero-size array to reduction operation ...`)를 내요. 여기서는 `nobs`가 0인 NaN 결과예요.
 - 아주 크거나 작은 값에서 statsmodels 0.15.0은 위의 `hours * 1e160`에서 절편의 표준오차 0, t inf를, `score * 1e-165`에서 표준오차 0, t inf를 내요. 여기서는 단위와 상관없이 같은 t예요.
 - 배치는 statsmodels와 scikit-learn에 없는 기능이에요. 회귀 여러 개를 맞추려면 그쪽에서는 반복문을 돌려요.
-- 완전 적합이나 겹친 열에서 statsmodels는 경고를 내거나 아주 큰 t값을 내지만, 여기서는 경고 없이 IEEE의 극한값(inf, 0)과 NaN으로 알려 줘요([겹친 열과 완전 적합](/api/regression/collinearity/)).
+- 완전 적합이나 겹친 열에서 statsmodels는 경고를 내거나 아주 큰 t값을 내지만, 여기서는 경고 없이 표준오차 0과 NaN인 t값·p값, 겹친 열의 NaN 계수로 알려 줘요([겹친 열과 완전 적합](/api/regression/collinearity/)).

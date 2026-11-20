@@ -30,7 +30,7 @@ raises:
   - type: TypeError
     desc: y나 x가 복소수일 때, 없는 인자(axis 등)를 주거나 method를 위치로 줬을 때.
   - type: ValueError
-    desc: "점이 2개보다 적을 때, x의 길이가 y와 다를 때, y나 x가 0차원일 때, inf가 있을 때, method·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, y와 x의 앞 축(배치 모양)이 서로 브로드캐스트하지 않을 때."
+    desc: "x의 길이가 y와 다를 때, y나 x가 0차원일 때, inf가 있을 때, method·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, y와 x의 앞 축(배치 모양)이 서로 브로드캐스트하지 않을 때."
 seeAlso: [theilslopes, rlm, quantreg, basics]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -198,7 +198,7 @@ SiegelslopesResult(slope=1.0, intercept=0.44999999999999996)
 
 마지막 예에서 양 끝 두 점을 잇는 쌍만 inf/inf라, 두 끝점은 나머지 네 점으로 그은 기울기로 중앙값을 구해요.
 
-inf는 `nan_policy`와 상관없이 에러예요. `'omit'`도 점을 빼기 전에 inf를 보므로 NaN이 든 점의 inf도 에러예요. 점이 2개보다 적으면(NaN을 뺀 뒤도) 에러예요.
+inf는 `nan_policy`와 상관없이 에러예요. `'omit'`도 점을 빼기 전에 inf를 보므로 NaN이 든 점의 inf도 에러예요. 점이 2개보다 적으면(NaN을 뺀 뒤도) 에러가 아니라 모든 칸이 NaN이에요.
 
 ```python
 >>> sd.regression.siegelslopes([1.0, 2.0, float('inf'), 4.0])
@@ -206,13 +206,9 @@ Traceback (most recent call last):
     ...
 ValueError: siegelslopes(): 'y' contains infinity
 >>> sd.regression.siegelslopes([1.0])
-Traceback (most recent call last):
-    ...
-ValueError: siegelslopes(): 'x' and 'y' must have length at least 2
+SiegelslopesResult(slope=nan, intercept=nan)
 >>> sd.regression.siegelslopes([1.0, float('nan')], nan_policy='omit')
-Traceback (most recent call last):
-    ...
-ValueError: siegelslopes(): 'x' and 'y' must have length at least 2
+SiegelslopesResult(slope=nan, intercept=nan)
 >>> sd.regression.siegelslopes(y, x, method='joint')
 Traceback (most recent call last):
     ...
@@ -249,7 +245,7 @@ ValueError: siegelslopes(): the batch shapes of 'y' (3,), 'x' (2,) do not broadc
 
 ## scipy를 아는 분께
 
-`scipy.stats.siegelslopes`와 인자 순서(`y`가 먼저, 그다음 `x`), 기본값, 결과(필드 순서까지 같은 `SiegelslopesResult`)가 같아요. 값은 0의 부호를 빼고 비트까지 같아요.
+`scipy.stats.siegelslopes`와 인자 순서(`y`가 먼저, 그다음 `x`), 기본값, 결과(필드 순서까지 같은 `SiegelslopesResult`)가 같아요. 같은 식으로 만든 쌍 기울기에서 중앙값을 정확히 고르므로, 값은 지금 0의 부호를 빼고 scipy와 비트까지 같아요(약속은 아니에요, [같은 입력이면 같은 비트](/api/regression/basics/#같은-입력이면-같은-비트)).
 
 ```python
 >>> import scipy.stats
@@ -283,6 +279,6 @@ SiegelslopesResult(slope=np.float64(1.81), intercept=np.float64(1.71999999999999
   SiegelslopesResult(slope=np.float64(1.4166666666666665), intercept=np.float64(0.875))
   ```
 
-- 점이 2개보다 적으면 sd는 `ValueError`, scipy는 경고와 함께 NaN이에요.
+- 점이 2개보다 적으면 둘 다 NaN이에요. scipy는 경고를 내고, sd는 내지 않아요.
 - 결과는 Python `float`(배치면 `sd.ndarray`)예요. scipy는 numpy의 `float64`예요.
 - scipy는 n × n 배열을 만들어요. sd는 점 하나의 기울기만 잠깐 모아요.

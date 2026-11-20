@@ -351,7 +351,7 @@ TypeError: integers(): 'high' must be an int or an int64 array, not float
 >>> rng.integers(0, sd.asarray([1.0, 2.0]))
 Traceback (most recent call last):
     ...
-TypeError: integers(): 'high' must be an int or an int64 array, not an array of float64
+TypeError: integers(): 'high' must be an int or an int64 array, not float64
 ```
 
 실수 배열을 범위로 쓰고 싶으면 [`sd.astype`](/api/array/astype/)으로 int64로 바꾼 뒤 넘기세요. `True`·`False`도 정수로 받지 않아요.

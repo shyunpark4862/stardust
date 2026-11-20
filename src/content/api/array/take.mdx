@@ -27,9 +27,9 @@ raises:
   - type: TypeError
     desc: x가 배열이 아닐 때, indices가 리스트·실수·bool 배열일 때, axis가 int가 아닐 때.
   - type: ValueError
-    desc: 2차원 이상에서 take의 axis를 빠뜨렸을 때, axis가 범위를 벗어났을 때, take_along_axis의 indices가 x와 차원 수가 다르거나 모양이 맞지 않을 때.
+    desc: 2차원 이상에서 take의 axis를 빠뜨렸을 때, axis가 범위를 벗어났을 때, take_along_axis의 indices가 x와 차원 수가 다를 때.
   - type: IndexError
-    desc: 위치가 축의 길이를 벗어났을 때.
+    desc: 위치가 축의 길이를 벗어났을 때, take_along_axis의 indices가 x와 모양이 맞지 않을 때(배열 인덱스로 고를 때와 같아요).
 seeAlso: [indexing, sort, argmin, nonzero, searchsorted]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -241,8 +241,10 @@ array([[3, 3],
 >>> sd.take_along_axis(s, sd.asarray([[0, 0]]), axis=0)
 Traceback (most recent call last):
     ...
-ValueError: take_along_axis(): shapes could not be broadcast together: (1, 3) (1, 2)
+IndexError: take_along_axis(): shapes could not be broadcast together: (1, 3) (1, 2)
 ```
+
+모양이 맞지 않으면 인덱스 배열 여럿으로 고를 때(`x[i, j]`)처럼 `IndexError`예요.
 
 `axis`의 기본값은 `-1`(마지막 축)이에요. 2차원 배열이면 행마다 고르는 것이 기본이에요.
 
@@ -260,7 +262,7 @@ TypeError: take(): 'indices' must be an int or an int64 array, not list
 >>> sd.take(x, sd.asarray([True, False, True, False]))
 Traceback (most recent call last):
     ...
-TypeError: take(): 'indices' must be an int64 array, not bool
+TypeError: take(): 'indices' must be an int or an int64 array, not bool
 ```
 
 ### 범위를 벗어난 위치

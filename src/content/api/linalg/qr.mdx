@@ -18,7 +18,7 @@ params:
     desc: "'reduced'(기본값)면 필요한 만큼만, 'complete'면 Q를 M×M 정사각으로 채워서 돌려줘요."
 returns:
   type: QRResult(Q, R) 또는 QRPivotedResult(Q, R, perm)
-  desc: "이름 있는 튜플. K = min(M, N)일 때 'reduced'는 Q (..., M, K), R (..., K, N)이고 'complete'는 Q (..., M, M), R (..., M, N)이에요. qr_pivoted의 perm은 열의 순서를 담은 int64 배열 (..., N)이고, x[:, perm]이 Q @ R과 같아요."
+  desc: "이름 있는 튜플. K = min(M, N)일 때 'reduced'는 Q (..., M, K), R (..., K, N)이고 'complete'는 Q (..., M, M), R (..., M, N)이에요. qr_pivoted의 perm은 열의 순서를 담은 int64 배열 (..., N)이고, x[:, perm]이 Q @ R과 같아요. 결과의 배열은 쓰기 금지예요."
 raises:
   - type: TypeError
     desc: x가 배열이 아닐 때, mode가 문자열이 아닐 때.

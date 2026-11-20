@@ -175,7 +175,7 @@ Traceback (most recent call last):
 KeyError: "read_csv(): 'usecols' names a column that is not in the file: 'weight'"
 ```
 
-`nrows=`는 데이터 행을 앞에서부터 그 개수까지만 읽어요(이름 줄은 세지 않아요). 큰 파일의 앞부분만 살펴볼 때 편해요. 읽지 않은 뒤쪽은 검사하지 않아서, 거기에 형식 오류가 있어도 에러가 나지 않아요.
+`nrows=`는 데이터 행을 앞에서부터 그 개수까지만 읽어요(이름 줄은 세지 않아요). 파일도 그 행이 끝나는 곳까지만 읽으므로, 큰 파일의 앞부분만 살펴볼 때 빨라요. 읽지 않은 뒤쪽은 검사하지 않아서, 거기에 형식 오류가 있어도 에러가 나지 않아요.
 
 ```python
 >>> sd.frame.read_csv(path, nrows=2)
@@ -398,6 +398,8 @@ Traceback (most recent call last):
 ValueError: read_csv(): line 2: column 'city' is not valid UTF-8
 ```
 
+첫 줄의 컬럼 이름도 올바른 UTF-8이어야 해요. 아니면 `read_csv(): line 1: column names are not valid UTF-8`이에요. 에러 메시지에 필드의 값을 보일 때, UTF-8이 아닌 바이트는 `'\xff'`처럼 바이트 값으로 적어요.
+
 ### 줄바꿈
 
 줄바꿈은 `\n`(macOS, Linux)과 `\r\n`(Windows) 둘 다 돼요. 마지막 줄 끝에 줄바꿈이 있어도 없어도 같아요.
@@ -512,7 +514,7 @@ FileNotFoundError: [Errno 2] No such file or directory: 'no_such_file.csv'
 >>> sd.frame.read_csv(path, ";")
 Traceback (most recent call last):
     ...
-TypeError: read_csv() takes 1 positional argument but 2 were given
+TypeError: read_csv(): takes 1 positional argument but 2 were given
 >>> sd.frame.read_csv(path, header=1)
 Traceback (most recent call last):
     ...

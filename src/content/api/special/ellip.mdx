@@ -312,7 +312,7 @@ TypeError: ellipk(): cannot implicitly convert float64 to int64 (that would lose
 
 ## scipy를 아는 분께
 
-- 매개변수는 scipy와 같은 m(= k²)이에요. 특수값(`ellipk(1) = inf`, `m > 1`은 NaN, `ellipk(-inf) = 0`, `ellipe(-inf) = inf` 등)도 scipy와 비트까지 같아요. 그 밖의 값은 마지막 자리가 다를 수 있어요.
+- 매개변수는 scipy와 같은 m(= k²)이에요. 특수값(`ellipk(1) = inf`, `m > 1`은 NaN, `ellipk(-inf) = 0`, `ellipe(-inf) = inf` 등)도 scipy와 같아요. 그 밖의 값은 마지막 자리가 다를 수 있어요.
 - `ellipkm1(p)`가 없어요. 1 − m을 직접 받는 함수 대신 위의 항등식 `ellipk(1 - 1/p) / sqrt(p)`를 쓰세요.
 - 불완전 타원적분(`ellipkinc`, `ellipeinc`), Carlson 대칭형(`elliprf` 등), Jacobi 타원함수(`ellipj`)는 없어요.
 - 복소수와 리스트는 받지 않아요(`TypeError`). `out=`은 keyword-only예요.

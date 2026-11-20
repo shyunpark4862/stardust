@@ -180,7 +180,7 @@ ValueError: penalized_glm(): 'family' must be 'binomial' or 'poisson', not 'gamm
 | 필드 | 뜻 |
 |---|---|
 | `params`, `param_names` | 계수(절편이 `params[0]`, 0인 계수는 정확히 0.0)와 이름(읽을 때마다 새 리스트) |
-| `family`, `alpha`, `l1_ratio`, `standardize` | 준 값(읽기 전용, 대입하면 `AttributeError`; 배열 `alpha`는 읽을 때마다 새 복사본) |
+| `family`, `alpha`, `l1_ratio`, `standardize` | 준 값(읽기 전용, 대입하면 `AttributeError`; 배열 `alpha`는 원소도 고칠 수 없는 쓰기 금지 배열) |
 | `nobs` | 적합에 쓴 행 수(가중치 > 0), `float` |
 | `fittedvalues` | 평균 $\mu_i$(이항은 확률) |
 | `linear_predictor` | 선형 예측 $\eta_i = b_0 + x_i^\top\beta$ |

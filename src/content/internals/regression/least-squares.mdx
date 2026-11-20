@@ -32,7 +32,7 @@ export const refineErr = {
       { label: '처음 잔차', note: 'r = y − Xβ₀를 Dot2로 구해 반올림하고, 그 나머지를 f에 둬요. 같은 패스에서 가중 평균의 합', where: 'Dot2' },
       { label: '반복 개선 (최대 3번)', note: '증강 시스템의 잔차 (f, g)에서 보정 (δr, δβ)를 같은 QR로 풀어요. 다음 보정이 2⁻⁵⁴‖β‖ 아래로 떨어질 것이 보이면 멈춰요', where: 'trcon' },
       { label: '마지막 패스', note: '모든 행의 적합값과 잔차, SSR·TSS·ESS를 double-double로', where: 'Dot2' },
-      { label: '완전 적합의 판정', note: '쓰인 행의 잔차가 모두 (k + 16)u(|y_t| + ‖x_t‖₁‖β‖∞) 안이면 SSR을 0으로. 보통 첫 행에서 판정이 끝나요' },
+      { label: '완전 적합의 판정', note: '쓰인 행의 잔차가 모두 (k + 16)u(|y_t| + Σ_j|x_tj||β_j|) 안이면 SSR을 0으로. 보통 첫 행에서 판정이 끝나요' },
       { label: '공분산', note: '(RᵀR)⁻¹를 potri로, 강건형이면 샌드위치', where: '추론과 진단' },
     ]}
   />
@@ -102,7 +102,7 @@ array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=float64)
 '1.8e-10'
 ```
 
-QR만으로는 $\kappa u \approx 7\times10^{-10}$ 수준, 정규방정식은 그보다 두 자릿수 더 나빠요. 개선을 한 번 하면 정확히 1이에요. 이 경우 잔차 제곱합이 정확히 0이라 표준오차도 0이고 t는 ±inf예요([겹친 열과 완전 적합](/api/regression/collinearity/)).
+QR만으로는 $\kappa u \approx 7\times10^{-10}$ 수준, 정규방정식은 그보다 두 자릿수 더 나빠요. 개선을 한 번 하면 정확히 1이에요. 이 경우 잔차 제곱합이 정확히 0이라 표준오차도 0이고, t와 p는 NaN이에요([겹친 열과 완전 적합](/api/regression/collinearity/)).
 
 ## Householder QR
 
@@ -481,6 +481,7 @@ $R^2 = 1 - \text{SSR}/\text{TSS} = \text{ESS}/\text{TSS}$예요. 수학적으로
             if self._batch:
                 return self._no_tss(_sd.where(e < s, e / t, 1.0 - s / t))
             return self._no_tss(_div(e, t) if e < s else 1.0 - _div(s, t))
+
         return self._cached("rsquared", make)
 ```
 
@@ -542,15 +543,16 @@ $R^2 = 1 - \text{SSR}/\text{TSS} = \text{ESS}/\text{TSS}$예요. 수학적으로
         L = _linalg.cholesky(S)
     except _linalg.LinAlgError as e:
         msg = str(e)
-        at = msg[msg.find(" (at batch index"):] if " (at batch index" in msg else ""
+        at = msg[msg.find(" (at batch index") :] if " (at batch index" in msg else ""
         raise _linalg.LinAlgError(f"gls(): 'sigma' is not positive definite{at}") from None
     yt = _linalg.solve_triangular(L, _sd.expand_dims(y, axis=-1), upper=False)[..., 0]
     if bad is not None:
         yt = _sd.where(bad, math.nan, yt)
     Xt = _linalg.solve_triangular(L, X, upper=False)
     ones = _linalg.solve_triangular(L, _sd.ones((m, 1)), upper=False)[..., 0]
-    raw, extra, ys, Xs = _fit_kernel(func, yt, Xt, None, ones, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot,
-                                     lags)
+    raw, extra, ys, Xs = _fit_kernel(
+        func, yt, Xt, None, ones, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot, lags
+    )
 ```
 
 - `sd.linalg.cholesky`는 $\Sigma$의 아래 삼각만 읽어요.
@@ -572,25 +574,24 @@ $y$가 열들의 공간에 놓이면(완전 적합) 참 잔차는 0이에요. �
 그래서 커널은 마지막 패스 뒤에 쓰인 행마다 잔차가 그 행의 반올림 크기 안인지 봐요.
 
 $$
-\lvert r_t\rvert \le (k + 16)\,u\,\bigl(\lvert y_t\rvert + \lVert x_t\rVert_1\lVert\beta\rVert_\infty\bigr)
+\lvert r_t\rvert \le (k + 16)\,u\,\Bigl(\lvert y_t\rvert + \sum_j \lvert x_{tj}\rvert\,\lvert\beta_j\rvert\Bigr)
 $$
 
-$(\lvert y_t\rvert + \lVert x_t\rVert_1\lVert\beta\rVert_\infty)$는 $y_t - x_t^{\mathsf T}\beta$의 항들의 크기이고, $k$개 곱의 합을 반올림하는 오차의 상한이 $k\,u$ 꼴이라 거기에 여유 16을 더했어요. [강건 회귀](/internals/regression/robust/)와 [분위 회귀](/internals/regression/quantile/)가 0 잔차로 보는 기준과 같은 식이라, 같은 자료가 어느 모형에서나 같은 판정을 받아요. 모든 행이 이 안이면 SSR을 0으로 두고, 강건 공분산의 점수에 쓸 내부 잔차도 0으로 둬요. 결과의 `resid` 필드는 계산한 값 그대로예요.
+$\beta_j$를 반올림하면 $x_t^{\mathsf T}\beta$가 대략 $u\sum_j\lvert x_{tj}\beta_j\rvert$만큼 움직이니, 괄호 안은 $y_t - x_t^{\mathsf T}\beta$의 항들의 크기예요. $k$개 곱의 합을 반올림하는 오차의 상한이 $k\,u$ 꼴이라 거기에 여유 16을 더했어요. 항마다 $\lvert x_{tj}\rvert\lvert\beta_j\rvert$를 더하는 것이 중요해요. $\lVert x_t\rVert_1\lVert\beta\rVert_\infty$처럼 열의 크기와 계수의 크기를 따로 재면, 시각이나 금액처럼 값이 큰 열과 그 열을 상쇄하는 큰 절편이 다른 열일 때 두 크기의 곱이 실제 항보다 그 비만큼($10^{12}$배쯤) 커서, 잡음이 있는 자료까지 완전 적합으로 보게 돼요. 비용은 같아요. [강건 회귀](/internals/regression/robust/)와 [분위 회귀](/internals/regression/quantile/)가 0 잔차로 보는 기준과 같은 식이라, 같은 자료가 어느 모형에서나 같은 판정을 받아요. 모든 행이 이 안이면 SSR을 0으로 두고, 강건 공분산의 점수에 쓸 내부 잔차도 0으로 둬요. 결과의 `resid` 필드는 계산한 값 그대로예요.
 
 ```cpp
     if (kk > 0 && fin[fSsr].hi > 0.0) {
-        double bmax = 0.0;
-        for (lint jj = 0; jj < kk; ++jj) bmax = std::max(bmax, std::fabs(beta[jj]));
         const double c = static_cast<double>(kk + 16) * 0x1p-53;
-        bool perfect = std::isfinite(bmax);
+        bool perfect = true;
+        for (lint jj = 0; jj < kk; ++jj) perfect = perfect && std::isfinite(beta[jj]);
         for (lint t = 0; t < m && perfect; ++t) {
             const lint i = idx[t];
-            double nx = 0.0;
+            double xb = 0.0;
             for (lint jj = 0; jj < kk; ++jj) {
                 const Col cl = colK(jj);
-                nx += std::fabs(rd(cl.base + i * cl.stride));
+                xb += std::fabs(rd(cl.base + i * cl.stride) * beta[jj]);
             }
-            perfect = std::fabs(r[t]) <= c * (std::fabs(rd(d.y + i * d.ys)) + nx * bmax);
+            perfect = std::fabs(r[t]) <= c * (std::fabs(rd(d.y + i * d.ys)) + xb);
         }
         if (perfect) {
             fin[fSsr] = DD{0.0, 0.0};
@@ -599,7 +600,21 @@ $(\lvert y_t\rvert + \lVert x_t\rVert_1\lVert\beta\rVert_\infty)$는 $y_t - x_t^
     }
 ```
 
-완전 적합이 아닌 자료는 거의 언제나 첫 행에서 기준을 벗어나므로, 판정의 비용은 보통 행 하나예요. SSR이 0이 되면 IEEE 연산 그대로 `bse`는 0, t는 ±inf, p는 0, 구간은 $[\theta, \theta]$, `llf`는 +inf예요. 스튜던트화 잔차, Cook 거리, DW, JB, BP는 백색화 잔차를 0으로 보아 0/0 = NaN이에요.
+완전 적합이 아닌 자료는 거의 언제나 첫 행에서 기준을 벗어나므로, 판정의 비용은 보통 행 하나예요. SSR이 0이 되면 IEEE 연산 그대로 `bse`는 0, 구간은 $[\theta, \theta]$, `llf`는 +inf예요. 스튜던트화 잔차, Cook 거리, DW, JB, BP는 백색화 잔차를 0으로 보아 0/0 = NaN이에요.
+
+t만은 IEEE 연산에 맡기지 않아요. 계수는 정확도 약속 안의 값일 뿐이라, 참값이 0인 계수도 반올림 크기의 값으로 남을 수 있어요. 그것을 표준오차 0으로 나누면 ±inf와 p 0, 곧 가짜 유의성이 돼요. 그래서 결과 객체는 `ssr`이 0이고 `df_resid` > 0인 회귀(`_perfect`)의 t를 NaN으로 두고, p는 그 t에서 구하니 함께 NaN이에요(`src/stardust/regression/_linear.py`).
+
+```python
+    def _perfect(self):
+        """A perfect fit (ssr 0) with df_resid > 0: t and p are NaN there."""
+        z = self._ssr_s() == 0.0
+        df = self.df_resid
+        if self._batch:
+            return _sd.logical_and(z, df > 0.0)
+        return bool(z) and df > 0
+```
+
+`glm`(척도를 추정할 때)과 `rlm`(척도가 0일 때)도 같은 이름의 메서드로 같은 규칙을 따르고, `tvalues`는 모든 결과가 함께 쓰는 기본 클래스에서 이 표시를 읽어요(아래 [돌려놓기](#돌려놓기)의 코드).
 
 ```python
 >>> x8 = sd.arange(1.0, 9.0)
@@ -607,7 +622,7 @@ $(\lvert y_t\rvert + \lVert x_t\rVert_1\lVert\beta\rVert_\infty)$는 $y_t - x_t^
 >>> rp.resid[:3]
 array([ 8.326672684688674e-17, 2.7755575615628914e-17, -2.7755575615628914e-17], dtype=float64)
 >>> rp.ssr, rp.bse, rp.tvalues
-(0.0, array([0.0, 0.0], dtype=float64), array([inf, inf], dtype=float64))
+(0.0, array([0.0, 0.0], dtype=float64), array([nan, nan], dtype=float64))
 ```
 
 Wampler1은 반복 개선이 잔차를 정확히 0까지 줄여 판정 전부터 SSR이 0이고, Wampler2는 잔차가 $2.8\times10^{-15}$ 남지만 이 판정으로 완전 적합이에요. 같은 Wampler1에서 statsmodels 0.15.0은 반올림 수준의 잔차로 표준오차 2×10⁻¹²–4×10⁻⁸, t 2.5×10⁷–5.2×10¹¹을 내고, R(`summary.lm`)은 "essentially perfect fit" 경고와 함께 표준오차 6×10⁻¹⁵–1.4×10⁻¹⁰을 내요.
@@ -676,7 +691,7 @@ array([3.0, 0.0], dtype=float64)
             raw[4] = y - hi
 ```
 
-그 뒤는 위의 완전 적합과 같아요. `scale`이 0이라 `bse`는 0, t는 절편이 ±inf($y_0 = 0$이면 $0/0$), 기울기가 $0/0$ = NaN이고, `llf`는 +inf예요. TSS가 0이니 $R^2$와 F는 `_no_tss`의 NaN이에요.
+그 뒤는 위의 완전 적합과 같아요. `scale`이 0이라 `bse`는 0, t와 p는 `_perfect`대로 절편까지 NaN이고, `llf`는 +inf예요. TSS가 0이니 $R^2$와 F는 `_no_tss`의 NaN이에요.
 
 GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\mathbf 1$이고 반응은 $L^{-1}y = y_0 L^{-1}\mathbf 1$이라, $y_0$배의 절편 열이 반응을 그대로 만들어요. 다만 이 등식은 정확한 산술에서만 성립하고, 반올림한 $L^{-1}y$는 $L^{-1}\mathbf 1$의 정확히 $y_0$배가 아니에요. 그래서 판정은 백색화한 반응이 아니라 원래 $y$로 해요(척도를 바꿔 적합했으면 같은 $f_y$로 나눈 $y$로 해서, 정해 넣는 $y_0$가 커널의 단위와 맞아요). 원래 척도의 적합값과 잔차는 바뀐 계수로 다시 구하므로 정확히 $y_0$와 0이 되고, 백색화한 잔차 $L^{-1}(y - y_0\mathbf 1)$도 0으로 둬요.
 
@@ -689,18 +704,26 @@ GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\math
         yc = y / (_sd.expand_dims(fy, axis=-1) if isinstance(fy, _sd.ndarray) else fy)
     const = _exact_constant(raw, yc, None, intercept, cov_type, original_scale=False)
     _unscale(raw, extra)
-    res = GLSResult(raw, param_names=_names(names, X.shape[-1], intercept), intercept=intercept, cov_type=cov_type,
-                    batch=_batch_shape(raw), extra=extra, fitargs=(func, ys, Xs, None, ones, tol, codes, gtot),
-                    columns=columns)
+    res = GLSResult(
+        raw,
+        param_names=_names(names, X.shape[-1], intercept),
+        intercept=intercept,
+        cov_type=cov_type,
+        batch=_batch_shape(raw),
+        extra=extra,
+        fitargs=(func, ys, Xs, None, ones, tol, codes, gtot),
+        columns=columns,
+    )
     # fitted values and residuals on the original scale (statsmodels' fittedvalues and resid)
     fitted, resid = _k.apply(func, X, res._beff(), intercept, y)
     if raw[3].shape != fitted.shape:  # sigma's batch axes added to y's
         fitted, resid = _sd.broadcast_to(fitted, raw[3].shape), _sd.broadcast_to(resid, raw[3].shape)
-    raw[3], raw[4] = fitted, resid
+    raw[3], raw[4] = _ro(fitted), _ro(resid)
     if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
         wr = res._wresid()
-        res._cache["wresid"] = (_sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch
-                                else _sd.zeros(tuple(wr.shape)))
+        res._cache["wresid"] = (
+            _sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch else _sd.zeros(tuple(wr.shape))
+        )
 ```
 
 ## 극단적인 척도
@@ -715,10 +738,12 @@ GLS에서도 같은 해예요. 백색화한 문제의 절편 열은 $L^{-1}\math
 >>> ys = 1.0 + 0.5 * xs + N.sample(20, rng=rng)
 >>> raw = sd._core.regression.fit("ols", ys, (1e160 * xs)[:, None], None, None, True, -1.0, 0, 3)
 >>> raw[1][1, 1], raw[1][1, 1] * (raw[6][2] / 18.0)
-(6.97e-322, 0.0)
+(6.97e-322, 6.9e-322)
+>>> raw[0][1] / (raw[1][1, 1] * (raw[6][2] / 18.0)) ** 0.5
+2.4399039575384465
 ```
 
-척도를 바꾸지 않은 커널의 $(R^{\mathsf T}R)^{-1}$에서 기울기의 원소는 유효숫자 세 자리의 비정규수이고, 척도 $\hat\sigma^2$를 곱하면 0이 돼요. 그대로 쓰면 그 표준오차가 0, t가 inf예요.
+척도를 바꾸지 않은 커널의 $(R^{\mathsf T}R)^{-1}$에서 기울기의 원소는 유효숫자 세 자리의 비정규수이고, 척도 $\hat\sigma^2 \approx 0.99$를 곱하면 두 자리만 남아요. 그대로 쓰면 t가 2.4399로, 아래의 맞는 값 2.4449와 셋째 자리부터 달라요. 열이 더 크면 그 원소가 0이 되어 표준오차가 0, t가 inf예요.
 
 ### 2의 거듭제곱으로 옮겨 풀기
 
@@ -744,6 +769,7 @@ def _pow2(m):
         if math.isfinite(v) and v > 0.0 and (v > _SAFE_HI or v < _SAFE_LO):
             return math.ldexp(1.0, math.frexp(v)[1])
         return 1.0
+
     return _sd.asarray(f(m.tolist())) if isinstance(m, _sd.ndarray) else f(m)
 ```
 
@@ -779,17 +805,27 @@ array([4.3403891381277555,  2.444902493779801], dtype=float64)
 
 마지막 줄처럼, 참값 자체가 double 밖이면(SSR의 참값이 약 $1.8\times10^{-329}$) 그 필드만 0이나 inf예요. 그 값으로 만드는 t, p, $R^2$는 적합의 단위에서 구하므로 맞아요.
 
-계수 자체가 double을 벗어나도 같아요. $y \cdot 10^{300}$을 $x \cdot 10^{-300}$에 회귀하면 기울기의 참값이 $6.4\times10^{599}$라, 데이터 단위의 `params`와 `bse`의 그 원소는 inf예요. 그 둘로 t를 만들면 inf/inf = NaN이 되므로, `tvalues`는 데이터 단위의 값을 거치지 않아요. `_unscale`이 계수를 돌려놓기 전에 적합의 단위의 계수 $\beta'$를 `beff_params_s`로 남겨 두고, t는 그것을 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 척도를 바꾸지 않은 적합에는 그 자리가 없어서 `params / bse`예요(배율이 1이라 같은 값이에요).
+계수 자체가 double을 벗어나도 같아요. $y \cdot 10^{300}$을 $x \cdot 10^{-300}$에 회귀하면 기울기의 참값이 $6.4\times10^{599}$라, 데이터 단위의 `params`와 `bse`의 그 원소는 inf예요. 그 둘로 t를 만들면 inf/inf = NaN이 되므로, `tvalues`는 데이터 단위의 값을 거치지 않아요. `_unscale`이 계수를 돌려놓기 전에 적합의 단위의 계수 $\beta'$를 `beff_params_s`로 남겨 두고, t는 그것을 $\sqrt{\operatorname{diag}C'}$로 바로 나눠요. 척도를 바꾸지 않은 적합에는 그 자리가 없어서 `params / bse`예요(배율이 1이라 같은 값이에요). 이 메서드는 모든 회귀 결과가 함께 쓰는 기본 클래스 `_RegressionResult`에 있고, 위의 [완전 적합](#완전-적합의-판정) 표시(`_perfect`)도 여기서 읽어요.
 
 ```python
     @property
     def tvalues(self):
+        """params / bse; NaN for a perfect fit (an estimated scale of 0 with df_resid > 0: bse
+        is 0, and a coefficient of rounding size over 0 would show a significance the fit cannot
+        have)."""
+
         def make():
             if "beff_params_s" not in self._extra:
-                return self.params / self.bse
-            # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there, while a
-            # parameter or its standard error in the data's units may overflow or underflow
-            return (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
+                t = self.params / self.bse
+            else:
+                # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there,
+                # while a parameter or its standard error in the data's units may overflow
+                t = (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
+            bad = self._perfect()
+            if isinstance(bad, _sd.ndarray):
+                return _sd.where(_expand(bad, 1), math.nan, t)
+            return t * math.nan if bad else t
+
         return self._cached("tvalues", make)
 ```
 
@@ -803,23 +839,24 @@ p는 이 t에서 구하므로 넘친 계수의 p도 맞아요. `linregress`도 p
 LinregressResult(slope=0.0, intercept=-9.706892633147886e-166, rvalue=-0.49929723052004504, pvalue=0.025005323114196457, stderr=0.0, intercept_stderr=2.2364106821387434e-166)
 ```
 
-신뢰구간도 같은 이유로 적합의 단위에서 만들어요. 데이터 단위의 $\beta \pm q\cdot\text{bse}$로 구하면 계수와 `bse`가 함께 inf로 넘친 원소에서 $\infty - \infty$ = NaN이 나와요. 그래서 `_LinearResult.conf_int`는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구한 뒤 계수처럼 $f_y/f_{x_j}$를 곱해요. 적합의 단위에서는 두 끝이 유한하고, 배율을 곱할 때 끝마다 제 부호를 지킨 채 넘쳐요. 그래서 넘친 끝은 $+\infty$나 $-\infty$이고 아래로 넘친 끝은 0이며, NaN은 나오지 않아요. 넘치지 않은 원소는 데이터 단위로 구한 구간과 반올림 안에서 같아요. 척도를 바꾸지 않은 적합(`beff_params_s`가 없음)은 기본 클래스의 $\beta \pm q\cdot\text{bse}$ 그대로예요([추론](/internals/regression/inference/)). `ols`·`wls`·`gls`와 강건 공분산, 배치가 모두 이 길을 따라요.
+신뢰구간도 같은 이유로 적합의 단위에서 만들어요. 데이터 단위의 $\beta \pm q\cdot\text{bse}$로 구하면 계수와 `bse`가 함께 inf로 넘친 원소에서 $\infty - \infty$ = NaN이 나와요. 그래서 `_RegressionResult.conf_int`는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구한 뒤 계수처럼 $f_y/f_{x_j}$를 곱해요. 적합의 단위에서는 두 끝이 유한하고, 배율을 곱할 때 끝마다 제 부호를 지킨 채 넘쳐요. 그래서 넘친 끝은 $+\infty$나 $-\infty$이고 아래로 넘친 끝은 0이며, NaN은 나오지 않아요. 넘치지 않은 원소는 데이터 단위로 구한 구간과 반올림 안에서 같아요. 척도를 바꾸지 않은 적합(`beff_params_s`가 없음)은 같은 메서드의 앞 갈래, $\beta \pm q\cdot\text{bse}$ 그대로예요([추론](/internals/regression/inference/)). `ols`·`wls`·`gls`와 강건 공분산, 배치가 모두 이 길을 따르고, `y`나 열의 척도를 옮겨 푸는 `glm`·`rlm`·`quantreg`도 `beff_params_s`와 `fx`를 같은 꼴로 남겨 이 길을 함께 써요.
 
 ```python
     def conf_int(self, *, alpha=0.05):
         """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals
         (alpha keyword-only)."""
-        if "beff_params_s" not in self._extra:
-            return super().conf_int(alpha=alpha)
         alpha = _check_alpha(alpha, "conf_int")
+        q = self._dist().iccdf(alpha / 2)
+        if "beff_params_s" not in self._extra:
+            half = q * self.bse
+            return _sd.stack([self.params - half, self.params + half], axis=-1)
         # the ends in the fit's own units, beta' -+ q sqrt(C'), then scaled as the parameter is:
         # each end keeps its sign and may overflow to +-inf, never inf - inf = NaN
-        q = self._dist().iccdf(alpha / 2)
         b = self._extra["beff_params_s"]
         half = q * _sd.sqrt(_linalg.diagonal(self._cov_s()))
         fy = self._fy()
         fy1 = _expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy
-        fxk = self._extra["fx"]
+        fxk = self._xfactor()
         return _sd.stack([(b - half) * fy1 / fxk, (b + half) * fy1 / fxk], axis=-1)
 ```
 
@@ -856,7 +893,7 @@ NIST의 선형 회귀 인증 자료 11개는 극단적인 조건수와 공인된
 
 - `ols`는 Filip에서 두 번, 나머지 10개에서 한 번 보정하고 멈춰요. 돌려준 계수는 11개 모두 Arb 참값을 double로 반올림한 것과 비트까지 같아요.
 - Filip의 κ는 1.8×10¹⁵로 $\kappa^2 u > 1$이지만, 잔차가 작아서 개선이 수렴해요.
-- Wampler2는 double 입력에서의 참 잔차가 반올림 수준이라(계수를 double로 반올림한 것만으로 잔차가 바뀌어요), 그 잔차로 구한 표준오차에는 상대 정확도가 없어요. 잔차가 모두 완전 적합의 판정 안이라 SSR이 0이고, 표준오차는 0, t는 ±inf예요.
+- Wampler2는 double 입력에서의 참 잔차가 반올림 수준이라(계수를 double로 반올림한 것만으로 잔차가 바뀌어요), 그 잔차로 구한 표준오차에는 상대 정확도가 없어요. 잔차가 모두 완전 적합의 판정 안이라 SSR이 0이고, 표준오차는 0, t와 p는 NaN이에요.
 - 인증값은 10진 자료 그대로의 참값이에요. Filip은 자료를 double로 한 번 반올림한 것만으로 참 계수가 2.4×10⁻⁸ 움직여요. 입력의 반올림이 문제 자체를 바꾼 몫이라 어떤 방법으로도 줄일 수 없어요.
 
 같은 입력에서 다른 라이브러리가 낸 계수의 최대 상대오차예요. 견준 것은 statsmodels 0.15.0(`OLS().fit()`, 기본 `pinv`), scikit-learn 1.9.1(`LinearRegression`), numpy 2.5.4의 `lstsq`와 같은 값을 내는 `sd.linalg.lstsq`(SVD)예요.

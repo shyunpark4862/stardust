@@ -14,7 +14,7 @@ params:
     desc: 정사각 행렬. 모양은 (..., N, N).
 returns:
   type: SchurResult(T, Z) 또는 HessenbergResult(H, Q)
-  desc: 모두 x와 같은 모양 (..., N, N)의 행렬 둘. 실수 입력이면 float64, 복소수 입력이면 complex128이에요.
+  desc: 모두 x와 같은 모양 (..., N, N)의 행렬 둘. 실수 입력이면 float64, 복소수 입력이면 complex128이에요. 결과의 배열은 쓰기 금지예요.
 raises:
   - type: TypeError
     desc: x가 sd.ndarray가 아닐 때(리스트, numpy 배열 등).

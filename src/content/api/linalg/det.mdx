@@ -14,7 +14,7 @@ params:
     desc: 정사각 행렬. 모양은 (..., N, N). 3차원 이상이면 행렬 여러 개를 쌓은 것으로 봐요.
 returns:
   type: "det: ndarray 또는 Python 숫자 / slogdet: SlogdetResult(sign, logabsdet)"
-  desc: det은 행렬식. slogdet은 부호 sign과 절댓값의 자연로그 logabsdet. 행렬 하나면 Python 숫자, 여러 개면 모양이 (...)인 배열이에요.
+  desc: det은 행렬식. slogdet은 부호 sign과 절댓값의 자연로그 logabsdet. 행렬 하나면 Python 숫자, 여러 개면 모양이 (...)인 배열이에요. 배치의 slogdet 결과 배열은 쓰기 금지예요.
 raises:
   - type: TypeError
     desc: x가 배열이 아닐 때(리스트, numpy 배열 포함).
@@ -132,6 +132,14 @@ float64가 담을 수 있는 수는 크기가 대략 $10^{-324}$에서 $10^{308}
 ```python
 >>> sd.linalg.det(sd.eye(1100) * 2.0)
 inf
+```
+
+`inf`나 `0.0`이 되는 것은 행렬식 자체가 float64의 범위를 벗어날 때뿐이에요. 곱해 나가는 중간에만 범위를 벗어나고 결과는 범위 안이면, 그 값을 제대로 돌려줘요. 아래 행렬은 앞의 두 대각 원소를 곱하면 $10^{400}$이라 넘치지만, 행렬식은 $10^{100}$이에요.
+
+```python
+>>> big = sd.asarray([[1e200, 0.0, 0.0], [0.0, 1e200, 0.0], [0.0, 0.0, 1e-300]])
+>>> sd.linalg.det(big)
+1e+100
 ```
 
 <Fig caption="대각선이 0.5인 N×N 행렬의 행렬식을 로그 눈금으로 그렸어요. N이 1075쯤을 넘으면 float64가 담을 수 있는 가장 작은 수 아래로 내려가서 det은 0.0을 돌려줘요. 로그 값 자체는 평범한 크기의 숫자예요.">
@@ -360,7 +368,7 @@ SlogdetResult(sign=1.0, logabsdet=0.0)
 | | `det` | `slogdet` |
 |---|---|---|
 | 돌려주는 것 | 행렬식 하나 | `sign`과 `logabsdet` 둘 |
-| 아주 큰·작은 행렬식 | `inf`나 `0.0`이 돼요 | 바르게 나와요 |
+| float64에 담기지 않는 행렬식 | `inf`나 `0.0`이 돼요 | 바르게 나와요 |
 | 특이 행렬 | `0.0` | `sign=0.0`, `logabsdet=-inf` |
 | 복소수 행렬 | 복소수 | `sign`은 복소수, `logabsdet`은 실수 |
 

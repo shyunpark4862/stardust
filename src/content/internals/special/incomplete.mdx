@@ -293,13 +293,21 @@ $$
 // ops/incgamma.hpp, series_lower (발췌)
 const Scaled d = gamma_prefix(a, x);
 double sum = 1.0, term = 1.0, ap = a;
-for (int n = 0; n < 100000; ++n) {
-    ap += 1.0;
-    term *= x / ap;
-    sum += term;
-    if (term <= sum * 0x1p-56) break;   // 다음 항들의 합도 이 정도라 안전하게 2^-56
+if (d.m != 0.0) {
+    bool ended = false;
+    for (int n = 0; n < kMaxTerms; ++n) {    // kMaxTerms = 100000
+        ap += 1.0;
+        term *= x / ap;
+        sum += term;
+        if (term <= sum * 0x1p-56) {         // 다음 항들의 합도 이 정도라 안전하게 2^-56
+            ended = true;
+            break;
+        }
+    }
+    if (!ended) return {kNaN, kNaN, kNaN};   // 상한 안에 끝나지 않으면 NaN
 }
-const double p = value(d) >= 0x1p-900 ? value(d) * sum : value(d * scaled(sum));
+const double dv = value(d);
+const double p = dv >= 0x1p-900 ? dv * sum : value(d * scaled(sum));
 ```
 
 `sum`이 언제나 1 이상이고 항이 양수라서 반올림 오차는 항 수에 비례해 쌓이지 않고 대략 한두 ULP에 머물러요. 마지막 곱은 $D$가 정상 범위이면 float64 곱 한 번, 서브노멀로 떨어질 수 있으면 `Scaled`의 곱으로 해요.
@@ -322,16 +330,25 @@ $$
 Q(a, x) = \frac{a\, D(a, x)}{x + 1 - a - \cfrac{1 \cdot (1 - a)}{x + 3 - a - \cfrac{2 \cdot (2 - a)}{x + 5 - a - \cdots}}}
 $$
 
-곧 $a_n = -n(n - a)$, $b_n = x + 2n + 1 - a$예요. $x$가 $a$보다 크면 $b_n$이 $2n$보다 빨리 커지므로 층이 깊어질수록 $a_n/(b_{n-1}b_n)$이 작아지고 빨리 수렴해요. 코드에서 $aD = x^a e^{-x}/\Gamma(a)$이고, 분모 전체를 `lentz_backward`로 계산해요.
+곧 $a_n = -n(n - a)$, $b_n = x + 2n + 1 - a$예요. $x$가 $a$보다 크면 $b_n$이 $2n$보다 빨리 커지므로 층이 깊어질수록 $a_n/(b_{n-1}b_n)$이 작아지고 빨리 수렴해요. 코드에서 $aD = x^a e^{-x}/\Gamma(a)$이고, 분모 전체를 `cf_value`로 계산해요. `lentz_backward`의 값이고, 항 수의 상한 안에 수렴하지 않으면 NaN이에요.
 
 ```cpp
 // ops/incgamma.hpp, cf_upper (발췌)
 const Scaled d = gamma_prefix(a, x);
-const double tail = lentz_backward(
-    x + 1.0 - a,                                   // b0
-    [&](int n) { const double k = n; return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a}; },
-    100000).value;
-const double q = value(d) >= 0x1p-900 ? value(d) * (a / tail) : value(d * scaled(a / tail));
+double tail = 1.0;
+if (d.m != 0.0) {
+    tail = cf_value(
+        x + 1.0 - a,                               // b0
+        [&](int n) {
+            const double k = n;
+            return std::pair{-k * (k - a), x + 2.0 * k + 1.0 - a};
+        },
+        kMaxTerms
+    );
+    if (std::isnan(tail)) return {kNaN, kNaN, kNaN};
+}
+const double dv = value(d);
+const double q = dv >= 0x1p-900 ? dv * (a / tail) : value(d * scaled(a / tail));
 ```
 
 **수정 Lentz 방법.** 근사분수 $f_n = A_n/B_n$을 끝에서부터 계산하려면 항 수를 미리 알아야 해요. Lentz[6]는 앞에서부터 가는 방법을 줬어요. $C_n = A_n/A_{n-1}$, $D_n = B_{n-1}/B_n$을 점화식 $C_n = b_n + a_n/C_{n-1}$, $D_n = 1/(b_n + a_n D_{n-1})$로 갱신하면 $f_n = f_{n-1} C_n D_n$이고, $C_n D_n$이 1과 $2^{-53}$ 안으로 같아지면 멈춰요. 중간에 분모가 정확히 0이 되면 아주 작은 수($2^{-1000}$)로 바꿔 계속하는 것이 "수정"이고[7], 다음 걸음이 그 효과를 지워요(`cf.hpp`의 `lentz`). 자세한 내용과 $b_0 = 0$일 때의 처리는 [공통 수치 기법](/internals/special/techniques/)에 있어요.
@@ -704,9 +721,25 @@ Boost의 `gamma_p_inv_imp`(`detail/igamma_inverse.hpp`)가 하는 일은 이래�
 
 **잘못된 반쪽에서 시작했을 때.** AS 109가 근과 반대쪽 반을 고르면($p = 10^7$, $q = 2.5$, $t = 10^{-300}$에서 $u = 3 \times 10^{-6}$을 냈지만 참 근은 $1 - 7 \times 10^{-5}$) Halley의 근 $w$가 1/2을 넘어요. 그 변수에서 근은 1 바로 옆이라 $1 - w$가 반올림돼요(그곳에서 $x$의 $1.3 \times 10^{-13}$). 그래서 $w > \tfrac12$이면 변수를 반대쪽으로 바꾸고 $1 - w$에서 다시 풀어요.
 
-**깊은 꼬리.** $t < 2^{-900}$이면 $F$를 float64로 반올림한 값에 비트가 몇 개 없어요. 감마의 역함수처럼 Halley의 근에서 출발해 $\log F - \log t$에 Newton을 해요(`log_tail`). $F = \mathcal{B}\,S$로 쓰고, 앞 인자의 지수 $E$와 $\log t$(둘 다 $-740$ 안팎)를 double-double로 빼서 잔차를 만들고, $S$는 BPSER($b \le 1$이나 $bx \le 0.7$)이나 BFRAC($a, b > 1$)의 $O(1)$ 인수예요. 로그 도함수는 $xI'/I = 1/(yS)$로 바로 나와요. $g = \log(F/t)$에 대해 증가하는 쪽($F \sim w^{a}$)은 $\log w$에서, 감소하는 쪽은 $w$에서 Newton 걸음을 해요. 걸음이 $2^{-53}w$ 아래(또는 서브노멀 이웃 사이)가 되면 끝이에요. 100걸음 안에 끝나지 않거나(마지막 걸음이 $2^{-48}w$ 아래인 경우 말고), BPSER도 BFRAC도 쓸 수 없는 곳(BGRAT의 영역)인데 $t$가 서브노멀이면 NaN이에요. $t$가 정상 범위이면 그곳에서는 Halley의 근을 그대로 써요.
+**깊은 꼬리.** $t < 2^{-900}$이면 $F$를 float64로 반올림한 값에 비트가 몇 개 없어요. 감마의 역함수처럼 Halley의 근에서 출발해 $\log F - \log t$에 Newton을 해요(`log_tail`). $F = \mathcal{B}\,S$로 쓰고, 앞 인자의 지수 $E$와 $\log t$(둘 다 $-740$ 안팎)를 double-double로 빼서 잔차를 만들고, $S$는 BPSER($b \le 1$이나 $bx \le 0.7$)이나 BFRAC($a, b > 1$)의 $O(1)$ 인수예요. 로그 도함수는 $xI'/I = 1/(yS)$로 바로 나와요. $g = \log(F/t)$에 대해 증가하는 쪽($F \sim w^{a}$)은 $\log w$에서, 감소하는 쪽은 $w$에서 Newton 걸음을 해요. 걸음이 $2^{-53}w$ 아래(또는 서브노멀 이웃 사이)가 되면 끝이에요. 100걸음 안에 끝나지 않으면(마지막 걸음이 $2^{-48}w$ 아래인 경우 말고) NaN이에요. BPSER도 BFRAC도 쓸 수 없는 곳(BGRAT의 영역, 또는 두 모양이 모두 거대한 곳)에서 $t$가 정상 범위이면 Halley의 근을 그대로 써요. $t$가 서브노멀이면 꼬리 자체에 비트가 남지 않아서, 두 모양이 모두 $2^{60}$ 이상이면 아래의 정규 극한 근을 내고 그 밖은 NaN이에요.
 
 **극단의 모양.** 한 모양이 다른 모양보다 엄청나게 크면(앞의 `gamma_limit`과 같은 조건) 감마 극한의 근을 써요. $q$가 거대하면 $I_u(p, q) = P(p, qu)$에서 $u = $ `gammaincinv`$(p, t)/q$이고, $p$가 거대하면 $1 - I_u(p, q) = P(q, p(1 - u))$에서 같은 식이에요. 두 모양이 모두 $2^{60}$ 이상이면 AS 109 대신 정규 극한 $u = m + z\sigma$($m = p/(p + q)$, $\sigma = m\sqrt{(1 - m)/p}$, $p + q$는 넘칠 수 있어 만들지 않아요)에서 출발해요. 이런 모양에서 AS 109의 출발점은 0이나 NaN이에요.
+
+**두 모양이 거대하고 확률이 서브노멀이면** 꼬리의 로그를 구할 수 없으므로(BFRAC가 닿지 않아요) 정규 극한에 왜도 항을 더한 근을 바로 내요(`normal_limit_root`, Cornish–Fisher).
+
+$$
+u = m + \sigma\left(z + \frac{g\,(z^2 - 1)}{6}\right), \qquad g = \frac{2(1 - 2m)}{\sqrt{p(1 - m)}}
+$$
+
+$z$는 $t$의 정규 편차예요. 다음 항은 $\sigma z^3/\min(p, q)$ 크기라서, 5e-324까지의 모든 $t$($\lvert z\rvert \le 38.5$)에서 근의 $2^{-74}$ 아래예요. `betaincinv(1e100, 1e100, 5e-324)`는 0.5예요. 한 모양이 약 $2.3 \times 10^6$에서 $2^{80}$ 사이이고 다른 모양이 1보다 작을 때, 근이 $x = 1$ 쪽에 붙는 큰 모양 쪽 꼬리는 서브노멀 확률에서 여전히 NaN이에요. 그 꼬리의 로그에는 급수도 연분수도 닿지 않아요. $2^{80}$ 위는 감마 극한으로 값을 내요.
+
+**아주 작은 모양.** 모양 하나가 아주 작으면 AS 109의 출발점과 Halley 걸음이 그 모양의 비트를 잃어요(`betaincinv(1, 5e-324, 5e-324)`의 참값은 $1 - 1/e$예요). $I_u(p, q)$의 급수에서 첫 항 말고는 모든 항에 작은 모양이 곱해진다는 것으로, 반복하기 전에 극한 꼴을 써요(`ibeta_inverse`, $p$는 변수 쪽 모양, $q$는 다른 쪽이에요).
+
+- 하나가 서브노멀이고 둘 다 $2^{-700}$ 아래이면 $I = m + \frac{pq}{p + q}\log\frac{u}{v}$, $m = \frac{q}{p + q}$라서 $u/v = e^{L}$, $L = (t - m)(1/p + 1/q)$예요. 순방향의 $b/(a + b)$ 갈래와 짝이고, $t$가 $m$과 같지 않으면 근은 0이나 1이에요.
+- $p$만 서브노멀이면 $I = 1 - p\,C(u)$($u > 0$)가 모든 $t \le \tfrac12$보다 커서 근은 0이에요.
+- $q$가 $q^* = \min(2^{-200}, 2^{-80}p)$ 아래이면(서브노멀이든 정규수든) $1 - I = e^{-qK(u)}(1 + O(q/p))$라서 근은 $t/q$에만 달려요. 그래서 $t$와 $q$에 같은 2의 거듭제곱을 곱해 $q$를 $q^*$의 이진 자릿수까지 키운 문제의 근을 써요. 2의 거듭제곱을 곱하는 것은 정확해요. 키운 $t$가 $2^{-60}$ 아래일 때만 그렇게 하고(남는 오차 $O(t't/q)$는 근의 조건수 안이에요), 그 위는 $t/q$가 $2^{20}/p$와 $2^{140}$을 넘어서 근 $1 - v$의 $v$가 모든 double 아래라 근이 1이에요.
+
+$2^{-1022}$ 바로 위의 정규 모양에서도 Halley만으로 풀면 그 모양에서 $1.5 \times 10^{-12}$까지 틀려요(`betainccinv(1.17e-301, 0.137, 1.57e-300)`, $\kappa \approx 13$). 극한 꼴로 풀면 Arb 대비 $q = 2^{-1074}$–$2^{-60}$의 무작위 1250점에서 $\lvert\Delta v/v\rvert/\max(1, \kappa)$가 $7.7 \times 10^{-16}$ 이하예요.
 
 **Boost가 맡는 구간.** `betaincinv`는 $10 \le a, b \le 10^6$이고 $p \ge 10^{-300}$이면 Boost의 `ibeta_inv`를, `betainccinv`는 $1 \le a, b \le 10^6$이고 $q \ge 10^{-300}$이면 `ibetac_inv`를 먼저 불러요. 모양의 상한은 Boost가 큰 모양에서 다른 확률의 근을 내기 때문이에요($a = 14.38$, $p = 0.617$에서 $b = 10^{200}$이면 $15.19/b$ 대신 $12.96/b$). 서브노멀 영역의 확률에서도 Boost는 크게 틀려서($a = 10$, $b = 14.38$, $p = 5 \times 10^{-324}$에서 근의 27배) 우리 코드예요. 구간을 고를 때 잰 1스레드 원소당 시간은 Boost 1093 ns 대 우리 1491 ns, 843 ns 대 2387 ns였고 계약 위반은 0이었어요(`bench/special/boost/routing.md`). 작은 $a, b$는 Boost가 근의 언더플로를 틀리게 다뤄서 우리 코드예요.
 
@@ -726,7 +759,7 @@ Boost의 `ibeta_inv_imp`(`detail/ibeta_inverse.hpp`)는 초기값을 $a, b$의 �
 
 ### 끝점
 
-`igam_inverse_edge`, `ibeta_inverse_edge`가 scipy의 규칙대로 먼저 처리해요. $p = 0$이면 0, $p = 1$이면 inf(감마)·1(베타)이고 보수 역함수는 반대예요. $a$나 $b$가 0이나 inf인데 $p$가 (0, 1) 안이면 NaN이에요. 근이 float64로 담기지 않을 만큼 작으면 0을 내요. 예를 들어 `gammaincinv(5e-324, 0.5)`의 참값은 $0.5^{1/a}$ 꼴로 언더플로하므로 0이고(scipy는 NaN), `betaincinv(0.0102, 36.2, 3.13e-169)`의 참값은 $10^{-16522}$이라 0이에요(scipy는 DBL_MIN). 서브노멀 $a$의 `gammaincinv`는 $p < 1$이면 언제나 0이에요. 근 $(p\,\Gamma(1 + a))^{1/a}$의 log가 $\log p / a$인데, $p \le 1 - 2^{-53}$이면 $\log p \le -1.1 \times 10^{-16}$이라 $a \lt 2^{-1022}$로 나누면 $-10^{291}$보다 작아요.
+`igam_inverse_edge`, `ibeta_inverse_edge`가 scipy의 규칙대로 먼저 처리해요. $p = 0$이면 0, $p = 1$이면 inf(감마)·1(베타)이고 보수 역함수는 반대예요. 감마는 $a$가 0이나 inf이면 $p$가 (0, 1) 안에서 NaN이에요. 베타는 $a$나 $b$가 0이면 끝점에서도 NaN이고, inf이면 순방향 `betainc`의 극한과 짝을 이뤄요. $0 < p < 1$에서 $a = \infty$이면 질량이 1에 몰려 근이 1, $b = \infty$이면 0이에요(`betainccinv`도 같은 근이고, 둘 다 inf이면 NaN이에요). 근이 float64로 담기지 않을 만큼 작으면 0을 내요. 예를 들어 `gammaincinv(5e-324, 0.5)`의 참값은 $0.5^{1/a}$ 꼴로 언더플로하므로 0이고(scipy는 NaN), `betaincinv(0.0102, 36.2, 3.13e-169)`의 참값은 $10^{-16522}$이라 0이에요(scipy는 DBL_MIN). 서브노멀 $a$의 `gammaincinv`는 $p < 1$이면 언제나 0이에요. 근 $(p\,\Gamma(1 + a))^{1/a}$의 log가 $\log p / a$인데, $p \le 1 - 2^{-53}$이면 $\log p \le -1.1 \times 10^{-16}$이라 $a \lt 2^{-1022}$로 나누면 $-10^{291}$보다 작아요.
 
 ### 아주 작은 모양의 `gammainccinv`
 
@@ -765,7 +798,8 @@ inline double tiny_shape_upper_root(double a, double q) {
 // csrc/special/ops/incgamma.hpp (Gammainccinv::f)
 double out;
 if (igam_inverse_edge(a, q, true, out)) return out;
-if (a < 0x1p-900) [[unlikely]] return tiny_shape_upper_root(a, q);
+if (a < 0x1p-900) [[unlikely]]
+    return tiny_shape_upper_root(a, q);
 if (q >= 1e-300 && a < igam_detail::kNormalShape) {  // Boost (special/boost.hpp); as gammaincinv
     const double r = bst::gamma_q_inv(a, q);
     if (bst::normal(r)) return igam_detail::igam_polish(a, q, true, r);
@@ -783,7 +817,7 @@ array([   0.26473701045154324, 5.535808900395593e-305,
 
 첫째는 $E_1(y) = 1$의 근이고, 둘째는 $c = 700$이 정확해서 $e^{-700-\gamma}$, 셋째는 $e^{-760.6}$이 가장 작은 서브노멀의 절반 아래라 0이에요. 마지막은 정규수 $a = 2^{-1022}$에서 $q \lt 10^{-300}$인 점으로, $c \approx 449.4$의 근 $e^{-c-\gamma}$예요.
 
-Arb 참값 대비로 $a$를 $5 \times 10^{-324}$부터 $2^{-900}$ 바로 아래까지 12개, $c$를 0.01–700의 20개로 잡아 근이 정규수인 점마다 근에서 $Q$를 다시 계산하면, 목표 $q$와의 상대오차가 $4.5 \times 10^{-16}$ 이하예요. 근 자체의 상대오차는 조건수 $\kappa \approx c$만큼 커요. 둘째 예의 근은 $5 \times 10^{-14}$쯤 틀리는데, 지수 $-700.58$을 double로 반올림한 것만으로 생기는 크기예요.
+Arb 참값 대비로 $a$를 $5 \times 10^{-324}$부터 $2^{-900}$ 바로 아래까지 12개, $c$를 0.01–700의 20개로 잡아 근이 정규수인 점마다 근에서 $Q$를 다시 계산하면, 목표 $q$와의 상대오차가 $4.5 \times 10^{-16}$ 이하예요. 근 자체의 상대오차는 조건수 $\kappa \approx c$만큼 커요. 둘째 예의 근은 $5 \times 10^{-14}$쯤 틀리는데, 지수 $-700.58$을 double로 반올림한 것만으로 생기는 크기예요. 반대로 $c$가 아주 작아 근 $y$가 크면, 근을 double로 반올림한 것이 $Q$를 $y\lvert Q'/Q\rvert$배로 옮겨서 다시 계산한 $Q$의 상대오차가 커져요(`gammainccinv(2**-1022, 1e-320)`의 근 25.17에서 $1.6 \times 10^{-15}$). 근의 정확도는 역함수의 기준 안이에요.
 
 ## 성능
 
@@ -811,14 +845,14 @@ Arb 참값 대비 ULP예요(지금 빌드로 잰 전체 표, 기준값은 `tests
 
 | 함수 | 점 | sd 최대 | sd 99.9% | scipy 최대 | scipy 99.9% |
 |---|:---:|:---:|:---:|:---:|:---:|
-| `gammainc` | 2413 | 8.87 | 5.63 | $4.5 \times 10^{15}$ | $6.5 \times 10^{9}$ |
+| `gammainc` | 2413 | 5.74 | 5.36 | $4.5 \times 10^{15}$ | $6.5 \times 10^{9}$ |
 | `gammaincc` | 2413 | 13.4 | 7.97 | $2.4 \times 10^{10}$ | 5690 |
-| `gammaincinv` | 2004 | 5.32 | 3.91 | inf | 498 |
+| `gammaincinv` | 2004 | 5.32 | 4.11 | inf | 498 |
 | `gammainccinv` | 2004 | 5.33 | 4.79 | inf | 19.9 |
 | `betainc` | 2004 | 21.8 | 14.2 | inf | $1.0 \times 10^{4}$ |
 | `betaincc` | 2004 | 18.6 | 17.4 | inf | $7.7 \times 10^{10}$ |
-| `betaincinv` | 1502 | 9.2 | 7.55 | inf | nan |
-| `betainccinv` | 1502 | 9.55 | 7.13 | inf | nan |
+| `betaincinv` | 1502 | 9.2 | 7.37 | inf | nan |
+| `betainccinv` | 1502 | 9.55 | 5.94 | inf | nan |
 
 - 순방향 넷은 정의역 전체에서 상대오차 $10^{-14}$(약 45 ULP) 이하가 계약이고, 결과가 서브노멀이면 절대오차 $45 \cdot 2^{-1074}$예요. 잰 최대는 모두 그 안이에요.
 - 순방향의 최대는 `betainc` 21.8 ULP($a = 3383$, $b = 38059$, $x = 0.079$로 평균 $a/(a + b) = 0.082$ 바로 아래인 큰 모양, 상대 $2.5 \times 10^{-15}$), `gammaincc` 13.4 ULP($a = 0.106$, $x = 0.93$, 상대 $1.6 \times 10^{-15}$)예요.

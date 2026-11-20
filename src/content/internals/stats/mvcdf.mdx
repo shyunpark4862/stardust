@@ -27,7 +27,7 @@ $d \le 3$은 결정적인 수치 적분이라 결과가 반올림 몇 번 수준
 ```python
 >>> N = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray([[1.0, 0.5], [0.5, 1.0]]))
 >>> N.cdf(sd.asarray([0.0, 0.0]), return_error=True)
-(0.3333333333333333, 0.0)
+CdfResult(value=0.3333333333333333, error=0.0)
 >>> N.cdf(sd.asarray([-10.0, -10.0]))
 4.416978231552918e-32
 ```
@@ -57,7 +57,7 @@ $d \le 3$은 결정적인 수치 적분이라 결과가 반올림 몇 번 수준
   />
 </Fig>
 
-그 앞에서 Python 층이 입력과 옵션을 검사해요. `x`는 `sd.ndarray`여야 하고, `atol`은 유한한 양수, `max_points`는 양의 int나 None, `return_error`는 True나 False예요. 에러는 모두 메서드 이름으로 시작해요. `atol`은 기술통계의 수 옵션과 같은 `_real_option`이 읽어요. int와 float을 받고 numpy 정수도 int로 받아요(bool은 아니에요). double로 바꿀 수 없을 만큼 큰 int는 `OverflowError`이고, 0 이하·inf·NaN은 `ValueError`예요.
+그 앞에서 Python 층이 입력과 옵션을 검사해요. `x`는 `sd.ndarray`여야 하고, `atol`은 유한한 양수, `max_points`는 1 이상의 int나 None, `return_error`는 True나 False예요. `max_points`가 int64 밖이면 `cdf(): 'max_points' is out of range`(`OverflowError`), 1 미만이면 `cdf(): 'max_points' must be >= 1`(`ValueError`)이에요. `return_error=True`의 결과는 `CdfResult(value, error)`(`stardust._results`의 이름 붙은 튜플)이고, 배열인 두 칸은 읽기 전용이에요. 에러는 모두 메서드 이름으로 시작해요. `atol`은 기술통계의 수 옵션과 같은 `_real_option`이 읽어요. int와 float을 받고 numpy 정수도 int로 받아요(bool은 아니에요). double로 바꿀 수 없을 만큼 큰 int는 `OverflowError`이고, 0 이하·inf·NaN은 `ValueError`예요.
 
 ```python
 >>> N.cdf(sd.asarray([0.0, 0.0]), max_points=1.5)
@@ -282,7 +282,7 @@ $$
 >>> T3 = sd.stats.MultivariateT(mu=sd.zeros(3),
 ...     shape=sd.asarray([[1.0, 0.3, 0.2], [0.3, 1.0, 0.4], [0.2, 0.4, 1.0]]), df=4.0)
 >>> T3.cdf(sd.asarray([-1.0, 0.5, 2.0]), return_error=True)
-(0.14305883336573588, 0.0)
+CdfResult(value=0.14305883336573588, error=0.0)
 >>> T2 = sd.stats.MultivariateT(mu=sd.zeros(2), shape=sd.asarray([[1.0, 0.5], [0.5, 1.0]]), df=1e300)
 >>> T2.cdf(sd.asarray([-3.0, -2.0])) == N.cdf(sd.asarray([-3.0, -2.0]))
 True
@@ -331,9 +331,9 @@ $N$은 소수이고 $z$는 생성 벡터예요. 좋은 $z$는 Nuyens와 Cools [1
 >>> N5 = sd.stats.MultivariateNormal(mu=sd.zeros(5),
 ...     cov=sd.asarray([[1.0 if i == j else 0.5 for j in range(5)] for i in range(5)]))
 >>> N5.cdf(sd.zeros(5), return_error=True)
-(0.16666655502183228, 4.2706695635307583e-07)
+CdfResult(value=0.1666665550218323, error=4.2706695635307885e-07)
 >>> N5.cdf(sd.zeros(5), return_error=True, max_points=50000)
-(0.16666794173757096, 4.542394190811776e-06)
+CdfResult(value=0.166667941737571, error=4.542394190810507e-06)
 ```
 
 상관이 모두 0.5인 직교 확률의 참값은 $1/(d + 1) = 1/6$이에요. 첫 값의 실제 오차는 $1.1 \times 10^{-7}$로 추정 $4.3 \times 10^{-7}$ 안이에요. `max_points`로 평가 수를 줄이면 그만큼 오차 추정이 커져요.

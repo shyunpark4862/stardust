@@ -210,7 +210,7 @@ Traceback (most recent call last):
 ValueError: reindex(): an index cannot hold NA
 ```
 
-빈 목록(`[]`나 `()`)에는 라벨이 없으니 종류를 따질 것도 없어요. 결과는 행이 하나도 없는 같은 모양의 객체이고, 라벨의 종류는 원래 표의 것을 그대로 이어받아요. `.iloc[[]]`로 행을 하나도 고르지 않은 것과 같아요.
+빈 목록에는 라벨이 없으니 종류를 따질 것도 없어요. 결과는 행이 하나도 없는 같은 모양의 객체이고, 라벨의 종류는 원래 표의 것을 그대로 이어받아요. `.iloc[[]]`로 행을 하나도 고르지 않은 것과 같아요. 목록을 list, tuple, `range`, numpy 배열, `sd.ndarray` 어느 것으로 주어도 같아요. 원래 라벨이 정수일 때 빈 `range`를 주면 결과의 라벨은 빈 RangeIndex예요.
 
 ```python
 >>> sales.reindex([])

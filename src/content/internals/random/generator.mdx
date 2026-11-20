@@ -399,7 +399,7 @@ def _reserve(self, n):
     return key, p
 ```
 
-메서드는 인자를 검사한 뒤 `_take(n, 이름)`을 거쳐 `_reserve(n)`으로 키와 구간 `[p, p + n)`을 받아 커널에 넘겨요(`_k.uniform(key[0], key[1], pos, …)`). `_take`는 예약하기 전에 결과의 바이트 수를 이 컴퓨터의 물리 메모리와 비교해서, 넘으면 메서드 이름을 붙인 `MemoryError`(`random(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`)를 내요. 그래서 거절된 호출은 위치를 움직이지 않아요. 잠금 안에서 하는 일은 읽기 셋과 쓰기 하나뿐이에요. 원소 계산은 잠금을 풀고 나서 해요.
+메서드는 인자를 검사한 뒤 `_take(n, 이름)`을 거쳐 `_reserve(n)`으로 키와 구간 `[p, p + n)`을 받아 커널에 넘겨요(`_k.uniform(key[0], key[1], pos, …)`). `_take`는 예약하기 전에 호출이 받을 메모리(결과, 그리고 섞는 호출은 작업 메모리까지)를 이 컴퓨터의 물리 메모리와 비교해서, 넘으면 메서드 이름을 붙인 `MemoryError`(`random(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`)를 내요. 그래서 거절된 호출은 위치를 움직이지 않아요. 잠금 안에서 하는 일은 읽기 셋과 쓰기 하나뿐이에요. 원소 계산은 잠금을 풀고 나서 해요.
 
 키도 잠금 안에서 함께 읽는 것은 다른 스레드의 `state` 대입 때문이에요. `state` 대입은 키와 위치를 한 잠금 안에서 함께 바꿔요([시드, spawn, 상태](/internals/random/seeding/)). 메서드가 위치만 잠금 안에서 읽고 키는 `self._key`로 따로 읽으면, 그 사이에 대입이 끼어들어 옛 키와 새 위치(또는 그 반대)로 계산할 수 있어요. 둘을 한 번에 읽으면 대입 전 상태든 대입 후 상태든 온전한 한쪽만 봐요.
 

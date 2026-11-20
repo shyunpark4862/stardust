@@ -24,9 +24,9 @@ returns:
   desc: x와 같은 값을 담은 배열. copy=True가 아니면 보통 x와 메모리를 함께 써요.
 raises:
   - type: TypeError
-    desc: x가 DLPack을 지원하지 않을 때(리스트 등), x의 dtype이 bool·int64·float64·complex128이 아닐 때, copy가 True·False·None이 아닐 때.
+    desc: x가 DLPack을 지원하지 않을 때(리스트 등), x의 dtype이 bool·int64·float64·complex128이 아닐 때, device가 None도 정수 두 개의 튜플도 아닐 때("cpu" 같은 문자열), copy가 True·False·None이 아닐 때.
   - type: ValueError
-    desc: x가 0차원일 때, device가 None이나 (1, 0)이 아닐 때, copy=False인데 복사가 필요할 때.
+    desc: x가 0차원일 때, device가 (1, 0)이 아닌 정수 두 개의 튜플일 때, copy=False인데 복사가 필요할 때.
   - type: BufferError
     desc: x가 CPU가 아닌 장치(GPU 등)에 있을 때.
 seeAlso: [asarray, views, ndarray, dtypes]
@@ -225,8 +225,14 @@ stardust는 CPU 메모리에서만 계산해요. GPU에 있는 PyTorch 텐서나
 >>> sd.from_dlpack(np.array([1.0]), device="cpu")
 Traceback (most recent call last):
     ...
+TypeError: from_dlpack(): 'device' must be None or the CPU device (1, 0), not str
+>>> sd.from_dlpack(np.array([1.0]), device=(2, 0))
+Traceback (most recent call last):
+    ...
 ValueError: from_dlpack(): 'device' must be None or the CPU device (1, 0)
 ```
+
+문자열처럼 장치를 나타내는 꼴이 아닌 값은 `TypeError`, `(2, 0)`처럼 꼴은 맞지만 CPU가 아닌 장치는 `ValueError`예요.
 
 ### DLPack을 모르는 객체
 

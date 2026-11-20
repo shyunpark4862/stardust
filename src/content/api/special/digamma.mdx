@@ -203,7 +203,7 @@ array([[-0.5772156649015329, 0.42278433509846713,  0.9227843350984671],
 ```python
 >>> k = sd.arange(0, 1000000)
 >>> sd.sum(1 / (k + 2.0) ** 2)
-0.6449330668497261
+0.6449330668497263
 >>> sd.special.polygamma(1, 2.0)
 0.6449340668482266
 ```
@@ -324,4 +324,5 @@ True
 - 별칭 `psi`가 없어요. `digamma`만 있어요.
 - 복소수를 받지 않아요. scipy의 `digamma`는 복소수도 받지만 여기서는 `TypeError`예요.
 - `polygamma(inf, x)`는 NaN이에요. scipy 1.18.1은 `polygamma(inf, 1.0)`에서 `inf`를 내요. 여기서는 무한대를 정수 차수로 보지 않아요.
+- 음수 x에서 차수가 아주 커도 값이나 ±inf를 내요. `polygamma(7000, -0.5)`는 `-inf`, `polygamma(3000, -2.25)`는 `inf`예요(scipy는 둘 다 NaN).
 - 리스트나 numpy 배열은 받지 않고, `out`은 keyword-only예요.

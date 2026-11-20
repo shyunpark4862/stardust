@@ -301,7 +301,7 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 
 - **원소별 연산과 리덕션**: dtype, NA 유무, 스칼라 여부를 템플릿 인자로 루프 밖에서 고르므로 행 루프에 분기가 없고 컴파일러가 NEON으로 벡터화해요. float 합은 numpy와 같은 pairwise 트리를 잎 단위로 나눠 여러 스레드로 더해요([원소별 연산과 리덕션](/internals/frame/elementwise/)).
 - **해시**: Swiss table(16칸 제어 바이트의 SIMD 비교), 미리 잡은 테이블, 해시로 나눈 병렬 factorize([해시 테이블과 factorize](/internals/frame/hashing/)).
-- **groupby와 정렬**: groupby는 factorize → counting sort로 그룹별 행 모으기 → 그룹마다 집계예요. 정렬은 비교 정렬 대신 8바이트 키의 LSD 기수 정렬이고, 문자열은 8바이트 접두사로 기수 정렬한 뒤 접두사가 같은 구간만 비교해요([groupby와 정렬](/internals/frame/groupby-sort/)). 이 측정 환경의 pandas는 pyarrow가 없어 문자열을 Python 문자열 객체로 저장하고, 정렬도 그 객체들의 비교 정렬이라 차이가 커요.
+- **groupby와 정렬**: groupby는 factorize → counting sort로 그룹별 행 모으기 → 그룹마다 집계예요. 정렬은 비교 정렬 대신 8바이트 키의 LSD 기수 정렬이고(bool 키는 1자리), 문자열은 8바이트씩 내려가는 기수 정렬에 짧은 구간만 비교 정렬해요([groupby와 정렬](/internals/frame/groupby-sort/)). 이 측정 환경의 pandas는 pyarrow가 없어 문자열을 Python 문자열 객체로 저장하고, 정렬도 그 객체들의 비교 정렬이라 차이가 커요.
 - **CSV**: 64바이트 블록마다 따옴표·구분자·줄바꿈의 비트 마스크를 만들어 필드 경계를 꺼내는 structural index 토크나이저, Eisel–Lemire 숫자 파싱, 512KB 청크의 병렬 읽기([read_csv](/internals/frame/csv/)).
 - **스레드**: pandas는 한 스레드예요. stardust는 기준값 이상에서 10스레드로 나눠요.
 
@@ -351,11 +351,11 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 
 | 하지 않는 것 | 지키는 것 | 대가 |
 |---|---|---|
-| float 합의 재결합(청크마다 부분 합, `-ffast-math`, FMA로 합치기) | numpy·pandas와 같은 비트, 스레드 수와 무관한 비트 | 합은 pairwise 트리의 순서를 따라야 해요. 그래도 잎을 나누므로 병렬은 돼요. 모듈 전체를 `-ffp-contract=off`로 빌드해요 |
-| groupby 합에 Kahan 보정 | 그룹 합 = 그 그룹만 고른 `Series.sum()` | pandas의 groupby 합(보정 합)과 비트가 다를 수 있어요. 값 `[1.0] + [1e-16] * 10` 한 그룹의 합이 pandas 3.1.1은 `1.000000000000001`, stardust와 `np.sum`은 `1.0000000000000007`이에요 |
+| float 합의 재결합(청크마다 부분 합, `-ffast-math`, 컴파일러가 고르는 FMA) | 스레드 수와 무관한 비트, 배열 영역의 합과 같은 비트 | 합은 pairwise 트리의 순서를 따라야 해요. 그래도 잎을 나누므로 병렬은 돼요. 모듈 전체를 `-ffp-contract=off`로 빌드하고, FMA는 코드가 정한 곳(`var`의 제곱 합)에만 써요 |
+| groupby 합에 Kahan 보정 | 그룹 합 = 그 그룹만 고른 `Series.sum()` | pandas의 groupby 합(보정 합)과 비트가 다를 수 있어요. 값 `[1.0] + [1e-16] * 10` 한 그룹의 합이 pandas 3.1.1은 `1.000000000000001`, stardust는 `1.0`(16개보다 짧아 차례로 더해요), `np.sum`은 `1.0000000000000007`이에요 |
 | factorize 코드를 아무 순서로 | 처음 나타난 순서, 스레드 수와 무관 | 병렬 factorize에 번호를 다시 매기는 단계 |
 | 불안정 정렬 | 같은 값은 원래 순서 | 정렬은 언제나 안정 정렬(기수 정렬)이에요 |
-| 데이터를 보고 경로 고르기(정렬돼 있으면 이진 탐색, 고유하면 빠른 길, 기수 정렬에서 모든 키가 같은 바이트 자리 건너뛰기) | 성능과 결과 타입이 데이터에 따라 몰래 바뀌지 않음 | 정렬된 Index의 라벨 슬라이스도 해시 조회를 해요. 같은 바이트 자리도 8패스를 모두 돌아요 |
+| 데이터를 보고 경로 고르기(정렬돼 있으면 이진 탐색, 고유하면 빠른 길, 기수 정렬에서 모든 키가 같은 바이트 자리 건너뛰기) | 성능과 결과 타입이 데이터에 따라 몰래 바뀌지 않음 | 정렬된 Index의 라벨 슬라이스도 해시 조회를 해요. 기수 정렬의 자리 수는 키의 종류로만 정해서(숫자 8, bool 1), 값이 모두 같은 바이트 자리도 모두 돌아요 |
 | 연산마다 다른 병렬 기준값 | 상수 하나와 측정 근거 | 10만 행의 그늘 |
 
 ## 테스트: 무엇을 정답으로 삼나
@@ -371,11 +371,11 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 | pandas 3.1.1 | 대부분의 연산 | 같은 입력을 pandas로 계산해 비교해요. pandas와 일부러 다르게 정한 곳(NA가 있어도 int는 int로 남기, NaN은 결측이 아님 등)은 pandas 결과를 그 규칙으로 바꾼 뒤 비교해요 |
 | Python 참조 구현 | factorize, merge, `read_csv` | factorize는 Python dict의 `setdefault`로 처음 나타난 순서의 코드를 매겨요(NaN끼리 같고, NA는 별도 키). merge는 행 순서 규칙을 그대로 쓴 이중 반복문이에요. `read_csv`는 옵션과 추론 규칙(int → float → bool → string)을 정규식으로 옮긴 구현이에요 |
 | Python 자체 | 정렬, 숫자 ↔ 문자열 | 정렬은 `sorted()`(`reverse=True`에서도 안정), float → 문자열은 `str(float)`, 문자열 → float은 `float(text)`와 비트까지 같아야 해요 |
-| numpy 2.5.4 | float 합, mean, var, std | numpy로 한 단계씩 재현해 비트로 비교해요. NA 자리를 0.0으로 채운 배열의 `np.sum`, `np.sum / count`, `np.where(valid, (x - mean)**2, 0.0)`의 합(pandas의 nanvar와 같은 순서)이에요. `-0.0`과 `0.0`도 구분해요 |
-| 배열 영역 | int 평균, int–float 비교, float → int 변환 | `sd.sum(x, dtype=sd.float64) / 개수`, `sd.equal`, `sd.astype`의 결과와 같아야 해요(`tests/interop/`) |
+| numpy 2.5.4 | float 합, mean, var, std, min, max | 합과 mean, var는 반올림 오차의 허용 범위 안에서 비교해요. NA 자리를 0.0으로 채운 배열의 `np.sum`, `np.sum / count`, `np.where(valid, (x - mean)**2, 0.0)`의 합(pandas의 nanvar와 같은 순서)이 기준이에요. min, max, `-0.0`과 `0.0`처럼 반올림이 아닌 동작은 비트로 비교해요 |
+| 배열 영역 | float 합, mean, var, std, int 평균, int–float 비교, float → int 변환 | 같은 값의 배열에 쓴 `sd.sum`, `sd.mean`, `sd.var`, `sd.std`와 비트까지 같아야 해요. int–float 비교와 float → int 변환은 `sd.equal`, `sd.astype`의 결과와 같아야 해요(`tests/frame/test_reduce.py`, `tests/interop/`) |
 | 같은 영역의 다른 연산 | groupby | 그룹 집계는 그 그룹의 행만 고른 Series의 리덕션과 같아야 해요 |
 
-float 리덕션 테스트는 길이를 0, 1, 7, 8, 9, 127, 128, 129, 300, 1000, 5000과 0~64의 무작위로 뽑아요. pairwise 합의 경계(8개 누산기, 128개 잎)를 일부러 지나게 하는 길이들이에요. 값은 ±10¹²의 유한한 float에 `0.0`, `-0.0`, `1e-300`을 섞고 NA를 무작위로 넣어요. NA가 없으면 pandas 자체도 정답으로 함께 써요.
+float 리덕션 테스트는 길이를 0, 1, 7, 8, 9, 127, 128, 129, 300, 1000, 5000과 0~64의 무작위로 뽑아요. 0~64의 무작위 길이는 누산기 16개의 경계(15, 16, 17)를, 1000과 5000은 잎(512개)을 넘는 재귀를 지나요. 값은 ±10¹²의 유한한 float에 `0.0`, `-0.0`, `1e-300`을 섞고 NA를 무작위로 넣어요. NA가 없으면 pandas와도 반올림 오차의 허용 범위 안에서 비교해요.
 
 ### repr은 글자 단위로
 

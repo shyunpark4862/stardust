@@ -112,7 +112,7 @@ dtype: float64
 `unique_values`, `duplicated`, `value_counts`는 Python 층(`src/stardust/frame/_unique.py`)에서 이 표 그대로 컬럼 연산으로 조립돼요. 두 보조 커널이 `hash.cpp`에 있어요.
 
 - `group_counts(codes, ngroups)`: 코드마다 개수와 마지막 행을 한 번 훑어 세요. 직렬 루프 하나이고, 일이 기준값 이상이면 GIL을 놓아요.
-- `stable_order(counts, ascending)`: 개수로 코드를 안정 정렬해요. 행이 아니라 코드(고유 키)마다 하나인 배열을 정렬하므로 `std::stable_sort`로 충분해요. 같은 개수끼리는 코드 순서, 곧 처음 나타난 순서를 지켜요.
+- `stable_order(counts, ascending)`: 개수로 코드를 안정 정렬해요. 개수는 0 이상이라 uint64로 읽어도 순서가 같으니 그대로 기수 정렬의 키가 되고, 내림차순은 `~개수`예요([groupby와 정렬](/internals/frame/groupby-sort/)의 `radix_sort`). 같은 개수끼리는 코드 순서, 곧 처음 나타난 순서를 지켜요. 고유값이 많아도 비교 정렬의 $O(u \log u)$가 아니고, 스레드 수와 상관없이 같은 순서예요.
 
 그래서 "NaN은 NaN과 같은가", "`-0.0`과 `0.0`은 같은가", "NA끼리는 같은가" 같은 규칙이 C++ factorize 한 곳에만 있고, `unique_values`와 `groupby`와 `merge`가 서로 다른 답을 낼 수 없어요. 정렬의 키 변환([groupby와 정렬](/internals/frame/groupby-sort/))도 같은 정규화 함수에서 시작하므로 "factorize에서 같은 키는 정렬에서도 같은 값"이에요.
 

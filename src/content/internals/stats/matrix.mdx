@@ -33,7 +33,7 @@ $A = L_U^{-1}(X - M)L_V^{-\top}$예요. 클래스는 `src/stardust/stats/_matrix
 
 `Wishart(df=, scale=)`와 `InverseWishart(df=, scale=)`는 `mv_chol`로 `scale`의 아래 삼각을 분해해서 $L$의 hi와 lo, $\log\lvert V\rvert$의 hi와 lo를 저장해 둬요. `df`는 실수이고 $p - 1$보다 커야 해요. $p - 1$ 이하는 특이 Wishart라 밀도가 없고, 정의역 밖이라 NaN이에요. `MatrixNormal(mu=, rowcov=, colcov=)`은 두 공분산을 따로 분해해요.
 
-입력 $X$도 아래 삼각만 읽어요. 위 삼각에 무엇이 있든 값이 같아요. 척도 행렬도 마찬가지라서, 클래스는 받은 `scale`의 아래 삼각을 대칭으로 펼친 행렬을 저장해 둬요(`_lower_symmetric`). 그래서 `mean`·`mode`·`var` 같은 요약값도 밀도가 읽는 바로 그 행렬에서 나와요. 매개변수와 입력은 `sd.ndarray`여야 하고(스칼라 매개변수 `df`는 Python 실수도 돼요), 리스트는 `TypeError`예요. 생성자의 에러는 `Wishart(): ...`, 메서드의 에러는 `logpdf(): ...`로 시작해요.
+입력 $X$도 아래 삼각만 읽어요. 위 삼각에 무엇이 있든 값이 같아요. 척도 행렬도 마찬가지라서, 클래스는 받은 `scale`의 아래 삼각을 대칭으로 펼친 행렬을 저장해 둬요(`_lower_symmetric`). 그래서 `mean`·`mode`·`variance` 같은 요약값도 밀도가 읽는 바로 그 행렬에서 나와요. 요약값의 배열은 읽기 전용이에요. 매개변수와 입력은 `sd.ndarray`여야 하고(스칼라 매개변수 `df`는 실수 하나도 돼요. numpy의 실수 스칼라는 Python float로 받아요), 리스트는 `TypeError`예요. 배열 매개변수는 단변량 분포처럼 만들 때 한 번 복사해 읽기 전용으로 들어요(`_kept`). 생성자의 에러는 `Wishart(): ...`, 메서드의 에러는 `logpdf(): ...`로 시작해요.
 
 ```python
 >>> V = sd.asarray([[2.0, 0.5], [0.5, 1.0]])
@@ -110,7 +110,7 @@ df가 크면 상수의 $\tfrac n2\log\lvert V\rvert$와 $\log\Gamma_p(n/2)$, 그
 그래서 df $\ge 10^9$이면 크기 $np\log n$인 항을 식에서 지운 꼴로 계산해요(`wishart_far`). 감마 분포의 log 밀도가 큰 모양에서 Temme 꼴 지수를 쓰는 것과 같은 방법이에요. 고유값이 모두 1 근처인 행렬
 
 $$
-W = \frac{L_V^{-1}XL_V^{-\top}}{n} \quad (\text{역Wishart는 } W = \frac{L_\Psi^\top X^{-1}L_\Psi}{n})
+W = \frac{V^{-1}X}{n} \quad (\text{역Wishart는 } W = \frac{\Psi X^{-1}}{n})
 $$
 
 을 두고, $a_j = (n + 1 - j)/2$의 $\log\Gamma(a_j)$를 Stirling 꼴로 펼치면
@@ -125,45 +125,66 @@ $$
 
 이에요. $S$의 다음 항 $1/(1260a^5)$은 여기서 $2^{-150}$ 아래예요. 이 식에 크기 $n\log n$인 항은 없고, 남은 일은 $\log\lvert W\rvert$와 $\mathrm{tr}\,W - p$를 $n/2$배 해도 맞을 만큼 정확히 만드는 거예요.
 
-- **$W - I$ 위에서 분해해요.** $C = L_V^{-1}L_X$(역Wishart는 $L_X^{-1}L_\Psi$)를 열마다 전진 대입으로 구하고, $E = W - I$의 아래 삼각을 double-double로 만들어요. 촐레스키는 $E$ 위에서 해요. 피벗 $1 + u_j$의 작은 부분 $u_j = E_{jj} - \sum_k L_{jk}^2$를 따로 남겨 두고 $\log\lvert W\rvert = \sum_j \operatorname{log1p}(u_j)$예요. 피벗을 1 근처의 double-double로 반올림하면 그 $2^{-106}$이 $u$가 아니라 1에 대한 것이라서, $n/2$배로 남아요(df $= 10^{30}$에서 $10^{-5}$).
-- **$W$의 반올림은 1차에서 지워져요.** $W$ 원소의 반올림은 $\log\lvert W\rvert$와 $\mathrm{tr}\,W$에 같이 들어가는데, 밀도가 최빈값에서 $W$에 대해 평평해서 두 기여가 1차에서 지워져요.
-- **남는 반올림의 상한.** $\delta = \max\lvert W - I\rvert$로 두면 $2^{-100}p\,(n\delta(1 + p\delta) + p(64 + \log n))$이에요. 이것이 $10^{-14}\max(1, \lvert\text{값}\rvert)$를 넘으면 NaN이에요. NaN이 시작하는 df는 점의 $\delta$, 곧 $X$가 $W = I$에서 얼마나 떨어져 있는지에 달렸어요. 아래는 $p = 1$–100, $\kappa(\text{scale}) = 1$–$10^9$, df 격자 $10^{1/8}$에서 잰 값이에요.
-  - **정확히 나타낸 최빈값·평균**(scale $= I$인 Wishart의 $(n - p - 1)I$, $nI$): $\delta$가 $(p + 1)/n$이나 0이라 $n\delta \le p + 1$이고 상한이 자라지 않아요. df $= 10^{46}$까지 값이에요.
-  - **원소가 반올림된 점**($\delta \approx 10^{-16}$: 일반 scale의 평균·최빈값, 역Wishart의 평균·최빈값, 한 ULP 옮긴 점): $n\delta$ 항이 $n$과 함께 자라서 $n \approx 1.3 \times 10^{16}\lvert\text{값}\rvert/(p\delta)$에서 NaN이에요($\lvert\text{값}\rvert$은 $p^2\log n$ 정도). 가장 이른 것은 df $\approx 10^{31}$(역Wishart $p = 10$, $\kappa = 10^4$의 평균)이고, scale $= I$에서는 $10^{34}$–$3 \times 10^{35}$예요.
-  - **분포에서 뽑은 $X$**($\delta \approx \sqrt{2/n}$): $n\delta \approx \sqrt{2n}$이라 df $\approx 2.4 \times 10^{32}$–$10^{35}$부터예요.
-  - 점이 분포의 폭 $1/\sqrt n$보다 멀면 $\lvert\text{값}\rvert$이 $n\delta^2$ 정도로 상한보다 빨리 자라서 값이 다시 나와요(Wishart $p = 3$, $\kappa = 10^4$의 평균, df $= 10^{35}$에서 $-5.3 \times 10^5$).
+식에는 $W$의 고유값만 들어가요. 그래서 $W$ 대신 고유값이 같은 대칭 행렬 $I + E$를 써요.
 
-  보장 영역(df $\le 10^{30}$) 안에서는 이 격자의 어느 점도 NaN이 아니었어요.
+$$
+E = \frac{L_A^{-1}(B - nA)L_A^{-\top}}{n}, \qquad (A, B) = (V, X)\ \text{(Wishart)},\quad (X, \Psi)\ \text{(역Wishart)}
+$$
+
+$L_A$는 $A$의 촐레스키 인수예요. Wishart는 척도의 것을 배치마다 한 번, 역Wishart는 점마다 지지집합 검사에서 얻는 $X$의 것을 써요.
+
+- **$B - nA$를 입력에서 정확히 만들어요.** $nA$를 `two_prod`로 정확히 두고 $B$에서 빼므로, 그다음 대입 두 번이 남기는 $E$의 반올림은 $E$ 자신에 대한 $\kappa(A)\cdot2^{-104}$ 정도예요. $W$를 인수의 곱(Wishart는 $L_V^{-1}L_X$, 역Wishart는 $L_X^{-1}L_\Psi$)으로 만들면 $W - I$에 $E$가 아니라 1에 대한 $\kappa\cdot2^{-104}$이 남아요. 그것은 아래의 1차 상쇄 뒤에도 $n\lvert W - I\rvert$배로 남아서, $\kappa = 10^9$, df $= 10^{30}$, $p = 2$의 역Wishart에서 상대 $2.7 \times 10^{-13}$이 틀려요. $n\max A$가 $2^{1000}$을 넘으면 $nA$를 만들 수 없어 보통 꼴로 돌아가요.
+- **$\log\lvert W\rvert - (\mathrm{tr}\,W - p)$를 한 덩어리로 더해요.** $I + E$를 촐레스키로 분해하면 피벗이 $1 + u_j$, $u_j = E_{jj} - s_j$, $s_j = \sum_{k<j}L_{jk}^2$이고
+  $$
+  \log\lvert W\rvert - (\mathrm{tr}\,W - p) = \sum_j\bigl[(\operatorname{log1p}(u_j) - u_j) - s_j\bigr]
+  $$
+  예요. 각 부분이 $\lvert E\rvert^2$ 크기라서 앞의 $n/2$에 $\lvert E\rvert$ 크기의 반올림이 곱해지지 않아요. $\operatorname{log1p}(u) - u$는 $\lvert u\rvert \lt 2^{-10}$이면 $u^2$부터의 급수로 구해요(`log1p_minus`). $\operatorname{log1p}(u_j)$와 $\mathrm{tr}\,W$를 따로 더하면 각자의 $2^{-106}\lvert E\rvert$가 $n/2$배로 남아서, 값이 1 정도인 점이 df $\approx 10^{30}$에서 NaN이 돼요. 피벗을 1 근처의 double-double로 반올림하지 않는 것도 같은 이유예요. 그 $2^{-106}$은 $u$가 아니라 1에 대한 것이라 $n/2$배로 남아요(df $= 10^{30}$, $p = 2$에서 $1.6 \times 10^{-5}$).
+- **$E$의 반올림은 1차에서 지워져요.** $E$ 원소의 반올림은 $\log\lvert W\rvert$와 $\mathrm{tr}\,W$에 같이 들어가는데, 밀도가 최빈값에서 $W$에 대해 평평해서 두 기여가 1차에서 지워져요.
+- **남는 반올림의 상한.** $\delta = \max\lvert E\rvert$, $\hat\kappa = (\max L_{A,jj}/\min L_{A,jj})^2$($\kappa(A)$의 어림)로 두면 $2^{-100}p\,\bigl(n\delta^2(64 + p + \hat\kappa) + p(64 + \log n + \delta)\bigr)$이에요. $n\delta^2$의 계수는 덩어리의 부분들의 반올림($2^{-104}\delta^2$, $\lvert u\rvert \ge 2^{-10}$에서는 $\operatorname{log1p}(u) - u$의 $2^{-94}\delta^2$)과, $E$의 상대 반올림 $\kappa(A)\cdot2^{-104}$이 1차 상쇄 뒤 $\lvert E\rvert$와 곱해진 것이에요. 이것이 $10^{-14}\max(1, \lvert\text{값}\rvert)$를 넘으면 NaN이에요.
 
 ```cpp
-// csrc/bind/stats_matrix.cpp, wishart_far (발췌)
-// log|W| = sum log1p(u_j), the pivots 1 + u_j of W = L L^T with u_j = E_jj - sum_k L_jk^2
-std::vector<DD> L(static_cast<std::size_t>(p * p), DD{0.0, 0.0});
-DD lw{0.0, 0.0};
-for (std::int64_t j = 0; j < p; ++j) {
-    DD u = E[j * p + j];
-    for (std::int64_t k = 0; k < j; ++k) u = u - L[j * p + k] * L[j * p + k];
-    if (!(u.hi > -1.0) || !std::isfinite(u.hi)) return false;
-    lw = lw + la::log1p(u);
-    const DD ljj = la::sqrt(u + 1.0);
-    L[j * p + j] = ljj;
-    for (std::int64_t i = j + 1; i < p; ++i) {
-        DD t = E[i * p + j];
-        for (std::int64_t k = 0; k < j; ++k) t = t - L[i * p + k] * L[j * p + k];
-        L[i * p + j] = t / ljj;
+    // csrc/bind/stats_matrix.cpp, wishart_far (발췌)
+    if (!(n * amax <= 0x1p1000)) return false;
+    // Y = L_A^-1 D, D = B - n A (full, from the lower triangles), column by column
+    std::vector<DD> Y(static_cast<std::size_t>(p * p)), col(static_cast<std::size_t>(p));
+    for (std::int64_t c = 0; c < p; ++c) {
+        for (std::int64_t i = 0; i < p; ++i) {
+            const std::int64_t r = std::max(i, c), s = std::min(i, c);
+            col[i] = DD{b(r, s), 0.0} - dd::two_prod(n, a(r, s));
+        }
+        la::solve_lower(LA, p, col.data());
+        for (std::int64_t i = 0; i < p; ++i) Y[i * p + c] = col[i];
     }
-}
-...
-out = coef * lw - trm * (0.5 * n) + pw + r - ld * (0.5 * (pd + 1.0));
-// What is not cancelled, times n / 2: the pivots' logs (log1p of at most dev, to 2^-104 of
-// it) and the Cholesky's products (dev^2 each, p of them); the constants' 2^-100 p^2 log n
-err = 0x1p-100 * pd * (n * dev * (1.0 + pd * dev) + pd * (64.0 + std::fabs(logn.hi)));
-return true;
+    ...
+    for (std::int64_t j = 0; j < p; ++j) {
+        DD sj{0.0, 0.0};
+        for (std::int64_t k = 0; k < j; ++k) sj = sj + L[j * p + k] * L[j * p + k];
+        const DD u = E[j * p + j] - sj;
+        if (!(u.hi > -1.0) || !std::isfinite(u.hi)) return false;
+        const DD g = log1p_minus(u);
+        lw = lw + (g + u);
+        qw = qw + (g - sj);
+        const DD ljj = la::sqrt(u + 1.0);
+        L[j * p + j] = ljj;
+        for (std::int64_t i = j + 1; i < p; ++i) {
+            DD t = E[i * p + j];
+            for (std::int64_t k = 0; k < j; ++k) t = t - L[i * p + k] * L[j * p + k];
+            L[i * p + j] = t / ljj;
+        }
+    }
+    ...
+    out = qw * (0.5 * n) + lw * (inverse ? 0.5 * (pd + 1.0) : -0.5 * (pd + 1.0)) + pw + r - ld * (0.5 * (pd + 1.0));
+    ...
+    const double kap = (lmax / lmin) * (lmax / lmin);
+    err = 0x1p-100 * pd * (n * dev * dev * (64.0 + pd + kap) + pd * (64.0 + std::fabs(logn.hi) + dev));
+    return true;
 ```
 
-$W$가 반올림 때문에 양정치가 아니면(`false`) 보통 꼴로 돌아가요. df $\lt 10^9$이면 보통 꼴의 항이 $10^{11}$ 아래라 log의 $2^{-77}$로 충분해요. 원소가 $2^{500}$을 넘어 스케일하는 점(아래 "아주 큰 인자")처럼 큰 df에서 보통 꼴로 가는 경우를 위해, 보통 꼴에는 상쇄를 재는 검사가 남아 있어요. $2^{-100}\cdot(\text{항 크기의 합})$이 $10^{-13}\max(1, \lvert l\rvert)$를 넘으면 NaN이고, 항의 크기가 $10^{15}$ 아래인 배치는 검사가 실패할 수 없어서 건너뛰어요(비교 한 번).
+상한의 $n$이 붙은 항은 $n\delta^2$에 비례하고, 값에 들어 있는 $\tfrac n2(\log\lvert W\rvert - \mathrm{tr}\,W + p) \approx -n\lVert E\rVert_F^2/4$도 같은 빠르기로 자라요. 그래서 점이 $W = I$에서 떨어질수록 상한과 값이 함께 커지고, df가 커져도 상한이 기준을 넘지 않아요. $p = 1$–100, $\kappa(\text{scale}) = 1$–$10^9$, 평균·최빈값·분포에서 뽑은 점을 df 격자 $10^{1/8}$로 $10^{47}$까지, 그 위는 $10^2$씩 $10^{306}$까지 재면 역Wishart는 어느 점도 NaN이 아니에요. Wishart는 $n\max V$가 $2^{1000}$을 넘으면 $nV$를 만들 수 없어 보통 꼴로 돌아가고, 그 꼴의 상쇄 검사가 NaN을 내요($\kappa = 1$에서 df $= 10^{302}$, $\kappa = 10^9$에서 $10^{294}$부터). 역Wishart도 $X$가 $2^{500}$을 넘으면 보통 꼴이에요($L_X$를 $2^{-600}$배한 $X$에서 얻기 때문이에요).
 
-보장 영역은 $\kappa(\text{scale}) \le 10^9$, $p \le 100$, df $\le 10^{30}$에서 $10^{-14}$ 혼합 기준이에요. Arb 400비트 참값으로 $p = 1$–12, $\kappa \le 10^9$, 최빈값 근처와 그 분포에서 뽑은 $X$를 재면 df $= 10^9$–$10^{30}$에서 $9.4 \times 10^{-16}$ 이하예요($\kappa \le 10^4$이면 $2.4 \times 10^{-16}$). $p = 1$은 감마의 logpdf와 $2 \times 10^{-15}$ 안에서 같아요(아래 예에서는 같은 비트예요).
+$W$가 반올림 때문에 양정치가 아니거나 $nA$가 넘칠 만큼 크면(`false`) 보통 꼴로 돌아가요. df $\lt 10^9$이면 보통 꼴의 항이 $10^{11}$ 아래라 log의 $2^{-77}$로 충분해요. 이렇게 큰 df에서 보통 꼴로 가는 경우를 위해, 보통 꼴에는 상쇄를 재는 검사가 남아 있어요. $2^{-100}\cdot(\text{항 크기의 합})$이 $10^{-13}\max(1, \lvert l\rvert)$를 넘으면 NaN이고, 항의 크기가 $10^{15}$ 아래인 배치는 검사가 실패할 수 없어서 건너뛰어요(비교 한 번).
+
+보장 영역은 $\kappa(\text{scale}) \le 10^9$, $p \le 100$, df $\le 10^{30}$에서 $10^{-14}$ 혼합 기준이에요. Arb 참값(400–2400비트)으로 $p = 1$–12, $\kappa \le 10^9$, 평균·최빈값과 그 분포에서 뽑은 $X$를 재면 df $= 10^9$–$10^{30}$에서 $1.1 \times 10^{-16}$ 이하이고, 보장 영역 밖(Wishart df $= 10^{35}$–$10^{290}$, 역Wishart $10^{35}$–$10^{300}$)도 같아요. $p = 1$은 감마의 logpdf와 $2 \times 10^{-15}$ 안에서 같아요(아래 예에서는 같은 비트예요).
 
 ```python
 >>> m = [[2.0 * (1e15 - 3), 0.5 * (1e15 - 3)], [0.5 * (1e15 - 3), 1e15 - 3]]
@@ -178,13 +199,15 @@ $W$가 반올림 때문에 양정치가 아니면(`false`) 보통 꼴로 돌아�
 -12.320294822684291
 >>> m = [[2.0 * 1e36 * (1 + 4e-16), 0.5 * 1e36], [0.5 * 1e36, 1e36]]
 >>> sd.stats.Wishart(df=1e36, scale=V).logpdf(sd.asarray(m))
-nan
+-64129.49211502187
 >>> I2 = sd.asarray([[1.0, 0.0], [0.0, 1.0]])
 >>> sd.stats.Wishart(df=1e46, scale=I2).logpdf(sd.asarray([[1e46, 0.0], [0.0, 1e46]]))
 -162.3283341967631
+>>> sd.stats.Wishart(df=1e302, scale=I2).logpdf(sd.asarray([[1e302, 0.0], [0.0, 1e302]]))
+nan
 ```
 
-처음 두 값은 Arb 참값과 상대 $1.8 \times 10^{-17}$, $2.7 \times 10^{-17}$ 차이예요. 다섯째는 $\delta \approx 4 \times 10^{-16}$이라 상한이 $10^{-14}\lvert\text{값}\rvert$를 넘어요. 마지막은 scale $= I$의 평균 $nI$를 정확히 나타낸 점이라 $W = I$, $\delta = 0$이고 df $= 10^{46}$에서도 값이에요.
+처음 두 값은 Arb 참값과 상대 $1.8 \times 10^{-17}$, $2.7 \times 10^{-17}$ 차이예요. 다섯째는 평균에서 원소 하나를 상대 $4 \times 10^{-16}$ 옮긴 점이에요. $\delta \approx 4 \times 10^{-16}$이지만 $n\delta^2$ 항과 값이 함께 커서($n\delta^2 \approx 1.6 \times 10^5$) 값을 내요. 여섯째는 scale $= I$의 평균 $nI$를 정확히 나타낸 점이라 $E = 0$이고 df $= 10^{46}$에서도 값이에요. 마지막은 $n\max V = 10^{302}$가 $2^{1000}$을 넘어 보통 꼴로 간 점이에요.
 
 ## 역Wishart의 logpdf
 
@@ -258,12 +281,24 @@ $$
 H = \frac{np}{2}(1 + \log 2\pi) + \frac p2\log\lvert U\rvert + \frac n2\log\lvert V\rvert
 $$
 
-두 로그 행렬식은 분해에서 나온 값(hi + lo)이에요.
+두 로그 행렬식은 분해에서 나온 값(hi + lo)이고, 세 항을 double-double로 더해요(`matnorm_entropy`). 두 로그 행렬식이 크고 부호가 반대이면 double로 더할 때 상쇄로 자리를 잃어요. $U = 10^{-300}I$, $V = 10^{300}I$, $n = p = 100$에서 double로 더하면 $3.3 \times 10^{-14}$이 틀려요.
+
+```cpp
+// csrc/bind/stats_matrix.cpp, matnorm_entropy (발췌)
+const DD c = (num::kLogSqrt2Pi + 0.5) * (nd * pd);  // (n p exact: both are matrix sizes)
+...
+        const DD h = c + DD{el(luh, b), el(lul, b)} * (0.5 * pd) + DD{el(lvh, b), el(lvl, b)} * (0.5 * nd);
+        po[b] = h.hi + h.lo;
+```
 
 ```python
 >>> MN.entropy()
 9.443464067795588
+>>> sd.stats.MatrixNormal(mu=sd.zeros((2, 2)), rowcov=1e-300 * sd.eye(2), colcov=1e300 * sd.eye(2)).entropy()
+5.675754132818691
 ```
+
+둘째는 두 로그 행렬식 $\pm 1381.6$이 지워지고 $2(1 + \log 2\pi) = 5.67575413281869\ldots$만 남는 경우예요.
 
 ## 아주 큰 인자
 
@@ -399,7 +434,7 @@ $$
 | 행렬 정규 | 2×3 | – | $10^8$ | 0 | $1.9 \times 10^{-10}$ | 0 | $2.3 \times 10^{-10}$ |
 | 행렬 정규 | 10×6 | – | $10^8$ | 0 | $3.2 \times 10^{-12}$ | 0 | $3.2 \times 10^{-12}$ |
 
-$p \in \lbrace 2, 5, 12\rbrace$, df 세 가지, $\kappa \in \lbrace 1, 10^4, 10^8\rbrace$의 63칸 전체에서 sd의 logpdf는 $1.6 \times 10^{-16}$ 이하, 엔트로피는 $5.3 \times 10^{-16}$ 이하예요. 같은 방식으로 $\kappa = 10^9$, $p = 30$(행렬 정규 20×15), df $= 10^8$까지 재도 $2 \times 10^{-16}$ 이하예요. 보장 영역은 $\kappa(\text{scale}), \kappa(U), \kappa(V) \le 10^9$, $p \le 100$에서 logpdf·entropy가 $10^{-14}\max(1, \lvert\text{값}\rvert)$이에요.
+$p \in \lbrace 2, 5, 12\rbrace$, df 세 가지, $\kappa \in \lbrace 1, 10^4, 10^8\rbrace$의 63칸 전체에서 sd의 logpdf는 $1.6 \times 10^{-16}$ 이하, 엔트로피는 $5.3 \times 10^{-16}$ 이하예요. 다변량 분포와 함께 모은 표(`bench/stats/accuracy_multivariate.md`, `python -m bench.accuracy`가 만들어요)는 $\kappa = 10^9$, $p = 30$(행렬 정규 20×15), df $= 10^{30}$까지의 점을 재요. 보장 영역 안의 모든 점에서 Wishart·역Wishart의 logpdf는 $1.1 \times 10^{-16}$, 엔트로피는 $9.8 \times 10^{-16}$, 행렬 정규는 $1.7 \times 10^{-16}$ 이하이고, 가장 큰 것도 계약의 10%예요. 보장 영역은 $\kappa(\text{scale}), \kappa(U), \kappa(V) \le 10^9$, $p \le 100$에서 logpdf·entropy가 $10^{-14}\max(1, \lvert\text{값}\rvert)$이에요.
 
 ## 속도
 

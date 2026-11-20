@@ -159,7 +159,7 @@ class _Distribution:
         cls._ops = ops
         for i, p in enumerate(cls._params):  # read-only attributes
             setattr(cls, p, _parameter(i, p))
-        _keyword_constructor(cls)
+        _calls.keyword_init(cls)
 
     def cdf(self, x, /, *, out=None):
         """P(X <= x)."""
@@ -168,7 +168,7 @@ class _Distribution:
         try:
             return self._ops["cdf"](*self._p, x, out=out)
         except _RENAMED as e:
-            raise _renamed(e, 'cdf', 'x', x) from None
+            raise _renamed(e, "cdf", "x", x) from None
 ```
 
 C++ 쪽 분포 구조체는 이렇게 생겼어요.
@@ -196,12 +196,28 @@ struct Normal {
 
 생성자는 매개변수를 키워드로만 받고(`Gamma(2.5)`는 `TypeError`), 두 가지만 검사해요.
 
-- 형: Python 실수(`bool`, `int`, `float`)이거나 complex가 아닌 `sd.ndarray`여야 해요(`_check_param`). 그 밖은 `TypeError`예요. float으로 바꾸면 넘칠 만큼 큰 Python int는 `OverflowError`(`Normal(): 'mu' is out of range`)예요.
+- 형: 실수 하나(Python의 `bool`·`int`·`float`, numpy의 실수 스칼라)이거나 complex가 아닌 `sd.ndarray`여야 해요(`_check_param`). 그 밖은 `TypeError`예요. float으로 바꾸면 넘칠 만큼 큰 Python int는 `OverflowError`(`Normal(): 'mu' is out of range`)예요.
 - 모양: 배열 매개변수가 둘 이상이면 서로 브로드캐스트되는지 확인해요. 뷰만 만드는 `broadcast_arrays`를 불러 보고, 안 되면 그 자리에서 `ValueError`예요.
+
+검사를 지난 매개변수는 `_kept`가 보관할 꼴로 바꿔요. 배열은 한 번 복사해 읽기 전용으로 들고, 속성과 모든 메서드가 그 사본을 봐요. 그래서 만든 뒤 사용자가 준 배열을 고쳐도 분포가 바뀌지 않고, 다변량 분포에서 만들 때 구한 분해와 속성이 어긋나지 않아요. 비용은 매개변수 크기의 복사 한 번이에요. numpy의 실수 스칼라는 Python 수로 바꿔 둬서 `repr`도 `Normal(mu=1.0, sigma=1.0)`처럼 Python 수로 보여요.
+
+```python
+# src/stardust/stats/_distribution.py (발췌)
+def _kept(v):
+    ...
+    if isinstance(v, _sd_core.ndarray):
+        c = v.copy()
+        c._set_readonly()
+        return c
+    r = _real_scalar(v)
+    return v if r is None else r
+```
+
+매개변수만 쓰는 메서드(모멘트, `median`, `mode`, `entropy`, `support`)가 배열을 내면 `_readonly`로 같은 표시를 해서 돌려줘요. 입력을 받는 메서드의 결과는 부를 때마다 새로 만든 배열이라 쓸 수 있어요.
 
 생성자의 에러는 모두 클래스 이름으로 시작해요(`Normal(): ...`). 브로드캐스트 에러도 배열 영역이 낸 메시지의 앞머리를 클래스 이름으로 바꿔 다시 내요. 호출 모양이 틀린 에러(모르는 키워드, 빠진 필수 매개변수, 위치 인자)도 같은 꼴이에요.
 
-호출 모양 에러는 Python이 직접 내서, 그대로 두면 `Normal.__init__() got an unexpected keyword argument 'cool'`처럼 사용자가 부른 적 없는 `__init__`을 말해요. 그래서 `__init_subclass__`의 마지막 줄 `_keyword_constructor`가 클래스의 `__init__`을 감싸요. 위치 인자가 있으면 원래 생성자를 부르지 않고 `takes no positional arguments`로 바로 에러를 내고, 나머지는 원래 생성자를 부른 뒤 `TypeError`의 앞머리가 `Normal.__init__() `이면 그것을 `Normal(): `로 바꿔 다시 내요(`got an `도 떼요). 매개변수 검사가 낸 에러는 이미 `Normal(): `로 시작하므로 그대로 지나가요. 감싼 함수에 `__wrapped__`를 달아 두어서 `inspect.signature`는 원래의 키워드 전용 매개변수를 보여 줘요. 다변량·행렬 분포도 같은 함수로 감싸요. `Wishart`와 `InverseWishart`는 `__init__` 하나를 함께 쓰지만, 메시지의 이름은 부른 클래스의 것이에요. 공통 기반 `ContinuousDistribution`, `DiscreteDistribution`은 `isinstance` 검사용이라 직접 만들면 `TypeError`예요.
+호출 모양 에러는 Python이 직접 내서, 그대로 두면 `Normal.__init__() got an unexpected keyword argument 'cool'`처럼 사용자가 부른 적 없는 `__init__`을 말해요. 그래서 `__init_subclass__`의 마지막 줄 `_calls.keyword_init`이 클래스의 `__init__`을 감싸요. `_calls`는 모든 영역이 호출 모양 에러를 같은 꼴로 바꾸는 데 함께 쓰는 모듈이에요. 위치 인자가 있으면 원래 생성자를 부르지 않고 `takes no positional arguments`로 바로 에러를 내고, 나머지는 원래 생성자를 부른 뒤 `TypeError`의 앞머리가 `Normal.__init__() `이고 생성자의 본문이 아니라 호출을 묶는 단계에서 난 에러이면(트레이스백에 생성자의 프레임이 없으면) 그것을 `Normal(): `로 바꿔 다시 내요(`got an `도 떼요). 매개변수 검사가 낸 에러는 이미 `Normal(): `로 시작하므로 그대로 지나가요. 감싼 함수에 `__wrapped__`를 달아 두어서 `inspect.signature`는 원래의 키워드 전용 매개변수를 보여 줘요. 다변량·행렬 분포도 같은 함수로 감싸요. `Wishart`와 `InverseWishart`는 `__init__` 하나를 함께 쓰지만, 메시지의 이름은 부른 클래스의 것이에요. 공통 기반 `ContinuousDistribution`, `DiscreteDistribution`은 `isinstance` 검사용이라 직접 만들면 `TypeError`예요.
 
 틀린 형의 메시지는 받은 값의 타입 이름을 보여 줘요. 이름은 모든 영역이 함께 쓰는 함수 하나(C++의 `py_type_name`, Python에서는 `_core._type_name`)가 만들어요. 보통은 모듈 없는 짧은 이름(`str`, `list`, `ndarray`)이고, numpy의 타입만 공개 모듈을 붙여요(`numpy.ndarray`, `numpy.float64`, `numpy.random.Generator`). sd의 `ndarray`나 Python의 `bool`과 같은 짧은 이름이라 헷갈리기 때문이에요. 모듈 경로에서 `_`로 시작하는 비공개 부분부터는 떼어서, `numpy.random._generator`가 아니라 `numpy.random`이에요.
 
@@ -284,7 +300,7 @@ TypeError: InverseWishart(): unexpected keyword argument 'q'
 ```python
 >>> Y = sd.stats.Normal(mu=sd.asarray([0.0, 10.0]), sigma=2.0)
 >>> Y.cdf(sd.asarray([[0.0], [10.0]]))
-array([[                   0.5, 2.8665157187919386e-07],
+array([[                   0.5, 2.8665157187919396e-07],
        [    0.9999997133484281,                    0.5]], dtype=float64)
 >>> Y.mean()
 array([ 0.0, 10.0], dtype=float64)

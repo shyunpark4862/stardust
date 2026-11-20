@@ -343,6 +343,6 @@ TypeError: entr(): not supported for complex128
 
 ## scipy를 아는 분께
 
-- 정의와 특수값은 `scipy.special.entr`, `rel_entr`와 비트까지 같아요(`entr(x < 0) = -inf`, `rel_entr(inf, inf) = nan` 포함).
+- 정의와 특수값은 `scipy.special.entr`, `rel_entr`와 같아요(`entr(x < 0) = -inf`, `rel_entr(inf, inf) = nan` 포함).
 - `kl_div`(x·log(x/y) − x + y)는 없어요. 필요하면 `rel_entr(x, y) - x + y`로 계산하세요. 두 입력이 모두 합이 1인 분포라면 `-x + y` 항의 합이 0이라 `rel_entr`의 합과 같아요.
 - 리스트와 numpy 배열은 받지 않아요. Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요. `out`은 keyword-only예요.

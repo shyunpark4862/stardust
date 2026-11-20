@@ -242,7 +242,7 @@ TypeError: random(): 'shape' must be an int or a tuple of ints, not list
 >>> rng.random(-1)
 Traceback (most recent call last):
     ...
-ValueError: random(): 'shape' must be non-negative
+ValueError: random(): negative dimensions are not allowed
 ```
 
 ### 빈 tuple은 숫자 하나가 아니에요
@@ -253,7 +253,7 @@ stardust에는 차원이 0인 배열이 없어서 `shape=()`는 에러예요. �
 >>> rng.random(())
 Traceback (most recent call last):
     ...
-ValueError: random(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)
+ValueError: random(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)
 ```
 
 ## 비슷한 함수와의 차이

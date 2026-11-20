@@ -470,7 +470,7 @@ C 연속의 정의는 "길이가 1이 아닌 모든 축 $d$에 대해 $\text{str
 |---|---|---|
 | `new_array(dtype, shape)` | C 순서 | 생성 함수, 브로드캐스트된 결과 |
 | `new_array_like(proto, dtype)` | `proto`의 메모리 축 순서 (numpy의 `order='K'`) | `astype`, `copy`, `*_like`, 원소별 연산의 결과 |
-| `new_array_strided(dtype, shape, strides, nbytes)` | 부르는 쪽이 정한 strides | linalg의 열 우선(LAPACK) 결과 |
+| `new_array_strided(dtype, shape, strides, nbytes)` | 부르는 쪽이 정한 strides | linalg의 열 우선(LAPACK) 결과. `new_array`와 같은 shape 검사(32차원, 음수, 바이트 수 넘침)를 거치고, 0차원은 받아요(linalg가 스칼라 결과를 잠시 0차원으로 계산해요) |
 
 앞의 둘은 내부의 `allocate`가 축 순서 `order`(느리게 변하는 축부터)를 받아 stride를 안쪽부터 쌓아요.
 
@@ -481,6 +481,8 @@ $$
 `max(…, 1)` 때문에 길이 0인 축이 있어도 다른 축의 stride는 0이 되지 않아요. 예를 들어 `zeros((5, 0, 3))`의 strides는 `(24, 24, 8)`이에요. 빈 배열이라 닿는 바이트가 없으므로 값에는 영향이 없어요. numpy 2.5.4는 빈 배열의 strides를 모두 0으로 두는데(`np.zeros((5, 0, 3)).strides`가 `(0, 0, 0)`), 이 차이는 결과의 값이나 연속성 판정(빈 배열은 언제나 양쪽 연속)에 영향을 주지 않아요.
 
 `new_array_like`는 원본 strides의 절댓값 내림차순으로 축을 정렬해 `order`를 만들어요. F 순서 원본이면 F 순서 결과가, 전치된 배열이면 전치된 메모리 순서의 결과가 나와요. 그래서 F 순서 배열에 원소별 연산을 해도 결과가 F 순서라, 다음 연산에서도 이터레이터가 축을 하나로 합칠 수 있어요.
+
+stride가 0인 축(브로드캐스트, `newaxis`)은 레이아웃에 대해 알려 주는 것이 없으므로 비교에서 빼고 C 자리에 둬요. stride가 있는 축만 그 축들이 차지한 자리 안에서 정렬해요. 이터레이터의 축 재정렬([연산 엔진](/internals/array/engine/))과 같은 규칙이에요. 그래서 행을 브로드캐스트한 뷰(`broadcast_to(ones(4), (3, 4))`, strides `(0, 8)`)의 `copy()`, 원소별 결과, `astype`, `sort`가 C 순서예요. stride 0을 가장 작은 stride로 보면 F 순서가 되고, 그 결과를 C 순서 배열과 섞으면 타일 경로로 떨어져 느려요.
 
 축 정렬에는 삽입 정렬(insertion sort)을 써요. 같은 stride끼리는 원래 순서를 지켜야(안정 정렬) C 순서 원본에서 C 순서 결과가 나와요. 안정 정렬인 `std::stable_sort`는 호출할 때마다 임시 버퍼를 힙에 할당하지만, 삽입 정렬은 할당 없이도 안정 정렬이에요. 축이 최대 32개라 $O(\text{ndim}^2)$이어도 작아요.
 

@@ -63,8 +63,15 @@ import Tree from '../../../components/fig/Tree.astro';
 
 ```cpp
 // run_nary (array/ops/ufunc.cpp, 줄인 발췌)
-nb::object run_nary(const LoopTable& table, int nout, std::span<const char* const> names,
-                    std::span<const nb::handle> objs, nb::handle out, std::int64_t weight) {
+nb::object run_nary(
+    const LoopTable& table,
+    int nout,
+    std::span<const char* const> names,
+    std::span<const nb::handle> objs,
+    nb::handle out,
+    std::int64_t weight
+) {
+    const size_t nin = objs.size();
     std::array<DType, kMaxInputs> dtypes;                      // 고정 배열: 할당 없음
     for (size_t k = 0; k < nin; ++k) dtypes[k] = operand_dtype(objs[k], names[k]);
     DType promoted = dtypes[0];
@@ -88,19 +95,25 @@ nb::object run_nary(const LoopTable& table, int nout, std::span<const char* cons
 `nary_loop`은 레이아웃을 두 가지만 구분해요. **모두 연속**이면 원소 인덱스로 접근하고, 그 밖에는 바이트 stride를 따라가요.
 
 ```cpp
-// nary_loop<Op, T> (array/kernels/elementwise.hpp, 줄이고 다듬은 발췌)
+// nary_loop<Op, T> (array/kernels/elementwise.hpp, 줄인 발췌)
 template <typename Op, typename T>
 void nary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     constexpr int nin = Op::nin;
     using Ret = nary_result_t<Op, T>;                    // double 또는 std::array<double, nout>
+    using R = typename detail::NaryOut<Ret>::type;
     constexpr int nout = detail::NaryOut<Ret>::n;
+    static_assert(nout == Op::nout, "Op::f returns nout results");
     static_assert(nin + nout <= kMaxOperands);
-    bool contiguous = /* 모든 s[k]가 원소 크기 */;
+    bool contiguous = true;
+    for (int k = 0; k < nin; ++k) contiguous = contiguous && s[k] == sizeof(T);
+    for (int j = 0; j < nout; ++j) contiguous = contiguous && s[nin + j] == sizeof(R);
+    // store(out_at, r): 결과 하나나 nout개를 출력 자리에 써요
     if (contiguous) {
         [&]<std::size_t... I>(std::index_sequence<I...>) {          // I = 0, 1, ..., nin-1
             const T* const x[] = {reinterpret_cast<const T*>(args[I])...};
-            for (std::int64_t i = 0; i < n; ++i)
-                store(i, Op::f(x[I][i]...));                         // f(x0[i], x1[i], ...)
+            R* o[nout];
+            for (int j = 0; j < nout; ++j) o[j] = reinterpret_cast<R*>(args[nin + j]);
+            for (std::int64_t i = 0; i < n; ++i) store([&](int j) -> R& { return o[j][i]; }, Op::f(x[I][i]...));
         }(std::make_index_sequence<nin>{});
         return;
     }
@@ -163,9 +176,11 @@ constexpr const LoopTable& table_of() {
 
 template <typename Op>
 nb::object call(std::span<const nb::handle> objs, nb::handle out) {
-    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, special::weight_of(Op::cost_ns));
+    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, weight_for<Op>(objs, out));
 }
 ```
+
+`weight_for`는 대개 `special::weight_of(Op::cost_ns)`, 곧 아래 절의 가중치예요. 다른 점은 무거운 함수의 작은 호출 하나뿐이에요(아래 [GIL과 가중치의 상한](#gil과-가중치의-상한)).
 
 함수 이름, 인자 수, 루프, 가중치가 모두 컴파일할 때 정해지는 상수라서, 호출 경로에 실행 중 분기가 거의 없어요. `nary_loop<Op, double>`은 함수마다 따로 인스턴스화되고 그 안에서 `Op::f`가 인라인돼요.
 
@@ -175,7 +190,7 @@ nb::object call(std::span<const nb::handle> objs, nb::handle out) {
 
 배열의 원소별 함수는 일의 양이 원소 $2^{15}$개(`kParallelThreshold`)에 이르면 스레드풀에 나누고, 작업 하나에 원소 $2^{12}$개(`kParallelTask`)씩 줘요(`array/parallel_limits.hpp`). 이 값은 덧셈 같은 연산을 기준으로 잰 것이에요. 원소 하나에 0.2ns 남짓이면 원소 $2^{15}$개는 약 6µs이고, 스레드풀에 일을 맡기는 고정 비용(약 1.5µs)을 감당할 만한 크기예요([스레드풀과 결정성](/internals/core/threads/)).
 
-특수함수는 원소 하나의 비용이 함수마다 천 배 넘게 달라요. 아래 표의 가운데 열은 `special/cost.hpp`에 적힌 비용 상수(엔진이 실제로 쓰는 값)이고, 오른쪽 열은 지금 빌드로 잰 원소당 비용(1스레드, 연속 원소 $10^6$개)이에요.
+특수함수는 원소 하나의 비용이 함수마다 천 배 넘게 달라요. 아래 표의 가운데 열은 `special/cost.hpp`가 함수마다 가져다 쓰는 비용 상수(`special/cost_table.hpp`의 값, 엔진이 실제로 쓰는 값)이고, 오른쪽 열은 지금 빌드로 잰 원소당 비용(1스레드, 연속 원소 $10^6$개)이에요.
 
 | 함수 | `cost.hpp`의 `cost_ns` | 덧셈 대비 | 잰 비용 |
 |---|---:|---:|---:|
@@ -195,7 +210,7 @@ nb::object call(std::span<const nb::handle> objs, nb::handle out) {
 
 ```cpp
 // special/cost.hpp (발췌)
-inline constexpr double kAddNs = 0.19;                 // 연속 float64 add, 원소당 (bench/special/cost.py)
+inline constexpr double kAddNs = cost_table::ns("_add");   // 연속 float64 add, 원소당 0.19ns
 inline constexpr std::int64_t kMaxWeight = 256;
 constexpr std::int64_t weight_of(double ns) {
     const double w = ns / kAddNs;
@@ -227,6 +242,28 @@ $$
 
 불완전 감마·베타와 그 역함수의 가중치는 상한이 없으면 800–8500이에요. 그러면 $2^{12}/w$가 1보다 작아져서 작업 하나가 원소 하나가 돼요. 원소 $10^6$개면 작업이 백만 개이고, 스레드 10개가 작업마다 스레드풀의 공유 카운터 하나를 원자적으로 증가시키며 다퉈요. 상한을 정할 때 `betainc`와 `gammainc`의 원소 $10^6$개로 견준 비교(`bench/special/s4/threads.md`)에서, 상한이 없으면 10스레드가 1스레드의 4.8–6.9배에 그쳤고 상한 256(작업 하나에 원소 16개)에서는 8.5–8.7배였어요. 64로 낮춰도 거의 같아서, 병렬 시작을 원소 128개로 유지하는 256을 써요. 이 비교는 두 함수의 지금 코드보다 느린 판에서 잰 것이라 절대 시간은 지금과 달라요. 지금 빌드의 값은 `gammainc`가 1스레드 ⟦SPEED gammainc t1⟧ms, 10스레드 ⟦SPEED gammainc t10⟧ms, `betainc`가 ⟦SPEED betainc t1⟧ms, ⟦SPEED betainc t10⟧ms예요.
 
+### GIL과 가중치의 상한
+
+작업량이 병렬 기준($2^{15}$)에 이르면 호출은 GIL을 놓고 계산해요. 1스레드여도 그동안 다른 Python 스레드가 돌 수 있어요. 기준 아래의 작은 호출은 GIL을 쥔 채 계산해요. GIL을 놓았다 다시 잡는 비용을 아끼기 위해서예요([스레드풀과 결정성](/internals/core/threads/)).
+
+상한 256은 작업 하나의 크기를 정하려고 둔 것이라, 그것으로 GIL까지 정하면 무거운 함수의 작은 호출이 문제가 돼요. 가중치 256이면 원소 128개 미만은 기준 아래인데, 원소 하나에 수십–수백 ms가 드는 입력(차수가 아주 큰 `jv` 등)이면 원소 127개로도 몇 초에서 몇십 초가 걸리고 그동안 다른 Python 스레드가 멈춰요. 그래서 바인딩의 `weight_for`는 브로드캐스트한 모양의 원소 수 $n$을 보고, 상한 걸린 가중치로는 기준 아래인데 상한 전의 비용 `cost_ns / kAddNs` $\cdot\, n$이 $2^{15}$ 이상이면 기준에 딱 닿는 가중치 $\lceil 2^{15}/n \rceil$을 넘겨요. 그 호출은 GIL 없이 원소 약 $n/8$개씩의 작업으로 돌아요.
+
+```cpp
+// bind/nary_bind.hpp (발췌)
+template <typename Op>
+std::int64_t weight_for(std::span<const nb::handle> objs, nb::handle out) {
+    const double ns = cost_for<Op>(objs);
+    const std::int64_t w = special::weight_of(ns);
+    if (w < special::kMaxWeight) return w;
+    const std::int64_t n = broadcast_size(objs, out);              // 브로드캐스트한 모양의 원소 수
+    if (n == 0 || n * w >= kParallelThreshold) return w;
+    if (ns / special::kAddNs * static_cast<double>(n) < static_cast<double>(kParallelThreshold)) return w;
+    return (kParallelThreshold + n - 1) / n;
+}
+```
+
+가중치는 나누는 방법만 바꾸므로 결과의 비트는 그대로예요. 비용 표의 값은 전형적인 입력의 원소당 비용이라, 원소 하나만 유난히 느린 입력(Python 숫자 하나로 부른 무거운 원소 등)은 여전히 GIL을 쥔 채 계산해요. `sd.stats`의 분포 메서드도 같은 바인딩이에요.
+
 ### 원소마다 다른 반복 횟수
 
 연분수와 Halley 반복은 원소마다 반복 횟수가 달라요. 불완전 베타는 $a$, $b$, $x$에 따라 고르는 방법도, 연분수의 항 수도 달라져서 원소마다 걸리는 시간이 크게 달라요. 배열을 스레드 수만큼 똑같이 나누는 정적 분할이면, 비싼 원소가 몰린 조각을 맡은 스레드가 늦게 끝나고 나머지는 기다려요.
@@ -238,7 +275,7 @@ $$
 `cost_ns`는 이 Mac(Apple M4 Pro)에서 1스레드로 잰 값이에요. 입력은 각 함수의 참값 파일 점(보장 영역에 고르게 퍼진 점)이에요(`bench/special/cost.py`). 비용이 두 배쯤 틀려도 바뀌는 것은 병렬을 시작하는 크기와 작업 하나의 크기뿐이고, **결과는 바뀌지 않아요**. 원소마다 같은 `Op::f`가 같은 값을 계산하므로 어느 스레드가 어느 원소를 맡든 같은 비트예요. 그래서 비용 표는 결과의 정의가 아니라 속도를 위한 힌트예요.
 
 <Callout title="비용 표는 구간 선택과 함께 움직여요">
-  같은 함수라도 Boost.Math에 맡기는 구간이 바뀌면 원소당 비용이 바뀌어요. 예를 들어 Boost 구간을 고를 때 구간 안의 점 $2 \times 10^5$개로 잰 1스레드 값(`bench/special/boost/routing.md`)은 `i0`의 Cephes 경로가 원소당 15.1ns, Boost가 7.6ns였어요. `cost.hpp`의 상수는 각 함수의 구현과 구간을 정할 때 잰 값이고, 함수가 빨라져도 다시 재지 않아요. 원소당 48.6ns(상한 256 × 0.19ns) 이상인 함수는 가중치가 상한에 걸려 분할이 같으므로, 그 상수의 정확한 값은 분할에도 결과에도 영향이 없어요. 비용이 분할을 바꾸는 것은 그보다 가벼운 함수뿐이에요.
+  같은 함수라도 Boost.Math에 맡기는 구간이 바뀌면 원소당 비용이 바뀌어요. 예를 들어 Boost 구간을 고를 때 구간 안의 점 $2 \times 10^5$개로 잰 1스레드 값(`bench/special/boost/routing.md`)은 `i0`의 Cephes 경로가 원소당 15.1ns, Boost가 7.6ns였어요. `cost_table.hpp`는 special 속도 기준선(`bench/speed/results/special.json`)에서 `python -m bench.speed cost`가 만드는 표이고, 지금 값은 각 함수의 구현과 구간을 정할 때 잰 값이에요. 기준선을 다시 재고 표를 다시 만들 때만 바뀌어요. 원소당 48.6ns(상한 256 × 0.19ns) 이상인 함수는 가중치가 상한에 걸려 분할이 같으므로, 그 상수의 정확한 값은 분할에도 결과에도 영향이 없어요. 비용이 분할을 바꾸는 것은 그보다 가벼운 함수뿐이에요.
 </Callout>
 
 ### 스레드를 늘린 효과
@@ -274,7 +311,7 @@ $$
 
 ```cpp
 // chunked_loop<Op> (special/kernels/chunked.hpp, 줄인 발췌)
-inline constexpr int kChunk = 1024;   // 스택 버퍼, 원소 단위 (8KB)
+inline constexpr int kChunk = static_cast<int>(vforce_detail::kChunk);  // 1024: 스택 버퍼, 원소 단위 (8KB)
 
 template <typename Op>
 void chunked_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
@@ -297,20 +334,31 @@ void chunked_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s,
 ### `erf`의 커널
 
 ```cpp
-// Erf::chunk (special/ops/erf.hpp, 줄인 발췌)
-static void chunk(const double* x, double* o, int n) {
-    alignas(16) double lo[kChunk], e[kChunk], arg[kChunk];
-    for_lanes(n, [&]<class V>(int i) {                 // 1. 두 원소씩 NEON, 홀수 끝은 double
-        const V v = simd::load(x + i, V{});
-        const V hi = v * v;                            //    x² = hi + lo (lo는 정확)
-        simd::store(arg + i, -hi);
-        simd::store(lo + i, simd::fma(v, v, -hi));
-    });
+// special/ops/erf.hpp (줄인 발췌): 1·2패스
+template <class V>
+void square_split(const double* x, double* arg, double* lo, int i) {
+    const V v = simd::load(x + i, V{});
+    const V hi = v * v;                                //    x² = hi + lo (lo는 정확)
+    simd::store(arg + i, -hi);
+    simd::store(lo + i, simd::fma(v, v, -hi));
+}
+inline void exp_minus_square(const double* x, double* e, double* lo, int n) {
+    alignas(16) double arg[kChunk];
+    for_lanes(n, [&]<class V>(int i) { square_split<V>(x, arg, lo, i); });   // 1. 두 원소씩 NEON, 홀수 끝은 double
     vvexp(e, arg, &n);                                 // 2. e = exp(-hi), vForce 한 번
+}
+
+// Erf::chunk: 3패스
+static void chunk(const double* x, double* o, int n) {
+    using namespace erf_detail;
+    alignas(16) double lo[kChunk], e[kChunk];
+    exp_minus_square(x, e, lo, n);
     for (int i = 0; i < n; ++i) {                      // 3. 원소마다 자기 구간만
         const double a = std::fabs(x[i]);
         if (a < 1.0) {
             o[i] = erf_small(x[i]);                    //    x T(x²) / U(x²)
+        } else if (a != a) {
+            o[i] = x[i];                               //    NaN은 입력 그대로
         } else {
             const double v = 1.0 - erfc_tail(a, e[i], lo[i]);   // e (P - P lo) / Q
             o[i] = x[i] < 0.0 ? -v : v;
@@ -318,6 +366,8 @@ static void chunk(const double* x, double* o, int n) {
     }
 }
 ```
+
+NaN은 3패스의 꼬리 식을 거치지 않고 입력의 NaN을 그대로 내요. 꼬리 식을 거치면 경로에 따라 부호 비트가 다른 NaN이 나올 수 있어서, `ndtr`과 scipy처럼 입력을 그대로 둬요.
 
 1패스의 `lo = fma(v, v, -hi)`는 $x^2$을 `hi`로 반올림할 때 버린 부분이에요. FMA는 $v \cdot v - \text{hi}$를 반올림 한 번으로 계산하는데, 이 값은 float64로 정확히 표현되므로 오차가 없어요. 3패스에서 $e^{-x^2} = e^{-\text{hi}}(1 - \text{lo})$로 보정해요. 이 기법과 이유는 [오차함수와 감마](/internals/special/erf-gamma/)에서 자세히 다뤄요.
 
@@ -329,20 +379,24 @@ NEON 레지스터 하나에는 float64가 두 개 들어가요. 묶음의 원소
 
 ```cpp
 // special/kernels/simd.hpp (발췌)
-struct F2 { float64x2_t v; };                    // NEON 레지스터 하나 = float64 둘
-struct M2 { uint64x2_t m; };                     // 비교 결과 마스크
+struct F2 {
+    float64x2_t v;                               // NEON 레지스터 하나 = float64 둘
+};
+struct M2 {
+    uint64x2_t m;                                // 비교 결과 마스크
+};
 
 inline F2 operator+(F2 a, F2 b) { return {vaddq_f64(a.v, b.v)}; }
 inline F2 operator*(F2 a, F2 b) { return {vmulq_f64(a.v, b.v)}; }
 inline F2 operator/(F2 a, F2 b) { return {vdivq_f64(a.v, b.v)}; }
 inline M2 operator<(F2 a, F2 b) { return {vcltq_f64(a.v, b.v)}; }
-inline double fma(double a, double b, double c) { return std::fma(a, b, c); }   // 반올림 한 번
+inline double fma(double a, double b, double c) { return std::fma(a, b, c); }  // a * b + c, one rounding
 inline F2 fma(F2 a, F2 b, F2 c) { return {vfmaq_f64(c.v, a.v, b.v)}; }          // 같은 반올림
 inline double select(bool m, double a, double b) { return m ? a : b; }
 inline F2 select(M2 m, F2 a, F2 b) { return {vbslq_f64(m.m, a.v, b.v)}; }      // 비트 선택
 ```
 
-NEON의 덧셈, 곱셈, 나눗셈, 제곱근, FMA는 레인마다 IEEE 754 연산 그대로라서, 스칼라 연산과 반올림이 같아요. 그래서 같은 식을 `double`과 `F2`로 적으면 같은 비트가 나와요. 남은 조건은 **컴파일러가 식을 바꾸지 않는 것**이에요. 전체 빌드가 `-ffp-contract=off`라서, 스칼라 쪽 `r * x + c`가 몰래 FMA 하나로 합쳐지지 않아요(합쳐지면 반올림이 한 번 줄어 레인과 달라져요). FMA는 두 판 모두 `fma(...)`로 적은 곳에서만 생겨요.
+NEON의 덧셈, 곱셈, 나눗셈, 제곱근, FMA는 레인마다 IEEE 754 연산 그대로라서, 스칼라 연산과 반올림이 같아요. 그래서 같은 식을 `double`과 `F2`로 적으면 같은 비트가 나와요. 남은 조건은 **컴파일러가 식을 바꾸지 않는 것**이에요. 전체 빌드가 `-ffp-contract=off`라서, 스칼라 쪽 `a * b + c`가 컴파일러의 판단으로 FMA 하나로 합쳐지지 않아요(한쪽만 합쳐지면 반올림이 한 번 줄어 레인과 달라져요). FMA는 두 판 모두 `fma(...)`로 적은 곳에서만 생겨요. 아래의 Horner도 그렇게 적은 곳이에요.
 
 `for_lanes`는 묶음을 앞에서부터 두 원소씩 `F2`로, 홀수 끝 하나를 `double`로 처리해요.
 
@@ -395,14 +449,16 @@ $$
 p(x) = \Big(\big((c_0 x + c_1) x + c_2\big) x + \cdots \Big) x + c_7
 $$
 
-곱셈 7번, 덧셈 7번이고, 거듭제곱 $x^k$를 따로 만들지 않아요. 계산량으로는 최소예요. 다만 **모든 단계가 앞 단계의 결과를 기다려야** 해요. 곱셈과 덧셈의 지연(latency)이 각각 몇 사이클이면, 차수 $n$인 다항식 하나는 적어도 $n \times$(곱셈 + 덧셈 지연)이 걸려요. CPU가 한 사이클에 연산을 여럿 시작할 수 있어도 이 사슬 안에서는 놀아요.
+곱셈-덧셈 7번이고, 거듭제곱 $x^k$를 따로 만들지 않아요. 계산량으로는 최소예요. 다만 **모든 단계가 앞 단계의 결과를 기다려야** 해요. 단계 하나의 지연(latency)이 몇 사이클이면, 차수 $n$인 다항식 하나는 적어도 $n \times$(단계의 지연)이 걸려요. CPU가 한 사이클에 연산을 여럿 시작할 수 있어도 이 사슬 안에서는 놀아요.
+
+stardust의 Horner는 단계마다 FMA 하나예요. $r x + c_i$를 반올림 한 번으로 계산하므로, 곱셈과 덧셈을 따로 할 때보다 단계마다 반올림이 하나 적고 의존 사슬도 약 1.6배 짧아요. 빌드가 `-ffp-contract=off`라서 FMA는 이렇게 코드에 적은 곳에서만 생기고, 레인의 `simd::horner`도 같은 식(`fma(r, x, cst<V>(c[i]))`, 레인에서는 `vfmaq_f64`)이라 스칼라와 레인의 비트가 같아요.
 
 ```cpp
 // special/common.hpp (발췌): Cephes polevl과 같은 계수 순서
 template <std::size_t N>
-constexpr double horner(double x, const std::array<double, N>& c) {
+inline double horner(double x, const std::array<double, N>& c) {
     double r = c[0];
-    for (std::size_t i = 1; i < N; ++i) r = r * x + c[i];   // 곱셈과 덧셈 각각 반올림 (FMA 아님)
+    for (std::size_t i = 1; i < N; ++i) r = std::fma(r, x, c[i]);   // r x + c[i], 반올림 한 번
     return r;
 }
 ```
@@ -423,12 +479,12 @@ stardust의 `simd::estrin`은 이 트리를 템플릿 재귀로 컴파일할 때
 
 ### 속도는 같고 오차는 조금 커요
 
-위 `erfc` 측정의 마지막 열이 Estrin이에요. 같은 선택 방식에서 Horner와 속도가 같고(4.02–4.14 대 4.15–4.20ns), 최대 오차는 조금 커요.
+위 `erfc` 측정의 마지막 열이 Estrin이에요. 같은 선택 방식에서 Horner와 속도가 같았어요(4.02–4.14 대 4.15–4.20ns). 이 시간은 Horner의 단계를 곱셈과 덧셈으로 따로 계산한 판으로 잰 값이고, 지금의 FMA Horner는 사슬이 그보다 짧아요. 오차는 지금 빌드의 세 판(비교용 판은 비공개 함수로 남아 있어요)을 `erfc`의 참값 파일에서 잰 값이에요. Estrin이 최대와 99.9% 모두 커요.
 
 | `erfc`의 참값 파일에서 | 최대 ULP | 99.9% ULP |
 |---|---:|---:|
-| 분기 + Horner (쓰는 쪽) | 7.77 | 4.70 |
-| 선택 + Horner | 7.77 | 4.70 |
+| 분기 + Horner (쓰는 쪽) | 6.11 | 3.74 |
+| 선택 + Horner | 6.11 | 3.74 |
 | 선택 + Estrin | 9.13 | 4.19 |
 
 Estrin이 빨라지지 않는 것은 원소별 루프의 구조로 설명할 수 있어요. 원소들은 서로 독립이라, 비순차 실행(out-of-order) 코어는 한 원소의 Horner 사슬이 지연을 기다리는 동안 다음 원소의 사슬을 시작할 수 있어요. 유리식 $P(x)/Q(x)$의 $P$와 $Q$도 서로 독립인 두 사슬이에요. 사슬 하나의 깊이를 줄이는 Estrin의 장점은 **한 번에 하나만 계산할 때** 드러나는데, 원소 수백만 개를 도는 루프에서는 다른 원소가 그 빈자리를 채울 수 있어요. 위의 측정은 이 설명과 맞아요. 속도 이득은 보이지 않고, 남는 것은 Estrin이 더하는 곱셈과 다른 반올림이에요. 그래서 모든 다항식은 Horner예요. Horner의 반올림 오차는 계수와 $x$의 크기로 간단한 한계를 줄 수 있다는 점도 장점이에요 [3].
@@ -543,7 +599,7 @@ stardust는 두 가지 이유로 두 패스를 써요.
 True
 ```
 
-결정적이라는 것은 **scipy와 같다**는 뜻이 아니에요. 알고리즘이 다르므로 scipy와는 몇 ULP씩 다르고, scipy가 틀리는 곳에서는 크게 달라요. 비트가 같다는 약속은 stardust 안에서, 같은 빌드와 같은 기계에서의 약속이에요.
+결정적이라는 것은 **scipy와 같다**는 뜻이 아니에요. 반올림 크기의 차이는 정확도 계약 안이면 되므로 scipy와는 마지막 몇 자리가 다를 수 있고, scipy가 틀리는 곳에서는 크게 달라요. scipy와 같은 Cephes 식을 쓰는 함수도 Horner의 FMA와 `sincos` 때문에 마지막 자리가 다를 수 있어요. 지금 scipy와 비트까지 같은 값이 있어도 그것은 약속이 아니에요. 비트가 같다는 약속은 stardust 안에서, 같은 빌드와 같은 기계에서의 약속이에요.
 
 ## 참고 문헌
 

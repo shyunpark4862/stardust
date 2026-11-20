@@ -8,7 +8,7 @@ signatures:
 summary: 데이터가 기준점에서 떨어진 거리의 k제곱 평균(k차 모멘트)을 구해요. 기준점을 주지 않으면 평균을 기준으로 하는 중심 모멘트이에요. 차수 order는 꼭 줘야 해요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 데이터. bool·정수는 float64로 바꿔서 계산해요.
   - name: order
@@ -36,7 +36,7 @@ returns:
   desc: "k차 모멘트. order가 숫자 하나이고 남는 축이 없으면 Python float예요. order가 여러 개면 결과 앞에 차수의 축이 붙어요. 빈 줄은 NaN이에요."
 raises:
   - type: TypeError
-    desc: order를 주지 않았거나 None을 줬을 때, order나 center의 타입이 틀렸을 때(bool·문자열 등), x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis·keepdims의 타입이 틀렸을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: order를 주지 않았거나 None을 줬을 때, order나 center의 타입이 틀렸을 때(bool·문자열 등), x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis·keepdims의 타입이 틀렸을 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: order가 정수가 아닐 때(1.5, inf, NaN 등), center를 결과의 모양으로 브로드캐스트할 수 없을 때, nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
   - type: OverflowError

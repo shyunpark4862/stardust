@@ -146,7 +146,7 @@ trust-exact True 25 26 23 26 3.3e-19
 
 ### hess: 행렬
 
-`hess(x)`는 (n, n) 배열을 돌려줘요. `sd.ndarray`, 중첩 리스트, numpy 배열을 받고, n = 1이면 수 하나도 돼요. 행렬은 대칭이어야 해요(대칭이 아니면 결과를 믿을 수 없어요). n차원 Rosenbrock의 헤시안은 세 대각선만 0이 아니에요.
+`hess(x)`는 (n, n) 배열을 돌려줘요. `sd.ndarray`, 중첩 리스트, numpy 배열을 받고, n = 1이면 수 하나도 돼요. 행렬은 대칭이어야 해요(대칭이 아니면 결과를 믿을 수 없어요). 돌려받은 행렬은 복사해 두므로, 버퍼 하나를 다시 채워 돌려주거나 나중에 그 배열을 고쳐도 반복에는 영향이 없어요. n차원 Rosenbrock의 헤시안은 세 대각선만 0이 아니에요.
 
 ```python
 >>> def rosen_n(x):
@@ -216,12 +216,14 @@ function 66 58 58 1.8e-13
 2-point 63 362 298 1.8e-16
 ```
 
-차분의 곱은 $10^{-8}$ 정도의 상대오차가 있어요. 대개 문제없지만, 그 오차로 CG가 20n번 안에 끝나지 않아 status 3으로 멈추기도 해요. 아래는 기울기 차분의 Newton-CG가 n = 100의 Rosenbrock에서 그렇게 멈춘 경우예요(같은 문제를 `hessp`로는 풀어요). 그럴 때는 헤시안을 직접 주거나 [BFGS](/api/optimize/quasi-newton/)를 써요.
+차분의 곱은 $10^{-8}$ 정도의 상대오차가 있어요. 대개 문제없지만, 그 오차로 CG가 20n번 안에 끝나지 않아 status 3으로 멈추기도 해요. 아래는 기울기 차분의 Newton-CG가 n = 50의 Rosenbrock에서 해에서 먼 점(f = 40)에서 그렇게 멈춘 경우예요(같은 문제를 `hessp`로는 풀어요). 그럴 때는 헤시안을 직접 주거나 [BFGS](/api/optimize/quasi-newton/)를 써요.
 
 ```python
->>> r = sd.optimize.minimize(rosen_n, sd.zeros(100), method='newton-cg', jac=rosen_n_grad)
+>>> r = sd.optimize.minimize(rosen_n, sd.zeros(50), method='newton-cg', jac=rosen_n_grad)
 >>> r.converged, r.status, r.message
 (False, 3, "Warning: CG iterations didn't converge. The Hessian is not positive definite.")
+>>> sd.optimize.minimize(rosen_n, sd.zeros(50), method='newton-cg', jac=rosen_n_grad, hessp=rosen_n_hessp).converged
+True
 ```
 
 ## Newton-CG
@@ -325,7 +327,7 @@ trust-ncg의 CG는 기울기 방향에서 시작해서, 기울기와 수직인 �
 | 2 | `A bad approximation caused failure to predict improvement.` | 예측 감소가 양수가 아니에요(헤시안이나 기울기가 틀렸을 때 흔해요) |
 | 3 | `A linalg error occurred, such as a non-psd Hessian.` | trust-ncg의 CG가 20n번 안에 끝나지 않음(대칭이 아닌 헤시안), trust-exact의 부분문제가 걸음을 만들지 못함 |
 
-`max_iter=0`이면 반복 없이 `x0`에서 멈춰요(`n_iter` 0, status 1). 받아들인 점에서 기울기나 trust-exact의 헤시안이 유한하지 않으면 그 점을 적은 `ValueError`예요.
+`max_iter=0`이면 반복 없이 `x0`에서 멈춰요(`n_iter` 0). `x0`가 이미 해(기울기의 2-노름 < `gtol`)이면 status 0, 아니면 status 1이에요. 시험점의 `fun`이 inf나 NaN이면 그 걸음을 받지 않고 반지름을 1/4로 줄여요. trust-exact는 시험점의 헤시안이 유한하지 않을 때도 그 걸음을 받지 않아요(그 점의 `fun`은 부르지 않아요). 받아들인 점의 기울기나 trust-ncg의 헤시안 곱이 유한하지 않으면 그 점을 적은 `ValueError`예요.
 
 ## 고르기
 
@@ -343,7 +345,7 @@ trust-ncg의 CG는 기울기 방향에서 시작해서, 기울기와 수직인 �
 
 - 해 근처의 수렴이 빨라서 허용오차를 줄여도 반복이 조금만 늘어요. 기울기와 헤시안이 정확하면 해를 반올림 가까이까지 구할 수 있어요.
 - 반복 하나의 비용은 `fun`, `jac`, `hess`(또는 `hessp` 여러 번)예요. trust-exact는 반복마다 n × n 행렬의 Cholesky 분해를 몇 번 해서 n이 크면 이것이 커져요. 큰 분해는 GIL을 놓고 해요.
-- 세 방법 모두 scipy 1.18.1과 같은 점에서 `fun`, `jac`, `hess`, `hessp`를 같은 차례로 불러, `x`의 비트까지 같은 결과를 줘요. 셈(`njev`, `nhev`)만 아래처럼 조금 달라요. 자세한 알고리즘은 [구현 글](/internals/optimize/newton-trust/)에 있어요.
+- 세 방법 모두 scipy 1.18.1과 같은 알고리즘과 멈춤 판정이에요. 지금은 `hess`나 `hessp`를 주면 scipy와 같은 점에서 `fun`, `jac`, `hess`, `hessp`를 같은 차례로 불러 `x`까지 비트까지 같아요(약속은 아니에요). 셈과 실패의 경로만 아래처럼 달라요. 자세한 알고리즘은 [구현 글](/internals/optimize/newton-trust/)에 있어요.
 
 ## scipy를 아는 분께
 
@@ -355,6 +357,8 @@ trust-ncg의 CG는 기울기 방향에서 시작해서, 기울기와 수직인 �
 - trust-exact의 `subproblem_maxiter`는 `subproblem_max_iter`, `maxiter`는 `max_iter`예요.
 - 값이 다른 곳은 다음과 같아요.
   - newton-cg의 결과 `jac`은 `x`에서의 기울기예요. scipy는 마지막 반복을 시작한 점의 기울기를 줘요. 그 기울기를 새로 계산하면 `njev`가 하나 많아요.
+  - `hess`와 `hessp`가 없는 newton-cg는 곱 $(\nabla f(x + h p) - \nabla f(x))/h$마다 $\nabla f(x)$를 다시 부르지 않고 그 반복의 기울기를 써요. 그래서 `njev`가 scipy의 절반쯤이고 부르는 점이 scipy와 달라요.
   - `nhev`는 실제로 부른 수예요. `hessp`만 준 trust-ncg는 scipy보다 하나 적고, `hess`를 준 trust-ncg는 결과의 `hess`를 위한 마지막 호출을 세어 하나 많을 수 있어요(위 Rosenbrock에서 27, scipy 26).
-  - trust-ncg·trust-exact에 `max_iter=0`을 주면 반복 없이 멈춰요(scipy는 한 번 반복해요).
+  - 세 방법 모두 `max_iter=0`을 주면 반복 없이 멈춰요(scipy의 trust-ncg·trust-exact는 한 번 반복해요).
+  - 실패의 경로는 일부러 scipy를 따르지 않아요. 신뢰 영역의 시험점에서 `fun`이 NaN이면 반지름을 줄여요(scipy는 ρ가 NaN이라 같은 부분문제를 `max_iter`까지 되풀이해요). trust-exact는 시험점의 헤시안이 유한하지 않으면 걸음을 거절해요(scipy는 예외를 내요). newton-cg는 선 탐색이 `fun`이 NaN인 점에서 끝나면 마지막 유한한 반복점을 status 3 `NaN result encountered.`로 돌려주고, CG의 곡률이 NaN이면 바로 같은 status로 멈춰요(scipy는 CG를 20n번 돌아요). 첫 CG 걸음의 곡률이 0이면(안장점, 함수가 선형인 부분) 가장 가파른 내리막 −g로 선 탐색을 해요(scipy는 걸음 0으로 `success=True`를 알려요).
   - trust-ncg의 CG는 20n번에서 status 3으로 멈춰요. scipy는 상한이 없어 대칭이 아닌 헤시안에서 끝나지 않을 수 있어요. trust-exact의 부분문제가 걸음 없이 `subproblem_max_iter`에 닿으면 status 3이에요(scipy는 `UnboundLocalError`).

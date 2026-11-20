@@ -21,7 +21,7 @@ params:
     desc: 가장 큰 특이값에 이 값을 곱한 것 이하인 특이값을 0으로 쳐요. None이면 max(M, N)에 약 2.2e-16을 곱한 값이에요.
 returns:
   type: LstsqResult(solution, rank, singular_values)
-  desc: solution은 해((..., N) 또는 (..., N, K)), rank는 a의 랭크(행렬 하나면 int), singular_values는 a의 특이값(큰 것부터).
+  desc: solution은 해((..., N) 또는 (..., N, K)), rank는 a의 랭크(행렬 하나면 int), singular_values는 a의 특이값(큰 것부터). 결과의 배열은 쓰기 금지예요.
 raises:
   - type: TypeError
     desc: a나 b가 배열이 아닐 때, rtol이 None·int·float이 아닐 때(bool 포함), rtol을 이름 없이 넘겼을 때.
@@ -484,7 +484,7 @@ True
 
 - 결과는 `(solution, rank, singular_values)` 세 개예요. `np.linalg.lstsq`와 `scipy.linalg.lstsq`가 주는 잔차 제곱합(`residuals`)은 없어요. 필요하면 `b - a @ solution`으로 계산하세요.
 - 허용오차 옵션의 이름은 `rcond`나 `cond`가 아니라 `rtol`이고, 이름을 붙여서만 넘겨요. 기본값은 `max(M, N) × eps`예요.
-- 기본 `rtol`(그리고 `eps` 이상 1 미만의 `rtol`)에서는 해, 랭크, 특이값이 `np.linalg.lstsq(a, b, rcond=None)`과 비트까지 같아요. 세로로 긴 행렬, 가로로 긴 행렬, 복소수 모두 그래요.
+- 기본 `rtol`(그리고 `eps` 이상 1 미만의 `rtol`)에서는 해, 랭크, 특이값이 지금은 `np.linalg.lstsq(a, b, rcond=None)`과 비트까지 같아요(약속은 아니에요). 세로로 긴 행렬, 가로로 긴 행렬, 복소수 모두 그래요.
 - 원소가 아주 작은 행렬도 numpy와 같은 해를 내요. 위의 `t2`에서 `np.linalg.lstsq`도 `[inf, 0.]`이에요.
 - `rtol`이 1 이상이면 랭크 0, 해 0이에요. numpy는 이 경우 허용오차로 `eps`를 써서 풀어요.
 - `rtol=0`이면 정확히 0인 특이값만 버려요(`matrix_rank(rtol=0)`과 같은 랭크). numpy의 `rcond=0`은 `eps`를 써서, 위의 `s`에서 `rank`가 1이고 해는 기본값과 같은 `[0.2, 0.4]`예요.

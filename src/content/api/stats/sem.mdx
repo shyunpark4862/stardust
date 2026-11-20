@@ -8,7 +8,7 @@ signatures:
 summary: 평균의 표준오차(standard error of the mean)를 구해요. 표본 평균이 참 평균에서 보통 얼마나 어긋나는지를 나타내고, 표본 표준편차를 √n으로 나눈 값이에요.
 params:
   - name: x
-    type: ndarray, 실수의 시퀀스, 또는 Python 실수
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
     kind: positional-only
     desc: 데이터(표본). bool·정수는 float64로 바꿔서 계산해요.
   - name: axis
@@ -32,7 +32,7 @@ returns:
   desc: 표준오차. 언제나 float64이고, 남는 축이 없으면 Python float예요. n - correction이 0 이하이면(기본값에서 값이 하나뿐이면) NaN이에요.
 raises:
   - type: TypeError
-    desc: x가 배열이나 숫자의 시퀀스가 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
+    desc: x가 배열, 숫자의 시퀀스, frame의 Series·DataFrame이 아니거나 복소수일 때, 숫자가 아닌 열이 있을 때, axis가 int·tuple·리스트·None이 아닐 때, correction이 int·float가 아닐 때(bool 포함), keepdims가 True·False가 아닐 때, nan_policy에 문자열이 아닌 값을 줬을 때.
   - type: ValueError
     desc: nan_policy 이름이 틀렸거나 'raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 겹칠 때.
   - type: OverflowError
@@ -112,7 +112,7 @@ $$
 >>> n = 8
 >>> t = sd.stats.StudentT(df=n - 1).icdf(0.975)
 >>> t
-2.364624251592785
+2.3646242515927844
 >>> m, e = sd.mean(w), t * sd.stats.sem(w)
 >>> round(m - e, 3), round(m + e, 3)
 (498.552, 503.448)

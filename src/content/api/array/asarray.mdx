@@ -93,7 +93,7 @@ array([[1, 2],
 >>> sd.asarray("abc")
 Traceback (most recent call last):
     ...
-TypeError: asarray(): cannot convert an object of type 'str' to an array
+TypeError: asarray(): 'obj' must be an sd.ndarray, a list, a tuple, a range or a buffer, not str
 >>> sd.asarray([1, None])
 Traceback (most recent call last):
     ...
@@ -101,7 +101,7 @@ TypeError: asarray(): cannot store an object of type 'NoneType' in an array (onl
 >>> sd.asarray(n * n for n in range(3))
 Traceback (most recent call last):
     ...
-TypeError: asarray(): cannot convert an object of type 'generator' to an array
+TypeError: asarray(): 'obj' must be an sd.ndarray, a list, a tuple, a range or a buffer, not generator
 ```
 
 - 문자열과 `None`: 배열은 숫자와 참·거짓만 담아요. 빠진 값이 있는 표 형태의 데이터는 데이터프레임(`sd.frame`)이 다뤄요.

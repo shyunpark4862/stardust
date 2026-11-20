@@ -251,11 +251,15 @@ X.cdf(x, /, *, atol=1e-6, return_error=False, max_points=None)
 - **d ≤ 3**: 1차원 적분으로 바꾼 정확한 공식을 써요. 결과는 앞자리 14자리 정도까지 맞고, 오차 추정은 0이에요.
 - **d ≥ 4**: 적분 영역에 고르게 흩은 점에서 밀도를 평가해 평균을 내는 방법(준몬테카를로)으로 어림해요. 점을 늘려 가다가 오차 추정이 `atol`(기본 1e-6) 아래로 내려가면 멈춰요. 점을 고르는 시드가 고정돼 있어서 같은 입력이면 언제나 같은 값이에요. 스레드 수를 바꿔도 같아요.
 
-`return_error=True`를 주면 `(값, 오차 추정)` 튜플을 돌려줘요.
+`return_error=True`를 주면 값과 오차 추정을 담은 `CdfResult(value, error)`를 돌려줘요. 이름 붙은 튜플이라 `r.value`, `r.error`로 꺼내거나 `v, e = r`처럼 풀어 받을 수 있어요. 여러 점을 한꺼번에 주면 두 칸이 배열이고, 그 배열은 읽기 전용이에요.
 
 ```python
->>> X.cdf(sd.asarray([0.0, 0.0]), return_error=True)
-(0.3333333333333333, 0.0)
+>>> r = X.cdf(sd.asarray([0.0, 0.0]), return_error=True)
+>>> r
+CdfResult(value=0.3333333333333333, error=0.0)
+>>> v, e = r
+>>> r.value == v
+True
 ```
 
 모든 상관이 0.5인 d변량 정규분포에서 모든 성분이 0 이하일 확률은 정확히 1/(d + 1)이에요. d = 4이면 0.2예요.
@@ -264,11 +268,11 @@ X.cdf(x, /, *, atol=1e-6, return_error=False, max_points=None)
 >>> C4 = sd.full((4, 4), 0.5) + 0.5 * sd.eye(4)
 >>> X4 = sd.stats.MultivariateNormal(mu=sd.zeros(4), cov=C4)
 >>> X4.cdf(sd.zeros(4), return_error=True)
-(0.19999955726201604, 4.134126200329269e-07)
+CdfResult(value=0.19999955726201601, error=4.134126200298685e-07)
 >>> X4.cdf(sd.zeros(4), return_error=True)
-(0.19999955726201604, 4.134126200329269e-07)
+CdfResult(value=0.19999955726201601, error=4.134126200298685e-07)
 >>> X4.cdf(sd.zeros(4), atol=1e-4, return_error=True)
-(0.20000213018931096, 8.17461606315734e-06)
+CdfResult(value=0.20000213018931098, error=8.174616063151151e-06)
 ```
 
 참값 0.2와의 차이는 4.4e-7로, 오차 추정 4.1e-7과 비슷한 크기예요. 두 번 불러도 같은 값이 나와요. `atol`을 느슨하게 주면 점을 덜 쓰는 대신 오차가 커져요.
@@ -278,7 +282,7 @@ X.cdf(x, /, *, atol=1e-6, return_error=False, max_points=None)
 
 ```python
 >>> X4.cdf(sd.zeros(4), max_points=1000, return_error=True)
-(0.20002376506644118, 0.00018468624043441387)
+CdfResult(value=0.20002376506644112, error=0.00018468624043441122)
 ```
 
 그래서 d ≥ 4에서 `return_error=False`로 값만 받을 때는, 필요한 정확도에 맞게 `atol`을 주고 가끔 오차 추정을 확인하는 것이 좋아요.
@@ -343,7 +347,7 @@ array([ 0.3333333333333333,  0.7452035868467497, 0.15850839416544282], dtype=flo
 
 ### 인자 검사
 
-`atol`은 유한한 양수(int나 float, numpy 정수도 돼요), `return_error`는 `True`나 `False`, `max_points`는 양의 정수나 `None`이어야 해요. 0, 음수, inf, NaN인 `atol`은 `ValueError`이고, float로 나타낼 수 없을 만큼 큰 int는 `OverflowError`예요.
+`atol`은 유한한 양수(int나 float, numpy 정수도 돼요), `return_error`는 `True`나 `False`, `max_points`는 1 이상의 정수나 `None`이어야 해요. 0, 음수, inf, NaN인 `atol`과 1보다 작은 `max_points`는 `ValueError`예요. float로 나타낼 수 없을 만큼 큰 int인 `atol`과 int64 범위를 넘는 `max_points`는 `OverflowError`예요.
 
 ```python
 >>> X.cdf(sd.zeros(2), atol=0)
@@ -365,7 +369,7 @@ TypeError: cdf(): 'return_error' must be True or False, not int
 >>> X.cdf(sd.zeros(2), max_points=0)
 Traceback (most recent call last):
     ...
-ValueError: cdf(): 'max_points' must be positive
+ValueError: cdf(): 'max_points' must be >= 1
 ```
 
 ## 요약값

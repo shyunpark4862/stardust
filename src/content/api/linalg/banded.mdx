@@ -617,3 +617,4 @@ array([1.0, 2.0], dtype=float64)
 - `ab`의 모서리 빈칸은 NaN이어도 돼요. 행렬 안의 값은 언제나 NaN·inf를 검사하고, `check_finite=`로 끌 수 없어요. `overwrite_ab=`, `overwrite_b=`도 없어요.
 - 앞쪽 축은 배치로 보고 한 번에 풀어요. 리스트와 numpy 배열은 받지 않아요.
 - 정수 입력의 결과도 float64예요.
+- 지금은 결과가 scipy와 비트까지 같아요(약속은 아니에요). 다만 행이 8개 이하인 `solve_banded`(띠 폭 (1, 1) 제외)는 계산 방법이 달라서 scipy와 마지막 자리가 다를 수 있어요.

@@ -544,7 +544,14 @@ export function mountMerger(canvas: HTMLCanvasElement, host: HTMLElement): void 
   };
   const shownText = ['', '', ''];
   let sinceReadout = 1;
+  // Once the galaxy has turned steadily for a few seconds the run is over:
+  // the readout fades out and stops updating.
+  const READOUT_GONE_S = 12;
   const readout = (dtReal: number, warp: number) => {
+    if (settling >= READOUT_GONE_S) {
+      if (!('simDone' in host.dataset)) host.dataset.simDone = '';
+      return;
+    }
     sinceReadout += dtReal;
     if (sinceReadout < 0.08) return;
     sinceReadout = 0;

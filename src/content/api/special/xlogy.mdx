@@ -254,7 +254,7 @@ array([                 0.0, -0.34657359027997264,                  0.0], dtype=
 
 ## scipy를 아는 분께
 
-- 정의와 특수값은 `scipy.special.xlogy`, `xlog1py`와 비트까지 같아요(`xlogy(0, nan)`이 NaN인 것도 같아요).
+- 정의와 특수값은 `scipy.special.xlogy`, `xlog1py`와 같아요(`xlogy(0, nan)`이 NaN인 것도 같아요).
 - **복소수를 받지 않아요.** scipy는 복소수 입력도 계산하지만, stardust는 `TypeError`예요.
 - 리스트와 numpy 배열은 받지 않아요. 둘 다 Python 숫자면 numpy 스칼라가 아니라 Python `float`가 나와요.
 - `out`은 keyword-only예요. `where=` 같은 ufunc 인자는 없어요.

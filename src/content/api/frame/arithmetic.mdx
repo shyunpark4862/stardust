@@ -76,7 +76,7 @@ dtype: int64
 | DataFrame | Series | `TypeError` | 지원하지 않아요 |
 | Series, DataFrame | list, tuple, `None`, 배열 | `TypeError` | 지원하지 않아요 |
 
-**스칼라**는 값 하나를 말해요. Python의 `bool`, `int`, `float`, `str`, numpy 스칼라(`numpy.int64(2)` 같은 것), 결측값 `NA`가 스칼라예요. 스칼라는 연산자의 왼쪽에 와도 돼요.
+**스칼라**는 값 하나를 말해요. Python의 `bool`, `int`, `float`, `str`, 그에 해당하는 numpy 스칼라(`numpy.int64(2)` 같은 것), 결측값 `NA`가 스칼라예요. 스칼라는 연산자의 왼쪽에 와도 돼요. 컬럼에 담을 수 없는 값(Python의 `complex`, numpy의 복소수·`datetime64`·`timedelta64`·`bytes_` 스칼라)과는 계산하지 않고 `TypeError`예요.
 
 ```python
 >>> price = df["price"]
@@ -241,7 +241,7 @@ dtype은 `bool`, `int64`, `float64`, `string` 넷이에요. 산술의 결과 dty
 | **string** | `TypeError` | `TypeError` | `TypeError` | string (`+`만) |
 
 - `/`는 이 표와 달리 숫자끼리면 언제나 float64예요. 정수끼리 나눠떨어져도 그래요. 값에 따라 dtype이 바뀌면 코드만 보고 결과를 알 수 없기 때문이에요.
-- 단항 `-`, `+`, `abs()`는 bool을 int64로 바꾸고, int64와 float64는 그대로 둬요. string은 `TypeError`예요.
+- 단항 `-`, `+`, `abs()`는 bool을 int64로 바꾸고, int64와 float64는 그대로 둬요. string은 `TypeError`예요. `+s`도 다른 연산처럼 새 객체를 돌려줘요. 값은 `s`와 같고, 둘 중 하나를 고쳐도 다른 쪽은 그대로예요.
 - 결과에 `NA`가 생겨도 dtype은 바뀌지 않아요. 위 예처럼 `NA`가 섞인 int64 결과는 그대로 int64예요.
 
 ```python

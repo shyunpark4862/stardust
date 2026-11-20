@@ -15,7 +15,7 @@ export const errFive = [[-2,-3.882],[-3,-5.089],[-4,-6.293],[-5,-7.498],[-6,-8.7
 
 ## 한눈에 보기
 
-사용자가 기울기나 야코비안을 주지 않으면 이 영역의 함수들은 차분으로 어림해요. 차분은 한 가지가 아니에요. 반복 안에서 쓰는 차분은 scipy와 같은 점에서 함수를 부르도록 scipy의 것을 그대로 따르고, `approx_fprime`의 기본은 한 번의 정확한 결과를 위해 따로 만든 5점 차분이에요.
+사용자가 기울기나 야코비안을 주지 않으면 이 영역의 함수들은 차분으로 어림해요. 차분은 한 가지가 아니에요. 반복 안에서 쓰는 차분은 scipy의 것과 같은 간격, 같은 계산이라 지금은 scipy와 같은 점에서 함수를 부르고, `approx_fprime`의 기본은 한 번의 정확한 결과를 위해 따로 만든 5점 차분이에요.
 
 | 어디서 | 차분 | 간격 | 코드 |
 |---|---|---|---|
@@ -299,16 +299,21 @@ Newton-CG의 첫 곱을 보면 움직인 거리가 정확히 그 값이에요.
 
 이 기울기는 scipy의 차분 연산자처럼 `Objective`의 기억을 거치지 않고 사용자의 `jac`을 바로 불러요. 그 호출은 `njev`에 세고, 곱 하나를 `nhev`에 하나 세요. $p = 0$이면 부르지 않고 0이에요.
 
-`hess`도 `hessp`도 없는 Newton-CG는 scipy의 `approx_fhess_p`예요. 간격이 옵션 `eps`(기본 $\sqrt\varepsilon$)이고 $p$로 나누지 않아요. $g(x)$는 `Objective`의 기억을 거쳐서 구해요. 직전의 곱이 $x + \text{eps}\,p$에서 기울기를 계산해 기억이 그 점의 것이 되었으면, 다음 곱에서 $g(x)$를 다시 불러요.
+`hess`도 `hessp`도 없는 Newton-CG는 scipy의 `approx_fhess_p`예요. 간격이 옵션 `eps`(기본 $\sqrt\varepsilon$)이고 $p$로 나누지 않아요. $g(x)$로는 그 반복의 기울기(CG의 우변 $b = -g$)를 그대로 써요. scipy는 `ScalarFunction`의 기억을 거쳐 $g(x)$를 구하는데, 직전의 곱이 $x + \text{eps}\,p$에서 기울기를 계산해 기억이 그 점의 것이 되었으므로 두 번째 곱부터 곱마다 $g(x)$를 다시 불러요. 여기서는 그 호출이 없어서 기울기 호출이 scipy의 절반쯤이고, 그만큼 부르는 점이 scipy와 달라요. 값은 같은 $g(x)$라 곱은 같아요.
 
 ```cpp
                     // csrc/optimize/newton_cg.cpp
-                    // approx_fhess_p(xk, p, fprime, epsilon): fprime(xk) first (it may be in the memo)
-                    f1 = obj.gradient(xk.data());
-                    for (std::size_t j = 0; j < n; ++j) xe[j] = xk[j] + eps[j] * psupi[j];
+                    // approx_fhess_p(xk, p, fprime, epsilon) with fprime(xk) the iteration's -b
+                    vanished = true;
+                    for (std::size_t j = 0; j < n; ++j) {
+                        xe[j] = xk[j] + eps[j] * psupi[j];
+                        vanished = vanished && xe[j] == xk[j];
+                    }
                     const vec& f2 = obj.gradient(xe.data());
-                    for (std::size_t j = 0; j < n; ++j) Ap[j] = (f2[j] - f1[j]) / eps[j];
+                    for (std::size_t j = 0; j < n; ++j) Ap[j] = (f2[j] - (-b[j])) / eps[j];
 ```
+
+`vanished`는 시험점 $x + \text{eps}\,p$가 반올림으로 $x$와 같아진 경우예요. 그때 곱은 0이라 곡률에 대해 아무것도 말하지 않으므로, 첫 CG 걸음의 곡률이 0일 때 가장 가파른 내리막 −g로 바꾸는 판정([뉴턴 방법](/internals/optimize/newton-trust/))에서 빼요.
 
 ## MINPACK의 fdjac1과 fdjac2
 
@@ -318,19 +323,21 @@ $$
 h_j = \sqrt{\max(\text{epsfcn}, \varepsilon)}\;\lvert x_j\rvert \quad(x_j = 0\text{이면 } \sqrt{\max(\text{epsfcn}, \varepsilon)})
 $$
 
-이고, `epsfcn`(`root`의 옵션 `eps`)은 "함숫값의 상대 오차"예요. 함수에 반올림보다 큰 오차가 있으면 그 크기를 알려 간격을 키우라는 뜻이에요. 앞의 오차 분석에서 $\delta$를 `epsfcn`으로 둔 것과 같아요. MINPACK은 $h$로 나누고(scipy와 같아야 하는 `root`가 그렇게 해요), nls는 실제로 움직인 거리 $(x_j + h) - x_j$로 나눠요.
+이고, `epsfcn`(`root`의 옵션 `eps`)은 "함숫값의 상대 오차"예요. 함수에 반올림보다 큰 오차가 있으면 그 크기를 알려 간격을 키우라는 뜻이에요. 앞의 오차 분석에서 $\delta$를 `epsfcn`으로 둔 것과 같아요. MINPACK은 $h$로 나누고(`root`가 scipy처럼 그렇게 해요), nls는 실제로 움직인 거리 $(x_j + h) - x_j$로 나눠요. 경계가 있는 nls의 'trf'에서는 그 간격에 scipy의 `adjust_one_sided`를 써요. 앞으로 가면 경계를 넘고 뒤로는 들어가면 뒤로 가고, 둘 다 넘으면 먼 경계까지의 거리로 줄여요.
 
 ```cpp
-    // csrc/optimize/lsq.cpp
+        // csrc/optimize/lsq.cpp
         // MINPACK's fdjac2: h = sqrt(max(epsfcn, eps)) |x_j| (that at 0), the step actually
-        // taken ((x_j + h) - x_j) in the quotient (nls) or h itself (MINPACK; root); backwards
-        // when forwards leaves the bounds or the model is not finite there.
+        // taken ((x_j + h) - x_j) in the quotient (nls) or h itself (MINPACK; root); within
+        // bounds the step is scipy's adjust_one_sided (backwards when forwards leaves them and
+        // backwards fits, else the distance to the farther bound), and backwards when the
+        // model is not finite forwards.
         const double eps = std::sqrt(std::max(epsfcn, kEps));
         for (lint j = 0; j < p; ++j) {
             const double t = x[j];
             double h = eps * std::abs(t);
             if (h == 0) h = eps;
-            if (ub && t + h > (*ub)[j]) h = -h;
+            if (lb) h = adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
             bool ok = false;
             for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
                 if (attempt == 1) {
@@ -347,7 +354,6 @@ $$
             if (!ok) return false;
         }
         return true;
-    }
 ```
 
 ### 띠 야코비안의 묶음
@@ -408,7 +414,7 @@ True
 
 ## approx_fprime의 기본: 간격을 고르는 5점 차분
 
-`approx_fprime`과 `check_grad`의 기본은 반복 안에서 쓰는 것이 아니라 한 번의 정확한 결과를 위한 차분이에요. 그래서 scipy와 같을 필요가 없고, 함수를 더 불러서라도 오차를 줄여요. `sd.regression.nls`가 해에서의 야코비안을 구할 때도 같은 코드를 써요. 세 가지로 이뤄져요.
+`approx_fprime`과 `check_grad`의 기본은 반복 안에서 쓰는 것이 아니라 한 번의 정확한 결과를 위한 차분이에요. 그래서 scipy의 차분을 따르지 않고, 함수를 더 불러서라도 오차를 줄여요. `sd.regression.nls`가 해에서의 야코비안을 구할 때도 같은 코드를 써요. 세 가지로 이뤄져요.
 
 **5점 스텐실.** 중앙 5점 차분은 절단 오차가 $h^4$이에요. 경계(nls)나 한쪽에서 함수가 유한하지 않을 때는 한쪽 5점 차분
 
@@ -433,24 +439,34 @@ $$
 
 ```python
     # src/stardust/optimize/_diff.py
-    def choose_step(self, x, j, g0):
-        """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
-        consecutive estimates get closer by more than 8 times; the last such estimate and its
-        step."""
-        base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
+    def _descend(self, x, j, g0, e0, first=None, strict=True):
+        """The search from the step 2^e0 down by factors of 4 (12 steps): the estimate where
+        consecutive ones stop getting closer by more than 8 times. first: (column, fits) at
+        2^e0 when just computed. strict: the second estimate is not taken over the first when
+        it is rounding noise (within _NOISE_FACTOR of its rounding level, regression G88's test)
+        and the first is not."""
         best = hbest = None
         dprev = math.inf
         prev = None
-        for e in range(_FD_START, _FD_END - 1, -2):
-            h = math.ldexp(1.0, base + e)
-            col = self.column(x, j, h, g0)
+        prev_ok = False  # the first estimate is not rounding noise
+        fits = False
+        for e in range(e0, e0 + _FD_END - _FD_START - 1, -2):
+            h = math.ldexp(1.0, e)
+            if first is not None and e == e0:
+                col, self.fits = first
+            else:
+                col = self.column(x, j, h, g0)
+            fits = fits or self.fits
             if col is None:
                 if best is not None:
                     break
                 continue
             if prev is None:
                 best, hbest = col, h
+                prev_ok = strict and self._rounding(col, j) * _NOISE_FACTOR < 1
             else:
+                if prev_ok and dprev == math.inf and self._rounding(col, j) * _NOISE_FACTOR >= 1:
+                    break
                 sc = float(_sd.max(_sd.abs(col)))
                 dd = float(_sd.max(_sd.abs(col - prev))) / sc if sc > 0 else 0.0
                 if dd >= dprev / 8:
@@ -460,6 +476,7 @@ $$
                 if dd == 0:
                     break
             prev = col
+        self.fits = fits
         return best, hbest
 ```
 
@@ -492,13 +509,49 @@ e=-14  h=2^-13  err=4.7e-13  d=6.7e-13  stop
 True
 ```
 
-$e = -10$에서 $-12$로 갈 때 $d$가 $1.2 \times 10^{-10}$에서 $3.2 \times 10^{-13}$으로 줄었으니(8배보다 훨씬 많이) 받아들이고, $-14$에서는 $d$가 오히려 커져서 멈춰요. 오차 곡선의 바닥($10^{-13}$ 근처)을 실제 오차를 모른 채 찾아낸 셈이에요. 둘째 추정은 견줄 앞의 차이가 없어 늘 받아들이므로, 출발점을 작게 잡으면 고른 간격도 한 단계 작아져요. 그래서 출발점은 넉넉하게 큰 $2^{-8}$이에요.
+$e = -10$에서 $-12$로 갈 때 $d$가 $1.2 \times 10^{-10}$에서 $3.2 \times 10^{-13}$으로 줄었으니(8배보다 훨씬 많이) 받아들이고, $-14$에서는 $d$가 오히려 커져서 멈춰요. 오차 곡선의 바닥($10^{-13}$ 근처)을 실제 오차를 모른 채 찾아낸 셈이에요. 둘째 추정은 견줄 앞의 차이가 없어 대개 받아들이므로, 출발점을 작게 잡으면 고른 간격도 한 단계 작아져요. 그래서 출발점은 넉넉하게 큰 $2^{-8}$이에요. 다만 둘째 추정이 반올림 잡음(열의 노름이 [반올림 수준](#반올림-수준의-열)의 16배 이하)이고 첫째가 아니면, 둘째를 받지 않고 첫째를 써요.
+
+**0에 아주 가까운 $x_j$.** 처음 간격은 $\lvert x_j\rvert$에 비례하므로, $x_j$가 함수가 변하는 척도보다 훨씬 작으면(예: $x_j = 10^{-12}$인데 함수는 1 크기에서 변할 때) 처음 간격 $2^{-8}\lvert x_j\rvert$부터 함숫값의 차이가 반올림에 묻혀요. 그대로 내려가면 반올림만 남은 추정을 고르게 돼요. 그래서 처음 열의 반올림 한계가 열 크기의 $2^{-26}$($\sqrt\varepsilon$)을 넘으면 먼저 간격을 키워요.
+
+```python
+    # src/stardust/optimize/_diff.py
+    def choose_step(self, x, j, g0):
+        """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
+        consecutive estimates get closer by more than 8 times; the last such estimate and its
+        step. A start at rounding level is moved up first (_grow); when no larger step leaves
+        rounding level (a column that is 0 or noise) the search is the plain one from the start."""
+        base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
+        e0 = base + _FD_START
+        col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
+        if col0 is None or math.ldexp(1.0, e0) >= _FD_CAP or self._rounding(col0, j) <= _ROUNDING_TOL:
+            return self._descend(x, j, g0, e0, (col0, self.fits))
+        fits0 = self.fits
+        e = self._grow(x, j, g0, e0, col0)
+        if e is not None:
+            best, hbest = self._descend(x, j, g0, e)
+            if best is not None:
+                return best, hbest
+        best, hbest = self._descend(x, j, g0, e0, strict=False)
+        self.fits = self.fits or fits0
+        return best, hbest
+```
+
+`_grow`는 반올림 한계와 열 크기의 비로 간격을 한 번에 키우고, 그 뒤 4배씩 더 키우며 이웃한 두 추정의 차이가 두 반올림 한계의 합을 넘을 때(절단 오차가 보이기 시작할 때)나 $x_j = 0$일 때의 처음 간격 $2^{-7}$에 닿을 때 멈춰요. 거기서 보통의 찾기를 해요. 어느 간격에서도 열이 반올림 수준이면(참값이 0인 열) 처음 간격에서 보통의 찾기를 해요. 그래서 $x_j = 10^{-12}$나 $10^{-300}$에서도 $x_j = 0$일 때와 같은 정확도가 나와요.
+
+```python
+>>> for t in (0.0, 1e-12, 1e-300):
+...     d = sd.optimize.approx_fprime([t], lambda v: math.exp(v[0]))[0]
+...     print(t, f'{abs(d - math.exp(t)):.1e}')
+0.0 3.8e-14
+1e-12 6.1e-14
+1e-300 3.8e-14
+```
 
 스텐실의 점이 경계 밖이거나 값이 유한하지 않으면 그 간격에서는 다음 스텐실(앞쪽, 뒤쪽 한쪽 5점)을 써 보고, 어느 것도 안 되면 다음 간격으로 넘어가요. 어느 간격에서도 추정이 하나도 없으면 `approx_fprime`이 `ValueError`(`'f' is not finite near the point (the differences of variable 0)`)를 내요.
 
 ### 셈과 비용
 
-간격 하나에 함수를 4번 불러요(중앙 스텐실은 $x$를 쓰지 않고, 한쪽 스텐실의 $f(x)$는 이미 있어요). 보통 간격 두세 개에서 멈추므로 변수 하나에 8–20번쯤이에요. Rosenbrock은 변수마다 10–12번, $e^{x_0}\sin x_1$은 18번이었어요.
+간격 하나에 함수를 4번 불러요(중앙 스텐실은 $x$를 쓰지 않고, 한쪽 스텐실의 $f(x)$는 이미 있어요). 처음 두 간격에 8번이고 간격을 하나 더 볼 때마다 4번이라, 변수 하나에 8번 이상이에요. MGH 47경우에서는 변수마다 평균 8–24번, 초등 함수 11개($x^2$, $x^3$, $x^7$, $1/x$, $\sqrt x$, $\cos$, $\sin$, $\exp$, $\log$, $\arctan$, $\tanh$)를 0.01–100의 9점에서 재면 8–28번(대부분 8–20번)이에요. $\cos$, $\sin$, $\exp$는 $\lvert x\rvert$가 클수록 많아 $x = 100$에서 28번이에요. Rosenbrock은 변수마다 10–12번, $e^{x_0}\sin x_1$은 18번이에요.
 
 | $n$ (Rosenbrock) | 기본: 호출 수 | 기본: 시간 | `epsilon=2**-26` | scipy `approx_fprime` |
 |---:|---:|---:|---:|---:|
@@ -555,7 +608,7 @@ def _forward(f, x, f0, eps, m, func, what):
     return _sd.stack(cols, axis=1)
 ```
 
-같은 함수라면 scipy와 부르는 점이 같고 결과가 비트까지 같아요. MGH 47경우의 기울기와 야코비안에서 `epsilon=2**-26`(scipy의 기본)의 결과가 scipy와 모두 같아요. 기본과 달리 `xk`에서 함수가 유한하지 않아도 계산해요.
+같은 함수라면 지금은 scipy와 부르는 점이 같고 결과도 비트까지 같아요. MGH 47경우의 기울기와 야코비안에서 `epsilon=2**-26`(scipy의 기본)의 결과가 scipy와 모두 같아요. 기본과 달리 `xk`에서 함수가 유한하지 않아도 계산해요.
 
 ## check_grad
 

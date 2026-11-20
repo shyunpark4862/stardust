@@ -16,21 +16,21 @@ import Steps from '../../../components/fig/Steps.astro';
 
 `sd.frame.read_csv(path)`는 CSV 파일을 읽어 [DataFrame](/api/frame/dataframe/)을 만들어요. 옵션과 결과 규칙은 [API 문서](/api/frame/read_csv/)에 있고, 이 글은 그 안에서 바이트가 어떻게 컬럼이 되는지를 설명해요.
 
-일은 거의 모두 C++ 함수 하나, `sd::frame::read_csv`(`csrc/frame/io/csv.cpp`)가 해요. Python 층(`src/stardust/frame/_io.py`)은 인자를 검사하고, 파일을 통째로 `bytes`로 읽어 넘기고, 돌아온 컬럼으로 DataFrame을 조립할 뿐이에요.
+일은 거의 모두 C++ 함수 하나, `sd::frame::read_csv`(`csrc/frame/io/csv.cpp`)가 해요. Python 층(`src/stardust/frame/_io.py`)은 인자를 검사하고, 파일을 `bytes`로 읽어 넘기고, 돌아온 컬럼으로 DataFrame을 조립할 뿐이에요.
 
 <Fig column caption="read_csv 한 번이 지나는 단계. 들여쓴 줄은 청크마다 병렬로 도는 일이에요.">
   <Steps
     steps={[
-      { label: 'read_csv(path, ...)', where: '_io.py', note: '인자 검사(sep은 따옴표·줄바꿈이 아닌 ASCII 한 글자, nrows ≥ 0 등). open(path, "rb").read()로 파일 전체를 bytes 하나로 읽어요.' },
+      { label: 'read_csv(path, ...)', where: '_io.py', note: '인자 검사(sep은 따옴표·줄바꿈이 아닌 ASCII 한 글자, nrows ≥ 0 등). open(path, "rb").read()로 파일 전체를 bytes 하나로 읽어요. nrows가 있으면 그 레코드가 끝나는 곳까지만 읽어요.' },
       { label: '_core.read_csv(data, ...)', where: 'bind/frame_bind.cpp', note: 'bytes의 포인터와 길이를 복사 없이 C++에 넘겨요.' },
       { label: 'Unlocked(size)', where: 'frame/parallel.hpp', note: '입력이 2¹⁷바이트 이상이면 GIL을 놓아요. 이 아래는 Python 객체를 만지지 않아요.' },
       { label: '헤더 토큰화', where: 'io/csv.cpp', note: '첫 레코드에서 컬럼 이름을 얻고(BOM은 건너뛰어요), usecols를 파일 컬럼 번호로 바꿔요.' },
-      { label: '청크 나누기', note: '본문을 512KB(2¹⁹바이트) 청크로 나눠요. nrows가 있거나 풀을 쓸 수 없으면 청크 하나예요.' },
+      { label: '청크 나누기', note: '본문을 512KB(2¹⁹바이트) 청크로 나눠요. nrows가 있거나 풀을 쓸 수 없으면 토크나이저 하나가 순서대로 읽으며 512KB마다 새 청크를 열어요.' },
       { label: 'odd_quotes', depth: 1, note: '청크마다 따옴표 개수의 홀짝. 누적 XOR로 각 청크의 시작이 따옴표 안인지 정확히 알아요.' },
-      { label: 'Tokenizer', depth: 1, note: '청크 안에서 시작하는 레코드를 structural index로 토큰화하고, 읽을 컬럼의 Field(16바이트)를 쌓아요.' },
-      { label: 'ColumnReader::read', note: '컬럼마다 차례로. 청크마다 병렬로 추론하면서 값을 최종 버퍼에 바로 써요.' },
-      { label: 'parse_int64 / parse_double', depth: 1, where: 'ops/parse.hpp', note: '엄격한 문법 검사와 숫자 변환을 한 패스에. float는 Clinger → Eisel–Lemire → from_chars.' },
-      { label: '종류 합치기', depth: 1, note: '청크들의 결과(int < float < text)를 합치고, 필요하면 bool이나 string으로 다시 만들어요.' },
+      { label: 'Tokenizer + ChunkReader::add', depth: 1, note: '청크 안에서 시작하는 레코드를 structural index로 토큰화하고, 읽을 컬럼의 필드를 바로 그 청크의 컬럼 조각(Part)에 값으로 써요. 타입 추론도 여기서 해요.' },
+      { label: 'parse_int64 / parse_double', depth: 2, where: 'ops/parse.hpp', note: '엄격한 문법 검사와 숫자 변환을 한 패스에. float는 Clinger → Eisel–Lemire → from_chars.' },
+      { label: 'ColumnBuilder::build', note: '컬럼마다 차례로. 청크들의 조각을 최종 버퍼로 옮기고 그 조각을 바로 버려요.' },
+      { label: '종류 합치기', depth: 1, note: '조각들의 종류(int < float < text)를 합치고, 필요하면 bool이나 string으로 만들어요.' },
       { label: 'DataFrame._new', where: '_frame.py', note: 'index_col이 있으면 그 컬럼을 Index로 옮겨요.' },
     ]}
   />
@@ -40,7 +40,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 1. **파일에 적힌 것과 다른 값이 나오지 않아요.** 모호한 것은 추측하지 않아요. `" 1"`은 숫자가 아니라 문자열이고, `true`는 bool이 아니라 문자열이고, `NaN`은 결측이 아니라 float의 NaN 값이에요. 형식이 틀린 파일은 고쳐 읽지 않고 줄 번호와 함께 `ValueError`를 내요. 예외는 숫자의 반올림 하나예요. float 컬럼 안의 큰 정수는 float64로 반올림돼요.
 2. **바이트마다 분기하지 않는 토크나이저.** 64바이트 블록을 "따옴표", "구분 문자", "줄바꿈" 세 개의 64비트 마스크로 바꾸고, 캐리 없는 곱셈 한 번으로 "따옴표 안" 마스크를 만들어요. 필드 경계는 마스크의 켜진 비트를 하나씩 꺼내서 찾아요. simdjson이 JSON에 쓴 structural index 기법이에요[3].
-3. **한 번에 읽어요.** 토크나이저가 필드를 찾는 즉시 그 위치(복사하지 않은 16바이트 `Field`)를 컬럼별 배열에 써요. 타입 추론은 값을 만들면서 해요. int로 읽다가 int가 아닌 값을 만나면 그때 float로 바꿔 계속 읽어요.
+3. **한 번에 읽어요.** 토크나이저가 필드를 찾는 즉시 그 값을 청크의 컬럼 조각에 써요. 필드의 위치를 모아 두었다가 다시 읽지 않아요. 타입 추론은 값을 만들면서 해요. int로 읽다가 int가 아닌 값을 만나면 그때 float로 바꿔 계속 읽어요. 컬럼은 하나씩 만들고 다 옮긴 조각은 바로 버려서, 메모리는 결과와 아직 만들지 않은 컬럼의 조각만큼이에요.
 4. **숫자 파서를 직접 구현해요.** 십진수 문자열을 가장 가까운 double로 바꾸는 일(올바른 반올림)은 생각보다 어려워요. Clinger의 빠른 길[5], Eisel–Lemire 알고리즘[1], 5의 거듭제곱 표를 `ops/parse.hpp`에 직접 썼고, 드문 경우만 `std::from_chars`로 넘겨요. 결과는 Python `float(text)`와 비트까지 같아요.
 5. **결과가 스레드 수와 무관해요.** 파일을 바이트 청크로 나눠 병렬로 읽지만, 청크 경계가 따옴표 안인지는 따옴표 개수의 홀짝으로 정확히 알아내요. 추측하고 틀리면 다시 읽는 방식이 아니에요. 값, dtype, 에러 메시지까지 직렬로 읽은 것과 같아요.
 
@@ -214,7 +214,7 @@ return at;
 
 따옴표 개수가 홀수인 채 입력이 끝나면, 열린 필드가 따옴표로 시작했는지 보고 `a quoted field is never closed`와 `a quote inside an unquoted field` 중 하나를 골라요. `x"y`처럼 따옴표 없는 필드의 따옴표 하나 때문에 파일 끝까지 "따옴표 안"이 되어 버린 경우에도 원인에 맞는 메시지가 나와요.
 
-`quotes_`는 블록마다 8바이트라 토크나이저가 지나간 입력의 1/8만큼 메모리를 써요(파일 40MB면 5MB). 필드 검사가 입력을 다시 비교하지 않고 이미 만든 마스크를 쓰려고 치르는 비용이에요.
+`quotes_`는 블록마다 8바이트예요. 필드 검사가 입력을 다시 비교하지 않고 이미 만든 마스크를 쓰려고 남겨 두는 것인데, 필드 검사가 보는 것은 지금 레코드의 필드뿐이에요. 그래서 토크나이저는 현재 레코드가 시작한 블록보다 앞의 마스크를 버려요. 버리는 일은 1,024블록(64KB)이 쌓일 때마다 한 번이에요(`kKeepQuoteBlocks`). 직렬로 파일 전체를 읽어도 마스크가 파일 크기의 1/8씩 자라지 않아요.
 
 **`\r`.** 줄바꿈으로 끝나는 필드는 마지막 바이트가 `\r`이면 그것을 떼어요(`\r\n` 줄 끝). 다른 곳의 `\r`은 값이에요. 따옴표 필드는 `\r`을 뗀 뒤에 "마지막 바이트가 닫는 따옴표인가"를 검사하므로, `"x"\r\n`은 받고 `"x"\r,y`는 에러예요.
 
@@ -222,16 +222,16 @@ return at;
 
 ### 토크나이저가 시간의 전부는 아니에요
 
-같은 조건(float 1M 행 파일, 1스레드, Apple M4 Pro)에서 토크나이저만 바이트 상태 기계와 structural index로 바꿔 파일 전체를 읽는 시간을 비교하면 73.6ms와 64.8ms예요. 12% 차이로, 기대보다 작아요. 읽기 시간의 대부분은 토크나이저 뒤의 두 일, 곧 필드를 레코드별 벡터에 모았다가 컬럼별로 옮기는 일과 숫자 변환이 차지해요. 다음 두 절이 그 두 곳을 다뤄요.
+같은 조건(float 1M 행 파일, 1스레드, Apple M4 Pro)에서 토크나이저만 바이트 상태 기계와 structural index로 바꿔 파일 전체를 읽는 시간을 비교하면 73.6ms와 64.8ms예요. 12% 차이로, 기대보다 작아요. 그 측정에서 읽기 시간의 대부분은 토크나이저 뒤의 두 일, 곧 필드를 레코드별 벡터에 모았다가 컬럼별로 옮기는 일과 숫자 변환이 차지했어요. 다음 두 절이 그 두 곳을 다뤄요.
 
 ## 한 번에 읽기: Field와 sink
 
-### 필드는 16바이트 위치예요
+### 필드는 16바이트 위치이고, 바로 값이 돼요
 
 토크나이저의 `next(sink)`는 레코드 하나를 읽으면서 필드를 찾을 때마다 `sink(열 번호, Field)`를 불러요. `Field`는 값이 아니라 위치예요.
 
 ```cpp
-// io/csv.cpp
+// csrc/frame/io/csv.cpp
 struct Field {              // 16바이트
     std::int64_t  start;    // 입력에서 값이 시작하는 바이트 (따옴표 필드는 여는 따옴표 다음)
     std::uint32_t length;   // 값의 바이트 수 (따옴표 제외)
@@ -240,9 +240,11 @@ struct Field {              // 16바이트
 ```
 
 - 복사하지 않아요. 값은 입력 `bytes` 안에 그대로 있고 `Field`는 그곳을 가리켜요. `""`가 있는 필드만 값을 만들 때 작업 문자열로 복사해요(`text_of`).
-- 16바이트예요. 길이를 `uint32_t`로 두어 24바이트가 아니라 16바이트예요. 1M 행 × 4열이면 `Field`가 6,400만 바이트예요. 이것을 쓰고 다시 읽는 비용이 작지 않아서 칸 하나를 작게 둬요. 대가로 4GB 이상인 필드 하나는 받지 않아요(`a field of 4 GB or more` 에러).
-- 읽을 컬럼만 저장해요. sink는 `slot[열 번호]`를 보고, `usecols`에 없는 컬럼의 필드는 버려요. 토큰화는 모든 바이트를 지나야 하지만, 저장과 변환은 고른 컬럼에만 해요.
-- 청크마다 컬럼별 배열에 바로 써요. `Chunk::fields[j]`가 출력 컬럼 `j`의 필드 배열이고, `Chunk::starts`는 레코드마다 시작 바이트예요(에러의 줄 번호를 찾을 때만 써요). 레코드마다 필드 벡터를 채웠다가 컬럼별로 옮기는 중간 단계가 없어요.
+- 16바이트예요. 길이를 `uint32_t`로 두어 24바이트가 아니라 16바이트예요. 대가로 4GB 이상인 필드 하나는 받지 않아요(`a field of 4 GB or more` 에러).
+- 읽을 컬럼만 다뤄요. sink는 `slot[열 번호]`를 보고, `usecols`에 없는 컬럼의 필드는 버려요. 토큰화는 모든 바이트를 지나야 하지만, 변환과 저장은 고른 컬럼에만 해요.
+- `Field`는 모아 두지 않아요. sink(`ChunkReader::add`)가 받은 필드를 바로 값으로 바꿔 그 청크의 출력 컬럼 `j`의 조각 `Chunk::parts[j]`(`Part`)에 써요. `Chunk::starts`는 레코드마다 시작 바이트예요(에러의 줄 번호를 찾을 때 써요). 레코드마다 필드 벡터를 채웠다가 컬럼별로 옮기는 중간 단계도, 필드 위치의 배열도 없어요.
+
+모든 필드의 `Field`를 끝까지 모은 뒤 컬럼을 만들면, 숫자 한 자리 같은 짧은 필드에서 필드당 16바이트가 원본의 8배예요. 20열 × 125만 행(50MB) 파일을 읽는 동안의 최대 메모리가 그렇게 하면 1스레드 1,047MB이고, 값을 바로 쓰면 462MB예요(결과 200MB, 원본 50MB).
 
 같은 조건(1M 행, 1스레드)에서 레코드 벡터를 거쳐 컬럼별로 옮긴 뒤 추론하는 방식과, 필드를 컬럼 배열에 바로 쓰고 값을 만들면서 추론하는 방식을 비교하면 float 파일이 64.8ms와 48.6ms, int 파일이 52.1ms와 28.7ms예요.
 
@@ -263,18 +265,20 @@ std::int64_t line_at(const char* p, std::int64_t offset) {
 
 ### 메모리
 
-1M 행 × 4열 파일(약 40MB)을 읽는 동안 메모리에 함께 올라가는 것이에요.
+파일을 읽는 동안 메모리에 함께 올라가는 것이에요.
 
 | 무엇 | 크기 |
 |---|---|
-| 파일 내용 (`bytes`) | 파일 크기 |
-| `Field` 배열 | 16바이트 × 행 × 읽는 열 |
+| 파일 내용 (`bytes`) | 파일 크기 (`nrows`가 있으면 그 레코드가 끝나는 곳까지) |
+| 컬럼 조각 (`Part`) | 아직 만들지 않은 컬럼마다 int64·float64는 8바이트 × 행, string은 값의 바이트 + 끝 위치 8바이트 × 행, 유효 표시 1바이트 × 행 |
 | `starts` | 8바이트 × 행 |
-| `quotes_` | 파일 크기의 1/8 |
+| `quotes_` | 토크나이저마다 1,024블록(8KB)과 레코드 하나 분량 |
 | 결과 컬럼의 값 | int64·float64는 8바이트 × 행, string은 바이트 + offsets 8바이트 × 행 |
 | 유효 표시 `valid` | 1바이트 × 행 (컬럼 하나를 만드는 동안만) |
 
-파일 전체를 한 번에 메모리로 읽는 구조라서, 메모리보다 큰 파일은 읽을 수 없어요. 앞에서부터 조금씩 읽어 내보내는 스트리밍 읽기는 없어요. 타입 추론은 열 전체를 본 뒤에야 dtype을 정하고(뒤의 타입 추론 절), 청크 나누기도 파일 전체의 따옴표 홀짝을 써요.
+컬럼은 하나씩 만들어요. 한 컬럼의 조각들을 최종 버퍼로 옮기면 그 조각을 바로 버리니, 조각과 결과가 함께 있는 것은 아직 만들지 않은 컬럼뿐이에요.
+
+`nrows`가 없으면 파일 전체를 한 번에 메모리로 읽는 구조라서, 메모리보다 큰 파일은 읽을 수 없어요. 앞에서부터 조금씩 읽어 내보내는 스트리밍 읽기는 없어요. 타입 추론은 열 전체를 본 뒤에야 dtype을 정하고(뒤의 타입 추론 절), 청크 나누기도 파일 전체의 따옴표 홀짝을 써요.
 
 ## 숫자 파싱
 
@@ -532,65 +536,99 @@ int64 범위 밖의 정수만 있는 열도 float64예요. list는 이 경우 `O
 
 ### 값을 만들면서 추론하기
 
-추론을 따로 한 번 돌고 값을 다시 한 번 읽으면 숫자를 두 번 파싱해요. `ColumnReader::read`는 한 번에 해요. 청크마다 상태 `Kind`(`Int`, `Float`, `Text` 순서)를 두고 필드를 차례로 봐요.
+추론을 따로 한 번 돌고 값을 다시 한 번 읽으면 숫자를 두 번 파싱해요. stardust는 토큰화하면서 한 번에 해요. sink(`ChunkReader::add`)가 필드를 받는 즉시 그 청크의 컬럼 조각 `Part`에 값으로 쓰고, 조각은 지금까지의 종류 `kind`(`Int`, `Float`, `Text` 순서)를 들고 있어요.
 
 ```cpp
-// io/csv.cpp, ColumnReader::read의 청크 하나 (발췌)
-Column col = make_fixed(DType::Int64, n_);          // int64와 double이 같은 8바이트 칸을 나눠 써요
-auto* iv = reinterpret_cast<std::int64_t*>(col.values->data());
-auto* dv = reinterpret_cast<double*>(col.values->data());
-Kind kind = Int;
-for (i = 0; i < f.size() && kind != Text; ++i) {
-    if (is_na(f[i])) { valid[row] = 0; iv[row] = 0; continue; }
-    valid[row] = 1;
-    s = text_of(base_, f[i], scratch);
-    if (kind == Int) {
-        if (parse_int64(s, v) == 1) { iv[row] = v; continue; }
-        if (!parse_double(s, d)) { kind = Text; continue; }      // 숫자가 아님: 이 청크는 끝
-        kind = Float;                                            // 지금까지의 int를 double로
-        for (k = r0; k < row; ++k) if (valid[k]) dv[k] = static_cast<double>(iv[k]);
-        dv[row] = d;
-        continue;
-    }
-    if (parse_int64(s, v) == 1) dv[row] = static_cast<double>(v);  // float 컬럼의 int: 반올림
-    else if (!parse_double(s, dv[row])) kind = Text;
+// csrc/frame/io/csv.cpp
+struct Part {
+    enum Kind : std::uint8_t { Int, Float, Text };
+    Kind kind = Int;        // 추론: 이 청크의 값이 지금까지 무엇인가
+    bool any = false;       // NA가 아닌 값이 있는가
+    bool all_bool = true;   // Text: 모든 값이 True나 False인가
+    std::vector<std::uint8_t> valid;  // 행마다 1은 값, 0은 NA
+    std::vector<std::int64_t> num;    // Int, Float, 지정한 int64와 float64: 행마다 int64나 double의 비트
+    std::vector<std::uint8_t> flag;   // 지정한 bool: 행마다 0이나 1
+    std::string bytes;                // Text와 지정한 string: 값을 이어 붙인 바이트
+    std::vector<std::int64_t> ends;   // 행마다 `bytes` 안에서 끝나는 자리
+    std::int64_t bad = -1;  // 지정한 dtype으로 읽을 수 없거나 올바른 UTF-8이 아닌 첫 행
+    std::string bad_text;   // 지정한 숫자나 bool: 그 행의 텍스트
+};
+```
+
+```cpp
+// csrc/frame/io/csv.cpp, ChunkReader::add (줄인 발췌)
+if (is_na(f, scratch)) {
+    p.valid.push_back(0);
+    if (p.kind == Part::Text) p.ends.push_back(static_cast<std::int64_t>(p.bytes.size()));
+    else p.num.push_back(0);
+    return;
 }
-kinds[c] = kind;
+p.valid.push_back(1);
+p.any = true;
+const std::string_view s = text_of(data_, f, scratch);
+switch (p.kind) {
+    case Part::Int:
+        if (text::parse_int64(s, v) == 1) {
+            p.num.push_back(v);
+            return;
+        }
+        if (text::parse_double(s, d)) {  // int64 밖의 int는 float 문법
+            p.kind = Part::Float;  // 이 청크의 지금까지의 int를 double로 (list 추론처럼 반올림)
+            for (std::size_t k = 0; k < p.num.size(); ++k)
+                if (p.valid[k]) p.num[k] = bits_of(static_cast<double>(p.num[k]));
+            p.num.push_back(bits_of(d));
+            return;
+        }
+        break;  // 숫자가 아님: 텍스트
+    case Part::Float:
+        if (text::parse_int64(s, v) == 1) {  // float 컬럼의 int: 반올림
+            p.num.push_back(bits_of(static_cast<double>(v)));
+            return;
+        }
+        if (text::parse_double(s, d)) {
+            p.num.push_back(bits_of(d));
+            return;
+        }
+        break;
+    case Part::Text: return append_text(p, s, row);
+}
+to_text(ch, j, row);
+append_text(p, s, row);
 ```
 
 <Fig caption="한 청크에서 int로 읽다가 float를 만나는 순간. 같은 8바이트 칸에 int64로 쓰던 앞의 값들(1, 2)을 그 자리에서 double로 바꾸고, 셋째 값부터 double로 계속 써요.">
   <ArrayFig name="필드" data={['1', '2', '0.5', '', '7']} tones={['', '', 'b', 'g', '']} />
   <Op note="int로 읽는 중">→</Op>
-  <ArrayFig name="values (int64)" data={[1, 2, '?', '', '']} tones={['', '', 'b', 'm', 'm']} />
+  <ArrayFig name="num (int64)" data={[1, 2, '?', '', '']} tones={['', '', 'b', 'm', 'm']} />
   <Op note="0.5에서 Float로">→</Op>
-  <ArrayFig name="values (double)" data={['1.0', '2.0', '0.5', '0', '7.0']} tones={['a', 'a', 'b', 'g', '']} note="NA 칸(점선)은 0, valid = 0" />
+  <ArrayFig name="num (double의 비트)" data={['1.0', '2.0', '0.5', '0', '7.0']} tones={['a', 'a', 'b', 'g', '']} note="NA 칸(점선)은 0, valid = 0" />
 </Fig>
 
-- int64와 double이 같은 버퍼를 써요. 둘 다 8바이트라서 버퍼를 하나만 잡고, int에서 float로 바뀔 때 앞의 값들을 제자리에서 바꿔요. 이 변환은 청크 안에서 한 번만 일어나요.
-- `Text`가 되면 그 청크는 바로 멈춰요. 문자열 컬럼의 첫 필드 `"key74"`는 `parse_int64`와 `parse_double`이 첫 바이트에서 실패하니, 청크마다 필드 한 개만 보고 끝나요.
-- NA 판정이 가장 먼저예요. 따옴표 없는 빈 필드는 길이와 플래그만 보면 되고, `na_values`가 있을 때만 필드 텍스트로 해시 집합을 찾아봐요. NA 칸의 값은 0으로 써요. frame의 모든 컬럼에서 NA 자리의 값은 0이에요([컬럼과 메모리](/internals/frame/columns/)).
+- int64와 double이 같은 벡터(`num`)를 써요. 둘 다 8바이트라서, int에서 float로 바뀔 때 앞의 값들을 제자리에서 바꿔요. 이 변환은 조각마다 한 번만 일어나요.
+- `Text`가 되면 그 조각의 앞 행들을 입력에서 다시 토큰화해 문자열로 바꾸고(`to_text`), 그 뒤로는 바이트와 끝 위치를 쌓아요. 문자열 컬럼은 보통 첫 필드부터 숫자가 아니라서 다시 읽을 행이 없어요.
+- NA 판정이 가장 먼저예요. 따옴표 없는 빈 필드는 길이와 플래그만 보면 돼요. `na_values`가 있으면 그 텍스트들의 길이 집합으로 먼저 걸러서(`NaSet`), 그 길이의 텍스트가 없는 필드는 해시를 계산하지 않아요. 길이가 맞는 필드만 해시 집합에서 `string_view`로 찾아요(새 `std::string`을 만들지 않아요). NA 칸의 값은 0으로 써요. frame의 모든 컬럼에서 NA 자리의 값은 0이에요([컬럼과 메모리](/internals/frame/columns/)).
+- 조각의 벡터는 청크의 첫 레코드 길이로 행 수를 어림해 미리 잡아요(`reserve`). 몇 번씩 자라며 옮기지 않아요.
 
-모든 청크가 끝나면 청크의 종류를 합쳐요.
+모든 청크를 읽으면 컬럼을 하나씩 만들어요(`ColumnBuilder::build`). 먼저 조각들의 종류를 합쳐요.
 
 1. NA가 아닌 값이 하나도 없으면 float64 전체 NA 컬럼이에요.
-2. 종류는 청크들의 최댓값이에요(`Int < Float < Text`).
-3. `Float`면 `Int`로 끝난 청크들의 값을 double로 바꿔요(이것도 청크마다 병렬).
-4. `Text`면 지금까지 쓴 숫자를 버리고, 모든 필드가 `True`/`False`인지 확인해서(`all_bool`, 하나라도 아니면 모든 청크가 일찍 멈춰요) bool이나 string으로 다시 만들어요.
+2. 종류는 조각들의 최댓값이에요(`Int < Float < Text`).
+3. `Float`면 `Int`로 끝난 조각들의 값을 double로 바꿔요(청크마다 병렬).
+4. `Text`면 `Text` 조각의 값이 모두 `True`/`False`이고 나머지 조각이 모두 NA일 때 bool이에요. 아니면 string이고, 숫자만 있던 조각은 그 청크만 입력에서 다시 읽어 문자열로 바꿔요.
 
-bool을 숫자 뒤에서 확인하는 것은 규칙의 순서 그대로예요. `True`, `False`는 숫자 문법이 아니니 숫자 추론은 첫 필드에서 `Text`로 끝나고, 비용은 bool 확인 한 번과 bool 값 만들기 한 번이에요.
+그다음 청크마다 조각을 최종 버퍼로 옮기고(`memcpy`) 그 조각을 바로 버려요.
 
-### string 컬럼은 두 패스예요
+bool을 숫자 뒤에서 확인하는 것은 규칙의 순서 그대로예요. `True`, `False`는 숫자 문법이 아니니 첫 필드에서 `Text`가 되고, 조각은 값을 쌓으면서 모두 `True`/`False`인지(`all_bool`)를 함께 봐요.
 
-string 컬럼은 모든 값의 바이트를 버퍼 하나에 이어 붙이고 행마다 끝 위치(offsets)를 둬요([컬럼과 메모리](/internals/frame/columns/)). 병렬로 쓰려면 각 청크가 버퍼의 어디부터 쓸지 알아야 해서 두 번 돌아요.
+### string 컬럼 모으기
 
-1. **패스 1:** 청크마다 값의 바이트 수를 더하고 UTF-8을 검사해요. 그 뒤 청크 순서로 누적합을 내면 각 청크의 시작 위치예요.
-2. **패스 2:** 버퍼를 한 번에 잡고, 청크마다 자기 위치부터 바이트를 복사하고 offsets를 써요.
+string 컬럼은 모든 값의 바이트를 버퍼 하나에 이어 붙이고 행마다 끝 위치(offsets)를 둬요([컬럼과 메모리](/internals/frame/columns/)). 조각마다 값의 바이트(`Part::bytes`)와 끝 위치(`ends`)를 이미 모아 두었으니, 조각의 바이트 수를 청크 순서로 누적하면 각 청크가 최종 버퍼의 어디부터 쓸지 알아요. 버퍼를 한 번에 잡고, 청크마다 병렬로 자기 바이트를 복사하고 offsets를 써요.
 
-UTF-8 검사(`valid_utf8`)는 바이트마다 길이(1–4)를 판정하고, 이어지는 바이트가 `10xxxxxx`인지, 같은 글자를 더 긴 바이트로 쓴 overlong 형태가 아닌지, 서로게이트(U+D800–U+DFFF)가 아닌지, U+10FFFF를 넘지 않는지 봐요. Python이 `bytes.decode("utf-8")`로 거부하는 것을 똑같이 거부해서, 결과의 모든 string 값을 Python str로 바꿀 수 있게 해요.
+UTF-8 검사(`valid_utf8`)는 바이트마다 길이(1–4)를 판정하고, 이어지는 바이트가 `10xxxxxx`인지, 같은 글자를 더 긴 바이트로 쓴 overlong 형태가 아닌지, 서로게이트(U+D800–U+DFFF)가 아닌지, U+10FFFF를 넘지 않는지 봐요. Python이 `bytes.decode("utf-8")`로 거부하는 것을 똑같이 거부해서, 결과의 모든 string 값을 Python str로 바꿀 수 있게 해요. 값을 조각에 쌓을 때 검사하고 조각마다 첫 실패 행을 적어 둬요(`Part::bad`). 헤더의 컬럼 이름도 같은 검사를 거쳐요(`column names are not valid UTF-8`).
 
 ### `dtype=`으로 고른 컬럼
 
-`dtype=`으로 dtype을 고른 컬럼은 추론하지 않고 그 dtype으로 엄격하게 읽어요(`ColumnReader::build`). 읽을 수 없는 값이 있으면 `column 'v': cannot read 'x' as int64`처럼 컬럼 이름, 값, 줄 번호와 함께 에러예요. 여러 청크가 병렬로 돌아도 가장 앞의 행이 보고돼요(`FirstRow`, 뒤의 에러 절).
+`dtype=`으로 dtype을 고른 컬럼은 추론하지 않고 그 dtype으로 엄격하게 읽어요(`ChunkReader::add_forced`). 읽을 수 없는 값이 있으면 `column 'v': cannot read 'x' as int64`처럼 컬럼 이름, 값, 줄 번호와 함께 에러예요. 조각마다 첫 실패 행과 그 텍스트를 적어 두고(`Part::bad`, `bad_text`), 실패한 조각은 더 읽지 않아요. 여러 청크를 병렬로 읽어도 가장 앞의 행이 보고돼요(뒤의 에러 절).
 
 유효 표시는 행마다 1바이트 배열 `valid`에 모았다가 마지막에 비트맵으로 접어요. 16K행 청크(64의 배수)마다 접으니 두 스레드가 비트맵의 같은 바이트에 쓰지 않아요. 그 뒤 `finish_fixed`가 NA 개수를 세고, NA가 없으면 비트맵을 떼어 내요.
 
@@ -633,26 +671,29 @@ stardust는 정확히 세요. 따옴표 개수 세기는 파일을 한 번 더 �
 ### 세 단계
 
 ```cpp
-// io/csv.cpp, read_csv (발췌)
-const bool serial = opt.nrows >= 0 || !parallel::available();
-const std::int64_t nchunks = serial ? 1 : max(1, ceil((n - body) / kChunkBytes));   // kChunkBytes = 2^19
-
-// 1. 청크마다 따옴표 개수의 홀짝 (병렬), 그리고 누적 XOR
-parallel_for(nchunks, [&](c) { odd[c] = odd_quotes(data, chunk_begin(c), chunk_end(c)); });
-for (c = 1; c < nchunks; ++c) inside[c] = inside[c - 1] ^ odd[c - 1];
-
-// 2. 청크마다 자기 안에서 시작하는 레코드를 토큰화 (병렬)
-parallel_for(nchunks, [&](c) {
-    first = c == 0 ? body : first_record(data, n, chunk_begin(c), inside[c]);
-    Tokenizer t(data, size, opt.sep, first);
-    while (t.offset() < chunk_end(c)) {             // 끝을 넘어 시작하는 레코드는 다음 청크의 것
-        count = t.next(place);                      // 마지막 레코드는 청크 끝을 넘어서까지 읽어요
-        if (count != width) error("expected N fields, got M");
-        ch.starts.push_back(start);
+// csrc/frame/io/csv.cpp, read_csv (줄인 발췌)
+if (opt.nrows >= 0 || !parallel::available()) {
+    // 토크나이저 하나가 순서대로. 512KB를 지날 때마다 다음 레코드에서 새 청크를 연다
+    Tokenizer t(data, size, opt.sep, body);
+    std::int64_t read = 0;
+    for (bool more = true; more;) {
+        Chunk& ch = chunks.emplace_back();
+        ch.first = t.offset();
+        more = reader.read(ch, t, std::min(n, ch.first + kChunkBytes), limit, read) && t.offset() < n;
     }
-});
-
-// 3. 컬럼마다, 청크마다 추론하고 값을 최종 버퍼에 (병렬), 그 뒤 종류 합치기
+} else {
+    // 1. 청크마다 따옴표 개수의 홀짝 (병렬), 그리고 누적 XOR
+    parallel_for(nchunks, [&](c) { odd[c] = odd_quotes(data, chunk_begin(c), chunk_end(c)); });
+    for (c = 1; c < nchunks; ++c) inside[c] = inside[c - 1] ^ odd[c - 1];
+    // 2. 청크마다 자기 안에서 시작하는 레코드를 토큰화하며 값을 조각에 (병렬)
+    parallel_for(nchunks, [&](c) {
+        ch.first = c == 0 ? body : first_record(data, n, chunk_begin(c), inside[c]);
+        Tokenizer t(data, size, opt.sep, ch.first);
+        reader.read(ch, t, chunk_end(c), INT64_MAX, read);   // 끝을 넘어 시작하는 레코드는 다음 청크의 것
+    });
+}
+// 3. 컬럼마다 조각들의 종류를 합치고 최종 버퍼로 (청크마다 병렬)
+for (std::size_t j = 0; j < out_names.size(); ++j) cols.push_back(builder.build(j, forced[j], out_names[j]));
 ```
 
 <Fig column caption="세 청크로 나눈 파일. 각 청크는 '자기 안에서 시작하는 레코드'를 맡아요. 청크 1의 첫 레코드는 따옴표 밖의 첫 줄바꿈 다음이고, 청크 0은 마지막 레코드를 청크 1 안까지 이어 읽어요. 청크 경계 안쪽의 따옴표 상태(inside)는 앞 청크들의 따옴표 홀짝을 XOR한 값이에요.">
@@ -666,18 +707,21 @@ parallel_for(nchunks, [&](c) {
 
 - **청크의 첫 레코드(`first_record`).** 청크 시작 바로 앞이 따옴표 밖의 줄바꿈이면 청크 시작이 곧 레코드 시작이에요. 아니면 시작 상태(`inside[c]`)에서 출발해 바이트를 하나씩 보며 따옴표를 만날 때마다 상태를 뒤집고, 따옴표 밖의 첫 `\n` 다음을 찾아요. 대개 한 줄 안에서 끝나요.
 - **레코드의 주인.** 청크는 자기 범위 안에서 시작하는 레코드만 맡고, 마지막 레코드는 청크 끝을 넘어서까지 읽어요. 앞 청크의 마지막 레코드가 끝나는 곳과 뒤 청크의 첫 레코드가 시작하는 곳이 같은 "따옴표 밖의 줄바꿈"이에요. 둘 다 같은 정확한 홀짝에서 출발하니 어긋날 수 없어요. 1,500,000바이트짜리 따옴표 필드 하나가 청크 세 개를 덮어도, 그 필드를 담은 레코드는 시작한 청크 하나가 끝까지 읽고, 덮인 청크들은 레코드 시작을 찾지 못해 빈 채로 끝나요(`tests/frame/test_threads.py`의 `test_csv_long_quoted_field_spans_chunks`).
-- **최종 버퍼에 바로 써요.** 청크마다 레코드 수가 정해지면 누적합(`row0`)으로 각 청크의 첫 행 번호를 알아요. 컬럼을 만들 때 청크 `c`는 행 `row0[c]`부터 최종 버퍼에 써요. 청크별 결과를 따로 만들어 이어 붙이는 복사가 없어요.
+- **조각을 최종 버퍼로 옮겨요.** 청크마다 레코드 수가 정해지면 누적합(`row0`)으로 각 청크의 첫 행 번호를 알아요. 컬럼을 만들 때 청크 `c`의 조각은 행 `row0[c]`부터 최종 버퍼로 복사되고 바로 버려져요.
 - **종류 합치기.** 청크 A가 모두 int이고 청크 B에 float가 있으면 열은 float이고, A의 int를 double로 반올림해요. 직렬 추론과 같은 규칙을 열 전체에 적용한 결과예요. 청크 하나가 `Text`면 열은 bool이거나 string이에요.
 
 ### 청크의 크기와 수
 
-청크는 512KB(2¹⁹바이트) 고정이에요. 청크 수는 파일 크기로 정해져요. bench의 float 1M 행 파일(19.6MB)은 38개, 4열 혼합 1M 행 파일(40.9MB)은 79개, 10만 행이면 4개와 8개, 1천 행이면 1개예요. 10스레드에 청크가 수십 개면 스레드마다 여러 청크를 집어 가서, 레코드 길이가 고르지 않아도 일이 고르게 나뉘어요. 청크를 더 작게 하면 청크마다의 고정 비용(첫 레코드 찾기, 토크나이저 준비, 청크별 `Field` 배열)이 늘어요.
+청크는 512KB(2¹⁹바이트) 고정이에요. 청크 수는 파일 크기로 정해져요. bench의 float 1M 행 파일(19.6MB)은 38개, 4열 혼합 1M 행 파일(40.9MB)은 79개, 10만 행이면 4개와 8개, 1천 행이면 1개예요. 10스레드에 청크가 수십 개면 스레드마다 여러 청크를 집어 가서, 레코드 길이가 고르지 않아도 일이 고르게 나뉘어요. 청크를 더 작게 하면 청크마다의 고정 비용(첫 레코드 찾기, 토크나이저 준비, 컬럼마다의 조각)이 늘어요.
 
-다음 경우에는 청크가 하나, 곧 직렬로 읽어요.
+다음 경우에는 토크나이저 하나가 처음부터 순서대로 읽어요.
 
 - `nrows`가 있을 때. 레코드를 처음부터 차례로 `nrows`개까지 읽어야 해요.
 - 풀을 쓸 수 없을 때(`parallel::available()`이 거짓: 1스레드, 다른 병렬 태스크 안, 다른 Python 스레드가 풀을 쓰는 중).
-- 본문이 512KB보다 작을 때.
+
+이때도 512KB를 지날 때마다 다음 레코드에서 새 청크를 열어요. 레코드를 순서대로 읽으니 홀짝 세기가 필요 없고, 조각이 512KB씩 끊겨서 컬럼을 하나씩 만들며 버리는 규칙이 그대로 통해요. 본문이 512KB보다 작으면 어느 경로든 청크가 하나예요.
+
+**`nrows`의 파일 읽기.** `nrows`가 있으면 Python 층(`_io.py`의 `_read_records`)이 파일을 64KB부터 두 배씩 자라는 블록으로 읽고, 따옴표 밖의 줄바꿈으로 레코드를 세어(`csv_records_end`) `nrows`개(헤더가 있으면 하나 더)가 끝나는 곳에서 멈춰요. 큰 파일의 앞 1,000행이 0.3ms예요.
 
 나누는 방식은 결과를 바꾸지 않아요. frame의 다른 병렬 연산은 나누는 방식을 데이터 길이로만 정하고 스레드 수는 보지 않아요. float 합처럼 나누는 방식이 결과 비트를 바꾸는 연산이 있기 때문이에요([병렬화와 결정성](/internals/frame/parallel/)). CSV 읽기는 따옴표 홀짝이 정확하고 종류를 열 전체의 규칙으로 합치니, 어떻게 나눠도 결과가 같아요. 그래서 1스레드에서는 나누지 않는 직렬 경로를 그대로 쓰고, 나눌 때만 드는 일(따옴표 세기 한 번 더)을 하지 않아요. `tests/frame/test_threads.py`는 수 MB짜리 파일(따옴표 안의 줄바꿈, CRLF, 유니코드, 빈 필드가 청크 경계를 가로지르는)을 1, 3, 기본 스레드 수로 읽어 값과 dtype이 같은지, 직렬 오라클(Python으로 쓴 규칙)과 같은지 비교해요.
 
@@ -697,10 +741,10 @@ parallel_for(nchunks, [&](c) {
 | 필드 개수 | `expected 2 fields, got 1` |
 | 필드 크기 | `a field of 4 GB or more` |
 | `dtype=`으로 읽을 수 없는 값 | `column 'v': cannot read 'x' as int64` |
-| UTF-8 | `column 's' is not valid UTF-8` |
+| UTF-8 | `column 's' is not valid UTF-8`, `column names are not valid UTF-8` |
 | 헤더 | `the file is empty but header=True`, `3 names for a header of 2 fields` |
 
-줄 번호는 파일의 물리적인 줄이에요. `line_at`이 바이트 0부터 레코드 시작까지 `\n`을 세니, 따옴표 안의 줄바꿈도 줄로 쳐요. 편집기에서 그 줄 번호로 가면 문제의 레코드가 시작하는 줄이 나와요. 레코드 번호(헤더를 뺀 몇 번째 행)와 다를 수 있어요.
+줄 번호는 파일의 물리적인 줄이에요. `line_at`이 바이트 0부터 레코드 시작까지 `\n`을 세니, 따옴표 안의 줄바꿈도 줄로 쳐요. 편집기에서 그 줄 번호로 가면 문제의 레코드가 시작하는 줄이 나와요. 레코드 번호(헤더를 뺀 몇 번째 행)와 다를 수 있어요. 메시지에 필드의 값을 보일 때 올바른 UTF-8이 아닌 바이트는 `'\xff'`처럼 바이트 값으로 적어요(`printable`). 메시지가 Python str이 되어야 하기 때문이에요.
 
 ```python
 >>> bad = write("bad.csv", 'a,b\n1,"multi\nline"\n2,3\n4,"q"x\n')
@@ -720,9 +764,10 @@ ValueError: read_csv(): line 4: column 'a': cannot read 'x' as int64
 
 파일에 틀린 곳이 여럿이면 직렬로 읽을 때 처음 만나는 에러가 보고돼요. 병렬로 읽어도 같은 에러가 나오게 순서를 정해 두었어요.
 
-1. 토큰화 에러가 값 에러보다 먼저예요. 직렬 경로도 모든 레코드를 토큰화한 뒤에 컬럼을 만들어요.
+1. 토큰화 에러가 값 에러보다 먼저예요. 값을 읽을 수 없는 행은 조각에 적어 두기만 하고, 모든 레코드를 토큰화한 뒤에 컬럼을 만들며 알려요.
 2. 토큰화 에러는 가장 앞 청크의 것이에요. 청크마다 자기의 첫 에러를 메시지 문자열로 저장해 두고, 모든 청크가 끝난 뒤 청크 순서로 훑어 첫 번째를 던져요. 청크 안에서는 레코드 순서대로 읽다가 첫 에러에서 멈추니, 청크의 에러가 곧 그 청크의 가장 앞 에러예요.
-3. 값 에러는 컬럼 순서로, 컬럼 안에서는 가장 앞 행이에요. 컬럼은 차례로 만들고, 한 컬럼의 청크들은 병렬로 돌며 실패한 행을 `FirstRow`에 내요. `FirstRow`는 atomic 정수 하나에 가장 작은 행 번호를 compare-and-swap으로 남기고, 이미 더 앞에서 실패했으면 뒤 청크는 일찍 멈춰요(`failed_before`). 메시지는 병렬 구간이 끝난 뒤 그 행의 `Field`와 시작 바이트로 만들어요.
+3. 값 에러(지정 dtype으로 읽을 수 없는 값, 올바르지 않은 UTF-8)는 컬럼 순서로, 컬럼 안에서는 가장 앞 청크의 것이에요. 조각마다 첫 실패 행을 적어 두었으니(`Part::bad`) 그 조각의 가장 앞 행이에요. 메시지는 그 행의 텍스트(`bad_text`)와 레코드 시작 바이트로 만들어요.
+4. 태스크에서 메모리가 모자라면(`std::bad_alloc`) 파일의 에러로 바꾸지 않고 그대로 던져요. Python에서는 `MemoryError`예요.
 
 `test_csv_errors_are_the_first_in_file_order`는 20만 행 파일의 15만 번째 줄과 9만 번째 줄에 서로 다른 에러를 넣고, 어느 스레드 수에서든 `line 90001`이 보고되는지 확인해요.
 
@@ -751,7 +796,7 @@ ValueError: read_csv(): line 4: column 'a': cannot read 'x' as int64
 
 - 크기마다 쓸 수 있는 스레드가 달라요. 1천 행 파일은 512KB보다 작아 청크 하나, 곧 직렬이에요. 10만 행이면 float 파일이 4청크, 혼합 파일이 8청크라서 10스레드가 다 일하지 못해요. 1M 행에서야 청크가 38개, 79개로 스레드보다 넉넉해요.
 - 숫자 변환에서는 float 파일 값의 약 52%가 Clinger의 빠른 길(나눗셈이나 곱셈 한 번)로, 나머지가 Eisel–Lemire의 첫 곱셈으로 끝나요. pandas 3.1.1도 fast_float를 쓰니, 숫자 변환 자체는 pandas와 비슷한 알고리즘이에요.
-- 문자열과 bool 열은 두 번 읽어요. 숫자 추론이 첫 필드에서 끝나고, bool 확인(`all_bool`)과 값 만들기를 다시 해요. string은 바이트 수 세기와 UTF-8 검사, 그리고 복사의 두 패스예요.
+- 문자열과 bool 열은 값을 조각에 문자열로 쌓은 뒤 다시 옮겨요. 숫자 추론은 첫 필드에서 끝나고, 쌓으면서 UTF-8과 `all_bool`을 함께 봐요. bool 열은 쌓은 문자열에서 값을 만들고, string 열은 조각의 바이트를 최종 버퍼로 복사해요.
 - 파일 전체를 Python에서 읽어요. `open(path, "rb").read()`가 파일 크기만큼의 `bytes`를 만드는 시간도 측정에 들어가요.
 - 청크를 나누면 일이 조금 늘어요. 따옴표 세기 한 번, 청크마다 첫 레코드 찾기, 청크 경계를 넘는 마지막 레코드예요. 그래서 1스레드에서는 나누지 않아요.
 

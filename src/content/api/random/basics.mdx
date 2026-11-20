@@ -215,7 +215,7 @@ TypeError: random(): 'shape' must be an int or a tuple of ints, not list
 >>> rng.random(())
 Traceback (most recent call last):
     ...
-ValueError: random(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)
+ValueError: random(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)
 ```
 
 `random`은 `shape`를 자리로 넘기고(`rng.random(3)`), `integers`와 `choice`는 이름을 붙여 넘겨요(`shape=3`). `integers`와 `choice`는 앞자리에 범위나 고를 대상을 받기 때문이에요. [`integers`](/api/random/integers/)에서 범위를 배열로 주면 `shape`를 생략해도 그 배열의 모양으로 결과가 나와요.

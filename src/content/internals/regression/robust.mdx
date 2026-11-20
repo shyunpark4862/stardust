@@ -314,7 +314,7 @@ True
 
 ### 척도가 0일 때
 
-절반 넘는 잔차가 정확히 0이면(대부분의 행이 한 평면 위) MAD가 0이에요. 그때 `std_resid`는 잔차가 0인 행에 0, 나머지에 $\pm\infty$를 주고, 반복은 그 자리에서 멈춰 `converged=True`예요. 공분산은 극한값 0이고(statsmodels도 척도로 나눈 잔차를 0으로 봐요), 가중치는 잔차가 0인 행에 1, 나머지에 0이에요(Huber의 $t/\lvert z\rvert$, bisquare와 Hampel의 바깥).
+절반 넘는 잔차가 정확히 0이면(대부분의 행이 한 평면 위) MAD가 0이에요. 그때 `std_resid`는 잔차가 0인 행에 0, 나머지에 $\pm\infty$를 주고, 반복은 그 자리에서 멈춰 `converged=True`예요. 공분산은 극한값 0이라 `bse`가 0이고(statsmodels도 척도로 나눈 잔차를 0으로 봐요), t와 p는 [최소제곱](/internals/regression/least-squares/#완전-적합의-판정)처럼 NaN이에요. 가중치는 잔차가 0인 행에 1, 나머지에 0이에요(Huber의 $t/\lvert z\rvert$, bisquare와 Hampel의 바깥).
 
 #### 반올림 수준의 완전 적합
 
@@ -323,16 +323,19 @@ True
 그래서 반복마다 척도를 정하는 행들의 잔차가 반올림 수준으로 0인지 봐요. 행 $i$의 잔차가
 
 $$
-\lvert r_i\rvert \le (k + 16)\,u\,\bigl(\lvert y_i\rvert + \lVert x_i\rVert_1\lVert\beta\rVert_\infty\bigr)
+\lvert r_i\rvert \le (k + 16)\,u\,\Bigl(\lvert y_i\rvert + \sum_c \lvert x_{ic}\rvert\,\lvert\beta_c\rvert\Bigr)
 $$
 
-이면 0으로 봐요. [분위 회귀](/internals/regression/quantile/)가 0 잔차의 허용오차로 쓰는 식과 같아요. 직선 위의 행이라도 $\beta$를 반올림하는 것만으로 그 행의 $x_i^{\mathsf T}\beta$가 대략 이만큼 움직여요.
+이면 0으로 봐요. [분위 회귀](/internals/regression/quantile/)가 0 잔차의 허용오차로 쓰고 [최소제곱](/internals/regression/least-squares/#완전-적합의-판정)이 완전 적합을 가르는 식과 같아요. 직선 위의 행이라도 $\beta$를 반올림하는 것만으로 그 행의 $x_i^{\mathsf T}\beta$가 대략 이만큼 움직여요. 겹쳐서 계수가 없는 열(NaN)은 합에 들지 않아요.
 
 ```cpp
-inline double zero_tol_row(const Design& D, const double* y, lint i, double bn) {
-    double l1 = 0.0;
-    for (lint c = 0; c < D.k; ++c) l1 += std::fabs(D.at(i, c));
-    return (static_cast<double>(D.k) + 16.0) * (0.5 * kEps) * (std::fabs(y[i]) + l1 * bn);
+// (k + 16) u (|y_i| + sum_c |x_ic| |beta_c|); a NaN beta_c (a column without a coefficient)
+// takes no part. At most the quick bound (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf).
+inline double zero_tol_row(const Design& D, const double* y, lint i, const double* beta) {
+    double xb = 0.0;
+    for (lint c = 0; c < D.k; ++c)
+        if (!std::isnan(beta[c])) xb += std::fabs(D.at(i, c) * beta[c]);
+    return (static_cast<double>(D.k) + 16.0) * (0.5 * kEps) * (std::fabs(y[i]) + xb);
 }
 ```
 
@@ -381,7 +384,7 @@ hampel [1.0, 2.0] 0.0 [0.0, 0.0] True
     }
 ```
 
-- 반응이 모두 같으면(절편이 있을 때) 해는 정확히 $(y_0, 0, \dots, 0)$이고 척도는 0이에요. 시작 최소제곱은 이 해에 기울기 $10^{-33}$ 크기의 반올림을 남기는데, 척도가 0이면 그 반올림이 t를 ±inf로 만들어요. 그래서 OLS와 같이 정확한 해로 바꿔요. 기울기의 t는 $0/0$ = NaN이에요.
+- 반응이 모두 같으면(절편이 있을 때) 해는 정확히 $(y_0, 0, \dots, 0)$이고 척도는 0이에요. 시작 최소제곱은 이 해에 기울기 $10^{-33}$ 크기의 반올림을 남겨요. 그래서 OLS와 같이 정확한 해로 바꿔요. 척도가 0이고 `df_resid` > 0이면 결과의 `_perfect`가 t와 p를 절편까지 NaN으로 둬요(척도 0인 모든 적합에서 그래요, [최소제곱](/internals/regression/least-squares/#완전-적합의-판정)과 같은 규칙).
 - 행 수 = 랭크이면 최소제곱의 해가 모든 행을 정확히 지나므로 그 해가 답이고 척도는 0이에요(MM에서는 이것이 S 계수예요). S의 척도 방정식은 $T = (n - p)b = 0$이라 그대로 풀면 0으로 나눠요. `df_resid`가 0이라 공분산은 $0/0$이고, 결과의 `cov_params()`가 NaN으로 둬요.
 - 열이 없으면(랭크 0, 모든 열이 0) 반복할 계수가 없어요. 척도는 잔차, 곧 $y$ 자체의 척도예요. M은 MAD나 제안 2이고, MM은 $y$의 S 척도(M-척도)예요.
 
@@ -391,7 +394,7 @@ hampel [1.0, 2.0] 0.0 [0.0, 0.0] True
 >>> x8 = sd.arange(1.0, 9.0)
 >>> c8 = sd.regression.rlm(sd.full(8, 3.0), x8)
 >>> c8.params, c8.tvalues, c8.n_iter, c8.converged
-(array([3.0, 0.0], dtype=float64), array([inf, nan], dtype=float64), 0, True)
+(array([3.0, 0.0], dtype=float64), array([nan, nan], dtype=float64), 0, True)
 >>> d2 = sd.regression.rlm(sd.asarray([1.0, 3.0]), sd.asarray([0.0, 1.0]), scale_est="huber")
 >>> d2.params, d2.scale, d2.bse
 (array([1.0, 2.0], dtype=float64), 0.0, array([nan, nan], dtype=float64))
@@ -456,7 +459,8 @@ S 추정의 탐색은 Salibian-Barrera–Yohai(2006)의 fast-S이고, 단계와 
     for (int t = 0; t < kMts && static_cast<lint>(rows.size()) < p; ++t) {
         const std::uint64_t e = (static_cast<std::uint64_t>(j) << 32) | static_cast<std::uint64_t>(t);
         const lint i = static_cast<lint>(
-            random::bounded(st.first(e), static_cast<std::uint64_t>(n), [&](std::uint64_t q) { return st.extra(e, q); }));
+            random::bounded(st.first(e), static_cast<std::uint64_t>(n), [&](std::uint64_t q) { return st.extra(e, q); })
+        );
         if (std::find(rows.begin(), rows.end(), i) != rows.end()) continue;
 ```
 
@@ -570,6 +574,7 @@ $V$에 음의 고윳값이 있으면 robustbase의 `posdefify`를 따라요. `sy
 
 - 결과의 `scale`은 척도 $s$ 자체(표준편차 꼴)예요. `ols`·`glm`·`nls`의 `scale`이 $\hat\sigma^2$인 것과 달라요. 강건 척도는 MAD나 M-척도로 정의되는 퍼짐이라, 그것을 제곱한 값이 오차의 분산을 뜻하지 않기 때문이에요.
 - t, p, 구간의 분포는 t(`df_resid`)이고, 그 자유도가 `df_resid_inference`예요(선형 모형과 같은 이름). `df_resid` = 0이면 공분산 전체가 NaN이에요.
+- M 추정과 MM 추정은 $y$의 척도에 등변이에요. 그래서 $y$의 크기가 $[2^{-256}, 2^{256}]$ 밖이면 [선형 모형](/internals/regression/least-squares/#극단적인-척도)처럼 Python 층이 $y$를 2의 거듭제곱으로 나눈 문제를 풀고, 계수·`bse`·척도를 그 배수로 돌려놓아요. t와 구간은 적합의 단위에서 만들어요.
 - `predict_interval`은 적합값의 신뢰구간 $x\hat\beta \pm t\cdot\text{se}$, $\text{se}^2 = xVx^{\mathsf T}$만 내요. 선형 모형과 같은 `_interval`이라 겹친 열과 NaN의 규칙도 같아요([회귀 영역의 구조](/internals/regression/overview/)). 새 관측의 예측 구간은 없어요. 그 구간에는 오차분포의 분산이 필요한데, 강건 적합은 오차분포를 가정하지 않고 척도도 그 분포의 표준편차가 아니에요.
 
 ```python

@@ -217,7 +217,7 @@ std  8.498366  5.26519  0.471405
            math        eng    passed
 var  108.333333  41.583333  0.333333
 >>> exam.std().loc["std", "eng"]
-5.265189666310437
+5.265189666310438
 ```
 
 표 출력은 자리를 아끼려고 소수점 아래를 줄여서 보여 줘요. 값 하나를 꺼내면 전체 자릿수가 나와요. 결과가 왜 Series가 아니라 1행짜리 DataFrame인지는 [합, 평균, 개수](/api/frame/sum-mean/)에 있어요.
@@ -298,5 +298,5 @@ OverflowError: var(): 'correction' is out of range
 - 값이 모자라면(`N - correction`이 0 이하) `NA`예요. pandas는 float 컬럼에서 `nan`이에요.
 - NaN을 건너뛰지 않아요. pandas는 NaN을 건너뛰고 계산하지만 stardust는 결과가 `nan`이에요. `skipna`는 `NA`만 건너뛰어요.
 - DataFrame의 결과는 1행짜리 DataFrame이에요. pandas는 Series예요.
-- `NA`도 NaN도 없는 float 컬럼이면 `var(correction=1)`, `std(correction=1)`이 pandas의 `var()`, `std()`와 비트까지 같아요.
+- `NA`도 NaN도 없는 float 컬럼이면 `var(correction=1)`, `std(correction=1)`이 pandas의 `var()`, `std()`와 반올림 오차 안에서 같아요. 마지막 자리는 다를 수 있어요. 위 예의 `eng` 열 표준편차가 stardust는 `5.265189666310438`, pandas(`ddof=0`)와 numpy는 `5.265189666310437`이에요.
 - `axis`, `numeric_only` 인자는 없어요.

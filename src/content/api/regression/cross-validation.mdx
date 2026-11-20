@@ -4,10 +4,10 @@ names: [ridge_cv, lasso_cv, elastic_net_cv, RidgeCVResult, LassoCVResult, Elasti
 group: 정규화 회귀
 order: 4
 signatures:
-  - "sd.regression.ridge_cv(y, X, /, *, rng=None, cv=5, alphas=100, eps=1e-06, select='min', weights=None, intercept=True, standardize=False, nan_policy='propagate')"
+  - "sd.regression.ridge_cv(y, X, /, *, rng=None, cv='gcv', alphas=100, eps=1e-06, select='min', weights=None, intercept=True, standardize=False, nan_policy='propagate')"
   - "sd.regression.lasso_cv(y, X, /, *, rng, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')"
   - "sd.regression.elastic_net_cv(y, X, /, *, rng, l1_ratio=0.5, cv=5, alphas=100, eps=0.001, select='min', weights=None, intercept=True, standardize=False, max_iter=1000, tol=0.0001, nan_policy='propagate')"
-summary: 데이터를 몇 겹으로 나눠 한 겹씩 떼어 두고 예측 오차를 재는 k겹 교차검증으로 ridge, lasso, elastic_net의 alpha를 골라요. 고른 alpha로 모든 데이터를 다시 적합한 결과에 오차 곡선과 두 선택(최소 오차, 1-SE 규칙)을 붙여 돌려줘요.
+summary: 데이터를 몇 겹으로 나눠 한 겹씩 떼어 두고 예측 오차를 재는 k겹 교차검증으로 ridge, lasso, elastic_net의 alpha를 골라요(ridge_cv는 기본으로 겹 없이 일반화 교차검증을 써요). 고른 alpha로 모든 데이터를 다시 적합한 결과에 오차 곡선과 두 선택(최소 오차, 1-SE 규칙)을 붙여 돌려줘요.
 params:
   - name: y
     type: ndarray, 실수의 시퀀스, Series, 또는 한 열짜리 DataFrame
@@ -20,7 +20,7 @@ params:
   - name: rng
     type: sd.random.Generator
     kind: keyword-only
-    desc: 겹을 무작위로 나눌 난수 생성기(sd.random.default_rng(seed)). lasso_cv와 elastic_net_cv는 꼭 줘야 해요. ridge_cv는 cv가 int일 때 줘야 하고, cv='gcv'일 때는 겹을 뽑지 않으므로 주지 않아요(주면 ValueError).
+    desc: 겹을 무작위로 나눌 난수 생성기(sd.random.default_rng(seed)). lasso_cv와 elastic_net_cv는 꼭 줘야 해요. ridge_cv는 cv를 int로 줄 때 줘야 하고, 기본인 cv='gcv'는 겹을 뽑지 않으므로 주지 않아요(주면 ValueError).
   - name: l1_ratio
     type: float
     kind: keyword-only
@@ -28,7 +28,7 @@ params:
   - name: cv
     type: int 또는 'gcv'
     kind: keyword-only
-    desc: 겹의 수. 2 이상, 행 수 이하예요. 기본값은 5예요. ridge_cv는 'gcv'(일반화 교차검증)도 받아요.
+    desc: 겹의 수. 2 이상, 행 수 이하예요. lasso_cv와 elastic_net_cv의 기본값은 5예요. ridge_cv는 'gcv'(일반화 교차검증)도 받고, 그것이 기본값이에요.
   - name: alphas
     type: int 또는 1차원 배열
     kind: keyword-only
@@ -50,9 +50,9 @@ returns:
   desc: "고른 alpha에서 모든 데이터로 다시 적합한 RidgeResult·LassoResult·ElasticNetResult의 모든 필드에, 교차검증 필드 alphas, cv_error, cv_se, alpha_min, alpha_1se를 더한 것이에요. alpha는 고른 값이에요."
 raises:
   - type: TypeError
-    desc: rng가 sd.random.Generator가 아닐 때(lasso_cv·elastic_net_cv에서 rng를 빠뜨렸을 때 포함), cv가 int(ridge_cv는 int나 'gcv')가 아닐 때, alphas가 int나 수의 배열이 아닐 때(float 하나 포함), eps가 수가 아닐 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
+    desc: rng가 sd.random.Generator가 아닐 때(lasso_cv·elastic_net_cv에서 rng를 빠뜨렸을 때, ridge_cv에 cv를 int로 주고 rng를 빠뜨렸을 때 포함), cv가 int(ridge_cv는 int나 'gcv')가 아닐 때, alphas가 int나 수의 배열이 아닐 때(float 하나 포함), eps가 수가 아닐 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
   - type: ValueError
-    desc: cv가 2보다 작거나 행 수보다 클 때, ridge_cv의 cv가 'gcv'가 아닌 문자열일 때, select가 'min'·'1se'가 아닐 때, cv='gcv'에서 select='1se'일 때, ridge_cv(cv='gcv')에 rng를 줬을 때, X에 열이 없는데 intercept=False라 모수가 없을 때, eps가 0 이하이거나 1보다 클 때, alphas가 1보다 작은 int이거나 음수·inf·NaN을 담을 때, alphas가 빈 배열·2차원 이상 배열·numpy의 0차원 배열일 때, elastic_net_cv에서 l1_ratio=0인데 alphas가 int일 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
+    desc: cv가 2보다 작거나 행 수보다 클 때, ridge_cv의 cv가 'gcv'가 아닌 문자열일 때, select가 'min'·'1se'가 아닐 때, cv='gcv'에서 select='1se'일 때, ridge_cv의 cv가 'gcv'(기본)인데 rng를 줬을 때, X에 열이 없는데 intercept=False라 모수가 없을 때, eps가 0 이하이거나 1보다 클 때, alphas가 1보다 작은 int이거나 음수·inf·NaN을 담을 때, alphas가 빈 배열·2차원 이상 배열·numpy의 0차원 배열일 때, elastic_net_cv에서 l1_ratio=0인데 alphas가 int일 때, 그 밖에 ridge·lasso·elastic_net과 같은 경우.
 seeAlso: [ridge, lasso, elastic-net, penalized-glm, results, basics]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -133,7 +133,7 @@ export const cvLo = [[0.0214, 4.6837], [-0.0089, 4.6454], [-0.0392, 4.571], [-0.
 | `lasso_cv` | [`lasso`](/api/regression/lasso/)의 `alpha` | `lasso(y, X, alpha=...)` | `LassoCVResult` |
 | `elastic_net_cv` | [`elastic_net`](/api/regression/elastic-net/)의 `alpha`(`l1_ratio`는 고정) | `elastic_net(y, X, alpha=..., l1_ratio=...)` | `ElasticNetCVResult` |
 
-`ridge_cv`는 겹을 나누는 대신 일반화 교차검증(`cv='gcv'`)도 할 수 있어요(아래).
+`ridge_cv`는 기본으로 겹을 나누지 않고 일반화 교차검증(`cv='gcv'`)으로 골라요(아래). 겹으로 고르려면 `cv=5`처럼 겹 수와 함께 `rng`를 줘요.
 
 ## 겹 나누기: `rng`와 `cv`
 
@@ -143,7 +143,7 @@ export const cvLo = [[0.0214, 4.6837], [-0.0089, 4.6454], [-0.0392, 4.571], [-0.
 >>> sd.regression.lasso_cv(y, X)
 Traceback (most recent call last):
     ...
-TypeError: lasso_cv() missing 1 required keyword-only argument: 'rng'
+TypeError: lasso_cv(): missing 1 required keyword-only argument: 'rng'
 >>> sd.regression.lasso_cv(y, X, rng=0)
 Traceback (most recent call last):
     ...
@@ -238,7 +238,7 @@ True
 - `ridge_cv`의 격자는 `l1_ratio = 0.001`로 계산한 $\alpha_{\max}$, 곧 라소의 $\alpha_{\max}$의 1000배에서 시작해요. `eps`가 라소와 같은 1e-3이면 가장 작은 값이 라소의 $\alpha_{\max}$라서, 신호가 뚜렷한 데이터에서는 좋은 `alpha`가 격자 밖에 있기 쉬워요. 그래서 `ridge_cv`의 기본 `eps`는 1e-6이고, 가장 작은 값이 라소의 $\alpha_{\max}$의 1000분의 1이에요. 릿지는 격자를 넓혀도 계산이 거의 늘지 않아요.
 
 ```python
->>> rr = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0))
+>>> rr = sd.regression.ridge_cv(y, X, cv=5, rng=sd.random.default_rng(0))
 >>> round(rr.alphas[0], 2), round(rr.alphas[-1], 6)
 (1050.5, 0.00105)
 ```
@@ -247,10 +247,10 @@ True
 `alpha_min`이 격자의 끝(가장 크거나 가장 작은 값)이면 진짜 최솟값이 격자 밖에 있을 수 있어요. 결과에서 확인하고, 그럴 때는 `eps`를 줄이거나 `alphas`를 직접 주세요. 예를 들어 `ridge_cv`에 라소와 같은 `eps=1e-3`을 주면 격자가 라소의 $\alpha_{\max}$에서 끝나서, 이 데이터에서는 가장 작은 값이 뽑혀요.
 
 ```python
->>> rc = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0), eps=1e-3)
+>>> rc = sd.regression.ridge_cv(y, X, cv=5, rng=sd.random.default_rng(0), eps=1e-3)
 >>> rc.alpha_min == rc.alphas[-1]
 True
->>> rc = sd.regression.ridge_cv(y, X, rng=sd.random.default_rng(0))
+>>> rc = sd.regression.ridge_cv(y, X, cv=5, rng=sd.random.default_rng(0))
 >>> rc.alpha_min == rc.alphas[-1], round(rc.alpha_min, 4)
 (False, 0.1597)
 ```
@@ -369,10 +369,12 @@ $$
 \qquad \operatorname{tr} H = \text{df\_model} + (\text{절편이 있으면 } 1)
 $$
 
-분자는 학습 데이터의 평균 제곱오차이고, 분모는 모형이 쓴 자유도만큼 그 값을 키워서 과적합을 벌해요. 모든 데이터로 한 번에 계산하므로 겹도 `rng`도 필요 없고 빨라요.
+분자는 학습 데이터의 평균 제곱오차이고, 분모는 모형이 쓴 자유도만큼 그 값을 키워서 과적합을 벌해요. 모든 데이터로 한 번에 계산하므로 겹도 `rng`도 필요 없고 빨라요. 그래서 `ridge_cv`의 기본이에요.
 
 ```python
->>> gv = sd.regression.ridge_cv(y, X, cv='gcv')
+>>> gv = sd.regression.ridge_cv(y, X)
+>>> gv.alpha == sd.regression.ridge_cv(y, X, cv='gcv').alpha
+True
 >>> round(gv.alpha_min, 4), gv.alpha_1se
 (0.1836, nan)
 >>> p = sd.regression.ridge(y, X, alpha=gv.alpha)
@@ -380,7 +382,7 @@ $$
 True
 ```
 
-겹이 없으니 `cv_se`와 `alpha_1se`는 NaN이고, `select='1se'`는 에러예요. 겹을 뽑지 않아서 `rng`는 쓰일 데가 없으므로, `rng`를 주는 것도 에러예요.
+겹이 없으니 `cv_se`와 `alpha_1se`는 NaN이고, `select='1se'`는 에러예요(1-SE 규칙을 쓰려면 `cv`를 int로 줘요). 겹을 뽑지 않아서 `rng`는 쓰일 데가 없으므로, `rng`를 주는 것도 에러예요.
 
 ```python
 >>> sd.regression.ridge_cv(y, X, cv='gcv', select='1se')
@@ -460,7 +462,7 @@ ValueError: lasso_cv(): 'select' must be 'min' or '1se', not 'best'
 Traceback (most recent call last):
     ...
 ValueError: lasso_cv(): 'eps' must be > 0 and <= 1
->>> sd.regression.ridge_cv(y, X)
+>>> sd.regression.ridge_cv(y, X, cv=5)
 Traceback (most recent call last):
     ...
 TypeError: ridge_cv(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
@@ -493,5 +495,5 @@ TypeError: ridge_cv(): 'rng' must be an sd.random.Generator (sd.random.default_r
 - `lasso_cv`·`elastic_net_cv`의 기본 격자(`alphas=100`, `eps=1e-3`)와 겹 수 5는 `LassoCV`와 같아요. `cv_error`는 `mse_path_.mean(axis=1)`, `alpha_min`은 `alpha_`에 해당해요. 1-SE 규칙(`alpha_1se`, `select='1se'`)은 scikit-learn에 없어요.
 - 겹의 적합이 `max_iter`에 닿아도 그 계수로 오차를 재는 것은 scikit-learn과 같아요. scikit-learn은 그때 `ConvergenceWarning`을 내고, 여기는 경고가 없어요.
 - `ElasticNetCV`는 `l1_ratio`를 여러 개 받아 함께 고르지만, `elastic_net_cv`는 하나만 받아요.
-- scikit-learn의 `RidgeCV`는 기본으로 한 행씩 떼는 교차검증을 닫힌 꼴로 하고, `alphas` 기본값이 (0.1, 1, 10)이며 `alpha`의 척도가 여기의 n배예요([`ridge`](/api/regression/ridge/)). `ridge_cv(cv='gcv')`와는 기준이 달라요.
+- scikit-learn의 `RidgeCV`는 기본으로 한 행씩 떼는 교차검증을 닫힌 꼴로 하고, `alphas` 기본값이 (0.1, 1, 10)이며 `alpha`의 척도가 여기의 n배예요([`ridge`](/api/regression/ridge/)). 겹 없이 닫힌 꼴로 고르는 것이 기본인 점은 `ridge_cv`와 같지만, 기준이 GCV라서 고르는 값이 달라요.
 - R의 `cv.glmnet`은 겹 수 기본이 10이고, `predict`의 기본이 `lambda.1se`예요(여기는 `select='min'`). 기본 겹은 `sample(rep(seq(nfolds), length = N))`로 섞은 번호라 여기와 같은 꼴이에요. glmnet은 기본으로 열을 표준화하고, 격자의 가장 작은 비율이 1e-4(행이 열보다 많을 때)예요(여기는 라소·엘라스틱 넷이 1e-3, 릿지가 1e-6).

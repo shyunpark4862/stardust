@@ -14,7 +14,7 @@ params:
     desc: 정사각 행렬. 모양은 (..., N, N).
 returns:
   type: EigResult(eigenvalues, eigenvectors) 또는 ndarray
-  desc: eig는 고유값 (..., N)과 고유벡터 (..., N, N)의 이름 있는 튜플, eigvals는 고유값 (..., N)만. 입력이 실수여도 모두 complex128이고, 고유값은 실수부가 작은 것부터(같으면 허수부가 작은 것부터) 놓여요.
+  desc: eig는 고유값 (..., N)과 고유벡터 (..., N, N)의 이름 있는 튜플, eigvals는 고유값 (..., N)만. 입력이 실수여도 모두 complex128이고, 고유값은 실수부가 작은 것부터(같으면 허수부가 작은 것부터) 놓여요. eig의 두 배열은 쓰기 금지예요.
 raises:
   - type: TypeError
     desc: x가 sd.ndarray가 아닐 때(리스트, numpy 배열 등).

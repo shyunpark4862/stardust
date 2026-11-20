@@ -6,12 +6,15 @@
  * Without `area`: one row per measured area (sweeps, points, how many
  * (function, region) rows are within the contract, the largest contract ratio).
  * With `area`: that area's rows, one per (function, region): points, max and
- * 99.9% ULP, ULP over the bound's multiplier, mixed error, relative errors and
- * the contract ratio (columns no shown row has are left out).
+ * 99.9% ULP, ULP over the bound's multiplier, mixed error, relative errors, the
+ * multivariate cdfs' absolute error, error over u·condition and error over the
+ * returned estimate, the count of NaN/inf points (shown only when nonzero) and the
+ * contract ratio (columns no shown row has are left out).
  *
- *   area     'special' | 'stats' | 'regression'
+ *   area     'special' | 'stats' | 'multivariate' | 'regression'
  *   names    only these sweeps (reference files; regression: kind/problem)
- *   regions  only these regions (guaranteed, loose, mixed; regression: field names)
+ *   regions  only these regions (guaranteed, loose, mixed; multivariate also tiny,
+ *            'exact d<=3', 'atol=...'; regression: field names)
  *   caption  text under the table
  */
 import data from '../../data/accuracy.json';
@@ -39,8 +42,19 @@ const { area, names, regions: onlyRegions, caption } = Astro.props;
 const D = data as unknown as { fields: string[]; areas: Record<string, AreaData> };
 const col = Object.fromEntries(D.fields.map((f, i) => [f, i]));
 
-const AREA_NAMES: Record<string, string> = { special: 'sd.special', stats: 'sd.stats', regression: 'sd.regression' };
-const REGION_NAMES: Record<string, string> = { guaranteed: '보장', loose: '느슨', mixed: '혼합' };
+const AREA_NAMES: Record<string, string> = {
+  special: 'sd.special',
+  stats: 'sd.stats',
+  multivariate: 'sd.stats 다변량·행렬',
+  regression: 'sd.regression',
+};
+const REGION_NAMES: Record<string, string> = {
+  guaranteed: '보장',
+  loose: '느슨',
+  mixed: '혼합',
+  tiny: '아주 작은 값',
+  'exact d<=3': '정확한 혼합(d ≤ 3)',
+};
 
 /** Three significant digits; outside [1e-3, 1e5) as m × 10^e. */
 function parts(v: Cell): { m: string; e?: number } {
@@ -84,6 +98,10 @@ const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
   { key: 'mixed_max', head: 'mixed (최대 / 99.9%)', show: has('mixed_max'), pair: 'mixed_p999' },
   { key: 'rel_max', head: '최대 상대오차', show: true },
   { key: 'norm_rel', head: '노름 상대오차', show: has('norm_rel') },
+  { key: 'abs_max', head: '최대 절대오차', show: has('abs_max') },
+  { key: 'rel_cond_max', head: '상대오차 / (u·조건수)', show: has('rel_cond_max') },
+  { key: 'est_ratio_max', head: '오차 / 추정', show: has('est_ratio_max') },
+  { key: 'nonfinite', head: 'NaN·inf 점', show: rows.some((r) => Number(get(r, 'nonfinite') ?? 0) > 0) },
   { key: 'contract', head: '계약 대비', show: has('contract') },
 ].filter((c) => c.show);
 ---

@@ -14,7 +14,7 @@ params:
   - name: k
     type: int
     kind: keyword-only
-    desc: 가지(branch) 번호. 실수 입력은 0(주가지)과 −1만, 복소수 입력은 모든 정수를 받아요.
+    desc: 가지(branch) 번호. Python int와 numpy 정수를 받아요. 실수 입력은 0(주가지)과 −1만, 복소수 입력은 크기가 2⁵³ 이하인 모든 정수를 받아요.
   - name: out
     type: ndarray 또는 None
     kind: keyword-only
@@ -26,7 +26,9 @@ raises:
   - type: TypeError
     desc: k가 int가 아닐 때(bool, float 포함), x가 배열도 숫자도 아닐 때(리스트 등), out의 dtype이 결과를 담을 수 없을 때.
   - type: ValueError
-    desc: 실수 입력에 k로 0과 −1이 아닌 값을 주었을 때, out의 모양이 결과와 맞지 않을 때.
+    desc: 실수 입력에 k로 0과 −1이 아닌 값을 주었을 때, 복소수 입력에 크기가 2⁵³을 넘는 k를 주었을 때, out의 모양이 결과와 맞지 않을 때.
+  - type: OverflowError
+    desc: k가 int64에 담기지 않을 만큼 클 때.
 seeAlso: [wofz, loggamma, hyp, basics]
 ---
 import Fig from '../../../components/fig/Fig.astro';
@@ -176,7 +178,7 @@ nan
 
 ### `k`는 int로
 
-`k`는 반드시 int여야 해요. `True`나 `0.0`처럼 int가 아닌 값은 `TypeError`예요. 실수 입력에 0과 −1이 아닌 정수를 주면 `ValueError`예요. 실수 입력에는 실수 가지가 그 둘뿐이기 때문이에요. 다른 가지는 아래의 복소수 입력에서 쓸 수 있어요.
+`k`는 반드시 int여야 해요(numpy 정수도 돼요). `True`나 `0.0`처럼 int가 아닌 값은 `TypeError`예요. 실수 입력에 0과 −1이 아닌 정수를 주면 `ValueError`예요. 실수 입력에는 실수 가지가 그 둘뿐이기 때문이에요. 다른 가지는 아래의 복소수 입력에서 쓸 수 있어요.
 
 ```python
 >>> sd.special.lambertw(1.0, k=1)
@@ -186,7 +188,7 @@ ValueError: lambertw(): 'k' must be 0 or -1 for a real argument
 >>> sd.special.lambertw(1.0, k=0.0)
 Traceback (most recent call last):
     ...
-TypeError: lambertw(): 'k' must be an int
+TypeError: lambertw(): 'k' must be an int, not float
 ```
 
 ## 특수값과 정확도
@@ -222,7 +224,7 @@ array([ 0.0, -0.0,  inf,  nan], dtype=float64)
 
 x에 복소수(complex128 배열이나 Python `complex`)를 넣으면 복소수 W를 계산하고 결과도 complex128이에요. 실수를 넣으면 결과가 float64인 것과 달라요.
 
-복소수에서는 $w e^w = z$의 해가 무한히 많아요. 그 해를 정수 `k`로 번호 붙인 것이 가지예요. 그래서 복소수 입력은 **모든 정수 `k`**를 받아요.
+복소수에서는 $w e^w = z$의 해가 무한히 많아요. 그 해를 정수 `k`로 번호 붙인 것이 가지예요. 그래서 복소수 입력은 **모든 정수 `k`**를 받아요(크기 2⁵³까지).
 
 ```python
 >>> sd.special.lambertw(-1.0)

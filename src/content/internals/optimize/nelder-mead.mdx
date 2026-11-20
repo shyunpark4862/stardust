@@ -2,7 +2,7 @@
 title: Nelder–Mead
 group: 다변수 최소화
 order: 1
-summary: 기울기 없이 함숫값만으로 움직이는 Nelder–Mead 단체법의 규칙을 설명해요. 정렬과 덧셈 순서까지 scipy와 같게 맞춰서, 같은 점에서 함수를 불러요.
+summary: 기울기 없이 함숫값만으로 움직이는 Nelder–Mead 단체법의 규칙을 설명해요. 정렬과 덧셈 순서까지 scipy와 같은 순서로 계산해서, 지금은 scipy와 같은 점에서 함수를 불러요.
 seeAlso: [overview, quasi-newton, newton-trust, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -265,13 +265,13 @@ scipy는 사용자 함수를 감싸서, 호출 수가 `maxfev`에 닿은 뒤의 
         };
 ```
 
-반복 수 `iterations`는 scipy처럼 1에서 시작해요. 그래서 결과의 `n_iter`는 실제로 한 반복 수보다 하나 많아요(scipy의 `nit`와 같은 수). `status`는 scipy의 `warnflag`로, 호출 수가 `max_nfev` 이상이면 1, 아니고 반복 수가 `max_iter` 이상이면 2예요. 결과의 `x`는 정렬된 첫 꼭짓점, `fun`은 값의 최솟값(numpy의 `min`이라 NaN이 하나라도 있으면 NaN)이에요.
+반복 수 `iterations`는 scipy처럼 1에서 시작하고, 고리는 그 수가 `max_iter`보다 작은 동안 돌아요. 그래서 `max_iter=k`이면 k − 1번 반복하고 멈춰요(scipy와 같은 멈춤). 결과의 `n_iter`는 실제로 한 반복 수(`iterations − 1`)라서 scipy의 `nit`보다 하나 작아요. `status`는 scipy의 `warnflag`로, 호출 수가 `max_nfev` 이상이면 1, 아니고 반복 수가 `max_iter` 이상이면 2예요. 결과의 `x`는 정렬된 첫 꼭짓점, `fun`은 값의 최솟값(numpy의 `min`이라 NaN이 하나라도 있으면 NaN)이에요.
 
-## scipy와 같은 점을 부르려면
+## scipy와 같은 계산 순서
 
-같은 시험점을 만들려면 같은 꼭짓점이 같은 자리에 있어야 해요. 갈릴 수 있는 곳은 둘이에요.
+같은 시험점이 나오려면 같은 꼭짓점이 같은 자리에 있어야 해요. 갈릴 수 있는 곳은 둘이고, 둘 다 scipy와 같은 순서로 계산해요.
 
-**정렬.** scipy는 반복마다 `np.argsort(fsim)`으로 꼭짓점을 정렬해요. numpy의 기본 `argsort`('quicksort')는 introsort이고, 원소가 17개 미만인 구간은 삽입 정렬이라 같은 값의 순서가 그대로지만 그보다 큰 구간은 피벗 분할이라 같은 값의 순서가 바뀔 수 있어요. 같은 값의 순서는 어느 꼭짓점이 "가장 나쁜" 것인지를 정해서 다음 시험점을 바꿔요. 그래서 numpy의 `aquicksort_`(세 값의 중앙값 피벗, 깊이 한도 $2\lfloor\log_2 n\rfloor$를 넘으면 힙 정렬, NaN을 맨 뒤로 보내는 비교)를 그대로 따라 해요. 처음 꼭짓점을 계산한 뒤 scipy가 두 번 정렬하는 것도 같아요.
+**정렬.** scipy는 반복마다 `np.argsort(fsim)`으로 꼭짓점을 정렬해요. numpy의 기본 `argsort`('quicksort')는 introsort이고, 원소가 17개 미만인 구간은 삽입 정렬이라 같은 값의 순서가 그대로지만 그보다 큰 구간은 피벗 분할이라 같은 값의 순서가 바뀔 수 있어요. 같은 값의 순서는 어느 꼭짓점이 "가장 나쁜" 것인지를 정해서 다음 시험점을 바꿔요. 그래서 numpy의 `aquicksort_`(세 값의 중앙값 피벗, 깊이 한도 $2\lfloor\log_2 n\rfloor$를 넘으면 힙 정렬, NaN을 맨 뒤로 보내는 비교)와 같은 정렬을 해요. 처음 꼭짓점을 계산한 뒤 scipy가 두 번 정렬하는 것도 같아요.
 
 정렬할 때 scipy는 `np.take`로 단체의 행을 새 배열에 옮기지만, 여기서는 행이 있는 자리를 그대로 두고 행 번호(`order`)만 옮겨요. 계산하는 값은 같고, n이 클 때 반복마다의 $(n+1) \times n$ 복사가 없어요.
 
@@ -289,7 +289,7 @@ scipy는 사용자 함수를 감싸서, 호출 수가 `maxfev`에 닿은 뒤의 
                     for (std::size_t j = 0; j < N; ++j) xb[j] = xb[j] / dN;
 ```
 
-이렇게 해서 scipy 1.18.1이 기록한 MGH 110경우와 Rosenbrock(n = 2, 5)·최대 엔트로피·L-BFGS-B driver1 문제(114번)에서 결과의 모든 필드(x의 비트, `fun`, `nfev`, `nit`, `status`, `message`)가 같고, scipy를 실행하며 `fun`을 부른 점을 차례대로 견주면 x0 둘레의 상자 경계를 준 51경우도 모두 비트까지 같아요. 옵션(`adaptive`, `initial_simplex`, `max_iter`, `max_nfev`, `tol`, 반쪽 경계, 시험점의 inf·NaN)을 바꾼 경우도 같아요.
+그래서 지금은 scipy 1.18.1이 기록한 MGH 110경우와 Rosenbrock(n = 2, 5)·최대 엔트로피·L-BFGS-B driver1 문제(114번)에서 결과의 모든 필드(x의 비트, `fun`, `nfev`, 반복 수(`n_iter` = `nit` − 1), `status`, `message`)가 같고, scipy를 실행하며 `fun`을 부른 점을 차례대로 견주면 x0 둘레의 상자 경계를 준 51경우도 모두 비트까지 같아요. 옵션(`adaptive`, `initial_simplex`, `max_iter`, `max_nfev`, `tol`, 반쪽 경계, 시험점의 inf·NaN)을 바꾼 경우도 같아요.
 
 ## 유한하지 않은 값
 
@@ -301,13 +301,13 @@ scipy는 사용자 함수를 감싸서, 호출 수가 `maxfev`에 닿은 뒤의 
 
 ## 속도
 
-`bench/optimize/o3/speed.md`의 값이에요. Apple M4 Pro, scipy 1.18.1·numpy 2.5.4, 일반화된 Rosenbrock, x0 = (−1.2, 1, −1.2, 1, …), 1스레드. "자기 비용"은 전체 시간에서 `fun` 안의 시간을 빼고 반복 수로 나눈 값이에요. 두 라이브러리의 반복 수와 `nfev`, `status`는 줄마다 같아요.
+`bench/optimize/o6/speed.md`의 값이에요. Apple M4 Pro, scipy 1.18.1·numpy 2.5.4, 일반화된 Rosenbrock, x0 = (−1.2, 1, −1.2, 1, …), 1스레드. "자기 비용"은 전체 시간에서 `fun` 안의 시간을 빼고 반복 수로 나눈 값이에요. 두 라이브러리의 `nfev`와 `status`는 줄마다 같고, 반복 수는 세는 법만 달라서 scipy의 `nit`가 표의 값보다 하나 많아요.
 
 | n | 반복 상한 | 반복 | nfev | 전체 sd / scipy (ms) | 반복당 자기 비용 sd / scipy (ms) |
 |---:|---:|---:|---:|---|---|
-| 2 | | 85 | 159 | 0.363 / 1.17 | 0.00046 / 0.0069 |
-| 10 | | 1432 | 2000 | 4.42 / 17.5 | 0.00032 / 0.0067 |
-| 100 | 2000 | 2000 | 2156 | 8.56 / 43.2 | 0.0018 / 0.0165 |
-| 1000 | 300 | 300 | 1300 | 46.9 / 238 | 0.143 / 0.763 |
+| 2 | | 84 | 159 | 0.344 / 1.29 | 0.00045 / 0.0076 |
+| 10 | | 1431 | 2000 | 4.50 / 18.3 | 0.00032 / 0.0070 |
+| 100 | 2000 | 1999 | 2156 | 8.51 / 43.1 | 0.0018 / 0.0163 |
+| 1000 | 300 | 299 | 1300 | 45.8 / 233 | 0.140 / 0.747 |
 
 작은 n에서 scipy의 몫은 반복마다의 numpy 호출(정렬, `np.take`, 무게중심, 판정의 배열)이에요. n = 1000에서는 무게중심의 $n^2$ 덧셈이 두 쪽 모두 커지고, 차이는 단체를 복사하지 않는 것과 판정을 일찍 끝내는 데서 와요.
