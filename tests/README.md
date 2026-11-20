@@ -6,7 +6,7 @@
 
 ```bash
 .venv/bin/python -m pytest -q -p no:cacheprovider        # quick, 한 프로세스
-.venv/bin/python tools/test.py                           # quick, 병렬 (워커 6개 + serial 따로)
+.venv/bin/python tools/test.py                           # quick, 병렬 (워커 8개 + serial 따로)
 SD_TIER=deep .venv/bin/python tools/test.py              # deep
 .venv/bin/python tools/test.py tests/frame -k merge      # pytest 인자를 그대로 넘긴다 (-m은 빼고)
 ```
@@ -16,10 +16,10 @@ SD_TIER=deep .venv/bin/python tools/test.py              # deep
   - `deep`: quick과 `@pytest.mark.deep` 테스트(Arb 참값을 그 자리에서 계산하는 것, 넓은 격자), hypothesis는 무작위이고 예제 수가 10배(프로필 기본 1000)다. 골든 비교와 정확도 비교(`tests/golden/test_golden.py`)도 여기 든다.
   - `all`: deep과 `@pytest.mark.external`(R이나 Fortran 컴파일러를 실제로 부르는 테스트; 지금은 없다).
   - 고르지 않은 등급의 테스트는 deselect된다(요약에 `N deselected`). 파일 하나의 deep 테스트를 돌리려면 `SD_TIER=deep`을 함께 준다.
-- **예제 수**는 테스트마다 `examples(n)`(`tests/_tier.py`)으로 쓴다. quick에서 n, deep에서 10n이다. 옛 환경 변수 `SDLA_EXAMPLES`, `SDPD_EXAMPLES`는 없앴다.
-- **병렬**: `pytest`만 치면 한 프로세스다. `tools/test.py`는 `serial`이 아닌 테스트를 pytest-xdist 워커 `-n`개(기본 6, 최대 8)로 돌리고, 그 뒤에 `serial` 테스트를 혼자 돌린다. `serial`은 다른 테스트 프로세스와 기계를 나누면 안 되는 모듈이다(GIL 해제를 벽시계로 재는 것, 시간 제한이 있는 하위 프로세스, 물리 메모리 근처의 할당; 목록은 `tests/conftest.py`의 `SERIAL`).
+- **예제 수**는 테스트마다 `examples(n)`(`tests/_tier.py`)으로 쓴다. quick에서 n, deep에서 10n이다.
+- **병렬**: `pytest`만 치면 한 프로세스다. `tools/test.py`는 `serial`이 아닌 테스트를 pytest-xdist 워커 `-n`개(기본 8, 최대 10)로 돌리고, 그 뒤에 `serial` 테스트를 혼자 돌린다. `serial`은 다른 테스트 프로세스와 기계를 나누면 안 되는 모듈이다(GIL 해제를 벽시계로 재는 것, 시간 제한이 있는 하위 프로세스, 물리 메모리 근처의 할당; 목록은 `tests/conftest.py`의 `SERIAL`).
 - **테스트 수**(2026-11-20에 센 값): quick 10,484개(그 가운데 serial 39개), deep 10,626개(deep 마커 142개). 지금 수는 모으기만 해서 센다: `.venv/bin/python -m pytest --collect-only -q -p no:cacheprovider | tail -1`(deep은 앞에 `SD_TIER=deep`).
-- 잰 시간(2026-11-20, 이 Mac, 그때 quick 9,348개): 한 프로세스 약 150초·최대 RSS 3.7GB, `tools/test.py` 70초(병렬 34초 + serial 36초)·워커 합 약 9.4GB. 워커를 8개로 늘려도 빨라지지 않고(48초) GIL 테스트가 부하로 실패했다. 워커마다 sd 스레드 수는 기본값 그대로가 가장 빨랐다(2로 줄이면 51초).
+- 잰 시간(2026-11-20, 이 Mac, 다른 실행이 없을 때, quick 전체): 한 프로세스는 약 150초·최대 RSS 3.7GB(그때 9,348개)다. `tools/test.py`는 serial 부분 44초를 포함해 워커 6개 76.6초·워커 합 RSS 7.6GB, 8개 69.6초·9.7GB, 10개 75.7초·12.9GB라 기본을 8로 했다. 워커마다 sd 스레드 수는 기본값 그대로가 가장 빨랐다(2로 줄이면 느렸다).
 - `--strict-markers`라서 등록하지 않은 마커는 에러다. 마커는 `deep`, `external`, `serial`이다.
 - **numpy·scipy와 견주는 테스트**: 반올림이 아닌 동작(dtype, 정수 연산, 정렬 순서, NaN·±0, 상태 값, 기본값, 멈춤 규칙)은 정확히 견준다. 반올림 크기의 값은 정확도 계약으로 견주고, 비트까지 같아야 하는 기준은 sd 자신의 골든이다(§2; API.md §4). 지금 numpy·scipy와 비트까지 견주는 테스트는 통과하는 동안 그대로 둔다. 의도한 고침이나 최적화 때문에만 깨지면 허용오차와 반복 수(최적화)의 비교로 바꾼다.
 
@@ -67,22 +67,34 @@ C++ 코어는 clang의 소스 기반 커버리지(`-fprofile-instr-generate -fco
 
 ## 4. 정확도 측정
 
-Arb 참값 대비 오차를 함수마다 재서 표로 만들고, 이전 측정보다 나빠진 것을 찾는다. 속도 체계(`bench/speed`)와 같은 꼴이다.
+참값 대비 오차를 함수마다 재서 표로 만들고, 이전 측정보다 나빠진 것을 찾는다. 속도 체계(`bench/speed`)와 같은 꼴이다.
 
 ```bash
-.venv/bin/python -m bench.accuracy run                         # 모든 영역을 재서 build/accuracy/<실행>.json
-.venv/bin/python -m bench.accuracy run --area special --match erf
+.venv/bin/python -m bench.accuracy run                          # sd만, 모든 영역 (10프로세스)
+.venv/bin/python -m bench.accuracy run --compare                # 비교 패키지(scipy·numpy·statsmodels·scikit-learn·R)도
+.venv/bin/python -m bench.accuracy run --area special --match erf --jobs 1
 .venv/bin/python -m bench.accuracy compare build/accuracy/<실행>.json   # 기준선보다 나빠진 것
 .venv/bin/python -m bench.accuracy promote build/accuracy/<실행>.json   # 기준선에 넣고 accuracy.md 다시 만들기
-.venv/bin/python -m bench.accuracy table                       # 기준선에서 표만 다시
+.venv/bin/python -m bench.accuracy table                        # 기준선에서 표만 다시
 ```
 
-- 스윕은 테스트가 쓰는 참값 파일 그대로다: `tests/special/ref`(파일 98개 가운데 함수의 참값 97개; `reduce_cases`는 테스트만 읽는다, `tools/special_ref.py`), `tests/stats/ref`(555개, `tools/stats_ref.py`). 파일마다 입력, 참값(hi + lo), 보장 영역, 계약의 배율(`scale`), 출처(`arb`, `target_bits`; `refdata.provenance`가 읽는다)가 있어서 실행은 stardust 쪽만 계산한다(두 영역 합 약 1초). 형식은 `tests/special/refdata.py`에 있다.
-- 새 참값은 같은 폴더에 커밋하고 영역당 60MB까지 둔다(2026-11-20에 `tests/stats/ref` 57MB, `tests/special/ref` 11MB).
-- 지표는 (함수, 영역)마다: 최대·99.9% ULP, 배율이 1보다 큰 점이 있는 함수의 ULP/배율(역함수의 max(1, κ), Bessel·Airy·복소 오차함수·wofz의 영점 근처 포락선 배율), 0을 지나는 값의 mixed(|오차|/max(1, |값|), 2⁻⁵² 단위), 최대 상대오차, 계약 대비(1 이하가 계약 안). 회귀는 참값이 유한한데 sd가 NaN·inf를 낸 점의 수도 센다. 계약 판정은 `tests/<영역>/test_reference.py`의 것을 그대로 부른다.
-- `run`은 계약을 넘는 것이 있으면 종료 코드 1이다. `compare`는 계약을 넘거나, 계약 안이라도 어느 지표든 기준선보다 커진 것을 모두 `WORSE`로 적고 종료 코드 1이다.
-- 기준선은 `bench/accuracy/results/<영역>.json`(커밋한다), 표는 `bench/<영역>/accuracy.md`(기준선에서 만든다. 손으로 고치지 않는다), 실행 파일은 `build/accuracy/`(커밋하지 않는다).
-- 영역은 special, stats(단변량), multivariate, regression이다.
-  - multivariate: 다변량·행렬 분포 7개의 log 밀도·밀도·엔트로피(참값 `tests/stats/ref_mv`, `tools/mv_ref.py`로 만든다; 2.4MB, 8프로세스로 약 3초)와 다변량 정규·t의 cdf(`tests/stats/ref_mvcdf`). 계약과 영역은 `tests/stats/test_multivariate.py`·`test_matrix.py`·`test_mvcdf.py`의 것이고, 표는 `bench/stats/accuracy_multivariate.md`다.
-  - regression: 문제별 고정 참값(linear 17, glm 17, penalized 21, robust 19). 필드마다 상대오차와 ULP이고, 수치 계약이 없어 기준선과의 비교만 한다.
-  - linalg, array, optimize는 아직 없다.
+- 참값은 모두 미리 계산해 커밋한 파일이고, 측정은 파일만 읽는다. 측정 때 계산하는 것은 sd(와 비교 패키지)의 값과, 결과마다 다른 잔차(기울기, ‖F‖, KKT)뿐이다. 참값 도구는 Arb(python-flint)나 정확한 산술만 쓴다(mpmath 금지).
+
+  | 영역 | 참값 | 도구 |
+  |---|---|---|
+  | special | `tests/special/ref` | `tools/special_ref.py` |
+  | stats(단변량) | `tests/stats/ref` | `tools/stats_ref.py` |
+  | multivariate(다변량·행렬 분포, 다변량 cdf) | `tests/stats/ref_mv`, `tests/stats/ref_mvcdf` | `tools/mv_ref.py`, `tools/mvcdf_ref.py` |
+  | regression | `tests/regression/ref` | `tools/regref.py` |
+  | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
+  | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |
+  | optimize | `tests/optimize/data/scalar_roots.json`, `tests/optimize/ref/derivatives.npz`, NIST 인증값 | `tools/optimize_ref.py`, `tools/optimize_accuracy_ref.py` |
+
+  새 참값은 같은 폴더에 커밋하고 영역당 60MB까지 둔다(2026-11-20: stats 57MB, array 19MB, special 11MB, linalg 6MB). 도구는 기본 10프로세스다.
+- special·stats의 참값 파일(`tests/special/ref`는 파일 98개 가운데 함수의 참값 97개; `reduce_cases`는 테스트만 읽는다)에는 입력, 참값(hi + lo), 보장 영역, 계약의 배율(`scale`), 출처(`arb`, `target_bits`; `refdata.provenance`가 읽는다)가 있다. 형식은 `tests/special/refdata.py`에 있다.
+- 지표는 (함수, 영역)마다: 최대·99.9% ULP, 배율이 1보다 큰 점이 있는 함수의 ULP/배율(역함수의 max(1, κ), Bessel·Airy·복소 오차함수·wofz의 영점 근처 포락선 배율), 0을 지나는 값의 mixed(|오차|/max(1, |값|), 2⁻⁵² 단위), 최대 상대오차, 계약 대비(1 이하가 계약 안). 영역에 따라 상대오차/(u·조건수), 잔차/(n·eps·척도), 기울기·‖F‖·KKT 잔차, 수렴하지 못한 수를 더한다(표의 범례). 회귀는 참값이 유한한데 sd가 NaN·inf를 낸 점의 수도 센다.
+- 계약: special·stats·multivariate는 `tests/<영역>/test_reference.py`·`test_mvcdf.py` 등의 척도 그대로, array는 vForce가 numpy와 8 ULP·복소 abs가 1.5 ULP, linalg는 잔차/(n·eps·척도) ≤ 10, optimize는 결과로 확인되는 멈춤 판정(구간법의 xtol + rtol·|x*|, 기울기 판정의 gtol)이다. regression과 그 밖의 측정(전진오차, xtol = 0의 ULP, 최적값까지의 거리 등)은 수치 계약이 없어 기준선과의 비교만 한다.
+- 비교 패키지(`--compare`): scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS·robustbase·glmnet·Matrix·mvtnorm), Boost.Math 단독(`bench/accuracy/boost_comparator.cpp`; 헤더는 저장소 밖 `build/comparators/boost-math`에 `git clone --depth 1 https://github.com/boostorg/math.git`, 첫 실행에 clang++로 빌드한다). 같은 참값, 같은 점에서 같은 척도로 잰 그 라이브러리의 오차를 표의 라이브러리별 열에 둔다. 같은 양을 계산하는 공개 함수만 재고(없으면 —), R·Boost가 없으면 not run이다. optimize의 시험 함수는 Python이라 R과는 견주지 않는다. 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점은 빼고 센다(제외 열). 호출마다 시간 30초(일부 300초)·메모리 2GB 한도가 있고, 넘으면 멈춤이다. 기준선에 결과와 버전을 저장하고, `compare`는 그 변화를 CHANGED로 알리기만 한다(종료 코드는 sd로만 정한다). deep 등급은 sd만 잰다.
+- 병렬: `--jobs`(기본 10, 최대 10)개 프로세스가 스윕을 나눠 잰다. 결과는 프로세스 수와 무관하다(워커는 sd 1스레드).
+- `run`은 계약을 넘는 것이 있으면 종료 코드 1이다. `compare`는 계약을 넘거나, 계약 안이라도 sd의 어느 지표든 기준선보다 커진 것을 모두 `WORSE`로 적고 종료 코드 1이다.
+- 기준선은 `bench/accuracy/results/<영역>.json`(커밋한다), 표는 `bench/<영역>/accuracy.md`(다변량은 `bench/stats/accuracy_multivariate.md`; 기준선에서 만든다. 손으로 고치지 않는다), 실행 파일은 `build/accuracy/`(커밋하지 않는다).

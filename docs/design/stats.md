@@ -125,7 +125,7 @@
 - 모멘트(T24, 규칙은 docs/api/stats.md §2): t의 df ≤ 1 평균은 NaN(scipy inf), F의 dfd ≤ 2 분산은 NaN(scipy inf), F의 4 < dfd ≤ 6 왜도와 6 < dfd ≤ 8 첨도는 inf(scipy NaN).
 - `mode`(T21): 균등과 a, b ≤ 1인 베타(a = 1, b < 1 같은 한쪽 끝 하나는 빼고)는 NaN. scipy는 수치 최적화의 임의의 점(균등 0.5, 베타(1, 1) 0.62)을 낸다.
 - `kurtosis`는 초과 첨도(T23). scipy 신형의 기본은 그냥 첨도다.
-- 꼬리에서 scipy가 0, 1, inf를 내는 곳에서 참값을 낸다(예: `F(dfn=3, dfd=7).iccdf(1e-30)` = 1.1e9, scipy inf; `Beta(a=2.5, b=0.7).logcdf(1e-200)` = −1151.9, scipy −inf). 같은 점의 scipy 비교는 bench/stats/t4/accuracy.md에 있다(우리 쪽의 지금 오차는 [bench/stats/accuracy.md](../../bench/stats/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)).
+- 꼬리에서 scipy가 0, 1, inf를 내는 곳에서 참값을 낸다(예: `F(dfn=3, dfd=7).iccdf(1e-30)` = 1.1e9, scipy inf; `Beta(a=2.5, b=0.7).logcdf(1e-200)` = −1151.9, scipy −inf). 같은 점의 오차는 sd와 scipy·R·Boost 모두 [bench/stats/accuracy.md](../../bench/stats/accuracy.md)의 표(`python -m bench.accuracy --compare`가 만든다)에 있다.
 
 ## 3. 엔진
 - 원소 함수는 분포 구조체의 정적 함수다: `Normal::cdf(x, mu, sigma)`. Op는 (분포, 메서드)마다 템플릿 `DistOp<D, M>`이 만든다(`csrc/stats/engine.hpp`). 이름은 `<분포>_<메서드>`, 입력은 (매개변수..., x) 또는 (매개변수...)이고, `stardust._core.stats`에 special과 같은 n항 디스패처로 묶는다(`csrc/bind/nary_bind.hpp`를 special과 함께 쓴다). 분포 12개 × 메서드 20개(지지집합의 두 끝 포함)를 손으로 쓰지 않는다.
@@ -247,7 +247,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
 
 - **기각 판정의 정확도**: 포아송·이항의 기각은 log pmf 비교를 double-double log pmf로 한다. lgamma 차를 double로 계산하면 μ ~ 1e12에서 그 차의 크기가 1e13이라 판정이 틀린다.
 - **속도 기법**: 추가 단어를 쓰는 방법은 이웃한 원소 넷의 첫 추가 블록을 함께 계산한다(블록 하나는 지연 시간 12 ns, 넷을 섞으면 원소당 4.5 ns). 매개변수가 스칼라인 호출은 검사와 준비(감마의 d, c, PTRS의 상수)를 한 번만 한다. Python float 하나는 배열 없이 바로 돌려준다(1.9 → 0.28 µs).
-- **잰 값**: bench/stats/t7/(speed.md, quality.md). 요약은 docs/api/stats.md §2.5.
+- **잰 값**: 커밋 4151d2a의 bench/stats/t7/(speed.md, quality.md). 요약은 docs/api/stats.md §2.5.
 
 ## 5. 기술통계 (`src/stardust/stats/_descriptive.py`, `csrc/bind/stats_desc.cpp`, T8)
 | 함수 | 내용 |
@@ -268,7 +268,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
 - **줄(lane)**: 줄여야 할 축을 끝으로 옮겨 (줄 수, n) float64 행렬로 만들고(Python), 커널이 줄마다 계산한다(`desc_moments`, `desc_moment`, `desc_rank`, `desc_mode`, `desc_diffent`). omit은 줄마다 자기 개수로 계산한다. scipy의 omit은 마스크 배열이라 느리다(10⁶개 axis 0에서 50 ms, 우리 2.3 ms).
 - **적률의 정확도**: 평균을 hi + lo(보상 합 / n과 잔차의 평균)로 든다. 평균을 double로 반올림하면 평균 1e8에서 최대 7e-9가 틀리고, 그것이 m3에 3·오차·m2로 들어간다(퍼짐 1인 데이터에서 왜도가 1e-8 틀렸다). d = x − hi의 S_k = mean(d^k)를 한 번 훑어 구하고, lo = S1로 m2 = S2 − lo², m3 = S3 − 3 lo S2 + 2 lo³, m4 = S4 − 4 lo S3 + 6 lo² S2 − 3 lo⁴로 바꾼다(세 번째로 훑지 않는다). 합은 모두 Knuth의 TwoSum 보상 합이다(분기가 없어 벡터화된다). zscore도 (x − hi) − lo를 쓴다. 평균 1e8·퍼짐 1의 데이터 2000개에서 유리수로 계산한 정확한 값과 비교하면 skew 3.2e-16, kurtosis·m2 0이다. scipy는 skew 1.2e-8, kurtosis 1.1e-8이다. 테스트는 1e-14로 확인한다.
 - **병렬**: 적률은 줄마다 8192개씩 고정된 블록으로 나눠 (줄, 블록)을 풀에서 계산하고, 블록 순서대로 합친다. 블록이 스레드 수와 무관하므로 비트도 무관하고, axis=None의 줄 하나도 병렬이다. 보상 합 여덟 개를 나란히 둬서 의존 사슬을 끊는다. 정렬하는 함수(rankdata, mode, differential_entropy)는 줄 단위로만 병렬이다.
-- **잰 값**: bench/stats/t8/speed.md. 요약은 docs/api/stats.md §4.
+- **잰 값**: 커밋 4151d2a의 bench/stats/t8/speed.md. 요약은 docs/api/stats.md §4.
 
 ## 6. 다변량 분포
 
@@ -283,7 +283,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
 - **다항 logpmf**: log n! − Σlog x_i! + Σx_i log p_i − n log(Σp)를 double-double로 계산한다. p를 합으로 나누지 않고 log의 차로 쓴다(나누면 log p_i마다 1 ULP, 전체로 n·eps가 틀린다). log k!은 4096까지 double-double 표(log의 누적합)에서 찾고, 그 위는 log_gamma다.
 - **표본**: 벡터 하나가 스트림 원소 하나다(표본 커널의 Words, §4). 정규는 ziggurat d개, t는 거기에 감마(log) 하나를 더한다. 다항은 조건부 이항(BTRS·역함수, §4)이고, 남은 질량은 끝에서부터 더한다. 디리클레는 log 감마를 정규화한다.
 - **요약값**: 공분산 대각은 상쇄 없는 꼴이다(다항 n·p_i·Σ_{j≠i} p_j, 디리클레 (m_i·Σ_{j≠i} a_j/a0)/(a0 + 1), m = a/a0; 나머지 성분의 합은 앞뒤 누적합으로 뺄셈 없이 구한다). 디리클레의 분모를 a0²(a0 + 1)로 쓰면 a0 ≳ 5e102에서 넘쳤다. 결과 배열은 쓰기 금지다(D-4). `cdf(return_error=True)`는 `CdfResult(value, error)`(`stardust._results`)다.
-- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; scipy 대비는 bench/stats/t9/accuracy.md), 속도는 bench/stats/t9/speed.md.
+- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; scipy·R 대비도 같은 표의 비교 패키지 열), 속도는 커밋 4151d2a의 bench/stats/t9/speed.md.
 - 행렬 분포는 §6.3(T10).
 
 ### 6.2 다변량 정규·t의 cdf (T16, T29; `csrc/stats/mvcdf.hpp`, `csrc/bind/stats_mvcdf.cpp`)
@@ -303,7 +303,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
 - **t d = 2, 3**: 척도 혼합 E[Φ_d(R h)](v = log(x/a)에서 적응 구적, 무게는 Stirling 급수와 상쇄 없는 e^v − 1 − v라 큰 df에서 잃지 않는다. 그대로 쓰면 df = 1e6에서 7e-10이 틀렸다)을 바탕으로 한다. 왼쪽 꼬리는 직교 확률로 닫는다.
   - d = 2(`bvt`): Plackett의 항등식을 R에 대해 섞은 꼴이다. dP/dθ = (1 + q/a)^−a/(2π)가 닫힌 꼴이라, r = 0의 시작값(Φ 둘의 곱의 혼합 하나)에 경로 변수의 적분 하나를 더한다. r < 0에서는 시작값에서 빼는데, r ≤ −1/2이거나 그 뺄셈이 두 비트 넘게 잃으면 r = −1의 값(stdtr로 구한 P(−k ≤ X ≤ h))에서 시작한다. 지수 a log(1 + q/a)는 정확한 t, h, k에서 double-double로 만든다.
   - d = 3(`tvt`): tvn 위의 척도 혼합이다. tvn의 경로가 상쇄하는 곳에서는 노드마다 조건부 tvn이 bvn을 수백 번 부르는데, 모두 합쳐 bvn 20000번(`kTvtBudget`)을 넘으면 값 전체를 X_k에 대한 조건부 적분(`tvt_condition`, 안쪽은 `bvt`)으로 구한다.
-  - 처음 정한 QMC는 카이 변수의 끝점 특이성 때문에 오차가 N⁻¹로만 줄어 점 하나에 280 ms였다. 지금은 d = 2가 34 µs, d = 3이 474 µs다(bench/stats/t9/cdf_speed.md).
+  - 처음 정한 QMC는 카이 변수의 끝점 특이성 때문에 오차가 N⁻¹로만 줄어 점 하나에 280 ms였다. 지금은 d = 2가 34 µs, d = 3이 474 µs다(커밋 4151d2a의 bench/stats/t9/cdf_speed.md).
 - **d ≥ 4 (정규, t)**: Genz의 준몬테카를로다.
   - 점마다 Genz–Bretz 재배열을 하고, 변수 분리 적분에 텐트 변환을 쓴다.
   - 점 집합은 fast-CBC rank-1 격자다(Nuyens & Cools 2006; 곱 무게 0.8^j, scipy와 같은 생성 벡터). 처음의 Richtmyer 규칙보다 같은 오차에서 평가가 3–3.5배 적다.
@@ -313,7 +313,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
   - 오차 추정은 통계적이다. 잰 값으로 0–7%의 점이 추정을 넘었고, 넘은 폭은 최대 1.9배였다.
 - **t의 역 카이** (d ≥ 4의 QMC): df마다 조각별 Chebyshev 표를 쓴다(w ≤ Φ(−2)는 log w, 그 위는 z = Φ⁻¹(w)에서). 조각마다 33점을 1e-14로 확인했고, 촘촘한 표본 512k개에서 최악 1.4e-14다. 호출당 260 ns가 15 ns가 됐다. 같은 격자에서 정확한 역함수와의 치우침은 8.3e-17 이하다. df < 1이면 정확한 gammaincinv를 쓴다.
 - **결정성**: 스레드 1·3·10에서, 그리고 점을 혼자 계산하든 묶어 계산하든 같은 비트다.
-- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; P의 크기별 표는 bench/stats/t9/cdf_accuracy.md), 속도는 bench/stats/t9/cdf_speed.md. 참값은 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py)이다. 정규(bvn, tvn, 한 인자 d = 4–10)와 d = 2, 3의 t는 Arb의 엄밀한 값이고, 한 인자 t(d = 2–8)는 scipy의 2단 적응 구적(약 1e-11)이다.
+- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; P의 크기별 표는 커밋 4151d2a의 bench/stats/t9/cdf_accuracy.md), 속도는 커밋 4151d2a의 bench/stats/t9/cdf_speed.md. 참값은 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py)이다. 정규(bvn, tvn, 한 인자 d = 4–10)와 d = 2, 3의 t는 Arb의 엄밀한 값이고, 한 인자 t(d = 2–8)는 scipy의 2단 적응 구적(약 1e-11)이다.
 
 ### 6.3 행렬 분포 (T10; `src/stardust/stats/_matrix.py`, `csrc/bind/stats_matrix.cpp`, `csrc/stats/dd_linalg.hpp`)
 - **결정**: T30. 배치와 매개변수의 촐레스키 분해(`mv_chol`)는 T9와 같다. double-double 선형대수(제곱근, log1p, 촐레스키, 앞으로 대입, L에서 역행렬, log Γ_p)는 `stats/dd_linalg.hpp`에 모아 T9 커널과 함께 쓴다.
@@ -337,7 +337,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
   IW의 식은 X = Y⁻¹, Y ~ W(n, Ψ⁻¹)로 변수를 바꿔 얻는다(야코비안 |Y|^−(p+1), E log|Y| = ψ_p(n/2) + p log 2 − log|Ψ|). scipy 1.18의 invwishart.entropy는 이 값과 다르고, 몬테카를로(−E log pdf)는 우리 값과 맞는다.
 - **행렬 정규** MN(M, U, V): A = L_U⁻¹(X − M)L_V⁻ᵀ다. X − M은 two_sum으로 정확히 빼고, 열마다 L_U, 행마다 L_V로 앞으로 대입한다. log pdf = −(np/2) log 2π − (p/2) log|U| − (n/2) log|V| − ‖A‖²/2다.
 - **표본**: Wishart는 Bartlett 분해다. A는 아래 삼각이고, A_jj = √(2 G((n − j)/2))(j = 0..p−1, 실수 n), 그 아래는 N(0, 1)이다. 결과는 (LA)(LA)ᵀ다. 역Wishart는 X⁻¹ ~ W(n, Ψ⁻¹)이고 W(n, I)가 직교 불변이라 Ψ⁻¹의 아무 제곱근을 써도 되므로, X = (L_Ψ A⁻ᵀ)(L_Ψ A⁻ᵀ)ᵀ다. 행렬 정규는 M + L_U Z L_Vᵀ다. 결과는 정확히 대칭으로 쓴다.
-- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; scipy 대비는 bench/stats/t10/accuracy.md), 속도는 bench/stats/t10/speed.md. 참값에서 x는 아래 삼각에서 대칭으로 만든다. scipy의 표본은 반올림만큼 비대칭이라, 특이에 가까운 X에서는 그 차이가 X⁻¹를 움직였다(처음 측정에서 3e-8로 보였다).
+- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; scipy 대비도 같은 표의 비교 패키지 열), 속도는 커밋 4151d2a의 bench/stats/t10/speed.md. 참값에서 x는 아래 삼각에서 대칭으로 만든다. scipy의 표본은 반올림만큼 비대칭이라, 특이에 가까운 X에서는 그 차이가 X⁻¹를 움직였다(처음 측정에서 3e-8로 보였다).
 
 ## 7. `sd.stats.tests` (나중, 이 영역에서 뺌)
 - 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다).

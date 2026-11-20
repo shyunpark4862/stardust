@@ -1,0 +1,808 @@
+{
+ "schema": 1,
+ "area": "optimize",
+ "runs": {
+  "20261120-173620-0a89dde": {
+   "commit": "0a89dde",
+   "dirty": false,
+   "date": "2026-11-20T17:36:20",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "optimize/approx_fprime",
+   "area": "optimize",
+   "name": "approx_fprime",
+   "points": 94,
+   "regions": {
+    "gradient": {
+     "points": 47,
+     "norm_rel": 6.441557202586647e-11,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh26-n10-m10-x1"
+     ]
+    },
+    "jacobian": {
+     "points": 47,
+     "norm_rel": 1.2080569730892518e-11,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh26-n10-m10-x1"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "gradient": {
+      "points": 47,
+      "norm_rel": 2.1457672119140625e+294,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh35-n1-m8-x1"
+      ]
+     },
+     "jacobian": {
+      "points": 47,
+      "norm_rel": 1.0963876922621934e-06,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh17-n5-m33-x1"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/find_root",
+   "area": "optimize",
+   "name": "find_root",
+   "points": 204,
+   "regions": {
+    "default": {
+     "points": 191,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "chandrupatla.3.4"
+     ],
+     "unconverged": 0
+    },
+    "root 0": {
+     "points": 13,
+     "abs_max": 5.551115123125783e-17,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "chandrupatla.6.1"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "default": {
+      "points": 191,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "chandrupatla.3.4"
+      ],
+      "unconverged": 0
+     },
+     "root 0": {
+      "points": 13,
+      "abs_max": 5.551115123125783e-17,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "chandrupatla.6.1"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/least_squares.lm",
+   "area": "optimize",
+   "name": "least_squares.lm",
+   "points": 54,
+   "regions": {
+    "certified minimum": {
+     "points": 35,
+     "rel_max": 6.613460591097345e-07,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "Chwirut2 start1"
+     ],
+     "unconverged": 2
+    },
+    "elsewhere": {
+     "points": 19,
+     "rel_max": 603.8376602523776,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "MGH09 start1"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "certified minimum": {
+      "points": 34,
+      "rel_max": 6.613460591097345e-07,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "Chwirut2 start1"
+      ],
+      "unconverged": 3
+     },
+     "elsewhere": {
+      "points": 20,
+      "rel_max": 603.8376602523776,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "MGH09 start1"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/least_squares.trf",
+   "area": "optimize",
+   "name": "least_squares.trf",
+   "points": 54,
+   "regions": {
+    "certified minimum": {
+     "points": 35,
+     "rel_max": 7.724129820344849e-07,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "Hahn1 start1"
+     ],
+     "unconverged": 2
+    },
+    "elsewhere": {
+     "points": 19,
+     "rel_max": 30.21556774387448,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "MGH17 start1"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "certified minimum": {
+      "points": 35,
+      "rel_max": 7.724130933872407e-07,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "Hahn1 start1"
+      ],
+      "unconverged": 2
+     },
+     "elsewhere": {
+      "points": 19,
+      "rel_max": 30.215567743871386,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "MGH17 start1"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/lsq_linear",
+   "area": "optimize",
+   "name": "lsq_linear",
+   "points": 12,
+   "regions": {
+    "cases": {
+     "points": 12,
+     "kkt_max": 1268416062559.7764,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "scipy.dense.lb0"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "cases": {
+      "points": 12,
+      "kkt_max": 1268416062559.7764,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "scipy.dense.lb0"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/minimize.bfgs",
+   "area": "optimize",
+   "name": "minimize.bfgs",
+   "points": 204,
+   "regions": {
+    "mgh": {
+     "points": 102,
+     "grad_max": 9.784842854756085e-06,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh23-n10-m11-x10"
+     ],
+     "excess_max": 48.98425367924713,
+     "unconverged": 8
+    },
+    "gradient stop": {
+     "points": 102,
+     "grad_max": 9.784842854756085e-06,
+     "contract": 0.9784842854756084,
+     "bound": 1.0,
+     "worst": [
+      "mgh23-n10-m11-x10"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 103,
+      "grad_max": 9.982044587562516e-06,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh23-n10-m11-x100"
+      ],
+      "excess_max": 48.98425367924712,
+      "unconverged": 7
+     },
+     "gradient stop": {
+      "points": 103,
+      "grad_max": 9.982044587562516e-06,
+      "contract": 0.9982044587562515,
+      "bound": 1.0,
+      "worst": [
+       "mgh23-n10-m11-x100"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/minimize.l-bfgs-b",
+   "area": "optimize",
+   "name": "minimize.l-bfgs-b",
+   "points": 157,
+   "regions": {
+    "mgh": {
+     "points": 109,
+     "grad_max": 3109135.9695844664,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh10-n3-m16-x10"
+     ],
+     "excess_max": 10881062.316818055,
+     "unconverged": 1
+    },
+    "gradient stop": {
+     "points": 48,
+     "grad_max": 9.555669220489282e-06,
+     "contract": 0.9555669220489281,
+     "bound": 1.0,
+     "worst": [
+      "mgh29-n10-m10-x1"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 110,
+      "grad_max": 3109135.9695844664,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh10-n3-m16-x10"
+      ],
+      "excess_max": 10881062.316818055,
+      "unconverged": 0
+     },
+     "gradient stop": {
+      "points": 48,
+      "grad_max": 9.555669220489282e-06,
+      "contract": 0.9555669220489281,
+      "bound": 1.0,
+      "worst": [
+       "mgh29-n10-m10-x1"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/minimize.nelder-mead",
+   "area": "optimize",
+   "name": "minimize.nelder-mead",
+   "points": 62,
+   "regions": {
+    "mgh": {
+     "points": 62,
+     "grad_max": 1815559210414.7974,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh27-n10-m10-x100"
+     ],
+     "excess_max": 1730474.6172886633,
+     "unconverged": 48
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 62,
+      "grad_max": 1815559210414.7974,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh27-n10-m10-x100"
+      ],
+      "excess_max": 1730474.6172886633,
+      "unconverged": 48
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/minimize.newton-cg",
+   "area": "optimize",
+   "name": "minimize.newton-cg",
+   "points": 81,
+   "regions": {
+    "mgh": {
+     "points": 81,
+     "grad_max": 0.17862253440072892,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh03-n2-m2-x1"
+     ],
+     "excess_max": 48.98425367924004,
+     "unconverged": 20
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 81,
+      "grad_max": 0.17862253440072892,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh03-n2-m2-x1"
+      ],
+      "excess_max": 48.98425367924004,
+      "unconverged": 20
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/minimize.trust-exact",
+   "area": "optimize",
+   "name": "minimize.trust-exact",
+   "points": 188,
+   "regions": {
+    "mgh": {
+     "points": 94,
+     "grad_max": 8.343634277753053e-05,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh01-n2-m2-x10"
+     ],
+     "excess_max": 48.98425367924287,
+     "unconverged": 7
+    },
+    "gradient stop": {
+     "points": 94,
+     "grad_max": 9.538981101730005e-05,
+     "contract": 0.9538981101730004,
+     "bound": 1.0,
+     "worst": [
+      "mgh27-n10-m10-x1"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 94,
+      "grad_max": 8.343634277753053e-05,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh01-n2-m2-x10"
+      ],
+      "excess_max": 48.98425367924287,
+      "unconverged": 7
+     },
+     "gradient stop": {
+      "points": 94,
+      "grad_max": 9.538981101730005e-05,
+      "contract": 0.9538981101730004,
+      "bound": 1.0,
+      "worst": [
+       "mgh27-n10-m10-x1"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/minimize.trust-ncg",
+   "area": "optimize",
+   "name": "minimize.trust-ncg",
+   "points": 192,
+   "regions": {
+    "mgh": {
+     "points": 96,
+     "grad_max": 9.76763405601342e-05,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "mgh07-n3-m3-x100"
+     ],
+     "excess_max": 48.98425368166598,
+     "unconverged": 5
+    },
+    "gradient stop": {
+     "points": 96,
+     "grad_max": 9.770122701697845e-05,
+     "contract": 0.9770122701697844,
+     "bound": 1.0,
+     "worst": [
+      "mgh07-n3-m3-x100"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 96,
+      "grad_max": 9.76763405601342e-05,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh07-n3-m3-x100"
+      ],
+      "excess_max": 48.98425368166598,
+      "unconverged": 5
+     },
+     "gradient stop": {
+      "points": 96,
+      "grad_max": 9.770122701697845e-05,
+      "contract": 0.9770122701697844,
+      "bound": 1.0,
+      "worst": [
+       "mgh07-n3-m3-x100"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/nnls",
+   "area": "optimize",
+   "name": "nnls",
+   "points": 12,
+   "regions": {
+    "cases": {
+     "points": 12,
+     "kkt_max": 0.3548607134951863,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "sin.8x12.box"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "cases": {
+      "points": 12,
+      "kkt_max": 0.3548607134951863,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "sin.8x12.box"
+      ]
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/root.hybr",
+   "area": "optimize",
+   "name": "root.hybr",
+   "points": 41,
+   "regions": {
+    "converged": {
+     "points": 41,
+     "fnorm_max": 9.061479566696562e-09,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "hybrd13-n10-x1"
+     ],
+     "unconverged": 14
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "converged": {
+      "points": 41,
+      "fnorm_max": 9.061479566696562e-09,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "hybrd13-n10-x1"
+      ],
+      "unconverged": 14
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/root.lm",
+   "area": "optimize",
+   "name": "root.lm",
+   "points": 46,
+   "regions": {
+    "converged": {
+     "points": 46,
+     "fnorm_max": 0.04834061886077856,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "hybrd07-n8-x1"
+     ],
+     "unconverged": 9
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "converged": {
+      "points": 46,
+      "fnorm_max": 0.04834061886077856,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "hybrd07-n8-x1"
+      ],
+      "unconverged": 9
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/root_scalar.bisect",
+   "area": "optimize",
+   "name": "root_scalar.bisect",
+   "points": 408,
+   "regions": {
+    "default": {
+     "points": 204,
+     "contract": 0.888324228222705,
+     "bound": 1.0,
+     "worst": [
+      "chandrupatla.8.1"
+     ],
+     "unconverged": 0
+    },
+    "xtol=0": {
+     "points": 191,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "aps.02.03"
+     ],
+     "unconverged": 0
+    },
+    "xtol=0, root 0": {
+     "points": 13,
+     "abs_max": 0.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "aps.03.00"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "default": {
+      "points": 204,
+      "contract": 0.888324228222705,
+      "bound": 1.0,
+      "worst": [
+       "chandrupatla.8.1"
+      ],
+      "unconverged": 0
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/root_scalar.brentq",
+   "area": "optimize",
+   "name": "root_scalar.brentq",
+   "points": 382,
+   "regions": {
+    "default": {
+     "points": 185,
+     "contract": 0.4275790481464332,
+     "bound": 1.0,
+     "worst": [
+      "original.05"
+     ],
+     "unconverged": 19
+    },
+    "xtol=0": {
+     "points": 189,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "original.05"
+     ],
+     "unconverged": 7
+    },
+    "xtol=0, root 0": {
+     "points": 8,
+     "abs_max": 0.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "aps.03.00"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "default": {
+      "points": 185,
+      "contract": 0.4275790481464332,
+      "bound": 1.0,
+      "worst": [
+       "original.05"
+      ],
+      "unconverged": 19
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  },
+  {
+   "id": "optimize/root_scalar.toms748",
+   "area": "optimize",
+   "name": "root_scalar.toms748",
+   "points": 408,
+   "regions": {
+    "default": {
+     "points": 204,
+     "contract": 0.5000110294432145,
+     "bound": 1.0,
+     "worst": [
+      "aps.09.00"
+     ],
+     "unconverged": 0
+    },
+    "xtol=0": {
+     "points": 191,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "aps.08.03"
+     ],
+     "unconverged": 0
+    },
+    "xtol=0, root 0": {
+     "points": 13,
+     "abs_max": 0.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "aps.03.00"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "default": {
+      "points": 204,
+      "contract": 0.5000110294432145,
+      "bound": 1.0,
+      "worst": [
+       "aps.09.00"
+      ],
+      "unconverged": 0
+     }
+    }
+   },
+   "run": "20261120-173620-0a89dde",
+   "comparators_run": "20261120-173620-0a89dde"
+  }
+ ]
+}

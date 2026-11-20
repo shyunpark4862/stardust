@@ -34,6 +34,13 @@ MEASURES = (
     "abs_max",
     "rel_cond_max",
     "est_ratio_max",
+    "backward_max",
+    "orth_max",
+    "grad_max",
+    "excess_max",
+    "fnorm_max",
+    "kkt_max",
+    "unconverged",
 )
 
 
@@ -62,14 +69,17 @@ def cmd_list(a):
 
 
 def cmd_run(a):
+    from . import parallel
+
     sws = select(a)
     t0 = time.perf_counter()
-    out = []
-    for i, s in enumerate(sws, 1):
-        out.append(sources.measure(s))
+
+    def progress(i, n, sid):
         if a.verbose:
-            print(f"[{i}/{len(sws)}] {s.id}", file=sys.stderr, flush=True)
-    run = results.new_run(out)
+            print(f"[{i}/{n}] {sid}", file=sys.stderr, flush=True)
+
+    out = parallel.measure_all(sws, compare=a.compare, jobs=a.jobs, progress=progress)
+    run = results.new_run(out, compare=a.compare)
     path = a.out or results.RUN_DIR / f"{run['run']}.json"
     results.save(run, path)
     bad = failures(run)
@@ -90,6 +100,7 @@ def compare(run, base, partial=False):
         if b is None:
             lines.append(f"NEW      {s['id']}")
             continue
+        lines += comparator_changes(s, b)
         for label, r in s["regions"].items():
             rb = b["regions"].get(label)
             if rb is None:
@@ -98,7 +109,7 @@ def compare(run, base, partial=False):
             got_worse = []
             for m in MEASURES:
                 new, old = r.get(m), rb.get(m)
-                if new is None or old is None or new == old:
+                if new is None or old is None or new == old or (new != new and old != old):  # NaN = NaN
                     continue
                 if new > old:
                     got_worse.append(f"{m} {tables.num(old)} -> {tables.num(new)}")
@@ -114,6 +125,26 @@ def compare(run, base, partial=False):
             lines.append(f"GONE     {i}")
     bad = failures(run)
     return bad + lines, worse + len(bad), better
+
+
+def comparator_changes(s, b) -> list:
+    """CHANGED lines for the comparator libraries (information only: the exit status follows sd)."""
+    out = []
+    new, old = s.get("comparators"), b.get("comparators")
+    if not new or not old:
+        return out
+    for lib, regs in new.items():
+        prev = old.get(lib)
+        if not isinstance(regs, dict) or not isinstance(prev, dict) or "error" in regs or "error" in prev:
+            if regs != prev:
+                out.append(f"CHANGED  {s['id']} [{lib}]: {prev!r:.80} -> {regs!r:.80}")
+            continue
+        for label, r in regs.items():
+            moved = [f"{m} {tables.num(prev.get(label, {}).get(m))} -> {tables.num(r.get(m))}"
+                     for m in MEASURES if r.get(m) != prev.get(label, {}).get(m)]  # fmt: skip
+            if moved:
+                out.append(f"CHANGED  {s['id']} [{lib} {label}]: " + ", ".join(moved))
+    return out
 
 
 def cmd_compare(a):
@@ -164,6 +195,8 @@ def main(argv=None):
             p.add_argument("--out")
             p.add_argument("--promote", action="store_true")
             p.add_argument("-v", "--verbose", action="store_true")
+            p.add_argument("--compare", action="store_true", help="also the comparator libraries (compare.py)")
+            p.add_argument("--jobs", type=int, default=10, help="worker processes (at most 10; 1: in this one)")
     p = sub.add_parser("compare")
     p.add_argument("run")
     p = sub.add_parser("promote")

@@ -1,6 +1,6 @@
 """Reference values for the multivariate and matrix distributions (T9, T10) with Arb.
 
-    .venv/bin/python tools/mv_ref.py                 # every family, on 8 processes
+    .venv/bin/python tools/mv_ref.py                 # every family, on 10 processes
     .venv/bin/python tools/mv_ref.py wishart --jobs=4
 
 writes tests/stats/ref_mv/<family>.npz, read by bench/accuracy (python -m bench.accuracy).
@@ -20,6 +20,7 @@ entropies to 2^-110 max(1, |value|), densities to 2^-110 relative.
     matnormal    logpdf, entropy;  (n, p) up to 20 x 15; kappa = 1, 1e4, 1e9
     multinomial  logpmf, entropy;  n up to 1e5 (the entropy as the exact sum over the marginals)
     dirichlet    logpdf, entropy
+    tvn_cond     the condition numbers of the tvn cdf references (tests/stats/ref_mvcdf/tvn.npz)
 
 Determinants and solves are Arb's LU on the matrices as given (arb_mat), so nothing of a
 floating-point factorization enters a reference.
@@ -335,16 +336,37 @@ def write(family, jobs):
     print(f"{family}: {len(groups)} groups, {pts} values -> {(OUT / f'{family}.npz').relative_to(ROOT)}", flush=True)
 
 
+def write_tvn_cond():
+    """The condition numbers of tests/stats/ref_mvcdf/tvn.npz's points: sum over the six inputs of
+    |d log P / d log x| by central differences of sd's own values (tests/stats/test_mvcdf.py's
+    _cond3; a condition number needs a few digits), inf where P < 1e-300 or a perturbed value
+    underflows. Written to ref_mv/tvn_cond.npz, read by bench/accuracy."""
+    sys.path.insert(0, str(ROOT))
+    from tests.stats import test_mvcdf as T
+
+    z = np.load(T.REF / "tvn.npz")
+    h, r, hi = z["h"], z["r"], z["hi"]
+    cond = np.full(len(h), np.inf)
+    norm = hi >= 1e-300
+    cond[norm] = T._cond3(h[norm], r[norm])
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(OUT / "tvn_cond.npz", cond=cond)
+    print(f"tvn_cond: {len(cond)} points -> {(OUT / 'tvn_cond.npz').relative_to(ROOT)}", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("families", nargs="*", help=", ".join(FAMILIES))
-    ap.add_argument("--jobs", type=int, default=8)
+    ap.add_argument("families", nargs="*", help=", ".join((*FAMILIES, "tvn_cond")))
+    ap.add_argument("--jobs", type=int, default=10)
     a = ap.parse_args()
-    bad = set(a.families) - set(FAMILIES)
+    bad = set(a.families) - {*FAMILIES, "tvn_cond"}
     if bad:
         ap.error(f"unknown families {sorted(bad)}; choose from {', '.join(FAMILIES)}")
-    for f in a.families or FAMILIES:
-        write(f, min(a.jobs, 8))
+    for f in a.families or (*FAMILIES, "tvn_cond"):
+        if f == "tvn_cond":
+            write_tvn_cond()
+        else:
+            write(f, min(a.jobs, 10))
 
 
 if __name__ == "__main__":

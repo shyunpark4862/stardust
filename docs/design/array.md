@@ -153,7 +153,7 @@
 |---|---|
 | 원소별 연산 (vForce 함수와 아래 둘 제외) | 지금 비트까지 같다. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같다(`tanh`만 최대 1 ULP) |
 | complex `abs` | 1.5 ULP 이하(계약), numpy와 끝자리가 다를 수 있다 (§5.3) |
-| vForce를 쓰는 float64 함수 15개 (§5.4) | 최대 8 ULP (계약). 측정한 최대는 4 ULP (`atanh`) |
+| vForce를 쓰는 float64 함수 15개 (§5.4) | 최대 8 ULP (계약). 잰 값은 bench/array/accuracy.md (`python -m bench.accuracy`) |
 | 긴 float 합 (`sum(f)`), `var`/`std` | 같은 pairwise 알고리즘에 넓은 잎이라 끝자리가 다를 수 있다 (§6.2, §6.8) |
 | int64 `mean` | 정확한 정수합이라 합이 2⁵³을 넘으면 다를 수 있다(더 정확하다) (§6.8) |
 | 가중치 `bincount`·`histogram` | 고정 조각·블록의 합이라 끝자리가 다를 수 있다 (§6.13) |
@@ -344,7 +344,7 @@ float64 초월함수는 함수마다 구현을 나눈다.
   | 스레드 안전성 | 14개 스레드 동시 호출에서 불일치 0 |
   | 내부 스레드 | 쓰지 않는다 (CPU 시간 / 경과 시간 = 1.00). 우리 풀과 충돌하지 않는다 |
   | 특수값 (±0, ±inf, NaN) | vForce 함수 15개는 부호까지 정확하다 |
-  | 정확도 (libm 대비) | 최대 1~6 ULP. numpy 대비 측정 최대 4 ULP (`atanh`) |
+  | 정확도 (libm 대비) | 최대 1~6 ULP. numpy 대비 잰 값은 bench/array/accuracy.md |
 
 - **속도** (1스레드, libm 대비): 대부분 2~10배. `sin` 7.6배, `atan2` 10배, `exp` 4.2배.
   - `asinh`/`acosh`는 입력에 따라 갈린다. vForce는 입력과 상관없이 거의 일정하고, libm은 크게 달라진다. 큰 입력에서는 libm이 빠르다(`acosh`, 1 + [0, 10⁶)에서 16%; 커밋 4151d2a의 `bench/array/m9_vforce.py`). 작은 입력은 vForce가 빠르다고 보았지만 남은 측정 파일이 없어 수치를 적지 않는다. 데이터를 보고 고르지 않으므로(§1.4) vForce를 쓴다.
@@ -421,7 +421,7 @@ numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`과 같은 알고리즘이�
   | (300, 300) | 10.7 / 10.7µs | 12.4 / 7.3µs | 11.4µs |
   | (64, 2000) | 14.6 / 11.3µs | 나누지 않음 | 15.4µs |
 
-- 1000×1000 정규분포 `sum(axis=0)`의 numpy 대비 최대 상대오차는 2.7e-13이다. 한 사슬에 더해지는 항이 블록 길이로 줄어 오차 한계는 직렬 합보다 작다.
+- 1000×1000 정규분포 `sum(axis=0)`의 정확한 합 대비 오차는 bench/array/accuracy.md의 `sum` 행(normal 1000x1000 axis=0; numpy·R 열과 함께)이다. 한 사슬에 더해지는 항이 블록 길이로 줄어 오차 한계는 직렬 합보다 작다.
 
 ### 6.6 float/complex `prod` (`product_piece`, `product_mt`)
 - 왼쪽부터 곱하는 product는 곱셈 하나(지연 4사이클)씩 기다리는 사슬 하나다 (100만 개 0.78ms, numpy와 같음).

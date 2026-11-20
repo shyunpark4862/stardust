@@ -15,9 +15,9 @@ from collections.abc import Callable
 
 import numpy as np
 
-from .common import Custom
+from .common import Custom, isolated
 
-AREAS = ("special", "stats", "multivariate", "regression")
+AREAS = ("special", "stats", "multivariate", "regression", "array", "linalg", "optimize")
 GUARANTEED = 1e-14
 
 
@@ -32,10 +32,20 @@ class Sweep:
     loose_bound: float | None  # the bound outside the guaranteed region (None: none documented)
     loose_label: str  # "loose" or "mixed" (the measure outside the guaranteed region)
     mixed: tuple = ()  # the regions whose contract is the mixed measure |error| / max(1, |value|)
+    comparators: Callable | None = None  # () -> {library: fn(inputs) -> values, or "not run"} (compare.py)
 
     @property
     def id(self):
         return f"{self.area}/{self.name}"
+
+
+def _cmp(area, name):
+    def fn():
+        from . import compare
+
+        return getattr(compare, area)(name)
+
+    return fn
 
 
 def special_sweeps():
@@ -64,7 +74,7 @@ def special_sweeps():
             bound, label, mixed = GUARANTEED, "mixed", ("mixed",)
         else:
             loose, bound, label, mixed = contract, T.LOOSE.get(name), "loose", ()
-        out.append(Sweep("special", name, load, call, contract, loose, bound, label, mixed))
+        out.append(Sweep("special", name, load, call, contract, loose, bound, label, mixed, _cmp("special", name)))
     return out
 
 
@@ -87,7 +97,10 @@ def stats_sweeps():
         mixed = (
             ("guaranteed", "loose") if refdata.split(name)[1] in refdata.MIXED or name in refdata.MIXED_FILES else ()
         )
-        out.append(Sweep("stats", name, load, call, contract, contract, T.LOOSE.get(name, GUARANTEED), "loose", mixed))
+        out.append(
+            Sweep("stats", name, load, call, contract, contract, T.LOOSE.get(name, GUARANTEED), "loose", mixed,
+                  _cmp("stats", name))
+        )  # fmt: skip
     return out
 
 
@@ -140,14 +153,16 @@ def _reg_fit(sw, **kw):
     return refdata_robust.fit(p)
 
 
-def _reg_value(sw, r, field, cache):
-    """The fitted value a reference field holds, or None when this tool does not know it."""
+def _reg_value(sw, r, field, cache, fit=None):
+    """The fitted value a reference field holds, or None when this tool does not know it; fit:
+    the refit with a covariance type (sd's by default, or a comparator's with sd's names)."""
     p = sw.problem
+    fit = fit or _reg_fit
 
     def refit(**kw):
         key = kw["cov_type"]  # the groups are the problem's own
         if key not in cache:
-            cache[key] = _reg_fit(sw, **kw)
+            cache[key] = fit(sw, **kw)
         return cache[key]
 
     if field.startswith(("bse_", "pvalues_", "fvalue_", "f_pvalue_")):
@@ -171,20 +186,86 @@ def _reg_value(sw, r, field, cache):
     return getattr(r, field, None)
 
 
-def measure_regression(sw: RegSweep) -> dict:
-    from tests.special import refdata as R
-
+def measure_regression(sw: RegSweep, compare=False) -> dict:
     r = _reg_fit(sw)
     cache = {}
+    out = {"id": sw.id, "area": sw.area, "name": sw.name, "points": 0,
+           "regions": _reg_regions(sw, lambda f: _reg_value(sw, r, f, cache))}  # fmt: skip
+    out["points"] = sum(x["points"] for x in out["regions"].values())
+    if compare:
+        out["comparators"] = _reg_comparators(sw)
+    return out
+
+
+def _reg_comparators(sw) -> dict:
+    from . import rsession
+
+    out = {}
+    for lib in ("statsmodels", "scikit-learn", "R"):
+        if lib == "R" and not rsession.available():
+            out[lib] = "not run"
+            continue
+        try:
+            r = isolated(lambda lib=lib: _reg_library(sw, lib), seconds=120)
+        except Exception as e:
+            out[lib] = {"error": f"{type(e).__name__}: {e}"[:300]}
+            continue
+        if r is not None:
+            out[lib] = r
+    return out
+
+
+def _reg_library(sw, lib):
+    """A comparator library's regions for a regression problem (None: it has no such model)."""
+    from . import regcompare as RC
+
+    with np.errstate(all="ignore"):
+        if lib == "statsmodels":
+            res = RC.sm_fit(sw)
+            if res is None:
+                return None
+            cache = {}
+
+            def get(f):
+                try:
+                    return _reg_value(sw, res, f, cache, fit=RC.sm_fit)
+                except AttributeError, ValueError, TypeError, np.linalg.LinAlgError:
+                    return None
+
+        else:
+            vals = RC.sklearn_values(sw) if lib == "scikit-learn" else RC.r_values(sw)
+            if vals is None:
+                return None
+
+            def get(f):
+                return vals.get(f)
+
+        return _reg_regions(sw, get, comparator=True)
+
+
+def _reg_regions(sw, get, comparator=False) -> dict:
+    from tests.special import refdata as R
+
     regions = {}
     for field, ref in sw.problem["ref"].items():
-        v = _reg_value(sw, r, field, cache)
+        v = get(field)
         if v is None:
-            regions[field] = {"points": 0, "unmapped": True}
+            if not comparator:
+                regions[field] = {"points": 0, "unmapped": True}
             continue
         hl = np.asarray(ref, dtype=np.float64).reshape(-1, 2)
         hi, lo = hl[:, 0], hl[:, 1]
         got = np.asarray(v, dtype=np.float64).reshape(-1)
+        if got.size != hi.size:
+            continue
+        excluded = None
+        if comparator:
+            keep = np.isfinite(got) | ~np.isfinite(hi)
+            excluded = int((~keep).sum())
+            got, hi, lo = got[keep], hi[keep], lo[keep]
+            if not got.size:
+                regions[field] = {"points": 0, "excluded": excluded}
+                continue
         with np.errstate(all="ignore"):
             ulp = R.ulp_error(got, hi, lo)
             rel = R.rel_error(got, hi, lo)
@@ -197,8 +278,9 @@ def measure_regression(sw: RegSweep) -> dict:
             "rel_max": _finite_max(rel), "norm_rel": norm if hi.size > 1 else None, "nonfinite": nonfinite,
             "contract": None, "bound": None, "worst": [worst],
         }  # fmt: skip
-    return {"id": sw.id, "area": sw.area, "name": sw.name, "points": sum(x["points"] for x in regions.values()),
-            "regions": regions}  # fmt: skip
+        if excluded is not None:
+            regions[field]["excluded"] = excluded
+    return regions
 
 
 def sweeps(areas=None):
@@ -214,6 +296,18 @@ def sweeps(areas=None):
         out += multivariate.sweeps()
     if "regression" in areas:
         out += regression_sweeps()
+    if "array" in areas:
+        from . import array
+
+        out += array.sweeps()
+    if "linalg" in areas:
+        from . import linalg
+
+        out += linalg.sweeps()
+    if "optimize" in areas:
+        from . import optimize
+
+        out += optimize.sweeps()
     return out
 
 
@@ -231,25 +325,102 @@ def _p999(e):
     return float(np.quantile(e, 0.999, method="higher")) if e.size else None
 
 
-def measure(sw) -> dict:
+def measure(sw, compare=False) -> dict:
+    """One sweep's entry; with compare, also "comparators": {library: {region: entry}, or
+    "not run" (R absent), or {"error": message}} for the libraries that compute the same
+    quantity (compare.py)."""
     if isinstance(sw, RegSweep):
-        return measure_regression(sw)
-    if isinstance(sw, Custom):
+        return measure_regression(sw, compare)
+    elif isinstance(sw, Custom):
         regions = sw.run()
-        return {"id": sw.id, "area": sw.area, "name": sw.name, "points": sum(r["points"] for r in regions.values()),
-                "regions": regions}  # fmt: skip
+        out = {"id": sw.id, "area": sw.area, "name": sw.name, "points": sum(r["points"] for r in regions.values()),
+               "regions": regions}  # fmt: skip
+        if compare and sw.compare is not None:
+            out["comparators"] = sw.compare()
+        return out
+    else:
+        xs, hi, lo, g, scale = sw.load()
+        scale = np.broadcast_to(np.asarray(scale, dtype=np.float64), hi.shape)
+        out = {"id": sw.id, "area": sw.area, "name": sw.name, "points": int(hi.size),
+               "regions": _regions(sw, xs, sw.call(xs), hi, lo, g, scale)}  # fmt: skip
+        if compare and sw.comparators is not None:
+            comps = {}
+            for lib, fn in sw.comparators().items():
+                if isinstance(fn, str):
+                    comps[lib] = fn
+                    continue
+                try:
+                    with np.errstate(all="ignore"):
+                        vals = isolated(lambda fn=fn: _call_comparator(fn, xs, hi.shape))
+                except Exception as e:  # past the time or memory limit (Guarded), or no point evaluates
+                    comps[lib] = {"error": f"{type(e).__name__}: {e}"[:300]}
+                    continue
+                keep = np.isfinite(vals) | ~np.isfinite(hi)  # NaN or inf where the reference is finite: left out
+                comps[lib] = _regions(sw, xs, vals, hi, lo, g, scale, keep)
+            out["comparators"] = comps
+        return out
+    if compare and sw.compare is not None:
+        out["comparators"] = sw.compare()
+    return out
+
+
+def _call_comparator(fn, xs, shape):
+    """fn over all the points; when it raises for the whole array (scipy's Boost errors: one bad
+    point fails the call), in chunks of 256 and then point by point, a failing point NaN (left
+    out and counted like a NaN result)."""
+    try:
+        return np.broadcast_to(np.asarray(fn(xs)), shape)  # complex stays complex
+    except Exception as e:
+        from .common import Guarded
+
+        if isinstance(e, Guarded):
+            raise
+    cols = [np.broadcast_to(np.asarray(x), shape).ravel() for x in xs]
+    cplx = any(np.iscomplexobj(c) for c in cols)
+    out = np.full(int(np.prod(shape)), np.nan, dtype=complex if cplx else float)
+    ok = 0
+    for i in range(0, out.size, 256):
+        part = [c[i : i + 256] for c in cols]
+        try:
+            out[i : i + 256] = np.asarray(fn(part))
+            ok += 1
+            continue
+        except Exception as e:
+            from .common import Guarded
+
+            if isinstance(e, Guarded):
+                raise
+        for j in range(len(part[0])):
+            try:
+                out[i + j] = np.asarray(fn([c[j : j + 1] for c in part]))[0]
+                ok += 1
+            except Exception as e:
+                from .common import Guarded
+
+                if isinstance(e, Guarded):
+                    raise
+    if not ok:
+        raise ValueError("every point fails")
+    return out.reshape(shape)
+
+
+def _regions(sw, xs, got, hi, lo, g, scale, keep=None) -> dict:
+    """The guaranteed and loose (or mixed) regions of a reference sweep for the values got;
+    keep: the points measured (the rest are counted as "excluded")."""
     from tests.special import refdata as R
 
-    xs, hi, lo, g, scale = sw.load()
-    got = sw.call(xs)
-    scale = np.broadcast_to(np.asarray(scale, dtype=np.float64), hi.shape)
     with np.errstate(all="ignore"):
         ulp = R.ulp_error(got, hi, lo)
         rel = R.rel_error(got, hi, lo)
     regions = {}
-    for label, mask, fn, bound in (("guaranteed", g, sw.contract, GUARANTEED),
-                                   (sw.loose_label, ~g, sw.loose_contract, sw.loose_bound)):  # fmt: skip
+    for label, region_mask, fn, bound in (("guaranteed", g, sw.contract, GUARANTEED),
+                                          (sw.loose_label, ~g, sw.loose_contract, sw.loose_bound)):  # fmt: skip
+        if not region_mask.any():
+            continue
+        mask = region_mask if keep is None else region_mask & keep
+        excluded = int((region_mask & ~mask).sum())
         if not mask.any():
+            regions[label] = {"points": 0, "excluded": excluded}
             continue
         with np.errstate(all="ignore"):
             c = np.asarray(fn(sw.name, got, hi, lo, scale), dtype=np.float64)[mask]
@@ -265,6 +436,8 @@ def measure(sw) -> dict:
             "bound": bound,
             "worst": [float(x[mask][worst]) if np.isrealobj(x) else str(x[mask][worst]) for x in xs],
         }
+        if keep is not None:
+            entry["excluded"] = excluded
         if label in sw.mixed:  # |error| / max(1, |value|) in units of 2^-52 (45 is the 1e-14 bound)
             with np.errstate(all="ignore"):
                 m = R.mixed_error(got, hi, lo)[mask] / 2.0**-52
@@ -274,4 +447,4 @@ def measure(sw) -> dict:
             entry["ulp_cond_max"] = _finite_max(u / s)
             entry["ulp_cond_p999"] = _p999(u / s)
         regions[label] = entry
-    return {"id": sw.id, "area": sw.area, "name": sw.name, "points": int(hi.size), "regions": regions}
+    return regions

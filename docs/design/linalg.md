@@ -774,7 +774,7 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
     - scipy는 이 범위(멱영은 1e12, `[[-c, c], [c, -c]]`는 1e40 근처)부터 끝나지 않는다.
 
 ### 11.5 정확도와 속도
-- **정확도**: 80자리 `decimal`로 계산한 기준값과 37개 경우를 비교했다. 대부분 scipy와 같거나 더 정확하다. 무작위 행렬(노름 10–100)에서 scipy 1.6e-15–2.3e-12, sd 4.8e-16–1.3e-14다.
+- **정확도**: 80자리 `decimal`로 계산한 기준값과 37개 경우를 비교했다. 대부분 scipy와 같거나 더 정확했다. Arb 참값 대비 잰 값은 bench/linalg/accuracy.md의 `expm` 행이다(numpy 열은 scipy.linalg.expm, R 열은 Matrix::expm).
   - scipy보다 2배 넘게 나쁜 2개는 반올림 운이다. Moler–Van Loan 행렬은 같은 알고리즘이 s에 따라 2e-15–3e-14로 흔들리고, 삼각 n = 6은 전치하면 결과가 뒤집힌다.
 - **비트**: scipy와 같은 알고리즘이지만 BLAS 호출 순서와 노름 계산이 달라서 비트는 다르다.
 - **속도**: 행렬 하나 1.0–1.4배, 배치 3.6–8배(scipy는 배치를 하나씩 돈다). 32², 1000²의 행렬 하나는 1.01–1.07배로 같다.
@@ -879,7 +879,7 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
 - **pytest + hypothesis.** C++ 단위 테스트는 없다. 무작위 shape, 배치 shape, stride, dtype, 레이아웃(C, F, 비연속, 음수 stride, 브로드캐스트 배치)을 만든다 (`conftest.py`의 `with_layout`, `batch_shapes`, `random_values`).
   - 잘 조건화된 행렬은 대각 우세로 만든다(`well_conditioned`). int64(원소 [−3, 3])에서도 엄격한 대각 우세다: 대각 ≥ 3n − 2 > 3(n − 1) ≥ 비대각 행 합
 - **잔차 검사**: `‖A x − b‖∞ ≤ c·n·eps·(‖A‖∞‖x‖∞ + ‖b‖∞)`, **c = 10** (`RESIDUAL_C`)
-  - 일반 무작위 행렬(n = 1–256)에서 잰 실제 역오차는 최대 `0.39·n·eps`다. 약 25배의 여유가 있다.
+  - 잰 역오차는 bench/linalg/accuracy.md의 잔차/(n·eps·척도) 열이다(numpy·R 열과 함께).
   - 분해는 재구성 잔차(`‖x[perm] − L U‖` 등), 직교성(`‖QᴴQ − I‖`), 고유값/특이값의 numpy 비교로 본다.
 - **규칙 테스트**: 빈 행렬, 배치 크기 0, NaN 입력의 ValueError, 특이 행렬의 `LinAlgError`와 그 배치 인덱스, 에러 순서, 결과 dtype, F-order 결과, 배열이 아닌 인자의 TypeError
 - **비트 동일성 테스트** (§12.2)

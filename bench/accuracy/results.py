@@ -45,8 +45,12 @@ def env() -> dict:
     }
 
 
-def new_run(sweeps: list[dict]) -> dict:
+def new_run(sweeps: list[dict], compare: bool = False) -> dict:
     e = env()
+    if compare:
+        from . import compare as C
+
+        e["comparators"] = C.versions()
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     return {"schema": SCHEMA, "run": f"{stamp}-{e['commit']}", "env": e, "sweeps": sweeps}
 
@@ -92,9 +96,16 @@ def promote(run: dict) -> list[str]:
     for area, new in by_area.items():
         base = load_baseline(area) or {"schema": SCHEMA, "area": area, "runs": {}, "sweeps": []}
         ids = {s["id"] for s in new}
+        old = {s["id"]: s for s in base["sweeps"]}
+        for s in new:  # a run without --compare keeps the comparators measured before
+            if "comparators" not in s and "comparators" in old.get(s["id"], {}):
+                s["comparators"] = old[s["id"]]["comparators"]
+                s["comparators_run"] = old[s["id"]].get("comparators_run", old[s["id"]].get("run"))
+            elif "comparators" in s:
+                s["comparators_run"] = run["run"]
         sweeps = [s for s in base["sweeps"] if s["id"] not in ids] + new
         sweeps.sort(key=lambda s: s["id"])
-        used = {s["run"] for s in sweeps}
+        used = {s["run"] for s in sweeps} | {s["comparators_run"] for s in sweeps if "comparators_run" in s}
         runs = {k: v for k, v in base["runs"].items() if k in used}
         runs[run["run"]] = run["env"]
         save({"schema": SCHEMA, "area": area, "runs": runs, "sweeps": sweeps}, baseline_path(area))
