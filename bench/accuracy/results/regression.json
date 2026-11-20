@@ -2,10 +2,10 @@
  "schema": 1,
  "area": "regression",
  "runs": {
-  "20261120-181102-063a088": {
-   "commit": "063a088",
+  "20261120-185643-d6d2aa8": {
+   "commit": "d6d2aa8",
    "dirty": false,
-   "date": "2026-11-20T18:11:01",
+   "date": "2026-11-20T18:56:43",
    "machine": "arm64",
    "python": "3.15.0",
    "comparators": {
@@ -658,8 +658,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/binomial_log",
@@ -949,8 +949,8 @@
      "error": "RuntimeError: RuntimeError: R: error: no valid set of coefficients has been found: please supply starting values"
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/binomial_logit",
@@ -1588,8 +1588,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/binomial_probit",
@@ -2227,8 +2227,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/binomial_trials",
@@ -2866,8 +2866,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/gamma_dev",
@@ -3505,8 +3505,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/gamma_identity",
@@ -4089,8 +4089,8 @@
      "error": "RuntimeError: RuntimeError: R: error: no valid set of coefficients has been found: please supply starting values"
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/gamma_inverse",
@@ -4728,8 +4728,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/gamma_log",
@@ -5367,8 +5367,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/gamma_weights",
@@ -5838,8 +5838,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/gaussian_identity",
@@ -6477,8 +6477,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/gaussian_log",
@@ -7061,8 +7061,8 @@
      "error": "RuntimeError: RuntimeError: R: error: cannot find valid starting values: please specify some"
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/logit_noint",
@@ -7700,8 +7700,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/poisson_exposure",
@@ -8281,8 +8281,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/poisson_identity",
@@ -8920,8 +8920,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/poisson_log",
@@ -9559,8 +9559,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/glm/poisson_sqrt",
@@ -10198,8 +10198,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Filip",
@@ -11353,8 +11353,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Longley",
@@ -12508,8 +12508,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_NoInt1",
@@ -13579,8 +13579,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_NoInt2",
@@ -14650,8 +14650,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Norris",
@@ -15805,8 +15805,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Pontius",
@@ -16960,8 +16960,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Wampler1",
@@ -17249,8 +17249,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Wampler2",
@@ -18404,8 +18404,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Wampler3",
@@ -19559,8 +19559,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Wampler4",
@@ -20714,8 +20714,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/nist_Wampler5",
@@ -21869,8 +21869,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/ols_cond",
@@ -23048,8 +23048,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/ols_int",
@@ -24311,8 +24311,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/ols_kappa11",
@@ -25382,8 +25382,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/ols_noint",
@@ -26561,8 +26561,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/wls_noint",
@@ -27656,8 +27656,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/linear/wls_zero",
@@ -28805,8 +28805,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/binomial_0",
@@ -28859,8 +28859,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/binomial_0.5",
@@ -28913,8 +28913,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/binomial_1",
@@ -28967,8 +28967,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/binomial_weights_std",
@@ -29021,8 +29021,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/enet",
@@ -29105,8 +29105,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/enet_kappa1e6_refined",
@@ -29189,8 +29189,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/enet_noint",
@@ -29273,8 +29273,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/enet_std",
@@ -29327,8 +29327,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/enet_weights",
@@ -29411,8 +29411,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/lasso",
@@ -29495,8 +29495,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/lasso_constant_column",
@@ -29579,8 +29579,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/lasso_kappa1e6",
@@ -29663,8 +29663,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/lasso_small_alpha",
@@ -29747,8 +29747,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/lasso_weights_std",
@@ -29801,8 +29801,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/poisson_0",
@@ -29855,8 +29855,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/poisson_0.5",
@@ -29909,8 +29909,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/poisson_1",
@@ -29963,8 +29963,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/ridge",
@@ -30047,8 +30047,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/ridge_kappa1e6",
@@ -30131,8 +30131,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/ridge_noint",
@@ -30215,8 +30215,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/penalized/ridge_weights_std",
@@ -30269,8 +30269,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/bisquare_huber_even",
@@ -30391,8 +30391,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/bisquare_huber_odd",
@@ -30513,8 +30513,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/bisquare_mad_400",
@@ -30635,8 +30635,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/bisquare_mad_even",
@@ -30757,8 +30757,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/bisquare_mad_odd",
@@ -30879,8 +30879,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/hampel_huber_even",
@@ -31001,8 +31001,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/hampel_huber_odd",
@@ -31123,8 +31123,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/hampel_mad_even",
@@ -31245,8 +31245,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/hampel_mad_odd",
@@ -31367,8 +31367,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/huber_huber_even",
@@ -31489,8 +31489,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/huber_huber_odd",
@@ -31611,8 +31611,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/huber_mad_even",
@@ -31777,8 +31777,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/huber_mad_noint",
@@ -31943,8 +31943,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/huber_mad_odd",
@@ -32109,8 +32109,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/mm_leverage",
@@ -32175,10 +32175,10 @@
     "R": {
      "params": {
       "points": 3,
-      "ulp_max": 61750304.440267794,
-      "ulp_p999": 61750304.440267794,
-      "rel_max": 1.2839209089839036e-08,
-      "norm_rel": 4.221558090710444e-09,
+      "ulp_max": 61645316.440267794,
+      "ulp_p999": 61645316.440267794,
+      "rel_max": 1.2817379839017643e-08,
+      "norm_rel": 4.214146879157118e-09,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -32189,9 +32189,9 @@
      },
      "scale": {
       "points": 1,
-      "ulp_max": 10284206.0,
-      "ulp_p999": 10284206.0,
-      "rel_max": 1.749974386747679e-09,
+      "ulp_max": 5638580.0,
+      "ulp_p999": 5638580.0,
+      "rel_max": 9.594683904258364e-10,
       "norm_rel": null,
       "nonfinite": 0,
       "contract": null,
@@ -32203,8 +32203,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/mm_stackloss",
@@ -32269,10 +32269,10 @@
     "R": {
      "params": {
       "points": 4,
-      "ulp_max": 4047700668.2773952,
-      "ulp_p999": 4047700668.2773952,
-      "rel_max": 7.753997412707483e-07,
-      "norm_rel": 1.064640804498633e-07,
+      "ulp_max": 3398628646.2773952,
+      "ulp_p999": 3398628646.2773952,
+      "rel_max": 6.510599446377454e-07,
+      "norm_rel": 8.344136516015825e-08,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -32283,9 +32283,9 @@
      },
      "scale": {
       "points": 1,
-      "ulp_max": 11637018347.0,
-      "ulp_p999": 11637018347.0,
-      "rel_max": 1.3511828719341171e-06,
+      "ulp_max": 10068572226.0,
+      "ulp_p999": 10068572226.0,
+      "rel_max": 1.1690694240513916e-06,
       "norm_rel": null,
       "nonfinite": 0,
       "contract": null,
@@ -32297,8 +32297,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/stackloss_bisquare",
@@ -32419,8 +32419,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/stackloss_hampel",
@@ -32541,8 +32541,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "regression/robust/stackloss_huber",
@@ -32707,8 +32707,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   }
  ]
 }

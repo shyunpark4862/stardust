@@ -2,8 +2,10 @@
 
 The headers are a checkout of github.com/boostorg/math outside the repository: SD_BOOST_MATH, else
 build/comparators/boost-math (git clone --depth 1 https://github.com/boostorg/math.git there).
-The library is built into build/comparators/ with the system clang++ (standalone mode, -O2) and
-rebuilt when the source changes. Without the checkout, the Boost columns read "not run".
+The library is built into build/comparators/ with the system clang++ (standalone mode, FLAGS:
+the flags bench/speed/boost.py times Boost with, so the values measured here come from the same
+code; floating-point contraction off, as for sd, decision D-33) and rebuilt when the
+source or the flags change. Without the checkout, the Boost columns read "not run".
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = pathlib.Path(__file__).with_name("boost_comparator.cpp")
+FLAGS = ("-O3", "-mcpu=native", "-ffp-contract=off", "-std=c++17")
 _LIB = [None]
 
 
@@ -44,12 +47,12 @@ def _lib():
     if _LIB[0] is not None:
         return _LIB[0]
     h = headers()
-    key = hashlib.sha256(SRC.read_bytes() + str(h).encode()).hexdigest()[:12]
+    key = hashlib.sha256(SRC.read_bytes() + str(h).encode() + " ".join(FLAGS).encode()).hexdigest()[:12]
     out = ROOT / "build" / "comparators" / f"libsdboost-{key}.dylib"
     if not out.exists():
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(f".{os.getpid()}.tmp")
-        cmd = ["clang++", "-O2", "-std=c++17", "-shared", "-fPIC", "-DBOOST_MATH_STANDALONE",
+        cmd = ["clang++", *FLAGS, "-shared", "-fPIC", "-DBOOST_MATH_STANDALONE",
                f"-I{h / 'include'}", str(SRC), "-o", str(tmp)]  # fmt: skip
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         tmp.replace(out)  # several workers may build at once: the last rename wins, each whole

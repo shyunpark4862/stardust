@@ -9,7 +9,9 @@ result alone can check it:
     (BFGS, trust-ncg, trust-exact; L-BFGS-B when it stopped on the projected gradient), with
     the exact gradient of the MGH problem (tests/optimize/mgh.py).
 Recorded only (the baseline judges): the root's distance to the Arb root in ULP at xtol = 0
-and of find_root; the gradient and f - f* (MGH's KNOWN optima) of every minimize method; the
+and of find_root; the minimizer's distance to the nearest Arb local minimizer (minimize_scalar,
+find_minimum; tests/optimize/ref/scalar_minima.json), absolute, relative and over the method's
+stopping tolerance at x*; the gradient and f - f* (MGH's KNOWN optima) of every minimize method; the
 parameters' relative error against NIST StRD's certified values (least_squares); ||F||_inf at
 the result (root); the KKT residual (lsq_linear, nnls); approx_fprime's error against the
 Arb derivatives of tests/optimize/ref/derivatives.npz; and how many runs did not converge.
@@ -66,6 +68,25 @@ def _opt(lib):
 R_METHOD = {"bfgs": "BFGS", "l-bfgs-b": "L-BFGS-B", "nelder-mead": "Nelder-Mead"}
 
 
+def r_optim_control(method, n):
+    """optim's control list with the caps and tolerances of the Python call at its defaults
+    (bench/speed/cases/optimize.py times the same call): maxit = 200 n for Nelder-Mead (optim
+    counts f calls there, as scipy's maxfev = 200 n) and BFGS, 15000 for L-BFGS-B with
+    lmm = 10 and pgtol = 1e-5 (scipy's maxcor and gtol; factr = 1e7 is both defaults). The
+    stopping rules themselves stay optim's (BFGS and Nelder-Mead stop on f's relative decrease,
+    reltol = sqrt(eps))."""
+    if method == "L-BFGS-B":
+        return "list(maxit = 15000, lmm = 10, pgtol = 1e-5)"
+    return f"list(maxit = {200 * n})"
+
+
+def r_nlslm_control(n):
+    """nls.lm's control with least_squares 'lm''s defaults and the user's Jacobian: ftol = ptol
+    (xtol) = gtol = 1e-8, maxfev = 100 n; nls.lm's own iteration cap (50 by default) raised to
+    its largest, 1024, since least_squares has none."""
+    return f"nls.lm.control(ftol = 1e-8, ptol = 1e-8, gtol = 1e-8, maxfev = {100 * n}, maxiter = 1024)"
+
+
 def _r_prelude():
     import sys
 
@@ -110,13 +131,26 @@ def _r_optim(cid, method, n):
         f'c <- .sd$mgh$BY_ID[["{cid}"]]; fs <- .sd$mgh$as_numpy(c); '
         "f <- function(x) as.numeric(py_to_r(fs[[3]](.sd$np$array(x)))); "
         "g <- function(x) as.numeric(py_to_r(fs[[4]](.sd$np$array(x)))); "
-        f'r <- tryCatch(optim(X0, f{gr}, method = "{method}"), '
+        f'r <- tryCatch(optim(X0, f{gr}, method = "{method}", control = {r_optim_control(method, n)}), '
         f"error = function(e) list(par = rep(NaN, {n}), convergence = 99)); c(r$par, r$convergence)"
     )
     from tests.optimize import mgh
 
     v = rsession.evaluate_named(expr, {"X0": np.asarray(mgh.BY_ID[cid].x0(), dtype=float)})
     return v[:n], bool(v[n] == 0)
+
+
+def _r_optimize(cid, lo, hi):
+    """x from R's optimize (Brent's fmin, as minimize_scalar 'bounded') on a scalar minimum case,
+    at bounded's tolerance: optimize's tol is fmin's, as bounded's xatol (1e-5)."""
+    from . import rsession
+
+    expr = _r_prelude() + (
+        f'mc <- .sd$fn$MINS_BY_ID[["{cid}"]]; '
+        "f <- function(x) as.numeric(py_to_r(mc$f(.sd$np$float64(x)))); "
+        "r <- tryCatch(optimize(f, lower = B[1], upper = B[2], tol = 1e-5)$minimum, error = function(e) NaN); r"
+    )
+    return float(rsession.evaluate_named(expr, {"B": np.array([lo, hi], dtype=float)})[0])
 
 
 def _r_nlslm(name, b0):
@@ -132,7 +166,8 @@ def _r_nlslm(name, b0):
         "fn <- function(b) as.numeric(py_to_r(do.call(m, c(list(x), as.list(b))))) - y; "
         "jf <- function(b) { J <- py_to_r(do.call(jm, c(list(x), as.list(b)))); "
         "matrix(as.numeric(t(J)), nrow = length(y), byrow = TRUE) }; "
-        "r <- tryCatch(nls.lm(B0, fn = fn, jac = jf), error = function(e) list(par = rep(NaN, length(B0)), info = 0)); "
+        f"r <- tryCatch(nls.lm(B0, fn = fn, jac = jf, control = {r_nlslm_control(len(b0))}), "
+        "error = function(e) list(par = rep(NaN, length(B0)), info = 0)); "
         "c(r$par, r$info)"
     )
     v = rsession.evaluate_named(expr, {"B0": np.asarray(b0, dtype=float)})
@@ -267,6 +302,96 @@ def _find_root(lib="sd"):
     e = region(where, ulp=np.array(ulp))
     e["unconverged"] = unconv
     return {"default": e, "root 0": region(zwhere, abs_err=np.array(zabs))}
+
+
+# ------------------------------------------------------------------------------ scalar minimum
+
+MIN_TOL = {  # the stopping tolerance at x, at the defaults (docs/api/optimize.md §5, §6)
+    "brent": lambda x: 1.48e-8 * abs(x) + 1e-11,  # tol (relative) and brent's own floor
+    "golden": lambda x: 1.4901161193847656e-08 * abs(x),
+    "bounded": lambda x: 2.0**-26 * abs(x) + 1e-5 / 3,  # fmin's sqrt(eps) |x| + xatol / 3
+    "find_minimum": lambda x: 2.0**-26 * abs(x),  # xrtol = sqrt(eps)
+}
+
+
+def _arb_minima():
+    import json
+    import pathlib
+
+    from tests.optimize import functions
+
+    p = pathlib.Path(functions.__file__).parent / "ref" / "scalar_minima.json"
+    ref = json.loads(p.read_text())
+    return {c.id: (c, ref[c.id]) for c in functions.MIN_CASES}
+
+
+def _to_nearest(x, minima):
+    """(|x - x*|, x*) for the nearest of the Arb minimizers ([hi, lo] pairs)."""
+    best = min(minima, key=lambda m: abs((x - m[0]) - m[1]))
+    return abs((x - best[0]) - best[1]), best[0]
+
+
+def _min_region(rows, method, unconv):
+    where = [r[0] for r in rows]
+    d = np.array([r[1] for r in rows])
+    xs = np.array([r[2] for r in rows])
+    with np.errstate(all="ignore"):
+        rel = np.where(xs != 0, d / np.abs(xs), d)
+        ratio = d / np.array([MIN_TOL[method](x) or 2.0**-1074 for x in xs])
+    e = region(where, abs_err=d, rel=rel, tol_ratio=ratio)
+    e["unconverged"] = unconv
+    return e
+
+
+def _minimize_scalar(method, lib="sd"):
+    if lib == "R" and method != "bounded":  # R's optimize is Brent's fmin: 'bounded' only
+        return None
+    O = _opt(lib) if lib != "R" else None
+    rows, unconv = [], 0
+    for cid, (c, ref) in _arb_minima().items():
+        f = lambda x, c=c: float(c.f(np.float64(x)))  # noqa: E731
+        with np.errstate(all="ignore"):
+            try:
+                if lib == "R":
+                    x, conv = _r_optimize(cid, *c.bounds), True
+                else:
+                    kw = {"bounds": c.bounds} if method == "bounded" else {"bracket": c.bracket}
+                    r = _Res(O.minimize_scalar(f, method=method, **kw), lib)
+                    x, conv = float(r.x), bool(r.converged)
+            except ValueError, ArithmeticError, RuntimeError:
+                unconv += 1
+                continue
+        if not conv or not math.isfinite(x):
+            unconv += 1
+            continue
+        d, xs = _to_nearest(x, ref["bounds" if method == "bounded" else "bracket"])
+        rows.append((cid, d, xs))
+    return {"default": _min_region(rows, method, unconv)}
+
+
+def _find_minimum(lib="sd"):
+    if lib == "R":  # no R function computes the same
+        return None
+    if lib == "sd":
+        import stardust as sd
+
+        find_minimum = sd.optimize.find_minimum
+    else:
+        from scipy.optimize.elementwise import find_minimum
+
+    rows, unconv = [], 0
+    for cid, (c, ref) in _arb_minima().items():
+        if len(c.bracket) != 3:  # scipy's two-point bracket: minimize_scalar widens it, find_minimum takes three
+            continue
+        with np.errstate(all="ignore"):
+            r = _Res(find_minimum(_vec(c, lib), c.bracket), lib)
+        x = float(np.asarray(r.x))
+        if not bool(np.asarray(r.converged)) or not math.isfinite(x):
+            unconv += 1
+            continue
+        d, xs = _to_nearest(x, ref["bracket"])
+        rows.append((cid, d, xs))
+    return {"default": _min_region(rows, "find_minimum", unconv)}
 
 
 # ------------------------------------------------------------------------------ minimize
@@ -470,10 +595,16 @@ def _approx_fprime(lib="sd"):
 
 def sweeps():
     """Every sweep compares with scipy.optimize (the same methods by name) and, where R has the
-    method, with R through reticulate: uniroot (brentq), optim (BFGS, L-BFGS-B, Nelder-Mead),
-    minpack.lm's nls.lm (least_squares 'lm'), each at its defaults (uniroot at the same xtol)."""
+    method, with R through reticulate: uniroot (brentq), optimize (minimize_scalar 'bounded'), optim
+    (BFGS, L-BFGS-B, Nelder-Mead),
+    minpack.lm's nls.lm (least_squares 'lm'), each with the Python call's caps and tolerances
+    where R has the same setting (r_optim_control, r_nlslm_control; uniroot at the same xtol)."""
     specs = [(f"root_scalar.{m}", lambda lib="sd", m=m: _root_scalar(m, lib)) for m in BRACKETING]
     specs.append(("find_root", _find_root))
+    specs += [
+        (f"minimize_scalar.{m}", lambda lib="sd", m=m: _minimize_scalar(m, lib)) for m in MIN_TOL if m != "find_minimum"
+    ]
+    specs.append(("find_minimum", _find_minimum))
     for m in ("bfgs", "l-bfgs-b", "newton-cg", "trust-ncg", "trust-exact", "nelder-mead"):
         specs.append((f"minimize.{m}", lambda lib="sd", m=m: _minimize(m, lib)))
     for m in ("trf", "lm"):

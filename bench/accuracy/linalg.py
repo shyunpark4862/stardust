@@ -9,8 +9,8 @@ in units of n eps times its scale is at most c = 10, n = max(m, n), norms are in
     inv                  ||A X - I|| / (n eps (||A|| ||X|| + 1))
     lstsq                ||A^T (A x - b)|| / (n eps ||A|| (||A|| ||x|| + ||b||))
     lu, qr, cholesky,    ||A - the factors' product|| / (n eps ||A||)
-      svd, eigh          (eigh: ||A V - V diag(w)||; with ||Q^H Q - I|| / (n eps) for the
-                          orthogonal factors)
+      svd, eigh          (eigh: ||A V - V diag(w)||; qr_pivoted: ||A[:, perm] - Q R||; with
+      qr_pivoted         ||Q^H Q - I|| / (n eps) for the orthogonal factors)
     eig                  ||A V - V diag(w)|| / (n eps ||A|| ||V||)
 Recorded only (no documented bound; the baseline judges): the error against the Arb value,
 relative, and relative over u times the problem's condition number (sum over the inputs of
@@ -76,7 +76,7 @@ def _resid(fn_name, lib="sd"):
     rows = []
     fam = {"eigh": "symmetric", "cholesky": "symmetric", "lstsq": "rect"}.get(fn_name, "square")
     groups = _groups(fam)
-    if fn_name in ("svd", "qr"):
+    if fn_name in ("svd", "qr", "qr_pivoted"):
         groups = _groups("square") + _groups("rect")
     for g in groups:
         a = g["a"]
@@ -104,9 +104,13 @@ def _resid(fn_name, lib="sd"):
             if rec is None:
                 return None
             res = _inf(a - rec) / (nn * EPS * na)
-        elif fn_name == "qr":
-            q, r = O.qr(a)
-            res = _inf(a - q @ r) / (nn * EPS * na)
+        elif fn_name in ("qr", "qr_pivoted"):
+            f = getattr(O, fn_name)(a)
+            if f is None:
+                return None
+            q, r, *perm = f
+            ap = a[:, perm[0]] if perm else a
+            res = _inf(ap - q @ r) / (nn * EPS * na)
             orth = _inf(q.T @ q - np.eye(q.shape[1])) / (nn * EPS)
         elif fn_name == "cholesky":
             lo = O.cholesky(a)
@@ -204,7 +208,7 @@ def _forward(fn_name, lib="sd"):
     return _by_kappa(rows)
 
 
-RESIDUAL = ("solve", "lu_solve", "inv", "lstsq", "lu", "qr", "cholesky", "svd", "eigh", "eig")
+RESIDUAL = ("solve", "lu_solve", "inv", "lstsq", "lu", "qr", "qr_pivoted", "cholesky", "svd", "eigh", "eig")
 FORWARD = ("solve_x", "lstsq_x", "det", "eigvalsh", "svdvals", "eigvals", "expm")
 
 

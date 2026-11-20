@@ -41,6 +41,10 @@ class _SD:
         f = self.L.qr(self.a(a))
         return np.asarray(f.Q), np.asarray(f.R)
 
+    def qr_pivoted(self, a):
+        f = self.L.qr_pivoted(self.a(a))
+        return np.asarray(f.Q), np.asarray(f.R), np.asarray(f.perm)
+
     def cholesky(self, a):
         return np.asarray(self.L.cholesky(self.a(a)))
 
@@ -98,6 +102,11 @@ class _NumPy:
     def qr(self, a):
         return np.linalg.qr(a, mode="reduced")
 
+    def qr_pivoted(self, a):
+        import scipy.linalg as sl
+
+        return sl.qr(a, mode="economic", pivoting=True)  # Q, R, perm: a[:, perm] = Q R
+
     def cholesky(self, a):
         return np.linalg.cholesky(a)
 
@@ -130,9 +139,9 @@ class _NumPy:
 
 class _R:
     """base R (solve, qr, chol, svd, eigen, det) and Matrix::expm (Matrix is one of R's
-    recommended packages). qr is LAPACK's (geqp3; R's default LINPACK qr stops at a rank
-    tolerance of 1e-7, another computation), least squares its qr.coef. R has no LU in base:
-    lu and lu_solve are None."""
+    recommended packages). qr is LAPACK's (geqp3, column pivoting: qr_pivoted's computation, so
+    R has no unpivoted qr; R's default LINPACK qr stops at a rank tolerance of 1e-7, another
+    computation), least squares its qr.coef. R has no LU in base: lu and lu_solve are None."""
 
     def _ev(self, expr, **data):
         from . import rsession
@@ -160,10 +169,14 @@ class _R:
         return None
 
     def qr(self, a):
+        return None
+
+    def qr_pivoted(self, a):
         m, n = a.shape
-        v = self._ev(self._m("A", a) + "q <- qr(A, LAPACK = TRUE); Q <- qr.Q(q); R <- qr.R(q); P <- q$pivot; "
-                     "R2 <- R; R2[, P] <- R; c(as.numeric(t(Q)), as.numeric(t(R2)))", A=a)  # fmt: skip
-        return v[: m * n].reshape(m, n), v[m * n :].reshape(n, n)  # R's column pivoting undone in R
+        k = min(m, n)
+        v = self._ev(self._m("A", a) + "q <- qr(A, LAPACK = TRUE); "
+                     "c(as.numeric(t(qr.Q(q))), as.numeric(t(qr.R(q))), q$pivot - 1)", A=a)  # fmt: skip
+        return v[: m * k].reshape(m, k), v[m * k : m * k + k * n].reshape(k, n), v[m * k + k * n :].astype(np.int64)
 
     def cholesky(self, a):
         n = a.shape[0]

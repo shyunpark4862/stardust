@@ -2,10 +2,10 @@
  "schema": 1,
  "area": "multivariate",
  "runs": {
-  "20261120-181102-063a088": {
-   "commit": "063a088",
+  "20261120-185643-d6d2aa8": {
+   "commit": "d6d2aa8",
    "dirty": false,
-   "date": "2026-11-20T18:11:01",
+   "date": "2026-11-20T18:56:43",
    "machine": "arm64",
    "python": "3.15.0",
    "comparators": {
@@ -60,8 +60,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/Dirichlet.logpdf",
@@ -101,8 +101,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/InverseWishart.entropy",
@@ -142,8 +142,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/InverseWishart.logpdf",
@@ -183,8 +183,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MatrixNormal.entropy",
@@ -224,8 +224,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MatrixNormal.logpdf",
@@ -265,8 +265,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/Multinomial.entropy",
@@ -306,8 +306,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/Multinomial.logpmf",
@@ -363,8 +363,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MultivariateNormal.entropy",
@@ -404,8 +404,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MultivariateNormal.logpdf",
@@ -461,8 +461,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MultivariateNormal.pdf",
@@ -512,8 +512,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MultivariateT.entropy",
@@ -553,8 +553,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MultivariateT.logpdf",
@@ -610,8 +610,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/MultivariateT.pdf",
@@ -661,8 +661,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/Wishart.entropy",
@@ -702,8 +702,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/Wishart.logpdf",
@@ -743,8 +743,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/cdf.bvn",
@@ -858,8 +858,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/cdf.bvt",
@@ -909,8 +909,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/cdf.factor_normal",
@@ -985,8 +985,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/cdf.factor_t",
@@ -1060,8 +1060,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/cdf.tvn",
@@ -1178,8 +1178,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   },
   {
    "id": "multivariate/cdf.tvt",
@@ -1229,8 +1229,8 @@
      }
     }
    },
-   "run": "20261120-181102-063a088",
-   "comparators_run": "20261120-181102-063a088"
+   "run": "20261120-185643-d6d2aa8",
+   "comparators_run": "20261120-185643-d6d2aa8"
   }
  ]
 }

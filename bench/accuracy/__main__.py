@@ -39,6 +39,7 @@ MEASURES = (
     "orth_max",
     "grad_max",
     "excess_max",
+    "tol_ratio_max",
     "fnorm_max",
     "kkt_max",
     "unconverged",
