@@ -1,6 +1,6 @@
 # 회귀 영역 설계 (sd.regression)
 
-> 상태: **G1–G6 구현·승인** (2026-11-19): 선형 모형, GLM, 정규화, 강건·분위 회귀, 비선형 최소제곱의 수치 핵심(§2, §3.1–§3.7). 큰 결정은 사용자가 정했다(§1.1). 그 뒤의 사이트 작업과 코드 리뷰에서 찾은 문제와 그 사용자 결정 G83–G125(2026-11-19–20)를 반영했다. 마일스톤마다 시작 전에 물은 것은 §8에 있다.
+> 상태: **G1–G6 구현·승인** (2026-11-19): 선형 모형, GLM, 정규화, 강건·분위 회귀, 비선형 최소제곱의 수치 핵심(§2, §3.1–§3.7). 큰 결정은 사용자가 정했다(§1.1). 그 뒤의 사이트 작업과 코드 리뷰에서 찾은 문제와 그 사용자 결정 G83–G125(2026-11-19–20)를 반영했다. 다음 마일스톤 G7(변수 선택, 모형 비교와 일반 검정, 진단 추가)은 큰 결정 G126–G130과 htest와의 공통 규칙 G131–G136(2026-11-20), 설계 초안(§3.8)만 있고 시작 전이다. 마일스톤마다 시작 전에 물은 것과 물을 것은 §8에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -136,6 +136,17 @@
 | G123 점이 2개 미만 (G1, G4) | `linregress`·`theilslopes`·`siegelslopes`의 점이 2개보다 적으면 모든 필드가 NaN이다(G96의 빈 입력과 같은 규칙; scipy 1.18.1도 경고와 함께 NaN). `nan_policy='omit'`이 데이터에 따라 에러를 내지 않는다 (사용자 결정 2026-11-20, D-20) |
 | G124 인자 순서와 이름 (전체) | `ols(y, X)`, `linregress(x, y)`(scipy), `theilslopes(y, x)`·`siegelslopes(y, x)`(scipy), `nls(f, x, y)`(scipy `curve_fit`)의 순서는 그대로 두고 API 문서 첫머리에 표로 모은다. `rtol`의 두 뜻, `prsquared`(분위)와 `pseudo_rsquared()`(GLM), `float`인 `nobs`도 이름은 그대로 두고 문서에 적는다 (사용자 결정 2026-11-20, D-23–D-25) |
 | G125 호출 모양 에러 (전체) | 공개 함수(`ols` 등)의 호출 모양 에러도 메서드처럼 함수 이름으로 시작한다: `ols(): unexpected keyword argument 'foo'`, `ols(): takes 2 positional arguments but 3 were given` (사용자 결정 2026-11-20, D-29) |
+| G126 G7의 범위 (G7a, G7b) | 다음 마일스톤 G7은 (a) 변수 선택, (b) 모형 비교와 일반 검정, (c) 진단 추가다. 다른 모형족(음이항, 다항·순서형 로지스틱, 혼합 효과, GEE, 생존, 등위 회귀, PLS 등)은 지금 넣지 않고 나중 후보로 적는다(§3.8) (사용자 결정 2026-11-20) |
+| G127 변수 선택의 꼴 (G7b) | 결과 객체를 돌려주는 독립 함수다(G3의 함수 + 결과와 같다): 예를 들어 `stepwise(y, X, *, model='ols', direction='both', criterion='aic', …)`, `best_subset(y, X, *, …)`. 결과는 고른 열, 단계마다의 기록, 마지막 적합(보통의 `OLSResult`·`GLMResult` 등)을 담는다 (사용자 결정 2026-11-20) |
+| G128 선택의 대상 모형 (G7b) | 우도와 AIC·BIC가 정의된 `ols`, `wls`, `gls`, `glm`(모든 분포족·링크)이다. `rlm`, `quantreg`, `nls`, 정규화는 뺀다(정규화는 lasso 경로가 이미 고른다) (사용자 결정 2026-11-20) |
+| G129 교차검증 순차 선택 (G7b) | scikit-learn `SequentialFeatureSelector` 같은 교차검증 순차 선택을 기준의 하나(예: `criterion='cv'`)로 넣는다. 겹은 정규화 교차검증과 같은 장치와 `rng`다(G46, API §4) (사용자 결정 2026-11-20) |
+| G130 비교·검정·진단의 자리 (G7a) | 지금의 `r.breusch_pagan()`처럼 결과의 메서드(와 속성)다: 예를 들어 `r.vif()`, `r.dffits`, `r.dfbetas`, `r.white_test()`, `r.goldfeld_quandt(…)`, `r.reset_test(…)`, `r.wald_test(R, q)`, `r.f_test(…)`, `r.t_test(…)`, `r.compare_f_test(r_small)`, `r.compare_lr_test(r_small)`. 분산분석표는 여러 적합을 받는 함수 `sd.regression.anova(r1, r2, …)`와 한 모형의 Type I/II/III 표다. 정확한 이름과 속성·메서드의 구분은 §8의 G7a 질문으로 정한다 (사용자 결정 2026-11-20) |
+| G131 구간의 꼴 (G7a, 전체) | 신뢰구간은 G99의 `conf_int(*, alpha=0.05)` 그대로다. htest도 같은 꼴을 쓴다(htest H16). 그래서 구간이 있는 새 검정 결과(`t_test` 등)도 `conf_int(alpha=)`다 (사용자 결정 2026-11-20) |
+| G132 두 영역이 함께 계산하는 값의 커널 (전체) | 두 영역이 같은 값을 계산하는 커널은 htest에 둔다(htest H17). regression의 `jarque_bera()`는 htest의 Jarque–Bera 커널을 부르고, 비트는 지금과 같으며 p값은 `ChiSquared(df=2).ccdf`다. 옮기는 것은 htest의 H2 마일스톤에서 하고, regression의 골든은 G135의 분산 0인 경우 말고는 그대로다 (사용자 결정 2026-11-20) |
+| G133 같은 검정, 같은 형 (전체) | 같은 검정은 같은 형을 돌려준다(htest H18). regression의 공개 이름 `JarqueBeraResult`는 htest의 결과 클래스를 가리킨다(이름이 그대로라 깨지는 코드가 없다). G7a의 새 검정 결과(White, Goldfeld–Quandt, RESET, Wald·t, `compare_*`)는 읽기 전용 결과 클래스다. 공개할지는 G7a에서 묻는다(§8) (사용자 결정 2026-11-20) |
+| G134 자유도의 이름 (G7a, 전체) | F 꼴의 검정은 `df_num`·`df_denom`, χ²와 t는 `df`다(htest H19). `BreuschPaganResult`에는 지금 자유도 필드가 없고, 더할지는 G7a에서 묻는다(§8) (사용자 결정 2026-11-20) |
+| G135 분산 0의 규칙 (전체) | 분산이 0인 입력의 판정은 모든 영역에서 sd.stats `skew`의 규칙 하나다: m2 ≤ (ε·평균)²이면 NaN(htest H20). regression의 `jarque_bera()`에는 커널을 htest로 옮길 때(G132) 적용되고, 그 경우만 골든이 바뀐다 (사용자 결정 2026-11-20) |
+| G136 결과 배열 (전체) | 결과의 배열 필드는 복사하지 않는 쓰기 금지 배열이다. G120의 규칙 그대로이고 htest(H21)가 이것에 맞춘다 (사용자 결정 2026-11-20) |
 | G16 NaN (G1) | `nan_policy`의 기본은 'propagate'(결과 값이 모두 NaN). 'omit'은 NaN이 있는 행을 빼고, 'raise'는 `ValueError` |
 | G17 진단 (G1) | 지렛대(hat), 스튜던트화 잔차, Cook 거리와 Durbin–Watson, Jarque–Bera, Breusch–Pagan. `summary()`에는 Durbin–Watson과 Jarque–Bera를 넣는다(statsmodels와 같다) |
 | G18 linregress (G1) | scipy와 같은 꼴: `linregress(x, y)`(인자 순서도 scipy), 결과는 `slope intercept rvalue pvalue stderr intercept_stderr` namedtuple |
@@ -150,6 +161,7 @@
 - **강건**: `rlm`(M 추정: Huber, Tukey bisquare, Hampel, 척도는 MAD 또는 Huber의 제안 2; MM 추정), Theil–Sen·Siegel의 `theilslopes`·`siegelslopes` (G53–G57, §3.6)
 - **분위**: `quantreg(y, X, q=0.5)`. 내부점법과 심플렉스로 최적성 증명서가 있는 꼭짓점(G60), 유일하지 않으면 사전식 최소점(G63), 여러 분위(G62), R `summary.rq`의 'nid'·'iid'·'ker' 표준오차(G61) (§3.6)
 - **비선형 최소제곱**: `nls`(scipy `curve_fit` 꼴, G68). 범위 제약이 없으면 MINPACK `lmder`의 Levenberg–Marquardt, 있으면 신뢰 영역 반사(G69), 해에서 정확한 야코비안의 가우스–뉴턴(느리면 뉴턴) 다듬기(G73). 사용자 함수는 Python 호출이다(§3.7)
+- **모형 비교·검정·진단 추가·변수 선택** (G7a·G7b, 시작 전; G126–G130, §3.8): 결과의 메서드로 선형 가설 검정(Wald·t), 내포 모형의 F·우도비 비교, 분산분석표 `anova`, VIF·DFFITS·DFBETAS, White·Goldfeld–Quandt·RESET 검정; 함수 `stepwise`·`best_subset`(AIC·BIC·p값·교차검증 기준; `ols wls gls glm`만)
 - **없는 것**: 공식 문자열과 범주형 변수 자동 처리(더미 코딩은 사용자가 만든다), 추정기 클래스, 혼합 효과 모형, 시계열 모형(ARIMA 등), 패널·도구변수(linearmodels), 생존 분석, 베이즈 회귀, 신경망·트리 같은 비모수 예측 모형, 결과의 그림
 
 ### 1.3 공통 원칙 (다른 영역에서 이어받는 것)
@@ -565,6 +577,115 @@
   - scipy: 경계 문제 세 개에서 sd의 제곱합이 scipy 이하이고 계수·표준오차가 2×10⁻⁵ 안(scipy trf의 멈춤 정밀도), `weights=1/sigma²`가 `curve_fit(sigma=)`과 10⁻⁶ 안이다.
 - **비용과 속도** (G79, 커밋 4151d2a의 `bench/regression/g6/speed.md`): 차분이면 f 호출이 scipy lm의 5–7배다(간격 고르기 ≈ 16p, 야코비안마다 4p, 가우스–뉴턴 2–4걸음). 1스레드 시간은 scipy의 4–13배(n = 10⁶, p = 10에서 13.3 s와 0.99 s)이고, 모형의 sd 연산이 나뉘는 10스레드에서는 n = 10⁶에서 0.87–2.0배다. 해석적 `jac`이면 nfev 7–13(scipy 4–6)이고 n = 10⁶에서 scipy jac과 같거나 1.4–1.5배 빠르다. R `nls`(1스레드)보다는 n = 10⁶, p = 2·4에서 2.1배(10스레드) 빠르고 p = 10에서 1.5배 느리다.
 
+### 3.8 모형 비교, 일반 검정, 진단 추가, 변수 선택 (G7a·G7b, 안)
+정한 것은 G126–G130과 htest와의 공통 규칙 G131–G136(구간의 꼴, 공유 커널, 같은 검정의 같은 형, 자유도의 이름, 분산 0의 규칙, 결과 배열)이다. 이 절의 나머지(이름, 기본값, 정의, 수치 방법)는 안이고, 고를 것은 §8의 G7a·G7b와 "htest와의 관계" 질문이다. 비교 대상의 동작은 이 절의 "비교 대상에서 확인한 것"에 모았다(R 4.6.2의 stats, MASS 7.3.66, lmtest 0.9.40, statsmodels 0.15.0, scikit-learn 1.9.1의 소스와 실행으로 확인했다; R의 car·leaps는 설치되어 있지 않다).
+
+- **자리** (G130, 안): 인자가 없고 행이나 계수마다의 배열인 것은 속성(지금의 `leverage`, `cooks_distance`, `durbin_watson`과 같다), 검정 결과를 돌려주는 것은 메서드(지금의 `jarque_bera()`, `breusch_pagan()`과 같다)다. 사람 이름 둘의 검정은 접미사 없이(`breusch_pagan`처럼 `goldfeld_quandt`), 한 단어로는 뜻이 모호한 것은 `_test`를 붙인다(`white_test`, `reset_test`; statsmodels는 `het_white`, `het_goldfeldquandt`, `linear_reset`). `t_test`, `wald_test`, `f_test`, `compare_f_test`, `compare_lr_test`는 statsmodels의 이름 그대로다.
+
+  | 이름 | 꼴 | `ols wls gls` | `glm` | `rlm quantreg nls` | 정규화 |
+  |---|---|---|---|---|---|
+  | `t_test(R, q=None)`, `wald_test(R, q=None)` (`f_test`는 §8) | 메서드 | 있다 | 있다 | §8 | 없다 |
+  | `compare_f_test(small)` | 메서드 | 있다 | 척도를 추정할 때(§8) | 없다 | 없다 |
+  | `compare_lr_test(small)` | 메서드 | 있다 | 있다 | 없다 | 없다 |
+  | `anova(*results, …)` | 함수 | 있다 | 있다(편차 분석) | 없다 | 없다 |
+  | `vif`, `dffits`, `dfbetas` | 속성(§8) | 있다 | §8 | 없다 | 없다 |
+  | `white_test()`, `reset_test(…)` | 메서드 | 있다 | 없다 | 없다 | 없다 |
+  | `goldfeld_quandt(…)` | 메서드 | `ols`·`wls`(`gls`는 §8) | 없다 | 없다 | 없다 |
+
+  - 검정과 진단은 회귀마다의 계산이라 지금 진단처럼 배치를 받는다(필드가 배치 모양). `anova`와 변수 선택은 배치를 받지 않는 안이다(§8).
+  - 결과의 꼴은 아래 "htest와의 관계"를 따른다: 구간은 `conf_int(alpha=)`(G131), 자유도는 F면 `df_num`·`df_denom`, χ²·t면 `df`(G134), 새 검정 결과는 읽기 전용 클래스(G133). 공개 여부와 필드 이름은 §8이다.
+
+- **선형 가설 검정** (`t_test`, `wald_test`): 가설은 Rβ = q다. R은 (m, k) 행렬(k는 절편을 포함한 `params`의 길이이고 열의 순서도 `params`), q는 (m,)이고 기본은 0이다. 공식 문자열이 없으므로(G3) statsmodels의 문자열 제약(`'x1 = x2'`)은 받지 않는다. 계수 이름이나 위치의 목록을 "그 계수가 모두 0"의 줄임으로 받을지는 §8이다.
+  - 공분산은 결과의 `cov_params()`다(강건 공분산이면 그것; statsmodels, R `car::linearHypothesis(vcov=)`와 같다). 분포는 그 결과의 계수 t·p와 같은 규칙이다: 선형은 t(`df_resid_inference`)와 F(m, `df_resid_inference`)(G23, G27), GLM은 척도가 고정이면 z와 χ²(m), 추정하면 t와 F다(G38, G39).
+  - `t_test`: 줄마다 (Rβ − q)_i / √(R C Rᵀ)_ii와 그 p, 구간. statsmodels의 결과(`ContrastResults`)는 `effect`(Rβ), `sd`, `tvalue`, `pvalue`, `conf_int(alpha=0.05)`다.
+  - `wald_test`: 결합 검정 W = (Rβ − q)ᵀ(R C Rᵀ)⁻¹(Rβ − q)이고 F 꼴은 W/m이다. statsmodels의 `wald_test`는 `use_t`인 모형이면 F, 아니면 χ²이고 `f_test`는 언제나 F다(같은 계산에 분포만 다르다). 둘 다 둘지, 분포를 모형의 규칙으로 정하는 하나만 둘지는 §8이다.
+  - 수치: R C Rᵀ를 만들지 않는다. 고전형 C = s²(UᵀU)⁻¹(U는 적합의 삼각 인자, 쓰인 열)이면 M = R U⁻¹(삼각 풀이)을 Mᵀ = Q₂T로 QR 분해하고 Tᵀz = Rβ − q를 풀어 W = ‖z‖²/s²다(R C Rᵀ의 Cholesky가 갖는 κ² 대신 κ). 강건 공분산은 그 공분산의 인자로 같은 꼴이다. 제약이 일차 종속이면 T의 대각에 G21의 판정을 써서 종속인 줄을 빼고 자유도는 남은 줄 수다(statsmodels는 pinv와 그 랭크). 겹친 열(G9)의 계수에 0이 아닌 가중치를 주는 줄은 식별되지 않는다(§8).
+  - 완전 적합(G118)과 `df_resid` = 0(G95)은 계수의 t·p와 같은 규칙(NaN)이다.
+
+- **내포 모형의 비교** (`compare_f_test`, `compare_lr_test`): statsmodels의 꼴(큰 모형의 메서드, 작은 모형이 인자)이다.
+  - F = ((SSR_s − SSR_b)/(r_b − r_s)) / (SSR_b/df_resid_b) ~ F(r_b − r_s, df_resid_b)(r은 `rank`, SSR은 백색화한 값). R `anova(small, big)`, statsmodels와 같다.
+  - LR = −2(llf_s − llf_b) ~ χ²(r_b − r_s). 선형은 모형마다 제 σ̂²(최대우도)의 `llf`다(statsmodels, R `lmtest::lrtest`).
+  - 같은 자료인지: 두 결과의 형, `nobs`, 쓰인 행, 적합할 때 복사해 둔 y·가중치(와 `sigma`, `offset`, `trials` 등)가 같아야 한다(G86으로 결과가 들고 있다). statsmodels는 검사하지 않고, R `anova`는 행 수만 본다.
+  - 내포인지: 작은 모형의 설계 열이 큰 모형의 열 공간에 드는지를 큰 모형의 Q로 잴 수 있다(열마다 ‖(I − QQᵀ)x‖ ≤ tol·‖x‖). statsmodels와 R은 검사하지 않고 계산한다. 두 검사를 할지와 허용오차는 §8이다.
+  - 강건 공분산의 결과: F와 LR은 그 공분산을 쓰지 않는 검정이다. statsmodels는 LR에서 경고하고 계산한다. 막을지는 §8이다.
+  - GLM: LR은 각자의 `llf`다(statsmodels). 척도를 추정하는 분포족(정규·감마, `scale='X2'·'dev'`)의 F는 R `anova.glm(test='F')`처럼 (D_s − D_b)/(r_b − r_s)/φ̂_b ~ F(r_b − r_s, df_resid_b)다(φ̂_b는 큰 모형의 척도). 척도가 고정이면 편차 차이의 χ²이고 그것은 LR과 같다(§8).
+
+- **분산분석표** (`anova`):
+  - 여러 적합: `anova(r1, r2, …)`는 주어진 순서로 이웃끼리 견준 표다(R `anova(m1, m2, …)`, statsmodels `anova_lm(m1, m2, …)`). 줄마다 `df_resid`, SSR(GLM은 편차), 앞 줄과의 자유도 차이와 제곱합 차이, 통계량, p값이다. 척도는 `df_resid`가 가장 작은 모형의 것을 모든 줄에 쓴다(R, statsmodels). `test`는 선형이면 `'F'`(기본)와 `'Chisq'`, GLM은 R 4.6의 기본(척도가 고정이면 `'Chisq'`, 추정하면 `'F'`)이다. 같은 자료·내포의 검사는 비교 검정과 같다.
+  - 한 모형: `anova(r, typ=…, terms=…)`. 공식이 없으므로(G3) 항(term)은 열의 묶음이다: `terms`는 열 위치나 이름의 목록의 목록이고(더미 셋을 한 항으로), 없으면 열 하나가 항 하나다. 절편은 항이 아니다.
+    - Type I(순차): 항을 주어진 순서로 넣을 때 SSR이 줄어드는 양이다. 선형은 적합의 QR에서 거의 공짜다: 열 순서의 QR이면 항의 제곱합은 그 열들에 해당하는 Qᵀy 성분의 제곱합이다(G21로 빠진 열은 자유도 0). 항의 순서가 열 순서와 다르면 그 순서로 열을 놓은 QR 한 번이다. GLM은 항마다 적합한다(R `anova.glm`의 편차 분석).
+    - Type III(항마다 마지막에 넣은 것, R `drop1`): 그 항의 계수가 모두 0인 `wald_test`다. 선형 고전형이면 그 항을 뺀 적합과의 F와 같다. 강건 공분산이면 그 공분산의 Wald F다(statsmodels `anova_lm(typ=3, robust=)`). Type III의 값은 더미 부호화에 달려 있다(처리 대비의 주효과 검정은 기준 수준에서의 효과다; `car::Anova(type=3)`도 그래서 합 대비를 권한다). 더미는 사용자가 만들므로(§1.2) 문서에 적는다.
+    - Type II: 그 항을 "포함하는" 항(상호작용)을 뺀 모형에서의 검정이다. 공식이 없으면 어느 항이 어느 항을 포함하는지 모른다. 상호작용이 없으면 Type II = Type III다. 포함 관계를 받을지, Type II를 미룰지는 §8이다.
+  - 결과는 표의 열을 필드로 갖는 결과 객체와 `summary()`(글)인 안이다. statsmodels는 pandas `DataFrame`, R은 data.frame이다. sd.frame `DataFrame`으로 낼지는 §8이다.
+
+- **진단 추가**: 모두 G17의 진단처럼 백색화한 문제의 것이다(WLS는 √w, GLS는 L⁻¹). 가중치 0인 행은 지금 진단의 규칙(행마다의 값은 0, 합에서는 빠진다)이다(G30).
+  - `vif` (…, k): VIF_j = 1/(1 − R_j²), R_j²는 열 j를 절편과 나머지 열에 회귀한 중심 R²다. 같은 값이 (X_cᵀX_c)⁻¹의 대각 × ‖x_j − x̄_j‖²이고(절편이 있는 교차곱의 역행렬에서 기울기 블록이 중심화한 교차곱의 역행렬이다), 절편이 있는 적합의 삼각 인자 U에서 [(UᵀU)⁻¹]_jj는 U⁻¹의 j행 노름의 제곱이다. 그래서 보조 회귀 k번(statsmodels)이 아니라 삼각 역행렬 하나다. 절편이 없는 모형은 절편 열을 더한 QR이 한 번 더 든다. 자리는 `params`와 같고 절편 자리와 겹친 열은 NaN인 안이다. statsmodels 0.15.0의 `variance_inflation_factor`는 기본 `standardize=True`로 열을 중심화해 중심 VIF(상수 열은 1)를 내고, `standardize=False`면 주어진 열 그대로(상수 열이 없으면 비중심 R²)다. R `car::vif`는 계수 공분산의 상관에서 구하고 절편이 없으면 경고한다(§8).
+  - `dffits` (…, n): t_i·√(h_i/(1 − h_i)), t_i는 외적 스튜던트화 잔차다(R `dffits`, statsmodels `dffits[0]`; statsmodels는 문턱 2√(k/n)을 함께 낸다).
+  - `dfbetas` (…, n, k): (β − β_(i))_j / (s_(i)·√[(XᵀX)⁻¹]_jj), s_(i)는 행 i를 뺀 척도다(R `dfbetas`, statsmodels `dfbetas`와 같은 정의). β − β_(i) = (XᵀX)⁻¹x_i ẽ_i/(1 − h_i) = U⁻¹q_iᵀẽ_i/(1 − h_i)(q_i는 얇은 Q의 i행)이므로 `leverage`가 만드는 얇은 Q와 삼각 풀이 하나다(행을 하나씩 뺀 적합 n번이 아니다). 겹친 열의 자리는 NaN이다. 메모리는 n·k다.
+  - `white_test(*, cross_terms=True)`: ẽ²을 상수, 설계의 열, 그 제곱과(기본) 서로의 곱에 회귀한 보조 회귀의 n·R²(χ², 자유도는 보조 회귀의 `df_model`)와 보조 회귀의 F다. 결과는 `breusch_pagan()`과 같은 네 값(statsmodels `het_white`의 순서)이다. 겹치는 보조 열(0/1 더미의 제곱 = 더미, 절편과의 곱)은 G21대로 빠지고 자유도도 준다(statsmodels는 pinv와 랭크로 같은 자유도). 보조 열 수는 1 + k + k(k + 1)/2라 k가 크면 행보다 많아질 수 있고, 보조 회귀의 `df_resid`가 0이면 G95의 NaN이다. `cross_terms=False`는 교차항만 빼고 수준과 제곱은 남기는 안이다(White의 교과서 꼴) [statsmodels와 다름: `interaction_terms=False`는 x²만 넣어 수준이 빠진다]. R에는 함수가 없고 `lmtest::bptest(m, ~ x1*x2 + I(x1^2) + …)`가 같은 값이다.
+  - `goldfeld_quandt(*, split=0.5, drop=0, order_by=None, alternative='greater')`: 쓰인 행을(`order_by`가 있으면 그 순서로 정렬해) 앞 n₁행과 뒤 n₂행으로 나누고 각각 같은 열로 적합해 F = (SSR₂/df₂)/(SSR₁/df₁) ~ F(df₂, df₁)다. 기본 분할은 R `gqtest(point = 0.5)`와 statsmodels(`split = n//2`)가 같다(n이 홀수면 뒤가 한 행 많다). 정렬은 안정 정렬이다(R `order`와 같다; statsmodels는 numpy `argsort`의 기본이라 같은 값의 순서가 정해지지 않는다). p값의 자유도 순서는 R과 같다 [statsmodels와 다름: `alternative='increasing'`·`'decreasing'`에서 F(df₁, df₂)를 써서 두 쪽의 행 수가 다르면 p값이 틀린다; n = 31, split = 10에서 R 0.0808, statsmodels 0.0344]. 인자 이름(`split`·`drop`은 statsmodels, `point`·`fraction`은 R), `alternative`의 값, `order_by`의 꼴, `gls`(백색화하면 행이 섞인다)는 §8이다.
+  - `reset_test(*, power=(2, 3), kind='fitted')`: 적합값의 거듭제곱(`kind='regressor'`면 절편이 아닌 각 설계 열의 거듭제곱)을 더한 확장 모형에서 더한 계수가 모두 0인지의 검정이다. 기본 거듭제곱 2, 3은 R `resettest(power = 2:3)`와 statsmodels `linear_reset(power=3)`(2부터 3까지)이 같다. 분포는 R처럼 F(m, 확장 모형의 `df_resid`)인 안이다 [statsmodels와 다름: 기본 `use_f=False`라 χ²(m)의 Wald]. 거듭제곱 전에 ŷ을 2의 거듭제곱으로 나눠 크기를 1 근처로 옮긴다(열의 척도는 검정을 바꾸지 않고 확장 설계의 조건수만 줄인다). 모형이 강건 공분산이면 확장 모형도 그 공분산의 Wald F일지(statsmodels `cov_type=`, R `vcov=`) 고전형 F일지는 §8이다. `'princomp'`(첫 주성분; R·statsmodels에 있다)는 나중 후보다.
+  - GLM의 영향력: 지금 GLM에는 진단이 없다(§2.2). R(`influence.measures`, `cooks.distance.glm`)과 statsmodels(`GLMInfluence`)는 √W X의 지렛대, Pearson 잔차의 Cook 거리, 한 걸음 근사의 DFBETAS를 낸다. G7a에 넣을지는 §8이다.
+
+- **변수 선택** (`stepwise`, `best_subset`; G127–G129):
+  - 대상(G128): `model='ols'`(기본), `'wls'`, `'gls'`, `'glm'`. 후보 모형은 그 함수를 같은 옵션(`weights`, `sigma`, `family`, `link`, `var_weights`, `offset` 등)으로 부른 것과 같은 결과다. 옵션을 넘기는 꼴은 §8이다.
+  - 절편은 늘 들어 있고 선택 대상이 아니다(R `step`의 기본 범위, leaps는 절편을 강제한다). `intercept=False`면 없다.
+  - 항: `terms=`는 함께 들고 나는 열의 묶음이다(더미 셋). 이름 `groups`는 이미 군집 레이블(`cov_type='cluster'`)이라 쓰지 않는다. `include=`는 늘 들어 있는 항이다(R `step`의 `scope = list(lower = …)`, leaps `force.in`). 빼 둘 열은 X에서 빼면 되므로 `exclude=`(leaps `force.out`)는 두지 않는 안이다(§8).
+  - 기준:
+    - `'aic'`, `'bic'`: 후보 적합의 `aic`·`bic` 필드다(BIC의 n은 결과의 `nobs`). R `step`은 `extractAIC`(lm은 n·log(RSS/n) + 2·edf, glm은 `aic` + (k − 2)·edf)를 쓰는데, 같은 행의 후보끼리는 우리 `aic`와 상수만 달라 고르는 모형이 같다. 감마는 다르다: statsmodels와 같은 우리 `llf`는 Pearson 척도의 값이고 R의 `aic`는 편차/n 척도라 후보 사이의 차이가 달라, R `step`과 다른 모형을 고를 수 있다(§8).
+    - `'pvalue'`: 들어올 항은 넣었을 때의 검정 p가 가장 작고 `alpha_enter` 이하인 것, 나갈 항은 뺐을 때의 p가 가장 크고 `alpha_remove`보다 큰 것이다. 선형은 부분 F(열 하나면 t²), GLM은 LR(R `add1(test='Chisq')`)인 안이다. 기본값은 §8이다.
+    - `'cv'`(G129): 후보마다 k겹 교차검증 오차다. 겹은 `lasso_cv`와 같다: 쓰인 행(`nan_policy='omit'` 뒤) n개에 (0, 1, …, n − 1 mod cv)를 `rng.permutation(n)`으로 섞어 준다. 모든 후보가 같은 겹을 쓴다(처음에 한 번 뽑는다). 오차는 선형이면 겹마다의 가중 평균 제곱오차의 평균(`lasso_cv`의 `cv_error`와 같다), GLM은 겹마다의 평균 편차인 안이다(glmnet의 `type.measure = "deviance"`). 시험 가중치가 모두 0인 겹은 G107대로 빠진다.
+  - 방향: `'forward'`(절편과 `include`만의 모형에서), `'backward'`(전체에서), `'both'`(걸음마다 넣기와 빼기를 모두 견준다; R `step`의 기본). `'both'`의 시작 모형과 `start=`는 §8이다.
+  - 한 걸음: 지금 모형에서 항 하나를 넣거나 뺀 후보를 모두 적합하고 기준이 가장 좋은 것으로 옮긴다. 나아지지 않으면 멈춘다. R `step`은 기준이 1e-7보다 크게 줄지 않으면 멈추고 지금 모형(`<none>`)이 표의 첫 줄이라 같은 값이면 남는다. scikit-learn SFS는 `tol`이 없으면 열의 절반을 고를 때까지 가고 빈 모형은 견주지 않는다. 동률은 열 순서가 앞인 항인 안이다. 걸음 수의 상한 `max_steps`(R `steps = 1000`).
+  - `'pvalue'`의 `'both'`는 넣고 빼기를 되풀이할 수 있어, 지나온 모형으로 돌아가면 멈추는 안이다. AIC·BIC·CV는 기준이 줄 때만 옮기므로 돌지 않는다.
+  - 랭크 부족: 시작 모형의 겹친 열(G9)은 먼저 빼고 기록한다(R `step`은 자유도 0인 항을 먼저 뺀다). 지금 모형과 겹치는 열을 넣는 후보는 랭크가 같아 기준이 같으므로 옮기지 않는다. `'pvalue'`에서는 그 p가 NaN이라 들어오지 않는다.
+  - GLM 후보가 분리되거나(`separation=True`) 수렴하지 않으면(`converged=False`) 그 후보를 어떻게 볼지는 §8이다(R은 경고와 함께 그 값을 쓴다).
+  - 행: 모든 후보가 같은 행이어야 기준을 견줄 수 있다. `nan_policy='omit'`은 y와 X의 모든 열(고르지 않은 열도)에서 NaN이 있는 행을 처음에 한 번 뺀다. R `step`은 쓰는 행 수가 바뀌면 에러다("number of rows in use has changed"). `'propagate'`의 결과는 §8이다.
+  - 배치는 받지 않는 안이다(회귀마다 고른 열이 달라 결과가 배치 모양이 되지 않는다).
+  - `best_subset`: 크기 m(`include` 밖에서 고른 항 수, 0 … `max_size`)마다 가장 좋은 부분집합을 찾고 그 가운데 기준으로 하나를 고른다. 같은 크기 안에서 선형의 AIC·BIC·Cp·수정 R²는 모두 SSR의 증가함수라(같은 행, 같은 모수 수) 크기마다의 최선은 SSR로 정한다(leaps `regsubsets`와 같다). GLM은 편차로 정한다(같은 모수 수면 AIC·BIC가 `llf`의 감소함수다; 감마는 척도 때문에 아니다). 겹친 열이 있는 부분집합의 크기는 랭크로 센다.
+    - 알고리즘: 선형은 [1 X y]의 삼각 인자 하나 위에서 Furnival–Wilson의 leaps and bounds다(부분집합의 SSR ≥ 그 상위집합의 SSR로 가지를 친다; leaps `regsubsets(method = "exhaustive")`의 방법). GLM은 모든 부분집합을 적합한다(가지를 칠 한계가 없다). 크기의 상한과 넘을 때의 동작은 §8이다(leaps의 기본 `nvmax = 8`, 변수가 50개를 넘으면 `really.big = TRUE`가 필요하다).
+    - `criterion='cv'`: 크기를 교차검증으로 고르고 그 크기의 최선을 모든 자료에서 다시 찾는 안이다. 겹마다 그 겹의 학습 행에서 크기별 최선을 찾고 시험 행에서 잰다(ISLR 6.5의 방법). 모든 자료에서 찾은 크기별 최선을 교차검증하면 선택이 시험 행을 이미 본 것이다.
+  - 결과(G127, 이름은 §8): 고른 열(위치와 이름), 걸음마다의 기록(동작, 항, 기준값), 마지막 적합(고른 열로 `model`의 함수를 부른 결과와 비트까지 같은 `OLSResult`·`GLMResult` 등), 기준의 이름. `best_subset`은 크기마다의 최선과 그 기준값도 담는다.
+  - 다중 검정: 고른 모형의 `pvalues`는 선택 뒤의 p값이라 명목 수준을 지키지 않는다(같은 자료로 고르고 검정했다). 문서에 적고 htest의 `multipletests`(htest H8 마일스톤)를 가리키되, 보정도 선택의 편향은 고치지 못한다는 것을 함께 적는다. 선택 함수에 보정 옵션을 둘지는 §8이다.
+
+- **htest와의 관계** (docs/design/htest.md §1.4, docs/api/htest.md §13):
+  - 경계는 htest의 것과 같다: 표본·표를 받는 검정은 `sd.htest`, 적합한 모형을 받는 검정과 진단(위의 것 모두)은 `sd.regression`이다. 정규성·이분산 검정 가운데 regression은 Jarque–Bera(잔차)와 설계가 필요한 Breusch–Pagan·White·Goldfeld–Quandt만 둔다. 잔차의 다른 정규성 검정(Shapiro–Wilk, Anderson–Darling, D'Agostino)은 잔차를 htest에 넘긴다. htest의 분산 동질성 검정(Bartlett, Levene, Fligner)은 집단을 받는 다른 검정이라 겹치지 않는다.
+  - 공유 커널의 자리(G132): 두 영역이 같은 값을 계산하는 커널은 htest에 둔다(htest H17).
+  - Jarque–Bera(G132, G135): regression의 `jarque_bera()`는 htest의 H2 마일스톤에서 htest의 Jarque–Bera 커널을 부르게 된다. 그 커널은 지금 regression의 `resid_stats`(평균을 뺀 2·3·4차 합, double-double)와 같은 비트를 내고, p값은 두 쪽 모두 `ChiSquared(df=2).ccdf`다(htest 초안의 e^(−JB/2)는 jb = 1.3에서 1 ulp 달라서 쓰지 않는다). 골든이 바뀌는 것은 분산 0의 판정뿐이다: 지금 regression은 정확한 0/0만 NaN이고, 옮긴 뒤에는 sd.stats `skew`의 규칙(m2 ≤ (ε·평균)²이면 NaN; G135)이다. 완전 적합(G95, G117)에서 regression은 잔차를 0으로 보아 NaN이므로 `htest.jarque_bera(r.resid)`(반올림 크기의 잔차로 계산한 값)와 다를 수 있다. WLS·GLS의 백색화한 잔차는 공개 필드가 없어(`resid`는 원래 척도) 지금은 htest에 그대로 넘길 수 없다(§8).
+  - 일원 분산분석: 집단 더미의 OLS로 만든 `anova` 표(항 하나)와 `htest.f_oneway`는 같은 F·p다. 주인은 htest(`f_oneway`)다. regression의 표는 설계 행렬만 받아 집단 레이블이 없으므로 적합의 QR에서 계산한다: 같은 커널을 쓸 수 없어 통계량은 두 쪽의 정확도 계약 안에서 같고 비트는 같지 않은 안이다(§8; htest 초안의 "같은 비트"와 맞춰야 한다). p값은 같은 `F(df1, df2).ccdf` 호출이다. 두 집단의 `ttest_ind`과 더미 계수의 t, `pearsonr`과 `linregress`는 htest 초안 그대로다.
+  - p값의 꼬리는 두 영역 모두 sd.stats 분포의 `ccdf`를 같은 인자로 부른다.
+  - 결과의 꼴:
+    - 같은 검정은 같은 형이다(G133, htest H18): `sd.regression.JarqueBeraResult`는 htest의 결과 클래스를 가리킨다. G7a의 새 검정 결과(White, Goldfeld–Quandt, RESET, `t_test`·`wald_test`, `compare_*`)는 읽기 전용 결과 클래스다(G98, G120). 다른 regression 결과처럼 공개할지는 §8(추천: 공개)이다.
+    - 풀기(htest H7과 같은 규칙): statsmodels가 튜플을 돌려주는 곳만 같은 개수와 순서로 풀린다: `het_white` 넷(lm, lm_pvalue, fvalue, f_pvalue), `het_goldfeldquandt` 셋(fvalue, pvalue, ordering; statsmodels 0.16에서 namedtuple로 바뀐다고 예고했다), `compare_f_test` 셋(fvalue, pvalue, df_diff), `compare_lr_test` 셋(lr, pvalue, df_diff). `linear_reset`·`t_test`·`wald_test`·`f_test`(`ContrastResults`)와 분산분석표(`DataFrame`)는 풀리지 않는다.
+    - 구간(G131): 구간이 있는 새 결과(`t_test`)는 `conf_int(*, alpha=0.05)`다. htest도 같은 꼴이다(htest H16).
+    - 자유도(G134): F 꼴은 `df_num`·`df_denom`, χ²와 t는 `df`다. 지금 regression의 `df_model`·`df_resid`·`df_resid_inference`(모형의 자유도, statsmodels의 이름)는 그대로다. `BreuschPaganResult`에 `df`를 더할지는 §8이다.
+    - 퇴화한 입력은 경고 없는 NaN이다(htest H11; regression의 완전 적합의 0/0, `df_resid` = 0과 같다). 분산 0의 판정은 G135다.
+    - 배열 필드는 복사하지 않는 쓰기 금지 배열이다(G120, G136; htest H21).
+  - 지금의 결과 가운데 남은 차이: `BreuschPaganResult`는 `stardust._results`의 공개 namedtuple이고 `df`가 없다(§8). `durbin_watson`은 p값이 없는 통계량(속성)이고 htest에 짝이 없다.
+
+- **비교 대상에서 확인한 것** (2026-11-20):
+  - R `step`(`MASS::stepAIC`도 같은 인자에 `use.start`): `direction` 기본 `"both"`(범위가 없으면 빼기만 된다), `steps = 1000`, `k = 2`(BIC는 `k = log(n)`, n = `nobs`), 기준은 `extractAIC`, 1e-7보다 크게 줄지 않으면 멈춘다, 동률은 표의 앞 줄(지금 모형이 첫 줄), 자유도 0인 항을 먼저 뺀다, 쓰는 행 수가 바뀌면 에러, 항의 계층(주효과와 상호작용)을 지킨다. `add1.glm`·`drop1.glm`은 후보마다 `glm.fit`으로 다시 적합한다.
+  - R `anova(m1, m2, …)`: 이웃끼리, 척도는 `df_resid`가 가장 작은 모형의 것. `anova.glm`의 `test` 기본은 척도가 고정이면 `"Chisq"`, 추정하면 `"F"`다. Type II·III는 `car::Anova`다(설치되어 있지 않다).
+  - lmtest: `resettest(power = 2:3, type = "fitted")`는 F, `gqtest(point = 0.5, fraction = 0, alternative = "greater", order.by = NULL)`는 F(df₂, df₁), `bptest(m, varformula)`로 White, `waldtest`(lm의 기본 F), `lrtest`(χ²).
+  - statsmodels 0.15.0: `anova_lm(*models, typ=, robust=, test='F', scale=None)`의 한 모형 표는 공식으로 만든 모형만이다; `compare_f_test`는 내포를 검사하지 않는다; `compare_lr_test(large_sample=False)`는 강건 공분산이면 경고한다; `wald_test(use_f=None)`는 `use_t`를 따르고 `f_test`는 F다; `variance_inflation_factor(exog, idx, *, standardize=True)`(기본으로 중심화, 조건수 > 1e4면 경고); `het_white(resid, exog, interaction_terms=True)`(exog에 상수가 있다고 가정); `het_goldfeldquandt(y, x, idx=None, split=None, drop=None, alternative='increasing')`(위의 자유도 순서); `linear_reset(res, power=3, test_type='fitted', use_f=False, cov_type='nonrobust')`; `OLSInfluence`의 `dffits`·`dfbetas`.
+  - scikit-learn 1.9.1 `SequentialFeatureSelector(n_features_to_select='auto', tol=None, direction='forward', scoring=None, cv=5)`: `tol`이 없으면 열의 절반을 고르고, 있으면 점수가 `tol`보다 덜 오르면 멈춘다. 후보 점수는 `cross_val_score`의 평균(회귀의 기본은 R², 겹은 섞지 않는 `KFold`), 동률은 앞 열이다. `RFE`는 계수의 크기로 빼는 방법이라 우도 기준이 아니다(나중 후보).
+  - 설치되어 있지 않은 R 꾸러미: `car`, `leaps`(§8).
+
+- **정확도와 검증** (안):
+  - Arb 참값(`tools/regref.py`에 더한다): 결정적인 값 모두. t·Wald 검정의 통계량과 p, 비교 F·LR, 분산분석표(Type I·III), VIF, DFFITS, DFBETAS(행을 뺀 적합의 정의대로), White·Goldfeld–Quandt·RESET의 통계량과 p. 선택은 작은 문제에서 Arb로 계산한 기준값으로 고른 걸음·부분집합과 같은지 본다(기준값이 반올림 거리 안에서 동률인 문제는 따로 표시한다).
+  - 계약은 G7처럼 Arb 참값과 견주어 정하고, 수는 G7a를 시작할 때 재서 정한다(계수의 `bse`처럼 κ·u 꼴일 것이다).
+  - 비교 패키지는 정확도 체계(`bench/accuracy`의 regression 비교)와 속도 체계(`bench/speed`)에 넣는다: R(stats `step`·`drop1`·`add1`·`anova`, MASS `stepAIC`, lmtest `resettest`·`gqtest`·`bptest`·`waldtest`·`lrtest`; car·leaps는 §8), statsmodels(위의 함수), scikit-learn(`SequentialFeatureSelector`에 우리 겹을 `cv=`의 (학습, 시험) 목록으로, `scoring='neg_mean_squared_error'`로 넘겨 같은 문제를 푼다). R은 테스트 의존성이 아니라 `tools/gen_regression_r.py`처럼 결과를 한 번 만들어 둔다.
+  - 같은 기준이면 R `step`·scikit-learn과 같은 모형을 골라야 한다. 정의가 다른 곳(감마의 AIC, Goldfeld–Quandt의 p값)은 [R과 다름]·[statsmodels와 다름]으로 적는다.
+
+- **성능** (안):
+  - 단계적 선택(선형): 처음에 [1 X y]를 한 번 QR하면(n × (p + 2)) 그 뒤는 (p + 2)² 크기의 삼각 인자만으로 모든 후보의 SSR을 얻는다. 넣기: 지금 열들로 삼각화한 나머지 블록에서 후보 j의 SSR 감소는 c_j²/d_j(나머지 블록 j열의 y 방향 성분과 노름의 제곱)라 후보 전부가 O(p²)이고, 옮기는 것은 Householder 한 걸음이다. 빼기: 후보 j의 SSR 증가는 β_j²/[(UᵀU)⁻¹]_jj(t²·σ̂²)라 후보 전부를 U⁻¹ 하나로 얻고, 옮길 때는 Givens로 다시 삼각화한다(O(p²)). 그래서 걸음마다 후보 수만큼의 QR(O(np²)씩)이 아니라 n과 상관없는 O(p²)–O(p³)이다. 마지막 `fit`은 처음부터 `ols`로 다시 적합해 G15의 정확도다. 갱신 공식의 값은 반올림 오차가 κ·u 꼴이라, 1등과 2등의 기준 차이가 그 오차 한계 안이면 두 후보를 정식 적합으로 다시 재어 고른다(결정이 갱신 경로의 반올림에 달리지 않게).
+  - 교차검증 기준: 겹마다 학습 행의 [1 X y]를 한 번 QR하고 같은 갱신을 쓴다. 시험 오차는 후보마다 시험 행의 예측 O(n_test·|S|)다.
+  - GLM: 정확한 갱신이 없어 후보마다 IRLS다. 지금 모형의 계수(새 계수 0)에서 따뜻하게 시작한다. 후보들은 서로 독립이라 linalg의 `run_batch`처럼 스레드풀에 나눈다(후보 하나의 계산은 어디서 돌든 같으므로 고르는 결과도 스레드 수와 상관없다).
+  - `best_subset`(선형): leaps and bounds를 같은 (p + 2)² 삼각 인자 위에서 한다(열 순서 바꾸기는 인접 Givens). GLM은 모든 부분집합을 따뜻한 시작과 스레드풀로 적합한다.
+  - 검정·진단: Type I은 적합의 QR에서 거의 공짜, Wald는 삼각 풀이, VIF는 U⁻¹의 행 노름(O(k³)), DFBETAS는 지렛대의 얇은 Q와 삼각 풀이(O(nk²)), White의 보조 회귀는 열이 O(k²)이라 O(nk⁴)다(k가 크면 가장 비싸다).
+
+- **나중 후보** (G126): 모형족(음이항 NB2, 다항·순서형 로지스틱, 혼합 효과, GEE, 생존(Cox), 등위 회귀, PLS), RFE(scikit-learn), 항의 계층을 지키는 선택(R `step`의 주효과·상호작용 규칙; 계층을 따로 받아야 한다), 크기마다 여러 최선(leaps `nbest`), GVIF(car, 여러 열의 항), RESET의 `'princomp'`, Rao 점수 검정(R `add1(test = "Rao")`), Type II 분산분석(포함 관계를 받을 때).
+
 ---
 
 ## 4. 성능
@@ -618,6 +739,8 @@
 | G4 강건 | `rlm`(M·MM 추정), `theilslopes`, `siegelslopes` |
 | G5 분위 | `quantreg`(내부점법, 정확한 해), 표준오차 |
 | G6 비선형 | `nls`(`curve_fit` 꼴), LM·TRF, 다듬기, 추론 |
+| G7a 비교·검정·진단 (시작 전) | 결과의 메서드: `t_test`·`wald_test`(와 §8의 `f_test`), `compare_f_test`·`compare_lr_test`, 함수 `anova`(여러 적합; 한 모형의 Type I·III), `vif`·`dffits`·`dfbetas`, `white_test`·`goldfeld_quandt`·`reset_test`(와 §8의 GLM 영향력). 변수 선택이 이것을 쓰므로 먼저 한다(G126, G130, §3.8) |
+| G7b 변수 선택 (시작 전) | `stepwise`·`best_subset`(`ols wls gls glm`), 기준 AIC·BIC·p값·교차검증, 선형의 삼각 인자 갱신과 leaps and bounds, GLM 후보의 따뜻한 시작과 스레드풀 (G127–G129, §3.8) |
 
 진행 원칙은 다른 영역과 같다: 마일스톤마다 시작 전에 아래 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
 
@@ -631,3 +754,45 @@
 - **G4**: 정했다(2026-11-18, G53–G59).
 - **G5**: 정했다(2026-11-18, G60–G63; 2026-11-19, G64–G67).
 - **G6**: 정했다(2026-11-19, G68–G79).
+- **G7의 범위와 꼴**: 정했다(2026-11-20, G126–G130). 아래는 G7a·G7b를 시작하기 전에 물을 것이다(설계는 §3.8). 추천을 첫째에 둔다.
+- **G7a** (비교·검정·진단):
+  1. 속성과 메서드: 인자가 없는 배열인 `vif`, `dffits`, `dfbetas`는 속성(추천: 지금의 `leverage`·`cooks_distance`와 같은 규칙) / G130의 예처럼 `vif()`만 메서드.
+  2. 검정 이름: `white_test()`, `goldfeld_quandt()`, `reset_test()`(추천: `breusch_pagan()`의 꼴, 한 단어는 `_test`) / statsmodels의 `het_white`, `het_goldfeldquandt`, `linear_reset`.
+  3. 일반 검정의 수: `t_test`와 `wald_test` 둘이고 `wald_test`의 분포는 모형의 규칙(t인 모형은 F, z인 모형은 χ²)(추천: 같은 계산의 두 이름을 두지 않는다) / statsmodels처럼 셋(`f_test`는 늘 F, `wald_test`는 `use_f=`) / `t_test`와 `f_test`(z인 모형은 F(m, ∞)).
+  4. 가설의 꼴: (m, k) 행렬 R과 q(기본 0)만(추천) / 계수 이름이나 위치의 목록도 "그 계수가 모두 0"의 줄임으로 받는다. 겹친 열(NaN 계수)에 0이 아닌 가중치를 주는 줄이 있으면 그 검정의 값은 NaN(추천) / `ValueError`. 일차 종속인 줄은 G21의 판정으로 빼고 자유도는 랭크(추천, statsmodels의 pinv와 같은 자유도) / `ValueError`.
+  5. `t_test`·`wald_test`를 `rlm`·`quantreg`·`nls`에도 둔다(추천: 공분산과 `df_resid_inference`만 쓰고 statsmodels의 RLM·QuantReg에도 있다) / 선형·GLM만.
+  6. 비교 검정의 검사: 두 결과의 형·쓰인 행·y·가중치(와 `sigma`·`offset`·`trials`)가 비트까지 같은지 보고 다르면 `ValueError`(추천) / statsmodels처럼 검사하지 않는다. 내포 검사: 큰 모형의 Q로 작은 모형의 열이 그 열 공간에 드는지 보고(열마다 상대 max(n, k)·u의 여유) 아니면 `ValueError`(추천) / 검사하지 않는다(R, statsmodels).
+  7. 강건 공분산의 `compare_f_test`·`compare_lr_test`: `ValueError`로 `wald_test`를 가리킨다(추천) / 고전형으로 계산한다(R `anova`) / 작은 모형의 열이 큰 모형 열의 부분집합이면 큰 모형의 강건 공분산으로 뺀 계수의 Wald(lmtest `waldtest(vcov=)`).
+  8. GLM의 비교: `compare_lr_test`는 각자의 `llf`(추천, statsmodels), `compare_f_test`는 척도를 추정할 때만 R `anova.glm(test = "F")`의 편차 F이고 척도가 고정이면 `ValueError`(추천: 그때는 LR과 같다) / 척도가 고정이어도 편차의 χ²로 낸다.
+  9. `anova`의 결과: 열마다 필드를 갖는 읽기 전용 결과 객체와 `summary()`(추천: G3·htest H6과 같은 꼴) / sd.frame `DataFrame`(statsmodels·R과 비슷한 표) / 결과 객체에 `to_frame()`을 더한다.
+  10. `anova`의 Type: `typ=1`(순차)과 `typ=3`(항마다 마지막, `drop1`)만 지금 두고 Type II는 항의 포함 관계를 받을 때 더한다(추천) / `terms`와 함께 포함 관계(`contains=`)를 받아 Type II도 지금 / 상호작용이 없다고 보고 Type II = Type III. `typ`의 값은 정수 1, 2, 3만(추천; statsmodels는 `'I'`·`'II'`·`'III'`도 받는다: 별칭).
+  11. `anova`의 강건 공분산과 배치: Type III는 모형의 강건 공분산의 Wald F(추천, statsmodels `robust=`), Type I과 여러 적합의 표는 강건이면 `ValueError`(추천). 배치는 받지 않는다(추천) / 표의 필드가 배치 모양.
+  12. VIF: 절편이 없는 모형도 중심 VIF(절편을 넣은 보조 회귀; 추천, statsmodels 0.15.0 기본과 R `car::vif`의 값) / 주어진 열 그대로(비중심). 모양은 `params`와 같은 자리에 절편·겹친 열 NaN(추천) / X의 열만(…, p). 가중은 백색화한 설계(추천, 다른 진단과 같다). GLM의 VIF는 두지 않는다(추천) / car처럼 계수 공분산의 상관으로.
+  13. DFBETAS는 절편 열을 포함한 (…, n, k)(추천, R·statsmodels). 척도로 나누지 않는 `dfbeta`(R)는 두지 않는다(추천) / 둔다.
+  14. GLM의 영향력(√W X의 지렛대, Pearson 잔차의 Cook 거리, 한 걸음 근사의 DFFITS·DFBETAS; R `influence.measures`, statsmodels `GLMInfluence`): G7a에 넣는다(추천: 두 비교 대상에 있다; §2.2의 "GLM에 진단 없음"을 바꾼다) / 지금은 뺀다.
+  15. White: `cross_terms=True`가 기본(추천, statsmodels와 같다). `cross_terms=False`는 수준과 제곱을 남긴다(추천, [statsmodels와 다름]) / statsmodels처럼 제곱만.
+  16. Goldfeld–Quandt: 인자는 statsmodels의 `split`·`drop`(정수면 행 수, (0, 1)이면 비율; 추천) / R의 `point`·`fraction`. `alternative`는 htest의 `'greater'`(기본, 뒤쪽 분산이 크다)·`'less'`·`'two-sided'`(추천: 영역 간 같은 값, R과 같은 뜻) / statsmodels의 `'increasing'`·`'decreasing'`·`'two-sided'`. `order_by`는 열의 위치·이름 또는 행마다의 값 배열이고 안정 정렬(추천). p값의 자유도는 R의 순서(추천, [statsmodels와 다름]). `gls`에서는 `ValueError`(추천: 백색화가 행을 섞는다) / 백색화한 행 그대로.
+  17. RESET: `power`는 2 이상의 서로 다른 정수의 시퀀스만(추천: R `power = 2:3`의 꼴; 정수 하나로 2…k를 뜻하는 statsmodels의 꼴은 두 번째 뜻이라 두지 않는다) / 둘 다. 분포는 F(추천: R, G23) / statsmodels의 χ². 강건 공분산의 모형은 확장 모형의 같은 공분산으로 Wald F(추천) / 늘 고전형. `kind`는 `'fitted'`·`'regressor'`(추천; statsmodels의 `'exog'`는 R의 이름으로), `'princomp'`는 나중.
+  18. R 꾸러미: `car`(Type II·III의 `Anova`, `vif`·GVIF, `linearHypothesis`; CRAN https://cran.r-project.org/package=car, 의존 꾸러미가 여럿이라 크기는 설치 전에 재서 알린다)와 `leaps`(`regsubsets`; CRAN https://cran.r-project.org/package=leaps, 작은 Fortran 꾸러미)를 대조에만 쓰려고 설치한다(추천) / 설치하지 않고 statsmodels와 R stats·lmtest만.
+- **G7b** (변수 선택):
+  1. 모형 옵션: `model`의 함수가 받는 키워드를 그대로 받는다(`stepwise(y, X, model='glm', family='binomial')`; 그 함수에 없는 키워드는 `TypeError`; 추천) / `fit_options=dict(...)` 하나로.
+  2. `'both'`의 시작: 전체 모형(추천: R `step(lm(y ~ .))`의 흔한 쓰임; 열이 행보다 많으면 빈 모형) / 빈 모형(SPSS·SAS의 단계적). `start=`(열이나 항의 목록)로 바꿀 수 있게 한다(추천).
+  3. 멈춤: AIC·BIC는 기준이 1e-7보다 크게 줄 때만 옮긴다(추천: R `step`과 같은 값을 고른다) / 조금이라도 줄면. `'cv'`는 줄면 옮기고 `tol=`(scikit-learn)은 두지 않는다(추천) / 둔다. 동률은 열 순서가 앞인 항(추천).
+  4. 기준 목록: `stepwise`는 `'aic' 'bic' 'pvalue' 'cv'`, `best_subset`은 `'aic' 'bic' 'cv'`와 선형만 `'cp' 'adjr2'`(leaps `summary`의 값)(추천) / 둘 다 같은 목록. 기본은 둘 다 `'aic'`(추천, R `step`과 영역 안의 일관성) / `best_subset`은 `'bic'`(R `bestglm`의 기본).
+  5. `'pvalue'`: 선형은 부분 F, GLM은 LR(추천) / GLM은 Wald나 점수 검정. 기본 `alpha_enter=0.05`, `alpha_remove=0.10`(SPSS; 추천) / SAS 단계적의 0.15·0.15. `alpha_enter > alpha_remove`면 `ValueError`(추천). 지나온 모형으로 돌아가면 멈춘다(추천) / `max_steps`만.
+  6. BIC의 n: 결과의 `nobs`(적합에 쓰인 행, GLM은 `freq_weights`의 합; 추천: 마지막 `fit.bic`와 같은 값) / 다른 정의.
+  7. CV: 오차는 선형 가중 MSE, GLM 평균 편차(추천) / scikit-learn처럼 R². 1-SE 규칙(`select='1se'`, `lasso_cv`와 같은 이름)은 두지 않는다(추천) / 둔다. `best_subset`의 CV는 겹마다 다시 고른다(추천) / 모든 자료의 크기별 최선을 교차검증한다.
+  8. GLM 후보의 분리·미수렴: 고르지 않고 기록에 남긴다(추천) / R처럼 그 값 그대로 견준다.
+  9. 감마의 AIC: 결과의 `aic`(Pearson 척도의 `llf`, statsmodels)로 고른다(추천: 마지막 `fit.aic`와 같은 값; [R과 다름]) / R처럼 편차/n 척도의 `llf`를 따로.
+  10. `nan_policy='propagate'`에 NaN이 있으면 걸음 없이 시작 모형의 NaN 적합을 마지막 적합으로, 기준값 NaN(추천, G16) / `ValueError`.
+  11. 배치: `ValueError`(추천) / 회귀마다 고른 결과의 리스트.
+  12. `best_subset`의 상한: 선형은 leaps and bounds이고 고를 항이 50개를 넘거나 가지치기 뒤 작업량이 문서화한 상한을 넘으면 `ValueError`(추천, htest H13과 같은 꼴) / leaps처럼 `max_size`의 기본 8. GLM은 부분집합 2^p개를 다 적합하므로 p ≤ 15(안)를 넘으면 `ValueError`(추천) / 상한 없음.
+  13. 결과 이름: `StepwiseResult`(`selected`, `selected_names`, `steps`, `fit`, `criterion`)와 `BestSubsetResult`(더해서 크기마다의 최선과 기준값)(추천) / 다른 이름. `steps`는 namedtuple(`action`, `term`, `criterion`)의 리스트(추천) / 열마다 배열.
+  14. 다중 검정: 문서에 선택 뒤 p값의 편향을 적고 htest의 `multipletests`를 가리키되 옵션은 두지 않는다(추천: 보정은 선택의 편향을 고치지 못한다) / `p_adjust=`(htest `multipletests`의 방법 이름, 같은 커널)를 둔다.
+  15. `include=`만 두고 `exclude=`는 두지 않는다(추천) / 둘 다(leaps `force.out`).
+- **htest와의 관계**: 구간의 꼴(G131), 공유 커널과 Jarque–Bera의 p값(G132), 같은 검정의 같은 형과 `JarqueBeraResult`(G133), 자유도의 이름(G134), 분산 0의 규칙(G135), 결과 배열(G136)은 정했다(2026-11-20). 남은 것은 G7a를 시작할 때 묻는다:
+  1. G7a의 새 검정 결과 클래스(G133)를 다른 regression 결과처럼 `sd.regression`이 내보낸다(추천: regression의 결과 클래스는 모두 공개다) / htest처럼 내보내지 않는다.
+  2. 필드 이름: statsmodels의 것(`fvalue pvalue`, `lm lm_pvalue fvalue f_pvalue`, `effect sd tvalue pvalue`; 자유도는 G134; 추천: G10과 지금의 `breusch_pagan()`이 그 꼴) / htest의 `statistic pvalue`.
+  3. `BreuschPaganResult`에 `df`(χ²의 자유도, G134)를 더하지 않는다(추천: statsmodels의 네 값 그대로) / 더한다. 그대로 공개 namedtuple로 둘지(추천) / G7a의 새 결과처럼 읽기 전용 클래스로 바꿀지(값과 풀기는 그대로)도 함께 묻는다.
+  4. 백색화한 잔차: `wresid`(statsmodels의 이름; 쓰인 행의 √w·`resid`, GLS는 L⁻¹`resid`)를 결과에 더해 htest의 정규성 검정에 넘기게 한다(추천) / 더하지 않는다(사용자가 만든다).
+  5. 일원 분산분석의 같음: `anova` 표와 `f_oneway`는 정확도 계약 안에서 같고 비트는 같지 않다(추천: 설계 행렬에는 집단 레이블이 없어 G132의 공유 커널을 쓸 수 없다; htest 문서의 "같은 비트"를 고친다) / `anova`가 0/1 더미 설계를 알아보고 htest의 집단 제곱합 커널을 부른다(비트가 같지만 복잡하다).
