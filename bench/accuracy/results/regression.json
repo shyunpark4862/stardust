@@ -2,10 +2,10 @@
  "schema": 1,
  "area": "regression",
  "runs": {
-  "20261120-173620-0a89dde": {
-   "commit": "0a89dde",
+  "20261120-181102-063a088": {
+   "commit": "063a088",
    "dirty": false,
-   "date": "2026-11-20T17:36:20",
+   "date": "2026-11-20T18:11:01",
    "machine": "arm64",
    "python": "3.15.0",
    "comparators": {
@@ -15,6 +15,8 @@
     "scikit-learn": "1.9.1",
     "R": "4.6.2",
     "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
     "Boost": "boostorg/math 75cb4c4 2026-11-18"
    }
   }
@@ -656,8 +658,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/binomial_log",
@@ -944,11 +946,11 @@
      "error": "RuntimeError: ValueError: NaN, inf or invalid value detected in weights, estimation infeasible."
     },
     "R": {
-     "error": "RuntimeError: RuntimeError: R: error: 유효한 계수의 값들을 찾을 수 없으므로 시작값을 제공해주시길 바랍니다"
+     "error": "RuntimeError: RuntimeError: R: error: no valid set of coefficients has been found: please supply starting values"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/binomial_logit",
@@ -1586,8 +1588,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/binomial_probit",
@@ -2225,8 +2227,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/binomial_trials",
@@ -2864,8 +2866,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/gamma_dev",
@@ -3503,8 +3505,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/gamma_identity",
@@ -4084,11 +4086,11 @@
      }
     },
     "R": {
-     "error": "RuntimeError: RuntimeError: R: error: 유효한 계수의 값들을 찾을 수 없으므로 시작값을 제공해주시길 바랍니다"
+     "error": "RuntimeError: RuntimeError: R: error: no valid set of coefficients has been found: please supply starting values"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/gamma_inverse",
@@ -4726,8 +4728,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/gamma_log",
@@ -5365,8 +5367,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/gamma_weights",
@@ -5836,8 +5838,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/gaussian_identity",
@@ -6475,8 +6477,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/gaussian_log",
@@ -7056,11 +7058,11 @@
      }
     },
     "R": {
-     "error": "RuntimeError: RuntimeError: R: error: 유효한 시작값들을 찾을 수 없습니다.  일부를 정해주시길 바랍니다"
+     "error": "RuntimeError: RuntimeError: R: error: cannot find valid starting values: please specify some"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/logit_noint",
@@ -7698,8 +7700,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/poisson_exposure",
@@ -8279,8 +8281,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/poisson_identity",
@@ -8918,8 +8920,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/poisson_log",
@@ -9557,8 +9559,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/glm/poisson_sqrt",
@@ -10196,8 +10198,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Filip",
@@ -11209,11 +11211,150 @@
      }
     },
     "R": {
-     "error": "RuntimeError: ValueError: R returned 209 values, expected 212"
+     "params": {
+      "points": 10,
+      "ulp_max": 5687594192464692.0,
+      "ulp_p999": 5687594192464692.0,
+      "rel_max": 0.9751250350494731,
+      "norm_rel": 0.883707980095229,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       9
+      ],
+      "excluded": 1
+     },
+     "bse": {
+      "points": 10,
+      "ulp_max": 7745037085933083.0,
+      "ulp_p999": 7745037085933083.0,
+      "rel_max": 0.9721993416673193,
+      "norm_rel": 0.7469216860334823,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       9
+      ],
+      "excluded": 1
+     },
+     "tvalues": {
+      "points": 10,
+      "ulp_max": 3301904224909386.0,
+      "ulp_p999": 3301904224909386.0,
+      "rel_max": 0.5957020464191963,
+      "norm_rel": 0.40811392182317796,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 1
+     },
+     "pvalues": {
+      "points": 10,
+      "ulp_max": 5.9431131347601605e+19,
+      "ulp_p999": 5.9431131347601605e+19,
+      "rel_max": 9414.913324827552,
+      "norm_rel": 2323.8025224608537,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 1
+     },
+     "fittedvalues": {
+      "points": 82,
+      "ulp_max": 41555775668322.23,
+      "ulp_p999": 41555775668322.23,
+      "rel_max": 0.0052308540818363424,
+      "norm_rel": 0.0019518227379516804,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       39
+      ],
+      "excluded": 0
+     },
+     "resid": {
+      "points": 82,
+      "ulp_max": 2.8004700909890445e+17,
+      "ulp_p999": 2.8004700909890445e+17,
+      "rel_max": 51.8275075723942,
+      "norm_rel": 0.533360492464924,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       34
+      ],
+      "excluded": 0
+     },
+     "rsquared": {
+      "points": 1,
+      "ulp_max": 8385370091297.297,
+      "ulp_p999": 8385370091297.297,
+      "rel_max": 0.0009340197524623377,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     },
+     "rsquared_adj": {
+      "points": 1,
+      "ulp_max": 8966479150918.902,
+      "ulp_p999": 8966479150918.902,
+      "rel_max": 0.00099920972091601,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     },
+     "scale": {
+      "points": 1,
+      "ulp_max": 1764241572207702.0,
+      "ulp_p999": 1764241572207702.0,
+      "rel_max": 0.26663350657392104,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     },
+     "llf": {
+      "points": 1,
+      "ulp_max": 180571518628005.12,
+      "ulp_p999": 180571518628005.12,
+      "rel_max": 0.02875939785344936,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Longley",
@@ -12241,10 +12382,10 @@
      },
      "bse": {
       "points": 7,
-      "ulp_max": 58.02820030834843,
-      "ulp_p999": 58.02820030834843,
-      "rel_max": 7.124268161829946e-15,
-      "norm_rel": 3.4668569862939384e-15,
+      "ulp_max": 59.02820030834843,
+      "ulp_p999": 59.02820030834843,
+      "rel_max": 7.24704067801989e-15,
+      "norm_rel": 3.5975989616524144e-15,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -12258,7 +12399,7 @@
       "ulp_max": 638.9085440721719,
       "ulp_p999": 638.9085440721719,
       "rel_max": 9.997559751125035e-14,
-      "norm_rel": 6.301485392964895e-15,
+      "norm_rel": 6.329183373873089e-15,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -12272,7 +12413,7 @@
       "ulp_max": 284.4504339065102,
       "ulp_p999": 284.4504339065102,
       "rel_max": 4.866124160418184e-14,
-      "norm_rel": 1.2633556545655327e-14,
+      "norm_rel": 1.2653607191803457e-14,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -12367,8 +12508,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_NoInt1",
@@ -13312,9 +13453,9 @@
      },
      "bse": {
       "points": 1,
-      "ulp_max": 12.132231404958677,
-      "ulp_p999": 12.132231404958677,
-      "rel_max": 2.546574062733953e-15,
+      "ulp_max": 11.132231404958677,
+      "ulp_p999": 11.132231404958677,
+      "rel_max": 2.336672522140759e-15,
       "norm_rel": null,
       "nonfinite": 0,
       "contract": null,
@@ -13326,9 +13467,9 @@
      },
      "tvalues": {
       "points": 1,
-      "ulp_max": 23.0,
-      "ulp_p999": 23.0,
-      "rel_max": 2.6043797486027577e-15,
+      "ulp_max": 21.0,
+      "ulp_p999": 21.0,
+      "rel_max": 2.3779119443764308e-15,
       "norm_rel": null,
       "nonfinite": 0,
       "contract": null,
@@ -13340,9 +13481,9 @@
      },
      "pvalues": {
       "points": 1,
-      "ulp_max": 248.1362932477585,
-      "ulp_p999": 248.1362932477585,
-      "rel_max": 3.0203052406373724e-14,
+      "ulp_max": 191.1362932477585,
+      "ulp_p999": 191.1362932477585,
+      "rel_max": 2.3265034736204253e-14,
       "norm_rel": null,
       "nonfinite": 0,
       "contract": null,
@@ -13438,8 +13579,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_NoInt2",
@@ -14509,8 +14650,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Norris",
@@ -15538,10 +15679,10 @@
      },
      "bse": {
       "points": 2,
-      "ulp_max": 194.07864183023983,
-      "ulp_p999": 194.07864183023983,
-      "rel_max": 2.3137210171132475e-14,
-      "norm_rel": 2.3137209396798765e-14,
+      "ulp_max": 193.07864183023983,
+      "ulp_p999": 193.07864183023983,
+      "rel_max": 2.301799452765445e-14,
+      "norm_rel": 2.3017994156641277e-14,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -15552,10 +15693,10 @@
      },
      "tvalues": {
       "points": 2,
-      "ulp_max": 1253.7546050555252,
-      "ulp_p999": 1253.7546050555252,
-      "rel_max": 2.4707753809933263e-13,
-      "norm_rel": 2.331221944704663e-14,
+      "ulp_max": 1252.7546050555252,
+      "ulp_p999": 1252.7546050555252,
+      "rel_max": 2.468804680051507e-13,
+      "norm_rel": 2.3312218959489186e-14,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -15569,7 +15710,7 @@
       "ulp_max": 4273.268828679926,
       "ulp_p999": 4273.268828679926,
       "rel_max": 8.006847132666339e-13,
-      "norm_rel": 4.3251623404246694e-13,
+      "norm_rel": 4.321015798752676e-13,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -15664,8 +15805,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Pontius",
@@ -16819,8 +16960,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Wampler1",
@@ -17108,8 +17249,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Wampler2",
@@ -18263,8 +18404,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Wampler3",
@@ -19292,10 +19433,10 @@
      },
      "bse": {
       "points": 6,
-      "ulp_max": 286.65651781176484,
-      "ulp_p999": 286.65651781176484,
+      "ulp_max": 287.65651781176484,
+      "ulp_p999": 287.65651781176484,
       "rel_max": 4.036252832612234e-14,
-      "norm_rel": 2.8523223867850016e-14,
+      "norm_rel": 2.8664796805975175e-14,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -19306,10 +19447,10 @@
      },
      "tvalues": {
       "points": 6,
-      "ulp_max": 1733359.0042851835,
-      "ulp_p999": 1733359.0042851835,
-      "rel_max": 2.220925093913719e-10,
-      "norm_rel": 3.978279866952694e-14,
+      "ulp_max": 1733358.0042851835,
+      "ulp_p999": 1733358.0042851835,
+      "rel_max": 2.220923812629756e-10,
+      "norm_rel": 3.978269610217554e-14,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -19418,8 +19559,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Wampler4",
@@ -20447,10 +20588,10 @@
      },
      "bse": {
       "points": 6,
-      "ulp_max": 306.47718427546204,
-      "ulp_p999": 306.47718427546204,
+      "ulp_max": 305.47718427546204,
+      "ulp_p999": 305.47718427546204,
       "rel_max": 4.078264869976512e-14,
-      "norm_rel": 2.891559321375251e-14,
+      "norm_rel": 2.883253119531165e-14,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -20461,10 +20602,10 @@
      },
      "tvalues": {
       "points": 6,
-      "ulp_max": 113041238.48274252,
-      "ulp_p999": 113041238.48274252,
-      "rel_max": 2.263092593743843e-08,
-      "norm_rel": 2.6980307329013164e-12,
+      "ulp_max": 113041239.48274252,
+      "ulp_p999": 113041239.48274252,
+      "rel_max": 2.2630926137639048e-08,
+      "norm_rel": 2.6980297039503317e-12,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -20573,8 +20714,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/nist_Wampler5",
@@ -21602,10 +21743,10 @@
      },
      "bse": {
       "points": 6,
-      "ulp_max": 345.2267066815219,
-      "ulp_p999": 345.2267066815219,
-      "rel_max": 4.1238245904959934e-14,
-      "norm_rel": 2.91736432440439e-14,
+      "ulp_max": 344.2267066815219,
+      "ulp_p999": 344.2267066815219,
+      "rel_max": 4.1118744998679325e-14,
+      "norm_rel": 2.916403938217065e-14,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -21619,7 +21760,7 @@
       "ulp_max": 14387249049.09791,
       "ulp_p999": 14387249049.09791,
       "rel_max": 2.250262631224149e-06,
-      "norm_rel": 2.700851857339422e-10,
+      "norm_rel": 2.700851841137517e-10,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -21728,8 +21869,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/ols_cond",
@@ -22907,8 +23048,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/ols_int",
@@ -24170,8 +24311,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/ols_kappa11",
@@ -25099,11 +25240,150 @@
      }
     },
     "R": {
-     "error": "RuntimeError: ValueError: R returned 122 values, expected 128"
+     "params": {
+      "points": 4,
+      "ulp_max": 7388078081673026.0,
+      "ulp_p999": 7388078081673026.0,
+      "rel_max": 1.0000051160905796,
+      "norm_rel": 1.0000006390495473,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       2
+      ],
+      "excluded": 2
+     },
+     "bse": {
+      "points": 4,
+      "ulp_max": 8107823988570475.0,
+      "ulp_p999": 8107823988570475.0,
+      "rel_max": 0.9999759748990933,
+      "norm_rel": 0.9999325013865841,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       1
+      ],
+      "excluded": 2
+     },
+     "tvalues": {
+      "points": 4,
+      "ulp_max": 6758902075419164.0,
+      "ulp_p999": 6758902075419164.0,
+      "rel_max": 1.0673482415791744,
+      "norm_rel": 1.0126198985223858,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       2
+      ],
+      "excluded": 2
+     },
+     "pvalues": {
+      "points": 4,
+      "ulp_max": 19096634674.295918,
+      "ulp_p999": 19096634674.295918,
+      "rel_max": 2.1201568619547914e-06,
+      "norm_rel": 2.0527788956470034e-06,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 2
+     },
+     "fittedvalues": {
+      "points": 50,
+      "ulp_max": 7339275493378.844,
+      "ulp_p999": 7339275493378.844,
+      "rel_max": 0.0012486718028308786,
+      "norm_rel": 4.043202532085213e-05,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       31
+      ],
+      "excluded": 0
+     },
+     "resid": {
+      "points": 50,
+      "ulp_max": 350491266644.1718,
+      "ulp_p999": 350491266644.1718,
+      "rel_max": 3.95942692892088e-05,
+      "norm_rel": 4.0432025353902633e-07,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       28
+      ],
+      "excluded": 0
+     },
+     "rsquared": {
+      "points": 1,
+      "ulp_max": 12061173.027433293,
+      "ulp_p999": 12061173.027433293,
+      "rel_max": 1.6347572065859434e-09,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     },
+     "rsquared_adj": {
+      "points": 1,
+      "ulp_max": 1779900914000918.8,
+      "ulp_p999": 1779900914000918.8,
+      "rel_max": 0.36258473605194685,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     },
+     "scale": {
+      "points": 1,
+      "ulp_max": 272780087029840.38,
+      "ulp_p999": 272780087029840.38,
+      "rel_max": 0.043478260869409,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     },
+     "llf": {
+      "points": 1,
+      "ulp_max": 144.38869717568357,
+      "ulp_p999": 144.38869717568357,
+      "rel_max": 2.522563204961938e-14,
+      "norm_rel": null,
+      "nonfinite": 0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       0
+      ],
+      "excluded": 0
+     }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/ols_noint",
@@ -26281,8 +26561,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/wls_noint",
@@ -27376,8 +27656,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/linear/wls_zero",
@@ -28427,10 +28707,10 @@
      },
      "bse": {
       "points": 4,
-      "ulp_max": 1.729740349489502,
-      "ulp_p999": 1.729740349489502,
-      "rel_max": 3.1711608445155375e-16,
-      "norm_rel": 2.805764754903778e-16,
+      "ulp_max": 2.729740349489502,
+      "ulp_p999": 2.729740349489502,
+      "rel_max": 5.004476952017708e-16,
+      "norm_rel": 3.5135696143609333e-16,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -28441,15 +28721,15 @@
      },
      "tvalues": {
       "points": 4,
-      "ulp_max": 3.3779637455101894,
-      "ulp_p999": 3.3779637455101894,
-      "rel_max": 5.448574752288656e-16,
-      "norm_rel": 3.2897507188007723e-16,
+      "ulp_max": 4.06303995431217,
+      "ulp_p999": 4.06303995431217,
+      "rel_max": 6.328656560350453e-16,
+      "norm_rel": 3.42217344584621e-16,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
       "worst": [
-       3
+       0
       ],
       "excluded": 0
      },
@@ -28525,8 +28805,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/binomial_0",
@@ -28579,8 +28859,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/binomial_0.5",
@@ -28633,8 +28913,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/binomial_1",
@@ -28687,8 +28967,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/binomial_weights_std",
@@ -28741,8 +29021,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/enet",
@@ -28825,8 +29105,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/enet_kappa1e6_refined",
@@ -28909,8 +29189,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/enet_noint",
@@ -28993,8 +29273,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/enet_std",
@@ -29047,8 +29327,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/enet_weights",
@@ -29131,8 +29411,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/lasso",
@@ -29215,8 +29495,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/lasso_constant_column",
@@ -29299,8 +29579,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/lasso_kappa1e6",
@@ -29383,8 +29663,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/lasso_small_alpha",
@@ -29467,8 +29747,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/lasso_weights_std",
@@ -29521,8 +29801,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/poisson_0",
@@ -29575,8 +29855,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/poisson_0.5",
@@ -29629,8 +29909,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/poisson_1",
@@ -29683,8 +29963,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/ridge",
@@ -29767,8 +30047,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/ridge_kappa1e6",
@@ -29851,8 +30131,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/ridge_noint",
@@ -29935,8 +30215,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/penalized/ridge_weights_std",
@@ -29989,8 +30269,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/bisquare_huber_even",
@@ -30111,8 +30391,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/bisquare_huber_odd",
@@ -30233,8 +30513,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/bisquare_mad_400",
@@ -30355,8 +30635,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/bisquare_mad_even",
@@ -30477,8 +30757,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/bisquare_mad_odd",
@@ -30599,8 +30879,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/hampel_huber_even",
@@ -30721,8 +31001,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/hampel_huber_odd",
@@ -30843,8 +31123,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/hampel_mad_even",
@@ -30965,8 +31245,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/hampel_mad_odd",
@@ -31087,8 +31367,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/huber_huber_even",
@@ -31209,8 +31489,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/huber_huber_odd",
@@ -31331,8 +31611,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/huber_mad_even",
@@ -31497,8 +31777,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/huber_mad_noint",
@@ -31663,8 +31943,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/huber_mad_odd",
@@ -31829,8 +32109,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/mm_leverage",
@@ -31895,10 +32175,10 @@
     "R": {
      "params": {
       "points": 3,
-      "ulp_max": 61690819.440267794,
-      "ulp_p999": 61690819.440267794,
-      "rel_max": 1.2826840885995639e-08,
-      "norm_rel": 4.21735702904613e-09,
+      "ulp_max": 61750304.440267794,
+      "ulp_p999": 61750304.440267794,
+      "rel_max": 1.2839209089839036e-08,
+      "norm_rel": 4.221558090710444e-09,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -31909,9 +32189,9 @@
      },
      "scale": {
       "points": 1,
-      "ulp_max": 7649044.0,
-      "ulp_p999": 7649044.0,
-      "rel_max": 1.3015716607685625e-09,
+      "ulp_max": 10284206.0,
+      "ulp_p999": 10284206.0,
+      "rel_max": 1.749974386747679e-09,
       "norm_rel": null,
       "nonfinite": 0,
       "contract": null,
@@ -31923,8 +32203,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/mm_stackloss",
@@ -31989,10 +32269,10 @@
     "R": {
      "params": {
       "points": 4,
-      "ulp_max": 4228117808.2773952,
-      "ulp_p999": 4228117808.2773952,
-      "rel_max": 8.099614381801061e-07,
-      "norm_rel": 1.1286489859297648e-07,
+      "ulp_max": 4047700668.2773952,
+      "ulp_p999": 4047700668.2773952,
+      "rel_max": 7.753997412707483e-07,
+      "norm_rel": 1.064640804498633e-07,
       "nonfinite": 0,
       "contract": null,
       "bound": null,
@@ -32003,9 +32283,9 @@
      },
      "scale": {
       "points": 1,
-      "ulp_max": 12072986240.0,
-      "ulp_p999": 12072986240.0,
-      "rel_max": 1.40180342886455e-06,
+      "ulp_max": 11637018347.0,
+      "ulp_p999": 11637018347.0,
+      "rel_max": 1.3511828719341171e-06,
       "norm_rel": null,
       "nonfinite": 0,
       "contract": null,
@@ -32017,8 +32297,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/stackloss_bisquare",
@@ -32139,8 +32419,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/stackloss_hampel",
@@ -32261,8 +32541,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "regression/robust/stackloss_huber",
@@ -32427,8 +32707,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   }
  ]
 }

@@ -58,6 +58,87 @@ def _opt(lib):
     return so
 
 
+# ------------------------------------------------------------------------------ R (reticulate)
+# R's optimizers call the very Python test functions through reticulate (an R package; R embeds
+# this Python and imports the repository's tests): the function values are the same doubles, so
+# only the methods differ. Inputs and results travel as exact doubles (rsession).
+
+R_METHOD = {"bfgs": "BFGS", "l-bfgs-b": "L-BFGS-B", "nelder-mead": "Nelder-Mead"}
+
+
+def _r_prelude():
+    import sys
+
+    root = str(_repo())
+    return (
+        'if (!exists(".sd", envir = globalenv())) { '
+        f'Sys.setenv(RETICULATE_PYTHON = "{sys.executable}"); '
+        "suppressWarnings(suppressMessages(library(reticulate))); "
+        f"py_run_string(\"import sys; sys.path.insert(0, '{root}')\"); "
+        'assign(".sd", suppressWarnings(list(np = import("numpy", convert = FALSE), '
+        'mgh = import("tests.optimize.mgh"), fn = import("tests.optimize.functions"), '
+        'nn = import("tests.regression.nist_nls"))), envir = globalenv()) }; '
+    )
+
+
+def _repo():
+    import pathlib
+
+    return pathlib.Path(__file__).resolve().parents[2]
+
+
+def _r_uniroot(cid, bracket, tol, maxiter):
+    """(root, converged) from R's uniroot (Brent's zeroin) on a root case."""
+    from . import rsession
+
+    expr = _r_prelude() + (
+        f'rc <- .sd$fn$ROOTS_BY_ID[["{cid}"]]; '
+        "f <- function(x) as.numeric(py_to_r(rc$f(.sd$np$float64(x)))); "
+        f"r <- tryCatch(uniroot(f, lower = B[1], upper = B[2], tol = T[1], maxiter = {int(maxiter)}), "
+        "error = function(e) list(root = NaN, iter = -1)); c(r$root, r$iter)"
+    )
+    v = rsession.evaluate_named(expr, {"B": np.asarray(bracket, dtype=float), "T": np.array([tol])})
+    return float(v[0]), bool(0 <= v[1] < maxiter and np.isfinite(v[0]))
+
+
+def _r_optim(cid, method, n):
+    """(x, converged) from R's optim on an MGH case (convergence 0: converged)."""
+    from . import rsession
+
+    gr = ", g" if method != "Nelder-Mead" else ""
+    expr = _r_prelude() + (
+        f'c <- .sd$mgh$BY_ID[["{cid}"]]; fs <- .sd$mgh$as_numpy(c); '
+        "f <- function(x) as.numeric(py_to_r(fs[[3]](.sd$np$array(x)))); "
+        "g <- function(x) as.numeric(py_to_r(fs[[4]](.sd$np$array(x)))); "
+        f'r <- tryCatch(optim(X0, f{gr}, method = "{method}"), '
+        f"error = function(e) list(par = rep(NaN, {n}), convergence = 99)); c(r$par, r$convergence)"
+    )
+    from tests.optimize import mgh
+
+    v = rsession.evaluate_named(expr, {"X0": np.asarray(mgh.BY_ID[cid].x0(), dtype=float)})
+    return v[:n], bool(v[n] == 0)
+
+
+def _r_nlslm(name, b0):
+    """(b, converged) from minpack.lm's nls.lm (MINPACK's lmder) on a NIST problem."""
+    from . import rsession
+
+    expr = _r_prelude() + (
+        "suppressMessages(library(minpack.lm)); "
+        f'nn <- import("tests.regression.nist_nls", convert = FALSE); d <- nn$load("{name}"); '
+        f'xy <- nn$data(d, .sd$np); mj <- nn$model("{name}", .sd$np); '
+        "x <- py_get_item(xy, 0L); y <- as.numeric(py_to_r(py_get_item(xy, 1L))); "
+        "m <- py_get_item(mj, 0L); jm <- py_get_item(mj, 1L); "
+        "fn <- function(b) as.numeric(py_to_r(do.call(m, c(list(x), as.list(b))))) - y; "
+        "jf <- function(b) { J <- py_to_r(do.call(jm, c(list(x), as.list(b)))); "
+        "matrix(as.numeric(t(J)), nrow = length(y), byrow = TRUE) }; "
+        "r <- tryCatch(nls.lm(B0, fn = fn, jac = jf), error = function(e) list(par = rep(NaN, length(B0)), info = 0)); "
+        "c(r$par, r$info)"
+    )
+    v = rsession.evaluate_named(expr, {"B0": np.asarray(b0, dtype=float)})
+    return v[:-1], bool(1 <= v[-1] <= 4)
+
+
 def _arb_roots():
     import json
     import pathlib
@@ -87,19 +168,31 @@ def _zero_in_double(c, x):
 
 
 def _root_scalar(method, lib="sd"):
-    O = _opt(lib)
+    if lib == "R" and method != "brentq":  # R has Brent's zeroin only
+        return None
+    O = _opt(lib) if lib != "R" else None
 
     out = {}
     for label, kw in (("default", {}), ("xtol=0", TOL0[method])):
-        if label == "xtol=0" and lib != "sd":  # scipy's root_scalar takes no xtol = 0 (it must be > 0)
+        if label == "xtol=0" and lib == "scipy":  # scipy's root_scalar takes no xtol = 0 (it must be > 0)
             continue
         where, ulp, ratio, unconv, zwhere, zabs = [], [], [], 0, [], []
         for cid, (c, lo, hi) in _arb_roots().items():
             with np.errstate(all="ignore"):
                 try:
+                    if lib == "R":  # the same xtol (uniroot's tol); xtol = 0: the smallest positive tol
+                        tol = 2e-12 if label == "default" else 2.2250738585072014e-308
+                        rx, conv = _r_uniroot(cid, c.bracket, tol, 100 if label == "default" else 200)
+                        if not conv:
+                            unconv += 1
+                            continue
+                        r = type("R", (), {"x": rx, "converged": True})()
+                        raise _Done
                     kw_ = kw if lib == "sd" else {{"max_iter": "maxiter"}.get(k, k): v for k, v in kw.items()}
                     r = O.root_scalar(lambda x, c=c: c.f(np.float64(x)), method=method, bracket=c.bracket, **kw_)
                     r = _Res(r, lib)
+                except _Done:
+                    pass
                 except ValueError, ArithmeticError:
                     unconv += 1
                     continue
@@ -129,6 +222,10 @@ def _root_scalar(method, lib="sd"):
     return out
 
 
+class _Done(Exception):
+    """An R result in hand: skip the Python call below."""
+
+
 def _vec(c, lib="sd"):
     """c's function on an sd.ndarray, element by element in doubles (tests/optimize/test_elementwise.py)."""
     import stardust as sd
@@ -142,6 +239,8 @@ def _vec(c, lib="sd"):
 
 
 def _find_root(lib="sd"):
+    if lib == "R":  # no R function computes the same
+        return None
     if lib == "sd":
         import stardust as sd
 
@@ -185,7 +284,9 @@ def _known(c):
 
 
 def _minimize(method, lib="sd"):
-    O = _opt(lib)
+    if lib == "R" and method not in R_METHOD:
+        return None
+    O = _opt(lib) if lib != "R" else None
     from tests.optimize import mgh
 
     where, grad, excess, ratio, rwhere, unconv = [], [], [], [], [], 0
@@ -198,7 +299,11 @@ def _minimize(method, lib="sd"):
             kw["hess"] = lambda x, c=c: np.asarray(mgh.hessian(c, [float(v) for v in x]), dtype=float)
         with np.errstate(all="ignore"):
             try:
-                r = _Res(O.minimize(f, c.x0(), method=method, **kw), lib)
+                if lib == "R":
+                    rx, conv = _r_optim(c.id, R_METHOD[method], c.n)
+                    r = type("R", (), {"x": rx, "converged": conv, "message": ""})()
+                else:
+                    r = _Res(O.minimize(f, c.x0(), method=method, **kw), lib)
             except ValueError, ArithmeticError, np.linalg.LinAlgError:
                 unconv += 1
                 continue
@@ -214,7 +319,7 @@ def _minimize(method, lib="sd"):
         k = _known(c)
         excess.append(max(0.0, fx - k) / max(1.0, k) if k is not None and math.isfinite(fx) else math.nan)
         gradient_stop = method in ("bfgs", "trust-ncg", "trust-exact") or "PROJECTED GRADIENT" in str(r.message).upper()
-        if bool(r.converged) and method in GTOL and gradient_stop:
+        if bool(r.converged) and method in GTOL and gradient_stop and lib != "R":  # R's optim stops on f
             gtol, order = GTOL[method]
             with np.errstate(all="ignore"):
                 gn = float(np.linalg.norm(g(x), order))
@@ -238,7 +343,9 @@ def _minimize(method, lib="sd"):
 
 
 def _least_squares(method, lib="sd"):
-    O = _opt(lib)
+    if lib == "R" and method != "lm":  # minpack.lm's nls.lm is MINPACK's lmder
+        return None
+    O = _opt(lib) if lib != "R" else None
     from tests.regression import nist_nls as N
 
     where, rel, unconv = [], [], 0
@@ -251,7 +358,13 @@ def _least_squares(method, lib="sd"):
             b0 = np.array([float(v) for v in d[s]])
             with np.errstate(all="ignore"):
                 try:
-                    r = _Res(O.least_squares(lambda b: f(x, *b) - y, b0, jac=lambda b: jac(x, *b), method=method), lib)
+                    if lib == "R":
+                        rb, conv = _r_nlslm(name, b0)
+                        r = type("R", (), {"x": rb, "converged": conv})()
+                    else:
+                        r = _Res(
+                            O.least_squares(lambda b: f(x, *b) - y, b0, jac=lambda b: jac(x, *b), method=method), lib
+                        )
                 except ValueError, ArithmeticError:
                     unconv += 1
                     continue
@@ -268,6 +381,8 @@ def _least_squares(method, lib="sd"):
 
 
 def _root(method, lib="sd"):
+    if lib == "R":  # no R function computes the same
+        return None
     O = _opt(lib)
     from tests.optimize import systems
 
@@ -292,6 +407,8 @@ def _root(method, lib="sd"):
 
 
 def _linear(which, lib="sd"):
+    if lib == "R":  # no R function computes the same
+        return None
     O = _opt(lib)
     from tests.optimize import functions
 
@@ -323,6 +440,8 @@ def _approx_fprime(lib="sd"):
     """The default (accurate) differences against the analytic derivatives at x0 of the MGH
     cases with factor 1 (tests/optimize/ref/derivatives.npz, tools/optimize_accuracy_ref.py:
     Arb), normwise max |error| / max |derivative| (tests/optimize/test_diff.py's measure)."""
+    if lib == "R":  # no R function computes the same
+        return None
     import pathlib
 
     import stardust as sd
@@ -350,8 +469,9 @@ def _approx_fprime(lib="sd"):
 
 
 def sweeps():
-    """Every sweep compares with scipy.optimize (the same methods by name). R's optimizers would
-    need each test function written again in R: not compared."""
+    """Every sweep compares with scipy.optimize (the same methods by name) and, where R has the
+    method, with R through reticulate: uniroot (brentq), optim (BFGS, L-BFGS-B, Nelder-Mead),
+    minpack.lm's nls.lm (least_squares 'lm'), each at its defaults (uniroot at the same xtol)."""
     specs = [(f"root_scalar.{m}", lambda lib="sd", m=m: _root_scalar(m, lib)) for m in BRACKETING]
     specs.append(("find_root", _find_root))
     for m in ("bfgs", "l-bfgs-b", "newton-cg", "trust-ncg", "trust-exact", "nelder-mead"):
@@ -365,4 +485,4 @@ def sweeps():
         ("lsq_linear", lambda lib="sd": _linear("lsq_linear", lib)),
         ("approx_fprime", _approx_fprime),
     ]
-    return [Custom("optimize", name, fn, compare_libs(fn, ("scipy",), seconds=300)) for name, fn in specs]
+    return [Custom("optimize", name, fn, compare_libs(fn, ("scipy", "R"), seconds=600)) for name, fn in specs]

@@ -17,6 +17,7 @@ import numpy as np
 
 _DRIVER = r"""
 options(warn = -1)
+Sys.setenv(LANGUAGE = "en")
 .sd_read <- function(path, n) readBin(path, what = "double", n = n, size = 8, endian = "little")
 .sd_write <- function(x, path) writeBin(as.double(x), path, size = 8, endian = "little")
 .sd_in <- file("stdin")

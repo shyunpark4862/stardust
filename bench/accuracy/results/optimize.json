@@ -2,10 +2,10 @@
  "schema": 1,
  "area": "optimize",
  "runs": {
-  "20261120-173620-0a89dde": {
-   "commit": "0a89dde",
+  "20261120-181102-063a088": {
+   "commit": "063a088",
    "dirty": false,
-   "date": "2026-11-20T17:36:20",
+   "date": "2026-11-20T18:11:01",
    "machine": "arm64",
    "python": "3.15.0",
    "comparators": {
@@ -15,6 +15,8 @@
     "scikit-learn": "1.9.1",
     "R": "4.6.2",
     "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
     "Boost": "boostorg/math 75cb4c4 2026-11-18"
    }
   }
@@ -67,8 +69,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/find_root",
@@ -121,8 +123,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/least_squares.lm",
@@ -171,10 +173,31 @@
        "MGH09 start1"
       ]
      }
+    },
+    "R": {
+     "certified minimum": {
+      "points": 27,
+      "rel_max": 6.613460614424625e-07,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "Chwirut2 start1"
+      ],
+      "unconverged": 9
+     },
+     "elsewhere": {
+      "points": 27,
+      "rel_max": 28738.33281678891,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "MGH09 start1"
+      ]
+     }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/least_squares.trf",
@@ -225,8 +248,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/lsq_linear",
@@ -257,8 +280,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/minimize.bfgs",
@@ -309,10 +332,23 @@
        "mgh23-n10-m11-x100"
       ]
      }
+    },
+    "R": {
+     "mgh": {
+      "points": 70,
+      "grad_max": 56.0688238482585,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh21-n10-m10-x100"
+      ],
+      "excess_max": 16122008.917595893,
+      "unconverged": 40
+     }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/minimize.l-bfgs-b",
@@ -363,10 +399,23 @@
        "mgh29-n10-m10-x1"
       ]
      }
+    },
+    "R": {
+     "mgh": {
+      "points": 95,
+      "grad_max": 3109135.9695844664,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh10-n3-m16-x10"
+      ],
+      "excess_max": 10881062.316818055,
+      "unconverged": 15
+     }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/minimize.nelder-mead",
@@ -399,10 +448,23 @@
       "excess_max": 1730474.6172886633,
       "unconverged": 48
      }
+    },
+    "R": {
+     "mgh": {
+      "points": 62,
+      "grad_max": 5.808676752722913e+27,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "mgh27-n10-m10-x100"
+      ],
+      "excess_max": 4.071391279777928e+25,
+      "unconverged": 48
+     }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/minimize.newton-cg",
@@ -437,8 +499,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/minimize.trust-exact",
@@ -491,8 +553,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/minimize.trust-ncg",
@@ -545,8 +607,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/nnls",
@@ -577,8 +639,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/root.hybr",
@@ -611,8 +673,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/root.lm",
@@ -645,8 +707,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/root_scalar.bisect",
@@ -697,8 +759,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/root_scalar.brentq",
@@ -747,10 +809,41 @@
       ],
       "unconverged": 19
      }
+    },
+    "R": {
+     "default": {
+      "points": 196,
+      "contract": 0.46741836252083446,
+      "bound": 1.0,
+      "worst": [
+       "original.05"
+      ],
+      "unconverged": 8
+     },
+     "xtol=0": {
+      "points": 191,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "original.05"
+      ],
+      "unconverged": 5
+     },
+     "xtol=0, root 0": {
+      "points": 8,
+      "abs_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "aps.03.00"
+      ]
+     }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "optimize/root_scalar.toms748",
@@ -801,8 +894,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   }
  ]
 }

@@ -2,10 +2,10 @@
  "schema": 1,
  "area": "stats",
  "runs": {
-  "20261120-173620-0a89dde": {
-   "commit": "0a89dde",
+  "20261120-181102-063a088": {
+   "commit": "063a088",
    "dirty": false,
-   "date": "2026-11-20T17:36:20",
+   "date": "2026-11-20T18:11:01",
    "machine": "arm64",
    "python": "3.15.0",
    "comparators": {
@@ -15,6 +15,8 @@
     "scikit-learn": "1.9.1",
     "R": "4.6.2",
     "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
     "Boost": "boostorg/math 75cb4c4 2026-11-18"
    }
   }
@@ -86,8 +88,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_cdf",
@@ -155,8 +157,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_entropy",
@@ -196,8 +198,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_iccdf",
@@ -250,8 +252,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_icdf",
@@ -304,8 +306,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_ilogccdf",
@@ -358,8 +360,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_ilogcdf",
@@ -412,8 +414,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_kurtosis",
@@ -463,8 +465,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_logccdf",
@@ -532,8 +534,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_logcdf",
@@ -601,8 +603,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_logpmf",
@@ -670,8 +672,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_mean",
@@ -721,8 +723,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_median",
@@ -772,8 +774,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_mode",
@@ -823,8 +825,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_pmf",
@@ -892,8 +894,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_skewness",
@@ -943,8 +945,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_standard_deviation",
@@ -994,8 +996,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/bernoulli_variance",
@@ -1045,8 +1047,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_ccdf",
@@ -1118,8 +1120,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_cdf",
@@ -1191,8 +1193,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_entropy",
@@ -1234,8 +1236,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_iccdf",
@@ -1315,8 +1317,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_icdf",
@@ -1396,8 +1398,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_ilogccdf",
@@ -1459,8 +1461,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_ilogcdf",
@@ -1522,8 +1524,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_kurtosis",
@@ -1576,8 +1578,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_logccdf",
@@ -1649,8 +1651,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_logcdf",
@@ -1722,8 +1724,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_logpdf",
@@ -1803,8 +1805,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_mean",
@@ -1857,8 +1859,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_median",
@@ -1917,8 +1919,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_mode",
@@ -1971,8 +1973,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_pdf",
@@ -2044,8 +2046,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_skewness",
@@ -2098,8 +2100,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_standard_deviation",
@@ -2152,8 +2154,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/beta_variance",
@@ -2206,8 +2208,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_ccdf",
@@ -2249,8 +2251,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_cdf",
@@ -2292,8 +2294,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_entropy",
@@ -2337,8 +2339,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_iccdf",
@@ -2380,8 +2382,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_icdf",
@@ -2423,8 +2425,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_ilogccdf",
@@ -2466,8 +2468,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_ilogcdf",
@@ -2509,8 +2511,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_kurtosis",
@@ -2550,8 +2552,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_logccdf",
@@ -2593,8 +2595,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_logcdf",
@@ -2636,8 +2638,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_logpmf",
@@ -2679,8 +2681,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_mean",
@@ -2720,8 +2722,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_median",
@@ -2761,8 +2763,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_mode",
@@ -2802,8 +2804,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_pmf",
@@ -2845,8 +2847,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_skewness",
@@ -2886,8 +2888,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_standard_deviation",
@@ -2927,8 +2929,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/betabinomial_variance",
@@ -2968,8 +2970,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_ccdf",
@@ -3041,8 +3043,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_cdf",
@@ -3114,8 +3116,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_entropy",
@@ -3157,8 +3159,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_iccdf",
@@ -3214,8 +3216,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_icdf",
@@ -3271,8 +3273,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_ilogccdf",
@@ -3315,8 +3317,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_ilogcdf",
@@ -3359,8 +3361,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_kurtosis",
@@ -3413,8 +3415,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_logccdf",
@@ -3486,8 +3488,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_logcdf",
@@ -3559,8 +3561,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_logpmf",
@@ -3632,8 +3634,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_mean",
@@ -3686,8 +3688,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_median",
@@ -3740,8 +3742,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_mode",
@@ -3794,8 +3796,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_pmf",
@@ -3867,8 +3869,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_skewness",
@@ -3921,8 +3923,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_standard_deviation",
@@ -3975,8 +3977,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/binomial_variance",
@@ -4029,8 +4031,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_ccdf",
@@ -4102,8 +4104,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_cdf",
@@ -4175,8 +4177,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_entropy",
@@ -4218,8 +4220,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_iccdf",
@@ -4299,8 +4301,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_icdf",
@@ -4380,8 +4382,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_ilogccdf",
@@ -4443,8 +4445,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_ilogcdf",
@@ -4506,8 +4508,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_kurtosis",
@@ -4560,8 +4562,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_logccdf",
@@ -4633,8 +4635,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_logcdf",
@@ -4706,8 +4708,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_logpdf",
@@ -4787,8 +4789,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_mean",
@@ -4841,8 +4843,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_median",
@@ -4895,8 +4897,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_mode",
@@ -4949,8 +4951,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_pdf",
@@ -5022,8 +5024,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_skewness",
@@ -5076,8 +5078,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_standard_deviation",
@@ -5130,8 +5132,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/cauchy_variance",
@@ -5184,8 +5186,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_ccdf",
@@ -5253,8 +5255,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_cdf",
@@ -5322,8 +5324,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_entropy",
@@ -5363,8 +5365,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_iccdf",
@@ -5440,8 +5442,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_icdf",
@@ -5517,8 +5519,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_ilogccdf",
@@ -5577,8 +5579,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_ilogcdf",
@@ -5637,8 +5639,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_kurtosis",
@@ -5688,8 +5690,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_logccdf",
@@ -5757,8 +5759,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_logcdf",
@@ -5826,8 +5828,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_logpdf",
@@ -5903,8 +5905,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_mean",
@@ -5954,8 +5956,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_median",
@@ -6011,8 +6013,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_mode",
@@ -6062,8 +6064,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_pdf",
@@ -6131,8 +6133,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_skewness",
@@ -6182,8 +6184,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_standard_deviation",
@@ -6233,8 +6235,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/chisquared_variance",
@@ -6284,8 +6286,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_ccdf",
@@ -6325,8 +6327,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_cdf",
@@ -6366,8 +6368,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_entropy",
@@ -6409,8 +6411,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_iccdf",
@@ -6450,8 +6452,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_icdf",
@@ -6491,8 +6493,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_ilogccdf",
@@ -6519,8 +6521,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_ilogcdf",
@@ -6560,8 +6562,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_kurtosis",
@@ -6599,8 +6601,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_logccdf",
@@ -6640,8 +6642,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_logcdf",
@@ -6681,8 +6683,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_logpmf",
@@ -6722,8 +6724,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_mean",
@@ -6761,8 +6763,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_median",
@@ -6800,8 +6802,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_mode",
@@ -6839,8 +6841,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_pmf",
@@ -6880,8 +6882,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_skewness",
@@ -6919,8 +6921,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_standard_deviation",
@@ -6958,8 +6960,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/discreteuniform_variance",
@@ -6997,8 +6999,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_ccdf",
@@ -7066,8 +7068,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_cdf",
@@ -7135,8 +7137,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_entropy",
@@ -7176,8 +7178,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_iccdf",
@@ -7253,8 +7255,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_icdf",
@@ -7330,8 +7332,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_ilogccdf",
@@ -7384,8 +7386,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_ilogcdf",
@@ -7444,8 +7446,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_kurtosis",
@@ -7495,8 +7497,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_logccdf",
@@ -7564,8 +7566,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_logcdf",
@@ -7633,8 +7635,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_logpdf",
@@ -7710,8 +7712,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_mean",
@@ -7761,8 +7763,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_median",
@@ -7812,8 +7814,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_mode",
@@ -7863,8 +7865,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_pdf",
@@ -7932,8 +7934,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_skewness",
@@ -7983,8 +7985,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_standard_deviation",
@@ -8034,8 +8036,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/exponential_variance",
@@ -8085,8 +8087,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_ccdf",
@@ -8158,8 +8160,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_cdf",
@@ -8231,8 +8233,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_entropy",
@@ -8303,8 +8305,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_iccdf",
@@ -8384,8 +8386,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_icdf",
@@ -8465,8 +8467,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_ilogccdf",
@@ -8513,8 +8515,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_ilogcdf",
@@ -8576,8 +8578,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_kurtosis",
@@ -8668,8 +8670,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_logccdf",
@@ -8741,8 +8743,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_logcdf",
@@ -8814,8 +8816,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_logpdf",
@@ -8895,8 +8897,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_mean",
@@ -8987,8 +8989,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_median",
@@ -9091,8 +9093,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_mode",
@@ -9183,8 +9185,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_pdf",
@@ -9256,8 +9258,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_skewness",
@@ -9348,8 +9350,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_standard_deviation",
@@ -9440,8 +9442,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/f_variance",
@@ -9532,8 +9534,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_ccdf",
@@ -9660,8 +9662,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_cdf",
@@ -9788,8 +9790,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_entropy",
@@ -9860,8 +9862,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_iccdf",
@@ -10004,8 +10006,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_icdf",
@@ -10148,8 +10150,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_ilogccdf",
@@ -10252,8 +10254,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_ilogcdf",
@@ -10362,8 +10364,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_kurtosis",
@@ -10454,8 +10456,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_logccdf",
@@ -10582,8 +10584,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_logcdf",
@@ -10710,8 +10712,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_logpdf",
@@ -10854,8 +10856,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_mean",
@@ -10946,8 +10948,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_median",
@@ -11044,8 +11046,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_mode",
@@ -11136,8 +11138,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_pdf",
@@ -11264,8 +11266,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_skewness",
@@ -11356,8 +11358,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_standard_deviation",
@@ -11448,8 +11450,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gamma_variance",
@@ -11540,8 +11542,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_ccdf",
@@ -11609,8 +11611,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_cdf",
@@ -11678,8 +11680,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_entropy",
@@ -11719,8 +11721,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_iccdf",
@@ -11773,8 +11775,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_icdf",
@@ -11827,8 +11829,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_ilogccdf",
@@ -11881,8 +11883,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_ilogcdf",
@@ -11935,8 +11937,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_kurtosis",
@@ -11986,8 +11988,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_logccdf",
@@ -12055,8 +12057,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_logcdf",
@@ -12124,8 +12126,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_logpmf",
@@ -12193,8 +12195,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_mean",
@@ -12244,8 +12246,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_median",
@@ -12295,8 +12297,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_mode",
@@ -12346,8 +12348,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_pmf",
@@ -12415,8 +12417,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_skewness",
@@ -12466,8 +12468,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_standard_deviation",
@@ -12517,8 +12519,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/geometric_variance",
@@ -12568,8 +12570,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_ccdf",
@@ -12640,8 +12642,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_cdf",
@@ -12712,8 +12714,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_entropy",
@@ -12757,8 +12759,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_iccdf",
@@ -12804,8 +12806,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_icdf",
@@ -12851,8 +12853,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_ilogccdf",
@@ -12898,8 +12900,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_ilogcdf",
@@ -12945,8 +12947,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_kurtosis",
@@ -12990,8 +12992,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_logccdf",
@@ -13062,8 +13064,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_logcdf",
@@ -13134,8 +13136,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_logpdf",
@@ -13214,8 +13216,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_mean",
@@ -13255,8 +13257,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_median",
@@ -13296,8 +13298,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_mode",
@@ -13337,8 +13339,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_pdf",
@@ -13409,8 +13411,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_skewness",
@@ -13454,8 +13456,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_standard_deviation",
@@ -13495,8 +13497,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gev_variance",
@@ -13536,8 +13538,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_ccdf",
@@ -13593,8 +13595,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_cdf",
@@ -13650,8 +13652,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_entropy",
@@ -13693,8 +13695,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_iccdf",
@@ -13756,8 +13758,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_icdf",
@@ -13819,8 +13821,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_ilogccdf",
@@ -13864,8 +13866,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_ilogcdf",
@@ -13909,8 +13911,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_kurtosis",
@@ -13963,8 +13965,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_logccdf",
@@ -14020,8 +14022,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_logcdf",
@@ -14077,8 +14079,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_logpdf",
@@ -14140,8 +14142,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_mean",
@@ -14194,8 +14196,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_median",
@@ -14248,8 +14250,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_mode",
@@ -14302,8 +14304,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_pdf",
@@ -14359,8 +14361,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_skewness",
@@ -14413,8 +14415,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_standard_deviation",
@@ -14467,8 +14469,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/gumbel_variance",
@@ -14521,8 +14523,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_ccdf",
@@ -14581,8 +14583,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_cdf",
@@ -14641,8 +14643,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_entropy",
@@ -14686,8 +14688,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_iccdf",
@@ -14746,8 +14748,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_icdf",
@@ -14806,8 +14808,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_ilogccdf",
@@ -14866,8 +14868,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_ilogcdf",
@@ -14926,8 +14928,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_kurtosis",
@@ -14967,8 +14969,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_logccdf",
@@ -15027,8 +15029,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_logcdf",
@@ -15087,8 +15089,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_logpmf",
@@ -15147,8 +15149,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_mean",
@@ -15188,8 +15190,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_median",
@@ -15229,8 +15231,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_mode",
@@ -15270,8 +15272,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_pmf",
@@ -15330,8 +15332,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_skewness",
@@ -15371,8 +15373,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_standard_deviation",
@@ -15412,8 +15414,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/hypergeometric_variance",
@@ -15453,8 +15455,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_ccdf",
@@ -15551,8 +15553,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_cdf",
@@ -15649,8 +15651,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_entropy",
@@ -15721,8 +15723,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_iccdf",
@@ -15831,8 +15833,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_icdf",
@@ -15941,8 +15943,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_ilogccdf",
@@ -15986,8 +15988,8 @@
      "error": "Guarded: over 30 s"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_ilogcdf",
@@ -16029,8 +16031,8 @@
      "error": "Guarded: over 30 s"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_kurtosis",
@@ -16121,8 +16123,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_logccdf",
@@ -16219,8 +16221,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_logcdf",
@@ -16317,8 +16319,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_logpdf",
@@ -16427,8 +16429,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_mean",
@@ -16519,8 +16521,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_median",
@@ -16617,8 +16619,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_mode",
@@ -16709,8 +16711,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_pdf",
@@ -16807,8 +16809,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_skewness",
@@ -16899,8 +16901,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_standard_deviation",
@@ -16991,8 +16993,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/inversegamma_variance",
@@ -17083,8 +17085,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_ccdf",
@@ -17140,8 +17142,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_cdf",
@@ -17197,8 +17199,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_entropy",
@@ -17240,8 +17242,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_iccdf",
@@ -17303,8 +17305,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_icdf",
@@ -17366,8 +17368,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_ilogccdf",
@@ -17411,8 +17413,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_ilogcdf",
@@ -17456,8 +17458,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_kurtosis",
@@ -17510,8 +17512,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_logccdf",
@@ -17567,8 +17569,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_logcdf",
@@ -17624,8 +17626,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_logpdf",
@@ -17687,8 +17689,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_mean",
@@ -17741,8 +17743,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_median",
@@ -17795,8 +17797,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_mode",
@@ -17849,8 +17851,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_pdf",
@@ -17906,8 +17908,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_skewness",
@@ -17960,8 +17962,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_standard_deviation",
@@ -18014,8 +18016,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/laplace_variance",
@@ -18068,8 +18070,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_ccdf",
@@ -18141,8 +18143,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_cdf",
@@ -18214,8 +18216,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_entropy",
@@ -18257,8 +18259,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_iccdf",
@@ -18338,8 +18340,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_icdf",
@@ -18419,8 +18421,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_ilogccdf",
@@ -18482,8 +18484,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_ilogcdf",
@@ -18545,8 +18547,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_kurtosis",
@@ -18599,8 +18601,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_logccdf",
@@ -18672,8 +18674,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_logcdf",
@@ -18745,8 +18747,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_logpdf",
@@ -18826,8 +18828,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_mean",
@@ -18880,8 +18882,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_median",
@@ -18934,8 +18936,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_mode",
@@ -18988,8 +18990,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_pdf",
@@ -19061,8 +19063,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_skewness",
@@ -19115,8 +19117,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_standard_deviation",
@@ -19169,8 +19171,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logistic_variance",
@@ -19223,8 +19225,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_ccdf",
@@ -19296,8 +19298,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_cdf",
@@ -19369,8 +19371,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_entropy",
@@ -19412,8 +19414,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_iccdf",
@@ -19493,8 +19495,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_icdf",
@@ -19574,8 +19576,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_ilogccdf",
@@ -19637,8 +19639,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_ilogcdf",
@@ -19700,8 +19702,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_kurtosis",
@@ -19754,8 +19756,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_logccdf",
@@ -19827,8 +19829,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_logcdf",
@@ -19900,8 +19902,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_logpdf",
@@ -19981,8 +19983,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_mean",
@@ -20035,8 +20037,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_median",
@@ -20089,8 +20091,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_mode",
@@ -20143,8 +20145,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_pdf",
@@ -20216,8 +20218,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_skewness",
@@ -20270,8 +20272,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_standard_deviation",
@@ -20324,8 +20326,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/lognormal_variance",
@@ -20378,8 +20380,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_ccdf",
@@ -20417,8 +20419,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_cdf",
@@ -20456,8 +20458,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_entropy",
@@ -20497,8 +20499,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_iccdf",
@@ -20524,8 +20526,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_icdf",
@@ -20563,8 +20565,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_ilogccdf",
@@ -20590,8 +20592,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_ilogcdf",
@@ -20617,8 +20619,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_kurtosis",
@@ -20654,8 +20656,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_logccdf",
@@ -20693,8 +20695,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_logcdf",
@@ -20732,8 +20734,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_logpmf",
@@ -20771,8 +20773,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_mean",
@@ -20808,8 +20810,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_median",
@@ -20845,8 +20847,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_mode",
@@ -20882,8 +20884,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_pmf",
@@ -20921,8 +20923,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_skewness",
@@ -20958,8 +20960,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_standard_deviation",
@@ -20995,8 +20997,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/logseries_variance",
@@ -21032,8 +21034,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_ccdf",
@@ -21105,8 +21107,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_cdf",
@@ -21178,8 +21180,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_entropy",
@@ -21221,8 +21223,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_iccdf",
@@ -21278,8 +21280,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_icdf",
@@ -21335,8 +21337,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_ilogccdf",
@@ -21392,8 +21394,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_ilogcdf",
@@ -21449,8 +21451,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_kurtosis",
@@ -21503,8 +21505,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_logccdf",
@@ -21576,8 +21578,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_logcdf",
@@ -21649,8 +21651,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_logpmf",
@@ -21722,8 +21724,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_mean",
@@ -21776,8 +21778,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_median",
@@ -21830,8 +21832,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_mode",
@@ -21884,8 +21886,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_pmf",
@@ -21957,8 +21959,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_skewness",
@@ -22011,8 +22013,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_standard_deviation",
@@ -22065,8 +22067,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/negativebinomial_variance",
@@ -22119,8 +22121,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_ccdf",
@@ -22247,8 +22249,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_cdf",
@@ -22375,8 +22377,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_iccdf",
@@ -22511,8 +22513,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_icdf",
@@ -22655,8 +22657,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_ilogccdf",
@@ -22734,8 +22736,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_ilogcdf",
@@ -22782,8 +22784,8 @@
      "error": "Guarded: over 30 s"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_kurtosis",
@@ -22836,8 +22838,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_logccdf",
@@ -22964,8 +22966,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_logcdf",
@@ -23092,8 +23094,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_logpdf",
@@ -23236,8 +23238,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_mean",
@@ -23290,8 +23292,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_median",
@@ -23350,8 +23352,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_mode",
@@ -23404,8 +23406,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_pdf",
@@ -23532,8 +23534,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_skewness",
@@ -23586,8 +23588,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_standard_deviation",
@@ -23640,8 +23642,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralchisquared_variance",
@@ -23694,8 +23696,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_ccdf",
@@ -23830,8 +23832,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_cdf",
@@ -23966,8 +23968,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_iccdf",
@@ -24099,8 +24101,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_icdf",
@@ -24251,8 +24253,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_ilogccdf",
@@ -24365,8 +24367,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_ilogcdf",
@@ -24448,8 +24450,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_kurtosis",
@@ -24505,8 +24507,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_logccdf",
@@ -24641,8 +24643,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_logcdf",
@@ -24777,8 +24779,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_logpdf",
@@ -24929,8 +24931,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_mean",
@@ -24986,8 +24988,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_median",
@@ -25049,8 +25051,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_mode",
@@ -25106,8 +25108,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_pdf",
@@ -25242,8 +25244,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_skewness",
@@ -25299,8 +25301,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_standard_deviation",
@@ -25356,8 +25358,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralf_variance",
@@ -25413,8 +25415,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_ccdf",
@@ -25531,8 +25533,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_cdf",
@@ -25649,8 +25651,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_iccdf",
@@ -25756,8 +25758,8 @@
      "error": "Guarded: over 30 s"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_icdf",
@@ -25834,8 +25836,8 @@
      "error": "Guarded: over 30 s"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_ilogccdf",
@@ -25882,8 +25884,8 @@
      "error": "Guarded: over 30 s"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_ilogcdf",
@@ -25930,8 +25932,8 @@
      "error": "Guarded: over 30 s"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_kurtosis",
@@ -25984,8 +25986,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_logccdf",
@@ -26102,8 +26104,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_logcdf",
@@ -26230,8 +26232,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_logpdf",
@@ -26374,8 +26376,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_mean",
@@ -26428,8 +26430,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_median",
@@ -26488,8 +26490,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_mode",
@@ -26542,8 +26544,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_pdf",
@@ -26650,8 +26652,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_skewness",
@@ -26704,8 +26706,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_standard_deviation",
@@ -26758,8 +26760,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/noncentralt_variance",
@@ -26812,8 +26814,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_ccdf",
@@ -26885,8 +26887,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_cdf",
@@ -26958,8 +26960,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_entropy",
@@ -27001,8 +27003,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_iccdf",
@@ -27082,8 +27084,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_icdf",
@@ -27163,8 +27165,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_ilogccdf",
@@ -27226,8 +27228,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_ilogcdf",
@@ -27289,8 +27291,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_kurtosis",
@@ -27343,8 +27345,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_logccdf",
@@ -27416,8 +27418,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_logcdf",
@@ -27489,8 +27491,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_logpdf",
@@ -27570,8 +27572,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_mean",
@@ -27624,8 +27626,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_median",
@@ -27678,8 +27680,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_mode",
@@ -27732,8 +27734,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_pdf",
@@ -27805,8 +27807,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_skewness",
@@ -27859,8 +27861,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_standard_deviation",
@@ -27913,8 +27915,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/normal_variance",
@@ -27967,8 +27969,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_ccdf",
@@ -28024,8 +28026,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_cdf",
@@ -28081,8 +28083,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_entropy",
@@ -28124,8 +28126,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_iccdf",
@@ -28187,8 +28189,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_icdf",
@@ -28250,8 +28252,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_ilogccdf",
@@ -28295,8 +28297,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_ilogcdf",
@@ -28340,8 +28342,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_kurtosis",
@@ -28394,8 +28396,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_logccdf",
@@ -28451,8 +28453,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_logcdf",
@@ -28508,8 +28510,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_logpdf",
@@ -28571,8 +28573,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_mean",
@@ -28625,8 +28627,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_median",
@@ -28679,8 +28681,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_mode",
@@ -28733,8 +28735,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_pdf",
@@ -28790,8 +28792,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_skewness",
@@ -28844,8 +28846,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_standard_deviation",
@@ -28898,8 +28900,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/pareto_variance",
@@ -28952,8 +28954,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_ccdf",
@@ -29021,8 +29023,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_cdf",
@@ -29090,8 +29092,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_entropy",
@@ -29131,8 +29133,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_iccdf",
@@ -29185,8 +29187,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_icdf",
@@ -29239,8 +29241,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_ilogccdf",
@@ -29293,8 +29295,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_ilogcdf",
@@ -29335,8 +29337,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_kurtosis",
@@ -29386,8 +29388,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_logccdf",
@@ -29455,8 +29457,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_logcdf",
@@ -29524,8 +29526,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_logpmf",
@@ -29593,8 +29595,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_mean",
@@ -29644,8 +29646,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_median",
@@ -29695,8 +29697,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_mode",
@@ -29746,8 +29748,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_pmf",
@@ -29815,8 +29817,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_skewness",
@@ -29866,8 +29868,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_standard_deviation",
@@ -29917,8 +29919,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/poisson_variance",
@@ -29968,8 +29970,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_ccdf",
@@ -30022,8 +30024,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_cdf",
@@ -30076,8 +30078,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_entropy",
@@ -30117,8 +30119,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_iccdf",
@@ -30177,8 +30179,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_icdf",
@@ -30237,8 +30239,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_ilogccdf",
@@ -30276,8 +30278,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_ilogcdf",
@@ -30319,8 +30321,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_kurtosis",
@@ -30370,8 +30372,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_logccdf",
@@ -30424,8 +30426,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_logcdf",
@@ -30478,8 +30480,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_logpdf",
@@ -30538,8 +30540,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_mean",
@@ -30589,8 +30591,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_median",
@@ -30640,8 +30642,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_mode",
@@ -30691,8 +30693,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_pdf",
@@ -30745,8 +30747,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_skewness",
@@ -30796,8 +30798,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_standard_deviation",
@@ -30847,8 +30849,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/rayleigh_variance",
@@ -30898,8 +30900,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_ccdf",
@@ -30967,8 +30969,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_cdf",
@@ -31036,8 +31038,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_entropy",
@@ -31104,8 +31106,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_iccdf",
@@ -31232,8 +31234,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_icdf",
@@ -31360,8 +31362,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_ilogccdf",
@@ -31435,8 +31437,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_ilogcdf",
@@ -31510,8 +31512,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_kurtosis",
@@ -31596,8 +31598,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_logccdf",
@@ -31665,8 +31667,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_logcdf",
@@ -31734,8 +31736,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_logpdf",
@@ -31811,8 +31813,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_mean",
@@ -31897,8 +31899,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_median",
@@ -31983,8 +31985,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_mode",
@@ -32069,8 +32071,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_pdf",
@@ -32138,8 +32140,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_skewness",
@@ -32224,8 +32226,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_standard_deviation",
@@ -32310,8 +32312,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/studentt_variance",
@@ -32396,8 +32398,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_ccdf",
@@ -32469,8 +32471,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_cdf",
@@ -32542,8 +32544,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_entropy",
@@ -32585,8 +32587,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_iccdf",
@@ -32666,8 +32668,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_icdf",
@@ -32747,8 +32749,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_ilogccdf",
@@ -32795,8 +32797,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_ilogcdf",
@@ -32858,8 +32860,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_kurtosis",
@@ -32912,8 +32914,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_logccdf",
@@ -32985,8 +32987,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_logcdf",
@@ -33058,8 +33060,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_logpdf",
@@ -33139,8 +33141,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_mean",
@@ -33193,8 +33195,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_median",
@@ -33247,8 +33249,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_mode",
@@ -33301,8 +33303,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_pdf",
@@ -33374,8 +33376,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_skewness",
@@ -33428,8 +33430,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_standard_deviation",
@@ -33482,8 +33484,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/uniform_variance",
@@ -33536,8 +33538,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_ccdf",
@@ -33609,8 +33611,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_cdf",
@@ -33682,8 +33684,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_entropy",
@@ -33725,8 +33727,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_iccdf",
@@ -33806,8 +33808,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_icdf",
@@ -33887,8 +33889,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_ilogccdf",
@@ -33950,8 +33952,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_ilogcdf",
@@ -34013,8 +34015,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_kurtosis",
@@ -34073,8 +34075,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_logccdf",
@@ -34146,8 +34148,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_logcdf",
@@ -34219,8 +34221,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_logpdf",
@@ -34300,8 +34302,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_mean",
@@ -34354,8 +34356,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_median",
@@ -34408,8 +34410,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_mode",
@@ -34462,8 +34464,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_pdf",
@@ -34535,8 +34537,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_skewness",
@@ -34595,8 +34597,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_standard_deviation",
@@ -34649,8 +34651,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/weibull_variance",
@@ -34703,8 +34705,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_ccdf",
@@ -34730,8 +34732,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_cdf",
@@ -34757,8 +34759,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_entropy",
@@ -34785,8 +34787,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_iccdf",
@@ -34812,8 +34814,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_icdf",
@@ -34839,8 +34841,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_ilogccdf",
@@ -34866,8 +34868,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_ilogcdf",
@@ -34893,8 +34895,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_kurtosis",
@@ -34930,8 +34932,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_logccdf",
@@ -34957,8 +34959,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_logcdf",
@@ -34984,8 +34986,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_logpmf",
@@ -35023,8 +35025,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_mean",
@@ -35060,8 +35062,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_median",
@@ -35086,8 +35088,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_mode",
@@ -35112,8 +35114,8 @@
      "error": "Guarded: over 2 GB of memory"
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_pmf",
@@ -35151,8 +35153,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_skewness",
@@ -35188,8 +35190,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_standard_deviation",
@@ -35225,8 +35227,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   },
   {
    "id": "stats/zipf_variance",
@@ -35262,8 +35264,8 @@
      }
     }
    },
-   "run": "20261120-173620-0a89dde",
-   "comparators_run": "20261120-173620-0a89dde"
+   "run": "20261120-181102-063a088",
+   "comparators_run": "20261120-181102-063a088"
   }
  ]
 }

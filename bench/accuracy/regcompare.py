@@ -176,9 +176,12 @@ def r_values(sw) -> dict | None:
         else:
             fit = f"lm(y ~ X{icpt})"
         # (R's AIC and BIC count sigma as a parameter: another quantity than statsmodels' and the references')
-        expr = (pre + f"f <- {fit}; s <- summary(f); "
-                "c(coef(f), s$coefficients[, 2], s$coefficients[, 3], s$coefficients[, 4], residuals(f), "
-                "fitted(f), s$sigma^2, s$r.squared, s$adj.r.squared, as.numeric(logLik(f)))")  # fmt: skip
+        # R drops a column it finds collinear (lm's tolerance 1e-7): its coefficient is NA, and
+        # the measurement leaves those points out and counts them
+        expr = (pre + f"f <- {fit}; s <- summary(f); b <- coef(f); se <- sqrt(diag(vcov(f, complete = TRUE))); "
+                "t <- b / se; p <- 2 * pt(-abs(t), df.residual(f)); "
+                "c(b, se, t, p, residuals(f), fitted(f), s$sigma^2, s$r.squared, s$adj.r.squared, "
+                "as.numeric(logLik(f)))")  # fmt: skip
         m = k + (1 if p["intercept"] else 0)
         names = [("params", m), ("bse", m), ("tvalues", m), ("pvalues", m), ("resid", n), ("fittedvalues", n),
                  ("scale", 1), ("rsquared", 1), ("rsquared_adj", 1), ("llf", 1)]  # fmt: skip

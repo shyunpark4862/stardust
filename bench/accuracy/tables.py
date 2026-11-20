@@ -65,7 +65,10 @@ INTRO = {
         "최솟값 f* 대비 초과, least_squares가 NIST StRD 인증값(27문제 × 시작점 2)에 6자리까지 닿은 적합의 모수 "
         "상대오차와 다른 점에서 멈춘 적합, root(MINPACK 방정식계 55경우)가 수렴한 점의 ‖F‖∞, lsq_linear·nnls의 "
         "KKT 잔차, approx_fprime(기본 차분)과 해석적 도함수의 노름 상대 차이(MGH 47경우의 x0; 도함수는 "
-        "tests/optimize/ref/derivatives.npz, tools/optimize_accuracy_ref.py로 Arb에서 계산했다)."
+        "tests/optimize/ref/derivatives.npz, tools/optimize_accuracy_ref.py로 Arb에서 계산했다). 비교 패키지는 "
+        "scipy(같은 이름의 방법)와 R이다. R은 reticulate로 같은 Python 시험 함수를 불러(함수 값이 같은 비트) "
+        "uniroot(brentq와 같은 xtol), optim(BFGS·L-BFGS-B·Nelder-Mead, 기본 설정), minpack.lm의 nls.lm('lm', "
+        "기본 설정)을 잰다."
     ),
 }
 
@@ -236,7 +239,9 @@ def _comparator_cell(sw, lib, key, label):
         return regs
     if "error" in regs:
         e = regs["error"]
-        return "멈춤" if "Guarded" in e else "에러"
+        if "Guarded" in e:
+            return "멈춤"
+        return "시작값 필요" if "starting values" in e else "에러"
     r = regs.get(label)
     if r is None or r.get(key) is None:
         return "—" if r is None else ""
@@ -259,7 +264,7 @@ def _comparator_legend(data, ccols):
     return (
         f"- 비교 패키지({names}): 같은 참값, 같은 점에서 같은 척도로 잰 그 라이브러리의 오차다. 같은 양을 계산하는 "
         "공개 함수가 없으면 —, R이 없는 기계에서는 not run, 함수가 입력 전체를 거부하면 에러, 시간(30초)·메모리(2GB) "
-        "한도를 넘으면 멈춤이다. 제외: 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점의 수(정의가 다르거나 실패한 "
+        "한도를 넘으면 멈춤, R의 glm이 기본 설정으로 시작값을 찾지 못하면 시작값 필요다. 제외: 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점의 수(정의가 다르거나 실패한 "
         "점; 다른 열에서 빠진다). compare는 이 열들의 변화를 알리기만 하고 종료 코드에 넣지 않는다."
     )
 
