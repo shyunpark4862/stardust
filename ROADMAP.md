@@ -374,7 +374,7 @@
 
 ### G7a 비교·검정·진단
 - 결정(사용자, 2026-11-20): docs/design/regression.md §1.1 G137–G164(`vif dffits dfbetas`는 속성, 일반 검정은 `t_test`·`wald_test` 둘이고 분포는 모형의 규칙, R과 q만, `rlm quantreg nls`에도, 비교의 같은 자료·내포 검사, 강건 공분산의 비교는 에러, GLM의 비교, `AnovaResult`, Type I·III, 중심 VIF, GLM의 영향력, White·Goldfeld–Quandt·RESET의 꼴, R car·leaps 설치, 공개 결과 클래스, statsmodels의 필드 이름, `wresid`). 구현하며 정한 세부 G160과 G161–G164(GLS의 L·X, GLM의 X·y 사본, htest 결과 바탕의 상속, GLM 우도비 Type III는 나중 후보)도 정했다.
-- 결과: csrc/regression/(linear.cpp, lsq.hpp: 적합의 얇은 Q를 내는 `thin_q` 방식), src/stardust/regression/(_tests.py, _diagnostics.py, _linear.py, _glm.py, _nls.py, __init__.py); docs/api/regression.md §9.1–§9.2, docs/design/regression.md §3.8; Arb 참값 tools/regref_g7a.py(tests/regression/refdata_g7a.py → ref/g7a.json), R 대조 tools/gen_regression_g7a_r.py(ref/g7a_r.json); 측정 bench/regression/g7a/(speed.py, results.md); 테스트 tests/regression/test_g7a.py, test_g7a_against_r.py.
+- 결과: csrc/regression/(linear.cpp, lsq.hpp: 적합의 얇은 Q를 내는 `thin_q` 방식), src/stardust/regression/(_tests.py, _diagnostics.py, _linear.py, _glm.py, _nls.py, __init__.py); docs/api/regression.md §9.1–§9.2, docs/design/regression.md §3.8; Arb 참값 tools/regression_ref.py model_tests(식은 tools/regref.py; tests/regression/refdata_model_tests.py → ref/model_tests.json), R 대조 tools/gen_model_tests_r.py(data/model_tests_r.json); 측정 bench/speed/cases/regression.py(묶음 model-tests, model-tests-batched)와 bench/accuracy(스윕 regression/model_tests/…); 테스트 tests/regression/test_model_tests.py, test_model_tests_against_r.py.
 
 ---
 

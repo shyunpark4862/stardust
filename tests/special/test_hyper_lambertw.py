@@ -1,8 +1,8 @@
-"""S7: hyp1f1 hyp2f1 lambertw (docs/api/special.md §11).
+"""hyp1f1 hyp2f1 lambertw (docs/api/special.md §11).
 
 Accuracy is tests/special/test_reference.py's (hyp1f1, hyp2f1 guaranteed on the
 positive-term region per point, loose elsewhere). Here: the special values against scipy
-except where docs/design/special.md §2.4 says otherwise (S7 user decisions), polynomials,
+except where docs/design/special.md §2.4 says otherwise (true values and limits), polynomials,
 poles, and lambertw's branch argument."""
 
 import numpy as np
@@ -10,13 +10,9 @@ import pytest
 import scipy.special as sp
 
 import stardust as sd
+from tests._bits import bits_equal_any_nan
 
 S = sd.special
-
-
-def same_bits(a, b):
-    a, b = np.float64(a), np.float64(b)
-    return bool(np.isnan(a) and np.isnan(b)) or a.view(np.uint64) == b.view(np.uint64)
 
 
 def test_hyp1f1_values():
@@ -30,7 +26,7 @@ def test_hyp1f1_values():
 
 
 def test_hyp1f1_true_values():
-    # S7 user decision (scipy inf)
+    # the true value where scipy gives inf (docs/design/special.md §2.4)
     assert S.hyp1f1(-1.0, 2.0, np.inf) == -np.inf  # 1 - x/2
     assert S.hyp1f1(0.0, 0.0, 1.0) == 1.0 and S.hyp1f1(0.0, -3.0, 5.0) == 1.0
 
@@ -48,15 +44,15 @@ def test_hyp2f1_values():
 
 
 def test_hyp2f1_true_values():
-    assert S.hyp2f1(1.0, 1.0, 2.0, -np.inf) == 0.0  # the limit (S7 user decision; scipy NaN)
+    assert S.hyp2f1(1.0, 1.0, 2.0, -np.inf) == 0.0  # the limit (docs/design/special.md §2.4; scipy NaN)
 
 
 def test_lambertw_values():
     W = S.lambertw
-    assert W(0.0) == 0.0 and same_bits(W(-0.0), -0.0) and W(np.inf) == np.inf
+    assert W(0.0) == 0.0 and bits_equal_any_nan(W(-0.0), -0.0) and W(np.inf) == np.inf
     assert W(0.0, k=-1) == -np.inf and np.isnan(W(1.0, k=-1)) and np.isnan(W(-0.5))
     assert abs(W(1.0) - 0.5671432904097838) < 1e-16  # the omega constant
-    # S7 user decision: the float64 nearest -1/e is the branch point (scipy NaN; Boost -1)
+    # docs/design/special.md §2.4: the float64 nearest -1/e is the branch point (scipy NaN; Boost -1)
     assert W(-0.36787944117144233) == -1.0 and W(-0.36787944117144233, k=-1) == -1.0
     assert np.isnan(W(np.nextafter(-0.36787944117144233, -1)))
 
@@ -73,8 +69,8 @@ def test_lambertw_branch_argument():
     assert np.allclose(got, np.real(sp.lambertw(np.array([-0.2, -0.1]), -1)), rtol=1e-15)
 
 
-def test_review_fixes_hyper():
-    # code review (S10): the leading-coefficient sign at +-inf without a loop over the degree
+def test_hyp_polynomials_at_infinity_and_far_parameters():
+    # the leading-coefficient sign at +-inf without a loop over the degree
     # (hyp1f1(-1e12, 2, inf) never returned), and the old loop's results kept
     import time
 
@@ -97,7 +93,7 @@ def test_review_fixes_hyper():
     assert np.isfinite(v) and abs(v / -3.46963168596720607e-10 - 1) < 1e-6
 
 
-def test_review_fixes_lambertw_k():
+def test_lambertw_k_out_of_range():
     # k is read as every int argument: beyond int64 an OverflowError (API.md §2)
     with pytest.raises(OverflowError, match=r"^lambertw\(\): 'k' is out of range$"):
         S.lambertw(-0.2, k=-(2**70))
@@ -123,3 +119,24 @@ def test_lambertw_k_numpy_int_and_range():
         S.lambertw(1.0, k=1.0)
     with pytest.raises(TypeError, match=r"^lambertw\(\): 'k' must be an int, not bool$"):
         S.lambertw(1.0, k=True)
+
+
+# ---- hyp2f1's polynomials for 0 < z < 1 ----
+
+
+@pytest.mark.parametrize(
+    "a, b, c, z, want",
+    [
+        (-200.0, 1.0, 2.0, 0.3, 0.01658374792703151),  # (1 - (1 - z)^(n + 1)) / ((n + 1) z)
+        (-60.0, 2.5, 3.7, 0.8, 0.00026218446555434496),  # Arb
+        (-120.0, 2.5, 3.7, 0.5, 0.00015580656311105288),  # Arb
+        (1.0, -500.0, 2.0, 0.99, 0.0020161696808403393),  # Arb
+    ],
+)
+def test_hyp2f1_polynomial_pfaff(a, b, c, z, want):
+    assert S.hyp2f1(a, b, c, z) == pytest.approx(want, rel=1e-14)
+
+
+def test_hyp2f1_polynomial_short_unchanged():
+    # a short polynomial is summed directly as before
+    assert S.hyp2f1(-3.0, 1.0, 2.0, 0.3) == 0.63325

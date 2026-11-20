@@ -1,4 +1,5 @@
 {
+ "_provenance": {"arb": "python-flint 0.9.0", "target_bits": 112, "tool": "tools/optimize_ref.py", "n_requested": -1},
  "scipy.scalar.0": {
   "bracket": [
    [

@@ -477,3 +477,41 @@ def test_numpy_integers_are_int_arguments():
         sd.sum(x, axis=np.True_)
     with pytest.raises(TypeError, match=r"^var\(\): 'correction' must be an int or a float, not numpy.bool$"):
         sd.var(x, correction=np.True_)
+
+
+def test_numpy_float_scalars_are_floats_everywhere():
+    x = sd.asarray([1.0, 2, 3])
+    for f in (np.float16, np.float32, np.float64):
+        assert sd.var(x, correction=f(1)) == 1.0
+        assert sd.quantile(x, f(0.5)) == 2.0
+        assert sd.cov(x, correction=f(1)) == 1.0
+        assert_same(sd.histogram(x, range=(f(0), 3))[0], np.histogram([1.0, 2, 3], range=(0, 3))[0])
+        assert sd.linalg.matrix_rank(sd.eye(2), rtol=f(0.1)) == 2
+    for bad, shown in [(np.bool_(True), "numpy.bool"), (np.complex64(1), "numpy.complex64"), ("1", "str")]:
+        with pytest.raises(TypeError, match=rf"^var\(\): 'correction' must be an int or a float, not {shown}$"):
+            sd.var(x, correction=bad)
+
+
+def test_int_mean_is_the_exact_sum_rounded_once():
+    # base/int_sum.hpp: the exact integer sum, rounded once to double, divided once.
+    rng = np.random.default_rng(7)
+    x = rng.integers(-(2**62), 2**62, 1_000_003)
+    exact = float(sum(int(v) for v in x)) / len(x)  # Python's int -> float rounds correctly
+    m = rng.integers(-(2**62), 2**62, (20, 3001))
+    rows = [float(sum(int(v) for v in r)) / m.shape[1] for r in m]
+    old = sd.get_num_threads()
+    try:
+        for n in (1, 3, 10):
+            sd.set_num_threads(n)
+            assert sd.mean(sd.asarray(x)) == exact
+            assert sd.mean(sd.asarray(x[::-1])) == exact  # any layout: integer sums do not depend on the order
+            assert sd.mean(sd.asarray(np.asfortranarray(m))) == sd.mean(sd.asarray(m))
+            assert np.asarray(sd.mean(sd.asarray(m), axis=1)).tolist() == rows
+            assert np.allclose(np.asarray(sd.mean(sd.asarray(m), axis=0)), m.mean(axis=0), rtol=1e-15)
+    finally:
+        sd.set_num_threads(old)
+    assert sd.mean(sd.asarray([2**63 - 1, 2**63 - 1])) == 2.0**63  # no overflow
+    b = rng.random((7, 9)) < 0.5
+    assert_same(sd.mean(sd.asarray(b), axis=1), b.mean(axis=1))
+    assert sd.mean(sd.asarray([True, False, True])) == 2 / 3
+    assert np.isnan(sd.mean(sd.zeros(0, dtype=sd.int64)))

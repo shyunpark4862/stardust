@@ -27,6 +27,18 @@ def npy(x):
     return np.asarray(x)
 
 
+def f_order_strides(shape, itemsize):
+    """Strides of a result: every matrix column-major, batch axes outside in C order."""
+    m, n = shape[-2], shape[-1]
+    st_ = [0] * len(shape)
+    st_[-2], st_[-1] = itemsize, itemsize * m
+    s = itemsize * m * n
+    for d in range(len(shape) - 3, -1, -1):
+        st_[d] = s
+        s *= shape[d]
+    return tuple(st_)
+
+
 def compute_dtype(*dtypes):
     return np.complex128 if "complex128" in dtypes else np.float64
 

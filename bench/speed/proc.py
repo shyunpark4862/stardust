@@ -211,10 +211,6 @@ def proc_cpu_s(pid: int) -> float:
     return (info.total_user + info.total_system) * _tb * 1e-9
 
 
-def tree_cpu_s(pid: int) -> float:
-    return sum(proc_cpu_s(p) for p in tree_pids(pid))
-
-
 class CpuMeter:
     """CPU cores other processes kept busy between start() and stop(), not counting the
     process tree of `own_pid` (the supervisor: its worker, R and caffeinate). The own

@@ -19,6 +19,774 @@
     "R minpack.lm": "1.2.4",
     "Boost": "boostorg/math 75cb4c4 2026-11-18"
    }
+  },
+  "20261120-203828-ae51de0+": {
+   "commit": "ae51de0",
+   "dirty": true,
+   "changed": [
+    "bench/accuracy/__init__.py",
+    "bench/accuracy/__main__.py",
+    "bench/accuracy/array.py",
+    "bench/accuracy/boost.py",
+    "bench/accuracy/boost_comparator.cpp",
+    "bench/accuracy/common.py",
+    "bench/accuracy/compare.py",
+    "bench/accuracy/linalg.py",
+    "bench/accuracy/linalg_ops.py",
+    "bench/accuracy/multivariate.py",
+    "bench/accuracy/optimize.py",
+    "bench/accuracy/parallel.py",
+    "bench/accuracy/report.py",
+    "bench/accuracy/results.py",
+    "bench/accuracy/rsession.py",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/tables.py",
+    "tests/array/ref/acos.npz",
+    "tests/array/ref/acosh.npz",
+    "tests/array/ref/asin.npz",
+    "tests/array/ref/asinh.npz",
+    "tests/array/ref/atan.npz",
+    "tests/array/ref/atan2.npz",
+    "tests/array/ref/atanh.npz",
+    "tests/array/ref/cabs.npz",
+    "tests/array/ref/cosh.npz",
+    "tests/array/ref/exp.npz",
+    "tests/array/ref/log.npz",
+    "tests/array/ref/log10.npz",
+    "tests/array/ref/log2.npz",
+    "tests/array/ref/pow.npz",
+    "tests/array/ref/reductions.npz",
+    "tests/array/ref/sin.npz",
+    "tests/array/ref/sinh.npz",
+    "tests/array/ref/tanh.npz",
+    "tests/bench/test_accuracy_tools.py",
+    "tests/linalg/ref/expm.npz",
+    "tests/linalg/ref/rect.npz",
+    "tests/linalg/ref/square.npz",
+    "tests/linalg/ref/symmetric.npz",
+    "tests/optimize/data/scalar_roots.json",
+    "tests/optimize/ref/derivatives.npz",
+    "tests/optimize/ref/scalar_minima.json",
+    "tests/optimize/test_reference_data.py",
+    "tests/optimize/test_scalar.py",
+    "tests/regression/ref/glm.json",
+    "tests/regression/ref/linear.json",
+    "tests/regression/ref/nls_r.json",
+    "tests/regression/ref/penalized.json",
+    "tests/regression/ref/quantreg_r.json",
+    "tests/regression/ref/regression_r.json",
+    "tests/regression/ref/robust.json",
+    "tests/regression/ref/robust_r.json",
+    "tests/regression/refdata.py",
+    "tests/regression/refdata_glm.py",
+    "tests/regression/refdata_penalized.py",
+    "tests/regression/refdata_robust.py",
+    "tests/regression/test_against_r.py",
+    "tests/regression/test_nls.py",
+    "tests/regression/test_quantreg.py",
+    "tests/regression/test_robust.py",
+    "tests/special/ref/_cf_tan.npz",
+    "tests/special/ref/airy_ai.npz",
+    "tests/special/ref/airy_aip.npz",
+    "tests/special/ref/airy_bi.npz",
+    "tests/special/ref/airy_bip.npz",
+    "tests/special/ref/bdtr.npz",
+    "tests/special/ref/bdtrc.npz",
+    "tests/special/ref/beta.npz",
+    "tests/special/ref/betainc.npz",
+    "tests/special/ref/betaincc.npz",
+    "tests/special/ref/betainccinv.npz",
+    "tests/special/ref/betaincinv.npz",
+    "tests/special/ref/betaln.npz",
+    "tests/special/ref/binom.npz",
+    "tests/special/ref/chdtr.npz",
+    "tests/special/ref/chdtrc.npz",
+    "tests/special/ref/chdtri.npz",
+    "tests/special/ref/chndtr.npz",
+    "tests/special/ref/chndtrc.npz",
+    "tests/special/ref/chndtrix.npz",
+    "tests/special/ref/digamma.npz",
+    "tests/special/ref/ellipe.npz",
+    "tests/special/ref/ellipk.npz",
+    "tests/special/ref/entr.npz",
+    "tests/special/ref/erf.npz",
+    "tests/special/ref/erf_complex.npz",
+    "tests/special/ref/erfc.npz",
+    "tests/special/ref/erfc_complex.npz",
+    "tests/special/ref/erfcinv.npz",
+    "tests/special/ref/erfcx.npz",
+    "tests/special/ref/erfcx_complex.npz",
+    "tests/special/ref/erfinv.npz",
+    "tests/special/ref/expi.npz",
+    "tests/special/ref/expit.npz",
+    "tests/special/ref/expn.npz",
+    "tests/special/ref/fdtr.npz",
+    "tests/special/ref/fdtrc.npz",
+    "tests/special/ref/fdtri.npz",
+    "tests/special/ref/gamma.npz",
+    "tests/special/ref/gammainc.npz",
+    "tests/special/ref/gammaincc.npz",
+    "tests/special/ref/gammainccinv.npz",
+    "tests/special/ref/gammaincinv.npz",
+    "tests/special/ref/gammaln.npz",
+    "tests/special/ref/hyp1f1.npz",
+    "tests/special/ref/hyp2f1.npz",
+    "tests/special/ref/i0.npz",
+    "tests/special/ref/i0e.npz",
+    "tests/special/ref/i1.npz",
+    "tests/special/ref/i1e.npz",
+    "tests/special/ref/iv.npz",
+    "tests/special/ref/ive.npz",
+    "tests/special/ref/j0.npz",
+    "tests/special/ref/j1.npz",
+    "tests/special/ref/jv.npz",
+    "tests/special/ref/k0.npz",
+    "tests/special/ref/k0e.npz",
+    "tests/special/ref/k1.npz",
+    "tests/special/ref/k1e.npz",
+    "tests/special/ref/kv.npz",
+    "tests/special/ref/kve.npz",
+    "tests/special/ref/lambertw.npz",
+    "tests/special/ref/lambertw_c0.npz",
+    "tests/special/ref/lambertw_c1.npz",
+    "tests/special/ref/lambertw_c4.npz",
+    "tests/special/ref/lambertw_cm1.npz",
+    "tests/special/ref/lambertw_m1.npz",
+    "tests/special/ref/log_expit.npz",
+    "tests/special/ref/log_ndtr.npz",
+    "tests/special/ref/loggamma_complex.npz",
+    "tests/special/ref/logit.npz",
+    "tests/special/ref/nbdtr.npz",
+    "tests/special/ref/nbdtrc.npz",
+    "tests/special/ref/ncfdtr.npz",
+    "tests/special/ref/ncfdtrc.npz",
+    "tests/special/ref/ncfdtri.npz",
+    "tests/special/ref/nctdtr.npz",
+    "tests/special/ref/nctdtrc.npz",
+    "tests/special/ref/nctdtrit.npz",
+    "tests/special/ref/ndtr.npz",
+    "tests/special/ref/ndtri.npz",
+    "tests/special/ref/ndtri_exp.npz",
+    "tests/special/ref/pdtr.npz",
+    "tests/special/ref/pdtrc.npz",
+    "tests/special/ref/polygamma.npz",
+    "tests/special/ref/reduce_cases.npz",
+    "tests/special/ref/rel_entr.npz",
+    "tests/special/ref/rgamma.npz",
+    "tests/special/ref/stdtr.npz",
+    "tests/special/ref/stdtrit.npz",
+    "tests/special/ref/wofz.npz",
+    "tests/special/ref/xlog1py.npz",
+    "tests/special/ref/xlogy.npz",
+    "tests/special/ref/y0.npz",
+    "tests/special/ref/y1.npz",
+    "tests/special/ref/yv.npz",
+    "tests/special/ref/zeta.npz",
+    "tests/special/ref/zeta_hurwitz.npz",
+    "tests/special/refdata.py",
+    "tests/special/test_reduce_expint_ellip.py",
+    "tests/special/test_reference.py",
+    "tests/stats/ref/bernoulli_ccdf.npz",
+    "tests/stats/ref/bernoulli_cdf.npz",
+    "tests/stats/ref/bernoulli_entropy.npz",
+    "tests/stats/ref/bernoulli_iccdf.npz",
+    "tests/stats/ref/bernoulli_icdf.npz",
+    "tests/stats/ref/bernoulli_ilogccdf.npz",
+    "tests/stats/ref/bernoulli_ilogcdf.npz",
+    "tests/stats/ref/bernoulli_kurtosis.npz",
+    "tests/stats/ref/bernoulli_logccdf.npz",
+    "tests/stats/ref/bernoulli_logcdf.npz",
+    "tests/stats/ref/bernoulli_logpmf.npz",
+    "tests/stats/ref/bernoulli_mean.npz",
+    "tests/stats/ref/bernoulli_median.npz",
+    "tests/stats/ref/bernoulli_mode.npz",
+    "tests/stats/ref/bernoulli_pmf.npz",
+    "tests/stats/ref/bernoulli_skewness.npz",
+    "tests/stats/ref/bernoulli_standard_deviation.npz",
+    "tests/stats/ref/bernoulli_variance.npz",
+    "tests/stats/ref/beta_ccdf.npz",
+    "tests/stats/ref/beta_cdf.npz",
+    "tests/stats/ref/beta_entropy.npz",
+    "tests/stats/ref/beta_iccdf.npz",
+    "tests/stats/ref/beta_icdf.npz",
+    "tests/stats/ref/beta_ilogccdf.npz",
+    "tests/stats/ref/beta_ilogcdf.npz",
+    "tests/stats/ref/beta_kurtosis.npz",
+    "tests/stats/ref/beta_logccdf.npz",
+    "tests/stats/ref/beta_logcdf.npz",
+    "tests/stats/ref/beta_logpdf.npz",
+    "tests/stats/ref/beta_mean.npz",
+    "tests/stats/ref/beta_median.npz",
+    "tests/stats/ref/beta_mode.npz",
+    "tests/stats/ref/beta_pdf.npz",
+    "tests/stats/ref/beta_skewness.npz",
+    "tests/stats/ref/beta_standard_deviation.npz",
+    "tests/stats/ref/beta_variance.npz",
+    "tests/stats/ref/betabinomial_ccdf.npz",
+    "tests/stats/ref/betabinomial_cdf.npz",
+    "tests/stats/ref/betabinomial_entropy.npz",
+    "tests/stats/ref/betabinomial_iccdf.npz",
+    "tests/stats/ref/betabinomial_icdf.npz",
+    "tests/stats/ref/betabinomial_ilogccdf.npz",
+    "tests/stats/ref/betabinomial_ilogcdf.npz",
+    "tests/stats/ref/betabinomial_kurtosis.npz",
+    "tests/stats/ref/betabinomial_logccdf.npz",
+    "tests/stats/ref/betabinomial_logcdf.npz",
+    "tests/stats/ref/betabinomial_logpmf.npz",
+    "tests/stats/ref/betabinomial_mean.npz",
+    "tests/stats/ref/betabinomial_median.npz",
+    "tests/stats/ref/betabinomial_mode.npz",
+    "tests/stats/ref/betabinomial_pmf.npz",
+    "tests/stats/ref/betabinomial_skewness.npz",
+    "tests/stats/ref/betabinomial_standard_deviation.npz",
+    "tests/stats/ref/betabinomial_variance.npz",
+    "tests/stats/ref/binomial_ccdf.npz",
+    "tests/stats/ref/binomial_cdf.npz",
+    "tests/stats/ref/binomial_entropy.npz",
+    "tests/stats/ref/binomial_iccdf.npz",
+    "tests/stats/ref/binomial_icdf.npz",
+    "tests/stats/ref/binomial_ilogccdf.npz",
+    "tests/stats/ref/binomial_ilogcdf.npz",
+    "tests/stats/ref/binomial_kurtosis.npz",
+    "tests/stats/ref/binomial_logccdf.npz",
+    "tests/stats/ref/binomial_logcdf.npz",
+    "tests/stats/ref/binomial_logpmf.npz",
+    "tests/stats/ref/binomial_mean.npz",
+    "tests/stats/ref/binomial_median.npz",
+    "tests/stats/ref/binomial_mode.npz",
+    "tests/stats/ref/binomial_pmf.npz",
+    "tests/stats/ref/binomial_skewness.npz",
+    "tests/stats/ref/binomial_standard_deviation.npz",
+    "tests/stats/ref/binomial_variance.npz",
+    "tests/stats/ref/cauchy_ccdf.npz",
+    "tests/stats/ref/cauchy_cdf.npz",
+    "tests/stats/ref/cauchy_entropy.npz",
+    "tests/stats/ref/cauchy_iccdf.npz",
+    "tests/stats/ref/cauchy_icdf.npz",
+    "tests/stats/ref/cauchy_ilogccdf.npz",
+    "tests/stats/ref/cauchy_ilogcdf.npz",
+    "tests/stats/ref/cauchy_kurtosis.npz",
+    "tests/stats/ref/cauchy_logccdf.npz",
+    "tests/stats/ref/cauchy_logcdf.npz",
+    "tests/stats/ref/cauchy_logpdf.npz",
+    "tests/stats/ref/cauchy_mean.npz",
+    "tests/stats/ref/cauchy_median.npz",
+    "tests/stats/ref/cauchy_mode.npz",
+    "tests/stats/ref/cauchy_pdf.npz",
+    "tests/stats/ref/cauchy_skewness.npz",
+    "tests/stats/ref/cauchy_standard_deviation.npz",
+    "tests/stats/ref/cauchy_variance.npz",
+    "tests/stats/ref/chisquared_ccdf.npz",
+    "tests/stats/ref/chisquared_cdf.npz",
+    "tests/stats/ref/chisquared_entropy.npz",
+    "tests/stats/ref/chisquared_iccdf.npz",
+    "tests/stats/ref/chisquared_icdf.npz",
+    "tests/stats/ref/chisquared_ilogccdf.npz",
+    "tests/stats/ref/chisquared_ilogcdf.npz",
+    "tests/stats/ref/chisquared_kurtosis.npz",
+    "tests/stats/ref/chisquared_logccdf.npz",
+    "tests/stats/ref/chisquared_logcdf.npz",
+    "tests/stats/ref/chisquared_logpdf.npz",
+    "tests/stats/ref/chisquared_mean.npz",
+    "tests/stats/ref/chisquared_median.npz",
+    "tests/stats/ref/chisquared_mode.npz",
+    "tests/stats/ref/chisquared_pdf.npz",
+    "tests/stats/ref/chisquared_skewness.npz",
+    "tests/stats/ref/chisquared_standard_deviation.npz",
+    "tests/stats/ref/chisquared_variance.npz",
+    "tests/stats/ref/discreteuniform_ccdf.npz",
+    "tests/stats/ref/discreteuniform_cdf.npz",
+    "tests/stats/ref/discreteuniform_entropy.npz",
+    "tests/stats/ref/discreteuniform_iccdf.npz",
+    "tests/stats/ref/discreteuniform_icdf.npz",
+    "tests/stats/ref/discreteuniform_ilogccdf.npz",
+    "tests/stats/ref/discreteuniform_ilogcdf.npz",
+    "tests/stats/ref/discreteuniform_kurtosis.npz",
+    "tests/stats/ref/discreteuniform_logccdf.npz",
+    "tests/stats/ref/discreteuniform_logcdf.npz",
+    "tests/stats/ref/discreteuniform_logpmf.npz",
+    "tests/stats/ref/discreteuniform_mean.npz",
+    "tests/stats/ref/discreteuniform_median.npz",
+    "tests/stats/ref/discreteuniform_mode.npz",
+    "tests/stats/ref/discreteuniform_pmf.npz",
+    "tests/stats/ref/discreteuniform_skewness.npz",
+    "tests/stats/ref/discreteuniform_standard_deviation.npz",
+    "tests/stats/ref/discreteuniform_variance.npz",
+    "tests/stats/ref/exponential_ccdf.npz",
+    "tests/stats/ref/exponential_cdf.npz",
+    "tests/stats/ref/exponential_entropy.npz",
+    "tests/stats/ref/exponential_iccdf.npz",
+    "tests/stats/ref/exponential_icdf.npz",
+    "tests/stats/ref/exponential_ilogccdf.npz",
+    "tests/stats/ref/exponential_ilogcdf.npz",
+    "tests/stats/ref/exponential_kurtosis.npz",
+    "tests/stats/ref/exponential_logccdf.npz",
+    "tests/stats/ref/exponential_logcdf.npz",
+    "tests/stats/ref/exponential_logpdf.npz",
+    "tests/stats/ref/exponential_mean.npz",
+    "tests/stats/ref/exponential_median.npz",
+    "tests/stats/ref/exponential_mode.npz",
+    "tests/stats/ref/exponential_pdf.npz",
+    "tests/stats/ref/exponential_skewness.npz",
+    "tests/stats/ref/exponential_standard_deviation.npz",
+    "tests/stats/ref/exponential_variance.npz",
+    "tests/stats/ref/f_ccdf.npz",
+    "tests/stats/ref/f_cdf.npz",
+    "tests/stats/ref/f_entropy.npz",
+    "tests/stats/ref/f_iccdf.npz",
+    "tests/stats/ref/f_icdf.npz",
+    "tests/stats/ref/f_ilogccdf.npz",
+    "tests/stats/ref/f_ilogcdf.npz",
+    "tests/stats/ref/f_kurtosis.npz",
+    "tests/stats/ref/f_logccdf.npz",
+    "tests/stats/ref/f_logcdf.npz",
+    "tests/stats/ref/f_logpdf.npz",
+    "tests/stats/ref/f_mean.npz",
+    "tests/stats/ref/f_median.npz",
+    "tests/stats/ref/f_mode.npz",
+    "tests/stats/ref/f_pdf.npz",
+    "tests/stats/ref/f_skewness.npz",
+    "tests/stats/ref/f_standard_deviation.npz",
+    "tests/stats/ref/f_variance.npz",
+    "tests/stats/ref/gamma_ccdf.npz",
+    "tests/stats/ref/gamma_cdf.npz",
+    "tests/stats/ref/gamma_entropy.npz",
+    "tests/stats/ref/gamma_iccdf.npz",
+    "tests/stats/ref/gamma_icdf.npz",
+    "tests/stats/ref/gamma_ilogccdf.npz",
+    "tests/stats/ref/gamma_ilogcdf.npz",
+    "tests/stats/ref/gamma_kurtosis.npz",
+    "tests/stats/ref/gamma_logccdf.npz",
+    "tests/stats/ref/gamma_logcdf.npz",
+    "tests/stats/ref/gamma_logpdf.npz",
+    "tests/stats/ref/gamma_mean.npz",
+    "tests/stats/ref/gamma_median.npz",
+    "tests/stats/ref/gamma_mode.npz",
+    "tests/stats/ref/gamma_pdf.npz",
+    "tests/stats/ref/gamma_skewness.npz",
+    "tests/stats/ref/gamma_standard_deviation.npz",
+    "tests/stats/ref/gamma_variance.npz",
+    "tests/stats/ref/geometric_ccdf.npz",
+    "tests/stats/ref/geometric_cdf.npz",
+    "tests/stats/ref/geometric_entropy.npz",
+    "tests/stats/ref/geometric_iccdf.npz",
+    "tests/stats/ref/geometric_icdf.npz",
+    "tests/stats/ref/geometric_ilogccdf.npz",
+    "tests/stats/ref/geometric_ilogcdf.npz",
+    "tests/stats/ref/geometric_kurtosis.npz",
+    "tests/stats/ref/geometric_logccdf.npz",
+    "tests/stats/ref/geometric_logcdf.npz",
+    "tests/stats/ref/geometric_logpmf.npz",
+    "tests/stats/ref/geometric_mean.npz",
+    "tests/stats/ref/geometric_median.npz",
+    "tests/stats/ref/geometric_mode.npz",
+    "tests/stats/ref/geometric_pmf.npz",
+    "tests/stats/ref/geometric_skewness.npz",
+    "tests/stats/ref/geometric_standard_deviation.npz",
+    "tests/stats/ref/geometric_variance.npz",
+    "tests/stats/ref/gev_ccdf.npz",
+    "tests/stats/ref/gev_cdf.npz",
+    "tests/stats/ref/gev_entropy.npz",
+    "tests/stats/ref/gev_iccdf.npz",
+    "tests/stats/ref/gev_icdf.npz",
+    "tests/stats/ref/gev_ilogccdf.npz",
+    "tests/stats/ref/gev_ilogcdf.npz",
+    "tests/stats/ref/gev_kurtosis.npz",
+    "tests/stats/ref/gev_logccdf.npz",
+    "tests/stats/ref/gev_logcdf.npz",
+    "tests/stats/ref/gev_logpdf.npz",
+    "tests/stats/ref/gev_mean.npz",
+    "tests/stats/ref/gev_median.npz",
+    "tests/stats/ref/gev_mode.npz",
+    "tests/stats/ref/gev_pdf.npz",
+    "tests/stats/ref/gev_skewness.npz",
+    "tests/stats/ref/gev_standard_deviation.npz",
+    "tests/stats/ref/gev_variance.npz",
+    "tests/stats/ref/gumbel_ccdf.npz",
+    "tests/stats/ref/gumbel_cdf.npz",
+    "tests/stats/ref/gumbel_entropy.npz",
+    "tests/stats/ref/gumbel_iccdf.npz",
+    "tests/stats/ref/gumbel_icdf.npz",
+    "tests/stats/ref/gumbel_ilogccdf.npz",
+    "tests/stats/ref/gumbel_ilogcdf.npz",
+    "tests/stats/ref/gumbel_kurtosis.npz",
+    "tests/stats/ref/gumbel_logccdf.npz",
+    "tests/stats/ref/gumbel_logcdf.npz",
+    "tests/stats/ref/gumbel_logpdf.npz",
+    "tests/stats/ref/gumbel_mean.npz",
+    "tests/stats/ref/gumbel_median.npz",
+    "tests/stats/ref/gumbel_mode.npz",
+    "tests/stats/ref/gumbel_pdf.npz",
+    "tests/stats/ref/gumbel_skewness.npz",
+    "tests/stats/ref/gumbel_standard_deviation.npz",
+    "tests/stats/ref/gumbel_variance.npz",
+    "tests/stats/ref/hypergeometric_ccdf.npz",
+    "tests/stats/ref/hypergeometric_cdf.npz",
+    "tests/stats/ref/hypergeometric_entropy.npz",
+    "tests/stats/ref/hypergeometric_iccdf.npz",
+    "tests/stats/ref/hypergeometric_icdf.npz",
+    "tests/stats/ref/hypergeometric_ilogccdf.npz",
+    "tests/stats/ref/hypergeometric_ilogcdf.npz",
+    "tests/stats/ref/hypergeometric_kurtosis.npz",
+    "tests/stats/ref/hypergeometric_logccdf.npz",
+    "tests/stats/ref/hypergeometric_logcdf.npz",
+    "tests/stats/ref/hypergeometric_logpmf.npz",
+    "tests/stats/ref/hypergeometric_mean.npz",
+    "tests/stats/ref/hypergeometric_median.npz",
+    "tests/stats/ref/hypergeometric_mode.npz",
+    "tests/stats/ref/hypergeometric_pmf.npz",
+    "tests/stats/ref/hypergeometric_skewness.npz",
+    "tests/stats/ref/hypergeometric_standard_deviation.npz",
+    "tests/stats/ref/hypergeometric_variance.npz",
+    "tests/stats/ref/inversegamma_ccdf.npz",
+    "tests/stats/ref/inversegamma_cdf.npz",
+    "tests/stats/ref/inversegamma_entropy.npz",
+    "tests/stats/ref/inversegamma_iccdf.npz",
+    "tests/stats/ref/inversegamma_icdf.npz",
+    "tests/stats/ref/inversegamma_ilogccdf.npz",
+    "tests/stats/ref/inversegamma_ilogcdf.npz",
+    "tests/stats/ref/inversegamma_kurtosis.npz",
+    "tests/stats/ref/inversegamma_logccdf.npz",
+    "tests/stats/ref/inversegamma_logcdf.npz",
+    "tests/stats/ref/inversegamma_logpdf.npz",
+    "tests/stats/ref/inversegamma_mean.npz",
+    "tests/stats/ref/inversegamma_median.npz",
+    "tests/stats/ref/inversegamma_mode.npz",
+    "tests/stats/ref/inversegamma_pdf.npz",
+    "tests/stats/ref/inversegamma_skewness.npz",
+    "tests/stats/ref/inversegamma_standard_deviation.npz",
+    "tests/stats/ref/inversegamma_variance.npz",
+    "tests/stats/ref/laplace_ccdf.npz",
+    "tests/stats/ref/laplace_cdf.npz",
+    "tests/stats/ref/laplace_entropy.npz",
+    "tests/stats/ref/laplace_iccdf.npz",
+    "tests/stats/ref/laplace_icdf.npz",
+    "tests/stats/ref/laplace_ilogccdf.npz",
+    "tests/stats/ref/laplace_ilogcdf.npz",
+    "tests/stats/ref/laplace_kurtosis.npz",
+    "tests/stats/ref/laplace_logccdf.npz",
+    "tests/stats/ref/laplace_logcdf.npz",
+    "tests/stats/ref/laplace_logpdf.npz",
+    "tests/stats/ref/laplace_mean.npz",
+    "tests/stats/ref/laplace_median.npz",
+    "tests/stats/ref/laplace_mode.npz",
+    "tests/stats/ref/laplace_pdf.npz",
+    "tests/stats/ref/laplace_skewness.npz",
+    "tests/stats/ref/laplace_standard_deviation.npz",
+    "tests/stats/ref/laplace_variance.npz",
+    "tests/stats/ref/logistic_ccdf.npz",
+    "tests/stats/ref/logistic_cdf.npz",
+    "tests/stats/ref/logistic_entropy.npz",
+    "tests/stats/ref/logistic_iccdf.npz",
+    "tests/stats/ref/logistic_icdf.npz",
+    "tests/stats/ref/logistic_ilogccdf.npz",
+    "tests/stats/ref/logistic_ilogcdf.npz",
+    "tests/stats/ref/logistic_kurtosis.npz",
+    "tests/stats/ref/logistic_logccdf.npz",
+    "tests/stats/ref/logistic_logcdf.npz",
+    "tests/stats/ref/logistic_logpdf.npz",
+    "tests/stats/ref/logistic_mean.npz",
+    "tests/stats/ref/logistic_median.npz",
+    "tests/stats/ref/logistic_mode.npz",
+    "tests/stats/ref/logistic_pdf.npz",
+    "tests/stats/ref/logistic_skewness.npz",
+    "tests/stats/ref/logistic_standard_deviation.npz",
+    "tests/stats/ref/logistic_variance.npz",
+    "tests/stats/ref/lognormal_ccdf.npz",
+    "tests/stats/ref/lognormal_cdf.npz",
+    "tests/stats/ref/lognormal_entropy.npz",
+    "tests/stats/ref/lognormal_iccdf.npz",
+    "tests/stats/ref/lognormal_icdf.npz",
+    "tests/stats/ref/lognormal_ilogccdf.npz",
+    "tests/stats/ref/lognormal_ilogcdf.npz",
+    "tests/stats/ref/lognormal_kurtosis.npz",
+    "tests/stats/ref/lognormal_logccdf.npz",
+    "tests/stats/ref/lognormal_logcdf.npz",
+    "tests/stats/ref/lognormal_logpdf.npz",
+    "tests/stats/ref/lognormal_mean.npz",
+    "tests/stats/ref/lognormal_median.npz",
+    "tests/stats/ref/lognormal_mode.npz",
+    "tests/stats/ref/lognormal_pdf.npz",
+    "tests/stats/ref/lognormal_skewness.npz",
+    "tests/stats/ref/lognormal_standard_deviation.npz",
+    "tests/stats/ref/lognormal_variance.npz",
+    "tests/stats/ref/logseries_ccdf.npz",
+    "tests/stats/ref/logseries_cdf.npz",
+    "tests/stats/ref/logseries_entropy.npz",
+    "tests/stats/ref/logseries_iccdf.npz",
+    "tests/stats/ref/logseries_icdf.npz",
+    "tests/stats/ref/logseries_ilogccdf.npz",
+    "tests/stats/ref/logseries_ilogcdf.npz",
+    "tests/stats/ref/logseries_kurtosis.npz",
+    "tests/stats/ref/logseries_logccdf.npz",
+    "tests/stats/ref/logseries_logcdf.npz",
+    "tests/stats/ref/logseries_logpmf.npz",
+    "tests/stats/ref/logseries_mean.npz",
+    "tests/stats/ref/logseries_median.npz",
+    "tests/stats/ref/logseries_mode.npz",
+    "tests/stats/ref/logseries_pmf.npz",
+    "tests/stats/ref/logseries_skewness.npz",
+    "tests/stats/ref/logseries_standard_deviation.npz",
+    "tests/stats/ref/logseries_variance.npz",
+    "tests/stats/ref/negativebinomial_ccdf.npz",
+    "tests/stats/ref/negativebinomial_cdf.npz",
+    "tests/stats/ref/negativebinomial_entropy.npz",
+    "tests/stats/ref/negativebinomial_iccdf.npz",
+    "tests/stats/ref/negativebinomial_icdf.npz",
+    "tests/stats/ref/negativebinomial_ilogccdf.npz",
+    "tests/stats/ref/negativebinomial_ilogcdf.npz",
+    "tests/stats/ref/negativebinomial_kurtosis.npz",
+    "tests/stats/ref/negativebinomial_logccdf.npz",
+    "tests/stats/ref/negativebinomial_logcdf.npz",
+    "tests/stats/ref/negativebinomial_logpmf.npz",
+    "tests/stats/ref/negativebinomial_mean.npz",
+    "tests/stats/ref/negativebinomial_median.npz",
+    "tests/stats/ref/negativebinomial_mode.npz",
+    "tests/stats/ref/negativebinomial_pmf.npz",
+    "tests/stats/ref/negativebinomial_skewness.npz",
+    "tests/stats/ref/negativebinomial_standard_deviation.npz",
+    "tests/stats/ref/negativebinomial_variance.npz",
+    "tests/stats/ref/noncentralchisquared_ccdf.npz",
+    "tests/stats/ref/noncentralchisquared_cdf.npz",
+    "tests/stats/ref/noncentralchisquared_iccdf.npz",
+    "tests/stats/ref/noncentralchisquared_icdf.npz",
+    "tests/stats/ref/noncentralchisquared_ilogccdf.npz",
+    "tests/stats/ref/noncentralchisquared_ilogcdf.npz",
+    "tests/stats/ref/noncentralchisquared_kurtosis.npz",
+    "tests/stats/ref/noncentralchisquared_logccdf.npz",
+    "tests/stats/ref/noncentralchisquared_logcdf.npz",
+    "tests/stats/ref/noncentralchisquared_logpdf.npz",
+    "tests/stats/ref/noncentralchisquared_mean.npz",
+    "tests/stats/ref/noncentralchisquared_median.npz",
+    "tests/stats/ref/noncentralchisquared_mode.npz",
+    "tests/stats/ref/noncentralchisquared_pdf.npz",
+    "tests/stats/ref/noncentralchisquared_skewness.npz",
+    "tests/stats/ref/noncentralchisquared_standard_deviation.npz",
+    "tests/stats/ref/noncentralchisquared_variance.npz",
+    "tests/stats/ref/noncentralf_ccdf.npz",
+    "tests/stats/ref/noncentralf_cdf.npz",
+    "tests/stats/ref/noncentralf_iccdf.npz",
+    "tests/stats/ref/noncentralf_icdf.npz",
+    "tests/stats/ref/noncentralf_ilogccdf.npz",
+    "tests/stats/ref/noncentralf_ilogcdf.npz",
+    "tests/stats/ref/noncentralf_kurtosis.npz",
+    "tests/stats/ref/noncentralf_logccdf.npz",
+    "tests/stats/ref/noncentralf_logcdf.npz",
+    "tests/stats/ref/noncentralf_logpdf.npz",
+    "tests/stats/ref/noncentralf_mean.npz",
+    "tests/stats/ref/noncentralf_median.npz",
+    "tests/stats/ref/noncentralf_mode.npz",
+    "tests/stats/ref/noncentralf_pdf.npz",
+    "tests/stats/ref/noncentralf_skewness.npz",
+    "tests/stats/ref/noncentralf_standard_deviation.npz",
+    "tests/stats/ref/noncentralf_variance.npz",
+    "tests/stats/ref/noncentralt_ccdf.npz",
+    "tests/stats/ref/noncentralt_cdf.npz",
+    "tests/stats/ref/noncentralt_iccdf.npz",
+    "tests/stats/ref/noncentralt_icdf.npz",
+    "tests/stats/ref/noncentralt_ilogccdf.npz",
+    "tests/stats/ref/noncentralt_ilogcdf.npz",
+    "tests/stats/ref/noncentralt_kurtosis.npz",
+    "tests/stats/ref/noncentralt_logccdf.npz",
+    "tests/stats/ref/noncentralt_logcdf.npz",
+    "tests/stats/ref/noncentralt_logpdf.npz",
+    "tests/stats/ref/noncentralt_mean.npz",
+    "tests/stats/ref/noncentralt_median.npz",
+    "tests/stats/ref/noncentralt_mode.npz",
+    "tests/stats/ref/noncentralt_pdf.npz",
+    "tests/stats/ref/noncentralt_skewness.npz",
+    "tests/stats/ref/noncentralt_standard_deviation.npz",
+    "tests/stats/ref/noncentralt_variance.npz",
+    "tests/stats/ref/normal_ccdf.npz",
+    "tests/stats/ref/normal_cdf.npz",
+    "tests/stats/ref/normal_entropy.npz",
+    "tests/stats/ref/normal_iccdf.npz",
+    "tests/stats/ref/normal_icdf.npz",
+    "tests/stats/ref/normal_ilogccdf.npz",
+    "tests/stats/ref/normal_ilogcdf.npz",
+    "tests/stats/ref/normal_kurtosis.npz",
+    "tests/stats/ref/normal_logccdf.npz",
+    "tests/stats/ref/normal_logcdf.npz",
+    "tests/stats/ref/normal_logpdf.npz",
+    "tests/stats/ref/normal_mean.npz",
+    "tests/stats/ref/normal_median.npz",
+    "tests/stats/ref/normal_mode.npz",
+    "tests/stats/ref/normal_pdf.npz",
+    "tests/stats/ref/normal_skewness.npz",
+    "tests/stats/ref/normal_standard_deviation.npz",
+    "tests/stats/ref/normal_variance.npz",
+    "tests/stats/ref/pareto_ccdf.npz",
+    "tests/stats/ref/pareto_cdf.npz",
+    "tests/stats/ref/pareto_entropy.npz",
+    "tests/stats/ref/pareto_iccdf.npz",
+    "tests/stats/ref/pareto_icdf.npz",
+    "tests/stats/ref/pareto_ilogccdf.npz",
+    "tests/stats/ref/pareto_ilogcdf.npz",
+    "tests/stats/ref/pareto_kurtosis.npz",
+    "tests/stats/ref/pareto_logccdf.npz",
+    "tests/stats/ref/pareto_logcdf.npz",
+    "tests/stats/ref/pareto_logpdf.npz",
+    "tests/stats/ref/pareto_mean.npz",
+    "tests/stats/ref/pareto_median.npz",
+    "tests/stats/ref/pareto_mode.npz",
+    "tests/stats/ref/pareto_pdf.npz",
+    "tests/stats/ref/pareto_skewness.npz",
+    "tests/stats/ref/pareto_standard_deviation.npz",
+    "tests/stats/ref/pareto_variance.npz",
+    "tests/stats/ref/poisson_ccdf.npz",
+    "tests/stats/ref/poisson_cdf.npz",
+    "tests/stats/ref/poisson_entropy.npz",
+    "tests/stats/ref/poisson_iccdf.npz",
+    "tests/stats/ref/poisson_icdf.npz",
+    "tests/stats/ref/poisson_ilogccdf.npz",
+    "tests/stats/ref/poisson_ilogcdf.npz",
+    "tests/stats/ref/poisson_kurtosis.npz",
+    "tests/stats/ref/poisson_logccdf.npz",
+    "tests/stats/ref/poisson_logcdf.npz",
+    "tests/stats/ref/poisson_logpmf.npz",
+    "tests/stats/ref/poisson_mean.npz",
+    "tests/stats/ref/poisson_median.npz",
+    "tests/stats/ref/poisson_mode.npz",
+    "tests/stats/ref/poisson_pmf.npz",
+    "tests/stats/ref/poisson_skewness.npz",
+    "tests/stats/ref/poisson_standard_deviation.npz",
+    "tests/stats/ref/poisson_variance.npz",
+    "tests/stats/ref/rayleigh_ccdf.npz",
+    "tests/stats/ref/rayleigh_cdf.npz",
+    "tests/stats/ref/rayleigh_entropy.npz",
+    "tests/stats/ref/rayleigh_iccdf.npz",
+    "tests/stats/ref/rayleigh_icdf.npz",
+    "tests/stats/ref/rayleigh_ilogccdf.npz",
+    "tests/stats/ref/rayleigh_ilogcdf.npz",
+    "tests/stats/ref/rayleigh_kurtosis.npz",
+    "tests/stats/ref/rayleigh_logccdf.npz",
+    "tests/stats/ref/rayleigh_logcdf.npz",
+    "tests/stats/ref/rayleigh_logpdf.npz",
+    "tests/stats/ref/rayleigh_mean.npz",
+    "tests/stats/ref/rayleigh_median.npz",
+    "tests/stats/ref/rayleigh_mode.npz",
+    "tests/stats/ref/rayleigh_pdf.npz",
+    "tests/stats/ref/rayleigh_skewness.npz",
+    "tests/stats/ref/rayleigh_standard_deviation.npz",
+    "tests/stats/ref/rayleigh_variance.npz",
+    "tests/stats/ref/studentt_ccdf.npz",
+    "tests/stats/ref/studentt_cdf.npz",
+    "tests/stats/ref/studentt_entropy.npz",
+    "tests/stats/ref/studentt_iccdf.npz",
+    "tests/stats/ref/studentt_icdf.npz",
+    "tests/stats/ref/studentt_ilogccdf.npz",
+    "tests/stats/ref/studentt_ilogcdf.npz",
+    "tests/stats/ref/studentt_kurtosis.npz",
+    "tests/stats/ref/studentt_logccdf.npz",
+    "tests/stats/ref/studentt_logcdf.npz",
+    "tests/stats/ref/studentt_logpdf.npz",
+    "tests/stats/ref/studentt_mean.npz",
+    "tests/stats/ref/studentt_median.npz",
+    "tests/stats/ref/studentt_mode.npz",
+    "tests/stats/ref/studentt_pdf.npz",
+    "tests/stats/ref/studentt_skewness.npz",
+    "tests/stats/ref/studentt_standard_deviation.npz",
+    "tests/stats/ref/studentt_variance.npz",
+    "tests/stats/ref/uniform_ccdf.npz",
+    "tests/stats/ref/uniform_cdf.npz",
+    "tests/stats/ref/uniform_entropy.npz",
+    "tests/stats/ref/uniform_iccdf.npz",
+    "tests/stats/ref/uniform_icdf.npz",
+    "tests/stats/ref/uniform_ilogccdf.npz",
+    "tests/stats/ref/uniform_ilogcdf.npz",
+    "tests/stats/ref/uniform_kurtosis.npz",
+    "tests/stats/ref/uniform_logccdf.npz",
+    "tests/stats/ref/uniform_logcdf.npz",
+    "tests/stats/ref/uniform_logpdf.npz",
+    "tests/stats/ref/uniform_mean.npz",
+    "tests/stats/ref/uniform_median.npz",
+    "tests/stats/ref/uniform_mode.npz",
+    "tests/stats/ref/uniform_pdf.npz",
+    "tests/stats/ref/uniform_skewness.npz",
+    "tests/stats/ref/uniform_standard_deviation.npz",
+    "tests/stats/ref/uniform_variance.npz",
+    "tests/stats/ref/weibull_ccdf.npz",
+    "tests/stats/ref/weibull_cdf.npz",
+    "tests/stats/ref/weibull_entropy.npz",
+    "tests/stats/ref/weibull_iccdf.npz",
+    "tests/stats/ref/weibull_icdf.npz",
+    "tests/stats/ref/weibull_ilogccdf.npz",
+    "tests/stats/ref/weibull_ilogcdf.npz",
+    "tests/stats/ref/weibull_kurtosis.npz",
+    "tests/stats/ref/weibull_logccdf.npz",
+    "tests/stats/ref/weibull_logcdf.npz",
+    "tests/stats/ref/weibull_logpdf.npz",
+    "tests/stats/ref/weibull_mean.npz",
+    "tests/stats/ref/weibull_median.npz",
+    "tests/stats/ref/weibull_mode.npz",
+    "tests/stats/ref/weibull_pdf.npz",
+    "tests/stats/ref/weibull_skewness.npz",
+    "tests/stats/ref/weibull_standard_deviation.npz",
+    "tests/stats/ref/weibull_variance.npz",
+    "tests/stats/ref/zipf_ccdf.npz",
+    "tests/stats/ref/zipf_cdf.npz",
+    "tests/stats/ref/zipf_entropy.npz",
+    "tests/stats/ref/zipf_iccdf.npz",
+    "tests/stats/ref/zipf_icdf.npz",
+    "tests/stats/ref/zipf_ilogccdf.npz",
+    "tests/stats/ref/zipf_ilogcdf.npz",
+    "tests/stats/ref/zipf_kurtosis.npz",
+    "tests/stats/ref/zipf_logccdf.npz",
+    "tests/stats/ref/zipf_logcdf.npz",
+    "tests/stats/ref/zipf_logpmf.npz",
+    "tests/stats/ref/zipf_mean.npz",
+    "tests/stats/ref/zipf_median.npz",
+    "tests/stats/ref/zipf_mode.npz",
+    "tests/stats/ref/zipf_pmf.npz",
+    "tests/stats/ref/zipf_skewness.npz",
+    "tests/stats/ref/zipf_standard_deviation.npz",
+    "tests/stats/ref/zipf_variance.npz",
+    "tests/stats/ref_mv/dirichlet.npz",
+    "tests/stats/ref_mv/invwishart.npz",
+    "tests/stats/ref_mv/matnormal.npz",
+    "tests/stats/ref_mv/multinomial.npz",
+    "tests/stats/ref_mv/mvnormal.npz",
+    "tests/stats/ref_mv/mvt.npz",
+    "tests/stats/ref_mv/tvn_cond.npz",
+    "tests/stats/ref_mv/wishart.npz",
+    "tests/stats/ref_mvcdf/bvn.npz",
+    "tests/stats/ref_mvcdf/bvt.npz",
+    "tests/stats/ref_mvcdf/factor_n.npz",
+    "tests/stats/ref_mvcdf/factor_t.npz",
+    "tests/stats/ref_mvcdf/tvn.npz",
+    "tests/stats/ref_mvcdf/tvt.npz",
+    "tests/stats/refdata.py",
+    "tests/stats/test_matrix.py",
+    "tests/stats/test_multivariate.py",
+    "tests/stats/test_mvcdf.py",
+    "tests/stats/test_reference.py",
+    "tools/arbref.py",
+    "tools/array_ref.py",
+    "tools/gen_nls_r.py",
+    "tools/gen_optimize_fortran.py",
+    "tools/gen_optimize_scipy.py",
+    "tools/gen_quantreg_r.py",
+    "tools/gen_regression_r.py",
+    "tools/gen_robust_r.py",
+    "tools/linalg_ref.py",
+    "tools/mv_ref.py",
+    "tools/mvcdf_ref.py",
+    "tools/optimize_accuracy_ref.py",
+    "tools/optimize_ref.py",
+    "tools/special_ref.py",
+    "tools/stats_ref.py"
+   ],
+   "date": "2026-11-20T20:38:28",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "4e7d672c968f676bd0a8323d4d7a6f0ff605ceb25fde95310e9fc36bd991532e",
+    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+   }
   }
  },
  "sweeps": [
@@ -30,7 +798,7 @@
    "regions": {
     "gradient": {
      "points": 47,
-     "norm_rel": 6.441557202586647e-11,
+     "norm_inf_rel_max": 6.441557202586647e-11,
      "contract": null,
      "bound": null,
      "worst": [
@@ -39,7 +807,7 @@
     },
     "jacobian": {
      "points": 47,
-     "norm_rel": 1.2080569730892518e-11,
+     "norm_inf_rel_max": 1.2080569730892518e-11,
      "contract": null,
      "bound": null,
      "worst": [
@@ -47,30 +815,31 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "gradient": {
       "points": 47,
-      "norm_rel": 2.1457672119140625e+294,
       "contract": null,
       "bound": null,
       "worst": [
        "mgh35-n1-m8-x1"
-      ]
+      ],
+      "norm_inf_rel_max": 2.1457672119140625e+294
      },
      "jacobian": {
       "points": 47,
-      "norm_rel": 1.0963876922621934e-06,
       "contract": null,
       "bound": null,
       "worst": [
        "mgh17-n5-m33-x1"
-      ]
+      ],
+      "norm_inf_rel_max": 1.0963876922621934e-06
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/find_minimum",
@@ -91,6 +860,7 @@
      "unconverged": 0
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -107,8 +877,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/find_root",
@@ -118,12 +888,12 @@
    "regions": {
     "default": {
      "points": 191,
-     "ulp_max": 2.0,
-     "ulp_p999": 2.0,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
      "contract": null,
      "bound": null,
      "worst": [
-      "chandrupatla.3.4"
+      "original.04"
      ],
      "unconverged": 0
     },
@@ -137,6 +907,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -161,14 +932,14 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/least_squares.lm",
    "area": "optimize",
    "name": "least_squares.lm",
-   "points": 54,
+   "points": 52,
    "regions": {
     "certified minimum": {
      "points": 35,
@@ -178,18 +949,20 @@
      "worst": [
       "Chwirut2 start1"
      ],
-     "unconverged": 2
+     "unconverged": 2,
+     "off_target": 0
     },
     "elsewhere": {
-     "points": 19,
-     "rel_max": 603.8376602523776,
+     "points": 17,
+     "rel_max": 0.0006395922166949192,
      "contract": null,
      "bound": null,
      "worst": [
-      "MGH09 start1"
+      "ENSO start1"
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "certified minimum": {
@@ -234,14 +1007,14 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/least_squares.trf",
    "area": "optimize",
    "name": "least_squares.trf",
-   "points": 54,
+   "points": 52,
    "regions": {
     "certified minimum": {
      "points": 35,
@@ -251,18 +1024,20 @@
      "worst": [
       "Hahn1 start1"
      ],
-     "unconverged": 2
+     "unconverged": 2,
+     "off_target": 0
     },
     "elsewhere": {
-     "points": 19,
-     "rel_max": 30.21556774387448,
+     "points": 17,
+     "rel_max": 0.0011995811661799625,
      "contract": null,
      "bound": null,
      "worst": [
-      "MGH17 start1"
+      "ENSO start1"
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "certified minimum": {
@@ -286,8 +1061,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/lsq_linear",
@@ -305,6 +1080,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "cases": {
@@ -318,8 +1094,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize.bfgs",
@@ -348,6 +1124,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "mgh": {
@@ -385,8 +1162,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize.l-bfgs-b",
@@ -412,9 +1189,11 @@
      "bound": 1.0,
      "worst": [
       "mgh29-n10-m10-x1"
-     ]
+     ],
+     "off_target": 0
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "mgh": {
@@ -452,8 +1231,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize.nelder-mead",
@@ -473,6 +1252,7 @@
      "unconverged": 48
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "mgh": {
@@ -501,8 +1281,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize.newton-cg",
@@ -522,6 +1302,7 @@
      "unconverged": 20
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "mgh": {
@@ -537,8 +1318,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize.trust-exact",
@@ -567,6 +1348,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "mgh": {
@@ -591,8 +1373,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize.trust-ncg",
@@ -621,6 +1403,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "mgh": {
@@ -645,8 +1428,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize_scalar.bounded",
@@ -667,6 +1450,7 @@
      "unconverged": 0
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -697,8 +1481,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize_scalar.brent",
@@ -719,6 +1503,7 @@
      "unconverged": 0
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -735,8 +1520,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/minimize_scalar.golden",
@@ -757,6 +1542,7 @@
      "unconverged": 0
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -773,8 +1559,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/nnls",
@@ -792,6 +1578,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "cases": {
@@ -805,8 +1592,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/root.hybr",
@@ -825,6 +1612,7 @@
      "unconverged": 14
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "converged": {
@@ -839,8 +1627,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/root.lm",
@@ -859,6 +1647,7 @@
      "unconverged": 9
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "converged": {
@@ -873,8 +1662,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/root_scalar.bisect",
@@ -912,6 +1701,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -925,8 +1715,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/root_scalar.brentq",
@@ -964,6 +1754,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -1008,8 +1799,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   },
   {
    "id": "optimize/root_scalar.toms748",
@@ -1047,6 +1838,7 @@
      ]
     }
    },
+   "run": "20261120-203828-ae51de0+",
    "comparators": {
     "scipy": {
      "default": {
@@ -1060,8 +1852,8 @@
      }
     }
    },
-   "run": "20261120-185643-d6d2aa8",
-   "comparators_run": "20261120-185643-d6d2aa8"
+   "comparators_run": "20261120-185643-d6d2aa8",
+   "comparator_seconds": 600
   }
  ]
 }

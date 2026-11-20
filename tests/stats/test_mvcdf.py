@@ -1,17 +1,19 @@
-"""The multivariate normal and t cdfs (T9, csrc/stats/mvcdf.hpp), through the native kernel
-stardust._core.stats.mv_cdf(cov, x, batch, df, atol, max_points) -> (values, errors).
+"""The multivariate normal and t cdfs (csrc/stats/mvcdf.hpp, docs/api/stats.md §3), through the
+native kernel stardust._core.stats.mv_cdf(cov, x, batch, df, atol, max_points) -> (values, errors).
 
-References (tests/stats/ref_mvcdf/, written by tools/mvcdf_ref.py):
+References (tests/stats/ref/mv/, written by tools/stats_ref.py; read and judged by the contract
+functions of tests/stats/refdata.py, which the accuracy measurement uses too):
   bvn, tvn   Phi2 and Phi3 as rigorous Arb balls (double-double hi + lo)
+  bvt, tvt   the t at d = 2, 3 through the scale mixture, Arb
   factor_n   one-factor normals d = 4..10, Arb
-  factor_t   one-factor t's d = 2..8, two-level adaptive quadrature (~1e-11)
-The accuracy bounds below are the measured ones (bench/stats/t9/cdf_accuracy.md at commit 4151d2a), with a
-small margin.
+  factor_t   one-factor t's d = 2..8: Arb (the scale mixture) for d <= 3, a two-level adaptive
+             quadrature (scipy, about 1e-11) for d > 3, where the QMC is checked to 1e-5
+The accuracy bounds are the measured ones (bench/stats/accuracy_multivariate.md), with a small
+margin.
 """
 
 import math
 import time
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -21,37 +23,23 @@ import scipy.stats as st
 import stardust as sd
 from stardust._core import stats as C
 
-REF = Path(__file__).parent / "ref_mvcdf"
+from . import refdata
+from .refdata import corr
+from .refdata import mv_cdf_eval as mv
+
 EPS = 2.0**-52
 INF = math.inf
+rel_err = refdata.cdf_rel
 
 
-def mv(cov, x, df=INF, atol=1e-6, max_points=0, batch=None):
-    """values, errors of P(X <= x); cov (d, d) or (B, d, d), x (d,) or (M, d)."""
-    cov = np.asarray(cov, dtype=float)
-    x = np.atleast_2d(np.asarray(x, dtype=float))
-    if cov.ndim == 2:
-        cov = cov[None]
-    if batch is None:
-        batch = np.zeros(len(x), np.int64) if len(cov) == 1 else np.arange(len(x), dtype=np.int64)
-    df = np.broadcast_to(np.asarray(df, dtype=float), (len(cov),)).copy()
-    v, e = C.mv_cdf(
-        sd.asarray(cov), sd.asarray(x), sd.asarray(np.asarray(batch, np.int64)), sd.asarray(df), atol, max_points
-    )
-    return np.asarray(v), np.asarray(e)
-
-
-def corr(R3):
-    """(M, 3) correlations (r12, r13, r23) as (M, 3, 3) matrices."""
-    M = len(R3)
-    S = np.tile(np.eye(3), (M, 1, 1))
-    for q, (a, b) in enumerate(((0, 1), (0, 2), (1, 2))):
-        S[:, a, b] = S[:, b, a] = R3[:, q]
-    return S
-
-
-def rel_err(v, hi, lo):
-    return np.abs((v - hi) - lo) / hi
+def _passes(contract):
+    """Every region of a contract within its bound: {region: worst error / bound}."""
+    out = {}
+    for label, (mask, err, bound) in contract.items():
+        if mask.any():
+            e = np.where(np.isnan(err[mask]), np.inf, err[mask])
+            out[label] = float(e.max()) / bound
+    return out
 
 
 # ---------------------------------------------------------------- d = 1..3, exact
@@ -72,62 +60,38 @@ def test_d1_is_ndtr_and_stdtr():
 
 
 def test_bvn_reference():
-    z = np.load(REF / "bvn.npz")
+    z = refdata.mv_cdf("bvn")
     h, k, r, hi, lo = z["h"], z["k"], z["r"], z["hi"], z["lo"]
     M = len(h)
     S = np.tile(np.eye(2), (M, 1, 1))
     S[:, 0, 1] = S[:, 1, 0] = r
     v, e = mv(S, np.c_[h, k])
     assert np.all(e == 0)
-    norm = hi >= 1e-300
-    rel = rel_err(v[norm], hi[norm], lo[norm])
-    # 1e-14 relative down to P = 1e-15, for every r in (-1, 1) (measured 6.9e-15)
-    assert rel[hi[norm] >= 1e-15].max() <= 1e-14
-    # below, the rounding of the exponent q ~ -ln P inside exp: ~6 eps |ln P| measured
-    assert np.all(rel <= 10 * EPS * np.maximum(1.0, -np.log(hi[norm])))
-    assert np.all(np.abs(v[~norm] - hi[~norm]) <= 1e-300)
-
-
-def _cond3(h, R):
-    """sum over the six inputs of |d log P / d log x| (central differences, our own values)."""
-    st_ = 1e-6
-    c = np.zeros(len(h))
-    for i in range(6):
-        Hp, Hm, Rp, Rm = h.copy(), h.copy(), R.copy(), R.copy()
-        if i < 3:
-            Hp[:, i] *= 1 + st_
-            Hm[:, i] *= 1 - st_
-        else:
-            Rp[:, i - 3] *= 1 + st_
-            Rm[:, i - 3] *= 1 - st_
-        with np.errstate(divide="ignore", invalid="ignore"):
-            c += np.abs((np.log(mv(corr(Rp), Hp)[0]) - np.log(mv(corr(Rm), Hm)[0])) / (2 * st_))
-    return c
+    # 1e-14 relative down to P = 1e-15, for every r in (-1, 1) (measured 6.9e-15); below, the
+    # rounding of the exponent q ~ -ln P inside exp: 10 eps max(1, -ln P) (~6 eps |ln P|
+    # measured); below 1e-300, absolute 1e-300
+    worst = _passes(refdata.bvn_contract(v, e, hi, lo))
+    assert max(worst.values()) <= 1.0, worst
 
 
 def test_tvn_reference():
-    z = np.load(REF / "tvn.npz")
+    z = refdata.mv_cdf("tvn")
     h, R, hi, lo = z["h"], z["r"], z["hi"], z["lo"]
     v, e = mv(corr(R), h)
     assert np.all(e == 0)
-    norm = hi >= 1e-300
-    h, R, v, hi, lo = h[norm], R[norm], v[norm], hi[norm], lo[norm]
-    rel = rel_err(v, hi, lo)
-    negs = (R < 0).sum(axis=1)
-    well = _cond3(h, R)
+    well = refdata.tvn_cond(h, R)
     # the measured regions of 1e-14: at most one negative correlation and P >= 1e-15
-    # (6.6e-15); any correlations with P >= 1e-10 and a condition number <= 100 (7.7e-15)
-    assert rel[(hi >= 1e-15) & (negs <= 1)].max() <= 1e-14
-    assert rel[(hi >= 1e-10) & (well <= 100)].max() <= 1e-14
-    # everywhere: within a few rounding errors of the inputs, u cond (measured max 3.4)
-    fin = np.isfinite(well)  # (a perturbed value that underflows has no log)
+    # (6.6e-15); any correlations with P >= 1e-10 and a condition number <= 100 (7.7e-15);
+    # elsewhere within a few rounding errors of the inputs, 8 u cond (measured max 3.4)
+    worst = _passes(refdata.tvn_contract(v, e, hi, lo, R, well))
+    assert max(worst.values()) <= 1.0, worst
+    fin = np.isfinite(well[hi >= 1e-300])  # (a perturbed value that underflows has no log)
     assert fin.mean() > 0.95
-    assert np.all(rel[fin] <= 8 * 2.0**-53 * np.maximum(well[fin], 1.0))
 
 
 @pytest.mark.parametrize("name", ["bvt", "tvt"])
 def test_t_exact_reference(name):
-    z = np.load(REF / f"{name}.npz")
+    z = refdata.mv_cdf(name)
     h, R, nu, hi, lo = z["h"], z["r"], z["nu"], z["hi"], z["lo"]
     d = h.shape[1]
     S = np.tile(np.eye(d), (len(h), 1, 1))
@@ -135,17 +99,14 @@ def test_t_exact_reference(name):
         S[:, a, b] = S[:, b, a] = R[:, q]
     v, e = mv(S, h, df=nu)
     assert np.all(e == 0)
-    rel = rel_err(v, hi, lo)
-    assert rel.max() <= T_EXACT_REL[name]
-
-
-T_EXACT_REL = {"bvt": 5e-15, "tvt": 1e-14}  # measured 4.7e-16 and 1.5e-15
+    worst = _passes(refdata.t_exact_contract(d, v, e, hi, lo))  # measured 4.7e-16 and 1.5e-15
+    assert max(worst.values()) <= 1.0, worst
 
 
 # Deep tails with negative correlations, where the relative condition number in r is
 # 120-500: an integration end or node rounded to a double moves r by an ulp (the bvt's
 # Plackett end acos(r), a panel's midpoint near the end; the tvt's partial correlation
-# 1 + rho in tvn's conditioning). (h, r, nu, P as hi + lo from tools/mvcdf_ref.py, bound).
+# 1 + rho in tvn's conditioning). (h, r, nu, P as hi + lo from tools/mvcdfref.py, bound).
 T_DEEP = [
     (
         (-11.120329680209238, -27.77238005434969),
@@ -215,7 +176,7 @@ def test_bvn_limits():
 
 
 def test_factor_normal():
-    z = np.load(REF / "factor_n.npz")
+    z = refdata.mv_cdf("factor_n")
     h, lam, d, ref = z["h"], z["lam"], z["d"], z["hi"]
     for atol in (1e-6, 1e-4):
         for i in range(len(d)):
@@ -225,26 +186,23 @@ def test_factor_normal():
             v, e = mv(S, h[i, :n], atol=atol)
             # the estimate is statistical (3 standard errors over 12 shifts): measured, the
             # actual error exceeds it at up to ~7% of the points, by at most 1.9x
-            assert e[0] <= atol
-            assert abs(v[0] - ref[i]) <= 1.5 * atol
-            assert abs(v[0] - ref[i]) <= 2 * e[0] + 1e-12
+            assert refdata.qmc_contract(abs(v[0] - ref[i]), e[0], atol, 1e-12) <= 1.0, i
 
 
 def test_factor_t():
-    z = np.load(REF / "factor_t.npz")
-    h, lam, d, nu, ref = z["h"], z["lam"], z["d"], z["nu"], z["hi"]
+    z = refdata.mv_cdf("factor_t")
+    h, lam, d, nu, ref, lo = z["h"], z["lam"], z["d"], z["nu"], z["hi"], z["lo"]
     for i in range(len(d)):
         n = d[i]
         S = np.outer(lam[i, :n], lam[i, :n])
         np.fill_diagonal(S, 1.0)
-        if n <= 3:  # the exact mixture: as good as the quadrature reference (~1e-13)
+        if n <= 3:  # the exact mixture against the Arb references
             v, e = mv(S, h[i, :n], df=nu[i])
-            assert e[0] == 0 and abs(v[0] - ref[i]) <= 1e-13 * ref[i]
+            worst = _passes(refdata.t_exact_contract(int(n), v, e, ref[i : i + 1], lo[i : i + 1]))
+            assert max(worst.values()) <= 1.0, (i, worst)
         elif i % 3 == 0:  # a third of the QMC points (the slow ones)
             v, e = mv(S, h[i, :n], df=nu[i], atol=1e-5)
-            assert e[0] <= 1e-5
-            assert abs(v[0] - ref[i]) <= 1.5e-5
-            assert abs(v[0] - ref[i]) <= 2 * e[0] + 1e-10
+            assert refdata.qmc_contract(abs(v[0] - ref[i]), e[0], 1e-5, 1e-10) <= 1.0, i
 
 
 def test_t_against_scipy():
@@ -408,7 +366,7 @@ def test_repeatable():
 
 
 # ---- extreme arguments (docs/design/stats.md §3.5): right in the guaranteed region, right or NaN
-# outside it, and back in bounded time. The values are Arb's (tools/mvcdf_ref.py: _tvn, _tmix).
+# outside it, and back in bounded time. The values are Arb's (tools/mvcdfref.py: _tvn, _tmix).
 
 
 def _r3(r12, r13, r23):
@@ -574,3 +532,16 @@ def test_exact_cdf_returns_in_bounded_time():
         v, e = mv(_r3(*r), h, df=df)
         assert time.perf_counter() - t0 < 5.0
         assert math.isnan(v[0]) or 0.0 <= v[0] <= 1.0
+
+
+def test_mvcdf_atol():
+    M = sd.stats.MultivariateNormal(mu=sd.asarray([0.0, 0.0]), cov=sd.asarray(np.eye(2)))
+    x = sd.asarray([0.0, 0.0])
+    for bad in (math.inf, -1.0, 0, math.nan):
+        with pytest.raises(ValueError, match=r"^cdf\(\): 'atol' must be a finite number > 0$"):
+            M.cdf(x, atol=bad)
+    with pytest.raises(OverflowError, match=r"^cdf\(\): 'atol' is out of range$"):
+        M.cdf(x, atol=10**400)
+    with pytest.raises(TypeError, match=r"^cdf\(\): 'atol' must be an int or a float, not bool$"):
+        M.cdf(x, atol=True)
+    assert M.cdf(x, atol=np.int64(1)) == M.cdf(x, atol=1) == 0.25

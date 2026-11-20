@@ -14,22 +14,31 @@ conversions (numpy to sd, adding a constant column, ...) happen outside the timi
     )
 
 A comparator (Ref) is timed once per round at its libraries' default threads
-(threads="fixed": numpy's elementwise loops and scipy.special run on one thread, their
-BLAS on its default pool), or at each of the case's thread counts with its BLAS pool
-limited to that count (threads="follow", as the regression benches did with
-threadpoolctl). An RRef is an R expression timed in the run's one R session.
+(threads="fixed": numpy's elementwise loops and scipy.special run on one thread), or at
+each of the case's thread counts with its BLAS pool limited to that count
+(threads="follow": every comparator whose work is mostly BLAS or LAPACK, so a 1-thread sd
+row meets a 1-thread BLAS). An RRef is an R expression timed in the run's one R session,
+which runs on one thread (OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1).
+
+Results check (python -m bench.speed run --smoke): every case's sd result is compared
+with its first Python comparator's and with every R and Boost comparator's (check.py).
+A comparator that computes something else by design carries `differs` (why; it is not
+compared and the reason goes into the table's note); a case whose results cannot be
+compared value by value carries a Check (a normaliser, or `skip` with the reason).
 """
 
 from __future__ import annotations
 
 import dataclasses
-import fnmatch
 import importlib
 import os
 import re
 from collections.abc import Callable, Iterable, Sequence
 
-AREAS = ("array", "linalg", "frame", "random", "special", "stats", "regression", "optimize")
+from bench import areas as _areas
+from bench import cli
+
+AREAS = _areas.AREAS
 
 Factory = Callable[[dict], Callable[[], object]]
 
@@ -44,6 +53,7 @@ class Ref:
     threads: str = "fixed"  # "fixed" or "follow"
     lib: str | None = None
     n: int | None = None  # elements its call handles, when not the case's n (a sample of a slow input)
+    differs: str = ""  # it computes something else by design: why (not value-checked; shown as a note)
 
     def __post_init__(self):
         if self.threads not in ("fixed", "follow"):
@@ -58,7 +68,10 @@ class Ref:
 class RRef:
     """An R comparator: `expr` evaluated each call, after the case's arrays named in
     `data` (case data key -> R variable name) are loaded and `setup` has run. R runs on
-    one thread (its reference BLAS)."""
+    one thread (rsession.R_ENV).
+
+    `sets`: the case data key of a list of input sets (dicts with the same keys as `data`)
+    for a rotated case: R calls `expr` on each set in turn, as harness.rotate does."""
 
     label: str
     expr: str
@@ -67,10 +80,31 @@ class RRef:
     packages: tuple[str, ...] = ()
     threads: str = "fixed"
     n: int | None = None
+    differs: str = ""
+    sets: str = ""
+    value: str = ""  # for the results check: an R expression of the call's result `.v` (default .v)
 
     @property
     def library(self) -> str:
         return "R"
+
+
+@dataclasses.dataclass(frozen=True)
+class Check:
+    """How the smoke run compares a case's results (check.py).
+
+    sd, ref: turn sd's result, or a comparator's (given its label), into what is compared
+    (default check.normalise: arrays, scalars, frames, fit and optimizer results).
+    rtol, atol: the relative and absolute tolerance of one value (atol None: check.ATOL);
+    agree: the share of the values both sides give (not NaN) that must agree. skip: no
+    value comparison, and why (e.g. two random streams)."""
+
+    sd: Callable[[object], object] | None = None
+    ref: Callable[[str, object], object] | None = None
+    rtol: float = 1e-6
+    atol: float | None = None
+    agree: float = 0.5
+    skip: str = ""
 
 
 @dataclasses.dataclass
@@ -80,7 +114,7 @@ class Case:
     name: str  # what is called, e.g. "Normal.cdf", "solve", "ols fit"
     sd: Factory
     setup: Callable[[], dict] = dict
-    size: str = ""  # shown in the table, e.g. "10^6", "(100,000, 10)"
+    size: str = ""  # shown in the table, e.g. "10^6", "(100000, 10)" (bench/README.md: case ids)
     n: int | None = None  # elements per call, for per-element costs
     refs: tuple = ()
     threads: tuple[int, ...] = (1, 10)
@@ -90,6 +124,14 @@ class Case:
     timing: dict = dataclasses.field(default_factory=dict)  # harness.measure overrides
     teardown: Callable[[dict], None] | None = None  # undo global settings the setup made
     title: str = ""  # the group's section title in bench/<area>/speed.md (set by load from TITLES)
+    check: Check = Check()  # how --smoke compares the results
+
+    @property
+    def notes(self) -> str:
+        """The note with the comparators' `differs` reasons appended."""
+        parts = [self.note] if self.note else []
+        parts += [f"{r.label}: {r.differs}" for r in self.refs if r.differs]
+        return "; ".join(parts)
 
     def __post_init__(self):
         if self.area not in AREAS:
@@ -133,25 +175,41 @@ def load(areas: Iterable[str] | None = None) -> list[Case]:
     return out
 
 
-def select(
-    cases: Sequence[Case], *, match: Sequence[str] = (), quick: bool = False, groups: Sequence[str] = ()
-) -> list[Case]:
-    """Filter cases: `match` patterns (a glob if it contains * or ?, else a regular
-    expression searched in the case id; any pattern may match), `groups` (exact group
-    names), `quick` (the quick subset only)."""
-    out = []
-    for c in cases:
-        if quick and not c.quick:
-            continue
-        if groups and c.group not in groups:
-            continue
-        if match and not any(_matches(p, c.id) for p in match):
-            continue
-        out.append(c)
-    return out
+def select(cases: Sequence[Case], *, match: Sequence[str] = (), quick: bool = False) -> list[Case]:
+    """Filter cases: `match` patterns on the case id (bench.cli.matches: a glob, or plain
+    text matched as a substring; any pattern may match), `quick` (the quick subset only)."""
+    return [c for c in cases if (c.quick or not quick) and cli.matches(match, c.id)]
 
 
-def _matches(pattern: str, text: str) -> bool:
-    if any(ch in pattern for ch in "*?"):
-        return fnmatch.fnmatchcase(text, pattern) or fnmatch.fnmatchcase(text, f"*{pattern}*")
-    return re.search(pattern, text) is not None
+# ---------------------------------------------------------------- case ids
+# One notation for the size part of an id (bench/README.md, "사례 id"):
+#   COUNT [UNIT]   an element count: 10^k, 2^k or a plain integer (a power of ten from 10^3
+#                  up is written 10^k); UNIT one of rows, points, matrices
+#   SHAPE          (m, n) / (m,) / (b, m, n): plain integers, ", " between them
+#   COUNT x SHAPE  a batch of B problems of one shape
+#   n=COUNT        the dimension of an optimization problem
+# No thousands separators, ASCII only; a named test problem goes into the name.
+_COUNT = r"(?:10\^\d+|2\^\d+|\d+)"
+_DIM = r"\d+"
+_SHAPE = rf"\((?:{_DIM},|{_DIM}(?:, {_DIM})+)\)"
+SIZE_RE = re.compile(rf"(?:{_COUNT}(?: (?:rows|points|matrices))?|{_SHAPE}|{_COUNT} x {_SHAPE}|n={_COUNT})")
+
+
+def count(n: int) -> str:
+    """An element count in the id notation: 10^k for a power of ten from 10^3 up."""
+    k = len(str(n)) - 1
+    return f"10^{k}" if k >= 3 and n == 10**k else str(n)
+
+
+def size_problem(size: str) -> str | None:
+    """Why `size` breaks the id notation, or None."""
+    if not size:
+        return None
+    if not size.isascii():
+        return "not ASCII"
+    if not SIZE_RE.fullmatch(size):
+        return "not COUNT [UNIT], (m, n), B x (m, n) or n=COUNT"
+    for tok in re.findall(r"(?<![\^\d])\d+(?![\d)])", size.split("(")[0]):
+        if len(tok) >= 4 and re.fullmatch(r"10*", tok):
+            return f"write {tok} as 10^{len(tok) - 1}"
+    return None

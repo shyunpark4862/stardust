@@ -64,20 +64,23 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 층 구조, 디렉터리, 공통 부품 |
 | `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md), [통계](docs/design/stats.md), [회귀](docs/design/regression.md), [난수](docs/design/random.md), [최적화](docs/design/optimize.md) |
 | [ROADMAP.md](ROADMAP.md) | 진행 순서 |
-| [tests/README.md](tests/README.md) | 테스트, 골든, 커버리지, 정확도 측정의 실행 |
+| [tests/README.md](tests/README.md) | 테스트, 골든, 커버리지의 실행 |
+| [bench/README.md](bench/README.md) | 속도와 정확도 측정 |
 
 ## 빌드와 테스트
 macOS (Apple Silicon), Python 3.15에서 확인했다.
 ```bash
-python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pytest hypothesis numpy scipy pandas polars
+python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core
 ```
 ```bash
-.venv/bin/pip install --no-build-isolation -e .
+.venv/bin/pip install --no-build-isolation -e ".[test]"
 ```
 ```bash
-.venv/bin/python -m pytest -q
+.venv/bin/python tools/test.py
 ```
+- `test` 묶음(pyproject.toml)은 테스트가 쓰는 정답지와 도구다: pytest, pytest-xdist, pytest-cov, hypothesis, numpy, scipy, pandas, polars, python-flint(Arb 참값), statsmodels, scikit-learn.
+- 속도·정확도 측정은 `bench` 묶음(`".[bench]"`: `test`와 tqdm, pyarrow, threadpoolctl)을 더 쓴다 (bench/README.md).
 
 문서와 통합의 검사:
 - `.venv/bin/python tools/check_refs.py`: 코드, 테스트, 문서의 `docs/design/array.md §6.2` 같은 참조가 모두 있는 절을 가리키는지 본다.
-- `.venv/bin/python tools/golden.py check array` (다른 영역도, 영역을 빼면 모두): 저장한 골든 출력과 비트까지 비교한다(tests/README.md §2). 옛 패키지로 기록한 골든 출력 12,424개와, 일부러 바꾼 결과의 이유를 적은 `expected.py`는 커밋 4151d2a의 `bench/merge/golden/`에 있다.
+- `.venv/bin/python tools/golden.py check` (영역 이름을 주면 그 영역만): 공개 API의 결과를 저장한 골든 출력과 스레드 수 1, 3, 10에서 비트까지 비교한다. 케이스 수는 `tools/golden.py list`가 센다(2026-11-20: 8영역 24,422개; tests/README.md §2).

@@ -11,16 +11,16 @@ import warnings
 
 import numpy as np
 import pytest
-import scipy
 from scipy.optimize import elementwise as ew
 
 import stardust as sd
+from tests._bits import value_equal
 
 from . import functions as fn
+from .conftest import LIVE
 
 DATA = pathlib.Path(__file__).parent / "data"
 REF = json.loads((DATA / "scipy_elementwise.json").read_text())
-LIVE = pytest.mark.skipif(scipy.__version__ != "1.18.1", reason="the steps are scipy 1.18.1's")
 PAPER_ROOT = dict(xrtol=4e-10, xatol=1e-5)
 PAPER_MIN = dict(xatol=1e-4, fatol=1e-6, xrtol=1e-16, frtol=1e-16)
 
@@ -48,11 +48,6 @@ def vec_np(c, log):
     return f
 
 
-def same(a, b):
-    a, b = float(a), float(b)
-    return a == b or (math.isnan(a) and math.isnan(b))
-
-
 def check(s, r, keys):
     """The recorded scipy fields s (scipy's names) against the result r."""
     names = {"f_x": "fun", "nit": "n_iter", "success": "converged"}
@@ -61,9 +56,9 @@ def check(s, r, keys):
             continue
         v = getattr(r, names.get(k, k))
         if k in ("bracket", "f_bracket"):
-            assert len(v) == len(s[k]) and all(same(p, q) for p, q in zip(v, s[k])), k
+            assert len(v) == len(s[k]) and all(value_equal(p, q) for p, q in zip(v, s[k])), k
         else:
-            assert same(v, s[k]), (k, v, s[k])
+            assert value_equal(v, s[k]), (k, v, s[k])
 
 
 def check_bracket_root(s, r):
@@ -74,7 +69,7 @@ def check_bracket_root(s, r):
     if s["status"] == 0 and s["bracket"][0] > s["bracket"][1]:
         check(s, r, ("nfev", "nit", "status", "success"))
         (xl, xr), (fl, fr) = r.bracket, r.f_bracket
-        assert xl < xr and same(xr, s["bracket"][1]) and same(fr, s["f_bracket"][1])
+        assert xl < xr and value_equal(xr, s["bracket"][1]) and value_equal(fr, s["f_bracket"][1])
         assert fl == 0 or fr == 0 or (fl < 0) != (fr < 0)
         return 1
     check(s, r, BRACKET_KEYS)
@@ -128,7 +123,9 @@ def test_every_call_point_follows_scipy():
         ls, ld = [], []
         getattr(ew, name)(vec_np(c, ls), *a, **({"tolerances": kw} if kw else {}))
         getattr(sd.optimize, name)(vec(c, ld), *a, **kw)
-        assert ls == ld or all(len(p) == len(q) and all(same(a, b) for a, b in zip(p, q)) for p, q in zip(ls, ld)), (
+        assert ls == ld or all(
+            len(p) == len(q) and all(value_equal(a, b) for a, b in zip(p, q)) for p, q in zip(ls, ld)
+        ), (
             c.id,
             name,
         )
@@ -164,11 +161,6 @@ def as_np(v):
     return np.array(v.tolist()) if isinstance(v, sd.ndarray) else np.asarray(v)
 
 
-def eq(a, b):
-    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
-    return a.shape == b.shape and bool(np.all((a == b) | (np.isnan(a) & np.isnan(b))))
-
-
 SCIPY_NAMES = {"fun": "f_x", "n_iter": "nit", "converged": "success"}
 
 
@@ -177,9 +169,9 @@ def assert_batch_equal(rs, rd, fields):
         sv = rs[SCIPY_NAMES.get(k, k)]
         dv = getattr(rd, k)
         if isinstance(sv, tuple):
-            assert len(sv) == len(dv) and all(eq(p, as_np(q)) for p, q in zip(sv, dv)), k
+            assert len(sv) == len(dv) and all(value_equal(p, as_np(q)) for p, q in zip(sv, dv)), k
         else:
-            assert eq(sv, as_np(dv)), k
+            assert value_equal(sv, as_np(dv)), k
 
 
 def batch_inputs():
@@ -227,7 +219,7 @@ def test_root_batches_follow_scipy(name, kw):
         rd = sd.optimize.bracket_root(logged(g_sd, ld), *a, **kw, **({"max_iter": mi} if mi else {}))
         fields = BF
     assert_batch_equal(rs, rd, fields)
-    assert len(ls) == len(ld) and all(eq(p, q) for p, q in zip(ls, ld))
+    assert len(ls) == len(ld) and all(value_equal(p, q) for p, q in zip(ls, ld))
     assert len(set(as_np(rd.status).ravel().tolist())) >= 2
 
 
@@ -250,7 +242,7 @@ def test_minimum_batches_follow_scipy():
         rs = getattr(ew, name)(logged(h, ls), *a, **kw)
         rd = getattr(sd.optimize, name)(logged(h, ld), *a, **kw)
         assert_batch_equal(rs, rd, RF if name == "find_minimum" else BF)
-        assert len(ls) == len(ld) and all(eq(p, q) for p, q in zip(ls, ld)), name
+        assert len(ls) == len(ld) and all(value_equal(p, q) for p, q in zip(ls, ld)), name
 
 
 def test_batch_equals_each_element_alone():
@@ -261,11 +253,11 @@ def test_batch_equals_each_element_alone():
         a, j = divmod(i, 50)
         e = sd.optimize.find_root(g_sd, (float(xl[a, j]), float(xr[a, j])))
         for k in ("x", "fun", "converged", "status", "n_iter", "nfev"):
-            assert same(as_np(getattr(r, k))[a, j], getattr(e, k)), (i, k)
+            assert value_equal(as_np(getattr(r, k))[a, j], getattr(e, k)), (i, k)
         e = sd.optimize.bracket_root(g_sd, float(xl[a, j]), xmax=2.0)
         for k in ("converged", "status", "n_iter", "nfev"):
-            assert same(as_np(getattr(b, k))[a, j], getattr(e, k)), (i, k)
-        assert all(same(as_np(p)[a, j], q) for p, q in zip(b.bracket, e.bracket))
+            assert value_equal(as_np(getattr(b, k))[a, j], getattr(e, k)), (i, k)
+        assert all(value_equal(as_np(p)[a, j], q) for p, q in zip(b.bracket, e.bracket))
 
 
 def test_large_batches_split_over_threads_keep_every_bit():
@@ -360,7 +352,7 @@ def test_args_follow_scipy():
         assert_batch_equal(rs, rd, RF if name.startswith("find") else BF)
         assert len(ls) == len(ld)
         for (xs, ps), (xd, pd) in zip(ls, ld):
-            assert eq(xs, xd) and all(eq(p, q) for p, q in zip(ps, pd)), name
+            assert value_equal(xs, xd) and all(value_equal(p, q) for p, q in zip(ps, pd)), name
 
 
 def test_args_shapes_and_kinds():

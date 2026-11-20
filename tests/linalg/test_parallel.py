@@ -7,7 +7,9 @@ the same and every error message names the same (smallest) batch index
 
 import hashlib
 import math
+import sys
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -20,10 +22,7 @@ DEFAULT = sd.get_num_threads()
 COUNTS = sorted({1, 3, DEFAULT})
 
 
-@pytest.fixture(autouse=True)
-def restore_threads():
-    yield
-    sd.set_num_threads(DEFAULT)
+pytestmark = pytest.mark.usefixtures("restore_threads")
 
 
 def as_tuple(r):
@@ -200,3 +199,85 @@ def test_thread_count_is_library_wide():
     for n in (2, 1, 5, DEFAULT, 1):
         sd.set_num_threads(n)
         assert bits(sd.linalg.qr(a)) == ref
+
+
+LA = sd.linalg
+
+
+class Watcher:
+    """A Python thread that measures how long it was kept from running."""
+
+    def __init__(self):
+        self.longest = 0.0
+        self.turns = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run)
+
+    def _run(self):
+        last = time.perf_counter()
+        while not self._stop.is_set():
+            now = time.perf_counter()
+            self.longest = max(self.longest, now - last)
+            last = now
+            self.turns += 1
+
+    def __enter__(self):
+        self._thread.start()
+        while self.turns == 0:
+            time.sleep(0.001)
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join()
+
+    def held_fraction(self, call):
+        best = 1.0
+        for _ in range(4):  # a pause from the machine being busy can hit one attempt
+            time.sleep(0.002)
+            self.longest = 0.0
+            start = time.perf_counter()
+            call()
+            took = time.perf_counter() - start
+            time.sleep(0.002)
+            best = min(best, self.longest / took)
+            if best < 0.25:
+                break
+        return best
+
+
+# ------------------------------------------------------------------- GIL --
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize("threads", [1, 10])
+def test_unsplit_and_many_rhs_solves_release_the_gil(threads):
+    rng = np.random.default_rng(0)
+    n, batch = 10, 100_000
+    ab = sd.asarray(rng.standard_normal((batch, 5, n)) + np.array([0, 0, 10, 0, 0])[:, None])
+    b = sd.asarray(rng.standard_normal((batch, n, 1)))
+    a3 = sd.asarray(rng.standard_normal((3, 3)) + 3 * np.eye(3))
+    rhs = sd.asarray(np.asfortranarray(rng.standard_normal((3, 3_000_000))))
+    d = sd.asarray(rng.standard_normal(4) + 5)
+    dl = sd.asarray(rng.standard_normal(3))
+    rhs4 = sd.asarray(np.asfortranarray(rng.standard_normal((4, 2_000_000))))
+    calls = {
+        # a small band is never split (docs/design/linalg.md §7.4), yet long
+        "solve_banded 2,2 batch": lambda: LA.solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2),
+        # one small matrix, many right-hand sides
+        "solve many rhs": lambda: LA.solve(a3, rhs),
+        "solve_triangular many rhs": lambda: LA.solve_triangular(a3, rhs, upper=True),
+        "solve_tridiagonal many rhs": lambda: LA.solve_tridiagonal(dl, d, dl, rhs4),
+    }
+    before, interval = sd.get_num_threads(), sys.getswitchinterval()
+    sd.set_num_threads(threads)
+    sys.setswitchinterval(0.0005)
+    try:
+        for call in calls.values():
+            call()
+        with Watcher() as w:
+            held = {name: f for name, call in calls.items() if (f := w.held_fraction(call)) >= 0.25}
+    finally:
+        sys.setswitchinterval(interval)
+        sd.set_num_threads(before)
+    assert not held, held

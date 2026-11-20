@@ -469,3 +469,14 @@ def test_index_into_an_empty_axis():
     with pytest.raises(IndexError):
         e[sd.asarray([-1, 0])]
     assert_same(e[sd.asarray(np.zeros(0, dtype=np.int64))], np.zeros(0))
+
+
+def test_index_messages_and_empty_keys():
+    x = sd.asarray([1.0, 2, 3])
+    with pytest.raises(IndexError, match=r"^a 0-dimensional array is not a valid index; use an int$"):
+        x[np.array(1)]
+    assert x[[[]]].shape == (1, 0) and x[[[]]].dtype == sd.float64  # as x[[]]: no positions, numpy too
+    assert sd.ones((2, 3))[[[]], [[]]].shape == (1, 0)
+    assert x[[]].shape == (0,)
+    with pytest.raises(IndexError, match=r"^take_along_axis\(\): shapes could not be broadcast together"):
+        sd.take_along_axis(sd.ones((2, 3)), sd.asarray([[0], [1], [0]]), axis=1)

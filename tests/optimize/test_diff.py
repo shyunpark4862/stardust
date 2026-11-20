@@ -36,7 +36,8 @@ def grad_of(c):
     return g
 
 
-def rel(a, b):
+def norm_inf_rel(a, b):
+    """max |a - b| / max |b|: the error relative to the largest reference entry."""
     a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
     return float(np.max(np.abs(a - b)) / max(np.max(np.abs(b)), 1e-300))
 
@@ -57,10 +58,10 @@ def test_accurate_differences_against_the_analytic_derivatives(c):
     f, F, J, g = fns(c)
     x0 = c.x0()
     # worst over the 47 cases: 1.2e-11 (Jacobian), 6.4e-11 (gradient), normwise
-    assert rel(sd.optimize.approx_fprime(x0, F).tolist(), J) <= 5e-11
-    assert rel(sd.optimize.approx_fprime(x0, f).tolist(), g) <= 2e-10
+    assert norm_inf_rel(sd.optimize.approx_fprime(x0, F).tolist(), J) <= 5e-11
+    assert norm_inf_rel(sd.optimize.approx_fprime(x0, f).tolist(), g) <= 2e-10
     # scipy's forward differences are good to about sqrt(u)
-    assert rel(sd.optimize.approx_fprime(x0, F, epsilon=SQRT_EPS).tolist(), J) <= 2e-6
+    assert norm_inf_rel(sd.optimize.approx_fprime(x0, F, epsilon=SQRT_EPS).tolist(), J) <= 2e-6
 
 
 def test_check_grad_is_scipys():
@@ -97,10 +98,10 @@ def test_shapes():
     x0 = [1.0, 2.0, 3.0]
     g = sd.optimize.approx_fprime(x0, lambda x: float(sd.sum(x * x)))
     assert g.shape == (3,) and g.dtype == sd.float64
-    assert rel(g.tolist(), [2.0, 4.0, 6.0]) <= 1e-12
+    assert norm_inf_rel(g.tolist(), [2.0, 4.0, 6.0]) <= 1e-12
     J = sd.optimize.approx_fprime(x0, lambda x: x * x)
     assert J.shape == (3, 3)
-    assert rel(J.tolist(), np.diag([2.0, 4.0, 6.0])) <= 1e-12
+    assert norm_inf_rel(J.tolist(), np.diag([2.0, 4.0, 6.0])) <= 1e-12
     # one value is still a vector function: (1, n)
     assert sd.optimize.approx_fprime(x0, lambda x: sd.sum(x * x, keepdims=True)).shape == (1, 3)
     # numpy results and Python sequences are taken; f gets a new float64 sd.ndarray

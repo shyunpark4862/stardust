@@ -257,17 +257,17 @@ const std::unordered_map<std::string, std::pair<int, Fn>>& specials() {
         {"chndtr",
          {3,
           [](const double* a) {
-              return bm::cdf(bm::non_central_chi_squared_distribution<double, Pol>(a[1], a[2]), a[0]);
+              return bm::cdf(bm::non_central_chi_squared_distribution<double, Pol>(a[0], a[1]), a[2]);
           }}},
         {"chndtrc",
          {3,
           [](const double* a) {
-              return bm::cdf(bm::complement(bm::non_central_chi_squared_distribution<double, Pol>(a[1], a[2]), a[0]));
+              return bm::cdf(bm::complement(bm::non_central_chi_squared_distribution<double, Pol>(a[0], a[1]), a[2]));
           }}},
         {"chndtrix",
          {3,
           [](const double* a) {
-              return bm::quantile(bm::non_central_chi_squared_distribution<double, Pol>(a[1], a[2]), a[0]);
+              return bm::quantile(bm::non_central_chi_squared_distribution<double, Pol>(a[0], a[1]), a[2]);
           }}},
         {"ncfdtr",
          {4,

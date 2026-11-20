@@ -1,26 +1,24 @@
 """Boost.Math as a speed comparator (bench/speed/boost_speed.cpp), built on first use.
 
-The headers are the checkout the accuracy comparator uses (bench/accuracy/boost.py: SD_BOOST_MATH,
-else build/comparators/boost-math). The library is built into build/comparators/ with the system
-clang++ and the accuracy comparator's flags (bench.accuracy.boost.FLAGS: sd's own -O3 -mcpu=native
--ffp-contract=off, CMakeLists.txt), and rebuilt when the source changes. A comparator's callable makes one ctypes call per array: the loop
-over the elements runs in C++ (one inlined Boost call per element), so the Python cost is one call
-per array, as for sd and scipy. Without the checkout the Boost columns are left out.
+The headers, the flags and the build are the accuracy comparator's (bench/accuracy/boost.py,
+build: SD_BOOST_MATH, else build/comparators/boost-math; FLAGS -O3 -mcpu=native -ffp-contract=off
+-std=c++17); the library is rebuilt when the source, the flags or the checkout's commit change.
+Nothing is built until a comparator is first called: listing the cases needs only the static
+name tables (BOOST_SPECIAL and BOOST_DISTS in bench/accuracy/compare.py).
+
+A comparator's callable makes one ctypes call per array: the loop over the elements runs in
+C++ (one inlined Boost call per element), so the Python cost is one call per array, as for sd
+and scipy. It returns its preallocated output (also its `out` attribute), which the smoke
+run's results check reads. Without the checkout the Boost columns are left out.
 """
 
 from __future__ import annotations
 
 import ctypes
-import hashlib
-import os
 import pathlib
-import subprocess
 
 import numpy as np
 
-from bench.accuracy.boost import FLAGS  # one set of build flags for both comparators (sd's own)
-
-ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = pathlib.Path(__file__).with_name("boost_speed.cpp")
 _LIB = [None]
 
@@ -44,17 +42,9 @@ def version() -> str | None:
 def _lib():
     if _LIB[0] is not None:
         return _LIB[0]
-    h = headers()
-    key = hashlib.sha256(SRC.read_bytes() + str(h).encode() + " ".join(FLAGS).encode()).hexdigest()[:12]
-    out = ROOT / "build" / "comparators" / f"libsdboostspeed-{key}.dylib"
-    if not out.exists():
-        out.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out.with_suffix(f".{os.getpid()}.tmp")
-        cmd = ["clang++", *FLAGS, "-shared", "-fPIC", "-DBOOST_MATH_STANDALONE", f"-I{h / 'include'}", str(SRC),
-               "-o", str(tmp)]  # fmt: skip
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-        tmp.replace(out)  # several workers may build at once: the last rename wins, each whole
-    lib = ctypes.CDLL(str(out))
+    from bench.accuracy import boost as acc
+
+    lib = ctypes.CDLL(str(acc.build(SRC, "libsdboostspeed")))
     P = ctypes.POINTER(ctypes.c_double)
     PP = ctypes.POINTER(P)
     lib.sdb_special.restype = ctypes.c_int
@@ -93,9 +83,11 @@ def special(name: str, args):
     if rc != 0:
         raise ValueError(f"boost: {name} ({'unknown' if rc == -1 else 'wrong argument count'})")
 
-    def call(lib=lib, cname=cname, k=len(arrs), ptrs=ptrs, n=n, o=o, keep=(arrs, out)):
-        return lib.sdb_special(cname, k, ptrs, n, o)
+    def call(lib=lib, cname=cname, k=len(arrs), ptrs=ptrs, n=n, o=o, out=out, keep=arrs):
+        lib.sdb_special(cname, k, ptrs, n, o)
+        return out
 
+    call.out = out
     return call
 
 
@@ -121,7 +113,9 @@ def dist(dist: str, method: str, params, x):
     if rc != 0:
         raise ValueError(f"boost: {dist}:{method} ({'unknown' if rc == -1 else 'wrong parameter count'})")
 
-    def call(fn=fn, cd=cd, cm=cm, pp=pp, k=len(params), px=px, n=n, o=o, keep=keep):
-        return fn(cd, cm, pp, k, px, n, o)
+    def call(fn=fn, cd=cd, cm=cm, pp=pp, k=len(params), px=px, n=n, o=o, out=out, keep=keep):
+        fn(cd, cm, pp, k, px, n, o)
+        return out
 
+    call.out = out
     return call

@@ -2,7 +2,6 @@
 __pycache__/
 *.py[cod]
 .venv/
-.venv-legacy/
 .pytest_cache/
 .hypothesis/
 *.egg-info/
@@ -11,9 +10,6 @@ __pycache__/
 /build/
 /dist/
 *.so
-
-# Experiments
-experiments/**/out/
 
 # macOS
 .DS_Store

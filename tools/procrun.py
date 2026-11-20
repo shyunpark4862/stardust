@@ -1,7 +1,8 @@
 """Running a tool's subprocess (pytest, cmake, ninja) behind the console of bench/console.py: its
 output goes to the run's log, the terminal shows a progress bar read from that output and a
 result line, so a tool prints the same blocks as bench.speed and bench.accuracy instead of the
-subprocess's own stream. Used by tools/test.py and tools/coverage.py."""
+subprocess's own stream. Used by tools/test.py and tools/coverage.py; their log files come from
+bench/cli.py's log_file (build/logs/<tool>/, the newest kept)."""
 
 from __future__ import annotations
 
@@ -22,26 +23,22 @@ PYTEST_TOTAL = (
     re.compile(r"^\d+ workers \[(\d+) items?\]"),  # pytest-xdist
     re.compile(r"^collect(?:ing \.\.\. collect)?ed (\d+) items?(?: / \d+ deselected / (\d+) selected)?"),
 )
-# One line per finished test under pytest -v: '[gw3] [ 41%] PASSED tests/a.py::t' (xdist) or
-# 'tests/a.py::t PASSED   [ 41%]'.
+# One line per finished test under pytest -v: '[gw3] [ 41%] PASSED tests/<file>.py::<test>' (xdist)
+# or 'tests/<file>.py::<test> PASSED   [ 41%]'.
 PYTEST_DONE = re.compile(
     r"^(?:\[gw\d+\] \[\s*\d+%\] (?P<o1>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS) (?P<t1>\S.*)"
     r"|(?P<t2>\S+::\S.*?) (?P<o2>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\s+\[\s*\d+%\])$"
 )
-COUNTS = re.compile(r"(\d+) (passed|failed|errors?|skipped|deselected|xfailed|xpassed)\b")
+NO_TESTS = 5  # pytest's exit status when nothing was selected
+# pytest arguments tools/test.py and tools/coverage.py do not pass on (after --), and why
+REFUSED = {
+    "-k": "select with --match",
+    "-m": "the tier and the two phases set the marks; select with --match",
+    "-n": "set the workers with --jobs",
+    "--numprocesses": "set the workers with --jobs",
+    "--tier": "give --tier before --",
+}
 COUNTS = ("passed", "failed", "errors", "skipped", "deselected", "xfailed", "xpassed")
-
-
-def log_path(kind: str) -> pathlib.Path:
-    """build/<kind>/<stamp>.log, a new file per run."""
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    p = ROOT / "build" / kind / f"{stamp}.log"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    k = 2
-    while p.exists():  # two runs in the same second
-        p = p.with_name(f"{stamp}-{k}.log")
-        k += 1
-    return p
 
 
 class PytestProgress:
@@ -155,3 +152,23 @@ def pytest_summary(lines: list[str]) -> tuple[dict, list[str]]:
                 counts["errors" if word.startswith("error") else word] = int(k)
     failed = [ln for ln in lines if ln.startswith(("FAILED ", "ERROR "))]
     return counts, failed
+
+
+def refused_pytest_args(args) -> str | None:
+    """Why one of the pytest arguments is not passed on (REFUSED), or None."""
+    for a in args:
+        name = a.split("=", 1)[0]
+        short = a[:2] if a[:2] in ("-k", "-m", "-n") else None  # also -kexpr, -mserial, -n4
+        if short or name in REFUSED:
+            return f"{a!r} after --: {REFUSED[short or name]}"
+    return None
+
+
+def pytest_status(codes) -> int:
+    """The exit status (bench/cli.py: 0, 1, 2) of pytest runs with exit statuses `codes`: the
+    worse of them (1 a test failed; 2 pytest stopped on an error of its own: an interrupt, an
+    internal or usage error), and 1 when none selected a test."""
+    states = [None if c == NO_TESTS else {0: 0, 1: 1}.get(c, 2) for c in codes]
+    if all(s is None for s in states):
+        return 1
+    return max(s for s in states if s is not None)

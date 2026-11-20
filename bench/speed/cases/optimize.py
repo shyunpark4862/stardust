@@ -1,6 +1,5 @@
 """sd.optimize against scipy.optimize and, where the accuracy measurement compares with R
-(bench/accuracy/optimize.py), against R. The problems, sizes, starting points and seeds are those
-of bench/optimize/o1-o6/speed.py (at commit 4151d2a):
+(bench/accuracy/optimize.py), against R. The problems, sizes, starting points and seeds:
 
   - least_squares ('trf', 'lm'): the Moré-Garbow-Hillstrom problems Rosenbrock (n = 2), Osborne 2
     (n = 11, m = 65) and Brown almost-linear (n = 40) from x0 (tests/optimize/mgh.py), and the
@@ -25,7 +24,7 @@ of bench/optimize/o1-o6/speed.py (at commit 4151d2a):
     (10^4, 100).
 
 The user functions of the array problems are written with each library's arrays (sd for sd,
-numpy for scipy), as the old scripts did, so a time includes them; the steps follow scipy's, so
+numpy for scipy), so a time includes them; the steps follow scipy's, so
 both libraries do the same iterations. A call solves from the same start each time and keeps
 nothing, so nothing is rotated. scipy follows sd's thread count (its BLAS pool). A case runs at
 10 threads too only where something can split: least_squares from m n >= 4 10^5 (the QR), the
@@ -41,18 +40,23 @@ as far as R's interface allows, and each case's note says where R's algorithm or
 differs. No R for least_squares 'lm' with jac='3-point' (nls.lm differences forward only) or
 for Nelder-Mead with bounds (optim's Nelder-Mead takes none).
 
-Left out: the old scripts' Nelder-Mead at n = 1000, BFGS and L-BFGS-B with differences at
+Left out: Nelder-Mead at n = 1000, BFGS and L-BFGS-B with differences at
 n = 1000, trust-exact at n = 1000 (0.5 s: the Hessian's factorization, as at n = 100), and the
 loop of root_scalar against brentq per element.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import math
 import re
 import warnings
 
-from ..registry import Case, Ref, RRef
+from ..registry import Case, Check, Ref, RRef, count
+
+# check_grad's value is the error of the differenced gradient, which the 5-point and the
+# forward differences make different by design
+CHECK_GRAD_DIFFERS = "오차 노름이 차분 방법(5점 대 전진)에 따라 다르다"
 
 AREA = "optimize"
 
@@ -69,7 +73,7 @@ def _quiet(f):
 
 
 def _size(m, n):
-    return f"({m:,}, {n})"
+    return f"({m}, {n})"
 
 
 # ------------------------------------------------------------------------------ least_squares
@@ -84,7 +88,7 @@ MGH_NOTE = {
 
 
 def _exp_setup(m, n, x0=0.0):
-    """The (m, n) data of bench/optimize/o1: one generator draws (10^3, 10), (10^5, 10) and
+    """The (m, n) data of the exp residuals: one generator draws (10^3, 10), (10^5, 10) and
     (10^4, 100) in turn, so the later sizes draw the earlier ones first."""
 
     def setup():
@@ -157,7 +161,7 @@ R_LSQ = {
         "J <- function(x) { k <- length(x); Jm <- matrix(1, k, k); diag(Jm) <- 2; Jm[k, ] <- prod(x) / x; Jm }"
     ),
     "exp": (
-        "F <- function(t) y - exp(drop(X %*% t))\n"  # the 1-thread reference BLAS
+        "F <- function(t) y - exp(drop(X %*% t))\n"  # R's BLAS, on one thread
         "J <- function(t) -exp(drop(X %*% t)) * X"
     ),
 }
@@ -193,8 +197,9 @@ def _r_nls_lm(problem, jac, n):
 R_LSQ_NOTE = {"analytic": "R은 minpack.lm의 nls.lm(MINPACK lmder)", "2-point": "R은 nls.lm(MINPACK lmdif, 전진 차분)"}
 
 
-def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False, r=None):
-    """jac: "analytic" (the user's Jacobian), "2-point" or "3-point". r: the R comparator."""
+def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False, r=None, problem=""):
+    """jac: "analytic" (the user's Jacobian), "2-point" or "3-point". r: the R comparator.
+    problem: a named test problem, part of the case's name."""
 
     def sdf(d):
         import stardust as sd
@@ -217,6 +222,8 @@ def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False,
         name += f", jac='{jac}'"
     if bounds is not None:
         name += ", bounds"
+    if problem:
+        name += f", {problem}"
     refs = (Ref("scipy", spf, threads="follow"),)
     if r is not None:
         refs += (r,)
@@ -242,19 +249,18 @@ def _lsq_cases():
         (_size(m, n), _exp_setup(m, n), (m, n), "", "exp") for m, n in ((1000, 10), (100_000, 10), (10_000, 100))
     ]
     differenced = ("Osborne 2", "Brown almost-linear", _size(1000, 10), _size(10_000, 100))
-    for size, setup, shape, note, problem in problems:
+    for key, setup, shape, note, problem in problems:
         threads = (1, 10) if shape and shape[0] * shape[1] >= 400_000 else (1,)
-        n = shape[1] if shape else int(MGH[size].split("-")[1][1:])  # mghNN-n<n>-m<m>-x<f>
+        n = shape[1] if shape else int(MGH[key].split("-")[1][1:])  # mghNN-n<n>-m<m>-x<f>
+        size, label = (key, "") if shape else (f"n={n}", key)
         for method in ("trf", "lm"):
             jacs = (
-                ["analytic"]
-                + (["2-point"] if size in differenced else [])
-                + (["3-point"] if size == "Osborne 2" else [])
+                ["analytic"] + (["2-point"] if key in differenced else []) + (["3-point"] if key == "Osborne 2" else [])
             )
             for jac in jacs:
                 r = _r_nls_lm(problem, jac, n) if method == "lm" else None
                 quick = method == "trf" and jac == "analytic" and shape == (1000, 10)
-                out.append(_lsq_case(size, setup, method, jac, threads, note, quick=quick, r=r))
+                out.append(_lsq_case(size, setup, method, jac, threads, note, quick=quick, r=r, problem=label))
     for m, n in ((1000, 10), (10_000, 100)):
         out.append(
             _lsq_case(
@@ -285,7 +291,7 @@ SCIPY_METHOD = {
 
 def _sd_rosen():
     """scipy's rosen, rosen_der, rosen_hess, rosen_hess_prod written with sd's arrays
-    (bench/optimize/o4)."""
+    (the minimize cases)."""
     import stardust as sd
 
     def f(x):
@@ -369,6 +375,11 @@ MINIMIZE = (
     ("trust-exact", "hess", 10, None, False, False),
     ("trust-exact", "hess", 100, None, False, False),
 )
+# The smoke run's check of minimize: a capped call stops wherever its cap falls, so the two
+# points differ; a converged one stops within the solvers' gradient tolerance (gtol 1e-5),
+# where x agrees to about 1e-3.
+MIN_CAPPED_CHECK = Check(skip="both stop at an iteration or evaluation cap, at different points")
+MIN_CHECK = Check(rtol=1e-2)
 _DERIV_NAME = {
     "-": "",
     "jac": "",
@@ -470,11 +481,18 @@ def _minimize_cases():
             parts.append(_DERIV_NOTE[deriv])
         if bounds:
             parts.append("−2 ≤ x ≤ 0.8")
-        parts.append(f"{cap}회 반복" if cap else "수렴까지")
+        if cap:
+            parts.append(f"{cap}회 반복")
+        elif method == "nelder-mead" and n >= 10:  # both stop at scipy's default maxfev, status 1
+            parts.append(f"f 호출 상한({200 * n})까지")
+        else:
+            parts.append("수렴까지")
         note = ", ".join(parts)
         refs = (Ref("scipy", spf, threads="follow"),)
         r = _r_optim(method, deriv, n, cap, bounds)
         if r is not None:
+            if method == "bfgs" and n == 10:
+                r = dataclasses.replace(r, differs="optim(BFGS)은 다른 극소점(전역 최소 1)으로 간다")
             refs += (r,)
             note += "; " + R_OPTIM_NOTE[method] + (", 기울기는 중심 차분" if deriv == "diff" else "")
         out.append(
@@ -482,12 +500,13 @@ def _minimize_cases():
                 area=AREA,
                 group=MIN_GROUP,
                 name=f"minimize {method}{_DERIV_NAME[deriv]}" + (", bounds" if bounds else ""),
-                size=f"n={n:,}",
+                size=f"n={count(n)}",
                 sd=sdf,
                 refs=refs,
                 threads=(1, 10) if n >= 1000 else (1,),
                 quick=quick,
                 note=note,
+                check=MIN_CAPPED_CHECK if cap or (method == "nelder-mead" and n >= 10) else MIN_CHECK,
             )
         )
     return out
@@ -638,8 +657,7 @@ def _scalar_cases():
                 Case(
                     area=AREA,
                     group="scalar",
-                    name=f"root_scalar {method}",
-                    size=problem,
+                    name=f"root_scalar {method}, {problem}",
                     sd=sdf,
                     refs=refs,
                     threads=(1,),
@@ -671,8 +689,7 @@ def _scalar_cases():
             Case(
                 area=AREA,
                 group="scalar",
-                name=f"minimize_scalar {method}",
-                size="eˣ − 5x",
+                name=f"minimize_scalar {method}, exp(x) - 5x",
                 sd=sdf,
                 refs=(Ref("scipy", spf),) + _r_minimize_scalar(method),
                 threads=(1,),
@@ -817,10 +834,14 @@ def _derivative_cases():
                         area=AREA,
                         group="derivatives",
                         name=func + (", epsilon=2^-26" if forward else ""),
-                        size=f"n={n:,}",
+                        size=f"n={count(n)}",
                         setup=_derivative_setup(n),
                         sd=sdf,
-                        refs=(Ref("scipy", spf),),
+                        refs=(
+                            Ref(
+                                "scipy", spf, differs=CHECK_GRAD_DIFFERS if func == "check_grad" and not forward else ""
+                            ),
+                        ),
                         threads=(1,),
                         quick=func == "approx_fprime" and forward and n == 100,
                         note=note,
@@ -835,8 +856,8 @@ LINEAR_SHAPES = ((100, 10), (1000, 100), (10_000, 100))
 
 
 def _linear_setup(m, n):
-    """The data of bench/optimize/o5: one generator (seed 9) draws the shapes of LINEAR_SHAPES
-    in turn."""
+    """The data of lsq_linear and nnls: one generator (seed 9) draws the shapes of
+    LINEAR_SHAPES in turn."""
 
     def setup():
         import numpy as np
@@ -907,6 +928,7 @@ def _linear_cases():
                 sd=sd_nnls,
                 refs=(Ref("scipy", sp_nnls, threads="follow"),),
                 threads=threads,
+                check=Check(ref=lambda label, v: v[0]),  # scipy's nnls: (x, rnorm)
             )
         )
     return out

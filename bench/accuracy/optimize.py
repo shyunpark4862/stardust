@@ -3,18 +3,24 @@
 Contract (docs/design/optimize.md §4: the stopping criterion's own meaning), only where the
 result alone can check it:
   * the bracketing root finders at the default tolerances: the root is within
-    xtol + rtol |x*| of the Arb root (tests/optimize/data/scalar_roots.json, tools/optimize_ref.py),
+    xtol + rtol |x*| of the Arb root (tests/optimize/ref/scalar_roots.json, tools/optimize_ref.py),
     or f is exactly 0 there in double (tests/optimize/test_reference_data.py);
   * the gradient methods that report convergence by the gradient test: ||grad f(x)||_inf <= gtol
-    (BFGS, trust-ncg, trust-exact; L-BFGS-B when it stopped on the projected gradient), with
-    the exact gradient of the MGH problem (tests/optimize/mgh.py).
-Recorded only (the baseline judges): the root's distance to the Arb root in ULP at xtol = 0
-and of find_root; the minimizer's distance to the nearest Arb local minimizer (minimize_scalar,
-find_minimum; tests/optimize/ref/scalar_minima.json), absolute, relative and over the method's
-stopping tolerance at x*; the gradient and f - f* (MGH's KNOWN optima) of every minimize method; the
-parameters' relative error against NIST StRD's certified values (least_squares); ||F||_inf at
-the result (root); the KKT residual (lsq_linear, nnls); approx_fprime's error against the
-Arb derivatives of tests/optimize/ref/derivatives.npz; and how many runs did not converge.
+    (BFGS, trust-ncg, trust-exact; L-BFGS-B on the problems where it stops on the projected
+    gradient, LBFGSB_GRADIENT_STOP), with the exact gradient of the MGH problem
+    (tests/optimize/mgh.py).
+The regions whose members follow a criterion (L-BFGS-B's gradient stop, least_squares' certified
+minimum) take their problems from a fixed list, not from sd's result: a listed run that misses
+the criterion is counted (off_target), so a change that loses it shows in the comparison.
+Recorded only (the baseline judges): the root's distance to the Arb root in ULP (ulp_distance;
+0 inside the Arb bracket of two adjacent doubles) at xtol = 0 and of find_root; the minimizer's
+distance to the nearest Arb local minimizer (minimize_scalar, find_minimum;
+tests/optimize/ref/scalar_minima.json), absolute, relative and over the method's stopping
+tolerance at x*; the gradient and f - f* (MGH's KNOWN optima) of every minimize method; the
+parameters' relative error against NIST StRD's certified values (least_squares, converged runs);
+||F||_inf at the result (root); the KKT residual (lsq_linear, nnls); approx_fprime's error
+against the Arb derivatives of tests/optimize/ref/derivatives.npz; and how many runs did not
+converge.
 Every reference is a file; at measurement time only residuals at sd's own results (the
 gradient, F, the KKT conditions) are evaluated, in double, from the problems' formulas.
 """
@@ -25,7 +31,7 @@ import math
 
 import numpy as np
 
-from .common import Custom, compare_libs, region
+from .common import Custom, compare_libs, region, ulp_distance
 
 EPS = 2.0**-52
 BRACKETING = ("brentq", "toms748", "bisect")
@@ -175,13 +181,9 @@ def _r_nlslm(name, b0):
 
 
 def _arb_roots():
-    import json
-    import pathlib
+    from tests.optimize import functions, refdata
 
-    from tests.optimize import functions
-
-    p = pathlib.Path(functions.__file__).parent / "data" / "scalar_roots.json"
-    ref = json.loads(p.read_text())
+    ref = refdata.roots()
     out = {}
     for c in functions.ROOT_CASES:
         r = ref[c.id]
@@ -190,11 +192,11 @@ def _arb_roots():
 
 
 def _dist_ulp(x, lo, hi):
-    """|x - [lo, hi]| in ULP of the root (0 inside)."""
+    """(|x - [lo, hi]|, its ulp_distance to the nearer end): 0, 0 inside the bracket."""
     if lo <= x <= hi:
         return 0.0, 0.0
     d = min(abs(x - lo), abs(x - hi))
-    return d, d / math.ulp(max(abs(lo), abs(hi), 2.0**-1074))
+    return d, float(min(ulp_distance(x, lo), ulp_distance(x, hi)))
 
 
 def _zero_in_double(c, x):
@@ -315,13 +317,9 @@ MIN_TOL = {  # the stopping tolerance at x, at the defaults (docs/api/optimize.m
 
 
 def _arb_minima():
-    import json
-    import pathlib
+    from tests.optimize import functions, refdata
 
-    from tests.optimize import functions
-
-    p = pathlib.Path(functions.__file__).parent / "ref" / "scalar_minima.json"
-    ref = json.loads(p.read_text())
+    ref = refdata.minima()
     return {c.id: (c, ref[c.id]) for c in functions.MIN_CASES}
 
 
@@ -399,6 +397,21 @@ def _find_minimum(lib="sd"):
 # the default gtol and the norm the method's test uses (docs/api/optimize.md §5)
 GTOL = {"bfgs": (1e-5, np.inf), "trust-ncg": (1e-4, 2), "trust-exact": (1e-4, 2), "l-bfgs-b": (1e-5, np.inf)}
 SMALL = ("newton-cg", "trust-ncg", "trust-exact")  # with the exact Hessian: n <= 10 only
+# The MGH problems on which L-BFGS-B stops on its projected-gradient test (the others stop on
+# f's relative decrease, factr): its gradient-stop region, fixed here so that sd's own stop
+# cannot move a problem out of the contract.
+LBFGSB_GRADIENT_STOP = frozenset({
+    "mgh01-n2-m2-x10", "mgh01-n2-m2-x100", "mgh02-n2-m2-x10", "mgh02-n2-m2-x100", "mgh03-n2-m2-x10",
+    "mgh03-n2-m2-x100", "mgh05-n2-m3-x1", "mgh05-n2-m3-x10", "mgh07-n3-m3-x10", "mgh08-n3-m15-x1",
+    "mgh08-n3-m15-x100", "mgh09-n3-m15-x10", "mgh09-n3-m15-x100", "mgh11-n3-m99-x1", "mgh11-n3-m99-x10",
+    "mgh11-n3-m99-x100", "mgh12-n3-m10-x1", "mgh18-n6-m13-x1", "mgh18-n6-m13-x10", "mgh18-n6-m13-x100",
+    "mgh20-n6-m31-x1", "mgh21-n10-m10-x1", "mgh21-n10-m10-x100", "mgh22-n12-m12-x10", "mgh24-n4-m8-x1",
+    "mgh24-n4-m8-x10", "mgh24-n4-m8-x100", "mgh24-n10-m20-x1", "mgh24-n10-m20-x10", "mgh24-n10-m20-x100",
+    "mgh25-n10-m12-x1", "mgh25-n10-m12-x10", "mgh25-n10-m12-x100", "mgh26-n10-m10-x100", "mgh28-n10-m10-x1",
+    "mgh29-n10-m10-x1", "mgh29-n10-m10-x10", "mgh29-n10-m10-x100", "mgh32-n5-m10-x1", "mgh32-n5-m50-x1",
+    "mgh33-n5-m10-x1", "mgh33-n5-m50-x1", "mgh34-n5-m10-x1", "mgh34-n5-m50-x1", "mgh35-n1-m8-x1",
+    "mgh35-n1-m8-x100", "mgh35-n8-m8-x1", "mgh35-n9-m9-x1",
+})  # fmt: skip
 
 
 def _known(c):
@@ -414,7 +427,7 @@ def _minimize(method, lib="sd"):
     O = _opt(lib) if lib != "R" else None
     from tests.optimize import mgh
 
-    where, grad, excess, ratio, rwhere, unconv = [], [], [], [], [], 0
+    where, grad, excess, ratio, rwhere, unconv, off = [], [], [], [], [], 0, 0
     for c in mgh.CASES:
         if method in SMALL and c.n > 10:
             continue
@@ -436,6 +449,10 @@ def _minimize(method, lib="sd"):
         with np.errstate(all="ignore"):
             gx = float(np.max(np.abs(g(x))))
             fx = float(f(x))
+        listed = method != "l-bfgs-b" or c.id in LBFGSB_GRADIENT_STOP
+        gradient_stop = method in ("bfgs", "trust-ncg", "trust-exact") or "PROJECTED GRADIENT" in str(r.message).upper()
+        if method == "l-bfgs-b" and listed and lib != "R" and not (bool(r.converged) and gradient_stop):
+            off += 1  # a gradient-stop problem that stopped otherwise
         if not bool(r.converged):  # counted; its point is not a minimum to measure
             unconv += 1
             continue
@@ -443,8 +460,7 @@ def _minimize(method, lib="sd"):
         grad.append(gx)
         k = _known(c)
         excess.append(max(0.0, fx - k) / max(1.0, k) if k is not None and math.isfinite(fx) else math.nan)
-        gradient_stop = method in ("bfgs", "trust-ncg", "trust-exact") or "PROJECTED GRADIENT" in str(r.message).upper()
-        if bool(r.converged) and method in GTOL and gradient_stop and lib != "R":  # R's optim stops on f
+        if method in GTOL and listed and gradient_stop and lib != "R":  # R's optim stops on f
             gtol, order = GTOL[method]
             with np.errstate(all="ignore"):
                 gn = float(np.linalg.norm(g(x), order))
@@ -457,14 +473,42 @@ def _minimize(method, lib="sd"):
     e["excess_max"] = float(excess[known].max()) if known.any() else None
     e["unconverged"] = unconv
     out["mgh"] = e
-    if ratio:
+    if ratio or off:
         out["gradient stop"] = region(
             rwhere, grad=np.array(ratio) * GTOL[method][0], contract=np.array(ratio), bound=1.0
         )
+        if method == "l-bfgs-b" and lib != "R":
+            out["gradient stop"]["off_target"] = off
     return out
 
 
 # ------------------------------------------------------------------------------ the rest
+
+
+# The NIST StRD runs (problem and start) on which each least_squares method reaches the certified
+# parameters to 6 digits: its certified-minimum region, fixed here (the other converged runs stop
+# at another minimum, "elsewhere").
+CERTIFIED = {
+    m: frozenset(f"{n} start{s}" for n, s in runs)
+    for m, runs in {
+        "trf": [
+            ("Misra1a", 1), ("Misra1a", 2), ("Lanczos3", 1), ("Lanczos3", 2), ("Gauss1", 1), ("Gauss1", 2),
+            ("Gauss2", 1), ("Gauss2", 2), ("DanWood", 1), ("DanWood", 2), ("Misra1b", 1), ("Misra1b", 2),
+            ("Kirby2", 1), ("Hahn1", 1), ("Hahn1", 2), ("Nelson", 1), ("Nelson", 2), ("MGH17", 2),
+            ("Lanczos1", 1), ("Lanczos1", 2), ("Lanczos2", 1), ("Lanczos2", 2), ("Gauss3", 1), ("Gauss3", 2),
+            ("Misra1c", 1), ("Misra1c", 2), ("Misra1d", 1), ("Misra1d", 2), ("Rat42", 1), ("Rat42", 2),
+            ("MGH10", 1), ("MGH10", 2), ("Eckerle4", 1), ("Eckerle4", 2), ("Bennett5", 2),
+        ],
+        "lm": [
+            ("Misra1a", 1), ("Misra1a", 2), ("Chwirut2", 1), ("Lanczos3", 1), ("Lanczos3", 2), ("Gauss1", 1),
+            ("Gauss1", 2), ("Gauss2", 1), ("Gauss2", 2), ("DanWood", 1), ("DanWood", 2), ("Misra1b", 1),
+            ("Misra1b", 2), ("Kirby2", 1), ("Hahn1", 2), ("Nelson", 1), ("Nelson", 2), ("MGH17", 1),
+            ("MGH17", 2), ("Lanczos1", 1), ("Lanczos1", 2), ("Lanczos2", 1), ("Lanczos2", 2), ("Gauss3", 1),
+            ("Gauss3", 2), ("Misra1c", 1), ("Misra1c", 2), ("Misra1d", 1), ("Misra1d", 2), ("Rat42", 1),
+            ("Rat42", 2), ("MGH10", 1), ("MGH10", 2), ("Eckerle4", 1), ("Eckerle4", 2),
+        ],
+    }.items()
+}  # fmt: skip
 
 
 def _least_squares(method, lib="sd"):
@@ -493,15 +537,18 @@ def _least_squares(method, lib="sd"):
                 except ValueError, ArithmeticError:
                     unconv += 1
                     continue
-            if not bool(r.converged):
+            if not bool(r.converged):  # counted; its point is not a result to measure
                 unconv += 1
+                continue
             b = np.asarray(r.x, dtype=float)
             where.append(f"{name} {s}")
             rel.append(float(np.max(np.abs(b - cert) / np.abs(cert))))
     rel, where = np.array(rel), np.array(where)
-    ok = rel <= 1e-6
+    target = CERTIFIED.get(method, frozenset())
+    ok = np.array([w in target for w in where], dtype=bool)
     e = region(where[ok], rel=rel[ok])
     e["unconverged"] = unconv
+    e["off_target"] = len(target) - int((ok & (rel <= 1e-6)).sum())  # listed runs that missed it
     return {"certified minimum": e, "elsewhere": region(where[~ok], rel=rel[~ok])}
 
 
@@ -563,34 +610,30 @@ def _linear(which, lib="sd"):
 
 def _approx_fprime(lib="sd"):
     """The default (accurate) differences against the analytic derivatives at x0 of the MGH
-    cases with factor 1 (tests/optimize/ref/derivatives.npz, tools/optimize_accuracy_ref.py:
+    cases with factor 1 (tests/optimize/ref/derivatives.npz, tools/optimize_ref.py:
     Arb), normwise max |error| / max |derivative| (tests/optimize/test_diff.py's measure)."""
     if lib == "R":  # no R function computes the same
         return None
-    import pathlib
-
     import stardust as sd
-    from tests.optimize import mgh
+    from tests.optimize import mgh, refdata
 
-    z = np.load(pathlib.Path(mgh.__file__).parent / "ref" / "derivatives.npz")
     where, rg, rj = [], [], []
-    i = 0
-    while f"g{i}_id" in z.files:
-        c = mgh.BY_ID[str(z[f"g{i}_id"])]
-        x0 = z[f"g{i}_x0"]
+    for cid, x0, gref, jref in refdata.derivatives():
+        c = mgh.BY_ID[cid]
         f = lambda x, c=c: c.f(x.tolist())  # noqa: E731
         F = (
             (lambda x, c=c: sd.asarray(c.fun(x.tolist())))
             if lib == "sd"
             else (lambda x, c=c: np.asarray(c.fun(x.tolist())))
         )  # noqa: E731
-        for out, fn, key in ((rg, f, "g"), (rj, F, "J")):
+        for out, fn, (hi, lo) in ((rg, f, gref), (rj, F, jref)):
             got = np.asarray(_opt(lib).approx_fprime(np.asarray(x0, dtype=float), fn), dtype=float)
-            hi, lo = z[f"g{i}_{key}_hi"], z[f"g{i}_{key}_lo"]
             out.append(float(np.abs((got - hi) - lo).max() / max(np.abs(hi).max(), 1e-300)))  # as test_diff.rel
         where.append(c.id)
-        i += 1
-    return {"gradient": region(where, norm_rel=np.array(rg)), "jacobian": region(where, norm_rel=np.array(rj))}
+    return {
+        "gradient": region(where, norm_inf_rel=np.array(rg)),
+        "jacobian": region(where, norm_inf_rel=np.array(rj)),
+    }
 
 
 def sweeps():

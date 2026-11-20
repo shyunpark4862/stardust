@@ -13,6 +13,11 @@ import pickle
 
 import numpy as np
 
+# Public names no case calls (tools/golden.py): the reason each needs none.
+EXCLUDED = {
+    "Generator": "default_rng's class: every method case runs on a Generator and stores its state",
+}
+
 I64_MAX, I64_MIN = 2**63 - 1, -(2**63)
 LARGE = 2**17 + 3
 

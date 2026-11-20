@@ -1,6 +1,6 @@
 """Golden cases for the linalg area (tools/golden.py has the contract).
 
-Written for the merge (bench/merge/golden at commit 4151d2a): every name in sd.linalg.__all__ of the time, all four
+Every name in sd.linalg.__all__, all four
 input dtypes, the input layouts the packing code tells apart (C, F, strided,
 negative strides, stride-0 batch), tiny / medium / large (>= 2^17 elements:
 the C-order transpose on the pool) matrices, batches big enough to run on the
@@ -12,6 +12,10 @@ Inputs are built with numpy from fixed seeds and handed over with L.arr
 (zero copy, so the numpy strides are what the library sees).
 """
 
+# Public names no case calls (tools/golden.py): the reason each needs none.
+EXCLUDED = {
+    "LinAlgError": "an error class: the cases whose matrices fail store it (module.name) as their result",
+}
 DTYPES = ("bool", "int64", "float64", "complex128")
 FC = ("float64", "complex128")
 LAYOUTS = ("C", "F", "strided", "reversed", "bcast")
@@ -20,14 +24,14 @@ MATRIX_ORDS = ("fro", "nuc", 1, -1, 2, -2, INF, -INF)
 
 
 class Raw:
-    """An argument passed through as is (not converted to an L.A array)."""
+    """An argument passed through as is (not converted to an sd array)."""
 
     def __init__(self, v):
         self.v = v
 
 
 def cases(L):
-    np, A, LA = L.np, L.A, L.LA
+    np, A, LA = L.np, L.sd, L.sd.linalg
 
     # ---------------------------------------------------------------- helpers
     def conv(a):
@@ -38,7 +42,7 @@ def cases(L):
         return a
 
     def C(name, f, *args, **kw):
-        """A case calling f(*args, **kw); numpy arrays become L.A arrays."""
+        """A case calling f(*args, **kw); numpy arrays become sd arrays."""
         args = tuple(conv(a) for a in args)
         kw = {k: conv(v) for k, v in kw.items()}
         return name, (lambda: f(*args, **kw))

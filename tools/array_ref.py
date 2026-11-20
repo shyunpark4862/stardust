@@ -1,10 +1,13 @@
 """Reference values for the float64 element-wise functions on Accelerate vForce and pow, with Arb.
 
-    .venv/bin/python tools/array_ref.py              # every function, on 10 processes
-    .venv/bin/python tools/array_ref.py exp atan2 --jobs=4
+    .venv/bin/python tools/array_ref.py              # every function, on 8 processes
+    .venv/bin/python tools/array_ref.py exp atan2 --jobs 4
 
-writes tests/array/ref/<function>.npz (x, [y,] hi, lo; cabs, the modulus of a complex: re, im),
-read by bench/accuracy (python -m bench.accuracy, area array). The inputs come from seeded
+writes tests/array/ref/<function>.npz (layout: tests/reffile.py; inputs x, [y,] or for cabs, the
+modulus of a complex, re, im; the method of the function's name with hi, lo), read by
+tests/array/refdata.py (the quick test and bench/accuracy, area array). A point whose value
+does not settle by 8192 bits is dropped and recorded. An unknown name is a usage error (exit
+status 2); the console output also goes to build/logs/array_ref/. The inputs come from seeded
 generators: the ranges of tests/array/test_vforce.py (log-uniform over many decades, else
 uniform) and, per function, the places where the error concentrates (near the zeros and the
 poles, the ends of the domain, subnormal and huge arguments). Each value is the exact function
@@ -25,12 +28,14 @@ import numpy as np
 from flint import arb
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from arbref import DOUBLE_TINY, precision, rigorous, to_dd  # noqa: E402
+import arbref  # noqa: E402
+from arbref import DOUBLE_TINY, NotSettled, precision, rigorous, to_dd  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))  # bench.accuracy.array: the reductions' inputs
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "tests" / "array" / "ref"
+TOOL = "tools/array_ref.py"
 N = 20_000  # random points per function, besides the special regions
 
 
@@ -141,22 +146,34 @@ def _value(name, args):
 
 def _work(job):
     name, chunk = job
-    return [_value(name, a) for a in chunk]
+    out = []
+    for a in chunk:
+        try:
+            out.append(_value(name, a))
+        except NotSettled, ValueError:  # not settled by 8192 bits: dropped (and recorded)
+            out.append(None)
+    return out
 
 
 def write(name, jobs):
+    from tests import reffile
+
     rng = np.random.default_rng(FUNCTIONS.index(name) + 1)
     cols = [np.asarray(c, dtype=np.float64) for c in inputs(name, rng)]
     pts = list(zip(*(c.tolist() for c in cols)))
     chunks = [pts[i : i + 500] for i in range(0, len(pts), 500)]
     with mp.get_context("spawn").Pool(jobs, maxtasksperchild=20) as pool:
         vals = [v for part in pool.map(_work, [(name, c) for c in chunks], chunksize=1) for v in part]
-    hi = np.array([h for h, _ in vals])
-    lo = np.array([lo for _, lo in vals])
+    keep = np.array([v is not None for v in vals], dtype=bool)
+    hi = np.array([v[0] for v in vals if v is not None])
+    lo = np.array([v[1] for v in vals if v is not None])
     keys = ("x",) if len(cols) == 1 else {"atan2": ("y", "x"), "cabs": ("re", "im")}.get(name, ("x", "y"))
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(OUT / f"{name}.npz", **dict(zip(keys, cols)), hi=hi, lo=lo)
-    print(f"{name}: {len(hi)} points -> {(OUT / f'{name}.npz').relative_to(ROOT)}", flush=True)
+    reffile.write(OUT / f"{name}.npz", **arbref.provenance(), tool=TOOL, n_requested=len(vals),
+                  inputs=dict(zip(keys, cols)),
+                  methods={name: {"over": "point", "index": np.flatnonzero(keep), "dropped": np.flatnonzero(~keep),
+                                  "hi": hi, "lo": lo}})  # fmt: skip
+    dropped = f", {int((~keep).sum())} dropped" if not keep.all() else ""
+    print(f"{name}: {len(hi)} points{dropped} -> {(OUT / f'{name}.npz').relative_to(ROOT)}", flush=True)
 
 
 # ------------------------------------------------------------------------------ reductions
@@ -274,50 +291,73 @@ def _reduction_job(i):
 
 
 def write_reductions(jobs=10):
-    import hashlib
-
-    from bench.accuracy.array import STORE_MAX, reduction_inputs
-
     order = sorted(range(len(REDUCTION_GROUPS)), key=lambda i: -int(np.prod(REDUCTION_GROUPS[i][2])))
     with mp.get_context("spawn").Pool(jobs, maxtasksperchild=4) as pool:
         refs = dict(zip(order, pool.map(_reduction_job, order, chunksize=1)))
-    arrays = {}
+    _write_reductions(refs)
+
+
+def _write_reductions(refs):
+    """reductions.npz from the cases' (hi, lo, cond)."""
+    import hashlib
+
+    from bench.accuracy.array import STORE_MAX, reduction_inputs
+    from tests import reffile
+
+    E = np.zeros(0)
+    pts = []
     for i, (func, kind, shape, seed, extra) in enumerate(REDUCTION_GROUPS):
         x = reduction_inputs(kind, shape, seed)
         y = reduction_inputs("normal", shape, seed + 1) if func in ("vecdot", "matmul") else None
         hi, lo, cond = refs[i]
         dims = "x".join(str(v) for v in shape)
         label = f"{kind} {dims}" + "".join(f" {k}={v}" for k, v in extra.items())
-        g = {"func": func, "label": label, "hi": hi, "lo": lo, "cond": cond, **extra}
+        g = {"func": func, "label": label, "hi": hi, "lo": lo, "cond": cond, "axis": extra.get("axis", -1),
+             "correction": extra.get("correction", -1)}  # fmt: skip
         for name, v, k, sd_ in (("x", x, kind, seed), ("y", y, "normal", seed + 1)):
-            if v is None:
-                continue
-            if v.size <= STORE_MAX:
-                g[name] = v
-            else:  # regenerated at measurement time, checked against this digest
-                g.update({f"{name}_kind": k, f"{name}_shape": np.array(shape), f"{name}_seed": sd_,
-                          f"{name}_sha256": hashlib.sha256(v.tobytes()).hexdigest()})  # fmt: skip
-        for k, v in g.items():
-            arrays[f"g{i}_{k}"] = np.asarray(v)
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(OUT / "reductions.npz", **arrays)
-    print(f"reductions: {len(REDUCTION_GROUPS)} groups -> {(OUT / 'reductions.npz').relative_to(ROOT)}")
+            stored = v is not None and v.size <= STORE_MAX
+            g[name] = v if stored else E
+            regen = v is not None and not stored  # regenerated at measurement time, checked against the digest
+            g[f"{name}_kind"] = k if regen else ""
+            g[f"{name}_shape"] = np.array(shape, dtype=np.int64) if regen else np.zeros(0, np.int64)
+            g[f"{name}_seed"] = sd_ if regen else -1
+            g[f"{name}_sha256"] = hashlib.sha256(v.tobytes()).hexdigest() if regen else ""
+        pts.append(g)
+    keys = ("func", "label", "x", "x_kind", "x_shape", "x_seed", "x_sha256", "y", "y_kind", "y_shape", "y_seed",
+            "y_sha256", "axis", "correction")  # fmt: skip
+    ins = {}
+    for k in keys:
+        vals = [g[k] for g in pts]
+        ins[k] = vals if isinstance(vals[0], np.ndarray) else np.array(vals)
+    methods = {}
+    for f in dict.fromkeys(g["func"] for g in pts):
+        idx = [i for i, g in enumerate(pts) if g["func"] == f]
+        methods[f] = {"over": "point", "index": np.array(idx, np.int64), "hi": [pts[i]["hi"] for i in idx],
+                      "lo": [pts[i]["lo"] for i in idx], "cond": [pts[i]["cond"] for i in idx]}  # fmt: skip
+    # exact: fsum and rationals give hi + lo within 2^-106 of the value; the product is Arb at 4096 bits
+    reffile.write(OUT / "reductions.npz", **arbref.provenance(106, "exact rationals and Shewchuk's fsum"), tool=TOOL,
+                  n_requested=len(pts), inputs=ins, methods=methods)  # fmt: skip
+    print(f"reductions: {len(REDUCTION_GROUPS)} cases -> {(OUT / 'reductions.npz').relative_to(ROOT)}")
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("functions", nargs="*", help=", ".join((*FUNCTIONS, "reductions")))
-    ap.add_argument("--jobs", type=int, default=10)
-    a = ap.parse_args()
-    bad = set(a.functions) - {*FUNCTIONS, "reductions"}
+def main(argv=None):
+    from bench import cli
+
+    ap = argparse.ArgumentParser(prog="tools/array_ref.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument("names", nargs="*", metavar="NAME", help=", ".join((*FUNCTIONS, "reductions")))
+    cli.add_jobs(ap)
+    a = ap.parse_args(argv)
+    bad = [f for f in a.names if f not in (*FUNCTIONS, "reductions")]
     if bad:
-        ap.error(f"unknown functions {sorted(bad)}; choose from {', '.join(FUNCTIONS)}")
-    for f in a.functions or (*FUNCTIONS, "reductions"):
-        if f == "reductions":
-            write_reductions(min(a.jobs, 10))
-        else:
-            write(f, min(a.jobs, 10))
+        ap.error(f"unknown function {bad[0]!r}")
+    with arbref.logged("array_ref"):
+        for f in a.names or (*FUNCTIONS, "reductions"):
+            if f == "reductions":
+                write_reductions(a.jobs)
+            else:
+                write(f, a.jobs)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

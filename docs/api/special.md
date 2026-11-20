@@ -459,7 +459,7 @@ ndtri_exp(y, /, *, out=None)
   | **`nbdtr(k < 0, n, p)`** | 0 | P(X ≤ k < 0). **scipy는 NaN** |
   | **`nbdtr(inf, n, p)`** | 1 | cdf의 k → ∞. **scipy는 NaN** |
   | `ndtri_exp(0)`, `ndtri_exp(-inf)`, y > 0 | inf, −inf, NaN | |
-- **보장 영역** (사용자 결정 2026-11-15): 잰 범위 전체다. 순방향 11개와 `ndtri_exp`는 상대오차 1e-14(약 45 ULP), 역함수 `stdtrit chdtri fdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 범위는 아래 '잰 범위'이고, 그 밖(더 큰 자유도·k·n)도 값을 계산하지만 보장하지 않는다. 경계값 `fdtr(inf, inf, x)`, `nbdtr(k, 0, p)`, `chdtri(inf, p)` = NaN도 같은 날 확정했다.
+- **보장 영역** (사용자 결정 2026-11-15): 잰 범위 전체다. 순방향 11개와 `ndtri_exp`는 상대오차 1e-14(2⁻⁵² 단위로 약 45), 역함수 `stdtrit chdtri fdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 범위는 아래 '잰 범위'이고, 그 밖(더 큰 자유도·k·n)도 값을 계산하지만 보장하지 않는다. 경계값 `fdtr(inf, inf, x)`, `nbdtr(k, 0, p)`, `chdtri(inf, p)` = NaN도 같은 날 확정했다.
   - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
   - 같은 점에서 잰 scipy·R·Boost의 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 비교 패키지 열에 있다.
   - 잰 범위: 자유도 1e-2–1e6(t), 1e-2–1e5(카이제곱), 1e-2–1e4(F), k·n 1e4까지, 카이제곱의 x는 v/100–100v와 1e-6–50, `chdtri`의 p는 1e-300까지, `ndtri_exp`의 y는 −1e300–0. 근이 double 범위 밖이면(`fdtri` → 0, `stdtrit` → −inf) 순방향 함수로 확인한다(tests/special/test_distributions.py).
@@ -501,7 +501,7 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   | **`ncfdtr(dfn, dfd, inf, f)`** | 0 (`ncfdtrc`는 1) | **scipy는 NaN**. f도 inf이면 NaN |
   | 역함수의 p = 0, 1 | 정의역의 두 끝(0 또는 −inf, inf) | |
   | `chndtr(df, nc, x)`, Chernoff 한계가 e⁻¹⁰⁰⁰ 아래인 꼬리 | 0 또는 1 | 적률생성함수에서 P(X ≤ x) ≤ e^(x/2)·2^(−df/2)·e^(−nc/4), P(X ≥ x) ≤ e^(−x/4)·2^(df/2)·e^(nc/2). 합을 걷기 전에 거른다: `chndtr(1, 1e16, 1)` = 0 |
-- **보장 영역** (사용자 결정 2026-11-15): 아래 '잰 범위' 전체다. 순방향 6개는 상대오차 1e-14(약 45 ULP), 역함수 `chndtrix nctdtrit ncfdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)도 같은 날 확정했다.
+- **보장 영역** (사용자 결정 2026-11-15): 아래 '잰 범위' 전체다. 순방향 6개는 상대오차 1e-14(2⁻⁵² 단위로 약 45), 역함수 `chndtrix nctdtrit ncfdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)도 같은 날 확정했다.
   - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
   - 같은 점에서 잰 scipy(Boost를 감싼 것)·R·Boost 단독의 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 비교 패키지 열에 있다.
   - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).

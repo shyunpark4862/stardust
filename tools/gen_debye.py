@@ -11,7 +11,7 @@ p^k, p^(k+2), ..., p^(3k): stored as U_k(p) = p^k V_k(p^2), V_k's coefficients h
 max |U_k| on [0, 1]: U_10 1.24, U_11 3.55: with U_0..U_10 the first omitted term is below
 2e-16 relative from nu = 30.
 
-Run: uv run python tools/gen_debye.py
+Run: .venv/bin/python tools/gen_debye.py
 """
 
 import pathlib

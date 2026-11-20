@@ -1,4 +1,5 @@
-"""What every area's measurement shares: the summary of one region and the generic sweep."""
+"""What every area's measurement shares: the one ULP distance, the summary of one region and
+the generic sweep."""
 
 from __future__ import annotations
 
@@ -6,6 +7,49 @@ import dataclasses
 from collections.abc import Callable
 
 import numpy as np
+
+# ulp_distance's answer for a NaN against a number: above every distance between two doubles
+# (the largest, -inf to +inf, is 0xFFE0000000000000)
+NAN_DISTANCE = np.uint64(0xFFFFFFFFFFFFFFFF)
+
+
+def _ordered(a):
+    """float64 values as int64 keys in their order: -0 and +0 both 0, the next double above
+    and below one key apart."""
+    i = np.asarray(a, dtype=np.float64).view(np.int64)
+    return np.where(i < 0, -(i & 0x7FFFFFFFFFFFFFFF), i)
+
+
+def ulp_distance(a, b):
+    """The number of float64 values between a and b, counting one end: 0 for equal values (+0
+    and -0 too, and two NaNs), 1 for neighbours, and across zero the doubles on both sides.
+    A NaN against a number is NAN_DISTANCE. Elementwise over broadcast arrays; uint64 (the
+    distance from -inf to +inf does not fit in int64)."""
+    a, b = np.broadcast_arrays(np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64))
+    na, nb = np.isnan(a), np.isnan(b)
+    oa, ob = _ordered(np.where(na, 0.0, a)), _ordered(np.where(nb, 0.0, b))
+    hi, lo = np.maximum(oa, ob), np.minimum(oa, ob)
+    # hi - lo in uint64: two's complement wraps to the true difference, which is below 2^64
+    with np.errstate(over="ignore"):
+        d = hi.astype(np.uint64) - lo.astype(np.uint64)
+    return np.where(na & nb, np.uint64(0), np.where(na | nb, NAN_DISTANCE, d))
+
+
+def ulps(got, ref):
+    """ulp_distance(got, ref) as float64 for the measures' columns, where ref is the reference
+    rounded to a double (a double-double's hi): inf where exactly one of them is NaN or where
+    they are unequal and one is infinite (no distance in doubles is meant there). For complex
+    values the larger of the two parts' distances."""
+    got = np.asarray(got)
+    ref = np.asarray(ref)
+    if np.iscomplexobj(got) or np.iscomplexobj(ref):
+        got, ref = np.asarray(got, dtype=np.complex128), np.asarray(ref, dtype=np.complex128)
+        return np.maximum(ulps(got.real, ref.real), ulps(got.imag, ref.imag))
+    got, ref = np.asarray(got, dtype=np.float64), np.asarray(ref, dtype=np.float64)
+    d = ulp_distance(got, ref).astype(np.float64)
+    finite = np.isfinite(got) & np.isfinite(ref)
+    same = (got == ref) | (np.isnan(got) & np.isnan(ref))
+    return np.where(finite, d, np.where(same, 0.0, np.inf))
 
 
 @dataclasses.dataclass
@@ -116,6 +160,7 @@ def compare_libs(measure, libs, seconds=60.0):
                 out[lib] = r
         return out
 
+    run.seconds = seconds  # the time limit of each library's run (the tables' legend names it)
     return run
 
 

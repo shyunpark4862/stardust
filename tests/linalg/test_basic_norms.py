@@ -16,6 +16,7 @@ from .conftest import (
     as_sd,
     batch_shapes,
     compute_dtype,
+    f_order_strides,
     npy,
     random_values,
     well_conditioned,
@@ -24,17 +25,6 @@ from .conftest import (
 
 SETTINGS = settings(max_examples=examples(150), deadline=None)
 INF = math.inf
-
-
-def f_order_strides(shape, itemsize):
-    m, n = shape[-2], shape[-1]
-    st_ = [0] * len(shape)
-    st_[-2], st_[-1] = itemsize, itemsize * m
-    s = itemsize * m * n
-    for d in range(len(shape) - 3, -1, -1):
-        st_[d] = s
-        s *= shape[d]
-    return tuple(st_)
 
 
 def as_result(r):
@@ -461,3 +451,15 @@ def test_offset_past_the_matrix_is_an_empty_diagonal(k):
     assert sd.linalg.trace(a, k=k) == 0.0
     assert sd.linalg.diagonal(a, k=k).shape == (0,)
     assert sd.linalg.diagonal(sd.ones((5, 3, 4)), k=k).shape == (5, 0)
+
+
+@pytest.mark.parametrize("func", [sd.linalg.cond, sd.linalg.matrix_norm])
+@pytest.mark.parametrize("ord_", [10**400, -(10**400)])
+def test_matrix_ord_too_large_for_float(func, ord_):
+    # was: SystemError (OverflowError left pending, -1.0 taken as ord=-1);
+    # now the OverflowError itself, as vector_norm raises
+    a = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+    with pytest.raises(OverflowError):
+        func(a, ord=ord_)
+    with pytest.raises(OverflowError):
+        sd.linalg.vector_norm(a, ord=ord_)

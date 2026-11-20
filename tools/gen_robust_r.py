@@ -1,8 +1,8 @@
 """R's robust regressions on fixed problems, for sd.regression.rlm's tests
-(tests/regression/ref/robust_r.json; docs/design/regression.md §3.6). R is not a test
+(tests/regression/data/robust_r.json; docs/design/regression.md §3.6). R is not a test
 dependency: run this once where Rscript (with MASS and robustbase) is installed,
 
-    uv run --no-sync python tools/gen_robust_r.py
+    .venv/bin/python tools/gen_robust_r.py
 
 What it stores, per problem (the inputs too):
   - MASS::rlm (7.3) with psi.huber, psi.bisquare and psi.hampel at their defaults, from least
@@ -28,7 +28,7 @@ import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests" / "regression"))
-OUT = ROOT / "tests" / "regression" / "ref" / "robust_r.json"
+OUT = ROOT / "tests" / "regression" / "data" / "robust_r.json"
 
 from refdata_robust import STACKLOSS_X, STACKLOSS_Y  # noqa: E402
 
@@ -102,7 +102,7 @@ def run(prob):
         np.savetxt(d / "start.txt", np.array(bS + [sS]), fmt="%.17g")
         (d / "run.R").write_text(R_SCRIPT)
         res = subprocess.run(
-            ["Rscript", str(d / "run.R"), str(d / "data.csv"), str(d / "start.txt")],
+            ["Rscript", "--vanilla", str(d / "run.R"), str(d / "data.csv"), str(d / "start.txt")],
             capture_output=True,
             text=True,
             check=True,
@@ -119,6 +119,7 @@ def main():
     ver = subprocess.run(
         [
             "Rscript",
+            "--vanilla",
             "-e",
             'cat(R.version.string, "|", "MASS", format(packageVersion("MASS")), '
             '"| robustbase", format(packageVersion("robustbase")))',

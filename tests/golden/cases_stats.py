@@ -18,6 +18,12 @@ import zlib
 
 import numpy as np
 
+# Public names no case calls (tools/golden.py): the reason each needs none.
+EXCLUDED = {
+    "DescribeResult": "describe's result class: the describe cases store it whole",
+    "ModeResult": "mode's result class: the mode cases store it whole",
+}
+
 NAN, INF = math.nan, math.inf
 
 # name: (typical parameters, {parameter: special values}); grids keep prod(lengths) <= 64.

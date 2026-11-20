@@ -1,4 +1,4 @@
-"""quantile / median, the nan* reductions, cov and corrcoef against numpy (T0).
+"""quantile / median, the nan* reductions, cov and corrcoef against numpy.
 
 quantile, median and their nan forms are numpy's bits: the same order
 statistics and numpy's interpolation formula (docs/api/array.md §7.10). The
@@ -541,3 +541,18 @@ def test_stable_sort_keeps_the_input_order_of_mixed_zeros():
         assert got.tobytes() == np.sort(a, kind="stable").tobytes()
         got = np.asarray(sd.sort(sd.asarray(a), descending=True))
         assert got.tobytes() == a[np.argsort(-a, kind="stable")].tobytes()
+
+
+# ---- sizes that overflow int64 -----------------------------------------------
+
+
+def test_corrcoef_of_no_variables():
+    for shape in [(0, 5), (0, 0)]:
+        assert_same(sd.corrcoef(sd.zeros(shape)), np.zeros((0, 0)))
+        assert_same(sd.cov(sd.zeros(shape)), np.zeros((0, 0)))
+
+
+def test_quantile_rejects_bool_arrays_too():
+    with pytest.raises(TypeError, match=r"^quantile\(\): 'q' must be an int64 or float64 array, not bool$"):
+        sd.quantile(sd.asarray([1.0, 2.0]), sd.asarray([True]))
+    assert_same(sd.quantile(sd.asarray([1.0, 2.0, 3.0]), sd.asarray([0, 1])), np.array([1.0, 3.0]))

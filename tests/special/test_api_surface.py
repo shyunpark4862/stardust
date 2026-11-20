@@ -1,5 +1,5 @@
 """docs/api/special.md and the module agree: every name its signature blocks define is
-either exported or still planned (a later milestone), nothing else is exported, and the
+either exported or listed in PLANNED (documented, not implemented yet), nothing else is exported, and the
 keyword-only options of the exported functions are the documented ones."""
 
 import pathlib
@@ -11,8 +11,8 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "special.md"
 
-# Documented but not implemented yet: each milestone (ROADMAP.md, S1-S8) moves its
-# functions from here to sd.special.__all__. Empty after S8.
+# Documented but not implemented yet: a function moves from here to sd.special.__all__ when
+# it is implemented. Empty while every documented function exists.
 PLANNED: set[str] = set()
 
 

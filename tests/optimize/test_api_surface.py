@@ -1,5 +1,5 @@
 """docs/api/optimize.md and the module agree: every name its signature blocks define is
-exported (O1-O5 are all implemented), nothing else is exported, and the exported functions'
+exported (PLANNED is empty: every documented function exists), nothing else is exported, and the exported functions'
 signatures are the documented ones."""
 
 import inspect
@@ -12,8 +12,7 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "optimize.md"
 
-# Documented, not implemented yet (docs/design/optimize.md §8): none since O5 (root,
-# lsq_linear, nnls).
+# Documented, not implemented yet: none.
 PLANNED = set()
 RESULTS = {"OptimizeResult"}
 
@@ -90,8 +89,8 @@ def test_iteration_caps_are_max_iter_and_max_nfev():
 
 
 def test_batch_functions_take_tolerance_keywords_and_no_callback():
-    # O36, O37: xatol xrtol fatol frtol instead of scipy's tolerances dict; no callback anywhere in
-    # O2, nor in minimize (O54)
+    # O36, O37: xatol xrtol fatol frtol instead of scipy's tolerances dict; no callback in the batch
+    # scalar functions, nor in minimize (O54)
     doc = documented()
     for name in ("find_root", "find_minimum"):
         params = [p.strip().split("=")[0] for p in doc[name].split(",")]

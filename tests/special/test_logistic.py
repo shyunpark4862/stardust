@@ -1,4 +1,4 @@
-"""S1: expit logit log_expit xlogy xlog1py entr rel_entr (docs/api/special.md §5).
+"""expit logit log_expit xlogy xlog1py entr rel_entr (docs/api/special.md §5).
 
 Accuracy is tests/special/test_reference.py's. Here: the special values, bit for bit
 against scipy except where docs/design/special.md §2.4 says otherwise, and the layouts of
@@ -11,6 +11,7 @@ import pytest
 import scipy.special as sp
 
 import stardust as sd
+from tests._bits import bits_equal_any_nan
 
 S = sd.special
 
@@ -45,23 +46,18 @@ UNARY = ["expit", "logit", "log_expit", "entr"]
 BINARY = ["xlogy", "xlog1py", "rel_entr"]
 
 
-def same_bits(a, b):
-    a, b = np.float64(a), np.float64(b)
-    return bool(np.isnan(a) and np.isnan(b)) or a.view(np.uint64) == b.view(np.uint64)
-
-
 @pytest.mark.parametrize("name", UNARY)
 def test_special_values_unary(name):
     for x in EDGES:
         if name == "logit" and x in (0.25, 0.75):
             continue  # not a special value: 1 ULP apart (2 atanh(+-0.5) vs scipy's log), see test_reference
-        assert same_bits(getattr(S, name)(x), getattr(sp, name)(x)), (name, x)
+        assert bits_equal_any_nan(getattr(S, name)(x), getattr(sp, name)(x)), (name, x)
 
 
 @pytest.mark.parametrize("name", BINARY)
 def test_special_values_binary(name):
     for x, y in itertools.product(EDGES, EDGES):
-        assert same_bits(getattr(S, name)(x, y), getattr(sp, name)(x, y)), (name, x, y)
+        assert bits_equal_any_nan(getattr(S, name)(x, y), getattr(sp, name)(x, y)), (name, x, y)
 
 
 def test_documented_conventions():
@@ -111,7 +107,7 @@ def test_chunked_kernels_every_layout_same_bits(name, n):
     np.testing.assert_array_equal(strided.view(np.uint64), np.array([f(float(v)) for v in x[::2]]).view(np.uint64))
     np.testing.assert_array_equal(np.asarray(out)[::2].view(np.uint64), scalars.view(np.uint64))
     b = np.asarray(f(sd.asarray(np.full(3, x[0]))))
-    assert all(same_bits(v, f(float(x[0]))) for v in b)
+    assert all(bits_equal_any_nan(v, f(float(x[0]))) for v in b)
 
 
 @pytest.mark.parametrize("name", ["expit", "logit"])

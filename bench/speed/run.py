@@ -10,9 +10,13 @@ Long runs:
   group. The supervisor watches each case's wall time and the resident memory of the
   worker and its children (the R session); past a limit it kills the group, records
   the case as "timeout" or "memory", starts a new worker and goes on. Workers are also
-  replaced every `restart_every` cases, so memory a case leaks does not pile up.
-- After every case the run file is rewritten (with the raw batch times), so an
-  interrupted run loses at most one case: `run --resume FILE` continues it.
+  replaced every `restart_every` cases, so memory a case leaks does not pile up, and at
+  every round boundary of a run with several rounds: a short parallel call may settle in
+  a faster or slower mode for a whole process (2.4x apart for a + b at 2^16 elements,
+  10 threads), so each round's minimum comes from another process.
+- After every case the run file gets one more line (the case with its raw batch times;
+  results.py), so an interrupted run loses at most one case: `run --resume FILE`
+  continues it.
 - Progress lines show the elapsed time and the expected rest, from the baselines'
   seconds per case (scaled by how this run compares so far).
 - Before the run, the CPU time other processes use is measured for a few seconds
@@ -22,9 +26,13 @@ Long runs:
   recorded per case (proc.CpuMeter, no process started); a case above `busy_cores` is
   marked busy, in the progress line, the run file, the tables and compare, and
   `run --rerun-busy RUN.json` measures just those cases again.
-- caffeinate keeps the machine awake while the supervisor lives; the log file next to
-  the run file gets the progress lines and the worker's stderr; the 1-minute load is
-  recorded per case; a macOS notification says when a long run is done.
+- caffeinate keeps the machine awake while the supervisor lives; the log file
+  (build/logs/speed/<stamp>.log, bench/cli.py) gets the progress lines and the worker's
+  stderr; the 1-minute load is recorded per case; a macOS notification says when a long
+  run is done.
+- A smoke run also checks the results (check.py): a case whose check fails counts as a
+  failure, and any failure (an error, a timeout, a memory stop, a failed check) makes the
+  command's exit code 1.
 """
 
 from __future__ import annotations
@@ -44,6 +52,7 @@ import sys
 import threading
 import time
 
+from .. import cli
 from ..console import WIDTH, Console, block, case_label, fmt_duration, ljust, rjust, rule, split_label, table, width
 from . import harness, proc, results
 from .harness import fmt_time
@@ -184,6 +193,7 @@ class State:
         self.threads = threads
         self.use_r = use_r
         self.samples: dict[str, dict[tuple, harness.Sample]] = {c.id: {} for c in cases}
+        self.checks: dict[str, dict[str, tuple[bool, str]]] = {c.id: {} for c in cases}
         self.libs: dict[str, dict[str, str]] = {c.id: {} for c in cases}
         self.errors: dict[str, dict[tuple, str]] = {c.id: {} for c in cases}
         self.seconds: dict[str, float] = {c.id: 0.0 for c in cases}
@@ -196,9 +206,9 @@ class State:
 
     def add_reply(self, reply):
         cid = reply["id"]
-        for label, lib, t, times, calls in reply["samples"]:
+        for label, lib, t, times, calls, nan in reply["samples"]:
             key = (label, t)
-            s = harness.Sample(list(times), calls)
+            s = harness.Sample(list(times), calls, nan)
             old = self.samples[cid].get(key)
             self.samples[cid][key] = s if old is None else old.merged(s)
             self.libs[cid][label] = lib
@@ -208,6 +218,10 @@ class State:
                 self.errors[cid][(label, t)] = err
         if reply.get("setup_error"):
             self.setup_error[cid] = reply["setup_error"]
+        for label, ok, text in reply.get("checks") or []:
+            old = self.checks[cid].get(label)
+            if old is None or old[0]:  # a failed check stays failed
+                self.checks[cid][label] = (bool(ok), text)
 
     def record(self, case: Case) -> dict:
         cid = case.id
@@ -234,8 +248,13 @@ class State:
                     calls=s.calls,
                     times=s.times,
                 )
+                if s.nan is not None:
+                    rec["nan"] = round(s.nan, 4)
             else:
                 rec.update(min=None, error=self.errors[cid].get((label, t)) or self.failure.get(cid) or "not measured")
+            if label in self.checks[cid] and not any(t["label"] == label for t in timings):
+                ok, text = self.checks[cid][label]
+                rec["check"] = {"ok": ok, "text": text}  # on the label's first timing
             timings.append(rec)
         rd = self.rounds_done[cid]
         out = {
@@ -246,7 +265,7 @@ class State:
             "size": case.size,
             "n": case.n,
             "cost": list(case.cost) if case.cost else None,
-            "note": case.note,
+            "note": case.notes,
             "rounds": rd,
             "seconds_per_round": round(self.seconds[cid] / rd, 2) if rd else None,
             "load1": round(self.load[cid], 2),
@@ -274,8 +293,11 @@ class State:
                 continue
             for t in c["timings"]:
                 if t.get("times"):
-                    st.samples[cid][(t["label"], t["threads"])] = harness.Sample(t["times"], t.get("calls", 1))
+                    sample = harness.Sample(t["times"], t.get("calls", 1), t.get("nan"))
+                    st.samples[cid][(t["label"], t["threads"])] = sample
                     st.libs[cid][t["label"]] = t["lib"]
+                if t.get("check"):
+                    st.checks[cid][t["label"]] = (t["check"]["ok"], t["check"]["text"])
             rd = c.get("rounds") or 0
             st.rounds_done[cid] = rd
             st.seconds[cid] = (c.get("seconds_per_round") or 0.0) * rd
@@ -396,7 +418,7 @@ def _round_desc(rnd: int, rounds: int, smoke: bool) -> str:
     return "Smoke" if smoke and rounds == 1 else f"Round {rnd + 1}/{rounds}"
 
 
-def _header(cases, rounds, threads, use_r, have_r, smoke, lanes, jobs, limits, env, run_id, check, first, out):
+def _header(cases, rounds, threads, use_r, have_r, smoke, lanes, jobs, limits, env, run_id, quiet, first, out, log):
     git = env.get("git", {})
     machine = env.get("machine", {})
     ths = threads or sorted({t for c in cases for t in c.threads})
@@ -407,10 +429,10 @@ def _header(cases, rounds, threads, use_r, have_r, smoke, lanes, jobs, limits, e
         expected = f"{fmt_duration(est)} + {unknown} unknown"
     else:
         expected = fmt_duration(est)
-    if check is None:
+    if quiet is None:
         cpu = "not checked" if smoke else "no counters"
     else:
-        cpu = f"{check['other_cores']:.1f} cores" + ("" if check.get("quiet") else " (busy)")
+        cpu = f"{quiet['other_cores']:.1f} cores" + ("" if quiet.get("quiet") else " (busy)")
     has_r = any(isinstance(r, RRef) for c in cases for r in c.refs)
     r_text = "-" if not has_r else "yes" if use_r else "not found" if shutil.which("R") is None else "off"
     pairs = [
@@ -430,9 +452,8 @@ def _header(cases, rounds, threads, use_r, have_r, smoke, lanes, jobs, limits, e
     if first:
         pairs.append(("Resumed at", f"{first:,} of {rounds * len(cases):,}"))
     areas = ", ".join(sorted({c.area for c in cases}))
-    title = "stardust smoke run (every case called once, nothing timed)" if smoke else "stardust speed run"
-    out = pathlib.Path(out)
-    files = [("Results", _show(out)), ("Log", _show(out.with_suffix(".log")))]
+    title = "stardust smoke run (every case called once, results checked)" if smoke else "stardust speed run"
+    files = [("Results", _show(out)), ("Log", _show(log))]
     return [""] + block(title, pairs, [("Areas", areas), *files])
 
 
@@ -550,6 +571,7 @@ def _summary(data, total, interrupted, out, log_path) -> list[str]:
     smoke = opts.get("smoke", False)
     timings = [t for c in cs for t in c["timings"]]
     failed = [t for t in timings if t.get("min") is None and t.get("error") != "not measured"]
+    bad_checks = [t for t in timings if t.get("check") and not t["check"]["ok"]]
     stopped = [c for c in cs if c.get("failure")]
     busy = [c for c in cs if c.get("busy")]
     peak = max((c.get("peak_rss_mb") or 0 for c in cs), default=0)
@@ -558,6 +580,11 @@ def _summary(data, total, interrupted, out, log_path) -> list[str]:
         ("Elapsed", fmt_duration(total)),
         ("Measurements", f"{sum(1 for t in timings if t.get('min') is not None):,}"),
         ("Failed", f"{len(failed):,}"),
+        *(
+            [("Checks failed", f"{len(bad_checks):,} of {sum(1 for t in timings if t.get('check')):,}")]
+            if smoke
+            else []
+        ),
         ("Stopped cases", f"{len(stopped):,}"),
         ("Busy cases", f"{len(busy):,}"),
         ("Peak memory", f"{peak / 1024:.1f} GB"),
@@ -570,9 +597,7 @@ def _summary(data, total, interrupted, out, log_path) -> list[str]:
         by_area.setdefault(c["area"], []).append(c)
     rows = []
     for area, group in by_area.items():
-        bad = sum(
-            1 for c in group if c.get("failure") or any(t.get("min") is None and t.get("error") for t in c["timings"])
-        )
+        bad = sum(1 for c in group if case_failed(c))
         row = [
             area,
             f"{len(group):,}",
@@ -596,13 +621,23 @@ def _summary(data, total, interrupted, out, log_path) -> list[str]:
             ]
             lines += table(["Area", "Compared with", "Cases", "Others / sd", "sd slower"], crow, "llrrr")
             lines.append(rule())
-    problems = [(c, c["failure"]) for c in stopped] + [
-        (c, f"{t['label']} ({t['threads'] or 'default'}): {t['error']}")
-        for c in cs
-        if not c.get("failure")
-        for t in c["timings"]
-        if t.get("min") is None and t.get("error") and t["error"] != "not measured"
-    ]
+    problems = (
+        [(c, c["failure"]) for c in stopped]
+        + [(c, f"setup: {c['setup_error']}") for c in cs if c.get("setup_error") and not c.get("failure")]
+        + [
+            (c, f"{t['label']} ({t['threads'] or 'default'}): {t['error']}")
+            for c in cs
+            if not c.get("failure")
+            for t in c["timings"]
+            if t.get("min") is None and t.get("error") and t["error"] != "not measured"
+        ]
+        + [
+            (c, f"check against {t['label']}: {t['check']['text']}")
+            for c in cs
+            for t in c["timings"]
+            if t.get("check") and not t["check"]["ok"]
+        ]
+    )
     if problems:
         lines.append("Failures:")
         for c, why in problems[:12]:
@@ -624,6 +659,11 @@ def _summary(data, total, interrupted, out, log_path) -> list[str]:
             "Others / sd is the median over the cases of comparator time / sd time, per\n"
             "    element, at sd's lowest thread count: above 1, sd is faster. 'sd slower'\n"
             "    counts the cases below 1."
+        )
+    if smoke:
+        notes.append(
+            "A check compares sd's result with the first Python comparator's and each R and\n"
+            "    Boost one's (bench/speed/check.py); NaN shares that differ are reported, not failed."
         )
     notes.append(f"Results: {_show(out)}\n    Log:     {_show(log_path)}")
     lines.append("Notes:")
@@ -700,11 +740,12 @@ def run(
         env = {"git": git, "machine": harness.machine_info()}
         stamp = started.strftime("%Y%m%d-%H%M%S")
         run_id = f"{stamp}-{git['commit'] or 'nogit'}{'+' if git['dirty'] else ''}"
-        out = out or results.RUN_DIR / f"{stamp}{'-' + label if label else ''}.json"
+        out = out or results.RUN_DIR / f"{stamp}{'-' + label if label else ''}.jsonl"
     out = pathlib.Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    log_path = out.with_suffix(".log")
+    log_path = cli.log_file("speed")
     log = open(log_path, "a", buffering=1)  # noqa: SIM115  (the workers write to it too)
+    runfile = results.RunFile(out, resume=resume is not None)
 
     con = Console(log, show=progress)
     say = con.print
@@ -727,51 +768,88 @@ def run(
 
     load0 = proc.load1()
     env.setdefault("load1_at_start", round(load0, 2))
-    check = None if smoke else wait_for_quiet(con, limits, quiet)
-    if check is not None:
-        env.setdefault("cpu_checks", []).append(check)
-        if check.get("stopped"):
+    quiet_check = None if smoke else wait_for_quiet(con, limits, quiet)
+    if quiet_check is not None:
+        env.setdefault("cpu_checks", []).append(quiet_check)
+        if quiet_check.get("stopped"):
             log.close()
+            runfile.close()
             if caff is not None:
                 caff.terminate()
-            return {"path": str(out), "interrupted": True, "stopped_busy": True, "cases": []}
+            return {"path": str(out), "interrupted": True, "stopped_busy": True, "cases": [], "log": str(log_path)}
     elif not smoke and load0 > limits.load_warn:
         busy = proc.busy_processes()
         say(f"Warning: the 1-minute load is {load0:.1f} (a quiet machine is wanted). Busiest: {', '.join(busy) or '-'}")
     con.lines(
-        _header(cases, rounds, threads, state.use_r, have_r, smoke, lanes, jobs, limits, env, run_id, check, first, out)
+        _header(
+            cases,
+            rounds,
+            threads,
+            state.use_r,
+            have_r,
+            smoke,
+            lanes,
+            jobs,
+            limits,
+            env,
+            run_id,
+            quiet_check,
+            first,
+            out,
+            log_path,
+        )  # fmt: skip
     )
 
-    def snapshot(next_round, next_index):
-        data = {
+    env["blas_control"] = (
+        "one worker per BLAS thread count: sd at 1 thread and the 'follow' comparators at 1 run with "
+        "VECLIB_MAXIMUM_THREADS=1; sd at its default thread count and the 'fixed' comparators run "
+        "without it (Accelerate's default); R runs on one thread (OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1)"
+    )
+    options = {
+        "rounds": rounds,
+        "threads": list(threads) if threads else None,
+        "r": state.use_r,
+        "label": label,
+        "smoke": smoke,
+        "started": started.isoformat(timespec="seconds"),
+        "limits": dataclasses.asdict(limits),
+        "case_ids": [c.id for c in cases],
+        "log": str(log_path),
+    }
+    if resume is None:
+        runfile.start(run_id, env, dict(options, next=[0, 0], complete=False, elapsed_s=0.0))
+    else:
+        runfile.options({"log": str(log_path)})
+        runfile.env(env)
+    env_written = [json.dumps(env, sort_keys=True, default=str)]
+
+    def snapshot(next_round, next_index, cids=(), full=False):
+        """Append the cases `cids` (their records so far), the env if it changed, and the
+        progress; with full=True return the run as one dict."""
+        for cid in cids:
+            runfile.case(state.record(by_id[cid]))
+        now = json.dumps(env, sort_keys=True, default=str)
+        if now != env_written[0]:
+            runfile.env(env)
+            env_written[0] = now
+        progress = {
+            "elapsed_s": round(elapsed_before + time.monotonic() - t_run, 1),
+            "next": [next_round, next_index],
+            "complete": next_round >= rounds,
+        }
+        runfile.options(progress)
+        if not full:
+            return None
+        return {
             "schema": results.SCHEMA,
             "run": run_id,
             "env": env,
-            "options": {
-                "rounds": rounds,
-                "threads": list(threads) if threads else None,
-                "r": state.use_r,
-                "label": label,
-                "smoke": smoke,
-                "started": started.isoformat(timespec="seconds"),
-                "elapsed_s": round(elapsed_before + time.monotonic() - t_run, 1),
-                "next": [next_round, next_index],
-                "complete": next_round >= rounds,
-                "limits": dataclasses.asdict(limits),
-                "case_ids": [c.id for c in cases],
-            },
+            "options": dict(options, **progress),
             "cases": [state.record(c) for c in cases],
         }
-        results.save(data, out)
-        return data
 
     workers: dict = {}  # BLAS thread setting (None: default) -> WorkerHandle
     by_id = {c.id: c for c in cases}
-    env["blas_control"] = (
-        "one worker per BLAS thread count: sd at 1 thread and the 'follow' comparators at 1 run with "
-        "VECLIB_MAXIMUM_THREADS=1; sd at its default thread count, 'fixed' comparators and R run "
-        "without it (Accelerate's default)"
-    )
 
     def worker_for(ws, key):
         w = ws.get(key)
@@ -784,7 +862,8 @@ def run(
             if key is None and "versions" not in env:
                 pkgs = sorted({p for c in cases for r in c.refs if isinstance(r, RRef) for p in r.packages})
                 reply, status, _ = w.request(
-                    {"cmd": "env", "r_packages": pkgs if state.use_r else []}, limits.startup_timeout_s
+                    {"cmd": "env", "r": state.use_r, "r_packages": pkgs if state.use_r else []},
+                    limits.startup_timeout_s,
                 )
                 if status == "ok":
                     with lock:
@@ -804,10 +883,11 @@ def run(
 
     def parts(case):
         """(BLAS key, sd thread counts, measure the fixed comparators) per worker, in order. A
-        parallel smoke run calls everything in one worker: nothing is timed, so the BLAS
-        setting does not matter, and one worker per lane keeps the process count down."""
+        smoke run calls everything in one worker: nothing is timed, so the BLAS setting does
+        not matter; one worker per lane keeps the process count down, and the results check
+        has sd's result next to every comparator's."""
         ths = [t for t in case.threads if threads is None or t in threads]
-        if parallel:
+        if smoke:
             return [(None, ths, True)]
         out = {}
         for t in ths:
@@ -823,7 +903,7 @@ def run(
         result in `state` and returns (status, wall seconds)."""
         with lock:
             state.load[cid] = max(state.load[cid], proc.load1())
-        meter = None if parallel else proc.CpuMeter().start()
+        meter = None if smoke else proc.CpuMeter().start()
         t0 = time.monotonic()
         status, seconds, key, peak = "ok", 0.0, None, 0
         for key, ths, fixed in parts(by_id[cid]):
@@ -866,7 +946,7 @@ def run(
             else:
                 why = {
                     "timeout": f"timeout: over {fmt_duration(limits.case_timeout_s)}",
-                    "memory": f"memory: over {limits.rss_bytes / 2**30:.0f} GB (peak {peak / 2**30:.1f} GB)",
+                    "memory": f"memory: over {limits.rss_bytes / 2**30:g} GB (peak {peak / 2**30:.1f} GB)",
                     "died": "the worker died",
                 }[status]
                 state.failure[cid] = why
@@ -912,7 +992,7 @@ def run(
                     left,
                     f"{len(done)}/{total} {what}  ({elapsed()} elapsed)",
                 )
-                snapshot(*divmod(next_index[0], len(cases)))
+                snapshot(*divmod(next_index[0], len(cases)), cids=(pairs[idx][1],))
 
         def lane(ws):
             while not stop.is_set():
@@ -950,7 +1030,12 @@ def run(
                 status, dt = run_case(pairs[idx][1], lane_ws[0])
                 finish(idx, status, dt)
         with lock:
-            return snapshot(*divmod(next_index[0], len(cases)))
+            return snapshot(*divmod(next_index[0], len(cases)), full=True)
+
+    def new_round(i) -> bool:
+        """At a round boundary of a run with several rounds: the next case starts in new
+        workers (each round's minimum then comes from other processes)."""
+        return rounds > 1 and i > first and i % len(cases) == 0
 
     data = None
     interrupted = False
@@ -961,6 +1046,9 @@ def run(
             con.start(len(pairs), _round_desc(pairs[i][0] if i < len(pairs) else rounds - 1, rounds, smoke))
             while i < len(pairs):
                 rnd, cid = pairs[i]
+                if new_round(i):
+                    for key in list(workers):
+                        workers.pop(key).close()
                 left = eta.remaining(pairs[i:])
                 what = case_label(by_id[cid])
                 eta_s = f"~{fmt_duration(left)} left" if left is not None else "time left unknown"
@@ -979,7 +1067,7 @@ def run(
                     con.print(_result_line(con, by_id[cid], rec, rnd, rounds))
                 eta.done(cid, dt)
                 i += 1
-                data = snapshot(*divmod(i, len(cases)))
+                snapshot(*divmod(i, len(cases)), cids=(cid,))
             con.step(i, _round_desc(rounds - 1, rounds, smoke), "", elapsed_before + time.monotonic() - t_run, 0, "")
         else:
             data = run_parallel()
@@ -992,7 +1080,7 @@ def run(
                 kill_worker(ws, key)
         with lock:
             nxt = divmod(next_index[0] if parallel else i, len(cases))
-            data = snapshot(*nxt)
+            data = snapshot(*nxt, full=True)
     finally:
         con.close()
         for ws in lane_ws:
@@ -1001,13 +1089,29 @@ def run(
         if caff is not None:
             caff.terminate()
     if data is None:
-        data = snapshot(*divmod(len(pairs), len(cases)))
+        data = snapshot(*divmod(len(pairs), len(cases)), full=True)
+    runfile.close()
     total = elapsed_before + time.monotonic() - t_run
-    errs = sum(1 for c in data["cases"] for t in c["timings"] if t.get("min") is None)
+    failed = sum(1 for c in data["cases"] if case_failed(c))
     con.lines(_summary(data, total, interrupted, out, log_path))
     if not interrupted and notify and total >= limits.notify_after_s:
-        _notify("stardust speed run", f"Done: {len(cases)} cases, {fmt_duration(total)}, {errs} failed")
+        _notify("stardust speed run", f"Done: {len(cases)} cases, {fmt_duration(total)}, {failed} failed")
     log.close()
     data["path"] = str(out)
+    data["log"] = str(log_path)
     data["interrupted"] = interrupted
+    data["failed"] = failed
     return data
+
+
+def case_failed(c: dict) -> bool:
+    """Whether a run's case failed: stopped (timeout, memory, a dead worker), its setup or a
+    call raised, or (smoke) a results check failed."""
+    if c.get("failure") or c.get("setup_error"):
+        return True
+    for t in c["timings"]:
+        if t.get("min") is None and t.get("error") and t["error"] != "not measured":
+            return True
+        if t.get("check") and not t["check"]["ok"]:
+            return True
+    return False

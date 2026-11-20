@@ -13,7 +13,7 @@ plain power series. These are the series' own values (not fitted): exact rationa
 (flint's fmpq; g_k from the Bernoulli numbers), rounded at the end and written to
 csrc/special/coeffs/temme_igamma.hpp.
 
-Run: uv run python tools/gen_temme_igamma.py
+Run: .venv/bin/python tools/gen_temme_igamma.py
 """
 
 from __future__ import annotations

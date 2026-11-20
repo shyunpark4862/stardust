@@ -16,6 +16,7 @@ HEADLINE = [
     ("backward_max", "residual {} n·eps"),
     ("rel_max", "rel {}"),
     ("norm_rel", "norm rel {}"),
+    ("norm_inf_rel_max", "norm rel {}"),
     ("grad_max", "|grad| {}"),
     ("fnorm_max", "|F| {}"),
     ("kkt_max", "KKT {} eps"),

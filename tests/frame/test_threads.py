@@ -268,7 +268,8 @@ def test_sort_matches_python_sorted():
 
 # --- read_csv in chunks (docs/design/frame.md §10.6): files of several 512 KB chunks ---
 
-from .test_csv import oracle_column, same, write  # test_csv's serial oracle (docs/design/frame.md §13.1)  # noqa: E402
+from .conftest import same_cell  # noqa: E402
+from .test_csv import oracle_column, write  # test_csv's serial oracle (docs/design/frame.md §13.1)  # noqa: E402
 
 
 def big_rows(seed, nrows, kinds):
@@ -305,7 +306,7 @@ def test_csv_chunks_match_the_oracle(tmp_path, kinds):
     for j, k in enumerate(names):
         dtype, values = oracle_column(cols[j])
         assert str(df[k].dtype) == dtype
-        assert all(same(a, b) for a, b in zip(df[k].tolist(), values))
+        assert all(same_cell(a, b) for a, b in zip(df[k].tolist(), values))
 
 
 def test_csv_long_quoted_field_spans_chunks(tmp_path):

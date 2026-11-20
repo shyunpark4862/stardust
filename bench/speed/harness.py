@@ -1,9 +1,7 @@
 """Timing, thread control and the facts recorded next to every measurement.
 
-The timing rule is the one the area benches converged on (bench/frame/_harness.py (at commit 4151d2a),
-bench/special/common.py): call the function in batches long enough that the timer's
-resolution and the loop's overhead do not matter, and keep the per-call time of every
-batch. The minimum is the run least disturbed by the OS; the median of the batches
+The timing rule: call the function in batches long enough that the timer's resolution
+and the loop's overhead do not matter, and keep the per-call time of every batch. The minimum is the run least disturbed by the OS; the median of the batches
 gives the noise band (median / min - 1) that a comparison between runs must exceed
 before it counts.
 """
@@ -19,7 +17,6 @@ import os
 import platform
 import statistics
 import subprocess
-import sys
 import time
 from collections.abc import Callable, Iterator, Sequence
 
@@ -38,9 +35,11 @@ class Sample:
 
     times: list[float]
     calls: int  # calls per batch
+    nan: float | None = None  # the NaN share of the result (check.nan_share), when numeric
 
     def merged(self, other: Sample) -> Sample:
-        return Sample(self.times + other.times, max(self.calls, other.calls))
+        nan = other.nan if other.nan is not None else self.nan
+        return Sample(self.times + other.times, max(self.calls, other.calls), nan)
 
     @property
     def min(self) -> float:
@@ -71,6 +70,7 @@ def measure(
     min_batches: int = MIN_BATCHES,
     budget_s: float = BUDGET_S,
     smoke: bool = False,
+    keep: list | None = None,
 ) -> Sample:
     """Time fn() and return the per-call time of each batch.
 
@@ -78,8 +78,15 @@ def measure(
     batch size doubles from one call until a batch takes target_s; those calibration
     batches also warm the code up. The number of batches is cut to fit budget_s, but
     never below min_batches, except for a call slower than SLOW_CALL_S, which is timed
-    once (rounds give it more samples). smoke=True: one call only (does the case run?)."""
-    first = _batch(fn, 1)
+    once (rounds give it more samples). smoke=True: one call only (does the case run?).
+    keep: a list the warm-up call's result is appended to (the results check and the NaN
+    share read it); without it the result is dropped at once."""
+    t0 = time.perf_counter_ns()
+    value = fn()
+    first = (time.perf_counter_ns() - t0) * 1e-9
+    if keep is not None:
+        keep.append(value)
+    del value
     if smoke:
         return Sample([first], 1)
     if first >= SLOW_CALL_S:
@@ -222,16 +229,35 @@ def library_versions(libs: Sequence[str] = PY_LIBS) -> dict:
     return out
 
 
-def blas_info() -> list[dict]:
-    """The BLAS libraries threadpoolctl sees (numpy's and scipy's), with their default
-    thread counts."""
+def blas_info() -> dict:
+    """The BLAS and LAPACK numpy and scipy were built with (their show_config), the thread
+    variables of this process, and the pools threadpoolctl sees (OpenMP, OpenBLAS; it does
+    not see Accelerate)."""
+    out: dict = {"env": {k: os.environ.get(k) for k in THREAD_VARS if os.environ.get(k) is not None}}
+    for name in ("numpy", "scipy"):
+        try:
+            mod = importlib.import_module(name)
+            cfg = mod.show_config(mode="dicts")
+        except Exception:  # noqa: BLE001  (a missing library or an old show_config)
+            continue
+        deps = (cfg or {}).get("Build Dependencies", {})
+        out[name] = {k: _dep(deps.get(k)) for k in ("blas", "lapack") if deps.get(k)}
     try:
-        import numpy  # noqa: F401  (load numpy's BLAS so threadpoolctl lists it)
-        import scipy.linalg  # noqa: F401
         from threadpoolctl import threadpool_info
+
+        out["pools"] = [
+            {k: d.get(k) for k in ("internal_api", "num_threads", "version", "filepath")} for d in threadpool_info()
+        ]
     except ImportError:
-        return []
-    return [{k: d.get(k) for k in ("internal_api", "num_threads", "version", "filepath")} for d in threadpool_info()]
+        pass
+    return out
+
+
+THREAD_VARS = ("VECLIB_MAXIMUM_THREADS", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+
+
+def _dep(d: dict) -> dict:
+    return {k: d.get(k) for k in ("name", "version", "found") if d.get(k) is not None}
 
 
 def _sig3(v: float) -> str:
@@ -256,7 +282,3 @@ def fmt_ratio(r: float | None) -> str:
     if r is None or r != r:
         return "-"
     return _sig3(r)
-
-
-def eprint(*args: object) -> None:
-    print(*args, file=sys.stderr, flush=True)

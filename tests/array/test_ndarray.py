@@ -7,6 +7,8 @@ import pytest
 
 import stardust as sd
 
+from .conftest import run_guarded
+
 
 def test_dtype_objects_are_four_distinct_singletons():
     dts = [sd.bool, sd.int64, sd.float64, sd.complex128]
@@ -105,3 +107,52 @@ def test_memory_is_cache_line_aligned():
     for n in (1, 3, 1000):
         addr = np.asarray(sd.empty(n)).__array_interface__["data"][0]
         assert addr % 128 == 0
+
+
+# ---- sizes that overflow int64 -----------------------------------------------
+
+
+def test_new_array_strided_checks_the_shape():
+    # outer of two 32-d arrays has 33 dimensions: unchecked, it writes past the shape array.
+    rc, out = run_guarded(
+        """
+        import stardust as sd
+        x = sd.ones((1,) * 31 + (2,))
+        try:
+            r = sd.linalg.outer(x, x)
+            print("returned", r.ndim)
+        except ValueError as e:
+            print(e)
+        """
+    )
+    assert rc == 0, out
+    assert out.strip() == "outer(): arrays may have at most 32 dimensions"
+
+
+def test_messages_follow_the_rules():
+    x = sd.ones(3)
+    with pytest.raises(ValueError, match=r"^add\(\): operand of shape \(2, 2\) cannot be broadcast to \(2,\)$"):
+        sd.add(sd.ones(2), sd.ones((2, 2)), out=sd.ones(2))
+    with pytest.raises(ValueError, match=r"^operand of shape \(2, 3\) cannot be broadcast to \(3,\)$"):
+        x += sd.ones((2, 3))
+    with pytest.raises(MemoryError, match=r"^copy\(\): cannot allocate"):
+        sd.broadcast_to(sd.ones(1), (2**40,)).copy()
+    with pytest.raises(TypeError, match=r"^DType\(\): there is no constructor; use sd.bool"):
+        type(sd.int64)()
+    with pytest.raises(TypeError, match=r"^'==' not supported between instances of 'ndarray' and 'Series'$"):
+        x == sd.frame.Series([1, 2])  # noqa: B015
+    with pytest.raises(TypeError, match=r"^'!=' not supported between instances of 'ndarray' and 'Series'$"):
+        x != sd.frame.Series([1, 2])  # noqa: B015
+    with pytest.raises(TypeError, match=r"^asarray\(\): uint64 buffers cannot be converted to float64 without loss$"):
+        sd.asarray(np.ones(2, dtype=np.uint64), dtype=sd.float64)
+    with pytest.raises(TypeError, match=r"^asarray\(\): uint64 buffers cannot be converted to int64 without loss$"):
+        sd.asarray(np.ones(2, dtype=np.uint64))
+    with pytest.raises(
+        TypeError, match=r"^asarray\(\): 'obj' must be an sd.ndarray, a list, a tuple, a range or a buffer, not str$"
+    ):
+        sd.asarray("abc")
+    with pytest.raises(
+        TypeError,
+        match=r"^only a scalar, an sd.ndarray, a list, a tuple, a range or a buffer can be assigned, not NoneType$",
+    ):
+        x[...] = None

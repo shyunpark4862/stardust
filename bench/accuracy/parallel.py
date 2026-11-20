@@ -16,7 +16,6 @@ _SWEEPS: dict = {}
 
 
 def _init():
-    os.environ.setdefault("PYTHONHASHSEED", "0")
     import stardust as sd
 
     sd.set_num_threads(1)

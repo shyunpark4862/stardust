@@ -5,7 +5,7 @@ import pytest
 
 import stardust as sd
 
-from .conftest import NP_DTYPE, assert_same
+from .conftest import NP_DTYPE, assert_same, run_guarded
 
 
 def arrays(*shapes, dtype=np.float64):
@@ -91,3 +91,30 @@ def test_results_are_fresh_c_contiguous():
     a = sd.zeros((2, 2))
     for r in (sd.concat([a, a]), sd.stack([a, a], axis=2)):
         assert r.base is None and r._flags()["c_contiguous"]
+
+
+# ---- sizes that overflow int64 -----------------------------------------------
+
+
+def test_concat_of_huge_broadcast_views_is_too_big():
+    # Unchecked, the length sum wraps to 0 and the copies write past the allocation (SIGSEGV).
+    rc, out = run_guarded(
+        """
+        import stardust as sd
+        b = sd.broadcast_to(sd.ones(1, dtype=sd.bool), (2**62,))
+        for f in [lambda: sd.concat([b] * 4), lambda: sd.concat([b] * 4, axis=None), lambda: sd.concat([b, b]),
+                  lambda: sd.diff(b, prepend=b)]:
+            try:
+                f()
+                print("returned")
+            except ValueError as e:
+                print(e)
+        """
+    )
+    assert rc == 0, out
+    assert out.split("\n")[:4] == [
+        "concat(): array is too big",
+        "concat(): array is too big",
+        "concat(): array is too big",
+        "diff(): array is too big",
+    ]

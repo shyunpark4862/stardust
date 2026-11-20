@@ -1,9 +1,9 @@
-"""S8: complex arguments (docs/api/special.md §12): wofz, loggamma, and erf, erfc, erfcx and
+"""Complex arguments (docs/api/special.md §12): wofz, loggamma, and erf, erfc, erfcx and
 lambertw of a complex argument.
 
 Accuracy is tests/special/test_reference.py's (the files wofz, *_complex, loggamma and
 lambertw_c*). Here: the special values against scipy except where docs/design/special.md
-§2.4 says otherwise (S8 user decision: true values and limits), the sides of the branch
+§2.4 says otherwise (true values and limits), the sides of the branch
 cuts (the sign of a zero imaginary part), the result types, and lambertw's k."""
 
 import itertools
@@ -20,8 +20,8 @@ INF, NAN = math.inf, math.nan
 EDGE = [0.0, -0.0, 1.0, -1.0, INF, -INF, NAN, 5e-324]
 
 
-def same(a, b, zero_sign=True):
-    """Both finite and within 1e-13 of each other in modulus (the S8 error measure; zero
+def close_or_same(a, b, zero_sign=True):
+    """Both finite and within 1e-13 of each other in modulus (the error measure of docs/api/special.md §12; zero
     parts must agree in sign unless zero_sign=False), or part by part the same NaN or infinity."""
     a, b = complex(a), complex(b)
     if all(map(math.isfinite, (a.real, a.imag, b.real, b.imag))):
@@ -62,7 +62,7 @@ def test_erf_family_edges_match_scipy(name):
     f, g = getattr(S, name), getattr(sp, name)
     for x, y in itertools.product(EDGE, EDGE):
         z = complex(x, y)
-        assert same(f(z), g(z), zero_sign=False), (name, z, f(z), g(z))
+        assert close_or_same(f(z), g(z), zero_sign=False), (name, z, f(z), g(z))
 
 
 def test_erf_family_zero_parts():
@@ -78,7 +78,7 @@ def test_erf_family_zero_parts():
 
 
 def test_erf_family_true_values():
-    # S8 user decision (scipy NaN); and a scipy overflow where the value is finite
+    # true values where scipy gives NaN (docs/design/special.md §2.4); and a scipy overflow where the value is finite
     assert S.erf(1e300 + 1e300j) == 1
     assert close(S.erf(5e-324 + 30j).real, 5.391989333430128e67, 1e-13)  # scipy inf
     # the axes are exact part by part: erf(iy) = i erfi(y), erfc(iy) = 1 - i erfi(y), w(iy) = erfcx(y)
@@ -112,20 +112,20 @@ def test_loggamma_complex_special_values():
     for z in [0j, complex(-0.0, 0.0), complex(0.0, -0.0), -1 + 0j, complex(-1, -0.0), -3 + 0j]:
         v = S.loggamma(z)
         assert v.real == INF and math.isnan(v.imag), z  # a pole: Im depends on the direction (scipy NaN)
-    # limits (S8 user decision; scipy NaN)
-    assert same(S.loggamma(complex(INF, 0.0)), complex(INF, 0.0))
-    assert same(S.loggamma(complex(INF, -0.0)), complex(INF, -0.0))
-    assert same(S.loggamma(complex(INF, 1.0)), complex(INF, INF))
-    assert same(S.loggamma(complex(1.0, INF)), complex(-INF, INF))
-    assert same(S.loggamma(complex(1.0, -INF)), complex(-INF, -INF))
-    assert same(S.loggamma(complex(-INF, 1.0)), complex(-INF, -INF))
-    assert same(S.loggamma(complex(INF, INF)), complex(INF, INF))
+    # limits (docs/design/special.md §2.4; scipy NaN)
+    assert close_or_same(S.loggamma(complex(INF, 0.0)), complex(INF, 0.0))
+    assert close_or_same(S.loggamma(complex(INF, -0.0)), complex(INF, -0.0))
+    assert close_or_same(S.loggamma(complex(INF, 1.0)), complex(INF, INF))
+    assert close_or_same(S.loggamma(complex(1.0, INF)), complex(-INF, INF))
+    assert close_or_same(S.loggamma(complex(1.0, -INF)), complex(-INF, -INF))
+    assert close_or_same(S.loggamma(complex(-INF, 1.0)), complex(-INF, -INF))
+    assert close_or_same(S.loggamma(complex(INF, INF)), complex(INF, INF))
     for z in [complex(-INF, 0.0), complex(NAN, 0.0), complex(0.0, NAN)]:
         assert all(math.isnan(p) for p in (S.loggamma(z).real, S.loggamma(z).imag)), z
     # the cut: Im = -3 pi on (-3, -2) from above, +3 pi from below (scipy)
     for x in [-2.5, -10.3, -0.5]:
-        assert same(S.loggamma(complex(x, 0.0)), sp.loggamma(complex(x, 0.0)))
-        assert same(S.loggamma(complex(x, -0.0)), sp.loggamma(complex(x, -0.0)))
+        assert close_or_same(S.loggamma(complex(x, 0.0)), sp.loggamma(complex(x, 0.0)))
+        assert close_or_same(S.loggamma(complex(x, -0.0)), sp.loggamma(complex(x, -0.0)))
     assert close(S.loggamma(complex(-2.5, 0.0)).imag, -3 * math.pi)
     assert S.loggamma(1 + 0j) == 0 and S.loggamma(2 + 0j) == 0
 
@@ -138,33 +138,33 @@ def test_loggamma_conjugate():
 
 
 def test_lambertw_true_values():
-    # S8 user decision (scipy inf+nanj, NaN)
+    # true values where scipy gives inf+nanj or NaN (docs/design/special.md §2.4)
     assert close(S.lambertw(5e-324 + 0j, k=1), -751.0615683230378 + 3.1457810754352713j)
     assert close(S.lambertw(5e-324 + 0j, k=-1), -751.0615683230378 - 3.1457810754352713j)
     for k in [0, 1, -2]:
-        assert same(S.lambertw(complex(0.0, INF), k=k), complex(INF, math.pi / 2 + 2 * math.pi * k))
-        assert same(S.lambertw(complex(INF, 0.0), k=k), complex(INF, 2 * math.pi * k))
-        assert same(S.lambertw(complex(-INF, 0.0), k=k), complex(INF, math.pi + 2 * math.pi * k))
+        assert close_or_same(S.lambertw(complex(0.0, INF), k=k), complex(INF, math.pi / 2 + 2 * math.pi * k))
+        assert close_or_same(S.lambertw(complex(INF, 0.0), k=k), complex(INF, 2 * math.pi * k))
+        assert close_or_same(S.lambertw(complex(-INF, 0.0), k=k), complex(INF, math.pi + 2 * math.pi * k))
     em = -0.36787944117144233  # the float64 nearest -1/e, 8e-18 below it: on the cut of W_0
     assert close(S.lambertw(complex(em, 0.0)), -1 + 8.220079714836618e-09j, 1e-14)
     assert close(S.lambertw(complex(em, -0.0)), -1 - 8.220079714836618e-09j, 1e-14)
     assert close(S.lambertw(complex(em, 0.0), k=-1), -1 - 8.220079714836618e-09j, 1e-14)
-    assert S.lambertw(em) == -1.0  # the real argument: the branch point (S7)
+    assert S.lambertw(em) == -1.0  # the real argument: the branch point (docs/design/special.md §2.4)
 
 
 def test_lambertw_zero_and_nan():
-    assert same(S.lambertw(0j), 0j) and same(S.lambertw(complex(-0.0, -0.0)), complex(-0.0, -0.0))
+    assert close_or_same(S.lambertw(0j), 0j) and close_or_same(S.lambertw(complex(-0.0, -0.0)), complex(-0.0, -0.0))
     for k in [1, -1, 3]:
-        assert same(S.lambertw(0j, k=k), complex(-INF, 0.0))  # scipy
-    assert same(S.lambertw(complex(NAN, 0.0)), sp.lambertw(complex(NAN, 0.0)))
+        assert close_or_same(S.lambertw(0j, k=k), complex(-INF, 0.0))  # scipy
+    assert close_or_same(S.lambertw(complex(NAN, 0.0)), sp.lambertw(complex(NAN, 0.0)))
 
 
 def test_lambertw_cut_sides():
-    # the sign of a zero imaginary part picks the side (C99, S8 user decision)
+    # the sign of a zero imaginary part picks the side (C99, docs/design/special.md §2.4)
     for x in [-1.0, -5.0, -1e10]:
         for k in [0, 1, -1, 2]:
-            assert same(S.lambertw(complex(x, 0.0), k=k), sp.lambertw(complex(x, 0.0), k)), (x, k)
-            assert same(S.lambertw(complex(x, -0.0), k=k), sp.lambertw(complex(x, -0.0), k)), (x, k)
+            assert close_or_same(S.lambertw(complex(x, 0.0), k=k), sp.lambertw(complex(x, 0.0), k)), (x, k)
+            assert close_or_same(S.lambertw(complex(x, -0.0), k=k), sp.lambertw(complex(x, -0.0), k)), (x, k)
     # on (-1/e, 0): W_-1 is real from above; from below it is W_1's conjugate. scipy gives the
     # real value from both sides.
     x = -0.1

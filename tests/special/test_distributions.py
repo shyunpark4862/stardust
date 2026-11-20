@@ -1,8 +1,8 @@
-"""T1: the distribution functions (docs/api/special.md §13).
+"""The distribution functions (docs/api/special.md §13).
 
 Accuracy against the Arb references is test_reference.py's job (tests/special/ref/*.npz);
-here: the special values (true values and limits, T1 decision), agreement
-with scipy where scipy is right, and regressions found while building T1.
+here: the special values (true values and limits, docs/design/special.md §2.4), agreement
+with scipy where scipy is right, and regressions found while measuring them.
 """
 
 import math
@@ -86,7 +86,7 @@ def test_special_values(call, want):
 
 
 def test_scipy_errors_fixed():
-    # T1 decision: the true value where scipy gives inf or NaN.
+    # docs/design/special.md §2.4: the true value where scipy gives inf or NaN.
     t = S.stdtrit(3.0, 5e-324)
     assert math.isfinite(t) and t < -1e100
     assert S.stdtr(3.0, t) > 0
@@ -131,7 +131,7 @@ def test_against_scipy_where_both_are_defined():
 
 
 def test_betaincinv_small_a_and_b_regression():
-    # T1 found betaincinv / betainccinv returning 0 or 1 for 8% of a, b < 1 (a bad
+    # betaincinv / betainccinv returned 0 or 1 for 8% of a, b < 1 (a bad
     # starting point read as an underflowing root). Now every root agrees with scipy.
     a, b, p = np.exp(RNG.uniform(-7, 0, 20000)), np.exp(RNG.uniform(-7, 0, 20000)), RNG.uniform(0, 1, 20000)
     for name in ("betaincinv", "betainccinv"):
@@ -151,7 +151,7 @@ def test_python_scalars_give_floats_and_arrays_broadcast():
 def test_inverses_beyond_the_double_range():
     # Roots outside float64: fdtri underflows to 0 only when even the smallest
     # subnormal already has fdtr >= p; stdtrit overflows to -inf only when even
-    # -DBL_MAX still has stdtr >= p (T1: these points have no reference value).
+    # -DBL_MAX still has stdtr >= p (these points have no reference value).
     rng = np.random.default_rng(3)
     dfn, dfd, p = (
         np.exp(rng.uniform(-4.6, 0, 3000)),
@@ -186,3 +186,29 @@ def test_fdtr_where_one_shape_is_past_2_900_review_regression():
     for dfn, dfd, x, lo, up in rows:
         assert abs(S.fdtr(dfn, dfd, x) / lo - 1) < 2e-15, (dfn, dfd, x)
         assert abs(S.fdtrc(dfn, dfd, x) / up - 1) < 2e-15, (dfn, dfd, x)
+
+
+@pytest.mark.parametrize("y", [-8.98e307, -8.99e307, -1e308, -1.7976931348623157e308])
+def test_ndtri_exp_huge_negative(y):
+    v = S.ndtri_exp(y)
+    want = -math.sqrt(2.0) * math.sqrt(-y)  # the asymptote's leading term, to ~log|y| / |y|
+    assert v < 0 and math.isfinite(v)
+    assert abs(v / want - 1.0) < 1e-15
+    assert sd.stats.Normal().ilogcdf(y) == v
+    assert sd.stats.Normal().ilogccdf(y) == -v
+    assert sd.stats.Normal(mu=1.0, sigma=2.0).ilogcdf(y) == pytest.approx(1.0 + 2.0 * v, rel=1e-15)
+
+
+# ---- argument names (user decision 2026-11-20): chdtr(df, x), chdtri(df, q), ncfdtr(..., x) ----
+
+
+def test_renamed_arguments_in_messages():
+    for f, args, name in (
+        (S.chdtr, ("a", 1.0), "df"),
+        (S.chdtrc, (1.0, "a"), "x"),
+        (S.chdtri, (1.0, "a"), "q"),
+        (S.ncfdtr, (1.0, 1.0, 1.0, "a"), "x"),
+        (S.ncfdtrc, (1.0, 1.0, 1.0, "a"), "x"),
+    ):
+        with pytest.raises(TypeError, match=rf"^{f.__name__}\(\): '{name}' must be"):
+            f(*args)

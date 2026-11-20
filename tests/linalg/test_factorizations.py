@@ -15,6 +15,7 @@ from .conftest import (
     as_sd,
     batch_shapes,
     compute_dtype,
+    f_order_strides,
     npy,
     random_values,
     residual_ok,
@@ -24,17 +25,6 @@ from .conftest import (
 
 SETTINGS = settings(max_examples=examples(150), deadline=None)
 FLOATS = ["float64", "complex128"]
-
-
-def f_order_strides(shape, itemsize):
-    m, n = shape[-2], shape[-1]
-    st_ = [0] * len(shape)
-    st_[-2], st_[-1] = itemsize, itemsize * m
-    s = itemsize * m * n
-    for d in range(len(shape) - 3, -1, -1):
-        st_[d] = s
-        s *= shape[d]
-    return tuple(st_)
 
 
 def poison(x, keep_lower, keep_diag=True):
@@ -357,3 +347,23 @@ def test_results_do_not_depend_on_input_layout(seed, n, dtype):
     for layout in ("F", "strided", "reversed"):
         for got, want in zip(run(layout), ref):
             assert np.array_equal(got, want)
+
+
+def test_bits_shared_with_numpy_and_scipy():
+    # docs/design/linalg.md §12.2: the same driver and the same call
+    sl = pytest.importorskip("scipy.linalg")
+    rng = np.random.default_rng(3)
+    for n in (3, 7, 40):
+        a = rng.standard_normal((n, n))
+        s = a @ a.T + n * np.eye(n)
+        b = rng.standard_normal((n, 3))
+        lower = sd.linalg.cholesky(sd.asarray(s))
+        assert np.array_equal(np.asarray(lower.tolist()), np.linalg.cholesky(s))
+        x = sd.linalg.cholesky_solve(lower, sd.asarray(b))
+        assert np.array_equal(np.asarray(x.tolist()), sl.cho_solve((np.linalg.cholesky(s), True), b))
+        got = sd.linalg.qr_pivoted(sd.asarray(a))
+        q, r, perm = sl.qr(a, pivoting=True)
+        assert np.array_equal(np.asarray(got[0].tolist()), q) and np.array_equal(np.asarray(got[1].tolist()), r)
+        assert got[2].tolist() == perm.tolist()
+        sol = sd.linalg.lstsq(sd.asarray(a), sd.asarray(b)).solution
+        assert np.array_equal(np.asarray(sol.tolist()), np.linalg.lstsq(a, b, rcond=None)[0])

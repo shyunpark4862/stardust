@@ -3,12 +3,12 @@
 Every fitting function of __all__ on a few fixed data sets (well conditioned, collinear,
 heavy-tailed, with NaN, batched, large enough for the multithreaded kernels, frame input),
 over its options (cov_type with maxlags and groups, families and links, penalties and paths,
-cross-validation, norms and scales, quantiles, bandwidths, nan_policy, rtol). A result object
+cross-validation, norms and scales, quantiles, bandwidths, nan_policy, rtol), and the tests on
+fitted models (linear hypotheses, comparisons, anova, the diagnostic tests). A result object
 is stored whole: every public field and every method without arguments (summary(),
 cov_params(), conf_int(), jarque_bera(), breusch_pagan(), ...); predict and predict_interval
 get new rows. nls runs the 27 NIST StRD problems from both starts with both methods, with
-differences and analytic Jacobians, and bounded, plus weighted, capped and non-finite cases
-(the 338 cases of the O1 nls golden).
+differences and analytic Jacobians, and bounded, plus weighted, capped and non-finite cases.
 """
 
 import math
@@ -16,6 +16,37 @@ import math
 import numpy as np
 
 from tests.regression import nist_nls as N
+
+# Public names no case calls (tools/golden.py): the reason each needs none.
+EXCLUDED = {
+    "OLSResult": "a result class: the cases of the function that returns it store it whole",
+    "WLSResult": "a result class: the cases of the function that returns it store it whole",
+    "GLSResult": "a result class: the cases of the function that returns it store it whole",
+    "GLMResult": "a result class: the cases of the function that returns it store it whole",
+    "LinregressResult": "a result class: the cases of the function that returns it store it whole",
+    "JarqueBeraResult": "a result class: the cases of the function that returns it store it whole",
+    "BreuschPaganResult": "a result class: the cases of the function that returns it store it whole",
+    "RidgeResult": "a result class: the cases of the function that returns it store it whole",
+    "LassoResult": "a result class: the cases of the function that returns it store it whole",
+    "ElasticNetResult": "a result class: the cases of the function that returns it store it whole",
+    "RidgeCVResult": "a result class: the cases of the function that returns it store it whole",
+    "LassoCVResult": "a result class: the cases of the function that returns it store it whole",
+    "ElasticNetCVResult": "a result class: the cases of the function that returns it store it whole",
+    "PenalizedGLMResult": "a result class: the cases of the function that returns it store it whole",
+    "RLMResult": "a result class: the cases of the function that returns it store it whole",
+    "TheilslopesResult": "a result class: the cases of the function that returns it store it whole",
+    "SiegelslopesResult": "a result class: the cases of the function that returns it store it whole",
+    "QuantRegResult": "a result class: the cases of the function that returns it store it whole",
+    "NLSResult": "a result class: the cases of the function that returns it store it whole",
+    "TTestResult": "a result class: the cases of the function that returns it store it whole",
+    "WaldTestResult": "a result class: the cases of the function that returns it store it whole",
+    "CompareFTestResult": "a result class: the cases of the function that returns it store it whole",
+    "CompareLRTestResult": "a result class: the cases of the function that returns it store it whole",
+    "AnovaResult": "a result class: the cases of the function that returns it store it whole",
+    "WhiteTestResult": "a result class: the cases of the function that returns it store it whole",
+    "GoldfeldQuandtResult": "a result class: the cases of the function that returns it store it whole",
+    "ResetTestResult": "a result class: the cases of the function that returns it store it whole",
+}
 
 NAN, INF = math.nan, math.inf
 
@@ -74,6 +105,7 @@ def cases(L):
     yield from robust(L)
     yield from quantile(L)
     yield from nls(L)
+    yield from model_tests(L)
 
 
 def fit_and_predict(L, res, Xnew):
@@ -478,3 +510,124 @@ def _nls_record(r, x):
     except Exception as e:  # noqa: BLE001
         out["predict"] = e
     return out
+
+
+def model_tests(L):
+    """The tests on fitted models: t_test and wald_test (linear with each covariance, GLM, rlm,
+    quantreg, nls), compare_f_test and compare_lr_test, anova (one fit of Type I and III, with
+    terms, several fits), white_test, goldfeld_quandt and reset_test over their options, and the
+    errors of each."""
+    sd = L.sd
+    R = sd.regression
+    D = data(L)
+    a = L.arr
+    X, y, Xs = (lambda: a(D["X"])), (lambda: a(D["y"])), (lambda: a(D["X"][:, :1]))
+    R2 = [[0.0, 1.0, -1.0, 0.0], [0.0, 0.0, 1.0, 1.0]]
+    row = [0.0, 1.0, 1.0, 0.0]
+    fits = {
+        "ols": lambda **kw: R.ols(y(), X(), **kw),
+        "wls zero weights": lambda **kw: R.wls(y(), X(), weights=a(D["w0"]), **kw),
+        "gls": lambda **kw: R.gls(y(), X(), sigma=a(D["sigma"]), **kw),
+    }
+    small = {
+        "ols": lambda: R.ols(y(), Xs()),
+        "wls zero weights": lambda: R.wls(y(), Xs(), weights=a(D["w0"])),
+        "gls": lambda: R.gls(y(), Xs(), sigma=a(D["sigma"])),
+    }
+    for fn, fit in fits.items():
+        yield f"t_test {fn}", lambda fit=fit: fit().t_test(a(R2), q=[0.5, 0.0])
+        yield f"t_test {fn} one row", lambda fit=fit: fit().t_test(row, q=0.25)
+        yield f"wald_test {fn}", lambda fit=fit: fit().wald_test(a(R2))
+        yield f"wald_test {fn} HC3", lambda fit=fit: fit(cov_type="HC3").wald_test(a(R2), q=[0.5, 0.0])
+        yield f"compare_f_test {fn}", lambda fit=fit, fn=fn: fit().compare_f_test(small[fn]())
+        yield f"compare_lr_test {fn}", lambda fit=fit, fn=fn: fit().compare_lr_test(small[fn]())
+        yield f"anova {fn}", lambda fit=fit: R.anova(fit())
+        yield f"anova {fn} typ=3", lambda fit=fit: R.anova(fit(), typ=3)
+        yield f"anova {fn} two fits", lambda fit=fit, fn=fn: R.anova(small[fn](), fit())
+        yield f"white_test {fn} cross_terms=False", lambda fit=fit: fit().white_test(cross_terms=False)
+        yield f"reset_test {fn} regressor", lambda fit=fit: fit().reset_test(power=(2, 3, 4), kind="regressor")
+    ols = fits["ols"]
+    yield "t_test ols cluster", lambda: ols(cov_type="cluster", groups=a(D["groups"])).t_test(a(R2))
+    yield "wald_test ols HAC", lambda: ols(cov_type="HAC", maxlags=2).wald_test(a(R2))
+    yield "t_test ols collinear", lambda: R.ols(y(), a(D["Xc"])).t_test(a(R2))
+    yield "wald_test ols collinear", lambda: R.ols(y(), a(D["Xc"])).wald_test(a(R2))
+    yield "wald_test ols dependent rows", lambda: ols().wald_test(a([R2[0], R2[1], [0.0, 2.0, 0.0, 1.0], [0.0] * 4]))
+    yield "t_test ols batch", lambda: R.ols(a(D["yb"]), X()).t_test(a(R2))
+    yield "wald_test ols batch", lambda: R.ols(a(D["yb"]), X()).wald_test(a(R2))
+    yield "anova ols terms", lambda: R.anova(ols(), terms=[[0], [1, 2]])
+    yield "anova ols terms typ=3", lambda: R.anova(ols(), typ=3, terms=[[0, 1], [2]])
+    yield "anova ols HC1 typ=3", lambda: R.anova(ols(cov_type="HC1"), typ=3)
+    mid = lambda: R.ols(y(), a(D["X"][:, :2]))  # noqa: E731
+    yield "anova ols three fits", lambda: R.anova(R.ols(y(), Xs()), mid(), ols())
+    yield "anova ols three fits Chisq", lambda: R.anova(R.ols(y(), Xs()), mid(), ols(), test="Chisq")
+    yield "anova ols no intercept", lambda: R.anova(ols(intercept=False))
+    yield "anova ols collinear", lambda: R.anova(R.ols(y(), a(D["Xc"])))
+    yield "anova summary", lambda: R.anova(ols()).summary()
+    yield "goldfeld_quandt ols", lambda: ols().goldfeld_quandt()
+    for name, kw in (
+        ("split=20", {"split": 20}),
+        ("split=0.4 drop=0.2", {"split": 0.4, "drop": 0.2}),
+        ("split=25 drop=10 order_by=0", {"split": 25, "drop": 10, "order_by": 0}),
+        ("order_by=values less", {"order_by": a(D["X"][:, 1]), "alternative": "less"}),
+        ("two-sided", {"alternative": "two-sided"}),
+    ):
+        yield f"goldfeld_quandt ols {name}", lambda kw=kw: ols().goldfeld_quandt(**kw)
+    yield "goldfeld_quandt wls zero weights", lambda: fits["wls zero weights"]().goldfeld_quandt(split=15, drop=4)
+    yield "white_test ols batch", lambda: R.ols(a(D["yb"]), X()).white_test()
+    yield "reset_test ols HC3", lambda: ols(cov_type="HC3").reset_test()
+    yield "reset_test ols batch", lambda: R.ols(a(D["yb"]), X()).reset_test()
+    yield "white_test ols perfect fit", lambda: R.ols(a(D["X"] @ [1.0, 2.0, 3.0]), X()).white_test()
+    # GLM
+    for fam, yk in (("binomial", "ybin"), ("poisson", "ypois"), ("gamma", "ygamma")):
+        big = lambda fam=fam, yk=yk: R.glm(a(D[yk]), X(), family=fam)  # noqa: E731
+        sm = lambda fam=fam, yk=yk: R.glm(a(D[yk]), Xs(), family=fam)  # noqa: E731
+        yield f"t_test glm {fam}", lambda big=big: big().t_test(a(R2))
+        yield f"wald_test glm {fam}", lambda big=big: big().wald_test(a(R2))
+        yield f"compare_lr_test glm {fam}", lambda big=big, sm=sm: big().compare_lr_test(sm())
+        yield f"anova glm {fam}", lambda big=big: R.anova(big())
+        yield f"anova glm {fam} typ=3", lambda big=big: R.anova(big(), typ=3)
+        yield f"anova glm {fam} two fits", lambda big=big, sm=sm: R.anova(sm(), big())
+    gbig = lambda: R.glm(a(D["ygamma"]), X(), family="gamma")  # noqa: E731
+    gsmall = lambda: R.glm(a(D["ygamma"]), Xs(), family="gamma")  # noqa: E731
+    yield "compare_f_test glm gamma", lambda: gbig().compare_f_test(gsmall())
+    yield "anova glm gamma two fits Chisq", lambda: R.anova(gsmall(), gbig(), test="Chisq")
+    # rlm, quantreg, nls
+    yield "t_test rlm", lambda: R.rlm(a(D["yt"]), X()).t_test(a(R2))
+    yield "wald_test rlm", lambda: R.rlm(a(D["yt"]), X()).wald_test(a(R2))
+    yield "t_test quantreg", lambda: R.quantreg(a(D["yt"]), X(), q=[0.25, 0.5]).t_test(a(R2))
+    yield "wald_test quantreg", lambda: R.quantreg(a(D["yt"]), X(), q=0.5).wald_test(a(R2))
+    xn = np.linspace(0, 5, 40)
+    yn = 3.0 * np.exp(-0.7 * xn) + 0.2 + 0.03 * L.rng(2).standard_normal(40)
+    nfit = lambda: R.nls(decay(sd), a(xn), a(yn), p0=[1.0, 1.0, 1.0])  # noqa: E731
+    yield "t_test nls", lambda: nfit().t_test([[1.0, 0.0, 0.0], [0.0, 1.0, -1.0]], q=[3.0, 0.0])
+    yield "wald_test nls", lambda: nfit().wald_test([[1.0, 0.0, 0.0], [0.0, 1.0, -1.0]], q=[3.0, 0.0])
+    # errors
+    yield "err t_test R columns", lambda: ols().t_test([[0.0, 1.0, 0.0]])
+    yield "err t_test q length", lambda: ols().t_test(a(R2), q=[1.0, 2.0, 3.0])
+    yield "err t_test R nan", lambda: ols().t_test([0.0, NAN, 0.0, 0.0])
+    yield "err compare_f_test type", lambda: ols().compare_f_test(fits["wls zero weights"]())
+    yield "err compare_f_test data", lambda: ols().compare_f_test(R.ols(a(D["yt"]), Xs()))
+    yield "err compare_f_test not nested", lambda: R.ols(y(), Xs()).compare_f_test(ols())
+    yield "err compare_f_test robust", lambda: ols(cov_type="HC3").compare_f_test(R.ols(y(), Xs(), cov_type="HC3"))
+    yield (
+        "err compare_f_test glm fixed scale",
+        lambda: R.glm(a(D["ybin"]), X(), family="binomial").compare_f_test(
+            R.glm(a(D["ybin"]), Xs(), family="binomial")
+        ),
+    )
+    yield (
+        "err anova glm fixed scale F",
+        lambda: R.anova(
+            R.glm(a(D["ybin"]), Xs(), family="binomial"), R.glm(a(D["ybin"]), X(), family="binomial"), test="F"
+        ),
+    )
+    yield "err anova typ=2", lambda: R.anova(ols(), typ=2)
+    yield "err anova rlm", lambda: R.anova(R.rlm(a(D["yt"]), X()))
+    yield "err anova none", lambda: R.anova()
+    yield "err anova typ1 robust", lambda: R.anova(ols(cov_type="HC1"))
+    yield "err anova terms", lambda: R.anova(ols(), terms=[[0], [1]])
+    yield "err anova batch fits", lambda: R.anova(R.ols(a(D["yb"]), Xs()), R.ols(a(D["yb"]), X()))
+    yield "err goldfeld_quandt gls", lambda: fits["gls"]().goldfeld_quandt()
+    yield "err goldfeld_quandt alternative", lambda: ols().goldfeld_quandt(alternative="x")
+    yield "err reset_test power int", lambda: ols().reset_test(power=2)
+    yield "err reset_test power 1", lambda: ols().reset_test(power=(1, 2))

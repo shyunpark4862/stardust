@@ -16,14 +16,17 @@ stays flat. The project uses Arb alone for true values: no mpmath (slow, and its
 quadrature caches grow without bound).
 """
 
+import contextlib
 import math
+import struct
+import sys
 from contextlib import contextmanager
 
 from flint import acb, arb, ctx
 
 TARGET_BITS = 110  # hi + lo is exact to rounding (2^-106 relative) with a margin
 START_PREC = 128
-MAX_PREC = 1 << 13  # 8192 bits, ~2500 digits
+MAX_PREC = 1 << 13  # 8192 bits, ~2500 digits: past it a point is dropped (and recorded as dropped)
 DOUBLE_TINY = 2.0**-1022  # the smallest normal double: settled's floor for double-double references
 
 
@@ -94,9 +97,15 @@ def rigorous(fn, target=TARGET_BITS, start=START_PREC, max_prec=MAX_PREC, floor=
     raise NotSettled(fn)
 
 
+def _even(c: float) -> bool:
+    """The double's last bit is 0 (0 itself is even): the tie-breaking rule of rounding."""
+    return struct.unpack("<q", struct.pack("<d", c))[0] & 1 == 0
+
+
 def to_dd(v):
-    """(hi, lo) of a settled arb: hi the double nearest the midpoint (ties to even), lo
-    the double nearest the rest. inf or 0 outside the double range, as rounding gives."""
+    """(hi, lo) of a settled arb: hi the double nearest the midpoint (ties to even, by the last
+    bit of the double, subnormals and 0 included), lo the double nearest the rest. inf or 0
+    outside the double range, as rounding gives."""
     if isinstance(v, float):
         return v, 0.0
     m = v.mid()
@@ -107,7 +116,7 @@ def to_dd(v):
         best, err = h0, abs(m - arb(h0))
         for c in (math.nextafter(h0, math.inf), math.nextafter(h0, -math.inf)):
             e = abs(m - arb(c))
-            if e < err or (e == err and c != 0.0 and (math.frexp(c)[0] * 2**53) % 2 == 0):
+            if e < err or (e == err and _even(c) and not _even(best)):
                 best, err = c, e
         lo = float(m - arb(best))
     return best, lo
@@ -300,3 +309,35 @@ def nstr(v, n):
         split = 1
     out = sign + digits[:split] + "." + digits[split:]
     return out if e == 0 else out + ("e+" if e > 0 else "e") + str(e)
+
+
+class _Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, text):
+        for s in self.streams:
+            s.write(text)
+        return len(text)
+
+    def flush(self):
+        for s in self.streams:
+            s.flush()
+
+
+@contextlib.contextmanager
+def logged(tool: str):
+    """The generator's console output also into build/logs/<tool>/<stamp>.log (bench/cli.py)."""
+    from bench import cli
+
+    with open(cli.log_file(tool), "w") as fh, contextlib.redirect_stdout(_Tee(sys.stdout, fh)):
+        yield
+
+
+def provenance(target_bits=TARGET_BITS, extra=None) -> dict:
+    """The provenance fields of a reference file (tests/reffile.py): the Arb that computed it
+    (python-flint's version, and any other method after "; ") and the target."""
+    import flint
+
+    arb_ = f"python-flint {flint.__version__}" + (f"; {extra}" if extra else "")
+    return {"arb": arb_, "target_bits": int(target_bits)}

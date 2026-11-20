@@ -8,7 +8,7 @@ for |mu| <= 1/2, where the difference cancels as mu -> 0. These are the series' 
 values (Arb's power series of rgamma, 256 bits), not fitted (Numerical Recipes' beschb fits Chebyshev
 coefficients instead). Written to csrc/special/coeffs/rgamma_taylor.hpp.
 
-Run: uv run python tools/gen_rgamma_taylor.py
+Run: .venv/bin/python tools/gen_rgamma_taylor.py
 """
 
 import pathlib

@@ -8,7 +8,7 @@ rationals) rounded at the end, not fitted; written to
 csrc/special/coeffs/lambertw_branch.hpp. The radius of convergence is sqrt 2 (the
 other branch point, x = 0 of k = -1); on |p| <= 1/2 the terms fall like 0.36^k.
 
-Run: uv run python tools/gen_lambertw_branch.py
+Run: .venv/bin/python tools/gen_lambertw_branch.py
 """
 
 import math

@@ -1,9 +1,9 @@
-"""G4: rlm (M and MM), theilslopes, siegelslopes (docs/api/regression.md §5,
+"""rlm (M and MM), theilslopes, siegelslopes (docs/api/regression.md §5,
 docs/design/regression.md §3.6).
 
 Accuracy against Arb (tests/regression/ref/robust.json: the estimating equations solved and
 certified on the solution's pieces), statsmodels' RLM at a tight tolerance, R's MASS::rlm and
-robustbase::lmrob (tests/regression/ref/robust_r.json, made by tools/gen_robust_r.py; R is
+robustbase::lmrob (tests/regression/data/robust_r.json, made by tools/gen_robust_r.py; R is
 not needed here), MM's breakdown, determinism, batches, threads, NaN policies, edge cases and
 errors; the slopes against scipy bit for bit and against exact rational medians."""
 
@@ -19,13 +19,15 @@ import pytest
 import scipy.stats as st
 
 import stardust as sd
+from tests._bits import max_rel_error
 
 from . import refdata_robust
+from .smalldata import X, Y, gen
 
 R = sd.regression
 K = sd._core.regression
 REFS = refdata_robust.load()
-RREF = json.loads((pathlib.Path(__file__).parent / "ref" / "robust_r.json").read_text())
+RREF = json.loads((pathlib.Path(__file__).parent / "data" / "robust_r.json").read_text())
 
 
 def a(x):
@@ -40,11 +42,6 @@ def norm_err(got, ref):
     hi = np.array([v[0] for v in ref])
     lo = np.array([v[1] for v in ref])
     return np.linalg.norm((a(got) - hi) - lo) / np.linalg.norm(hi + lo)
-
-
-def rel(got, ref):
-    got, ref = a(got), np.asarray(ref, dtype=float)
-    return float(np.max(np.abs(got - ref) / np.abs(ref)))
 
 
 def contaminated(n=200, p=3, frac=0.1, seed=0, shift=10.0):
@@ -77,12 +74,12 @@ def test_against_arb(name):
     assert r.converged
     assert norm_err(r.params, ref["params"]) <= 4e-16
     assert abs(r.scale - sum(ref["scale"])) <= 4e-15 * sum(ref["scale"])
-    assert rel(r.bse, dd(ref["bse"])) <= 4e-15
+    assert max_rel_error(r.bse, dd(ref["bse"])) <= 4e-15
     assert np.max(np.abs(a(r.weights) - dd(ref["weights"]))) <= 4e-15
     if p["method"] == "MM":
         # the S estimate against its certified fixed point (regref.s_estimate, rounded): the
         # S iteration's Newton steps (G82) reach it to rounding (measured 9.4e-16, 2.2e-16)
-        assert rel(r._raw[8], p["init_params"]) <= 2e-15
+        assert max_rel_error(r._raw[8], p["init_params"]) <= 2e-15
         assert r.scale == pytest.approx(p["s_scale"], rel=1e-15)
 
 
@@ -114,7 +111,7 @@ def test_against_statsmodels(norm, scale_est, seed):
     assert r.converged
     assert np.max(np.abs(a(r.params) - s.params)) <= 1e-13 * np.max(np.abs(s.params))
     assert r.scale == pytest.approx(s.scale, rel=1e-13)
-    assert rel(r.bse, s.bse) <= 1e-13
+    assert max_rel_error(r.bse, s.bse) <= 1e-13
     assert np.max(np.abs(a(r.weights) - s.weights)) <= 1e-12
     assert a(r.resid) == pytest.approx(s.resid, abs=1e-12)
     # statsmodels' defaults stop earlier (tol 1e-8 on the objective's absolute change)
@@ -173,9 +170,11 @@ def test_against_mass(name, norm):
     r = R.rlm(pr["y"], pr["X"], norm=norm, scale_est="huber")
     tag = f"mass_{norm}_huber"
     assert Rv[tag + "_conv"][0] == 1
-    assert rel(r.params, Rv[tag + "_coef"]) <= 1e-13 or np.max(np.abs(a(r.params) - Rv[tag + "_coef"])) <= 1e-13
+    assert (
+        max_rel_error(r.params, Rv[tag + "_coef"]) <= 1e-13 or np.max(np.abs(a(r.params) - Rv[tag + "_coef"])) <= 1e-13
+    )
     assert r.scale == pytest.approx(Rv[tag + "_scale"][0], rel=1e-13)
-    assert rel(a(r.bse) * _kappa_factor(r, norm), Rv[tag + "_se"]) <= 1e-12
+    assert max_rel_error(a(r.bse) * _kappa_factor(r, norm), Rv[tag + "_se"]) <= 1e-12
     # MASS's MAD divides by 0.6745 where sd divides by Phi^-1(3/4) = 0.674489750...: a scale
     # 1.5e-5 apart and coefficients about 1e-6 apart
     r = R.rlm(pr["y"], pr["X"], norm=norm, scale_est="mad")
@@ -192,17 +191,17 @@ def test_against_lmrob(name):
     assert r.converged
     # the S start the R values were made from: the certified fixed point near sd's S estimate
     # (regref.s_estimate, rounded), which sd reaches to rounding (G82; measured 3.8e-16, 0)
-    assert rel(r._raw[8], pr["S_params"]) <= 2e-15
+    assert max_rel_error(r._raw[8], pr["S_params"]) <= 2e-15
     assert r.scale == pytest.approx(pr["S_scale"], rel=1e-15)
     # robustbase's M step and .vcov.avar1 from the same start (rel.tol 1e-15)
     assert Rv["mstep_conv"][0] == 1
     assert np.max(np.abs(a(r.params) - Rv["mstep_coef"])) <= 1e-14 * np.max(np.abs(Rv["mstep_coef"]))
     # robustbase inverts X^T Psi' X itself (kappa(X)^2 u: 2e-13 on the stack loss, whose Arb
     # reference sd matches to 2e-15)
-    assert rel(r.bse, Rv["mstep_se"]) <= 1e-12
+    assert max_rel_error(r.bse, Rv["mstep_se"]) <= 1e-12
     # lmrob itself (its own subsamples; its S refinement stops at refine.tol 1e-7)
     assert np.max(np.abs(a(r.params) - Rv["lmrob_coef"])) <= 1e-6 * np.max(np.abs(Rv["lmrob_coef"]))
-    assert rel(r.bse, Rv["lmrob_se"]) <= 1e-5
+    assert max_rel_error(r.bse, Rv["lmrob_se"]) <= 1e-5
     assert r.scale == pytest.approx(Rv["lmrob_scale"][0], rel=2e-5)
 
 
@@ -461,7 +460,7 @@ def test_tuning_constants():
         r = R.rlm(y, X, norm=norm, c=c)
         s = sm.RLM(y, sm.add_constant(X), M=M).fit(tol=1e-15, maxiter=1000)
         assert np.max(np.abs(a(r.params) - s.params)) <= 1e-13 * np.max(np.abs(s.params))
-        assert rel(r.bse, s.bse) <= 1e-13
+        assert max_rel_error(r.bse, s.bse) <= 1e-13
     d = R.rlm(y, X, norm="hampel")
     assert d.params.tolist() == R.rlm(y, X, norm="hampel", c=[2, 4, 8]).params.tolist()
     assert R.rlm(y, X).params.tolist() == R.rlm(y, X, c=1.345).params.tolist()
@@ -713,3 +712,81 @@ def test_slopes_omit_keeps_positions():
         r = f(y, nan_policy="omit")
         assert r.slope == 1.0 and r.intercept == 1.0
         assert f(y, [0.0, 1, 2, 3, 4], nan_policy="omit").slope == 1.0
+
+
+def _conv_invariant(fit, ref, n_iter_cap=None, tol=1e-12):
+    """converged implies the coefficients of the full fit to rounding."""
+    full = a(ref.params)
+    for r, cap in fit:
+        p = a(r.params)
+        if n_iter_cap:
+            assert r.n_iter <= cap
+        if r.converged:
+            assert np.max(np.abs(p - full)) <= tol * max(1.0, np.max(np.abs(full))), (cap, p, full)
+
+
+# ---- G93: converged needs the polish; n_iter <= max_iter
+
+
+def test_rlm_converged_means_polished():
+    y = Y.copy()
+    y[:6] += 8
+    for kw in (dict(), dict(norm="bisquare"), dict(scale_est="huber")):
+        ref = R.rlm(y, X, **kw)
+        assert ref.converged
+        _conv_invariant([(R.rlm(y, X, max_iter=m, **kw), m) for m in range(1, 15)], ref, n_iter_cap=True, tol=1e-11)
+    ref = R.rlm(y, X, method="MM", rng=gen())
+    assert ref.converged
+    _conv_invariant(
+        [(R.rlm(y, X, method="MM", rng=gen(), max_iter=m), m) for m in range(1, 10)], ref, n_iter_cap=True, tol=1e-11
+    )
+
+
+def test_rlm_mm_degenerate_designs():
+    r = R.rlm(np.zeros(0), np.zeros((0, 2)), method="MM", rng=gen())
+    assert r.nobs == 0 and not r.converged
+    y = np.arange(6.0) ** 1.3
+    for kw in (dict(), dict(method="MM", rng=gen())):
+        r0 = R.rlm(y, np.zeros((6, 2)), intercept=False, **kw)  # rank 0
+        assert r0.rank == 0 and r0.n_iter == 0 and r0.converged and np.all(np.isnan(a(r0.params)))
+        assert np.all(a(r0.fittedvalues) == 0.0) and math.isfinite(r0.scale) and r0.scale > 0
+    q0 = R.quantreg(y, np.zeros((6, 2)), intercept=False)
+    assert q0.rank == 0 and q0.n_iter == 0 and q0.converged
+
+
+def test_slopes_drop_overflowing_pairs():
+    y = [1e308, -1e308, 0.0, 1.0, 3.0]
+    x = [1e308, -1e308, 0.0, 1.0, 2.0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        want_t, want_s = st.theilslopes(y, x), st.siegelslopes(y, x)
+    got = R.theilslopes(y, x)
+    assert tuple(got) == tuple(float(v) for v in want_t)
+    assert tuple(R.siegelslopes(y, x)) == tuple(float(v) for v in want_s)
+    # the pass algorithm (forced) agrees
+    z = float(sd.special.ndtri(0.025))
+    v = K.slopes("t", sd.asarray(y), sd.asarray(x), 0, False, z, 0, 3).tolist()
+    assert v == [float(u) for u in want_t]
+
+
+def test_robust_summaries_say_covariance_type():
+    for r in (R.rlm(Y, X), R.quantreg(Y, X)):
+        assert "Covariance Type:" in r.summary() and "Cov Type:" not in r.summary()
+
+
+# ---- D-18, D-19: ridge_cv's and theilslopes' defaults
+
+
+def test_theilslopes_alpha_is_a_significance_level():
+    st = pytest.importorskip("scipy.stats")
+    rg = np.random.default_rng(7)
+    x = rg.normal(size=30)
+    y = 2 * x + rg.normal(size=30)
+    d = R.theilslopes(y, x)
+    assert tuple(d) == tuple(R.theilslopes(y, x, alpha=0.95)) == tuple(R.theilslopes(y, x, alpha=0.05))
+    s = st.theilslopes(y, x, alpha=0.95)
+    assert d.low_slope == s.low_slope and d.high_slope == s.high_slope
+    with pytest.raises(OverflowError, match=r"^theilslopes\(\): 'alpha' is out of range$"):
+        R.theilslopes(y, x, alpha=10**400)
+    with pytest.raises(TypeError, match=r"^theilslopes\(\): 'alpha' must be an int or a float, not str$"):
+        R.theilslopes(y, x, alpha="0.05")

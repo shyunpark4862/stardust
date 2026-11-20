@@ -1,7 +1,7 @@
 """One R process per worker for the comparator columns (python -m bench.accuracy run --compare).
 
-R is optional: when Rscript is not on PATH, available() is False and the R columns read "not
-run". A request writes each input as raw little-endian float64 (exactly the doubles the other
+R is optional: when R is not on PATH, available() is False and the R columns read "not run".
+A request writes each input as raw little-endian float64 (exactly the doubles the other
 libraries get), sends R one expression over the names a, b, c, ..., and reads the result back
 the same way. The process stays up between requests (packages load once).
 """
@@ -54,7 +54,7 @@ def _start():
     drv = _DIR[0] / "driver.R"
     drv.write_text(_DRIVER)
     _PROC[0] = subprocess.Popen(
-        ["R", "--vanilla", "--slave", "-f", str(drv)],
+        ["R", "--vanilla", "--no-echo", "-f", str(drv)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,

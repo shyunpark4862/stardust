@@ -117,3 +117,14 @@ def test_exports():
     for n in names:
         assert hasattr(S, n), n
     assert {"DescribeResult", "ModeResult"} <= names and "CdfResult" not in names
+
+
+def test_result_types():
+    from stardust import _results
+
+    assert S.DescribeResult is _results.DescribeResult and S.ModeResult is _results.ModeResult
+    r = S.MultivariateNormal(mu=sd.zeros(2), cov=sd.eye(2)).cdf(sd.zeros(2), return_error=True)
+    assert type(r).__name__ == "CdfResult" and r._fields == ("value", "error")
+    v, e = r
+    assert v == r.value == 0.25 and e == r.error == 0.0
+    assert not hasattr(S, "CdfResult")

@@ -1,8 +1,8 @@
-"""R's nls on fixed problems, for sd.regression.nls's tests (tests/regression/ref/nls_r.json;
+"""R's nls on fixed problems, for sd.regression.nls's tests (tests/regression/data/nls_r.json;
 docs/design/regression.md §3.7). R is not a test dependency: run this once where Rscript is
 installed,
 
-    uv run --no-sync python tools/gen_nls_r.py
+    .venv/bin/python tools/gen_nls_r.py
 
 Per problem (the inputs too): R's stats::nls with the model's analytic gradient (deriv())
 and nls.control(tol = 1e-10, maxiter = 1000) (1e-8 for twod), Gauss-Newton or, with bounds,
@@ -22,7 +22,7 @@ import tempfile
 import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = ROOT / "tests" / "regression" / "ref" / "nls_r.json"
+OUT = ROOT / "tests" / "regression" / "data" / "nls_r.json"
 
 # name -> (R formula's right side, parameter names, start, columns of x, R's extra arguments)
 MODELS = {
@@ -96,7 +96,7 @@ def run(name, prob):
     with tempfile.TemporaryDirectory() as d:
         path = pathlib.Path(d) / "run.R"
         path.write_text(r_script(name, prob))
-        res = subprocess.run(["Rscript", str(path)], capture_output=True, text=True, check=True)
+        res = subprocess.run(["Rscript", "--vanilla", str(path)], capture_output=True, text=True, check=True)
     vals = {}
     for line in res.stdout.splitlines():
         parts = line.split()
@@ -107,7 +107,9 @@ def run(name, prob):
 
 
 def main():
-    ver = subprocess.run(["Rscript", "-e", "cat(R.version.string)"], capture_output=True, text=True, check=True).stdout
+    ver = subprocess.run(
+        ["Rscript", "--vanilla", "-e", "cat(R.version.string)"], capture_output=True, text=True, check=True
+    ).stdout
     data = {"_versions": ver.strip()}
     for name, prob in problems().items():
         data[name] = run(name, prob)

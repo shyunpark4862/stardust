@@ -3,7 +3,9 @@
 One section per group, in the registry's order. A group whose comparators all run at
 their libraries' default threads gets one row per case (sd at each thread count in its
 own column); a group with a comparator whose BLAS follows sd's thread count gets one
-row per case and thread count.
+row per case and thread count. A case's note gets the comparators' `differs` reasons
+(from the run) and a line for each comparator that gives NaN more often than sd
+(check.nan_note).
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import pathlib
 import statistics
 
 from . import results
+from .check import nan_note
 from .harness import fmt_ratio, fmt_time
 from .registry import Case
 
@@ -50,6 +53,22 @@ def _name_cell(c, foot) -> str:
         foot.add("busy")
         return f"`{c['name']}` †"
     return f"`{c['name']}`"
+
+
+def case_note(c: dict) -> str:
+    """The note column: the case's note and the NaN notes of its comparators."""
+    sd_nan = [t.get("nan") for t in c["timings"] if t["label"] == "sd" and t.get("nan") is not None]
+    sd = max(sd_nan) if sd_nan else None
+    parts = [c.get("note") or ""]
+    seen = set()
+    for t in c["timings"]:
+        if t["label"] == "sd" or t["label"] in seen:
+            continue
+        note = nan_note(t["label"], t.get("nan"), sd)
+        if note:
+            seen.add(t["label"])
+            parts.append(note)
+    return "; ".join(p for p in parts if p)
 
 
 def _noise(ts) -> str:
@@ -99,7 +118,8 @@ def _summary(cases, fixed, follow, ths) -> list[str]:
 
 def group_table(cases: list[dict]) -> list[str]:
     fixed, follow, ths = _ref_labels(cases)
-    notes = any(c.get("note") for c in cases)
+    note_of = {c["id"]: case_note(c) for c in cases}
+    notes = any(note_of.values())
     sizes = any(c.get("size") for c in cases)
     foot: set[str] = set()
     out = _summary(cases, fixed, follow, ths)
@@ -131,7 +151,7 @@ def group_table(cases: list[dict]) -> list[str]:
                     row.append(_ratio_cell(v / sd["min"] if v and sd and sd.get("min") else None))
             row.append(_noise(used))
             if notes:
-                row.append(c.get("note", ""))
+                row.append(note_of[c["id"]])
             out.append("| " + " | ".join(row) + " |")
     else:
         head = ["사례"] + (["크기"] if sizes else []) + [THREADS_WORD, "sd"]
@@ -160,7 +180,7 @@ def group_table(cases: list[dict]) -> list[str]:
                     row += [_cell(ref, c.get("n"), foot), _ratio_cell(v / sd["min"] if v and sd.get("min") else None)]
                 row.append(_noise(used))
                 if notes:
-                    row.append(c.get("note", ""))
+                    row.append(note_of[c["id"]])
                 out.append("| " + " | ".join(row) + " |")
         if fixed:
             out += ["", f"{', '.join(fixed)}은(는) 스레드 수와 상관없이 한 번 잰 값이다(그 라이브러리의 기본 스레드)."]
@@ -171,9 +191,14 @@ def group_table(cases: list[dict]) -> list[str]:
     return out
 
 
+def _runs_of(c: dict, default) -> set:
+    return {t.get("run") or c.get("run") or default for t in c["timings"]}
+
+
 def _env_lines(data: dict, cases: list[dict]) -> list[str]:
     runs = data.get("runs") or {data["run"]: data["env"]}
-    used = {c.get("run", data.get("run")) for c in cases}
+    default = data.get("run")
+    used = set().union(*(_runs_of(c, default) for c in cases)) if cases else set()
     lines = ["| 실행 | 커밋 | 기계 | 사례 수 |", "|---|---|---|---:|"]
     for run_id, env in runs.items():
         if run_id not in used:
@@ -182,7 +207,7 @@ def _env_lines(data: dict, cases: list[dict]) -> list[str]:
         commit = (git.get("commit") or "?") + (" + 작업 중 변경" if git.get("dirty") else "")
         m = env.get("machine", {})
         machine = f"{m.get('chip', '?')}, {m.get('cpus', '?')}코어, macOS {m.get('macos') or '?'}"
-        n = sum(1 for c in cases if c.get("run", data.get("run")) == run_id)
+        n = sum(1 for c in cases if run_id in _runs_of(c, default))
         lines.append(f"| {run_id} | {commit} | {machine} | {n} |")
     versions = {}
     for run_id, env in runs.items():
@@ -193,6 +218,18 @@ def _env_lines(data: dict, cases: list[dict]) -> list[str]:
                 versions.setdefault(f"R {k}", set()).add(str(v))
     if versions:
         lines += ["", "라이브러리: " + ", ".join(f"{k} {'/'.join(sorted(v))}" for k, v in versions.items()) + "."]
+    blas = set()
+    for run_id, env in runs.items():
+        if run_id in used:
+            for lib in ("numpy", "scipy"):
+                name = ((env.get("blas") or {}).get(lib) or {}).get("blas", {}).get("name")
+                if name:
+                    blas.add(f"{lib} {name}")
+            r = (env.get("r_blas") or {}).get("blas")
+            if r:
+                blas.add(f"R {pathlib.Path(r).name}")
+    if blas:
+        lines += ["", "BLAS: " + ", ".join(sorted(blas)) + "."]
     return lines
 
 
@@ -201,12 +238,15 @@ HOW = {
     "R": (
         "R: 실행 하나에 R 세션(`R --vanilla`) 하나를 띄우고, 사례의 입력을 float64 파일로 넘긴 뒤 R 안에서 "
         "같은 규칙(예열, 배치 크기를 두 배씩 늘려 20 ms 이상, 배치 중 가장 빠른 값)으로 잰다. R의 벡터 함수를 "
-        "한 번 부르는 식이고, 행렬 연산은 R 자체의 BLAS(1스레드)다. 사례의 비고에 R의 호출이 다른 점을 적는다."
+        "한 번 부르는 식이다. R은 1스레드로 돈다(`OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`; R이 쓰는 BLAS는 "
+        "위 'BLAS' 줄). R의 쓰레기 수집은 배치 안에서 끌 수 없어 배치 전에 한 번 돌린다. 사례의 비고에 R의 호출이 "
+        "다른 점을 적는다."
     ),
     "Boost": (
         "Boost.Math: C++ 반복문(`bench/speed/boost_speed.cpp`)이 배열의 원소마다 Boost 함수를 직접 부른다. "
-        "함수 이름은 호출마다 한 번 풀고, 매개변수가 스칼라인 분포는 호출마다 한 번 만든다. sd와 같은 최적화 "
-        "옵션(-O3 -mcpu=native -ffp-contract=off)으로 빌드하고, Python에서는 배열 하나에 ctypes 호출 한 번이다. "
+        "함수 이름은 호출마다 한 번 풀고, 매개변수가 스칼라인 분포는 호출마다 한 번 만든다. sd의 최적화 "
+        "옵션(-O3 -mcpu=native -ffp-contract=off)과 -std=c++17로 빌드하고, Python에서는 배열 하나에 ctypes 호출 "
+        "한 번이다. "
         "오류 정책은 정확도 측정의 비교 대상과 같다(오류 대신 NaN·inf)."
     ),
     "python": (
@@ -245,7 +285,9 @@ def render(area: str, data: dict, registry_cases: list[Case], source: str) -> st
         "- 배율(÷ sd): 비교 대상 시간 ÷ sd 시간. 1보다 크면 sd가 빠르다. **굵은 배율**은 sd가 느린 줄이다.",
         "- 잡음: 그 줄의 측정마다 (배치 시간의 중앙값 ÷ 최솟값 − 1)을 구한 것 중 가장 큰 값.",
         "- 스레드: sd의 스레드 수. 한 줄에 sd 스레드별 열이 있는 표에서 비교 대상은 그 라이브러리의 기본 스레드로 한 번 잰다"
-        "(numpy·scipy의 원소별 계산은 1스레드, BLAS는 기본 스레드). '스레드' 열이 있는 표에서는 비교 대상의 BLAS 스레드를 sd와 같게 묶는다.",
+        "(numpy·scipy의 원소별 계산은 1스레드). BLAS·LAPACK이 일의 대부분인 비교 대상은 BLAS 스레드를 sd와 같게 묶어 "
+        "'스레드' 열이 있는 표로 보인다. R은 늘 1스레드다.",
+        "- 비고: 비교 대상이 sd보다 NaN을 1%p 넘게 더 내면 그 비율을 적는다(그만큼 일찍 끝나는 호출이 섞인다).",
         "",
         "## 측정 환경",
         "",

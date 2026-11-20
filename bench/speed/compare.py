@@ -32,7 +32,8 @@ def _pairs(new: dict, base: dict[str, dict]):
 
 
 def compare(new: dict, base: dict[str, dict], *, threshold: float = 0.10) -> dict:
-    """{"slower": [...], "faster": [...], "same": n, "refs_drift": ratio | None, "missing": n}."""
+    """{"slower": [...], "faster": [...], "same": n, "refs_drift": ratio | None, "missing": n,
+    "compared": cases compared}."""
     slower, faster, same = [], [], 0
     ref_ratios = []
     compared = set()
@@ -43,7 +44,7 @@ def compare(new: dict, base: dict[str, dict], *, threshold: float = 0.10) -> dic
             ref_ratios.append(ratio)
             continue
         band = max(t.get("noise") or 0.0, bt.get("noise") or 0.0)
-        busy = bool(c.get("busy") or base[c["id"]].get("busy"))
+        busy = bool(c.get("busy") or base[c["id"]].get("busy") or bt.get("busy"))
         row = {
             "id": c["id"],
             "threads": t["threads"],
@@ -69,6 +70,7 @@ def compare(new: dict, base: dict[str, dict], *, threshold: float = 0.10) -> dic
         "same": same,
         "refs_drift": statistics.median(ref_ratios) if ref_ratios else None,
         "missing": sum(1 for c in new["cases"] if c["id"] not in compared),
+        "compared": len(compared),
     }
 
 

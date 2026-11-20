@@ -1,13 +1,13 @@
-"""sd.stats against scipy.stats and numpy's Generator. From bench/stats/t4/speed.py (at commit 4151d2a)
-(continuous), t5/speed.py (discrete: small supports and the "wide" set), t6/speed.py
-(extreme value, lifetime, noncentral), t7/speed.py (sample vs numpy), t8/speed.py
-(descriptive), t9/speed.py and t9/cdf_speed.py (multivariate; mvn / mvt cdf) and
-t10/speed.py (Wishart, matrix normal).
+"""sd.stats against scipy.stats and numpy's Generator: the continuous distributions, the
+discrete ones (small supports and the "wide" set), the extreme value, lifetime and
+noncentral ones, sampling against numpy, the descriptive statistics, the multivariate
+distributions (with the mvn / mvt cdf) and the matrix distributions (Wishart, matrix
+normal).
 
-The distribution methods (t4-t6) take 10^5 points spread over the distribution by its
-quantiles: scipy's own ppf for the continuous ones (t4), sd's icdf for the discrete ones
-(scipy's zipf ppf stops with "endless loop") and for t6 (scipy's noncentral ppf takes
-minutes for 10^5). scipy is timed in its classic form (scipy.stats.<name>.<method> on a
+The distribution methods take 10^5 points spread over the distribution by its quantiles:
+scipy's own ppf for the continuous ones, sd's icdf for the discrete ones (scipy's zipf ppf
+stops with "endless loop") and for the extreme value and noncentral ones (scipy's
+noncentral ppf takes minutes for 10^5). scipy is timed in its classic form (scipy.stats.<name>.<method> on a
 frozen distribution) with the matching names (sf for ccdf, ppf for icdf, isf for iccdf),
 and in its new form (scipy.stats.Normal, Uniform, Logistic, Binomial: NEW) where the class
 exists; the scalar cdf rows also against one scipy.special function where there is one.
@@ -18,24 +18,25 @@ other-parameter group (OTHER) and the rows above. The small-support discrete row
 memo applies) have their own key "<class>.<method>@memo".
 The parameter-array and mid-size groups are not in the table.
 
-The wide discrete set (nearly every k different) takes 20,000 points (2,000 for the
+The wide discrete set (nearly every k different) takes 20000 points (2000 for the
 hypergeometric and beta-binomial, whose cdf sums run to thousands of terms). Where
-scipy's call over all of them would take more than about 2 s, the old script timed it
-on the first N/50 points: those comparators carry that n (SMALL_SAMPLED and OTHER_SAMPLED
-do the same with 2,000 points). scipy is left out where it fails or does not return (zipf
+scipy's call over all of them would take more than about 2 s, it is timed on the first
+N/50 points: those comparators carry that n (SMALL_SAMPLED and OTHER_SAMPLED do the same
+with 2000 points). scipy is left out where it fails or does not return (zipf
 ppf "endless loop", zipf cdf at k ~ 1e20, logser ppf).
 
 The scalar groups time one Python float per call (cdf, a few logpdf and icdf; one sample
-in t7), one thread. The small inputs (10^3, 10^4 points; 100 for the descriptive
+for the sampling group), one thread. The small inputs (10^3, 10^4 points; 100 for the descriptive
 statistics) rotate fresh inputs (harness.rotate), so the branch predictor cannot learn one.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 from ..harness import fresh_count, rotate
-from ..registry import Case, Ref, RRef
+from ..registry import Case, Check, Ref, RRef
 
 N = 100_000
 
@@ -55,7 +56,7 @@ CONT = ("pdf", "logpdf", "cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf")
 DISC = ("pmf", "logpmf", "cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf")
 
 # (class, parameters, scipy frozen classic distribution from scipy.stats)
-T4 = [
+CONTINUOUS = [
     ("Normal", {"mu": 1.5, "sigma": 2.0}, lambda st: st.norm(1.5, 2.0)),
     ("StudentT", {"df": 3.5}, lambda st: st.t(3.5)),
     ("ChiSquared", {"df": 4.5}, lambda st: st.chi2(4.5)),
@@ -70,7 +71,7 @@ T4 = [
     ("Weibull", {"c": 1.7, "scale": 2.0}, lambda st: st.weibull_min(1.7, scale=2.0)),
 ]
 
-T5 = [
+DISCRETE = [
     ("Binomial", {"n": 40, "p": 0.3}, lambda st: st.binom(40, 0.3)),
     ("Poisson", {"mu": 4.5}, lambda st: st.poisson(4.5)),
     ("Geometric", {"p": 0.2}, lambda st: st.geom(0.2)),
@@ -82,9 +83,9 @@ T5 = [
     ("LogSeries", {"p": 0.7}, lambda st: st.logser(0.7)),
     ("Zipf", {"a": 2.5}, lambda st: st.zipf(2.5)),
 ]
-T5_NO_SCIPY = {("Zipf", "icdf"), ("Zipf", "iccdf")}  # scipy's zipf ppf: "updating stopped, endless loop"
+DISCRETE_NO_SCIPY = {("Zipf", "icdf"), ("Zipf", "iccdf")}  # scipy's zipf ppf: "updating stopped, endless loop"
 
-T5_WIDE = [
+DISCRETE_WIDE = [
     ("Binomial", {"n": 10**9, "p": 0.3}, lambda st: st.binom(10**9, 0.3)),
     ("Poisson", {"mu": 3e8}, lambda st: st.poisson(3e8)),
     ("Geometric", {"p": 1e-6}, lambda st: st.geom(1e-6)),
@@ -100,7 +101,7 @@ T5_WIDE = [
     ("Zipf", {"a": 1.05}, lambda st: st.zipf(1.05)),
 ]
 WIDE_SHORT = ("Hypergeometric", "BetaBinomial")  # 2,000 points instead of 20,000
-# scipy's rows over 2 s for all the points: the old script timed them on the first N/50
+# scipy's rows over 2 s for all the points: timed on the first N/50
 WIDE_SAMPLED = {
     ("Poisson", "icdf"),
     ("Poisson", "iccdf"),
@@ -116,7 +117,7 @@ WIDE_NO_SCIPY = (
     | {("Zipf", m) for m in DISC if m not in ("pmf", "logpmf")}
 )  # zipf cdf at k ~ 1e20 does not return
 
-T6 = [
+EXTREME_NONCENTRAL = [
     ("Logistic", {"mu": 0.5, "sigma": 2.0}, lambda st: st.logistic(0.5, 2.0)),
     ("Gumbel", {"mu": 0.5, "sigma": 2.0}, lambda st: st.gumbel_r(0.5, 2.0)),
     ("GEV", {"c": 0.25, "mu": 1.0, "sigma": 2.0}, lambda st: st.genextreme(0.25, 1.0, 2.0)),
@@ -224,12 +225,12 @@ def _label(name, params):
     return f"{name}({', '.join(f'{k}={v:g}' for k, v in params.items())})" if params else name
 
 
-# ---------------------------------------------------------------- t4-t6: distribution methods
+# ---------------------------------------------------------------- distribution methods
 
 
 def _dist_data(name, params, scipy_ref, p, points):
     """The case data for points p (uniform in (0, 1)): points "scipy" (the reference's own
-    ppf, t4) or "sd" (sd's icdf, t5, t6 and the other groups)."""
+    ppf, the continuous group) or "sd" (sd's icdf, the other groups)."""
     import numpy as np
     import scipy.special as sc
     import scipy.stats as st
@@ -267,13 +268,13 @@ def _dist_setup(name, params, scipy_ref, points):
 
 
 def _wide_setup(index):
-    name, params, scipy_ref = T5_WIDE[index]
+    name, params, scipy_ref = DISCRETE_WIDE[index]
 
     def setup():
         import numpy as np
 
-        rng = np.random.default_rng(0)  # one generator over the distributions in order, as the old script
-        for nm, _, _ in T5_WIDE[: index + 1]:
+        rng = np.random.default_rng(0)  # one generator over the distributions in order
+        for nm, _, _ in DISCRETE_WIDE[: index + 1]:
             p = rng.uniform(0, 1, _wide_n(nm))
         return _dist_data(name, params, scipy_ref, p, "sd")
 
@@ -352,20 +353,27 @@ COMPARATOR_SAMPLE = {
 }
 
 
-def _r_boost(name, m, params=None, arrays=None, key_prefix="", case=None):
+def _r_boost(name, m, params=None, arrays=None, case=None):
     """R and Boost.Math for distribution `name`'s method m, where the accuracy measurement
     compares with them (bench/accuracy/compare.py: R_DIST, R_METHOD, BOOST_CONT, BOOST_DISC,
-    BOOST_DISCRETE_DISTS). params: scalar parameters (a dict as the case gives them; R gets
+    BOOST_DISCRETE_DISTS, BOOST_DISTS). params: scalar parameters (a dict as the case gives them; R gets
     them as literals, Boost builds the distribution once a call), or arrays: the data keys of
     the parameter arrays in order (both evaluate per element). The points are the case data's
-    numpy array of the method (x, p or log p), under key_prefix (the first set of a rotated
-    case)."""
-    from bench.accuracy.compare import BOOST_CONT, BOOST_DISC, BOOST_DISCRETE_DISTS, R_DIST, R_METHOD, R_SHIFT
+    numpy array of the method (x, p or log p)."""
+    from bench.accuracy.compare import (
+        BOOST_CONT,
+        BOOST_DISC,
+        BOOST_DISCRETE_DISTS,
+        BOOST_DISTS,
+        R_DIST,
+        R_METHOD,
+        R_SHIFT,
+    )
 
     from .. import boost
 
     dist = _dist_key(name)
-    point = key_prefix + _arg_keys(m)[1]
+    point = _arg_keys(m)[1]
     out = []
     if dist in R_DIST and m in R_METHOD:
         stem, args = R_DIST[dist]
@@ -387,7 +395,7 @@ def _r_boost(name, m, params=None, arrays=None, key_prefix="", case=None):
         setup = "; ".join(f"{r} <- {r}[seq_len({k})]" for r in data.values()) if k else ""
         out.append(RRef("R", expr, data=data, setup=setup, n=k))
     ok = BOOST_DISC if dist in BOOST_DISCRETE_DISTS else BOOST_CONT
-    if m in ok and boost.available() and f"{dist}:" in _boost_names():
+    if m in ok and dist in BOOST_DISTS and boost.available():
         k = COMPARATOR_SAMPLE.get((case, "Boost"))
         if arrays is None:
             vals = _param_values(name, params)
@@ -396,17 +404,6 @@ def _r_boost(name, m, params=None, arrays=None, key_prefix="", case=None):
             make = lambda d: boost.dist(dist, m, [d[a][:k] for a in arrays], d[point][:k])  # noqa: E731
         out.append(Ref("Boost", make, lib="Boost", n=k))
     return tuple(out)
-
-
-_BOOST_NAMES = []
-
-
-def _boost_names():
-    from .. import boost
-
-    if not _BOOST_NAMES:
-        _BOOST_NAMES.append(boost.names())
-    return _BOOST_NAMES[0]
 
 
 def _methods(name, methods):
@@ -478,7 +475,7 @@ def _scalar_cases(group, name, params, setup):
 def _wide_cases():
     group = "discrete-wide"
     out = []
-    for i, (name, _, _) in enumerate(T5_WIDE):
+    for i, (name, _, _) in enumerate(DISCRETE_WIDE):
         setup = _wide_setup(i)
         n = _wide_n(name)
         for m in _methods(name, DISC):
@@ -497,12 +494,12 @@ def _wide_cases():
                     area="stats",
                     group=group,
                     name=f"{name}.{m}",
-                    size=f"{n:,}",
+                    size=str(n),
                     n=n,
                     setup=setup,
                     sd=_sd_call(m),
                     refs=_refs(name, m, no_scipy=no_scipy, sampled=sampled, new_sampled=new_sampled)
-                    + _r_boost(name, m, T5_WIDE[i][1], case=f"{name}.{m}"),
+                    + _r_boost(name, m, DISCRETE_WIDE[i][1], case=f"{name}.{m}"),
                     cost=("stats", f"{name.lower()}.{m}"),
                     quick=(group, f"{name}.{m}") in QUICK_DIST,
                     note=note,
@@ -664,8 +661,7 @@ def _mid_setup(name, params, scipy_ref, n):
 
         rng = np.random.default_rng(0)
         sets = [_dist_data(name, params, scipy_ref, rng.uniform(0, 1, n), "sd") for _ in range(fresh_count(n))]
-        first = {f"first_{k}": sets[0][k] for k in ("x", "p", "lp")}  # R times the first set
-        return {"sets": sets, **first}
+        return {"sets": sets}
 
     return setup
 
@@ -682,9 +678,9 @@ def _mid_cases():
     for name, params, scipy_ref, m in MID:
         for n, size in MID_SIZES:
             refs = [Ref("scipy", lambda d, m=m: rotate([_ref_call("ref", m)(s) for s in d["sets"]]))]
-            for r in _r_boost(name, m, params, key_prefix="first_"):
-                if isinstance(r, RRef):
-                    refs.append(r)
+            for r in _r_boost(name, m, params):
+                if isinstance(r, RRef):  # R over every set in turn, as the others
+                    refs.append(dataclasses.replace(r, sets="sets"))
                 else:  # Boost over every set in turn, as the others
                     key = _arg_keys(m)[1]
                     refs.append(
@@ -716,10 +712,10 @@ def _mid_cases():
     return out
 
 
-# ---------------------------------------------------------------- t7: sample
+# ---------------------------------------------------------------- sampling
 
 # (class, parameters, numpy Generator call g(n) or None)
-T7 = [
+SAMPLE_DISTS = [
     ("Normal", {}, lambda g, n: g.standard_normal(n)),
     ("LogNormal", {}, lambda g, n: g.lognormal(size=n)),
     ("Exponential", {}, lambda g, n: g.standard_exponential(n)),
@@ -760,10 +756,10 @@ T7 = [
     ("LogSeries", dict(p=0.9), lambda g, n: g.logseries(0.9, n)),
     ("Zipf", dict(a=2.0), lambda g, n: g.zipf(2.0, n)),
 ]
-T7_N = 10**6
-T7_QUICK = {"Normal.sample", "Gamma(a=0.5).sample", "Binomial(n=10000, p=0.3).sample"}
+SAMPLE_N = 10**6
+SAMPLE_QUICK = {"Normal.sample", "Gamma(a=0.5).sample", "Binomial(n=10000, p=0.3).sample"}
 # The rows numpy's Generator has no sampler for: scipy's rvs, drawing from a Generator.
-T7_SCIPY = {
+SAMPLE_SCIPY = {
     "GEV": lambda st, kw: st.genextreme(kw["c"]),
     "InverseGamma": lambda st, kw: st.invgamma(kw["a"]),
     "NoncentralT": lambda st, kw: st.nct(kw["df"], kw["nc"]),
@@ -782,7 +778,7 @@ def _sample_setup(name, kw):
             "D": getattr(sd.stats, name)(**kw),
             "rng": sd.random.default_rng(1),
             "g": np.random.default_rng(1),
-            "ref": T7_SCIPY[name](st, kw) if name in T7_SCIPY else None,
+            "ref": SAMPLE_SCIPY[name](st, kw) if name in SAMPLE_SCIPY else None,
         }
 
     return setup
@@ -791,29 +787,29 @@ def _sample_setup(name, kw):
 def _sample_refs(name, npf, size):
     if npf:
         return (Ref("numpy", lambda d: lambda g=d["g"]: npf(g, size)),)
-    if name in T7_SCIPY:
+    if name in SAMPLE_SCIPY:
         return (Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(size=size, random_state=g)),)
     return ()
 
 
 def _sample_cases():
     out = []
-    for name, kw, npf in T7:
+    for name, kw, npf in SAMPLE_DISTS:
         params = ", ".join(f"{k}={v:g}" for k, v in kw.items())
         label = f"{name}({params}).sample" if params else f"{name}.sample"
         setup = _sample_setup(name, kw)
-        refs = _sample_refs(name, npf, T7_N)
+        refs = _sample_refs(name, npf, SAMPLE_N)
         out.append(
             Case(
                 area="stats",
                 group="sampling",
                 name=label,
                 size="10^6",
-                n=T7_N,
+                n=SAMPLE_N,
                 setup=setup,
-                sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(T7_N, rng=r),
+                sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(SAMPLE_N, rng=r),
                 refs=refs,
-                quick=label in T7_QUICK,
+                quick=label in SAMPLE_QUICK,
             )
         )
         refs1 = _sample_refs(name, npf, None)
@@ -831,9 +827,9 @@ def _sample_cases():
     return out
 
 
-# ---------------------------------------------------------------- t8: descriptive
+# ---------------------------------------------------------------- descriptive statistics
 
-T8 = [
+DESCRIPTIVE = [
     ("skew", lambda S, X, ax: S.skew(X, axis=ax), lambda st, x, ax: st.skew(x, axis=ax)),
     ("kurtosis", lambda S, X, ax: S.kurtosis(X, axis=ax), lambda st, x, ax: st.kurtosis(x, axis=ax)),
     ("describe", lambda S, X, ax: S.describe(X, axis=ax), lambda st, x, ax: st.describe(x, axis=ax)),
@@ -855,17 +851,19 @@ T8 = [
         lambda st, x, ax: st.skew(x, axis=ax, nan_policy="omit"),
     ),
 ]
-T8_QUICK = {
+DESCRIPTIVE_QUICK = {
     ("skew", None, "10^6"),
     ("rankdata", 0, "(1000, 1000)"),
     ("iqr", None, "10^6"),
     ("describe", 0, "(1000, 1000)"),
 }
 # (axis, shape, size label): the whole array, down the columns, along short rows
-T8_SHAPES = ((None, (10**6,), "10^6"), (0, (1000, 1000), "(1000, 1000)"), (1, (100_000, 10), "(100000, 10)"))
-T8_SMALL = ("skew", "describe", "zscore", "iqr")  # also on 100 elements (fresh inputs in turn)
-T8_SMALL_N = 100
-T8_ROWS_SCIPY = 10_000  # skew omit along short rows: scipy loops over the rows with a NaN; timed on these first rows
+DESCRIPTIVE_SHAPES = ((None, (10**6,), "10^6"), (0, (1000, 1000), "(1000, 1000)"), (1, (100_000, 10), "(100000, 10)"))
+DESCRIPTIVE_SMALL = ("skew", "describe", "zscore", "iqr")  # also on 100 elements (fresh inputs in turn)
+DESCRIPTIVE_SMALL_N = 100
+DESCRIPTIVE_ROWS_SCIPY = (
+    10_000  # skew omit along short rows: scipy loops over the rows with a NaN; timed on these first rows
+)
 
 
 def _describe_data(fname, shape, seed=0):
@@ -900,7 +898,7 @@ def _describe_small_setup(fname):
 
         import stardust as sd
 
-        xs = [_describe_data(fname, (T8_SMALL_N,), seed=i) for i in range(fresh_count(T8_SMALL_N))]
+        xs = [_describe_data(fname, (DESCRIPTIVE_SMALL_N,), seed=i) for i in range(fresh_count(DESCRIPTIVE_SMALL_N))]
         return {"S": sd.stats, "st": st, "xs": xs, "Xs": [sd.asarray(x) for x in xs]}
 
     return setup
@@ -911,14 +909,14 @@ def _describe_ref(g, ax, sampled=False):
         return Ref("scipy", lambda d: lambda: g(d["st"], d["x"], ax))
     return Ref(
         "scipy",
-        lambda d: lambda x=d["x"][:T8_ROWS_SCIPY].copy(): g(d["st"], x, ax),
-        n=T8_ROWS_SCIPY * 10,
+        lambda d: lambda x=d["x"][:DESCRIPTIVE_ROWS_SCIPY].copy(): g(d["st"], x, ax),
+        n=DESCRIPTIVE_ROWS_SCIPY * 10,
     )
 
 
 def _describe_cases():
     out = []
-    for fname, f, g in T8:
+    for fname, f, g in DESCRIPTIVE:
         base, _, omit = fname.partition(" ")
 
         def call(ax):
@@ -929,7 +927,7 @@ def _describe_cases():
                 + (['nan_policy="omit"'] if omit else [])
             )
 
-        for ax, shape, size in T8_SHAPES:
+        for ax, shape, size in DESCRIPTIVE_SHAPES:
             out.append(
                 Case(
                     area="stats",
@@ -940,34 +938,34 @@ def _describe_cases():
                     setup=_describe_setup(fname, shape),
                     sd=lambda d, f=f, ax=ax: lambda: f(d["S"], d["X"], ax),
                     refs=(_describe_ref(g, ax, sampled=bool(omit) and ax == 1),),
-                    quick=(fname, ax, size) in T8_QUICK,
+                    quick=(fname, ax, size) in DESCRIPTIVE_QUICK,
                     note="원소 1000개마다 NaN" if omit else "",
                 )
             )
-        if fname in T8_SMALL:
+        if fname in DESCRIPTIVE_SMALL:
             out.append(
                 Case(
                     area="stats",
                     group="descriptive",
                     name=f"{base}({', '.join(call(None))})",
-                    size=str(T8_SMALL_N),
-                    n=T8_SMALL_N,
+                    size="10^2",
+                    n=DESCRIPTIVE_SMALL_N,
                     setup=_describe_small_setup(fname),
                     sd=lambda d, f=f: rotate([lambda X=X: f(d["S"], X, None) for X in d["Xs"]]),
                     refs=(Ref("scipy", lambda d, g=g: rotate([lambda x=x: g(d["st"], x, None) for x in d["xs"]])),),
-                    note=f"입력 {fresh_count(T8_SMALL_N)}벌을 돌려 쓴다",
+                    note=f"입력 {fresh_count(DESCRIPTIVE_SMALL_N)}벌을 돌려 쓴다",
                 )
             )
     return out
 
 
-# ---------------------------------------------------------------- t9: multivariate
+# ---------------------------------------------------------------- multivariate distributions
 
-T9_N = 10**5
+MULTIVARIATE_N = 10**5
 
 
 def _mv_setup(which):
-    """The t9 rows in the old script's order (one generator over them); `which` picks one."""
+    """The multivariate rows in a fixed order (one generator over them); `which` picks one."""
 
     def setup():
         import numpy as np
@@ -981,7 +979,7 @@ def _mv_setup(which):
             a = rng.normal(size=(d, d))
             cov = a @ a.T + d * np.eye(d)
             mu = rng.normal(size=d)
-            x = rng.normal(size=(T9_N, d))
+            x = rng.normal(size=(MULTIVARIATE_N, d))
             if which == ("MultivariateNormal", d):
                 return {
                     "D": S.MultivariateNormal(mu=sd.asarray(mu), cov=sd.asarray(cov)),
@@ -1001,7 +999,7 @@ def _mv_setup(which):
                     "cov": cov,
                 }
         p = np.array([0.1, 0.2, 0.3, 0.4])
-        xm = rng.multinomial(20, p, size=T9_N).astype(float)
+        xm = rng.multinomial(20, p, size=MULTIVARIATE_N).astype(float)
         if which[0] == "Multinomial":
             return {
                 "D": S.Multinomial(n=20.0, p=sd.asarray(p)),
@@ -1011,7 +1009,7 @@ def _mv_setup(which):
                 "p": p,
             }
         al = np.array([0.5, 2.0, 3.0, 1.5])
-        xd = rng.dirichlet(al, size=T9_N)
+        xd = rng.dirichlet(al, size=MULTIVARIATE_N)
         return {"D": S.Dirichlet(alpha=sd.asarray(al)), "ref": st.dirichlet(al), "x": xd, "X": sd.asarray(xd)}
 
     return setup
@@ -1039,7 +1037,7 @@ def _mv_cases():
                 group="multivariate",
                 name=f"{label}.{meth}",
                 size="10^5 points",
-                n=T9_N,
+                n=MULTIVARIATE_N,
                 setup=setup,
                 sd=lambda d, meth=meth: lambda f=getattr(d["D"], meth), X=d["X"]: f(X),
                 refs=(Ref("scipy", ref), *_mv_r(which[0])),
@@ -1053,10 +1051,10 @@ def _mv_cases():
                 group="multivariate",
                 name=f"{label}.sample",
                 size="10^5 points",
-                n=T9_N,
+                n=MULTIVARIATE_N,
                 setup=lambda setup=setup: _with_rng(setup()),
-                sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(T9_N, rng=r),
-                refs=(Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(size=T9_N, random_state=g)),),
+                sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(MULTIVARIATE_N, rng=r),
+                refs=(Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(size=MULTIVARIATE_N, random_state=g)),),
                 quick=f"{label}.sample" in quick,
             )
         )
@@ -1104,11 +1102,11 @@ def _with_rng(d):
     return d
 
 
-# ---------------------------------------------------------------- t9: mvn / mvt cdf
+# ---------------------------------------------------------------- mvn / mvt cdf
 
 
-# Per (d, df): sd's points, scipy's points (the old script timed scipy on X[:n_sc], which
-# is all of X when sd has fewer), the atols. d <= 3: the exact formulas.
+# Per (d, df): sd's points, scipy's points (scipy is timed on X[:n_sc], which is all of X
+# when sd has fewer), the atols. d <= 3: the exact formulas.
 def _mvcdf_rows():
     rows = []
     for d in (2, 3, 5, 10):
@@ -1121,7 +1119,7 @@ def _mvcdf_rows():
     return rows
 
 
-# sd at one thread above 5 s per call in the old table (timed once per round)
+# sd at one thread above 5 s per call (timed once per round)
 MVCDF_SLOW = {(10, math.inf, 1e-6), (10, 4.0, 1e-6)}
 
 
@@ -1138,7 +1136,7 @@ def _mvcdf_setup(d, df):
         s = np.sqrt(np.diag(S))
         S = S / s[:, None] / s[None, :]  # a random correlation matrix
         X = None
-        for dfi in (math.inf, 4.0):  # the old script drew both point sets from one generator, in this order
+        for dfi in (math.inf, 4.0):  # both point sets from one generator, in this order
             exact = d <= 3
             n = (20000 if math.isinf(dfi) else 200) if exact else (40 if math.isinf(dfi) else 20)
             Xi = rng.normal(size=(n, d)) + 0.5
@@ -1180,7 +1178,7 @@ def _mvcdf_cases():
                 area="stats",
                 group="mvn-mvt-cdf",
                 name=f"{cls}({what}).cdf(x, atol={atol:.0e})",
-                size=f"{n_ours:,} points",
+                size=f"{n_ours} points",
                 n=n_ours,
                 setup=_mvcdf_setup(d, df),
                 sd=lambda dd, atol=atol: lambda D=dd["D"], X=dd["X"]: D.cdf(X, atol=atol),
@@ -1233,9 +1231,9 @@ def _mvcdf_ref(dim, df, atol, n_sc):
     return Ref(MVN_LABEL, make, n=k, lib="scipy")
 
 
-# ---------------------------------------------------------------- t10: matrix distributions
+# ---------------------------------------------------------------- matrix distributions
 
-T10_N = 10**4
+MATRIX_N = 10**4
 
 
 def _matrix_setup(which):
@@ -1253,7 +1251,7 @@ def _matrix_setup(which):
             df = p + 2.5
             if which == ("Wishart", p):
                 ref = st.wishart(df, V)
-                x = ref.rvs(T10_N, random_state=1)
+                x = ref.rvs(MATRIX_N, random_state=1)
                 return {
                     "D": S.Wishart(df=df, scale=sd.asarray(V)),
                     "ref": ref,
@@ -1263,7 +1261,7 @@ def _matrix_setup(which):
                 }
             if which == ("InverseWishart", p):
                 ref = st.invwishart(df, V)
-                x = ref.rvs(T10_N, random_state=1)
+                x = ref.rvs(MATRIX_N, random_state=1)
                 return {
                     "D": S.InverseWishart(df=df, scale=sd.asarray(V)),
                     "ref": ref,
@@ -1276,7 +1274,7 @@ def _matrix_setup(which):
             U, V = np.eye(n) + 0.3, np.eye(p) + 0.2
             if which == ("MatrixNormal", (n, p)):
                 ref = st.matrix_normal(M, U, V)
-                x = ref.rvs(T10_N, random_state=1)
+                x = ref.rvs(MATRIX_N, random_state=1)
                 return {
                     "D": S.MatrixNormal(mu=sd.asarray(M), rowcov=sd.asarray(U), colcov=sd.asarray(V)),
                     "ref": ref,
@@ -1307,7 +1305,7 @@ def _matrix_cases():
                 group="matrix",
                 name=f"{label}.logpdf",
                 size="10^4 matrices",
-                n=T10_N,
+                n=MATRIX_N,
                 setup=setup,
                 sd=lambda d: lambda D=d["D"], X=d["X"]: D.logpdf(X),
                 refs=(Ref("scipy", lambda d: lambda r=d["ref"], x=d["xm"]: r.logpdf(x)),),
@@ -1320,10 +1318,10 @@ def _matrix_cases():
                 group="matrix",
                 name=f"{label}.sample",
                 size="10^4 matrices",
-                n=T10_N,
+                n=MATRIX_N,
                 setup=lambda setup=setup: _with_rng(setup()),
-                sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(T10_N, rng=r),
-                refs=(Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(T10_N, random_state=g)),),
+                sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(MATRIX_N, rng=r),
+                refs=(Ref("scipy", lambda d: lambda r=d["ref"], g=d["g"]: r.rvs(MATRIX_N, random_state=g)),),
             )
         )
     return out
@@ -1354,13 +1352,21 @@ TITLES = {
 }
 
 
+# How the smoke run compares the results (bench/speed/check.py): samples come from other
+# random streams than numpy's and scipy's; the mvn / mvt cdf integrate by randomized
+# quasi-Monte Carlo to an absolute tolerance (the cases' atol up to 1e-4, and scipy's
+# multivariate_t at its own default), so their values agree to about 1e-4, not 1e-6.
+SAMPLE_CHECK = Check(skip="random samples: sd's stream differs from numpy's and scipy's")
+MVCDF_CHECK = Check(atol=1e-4)
+
+
 def cases() -> list[Case]:
-    return [
-        *_dist_cases("continuous", T4, CONT, "scipy"),
+    out = [
+        *_dist_cases("continuous", CONTINUOUS, CONT, "scipy"),
         *_other_cases(),
-        *_dist_cases("discrete", T5, DISC, "sd", no_scipy=T5_NO_SCIPY, sampled=SMALL_SAMPLED, memo=True),
+        *_dist_cases("discrete", DISCRETE, DISC, "sd", no_scipy=DISCRETE_NO_SCIPY, sampled=SMALL_SAMPLED, memo=True),
         *_wide_cases(),
-        *_dist_cases("extreme-noncentral", T6, CONT, "sd"),
+        *_dist_cases("extreme-noncentral", EXTREME_NONCENTRAL, CONT, "sd"),
         *_param_array_cases(),
         *_mid_cases(),
         *_sample_cases(),
@@ -1369,3 +1375,9 @@ def cases() -> list[Case]:
         *_mvcdf_cases(),
         *_matrix_cases(),
     ]
+    for c in out:
+        if c.name.endswith(".sample"):
+            c.check = SAMPLE_CHECK
+        elif c.group == "mvn-mvt-cdf":
+            c.check = MVCDF_CHECK
+    return out

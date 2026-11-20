@@ -1,12 +1,15 @@
 """Test matrices and Arb reference values for the linalg accuracy measurement.
 
-    .venv/bin/python tools/linalg_ref.py               # every family, on 10 processes
-    .venv/bin/python tools/linalg_ref.py expm --jobs=4
+    .venv/bin/python tools/linalg_ref.py               # every family, on 8 processes
+    .venv/bin/python tools/linalg_ref.py expm --jobs 4
 
-writes tests/linalg/ref/<family>.npz, read by bench/accuracy (python -m bench.accuracy, area
-linalg). The matrices come from seeded generators and are stored, so the file is the sweep.
-Group i of a family is the keys "g<i>_<name>": the inputs, and per reference value hi (and lo
-where it is a double-double).
+writes tests/linalg/ref/<family>.npz (layout: tests/reffile.py), read by tests/linalg/refdata.py
+(the quick test and bench/accuracy, area linalg). The matrices come from seeded generators and
+are stored, so the file is the sweep: one point per matrix (a, b, kappa, spd as the family has
+them), and per method (solve, det, eigvals, eigvalsh, lstsq, svdvals, expm) the reference hi + lo
+and its condition number cond. A matrix whose references do not settle by 8192 bits stops the
+build. An unknown family is a usage error (exit status 2); the console output also goes to
+build/logs/linalg_ref/.
 
     square     A = U diag(s) V^T, n = 3, 10, 50, 200, kappa_2 = 1, 1e4, 1e8, 1e12 (s log-spaced,
                U, V random orthogonal), b normal. x = A^-1 b, det A, and for n <= 50 the
@@ -38,6 +41,8 @@ import numpy as np
 from flint import acb_mat, arb, arb_mat
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import arbref  # noqa: E402
 from arbref import NotSettled, precision, settled, to_dd  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -218,36 +223,75 @@ def _work(args):
     return settle(lambda: FAMILIES[family][1](g))
 
 
+# family -> (point inputs, {method: (the reference's key, its condition number's key or None)})
+LAYOUT = {
+    "square": (("a", "b", "kappa"), {"solve": ("x", "cond_solve"), "det": ("det", "cond_det"),
+                                      "eigvals": ("eig", "cond_eig")}),
+    "rect": (("a", "b", "kappa"), {"lstsq": ("x", "cond_lstsq"), "svdvals": ("svdvals", None)}),
+    "symmetric": (("a", "kappa", "spd"), {"eigvalsh": ("eigvalsh", None)}),
+    "expm": (("a",), {"expm": ("expm", "cond_expm")}),
+}  # fmt: skip
+
+
+def _complex(re, im):
+    z = np.empty(np.shape(re), np.complex128)
+    z.real, z.imag = re, im
+    return z
+
+
+def _write_groups(family, gs):
+    """The family's file from its groups: {input: value, "<key>_hi", "_lo", "cond_<...>"}."""
+    from tests import reffile
+
+    ins, meths = LAYOUT[family]
+    methods = {}
+    for m, (key, ck) in meths.items():
+        idx = [i for i, g in enumerate(gs) if f"{key}_hi" in g or f"{key}_re_hi" in g]
+        if m == "eigvals":
+            hi = [_complex(gs[i]["eig_re_hi"], gs[i]["eig_im_hi"]) for i in idx]
+            lo = [_complex(gs[i]["eig_re_lo"], gs[i]["eig_im_lo"]) for i in idx]
+        else:
+            hi, lo = [np.asarray(gs[i][f"{key}_hi"]) for i in idx], [np.asarray(gs[i][f"{key}_lo"]) for i in idx]
+        e = {"over": "point", "index": np.array(idx, np.int64), "hi": hi, "lo": lo}
+        if ck:
+            e["cond"] = [np.asarray(gs[i][ck]) for i in idx]
+        methods[m] = e
+    reffile.write(OUT / f"{family}.npz", **arbref.provenance(), tool="tools/linalg_ref.py", n_requested=len(gs),
+                  inputs={k: [np.asarray(g[k]) for g in gs] for k in ins}, methods=methods)  # fmt: skip
+
+
 def write(family, jobs):
     gen, _ = FAMILIES[family]
     groups = gen(np.random.default_rng(SEEDS[family]))
     order = sorted(range(len(groups)), key=lambda i: -groups[i]["a"].size)  # big ones first
     with mp.get_context("spawn").Pool(jobs, maxtasksperchild=4) as pool:
         refs = dict(zip(order, pool.map(_work, [(family, groups[i]) for i in order], chunksize=1)))
-    arrays = {}
+    gs = []
     for i, g in enumerate(groups):
-        for k, v in g.items():
-            arrays[f"g{i}_{k}"] = np.asarray(v)
+        d = dict(g)
         for k, (hi, lo) in refs[i].items():
-            arrays[f"g{i}_{k}_hi"], arrays[f"g{i}_{k}_lo"] = hi, lo
-        for k, v in conds(family, g, refs[i]).items():
-            arrays[f"g{i}_{k}"] = np.asarray(v)
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(OUT / f"{family}.npz", **arrays)
-    print(f"{family}: {len(groups)} groups -> {(OUT / f'{family}.npz').relative_to(ROOT)}", flush=True)
+            d[f"{k}_hi"], d[f"{k}_lo"] = hi, lo
+        d.update(conds(family, g, refs[i]))
+        gs.append(d)
+    _write_groups(family, gs)
+    print(f"{family}: {len(groups)} matrices -> {(OUT / f'{family}.npz').relative_to(ROOT)}", flush=True)
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("families", nargs="*", help=", ".join(FAMILIES))
-    ap.add_argument("--jobs", type=int, default=10)
-    a = ap.parse_args()
-    bad = set(a.families) - set(FAMILIES)
+def main(argv=None):
+    from bench import cli
+
+    ap = argparse.ArgumentParser(prog="tools/linalg_ref.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument("names", nargs="*", metavar="FAMILY", help=", ".join(FAMILIES))
+    cli.add_jobs(ap)
+    a = ap.parse_args(argv)
+    bad = [f for f in a.names if f not in FAMILIES]
     if bad:
-        ap.error(f"unknown families {sorted(bad)}; choose from {', '.join(FAMILIES)}")
-    for f in a.families or FAMILIES:
-        write(f, min(a.jobs, 10))
+        ap.error(f"unknown family {bad[0]!r}")
+    with arbref.logged("linalg_ref"):
+        for f in a.names or FAMILIES:
+            write(f, a.jobs)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

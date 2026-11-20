@@ -1,8 +1,8 @@
 """R's quantile regressions on fixed problems, for sd.regression.quantreg's tests
-(tests/regression/ref/quantreg_r.json; docs/design/regression.md §3.6). R is not a test
+(tests/regression/data/quantreg_r.json; docs/design/regression.md §3.6). R is not a test
 dependency: run this once where Rscript (with quantreg) is installed,
 
-    uv run --no-sync python tools/gen_quantreg_r.py
+    .venv/bin/python tools/gen_quantreg_r.py
 
 What it stores, per problem (the inputs too) and quantile:
   - quantreg::rq (6.1) with method = "br" (Barrodale-Roberts simplex: an exact vertex) and
@@ -32,7 +32,7 @@ import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests" / "regression"))
-OUT = ROOT / "tests" / "regression" / "ref" / "quantreg_r.json"
+OUT = ROOT / "tests" / "regression" / "data" / "quantreg_r.json"
 
 from refdata_robust import STACKLOSS_X, STACKLOSS_Y  # noqa: E402
 
@@ -84,6 +84,7 @@ def engel():
     res = subprocess.run(
         [
             "Rscript",
+            "--vanilla",
             "-e",
             "suppressMessages(library(quantreg)); data(engel); "
             'cat(sprintf("%.17g %.17g", engel$income, engel$foodexp), sep="\\n")',
@@ -155,6 +156,7 @@ def run(prob):
         res = subprocess.run(
             [
                 "Rscript",
+                "--vanilla",
                 str(d / "run.R"),
                 str(d / "data.csv"),
                 str(d / "taus.txt"),
@@ -175,7 +177,7 @@ def run(prob):
 
 def main():
     ver = subprocess.run(
-        ["Rscript", "-e", 'cat(R.version.string, "|", "quantreg", format(packageVersion("quantreg")))'],
+        ["Rscript", "--vanilla", "-e", 'cat(R.version.string, "|", "quantreg", format(packageVersion("quantreg")))'],
         capture_output=True,
         text=True,
         check=True,

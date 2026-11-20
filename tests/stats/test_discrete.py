@@ -511,3 +511,80 @@ def test_moments_at_extreme_parameters():
     assert math.isnan(S.BetaBinomial(n=1, a=0.001, b=0.001).mode()) and S.BetaBinomial(n=7, a=0.5, b=0.25).mode() == 7.0
     assert S.BetaBinomial(n=7, a=0.25, b=0.5).mode() == 0.0 and S.BetaBinomial(n=7, a=1.5, b=0.5).mode() == 7.0
     assert math.isnan(S.Hypergeometric(total=2.0**24 + 2, successes=5e6, draws=7e6).kurtosis())
+
+
+A = sd.asarray
+inf = math.inf
+sp = sd.special
+
+
+def test_binomial_mode_at_2_52():
+    assert S.Binomial(n=2.0**52, p=0.5).mode() == 2.0**51
+    assert math.isnan(S.Binomial(n=2.0**52 + 2, p=0.5).mode())
+
+
+# ---- the family's support; NegativeBinomial(n=0)
+
+
+def test_support_is_the_familys():
+    cases = [
+        (S.Binomial(n=10, p=0.0), (0.0, 10.0)),
+        (S.Binomial(n=10, p=1.0), (0.0, 10.0)),
+        (S.Bernoulli(p=0.0), (0.0, 1.0)),
+        (S.Poisson(mu=0.0), (0.0, inf)),
+        (S.Geometric(p=1.0), (1.0, inf)),
+        (S.NegativeBinomial(n=3.0, p=1.0), (0.0, inf)),
+        (S.NegativeBinomial(n=0.0, p=0.4), (0.0, inf)),
+    ]
+    for X, sup in cases:
+        assert X.support() == sup
+        assert X.icdf(1.0) == sup[1] and X.iccdf(0.0) == sup[1]
+        assert X.icdf(0.0) == sup[0] and X.iccdf(1.0) == sup[0]
+    # inside (0, 1) the quantile is the point mass
+    assert S.Poisson(mu=0.0).icdf(0.5) == 0.0 and S.Geometric(p=1.0).iccdf(0.3) == 1.0
+    # as scipy's support and ppf(1)
+    assert S.Poisson(mu=0.0).icdf(1.0) == inf
+
+
+def test_negative_binomial_n0_is_the_point_mass():
+    X = S.NegativeBinomial(n=0.0, p=0.5)
+    assert (X.pmf(0.0), X.pmf(1.0), X.logpmf(0.0), X.cdf(2.0), X.ccdf(2.0)) == (1.0, 0.0, 0.0, 1.0, 0.0)
+    assert X.cdf(2.0) == sp.nbdtr(2, 0.0, 0.5)
+    assert (X.mean(), X.variance(), X.median(), X.mode(), X.entropy()) == (0.0, 0.0, 0.0, 0.0, 0.0)
+    assert math.isnan(X.skewness()) and math.isnan(X.kurtosis())
+    assert list(np.asarray(X.sample(5, rng=sd.random.default_rng(1)))) == [0.0] * 5
+    assert float(S.NegativeBinomial(n=A([0.0, 2.0]), p=0.5).pmf(A([0.0, 0.0]))[0]) == 1.0
+    # p = 0 and an infinite mean are not distributions: NaN (special's values are the limits)
+    assert math.isnan(S.NegativeBinomial(n=3.0, p=0.0).cdf(2.0)) and sp.nbdtr(2, 3, 0.0) == 0.0
+    assert math.isnan(S.Poisson(mu=inf).cdf(2.0)) and sp.pdtr(2, inf) == 0.0
+
+
+def test_point_masses_have_zero_entropy():
+    for a, b in ((1.0, 1.0), (0.5, 0.5), (2.0, 3.0)):
+        assert S.BetaBinomial(n=0.0, a=a, b=b).entropy() == 0.0
+    assert S.Dirichlet(alpha=A([2.0])).entropy() == 0.0
+    assert S.Dirichlet(alpha=A([[2.0], [0.5]])).entropy().tolist() == [0.0, 0.0]
+    assert math.isnan(S.Dirichlet(alpha=A([-1.0])).entropy())
+
+
+# ---- D-13: discrete quantiles round-trip --------------------------------------------------
+
+
+def test_discrete_icdf_of_cdf():
+    X = S.Poisson(mu=2.2919601461531838)
+    assert X.icdf(X.cdf(2.0)) == 2.0
+    rng = np.random.default_rng(7)
+    for _ in range(20):
+        X = S.Binomial(n=float(rng.integers(1, 100)), p=float(rng.random()))
+        k = sd.arange(0.0, 30.0)
+        c = np.asarray(X.cdf(k))
+        back = np.asarray(X.icdf(sd.asarray(c)))
+        for i in range(30):
+            if 0.0 < c[i] <= 0.9:  # where the small side is not near the cdf's rounding
+                first = i
+                while first > 0 and c[first - 1] == c[i]:
+                    first -= 1
+                assert back[i] == first, (X, i, c[i], back[i])
+    # near 1 the contract on the small side 1 - p keeps the exact quantile
+    P = S.Poisson(mu=0.0025)
+    assert P.icdf(0.9999999999999992) == 5.0

@@ -13,6 +13,7 @@ import pytest
 import stardust as sd
 
 from . import refdata
+from .smalldata import RNG, N, X
 
 R = sd.regression
 REFS = refdata.load()
@@ -583,3 +584,31 @@ def test_inference_df_and_summary_alpha():
     assert f"{lo:.3f}" in text
     with pytest.raises(ValueError, match=r"^summary\(\): 'alpha' must be between 0 and 1"):
         r.summary(alpha=1.5)
+
+
+# ---- G108: one cluster and a constant y
+
+
+def test_one_cluster_constant_y():
+    r = R.ols(np.full(N, 2.0), X, cov_type="cluster", groups=np.zeros(N))
+    assert np.all(np.isnan(a(r.cov_params()))) and np.all(np.isnan(a(r.bse)))
+    r2 = R.ols(np.full(N, 2.0), X, cov_type="cluster", groups=np.arange(N) % 3)
+    assert np.all(a(r2.bse) == 0.0)
+    g = R.glm(np.full(N, 2.0), X, family="gaussian", cov_type="cluster", groups=np.zeros(N))
+    assert np.all(np.isnan(a(g.bse)))
+
+
+# ---- predictions, scales, messages
+
+
+def test_cluster_batch_labels_per_regression():
+    """Labels distinct across a batch (the batch's label count far above each regression's):
+    each regression's covariance is that of its own fit."""
+    nb, n = 6, 40
+    Xb = RNG.normal(size=(nb, n, 2))
+    yb = RNG.normal(size=(nb, n))
+    g = np.arange(nb * n).reshape(nb, n) // 4  # 10 groups per regression, 60 labels in all
+    rb = R.ols(yb, Xb, cov_type="cluster", groups=g)
+    for i in range(nb):
+        ri = R.ols(yb[i], Xb[i], cov_type="cluster", groups=g[i])
+        assert a(rb.bse)[i].tolist() == a(ri.bse).tolist()

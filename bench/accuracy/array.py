@@ -1,9 +1,11 @@
 """The array area: the float64 element-wise functions on vForce and pow, and the reductions.
 
-Element-wise (tests/array/ref/<function>.npz, tools/array_ref.py): the error against Arb in
-ULP and relative, numpy's own error at the same points, and the contract of
-docs/api/array.md -- within 8 ULP of numpy (tests/array/test_vforce.py) -- as the largest ULP
-distance to numpy over 8.
+Element-wise (tests/array/ref/<function>.npz, tools/array_ref.py, read through
+tests/array/refdata.py): the error against Arb in ULP (ulp_distance to the correctly rounded
+value) and relative, numpy's own error at the same points, and the contract of
+docs/api/array.md -- within ULP_BOUND of the correctly rounded value (tests/array/refdata.py,
+tests/array/test_reference.py) -- as the largest ULP over the bound. The ULP distance to
+numpy's value is recorded too (no contract: the two may differ in the last places).
 
 Reductions (sum, mean, var, std, prod, vecdot, matmul; tests/array/ref/reductions.npz, also
 tools/array_ref.py): the references were computed once in exact arithmetic (Shewchuk's fsum
@@ -13,19 +15,15 @@ no contract: the measure is the relative error and the relative error over u tim
 condition number (sum |d log f / d log x_i|: sum |x_i| / |sum x_i| for a sum), the size the
 inputs' own rounding would give; the baseline comparison judges them.
 
-Only sd's values (and numpy's, for the element-wise contract) are computed at measurement time.
+Only sd's values (and numpy's, for the distance to numpy) are computed at measurement time.
 """
 
 from __future__ import annotations
 
-import pathlib
-
 import numpy as np
 
-from .common import Custom, compare_libs, region
+from .common import Custom, compare_libs, region, ulp_distance
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-REF = ROOT / "tests" / "array" / "ref"
 U = 2.0**-53
 
 ELEMENTWISE = (
@@ -35,24 +33,6 @@ ELEMENTWISE = (
 TINY = 2.0**-1022
 NUMPY = {"pow": "power", "atan2": "arctan2"}
 REDUCTIONS = ("sum", "mean", "var", "std", "prod", "vecdot", "matmul")
-
-
-def _ordered(a):
-    """The doubles as int64 in their order (-0 and +0 both 0)."""
-    i = np.asarray(a, dtype=np.float64).view(np.int64)
-    return np.where(i < 0, -(i & 0x7FFFFFFFFFFFFFFF), i)
-
-
-def ulp_distance(a, b):
-    """The number of doubles between a and b (0 for two NaNs, inf for one)."""
-    a, b = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
-    na, nb = np.isnan(a), np.isnan(b)
-    oa, ob = _ordered(np.where(na, 0.0, a)), _ordered(np.where(nb, 0.0, b))
-    same_sign = (oa >= 0) == (ob >= 0)  # the int64 difference cannot overflow
-    d = np.where(
-        same_sign, np.abs(np.where(same_sign, oa - ob, 0)), np.abs(oa.astype(float)) + np.abs(ob.astype(float))
-    )
-    return np.where(na & nb, 0.0, np.where(na | nb, np.inf, d.astype(np.float64)))
 
 
 R_ELEMENTWISE = {
@@ -80,24 +60,24 @@ def _ew_values(name, args, lib):
 
 
 def _elementwise(name, lib="sd"):
-    """sd's errors and contract (8 ULP of numpy; complex abs: 1.5 ULP of the exact modulus), or a
-    comparator's (numpy, R) errors at the same points (its contract column only for complex abs)."""
+    """The errors and contract (tests/array/refdata.py: ULP_BOUND of the correctly rounded value)
+    of sd or a comparator (numpy, R) at the reference points; for sd also its ULP distance to
+    numpy's values (recorded)."""
+    from tests.array import refdata as A
     from tests.special import refdata as R
 
-    z = np.load(REF / f"{name}.npz")
-    keys = {"atan2": ("y", "x"), "pow": ("x", "y"), "cabs": ("re", "im")}.get(name, ("x",))
-    args = [z[k] for k in keys]
-    hi, lo = z["hi"], z["lo"]
+    inputs, hi, lo = A.elementwise(name)
+    keys, args = list(inputs), list(inputs.values())
     got = _ew_values(name, args, lib)
     keep = np.ones(hi.shape, bool) if lib == "sd" else np.isfinite(got) | ~np.isfinite(hi)
+    ulp, bound = A.elementwise_contract(name, got, hi)
     with np.errstate(all="ignore"):
-        ulp, rel = R.ulp_error(got, hi, lo), R.rel_error(got, hi, lo)
-    if name == "cabs":
-        contract, bound = ulp, 1.5
-    elif lib == "sd":
-        contract, bound = ulp_distance(got, _ew_values(name, args, "numpy")), 8.0
-    else:
-        contract, bound = None, None
+        rel = R.rel_error(got, hi, lo)
+    extra = {}
+    if lib == "sd":
+        npv = _ew_values(name, args, "numpy")
+        d = ulp_distance(got, npv).astype(np.float64)
+        extra["numpy_dist"] = np.where(np.isnan(got) == np.isnan(npv), d, np.inf)
     where = np.array([", ".join(f"{k}={v!r}" for k, v in zip(keys, p)) for p in zip(*(a.tolist() for a in args))])
     out = {}
     sub = np.abs(hi) < TINY  # results below the normal range: their ULP is the subnormal spacing
@@ -105,8 +85,8 @@ def _elementwise(name, lib="sd"):
         m = m0 & keep
         if m0.any():
             out[label] = region(
-                where[m], ulp=ulp[m], rel=rel[m], contract=None if contract is None else contract[m], bound=bound,
-                excluded=None if lib == "sd" else int((m0 & ~keep).sum()),
+                where[m], ulp=ulp[m], rel=rel[m], contract=ulp[m], bound=bound,
+                excluded=None if lib == "sd" else int((m0 & ~keep).sum()), **{k: v[m] for k, v in extra.items()},
             )  # fmt: skip
     return out
 
@@ -144,12 +124,9 @@ def reduction_inputs(kind, shape, seed):
 
 
 def _reduction_groups():
-    z = np.load(REF / "reductions.npz")
-    out = {}
-    for k in z.files:
-        g, key = k[1:].split("_", 1)
-        out.setdefault(int(g), {})[key] = z[k]
-    return [out[i] for i in sorted(out)]
+    from tests.array import refdata as A
+
+    return A.reduction_groups()
 
 
 def _operand(g, name):

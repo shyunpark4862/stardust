@@ -6,10 +6,13 @@ behind an adapter that gives them sd's few differing names. scikit-learn's Elast
 penalized objective (1/(2n) RSS + alpha (l1_ratio |b|_1 + (1 - l1_ratio)/2 |b|^2)) for the
 Gaussian problems without standardization. R: lm and glm (stats), rlm (MASS) for the M problems,
 lmrob (robustbase) for MM, glmnet for the penalized ones (its objective is the same, with
-standardize). A library without the model, or without a field's quantity, is left out ("—").
+standardize). The tests on fitted models: statsmodels' functions of the same names
+(sm_model_tests_values). A library without the model, or without a field's quantity, is left out ("—").
 """
 
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 
@@ -162,8 +165,12 @@ def sklearn_values(sw) -> dict | None:
 
 
 def r_values(sw) -> dict | None:
-    """{field: values} from R, for the fields R reports the same way."""
+    """{field: values} from R, for the fields R reports the same way. The tests on fitted
+    models have none here: R's (lmtest, car) are compared in tests/regression/test_model_tests_against_r.py
+    on its own problems."""
     p, kind = sw.problem, sw.kind
+    if kind == "model_tests":
+        return None
     y, X = np.asarray(p["y"], dtype=float), np.asarray(p["X"], dtype=float)
     n, k = X.shape
     icpt = "" if p["intercept"] else " - 1"
@@ -245,4 +252,74 @@ def _r_split(expr, data, names):
         i += size
     if i != vals.size:
         raise ValueError(f"R returned {vals.size} values, expected {i}")
+    return out
+
+
+# ------------------------------------------------------------------------------ tests on fitted models
+
+
+def sm_model_tests_values(sw) -> dict:
+    """statsmodels' values of the model_tests fields it computes the same way: t_test, f_test /
+    wald_test, compare_f_test, compare_lr_test, variance_inflation_factor, OLSInfluence /
+    GLMInfluence(observed=False), het_white, het_goldfeldquandt and linear_reset. Left out (no
+    such function, or another quantity): anova_lm (it needs a formula), White without cross
+    terms (statsmodels keeps the squares only), and for weighted fits VIF, Goldfeld-Quandt and
+    RESET (statsmodels' drop the weights); the GLM comparisons (GLMResults has no
+    compare_lr_test)."""
+    import statsmodels.api as sm
+    from statsmodels.stats.diagnostic import het_goldfeldquandt, het_white, linear_reset
+    from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+    p = sw.problem
+    y = np.asarray(p["y"], dtype=float)
+    X = np.asarray(p["X"], dtype=float)
+    Rm = np.asarray(p["R"], dtype=float)
+    out = {}
+
+    def put(fields, make):
+        try:
+            with warnings.catch_warnings():  # statsmodels' notes on conditioning and rank
+                warnings.simplefilter("ignore")
+                vals = make()
+        except Exception:  # noqa: BLE001 -- a value statsmodels cannot give is left out
+            return
+        for f, v in zip(fields, vals):
+            out[f] = np.ravel(np.asarray(v, dtype=float))
+
+    if p["kind"] == "glm":
+        fixed = p["family"] in ("binomial", "poisson")
+        ex = sm.add_constant(X, has_constant="add")
+        b = sm.GLM(y, ex, family=_sm_family(p["family"], p["link"])).fit(tol=1e-14, maxiter=1000, use_t=not fixed)
+        put(("t_tvalue", "t_pvalue"), lambda: (lambda t: (t.tvalue, t.pvalue))(b.t_test(Rm)))
+        put(("wald_stat", "wald_p"),
+            lambda: (lambda w: (w.statistic, w.pvalue))(b.wald_test(Rm, use_f=not fixed, scalar=True)))  # fmt: skip
+        inf = b.get_influence(observed=False)
+        put(("hat",), lambda: (inf.hat_matrix_diag,))
+        put(("cooks",), lambda: (inf.cooks_distance[0],))
+        put(("dfbetas",), lambda: (inf.dfbetas,))
+        return out
+    ex = sm.add_constant(X, has_constant="add") if p["intercept"] else X
+    j0 = 1 if p["intercept"] else 0
+    weighted = p["weights"] is not None
+    model = sm.WLS(y, ex, weights=p["weights"]) if weighted else sm.OLS(y, ex)
+    s = model.fit()
+    exs = ex[:, : j0 + p["small"]]
+    ss = (sm.WLS(y, exs, weights=p["weights"]) if weighted else sm.OLS(y, exs)).fit()
+    q = np.asarray(p["q"], dtype=float)
+    put(("t_effect", "t_sd", "t_tvalue", "t_pvalue"),
+        lambda: (lambda t: (t.effect, t.sd, t.tvalue, t.pvalue))(s.t_test((Rm, q))))  # fmt: skip
+    put(("wald_F", "wald_p"), lambda: (lambda w: (w.fvalue, w.pvalue))(s.f_test((Rm, q))))
+    put(("compare_F", "compare_F_p"), lambda: s.compare_f_test(ss)[:2])
+    put(("compare_lr", "compare_lr_p"), lambda: s.compare_lr_test(ss)[:2])
+    put(("dffits", "dfbetas"), lambda: (lambda inf: (inf.dffits[0], inf.dfbetas))(s.get_influence()))
+    if sw.name.split("/", 1)[1] not in ("cond",):  # sd's White on cond is another quantity (refdata_model_tests)
+        put(("white_lm", "white_lm_p", "white_F", "white_F_p"), lambda: het_white(s.wresid, s.model.wexog))
+    if not weighted:
+        put(("vif",), lambda: ([variance_inflation_factor(ex, j) for j in range(j0, ex.shape[1])],))
+        n1, drop, by = p["gq"]
+        idx = None if by is None else j0 + by
+        put(("gq_F", "gq_p"), lambda: het_goldfeldquandt(y, ex, idx=idx, split=n1 if n1 is not None else len(y) // 2,
+                                                        drop=drop or None, alternative="increasing",
+                                                        result_object=False)[:2])  # fmt: skip
+        put(("reset_F", "reset_p"), lambda: (lambda r: (r.fvalue, r.pvalue))(linear_reset(s, power=3, use_f=True)))
     return out

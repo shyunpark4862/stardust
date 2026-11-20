@@ -1,22 +1,29 @@
-"""Reference values for sd.stats' distributions from Arb (python-flint; docs/design/stats.md §9).
+"""Reference values for sd.stats' distributions from Arb (python-flint; docs/design/stats.md §9),
+and the multivariate ones (tools/mvref.py, tools/mvcdfref.py).
 
-    .venv/bin/python tools/stats_ref.py                     # every distribution, on 10 processes
-    .venv/bin/python tools/stats_ref.py normal gamma        # only these
-    .venv/bin/python tools/stats_ref.py --jobs=8 normal     # 8 processes instead of 10
-    .venv/bin/python tools/stats_ref.py normal:cdf,icdf     # only these methods
-    .venv/bin/python tools/stats_ref.py --masks-only gamma  # rewrite the guaranteed masks only
-    .venv/bin/python tools/stats_ref.py --intervals zipf    # add the discrete inverses' [kmin, kmax]
-    .venv/bin/python tools/stats_ref.py --resample zipf     # draw new input sets (else an existing
-                                                            # file's inputs are reused, frozen)
+    .venv/bin/python tools/stats_ref.py                       # every distribution, on 8 processes
+    .venv/bin/python tools/stats_ref.py normal gamma          # only these
+    .venv/bin/python tools/stats_ref.py --jobs 4 normal       # 4 processes (at most 10)
+    .venv/bin/python tools/stats_ref.py normal:cdf,icdf       # only these methods
+    .venv/bin/python tools/stats_ref.py --masks-only gamma    # rewrite the guaranteed masks only
+    .venv/bin/python tools/stats_ref.py --intervals zipf      # add the discrete inverses' [kmin, kmax]
+    .venv/bin/python tools/stats_ref.py --resample zipf       # draw new input sets (else an existing
+                                                              # file's inputs are reused, frozen)
+    .venv/bin/python tools/stats_ref.py mvnormal bvn          # multivariate families and cdf sets
 
-writes tests/stats/ref/<distribution>_<method>.npz in tests/special/refdata.py's format:
-x0..x{n-1} are the native function's inputs (params..., then the method's input, if any),
-hi + lo the reference as a double-double, `guaranteed` the guaranteed region, `scale` the
-bound's multiplier (max(1, kappa) for the inverses, whose contract is
-|dx / x| <= 1e-14 max(1, kappa); the T20 mixed bound for logpdf and entropy is applied by
-the test, not stored); for the discrete inverses `kmin`, `kmax` the answers the backward
-error contract allows (BACKWARD). The generator is seeded; an existing file's inputs are reused
-(only the references are recomputed) unless --resample is given.
+writes tests/stats/ref/<distribution>_<kind>.npz (layout: tests/reffile.py; read by
+tests/stats/refdata.py): one input set per distribution and kind -- x (pdf, logpdf, cdf, ...,
+pmf), p (icdf, iccdf), logp (ilogcdf, ilogccdf), param (the moments) -- holding the native
+function's inputs x0..x{n-1} (params..., then the method's input, if any) and, per method of
+that kind, hi + lo the reference as a double-double, `guaranteed` the guaranteed region and
+`scale` the bound's multiplier (max(1, kappa) for the inverses, whose contract is
+|dx / x| <= 1e-14 max(1, kappa); the mixed bound for logpdf and entropy is applied by the test,
+not stored); for the discrete inverses `kmin`, `kmax` the answers the backward error contract
+allows (BACKWARD). The generator is seeded; an existing file's inputs are reused (only the
+references are recomputed, and a method's points dropped before are tried again) unless
+--resample is given. The multivariate families and cdf sets go to tests/stats/ref/mv/. An
+unknown name is a usage error (exit status 2); the console output also goes to
+build/logs/stats_ref/.
 
 Every reference is an Arb ball that provably contains the true value, settled to 2^-110
 relative (tools/arbref.py: no "two precisions agree" heuristic). The definitions are the
@@ -25,48 +32,36 @@ adds a bound on what it leaves out to the ball. The continuous inverses are root
 log F(x) = log p certified by a sign change at x (1 -+ 2^-110) (Newton from our own value is
 a start only); the discrete ones are exact integers, each comparison of the cdf with its
 target decided by a ball that excludes equality, or exactly in rational arithmetic where
-equality can happen.
+equality can happen. A point whose value does not settle by 8192 bits, or whose series,
+integral or iteration does not end within its cap, is dropped and recorded (the method's
+dropped field); no wall clock decides it, so any machine drops the same points.
 """
 
 import math
 import multiprocessing
-import signal
 import sys
 import time
 from fractions import Fraction
 from pathlib import Path
 
-import flint
 import numpy as np
 from flint import acb, acb_series, arb, arb_series, ctx
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT))
 import arbref as ar  # noqa: E402
 from arbref import NotSettled, add_error, precision, rigorous, to_dd  # noqa: E402
 from special_ref import around, grid, loguniform  # noqa: E402,F401  (pure-numpy input helpers)
 
 OUT = ROOT / "tests" / "stats" / "ref"
-POINT_SECONDS = 30
-JOBS = 10  # the default process count (at most 10 cores, user decision 2026-11-16)
+TOOL = "tools/stats_ref.py"
 
 INPUT_METHODS = ("pdf", "logpdf", "cdf", "logcdf", "ccdf", "logccdf", "icdf", "iccdf", "ilogcdf", "ilogccdf")
 PARAM_METHODS = ("mean", "variance", "standard_deviation", "skewness", "kurtosis", "median", "mode", "entropy")
 INVERSE = {"icdf", "iccdf", "ilogcdf", "ilogccdf"}
 
 NAN, INF = math.nan, math.inf
-
-
-class _Timeout(Exception):
-    pass
-
-
-_DEADLINE = [math.inf]  # the current point's wall-clock end: checked inside integrands, where
-# python-flint's callback wrapper can swallow the alarm's exception
-
-
-def _alarm(*_):
-    raise _Timeout
 
 
 # ---------------------------------------------------------------- Arb helpers
@@ -99,12 +94,6 @@ def _log(v):
     if v.is_zero():
         return -INF
     return v.log()
-
-
-def _exp(v):
-    if isinstance(v, float):
-        return math.exp(v) if not math.isinf(v) else (INF if v > 0 else arb(0))
-    return v.exp()
 
 
 def _sqrt(v):
@@ -187,11 +176,6 @@ def _int(v):
     if isinstance(v, (int, float)):
         return int(v)
     return int(v.unique_fmpz())
-
-
-def _frac(v):
-    """The exact rational value of a double."""
-    return Fraction(float(v))
 
 
 # ---------------------------------------------------------------- the distributions
@@ -544,7 +528,7 @@ class Weibull(Distribution):
         ), np.ones(c.size + zeros.size + 50, dtype=bool)
 
 
-# ---- T6: extreme value and lifetime (docs/design/stats.md T26)
+# ---- extreme value and lifetime (docs/design/stats.md)
 
 
 class Logistic(Distribution):
@@ -844,7 +828,7 @@ class InverseGamma(Distribution):
             return s / y
 
 
-# ---- T6: noncentral
+# ---- noncentral
 #
 # The cdfs are Poisson mixtures of incomplete gamma or beta functions, both tails summed
 # directly as sums of positive terms (1 - the other tail would lose a tiny value), each
@@ -1071,8 +1055,6 @@ class NoncentralChiSquared(Distribution):
     start = staticmethod(lambda df, nc: df + nc)  # a Newton start where our root is 0 or inf
     # Chernoff at lambda = 1/4: P(X > x) <= e^(-x/4) E e^(X/4) = e^(-x/4) 2^(df/2) e^(nc/2)
     log_ccdf_bound = staticmethod(lambda x, df, nc: -x / 4 + df / 2 * LN2() + nc / 2)
-    seconds = 60
-    entropy_factor = 5  # the entropy's integral: 300 s
     params = ("df", "nc")
     positive = True
 
@@ -1206,16 +1188,13 @@ def _xexp(v):
 def _integral(fn, a, b, analytic=False, **kw):
     """acb.integral of fn(v) over [a, b]; with analytic, fn(v, an) takes the integrator's
     flag (to pass to the logs it takes: the integrand must check its own analyticity), else
-    fn(v) is entire. A timeout (SIGALRM) raised inside the integrand would leave the
-    integrator calling it with an exception set: the integrand returns NaN from then on
-    (the integrator gives up at once) and the timeout is raised again after."""
-    timed_out = []
+    fn(v) is entire. The integrator's own caps (its evaluation and depth limits) bound the
+    work; a box the integrand cannot bound gives NaN there (the integrator subdivides). An
+    error that is not about the box stops the integral and is raised after."""
+    failed = []
 
     def cb(v, an):
-        if timed_out:
-            return acb(NAN)
-        if time.monotonic() > _DEADLINE[0]:
-            timed_out.append(_Timeout())
+        if failed:
             return acb(NAN)
         try:
             if v.rad() > 2.0**-40:  # a bound over a whole box (the integrator's enclosures): at 64
@@ -1224,13 +1203,13 @@ def _integral(fn, a, b, analytic=False, **kw):
             return fn(v, an) if analytic else fn(v)
         except NotSettled, ArithmeticError, ValueError:  # not on this box (too wide): subdivide
             return acb(NAN)
-        except BaseException as e:  # noqa: B036 (the alarm's _Timeout, or a SystemError around it)
-            timed_out.append(e)
+        except Exception as e:  # a bug in the integrand: the integrator would swallow it
+            failed.append(e)
             return acb(NAN)
 
     r = acb.integral(cb, a, b, **kw)
-    if timed_out:
-        raise _Timeout from timed_out[0]
+    if failed:
+        raise failed[0]
     return r
 
 
@@ -1403,8 +1382,6 @@ def _nct_pair(df, d, t, upper):
 class NoncentralT(Distribution):
     start = staticmethod(lambda df, nc: nc if nc != 0 else 1.0)
     params = ("df", "nc")
-    seconds = 120
-    entropy_factor = 10  # the entropy's nested integrals: 1200 s
 
     @staticmethod
     def logpdf(t, df, d):
@@ -1506,8 +1483,6 @@ def _ncf_raw(dfn, dfd, nc, r):
 
 class NoncentralF(Distribution):
     start = staticmethod(lambda dfn, dfd, nc: (dfn + nc) / dfn)
-    seconds = 60
-    entropy_factor = 5  # the entropy's integral: 300 s
     params = ("dfn", "dfd", "nc")
     positive = True
 
@@ -2219,14 +2194,14 @@ class F(Distribution):
         )
 
 
-# ---------------------------------------------------------------- discrete (T5)
+# ---------------------------------------------------------------- discrete
 #
 # A discrete class sets `discrete = True`, defines pmf, cdf and ccdf at integers (the
 # cdfs at floor(x)) of arb arguments, the moments, and `support(params...)` -> (lo, hi) as
 # Python ints (hi may be inf) of the float parameters. The inverses' references are exact
 # integers found by search on the Arb cdf (discrete_inverse); the mode is found from the
 # exact ratio pmf(k) / pmf(k - 1) of the float parameters (`ratio_exact`, a Fraction), so a
-# tie (-> NaN, T25) is decided exactly. `cdf_exact(k, params...)` (a Fraction, or None) is
+# tie (-> NaN, docs/design/stats.md §2.3) is decided exactly. `cdf_exact(k, params...)` (a Fraction, or None) is
 # the rational cdf where a cdf can equal its target exactly (a median of 1/2).
 
 
@@ -2309,7 +2284,7 @@ def _entropy_sum(pmf, ratio, lo, hi, centre, spread, rho_right=None, rho_left=No
 
 def _mode_by_ratio(ratio, lo, hi, guess):
     """The argmax of a unimodal pmf near `guess` from the exact ratios
-    ratio(k) = pmf(k) / pmf(k - 1); NaN for a tie (T25)."""
+    ratio(k) = pmf(k) / pmf(k - 1); NaN for a tie."""
     k = int(min(max(lo, math.floor(guess)), hi))
     while k > lo and ratio(k) < 1:
         k -= 1
@@ -2953,7 +2928,6 @@ def _logser_l(p):
 
 class LogSeries(Discrete):
     params = ("p",)
-    seconds = 120  # the Lerch transcendent at k ~ 3e15 (p = 1 - 2e-6, t = -7e9): a minute
     support = staticmethod(lambda p: (1, INF))
     pmf = staticmethod(lambda k, p: (k * p.log()).exp() / (k * _logser_l(p)) if k.is_integer() and k >= 1 else arb(0))
 
@@ -3422,7 +3396,7 @@ _D14 = Fraction(1, 10**14)
 
 
 def discrete_inverse(D, m, pf, t, k0, pert=0):
-    """The exact quantile of a discrete distribution (T25): icdf = smallest k with
+    """The exact quantile of a discrete distribution (docs/design/stats.md §2.3): icdf = smallest k with
     cdf(k) >= p, iccdf = smallest k with ccdf(k) <= p, the log forms with p = e^t; each
     compared on the side whose probability is small. pert = -1 or +1 moves the target by
     BACKWARD (relative, see _perturbed), exactly."""
@@ -3483,68 +3457,62 @@ def _discrete_point(D, dist, m, args):
     return hi_, lo_, 1.0, float(kmin), float(kmax)
 
 
-def _interval_point(task):
-    try:
-        return _interval_point_inner(task)
-    except _Timeout:  # the alarm went off as it was being cancelled
-        return task, None
+# ---------------------------------------------------------------- files
+# A file holds one input set of a distribution (its kind: x, p, logp or param) and the methods of
+# that kind (tests/reffile.py). Writing a method keeps the file's other methods.
+
+KINDS = ("x", "p", "logp", "param")
 
 
-def _interval_point_inner(task):
-    dist, m, i, args, k = task
-    D = DISTRIBUTIONS[dist]
-    old = signal.signal(signal.SIGALRM, _alarm)
-    signal.alarm(getattr(D, "seconds", POINT_SECONDS))
-    try:
-        mm, a = ("icdf", list(args) + [0.5]) if m == "median" else (m, list(args))
-        kk = int(k) if math.isfinite(k) else k
-        lo_, hi_ = discrete_interval(D, mm, a[:-1], a[-1], kk)
-        return task, (float(lo_), float(hi_))
-    except Exception:
-        return task, None
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old)
+def kind(m):
+    if m in PARAM_METHODS:
+        return "param"
+    if m in ("icdf", "iccdf"):
+        return "p"
+    if m in ("ilogcdf", "ilogccdf"):
+        return "logp"
+    return "x"
 
 
-def add_intervals(targets, jobs):
-    """Add kmin and kmax to existing discrete inverse files (the exact k is kept); a point
-    whose interval cannot be settled is dropped from the file."""
-    import time
+def file_path(dist, m):
+    return OUT / f"{dist}_{kind(m)}.npz"
 
-    tasks, files = [], {}
-    for dist, m in targets:
-        if not (getattr(DISTRIBUTIONS[dist], "discrete", False) and (m in INVERSE or m == "median")):
-            continue
-        path = OUT / f"{dist}_{m}.npz"
-        with np.load(path) as f:
-            data = dict(f)
-        xs = [data[f"x{k}"] for k in range(int(data["nin"]))]
-        files[(dist, m)] = (path, data, {})
-        tasks += [(dist, m, i, tuple(float(x[i]) for x in xs), float(data["hi"][i])) for i in range(xs[0].size)]
-    import stardust  # noqa: F401  (inherited by the workers, as in build_all)
 
-    start = time.monotonic()
-    with multiprocessing.get_context("fork").Pool(jobs, maxtasksperchild=500) as pool:
-        for n, (task, r) in enumerate(pool.imap_unordered(_interval_point, tasks, chunksize=16), 1):
-            files[(task[0], task[1])][2][task[2]] = r
-            if n % max(1, len(tasks) // 20) == 0:
-                print(f"  intervals {n}/{len(tasks)}, {(time.monotonic() - start) / 60:.1f} min", flush=True)
-    for (dist, m), (path, data, res) in files.items():
-        n = data["hi"].size
-        kmin, kmax, keep = np.empty(n), np.empty(n), np.zeros(n, dtype=bool)
-        for i, r in res.items():
-            if r is not None:
-                kmin[i], kmax[i] = r
-                keep[i] = True
-        for key in ("hi", "lo", "scale", "guaranteed") + tuple(f"x{k}" for k in range(int(data["nin"]))):
-            data[key] = data[key][keep]
-        data["kmin"], data["kmax"] = kmin[keep], kmax[keep]
-        np.savez_compressed(path, **data)
-        print(
-            f"{dist}_{m}: {int(keep.sum())} intervals" + (f", {n - int(keep.sum())} dropped" if n > keep.sum() else ""),
-            flush=True,
-        )
+def _read(dist, m):
+    from tests import reffile
+
+    path = file_path(dist, m)
+    return reffile.read(path) if path.exists() else None
+
+
+def _write(dist, m, xs, methods, n_requested):
+    """The (distribution, kind) file with these inputs and methods (the dict of tests/reffile.write)."""
+    from tests import reffile
+
+    order = [mm for mm in (INPUT_METHODS + DISCRETE_INPUT_METHODS[:2] + PARAM_METHODS) if mm in methods]
+    reffile.write(
+        file_path(dist, m),
+        **ar.provenance(),
+        tool=TOOL,
+        n_requested=n_requested,
+        inputs={f"x{k}": np.asarray(x, dtype=np.float64) for k, x in enumerate(xs)},
+        methods={mm: methods[mm] for mm in dict.fromkeys(order)},
+    )
+
+
+def _method_dict(mm):
+    out = {"over": mm.over, "index": mm.index, "dropped": mm.dropped, "hi": mm.hi, "lo": mm.lo}
+    out.update(mm.fields)
+    return out
+
+
+def _same_inputs(r, xs):
+    if r is None or len(r.inputs) != len(xs):
+        return False
+    return all(
+        np.array_equal(np.asarray(a).view(np.int64), np.asarray(b).view(np.int64))
+        for a, b in zip(r.inputs.values(), xs)
+    )
 
 
 # ---------------------------------------------------------------- building
@@ -3556,13 +3524,15 @@ def _our(dist, m, args):
     return float(getattr(sd.stats._distribution._k, f"{dist}_{m}")(*args))
 
 
+# A point is dropped when its value does not settle by its precision cap (arbref.MAX_PREC, or the
+# distribution's max_prec), a series, an integral or an iteration runs past its cap, or Arb rejects
+# it: NotSettled is an ArithmeticError. Anything else is a bug in this tool and stops the build.
+_DROPS = (ArithmeticError, ValueError, ZeroDivisionError, OverflowError)
+
+
 def _point(task):
     dist, m, i, args = task
     D = DISTRIBUTIONS[dist]
-    old = signal.signal(signal.SIGALRM, _alarm)
-    seconds = getattr(D, "seconds", POINT_SECONDS) * (getattr(D, "entropy_factor", 1) if m == "entropy" else 1)
-    signal.alarm(seconds)
-    _DEADLINE[0] = time.monotonic() + seconds + 5
     try:
         if getattr(D, "discrete", False) and (m in INVERSE or m == "median"):
             return i, _discrete_point(D, dist, m, args)
@@ -3578,12 +3548,63 @@ def _point(task):
             )
         hi, lo = to_dd(v)
         return i, (hi, lo, sc)
-    except Exception:  # a point Arb cannot settle (timeout, no root, an infinite ball) is dropped
+    except _DROPS:  # a point Arb cannot settle within the caps (no root, an infinite ball) is dropped
         return i, None
-    finally:
-        signal.alarm(0)
-        _DEADLINE[0] = math.inf
-        signal.signal(signal.SIGALRM, old)
+
+
+def _interval_point(task):
+    dist, m, i, args, k = task
+    D = DISTRIBUTIONS[dist]
+    try:
+        mm, a = ("icdf", list(args) + [0.5]) if m == "median" else (m, list(args))
+        kk = int(k) if math.isfinite(k) else k
+        lo_, hi_ = discrete_interval(D, mm, a[:-1], a[-1], kk)
+        return task, (float(lo_), float(hi_))
+    except _DROPS:
+        return task, None
+
+
+def add_intervals(targets, jobs):
+    """Add kmin and kmax to the discrete inverses (the exact k is kept); a point whose interval
+    cannot be settled is dropped from the method (and recorded as dropped)."""
+    tasks, files = [], {}
+    for dist, m in targets:
+        if not (getattr(DISTRIBUTIONS[dist], "discrete", False) and (m in INVERSE or m == "median")):
+            continue
+        r = _read(dist, m)
+        if r is None or m not in r.methods:
+            continue
+        mm = r.methods[m]
+        xs = r.args(m)
+        files[(dist, m)] = (r, {})
+        tasks += [(dist, m, j, tuple(float(x[j]) for x in xs), float(mm.hi[j])) for j in range(mm.index.size)]
+    import stardust  # noqa: F401  (inherited by the workers, as in build_all)
+
+    start = time.monotonic()
+    with multiprocessing.get_context("fork").Pool(jobs, maxtasksperchild=500) as pool:
+        for n, (task, r) in enumerate(pool.imap_unordered(_interval_point, tasks, chunksize=16), 1):
+            files[(task[0], task[1])][1][task[2]] = r
+            if n % max(1, len(tasks) // 20) == 0:
+                print(f"  intervals {n}/{len(tasks)}, {(time.monotonic() - start) / 60:.1f} min", flush=True)
+    for (dist, m), (r, res) in files.items():
+        mm = r.methods[m]
+        n = mm.index.size
+        kmin, kmax, keep = np.empty(n), np.empty(n), np.zeros(n, dtype=bool)
+        for j, v in res.items():
+            if v is not None:
+                kmin[j], kmax[j] = v
+                keep[j] = True
+        d = _method_dict(mm)
+        for key in ("hi", "lo", "scale", "guaranteed"):
+            d[key] = d[key][keep]
+        d["dropped"] = np.union1d(mm.dropped, mm.index[~keep]).astype(np.int64)
+        d["index"] = mm.index[keep]
+        d["kmin"], d["kmax"] = kmin[keep], kmax[keep]
+        methods = {k: _method_dict(v) for k, v in r.methods.items()}
+        methods[m] = d
+        _write(dist, m, tuple(r.inputs.values()), methods, r.meta["n_requested"])
+        dropped = f", {n - int(keep.sum())} dropped" if n > keep.sum() else ""
+        print(f"{dist}_{m}: {int(keep.sum())} intervals{dropped}", flush=True)
 
 
 # The guaranteed region in the parameters: the ranges over which sd.special's functions
@@ -3619,12 +3640,23 @@ NC_RANGE = {
 NC_TINY = 1e-300
 
 
-def _nc_outside(dist, m, xs):
-    import stardust as sd
+def _tails(dist, xs):
+    """min(cdf, ccdf) at the x points from the file's own Arb references (NaN where either is
+    missing), for the noncentral distributions' guaranteed region."""
+    r = _read(dist, "cdf")
+    t = np.full(xs[0].size, np.nan)
+    if not _same_inputs(r, xs) or "cdf" not in r.methods or "ccdf" not in r.methods:
+        return t
+    c, cc = np.full(t.size, np.nan), np.full(t.size, np.nan)
+    c[r.methods["cdf"].index] = r.methods["cdf"].hi
+    cc[r.methods["ccdf"].index] = r.methods["ccdf"].hi
+    return np.minimum(c, cc)
 
+
+def _nc_outside(dist, m, xs):
     npar = len(DISTRIBUTIONS[dist].params)
     out = ~NC_RANGE[dist](*xs[:npar])
-    if m == "entropy":  # quadrature: a measured, loose bound (T26)
+    if m == "entropy":  # quadrature: a measured, loose bound (docs/design/stats.md)
         return np.ones(xs[0].size, dtype=bool)
     if m in PARAM_METHODS:
         return out
@@ -3633,11 +3665,9 @@ def _nc_outside(dist, m, xs):
         return out | (v < NC_TINY) | (1 - v < NC_TINY)
     if m in ("ilogcdf", "ilogccdf"):
         return out | (v < np.log(NC_TINY)) | (-np.expm1(v) < NC_TINY)
-    cls = getattr(sd.stats, refdata_class(dist))
-    X = cls(**{p: sd.asarray(x) for p, x in zip(cls._params, xs[:npar])})
-    with np.errstate(all="ignore"):
-        lo, hi = np.asarray(X.cdf(sd.asarray(v))), np.asarray(X.ccdf(sd.asarray(v)))
-    return out | (np.minimum(lo, hi) < NC_TINY)
+    t = _tails(dist, xs)  # the reference, not the code measured, decides; unknown: outside
+    with np.errstate(invalid="ignore"):
+        return out | ~(t >= NC_TINY)
 
 
 def refdata_class(dist):
@@ -3703,14 +3733,14 @@ def _own_mask(m, xs):
 
 
 def file_inputs(dist, m):
-    """(xs, guaranteed) of one file: the existing file's inputs (frozen: the samplers, scipy's
-    and our own quantiles, change between versions, and the references should be redone on
-    the same points), or with --resample (or no file yet) the seeded input set."""
+    """(xs, guaranteed) of a method: the existing file's inputs (frozen: the samplers, scipy's and
+    our own quantiles, change between versions, and the references should be redone on the same
+    points; a point the method dropped before is tried again), or with --resample (or no file
+    yet) the seeded input set."""
     D = DISTRIBUTIONS[dist]
-    path = OUT / f"{dist}_{m}.npz"
-    if path.exists() and not RESAMPLE:
-        with np.load(path) as f:
-            xs = tuple(np.asarray(f[f"x{k}"], dtype=np.float64) for k in range(int(f["nin"])))
+    r = _read(dist, m)
+    if r is not None and not RESAMPLE:
+        xs = tuple(np.asarray(x, dtype=np.float64) for x in r.inputs.values())
         return xs, region(dist, D, xs, _own_mask(m, xs), m)
     rng = np.random.default_rng(20261115)
     xs, guaranteed = inputs(D, m, rng)
@@ -3718,13 +3748,10 @@ def file_inputs(dist, m):
     return xs, region(dist, D, xs, guaranteed, m)
 
 
-def _tasks(dist, m):
-    """The inputs of one file and its point tasks."""
-    xs, guaranteed = file_inputs(dist, m)
-    return xs, guaranteed, [(dist, m, i, tuple(float(x[i]) for x in xs)) for i in range(xs[0].size)]
-
-
 def _save(dist, m, xs, guaranteed, results):
+    """Write method m into its (distribution, kind) file: the references at the points that
+    settled, the others recorded as dropped. The file's other methods are kept when its inputs
+    are these; when the inputs changed (--resample) the others no longer apply and are left out."""
     n = xs[0].size
     hi, lo, scale = np.empty(n), np.empty(n), np.ones(n)
     kmin, kmax = np.empty(n), np.empty(n)  # the discrete inverses' intervals (BACKWARD)
@@ -3737,34 +3764,30 @@ def _save(dist, m, xs, guaranteed, results):
                 kmin[i], kmax[i] = r[3:]
                 interval = True
             keep[i] = True
-    extra = {"kmin": kmin[keep], "kmax": kmax[keep]} if interval else {}
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        OUT / f"{dist}_{m}.npz",
-        nin=len(xs),
-        hi=hi[keep],
-        lo=lo[keep],
-        scale=scale[keep],
-        guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
-        **{f"x{k}": x[keep] for k, x in enumerate(xs)},
-        **extra,
-        arb=f"python-flint {flint.__version__}",  # the provenance fields of tools/special_ref.py
-        target_bits=ar.TARGET_BITS,
-    )
+    d = {"over": "point", "index": np.flatnonzero(keep), "dropped": np.flatnonzero(~keep), "hi": hi[keep],
+         "lo": lo[keep], "guaranteed": np.asarray(guaranteed, dtype=bool)[keep], "scale": scale[keep]}  # fmt: skip
+    if interval:
+        d["kmin"], d["kmax"] = kmin[keep], kmax[keep]
+    old = _read(dist, m)
+    methods = {}
+    if _same_inputs(old, xs):
+        methods = {k: _method_dict(v) for k, v in old.methods.items()}
+    elif old is not None:
+        print(f"{dist}_{kind(m)}: new inputs; the methods not rebuilt now are left out: "
+              f"{', '.join(k for k in old.methods if k != m)}", flush=True)  # fmt: skip
+    methods[m] = d
+    _write(dist, m, xs, methods, n)
     return int(keep.sum()), int(n - keep.sum())
 
 
-_FILES = []  # (dist, m, xs) of the files being built: the workers inherit them (fork) and read the inputs there
+_FILES = []  # (dist, m, xs) of the methods being built: the workers inherit them (fork) and read the inputs there
 
 
 def _point_task(task):
-    """((k, i), result) for point i of file k: imap_unordered returns results as they finish."""
+    """((k, i), result) for point i of method k: imap_unordered returns results as they finish."""
     k, i = task
     dist, m, xs = _FILES[k]
-    try:
-        return task, _point((dist, m, i, tuple(float(x[i]) for x in xs)))
-    except _Timeout:  # the alarm went off in _point's finally, as it was being cancelled
-        return task, (i, None)
+    return task, _point((dist, m, i, tuple(float(x[i]) for x in xs)))
 
 
 def build_all(targets, jobs):
@@ -3836,42 +3859,76 @@ def build_all(targets, jobs):
 
 
 def remask(targets):
-    """Rewrite the guaranteed masks of existing files from region() (no Arb)."""
+    """Rewrite the guaranteed masks of existing methods from region() (no Arb); the count of
+    points whose mask changed, per method."""
+    changed = {}
     for dist, m in targets:
-        path = OUT / f"{dist}_{m}.npz"
-        if not path.exists():
+        r = _read(dist, m)
+        if r is None or m not in r.methods:
             continue
-        with np.load(path) as f:
-            data = dict(f)
         D = DISTRIBUTIONS[dist]
-        xs = tuple(data[f"x{k}"] for k in range(int(data["nin"])))
-        data["guaranteed"] = region(dist, D, xs, _own_mask(m, xs), m)
-        np.savez_compressed(path, **data)
-        print(f"{dist}_{m}: {int(data['guaranteed'].sum())}/{xs[0].size} guaranteed", flush=True)
+        xs = tuple(r.inputs.values())
+        mm = r.methods[m]
+        g = region(dist, D, xs, _own_mask(m, xs), m)[mm.index]
+        changed[f"{dist}_{m}"] = int((g != mm.fields["guaranteed"]).sum())
+        methods = {k: _method_dict(v) for k, v in r.methods.items()}
+        methods[m]["guaranteed"] = g
+        _write(dist, m, xs, methods, r.meta["n_requested"])
+        print(f"{dist}_{m}: {int(g.sum())}/{g.size} guaranteed ({changed[f'{dist}_{m}']} changed)", flush=True)
+    return changed
 
 
-def main(argv):
-    jobs = JOBS
+def main(argv=None):
+    import argparse
+
+    from bench import cli
+
     global RESAMPLE
-    masks_only = "--masks-only" in argv
-    intervals = "--intervals" in argv
-    RESAMPLE = "--resample" in argv
-    argv = [a for a in argv if a not in ("--masks-only", "--intervals", "--resample")]
-    if argv and argv[0].startswith("--jobs="):
-        jobs, argv = int(argv[0].split("=", 1)[1]), argv[1:]
-    targets = []
-    for a in argv or list(DISTRIBUTIONS):
-        dist, _, ms = a.partition(":")
+    import mvcdfref
+    import mvref
+
+    mv_names = list(mvref.FAMILIES) + list(mvcdfref.SETS)
+    ap = argparse.ArgumentParser(prog="tools/stats_ref.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument(
+        "names",
+        nargs="*",
+        metavar="NAME",
+        help="distribution[:method,...], or a multivariate family or cdf set (default: every distribution)",
+    )
+    cli.add_jobs(ap)
+    ap.add_argument("--masks-only", action="store_true", help="rewrite the guaranteed masks only (no Arb)")
+    ap.add_argument("--intervals", action="store_true", help="add the discrete inverses' [kmin, kmax]")
+    ap.add_argument("--resample", action="store_true", help="draw new input sets instead of reusing the files'")
+    a = ap.parse_args(argv)
+    RESAMPLE = a.resample
+    targets, mv = [], []
+    for name in a.names or list(DISTRIBUTIONS):
+        if name in mv_names:
+            mv.append(name)
+            continue
+        dist, _, ms = name.partition(":")
+        if dist not in DISTRIBUTIONS:
+            ap.error(f"unknown distribution {dist!r}")
         base = DISCRETE_INPUT_METHODS if getattr(DISTRIBUTIONS[dist], "discrete", False) else INPUT_METHODS
         methods = ms.split(",") if ms else list(base + PARAM_METHODS)
+        bad = [m for m in methods if m not in base + PARAM_METHODS]
+        if bad:
+            ap.error(f"unknown method {bad[0]!r} of {dist}")
         targets += [(dist, m) for m in methods]
-    if masks_only:
-        remask(targets)
-    elif intervals:
-        add_intervals(targets, jobs)
-    else:
-        build_all(targets, jobs)
+    with ar.logged("stats_ref"):
+        if a.masks_only:
+            remask(targets)
+        elif a.intervals:
+            add_intervals(targets, a.jobs)
+        else:
+            if targets:
+                build_all(targets, a.jobs)
+                # the noncentral distributions' masks follow their final cdf and ccdf references
+                remask([(d, m) for d, m in targets if d in NC_RANGE and kind(m) == "x"])
+            for name in mv:
+                (mvref.write if name in mvref.FAMILIES else mvcdfref.build)(name, a.jobs)
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main())

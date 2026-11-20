@@ -2,6 +2,8 @@
 
 import cmath
 import math
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -17,6 +19,7 @@ from .conftest import (
     as_sd,
     batch_shapes,
     compute_dtype,
+    f_order_strides,
     npy,
     random_values,
     residual_ok,
@@ -25,18 +28,6 @@ from .conftest import (
 )
 
 SETTINGS = settings(max_examples=examples(150), deadline=None)
-
-
-def f_order_strides(shape, itemsize):
-    """Strides of a result: every matrix column-major, batch axes outside in C order."""
-    m, n = shape[-2], shape[-1]
-    st_ = [0] * len(shape)
-    st_[-2], st_[-1] = itemsize, itemsize * m
-    s = itemsize * m * n
-    for d in range(len(shape) - 3, -1, -1):
-        st_[d] = s
-        s *= shape[d]
-    return tuple(st_)
 
 
 # ---------------------------------------------------------------- properties --
@@ -285,3 +276,107 @@ def test_large_values_det_overflows_slogdet_does_not():
     assert sd.linalg.det(as_sd(a)) == math.inf
     s = sd.linalg.slogdet(as_sd(a))
     assert s.sign == 1.0 and s.logabsdet == pytest.approx(200 * math.log(1e10))
+
+
+INF = math.inf
+LA = sd.linalg
+
+
+SIZE_CASES = {
+    "solve": "ValueError solve(): array is too big",
+    "vecdot": "ValueError vecdot(): array is too big",
+    "outer batch": "ValueError outer(): array is too big",
+    "outer": "ValueError outer(): array is too big",
+    "kron rows": "ValueError kron(): array is too big",
+    "kron bytes": "ValueError kron(): array is too big",
+    "solve_triangular": "ValueError solve_triangular(): array is too big",
+    "cross": "ValueError cross(): array is too big",
+    "outer 32 axes": "ValueError outer(): arrays may have at most 32 dimensions",
+}
+
+
+# Each size case runs in a child process: before the fix some of them crashed the
+# interpreter (SIGBUS, SIGSEGV) or wrote past an array's shape.
+_SIZE_CHILD = r"""
+import sys
+import stardust as sd
+LA = sd.linalg
+def bv(shape):  # a 0-stride view: a huge shape over one element
+    return sd.broadcast_to(sd.reshape(sd.asarray([2.0]), (1,) * len(shape)), shape)
+x32 = sd.ones((1,) * 31 + (2,))
+cases = {
+    "solve": lambda: LA.solve(bv((2**32, 1, 1, 1)), bv((2**32, 1, 1))),
+    "vecdot": lambda: LA.vecdot(bv((2**32, 1, 4)), bv((1, 2**32, 4))),
+    "outer batch": lambda: LA.outer(bv((2**32, 1)), bv((2**32, 1, 1))),
+    "outer": lambda: LA.outer(bv((2**32,)), bv((2**32,))),
+    "kron rows": lambda: LA.kron(bv((2**31, 1)), bv((2**33, 1))),
+    "kron bytes": lambda: LA.kron(bv((2**32, 1)), bv((2**32 - 1, 1))),
+    "solve_triangular": lambda: LA.solve_triangular(bv((2**32, 1, 1, 1)), bv((2**32, 1, 1)), upper=True),
+    "cross": lambda: LA.cross(bv((2**32, 1, 3)), bv((1, 2**32, 3))),
+    "outer 32 axes": lambda: LA.outer(x32, x32),
+}
+try:
+    r = cases[sys.argv[1]]()
+    print("returned", getattr(r, "shape", r))
+except Exception as e:
+    print(type(e).__name__, e)
+"""
+
+
+def test_linalg_error_shows_its_public_path():
+    assert sd.linalg.LinAlgError.__module__ == "stardust.linalg"
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^inv\(\): singular matrix"):
+        sd.linalg.inv(sd.zeros((2, 2)))
+
+
+@pytest.mark.parametrize("case", list(SIZE_CASES))
+def test_results_past_int64_or_32_axes_raise(case):
+    r = subprocess.run([sys.executable, "-c", _SIZE_CHILD, case], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == SIZE_CASES[case]
+
+
+def test_batch_with_an_empty_axis_is_empty():
+    a = sd.broadcast_to(sd.reshape(sd.asarray([2.0]), (1, 1, 1, 1)), (0, 3, 1, 1))
+    assert LA.det(a).shape == (0, 3)
+    assert LA.solve(a, sd.ones((0, 3, 1, 1))).shape == (0, 3, 1, 1)
+
+
+# --------------------------------------------------------------- cond, det --
+
+
+@pytest.mark.parametrize(
+    "d, want",
+    [
+        ([1e200, 1e200, 1e-300], 1e100),
+        ([1e-200, 1e-200, 1e300], 1e-100),
+        ([1e300, 1e10, 1e-300], 1e10),
+        ([1e300, 1e300], INF),  # the determinant itself overflows
+        ([1e-300, 1e-300], 0.0),
+        ([-1e200, 1e200, 1e-300], -1e100),
+    ],
+)
+def test_det_survives_an_overflowing_partial_product(d, want):
+    got = LA.det(sd.asarray(np.diag(d)))
+    assert got == pytest.approx(want, rel=1e-15, abs=0.0)
+
+
+def test_det_with_swaps_and_complex_past_the_range():
+    a = np.array([[0.0, 1e200, 0.0], [1e200, 0.0, 0.0], [0.0, 0.0, 1e-300]])  # one row swap
+    assert LA.det(sd.asarray(a)) == pytest.approx(-1e100, rel=1e-15)
+    c = np.diag([1e200 + 1e200j, 1e200, 1e-300j])
+    assert LA.det(sd.asarray(c)) == pytest.approx(-1e100 + 1e100j, rel=1e-15)
+
+
+def test_det_bits_within_the_range_are_the_plain_product():
+    # No partial product leaves the normal range: the determinant is U's diagonal
+    # multiplied in order (the swaps only flip the sign), bit for bit.
+    rng = np.random.default_rng(3)
+    for n in (2, 5, 9, 30):
+        a = rng.standard_normal((n, n))
+        u = np.asarray(LA.lu(sd.asarray(a)).U)
+        ref = 1.0
+        for i in range(n):
+            ref = ref * u[i, i]
+        got = LA.det(sd.asarray(a))
+        assert abs(got) == abs(ref) and np.sign(got) == LA.slogdet(sd.asarray(a)).sign, n

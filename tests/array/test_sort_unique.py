@@ -383,3 +383,57 @@ def test_options_are_checked(func):
     with pytest.raises(TypeError, match=rf"^{name}\(\): 'axis' must be an int, not NoneType$"):
         func(x, axis=None)
     assert func(x, axis=np.int64(0)).tolist() == func(x, axis=0).tolist()
+
+
+def test_unique_counts_matches_unique_all():
+    rng = np.random.default_rng(3)
+    for a in [
+        np.array([0.0, -0.0, 1, np.nan, -0.0, np.nan, 1]),
+        rng.integers(0, 1000, 300_000),
+        rng.standard_normal(5000).round(1),
+        np.array([1 + 1j, np.nan, 1 + 1j]),
+        np.array([], float),
+    ]:
+        s = sd.asarray(a)
+        c, r = sd.unique_counts(s), sd.unique_all(s)
+        assert np.asarray(c.values).tobytes() == np.asarray(r.values).tobytes()
+        assert_same(c.counts, np.asarray(r.counts))
+        _, ni, ninv, nc = np.unique(a, return_index=True, return_inverse=True, return_counts=True, equal_nan=True)
+        assert_same(c.counts, nc)
+        assert_same(r.indices, ni)
+        assert np.array_equal(np.asarray(r.inverse_indices).ravel(), ninv.ravel())
+
+
+def test_float_sort_keeps_the_stable_order_of_signed_zeros():
+    rng = np.random.default_rng(6)
+    for n in (100, 1023, 1024, 5000, 300_000):
+        a = rng.choice([0.0, -0.0, 1.0, -1.0, np.nan, np.inf, -np.inf, 2.5], n)
+        for desc in (False, True):
+            s = sd.asarray(a)
+            order = np.asarray(sd.argsort(s, descending=desc))  # the stable order
+            assert np.asarray(sd.sort(s, descending=desc)).tobytes() == a[order].tobytes()
+            assert np.asarray(sd.sort(s, descending=desc, stable=False)).tobytes() == a[order].tobytes()
+        assert (
+            np.asarray(sd.unique_values(sd.asarray(a))).tobytes()
+            == np.asarray(sd.unique_all(sd.asarray(a)).values).tobytes()
+        )
+
+
+def test_result_object_arrays_are_read_only():
+    x = sd.asarray([3, 1, 3, 2])
+    for r in (sd.unique_all(x), sd.unique_counts(x), sd.unique_inverse(x)):
+        for a in r:
+            with pytest.raises(ValueError, match="^assignment destination is read-only$"):
+                a[0] = 0
+            with pytest.raises(ValueError, match="read-only"):
+                a[:1][0] = 0  # views of a field stay read-only
+            assert np.asarray(a).flags.writeable is False
+    edges = sd.asarray([0.0, 1.0, 2.0, 3.0])
+    h = sd.histogram(x, bins=edges)
+    for a in h:
+        with pytest.raises(ValueError, match="read-only"):
+            a[0] = 0
+    edges[0] = -1.0  # the caller's own array stays writable
+    assert h.bin_edges[0] == -1.0
+    v = sd.unique_values(x)  # a plain array result is not a result object
+    v[0] = 9

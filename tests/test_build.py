@@ -22,13 +22,6 @@ def test_accelerate_is_linked_with_ilp64():
     assert info["accelerate_ddot"] == 32.0
 
 
-@pytest.fixture
-def restore_threads():
-    n = sd.get_num_threads()
-    yield
-    sd.set_num_threads(n)
-
-
 def test_pool_defaults_to_performance_cores():
     assert sd.get_num_threads() == 10  # M4 Pro: 10 P-cores
 

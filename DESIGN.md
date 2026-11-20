@@ -157,13 +157,13 @@ numpy·scipy와 비트까지 같은 것은 약속이 아니다. 아래 네 규�
 
 ### 5.2 git과 공개 범위
 - **보통 git에 넣지 않는 것(가상환경, 빌드 산출물, 캐시, `.so`, `.DS_Store`)만 빼고 모두 git에 넣는다** (사용자 결정 2026-11-12, M0).
-  - 설계 문서, 해설, bench 스크립트와 측정 결과, 골든 출력, experiments 모두 들어간다.
+  - 설계 문서, 측정 사례와 그 결과(기준선, 표), 골든 출력, 참값 파일 모두 들어간다.
   - 세 프로젝트의 "문서와 bench, experiments는 로컬 전용" 정책은 이 저장소에서는 쓰지 않는다. `legacy/*/.gitignore`에서도 그 규칙을 뺐다.
 - 세 저장소의 git 이력을 보존해서 들여온다 (ROADMAP M0).
 - 옛 저장소 세 개는 통합이 끝나면 동결한다. 지우지 않고 README에 "stardust로 옮겨 감"을 적는다.
 
 ### 5.3 테스트와 벤치마크
-- 테스트는 영역마다 `tests/<영역>`(배열, linalg, frame, special, stats, regression, random, optimize)과 영역을 잇는 `tests/interop`에 있다. 실행, 등급, 골든, 정확도 측정은 [tests/README.md](tests/README.md)에 있다.
+- 테스트는 영역마다 `tests/<영역>`(배열, linalg, frame, special, stats, regression, random, optimize)과 영역을 잇는 `tests/interop`에 있다. 테스트의 실행과 등급, 골든, 커버리지는 [tests/README.md](tests/README.md), 속도와 정확도 측정은 [bench/README.md](bench/README.md)에 있다. 영역의 순서는 어디서나 `bench/areas.py`의 것(README.md의 표 순서)이다.
 - 바뀌면 안 되는 변경의 전후는 sd 자신의 골든 출력과 비트까지 견준다(§1.6 1번). 속도는 `bench/speed`의 기준선과 견준다.
 - 영역마다 `test_api_surface.py`가 그 영역의 API 문서(`docs/api/<영역>.md`)를 읽어 공개 이름과 시그니처를 맞춘다.
 
@@ -177,14 +177,13 @@ numpy·scipy와 비트까지 같은 것은 약속이 아니다. 아래 네 규�
   | `docs/design/<영역>.md` | 영역의 확정 사항: 옛 DESIGN과 ARCHITECTURE에서 **지금도 유효한 결정과 구조**만, 측정 근거와 함께. 결정의 이력(라운드, 날짜, 마일스톤별 변화)은 쓰지 않는다 | 그 영역을 옮기는 마일스톤 |
   | `docs/api/<영역>.md` | 영역의 공개 API. `test_api_surface`가 읽는 형식을 지킨다 | 그 영역을 옮기는 마일스톤, 규칙이 바뀌는 M6에서 고침 |
   | `API.md` | 영역별 API 문서의 색인, 공통 규칙(dtype, 에러 종류, 스레드) | M1에서 만들고 영역이 늘 때마다 더함 |
-  | `docs/guide/` | 처음 보는 사람을 위한 안내서 하나 (옛 13장 + 13장을 영역을 넘나드는 한 권으로) | M7 (2026-11-15에 지웠다. 나중에 다시 쓴다) |
-  | `docs/learn/M<n>-*.md` | 통합 마일스톤의 해설 | 마일스톤마다 (2026-11-15에 지웠다) |
+  | 안내서 | 처음 보는 사람을 위한 안내서 하나(영역을 넘나드는 한 권) | 나중에 쓴다 |
   | `README.md` | 라이브러리 소개 | M1에서 뼈대, M7에서 완성 |
 - **코드 주석의 문서 참조**: 지금 코드와 테스트에는 옛 문서와 옛 마일스톤을 가리키는 참조가 약 750개 있다 (numpy 159, linalg 229, pandas 357).
   - 영역을 옮기는 마일스톤에서 그 영역의 참조를 새 문서로 바꾼다.
   - 옛 마일스톤 번호("M7.1에서 쟀다")는 지운다. 측정 근거가 필요한 주석은 근거를 `docs/design/<영역>.md`에 옮겨 적고 그쪽을 가리킨다.
   - 주석에 적힌 이유와 수치 자체는 지우지 않는다.
-- bench 스크립트는 코드이므로 옮긴다(`bench/<영역>/`). 옛 측정 결과는 옮기지 않고, M0에서 기준선을 다시 잰다.
+- 측정은 두 체계다: 속도 사례는 `bench/speed/cases/<영역>.py`, 정확도 스윕은 `bench/accuracy/`에 있고, `bench/<영역>/`에는 그 둘이 기준선에서 만든 표(`speed.md`, `accuracy.md`)만 둔다 (bench/README.md). 옛 측정 결과는 옮기지 않는다.
 
 ---
 

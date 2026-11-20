@@ -4,12 +4,15 @@ conventions, and agreement with scipy in the body of each distribution."""
 
 import inspect
 import math
+import time
 
 import numpy as np
 import pytest
 import scipy.stats as st
+from flint import arb, ctx
 
 import stardust as sd
+from tests._bits import bits_equal_any_nan
 
 S = sd.stats
 
@@ -727,9 +730,9 @@ def test_beta_family_small_shapes():
                 assert Fd.logcdf(x) == pytest.approx(math.log1p(-cc), rel=1e-13), (a, b, x)
 
 
-# Tiny shapes, tiny and subnormal arguments (bench/stats/opt/f/tiny_shapes.py at commit 4151d2a): the incomplete
-# beta near 1 while x is far from 1, where 1 - I formed from I lost up to a digit (Boost's
-# betainc and our own BPSER both, 6e-15 to 1e-14), x below the normal doubles (Boost: 1e-4 off;
+# Tiny shapes, tiny and subnormal arguments: the incomplete beta near 1 while x is far from 1,
+# where 1 - I formed from I lost up to a digit (Boost's betainc and our own BPSER both, 6e-15 to
+# 1e-14), x below the normal doubles (Boost: 1e-4 off;
 # the F argument dfn x / (dfn x + dfd) below the doubles altogether), and a result just above
 # the subnormals (Boost: 2e-13). (x, a, b, cdf, ccdf, logcdf, logccdf): true values from Arb.
 BETA_TINY = [
@@ -1346,3 +1349,388 @@ def test_errors_name_the_method_not_the_kernel():
         mvn.cdf(sd.ones((3,)))
     with pytest.raises(ValueError, match=r"^logpdf\(\): 'x' must be \(2, 2\)"):
         sd.stats.Wishart(df=3.0, scale=sd.eye(2)).logpdf(sd.ones((3, 3)))
+
+
+# ---- limits and agreements between distributions
+
+A = sd.asarray
+sp = sd.special
+inf = math.inf
+DENSITY_METHODS = INPUT_METHODS[:6]  # pdf to logccdf
+INVERSE_METHODS = INPUT_METHODS[6:8]  # icdf, iccdf
+LOG_INVERSE_METHODS = INPUT_METHODS[8:]  # ilogcdf, ilogccdf
+_DFS = (0.01, 0.5, 1.0, 2.5, 3.0, 4.5, 6.5, 9.0, 11.0, 1e3, 1e17, 1e45, math.inf)
+
+
+def _same(a, b, rel=0.0):
+    if isinstance(a, float) and math.isnan(a):
+        return isinstance(b, float) and math.isnan(b)
+    return a == b or abs(a - b) <= rel * max(1.0, abs(b))
+
+
+def _agree(X, Y, xs, rel):
+    """X's methods equal Y's within rel (0: exactly), the chunk path too."""
+    for m in DENSITY_METHODS:
+        for x in xs:
+            assert _same(getattr(X, m)(x), getattr(Y, m)(x), rel), (m, x)
+            assert float(getattr(X, m)(A([x, x]))[1]) == getattr(X, m)(x)  # the chunk path too
+    for m in INVERSE_METHODS:
+        for p in (1e-300, 0.1, 0.5, 0.9):
+            assert _same(getattr(X, m)(p), getattr(Y, m)(p), rel), (m, p)
+    for m in LOG_INVERSE_METHODS:
+        for lp in (-1e3, -2.0, -0.1):
+            assert _same(getattr(X, m)(lp), getattr(Y, m)(lp), rel), (m, lp)
+    for m in PARAM_METHODS:
+        assert _same(getattr(X, m)(), getattr(Y, m)(), rel), m
+    assert X.support() == Y.support() or rel
+
+
+def _same_everywhere(a, b):
+    """a and b give the same bits (any NaN for any NaN) in every method and in their samples."""
+    for m in DENSITY_METHODS:
+        for x in (-3.0, -0.5, 0.0, 0.3, 1.0, 2.5, 40.0, 1e10):
+            assert bits_equal_any_nan(getattr(a, m)(x), getattr(b, m)(x)), (a, m, x)
+    for m in INVERSE_METHODS:
+        for p in (1e-300, 1e-10, 0.1, 0.5, 0.9, 1 - 1e-12):
+            assert bits_equal_any_nan(getattr(a, m)(p), getattr(b, m)(p)), (a, m, p)
+    for m in LOG_INVERSE_METHODS:
+        for lp in (-1e5, -30.0, -0.7, -1e-8):
+            assert bits_equal_any_nan(getattr(a, m)(lp), getattr(b, m)(lp)), (a, m, lp)
+    for m in [*PARAM_METHODS, "support"]:
+        assert bits_equal_any_nan(getattr(a, m)(), getattr(b, m)()), (a, m)
+    sa = a.sample(6, rng=sd.random.default_rng(3)).tolist()
+    sb = b.sample(6, rng=sd.random.default_rng(3)).tolist()
+    assert bits_equal_any_nan(sa, sb), a
+
+
+# ---- an infinite degree of freedom is the limit (user decision 2026-11-19)
+
+
+def test_t_inf_is_the_normal():
+    _agree(S.StudentT(df=inf), S.Normal(), (-40.0, -1.5, 0.0, 0.3, 7.0), 0.0)
+    assert S.StudentT(df=inf).cdf(1.3) == sp.stdtr(inf, 1.3)
+    assert S.StudentT(df=inf).icdf(0.3) == sp.stdtrit(inf, 0.3)
+
+
+def test_noncentral_t_inf_is_the_shifted_normal():
+    _agree(S.NoncentralT(df=inf, nc=1.5), S.Normal(mu=1.5), (-3.0, 0.0, 1.5, 4.0), 0.0)
+    assert S.NoncentralT(df=inf, nc=1.0).cdf(1.5) == sp.nctdtr(inf, 1.0, 1.5)
+
+
+def test_f_one_infinite_df():
+    # dfn = inf: dfd / chi-square(dfd), the inverse gamma (dfd/2, dfd/2)
+    _agree(S.F(dfn=inf, dfd=5.0), S.InverseGamma(a=2.5, scale=2.5), (0.3, 1.0, 4.0), 0.0)
+    _agree(S.NoncentralF(dfn=inf, dfd=5.0, nc=2.0), S.InverseGamma(a=2.5, scale=2.5), (0.3, 1.0, 4.0), 0.0)
+    # dfd = inf: chi-square(dfn) / dfn and the noncentral chi-square(dfn, nc) / dfn
+    X = S.F(dfn=3.0, dfd=inf)
+    for x in (0.2, 1.0, 3.0):
+        assert X.cdf(x) == sp.fdtr(3.0, inf, x)
+        assert X.ccdf(x) == pytest.approx(sp.fdtrc(3.0, inf, x), rel=2e-16)
+        assert X.pdf(x) == pytest.approx(3.0 * S.ChiSquared(df=3.0).pdf(3.0 * x), rel=1e-15)
+    assert X.icdf(0.3) == pytest.approx(sp.fdtri(3.0, inf, 0.3), rel=1e-15)
+    assert (X.mean(), X.variance()) == (1.0, pytest.approx(2.0 / 3.0, rel=1e-15))
+    Y = S.NoncentralF(dfn=3.0, dfd=inf, nc=2.0)
+    assert Y.cdf(1.0) == sp.ncfdtr(3.0, inf, 2.0, 1.0)
+    assert Y.icdf(0.3) == pytest.approx(sp.ncfdtri(3.0, inf, 2.0, 0.3), rel=1e-15)
+    assert Y.mean() == pytest.approx(5.0 / 3.0, rel=1e-15)
+    assert Y.entropy() == pytest.approx(S.NoncentralChiSquared(df=3.0, nc=2.0).entropy() - math.log(3.0), rel=1e-14)
+
+
+def test_not_distributions_stay_nan():
+    for X in (
+        S.F(dfn=inf, dfd=inf),
+        S.NoncentralF(dfn=inf, dfd=inf, nc=1.0),
+        S.ChiSquared(df=inf),
+        S.NoncentralChiSquared(df=inf, nc=1.0),
+        S.NoncentralT(df=inf, nc=inf),
+    ):
+        assert math.isnan(X.cdf(1.0)) and math.isnan(X.mean())
+
+
+def test_infinite_df_samples_and_arrays():
+    rng = sd.random.default_rng(4)
+    z = np.asarray(S.StudentT(df=inf).sample(200000, rng=rng))
+    assert abs(z.mean()) < 0.01 and abs(z.var() - 1.0) < 0.01
+    f = np.asarray(S.F(dfn=3.0, dfd=inf).sample(200000, rng=rng))
+    assert abs(f.mean() - 1.0) < 0.01 and abs(f.var() - 2.0 / 3.0) < 0.02
+    g = np.asarray(S.NoncentralF(dfn=inf, dfd=10.0, nc=1.0).sample(200000, rng=rng))
+    assert abs(g.mean() - 10.0 / 8.0) < 0.02
+    # a batch mixing finite and infinite df: each element its own
+    v = S.StudentT(df=A([3.0, inf])).cdf(1.0)
+    assert float(v[0]) == S.StudentT(df=3.0).cdf(1.0) and float(v[1]) == S.Normal().cdf(1.0)
+    # the multivariate t agrees
+    mvt = S.MultivariateT(mu=A([0.0]), shape=A([[1.0]]), df=inf)
+    assert mvt.logpdf(A([0.7])) == pytest.approx(S.StudentT(df=inf).logpdf(0.7), rel=1e-15)
+
+
+def test_f_kurtosis_diverges_where_the_variance_is_finite():
+    for d in (4.5, 5.0, 6.0, 6.5, 8.0):
+        assert S.F(dfn=5.0, dfd=d).kurtosis() == inf
+    assert math.isnan(S.F(dfn=5.0, dfd=4.0).kurtosis())
+    assert math.isfinite(S.F(dfn=5.0, dfd=9.0).kurtosis())
+
+
+def test_noncentral_chi_square_nc0_moments_are_the_central_ones():
+    for df in (0.5, 3.0, 17.0):
+        X, Y = S.NoncentralChiSquared(df=df, nc=0.0), S.ChiSquared(df=df)
+        assert (X.skewness(), X.kurtosis(), X.mean(), X.variance()) == (
+            Y.skewness(),
+            Y.kurtosis(),
+            Y.mean(),
+            Y.variance(),
+        )
+
+
+# ---- the noncentral NaN boundaries (docs/api/stats.md §2.4)
+
+
+@pytest.mark.deep
+def test_noncentral_chi_square_large_nc():
+    for nc in (1.5e9, 2.2e9):
+        X = S.NoncentralChiSquared(df=3.0, nc=nc)
+        s = math.sqrt(2.0 * (3.0 + 2.0 * nc))
+        xs = A(np.linspace(nc - 8 * s, nc + 8 * s, 101))
+        assert not np.isnan(np.asarray(X.cdf(xs))).any() and not np.isnan(np.asarray(X.ccdf(xs))).any()
+        ps = A(np.linspace(0.01, 0.99, 25))
+        q = np.asarray(X.icdf(ps))
+        assert not np.isnan(q).any() and (np.diff(q) > 0).all()
+        assert X.median() == pytest.approx(nc + 3.0 - 2.0 / 3.0, rel=1e-9)
+
+
+# ---- messages
+
+
+def test_constructor_messages_name_the_class():
+    with pytest.raises(ValueError, match=r"^Normal\(\): shapes could not be broadcast together: \(2,\) \(3,\)$"):
+        S.Normal(mu=A([1.0, 2.0]), sigma=A([1.0, 2.0, 3.0]))
+    with pytest.raises(TypeError, match=r"^Gamma\(\): 'a' must be a real number or an sd.ndarray, not str$"):
+        S.Gamma(a="x")
+    with pytest.raises(OverflowError, match=r"^Normal\(\): 'mu' is out of range$"):
+        S.Normal(mu=10**400)
+    with pytest.raises(ValueError, match=r"^MultivariateNormal\(\): 'cov' must be \(2, 2\)"):
+        S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0]]))
+    with pytest.raises(TypeError, match=r"^Multinomial\(\): 'n' must be a real number or an sd.ndarray, not str$"):
+        S.Multinomial(n="a", p=A([0.5, 0.5]))
+    with pytest.raises(ValueError, match=r"^Wishart\(\): shapes could not be broadcast together: "):
+        S.Wishart(df=A([3.0, 4.0, 5.0]), scale=A(np.stack([np.eye(2)] * 2)))
+    with pytest.raises(TypeError, match=r"^ContinuousDistribution\(\): a base class"):
+        S.ContinuousDistribution()
+
+
+def test_method_messages():
+    M = S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0, 0.2], [0.2, 1.0]]))
+    with pytest.raises(ValueError, match=r"^cdf\(\): 'atol' must be a finite number > 0$"):
+        M.cdf(A([0.0, 0.0]), atol=-1.0)
+    with pytest.raises(TypeError, match=r"^cdf\(\): 'atol' must be an int or a float, not str$"):
+        M.cdf(A([0.0, 0.0]), atol="a")
+    with pytest.raises(TypeError, match=r"^cdf\(\): 'max_points' must be an int or None, not float$"):
+        M.cdf(A([0.0, 0.0]), max_points=1.5)
+    with pytest.raises(ValueError, match=r"^cdf\(\): 'max_points' must be >= 1$"):
+        M.cdf(A([0.0, 0.0]), max_points=0)
+    with pytest.raises(TypeError, match=r"^cdf\(\): 'return_error' must be True or False, not int$"):
+        M.cdf(A([0.0, 0.0]), return_error=1)
+    with pytest.raises(TypeError, match=r"^cdf\(\): 'x' must be real, not complex$"):
+        S.Normal().cdf(1j)
+    with pytest.raises(TypeError, match=r"^pdf\(\): 'x' must be real, not a complex128 array$"):
+        S.Normal().pdf(A([1j]))
+    # Python's own call errors name the method alone, not a private class
+    with pytest.raises(TypeError, match=r"^sample\(\) missing 1 required keyword-only argument: 'rng'$"):
+        S.Normal().sample()
+    with pytest.raises(TypeError, match=r"^sample\(\) missing 1 required keyword-only argument: 'rng'$"):
+        M.sample()
+    with pytest.raises(TypeError, match=r"^sample\(\) missing 1 required keyword-only argument: 'rng'$"):
+        S.Wishart(df=3.0, scale=A([[1.0]])).sample()
+    with pytest.raises(TypeError, match=r"^mean\(\) got an unexpected keyword argument 'out'$"):
+        S.Normal().mean(out=None)
+    with pytest.raises(TypeError, match=r"^sample\(\): 'shape' must be an int or a tuple of ints, not str$"):
+        S.Normal().sample("a", rng=sd.random.default_rng(0))
+
+
+@pytest.mark.parametrize("x", [2**63, 2**64, -(2**63) - 1, 10**400])
+def test_large_int_input_overflows_as_special(x):
+    for m in ("cdf", "pdf", "logccdf", "icdf", "ilogcdf"):
+        with pytest.raises(OverflowError, match=rf"^{m}\(\): Python int too large to convert to int64$"):
+            getattr(S.Normal(), m)(x)
+    with pytest.raises(OverflowError, match=r"^pmf\(\): Python int too large to convert to int64$"):
+        S.Poisson(mu=1.0).pmf(x)
+    with pytest.raises(OverflowError, match=r"^ndtr\(\): Python int too large to convert to int64$"):
+        sp.ndtr(x)
+    # int64 itself is a number; parameters keep their rule (a double)
+    assert S.Normal().cdf(2**63 - 1) == 1.0
+    assert S.Normal(mu=2**64).cdf(0.0) == 0.0
+
+
+# ---- the beta family's deep inverse ends in bounded time
+
+
+def test_beta_deep_inverse_converges_fast():
+    X = S.Beta(a=1.16e5, b=0.063)
+    t0 = time.perf_counter()
+    x = X.ilogcdf(-1627.7)
+    dt = time.perf_counter() - t0
+    assert 0.0 < x < 1.0 and abs(X.logcdf(x) / -1627.7 - 1.0) < 1e-13
+    assert dt < 0.05
+    for a, b, lp in ((3.0, 0.5, -1e3), (0.2, 40.0, -100.0), (1e5, 1e-3, -2e3), (2e4, 7.0, -5e4)):
+        x = S.Beta(a=a, b=b).ilogcdf(lp)
+        assert abs(S.Beta(a=a, b=b).logcdf(x) / lp - 1.0) < 1e-12
+
+
+def test_t_deep_inverse_near_the_centre():
+    # p below 2^-1000 at a large df: the root's x = df / (df + t^2) is near 1, solved in log(1 - x)
+    for df, p in ((9.959e5, 5.113e-305), (9.758e5, 3.148e-319), (1e6, 1e-310)):
+        X = S.StudentT(df=df)
+        t = X.icdf(p)
+        assert abs(X.logcdf(t) / math.log(p) - 1.0) < 1e-15
+        assert X.iccdf(p) == -t
+        assert abs(X.ilogcdf(math.log(p)) / t - 1.0) < 1e-15
+
+
+@pytest.mark.parametrize("df", _DFS)
+def test_noncentral_t_at_nc_zero(df):
+    _same_everywhere(S.NoncentralT(df=df, nc=0.0), S.StudentT(df=df))
+
+
+@pytest.mark.parametrize("df", _DFS[:-1])
+def test_noncentral_chi_square_at_nc_zero(df):
+    _same_everywhere(S.NoncentralChiSquared(df=df, nc=0.0), S.ChiSquared(df=df))
+
+
+@pytest.mark.deep
+@pytest.mark.parametrize("dfn", (0.01, 2.0, 3.0, 1e5, 1e55, math.inf))
+@pytest.mark.parametrize("dfd", (0.5, 3.0, 5.0, 6.5, 9.0, 11.0, 1e45, math.inf))
+def test_noncentral_f_at_nc_zero(dfn, dfd):
+    _same_everywhere(S.NoncentralF(dfn=dfn, dfd=dfd, nc=0.0), S.F(dfn=dfn, dfd=dfd))
+
+
+def test_noncentral_f_moments_were_off_by_a_bit():
+    assert S.NoncentralF(dfn=3, dfd=11, nc=0).variance() == S.F(dfn=3, dfd=11).variance() == 1.707231040564374
+
+
+@pytest.mark.parametrize(
+    "call,msg",
+    [
+        (lambda: S.Normal(cool=1), r"Normal\(\): unexpected keyword argument 'cool'"),
+        (lambda: S.Normal(1), r"Normal\(\): takes no positional arguments but 1 was given"),
+        (lambda: S.Normal(1, 2), r"Normal\(\): takes no positional arguments but 2 were given"),
+        (lambda: S.Gamma(), r"Gamma\(\): missing 1 required keyword-only argument: 'a'"),
+        (lambda: S.Binomial(n=3, p=0.5, k=2), r"Binomial\(\): unexpected keyword argument 'k'"),
+        (
+            lambda: S.MultivariateNormal(mu=A([0.0, 0.0])),
+            r"MultivariateNormal\(\): missing 1 required keyword-only argument: 'cov'",
+        ),
+        (lambda: S.Dirichlet(A([1.0, 1.0])), r"Dirichlet\(\): takes no positional arguments but 1 was given"),
+        (lambda: S.Wishart(df=3.0, scale=A(np.eye(2)), q=1), r"Wishart\(\): unexpected keyword argument 'q'"),
+        (lambda: S.InverseWishart(df=3.0), r"InverseWishart\(\): missing 1 required keyword-only argument: 'scale'"),
+        (
+            lambda: S.MatrixNormal(mu=A(np.zeros((2, 2)))),
+            r"MatrixNormal\(\): missing 2 required keyword-only arguments",
+        ),
+    ],
+)
+def test_constructor_call_shape(call, msg):
+    with pytest.raises(TypeError, match="^" + msg):
+        call()
+
+
+def test_constructor_messages_kept():
+    # the parameters' own checks, the base classes, the signature
+    with pytest.raises(TypeError, match=r"^Normal\(\): 'mu' must be a real number or an sd.ndarray, not str$"):
+        S.Normal(mu="a")
+    with pytest.raises(TypeError, match=r"^ContinuousDistribution\(\): a base class"):
+        S.ContinuousDistribution(1)
+    assert str(inspect.signature(S.Normal)) == "(*, mu=0.0, sigma=1.0)"
+    assert str(inspect.signature(S.Wishart)) == "(*, df, scale)"
+
+
+@pytest.mark.parametrize("df", [1e-4, 1e-3, 1e6, 1.1e6, 1e9, math.inf])
+def test_student_t_median_on_the_log_side(df):
+    X = S.StudentT(df=df)
+    for v in (X.ilogcdf(math.log(0.5)), X.ilogccdf(math.log(0.5)), X.icdf(0.5), X.iccdf(0.5)):
+        assert v == 0.0 and math.copysign(1.0, v) == 1.0, (df, v)
+    assert S.NoncentralT(df=2e6, nc=0.0).ilogcdf(math.log(0.5)) == 0.0
+
+
+def test_signed_zeros():
+    def pos0(v):
+        return v == 0.0 and math.copysign(1.0, v) == 1.0
+
+    assert pos0(S.StudentT(df=5.0).iccdf(0.5)) and pos0(S.NoncentralT(df=5.0, nc=0.0).iccdf(0.5))
+    assert pos0(S.StudentT(df=5.0).ilogccdf(math.log(0.5)))
+    P = S.Poisson(mu=-0.0)
+    for v in (P.variance(), P.standard_deviation(), P.mean(), P.median(), S.Binomial(n=3.0, p=-0.0).variance()):
+        assert pos0(v), v
+    assert pos0(S.Bernoulli(p=-0.0).mean())
+    # a support on the whole line keeps the sign of the location
+    assert math.copysign(1.0, S.Normal(mu=-0.0).mean()) == -1.0
+
+
+# ---- ST-3, CX-3: numpy scalars -----------------------------------------------------------
+
+
+def test_numpy_scalar_parameters():
+    assert repr(S.Normal(mu=np.int64(1))) == "Normal(mu=1.0, sigma=1.0)"
+    assert repr(S.Normal(mu=np.float64(2.0))) == "Normal(mu=2.0, sigma=1.0)"
+    assert S.Normal(mu=np.float32(1.5)).mean() == 1.5
+    assert S.Binomial(n=np.int64(10), p=0.3).mean() == S.Binomial(n=10, p=0.3).mean()
+    assert S.Normal(mu=True).mu is True and S.Normal(mu=np.bool_(True)).mu is True
+    assert S.Wishart(df=np.int64(3), scale=sd.eye(2)).mean().tolist() == [[3.0, 0.0], [0.0, 3.0]]
+    assert S.Multinomial(n=np.int64(3), p=A([0.5, 0.5])).mean().tolist() == [1.5, 1.5]
+    assert math.isnan(S.skew(np.int64(3))) and math.isnan(S.skew(np.array(2.0)))
+    with pytest.raises(TypeError, match=r"^Normal\(\): 'mu' must be a real number or an sd.ndarray, not complex$"):
+        S.Normal(mu=1j)
+
+
+def test_beta_deep_logcdf_next_to_one():
+    ctx.prec = 2500
+    for a, b, x in ((1.0, 1e-300, 0.95), (1.0, 1e-300, 1 - 1e-10), (2.0, 1e-306, 0.9000001), (0.5, 1e-295, 0.99)):
+        got = S.Beta(a=a, b=b).logcdf(x)
+        want = float(arb(x).beta_lower(arb(a), arb(b), 1).log().mid())
+        assert abs(got - want) <= 1e-14 * abs(want), (a, b, x, got, want)
+        # the upper side by symmetry
+        assert S.Beta(a=b, b=a).logccdf(1.0 - x) == pytest.approx(got, rel=1e-13)
+    assert S.Beta(a=1.0, b=1e-300).logcdf(0.95) == math.log(S.Beta(a=1.0, b=1e-300).cdf(0.95))
+    # where the tail is subnormal the log is still NaN
+    assert math.isnan(S.Beta(a=1e3, b=2.0**-1021).logcdf(0.95))
+    # an inverse there: the forward check now has the log tail (Arb: the closest double)
+    X = S.Beta(a=1e5, b=1e-10)
+    r = X.icdf(1e-300)
+    assert r == 0.9934092416074045
+    assert abs(float(arb(r).beta_lower(arb(1e5), arb(1e-10), 1).mid()) / 1e-300 - 1.0) < 1e-11
+
+
+def test_parameters_are_read_only_copies():
+    mu, cov = sd.zeros(2), sd.eye(2)
+    X = S.MultivariateNormal(mu=mu, cov=cov)
+    mu[0], cov[0, 0] = 3.0, 100.0
+    assert X.mean().tolist() == [0.0, 0.0] and X.cov.tolist() == [[1.0, 0.0], [0.0, 1.0]]
+    assert X.covariance().tolist() == X.cov.tolist() and X.logpdf(sd.zeros(2)) == pytest.approx(
+        -math.log(2 * math.pi), rel=1e-15
+    )
+    a = A([2.0])
+    G = S.Gamma(a=a)
+    a[0] = -1.0
+    assert G.mean().tolist() == [2.0] and G.a.tolist() == [2.0]
+    for setter in (lambda: G.a.__setitem__(0, 1.0), lambda: X.mu.__setitem__(0, 1.0)):
+        with pytest.raises(ValueError, match="read-only"):
+            setter()
+    # dtype as given (an int64 parameter stays int64)
+    assert S.Binomial(n=A([10, 20]), p=0.5).n.dtype == sd.int64
+
+
+def test_summaries_are_read_only():
+    G = S.Gamma(a=A([2.0, 3.0]))
+    lo, hi = G.support()
+    summaries = [G.mean(), G.variance(), G.standard_deviation(), G.skewness(), G.kurtosis(), G.median(), G.mode()]
+    summaries += [G.entropy(), lo, hi]
+    M = S.MultivariateT(mu=sd.zeros((2, 3)), shape=sd.eye(3), df=5.0)
+    summaries += [M.mean(), M.covariance(), M.entropy(), S.Dirichlet(alpha=A([1.0, 2.0])).covariance()]
+    W = S.Wishart(df=A([3.0, 4.0]), scale=sd.eye(2))
+    summaries += [W.mean(), W.mode(), W.variance(), W.entropy()]
+    for s in summaries:
+        with pytest.raises(ValueError, match="read-only"):
+            s[(0,) * s.ndim] = 1.0
+        assert s.copy().flags["WRITEABLE"] if hasattr(s, "flags") else True
+    # the elementwise methods' results stay writable (as out=)
+    c = G.cdf(A([1.0, 2.0]))
+    c[0] = 0.5
+    assert type(S.Gamma(a=2.0).mean()) is float

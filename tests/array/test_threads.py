@@ -2,21 +2,21 @@
 (API.md §3), and the pool must survive several Python threads at once."""
 
 import math
+import os
 import threading
+import time
 
 import numpy as np
 import pytest
 
 import stardust as sd
 
+from .conftest import assert_same, run_guarded
+
 COUNTS = [1, 2, 3, 7, 10]
 
 
-@pytest.fixture(autouse=True)
-def restore_threads():
-    before = sd.get_num_threads()
-    yield
-    sd.set_num_threads(before)
+pytestmark = pytest.mark.usefixtures("restore_threads")
 
 
 def bits(r):
@@ -264,3 +264,99 @@ def test_full_reductions_with_a_cast_are_exact_or_close():
         assert sd.sum(sd.asarray(i), dtype=sd.float64) == pytest.approx(np.sum(i, dtype=np.float64), rel=1e-15)
         assert sd.mean(sd.asarray(i)) == pytest.approx(np.mean(i), rel=1e-12)
         assert sd.mean(sd.asarray(b)) == np.mean(b)  # an integer-valued sum is exact
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs fork")
+def test_parallel_call_in_a_forked_child():
+    # The child has none of the parent's workers; it must not wait for them.
+    rc, out = run_guarded(
+        """
+        import os, signal, warnings
+        warnings.simplefilter("ignore", DeprecationWarning)
+        import stardust as sd
+        sd.set_num_threads(4)
+        x = sd.ones(2_000_000)
+        print(sd.sum(x), flush=True)
+        pid = os.fork()
+        if pid == 0:
+            signal.alarm(20)
+            ok = sd.sum(x * 2.0) == 4_000_000.0 and sd.get_num_threads() == 4
+            os._exit(0 if ok else 3)
+        _, status = os.waitpid(pid, 0)
+        print("child", os.waitstatus_to_exitcode(status))
+        """
+    )
+    assert rc == 0, out
+    assert out.split() == ["2000000.0", "child", "0"]
+
+
+def test_results_do_not_depend_on_the_thread_count_after_pauses():
+    rng = np.random.default_rng(0)
+    x = sd.asarray(rng.standard_normal(40_000))
+    old = sd.get_num_threads()
+    try:
+        results = []
+        for n in (1, 3, 10):
+            sd.set_num_threads(n)
+            time.sleep(0.003)  # the workers fall asleep; late ones must not touch the next job
+            results.append([np.asarray(x + x), sd.sum(x), np.asarray(sd.exp(x))])
+        for r in results[1:]:
+            assert np.array_equal(r[0], results[0][0]) and r[1] == results[0][1]
+            assert np.array_equal(r[2], results[0][2])
+    finally:
+        sd.set_num_threads(old)
+
+
+def test_gather_scatter_meshgrid_tril_on_threads():
+    rng = np.random.default_rng(2)
+    m = rng.standard_normal((300, 400))
+    i, j = rng.integers(-300, 300, 200_000), rng.integers(0, 400, 200_000)
+    v = rng.standard_normal(50_000)
+    old = sd.get_num_threads()
+    try:
+        for n in (1, 10):
+            sd.set_num_threads(n)
+            sm = sd.asarray(m)
+            assert_same(sm[sd.asarray(i), sd.asarray(j)], m[i, j])
+            assert_same(sm[sd.asarray(i[:, None]), sd.asarray(j[:400])], m[i[:, None], j[:400]])  # 2-D index shape
+            t = m.copy()
+            st = sd.asarray(t.copy())
+            st[sd.asarray(i), sd.asarray(j)] = 1.5
+            t[i, j] = 1.5
+            assert_same(st, t)
+            for ix in ("xy", "ij"):
+                for got, want in zip(
+                    sd.meshgrid(sd.asarray(v[:700]), sd.asarray(v[:600]), indexing=ix),
+                    np.meshgrid(v[:700], v[:600], indexing=ix),
+                ):
+                    assert_same(got, want)
+            assert_same(sd.meshgrid(sd.asarray(v))[0], np.meshgrid(v)[0])
+            assert_same(sd.tril(sm, k=3), np.tril(m, k=3))
+            assert_same(sd.triu(sm, k=-2), np.triu(m, k=-2))
+            with pytest.raises(IndexError, match="index 400 is out of bounds for axis 1 with size 400"):
+                sm[sd.asarray(i[:3]), sd.asarray([0, 400, 1])]
+    finally:
+        sd.set_num_threads(old)
+
+
+def test_sums_and_var_do_not_depend_on_the_thread_count():
+    rng = np.random.default_rng(11)
+    x = rng.standard_normal(2_000_003)
+    c = x[:1_000_000] + 1j * x[1_000_000:2_000_000]
+    old = sd.get_num_threads()
+    try:
+        res = []
+        for n in (1, 3, 10):
+            sd.set_num_threads(n)
+            sx = sd.asarray(x)
+            res.append((sd.sum(sx), sd.mean(sx), sd.var(sx), sd.sum(sd.asarray(c)), sd.var(sd.asarray(c))))
+        assert all(r == res[0] for r in res)
+    finally:
+        sd.set_num_threads(old)
+    assert abs(res[0][0] - np.sum(x)) <= 1e-12 * np.sum(np.abs(x))
+    assert abs(res[0][2] - np.var(x)) <= 1e-13 * np.var(x)
+    # a short sum below the leaf width is the plain left-to-right sum
+    left_to_right = 0.0
+    for v in [0.1] * 15:
+        left_to_right += v
+    assert sd.sum(sd.asarray([0.1] * 15)) == left_to_right

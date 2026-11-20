@@ -1,8 +1,8 @@
-"""G5: quantreg (docs/api/regression.md §6, docs/design/regression.md §3.6).
+"""quantreg (docs/api/regression.md §6, docs/design/regression.md §3.6).
 
 Exactness against rationals (tools/regref.py's quantreg: the vertex of the returned basis
 solved exactly, its residuals, objective and optimality certificate), R's quantreg 6.1
-(tests/regression/ref/quantreg_r.json, made by tools/gen_quantreg_r.py; R is not needed
+(tests/regression/data/quantreg_r.json, made by tools/gen_quantreg_r.py; R is not needed
 here): rq's "br" and "fn" fits and summary.rq's 'nid', 'iid' and 'ker' standard errors,
 statsmodels' QuantReg, the vertex rule of non-unique solutions (against scipy's linear
 programs), warm starts, batches, threads, NaN policies, edge cases and errors."""
@@ -20,14 +20,18 @@ from scipy.optimize import linprog
 
 import stardust as sd
 from stardust.regression._quantile import _bandwidth
+from tests._bits import max_rel_error, value_equal
+
+from . import smalldata
+from .smalldata import unix_time_data
 
 R = sd.regression
-REF = json.loads((pathlib.Path(__file__).parent / "ref" / "quantreg_r.json").read_text())
+REF = json.loads((pathlib.Path(__file__).parent / "data" / "quantreg_r.json").read_text())
 PROBS = {k: v for k, v in REF.items() if not k.startswith("_")}
 CASES = [(name, j) for name, p in PROBS.items() for j in range(len(p["q"]))]
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
-regref = pytest.importorskip("regref")
+import regref  # noqa: E402  (tools/regref.py; a missing dependency of it must fail, not skip)
 
 U = 2.0**-53
 
@@ -45,11 +49,6 @@ def r_(v):
     return np.array([np.nan if x is None else x for x in v], dtype=float)
 
 
-def rel(got, ref):
-    got, ref = a(got), r_(ref)
-    return float(np.max(np.abs(got - ref) / np.abs(ref)))
-
-
 def norm_rel(got, ref):
     got, ref = a(got), r_(ref)
     return float(np.linalg.norm(got - ref) / np.linalg.norm(ref))
@@ -62,10 +61,6 @@ def rho(r, q):
 
 def basis(r):
     return [int(i) for i in a(r._raw[7]).astype(int) if i >= 0]
-
-
-def same(x, y):
-    return np.array_equal(a(x), a(y), equal_nan=True)
 
 
 def exact(p, q, r):
@@ -232,21 +227,21 @@ def test_against_r_standard_errors(name, j):
         r = R.quantreg(p["y"], p["X"], q=q, intercept=p["intercept"], cov_type="nid", bandwidth=bw)
         ref = r_(Rv[t + "se_nid" + suf])
         if np.all(np.isfinite(ref)):
-            assert rel(r.bse, ref) <= 2e-13
+            assert max_rel_error(r.bse, ref) <= 2e-13
         h = _bandwidth(q, len(p["y"]), bw == "hall-sheather")
         while q - h < 0 or q + h > 1:  # summary.rq's halving
             h /= 2
         assert r.bandwidth == h
     # 'ker' and 'iid' at sd's own vertex (R's br may pick another where it is not unique)
     rk = R.quantreg(p["y"], p["X"], q=q, intercept=p["intercept"], cov_type="ker")
-    assert rel(rk.bse, Rv[t + "sdv_se_ker"]) <= 1e-13
+    assert max_rel_error(rk.bse, Rv[t + "sdv_se_ker"]) <= 1e-13
     ri = R.quantreg(p["y"], p["X"], q=q, intercept=p["intercept"], cov_type="iid")
     if inner_unique(p, q, ri, "hall-sheather"):
-        assert rel(ri.bse, Rv[t + "sdv_se_iid"]) <= 1e-13
+        assert max_rel_error(ri.bse, Rv[t + "sdv_se_iid"]) <= 1e-13
     if not ri.nonunique:
         ri_b = R.quantreg(p["y"], p["X"], q=q, intercept=p["intercept"], cov_type="iid", bandwidth="bofinger")
         if inner_unique(p, q, ri_b, "bofinger") and np.all(np.isfinite(r_(Rv[t + "se_iid_bof"]))):
-            assert rel(ri_b.bse, Rv[t + "se_iid_bof"]) <= 1e-13
+            assert max_rel_error(ri_b.bse, Rv[t + "se_iid_bof"]) <= 1e-13
 
 
 def test_iid_differs_from_r_only_by_the_inner_vertex():
@@ -255,7 +250,7 @@ def test_iid_differs_from_r_only_by_the_inner_vertex():
     p = PROBS["stackloss"]
     r = R.quantreg(p["y"], p["X"], q=0.75, cov_type="iid")
     assert not inner_unique(p, 0.75, r, "hall-sheather")
-    assert rel(r.bse, p["R"]["t2_se_iid"]) > 1e-3
+    assert max_rel_error(r.bse, p["R"]["t2_se_iid"]) > 1e-3
 
 
 # ---- the vertex rule of non-unique solutions (G63)
@@ -334,9 +329,9 @@ def test_quantile_array_equals_separate_fits(cov_type):
         for j, q in enumerate(qs):
             r1 = R.quantreg(y, X, q=q, cov_type=cov_type)
             for f in ("params", "bse", "resid", "fittedvalues"):
-                assert same(getattr(ra, f)[j], getattr(r1, f)), (f, q)
+                assert value_equal(getattr(ra, f)[j], getattr(r1, f)), (f, q)
             assert float(ra.objective[j]) == r1.objective and bool(ra.nonunique[j]) == r1.nonunique
-        assert same(ra.predict(X[:7])[2], R.quantreg(y, X, q=0.5, cov_type=cov_type).predict(X[:7]))
+        assert value_equal(ra.predict(X[:7])[2], R.quantreg(y, X, q=0.5, cov_type=cov_type).predict(X[:7]))
 
 
 def test_batch_equals_loop():
@@ -348,11 +343,11 @@ def test_batch_equals_loop():
         for i in range(3):
             r1 = R.quantreg(Y[i], X[i], q=qs)
             for f in ("params", "bse", "resid", "pvalues"):
-                assert same(getattr(rb, f)[i], getattr(r1, f))
-            assert same(rb.objective[i], r1.objective)
+                assert value_equal(getattr(rb, f)[i], getattr(r1, f))
+            assert value_equal(rb.objective[i], r1.objective)
     # one X, several y
     rb = R.quantreg(Y, X[0], q=0.6)
-    assert same(rb.params[2], R.quantreg(Y[2], X[0], q=0.6).params)
+    assert value_equal(rb.params[2], R.quantreg(Y[2], X[0], q=0.6).params)
 
 
 def test_threads_bit_identical():
@@ -380,7 +375,7 @@ def test_duplicate_rows_merge_to_the_same_bits():
     y = X @ [1.0, 2.0] + rng.standard_normal(300)
     r1 = R.quantreg(y, X, q=0.3)
     r3 = R.quantreg(np.tile(y, 3), np.tile(X, (3, 1)), q=0.3)
-    assert same(r1.params, r3.params)
+    assert value_equal(r1.params, r3.params)
     assert r3.objective == pytest.approx(3 * r1.objective, rel=1e-15)
 
 
@@ -407,10 +402,10 @@ def test_aliased_columns():
     r = R.quantreg(y, Xc, q=0.4)
     r0 = R.quantreg(y, X, q=0.4)
     assert r.rank == 3 and math.isnan(float(r.params[3])) and math.isnan(float(r.bse[3]))
-    assert same(r.params[:3], r0.params) and same(r.bse[:3], r0.bse) and r.df_resid == r0.df_resid
-    assert same(r.predict(Xc[:5]), r0.predict(X[:5]))
+    assert value_equal(r.params[:3], r0.params) and value_equal(r.bse[:3], r0.bse) and r.df_resid == r0.df_resid
+    assert value_equal(r.predict(Xc[:5]), r0.predict(X[:5]))
     rc = R.quantreg(y, np.column_stack([np.ones(200), X]), q=0.4)  # a constant column: the intercept stays
-    assert math.isnan(float(rc.params[1])) and same(rc.params[[0, 2, 3]], r0.params)
+    assert math.isnan(float(rc.params[1])) and value_equal(rc.params[[0, 2, 3]], r0.params)
 
 
 def test_small_and_degenerate_shapes():
@@ -437,12 +432,12 @@ def test_nan_policies_and_inf():
     r = R.quantreg(yn, X)
     assert np.all(np.isnan(a(r.params))) and math.isnan(r.nobs) and r.rank == 0 and not r.converged
     keep = np.arange(100) != 3
-    assert same(R.quantreg(yn, X, nan_policy="omit").params, R.quantreg(y[keep], X[keep]).params)
+    assert value_equal(R.quantreg(yn, X, nan_policy="omit").params, R.quantreg(y[keep], X[keep]).params)
     with pytest.raises(ValueError, match=r"quantreg\(\): the input contains NaN \(nan_policy='raise'\)"):
         R.quantreg(yn, X, nan_policy="raise")
     Y = np.stack([y, yn])
     rb = R.quantreg(Y, X)
-    assert same(rb.params[0], R.quantreg(y, X).params) and np.all(np.isnan(a(rb.params[1])))
+    assert value_equal(rb.params[0], R.quantreg(y, X).params) and np.all(np.isnan(a(rb.params[1])))
     with pytest.raises(ValueError, match="nan_policy='omit' takes one regression"):
         R.quantreg(Y, X, nan_policy="omit")
     yi = y.copy()
@@ -500,12 +495,12 @@ def test_result_fields_and_summary():
     assert r.q == 0.25 and r.cov_type == "nid" and r.nobs == 235.0 and r.df_model == 1.0 and r.df_resid == 233.0
     assert isinstance(r.n_iter, int) and isinstance(r.n_pivots, int) and isinstance(r.converged, bool)
     t = a(r.tvalues)
-    assert same(r.pvalues, 2 * sd.stats.StudentT(df=233.0).ccdf(sd.asarray(np.abs(t))))
+    assert value_equal(r.pvalues, 2 * sd.stats.StudentT(df=233.0).ccdf(sd.asarray(np.abs(t))))
     ci = a(r.conf_int(alpha=0.1))
     assert ci.shape == (2, 2) and np.all(ci[:, 0] < a(r.params)) and np.all(a(r.params) < ci[:, 1])
-    assert tuple(r.cov_params().shape) == (2, 2) and same(sd.sqrt(sd.linalg.diagonal(r.cov_params())), r.bse)
+    assert tuple(r.cov_params().shape) == (2, 2) and value_equal(sd.sqrt(sd.linalg.diagonal(r.cov_params())), r.bse)
     assert np.max(np.abs(a(r.fittedvalues) + a(r.resid) - y)) <= 1e-13 * np.max(np.abs(y))
-    assert same(r.predict(X), r.fittedvalues)
+    assert value_equal(r.predict(X), r.fittedvalues)
     s = r.summary()
     assert "QuantReg Regression Results" in s and "income" in s and "Pseudo R-squared" in s
     with pytest.raises(ValueError, match=r"^summary\(\): takes one regression at one quantile, not 2 quantiles$"):
@@ -544,3 +539,47 @@ def test_scale_equivariance(cov_type):
                 rc = R.quantreg(c * y, Z, q=q, cov_type=cov_type)
                 assert np.max(np.abs(a(rc.params) - c * a(r.params))) <= 1e-13 * c * np.max(np.abs(a(r.params)))
                 assert np.max(np.abs(a(rc.bse) / (c * a(r.bse)) - 1)) <= 1e-13, (c, q)
+
+
+# ---- G98, G99: read-only configuration, conf_int's keyword
+
+
+def test_quantreg_q_is_a_copy():
+    q = sd.asarray([0.25, 0.75])
+    r = R.quantreg(smalldata.Y, smalldata.X, q=q)
+    q[0] = 0.5
+    assert a(r.q).tolist() == [0.25, 0.75]
+
+
+def test_quantreg_ker_perfect_fit_is_nan():
+    x = np.arange(12.0)
+    for ct in ("ker", "nid", "iid"):
+        r = R.quantreg(1.0 + 2.0 * x, x, cov_type=ct)
+        assert np.all(np.isnan(a(r.bse))), ct
+
+
+def test_quantreg_vertex_snaps_zero_coordinates():
+    Xs = np.arange(12.0).reshape(6, 2) ** 1.2
+    for q in (0.2, 0.5, 0.9):
+        r = R.quantreg(np.full(6, 3.0), Xs, q=q)
+        assert a(r.params).tolist() == [3.0, 0.0, 0.0]
+    # a vertex with a nonzero tiny coordinate keeps it (the snap only takes what does not
+    # increase the basis residuals)
+    x = np.arange(1.0, 9.0)
+    y = 1.0 + 1e-17 * x
+    r = R.quantreg(y, x)
+    assert np.max(np.abs(a(r.resid))) <= 1e-15
+
+
+# ---- D-1 (RG-1): the perfect fit's tolerance is (k + 16) u (|y_i| + sum_j |x_ij| |beta_j|)
+
+
+def test_quantreg_nid_on_an_offset_column():
+    """RG-3: the 'nid' refits at q +- h moved no row on such a column (the breakpoints'
+    tolerance had the same flaw as the snapping one): bse NaN. Now the reparametrized fit's."""
+    y, x = unix_time_data()
+    xc = (x - 1.7e12) / 1e7
+    for ct in ("nid", "iid", "ker"):
+        q, qc = R.quantreg(y, x, cov_type=ct), R.quantreg(y, xc, cov_type=ct)
+        assert q.converged
+        assert a(q.bse)[1] == pytest.approx(a(qc.bse)[1] / 1e7, rel=1e-6), ct

@@ -232,3 +232,20 @@ def test_linspace_complex_and_dtype():
 @pytest.mark.parametrize("n,m,k", [(3, None, 0), (3, 5, 1), (4, 2, -1), (3, 3, 5), (3, 3, -5), (0, 2, 0)])
 def test_eye(n, m, k, dtype):
     assert_same(sd.eye(n, m, k=k, dtype=dtype), np.eye(n, m, k=k, dtype=NP_DTYPE[dtype]))
+
+
+# ---- sizes that overflow int64 -----------------------------------------------
+
+
+def test_eye_k_far_outside_is_zero():
+    for k in (-(2**63), -(2**63) + 1, -3, 3, 2**63 - 1):
+        assert_same(sd.eye(3, k=k), np.eye(3, k=max(min(k, 3), -3)))
+    assert_same(sd.eye(2, 4, k=-(2**63)), np.zeros((2, 4)))
+
+
+def test_linspace_with_an_overflowing_span_stays_finite():
+    assert_same(sd.linspace(-1e308, 1e308, 5), np.array([-1e308, -5e307, 0.0, 5e307, 1e308]))
+    assert_same(sd.linspace(-1e308, 1e308, 4, endpoint=False), np.array([-1e308, -5e307, 0.0, 5e307]))
+    assert_same(sd.linspace(-1e308, 1e308, 1), np.array([-1e308]))
+    assert_same(sd.linspace(0, 1, 5), np.linspace(0, 1, 5))  # the ordinary path is untouched
+    assert np.isfinite(np.asarray(sd.linspace(-1e308 + 0j, 1e308j, 3)).view(float)).all()

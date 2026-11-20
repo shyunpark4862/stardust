@@ -18,7 +18,9 @@ from hypothesis import strategies as st
 from hypothesis.extra import numpy as hnp
 
 import stardust as sd
+from bench.accuracy.common import ulp_distance
 
+from . import refdata
 from .conftest import NP_DTYPE, assert_same, assert_ulp
 
 B, I, F, C = sd.bool, sd.int64, sd.float64, sd.complex128
@@ -189,7 +191,7 @@ def reference_binary(name, a, b, loop):
 def check(got, want, name, loop):
     if name in VFORCE and loop is F:
         assert_ulp(got, want, 8)
-    elif name == "abs" and loop is C:  # sqrt(fma(re, re, im*im)), 1.5 ULP; numpy's cabs is up to 1.9 ULP off
+    elif name == "abs" and loop is C:  # sqrt(fma(re, re, im*im)): 3 ULP contract against Arb; numpy's formula differs
         assert_ulp(got, want, 4)
     else:
         assert_same(got, want)
@@ -268,7 +270,7 @@ def test_complex_arithmetic_on_random_values():
             assert_same(getattr(sd, name)(sa, sb), getattr(np, name)(a, b))
         for name in ("square", "sqrt", "exp", "log", "log1p", "log2", "log10", "sign", "tanh"):
             assert_same(getattr(sd, name)(sa), getattr(np, name)(a))
-        assert_ulp(sd.abs(sa), np.abs(a), 4)  # not numpy's cabs formula: within the 1.5 ULP contract of each
+        assert_ulp(sd.abs(sa), np.abs(a), 4)  # not numpy's cabs formula: each within its ULP of the exact value
         # sin and cos of the imaginary part may come from one sincos call: 2 ULP of numpy
         finite = np.isfinite(np.expm1(a))
         assert_ulp(sd.expm1(sa)[sd.asarray(finite)], np.expm1(a)[finite], 2)
@@ -794,3 +796,28 @@ def test_clip_and_scalar_maximum_vector_paths_keep_the_rules():
             assert_same(got, np.array(ref * 50))
         assert_same(sd.maximum(sd.asarray(x), lo), np.maximum(x, lo))
         assert_same(sd.minimum(lo, sd.asarray(x)), np.minimum(lo, x))
+
+
+def test_complex_abs_contract():
+    import flint
+
+    rng = np.random.default_rng(10)
+    z = rng.standard_normal(2000) * np.exp(rng.uniform(-5, 5, 2000)) + 1j * rng.standard_normal(2000) * np.exp(
+        rng.uniform(-5, 5, 2000)
+    )
+    z = np.concatenate([z, [3e-200 + 4e-200j, 1e-310 + 1e-311j, 1e300 + 1e300j, 5e-324 + 0j, 1e200 + 1e-200j]])
+    got = np.asarray(sd.abs(sd.asarray(z)))
+    prec = flint.ctx.prec
+    flint.ctx.prec = 200
+    try:
+        for zi, g in zip(z, got):
+            t = float((flint.arb(zi.real) ** 2 + flint.arb(zi.imag) ** 2).sqrt())
+            assert ulp_distance(g, t) <= refdata.ULP_BOUND["cabs"], zi
+    finally:
+        flint.ctx.prec = prec
+    special = np.asarray(
+        sd.abs(sd.asarray([complex("inf+nanj"), complex("nan+1j"), 0j, -0.0 - 0.0j, 1.7e308 + 1e308j]))
+    )
+    assert (
+        special[0] == np.inf and np.isnan(special[1]) and special[2] == 0 and special[3] == 0 and special[4] == np.inf
+    )

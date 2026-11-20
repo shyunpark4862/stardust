@@ -1,7 +1,7 @@
-"""S3: gamma rgamma gammaln digamma polygamma beta betaln binom zeta (docs/api/special.md §3, §7).
+"""gamma rgamma gammaln digamma polygamma beta betaln binom zeta (docs/api/special.md §3, §7).
 
 Accuracy is tests/special/test_reference.py's. Here: the special values, bit for bit against
-scipy except where docs/design/special.md §2.4 says otherwise (S3 user decisions), and the
+scipy except where docs/design/special.md §2.4 says otherwise (true values), and the
 argument conventions."""
 
 import itertools
@@ -11,6 +11,7 @@ import pytest
 import scipy.special as sp
 
 import stardust as sd
+from tests._bits import bits_equal_any_nan
 
 S = sd.special
 
@@ -38,11 +39,6 @@ EDGES = [
 ]
 
 
-def same_bits(a, b):
-    a, b = np.float64(a), np.float64(b)
-    return bool(np.isnan(a) and np.isnan(b)) or a.view(np.uint64) == b.view(np.uint64)
-
-
 def special(v):
     return v == 0 or not np.isfinite(v)
 
@@ -55,7 +51,7 @@ def test_special_values_unary(name):
         if (name, x) in {("gamma", -171.5), ("rgamma", -171.5), ("rgamma", 171.7)}:
             continue  # subnormal tails, decision 3 below
         if special(got) or special(want):
-            assert same_bits(got, want), (name, x, got, want)
+            assert bits_equal_any_nan(got, want), (name, x, got, want)
 
 
 @pytest.mark.parametrize("name", ["beta", "betaln", "binom", "polygamma"])
@@ -76,10 +72,10 @@ def test_special_values_binary(name):
             assert got == 0.0, (a, b, got)  # k > n: 0 (scipy's sign of this zero is an accident of its path)
             continue
         if special(got) or special(want):
-            assert same_bits(got, want), (name, a, b, got, want)
+            assert bits_equal_any_nan(got, want), (name, a, b, got, want)
 
 
-# ---- the S3 user decisions (docs/design/special.md §2.4)
+# ---- true values where scipy differs (docs/design/special.md §2.4)
 
 
 def test_log_gamma_of_the_smallest_subnormal_is_finite():

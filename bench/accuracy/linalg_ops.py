@@ -11,71 +11,6 @@ from __future__ import annotations
 import numpy as np
 
 
-class _SD:
-    def __init__(self):
-        import stardust as sd
-
-        self.L, self.a = sd.linalg, sd.asarray
-
-    def solve(self, a, b):
-        return np.asarray(self.L.solve(self.a(a), self.a(b)))
-
-    def lu_solve(self, a, b):
-        f = self.L.lu(self.a(a))
-        return np.asarray(self.L.lu_solve(f.L, f.U, f.perm, self.a(b)))
-
-    def inv(self, a):
-        return np.asarray(self.L.inv(self.a(a)))
-
-    def lstsq(self, a, b):
-        return np.asarray(self.L.lstsq(self.a(a), self.a(b)).solution)
-
-    def lu(self, a):
-        f = self.L.lu(self.a(a))
-        lo, up, p = np.asarray(f.L), np.asarray(f.U), np.asarray(f.perm)
-        rec = np.empty_like(a)
-        rec[p] = lo @ up  # a[perm] = L U
-        return rec
-
-    def qr(self, a):
-        f = self.L.qr(self.a(a))
-        return np.asarray(f.Q), np.asarray(f.R)
-
-    def qr_pivoted(self, a):
-        f = self.L.qr_pivoted(self.a(a))
-        return np.asarray(f.Q), np.asarray(f.R), np.asarray(f.perm)
-
-    def cholesky(self, a):
-        return np.asarray(self.L.cholesky(self.a(a)))
-
-    def svd(self, a):
-        f = self.L.svd(self.a(a))
-        return np.asarray(f.U), np.asarray(f.S), np.asarray(f.Vh)
-
-    def eigh(self, a):
-        f = self.L.eigh(self.a(a))
-        return np.asarray(f.eigenvalues), np.asarray(f.eigenvectors)
-
-    def eig(self, a):
-        f = self.L.eig(self.a(a))
-        return np.asarray(f.eigenvalues), np.asarray(f.eigenvectors)
-
-    def det(self, a):
-        return float(self.L.det(self.a(a)))
-
-    def eigvalsh(self, a):
-        return np.asarray(self.L.eigvalsh(self.a(a)))
-
-    def svdvals(self, a):
-        return np.asarray(self.L.svdvals(self.a(a)))
-
-    def eigvals(self, a):
-        return np.asarray(self.L.eigvals(self.a(a)))
-
-    def expm(self, a):
-        return np.asarray(self.L.expm(self.a(a)))
-
-
 class _NumPy:
     """numpy.linalg; scipy.linalg for what numpy has not (lu, lu_solve, expm)."""
 
@@ -222,4 +157,8 @@ class _R:
 
 
 def ops(lib):
-    return {"sd": _SD, "numpy": _NumPy, "R": _R}[lib]()
+    if lib == "sd":
+        from tests.linalg import refdata
+
+        return refdata.SD()
+    return {"numpy": _NumPy, "R": _R}[lib]()

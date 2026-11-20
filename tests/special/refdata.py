@@ -1,34 +1,34 @@
 """Reference values for sd.special and the error measures (docs/design/special.md §6).
 
 tools/special_ref.py computes each function with Arb (python-flint), as a ball that contains
-the true value and is settled to 2^-110 of it, and stores, in tests/special/ref/<name>.npz,
+the true value and is settled to 2^-110 of it, and stores tests/special/ref/<name>.npz in the
+layout of tests/reffile.py: the inputs x0, x1, ... (float64, or complex128 for the complex
+files) and one method, the function, with
 
-    x0, x1, ...   the inputs (float64)
     hi, lo        the reference as a double-double: value ~= hi + lo, |lo| <= ulp(hi) / 2
     guaranteed    bool: the input lies in the function's guaranteed region (docs/api/special.md §1.4)
     scale         the bound's multiplier at each point: the contract is |error| <= 1e-14 scale
                   (relative). max(1, kappa) for the inverses (|dx / x| <= 1e-14 max(1, kappa));
                   max(1, M / |f|), M the envelope of |f|, near the zeros of the oscillatory
                   Bessel and Airy functions and of the complex error functions and wofz;
-                  1 elsewhere (absent in older files)
-    arb           the provenance: "python-flint <version>" that computed the reference
-    target_bits   the settling target: each ball's radius is below 2^-target_bits of its value
-                  (some older files call it bits, or give the bare version in arb;
-                  provenance() reads both)
+                  1 elsewhere
 
-so an error can be measured to a fraction of an ULP without Arb at test time. The stats
-reference files (tools/stats_ref.py, tests/stats/refdata.py) have the same format.
+so an error can be measured far below an ULP without Arb at test time (the ULP measure is
+bench/accuracy/common.py's ulp_distance to hi). The stats
+reference files (tools/stats_ref.py, tests/stats/refdata.py) have the same layout.
 """
 
 import pathlib
 
 import numpy as np
 
+from .. import reffile
+
 REF = pathlib.Path(__file__).parent / "ref"
 
 
 # Functions whose region outside the guaranteed one is held to |error| <= 1e-14 max(1, |value|)
-# (S3 user decision), and reference files named apart from their function.
+# (docs/design/special.md §2.3), and reference files named apart from their function.
 MIXED = {"gammaln", "digamma", "polygamma", "beta", "betaln", "binom", "zeta_hurwitz"}
 ALIAS = {"zeta_hurwitz": "zeta"}
 # Reference files for one output of a several-output function: name -> (function, index).
@@ -37,7 +37,7 @@ PART = {"airy_ai": ("airy", 0), "airy_aip": ("airy", 1), "airy_bi": ("airy", 2),
 # function whose real file has its name: name -> (function, keywords).
 KW = {
     "lambertw_m1": ("lambertw", {"k": -1}),
-    # S8: complex arguments (x0 is complex128; hi, lo hold both parts as double-doubles)
+    # complex arguments (x0 is complex128; hi, lo hold both parts as double-doubles)
     "erf_complex": ("erf", {}),
     "erfc_complex": ("erfc", {}),
     "erfcx_complex": ("erfcx", {}),
@@ -66,28 +66,40 @@ def names():
     return sorted(p.stem for p in REF.glob("*.npz") if p.stem not in CASE_FILES)
 
 
+def _read(name):
+    r = reffile.read(REF / f"{name}.npz")
+    return r, r.methods[name]
+
+
 def load(name):
-    """(inputs, hi, lo, guaranteed) for `name`; inputs is a tuple of float64 arrays."""
-    with np.load(REF / f"{name}.npz") as f:
-        nin = int(f["nin"])
-        return tuple(f[f"x{k}"] for k in range(nin)), f["hi"], f["lo"], f["guaranteed"]
-
-
-def provenance(name, ref=REF):
-    """{"arb": "python-flint <version>", "target_bits": int} of a reference file in `ref`
-    (tests/stats/ref too), from either spelling of the fields; None where the file has none."""
-    with np.load(ref / f"{name}.npz") as f:
-        arb = str(f["arb"]) if "arb" in f.files else None
-        bits = next((int(f[k]) for k in ("target_bits", "bits") if k in f.files), None)
-    if arb is not None and not arb.startswith("python-flint"):
-        arb = f"python-flint {arb}"
-    return {"arb": arb, "target_bits": bits}
+    """(inputs, hi, lo, guaranteed) for `name`; inputs is a tuple of float64 (or complex128) arrays."""
+    r, m = _read(name)
+    return r.args(name), m.hi, m.lo, m.fields["guaranteed"]
 
 
 def scale(name):
-    """The bound's multiplier at each reference point (ones where the file has none)."""
-    with np.load(REF / f"{name}.npz") as f:
-        return f["scale"] if "scale" in f.files else np.ones(f["hi"].size)
+    """The bound's multiplier at each reference point."""
+    return _read(name)[1].fields["scale"]
+
+
+def provenance(name, ref=REF):
+    """{"arb", "target_bits", "tool", "n_requested"} of the reference file `name` in `ref`."""
+    return reffile.provenance(ref / f"{name}.npz")
+
+
+def reduce_cases():
+    """(x, (lse hi, lo), (softmax hi, lo), (log_softmax hi, lo)) per vector of
+    tests/special/ref/reduce_cases.npz (logsumexp, softmax and log_softmax)."""
+    r = reffile.read(REF / "reduce_cases.npz")
+    x, M = r.inputs["x"], r.methods
+    for c in range(r.ngroups):
+        sel = r.group == c
+        yield (
+            x[sel],
+            (M["lse"].hi[c], M["lse"].lo[c]),
+            (M["softmax"].hi[sel], M["softmax"].lo[sel]),
+            (M["log_softmax"].hi[sel], M["log_softmax"].lo[sel]),
+        )
 
 
 def _special(got, hi):
@@ -110,20 +122,12 @@ def _special(got, hi):
 
 
 def _diff(got, hi, lo):
-    """|got - (hi + lo)|, for complex the modulus of the difference (S8: the relative error
-    of a complex value is |error| / |value|)."""
+    """|got - (hi + lo)|, for complex the modulus of the difference (the relative error of a
+    complex value is |error| / |value|)."""
     if np.iscomplexobj(hi):
         got = np.asarray(got, dtype=np.complex128)
         return np.hypot((got.real - hi.real) - lo.real, (got.imag - hi.imag) - lo.imag)
     return np.abs((np.asarray(got, dtype=np.float64) - hi) - lo)
-
-
-def ulp_error(got, hi, lo):
-    """|got - (hi + lo)| in units of the spacing of float64 at |hi|."""
-    finite, special = _special(got, hi)
-    with np.errstate(invalid="ignore", over="ignore"):
-        err = _diff(got, hi, lo) / np.spacing(np.abs(hi))
-    return np.where(finite, err, special)
 
 
 def rel_error(got, hi, lo):

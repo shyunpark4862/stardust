@@ -1,16 +1,15 @@
 """sd.special against scipy.special: every function with a reference file at 10^6
 elements (sd on 1 and 10 threads; scipy.special runs on one) and one Python-float (or
-complex) call. From bench/special/speed.py (at commit 4151d2a); the functions, their counterparts and the
-reference-mix inputs (drawn from the guaranteed-region reference inputs) come from
-_special_common.py (bench/special/common.py at that commit, without its timing helpers).
+complex) call. The functions, their counterparts and the reference-mix inputs (drawn from
+the guaranteed-region reference inputs) come from bench/speed/cases/_special_common.py.
 
 The 1-thread time per element of the reference-mix rows is the cost table of the parallel
-split (csrc/special/cost_table.hpp, read by csrc/special/cost.hpp; bench/special/cost.py
-printed it before): each such case carries cost=("special", <reference name>). The
-noncentral distribution functions take 10^5 elements there instead of 10^6 (seconds per
-call at 10^6; the per-element cost is the same). The table's unit, sd.add of two
-contiguous float64 arrays, the engine's test kernels (_fma3, _sum4, _powers4, on normal
-inputs) and _cf_tan (on its reference inputs) are cost-unit cases, as cost.py's EXTRA.
+split (csrc/special/cost_table.hpp, read by csrc/special/cost.hpp): each such case carries
+cost=("special", <reference name>). The noncentral distribution functions take 10^5
+elements there instead of 10^6 (seconds per call at 10^6; the per-element cost is the
+same). The table's unit, sd.add of two contiguous float64 arrays, the engine's test kernels
+(_fma3, _sum4, _powers4, on normal inputs; EXTRA below) and _cf_tan (on its reference
+inputs) are cost-unit cases.
 
 The reference mix leans on the hard corners of each function (huge and tiny arguments,
 branch edges), so the other groups time what a user usually passes: the "typical input"
@@ -113,7 +112,7 @@ NONCENTRAL = {"chndtr", "chndtrc", "chndtrix", "nctdtr", "nctdtrc", "nctdtrit", 
 # Reference files timed only as cost-unit cases.
 COST_ONLY = {"_cf_tan"}
 
-# Engine test kernels without a reference file (cost.py EXTRA): number of normal inputs.
+# Engine test kernels without a reference file: number of normal inputs.
 EXTRA = {"_fma3": 3, "_sum4": 4, "_powers4": 1}
 EXTRA_ARGS = {"_fma3": "x, y, z", "_sum4": "a, b, c, d", "_powers4": "x"}
 # _add is the unit every weight of the table is divided by: more batches than the default.
@@ -319,7 +318,7 @@ def _lib(name):
 
 def _refs(name, key):
     lib = _lib(name)
-    return (Ref(lib, _call("ref", key)),) if lib else ()
+    return (Ref(lib, _call("ref", key), differs=DIFFERS.get((name, lib), "")),) if lib else ()
 
 
 # (function, comparator) -> the elements it is timed on, where one call over the case's inputs
@@ -343,11 +342,22 @@ COMPARATOR_SAMPLE = {
 }
 
 
+# Comparators that compute something else than sd on these inputs, by design: not checked,
+# and the reason goes into the table's note.
+DIFFERS = {
+    ("binom", "R"): "R의 choose는 정수가 아닌 k를 반올림한다",
+    ("nbdtr", "scipy"): "scipy는 정수가 아닌 n을 버림한다",
+    ("nbdtrc", "scipy"): "scipy는 정수가 아닌 n을 버림한다",
+    ("i0e", "R"): "R의 besselI는 x < 0에서 NaN, 아주 큰 x에서 0이다",
+    ("i1e", "R"): "R의 besselI는 x < 0에서 NaN, 아주 큰 x에서 0이다",
+}
+
+
 def _r_boost(name, rotated=False):
     """R and Boost.Math for an array case of `name`, where the accuracy measurement compares
     with them (bench/accuracy/compare.py: R_SPECIAL, BOOST_SPECIAL): R's vectorized function in
-    the run's R session on the case's inputs (one input set of a rotated case), Boost in a C++
-    loop over them (bench/speed/boost.py)."""
+    the run's R session on the case's inputs (every input set of a rotated case, in turn),
+    Boost in a C++ loop over them (bench/speed/boost.py)."""
     from bench.accuracy.compare import BOOST_SPECIAL, R_SPECIAL
 
     from .. import boost
@@ -358,7 +368,9 @@ def _r_boost(name, rotated=False):
         used = [v for v in "abcd" if re.search(rf"\b{v}\b", expr)]
         k = COMPARATOR_SAMPLE.get((name, "R"))
         setup = "; ".join(f"{v} <- {v}[seq_len({k})]" for v in used) if k else ""
-        out.append(RRef("R", expr, data={f"arg{'abcd'.index(v)}": v for v in used}, setup=setup, n=k))
+        data = {f"arg{'abcd'.index(v)}": v for v in used}
+        differs = DIFFERS.get((name, "R"), "")
+        out.append(RRef("R", expr, data=data, setup=setup, n=k, sets="rsets" if rotated else "", differs=differs))
     if name in BOOST_SPECIAL and boost.available():
         k = COMPARATOR_SAMPLE.get((name, "Boost"))
         if rotated:
@@ -418,9 +430,10 @@ def _mid_setup(name, n):
     d = _funcs(name)
     d["xs"] = sets
     d["sxs"] = [tuple(sd.asarray(x) for x in s) for s in sets]
-    for i, x in enumerate(sets[0]):  # R times the first input set
-        if not np.iscomplexobj(x):
-            d[f"arg{i}"] = np.asarray(x, dtype=np.float64)
+    # R's input sets (float64 arrays only travel), called in turn as the others are
+    d["rsets"] = [
+        {f"arg{i}": np.asarray(x, dtype=np.float64) for i, x in enumerate(s) if not np.iscomplexobj(x)} for s in sets
+    ]
     return d
 
 
@@ -558,7 +571,8 @@ def cases() -> list[Case]:
                     n=n,
                     setup=lambda name=name, n=n: _mid_setup(name, n),
                     sd=_rotated("f", "sxs"),
-                    refs=(Ref(_lib(name), _rotated("ref", "xs")),) + _r_boost(name, rotated=True),
+                    refs=(Ref(_lib(name), _rotated("ref", "xs"), differs=DIFFERS.get((name, _lib(name)), "")),)
+                    + _r_boost(name, rotated=True),
                     threads=(1, 10),
                     note=_join(
                         f"입력 {fresh_count(n)}벌을 돌려 쓴다",

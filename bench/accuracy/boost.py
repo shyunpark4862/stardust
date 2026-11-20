@@ -4,8 +4,10 @@ The headers are a checkout of github.com/boostorg/math outside the repository: S
 build/comparators/boost-math (git clone --depth 1 https://github.com/boostorg/math.git there).
 The library is built into build/comparators/ with the system clang++ (standalone mode, FLAGS:
 the flags bench/speed/boost.py times Boost with, so the values measured here come from the same
-code; floating-point contraction off, as for sd, decision D-33) and rebuilt when the
-source or the flags change. Without the checkout, the Boost columns read "not run".
+code; floating-point contraction off, as for sd) and rebuilt when the source, the flags or the
+checkout's commit (git HEAD) change. Without the checkout, the Boost columns read "not run".
+sd.special's own Boost.Math headers are another, fixed copy (third_party/boost_math/README.md
+names its commit); the tables name both.
 """
 
 from __future__ import annotations
@@ -43,20 +45,49 @@ def version() -> str | None:
     return f"boostorg/math {r.stdout.strip()}" if r.returncode == 0 else "boostorg/math"
 
 
-def _lib():
-    if _LIB[0] is not None:
-        return _LIB[0]
+def head(h) -> str:
+    """The checkout's commit (git HEAD), or "" when it is not a git checkout."""
+    r = subprocess.run(["git", "-C", str(h), "rev-parse", "HEAD"], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def build_key(h, src: pathlib.Path = SRC) -> str:
+    """The build's cache key: the source, the headers' path and commit, and the flags."""
+    parts = src.read_bytes() + str(h).encode() + head(h).encode() + " ".join(FLAGS).encode()
+    return hashlib.sha256(parts).hexdigest()[:12]
+
+
+def build(src: pathlib.Path, stem: str) -> pathlib.Path:
+    """The library built from `src` against the checkout, build/comparators/<stem>-<key>.dylib:
+    built when no file of that key exists (the accuracy comparator and bench/speed/boost.py's
+    driver both come from here, with FLAGS). RuntimeError without a checkout."""
     h = headers()
-    key = hashlib.sha256(SRC.read_bytes() + str(h).encode() + " ".join(FLAGS).encode()).hexdigest()[:12]
-    out = ROOT / "build" / "comparators" / f"libsdboost-{key}.dylib"
+    if h is None:
+        raise RuntimeError("no Boost.Math checkout (SD_BOOST_MATH or build/comparators/boost-math)")
+    out = ROOT / "build" / "comparators" / f"{stem}-{build_key(h, src)}.dylib"
     if not out.exists():
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(f".{os.getpid()}.tmp")
         cmd = ["clang++", *FLAGS, "-shared", "-fPIC", "-DBOOST_MATH_STANDALONE",
-               f"-I{h / 'include'}", str(SRC), "-o", str(tmp)]  # fmt: skip
+               f"-I{h / 'include'}", str(src), "-o", str(tmp)]  # fmt: skip
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         tmp.replace(out)  # several workers may build at once: the last rename wins, each whole
-    lib = ctypes.CDLL(str(out))
+    return out
+
+
+def vendored() -> str | None:
+    """The commit of sd.special's own copy of Boost.Math (third_party/boost_math/README.md)."""
+    import re
+
+    p = ROOT / "third_party" / "boost_math" / "README.md"
+    m = re.search(r"커밋 ([0-9a-f]{7,40})", p.read_text()) if p.exists() else None
+    return m.group(1) if m else None
+
+
+def _lib():
+    if _LIB[0] is not None:
+        return _LIB[0]
+    lib = ctypes.CDLL(str(build(SRC, "libsdboost")))
     lib.sd_boost.restype = ctypes.c_int
     lib.sd_boost.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_long,
                              ctypes.c_void_p]  # fmt: skip

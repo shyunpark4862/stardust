@@ -1,6 +1,6 @@
 """What the sd.special speed cases need of each function under test: the sd function, its
 scipy (or numpy) counterpart, and inputs drawn from the reference files
-(tests/special/refdata.py). Moved here from bench/special/common.py (at commit 4151d2a).
+(tests/special/refdata.py).
 """
 
 import sys
@@ -65,26 +65,14 @@ COUNTERPART = {
     "lambertw_cm1": "scipy.special.lambertw(k=-1)",
     "lambertw_c1": "scipy.special.lambertw(k=1)",
     "lambertw_c4": "scipy.special.lambertw(k=4)",
-    # T2: scipy's chndtr takes x first; the upper tails exist only as scipy.stats sf
+    # bench.accuracy.compare.SCIPY_REORDERED's names (scipy_function calls its callables): scipy's
+    # chndtr takes x first (sd: df, nc, x); the upper tails exist only as scipy.stats sf
     "chndtr": "scipy.special.chndtr(x, df, nc)",
     "chndtrix": "scipy.special.chndtrix(p, df, nc)",
     "chndtrc": "scipy.stats.ncx2.sf",
     "nctdtrc": "scipy.stats.nct.sf",
     "ncfdtrc": "scipy.stats.ncf.sf",
 }
-
-
-def _t2_counterpart(name):
-    import scipy.special as sc
-    import scipy.stats as st
-
-    return {
-        "chndtr": lambda df, nc, x: sc.chndtr(x, df, nc),
-        "chndtrix": lambda df, nc, p: sc.chndtrix(p, df, nc),
-        "chndtrc": lambda df, nc, x: st.ncx2.sf(x, df, nc),
-        "nctdtrc": lambda df, nc, t: st.nct.sf(t, df, nc),
-        "ncfdtrc": lambda dfn, dfd, nc, f: st.ncf.sf(f, dfn, dfd, nc),
-    }.get(name)
 
 
 def counterpart(name):
@@ -112,8 +100,11 @@ def scipy_function(name):
 
         k = -1 if name == "lambertw_m1" else 0
         return lambda x: numpy.real(scipy.special.lambertw(x, k))
-    if _t2_counterpart(name) is not None:
-        return _t2_counterpart(name)
+    from bench.accuracy.compare import scipy_reordered
+
+    reordered = scipy_reordered(name)  # scipy's arguments in another order than sd's
+    if reordered is not None:
+        return reordered
     path = counterpart(name)
     if path is None:
         return None

@@ -9,7 +9,17 @@ from hypothesis import strategies as st
 import stardust as sd
 
 from .._tier import examples
-from .conftest import DTYPES, LAYOUTS, as_sd, batch_shapes, compute_dtype, npy, random_values, with_layout
+from .conftest import (
+    DTYPES,
+    LAYOUTS,
+    as_sd,
+    batch_shapes,
+    compute_dtype,
+    f_order_strides,
+    npy,
+    random_values,
+    with_layout,
+)
 
 SETTINGS = settings(max_examples=examples(150), deadline=None)
 EPS = np.finfo(np.float64).eps
@@ -17,17 +27,6 @@ EPS = np.finfo(np.float64).eps
 
 def mH(x):
     return np.conj(np.swapaxes(x, -1, -2))
-
-
-def f_order_strides(shape, itemsize):
-    m, n = shape[-2], shape[-1]
-    st_ = [0] * len(shape)
-    st_[-2], st_[-1] = itemsize, itemsize * m
-    s = itemsize * m * n
-    for d in range(len(shape) - 3, -1, -1):
-        st_[d] = s
-        s *= shape[d]
-    return tuple(st_)
 
 
 def lex_sorted(w):

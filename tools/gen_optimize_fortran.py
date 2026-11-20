@@ -34,7 +34,7 @@ programs are run as they are; for full precision this script writes its own driv
 which call the same MINPACK routines and the drivers' test-function subroutines, extracted
 from file16 and file17 (INITPT renamed per driver so that both can be linked).
 
-Run:  uv run --no-sync python tools/gen_optimize_fortran.py SRC_DIR BUILD_DIR
+Run:  .venv/bin/python tools/gen_optimize_fortran.py SRC_DIR BUILD_DIR
       (BUILD_DIR is created; SRC_DIR is only read.)
 """
 

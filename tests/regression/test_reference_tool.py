@@ -1,4 +1,4 @@
-"""G0: the Arb reference tool for least squares (tools/regref.py) against the certified values
+"""The Arb reference tool for least squares (tools/regref.py) against the certified values
 of the NIST StRD problems and against statsmodels (docs/design/regression.md §6)."""
 
 import math
@@ -10,10 +10,11 @@ import pytest
 from . import nist
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
-regref = pytest.importorskip("regref")
+import regref  # noqa: E402  (tools/regref.py; a missing dependency of it must fail, not skip)
 
 
-def rel(hl, certified):
+def dd_rel_error(hl, certified):
+    """The double-double (hi, lo)'s relative error to NIST's certified value (absolute at 0)."""
     v, c = hl[0] + hl[1], float(certified)
     return abs(v - c) / abs(c) if c != 0 else abs(v)
 
@@ -27,10 +28,10 @@ def test_certified_values(name):
     assert meta["exact_fit"] == (name in ("Wampler1", "Wampler2"))
     assert len(ref["params"]) == len(d["params"])
     for got, want in zip(ref["params"], d["params"]):
-        assert rel(got, want) <= 1e-14
+        assert dd_rel_error(got, want) <= 1e-14
     for got, want in zip(ref["bse"], d["bse"]):
-        assert rel(got, want) <= 1e-14
-    assert rel(ref["rsquared"], d["rsquared"]) <= 1e-14
+        assert dd_rel_error(got, want) <= 1e-14
+    assert dd_rel_error(ref["rsquared"], d["rsquared"]) <= 1e-14
     rsd = math.sqrt(ref["scale"][0] + ref["scale"][1])
     assert (abs(rsd - float(d["rsd"])) <= 1e-14 * float(d["rsd"])) or float(d["rsd"]) == 0.0
 

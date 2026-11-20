@@ -1,9 +1,11 @@
-"""Descriptive statistics (T8, docs/api/stats.md §4; decisions T28): scipy.stats' values on
+"""Descriptive statistics (docs/api/stats.md §4; docs/design/stats.md §5, decision T28): scipy.stats' values on
 every axis and nan_policy, the exact values (rational arithmetic) on ill-conditioned data,
 and the argument rules."""
 
+import inspect
 import itertools
 import math
+import re
 from fractions import Fraction
 
 import numpy as np
@@ -351,3 +353,232 @@ def test_differential_entropy_of_tied_values_is_minus_inf(method):
         assert float(sd.stats.differential_entropy(sd.asarray(x), method=method)) == -math.inf
     # Correa divides 0 by 0 on a constant window: NaN, as in scipy
     assert math.isnan(float(sd.stats.differential_entropy(sd.ones((10,)), method="correa")))
+
+
+A = sd.asarray
+inf = math.inf
+
+
+def test_descriptive_edges_as_scipy():
+    x = A([1.0, 2.0, 3.0, 4.0, 5.0])
+    assert S.iqr(x, scale=0) == inf
+    assert math.isnan(S.iqr(A([1.0, 1.0, 1.0]), scale=0))
+    assert S.entropy(A([0.2, 0.8]), base=1) == inf
+    assert S.differential_entropy(x, base=1) == inf
+    assert S.differential_entropy(A([1.0, inf, 3.0, 4.0, 5.0])) == inf
+    with pytest.raises(ValueError, match=r"^iqr\(\): 'method' must be "):
+        S.iqr(x, method="foo")
+    with pytest.raises(ValueError, match=r"^moment\(\): 'order' must not be empty$"):
+        S.moment(x, order=[])
+    with pytest.raises(TypeError, match=r"^entropy\(\): 'base' must be a positive number or None, not str$"):
+        S.entropy(A([0.2, 0.8]), base="e")
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"^differential_entropy\(\): 'method' must be 'vasicek', 'van es', 'ebrahimi', 'correa' or 'auto', "
+            r"not 'VASICEK'$"
+        ),
+    ):
+        S.differential_entropy(x, method="VASICEK")
+
+
+def test_axis_lists_and_repeated_axis_as_the_array():
+    X = A(np.arange(24.0).reshape(2, 3, 4) ** 1.5)
+    for fn in ("skew", "kurtosis", "sem", "iqr", "entropy", "differential_entropy"):
+        f = getattr(S, fn)
+        a, b = f(X, axis=[0, 2]), f(X, axis=(0, 2))
+        assert np.array_equal(np.asarray(a), np.asarray(b), equal_nan=True), fn
+        with pytest.raises(ValueError, match=rf"^{fn}\(\): repeated axis$"):
+            f(X, axis=(1, 1))
+    assert np.array_equal(np.asarray(S.zscore(X, axis=[2])), np.asarray(S.zscore(X, axis=2)))
+    assert np.array_equal(np.asarray(S.describe(X, axis=[1, 2]).mean), np.asarray(S.describe(X, axis=(1, 2)).mean))
+    assert np.array_equal(np.asarray(S.mode(X, axis=[0]).mode), np.asarray(S.mode(X, axis=0).mode))
+    with pytest.raises(ValueError, match=r"^var\(\): repeated axis$"):
+        sd.var(X, axis=(1, 1))
+    with pytest.raises(TypeError, match=r"^skew\(\): 'axis' must be an int or a tuple or list of ints, not str$"):
+        S.skew(X, axis="a")
+    with pytest.raises(TypeError, match=r"^rankdata\(\): 'axis' must be an int or None, not list$"):
+        S.rankdata(X, axis=[0])
+
+
+def test_string_option_messages():
+    x = A([1.0, 2.0, 3.0])
+    with pytest.raises(ValueError, match=r"^skew\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'x'$"):
+        S.skew(x, nan_policy="x")
+    with pytest.raises(
+        TypeError, match=r"^skew\(\): 'nan_policy' must be 'propagate', 'omit' or 'raise', not NoneType$"
+    ):
+        S.skew(x, nan_policy=None)
+    with pytest.raises(
+        ValueError,
+        match=r"^rankdata\(\): 'method' must be 'average', 'min', 'max', 'dense' or 'ordinal', not 'Average'$",
+    ):
+        S.rankdata(x, method="Average")
+    with pytest.raises(TypeError, match=r"^differential_entropy\(\): 'method' must be .* or 'auto', not int$"):
+        S.differential_entropy(x, method=1)
+
+
+def test_rankdata_axis_message():
+    x = sd.ones((3, 4))
+    for ax, name in (((0,), "tuple"), ([0], "list"), (1.5, "float"), (True, "bool"), ("a", "str")):
+        with pytest.raises(TypeError, match=rf"^rankdata\(\): 'axis' must be an int or None, not {name}$"):
+            S.rankdata(x, axis=ax)
+    assert S.rankdata(x, axis=np.int64(1)).shape == (3, 4)
+    with pytest.raises(ValueError, match=r"^rankdata\(\): axis 5 is out of bounds"):
+        S.rankdata(x, axis=5)
+    # the reductions keep theirs (they take tuples)
+    with pytest.raises(TypeError, match=r"^skew\(\): 'axis' must be an int or a tuple or list of ints, not float$"):
+        S.skew(x, axis=1.5)
+
+
+def test_descriptive_numeric_options():
+    x = [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert S.sem(x, correction=np.int64(2)) == S.sem(x, correction=2)
+    assert S.entropy(x, base=np.int64(2)) == S.entropy(x, base=2)
+    assert S.iqr(x, scale=np.int64(2)) == S.iqr(x, scale=2)
+    assert S.moment(x, order=2, center=np.int64(2)) == S.moment(x, order=2, center=2)
+    for f, arg in (
+        (lambda v: S.sem(x, correction=v), "sem(): 'correction'"),
+        (lambda v: S.entropy(x, base=v), "entropy(): 'base'"),
+        (lambda v: S.iqr(x, scale=v), "iqr(): 'scale'"),
+        (lambda v: S.moment(x, order=2, center=v), "moment(): 'center'"),
+    ):
+        with pytest.raises(OverflowError, match="^" + re.escape(arg) + " is out of range$"):
+            f(10**400)
+
+
+def test_moment_order():
+    x = [1.0, 2.0, 3.0, 4.0]
+    assert S.moment(x, order=np.int64(2)) == S.moment(x, order=2) == 1.25  # R66
+    assert S.moment(x, order=[np.int64(2), 3]).tolist() == [1.25, 0.0]
+    with pytest.raises(OverflowError, match=r"^moment\(\): 'order' is out of range$"):  # R67
+        S.moment(x, order=10**400)
+    with pytest.raises(OverflowError, match=r"^moment\(\): 'order' is out of range$"):
+        S.moment(x, order=[2, 10**400])
+    with pytest.raises(TypeError, match=r"^moment\(\): 'order' must be an int or a sequence of ints, not bool$"):
+        S.moment(x, order=True)
+    for bad in (2.5, math.inf, math.nan):
+        with pytest.raises(ValueError, match=r"^moment\(\): every 'order' must be integral$"):
+            S.moment(x, order=bad)
+
+
+def test_descriptive_call_shape_errors():
+    # R75: the library's form, as the constructors' (T36)
+    with pytest.raises(TypeError, match=r"^moment\(\): missing 1 required keyword-only argument: 'order'$"):
+        S.moment([1.0, 2.0, 4.0])
+    with pytest.raises(TypeError, match=r"^moment\(\): 'order' must be an int or a sequence of ints, not NoneType$"):
+        S.moment([1.0, 2.0, 4.0], order=None)
+    with pytest.raises(TypeError, match=r"^skew\(\): unexpected keyword argument 'ddof'"):
+        S.skew([1.0, 2.0, 3.0], ddof=1)
+    with pytest.raises(TypeError, match=r"^describe\(\): takes 1 positional argument but 2 were given$"):
+        S.describe([1.0, 2.0], 0)
+    assert S.moment.__name__ == "moment" and str(inspect.signature(S.moment)).startswith("(x, /, *, order")
+
+
+# ---- ST-4: infinite terms --------------------------------------------------------------------
+
+
+def test_compensated_sums_with_infinities():
+    inf = math.inf
+    assert S.describe([1.0, inf, 2.0]).mean == inf
+    assert S.describe([1.0, -inf, 2.0]).mean == -inf
+    assert math.isnan(S.describe([1.0, inf, -inf]).mean)
+    assert S.moment([1e160, 2e160, -1e160], order=2, center=0.0) == inf
+    assert S.moment([1e70, 2e70, -1e70], order=6) == inf
+    assert S.moment([1.0, inf], order=2, center=0.0) == inf
+    col = S.describe(sd.asarray(np.array([[1.0, inf], [2.0, 3.0], [4.0, 5.0]])), axis=0).mean.tolist()
+    assert col[0] == 7.0 / 3.0 and col[1] == inf
+
+
+# ---- ST-8, ST-9, CX-5: iqr ------------------------------------------------------------------
+
+
+def test_iqr_q():
+    x = [1.0, 2.0, 5.0, 9.0, 10.0]
+    assert S.iqr(x, q=(0.75, 0.25)) == 7.0 == S.iqr(x)
+    assert S.iqr(x, q=[np.float64(0.25), np.int64(1)]) == 8.0
+    for q, err in (((True, 0.5), TypeError), (("0.25", "0.75"), TypeError), (3, TypeError)):
+        with pytest.raises(err, match=r"^iqr\(\): 'q' must be a pair of numbers in \[0, 1\], not "):
+            S.iqr(x, q=q)
+    for q in ((0.25, 0.5, 0.75), (0.5,), (-0.1, 0.5), (0.2, math.nan)):
+        with pytest.raises(ValueError, match=r"^iqr\(\): 'q' must be a pair of numbers in \[0, 1\]$"):
+            S.iqr(x, q=q)
+    a = sd.asarray(np.random.default_rng(3).random((7, 9)))
+    one = S.iqr(a, axis=1, keepdims=True)
+    q = sd.quantile(a, A([0.25, 0.75]), axis=1, keepdims=True)
+    assert one.tolist() == (q[1] - q[0]).tolist()
+
+
+# ---- ST-10, CX-4, CX-10, CX-11, CX-14: messages -------------------------------------------
+
+
+def test_messages():
+    with pytest.raises(
+        ValueError, match=r"^MultivariateNormal\(\): shapes could not be broadcast together: \(2,\) \(3,\)$"
+    ):
+        S.MultivariateNormal(mu=sd.zeros((2, 2)), cov=sd.zeros((3, 2, 2)))
+    with pytest.raises(ValueError, match=r"^logpdf\(\): shapes could not be broadcast together: \(3,\) \(4,\)$"):
+        S.MultivariateNormal(mu=sd.zeros((4, 2)), cov=sd.eye(2)).logpdf(sd.zeros((3, 2)))
+    with pytest.raises(OverflowError, match=r"^skew\(\): 'axis' is out of range$"):
+        S.skew(sd.zeros((2, 2)), axis=2**70)
+    with pytest.raises(OverflowError, match=r"^rankdata\(\): 'axis' is out of range$"):
+        S.rankdata(sd.zeros((2, 2)), axis=-(2**70))
+    with pytest.raises(OverflowError, match=r"^differential_entropy\(\): 'window_length' is out of range$"):
+        S.differential_entropy(sd.arange(10.0), window_length=2**70)
+    with pytest.raises(ValueError, match=r"^differential_entropy\(\): 'window_length' must be >= 1$"):
+        S.differential_entropy(sd.arange(10.0), window_length=0)
+    M = S.MultivariateNormal(mu=sd.zeros(2), cov=sd.eye(2))
+    with pytest.raises(ValueError, match=r"^cdf\(\): 'max_points' must be >= 1$"):
+        M.cdf(sd.zeros(2), max_points=0)
+    with pytest.raises(OverflowError, match=r"^cdf\(\): 'max_points' is out of range$"):
+        M.cdf(sd.zeros(2), max_points=-(2**70))
+    with pytest.raises(ValueError, match=r"^skew\(\): inhomogeneous nested sequence"):
+        S.skew([[1.0, 2.0], [3.0]])
+    with pytest.raises(TypeError, match=r"^skew\(\): 'x' must be an sd.ndarray, a sequence of numbers or a frame"):
+        S.skew({1: 2})
+    with pytest.raises(
+        TypeError, match=r"^skew\(\): 'x' must be an sd.ndarray, a sequence of numbers .*, not complex$"
+    ):
+        S.skew(1j)
+
+
+def test_scalar_inputs_give_floats():
+    for f in (S.zscore, S.rankdata):
+        for v in (3.0, 3, np.float64(3.0), np.array(3.0)):
+            assert type(f(v)) is float, (f, v)
+    assert S.rankdata(3.0) == 1.0 and math.isnan(S.zscore(3.0))
+    assert S.zscore([3.0]).shape == (1,)
+
+
+def test_descriptive_stats_take_frame_columns():
+    s = sd.frame.Series([1.0, 2.0, 4.0, None])
+    assert math.isnan(S.skew(s)) and S.skew(s, nan_policy="omit") == S.skew([1.0, 2.0, 4.0])
+    df = sd.frame.DataFrame({"a": [1.0, 2.0, 4.0], "b": [3.0, 5.0, 6.0]})
+    assert S.describe(df, axis=0).mean.tolist() == [7.0 / 3.0, 14.0 / 3.0]
+    with pytest.raises(TypeError, match=r"^skew\(\): 'x' must have numeric columns$"):
+        S.skew(sd.frame.Series(["a", "b"]))
+
+
+def test_describe_empty():
+    d = S.describe(sd.zeros(0))
+    assert d.nobs == 0 and all(math.isnan(v) for v in (*d.minmax, d.mean, d.variance, d.skewness, d.kurtosis))
+    d = S.describe(sd.zeros((3, 0)), axis=0)
+    assert d.nobs == 3 and d.mean.shape == (0,) and d.minmax[0].shape == (0,)
+    d = S.describe(sd.zeros((3, 0)), axis=1)
+    assert d.nobs == 0 and d.mean.shape == (3,) and np.isnan(np.asarray(d.mean)).all()
+    assert S.skew(sd.zeros((3, 0)), axis=0).shape == (0,)
+
+
+def test_result_objects_are_read_only():
+    x = sd.asarray(np.arange(12.0).reshape(3, 4))
+    d = S.describe(x, axis=0)
+    m = S.mode(x, axis=0)
+    r = S.MultivariateNormal(mu=sd.zeros((2, 2)), cov=sd.eye(2)).cdf(sd.zeros(2), return_error=True)
+    for a in (*d.minmax, d.mean, d.variance, d.skewness, d.kurtosis, m.mode, m.count, r.value, r.error):
+        with pytest.raises(ValueError, match="read-only"):
+            a[0] = 1.0
+    nobs = S.describe(x, axis=0, nan_policy="omit").nobs
+    with pytest.raises(ValueError, match="read-only"):
+        nobs[0] = 1
+    # without axes: Python numbers
+    assert type(S.describe(x).mean) is float and type(S.mode(x).count) is int

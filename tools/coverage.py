@@ -1,10 +1,15 @@
 """Test coverage of the C++ core (clang source-based coverage) and the Python package (coverage.py
 through pytest-cov), with a report per area and the list of branches the tests never take.
 
-    .venv/bin/python tools/coverage.py all [--golden] [PYTEST ARGS ...]   # build, run, report
+    .venv/bin/python tools/coverage.py all [AREA ...] [--match P] [--golden]   # build, run, report
     .venv/bin/python tools/coverage.py build        # the instrumented extension, in build/coverage/cmake
-    .venv/bin/python tools/coverage.py run [--golden] [PYTEST ARGS ...]   # the tests (default: all of tests/)
+    .venv/bin/python tools/coverage.py run [AREA ...] [--match P] [--golden] [-- PYTEST ARGS]   # the tests
     .venv/bin/python tools/coverage.py report       # merge the profiles, write the reports
+
+The options are bench/cli.py's, as in tools/test.py: AREA (run the tests of tests/<area>; default
+every test), --match PATTERN (the tests whose id matches; repeatable), --jobs N (compile jobs,
+default 8, at most 10); pytest's own arguments go after -- (not -k, -m or -n). Exit status: 0
+every step passed, 1 a test or the golden comparison failed, 2 a usage error or a failed step.
 
 Everything goes under build/coverage/ (ignored by git); the normal build (build/<wheel tag>) and
 CMakeLists.txt are untouched. The instrumented build is the same CMake project configured with
@@ -12,9 +17,10 @@ CMakeLists.txt are untouched. The instrumented build is the same CMake project c
 
 run: the tests import stardust from src/ with the instrumented _core in place of the normal one
 (build/coverage/site/sitecustomize.py does it in every process that has SD_COVERAGE_CORE set, so
-subprocesses count too). --golden also runs `tools/golden.py check --any-nan` with the
-instrumented core: its code differs, and in a few cases so does the sign of a NaN result
-(2026-11-20: 10 cases, a/b with complex NaN, StudentT's inverses); every other bit must agree.
+subprocesses count too). --golden also runs `tools/golden.py check --any-nan` (of the chosen
+areas) with the instrumented core: its code differs, and in a few cases so does the sign of a
+NaN result (2026-11-20: 10 cases, a/b with complex NaN, StudentT's inverses); every other bit
+must agree.
 
 report writes
     build/coverage/summary.md       line, function and branch coverage per area, C++ and Python
@@ -26,7 +32,7 @@ A C++ branch counts once per source location (template instantiations summed): "
 
 The terminal shows a header block, a progress bar per long step (ninja's steps, the tests, the
 golden cases), a result line per step and the summary as a table (bench/console.py); the tools'
-own output goes to build/coverage/logs/<stamp>.log.
+own output goes to build/logs/coverage/<stamp>.log.
 """
 
 import argparse
@@ -43,6 +49,8 @@ import procrun
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from bench import areas as AREAS_MOD  # noqa: E402
+from bench import cli  # noqa: E402
 from bench import console as C  # noqa: E402
 
 OUT = ROOT / "build" / "coverage"
@@ -52,16 +60,12 @@ PROFRAW = OUT / "profraw"
 PYDATA = OUT / "py"
 RCFILE = OUT / "coveragerc"
 PY = ROOT / ".venv" / "bin" / "python"
-JOBS = 8  # at most 8 processes (compile jobs included)
 FLAGS = "-fprofile-instr-generate -fcoverage-mapping"
 IGNORE = r"(third_party|/Applications/|/opt/homebrew/|/Library/Developer/|nanobind|\.venv)"
-# Tests that crash the instrumented core, deselected so one crash does not end the whole run.
-# Each is a library bug the normal build survives by chance; remove the entry once it is fixed.
-CRASHES = {
-    # corrcoef of 0 variables divides by p = 0 (kParallelTask / p, csrc/array/ops/covariance.cpp):
-    # 0 on arm64 in the normal build, a bus error in the instrumented one (2026-11-20).
-    "tests/array/test_statistics.py::test_cov_rowvar_false_always_transposes_and_no_variables_is_empty",
-}
+# Tests that crash the instrumented core, deselected so one crash does not end the whole run:
+# each entry is a library bug the normal build survives by chance, with the test id and a
+# comment naming the bug; the entry goes when the bug is fixed.
+CRASHES = set()
 
 SITECUSTOMIZE = '''"""Written by tools/coverage.py: load the instrumented stardust._core in place of the editable
 install's (only when SD_COVERAGE_CORE names it)."""
@@ -156,7 +160,7 @@ def core_path(con=None):
 # build
 
 
-def cmd_build(con):
+def cmd_build(con, jobs):
     CMAKE_DIR.mkdir(parents=True, exist_ok=True)
     if not (CMAKE_DIR / "CMakeCache.txt").exists():
         step(con, "configure", [
@@ -164,7 +168,7 @@ def cmd_build(con):
             f"-DPython_EXECUTABLE={PY}", f"-DCMAKE_CXX_FLAGS={FLAGS}",
             f"-DCMAKE_MODULE_LINKER_FLAGS={FLAGS}", f"-DCMAKE_SHARED_LINKER_FLAGS={FLAGS}",
         ])  # fmt: skip
-    lines, secs = step(con, "compile", ["cmake", "--build", CMAKE_DIR, "-j", str(JOBS)],
+    lines, secs = step(con, "compile", ["cmake", "--build", CMAKE_DIR, "-j", str(jobs)],
                        progress=procrun.ninja_progress, quiet=True)  # fmt: skip
     n = max((p[1] for p in map(procrun.ninja_progress, lines) if p), default=0)
     what = f"{n} ninja steps" if n else "up to date"
@@ -187,14 +191,15 @@ def env_for_run():
     return env
 
 
-def cmd_run(con, golden, pytest_args):
-    """(exit status, pytest's counts, its FAILED lines, the golden check's result)."""
+def cmd_run(con, golden, select, pytest_args, areas):
+    """(exit status, pytest's counts, its FAILED lines, the golden check's result). select: the
+    test paths and --match options (tools/test.py's form), areas: the golden check's."""
     core_path(con)
     for d in (PROFRAW, PYDATA):
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir(parents=True)
     env = env_for_run()
-    args = pytest_args or ["tests"]
+    args = [*select, *pytest_args]
     deselect = [a for t in sorted(CRASHES) for a in ("--deselect", t)]
     cmd = [PY, "-m", "pytest", "-v", "-p", "no:cacheprovider", "--cov", "--cov-branch",
            f"--cov-config={RCFILE}", "--cov-report=", *deselect, *args]  # fmt: skip
@@ -209,10 +214,10 @@ def cmd_run(con, golden, pytest_args):
         con.lines([con.color(x, "31") for x in C.split_label("    " + f, 8, con.width())])
     if code not in (0, 5) and not fails:  # pytest stopped without a summary
         con.lines([f"    {line}" for line in lines[-12:]])
-    status = 0 if code in (0, 5) else code
+    status = procrun.pytest_status([code])
     golden_result = "not run"
     if golden:
-        g_cmd = [PY, "-m", "coverage", "run", f"--rcfile={RCFILE}", "tools/golden.py", "check", "--any-nan"]
+        g_cmd = [PY, "-m", "coverage", "run", f"--rcfile={RCFILE}", "tools/golden.py", "check", *areas, "--any-nan"]
         logged(con, g_cmd)
         g_code, g_lines, g_secs = procrun.run(g_cmd, con, "golden", golden_progress, env)
         result = next((ln for ln in g_lines if "Result:" in ln), "")
@@ -222,7 +227,7 @@ def cmd_run(con, golden, pytest_args):
             con.print(con.color(text, "31"))
             diffs = [ln for ln in g_lines if ln.startswith(("CHANGED", "NEW", "GONE"))]
             con.lines([f"    {ln}" for ln in (diffs or g_lines[-12:])[:20]])
-            status = status or g_code
+            status = max(status, g_code if g_code in (cli.FAIL, cli.ERROR) else cli.ERROR)
         else:
             con.print(text)
     n = len(list(PROFRAW.glob("*.profraw")))
@@ -243,7 +248,7 @@ def cpp_area(rel):
     d = parts[1]
     if d == "bind":
         name = parts[-1]
-        for area in ("array", "linalg", "frame", "special", "stats", "regression", "optimize", "random"):
+        for area in AREAS_MOD.AREAS:
             if name.startswith(area):
                 return area
         return COMMON
@@ -446,17 +451,34 @@ def write_reports(areas):
     return rows
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def parser():
+    ap = argparse.ArgumentParser(prog="tools/coverage.py", description=__doc__.split("\n\n")[0])
     ap.add_argument("command", choices=["all", "build", "run", "report"])
+    cli.add_areas(ap)
+    cli.add_match(ap)
+    cli.add_jobs(ap)
     ap.add_argument("--golden", action="store_true", help="run: also tools/golden.py check, instrumented")
-    args, rest = ap.parse_known_args()
-    log = procrun.log_path("coverage/logs")
+    return ap
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    k = argv.index("--") if "--" in argv else len(argv)
+    ap = parser()
+    args, rest = ap.parse_args(argv[:k]), argv[k + 1 :]
+    # In AREAS order; none given means every test, not just the areas' folders.
+    areas = list(cli.areas(ap, args)) if args.areas else []
+    why = procrun.refused_pytest_args(rest)
+    if why:
+        ap.error(why)
+    select = [f"tests/{a}" for a in areas] + [x for p in args.match for x in ("--match", p)]
+    log = cli.log_file("coverage")
     stages = {"all": ["build", "run", "report"]}.get(args.command, [args.command])
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     with open(log, "w") as fh:
         con = C.Console(log=fh, stream=sys.stdout)
-        wide = [("Tests", " ".join(rest) or "tests (every test)")] if "run" in stages else []
+        shown = " ".join([*areas, *(f"--match {p}" for p in args.match), *(["--", *rest] if rest else [])])
+        wide = [("Tests", shown or "tests (every test)")] if "run" in stages else []
         wide += [("Output", str(OUT.relative_to(ROOT))), ("Log", str(log.relative_to(ROOT)))]
         con.lines(
             C.block(
@@ -464,27 +486,27 @@ def main():
                 [
                     ("Steps", " → ".join(stages)),
                     ("Commit", commit.stdout.strip() or "?"),
-                    ("Compile jobs", str(JOBS)),
+                    ("Compile jobs", str(args.jobs)),
                     ("Golden", "yes" if args.golden and "run" in stages else "no"),
                 ],
                 wide,
             )  # fmt: skip
         )
-        status, ran, rows, t0 = 0, None, None, time.perf_counter()
+        status, ran, rows, t0 = cli.OK, None, None, time.perf_counter()
         try:
             for k, stage in enumerate(stages, 1):
                 con.print(f"[{k}/{len(stages)}] {stage}")
                 if stage == "build":
-                    cmd_build(con)
+                    cmd_build(con, args.jobs)
                 elif stage == "run":
-                    status, *ran = cmd_run(con, args.golden, rest)
+                    status, *ran = cmd_run(con, args.golden, select, rest, areas)
                 else:
                     rows = cmd_report(con)
         except Failed as e:
             con.lines(
                 ["", con.color(f"Stopped: {e} failed.", "31")] + C.notes([f"The whole output: {log.relative_to(ROOT)}"])
             )
-            return 1
+            return cli.ERROR
         con.print("")
         if ran:
             counts, fails, golden = ran
@@ -519,9 +541,10 @@ def main():
             notes.append(f"Annotated sources: {(OUT / 'html' / 'cpp').relative_to(ROOT)}/index.html,\n"
                          f"{(OUT / 'html' / 'py').relative_to(ROOT)}/index.html")  # fmt: skip
         if "run" in stages:
-            notes.append(
-                "Deselected, as they crash the instrumented core (library bugs):\n" + "\n".join(sorted(CRASHES))
-            )
+            if CRASHES:
+                notes.append(
+                    "Deselected, as they crash the instrumented core (library bugs):\n" + "\n".join(sorted(CRASHES))
+                )
             if "report" not in stages:
                 notes.append("Write the reports with: .venv/bin/python tools/coverage.py report")
         notes.append(f"The tools' own output: {log.relative_to(ROOT)}")

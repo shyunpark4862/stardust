@@ -11,6 +11,7 @@ import pytest
 
 import stardust as sd
 from stardust._core import linalg as _core
+from tests._bits import bits_equal
 
 from .conftest import as_sd
 
@@ -129,3 +130,47 @@ def test_pool_packing_changes_nothing(layout):
     t2[n - 7, n - 3] = np.nan  # upper triangle, read
     with pytest.raises(ValueError, match="'a' contains NaN"):
         sd.linalg.solve_triangular(as_sd(f(t2) if layout != "C" else np.ascontiguousarray(t2)), B, upper=True)
+
+
+LA = sd.linalg
+
+
+# ------------------------------------------------- paths chosen by shape (§1.3) --
+# LU of n = 32-46 by getf2 (docs/design/linalg.md §7.5), solve_banded of n <= 8 as a dense
+# matrix (§7.4): each side of each switch gives right answers with the invariances kept.
+
+
+@pytest.mark.parametrize("n", [31, 32, 46, 47])
+def test_lu_family_at_the_getf2_boundaries(n):
+    rng = np.random.default_rng(n)
+    a = rng.standard_normal((5, n, n))
+    b = rng.standard_normal((5, n, 3))
+    A, B = sd.asarray(a), sd.asarray(b)
+    x = np.asarray(LA.solve(A, B))
+    assert np.max(np.abs(a @ x - b)) <= 1e-10 * np.max(np.abs(b)) * np.linalg.cond(a).max()
+    with np.errstate(all="ignore"):  # numpy's det raises spurious flags at these sizes
+        want_det = np.linalg.det(a)
+    np.testing.assert_allclose(np.asarray(LA.det(A)), want_det, rtol=1e-11)
+    f = LA.lu(A[0])
+    L_, U_, p = np.asarray(f.L), np.asarray(f.U), np.asarray(f.perm)
+    np.testing.assert_allclose(L_ @ U_, a[0][p], atol=1e-13 * n)
+    for call in (LA.inv, LA.det, LA.slogdet, LA.lu, lambda m: LA.solve(m, B)):
+        whole = call(A)
+        # the same bits for an F-order input, one by one, and on 1 or 10 threads
+        assert bits_equal(call(sd.asarray(np.asfortranarray(a))), whole)
+        before = sd.get_num_threads()
+        try:
+            sd.set_num_threads(1)
+            assert bits_equal(call(A), whole)
+        finally:
+            sd.set_num_threads(before)
+    one = np.asarray(LA.inv(A))
+    for i in range(5):
+        assert np.array_equal(np.asarray(LA.inv(sd.asarray(a[i]))), one[i])
+
+
+@pytest.mark.parametrize("m, n", [(32, 46), (32, 47), (31, 40), (46, 33)])
+def test_rectangular_lu_near_the_getf2_range(m, n):
+    a = np.random.default_rng(m * n).standard_normal((m, n))
+    f = LA.lu(sd.asarray(a))
+    np.testing.assert_allclose(np.asarray(f.L) @ np.asarray(f.U), a[np.asarray(f.perm)], atol=1e-13 * max(m, n))

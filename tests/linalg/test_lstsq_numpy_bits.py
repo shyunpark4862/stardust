@@ -34,3 +34,18 @@ def test_complex_and_batches(m, n):
     xs = np.asarray(sd.linalg.lstsq(sd.asarray(A), sd.asarray(B)).solution.tolist())
     for i in range(3):
         assert np.array_equal(xs[i], np.linalg.lstsq(A[i], B[i], rcond=None)[0])
+
+
+def test_gelsd_path_is_numpys_for_tiny_systems():
+    # R63: rtol >= eps keeps gelsd (it scales a tiny matrix itself): numpy's bits, no NaN
+    rng = np.random.default_rng(7)
+    for _ in range(200):
+        m, n = rng.integers(1, 5, size=2)
+        a = rng.standard_normal((m, n)) * 10.0 ** rng.uniform(-323, -295)
+        a[rng.random((m, n)) < 0.3] = 0.0
+        b = rng.standard_normal(m)
+        b[rng.random(m) < 0.3] = 0.0
+        x = np.asarray(sd.linalg.lstsq(sd.asarray(a), sd.asarray(b)).solution.tolist())
+        want = np.linalg.lstsq(a, b, rcond=None)[0]
+        assert not np.isnan(x).any()
+        assert np.array_equal(x, want), (a, b)

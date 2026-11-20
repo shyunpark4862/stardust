@@ -33,13 +33,16 @@ def versions() -> dict:
     from . import boost
 
     out["Boost"] = boost.version()
+    out["Boost in sd.special"] = boost.vendored()
     return out
 
 
 def _r_package_version(pkg):
     import subprocess
 
-    r = subprocess.run(["Rscript", "-e", f'cat(as.character(packageVersion("{pkg}")))'], capture_output=True, text=True)
+    r = subprocess.run(
+        ["Rscript", "--vanilla", "-e", f'cat(as.character(packageVersion("{pkg}")))'], capture_output=True, text=True
+    )
     return r.stdout.strip() or None
 
 
@@ -71,7 +74,7 @@ def _r(expr, packages=()):
 
 
 # ------------------------------------------------------------------------------ special
-# R's names over scipy's argument order (a, b, c, d = the sweep's inputs)
+# R's expressions over sd's argument order (a, b, c, d = the sweep's inputs)
 R_SPECIAL = {
     "gamma": "gamma(a)", "gammaln": "lgamma(a)", "beta": "beta(a, b)", "betaln": "lbeta(a, b)",
     "digamma": "digamma(a)", "polygamma": "psigamma(b, deriv = a)", "binom": "choose(a, b)",
@@ -88,8 +91,8 @@ R_SPECIAL = {
     "bdtr": "pbinom(a, b, c)", "bdtrc": "pbinom(a, b, c, lower.tail = FALSE)",
     "nbdtr": "pnbinom(a, b, c)", "nbdtrc": "pnbinom(a, b, c, lower.tail = FALSE)",
     "pdtr": "ppois(a, b)", "pdtrc": "ppois(a, b, lower.tail = FALSE)",
-    "chndtr": "pchisq(a, b, ncp = c)", "chndtrc": "pchisq(a, b, ncp = c, lower.tail = FALSE)",
-    "chndtrix": "qchisq(a, b, ncp = c)",
+    "chndtr": "pchisq(c, a, ncp = b)", "chndtrc": "pchisq(c, a, ncp = b, lower.tail = FALSE)",
+    "chndtrix": "qchisq(c, a, ncp = b)",
     "ncfdtr": "pf(d, a, b, ncp = c)", "ncfdtrc": "pf(d, a, b, ncp = c, lower.tail = FALSE)",
     "ncfdtri": "qf(d, a, b, ncp = c)",
     "nctdtr": "pt(c, a, ncp = b)", "nctdtrc": "pt(c, a, ncp = b, lower.tail = FALSE)",
@@ -105,6 +108,32 @@ R_SPECIAL = {
 }  # fmt: skip
 
 
+# The functions whose scipy counterpart takes sd's arguments in another order, or exists only as
+# a scipy.stats upper tail: name -> (the dotted scipy callable, the order: its k-th argument is
+# sd's argument ORDER[k]). The speed measurement (bench/speed) calls the same counterparts.
+SCIPY_REORDERED = {
+    "chndtr": ("scipy.special.chndtr", (2, 0, 1)),  # chndtr(x, df, nc); sd's chndtr(df, nc, x)
+    "chndtrix": ("scipy.special.chndtrix", (2, 0, 1)),  # chndtrix(p, df, nc)
+    "chndtrc": ("scipy.stats.ncx2.sf", (2, 0, 1)),  # sf(x, df, nc)
+    "nctdtrc": ("scipy.stats.nct.sf", (2, 0, 1)),  # sf(t, df, nc); sd's nctdtrc(df, nc, t)
+    "ncfdtrc": ("scipy.stats.ncf.sf", (3, 0, 1, 2)),  # sf(f, dfn, dfd, nc); sd's ncfdtrc(dfn, dfd, nc, f)
+}
+
+
+def scipy_reordered(name):
+    """The scipy counterpart of `name` over sd's argument order, or None if SCIPY_REORDERED has none."""
+    import importlib
+
+    if name not in SCIPY_REORDERED:
+        return None
+    dotted, order = SCIPY_REORDERED[name]
+    parts = dotted.split(".")
+    obj = importlib.import_module(".".join(parts[:2]))  # scipy.special or scipy.stats
+    for a in parts[2:]:
+        obj = getattr(obj, a)
+    return lambda *args, f=obj, order=order: f(*(args[k] for k in order))
+
+
 def special(name) -> dict:
     import scipy.special as ss
 
@@ -113,7 +142,10 @@ def special(name) -> dict:
 
     out = {}
     fn = None
-    if name in refdata.KW:
+    if name in SCIPY_REORDERED:
+        f = scipy_reordered(name)
+        fn = lambda xs, f=f: f(*xs)  # noqa: E731
+    elif name in refdata.KW:
         base, kw = refdata.KW[name]
         f = getattr(ss, base, None)
         fn = f and (lambda xs, f=f, kw=kw: f(*xs, **kw))
@@ -134,7 +166,7 @@ def special(name) -> dict:
     return out
 
 
-# the scipy.special names boost_comparator.cpp evaluates (the same function, same arguments)
+# the names boost_comparator.cpp evaluates (the same function, over sd's argument order)
 BOOST_SPECIAL = {
     "gamma", "gammaln", "beta", "digamma", "polygamma", "gammainc", "gammaincc", "gammaincinv", "gammainccinv",
     "betainc", "betaincc", "betaincinv", "betainccinv", "erf", "erfc", "erfinv", "erfcinv", "expi", "expn",
@@ -148,6 +180,13 @@ BOOST_CONT = {"pdf", "logpdf", "cdf", "ccdf", "logcdf", "logccdf", "icdf", "iccd
 BOOST_DISC = {"pmf", "logpmf", "cdf", "ccdf", "logcdf", "logccdf"}  # (its discrete quantiles round otherwise)
 BOOST_MOMENTS = {"mean", "variance", "standard_deviation", "skewness", "kurtosis", "median", "mode"}
 BOOST_DISCRETE_DISTS = {"binomial", "bernoulli", "poisson", "negativebinomial", "geometric"}
+# the distributions boost_comparator.cpp and bench/speed/boost_speed.cpp build (as "<dist>:<method>"
+# names); a static table, so listing the speed cases builds nothing (a test checks both libraries)
+BOOST_DISTS = frozenset({
+    "normal", "studentt", "chisquared", "f", "gamma", "beta", "exponential", "lognormal", "uniform", "cauchy",
+    "laplace", "logistic", "weibull", "gumbel", "pareto", "rayleigh", "inversegamma", "noncentralchisquared",
+    "noncentralt", "noncentralf", "binomial", "bernoulli", "poisson", "negativebinomial", "geometric",
+})  # fmt: skip
 
 
 # ------------------------------------------------------------------------------ stats

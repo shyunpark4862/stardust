@@ -1,11 +1,12 @@
 """Reference values for sd.special from Arb (python-flint; docs/design/special.md §6).
 
-    .venv/bin/python tools/special_ref.py            # every function in FUNCTIONS and COMPLEX
-    .venv/bin/python tools/special_ref.py NAME ...   # only these
-    .venv/bin/python tools/special_ref.py --jobs=8 NAME ...   # points in 8 processes (default 10)
+    .venv/bin/python tools/special_ref.py                 # every function in FUNCTIONS and COMPLEX
+    .venv/bin/python tools/special_ref.py NAME ...        # only these (reduce_cases: the reductions)
+    .venv/bin/python tools/special_ref.py --jobs 4 NAME   # points in 4 processes (default 8, at most 10)
 
-writes tests/special/ref/<name>.npz (format: tests/special/refdata.py). The files are
-committed; tests and bench/accuracy read them and never call Arb.
+writes tests/special/ref/<name>.npz (layout: tests/reffile.py; read by tests/special/refdata.py).
+The files are committed; tests and bench/accuracy read them and never call Arb. An unknown NAME
+is a usage error (exit status 2). The console output also goes to build/logs/special_ref/.
 
 Each reference is an Arb ball [mid +- rad] that contains the true value, evaluated at
 doubling precision until rad is below 2^-110 of the value (or 2^-1132 absolutely, below the
@@ -13,7 +14,10 @@ normal doubles), so hi + lo is the value rounded (tools/arbref.py). Arb's functi
 their own errors; the sums written here (the incomplete gamma and beta series, the
 noncentral Poisson mixtures) add a bound on their truncated tail (arbref.add_error); the
 inverses are certified by the sign change of F(x) - p across x (1 -+ 2^-110). A point that
-does not settle by 8192 bits, or within POINT_SECONDS, is dropped.
+does not settle by 8192 bits (arbref.MAX_PREC), or whose series or iteration does not end within
+its cap (MAX_TERMS terms, Newton's iteration count), is dropped; the file keeps every requested
+input and lists the dropped ones (the method's dropped field), so a run on any machine drops the
+same points.
 
 Each function's input set (docs/design/special.md §6) is
   - a grid over its guaranteed region,
@@ -26,11 +30,9 @@ The generator is seeded: running the tool again gives the same file.
 
 import math
 import sys
-from contextlib import contextmanager
 from pathlib import Path
 
 import arbref
-import flint
 import numpy as np
 from arbref import (
     NotSettled,
@@ -45,9 +47,12 @@ from arbref import (
 from flint import acb, arb
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tests import reffile  # noqa: E402
+
 OUT = ROOT / "tests" / "special" / "ref"
 FLOOR = arbref.DOUBLE_TINY  # values below the normal doubles need only an absolute 2^-1132
-MODULUS_BITS = arbref.TARGET_BITS + 10  # a complex part far below |f| need only 2^-120 |f| (S8: |error| / |f|)
+MODULUS_BITS = arbref.TARGET_BITS + 10  # a complex part far below |f| need only 2^-120 |f| (measured: |error| / |f|)
 TRUNC_BITS = arbref.TARGET_BITS + 12  # the series here stop when their tail bound is below 2^-max(122, prec) of the sum
 MAX_TERMS = 4_000_000  # a series that has not converged by then gives up (NotSettled)
 
@@ -139,7 +144,7 @@ def _cf_tan_inputs(rng):
     return (x,), np.abs(x) <= 1.0
 
 
-# ---- S1: logistic and information (docs/api/special.md §5). Guaranteed region: the whole
+# ---- logistic and information (docs/api/special.md §5). Guaranteed region: the whole
 # domain (user decision 2026-11-13), so every finite input is "guaranteed".
 
 
@@ -220,7 +225,7 @@ def _rel_entr_inputs(rng):
     return (x, y), np.ones(x.size, dtype=bool)
 
 
-# ---- S2: the error function and the normal distribution (docs/api/special.md §2).
+# ---- the error function and the normal distribution (docs/api/special.md §2).
 # Guaranteed region: the whole domain (user decision 2026-11-13).
 
 SQRT2 = np.sqrt(2.0)
@@ -376,7 +381,7 @@ def _ref_ndtri(p):
     return -arb(2).sqrt() * (2 * p).erfcinv()  # Arb's erfcinv is a rigorous ball (no root to certify)
 
 
-# ---- S3: gamma, beta and zeta (docs/api/special.md §3, §7). Guaranteed (relative 1e-14,
+# ---- gamma, beta and zeta (docs/api/special.md §3, §7). Guaranteed (relative 1e-14,
 # user decision 2026-11-14): gamma, rgamma, Riemann zeta everywhere; gammaln, digamma,
 # polygamma for x > 0; beta for a, b > 0; Hurwitz zeta for q > 0; binom for n >= 0. The
 # rest -- and all of betaln -- is held to |error| <= 1e-14 max(1, |value|) (test_reference).
@@ -544,7 +549,7 @@ def _ref_polygamma(n, x):
 
 
 def _ref_binom(n, k):
-    if k == k.floor() and k >= 0:  # the falling factorial (S3 user decision)
+    if k == k.floor() and k >= 0:  # the falling factorial (docs/api/special.md §3)
         r = arb(1)
         for i in range(1, int(float(k)) + 1):
             r *= (n - k + i) / i
@@ -577,8 +582,8 @@ def _zero_at_zero(f):
     return lambda *a: 0.0 if a[0] == 0 else f(*a)
 
 
-# S4: the incomplete gamma and beta functions and their inverses. Guaranteed everywhere
-# (S4 user decision); the sets cover a <= 1e6 (gamma) and a, b <= 1e5 (beta). The inverses
+# The incomplete gamma and beta functions and their inverses. Guaranteed everywhere
+# (docs/api/special.md §4); the sets cover a <= 1e6 (gamma) and a, b <= 1e5 (beta). The inverses
 # store `scale` = max(1, kappa), kappa = |F / (x F')|: their contract is |dx / x| <= 1e-14 scale.
 
 
@@ -604,7 +609,7 @@ def _gammainc_inputs(rng):
             loguniform(rng, 1e-300, 1e-3, m // 2),
         ]
     )
-    # region boundaries: x = 0.5, 1.1; a = 20; |x - a| = 0.4 a; the scipy errors of S4
+    # region boundaries: x = 0.5, 1.1; a = 20; |x - a| = 0.4 a; the scipy errors measured there
     ea = np.array([0.3, 0.3, 0.8, 0.8, 21.0, 21.0, 100.0, 100.0, 1e-300, 5e-324, 1.0, 0.5, 2.0])
     ex = np.array(
         [
@@ -786,12 +791,6 @@ def _ibeta(a, b, x, y):
     if _beta_cost(af, bf, xf) <= 4 * _beta_cost(bf, af, yf) + 200:
         return _beta_series(a, b, x, y)
     return 1 - _beta_series(b, a, y, x)
-
-
-def _ibeta_pair(a, b, x, y):
-    """(I_x(a, b), 1 - I_x(a, b)) with y = 1 - x given (arb in, arb out; a, b > 0): each
-    evaluated as _ibeta (1 minus the other would lose a tiny value)."""
-    return _ibeta(a, b, x, y), _ibeta(b, a, y, x)
 
 
 def _ref_betainc(a, b, x):
@@ -984,7 +983,7 @@ def _ellip_inputs(rng):
     return (x,), np.ones(x.size, dtype=bool)
 
 
-# S6: Bessel and Airy (S6 user decisions). The oscillatory functions store `scale` =
+# Bessel and Airy (docs/api/special.md §6). The oscillatory functions store `scale` =
 # max(1, M / |f|) where the envelope bound applies (x >= 0.99 z1, z1 the function's first
 # positive zero; every x for a negative non-integer order; x < 0 for Airy), so the test's
 # relative bound times scale is |error| <= 1e-14 M. iv with a negative non-integer order:
@@ -1130,7 +1129,7 @@ SCALES = {
 }
 
 
-# S7 (user decisions): lambertw everywhere; hyp1f1, hyp2f1 guaranteed only where a form with
+# lambertw guaranteed everywhere (docs/api/special.md); hyp1f1, hyp2f1 only where a form with
 # positive terms exists (the flag per point), the rest is their loose region.
 
 
@@ -1218,9 +1217,9 @@ def _hyp2f1_inputs(rng):
     return (a, b, c, z), g
 
 
-# T1: the distribution functions (docs/api/special.md §13). Measured over the whole domain
-# first (the guaranteed regions are chosen from these measurements, T1 decision). The
-# inverses store scale = max(1, kappa), kappa = |p / (x F'(x))|, as in S4.
+# The distribution functions (docs/api/special.md §13). Measured over the whole domain first
+# (the guaranteed regions are chosen from these measurements). The inverses store
+# scale = max(1, kappa), kappa = |p / (x F'(x))|, as the incomplete gamma and beta inverses.
 
 
 def _t_tail(df, t):  # P(T <= -|t|)
@@ -1369,7 +1368,6 @@ def _pdtr_inputs(rng):
 
 
 def _bdtr_inputs(rng, real_n=False):
-    # (named _binom_inputs until 2026-11-16, which shadowed S3's binom set: binom.npz is that set)
     m = 600
     n = np.concatenate([np.floor(loguniform(rng, 1, 1e4, m)), rng.integers(1, 40, m).astype(float)])
     k = np.floor(rng.uniform(0, 1, 2 * m) * n)
@@ -1401,7 +1399,7 @@ def _ndtri_exp_inputs(rng):
     return (y,), np.ones(y.size, dtype=bool)
 
 
-# T2: the noncentral distributions. Each value is a Poisson mixture of incomplete gamma or
+# The noncentral distributions. Each value is a Poisson mixture of incomplete gamma or
 # beta functions; both tails are summed directly as sums of positive terms (1 - the other
 # tail would lose a tiny value), each family of incomplete functions by its stable
 # recurrence: the lower functions (decreasing in the shape) backward from a start J past
@@ -1496,23 +1494,6 @@ def _ncf_pair(dfn, dfd, nc, f, upper):
     )
 
 
-@contextmanager
-def _alarm_deferred():
-    """SIGALRM held while Arb calls back into Python (acb.integral): an exception raised inside
-    the callback does not stop the integration, so the handler only records the alarm (the
-    integrand then returns NaN and the integration ends at once); the original handler runs after."""
-    import signal
-
-    fired = []
-    old = signal.signal(signal.SIGALRM, lambda *a: fired.append(a))
-    try:
-        yield fired
-    finally:
-        signal.signal(signal.SIGALRM, old)
-        if fired and callable(old):
-            old(*fired[0])
-
-
 def _nct_opposite(df, a, t):
     """P(T > t) for t > 0 and d = -a < 0, the tail away from the noncentrality, from the
     definition T = (Z + d) / S, S = sqrt(V / df): int_0^inf Phi(-(a + t s)) f_S(s) ds, in
@@ -1560,15 +1541,11 @@ def _nct_opposite(df, a, t):
     pts = [lo] + [v0 + k * sig for k in (-20, -6, -2, 0, 2, 6, 20) if lo < v0 + k * sig < hi] + [hi]
     G, r2 = arb(gmax), arb(2).sqrt()
 
-    with _alarm_deferred() as fired:
+    def integrand(v, _analytic):
+        s = v.exp()
+        return ((a + t * s) / r2).erfc() / 2 * (lc - G + df * v - df * s * s / 2).exp()
 
-        def integrand(v, _analytic):
-            if fired:
-                return acb(float("nan"))
-            s = v.exp()
-            return ((a + t * s) / r2).erfc() / 2 * (lc - G + df * v - df * s * s / 2).exp()
-
-        total = sum((acb.integral(integrand, arb(pts[i]), arb(pts[i + 1])) for i in range(len(pts) - 1)), acb(0))
+    total = sum((acb.integral(integrand, arb(pts[i]), arb(pts[i + 1])) for i in range(len(pts) - 1)), acb(0))
     body = total.real * G.exp()
     s_lo, s_hi = arb(lo).exp(), arb(hi).exp()
     outside = _ndtr(-a) * _gammainc(df / 2, df * s_lo * s_lo / 2) + _ndtr(-(a + t * s_hi)) * _gammainc(
@@ -1885,7 +1862,7 @@ INVERSES = {
 FUNCTIONS = {
     # the engine's test function (csrc/special/ops/testing.hpp): checks the pipeline end to end
     "_cf_tan": (1, lambda x: x.tan(), _cf_tan_inputs),
-    # S1
+    # logistic and information
     "expit": (1, _expit, _expit_inputs),
     "logit": (1, lambda p: (p / (1 - p)).log(), _logit_inputs),
     "log_expit": (1, _log_expit, _expit_inputs),
@@ -1893,7 +1870,7 @@ FUNCTIONS = {
     "xlog1py": (2, _zero_at_zero(lambda x, y: x * y.log1p()), _xlog1py_inputs),
     "entr": (1, _zero_at_zero(lambda x: -x * x.log()), _entr_inputs),
     "rel_entr": (2, _zero_at_zero(lambda x, y: x * (x / y).log()), _rel_entr_inputs),
-    # S2
+    # the error function and the normal distribution
     "erf": (1, lambda x: x.erf(), _erf_inputs),
     "erfc": (1, lambda x: x.erfc(), _erfc_inputs),
     "erfcx": (1, _ref_erfcx, _erfcx_inputs),
@@ -1902,7 +1879,7 @@ FUNCTIONS = {
     "ndtri": (1, _ref_ndtri, _ndtri_inputs),
     "erfinv": (1, lambda y: y.erfinv(), _erfinv_inputs),
     "erfcinv": (1, lambda z: z.erfcinv(), _erfcinv_inputs),
-    # S3
+    # gamma, beta and zeta
     "gamma": (1, lambda x: x.gamma(), _gamma_inputs),
     "rgamma": (1, lambda x: x.rgamma(), _rgamma_inputs),
     "gammaln": (1, _ref_gammaln, _gammaln_inputs),
@@ -1913,7 +1890,7 @@ FUNCTIONS = {
     "binom": (2, _ref_binom, _binom_inputs),
     "zeta": (1, lambda x: x.zeta(), _zeta_inputs),
     "zeta_hurwitz": (2, _ref_zeta_hurwitz, _hurwitz_inputs),
-    # S4
+    # the incomplete gamma and beta functions
     "gammainc": (2, _ref_gammainc, _gammainc_inputs),
     "gammaincc": (2, _ref_gammaincc, _gammainc_inputs),
     "gammaincinv": (2, _gamma_inverse(False), _gammaincinv_inputs),
@@ -1922,7 +1899,7 @@ FUNCTIONS = {
     "betaincc": (3, _ref_betaincc, _betainc_inputs),
     "betaincinv": (3, _beta_inverse(False), _betaincinv_inputs),
     "betainccinv": (3, _beta_inverse(True), _betaincinv_inputs),
-    # T1
+    # the distribution functions
     "stdtr": (2, _ref_stdtr, _stdtr_inputs),
     "stdtrit": (2, _ref_stdtrit, _stdtrit_inputs),
     "chdtr": (2, lambda v, x: _gammainc(v / 2, x / 2), _chdtr_inputs),
@@ -1938,7 +1915,7 @@ FUNCTIONS = {
     "nbdtr": (3, lambda k, n, p: _ibeta(n, k + 1, p, 1 - p), lambda rng: _bdtr_inputs(rng, True)),
     "nbdtrc": (3, lambda k, n, p: _ibeta(k + 1, n, 1 - p, p), lambda rng: _bdtr_inputs(rng, True)),
     "ndtri_exp": (1, _ref_ndtri_exp, _ndtri_exp_inputs),
-    # T2 (x last: chndtr(df, nc, x), T2 decision)
+    # the noncentral distributions (x last: chndtr(df, nc, x))
     "chndtr": (3, lambda df, nc, x: _ncx2_pair(df, nc, x, False), _chndtr_inputs),
     "chndtrc": (3, lambda df, nc, x: _ncx2_pair(df, nc, x, True), _chndtr_inputs),
     "nctdtr": (3, lambda df, d, t: _ref_nct(df, d, t, False), _nctdtr_inputs),
@@ -1948,12 +1925,12 @@ FUNCTIONS = {
     "chndtrix": (3, _ref_chndtrix, _chndtrix_inputs),
     "nctdtrit": (3, _ref_nctdtrit, _nctdtrit_inputs),
     "ncfdtri": (4, _ref_ncfdtri, _ncfdtri_inputs),
-    # S5
+    # exponential integrals and elliptic integrals
     "expi": (1, lambda x: x.ei(), _expi_inputs),
     "expn": (2, lambda n, x: x.expint(n), _expn_inputs),
     "ellipk": (1, lambda m: acb(m).elliptic_k().real, _ellip_inputs),
     "ellipe": (1, lambda m: acb(m).elliptic_e().real, _ellip_inputs),
-    # S6 (I_n(-x) = (-1)^n I_n(x); Arb's scaled I is e^-z I(z), so the scaled ones are taken at |x|)
+    # Bessel and Airy (I_n(-x) = (-1)^n I_n(x); Arb's scaled I is e^-z I(z), so the scaled ones are taken at |x|)
     "i0": (1, lambda x: abs(x).bessel_i(0), _bessel01_inputs(1e-3, 713.9, True)),
     "i1": (1, lambda x: x.sgn() * abs(x).bessel_i(1), _bessel01_inputs(1e-3, 713.9, True)),
     "i0e": (1, lambda x: abs(x).bessel_i(0, scaled=True), _bessel01_inputs(1e-3, 1e300, True)),
@@ -1976,7 +1953,7 @@ FUNCTIONS = {
     "airy_aip": (1, _airy_part(1), _airy_inputs),
     "airy_bi": (1, _airy_part(2), _airy_inputs),
     "airy_bip": (1, _airy_part(3), _airy_inputs),
-    # S7
+    # Lambert W and hypergeometric
     "lambertw": (1, lambda x: x.lambertw(0), _lambertw_inputs(0)),
     "lambertw_m1": (1, lambda x: x.lambertw(-1), _lambertw_inputs(-1)),
     "hyp1f1": (3, lambda a, b, x: x.hypgeom_1f1(a, b), _hyp1f1_inputs),
@@ -1984,8 +1961,8 @@ FUNCTIONS = {
 }
 
 
-# ---- S8: complex arguments (docs/api/special.md §12). The relative error is |error| / |f|
-# (S8 user decision); `scale` carries the envelope where zeros make it unreachable:
+# ---- complex arguments (docs/api/special.md §12). The relative error is |error| / |f|; `scale`
+# carries the envelope where zeros make it unreachable:
 #   wofz  Im z < 0:  (2 |exp(-z^2)| + |w(-z)|) / |w(z)|
 #   erfc  Re z < 0:  (2 + |erfc(-z)|) / |erfc(z)|
 #   erf   |z| >= 2:  (1 + |erfc(+-z)|) / |erf(z)|  (the sign making Re >= 0)
@@ -2188,9 +2165,9 @@ COMPLEX = {
 
 def build_reduce():
     """tests/special/ref/reduce_cases.npz: arrays for logsumexp, softmax and log_softmax with
-    their references (S5). Each case is a 1-d array; `start` holds the offsets into the
-    concatenation `x`. Per case: logsumexp (hi, lo); per element: softmax and log_softmax (hi, lo).
-    Each case's values are settled together (rigorous over the whole list)."""
+    their references. Each case is a 1-d array, a group of points x; per group: lse (logsumexp,
+    hi, lo); per point: softmax and log_softmax (hi, lo). Each case's values are settled
+    together (rigorous over the whole list)."""
     rng = np.random.default_rng(20261114)
     cases = []
     for _ in range(120):
@@ -2230,31 +2207,52 @@ def build_reduce():
         for i in range(n):
             sm_hi[start[c] + i], sm_lo[start[c] + i] = to_dd(vals[1 + i])
             ls_hi[start[c] + i], ls_lo[start[c] + i] = to_dd(vals[1 + n + i])
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
+    group = np.repeat(np.arange(len(cases)), np.diff(start))
+    pts = np.arange(allx.size)
+    reffile.write(
         OUT / "reduce_cases.npz",
-        x=allx,
-        start=start,
-        lse_hi=lse_hi,
-        lse_lo=lse_lo,
-        softmax_hi=sm_hi,
-        softmax_lo=sm_lo,
-        log_softmax_hi=ls_hi,
-        log_softmax_lo=ls_lo,
-        **_PROVENANCE,
+        **arbref.provenance(),
+        tool=TOOL,
+        n_requested=allx.size,
+        inputs={"x": allx},
+        group=group,
+        ngroups=len(cases),
+        methods={
+            "lse": {"over": "group", "index": np.arange(len(cases)), "hi": lse_hi, "lo": lse_lo},
+            "softmax": {"over": "point", "index": pts, "hi": sm_hi, "lo": sm_lo},
+            "log_softmax": {"over": "point", "index": pts, "hi": ls_hi, "lo": ls_lo},
+        },
     )
     return len(cases)
 
 
 # ---------------------------------------------------------------- writing
 
-# The reference files of special and stats carry the same two fields (tests/special/refdata.py provenance).
-_PROVENANCE = {"arb": f"python-flint {flint.__version__}", "target_bits": arbref.TARGET_BITS}
+TOOL = "tools/special_ref.py"
 
 
-def double_double(v):
-    """(hi, lo) of a settled arb (or a float): arbref.to_dd, hi the double nearest the value."""
-    return to_dd(v)
+def _save(name, xs, guaranteed, hi, lo, scale, keep):
+    """The function's file: every requested input, the references at the points kept and the
+    dropped points' indices."""
+    reffile.write(
+        OUT / f"{name}.npz",
+        **arbref.provenance(),
+        tool=TOOL,
+        n_requested=int(keep.size),
+        inputs={f"x{k}": x for k, x in enumerate(xs)},
+        methods={
+            name: {
+                "over": "point",
+                "index": np.flatnonzero(keep),
+                "dropped": np.flatnonzero(~keep),
+                "hi": hi[keep],
+                "lo": lo[keep],
+                "guaranteed": np.asarray(guaranteed, dtype=bool)[keep],
+                "scale": scale[keep],
+            }
+        },
+    )
+    return int(keep.sum()), int((~keep).sum())
 
 
 def evaluate(f, args):
@@ -2265,17 +2263,8 @@ def evaluate(f, args):
 
 def evaluate_complex(f, z):
     """f(z) (z a Python complex) as a settled acb: each part to 2^-110 of itself, or of |f(z)|
-    times 2^-10 (S8 measures |error| / |f|), or 2^-1132 absolutely."""
+    times 2^-10 (the measure is |error| / |f|), or 2^-1132 absolutely."""
     return rigorous(lambda: f(acb(z.real, z.imag)), floor=FLOOR, modulus_bits=MODULUS_BITS)
-
-
-class _Timeout(Exception):
-    pass
-
-
-def _alarm(*_):
-    """SIGALRM handler: raises _Timeout (between Arb calls; a point over POINT_SECONDS is dropped)."""
-    raise _Timeout
 
 
 def evaluate_inverse(f, args):
@@ -2284,20 +2273,15 @@ def evaluate_inverse(f, args):
         return f(*(arb(a) for a in args))
 
 
-# A point that takes longer than this is dropped (and counted). The alarm fires between Arb
-# calls; each call at the largest precision returns within seconds.
-POINT_SECONDS = 30
-_DROPS = (_Timeout, ArithmeticError, ValueError, RuntimeError)  # NotSettled is an ArithmeticError
+# A point is dropped when its value does not settle by arbref.MAX_PREC, or a series or an iteration
+# runs past its cap (NotSettled, an ArithmeticError), or Arb rejects it.
+_DROPS = (ArithmeticError, ValueError)
 
 
 def _point(task):
     """One reference point (in a worker): (index, hi, lo, scale) or (index, None) if dropped.
     Complex functions: hi and lo are complex (the parts' double-doubles)."""
-    import signal
-
     name, i, args = task
-    old = signal.signal(signal.SIGALRM, _alarm)
-    signal.alarm(POINT_SECONDS)
     try:
         sc = 1.0
         if name in COMPLEX:
@@ -2327,9 +2311,6 @@ def _point(task):
         return i, (*to_dd(v), sc)
     except _DROPS:
         return i, None
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old)
 
 
 MAX_TASKS_PER_CHILD = 500  # workers are replaced after this many points (memory stays bounded)
@@ -2359,18 +2340,7 @@ def build_complex(name, jobs=1):
             keep[i] = False
         else:
             hi[i], lo[i], scale[i] = r
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        OUT / f"{name}.npz",
-        nin=1,
-        hi=hi[keep],
-        lo=lo[keep],
-        scale=scale[keep],
-        guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
-        x0=z[keep],
-        **_PROVENANCE,
-    )
-    return int(keep.sum()), int((~keep).sum())
+    return _save(name, (z,), guaranteed, hi, lo, scale, keep)
 
 
 def build(name, jobs=1):
@@ -2387,34 +2357,32 @@ def build(name, jobs=1):
             keep[i] = False
         else:
             hi[i], lo[i], scale[i] = r
-    xs = tuple(x[keep] for x in xs)
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        OUT / f"{name}.npz",
-        nin=nin,
-        hi=hi[keep],
-        lo=lo[keep],
-        scale=scale[keep],
-        guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
-        **{f"x{k}": x for k, x in enumerate(xs)},
-        **_PROVENANCE,
-    )
-    return int(keep.sum()), int((~keep).sum())
+    return _save(name, xs, guaranteed, hi, lo, scale, keep)
 
 
-def main(argv):
-    jobs = 10
-    if argv and argv[0].startswith("--jobs="):
-        jobs, argv = int(argv[0].split("=", 1)[1]), argv[1:]
-    names = argv or list(FUNCTIONS) + list(COMPLEX) + ["reduce_cases"]
-    for name in names:
-        if name == "reduce_cases":
-            print(f"reduce_cases: {build_reduce()} arrays -> tests/special/ref/reduce_cases.npz", flush=True)
-            continue
-        n, dropped = build_complex(name, jobs) if name in COMPLEX else build(name, jobs)
-        note = f" ({dropped} dropped: not settled, or over {POINT_SECONDS} s)" if dropped else ""
-        print(f"{name}: {n} points -> {(OUT / name).with_suffix('.npz').relative_to(ROOT)}{note}", flush=True)
+def main(argv=None):
+    import argparse
+
+    from bench import cli
+
+    names = list(FUNCTIONS) + list(COMPLEX) + ["reduce_cases"]
+    ap = argparse.ArgumentParser(prog="tools/special_ref.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument("names", nargs="*", metavar="NAME", help="functions to build (default: all)")
+    cli.add_jobs(ap)
+    a = ap.parse_args(argv)
+    unknown = [n for n in a.names if n not in names]
+    if unknown:
+        ap.error(f"unknown function {unknown[0]!r}")
+    with arbref.logged("special_ref"):
+        for name in a.names or names:
+            if name == "reduce_cases":
+                print(f"reduce_cases: {build_reduce()} arrays -> tests/special/ref/reduce_cases.npz", flush=True)
+                continue
+            n, dropped = build_complex(name, a.jobs) if name in COMPLEX else build(name, a.jobs)
+            note = f" ({dropped} dropped: not settled within the precision and iteration caps)" if dropped else ""
+            print(f"{name}: {n} points -> {(OUT / name).with_suffix('.npz').relative_to(ROOT)}{note}", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main())

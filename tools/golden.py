@@ -1,34 +1,47 @@
 """Golden outputs: the results of the public API at fixed inputs, stored exactly, so a change
 that must not change results (a move, a refactor, the formatter) can be checked bit for bit.
 
-    .venv/bin/python tools/golden.py record [AREA ...]      # run the cases, write tests/golden/data/AREA.json
+    .venv/bin/python tools/golden.py record [AREA ...]      # run the cases, write tests/golden/data/<area>.json
     .venv/bin/python tools/golden.py check  [AREA ...]      # run the cases, list every case that differs
     .venv/bin/python tools/golden.py list   [AREA ...]      # case counts per area (no run)
 
-Options: --case REGEX (only matching case names; check reports only those, record updates only
-those), --threads 1,3,10, --jobs N (worker processes, default 8, at most 10), -v (every difference, not the
-first few per case), --slow N (print the N slowest cases), --out DIR (golden files elsewhere), --any-nan (check: NaNs
-that differ only in sign or payload are equal; such differences are named as such either way).
+Options (bench/cli.py has the conventions every tool shares): --match PATTERN (only the cases
+whose name matches: a glob, or a substring without wildcards; repeatable; check reports only
+those, record replaces only those and drops the matching names that are no longer cases),
+--jobs N (worker processes, default 8, at most 10), --out FILE (the golden file of the one area
+given, in place of tests/golden/data/<area>.json), --threads 1,3,10, -v (every difference, not the
+first few per case), --slow N (print the N slowest cases), --any-nan (check: NaNs that differ
+only in sign or payload are equal; such differences are named as such either way).
 Environment: GOLDEN_TIMEOUT (seconds a case may take before its worker is stopped and the case
 named, default 120), GOLDEN_TRACE=1 (workers print each case name as it starts).
 
-The cases live in tests/golden/cases_AREA.py: ``cases(L)`` yields (name, thunk); thunk() returns
-a result or raises (an error is a result too: its type and message are stored). An optional
+The cases live in tests/golden/cases_<area>.py: ``cases(L)`` yields (name, thunk); thunk() returns
+a result or raises (an error is a result too: its class and message are stored). An optional
 ``encode(x, L, enc)`` gives the exact form of an area's own objects (enc encodes the parts).
-L is tests/golden/_lib.py's context: L.sd, L.np, L.rng(seed), L.arr(numpy array).
+L is tests/golden/_lib.py's context: L.sd, L.np, L.rng(seed), L.arr(numpy array). Optional
+module constants: EXCLUDED = {public name: reason} for a name of the area's __all__ no case
+calls, THREAD_DEPENDENT = {case name: reason} for a case whose result may depend on the thread
+count (tests/golden/test_golden.py checks both lists).
 
-Every area runs once per thread count, each in its own process (PYTHONHASHSEED=0), and the
-results must agree across thread counts; a case whose result depends on the thread count is
-stored per thread count and reported. Results are encoded exactly:
-  float -> float.hex (NaN keeps its bits), arrays with at most SMALL elements -> every element,
-  larger arrays -> dtype, shape, strides, the SHA-256 of their bytes and a fixed sample of
-  elements, objects of stardust classes -> every public attribute and every method callable
-  without arguments, warnings raised by a case -> category and message.
-Exit status of check: 0 when nothing differs, 1 otherwise; 2 when a worker failed.
+Every area runs once per thread count, each in its own process (PYTHONHASHSEED=0, GOLDEN_TMP
+the run's temporary folder, removed at the end), and the results must agree bit for bit across
+thread counts: record stores no result that depends on the thread count and exits 1 naming the
+case, unless the case is in THREAD_DEPENDENT (it is then stored per thread count).
+Results are encoded exactly, and compared as normalized JSON text, so a type is part of the
+result (True is not 1, a numpy scalar is not a Python one):
+  bool, int, str and None as themselves; float -> float.hex (NaN keeps its bits); complex -> two
+  of those; numpy scalars -> their dtype and value; other subclasses of the built-in types ->
+  their class and value; exceptions and warnings -> class (module.qualname) and message;
+  arrays with at most SMALL elements -> every element; larger arrays -> dtype, shape, strides,
+  the SHA-256 of their bytes, a hash per chunk of elements (so a difference is placed and
+  counted) and a fixed sample of elements; objects of stardust classes -> every public
+  attribute and every method callable without arguments.
+Exit status (bench/cli.py): 0 nothing differs; 1 a difference, a missing or old-format golden
+file, or (record) a thread-dependent result; 2 a usage error or a failed worker.
 
 The terminal shows a header block, a progress bar over the cases of every area and thread count
 (the workers that finish are named above it), a summary block and tables (bench/console.py);
-the same lines, time-stamped, go to build/golden/<stamp>.log.
+the same lines, time-stamped, go to build/logs/golden/<stamp>.log.
 """
 
 import argparse
@@ -40,7 +53,6 @@ import json
 import math
 import os
 import pathlib
-import re
 import shutil
 import struct
 import subprocess
@@ -50,21 +62,22 @@ import time
 import traceback
 import warnings
 
-import procrun
-
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from bench import areas as AREAS_MOD  # noqa: E402
+from bench import cli  # noqa: E402
 from bench import console as C  # noqa: E402
 
 GOLDEN = ROOT / "tests" / "golden"
 DATA = GOLDEN / "data"
-AREAS = ("array", "linalg", "random", "special", "stats", "frame", "regression", "optimize")
+AREAS = AREAS_MOD.AREAS
 THREADS = (1, 3, 10)
-MAX_JOBS = 10
-DEFAULT_JOBS = 8
 SMALL = 1024  # arrays up to this many elements are stored element by element
+CHUNK = 256  # a larger array's elements are hashed in chunks of at least this many ...
+MAX_CHUNKS = 256  # ... and at most this many chunks per array (longer chunks beyond 65,536 elements)
+CHUNK_HEX = 8  # hex digits kept of each chunk's SHA-256
 CASE_TIMEOUT = 120.0  # seconds; GOLDEN_TIMEOUT overrides
-FORMAT = 1
+FORMAT = 2
 
 # --------------------------------------------------------------------------------------------
 # encoding
@@ -84,8 +97,25 @@ def unhex(s):
     return float.fromhex(s)
 
 
+def qualname(t):
+    """A class as module.qualname: builtins.ValueError, stardust.linalg.LinAlgError."""
+    return f"{t.__module__}.{t.__qualname__}"
+
+
+def canon(e):
+    """The normalized JSON text of an encoding: what record and check compare."""
+    return json.dumps(e, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def same(a, b):
+    return a is b or canon(a) == canon(b)
+
+
+BUILTIN_BASES = (bool, int, float, complex, str, bytes, list, dict, set, frozenset)
+
+
 class Encoder:
-    """enc(x): a JSON-able form of a result, exact to the bit."""
+    """enc(x): a JSON-able form of a result, exact to the bit and to the type."""
 
     def __init__(self, L, area_encode=None):
         self.L, self.sd, self.np = L, L.sd, L.np
@@ -98,50 +128,52 @@ class Encoder:
     def enc(self, x):
         np, sd = self.np, self.sd
         if isinstance(x, BaseException):
-            return {"error": type(x).__name__, "msg": str(x)}
+            return {"error": qualname(type(x)), "msg": str(x)}
         if self.area_encode is not None:
             e = self.area_encode(x, self.L, self)
             if e is not None:
                 return e
-        if x is None or isinstance(x, (bool, str)):
+        t = type(x)
+        if x is None or t is bool or t is str or t is int:
             return x
-        if isinstance(x, int):
-            return int(x)
-        if isinstance(x, float):
+        if t is float:
             return {"f": fhex(x)}
-        if isinstance(x, complex):
+        if t is complex:
             return {"c": [fhex(x.real), fhex(x.imag)]}
         if isinstance(x, sd.ndarray):
             return self.array(np.asarray(x), "nd", str(x.dtype), list(x.shape), list(x.strides))
         if isinstance(x, np.ndarray):
             return self.array(x, "np", x.dtype.str, list(x.shape), list(x.strides))
-        if isinstance(x, np.generic):
+        if isinstance(x, np.generic):  # before the built-in types: np.float64 is a float
             return {"npscalar": x.dtype.str, "v": self.enc(x.item())}
         if isinstance(x, type(sd.float64)):
             return {"dtype": str(x)}
-        if isinstance(x, tuple):
-            out = {"tuple": type(x).__name__, "items": [self.enc(v) for v in x]}
-            if hasattr(type(x), "_fields"):
-                out["fields"] = list(type(x)._fields)
+        if isinstance(x, tuple):  # tuple, named tuple, structseq: the class is part of the result
+            out = {"tuple": qualname(t), "items": [self.enc(v) for v in x]}
+            if hasattr(t, "_fields"):
+                out["fields"] = list(t._fields)
             return out
-        if isinstance(x, list):
+        if t is list:
             return [self.enc(v) for v in x]
-        if isinstance(x, dict):
+        if t is dict:
             return {"dict": [[self.enc(k), self.enc(v)] for k, v in x.items()]}
-        if isinstance(x, (set, frozenset)):
+        if t is set or t is frozenset:
             items = [self.enc(v) for v in x]
-            return {"set": sorted(items, key=lambda e: json.dumps(e, sort_keys=True))}
-        if isinstance(x, (bytes, bytearray)):
+            return {t.__name__: sorted(items, key=canon)}
+        if t is bytes or t is bytearray:
             return {"bytes": bytes(x).hex()}
+        base = next((b for b in BUILTIN_BASES if isinstance(x, b)), None)
+        if base is not None:  # IntEnum, a str or dict subclass: the class and the plain value
+            return {"subclass": qualname(t), "v": self.enc(base(x))}
         if isinstance(x, (range, slice)) or x is Ellipsis:
             return {"repr": repr(x)}
         if isinstance(x, sd.random.Generator):
             return {"generator": self.enc(x.state)}
         if isinstance(x, type) or inspect.isroutine(x):
             return {"callable": f"{getattr(x, '__module__', '?')}.{getattr(x, '__qualname__', repr(x))}"}
-        if type(x).__module__.startswith("stardust"):
+        if t.__module__.startswith("stardust"):
             return self.obj(x)
-        raise TypeError(f"golden: no encoding for {type(x).__module__}.{type(x).__qualname__}")
+        raise TypeError(f"golden: no encoding for {qualname(t)}")
 
     def array(self, a, tag, dtype, shape, strides):
         np = self.np
@@ -154,13 +186,20 @@ class Encoder:
             if n <= SMALL:
                 out["v"] = [elem(v) for v in flat.tolist()]
             else:
+                raw = np.ascontiguousarray(flat).tobytes()
                 out["n"] = n
-                out["sha"] = hashlib.sha256(np.ascontiguousarray(flat).tobytes()).hexdigest()[:32]
+                out["sha"] = hashlib.sha256(raw).hexdigest()[:32]
                 if kind in "fc":  # the sha with every NaN made the default one, when that differs
-                    canon = np.where(np.isnan(flat), np.nan, flat) if kind == "f" else canon_complex(np, flat)
-                    shan = hashlib.sha256(np.ascontiguousarray(canon).tobytes()).hexdigest()[:32]
+                    canon_ = np.where(np.isnan(flat), np.nan, flat) if kind == "f" else canon_complex(np, flat)
+                    shan = hashlib.sha256(np.ascontiguousarray(canon_).tobytes()).hexdigest()[:32]
                     if shan != out["sha"]:
                         out["shan"] = shan
+                step = chunk_len(n)
+                size = flat.dtype.itemsize
+                out["chunk"] = step
+                out["chunks"] = "".join(
+                    hashlib.sha256(raw[i * size : (i + step) * size]).hexdigest()[:CHUNK_HEX] for i in range(0, n, step)
+                )
                 out["sample"] = [[i, elem(flat[i].item())] for i in sample_indices(n)]
         else:  # object, string: element by element through enc
             vals = [self.enc(v) for v in flat.tolist()]
@@ -168,8 +207,13 @@ class Encoder:
                 out["v"] = vals
             else:
                 out["n"] = n
-                blob = json.dumps(vals, sort_keys=True, separators=(",", ":")).encode()
-                out["sha"] = hashlib.sha256(blob).hexdigest()[:32]
+                out["sha"] = hashlib.sha256(canon(vals).encode()).hexdigest()[:32]
+                step = chunk_len(n)
+                out["chunk"] = step
+                out["chunks"] = "".join(
+                    hashlib.sha256(canon(vals[i : i + step]).encode()).hexdigest()[:CHUNK_HEX]
+                    for i in range(0, n, step)
+                )
                 out["sample"] = [[i, vals[i]] for i in sample_indices(n)]
         return out
 
@@ -207,9 +251,15 @@ class Encoder:
                         attrs[name + "()"] = self.enc(r)
                     continue
                 attrs[name] = self.enc(v)
-            return {"obj": f"{type(x).__module__}.{type(x).__qualname__}", "attrs": attrs}
+            return {"obj": qualname(type(x)), "attrs": attrs}
         finally:
             self.stack.pop()
+
+
+def chunk_len(n):
+    """Elements per hashed chunk of an n-element array: CHUNK, longer when that would make more
+    than MAX_CHUNKS chunks."""
+    return max(CHUNK, -(-n // MAX_CHUNKS))
 
 
 def canon_complex(np, z):
@@ -220,13 +270,14 @@ def canon_complex(np, z):
 
 
 def any_nan(e):
-    """An encoding with NaN bits forgotten: every NaN the default one (check --any-nan)."""
+    """An encoding with NaN bits forgotten: every NaN the default one (check --any-nan). A large
+    array keeps its NaN-blind sha and sample; its chunk hashes, which see NaN bits, are dropped."""
     if isinstance(e, str):
         return "nan" if e.startswith("nan:") else e
     if isinstance(e, list):
         return [any_nan(v) for v in e]
     if isinstance(e, dict):
-        out = {k: any_nan(v) for k, v in e.items() if k != "shan"}
+        out = {k: any_nan(v) for k, v in e.items() if k not in ("shan", "chunks")}
         if "shan" in e:
             out["sha"] = e["shan"]
         return out
@@ -259,18 +310,22 @@ def load_area(area):
     return lib.Lib(), mod
 
 
-def run_worker(area, threads, out, case_rx):
-    L, mod = load_area(area)
-    rx = re.compile(case_rx) if case_rx else None
-    L.sd.set_num_threads(threads)
-    E = Encoder(L, getattr(mod, "encode", None))
+def case_names(mod, L, area):
+    """The case names and thunks of an area, in order; SystemExit on a duplicate name."""
     todo, seen = [], set()
     for name, thunk in mod.cases(L):
         if name in seen:
             raise SystemExit(f"golden: {area}: duplicate case name {name!r}")
         seen.add(name)
-        if rx is None or rx.search(name):
-            todo.append((name, thunk))
+        todo.append((name, thunk))
+    return todo
+
+
+def run_worker(area, threads, out, patterns):
+    L, mod = load_area(area)
+    L.sd.set_num_threads(threads)
+    E = Encoder(L, getattr(mod, "encode", None))
+    todo = [(name, thunk) for name, thunk in case_names(mod, L, area) if cli.matches(patterns, name)]
     res, times = {}, {}
     trace = os.environ.get("GOLDEN_TRACE")  # print each case name before it runs
     # A case that hangs (even holding the GIL) ends the worker after CASE_TIMEOUT seconds; the
@@ -298,7 +353,7 @@ def run_worker(area, threads, out, case_rx):
                 msg = f"golden: {area}: case {name!r}: cannot encode its result\n{traceback.format_exc()}"
                 raise SystemExit(msg) from None
         if caught:
-            rec["w"] = [[w.category.__name__, str(w.message)] for w in caught]
+            rec["w"] = [[qualname(w.category), str(w.message)] for w in caught]
         faulthandler.cancel_dump_traceback_later()
         times[name] = time.perf_counter() - t0
         res[name] = rec
@@ -312,21 +367,27 @@ def run_worker(area, threads, out, case_rx):
 # driver
 
 
-def count_cases(areas, case_rx):
+def count_cases(areas, patterns):
     """{area: the number of cases a worker will run} (the cases are made, not run: about a second)."""
-    rx = re.compile(case_rx) if case_rx else None
     out = {}
     for area in areas:
         L, mod = load_area(area)
-        out[area] = sum(1 for name, _ in mod.cases(L) if rx is None or rx.search(name))
+        out[area] = sum(1 for name, _ in mod.cases(L) if cli.matches(patterns, name))
     return out
 
 
-def run_all(areas, threads, jobs, case_rx, con, counts):
+def run_all(areas, threads, jobs, patterns, con, counts):
     """{area: {threads: {name: record}}}, {area: {name: seconds}}, seconds, [failures] -- the
     workers in parallel, a bar over every case at every thread count."""
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="sd-golden-"))
-    env = dict(os.environ, PYTHONHASHSEED="0")
+    try:
+        return _run_all(tmp, areas, threads, jobs, patterns, con, counts)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _run_all(tmp, areas, threads, jobs, patterns, con, counts):
+    env = dict(os.environ, PYTHONHASHSEED="0", GOLDEN_TMP=str(tmp))
     # Big areas first so the slowest workers start early.
     order = {"frame": 0, "array": 1, "regression": 2, "stats": 3, "special": 4}
     tasks = sorted(((a, n) for a in areas for n in threads), key=lambda t: (order.get(t[0], 9), t[1]))
@@ -334,12 +395,13 @@ def run_all(areas, threads, jobs, case_rx, con, counts):
     running, results, times, failed = [], {}, {}, []
     finished, last_tenth, last_drawn, seen = 0, -1, 0.0, {}
     t0 = time.perf_counter()
+    match = [a for p in patterns for a in ("--match", p)]
     con.start(total, "golden")
     while tasks or running:
         while tasks and len(running) < jobs:
             a, n = tasks.pop(0)
             out = tmp / f"{a}-{n}.json"
-            cmd = [sys.executable, __file__, "_worker", a, str(n), str(out)] + (["--case", case_rx] if case_rx else [])
+            cmd = [sys.executable, __file__, "_worker", a, str(n), str(out), *match]
             err = open(tmp / f"{a}-{n}.err", "w+")
             p = subprocess.Popen(cmd, env=env, cwd=ROOT, stderr=err, text=True)
             running.append((a, n, out, p, err, time.perf_counter()))
@@ -384,7 +446,6 @@ def run_all(areas, threads, jobs, case_rx, con, counts):
             con.step(done, "golden", what, el, left, plain if not con.tty else "")
             last_drawn = el
     con.close()
-    shutil.rmtree(tmp, ignore_errors=True)
     return results, times, time.perf_counter() - t0, failed
 
 
@@ -397,18 +458,21 @@ def cur_case(path):
         return 0, ""
 
 
-def merge_threads(per):
-    """{name: record or {"per_threads": {n: record}}}, [names whose record depends on threads]."""
+def merge_threads(per, allowed=()):
+    """{name: record, or {"per_threads": {n: record}} for a name in `allowed`}, [names whose
+    record depends on the thread count and is not allowed to (they are left out)]. Records are
+    compared as normalized JSON text."""
     names = list(next(iter(per.values())).keys())
     out, unstable = {}, []
     for name in names:
         recs = {n: per[n].get(name) for n in per}
-        vals = list(recs.values())
-        if all(v == vals[0] for v in vals[1:]):
-            out[name] = vals[0]
+        texts = {canon(v) for v in recs.values()}
+        if len(texts) == 1:
+            out[name] = next(iter(recs.values()))
+        elif name in allowed:
+            out[name] = {"per_threads": {str(n): v for n, v in recs.items()}}
         else:
             unstable.append(name)
-            out[name] = {"per_threads": {str(n): v for n, v in recs.items()}}
     return out, unstable
 
 
@@ -425,19 +489,17 @@ def show_float(s):
 
 
 def ulps(a, b):
-    """Units in the last place between two finite floats of the same sign, else None."""
+    """The ULP distance (bench.accuracy.common.ulp_distance: the doubles between them) of two
+    finite floats written by fhex, else None."""
     try:
         x, y = unhex(a), unhex(b)
     except ValueError, OverflowError:
         return None
-    if not (math.isfinite(x) and math.isfinite(y)) or math.copysign(1.0, x) != math.copysign(1.0, y):
+    if not (math.isfinite(x) and math.isfinite(y)):
         return None
+    from bench.accuracy.common import ulp_distance
 
-    def key(v):
-        i = struct.unpack("<q", struct.pack("<d", v))[0]
-        return i if i >= 0 else -(i & 0x7FFFFFFFFFFFFFFF)
-
-    return abs(key(x) - key(y))
+    return int(ulp_distance(x, y))
 
 
 def show_elem(e):
@@ -445,17 +507,17 @@ def show_elem(e):
         return show_float(e)
     if isinstance(e, list) and len(e) == 2 and all(isinstance(t, str) for t in e):
         return f"{show_float(e[0])} + {show_float(e[1])}j"
-    s = json.dumps(e, sort_keys=True)
+    s = canon(e)
     return s if len(s) <= 160 else s[:157] + "..."
 
 
 def elem_ulps(g, w):
     if isinstance(g, str) and isinstance(w, str):
         u = ulps(g, w)
-        return f", {u} ulp" if u is not None else ""
+        return f", {u} ulp" if u else ""  # none for +0 against -0
     if isinstance(g, list) and isinstance(w, list) and len(g) == len(w) == 2:
         us = [ulps(a, b) for a, b in zip(g, w)]
-        if all(u is not None for u in us):
+        if all(u is not None for u in us) and any(us):
             return f", {us[0]} / {us[1]} ulp"
     return ""
 
@@ -470,9 +532,23 @@ def unravel(i, shape):
     return "(" + ", ".join(str(t) for t in reversed(idx)) + ")"
 
 
+TAGS = {"f", "c", "npscalar", "subclass", "error", "tuple", "dict", "set", "frozenset", "bytes", "repr", "generator",
+        "callable", "obj", "dtype", "nd", "np", "ref", "per_threads"}  # fmt: skip
+
+
+def kind(e):
+    """The tags of an encoded dict: what sort of value it encodes (an area's own encodings too)."""
+    tags = TAGS & e.keys()
+    return tags or frozenset(e.keys())
+
+
 def diff(got, want, path, out):
-    """Append (path, text) for every difference between two encodings."""
-    if got == want:
+    """Append (path, text) for every difference between two encodings (types included: true is
+    not 1)."""
+    if same(got, want):
+        return
+    if isinstance(got, dict) and isinstance(want, dict) and kind(got) != kind(want):
+        out.append((path, f"got {short(got)}, want {short(want)}"))  # a different type: the whole value
         return
     if isinstance(got, dict) and isinstance(want, dict):
         tag = next((t for t in ("nd", "np") if t in got and t in want), None)
@@ -509,17 +585,17 @@ def diff(got, want, path, out):
 
 def diff_array(got, want, path, out, tag):
     for k in (tag, "shape", "strides"):
-        if got.get(k) != want.get(k):
+        if not same(got.get(k), want.get(k)):
             out.append((path, f"{'dtype' if k == tag else k} {got.get(k)}, want {want.get(k)}"))
     if got.get("shape") != want.get("shape"):
         return
     shape = want["shape"]
     if "v" in got and "v" in want:
-        bad = [i for i, (g, w) in enumerate(zip(got["v"], want["v"])) if g != w]
+        bad = [i for i, (g, w) in enumerate(zip(got["v"], want["v"])) if not same(g, w)]
         if bad:
             first = bad[0]
             g, w = got["v"][first], want["v"][first]
-            if all(any_nan(got["v"][i]) == any_nan(want["v"][i]) for i in bad):
+            if all(same(any_nan(got["v"][i]), any_nan(want["v"][i])) for i in bad):
                 n_all = len(want["v"])
                 text = f"only NaN bits differ (sign or payload), in {len(bad)} of {n_all} elements"
                 out.append((path, f"{text}; first at {unravel(first, shape)}: got {show_elem(g)}, want {show_elem(w)}"))
@@ -538,23 +614,44 @@ def diff_array(got, want, path, out, tag):
                 )
     elif "sha" in got and "sha" in want:
         if got["sha"] != want["sha"]:
+            n = want["n"]
             if got.get("shan", got["sha"]) == want.get("shan", want["sha"]):
-                out.append((path, f"only NaN bits differ (sign or payload; {want['n']} elements, sha)"))
+                out.append((path, f"only NaN bits differ (sign or payload; {n} elements, sha)"))
                 return
+            out.append((path, chunk_text(got, want, n, shape)))
             gs, ws = dict(map(tuple, got["sample"])), dict(map(tuple, want["sample"]))
-            bad = [i for i in ws if gs.get(i) != ws[i]]
-            text = f"bytes differ ({want['n']} elements, sha); {len(bad)} of {len(ws)} sampled elements differ"
-            if bad:
-                i = bad[0]
+            for i in [i for i in ws if not same(gs.get(i), ws[i])][:3]:
                 g, w = gs.get(i), ws[i]
-                text += f"; at {unravel(i, shape)}: got {show_elem(g)}, want {show_elem(w)}{elem_ulps(g, w)}"
-            out.append((path, text))
+                out.append(
+                    (
+                        path,
+                        f"  sampled at {unravel(i, shape)}: got {show_elem(g)}, want {show_elem(w)}{elem_ulps(g, w)}",
+                    )
+                )
     else:
         out.append((path, "stored differently (size class changed)"))
 
 
+def chunk_text(got, want, n, shape):
+    """Where a large array differs: the chunks whose hashes differ, counted, and the first one's
+    element range."""
+    step = want.get("chunk")
+    if not step or got.get("chunk") != step or "chunks" not in got or "chunks" not in want:
+        return f"bytes differ ({n} elements, sha)"
+    gc, wc = got["chunks"], want["chunks"]
+    m = len(wc) // CHUNK_HEX
+    bad = [k for k in range(m) if gc[k * CHUNK_HEX : (k + 1) * CHUNK_HEX] != wc[k * CHUNK_HEX : (k + 1) * CHUNK_HEX]]
+    if not bad:
+        return f"bytes differ ({n} elements, sha), no chunk hash does"
+    lo, hi = bad[0] * step, min(n, (bad[0] + 1) * step) - 1
+    return (
+        f"{len(bad)} of {m} chunks of {step} elements differ ({n} elements); the first is elements "
+        f"{lo}-{hi}, {unravel(lo, shape)} to {unravel(hi, shape)}"
+    )
+
+
 def short(e):
-    s = json.dumps(e, sort_keys=True, ensure_ascii=False)
+    s = canon(e)
     return s if len(s) <= 200 else s[:197] + "..."
 
 
@@ -562,13 +659,17 @@ def short(e):
 # commands
 
 
-def golden_path(area, out_dir=None):
-    return (pathlib.Path(out_dir) if out_dir else DATA) / f"{area}.json"
+def golden_path(area, out=None):
+    return pathlib.Path(out) if out else DATA / f"{area}.json"
 
 
 def shown_path(path):
     path = pathlib.Path(path)
     return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+
+
+def selection(args):
+    return " ".join(f"--match {p}" for p in args.match) if args.match else "every case"
 
 
 def header(con, what, args, areas, threads, counts, log):
@@ -586,7 +687,7 @@ def header(con, what, args, areas, threads, counts, log):
             ],
             [
                 ("Areas", " ".join(areas)),
-                ("Selection", f"--case {args.case}" if args.case else "every case"),
+                ("Selection", selection(args)),
                 ("Golden", shown_path(args.out or DATA)),
                 ("Log", shown_path(log)),
             ],
@@ -602,25 +703,50 @@ def worker_failures(con, failed):
         con.lines([f"    {line.replace(str(ROOT) + '/', '')}" for line in err.rstrip().splitlines()[-15:]])
     con.lines(C.notes(["GOLDEN_TRACE=1 prints each case name as a worker starts it; GOLDEN_TIMEOUT sets\n"
                        f"the seconds a case may take (default {CASE_TIMEOUT:.0f})."]))  # fmt: skip
-    return 2
+    return cli.ERROR
+
+
+def read_golden(path):
+    """(the file's document, None) or (None, why it cannot be compared against)."""
+    if not path.exists():
+        return None, "no golden file"
+    doc = json.loads(path.read_text())
+    if doc.get("format") != FORMAT:
+        return None, "old format"
+    return doc, None
 
 
 def cmd_record(args, areas, threads, con, log):
-    counts = count_cases(areas, args.case)
+    if args.match:  # a partial record keeps the rest of a file it can read
+        for area in areas:
+            path = golden_path(area, args.out)
+            old, why = read_golden(path)
+            if old is None and path.exists():
+                con.print(con.color(f"{shown_path(path)}: {why}; record the whole area first (no --match)", "31"))
+                return cli.ERROR
+    counts = count_cases(areas, args.match)
     header(con, "record", args, areas, threads, counts, log)
-    results, times, wall, failed = run_all(areas, threads, args.jobs, args.case, con, counts)
+    results, times, wall, failed = run_all(areas, threads, args.jobs, args.match, con, counts)
     if failed:
         return worker_failures(con, failed)
-    rows, unstable_all, total = [], [], 0
+    rows, unstable_all, allowed_all, total = [], [], [], 0
     for area in areas:
-        merged, unstable = merge_threads(results[area])
+        L, mod = load_area(area)
+        allowed = getattr(mod, "THREAD_DEPENDENT", {})
+        merged, unstable = merge_threads(results[area], allowed)
         path = golden_path(area, args.out)
-        if args.case:  # a partial record updates only the matching cases
-            old = json.loads(path.read_text())["cases"] if path.exists() else {}
-            old.update(merged)
-            merged = old
+        old, _ = read_golden(path)
+        rec_threads = list(threads)
+        if args.match and old is not None:  # replace the matching cases, drop matching names now gone
+            names = {name for name, _ in case_names(mod, L, area)}
+            kept = {k: v for k, v in old["cases"].items() if not cli.matches(args.match, k) or k in names}
+            merged = {**kept, **merged}
+            rec_threads = sorted(set(old["threads"]) | set(threads))
+        for name in unstable:  # a thread-dependent result is not stored: the old record (if any) stays
+            if old is not None and name in old["cases"]:
+                merged[name] = old["cases"][name]
         path.parent.mkdir(parents=True, exist_ok=True)
-        doc = {"format": FORMAT, "area": area, "threads": list(threads), "cases": merged}
+        doc = {"format": FORMAT, "area": area, "threads": rec_threads, "cases": merged}
         path.write_text(json.dumps(doc, indent=0, sort_keys=True, ensure_ascii=False) + "\n")
         nerr = sum(1 for v in merged.values() if isinstance(v.get("r"), dict) and "error" in v["r"])
         nw = sum(1 for v in merged.values() if "w" in v)
@@ -628,6 +754,8 @@ def cmd_record(args, areas, threads, con, log):
         rows.append([area, f"{len(merged):,}", f"{nerr:,}", f"{nw:,}", f"{size:.1f} MB", shown_path(path)])
         total += len(merged)
         unstable_all += [f"{area}/{name}" for name in unstable]
+        allowed_all += [f"{area}/{name}" for name, v in merged.items() if "per_threads" in v]
+    status = cli.FAIL if unstable_all else cli.OK
     con.lines(
         [""]
         + C.block(
@@ -638,45 +766,52 @@ def cmd_record(args, areas, threads, con, log):
                 ("Threads", ",".join(map(str, threads))),
                 ("Thread-dependent", f"{len(unstable_all):,}"),
                 ("Time", C.fmt_duration(wall)),
-                ("Partial", "yes" if args.case else "no"),
+                ("Partial", "yes" if args.match else "no"),
+                ("Exit status", str(status)),
             ],
         )  # fmt: skip
         + C.table(["Area", "Cases", "Errors", "Warnings", "Size", "File"], rows, "lrrrrl")
     )
     if unstable_all:
         con.print("")
-        con.print("Results that depend on the thread count (stored per thread count):")
+        con.print(
+            con.color("Results that depend on the thread count (not stored; a bug, DESIGN.md §1.6 rule 1):", "31")
+        )
         con.lines([f"  {name}" for name in unstable_all])
+    if allowed_all:
+        con.print("")
+        con.print("Stored per thread count (THREAD_DEPENDENT of the case file):")
+        con.lines([f"  {name}" for name in allowed_all])
     slow_table(con, times, args.slow)
     notes = [
-        "Errors and warnings are results: a case that raises stores the error's type and message.",
+        "Errors and warnings are results: a case that raises stores the error's class and message.",
         "Check the record against the library again with: .venv/bin/python tools/golden.py check",
         f"The log: {shown_path(log)}",
     ]
+    if unstable_all:
+        notes.insert(0, "A result that depends on the thread count breaks DESIGN.md §1.6 rule 1; a case whose result\n"
+                        "may rightly do so goes into THREAD_DEPENDENT of its case file, with the reason.")  # fmt: skip
     con.lines([""] + C.notes(notes))
-    return 0
+    return status
 
 
 def cmd_check(args, areas, threads, con, log):
-    counts = count_cases(areas, args.case)
+    counts = count_cases(areas, args.match)
     header(con, "check", args, areas, threads, counts, log)
-    results, times, wall, failed = run_all(areas, threads, args.jobs, args.case, con, counts)
+    results, times, wall, failed = run_all(areas, threads, args.jobs, args.match, con, counts)
     if failed:
         return worker_failures(con, failed)
-    rx = re.compile(args.case) if args.case else None
     rows, lines, totals = [], [], {"cases": 0, "changed": 0, "new": 0, "gone": 0, "missing": 0}
     for area in areas:
-        path = golden_path(area, args.out)
         per = results[area]
         names = list(next(iter(per.values())).keys())
         totals["cases"] += len(names)
-        if not path.exists():
-            rows.append([area, f"{len(names):,}", "", "", "", "no golden file"])
+        doc, why = read_golden(golden_path(area, args.out))
+        if doc is None:
+            rows.append([area, f"{len(names):,}", "", "", "", why])
             totals["missing"] += 1
             continue
-        golden = json.loads(path.read_text())["cases"]
-        if rx is not None:
-            golden = {k: v for k, v in golden.items() if rx.search(k)}
+        golden = {k: v for k, v in doc["cases"].items() if cli.matches(args.match, k)}
         changed, new, gone = 0, 0, sorted(set(golden) - set(names))
         for name in names:
             if name not in golden:
@@ -686,14 +821,19 @@ def cmd_check(args, areas, threads, con, log):
             want_all = golden[name]
             groups = {}  # identical differences across thread counts are reported once
             for n in threads:
-                want = want_all["per_threads"].get(str(n)) if "per_threads" in want_all else want_all
                 got = per[n][name]
-                if got == want or (args.any_nan and any_nan(got) == any_nan(want)):
+                if "per_threads" in want_all:
+                    want = want_all["per_threads"].get(str(n))
+                    if want is None:
+                        groups.setdefault("not recorded", ([("", f"not recorded at {n} threads")], []))[1].append(n)
+                        continue
+                else:
+                    want = want_all
+                if same(got, want) or (args.any_nan and same(any_nan(got), any_nan(want))):
                     continue
                 d = []
                 diff(got, want, "", d)
-                key = json.dumps(d)
-                groups.setdefault(key, (d, []))[1].append(n)
+                groups.setdefault(canon(d), (d, []))[1].append(n)
             if not groups:
                 continue
             changed += 1
@@ -724,11 +864,11 @@ def cmd_check(args, areas, threads, con, log):
                 ("Changed", f"{totals['changed']:,}"),
                 ("New", f"{totals['new']:,}"),
                 ("Gone", f"{totals['gone']:,}"),
-                ("No golden file", str(totals["missing"])),
+                ("Not comparable", str(totals["missing"])),
                 ("Threads", ",".join(map(str, threads))),
                 ("Time", C.fmt_duration(wall)),
                 ("NaN bits", "ignored" if args.any_nan else "compared"),
-                ("Exit status", "1" if nbad else "0"),
+                ("Exit status", str(cli.FAIL if nbad else cli.OK)),
             ],
         )  # fmt: skip
         + status_colors(con, C.table(["Area", "Cases", "Changed", "New", "Gone", "Status"], rows, "lrrrrl"))
@@ -740,7 +880,7 @@ def cmd_check(args, areas, threads, con, log):
     slow_table(con, times, args.slow)
     notes = []
     if nbad:
-        what = " ".join(a for a, r in zip(areas, rows) if "differ" in r[-1] or "no golden" in r[-1])
+        what = " ".join(a for a, r in zip(areas, rows) if r[-1] != "equal")
         notes.append(
             "After a change meant to change results, record those areas again (and commit the files):\n"
             f".venv/bin/python tools/golden.py record {what}"
@@ -751,14 +891,14 @@ def cmd_check(args, areas, threads, con, log):
             notes.append("--any-nan treats NaNs that differ only in sign or payload as equal.")
     notes.append(f"The log: {shown_path(log)}")
     con.lines([""] + C.notes(notes))
-    return 1 if nbad else 0
+    return cli.FAIL if nbad else cli.OK
 
 
 def status_colors(con, lines):
     """A table's status column colored after layout (the table measures plain text)."""
     out = []
     for line in lines:
-        for word, code in (("equal", "32"), ("differs", "31"), ("no golden file", "31")):
+        for word, code in (("equal", "32"), ("differs", "31"), ("no golden file", "31"), ("old format", "31")):
             if line.endswith("   " + word):
                 line = line[: -len(word)] + con.color(word, code)
                 break
@@ -766,18 +906,18 @@ def status_colors(con, lines):
     return out
 
 
-def cmd_list(areas, con):
+def cmd_list(areas, patterns, con):
     rows, total = [], 0
     for area in areas:
         L, mod = load_area(area)
-        n = sum(1 for _ in mod.cases(L))
+        n = sum(1 for name, _ in mod.cases(L) if cli.matches(patterns, name))
         rows.append([area, f"{n:,}", shown_path(GOLDEN / f"cases_{area}.py")])
         total += n
     con.lines(
         C.block("stardust golden cases", [("Areas", str(len(areas))), ("Cases", f"{total:,}")])
         + C.table(["Area", "Cases", "Defined in"], rows, "lrl")
     )
-    return 0
+    return cli.OK
 
 
 def slow_table(con, times, n):
@@ -789,38 +929,43 @@ def slow_table(con, times, n):
     con.lines(C.table(["Case", "Seconds"], [[k, f"{t:.3f}"] for t, k in flat], "lr"))
 
 
-def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "_worker":
+def parser():
+    ap = argparse.ArgumentParser(prog="tools/golden.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument("command", choices=["record", "check", "list"])
+    cli.add_areas(ap)
+    cli.add_match(ap)
+    cli.add_jobs(ap)
+    cli.add_out(ap, "the golden file of the one area given (default tests/golden/data/<area>.json)")
+    ap.add_argument("--threads", default=",".join(map(str, THREADS)), help="thread counts (default 1,3,10)")
+    ap.add_argument("--slow", type=int, default=0, metavar="N", help="print the N slowest cases")
+    ap.add_argument("-v", "--verbose", action="store_true", help="every difference of a case, not the first four")
+    ap.add_argument("--any-nan", action="store_true", help="check: NaNs that differ only in sign or payload are equal")
+    return ap
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["_worker"]:
         ap = argparse.ArgumentParser()
         ap.add_argument("_w")
         ap.add_argument("area")
         ap.add_argument("threads", type=int)
         ap.add_argument("out")
-        ap.add_argument("--case")
-        a = ap.parse_args()
-        return run_worker(a.area, a.threads, a.out, a.case)
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("command", choices=["record", "check", "list"])
-    ap.add_argument("areas", nargs="*", metavar="AREA", help=f"default: all ({', '.join(AREAS)})")
-    ap.add_argument("--case", help="regex on case names")
-    ap.add_argument("--threads", default=",".join(map(str, THREADS)), help="thread counts (default 1,3,10)")
-    ap.add_argument(
-        "--jobs", type=int, default=DEFAULT_JOBS, help=f"worker processes (default {DEFAULT_JOBS}, at most {MAX_JOBS})"
-    )
-    ap.add_argument("--out", help="directory of the golden files (default tests/golden/data)")
-    ap.add_argument("--slow", type=int, default=0, metavar="N", help="print the N slowest cases")
-    ap.add_argument("-v", "--verbose", action="store_true")
-    ap.add_argument("--any-nan", action="store_true", help="check: NaNs that differ only in sign or payload are equal")
-    args = ap.parse_args()
-    areas = args.areas or list(AREAS)
-    for a in areas:
-        if a not in AREAS:
-            ap.error(f"unknown area {a!r} (one of {', '.join(AREAS)})")
-    threads = tuple(int(t) for t in args.threads.split(","))
-    args.jobs = max(1, min(args.jobs, MAX_JOBS))
+        cli.add_match(ap)
+        a = ap.parse_args(argv)
+        return run_worker(a.area, a.threads, a.out, a.match)
+    ap = parser()
+    args = ap.parse_args(argv)
+    areas = cli.areas(ap, args)
+    try:
+        threads = tuple(int(t) for t in args.threads.split(","))
+    except ValueError:
+        ap.error(f"--threads takes thread counts like 1,3,10, not {args.threads!r}")
+    if args.out is not None and len(areas) != 1:
+        ap.error("--out names the golden file of one area: give exactly one AREA")
     if args.command == "list":
-        return cmd_list(areas, C.Console(stream=sys.stdout))
-    log = procrun.log_path("golden")
+        return cmd_list(areas, args.match, C.Console(stream=sys.stdout))
+    log = cli.log_file("golden")
     with open(log, "w") as fh:
         con = C.Console(log=fh, stream=sys.stdout)
         return (cmd_record if args.command == "record" else cmd_check)(args, areas, threads, con, log)

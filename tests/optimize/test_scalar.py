@@ -6,25 +6,25 @@ live), the Arb roots (scalar_roots.json), the counts, the edge cases, the result
 import json
 import math
 import pathlib
-import struct
 import warnings
 
 import numpy as np
 import pytest
-import scipy
 from scipy.optimize import minimize_scalar as scipy_min
 from scipy.optimize import root_scalar as scipy_root
 
 import stardust as sd
+from bench.accuracy.common import ulp_distance
 
 from . import functions as fn
+from . import refdata
+from .conftest import LIVE
 
 DATA = pathlib.Path(__file__).parent / "data"
 REF_ROOT = json.loads((DATA / "scipy_root_scalar.json").read_text())
 REF_MIN = json.loads((DATA / "scipy_minimize_scalar.json").read_text())
-ARB = json.loads((DATA / "scalar_roots.json").read_text())
+ARB = refdata.roots()
 EPS = 2.220446049250313e-16
-LIVE = pytest.mark.skipif(scipy.__version__ != "1.18.1", reason="the steps are scipy 1.18.1's")
 
 BRACKETING = ("brentq", "toms748", "bisect")
 
@@ -217,11 +217,8 @@ def test_root_options_follow_scipy(kw):
 
 
 def ulps_from(x, lo, hi):
-    def key(v):
-        i = struct.unpack("<q", struct.pack("<d", v))[0]
-        return i if i >= 0 else -(i & 0x7FFFFFFFFFFFFFFF)
-
-    return 0 if lo <= x <= hi else min(abs(key(x) - key(lo)), abs(key(x) - key(hi)))
+    """The ULP distance (bench.accuracy.common.ulp_distance) from x to the interval [lo, hi]."""
+    return 0 if lo <= x <= hi else int(min(ulp_distance(x, lo), ulp_distance(x, hi)))
 
 
 def arb_bracket(cid):

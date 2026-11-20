@@ -1,16 +1,29 @@
 """Run files and baselines of the accuracy measurement (the same layout as bench/speed).
 
-A run file (build/accuracy/<stamp>.json, ignored by git):
+A run file (build/accuracy/<stamp>-<commit>.json, ignored by git):
 
-    {"schema": 1, "run": "<stamp>-<commit>", "env": {...},
-     "sweeps": [{"id", "area", "name", "points", "regions": {region: {"points", "ulp_max",
-                 "ulp_p999", "rel_max", "contract", "bound", "worst", ["ulp_cond_max",
-                 "ulp_cond_p999"], ["mixed_max", "mixed_p999"], ["norm_rel", "nonfinite"]}}}]}
+    {"schema": 1, "run": "<stamp>-<commit>[+]", "env": {...},
+     "sweeps": [{"id": "<area>/<name>", "area", "name", "points", "regions": {region: entry},
+                 ["comparators": {library: {region: entry} | "not run" | {"error": message}}]}]}
 
-region is "guaranteed", "loose" or "mixed" (for regression, a result field); "contract" is the
-largest error over the bound (at most 1 passes; null where no bound is documented); "worst" is
-the input where it is; "ulp_cond_*" is ULP / the bound's scale (sources.py); "nonfinite" (regression)
-counts the points where the reference is finite and stardust's value is not.
+The run id ends in "+" when the working tree differs from the commit; env holds the commit,
+dirty, the changed files (git status), the date, the machine, Python and per area the SHA-256
+of its reference folders (references). A region is named by what it holds: the guaranteed
+region and the rest (guaranteed, loose, mixed: special, stats), the result's range (array:
+normal, subnormal), a condition number (linalg: kappa=...), a probability range (stats/mv
+cdfs: tiny), a setting (optimize: default, xtol=0, ...) or a result field (regression). An
+entry has "points", "contract" (the largest error over the bound: at most 1 passes; null where
+no bound is documented), "bound", "worst" (the input where the contract error, else the
+relative error, is largest) and the measures it has, among: ulp_max, ulp_p999 (ulp_distance
+to the reference rounded to a double), ulp_scale_max, ulp_scale_p999 (ULP over the bound's
+scale), mixed_max, mixed_p999, rel_max, norm_rel (2-norm, regression), norm_inf_rel_max
+(infinity norm: linalg, optimize), nonfinite (points where the reference is finite and sd's
+value is not), abs_max, rel_cond_max, backward_max, orth_max, grad_max, excess_max,
+tol_ratio_max, fnorm_max, kkt_max, est_ratio_max, numpy_dist_max, unconverged, off_target,
+excluded (a comparator's points left out), unmapped (a field without a value).
+
+The files are JSON as Python writes it: an infinite or undefined measure is the token Infinity
+or NaN, which a strict JSON parser outside Python does not read.
 
 A baseline (bench/accuracy/results/<area>.json, in the repository) has the same sweeps, each
 with the "run" it came from, and "runs": {run: env}. Promoting a run replaces the sweeps it
@@ -20,10 +33,10 @@ measured and keeps the others.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import pathlib
 import platform
-import subprocess
 
 SCHEMA = 1
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -31,17 +44,40 @@ BASELINE_DIR = ROOT / "bench" / "accuracy" / "results"
 RUN_DIR = ROOT / "build" / "accuracy"
 
 
-def env() -> dict:
-    def git(*a):
-        r = subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True)
-        return r.stdout.strip()
+# the reference folders of each area (their SHA-256 is part of a run's environment)
+REFERENCES = {
+    "array": ("tests/array/ref",),
+    "linalg": ("tests/linalg/ref",),
+    "special": ("tests/special/ref",),
+    "stats": ("tests/stats/ref",),
+    "regression": ("tests/regression/ref",),
+    "optimize": ("tests/optimize/ref",),
+}
 
+
+def references_sha256(area: str) -> str:
+    """One SHA-256 over an area's reference files (their paths and bytes, in path order)."""
+    h = hashlib.sha256()
+    for folder in REFERENCES.get(area, ()):
+        for p in sorted((ROOT / folder).rglob("*")):
+            if p.is_file():
+                h.update(str(p.relative_to(ROOT)).encode() + b"\0")
+                h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def env() -> dict:
+    from bench.speed.harness import git_info
+
+    g = git_info(str(ROOT))
     return {
-        "commit": git("rev-parse", "--short", "HEAD"),
-        "dirty": bool(git("status", "--porcelain", "--untracked-files=no", "--", "src", "csrc")),
+        "commit": g["commit"] or "unknown",
+        "dirty": g["dirty"],
+        "changed": g["changed"],
         "date": datetime.datetime.now().isoformat(timespec="seconds"),
         "machine": platform.machine(),
         "python": platform.python_version(),
+        "references": {a: references_sha256(a) for a in REFERENCES},
     }
 
 
@@ -53,7 +89,12 @@ def new_run(sweeps: list[dict], compare: bool = False, e: dict | None = None, st
 
         e["comparators"] = C.versions()
     stamp = stamp or new_stamp()
-    return {"schema": SCHEMA, "run": f"{stamp}-{e['commit']}", "env": e, "sweeps": sweeps}
+    return {
+        "schema": SCHEMA,
+        "run": f"{stamp}-{e['commit']}{'+' if e.get('dirty') else ''}",
+        "env": e,
+        "sweeps": sweeps,
+    }
 
 
 def new_stamp() -> str:
@@ -106,6 +147,8 @@ def promote(run: dict) -> list[str]:
             if "comparators" not in s and "comparators" in old.get(s["id"], {}):
                 s["comparators"] = old[s["id"]]["comparators"]
                 s["comparators_run"] = old[s["id"]].get("comparators_run", old[s["id"]].get("run"))
+                if "comparator_seconds" in old[s["id"]]:
+                    s["comparator_seconds"] = old[s["id"]]["comparator_seconds"]
             elif "comparators" in s:
                 s["comparators_run"] = run["run"]
         sweeps = [s for s in base["sweeps"] if s["id"] not in ids] + new

@@ -1,8 +1,7 @@
 """The whole array area against numpy: every public function at 3, 10^3 .. 10^7
 elements, in several layouts (contiguous, strided, transposed, broadcast) and dtypes.
-From bench/array/full_scan.py (at commit 4151d2a) (its case set, without its result check).
 
-numpy runs as it is (one thread, except its BLAS). Each case is a statement written
+numpy runs as it is (one thread), except where its BLAS does the work. Each case is a statement written
 once with `M` for the library (M = sd on stardust's side, M = np on numpy's), or two
 statements where the calls differ; the statement is compiled into a function whose
 globals hold that side's arrays, so the timed call is the statement itself.
@@ -19,7 +18,8 @@ NaN-skipping ones select with masks, no branch per element, on both sides), scan
 gathers and scatters keep one input.
 
 Threads. sd's 1-thread rows run with Accelerate on one thread too, so the BLAS cases
-(matmul, cov, tensordot) differ between 1 and 10 threads. Cases with no parallel path
+(matmul, cov, corrcoef, tensordot) differ between 1 and 10 threads; there numpy "follows"
+(its BLAS at sd's thread count, in the same worker), so each thread count meets its own. Cases with no parallel path
 (the fills of the creation functions, views, Python conversions, scatters, 10^3 and
 10^4 elements below the 2^15 threshold, tiny arrays) run on one thread only, except
 s3 + t3s and a + b at 10^3, kept at 10 threads to catch the pool being used below the
@@ -41,7 +41,7 @@ transposed-view or out= inputs (R has no views: its copy would be contiguous), n
 batched or integer matmul. R gets plain float64 copies of the numpy side's arrays
 under "r_<name>" keys; complex numbers are built in R's setup.
 
-The arrays (names as in the old script):
+The arrays:
     f, g     10^6 float64 in [0.5, 1.5)          fs   10^6 standard normal
     u        10^6 in (-0.99, 0.99)               fh   10^6 in [1.5, 2.5)
     fn       fs with 10% NaN                     zh   half ±0.0, half normal
@@ -59,9 +59,8 @@ The arrays (names as in the old script):
     x, fw, gz, y  written in place (copies of f, zeros)
     np_*     numpy arrays given to both sides (conversions)
 
-Every array is drawn from its own seeded generator and only the arrays a case uses are
-built, so the values differ from the old script's (one generator for everything); the
-distributions, sizes, dtypes and layouts are the same."""
+Every array is drawn from its own seeded generator, so a case builds only the arrays it
+uses."""
 
 from __future__ import annotations
 
@@ -70,7 +69,7 @@ import math
 import zlib
 
 from ..harness import fresh_count, rotate
-from ..registry import Case, Ref, RRef
+from ..registry import Case, Check, Ref, RRef
 
 N = 1_000_000
 MID = 10_000
@@ -263,6 +262,9 @@ def _compile(stmt: str, ns: dict):
 
 
 def _n(size: str) -> int | None:
+    if " x " in size:  # B x (m, n)
+        b, shape = size.split(" x ", 1)
+        return _n(b) * _n(shape)
     if size.startswith("10^"):
         return 10 ** int(size[3:])
     if size.startswith("2^"):
@@ -287,7 +289,8 @@ def _stable(stmt: str) -> str:
 # _add(group, sd statement, size, np=numpy statement (default: the same text, M = np),
 #      name=..., note=..., quick=..., alias={name in the statement: data key},
 #      extra=((label, numpy statement), ...) further numpy comparators,
-#      fresh=True: rotate over fresh inputs (branchy kernels), threads=sd's thread counts)
+#      fresh=True: rotate over fresh inputs (branchy kernels), threads=sd's thread counts,
+#      blas=True: numpy's BLAS follows sd's thread count)
 
 G_CREATE = "creation"
 G_CONVERT = "conversion"
@@ -346,6 +349,7 @@ def _specs() -> list[dict]:
         extra=(),
         fresh=False,
         threads=BOTH,
+        blas=False,
     ):
         S.append(
             {
@@ -360,6 +364,7 @@ def _specs() -> list[dict]:
                 "extra": extra,
                 "fresh": fresh,
                 "threads": threads,
+                "blas": blas,  # numpy's work is mostly BLAS: it follows sd's thread count
             }
         )
 
@@ -437,7 +442,7 @@ def _specs() -> list[dict]:
         ("roll(f, 1)", M6, "", BOTH),
         ("roll(f2, 1, axis=1)", SQ, "", BOTH),
         ("repeat(f, 2)", M6, "", BOTH),
-        ("tile(v, (1000,))", "1000", "결과 10^6", BOTH),
+        ("tile(v, (1000,))", "10^3", "결과 10^6", BOTH),
         ("unstack(f2)", SQ, "뷰", T1),
         ("astype(f, M.int64)", M6, "", BOTH),
         ("astype(i, M.float64)", M6, "", BOTH),
@@ -599,9 +604,9 @@ def _specs() -> list[dict]:
     add(G_STATS, "M.median(f2, axis=1)", SQ, fresh=True)
     add(G_STATS, "M.nanquantile(fn, q5)", M6, note="NaN 10%, 확률 5개", fresh=True)
     add(G_STATS, "M.nanmedian(fn)", M6, note="NaN 10%", fresh=True)
-    add(G_STATS, "sd.cov(m1k, correction=1)", SQ, np="np.cov(m1k)")
-    add(G_STATS, "sd.cov(obs, correction=1)", "(20, 100000)", np="np.cov(obs)")
-    add(G_STATS, "M.corrcoef(m1k)", SQ)
+    add(G_STATS, "sd.cov(m1k, correction=1)", SQ, np="np.cov(m1k)", blas=True)
+    add(G_STATS, "sd.cov(obs, correction=1)", "(20, 100000)", np="np.cov(obs)", blas=True)
+    add(G_STATS, "M.corrcoef(m1k)", SQ, blas=True)
     add(G_STATS, "M.bincount(iv)", M6, note="값 0..999")
     add(G_STATS, "M.bincount(iv, weights=f)", M6, note="값 0..999")
     add(G_STATS, "M.histogram(fs, bins=100)", M6)
@@ -689,15 +694,15 @@ def _specs() -> list[dict]:
     add(G_ASSIGN, "x.__imul__(1.0000001)", M6, name="x *= 1.0000001", note="제자리")
 
     # linear algebra in the array area
-    add(G_MATMUL, "M.matmul(m512, m512)", "(512, 512)")
-    add(G_MATMUL, "M.matmul(m1k, m1k)", SQ, quick=True)
-    add(G_MATMUL, "M.matmul(f2, v)", SQ, note="gemv")
-    add(G_MATMUL, "M.matmul(v, v)", "1000", note="dot")
-    add(G_MATMUL, "M.matmul(bm, bm)", "(1000, 8, 8)", note="8×8 1000개")
+    add(G_MATMUL, "M.matmul(m512, m512)", "(512, 512)", blas=True)
+    add(G_MATMUL, "M.matmul(m1k, m1k)", SQ, quick=True, blas=True)
+    add(G_MATMUL, "M.matmul(f2, v)", SQ, note="gemv", blas=True)
+    add(G_MATMUL, "M.matmul(v, v)", "10^3", note="dot", blas=True)
+    add(G_MATMUL, "M.matmul(bm, bm)", "10^3 x (8, 8)", note="8×8 1000개", blas=True)
     add(G_MATMUL, "M.matmul(im, im)", "(200, 200)", note="정수")
-    add(G_MATMUL, "M.matmul(ft, f2)", SQ, note="전치")
+    add(G_MATMUL, "M.matmul(ft, f2)", SQ, note="전치", blas=True)
     add(G_MATMUL, "M.vecdot(f2, g2)", SQ)
-    add(G_MATMUL, "M.tensordot(t3, t3, axes=2)", T3)
+    add(G_MATMUL, "M.tensordot(t3, t3, axes=2)", T3, blas=True)
 
     # the same operations across sizes (cache-resident to memory-bound; 10^7 is 80 MB),
     # a, b (float64 in [0.5, 1.5)) and i, j (int64 in [-1000, 1000)) standing for that
@@ -888,6 +893,14 @@ TITLES = {
 }
 
 
+# The cases whose results the smoke run's check does not compare, and why.
+NO_CHECK = {
+    "M.result_type(f, i)": "the result is a dtype object",
+    "M.finfo(M.float64)": "the result is an finfo object",
+}
+ASSIGN_NO_CHECK = "an assignment: no result, and the target changes with every call"
+
+
 def cases() -> list[Case]:
     out = []
     used = set()
@@ -895,7 +908,7 @@ def cases() -> list[Case]:
         np_stmt = s["np"] if s["np"] is not None else s["stmt"]
         extra_stmts = [e[1] for e in s["extra"]]
         names = _names(s["stmt"], np_stmt, *extra_stmts)
-        refs = [Ref("numpy", _factory(np_stmt, "np"))]
+        refs = [Ref("numpy", _factory(np_stmt, "np"), threads="follow" if s["blas"] else "fixed")]
         refs += [Ref(label, _factory(st, "np"), lib="numpy") for label, st in s["extra"]]
         setup = _make_setup(frozenset(names), dict(s["alias"]), s["fresh"])
         rref, rvars = _r_ref(s["stmt"])
@@ -918,6 +931,7 @@ def cases() -> list[Case]:
                 threads=s["threads"],
                 quick=s["quick"],
                 note=s["note"],
+                check=Check(skip=ASSIGN_NO_CHECK if s["group"] == G_ASSIGN else NO_CHECK.get(s["stmt"], "")),
             )
         )
     if set(R_STMTS) - used:

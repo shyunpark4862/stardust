@@ -6,7 +6,7 @@ nearest double, lo the rest: ~107 bits) and 1/c rounded (the reduction corrects 
 rounding with one fma). Arb, 256 bits (each rounded from a ball). Written to
 csrc/special/coeffs/dd_log_table.hpp.
 
-Run: uv run python tools/gen_dd_log_table.py
+Run: .venv/bin/python tools/gen_dd_log_table.py
 """
 
 import pathlib

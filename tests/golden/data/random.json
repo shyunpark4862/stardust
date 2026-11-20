@@ -51,7 +51,7 @@
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -151,7 +151,7 @@
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -205,7 +205,7 @@
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1255,7 +1255,7 @@
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1309,7 +1309,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1371,7 +1371,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1390,85 +1390,85 @@ false
 },
 "choice err a 0": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): cannot choose from an empty population"
 }
 },
 "choice err a 2d": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): 'a' must be 1-dimensional, not 2-dimensional"
 }
 },
 "choice err a big": {
 "r": {
-"error": "OverflowError",
+"error": "builtins.OverflowError",
 "msg": "choice(): 'a' is out of range"
 }
 },
 "choice err a float": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "choice(): 'a' must be an int or a 1-dimensional array, not float"
 }
 },
 "choice err a list": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "choice(): 'a' must be an int or a 1-dimensional array, not list"
 }
 },
 "choice err a negative": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): 'a' must be non-negative"
 }
 },
 "choice err no replace nonzero p": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): fewer non-zero probabilities in 'p' than the sample size"
 }
 },
 "choice err no replace too many": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): cannot take a larger sample than the population when replace=False"
 }
 },
 "choice err p complex": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "choice(): 'p' must be a real array, not complex128"
 }
 },
 "choice err p length": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): 'p' must be 1-dimensional of length 6"
 }
 },
 "choice err p nan": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): 'p' must be non-negative"
 }
 },
 "choice err p negative": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): 'p' must be non-negative"
 }
 },
 "choice err p sum": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "choice(): the probabilities 'p' must sum to 1"
 }
 },
 "choice err replace int": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "choice(): 'replace' must be True or False, not int"
 }
 },
@@ -1495,7 +1495,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1549,7 +1549,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1609,7 +1609,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1679,7 +1679,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1702,6 +1702,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "1c263f8b730b169c276cbc4285495087a4505e0babee67355370c4ce937be216065026b19c6b35dd4fefe33e1718dfe660109eb460d2958bb752059b914261b6a096f4b49ecb25d5bbf02685360f0811f6c24e3ca419f792988d7f65e134be11f33ccc7ae737aa4cf5a0e2c4fd3df7c4da72de59ec17e6d476698853811162aa0598aa4cc219a118d393fedfe0fc63e5af15bf03a4b09936b55ca7cb08a44ac00a8d883834497060aa44d3baee21d005481297db303ebef950928d085a059707b3c1ba4f17a45445e0c9db34f3ba3c02e31bbf68844e39f10ea5e1fc726204bbedcd51f0bb80f0f7af9b349127b55b7b35f2c996fc31d8d9f3ca4e818cb08e8ce75eba802afd7908c34093b3abd9861f8ef7978dc74d1113a0f77c5d8e803267c93c220df4daab140e757b7a4e922438f9d7a36d979b48f0cfade03e7c117a0f06224a3fc595e91802d567bd73639f00c29ad3ed041369c324fd8ee1d28ebc522b1c10275ee7c0d9dffebb18ba88b0767397e3d659acaada3fd58baa41d12690cec0558f7c47f3363dec016c9a42198275c062399f62f931f888ba72b126a2ec19c86287f26bf6c5e54ccd3be79537d04278b1a0c1d465b963c71cf8b25bc18bfce7aa3d1e56c5e24833ee9330a3f3324d534d810bbd4836d0a7b5aa8d938025f570d65fdf74c5a02afbb7b115c03d289918aa0233de2f38dd015376d6b40c2c8f2b785ce53e20a1e1b8bb9a5e2c3a11e36561074ba23609974bccbc4570443dcd1545a14701bdb76bbaf1a816390667915be72bd604717db2654e1229cb5b7ebc250d0ee0ea9655e84772d266e37f05246d814fd28df019903003e9157ce3996f6a88b0d87552f8cf4c33d083f52a62c83f06a24a315328ee183b0038eb5cb1b6a0213751321fb3a2e42bc233dd4a08c6e3123480cd286176e846e4adc1269bb6d4a976dc13ae5eb0b4f8928ce5fd391282fe32263b01bb0ceaee42e646ba21774d8e4e99d80e45756401b8800b6cd3a779a224d73eea1c472e3be201e334248bc4c6a830640a2a86bd2908f82cba3353ab5ca51d6ed1f6c589d455c980a16d28cb22961ce689eeca6b1bd8fc7092389c2f035980751031b2a14c655950a1956112bdd4d0983312fdae9160800cc5fe5d096f1157929f16c63c81f0f179b977d85b898f83b99006c73bfb007c161166f049dc02cecbd3ab4156b321bd62e240eafd2c8845f5f9749bc51b8e2c996840f458adf6c04a5fc13452048513f7de135b26401adf9ae1c61f55ba63698f7209d78b908d54cc79856e903140d9afe4ab460d03fdc67fa8d9f536b91716ad583d1928dc389baa9c292887ee3b69a891466188a16a947d1faf6ee2aefd261a18eacce5b552bc853224a58af65eb00343346175dddb0960a31fe02ca93005a03e4fbdd9d85e7a253bac96de819077714fbd",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -1823,7 +1825,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -1846,6 +1848,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "d679802103a6cd985d2623f763a2c6b21e24ba13699ddb4491f84cf09dc65a1eaa381dd920b64fdcd41b8290cb2c7a5b3ba0cf173d080c89611907b5d0f28556912690acf465fb9b96a19afd17d5899357e62fda8859f0d2435a2427bfc40295edd48d3bcf1fbdd5e7036cc6eb26a2f759185246d836a599995a690bd28c4625e41a2954d919b2f120e9459e26001b10b108f408ec85573a3954e290e83b4b255a1b4c4fcf1c7429970d1a0e8fe1f642917a48d8da57ac0b07d0cdecb234b76fad7f6a764f0e46e84d8d64cc9595a22fd8fb53f4334e65e26117bd2ca5483d0e80b156fa0366129ee197de04e5f180a3d8445e761e6b5b7a403bf88543834a0fdab81c82df6c072809ebab134bc2d776d495ee0826b0984aa6675b964359ae628497002d3821dfdad68aaca75e81fc496a15da6536d67ca4b409b996977d7d0673662be1e229d16c6d1461d09ecbd9f72197ca9ba904ee1224055a3ea053c9f7322237d7a7fd79674b8588b5b737f700f1b546b36e7ae53093c5898459431d6dd165a8dc77e72768a90c6cba1493b6bad9e407e7e1fb75bba8a77a7667682aab9c4dcd71e4b80f46211b828f3b54582c572a6914836f2ff46a9142347e9c842970f3389947a1b1172f9b6485c0babd766549d90398f724ae8ce6a7897ce3a6c29b1588f388d68d43d22de52bd8438c123a969e1b1a6215bdc60e108f7da2f20445fd0d78ce83f4535fd4f1f7e9f7b950a11bbc9596c7378c85f8cd76a553fd18dc96b02e73816543176fb533cd05070aaf381633769f37ea1a38e680b876146e3e9d45b46e7a8978a52b19f634ae5550d861415cbd3b846f6fc9b64f752c02291b71f83749d264e82fab65fda346f7796d6c0bfadd486f85bc3e08ed8cd6953dea39dbd219892bf115376d144b9836e717f8b43cb3053249d3054cdd293338c3213e503b0b9de132dad9713b161a6ceaa68385f6ca2b7bfc84803ee934f3c127028acb326faad656193a4f8d02af4266cc87a2c3b94ca881f3ad919ecc81e23dd688b5117982d7030879737cdd1aa432c3e5053d06399b8601bc3dfb44f1939531c217b6a0f77e778c96a96da65ad57076ee455e25a42604557b1694aa2a9c152ae9b6611c43c38e7b28562f22fd9dd0121cb71c9f67915c4e00a0b810dafbb11090b4fa5278640688f5a17bcae63d67f63b2ae7602298d915592da89dfcab9cb5145087dd8f923b36cbcf16b6c3a209f54f1aed36d0019c7af3a4f8f785299d198ecfef2fec0d2fdbcb585b26399ebcd715c714dd8c92a329b6321f8e19b9615c6d8a6498bbf43157872caa1298814b6b708fba0d92552665b43b493d5c8119b5f1752baf80dfe35fd3ec1b23b2b2514218dc06dd1936a1c6e8487d34dde8cf7a0bdb99d68f0b33ea426dade950167653b7ba9b0b9fce3bd3a149c5487ea9ed",
 "n": 131075,
 "nd": "float64",
 "sample": [
@@ -1967,7 +1971,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2009,7 +2013,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2061,7 +2065,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2099,7 +2103,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2127,7 +2131,7 @@ false
 ]
 }
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2148,7 +2152,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2176,7 +2180,7 @@ false
 ]
 }
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2197,7 +2201,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2225,7 +2229,7 @@ false
 ]
 }
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2246,7 +2250,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2274,7 +2278,7 @@ false
 ]
 }
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ]
 ]
@@ -2282,7 +2286,7 @@ false
 },
 "default_rng 'a'": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "default_rng(): 'seed' must be an int, a sequence of ints or None, not str"
 }
 },
@@ -2321,14 +2325,14 @@ false
 "items": [
 0
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2347,7 +2351,7 @@ false
 },
 "default_rng -1": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "default_rng(): 'seed' must be non-negative"
 }
 },
@@ -2388,7 +2392,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2442,7 +2446,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2461,7 +2465,7 @@ false
 },
 "default_rng 1.5": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "default_rng(): 'seed' must be an int, a sequence of ints or None, not float"
 }
 },
@@ -2502,7 +2506,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2556,7 +2560,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2610,7 +2614,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2664,7 +2668,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2718,7 +2722,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2772,7 +2776,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2791,13 +2795,13 @@ false
 },
 "default_rng True": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "default_rng(): 'seed' must be an int, a sequence of ints or None, not bool"
 }
 },
 "default_rng [1, -2]": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "default_rng(): 'seed' must be non-negative"
 }
 },
@@ -2838,14 +2842,14 @@ false
 2,
 3
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2864,7 +2868,7 @@ false
 },
 "default_rng [1.5]": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "default_rng(): 'seed' must be an int, a sequence of ints or None, not a sequence of float"
 }
 },
@@ -2904,14 +2908,14 @@ false
 1180591620717411303424,
 5
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -2961,14 +2965,14 @@ false
 "entropy",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3021,14 +3025,14 @@ false
 8,
 9
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3086,14 +3090,14 @@ false
 "items": [
 3
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3112,61 +3116,61 @@ false
 },
 "err default_rng keyword": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "default_rng(): got some positional-only arguments passed as keyword arguments: 'seed'"
 }
 },
 "err default_rng two args": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "default_rng(): takes from 0 to 1 positional arguments but 2 were given"
 }
 },
 "err permutation huge": {
 "r": {
-"error": "MemoryError",
+"error": "builtins.MemoryError",
 "msg": "permutation(): cannot allocate 70368744177664 bytes: more than this machine's physical memory"
 }
 },
 "err random huge": {
 "r": {
-"error": "MemoryError",
+"error": "builtins.MemoryError",
 "msg": "random(): cannot allocate 36893488147419103232 bytes: more than this machine's physical memory"
 }
 },
 "err spawn float": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "spawn(): 'n' must be an int, not float"
 }
 },
 "err spawn negative": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "spawn(): 'n' must be non-negative"
 }
 },
 "err state bad generator": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": ".state: 'bit_generator' must be 'Philox4x64-10', not 'PCG64'"
 }
 },
 "err state bad position": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": ".state: 'position' must be an int in [0, 2**64)"
 }
 },
 "err state missing key": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": ".state: missing key 'bit_generator'"
 }
 },
 "err state not dict": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": ".state: must be a dict, not int"
 }
 },
@@ -3176,6 +3180,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "59f0294a8d1eefdd3621d9b3d076a9810265553b615baa125d26a27441b5c7a7f00675d9a63047e0a102a56e8c17f0b4b79f93b20fa1c7aa592f4cc74fc6aaf5c39d755c7091d3a782a2af758e0a57b3d1c9ff981126b0d099f83cabc04ebea83a8f4164bb5eee8cab2dbd5c3b2370567f553d1d7940a47a2c7e6d17fc9402b8c7588202782f6608d15ed036458ddbfab7a62a79883f2ffd3534e5e5b19ffc8fee40f24210196e21a1e7bb8f3b0a740589fdb49f8e0fff28969fd0bb61fb2f2366a58fd841395e0ced31a2af534c772a0741eaf6ff38e72c5b1803e26869fc8db9f15ee28f51d67042810b923a58da75701597e4468fb76f1bb4ae56b3817ac591693c0785ca064a10a0b92ba844acd969fe488491fe4ee46028fe2beef53a40222966216788e5618aebef9b1726892f420e0eaeea2413b45eed7a23973451b7f3715792d4831b64393fc67fac94e234eb6e5068816b088a93c7fd6adfc258dc1b0a8f5ca4c4540eff6bdb6a81ff1f9b32eefa15ff5f946a4a7918dd33ff23b9f4a0b3322610f26da3b39ff88c06bcd9bd35d258f160d2cd839413011f95c4b5c6f36d0b3a2202197f211243e50aa913288ceab827a4397c2650e69f8ea16ba13d6a270f40b70e12076ff3271114d287bf82a8b85d03840f586b3ab9171c4a25167ebda7fbd4ca0ae9942b3a762aced347a6942aedbf17e4c4db963296479d7e6fb91e19de653e6dc16b469a604a27042468af94af8d835b116d492275fee28a0e1cce842717aca518053642934b6a053948a8e02f0711a7e4f4e4cd0f6acc469c9595be2086719ff67c1bf2496eb578a92b6c9e121018c56b31c61d524f850bacad7ae763dfcc77c2a8d140a61027e75272435574a77f331266d6250d6c1bc8a295f7e412c20b75cd1f364790466124c8dc4a909be97c8e7da0188ccac0d09ad4e4cc99fa27f457b1d979a4af09a8b90dbb2691151c6546c86c87c976b9b0424d2fa91643de1cec20f94b5d014d9c613137461f03e7b686f336be756c3d5b7eaad459ee5dafb86ce47f9a643a304bd2e9d0f887ef2bd4b05a4613f063be49f8da5b14d0f03c05ab86c47d912717c9db3ffa460723774db642eadf9d67708b537e0fc262c5633b686e50606e5d7739e7dd768fa7ad23b8be94a425cd9787b6fd76af7b47eec0e2796f15bee9615e0f29432fe926cdbb1210826b9aac03af852117043cc225aa6546358590285af3356d6570a513161af8bd79543fc8050bdc7adf3f5b01474dd375aeacaa59c5988c92c378480187f52339f497b4cfaca321219dfe3f327aaeab99b9052d677355bfac0d1f4b29e11e308581c9123f32b793b7d3b4917f38eab4186d1b98b63759dc5bccc2316902abe56d535518fded3d7503a2db3b4c1e81dba5d14dc53eb18c1608f96fd89199f3cd1a3cf2f26749810822",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -3297,7 +3303,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3354,7 +3360,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3394,7 +3400,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3417,6 +3423,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "986e8fa9ae26adbceeb0b3b3e3b5ba008eac136693b4bee9ec0aa60e95dbba63effcec0215d40666338cd5062f320b089abb69d8305f3c1752873c6fe9098c1e50fc30030df4edb801d5c536aa91bb0ea615ad69dd43ec23e89fc46e0b5d2a306638b33b380c87dc545d90c9237bf0dc7c9a6c6bbb250868113fdac243d3a29f0e982833ee2d7ba6da3840e03cfc6713e146dccdc8425b668d54cf5ac0fe40fcb8d5421f66463778dbae60fa695fbcb11608826280e5548f6acf44f27e47e1efa387e93cbd01295116043da3baf0c16d224929ecfe5492d5e61d1c1b8cf2e39d1f11ed30a8957ea6ab3637be8fadc70a100491bc0ae99f99d8c09a59018105aa8053162377046405b5fe635836fc9477023b3f1c1ce2cfab7252732392566d9f03ff16e93c535ffaabab55e2c44ea9118aa381543cc2fc435a16c0e1314b91e501e59cf71ad7e0b3c6da7bd7c89259b9a45245200af5e370bf54366174436d3eb5e5dd974fb94a62a5b9781c4c084e72c2dcdfca873895df5e6031376c02a0ea7e9e79db950336ae48ec679c3113bab65a5db150250e7b1e6e52147bb276c8d274d486997922d85fe556752a5dde46f5aaa51b23cd09ad74c47e36d62dac586d1a000dc23161744cd03193ba84c3e3383e14053b426a1fd79fe28d7bd63dc1a61dfe49b1df294bb4b797eee039f1c901dcec78be5991d816192e2126a3b9d859e87768c0d0ca3433a51c47aacef92aa159d228369ebcb2b81b79784514dc9d8e5da37705d5e0e006fef5f61aa74d2a41ea5efb9cd32b0c57c4d59bf78fe6e40960295087822002f14ff9d8d4ad1aaa6c5ff5133af739b05020dc3507d5b3d20d9b43908b8cd4327ba5402296cda04c9fcfa24c2d0161c82fba778e1b945617167cc08c663bfd44f3b39b11816c59396e364ed8bffc9d0258505cdfe52a6cdc3ba5a7f2eac04c23f3b973a5a01d1e774b2d99cb8667f8f03e9267d75fd8c49ffdfbf1650d13fd2b732a2555f977ac19ce01d59c7f444b4577cfd82ad0e8e92d0b5218d711629755dbca4f8dfd86e661748d1f0ac827fe7f526c061c519021ec4e4f9b34059390365557008242d1f2396c8fea1df56b94dba888eef5b92c4562833aaa821832e803266d0fd68e4193da23a628c927e399b8bfa7fc4f49477debcbf70c343575f1b1637f30d4c9f92b6f0070dee6cc5d3c6050f7d6b1863025694c3662f3d0d90ae19ba7dadee9ff36fa88420a7048ba51ad570b0f2a95a0866108e1686a256bbf57c6b6c10a536cbf23448eec130cbd1929f8002e459c9bf6e36369f82850886497c8d535df864524812ee63e10c3742222787223d58ccbc7d8d4872af009452c9c98c411a6918b9c296ffc02a10a44d7da1cf625b40324351b874e28c4f0b88fe6d78eb2b2b31ddf839bd10b57a7efa585e4db5e6c7f91b6992f",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -3538,7 +3546,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3595,7 +3603,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3635,7 +3643,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3658,6 +3666,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "6d32d41721cc023de63579f4b48ac190fc0dbacea4fb0a7f73e4ae8bda6bc168ffa2e5f2bb6bbb27008756c76cdf8c1388463a5e44b67af3fae8f5ee1f92dd20f6decd90d3d212bcf625814eaace4de53c1d68b0b44821519cb0666eb01e4a2ebdddf4e46cdb70034e12ee5b70f4a0a4702d645cc8700942d5b35bfa542ea1dd75cca76b320f1f8fb64893604cfcf91986bbbffec057498dc8898accde84521b333097af2dc1f4a9997b747c0801397c9e6f07f45df314d207e56e4ff2c6d3df22202672f39d5cbaa0adc4377ae69d702959e8dfd42a79cba004cdb20bc2fff3421cff74841b0787f23e7beac1ac9247fb03f81d9560f18d7561e4ef49b386947cc190efbee26bdc710f14792ffc7f4146c3d9d38a26a5e7eb5eee4782238f48475ca4fa57c1e76cc7b8e542d3846bfe03bf6f409df5addacf1dd42aac1f4f8fa685121d884236cb289b526b2c096664b1acc68df74b8a26d46c52dcac580b55a044395227b2cf72989631fbaa7bd793f01aecba8dfd4cf686a1c2adbca4e010a27bcec37cdd0455e6f8a8f9ded87d5644c53cec78508df9e18c58d2c22cdee9c2711618c673121b31b6457a7326b3d5754f06af2760bfcc6f5daf8174da4cb48f8260e2fb15a8763b1b30b53cbffdef10c986a5e9cf3b9e606e062dca547abebb7c626905bad6ba7f61fd0b1e3a108ff5c40e5a8889b4c333979b296bbfed3d294c2f67a70d259081bed3b157f647bfadebe94aaf0262060341a2d1c1597166e3a49733cc9f01ee1d1c51bb69029da0f95b29dac4809dbc9483fa91b2285435446f61e1a487241958c969d76c2dbe70d5c84afdd4e0160b07bd709a992ab74ca74560fd3208acdd7dc3d340c4649c825cc16eb2ae3ea9f820c7a71414934746de3e4a3990359f7b622bcbc67b5b52e31d5981dd6dea5efaee171c03f3a827b0dbb121e3337f2f1b4fb377169dbabb65dd6ab1da41dbf3c403dec30063ee8a22a964518444ef262014b8275e84d77c30097f84debbf856d5bcb61bc8d215c84dc93d89fbdf079a21900ee074f08e0e895fdbc6432af05a7af492a71e5b9f66b0288a60b9b8b1772a3669927c4543b62bee256ff8ce66efaaea9592c5509a14e9edadbfbbcfa0d813851bafa0664cd57b6d8457b84805a65231f5ac10f4d7961150d2867c4280485998456beb0e9c1fa14de1ad7a2778ddd7c5d26dd4af26d0fb8e2189f82493272e07b3fc7dbbf3ee38b9d81d06623f9e9c8ddeb7ce7c10642c56e742109962157f929cf0b4c2e155bcca61bd773fe32ea596dd104a29138c0de3c314db1088995132688c63092db804948c3bad6ca1b88f63307e43239b8fb9b10391e0972d16202752c5728b918ea3f6393e7c900ecf67d7c89ff12a4535dc77f8ca3bd85ee7c2ed1e143f61833b55a38e3abab659de4b3fe79dc7894a8636",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -3779,7 +3789,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3836,7 +3846,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3876,7 +3886,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -3899,6 +3909,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "4f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec14f2cfec174ad0404",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -4020,7 +4032,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4077,7 +4089,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4117,7 +4129,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4140,6 +4152,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "6d32d41721cc023de63579f4b48ac190fc0dbacea4fb0a7f73e4ae8bda6bc168ffa2e5f2bb6bbb27008756c76cdf8c1388463a5e44b67af3fae8f5ee1f92dd20f6decd90d3d212bcf625814eaace4de53c1d68b0b44821519cb0666eb01e4a2ebdddf4e46cdb70034e12ee5b70f4a0a4702d645cc8700942d5b35bfa542ea1dd75cca76b320f1f8fb64893604cfcf91986bbbffec057498dc8898accde84521b333097af2dc1f4a9997b747c0801397c9e6f07f45df314d207e56e4ff2c6d3df22202672f39d5cbaa0adc4377ae69d702959e8dfd42a79cba004cdb20bc2fff3421cff74841b0787f23e7beac1ac9247fb03f81d9560f18d7561e4ef49b386947cc190efbee26bdc710f14792ffc7f4146c3d9d38a26a5e7eb5eee4782238f48475ca4fa57c1e76cc7b8e542d3846bfe03bf6f409df5addacf1dd42aac1f4f8fa685121d884236cb289b526b2c096664b1acc68df74b8a26d46c52dcac580b55a044395227b2cf72989631fbaa7bd793f01aecba8dfd4cf686a1c2adbca4e010a27bcec37cdd0455e6f8a8f9ded87d5644c53cec78508df9e18c58d2c22cdee9c2711618c673121b31b6457a7326b3d5754f06af2760bfcc6f5daf8174da4cb48f8260e2fb15a8763b1b30b53cbffdef10c986a5e9cf3b9e606e062dca547abebb7c626905bad6ba7f61fd0b1e3a108ff5c40e5a8889b4c333979b296bbfed3d294c2f67a70d259081bed3b157f647bfadebe94aaf0262060341a2d1c1597166e3a49733cc9f01ee1d1c51bb69029da0f95b29dac4809dbc9483fa91b2285435446f61e1a487241958c969d76c2dbe70d5c84afdd4e0160b07bd709a992ab74ca74560fd3208acdd7dc3d340c4649c825cc16eb2ae3ea9f820c7a71414934746de3e4a3990359f7b622bcbc67b5b52e31d5981dd6dea5efaee171c03f3a827b0dbb121e3337f2f1b4fb377169dbabb65dd6ab1da41dbf3c403dec30063ee8a22a964518444ef262014b8275e84d77c30097f84debbf856d5bcb61bc8d215c84dc93d89fbdf079a21900ee074f08e0e895fdbc6432af05a7af492a71e5b9f66b0288a60b9b8b1772a3669927c4543b62bee256ff8ce66efaaea9592c5509a14e9edadbfbbcfa0d813851bafa0664cd57b6d8457b84805a65231f5ac10f4d7961150d2867c4280485998456beb0e9c1fa14de1ad7a2778ddd7c5d26dd4af26d0fb8e2189f82493272e07b3fc7dbbf3ee38b9d81d06623f9e9c8ddeb7ce7c10642c56e742109962157f929cf0b4c2e155bcca61bd773fe32ea596dd104a29138c0de3c314db1088995132688c63092db804948c3bad6ca1b88f63307e43239b8fb9b10391e0972d16202752c5728b918ea3f6393e7c900ecf67d7c89ff12a4535dc77f8ca3bd85ee7c2ed1e143f61833b55a38e3abab659de4b3fe79dc7894a8636",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -4261,7 +4275,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4318,7 +4332,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4358,7 +4372,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4381,6 +4395,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "ab34220985ef30f2048c089c26bf9ff2e61aa349e6214a9c7d1416d8d8a2051403f68d48d7edf4cd507a15127b6d61bd36078b3070aa0c08f762154500598efd57f171dcbf27edc57dc093beec1b7fba9583ac0cfab19d18e4c1b0b824f655f8f012fee904b355b065ed06f2c6f84fde2ff9c2c8ed176f55faa48f4cb8e6b09c793c8613b44bcaecdb3a791575dace84d8c923026c598d5e8afc0089ea6926f1ffb6c0fedad3d086699cfe297cc92289272f90b2d5b5ec9b7dc057d71827453fb896746923838b38c0e5e1d01f24b3ca38d1946d67604a90a59f925b916127055064e24acafa3117180674a18af128a387549ae8b595be024194765367f91360c7557e8f6e473a6fa4d9e97bc41bff2fc70da3e1e134f0cc552f1ea69d01e22987ff2c336c3e610d3588ab5b813a10e9fa6e4fdf712b622b3d2446bed1805673569a8219967b66f642c1741f7ef7dff976445296624a3a8f60959f26e9135a0f40906320797909b2b4b206ed6b25895f9961ba0b02d2193d99363b601a2201e441a3d72b11bc79353d17e56b3b9419bf727d61340a5030b504a1eeb00da4bf293e1ea22ac67f1663a6e60a7ea31746a8346b76b8945d26506752585b3dc9af5c8a36e0c479b318319958285397a2901ca6e664f5c6584f996eba69d52686f42510ad5c217b4cf258499d69c35bfcc8409aa2e01daf7be513042a46856034ab29b2bafb5986cd02bbd8c60fb5d55d1bf1ef32890d4acf9c3dddcec00d26e11676d2a281de56d666e9ad8fc685d18785e0121b36b64835e54b159d255bb23dd1454fba5076b2ca3e7388d3e1bd24787af883999116375fea65d834294ec9826f9dfd8876c2a4ba69a1beb8c7b732773e7107c67541a7bc451b2cfa2442bac7801c9d142b34d3cc1bbb33f1de2df5fb80e2d3391282d407636498979de1004b00898952933dd6e60f902e845b58661bc1501df4e86239b9f33d5de179278d6085be38dea881a95f64fbef0d4db6df6c673add5f3579adfec4cb4ecbf8ad7e726e34535d3a315ce920e59cb47d3e0fb1392365444075ff016e5cf36622049200dd4e4d4fdf7ccbf6e19e5bf09293966cdd9a93d73ece3587f75aa9ca586cbe7b7c6d47530ca20764af30f93f5fdf51c1f6abc1af913d4def662fad17cc25a648f89af012194c95d694a1e9897469eb93142a014adbe24fb9b20a5f408106ed23896bafd76f4926da3e3bd1ffd4041bbdbd3a9c2ed73d70e04de8fbee720f23b1d294c5ea8992c516deb04c7bbe0ce9f6ad4af6ab3d20b2e2a7d4523109c754be0fe5bc4f320e648b02a678b7f5b543912aaad983ba3f2d2dadf24067fb624d90fad1f1e36685c36c3427244189c79ac7159ca214e87044577ff546ea3fb1383728f8e64914e6edca355a6766ecd5598388f28270860dcd7431017b2d4b383de8fb36",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -4502,7 +4518,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4559,7 +4575,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4599,7 +4615,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4622,6 +4638,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a2e80a68a280e18346",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -4743,7 +4761,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4800,7 +4818,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4840,7 +4858,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4894,7 +4912,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -4958,7 +4976,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5036,7 +5054,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5055,73 +5073,73 @@ false
 },
 "integers err 0": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "integers(): 'high' must be positive"
 }
 },
 "integers err 5 5": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "integers(): 'low' must be less than 'high'"
 }
 },
 "integers err 6 5 endpoint": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "integers(): 'low' must be less than or equal to 'high'"
 }
 },
 "integers err big": {
 "r": {
-"error": "OverflowError",
+"error": "builtins.OverflowError",
 "msg": "integers(): 'high' is out of range"
 }
 },
 "integers err bool": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "integers(): 'high' must be an int or an int64 array, not bool"
 }
 },
 "integers err broadcast": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "integers(): 'low' and 'high' could not be broadcast together"
 }
 },
 "integers err endpoint int": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "integers(): 'endpoint' must be True or False, not int"
 }
 },
 "integers err float": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "integers(): 'high' must be an int or an int64 array, not float"
 }
 },
 "integers err float array": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "integers(): 'high' must be an int or an int64 array, not float64"
 }
 },
 "integers err high float": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "integers(): 'high' must be an int or an int64 array, not float"
 }
 },
 "integers err no low": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "Generator.integers() missing 1 required positional argument: 'low'"
 }
 },
 "integers err shape ()": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "integers(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)"
 }
 },
@@ -5131,6 +5149,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "47a1474b313955f3b763c529b03e59bb35ed167504d1f5ad3899179c8cfc3adc9c86d0377e187dc655269e0229632be33b1a963b9f9ecf4724140a89fa1f0036c99e7c4b97065d11353362872640f9c98c876d1f4d30f9eadbfeab1c34e3013db3dd499cf1d0e0cb1de7c365e08d75d94a72367da3d2143a271ce8152741a08917fc5f660e4ecdd000fa25dcdb2e3ecf637f829e7d322daf7e1d0a57192b295b6dbed81f06fc1992342d946dd50e18bbc0685c3bf0e17ea56938ea79c6a498436c6fc3efdfa69c00d252406493d393c5e502bd3b01fc868cab0648dc91485e51b83f65ab65507e6bd527ac880359759e85f892c79c9bb1b1883e4ab4b87dbbb1616ee9c1232683174460333a2db41a35bc675054e083c40fc9af86322c380b9fb14ac8a6776b8ab1c76950ea7b3492545c7d39f3b3cca9e8ed39182d585a0352a6df3921128194d3632c760f08cb13fed390d89d54893c57d76f375172cc75e1d29aa6f526a0efe9247779f16fcf240c975749007feb0df99d8aad2a99350c77926622d9f4a0fd26209374e35ae3dafe9e807fbb92f4ed41920bceec51137e01b10d9c5bc835bc66e46c4278bca4abf0ded3860040e292156f7c1297a48a2b8fbe8ad3492aa86572986dcdcc8f01f847d9bd8247af94468234758119005aa958d55e988b1ba210663334b48c0aeb83cf020e9527de5b98ef9d02f1e0528ce9ce365e0ad6a9d5f8ddea197be2dcfd2a98ec57d994e0e33dbea8a178d8d9ff380418829391dac2e604451f1d84af73ea93435695b1853efecbfc5f11f8e8267a2b350323adb4fb52b330a920ec9ca4c505e5c97bcdf39479e22d554b9bcddc4e9065b145262dfc95557d72998693cc8574636291e5ec802d9100dff5e9bea6152404ffea75f4151c9b57815c6ce7bcec0b6ee0fd71b8152e8445a6429949a5ab7bd71903a69afbe97c9a63687dde9bd04d5a632bf045ce51459195edb868df515a828f4c89890590f6f2cfe6113e438342286cf6ad9fda1fc51c127703a961a08de537496f3b8e814140ac4a61ce152f3bc5b6aca22620eac46eee1281b7f3d1b5f29a631b6770794f4bc5ddf8f1ef03a9eb17ec50815814f73b6961a2b506cd160119bcfe8074d52c373aca31b1b01989d352cc7fbe91c65e5b3969ace45dfbd3689e4714d084661341f61199e9d0cf7190fa4f6791749033ed2d1f2be7db43a328b68a0eae1488d3d34e7ee0035ce5abef6cef6385739cd23f4a9601c6007056821eeaadaa75203d9a0a6a701e441621db45c1dcafe9875863267374ecf74d0b96c8d3b94393a17832e4e682c544e34e31bf5965600aea92d126c8a09672b3356c42f756f102637a0e4ce2a01acd245c450301a26306bea170ca1f27632d1870e3b2469f47f30e449a7611dc2b9d19305afb814a5f4aa417b787f72e72b6d9d4",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -5252,7 +5272,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5309,7 +5329,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5349,7 +5369,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5372,6 +5392,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "7588a9b91608e367f5e18ab7a42199f9c45c57af484a028be89f26826220b11b58d270ad694c6dff992125aa3cd6f68479778d4704fa960793ae5bff383d6503504635de4350e4ed5c93279ccc184ece80d2e552f54351e7ab9a358260fa18dbb7e26e80210926aba7d58493480041fbe6c6bf1cc467e2560dc6406c0d645716599ff907f6b17963ffa02e8b34e512e5a0f62cc599f32be76f16dd41805e9827d09cf8b7bce72680be3129f5e971b9176ec582f2d9dfb5ff65b6cae5eed81dfcaceac1926c8a9c8637d4fafc3eac8ece8abd5acb5802b6a4a740da40c115c731176e08861a212de8fcf1bbe6831a0450c9c10ca237b7f9e2a0a185dd6db478221421e0774d2975e721e5410f3d1cecf3dad07fedc80857e8389dd3be3ef6dcb6dfb9a1bb7d77a4a0bfc3704058e97e96d55ae6bb1eda0c0d0747cdc706ec7428c8615a3ed48411e9e7e9fb7330d7ac5f93f15deac2635659e929efd306dcc3f451ddf644a3f959bea602db0d62b9ca98cf3c104f1747baf6c226357a11e18496fb8666b7a67d45a94087e6e6edc8e0c11567d5f7b6e7ef4766be958949999a5fa716978d3f65b9032304751f6da0e762aca72f51a887c07796aec65b51536bdc3a3a5c78a1b5497477e3697c58f109a50b890ae6fd66ab2fc4c01665a94e2d937c4dd5964ca2d6ec5948bed0ddbb25ab49d945e20a3c159702b3d86195e70ae46b88e5f56f27b6dabbf8784f9bd4cdfada7ef36ecffed59a67618ebe2a8392d67b58844b9d940c52f1c9a2fb629cad6e903e8271bdfcb8b560cfa171b370951303ae0972e5cdc9461f16749e1025b2c795dfa61dcb47b4215cb820fb0620b9341b56f39e0911e8b9b063755cced86a1101f36178d513ac9390af72ef963590e3b4f4e76f3b6774ad6aca9d5e629fa5ec7ea4c84f77c9a2eac76695546611efcdc291e7e0b8e0d9665cb8e26304d54d02599279d347decf5b8496e7d3f5addb9d9abf3803f65c968b2e9092727e27d7daf4c53a23b00a84d4dd273f39eb4209aeb7c5d039fb40de2675ca25558f92694b1a1c003cbac7948f21cdee98af7faf8131f856d0cfd6481646ae2562bdefd1fa988e04a8f5b06826507c38feff8c5ebfb8ed5a6c862b88bbcb2ab423ba3f3a4c1c2e045ced7265058ddd8d9128acd91ca9279b8c5c7997ccadccf756c88fda6b2c2191d677db1d3d97c3cdd0e264fd6b9965d2cff0ea2cdb7a7ddb3c2fc5d5082ff7c63d947f51149fcc02bc887799e004478e8339a4753bbe71166fd04a47bcbfafa9dab97c74bcab20ef5f35216cb07ceb2e5a14d656d3e6c05706b26cdffa84a6198f88c8de27def808ef2a6085d540983a46aa87439997b0ebd52063ae34e35ae383b5d150352918015e171245ab0ec9577c6e7e49829ec1bc727c71c64ca372f8f0bca4a3684a2dc56134f814f8",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -5493,7 +5515,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5550,7 +5572,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5590,7 +5612,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5613,6 +5635,8 @@ false
 [
 "r",
 {
+"chunk": 512,
+"chunks": "8a9355481b2bf66d21b2a56508b6602be36f4d4f63879d3401a404868bc8be82769c5aad8f34e1101f7b14209ffd3c7939146d639c370872f79aa449eb6a5af28cebb83d05ce92262915728fdd518954675efdea8ab88b11fed316f59d765b0fbf0a096eeb1c7dd26b17064c825bd990c3597cc3795952a5885360789f43c85cd7f201d8f998f743723be299b631702b61a97e55d9dfd9852eb46087d986207f7fa7791aa0ebe464c8c4a03b80e3e82877493e58c914a4a2475499bfed8a5520e12f3a81716870a75e86752262a996d8519ba2ffc1ee89f85a4850fef40bf7b64750615dba9984d636ed73383a835f06a6fa4e2be50bea58712920608cb6f027e6c80194d2d95bddf99137b27050e8b31b1bfcf7905d8210b6024e25685c1b5d144c774224f9a9526dc99e7e8904697d21fde51f6263a5224a2b4ac292d54ef11034c943a8c3abfe0da683b50e40f7f24a489d5132444f4cc019d9ed879ebd617a8a24f32f15c59484f634715dcb946f9b106ff3363f32ed20fc8c863a8511de952b7bb9497796323a4ba31c5d51af54dee824177a045a22e939797e4806b5103aecc280a42911f6902258961c12d754cdb0a28d74217b4e62e189cc9c2af4fd12c9550d93714adda9a6e9f16503a1ee06ba1cb9f63349ee20a827e3296a3f4554d553da3ef6e0fcadad0475aa6b18ca20904aa118667a50374cd552053259f946baadde4c0f272fe9e6c7462d67bde46680388ab689c366ea48bde7d4bb9c2cd11b135183ad507a350e3307daa685acda7ae6cb543495f6e117897919a0fb71fd210ffddbebdd29149d4ed25c0e081ada93e021c746f168730b6eed0995af777229a34bc87205a79414ff0a3b828f6b8817c24a3dfcfefb6b91b9d882ef17d7a203c2dc2dbd99ea7295f2a8439204a574356c023ba2a953cb2835bff191be7669b1fc7057f19e42a3e1477da3697326097947937e8ee239ac22b46b8a2f6844863f8c586044cf7306d6e95b2c4a7fcbc14ecce317c2fc3e07ff19dcc4da1007fce0734ba446eac828093a97876e88b16cd012b372d694151e7c0cba02828cddec4dc8903a7a79f3d68db8da18ee4fa55d6f7d33daa49017454136e6a370a84483e8866fc53e574522901b04c521fc16f1da567c40aa90677307572eb925678f0252a37fc969e15f5d7b00dd8352ae3f9e7aea43853c90f55f1b7b31471adeb96e716b3d3a5a10c71747e66f03c2926f6aae9593009214fdbc1f113d7c831451c5752ed7f8aebdde393d51f3507e75a6153c393cca9f474135a553804906477868efc145feaa575ec7d291efb3adf75e1260dea4d4c0e1fa623628135c37d1828d1b20a3d1005ad39a8f25ef6c8fb4e8b2c4c2b2fac9e4b946237fd363f9e0cc7906cf62c627c5f26a1027ef3e8bded6aa9afc97be0d7b10a431d0466b114d47",
 "n": 131072,
 "nd": "int64",
 "sample": [
@@ -5736,7 +5760,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5759,6 +5783,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e84558d7e1d8d29e7",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -5880,7 +5906,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5937,7 +5963,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -5977,7 +6003,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6000,6 +6026,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "dd1f082b8581af66c9116056876970ef8f87647f6f44ab8b83e159c9efa0d3c191b564d76d0fed0b910bfa372e1b166d3be8031a503f125c546f8c62aa7b6e99f1d5491d03b65bf8df6fd5c77ed88bfaf1cd42176f0f09a86bae6a9d60ee85d35c7e88c17498261a464cc6ffd1a364dfae5c3b3550af2ec142f32368783882becc5f961ca7a82217a1e423cd5360dffdb581b57f84ea4518ee6fb6f0d9ed09dc69fa6e6927377e81e879b2367d9c4365ce48b007b6148e20e1ed65f435be6fee95d4fed16e704c68786eded4f4a02866b79f3041e3ea748471232e9c47fd905f326654b3b7e2a1d7ab0a6883ace675e900022a8be22fde68d35f8a416d9bdab5581f16b325ac00dc15b2760e58a0e15d07e924d39b9a5b07f7f7982a3366b141ddf224d1c79f5d25c36665dde6603e1ad56d1b6eb7d94739b5aa5572b3553b66ba7f2012bce035b420e26fff827aafb430da54257b9a3bcb727099a9511ff026eaa3a60679ea16d9d1f7321689741d72413a9bf34c70b977ffb3f875b19998edf956fd8ca26ea9be66e342e83924ecf31bce0b866a369c3197b3c05d5adfb13290fd868588de322447868225b94cbf96ac0230cccec62e4aa2eb9ea0e12152886e88a9dc237fe35685b870ce8dd1e7931d5a1b4849a9c072d5a32cc147c538efc283d979b53cbaddfd0d67ffb9896e31ee6b4eda4e9825c75f50fa7be8781fa1b57047614553a3fe1491c56d05d28a5322686c7185131bc9da9b5f2ea4472b5a524000bd59e9185916fe4d20533bce074c941f883c9d59b2b421865a19d7e36a10aaa0f0450d555ab755b82c3ec11c8b613377e026a900e694b9a5f430f911944117ce3a390c63aeca7f51463c7e559f74502612dc34c509dfc89b167aa6ec087aab6239e2b730df96a4b587785ee822c12894fa2e79fcb44703844619b9fbe1269be34e022944f85ef0fb375baa0001d89c1319aca58ae94c846706228e38351a2fbac3414d82a74ac3d2e8e189ef5e51dfe8aef8f723dc9dd73fbe28824e7ce314b65ef06a3a6de2b29b84941d0ea0145a8250a04e7b69cedc59d2dc2df312ad184b50b3567bf71c355058e03ae2dac9535a2fbfc4be90fe98122eb9afaed11dba6ee07acc22e2278fc66cae91e82eabeaee7925782fbcf50f54b3515fafc8e439d86f34718cee85a7d0e9a97653a5d78e5f6cbf96c5ae668a94d437567e239b0f7bf1cc8b909830715c8e2f9b0cf3dc150afd689cd6093093605b52cb3d01a7e4b14367d11e41ef7ac91bd097e35fb6d260ee113872a35aae629302896fa452581b02bc5dfe1cd2059d4a0334918b883a5df8df80dca43e197798e6191ef14666e8597ac603d5102120c257bec94ac1495629d81e0372c52282e6b7d2c02b9f394305f69a77f5dcb403e837d8997fde87a0e5529c325545ccc4bd17015657",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -6121,7 +6149,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6178,7 +6206,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6218,7 +6246,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6267,7 +6295,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6331,7 +6359,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6387,7 +6415,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6406,25 +6434,25 @@ false
 },
 "permutation err big": {
 "r": {
-"error": "OverflowError",
+"error": "builtins.OverflowError",
 "msg": "permutation(): 'x' is out of range"
 }
 },
 "permutation err float": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "permutation(): 'x' must be an int or an array, not float"
 }
 },
 "permutation err list": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "permutation(): 'x' must be an int or an array, not list"
 }
 },
 "permutation err negative": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "permutation(): 'x' must be non-negative"
 }
 },
@@ -6471,7 +6499,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6529,7 +6557,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6563,7 +6591,7 @@ false
 ]
 }
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 },
 "permutation large array": {
@@ -6572,6 +6600,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "e2cbfff2a8e96f3e9df1f980827bfe057559d7b7d6d2faa5412bc39647887c514bb8ccb93ce43e7eae55b17421295a1efa9e36ae163ef10c86c79b0b9a5e3e23080bca23cce5c5bb238d5c1985024281af5d9f1ca4872daf54d4bf9d112c6c6857cd0611538bd7f9f01ef5a43850b4b41cc42ec0260f7ceb4b8e55592a4cd7aaae23fbb3f44de98034d172ded265a3a2410bbac3cc9d952e3083e06befb556de0d49706aec48ae6b0151ff5b2b0aa372718df6273decba7fdf237ee4ec1fbebf4e6931a947b89d368de7d1a5226a99db44e24eb45169871ac5bd08af68b3e0e27a44fb81c422b5058a42fce9e71014109379cea429495a1cdae912a17770b2fe5873f50be63660818c0b082b75cececa802b623e5b32353c0408b6a85b3c10cc87acc82b72686a840cfd334900a77c195fe9886936832f3f295459b30e8a3e8288ec94a82a98708a79402a55518fbb76a3e41d285dc752ff822a119942dbd78dfb3786eb8c3daf347288e7fcc753feb630459c45215eb08b8d0571c78e9ae4f68ea2d31e35c09bec2477abb3c4abd574ddb311f383efc90fd7d1fc1605b2a6c4f2e98ff615ad31fac76f5a3f4ab368f63a05641c8521074bd7a0b036d2787d6fdcb51ef6fa1cd80379e57bb4c9e70d4bd0b7d17fe124dde07449c2d67403fff99c06683be702b8397dc7baa85337be3fe7004a08526295afd10baf6abd56f2e50647a79c592dc2ee26dc3f7f3505ab06ff2acbe8465214f65d1dc7193e80890c7f1a584fde78fde41df07a8d82e9f716789fac58d2d3108338eff593b2be263803973c534a7d1a394d53d62b1ea7d76cee873fce8b1054a71076882417d66e5351c7997c2a05af4931012879359f42e06eaafd4197bd6504b263dfbb8b04650d6a783c1ee7e5754aa560a4bc6895b2bdf9d22ea2c6a48286edd9ca6e36ebbf17b378bdec60d06e795b42e05078f686bca2250d433ff255cddca40b4f2f1c762a615622d288bbb8d86c06d0d0c1d9b248605b4ff4402601458e84a4b25c185fc7310d69b7295bcb5ddf54c7c81d1e79b62d55e94832d811a0e262a26dcfabec089bec479d166be4ce0c686b621c7905c6f00ecee373bf5e0a1afb22718fbf9860101ada66f8fa3301ec343ba04829d10981f9e3bd4774efcf8cc16160ceb22f034fac51f890cb626c6047bd97c2b6ef7055e6a290976e7c4fde1c36a5454c61dc74cf09b53e680df6fff83e26d1e1a8339bd0fa521623b26fb5039af9b0b2850d75211a1e7112e771366e95f40a197717b224e0e20232d819ad3960e73da9613d40b0da08219555396015a893f33609b7004339e2895920e329315a4cc76639afb13f73f3c62579c5ade572e79a510f46a6d3901b3dd6c1af10eb8bbc3e40db913fb0e4507f2906ac24960897405a02560938df7e7e6bec11a32155825f81a6c9",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -6693,7 +6723,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6716,6 +6746,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "e2cbfff2a8e96f3e9df1f980827bfe057559d7b7d6d2faa5412bc39647887c514bb8ccb93ce43e7eae55b17421295a1efa9e36ae163ef10c86c79b0b9a5e3e23080bca23cce5c5bb238d5c1985024281af5d9f1ca4872daf54d4bf9d112c6c6857cd0611538bd7f9f01ef5a43850b4b41cc42ec0260f7ceb4b8e55592a4cd7aaae23fbb3f44de98034d172ded265a3a2410bbac3cc9d952e3083e06befb556de0d49706aec48ae6b0151ff5b2b0aa372718df6273decba7fdf237ee4ec1fbebf4e6931a947b89d368de7d1a5226a99db44e24eb45169871ac5bd08af68b3e0e27a44fb81c422b5058a42fce9e71014109379cea429495a1cdae912a17770b2fe5873f50be63660818c0b082b75cececa802b623e5b32353c0408b6a85b3c10cc87acc82b72686a840cfd334900a77c195fe9886936832f3f295459b30e8a3e8288ec94a82a98708a79402a55518fbb76a3e41d285dc752ff822a119942dbd78dfb3786eb8c3daf347288e7fcc753feb630459c45215eb08b8d0571c78e9ae4f68ea2d31e35c09bec2477abb3c4abd574ddb311f383efc90fd7d1fc1605b2a6c4f2e98ff615ad31fac76f5a3f4ab368f63a05641c8521074bd7a0b036d2787d6fdcb51ef6fa1cd80379e57bb4c9e70d4bd0b7d17fe124dde07449c2d67403fff99c06683be702b8397dc7baa85337be3fe7004a08526295afd10baf6abd56f2e50647a79c592dc2ee26dc3f7f3505ab06ff2acbe8465214f65d1dc7193e80890c7f1a584fde78fde41df07a8d82e9f716789fac58d2d3108338eff593b2be263803973c534a7d1a394d53d62b1ea7d76cee873fce8b1054a71076882417d66e5351c7997c2a05af4931012879359f42e06eaafd4197bd6504b263dfbb8b04650d6a783c1ee7e5754aa560a4bc6895b2bdf9d22ea2c6a48286edd9ca6e36ebbf17b378bdec60d06e795b42e05078f686bca2250d433ff255cddca40b4f2f1c762a615622d288bbb8d86c06d0d0c1d9b248605b4ff4402601458e84a4b25c185fc7310d69b7295bcb5ddf54c7c81d1e79b62d55e94832d811a0e262a26dcfabec089bec479d166be4ce0c686b621c7905c6f00ecee373bf5e0a1afb22718fbf9860101ada66f8fa3301ec343ba04829d10981f9e3bd4774efcf8cc16160ceb22f034fac51f890cb626c6047bd97c2b6ef7055e6a290976e7c4fde1c36a5454c61dc74cf09b53e680df6fff83e26d1e1a8339bd0fa521623b26fb5039af9b0b2850d75211a1e7112e771366e95f40a197717b224e0e20232d819ad3960e73da9613d40b0da08219555396015a893f33609b7004339e2895920e329315a4cc76639afb13f73f3c62579c5ade572e79a510f46a6d3901b3dd6c1af10eb8bbc3e40db913fb0e4507f2906ac24960897405a02560938df7e7e6bec11a32155825f81a6c9",
 "n": 131075,
 "nd": "int64",
 "sample": [
@@ -6837,7 +6869,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6904,7 +6936,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -6923,13 +6955,13 @@ false
 },
 "random keyword shape": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "Generator.random() got some positional-only arguments passed as keyword arguments: 'shape'"
 }
 },
 "random shape=()": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "random(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)"
 }
 },
@@ -6939,6 +6971,8 @@ false
 [
 "r",
 {
+"chunk": 513,
+"chunks": "fb5f3e3bbe2c1e382ea2a4bcf49455f374484976a04147295244cb8a2a63caec4d9342cba73364a5f59c9ef8449ef90af0055dcabac0d368ee8ce8938488bc4bc37667a2a62d9d5039867c8e4242cdb28fc4db8c847a3177f366a13b0f8cfd8d8582f92c92244b20ebca61f6222832d8ce26d170289ddbe9ce689ceae545d7489167c5ac5fe8b88048800b272caa0417332991e84e97284700e47f3232e800cf1bb3ef52f15ec0884d6a391b8033779abcc5bf5b9ec717edf01431dd2dd987cd654ce92240dd6e244fceda15d0b089da57817119b901f35e3edcd61c219c04956c35972c7ecd8279acc76b2b6dfc6b3c2dc5478508762c5f2fb79c3a6b62e592b19caff1d22ae02e344a6a94f166479443cd19fc1c5199eaa659e2854b32326c79661827f66429793dca989b8d2eecd60f6dfa9f2187ca1e4656102766ae0068a2463111644b9b6faf3c5b235daebc53c006f9c36d277ed583bcba6682687259d9ec9838e1b8e76f9464e8306f7a19fb1621e4f36026fb55881ec22689c97a29760e697edd866ea2f3e6b5e3e6e943bfecf840ae3c2a20fe737e8e9f39897a31861b42285ce0214656a40fdf6bee372c9ff8cecdd697f5f19b722b4a93a80038355785b17e0d89d9fff1b3a1cb9ec2cf6a54fbb7bbccb47f434be8542598261c7d3e672e21e5f6ac4deaa0b2d565e4684bc08d611a6ecc8942bc69d9f8bd6798fc7bc4747b70d44ecb554b2fcc29b2f0f66029632c9889673af45c767d385f730f87f2e11d47fa3eaabad95a57824e7a32b712c0abaed4f509560a61849f1481d60c802801469ed7e3e000cf2535b372cdff4fbc4b119f912ea7bb1d86712f31d94c1429fb5853dfd2086a5c136e988cd547e70d81c8425beb62b0bb11ffa20c8ce8dcc7ec239b684a0301a74a5fb352dda17828c3f34cf34134a488a837fffaeb75537b3bd6e5a2f7c3a8d29eca3244bd06a8b3f64baea5d3fb30f85ca89f88a9a807aa98e821a8de6c18f70a030231db19128e59df08f97ee459af3bf6d7494038e36f32a98f903f8a58496ada2d7d0a75ec990413a83161ebbf053012045f81fb148a812429d3a8e25ab6536cf74163607894e2bdd0a8b900470f210577a6f9ee421835669d65001e063ef6f6e3b86f4818c3d0a42620795e9bcbf6d892a4cd9eecc247169acfd60f69c059f90d21e1b864db0ca05955b300b9c038be5309630f48684a352adea87b960a45883320c173b8668d0a5c2a4cbe21514c0f6ed5732d009e34ae2f1a6213d31c3ff3af24efcec016719c5bb90105199bec6b2508eeecacd70e6f7aede3e23deac33ae88be4bba2a463c231bed67ef25865684daa0f88dd8efeb94ef77f389a91f09d711f1b29a9267c7276d00236e8f9128d6f6713dd33f92509409be51d531d84afc5782e01292473453361aa0139962b7e88f7",
 "n": 131075,
 "nd": "float64",
 "sample": [
@@ -7060,7 +7094,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7079,7 +7113,7 @@ false
 },
 "random shape=(2, -1)": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "random(): negative dimensions are not allowed"
 }
 },
@@ -7119,7 +7153,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7183,7 +7217,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7206,6 +7240,8 @@ false
 [
 "r",
 {
+"chunk": 586,
+"chunks": "965c1a9a7870c0dea30e0d36a5641a606ecf2c5f9511ac49a7572df1c91186b343f32612a4b411a2168a1fe90bc6038bdeecb351dbc366c9aecfebcd6c96eccea87937d04cfda8b51e7c6fab7fbec4f83f6ac18c72c4e84ff5f088c143f1e9404275ec2358ae4ec83e5741dac9e7be6b95812df52aff0b54123fa73ebbd1b6b4d83a6abb883171c70c7bc9f86f413586b052219dc8f6318b85a59b42ab0cd14fff8e32cd6b1c0fc6b3c0ba665a7fa769831717da4d55809305d8a6123e6cd6a889c3d531e9d22e54b45bf221cfcb03a60edde79b4d51aa953ad2f2e05300328a9b117cb3726e9b53f6c7113fda1d600a344f292fb95200b134d832b672c834fe2d260b8b0cbe4f74150ea78e7f653721bd2e80099aa6c68c8ab676ae8a6b847d58e0eed3610b35435d6d35282574e36287e1e95e9f7172af87c94c700de2eed63c07e6f256e0d8505d0f862d0f33fdf025561f92da8747677ed19657279053e8f519326a898350202ae7b1fbd1adad183a94638af3fca5faec186474b0583c376bb6a184c86791d23d058c25df19f69378fee351149e857ae7789aa9b5cae4e5fac2e5b3b0ff469f417a3628373b9016e5acd93a7d1cae6905f7abf7798d64c7b01a031177eb3f5460466ec3788a2e5e10b3b8527a9e0968ffa12bcd20731a21230c419b24775ccd2e7a22436ae9cc718fb24bf5c97d06883c0c1c5701bbfaa179bf9373c183e3344d370dd710150ed411a0d35eb7473bb63831c5178355a178923f92634f797c32be44fc164059c98b32760395359a3e75a75460118baf55aead74b44c0221b042e4060372194442c58d8a2c967604054287f30acaf3463b4542b17cdb2dd26a2f377ae492058f3b8f37b87381740a20bcdd959d53d27cb3ac7f511231fefc7aa8a906873b22ffe3eac11430549b0c9205f041ae8e654a51f6ff8c20871b48e5dc06a1518810ec7c776c70c14810e41b699ad3c4637027901f5e2ad3eca2e9355ae3541ed9301d2845fc77dd58fac79e2996006de36cfd97ad1fb7c5d6b0dbfcd2dcca3baf9eb8bf2e17433af461f046d97ad296107efc4be1e069a6e4306706b45e4a33bacb220fb9120ad265ebcd3a2a593a2ca5753e4beefefcd6156ebb8fe0fc1a974f4264ddbeeb90a371f1a93545634bcc0fa1c6812c4ea1dcd7a26c247bc0a4749b76b32203c54141fd29e81429a3ef10e0d98ef6b9e56c0f6454cf8d413e5ede55fcf23a0231e3fbfa9539a78b1aec901fd570bd3381580b1f6f17ac34e006edd917d29bb12dd569158831f90cce2ac6b536257e57d304a27c835eb0872c8e1a1a88881b32c97f6ca6361265a77589986048db1c974928bc1c26706f02013b3c4bbe6fa060babf439df30ddb1229f8ac87f2a6cfb49f48f17430d56d715cb0d936a4d8bb6396acd90c6879ff622e53b37815fd042a",
 "n": 150000,
 "nd": "float64",
 "sample": [
@@ -7329,7 +7365,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7348,7 +7384,7 @@ false
 },
 "random shape=-1": {
 "r": {
-"error": "ValueError",
+"error": "builtins.ValueError",
 "msg": "random(): negative dimensions are not allowed"
 }
 },
@@ -7384,7 +7420,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7435,7 +7471,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7454,7 +7490,7 @@ false
 },
 "random shape=2.0": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "random(): 'shape' must be an int or a tuple of ints, not float"
 }
 },
@@ -7496,7 +7532,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7538,7 +7574,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7557,7 +7593,7 @@ false
 },
 "random shape=[2, 3]": {
 "r": {
-"error": "TypeError",
+"error": "builtins.TypeError",
 "msg": "random(): 'shape' must be an int or a tuple of ints, not list"
 }
 },
@@ -7618,7 +7654,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7657,7 +7693,7 @@ false
 "items": [
 0
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7686,7 +7722,7 @@ false
 "items": [
 1
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7715,7 +7751,7 @@ false
 "items": [
 2
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7744,7 +7780,7 @@ false
 "items": [
 3
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7773,7 +7809,7 @@ false
 "items": [
 4
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7879,7 +7915,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7913,7 +7949,7 @@ false
 0,
 0
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7943,7 +7979,7 @@ false
 0,
 1
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -7984,7 +8020,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -8012,7 +8048,7 @@ false
 "items": [
 131075
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 },
 {
 "nd": "int64",
@@ -8031,7 +8067,7 @@ false
 ]
 }
 ],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -8050,7 +8086,7 @@ false
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -8105,7 +8141,7 @@ true
 "spawn_key",
 {
 "items": [],
-"tuple": "tuple"
+"tuple": "builtins.tuple"
 }
 ],
 [
@@ -8123,7 +8159,7 @@ true
 }
 }
 },
-"format": 1,
+"format": 2,
 "threads": [
 1,
 3,

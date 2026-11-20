@@ -1,14 +1,12 @@
-"""sd.frame against pandas. The base set is bench/frame/final_compare.py (at commit 4151d2a)'s (15 calls at
-1,000, 100,000 and 1,000,000 rows, four per-call-overhead rows at 10 rows) with its
-inputs (data(n, seed)); the post-merge measurement of those rows is in bench/merge/m8/final/.
-On top of it: NA columns, groupby aggregations beyond sum, left / outer / string-key /
+"""sd.frame against pandas. The base set: 15 calls at 10^3, 10^5 and 10^6 rows and four
+per-call-overhead rows at 10 rows, on the inputs of _Raw(n, seed). On top of it: NA columns, groupby aggregations beyond sum, left / outer / string-key /
 two-key / many-to-many merges, pre-sorted inputs, duplicates and reductions, read_csv
-options, 262,144 rows (above the 131,072-row split threshold, frame.md §11.2), a wide
+options, 2^18 rows (above the 2^17-row split threshold, docs/design/frame.md §11.2), a wide
 frame, few groups and long common-prefix string keys.
 
 Branchy calls (hash, sort, groupby, merge, parsing) take a different input of the same
-shape each call, cycling through harness.fresh_count(n) inputs (4 at 1,000,000 rows,
-64 at 1,000): on one input called over and over the branch predictor and the caches
+shape each call, cycling through harness.fresh_count(n) inputs (4 at 10^6 rows, 64 at
+10^3): on one input called over and over the branch predictor and the caches
 learn that input and the loops look faster than they are (docs/design/frame.md §12.1).
 Elementwise calls, reductions and mask filters are branch-free (§7.3) and take one
 input. Both libraries get the same inputs in the same order.
@@ -18,22 +16,28 @@ sort=True where pandas' outer merge sorts), NA as NaN in float columns and as th
 nullable Int64 in int columns. The "pandas" column is pandas as installed: with pyarrow
 present its str columns are pyarrow-backed and read_csv uses its default (C) engine.
 String cases also have a "pandas python str" column, pandas' str with python storage
-(what pandas uses without pyarrow, and what the old baseline measured), and read_csv a
-"pandas pyarrow engine" column (engine="pyarrow"). Polars, a column of the old script, is
-not a comparator here."""
+(what pandas uses without pyarrow), and read_csv a "pandas pyarrow engine" column
+(engine="pyarrow").
+
+The read_csv cases read files written once into build/speed/frame-data: a file's name
+holds a hash of the code that makes it (_Raw, _csv_frame) and pandas' version, so a change
+to either writes new files instead of reading old ones."""
 
 from __future__ import annotations
 
 import dataclasses
 import functools
+import hashlib
+import inspect
 import operator
+import os
 
 from ..harness import fresh_count, rotate
-from ..registry import Case, Ref
+from ..registry import Case, Check, Ref, count
 
 SIZES = [1_000, 100_000, 262_144, 1_000_000]
 GROUP = {1_000: "rows-1e3", 100_000: "rows-1e5", 262_144: "rows-262144", 1_000_000: "rows-1e6"}
-BASE = (1_000, 100_000, 1_000_000)  # final_compare.py's sizes
+BASE = (1_000, 100_000, 1_000_000)  # the base set's sizes
 MID = (100_000, 1_000_000)
 SPLIT = (262_144,)
 BIG = (1_000_000,)
@@ -53,8 +57,8 @@ def _data_dir():
 
 
 class _Raw:
-    """final_compare.py's data(n, seed), then the columns added since; the strings made
-    only when asked for."""
+    """The base set's inputs at n rows, then the further columns; the strings made only
+    when asked for."""
 
     def __init__(self, n, seed):
         import numpy as np
@@ -67,7 +71,7 @@ class _Raw:
         m = max(n // 10, 1)
         self.m = m
         self.lk, self.rk, self.rb = rng.integers(0, m + m // 9, n), rng.permutation(m), rng.standard_normal(m)
-        # added since final_compare.py
+        # the further columns
         self.na = rng.random(n) < NA_RATE
         self.i = rng.integers(-1000, 1000, n)
         self.k4 = rng.integers(0, 4, n)
@@ -249,7 +253,7 @@ def _concat_pd(o):
 STABLE = {"kind": "stable"}
 
 CALLS = [
-    # final_compare.py's calls
+    # the base set
     Call("f + g", "f g", lambda o: functools.partial(operator.add, o["f"], o["g"]), fresh=False, sizes=BASE + SPLIT),
     Call("f.sum()", "f", lambda o: o["f"].sum, fresh=False, sizes=BASE + SPLIT),
     Call("f[f > 0]", "f", lambda o: lambda f=o["f"]: f[f > 0], fresh=False, sizes=BASE + SPLIT),
@@ -458,29 +462,44 @@ CSV_CALLS = [
 _CSV_STRINGS = {"mixed", "quoted"}
 
 
-def _csv_paths(kind, n, k):
-    """k CSV files (seeds 0..k-1) of `kind` at n rows, written once into build/speed/frame-data."""
+def _csv_frame(kind, n, seed):
+    """The pandas frame of a `kind` CSV file at n rows."""
     import numpy as np
     import pandas as pd
 
+    raw = _Raw(n, seed)
+    if kind == "floats":
+        return pd.DataFrame({"x": raw.f})
+    if kind == "mixed":
+        return pd.DataFrame({"id": np.arange(n), "x": raw.f, "name": raw.strs, "flag": raw.f > 0})
+    if kind == "ints":
+        return pd.DataFrame({"id": np.arange(n), "v": raw.i})
+    # quoted: every text field holds a comma, so to_csv quotes it
+    text = [f"{a}, {b}" for a, b in zip(raw.strs, raw.cust)]
+    return pd.DataFrame({"id": np.arange(n), "text": text, "x": raw.f})
+
+
+def csv_version() -> str:
+    """The version of the CSV files: a hash of the code that makes them and pandas' version."""
+    import pandas as pd
+
+    src = inspect.getsource(_Raw) + inspect.getsource(_csv_frame) + pd.__version__
+    return hashlib.sha256(src.encode()).hexdigest()[:10]
+
+
+def _csv_paths(kind, n, k):
+    """k CSV files (seeds 0..k-1) of `kind` at n rows, written once into build/speed/frame-data.
+    Each is written under a name of its own process and renamed into place, so parallel
+    smoke lanes making the same file do not collide."""
     d = _data_dir()
+    ver = csv_version()
     out = []
     for seed in range(k):
-        path = d / f"{kind}-{n}-{seed}.csv"
+        path = d / f"{kind}-{n}-{seed}-{ver}.csv"
         if not path.exists():
-            raw = _Raw(n, seed)
-            if kind == "floats":
-                frame = pd.DataFrame({"x": raw.f})
-            elif kind == "mixed":
-                frame = pd.DataFrame({"id": np.arange(n), "x": raw.f, "name": raw.strs, "flag": raw.f > 0})
-            elif kind == "ints":
-                frame = pd.DataFrame({"id": np.arange(n), "v": raw.i})
-            else:  # quoted: every text field holds a comma, so to_csv quotes it
-                text = [f"{a}, {b}" for a, b in zip(raw.strs, raw.cust)]
-                frame = pd.DataFrame({"id": np.arange(n), "text": text, "x": raw.f})
-            tmp = path.with_suffix(".tmp")
-            frame.to_csv(tmp, index=False)
-            tmp.rename(path)
+            tmp = path.with_suffix(f".{os.getpid()}.tmp")
+            _csv_frame(kind, n, seed).to_csv(tmp, index=False)
+            os.replace(tmp, path)
         out.append(str(path))
     return out
 
@@ -628,6 +647,19 @@ TITLES = {
 }
 
 
+# The smoke run's check (bench/speed/check.py compares frames column by column): pandas'
+# value_counts puts the values in an unnamed index, sd returns them as a column.
+CHECKS = {
+    "low.value_counts()": Check(ref=lambda label, v: v.reset_index()),
+    "strs.value_counts()": Check(ref=lambda label, v: v.reset_index()),
+}
+
+
+def _rows(n) -> str:
+    """The size part of an id: 10^k rows, or 2^18 rows for the split-threshold size."""
+    return "2^18 rows" if n == 2**18 else f"{count(n)} rows"
+
+
 def cases() -> list[Case]:
     out = []
     for name, call in SMALL_CALLS:
@@ -655,13 +687,14 @@ def cases() -> list[Case]:
                     area="frame",
                     group=GROUP[n],
                     name=c.name,
-                    size=f"{n:,} rows",
+                    size=_rows(n),
                     n=n,
                     setup=lambda n=n, keys=tuple(c.keys.split()), k=k, libs=libs: _setup(n, keys, k, libs),
                     sd=_factory(c.sd, "sd"),
                     refs=_refs(c.pd or c.sd, c.strings),
                     note=_fresh_note(c.note, k),
                     quick=(c.name, n) in QUICK,
+                    check=CHECKS.get(c.name, Check()),
                 )
             )
         for name, kind, sdkw, pdkw, sizes, arrow, note in CSV_CALLS:
@@ -693,7 +726,7 @@ def cases() -> list[Case]:
                     area="frame",
                     group=GROUP[n],
                     name=name,
-                    size=f"{n:,} rows",
+                    size=_rows(n),
                     n=n,
                     setup=lambda n=n, kind=kind, k=k: {"paths": _csv_paths(kind, n, k), "n": n},
                     sd=_read_csv("sd", sdkw, strings),
@@ -709,7 +742,7 @@ def cases() -> list[Case]:
                 area="frame",
                 group=WIDE_GROUP,
                 name=name,
-                size=f"({WIDE_ROWS:,}, {WIDE_COLS})",
+                size=f"({WIDE_ROWS}, {WIDE_COLS})",
                 n=WIDE_ROWS * WIDE_COLS,
                 setup=lambda k=k: _wide_setup(k, ("sd", "pandas")),
                 sd=_factory(sdc, "sd"),

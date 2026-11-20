@@ -1,26 +1,26 @@
-"""R's lm, sandwich, lmtest, glm and glmnet on fixed problems, for sd.regression's G1-G3
-tests (tests/regression/ref/regression_r.json, tests/regression/test_against_r.py;
+"""R's lm, sandwich, lmtest, glm and glmnet on fixed problems, for sd.regression's linear,
+GLM and penalized tests (tests/regression/data/regression_r.json, tests/regression/test_against_r.py;
 docs/design/regression.md §3.1-§3.5). R is not a test dependency: run this once where Rscript
 (with sandwich, lmtest and glmnet) is installed,
 
-    uv run --no-sync python tools/gen_regression_r.py
+    .venv/bin/python tools/gen_regression_r.py
 
 What it stores, per problem (the inputs too):
-  - lm (G1): lm() with tol = 1e-7 (R's default; the problem says which sd rtol matches it):
+  - lm: lm() with tol = 1e-7 (R's default; the problem says which sd rtol matches it):
     coefficients, vcov(complete=TRUE)'s standard errors, sigma, df.residual, R^2, adjusted
     R^2, F, residuals, fitted values, logLik, AIC, hatvalues, rstandard, rstudent,
     cooks.distance; sandwich 3.1 vcovHC HC0-HC3, NeweyWest(lag, prewhite=FALSE, adjust=FALSE),
     vcovCL(type="HC1") and lmtest 0.9 coeftest p-values (df.residual, and G - 1 for clusters);
     dwtest, bptest (studentized and not). With zero weights, sandwich counts the zero-weight
     rows in n (and its HC2/HC3 recycle hatvalues of the wrong length), so the sandwich values
-    are R's fit with those rows removed (sd drops them, G20).
-  - glm (G2): R's glm.fit evaluated at sd's solution (start = sd's params, one Fisher step:
+    are R's fit with those rows removed (sd drops them).
+  - glm: R's glm.fit evaluated at sd's solution (start = sd's params, one Fisher step:
     maxit = 1), so the comparison has no convergence-tolerance part: coefficients, summary's
     standard errors, statistics and p-values, deviance, Pearson chi^2, dispersion, fitted
     values; for the canonical links without zero weights the sandwich and
     coeftest values; for the non-canonical links vcovHC HC0 (expected-information bread). From
     a separate fit at epsilon = 1e-13: the null deviance, logLik and AIC.
-  - glmnet (G3, glmnet 5.2): coefficients at single lambdas with thresh = 1e-20, the df and
+  - glmnet (glmnet 5.2): coefficients at single lambdas with thresh = 1e-20, the df and
     dev.ratio, and the first lambda of the default paths (alpha = 1 and alpha = 0).
 """
 
@@ -33,7 +33,7 @@ import tempfile
 import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = ROOT / "tests" / "regression" / "ref" / "regression_r.json"
+OUT = ROOT / "tests" / "regression" / "data" / "regression_r.json"
 
 PRELUDE = r"""
 suppressMessages({library(sandwich); library(lmtest); library(glmnet)})
@@ -64,7 +64,7 @@ if (sandwich_ok) {
 }
 if (all(w == 1)) {
   out("dw", dwtest(f)$statistic)
-  Xc <- data.frame(X=I(X))  # the auxiliary regression on a constant and X, as sd (G30)
+  Xc <- data.frame(X=I(X))  # the auxiliary regression on a constant and X, as sd
   out("bp", bptest(f, varformula=~X, data=Xc)$statistic); out("bp_df", bptest(f, varformula=~X, data=Xc)$parameter)
   out("bp0", bptest(f, varformula=~X, data=Xc, studentize=FALSE)$statistic)
 }
@@ -122,7 +122,9 @@ def run_r(script, arrays):
             v = np.asarray(v, dtype=float)
             np.savetxt(d / f"{k}.csv", v[:, None] if v.ndim == 1 else v, delimiter=",", fmt="%.17g")
         (d / "run.R").write_text(PRELUDE + script)
-        res = subprocess.run(["Rscript", str(d / "run.R"), str(d)], capture_output=True, text=True, check=True)
+        res = subprocess.run(
+            ["Rscript", "--vanilla", str(d / "run.R"), str(d)], capture_output=True, text=True, check=True
+        )
     vals = {}
     for line in res.stdout.splitlines():
         parts = line.split()
@@ -415,6 +417,7 @@ def main():
     ver = subprocess.run(
         [
             "Rscript",
+            "--vanilla",
             "-e",
             'cat(R.version.string, "| sandwich", format(packageVersion("sandwich")), '
             '"| lmtest", format(packageVersion("lmtest")), "| glmnet", format(packageVersion("glmnet")))',

@@ -36,7 +36,7 @@
   - 회귀 영역(regression.md §3.1)이 쓰는 실수 전용 루틴: `ormqr potri larfg larf trcon`. `trcon`(1-노름 조건수의 역수 추정)은 작업 공간을 Scratch에서 받는다(§6.3). complex판(`ungqr`, `heevd`, `hegvd` 등)은 같은 래퍼가 부른다. `sygv`는 인자 하나로 `sygvd`와 `sygv`를 고른다.
   - 행렬곱(`matrix_power`, `expm`, `solve_sylvester`)은 `sd.matmul`을 거치지 않고 `cblas_dgemm`/`cblas_zgemm`을 직접 부른다. 작업 버퍼가 이미 C++ 안에 F-order로 있기 때문이다.
 - **인터페이스**: 새 LAPACK, ILP64 (`ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`, array.md §1.3). 정수 인자는 `lint`(64비트)이고 `static_assert`로 확인한다.
-- `accelerate/`에는 LAPACK(`lapack.hpp`, linalg), BLAS(`blas.hpp`, 배열의 `matmul`), vForce(`vforce.hpp`, 배열의 초월함수) 래퍼가 함께 있다 (ARCHITECTURE §4.4).
+- LAPACK 래퍼는 `linalg/lapack.hpp`에 있다(linalg와 그 위의 regression, optimize가 쓴다). 영역을 넘어 쓰는 BLAS(`blas.hpp`, 배열의 `matmul`)와 vForce(`vforce.hpp`, 원소별 초월함수) 래퍼는 `accelerate/`에 있다 (ARCHITECTURE §4.4).
 
 **Accelerate에 대해 측정한 사실** (설계의 전제)
 - **내부 스레드를 쓰는 것은 `getrf`의 n ≥ 768뿐이다.**
@@ -90,7 +90,7 @@
 | `linalg/lapack.hpp` | LAPACK/BLAS 래퍼 (§1.2) |
 | `src/stardust/linalg/` | `__init__.py`(재노출), `_errors.py`(`LinAlgError`). 결과 namedtuple은 세 영역 공통의 `src/stardust/_results.py` |
 
-- 층은 아래로만 의존한다: `linalg/` → `array/`, `parallel/`, `accelerate/`, `base/` (ARCHITECTURE §1).
+- 층은 아래로만 의존한다: `linalg/` → `array/`, `parallel/`, `base/`, 그리고 Python 경계의 공용 도우미 `bind/pyutil.hpp`·`bind/errors.hpp` (ARCHITECTURE §1).
 
 ---
 
@@ -818,7 +818,7 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
 - **불변성**: 결과는 입력 레이아웃(§5.7), 배치 안의 위치(§6.4), 스레드 수(§8.5)와 무관하게 비트까지 같다.
 
 ### 12.3 측정 방법
-- **기준선은 고정된 줄 묶음이다.** 함수마다 정해진 shape 세트(행렬 하나 2×2–2048², 배치, 레이아웃, 긴 벡터)를 잰다. 줄 단위로 numpy/scipy와 비교해 빠름/같음(±10%)/느림을 센다. 커밋 4151d2a의 `bench/merge/`에서는 linalg 258줄이었다. 지금은 `bench/speed/cases/linalg.py`의 사례이고, 표는 `bench/linalg/speed.md`다(`.venv/bin/python -m bench.speed run --area linalg`).
+- **기준선은 고정된 줄 묶음이다.** 함수마다 정해진 shape 세트(행렬 하나 2×2–2048², 배치, 레이아웃, 긴 벡터)를 잰다. 줄 단위로 numpy/scipy와 비교해 빠름/같음(±10%)/느림을 센다. §12.4의 수는 커밋 4151d2a의 `bench/merge/` 기준선(linalg 258줄)에서 왔다. 사례는 `bench/speed/cases/linalg.py`, 표는 `bench/linalg/speed.md`다(`.venv/bin/python -m bench.speed run linalg`; bench/README.md).
 - **두 번 이상 돌려서 확인한다.** `eig` 배치가 한 번 0.35배로 나왔고 재현되지 않았다(다시 재면 3.5ms 대 그 실행의 21.9ms). 그 실행 전체가 느렸다.
 - **버전끼리는 같은 자리에서 번갈아 잰다.** 각 시점의 커밋을 다시 빌드하고, 같은 줄을 빌드마다 번갈아 두 바퀴 재어 가장 빠른 값을 쓴다.
   - 이유: 같은 빌드가 날에 따라 최대 2배 다르게 나왔다. 같은 옛 빌드가 날에 따라 "빠름 109줄"과 "122줄"로 갈렸다.
@@ -826,7 +826,7 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
 - **벤치마크 중에는 다른 작업을 돌리지 않는다.**
 - **같은 방식으로 설치해서 잰다.** editable 설치(scikit-build-core의 import 훅)로 부른 빌드에서 `solve_tridiagonal` (1000,3,3) 10스레드가 프로세스마다 약 8µs 또는 18µs로 갈렸다(16번 중 10번 느림). `pip install --target` + `python -S`로는 12번 중 0번이었다. 원인은 확인하지 못했다(메모리 페이지나 import 훅 쪽의 상태로 보인다).
 - µs 단위의 병렬 호출은 실행 사이에 ±10–30% 흔들린다. 큰 시간은 안정적이다.
-- 통합 중에는 `bench/merge/baseline.md`(커밋 4151d2a)의 기준선과 비교한다. 10% 넘게 느려진 줄은 원인을 밝힌다 (ROADMAP 진행 원칙).
+- 기준선(`bench/speed/results/linalg.json`)보다 10% 넘게 느려진 줄은 원인을 밝힌다 (ROADMAP 진행 원칙; `python -m bench.speed compare`).
 
 ### 12.4 위치
 기준 시간 / sd 시간. 258줄 중 빠름 195, 같음 43, 느림 10이다 (10스레드).
@@ -888,9 +888,9 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
   - 배치 안의 위치: 홀수 n(3, 5, 7, 40)의 배치 결과가 하나씩 부른 결과와 같은 바이트 (§6.4)
   - 스레드 수: 36개 호출 × 2 dtype × 배치 3가지를 스레드 1, 3, 10에서 비교, 실패 메시지 비교, Python 스레드 4개 동시 호출, 반복 20회
   - 최적화를 끄고 켜기: §7.7의 비공개 함수로 끈 경로와 켠 경로, 스레드 1/3/10의 비트를 비교한다(328개).
-- **크기로 고르는 경로의 경계** (`test_review_fixes_2.py`): LU 계열의 n = 31, 32, 46, 47과 직사각 `lu`, `solve_banded`의 n = 7, 8, 9, 12에서 답(잔차, numpy와의 허용오차), 레이아웃·배치 위치·스레드 수와 무관한 비트, 모서리를 읽지 않음, 특이의 판정을 본다 (§1.3).
-- **끝나지 않던 입력** (`test_review_fixes.py`): `expm`의 극단값(§11.4)은 자식 프로세스에서 시간 제한을 두고 돈다. 가드가 없으면 약 2³¹번 제곱해서 테스트 전체가 멈춘다.
+- **크기로 고르는 경로의 경계** (`test_optimizations_small.py`의 LU 계열, `test_structured_solvers.py`의 `solve_banded`): LU 계열의 n = 31, 32, 46, 47과 직사각 `lu`, `solve_banded`의 n = 7, 8, 9, 12에서 답(잔차, numpy와의 허용오차), 레이아웃·배치 위치·스레드 수와 무관한 비트, 모서리를 읽지 않음, 특이의 판정을 본다 (§1.3).
+- **끝나지 않던 입력** (`test_kron_cross_expm.py`): `expm`의 극단값(§11.4)은 자식 프로세스에서 시간 제한을 두고 돈다. 가드가 없으면 약 2³¹번 제곱해서 테스트 전체가 멈춘다.
 - **API 표면** (`test_api_surface.py`): `docs/api/linalg.md`의 코드 블록에 있는 이름과 모듈이 내보내는 이름이 같은지, keyword-only 옵션이 문서와 같은지 확인한다. nanobind 함수는 `inspect.signature`가 `(*args, **kwargs)`라서 `__nb_signature__`를 읽는다.
-- **골든 출력**: 통합 중에는 옛 패키지로 만든 linalg 1,844개 결과(에러 메시지 포함)를 스레드 수 1, 3, 10에서 바이트로 비교한다 (커밋 4151d2a의 `bench/merge/golden/`, ROADMAP 진행 원칙).
+- **골든 출력**: linalg의 골든 케이스 1,844개의 결과(에러 메시지 포함)를 스레드 수 1, 3, 10에서 비트까지 비교한다 (`tests/golden/cases_linalg.py`, tests/README.md의 골든 절).
 - **남은 위험 하나**: 전체 테스트 한 번에서 1건이 실패했는데 출력을 남기지 않아 어느 테스트인지 모른다. 이후 전체 테스트 160회와 hypothesis 2000예제 실행에서 다시 나오지 않았다. hypothesis는 실행마다 다른 예제를 만드므로 드문 입력 하나였을 수 있다.
 - **고치기 전 코드에서 실패하는지 확인한다.** 버그를 막는 테스트는 고치기 전 빌드에서 실패해야 한다 (array.md §13.1과 같다).

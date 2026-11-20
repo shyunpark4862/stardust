@@ -1,6 +1,6 @@
 """sd.regression.nls (docs/api/regression.md §7, docs/design/regression.md §3.7): the NIST
 StRD nonlinear problems (certified values, and Arb references of the same double data),
-R's nls on fixed data (tests/regression/ref/nls_r.json, tools/gen_nls_r.py), bounds against
+R's nls on fixed data (tests/regression/data/nls_r.json, tools/gen_nls_r.py), bounds against
 scipy's trust region reflective method, weights, NaN, non-finite trial points, the user's
 Jacobian, aliased parameters, the stopping and the errors."""
 
@@ -12,18 +12,22 @@ import warnings
 
 import numpy as np
 import pytest
+import scipy.stats as st
 from scipy.optimize import curve_fit
 
 import stardust as sd
 from stardust.regression import _nls
+from stardust.regression._nls import _S_STATUS
+from tests._bits import max_rel_error
 
 from . import nist_nls as N
+from .smalldata import TD, YD, a
 
 ROOT = pathlib.Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 import regref  # noqa: E402
 
-R_REF = json.loads((pathlib.Path(__file__).parent / "ref" / "nls_r.json").read_text())
+R_REF = json.loads((pathlib.Path(__file__).parent / "data" / "nls_r.json").read_text())
 
 # fits from NIST's start 1 that do not reach the certified minimum: (problem, jac given)
 NOT_REACHED = {
@@ -43,10 +47,6 @@ def arb_ref(name):
         f, jac = N.model(name, regref.ARB)
         _ARB[name] = regref.nls(f, jac, xn.tolist(), yn.tolist(), [float(v) for v in d["params"]])
     return _ARB[name]
-
-
-def rel(a, b):
-    return max(abs(u - v) / abs(v) for u, v in zip(a, b))
 
 
 def decay_data(n=40, seed=1):
@@ -92,8 +92,8 @@ def test_nist(name, start, use_jac):
     # Arb, the same double data: the minimizer to rounding (with jac) or to the differences'
     # accuracy; Lanczos1's residuals are at the rounding of f, so its bse has ~4 digits
     ref = arb_ref(name)
-    assert rel(params, ref["params"]) <= (1e-12 if use_jac else 1e-9)
-    assert rel(bse, ref["bse"]) <= (1e-3 if name == "Lanczos1" else (1e-10 if use_jac else 3e-9))
+    assert max_rel_error(params, ref["params"]) <= (1e-12 if use_jac else 1e-9)
+    assert max_rel_error(bse, ref["bse"]) <= (1e-3 if name == "Lanczos1" else (1e-10 if use_jac else 3e-9))
     # the sum of squares: f's rounding moves it by about 2 u ||f|| ||r||
     ynorm = math.sqrt(sum(v * v for v in y.tolist()))
     assert abs(r.ssr - ref["ssr"]) <= (1e-12 if use_jac else 1e-9) * ref["ssr"] + 8 * 2.0**-52 * ynorm * math.sqrt(
@@ -108,7 +108,7 @@ def test_nist_from_the_certified_values_well_conditioned_to_rounding():
         x, y = N.data(d, sd)
         f, jac = N.model(name, sd)
         r = sd.regression.nls(f, x, y, p0=[float(v) for v in d["params"]], jac=jac)
-        assert rel(r.params.tolist(), arb_ref(name)["params"]) <= 1e-14, name
+        assert max_rel_error(r.params.tolist(), arb_ref(name)["params"]) <= 1e-14, name
 
 
 # ---- R's nls
@@ -136,10 +136,10 @@ def test_against_r(name):
     tol = {"twod": 1e-9, "decay_bounded": 1e-7}.get(name, 3e-11)
     assert r.converged
     assert r.param_names == p["names"]
-    assert rel(r.params.tolist(), R["coef"]) <= tol
-    assert rel(r.bse.tolist(), R["se"]) <= 10 * tol
-    assert rel(r.tvalues.tolist(), R["t"]) <= 10 * tol
-    assert rel(r.pvalues.tolist(), R["p"]) <= 1e4 * tol
+    assert max_rel_error(r.params.tolist(), R["coef"]) <= tol
+    assert max_rel_error(r.bse.tolist(), R["se"]) <= 10 * tol
+    assert max_rel_error(r.tvalues.tolist(), R["t"]) <= 10 * tol
+    assert max_rel_error(r.pvalues.tolist(), R["p"]) <= 1e4 * tol
     assert abs(math.sqrt(r.scale) - R["sigma"][0]) <= 1e-13 * R["sigma"][0]
     assert abs(r.ssr - R["deviance"][0]) <= 1e-13 * R["deviance"][0]
     assert [r.df_model, r.df_resid] == R["df"]
@@ -186,8 +186,8 @@ def test_bounds_against_scipy(bounds, p0):
     popt, pcov = curve_fit(decay_np, xn, yn, p0=p0, bounds=bounds)
     ssr_scipy = float(np.sum((decay_np(xn, *popt) - yn) ** 2))
     assert r.ssr <= ssr_scipy * (1 + 1e-12)
-    assert rel(r.params.tolist(), popt) <= 2e-5
-    assert rel(r.bse.tolist(), np.sqrt(np.diag(pcov))) <= 2e-5
+    assert max_rel_error(r.params.tolist(), popt) <= 2e-5
+    assert max_rel_error(r.bse.tolist(), np.sqrt(np.diag(pcov))) <= 2e-5
     lb, ub = bounds
     params = r.params.tolist()
     assert all(a <= v <= b for v, a, b in zip(params, lb, ub))
@@ -205,8 +205,8 @@ def test_inactive_bounds_give_the_unconstrained_minimum():
     trf = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], method="trf")
     assert boxed.method == "trf" and boxed._active == []
     for r in (boxed, trf):
-        assert rel(r.params.tolist(), free.params.tolist()) <= 1e-13
-        assert rel(r.bse.tolist(), free.bse.tolist()) <= 1e-11
+        assert max_rel_error(r.params.tolist(), free.params.tolist()) <= 1e-13
+        assert max_rel_error(r.bse.tolist(), free.bse.tolist()) <= 1e-11
 
 
 def test_scalar_bounds_and_p0_on_a_bound():
@@ -214,7 +214,8 @@ def test_scalar_bounds_and_p0_on_a_bound():
     r = sd.regression.nls(decay, xn, yn, p0=[1.0, 0.0, 1.0], bounds=(0, 10))
     assert (
         r.converged
-        and rel(r.params.tolist(), sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0]).params.tolist()) <= 1e-12
+        and max_rel_error(r.params.tolist(), sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0]).params.tolist())
+        <= 1e-12
     )
 
 
@@ -236,15 +237,15 @@ def test_zero_weights_are_the_rows_left_out():
     keep = w > 0
     a = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=w)
     b = sd.regression.nls(decay, xn[keep], yn[keep], p0=[1.0, 1.0, 1.0], weights=w[keep])
-    assert rel(a.params.tolist(), b.params.tolist()) <= 1e-15
-    assert rel(a.bse.tolist(), b.bse.tolist()) <= 1e-13
+    assert max_rel_error(a.params.tolist(), b.params.tolist()) <= 1e-15
+    assert max_rel_error(a.bse.tolist(), b.bse.tolist()) <= 1e-13
     assert a.nobs == keep.sum() and a.df_resid == keep.sum() - 3
     assert a.fittedvalues.shape == (len(yn),) and a.resid.shape == (len(yn),)
     assert np.allclose(np.asarray(a.fittedvalues.tolist()), decay_np(xn, *a.params.tolist()), rtol=1e-15, atol=0)
     # a model that is not finite in a zero weight row
     f = lambda x, a, b, c: decay(x, a, b, c) + sd.where(x == x[2], math.inf, 0.0)
     c = sd.regression.nls(f, xn, yn, p0=[1.0, 1.0, 1.0], weights=w)
-    assert rel(c.params.tolist(), a.params.tolist()) <= 1e-15
+    assert max_rel_error(c.params.tolist(), a.params.tolist()) <= 1e-15
 
 
 def test_weights_are_scipy_sigma():
@@ -252,8 +253,8 @@ def test_weights_are_scipy_sigma():
     sigma = np.linspace(0.5, 2.0, len(yn))
     r = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], weights=1 / sigma**2)
     popt, pcov = curve_fit(decay_np, xn, yn, p0=[1.0, 1.0, 1.0], sigma=sigma)
-    assert rel(r.params.tolist(), popt) <= 1e-6
-    assert rel(r.bse.tolist(), np.sqrt(np.diag(pcov))) <= 1e-6
+    assert max_rel_error(r.params.tolist(), popt) <= 1e-6
+    assert max_rel_error(r.bse.tolist(), np.sqrt(np.diag(pcov))) <= 1e-6
 
 
 def test_weight_errors():
@@ -339,11 +340,11 @@ def test_non_finite_trial_points_are_rejected():
     for method in ("lm", "trf"):
         r = sd.regression.nls(f, xn, yn, p0=[0.5, 4.05], method=method)
         assert r.converged
-        assert rel(r.params.tolist(), good.params.tolist()) <= 1e-12
+        assert max_rel_error(r.params.tolist(), good.params.tolist()) <= 1e-12
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         popt, _ = curve_fit(fn, xn, yn, p0=[2.0, 5.0])
-    assert rel(good.params.tolist(), popt) <= 1e-6
+    assert max_rel_error(good.params.tolist(), popt) <= 1e-6
 
 
 def test_non_finite_at_p0_is_an_error():
@@ -361,8 +362,8 @@ def test_jac_and_differences_agree():
     xn, yn = decay_data()
     a = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0])
     b = sd.regression.nls(decay, xn, yn, p0=[1.0, 1.0, 1.0], jac=decay_jac)
-    assert rel(a.params.tolist(), b.params.tolist()) <= 1e-12
-    assert rel(a.bse.tolist(), b.bse.tolist()) <= 1e-10
+    assert max_rel_error(a.params.tolist(), b.params.tolist()) <= 1e-12
+    assert max_rel_error(a.bse.tolist(), b.bse.tolist()) <= 1e-10
     assert b.njev >= b.n_iter and b.nfev < a.nfev
     # a sequence and a 1-parameter (n,) Jacobian are taken
     c = sd.regression.nls(lambda x, a: a * x, xn, 2 * xn + 0.1 * np.sin(xn), p0=[1.0], jac=lambda x, a: x)
@@ -406,7 +407,7 @@ def test_the_polish_reaches_rounding_from_loose_tolerances():
     x, y = N.data(d, sd)
     f, jac = N.model("ENSO", sd)
     r = sd.regression.nls(f, x, y, p0=[float(v) for v in d["start2"]], jac=jac, ftol=1e-4, xtol=1e-4, gtol=1e-4)
-    assert r.converged and rel(r.params.tolist(), arb_ref("ENSO")["params"]) <= 1e-13
+    assert r.converged and max_rel_error(r.params.tolist(), arb_ref("ENSO")["params"]) <= 1e-13
 
 
 def test_same_bits_with_1_and_10_threads():
@@ -475,11 +476,11 @@ def test_parameter_names_and_x_forms():
     x2 = np.column_stack([xn, xn**2])
     f2 = lambda x, a, b, c: a * sd.exp(-b * x[:, 0]) + c * x[:, 1] * 0.0 + c
     r2 = sd.regression.nls(f2, x2, yn, p0=[1.0, 1.0, 1.0])
-    assert rel(r2.params.tolist(), r.params.tolist()) <= 1e-12
+    assert max_rel_error(r2.params.tolist(), r.params.tolist()) <= 1e-12
     assert r2.predict(x2[:3]).shape == (3,)
     df = sd.frame.DataFrame({"x": xn.tolist()})
     r3 = sd.regression.nls(lambda x, a, b, c: decay(x[:, 0], a, b, c), df, yn, p0=[1.0, 1.0, 1.0])
-    assert rel(r3.params.tolist(), r.params.tolist()) <= 1e-12
+    assert max_rel_error(r3.params.tolist(), r.params.tolist()) <= 1e-12
 
 
 def test_the_model_gets_an_sd_array_and_floats():
@@ -608,3 +609,103 @@ def test_overflowing_ssr_is_not_converged():
     r = sd.regression.nls(lambda x, a, k, c: a * sd.exp(-k * x) + c, t, y, p0=[1.0, -50.0, 0.0])
     assert math.isinf(r.ssr) and not r.converged
     assert "overflows" in r.summary()
+
+
+R = sd.regression
+
+
+# ---- G93: converged needs the polish; n_iter <= max_iter
+
+
+def test_nls_polish_counts_against_max_nfev():
+    ref = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], jac=decay_jac)
+    assert ref.converged
+    seen_cut = False
+    for m in range(3, 40):
+        r = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], jac=decay_jac, max_nfev=m)
+        if r.converged:
+            assert np.max(np.abs(a(r.params) - a(ref.params))) <= 1e-12 * np.max(np.abs(a(ref.params)))
+        seen_cut = seen_cut or (r._count_stat(_S_STATUS) > 0 and not r.converged)  # the iteration converged
+    assert seen_cut
+
+
+# ---- G103: prediction intervals of rlm, quantreg, nls
+
+
+def test_nls_predict_interval_delta_method():
+    r = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], jac=decay_jac)
+    tn = np.array([0.1, 1.0, 3.5])
+    pi = a(r.predict_interval(tn, alpha=0.05))
+    th = a(r.params)
+    J = np.column_stack([np.exp(-th[1] * tn), -th[0] * tn * np.exp(-th[1] * tn), np.ones(3)])
+    se = np.sqrt(np.einsum("ij,jk,ik->i", J, a(r.cov_params()), J))
+    mean = a(r.predict(tn))
+    q = st.t.ppf(0.975, r.df_resid)
+    np.testing.assert_allclose(pi, np.column_stack([mean - q * se, mean + q * se]), rtol=1e-12)
+    # the differences' Jacobian at the solution gives the same to their accuracy
+    rd = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0])
+    np.testing.assert_allclose(a(rd.predict_interval(tn)), pi, rtol=1e-8)
+
+
+# ---- G104: nls's x_new
+
+
+def test_nls_predict_inputs():
+    df = sd.frame.DataFrame({"t": TD.tolist(), "u": (TD * 0).tolist()})
+
+    def f2(x, a_, k, c):
+        return a_ * sd.exp(-k * x[:, 0]) + c + 0 * x[:, 1]
+
+    r = R.nls(f2, df, YD, p0=[1.0, 1.0, 0.0])
+    swapped = sd.frame.DataFrame({"u": [0.0, 0.0], "t": [1.0, 2.0]})
+    with pytest.raises(ValueError, match=r"'x_new' must have the columns \['t', 'u'\] in the fit's order"):
+        r.predict(swapped)
+    with pytest.raises(ValueError, match=r"^predict\(\): 'x_new' contains infinity$"):
+        r.predict(np.array([[np.inf, 0.0]]))
+    with pytest.raises(ValueError, match=r"^predict_interval\(\): 'x_new' contains infinity$"):
+        r.predict_interval(np.array([[np.inf, 0.0]]))
+    assert a(r.predict(np.array([[1.0, 0.0]]))).shape == (1,)
+
+
+# ---- input messages
+
+
+def test_nls_input_messages():
+    with pytest.raises(ValueError, match=r"^nls\(\): 'bounds' must be a pair \(lower, upper\), not 3 values$"):
+        R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], bounds=(0, 1, 2))
+    with pytest.raises(TypeError, match=r"^nls\(\): 'bounds' must be None or a pair"):
+        R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], bounds=3)
+    with pytest.raises(ValueError, match=r"^nls\(\): 'jac' must return shape \(40, 3\), not a scalar$"):
+        R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], jac=lambda x, *t: 1.0)
+    with pytest.raises(OverflowError, match=r"^nls\(\): 'ftol' is out of range$"):
+        R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], ftol=10**400)
+
+
+# ---- G109: nls's perfect fit
+
+
+def test_nls_perfect_fit_no_significance():
+    """ssr exactly 0 with df_resid > 0: bse 0, t and p NaN (no theta / 0), conf_int [theta, theta]."""
+    x = np.arange(10.0)
+    r = R.nls(lambda t, b0, b1: b0 * sd.exp(b1 * t), x, np.full(10, 2.0), p0=[2.0, 0.0])
+    assert r.ssr == 0.0 and r.df_resid == 8
+    assert np.all(a(r.bse) == 0.0)
+    assert np.all(np.isnan(a(r.tvalues))) and np.all(np.isnan(a(r.pvalues)))
+    ci = a(r.conf_int())
+    assert np.array_equal(ci[:, 0], a(r.params)) and np.array_equal(ci[:, 1], a(r.params))
+    assert "nan" in r.summary()
+    # not perfect: t as before
+    rr = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0])
+    assert np.all(np.isfinite(a(rr.tvalues)))
+
+
+def test_nls_predict_interval_nan_rows():
+    """R100: a NaN row of x_new has a NaN interval (no differences through it), with or
+    without jac; the other rows as without it."""
+    tn = np.array([0.5, np.nan, 2.0])
+    for jac in (None, decay_jac):
+        r = R.nls(decay, TD, YD, p0=[1.0, 1.0, 0.0], jac=jac)
+        pi = a(r.predict_interval(tn))
+        assert np.all(np.isnan(pi[1])) and np.all(np.isfinite(pi[[0, 2]]))
+        np.testing.assert_allclose(pi[[0, 2]], a(r.predict_interval(tn[[0, 2]])), rtol=1e-12)
+        assert np.all(np.isnan(a(r.predict_interval(np.array([np.nan])))))

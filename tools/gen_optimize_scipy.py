@@ -23,7 +23,7 @@ Each run records what scipy returns (x, fun or cost, nfev, njev, nhev, nit, stat
 message), or the exception it raises. Floats are written with repr (NaN and inf as JSON's
 NaN/Infinity, which Python reads back). The runs are independent; up to 8 processes.
 
-Run: uv run --no-sync python tools/gen_optimize_scipy.py
+Run: .venv/bin/python tools/gen_optimize_scipy.py
 """
 
 import json

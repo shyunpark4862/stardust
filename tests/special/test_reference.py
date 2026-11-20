@@ -1,6 +1,6 @@
 """Every function with a reference file (tests/special/ref, made by tools/special_ref.py)
 meets its accuracy contract (docs/api/special.md §1.4): relative error at most 1e-14
-in the guaranteed region (times max(1, kappa) for the S4 inverses); outside it, at most
+in the guaranteed region (times max(1, kappa) for the inverses); outside it, at most
 the documented loose bound."""
 
 import numpy as np
@@ -19,10 +19,10 @@ LOOSE = {
     # x^2 is all that is left: 0.83 measured at a few ULP from pi/2 (np.tan, with its argument
     # reduction, stays at 2 ULP). The guaranteed region |x| <= 1 measures 6.7 ULP.
     "_cf_tan": 1.0,
-    # S7 (user decision: guaranteed only where a positive-term form exists). hyp1f1's loose
-    # region goes to Boost.Math (S10, special/boost.hpp; ours cancelled up to 1e29 there,
-    # 3.9e-3 measured): 2.8e-13 measured. hyp2f1's: z > 0.9, z < -1, negative parameters
-    # (measured 5.8e-13).
+    # Guaranteed only where a positive-term form exists (docs/api/special.md). hyp1f1's loose
+    # region goes to Boost.Math (special/boost.hpp; ours cancelled up to 1e29 there, 3.9e-3
+    # measured): 2.8e-13 measured. hyp2f1's: z > 0.9, z < -1, negative parameters (measured
+    # 5.8e-13).
     "hyp1f1": 1e-12,
     "hyp2f1": 1e-12,
 }
@@ -61,11 +61,18 @@ def contract_error(got, hi, lo):
     return np.where(sub, absolute, rel)
 
 
+# Reference files without a guaranteed point, and why (a file with no points, or none in the
+# guaranteed region, fails otherwise: a generator that dropped them all would pass silently).
+NO_GUARANTEED = {"betaln": "the mixed bound everywhere (docs/api/special.md: log B crosses 0 on a curve)"}
+
+
 @pytest.mark.parametrize("name", refdata.names())
 def test_accuracy(name):
     xs, hi, lo, guaranteed = refdata.load(name)
+    assert hi.size, name
+    assert guaranteed.any() or name in NO_GUARANTEED, name
     got = np.asarray(function(name)(*(sd.asarray(x) for x in xs)))
-    err = contract_error(got, hi, lo) / refdata.scale(name)  # the inverses: max(1, kappa) (S4)
+    err = contract_error(got, hi, lo) / refdata.scale(name)  # the inverses: max(1, kappa)
     if guaranteed.any():
         assert err[guaranteed].max() <= GUARANTEED, (
             name,

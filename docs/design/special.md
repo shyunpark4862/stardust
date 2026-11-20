@@ -84,7 +84,7 @@ bind/special_bind.cpp        함수 등록, 에러 메시지 이름 (bind/errors
 csrc/special/                ─────▶ array/ (NdIter, n항 디스패처, 버퍼 변환, 리덕션 드라이버)
                              ─────▶ parallel/ (풀), accelerate/ (vForce, §3.4)
 ```
-- `special/`은 `array/`를 쓴다. `array/`는 `special/`을 모른다 (ARCHITECTURE §1).
+- `special/`은 `array/`를 쓴다. `array/`가 `special/`에서 쓰는 것은 의존이 없는 `special/sincos.hpp`(같은 x의 sin과 cos를 한 번에) 하나다 (ARCHITECTURE §1).
 - 파일
 
   | 파일 | 내용 |
@@ -123,7 +123,8 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 
 ### 2.3 정확도 계약
 - **보장 영역**: 함수마다 docs/api/special.md에 적는다. 그 안에서 참값(Arb, §6) 대비 상대오차 ≤ 1e-14다.
-  - 1e-14는 float64로 약 45 ULP다. 실제 목표는 그보다 작고, 잰 최대 ULP를 표로 남긴다.
+  - 1e-14는 2⁻⁵² 단위로 약 45이고, 두 값 사이의 double 수(ULP, `ulp_distance`)로는 이진 자릿수 안의 위치에 따라 45–90이다. 실제 목표는 그보다 작고, 잰 최대 ULP를 표(bench/special/accuracy.md)로 남긴다.
+  - 표의 ULP는 `ulp_distance`라 정수다. 이 문서에서 소수로 적은 ULP 값은 참값과의 차를 그 자리의 ULP 간격으로 나눈 값이다.
   - **진동 함수**(`j0 j1 y0 y1 jv yv jve yve`, x < 0의 `airy`, Q18): 영점 근처에서는 상대오차를 정의할 수 없다. 그래서 `|오차| ≤ 1e-14 × A(x)`를 보장한다. `A(x)`는 포락선(진폭)이다. 예: Hankel 점근의 진폭 `√(2/(πx))`, Airy는 `π^{-1/2}|x|^{-1/4}`. 포락선의 정확한 식은 함수마다 docs/api/special.md에 적는다.
 - **느슨한 영역**: 보장 영역 밖이지만 정의역 안이다. 값을 계산하고, 잰 최대 오차를 문서에 적는다. 값을 낼 수 없는 곳(반복 상한, 손실을 아는 식이 없는 곳)은 NaN이고 그 범위를 함수별 절에 적는다 (Q9).
 - **오버플로·언더플로**: 참값이 float64 범위를 넘으면 ±inf, 서브노멀 아래면 0이다. 결과가 서브노멀이면 상대오차 대신 절대오차 2⁻¹⁰⁷⁴·45를 본다.
@@ -211,7 +212,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   2. vForce(`vvexp`, `vvlog`)를 버퍼 전체에 한 번 부른다.
   3. NEON으로 다항식을 계산하고 결과를 합친다.
   - 스칼라 입력과 비연속 레이아웃도 같은 버퍼 경로를 탄다 (n = 1 포함). 그래서 `f(x)[i] == f(x[i])`가 성립한다. 배열의 vForce 규칙과 같다 (array.md §5.4).
-  - vForce의 오차(libm 대비 ≤ 6 ULP)는 정확도 계약(약 45 ULP) 안이다. 특수값(±0, ±inf, NaN)이 vForce에서 부호까지 맞는지는 S1에서 그 함수들에 대해 다시 확인한다.
+  - vForce의 오차(libm 대비 ≤ 6 ULP)는 정확도 계약(상대 1e-14) 안이다. 특수값(±0, ±inf, NaN)이 vForce에서 부호까지 맞는지는 S1에서 그 함수들에 대해 다시 확인한다.
   - 분기가 많은 나머지 함수는 원소마다 libm `exp`/`log`를 부른다.
 - 그 밖의 함수는 손으로 짜지 않는다. 연속 fast path의 자동 벡터화와 스레드만 쓴다.
 
@@ -418,7 +419,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 ### 5.14 Boost.Math (S10)
 - **사용자 결정 (2026-11-14, S9 뒤)**: "Boost로 갈아끼는 게 이득인 부분은 다 갈고, 손해인 부분만 우리가 작성한다." 계수만 가져오지 않고 Boost.Math를 직접 부른다. 헤더는 쓰는 것만 `third_party/boost_math/`에 둔다(125개, 2.7 MB, BSL-1.0, `tools/vendor_boost_math.py`).
 - **손해의 기준** (사용자 결정): 구간마다 Boost가 계약(1e-14, 특수값은 우리 규칙)을 참값 파일의 모든 점에서 지키고, 1스레드에서 느리지 않을 때(10% 안은 같은 것으로 본다)만 바꾼다. 더 정확해도 느리면 우리 것이다(`erf` 계열, `gammaln`, `j0 j1 y0 y1`). 일부 점만 틀리면 구간을 잘게 나눠 지키는 구간만 바꾼다.
-- **바꾼 구간** (`csrc/special/boost.hpp`, 측정(커밋 4151d2a) `bench/special/boost/routing.md`). 특수값(NaN, inf, 0, 극점)은 Boost를 부르기 전에 우리가 정하고, Boost의 결과가 정상 범위가 아니면(서브노멀, 0, inf, NaN) 우리 코드로 다시 계산한다.
+- **바꾼 구간** (`csrc/special/boost.hpp`; 측정은 커밋 4151d2a의 `bench/special/boost/routing.md`). 특수값(NaN, inf, 0, 극점)은 Boost를 부르기 전에 우리가 정하고, Boost의 결과가 정상 범위가 아니면(서브노멀, 0, inf, NaN) 우리 코드로 다시 계산한다.
 
   | 함수 | Boost 구간 | 우리 구간 (이유) |
   |---|---|---|
@@ -454,11 +455,9 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - **`ndtri_exp`**: y > log ½이면 −ndtri(−expm1(y)), y > −700이면 ndtri(exp(y))다. 그 아래는 점근식 x² = −2y − log 2π − 2 log(−x) + 2 log(1 − 1/x² + 3/x⁴)의 고정점이다. −1e8 위에서는 그 값에서 log_ndtr로 Newton을 한다. Newton의 기울기 φ/Φ는 크기 x²/2인 두 수의 차라서, |x| > 1e6부터 자릿수를 잃었다(y = −1e17에서 2e13 ULP). 그래서 −1e8 아래는 고정점만 쓴다(다음 항 15/x⁶이 마지막 비트보다 훨씬 작다). y < −2¹⁰⁰⁰에서는 −2y가 넘치므로(y ≤ −8.99e307) 같은 고정점을 x²/2에 대해 풀고 x = −√2·√(−y − log(2π)/2 − log(−x) + log S)로 쓴다(2026-11-19). `sd.stats.Normal`의 `ilogcdf`·`ilogccdf`는 log q < −2¹⁰⁰⁰에서 이 값을 그대로 쓴다(Newton의 z²/2가 넘친다).
 - **`stdtrit`의 속도 (2026-11-15, 최적화 4단계)**: betaincinv로 풀면 꼬리 평가가 네댓 번이다(1100 ns, scipy의 0.21배). df ≥ 1이고 양쪽 꼬리 확률이 1e-12보다 크면 Hill의 근사(CACM 396, 6자리)에서 출발해 꼬리 함수에 Halley 걸음을 한다. 걸음이 4e-6|t| 아래이면 남는 오차가 1e-17이라, 대부분 평가 한 번으로 끝난다(약 310 ns, scipy의 약 0.5배). 참값 최대 7.4 ULP, 무작위 4천 점(df 1–1.6e5) 최대 4 ULP. 더 깊은 꼬리와 df < 1은 전처럼 betaincinv다.
 - **S4의 결함을 고쳤다.** T1을 재다가 `betaincinv`, `betainccinv`가 a, b < 1의 약 8%에서 0이나 1을 돌려주는 것을 찾았다. AS109의 처음 추정이 U자 밀도에서 엉뚱한 끝을 골라 (0, 1) 밖의 값(예: 1 − x = 5400)을 냈고, 코드는 그것을 "근이 언더플로한다"로 읽었다. 이제는 범위 밖이면 다른 끝의 근사를, 그것도 안 되면 0.5에서 출발한다(`as109`). 40만 개 표본에서 scipy와 모두 일치한다. 그 영역의 참값 파일도 다시 만들었다. 옛 참값은 출발점으로 쓴 우리 함수의 0을 그대로 받아 0이 들어 있었다.
-- **참값 생성의 함정** (tools/special_ref.py, mpmath 시절. Arb로 바꾼 뒤에는 공이 자릿수 손실을 그대로 드러낸다, §6):
-  - mpmath의 betainc는 인자가 1에 가까우면 자릿수를 잃는다. 그래서 x와 1 − x 중 작은 쪽에서 계산한다(`_ibeta_pair`).
-  - 값이 2^-1074보다 훨씬 작으면 수렴을 포기한다. 이때는 선두 항이 e^-1000 아래인지 보고 0으로 둔다(`_safe_betainc`).
-  - `ndtri_exp`는 x < −1e6에서 log Φ의 점근 급수와 해석적 기울기 −x/S(x)를 쓴다. mpmath의 ncdf, npdf가 넘치기 때문이다.
-  - 역함수 `fdtri`는 w가 아니라 x에 대해 푼다. w는 x가 크면 1로 반올림되기 때문이다.
+- **참값 생성** (`tools/special_ref.py`, Arb; §6): 공(ball)이 자릿수 손실을 그대로 드러내므로, 정밀도를 올려도 공이 좁아지지 않는 식을 피한다.
+  - I_x(a, b)는 자기 급수와 1 − I_{1−x}(b, a) 가운데 항이 훨씬 적은 쪽으로 구한다(`_ibeta`). Arb의 `beta_lower`는 a, b ~ 1e4의 평균 근처에서 공이 좁아지지 않는다. 1 − x는 두 배로 올린 정밀도에서 정확하다.
+  - 역함수 `fdtri`는 w = dfn·x/(dfn·x + dfd)가 아니라 x에 대해 푼다(작은 쪽 꼬리의 log에서, log x로 Newton). w는 x가 크면 1로 반올림되기 때문이다.
 
 ### 5.16 비중심 분포 (`special/ops/noncentral.hpp`, T2)
 - **Boost는 쓰지 않는다.** scipy 1.18이 쓰는 Boost.Math의 비중심 분포를 먼저 쟀다. 중앙값은 1 ULP 남짓이었지만 깊은 꼬리에서 0을 내거나 수백–수천 ULP가 틀렸다(최대 8.8e15). Boost 정책(§5.14)에 따라 직접 계산하고, 헤더도 옮기지 않았다.
@@ -500,7 +499,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - **mpmath에서 바꾼 이유** (2026-11-16): mpmath의 규칙("두 정밀도가 30자리까지 일치")은 두 정밀도가 함께 틀린 값을 받아들였다. 바꾸면서 찾은 옛 참값의 오류: `betaincinv` 41점·`betainccinv` 119점은 mpmath가 조용히 실패해 우리 함수의 출발값이 참값으로 들어가 있었다(I_x/p − 1 = 1.7e-12). `zeta_hurwitz` 14점(7.3e-28, mpmath는 300자리에서야 맞음), `lambertw` 4점(허수부 lo), 리덕션 17점(1 + e⁻²⁰⁵를 잃음), 오래된 `wofz` 입력 64점. 계수 표 `zeta_minus_one`의 j = 94–110 lo(1e-28 상대, ζ(j) − 1의 상쇄)도 고쳤다. 다른 계수 표 7개는 바이트까지 같았다. 또 mpmath가 버렸던 점 약 900개를 이제 얻는다(`betainccinv` +248, `nctdtrit` +150 등). 메모리도 일정하다: mpmath의 quad는 구간 끝점마다 노드를 캐시해 140GB까지 쌓였다.
   - **새 참값이 드러낸 라이브러리 오차**: `gammainccinv`(a = 9.5e5, q = 3.3e-33)가 1.21e-14였다. Boost의 `gamma_q_inv`는 Halley 반복을 자릿수의 절반에서 멈추므로 큰 a에서 100 ULP까지 남는다. 이제 Boost의 근에서 우리 P, Q로 Halley 한 걸음을 더 한다(`igam_polish`, 오차 e가 e³이 된다). 참값 최대가 `gammaincinv` 9.3e-15 → 7.3e-16, `gammainccinv` 1.2e-14 → 2.4e-15가 됐다. 1백만 원소 비용은 10 ms 안팎 그대로다.
   - 입력 집합: 함수마다 보장 영역의 격자 + 로그 균등 무작위 + 경계(구간 경계의 앞뒤 ULP, 극점, 0, 정의역 끝)
-- **정확도 보고**: `python -m bench.accuracy`가 참값 파일의 모든 점에서 잰 기준선(`bench/accuracy/results/special.json`)으로 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표를 만든다(tests/README.md). 함수마다 보장 영역·느슨한 영역·혼합 척도 영역의 최대·99.9% ULP, 역함수의 ULP/max(1, κ), 혼합 척도, 계약 대비를 낸다. scipy와 같은 점의 비교는 이 표에 없고, `bench/special/accuracy.py`가 낸 커밋 4151d2a의 bench/special/arb/accuracy.md에 있다(scipy보다 나쁜 줄은 원인을 적는다).
+- **정확도 보고**: `python -m bench.accuracy`가 참값 파일의 모든 점에서 잰 기준선(`bench/accuracy/results/special.json`)으로 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표를 만든다(bench/README.md). 함수마다 보장 영역·느슨한 영역·혼합 척도 영역의 최대·99.9% ULP(`ulp_distance`: 두 값 사이에 있는 double의 수), 역함수의 ULP/max(1, κ), 혼합 척도, 계약 대비를 낸다. `run --compare`는 scipy·R·Boost.Math의 오차를 같은 점, 같은 척도로 재어 라이브러리별 열에 둔다.
 - **성능**: scipy와 같은 자리에서 번갈아 잰다 (통합 때의 `sameseat` 방식). 1스레드와 10스레드, 원소 10⁶개와 스칼라 1개.
 - **비트 테스트**: NEON 경로 = 스칼라 정의, 스레드 1·3·10이 같은 비트, `f(x)[i] == f(x[i])`
 

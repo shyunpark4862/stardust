@@ -1,4 +1,4 @@
-"""G3: ridge, lasso, elastic_net, their cross-validation and the penalized GLM
+"""ridge, lasso, elastic_net, their cross-validation and the penalized GLM
 (docs/api/regression.md §4, docs/design/regression.md §3.5).
 
 Accuracy against Arb (tests/regression/ref/penalized.json: the KKT system of the solution's
@@ -15,6 +15,7 @@ import pytest
 import stardust as sd
 
 from . import refdata_penalized
+from .smalldata import RNG, YB, N, X, Y, gen
 
 R = sd.regression
 GLMNET = R.penalized_glm
@@ -632,3 +633,341 @@ def test_constant_y_null_deviance():
             p = R.penalized_glm([v] * 8, x, family="poisson", alpha=0.1, weights=w)
             assert p.null_deviance == 0.0 and math.isnan(p.deviance_ratio)
         assert R.glm([v] * 8, x, family="poisson").null_deviance == 0.0
+
+
+def _conv_invariant(fit, ref, n_iter_cap=None, tol=1e-12):
+    """converged implies the coefficients of the full fit to rounding."""
+    full = a(ref.params)
+    for r, cap in fit:
+        p = a(r.params)
+        if n_iter_cap:
+            assert r.n_iter <= cap
+        if r.converged:
+            assert np.max(np.abs(p - full)) <= tol * max(1.0, np.max(np.abs(full))), (cap, p, full)
+
+
+def _run(code):
+    import subprocess
+    import sys
+
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=600)
+    assert p.returncode == 0, p.stderr[-2000:]
+    return p.stdout
+
+
+# ---- G93: converged needs the polish; n_iter <= max_iter
+
+
+def test_penalized_glm_newton_start_capped():
+    """l1_ratio = 0 starts with Newton's steps: capped by max_iter, IRLS goes on from where they
+    stopped (it used to return the null model, with n_iter beyond max_iter)."""
+    ref = R.penalized_glm(YB, X, family="binomial", alpha=0.01, l1_ratio=0.0)
+    devs = []
+    for m in range(1, 8):
+        r = R.penalized_glm(YB, X, family="binomial", alpha=0.01, l1_ratio=0.0, max_iter=m)
+        assert r.n_iter <= m
+        devs.append(r.deviance)
+        if r.converged:
+            assert np.max(np.abs(a(r.params) - a(ref.params))) <= 1e-12
+    assert all(d1 >= d2 - 1e-12 for d1, d2 in zip(devs, devs[1:]))
+    null = R.penalized_glm(YB, X, family="binomial", alpha=1e6, l1_ratio=0.0).deviance
+    assert devs[0] < null  # not the null model
+
+
+def test_lasso_and_pglm_converged_invariant():
+    Xd = np.column_stack([X, X[:, 0] + 1e-3 * RNG.normal(size=N)])
+    ref = R.elastic_net(Y, Xd, alpha=0.05, l1_ratio=0.7)
+    _conv_invariant(
+        [(R.elastic_net(Y, Xd, alpha=0.05, l1_ratio=0.7, max_iter=m), m) for m in range(1, 40)],
+        ref,
+        n_iter_cap=True,
+        tol=1e-10,
+    )
+    ref = R.penalized_glm(YB, X, family="binomial", alpha=0.01, l1_ratio=0.5)
+    _conv_invariant(
+        [(R.penalized_glm(YB, X, family="binomial", alpha=0.01, l1_ratio=0.5, max_iter=m), m) for m in range(1, 10)],
+        ref,
+        n_iter_cap=True,
+        tol=1e-10,
+    )
+
+
+# ---- G107: empty folds
+
+
+def test_cv_skips_empty_folds():
+    Xs = np.arange(10.0).reshape(5, 2) ** 1.3
+    y = np.array([1.0, 2, 0, 4, 3])
+    w = np.array([1.0, 1, 1, 1, 0])  # cv = n: the fold of row 4 has no test weight
+    for fit in (R.lasso_cv, R.ridge_cv):
+        r = fit(y, Xs, rng=sd.random.default_rng(0), weights=w, cv=5, alphas=np.array([1.0, 0.1, 0.01]))
+        assert math.isfinite(r.alpha) and np.all(np.isfinite(a(r.cv_error)))
+        perm = a(sd.random.default_rng(0).permutation(5)).astype(int)
+        fold = np.array([i % 5 for i in range(5)])[perm]
+        errs = []
+        for q in range(5):
+            te = w * (fold == q)
+            if te.sum() == 0:
+                continue
+            base = R.lasso if fit is R.lasso_cv else R.ridge
+            m = base(y, Xs, alpha=np.array([1.0, 0.1, 0.01]), weights=w * (fold != q))
+            errs.append(((y - a(m.predict(Xs))) ** 2 * te).sum(axis=1) / te.sum())
+        errs = np.array(errs)
+        np.testing.assert_allclose(a(r.cv_error), errs.mean(axis=0), rtol=1e-12)
+        np.testing.assert_allclose(a(r.cv_se), errs.std(axis=0, ddof=1) / math.sqrt(len(errs)), rtol=1e-10)
+
+
+def test_wide_lasso_all_zero_and_cv_do_not_abort():
+    out = _run("""
+import numpy as np, stardust as sd
+rng = np.random.default_rng(9)
+X = rng.normal(size=(50, 1030)); y = X[:, 0] + rng.normal(size=50)
+r = sd.regression.lasso(y, X, alpha=100.0)
+assert r.converged and np.count_nonzero(np.asarray(r.params.tolist())[1:]) == 0
+r = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), alphas=5)
+assert np.isfinite(r.alpha)
+r = sd.regression.elastic_net_cv(y, X, rng=sd.random.default_rng(0), alphas=4)
+r = sd.regression.penalized_glm((y > 0).astype(float), X, family="binomial", alpha=100.0)
+print("ok")
+""")
+    assert out.strip() == "ok"
+
+
+def test_cv_zero_weight_fold_does_not_abort():
+    out = _run("""
+import numpy as np, stardust as sd
+X = np.arange(10.0).reshape(5, 2) ** 1.3; y = np.array([1., 2, 0, 4, 3]); w = np.array([1., 1, 1, 1, 0])
+r = sd.regression.lasso_cv(y, X, rng=sd.random.default_rng(0), weights=w, cv=5, alphas=3)
+print("ok", np.isfinite(r.alpha))
+""")
+    assert out.strip() == "ok True"
+
+
+def test_penalized_glm_naive_path_matches_active_columns():
+    """More than 1,024 columns: the KKT check and the final values from per-column sums and the
+    active columns' Gram (no (p + 3)^2 Gram). The solution is that of the active columns."""
+    rng = np.random.default_rng(5)
+    n, p = 120, 1100
+    Xw = rng.normal(size=(n, p))
+    y = (Xw[:, 0] - Xw[:, 1] + rng.normal(size=n) > 0).astype(float)
+    r = R.penalized_glm(y, Xw, family="binomial", alpha=0.08, l1_ratio=1.0)
+    assert r.converged
+    pa = a(r.params)
+    act = np.flatnonzero(pa[1:])
+    assert 0 < len(act) < 50
+    sub = R.penalized_glm(y, Xw[:, act], family="binomial", alpha=0.08, l1_ratio=1.0)
+    np.testing.assert_allclose(a(sub.params), np.r_[pa[0], pa[1:][act]], rtol=1e-9, atol=1e-12)
+    assert r.df_model == len(act) and abs(r.dual_gap) <= 1e-12
+    en = R.penalized_glm(y, Xw, family="binomial", alpha=0.08, l1_ratio=0.5)
+    pe = a(en.params)
+    ae = np.flatnonzero(pe[1:])
+    sube = R.penalized_glm(y, Xw[:, ae], family="binomial", alpha=0.08, l1_ratio=0.5)
+    np.testing.assert_allclose(en.df_model, sube.df_model, rtol=1e-9)
+
+
+# ---- messages, grids, the boundary's null deviance
+
+
+def test_penalized_messages():
+    with pytest.raises(OverflowError, match=r"^elastic_net\(\): 'l1_ratio' is out of range$"):
+        R.elastic_net(Y, X, alpha=0.1, l1_ratio=10**400)
+    with pytest.raises(OverflowError, match=r"^lasso\(\): 'tol' is out of range$"):
+        R.lasso(Y, X, alpha=0.1, tol=10**400)
+    with pytest.raises(OverflowError, match=r"^lasso_cv\(\): 'eps' is out of range$"):
+        R.lasso_cv(Y, X, rng=gen(), eps=10**400)
+    with pytest.raises(OverflowError, match=r"^conf_int\(\): 'alpha' is out of range$"):
+        R.ols(Y, X).conf_int(alpha=10**400)
+    with pytest.raises(
+        TypeError,
+        match=r"^lasso_cv\(\): 'alphas' must be an int \(the grid's length\) or a "
+        r"1-dimensional array of numbers, not float$",
+    ):
+        R.lasso_cv(Y, X, rng=gen(), alphas=1.5)
+    with pytest.raises(ValueError, match=r"^ridge_cv\(\): 'rng' is only used when 'cv' is a number of folds"):
+        R.ridge_cv(Y, X, cv="gcv", rng=gen())
+
+
+def test_penalized_glm_boundary_null_deviance():
+    for y, fam in ((np.zeros(N), "binomial"), (np.ones(N), "binomial"), (np.zeros(N), "poisson")):
+        r = R.penalized_glm(y, X, family=fam, alpha=0.1)
+        assert r.null_deviance == 0.0 and not r.converged and np.all(np.isnan(a(r.params)))
+
+
+def test_penalized_repr_names_the_axes():
+    assert repr(R.lasso(np.vstack([Y, Y]), X, alpha=0.1)) == "LassoResult(batch shape (2,), 3 parameters)"
+    assert repr(R.lasso(Y, X, alpha=[0.1, 0.2])) == "LassoResult(a path of 2 alphas, 3 parameters)"
+    assert (
+        repr(R.ridge(np.vstack([Y, Y]), X, alpha=[0.1, 0.2]))
+        == "RidgeResult(batch shape (2,) and a path of 2 alphas, 3 parameters)"
+    )
+
+
+def test_alphas_messages_name_the_accepted_forms():
+    form = r"'alphas' must be an int \(the grid's length\) or a 1-dimensional array"
+    for v in (True, "x", 1.5, None, ["a"], np.array([True])):
+        with pytest.raises(TypeError, match=r"^lasso_cv\(\): " + form + r" of numbers, not "):
+            R.lasso_cv(Y, X, rng=gen(), alphas=v)
+    with pytest.raises(ValueError, match=r"^lasso_cv\(\): " + form + r", not 2-dimensional$"):
+        R.lasso_cv(Y, X, rng=gen(), alphas=[[0.1]])
+
+
+def test_lasso_alpha_zero_is_ridges():
+    """G110: lasso and elastic_net at alpha = 0 give ridge(alpha=0)'s minimum-norm solution bit
+    for bit (p > n too, and in a path), converged, n_iter 0, dual_gap 0; df_model the number
+    of nonzero coefficients (G115)."""
+    rng = np.random.default_rng(1)
+    for n, p in ((30, 4), (10, 15)):
+        Xw = rng.normal(size=(n, p))
+        Xw = np.column_stack([Xw, Xw[:, 0]])  # an aliased column too
+        y = rng.normal(size=n)
+        rr = R.ridge(y, Xw, alpha=0.0)
+        for fit in (lambda **k: R.lasso(y, Xw, **k), lambda **k: R.elastic_net(y, Xw, l1_ratio=0.4, **k)):
+            r = fit(alpha=0.0)
+            assert a(r.params).tolist() == a(rr.params).tolist()
+            assert r.converged and r.n_iter == 0 and r.dual_gap == 0.0
+            assert r.df_model == float(np.count_nonzero(a(rr.params)[1:]))
+            path = fit(alpha=[0.3, 0.0, 0.05])
+            assert a(path.params)[1].tolist() == a(rr.params).tolist() and a(path.n_iter)[1] == 0
+            assert a(fit(alpha=[0.3, 0.0, 0.05]).params)[0].tolist() == a(fit(alpha=0.3).params).tolist()
+        cv = R.lasso_cv(y, Xw, rng=gen(), cv=3, alphas=np.array([1.0, 0.1, 0.0]))
+        if cv.alpha == 0.0:
+            assert a(cv.params).tolist() == a(rr.params).tolist()
+    # a NaN regression stays NaN at alpha = 0
+    yn = Y.copy()
+    yn[0] = np.nan
+    r = R.lasso(yn, X, alpha=0.0)
+    assert np.all(np.isnan(a(r.params))) and not r.converged and r.n_iter == 0
+
+
+def test_lasso_df_model_counts_nonzero_at_alpha_zero():
+    """G115: df_model at alpha = 0 is the number of nonzero coefficients (a column and its copy
+    both count), in a path, a CV refit and a batch with a grid containing 0."""
+    rng = np.random.default_rng(5)
+    Xd = rng.normal(size=(40, 3))
+    Xd = np.column_stack([Xd, Xd[:, 1]])
+    y = Xd @ np.array([1.0, 2.0, -1.0, 0.0]) + 0.01 * rng.normal(size=40)
+    rr = R.ridge(y, Xd, alpha=0.0)
+    assert rr.df_model == pytest.approx(3.0)  # ridge's: the rank
+    for fit in (lambda **k: R.lasso(y, Xd, **k), lambda **k: R.elastic_net(y, Xd, l1_ratio=0.3, **k)):
+        assert fit(alpha=0.0).df_model == 4.0
+        assert a(fit(alpha=[0.1, 0.0]).df_model)[1] == 4.0
+    cv = R.lasso_cv(np.stack([y, -y]), Xd, rng=gen(), cv=4, alphas=[1.0, 0.1, 0.0])
+    assert a(cv.alpha).tolist() == [0.0, 0.0] and a(cv.df_model).tolist() == [4.0, 4.0]
+    assert a(cv.n_iter).tolist() == [0, 0] and a(cv.params)[0].tolist() == a(rr.params).tolist()
+
+
+@pytest.mark.serial  # compares two timings: alone, so a busy neighbour cannot skew one of them
+def test_lasso_alpha_zero_runs_no_descent():
+    """R111: alpha = 0 goes straight to ridge's solve: its time is ridge(alpha=0)'s, not the
+    coordinate descent's (X 200 x 400, where the descent took 4 ms more than the solve)."""
+    import time
+
+    rng = np.random.default_rng(2)
+    Xw, y = rng.normal(size=(200, 400)), rng.normal(size=200)
+
+    def best(f):
+        f()
+        ts = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            f()
+            ts.append(time.perf_counter() - t0)
+        return min(ts)
+
+    t_ridge = best(lambda: R.ridge(y, Xw, alpha=0.0))
+    t_lasso = best(lambda: R.lasso(y, Xw, alpha=0.0))
+    assert t_lasso < 1.3 * t_ridge + 1e-3
+    assert a(R.lasso(y, Xw, alpha=0.0).params).tolist() == a(R.ridge(y, Xw, alpha=0.0).params).tolist()
+
+
+def test_lasso_copy_of_an_active_column_is_exactly_zero():
+    """G116: a column whose gradient sits on l1 (a copy of an active one) stays exactly 0 in
+    single fits and on a warm-started path, with standardize too; df_model counts it out."""
+    rng = np.random.default_rng(0)
+    Xz = np.column_stack([np.arange(10.0), np.arange(10.0), rng.standard_normal(10)])
+    yz = 2 * Xz[:, 0] + Xz[:, 2] + 0.01 * rng.standard_normal(10)
+    path = [0.1, 1e-2, 1e-3, 1e-4]
+    for std in (False, True):
+        P = a(R.lasso(yz, Xz, alpha=path, standardize=std).params)
+        assert np.all(P[:, 2] == 0.0) and np.all(P[:, 1] != 0.0), P
+        assert a(R.lasso(yz, Xz, alpha=path, standardize=std).df_model).tolist() == [2.0] * 4
+        for i, al in enumerate(path):
+            r = R.lasso(yz, Xz, alpha=al, standardize=std)
+            assert float(r.params[2]) == 0.0 and r.df_model == 2.0
+            if not std:  # the path and the single fit agree on A and the signs: the same bits
+                assert a(r.params).tolist() == P[i].tolist()
+    # the penalized GLM's inner descent shares the threshold
+    yb = (yz > np.median(yz)).astype(float)
+    g = a(R.penalized_glm(yb, Xz, family="binomial", alpha=[0.05, 0.01], l1_ratio=1.0).params)
+    assert np.all(g[:, 1] * g[:, 2] == 0.0)
+
+
+# ---- an intercept-only penalized model's R^2 is 0 (RG-6)
+
+
+def test_intercept_only_rsquared_is_zero():
+    y = np.random.default_rng(21).normal(size=15)
+    X = np.empty((15, 0))
+    assert R.ols(y, X).rsquared == 0.0
+    for r in (
+        R.ridge(y, X, alpha=0.1),
+        R.lasso(y, X, alpha=0.1),
+        R.lasso_cv(y, X, rng=sd.random.default_rng(0)),
+        R.ridge_cv(y, X),
+    ):
+        assert r.rsquared == 0.0
+    # every slope exactly 0 (alpha above alpha_max)
+    Xs = np.random.default_rng(22).normal(size=(15, 2))
+    assert R.lasso(y, Xs, alpha=10.0).rsquared == 0.0
+
+
+# ---- R116, R118: exact copies of a column in the lasso
+
+
+def test_lasso_copies_converge_and_agree():
+    r = sd.random.default_rng(7)
+    n = 12
+    Z = sd.stats.Normal().sample((n, 5), rng=r)
+    c = Z[:, 0]
+    X = sd.stack([Z[:, 1], c, Z[:, 2], c, Z[:, 3] + 0.95 * c, Z[:, 4]], axis=1)
+    y = X[:, 0] + X[:, 1] - 0.5 * X[:, 3] + X[:, 4] + 0.3 * sd.stats.Normal().sample(n, rng=r)
+    s = R.lasso(y, X, alpha=0.001)
+    assert s.converged and s.n_iter < 100 and abs(s.dual_gap) < 1e-14
+    assert float(s.params[4]) == 0.0  # the later copy
+    rz = sd.random.default_rng(7)
+    xz, zz = sd.stats.Normal().sample(30, rng=rz), sd.stats.Normal().sample(30, rng=rz)
+    yz = 1.0 + 2.0 * xz - zz + 0.1 * sd.stats.Normal().sample(30, rng=rz)
+    Xz = sd.stack([xz, zz, xz], axis=1)
+    for std in (False, True):
+        one = R.lasso(yz, Xz, alpha=0.01, standardize=std)
+        path = R.lasso(yz, Xz, alpha=sd.asarray([0.1, 0.01]), standardize=std)
+        assert a(one.params).tolist() == a(path.params)[1].tolist()
+        assert float(one.params[3]) == 0.0 and one.df_model == 2.0
+
+
+def test_standardized_path_equals_single_fits():
+    """G116: a path's solutions are the single fits', bit for bit, under standardize too."""
+    rg = np.random.default_rng(11)
+    X = rg.normal(size=(80, 5)) * [1.0, 10.0, 0.1, 3.0, 1.0]
+    y = X @ [1.0, 0.1, 5.0, 0.0, -0.5] + rg.normal(size=80)
+    alphas = [0.3, 0.1, 0.03, 0.01]
+    for fit in (R.lasso, lambda *v, **k: R.elastic_net(*v, l1_ratio=0.4, **k)):
+        p = fit(y, X, alpha=sd.asarray(alphas), standardize=True)
+        for i, al in enumerate(alphas):
+            assert a(p.params)[i].tolist() == a(fit(y, X, alpha=al, standardize=True).params).tolist()
+
+
+# ---- D-18, D-19: ridge_cv's and theilslopes' defaults
+
+
+def test_ridge_cv_default_is_gcv():
+    rg = np.random.default_rng(6)
+    X = rg.normal(size=(40, 3))
+    y = X @ [1.0, 0.5, 0.0] + rg.normal(size=40)
+    r = R.ridge_cv(y, X)
+    g = R.ridge_cv(y, X, cv="gcv")
+    assert r.alpha == g.alpha and math.isnan(r.alpha_1se)
+    k = R.ridge_cv(y, X, cv=5, rng=sd.random.default_rng(0))
+    assert not math.isnan(k.alpha_1se)
+    with pytest.raises(TypeError, match=r"ridge_cv\(\): 'rng' must be an sd.random.Generator"):
+        R.ridge_cv(y, X, cv=5)

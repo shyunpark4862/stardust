@@ -152,8 +152,8 @@
 | 범주 | numpy와의 관계 |
 |---|---|
 | 원소별 연산 (vForce 함수와 아래 둘 제외) | 지금 비트까지 같다. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같다(`tanh`만 최대 1 ULP) |
-| complex `abs` | 1.5 ULP 이하(계약), numpy와 끝자리가 다를 수 있다 (§5.3) |
-| vForce를 쓰는 float64 함수 15개 (§5.4) | 최대 8 ULP (계약). 잰 값은 bench/array/accuracy.md (`python -m bench.accuracy`) |
+| complex `abs` | Arb 참값에서 3 ULP 이하(계약), numpy와 끝자리가 다를 수 있다 (§5.3) |
+| vForce를 쓰는 float64 함수 15개 (§5.4) | Arb 참값에서 함수마다 3–5 ULP 이하(계약), numpy와는 잰 최대 4 ULP. 잰 값은 bench/array/accuracy.md (`python -m bench.accuracy`) |
 | 긴 float 합 (`sum(f)`), `var`/`std` | 같은 pairwise 알고리즘에 넓은 잎이라 끝자리가 다를 수 있다 (§6.2, §6.8) |
 | int64 `mean` | 정확한 정수합이라 합이 2⁵³을 넘으면 다를 수 있다(더 정확하다) (§6.8) |
 | 가중치 `bincount`·`histogram` | 고정 조각·블록의 합이라 끝자리가 다를 수 있다 (§6.13) |
@@ -326,7 +326,7 @@ numpy `nditer`의 축소판이다. N차원 문제를 되도록 적고, 길고, �
 - `std::complex`의 연산자는 C99 Annex G의 inf/nan 복구를 더하는데 numpy에는 없다. 그래서 쓰지 않고 식을 직접 적는다.
 - **명시적 FMA**: numpy 바이너리는 컴파일러 기본 FMA 축약으로 빌드되어 있어 `a*b - c*d`가 `fma(a, b, -(c*d))`가 된다. 같은 자리에 `std::fma`를 명시한다: complex 곱셈, 나눗셈, 제곱, `expm1`. 무작위 곱 4000개로 패턴을 확인했다.
 - **`|z|`**: `sqrt(fma(re, re, im·im))`이다. 실수부와 허수부 중 큰 쪽의 절댓값이 [2⁻⁵⁰⁰, 2⁵⁰⁰] 밖이면 두 부분에 2의 거듭제곱(2⁻⁶⁰⁰ 또는 2⁶⁰⁰)을 곱해 제곱이 넘치거나 정밀도를 잃지 않게 한 뒤 결과에 되돌려 곱한다(정확한 곱이다). inf 부분이 nan 부분을 이긴다.
-  - **계약: 1.5 ULP 이하.** Arb로 잰 최대 오차는 1.16 ULP다(무작위 20만 개, 지수 폭 e^±5). numpy의 cabs 공식(`큰 쪽 × sqrt(1 + (작은 쪽/큰 쪽)²)`)은 1.90 ULP였고 나눗셈과 분기 둘이 있어 약 2.7배 느렸다(계산 부분, 단독 측정 0.71 대 0.26 ns/원소). 그래서 numpy와 끝자리가 다를 수 있다.
+  - **계약: Arb 참값을 double로 반올림한 값에서 3 ULP 이하**(§5.4와 같은 규칙: 참값 점에서 잰 최대에 2를 더한다). 잰 최대는 1 ULP다(`tests/array/ref/cabs.npz`). numpy의 cabs 공식(`큰 쪽 × sqrt(1 + (작은 쪽/큰 쪽)²)`)은 같은 점에서 2 ULP였고 나눗셈과 분기 둘이 있어 약 2.7배 느렸다(계산 부분, 단독 측정 0.71 대 0.26 ns/원소). 그래서 numpy와 끝자리가 다를 수 있다.
 - complex 초월함수는 C 라이브러리의 C99 함수(`cexp` 등)를 스칼라로 부른다. libc++의 `std::exp(complex)`는 자체 구현이라 numpy와 다르다. C++에는 `<complex.h>`가 없어 직접 선언한다.
 - 반올림 `round`는 `rint`(현재 모드 = 가장 가까운 짝수)다.
 
@@ -348,7 +348,7 @@ float64 초월함수는 함수마다 구현을 나눈다.
 
 - **속도** (1스레드, libm 대비): 대부분 2~10배. `sin` 7.6배, `atan2` 10배, `exp` 4.2배.
   - `asinh`/`acosh`는 입력에 따라 갈린다. vForce는 입력과 상관없이 거의 일정하고, libm은 크게 달라진다. 큰 입력에서는 libm이 빠르다(`acosh`, 1 + [0, 10⁶)에서 16%; 커밋 4151d2a의 `bench/array/m9_vforce.py`). 작은 입력은 vForce가 빠르다고 보았지만 남은 측정 파일이 없어 수치를 적지 않는다. 데이터를 보고 고르지 않으므로(§1.4) vForce를 쓴다.
-- **정확도 계약**: vForce 함수는 numpy와 최대 8 ULP까지 다를 수 있다 (테스트 허용치). 특수값은 비트까지 같아야 한다.
+- **정확도 계약**: vForce 함수는 Arb 참값을 double로 반올림한 값에서 함수마다 정한 ULP 안이다(`tests/array/refdata.py`의 `ULP_BOUND`: `exp` `acos` `atan` `atan2` 3, `sin` `atanh` 5, 나머지 4; 참값 점에서 잰 최대에 2를 더한 값). ULP는 두 값 사이에 있는 double의 수다(`bench/accuracy/common.py`의 `ulp_distance`). numpy와의 거리는 기록만 한다(잰 최대 4 ULP). 특수값은 비트까지 같아야 한다.
 - **호출 방식**: vForce는 연속 배열을 받는다.
   - 입력과 출력이 연속이면 그대로 넘긴다. vForce의 개수 인자는 `int`라서 한 번에 2²⁴개까지 넘긴다.
   - 비연속 입력, 스칼라(stride 0), 비연속 출력은 커널 안에서 1024원소(8KB) 스택 버퍼에 모으고 흩는다. 레이아웃과 상관없이 vForce 경로를 탄다.
@@ -952,17 +952,17 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 - **numpy가 정답지다.** 무작위 shape, stride, dtype 조합을 만들어 numpy 결과와 비교한다. numpy는 정답지 용도로만 설치한다.
 - **비교 방법** (`tests/array/conftest.py`)
   - `assert_same`: shape, dtype, 비트까지 같다. NaN은 어떤 NaN과도 같지만 `-0.0`과 `+0.0`은 다르다. 결과는 버퍼 프로토콜로 복사 없이 가져온다.
-  - `assert_ulp`: vForce 함수용. float를 순서가 보존되는 정수로 바꿔 ULP 거리를 잰다. 허용치는 8 ULP이고, 특수값(±0, ±inf, NaN)은 비트까지 같아야 한다.
+  - `assert_ulp`: vForce 함수를 numpy와 견줄 때 쓴다. 두 값 사이의 double 수(`ulp_distance`)를 재고, NaN 자리는 같아야 한다. 테스트의 허용치는 8 ULP다(계약은 Arb 참값 쪽의 `ULP_BOUND`이고 `tests/array/test_reference.py`가 본다).
   - numpy와 의미론을 일부러 다르게 한 곳(`% 0`, bool 산술, 정수 음수 지수, 0차원 없음 등)은 기대값을 따로 정의한다.
   - numpy와 순서가 다른 리덕션(§6.9)은 조각·블록 경계 근처 길이(0, 1, 7~9, 15~17, 4095~4097, 8191~8193, 16384~16385, 49169, 4만, 10만)에서 상대오차 1e-12 이내를 본다. 정수는 정확히 같아야 한다. pairwise 합의 상대오차 허용치는 1e-15다.
 - **레이아웃**: 원소별 연산의 dtype 쌍 테스트는 세 레이아웃(연속, 스칼라 브로드캐스트, strided)을 모두 돈다. 연산마다 실행 경로가 레이아웃에 따라 갈리기 때문이다.
 - **스레드 결정성** (`tests/array/test_threads.py`): 1, 2, 3, 7, 10스레드에서 같은 바이트가 나와야 한다. 블록 리덕션, `prod`, 긴 스캔, 정렬 조각, 마스크 청크 경로를 모두 포함한다. 여러 Python 스레드가 동시에 풀을 쓰는 경우와 실행 중 `set_num_threads`도 시험한다.
 - **API 표면** (`test_api_surface.py`): 문서에 적힌 이름이 모두 있는지, 문서에 없는 이름을 내보내지 않는지 확인한다. `docs/api/array.md`의 시그니처 블록을 읽는다.
 - **고치기 전 코드에서 실패하는지 확인한다.** 버그를 막는 테스트는 고치기 전 빌드에서 실패해야 한다. 패턴이 우연히 대칭이면(예: 길이 40000의 `[::3]`을 뒤집기) 고치기 전에도 통과할 수 있다.
-- 통합 중에는 골든 출력(커밋 4151d2a의 `bench/merge/golden/`)을 스레드 수 1, 3, 10에서 바이트로 비교한다 (ROADMAP 진행 원칙).
+- 결과를 바꾸면 안 되는 변경(옮기기, 리팩터링, 포매터)은 골든 출력(`tests/golden/`, `tools/golden.py`)을 스레드 수 1, 3, 10에서 비트까지 비교한다 (tests/README.md의 골든 절).
 
 ### 13.2 측정 방법
-- **벤치마크는 numpy와 같은 자리에서 잰다.** 축은 크기, 레이아웃(연속 / 비연속 / 브로드캐스트), 스레드 수다. 여러 라운드 중 가장 빠른 값을 쓴다. 기준선은 커밋 4151d2a의 `bench/merge/baseline.md`에 있다. 지금의 속도 표는 `bench/array/speed.md`다(`.venv/bin/python -m bench.speed run --area array`).
+- **벤치마크는 numpy와 같은 자리에서 잰다.** 축은 크기, 레이아웃(연속 / 비연속 / 브로드캐스트), 스레드 수다. 여러 라운드 중 가장 빠른 값을 쓴다. 사례는 `bench/speed/cases/array.py`, 기준선은 `bench/speed/results/array.json`, 표는 `bench/array/speed.md`다(`.venv/bin/python -m bench.speed run array`; bench/README.md).
 - 1스레드 수치와 기본 10스레드 수치를 따로 적는다. numpy는 BLAS 말고는 싱글스레드다.
 - **원인은 프로파일러로 찾는다.** macOS `sample`로 뜨거운 함수를 보고, 기호를 남긴 빌드(`NOSTRIP`)를 `otool -tV`로 디스어셈블한다. 이 문서의 결정 여럿이 이렇게 나왔다: mutex 경합(§10.1), 메모리가 아니라 명령어 수가 문제였던 gather(§7.3), 스택에 남은 스캔 버퍼(§6.7).
 - **가설은 독립 실험으로 확인한다.** 확장 모듈과 떨어진 작은 프로그램으로 한 변수만 바꿔 잰다 (vForce 검증, 임시 배열 제거, gather, 스캔의 저장 순서).

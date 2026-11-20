@@ -21,17 +21,13 @@ import numpy as np
 import pytest
 
 import stardust as sd
+from tests._bits import bits_equal
 
 R = sd.regression
 
 
 def a(v):
     return np.asarray(v)
-
-
-def same(x, y):
-    x, y = a(x), a(y)
-    return x.shape == y.shape and x.tobytes() == y.tobytes()
 
 
 def fields(r, names):
@@ -65,7 +61,7 @@ def check_layouts_threads(fit, X, names):
         for XX in (np.ascontiguousarray(X), np.asfortranarray(X)):
             got = at_threads(th, lambda: fields(fit(XX), names))
             for nm, u, v in zip(names, ref, got):
-                assert same(u, v), (nm, th, XX.flags["C_CONTIGUOUS"])
+                assert bits_equal(u, v), (nm, th, XX.flags["C_CONTIGUOUS"])
     return ref
 
 
@@ -85,7 +81,7 @@ def test_linear_row_passes(n, weighted):
         return R.ols(sd.asarray(y), sd.asarray(XX), cov_type="HC1")
 
     params, bse, fitted, resid = check_layouts_threads(fit, X, ["params", "bse", "fittedvalues", "resid"])
-    assert same(fitted[-3:], fitted[:3]) and same(resid[-3:], resid[:3])
+    assert bits_equal(fitted[-3:], fitted[:3]) and bits_equal(resid[-3:], resid[:3])
 
 
 @pytest.mark.parametrize("n", SIZES)
@@ -107,7 +103,7 @@ def test_glm_row_passes(n, family, link):
 
     out = check_layouts_threads(fit, X, ["params", "bse", "linear_predictor", "deviance", "null_deviance"])
     eta_fit = out[2]
-    assert same(eta_fit[-3:], eta_fit[:3])
+    assert bits_equal(eta_fit[-3:], eta_fit[:3])
 
 
 @pytest.mark.parametrize("n", SIZES)
@@ -123,7 +119,7 @@ def test_rlm_row_passes(n, method):
         return R.rlm(sd.asarray(y), sd.asarray(XX), method=method, rng=rng)
 
     out = check_layouts_threads(fit, X, ["params", "bse", "fittedvalues", "weights", "scale"])
-    assert same(out[2][-3:], out[2][:3])
+    assert bits_equal(out[2][-3:], out[2][:3])
 
 
 @pytest.mark.parametrize("n", [4096, 8192])
@@ -193,8 +189,8 @@ def test_quantreg_nid_array_tasks(n):
     ys, Xs = sd.asarray(y), sd.asarray(X)
     arr = {th: at_threads(th, lambda: R.quantreg(ys, Xs, q=sd.asarray(qs))) for th in (1, 10)}
     for nm in ("params", "bse", "bandwidth"):
-        assert same(getattr(arr[1], nm), getattr(arr[10], nm))
+        assert bits_equal(getattr(arr[1], nm), getattr(arr[10], nm))
     for i, q in enumerate(qs):
         one = R.quantreg(ys, Xs, q=q)
-        assert same(a(arr[10].params)[i], one.params)
-        assert same(a(arr[10].bse)[i], one.bse)
+        assert bits_equal(a(arr[10].params)[i], one.params)
+        assert bits_equal(a(arr[10].bse)[i], one.bse)

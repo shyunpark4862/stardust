@@ -12,7 +12,6 @@ import warnings
 
 import numpy as np
 import pytest
-import scipy
 import scipy.optimize as so
 
 import stardust as sd
@@ -20,13 +19,13 @@ from stardust.optimize._result import _Lazy
 
 from . import functions as fn
 from . import mgh
+from .conftest import LIVE, quick_first
 
 DATA = pathlib.Path(__file__).parent / "data"
 REF = json.loads((DATA / "scipy_minimize.json").read_text())
 FORTRAN = json.loads((DATA / "fortran_lbfgsb.json").read_text())
 F_VS_S = {r["id"]: r for r in json.loads((DATA / "fortran_vs_scipy.json").read_text())["lbfgsb"]}
 EPS = 2.0**-52
-LIVE = pytest.mark.skipif(scipy.__version__ != "1.18.1", reason="the steps are scipy 1.18.1's")
 DRIVER1_BOUNDS = ([b[0] for b in fn.LBFGSB_DRIVER1_BOUNDS], [b[1] for b in fn.LBFGSB_DRIVER1_BOUNDS])
 
 
@@ -246,12 +245,20 @@ def same_run(a, b, f):
         assert b.njev == a.njev
 
 
+QUICK_PROBLEMS = PROBLEMS[::8] + [p for p in PROBLEMS if not p[0].startswith("mgh")]
+
+
 @LIVE
-@pytest.mark.parametrize("group", sorted(LIVE_GROUPS))
-def test_every_call_point_follows_scipy(group):
+@pytest.mark.parametrize(
+    "group, every",
+    [(g, False) for g in sorted(LIVE_GROUPS)]
+    + [pytest.param(g, True, marks=pytest.mark.deep) for g in sorted(LIVE_GROUPS)],
+)
+def test_every_call_point_follows_scipy(group, every):
+    # quick: every eighth problem and the non-MGH ones; deep: all of them
     method, fd, bounded = LIVE_GROUPS[group]
     n = 0
-    for pid, f, g, x0, bounds in PROBLEMS:
+    for pid, f, g, x0, bounds in PROBLEMS if every else QUICK_PROBLEMS:
         if method == "BFGS" and bounds is not None:
             continue
         if bounded and bounds is None:
@@ -266,7 +273,7 @@ def test_every_call_point_follows_scipy(group):
         assert la == lb, pid
         same_run(a, b, f)
         n += 1
-    assert n >= 51
+    assert n >= (51 if every else 1)
 
 
 # ---- live: options and edge cases (non-finite values on the way, fixed variables, the caps)
@@ -356,7 +363,7 @@ def scipy_options(method, opts):
 
 
 @LIVE
-@pytest.mark.parametrize("case", sweep_cases(), ids=lambda c: c[0])
+@pytest.mark.parametrize("case", quick_first(sweep_cases(), SWEEP_IDS[0]), ids=lambda c: c[0])
 def test_options_and_edge_cases_follow_scipy(case):
     _, method, f, g, x0, jac, opts, kw = case
     la, lb = [], []

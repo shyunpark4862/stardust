@@ -1,14 +1,17 @@
-"""S2: erf erfc erfcx erfinv erfcinv ndtr log_ndtr ndtri (docs/api/special.md §2).
+"""erf erfc erfcx erfinv erfcinv ndtr log_ndtr ndtri (docs/api/special.md §2).
 
 Accuracy is tests/special/test_reference.py's. Here: the special values, bit for bit
 against scipy except where docs/design/special.md §2.4 says otherwise, and the layouts of
 the chunk kernels."""
+
+import math
 
 import numpy as np
 import pytest
 import scipy.special as sp
 
 import stardust as sd
+from tests._bits import bits_equal, bits_equal_any_nan
 
 S = sd.special
 
@@ -47,24 +50,21 @@ DIFFERENT = {
 }
 
 
-def same_bits(a, b):
-    a, b = np.float64(a), np.float64(b)
-    return bool(np.isnan(a) and np.isnan(b)) or a.view(np.uint64) == b.view(np.uint64)
-
-
 @pytest.mark.parametrize("name", NAMES)
 def test_special_values(name):
     f, g = getattr(S, name), getattr(sp, name)
     for x in EDGES:
         got, want = f(x), g(x)
-        special = [v for k, v in DIFFERENT.get(name, {}).items() if same_bits(k, x)]  # matched by bits: -0.0 is not 0.0
+        special = [
+            v for k, v in DIFFERENT.get(name, {}).items() if bits_equal_any_nan(k, x)
+        ]  # matched by bits: -0.0 is not 0.0
         if special:
             if special[0] is not None:
-                assert same_bits(got, special[0]), (name, x, got)
+                assert bits_equal_any_nan(got, special[0]), (name, x, got)
             continue
         if np.isfinite(want) and want != 0 and np.isfinite(got) and got != 0:
             continue  # an ordinary value: within ULPs, test_reference's business
-        assert same_bits(got, want), (name, x, got, want)
+        assert bits_equal_any_nan(got, want), (name, x, got, want)
 
 
 def test_documented_values():
@@ -179,6 +179,19 @@ def test_messages_name_the_documented_arguments():
     for name, arg in [("ndtri", "p"), ("erfinv", "y"), ("erfcinv", "z"), ("erf", "x")]:
         with pytest.raises(TypeError, match=rf"^{name}\(\): '{arg}' must be"):
             getattr(S, name)("a")
-    # erf takes complex from S8 (docs/api/special.md §12); erfinv does not
+    # erf takes complex (docs/api/special.md §12); erfinv does not
     with pytest.raises(TypeError, match=r"^erfinv\(\): not supported for complex128$"):
         S.erfinv(1j)
+
+
+INF, NAN = math.inf, math.nan
+
+
+# ---- erf's NaN ----
+
+
+def test_erf_nan_is_the_input():
+    for f in (S.erf, S.erfc):
+        assert bits_equal(f(NAN), NAN)
+        for n in (1, 2, 3, 1025):
+            assert bits_equal(f(sd.asarray([NAN] * n)), np.full(n, NAN))

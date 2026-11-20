@@ -64,3 +64,14 @@ def test_incompatible_broadcast_raises(shapes):
     arrays = [sd.zeros(s) for s in shapes]
     with pytest.raises(ValueError):
         sd.add(*arrays) if len(arrays) == 2 else sd.where(sd.astype(arrays[0], sd.bool), *arrays[1:])
+
+
+def test_broadcast_results_are_c_ordered():
+    b = sd.broadcast_to(sd.ones(4), (3, 4))
+    assert b.copy().strides == (32, 8) and (b + 1).strides == (32, 8)
+    assert sd.astype(b, sd.int64).strides == (32, 8) and sd.sort(b).strides == (32, 8)
+    assert (sd.broadcast_to(sd.ones(5), (2, 3, 5)) * 2).strides == (120, 40, 8)
+    f = sd.asarray(np.asfortranarray(np.ones((3, 4))))
+    assert (f + 1).strides == (8, 24)  # a real layout is still followed
+    fb = sd.broadcast_to(sd.reshape(f, (3, 1, 4)), (3, 2, 4))
+    assert (fb + 0).strides == (8, 24, 48)  # the stride-0 axis keeps its place

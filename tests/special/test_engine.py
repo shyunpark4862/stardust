@@ -7,10 +7,15 @@ through the private test functions of stardust._core.special (csrc/special/ops/t
     _cf_tan(x)          tan by a continued fraction, with a cost weight well above 1
 """
 
+import math
+import threading
+import time
+
 import numpy as np
 import pytest
 
 import stardust as sd
+from tests._bits import bits_equal
 
 C = sd.special._core
 
@@ -24,10 +29,6 @@ def threads():
 
 def npy(x):
     return np.asarray(x)
-
-
-def bits(x):
-    return np.asarray(x).view(np.uint64)
 
 
 # ---------------------------------------------------------------- operands and dtypes
@@ -186,12 +187,9 @@ def test_same_bits_for_any_thread_count(threads):
     results = []
     for n in (1, 3, 10):
         threads(n)
-        results.append((bits(C._cf_tan(x)), bits(C._fma3(a, b, c)), [bits(p) for p in C._powers4(x)]))
+        results.append((C._cf_tan(x), C._fma3(a, b, c), tuple(C._powers4(x))))
     for r in results[1:]:
-        np.testing.assert_array_equal(r[0], results[0][0])
-        np.testing.assert_array_equal(r[1], results[0][1])
-        for p, q in zip(r[2], results[0][2]):
-            np.testing.assert_array_equal(p, q)
+        assert bits_equal(r, results[0])
 
 
 def test_element_does_not_depend_on_its_neighbours():
@@ -219,3 +217,49 @@ def test_weight_moves_the_parallel_threshold():
 def test_functions_carry_their_weight():
     assert C._weight("_fma3") >= 1
     assert C._weight("_cf_tan") > 10 * C._weight("_fma3")
+
+
+INF, NAN = math.inf, math.nan
+
+
+S = sd.special
+
+
+# ---- the GIL of a heavy call on few elements ----
+
+
+@pytest.mark.serial
+def test_heavy_call_on_few_elements_releases_the_gil():
+    # yv costs 750 ns per element by the table (capped weight 256): 16 elements are below the
+    # parallel threshold at the capped weight but above it at the uncapped one. These take
+    # ~12 ms each (a 5e5-step recurrence), and another Python thread must keep running.
+    v = sd.full((16,), 1.5e6)
+    x = sd.full((16,), 1e6)
+    old = sd.get_num_threads()
+    sd.set_num_threads(1)
+    longest = [0.0]
+    stop = threading.Event()
+
+    def watch():
+        last = time.perf_counter()
+        while not stop.is_set():
+            now = time.perf_counter()
+            longest[0] = max(longest[0], now - last)
+            last = now
+
+    th = threading.Thread(target=watch)
+    th.start()
+    try:
+        time.sleep(0.01)
+        longest[0] = 0.0
+        t = time.perf_counter()
+        r = S.yv(v, x)
+        took = time.perf_counter() - t
+        time.sleep(0.01)
+    finally:
+        stop.set()
+        th.join()
+        sd.set_num_threads(old)
+    assert np.all(np.asarray(r) == -INF)
+    assert took > 0.05
+    assert longest[0] < 0.5 * took, (longest[0], took)

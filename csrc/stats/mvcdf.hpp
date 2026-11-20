@@ -754,7 +754,7 @@ double t_mixture(double nu, double p0, double habs, const double* hs, int nh, G&
 }
 
 // The bivariate t, nu finite, by Plackett's identity mixed over R (Genz 2004 §4 writes
-// the t's version; tools/mvcdf_ref.py's bvt is the same mixture term by term):
+// the t's version; tools/mvcdfref.py's bvt is the same mixture term by term):
 //     d P / d theta = E[exp(-R^2 q(s))] / (2 pi) = (1 + q / a)^-a / (2 pi),  s = sin theta,
 // a closed form, so P is one integral in the path variable t (as bvn) plus its start:
 //     r >= 0:  E[Phi(R h) Phi(R k)] + (1 / 2pi) int_0^asin r (1 + q/a)^-a dtheta

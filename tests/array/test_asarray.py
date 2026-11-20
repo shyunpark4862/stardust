@@ -9,7 +9,7 @@ from hypothesis import strategies as st
 
 import stardust as sd
 
-from .conftest import assert_same
+from .conftest import assert_same, run_guarded
 
 INT64_MAX = 2**63 - 1
 INT64_MIN = -(2**63)
@@ -192,3 +192,27 @@ def test_nested_roundtrip_matches_numpy(data):
     if want.dtype == object:  # mixed huge ints etc. that numpy keeps as objects
         return
     assert_same(sd.asarray(data), want)
+
+
+# ---- sizes that overflow int64 -----------------------------------------------
+
+
+def test_self_referencing_list_stops_at_32_dimensions():
+    # Unchecked, the shape grows without end (853 MB in 0.3 s).
+    rc, out = run_guarded(
+        """
+        import stardust as sd
+        l = []
+        l.append(l)
+        for f in [lambda: sd.asarray(l), lambda: sd.ones(3)[l]]:
+            try:
+                f()
+                print("returned")
+            except ValueError as e:
+                print(e)
+        """,
+        rss_limit=600 << 20,
+    )
+    assert rc == 0, out
+    assert out.split("\n")[0] == "asarray(): arrays may have at most 32 dimensions"
+    assert out.split("\n")[1].endswith("arrays may have at most 32 dimensions")

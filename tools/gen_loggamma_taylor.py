@@ -10,7 +10,7 @@ converges for |w| < J + 1, its terms falling like (|w| / (J+1))^k.
 The d_k are the Hurwitz zeta values (Arb, rounded from settled balls), not fitted; written to
 csrc/special/coeffs/loggamma_taylor.hpp, highest power first (Horner), d_2 last.
 
-Run: uv run python tools/gen_loggamma_taylor.py
+Run: .venv/bin/python tools/gen_loggamma_taylor.py
 """
 
 import pathlib

@@ -1,8 +1,8 @@
 """Golden cases for the array area (tools/golden.py has the contract).
 
-Written for the merge (bench/merge/golden at commit 4151d2a) against the API of the array package before the
-merge, which the array area of sd keeps: every name in ``__all__`` of the time plus the ndarray
-attributes, methods, operators and Python protocols. Inputs come only from ``L.rng(seed)`` and fixed literals.
+Every name of the array area's ``__all__`` (the top level of sd without its subpackages) plus the
+ndarray attributes, methods, operators and Python protocols. Inputs come only from ``L.rng(seed)``
+and fixed literals.
 
 Layout of the file: one generator per function family, chained by cases().
 Inputs are read-only numpy arrays memoized at module level, wrapped by ``L.arr`` and then copied, so every
@@ -13,6 +13,7 @@ stardust input owns its memory. Thunks that mutate always work on a
 multithreaded paths run; small ones stay below it.
 """
 
+import hashlib
 import math
 import operator
 
@@ -88,6 +89,8 @@ UNARY = [
     "real",
     "imag",
     "conj",
+    "reciprocal",
+    "signbit",
 ]
 BINARY = [
     "add",
@@ -114,9 +117,15 @@ BINARY = [
     "bitwise_right_shift",
     "maximum",
     "minimum",
+    "copysign",
+    "hypot",
+    "logaddexp",
+    "nextafter",
 ]
 REDUCTIONS = ["sum", "prod", "min", "max", "mean", "var", "std", "argmin", "argmax", "any", "all"]
+NAN_REDUCTIONS = ["nansum", "nanprod", "nanmin", "nanmax", "nanmean", "nanvar", "nanstd", "nanargmin", "nanargmax"]
 CUMULATIVE = ["cumulative_sum", "cumulative_prod"]
+NAN_CUMULATIVE = ["nancumulative_sum", "nancumulative_prod"]
 
 BINOPS = {
     "add": operator.add,
@@ -153,17 +162,23 @@ INPLACE = {
     "irshift": operator.irshift,
 }
 
-_NP = {}  # read-only numpy inputs, memoized across calls of cases()
+_NP = {}  # read-only numpy inputs up to MEMO elements, memoized across calls of cases()
+MEMO = 2**16  # larger inputs are made again when asked for (Ctx.S keeps one stardust copy)
+
+
+def _digest(a):
+    return hashlib.sha256(a.tobytes()).digest()
 
 
 class Ctx:
     """Input factory: deterministic numpy data -> stardust arrays owning their memory."""
 
     def __init__(self, L):
-        self.L, self.A, self.np = L, L.A, L.np
-        self.DT = {"b": L.A.bool, "i": L.A.int64, "f": L.A.float64, "c": L.A.complex128}
+        self.L, self.A, self.np = L, L.sd, L.np
+        self.DT = {"b": L.sd.bool, "i": L.sd.int64, "f": L.sd.float64, "c": L.sd.complex128}
         self.NPT = {"b": L.np.bool_, "i": L.np.int64, "f": L.np.float64, "c": L.np.complex128}
-        self.shared = []  # (stardust input, numpy source) pairs, checked by the guard case
+        self.shared = []  # (stardust input, SHA-256 of its numpy source), checked by the guard case
+        self.made = {}  # (kind, shape, seed) -> the stardust input
 
     def gen(self, kind, shape, seed=0):
         """kind: b/i/f/c random, 't' float with many ties, 'I' wide ints, 'n' float with nan/-0.0."""
@@ -192,13 +207,19 @@ class Ctx:
             else:
                 raise ValueError(kind)
             a.flags.writeable = False
-            _NP[key] = a
+            if a.size <= MEMO:
+                _NP[key] = a
         return a
 
     def S(self, kind, shape, seed=0):
-        src = self.gen(kind, shape, seed)
-        x = self.L.arr(src).copy()
-        self.shared.append((x, src))
+        """The stardust input of gen(kind, shape, seed): one array per key, shared by the cases
+        that ask for it (no case writes to it: the guard case checks)."""
+        key = (kind, shape, seed)
+        x = self.made.get(key)
+        if x is None:
+            src = self.gen(kind, shape, seed)
+            x = self.made[key] = self.L.arr(src).copy()
+            self.shared.append((x, _digest(src)))
         return x
 
     def lit(self, values, kind=None):
@@ -207,7 +228,7 @@ class Ctx:
         src = np.array(values, dtype=self.NPT[kind]) if kind else np.array(values)
         src.flags.writeable = False
         x = self.L.arr(src).copy()
-        self.shared.append((x, src))
+        self.shared.append((x, _digest(src)))
         return x
 
 
@@ -232,6 +253,14 @@ def cases(L):
         sorting,
         unique,
         matmul,
+        dtype_functions,
+        creation_more,
+        shapes_more,
+        quantiles,
+        covariance,
+        counting,
+        index_more,
+        tensordot_vecdot,
         threads,
         printing,
     ):
@@ -239,7 +268,7 @@ def cases(L):
     shared = c.shared
 
     def guard():
-        return [c.np.asarray(x).tobytes() == src.tobytes() for x, src in shared].count(False)
+        return [_digest(c.np.asarray(x)) == digest for x, digest in shared].count(False)
 
     yield "zz guard shared inputs untouched", guard
 
@@ -1475,11 +1504,11 @@ def reductions(c):
         "1 keep": dict(axis=1, keepdims=True),
         "(2,0) keep": dict(axis=(2, 0), keepdims=True),
     }
-    for fn_name in REDUCTIONS:
+    for fn_name in REDUCTIONS + NAN_REDUCTIONS:
         fn = getattr(A, fn_name)
         for k, x in small.items():
             for an, kw in axes_opts.items():
-                if fn_name in ("argmin", "argmax") and isinstance(kw.get("axis"), tuple):
+                if fn_name.endswith(("argmin", "argmax")) and isinstance(kw.get("axis"), tuple):
                     continue
                 yield f"red {fn_name} {k} axis={an}", (lambda fn=fn, x=x, kw=kw: fn(x, **kw))
         yield f"red {fn_name} f F-order axis=0", (lambda fn=fn: fn(_rev(A, c.S("f", (6, 5, 4), 163)), axis=0))
@@ -1487,10 +1516,12 @@ def reductions(c):
         yield f"red {fn_name} f strided axis=1", (lambda fn=fn: fn(c.S("f", (8, 10, 12), 164)[::2, ::-2, 1::3], axis=1))
         yield f"red {fn_name} i strided", (lambda fn=fn: fn(c.S("i", (8, 10), 165)[::-3, ::2]))
         yield (
-            f"red {fn_name} 5d axis=(1,3)" if fn_name not in ("argmin", "argmax") else f"red {fn_name} 5d axis=3",
+            f"red {fn_name} 5d axis=(1,3)"
+            if not fn_name.endswith(("argmin", "argmax"))
+            else f"red {fn_name} 5d axis=3",
             (
                 lambda fn=fn, fn_name=fn_name: fn(
-                    c.S("f", (2, 3, 2, 4, 2), 166), axis=(1, 3) if fn_name not in ("argmin", "argmax") else 3
+                    c.S("f", (2, 3, 2, 4, 2), 166), axis=(1, 3) if not fn_name.endswith(("argmin", "argmax")) else 3
                 )
             ),
         )
@@ -1525,7 +1556,7 @@ def reductions(c):
                 yield f"red {fn_name} {k} large 2d axis={ax}", (lambda fn=fn, M=M, ax=ax: fn(M, axis=ax))
                 yield f"red {fn_name} {k} large 2d F axis={ax}", (lambda fn=fn, M=M, ax=ax: fn(M.T, axis=ax))
         T3 = A.permute_dims(c.S("f", (60, 70, 80), 172), (2, 0, 1))
-        if fn_name not in ("argmin", "argmax"):
+        if not fn_name.endswith(("argmin", "argmax")):
             yield f"red {fn_name} large 3d axis=(0,2)", (lambda fn=fn: fn(T3, axis=(0, 2)))
         yield f"red {fn_name} large 3d axis=1 keep", (lambda fn=fn: fn(T3, axis=1, keepdims=True))
         yield f"red {fn_name} large tall axis=0", (lambda fn=fn: fn(c.S("f", (100_000, 3), 173), axis=0))
@@ -1543,7 +1574,17 @@ def reductions(c):
         yield f"red method {fn_name} none", (lambda fn_name=fn_name: getattr(small["i"], fn_name)())
     yield "red argmin axis tuple err", lambda: A.argmin(small["f"], axis=(0, 1))
     yield "red argmax axis tuple err", lambda: A.argmax(small["f"], axis=(0,))
-    for fn_name in ("sum", "prod"):
+    yield "red nanargmin axis tuple err", lambda: A.nanargmin(small["f"], axis=(0, 1))
+    yield "red nanargmax axis tuple err", lambda: A.nanargmax(small["f"], axis=(0,))
+    all_nan = c.lit([[NAN, 1.0, NAN], [NAN, NAN, NAN]])
+    for fn_name in NAN_REDUCTIONS:
+        fn = getattr(A, fn_name)
+        yield f"red {fn_name} all-nan lane axis=1", (lambda fn=fn: fn(all_nan, axis=1))
+        yield f"red {fn_name} all-nan lane axis=0", (lambda fn=fn: fn(all_nan, axis=0))
+        yield f"red {fn_name} no nan is plain", (lambda fn=fn: fn(small["f"], axis=1))
+        yield f"red {fn_name} complex nan", (lambda fn=fn: fn(c.lit([1 + 1j, complex(NAN, 0), complex(0, NAN), 2j])))
+        yield f"red {fn_name} large mostly nan", (lambda fn=fn: fn(c.S("n", (1_000_000,), 183) * c.lit([NAN])))
+    for fn_name in ("sum", "prod", "nansum", "nanprod"):
         fn = getattr(A, fn_name)
         for s in KINDS:
             for d in KINDS:
@@ -1555,7 +1596,7 @@ def reductions(c):
             (lambda fn=fn: fn(c.S("f", (1000, 1000), 176), axis=0, dtype=DT["c"])),
         )
         yield f"red {fn_name} dtype python err", (lambda fn=fn: fn(small["f"], dtype=float))
-    for fn_name in ("var", "std"):
+    for fn_name in ("var", "std", "nanvar", "nanstd"):
         fn = getattr(A, fn_name)
         for corr in (0, 1, 1.5, 6, 100, -1, 0.0):
             yield (
@@ -1581,7 +1622,7 @@ def _unit(x):
 
 def cumulative(c):
     A, DT = c.A, c.DT
-    for fn_name in CUMULATIVE:
+    for fn_name in CUMULATIVE + NAN_CUMULATIVE:
         fn = getattr(A, fn_name)
         for k in KINDS + "n":
             x3 = c.S(k, (4, 5, 6), 190)
@@ -1622,6 +1663,11 @@ def cumulative(c):
             (lambda fn=fn: fn(c.S("f", (500_000,), 204), include_initial=True)),
         )
     yield "cum dtype=bool err", lambda: A.cumulative_sum(c.lit([True, False]), dtype=DT["b"])
+    for fn_name in NAN_CUMULATIVE:
+        fn = getattr(A, fn_name)
+        yield f"cum {fn_name} leading nan", (lambda fn=fn: fn(c.lit([NAN, NAN, 2.0, NAN, 3.0])))
+        yield f"cum {fn_name} all nan", (lambda fn=fn: fn(c.lit([NAN, NAN]), include_initial=True))
+        yield f"cum {fn_name} complex nan", (lambda fn=fn: fn(c.lit([1 + 1j, complex(NAN, 0), complex(0, NAN), 2j])))
 
 
 # ---------------------------------------------------------------- sorting
@@ -1837,6 +1883,640 @@ def matmul(c):
     yield "matmul pyscalar err", lambda: A.matmul(c.S("f", (3,), 285), 2.0)
     yield "matmul list err", lambda: A.matmul(c.S("f", (3,), 285), [1.0, 2.0, 3.0])
     yield "matmul keyword err", lambda: A.matmul(x1=c.S("f", (3,), 285), x2=c.S("f", (3,), 285))
+
+
+# ---------------------------------------------------------------- data type functions
+
+
+def dtype_functions(c):
+    A, DT = c.A, c.DT
+    names = {"b": "bool", "i": "int64", "f": "float64", "c": "complex128"}
+    xs = {k: c.S(k, (3,), 300) for k in KINDS}
+    for a in KINDS:
+        for b in KINDS:
+            yield f"can_cast {a} {b}", (lambda a=a, b=b: A.can_cast(DT[a], DT[b]))
+            yield f"can_cast {a} {b} names", (lambda a=a, b=b: A.can_cast(names[a], names[b]))
+            yield f"can_cast {a} array {b}", (lambda a=a, b=b: A.can_cast(xs[a], DT[b]))
+            yield f"result_type {a} {b}", (lambda a=a, b=b: A.result_type(DT[a], DT[b]))
+            yield f"result_type {a} array {b} array", (lambda a=a, b=b: A.result_type(xs[a], xs[b]))
+            yield f"result_type {a} pyscalar {b}", (lambda a=a, b=b: A.result_type(xs[a], PYSCALAR[b]))
+    yield "result_type three", lambda: A.result_type(DT["b"], xs["i"], 2.5)
+    yield "result_type pyscalars only", lambda: A.result_type(True, 3)
+    yield "result_type one", lambda: A.result_type(DT["c"])
+    yield "result_type none err", lambda: A.result_type()
+    yield "result_type string err", lambda: A.result_type(A.string, DT["f"])
+    yield "result_type list err", lambda: A.result_type([1.0])
+    yield "can_cast string err", lambda: A.can_cast(A.string, DT["f"])
+    yield "can_cast unknown name err", lambda: A.can_cast("float32", DT["f"])
+    yield "can_cast pyscalar err", lambda: A.can_cast(1.0, DT["f"])
+    kinds = ["bool", "signed integer", "unsigned integer", "integral", "real floating", "complex floating", "numeric"]
+    for a in KINDS:
+        for kind in kinds:
+            yield f"isdtype {a} {kind}", (lambda a=a, kind=kind: A.isdtype(DT[a], kind))
+        for b in KINDS:
+            yield f"isdtype {a} dtype {b}", (lambda a=a, b=b: A.isdtype(DT[a], DT[b]))
+        yield f"isdtype {a} tuple", (lambda a=a: A.isdtype(DT[a], ("bool", "real floating", DT["c"])))
+        yield f"isdtype {a} name", (lambda a=a: A.isdtype(names[a], "numeric"))
+    yield "isdtype string", lambda: A.isdtype(A.string, "numeric")
+    yield "isdtype unknown kind err", lambda: A.isdtype(DT["f"], "floating")
+    yield "isdtype array err", lambda: A.isdtype(xs["f"], "numeric")
+    yield "isdtype kind int err", lambda: A.isdtype(DT["f"], 3)
+    for nm, arg in (("float64", DT["f"]), ("complex128", DT["c"]), ("name", "float64"), ("array", xs["f"])):
+        yield f"finfo {nm}", (lambda arg=arg: A.finfo(arg))
+    yield "finfo fields", lambda: A.finfo(DT["f"])._fields
+    for nm, arg in (("int64", DT["i"]), ("name", "int64"), ("array", xs["i"])):
+        yield f"iinfo {nm}", (lambda arg=arg: A.iinfo(arg))
+    yield "iinfo fields", lambda: A.iinfo(DT["i"])._fields
+    for nm, arg in (("bool", DT["b"]), ("int64", DT["i"]), ("string", A.string), ("pyfloat", 1.0)):
+        yield f"finfo {nm} err", (lambda arg=arg: A.finfo(arg))
+    for nm, arg in (("bool", DT["b"]), ("float64", DT["f"]), ("complex128", DT["c"]), ("pyint", 1)):
+        yield f"iinfo {nm} err", (lambda arg=arg: A.iinfo(arg))
+
+
+# ---------------------------------------------------------------- meshgrid, tril, triu, from_dlpack
+
+
+def creation_more(c):
+    A, np = c.A, c.np
+    v = {k: c.S(k, (n,), 310) for k, n in (("b", 2), ("i", 3), ("f", 4), ("c", 5))}
+    for indexing in ("xy", "ij"):
+        yield f"meshgrid none {indexing}", (lambda ix=indexing: A.meshgrid(indexing=ix))
+        yield f"meshgrid one {indexing}", (lambda ix=indexing: A.meshgrid(v["f"], indexing=ix))
+        yield f"meshgrid two {indexing}", (lambda ix=indexing: A.meshgrid(v["i"], v["f"], indexing=ix))
+        yield (
+            f"meshgrid four kinds {indexing}",
+            (lambda ix=indexing: A.meshgrid(v["b"], v["i"], v["f"], v["c"], indexing=ix)),
+        )
+        yield (
+            f"meshgrid strided {indexing}",
+            (lambda ix=indexing: A.meshgrid(c.S("f", (9,), 311)[::-2], v["i"], indexing=ix)),
+        )
+        yield f"meshgrid empty {indexing}", (lambda ix=indexing: A.meshgrid(c.S("f", (0,), 312), v["f"], indexing=ix))
+        yield (
+            f"meshgrid large {indexing}",
+            (lambda ix=indexing: A.meshgrid(c.S("f", (1000,), 313), c.S("f", (700,), 314), indexing=ix)),
+        )
+    yield "meshgrid default is xy", lambda: A.meshgrid(v["i"], v["f"])[0].shape
+    yield "meshgrid indexing err", lambda: A.meshgrid(v["f"], indexing="xyz")
+    yield "meshgrid 2d err", lambda: A.meshgrid(c.S("f", (2, 2), 315))
+    yield "meshgrid list err", lambda: A.meshgrid([1.0, 2.0])
+    yield "meshgrid positional indexing err", lambda: A.meshgrid(v["f"], "ij")
+    for name in ("tril", "triu"):
+        fn = getattr(A, name)
+        for k in KINDS:
+            x = c.S(k, (5, 7), 316)
+            for kk in (0, 1, -1, 3, -4, 10, -10):
+                yield f"{name} {k} k={kk}", (lambda fn=fn, x=x, kk=kk: fn(x, k=kk))
+        yield f"{name} default k", (lambda fn=fn: fn(c.S("f", (4, 4), 317)))
+        yield f"{name} batch", (lambda fn=fn: fn(c.S("f", (3, 4, 5), 318), k=1))
+        yield f"{name} batch 4d", (lambda fn=fn: fn(c.S("i", (2, 3, 4, 2), 319), k=-1))
+        yield f"{name} F-order", (lambda fn=fn: fn(c.S("f", (6, 4), 320).T))
+        yield f"{name} strided", (lambda fn=fn: fn(c.S("f", (10, 12), 321)[::-2, 1::3]))
+        yield f"{name} empty", (lambda fn=fn: fn(c.S("f", (0, 3), 322)))
+        yield f"{name} special", (lambda fn=fn: fn(c.lit(F_SP[:20], "f").reshape((4, 5))))
+        yield f"{name} large", (lambda fn=fn: fn(c.S("f", (1000, 1000), 323), k=3))
+        yield f"{name} large batch", (lambda fn=fn: fn(c.S("c", (40, 100, 100), 324), k=-2))
+        yield f"{name} large F-order", (lambda fn=fn: fn(c.S("f", (700, 900), 325).T))
+        yield f"{name} 1d err", (lambda fn=fn: fn(c.S("f", (4,), 326)))
+        yield f"{name} k float err", (lambda fn=fn: fn(c.S("f", (3, 3), 326), k=1.0))
+        yield f"{name} k positional err", (lambda fn=fn: fn(c.S("f", (3, 3), 326), 1))
+        yield f"{name} list err", (lambda fn=fn: fn([[1.0, 2.0], [3.0, 4.0]]))
+    for k in KINDS:
+        x = c.S(k, (3, 4), 327)
+        yield f"from_dlpack sd {k}", (lambda x=x: A.from_dlpack(x))
+        yield f"from_dlpack numpy {k}", (lambda k=k: A.from_dlpack(c.gen(k, (3, 4), 328).copy()))
+    yield "from_dlpack sd strided", lambda: A.from_dlpack(c.S("f", (6, 8), 329)[::-2, 1::3])
+    yield "from_dlpack numpy F", lambda: A.from_dlpack(np.asfortranarray(c.gen("f", (5, 6), 330)))
+    yield "from_dlpack shares memory", lambda: (lambda x: _shares(A, x, A.from_dlpack(x)))(c.S("f", (4,), 331).copy())
+    yield (
+        "from_dlpack copy True",
+        lambda: (lambda x: _shares(A, x, A.from_dlpack(x, copy=True)))(c.S("f", (4,), 331).copy()),
+    )
+    yield (
+        "from_dlpack copy False",
+        lambda: (lambda x: _shares(A, x, A.from_dlpack(x, copy=False)))(c.S("f", (4,), 331).copy()),
+    )
+    yield "from_dlpack readonly", lambda: A.from_dlpack(A.broadcast_to(c.S("f", (3,), 332), (2, 3)))
+    yield "from_dlpack numpy readonly", lambda: A.from_dlpack(c.gen("f", (3,), 333))
+    yield "from_dlpack large", lambda: A.from_dlpack(c.gen("f", (1_000_000,), 334).copy())
+    yield "from_dlpack empty", lambda: A.from_dlpack(c.S("f", (0, 3), 335))
+    yield "from_dlpack device cpu", lambda: A.from_dlpack(c.S("f", (2,), 336), device=(1, 0))
+    yield "from_dlpack device err", lambda: A.from_dlpack(c.S("f", (2,), 336), device=(2, 0))
+    yield "from_dlpack list err", lambda: A.from_dlpack([1.0, 2.0])
+    yield "from_dlpack numpy float32 err", lambda: A.from_dlpack(np.ones(3, dtype=np.float32))
+
+
+def _shares(A, x, y):
+    """y's values, and whether writing to x shows in y."""
+    before = y.copy()
+    x[0] = 99.5
+    return before, y[0] == 99.5
+
+
+# ---------------------------------------------------------------- flip, roll, repeat, tile, unstack, diff
+
+
+def shapes_more(c):
+    A = c.A
+    x3 = {k: c.S(k, (3, 4, 5), 340) for k in KINDS}
+    for k, x in x3.items():
+        for ax in (None, 0, 1, -1, (0, 2), (2, 0, 1)):
+            yield f"flip {k} axis={ax}", (lambda x=x, ax=ax: _view(A.flip(x, axis=ax), x))
+    yield "flip default", lambda: A.flip(c.S("i", (2, 3), 341))
+    yield "flip F-order", lambda: _view(A.flip(c.S("f", (6, 4), 342).T, axis=0), None)
+    yield "flip strided", lambda: A.flip(c.S("f", (8, 9), 343)[::-2, 1::3], axis=1)
+    yield "flip large", lambda: A.flip(c.S("f", (1000, 1000), 344), axis=1)
+    yield "flip empty", lambda: A.flip(c.S("f", (0, 3), 345))
+    yield "flip axis oob err", lambda: A.flip(x3["f"], axis=3)
+    yield "flip axis dup err", lambda: A.flip(x3["f"], axis=(0, 0))
+    yield "flip axis positional err", lambda: A.flip(x3["f"], 0)
+    for k, x in x3.items():
+        for shift, ax in (
+            (1, None),
+            (-7, None),
+            (2, 0),
+            (3, -1),
+            ((1, 2), (0, 2)),
+            ([1, -1], [1, 2]),
+            (2, (0, 1)),
+            ((1, 2), 0),
+        ):
+            yield f"roll {k} shift={shift} axis={ax}", (lambda x=x, s=shift, ax=ax: A.roll(x, s, axis=ax))
+    yield "roll base", lambda: A.roll(c.S("f", (5,), 346), 2).base is None
+    yield "roll zero shift", lambda: A.roll(c.S("f", (5,), 346), 0)
+    yield "roll big shift", lambda: A.roll(c.S("i", (7,), 347), 10**12)
+    yield "roll F-order", lambda: A.roll(c.S("f", (6, 4), 348).T, 1, axis=1)
+    yield "roll large", lambda: A.roll(c.S("f", (1_000_000,), 349), 12345)
+    yield "roll large 2d", lambda: A.roll(c.S("f", (1000, 1000), 350), (3, -5), axis=(0, 1))
+    yield "roll empty", lambda: A.roll(c.S("f", (0,), 351), 3)
+    yield "roll tuple shift no axis err", lambda: A.roll(x3["f"], (1, 2))
+    yield "roll length mismatch err", lambda: A.roll(x3["f"], (1, 2), axis=(0, 1, 2))
+    yield "roll axis oob err", lambda: A.roll(x3["f"], 1, axis=3)
+    yield "roll float shift err", lambda: A.roll(x3["f"], 1.0)
+    for k, x in x3.items():
+        yield f"repeat {k} 2", (lambda x=x: A.repeat(x, 2))
+        yield f"repeat {k} 3 axis=1", (lambda x=x: A.repeat(x, 3, axis=1))
+        yield f"repeat {k} array axis=2", (lambda x=x: A.repeat(x, c.lit([0, 1, 2, 3, 1], "i"), axis=2))
+    yield "repeat 0", lambda: A.repeat(x3["f"], 0, axis=0)
+    yield "repeat length-1 array", lambda: A.repeat(x3["i"], c.lit([2], "i"), axis=-1)
+    yield "repeat array no axis", lambda: A.repeat(c.S("f", (2, 2), 352), c.lit([1, 0, 2, 1], "i"))
+    yield "repeat F-order", lambda: A.repeat(c.S("f", (6, 4), 353).T, 2, axis=0)
+    yield "repeat large", lambda: A.repeat(c.S("f", (300_000,), 354), 3)
+    yield "repeat large array", lambda: A.repeat(c.S("f", (1000, 300), 355), c.S("I", (1000,), 356) % 4, axis=0)
+    yield "repeat negative err", lambda: A.repeat(x3["f"], -1)
+    yield "repeat negative array err", lambda: A.repeat(c.lit([1.0, 2.0]), c.lit([1, -1], "i"))
+    yield "repeat array length err", lambda: A.repeat(c.lit([1.0, 2.0]), c.lit([1, 2, 3], "i"))
+    yield "repeat float err", lambda: A.repeat(x3["f"], 2.0)
+    yield "repeat float array err", lambda: A.repeat(c.lit([1.0, 2.0]), c.lit([1.0, 2.0]))
+    for k, x in x3.items():
+        for reps in (2, (2,), (1, 2, 3), (2, 1, 1, 2), (0, 1, 1)):
+            yield f"tile {k} {reps}", (lambda x=x, r=reps: A.tile(x, r))
+    yield "tile 1d to 2d", lambda: A.tile(c.S("f", (3,), 357), (2, 2))
+    yield "tile large", lambda: A.tile(c.S("f", (500, 400), 358), (3, 2))
+    yield "tile list err", lambda: A.tile(x3["f"], [2, 2])
+    yield "tile negative err", lambda: A.tile(x3["f"], (2, -1))
+    yield "tile float err", lambda: A.tile(x3["f"], 2.0)
+    for k, x in x3.items():
+        for ax in (0, 1, -1):
+            yield f"unstack {k} axis={ax}", (lambda x=x, ax=ax: tuple(_view(v, x) for v in A.unstack(x, axis=ax)))
+    for k in KINDS:
+        yield f"unstack {k} 1d scalars", (lambda k=k: A.unstack(c.S(k, (4,), 359)))
+    yield "unstack empty axis", lambda: A.unstack(c.S("f", (0, 3), 360))
+    yield "unstack large", lambda: [v.shape for v in A.unstack(c.S("f", (4, 500_000), 361), axis=0)]
+    yield "unstack axis oob err", lambda: A.unstack(x3["f"], axis=3)
+    yield "unstack 0d err", lambda: A.unstack(A.asarray(1.0))
+    for k, x in x3.items():
+        for kw in (dict(), dict(axis=0), dict(axis=1, n=2), dict(n=4), dict(n=5), dict(n=0)):
+            tag = ",".join(f"{a}={b}" for a, b in kw.items()) or "default"
+            yield f"diff {k} {tag}", (lambda x=x, kw=kw: A.diff(x, **kw))
+        yield f"diff {k} prepend scalar", (lambda x=x, k=k: A.diff(x, prepend=PYSCALAR[k]))
+        yield f"diff {k} append array", (lambda x=x, k=k: A.diff(x, axis=1, append=c.S(k, (3, 2, 5), 362)))
+    yield "diff prepend and append", lambda: A.diff(c.lit([1.0, 4.0, 9.0]), prepend=0.0, append=c.lit([20, 30], "i"))
+    yield "diff n=0 with prepend", lambda: A.diff(c.lit([1.0, 4.0]), n=0, prepend=7.0)
+    yield "diff special", lambda: A.diff(c.lit(F_SP, "f"))
+    yield "diff int wraps", lambda: A.diff(c.lit([INT_MIN, INT_MAX, INT_MIN]))
+    yield "diff F-order", lambda: A.diff(c.S("f", (6, 4), 363).T, axis=0)
+    yield "diff large", lambda: A.diff(c.S("f", (1_000_000,), 364))
+    yield "diff large 2d axis=0 n=3", lambda: A.diff(c.S("f", (1000, 1000), 365), axis=0, n=3)
+    yield "diff large nan", lambda: A.diff(c.S("n", (1_000_000,), 366)[::-1])
+    yield "diff empty", lambda: A.diff(c.S("f", (0,), 367))
+    yield "diff negative n err", lambda: A.diff(x3["f"], n=-1)
+    yield "diff axis oob err", lambda: A.diff(x3["f"], axis=3)
+    yield "diff append shape err", lambda: A.diff(x3["f"], axis=1, append=c.S("f", (2, 1, 5), 368))
+    yield "diff append ndim err", lambda: A.diff(x3["f"], append=c.S("f", (5,), 368))
+    yield "diff prepend list err", lambda: A.diff(x3["f"], prepend=[1.0])
+    yield "diff 0d err", lambda: A.diff(A.asarray(1.0))
+
+
+# ---------------------------------------------------------------- quantiles
+
+
+METHODS = [
+    "inverted_cdf",
+    "averaged_inverted_cdf",
+    "closest_observation",
+    "interpolated_inverted_cdf",
+    "hazen",
+    "weibull",
+    "linear",
+    "median_unbiased",
+    "normal_unbiased",
+    "lower",
+    "higher",
+    "midpoint",
+    "nearest",
+]
+
+
+def quantiles(c):
+    A = c.A
+    ins = {
+        "f": c.S("f", (4, 5, 6), 370),
+        "t": c.S("t", (4, 5, 6), 371),
+        "n": c.S("n", (4, 5, 6), 372),
+        "i": c.S("i", (4, 5, 6), 373),
+        "b": c.S("b", (4, 5, 6), 374),
+    }
+    qs = {"0.5": 0.5, "0": 0, "1": 1, "0.3": 0.3, "array": c.lit([0.0, 0.1, 0.5, 0.9, 1.0]), "int array": c.lit([0, 1])}
+    for name in ("quantile", "nanquantile"):
+        fn = getattr(A, name)
+        for k, x in ins.items():
+            for qn, q in qs.items():
+                yield f"{name} {k} q={qn}", (lambda fn=fn, x=x, q=q: fn(x, q))
+            for ax in (0, 1, -1, (0, 2)):
+                yield f"{name} {k} axis={ax}", (lambda fn=fn, x=x, ax=ax: fn(x, qs["array"], axis=ax))
+            yield f"{name} {k} keepdims", (lambda fn=fn, x=x: fn(x, 0.25, axis=1, keepdims=True))
+        for m in METHODS:
+            yield f"{name} method={m}", (lambda fn=fn, m=m: fn(ins["t"], qs["array"], axis=1, method=m))
+            yield f"{name} method={m} nan", (lambda fn=fn, m=m: fn(ins["n"], 0.37, axis=2, method=m))
+            yield f"{name} method={m} large", (lambda fn=fn, m=m: fn(c.S("f", (100_003,), 375), 0.37, method=m))
+        yield f"{name} special", (lambda fn=fn: fn(c.lit(F_SP, "f"), qs["array"]))
+        yield f"{name} signed zeros", (lambda fn=fn: fn(c.lit([0.0, -0.0, -0.0, 0.0, 0.0]), qs["array"]))
+        yield f"{name} all nan lane", (lambda fn=fn: fn(c.lit([[NAN, NAN], [1.0, NAN]]), 0.5, axis=1))
+        yield f"{name} empty lane", (lambda fn=fn: fn(c.S("f", (3, 0), 376), 0.5, axis=1))
+        yield f"{name} empty", (lambda fn=fn: fn(c.S("f", (0,), 376), 0.5))
+        yield f"{name} F-order", (lambda fn=fn: fn(c.S("f", (6, 5), 377).T, 0.5, axis=0))
+        yield f"{name} strided", (lambda fn=fn: fn(c.S("f", (20, 9), 378)[::-3, 1::2], 0.75, axis=0))
+        yield f"{name} large", (lambda fn=fn: fn(c.S("f", (1_000_000,), 379), qs["array"]))
+        yield f"{name} large nan", (lambda fn=fn: fn(c.S("n", (1_000_000,), 380), 0.5))
+        yield f"{name} large 2d axis=0", (lambda fn=fn: fn(c.S("f", (1000, 1000), 381), 0.9, axis=0))
+        yield f"{name} large 2d axis=1", (lambda fn=fn: fn(c.S("n", (1000, 1000), 382), qs["array"], axis=1))
+        yield f"{name} large many short lanes", (lambda fn=fn: fn(c.S("t", (5, 200_000), 383), 0.5, axis=0))
+        yield f"{name} q out of range err", (lambda fn=fn: fn(ins["f"], 1.5))
+        yield f"{name} q nan err", (lambda fn=fn: fn(ins["f"], NAN))
+        yield f"{name} q bool err", (lambda fn=fn: fn(ins["f"], True))
+        yield f"{name} q bool array err", (lambda fn=fn: fn(ins["f"], c.lit([True])))
+        yield f"{name} q list err", (lambda fn=fn: fn(ins["f"], [0.5]))
+        yield f"{name} q 2d err", (lambda fn=fn: fn(ins["f"], c.lit([[0.5]])))
+        yield f"{name} method err", (lambda fn=fn: fn(ins["f"], 0.5, method="cubic"))
+        yield f"{name} complex err", (lambda fn=fn: fn(c.S("c", (5,), 384), 0.5))
+        yield f"{name} axis oob err", (lambda fn=fn: fn(ins["f"], 0.5, axis=3))
+        yield f"{name} list err", (lambda fn=fn: fn([1.0, 2.0], 0.5))
+    for name in ("median", "nanmedian"):
+        fn = getattr(A, name)
+        for k, x in ins.items():
+            for ax in (None, 0, 1, -1, (0, 2)):
+                yield f"{name} {k} axis={ax}", (lambda fn=fn, x=x, ax=ax: fn(x, axis=ax))
+            yield f"{name} {k} keepdims", (lambda fn=fn, x=x: fn(x, axis=2, keepdims=True))
+        yield f"{name} even and odd", (lambda fn=fn: (fn(c.lit([3.0, 1.0, 2.0])), fn(c.lit([4.0, 1.0, 3.0, 2.0]))))
+        yield f"{name} special", (lambda fn=fn: fn(c.lit(F_SP, "f")))
+        yield f"{name} signed zeros", (lambda fn=fn: fn(c.lit([-0.0, 0.0, -0.0, 0.0])))
+        yield f"{name} all nan lane", (lambda fn=fn: fn(c.lit([[NAN, NAN], [1.0, NAN]]), axis=1))
+        yield f"{name} empty", (lambda fn=fn: fn(c.S("f", (0, 4), 385), axis=0))
+        yield f"{name} large", (lambda fn=fn: fn(c.S("f", (1_000_001,), 386)))
+        yield f"{name} large nan", (lambda fn=fn: fn(c.S("n", (1_000_000,), 387)))
+        yield f"{name} large 2d axis=0", (lambda fn=fn: fn(c.S("f", (1000, 1000), 388), axis=0))
+        yield f"{name} large 2d F axis=1", (lambda fn=fn: fn(c.S("t", (1000, 1000), 389).T, axis=1))
+        yield f"{name} complex err", (lambda fn=fn: fn(c.S("c", (5,), 390)))
+        yield f"{name} q argument err", (lambda fn=fn: fn(ins["f"], 0.5))
+        yield f"{name} list err", (lambda fn=fn: fn([1.0, 2.0]))
+
+
+# ---------------------------------------------------------------- cov, corrcoef
+
+
+def covariance(c):
+    A = c.A
+    ins = {
+        "f 2d": c.S("f", (4, 30), 400),
+        "i 2d": c.S("i", (3, 20), 401),
+        "b 2d": c.S("b", (3, 20), 402),
+        "c 2d": c.S("c", (3, 15), 403),
+        "f 1d": c.S("f", (25,), 404),
+        "c 1d": c.S("c", (25,), 405),
+        "n 2d": c.S("n", (3, 30), 406),
+        "special": c.lit(F_SP[:20], "f").reshape((4, 5)),
+        "one obs": c.S("f", (3, 1), 407),
+        "no obs": c.S("f", (3, 0), 408),
+        "no vars": c.S("f", (0, 3), 409),
+        "F-order": c.S("f", (30, 4), 410).T,
+        "strided": c.S("f", (8, 60), 411)[::2, ::-3],
+        "constant row": c.lit([[1.0, 1.0, 1.0], [1.0, 2.0, 4.0]]),
+    }
+    for nm, x in ins.items():
+        for rv in (True, False):
+            yield f"cov {nm} rowvar={rv}", (lambda x=x, rv=rv: A.cov(x, rowvar=rv))
+            yield f"corrcoef {nm} rowvar={rv}", (lambda x=x, rv=rv: A.corrcoef(x, rowvar=rv))
+    for corr in (0, 1, 1.5, 29, 30, 31, -1, 0.0):
+        yield f"cov correction={corr!r}", (lambda corr=corr: A.cov(ins["f 2d"], correction=corr))
+    yield "cov correction complex", lambda: A.cov(ins["c 2d"], correction=1)
+    yield "cov symmetric", lambda: (lambda C: bool(A.all(C == C.mT)))(A.cov(c.S("f", (40, 200), 412)))
+    yield "cov large", lambda: A.cov(c.S("f", (64, 50_000), 413))
+    yield "cov large rowvar=False", lambda: A.cov(c.S("f", (50_000, 64), 414), rowvar=False)
+    yield "cov large many vars", lambda: A.cov(c.S("f", (500, 2000), 415), correction=1)
+    yield "cov large complex", lambda: A.cov(c.S("c", (16, 20_000), 416))
+    yield "cov large int", lambda: A.cov(c.S("I", (32, 40_000), 417))
+    yield "corrcoef large", lambda: A.corrcoef(c.S("f", (64, 50_000), 418))
+    yield "corrcoef large complex", lambda: A.corrcoef(c.S("c", (16, 20_000), 419), rowvar=True)
+    for fn_name in ("cov", "corrcoef"):
+        fn = getattr(A, fn_name)
+        yield f"{fn_name} 3d err", (lambda fn=fn: fn(c.S("f", (2, 3, 4), 420)))
+        yield f"{fn_name} 0d err", (lambda fn=fn: fn(A.asarray(1.0)))
+        yield f"{fn_name} list err", (lambda fn=fn: fn([[1.0, 2.0], [3.0, 4.0]]))
+        yield f"{fn_name} rowvar positional err", (lambda fn=fn: fn(ins["f 2d"], False))
+    yield "corrcoef correction err", lambda: A.corrcoef(ins["f 2d"], correction=1)
+    yield "cov correction str err", lambda: A.cov(ins["f 2d"], correction="1")
+
+
+# ---------------------------------------------------------------- bincount, histogram
+
+
+def counting(c):
+    A = c.A
+    small = c.S("i", (40,), 430) % 7 + 7
+    for nm, kw in (
+        ("plain", dict()),
+        ("minlength", dict(minlength=20)),
+        ("minlength small", dict(minlength=3)),
+        ("weights f", dict(weights=c.S("f", (40,), 431))),
+        ("weights i", dict(weights=c.S("i", (40,), 432))),
+        ("weights b", dict(weights=c.S("b", (40,), 433))),
+        ("weights special", dict(weights=c.lit((F_SP * 2)[:40], "f"))),
+    ):
+        yield f"bincount {nm}", (lambda kw=kw: A.bincount(small, **kw))
+    yield "bincount bool", lambda: A.bincount(c.S("b", (30,), 434))
+    yield "bincount empty", lambda: A.bincount(c.S("i", (0,), 435))
+    yield "bincount empty minlength", lambda: A.bincount(c.S("i", (0,), 435), minlength=4)
+    yield "bincount strided", lambda: A.bincount(small[::-3])
+    yield "bincount large", lambda: A.bincount(c.S("I", (1_000_000,), 436) % 1000 + 1000)
+    yield (
+        "bincount large weights parallel",
+        lambda: A.bincount(_mod(c, 100_000, 10_000, 437), weights=c.S("f", (100_000,), 438)),
+    )
+    yield (
+        "bincount large weights sequential",
+        lambda: A.bincount(_mod(c, 1_000_000, 50, 439), weights=c.S("f", (1_000_000,), 440)),
+    )
+    yield (
+        "bincount large weights int",
+        lambda: A.bincount(_mod(c, 100_000, 10_000, 441), weights=c.S("I", (100_000,), 442)),
+    )
+    yield "bincount negative err", lambda: A.bincount(c.lit([1, -1, 2]))
+    yield "bincount float err", lambda: A.bincount(c.lit([1.0, 2.0]))
+    yield "bincount 2d err", lambda: A.bincount(c.S("i", (2, 3), 443) % 3 + 3)
+    yield "bincount weights length err", lambda: A.bincount(small, weights=c.S("f", (39,), 444))
+    yield "bincount weights complex err", lambda: A.bincount(small, weights=c.S("c", (40,), 445))
+    yield "bincount minlength negative err", lambda: A.bincount(small, minlength=-1)
+    yield "bincount list err", lambda: A.bincount([1, 2])
+    x = c.S("f", (5, 40), 446)
+    for nm, kw in (
+        ("default", dict()),
+        ("bins=1", dict(bins=1)),
+        ("bins=7", dict(bins=7)),
+        ("range", dict(bins=5, range=(-1.0, 1.0))),
+        ("range int", dict(bins=4, range=(-2, 2))),
+        ("edges f", dict(bins=c.lit([-3.0, -1.0, 0.0, 0.5, 3.0]))),
+        ("edges i", dict(bins=c.lit([-3, -1, 0, 1, 3]))),
+        ("edges one", dict(bins=c.lit([0.0]))),
+        ("edges none", dict(bins=c.S("f", (0,), 447))),
+        ("weights f", dict(weights=c.S("f", (5, 40), 448))),
+        ("weights i", dict(weights=c.S("i", (5, 40), 449))),
+        ("weights b", dict(weights=c.S("b", (5, 40), 450))),
+        ("edges weights", dict(bins=c.lit([-3.0, 0.0, 3.0]), weights=c.S("f", (5, 40), 451))),
+        ("density", dict(density=True)),
+        ("density edges weights", dict(bins=c.lit([-2.0, 0.0, 1.0]), weights=c.S("i", (5, 40), 452), density=True)),
+    ):
+        yield f"histogram {nm}", (lambda kw=kw: A.histogram(x, **kw))
+    yield "histogram int data", lambda: A.histogram(c.S("i", (50,), 453))
+    yield "histogram bool data", lambda: A.histogram(c.S("b", (50,), 454), bins=2)
+    yield "histogram nan with range", lambda: A.histogram(c.S("n", (60,), 455), bins=4, range=(-2.0, 2.0))
+    yield "histogram one value", lambda: A.histogram(c.lit([2.5, 2.5, 2.5]))
+    yield "histogram empty", lambda: A.histogram(c.S("f", (0,), 456))
+    yield "histogram fields", lambda: A.histogram(x)._fields
+    yield (
+        "histogram edges shared",
+        lambda: (lambda e: A.histogram(x, bins=e).bin_edges.base is e)(c.lit([-1.0, 0.0, 1.0])),
+    )
+    yield "histogram large", lambda: A.histogram(c.S("f", (1_000_000,), 457), bins=50)
+    yield (
+        "histogram large weights",
+        lambda: A.histogram(c.S("f", (1_000_000,), 458), bins=64, weights=c.S("f", (1_000_000,), 459)),
+    )
+    yield (
+        "histogram large edges weights",
+        lambda: A.histogram(
+            c.S("f", (300_000,), 460),
+            bins=c.lit([-4.0, -1.0, -0.1, 0.0, 0.3, 2.0, 5.0]),
+            weights=c.S("f", (300_000,), 461),
+        ),
+    )
+    yield (
+        "histogram large int weights",
+        lambda: A.histogram(c.S("f", (300_000,), 462), bins=10, weights=c.S("I", (300_000,), 463)),
+    )
+    yield "histogram nan without range err", lambda: A.histogram(c.S("n", (60,), 464))
+    yield "histogram inf without range err", lambda: A.histogram(c.lit([1.0, INF]))
+    yield "histogram complex err", lambda: A.histogram(c.S("c", (5,), 465))
+    yield "histogram edges decreasing err", lambda: A.histogram(x, bins=c.lit([1.0, 0.0]))
+    yield "histogram bins zero err", lambda: A.histogram(x, bins=0)
+    yield "histogram bins str err", lambda: A.histogram(x, bins="auto")
+    yield "histogram range reversed err", lambda: A.histogram(x, range=(1.0, -1.0))
+    yield "histogram weights shape err", lambda: A.histogram(x, weights=c.S("f", (40,), 466))
+    yield "histogram list err", lambda: A.histogram([1.0, 2.0])
+
+
+def _mod(c, n, m, seed):
+    return c.S("I", (n,), seed) % m + m
+
+
+# ---------------------------------------------------------------- take_along_axis, nonzero, count_nonzero, searchsorted
+
+
+def index_more(c):
+    A = c.A
+    x = {k: c.S(k, (4, 5, 6), 470) for k in KINDS}
+    t = c.S("t", (4, 5, 6), 471)
+    for ax in (0, 1, 2, -1):
+        idx = A.argsort(t, axis=ax)
+        for k in KINDS:
+            yield (
+                f"take_along_axis {k} argsort axis={ax}",
+                (lambda k=k, idx=idx, ax=ax: A.take_along_axis(x[k], idx, axis=ax)),
+            )
+    for k in KINDS:
+        yield f"take {k} axis=1", (lambda k=k: A.take(x[k], c.lit([0, 4, -1, 2, 2], "i"), axis=1))
+        yield f"take {k} 1d", (lambda k=k: A.take(c.S(k, (9,), 469), c.lit([8, 0, -9, 3], "i")))
+    yield "take int index", lambda: A.take(x["f"], 2, axis=2)
+    yield "take 2d indices", lambda: A.take(x["f"], c.lit([[0, 1], [-1, 3]], "i"), axis=0)
+    yield "take empty indices", lambda: A.take(x["f"], c.S("i", (0,), 468), axis=1)
+    yield "take F-order", lambda: A.take(c.S("f", (6, 4), 467).T, c.lit([5, 0], "i"), axis=1)
+    yield "take large", lambda: A.take(c.S("f", (1_000_000,), 466), c.S("I", (300_000,), 465) % 1_000_000)
+    yield "take large axis=0", lambda: A.take(c.S("f", (1000, 1000), 464), c.S("I", (2000,), 463) % 1000, axis=0)
+    yield "take oob err", lambda: A.take(x["f"], c.lit([5], "i"), axis=0)
+    yield "take bool err", lambda: A.take(x["f"], c.lit([True, False]), axis=0)
+    yield "take float err", lambda: A.take(x["f"], c.lit([1.0]), axis=0)
+    yield "take no axis 2d err", lambda: A.take(x["f"], c.lit([0], "i"))
+    yield "take list err", lambda: A.take(x["f"], [0, 1], axis=0)
+    yield "take_along_axis default axis", lambda: A.take_along_axis(x["f"], A.argsort(t))
+    yield "take_along_axis bcast", lambda: A.take_along_axis(x["f"], c.lit([[[0], [5], [-1], [2], [3]]], "i"), axis=2)
+    yield "take_along_axis negative", lambda: A.take_along_axis(x["i"], c.lit([[[-1, -6]]], "i"), axis=2)
+    yield (
+        "take_along_axis F-order",
+        lambda: A.take_along_axis(c.S("f", (6, 4), 472).T, c.lit([[0, 5], [1, 1], [2, 0], [5, 3]], "i"), axis=1),
+    )
+    yield (
+        "take_along_axis large",
+        lambda: (lambda M: A.take_along_axis(M, A.argsort(M, axis=0), axis=0))(c.S("f", (1000, 1000), 473)),
+    )
+    yield "take_along_axis oob err", lambda: A.take_along_axis(x["f"], c.lit([[[6]]], "i"), axis=2)
+    yield "take_along_axis bool err", lambda: A.take_along_axis(x["f"], c.lit([[[True]]]), axis=2)
+    yield "take_along_axis float err", lambda: A.take_along_axis(x["f"], c.lit([[[1.0]]]), axis=2)
+    yield "take_along_axis ndim err", lambda: A.take_along_axis(x["f"], c.lit([0, 1], "i"), axis=2)
+    yield "take_along_axis bcast err", lambda: A.take_along_axis(x["f"], c.S("i", (3, 5, 2), 474) % 6, axis=2)
+    yield "take_along_axis axis oob err", lambda: A.take_along_axis(x["f"], A.argsort(t), axis=3)
+    yield "take_along_axis list err", lambda: A.take_along_axis(x["f"], [[[0]]], axis=2)
+    nz = {
+        "b": c.S("b", (4, 5), 475),
+        "i": c.S("i", (4, 5), 476) % 3,
+        "f": c.lit([[0.0, -0.0, NAN, 1.0], [0.0, INF, -2.0, 0.0]]),
+        "c": c.lit([0j, complex(0, 1), complex(1, 0), complex(-0.0, 0), complex(NAN, 0)]),
+        "3d": c.S("t", (2, 3, 4), 477),
+        "1d": c.S("t", (9,), 478),
+        "empty": c.S("f", (0, 3), 479),
+        "all zero": A.zeros((3, 3)),
+        "F-order": c.S("t", (5, 4), 480).T,
+        "strided": c.S("t", (10, 10), 481)[::-3, 1::2],
+        "large": c.S("b", (1_000_000,), 482),
+        "large 2d": c.S("t", (1000, 1000), 483),
+        "large sparse": c.S("I", (1_000_000,), 484) % 1000 == 0,
+    }
+    for nm, v in nz.items():
+        yield f"nonzero {nm}", (lambda v=v: A.nonzero(v))
+        yield f"count_nonzero {nm}", (lambda v=v: A.count_nonzero(v))
+    for ax in (0, 1, -1, (0, 1), ()):
+        yield f"count_nonzero axis={ax}", (lambda ax=ax: A.count_nonzero(nz["3d"], axis=ax))
+        yield f"count_nonzero axis={ax} keepdims", (lambda ax=ax: A.count_nonzero(nz["3d"], axis=ax, keepdims=True))
+    yield "count_nonzero large axis=0", lambda: A.count_nonzero(nz["large 2d"], axis=0)
+    yield "count_nonzero large F axis=1", lambda: A.count_nonzero(nz["large 2d"].T, axis=1)
+    yield "nonzero 0d err", lambda: A.nonzero(A.asarray(1.0))
+    yield "nonzero list err", lambda: A.nonzero([0, 1])
+    yield "count_nonzero axis oob err", lambda: A.count_nonzero(nz["3d"], axis=3)
+    yield "count_nonzero list err", lambda: A.count_nonzero([0, 1])
+    srt = {
+        "f": A.sort(c.S("t", (50,), 485)),
+        "i": A.sort(c.S("i", (50,), 486)),
+        "b": A.sort(c.S("b", (20,), 487)),
+        "n": A.sort(c.S("n", (50,), 488)),
+    }
+    probes = {
+        "f": c.lit([-3.0, -2.5, 0.0, -0.0, 0.25, 2.5, 3.0, NAN, INF, -INF]),
+        "i": c.lit([-60, -50, 0, 7, 49, 50, 60]),
+        "b": c.lit([False, True]),
+        "n": c.lit([NAN, INF, -INF, 0.0, -0.0, 1.0]),
+    }
+    for k, a in srt.items():
+        for side in ("left", "right"):
+            yield f"searchsorted {k} side={side}", (lambda a=a, k=k, s=side: A.searchsorted(a, probes[k], side=s))
+            yield f"searchsorted {k} scalar side={side}", (lambda a=a, s=side: A.searchsorted(a, 0, side=s))
+    yield "searchsorted mixed dtypes", lambda: A.searchsorted(srt["i"], probes["f"])
+    yield "searchsorted 2d probes", lambda: A.searchsorted(srt["f"], c.S("t", (3, 4), 489))
+    yield (
+        "searchsorted sorter",
+        lambda: (lambda u: A.searchsorted(u, probes["f"], sorter=A.argsort(u)))(c.S("t", (40,), 490)),
+    )
+    yield (
+        "searchsorted sorter right",
+        lambda: (lambda u: A.searchsorted(u, probes["f"], side="right", sorter=A.argsort(u)))(c.S("t", (40,), 490)),
+    )
+    yield "searchsorted empty", lambda: A.searchsorted(c.S("f", (0,), 491), probes["f"])
+    yield "searchsorted strided", lambda: A.searchsorted(A.sort(c.S("f", (60,), 492))[::2], probes["f"])
+    yield "searchsorted large", lambda: A.searchsorted(A.sort(c.S("f", (1_000_000,), 493)), c.S("f", (1_000_000,), 494))
+    yield (
+        "searchsorted large right",
+        lambda: A.searchsorted(A.sort(c.S("t", (1_000_000,), 495)), c.S("t", (100_000,), 496), side="right"),
+    )
+    yield (
+        "searchsorted large sorter",
+        lambda: (lambda u: A.searchsorted(u, c.S("f", (200_000,), 497), sorter=A.argsort(u)))(
+            c.S("f", (300_000,), 498)
+        ),
+    )
+    yield "searchsorted side err", lambda: A.searchsorted(srt["f"], probes["f"], side="middle")
+    yield "searchsorted 2d err", lambda: A.searchsorted(c.S("f", (2, 3), 499), probes["f"])
+    yield "searchsorted complex err", lambda: A.searchsorted(c.lit([1j, 2j]), c.lit([1j]))
+    yield "searchsorted sorter length err", lambda: A.searchsorted(srt["f"], probes["f"], sorter=c.lit([0, 1], "i"))
+    yield (
+        "searchsorted sorter oob err",
+        lambda: A.searchsorted(c.lit([1.0, 2.0]), probes["f"], sorter=c.lit([0, 5], "i")),
+    )
+    yield "searchsorted list err", lambda: A.searchsorted([1.0, 2.0], 1.5)
+
+
+# ---------------------------------------------------------------- tensordot, vecdot
+
+
+def tensordot_vecdot(c):
+    A = c.A
+    for ka, kb in (("f", "f"), ("i", "i"), ("b", "b"), ("c", "c"), ("i", "f"), ("b", "c")):
+        a, b = c.S(ka, (3, 4, 5), 500), c.S(kb, (4, 5, 2), 501)
+        for nm, axes in (("2", 2), ("0", 0), ("pairs", ([1, 2], [0, 1])), ("pairs reversed", ([2, 1], [1, 0]))):
+            yield f"tensordot {ka}{kb} axes={nm}", (lambda a=a, b=b, axes=axes: A.tensordot(a, b, axes=axes))
+        yield f"tensordot {ka}{kb} axes=1", (lambda a=a, kb=kb: A.tensordot(a, c.S(kb, (5, 3), 502), axes=1))
+    yield "tensordot default axes", lambda: A.tensordot(c.S("f", (3, 4, 5), 503), c.S("f", (4, 5), 504))
+    yield "tensordot full to scalar", lambda: A.tensordot(c.S("f", (3, 4), 505), c.S("f", (3, 4), 506), axes=2)
+    yield (
+        "tensordot tuple pairs",
+        lambda: A.tensordot(c.S("f", (3, 4), 505), c.S("f", (4, 3), 506), axes=((0, 1), (1, 0))),
+    )
+    yield "tensordot int pairs err", lambda: A.tensordot(c.S("f", (3, 4), 505), c.S("f", (4, 3), 506), axes=(1, 0))
+    yield "tensordot F-order", lambda: A.tensordot(c.S("f", (5, 4), 507).T, c.S("f", (5, 3), 508), axes=1)
+    yield "tensordot strided", lambda: A.tensordot(c.S("f", (8, 10), 509)[::2, ::-2], c.S("f", (5, 6), 510), axes=1)
+    yield "tensordot empty", lambda: A.tensordot(c.S("f", (3, 0), 511), c.S("f", (0, 4), 512), axes=1)
+    yield "tensordot int overflow", lambda: A.tensordot(c.lit([[INT_MAX, 2]]), c.lit([[2], [INT_MAX]]), axes=1)
+    yield "tensordot large", lambda: A.tensordot(c.S("f", (30, 40, 50), 513), c.S("f", (40, 50, 60), 514), axes=2)
+    yield "tensordot large outer", lambda: A.tensordot(c.S("f", (500,), 515), c.S("f", (600,), 516), axes=0)
+    yield "tensordot large complex", lambda: A.tensordot(c.S("c", (100, 200), 517), c.S("c", (200, 150), 518), axes=1)
+    yield "tensordot length err", lambda: A.tensordot(c.S("f", (3, 4), 519), c.S("f", (5, 3), 520), axes=1)
+    yield (
+        "tensordot dup axis err",
+        lambda: A.tensordot(c.S("f", (3, 3), 519), c.S("f", (3, 3), 520), axes=([0, 0], [0, 1])),
+    )
+    yield "tensordot too many axes err", lambda: A.tensordot(c.S("f", (3,), 519), c.S("f", (3,), 520), axes=2)
+    yield "tensordot negative axes err", lambda: A.tensordot(c.S("f", (3,), 519), c.S("f", (3,), 520), axes=-1)
+    yield "tensordot pyscalar err", lambda: A.tensordot(c.S("f", (3,), 519), 2.0, axes=0)
+    yield "tensordot list err", lambda: A.tensordot([1.0], c.S("f", (1,), 520), axes=1)
+    for ka, kb in (("f", "f"), ("i", "i"), ("b", "b"), ("c", "c"), ("c", "f"), ("i", "c")):
+        a, b = c.S(ka, (3, 4, 5), 521), c.S(kb, (3, 4, 5), 522)
+        for ax in (-1, 0, 1):
+            yield f"vecdot {ka}{kb} axis={ax}", (lambda a=a, b=b, ax=ax: A.vecdot(a, b, axis=ax))
+    yield "vecdot 1d scalar", lambda: A.vecdot(c.lit([1, 2]), c.lit([3, 4]))
+    yield "vecdot complex conj", lambda: A.vecdot(c.lit([1 + 2j, 3 - 1j]), c.lit([2 - 1j, 1j]))
+    yield "vecdot bcast", lambda: A.vecdot(c.S("f", (4, 1, 5), 523), c.S("f", (3, 5), 524))
+    yield (
+        "vecdot special",
+        lambda: A.vecdot(c.lit(F_SP[:20], "f").reshape((4, 5)), c.lit(F_SP[2:22], "f").reshape((4, 5))),
+    )
+    yield "vecdot F-order", lambda: A.vecdot(c.S("f", (5, 4), 525).T, c.S("f", (4, 5), 526), axis=0)
+    yield "vecdot empty", lambda: A.vecdot(c.S("f", (3, 0), 527), c.S("f", (3, 0), 528))
+    yield "vecdot large", lambda: A.vecdot(c.S("f", (1_000_000,), 529), c.S("f", (1_000_000,), 530))
+    yield "vecdot large 2d", lambda: A.vecdot(c.S("f", (1000, 1000), 531), c.S("f", (1000, 1000), 532), axis=0)
+    yield "vecdot large complex", lambda: A.vecdot(c.S("c", (300, 1000), 533), c.S("c", (300, 1000), 534))
+    yield "vecdot large int", lambda: A.vecdot(c.S("I", (1000, 1000), 535), c.S("I", (1000, 1000), 536))
+    yield "vecdot length err", lambda: A.vecdot(c.S("f", (3, 4), 537), c.S("f", (3, 5), 538))
+    yield "vecdot axis bcast err", lambda: A.vecdot(c.S("f", (3, 4), 537), c.S("f", (3, 1), 538), axis=1)
+    yield "vecdot axis oob err", lambda: A.vecdot(c.S("f", (3, 4), 537), c.S("f", (3, 4), 538), axis=2)
+    yield "vecdot pyscalar err", lambda: A.vecdot(c.S("f", (3,), 537), 2.0)
+    yield "vecdot list err", lambda: A.vecdot([1.0, 2.0], c.S("f", (2,), 538))
 
 
 # ---------------------------------------------------------------- threads

@@ -8,7 +8,7 @@ e^x / x about it), not fitted; written to csrc/special/coeffs/ei_taylor.hpp.
 The radius of convergence is x0 (the singularity at 0): on |d| <= 0.0775 (x in
 [0.3, 0.45]) the terms fall like 0.21^k, and 27 terms leave < 2^-60.
 
-Run: uv run python tools/gen_ei_taylor.py
+Run: .venv/bin/python tools/gen_ei_taylor.py
 """
 
 import pathlib

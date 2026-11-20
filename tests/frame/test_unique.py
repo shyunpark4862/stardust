@@ -16,6 +16,7 @@ from hypothesis import strategies as st
 import stardust as sd
 
 from .._tier import examples
+from .conftest import same_cell
 
 NA = sd.frame.NA
 EXAMPLES = examples(300)
@@ -38,16 +39,8 @@ def ref_codes(rows):
     return codes
 
 
-def same(x, y):
-    if x is NA or y is NA:
-        return x is y
-    if isinstance(x, float) and isinstance(y, float):
-        return (math.isnan(x) and math.isnan(y)) or (x == y and math.copysign(1, x) == math.copysign(1, y))
-    return x == y
-
-
 def same_list(xs, ys):
-    return len(xs) == len(ys) and all(same(x, y) for x, y in zip(xs, ys))
+    return len(xs) == len(ys) and all(same_cell(x, y) for x, y in zip(xs, ys))
 
 
 def sort_key(v):

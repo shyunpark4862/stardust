@@ -76,3 +76,13 @@ def test_next_to_the_boundary_against_arb(nu, f):
         assert got == 0.0 and want == 0.0
     # values: relative 1e-14, or the subnormals' absolute 45 2^-1074
     assert abs(got - want) <= max(1e-14 * abs(want), 45 * 2.0**-1074), (got, want)
+
+
+def test_jv_far_below_order_is_zero_not_nan():
+    # J_nu(x) <= (x/2)^nu / Gamma(nu + 1) (DLMF 10.14.4): e^-1.4e7 here, 0
+    assert sp.jv(3e7, 1.49e7) == 0.0
+    assert sp.yv(3e7, 1.49e7) == -math.inf
+    assert sp.jv(-3e7, 1.49e7) == 0.0 or math.isinf(sp.jv(-3e7, 1.49e7))
+    # x = v has a value; x > v > 1e7 below the Hankel reach is NaN (documented)
+    assert sp.jv(2e7, 2e7) == pytest.approx(0.0016479, rel=1e-4)
+    assert math.isnan(sp.jv(2e7, 3e7))

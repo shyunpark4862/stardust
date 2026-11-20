@@ -11,6 +11,7 @@ import pytest
 import stardust as sd
 
 from . import refdata
+from .smalldata import RNG, N, X, Y, unix_time_data
 
 R = sd.regression
 REFS = refdata.load()
@@ -758,3 +759,240 @@ def test_constant_y_exact_solution():
         R.theilslopes(np.ones((3, 5)), np.ones((2, 5)))
     with pytest.raises(ValueError, match=r"^glm\(\): the batch shapes of 'y' \(3,\), 'X' \(2,\) do not broadcast$"):
         R.glm(np.ones((3, 5)), np.ones((2, 5, 1)), family="poisson")
+
+
+# ---- G95: df_resid = 0, the perfect fit's tolerance
+
+
+def test_perfect_fit_by_tolerance():
+    """y = 1 + 2x + 3x^2 exactly: the QR leaves residuals of rounding size; within the
+    (k + 16) u tolerance they are a perfect fit (ssr 0, bse 0, t and p NaN (D-3), llf +inf,
+    diagnostics NaN)."""
+    x = np.arange(10.0)
+    y = 1 + 2 * x + 3 * x**2
+    Xs = np.column_stack([x, x**2])
+    r = R.ols(y, Xs)
+    assert r.ssr == 0.0 and r.scale == 0.0 and np.all(a(r.bse) == 0.0) and np.all(np.isnan(a(r.pvalues)))
+    assert r.llf == math.inf and r.rsquared == 1.0
+    assert math.isnan(r.durbin_watson) and np.all(np.isnan(a(r.resid_studentized_internal)))
+    assert np.max(np.abs(a(r.resid))) <= 1e-12  # the residuals themselves stay the computed ones
+    rh = R.ols(y, Xs, cov_type="HC0")
+    assert np.all(a(rh.bse) == 0.0)
+    w = R.wls(y, Xs, weights=np.linspace(1, 2, 10))
+    assert w.ssr == 0.0
+    g = R.glm(y, Xs, family="gaussian")
+    assert g.deviance == 0.0 and g.llf == math.inf
+    # a fit that is not perfect stays as it was
+    y2 = y + 1e-9 * np.sin(x)
+    assert R.ols(y2, Xs).ssr > 0
+
+
+# ---- G102: linregress' nan_policy
+
+
+def test_linregress_nan_policy():
+    x = np.arange(10.0)
+    y = 2 * x + np.sin(x)
+    yn = y.copy()
+    yn[3] = np.nan
+    got = R.linregress(x, yn, nan_policy="omit")
+    want = R.linregress(np.delete(x, 3), np.delete(y, 3))
+    assert tuple(got) == tuple(want)
+    assert all(math.isnan(v) for v in R.linregress(x, yn))
+    with pytest.raises(ValueError, match=r"^linregress\(\): the input contains NaN \(nan_policy='raise'\)$"):
+        R.linregress(x, yn, nan_policy="raise")
+    with pytest.raises(ValueError, match=r"nan_policy='omit' takes one regression, not a batch"):
+        R.linregress(np.vstack([x, x]), np.vstack([yn, y]), nan_policy="omit")
+    with pytest.raises(ValueError, match=r"'nan_policy' must be 'propagate', 'omit' or 'raise', not 'x'"):
+        R.linregress(x, y, nan_policy="x")
+    # a constant y does not hide the NaN of x (propagate): all NaN, not the slope 0
+    xn = x.copy()
+    xn[2] = np.nan
+    assert all(math.isnan(v) for v in R.linregress(xn, np.full(10, 3.0)))
+    b = R.linregress(np.vstack([xn, x]), np.full((2, 10), 3.0))
+    assert math.isnan(float(b.slope[0])) and float(b.slope[1]) == 0.0
+    # the intercept of a constant -0.0 is +0.0 (G84)
+    r = R.linregress(x, np.full(10, -0.0))
+    assert math.copysign(1.0, r.intercept) == 1.0 and math.copysign(1.0, r.slope) == 1.0
+    # inf is an error also next to a NaN under 'omit'
+    yi = yn.copy()
+    yi[4] = np.inf
+    with pytest.raises(ValueError, match=r"'y' contains infinity"):
+        R.linregress(x, yi, nan_policy="omit")
+
+
+# ---- predictions, scales, messages
+
+
+def test_predict_nan_under_zero_and_aliased_coefficients():
+    Xd = np.column_stack([X, X[:, 0]])  # the third column is aliased
+    r = R.ols(Y, Xd)
+    Xn = np.array([[0.5, 0.2, np.nan], [0.5, np.nan, 0.1]])
+    p = a(r.predict(Xn))
+    assert math.isfinite(p[0]) and math.isnan(p[1])  # aliased: no part; in the model: NaN
+    pi = a(r.predict_interval(Xn))
+    assert np.all(np.isfinite(pi[0])) and np.all(np.isnan(pi[1]))
+    # a coefficient exactly 0 is still in the model (the lasso's zeros too)
+    las = R.lasso(Y, np.column_stack([X, RNG.normal(size=N)]), alpha=0.5)
+    assert a(las.params)[3] == 0.0
+    assert math.isnan(float(las.predict(np.array([[0.1, 0.2, np.nan]]))[0]))
+
+
+@pytest.mark.parametrize(
+    "sy,sx",
+    [
+        (1e-160, 1.0),
+        (1e-170, 1.0),
+        (1e-300, 1.0),
+        (1e160, 1.0),
+        (1e300, 1.0),
+        (1.0, 1e-170),
+        (1.0, 1e160),
+        (1.0, 1e-300),
+        (1e-200, 1e-200),
+        (1e140, 1e-140),
+    ],
+)
+def test_extreme_scales_are_equivariant(sy, sx):
+    x = np.arange(8.0)
+    y = np.array([1.0, 2.9, 5.2, 6.8, 9.1, 11.2, 12.8, 15.1])
+    Xs = np.column_stack([x, np.sin(x)])
+    for ct in ("nonrobust", "HC1"):
+        b = R.ols(y, Xs, cov_type=ct)
+        r = R.ols(y * sy, Xs * sx, cov_type=ct)
+        np.testing.assert_allclose(a(r.tvalues), a(b.tvalues), rtol=1e-12)
+        np.testing.assert_allclose(a(r.pvalues), a(b.pvalues), rtol=1e-11)
+        np.testing.assert_allclose(a(r.params) / np.r_[sy, sy / sx, sy / sx], a(b.params), rtol=1e-13)
+        np.testing.assert_allclose(a(r.bse) / np.r_[sy, sy / sx, sy / sx], a(b.bse), rtol=1e-12)
+        assert r.rsquared == pytest.approx(b.rsquared, rel=1e-13) and r.fvalue == pytest.approx(b.fvalue, rel=1e-11)
+        assert r.llf == pytest.approx(b.llf - len(y) * math.log(sy), rel=1e-12, abs=1e-9)
+        ci = a(r.predict_interval(Xs[:3] * sx, kind="observation")) / sy
+        np.testing.assert_allclose(ci, a(b.predict_interval(Xs[:3], kind="observation")), rtol=1e-12)
+        np.testing.assert_allclose(a(r.resid_studentized_internal), a(b.resid_studentized_internal), rtol=1e-11)
+    w = np.linspace(1, 2, 8)
+    np.testing.assert_allclose(
+        a(R.wls(y * sy, Xs * sx, weights=w).tvalues), a(R.wls(y, Xs, weights=w).tvalues), rtol=1e-12
+    )
+    S = np.eye(8) + 0.3 * np.eye(8, k=1) + 0.3 * np.eye(8, k=-1)
+    np.testing.assert_allclose(a(R.gls(y * sy, Xs * sx, sigma=S).tvalues), a(R.gls(y, Xs, sigma=S).tvalues), rtol=1e-11)
+    lr, lb = R.linregress(x * sx, y * sy), R.linregress(x, y)
+    assert lr.pvalue == pytest.approx(lb.pvalue, rel=1e-11) and lr.rvalue == pytest.approx(lb.rvalue, rel=1e-13)
+
+
+def test_linear_input_messages():
+    y = Y.copy()
+    y[0] = np.nan
+    Xi = X.copy()
+    Xi[0, 1] = np.inf
+    with pytest.raises(ValueError, match=r"^ols\(\): 'X' contains infinity$"):
+        R.ols(y, Xi, nan_policy="omit")
+    with pytest.raises(ValueError, match=r"^wls\(\): 'weights' must be >= 0$"):
+        R.wls(y, X, weights=np.r_[-1.0, np.ones(N - 1)], nan_policy="omit")
+    yi = Y.copy()
+    yi[1] = np.inf
+    with pytest.raises(ValueError, match=r"^gls\(\): 'y' contains infinity$"):
+        R.gls(yi, X, sigma=np.eye(N))
+    for fn, arg in ((lambda v: R.wls(Y, X, weights=v), "weights"), (lambda v: R.gls(Y, X, sigma=v), "sigma")):
+        msgs = set()
+        for v in (None, "x"):
+            with pytest.raises(TypeError) as e:
+                fn(v)
+            msgs.add(str(e.value).rsplit(", not ", 1)[0])
+        assert len(msgs) == 1 and f"'{arg}' must be an sd.ndarray" in msgs.pop()
+    # a long list with a bad element at the end: the type named (linear, not quadratic, work)
+    with pytest.raises(TypeError, match=r"not list of str$"):
+        R.ols([1.0] * 200000 + ["a"], np.arange(200001.0))
+
+
+def test_predict_batch_message():
+    r = R.ols(RNG.normal(size=(3, 10)), RNG.normal(size=(10, 2)))
+    with pytest.raises(
+        ValueError,
+        match=r"^predict\(\): the batch shapes of 'X_new' \(2,\) and the fit \(3,\) do not "
+        r"broadcast$",
+    ):
+        r.predict(RNG.normal(size=(2, 4, 2)))
+    with pytest.raises(ValueError, match=r"^predict_interval\(\): the batch shapes of 'X_new' \(2,\)"):
+        r.predict_interval(RNG.normal(size=(2, 4, 2)))
+
+
+def test_extreme_scale_t_in_fitted_units():
+    """R90: t from beta' / sqrt(C') in the fitted units, also when a coefficient in the data's
+    units overflows or underflows."""
+    h = np.array([1, 2, 2.5, 3, 4, 4.5, 5, 6, 7, 8])
+    s = np.array([52, 55, 61, 58, 66, 63, 70, 74, 73, 82.0])
+    b = R.ols(s, h)
+    r = R.ols(s * 1e300, h * 1e-300)  # the slope's 1e600 overflows
+    np.testing.assert_allclose(a(r.tvalues), a(b.tvalues), rtol=1e-13)
+    np.testing.assert_allclose(a(r.pvalues), a(b.pvalues), rtol=1e-12)
+    lr, lb = R.linregress(h * 1e-300, s * 1e300), R.linregress(h, s)
+    assert lr.pvalue == pytest.approx(lb.pvalue, rel=1e-12) and lr.rvalue == pytest.approx(lb.rvalue, rel=1e-14)
+    x = np.arange(8.0)
+    y = np.array([1.0, 2.9, 5.2, 6.8, 9.1, 11.2, 12.8, 15.1]) + 3 * np.sin(x)
+    b = R.ols(y, x)
+    r = R.ols(y * 1e-165, x * 1e160)  # the slope's 1e-325 underflows
+    np.testing.assert_allclose(a(r.tvalues), a(b.tvalues), rtol=1e-13)
+    lr, lb = R.linregress(x * 1e160, y * 1e-165), R.linregress(x, y)
+    assert lr.rvalue == pytest.approx(lb.rvalue, rel=1e-14) and lr.pvalue == pytest.approx(lb.pvalue, rel=1e-12)
+
+
+def test_conf_int_ends_overflow_with_their_signs():
+    """R103: conf_int's ends in the fitted units, then scaled as the parameter: an overflowing
+    coefficient's interval is [inf, inf] (or [-inf, -inf]), never NaN from inf - inf."""
+    s = np.array([1.1, 1.9, 3.2, 3.8, 5.1, 6.3])
+    h = np.arange(1.0, 7.0)
+    W = np.array([1.0, 2.0, 1.0, 2.0, 1.0, 2.0])
+    S = np.diag(W) + 0.1
+    fits = (
+        lambda y, x: R.ols(y, x),
+        lambda y, x: R.ols(y, x, cov_type="HC1"),
+        lambda y, x: R.wls(y, x, weights=W),
+        lambda y, x: R.gls(y, x, sigma=S),
+    )
+    for fit in fits:
+        b = a(fit(s, h).conf_int())
+        for sy, sx in ((1e300, 1e-300), (-1e300, 1e-300), (1e300, -1e-300)):
+            ci = a(fit(s * sy, h * sx).conf_int())
+            assert not np.any(np.isnan(ci))
+            sign = math.copysign(1.0, sy * sx)
+            assert ci[1].tolist() == [sign * math.inf] * 2
+            # the intercept's ends: the reference's, scaled exactly by sy
+            np.testing.assert_allclose(ci[0], np.sort(b[0] * sy), rtol=1e-13)
+        # an underflowing slope: both ends 0 (the interval is positive)
+        ci = a(fit(s * 1e-300, h * 1e300).conf_int())
+        assert ci[1].tolist() == [0.0, 0.0] and not np.any(np.isnan(ci))
+    # a batch keeps each regression's own ends
+    r = R.ols(np.stack([s * 1e300, s]), h * 1e-300)
+    ci = a(r.conf_int())
+    assert ci[0, 1].tolist() == [math.inf, math.inf] and np.all(np.isfinite(ci[1]))
+
+
+# ---- D-1 (RG-1): the perfect fit's tolerance is (k + 16) u (|y_i| + sum_j |x_ij| |beta_j|)
+
+
+def test_offset_column_is_not_a_perfect_fit():
+    y, x = unix_time_data()
+    xc = (x - 1.7e12) / 1e7
+    r, c = R.ols(y, x), R.ols(y, xc)
+    assert r.ssr > 100 and 0.99 < r.rsquared < 1.0 and r.llf < 0
+    assert r.ssr == pytest.approx(c.ssr, rel=1e-6)
+    assert a(r.bse)[1] == pytest.approx(a(c.bse)[1] / 1e7, rel=1e-6)
+    assert np.all(a(r.pvalues) > 0)
+    g = R.glm(y, x, family="gaussian")
+    assert g.scale == pytest.approx(r.scale, rel=1e-10) and np.all(a(g.bse) > 0)
+    lr = R.linregress(x, y)
+    assert lr.rvalue < 1.0 and lr.stderr > 0
+    h = R.ols(y, x, cov_type="HC1")
+    assert np.all(a(h.bse) > 0)
+    # rlm iterates (no zero scale) and its slope is the centered fit's
+    m, mc = R.rlm(y, x), R.rlm(y, xc)
+    assert m.n_iter > 0 and m.scale > 0 and m.scale == pytest.approx(mc.scale, rel=1e-6)
+    assert a(m.params)[1] == pytest.approx(a(mc.params)[1] / 1e7, rel=1e-6)
+
+
+def test_perfect_fit_still_found():
+    x = np.arange(10.0)
+    r = R.ols(1 + 2 * x + 3 * x**2, np.c_[x, x**2])
+    assert r.ssr == 0.0 and r.scale == 0.0
+    rr = R.rlm(np.r_[1 + 2 * x[:8], 50.0, -40.0], x)  # 8 of 10 rows on a line: a zero scale
+    assert rr.scale == 0.0 and rr.converged

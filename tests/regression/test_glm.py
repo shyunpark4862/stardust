@@ -1,4 +1,4 @@
-"""G2: glm (docs/api/regression.md §3, docs/design/regression.md §3.4).
+"""glm (docs/api/regression.md §3, docs/design/regression.md §3.4).
 
 Accuracy against Arb (tests/regression/ref/glm.json, tests/regression/refdata_glm.py), then
 statsmodels for every family and link, weights, trials, offset and exposure and the covariance
@@ -14,6 +14,7 @@ import pytest
 import stardust as sd
 
 from . import refdata, refdata_glm
+from .smalldata import RNG, YB, YP, N, X
 
 R = sd.regression
 REFS = refdata_glm.load()
@@ -717,7 +718,7 @@ def test_inner_normal_equations_aliasing():
 @pytest.mark.parametrize("kappa", [1.0, 1e4, 1e8])
 def test_inner_normal_equations_against_arb(family, link, kappa):
     # G40 on problems large enough for the normal equations (n k = 1200): the coefficients stay
-    # u-accurate against Arb (bench/regression/g2/refine.md at commit 4151d2a)
+    # u-accurate against Arb
     import sys
 
     sys.path.insert(0, str(refdata_glm.REF.parents[3] / "tools"))
@@ -765,8 +766,8 @@ NONCANONICAL = [
 @pytest.mark.parametrize("kappa", [1e4, 1e6, 1e8, 1e10])
 def test_noncanonical_against_arb(family, link, base, scale, kappa):
     # G42: Newton's steps through the thin Q in the polishing iterations and the final solve
-    # (bench/regression/g2/noncanonical.md at commit 4151d2a): the canonical links' level up to kappa 1e8, about
-    # 10 u at 1e10 (the canonical links there: 1e-15)
+    # (docs/design/regression.md §3.4): the canonical links' level up to kappa 1e8, about 10 u at
+    # 1e10 (the canonical links there: 1e-15)
     import sys
 
     sys.path.insert(0, str(refdata_glm.REF.parents[3] / "tools"))
@@ -923,3 +924,255 @@ def test_noncanonical_batch_and_threads_bit_identical():
         assert all(np.array_equal(u, v) for u, v in zip(*res))
     finally:
         sd.set_num_threads(old)
+
+
+def _conv_invariant(fit, ref, n_iter_cap=None, tol=1e-12):
+    """converged implies the coefficients of the full fit to rounding."""
+    full = a(ref.params)
+    for r, cap in fit:
+        p = a(r.params)
+        if n_iter_cap:
+            assert r.n_iter <= cap
+        if r.converged:
+            assert np.max(np.abs(p - full)) <= tol * max(1.0, np.max(np.abs(full))), (cap, p, full)
+
+
+# ---- G93: converged needs the polish; n_iter <= max_iter
+
+
+def test_glm_converged_means_polished():
+    for fam, link, y in (("binomial", "probit", YB), ("poisson", "sqrt", YP), ("binomial", "logit", YB)):
+        ref = R.glm(y, X, family=fam, link=link)
+        assert ref.converged
+        fits = [(R.glm(y, X, family=fam, link=link, max_iter=m), m) for m in range(1, 12)]
+        _conv_invariant(fits, ref, n_iter_cap=True)
+        # some cap stops the polish after the deviance's test passed: not converged there
+        assert any(not r.converged for r, _ in fits)
+
+
+# ---- G94: constant y
+
+
+def test_glm_zero_scale_llnull_minus_inf():
+    """phi = 0 with a null model that does not fit exactly: llnull's limit is -inf (G97)."""
+    x = np.arange(1.0, 9.0)
+    r = R.glm(1.0 + 2.0 * x, x, family="gaussian", link="identity", scale="X2")
+    assert r.scale == 0.0 and r.llf == math.inf
+    g = R.glm(np.exp(0.5 * x), x, family="gamma", link="log")
+    if g.scale == 0.0:
+        assert g.llf == math.inf and g.llnull == -math.inf and g.llr == math.inf
+
+
+# ---- G100: pseudo R^2
+
+
+def test_pseudo_rsquared_like_statsmodels():
+    sm = pytest.importorskip("statsmodels.api")
+    for fam, y, F in (("binomial", YB, sm.families.Binomial()), ("poisson", YP, sm.families.Poisson())):
+        r = R.glm(y, X, family=fam)
+        s = sm.GLM(y, sm.add_constant(X), family=F).fit()
+        assert r.pseudo_rsquared() == pytest.approx(s.pseudo_rsquared(), rel=1e-12)
+        assert r.pseudo_rsquared(kind="mcf") == pytest.approx(s.pseudo_rsquared(kind="mcf"), rel=1e-12)
+    assert "Pseudo R-squ. (CS):" in R.glm(YB, X, family="binomial").summary()
+    with pytest.raises(ValueError, match=r"'kind' must be 'cs' or 'mcf', not 'x'"):
+        R.glm(YB, X, family="binomial").pseudo_rsquared(kind="x")
+
+
+# ---- frequency weights' HC2/HC3 and HAC lags; predict's offset
+
+
+def test_glm_freq_weights_hc2_hc3_are_the_repeated_data():
+    f = RNG.integers(1, 4, size=N).astype(float)
+    Xr, yr = np.repeat(X, f.astype(int), axis=0), np.repeat(YP, f.astype(int))
+    for ct in ("HC0", "HC2", "HC3"):
+        r = R.glm(YP, X, family="poisson", freq_weights=f, cov_type=ct)
+        rr = R.glm(yr, Xr, family="poisson", cov_type=ct)
+        np.testing.assert_allclose(a(r.bse), a(rr.bse), rtol=1e-11)
+
+
+def test_glm_hac_default_lags_from_nobs():
+    f = np.full(N, 50.0)
+    r = R.glm(YP, X, family="poisson", freq_weights=f, cov_type="HAC")
+    want = math.floor(4 * (f.sum() / 100) ** (2 / 9))
+    assert f"using {want} lags" in " ".join(r.summary().split())
+
+
+def test_glm_predict_offset_inf():
+    r = R.glm(YP, X, family="poisson")
+    for kw, nm in (
+        (dict(offset=np.array([0.0, np.inf])), "offset"),
+        (dict(exposure=np.array([1.0, np.inf])), "exposure"),
+    ):
+        with pytest.raises(ValueError, match=rf"^predict\(\): '{nm}' contains infinity$"):
+            r.predict(X[:2], **kw)
+        with pytest.raises(ValueError, match=rf"^predict_interval\(\): '{nm}' contains infinity$"):
+            r.predict_interval(X[:2], **kw)
+
+
+def test_glm_omit_keeps_errors_in_nan_rows():
+    y = YP.copy()
+    y[0] = np.nan
+    for kw, msg in (
+        (dict(var_weights=np.r_[-1.0, np.ones(N - 1)]), "'var_weights' must be >= 0"),
+        (dict(offset=np.r_[np.inf, np.zeros(N - 1)]), "'offset' contains infinity"),
+    ):
+        with pytest.raises(ValueError, match=msg):
+            R.glm(y, X, family="poisson", nan_policy="omit", **kw)
+
+
+def test_converged_at_the_cap():
+    """R94/R95: the cap stops a fit only before the test and the polish complete: a fit that
+    finishes exactly at max_iter is converged with n_iter = max_iter."""
+    ref = R.glm(YB, X, family="binomial")
+    m = ref.n_iter
+    at = R.glm(YB, X, family="binomial", max_iter=m)
+    assert at.n_iter == m and at.converged and a(at.params).tolist() == a(ref.params).tolist()
+    assert not R.glm(YB, X, family="binomial", max_iter=m - 1).converged
+
+
+@pytest.mark.parametrize(
+    "fam,link,y0,kw",
+    [
+        ("poisson", "log", 3.0, {}),
+        ("poisson", "sqrt", 3.0, {}),
+        ("poisson", "identity", 3.0, {}),
+        ("gamma", "inverse", 2.0, {}),
+        ("gamma", "log", 2.0, {}),
+        ("gamma", "identity", 2.0, {}),
+        ("gaussian", "log", 2.0, {}),
+        ("binomial", "logit", 0.3, {"trials": 10.0}),
+        ("binomial", "probit", 0.3, {"trials": 10.0}),
+        ("binomial", "cloglog", 0.3, {"trials": 10.0}),
+        ("binomial", "log", 0.3, {"trials": 10.0}),
+    ],
+)
+def test_glm_constant_y_every_family(fam, link, y0, kw):
+    """G111: the exact solution (g(y0), 0, ...) with mu = y0; no spurious significance: NaN for
+    an estimated scale (0/0), t 0 and p 1 for a fixed one."""
+    kw = {k: np.full(N, v) for k, v in kw.items()}
+    r = R.glm(np.full(N, y0), X, family=fam, link=link, **kw)
+    sm_link = {
+        "logit": lambda m: math.log(m / (1 - m)),
+        "probit": lambda m: float(sd.special.ndtri(m)),
+        "cloglog": lambda m: math.log(-math.log1p(-m)),
+        "log": math.log,
+        "identity": lambda m: m,
+        "sqrt": math.sqrt,
+        "inverse": lambda m: 1 / m,
+    }[link]
+    assert a(r.params)[1:].tolist() == [0.0, 0.0] and float(r.params[0]) == pytest.approx(sm_link(y0), rel=1e-15)
+    assert np.all(a(r.fittedvalues) == y0) and r.deviance == 0.0 and r.null_deviance == 0.0
+    assert r.converged and not r.separation and r.llnull == r.llf
+    if fam in ("gaussian", "gamma"):
+        assert r.scale == 0.0 and r.llf == math.inf and np.all(a(r.bse) == 0.0)
+        assert np.all(np.isnan(a(r.pvalues)[1:])) and math.isnan(r.pseudo_rsquared(kind="mcf"))
+    else:
+        assert np.all(a(r.tvalues)[1:] == 0.0) and np.all(a(r.pvalues)[1:] == 1.0)
+        assert r.llr == 0.0 and r.pseudo_rsquared() == 0.0 and r.pseudo_rsquared(kind="mcf") == 0.0
+
+
+def test_glm_constant_y_at_the_boundary_keeps_its_rules():
+    for y, fam in ((np.ones(N), "binomial"), (np.zeros(N), "binomial"), (np.zeros(N), "poisson")):
+        r = R.glm(y, X, family=fam)
+        assert r.separation and np.all(np.isnan(a(r.params)))
+
+
+def test_mcfadden_nan_for_infinite_llf():
+    """G112: McFadden is NaN where llf is infinite; Cox-Snell keeps its limit."""
+    x = np.arange(1.0, 9.0)
+    r = R.glm(1.0 + 2.0 * x, x, family="gaussian")
+    assert r.llf == math.inf
+    assert math.isnan(r.pseudo_rsquared(kind="mcf")) and r.pseudo_rsquared(kind="cs") == 1.0
+
+
+@pytest.mark.parametrize(
+    "fam,link,y0,kw",
+    [
+        ("poisson", "identity", 0.0, {}),
+        ("poisson", "sqrt", 0.0, {}),
+        ("binomial", "log", 1.0, {}),
+        ("binomial", "log", 1.0, {"trials": 3.0}),
+    ],
+)
+def test_glm_constant_y_on_the_boundary_is_exact(fam, link, y0, kw):
+    """G114: y constant at the boundary of the family's range with g(y0) finite: the exact
+    solution (0, ..., 0) without iterations, converged, no separation, llf 0; the inference NaN
+    (V(y0) = 0)."""
+    x = np.arange(1.0, 9.0)
+    kw = {k: np.full(8, v) for k, v in kw.items()}
+    for X_ in (x, np.column_stack([x, x])):  # an aliased column stays NaN (G9)
+        r = R.glm(np.full(8, y0), X_, family=fam, link=link, **kw)
+        k = a(r.params).shape[0]
+        assert a(r.params)[:2].tolist() == [0.0, 0.0] and (k == 2 or math.isnan(float(r.params[2])))
+        assert r.converged and r.n_iter == 0 and not r.separation
+        assert r.llf == 0.0 and r.llnull == 0.0 and r.deviance == 0.0 and r.null_deviance == 0.0
+        assert r.pearson_chi2 == 0.0 and np.all(a(r.fittedvalues) == y0)
+        for res in (r.resid_response, r.resid_pearson, r.resid_deviance, r.resid_working):
+            assert np.all(a(res) == 0.0)
+        assert np.all(np.isnan(a(r.bse))) and np.all(np.isnan(a(r.pvalues))) and np.all(np.isnan(a(r.conf_int())))
+        assert np.all(np.isnan(a(r.predict_interval(np.full((2, k - 1), 2.0)))))
+    # a robust covariance is NaN too; an estimated scale is 0 (G97's +inf llf)
+    assert np.all(np.isnan(a(R.glm(np.zeros(8), x, family="poisson", link="identity", cov_type="HC0").bse)))
+    rx = R.glm(np.zeros(8), x, family="poisson", link="sqrt", scale="X2")
+    assert rx.scale == 0.0 and rx.llf == math.inf
+    # the log link's zeros stay separation (G33)
+    assert R.glm(np.zeros(8), x, family="poisson").separation
+
+
+# ---- an underflow of mu or 1 - mu is not the boundary (D-2, RG-2)
+
+
+def test_cloglog_reaches_the_maximum():
+    sm = pytest.importorskip("statsmodels.api")
+    rg = np.random.default_rng(20)
+    n = 5000
+    X = rg.normal(size=(n, 2))
+    eta = 0.3 + X @ [3.0, -2.0]
+    y = (rg.uniform(size=n) < 1 / (1 + np.exp(-eta))).astype(float)
+    g = R.glm(y, X, family="binomial", link="cloglog")
+    s = sm.GLM(y, sm.add_constant(X), family=sm.families.Binomial(sm.families.links.CLogLog())).fit(
+        tol=1e-13, maxiter=300
+    )
+    assert g.converged
+    np.testing.assert_allclose(a(g.params), s.params, rtol=1e-9)
+    assert float(sd.max(g.linear_predictor)) > 6.62  # rows whose 1 - mu underflows
+    assert g.deviance == pytest.approx(s.deviance, rel=1e-12)
+
+
+@pytest.mark.parametrize("link", ["logit", "probit", "cloglog"])
+def test_separation_of_many_rows(link):
+    rg = np.random.default_rng(18)
+    X = rg.normal(size=(1000, 3))
+    y = (X[:, 0] > 0).astype(float)
+    g = R.glm(y, X, family="binomial", link=link)
+    assert g.separation and np.all(np.isnan(a(g.params))) and g.deviance == 0.0
+    x = np.r_[-np.linspace(0.001, 3, 100), np.linspace(0.001, 3, 100)]
+    g = R.glm((x > 0).astype(float), x, family="binomial", link=link)
+    assert g.separation
+
+
+def test_poisson_underflow_is_valid():
+    """A poisson log row whose mu underflows at the maximum (eta < -745: a zero count far out)
+    is a valid iterate with its exact deviance, Pearson and working residuals; its score is 0
+    to the doubles, so the fit is the one without it."""
+    rg = np.random.default_rng(9)
+    x = rg.uniform(0, 2, 40)
+    y = rg.poisson(np.exp(0.5 + x)).astype(float)
+    g0 = R.glm(y, x, family="poisson")
+    g = R.glm(np.r_[y, 0.0], np.r_[x, -1000.0], family="poisson")
+    assert g.converged and not g.separation and float(g.linear_predictor[-1]) < -745
+    np.testing.assert_allclose(a(g.params), a(g0.params), rtol=1e-13)
+    assert g.deviance == pytest.approx(g0.deviance, rel=1e-13)
+    for v in (g.resid_pearson, g.resid_working, g.resid_deviance):
+        assert np.all(np.isfinite(a(v)))
+
+
+def test_boundary_stop_is_not_convergence():
+    """An iteration that ended on steps halved back into the valid range (the binomial log
+    link's MLE on mu = 1) is not converged; nor are NaN coefficients."""
+    rg = np.random.default_rng(2)
+    n = 80
+    X = rg.normal(size=(n, 2))
+    y = (rg.uniform(size=n) < 1 / (1 + np.exp(-(0.3 + X @ [0.5, -0.4])))).astype(float)
+    g = R.glm(y, X, family="binomial", link="log")
+    assert not g.converged and float(sd.max(g.fittedvalues)) > 1 - 1e-6

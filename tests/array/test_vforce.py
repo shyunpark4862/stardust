@@ -1,8 +1,10 @@
 """The 15 float64 functions that run on Accelerate vForce, and pow (libm, numpy's own
 function) checked against the same contract.
 
-The contract (docs/api/array.md §6.4): within 8 ULP of numpy/libm, exact C99
-Annex F special values (signed zeros, infinities, NaN), and a result for an
+The contract (docs/api/array.md §6.4): within each function's ULP bound of the Arb
+reference (tests/array/refdata.py ULP_BOUND, checked in tests/array/test_reference.py);
+here, a loose 8 ULP agreement with numpy/libm as a smoke check, exact C99 Annex F special
+values (signed zeros, infinities, NaN), and a result for an
 element that does not depend on where the element is (position, length,
 layout, thread count).
 """
@@ -61,7 +63,7 @@ def test_binary_accuracy(name):
 
 
 def same_special(got, want):
-    """Bit-exact for zeros (sign!), infinities and NaN; 8 ULP elsewhere."""
+    """Bit-exact for zeros (sign!), infinities and NaN; within 8 ULP of numpy elsewhere."""
     for g, w in zip(np.asarray(got).ravel().tolist(), np.asarray(want).ravel().tolist()):
         if math.isnan(w):
             assert math.isnan(g), (g, w)

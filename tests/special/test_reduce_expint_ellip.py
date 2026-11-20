@@ -1,7 +1,7 @@
-"""S5: logsumexp softmax log_softmax expi expn ellipk ellipe (docs/api/special.md §6, §7, §10).
+"""logsumexp softmax log_softmax expi expn ellipk ellipe (docs/api/special.md §6, §7, §10).
 
 Accuracy of the elementwise four is tests/special/test_reference.py's; the reductions are
-held here against tests/special/ref/reduce_cases.npz (S5 user decision: logsumexp and
+held here against tests/special/ref/reduce_cases.npz (the user's contract: logsumexp and
 log_softmax |error| <= 1e-14 max(1, |value|), softmax relative 1e-14 per element). Also the
 special values against scipy except where docs/design/special.md §2.4 says otherwise, and
 the reductions' axis rules."""
@@ -13,16 +13,12 @@ import pytest
 import scipy.special as sp
 
 import stardust as sd
+from tests._bits import bits_equal_any_nan
 
 from . import refdata
 
 S = sd.special
 SUBNORMAL_ABS = 45 * 2.0**-1074
-
-
-def same_bits(a, b):
-    a, b = np.float64(a), np.float64(b)
-    return bool(np.isnan(a) and np.isnan(b)) or a.view(np.uint64) == b.view(np.uint64)
 
 
 # ---- special values -------------------------------------------------------------
@@ -33,14 +29,14 @@ def test_unary_edges_match_scipy():
         for x in [0.0, -0.0, 1.0, -1.0, np.inf, -np.inf, np.nan, 1.0000001, -1e300, 5e-324, -5e-324]:
             got, want = getattr(S, name)(x), float(getattr(sp, name)(x))
             if want == 0 or not np.isfinite(want) or not np.isfinite(got):
-                assert same_bits(got, want), (name, x, got, want)
+                assert bits_equal_any_nan(got, want), (name, x, got, want)
 
 
 def test_expn_edges_match_scipy():
     for n, x in itertools.product([0.0, 1.0, 2.0, 5.0, -1.0, np.nan], [0.0, 0.5, 2.0, np.inf, -1.0, np.nan]):
         got, want = S.expn(n, x), float(sp.expn(n, x))
         if want == 0 or not np.isfinite(want) or not np.isfinite(got):
-            assert same_bits(got, want), (n, x, got, want)
+            assert bits_equal_any_nan(got, want), (n, x, got, want)
 
 
 def test_expn_order_is_an_integer():
@@ -53,7 +49,7 @@ def test_expn_order_is_an_integer():
 
 
 def test_scipy_errors_get_true_values():
-    # S5 user decision
+    # true values where scipy overflows (docs/design/special.md §2.4)
     assert abs(S.expi(710.0) / 3.1509156882062014e305 - 1) < 1e-14  # scipy inf from 709.78
     assert np.isfinite(S.expi(716.0)) and S.expi(716.5) == np.inf
     assert abs(S.expn(1, 712.0) - 8.49650284055e-313) <= SUBNORMAL_ABS  # scipy 0
@@ -73,16 +69,7 @@ def test_closed_forms():
 
 
 def cases():
-    with np.load(refdata.REF / "reduce_cases.npz") as f:
-        d = {k: f[k] for k in f.files}
-    for c in range(d["start"].size - 1):
-        sl = slice(d["start"][c], d["start"][c + 1])
-        yield (
-            d["x"][sl],
-            (d["lse_hi"][c], d["lse_lo"][c]),
-            (d["softmax_hi"][sl], d["softmax_lo"][sl]),
-            (d["log_softmax_hi"][sl], d["log_softmax_lo"][sl]),
-        )
+    return refdata.reduce_cases()
 
 
 def test_reductions_accuracy():
@@ -135,10 +122,15 @@ def test_reduction_infinities_match_scipy():
     ]:
         x = np.array(v)
         a = sd.asarray(x)
-        assert same_bits(S.logsumexp(a), sp.logsumexp(x)), v
+        assert bits_equal_any_nan(S.logsumexp(a), sp.logsumexp(x)), v
         for name in ["softmax", "log_softmax"]:
             got, want = np.asarray(getattr(S, name)(a)), getattr(sp, name)(x)
-            assert all(same_bits(g, w) or abs(g - w) <= 1e-15 * abs(w) for g, w in zip(got, want)), (name, v, got, want)
+            assert all(bits_equal_any_nan(g, w) or abs(g - w) <= 1e-15 * abs(w) for g, w in zip(got, want)), (
+                name,
+                v,
+                got,
+                want,
+            )
 
 
 def test_reduction_empty():

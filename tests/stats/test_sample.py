@@ -1,4 +1,4 @@
-"""X.sample(shape, rng=rng) (T7, docs/api/stats.md §2.5, docs/design/stats.md §4): the samples
+"""X.sample(shape, rng=rng) (docs/api/stats.md §2.5, docs/design/stats.md §4): the samples
 follow their distribution (KS against the distribution's own cdf for the continuous ones, chi
 square against its cdf steps for the discrete ones, at fixed seeds), depend on the generator's
 state only (any thread count, split calls), and keep the shape, NaN and argument rules."""
@@ -385,3 +385,31 @@ def test_extreme_parameters_return_in_bounded_time():
     v = np.asarray(S.Binomial(n=1e300, p=1e-300).sample(200000, rng=rng))
     assert np.isfinite(v).all() and abs(v.mean() - 1.0) < 0.02
     assert time.perf_counter() - t0 < 5.0
+
+
+A = sd.asarray
+
+
+def test_entropy_doc_and_sample_shape():
+    assert "Shannon" in S.Poisson.entropy.__doc__ and "differential" in S.Normal.entropy.__doc__
+    rng = sd.random.default_rng(0)
+    assert isinstance(S.Normal().sample(rng=rng), float)
+    assert isinstance(S.Normal().sample(None, rng=rng), float)
+    assert S.Normal(mu=A([0.0, 1.0])).sample(rng=rng).shape == (2,)
+    assert S.Normal(mu=A([0.0, 1.0])).sample(3, rng=rng).shape == (3, 2)
+    msg = r"^sample\(\): 0-dimensional arrays are not supported \(stardust has no 0-d arrays\)$"
+    for X in (
+        S.Normal(),
+        S.Poisson(mu=2.0),
+        S.MultivariateNormal(mu=A([0.0]), cov=A([[1.0]])),
+        S.Wishart(df=3.0, scale=A([[1.0]])),
+        S.Dirichlet(alpha=A([1.0, 1.0])),
+    ):
+        with pytest.raises(ValueError, match=msg):
+            X.sample((), rng=rng)
+    M = S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0, 0.0], [0.0, 1.0]]))
+    assert M.sample(rng=rng).shape == (2,)
+    assert S.Wishart(df=3.0, scale=A([[1.0]])).sample(rng=rng).shape == (1, 1)
+    # one sample is the first of a call's (the same stream element)
+    r1, r2 = sd.random.default_rng(9), sd.random.default_rng(9)
+    assert S.Gamma(a=2.0).sample(rng=r1) == float(S.Gamma(a=2.0).sample(1, rng=r2)[0])

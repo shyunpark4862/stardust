@@ -37,7 +37,7 @@ line-length = 120
 target-version = "py314"
 # Python only: Markdown code blocks in docs/ and the root documents are not formatted.
 include = ["*.py", "*.pyi"]
-extend-exclude = ["third_party", "build", ".venv-legacy"]
+extend-exclude = ["third_party", "build"]
 force-exclude = true  # also for paths given on the command line (tools/format.py PATH, editors)
 
 [tool.ruff.format]
@@ -65,4 +65,4 @@ unfixable = ["F401"]
 "bench/**" = ["E", "W", "B", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["stardust", "stardust_numpy", "stardust_linalg", "stardust_pandas", "tests", "bench"]
+known-first-party = ["stardust", "tests", "bench"]

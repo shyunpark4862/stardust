@@ -1,65 +1,35 @@
-"""The multivariate area: the multivariate and matrix distributions (T9, T10) and the
-multivariate normal and t cdfs.
+"""The multivariate and matrix distributions of sd.stats (the group mv of the stats area:
+sweep ids stats/mv/...): their densities, entropies and pmfs, and the multivariate normal and
+t cdfs.
 
-References: tests/stats/ref_mv/<family>.npz (tools/mv_ref.py) for the log densities, densities
-and entropies; tests/stats/ref_mvcdf/<set>.npz (tools/mvcdf_ref.py) for the cdfs. Every point
-of ref_mv is inside the guaranteed region (kappa <= 1e9, d and p <= 100, Wishart df <= 1e30),
-whose contract is |error| <= 1e-14 max(1, |value|) (docs/api/stats.md, T29, T30) -- the measure
-of tests/stats/test_multivariate.py and test_matrix.py; the density's is that error carried
-through exp, |relative error| <= 1e-14 max(1, |logpdf|). The cdf regions and bounds are
-tests/stats/test_mvcdf.py's, through its own helpers.
+References: tests/stats/ref/mv/<family>.npz for the log densities, densities and entropies and
+tests/stats/ref/mv/<set>.npz for the cdfs (tools/stats_ref.py), read through
+tests/stats/refdata.py, whose contract functions (mv_density_contract, bvn_contract, ...) judge
+here as in the tests. Every density point is inside the guaranteed region (kappa <= 1e9, d and
+p <= 100, Wishart df <= 1e30): |error| <= 1e-14 max(1, |value|) (docs/api/stats.md §3), for
+the density that error carried through exp, relative 1e-14 max(1, |logpdf|) per point. The
+cdf regions and bounds are tests/stats/test_mvcdf.py's.
 """
 
 from __future__ import annotations
 
-import pathlib
-
 import numpy as np
 
-from .common import Custom, compare_libs, region
+from .common import Custom, compare_libs, region, ulps
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-REF_MV = ROOT / "tests" / "stats" / "ref_mv"
 GUARANTEED = 1e-14
 
-# family -> (class name, methods, constructor from a group's arrays)
-FAMILIES = {
-    "mvnormal": ("MultivariateNormal", ("logpdf", "pdf", "entropy")),
-    "mvt": ("MultivariateT", ("logpdf", "pdf", "entropy")),
-    "wishart": ("Wishart", ("logpdf", "entropy")),
-    "invwishart": ("InverseWishart", ("logpdf", "entropy")),
-    "matnormal": ("MatrixNormal", ("logpdf", "entropy")),
-    "multinomial": ("Multinomial", ("logpmf", "entropy")),
-    "dirichlet": ("Dirichlet", ("logpdf", "entropy")),
-}
+
+def _families():
+    from tests.stats import refdata
+
+    return refdata.MV_FAMILIES
 
 
 def _groups(family):
-    z = np.load(REF_MV / f"{family}.npz")
-    out = {}
-    for k in z.files:
-        g, key = k[1:].split("_", 1)
-        out.setdefault(int(g), {})[key] = z[k]
-    return [out[i] for i in sorted(out)]
+    from tests.stats import refdata
 
-
-def _dist(family, g):
-    import stardust as sd
-
-    S, a = sd.stats, sd.asarray
-    if family == "mvnormal":
-        return S.MultivariateNormal(mu=a(g["mu"]), cov=a(g["cov"]))
-    if family == "mvt":
-        return S.MultivariateT(mu=a(g["mu"]), shape=a(g["cov"]), df=float(g["df"]))
-    if family == "wishart":
-        return S.Wishart(df=float(g["df"]), scale=a(g["scale"]))
-    if family == "invwishart":
-        return S.InverseWishart(df=float(g["df"]), scale=a(g["scale"]))
-    if family == "matnormal":
-        return S.MatrixNormal(mu=a(g["mu"]), rowcov=a(g["rowcov"]), colcov=a(g["colcov"]))
-    if family == "multinomial":
-        return S.Multinomial(n=float(g["n"]), p=a(g["p"]))
-    return S.Dirichlet(alpha=a(g["alpha"]))
+    return refdata.mv_groups(family)
 
 
 def _label(family, g):
@@ -77,13 +47,10 @@ def _label(family, g):
 
 def _values(family, method, g, lib):
     """The method's values at the group's points from sd, scipy or R (None: no such function)."""
-    import stardust as sd
-
     if lib == "sd":
-        D = _dist(family, g)
-        if method == "entropy":
-            return np.atleast_1d(np.asarray(D.entropy(), dtype=float))
-        return np.atleast_1d(np.asarray(getattr(D, method)(sd.asarray(g["x"])), dtype=float))
+        from tests.stats import refdata
+
+        return refdata.mv_values(family, method, g)
     if lib == "R":
         from . import rsession
 
@@ -124,6 +91,7 @@ def _values(family, method, g, lib):
 
 def _measure_method(family, method, lib="sd"):
     from tests.special import refdata as R
+    from tests.stats import refdata as S
 
     gots, his, los, lps, where = [], [], [], [], []
     for g in _groups(family):
@@ -143,16 +111,15 @@ def _measure_method(family, method, lib="sd"):
         keep = np.isfinite(got) | ~np.isfinite(hi)
         excluded = int((~keep).sum())
         got, hi, lo, lp, where = (v[keep] for v in (got, hi, lo, lp, where))
+    mask, err, bound = S.mv_density_contract(method, got, hi, lo, lp)["guaranteed"]
+    got, hi, lo, err, where = got[mask], hi[mask], lo[mask], err[mask], where[mask]
     with np.errstate(all="ignore"):
-        ulp, rel = R.ulp_error(got, hi, lo), R.rel_error(got, hi, lo)
-        if method == "pdf":  # the logpdf's error through exp, where the density is a normal double
-            keep = np.abs(lp) < 700
-            got, hi, lo, lp, ulp, rel, where = (v[keep] for v in (got, hi, lo, lp, ulp, rel, where))
-            c = rel / np.maximum(1.0, np.abs(lp))
-            return {"guaranteed": region(where, ulp=ulp, rel=rel, contract=c, bound=GUARANTEED, excluded=excluded)}
-        m = R.mixed_error(got, hi, lo)
-    return {"guaranteed": region(where, ulp=ulp, rel=rel, mixed=m / 2.0**-52, contract=m, bound=GUARANTEED,
-                                 excluded=excluded)}  # fmt: skip
+        ulp, rel = ulps(got, hi), R.rel_error(got, hi, lo)
+        if method == "pdf":
+            return {"guaranteed": region(where, ulp=ulp, rel=rel, contract=err, bound=bound, excluded=excluded)}
+    e = region(where, ulp=ulp, mixed=err / 2.0**-52, contract=err, bound=bound, excluded=excluded)
+    e["nonfinite"] = int((np.isfinite(hi) & ~np.isfinite(got)).sum())  # the mixed measure's companion
+    return {"guaranteed": e}
 
 
 # ------------------------------------------------------------------------------ cdfs
@@ -161,10 +128,10 @@ def _measure_method(family, method, lib="sd"):
 def _mv(S, X, df=np.inf, atol=1e-6, lib="sd"):
     """(values, error estimates) of P(X <= x) per row of X, covariance S (d, d) or one per row;
     scipy has no estimate (zeros), R has no multivariate cdf in its base packages (None)."""
-    from tests.stats import test_mvcdf as T
+    from tests.stats import refdata
 
     if lib == "sd":
-        return T.mv(S, X, df=df, atol=atol)
+        return refdata.mv_cdf_eval(S, X, df=df, atol=atol)
     if lib == "R":  # mvtnorm's pmvnorm and pmvt (Genz-Bretz at abseps = atol), a fixed seed
         from . import rsession
 
@@ -203,10 +170,42 @@ def _mv(S, X, df=np.inf, atol=1e-6, lib="sd"):
     return v, np.zeros(len(X))
 
 
-def _bvn(lib="sd"):
-    from tests.stats import test_mvcdf as T
+def _cdf_set(name):
+    from tests.stats import refdata
 
-    z = np.load(T.REF / "bvn.npz")
+    return refdata.mv_cdf(name)
+
+
+def _cdf_regions(v, e, hi, lo, where, contract, lib, cond=None):
+    """The region entries of a cdf set from its contract ({region: (mask, error, bound)}); a
+    comparator's NaN or inf where the reference is finite is left out of its regions and counted."""
+    from tests.stats import refdata
+
+    keep = np.ones(len(v), bool) if lib == "sd" else np.isfinite(v) | ~np.isfinite(hi)
+    with np.errstate(all="ignore"):
+        rel = refdata.cdf_rel(v, hi, lo)
+        ulp = ulps(v, hi)
+    out = {}
+    for label, (mask, err, bound) in contract.items():
+        m = mask & keep
+        if not mask.any():
+            continue
+        exc = None if lib == "sd" else int((mask & ~keep).sum())
+        if label == "tiny":
+            out[label] = region(where[m], abs_err=err[m], contract=err[m], bound=bound, excluded=exc)
+            continue
+        extra = {}
+        if label == "loose" and cond is not None:  # where cond is finite (a perturbed value that underflows has no log)
+            f = np.isfinite(cond[m])
+            extra["rel_cond"] = rel[m][f] / (2.0**-53 * np.maximum(cond[m][f], 1.0))
+        out[label] = region(where[m], ulp=ulp[m], rel=rel[m], contract=err[m], bound=bound, excluded=exc, **extra)
+    return out
+
+
+def _bvn(lib="sd"):
+    from tests.stats import refdata
+
+    z = _cdf_set("bvn")
     h, k, r, hi, lo = z["h"], z["k"], z["r"], z["hi"], z["lo"]
     S = np.tile(np.eye(2), (len(h), 1, 1))
     S[:, 0, 1] = S[:, 1, 0] = r
@@ -215,78 +214,27 @@ def _bvn(lib="sd"):
         return None
     v, e = r_
     where = np.array([f"h={a!r} k={b!r} r={c!r}" for a, b, c in zip(h.tolist(), k.tolist(), r.tolist())])
-    return _exact_regions(
-        v, e, hi, lo, where, loose=lambda rel, m: rel / (10 * T.EPS * np.maximum(1.0, -np.log(hi[m]))), lib=lib
-    )
-
-
-def _exact_regions(v, e, hi, lo, where, loose, guaranteed=None, cond=None, lib="sd"):
-    """guaranteed (relative 1e-14), loose (the test's bound for the rest of the normal range)
-    and tiny (P < 1e-300: absolute 1e-300)."""
-    from tests.special import refdata as R
-    from tests.stats import test_mvcdf as T
-
-    with np.errstate(all="ignore"):
-        rel = T.rel_err(v, hi, lo)
-        ulp = R.ulp_error(v, hi, lo)
-    norm = hi >= 1e-300
-    g = norm & (hi >= 1e-15) if guaranteed is None else norm & guaranteed
-    keep = np.ones(len(v), bool) if lib == "sd" else np.isfinite(v) | ~np.isfinite(hi)
-    exc = (lambda mask: int((mask & ~keep).sum())) if lib != "sd" else (lambda mask: None)  # noqa: E731
-    out = {}
-    ex_g, ex_m, ex_t = exc(g), exc(norm & ~g), exc(~norm)
-    norm, g = norm & keep, g & keep
-    tiny = ~(hi >= 1e-300) & keep
-    est = np.where(e == 0, 0.0, np.inf)  # the exact paths report an error of 0
-    if g.any():
-        out["guaranteed"] = region(
-            where[g], ulp=ulp[g], rel=rel[g], contract=np.maximum(rel[g], est[g]), bound=GUARANTEED, excluded=ex_g
-        )
-    m = norm & ~g
-    if m.any():
-        extra = {}
-        if cond is not None:  # where cond is finite (a perturbed value that underflows has no log)
-            f = np.isfinite(cond[m])
-            extra["rel_cond"] = rel[m][f] / (2.0**-53 * np.maximum(cond[m][f], 1.0))
-        out["loose"] = region(
-            where[m],
-            ulp=ulp[m],
-            rel=rel[m],
-            contract=np.maximum(loose(rel[m], m), est[m]),
-            bound=1.0,
-            excluded=ex_m,
-            **extra,
-        )
-    t = tiny
-    if t.any():
-        a = np.abs(v[t] - hi[t])
-        out["tiny"] = region(where[t], abs_err=a, contract=a, bound=1e-300, excluded=ex_t)
-    return out
+    return _cdf_regions(v, e, hi, lo, where, refdata.bvn_contract(v, e, hi, lo), lib)
 
 
 def _tvn(lib="sd"):
-    from tests.stats import test_mvcdf as T
+    from tests.stats import refdata
 
-    z = np.load(T.REF / "tvn.npz")
+    z = _cdf_set("tvn")
     h, R3, hi, lo = z["h"], z["r"], z["hi"], z["lo"]
-    r_ = _mv(T.corr(R3), h, lib=lib)
+    r_ = _mv(refdata.corr(R3), h, lib=lib)
     if r_ is None:
         return None
     v, e = r_
-    cond = np.load(REF_MV / "tvn_cond.npz")["cond"]  # tools/mv_ref.py tvn_cond
-    negs = (R3 < 0).sum(axis=1)
-    g = ((hi >= 1e-15) & (negs <= 1)) | ((hi >= 1e-10) & (cond <= 100))
+    cond = refdata.tvn_cond(h, R3)  # the test's condition number, from sd's own values
     where = np.array([f"h={a} r={b}" for a, b in zip(h.tolist(), R3.tolist())])
-    # the rest: within 8 u cond of the inputs' rounding where cond is finite (else unbounded)
-    loose = lambda rel, m: np.where(np.isfinite(cond[m]), rel / (8 * 2.0**-53 * np.maximum(cond[m], 1.0)), 0.0)  # noqa: E731
-    return _exact_regions(v, e, hi, lo, where, loose, guaranteed=g, cond=cond, lib=lib)
+    return _cdf_regions(v, e, hi, lo, where, refdata.tvn_contract(v, e, hi, lo, R3, cond), lib, cond)
 
 
 def _t_exact(name, lib="sd"):
-    from tests.special import refdata as R
-    from tests.stats import test_mvcdf as T
+    from tests.stats import refdata
 
-    z = np.load(T.REF / f"{name}.npz")
+    z = _cdf_set(name)
     h, R3, nu, hi, lo = z["h"], z["r"], z["nu"], z["hi"], z["lo"]
     d = h.shape[1]
     S = np.tile(np.eye(d), (len(h), 1, 1))
@@ -296,33 +244,25 @@ def _t_exact(name, lib="sd"):
     if r_ is None:
         return None
     v, e = r_
-    keep = np.isfinite(v) | ~np.isfinite(hi)
-    excluded = None if lib == "sd" else int((~keep).sum())
-    v, e, h, R3, nu, hi, lo = (a[keep] for a in (v, e, h, R3, nu, hi, lo))
-    with np.errstate(all="ignore"):
-        rel = T.rel_err(v, hi, lo)
-        ulp = R.ulp_error(v, hi, lo)
     where = np.array([f"h={a} r={b} nu={c!r}" for a, b, c in zip(h.tolist(), R3.tolist(), nu.tolist())])
-    c = np.maximum(rel, np.where(e == 0, 0.0, np.inf))
-    return {"guaranteed": region(where, ulp=ulp, rel=rel, contract=c, bound=T.T_EXACT_REL[name], excluded=excluded)}
+    return _cdf_regions(v, e, hi, lo, where, refdata.t_exact_contract(d, v, e, hi, lo), lib)
 
 
 def _factor(kind, lib="sd"):
     """QMC against the one-factor references: per atol, the actual error and its ratio to the
-    reported estimate; the contract is the test's (estimate <= atol, error <= 1.5 atol,
-    error <= 2 estimate + slack)."""
-    from tests.stats import test_mvcdf as T
+    reported estimate, held to tests/stats/refdata.py's qmc_contract; the t at d <= 3 is exact
+    (the scale mixture) and held to T_EXACT_REL against the Arb references."""
+    from tests.stats import refdata
 
-    z = np.load(T.REF / f"factor_{kind}.npz")
-    h, lam, d, nu, ref = z["h"], z["lam"], z["d"], z["nu"], z["hi"]
+    z = _cdf_set(f"factor_{kind}")
+    h, lam, d, nu, ref, ref_lo = z["h"], z["lam"], z["d"], z["nu"], z["hi"], z["lo"]
     out = {}
     if kind == "n":
         runs = [(f"atol={a:g}", a, np.arange(len(d)), 1e-12) for a in (1e-6, 1e-4)]
     else:
-        exact = np.flatnonzero(d <= 3)
-        runs = [("exact d<=3", None, exact, 0.0), ("atol=1e-05", 1e-5, np.flatnonzero(d > 3), 1e-10)]
+        runs = [("exact d<=3", None, np.flatnonzero(d <= 3), 0.0), ("atol=1e-05", 1e-5, np.flatnonzero(d > 3), 1e-10)]
     for label, atol, idx, slack in runs:
-        err, est, where = [], [], []
+        vals, est, where = [], [], []
         for i in idx:
             n = d[i]
             S = np.outer(lam[i, :n], lam[i, :n])
@@ -331,34 +271,37 @@ def _factor(kind, lib="sd"):
             if r_ is None:
                 return None
             v, e = r_
-            err.append(abs(v[0] - ref[i]))
+            vals.append(v[0])
             est.append(e[0])
             where.append(f"d={n} h={h[i, :n].tolist()} lam={lam[i, :n].tolist()} nu={float(nu[i])!r}")
-        err, est, where = np.array(err), np.array(est), np.array(where)
+        vals, est, where = np.array(vals), np.array(est), np.array(where)
+        err = np.abs(vals - ref[idx])
         excluded = None
         if lib != "sd":  # NaN: the library rejects the point (mvtnorm's pmvt takes integer df only)
             keep = np.isfinite(err)
             excluded = int((~keep).sum())
-            err, est, where, idx = err[keep], est[keep], where[keep], idx[keep]
-        if atol is None:  # the exact mixture against the ~1e-11 quadrature: relative 1e-13
-            rel = err / ref[idx]
-            c = np.maximum(rel, np.where(est == 0, 0.0, np.inf))
-            out[label] = region(where, rel=rel, contract=c, bound=1e-13, excluded=excluded)
+            vals, err, est, where, idx = vals[keep], err[keep], est[keep], where[keep], idx[keep]
+        if atol is None:
+            parts = [refdata.t_exact_contract(int(d[i]), vals[j : j + 1], est[j : j + 1], ref[i : i + 1],
+                                              ref_lo[i : i + 1])["guaranteed"] for j, i in enumerate(idx)]  # fmt: skip
+            c = np.array([p[1][0] / p[2] for p in parts])
+            rel = refdata.cdf_rel(vals, ref[idx], ref_lo[idx])
+            out[label] = region(where, ulp=ulps(vals, ref[idx]), rel=rel, contract=c, bound=1.0, excluded=excluded)
             continue
         if lib != "sd":  # no error estimate: the actual error against 1.5 atol only
             out[label] = region(where, abs_err=err, contract=err / (1.5 * atol), bound=1.0, excluded=excluded)
             continue
-        c = np.maximum.reduce([est / atol, err / (1.5 * atol), err / (2 * est + slack)])
-        out[label] = region(where, abs_err=err, est_ratio=err / est, contract=c, bound=1.0)
+        out[label] = region(where, abs_err=err, est_ratio=err / est, contract=refdata.qmc_contract(err, est, atol, slack),
+                            bound=1.0)  # fmt: skip
     return out
 
 
 def sweeps():
     out = []
-    for family, (cls, methods) in FAMILIES.items():
+    for family, (cls, methods) in _families().items():
         for m in methods:
             fn = lambda lib="sd", f=family, m=m: _measure_method(f, m, lib)  # noqa: E731
-            out.append(Custom("multivariate", f"{cls}.{m}", fn, compare_libs(fn, ("scipy", "R"))))
+            out.append(Custom("stats", f"mv/{cls}.{m}", fn, compare_libs(fn, ("scipy", "R"))))
     for name, fn in (
         ("cdf.bvn", _bvn),
         ("cdf.tvn", _tvn),
@@ -367,5 +310,5 @@ def sweeps():
         ("cdf.factor_normal", lambda lib="sd": _factor("n", lib)),
         ("cdf.factor_t", lambda lib="sd": _factor("t", lib)),
     ):
-        out.append(Custom("multivariate", name, fn, compare_libs(fn, ("scipy", "R"), seconds=300)))
+        out.append(Custom("stats", f"mv/{name}", fn, compare_libs(fn, ("scipy", "R"), seconds=300)))
     return out

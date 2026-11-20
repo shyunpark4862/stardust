@@ -1,9 +1,16 @@
 """Shared helpers: numpy is the reference ("oracle") for every test."""
 
+import subprocess
+import sys
+import textwrap
+import time
+
 import numpy as np
 import pytest
 
 import stardust as sd
+from bench.accuracy.common import ulp_distance
+from tests._bits import bits_equal_any_nan
 
 NP_DTYPE = {
     sd.bool: np.dtype(np.bool_),
@@ -14,16 +21,6 @@ NP_DTYPE = {
 ALL_DTYPES = list(NP_DTYPE)
 
 
-def _bits_equal(got, want):
-    """Element-wise identical bits; any NaN matches any NaN, but -0.0 != +0.0."""
-    if got.dtype.kind == "c":
-        return _bits_equal(got.real.copy(), want.real.copy()) and _bits_equal(got.imag.copy(), want.imag.copy())
-    if got.dtype.kind == "f":
-        gn, wn = np.isnan(got), np.isnan(want)
-        return np.array_equal(gn, wn) and np.array_equal(got[~gn].view(np.int64), want[~wn].view(np.int64))
-    return np.array_equal(got, want)
-
-
 def assert_same(arr, expected):
     """`arr` (stardust) has exactly the shape, dtype and bits of `expected` (numpy)."""
     expected = np.asarray(expected)
@@ -31,7 +28,7 @@ def assert_same(arr, expected):
     assert arr.shape == expected.shape
     assert NP_DTYPE[arr.dtype] == expected.dtype, (arr.dtype, expected.dtype)
     got = np.asarray(arr)  # zero-copy via the buffer protocol
-    assert _bits_equal(got, expected), f"\n got: {got!r}\nwant: {expected!r}"
+    assert bits_equal_any_nan(got, expected), f"\n got: {got!r}\nwant: {expected!r}"
 
 
 @pytest.fixture(params=ALL_DTYPES, ids=str)
@@ -39,17 +36,10 @@ def dtype(request):
     return request.param
 
 
-def _ordered(x):
-    """float64 bits mapped to integers that are ordered like the floats, so
-    the difference of two of them is their distance in ULPs."""
-    return [b if b >= 0 else -(2**63) - b for b in np.asarray(x, np.float64).ravel().view(np.int64).tolist()]
-
-
 def _max_ulp(got, want):
     gn, wn = np.isnan(got).ravel(), np.isnan(want).ravel()
     assert np.array_equal(gn, wn), "nan positions differ"
-    dist = [abs(g - w) for g, w, n in zip(_ordered(got), _ordered(want), gn) if not n]
-    return max(dist, default=0)
+    return int(np.max(ulp_distance(got, want), initial=0))
 
 
 def assert_ulp(arr, expected, max_ulp):
@@ -66,3 +56,24 @@ def assert_ulp(arr, expected, max_ulp):
     else:
         worst = _max_ulp(got, expected)
     assert worst <= max_ulp, f"{worst} ULP apart\n got: {got!r}\nwant: {expected!r}"
+
+
+def run_guarded(code, rss_limit=1 << 30, timeout=60):
+    """Runs `code` in a fresh interpreter, killed past `rss_limit` bytes of RSS or `timeout`
+    seconds (a regression here would eat memory or crash the process). Returns
+    (returncode, output)."""
+    p = subprocess.Popen(
+        [sys.executable, "-c", textwrap.dedent(code)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+    t0 = time.monotonic()
+    while p.poll() is None:
+        try:
+            rss = int(subprocess.check_output(["ps", "-o", "rss=", "-p", str(p.pid)]).strip() or 0) * 1024
+        except subprocess.CalledProcessError, ValueError:
+            rss = 0
+        if rss > rss_limit or time.monotonic() - t0 > timeout:
+            p.kill()
+            p.wait()
+            pytest.fail(f"killed: rss {rss / 1e6:.0f} MB after {time.monotonic() - t0:.1f} s")
+        time.sleep(0.02)
+    return p.returncode, p.stdout.read()

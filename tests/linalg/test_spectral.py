@@ -326,3 +326,30 @@ def test_matrix_norm_svd_ords_rules():
 def test_only_sd_arrays(call, bad):
     with pytest.raises(TypeError, match=r"^\w+\(\): '\w+' must be an sd\.ndarray, not "):
         call(bad)
+
+
+LA = sd.linalg
+
+
+NEAR_SINGULAR = [
+    [[1.0, 0.0], [0.0, 5e-324]],
+    [[5e-324, 1.0, -1.0], [-1.0, -1.0, 5e-324], [5e-324, 5e-324, 5e-324]],
+]
+
+
+# --------------------------------------------------------------- cond, det --
+
+
+@pytest.mark.parametrize("a", NEAR_SINGULAR)
+@pytest.mark.parametrize("dtype", [np.float64, np.complex128])
+@pytest.mark.parametrize("p", [1, -1, INF, -INF, "fro", "nuc"])
+def test_cond_is_inf_when_the_inverse_overflows(a, dtype, p):
+    x = sd.asarray(np.array(a, dtype=dtype))
+    assert LA.cond(x, ord=p) == INF
+    assert np.linalg.cond(np.array(a, dtype=dtype), p) == INF  # numpy's value too
+
+
+def test_cond_of_a_finite_inverse_is_unchanged():
+    a = np.array([[2.0, 1.0], [1.0, 3.0]])
+    for p in (1, -1, INF, -INF, "fro", "nuc"):
+        assert LA.cond(sd.asarray(a), ord=p) == pytest.approx(np.linalg.cond(a, p), rel=1e-14)

@@ -1,16 +1,16 @@
-"""sd.regression against statsmodels, scikit-learn, scipy and R. From
-bench/regression/g1/speed.py (at commit 4151d2a) (ols), g1b/speed.py (HAC, cluster, diagnostics, summary),
-g2/speed.py (glm), g3/speed.py (penalized), g4/speed.py (rlm M and MM, Theil-Sen,
-Siegel), g5/speed.py (quantreg) and g6/speed.py (nls), with more functions, options,
-shapes and input conditions since. Only the times are kept: the iteration counts,
-coefficient differences and objective excesses of the old tables are accuracy, not speed.
+"""sd.regression against statsmodels, scikit-learn, scipy and R: ols (with HAC, cluster,
+diagnostics and summary), glm, the penalized fits, rlm (M and MM), Theil-Sen, Siegel,
+quantreg and nls, over several functions, options, shapes and input conditions, and the
+tests on fitted models (t and Wald tests, nested comparisons, anova, VIF, DFFITS, DFBETAS,
+White, Goldfeld-Quandt, RESET; the test alone is timed, on fits made beforehand). Only the
+times are measured here: iteration counts, coefficient differences and objective excesses
+are the accuracy measurement's.
 
-The data of the old sizes are the old scripts' (same generators and seeds; where a script
-drew several sizes from one generator, a setup starts the generator at the state after the
-earlier draws, so the data are the same without drawing them). statsmodels and
-scikit-learn follow sd's thread count (their BLAS and OpenMP pools); scipy runs at its
-defaults; R (one session, its reference BLAS) once per round. statsmodels gets its
-constant column beforehand.
+The data come from fixed generators and seeds (where several sizes come from one
+generator, a setup starts the generator at the state after the earlier draws, so the data
+do not depend on which cases run). statsmodels and scikit-learn follow sd's thread count
+(their BLAS and OpenMP pools); scipy runs at its defaults; R (one session, one thread)
+once per round. statsmodels gets its constant column beforehand.
 
 The iterative comparators are asked for sd's accuracy: scikit-learn's solvers get tol=1e-10
 (saga 1e-8), and their labels say so; the note of the case where it was measured gives the
@@ -18,7 +18,7 @@ coefficient error at the default tol. statsmodels' IRLS fits converge to sd's an
 their defaults; statsmodels' QuantReg is an approximate IRLS whose default fit also
 computes a kernel sandwich, so it is paired with sd's cov_type='ker'.
 
-Left out: statsmodels' external studentized residuals (n refits), scipy's Theil-Sen and
+Left out: statsmodels' external studentized residuals, DFFITS and DFBETAS (n refits), scipy's Theil-Sen and
 Siegel at n = 10^5 (an n x n array, 80 GB), R's rq.fit "br" at n = 10^6 (minutes), at k = 50
 (12 s) and over nine quantiles (25 s). Two ablations run the public function with one kernel
 option changed for the call (the glm inner iterations by QR, the MM small-n search on all
@@ -31,7 +31,7 @@ from __future__ import annotations
 import math
 import warnings
 
-from ..registry import Case, Ref, RRef
+from ..registry import Case, Check, Ref, RRef, count
 
 
 def _expected_warnings():
@@ -100,7 +100,7 @@ def _kernel_option(module, kernel, call, **options):
 
 
 def _size(n, k):
-    return f"({n:,}, {k})"
+    return f"({n}, {k})"
 
 
 def _sm():
@@ -132,14 +132,14 @@ def _np_rng(state):
     return rng
 
 
-# The PCG64 state of numpy's default_rng(0) after the draws of the earlier sizes of one old
-# script, so a setup draws only its own data: (g1, 3) after G1_SIZES[:3], (g1, batch) after
-# all of G1_SIZES, (g2, batch) after all of G2_SIZES. Recompute with
+# The PCG64 state of numpy's default_rng(0) after the draws of the earlier sizes of one
+# generator, so a setup draws only its own data: (ols, 3) after OLS_SIZES[:3], (ols, batch)
+# after all of OLS_SIZES, (glm, batch) after all of GLM_SIZES. Recompute with
 #   rng = np.random.default_rng(0); <the earlier draws>; rng.bit_generator.state["state"]["state"]
 _SKIP = {
-    ("g1", 3): 79281709638914798765890678983760658124,
-    ("g1", "batch"): 106785980383449394103910849043684612640,
-    ("g2", "batch"): 13199395297045448037151362524021540636,
+    ("ols", 3): 79281709638914798765890678983760658124,
+    ("ols", "batch"): 106785980383449394103910849043684612640,
+    ("glm", "batch"): 13199395297045448037151362524021540636,
 }
 
 
@@ -153,10 +153,10 @@ def _sk_tol(cls, **kw):
     return _sk_fn(cls)(**kw)
 
 
-# ---------------------------------------------------------------- g1: ols, wls, gls, linregress
+# ---------------------------------------------------------------- ols, wls, gls, linregress
 
-G1_SIZES = ((1_000, 10), (100_000, 10), (1_000_000, 50), (10_000, 1_000))
-G1_BATCH = (10_000, 50, 3)
+OLS_SIZES = ((1_000, 10), (100_000, 10), (1_000_000, 50), (10_000, 1_000))
+OLS_BATCH = (10_000, 50, 3)
 
 
 def _ols_draw(rng, n, k):
@@ -171,8 +171,8 @@ def _lin_pack(X, y):
     return {"X": X, "y": y, "Xc": _sm().add_constant(X), "Xs": sd.asarray(X), "ys": sd.asarray(y)}
 
 
-def _g1_data(index, weights=False):
-    """index into G1_SIZES, or len(G1_SIZES) for the batch (one generator over all, in order).
+def _ols_data(index, weights=False):
+    """index into OLS_SIZES, or len(OLS_SIZES) for the batch (one generator over all, in order).
     weights: also positive weights w (their own generator) for wls."""
 
     def setup():
@@ -180,9 +180,9 @@ def _g1_data(index, weights=False):
 
         import stardust as sd
 
-        if index == len(G1_SIZES):
-            rng = _np_rng(_SKIP[("g1", "batch")])
-            B, n, k = G1_BATCH
+        if index == len(OLS_SIZES):
+            rng = _np_rng(_SKIP[("ols", "batch")])
+            B, n, k = OLS_BATCH
             X = rng.standard_normal((B, n, k))
             y = np.einsum("bnk,k->bn", X, [1.0, 2.0, 3.0]) + rng.standard_normal((B, n))
             sm = _sm()
@@ -195,13 +195,13 @@ def _g1_data(index, weights=False):
                 "Xl": [sd.asarray(X[i]) for i in range(B)],
                 "yl": [sd.asarray(y[i]) for i in range(B)],
             }
-        if ("g1", index) in _SKIP:
-            rng = _np_rng(_SKIP[("g1", index)])
+        if ("ols", index) in _SKIP:
+            rng = _np_rng(_SKIP[("ols", index)])
         else:
             rng = np.random.default_rng(0)
-            for n, k in G1_SIZES[:index]:
+            for n, k in OLS_SIZES[:index]:
                 _ols_draw(rng, n, k)
-        d = _lin_pack(*_ols_draw(rng, *G1_SIZES[index]))
+        d = _lin_pack(*_ols_draw(rng, *OLS_SIZES[index]))
         if weights:
             w = np.random.default_rng(1).uniform(0.5, 2.0, len(d["y"]))
             d.update(w=w, ws=sd.asarray(w))
@@ -247,17 +247,17 @@ def _ols_case(size, setup, quick=False):
     )
 
 
-def _g1_cases():
+def _ols_cases():
     out = []
-    for i, (n, k) in enumerate(G1_SIZES):
-        setup = _g1_data(i)
+    for i, (n, k) in enumerate(OLS_SIZES):
+        setup = _ols_data(i)
         out.append(_ols_case((n, k), setup, quick=(n, k) == (100_000, 10)))
         if (n, k) in ((1_000, 10), (10_000, 1_000)):  # at the other sizes "bse, pvalues" below does this work
             out.append(
                 Case(
                     area="regression",
                     group="ols",
-                    name="ols(y, X) + params·bse·pvalues·rsquared",
+                    name="ols(y, X) + params, bse, pvalues, rsquared",
                     size=_size(n, k),
                     setup=setup,
                     sd=lambda d: lambda R=_R(), y=d["ys"], X=d["Xs"]: _ols_inf(R.ols(y, X)),
@@ -271,8 +271,8 @@ def _g1_cases():
                 )
             )
     out.append(_ols_case((10_000, 10), _lin_data(10_000, 10)))
-    setup = _g1_data(len(G1_SIZES))
-    B, n, k = G1_BATCH
+    setup = _ols_data(len(OLS_SIZES))
+    B, n, k = OLS_BATCH
 
     def sm_loop(d):
         sm = _sm()
@@ -292,7 +292,7 @@ def _g1_cases():
 
         return f
 
-    size = f"{B:,} × ({n}, {k})"
+    size = f"{count(B)} x ({n}, {k})"
     out.append(
         Case(
             area="regression",
@@ -341,14 +341,14 @@ def _gls_data(n, k):
 def _wls_gls_cases():
     out = []
     for i in (1, 2):
-        n, k = G1_SIZES[i]
+        n, k = OLS_SIZES[i]
         out.append(
             Case(
                 area="regression",
                 group="wls-gls",
                 name="wls(y, X, weights=w)",
                 size=_size(n, k),
-                setup=_g1_data(i, weights=True),
+                setup=_ols_data(i, weights=True),
                 sd=lambda d: lambda R=_R(): R.wls(d["ys"], d["Xs"], weights=d["ws"]),
                 refs=(
                     Ref(
@@ -407,7 +407,7 @@ def _linregress_cases():
                 area="regression",
                 group="simple",
                 name="linregress(x, y)",
-                size=f"{n:,}",
+                size=count(n),
                 n=n,
                 setup=_slr_data(n),
                 sd=lambda d: lambda f=_R().linregress: f(d["xs"], d["ys"]),
@@ -420,7 +420,7 @@ def _linregress_cases():
             area="regression",
             group="simple",
             name="linregress(x, y), batched",
-            size=f"{B:,} × {n:,}",
+            size=f"{count(B)} x ({n},)",
             n=B * n,
             setup=_slr_data(n, batch=B),
             sd=lambda d: lambda f=_R().linregress: f(d["xs"], d["ys"]),
@@ -431,12 +431,12 @@ def _linregress_cases():
     return out
 
 
-# ---------------------------------------------------------------- g1b: HC, HAC, cluster, diagnostics
+# ---------------------------------------------------------------- HC, HAC, cluster, diagnostics
 
 G1B_SIZES = ((100_000, 10), (1_000_000, 50))
 
 
-def _g1b_data(index):
+def _inference_data(index):
     def setup():
         import numpy as np
         from scipy.signal import lfilter
@@ -473,7 +473,7 @@ def _bp(r):
     return r.bse, r.pvalues
 
 
-def _g1b_cases():
+def _inference_cases():
     def sm_diag(d):
         from statsmodels.stats.diagnostic import het_breuschpagan
         from statsmodels.stats.outliers_influence import OLSInfluence
@@ -521,7 +521,7 @@ def _g1b_cases():
 
     out = []
     for i, (n, k) in enumerate(G1B_SIZES):
-        setup = _g1b_data(i)
+        setup = _inference_data(i)
         L = int(math.floor(4 * (n / 100) ** (2 / 9)))
         rows = [
             (
@@ -587,14 +587,14 @@ def _g1b_cases():
     return out
 
 
-# ---------------------------------------------------------------- g2: glm
+# ---------------------------------------------------------------- glm
 
-G2_SIZES = ((100_000, 10), (1_000_000, 50))
-G2_BATCH = (10_000, 50, 3)
+GLM_SIZES = ((100_000, 10), (1_000_000, 50))
+GLM_BATCH = (10_000, 50, 3)
 GLM_SHAPES = ((200, 5), (10_000, 10), (10_000, 500))
 
 
-def _g2_draw(rng, n, k):
+def _glm_draw(rng, n, k):
     import numpy as np
 
     X = rng.standard_normal((n, k))
@@ -611,15 +611,15 @@ def _glm_pack(X, y):
     return {"X": X, "y": y, "Xc": _sm().add_constant(X), "Xs": sd.asarray(X), "ys": sd.asarray(y)}
 
 
-def _g2_data(index, fam=None):
+def _glm_data(index, fam=None):
     def setup():
         import numpy as np
 
         import stardust as sd
 
-        if index == len(G2_SIZES):
-            rng = _np_rng(_SKIP[("g2", "batch")])
-            B, n, k = G2_BATCH
+        if index == len(GLM_SIZES):
+            rng = _np_rng(_SKIP[("glm", "batch")])
+            B, n, k = GLM_BATCH
             Xb = rng.standard_normal((B, n, k))
             Yb = (rng.uniform(size=(B, n)) < 1 / (1 + np.exp(-(0.2 + Xb @ np.array([0.5, -0.3, 0.2]))))).astype(float)
             sm = _sm()
@@ -631,21 +631,21 @@ def _g2_data(index, fam=None):
                 "Xbc": [sm.add_constant(Xb[i]) for i in range(B)],
             }
         rng = np.random.default_rng(0)
-        for n, k in G2_SIZES[:index]:
-            _g2_draw(rng, n, k)
-        X, yl, yp = _g2_draw(rng, *G2_SIZES[index])
+        for n, k in GLM_SIZES[:index]:
+            _glm_draw(rng, n, k)
+        X, yl, yp = _glm_draw(rng, *GLM_SIZES[index])
         return _glm_pack(X, yl if fam == "binomial" else yp)
 
     return setup
 
 
 def _glm_shape_data(n, k):
-    """Binomial data of the g2 generator at another shape (seed 1)."""
+    """Binomial data of the glm generator at another shape (seed 1)."""
 
     def setup():
         import numpy as np
 
-        X, yl, _ = _g2_draw(np.random.default_rng(1), n, k)
+        X, yl, _ = _glm_draw(np.random.default_rng(1), n, k)
         return _glm_pack(X, yl)
 
     return setup
@@ -721,11 +721,11 @@ def _glm_case(n, k, fam, setup, quick=False, extra=""):
     )
 
 
-def _g2_cases():
+def _glm_cases():
     out = []
-    for i, (n, k) in enumerate(G2_SIZES):
+    for i, (n, k) in enumerate(GLM_SIZES):
         for fam in ("binomial", "poisson"):
-            setup = _g2_data(i, fam)
+            setup = _glm_data(i, fam)
             out.append(_glm_case(n, k, fam, setup, quick=(fam == "binomial" and n == 100_000)))
             if n != 100_000:
                 continue
@@ -765,8 +765,8 @@ def _g2_cases():
                 n, k, "binomial", _glm_shape_data(n, k), extra="2^15·2^16행 문턱 아래" if (n, k) == (10_000, 10) else ""
             )
         )
-    setup = _g2_data(len(G2_SIZES))
-    B, n, k = G2_BATCH
+    setup = _glm_data(len(GLM_SIZES))
+    B, n, k = GLM_BATCH
 
     def sd_batch(d):
         reg = _R()
@@ -797,7 +797,7 @@ def _g2_cases():
 
         return _quiet(f)
 
-    size = f"{B:,} × ({n}, {k})"
+    size = f"{count(B)} x ({n}, {k})"
     out.append(
         Case(
             area="regression",
@@ -955,7 +955,7 @@ def _cond_data(kind):
 COND_LABEL = {
     "cond4": "condition number 10^4",
     "cond7": "condition number 10^7",
-    "scale": "column scales 1–10^8",
+    "scale": "column scales 1-10^8",
     "collinear": "one duplicated column",
     "separation": "complete separation",
 }
@@ -1026,13 +1026,13 @@ def _cond_cases():
     return out
 
 
-# ---------------------------------------------------------------- g3: penalized
+# ---------------------------------------------------------------- penalized
 
-G3_SIZES = ((100_000, 10), (100_000, 100), (10_000, 1000))
-G3_EXTRA = ((200, 5), (1_000, 5_000))  # small n, and k > n
+PENALIZED_SIZES = ((100_000, 10), (100_000, 100), (10_000, 1000))
+PENALIZED_EXTRA = ((200, 5), (1_000, 5_000))  # small n, and k > n
 
 
-def _g3_data(n, k):
+def _penalized_data(n, k):
     def setup():
         import numpy as np
 
@@ -1076,7 +1076,7 @@ def _g3_data(n, k):
     return setup
 
 
-def _g3_cases():
+def _penalized_cases():
     def sdq(f):
         return lambda d: _quiet(lambda: f(_R(), d))
 
@@ -1258,25 +1258,25 @@ def _g3_cases():
             )
         )
 
-    for n, k in G3_SIZES:
-        setup = _g3_data(n, k)
+    for n, k in PENALIZED_SIZES:
+        setup = _penalized_data(n, k)
         for row in fits:
             add("penalized", row, n, k, setup)
         for row in cvs:
             add("penalized-cv", row, n, k, setup)
         for row in pglm:
             add("penalized-glm", row, n, k, setup)
-    for n, k in G3_EXTRA:
-        setup = _g3_data(n, k)
+    for n, k in PENALIZED_EXTRA:
+        setup = _penalized_data(n, k)
         for row in (ridge, lasso):
             add("penalized", row, n, k, setup)
     return out
 
 
-# ---------------------------------------------------------------- g4: robust
+# ---------------------------------------------------------------- robust
 
 
-def _g4_data(n, k, leverage=False):
+def _robust_data(n, k, leverage=False):
     def setup():
         import numpy as np
 
@@ -1296,7 +1296,7 @@ def _g4_data(n, k, leverage=False):
 
 
 def _batch_data(B, n, k, noise):
-    """B regressions of (n, k) (seed 4): the g4 model (5% outliers) or the g5 model (t_3 noise)."""
+    """B regressions of (n, k) (seed 4): the robust model (5% outliers) or the quantreg model (t_3 noise)."""
 
     def setup():
         import numpy as np
@@ -1346,19 +1346,22 @@ def _sm_rlm(M, collect=False):
         sm = _sm()
 
         def f():
-            sm.RLM(d["y"], d["Xc"], M=getattr(norms, M)()).fit()
+            r = sm.RLM(d["y"], d["Xc"], M=getattr(norms, M)()).fit()
             if collect:
+                del r
                 gc.collect()  # the fit leaves ~3.6 GB in reference cycles; two of them pass 16 GB
+                return None
+            return r
 
         return _quiet(f)
 
     return make
 
 
-def _g4_cases():
+def _robust_cases():
     out = []
     for n, k in ((100_000, 10), (1_000_000, 50)):
-        setup = _g4_data(n, k)
+        setup = _robust_data(n, k)
         for norm, M in (("huber", "HuberT"), ("bisquare", "TukeyBiweight")):
             out.append(
                 Case(
@@ -1385,14 +1388,14 @@ def _g4_cases():
                 group="robust",
                 name="rlm(y, X, norm='huber')",
                 size=_size(n, k),
-                setup=_g4_data(n, k),
+                setup=_robust_data(n, k),
                 sd=lambda d: lambda r=_R(): r.rlm(d["ys"], d["Xs"], norm="huber"),
                 refs=(Ref("statsmodels", _sm_rlm("HuberT"), threads="follow"),),
                 note="2^15·2^16행 문턱 아래" if n == 10_000 else "",
             )
         )
     for n, k in ((200, 5), (10_000, 5), (100_000, 10), (100_000, 30), (1_000_000, 10)):
-        setup = _g4_data(n, k, leverage=True)
+        setup = _robust_data(n, k, leverage=True)
 
         def mm(d):
             return lambda r=_R(): r.rlm(d["ys"], d["Xs"], method="MM", rng=_sd_rng(1))
@@ -1435,7 +1438,7 @@ def _g4_cases():
             area="regression",
             group="robust-batched",
             name="rlm(Y, X, norm='huber'), one call",
-            size=f"{B:,} × ({n}, {k})",
+            size=f"{count(B)} x ({n}, {k})",
             setup=_batch_data(B, n, k, "outliers"),
             sd=lambda d: lambda r=_R(): r.rlm(d["ys"], d["Xs"], norm="huber"),
             refs=(Ref("statsmodels loop", sm_rlm_loop, threads="follow", lib="statsmodels"),),
@@ -1456,7 +1459,7 @@ def _g4_cases():
                     area="regression",
                     group="robust-slopes",
                     name=f"{name}(y, x)",
-                    size=f"{n:,}",
+                    size=count(n),
                     n=n,
                     setup=setup,
                     sd=lambda d, name=name: lambda f=getattr(_R(), name): f(d["ys"], d["xs"]),
@@ -1475,15 +1478,15 @@ def _scipy_stats(name):
     return getattr(st, name)
 
 
-# ---------------------------------------------------------------- g5: quantreg
+# ---------------------------------------------------------------- quantreg
 
-G5_SIZES = ((1_000, 5), (100_000, 10), (1_000_000, 10))
-G5_EXTRA = ((200, 5), (10_000, 10), (100_000, 50))  # small n, between the 2^15 / 2^16 thresholds, wide k
+QUANTREG_SIZES = ((1_000, 5), (100_000, 10), (1_000_000, 10))
+QUANTREG_EXTRA = ((200, 5), (10_000, 10), (100_000, 50))  # small n, between the 2^15 / 2^16 thresholds, wide k
 QS9 = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 R_TAUS = "taus <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)"
 
 
-def _g5_data(n, k):
+def _quantreg_data(n, k):
     def setup():
         import numpy as np
 
@@ -1508,12 +1511,12 @@ def _sm_qr(d, qs=(0.5,)):
 SM_QR_NOTE = "statsmodels QuantReg는 근사 IRLS이고 기본 fit이 커널 샌드위치를 계산해 sd의 'ker'와 짝짓는다"
 
 
-def _g5_cases():
+def _quantreg_cases():
     rdata = {"y": "y", "X": "X"}
     rsetup = "x <- cbind(1, X)"
     out = []
-    for n, k in sorted(G5_SIZES + G5_EXTRA):
-        setup = _g5_data(n, k)
+    for n, k in sorted(QUANTREG_SIZES + QUANTREG_EXTRA):
+        setup = _quantreg_data(n, k)
         refs = [
             RRef("R fn", 'rq.fit(x, y, tau = 0.5, method = "fn")', data=rdata, setup=rsetup, packages=("quantreg",))
         ]
@@ -1552,7 +1555,7 @@ def _g5_cases():
                 note=SM_QR_NOTE if (n, k) == (100_000, 10) else "",
             )
         )
-        if (n, k) in G5_SIZES:
+        if (n, k) in QUANTREG_SIZES:
             out.append(
                 Case(
                     area="regression",
@@ -1567,6 +1570,7 @@ def _g5_cases():
                             'g <- rq(y ~ X, tau = 0.5, method = "fn"); suppressWarnings(summary(g, se = "nid"))',
                             data=rdata,
                             packages=("quantreg",),
+                            value="coef(.v)[, 1]",
                         ),
                     ),
                     quick=n == 1_000,
@@ -1574,7 +1578,7 @@ def _g5_cases():
                 )
             )
     n, k = 100_000, 10
-    setup = _g5_data(n, k)
+    setup = _quantreg_data(n, k)
     out.append(
         Case(
             area="regression",
@@ -1590,6 +1594,7 @@ def _g5_cases():
                     data=rdata,
                     setup=f"{rsetup}; {R_TAUS}",
                     packages=("quantreg",),
+                    value='t(sapply(taus, function(t) rq.fit(x, y, tau = t, method = "fn")$coefficients))',
                 ),
             ),
             note="R은 분위마다 한 번씩; R br(한 번에 25초 안팎)은 뺐다",
@@ -1631,7 +1636,7 @@ def _g5_cases():
             area="regression",
             group="quantreg-batched",
             name="quantreg(Y, X, q=0.5, cov_type='ker'), one call",
-            size=f"{B:,} × ({n}, {k})",
+            size=f"{count(B)} x ({n}, {k})",
             setup=_batch_data(B, n, k, "t3"),
             sd=lambda d: lambda r=_R(): r.quantreg(d["ys"], d["Xs"], q=0.5, cov_type="ker"),
             refs=(Ref("statsmodels loop", sm_loop, threads="follow", lib="statsmodels"),),
@@ -1641,9 +1646,9 @@ def _g5_cases():
     return out
 
 
-# ---------------------------------------------------------------- g6: nls
+# ---------------------------------------------------------------- nls
 
-G6_NS = (100, 10_000, 1_000_000)
+NLS_NS = (100, 10_000, 1_000_000)
 CENTRES = (0.7, 1.6, 2.5, 3.4, 4.3)
 
 
@@ -1690,24 +1695,24 @@ R_FORMULA = {
         [v for k in range(5) for v in (f"a{k}", f"c{k}")],
     ),
 }
-G6_TRUTH = {
+NLS_TRUTH = {
     2: [2.0, 0.8],
     4: [0.2, 2.5, 1.8, 3.0],
     10: [1.0, CENTRES[0], 1.5, CENTRES[1], 0.8, CENTRES[2], 1.2, CENTRES[3], 0.6, CENTRES[4]],
 }
-G6_MODEL = {2: "a exp(-b x)", 4: "4모수 로지스틱", 10: "가우스 5개"}
-G6_NFEV = {2: (57, 10), 4: (112, 21), 10: (301, 45)}  # f calls of sd and of curve_fit at n = 10^4
+NLS_MODEL = {2: "a exp(-b x)", 4: "4모수 로지스틱", 10: "가우스 5개"}
+NLS_NFEV = {2: (57, 10), 4: (112, 21), 10: (301, 45)}  # f calls of sd and of curve_fit at n = 10^4
 BOUNDS = (0.0, 10.0)  # every parameter; no bound is active at the solution
 
 
 def _p0(p):
-    truth = G6_TRUTH[p]
+    truth = NLS_TRUTH[p]
     if p == 10:
         return [v * 1.1 if j % 2 == 0 else v + 0.05 for j, v in enumerate(truth)]
     return [v * 1.1 for v in truth]
 
 
-def _g6_data(n, p):
+def _nls_data(n, p):
     def setup():
         import numpy as np
 
@@ -1734,7 +1739,7 @@ def _g6_data(n, p):
     return setup
 
 
-def _g6_cases():
+def _nls_cases():
     def curve_fit(d, jac=False, **kw):
         from scipy.optimize import curve_fit as cf
 
@@ -1755,25 +1760,26 @@ def _g6_cases():
             f"nls({form}, data = dat, start = list({start}){extra})",
             data={"x": "x", "y": "y", **({"w": "w"} if weighted else {})},
             setup="dat <- data.frame(y = y, x = x" + (", w = w)" if weighted else ")"),
+            value="coef(.v)",
         )
 
     out = []
-    for n in G6_NS:
+    for n in NLS_NS:
         for p in (2, 4, 10):
-            setup = _g6_data(n, p)
+            setup = _nls_data(n, p)
             slow = n == 1_000_000 and p == 10
-            sd_calls, sp_calls = G6_NFEV[p]
+            sd_calls, sp_calls = NLS_NFEV[p]
             out.append(
                 Case(
                     area="regression",
                     group="nls",
                     name="nls(f, x, y, p0)",
-                    size=f"n={n:,}, p={p}",
+                    size=f"({n}, {p})",
                     setup=setup,
                     sd=lambda d: lambda r=_R(), f=d["msd"][0]: r.nls(f, d["xs"], d["ys"], p0=d["p0"]),
                     refs=(Ref("scipy curve_fit", curve_fit), rnls(p)),
                     quick=(n == 10_000 and p == 4),
-                    note=f"{G6_MODEL[p]}; sd는 5점 차분, scipy는 2점 차분"
+                    note=f"{NLS_MODEL[p]}; sd는 5점 차분, scipy는 2점 차분"
                     + (
                         f"; f 호출 sd {sd_calls}번, scipy {sp_calls}번(해의 정확한 야코비안을 위한 설계의 맞바꿈)"
                         if n == 10_000
@@ -1787,13 +1793,13 @@ def _g6_cases():
                     area="regression",
                     group="nls",
                     name="nls(f, x, y, p0, jac=J)",
-                    size=f"n={n:,}, p={p}",
+                    size=f"({n}, {p})",
                     setup=setup,
                     sd=lambda d: (
                         lambda r=_R(), f=d["msd"][0], J=d["msd"][1]: r.nls(f, d["xs"], d["ys"], p0=d["p0"], jac=J)
                     ),
                     refs=(Ref("scipy curve_fit", lambda d: curve_fit(d, jac=True)),),
-                    note=f"{G6_MODEL[p]}; 해석적 야코비안",
+                    note=f"{NLS_MODEL[p]}; 해석적 야코비안",
                 )
             )
             if n != 10_000:
@@ -1803,14 +1809,14 @@ def _g6_cases():
                     area="regression",
                     group="nls",
                     name="nls(f, x, y, p0, bounds=(0, 10))",
-                    size=f"n={n:,}, p={p}",
+                    size=f"({n}, {p})",
                     setup=setup,
                     sd=lambda d: lambda r=_R(), f=d["msd"][0]: r.nls(f, d["xs"], d["ys"], p0=d["p0"], bounds=BOUNDS),
                     refs=(
                         Ref("scipy curve_fit", lambda d: curve_fit(d, bounds=BOUNDS)),
                         rnls(p, ', algorithm = "port", lower = 0, upper = 10'),
                     ),
-                    note=f"{G6_MODEL[p]}; 모두 'trf'(R은 port), 해에서 걸리는 경계는 없다",
+                    note=f"{NLS_MODEL[p]}; 모두 'trf'(R은 port), 해에서 걸리는 경계는 없다",
                 )
             )
             out.append(
@@ -1818,17 +1824,353 @@ def _g6_cases():
                     area="regression",
                     group="nls",
                     name="nls(f, x, y, p0, weights=w)",
-                    size=f"n={n:,}, p={p}",
+                    size=f"({n}, {p})",
                     setup=setup,
                     sd=lambda d: lambda r=_R(), f=d["msd"][0]: r.nls(f, d["xs"], d["ys"], p0=d["p0"], weights=d["ws"]),
                     refs=(
                         Ref("scipy curve_fit", lambda d: curve_fit(d, weighted=True)),
                         rnls(p, weighted=True),
                     ),
-                    note=f"{G6_MODEL[p]}; 가중치 U(0.5, 2), scipy는 sigma = 1/√w",
+                    note=f"{NLS_MODEL[p]}; 가중치 U(0.5, 2), scipy는 sigma = 1/√w",
                 )
             )
     return out
+
+
+# ---------------------------------------------------------------- tests on fitted models
+# Only the test is timed: the fits it is called on are made when the case starts (sd's, at the
+# case's thread count; statsmodels' and R's the same way), and the fields a test caches are
+# cleared before each call (_fresh), so every timed call computes its test.
+
+MT_SIZES = ((10_000, 10), (100_000, 10))
+MT_BATCH = (10_000, 50, 3)
+# what a test caches on its result (the fit's own fields stay)
+_MT_CACHED = ("vif", "dfbetas", "dffits", "thin_q", "influence", "leverage", "wresid_public")
+
+
+def _fresh(r):
+    """r with the tests' cached fields cleared."""
+    for key in list(r._cache):
+        if isinstance(key, tuple) or key in _MT_CACHED:
+            del r._cache[key]
+    return r
+
+
+def _mt_data(n, k, seed):
+    def setup():
+        import numpy as np
+
+        import stardust as sd
+
+        rng = np.random.default_rng(seed)
+        X = rng.standard_normal((n, k))
+        y = X @ np.linspace(1.0, -1.0, k) + rng.standard_normal(n) * (1.0 + np.abs(X[:, 0]))
+        yb = (rng.uniform(size=n) < 1 / (1 + np.exp(-(X[:, 0] - X[:, 1])))).astype(float)
+        Rm = np.zeros((2, k + 1))
+        Rm[0, 1] = Rm[1, 2] = 1.0
+        return {
+            "X": X,
+            "y": y,
+            "yb": yb,
+            "Xc": _sm().add_constant(X),
+            "Xs": sd.asarray(X),
+            "ys": sd.asarray(y),
+            "ybs": sd.asarray(yb),
+            "Rm": Rm,
+            "Rms": sd.asarray(Rm),
+        }
+
+    return setup
+
+
+def _mt_batch_data():
+    import numpy as np
+
+    import stardust as sd
+
+    B, n, k = MT_BATCH
+    rng = np.random.default_rng(73)
+    X = rng.standard_normal((B, n, k))
+    y = np.einsum("bnk,k->bn", X, [1.0, -0.5, 0.25]) + rng.standard_normal((B, n))
+    sm = _sm()
+    Rm = np.zeros((2, k + 1))
+    Rm[0, 1] = Rm[1, 2] = 1.0
+    return {
+        "Xc": [sm.add_constant(X[i]) for i in range(B)],
+        "y": y,
+        "Xs": sd.asarray(X),
+        "ys": sd.asarray(y),
+        "Rm": Rm,
+        "Rms": sd.asarray(Rm),
+    }
+
+
+def _sd_test(call, cols=None, fresh=False):
+    """The sd side of a model-tests case: ols on the case's data (and the smaller models on the
+    first `cols` columns) fitted once, then call(big, d, *smaller) timed."""
+
+    def make(d):
+        R = _R()
+        big = R.ols(d["ys"], d["Xs"])
+        smaller = [R.ols(d["ys"], d["Xs"][:, :c]) for c in cols or ()]
+        if fresh:
+            return lambda: call(_fresh(big), d, *smaller)
+        return lambda: call(big, d, *smaller)
+
+    return make
+
+
+def _sm_test(call, cols=None):
+    """The statsmodels side: OLS fitted once (and the smaller models), then call(big, d, *smaller)."""
+
+    def make(d):
+        sm = _sm()
+        big = sm.OLS(d["y"], d["Xc"]).fit()
+        smaller = [sm.OLS(d["y"], d["Xc"][:, : c + 1]).fit() for c in cols or ()]
+        return lambda: call(big, d, *smaller)
+
+    return make
+
+
+# R: the columns as separate terms (anova's rows), the smaller models on the first columns
+_MT_RSETUP = (
+    "dat <- data.frame(y = y, X); nm <- names(dat)[-1]; "
+    'big <- lm(as.formula(paste("y ~", paste(nm, collapse = " + "))), data = dat); '
+    'small <- lm(as.formula(paste("y ~", nm[1])), data = dat); '
+    'mid <- lm(as.formula(paste("y ~", paste(nm[1:5], collapse = " + "))), data = dat); '
+    "Rm <- cbind(0, diag(ncol(X)))[1:2, ]"
+)
+
+
+def _mt_r(label, expr, value, packages=()):
+    return RRef(label, expr, data={"y": "y", "X": "X"}, setup=_MT_RSETUP, packages=packages, value=value)
+
+
+def _mt_vif(d):
+    from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+    return [variance_inflation_factor(d["Xc"], j) for j in range(1, d["Xc"].shape[1])]
+
+
+def _mt_glm_sd(d):
+    g = _R().glm(d["ybs"], d["Xs"], family="binomial")
+
+    def f():
+        return _fresh(g).dfbetas
+
+    return f
+
+
+def _mt_glm_sm(d):
+    sm = _sm()
+    g = sm.GLM(d["yb"], d["Xc"], family=sm.families.Binomial()).fit()
+    return lambda: g.get_influence(observed=False).dfbetas
+
+
+def _sm_diag(name):
+    import statsmodels.stats.diagnostic as diag
+
+    return getattr(diag, name)
+
+
+def _model_tests_cases():
+    def anova(*fits, **kw):
+        return _R().anova(*fits, **kw)
+
+    # name: (sd, statsmodels or None, R or None, note)
+    rows = {
+        "ols(y, X).t_test(R), 2 rows": (
+            _sd_test(lambda r, d: r.t_test(d["Rms"])),
+            _sm_test(lambda s, d: s.t_test(d["Rm"])),
+            None,
+            "",
+        ),
+        "ols(y, X).wald_test(R), 2 rows": (
+            _sd_test(lambda r, d: r.wald_test(d["Rms"])),
+            _sm_test(lambda s, d: s.f_test(d["Rm"])),
+            _mt_r("R car", "linearHypothesis(big, Rm)", 'c(.v$F[2], .v[["Pr(>F)"]][2])', ("car",)),
+            "",
+        ),
+        "ols(y, X).compare_f_test(small)": (
+            _sd_test(lambda r, d, s: r.compare_f_test(s), (1,)),
+            _sm_test(lambda b, d, s: b.compare_f_test(s), (1,)),
+            _mt_r("R", "anova(small, big)", 'c(.v$F[2], .v[["Pr(>F)"]][2])'),
+            "작은 모형은 첫 열 하나",
+        ),
+        "ols(y, X).compare_lr_test(small)": (
+            _sd_test(lambda r, d, s: r.compare_lr_test(s), (1,)),
+            _sm_test(lambda b, d, s: b.compare_lr_test(s), (1,)),
+            _mt_r("R lmtest", "lrtest(small, big)", 'c(.v$Chisq[2], .v[["Pr(>Chisq)"]][2])', ("lmtest",)),
+            "작은 모형은 첫 열 하나",
+        ),
+        "anova(ols(y, X))": (
+            _sd_test(lambda r, d: anova(r)),
+            None,
+            _mt_r("R", "anova(big)", 'c(.v$F, .v[["Pr(>F)"]])'),
+            "Type I, 열마다 항 하나",
+        ),
+        "anova(ols(y, X), typ=3)": (
+            _sd_test(lambda r, d: anova(r, typ=3)),
+            None,
+            _mt_r("R drop1", 'drop1(big, test = "F")', 'c(.v$F[-1], NA, .v[["Pr(>F)"]][-1], NA)'),
+            "",
+        ),
+        "anova(small, mid, big)": (
+            _sd_test(lambda r, d, s, m: anova(s, m, r), (1, 5)),
+            None,
+            _mt_r("R", "anova(small, mid, big)", 'c(.v$F, .v[["Pr(>F)"]])'),
+            "열 1개·5개·10개의 모형",
+        ),
+        "ols(y, X).vif": (
+            _sd_test(lambda r, d: r.vif, fresh=True),
+            lambda d: lambda: _mt_vif(d),
+            _mt_r("R car", "vif(big)", "as.numeric(.v)", ("car",)),
+            "",
+        ),
+        "ols(y, X).dffits": (
+            _sd_test(lambda r, d: r.dffits, fresh=True),
+            None,
+            _mt_r("R", "dffits(big)", "as.numeric(.v)"),
+            "statsmodels(OLSInfluence)는 행마다 다시 적합해(n번) 재지 않았다",
+        ),
+        "ols(y, X).dfbetas": (
+            _sd_test(lambda r, d: r.dfbetas, fresh=True),
+            None,
+            _mt_r("R", "dfbetas(big)", "as.numeric(t(.v))"),
+            "statsmodels(OLSInfluence)는 행마다 다시 적합해(n번) 재지 않았다",
+        ),
+        "ols(y, X).white_test()": (
+            _sd_test(lambda r, d: r.white_test(), fresh=True),
+            _sm_test(lambda s, d: _sm_diag("het_white")(s.resid, d["Xc"])),
+            None,
+            "",
+        ),
+        "ols(y, X).goldfeld_quandt()": (
+            _sd_test(lambda r, d: r.goldfeld_quandt()),
+            lambda d: lambda f=_sm_diag("het_goldfeldquandt"): f(d["y"], d["Xc"], result_object=False),
+            _mt_r("R lmtest", "gqtest(big)", "c(.v$statistic, .v$p.value)", ("lmtest",)),
+            "statsmodels는 적합도 한다",
+        ),
+        "ols(y, X).reset_test()": (
+            _sd_test(lambda r, d: r.reset_test()),
+            _sm_test(lambda s, d: _sm_diag("linear_reset")(s, power=3, use_f=True)),
+            _mt_r("R lmtest", "resettest(big)", "c(.v$statistic, .v$p.value)", ("lmtest",)),
+            "",
+        ),
+        "glm(y, X, family='binomial').dfbetas": (_mt_glm_sd, _mt_glm_sm, None, ""),
+    }
+    out = []
+    for i, (n, k) in enumerate(MT_SIZES):
+        setup = _mt_data(n, k, 71 + i)
+        for name, (sdf, smf, rref, note) in rows.items():
+            refs = []
+            if smf is not None:
+                refs.append(Ref("statsmodels", smf, threads="follow"))
+            if rref is not None:
+                refs.append(rref)
+            out.append(
+                Case(
+                    area="regression",
+                    group="model-tests",
+                    name=name,
+                    size=_size(n, k),
+                    setup=setup,
+                    sd=sdf,
+                    refs=tuple(refs),
+                    note=note,
+                    quick=(n, k) == (10_000, 10) and name in ("ols(y, X).wald_test(R), 2 rows", "ols(y, X).dfbetas"),
+                )
+            )
+    B, n, k = MT_BATCH
+    size = f"{count(B)} x ({n}, {k})"
+    batch = {
+        "ols(Y, X).t_test(R), 2 rows": (lambda r, d: r.t_test(d["Rms"]), lambda s, d: s.t_test(d["Rm"])),
+        "ols(Y, X).wald_test(R), 2 rows": (lambda r, d: r.wald_test(d["Rms"]), lambda s, d: s.f_test(d["Rm"])),
+        "ols(Y, X).vif": (lambda r, d: _fresh(r).vif, None),
+        "ols(Y, X).dfbetas": (lambda r, d: _fresh(r).dfbetas, None),
+    }
+    for name, (sdc, smc) in batch.items():
+
+        def sdf(d, sdc=sdc):
+            r = _R().ols(d["ys"], d["Xs"])
+            return lambda: sdc(r, d)
+
+        def sm_loop(d, smc=smc):
+            sm = _sm()
+            fits = [sm.OLS(d["y"][i], d["Xc"][i]).fit() for i in range(B)]
+
+            def f():
+                for s in fits:
+                    smc(s, d)
+
+            return f
+
+        out.append(
+            Case(
+                area="regression",
+                group="model-tests-batched",
+                name=name,
+                size=size,
+                setup=_mt_batch_data,
+                sd=sdf,
+                refs=(Ref("statsmodels loop", sm_loop, threads="follow", lib="statsmodels"),) if smc else (),
+                note="statsmodels는 Python 반복문으로 하나씩 검정한다" if smc else "",
+            )
+        )
+    return out
+
+
+def _flat(*xs):
+    import numpy as np
+
+    return np.concatenate([np.ravel(np.asarray(x, dtype=float)) for x in xs])
+
+
+# The values the smoke run compares: sd's result and statsmodels' (R's value expressions give
+# the same values in the same order).
+_MT_SD = {
+    "t_test": lambda r: _flat(r.tvalue, r.pvalue),
+    "wald_test": lambda r: _flat(r.statistic, r.pvalue),
+    "compare_f_test": lambda r: _flat(r.fvalue, r.pvalue),
+    "compare_lr_test": lambda r: _flat(r.statistic, r.pvalue),
+    "anova": lambda r: _flat(r.statistic, r.pvalue),
+    "vif": lambda r: _flat(r)[1:],
+    "dffits": lambda r: _flat(r),
+    "dfbetas": lambda r: _flat(r),
+    "white_test": lambda r: _flat(*tuple(r)),
+    "goldfeld_quandt": lambda r: _flat(r.fvalue, r.pvalue),
+    "reset_test": lambda r: _flat(r.fvalue, r.pvalue),
+}
+_MT_SM = {
+    "t_test": lambda v: _flat(v.tvalue, v.pvalue),
+    "wald_test": lambda v: _flat(v.fvalue, v.pvalue),
+    "compare_f_test": lambda v: _flat(v[0], v[1]),
+    "compare_lr_test": lambda v: _flat(v[0], v[1]),
+    "vif": lambda v: _flat(v),
+    "dfbetas": lambda v: _flat(v),
+    "white_test": lambda v: _flat(*v),
+    "goldfeld_quandt": lambda v: _flat(v[0], v[1]),
+    "reset_test": lambda v: _flat(v.fvalue, v.pvalue),
+}
+
+
+def _mt_kind(name):
+    for kind in _MT_SD:
+        if f".{kind}" in name or name.startswith(kind):
+            return kind
+    raise KeyError(name)
+
+
+def _mt_check(c: Case) -> Check:
+    if c.group == "model-tests-batched":
+        return Check(skip="the statsmodels loop keeps no result")
+    kind = _mt_kind(c.name)
+    sm = _MT_SM.get(kind)
+
+    def ref(label, v):
+        return _flat(v) if label.startswith("R") else sm(v)
+
+    return Check(sd=_MT_SD[kind], ref=ref)
 
 
 # ---------------------------------------------------------------- all
@@ -1856,20 +2198,88 @@ TITLES = {
     "quantreg-9q": "분위 회귀(분위 9개)",
     "quantreg-batched": "분위 회귀 일괄",
     "nls": "비선형 최소제곱",
+    "model-tests": "모형 비교·검정·진단",
+    "model-tests-batched": "모형 비교·검정·진단 일괄",
 }
 
 
+# ---------------------------------------------------------------- the results check
+# What the smoke run compares (bench/speed/check.py): the coefficients. A fit result gives
+# its params (intercept first), statsmodels its params, scikit-learn [intercept_, coef_],
+# curve_fit its popt, R its coefficients (RRef.value where the call returns something else).
+
+
+def _np(x):
+    import numpy as np
+
+    return np.asarray(x)
+
+
+def _sk(v):
+    """scikit-learn's coefficients with the intercept first, as sd's params."""
+    import numpy as np
+
+    coef = np.asarray(v.coef_).ravel()
+    if getattr(v, "fit_intercept", False):
+        return np.concatenate([np.atleast_1d(np.asarray(v.intercept_, dtype=float)).ravel(), coef])
+    return coef
+
+
+def _ref_coef(label, v):
+    if label.startswith("scikit-learn") and hasattr(v, "coef_"):
+        return _sk(v)
+    if label == "scipy curve_fit":
+        return v[0]
+    return v
+
+
+SKIP = {
+    "ols(y, X).summary()": "a text table",
+    "ols(Y, X) + inference, one call": "the statsmodels loop keeps no result",
+    "glm(Y, X, family='binomial') + inference, one call": "the statsmodels loop keeps no result",
+}
+# Inputs ill-conditioned by design: the libraries settle a rank deficiency differently (sd
+# gives NaN for an aliased column, statsmodels a minimum-norm answer), and statsmodels'
+# approximate QuantReg drifts on badly scaled columns.
+CONDITIONING_SKIP = "ill-conditioned by design: the libraries settle it differently"
+
+
+def _check(c: Case) -> Check:
+    if c.group.startswith("model-tests"):
+        return _mt_check(c)
+    if c.name in SKIP:
+        return Check(skip=SKIP[c.name])
+    if c.group == "conditioning" and ("duplicated" in c.name or c.name.startswith("quantreg")):
+        return Check(skip=CONDITIONING_SKIP)
+    if c.name == "ols(y, X) + diagnostics":  # leverage, studentized residuals, Cook's distance, DW
+        return Check(sd=lambda r: [_np(r[0]), _np(r[1]), _np(r[2]), _np(r[3])],
+                     ref=lambda lab, v: [_np(v[0]), _np(v[1]), _np(v[2][0]), _np(v[3])])  # fmt: skip
+    if c.name.startswith("linregress"):  # scipy's result has five fields, sd's six
+        return Check(sd=lambda r: [_np(x) for x in tuple(r)[:5]], ref=lambda lab, v: [_np(x) for x in tuple(v)[:5]])
+    if c.name == "lasso(y, X, alpha=100-point grid)":  # lasso_path: (alphas, coefs (p, n_alphas), gaps)
+        return Check(sd=lambda r: _np(r.params)[:, 1:], ref=lambda lab, v: _np(v[1]).T)
+    if c.group in ("glm", "glm-families"):  # (params, bse, pvalues, ...) on both sides
+        return Check(sd=lambda r: _np(r[0]), ref=lambda lab, v: _np(v[0]))
+    if c.name.startswith("quantreg"):  # statsmodels' QuantReg is an approximate IRLS
+        return Check(ref=_ref_coef, rtol=1e-3)
+    return Check(ref=_ref_coef)
+
+
 def cases() -> list[Case]:
-    return [
-        *_g1_cases(),
+    out = [
+        *_ols_cases(),
         *_wls_gls_cases(),
-        *_g1b_cases(),
+        *_inference_cases(),
         *_linregress_cases(),
-        *_g2_cases(),
+        *_glm_cases(),
         *_fam_cases(),
         *_cond_cases(),
-        *_g3_cases(),
-        *_g4_cases(),
-        *_g5_cases(),
-        *_g6_cases(),
+        *_penalized_cases(),
+        *_robust_cases(),
+        *_quantreg_cases(),
+        *_nls_cases(),
+        *_model_tests_cases(),
     ]
+    for c in out:
+        c.check = _check(c)
+    return out

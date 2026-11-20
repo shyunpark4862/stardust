@@ -2,8 +2,7 @@
 
 L.sd the library, L.np numpy (inputs only), L.rng(seed) a numpy Generator (inputs only),
 L.arr(a) sd.asarray of a numpy array (zero copy where the buffer allows, so the
-numpy strides are what the library sees). L.A, L.LA and L.F are sd, sd.linalg
-and sd.frame (the names the merge-era case files use).
+numpy strides are what the library sees).
 """
 
 import numpy as np
@@ -13,11 +12,8 @@ import stardust as sd
 
 class Lib:
     def __init__(self):
-        self.sd = self.A = sd
-        self.LA = sd.linalg
-        self.F = sd.frame
+        self.sd = sd
         self.np = np
-        self._threads = sd
 
     @staticmethod
     def rng(seed):

@@ -1,4 +1,4 @@
-"""Multivariate distributions (T9, docs/api/stats.md §3; decisions T29): densities and entropies
+"""Multivariate distributions (docs/api/stats.md §3, docs/design/stats.md): densities and entropies
 against Arb references and scipy, batching, the NaN and support rules, and samples (their
 moments, determinism). The cdfs are tests/stats/test_mvcdf.py."""
 
@@ -11,7 +11,10 @@ from flint import arb, arb_mat, ctx
 
 import stardust as sd
 
+from . import refdata
+
 S = sd.stats
+A = sd.asarray
 
 
 def _settled(fn, bits=80):
@@ -100,7 +103,8 @@ def test_logpdf_and_entropy_against_arb(df, d, kappa):
     else:
         D = S.MultivariateT(mu=sd.asarray(mu), shape=sd.asarray(cov), df=df)
     assert _mixed(D.logpdf(sd.asarray(xs)), ref) <= 1e-14
-    assert np.max(np.abs(np.asarray(D.pdf(sd.asarray(xs))) / np.exp(ref) - 1.0)) <= 1e-14 * max(1.0, np.abs(ref).max())
+    _, err, bound = refdata.mv_density_contract("pdf", D.pdf(sd.asarray(xs)), np.exp(ref), 0.0, ref)["guaranteed"]
+    assert err.max() <= bound  # per point: relative 1e-14 max(1, |logpdf|)
     assert _mixed(D.entropy(), href) <= 1e-14
 
 
@@ -582,3 +586,78 @@ def test_multinomial_logpmf_beyond_exact_counts():
         assert math.isnan(v) or v <= 0.0
         v = S.Multinomial(n=n, p=sd.asarray([0.5, 0.5])).pmf(sd.asarray([n / 2, n / 2]))
         assert math.isnan(v) or 0.0 <= v <= 1.0
+
+
+# ---- summaries, point masses and the parameters' and inputs' types
+
+
+def test_summaries_read_the_lower_triangle():
+    C = A([[1.0, 99.0], [0.5, 1.0]])
+    sym = [[1.0, 0.5], [0.5, 1.0]]
+    assert np.asarray(S.MultivariateNormal(mu=A([0.0, 0.0]), cov=C).covariance()).tolist() == sym
+    t = np.asarray(S.MultivariateT(mu=A([0.0, 0.0]), shape=C, df=5.0).covariance())
+    assert t[0, 1] == t[1, 0]
+    W = S.Wishart(df=5.0, scale=C)
+    for m in (W.mean(), W.mode(), W.variance(), S.InverseWishart(df=5.0, scale=C).mean()):
+        v = np.asarray(m)
+        assert v[0, 1] == v[1, 0]
+    assert np.asarray(W.mean()).tolist() == [[5.0, 2.5], [2.5, 5.0]]
+
+
+def test_multinomial_point_mass_entropy_and_tiny_inverse_wishart():
+    assert S.Multinomial(n=0, p=A([0.3, 0.7])).entropy() == 0.0
+    assert S.Multinomial(n=0, p=A([0.2, 0.3, 0.5])).entropy() == 0.0
+    x = A([[1e-310, 0.0], [0.0, 1.0]])
+    assert S.InverseWishart(df=3.0, scale=A([[1.0, 0.0], [0.0, 1.0]])).logpdf(x) == -math.inf
+    assert S.InverseWishart(df=2.0, scale=A([[2.0]])).logpdf(A([[1e-310]])) == S.InverseGamma(a=1.0, scale=1.0).logpdf(
+        1e-310
+    )
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: S.MultivariateNormal(mu=[0.0, 0.0], cov=A([[1.0, 0.0], [0.0, 1.0]])),
+        lambda: S.MultivariateNormal(mu=A([0.0, 0.0]), cov=[[1.0, 0.0], [0.0, 1.0]]),
+        lambda: S.MultivariateT(mu=A([0.0]), shape=A([[1.0]]), df=[3.0]),
+        lambda: S.Multinomial(n=3, p=[0.5, 0.5]),
+        lambda: S.Dirichlet(alpha=[1.0, 2.0]),
+        lambda: S.Wishart(df=3.0, scale=[[1.0]]),
+        lambda: S.InverseWishart(df=3.0, scale=np.eye(2)),
+        lambda: S.MatrixNormal(mu=[[0.0]], rowcov=A([[1.0]]), colcov=A([[1.0]])),
+    ],
+)
+def test_matrix_and_multivariate_parameters_refuse_lists(make):
+    with pytest.raises(
+        TypeError, match=r"^[A-Za-z]+\(\): '\w+' must be (a real number or )?an sd.ndarray, not (list|numpy.ndarray)$"
+    ):
+        make()
+
+
+@pytest.mark.parametrize("x", [[0.1, 0.2], (0.1, 0.2), np.array([0.1, 0.2])])
+def test_multivariate_and_matrix_inputs_refuse_lists(x):
+    M = S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0, 0.0], [0.0, 1.0]]))
+    for m in ("pdf", "logpdf", "cdf"):
+        with pytest.raises(TypeError, match=rf"^{m}\(\): 'x' must be an sd.ndarray, not (list|tuple|numpy.ndarray)$"):
+            getattr(M, m)(x)
+    with pytest.raises(TypeError, match=r"^logpmf\(\): 'x' must be an sd.ndarray, not"):
+        S.Multinomial(n=3, p=A([0.5, 0.5])).logpmf(x)
+    with pytest.raises(TypeError, match=r"^pdf\(\): 'x' must be an sd.ndarray, not"):
+        S.Dirichlet(alpha=A([1.0, 2.0])).pdf(x)
+    with pytest.raises(TypeError, match=r"^logpdf\(\): 'x' must be an sd.ndarray, not"):
+        S.Wishart(df=3.0, scale=A([[1.0, 0.0], [0.0, 1.0]])).logpdf([[1.0, 0.0], [0.0, 1.0]])
+    # descriptive statistics keep taking sequences (scipy's convenience; T40)
+    assert S.skew([1.0, 2.0, 4.0]) == S.skew(A([1.0, 2.0, 4.0]))
+
+
+def test_covariance_diagonals_do_not_cancel():
+    c = S.Dirichlet(alpha=A([1e8, 1e-8])).covariance()
+    assert abs(float(c[0, 0]) - 9.9999999e-25) <= 1e-15 * 1e-24 and float(c[0, 1]) == -float(c[0, 0])
+    m = S.Multinomial(n=1.0, p=A([1 - 1e-10, 1e-10])).covariance()
+    assert abs(float(m[0, 0]) - 9.999999999e-11) <= 1e-15 * 1e-10
+    # a0^2 (a0 + 1) beyond the doubles
+    big = S.Dirichlet(alpha=A([1e200, 3e200])).covariance().tolist()
+    assert all(math.isfinite(v) for row in big for v in row) and big[0][0] > 0.0
+    # off the diagonal of a zero probability: +0.0 (0.0 - 0)
+    z = S.Multinomial(n=2.0, p=A([0.0, 1.0])).covariance()
+    assert math.copysign(1.0, float(z[0, 1])) == 1.0

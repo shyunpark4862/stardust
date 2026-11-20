@@ -1,12 +1,16 @@
-"""The speed benchmark system (bench/speed, bench/README.md): timing, selection, results,
-tables, comparison, cost headers, and the supervisor's limits and resume."""
+"""The speed benchmark system (bench/speed, bench/README.md): timing, selection, case ids,
+results, tables, comparison, cost headers, the results check, the command line, and the
+supervisor's limits, rounds and resume."""
 
-import json
+import os
+import subprocess
+import sys
 import time
 
+import numpy as np
 import pytest
 
-from bench.speed import compare, cost, harness, proc, registry, results, tables
+from bench.speed import check, compare, cost, harness, proc, registry, results, tables
 from bench.speed import run as runmod
 from bench.speed.registry import Case, Ref
 from bench.speed.run import Eta, Limits, run
@@ -42,6 +46,13 @@ def test_measure_smoke_calls_once():
     assert len(calls) == 1 and len(s.times) == 1
 
 
+def test_measure_keeps_the_warm_up_result():
+    got = []
+    harness.measure(lambda: [1.0, float("nan")], target_s=0.001, batches=2, budget_s=0.01, keep=got)
+    assert got == [[1.0, float("nan")]] or (len(got) == 1 and got[0][0] == 1.0)
+    assert check.nan_share(got[0]) == 0.5
+
+
 def test_sample_merge_and_noise():
     a = harness.Sample([1.0, 1.2], 4).merged(harness.Sample([1.1], 8))
     assert a.min == 1.0 and a.median == 1.1 and a.calls == 8
@@ -72,13 +83,15 @@ def _case(name, group="g", quick=False, **kw):
     return Case(area="array", group=group, name=name, sd=lambda d: lambda: None, quick=quick, **kw)
 
 
-def test_select_by_regex_glob_group_quick():
+def test_select_by_glob_substring_quick():
     cs = [_case("sum", quick=True, size="10^6"), _case("sort", size="3"), _case("mean", group="h")]
-    assert [c.name for c in registry.select(cs, match=["^array/g/s"])] == ["sum", "sort"]
-    assert [c.name for c in registry.select(cs, match=["*sort*"])] == ["sort"]
-    assert [c.name for c in registry.select(cs, match=["sum [10^6]"])] == []  # a regex: [ ] is a class
-    assert [c.name for c in registry.select(cs, match=[r"sum \[10\^6\]"])] == ["sum"]
-    assert [c.name for c in registry.select(cs, groups=["h"])] == ["mean"]
+    assert [c.name for c in registry.select(cs, match=["array/g/s*"])] == ["sum", "sort"]
+    assert [c.name for c in registry.select(cs, match=["sort"])] == ["sort"]  # plain text: a substring
+    assert [c.name for c in registry.select(cs, match=["sum [10^6]"])] == ["sum"]  # [ ] are plain characters
+    assert [c.name for c in registry.select(cs, match=["*sum [10^?]"])] == ["sum"]  # ? a wildcard, [ ] literal
+    assert [c.name for c in registry.select(cs, match=["*sum*10^6*"])] == ["sum"]
+    assert [c.name for c in registry.select(cs, match=["*/h/*"])] == ["mean"]  # a group
+    assert [c.name for c in registry.select(cs, match=["sort", "mean"])] == ["sort", "mean"]
     assert [c.name for c in registry.select(cs, quick=True)] == ["sum"]
 
 
@@ -88,17 +101,36 @@ def test_case_checks():
     with pytest.raises(ValueError):
         Ref("numpy", lambda d: None, threads="some")
     assert _case("x", size="3").id == "array/g/x [3]"
+    c = _case("x", note="a", refs=(Ref("numpy", None), Ref("R", None, differs="rounds k")))
+    assert c.notes == "a; R: rounds k"
 
 
-def test_registry_ids_english_and_groups_titled():
-    import re
+def test_registry_areas_from_the_shared_list():
+    from bench import areas
 
-    hangul = re.compile("[\uac00-\ud7a3]")
+    assert registry.AREAS == areas.AREAS
+    assert [a for a in areas.AREAS if a in {c.area for c in registry.load()}] == list(
+        dict.fromkeys(c.area for c in registry.load())
+    )
+
+
+def test_registry_ids_ascii_and_groups_titled():
     cases = registry.load()
-    assert not [c.id for c in cases if hangul.search(c.id)]
-    assert not sorted({r.label for c in cases for r in c.refs if hangul.search(r.label)})
+    assert not [c.id for c in cases if not c.id.isascii()]
+    assert not sorted({r.label for c in cases for r in c.refs if not r.label.isascii()})
     # every group has a section title for bench/<area>/speed.md
     assert not sorted({(c.area, c.group) for c in cases if c.title == c.group})
+
+
+def test_registry_sizes_follow_the_id_notation():
+    """bench/README.md, case ids: 10^k / 2^k counts, (m, n) shapes, B x (m, n) batches."""
+    bad = [(c.id, registry.size_problem(c.size)) for c in registry.load() if registry.size_problem(c.size)]
+    assert not bad
+    for size in ("10^6", "2^18 rows", "20000", "(1000, 1000)", "(1000000,)", "10^3 x (3, 3)", "n=40", "10^5 points"):
+        assert registry.size_problem(size) is None, size
+    for size in ("1,000", "(3,3)", "1000", "10,000 \u00d7 (50, 3)", "Osborne 2", "(10^6,)", "10^3 \u00d7 (3, 3)"):
+        assert registry.size_problem(size), size
+    assert registry.count(1000) == "10^3" and registry.count(500_000) == "500000" and registry.count(100) == "100"
 
 
 def test_registry_ids_unique_and_areas_match():
@@ -150,7 +182,7 @@ def test_promote_replaces_measured_cases_keeps_others(tmp_path, monkeypatch):
     results.promote(_run_data("r2", [_rec("b", 3.0)]), known_ids=["array/g/a", "array/g/b"])
     base = results.load_baseline("array")
     assert [c["id"] for c in base["cases"]] == ["array/g/a", "array/g/b"]
-    assert {c["id"]: c["run"] for c in base["cases"]} == {"array/g/a": "r1", "array/g/b": "r2"}
+    assert {c["id"]: results.case_run(c) for c in base["cases"]} == {"array/g/a": "r1", "array/g/b": "r2"}
     assert results.timing(base["cases"][1], "sd", 1)["min"] == 3.0
     assert set(base["runs"]) == {"r1", "r2"}
     # a case dropped from the registry leaves the baseline
@@ -160,6 +192,38 @@ def test_promote_replaces_measured_cases_keeps_others(tmp_path, monkeypatch):
     assert [c["id"] for c in base["cases"]] == ["array/g/b"] and set(base["runs"]) == {"r3"}
 
 
+def test_promote_merges_timing_by_timing(tmp_path, monkeypatch):
+    """A run of one thread count, with R timed out, in fewer rounds: it changes only what it
+    measured, and only when forced."""
+    monkeypatch.setattr(results, "BASELINE_DIR", tmp_path)
+    full = _rec("a", 1.0, 0.2, ref=2.0)
+    full["rounds"] = 3
+    full["timings"].append({"label": "R", "lib": "R", "threads": None, "n": 1000, "min": 5.0, "noise": 0.0})
+    for t in full["timings"]:
+        t["times"] = [t["min"]] * 3
+    results.promote(_run_data("r3", [full]), known_ids=["array/g/a"])
+    base = results.load_baseline("array")
+    assert all("times" not in t for t in base["cases"][0]["timings"])  # batch times stay in the run file
+    quick = _rec("a", 1.1)
+    quick["rounds"] = 1
+    quick["timings"].append({"label": "R", "lib": "R", "threads": None, "n": 1000, "min": None, "error": "timeout"})
+    with pytest.raises(results.PromoteRefused):
+        results.promote(_run_data("q1", [quick]), known_ids=["array/g/a"])
+    assert results.load_baseline("array") == base  # refused: nothing written
+    results.promote(_run_data("q1", [quick]), known_ids=["array/g/a"], force=True)
+    c = results.load_baseline("array")["cases"][0]
+    by = {(t["label"], t["threads"]): t for t in c["timings"]}
+    assert by[("sd", 1)]["min"] == 1.1 and by[("sd", 1)]["run"] == "q1" and by[("sd", 1)]["rounds"] == 1
+    assert by[("sd", 10)]["min"] == 0.2 and by[("sd", 10)]["run"] == "r3"  # not measured: kept
+    assert by[("R", None)]["min"] == 5.0 and by[("R", None)]["run"] == "r3"  # failed: kept
+    assert by[("numpy", None)]["min"] == 2.0
+    assert set(results.load_baseline("array")["runs"]) == {"r3", "q1"}
+    # more rounds are always fine
+    again = _rec("a", 0.9)
+    again["rounds"] = 3
+    results.promote(_run_data("r4", [again]), known_ids=["array/g/a"])
+
+
 def test_table_compact_and_ratios():
     data = _run_data("r1", [_rec("fast", 1e-3, 2e-4, ref=2e-3), _rec("slow", 2e-3, 1e-3, ref=1e-3)])
     cases = [_case("fast"), _case("slow")]
@@ -167,6 +231,16 @@ def test_table_compact_and_ratios():
     assert "| `fast` | 1.00 ms | 200 µs | 2.00 ms | 2.00 | 10.0 | 1% |" in md
     assert "**0.50**" in md  # sd slower: bold
     assert "sd가 느린 줄 1/2" in md
+
+
+def test_table_notes_nan_shares():
+    rec = _rec("f", 1e-3, ref=2e-3)
+    rec["timings"][0]["nan"] = 0.0
+    rec["timings"][1]["nan"] = 0.78
+    rec["note"] = "R: rounds k"
+    md = tables.render("array", _run_data("r1", [rec]), [_case("f")], "x.json")
+    assert "R: rounds k; numpy: NaN 78%" in md
+    assert check.nan_note("scipy", 0.005, 0.0) == ""  # within a point of sd's
 
 
 def test_table_follow_rows_per_thread_and_scaled_sample():
@@ -180,6 +254,18 @@ def test_table_follow_rows_per_thread_and_scaled_sample():
     assert "| `fit` | 1 | 1.00 s | 2.00 s | 2.00 | 3.00 s\\* | 3.00 | 1% |" in md
     assert "| `fit` | 10 | 500 ms | 1.50 s | 3.00 | 3.00 s\\* | 6.00 | 1% |" in md
     assert "환산" in md
+
+
+def test_compare_without_a_baseline_exits_1(tmp_path, monkeypatch):
+    from bench.speed import __main__ as cli_main
+
+    monkeypatch.setattr(results, "BASELINE_DIR", tmp_path / "none")
+    run_file = tmp_path / "run.jsonl"
+    rf = results.RunFile(run_file)
+    rf.start("r1", {}, {"case_ids": ["array/g/a"]})
+    rf.case(_rec("a", 1.0))
+    rf.close()
+    assert cli_main.main(["compare", str(run_file)]) == 1
 
 
 def test_compare_flags_beyond_threshold_and_noise():
@@ -198,10 +284,11 @@ def test_compare_flags_beyond_threshold_and_noise():
 def test_cost_tables_merge_measured_rows(tmp_path, monkeypatch):
     monkeypatch.setattr(results, "BASELINE_DIR", tmp_path / "results")
     stats_out, special_out = tmp_path / "stats.hpp", tmp_path / "special.hpp"
-    stats_out.write_text('    {"normal", "cdf", 9.0},\n    {"normal", "pdf", 3.0},\n')
+    stats_out.write_text('    {"normal", "cdf", 9.0, false},\n    {"normal", "pdf", 3.0, false},\n')
     special_out.write_text('    {"erf", 5.4},\n    {"_add", 0.19},\n')
     monkeypatch.setattr(cost, "STATS_OUT", stats_out)
     monkeypatch.setattr(cost, "SPECIAL_OUT", special_out)
+    monkeypatch.setattr(cost, "MEMO_PRESET_NS", {"binomial.cdf@memo": 7.0, "poisson.icdf@memo": 50.0})
     run_cases = [
         _rec("Normal.cdf a", 100e-9 * 1000, n=1000, cost_key=("stats", "normal.cdf"), area="stats"),
         _rec("Normal.cdf b", 400e-9 * 1000, n=1000, cost_key=("stats", "normal.cdf"), area="stats"),
@@ -209,17 +296,36 @@ def test_cost_tables_merge_measured_rows(tmp_path, monkeypatch):
         _rec("erf", 6e-9 * 10**6, n=10**6, cost_key=("special", "erf"), area="special"),
     ]
     results.promote(_run_data("r1", run_cases), known_ids=[c["id"] for c in run_cases])
-    out = cost.generate()
+    keys = {"normal.cdf", "normal.pdf", "binomial.cdf@memo", "poisson.pmf@memo", "poisson.icdf@memo"}
+    out = cost.generate(stats_keys=keys)
     assert [(p.name, changed, n) for p, changed, n in out] == [("stats.hpp", True, 2), ("special.hpp", True, 1)]
     st = stats_out.read_text()
     assert '{"normal", "cdf", 200, false},' in st  # geometric mean of 100 and 400
     assert '{"normal", "pdf", 3, false},' in st  # kept
-    assert '{"binomial", "cdf", 2, true},' in st  # a memo row of its own
-    assert "kRows[3]" in st and "bool memo = false" in st
+    assert '{"binomial", "cdf", 2, true},' in st  # a memo row of its own: the measurement beats the preset
+    assert '{"poisson", "icdf", 50, true},' in st  # a preset @memo row not measured yet
+    assert f'{{"poisson", "pmf", {cost.MEMO_DEFAULT_NS:g}, true}},' in st  # an @memo key not measured yet
+    assert "kRows[5]" in st and "bool memo = false" in st
+    assert "2 of 5 rows measured in bench/speed/results/stats.json" in st
     sp = special_out.read_text()
     assert '{"erf", 6},' in sp and '{"_add", 0.19},' in sp and "consteval double ns" in sp
+    assert "1 of 2 rows measured in bench/speed/results/special.json" in sp
     # nothing new measured: no change
-    assert all(not changed for _, changed, _ in cost.generate(check=True))
+    assert all(not changed for _, changed, _ in cost.generate(check=True, stats_keys=keys))
+
+
+def test_cost_header_without_a_baseline(tmp_path, monkeypatch):
+    monkeypatch.setattr(results, "BASELINE_DIR", tmp_path / "none")
+    text = cost.special_header({"erf": 5.0, "_add": 0.19}, 0)
+    assert "// No baseline yet; all rows kept from the previous file." in text
+    assert "4151d2a" not in text and "commit" not in text
+
+
+def test_cost_coverage_reports_rows_no_case_feeds():
+    cov = cost.coverage("stats")
+    assert "bernoulli.cdf" in cov["unfed"]  # Bernoulli has only narrow supports: no wide case feeds it
+    assert not [k for k in cov["missing"] if k.endswith("@memo")]  # every @memo key has a row
+    assert any("rows no case feeds" in n for n in cost.coverage_notes())
 
 
 def test_real_cost_headers_parse():
@@ -242,19 +348,22 @@ def test_eta_scales_by_progress():
 
 
 def _limits(**kw):
-    base = dict(case_timeout_s=60, rss_bytes=8 * 2**30, poll_s=0.2, notify_after_s=1e9, load_warn=1e9)
+    base = dict(
+        case_timeout_s=60, rss_bytes=8 * 2**30, poll_s=0.2, notify_after_s=1e9, load_warn=1e9, idle_window_s=0.2
+    )
     base.update(kw)
     return Limits(**base)
 
 
+@pytest.mark.serial
 def test_supervisor_limits_and_failures(tmp_path, monkeypatch):
     monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
     cases = registry.load(["array"])
-    out = tmp_path / "run.json"
+    out = tmp_path / "run.jsonl"
     data = run(
         cases,
         out=out,
-        limits=_limits(case_timeout_s=8, rss_bytes=600 * 2**20),
+        limits=_limits(case_timeout_s=1.5, rss_bytes=600 * 2**20),
         notify=False,
         progress=False,
         keep_awake=False,
@@ -268,18 +377,21 @@ def test_supervisor_limits_and_failures(tmp_path, monkeypatch):
     boom = {t["label"]: t for t in by["boom"]["timings"]}
     assert "boom" in boom["sd"]["error"] and boom["numpy"]["min"] is not None
     assert by["sum2"]["timings"][0]["min"] > 0  # the run goes on after the kills
-    assert data["options"]["complete"] and json.loads(out.read_text())["run"] == data["run"]
-    assert out.with_suffix(".log").exists()
+    assert not any("check" in t for c in data["cases"] for t in c["timings"])  # only smoke runs check
+    assert data["options"]["complete"] and results.load(out)["run"] == data["run"]
+    assert data["failed"] == sum(1 for c in data["cases"] if runmod.case_failed(c)) >= 3
+    assert os.path.exists(data["log"]) and "build/logs/speed/" in data["log"]
 
 
-def test_parallel_smoke_lanes_and_memory_retry(tmp_path, monkeypatch):
+@pytest.mark.serial
+def test_parallel_smoke_lanes_memory_retry_and_checks(tmp_path, monkeypatch):
     monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
     cases = registry.load(["array"])
-    out = tmp_path / "run.json"
+    out = tmp_path / "run.jsonl"
     data = run(
         cases,
         out=out,
-        limits=_limits(case_timeout_s=8, rss_bytes=600 * 2**20),
+        limits=_limits(case_timeout_s=1.5, rss_bytes=600 * 2**20),
         notify=False,
         progress=False,
         keep_awake=False,
@@ -288,7 +400,8 @@ def test_parallel_smoke_lanes_and_memory_retry(tmp_path, monkeypatch):
         use_r=False,
     )
     by = {c["name"]: c for c in data["cases"]}
-    log = out.with_suffix(".log").read_text()
+    with open(data["log"]) as fh:
+        log = fh.read()
     assert "Lanes:" in log and "4 (at most 4 processes)" in log
     # the hog stops every lane at the memory limit: the stopped cases run again one at a time
     assert "again one at a time" in log
@@ -301,38 +414,127 @@ def test_parallel_smoke_lanes_and_memory_retry(tmp_path, monkeypatch):
     assert "boom" in boom["sd"]["error"] and boom["numpy"]["min"] is not None
     assert data["options"]["complete"] and data["options"]["smoke"]
     assert all(c["other_cpu"] is None for c in data["cases"])  # no busy marks in a parallel smoke run
+    # the results check: the first Python comparator, never one that differs by design
+    ck = {t["label"]: t.get("check") for t in by["check"]["timings"]}
+    assert ck["numpy"]["ok"] and "NaN 33.3% (sd) vs 0.0%" in ck["numpy"]["text"] and ck["other"] is None
+    assert by["check"]["timings"][0]["nan"] == pytest.approx(1 / 3, abs=1e-4)
+    wrong = {t["label"]: t.get("check") for t in by["wrong"]["timings"]}
+    assert not wrong["numpy"]["ok"] and wrong["numpy swapped"] is None
+    assert by["wrong"]["note"] == "numpy swapped: takes the arguments reversed"
+    assert runmod.case_failed(by["wrong"]) and not runmod.case_failed(by["check"])
+    assert not any(t.get("check") for t in by["skipped"]["timings"]) and not runmod.case_failed(by["skipped"])
 
 
+@pytest.mark.serial
 def test_supervisor_resume(tmp_path, monkeypatch):
     monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
     cases = registry.select(registry.load(["array"]), quick=True)
-    out = tmp_path / "run.json"
-    run(cases, rounds=2, out=out, limits=_limits(), notify=False, progress=False, keep_awake=False, quiet="no")
+    out = tmp_path / "run.jsonl"
+    run(cases, rounds=2, threads=(1,), out=out, limits=_limits(), notify=False, progress=False, keep_awake=False,
+        quiet="no")  # fmt: skip
     full = results.load(out)
     sums = {c["name"]: results.timing(c, "sd", 1)["batches"] for c in full["cases"]}
-    # pretend the run stopped before round 2's second case: drop that round's batches
-    partial = json.loads(out.read_text())
-    partial["options"].update(next=[1, 1], complete=False)
-    for c in partial["cases"]:
-        if c["name"] == "sum2":
-            for t in c["timings"]:
-                t["times"] = t["times"][: len(t["times"]) // 2]
-            c["rounds"] = 1
-    out.write_text(json.dumps(partial))
+    # cut the file where round 2's second case would have been written (and half a line more)
+    lines = out.read_text().splitlines(keepends=True)
+    case_lines = [i for i, ln in enumerate(lines) if ln.startswith('{"case"')]
+    assert len(case_lines) == 4
+    kept = lines[: case_lines[3]]
+    out.write_text("".join(kept) + lines[case_lines[3]][:40])
+    part = results.load(out)
+    assert not part["options"]["complete"] and part["options"]["next"] == [1, 1]
     data = run(
         cases, out=None, limits=_limits(), notify=False, progress=False, keep_awake=False, resume=out, quiet="no"
     )
     assert data["options"]["complete"] and data["run"] == full["run"]
     again = {c["name"]: results.timing(c, "sd", 1)["batches"] for c in data["cases"]}
     assert again["sum"] == sums["sum"]  # not re-run
-    assert again["sum2"] == sums["sum2"]  # half kept + one more round
+    assert again["sum2"] > sums["sum2"] // 2  # round 1 kept + round 2 again
     assert {c["name"]: c["rounds"] for c in data["cases"]} == {"sum": 2, "sum2": 2}
     assert "resumed" in data["env"]
+    assert results.load(out)["options"]["complete"]
+
+
+@pytest.mark.serial
+def test_rounds_run_in_new_workers(tmp_path, monkeypatch):
+    """With several rounds, each round's case is measured in a worker of its own."""
+    monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
+    pids = tmp_path / "pids"
+    monkeypatch.setenv("SDBENCH_PID_LOG", str(pids))
+    cases = registry.select(registry.load(["array"]), match=["array/fake/pid"])
+    run(cases, rounds=3, out=tmp_path / "r.jsonl", limits=_limits(), notify=False, progress=False,
+        keep_awake=False, quiet="no")  # fmt: skip
+    seen = pids.read_text().split()
+    assert len(seen) == 3 and len(set(seen)) == 3
+
+
+@pytest.mark.serial
+def test_smoke_failure_exits_1(tmp_path):
+    env = dict(os.environ, SDBENCH_CASES_MODULE=FAKE)
+    cmd = [sys.executable, "-m", "bench.speed", "run", "array", "--smoke", "--no-r", "--no-notify", "--jobs", "1"]
+    for match, code in (("boom", 1), ("wrong", 1), ("sum2", 0)):
+        r = subprocess.run(
+            [*cmd, "--match", match, "--out", str(tmp_path / f"{match}.jsonl")],
+            env=env, cwd=str(results.ROOT), capture_output=True, text=True, timeout=300,
+        )  # fmt: skip
+        assert r.returncode == code, (match, r.stdout[-2000:], r.stderr[-2000:])
+        assert (tmp_path / f"{match}.jsonl").exists()  # the results stay
+
+
+def test_rerun_busy_keeps_the_runs_options():
+    from bench.speed.__main__ import rerun_options
+
+    class A:
+        rounds, rounds_given, threads, no_r = 1, None, None, False
+
+    prev = {"rounds": 3, "threads": [1], "r": False}
+    assert rerun_options(A, prev) == (3, (1,), False)
+    A.rounds_given, A.rounds, A.threads = 2, 2, "1,10"
+    assert rerun_options(A, prev) == (2, (1, 10), False)
+    A.no_r = True
+    assert rerun_options(A, {"rounds": 3, "threads": None, "r": True}) == (2, (1, 10), False)
+
+
+def test_cli_conventions():
+    from bench.speed import __main__ as m
+
+    with pytest.raises(SystemExit) as e:
+        m.main(["list", "nope"])  # an unknown area: a usage error
+    assert e.value.code == 2
+    for old in (["list", "--area", "array"], ["run", "--group", "g"], ["run", "--jobs", "11"]):
+        with pytest.raises(SystemExit) as e:
+            m.main(old)
+        assert e.value.code == 2
+
+
+def test_list_builds_nothing(monkeypatch, capsys):
+    """Listing the cases needs no Boost build, no R and no subprocess."""
+    from bench.speed import __main__ as m
+    from bench.speed import boost
+
+    def refuse(*a, **k):
+        raise AssertionError("subprocess.run while listing")
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+    monkeypatch.setattr(boost, "_lib", lambda: refuse())
+    assert m.main(["list", "stats", "special", "--match", "Normal.cdf"]) == 0
+    assert "Normal.cdf" in capsys.readouterr().out
+
+
+def test_check_compare():
+    ok = check.compare(np.array([1.0, np.nan, 3.0, np.inf]), np.array([1.0 + 1e-9, 2.0, 3.0, np.inf]))
+    assert ok["ok"] and ok["agree"] == 1.0 and ok["nan_a"] == 0.25 and ok["nan_b"] == 0.0
+    bad = check.compare(np.arange(10.0), np.arange(10.0)[::-1])
+    assert not bad["ok"] and "first [0]" in bad["text"]
+    assert not check.compare(np.zeros(3), np.zeros(4))["ok"]
+    assert not check.compare(("opaque", "x"), np.zeros(3))["ok"]
+    assert check.compare(np.array([1 + 1j]), np.array([1 + 1j]))["ok"]
+    assert check.flat(check.normalise({"x": [1, 2]})).tolist() == [1.0, 2.0]
 
 
 # ---------------------------------------------------------------- a quiet machine
 
 
+@pytest.mark.serial
 def test_cpu_meter_excludes_own_process():
     m = proc.CpuMeter().start()
     t0 = time.monotonic()
@@ -390,13 +592,12 @@ def test_busy_cases_marked_in_table_and_compare():
 
 def test_boost_speed_driver_matches_the_accuracy_comparator():
     """The speed driver knows the same Boost functions and distributions as the accuracy
-    comparator, and returns the same values (the same calls, a different loop) up to the last
-    bits: the speed build uses sd's flags (-O3 -mcpu=native -ffp-contract=off), the accuracy
-    build -O2 with clang's default contraction into fused multiply-adds."""
-    import numpy as np
-
+    comparator (and as the static tables BOOST_SPECIAL and BOOST_DISTS), and returns the same
+    values: the same calls in another loop, built by the same function with the same flags
+    (bench.accuracy.boost.build, FLAGS: -O3 -mcpu=native -ffp-contract=off -std=c++17), so the
+    same bits."""
     from bench.accuracy import boost as acc
-    from bench.accuracy.compare import BOOST_SPECIAL
+    from bench.accuracy.compare import BOOST_DISTS, BOOST_SPECIAL
     from bench.speed import boost
 
     if not boost.available():
@@ -404,17 +605,81 @@ def test_boost_speed_driver_matches_the_accuracy_comparator():
     mine = boost.names()
     assert {n for n in mine if not n.endswith(":")} == BOOST_SPECIAL
     assert {n for n in mine if n.endswith(":")} == {n for n in acc.names() if n.endswith(":")}
+    assert {n for n in mine if n.endswith(":")} == {d + ":" for d in BOOST_DISTS}
     rng = np.random.default_rng(0)
     x = rng.uniform(0.1, 3.0, 64)
     for name, args in (("erf", (x,)), ("gammainc", (x, x[::-1].copy())), ("jv", (x, x))):
         f = boost.special(name, args)
-        f()
-        out = np.asarray(f.__defaults__[-1][1])  # the call's output buffer
-        np.testing.assert_allclose(out, acc.evaluate(name, *args), rtol=1e-13, atol=0)
+        out = np.array(f())  # the call returns its output buffer
+        assert out is not None and f.out is not None
+        np.testing.assert_allclose(out, acc.evaluate(name, *args), rtol=0, atol=0)
     k = np.arange(0.0, 20.0)
     for dname, method, params, pts in (("normal", "cdf", (1.5, 2.0), x), ("binomial", "logpmf", (40.0, 0.3), k)):
         f = boost.dist(dname, method, params, pts)
-        f()
-        out = np.asarray(f.__defaults__[-1][1])
+        out = np.array(f())
         ref = acc.evaluate(f"{dname}:{method}", *(np.full(pts.size, p) for p in params), pts)
-        np.testing.assert_allclose(out, ref, rtol=1e-13, atol=0)
+        np.testing.assert_allclose(out, ref, rtol=0, atol=0)
+
+
+def test_boost_build_key_includes_the_source(tmp_path, monkeypatch):
+    from bench.accuracy import boost as acc
+    from bench.speed import boost
+
+    monkeypatch.setattr(acc, "head", lambda h: "1" * 40)
+    a, b = tmp_path / "a.cpp", tmp_path / "b.cpp"
+    a.write_text("a")
+    b.write_text("b")
+    assert acc.build_key(tmp_path, a) != acc.build_key(tmp_path, b)  # the speed driver's own name
+    assert acc.build_key(tmp_path, boost.SRC) != acc.build_key(tmp_path)  # and the comparator's
+    monkeypatch.undo()
+    assert acc.head(tmp_path) == ""  # not a git checkout
+
+
+def test_reordered_scipy_counterparts_are_the_accuracy_measurements():
+    from bench.accuracy.compare import SCIPY_REORDERED, scipy_reordered
+    from bench.speed.cases import _special_common as common
+
+    for name, (dotted, _) in SCIPY_REORDERED.items():
+        assert common.counterpart(name).startswith(dotted), name  # the table's note names the same callable
+    df, nc, x = np.array([3.0, 10.0]), np.array([2.0, 50.0]), np.array([4.0, 70.0])
+    for name in ("chndtr", "chndtrc", "nctdtrc"):
+        assert np.array_equal(common.scipy_function(name)(df, nc, x), scipy_reordered(name)(df, nc, x)), name
+
+
+def test_boost_chndtr_takes_sds_argument_order():
+    """sd's order (df, nc, x): Boost agrees with sd.special on the reference inputs."""
+    import stardust as sd
+    from bench.speed import boost
+    from bench.speed.cases import _special_common as common
+
+    if not boost.available():
+        pytest.skip("no Boost.Math checkout")
+    for name in ("chndtr", "chndtrc", "chndtrix"):
+        xs = common.sample_inputs(name, 1000, seed=3)
+        mine = np.asarray(getattr(sd.special, name)(*[sd.asarray(x) for x in xs]))
+        res = check.compare(mine, np.array(boost.special(name, xs)()))
+        assert res["agree"] > 0.9, (name, res["text"])
+
+
+def test_rsession_one_thread_rotation_and_values():
+    """R runs with its BLAS on one thread, a rotated case goes through its input sets in
+    turn, and the check reads R's values (lists by component)."""
+    import shutil
+
+    from bench.speed.rsession import RSession
+
+    if shutil.which("R") is None:
+        pytest.skip("no R")
+    with RSession() as r:
+        info = r.info()
+        assert info["threads"]["seen"] == ["1", "1"] and info["version"]
+        sets = [{"x": np.array([1.0, 4.0])}, {"x": np.array([9.0, 16.0])}, {"x": np.array([25.0])}]
+        assert r.value("sqrt(x)", {}, sets=sets).tolist() == [1.0, 2.0]  # the first set
+        s = r.time(".sd_k", {}, sets=sets, target_s=0.0, batches=1, min_batches=1)
+        assert s.nan == 0.0
+        assert r.value(".sd_k", {}, sets=sets).tolist() == [1.0]  # each call moves the turn on
+        got = r.value("eigen(m)", {"m": np.array([[2.0, 0.0], [0.0, 1.0]])})
+        assert sorted(got) == ["values", "vectors"] and got["values"].tolist() == [2.0, 1.0]
+        unnamed = r.value("list(1, 2:3)", {})
+        assert sorted(unnamed) == ["1", "2"] and unnamed["2"].tolist() == [2.0, 3.0]
+        assert r.value("lm(y ~ 1)", {"y": np.array([1.0, 3.0])}, value="coef(.v)").tolist() == [2.0]

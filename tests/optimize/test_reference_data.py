@@ -13,7 +13,7 @@ import sys
 import numpy as np
 import pytest
 
-from . import functions, mgh, systems
+from . import functions, mgh, refdata, systems
 
 DATA = pathlib.Path(__file__).parent / "data"
 TOOLS = pathlib.Path(__file__).parents[2] / "tools"
@@ -93,7 +93,7 @@ def test_chandrupatla_counts():
 
 
 def test_bracketing_roots_within_tolerance_of_arb():
-    ref = load("scalar_roots.json")
+    ref = refdata.roots()
     rs = SCIPY["scipy_root_scalar.json"]
     assert set(ref) == set(functions.ROOTS_BY_ID)
     for c in functions.ROOT_CASES:
@@ -117,7 +117,7 @@ def test_arb_root_references_spot_check():
         import optimize_ref
     finally:
         sys.path.remove(str(TOOLS))
-    ref = load("scalar_roots.json")
+    ref = refdata.roots()
     for cid in ("aps.01.00", "aps.06.09", "aps.12.18", "chandrupatla.1.5", "chandrupatla.8.3", "original.03"):
         c = functions.ROOTS_BY_ID[cid]
         r = ref[cid]

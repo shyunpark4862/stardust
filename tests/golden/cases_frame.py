@@ -1,7 +1,10 @@
 """Golden cases for the frame area (tools/golden.py has the contract).
 
-Written for the merge (bench/merge/golden at commit 4151d2a) against the API of the dataframe package before the
-merge; the helpers _kw, _tl and _uv translate its spellings to sd.frame's.
+Every public name of sd.frame: construction, conversion, element-wise operators, astype, NA
+handling, selection, reductions, groupby, sorting, merge and concat, read_csv, repr, the
+signatures (positional-only and keyword-only arguments) and the thread count. Some case names
+spell an argument or method differently from the call they make (ddof for correction,
+ascending for descending, to_list for tolist).
 
 Inputs are deterministic (fixed literals, L.rng(seed)) and built lazily per
 cases(L) call. A case that assigns builds or copies its own objects first, so
@@ -11,20 +14,24 @@ Naming: a case whose name starts with "err " is an intended error case;
 every other case must return a value (at recording time the two sets
 matched exactly).
 
-read_csv inputs are written to CSV_DIR (under the system temp directory),
-one file per distinct content, named by its hash.
+read_csv inputs are written to csv_dir(): the run's own temporary folder, which tools/golden.py
+names in GOLDEN_TMP and removes at the end (a fresh folder per process when it is not set), one
+file per distinct content, named by its hash and written atomically.
 
 Sizes: "small" inputs are literals (~10-1000 rows); "big" inputs have
 N = 300_007 or H = 1_000_003 rows, above the parallel threshold (2**17 rows)
 and over many 2**14-row chunks.
 """
 
+import atexit
 import functools
 import hashlib
 import json
 import math
 import operator
+import os
 import pathlib
+import shutil
 import tempfile
 
 import numpy as np
@@ -32,7 +39,7 @@ import numpy as np
 EMBED = 32  # cases that return a long list return its hash (_jsha) instead
 N = 300_007
 H = 1_000_003
-CSV_DIR = pathlib.Path(tempfile.gettempdir()) / "stardust-golden-frame"
+_CSV_DIR = []  # the folder, once made
 
 # --------------------------------------------------------------------------
 # encode: a JSON-able form of the frame objects, exact to the bit, through
@@ -69,7 +76,7 @@ def _index(x, F, enc):
     if isinstance(x, F.RangeIndex):
         return {"RangeIndex": [x.start, x.stop, x.step], "name": x.name, "dtype": str(x.dtype), "len": len(x)}
     if isinstance(x, F.Index):
-        labels = _tl(x)
+        labels = x.tolist()
         dt = str(x.dtype)
         if dt == "int64":
             a = np.asarray(labels, dtype=np.int64)
@@ -81,13 +88,13 @@ def _index(x, F, enc):
 
 
 def encode(x, L, enc):
-    F = L.F
+    F = L.sd.frame
     if x is F.NA:
         return {"NA": True}
     if isinstance(x, F.Series):
         return {"Series": _column(x, enc), "name": x.name, "index": _index(x.index, F, enc)}
     if isinstance(x, F.DataFrame):
-        names = _tl(x.columns)
+        names = x.columns.tolist()
         return {
             "DataFrame": [enc(k) for k in names],
             "shape": list(x.shape),
@@ -130,7 +137,7 @@ class _Data:
 
     def __init__(self, L):
         self.L = L
-        self.F = L.F
+        self.F = L.sd.frame
 
     def _na_list(self, values, mask):
         return [None if m else v for v, m in zip(values, mask)]
@@ -355,13 +362,31 @@ def _big_csv(r, rows):
     return "\n".join(out) + "\n"
 
 
+def csv_dir():
+    """The folder of the read_csv inputs: GOLDEN_TMP/frame-csv, else a new temporary folder
+    removed when the process ends."""
+    if not _CSV_DIR:
+        run_tmp = os.environ.get("GOLDEN_TMP")
+        if run_tmp:
+            d = pathlib.Path(run_tmp) / "frame-csv"
+            d.mkdir(parents=True, exist_ok=True)
+        else:
+            d = pathlib.Path(tempfile.mkdtemp(prefix="sd-golden-frame-"))
+            atexit.register(shutil.rmtree, d, True)
+        _CSV_DIR.append(d)
+    return _CSV_DIR[0]
+
+
 def _csv_path(text):
-    """Write `text` (str or bytes) under CSV_DIR, named by its hash, and give the path."""
+    """Write `text` (str or bytes) under csv_dir(), named by its hash, and give the path. The
+    worker processes of one run share the folder: each writes under a name of its own and
+    renames, so a reader never sees a partly written file."""
     data = text.encode("utf-8") if isinstance(text, str) else text
-    CSV_DIR.mkdir(parents=True, exist_ok=True)
-    p = CSV_DIR / (hashlib.sha256(data).hexdigest()[:20] + ".csv")
+    p = csv_dir() / (hashlib.sha256(data).hexdigest()[:20] + ".csv")
     if not p.exists() or p.read_bytes() != data:
-        p.write_bytes(data)
+        tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, p)
     return p
 
 
@@ -386,53 +411,14 @@ LOGIC = [("and", operator.and_), ("or", operator.or_), ("xor", operator.xor)]
 REDUCTIONS = ["sum", "mean", "min", "max", "std", "var"]
 
 
-# M6 renamed some arguments and methods (DESIGN.md §9.1, §9.3, §9.4); the
-# cases spell the old ones and the helpers here translate them. Main arguments
-# are positional-only, so the cases pass them by position.
-_NEW = [True]
-
-
-def _negate(v):
-    """descending is not ascending: one bool or one per key; other values (errors) stay."""
-    if isinstance(v, bool):
-        return not v
-    if isinstance(v, (list, tuple)):
-        return type(v)(not x if isinstance(x, bool) else x for x in v)
-    return v
-
-
-def _kw(kw):
-    if not _NEW[0] or kw is None:
-        return kw
-    out = {}
-    for k, v in kw.items():
-        if k == "ddof":
-            out["correction"] = v
-        elif k == "ascending":
-            out["descending"] = _negate(v)
-        else:
-            out[k] = v
-    return out
-
-
-def _tl(x):
-    """x.to_list() of the old package, x.tolist() in M6 (§9.4)."""
-    return x.tolist() if _NEW[0] else x.to_list()
-
-
-def _uv(s):
-    """s.unique() of the old package, s.unique_values() in M6 (§9.4: sorted order)."""
-    return s.unique_values() if _NEW[0] else s.unique()
-
-
 def _red(obj, op, **kw):
-    return getattr(obj, op)(**_kw(kw))
+    return getattr(obj, op)(**kw)
 
 
 def cases(L):
     out = []
     add = lambda name, fn: out.append((name, fn))  # noqa: E731
-    F, np_ = L.F, L.np
+    F, np_ = L.sd.frame, L.np
     NA = F.NA
     D = _Data(L)
 
@@ -456,7 +442,7 @@ def cases(L):
     add("ctor Series(None, index, dtype)", lambda: F.Series(None, index=["a", "b"], dtype="string"))
     for k, mk in small.items():
         add(f"ctor small {k}", mk)
-        add(f"ctor small {k} labelled", lambda mk=mk: F.Series(_tl(mk()), index=list(LBL)))
+        add(f"ctor small {k} labelled", lambda mk=mk: F.Series(mk().tolist(), index=list(LBL)))
     add("ctor small f2", sf2)
     add("ctor small i2", si2)
     add("ctor int+float", lambda: F.Series([1, 2.5, None]))
@@ -592,7 +578,7 @@ def cases(L):
         add(f"prop index {k}", lambda mk=mk: mk().index)
         add(f"prop name {k}", lambda mk=mk: mk().name)
         add(f"iter {k}", lambda mk=mk: list(mk()))
-        add(f"to_list {k}", lambda mk=mk: _tl(mk()))
+        add(f"to_list {k}", lambda mk=mk: mk().tolist())
     add("prop name set", lambda: (lambda s: (setattr(s, "name", "new"), s)[1])(F.Series([1])))
     add("prop name set None", lambda: (lambda s: (setattr(s, "name", None), s)[1])(F.Series([1], name="a")))
     add("err prop name set int", lambda: setattr(F.Series([1]), "name", 3))
@@ -625,7 +611,7 @@ def cases(L):
         add(f"index dtype {nm}", lambda mk=mk: mk().dtype)
         add(f"index name {nm}", lambda mk=mk: mk().name)
         add(f"index is_unique {nm}", lambda mk=mk: mk().is_unique)
-        add(f"index to_list {nm}", lambda mk=mk: _jsha(_tl(mk())) if len(mk()) > EMBED else _tl(mk()))
+        add(f"index to_list {nm}", lambda mk=mk: _jsha(mk().tolist()) if len(mk()) > EMBED else mk().tolist())
         add(f"index len {nm}", lambda mk=mk: len(mk()))
         add(f"index iter {nm}", lambda mk=mk: _jsha(list(mk())))
         add(f"index in {nm}", lambda mk=mk: [x in mk() for x in (1, 2, 5, 8, "a", "b", "w1", 1.0, True, "zz")])
@@ -689,18 +675,19 @@ def cases(L):
     add("err df to_numpy mixed", lambda: sdf().to_numpy(na_value=None))
     add("err df to_numpy NA", lambda: F.DataFrame({"a": [1, None]}).to_numpy())
     add("df to_numpy big", lambda: D.BDF[["v_f", "v_i"]].to_numpy(na_value=nan))
-    add("to_list big float", lambda: _jsha([_fkey(v) if isinstance(v, float) else repr(v) for v in _tl(D.BF)]))
-    add("to_list big string", lambda: _jsha([v if isinstance(v, str) else repr(v) for v in _tl(D.BS)]))
+    add("to_list big float", lambda: _jsha([_fkey(v) if isinstance(v, float) else repr(v) for v in D.BF.tolist()]))
+    add("to_list big string", lambda: _jsha([v if isinstance(v, str) else repr(v) for v in D.BS.tolist()]))
     add(
         "to_list types",
         lambda: (
-            [type(v).__name__ for v in _tl(F.Series([1, None]))] + [type(v).__name__ for v in _tl(F.Series([True]))]
+            [type(v).__name__ for v in (F.Series([1, None])).tolist()]
+            + [type(v).__name__ for v in (F.Series([True])).tolist()]
         ),
     )
 
     # ---------------------------------------------------------------- head, tail
     for n in [None, 0, 3, -3, 100, -100]:
-        args = () if n is None else (n,)  # n is positional-only in M6 (§9.3); the old package takes it either way
+        args = () if n is None else (n,)  # n is positional-only (DESIGN.md §9.3)
         add(f"head {n}", lambda args=args: sf().head(*args))
         add(f"tail {n}", lambda args=args: sf().tail(*args))
         add(f"df head {n}", lambda args=args: sdf_l().head(*args))
@@ -750,23 +737,23 @@ def cases(L):
     add(
         "arith int edge",
         lambda: [
-            _tl(F.Series([I64_MIN]) // -1),
-            _tl(abs(F.Series([I64_MIN]))),
-            _tl(-F.Series([I64_MIN])),
-            _tl(F.Series([I64_MAX]) + 1),
-            _tl(F.Series([I64_MAX]) * F.Series([I64_MAX])),
-            _tl(F.Series([7, -7, 7, -7]) // F.Series([2, 2, -2, -2])),
-            _tl(F.Series([7, -7, 7, -7]) % F.Series([2, 2, -2, -2])),
-            _tl(F.Series([7.5, -7.5, 7.5, -7.5]) % F.Series([2.0, 2.0, -2.0, -2.0])),
-            _tl(F.Series([2, 0, -1, 3]) ** F.Series([-1, -2, -3, 40])),
-            _tl(F.Series([0, 1, -1]) ** F.Series([0, 0, 0])),
-            _tl(F.Series([1, 2]) / F.Series([0, 0])),
-            _tl(F.Series([0]) / F.Series([0])),
-            _tl(F.Series([1.0, -1.0, 0.0]) / 0.0),
-            _tl(F.Series([1.0, -1.0]) // 0.0),
-            _tl(F.Series([5.0]) % 0.0),
-            _tl(F.Series([1]) ** NA),
-            _tl(NA ** F.Series([0])),
+            (F.Series([I64_MIN]) // -1).tolist(),
+            (abs(F.Series([I64_MIN]))).tolist(),
+            (-F.Series([I64_MIN])).tolist(),
+            (F.Series([I64_MAX]) + 1).tolist(),
+            (F.Series([I64_MAX]) * F.Series([I64_MAX])).tolist(),
+            (F.Series([7, -7, 7, -7]) // F.Series([2, 2, -2, -2])).tolist(),
+            (F.Series([7, -7, 7, -7]) % F.Series([2, 2, -2, -2])).tolist(),
+            (F.Series([7.5, -7.5, 7.5, -7.5]) % F.Series([2.0, 2.0, -2.0, -2.0])).tolist(),
+            (F.Series([2, 0, -1, 3]) ** F.Series([-1, -2, -3, 40])).tolist(),
+            (F.Series([0, 1, -1]) ** F.Series([0, 0, 0])).tolist(),
+            (F.Series([1, 2]) / F.Series([0, 0])).tolist(),
+            (F.Series([0]) / F.Series([0])).tolist(),
+            (F.Series([1.0, -1.0, 0.0]) / 0.0).tolist(),
+            (F.Series([1.0, -1.0]) // 0.0).tolist(),
+            (F.Series([5.0]) % 0.0).tolist(),
+            (F.Series([1]) ** NA).tolist(),
+            (NA ** F.Series([0])).tolist(),
         ],
     )
     for k in ["i", "f"]:
@@ -873,7 +860,7 @@ def cases(L):
     add("err bool(NA)", lambda: bool(NA))
     add("err hash series", lambda: hash(F.Series([1])))
     add("NA repr", lambda: repr(NA))
-    add("NA singleton", lambda: [NA is F.NA, _tl(F.Series([None]))[0] is NA, F.Series([1]).sum() is not NA])
+    add("NA singleton", lambda: [NA is F.NA, (F.Series([None])).tolist()[0] is NA, F.Series([1]).sum() is not NA])
 
     big_ew = {
         "int add": lambda: D.BI + D.BI,
@@ -1017,7 +1004,7 @@ def cases(L):
         "allNA": lambda: F.Series([None, None], dtype="string"),
     }
     for k, mk in uniq_small.items():
-        add(f"unique {k}", lambda mk=mk: _uv(mk()))
+        add(f"unique {k}", lambda mk=mk: mk().unique_values())
         add(f"nunique {k}", lambda mk=mk: mk().nunique())
         add(f"nunique {k} dropna=False", lambda mk=mk: mk().nunique(dropna=False))
         for keep in ["first", "last", "none"]:
@@ -1028,7 +1015,7 @@ def cases(L):
         add(f"value_counts {k}", lambda mk=mk: mk().value_counts())
         add(f"value_counts {k} dropna=False", lambda mk=mk: mk().value_counts(dropna=False))
         add(f"value_counts {k} normalize", lambda mk=mk: mk().value_counts(normalize=True, dropna=False))
-        add(f"value_counts {k} ascending", lambda mk=mk: mk().value_counts(**_kw(dict(ascending=True, dropna=False))))
+        add(f"value_counts {k} ascending", lambda mk=mk: mk().value_counts(descending=False, dropna=False))
         add(f"value_counts {k} sort=False", lambda mk=mk: mk().value_counts(sort=False, dropna=False))
     add("value_counts unnamed", lambda: F.Series([1, 1, 2]).value_counts())
     add("err value_counts name count", lambda: F.Series([1], name="count").value_counts())
@@ -1054,7 +1041,7 @@ def cases(L):
     add("df value_counts subset str normalize", lambda: sdf().value_counts("b", normalize=True))
     add(
         "df value_counts ascending sort=False",
-        lambda: sdf().value_counts(["b"], **_kw(dict(ascending=True, sort=False, dropna=False))),
+        lambda: sdf().value_counts(["b"], descending=False, sort=False, dropna=False),
     )
     add("err df value_counts count column", lambda: F.DataFrame({"count": [1]}).value_counts())
     add("err df duplicated unknown", lambda: sdf().duplicated(["zz"]))
@@ -1067,7 +1054,7 @@ def cases(L):
         ("huge f", lambda: D.HF),
         ("huge i", lambda: D.HI),
     ]:
-        add(f"big unique {nm}", lambda get=get: _uv(get()))
+        add(f"big unique {nm}", lambda get=get: get().unique_values())
         add(f"big nunique {nm}", lambda get=get: (get().nunique(), get().nunique(dropna=False)))
         for keep in ["first", "last", "none"]:
             add(f"big duplicated {nm} {keep}", lambda get=get, keep=keep: get().duplicated(keep=keep))
@@ -1079,7 +1066,7 @@ def cases(L):
         )
         add(
             f"big value_counts {nm} normalize ascending",
-            lambda get=get: get().value_counts(**_kw(dict(normalize=True, ascending=True))),
+            lambda get=get: get().value_counts(normalize=True, descending=False),
         )
     add("big df nunique", lambda: D.BDF.nunique())
     for keep in ["first", "last", "none"]:
@@ -1215,13 +1202,13 @@ def cases(L):
     add("big sel iloc take", lambda: D.BDF.iloc[D.PERM])
     add("big sel iloc slice step", lambda: D.BDF.iloc[5::3])
     add("big sel iloc series slice", lambda: D.BF.iloc[1000:250_000])
-    add("big sel loc list", lambda: F.Series(_tl(D.BF), index=D.base["words"]).loc[["w1", "é7", ""]])
+    add("big sel loc list", lambda: F.Series(D.BF.tolist(), index=D.base["words"]).loc[["w1", "é7", ""]])
     add("big sel loc labels", lambda: D.ALIGN[0].loc[D.PERM[:200_000]])
     add("big sel loc string labels", lambda: D.ALIGN[2].loc[[f"k{j}" for j in D.PERM[:150_000]]])
     add("big sel loc slice", lambda: D.ALIGN[0].loc[D.PERM[0] : D.PERM[1]])
     add(
         "big sel mask aligned",
-        lambda: D.ALIGN[0][F.Series((D.ALIGN[0] > 0).to_numpy(), index=_tl(D.ALIGN[0].index)[::-1])],
+        lambda: D.ALIGN[0][F.Series((D.ALIGN[0] > 0).to_numpy(), index=(D.ALIGN[0].index).tolist()[::-1])],
     )
     add("big reindex", lambda: D.ALIGN[0].reindex(list(range(-5, N, 2))))
     add("big df reindex", lambda: D.BDF.reindex(D.PERM))
@@ -1421,14 +1408,14 @@ def cases(L):
             add(f"{p}reduce {op} {k} skipna=False", lambda mk=mk, op=op: _red(mk(), op, skipna=False))
             if op in ("std", "var"):
                 for dd in (0, 2, 5):
-                    add(f"{p}reduce {op} {k} ddof={dd}", lambda mk=mk, op=op, dd=dd: _red(mk(), op, ddof=dd))
+                    add(f"{p}reduce {op} {k} ddof={dd}", lambda mk=mk, op=op, dd=dd: _red(mk(), op, correction=dd))
                     add(
                         f"{p}reduce {op} {k} ddof={dd} skipna=False",
-                        lambda mk=mk, op=op, dd=dd: _red(mk(), op, ddof=dd, skipna=False),
+                        lambda mk=mk, op=op, dd=dd: _red(mk(), op, correction=dd, skipna=False),
                     )
         add(f"reduce count {k}", lambda mk=mk: mk().count())
-    add("err reduce std ddof negative", lambda: _red(sf(), "std", ddof=-1))
-    add("err reduce var ddof float", lambda: _red(sf(), "var", ddof=1.5))
+    add("err reduce std ddof negative", lambda: _red(sf(), "std", correction=-1))
+    add("err reduce var ddof float", lambda: _red(sf(), "var", correction=1.5))
     add("err reduce sum positional", lambda: sf().sum(False))
     add("err reduce sum axis", lambda: sf().sum(axis=0))
     add(
@@ -1438,7 +1425,7 @@ def cases(L):
     for op in REDUCTIONS:
         add(f"df reduce {op}", lambda op=op: _red(F.DataFrame({"f": SF, "i": SI, "b2": SF2}), op))
         add(f"df reduce {op} skipna=False", lambda op=op: _red(F.DataFrame({"i": SI, "f": SF2}), op, skipna=False))
-    add("df reduce std ddof", lambda: _red(F.DataFrame({"i": SI2, "f": SF2}), "std", ddof=0))
+    add("df reduce std ddof", lambda: _red(F.DataFrame({"i": SI2, "f": SF2}), "std", correction=0))
     add("df reduce min mixed", lambda: sdf().min())
     add("df reduce max mixed", lambda: sdf_l().max(skipna=False))
     add("df reduce count", lambda: sdf().count())
@@ -1467,7 +1454,7 @@ def cases(L):
             add(f"big reduce {op} {k}", lambda get=get, op=op: _red(get(), op))
             add(f"big reduce {op} {k} skipna=False", lambda get=get, op=op: _red(get(), op, skipna=False))
             if op in ("std", "var"):
-                add(f"big reduce {op} {k} ddof=0", lambda get=get, op=op: _red(get(), op, ddof=0))
+                add(f"big reduce {op} {k} ddof=0", lambda get=get, op=op: _red(get(), op, correction=0))
         add(f"big reduce count {k}", lambda get=get: get().count())
     add("err big reduce mean s", lambda: D.BS.mean())
     for op in REDUCTIONS:
@@ -1506,16 +1493,18 @@ def cases(L):
         ("last", {"skipna": False}),
         ("sum", {"skipna": False}),
         ("max", {"skipna": False}),
-        ("std", {"ddof": 0}),
-        ("var", {"ddof": 3}),
+        ("std", {"correction": 0}),
+        ("var", {"correction": 3}),
         ("mean", {"skipna": False}),
     ]
 
     def gcall(g, f, kw):
-        return getattr(g, f)() if kw is None else getattr(g, f)(**_kw(kw))
+        return getattr(g, f)() if kw is None else getattr(g, f)(**kw)
 
-    def gname(f, kw):
-        return f + ("" if not kw else " " + ",".join(f"{a}={b}" for a, b in kw.items()))
+    def gname(f, kw):  # the case names spell correction as ddof
+        return f + (
+            "" if not kw else " " + ",".join(f"{'ddof' if a == 'correction' else a}={b}" for a, b in kw.items())
+        )
 
     numeric = ["v", "n", "t"]
     for by in ["k", "kf", "ks", "kb", ["k", "ks"], ["kb", "kf", "ks"]]:
@@ -1624,23 +1613,23 @@ def cases(L):
             for nap in ("last", "first"):
                 add(
                     f"sort_values {k} asc={asc} na={nap}",
-                    lambda mk=mk, asc=asc, nap=nap: mk().sort_values(**_kw(dict(ascending=asc, na_position=nap))),
+                    lambda mk=mk, asc=asc, nap=nap: mk().sort_values(descending=not asc, na_position=nap),
                 )
         add(f"sort_values {k} ignore_index", lambda mk=mk: mk().sort_values(ignore_index=True))
-    add("sort_values labelled", lambda: sl().sort_values(**_kw(dict(ascending=False))))
+    add("sort_values labelled", lambda: sl().sort_values(descending=True))
     add("sort_values empty", lambda: F.Series([], dtype="string").sort_values())
     for asc in (True, False):
-        kw = dict(ascending=asc)
+        kw = dict(descending=not asc)
         add(
             f"sort_index str asc={asc}",
-            lambda kw=kw: F.Series(list(range(15)), index=list(reversed(LBL))).sort_index(**_kw(kw)),
+            lambda kw=kw: F.Series(list(range(15)), index=list(reversed(LBL))).sort_index(**kw),
         )
-        add(f"sort_index int asc={asc}", lambda kw=kw: sint().sort_index(**_kw(kw)))
-        add(f"sort_index range asc={asc}", lambda kw=kw: sf().sort_index(**_kw(kw)))
-        add(f"sort_index dup asc={asc}", lambda kw=kw: sdup().sort_index(**_kw(kw)))
-        add(f"df sort_index asc={asc}", lambda kw=kw: sdf_l().iloc[[5, 0, 12, 3]].sort_index(**_kw(kw)))
+        add(f"sort_index int asc={asc}", lambda kw=kw: sint().sort_index(**kw))
+        add(f"sort_index range asc={asc}", lambda kw=kw: sf().sort_index(**kw))
+        add(f"sort_index dup asc={asc}", lambda kw=kw: sdup().sort_index(**kw))
+        add(f"df sort_index asc={asc}", lambda kw=kw: sdf_l().iloc[[5, 0, 12, 3]].sort_index(**kw))
     add("sort_index ignore_index", lambda: sint().sort_index(ignore_index=True))
-    add("df sort_index ignore_index", lambda: sdf_l().sort_index(**_kw(dict(ascending=False, ignore_index=True))))
+    add("df sort_index ignore_index", lambda: sdf_l().sort_index(descending=True, ignore_index=True))
     for by, asc, nap in [
         ("f", True, "last"),
         ("s", False, "first"),
@@ -1651,15 +1640,17 @@ def cases(L):
     ]:
         add(
             f"df sort_values {by} {asc} {nap}",
-            lambda by=by, asc=asc, nap=nap: sdf_l().sort_values(by, **_kw(dict(ascending=asc, na_position=nap))),
+            lambda by=by, asc=asc, nap=nap: sdf_l().sort_values(
+                by, descending=[not a for a in asc] if isinstance(asc, list) else not asc, na_position=nap
+            ),
         )
     add("df sort_values ignore_index", lambda: sdf_l().sort_values("i", ignore_index=True))
     add("err sort_values na_position", lambda: sf().sort_values(na_position="middle"))
-    add("err sort_values ascending int", lambda: sf().sort_values(**_kw(dict(ascending=1))))
+    add("err sort_values ascending int", lambda: sf().sort_values(descending=1))
     add("err sort_values positional", lambda: sf().sort_values(False))
     add("err df sort_values unknown", lambda: sdf().sort_values("zz"))
     add("err df sort_values empty", lambda: sdf().sort_values([]))
-    add("err df sort_values ascending length", lambda: sdf().sort_values(["f", "i"], **_kw(dict(ascending=[True]))))
+    add("err df sort_values ascending length", lambda: sdf().sort_values(["f", "i"], descending=[False]))
     add("err df sort_values na length", lambda: sdf().sort_values(["f"], na_position=["first", "last"]))
     add("err sort_values kind", lambda: sf().sort_values(kind="stable"))
     for k, get in [
@@ -1673,26 +1664,26 @@ def cases(L):
         for asc, nap in [(True, "last"), (False, "first"), (False, "last")]:
             add(
                 f"big sort_values {k} asc={asc} na={nap}",
-                lambda get=get, asc=asc, nap=nap: get().sort_values(**_kw(dict(ascending=asc, na_position=nap))),
+                lambda get=get, asc=asc, nap=nap: get().sort_values(descending=not asc, na_position=nap),
             )
     add("big sort_values ignore_index", lambda: D.BF.sort_values(ignore_index=True))
     add("big sort_index int", lambda: D.ALIGN[0].sort_index())
-    add("big sort_index int desc", lambda: D.ALIGN[0].sort_index(**_kw(dict(ascending=False))))
+    add("big sort_index int desc", lambda: D.ALIGN[0].sort_index(descending=True))
     add("big sort_index string", lambda: D.ALIGN[2].sort_index())
     add(
         "big sort_index dup",
-        lambda: F.Series(D.base["ints"], index=D.base["ints"]).sort_index(**_kw(dict(ascending=False))),
+        lambda: F.Series(D.base["ints"], index=D.base["ints"]).sort_index(descending=True),
     )
     add(
         "big df sort_values multi",
-        lambda: D.BDF.sort_values(["k_s", "v_f"], **_kw(dict(ascending=[True, False], na_position=["last", "first"]))),
+        lambda: D.BDF.sort_values(["k_s", "v_f"], descending=[False, True], na_position=["last", "first"]),
     )
     add(
         "big df sort_values 4 keys",
-        lambda: D.BDF.sort_values(["k_b", "k_f", "k_i", "v_s"], **_kw(dict(ascending=False))),
+        lambda: D.BDF.sort_values(["k_b", "k_f", "k_i", "v_s"], descending=True),
     )
     add("big df sort_values ignore_index", lambda: D.BDF.sort_values("v_i", ignore_index=True, na_position="first"))
-    add("big df sort_index", lambda: D.BDF.iloc[D.PERM].sort_index(**_kw(dict(ascending=False))))
+    add("big df sort_index", lambda: D.BDF.iloc[D.PERM].sort_index(descending=True))
 
     # ---------------------------------------------------------------- merge (§5, §18)
     def ml():
@@ -2031,7 +2022,7 @@ def cases(L):
     add("str df", lambda: str(sdf()))
 
     # ---------------------------------------------------------------- signatures (§11, C2)
-    add("err sig unknown keyword", lambda: si().fillna(0, extra=1))  # value is positional-only in M6 (§9.3)
+    add("err sig unknown keyword", lambda: si().fillna(0, extra=1))  # value is positional-only (DESIGN.md §9.3)
     add("sig keyword head", lambda: si().head(n=2))
     add("sig keyword astype", lambda: si().astype(dtype="float64"))
     add("sig keyword fillna", lambda: si().fillna(value=0))
@@ -2045,15 +2036,15 @@ def cases(L):
     add("sig keyword Series", lambda: F.Series(data=[1]))
     add("sig keyword equals", lambda: F.Index([1]).equals(other=F.Index([1])))
     add("err sig isnull", lambda: si().isnull())
-    add("err sig tolist", lambda: si().to_list() if _NEW[0] else si().tolist())  # the alias stays absent (§9.4)
+    add("err sig tolist", lambda: si().to_list())  # no to_list alias (DESIGN.md §9.4)
     add("err sig add method", lambda: si().add(1))
     add("err sig series groupby", lambda: si().groupby([1]))
     add("err sig dropna positional", lambda: sdf().dropna("any"))
     add("err sig agg func keyword", lambda: gdf().groupby("k").agg(func="sum"))
 
     # ---------------------------------------------------------------- threads (§20)
-    # The thread count is library-wide: sd.set_num_threads (ROADMAP M5).
-    T = L._threads
+    # The thread count is library-wide: sd.set_num_threads.
+    T = L.sd
 
     def threads_roundtrip():
         n = T.get_num_threads()

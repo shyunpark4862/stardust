@@ -1,14 +1,13 @@
-"""sd.linalg against numpy and scipy. The base set is the old baseline's (bench/linalg/ (at commit 4151d2a)
-baseline.py matrix_rows and long_rows, timed by bench/linalg/stage_compare.py, summed up
-by bench/linalg/final_table.py, rerun after the merge through bench/merge/rerun.sh):
-every function on single small and large matrices, batches, long vectors and long
-banded systems. On top of it: rectangular matrices, several right-hand sides, batches
-near the split threshold (linalg.md §7), complex matrices, batched banded systems, and
+"""sd.linalg against numpy and scipy. The base set (matrix_rows and long_rows): every
+function on single small and large matrices, batches, long vectors and long banded
+systems. On top of it: rectangular matrices, several right-hand sides, batches
+near the split threshold (docs/design/linalg.md §7), complex matrices, batched banded systems, and
 inputs that take sd's own paths (a triangular or small-norm expm, the generalized
 eigvalsh, cond with ord=1).
 
-The comparator is numpy where numpy has the function, else scipy, at their default
-threads (their BLAS on its default pool), as stage_compare.py --ref did. scipy 1.18
+The comparator is numpy where numpy has the function, else scipy. Their work is BLAS and
+LAPACK, so they "follow" sd's thread count (their BLAS at 1 thread in sd's 1-thread rows,
+at its default in the 10-thread rows); R runs on one thread. scipy 1.18
 takes batches for lu_factor / lu_solve, ldl, cho_solve, solve_banded and lstsq, so every
 row has a comparator. Every comparator does sd's work: numpy's full_matrices and mode
 follow sd's mode, scipy's cho_solve gets cho_factor's factor as sd gets its cholesky.
@@ -33,7 +32,7 @@ from __future__ import annotations
 import functools
 import importlib
 
-from ..registry import Case, Ref, RRef
+from ..registry import Case, Check, Ref, RRef, count
 
 MATRIX_SHAPES = [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32), (16, 3, 3), (8, 300, 300)]
 KIND = {
@@ -132,12 +131,12 @@ _SD_COPIES = (
 
 
 def _matrix_data(shape, keys, quiet=False, cplx=False):
-    """The inputs of baseline.py's matrix_rows at one shape (m, n or batch, m, n); only
+    """The inputs of matrix_rows at one shape (m, n or batch, m, n); only
     `keys` (and what they need) are built. Lower case: numpy, upper case: the sd copy.
     cplx: complex128 a, b, c and what is built from them (h Hermitian, spd = a·aᴴ + n·I).
 
     quiet: numpy's det and slogdet raise spurious floating-point warnings on Accelerate
-    (baseline.py silenced them with np.seterr for the whole run); each warning costs
+    (silenced here with np.seterr); each warning costs
     numpy a trip through the warnings module per call. The registry has no teardown,
     so every other linalg setup puts numpy's default error state back."""
     import numpy as np
@@ -223,7 +222,7 @@ def _matrix_data(shape, keys, quiet=False, cplx=False):
 
 
 def _long_data(keys):
-    """baseline.py's long_rows inputs, and the batched banded systems."""
+    """The long_rows inputs, and the batched banded systems."""
     import numpy as np
 
     import stardust as sd
@@ -278,8 +277,8 @@ def _kron_batch(a, k3):
 
 
 def matrix_rows(shape):
-    """(name, sd call, (lib, ref call), note) at one square shape: baseline.py's rows and
-    the ones added since. ROW_SHAPES limits a row to some shapes."""
+    """(name, sd call, (lib, ref call), note) at one square shape. ROW_SHAPES limits a row
+    to some shapes."""
     single = len(shape) == 2
     return [
         ("solve(a, b)", S("solve", "A", "B"), N("linalg.solve", "a", "b"), ""),
@@ -381,7 +380,7 @@ def matrix_rows(shape):
         ("cross(v, w)", S("cross", "V3", "W3"), N("cross", "v3", "w3"), "행마다 앞 세 원소"),
         ("expm(a)", S("expm", "A"), P("expm", "a"), ""),
         ("expm(t)", S("expm", "UT"), P("expm", "ut"), "위 삼각 행렬"),
-        ("expm(0.01·a)", S("expm", "A001"), P("expm", "a001"), "노름이 작은 행렬"),
+        ("expm(0.01*a)", S("expm", "A001"), P("expm", "a001"), "노름이 작은 행렬"),
     ]
 
 
@@ -404,7 +403,7 @@ R_ROWS = {
     "eigvals(a)": ("eigen(a, symmetric = FALSE, only.values = TRUE)", ("a",)),
     "expm(a)": ("expm(A)", ("a",), "A <- Matrix(a)", ("Matrix",)),
     "expm(t)": ("expm(A)", ("ut",), "A <- Matrix(ut)", ("Matrix",)),
-    "expm(0.01·a)": ("expm(A)", ("a001",), "A <- Matrix(a001)", ("Matrix",)),
+    "expm(0.01*a)": ("expm(A)", ("a001",), "A <- Matrix(a001)", ("Matrix",)),
     "vecdot(v, v)": ("crossprod(v, v)", ("v",)),  # long vectors: the accuracy side's array vecdot
 }
 
@@ -491,17 +490,17 @@ def rect_rows():
 
 
 def long_rows():
-    """(name, size, n, sd call, (lib, ref call), note), as baseline.py's long_rows, and
-    the batched banded systems."""
-    band = "n=10^5"
-    qsize = f"({BAND_BATCH[0]}, n={BAND_BATCH[1]})"
+    """(name, size, n, sd call, (lib, ref call), note): long vectors and banded systems,
+    and the batched banded systems."""
+    band = "10^5"
+    qsize = f"{BAND_BATCH[0]} x ({BAND_BATCH[1]},)"
     qn = BAND_BATCH[0] * BAND_BATCH[1]
     return [
-        ("vecdot(v, v)", "(10^6,)", LONG_N, S("vecdot", "V", "V"), N("vecdot", "v", "v"), ""),
-        ("vector_norm(v)", "(10^6,)", LONG_N, S("vector_norm", "V"), N("linalg.vector_norm", "v"), ""),
+        ("vecdot(v, v)", "10^6", LONG_N, S("vecdot", "V", "V"), N("vecdot", "v", "v"), ""),
+        ("vector_norm(v)", "10^6", LONG_N, S("vector_norm", "V"), N("linalg.vector_norm", "v"), ""),
         (
             "vector_norm(v, ord=inf)",
-            "(10^6,)",
+            "10^6",
             LONG_N,
             S("vector_norm", "V", ord=float("inf")),
             N("linalg.vector_norm", "v", ord=float("inf")),
@@ -539,12 +538,12 @@ def long_rows():
             P("solve_banded", (2, 2), "q_ab5", "q_b"),
             "연립 100개",
         ),
-        ("cross(p, q)", "(10^6,3)", LONG_N, S("cross", "P3", "Q3"), N("cross", "p3", "q3"), ""),
+        ("cross(p, q)", "(1000000, 3)", LONG_N, S("cross", "P3", "Q3"), N("cross", "p3", "q3"), ""),
     ]
 
 
-# The representative rows of bench/linalg/final_table.py (PICK), less the slowest, and
-# one rectangular and one complex row: (name, shape or size).
+# The quick subset: a representative row per kind of work (the slowest left out), one
+# rectangular and one complex row: (name, shape or size).
 QUICK = {
     ("solve(a, b)", (3, 3)),
     ("solve(a, b)", (1000, 1000)),
@@ -559,7 +558,7 @@ QUICK = {
     ("solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)", (1000, 3, 3)),
     ("expm(a)", (1000, 3, 3)),
     ("expm(a)", (300, 300)),
-    ("vecdot(v, v)", "(10^6,)"),
+    ("vecdot(v, v)", "10^6"),
 }
 QUICK_RECT = {("lstsq(a, b)", (10_000, 100))}
 QUICK_COMPLEX = {("solve(a, b)", (300, 300))}
@@ -570,12 +569,61 @@ def _keys(*calls):
 
 
 def _ref(r, rref=None):
-    out = () if r is None else (Ref(r[0], r[1].make),)
+    out = () if r is None else (Ref(r[0], r[1].make, threads="follow"),)
     return out if rref is None else (*out, rref)
 
 
+# ---------------------------------------------------------------- the results check
+# What the smoke run compares where the results are not one array in one convention: the
+# eigenvalues and singular values sorted (the libraries order them differently, and
+# eigenvectors are unique only up to a factor), |diag(R)| of a pivoted QR, L and U of an LU
+# (scipy returns P, sd a permutation vector), the solution of lstsq, and R's upper Cholesky
+# factor transposed. R's lists arrive as dicts by component name (rsession.value).
+
+
+def _np(x):
+    import numpy as np
+
+    return np.asarray(x)
+
+
+def _sorted(x):
+    import numpy as np
+
+    return np.sort(_np(x), axis=-1)
+
+
+def _diag_abs(r):
+    import numpy as np
+
+    return np.abs(np.diagonal(_np(r), axis1=-2, axis2=-1))
+
+
+def _part(v, py_index, r_name):
+    """Component `py_index` of a Python result (a tuple), or `r_name` of R's dict."""
+    return v[r_name] if isinstance(v, dict) else v[py_index]
+
+
+CHECKS = {
+    "eig(a)": Check(sd=lambda r: _sorted(r[0]), ref=lambda lab, v: _sorted(_part(v, 0, "values"))),
+    "eigvals(a)": Check(sd=_sorted, ref=lambda lab, v: _sorted(v["values"] if isinstance(v, dict) else v)),
+    "eigh(h)": Check(sd=lambda r: _sorted(r[0]), ref=lambda lab, v: _sorted(_part(v, 0, "values"))),
+    "eigvalsh(h)": Check(sd=_sorted, ref=lambda lab, v: _sorted(v["values"] if isinstance(v, dict) else v)),
+    "svd(a)": Check(sd=lambda r: _sorted(r[1]), ref=lambda lab, v: _sorted(_part(v, 1, "d"))),
+    'svd(a, mode="complete")': Check(sd=lambda r: _sorted(r[1]), ref=lambda lab, v: _sorted(_part(v, 1, "d"))),
+    "svdvals(a)": Check(sd=_sorted, ref=lambda lab, v: _sorted(v["d"] if isinstance(v, dict) else v)),
+    "qr_pivoted(a)": Check(sd=lambda r: _diag_abs(r[1]), ref=lambda lab, v: _diag_abs(_part(v, 1, "2"))),
+    "lu(a)": Check(sd=lambda r: [_np(r[0]), _np(r[1])], ref=lambda lab, v: [_np(v[1]), _np(v[2])]),
+    "lstsq(a, b)": Check(sd=lambda r: _np(r[0]), ref=lambda lab, v: _np(v[0])),
+    "cholesky(spd)": Check(ref=lambda lab, v: _np(v).T if lab == "R" else v),
+}
+
+
 def _size(shape):
-    return "(" + ",".join(map(str, shape)) + ")"
+    """(m, n), or B x (m, n) for a batch."""
+    if len(shape) == 3:
+        return f"{count(shape[0])} x ({shape[1]}, {shape[2]})"
+    return "(" + ", ".join(map(str, shape)) + ")"
 
 
 def _matrix_case(group, shape, name, sdc, ref, note, quick, cplx=False, threads=(1, 10)):
@@ -593,6 +641,7 @@ def _matrix_case(group, shape, name, sdc, ref, note, quick, cplx=False, threads=
         note=note,
         quick=quick,
         threads=threads,
+        check=CHECKS.get(name, Check()),
     )
 
 

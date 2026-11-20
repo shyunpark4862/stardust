@@ -20,23 +20,10 @@ from hypothesis import strategies as st
 import stardust as sd
 
 from .._tier import examples
+from .conftest import same_cell
 
 NA = sd.frame.NA
 EXAMPLES = examples(300)
-
-
-def bits(x):
-    return np.float64(x).tobytes()
-
-
-def same(x, y):
-    if x is NA or y is NA:
-        return x is y
-    if isinstance(x, float) or isinstance(y, float):
-        return (
-            isinstance(x, float) and isinstance(y, float) and (bits(x) == bits(y) or (math.isnan(x) and math.isnan(y)))
-        )
-    return x == y and type(x) is type(y)
 
 
 def close(x, y, scale, ulps=64):
@@ -61,16 +48,16 @@ def test_float_reductions_match_the_array_and_numpy(data):
     count = int(valid.sum())
     scale = float(np.sum(np.abs(filled)))
     array_sum = float(sd.sum(sd.asarray(filled)))
-    assert same(s.sum(), array_sum)  # the same tree: the array's bits
+    assert same_cell(s.sum(), array_sum)  # the same tree: the array's bits
     assert close(s.sum(), float(np.sum(filled)), scale)
     assert s.count() == count
     if count == 0:
         assert s.mean() is NA and s.min() is NA and s.var() is NA
         return
-    assert same(s.mean(), array_sum / count)
+    assert same_cell(s.mean(), array_sum / count)
     assert close(s.mean(), float(np.sum(filled)) / count, scale / count)
-    assert same(s.min(), float(np.min(filled[valid])))  # not rounding: exactly numpy's
-    assert same(s.max(), float(np.max(filled[valid])))
+    assert same_cell(s.min(), float(np.min(filled[valid])))  # not rounding: exactly numpy's
+    assert same_cell(s.max(), float(np.max(filled[valid])))
     mean = np.sum(filled) / count
     for correction in (0, 1):
         if count - correction <= 0:
@@ -80,10 +67,10 @@ def test_float_reductions_match_the_array_and_numpy(data):
         var = np.sum(sqr) / (count - correction)
         got = s.var(correction=correction)
         assert close(got, float(var), float(var) + abs(float(mean)) * scale / count / (count - correction), 1024)
-        assert same(s.std(correction=correction), math.sqrt(got))
+        assert same_cell(s.std(correction=correction), math.sqrt(got))
         if count == n:  # no NA: the array's var, bit for bit
-            assert same(got, float(sd.var(sd.asarray(filled), correction=correction)))
-            assert same(s.std(correction=correction), float(sd.std(sd.asarray(filled), correction=correction)))
+            assert same_cell(got, float(sd.var(sd.asarray(filled), correction=correction)))
+            assert same_cell(s.std(correction=correction), float(sd.std(sd.asarray(filled), correction=correction)))
     if count == n:  # no NA: pandas agrees within rounding
         p = pd.Series(values, dtype="float64")
         assert close(s.sum(), float(p.sum()), scale) and close(s.mean(), float(p.mean()), scale / n)
@@ -101,11 +88,11 @@ def test_int_reductions(values):
         return
     # the exact sum rounded once, divided once (base/int_sum.hpp): Python's int and float do the same
     mean = float(sum(present)) / len(present)
-    assert same(s.mean(), mean)
+    assert same_cell(s.mean(), mean)
     if len(present) == len(values):  # without NA: the array's mean and var, bit for bit
         x = sd.asarray(np.array(values, dtype=np.int64))
-        assert same(s.mean(), float(sd.mean(x)))
-        assert same(s.var(), float(sd.var(x)))
+        assert same_cell(s.mean(), float(sd.mean(x)))
+        assert same_cell(s.var(), float(sd.var(x)))
         scale = sum(abs(v) for v in present) / len(present)
         assert close(s.mean(), float(np.mean(np.array(values, dtype=np.int64))), scale)
     assert s.min() == min(present) and s.max() == max(present)
@@ -128,8 +115,8 @@ def test_nan_propagates_whatever_skipna_says():
 def test_signed_zeros():
     for values in ([0.0, -0.0], [-0.0, 0.0], [-0.0] * 9):
         s = sd.frame.Series(values)
-        assert same(s.min(), float(np.min(values))) and same(s.max(), float(np.max(values)))
-        assert same(s.sum(), float(np.sum(values)))
+        assert same_cell(s.min(), float(np.min(values))) and same_cell(s.max(), float(np.max(values)))
+        assert same_cell(s.sum(), float(np.sum(values)))
 
 
 def test_all_na_and_empty():

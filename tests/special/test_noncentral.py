@@ -1,10 +1,10 @@
-"""T2: the noncentral distributions (docs/api/special.md §14).
+"""The noncentral distributions (docs/api/special.md §14).
 
 Accuracy against the Arb references is test_reference.py's job (tests/special/ref/*.npz);
-here: the special values (true values and limits, T1/T2 decision), the central
+here: the special values (true values and limits, docs/design/special.md §2.4), the central
 functions at nc = 0, agreement with scipy where scipy is right, the inverses'
 round trips and their roots beyond the double range, and regressions found while
-building T2. x comes last in every signature (T2 decision; scipy's chndtr takes
+measuring them. x comes last in every signature (docs/design/special.md §2.4; scipy's chndtr takes
 x first).
 """
 
@@ -15,8 +15,10 @@ import numpy as np
 import pytest
 import scipy.special as sc
 import scipy.stats as st
+from flint import arb, ctx
 
 import stardust as sd
+from tests._bits import bits_equal
 
 S = sd.special
 INF, NAN = math.inf, math.nan
@@ -166,7 +168,7 @@ def test_inverses_round_trip():
 
 def test_inverses_beyond_the_double_range():
     # A root returned as 0 lies within the subnormal bound: F(45 * 2^-1074) >= p
-    # (these points have no reference value, T1 and T2).
+    # (these points have no reference value).
     rng = np.random.default_rng(3)
     df, nc, p = (
         np.exp(rng.uniform(-4.6, 1, 3000)),
@@ -197,7 +199,7 @@ def test_the_tail_away_from_the_noncentrality():
 
 
 def test_fdtr_with_x_near_one_from_a_division_regression():
-    # T2 found fdtr(3218.14, 0.0129237, 1e20) off by 1.5e-9: w = 1 - 4e-26 from a division
+    # fdtr(3218.14, 0.0129237, 1e20) was off by 1.5e-9: w = 1 - 4e-26 from a division
     # carries only 1e-32 absolutely, and bgrat took log w from it (now from 1 - w). Arb:
     assert abs(S.fdtr(3218.14, 0.0129237, 1e20) / 0.27853048221645325 - 1) < 1e-15
     assert abs(S.ncfdtr(3218.14, 0.0129237, 10.4689, 1e20) / 0.27851534065985444 - 1) < 1e-15
@@ -212,7 +214,7 @@ def test_x_last_and_python_scalars():
 
 
 def test_df_zero_at_subnormal_x_review_regression():
-    # x/2 underflowed to 0 and chdtr(0, x) became gammainc(0, 0) = NaN (review of T1/T2);
+    # x/2 underflowed to 0 and chdtr(0, x) became gammainc(0, 0) = NaN (a code review found it);
     # chdtr(0, x > 0) is 1, and the noncentral one keeps its point mass e^(-nc/2).
     assert S.chdtr(0.0, 5e-324) == 1.0 and S.chdtrc(0.0, 5e-324) == 0.0
     assert abs(S.chndtr(0.0, 3.0, 5e-324) / math.exp(-1.5) - 1) < 1e-15
@@ -287,3 +289,87 @@ def test_every_call_returns_and_an_unfinished_sum_is_nan():
     # arrays give the scalar's bits, NaN included
     v = np.asarray(S.chndtr(sd.asarray([3.5, 3.5]), sd.asarray([1e15, 2.0]), sd.asarray([1e15, 1e300])))
     assert math.isnan(v[0]) and v[1] == 1.0
+
+
+def test_noncentral_chi_square_large_side_from_the_small():
+    # the side near 1 ran out of terms from nc ~ 1.47e9; now 1 - the other side
+    nc = 2.0e9
+    s = math.sqrt(2.0 * (3.0 + 2.0 * nc))
+    for k in (-6.0, -1.0, 1.0, 6.0):
+        x = nc + 3.0 + k * s
+        p, q = S.chndtr(3.0, nc, x), S.chndtrc(3.0, nc, x)
+        assert math.isfinite(p) and math.isfinite(q)
+        assert abs(p + q - 1.0) <= 4e-16
+        assert p == pytest.approx(S.ndtr(k), abs=2e-4)  # the normal limit, to its skewness
+    assert math.isfinite(S.chndtrix(3.0, 1.47e9, 0.5))
+
+
+# ---- noncentral chi-square tails beyond e^-1000 ----
+
+
+def test_chndtr_obvious_tails():
+    assert bits_equal(S.chndtr(1.0, 1e16, 1.0), 0.0)
+    assert S.chndtrc(1.0, 1e16, 1.0) == 1.0
+    assert S.chndtr(1.0, 1e16, 1e17) == 1.0
+    assert bits_equal(S.chndtrc(1.0, 1e16, 1e17), 0.0)
+
+
+# ---- degrees of freedom below 2^-1021
+
+
+def test_special_underneath():
+    d = 2.0**-1022
+    # the upper tail was NaN where df / 2 is subnormal; now the df = 0 values
+    for x in (1e-300, 1e-10, 1.0):
+        assert S.chndtrc(d, 1.0, x) == S.chndtrc(0.0, 1.0, x)
+        assert S.chndtr(d, 1.0, x) == S.chndtr(0.0, 1.0, x)
+    # df > 0 has no point mass: chndtr(df, nc, 0) stays 0 (the function, not the T44 distribution)
+    assert S.chndtr(d, 1.0, 0.0) == 0.0
+
+
+@pytest.mark.parametrize("df", [5e-324, 2.0**-1022, 2.0**-1021, 1e-307, 1e-305, 1e-292])
+def test_chndtrc_tiny_df(df):
+    # R77: NaN for df up to ~1e-305 at small x; now the df = 0 law plus the j = 0 term's tail
+    for x in (1e-300, 1e-100, 1e-20):
+        assert S.chndtrc(df, 1.0, x) == pytest.approx(-math.expm1(-0.5), rel=1e-15)
+        assert S.chndtr(df, 1.0, x) == pytest.approx(math.exp(-0.5), rel=1e-12)
+    # nc tiny too: both terms count, mu e^-y and e^-mu (df/2) E1(y)
+    want = 5e-301 + 0.5 * df * S.expn(1, 5e-301)
+    assert S.chndtrc(df, 1e-300, 1e-300) == pytest.approx(want, rel=1e-14, abs=45 * 2.0**-1074)
+    X = sd.stats.NoncentralChiSquared(df=max(df, 2.0**-1021), nc=1.0)
+    assert X.ccdf(1e-300) == pytest.approx(-math.expm1(-0.5), rel=1e-15)
+    assert X.logccdf(1e-20) == pytest.approx(math.log(-math.expm1(-0.5)), rel=1e-14)
+
+
+def test_ncfdtri_root_beyond_the_doubles():
+    # R78: the tail at the largest double is still short of the target: inf (was NaN)
+    assert S.ncfdtri(5e-324, 5.0, 2.0, 0.5) == math.inf and S.ncfdtri(1e-320, 5.0, 2.0, 0.5) == math.inf
+    assert S.ncfdtri(5e-324, 5.0, 2.0, 0.2) == 0.0  # inside the j = 0 mass, below every double
+    assert S.ncfdtri(2.0**-1021, 5.0, 2.0, 0.5) == pytest.approx(1.8609659255940713e307, rel=1e-12)
+
+
+def test_ncfdtr_smallest_dfn():
+    # R82: dfn = 5e-324 halves to 0; NaN for f ~ 1e23-1e173
+    for f in (1e10, 1e23, 1e100, 1e173, 1e200):
+        assert S.ncfdtr(5e-324, 5.0, 2.0, f) == pytest.approx(math.exp(-1.0), rel=1e-15)
+        assert S.ncfdtrc(5e-324, 5.0, 2.0, f) == pytest.approx(-math.expm1(-1.0), rel=1e-15)
+        assert S.ncfdtr(5e-324, 5.0, 2.0, f) == S.ncfdtr(1e-323, 5.0, 2.0, f)
+
+
+@pytest.mark.parametrize(
+    "df,nc,x",
+    [(5e-324, 5e-324, 1e-300), (1.5e-323, 1e-300, 1e-300), (1e-310, 1e-310, 1e-20), (2.0**-1022, 1e-300, 1e-300)],
+)
+def test_chndtrc_subnormal_df_against_arb(df, nc, x):
+    # R83: the j = 0 term's half after the scaling (0.5 * df rounded first: 0 for 1.71e-321)
+    ctx.prec = 4000
+    try:
+        a, mu, y = arb(df) / 2, arb(nc) / 2, arb(x) / 2
+        want, p = arb(0), (-mu).exp()
+        for j in range(60):
+            want += p * y.gamma_upper(a + j, 1)
+            p = p * mu / (j + 1)
+        want = float(want)
+    finally:
+        ctx.prec = 53
+    assert abs(S.chndtrc(df, nc, x) - want) <= max(2.0**-1074, 1e-14 * want)

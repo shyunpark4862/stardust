@@ -17,17 +17,10 @@ from hypothesis import strategies as st
 import stardust as sd
 
 from .._tier import examples
+from .conftest import same_cell
 
 NA = sd.frame.NA
 EXAMPLES = examples(200)
-
-
-def same(x, y):
-    if x is NA or y is NA:
-        return x is y
-    if isinstance(x, float) and isinstance(y, float):
-        return (math.isnan(x) and math.isnan(y)) or np.float64(x).tobytes() == np.float64(y).tobytes()
-    return x == y and type(x) is type(y)
 
 
 def key_of(v):  # the sort key of docs/api/frame.md §7.2 (NA last, NaN after +inf, -0.0 == 0.0)
@@ -85,7 +78,7 @@ def test_groups_match_reductions_of_their_rows(data):
     out = g.sum()
     assert out.shape[0] == len(members) and out.index.equals(sd.frame.RangeIndex(len(members)))
     for j, k in enumerate(by):
-        assert all(same(a, rows[m[0]][j]) for a, m in zip(out[k].tolist(), members))  # first row's key values
+        assert all(same_cell(a, rows[m[0]][j]) for a, m in zip(out[k].tolist(), members))  # first row's key values
 
     results = {op: getattr(g, op)() for op in ("sum", "mean", "min", "max", "count", "var", "std", "first", "last")}
     sizes = g.size()["size"].tolist()
@@ -94,10 +87,10 @@ def test_groups_match_reductions_of_their_rows(data):
         for col in ("f", "i"):
             part = sd.frame.Series([df[col].tolist()[r] for r in m], dtype=df[col].dtype)
             for op in ("sum", "mean", "min", "max", "count", "var", "std"):
-                assert same(results[op][col].tolist()[gi], getattr(part, op)()), (op, col, m)
+                assert same_cell(results[op][col].tolist()[gi], getattr(part, op)()), (op, col, m)
             present = [v for v in part.tolist() if v is not NA]
-            assert same(results["first"][col].tolist()[gi], present[0] if present else NA)
-            assert same(results["last"][col].tolist()[gi], present[-1] if present else NA)
+            assert same_cell(results["first"][col].tolist()[gi], present[0] if present else NA)
+            assert same_cell(results["last"][col].tolist()[gi], present[-1] if present else NA)
 
 
 def test_float_group_sum_is_bitwise_the_series_sum():
@@ -109,8 +102,8 @@ def test_float_group_sum_is_bitwise_the_series_sum():
     for row, k in enumerate(out["k"].tolist()):
         group = vals[keys == k]
         got = out["v"].tolist()[row]
-        assert same(got, sd.frame.Series(group).sum())  # the group's rows alone, bit for bit
-        assert same(got, float(sd.sum(sd.asarray(group))))  # and the array's sum of them
+        assert same_cell(got, sd.frame.Series(group).sum())  # the group's rows alone, bit for bit
+        assert same_cell(got, float(sd.sum(sd.asarray(group))))  # and the array's sum of them
         assert abs(got - float(np.sum(group))) <= 64 * np.finfo(np.float64).eps * float(np.sum(np.abs(group)))
 
 
@@ -134,8 +127,8 @@ def test_group_mean_and_var_are_the_series_bits_at_every_size(gsize, dtype):
         out = getattr(g, op)()
         for row, k in enumerate(out["k"].tolist()):
             got = out["v"].tolist()[row]
-            assert same(got, getattr(sd.frame.Series(vals[keys == k]), op)()), (op, k)
-            assert same(got, float(getattr(sd, op)(sd.asarray(vals[keys == k])))), (op, k)
+            assert same_cell(got, getattr(sd.frame.Series(vals[keys == k]), op)()), (op, k)
+            assert same_cell(got, float(getattr(sd, op)(sd.asarray(vals[keys == k])))), (op, k)
 
 
 @pytest.mark.parametrize("op", ["sum", "mean", "min", "max", "count", "first", "last", "size"])

@@ -18,6 +18,7 @@ from hypothesis import strategies as st
 import stardust as sd
 
 from .._tier import examples
+from .conftest import same_cell
 
 NA = sd.frame.NA
 EXAMPLES = examples(300)
@@ -31,18 +32,11 @@ def with_na(elems):
     return elems | st.just(None)
 
 
-def same(x, y):
-    """Bitwise float equality (NaN == NaN, -0.0 != 0.0), plain == otherwise."""
-    if isinstance(x, float) and isinstance(y, float):
-        return np.float64(x).tobytes() == np.float64(y).tobytes() or (math.isnan(x) and math.isnan(y))
-    return x == y and type(x) is type(y)
-
-
 def assert_values(series, expected):
     got = series.tolist()
     assert len(got) == len(expected)
     for g, e in zip(got, expected):
-        assert (g is NA and e is NA) or same(g, e), (got, expected)
+        assert (g is NA and e is NA) or same_cell(g, e), (got, expected)
 
 
 # --- arithmetic ---------------------------------------------------------------
@@ -464,7 +458,7 @@ def test_int_to_string_and_back(values):
 @given(st.lists(st.floats()))
 def test_float_string_round_trip(values):
     back = sd.frame.Series(values, dtype="float64").astype("string").astype("float64").tolist()
-    assert all(same(v, b) for v, b in zip(values, back))
+    assert all(same_cell(v, b) for v, b in zip(values, back))
 
 
 GOOD_FLOATS = st.from_regex(
@@ -476,7 +470,7 @@ GOOD_FLOATS = st.from_regex(
 @given(st.lists(GOOD_FLOATS))
 def test_string_to_float_matches_python_float(values):
     got = sd.frame.Series(values, dtype="string").astype("float64").tolist()
-    assert all(same(g, float(v)) for g, v in zip(got, values))
+    assert all(same_cell(g, float(v)) for g, v in zip(got, values))
 
 
 @pytest.mark.parametrize("text", [" 1", "1 ", "1_000", "", "+", "1e", "e5", ".", "0x10", "nan(1)", "١", "1.5.2", "--1"])
@@ -734,7 +728,7 @@ HARD_FLOATS = [
 def test_float_parsing_is_correctly_rounded(texts):
     texts = [t for t in texts if "nan" not in t and "inf" not in t] + HARD_FLOATS
     got = sd.frame.Series(texts).astype("float64").tolist()
-    assert all(same(g, float(t)) for g, t in zip(got, texts))
+    assert all(same_cell(g, float(t)) for g, t in zip(got, texts))
 
 
 # --- operands that are not scalars, and unary + --------------------------------

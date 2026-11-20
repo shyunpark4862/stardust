@@ -341,3 +341,50 @@ def test_sylvester_rules():
     # layout does not change the bits
     xf = npy(sd.linalg.solve_sylvester(as_sd(np.asfortranarray(a)), as_sd(b[::-1, ::-1].copy()[::-1, ::-1]), as_sd(c)))
     assert np.array_equal(xf, npy(sd.linalg.solve_sylvester(as_sd(a), as_sd(b), as_sd(c))))
+
+
+LA = sd.linalg
+
+
+# ------------------------------------------------- paths chosen by shape (§1.3) --
+# LU of n = 32-46 by getf2 (docs/design/linalg.md §7.5), solve_banded of n <= 8 as a dense
+# matrix (§7.4): each side of each switch gives right answers with the invariances kept.
+
+
+@pytest.mark.parametrize("n", [7, 8, 9, 12])
+@pytest.mark.parametrize("kl, ku", [(0, 0), (2, 2), (0, 3), (3, 1)])
+def test_solve_banded_at_the_dense_boundary(n, kl, ku):
+    if max(kl, ku) >= n:
+        pytest.skip("band wider than the matrix")
+    rng = np.random.default_rng(n * 100 + kl * 10 + ku)
+    ab = rng.standard_normal((4, kl + ku + 1, n))
+    ab[:, ku, :] += 8.0
+    b = rng.standard_normal((4, n, 2))
+    # the dense matrix of each band
+    a = np.zeros((4, n, n))
+    for i in range(n):
+        for j in range(max(0, i - kl), min(n, i + ku + 1)):
+            a[:, i, j] = ab[:, ku + i - j, j]
+    x = np.asarray(LA.solve_banded(sd.asarray(ab), sd.asarray(b), lower_bandwidth=kl, upper_bandwidth=ku))
+    np.testing.assert_allclose(x, np.linalg.solve(a, b), rtol=1e-12, atol=1e-12)
+    # corners outside the matrix are never read, on either path
+    abn = ab.copy()
+    for r in range(ku):
+        abn[:, r, : ku - r] = np.nan
+    for r in range(ku + 1, kl + ku + 1):
+        abn[:, r, n - (r - ku) :] = np.nan
+    same = np.asarray(LA.solve_banded(sd.asarray(abn), sd.asarray(b), lower_bandwidth=kl, upper_bandwidth=ku))
+    assert np.array_equal(same, x)
+    # layout, batch position and thread count do not change the bits
+    f = np.asarray(
+        LA.solve_banded(sd.asarray(np.asfortranarray(ab)), sd.asarray(b), lower_bandwidth=kl, upper_bandwidth=ku)
+    )
+    assert np.array_equal(f, x)
+    for i in range(4):
+        xi = LA.solve_banded(sd.asarray(ab[i]), sd.asarray(b[i]), lower_bandwidth=kl, upper_bandwidth=ku)
+        assert np.array_equal(np.asarray(xi), x[i])
+    # an exact zero pivot is singular on both paths
+    sing = ab.copy()
+    sing[0, :, 0] = 0.0  # column 0 is zero inside the band
+    with pytest.raises(LA.LinAlgError, match=r"singular matrix \(at batch index \(0,\)\)"):
+        LA.solve_banded(sd.asarray(sing), sd.asarray(b), lower_bandwidth=kl, upper_bandwidth=ku)

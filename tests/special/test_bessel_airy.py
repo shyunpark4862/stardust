@@ -1,24 +1,23 @@
-"""S6: the Bessel functions of order 0 and 1, of real order, and airy (docs/api/special.md §8, §9).
+"""The Bessel functions of order 0 and 1, of real order, and airy (docs/api/special.md §8, §9).
 
 Accuracy is tests/special/test_reference.py's (the oscillatory functions through the
 envelope scale stored with their references). Here: the special values against scipy
-except where docs/design/special.md §2.4 says otherwise (S6 user decision: true values),
+except where docs/design/special.md §2.4 says otherwise (true values),
 the reflection and argument rules, and AiryResult."""
+
+import math
+import time
 
 import numpy as np
 import pytest
 import scipy.special as sp
 
 import stardust as sd
+from tests._bits import bits_equal_any_nan
 
 S = sd.special
 SUBNORMAL_ABS = 45 * 2.0**-1074
 ORDER01 = ["i0", "i0e", "i1", "i1e", "j0", "j1", "y0", "y1", "k0", "k0e", "k1", "k1e"]
-
-
-def same_bits(a, b):
-    a, b = np.float64(a), np.float64(b)
-    return bool(np.isnan(a) and np.isnan(b)) or a.view(np.uint64) == b.view(np.uint64)
 
 
 @pytest.mark.parametrize("name", ORDER01)
@@ -30,11 +29,11 @@ def test_order01_edges(name):
             if name in ("j0", "j1", "y0", "y1") and abs(x) == 1e300 and not (name[0] == "y" and x < 0):
                 assert abs(got) < 1e-149  # scipy's value at 1e300 is an O(1e-150) number; both are
                 continue
-            assert same_bits(got, want), (name, x, got, want)
+            assert bits_equal_any_nan(got, want), (name, x, got, want)
 
 
 def test_order01_true_values():
-    # S6 user decision (scipy NaN, inf or 0 there)
+    # true values where scipy gives NaN, inf or 0 (docs/design/special.md §2.4)
     assert S.i0(np.inf) == np.inf and S.i0(-np.inf) == np.inf
     assert S.i1(np.inf) == np.inf and S.i1(-np.inf) == -np.inf
     for name in ["j0", "j1", "y0", "y1"]:
@@ -62,7 +61,7 @@ def test_real_order_matches_order01():
 
 
 def test_real_order_true_values():
-    # S6 user decision: limits where scipy gives NaN or the wrong sign
+    # docs/design/special.md §2.4: limits where scipy gives NaN or the wrong sign
     assert S.jv(0.5, np.inf) == 0.0 and S.yv(0.5, np.inf) == 0.0 and S.iv(0.5, np.inf) == np.inf
     assert S.yv(np.inf, 1.0) == -np.inf and S.kv(1e10, 1.0) == np.inf and S.kve(1e10, 1.0) == np.inf
     assert S.ive(1e10, 1.0) == 0.0 and S.yve(1e10, 1.0) == -np.inf
@@ -89,7 +88,7 @@ def test_real_order_scipy_conventions():
         f, g = getattr(S, name), getattr(sp, name)
         for v, x in pts:
             got, want = f(v, x), float(g(v, x))
-            assert same_bits(got, want) or abs(got - want) <= 1e-14 * abs(want), (name, v, x, got, want)
+            assert bits_equal_any_nan(got, want) or abs(got - want) <= 1e-14 * abs(want), (name, v, x, got, want)
     assert np.isnan(S.yv(2.0, -1.0)) and np.isnan(S.kv(2.0, -1.0)) and np.isnan(S.jv(2.5, -1.0))
 
 
@@ -131,7 +130,7 @@ def test_airy_special_values():
 
 
 def test_huge_order_debye():
-    # code review (S10): nu >= 1e4 by Debye's expansion (was O(nu): iv(1e9, 1e9) took 26 s and
+    # nu >= 1e4 by Debye's expansion (was O(nu): iv(1e9, 1e9) took 26 s and
     # gave 0, kv gave inf)
     import time
 
@@ -262,7 +261,7 @@ def test_real_order_around_the_zeros():
             # iv overflows past x ~ 713; nothing else leaves the finite numbers
             assert not np.isnan(got).any() and (name == "iv" or np.isfinite(got).all()), (name, v, x, got)
             for g, xi in zip(got, xs):
-                assert same_bits(g, getattr(S, name)(v, float(xi))), (name, v, xi)
+                assert bits_equal_any_nan(g, getattr(S, name)(v, float(xi))), (name, v, xi)
         m = np.hypot(j, y)
         assert np.all(np.abs(np.asarray(S.jv(vs, sd.asarray(xs))) - j) <= 1e-10 * m), (v, x)
         assert np.all(np.abs(np.asarray(S.yv(vs, sd.asarray(xs))) - y) <= 1e-10 * m), (v, x)
@@ -287,3 +286,13 @@ def test_real_order_zeros_same_bits_for_any_thread_count():
     for r in runs[1:]:
         for a, b in zip(r, runs[0]):
             np.testing.assert_array_equal(a, b)
+
+
+# ---- Bessel at x = v past the step bound: NaN at once ----
+
+
+def test_jv_at_order_huge_is_fast_nan():
+    for v in (1e16, 1e20, 1e300):
+        t = time.perf_counter()
+        assert math.isnan(S.jv(v, v)) and math.isnan(S.yv(v, v))
+        assert time.perf_counter() - t < 0.05  # 0.2-4 us; a walk over 1e7 terms took 45 ms

@@ -1,4 +1,4 @@
-"""sd.optimize.minimize's Newton methods, O4 (docs/api/optimize.md §7, docs/design/optimize.md §3.5,
+"""sd.optimize.minimize's Newton methods (docs/api/optimize.md §7, docs/design/optimize.md §3.5,
 §7): newton-cg, trust-ncg and trust-exact against scipy 1.18.1 on the Moré-Garbow-Hillstrom
 collection as minimization of the sum of squares with its exact Hessian (ad.Dual2) and on scipy's
 test functions (the recorded runs, tests/optimize/data/scipy_minimize.json, and every call point
@@ -12,7 +12,6 @@ import warnings
 
 import numpy as np
 import pytest
-import scipy
 import scipy.optimize as so
 import scipy.sparse as sps
 from scipy.sparse.linalg import aslinearoperator
@@ -22,10 +21,10 @@ import stardust as sd
 from . import functions as fn
 from . import mgh
 from .ad import value_grad_hess
+from .conftest import LIVE, quick_first
 
 DATA = pathlib.Path(__file__).parent / "data"
 REF = json.loads((DATA / "scipy_minimize.json").read_text())
-LIVE = pytest.mark.skipif(scipy.__version__ != "1.18.1", reason="the steps are scipy 1.18.1's")
 SCIPY_NAME = {"newton-cg": "Newton-CG", "trust-ncg": "trust-ncg", "trust-exact": "trust-exact"}
 
 
@@ -346,7 +345,7 @@ def sweep_cases():
 
 
 @LIVE
-@pytest.mark.parametrize("case", sweep_cases(), ids=lambda c: c[0])
+@pytest.mark.parametrize("case", quick_first(sweep_cases(), SWEEP_IDS[0]), ids=lambda c: c[0])
 def test_options_and_edge_cases_follow_scipy(case):
     _, pid, method, hv, opts, kw = case
     _, f, g, h, x0 = BY_ID[pid]

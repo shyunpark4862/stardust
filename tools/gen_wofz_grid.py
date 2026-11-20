@@ -11,7 +11,7 @@ The grid: z0 = i*0.1 + j*0.1 i for i = 0..70, j = 0..40, i.e. 0 <= Re z0 <= 7,
 rest of the upper half plane uses the fraction). z0 is the float64 i*0.1, as in C++.
 Re z < 0 by w(-conj z) = conj w(z).
 
-Run: uv run python tools/gen_wofz_grid.py
+Run: .venv/bin/python tools/gen_wofz_grid.py
 """
 
 import pathlib

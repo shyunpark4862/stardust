@@ -18,6 +18,7 @@ from hypothesis import strategies as st
 import stardust as sd
 
 from .._tier import examples
+from .conftest import same_cell
 
 NA = sd.frame.NA
 EXAMPLES = examples(200)
@@ -56,14 +57,6 @@ def oracle_column(fields):
     return "string", [NA if t is None else t for t, _ in fields]
 
 
-def same(a, b):
-    if a is NA or b is NA:
-        return a is b
-    if isinstance(a, float) and isinstance(b, float):
-        return (math.isnan(a) and math.isnan(b)) or np.float64(a).tobytes() == np.float64(b).tobytes()
-    return a == b and type(a) is type(b)
-
-
 FIELD = st.one_of(
     st.integers(-(2**64), 2**64).map(lambda v: (str(v), False)),
     st.floats().map(lambda v: (repr(v), False)),
@@ -99,7 +92,7 @@ def test_inference_and_values_follow_the_rules(tmp_path_factory, data):
     for j, k in enumerate(names):
         dtype, values = oracle_column(columns[j])
         assert str(df[k].dtype) == dtype, (columns[j], df[k].dtype)
-        assert all(same(a, b) for a, b in zip(df[k].tolist(), values)), (df[k].tolist(), values)
+        assert all(same_cell(a, b) for a, b in zip(df[k].tolist(), values)), (df[k].tolist(), values)
 
 
 def test_quoting_line_ends_and_bom(tmp_path):

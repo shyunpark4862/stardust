@@ -1,4 +1,4 @@
-"""G1-G3 against R (tests/regression/ref/regression_r.json, made once by
+"""The linear fits, glm and the penalized fits against R (tests/regression/data/regression_r.json, made once by
 tools/gen_regression_r.py with R 4.6.2, sandwich 3.1.3, lmtest 0.9.40 and glmnet 5.2; R is not
 needed here). docs/design/regression.md §3.1-§3.5 lists where sd and R differ and why.
 
@@ -23,7 +23,7 @@ import scipy.stats as st
 import stardust as sd
 
 R = sd.regression
-REF = json.loads((pathlib.Path(__file__).parent / "ref" / "regression_r.json").read_text())
+REF = json.loads((pathlib.Path(__file__).parent / "data" / "regression_r.json").read_text())
 CANONICAL = {("gaussian", "identity"), ("binomial", "logit"), ("poisson", "log"), ("gamma", "inverse")}
 
 
@@ -35,8 +35,9 @@ def r_(v):
     return np.array([np.nan if x is None else x for x in v], dtype=float)
 
 
-def rel(got, ref):
-    """max relative difference; NaN where R has NA (aliased columns) must be NaN in sd too."""
+def rel_to_r(got, ref):
+    """max relative difference to R's value (absolute where R has 0); NaN where R has NA (aliased
+    columns) must be NaN in sd too."""
     got, ref = a(got).ravel(), r_(ref).ravel()
     assert got.shape == ref.shape
     assert np.array_equal(np.isnan(got), np.isnan(ref))
@@ -60,7 +61,7 @@ def lags(n):
     return int(np.floor(4 * (n / 100) ** (2 / 9)))
 
 
-# ---- lm (G1)
+# ---- lm
 
 LM = REF["lm"]
 
@@ -77,17 +78,17 @@ def test_lm_fit(name):
     p = LM[name]
     rr = p["R"]
     f = lm_fit(p)
-    assert rel(f.params, rr["coef"]) < 1e-13
-    assert rel(f.bse, rr["se"]) < 1e-13
-    assert rel(finite(f.pvalues), rr["p"]) < 1e-12
-    assert rel(np.sqrt(f.scale), rr["sigma"]) < 1e-14
+    assert rel_to_r(f.params, rr["coef"]) < 1e-13
+    assert rel_to_r(f.bse, rr["se"]) < 1e-13
+    assert rel_to_r(finite(f.pvalues), rr["p"]) < 1e-12
+    assert rel_to_r(np.sqrt(f.scale), rr["sigma"]) < 1e-14
     assert (f.df_resid, f.nobs) == (rr["df_resid"][0], rr["nobs"][0])  # zero weights are not counted (G20)
-    assert rel(f.rsquared, rr["r2"]) < 1e-14  # uncentered without an intercept, even with a constant column (G25)
-    assert rel(f.rsquared_adj, rr["r2adj"]) < 1e-14
-    assert rel(f.fvalue, rr["fstat"]) < 1e-13
+    assert rel_to_r(f.rsquared, rr["r2"]) < 1e-14  # uncentered without an intercept, even with a constant column (G25)
+    assert rel_to_r(f.rsquared_adj, rr["r2adj"]) < 1e-14
+    assert rel_to_r(f.fvalue, rr["fstat"]) < 1e-13
     assert obs_err(f.resid, rr["resid"]) < 1e-14  # every row, zero-weight rows too
     assert obs_err(f.fittedvalues, rr["fitted"]) < 1e-14
-    assert rel(f.llf, rr["llf"]) < 1e-14
+    assert rel_to_r(f.llf, rr["llf"]) < 1e-14
     assert f.aic + 2 == pytest.approx(rr["aic"][0], rel=1e-14)  # R counts sigma as a parameter
 
 
@@ -106,9 +107,9 @@ def test_lm_diagnostics(name):
         assert obs_err(a(got)[keep], rr[key]) < 1e-13, key
         assert np.all(a(got)[~keep] == 0)
     if "dw" in rr:
-        assert rel(f.durbin_watson, rr["dw"]) < 1e-14
-        assert rel(f.breusch_pagan().lm, rr["bp"]) < 1e-13
-        assert rel(f.breusch_pagan(studentize=False).lm, rr["bp0"]) < 1e-13
+        assert rel_to_r(f.durbin_watson, rr["dw"]) < 1e-14
+        assert rel_to_r(f.breusch_pagan().lm, rr["bp"]) < 1e-13
+        assert rel_to_r(f.breusch_pagan(studentize=False).lm, rr["bp0"]) < 1e-13
 
 
 @pytest.mark.parametrize("name", list(LM))
@@ -118,14 +119,14 @@ def test_lm_robust(name):
     n = len(p["y"])
     for cov in ("HC0", "HC1", "HC2", "HC3"):
         g = lm_fit(p, cov_type=cov)
-        assert rel(finite(g.bse), rr["se_" + cov]) < 1e-13, cov  # sandwich leaves out aliased columns
-        assert rel(finite(g.pvalues), rr["p_" + cov]) < 1e-12, cov  # t(df_resid), as coeftest (G23)
+        assert rel_to_r(finite(g.bse), rr["se_" + cov]) < 1e-13, cov  # sandwich leaves out aliased columns
+        assert rel_to_r(finite(g.pvalues), rr["p_" + cov]) < 1e-12, cov  # t(df_resid), as coeftest (G23)
     g = lm_fit(p, cov_type="HAC", maxlags=lags(n))  # NeweyWest(prewhite=FALSE, adjust=FALSE) (G26)
-    assert rel(finite(g.bse), rr["se_HAC"]) < 1e-13
-    assert rel(finite(g.pvalues), rr["p_HAC"]) < 1e-12
+    assert rel_to_r(finite(g.bse), rr["se_HAC"]) < 1e-13
+    assert rel_to_r(finite(g.pvalues), rr["p_HAC"]) < 1e-12
     g = lm_fit(p, cov_type="cluster", groups=sd.asarray((np.arange(n) % 7).astype(float)))
-    assert rel(finite(g.bse), rr["se_CL"]) < 1e-13  # vcovCL(type="HC1"): G/(G-1)(n-1)/(n-k) (G27)
-    assert rel(finite(g.pvalues), rr["p_CL"]) < 1e-12  # coeftest(df = G - 1)
+    assert rel_to_r(finite(g.bse), rr["se_CL"]) < 1e-13  # vcovCL(type="HC1"): G/(G-1)(n-1)/(n-k) (G27)
+    assert rel_to_r(finite(g.pvalues), rr["p_CL"]) < 1e-12  # coeftest(df = G - 1)
 
 
 def test_lm_rtol_default_keeps_near_aliased_column():
@@ -134,7 +135,7 @@ def test_lm_rtol_default_keeps_near_aliased_column():
     assert not np.isnan(a(lm_fit(dict(p, rtol=None)).params)).any()
 
 
-# ---- glm (G2)
+# ---- glm
 
 GLM = REF["glm"]
 
@@ -160,16 +161,17 @@ def test_glm_at_solution(name):
     rr = p["R"]
     f = R.glm(p["y"], p["X"], **glm_kwargs(p))
     # R's Fisher step from sd's solution stays there: sd is at the maximum to rounding
-    assert rel(f.params, rr["coef"]) < 1e-13
-    assert rel(f.bse, rr["se"]) < 1e-13
-    assert rel(f.tvalues, rr["stat"]) < 1e-13
-    assert rel(f.pvalues, rr["p"]) < 1e-11  # z for binomial and poisson, t(df_resid) otherwise and for 'X2' (G38, G41)
-    assert rel(f.deviance, rr["deviance"]) < 1e-14
-    assert rel(f.pearson_chi2, rr["pearson"]) < 1e-14
-    assert rel(f.scale, rr["dispersion"]) < 1e-14  # Pearson chi^2 / df (G34); 'X2' is the quasi families'
+    assert rel_to_r(f.params, rr["coef"]) < 1e-13
+    assert rel_to_r(f.bse, rr["se"]) < 1e-13
+    assert rel_to_r(f.tvalues, rr["stat"]) < 1e-13
+    # z for binomial and poisson, t(df_resid) otherwise and for 'X2' (G38, G41)
+    assert rel_to_r(f.pvalues, rr["p"]) < 1e-11
+    assert rel_to_r(f.deviance, rr["deviance"]) < 1e-14
+    assert rel_to_r(f.pearson_chi2, rr["pearson"]) < 1e-14
+    assert rel_to_r(f.scale, rr["dispersion"]) < 1e-14  # Pearson chi^2 / df (G34); 'X2' is the quasi families'
     assert f.df_resid == rr["df_resid"][0]  # zero prior weights are not counted (G20)
     assert obs_err(f.fittedvalues, rr["fitted"]) < 1e-14
-    assert rel(f.null_deviance, rr["null_deviance"]) < 1e-13  # no intercept: eta = offset, as R
+    assert rel_to_r(f.null_deviance, rr["null_deviance"]) < 1e-13  # no intercept: eta = offset, as R
 
 
 @pytest.mark.parametrize("name", list(GLM))
@@ -181,14 +183,14 @@ def test_glm_loglik_conventions(name):
     if "r_family" in p:
         assert rr["llf"][0] is None  # quasi families have no likelihood in R
     elif fam in ("binomial", "poisson"):
-        assert rel(f.llf, rr["llf"]) < 1e-14  # with log C(n, ny) for trials, sum w log f for weights
+        assert rel_to_r(f.llf, rr["llf"]) < 1e-14  # with log C(n, ny) for trials, sum w log f for weights
         assert f.aic == pytest.approx(rr["aic"][0], rel=1e-14)
     elif "var_weights" not in p:
         # R's logLik puts the scale at deviance / n (and its AIC counts it); sd uses the Pearson scale
         g = R.glm(p["y"], p["X"], **dict(glm_kwargs(p), scale=f.deviance / f.nobs))
-        assert rel(g.llf, rr["llf"]) < 1e-14
+        assert rel_to_r(g.llf, rr["llf"]) < 1e-14
         if p["link"] == "identity" and fam == "gaussian":
-            assert rel(f.llf, rr["llf"]) < 1e-14  # the concentrated likelihood, as ols
+            assert rel_to_r(f.llf, rr["llf"]) < 1e-14  # the concentrated likelihood, as ols
             assert f.aic + 2 == pytest.approx(rr["aic"][0], rel=1e-14)
 
 
@@ -224,25 +226,25 @@ def test_glm_robust(name):
         d, v = _mu_eta(p["link"], eta), _variance(p["family"], mu)
         bread = np.linalg.inv(X.T @ ((m * d * d / v)[:, None] * X))
         s = X * (m * (a(p["y"]) - mu) * d / v)[:, None]
-        assert rel(np.sqrt(np.diag(bread @ s.T @ s @ bread)), rr["se_HC0_expected"]) < 1e-12
-        assert rel(R.glm(p["y"], p["X"], **glm_kwargs(p, "HC0")).bse, rr["se_HC0_expected"]) > 1e-3
+        assert rel_to_r(np.sqrt(np.diag(bread @ s.T @ s @ bread)), rr["se_HC0_expected"]) < 1e-12
+        assert rel_to_r(R.glm(p["y"], p["X"], **glm_kwargs(p, "HC0")).bse, rr["se_HC0_expected"]) > 1e-3
         return
     for cov, kw in (("HC0", {}), ("HC1", {}), ("HC2", {}), ("HC3", {}), ("HAC", dict(maxlags=lags(n)))):
         g = R.glm(p["y"], p["X"], **glm_kwargs(p, cov, **kw))
-        assert rel(g.bse, rr["se_" + cov]) < 1e-13, cov
+        assert rel_to_r(g.bse, rr["se_" + cov]) < 1e-13, cov
         # coeftest on a glm is z for every family; sd is z only when the scale is fixed (G39)
         z = a(g.params) / a(g.bse)
-        assert rel(2 * st.norm.sf(np.abs(z)), rr["p_" + cov]) < 1e-11, cov
+        assert rel_to_r(2 * st.norm.sf(np.abs(z)), rr["p_" + cov]) < 1e-11, cov
         if fixed_scale:
-            assert rel(g.pvalues, rr["p_" + cov]) < 1e-11, cov
+            assert rel_to_r(g.pvalues, rr["p_" + cov]) < 1e-11, cov
         else:
             assert g.df_resid_inference == g.df_resid
     g = R.glm(p["y"], p["X"], **glm_kwargs(p, "cluster", groups=sd.asarray((np.arange(n) % 9).astype(float))))
-    assert rel(g.bse, rr["se_CL"]) < 1e-13
-    assert rel(g.pvalues, rr["p_CL"]) < 1e-11  # t(G - 1) = coeftest(df = G - 1) (G27)
+    assert rel_to_r(g.bse, rr["se_CL"]) < 1e-13
+    assert rel_to_r(g.pvalues, rr["p_CL"]) < 1e-11  # t(G - 1) = coeftest(df = G - 1) (G27)
 
 
-# ---- glmnet (G3)
+# ---- glmnet
 
 GN = REF["glmnet"]
 GD = {k: np.asarray(v, dtype=float) for k, v in GN["data"].items()}
@@ -279,7 +281,7 @@ def test_glmnet(case):
         if case["l1"] == 1:
             assert f.df_model == rr[f"df{i}"][0]
         dev_ratio = f.rsquared if case["family"] == "gaussian" else f.deviance_ratio
-        assert rel(dev_ratio, rr[f"dev_ratio{i}"]) < 1e-9
+        assert rel_to_r(dev_ratio, rr[f"dev_ratio{i}"]) < 1e-9
 
 
 @pytest.mark.parametrize(
@@ -290,6 +292,6 @@ def test_glmnet_lambda_max(case):
     y = GD[case["y"]]
     w = GD["w"] if case.get("weights") else None
     g = R.lasso_cv(y, GD["X"], rng=sd.random.default_rng(0), standardize=case["std"], weights=w)
-    assert rel(a(g.alphas)[0], rr["lambda_max"]) < 1e-13
+    assert rel_to_r(a(g.alphas)[0], rr["lambda_max"]) < 1e-13
     g = R.ridge_cv(y, GD["X"], cv="gcv", standardize=case["std"], weights=w)  # alpha = max(alpha, 1e-3) (G52)
-    assert rel(a(g.alphas)[0], rr["lambda_max_ridge"]) < 1e-13
+    assert rel_to_r(a(g.alphas)[0], rr["lambda_max_ridge"]) < 1e-13

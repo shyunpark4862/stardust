@@ -55,3 +55,36 @@ def test_rectangular_and_complex_agree_with_pinv():
     c[:, 2] = 0.0
     rc = sd.linalg.lstsq(sd.asarray(c), sd.asarray(np.ones(30) + 0j), rtol=0)
     assert rc.rank == sd.linalg.matrix_rank(sd.asarray(c), rtol=0)
+
+
+LA = sd.linalg
+
+
+def test_lstsq_rtol_zero_counts_every_positive_singular_value():
+    # xLALSD replaces rcond <= 0 by machine epsilon; rtol = 0 must mean what it means in
+    # matrix_rank (only exact zeros are zero)
+    a = sd.ones((3, 2))
+    b = sd.ones((3,))
+    r = sd.linalg.lstsq(a, b, rtol=0.0)
+    assert min(r.singular_values.tolist()) > 0.0
+    assert r.rank == sd.linalg.matrix_rank(a, rtol=0.0) == 2
+    assert sd.linalg.lstsq(a, b, rtol=1e-300).rank == 2
+    assert sd.linalg.lstsq(a, b).rank == sd.linalg.matrix_rank(a) == 1
+    z = sd.linalg.lstsq(sd.zeros((3, 2)), b, rtol=0.0)
+    assert z.rank == 0 and z.solution.tolist() == [0.0, 0.0]
+
+
+# ------------------------------------------------- lstsq alignment, messages --
+
+
+@pytest.mark.parametrize("m, n, k", [(3, 3, 1), (5, 3, 3), (3, 5, 3), (9, 5, 1), (31, 29, 3)])
+def test_lstsq_small_rtol_batch_is_one_by_one(m, n, k):
+    # The SVD path writes the solution through gemm; an odd n * k puts every other
+    # batch element's slot off 16 bytes (docs/design/linalg.md §6.4).
+    rng = np.random.default_rng(m * 100 + n * 10 + k)
+    a = rng.standard_normal((7, m, n))
+    b = rng.standard_normal((7, m, k))
+    whole = np.asarray(LA.lstsq(sd.asarray(a), sd.asarray(b), rtol=0.0).solution)
+    for i in range(7):
+        one = np.asarray(LA.lstsq(sd.asarray(a[i]), sd.asarray(b[i]), rtol=0.0).solution)
+        assert np.array_equal(one, whole[i])

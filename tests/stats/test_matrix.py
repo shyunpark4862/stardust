@@ -1,4 +1,4 @@
-"""Matrix distributions (T10, docs/api/stats.md §3.1; decisions T30): log densities and entropies
+"""Matrix distributions (docs/api/stats.md §3.1, docs/design/stats.md): log densities and entropies
 against Arb references, scipy's moments, the support, NaN and divergence rules, batching,
 and samples (their marginal laws, determinism)."""
 
@@ -11,7 +11,10 @@ from flint import arb, arb_mat, ctx
 
 import stardust as sd
 
+from . import refdata
+
 S = sd.stats
+A = sd.asarray
 
 
 def spd(rng, d, kappa):
@@ -113,8 +116,8 @@ def test_wishart_against_arb(inverse, p, extra, kappa):
     assert _mixed(D.logpdf(sd.asarray(xs)), ref) <= 1e-14
     assert _mixed(D.entropy(), href) <= 1e-14
     pdf = np.asarray(D.pdf(sd.asarray(xs)))
-    ok = np.abs(ref) < 700
-    assert np.allclose(pdf[ok], np.exp(ref[ok]), rtol=1e-14 * max(1.0, np.abs(ref).max()), atol=0)
+    mask, err, bound = refdata.mv_density_contract("pdf", pdf, np.exp(ref), 0.0, ref)["guaranteed"]
+    assert err[mask].max(initial=0.0) <= bound  # per point: relative 1e-14 max(1, |logpdf|), |logpdf| < 700
 
 
 def test_inverse_wishart_entropy_against_monte_carlo():
@@ -353,3 +356,128 @@ def test_log_density_far_out_is_a_value_or_minus_inf():
     assert float(w.logpdf(sd.asarray([[math.inf, 0.0], [0.0, 1.0]]))) == -math.inf
     iw = sd.stats.InverseWishart(df=5.0, scale=sd.eye(2))
     assert math.isfinite(float(iw.logpdf(1.7e308 * sd.eye(2))))
+
+
+# ---- the Wishart and the inverse Wishart at a large df; the matrix normal's entropy
+
+
+def _wishart_ref(df, V, X, inverse):
+    ctx.prec = 400
+    p = len(V)
+    n = arb(df)
+    Va = arb_mat([[arb(float(v)) for v in r] for r in V])
+    Xa = arb_mat([[arb(float(v)) for v in r] for r in X])
+    lmg = arb(p * (p - 1)) / 4 * arb.pi().log() + sum(((n - j) / 2).lgamma() for j in range(p))
+    if not inverse:
+        tr = Va.inv() * Xa
+        t = sum((tr[i, i] for i in range(p)), arb(0))
+        v = (n - p - 1) / 2 * Xa.det().log() - t / 2 - n * p / 2 * arb(2).log() - n / 2 * Va.det().log() - lmg
+    else:
+        tr = Va * Xa.inv()
+        t = sum((tr[i, i] for i in range(p)), arb(0))
+        v = n / 2 * Va.det().log() - n * p / 2 * arb(2).log() - lmg - (n + p + 1) / 2 * Xa.det().log() - t / 2
+    return v
+
+
+@pytest.mark.parametrize("inverse", [False, True])
+@pytest.mark.parametrize("df", [1e9, 1e12, 1e15, 1e17])
+def test_wishart_large_df_against_arb(inverse, df):
+    V = np.array([[1.0, 0.3, 0.1], [0.3, 2.0, -0.2], [0.1, -0.2, 0.5]])
+    for scale in (1.0, 1.001, 0.97):
+        X = (V / (df + 4) if inverse else (df - 4) * V) * scale
+        X[0, 1] = X[1, 0] = X[0, 1] * (1.0 + 1e-6)
+        Dist = S.InverseWishart if inverse else S.Wishart
+        v = Dist(df=df, scale=A(V)).logpdf(A(X))
+        ref = _wishart_ref(df, V, X, inverse)
+        err = float((abs(arb(v) - ref) / max(arb(1), abs(ref))).mid())
+        assert err <= 1e-14, (scale, v, err)
+
+
+def test_wishart_large_df_ill_conditioned_scale():
+    # kappa(scale) = 1e9, df = 1e30 (tests/stats/ref/mv/invwishart.npz, point 71): W built
+    # as a product of factors had kappa 2^-104 of 1 in W - I, 2.7e-13 here (9.1e-6 absolute)
+    V = np.array([[66927843.72155424, -249896991.82516235], [-249896991.82516235, 933072157.2784451]])
+    X = np.array([[6.692784372155421e-23, -2.4989699182516217e-22], [-2.4989699182516217e-22, 9.330721572784442e-22]])
+    v = S.InverseWishart(df=1e30, scale=A(V)).logpdf(A(X))
+    assert abs(v - -33875534.976640659) <= 1e-14 * 33875534.976640659, v  # Arb, 512 and 4096 bits
+    ref = _wishart_ref(1e30, V, X, True)
+    assert float((abs(arb(v) - ref) / abs(ref)).mid()) <= 2e-16
+    # the Wishart with the same scale, at its mean
+    W = S.Wishart(df=1e30, scale=A(V))
+    m = np.asarray(W.mean().tolist())
+    v = W.logpdf(A(m))
+    assert float((abs(arb(v) - _wishart_ref(1e30, V, m, False)) / abs(v)).mid()) <= 2e-16
+
+
+def test_wishart_large_df_small_value_is_not_nan():
+    # a value of size 1 at df ~ 1e30: the n/2 (log|W| - tr W + p) part has no rounding of size
+    # |W - I| (it had 2^-106 |W - I| times n / 2, and the bound gave NaN)
+    rng = np.random.default_rng(2)
+    q, _ = np.linalg.qr(rng.standard_normal((5, 5)))
+    V = (q * np.logspace(0, 4, 5)) @ q.T
+    V = (V + V.T) / 2
+    df = 10 ** (30 + 1 / 8)
+    D = S.InverseWishart(df=df, scale=A(V))
+    m = np.asarray(D.mean().tolist())
+    v = D.logpdf(A(m))
+    ref = _wishart_ref(df, V, m, True)
+    assert abs(float(ref.mid())) < 10.0
+    assert float((abs(arb(v) - ref) / max(arb(1), abs(ref))).mid()) <= 1e-15, v
+
+
+@pytest.mark.parametrize("df", [1e10, 1e13, 1e15, 1e17])
+def test_wishart_p1_is_gamma(df):
+    for x in (df - 2.0, df * 0.999, df * 1.001):
+        w = S.Wishart(df=df, scale=A([[1.0]])).logpdf(A([[x]]))
+        g = S.Gamma(a=df / 2, scale=2.0).logpdf(x)
+        assert abs(w - g) <= 2e-15 * max(1.0, abs(g)), (x, w, g)
+        iw = S.InverseWishart(df=df, scale=A([[1.0]])).logpdf(A([[1.0 / x]]))
+        ig = S.InverseGamma(a=df / 2, scale=0.5).logpdf(1.0 / x)
+        assert abs(iw - ig) <= 2e-15 * max(1.0, abs(ig)), (x, iw, ig)
+
+
+def _spd(p, kappa, seed):
+    """An sd SPD matrix with eigenvalues logspace(0, log10(kappa), p) in a random basis."""
+    rng = np.random.default_rng(seed)
+    q, _ = np.linalg.qr(rng.standard_normal((p, p)))
+    v = (q * np.logspace(0, math.log10(kappa), p)) @ q.T
+    return A((v + v.T) / 2)
+
+
+def test_wishart_large_df_has_values_past_the_guarantee():
+    # W - I is formed from B - n A exactly and log|W| - tr W + p has no rounding of size
+    # |W - I|: the bound stays below 1e-14 |value| near the mode at any df, so no NaN
+    for D in (S.Wishart, S.InverseWishart):
+        X = D(df=1e40, scale=A(np.eye(2)))
+        assert math.isfinite(X.logpdf(X.mode())) and math.isfinite(X.logpdf(X.mean()))
+    # one ULP off the mean (W - I ~ 1e-16), and as far as 1e100
+    for df in (1e33, 1e35, 1e100):
+        X = S.Wishart(df=df, scale=A(np.eye(2)))
+        m = np.nextafter(np.asarray(X.mean().tolist()), np.inf)
+        assert math.isfinite(X.logpdf(A((m + m.T) / 2))), df
+    # the mode, the mean and samples, inside the guarantee (df <= 1e30) and past it
+    for D in (S.Wishart, S.InverseWishart):
+        for p, kappa in ((2, 1e2), (3, 1e4), (10, 1e4), (5, 1e9)):
+            for df in (1e30, 1e40):
+                X = D(df=df, scale=_spd(p, kappa, 1))
+                for pt in (X.mode(), X.mean(), X.sample(rng=sd.random.default_rng(1))):
+                    assert math.isfinite(X.logpdf(pt)), (D, p, kappa, df)
+
+
+def test_matrix_normal_entropy_against_arb():
+    ctx.prec = 200
+    for n, p, su, sv in ((100, 100, 1e-300, 1.1e300), (100, 100, 1e-300, 1e300), (3, 2, 2.0, 0.5)):
+        M = S.MatrixNormal(mu=sd.zeros((n, p)), rowcov=sd.eye(n) * su, colcov=sd.eye(p) * sv)
+        ex = (
+            arb(n * p) / 2 * (1 + (2 * arb.pi()).log())
+            + arb(p) / 2 * n * arb(su).log()
+            + arb(n) / 2 * p * arb(sv).log()
+        )
+        want = float(ex.mid())
+        assert abs(M.entropy() - want) <= 1e-14 * max(1.0, abs(want)), (n, p, su, sv)
+
+
+def test_wishart_variance():
+    W = S.Wishart(df=3.0, scale=sd.eye(2))
+    assert W.variance().tolist() == [[6.0, 3.0], [3.0, 6.0]]
+    assert not hasattr(W, "var") and not hasattr(S.InverseWishart(df=5.0, scale=sd.eye(2)), "var")

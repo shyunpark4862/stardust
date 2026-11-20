@@ -92,3 +92,17 @@ def test_numpy_integers_are_int_arguments():
             LA.vector_norm(V, ord=bad)
     with pytest.raises(OverflowError, match=r"^matrix_power\(\): 'n' is out of range$"):
         LA.matrix_power(A, np.uint64(2**63))
+
+
+# ------------------------------------------------- lstsq alignment, messages --
+
+
+def test_messages_show_the_value_received():
+    x = sd.asarray(np.eye(2))
+    with pytest.raises(ValueError, match=r"^matrix_norm\(\): 'ord' must be .* or -inf, not 3$"):
+        LA.matrix_norm(x, ord=3)
+    with pytest.raises(ValueError, match=r"^cond\(\): 'ord' must be .* or -inf, not 'FRO'$"):
+        LA.cond(x, ord="FRO")
+    f = LA.lu(x)
+    with pytest.raises(TypeError, match=r"^lu_solve\(\): 'perm' must be an int64 array, not float64$"):
+        LA.lu_solve(f.L, f.U, sd.asarray([0.0, 1.0]), x)

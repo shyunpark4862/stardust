@@ -1,24 +1,22 @@
-"""S4: gammainc gammaincc gammaincinv gammainccinv betainc betaincc betaincinv betainccinv
+"""gammainc gammaincc gammaincinv gammainccinv betainc betaincc betaincinv betainccinv
 (docs/api/special.md §3).
 
 Accuracy is tests/special/test_reference.py's. Here: the special values, bit for bit against
-scipy except where docs/design/special.md §2.4 says otherwise (S4 user decision: true values
+scipy except where docs/design/special.md §2.4 says otherwise (true values
 in place of scipy's errors), the identities between the pairs, and the inverses' round trips."""
 
 import itertools
+import math
 
 import numpy as np
 import pytest
 import scipy.special as sp
+from flint import arb, ctx
 
 import stardust as sd
+from tests._bits import bits_equal_any_nan
 
 S = sd.special
-
-
-def same_bits(a, b):
-    a, b = np.float64(a), np.float64(b)
-    return bool(np.isnan(a) and np.isnan(b)) or a.view(np.uint64) == b.view(np.uint64)
 
 
 EDGE = [0.0, -0.0, 1.0, -1.0, 0.5, 2.0, 1e-300, 1e300, np.inf, np.nan]
@@ -30,7 +28,7 @@ def test_gamma_edges_match_scipy(name):
     for a, x in itertools.product(EDGE, EDGE):
         got, want = f(a, x), float(g(a, x))
         if want == 0 or not np.isfinite(want) or a in (0.0, np.inf) or x in (0.0, np.inf):
-            assert same_bits(got, want), (name, a, x, got, want)
+            assert bits_equal_any_nan(got, want), (name, a, x, got, want)
 
 
 @pytest.mark.parametrize("name", ["betainc", "betaincc"])
@@ -43,7 +41,7 @@ def test_beta_edges_match_scipy(name):
             continue  # an ordinary value / scipy's order of edge rules, test_beta_edge_order
         got, want = f(a, b, x), float(g(a, b, x))
         if 0.0 in (a, b) or np.inf in (a, b) or x in (0.0, 1.0) or not np.isfinite(want):
-            assert same_bits(got, want), (name, a, b, x, got, want)
+            assert bits_equal_any_nan(got, want), (name, a, b, x, got, want)
 
 
 def test_beta_edge_order():
@@ -58,7 +56,10 @@ def test_gamma_inverse_edges_match_scipy(name):
     f, g = getattr(S, name), getattr(sp, name)
     for a, p in itertools.product([0.0, 1.0, 2.5, np.inf, -1.0, np.nan], [0.0, -0.0, 0.5, 1.0, 1.5, -0.1, np.nan]):
         got, want = f(a, p), float(g(a, p))
-        assert same_bits(got, want) or (np.isfinite(want) and want != 0 and abs(got - want) <= 1e-14 * want), (a, p)
+        assert bits_equal_any_nan(got, want) or (np.isfinite(want) and want != 0 and abs(got - want) <= 1e-14 * want), (
+            a,
+            p,
+        )
 
 
 @pytest.mark.parametrize("name", ["betaincinv", "betainccinv"])
@@ -72,10 +73,10 @@ def test_beta_inverse_edges_match_scipy(name):
             # 2026-11-20, as betainc; scipy NaN)
             assert got == (1.0 if np.isinf(a) else 0.0), (name, a, b, p, got)
             continue
-        assert same_bits(got, want) or abs(got - want) <= 1e-14 * abs(want), (name, a, b, p, got, want)
+        assert bits_equal_any_nan(got, want) or abs(got - want) <= 1e-14 * abs(want), (name, a, b, p, got, want)
 
 
-# ---- where scipy is wrong (S4 user decision: the true value) ----------------
+# ---- where scipy is wrong (the true value, docs/design/special.md §2.4) ----------
 
 
 def test_scipy_errors_get_true_values():
@@ -173,7 +174,7 @@ def test_a_zero_result_is_positive_zero_review_regression():
             S.betainc(a, 0.5, 0.5),
             S.betaincc(0.5, a, 0.5),
         ]
-        assert all(same_bits(v, 0.0) for v in got), (a, got)
+        assert all(bits_equal_any_nan(v, 0.0) for v in got), (a, got)
         assert S.gammaincc(a, 1.0) == 1.0 and S.betaincc(a, 2.0, 0.5) == 1.0
     rng = np.random.default_rng(8)
     a, b = np.exp(rng.uniform(0, 690, 4000)), np.exp(rng.uniform(0, 690, 4000))
@@ -230,8 +231,6 @@ def test_gammainccinv_tiny_shape_against_arb(a):
     """R105: below 2^-900 Q(a, y) = a E1(y) to the doubles and E1(y) = q / a is solved with c =
     q / a in one division: Q at the root within 1e-15 of the target for c in 5-700 (the root's
     relative error is then about kappa u, kappa ~ c)."""
-    from flint import arb, ctx
-
     ctx.prec = 3000
     try:
         for c in (5.0, 39.0, 300.0, 700.0):
@@ -242,3 +241,60 @@ def test_gammainccinv_tiny_shape_against_arb(a):
     finally:
         ctx.prec = 53
     assert S.gammainccinv(1e-310, 5e-310) == pytest.approx(0.00379746400158469, rel=1e-15)
+
+
+INF, NAN = math.inf, math.nan
+
+
+# ---- argument names (user decision 2026-11-20): chdtr(df, x), chdtri(df, q), ncfdtr(..., x) ----
+
+
+def test_beta_inverse_infinite_shape_is_the_limit():
+    for p in (1e-300, 0.3, 0.9):
+        assert S.betaincinv(INF, 2.0, p) == 1.0 and S.betainccinv(INF, 2.0, p) == 1.0
+        assert S.betaincinv(2.0, INF, p) == 0.0 and S.betainccinv(2.0, INF, p) == 0.0
+        assert math.isnan(S.betaincinv(INF, INF, p))
+
+
+# ---- subnormal shapes against Arb
+
+
+def _arb_q(a, y):
+    ctx.prec = 4000
+    try:
+        return arb(y).gamma_upper(arb(a), 1)
+    finally:
+        ctx.prec = 53
+
+
+def _arb_q_rel(a, y, s, q):
+    ctx.prec = 3000
+    try:
+        return (
+            float(arb(y).gamma_upper(arb(a), 1) / arb(q)) - 1
+            if s is None
+            else float((arb(y) / arb(s)).gamma_upper(arb(a), 1) / arb(q)) - 1
+        )
+    finally:
+        ctx.prec = 53
+
+
+@pytest.mark.parametrize("v,x", [(1.5e-323, 1e-300), (5e-324, 1e-300), (2.5e-323, 1.0), (1e-310, 1e-300)])
+def test_chdtrc_odd_subnormal_df(v, x):
+    want = float(_arb_q(arb(v) / 2, arb(x) / 2))
+    assert abs(S.chdtrc(v, x) - want) <= 2.0**-1074
+
+
+@pytest.mark.parametrize("a", [1e-310, 2.0**-1023, 5e-324, 2.0**-1022, 1e-307, 1e-303])
+@pytest.mark.parametrize("c", [1.0, 5.0, 39.0, 41.0, 300.0, 665.0, 700.0])
+def test_gammainccinv_subnormal_shape(a, c):
+    # E1(y) = q / a (Q(a, y) = a E1(y)): was NaN for every subnormal a. R105: c = q / a in one
+    # division (log q - log a carried 1e-13 into c: Q 5e-14 off), and the normal a near
+    # 2^-1022 with q < 1e-300 by the same equation (NaN or 7e-13 off); stats' Gamma too
+    y = S.gammainccinv(a, c * a)
+    assert y > 0.0 and abs(_arb_q_rel(a, y, None, c * a)) <= 1e-15
+    ys = sd.stats.Gamma(a=a).iccdf(c * a)
+    assert ys > 0.0 and abs(_arb_q_rel(a, ys, None, c * a)) <= 1e-15
+    assert S.gammainccinv(a, 760 * a) == 0.0 and S.gammaincinv(a, 0.3) == 0.0
+    # the lower side's root is below every double (it was NaN in stats for a normal a here)
+    assert sd.stats.Gamma(a=a).icdf(0.3) == 0.0 and sd.stats.Gamma(a=a).icdf(1e-20) == 0.0
