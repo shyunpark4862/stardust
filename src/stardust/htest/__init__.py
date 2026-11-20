@@ -8,8 +8,30 @@ sd.stats, nan_policy, rng=) and every test returns a read-only result object (de
 in docs/design/htest.md §1.1).
 
 The module holds the result objects (_result.py) and the input layer (_common.py) the tests
-share; the tests themselves come milestone by milestone (H1-H9, docs/design/htest.md §8), so
-nothing is public yet.
+share; the tests come milestone by milestone (docs/design/htest.md §8): H1's means and variances
+(_parametric.py) so far.
 """
 
-__all__ = []
+from ._parametric import (
+    alexandergovern,
+    bartlett,
+    f_oneway,
+    fligner,
+    levene,
+    ttest_1samp,
+    ttest_ind,
+    ttest_ind_from_stats,
+    ttest_rel,
+)
+
+__all__ = [
+    "ttest_1samp",
+    "ttest_rel",
+    "ttest_ind",
+    "ttest_ind_from_stats",
+    "f_oneway",
+    "alexandergovern",
+    "bartlett",
+    "levene",
+    "fligner",
+]

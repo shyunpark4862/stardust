@@ -71,6 +71,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/regression/quantile.cpp
   csrc/regression/robust.cpp
   csrc/regression/slopes.cpp
+  csrc/htest/parametric.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -97,6 +98,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/stats_matrix.cpp
   csrc/bind/stats_mv.cpp
   csrc/bind/regression_bind.cpp
+  csrc/bind/htest_bind.cpp
   csrc/bind/optimize_bind.cpp
   csrc/bind/module.cpp)
 

@@ -123,6 +123,54 @@ def _h1():
         add(m, "fligner", c, normal(55, 15), normal(56, 18, 0, 2), normal(57, 12, 0, 0.6), center=c)
     add(m, "levene", "large", normal(58, 1000), normal(59, 1200, 0, 1.1), tags=("large",))
     add(m, "fligner", "ties", rounded(60, 20), rounded(61, 25, scale=5), tags=("ties",))
+    # (H1's implementation: degenerate inputs, offsets beyond the doubles' rounding of a - b,
+    # Yuen's trimmed test, Welch's ANOVA, the tails, and every k-sample test batched)
+    add(m, "ttest_1samp", "offset-constant", np.full(5, 1e8), 1e8, tags=("degenerate", "offset"))
+    add(m, "ttest_rel", "offset-wide", 3e9 + normal(1001, 3, 0, 1e-3), 1e9 + normal(1002, 3, 0, 1e-3), tags=("offset",))
+    add(m, "ttest_ind", "constant-both", np.full(4, 2.0), np.full(5, 3.0), tags=("degenerate",))
+    add(m, "ttest_ind", "one-element", np.array([0.7]), normal(1003, 8), tags=("small",))
+    add(m, "ttest_ind", "trim-welch", normal(1004, 40, 0.3, 1.0), normal(1005, 30, 0, 3.0), trim=0.1, equal_var=False)
+    add(m, "ttest_ind", "trim-ties", rounded(1006, 25), rounded(1007, 20, loc=1.0), trim=0.25, tags=("ties",))
+    add(m, "ttest_ind", "offset-welch", normal(1008, 50, 1e8 + 0.5, 1), normal(1009, 60, 1e8, 3), equal_var=False,
+        tags=("offset",))  # fmt: skip
+    add(m, "ttest_ind", "deep-tail-greater", normal(1010, 500, 1.0), normal(1011, 500), alternative="greater",
+        tags=("tail",))  # fmt: skip
+    add(m, "ttest_ind_from_stats", "zero-std", 1.0, 0.0, 5, 2.0, 0.0, 6, tags=("degenerate",))
+    add(m, "ttest_ind_from_stats", "welch-less", 0.3, 1.1, 15, -0.2, 3.9, 12, equal_var=False, alternative="less")
+    add(m, "f_oneway", "two-groups", x, y, tags=("small",))
+    add(m, "f_oneway", "constant-groups", np.full(3, 2.0), np.full(2, 3.0), np.full(4, 5.0), tags=("degenerate",))
+    add(m, "f_oneway", "welch-offset", normal(1012, 30, 1e8, 1), normal(1013, 40, 1e8 + 0.4, 2),
+        normal(1014, 35, 1e8 - 0.3, 0.5), equal_var=False, tags=("offset",))  # fmt: skip
+    add(m, "f_oneway", "welch-large", normal(1015, 2000), normal(1016, 1500, 0.05, 2), normal(1017, 1000, 0, 0.5),
+        equal_var=False, tags=("large",))  # fmt: skip
+    add(m, "f_oneway", "welch-tail", normal(1018, 100, 0, 1), normal(1019, 100, 3, 2), normal(1020, 100, -3, 1),
+        equal_var=False, tags=("tail",))  # fmt: skip
+    add(m, "f_oneway", "welch-batch", normal(1021, (5, 12)), normal(1022, (5, 14), 0.5, 2), axis=-1, equal_var=False,
+        tags=("batch",))  # fmt: skip
+    add(m, "alexandergovern", "offset", normal(1023, 40, 1e8, 1), normal(1024, 30, 1e8 + 0.5, 2),
+        normal(1025, 35, 1e8, 0.5), tags=("offset",))  # fmt: skip
+    add(m, "alexandergovern", "tail", normal(1026, 200), normal(1027, 200, 2, 2), normal(1028, 200, -2, 1),
+        tags=("tail",))  # fmt: skip
+    add(m, "alexandergovern", "batch", normal(1029, (4, 15)), normal(1030, (4, 18), 0.3, 2), axis=-1, tags=("batch",))
+    add(m, "bartlett", "offset", normal(1031, 100, 1e8, 1), normal(1032, 120, 1e8, 1.3), normal(1033, 90, 1e8, 0.8),
+        tags=("offset",))  # fmt: skip
+    add(m, "bartlett", "tail", normal(1034, 300, 0, 1), normal(1035, 300, 0, 3), tags=("tail",))
+    add(m, "bartlett", "two", normal(1036, 15), normal(1037, 20, 0, 2))
+    add(m, "bartlett", "batch", normal(1038, (4, 15)), normal(1039, (4, 20), 0, 2), axis=-1, tags=("batch",))
+    add(m, "levene", "offset", normal(1040, 40, 1e8, 1), normal(1041, 41, 1e8, 2), normal(1042, 30, 1e8, 1.5),
+        tags=("offset",))  # fmt: skip
+    add(m, "levene", "trimmed-0.2", normal(52, 15), normal(53, 18, 0, 2), normal(54, 12, 0, 0.6), center="trimmed",
+        proportiontocut=0.2)  # fmt: skip
+    add(m, "levene", "tail", normal(1043, 500, 0, 1), normal(1044, 500, 0, 3), tags=("tail",))
+    add(m, "levene", "batch", normal(1045, (4, 15)), normal(1046, (4, 20), 0, 2), axis=-1, tags=("batch",))
+    add(m, "fligner", "offset", normal(1047, 40, 1e8, 1), normal(1048, 41, 1e8, 2), normal(1049, 30, 1e8, 1.5),
+        tags=("offset",))  # fmt: skip
+    add(m, "fligner", "large", normal(1050, 1500), normal(1051, 1200, 0, 1.2), normal(1052, 1000, 0, 0.8),
+        tags=("large",))  # fmt: skip
+    add(m, "fligner", "trimmed-0.2", normal(55, 15), normal(56, 18, 0, 2), normal(57, 12, 0, 0.6), center="trimmed",
+        proportiontocut=0.2)  # fmt: skip
+    add(m, "fligner", "tail", normal(1053, 500, 0, 1), normal(1054, 500, 0, 3), tags=("tail",))
+    add(m, "fligner", "batch", normal(1055, (4, 15)), normal(1056, (4, 20), 0, 2), axis=-1, tags=("batch",))
 
 
 # ---- H2: goodness of fit to a given distribution ------------------------------------------

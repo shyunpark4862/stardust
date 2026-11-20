@@ -10,7 +10,9 @@ writes tests/htest/ref/<family>.json: for each problem of tests/htest/problems.p
 covers, the inputs' digest (problems.digest), the method the reference follows ('exact',
 'asymptotic', ...: scipy's choice for the problem, H12) and each reference field as [hi, lo], a
 double-double (hi the value rounded to a double, lo the rest rounded). Integer fields (counts) are
-ints and text fields strings. NaN marks a degenerate input (H11).
+ints and text fields strings. NaN marks a degenerate input (H11). Confidence intervals
+("conf_int", alpha = 0.05) are a pair of such values; "kappa" is a plain float, the p-value's
+condition number (approximate: a tolerance factor of the contract, docs/design/htest.md §4).
 
 The inputs are the problem's doubles taken as exact rationals. A statistic that is a rational
 function of the data (means, sums of squares, ranks, counts, t^2, r^2, F, U, T+, Kendall's
@@ -222,22 +224,155 @@ def family(name, funcs, select=None, seconds=60):
     return deco
 
 
-def _t_result(diff, se2, nu, alt):
+# ---- H1: means and variances
+
+KAPPA_BITS = 400  # the working precision of the condition numbers (central differences)
+ALPHA = Fraction(0.05)  # the confidence intervals' level, alpha = 0.05 (its double)
+
+
+def kappa(pfun, s, dfs=(), vary=()):
+    """The p-value's condition number, approximately: |s dp/ds| / p, plus |d dp/dd| / p for each
+    degree of freedom d at the indices `vary` (one computed in floating point, Welch's), by
+    central differences in Arb at KAPPA_BITS. pfun(s, *dfs) gives the p-value as an arb; s is a
+    value or a zero-argument function giving an arb. A tolerance factor, not a reference: NaN
+    where the p-value is NaN or 0."""
+    with ar.precision(KAPPA_BITS):
+        s = s() if callable(s) else A(s)
+        dfs = [A(d) for d in dfs]
+        p = pfun(s, *dfs)
+        if not p.is_finite() or not p > 0:
+            return NAN
+        h = arb(2) ** -120
+        tot = arb(0)
+        if not s.is_zero():
+            tot += abs(pfun(s * (1 + h), *dfs) - pfun(s * (1 - h), *dfs))
+        for i in vary:
+            up = list(dfs)
+            dn = list(dfs)
+            up[i], dn[i] = dfs[i] * (1 + h), dfs[i] * (1 - h)
+            tot += abs(pfun(s, *up) - pfun(s, *dn))
+        return float((tot / (2 * h * p)).mid())
+
+
+def t_p_arb(t, nu, alt):
+    """The Student t p-value at an arb t with nu degrees of freedom (an arb)."""
+    two = (nu / (nu + t * t)).beta_lower(nu / 2, arb(1) / 2, 1)
+    if alt == "two-sided":
+        return two
+    upper = t > 0 if alt == "greater" else t < 0
+    return two / 2 if upper else 1 - two / 2
+
+
+def t_upper(x, nu):
+    """P(T > x) for x >= 0."""
+    if x.is_zero():
+        return arb(1) / 2
+    return (nu / (nu + x * x)).beta_lower(nu / 2, arb(1) / 2, 1) / 2
+
+
+def t_pdf(x, nu):
+    return (
+        ((nu + 1) / 2).lgamma().exp()
+        / ((nu * arb.pi()).sqrt() * (nu / 2).lgamma().exp())
+        * (1 + x * x / nu) ** (-(nu + 1) / 2)
+    )
+
+
+def t_quantile_upper(q, nu):
+    """The x > 0 with P(T > x) = q (q a Fraction below 1/2, nu a Fraction), certified to 2^-140
+    relative and widened by that (an arb ball)."""
+    from scipy import stats as st
+
+    guess = float(st.t.isf(float(q), float(nu)))
+    g = lambda x: A(q) - t_upper(x, A(nu))  # increasing in x
+    dg = lambda x: t_pdf(x, A(nu))
+    x = ar.solve_settled(g, dg, arb(guess), increasing=True, rel_bits=140)
+    with ar.precision(ar.MAX_PREC):  # (the sum below at the default 53 bits would round the point)
+        return ar.add_error(x, abs(x) * arb(2) ** -139)
+
+
+def _t_ci(est, se2, nu, alt):
+    """scipy's interval est -+ q se at ALPHA (the problem's alternative): two values, each a
+    Fraction, an inf or a function of the precision."""
+    if se2 == 0:
+        return [est, est]
+    if alt == "two-sided":
+        q = t_quantile_upper(ALPHA / 2, nu)
+        return [lambda: A(est) - q * A(se2).sqrt(), lambda: A(est) + q * A(se2).sqrt()]
+    q = t_quantile_upper(ALPHA, nu)
+    if alt == "less":
+        return [-math.inf, lambda: A(est) + q * A(se2).sqrt()]
+    return [lambda: A(est) - q * A(se2).sqrt(), math.inf]
+
+
+def _t_result(est, diff, se2, nu, alt, df_varies=False):
+    """The t test's fields: est the interval's centre, diff = est - (the null value), se2 the
+    squared standard error, nu the degrees of freedom (a Fraction, or NaN: everything NaN).
+    A zero standard error gives NaN statistic and p-value (user decision 3) with a zero-width
+    interval."""
+    if isinstance(nu, float):
+        return {"statistic": NAN, "pvalue": NAN, "df": NAN, "conf_int": [NAN, NAN], "kappa": NAN}
     if se2 == 0 or nu <= 0:
-        return {"statistic": NAN, "pvalue": NAN, "df": NAN}
+        ci = [est, est] if se2 == 0 and nu > 0 else [NAN, NAN]
+        return {"statistic": NAN, "pvalue": NAN, "df": nu, "conf_int": ci, "kappa": NAN}
     t2 = diff * diff / se2
     s = sign(diff)
+    stat = (lambda: s * A(t2).sqrt()) if s else Fraction(0)
     return {
-        "statistic": (lambda: s * A(t2).sqrt()) if s else Fraction(0),
+        "statistic": stat,
         "pvalue": lambda: t_p(t2, s, nu, alt),
         "df": nu,
+        "conf_int": _t_ci(est, se2, nu, alt),
+        "kappa": kappa(lambda t, v: t_p_arb(t, v, alt), stat, (nu,), (0,) if df_varies else ()),
     }
 
 
-@family("ttest", ("ttest_1samp", "ttest_rel", "ttest_ind", "ttest_ind_from_stats"), lambda p: "trim" not in p.kwargs)
+def trimmed(xs, trim):
+    """Yuen's pieces (scipy's _ttest_trim_var_mean_len): the winsorized variance, the trimmed
+    mean and h = n - 2g, g = int(n * trim) as the double product. The variance is NaN for
+    h < 2 (a float)."""
+    s = sorted(xs)
+    n = len(s)
+    g = int(float(n) * float(trim))
+    h = n - 2 * g
+    mid = s[g : n - g]
+    tm = sum(mid) / h if h > 0 else NAN
+    win = [s[g]] * g + mid + [s[n - g - 1]] * g
+    wm = sum(win) / n
+    v = sum((w - wm) ** 2 for w in win) / (h - 1) if h > 1 else NAN
+    return v, tm, h
+
+
+def _two_sample(m1, v1, n1, m2, v2, n2, equal_var, alt):
+    """Student's (scipy's convention: a sample of one has variance 0) or Welch's t from the
+    pieces (Fractions; a variance NaN for a sample too small)."""
+    est = m1 - m2 if not (isinstance(m1, float) or isinstance(m2, float)) else NAN
+    if n1 < 1 or n2 < 1 or isinstance(est, float):
+        return _t_result(NAN, NAN, NAN, NAN, alt)
+    if equal_var:
+        v1 = Fraction(0) if n1 == 1 else v1
+        v2 = Fraction(0) if n2 == 1 else v2
+        nu = Fraction(n1 + n2 - 2)
+        if nu <= 0:
+            return {"statistic": NAN, "pvalue": NAN, "df": nu, "conf_int": [NAN, NAN], "kappa": NAN}
+        sp2 = ((n1 - 1) * v1 + (n2 - 1) * v2) / nu
+        se2 = sp2 * (Fraction(1, 1) / n1 + Fraction(1, 1) / n2)
+        return _t_result(est, est, se2, nu, alt)
+    if n1 < 2 or n2 < 2 or isinstance(v1, float) or isinstance(v2, float):
+        return _t_result(NAN, NAN, NAN, NAN, alt)
+    a1, a2 = v1 / n1, v2 / n2
+    se2 = a1 + a2
+    if se2 == 0:
+        return {"statistic": NAN, "pvalue": NAN, "df": NAN, "conf_int": [est, est], "kappa": NAN}
+    nu = se2 * se2 / (a1 * a1 / (n1 - 1) + a2 * a2 / (n2 - 1))
+    return _t_result(est, est, se2, nu, alt, df_varies=True)
+
+
+@family("ttest", ("ttest_1samp", "ttest_rel", "ttest_ind", "ttest_ind_from_stats"))
 def ttest(p):
-    """Student's and Welch's t: exact mean differences and variances, t^2 exact, the p-value from
-    the t distribution's regularized incomplete beta."""
+    """Student's, Welch's and Yuen's t: exact means (trimmed means), variances (winsorized) and
+    t^2, the p-value from the t distribution's regularized incomplete beta, the 95% interval
+    from a certified t quantile."""
     f, a, kw = p.func, p.args, p.kwargs
     alt = kw.get("alternative", "two-sided")
     if f in ("ttest_1samp", "ttest_rel"):
@@ -246,62 +381,144 @@ def ttest(p):
         else:
             x, mu = [u - v for u, v in zip(fvec(a[0]), fvec(a[1]))], Fraction(0)
         n = len(x)
+        if n == 0:
+            return _t_result(NAN, NAN, NAN, NAN, alt)
         if n < 2:
-            return {"statistic": NAN, "pvalue": NAN, "df": NAN}
+            return {"statistic": NAN, "pvalue": NAN, "df": Fraction(n - 1), "conf_int": [NAN, NAN], "kappa": NAN}
         m, v = mean_var(x)
-        return _t_result(m - mu, v / n, Fraction(n - 1), alt)
+        return _t_result(m, m - mu, v / n, Fraction(n - 1), alt)
+    equal_var = kw.get("equal_var", True)
     if f == "ttest_ind_from_stats":
         m1, s1, n1, m2, s2, n2 = (fr(v) for v in a)
-        v1, v2 = s1 * s1, s2 * s2
+        return _two_sample(m1, s1 * s1, n1, m2, s2 * s2, n2, equal_var, alt)
+    x, y = fvec(a[0]), fvec(a[1])
+    trim = kw.get("trim", 0)
+    if trim:
+        (v1, m1, n1), (v2, m2, n2) = trimmed(x, trim), trimmed(y, trim)
     else:
-        x, y = fvec(a[0]), fvec(a[1])
-        (m1, v1), (m2, v2) = mean_var(x), mean_var(y)
-        n1, n2 = Fraction(len(x)), Fraction(len(y))
-    if kw.get("equal_var", True):
-        nu = n1 + n2 - 2
-        sp2 = ((n1 - 1) * v1 + (n2 - 1) * v2) / nu
-        se2 = sp2 * (1 / n1 + 1 / n2)
-    else:
-        a1, a2 = v1 / n1, v2 / n2
-        se2 = a1 + a2
-        nu = se2 * se2 / (a1 * a1 / (n1 - 1) + a2 * a2 / (n2 - 1))
-    return _t_result(m1 - m2, se2, nu, alt)
+        n1, n2 = len(x), len(y)
+        m1, v1 = mean_var(x) if n1 else (NAN, NAN)
+        m2, v2 = mean_var(y) if n2 else (NAN, NAN)
+        v1 = v1 if n1 > 1 else NAN
+        v2 = v2 if n2 > 1 else NAN
+    return _two_sample(m1, v1, Fraction(n1), m2, v2, Fraction(n2), equal_var, alt)
+
+
+def f_p_arb(F, dfn, dfd):
+    return (dfd / (dfd + dfn * F)).beta_lower(dfd / 2, dfn / 2, 1)
+
+
+def chi2_p_arb(s, df):
+    return (s / 2).gamma_upper(df / 2, 1)
+
+
+def _f_fields(F, dfn, dfd, df_varies=False):
+    return {
+        "statistic": F,
+        "pvalue": lambda: f_sf(F, dfn, dfd),
+        "df_num": dfn,
+        "df_denom": dfd,
+        "kappa": kappa(f_p_arb, F, (dfn, dfd), (1,) if df_varies else ()),
+    }
+
+
+def _nan_fields(**known):
+    return {"statistic": NAN, "pvalue": NAN, **known, "kappa": NAN}
+
+
+def _oneway(gs):
+    """The equal-variance one-way ANOVA's fields on groups of Fractions."""
+    k = len(gs)
+    ns = [len(g) for g in gs]
+    N = sum(ns)
+    dfn, dfd = Fraction(k - 1), Fraction(N - k)
+    if min(ns) == 0 or dfd <= 0:
+        return _nan_fields(df_num=dfn, df_denom=dfd)
+    means = [sum(g) / len(g) for g in gs]
+    grand = sum(sum(g) for g in gs) / N
+    ssb = sum(n * (m - grand) ** 2 for n, m in zip(ns, means))
+    ssw = sum(sum((x - m) ** 2 for x in g) for g, m in zip(gs, means))
+    if ssw == 0:
+        return _nan_fields(df_num=dfn, df_denom=dfd)
+    return _f_fields((ssb / dfn) / (ssw / dfd), dfn, dfd)
 
 
 @family("f_oneway", ("f_oneway",))
 def f_oneway(p):
-    """One-way ANOVA (and Welch's, scipy's formula): F and its degrees of freedom exact, the
-    p-value from the F distribution's incomplete beta."""
+    """One-way ANOVA and Welch's (scipy's formula): F and its degrees of freedom exact, the
+    p-value from the F distribution's incomplete beta (df_num, df_denom: H19, decision 6)."""
     gs = [fvec(g) for g in p.args]
+    if p.kwargs.get("equal_var", True):
+        return _oneway(gs)
     k = len(gs)
+    dfn = Fraction(k - 1)
+    if min(len(g) for g in gs) < 2:
+        return _nan_fields(df_num=dfn, df_denom=NAN)
     ns = [Fraction(len(g)) for g in gs]
     stats = [mean_var(g) for g in gs]
-    if p.kwargs.get("equal_var", True):
-        N = sum(ns)
-        grand = sum(sum(g) for g in gs) / N
-        ssb = sum(n * (m - grand) ** 2 for n, (m, _) in zip(ns, stats))
-        ssw = sum(sum((x - m) ** 2 for x in g) for g, (m, _) in zip(gs, stats))
-        dfn, dfd = Fraction(k - 1), N - k
-        F = (ssb / dfn) / (ssw / dfd)
-    else:
-        w = [n / v for n, (_, v) in zip(ns, stats)]
-        sw = sum(w)
-        yhat = sum(wi * m for wi, (m, _) in zip(w, stats)) / sw
-        num = sum(wi * (m - yhat) ** 2 for wi, (m, _) in zip(w, stats)) / (k - 1)
-        tmp = sum((1 - wi / sw) ** 2 / (n - 1) for wi, n in zip(w, ns))
-        F = num / (1 + Fraction(2 * (k - 2), k * k - 1) * tmp)
-        dfn, dfd = Fraction(k - 1), Fraction(k * k - 1) / (3 * tmp)
-    return {"statistic": F, "pvalue": lambda: f_sf(F, dfn, dfd), "df_num": dfn, "df_denom": dfd}  # (H19)
+    if any(v == 0 for _, v in stats):
+        return _nan_fields(df_num=dfn, df_denom=NAN)
+    w = [n / v for n, (_, v) in zip(ns, stats)]
+    sw = sum(w)
+    yhat = sum(wi * m for wi, (m, _) in zip(w, stats)) / sw
+    num = sum(wi * (m - yhat) ** 2 for wi, (m, _) in zip(w, stats)) / (k - 1)
+    tmp = sum((1 - wi / sw) ** 2 / (n - 1) for wi, n in zip(w, ns))
+    F = num / (1 + Fraction(2 * (k - 2), k * k - 1) * tmp)
+    return _f_fields(F, dfn, Fraction(k * k - 1) / (3 * tmp), df_varies=True)
+
+
+@family("alexandergovern", ("alexandergovern",))
+def alexandergovern(p):
+    """Alexander and Govern's statistic (scipy's formulas: Hill's normalizing transformation of
+    each group's t) in Arb from the exact means and variances; the chi^2 (k - 1) tail."""
+    gs = [fvec(g) for g in p.args]
+    k = len(gs)
+    if min(len(g) for g in gs) < 2:
+        return _nan_fields(df=Fraction(k - 1))
+    stats = [mean_var(g) for g in gs]
+    if any(v == 0 for _, v in stats):
+        return _nan_fields(df=Fraction(k - 1))
+    se2 = [v / len(g) for g, (_, v) in zip(gs, stats)]
+    inv = [1 / s for s in se2]
+    mw = sum(i * m for i, (m, _) in zip(inv, stats)) / sum(inv)  # exact: the weights are rational
+
+    def A_stat():
+        tot = arb(0)
+        for g, (m, _), s2 in zip(gs, stats, se2):
+            t = A(m - mw) / A(s2).sqrt()
+            v = arb(len(g) - 1)
+            a = v - arb(1) / 2
+            b = 48 * a * a
+            c = (a * (t * t / v).log1p()).sqrt()
+            z = (
+                c
+                + (c**3 + 3 * c) / b
+                - (4 * c**7 + 33 * c**5 + 240 * c**3 + 855 * c) / (10 * b * b + 8 * b * c**4 + 1000 * b)
+            )
+            tot += z * z
+        return tot
+
+    return {
+        "statistic": A_stat,
+        "pvalue": lambda: chi2_sf(A_stat(), k - 1),
+        "df": Fraction(k - 1),
+        "kappa": kappa(chi2_p_arb, A_stat, (k - 1,)),
+    }
 
 
 @family("bartlett", ("bartlett",))
 def bartlett(p):
     """Bartlett's T: exact variances, Arb logarithms (the two large terms cancel when the
-    variances are nearly equal), the chi^2 (k - 1) tail."""
+    variances are nearly equal), the chi^2 (k - 1) tail. A group of fewer than two or a
+    constant group gives NaN (H11, H20)."""
     gs = [fvec(g) for g in p.args]
     k = len(gs)
     ns = [len(g) for g in gs]
+    if min(ns) < 2:
+        return _nan_fields(df=Fraction(k - 1))
     vs = [mean_var(g)[1] for g in gs]
+    if any(v == 0 for v in vs):
+        return _nan_fields(df=Fraction(k - 1))
     N = sum(ns)
     sp2 = sum((n - 1) * v for n, v in zip(ns, vs)) / (N - k)
     C = 1 + Fraction(1, 3 * (k - 1)) * (sum(Fraction(1, n - 1) for n in ns) - Fraction(1, N - k))
@@ -309,7 +526,83 @@ def bartlett(p):
     def T():
         return sum((n - 1) * (A(sp2) / A(v)).log() for n, v in zip(ns, vs)) / A(C)
 
-    return {"statistic": T, "pvalue": lambda: chi2_sf(T(), k - 1)}
+    return {
+        "statistic": T,
+        "pvalue": lambda: chi2_sf(T(), k - 1),
+        "df": Fraction(k - 1),
+        "kappa": kappa(chi2_p_arb, T, (k - 1,)),
+    }
+
+
+def center(xs, how, ptc):
+    """The exact centre of a group (scipy's levene and fligner): the median (the exact average of
+    the two middle values for an even size), the mean, or scipy's trim_mean (g =
+    int(proportiontocut * n) as the double product cut from each end)."""
+    s = sorted(xs)
+    n = len(s)
+    if how == "median":
+        return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+    if how == "mean":
+        return sum(s) / n
+    g = int(float(ptc) * n)
+    mid = s[g : n - g]
+    return sum(mid) / len(mid)
+
+
+def _deviations(p):
+    """|x - c| of each group (exact Fractions), c the group's centre."""
+    how = p.kwargs.get("center", "median")
+    ptc = p.kwargs.get("proportiontocut", 0.05)
+    gs = [fvec(g) for g in p.args]
+    return [[abs(x - center(g, how, ptc)) for x in g] if g else [] for g in gs]
+
+
+@family("levene", ("levene",))
+def levene(p):
+    """Levene's W (and Brown-Forsythe's): the one-way ANOVA of the exact deviations from the
+    exact centres; the F (k - 1, N - k) tail in Arb."""
+    return _oneway(_deviations(p))
+
+
+@family("fligner", ("fligner",), seconds=600)
+def fligner(p):
+    """Fligner-Killeen: exact deviations from the exact centres, their exact midranks r over all
+    N values, the scores Phi^-1(1/2 + r/(2(N + 1))) in Arb (the normal's inverse survival
+    function at the exact rational (N + 1 - r)/(2(N + 1))), the chi^2 (k - 1) tail."""
+    zs = _deviations(p)
+    k = len(zs)
+    if min(len(z) for z in zs) == 0:
+        return _nan_fields(df=Fraction(k - 1))
+    flat = [v for z in zs for v in z]
+    N = len(flat)
+    ranks, _ = midranks(flat)
+    if len(set(ranks)) == 1:
+        return _nan_fields(df=Fraction(k - 1))
+    sizes = [len(z) for z in zs]
+
+    def S():
+        cache = {}
+        sc = []
+        for r in ranks:
+            if r not in cache:
+                cache[r] = norm_isf((N + 1 - r) / (2 * (N + 1)))
+            sc.append(cache[r])
+        mean = sum(sc, arb(0)) / N
+        var = sum(((a - mean) ** 2 for a in sc), arb(0)) / (N - 1)
+        tot = arb(0)
+        i = 0
+        for n in sizes:
+            mi = sum(sc[i : i + n], arb(0)) / n
+            tot += n * (mi - mean) ** 2
+            i += n
+        return tot / var
+
+    return {
+        "statistic": S,
+        "pvalue": lambda: chi2_sf(S(), k - 1),
+        "df": Fraction(k - 1),
+        "kappa": kappa(chi2_p_arb, S, (k - 1,)),
+    }
 
 
 LAMBDA = {
@@ -1023,7 +1316,7 @@ def _point(task):
         fields = fam.compute(p)
         rec = {"digest": P.digest(p)}
         for k, v in fields.items():
-            rec[k] = _encode(v)
+            rec[k] = v if k == "kappa" else _encode(v)  # (a plain float: a tolerance factor)
         return name, pid, rec, time.monotonic() - t0, None
     except Exception as e:  # a point that cannot be settled (time limit, a ball on a boundary)
         return name, pid, None, time.monotonic() - t0, f"{type(e).__name__}: {e}"

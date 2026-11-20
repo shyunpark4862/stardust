@@ -1,8 +1,8 @@
 # sd.htest API
 
-> 상태: **초안** (H0, 2026-11-20). 공개된 검정 함수는 아직 없다. 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층만 있다(H0). 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
+> 상태: **초안** (H0, 2026-11-20; H1 구현 2026-11-20). 공개된 검정은 H1의 아홉 함수(§2)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
 
-- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H15), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H33), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/htest/test_api_surface.py`가 읽는다. 블록의 이름이 계획한 공개 이름 전부이고, 공개된 함수는 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -28,7 +28,7 @@
 ### §1.3 `nan_policy`, 무한대, 퇴화한 입력
 - **`nan_policy`**: `'propagate'`(NaN이 있는 줄의 결과가 NaN), `'omit'`(줄마다 NaN을 빼고 남은 크기로; 짝지은 표본은 쌍을 뺀다), `'raise'`(NaN이 있으면 `ValueError`: `ttest_ind(): the input contains NaN (nan_policy='raise')`). 메시지는 sd.stats의 꼴이다(T41): `ttest_ind(): 'nan_policy' must be 'propagate', 'omit' or 'raise', not 'skip'`.
 - **무한대**: 순위 검정은 ±inf를 순서대로 다룬다. 적률을 쓰는 검정은 sd.stats의 규칙이다(합이 유한하지 않으면 보정 없이, inf − inf는 NaN).
-- **퇴화한 입력**(H11): 관측이 너무 적은 줄(t 검정의 n < 2, `skewtest`의 n < 8, `kurtosistest`의 n < 5, `shapiro`의 n < 3 등), 분산이 0인 줄, 표본이 빈 줄의 결과는 NaN이다. 경고는 없다(API.md §2). 배치의 다른 줄은 그대로 계산한다. scipy가 inf와 0을 내는 곳(분산 0의 t 검정: `ttest_1samp([1, 1, 1], 0)`은 scipy에서 statistic inf, pvalue 0)도 NaN이다(API.md §2.2의 "정할 수 없는 값은 NaN"; `[scipy와 다름]`). 검정마다의 최소 크기는 그 마일스톤에서 적는다.
+- **퇴화한 입력**(H11): 관측이 너무 적은 줄(t 검정의 n < 2, `skewtest`의 n < 8, `kurtosistest`의 n < 5, `shapiro`의 n < 3 등), 분산이 0인 줄, 표본이 빈 줄의 결과는 NaN이다. 경고는 없다(API.md §2). 배치의 다른 줄은 그대로 계산한다. scipy가 inf와 0을 내는 곳(분산 0의 t 검정: `ttest_1samp([1, 1, 1], 0)`은 scipy에서 statistic inf, pvalue 0)도 NaN이다(H24, API.md §2.2의 "정할 수 없는 값은 NaN"; `[scipy와 다름]`). 분산 0의 판정은 sd.stats `skew`의 규칙이다(m2 ≤ (ε·평균)², H20). 검정마다의 최소 크기는 그 마일스톤의 절에 적는다.
 
 ### §1.4 옵션
 - **`alternative`**: `'two-sided'`, `'less'`, `'greater'`만이다. 메시지는 `mannwhitneyu(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'larger'`다.
@@ -52,6 +52,7 @@
 ### §1.7 scipy·statsmodels와 다른 점 (모든 검정에 걸친 것)
 - `axis`의 기본값 None(scipy는 대개 0), 데이터는 위치로만, 옵션은 키워드로만, 별칭 없음, `random_state` 없음과 `rng` 필수, 결과 클래스의 이름(`TtestIndResult`; scipy는 `TtestResult`·`SignificanceResult`를 나눠 쓴다), `dof` → `df`, 모든 `'auto'` 결과의 `method` 필드, 퇴화한 입력의 NaN과 경고 없음, `method='exact'`의 상한. 값의 차이는 반올림 크기이고 정확도 계약 안이다(API.md §4 규칙 3, docs/design/htest.md §4).
 - 신뢰구간은 regression의 `conf_int(*, alpha=0.05)`이고 scipy의 `confidence_interval(confidence_level=0.95)`가 아니다(H16, `[scipy와 다름]`: 영역 사이의 통일이 먼저다). 돌려주는 것도 `ConfidenceInterval(low, high)`가 아니라 (…, 2) 배열이다. 대응은 §11의 표다.
+- H1에서 scipy와 다른 것(§2): `df`는 언제나 float(H22), `ttest_ind_from_stats`의 `df`·`conf_int()`(H23), `f_oneway`의 `df_num`·`df_denom`(H27), `levene`의 `df_num`·`df_denom`과 `bartlett`·`fligner`·`alexandergovern`의 `df`(H29), 표준오차 0과 상수 집단의 NaN(H24, H11), Welch의 nᵢ < 2에서 `df` NaN, `alexandergovern`의 n < 2에서 에러 대신 NaN, 표본이 둘 미만인 `bartlett`·`levene`·`fligner`의 `TypeError`, `ttest_ind`의 `method`는 None만(H9까지).
 
 ## §2. 모수: 평균과 분산 (H1)
 ```
@@ -65,14 +66,19 @@ bartlett(*samples, axis=None, nan_policy='propagate', keepdims=False)
 levene(*samples, axis=None, center='median', proportiontocut=0.05, nan_policy='propagate', keepdims=False)
 fligner(*samples, axis=None, center='median', proportiontocut=0.05, nan_policy='propagate', keepdims=False)
 ```
-- `ttest_1samp`·`ttest_rel`·`ttest_ind`: 결과 `statistic pvalue df`, 둘로 풀린다, `conf_int(alpha=0.05)`(평균 또는 평균의 차의 구간; scipy와 같다). `df`는 언제나 float다(Welch의 자유도는 정수가 아니다; H1에서 정한다). `popmean`은 실수이거나 배치에 브로드캐스트되는 배열이다(scipy와 같다).
-- `ttest_ind`: `equal_var=False`는 Welch, `trim`(0 이상 0.5 미만)은 Yuen의 절삭 t다. `method=None`은 t 분포이고, 재표본 객체(`PermutationMethod`, `MonteCarloMethod`)는 H9에서 더한다.
-- `ttest_ind_from_stats`: 요약값에서의 t 검정. 입력은 실수나 서로 브로드캐스트되는 배열이다. 결과 `statistic pvalue`, 둘로 풀린다(scipy의 결과에는 `df`와 신뢰구간이 없다; 더할지는 H1에서 정한다).
-- `f_oneway`: 결과 `statistic pvalue`, 둘로 풀린다. `equal_var=False`는 Welch 분산분석이다. 자유도를 결과에 둔다면 F 꼴이라 `df_num`·`df_denom`이다(H19; 더할지는 H1에서 정한다). 집단 더미의 OLS와 계획 중인 `sd.regression`의 `anova` 표(항 하나)와 같은 F·p값이지만 비트까지 같지는 않다: `anova`는 설계 행렬만 받아 집단 레이블이 없어 적합의 QR에서 계산하므로, 두 값은 정확도 계약 안에서 같다(p값은 같은 `F(df_num, df_denom).ccdf` 호출; §13).
+- `ttest_1samp`·`ttest_rel`·`ttest_ind`: 결과 `statistic pvalue df`, 둘로 풀린다, `conf_int(alpha=0.05)`(평균, 평균의 차, 절삭 평균의 차의 구간; scipy의 `confidence_interval`과 같은 정의: 추정값 ∓ t 분위수 × 표준오차, 한쪽 대립가설은 한 끝이 ±inf). `df`는 언제나 float다(H22).
+- `ttest_1samp`의 `popmean`은 실수이거나 결과의 모양(배치 모양)으로 브로드캐스트되는 배열이다. scipy처럼 표본 축을 길이 1로 남긴 모양도 받는다. 아니면 `ttest_1samp(): 'popmean' cannot be broadcast to the result's shape (4, 5)`(`ValueError`)다.
+- `ttest_rel`: 차 a − b의 한 표본 검정이다. 차는 double로 반올림하지 않고 double-double로 든다(3·10⁹와 10⁹의 짝에서 scipy·R은 t가 1.1e-9 틀린다). `nan_policy='omit'`은 NaN이 있는 쌍을 뺀다.
+- `ttest_ind`: `equal_var=True`는 Student(원소 하나의 표본은 분산 0; scipy와 같다), `False`는 Welch, `trim`(0 이상 0.5 미만, 아니면 `ttest_ind(): 'trim' must be >= 0 and < 0.5`)은 Yuen의 절삭 t다(scipy의 g = int(n·trim), 윈저화 분산). `method`는 지금 None만 받고(`ttest_ind(): 'method' must be None, not str`, `TypeError`), 재표본 객체(`PermutationMethod`, `MonteCarloMethod`)는 H9에서 더한다.
+- `ttest_ind_from_stats`: 요약값(평균, 보정 1의 표준편차, 크기)에서의 t 검정이다. 입력은 실수나 서로 브로드캐스트되는 배열이고, 모두 실수면 결과의 필드가 Python float다. 결과는 `ttest_ind`과 같은 `statistic pvalue df`와 `conf_int(alpha=0.05)`이다(H23, `[scipy와 다름]`: scipy의 결과는 `statistic pvalue`뿐이다). 둘로 풀린다. 브로드캐스트되지 않으면 `ttest_ind_from_stats(): the arguments could not be broadcast together: (2,), (3,)`(`ValueError`)다.
+- `f_oneway`: 결과 `statistic pvalue df_num df_denom`(H27, H19; scipy는 `statistic pvalue`), 둘로 풀린다. `equal_var=False`는 Welch의 분산분석(H26; R `oneway.test(var.equal = FALSE)`)이고 `df_denom`이 정수가 아니다. 집단 더미의 OLS와 `sd.regression`의 `anova` 표(항 하나)와 같은 F·p값이지만 비트까지 같지는 않다: `anova`는 설계 행렬만 받아 집단 레이블이 없어 적합의 QR에서 계산하므로, 두 값은 정확도 계약 안에서 같다(p값은 같은 `F(df_num, df_denom).ccdf` 호출; §13).
 - `ttest_ind`(Student)의 t·p는 집단 더미 하나의 OLS에서 그 계수의 t·p와 같은 값이다(부호는 더미의 방향; §13).
-- `alexandergovern`: 결과 `statistic pvalue`, 풀리지 않는다(scipy와 같다).
-- `bartlett`·`levene`·`fligner`: 결과 `statistic pvalue`, 둘로 풀린다. `center`는 `'median'`, `'mean'`, `'trimmed'`이고 `proportiontocut`은 `'trimmed'`일 때 쓴다.
-- 표본이 둘 미만이면 `f_oneway(): at least two samples are required`(`TypeError`, scipy와 같은 종류)다(H1에서 정한다).
+- `alexandergovern`: 결과 `statistic pvalue df`(`df`는 k − 1, H29; scipy에는 없다), 풀리지 않는다(scipy와 같다).
+- `bartlett`·`levene`·`fligner`: 결과는 `bartlett`·`fligner`가 `statistic pvalue df`(k − 1), `levene`이 `statistic pvalue df_num df_denom`(k − 1, N − k)이다(H29, H19; scipy의 결과에는 자유도가 없다). 둘로 풀리고(scipy와 같다, H7) 자유도는 튜플에 들지 않는다. `center`는 `'median'`, `'mean'`, `'trimmed'`이고 `proportiontocut`(0 이상 0.5 미만)은 `'trimmed'`일 때 쓴다(scipy `trim_mean`의 g = int(p·n)). 중앙값과 평균은 double-double이라 짝수 n의 두 가운데 값의 편차가 정확히 같은 동점으로 남는다(scipy·R은 중앙값을 double로 반올림해 동점이 갈린다: 정의는 같고, `fligner`의 p값이 반올림 때문에 6.4e-9–2.9e-7 다를 수 있다).
+- 표본이 둘 미만이면 다섯 다표본 함수 모두 `f_oneway(): at least two samples are required, not 1`(`TypeError`, H30)다. scipy는 `f_oneway`·`alexandergovern`이 `TypeError`, `bartlett`·`levene`·`fligner`가 `ValueError`다. 표본 인자의 이름은 메시지에서 `'samples[1]'`이다.
+- 실수 스칼라 표본은 원소 하나의 표본이다(H25, sd.stats의 D-30).
+- **퇴화한 입력**(H11, H24, H20): 모든 필드가 NaN인 곳: 빈 표본, `nan_policy='propagate'`의 NaN(scipy와 같다), 유한하지 않은 값이 평균이나 제곱합을 무한하게 만드는 줄. t·p만 NaN인 곳: 한 표본 검정의 n < 2(`df` = n − 1), Student의 n₁ + n₂ − 2 ≤ 0, 표준오차 0(관련된 표본이 모두 상수; `conf_int()`는 폭 0의 (추정값, 추정값)). Welch에서 nᵢ < 2면 `df`도 NaN이다(H31; scipy는 1). 통계량·p가 NaN인 곳: `f_oneway`의 빈 집단, N ≤ k, 모든 집단이 상수(SSW = 0; scipy는 inf와 0 또는 NaN), Welch·`alexandergovern`·`bartlett`의 nᵢ < 2나 상수 집단(H28)(scipy `bartlett`은 inf와 0, `alexandergovern`의 n < 2는 `ValueError`), `levene`의 빈 집단이나 모든 집단의 편차가 상수, `fligner`의 빈 집단이나 모든 점수가 같은 줄. `[scipy와 다름]`인 것은 표준오차 0과 상수 집단의 NaN, Welch의 `df`, `alexandergovern`의 에러 대신 NaN이다.
+- 값이 아주 크거나 작아도(가장 큰 크기가 2⁵⁰⁰ 이상이거나 2⁻⁴⁰⁰ 아래) 통계량은 그대로다: 그런 줄은 2의 거듭제곱 단위로 계산한다(docs/design/htest.md §3.2).
 
 ## §3. 적합도 1: 분포를 정한 검정 (H2)
 ```
@@ -239,6 +245,10 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 | `bootstrap(confidence_level=0.95)`와 필드 `confidence_interval` | 결과의 `conf_int(*, alpha=0.05)` | H16 |
 | statsmodels의 `alpha`(`proportion_confint` 등) | 그대로 `alpha` | H16 |
 | F 꼴 자유도(statsmodels `df_num`·`df_denom`, R `parameter`) | `df_num`, `df_denom` | H19 |
+| `ttest_ind_from_stats`의 결과 `statistic pvalue` | `statistic pvalue df`와 `conf_int()` | H23 |
+| `f_oneway`의 결과 `statistic pvalue` | `statistic pvalue df_num df_denom` | H27 |
+| `levene`의 결과 `statistic pvalue` | `statistic pvalue df_num df_denom` | H29 |
+| `bartlett`·`fligner`·`alexandergovern`의 결과 `statistic pvalue` | `statistic pvalue df` | H29 |
 | `alternative='larger'`, `'smaller'` | `'greater'`, `'less'` | H3·H5(scipy의 이름) |
 | `proportion_confint(method='beta')` | `method='exact'` | H7에서 정한다 |
 | `chi2_contingency(...).dof`, `cochrans_q` 결과의 `df` | `df` | H10 |
@@ -250,7 +260,7 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 ## §12. 마일스톤별 남은 질문 (추천을 첫째에)
 docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 그 문서를 함께 고친다.
 
-- **H1**: (1) `ttest_*`의 `df`는 언제나 float(추천) / scipy처럼 Student는 int. `f_oneway`에 `df_num`·`df_denom`을 더한다(추천, H19) / 더하지 않는다. (2) `ttest_ind_from_stats`에 `df`와 신뢰구간을 더한다(추천: `ttest_ind`과 같은 필드) / scipy처럼 `statistic pvalue`만. (3) 표준오차 0의 t·p: NaN(추천, §1.3) / scipy의 inf·0. (4) 표본 인자에 실수 스칼라를 받는다(원소 하나의 표본; sd.stats D-30과 같다; 추천) / 받지 않는다. (5) `f_oneway`의 `equal_var=False`(Welch)를 넣는다(추천).
+- **H1**: 정했다(H22–H33, docs/design/htest.md §1.1).
 - **H2**: `kstest`를 두지 않는다(추천) / 둔다. `cdf` 인자는 sd.stats 분포 객체와 호출 가능한 객체(추천) / 문자열 이름도. `anderson`의 `dist`는 sd.stats의 분포 클래스(추천; `gumbel_l`은 없다) / scipy의 문자열. `anderson`의 기본 `method='interpolate'`(추천). Shapiro–Wilk는 AS R94의 정의(추천).
 - **H3**: 동점이 있을 때 `'exact'`는 조건부 정확 분포(추천) / scipy처럼 동점이 없는 분포 / `ValueError`. `'auto'`의 문턱은 scipy 그대로(추천). `ranksums`를 둔다(추천). `wilcoxon`의 `zstatistic`은 정규 근사로 계산한 때마다(추천; scipy는 사용자가 `'asymptotic'`을 준 때만). 배치의 `method` 필드는 줄마다의 문자열 배열(추천) / 줄이 모두 같을 때만 str. `median_test`의 배치: `axis`를 더한다(추천) / scipy처럼 없다.
 - **H4**: `ks_2samp`의 동점: scipy의 정확 분포(추천, H4 전에 R `psmirnov`와 다시 대조) / R처럼 조건부. `cramervonmises_2samp`의 `'exact'`를 동적 계획으로 크게(추천). `anderson_ksamp`의 기본 `variant='midrank'`(추천)와 풀기: scipy 1.18.1의 실제 동작(둘로 풀린다; 추천) / scipy 문서(풀리지 않는다).

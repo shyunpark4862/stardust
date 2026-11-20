@@ -155,6 +155,30 @@ SCIPY_KNOWN = {
     ("ttest_ind/offset", "pvalue"): 3.2e-7,
     ("ttest_1samp/constant", "statistic"): math.inf,
     ("ttest_1samp/constant", "pvalue"): math.inf,
+    # H1's problems: the same offsets (Welch's t and ANOVA, Alexander-Govern), a - b rounded before
+    # the paired test, the inf and 0 of zero variances (NaN here, user decision 3 and H11), and
+    # the centres of levene and fligner rounded to a double: |x - c| of the two middle values of
+    # an even group no longer tie, which moves two ranks of fligner by 1/2
+    ("ttest_rel/offset-wide", "statistic"): 1.1e-9,
+    ("ttest_rel/offset-wide", "pvalue"): 2.2e-9,
+    ("ttest_ind/constant-both", "statistic"): math.inf,
+    ("ttest_ind/constant-both", "pvalue"): math.inf,
+    ("ttest_ind/offset-welch", "statistic"): 2.0e-8,
+    ("ttest_ind/offset-welch", "pvalue"): 3.4e-8,
+    ("ttest_ind_from_stats/zero-std", "statistic"): math.inf,
+    ("ttest_ind_from_stats/zero-std", "pvalue"): math.inf,
+    ("f_oneway/constant-groups", "statistic"): math.inf,
+    ("f_oneway/constant-groups", "pvalue"): math.inf,
+    ("f_oneway/welch-offset", "statistic"): 5.6e-8,
+    ("f_oneway/welch-offset", "pvalue"): 1.1e-7,
+    ("alexandergovern/offset", "statistic"): 2.7e-8,
+    ("alexandergovern/offset", "pvalue"): 8.4e-8,
+    ("levene/offset", "statistic"): 1.5e-11,
+    ("levene/offset", "pvalue"): 7.4e-11,
+    ("fligner/large", "statistic"): 8.5e-11,
+    ("fligner/large", "pvalue"): 6.4e-9,
+    ("fligner/tail", "statistic"): 2.2e-9,
+    ("fligner/tail", "pvalue"): 2.9e-7,
 }
 # R's: the same cancellations (and ttest_rel's x - y), its own methods where they differ from scipy's
 # (ks.test is exact only below n = 100 (one sample) or m n = 10^4 (two), its two-sample exact
@@ -192,9 +216,37 @@ R_KNOWN = {
     ("spearmanr/small", "pvalue"): 1.5,
     ("wilcoxon/zeros-wilcox", "pvalue"): 0.16,
     ("wilcoxon/tail", "pvalue"): 1.0,
+    # H1's problems (as scipy's above; fligner.test's centre is rounded as scipy's)
+    ("ttest_rel/offset-wide", "statistic"): 1.1e-9,
+    ("ttest_rel/offset-wide", "pvalue"): 2.2e-9,
+    ("ttest_ind/offset-welch", "statistic"): 1.9e-8,
+    ("ttest_ind/offset-welch", "pvalue"): 3.2e-8,
+    ("f_oneway/constant-groups", "statistic"): math.inf,
+    ("f_oneway/constant-groups", "pvalue"): math.inf,
+    ("f_oneway/welch-offset", "statistic"): 7.9e-9,
+    ("f_oneway/welch-offset", "pvalue"): 1.6e-8,
+    ("bartlett/offset", "statistic"): 2.6e-9,
+    ("bartlett/offset", "pvalue"): 3.2e-8,
+    ("fligner/large", "statistic"): 8.5e-11,
+    ("fligner/large", "pvalue"): 6.4e-9,
+    ("fligner/tail", "statistic"): 2.2e-9,
+    ("fligner/tail", "pvalue"): 2.9e-7,
+    # car::leveneTest (H33): R's median of an even group rounded to a double, as scipy's
+    ("levene/offset", "statistic"): 8.4e-9,
+    ("levene/offset", "pvalue"): 4.2e-8,
 }
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
-R_SAME_STATISTIC = {"ttest", "f_oneway", "bartlett", "power_divergence", "ks_1samp", "ks_2samp", "mannwhitneyu"}
+R_SAME_STATISTIC = {
+    "ttest",
+    "f_oneway",
+    "bartlett",
+    "fligner",
+    "levene",
+    "power_divergence",
+    "ks_1samp",
+    "ks_2samp",
+    "mannwhitneyu",
+}
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
 TOL = 1e-12
 
@@ -237,6 +289,96 @@ def test_r_against_the_references():
     _check(R_KNOWN, got, R_SAME_STATISTIC)
 
 
+# The 95% intervals of the t tests (scipy's confidence_interval(), R's conf.int) farther than 1e-12
+# from the references: the offsets again (R's paired test rounds a - b)
+CI_KNOWN = {
+    ("scipy", "ttest_ind/offset", 0): 9.8e-8,
+    ("scipy", "ttest_ind/offset", 1): 2.1e-8,
+    ("scipy", "ttest_ind/offset-welch", 0): 2.4e-8,
+    ("scipy", "ttest_ind/offset-welch", 1): 7.1e-9,
+    ("R", "ttest_rel/offset", 0): 3.9e-7,
+    ("R", "ttest_rel/offset", 1): 3.8e-7,
+    ("R", "ttest_ind/offset", 0): 3.3e-8,
+    ("R", "ttest_ind/offset", 1): 7.9e-9,
+    ("R", "ttest_ind/offset-welch", 0): 2.2e-8,
+    ("R", "ttest_ind/offset-welch", 1): 7.7e-9,
+}
+
+
+def test_confidence_intervals_against_the_references():
+    seen = set()
+    for pid, rec in REFS["ttest"].items():
+        ref = rec["conf_int"]
+        libs = (
+            ("scipy", SCIPY.get(pid, {}).get("result", {}).get("confidence_interval")),
+            ("R", (R.get(pid, {}).get("result") or {}).get("conf.int")),
+        )
+        for lib, got in libs:
+            if got is None:
+                continue
+            for j in (0, 1):
+                want = ref[j][0]
+                e = (0.0 if got[j] == want else math.inf) if math.isinf(want) else rel(got[j], want)
+                key = (lib, pid, j)
+                if key in CI_KNOWN:
+                    seen.add(key)
+                    assert 0.5 * CI_KNOWN[key] <= e <= 2 * CI_KNOWN[key], (key, e)
+                else:
+                    assert e <= TOL, (key, e)
+    assert seen == set(CI_KNOWN)
+
+
+def test_condition_numbers():
+    # kappa (the p-value's condition number) is given wherever the p-value is a positive number
+    for fam in ("ttest", "f_oneway", "alexandergovern", "bartlett", "levene", "fligner"):
+        for pid, rec in REFS[fam].items():
+            p, k = rec["pvalue"][0], rec["kappa"]
+            assert (k == k and k >= 0) if p == p and p > 0 else k != k, (pid, p, k)
+
+
+# ---- the tool's H1 definitions against independent forms ----------------------------------
+
+
+def test_h1_identities():
+    T = tool()
+    # F of two groups is Student's t^2, and the same p-value
+    f, t = REFS["f_oneway"]["f_oneway/two-groups"], REFS["ttest"]["ttest_ind/small"]
+    assert rel(f["statistic"][0], t["statistic"][0] ** 2) <= 4e-16 and rel(f["pvalue"][0], t["pvalue"][0]) <= 2e-16
+    # Yuen with nothing trimmed is Student's (the pieces exactly)
+    x = T.fvec(P.normal(7001, 9))
+    v, m, h = T.trimmed(x, 0.0)
+    assert (m, v, h) == (*T.mean_var(x), 9)
+    # Welch's ANOVA of two groups is Welch's t^2 with Welch's degrees of freedom (exactly)
+    a, b = P.normal(7002, 7), P.normal(7003, 11, 0.5, 2.0)
+    fw = T.f_oneway(P.Problem("f_oneway/w2", "f_oneway", (a, b), {"equal_var": False}))
+    tw = T.ttest(P.Problem("ttest_ind/w2", "ttest_ind", (a, b), {"equal_var": False}))
+    assert fw["df_denom"] == tw["df"]
+    (ma, va), (mb, vb) = T.mean_var(T.fvec(a)), T.mean_var(T.fvec(b))
+    assert fw["statistic"] == (ma - mb) ** 2 / (va / 7 + vb / 11)
+    # Levene's W of two groups is Student's t^2 on the deviations from the centres
+    g = [P.normal(7004, 8), P.normal(7005, 10, 0, 2)]
+    w = T.levene(P.Problem("levene/w2", "levene", tuple(g), {"center": "mean"}))["statistic"]
+    z = [[abs(v - sum(T.fvec(x)) / len(x)) for v in T.fvec(x)] for x in g]
+    (m1, v1), (m2, v2) = T.mean_var(z[0]), T.mean_var(z[1])
+    sp2 = (7 * v1 + 9 * v2) / 16
+    assert w == (m1 - m2) ** 2 / (sp2 * (Fraction(1, 8) + Fraction(1, 10)))
+    # the even median: the exact average of the two middle values
+    assert T.center([Fraction(1), Fraction(4), Fraction(2), Fraction(7)], "median", 0.05) == 3
+    assert T.center([Fraction(v) for v in range(10)], "trimmed", 0.2) == Fraction(9, 2)
+
+
+def test_fligner_scores_are_symmetric():
+    from flint import arb
+
+    T = tool()
+    N = 11
+    for r in (Fraction(1), Fraction(5, 2), Fraction(6)):
+        # Phi^-1(1/2 + u) = -Phi^-1(1/2 - u), u = r/(2(N + 1)): the tool's scores mirror
+        up = T.norm_isf((N + 1 - r) / (2 * (N + 1)))
+        dn = T.norm_isf((N + 1 + r) / (2 * (N + 1)))
+        assert (up + dn).contains(arb(0)) and up > 0
+
+
 def test_multiple_testing_corrections():
     # statsmodels' multipletests, scipy's false_discovery_control and R's p.adjust against the exact
     # corrections
@@ -258,3 +400,14 @@ def test_reference_methods_are_scipys(fam):
         m = SCIPY.get(pid, {}).get("result", {}).get("method")
         if "method" in rec and m is not None:
             assert rec["method"] == m, pid
+
+
+def test_r_levene_degrees_of_freedom():
+    # car::leveneTest's Df column is the references' (df_num, df_denom) (H29, H33)
+    seen = 0
+    for pid, rec in REFS["levene"].items():
+        r = R.get(pid, {}).get("result")
+        if r:
+            assert r["parameter"] == [rec["df_num"][0], rec["df_denom"][0]], pid
+            seen += 1
+    assert seen == len(REFS["levene"])

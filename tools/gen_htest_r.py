@@ -2,11 +2,12 @@
 docs/design/htest.md §7). Writes tests/htest/data/r.json, so the tests and the accuracy tables
 compare with R on machines without R (as tools/gen_regression_r.py does for sd.regression).
 
-Only R's base `stats` package (no package is installed for this, decision H15): t.test,
+R's base `stats` package (decision H15), and the `car` package's leveneTest for levene (decision
+H33; car is the regression area's comparison package, installed for G7a): t.test,
 oneway.test, bartlett.test, fligner.test, chisq.test, shapiro.test, ks.test, wilcox.test,
 kruskal.test, friedman.test, ansari.test, mood.test, cor.test, fisher.test, mcnemar.test,
-binom.test, prop.test, TukeyHSD, p.adjust, pchisq. A problem is run where R has the same test
-with the same options; the others (Yuen's trim, levene, alexandergovern, the Cressie-Read family,
+binom.test, prop.test, TukeyHSD, p.adjust, pchisq, car::leveneTest. A problem is run where R has
+the same test with the same options; the others (Yuen's trim, alexandergovern, the Cressie-Read family,
 cramervonmises, anderson, brunnermunzel, median_test, page_trend_test, epps_singleton, batches,
 ...) are left out. Where R's definition differs from scipy's (ks.test's exact distribution with
 ties, wilcox.test's exact switch at n < 50, fisher.test's conditional MLE odds ratio, prop.test's
@@ -98,6 +99,17 @@ def r_call(p):
         return f"bartlett.test({groups(a)})"
     if f == "fligner" and kw.get("center", "median") == "median":
         return f"fligner.test({groups(a)})"
+    if f == "levene":
+        # car's center: R's median, mean, or mean(trim = p) (floor(n p) from each end: scipy's g)
+        c = kw.get("center", "median")
+        ctr = {"median": "median", "mean": "mean"}.get(
+            c, f"function(x) mean(x, trim = {kw.get('proportiontocut', 0.05)!r})"
+        )
+        g = "factor(rep(seq_along(L), lengths(L)))"
+        return (
+            f"local({{L <- {groups(a)}; r <- car::leveneTest(unlist(L), {g}, center = {ctr}); "
+            "list(statistic = r[1, 'F value'], parameter = r[, 'Df'], p.value = r[1, 'Pr(>F)'])})"
+        )
     if f == "chisquare" and "ddof" not in kw:
         if len(a) > 1:
             return f"chisq.test({vec(a[0])}, p = {vec(a[1])}, rescale.p = TRUE)"

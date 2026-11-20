@@ -133,9 +133,12 @@ class Samples:
     axis=None); lanes its size; n[s] the sample lengths along the axis. nan is a (lanes,) bool
     array, a NaN in any of the lane's samples (None when nothing is NaN). lane(i) gives the lane's
     samples as 1-D arrays, NaNs dropped under 'omit' (pairs, when paired). out() puts a per-lane
-    result back in the batch's shape."""
+    result back in the batch's shape.
 
-    def __init__(self, name, xs, args, axis, policy, *, paired=False, keepdims=False):
+    scan=False leaves the NaNs to a native kernel that handles nan_policy itself: the samples are
+    then looked at only for 'raise', and nan stays None (lane() and propagates() know of no NaN)."""
+
+    def __init__(self, name, xs, args, axis, policy, *, paired=False, keepdims=False, scan=True):
         policy = nan_policy(policy, name)
         flag(keepdims, name, "keepdims")
         arrays = [_as_array(x, name, a) for x, a in zip(xs, args)]
@@ -172,6 +175,8 @@ class Samples:
         self.paired = paired
         self.policy = policy
         self.nan = None
+        if not scan and policy != "raise":
+            return
         has = None
         for r in rows:
             if r.size:
