@@ -2,8 +2,8 @@
 
 The headers are the checkout the accuracy comparator uses (bench/accuracy/boost.py: SD_BOOST_MATH,
 else build/comparators/boost-math). The library is built into build/comparators/ with the system
-clang++ and sd's own optimization flags (-O3 -mcpu=native -ffp-contract=off; CMakeLists.txt), and
-rebuilt when the source changes. A comparator's callable makes one ctypes call per array: the loop
+clang++ and the accuracy comparator's flags (bench.accuracy.boost.FLAGS: sd's own -O3 -mcpu=native
+-ffp-contract=off, CMakeLists.txt), and rebuilt when the source changes. A comparator's callable makes one ctypes call per array: the loop
 over the elements runs in C++ (one inlined Boost call per element), so the Python cost is one call
 per array, as for sd and scipy. Without the checkout the Boost columns are left out.
 """
@@ -18,9 +18,10 @@ import subprocess
 
 import numpy as np
 
+from bench.accuracy.boost import FLAGS  # one set of build flags for both comparators (sd's own)
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = pathlib.Path(__file__).with_name("boost_speed.cpp")
-FLAGS = ("-O3", "-mcpu=native", "-ffp-contract=off", "-std=c++17")
 _LIB = [None]
 
 

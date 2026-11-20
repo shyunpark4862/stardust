@@ -49,6 +49,7 @@ loop of root_scalar against brentq per element.
 from __future__ import annotations
 
 import math
+import re
 import warnings
 
 from ..registry import Case, Ref, RRef
@@ -175,8 +176,11 @@ def _r_nls_lm(problem, jac, n):
     and no iteration cap (nls.lm's own default is 50; 1024 is its largest)."""
     if jac == "3-point":  # nls.lm differences forward only
         return None
-    nfev = 100 * n if jac == "analytic" else 100 * n * (n + 1)
-    control = f"nls.lm.control(ftol = 1e-8, ptol = 1e-8, gtol = 1e-8, maxfev = {nfev}, maxiter = 1024)"
+    from bench.accuracy.optimize import r_nlslm_control  # the accuracy measurement's call, one definition
+
+    control = r_nlslm_control(n)
+    if jac != "analytic":  # lmdif counts the difference evaluations in maxfev: (n + 1) times
+        control = re.sub(r"maxfev = \d+", f"maxfev = {100 * n * (n + 1)}", control)
     return RRef(
         "R",
         f"nls.lm(x0, fn = F{', jac = J' if jac == 'analytic' else ''}, control = {control})",
@@ -426,14 +430,16 @@ def _r_optim(method, deriv, n, cap, bounds):
         return None
     if n % 2:
         raise ValueError("the start (-1.2, 1, ...) needs an even n")
-    control = [f"maxit = {cap or (15000 if method == 'l-bfgs-b' else 200 * n)}"]
-    if method == "l-bfgs-b":
-        control += ["lmm = 10", "pgtol = 1e-5"]
+    from bench.accuracy.optimize import r_optim_control  # the accuracy measurement's call, one definition
+
+    control = r_optim_control(R_OPTIM[method], n)
+    if cap:  # the case's iteration cap, the same for sd and scipy
+        control = re.sub(r"maxit = \d+", f"maxit = {cap}", control)
     gr = "rosen_der" if deriv == "jac" else "NULL"
     lim = ", lower = -2, upper = 0.8" if bounds else ""
     return RRef(
         "R",
-        f'optim(x0, rosen, {gr}, method = "{R_OPTIM[method]}"{lim}, control = list({", ".join(control)}))',
+        f'optim(x0, rosen, {gr}, method = "{R_OPTIM[method]}"{lim}, control = {control})',
         setup=R_ROSEN + f"\nx0 <- rep(c(-1.2, {0.8 if bounds else 1.0}), {n // 2})",
     )
 
@@ -668,12 +674,21 @@ def _scalar_cases():
                 name=f"minimize_scalar {method}",
                 size="eˣ − 5x",
                 sd=sdf,
-                refs=(Ref("scipy", spf),),
+                refs=(Ref("scipy", spf),) + _r_minimize_scalar(method),
                 threads=(1,),
-                note=note,
+                note=note
+                + ("; R은 optimize(Brent의 fmin, tol = 1e-5 = bounded의 xatol)" if method == "bounded" else ""),
             )
         )
     return out
+
+
+def _r_minimize_scalar(method):
+    """R's optimize (Brent's fmin) for 'bounded' only, as the accuracy measurement compares it:
+    tol = 1e-5, bounded's default xatol (bench/accuracy/optimize.py)."""
+    if method != "bounded":
+        return ()
+    return (RRef("R", "optimize(f, c(0, 3), tol = 1e-5)", setup="f <- function(x) exp(x) - 5 * x"),)
 
 
 # ------------------------------------------------------------------------------ elementwise
