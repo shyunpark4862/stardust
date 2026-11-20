@@ -6,7 +6,7 @@ that must not change results (a move, a refactor, the formatter) can be checked 
     .venv/bin/python tools/golden.py list   [AREA ...]      # case counts per area (no run)
 
 Options: --case REGEX (only matching case names; check reports only those, record updates only
-those), --threads 1,3,10, --jobs N (worker processes, at most 8), -v (every difference, not the
+those), --threads 1,3,10, --jobs N (worker processes, default 8, at most 10), -v (every difference, not the
 first few per case), --slow N (print the N slowest cases), --out DIR (golden files elsewhere), --any-nan (check: NaNs
 that differ only in sign or payload are equal; such differences are named as such either way).
 Environment: GOLDEN_TIMEOUT (seconds a case may take before its worker is stopped and the case
@@ -24,7 +24,11 @@ stored per thread count and reported. Results are encoded exactly:
   larger arrays -> dtype, shape, strides, the SHA-256 of their bytes and a fixed sample of
   elements, objects of stardust classes -> every public attribute and every method callable
   without arguments, warnings raised by a case -> category and message.
-Exit status of check: 0 when nothing differs, 1 otherwise.
+Exit status of check: 0 when nothing differs, 1 otherwise; 2 when a worker failed.
+
+The terminal shows a header block, a progress bar over the cases of every area and thread count
+(the workers that finish are named above it), a summary block and tables (bench/console.py);
+the same lines, time-stamped, go to build/golden/<stamp>.log.
 """
 
 import argparse
@@ -37,6 +41,7 @@ import math
 import os
 import pathlib
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -45,12 +50,18 @@ import time
 import traceback
 import warnings
 
+import procrun
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from bench import console as C  # noqa: E402
+
 GOLDEN = ROOT / "tests" / "golden"
 DATA = GOLDEN / "data"
 AREAS = ("array", "linalg", "random", "special", "stats", "frame", "regression", "optimize")
 THREADS = (1, 3, 10)
-MAX_JOBS = 8
+MAX_JOBS = 10
+DEFAULT_JOBS = 8
 SMALL = 1024  # arrays up to this many elements are stored element by element
 CASE_TIMEOUT = 120.0  # seconds; GOLDEN_TIMEOUT overrides
 FORMAT = 1
@@ -266,11 +277,11 @@ def run_worker(area, threads, out, case_rx):
     # driver then names it from the .cur file, which always holds the running case's name.
     timeout = float(os.environ.get("GOLDEN_TIMEOUT", CASE_TIMEOUT))
     cur = open(out + ".cur", "w")
-    for name, thunk in todo:
+    for i, (name, thunk) in enumerate(todo):
         if trace:
             print(f"{area}/{name}", file=sys.stderr, flush=True)
         cur.seek(0)
-        cur.write(name)
+        cur.write(f"{i}\t{name}")  # the cases done before it, and its name
         cur.truncate()
         cur.flush()
         faulthandler.dump_traceback_later(timeout, exit=True)
@@ -301,15 +312,29 @@ def run_worker(area, threads, out, case_rx):
 # driver
 
 
-def run_all(areas, threads, jobs, case_rx):
-    """{area: {threads: {name: record}}}, {area: {name: seconds}} -- workers in parallel."""
+def count_cases(areas, case_rx):
+    """{area: the number of cases a worker will run} (the cases are made, not run: about a second)."""
+    rx = re.compile(case_rx) if case_rx else None
+    out = {}
+    for area in areas:
+        L, mod = load_area(area)
+        out[area] = sum(1 for name, _ in mod.cases(L) if rx is None or rx.search(name))
+    return out
+
+
+def run_all(areas, threads, jobs, case_rx, con, counts):
+    """{area: {threads: {name: record}}}, {area: {name: seconds}}, seconds, [failures] -- the
+    workers in parallel, a bar over every case at every thread count."""
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="sd-golden-"))
     env = dict(os.environ, PYTHONHASHSEED="0")
     # Big areas first so the slowest workers start early.
     order = {"frame": 0, "array": 1, "regression": 2, "stats": 3, "special": 4}
     tasks = sorted(((a, n) for a in areas for n in threads), key=lambda t: (order.get(t[0], 9), t[1]))
+    total = sum(counts[a] for a, _ in tasks)
     running, results, times, failed = [], {}, {}, []
+    finished, last_tenth, last_drawn, seen = 0, -1, 0.0, {}
     t0 = time.perf_counter()
+    con.start(total, "golden")
     while tasks or running:
         while tasks and len(running) < jobs:
             a, n = tasks.pop(0)
@@ -317,10 +342,10 @@ def run_all(areas, threads, jobs, case_rx):
             cmd = [sys.executable, __file__, "_worker", a, str(n), str(out)] + (["--case", case_rx] if case_rx else [])
             err = open(tmp / f"{a}-{n}.err", "w+")
             p = subprocess.Popen(cmd, env=env, cwd=ROOT, stderr=err, text=True)
-            running.append((a, n, out, p, err))
+            running.append((a, n, out, p, err, time.perf_counter()))
         time.sleep(0.05)
         for item in list(running):
-            a, n, out, p, errf = item
+            a, n, out, p, errf, started = item
             if p.poll() is None:
                 continue
             running.remove(item)
@@ -328,21 +353,48 @@ def run_all(areas, threads, jobs, case_rx):
             err = errf.read()
             errf.close()
             pathlib.Path(errf.name).unlink()
+            secs = time.perf_counter() - started
+            finished += counts[a]
             if p.returncode != 0:
                 cur = pathlib.Path(str(out) + ".cur")
-                where = f" in case {cur.read_text()!r}" if cur.exists() else ""
+                where = f"in case {cur_case(cur)[1]!r}" if cur.exists() else ""
                 cur.unlink(missing_ok=True)
-                failed.append(f"{a} threads={n}: exit {p.returncode}{where}\n{err[-4000:]}")
+                failed.append((f"{a} at {n} thread{'s' if n > 1 else ''}", f"exit {p.returncode} {where}".strip(), err))
+                con.event(
+                    con.color("failed", "31"), f"{a} · {n} thread{'s' if n > 1 else ''}", f"exit {p.returncode} {where}"
+                )
                 continue
             data = json.loads(out.read_text())
             out.unlink()
             results.setdefault(a, {})[n] = data["cases"]
             for k, v in data["times"].items():
                 times.setdefault(a, {})[k] = max(times.get(a, {}).get(k, 0.0), v)
-    tmp.rmdir() if not any(tmp.iterdir()) else None
-    if failed:
-        raise SystemExit("golden: worker failed\n" + "\n".join(failed))
-    return results, times, time.perf_counter() - t0
+            con.event("done", f"{a} · {n} thread{'s' if n > 1 else ''}", f"{counts[a]:,} cases  {C.fmt_duration(secs)}")
+        for r in running:  # a worker removes its .cur file as it ends: keep the last count seen
+            seen[r[:2]] = max(seen.get(r[:2], 0), cur_case(pathlib.Path(str(r[2]) + ".cur"))[0])
+        done = finished + sum(seen[r[:2]] for r in running)
+        el = time.perf_counter() - t0
+        tenth = done * 10 // max(total, 1)
+        plain = f"  golden: {done:,}/{total:,} cases  ({C.fmt_duration(el)} elapsed)" if tenth != last_tenth else ""
+        last_tenth = tenth
+        if plain or el - last_drawn >= 0.2 or not (tasks or running):
+            now = ", ".join(f"{r[0]}·{r[1]}" for r in running)
+            what = f"running {now}" if len(now) <= 36 else f"running {now[:35]}…"
+            left = el / done * (total - done) if done else None
+            con.step(done, "golden", what, el, left, plain if not con.tty else "")
+            last_drawn = el
+    con.close()
+    shutil.rmtree(tmp, ignore_errors=True)
+    return results, times, time.perf_counter() - t0, failed
+
+
+def cur_case(path):
+    """(cases done, running case) from a worker's .cur file; (0, "") before it has one."""
+    try:
+        k, _, name = path.read_text().partition("\t")
+        return int(k), name
+    except OSError, ValueError:
+        return 0, ""
 
 
 def merge_threads(per):
@@ -514,9 +566,52 @@ def golden_path(area, out_dir=None):
     return (pathlib.Path(out_dir) if out_dir else DATA) / f"{area}.json"
 
 
-def cmd_record(args, areas, threads):
-    results, times, wall = run_all(areas, threads, args.jobs, args.case)
-    total = 0
+def shown_path(path):
+    path = pathlib.Path(path)
+    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+
+
+def header(con, what, args, areas, threads, counts, log):
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+    total = sum(counts.values()) * len(threads)
+    con.lines(
+        C.block(
+            f"stardust golden {what}",
+            [
+                ("Cases", f"{sum(counts.values()):,}"),
+                ("Runs", f"{total:,}"),
+                ("Threads", ",".join(map(str, threads))),
+                ("Workers", str(args.jobs)),
+                ("Commit", commit.stdout.strip() or "?"),
+            ],
+            [
+                ("Areas", " ".join(areas)),
+                ("Selection", f"--case {args.case}" if args.case else "every case"),
+                ("Golden", shown_path(args.out or DATA)),
+                ("Log", shown_path(log)),
+            ],
+        )  # fmt: skip
+    )
+
+
+def worker_failures(con, failed):
+    """The failed workers, with the end of each one's error output; exit status 2."""
+    con.print(con.color(f"{len(failed)} worker{'s' if len(failed) > 1 else ''} failed:", "31"))
+    for what, why, err in failed:
+        con.print(f"  {what}: {why}")
+        con.lines([f"    {line.replace(str(ROOT) + '/', '')}" for line in err.rstrip().splitlines()[-15:]])
+    con.lines(C.notes(["GOLDEN_TRACE=1 prints each case name as a worker starts it; GOLDEN_TIMEOUT sets\n"
+                       f"the seconds a case may take (default {CASE_TIMEOUT:.0f})."]))  # fmt: skip
+    return 2
+
+
+def cmd_record(args, areas, threads, con, log):
+    counts = count_cases(areas, args.case)
+    header(con, "record", args, areas, threads, counts, log)
+    results, times, wall, failed = run_all(areas, threads, args.jobs, args.case, con, counts)
+    if failed:
+        return worker_failures(con, failed)
+    rows, unstable_all, total = [], [], 0
     for area in areas:
         merged, unstable = merge_threads(results[area])
         path = golden_path(area, args.out)
@@ -530,38 +625,63 @@ def cmd_record(args, areas, threads):
         nerr = sum(1 for v in merged.values() if isinstance(v.get("r"), dict) and "error" in v["r"])
         nw = sum(1 for v in merged.values() if "w" in v)
         size = path.stat().st_size / 1e6
-        print(
-            f"{area:<11} {len(merged):>6} cases ({nerr} errors, {nw} with warnings) -> "
-            f"{path.relative_to(ROOT) if path.is_relative_to(ROOT) else path} ({size:.1f} MB)"
-        )
+        rows.append([area, f"{len(merged):,}", f"{nerr:,}", f"{nw:,}", f"{size:.1f} MB", shown_path(path)])
         total += len(merged)
-        for name in unstable:
-            print(f"  THREADS  {area}/{name}: the result depends on the thread count (stored per thread count)")
-    print(f"{total} cases recorded at threads {','.join(map(str, threads))} in {wall:.1f} s")
-    print_slow(times, args.slow)
+        unstable_all += [f"{area}/{name}" for name in unstable]
+    con.lines(
+        [""]
+        + C.block(
+            "Golden record summary",
+            [
+                ("Cases", f"{total:,}"),
+                ("Areas", str(len(areas))),
+                ("Threads", ",".join(map(str, threads))),
+                ("Thread-dependent", f"{len(unstable_all):,}"),
+                ("Time", C.fmt_duration(wall)),
+                ("Partial", "yes" if args.case else "no"),
+            ],
+        )  # fmt: skip
+        + C.table(["Area", "Cases", "Errors", "Warnings", "Size", "File"], rows, "lrrrrl")
+    )
+    if unstable_all:
+        con.print("")
+        con.print("Results that depend on the thread count (stored per thread count):")
+        con.lines([f"  {name}" for name in unstable_all])
+    slow_table(con, times, args.slow)
+    notes = [
+        "Errors and warnings are results: a case that raises stores the error's type and message.",
+        "Check the record against the library again with: .venv/bin/python tools/golden.py check",
+        f"The log: {shown_path(log)}",
+    ]
+    con.lines([""] + C.notes(notes))
+    return 0
 
 
-def cmd_check(args, areas, threads):
-    results, times, wall = run_all(areas, threads, args.jobs, args.case)
+def cmd_check(args, areas, threads, con, log):
+    counts = count_cases(areas, args.case)
+    header(con, "check", args, areas, threads, counts, log)
+    results, times, wall, failed = run_all(areas, threads, args.jobs, args.case, con, counts)
+    if failed:
+        return worker_failures(con, failed)
     rx = re.compile(args.case) if args.case else None
-    nbad = 0
-    lines_by_area = {}
+    rows, lines, totals = [], [], {"cases": 0, "changed": 0, "new": 0, "gone": 0, "missing": 0}
     for area in areas:
         path = golden_path(area, args.out)
+        per = results[area]
+        names = list(next(iter(per.values())).keys())
+        totals["cases"] += len(names)
         if not path.exists():
-            print(f"{area:<11} no golden file {path.relative_to(ROOT)} (run record first)")
-            nbad += 1
+            rows.append([area, f"{len(names):,}", "", "", "", "no golden file"])
+            totals["missing"] += 1
             continue
         golden = json.loads(path.read_text())["cases"]
         if rx is not None:
             golden = {k: v for k, v in golden.items() if rx.search(k)}
-        per = results[area]
-        names = list(next(iter(per.values())).keys())
-        changed, new, gone, lines = 0, 0, sorted(set(golden) - set(names)), []
+        changed, new, gone = 0, 0, sorted(set(golden) - set(names))
         for name in names:
             if name not in golden:
                 new += 1
-                lines.append(f"NEW      {area}/{name}: not in the golden file")
+                lines.append(f"{con.color('NEW', '33')}      {area}/{name}: not in the golden file")
                 continue
             want_all = golden[name]
             groups = {}  # identical differences across thread counts are reported once
@@ -578,42 +698,95 @@ def cmd_check(args, areas, threads):
                 continue
             changed += 1
             for d, ns in groups.values():
-                lines.append(f"CHANGED  {area}/{name} [threads {','.join(map(str, ns))}]")
+                lines.append(f"{con.color('CHANGED', '31')}  {area}/{name} [threads {','.join(map(str, ns))}]")
                 shown = d if args.verbose else d[:4]
                 for p, text in shown:
                     lines.append(f"           {p or '.'}: {text}")
                 if len(d) > len(shown):
                     lines.append(f"           ... {len(d) - len(shown)} more differences (-v shows all)")
         for name in gone:
-            lines.append(f"GONE     {area}/{name}: in the golden file, no longer a case")
-        nbad += changed + new + len(gone)
-        status = "ok" if not (changed or new or gone) else "DIFFERS"
-        print(f"{area:<11} {len(names):>6} cases: {changed} changed, {new} new, {len(gone)} gone  {status}")
-        lines_by_area[area] = lines
-    for area in areas:
-        for line in lines_by_area.get(area, []):
-            print(line)
-    print(
-        f"{'all equal' if not nbad else f'{nbad} cases differ'} (threads {','.join(map(str, threads))}, {wall:.1f} s)"
+            lines.append(f"{con.color('GONE', '33')}     {area}/{name}: in the golden file, no longer a case")
+        totals["changed"] += changed
+        totals["new"] += new
+        totals["gone"] += len(gone)
+        ok = not (changed or new or gone)
+        status = "equal" if ok else "differs"
+        rows.append([area, f"{len(names):,}", f"{changed:,}", f"{new:,}", f"{len(gone):,}", status])
+    nbad = totals["changed"] + totals["new"] + totals["gone"] + totals["missing"]
+    verdict = "all equal" if not nbad else f"{nbad:,} differ"
+    con.lines(
+        [""]
+        + C.block(
+            "Golden check summary",
+            [
+                ("Cases", f"{totals['cases']:,}"),
+                ("Result", verdict),
+                ("Changed", f"{totals['changed']:,}"),
+                ("New", f"{totals['new']:,}"),
+                ("Gone", f"{totals['gone']:,}"),
+                ("No golden file", str(totals["missing"])),
+                ("Threads", ",".join(map(str, threads))),
+                ("Time", C.fmt_duration(wall)),
+                ("NaN bits", "ignored" if args.any_nan else "compared"),
+                ("Exit status", "1" if nbad else "0"),
+            ],
+        )  # fmt: skip
+        + status_colors(con, C.table(["Area", "Cases", "Changed", "New", "Gone", "Status"], rows, "lrrrrl"))
     )
-    print_slow(times, args.slow)
+    if lines:
+        con.print("")
+        con.print("Differences:")
+        con.lines(lines)
+    slow_table(con, times, args.slow)
+    notes = []
+    if nbad:
+        what = " ".join(a for a, r in zip(areas, rows) if "differ" in r[-1] or "no golden" in r[-1])
+        notes.append(
+            "After a change meant to change results, record those areas again (and commit the files):\n"
+            f".venv/bin/python tools/golden.py record {what}"
+        )
+        if not args.verbose:
+            notes.append("-v lists every difference of a case, not the first four.")
+        if not args.any_nan:
+            notes.append("--any-nan treats NaNs that differ only in sign or payload as equal.")
+    notes.append(f"The log: {shown_path(log)}")
+    con.lines([""] + C.notes(notes))
     return 1 if nbad else 0
 
 
-def cmd_list(areas):
+def status_colors(con, lines):
+    """A table's status column colored after layout (the table measures plain text)."""
+    out = []
+    for line in lines:
+        for word, code in (("equal", "32"), ("differs", "31"), ("no golden file", "31")):
+            if line.endswith("   " + word):
+                line = line[: -len(word)] + con.color(word, code)
+                break
+        out.append(line)
+    return out
+
+
+def cmd_list(areas, con):
+    rows, total = [], 0
     for area in areas:
         L, mod = load_area(area)
-        names = [n for n, _ in mod.cases(L)]
-        print(f"{area:<11} {len(names):>6} cases")
+        n = sum(1 for _ in mod.cases(L))
+        rows.append([area, f"{n:,}", shown_path(GOLDEN / f"cases_{area}.py")])
+        total += n
+    con.lines(
+        C.block("stardust golden cases", [("Areas", str(len(areas))), ("Cases", f"{total:,}")])
+        + C.table(["Area", "Cases", "Defined in"], rows, "lrl")
+    )
+    return 0
 
 
-def print_slow(times, n):
+def slow_table(con, times, n):
     if not n:
         return
     flat = sorted(((t, f"{a}/{k}") for a, d in times.items() for k, t in d.items()), reverse=True)[:n]
-    print(f"slowest {len(flat)} cases (seconds, the slowest thread count):")
-    for t, k in flat:
-        print(f"  {t:8.3f}  {k}")
+    con.print("")
+    con.print(f"The {len(flat)} slowest cases (the slowest thread count):")
+    con.lines(C.table(["Case", "Seconds"], [[k, f"{t:.3f}"] for t, k in flat], "lr"))
 
 
 def main():
@@ -631,7 +804,9 @@ def main():
     ap.add_argument("areas", nargs="*", metavar="AREA", help=f"default: all ({', '.join(AREAS)})")
     ap.add_argument("--case", help="regex on case names")
     ap.add_argument("--threads", default=",".join(map(str, THREADS)), help="thread counts (default 1,3,10)")
-    ap.add_argument("--jobs", type=int, default=MAX_JOBS, help=f"worker processes (at most {MAX_JOBS})")
+    ap.add_argument(
+        "--jobs", type=int, default=DEFAULT_JOBS, help=f"worker processes (default {DEFAULT_JOBS}, at most {MAX_JOBS})"
+    )
     ap.add_argument("--out", help="directory of the golden files (default tests/golden/data)")
     ap.add_argument("--slow", type=int, default=0, metavar="N", help="print the N slowest cases")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -644,10 +819,11 @@ def main():
     threads = tuple(int(t) for t in args.threads.split(","))
     args.jobs = max(1, min(args.jobs, MAX_JOBS))
     if args.command == "list":
-        return cmd_list(areas)
-    if args.command == "record":
-        return cmd_record(args, areas, threads)
-    return cmd_check(args, areas, threads)
+        return cmd_list(areas, C.Console(stream=sys.stdout))
+    log = procrun.log_path("golden")
+    with open(log, "w") as fh:
+        con = C.Console(log=fh, stream=sys.stdout)
+        return (cmd_record if args.command == "record" else cmd_check)(args, areas, threads, con, log)
 
 
 if __name__ == "__main__":

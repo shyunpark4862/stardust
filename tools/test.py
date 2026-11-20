@@ -8,51 +8,33 @@ running, the whole quick tier with its 44 s serial part: 6 workers 76.6 s / 7.6 
 8 workers 69.6 s / 9.7 GB, 10 workers 75.7 s / 12.9 GB; tests/README.md §1 has the current
 count and how to take it). Every worker keeps sd's default thread count (2 threads per worker
 measured slower). Plain `pytest` stays serial. The exit status is the worse of the two
-runs; "no tests collected" in either counts as success.
+runs; "no tests collected" in either counts as success. The terminal shows a header block, a
+progress bar per phase and a summary (bench/console.py); pytest's own output goes to
+build/test/<stamp>.log.
 """
 
 import argparse
 import os
 import pathlib
-import re
 import subprocess
 import sys
-import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
+import procrun  # noqa: E402
+
 from bench import console as C  # noqa: E402
 
 MAX_WORKERS = 10
 NO_TESTS = 5  # pytest's exit status when nothing was selected
-COUNTS = ("passed", "failed", "errors", "skipped", "deselected", "xfailed", "xpassed")
-
-
-def run_phase(cmd, con) -> tuple[int, dict, list[str], float]:
-    """pytest's own output as it comes; (exit status, counts, failed node ids, seconds)."""
-    t0 = time.perf_counter()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=ROOT)
-    tail, failed = [], []
-    for line in proc.stdout:
-        sys.stdout.write(line)
-        sys.stdout.flush()
-        tail = (tail + [line])[-5:]
-        m = re.match(r"(FAILED|ERROR) (\S+)", line)
-        if m:
-            failed.append(m.group(2))
-    code = proc.wait()
-    counts = dict.fromkeys(COUNTS, 0)
-    for line in tail:  # pytest's last line: '3 failed, 10451 passed, 142 deselected in 25.09s'
-        for k, word in re.findall(r"(\d+) (passed|failed|errors?|skipped|deselected|xfailed|xpassed)\b", line):
-            counts["errors" if word.startswith("error") else word] = int(k)
-    return code, counts, failed, time.perf_counter() - t0
 
 
 def phase_line(label, counts, secs, con) -> str:
     parts = [f"{counts['passed']:,} passed"]
     for k in ("failed", "errors", "skipped", "deselected", "xfailed", "xpassed"):
         if counts[k] or k in ("failed", "skipped"):
-            parts.append(f"{counts[k]:,} {k}")
+            parts.append(f"{counts[k]:,} {'error' if k == 'errors' and counts[k] == 1 else k}")
     text = f"  {label}: " + " · ".join(parts) + f"  ({C.fmt_duration(secs)})"
     return con.color(text, "31") if counts["failed"] or counts["errors"] else text
 
@@ -68,65 +50,80 @@ def main():
             tier = rest[k + 1]
         elif v.startswith("--tier="):
             tier = v.split("=", 1)[1]
-    con = C.Console(stream=sys.stdout)
+    log = procrun.log_path("test")
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     phases = (("parallel", ["-n", str(n), "-m", "not serial"]), ("serial", ["-m", "serial"]))
-    con.lines(
-        C.block(
-            "stardust tests",
-            [("Tier", tier), ("Workers", str(n)), ("Commit", commit.stdout.strip() or "?"), ("Phases", "2")],
-            [
-                ("Selection", " ".join(rest) or "every test of the tier"),
-                ("Parallel", f"pytest -n {n} -m 'not serial'"),
-                ("Serial", "pytest -m serial (one process)"),
-            ],
-        )  # fmt: skip
-    )
-    base = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *rest]
+    base = [sys.executable, "-m", "pytest", "-v", "-p", "no:cacheprovider", *rest]
     status, results, failed = 0, [], []
-    for k, (label, extra) in enumerate(phases, 1):
-        shown = " ".join(f"'{x}'" if " " in x else x for x in extra + rest)
-        con.print(f"[{k}/{len(phases)}] {label}: pytest {shown}")
-        code, counts, ids, secs = run_phase(base + extra, con)
-        con.print(phase_line(label, counts, secs, con))
-        results.append((label, counts, secs, code))
-        failed += ids
-        if code not in (0, NO_TESTS):
-            status = status or code
-    total = {k: sum(r[1][k] for r in results) for k in COUNTS}
-    times = {label: secs for label, _, secs, _ in results}
-    con.lines(
-        [""]
-        + C.block(
-            "Test summary",
-            [
-                ("Passed", f"{total['passed']:,}"),
-                ("Failed", f"{total['failed']:,}"),
-                ("Errors", f"{total['errors']:,}"),
-                ("Skipped", f"{total['skipped']:,}"),
-                ("Deselected", f"{total['deselected']:,}"),
-                ("Exit status", str(status)),
-                ("Parallel", C.fmt_duration(times.get("parallel", 0))),
-                ("Serial", C.fmt_duration(times.get("serial", 0))),
-                ("Total", C.fmt_duration(sum(times.values()))),
-                ("Tier", tier),
-            ],
-        )  # fmt: skip
-    )
-    if failed:
-        con.lines(["Failed:"] + [f"  {con.color(i, '31')}" for i in failed])
-    notes = []
-    if failed:
-        more = " ..." if len(failed) > 5 else ""
-        notes.append("Run the failed tests again, alone:\n.venv/bin/python -m pytest -q -p no:cacheprovider "
-                     + " ".join(failed[:5]) + more)  # fmt: skip
-    notes += [
-        "The deep tier (ten times the hypothesis examples, the golden and accuracy\n"
-        "comparisons): SD_TIER=deep .venv/bin/python tools/test.py",
-        "The serial tests (tests/conftest.py SERIAL) run alone after the parallel phase:\n"
-        "they time wall clocks or use most of the memory.",
-    ]
-    con.lines(C.notes(notes))
+    env = {**os.environ, "COLUMNS": "100"}  # pytest's short summary lines are cut at this width
+    with open(log, "w") as fh:
+        con = C.Console(log=fh, stream=sys.stdout)
+        con.lines(
+            C.block(
+                "stardust tests",
+                [("Tier", tier), ("Workers", str(n)), ("Commit", commit.stdout.strip() or "?"), ("Phases", "2")],
+                [
+                    ("Selection", " ".join(rest) or "every test of the tier"),
+                    ("Parallel", f"pytest -n {n} -m 'not serial'"),
+                    ("Serial", "pytest -m serial (one process)"),
+                    ("Log", str(log.relative_to(ROOT))),
+                ],
+            )  # fmt: skip
+        )
+        for k, (label, extra) in enumerate(phases, 1):
+            shown = " ".join(f"'{x}'" if " " in x else x for x in extra + rest)
+            con.print(f"[{k}/{len(phases)}] {label}: pytest {shown}")
+            code, lines, secs = procrun.run(base + extra, con, label, procrun.PytestProgress(), env=env)
+            counts, fails = procrun.pytest_summary(lines)
+            con.print(phase_line(label, counts, secs, con))
+            if code not in (0, NO_TESTS) and not fails:  # pytest stopped without a summary (a crash, an error)
+                con.lines([con.color(f"  {ln}", "31") for ln in lines[-12:]])
+            results.append((label, counts, secs))
+            failed += fails
+            if code not in (0, NO_TESTS):
+                status = status or code
+        total = {key: sum(r[1][key] for r in results) for key in procrun.COUNTS}
+        times = {label: secs for label, _, secs in results}
+        con.lines(
+            [""]
+            + C.block(
+                "Test summary",
+                [
+                    ("Passed", f"{total['passed']:,}"),
+                    ("Failed", f"{total['failed']:,}"),
+                    ("Errors", f"{total['errors']:,}"),
+                    ("Skipped", f"{total['skipped']:,}"),
+                    ("Deselected", f"{total['deselected']:,}"),
+                    ("Exit status", str(status)),
+                    ("Parallel", C.fmt_duration(times.get("parallel", 0))),
+                    ("Serial", C.fmt_duration(times.get("serial", 0))),
+                    ("Total", C.fmt_duration(sum(times.values()))),
+                    ("Tier", tier),
+                ],
+            )  # fmt: skip
+        )
+        ids = [f.split()[1] for f in failed]
+        if failed:
+            w = con.width()
+            con.print("Failed:")
+            for f in failed:
+                con.lines([con.color(x, "31") for x in C.split_label("  " + f, 6, w)])
+        notes = []
+        if ids:
+            more = " ..." if len(ids) > 5 else ""
+            tier_env = f"SD_TIER={tier} " if tier != "quick" else ""
+            again = " ".join(f"'{i}'" for i in ids[:5]) + more
+            notes.append(f"Run the failed tests again, alone:\n{tier_env}.venv/bin/python -m pytest -q {again}")
+            notes.append(f"pytest's own output (the tracebacks) is in the log:\n{log.relative_to(ROOT)}")
+        notes += [
+            "The deep tier (ten times the hypothesis examples, the golden and accuracy\n"
+            "comparisons): SD_TIER=deep .venv/bin/python tools/test.py",
+            "The serial tests (tests/conftest.py SERIAL) run alone after the parallel phase:\n"
+            "they time wall clocks or use most of the memory.",
+        ]
+        if not ids:
+            notes.append(f"pytest's own output: {log.relative_to(ROOT)}")
+        con.lines(C.notes(notes))
     return status
 
 

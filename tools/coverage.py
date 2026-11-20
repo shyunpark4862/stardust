@@ -23,17 +23,28 @@ report writes
     build/coverage/html/py/         coverage.py's annotated sources
 A C++ branch counts once per source location (template instantiations summed): "true never" and
 "false never" name the direction no test took, "never reached" a condition no test evaluated.
+
+The terminal shows a header block, a progress bar per long step (ninja's steps, the tests, the
+golden cases), a result line per step and the summary as a table (bench/console.py); the tools'
+own output goes to build/coverage/logs/<stamp>.log.
 """
 
 import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
+import time
+
+import procrun
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from bench import console as C  # noqa: E402
+
 OUT = ROOT / "build" / "coverage"
 CMAKE_DIR = OUT / "cmake"
 SITE = OUT / "site"
@@ -85,19 +96,59 @@ source =
 """
 
 
-def run(cmd, **kw):
-    print("+", " ".join(str(c) for c in cmd), flush=True)
-    return subprocess.run([str(c) for c in cmd], cwd=ROOT, **kw)
+GOLDEN_STEP = re.compile(r"golden: ([\d,]+)/([\d,]+) cases")  # tools/golden.py's plain progress lines
+
+
+def golden_progress(line):
+    m = GOLDEN_STEP.search(line)
+    return (int(m.group(1).replace(",", "")), int(m.group(2).replace(",", ""))) if m else None
+
+
+class Failed(Exception):
+    """A step that failed; its output's end has been shown."""
+
+
+def logged(con, cmd):
+    con.log.write(f"{time.strftime('%H:%M:%S')} $ {' '.join(shown_arg(c) for c in cmd)}\n")
+
+
+def step(con, label, cmd, env=None, stdout=None, progress=None, quiet=False):
+    """cmd as one step: its output to the log (a bar from progress(line) when given), then a
+    result line; on failure the end of its output and Failed. stdout: a file for the output
+    instead (llvm-cov export), the log then gets stderr only. Returns (output lines, seconds)."""
+    logged(con, cmd)
+    if stdout is None:
+        code, lines, secs = procrun.run(cmd, con, label, progress, env)
+    else:
+        t0 = time.perf_counter()
+        r = subprocess.run([str(c) for c in cmd], cwd=ROOT, env=env, stdout=stdout, stderr=subprocess.PIPE, text=True)
+        code, lines, secs = r.returncode, r.stderr.splitlines(), time.perf_counter() - t0
+        for line in lines:
+            con.log.write(f"{time.strftime('%H:%M:%S')} | {line}\n")
+    if code:
+        con.print(con.color(f"  {label}: failed (exit {code}, {C.fmt_duration(secs)})", "31"))
+        con.lines([f"    {line}" for line in lines[-15:]])
+        raise Failed(label)
+    if not quiet:
+        con.print(f"  {label}  ({C.fmt_duration(secs)})")
+    return lines, secs
+
+
+def shown_arg(c):
+    c = str(c).replace(str(ROOT) + "/", "")
+    return f"'{c}'" if " " in c else c
 
 
 def xcrun(tool):
     return subprocess.check_output(["xcrun", "-f", tool], text=True).strip()
 
 
-def core_path():
+def core_path(con=None):
     found = sorted(CMAKE_DIR.glob("_core*.so"))
     if not found:
-        raise SystemExit("coverage: no instrumented _core yet (run: tools/coverage.py build)")
+        if con is not None:
+            con.print(con.color("  no instrumented _core yet: run tools/coverage.py build first", "31"))
+        raise Failed("finding the instrumented core")
     return found[0]
 
 
@@ -105,20 +156,19 @@ def core_path():
 # build
 
 
-def cmd_build():
+def cmd_build(con):
     CMAKE_DIR.mkdir(parents=True, exist_ok=True)
     if not (CMAKE_DIR / "CMakeCache.txt").exists():
-        r = run([
+        step(con, "configure", [
             "cmake", "-S", ROOT, "-B", CMAKE_DIR, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
             f"-DPython_EXECUTABLE={PY}", f"-DCMAKE_CXX_FLAGS={FLAGS}",
             f"-DCMAKE_MODULE_LINKER_FLAGS={FLAGS}", f"-DCMAKE_SHARED_LINKER_FLAGS={FLAGS}",
         ])  # fmt: skip
-        if r.returncode:
-            raise SystemExit("coverage: cmake configure failed")
-    r = run(["cmake", "--build", CMAKE_DIR, "-j", str(JOBS)])
-    if r.returncode:
-        raise SystemExit("coverage: build failed")
-    print(f"instrumented core: {core_path().relative_to(ROOT)}")
+    lines, secs = step(con, "compile", ["cmake", "--build", CMAKE_DIR, "-j", str(JOBS)],
+                       progress=procrun.ninja_progress, quiet=True)  # fmt: skip
+    n = max((p[1] for p in map(procrun.ninja_progress, lines) if p), default=0)
+    what = f"{n} ninja steps" if n else "up to date"
+    con.print(f"  compile: {what}  ({C.fmt_duration(secs)}) -> {core_path(con).relative_to(ROOT)}")
 
 
 # --------------------------------------------------------------------------------------------
@@ -137,26 +187,47 @@ def env_for_run():
     return env
 
 
-def cmd_run(golden, pytest_args):
-    core_path()
+def cmd_run(con, golden, pytest_args):
+    """(exit status, pytest's counts, its FAILED lines, the golden check's result)."""
+    core_path(con)
     for d in (PROFRAW, PYDATA):
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir(parents=True)
     env = env_for_run()
     args = pytest_args or ["tests"]
     deselect = [a for t in sorted(CRASHES) for a in ("--deselect", t)]
-    for t in sorted(CRASHES):
-        print(f"coverage: deselected (crashes the instrumented core): {t}")
-    r = run([PY, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--cov", "--cov-branch",
-             f"--cov-config={RCFILE}", "--cov-report=", *deselect, *args], env=env)  # fmt: skip
-    status = r.returncode
+    cmd = [PY, "-m", "pytest", "-v", "-p", "no:cacheprovider", "--cov", "--cov-branch",
+           f"--cov-config={RCFILE}", "--cov-report=", *deselect, *args]  # fmt: skip
+    logged(con, cmd)
+    code, lines, secs = procrun.run(cmd, con, "tests", procrun.PytestProgress(), dict(env, COLUMNS="100"))
+    counts, fails = procrun.pytest_summary(lines)
+    parts = [f"{counts['passed']:,} passed", f"{counts['failed']:,} failed", f"{counts['skipped']:,} skipped"]
+    parts += [f"{counts[k]:,} {k}" for k in ("errors", "deselected") if counts[k]]
+    text = "  tests: " + " · ".join(parts) + f"  ({C.fmt_duration(secs)})"
+    con.print(con.color(text, "31") if code not in (0, 5) else text)
+    for f in fails:
+        con.lines([con.color(x, "31") for x in C.split_label("    " + f, 8, con.width())])
+    if code not in (0, 5) and not fails:  # pytest stopped without a summary
+        con.lines([f"    {line}" for line in lines[-12:]])
+    status = 0 if code in (0, 5) else code
+    golden_result = "not run"
     if golden:
-        g = run([PY, "-m", "coverage", "run", f"--rcfile={RCFILE}", "tools/golden.py", "check", "--any-nan"], env=env)
-        if g.returncode:
-            print("coverage: golden check with the instrumented core found differences (see above)")
-            status = status or g.returncode
-    print(f"profiles: {len(list(PROFRAW.glob('*.profraw')))} files in {PROFRAW.relative_to(ROOT)}")
-    return status
+        g_cmd = [PY, "-m", "coverage", "run", f"--rcfile={RCFILE}", "tools/golden.py", "check", "--any-nan"]
+        logged(con, g_cmd)
+        g_code, g_lines, g_secs = procrun.run(g_cmd, con, "golden", golden_progress, env)
+        result = next((ln for ln in g_lines if "Result:" in ln), "")
+        golden_result = result.split("Result:", 1)[1].strip() if result else f"exit {g_code}"
+        text = f"  golden (instrumented core, --any-nan): {golden_result}  ({C.fmt_duration(g_secs)})"
+        if g_code:
+            con.print(con.color(text, "31"))
+            diffs = [ln for ln in g_lines if ln.startswith(("CHANGED", "NEW", "GONE"))]
+            con.lines([f"    {ln}" for ln in (diffs or g_lines[-12:])[:20]])
+            status = status or g_code
+        else:
+            con.print(text)
+    n = len(list(PROFRAW.glob("*.profraw")))
+    con.print(f"  profiles: {n:,} file{'s' if n != 1 else ''} in {PROFRAW.relative_to(ROOT)}")
+    return status, counts, fails, golden_result
 
 
 # --------------------------------------------------------------------------------------------
@@ -194,45 +265,47 @@ def pct(hit, total):
     return f"{100.0 * hit / total:5.1f}%" if total else "    -"
 
 
-def cmd_report():
+def cmd_report(con):
     OUT.mkdir(parents=True, exist_ok=True)
     areas = {}  # area -> {"cpp": [file rows], "py": [file rows]}
     raws = sorted(PROFRAW.glob("*.profraw"))
     if raws:
         prof = OUT / "core.profdata"
-        r = run([xcrun("llvm-profdata"), "merge", "-sparse", *raws, "-o", prof])
-        if r.returncode:
-            raise SystemExit("coverage: llvm-profdata merge failed")
+        step(
+            con,
+            f"merge {len(raws):,} C++ profile{'s' if len(raws) != 1 else ''}",
+            [xcrun("llvm-profdata"), "merge", "-sparse", *raws, "-o", prof],
+        )
         cov = xcrun("llvm-cov")
-        obj = core_path()
+        obj = core_path(con)
         common = ["-instr-profile", prof, f"-ignore-filename-regex={IGNORE}"]
         exported = OUT / "cpp.json"
         with open(exported, "w") as fh:
-            r = run([cov, "export", obj, "-format=text", *common], stdout=fh)
-        if r.returncode:
-            raise SystemExit("coverage: llvm-cov export failed")
+            step(con, "export C++ coverage", [cov, "export", obj, "-format=text", *common], stdout=fh)
         shutil.rmtree(OUT / "html" / "cpp", ignore_errors=True)
-        run([cov, "show", obj, "-format=html", "-show-branches=count", "-output-dir", OUT / "html" / "cpp",
-             f"-Xdemangler={xcrun('c++filt')}", *common], stdout=subprocess.DEVNULL)  # fmt: skip
+        step(con, "C++ annotated sources (html)", [cov, "show", obj, "-format=html", "-show-branches=count",
+             "-output-dir", OUT / "html" / "cpp", f"-Xdemangler={xcrun('c++filt')}", *common],
+             stdout=subprocess.DEVNULL)  # fmt: skip
         for row in cpp_rows(json.loads(exported.read_text())):
             areas.setdefault(row["area"], {"cpp": [], "py": []})["cpp"].append(row)
     else:
-        print("coverage: no C++ profiles (run first)")
+        con.print(con.color("  no C++ profiles (run first)", "33"))
     data = list(PYDATA.glob(".coverage*"))
     if data:
         env = dict(os.environ, COVERAGE_RCFILE=str(RCFILE))
         if any(p.name != ".coverage" for p in data):
-            run([PY, "-m", "coverage", "combine", "--append", f"--rcfile={RCFILE}"], env=env)
+            step(con, f"combine {len(data):,} Python data files",
+                 [PY, "-m", "coverage", "combine", "--append", f"--rcfile={RCFILE}"], env=env)  # fmt: skip
         pyjson = OUT / "py.json"
-        run([PY, "-m", "coverage", "json", f"--rcfile={RCFILE}", "-o", pyjson], env=env, stdout=subprocess.DEVNULL)
+        step(con, "export Python coverage", [PY, "-m", "coverage", "json", f"--rcfile={RCFILE}", "-o", pyjson], env=env)
         shutil.rmtree(OUT / "html" / "py", ignore_errors=True)
-        run([PY, "-m", "coverage", "html", f"--rcfile={RCFILE}", "-d", OUT / "html" / "py"], env=env,
-            stdout=subprocess.DEVNULL)  # fmt: skip
+        step(con, "Python annotated sources (html)",
+             [PY, "-m", "coverage", "html", f"--rcfile={RCFILE}", "-d", OUT / "html" / "py"], env=env)  # fmt: skip
         for row in py_rows(json.loads(pyjson.read_text())):
             areas.setdefault(row["area"], {"cpp": [], "py": []})["py"].append(row)
     else:
-        print("coverage: no Python coverage data (run first)")
-    write_reports(areas)
+        con.print(con.color("  no Python coverage data (run first)", "33"))
+    return write_reports(areas) if areas else None
 
 
 def cpp_rows(doc):
@@ -316,6 +389,7 @@ def source_line(rel, line, cache={}):  # noqa: B006 -- a cache of file lines
 
 
 def write_reports(areas):
+    """Writes summary.md and <area>.md; returns the summary's rows for the terminal."""
     order = sorted(areas, key=lambda a: (a == COMMON, a))
     lines = [
         "# 커버리지 요약",
@@ -335,7 +409,8 @@ def write_reports(areas):
     cells += [pct(*total(allp, k)) for k in ("lines", "branches")]
     lines.append("| 전체 | " + " | ".join(cells) + " |")
     (OUT / "summary.md").write_text("\n".join(lines) + "\n")
-    print("\n".join(lines))
+    rows = [[c.strip() for c in ln.strip("|").split("|")] for ln in lines[6:]]
+    rows[-1][0] = "all"
     for a in order:
         out = [f"# 커버리지: {a}", ""]
         c, p = areas[a]["cpp"], areas[a]["py"]
@@ -368,8 +443,7 @@ def write_reports(areas):
                     out.append(f"- `{r['file']}:{a_}` → {to} 안 감: `{source_line(r['file'], a_)}`")
                 out.append("")
         (OUT / f"{a}.md").write_text("\n".join(out) + "\n")
-    print(f"reports: {(OUT / 'summary.md').relative_to(ROOT)}, {OUT.relative_to(ROOT)}/<area>.md, "
-          f"{(OUT / 'html').relative_to(ROOT)}/")  # fmt: skip
+    return rows
 
 
 def main():
@@ -377,15 +451,81 @@ def main():
     ap.add_argument("command", choices=["all", "build", "run", "report"])
     ap.add_argument("--golden", action="store_true", help="run: also tools/golden.py check, instrumented")
     args, rest = ap.parse_known_args()
-    if args.command == "build":
-        return cmd_build()
-    if args.command == "report":
-        return cmd_report()
-    if args.command == "all":
-        cmd_build()
-    status = cmd_run(args.golden, rest)
-    if args.command == "all":
-        cmd_report()
+    log = procrun.log_path("coverage/logs")
+    stages = {"all": ["build", "run", "report"]}.get(args.command, [args.command])
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+    with open(log, "w") as fh:
+        con = C.Console(log=fh, stream=sys.stdout)
+        wide = [("Tests", " ".join(rest) or "tests (every test)")] if "run" in stages else []
+        wide += [("Output", str(OUT.relative_to(ROOT))), ("Log", str(log.relative_to(ROOT)))]
+        con.lines(
+            C.block(
+                f"stardust coverage {args.command}",
+                [
+                    ("Steps", " → ".join(stages)),
+                    ("Commit", commit.stdout.strip() or "?"),
+                    ("Compile jobs", str(JOBS)),
+                    ("Golden", "yes" if args.golden and "run" in stages else "no"),
+                ],
+                wide,
+            )  # fmt: skip
+        )
+        status, ran, rows, t0 = 0, None, None, time.perf_counter()
+        try:
+            for k, stage in enumerate(stages, 1):
+                con.print(f"[{k}/{len(stages)}] {stage}")
+                if stage == "build":
+                    cmd_build(con)
+                elif stage == "run":
+                    status, *ran = cmd_run(con, args.golden, rest)
+                else:
+                    rows = cmd_report(con)
+        except Failed as e:
+            con.lines(
+                ["", con.color(f"Stopped: {e} failed.", "31")] + C.notes([f"The whole output: {log.relative_to(ROOT)}"])
+            )
+            return 1
+        con.print("")
+        if ran:
+            counts, fails, golden = ran
+            con.lines(
+                C.block(
+                    "Run summary",
+                    [
+                        ("Passed", f"{counts['passed']:,}"),
+                        ("Failed", f"{counts['failed'] + counts['errors']:,}"),
+                        ("Skipped", f"{counts['skipped']:,}"),
+                        ("Exit status", str(status)),
+                        ("Golden", golden),
+                    ],
+                )  # fmt: skip
+            )
+        if rows:
+            con.lines(
+                C.block(
+                    "Coverage summary",
+                    [("Areas", str(len(rows) - 1)), ("Time", C.fmt_duration(time.perf_counter() - t0))],
+                )
+                + C.table(
+                    ["Area", "C++ lines", "C++ funcs", "C++ branches", "Py lines", "Py branches"], rows, "lrrrrr"
+                )  # fmt: skip
+            )
+        notes = []
+        if rows:
+            notes.append(
+                f"Per area, every file and every branch no test took: {OUT.relative_to(ROOT)}/<area>.md\n"
+                f"(the table above is {(OUT / 'summary.md').relative_to(ROOT)})"
+            )
+            notes.append(f"Annotated sources: {(OUT / 'html' / 'cpp').relative_to(ROOT)}/index.html,\n"
+                         f"{(OUT / 'html' / 'py').relative_to(ROOT)}/index.html")  # fmt: skip
+        if "run" in stages:
+            notes.append(
+                "Deselected, as they crash the instrumented core (library bugs):\n" + "\n".join(sorted(CRASHES))
+            )
+            if "report" not in stages:
+                notes.append("Write the reports with: .venv/bin/python tools/coverage.py report")
+        notes.append(f"The tools' own output: {log.relative_to(ROOT)}")
+        con.lines(C.notes(notes))
     return status
 
 

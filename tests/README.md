@@ -35,11 +35,11 @@ SD_TIER=deep .venv/bin/python tools/test.py              # deep
 ```
 
 - 케이스는 `tests/golden/cases_<영역>.py`, 기록은 `tests/golden/data/<영역>.json`이다. 영역은 array, linalg, random, special, stats, frame, regression, optimize다.
-- 영역마다 스레드 수 1, 3, 10에서 따로 프로세스를 띄워 돌리고(동시에 최대 8개), 세 결과가 같아야 한다. 스레드 수에 따라 결과가 다른 케이스는 기록할 때 `THREADS`로 알린다.
+- 영역마다 스레드 수 1, 3, 10에서 따로 프로세스를 띄워 돌리고(동시에 기본 8개, 최대 10개), 세 결과가 같아야 한다. 스레드 수에 따라 결과가 다른 케이스는 기록할 때 `THREADS`로 알린다.
 - 전체 비교는 약 20초이고 작업 프로세스의 메모리 합은 최대 약 16GB다.
 - 저장 형식: float는 `float.hex`(NaN은 기본 NaN이 아니면 비트까지), 원소가 1024개 이하인 배열은 원소마다, 그보다 큰 배열은 dtype·shape·strides·바이트의 SHA-256과 정해진 표본 원소다. 에러도 결과다(형과 메시지). stardust 클래스의 객체는 공개 속성 전부와 인자 없이 부를 수 있는 메서드 전부를 저장한다. 케이스가 낸 경고도 저장한다.
-- `check`의 출력: 바뀐 케이스마다 어느 스레드 수에서 어디가 바뀌었는지(배열은 바뀐 원소 수, 첫 위치, 옛 값과 새 값의 hex·10진·ULP 거리), 새 케이스(`NEW`), 없어진 케이스(`GONE`)를 적는다. 하나라도 있으면 종료 코드가 1이다.
-- 옵션: `--case 정규식`(이름이 맞는 케이스만; `record`면 그 케이스만 고쳐 쓴다), `--threads 1,3,10`, `--jobs N`(최대 8), `-v`(차이를 모두 적는다), `--slow N`(가장 느린 케이스 N개).
+- `check`의 출력: 바뀐 케이스마다 어느 스레드 수에서 어디가 바뀌었는지(배열은 바뀐 원소 수, 첫 위치, 옛 값과 새 값의 hex·10진·ULP 거리), 새 케이스(`NEW`), 없어진 케이스(`GONE`)를 적는다. 하나라도 있으면 종료 코드가 1이다. 워커가 죽으면(시간 초과 포함) 그 케이스 이름과 오류 끝부분을 적고 2로 끝난다.
+- 옵션: `--case 정규식`(이름이 맞는 케이스만; `record`면 그 케이스만 고쳐 쓴다), `--threads 1,3,10`, `--jobs N`(기본 8, 최대 10), `-v`(차이를 모두 적는다), `--slow N`(가장 느린 케이스 N개).
 - 멈춘 케이스: 케이스 하나가 `GOLDEN_TIMEOUT`초(기본 120)를 넘기면 그 작업 프로세스를 끝내고 케이스 이름을 알린다. `GOLDEN_TRACE=1`이면 작업 프로세스가 케이스 이름을 시작할 때마다 찍는다.
 - 결과를 일부러 바꾼 변경이면 `check`로 바뀐 케이스가 의도한 것뿐인지 본 뒤 `record`로 다시 기록하고 함께 커밋한다.
 - 새 공개 함수를 더하면 그 영역의 `cases_<영역>.py`에 케이스를 더한다. 케이스는 `(이름, 인자 없는 함수)`를 내는 생성기이고, 입력은 고정 리터럴과 `L.rng(seed)`로만 만든다.
@@ -96,6 +96,6 @@ C++ 코어는 clang의 소스 기반 커버리지(`-fprofile-instr-generate -fco
 - 계약: special·stats·multivariate는 `tests/<영역>/test_reference.py`·`test_mvcdf.py` 등의 척도 그대로, array는 vForce가 numpy와 8 ULP·복소 abs가 1.5 ULP, linalg는 잔차/(n·eps·척도) ≤ 10, optimize는 결과로 확인되는 멈춤 판정(구간법의 xtol + rtol·|x*|, 기울기 판정의 gtol)이다. regression과 그 밖의 측정(전진오차, xtol = 0의 ULP, 최적값까지의 거리 등)은 수치 계약이 없어 기준선과의 비교만 한다.
 - 비교 패키지(`--compare`): scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS·robustbase·glmnet·Matrix·mvtnorm), Boost.Math 단독(`bench/accuracy/boost_comparator.cpp`; 헤더는 저장소 밖 `build/comparators/boost-math`에 `git clone --depth 1 https://github.com/boostorg/math.git`, 첫 실행에 clang++로 빌드한다). 같은 참값, 같은 점에서 같은 척도로 잰 그 라이브러리의 오차를 표의 라이브러리별 열에 둔다. 같은 양을 계산하는 공개 함수만 재고(없으면 —), R·Boost가 없으면 not run이다. optimize는 R의 uniroot·optim·nls.lm이 reticulate로 같은 Python 시험 함수를 부른다. R 회귀에서 R이 겹친다고 본 열의 계수는 제외로 세고, glm이 기본 설정으로 시작값을 찾지 못하면 표에 시작값 필요로 적는다. 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점은 빼고 센다(제외 열). 호출마다 시간 30초(일부 300초)·메모리 2GB 한도가 있고, 넘으면 멈춤이다. 기준선에 결과와 버전을 저장하고, `compare`는 그 변화를 CHANGED로 알리기만 한다(종료 코드는 sd로만 정한다). deep 등급은 sd만 잰다.
 - 병렬: `--jobs`(기본 10, 최대 10)개 프로세스가 스윕을 나눠 잰다. 결과는 프로세스 수와 무관하다(워커는 sd 1스레드).
-- 출력은 `bench.speed`와 같은 모양이다(`bench/console.py`): 머리 블록, 스윕마다 sd와 비교 패키지의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes. 실행 파일 옆에 같은 이름의 `.log`(시각이 붙은 모든 줄)를 남긴다. `tools/test.py`도 머리 블록, 단계마다 결과 한 줄, 요약 블록과 실패한 테스트 목록을 낸다.
+- 출력은 `bench.speed`와 같은 모양이다(`bench/console.py`): 머리 블록, 스윕마다 sd와 비교 패키지의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes. 실행 파일 옆에 같은 이름의 `.log`(시각이 붙은 모든 줄)를 남긴다. `tools/test.py`·`tools/golden.py`·`tools/coverage.py`도 같은 모양이다: 머리 블록, 단계마다 진행 막대(테스트 수·골든 케이스 수·ninja 단계 수를 센다)와 결과 한 줄, 끝에 요약 블록·표·실패 목록·Notes. pytest·cmake·llvm-cov 같은 하위 도구의 출력은 터미널에 흘리지 않고 로그(`build/test/`, `build/golden/`, `build/coverage/logs/`의 `<시각>.log`)에만 남긴다. 실패한 테스트의 traceback도 그 로그에 있다.
 - `run`은 계약을 넘는 것이 있으면 종료 코드 1이다. `compare`는 계약을 넘거나, 계약 안이라도 sd의 어느 지표든 기준선보다 커진 것을 모두 `WORSE`로 적고 종료 코드 1이다.
 - 기준선은 `bench/accuracy/results/<영역>.json`(커밋한다), 표는 `bench/<영역>/accuracy.md`(다변량은 `bench/stats/accuracy_multivariate.md`; 기준선에서 만든다. 손으로 고치지 않는다), 실행 파일은 `build/accuracy/`(커밋하지 않는다).
