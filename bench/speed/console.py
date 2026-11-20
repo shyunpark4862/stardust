@@ -92,6 +92,39 @@ def table(headers: list[str], rows: list[list[str]], align: str) -> list[str]:
     return [fmt(headers), rule("-")] + [fmt(r) for r in rows]
 
 
+def wrap(items: list[tuple[str, str]], indent: int, width_: int, sep: str = " · ") -> list[str]:
+    """Join (plain, shown) items with `sep` into lines of at most width_ columns (measured on
+    the plain text: the shown text may carry colors), each starting with `indent` spaces."""
+    lines, cur, cur_w = [], "", 0
+    for plain, shown in items:
+        w = width(plain)
+        if cur and cur_w + width(sep) + w > width_:
+            lines.append(cur)
+            cur, cur_w = "", 0
+        if not cur:
+            cur, cur_w = " " * indent + shown, indent + w
+        else:
+            cur, cur_w = cur + sep + shown, cur_w + width(sep) + w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def split_label(text: str, indent: int, width_: int) -> list[str]:
+    """A long case label broken before ', ' or ' [' so no line is wider than width_."""
+    lines, first = [], True
+    while width(text) + (0 if first else indent) > width_:
+        room = width_ - (0 if first else indent)
+        cut = max(text.rfind(", ", 0, room), text.rfind(" [", 0, room))
+        if cut <= 0:
+            break
+        cut += 1 if text[cut] == "," else 0
+        lines.append(("" if first else " " * indent) + text[:cut].rstrip())
+        text, first = text[cut:].lstrip(), False
+    lines.append(("" if first else " " * indent) + text)
+    return lines
+
+
 def case_label(case) -> str:
     """'area · name [size]': a case without its group (the table section)."""
     label = f"{case.area} · {case.name}"
@@ -124,6 +157,15 @@ class Console:
                 self.bar.write(text, file=self.stream)
             else:
                 print(text, file=self.stream, flush=True)
+
+    def width(self) -> int:
+        """The width result lines are laid out in: the terminal's, kept within 60-100 columns
+        (100 when the stream is not a terminal)."""
+        if not self.tty:
+            return 100
+        import shutil
+
+        return max(60, min(100, shutil.get_terminal_size((100, 24)).columns))
 
     def color(self, text: str, code: str) -> str:
         """text in an ANSI color on a terminal ('31' red, '32' green, '2' dim); plain otherwise."""

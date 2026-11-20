@@ -34,6 +34,7 @@ import datetime
 import json
 import os
 import pathlib
+import re
 import select
 import shutil
 import signal
@@ -44,7 +45,7 @@ import threading
 import time
 
 from . import harness, proc, results
-from .console import WIDTH, Console, block, case_label, fmt_duration, ljust, rule, table
+from .console import WIDTH, Console, block, case_label, fmt_duration, ljust, rjust, rule, split_label, table, width
 from .harness import fmt_time
 from .registry import Case, RRef
 
@@ -461,27 +462,86 @@ def _ratios(c) -> dict[str, float]:
     }
 
 
+def _threads_text(t) -> str:
+    if t is None:
+        return "its default threads"
+    return f"{t} thread" + ("" if t == 1 else "s")
+
+
 def _result_line(con: Console, case, rec, rnd: int, rounds: int) -> str:
-    """One case's result so far (the minimum over the rounds done): sd at each thread count,
-    then each comparator as comparator / sd (red when sd is slower)."""
-    sd = sorted((t for t in rec["timings"] if t["label"] == "sd"), key=lambda t: t["threads"])
-    parts = []
-    for t in sd:
-        v = fmt_time(t["min"]) if t.get("min") is not None else con.color("failed", "31")
-        parts.append(v if len(sd) == 1 and t["threads"] == 1 else f"{t['threads']}T {v}")
-    text = f"sd {' · '.join(parts)}" if sd else "sd -"
-    ratios = _ratios(rec)
-    refs = []
-    for label in dict.fromkeys(t["label"] for t in rec["timings"] if t["label"] != "sd"):
-        r = ratios.get(label)
-        if r is None:
-            refs.append(f"{label} {con.color('failed', '31')}")
-        else:
-            refs.append(f"{label} {con.color(f'{r:.2f}x', '31') if r < 1 else f'{r:.2f}x'}")
-    lead = f"r{rnd + 1} " if rounds > 1 else ""
-    name = ljust(case_label(case), 46)
-    busy = con.color(f"   busy ({rec['other_cpu']:.1f} cores)", "33") if rec.get("busy") else ""
-    return f"  {con.color(lead, '2')}{name}  {text}" + (f"   {' · '.join(refs)}" if refs else "") + busy
+    """One case's result so far (the minimum over the rounds done), a few lines in words:
+
+        regression · ridge(y, X, alpha=0.1) [(100,000, 100)]
+            sd, 1 thread                 96.5 ms
+            sd, 10 threads               22.9 ms   4.21x faster than 1 thread
+            scikit-learn Ridge           13.6 ms   sd is 7.09x slower
+            scikit-learn Ridge svd        340 ms   sd is 3.52x faster
+
+    A comparator is set against sd at the same thread count (one that runs at its own
+    threads against sd's lowest), per element: a comparator timed on a smaller sample is
+    shown scaled to the case's size. Slower verdicts are red, a busy note is yellow."""
+    W = con.width()
+    lead = f"[round {rnd + 1}/{rounds}] " if rounds > 1 else ""
+    head = split_label(lead + case_label(case), 4, W - 2)
+    lines = ["  " + head[0]] + ["  " + h for h in head[1:]]
+    ts = rec["timings"]
+    sd = {t["threads"]: t for t in ts if t["label"] == "sd"}
+    low = min(sd) if sd else None
+    rows = []  # (label, time text, verdict, verdict is bad)
+
+    def per(t):
+        return t["min"] / (t.get("n") or 1)
+
+    for th in sorted(sd):
+        t = sd[th]
+        label = f"sd, {_threads_text(th)}" if len(sd) > 1 or th != 1 else "sd"
+        if t.get("min") is None:
+            rows.append((label, "failed", "", True))
+            continue
+        verdict, bad = "", False
+        if th != low and sd[low].get("min"):
+            x = sd[low]["min"] / t["min"]
+            verdict = (f"{x:.2f}x faster" if x >= 1 else f"{1 / x:.2f}x slower") + f" than {_threads_text(low)}"
+            bad = x < 1
+        rows.append((label, fmt_time(t["min"]), verdict, bad))
+    labels = list(dict.fromkeys(t["label"] for t in ts if t["label"] != "sd"))
+    for label in labels:
+        mine = [t for t in ts if t["label"] == label]
+        for t in sorted(mine, key=lambda t: (t["threads"] is not None, t["threads"] or 0)):
+            name = label if len(mine) == 1 else f"{label}, {_threads_text(t['threads'])}"
+            if t.get("min") is None:
+                rows.append((name, "failed", "", True))
+                continue
+            scale = (case.n or 1) / (t.get("n") or 1) if t.get("n") and case.n and t["n"] != case.n else 1.0
+            shown = fmt_time(t["min"] * scale) + ("*" if scale != 1.0 else "")
+            ref_sd = sd.get(t["threads"]) or sd.get(low)
+            if not ref_sd or ref_sd.get("min") is None:
+                rows.append((name, shown, "", False))
+                continue
+            r = per(t) / per(ref_sd)
+            who = "sd" if t["threads"] is not None or len(sd) == 1 else f"sd ({_threads_text(low)})"
+            verdict = f"{who} is {r:.2f}x faster" if r >= 1 else f"{who} is {1 / r:.2f}x slower"
+            rows.append((name, shown, verdict, r < 1))
+    name_w = min(max((width(r[0]) for r in rows), default=0), max(20, W - 6 - 11 - 3 - 30))
+    for name, tm, verdict, bad in rows:
+        name_lines = split_label(name, 2, name_w) if width(name) > name_w else [name]
+        for extra in name_lines[:-1]:
+            lines.append("      " + extra)
+        cell = "      " + ljust(name_lines[-1], name_w) + "  " + rjust(tm, 10)
+        if verdict:
+            cell += "   " + (con.color(verdict, "31") if bad else verdict)
+        elif tm == "failed":
+            cell = cell.replace("failed", con.color("failed", "31"))
+        lines.append(cell)
+    if any(t.get("n") and case.n and t["n"] != case.n for t in ts if t["label"] != "sd"):
+        lines.append("      " + con.color("* timed on a smaller sample, scaled to this size", "2"))
+    if rec.get("busy"):
+        lines.append("      " + con.color(f"busy: other processes kept {rec['other_cpu']:.1f} cores busy", "33"))
+    return "\n".join(lines)
+
+
+def _strip(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def _summary(data, total, interrupted, out, log_path) -> list[str]:
