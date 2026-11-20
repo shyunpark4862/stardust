@@ -14,6 +14,7 @@ worse than the baseline in any measure (even within the contract), and lists eve
 from __future__ import annotations
 
 import argparse
+import pathlib
 import re
 import sys
 import time
@@ -53,11 +54,12 @@ def select(a):
 
 
 def failures(run):
+    """'id [region]: N x the bound at <worst>' for every region beyond its contract."""
     out = []
     for s in run["sweeps"]:
         for label, r in s["regions"].items():
             if r.get("contract") is not None and not r["contract"] <= 1.0:
-                out.append(f"FAIL     {s['id']} [{label}]: {r['contract']:.3g} x the bound at {r['worst']}")
+                out.append(f"{s['id']} [{label}]: {r['contract']:.3g} x the bound at {r['worst']}")
     return out
 
 
@@ -69,42 +71,60 @@ def cmd_list(a):
 
 
 def cmd_run(a):
-    from . import parallel
+    from bench import console as C
+
+    from . import compare as CMP
+    from . import parallel, report
 
     sws = select(a)
     t0 = time.perf_counter()
+    stamp, env = results.new_stamp(), results.env()
+    versions = CMP.versions() if a.compare else {}
+    if versions:
+        env["comparators"] = versions
+    jobs = max(1, min(a.jobs, 10))
+    path = pathlib.Path(a.out) if a.out else results.RUN_DIR / f"{stamp}-{env['commit']}.json"
+    log_path = path.with_suffix(".log")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "w") as log:
+        con = C.Console(log=log, show=not a.quiet)
+        con.lines(report.header(stamp, env, sws, jobs, a.compare, versions, path, log_path))
+        con.start(len(sws), "accuracy")
 
-    def progress(i, n, sid):
-        if a.verbose:
-            print(f"[{i}/{n}] {sid}", file=sys.stderr, flush=True)
+        def progress(i, n, r):
+            el = time.perf_counter() - t0
+            left = el / i * (n - i) if i else None
+            what = f"{r['area']} · {r['name']}"
+            eta = f", ~{C.fmt_duration(left)} left" if left else ""
+            con.step(i, "accuracy", what, el, left, f"[{i}/{n}] {what}  ({C.fmt_duration(el)} elapsed{eta})")
+            con.lines(report.sweep_lines(r, con))
 
-    out = parallel.measure_all(sws, compare=a.compare, jobs=a.jobs, progress=progress)
-    run = results.new_run(out, compare=a.compare)
-    path = a.out or results.RUN_DIR / f"{run['run']}.json"
-    results.save(run, path)
-    bad = failures(run)
-    for line in bad:
-        print(line)
-    print(f"{len(out)} sweeps in {time.perf_counter() - t0:.1f} s -> {path}; {len(bad)} beyond the contract")
-    if a.promote:
-        promote(run)
+        out = parallel.measure_all(sws, compare=a.compare, jobs=jobs, progress=progress)
+        con.close()
+        run = results.new_run(out, compare=a.compare, e=env, stamp=stamp)
+        results.save(run, path)
+        bad = failures(run)
+        con.lines(report.summary(run, time.perf_counter() - t0, path, log_path, bad))
+        if a.promote:
+            promote(run, con)
     return 1 if bad else 0
 
 
-def compare(run, base, partial=False):
-    """(lines, sweeps worse or beyond the contract, measures better); partial: the run measured
-    only some sweeps of its areas, so missing ones are not GONE."""
-    lines, worse, better = [], 0, 0
+def compare(run, base, partial=False) -> dict:
+    """The findings of a run against the baselines: beyond (the contract), worse (id, region,
+    moves, worst point), new, gone, changed (comparators: id, what, moves), better (a count).
+    partial: the run measured only some sweeps of its areas, so missing ones are not gone."""
+    f = {"beyond": failures(run), "worse": [], "new": [], "gone": [], "changed": [], "better": 0}
     for s in run["sweeps"]:
         b = base.get(s["id"])
         if b is None:
-            lines.append(f"NEW      {s['id']}")
+            f["new"].append(s["id"])
             continue
-        lines += comparator_changes(s, b)
+        f["changed"] += comparator_changes(s, b)
         for label, r in s["regions"].items():
             rb = b["regions"].get(label)
             if rb is None:
-                lines.append(f"NEW      {s['id']} [{label}]")
+                f["new"].append(f"{s['id']} [{label}]")
                 continue
             got_worse = []
             for m in MEASURES:
@@ -114,21 +134,18 @@ def compare(run, base, partial=False):
                 if new > old:
                     got_worse.append(f"{m} {tables.num(old)} -> {tables.num(new)}")
                 else:
-                    better += 1
+                    f["better"] += 1
             if got_worse:
-                worse += 1
-                lines.append(f"WORSE    {s['id']} [{label}]: " + ", ".join(got_worse) + f" (worst at {r['worst']})")
+                f["worse"].append((s["id"], label, got_worse, r.get("worst")))
     ids = {s["id"] for s in run["sweeps"]}
     areas = {s["area"] for s in run["sweeps"]}
-    for i, b in base.items():
-        if i not in ids and b["area"] in areas and not partial:
-            lines.append(f"GONE     {i}")
-    bad = failures(run)
-    return bad + lines, worse + len(bad), better
+    f["gone"] = [i for i, b in base.items() if i not in ids and b["area"] in areas and not partial]
+    return f
 
 
 def comparator_changes(s, b) -> list:
-    """CHANGED lines for the comparator libraries (information only: the exit status follows sd)."""
+    """(id, what, moves) for the comparator libraries whose results moved (information only: the
+    exit status follows sd)."""
     out = []
     new, old = s.get("comparators"), b.get("comparators")
     if not new or not old:
@@ -137,35 +154,110 @@ def comparator_changes(s, b) -> list:
         prev = old.get(lib)
         if not isinstance(regs, dict) or not isinstance(prev, dict) or "error" in regs or "error" in prev:
             if regs != prev:
-                out.append(f"CHANGED  {s['id']} [{lib}]: {prev!r:.80} -> {regs!r:.80}")
+                out.append((s["id"], lib, [f"{_state(prev)} -> {_state(regs)}"]))
             continue
         for label, r in regs.items():
             moved = [f"{m} {tables.num(prev.get(label, {}).get(m))} -> {tables.num(r.get(m))}"
                      for m in MEASURES if r.get(m) != prev.get(label, {}).get(m)]  # fmt: skip
             if moved:
-                out.append(f"CHANGED  {s['id']} [{lib} {label}]: " + ", ".join(moved))
+                out.append((s["id"], f"{lib} {label}", moved))
     return out
 
 
+def _state(v) -> str:
+    if v is None:
+        return "none"
+    if isinstance(v, str):
+        return v
+    return "error" if "error" in v else "measured"
+
+
 def cmd_compare(a):
+    from bench import console as C
+
+    con = C.Console()
     run = results.load(a.run)
     areas = sorted({s["area"] for s in run["sweeps"]})
     base = results.baseline_sweeps(areas)
     if not base:
-        print("no baseline yet for", ", ".join(areas))
+        con.lines(C.notes([f"No baseline yet for {', '.join(areas)}: promote a run first."]))
         return 1
     partial = len(run["sweeps"]) < sum(1 for b in base.values() if b["area"] in areas)
-    lines, nbad, better = compare(run, base, partial)
-    for line in lines:
-        print(line)
-    print(f"{len(run['sweeps'])} sweeps: {nbad} worse or beyond the contract, {better} measures better")
+    f = compare(run, base, partial)
+    con.lines(
+        C.block(
+            "stardust accuracy compare",
+            [
+                ("Run", run["run"]),
+                ("Sweeps", f"{len(run['sweeps']):,}"),
+                ("Baseline sweeps", f"{sum(1 for b in base.values() if b['area'] in areas):,}"),
+                ("Partial run", "yes" if partial else "no"),
+            ],
+            [("Areas", ", ".join(areas))],
+        )  # fmt: skip
+    )
+    w = con.width()
+
+    def section(title, rows):
+        if rows:
+            con.print(title)
+            for head, detail in rows:
+                con.lines(C.split_label(head, 4, w))
+                if detail:
+                    con.lines(C.wrap([(d, d) for d in detail], 6, w, sep=", "))
+
+    section("Beyond the contract:", [(f"  {x}", []) for x in f["beyond"]])
+    section(
+        "Worse than the baseline:",
+        [(f"  {i} [{lab}]", moves + [f"worst at {wst}"]) for i, lab, moves, wst in f["worse"]],
+    )
+    section("New:", [(f"  {x}", []) for x in f["new"]])
+    section("Gone:", [(f"  {x}", []) for x in f["gone"]])
+    shown = f["changed"][:40]
+    section("Comparators that changed (information only):", [(f"  {i} [{what}]", moves) for i, what, moves in shown])
+    nbad = len(f["worse"]) + len(f["beyond"])
+    con.lines(
+        [""]
+        + C.block(
+            "Compare summary",
+            [
+                ("Beyond the contract", str(len(f["beyond"]))),
+                ("Worse", str(len(f["worse"]))),
+                ("New", str(len(f["new"]))),
+                ("Gone", str(len(f["gone"]))),
+                ("Measures better", str(f["better"])),
+                ("Comparator changes", str(len(f["changed"]))),
+            ],
+        )  # fmt: skip
+        + C.notes(
+            ([f"{len(f['changed']) - 40} more comparator changes are not shown."] if len(f["changed"]) > 40 else [])
+            + (
+                [
+                    f"Nothing is worse: make the run the baseline with\n.venv/bin/python -m bench.accuracy promote {a.run}"
+                ]
+                if not nbad
+                else ["The exit status is 1: a measure of sd is worse than the baseline\nor beyond its contract."]
+            )
+            + ["Comparator changes never fail the comparison\n(a new library version, a fixed library)."]
+        )
+    )
     return 1 if nbad else 0
 
 
-def promote(run):
+def promote(run, con=None):
+    from bench import console as C
+
+    con = con or C.Console()
     areas = results.promote(run)
-    for p in tables.write(areas):
-        print(f"wrote {p.relative_to(results.ROOT)}")
+    tables.write(areas)
+    rows = [[a, str(results.baseline_path(a).relative_to(results.ROOT)), tables.PATH.get(a, f"bench/{a}/accuracy.md")]
+            for a in areas]  # fmt: skip
+    con.lines(
+        [""]
+        + C.block("stardust accuracy promote", [("Run", run["run"]), ("Areas", str(len(areas)))])
+        + C.table(["Area", "Baseline", "Table"], rows, "lll")
+        + [C.rule()]
+    )
 
 
 def cmd_promote(a):
@@ -173,6 +265,8 @@ def cmd_promote(a):
 
 
 def cmd_table(a):
+    from bench import console as C
+
     data = results.load(a.from_) if a.from_ else None
     if a.areas:
         areas = a.areas
@@ -180,8 +274,12 @@ def cmd_table(a):
         areas = sorted({s["area"] for s in data["sweeps"]})
     else:
         areas = list(sources.AREAS)
-    for p in tables.write(areas, data):
-        print(f"wrote {p.relative_to(results.ROOT)}")
+    written = tables.write(areas, data)
+    C.Console().lines(
+        C.block("stardust accuracy table", [("From", a.from_ or "the baselines"), ("Tables", str(len(written)))])
+        + C.table(["Table"], [[str(p.relative_to(results.ROOT))] for p in written], "l")
+        + [C.rule()]
+    )
 
 
 def main(argv=None):
@@ -194,7 +292,7 @@ def main(argv=None):
         if name == "run":
             p.add_argument("--out")
             p.add_argument("--promote", action="store_true")
-            p.add_argument("-v", "--verbose", action="store_true")
+            p.add_argument("-q", "--quiet", action="store_true", help="only the log file, nothing on the terminal")
             p.add_argument("--compare", action="store_true", help="also the comparator libraries (compare.py)")
             p.add_argument("--jobs", type=int, default=10, help="worker processes (at most 10; 1: in this one)")
     p = sub.add_parser("compare")

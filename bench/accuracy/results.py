@@ -45,14 +45,19 @@ def env() -> dict:
     }
 
 
-def new_run(sweeps: list[dict], compare: bool = False) -> dict:
-    e = env()
-    if compare:
+def new_run(sweeps: list[dict], compare: bool = False, e: dict | None = None, stamp: str | None = None) -> dict:
+    """A run file's content; e and stamp: the environment and time stamp taken when it started."""
+    e = dict(e or env())
+    if compare and "comparators" not in e:
         from . import compare as C
 
         e["comparators"] = C.versions()
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = stamp or new_stamp()
     return {"schema": SCHEMA, "run": f"{stamp}-{e['commit']}", "env": e, "sweeps": sweeps}
+
+
+def new_stamp() -> str:
+    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
 def load(path) -> dict:

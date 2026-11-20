@@ -45,7 +45,7 @@ def measure_all(sweeps, compare=False, jobs=10, progress=None) -> list:
         for i, r in enumerate(pool.imap_unordered(_measure, [(sid, compare) for sid in ids], chunksize=1), 1):
             done[r["id"]] = r
             if progress:
-                progress(i, len(ids), r["id"])
+                progress(i, len(ids), r)
         pool.close()  # not terminate: the workers exit normally and close their R sessions (atexit)
     except BaseException:
         pool.terminate()
