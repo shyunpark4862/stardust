@@ -121,7 +121,7 @@ def _special_kept_line(n_measured: int, n_rows: int) -> list[str]:
         return [f"// All {n_rows} rows measured in the baseline."]
     return [
         f"// {n_measured} of {n_rows} rows measured in the baseline; the rest kept from the previous file (first written",
-        "// from the hand-measured constants of special/cost.hpp, bench/special/s*/cost.md).",
+        "// from the hand-measured constants of special/cost.hpp, bench/special/s*/cost.md at commit 4151d2a).",
     ]
 
 

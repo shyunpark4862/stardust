@@ -282,5 +282,5 @@ def idle_check(window_s: float = 3.0, own_pid: int | None = None, top: int = 5) 
     for p, t in after.items():
         d = (t - before.get(p, t)) / window_s
         if d >= 0.1:
-            rows.append((d, f"{_name(p)} (pid {p}, {d:.1f}코어)"))
+            rows.append((d, f"{_name(p)} (pid {p}, {d:.1f} cores)"))
     return other, [r for _, r in sorted(rows, reverse=True)[:top]]

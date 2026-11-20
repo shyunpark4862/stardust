@@ -181,7 +181,7 @@ inline double I0::f(double x) {
     return bst::normal(r) ? r : bessel01_detail::i0(x);
 }
 // The scaled forms: Boost's value times e^-+x for 0 < x < 700 (both factors in range there,
-// one more rounding; bench/special/boost/routing.md), ours elsewhere.
+// one more rounding; bench/special/boost/routing.md at commit 4151d2a), ours elsewhere.
 inline double boost_scaled(double r, double x, double sign) {
     if (!bst::normal(r)) return kNaN;
     const double s = r * std::exp(sign * x);

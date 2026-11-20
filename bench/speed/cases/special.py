@@ -1,8 +1,8 @@
 """sd.special against scipy.special: every function with a reference file at 10^6
 elements (sd on 1 and 10 threads; scipy.special runs on one) and one Python-float (or
-complex) call. From bench/special/speed.py; the functions, their counterparts and the
+complex) call. From bench/special/speed.py (at commit 4151d2a); the functions, their counterparts and the
 reference-mix inputs (drawn from the guaranteed-region reference inputs) come from
-bench/special/common.py, imported as it is.
+_special_common.py (bench/special/common.py at that commit, without its timing helpers).
 
 The 1-thread time per element of the reference-mix rows is the cost table of the parallel
 split (csrc/special/cost_table.hpp, read by csrc/special/cost.hpp; bench/special/cost.py
@@ -27,12 +27,12 @@ from ..registry import Case, Ref
 
 N = 10**6
 N_NONCENTRAL = 10**5
-GROUP = "배열 10^6개"
-TYPICAL_GROUP = "배열 10^6개(흔한 입력)"
-MID_GROUP = "배열 10^2–10^4개"
-REDUCE_GROUP = "로그합·소프트맥스"
-SCALAR_GROUP = "스칼라 한 번"
-COST_GROUP = "비용표 단위"
+GROUP = "array-1e6"
+TYPICAL_GROUP = "array-1e6-typical"
+MID_GROUP = "array-small"
+REDUCE_GROUP = "logsumexp-softmax"
+SCALAR_GROUP = "scalar"
+COST_GROUP = "cost-units"
 
 # Argument names (scipy's) of the functions that take more than one argument.
 ARGS = {
@@ -269,9 +269,9 @@ SCALAR_POINT = {
 
 
 def _common():
-    from bench.special import common
+    from . import _special_common
 
-    return common
+    return _special_common
 
 
 def _complex(name):
@@ -437,6 +437,18 @@ def _reduce_cases():
                 )
             )
     return out
+
+
+# The section title of each group in bench/special/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "array-1e6": "배열 10^6개",
+    "array-1e6-typical": "배열 10^6개(흔한 입력)",
+    "array-small": "배열 10^2–10^4개",
+    "logsumexp-softmax": "로그합·소프트맥스",
+    "cost-units": "비용표 단위",
+    "scalar": "스칼라 한 번",
+}
 
 
 def cases() -> list[Case]:

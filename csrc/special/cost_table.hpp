@@ -2,7 +2,7 @@
 // The measured per-element cost (ns, one thread, 10^6 contiguous elements over the function's
 // reference inputs) of each special function, for the parallel split (special/cost.hpp).
 // 0 of 78 rows measured in the baseline; the rest kept from the previous file (first written
-// from the hand-measured constants of special/cost.hpp, bench/special/s*/cost.md).
+// from the hand-measured constants of special/cost.hpp, bench/special/s*/cost.md at commit 4151d2a).
 #pragma once
 
 #include <string_view>

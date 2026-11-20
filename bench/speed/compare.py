@@ -5,7 +5,7 @@ slower than the baseline. Each line shows the noise band, the larger of the two
 measurements' (median / min - 1): a slowdown inside it may be the machine, not the code,
 and is marked so. The comparators' own change (their median new / old ratio) is shown
 too: when numpy or scipy also moved, the machine changed between the runs. A case
-measured while other processes kept the CPU busy (in either run) is marked "바쁠 때 잼"
+measured while other processes kept the CPU busy (in either run) is marked "busy"
 and does not count as a slowdown (rerun it: `run --rerun-busy`).
 """
 
@@ -77,31 +77,31 @@ def report(res: dict, *, threshold: float = 0.10, show_faster: bool = False) -> 
     n_slow = len(res["slower"])
     real = sum(r["beyond_noise"] for r in res["slower"])
     lines.append(
-        f"기준선보다 {threshold * 100:.0f}% 넘게 느린 sd 측정: {n_slow}개 (잡음 폭 밖 {real}개), "
-        f"빠른 것 {len(res['faster'])}개, 비슷한 것 {res['same']}개."
+        f"sd timings more than {threshold * 100:.0f}% slower than the baseline: {n_slow} "
+        f"({real} beyond the noise band); faster: {len(res['faster'])}; about the same: {res['same']}."
     )
     if res["refs_drift"] is not None:
         d = res["refs_drift"]
         lines.append(
-            f"비교 대상 라이브러리 시간의 변화(새 ÷ 기준선, 중앙값): {fmt_ratio(d)}배"
-            + (" — 기계 상태가 달라졌을 수 있다." if abs(d - 1) > threshold else ".")
+            f"Comparator libraries, new / baseline (median): {fmt_ratio(d)}x"
+            + (": the machine may have changed between the runs." if abs(d - 1) > threshold else ".")
         )
     if res["missing"]:
-        lines.append(f"기준선에 없는 사례 {res['missing']}개는 비교하지 않았다.")
+        lines.append(f"{res['missing']} cases have no baseline and were not compared.")
 
     def table(rows, title):
         out = [
             "",
             f"## {title}",
             "",
-            "| 사례 | 스레드 | 기준선 | 새 측정 | 새 ÷ 기준선 | 잡음 폭 | 판단 |",
+            "| Case | Threads | Baseline | New | New / baseline | Noise band | Verdict |",
             "|---|---:|---:|---:|---:|---:|---|",
         ]
         for r in rows:
             if r.get("busy"):
-                verdict = "바쁠 때 잼"
+                verdict = "busy"
             else:
-                verdict = ("느려짐" if r["beyond_noise"] else "잡음 안") if r["ratio"] > 1 else "빨라짐"
+                verdict = ("slower" if r["beyond_noise"] else "within noise") if r["ratio"] > 1 else "faster"
             out.append(
                 f"| `{r['id']}` | {r['threads']} | {fmt_time(r['base'])} | {fmt_time(r['new'])} | "
                 f"{fmt_ratio(r['ratio'])} | {r['band'] * 100:.0f}% | {verdict} |"
@@ -109,7 +109,7 @@ def report(res: dict, *, threshold: float = 0.10, show_faster: bool = False) -> 
         return out
 
     if res["slower"]:
-        lines += table(res["slower"], "느린 것")
+        lines += table(res["slower"], "Slower")
     if show_faster and res["faster"]:
-        lines += table(res["faster"], "빠른 것")
+        lines += table(res["faster"], "Faster")
     return "\n".join(lines) + "\n"

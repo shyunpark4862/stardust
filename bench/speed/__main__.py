@@ -43,26 +43,33 @@ def cmd_list(a) -> int:
         flags = ("Q " if c.quick else "  ") + ("C " if c.cost else "  ")
         print(f"{flags}{c.id}  [{', '.join(map(str, c.threads))}T; {refs or '-'}]")
     print(
-        f"사례 {len(cases)}개 (Q: 빠른 묶음 {sum(c.quick for c in cases)}개, C: 비용표 {sum(bool(c.cost) for c in cases)}개)",
+        f"{len(cases):,} cases (Q: {sum(c.quick for c in cases)} in the quick subset, "
+        f"C: {sum(bool(c.cost) for c in cases)} feed a cost table)",
         file=sys.stderr,
     )
     return 0
 
 
 def cmd_estimate(a) -> int:
-    from .run import estimate, fmt_duration
+    from .console import fmt_duration, rule, table
+    from .run import estimate
 
     cases = _select(a)
     by_area: dict[str, list] = {}
     for c in cases:
         by_area.setdefault(c.area, []).append(c)
-    total = 0.0
+    rows, total, total_unknown = [], 0.0, 0
     for area, cs in by_area.items():
         s, unknown = estimate(cs, a.rounds)
         total += s
-        tail = f", 기준선에 없는 사례 {unknown}개(시간 모름)" if unknown else ""
-        print(f"{area}: 사례 {len(cs)}개, 예상 {fmt_duration(s)}{tail}")
-    print(f"합계: {fmt_duration(total)} ({a.rounds}라운드)")
+        total_unknown += unknown
+        rows.append([area, f"{len(cs):,}", f"{len(cs) - unknown:,}", fmt_duration(s) if unknown < len(cs) else "-"])
+    rows.append(["Total", f"{len(cases):,}", f"{len(cases) - total_unknown:,}", fmt_duration(total)])
+    lines = table(["Area", "Cases", "In a baseline", f"Expected ({a.rounds} rounds)"], rows, "lrrr")
+    lines.insert(-1, rule("-"))
+    print("\n".join(lines))
+    if total_unknown:
+        print(f"{total_unknown:,} cases have no baseline yet: their time is not in the total.")
     return 0
 
 
@@ -79,14 +86,14 @@ def cmd_run(a) -> int:
         prev = results.load(a.rerun_busy)
         busy = [c["id"] for c in prev["cases"] if c.get("busy")]
         if not busy:
-            print("바쁠 때 잰 사례가 없다", file=sys.stderr)
+            print("No case of that run was measured while busy.", file=sys.stderr)
             return 0
         by_id = {c.id: c for c in registry.load(sorted({cid.split("/", 1)[0] for cid in busy}))}
         cases = [by_id[cid] for cid in busy if cid in by_id]
         if a.rounds_given is None:
             a.rounds = prev["options"]["rounds"]
         a.label = a.label or "rerun"
-        print(f"바쁠 때 잰 사례 {len(cases)}개를 다시 잰다 ({a.rounds}라운드)", file=sys.stderr)
+        print(f"Measuring again the {len(cases)} cases measured while busy ({a.rounds} rounds).", file=sys.stderr)
     elif a.resume:
         prev = results.load(a.resume)
         areas = sorted({cid.split("/", 1)[0] for cid in prev["options"]["case_ids"]})
@@ -94,7 +101,7 @@ def cmd_run(a) -> int:
     else:
         cases = _select(a)
         if not cases:
-            print("고른 사례가 없다", file=sys.stderr)
+            print("No case matches the selection.", file=sys.stderr)
             return 2
     threads = tuple(int(t) for t in a.threads.split(",")) if a.threads else None
     data = run(
@@ -129,19 +136,19 @@ def _promote(data) -> None:
     for area, (n, dropped) in rep.items():
         base = results.load_baseline(area)
         path = tables.write(area, base, cases, f"bench/speed/results/{area}.json")
-        extra = f", 등록부에서 사라진 사례 {dropped}개 뺌" if dropped else ""
-        print(f"{area}: 기준선에 사례 {n}개 반영{extra}; {path.relative_to(results.ROOT)} 다시 만듦")
+        extra = f", {dropped} no longer registered dropped" if dropped else ""
+        print(f"{area}: {n} cases into the baseline{extra}; wrote {path.relative_to(results.ROOT)}")
     if any(c.get("cost") for c in data["cases"]):
-        print("비용표 사례가 바뀌었다: `.venv/bin/python -m bench.speed cost`로 C++ 비용표를 다시 만든다")
+        print("Cost-table cases changed: run `.venv/bin/python -m bench.speed cost` to rewrite the C++ cost tables.")
 
 
 def cmd_promote(a) -> int:
     data = results.load(a.run)
     if data["options"].get("smoke"):
-        print("--smoke 실행은 기준선에 넣을 수 없다", file=sys.stderr)
+        print("A --smoke run cannot go into a baseline.", file=sys.stderr)
         return 2
     if not data["options"].get("complete", True) and not a.force:
-        print("끝나지 않은 실행이다(--resume으로 마저 돌리거나 --force)", file=sys.stderr)
+        print("The run is not complete (finish it with --resume, or pass --force).", file=sys.stderr)
         return 2
     _promote(data)
     return 0
@@ -180,7 +187,7 @@ def cmd_table(a) -> int:
         base = results.load_baseline(area)
         if base is None:
             if a.areas:
-                print(f"{area}: 기준선이 없다", file=sys.stderr)
+                print(f"{area}: no baseline", file=sys.stderr)
             continue
         print(tables.write(area, base, cases, f"bench/speed/results/{area}.json").relative_to(results.ROOT))
     return 0
@@ -192,10 +199,10 @@ def cmd_cost(a) -> int:
     changed_any = False
     for path, changed, n in cost.generate(check=a.check):
         changed_any |= changed
-        state = ("바뀜" if changed else "같음") if a.check else ("다시 씀" if changed else "바뀐 값 없음")
-        print(f"{path.relative_to(results.ROOT)}: 기준선에서 잰 줄 {n}개, {state}")
+        state = ("differs" if changed else "up to date") if a.check else ("rewritten" if changed else "unchanged")
+        print(f"{path.relative_to(results.ROOT)}: {n} rows measured in the baselines, {state}")
     if changed_any and not a.check:
-        print("C++ 헤더가 바뀌었다: 다음 import에서 다시 빌드된다")
+        print("A C++ header changed: the next import rebuilds the core.")
     return 1 if (a.check and changed_any) else 0
 
 

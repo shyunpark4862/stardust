@@ -100,7 +100,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   | `special/cost.hpp` | 연산마다 원소당 비용과 가중치 (§3.3) |
   | `special/cost_table.hpp` | 함수마다 잰 원소당 비용. `python -m bench.speed cost`가 만든다 (§3.3) |
 - 테스트 `tests/special/`, 벤치마크 `bench/special/`, 기준값 생성 `tools/special_ref.py` (§6)
-- **측정용 비공개 함수** (사용자 결정 2026-11-20): 알고리즘 후보를 견준 변형(`_erfc_select`, `_erfc_estrin`, `_ellipk_agm`, `_ellipe_carlson`, `_gamma_lanczos`)과 엔진 시험 함수(`_fma3`, `_sum4`, `_powers4`, `_cf_tan`)는 `stardust._core.special`에 그대로 둔다. `sd.special`(`__all__`)에는 없다. 측정(bench/special)과 엔진 테스트가 같은 빌드에서 부르기 때문이다. 무게 표(`_weight`)에도 들어간다.
+- **측정용 비공개 함수** (사용자 결정 2026-11-20): 알고리즘 후보를 견준 변형(`_erfc_select`, `_erfc_estrin`, `_ellipk_agm`, `_ellipe_carlson`, `_gamma_lanczos`)과 엔진 시험 함수(`_fma3`, `_sum4`, `_powers4`, `_cf_tan`)는 `stardust._core.special`에 그대로 둔다. `sd.special`(`__all__`)에는 없다. 측정(`bench/speed/cases/special.py`)과 엔진 테스트가 같은 빌드에서 부르기 때문이다. 무게 표(`_weight`)에도 들어간다.
 - **바인딩의 시그니처** (사용자 결정 2026-11-20): 모든 함수에 docs/api/special.md와 같은 시그니처를 붙인다(`nb::sig`, 원소별 함수는 `Op::args`에서 만든다: `erf(x, /, *, out=None)`). 입력은 위치 전용 그대로이고 이름은 `help()`와 nanobind의 호출 에러에 보인다. 호출 모양 에러는 nanobind의 꼴 그대로다(API.md §2.1의 예외).
 
 ---
@@ -181,7 +181,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - Op 구조체가 `nin`, `nout`, 인자 이름 `args`를 갖는다. `f`는 `nout == 1`이면 값 하나, 아니면 `std::array`를 돌려준다.
   - 출력이 여럿이면 결과는 tuple이다(스칼라 입력이면 float의 tuple). `out=`은 없다.
   - 루프가 없는 dtype의 메시지는 입력 dtype을 모두 적는다. 셋 이상이면 `float64, complex128 and float64`처럼 쉼표로 잇는다 (둘일 때는 전과 같다).
-  - `kMaxOperands` 5의 비용: 짧은 원소별 호출에서 행마다 ±5% 안팎으로 흔들리고 일관된 회귀는 보이지 않았다 (bench/special/s0/operands.md).
+  - `kMaxOperands` 5의 비용: 짧은 원소별 호출에서 행마다 ±5% 안팎으로 흔들리고 일관된 회귀는 보이지 않았다 (커밋 4151d2a의 bench/special/s0/operands.md).
 
 ### 3.2 Op 구조체
 - 배열의 `scalar_ops.hpp`와 같은 형태다: 루프가 있는 저장 타입(`ok<T>`, 여기서는 `double`만)과 원소 하나의 함수(`f`).
@@ -192,7 +192,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - 함수마다 원소당 비용이 100배 넘게 다르다 (xlogy 2.5ns, betaincinv 744ns, scipy 1스레드 기준).
 - 그래서 배열의 기준값(`kParallelThreshold`, 원소 2¹⁵개)을 그대로 쓰지 않는다. 함수마다 원소당 비용 `c`(ns)를 `special/cost.hpp`에 두고, 일의 양을 `n·c`로 센다. linalg의 비용 모델(linalg.md §7)과 같은 생각이다.
   - 배열의 이터레이터는 이미 작업량 가중치를 받는다 (레인 처리, array.md §4.5). 같은 장치를 쓴다.
-  - S4에서 더함: 가중치의 상한 `kMaxWeight` = 256. 이터레이터는 태스크를 4096/가중치 원소로 자르는데, 가중치 800–8500인 불완전 함수는 태스크 하나가 원소 하나가 되어 10스레드가 4.8–7.8배에 그쳤다. 상한 256(태스크 16원소)에서 8.1–8.9배다 (bench/special/s4/threads.md).
+  - S4에서 더함: 가중치의 상한 `kMaxWeight` = 256. 이터레이터는 태스크를 4096/가중치 원소로 자르는데, 가중치 800–8500인 불완전 함수는 태스크 하나가 원소 하나가 되어 10스레드가 4.8–7.8배에 그쳤다. 상한 256(태스크 16원소)에서 8.1–8.9배다 (커밋 4151d2a의 bench/special/s4/threads.md).
   - `c`는 함수마다 원소 10⁶개, 1스레드로 잰다. 입력은 참값 파일의 입력(보장 영역)에서 뽑는다. 잰 값은 special 속도 기준선(`bench/speed/results/special.json`)에 있고, `python -m bench.speed cost`가 그것으로 `special/cost_table.hpp`를 만든다(bench/README.md). `cost.hpp`는 연산마다 그 표의 어느 함수 값을 쓰는지만 적는다. 표에 없는 이름은 컴파일되지 않는다.
   - 표의 처음 값은 각 마일스톤에서 잰 손 상수를 옮긴 것이라 §5의 속도 개선 뒤의 값이 아니다. special 기준선을 재고 `cost`를 다시 돌리면 바뀐다. 48.6 ns(가중치 256) 이상인 값은 상한에 걸려 분할이 같으므로, 무거운 함수의 값이 달라져도 영향이 없다.
   - 가중치의 단위는 연속 float64 `add`의 원소당 비용이다 (`kAddNs`, 표의 `_add` 줄, 1스레드에서 0.18–0.19ns). 가중치 `w`인 함수는 원소 `2¹⁵/w`개부터 병렬이 되고, 태스크 하나는 원소 약 `2¹²/w`개다.
@@ -205,7 +205,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - 다항식 평가: Horner(곱셈-덧셈이 차례로 이어짐)와 Estrin(트리, 병렬도 높음)을 비교한다. `-ffp-contract=off`이므로 FMA는 코드에 적은 곳에서만 생긴다 (array.md §1.3). Horner는 단계마다 `fma(r, x, c)` 하나다(곱셈과 덧셈을 따로 하면 반올림이 하나 더 있고 의존 사슬이 약 1.6배 길다). 레인(`vfmaq_f64`)과 스칼라(`std::fma`)가 같은 헬퍼라 비트가 같다. 스칼라 정의도 같은 식을 써야 비트가 같다.
   - 분기 없애기: 두 구간을 모두 계산한 뒤 `vbslq`로 고른다. 구간이 셋이면 셋 다 계산하는 비용과 분기 비용을 잰다.
   - S3: `gammaln`은 NEON으로 짜지 않았다. 구간이 넷(작은 x, Taylor, 점화, Stirling)이고 S2의 측정(분기 방식이 빠르거나 같음)으로 보아 레인 둘의 이득이 없다. 스칼라 libm 정의다.
-  - **S2의 측정 결과** (bench/special/s2/variants.md): 차수 5–8의 유리식이 셋인 `erfc`와 `ndtri`에서는 원소마다 자기 구간만 계산하는 스칼라 분기가 NEON 고르기보다 빠르거나 같았다(구간이 무작위로 섞인 입력만 예외, 4.7 대 4.2 ns). 고르기용 상수와 남의 구간 계산이 레인 두 개의 이득보다 크다. 그래서 S2 함수는 1단계(exp·log의 인자)만 NEON, 2단계는 vForce, 3단계는 스칼라 분기다. 결과의 비트는 두 방식이 같다. Estrin은 Horner와 속도가 같고 오차가 조금 컸다(9.1 대 7.8 ULP).
+  - **S2의 측정 결과** (커밋 4151d2a의 bench/special/s2/variants.md): 차수 5–8의 유리식이 셋인 `erfc`와 `ndtri`에서는 원소마다 자기 구간만 계산하는 스칼라 분기가 NEON 고르기보다 빠르거나 같았다(구간이 무작위로 섞인 입력만 예외, 4.7 대 4.2 ns). 고르기용 상수와 남의 구간 계산이 레인 두 개의 이득보다 크다. 그래서 S2 함수는 1단계(exp·log의 인자)만 NEON, 2단계는 vForce, 3단계는 스칼라 분기다. 결과의 비트는 두 방식이 같다. Estrin은 Horner와 속도가 같고 오차가 조금 컸다(9.1 대 7.8 ULP).
 - **안의 `exp`/`log`** (Q16): 커널이 입력을 1024원소(8KB) 스택 버퍼 단위로 처리한다.
   1. NEON으로 `exp`/`log`의 인자(예: `-x²`)를 버퍼에 만든다.
   2. vForce(`vvexp`, `vvlog`)를 버퍼 전체에 한 번 부른다.
@@ -294,7 +294,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - **나눗셈**: double-double 몫을 나눗셈 두 번과 fma 하나로 줄였다(세 번째 보정항은 지수에 쓸모가 없었다).
   - **a < 13의 앞 인자**: Stirling 꼴을 거치지 않고 e^(a log x − x)/Γ(a+1)로 바로 구한다(지수는 double-double).
   - **지수 분리 생략**: 결과가 정상 범위(|E| < 700)이면 `Scaled`의 frexp·ldexp를 건너뛴다.
-  - 결과: 앞 인자 132 → 38 ns, `gammainc` 핵심 174 → 74 ns. 순방향 값은 최대 4 ULP 달라졌고 정확도 표는 같거나 좋아졌다. 역함수의 출력은 비트까지 같다. 측정은 bench/special/opt1/.
+  - 결과: 앞 인자 132 → 38 ns, `gammainc` 핵심 174 → 74 ns. 순방향 값은 최대 4 ULP 달라졌고 정확도 표는 같거나 좋아졌다. 역함수의 출력은 비트까지 같다. 측정은 커밋 4151d2a의 bench/special/opt1/.
 
 ### 5.5 불완전 베타 (`betainc`, `betaincc`)
 - `x > (a+1)/(a+b+2)`이면 대칭으로 옮긴다 (변환). 기본은 Lentz 연분수 (NR `betacf`). b·x가 작거나 b < 1이면 거듭제곱급수
@@ -311,7 +311,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - **1 < a, b이고 b0 < 40인 가지를 연분수(bfrac)로 바꿨다.** TOMS 708은 여기서 bup으로 b를 (0, 1]까지 내린 뒤 bpser나 bgrat을 쓴다. 이 길은 앞 인자를 세 번 만든다. 연분수는 한 번이면 되고 더 정확했다: a, b가 6–40에서 330 → 157 ns, `bdtr` 10.1 → 4.9 ULP, `nbdtrc` 19.4 → 8.8, `fdtrc` 18.1 → 10.7, `ncfdtrc` 22.6 → 15.2.
   - **앞 인자는 쓰는 가지만 만든다.** 전에는 도함수(역함수만 쓴다) 때문에 언제나 만들었다. bgrat과 basym은 쓰지 않는다.
   - **연분수의 뒤로 가는 계산**(cf.hpp)은 앞으로 갈 때 만든 항 64개를 다시 쓴다.
-  - 남은 것: a, b ≥ 100이고 평균 근처인 basym(계수 점화식이 O(n³), scipy의 0.5배)과 작은 a·큰 b의 bgrat(0.7배). 측정은 bench/special/opt2/.
+  - 남은 것: a, b ≥ 100이고 평균 근처인 basym(계수 점화식이 O(n³), scipy의 0.5배)과 작은 a·큰 b의 bgrat(0.7배). 측정은 커밋 4151d2a의 bench/special/opt2/.
 
 - **작은 모양과 아주 작은 x (2026-11-17, stats 최적화 중 Arb로 찾음)**: a, b ≤ 1에서 BRATIO는 x^a ≤ 0.9이면 멱급수로 I를 구하고 1 − I를 빼기로 만든다. I가 0.9에 이르면 급수 오차가 9배가 된다(우리 9.8e-15, 같은 규칙을 쓰는 Boost 6.0e-15). 그래서 I > 1/2이면 1 − I를 BRATIO의 다른 두 방법으로 직접 구한다. 급수의 첫 인자만으로 I > 1/2 + 2⁻⁴⁰임을 알면(b ≤ 1에서는 모든 항이 양수라 하한이다) 급수를 돌리지 않는다. x < 2⁻¹⁰⁰⁰은 log x를 받는 `ibeta_tiny`가 2⁻¹⁰⁰⁰에서의 값에서 양의 항만으로 내려간다(`fdtr`·`fdtrc`의 아주 작은 인자도 이것을 쓴다; 전에는 1 − i로 1.3e-13까지 틀렸다). x가 0으로 언더플로한 인자는 (0, 1)이다. 한 모양이 2⁹⁰⁰ 이상이면 감마 극한 I_x(s, c) = P(s, c·x)를 쓴다(`gamma_limit`; 전에는 `fdtr(2, 1e308, 1)`이 1.0, 참값 0.632). Boost의 값은 a, b ≤ 6, x ≥ 2⁻¹⁰²², 결과 ≥ 2⁻⁹⁶⁰일 때 쓴다: 서브노멀 x에서 Boost는 25%까지 틀리고, 결과가 2⁻¹⁰¹⁶ 아래이면 2.2e-13까지 틀린다. 그 안에서도 Boost가 빼기로 만드는 쪽은 부르기 전에 가려 우리 것으로 보낸다(`boost_subtracts`: a, b ≤ 1, 보수 쪽, a0 < b0, x0 < 0.02, 0.6 < x0^a0 ≤ 0.9. 우리가 쓰는 Boost는 x0 ≥ 0.02에서 연분수라 빼지 않는다. 0.6은 I ≤ x0^a0/y0에서 나온다). 6만 점에서 Boost가 남는 곳은 1.7e-15, 넘긴 곳은 Boost 6.8e-15 대 우리 1.3e-15다. 큰 지수의 e^(−E)(1 − E.lo)는 E ≥ 2⁵²에서 +0이다(전에는 −0.0, E ≈ 1e300부터 NaN: `betainc(1e300, 2, 0.5)`).
 - **극단 인자 정리 2차 (2026-11-18, 사용자 결정 "전부 값 또는 NaN으로")**: 극단 인자 점검에서 남았던 틀린 값 255점을 다시 재현해 83점으로 줄였다(Airy와 복소 erf·wofz를 빼면 218 → 38). 남은 것은 아래 '남은 결함'과 `hyp1f1`·`hyp2f1` 절에 적었다.
@@ -389,7 +389,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - **float64 첫 패스**: 그냥 더하면서 Σ(k+1)|t_k|를 함께 잰다. 이 값이 4|s| 이하이면(한 걸음에 반올림이 여섯 번이라 항 k는 많아야 약 3(k+1) ULP, 합은 많아야 약 12 ULP; 잰 최대 4.1) 그 합을 쓴다. 합은 보상 합이다. 항이 처음부터 줄어드는 입력 대부분이 여기서 끝난다: |z| < 0.5에서 840 → 93 ns.
   - **긴 급수는 보정 루프**: 곱과 몫의 반올림 오차를 fma로 구해 1차까지 들고 간다(항과 합이 hi + lo, 항당 나눗셈 1번). 남는 오차는 2차라 double-double 루프와 정확도가 같았다(z ∈ [0.5, 0.9]에서 둘 다 최대 2.7 ULP). 시간은 절반이다.
   - **해 봤지만 버린 것**: 1 − z 변환의 경계를 0.9에서 0.6으로 내리면 빠르지만, a, b가 크면 두 항이 상쇄해 값이 완전히 틀렸다(7e10 ULP).
-  - 결과: `hyp2f1` 0.05 → 0.31배, `hyp1f1` 0.16 → 0.81배(1스레드, scipy 대비; 1단계의 몫 포함). 남은 것은 z가 0.5–0.9인 긴 급수(0.3–0.5배)와 x가 수백인 `hyp1f1`(0.17배)이다. scipy는 여기서 float64 급수를 쓰고 100–200 ULP를 잃는다. 측정은 bench/special/opt3/.
+  - 결과: `hyp2f1` 0.05 → 0.31배, `hyp1f1` 0.16 → 0.81배(1스레드, scipy 대비; 1단계의 몫 포함). 남은 것은 z가 0.5–0.9인 긴 급수(0.3–0.5배)와 x가 수백인 `hyp1f1`(0.17배)이다. scipy는 여기서 float64 급수를 쓰고 100–200 ULP를 잃는다. 측정은 커밋 4151d2a의 bench/special/opt3/.
 
 ### 5.12 로지스틱·정보
 - `expit`: `x ≥ 0`이면 `1/(1+e^{-x})`, 아니면 `e^x/(1+e^x)`. NEON은 둘 다 계산해 고른다.
@@ -418,7 +418,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 ### 5.14 Boost.Math (S10)
 - **사용자 결정 (2026-11-14, S9 뒤)**: "Boost로 갈아끼는 게 이득인 부분은 다 갈고, 손해인 부분만 우리가 작성한다." 계수만 가져오지 않고 Boost.Math를 직접 부른다. 헤더는 쓰는 것만 `third_party/boost_math/`에 둔다(125개, 2.7 MB, BSL-1.0, `tools/vendor_boost_math.py`).
 - **손해의 기준** (사용자 결정): 구간마다 Boost가 계약(1e-14, 특수값은 우리 규칙)을 참값 파일의 모든 점에서 지키고, 1스레드에서 느리지 않을 때(10% 안은 같은 것으로 본다)만 바꾼다. 더 정확해도 느리면 우리 것이다(`erf` 계열, `gammaln`, `j0 j1 y0 y1`). 일부 점만 틀리면 구간을 잘게 나눠 지키는 구간만 바꾼다.
-- **바꾼 구간** (`csrc/special/boost.hpp`, 측정 `bench/special/boost/routing.md`). 특수값(NaN, inf, 0, 극점)은 Boost를 부르기 전에 우리가 정하고, Boost의 결과가 정상 범위가 아니면(서브노멀, 0, inf, NaN) 우리 코드로 다시 계산한다.
+- **바꾼 구간** (`csrc/special/boost.hpp`, 측정(커밋 4151d2a) `bench/special/boost/routing.md`). 특수값(NaN, inf, 0, 극점)은 Boost를 부르기 전에 우리가 정하고, Boost의 결과가 정상 범위가 아니면(서브노멀, 0, inf, NaN) 우리 코드로 다시 계산한다.
 
   | 함수 | Boost 구간 | 우리 구간 (이유) |
   |---|---|---|
@@ -500,7 +500,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   - **mpmath에서 바꾼 이유** (2026-11-16): mpmath의 규칙("두 정밀도가 30자리까지 일치")은 두 정밀도가 함께 틀린 값을 받아들였다. 바꾸면서 찾은 옛 참값의 오류: `betaincinv` 41점·`betainccinv` 119점은 mpmath가 조용히 실패해 우리 함수의 출발값이 참값으로 들어가 있었다(I_x/p − 1 = 1.7e-12). `zeta_hurwitz` 14점(7.3e-28, mpmath는 300자리에서야 맞음), `lambertw` 4점(허수부 lo), 리덕션 17점(1 + e⁻²⁰⁵를 잃음), 오래된 `wofz` 입력 64점. 계수 표 `zeta_minus_one`의 j = 94–110 lo(1e-28 상대, ζ(j) − 1의 상쇄)도 고쳤다. 다른 계수 표 7개는 바이트까지 같았다. 또 mpmath가 버렸던 점 약 900개를 이제 얻는다(`betainccinv` +248, `nctdtrit` +150 등). 메모리도 일정하다: mpmath의 quad는 구간 끝점마다 노드를 캐시해 140GB까지 쌓였다.
   - **새 참값이 드러낸 라이브러리 오차**: `gammainccinv`(a = 9.5e5, q = 3.3e-33)가 1.21e-14였다. Boost의 `gamma_q_inv`는 Halley 반복을 자릿수의 절반에서 멈추므로 큰 a에서 100 ULP까지 남는다. 이제 Boost의 근에서 우리 P, Q로 Halley 한 걸음을 더 한다(`igam_polish`, 오차 e가 e³이 된다). 참값 최대가 `gammaincinv` 9.3e-15 → 7.3e-16, `gammainccinv` 1.2e-14 → 2.4e-15가 됐다. 1백만 원소 비용은 10 ms 안팎 그대로다.
   - 입력 집합: 함수마다 보장 영역의 격자 + 로그 균등 무작위 + 경계(구간 경계의 앞뒤 ULP, 극점, 0, 정의역 끝)
-- **정확도 보고**: `python -m bench.accuracy`가 참값 파일의 모든 점에서 잰 기준선(`bench/accuracy/results/special.json`)으로 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표를 만든다(tests/README.md). 함수마다 보장 영역·느슨한 영역·혼합 척도 영역의 최대·99.9% ULP, 역함수의 ULP/max(1, κ), 혼합 척도, 계약 대비를 낸다. scipy와 같은 점의 비교는 이 표에 없고, `bench/special/accuracy.py`가 낸 bench/special/arb/accuracy.md에 있다(scipy보다 나쁜 줄은 원인을 적는다).
+- **정확도 보고**: `python -m bench.accuracy`가 참값 파일의 모든 점에서 잰 기준선(`bench/accuracy/results/special.json`)으로 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표를 만든다(tests/README.md). 함수마다 보장 영역·느슨한 영역·혼합 척도 영역의 최대·99.9% ULP, 역함수의 ULP/max(1, κ), 혼합 척도, 계약 대비를 낸다. scipy와 같은 점의 비교는 이 표에 없고, `bench/special/accuracy.py`가 낸 커밋 4151d2a의 bench/special/arb/accuracy.md에 있다(scipy보다 나쁜 줄은 원인을 적는다).
 - **성능**: scipy와 같은 자리에서 번갈아 잰다 (통합 때의 `sameseat` 방식). 1스레드와 10스레드, 원소 10⁶개와 스칼라 1개.
 - **비트 테스트**: NEON 경로 = 스칼라 정의, 스레드 1·3·10이 같은 비트, `f(x)[i] == f(x[i])`
 

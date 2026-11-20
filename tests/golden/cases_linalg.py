@@ -1,6 +1,6 @@
 """Golden cases for the linalg area (tools/golden.py has the contract).
 
-Written for the merge (bench/merge/golden): every name in sd.linalg.__all__ of the time, all four
+Written for the merge (bench/merge/golden at commit 4151d2a): every name in sd.linalg.__all__ of the time, all four
 input dtypes, the input layouts the packing code tells apart (C, F, strided,
 negative strides, stride-0 batch), tiny / medium / large (>= 2^17 elements:
 the C-order transpose on the pool) matrices, batches big enough to run on the

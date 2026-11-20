@@ -32,7 +32,6 @@ SCAN = [
     "tools",
     "docs/api",
     "docs/design",
-    "bench/merge",
     "API.md",
     "DESIGN.md",
     "ARCHITECTURE.md",

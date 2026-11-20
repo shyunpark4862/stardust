@@ -1,25 +1,14 @@
-"""What the sd.special benchmarks share: the functions under test and their scipy
-counterparts, inputs drawn from the reference files, and timing.
-
-Run the scripts from the repository root (.venv/bin/python bench/special/<script>.py).
+"""What the sd.special speed cases need of each function under test: the sd function, its
+scipy (or numpy) counterpart, and inputs drawn from the reference files
+(tests/special/refdata.py). Moved here from bench/special/common.py (at commit 4151d2a).
 """
 
-import os
 import sys
-import time
 from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-
-
-def use_build(site):
-    """Import stardust from an unpacked wheel at `site` instead of the editable build
-    (bench/special/s0_operands.py compares a baseline commit this way). Call before
-    importing stardust."""
-    sys.meta_path[:] = [f for f in sys.meta_path if "editable" not in type(f).__module__.lower()]
-    sys.path.insert(0, str(site))
+ROOT = Path(__file__).resolve().parents[3]
 
 
 ALIAS = {"zeta_hurwitz": "zeta"}  # reference files named apart from their function
@@ -157,20 +146,3 @@ def sample_inputs(name, n, seed=0):
     )  # betaln: no guaranteed region
     idx = np.random.default_rng(seed).choice(pool, n)
     return tuple(np.ascontiguousarray(x[idx]) for x in xs)
-
-
-def best_ns(f, repeat=7, number=1):
-    """The fastest of `repeat` timings of `number` calls of f, per call, in ns."""
-    best = float("inf")
-    for _ in range(repeat):
-        t0 = time.perf_counter_ns()
-        for _ in range(number):
-            f()
-        best = min(best, (time.perf_counter_ns() - t0) / number)
-    return best
-
-
-def machine():
-    import platform
-
-    return f"{platform.machine()} {platform.mac_ver()[0]}, python {platform.python_version()}, {os.cpu_count()} cpus"

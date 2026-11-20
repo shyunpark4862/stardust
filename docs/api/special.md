@@ -353,7 +353,7 @@ lambertw(x, /, *, k=0, out=None)
   - `lambertw`: 두 가지 모두 정의역 전체에서 상대오차 1e-14다. 분기점 근처는 e·x + 1을 double-double로 만들어 상대 정확도를 낸다(scipy는 그곳에서 2e7 ULP를 잃는다).
   - `hyp1f1`: 상쇄 없는 표현이 있는 a ≥ 0, b > 0이고 (x ≥ 0 또는 b ≥ a)인 곳만 상대 1e-14다. 그 밖은 느슨한 영역이다(아래 측정). 잰 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)의 `hyp1f1` guaranteed 행이다. Boost의 값은 0 ≤ x < 16, b < 11, a ≤ 100에서만 쓴다(그 밖의 x에서는 297 ULP까지 틀렸다).
   - `hyp2f1`: a, b ≥ 0, c > 0, c ≥ min(a, b), −1 ≤ z ≤ 0.9에서 상대 1e-14다. 그 밖은 느슨한 영역이다.
-  - 느슨한 영역은 값을 내되 보장하지 않는다(사용자 결정 2026-11-18: 값 유지, 잰 최대를 적는다). 잰 최대(Arb 참값 대비 상대오차, 무작위 1.1만 점씩, 인자 크기 1e6까지): `hyp1f1` 9e-12(Tricomi 전개; Boost를 쓰는 |a|, |b| ≤ 100은 1.2e-12), `hyp2f1` 1.7e-12(z < −9이고 |c| > 1e4). 1e-12를 넘는 점은 각각 3점이었다. 정확도표에서는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 `hyp1f1`, `hyp2f1` loose 행이다. 같은 점에서 scipy는 `hyp1f1` 2.33e3 ULP, `hyp2f1` 1.83e12 ULP다(bench/special/arb/accuracy.md).
+  - 느슨한 영역은 값을 내되 보장하지 않는다(사용자 결정 2026-11-18: 값 유지, 잰 최대를 적는다). 잰 최대(Arb 참값 대비 상대오차, 무작위 1.1만 점씩, 인자 크기 1e6까지): `hyp1f1` 9e-12(Tricomi 전개; Boost를 쓰는 |a|, |b| ≤ 100은 1.2e-12), `hyp2f1` 1.7e-12(z < −9이고 |c| > 1e4). 1e-12를 넘는 점은 각각 3점이었다. 정확도표에서는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 `hyp1f1`, `hyp2f1` loose 행이다. 같은 점에서 scipy는 `hyp1f1` 2.33e3 ULP, `hyp2f1` 1.83e12 ULP다(커밋 4151d2a의 bench/special/arb/accuracy.md).
   - NaN이 되는 곳(보장 영역 밖, 2026-11-18 갱신): 손실을 아는 식이 없으면 값을 내지 않는다.
     - `hyp1f1`: 인자 하나가 크기 1e6을 넘을 때(짧은 다항식과 큰 x의 점근식은 값). 그 안에서는 max(|a|, |b|) > 100이고 다음 가운데 어느 것도 쓸 수 없을 때다: 상쇄 손실이 1e13배 이하인 급수(1e6항까지), b > 0에서 a에 대한 점화식(53비트를 지킬 때), 큰 |x|의 점근식, Tricomi 전개(a < −1e3, b ≤ 170). 대부분 b < 0이고 |a|나 |b|가 큰 곳이지만, b > 0에도 a < 0이고 x ≈ |a|·b 근처인 띠가 있다: `hyp1f1(-150.5, 1, 150)`은 NaN이다(scipy는 1e-15 안으로 맞는다). |a|, |b| ≤ 100은 Boost의 값을 쓴다.
     - `hyp2f1`: 급수가 1e6항(극한 꼴의 합은 1e5항) 안에 끝나지 않을 때, 급수의 상쇄가 1e16배를 넘을 때, 1 − z(z < −9에서는 1/(1 − z))가 1e-3 아래인데 c − a − b가 정수에서 2⁻⁴⁸–1e-3만큼 떨어져 있을 때, 극한 꼴의 합이 64배 넘게 상쇄하거나 Γ가 범위를 벗어날 때, 큰 항들이 정확히 지워진 합(전에는 0을 냈다)이다.
@@ -461,7 +461,7 @@ ndtri_exp(y, /, *, out=None)
   | `ndtri_exp(0)`, `ndtri_exp(-inf)`, y > 0 | inf, −inf, NaN | |
 - **보장 영역** (사용자 결정 2026-11-15): 잰 범위 전체다. 순방향 11개와 `ndtri_exp`는 상대오차 1e-14(약 45 ULP), 역함수 `stdtrit chdtri fdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. 범위는 아래 '잰 범위'이고, 그 밖(더 큰 자유도·k·n)도 값을 계산하지만 보장하지 않는다. 경계값 `fdtr(inf, inf, x)`, `nbdtr(k, 0, p)`, `chdtri(inf, p)` = NaN도 같은 날 확정했다.
   - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
-  - 같은 점에서 scipy(bench/special/arb/accuracy.md): 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
+  - 같은 점에서 scipy(커밋 4151d2a의 bench/special/arb/accuracy.md): 최대 25 ULP(`chdtri`)부터 4.9e16 ULP(`fdtri`), inf(`stdtrit` 등)까지.
   - 잰 범위: 자유도 1e-2–1e6(t), 1e-2–1e5(카이제곱), 1e-2–1e4(F), k·n 1e4까지, 카이제곱의 x는 v/100–100v와 1e-6–50, `chdtri`의 p는 1e-300까지, `ndtri_exp`의 y는 −1e300–0. 근이 double 범위 밖이면(`fdtri` → 0, `stdtrit` → −inf) 순방향 함수로 확인한다(tests/special/test_distributions.py).
 
 ## §14. 비중심 분포 함수 (T2)
@@ -503,7 +503,7 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   | `chndtr(df, nc, x)`, Chernoff 한계가 e⁻¹⁰⁰⁰ 아래인 꼬리 | 0 또는 1 | 적률생성함수에서 P(X ≤ x) ≤ e^(x/2)·2^(−df/2)·e^(−nc/4), P(X ≥ x) ≤ e^(−x/4)·2^(df/2)·e^(nc/2). 합을 걷기 전에 거른다: `chndtr(1, 1e16, 1)` = 0 |
 - **보장 영역** (사용자 결정 2026-11-15): 아래 '잰 범위' 전체다. 순방향 6개는 상대오차 1e-14(약 45 ULP), 역함수 `chndtrix nctdtrit ncfdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)도 같은 날 확정했다.
   - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
-  - 같은 점에서 scipy(Boost, bench/special/arb/accuracy.md): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
+  - 같은 점에서 scipy(Boost, 커밋 4151d2a의 bench/special/arb/accuracy.md): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
   - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).
   - NaN이 되는 곳(잰 범위 밖): 포아송 혼합을 걷는 길이가 2¹⁸걸음에서 멈추므로(정해진 시간), 비중심 모수가 크면 분포의 중심에서 NaN이다. 카이제곱·F는 λ ≳ 4e9(λ/2 ≳ 2e9)부터 중심 근처에서, λ ≥ 9e15(무게의 최빈값이 2⁵²를 넘는다)부터는 위의 Chernoff 한계로 걸러지지 않는 모든 x에서 NaN이다(`chndtr(1, 4e9, 4e9)`, `chndtrix(1, 1e10, 0.5)`). t는 |δ| ≳ 3.9e4(δ²/2 ≈ 7.6e8)부터 모든 t에서 NaN이다(`nctdtr(10, 4e4, 4e4)`, `nctdtrit(3.64e23, 51019.1, 0.0564)`). 모두 몇 ms 안에 끝난다. `ncfdtr`·`ncfdtrc`는 먼 꼬리에서 구한 쪽의 보수가 1/64 아래일 때(dfn이나 dfd ≤ 1e-10에서만 봤다. 전에는 `ncfdtr(1e7, 1e-300, 2, 0.1)`이 참값 3.4e-298 대신 2.2e-16). `chndtrix nctdtrit ncfdtri`는 nc ≠ 0이고 p < 2⁻¹⁰²²(서브노멀)일 때다(전에는 9–16% 틀렸다). t 함수는 |nc| < 2⁻⁵⁰⁰이면 중심 분포의 값이다.
   - 잰 범위 밖의 값은 보장하지 않는다(사용자 결정 2026-11-18: 값 유지): `nctdtr`·`nctdtrc`는 df ≤ 1e-3에서 상대 2.4e-13까지 틀린 점이 있었다(극단 인자 점검의 23점).

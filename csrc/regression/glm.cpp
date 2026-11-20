@@ -1732,7 +1732,7 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
 // solve (3); inner_chol: the inner iterations by the normal equations (true, G40); newton,
 // for a non-canonical link: 2 Newton's polishing and final steps and the switch of slow
 // Fisher scoring (G42, G44), 1 the former only, 0 Fisher's steps throughout.
-// Only the benchmarks (bench/regression/g2/) change them.
+// Only the benchmarks (bench/regression/g2/ at commit 4151d2a) change them.
 nb::object fit(
     const std::string& func,
     nb::handle yo,

@@ -80,4 +80,4 @@ python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core pyt
 
 문서와 통합의 검사:
 - `.venv/bin/python tools/check_refs.py`: 코드, 테스트, 문서의 `docs/design/array.md §6.2` 같은 참조가 모두 있는 절을 가리키는지 본다.
-- `.venv/bin/python bench/merge/golden/golden.py check array` (`linalg`, `frame`도): 옛 패키지로 기록한 골든 출력 12,424개와 비트까지 비교한다. 일부러 바꾼 결과는 `bench/merge/golden/expected.py`에 이유와 함께 적혀 있다.
+- `.venv/bin/python tools/golden.py check array` (다른 영역도, 영역을 빼면 모두): 저장한 골든 출력과 비트까지 비교한다(tests/README.md §2). 옛 패키지로 기록한 골든 출력 12,424개와, 일부러 바꾼 결과의 이유를 적은 `expected.py`는 커밋 4151d2a의 `bench/merge/golden/`에 있다.

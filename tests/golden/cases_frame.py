@@ -1,6 +1,6 @@
 """Golden cases for the frame area (tools/golden.py has the contract).
 
-Written for the merge (bench/merge/golden) against the API of the dataframe package before the
+Written for the merge (bench/merge/golden at commit 4151d2a) against the API of the dataframe package before the
 merge; the helpers _kw, _tl and _uv translate its spellings to sd.frame's.
 
 Inputs are deterministic (fixed literals, L.rng(seed)) and built lazily per

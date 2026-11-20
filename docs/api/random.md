@@ -52,6 +52,6 @@ rng.state
 ### §1.7 여러 Python 스레드
 - 한 Generator를 여러 스레드가 함께 부르면 호출마다 자기 구간을 원자적으로 예약한다(R8). 같은 난수를 두 번 쓰지 않지만, 어느 스레드가 어느 구간을 받는지는 실행 순서에 따른다. 재현이 필요하면 스레드마다 `spawn`한 생성기를 쓴다.
 
-### §1.8 속도 (bench/random/t3_speed.md, 원소 10⁶)
+### §1.8 속도 (커밋 4151d2a의 bench/random/t3_speed.md, 원소 10⁶)
 - 1스레드에서 numpy(PCG64) 대비 `random` 2.4배, `integers` 1.1–3.7배, `choice` 1.0배(가중치 2.9배), `permutation` 1.3–1.6배. 10스레드에서는 8–26배이고, 섞기만 순차라 1.5–1.6배다.
 - 큰 모집단에서 작은 표본을 비복원으로 뽑는 `choice(10**6, shape=1000, replace=False)`는 0.03 ms(numpy 0.01 ms)다.

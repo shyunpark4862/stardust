@@ -34,7 +34,7 @@ namespace sd::stats::ckd {
 // ---- more of vForce, with error bounds ------------------------------------------------------
 //
 // Relative error in kUlp, measured against double-double references on 4e6 points or more each
-// (bench/stats/opt/a/vforce_error.cpp, which also measures ck::kVfExp and ck::kVfLog) and
+// (bench/stats/opt/a/vforce_error.cpp at commit 4151d2a, which also measures ck::kVfExp and ck::kVfLog) and
 // rounded up:
 //                measured   bound
 //     pow          2.08      2.5     (results in the normal range; bases near 1 with exponents
@@ -112,7 +112,7 @@ inline void ratio(const double* x, const double* s, double* yh, double* yl, int 
 
 // The relative error of log_dd below, in kUlp: 2^-59. Measured against special::dd::log
 // (2^-77) over 6e6 points (the whole range [2^-999, 2^999], the neighbourhood of 1 down to
-// |x - 1| = 2^-53, random low parts): at most 2^-68 (bench/stats/opt/a/log_dd.cpp).
+// |x - 1| = 2^-53, random low parts): at most 2^-68 (bench/stats/opt/a/log_dd.cpp at commit 4151d2a).
 inline constexpr double kLq = 0x1p-6;
 
 // (oh, ol) = log(xh + xl) for a normalised double-double in [2^-999, 2^999]; hi = NaN outside

@@ -5,7 +5,7 @@
 //
 // Error bounds are in units of kUlp = 2^-53 (one correctly rounded operation: 1 unit; a libm
 // call: 2). vForce is looser than libm, measured against double-double references on 1.6e7
-// points (bench/stats/opt/a/vforce_error.cpp): vvexp up to 2.06 units, vvlog up to 3.78
+// points (bench/stats/opt/a/vforce_error.cpp at commit 4151d2a): vvexp up to 2.06 units, vvlog up to 3.78
 // (libm: 1.00 on the same points). The bounds use kVfExp and kVfLog; kVf is the larger, for a
 // bound that does not care which.
 #pragma once

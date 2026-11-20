@@ -19,7 +19,7 @@
 // cancel: every integrand has a fixed sign, and the starting point of each
 // integral is chosen so that the integral adds to it. That keeps the relative
 // accuracy in the lower tails, where Genz's TVPACK (bvnd, tvnd) reaches ~1e-15
-// absolute only. Measured (bench/stats/t9/cdf_accuracy.md): the relative error is
+// absolute only. Measured (bench/stats/t9/cdf_accuracy.md at commit 4151d2a): the relative error is
 // within a few units of eps times the problem's condition number (the sum of
 // |d log P / d log x| over the inputs), which is ~ -log P in the tails.
 #pragma once

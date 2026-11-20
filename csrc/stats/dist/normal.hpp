@@ -153,7 +153,7 @@ inline void tail_z_chunk(const double* zh, const double* zl, double* out, int n)
 //           (-1.41 < z < 0): |erf| / (2 t) times erf's error (Cephes' rational, 3 units)
 //           plus 1, which over |log t| is at most 7 (at z = -1.41); beyond, erfc's few
 //           units over |log t| > 2.5. In all at most 11; measured against the scalar
-//           definition 4.4 (bench/stats/opt/a). ok[i] is false where t is below 2^-1000
+//           definition 4.4 (bench/stats/opt/a at commit 4151d2a). ok[i] is false where t is below 2^-1000
 //           (the scalar form's region) or z.hi is NaN.
 // Then the first-order correction (phi / Phi)(z.hi) z.lo as the scalar definition's, its
 // exp by vForce (a few units of a term that is itself 2^-53 (z^2 + 1) of the result).

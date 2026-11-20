@@ -1,5 +1,5 @@
 """sd.optimize against scipy.optimize. The problems, sizes, starting points and seeds are those
-of bench/optimize/o1-o6/speed.py:
+of bench/optimize/o1-o6/speed.py (at commit 4151d2a):
 
   - least_squares ('trf', 'lm'): the Moré-Garbow-Hillstrom problems Rosenbrock (n = 2), Osborne 2
     (n = 11, m = 65) and Brown almost-linear (n = 40) from x0 (tests/optimize/mgh.py), and the
@@ -63,12 +63,12 @@ def _size(m, n):
 
 # ------------------------------------------------------------------------------ least_squares
 
-LSQ_GROUP = "비선형 최소제곱"
-MGH = {"Rosenbrock": "mgh01-n2-m2-x1", "Osborne 2": "mgh19-n11-m65-x1", "Brown 거의 선형": "mgh27-n40-m40-x1"}
+LSQ_GROUP = "least-squares"
+MGH = {"Rosenbrock": "mgh01-n2-m2-x1", "Osborne 2": "mgh19-n11-m65-x1", "Brown almost-linear": "mgh27-n40-m40-x1"}
 MGH_NOTE = {
     "Rosenbrock": "MGH 1번 문제(n = 2, m = 2)",
     "Osborne 2": "MGH 19번 문제(n = 11, m = 65)",
-    "Brown 거의 선형": "MGH 27번 문제(n = 40, m = 40)",
+    "Brown almost-linear": "MGH 27번 문제(n = 40, m = 40)",
 }
 
 
@@ -160,7 +160,7 @@ def _lsq_cases():
     out = []
     problems = [(name, _mgh_setup(cid), None, MGH_NOTE[name]) for name, cid in MGH.items()]
     problems += [(_size(m, n), _exp_setup(m, n), (m, n), "") for m, n in ((1000, 10), (100_000, 10), (10_000, 100))]
-    differenced = ("Osborne 2", "Brown 거의 선형", _size(1000, 10), _size(10_000, 100))
+    differenced = ("Osborne 2", "Brown almost-linear", _size(1000, 10), _size(10_000, 100))
     for size, setup, shape, note in problems:
         threads = (1, 10) if shape and shape[0] * shape[1] >= 400_000 else (1,)
         for method in ("trf", "lm"):
@@ -188,7 +188,7 @@ def _lsq_cases():
 
 # ------------------------------------------------------------------------------ minimize
 
-MIN_GROUP = "다변수 최소화"
+MIN_GROUP = "minimize"
 SCIPY_METHOD = {
     "nelder-mead": "Nelder-Mead",
     "bfgs": "BFGS",
@@ -433,7 +433,7 @@ def _root_cases():
                 out.append(
                     Case(
                         area=AREA,
-                        group="연립방정식",
+                        group="root",
                         name=f"root {method}" + ("" if jac else ", jac=None"),
                         size=f"n={n}",
                         setup=_root_setup(n),
@@ -495,7 +495,7 @@ def _scalar_cases():
             out.append(
                 Case(
                     area=AREA,
-                    group="스칼라 근·최솟값",
+                    group="scalar",
                     name=f"root_scalar {method}",
                     size=problem,
                     sd=sdf,
@@ -528,7 +528,7 @@ def _scalar_cases():
         out.append(
             Case(
                 area=AREA,
-                group="스칼라 근·최솟값",
+                group="scalar",
                 name=f"minimize_scalar {method}",
                 size="eˣ − 5x",
                 sd=sdf,
@@ -599,7 +599,7 @@ def _elementwise_cases():
             out.append(
                 Case(
                     area=AREA,
-                    group="원소별 풀이",
+                    group="elementwise",
                     name=name,
                     size=f"10^{round(math.log10(n))}",
                     n=n,
@@ -664,7 +664,7 @@ def _derivative_cases():
                 out.append(
                     Case(
                         area=AREA,
-                        group="미분 근사",
+                        group="derivatives",
                         name=func + (", epsilon=2^-26" if forward else ""),
                         size=f"n={n:,}",
                         setup=_derivative_setup(n),
@@ -724,7 +724,7 @@ def _linear_cases():
             out.append(
                 Case(
                     area=AREA,
-                    group="선형 최소제곱",
+                    group="linear-least-squares",
                     name=f"lsq_linear {method}",
                     size=_size(m, n),
                     setup=_linear_setup(m, n),
@@ -749,7 +749,7 @@ def _linear_cases():
         out.append(
             Case(
                 area=AREA,
-                group="선형 최소제곱",
+                group="linear-least-squares",
                 name="nnls",
                 size=_size(m, n),
                 setup=_linear_setup(m, n),
@@ -759,6 +759,19 @@ def _linear_cases():
             )
         )
     return out
+
+
+# The section title of each group in bench/optimize/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "least-squares": "비선형 최소제곱",
+    "minimize": "다변수 최소화",
+    "root": "연립방정식",
+    "scalar": "스칼라 근·최솟값",
+    "elementwise": "원소별 풀이",
+    "derivatives": "미분 근사",
+    "linear-least-squares": "선형 최소제곱",
+}
 
 
 def cases() -> list[Case]:

@@ -34,7 +34,7 @@ inline constexpr double kAddNs = cost_table::ns("_add");
 // functions (weight 800-8500) got one element per task, and 10 threads
 // contending for the pool's counter reached only 5.4-7.8x of one thread;
 // capped at 256 (16-element tasks) 8.1-8.9x, at 64 about the same
-// (bench/special/s4/threads.md). 256 keeps the parallel start at 128 elements.
+// (bench/special/s4/threads.md at commit 4151d2a). 256 keeps the parallel start at 128 elements.
 inline constexpr std::int64_t kMaxWeight = 256;
 constexpr std::int64_t weight_of(double ns) {
     const double w = ns / kAddNs;

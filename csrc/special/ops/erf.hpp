@@ -10,7 +10,7 @@
 //   2. one vForce call (vvexp, vvlog)
 //   3. per element: the rational of the element's own region, by branching
 // Pass 3 was planned branch-free -- every region's rational in NEON lanes,
-// then a select -- and measured (bench/special/s2/variants.md): with three
+// then a select -- and measured (bench/special/s2/variants.md at commit 4151d2a): with three
 // regions of degree 5-8 the selects and the extra regions cost more than the
 // lanes save, and the M4's branch predictor and wide out-of-order core make
 // the scalar branches cheap. Branching was faster or equal on every input

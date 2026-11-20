@@ -43,8 +43,8 @@
   - 저장소마다: `git fetch ../stardust-numpy main` → `git merge -s ours --no-commit --allow-unrelated-histories FETCH_HEAD` → `git read-tree --prefix=legacy/numpy/ -u FETCH_HEAD` → 커밋
   - 결과: `legacy/numpy/`, `legacy/linalg/`, `legacy/pandas/` 아래에 세 프로젝트가 이력과 함께 들어온다. 이후 마일스톤은 `git mv`로 여기서 꺼내 간다.
   - 옛 문서와 experiments는 들여오지 않는다 (DESIGN §5.4). git에 없는 bench 스크립트만 `legacy/<영역>/bench/`로 복사한다.
-- 골든 출력 스크립트와 결과 (`bench/merge/golden/`)
-- 벤치마크 기준선 (`bench/merge/baseline.md`)
+- 골든 출력 스크립트와 결과 (커밋 4151d2a의 `bench/merge/golden/`)
+- 벤치마크 기준선 (커밋 4151d2a의 `bench/merge/baseline.md`)
 - 뼈대: `pyproject.toml`(패키지 이름 `stardust`), `CMakeLists.txt`, 빈 `_core`, `import stardust as sd` 확인
 - `.gitignore`: 세 프로젝트의 정책 + `docs/api/` 공개 (DESIGN §5.2)
 
@@ -75,7 +75,7 @@
 ### M4. 공통 바닥 정리 (frame을 받을 준비)
 - 스레드풀을 pandas판(상위 집합)으로 바꾼다. 병렬화 기준값을 영역별 상수로 옮긴다 (ARCHITECTURE §4.1).
 - `base/neon.hpp`, `accelerate/vforce.hpp`가 `array/kernels/scalar_ops.hpp`를 include하는 역방향 의존을 없앤다. (M4에서 한 방법: 둘은 배열의 연산 정의에 묶인 배열 코드라서 `array/kernels/`로 돌려보냈다. vForce는 연산과 무관한 래퍼만 `accelerate/`에 남겼다. 스칼라 변환 규칙을 `base/`로 내릴 필요는 없었다.)
-- 풀을 바꾼 뒤 같은 자리 비교(`bench/merge/sameseat_table.py`)를 돌린다. 짧은 병렬 호출(예: `solve_tridiagonal` (1000, 3, 3), 10스레드)은 프로세스마다 약 7µs와 10.5µs로 갈리므로 프로세스를 여러 번 띄워 분포로 본다.
+- 풀을 바꾼 뒤 같은 자리 비교(커밋 4151d2a의 `bench/merge/sameseat_table.py`)를 돌린다. 짧은 병렬 호출(예: `solve_tridiagonal` (1000, 3, 3), 10스레드)은 프로세스마다 약 7µs와 10.5µs로 갈리므로 프로세스를 여러 번 띄워 분포로 본다.
 - `Buffer`에 `size()`를 더한다 (ARCHITECTURE §4.2).
 - `base/dtype.hpp`에 `String`을 더한다 (DESIGN §4.2). `Datetime64`와 Column용 방문자는 frame 코드가 들어오는 M5 이후에 더한다. 사용자에게 보이는 dtype 표기는 M6에서 바꾼다.
 - `accelerate/` 정리: BLAS, LAPACK, vForce 래퍼를 한곳에 모은다.
@@ -110,7 +110,7 @@
 
 ### M8. 일관성 2차
 - M7 뒤의 감사에서 찾은 비일관과 DESIGN §8.4의 "남음" 항목을 고친다. 함수 단위 목록은 DESIGN §10 (사용자 확정 2026-11-12).
-- M6처럼 골든 비교의 "예상된 차이"(`bench/merge/golden/expected.py`)로 묶고, 그 밖의 차이는 없어야 한다.
+- M6처럼 골든 비교의 "예상된 차이"(커밋 4151d2a의 `bench/merge/golden/expected.py`)로 묶고, 그 밖의 차이는 없어야 한다.
 - 단계
   1. frame의 동작과 이름 (§10.1의 frame 항목, §10.2)
   2. 배열·linalg 항목, 에러 메시지 정리, 문서 (§10.1의 나머지, §10.3, §10.4)
@@ -145,7 +145,7 @@
 | S8 복소수 | 완료 (2026-11-14) |
 | S9 마무리 | 완료 (2026-11-14) |
 | S10 Boost.Math 도입 (S9 뒤 후속, 사용자 결정) | 완료 (2026-11-14) |
-| S11 최적화 (Debye ν ≥ 30, Boost 조합, 스칼라 지름길) | 완료·승인 (2026-11-15), bench/special/s11/ |
+| S11 최적화 (Debye ν ≥ 30, Boost 조합, 스칼라 지름길) | 완료·승인 (2026-11-15), 커밋 4151d2a의 bench/special/s11/ |
 
 ## 마일스톤
 
@@ -229,67 +229,67 @@
 ### T0. 배열 추가
 - `cov`, `corrcoef`, `quantile`, `median`, NaN을 건너뛰는 리덕션 (배열 영역, docs/design/array.md와 docs/api/array.md에 더한다)
 - 결정(2026-11-15 사용자): `quantile`은 numpy의 13가지 메서드 전부, 값은 numpy와 비트까지 같게, 결과는 언제나 float64. NaN 리덕션은 기본 세트와 `nancumulative_*`. `cov`는 `rowvar`와 `correction=0`만. 모두 NaN이거나 빈 레인은 numpy와 같은 값이고 경고가 없다(`nanargmin`·`nanargmax`는 `ValueError`).
-- 결과: docs/api/array.md §7.9–§7.11, docs/design/array.md §6.10–§6.12, 측정 [bench/array/t0_statistics.md](bench/array/t0_statistics.md), 테스트 `tests/array/test_statistics.py`.
+- 결과: docs/api/array.md §7.9–§7.11, docs/design/array.md §6.10–§6.12, 측정(커밋 4151d2a) `bench/array/t0_statistics.md`, 테스트 `tests/array/test_statistics.py`.
 
 ### T0b. 배열: Array API 채우기 (2026-11-15 사용자 추가)
 - Array API 2024에서 빠진 28개: `meshgrid tril triu take take_along_axis flip repeat roll tile unstack count_nonzero nonzero searchsorted diff copysign hypot logaddexp nextafter reciprocal signbit tensordot vecdot can_cast finfo iinfo isdtype result_type from_dlpack`. 여기에 numpy 시그니처의 `bincount`, `histogram`을 더한다.
 - 결정(사용자): `nonzero`를 넣는다(전에는 뺐다). `take`의 indices는 numpy처럼 여러 차원과 int도 받는다. DLPack은 가져오기(`from_dlpack`)와 내보내기(`__dlpack__`, `__dlpack_device__`) 둘 다. `flip`, `unstack`은 numpy처럼 뷰다. `diff`의 bool은 subtract 규칙(int64)이다(numpy는 not_equal). `histogram`의 `bins`에 문자열 규칙은 없다.
-- 결과: docs/api/array.md §2.1, §3.5–§3.6, §4.4, §5.4, §6(원소별 6개), §7.12, §8.4, §9, §10.5; docs/design/array.md §1.2, §5.5, §6.13, §8.8, §12.5; 측정 [bench/array/t0b_array_api.md](bench/array/t0b_array_api.md); 테스트 `tests/array/test_array_api_additions.py`.
+- 결과: docs/api/array.md §2.1, §3.5–§3.6, §4.4, §5.4, §6(원소별 6개), §7.12, §8.4, §9, §10.5; docs/design/array.md §1.2, §5.5, §6.13, §8.8, §12.5; 측정(커밋 4151d2a) `bench/array/t0b_array_api.md`; 테스트 `tests/array/test_array_api_additions.py`.
 
 ### T1. special 감싸기와 `ndtri_exp`
 - `stdtr stdtrit chdtr chdtrc chdtri fdtr fdtrc fdtri pdtr pdtrc bdtr bdtrc nbdtr nbdtrc`(기존 함수의 조합), `ndtri_exp`
 - 결정(2026-11-15 사용자): 계획한 15개만(매개변수 역함수 11개는 빼고). `pdtr bdtr nbdtr`의 k는 내림(누적분포의 뜻), n은 참값(`bdtr`의 정수 아닌 n은 NaN, `nbdtr`은 실수 n을 받는다; scipy는 내림). scipy가 일관되지 않거나 참값과 다른 특수값은 참값·극한(예: `bdtr(k<0)=0`, `bdtr(k≥n)=1`, 무한 자유도는 극한 분포, `stdtrit`은 꼬리에서도 참값). 정확도는 1e-14가 목표이고, 조합에서 깎이는 곳은 직접 계산하며, 보장 영역은 재고 나서 묻는다.
 - 보장 영역(2026-11-15 사용자): 잰 범위 전체(t 자유도 ≤ 1e6, F 자유도 ≤ 1e4, k·n ≤ 1e4, `ndtri_exp`는 y 전체). 경계값 `fdtr(inf, inf, x)`는 1에 몰린 점질량, `nbdtr(k, 0, p) = 1`, `chdtri(inf, p) = NaN`으로 확정. 승인 2026-11-15.
-- 결과: docs/api/special.md §13, docs/design/special.md §5.15·§2.4; 측정 bench/special/t1/(accuracy.md, speed.md); 테스트 tests/special/test_distributions.py와 참값 tests/special/ref/(15개). S4의 `betaincinv`·`betainccinv` 결함(a, b < 1에서 0·1)을 함께 고쳤다.
+- 결과: docs/api/special.md §13, docs/design/special.md §5.15·§2.4; 측정(커밋 4151d2a) bench/special/t1/(accuracy.md, speed.md); 테스트 tests/special/test_distributions.py와 참값 tests/special/ref/(15개). S4의 `betaincinv`·`betainccinv` 결함(a, b < 1에서 0·1)을 함께 고쳤다.
 
 ### T2. special 비중심 분포 함수
 - `chndtr chndtrix nctdtr nctdtrit ncfdtr ncfdtri`. 보장 영역은 재고 나서 묻는다.
 - 결정(2026-11-15 사용자): x(또는 p)를 맨 뒤로(`chndtr(df, nc, x)`; scipy와 다름). 위꼬리 `chndtrc nctdtrc ncfdtrc`도 공개(scipy에 없는 이름). 매개변수 역함수는 뺀다. 특수값은 T1처럼 참값·극한. Boost를 먼저 재고 깎이는 곳만 직접(재 보니 꼬리 전체가 깎여 Boost는 쓰지 않음).
-- 결과: docs/api/special.md §14, docs/design/special.md §5.16·§2.4; 측정 bench/special/t2/(accuracy.md, speed.md); 테스트 tests/special/test_noncentral.py와 참값 tests/special/ref/(9개). T1·S4 결함 둘을 함께 고쳤다(`fdtr`의 bgrat log 1 근처, `chdtr`의 서브노멀 x).
+- 결과: docs/api/special.md §14, docs/design/special.md §5.16·§2.4; 측정(커밋 4151d2a) bench/special/t2/(accuracy.md, speed.md); 테스트 tests/special/test_noncentral.py와 참값 tests/special/ref/(9개). T1·S4 결함 둘을 함께 고쳤다(`fdtr`의 bgrat log 1 근처, `chdtr`의 서브노멀 x).
 - 보장 영역(2026-11-15 사용자): 잰 범위 전체(카이제곱·F 자유도 1e-2–1e4, nc 1e-3–1e4; t 자유도 1e-1–1e5, |δ| ≤ 100; 확률 1e-300까지). `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)으로 확정. 승인 2026-11-15.
 
 ### T3. `sd.random`
 - 계수기형 생성기, `default_rng`, `random integers choice permutation` (`shuffle`은 R9로 뺐다)
 - 결정(2026-11-15 사용자): docs/design/random.md R5–R10 (Philox4×64-10, numpy SeedSequence 해시, spawn·state·피클, 공유 시 구간 원자적 예약, shuffle 없이 permutation, integers 브로드캐스트, choice p 허용치). 승인 때 R11: `integers`의 `shape=None`은 브로드캐스트 모양, `default_rng(Generator)`는 같은 객체. 승인 2026-11-15.
-- 결과: docs/api/random.md, docs/design/random.md §2–§6; 측정 bench/random/t3_speed.md; 테스트 tests/random/test_random.py.
+- 결과: docs/api/random.md, docs/design/random.md §2–§6; 측정(커밋 4151d2a) bench/random/t3_speed.md; 테스트 tests/random/test_random.py.
 
 ### T4. 분포 엔진과 연속 기본 12
 - 분포 구조체와 (분포, 메서드) Op, 신형 API의 Python 클래스, 참값 도구(`tools/stats_ref.py`)
 - 정규, t, 카이제곱, F, 감마, 베타, 지수, 로그정규, 균등, 코시, 라플라스, 베이불
 - 결정(2026-11-15 사용자): docs/design/stats.md T18–T24 (매개변수 이름, 키워드 생성자와 기본값, 읽기 전용 속성, log 계약, mode, out=, 초과 첨도, 보장 영역과 특수값).
-- 결과: csrc/stats/(engine.hpp, numeric.hpp, dist/), csrc/bind/stats_bind.cpp, src/stardust/stats/; docs/api/stats.md §2, docs/design/stats.md §2–§3; 측정 bench/stats/t4/(accuracy.md, speed.md); 테스트 tests/stats/(test_distributions.py, test_reference.py)와 참값 tests/stats/ref/(216개).
+- 결과: csrc/stats/(engine.hpp, numeric.hpp, dist/), csrc/bind/stats_bind.cpp, src/stardust/stats/; docs/api/stats.md §2, docs/design/stats.md §2–§3; 측정(커밋 4151d2a) bench/stats/t4/(accuracy.md, speed.md); 테스트 tests/stats/(test_distributions.py, test_reference.py)와 참값 tests/stats/ref/(216개).
 
 ### T5. 이산 10
 - 이항, 포아송, 기하, 음이항, 초기하, 베르누이, 이산 균등, 베타이항, 로그 급수, Zipf
 - 결정(사용자): docs/design/stats.md T25(2026-11-15: mode 동점 NaN, 기하는 시행 횟수 k ≥ 1, 이산 균등 [low, high), 초기하 `Hypergeometric(total, successes, draws)`, median = icdf(1/2)). 2026-11-16: 분위수 계약은 후방 오차(목표를 상대 1e-14 안에서 움직인 정확한 분위수 중 하나, `ilog…`는 t에 대해), 보장 영역은 잰 매개변수 범위.
-- 결과: csrc/stats/discrete.hpp, csrc/stats/dist/(discrete_basic.hpp, discrete_more.hpp), src/stardust/stats/_discrete.py; docs/api/stats.md §2·§2.3, docs/design/stats.md §3.2; 측정 bench/stats/t5/(accuracy.md, speed.md); 테스트 tests/stats/test_discrete.py와 참값 tests/stats/ref/(이산 분위수 파일에 kmin·kmax).
+- 결과: csrc/stats/discrete.hpp, csrc/stats/dist/(discrete_basic.hpp, discrete_more.hpp), src/stardust/stats/_discrete.py; docs/api/stats.md §2·§2.3, docs/design/stats.md §3.2; 측정(커밋 4151d2a) bench/stats/t5/(accuracy.md, speed.md); 테스트 tests/stats/test_discrete.py와 참값 tests/stats/ref/(이산 분위수 파일에 kmin·kmax).
 
 ### T6. 극값·수명 6과 비중심 3
 - 로지스틱, Gumbel, GEV, 파레토, 레일리, 역감마, 비중심 카이제곱·t·F
 - 결정(사용자, 2026-11-16): docs/design/stats.md T26 (GEV는 scipy의 c, `Rayleigh(*, scale=1)`, Gumbel은 최댓값형만, 비중심 nc ≥ 0, mode는 1e-14, entropy는 느슨한 한계, 비중심의 보장 영역은 special의 잰 범위, 비중심 t 모멘트는 1/df 급수로 1e-14).
 - **참값을 Arb로 바꿨다** (사용자, 2026-11-16): special과 stats의 참값 도구 전부를 python-flint(Arb)로 바꾸고 참값을 다시 만들었다(`tools/arbref.py`, docs/design/special.md §6). 입력점은 고정하고(`--resample`로만 새로 뽑는다), 병렬은 10코어다. 옛 mpmath 참값의 오류와 새 참값이 드러낸 라이브러리 오차(`gammaincinv`, 이산 엔트로피의 자르기, 음이항 깊은 꼬리, Zipf 분위수, 비중심의 넓은 꼬리)를 고쳤다. 비중심 엔트로피 셋의 참값(10코어로 약 12시간)은 나중에 만든다.
-- 결과: csrc/stats/dist/(extreme.hpp, lifetime.hpp, noncentral.hpp), csrc/stats/coeffs/nct_moments.hpp(tools/gen_nct_moments.py), csrc/special/ops/noncentral.hpp의 넓은 지수 꼬리; docs/api/stats.md §2.4, docs/design/stats.md §3.3; 측정 bench/stats/t6/(accuracy.md, speed.md), 현재의 special 정확도표 bench/special/arb/accuracy.md; 참값 tests/stats/ref/(555개).
+- 결과: csrc/stats/dist/(extreme.hpp, lifetime.hpp, noncentral.hpp), csrc/stats/coeffs/nct_moments.hpp(tools/gen_nct_moments.py), csrc/special/ops/noncentral.hpp의 넓은 지수 꼬리; docs/api/stats.md §2.4, docs/design/stats.md §3.3; 측정(커밋 4151d2a) bench/stats/t6/(accuracy.md, speed.md), 그때의 special 정확도표 bench/special/arb/accuracy.md; 참값 tests/stats/ref/(555개).
 
 ### T7. 표본
 - 모든 분포의 `sample` (직접 알고리즘 또는 역함수 법)
 - 결정(사용자, 2026-11-16): docs/design/stats.md T27 (`rng`는 꼭 준다, 결과 모양은 shape + 매개변수 모양, 이산도 float64, 방법은 분포마다 재서 고른다).
-- 결과: csrc/stats/(sample.hpp, sample_dist.hpp), csrc/bind/stats_sample.cpp, src/stardust/stats/_distribution.py의 `sample`; docs/api/stats.md §2.5, docs/design/stats.md §4; 측정 bench/stats/t7/(speed.md, quality.md); 테스트 tests/stats/test_sample.py.
+- 결과: csrc/stats/(sample.hpp, sample_dist.hpp), csrc/bind/stats_sample.cpp, src/stardust/stats/_distribution.py의 `sample`; docs/api/stats.md §2.5, docs/design/stats.md §4; 측정(커밋 4151d2a) bench/stats/t7/(speed.md, quality.md); 테스트 tests/stats/test_sample.py.
 
 ### T8. 기술통계
 - `describe skew kurtosis moment zscore rankdata sem iqr mode entropy differential_entropy`
 - 결정(사용자, 2026-11-16): docs/design/stats.md T28 (axis=None 기본, nan_policy, scipy의 보정 기본값과 namedtuple, iqr의 q·method, moment의 order는 꼭, rankdata·differential_entropy는 scipy의 방법 전부).
-- 결과: src/stardust/stats/_descriptive.py, csrc/bind/stats_desc.cpp; docs/api/stats.md §4, docs/design/stats.md §5; 측정 bench/stats/t8/speed.md; 테스트 tests/stats/test_descriptive.py.
+- 결과: src/stardust/stats/_descriptive.py, csrc/bind/stats_desc.cpp; docs/api/stats.md §4, docs/design/stats.md §5; 측정(커밋 4151d2a) bench/stats/t8/speed.md; 테스트 tests/stats/test_descriptive.py.
 
 ### T9. 다변량: 정규, t, 다항, 디리클레
 - `pdf logpdf sample mean covariance entropy`, 다변량 정규·t의 `cdf`(Genz, 느슨한 계약)
 - 결정(사용자, 2026-11-16): docs/design/stats.md T29 (배치, 특이 공분산은 NaN, cdf는 값과 return_error, 정규 d ≤ 3과 t d ≤ 3은 정확한 공식, 보장 영역 κ ≤ 1e9·d ≤ 100, 다항 p는 허용치 안에서 나눔, 디리클레의 단체 밖은 0, t의 df = inf는 정규).
-- 결과: src/stardust/stats/_multivariate.py, csrc/bind/(stats_mv.cpp, stats_mvcdf.cpp), csrc/stats/mvcdf.hpp; docs/api/stats.md §3, docs/design/stats.md §6; 측정 bench/stats/t9/(accuracy.md, speed.md, cdf_accuracy.md, cdf_speed.md); 테스트 tests/stats/(test_multivariate.py, test_mvcdf.py)와 참값 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py).
+- 결과: src/stardust/stats/_multivariate.py, csrc/bind/(stats_mv.cpp, stats_mvcdf.cpp), csrc/stats/mvcdf.hpp; docs/api/stats.md §3, docs/design/stats.md §6; 측정(커밋 4151d2a) bench/stats/t9/(accuracy.md, speed.md, cdf_accuracy.md, cdf_speed.md); 테스트 tests/stats/(test_multivariate.py, test_mvcdf.py)와 참값 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py).
 - 미룬 것(사용자): 정규·t logpdf의 d ≥ 10 속도(SIMD로 여러 점을 함께 풀기).
 
 ### T10. 행렬 분포
 - Wishart, 역Wishart, 행렬 정규
 - 결정(사용자, 2026-11-16): docs/design/stats.md T30 (scipy의 이름과 메서드: mean·mode·var, 행렬 정규의 평균은 mu, x는 아래 삼각을 읽고 양의 정부호가 아니면 0, 배치와 정확도는 T9와 같다, df > p − 1 실수).
-- 결과: src/stardust/stats/_matrix.py, csrc/bind/stats_matrix.cpp, csrc/stats/dd_linalg.hpp; docs/api/stats.md §3.1, docs/design/stats.md §6.3; 측정 bench/stats/t10/(accuracy.md, speed.md); 테스트 tests/stats/test_matrix.py.
+- 결과: src/stardust/stats/_matrix.py, csrc/bind/stats_matrix.cpp, csrc/stats/dd_linalg.hpp; docs/api/stats.md §3.1, docs/design/stats.md §6.3; 측정(커밋 4151d2a) bench/stats/t10/(accuracy.md, speed.md); 테스트 tests/stats/test_matrix.py.
 
 ### T11. `sd.stats.tests` (뺌)
 - 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다). 위치(`sd.stats.tests`, 상관도 그곳)만 정해 둔 상태다(docs/design/stats.md §7).
@@ -332,32 +332,32 @@
 - `ols wls gls linregress`, 추론(표준오차·t·p·구간·F·우도), 예측과 예측 구간, 강건 표준오차(HC0–HC3, HAC, 군집), 랭크 부족, 진단(지렛대, 스튜던트화 잔차, Cook 거리, Breusch–Pagan, Jarque–Bera), `summary`, 배치
 - G1a(선형 모형과 추론)와 G1b(HAC·군집, 진단, summary)로 나눠 진행했다.
 - 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G9–G30 (R식 랭크 부족, statsmodels의 필드 이름, 앞 축 배치, 필요할 때까지 최대 3번의 반복 개선, 완전 적합의 극한값, 강건 공분산도 t·F, inf는 ValueError, HAC의 지연 수, 일원 군집과 Stata의 보정).
-- 결과: csrc/regression/(linear.cpp, lsq.hpp), csrc/bind/regression_bind.cpp, src/stardust/regression/_linear.py, src/stardust/_results.py; docs/api/regression.md §1–§2, docs/design/regression.md §2·§3.1–§3.3; 측정 bench/regression/g1/(speed.md, refine.log), bench/regression/g1b/speed.md; 테스트 tests/regression/test_linear.py, test_reference_tool.py.
+- 결과: csrc/regression/(linear.cpp, lsq.hpp), csrc/bind/regression_bind.cpp, src/stardust/regression/_linear.py, src/stardust/_results.py; docs/api/regression.md §1–§2, docs/design/regression.md §2·§3.1–§3.3; 측정(커밋 4151d2a) bench/regression/g1/(speed.md, refine.log), bench/regression/g1b/speed.md; 테스트 tests/regression/test_linear.py, test_reference_tool.py.
 
 ### G2. GLM
 - 분포족(정규·이항·포아송·감마)과 링크, IRLS와 뉴턴, 분리 증명서, 우도비와 편차·Pearson 잔차, 강건 공분산
 - 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G31–G44 (미수렴은 마지막 값과 `converged=False`, 완전 분리의 판정과 결과, 척도, 이항 반응의 꼴, 가중치, 검정 분포, 비정준 링크의 마지막 걸음, 느린 수렴).
-- 결과: csrc/regression/glm.cpp, src/stardust/regression/_glm.py; docs/api/regression.md §3, docs/design/regression.md §3.4; 측정 bench/regression/g2/(speed.md, noncanonical.md, refine.md, accuracy.log); 테스트 tests/regression/test_glm.py, test_against_r.py(tools/gen_regression_r.py).
+- 결과: csrc/regression/glm.cpp, src/stardust/regression/_glm.py; docs/api/regression.md §3, docs/design/regression.md §3.4; 측정(커밋 4151d2a) bench/regression/g2/(speed.md, noncanonical.md, refine.md, accuracy.log); 테스트 tests/regression/test_glm.py, test_against_r.py(tools/gen_regression_r.py).
 
 ### G3. 정규화
 - `ridge lasso elastic_net`, 정규화 경로, 교차검증(`ridge_cv lasso_cv elastic_net_cv`), `penalized_glm`
 - 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G45–G52 (scikit-learn의 목적함수, 경로와 교차검증, 정규화 GLM의 범위와 이름, 예측 중심의 결과(표준오차 없음), alpha = 0의 정규화 GLM은 glm의 규칙, ridge의 반복 개선).
-- 결과: csrc/regression/penalized.cpp, src/stardust/regression/_penalized.py; docs/api/regression.md §4, docs/design/regression.md §3.5; 측정 bench/regression/g3/(accuracy.md, speed.md); 테스트 tests/regression/test_penalized.py.
+- 결과: csrc/regression/penalized.cpp, src/stardust/regression/_penalized.py; docs/api/regression.md §4, docs/design/regression.md §3.5; 측정(커밋 4151d2a) bench/regression/g3/(accuracy.md, speed.md); 테스트 tests/regression/test_penalized.py.
 
 ### G4. 강건
 - `rlm`(M·MM 추정, Huber·bisquare·Hampel), `theilslopes`, `siegelslopes`
 - 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G53–G59 (statsmodels의 M과 robustbase의 MM, ψ 함수와 상수, 반복마다 MAD 척도와 Huber의 제안 2, scipy의 Theil–Sen·Siegel, rlm의 추론, MM의 큰 n).
-- 결과: csrc/regression/(robust.cpp, slopes.cpp), src/stardust/regression/_robust.py; docs/api/regression.md §5, docs/design/regression.md §3.6; 측정 bench/regression/g4/(accuracy.md, speed.md); 테스트 tests/regression/test_robust.py, test_robust_diagnostics.py, test_against_r.py(tools/gen_robust_r.py).
+- 결과: csrc/regression/(robust.cpp, slopes.cpp), src/stardust/regression/_robust.py; docs/api/regression.md §5, docs/design/regression.md §3.6; 측정(커밋 4151d2a) bench/regression/g4/(accuracy.md, speed.md); 테스트 tests/regression/test_robust.py, test_robust_diagnostics.py, test_against_r.py(tools/gen_robust_r.py).
 
 ### G5. 분위
 - `quantreg`: Frisch–Newton 내부점법과 기저 교차, Barrodale–Roberts 단체법, 여러 분위, 표준오차(nid·iid·ker)
 - 결정(사용자, 2026-11-18–19): docs/design/regression.md §1.1 G60–G67 (내부점법 뒤 정확한 꼭짓점, R quantreg의 표준오차, 여러 분위를 한 번에, 유일하지 않은 해는 사전식 최소 꼭짓점, 수렴, 정의되지 않는 표준오차, 10진 q의 동률, summary.rq의 eps).
-- 결과: csrc/regression/quantile.cpp, src/stardust/regression/_quantile.py; docs/api/regression.md §6, docs/design/regression.md §3.6; 측정 bench/regression/g5/(accuracy.md, speed.md); 테스트 tests/regression/test_quantreg.py(tools/gen_quantreg_r.py).
+- 결과: csrc/regression/quantile.cpp, src/stardust/regression/_quantile.py; docs/api/regression.md §6, docs/design/regression.md §3.6; 측정(커밋 4151d2a) bench/regression/g5/(accuracy.md, speed.md); 테스트 tests/regression/test_quantreg.py(tools/gen_quantreg_r.py).
 
 ### G6. 비선형 최소제곱
 - `nls`: Levenberg–Marquardt(MINPACK lmder)와 TRF(scipy `least_squares`), 모수마다 간격을 고르는 5점 차분, 가우스–뉴턴·뉴턴 다듬기, 추론과 예측 구간
 - 결정(사용자, 2026-11-19): docs/design/regression.md §1.1 G68–G79 (`curve_fit` 꼴의 이름과 입력, 두 방법, 정확한 야코비안, 사용자 함수의 입력, 가중치와 척도, 수렴과 정확도, 유한하지 않은 함수값, 겹친 모수, rtol 기본값, llf·aic·bic, 차분 비용).
-- 결과: csrc/regression/nls.cpp, src/stardust/regression/_nls.py; docs/api/regression.md §7, docs/design/regression.md §3.7; 측정 bench/regression/g6/(accuracy.md, speed.md); 테스트 tests/regression/test_nls.py, nist_nls.py(NIST StRD 비선형 27개, tests/regression/data/nls/), tools/gen_nls_r.py.
+- 결과: csrc/regression/nls.cpp, src/stardust/regression/_nls.py; docs/api/regression.md §7, docs/design/regression.md §3.7; 측정(커밋 4151d2a) bench/regression/g6/(accuracy.md, speed.md); 테스트 tests/regression/test_nls.py, nist_nls.py(NIST StRD 비선형 27개, tests/regression/data/nls/), tools/gen_nls_r.py.
 
 ### 회귀 최적화
 - 행을 도는 계산의 NEON Dot2 훑기(csrc/regression/dot2.hpp), 64행 Packer 타일, 정준 링크 GLM의 정규방정식 연마(G80), glm과 정규화 로지스틱이 같이 쓰는 expit 커널(G81), MM의 S 단계 뉴턴(G82)
@@ -403,46 +403,46 @@
 ### O0. 준비
 - API 초안, 결과 객체, 시험 문제 모음, 참값·대조 도구, Fortran 원본 대조, scipy 기준선.
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O9–O13, API 초안 뒤에 O14–O17.
-- 결과: docs/api/optimize.md(공개 함수 13개의 시그니처 초안과 마일스톤별 질문 §9), src/stardust/optimize/(`__init__.py`, `_result.py`의 `OptimizeResult`), `sd.optimize`; 시험 문제 tests/optimize/(`mgh.py` MGH 35개·110경우, `systems.py` MINPACK 방정식계 14개·55경우, `functions.py` scipy 시험 함수·스칼라 근 204·최솟값 57·선형 최소제곱 12, `ad.py` IEEE double·Arb·2차 자동 미분); 도구 tools/gen_optimize_scipy.py(scipy 1.18.1 3,781번), tools/gen_optimize_fortran.py(MINPACK·L-BFGS-B 3.0 원본 빌드·실행·scipy와 비교), tools/optimize_ref.py(Arb 1 ULP 근); 고정 데이터 tests/optimize/data/(1.8 MB); 기준선 bench/optimize/o0/(speed.py, speed.md: scipy의 시간과 nfev, 10스레드가 빨라지는 곳은 BFGS n = 1000뿐); 테스트 tests/optimize/(test_result.py, test_api_surface.py, test_problems.py, test_reference_data.py). 결과는 docs/design/optimize.md §7.
+- 결과: docs/api/optimize.md(공개 함수 13개의 시그니처 초안과 마일스톤별 질문 §9), src/stardust/optimize/(`__init__.py`, `_result.py`의 `OptimizeResult`), `sd.optimize`; 시험 문제 tests/optimize/(`mgh.py` MGH 35개·110경우, `systems.py` MINPACK 방정식계 14개·55경우, `functions.py` scipy 시험 함수·스칼라 근 204·최솟값 57·선형 최소제곱 12, `ad.py` IEEE double·Arb·2차 자동 미분); 도구 tools/gen_optimize_scipy.py(scipy 1.18.1 3,781번), tools/gen_optimize_fortran.py(MINPACK·L-BFGS-B 3.0 원본 빌드·실행·scipy와 비교), tools/optimize_ref.py(Arb 1 ULP 근); 고정 데이터 tests/optimize/data/(1.8 MB); 기준선(커밋 4151d2a) bench/optimize/o0/(speed.py, speed.md: scipy의 시간과 nfev, 10스레드가 빨라지는 곳은 BFGS n = 1000뿐); 테스트 tests/optimize/(test_result.py, test_api_surface.py, test_problems.py, test_reference_data.py). 결과는 docs/design/optimize.md §7.
 - 찾은 것: MINPACK 드라이버의 문제는 Fortran과 비트까지 같다(216점). scipy의 C 판 MINPACK·L-BFGS-B는 첫 시험점부터 끝자리가 원본과 달라(계산점의 순서까지 같은 경우는 LMDER1 2/53, HYBRJ1 4/55, L-BFGS-B 7/83) 특이·비유일 해의 문제에서 다른 점에서 멈춘다. scipy `_tstutils`의 이계도함수 셋(aps02·aps09·aps10)이 틀렸다.
 
 ### O1. 수치 미분과 최소제곱
 - `approx_fprime`, `check_grad`, `least_squares`('trf'·'lm', 해석적·'2-point'·'3-point' 야코비안, `diff_step`, 경계); nls의 LM·TRF 커널과 정확한 야코비안을 sd.optimize로 옮기고 nls가 그것을 쓴다.
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O18–O23, 구현 뒤에 O24–O31.
-- 결과: csrc/optimize/(lsq.cpp, lsq.hpp, diff.hpp; csrc/regression/nls.cpp에서 옮김), csrc/bind/optimize_bind.cpp(`stardust._core.optimize`), src/stardust/optimize/(`_lsq.py`, `_diff.py`, `_common.py`), src/stardust/regression/_nls.py(커널과 `Differences`를 씀); docs/api/optimize.md §2–§3, docs/design/optimize.md §3.1·§3.4·§7; 측정 bench/optimize/o1/(speed.py, speed.md); 테스트 tests/optimize/(test_least_squares.py, test_diff.py, test_api_surface.py).
+- 결과: csrc/optimize/(lsq.cpp, lsq.hpp, diff.hpp; csrc/regression/nls.cpp에서 옮김), csrc/bind/optimize_bind.cpp(`stardust._core.optimize`), src/stardust/optimize/(`_lsq.py`, `_diff.py`, `_common.py`), src/stardust/regression/_nls.py(커널과 `Differences`를 씀); docs/api/optimize.md §2–§3, docs/design/optimize.md §3.1·§3.4·§7; 측정(커밋 4151d2a) bench/optimize/o1/(speed.py, speed.md); 테스트 tests/optimize/(test_least_squares.py, test_diff.py, test_api_surface.py).
 - 결과 수치: nls는 옮기기 전후 골든 출력 338적합(NIST 27 × 시작점 2 × 두 방법 × 야코비안 둘, 상자 경계, 가중치 등)의 모든 필드가 바이트까지 같다. MGH 110경우에서 scipy 1.18.1과 같은 status는 trf 해석적 110, lm 해석적 108, trf 2점 106, lm 2점 109(상자 47/47), 해석적 'trf'는 103경우에서 모든 호출점이 10⁻¹⁰ 안. NIST 54적합의 x가 scipy와 10⁻⁶ 안인 것 50–54. `approx_fprime(epsilon=2**-26)`은 scipy와 비트까지 같고 기본(5점)은 해석적 도함수와 1.2×10⁻¹¹ 안. 반복당 자기 비용은 작은 문제에서 scipy의 1/4–1/20, (10⁴, 100) 'lm' 6.5 ms 대 42 ms.
 - 찾은 것: 갈리는 경우는 모두 반올림이 결정하는 곳(거의 특이한 야코비안, 정확한 0을 보는 판정, 반올림 수준의 감소에서의 ftol·xtol)이다. 3점 차분은 O23의 기본 `max_nfev`에서 scipy보다 반복을 절반쯤만 할 수 있어 MGH 4경우가 상한에 닿았다: O25(100n(2n + 1))로 고친 뒤 넷 모두 scipy와 같은 곳에서 멈춘다. m = n = 40에서는 반복당 비용이 scipy와 비슷하다(QR을 먼저 하는 것이 덜어 주는 것이 없다; O6의 후보).
 
 ### O2. 스칼라
 - `root_scalar`(brentq, toms748, bisect, newton, halley, secant), `minimize_scalar`(brent, golden, bounded), 배치 `find_root`, `bracket_root`, `find_minimum`, `bracket_minimum`(scipy `elementwise`, Chandrupatla).
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O32–O38, 구현 뒤에 O39–O49.
-- 결과: csrc/optimize/(scalar.hpp, scalar.cpp, batch.cpp), csrc/bind/optimize_bind.cpp, src/stardust/optimize/(`_scalar.py`, `_elementwise.py`, `_common.py`); docs/api/optimize.md §4–§6·§9, docs/design/optimize.md §3.2·§3.3·§7; 측정 bench/optimize/o2/(speed.py, speed.md); 테스트 tests/optimize/(test_scalar.py, test_elementwise.py, test_api_surface.py).
+- 결과: csrc/optimize/(scalar.hpp, scalar.cpp, batch.cpp), csrc/bind/optimize_bind.cpp, src/stardust/optimize/(`_scalar.py`, `_elementwise.py`, `_common.py`); docs/api/optimize.md §4–§6·§9, docs/design/optimize.md §3.2·§3.3·§7; 측정(커밋 4151d2a) bench/optimize/o2/(speed.py, speed.md); 테스트 tests/optimize/(test_scalar.py, test_elementwise.py, test_api_surface.py).
 - 결과 수치: 시험 문제(근 204, 최솟값 57)의 모든 실행에서 scipy 1.18.1과 f를 부른 점이 차례대로 비트까지 같다(`root_scalar` 1,244번, `minimize_scalar` 399번, 배치의 원소 하나 621번, 2,000원소 배치 7가지; 기록과 다른 것은 newton·secant의 `message` 62번). 기본 허용오차의 구간법 근은 모두 Arb 근에서 xtol + rtol·|x| 안, `xtol=0`이면 brentq 3, toms748 1, bisect 4 ULP 안. 스칼라 방법의 자기 비용은 호출 하나에 0.2–1.5 µs(scipy C 구현의 1/1.5–1/2.8, Python 구현의 1/2–1/38), 배치는 함수값 하나에 6–12 ns(10⁶ 원소 1스레드에서 find_root 143 ms 대 scipy 330 ms, find_minimum 250 ms 대 649 ms).
 - 찾은 것: scipy의 C brentq는 FMA로 빌드되어 있어(clang 기본) 외삽의 분자를 `std::fma`로 적어야 같은 걸음이다(아니면 204문제 가운데 12문제의 호출점이 갈린다). 남은 원소만 받는 배치 함수는 `args` 없이는 원소마다 다른 상수를 쓸 수 없어 배치 함수에만 `args`를 두었다(O39).
 
 ### O3. 최소화 1
 - `minimize`: Nelder–Mead, BFGS, L-BFGS-B(해석적·`jac=True`·'2-point'·'3-point'·절대 간격 차분, 경계, 고정 변수). Newton-CG·trust-ncg·trust-exact는 O4.
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O50–O57. 구현 뒤에 O58–O62.
-- 결과: csrc/optimize/(minimize.hpp, objective.hpp, nelder_mead.cpp, bfgs.cpp, lbfgsb.cpp), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_minimize.py`, `_result.py`의 처음 읽을 때 계산하는 필드, `_common.py`, `__init__.py`); docs/api/optimize.md §1·§7·§9, docs/design/optimize.md §1.1·§3.5·§6·§7·§8·§9; 측정 bench/optimize/o3/(speed.py, speed.md); 테스트 tests/optimize/(test_minimize.py, test_api_surface.py).
+- 결과: csrc/optimize/(minimize.hpp, objective.hpp, nelder_mead.cpp, bfgs.cpp, lbfgsb.cpp), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_minimize.py`, `_result.py`의 처음 읽을 때 계산하는 필드, `_common.py`, `__init__.py`); docs/api/optimize.md §1·§7·§9, docs/design/optimize.md §1.1·§3.5·§6·§7·§8·§9; 측정(커밋 4151d2a) bench/optimize/o3/(speed.py, speed.md); 테스트 tests/optimize/(test_minimize.py, test_api_surface.py).
 - 결과 수치: 세 방법 모두 scipy 1.18.1과 호출점이 비트까지 같다: 기록된 실행 568번의 모든 필드, 실행하며 견준 MGH·시험 함수 721번(상자 경계 153번 포함)과 옵션·가장자리 328번의 모든 호출점. BFGS의 `hess_inv`는 비트까지, L-BFGS-B의 것은 scipy `todense()`와 2.8×10⁻¹⁴ 안. L-BFGS-B Fortran 원본 83번은 scipy의 기록과 같아 원본과의 거리도 scipy와 같다(호출 수 74, x 10⁻¹² 안 62, 10⁻⁶ 안 79). 반복당 자기 비용은 작은 n에서 scipy의 1/2–1/20, 차분 기울기는 1/3–1/12, Nelder–Mead n = 1000은 1/5, BFGS n = 1000(같은 dgemm)과 L-BFGS-B n = 10⁴(같은 C 알고리즘)는 비슷하다.
 - 찾은 것: scipy의 C 판 L-BFGS-B는 FMA 축약으로 빌드되어 있고, Accelerate의 ddot은 둘째 인자의 16바이트 정렬에 따라 끝자리가 다르다: 둘 다 맞춰야 비트까지 같다. scipy의 L-BFGS-B는 ABNORMAL에서 `fun`이 되돌린 `x`의 값이 아니고(여기서는 `x`의 값, O59), `hess_inv`는 저장 순서의 쌍을 쓴다(그대로 따름, O60).
 
 ### O4. 최소화 2
 - `minimize`: Newton-CG(`hess`, `hessp`, `hess='2-point'`·`'3-point'`, 둘 다 없으면 기울기의 차분), trust-ncg(`hess`, `hessp`, 차분 `hess`), trust-exact(`hess`); `jac`은 호출 가능한 객체나 `True`.
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O63–O66. 구현 뒤에 O67–O76(다섯은 scipy와 다르게: O68–O70, O74, O75).
-- 결과: csrc/optimize/(newton_cg.cpp, trust.cpp, hessian.hpp, wolfe.hpp(bfgs.cpp의 선 탐색을 옮겨 같이 씀), objective.hpp의 점 셈과 기억을 거치지 않는 기울기, minimize.hpp), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_minimize.py`, `_common.py`); docs/api/optimize.md §7·§9, docs/design/optimize.md §1.1·§2.2·§3.5·§6·§7·§8·§9; 측정 bench/optimize/o4/(speed.py, speed.md); 테스트 tests/optimize/(test_minimize_newton.py, test_minimize.py, test_api_surface.py).
+- 결과: csrc/optimize/(newton_cg.cpp, trust.cpp, hessian.hpp, wolfe.hpp(bfgs.cpp의 선 탐색을 옮겨 같이 씀), objective.hpp의 점 셈과 기억을 거치지 않는 기울기, minimize.hpp), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_minimize.py`, `_common.py`); docs/api/optimize.md §7·§9, docs/design/optimize.md §1.1·§2.2·§3.5·§6·§7·§8·§9; 측정(커밋 4151d2a) bench/optimize/o4/(speed.py, speed.md); 테스트 tests/optimize/(test_minimize_newton.py, test_minimize.py, test_api_surface.py).
 - 결과 수치: 세 방법 모두 scipy 1.18.1과 호출점이 비트까지 같다(결정으로 다른 곳만 빼고: newton-cg 끝의 기울기 호출, `nhev`, 신뢰 영역의 `max_iter=0`): 기록된 실행 339번의 필드, 실행하며 견준 MGH·시험 함수 1,130번(`hess`·`hessp`·차분·기울기 차분의 열 묶음; 결과의 `hess`·`jac`까지)과 옵션·가장자리 525번의 모든 호출점, 무작위 비볼록 사차 함수 2,100번. 반복당 자기 비용은 n = 2–100에서 scipy의 1/3–1/60, 차분 헤세 곱은 n = 1000에서도 1/9, 행렬 `hess`의 n = 1000은 같은 dgemv라 비슷하다(Newton-CG 0.23 대 0.22 ms, trust-ncg 0.17 대 0.13 ms), trust-exact n = 1000은 5.2 대 7.2 ms.
 - 찾은 것: numpy의 `np.dot`은 0.0 + cblas_ddot이라 BLAS의 −0.0을 +0.0으로 바꾼다(trust-ncg의 경계 교점이 그 부호를 쓴다: 맞추기 전에는 MGH 8경우가 끝자리에서 갈렸다). scipy의 trust-ncg CG는 상한이 없어 비대칭 헤시안에서 끝나지 않는다(여기서는 20n번에서 status 3). newton-cg의 결과 `jac`은 마지막 반복을 시작한 점의 것, `hessp`만 준 trust-ncg의 `nhev`는 부르지 않은 자리 채움 1을 더한 수, trust의 `max_iter=0`은 반복 하나, 작은 `subproblem_maxiter`의 trust-exact는 `UnboundLocalError`다.
 
 ### O5. 방정식계와 선형 최소제곱
 - `root`('hybr': MINPACK hybrj·hybrd, 'lm': lmder·lmdif; 해석적·`jac=True`·차분 야코비안, `band`·`eps`·`factor`·`diag`), `lsq_linear`('trf', 'bvls'), `nnls`.
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O77–O81. 구현 뒤에 O82–O93.
-- 결과: csrc/optimize/(hybrd.cpp, root.hpp, linear.cpp, linear.hpp, lsq.cpp의 lmder 옵션(factor, diag, epsfcn, lmder의 info, m = n의 바로 QR)과 `lm_solve`), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_root.py`, `_linear.py`, `__init__.py`); docs/api/optimize.md §1·§3·§8·§9, docs/design/optimize.md §1.1·§3.4·§3.6·§6·§7·§8·§9; 측정 bench/optimize/o5/(speed.py, speed.md); 테스트 tests/optimize/(test_root.py, test_lsq_linear.py, test_api_surface.py).
+- 결과: csrc/optimize/(hybrd.cpp, root.hpp, linear.cpp, linear.hpp, lsq.cpp의 lmder 옵션(factor, diag, epsfcn, lmder의 info, m = n의 바로 QR)과 `lm_solve`), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_root.py`, `_linear.py`, `__init__.py`); docs/api/optimize.md §1·§3·§8·§9, docs/design/optimize.md §1.1·§3.4·§3.6·§6·§7·§8·§9; 측정(커밋 4151d2a) bench/optimize/o5/(speed.py, speed.md); 테스트 tests/optimize/(test_root.py, test_lsq_linear.py, test_api_surface.py).
 - 결과 수치: 'hybr'은 MINPACK 계 55경우 × 야코비안 유무 110번 모두 scipy 1.18.1과 호출점이 비트까지 같고 기록된 필드(x의 비트, F, status, message, njev, nfev − 2)가 같다(옵션 42번, `jac=True`도). Fortran HYBRJ1·HYBRD1 110번은 scipy `fsolve`의 기록과 x의 비트까지 같아 원본과의 거리도 scipy와 같다(HYBRJ1 같은 info 50/55, x 10⁻⁶ 안 44; HYBRD1 48, 44). 'lm'은 같은 status 54/55(해석적·차분), x 10⁻⁶ 안 49·45. `lsq_linear`('trf'·'bvls')는 기록된 12문제와 무작위 824번씩, 작은 모양 480번, (10⁴, 100)까지 모든 필드가 비트까지 같고, `nnls`는 무작위 801번(반복 상한 포함)에서 x가 비트까지 같다. nls 골든 출력 338적합은 바이트까지 같다. 반복당 자기 비용은 `root`가 scipy와 비슷하고(scipy도 반복이 C; lm 작은 n은 1/2), `lsq_linear` (100, 10) 'trf'는 1/9, 큰 문제는 같은 LAPACK이라 같다.
 - 찾은 것: scipy의 C 판 MINPACK은 FMA 축약으로 빌드되어 있고, 제곱(`t**2`)은 따로 반올림하며, qrfac의 내적만 clang이 벡터화해 8개씩의 곱을 따로 반올림한다: 셋 다 맞춰야 비트까지 같다(이쪽 clang은 다른 합 고리도 같은 식으로 벡터화해, 합을 `std::fma`로 적었다). Accelerate의 gelsd는 numpy의 버퍼 배치(정렬)에 따라 끝자리가 달라 그 배치를 따랐다. scipy `nnls`의 C 판은 기계어에서 읽어 옮겼다(dlarfgp·dlarf·dlartgp; 떨어진 열의 꼬리를 바꾼 채 두고, P가 비면 음수 개수로 계속 가는 버그가 있다). `trf_linear`의 `backtracking`은 x를 바꾸지 않는다. scipy의 `root`는 x0에서 `fun`을 두 번 더 부르고 `nfev`에 센다.
 
 ### O6. 최적화와 일관성 점검 (1부: 성능)
 - 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O94–O97, 1부 뒤에 O98–O102.
-- 결과: csrc/optimize/(minpack.hpp: scipy MINPACK의 enorm·dot8·열 여덟 개의 반사를 hybrd.cpp와 같이 씀; lsq.cpp: lmder를 템플릿 `Fu`의 두 빌드로, scipy 빌드는 m × n의 피벗 QR·열 묶음·스레드, 야코비안 읽기; hybrd.cpp: qrfac·qform의 열 묶음; batch.cpp: `args` 모으기와 원소 패스의 스레드; hessian.hpp·trust.cpp: C 순서의 사용자 헤시안을 그대로 쥠; bfgs.cpp: H의 O(n²) 갱신(O99; n = 1은 곱의 꼴, O102); linear.cpp: nnls의 남는 계산, 유한성 검사를 커널에서), src/stardust/optimize/(`_lsq.py`: 'lm'은 scipy 빌드, `_linear.py`); docs/api/optimize.md §3·§8, docs/design/optimize.md §1.1·§3.3.1·§3.4·§3.5·§3.6·§7·§8·§9; 측정 bench/optimize/o6/(speed.py: O1–O5의 사례를 그대로 돌리는 전체 대조, speed.md, speed_before.json, speed_after.json); 테스트 tests/optimize/(test_root.py, test_least_squares.py, test_elementwise.py, test_minimize.py: BFGS는 허용오차로 견줌); 골든 tests/golden/data/optimize.json(O98: 'lm' 175경우를 다시 기록).
-- 결과 수치: `root('lm')`은 55계 × 야코비안 유무 110번 모두 scipy와 호출점과 결과가 비트까지 같다(옵션 36번도). `least_squares('lm')`은 MGH 110경우 가운데 해석적 108, 2점 104경우가 비트까지 같다(scipy가 기억으로 건너뛰는 같은 x의 호출과 O24의 끝 호출을 빼고; 나머지는 G74의 유한하지 않은 시험점과 O25의 `max_nfev`). NIST 54적합 52·52. nls 골든 338적합은 바이트까지 같다. 고정 골든은 optimize의 'lm' 175경우만 바뀌어 다시 기록했다(O98). BFGS는 O(n²) 갱신으로 n = 1000의 반복당 8.8 → 0.28 ms, scipy와 status가 같은 것 113/114(기록된 113번에서 해석적 112, 차분 107). 속도는 bench/optimize/o6/speed.md: hybr n = 300 자기 비용이 scipy의 0.55배, `root('lm')` n = 100 0.17 → 0.11 ms, m = n = 40의 'lm' 0.063 → 0.036 ms, 배치 10⁶ 10스레드 find_root 89 → 31 ms, newton-cg·trust-ncg `hess` n = 1000 0.23 → 0.15, 0.16 → 0.10 ms. O95로 m ≫ n의 'lm'은 느려졌다((10⁴, 100) 6.6 → 17 ms; scipy 37 ms).
+- 결과: csrc/optimize/(minpack.hpp: scipy MINPACK의 enorm·dot8·열 여덟 개의 반사를 hybrd.cpp와 같이 씀; lsq.cpp: lmder를 템플릿 `Fu`의 두 빌드로, scipy 빌드는 m × n의 피벗 QR·열 묶음·스레드, 야코비안 읽기; hybrd.cpp: qrfac·qform의 열 묶음; batch.cpp: `args` 모으기와 원소 패스의 스레드; hessian.hpp·trust.cpp: C 순서의 사용자 헤시안을 그대로 쥠; bfgs.cpp: H의 O(n²) 갱신(O99; n = 1은 곱의 꼴, O102); linear.cpp: nnls의 남는 계산, 유한성 검사를 커널에서), src/stardust/optimize/(`_lsq.py`: 'lm'은 scipy 빌드, `_linear.py`); docs/api/optimize.md §3·§8, docs/design/optimize.md §1.1·§3.3.1·§3.4·§3.5·§3.6·§7·§8·§9; 측정(커밋 4151d2a) bench/optimize/o6/(speed.py: O1–O5의 사례를 그대로 돌리는 전체 대조, speed.md, speed_before.json, speed_after.json); 테스트 tests/optimize/(test_root.py, test_least_squares.py, test_elementwise.py, test_minimize.py: BFGS는 허용오차로 견줌); 골든 tests/golden/data/optimize.json(O98: 'lm' 175경우를 다시 기록).
+- 결과 수치: `root('lm')`은 55계 × 야코비안 유무 110번 모두 scipy와 호출점과 결과가 비트까지 같다(옵션 36번도). `least_squares('lm')`은 MGH 110경우 가운데 해석적 108, 2점 104경우가 비트까지 같다(scipy가 기억으로 건너뛰는 같은 x의 호출과 O24의 끝 호출을 빼고; 나머지는 G74의 유한하지 않은 시험점과 O25의 `max_nfev`). NIST 54적합 52·52. nls 골든 338적합은 바이트까지 같다. 고정 골든은 optimize의 'lm' 175경우만 바뀌어 다시 기록했다(O98). BFGS는 O(n²) 갱신으로 n = 1000의 반복당 8.8 → 0.28 ms, scipy와 status가 같은 것 113/114(기록된 113번에서 해석적 112, 차분 107). 속도는 커밋 4151d2a의 bench/optimize/o6/speed.md: hybr n = 300 자기 비용이 scipy의 0.55배, `root('lm')` n = 100 0.17 → 0.11 ms, m = n = 40의 'lm' 0.063 → 0.036 ms, 배치 10⁶ 10스레드 find_root 89 → 31 ms, newton-cg·trust-ncg `hess` n = 1000 0.23 → 0.15, 0.16 → 0.10 ms. O95로 m ≫ n의 'lm'은 느려졌다((10⁴, 100) 6.6 → 17 ms; scipy 37 ms).
 - 비트를 바꾸는 후보(O94로 재서 물음): BFGS O(n²) 갱신은 넣었고(O99), 경계 없는 'trf'의 n × n SVD(5%)는 넣지 않는다(O100).

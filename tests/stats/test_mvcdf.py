@@ -5,7 +5,7 @@ References (tests/stats/ref_mvcdf/, written by tools/mvcdf_ref.py):
   bvn, tvn   Phi2 and Phi3 as rigorous Arb balls (double-double hi + lo)
   factor_n   one-factor normals d = 4..10, Arb
   factor_t   one-factor t's d = 2..8, two-level adaptive quadrature (~1e-11)
-The accuracy bounds below are the measured ones (bench/stats/t9/cdf_accuracy.md), with a
+The accuracy bounds below are the measured ones (bench/stats/t9/cdf_accuracy.md at commit 4151d2a), with a
 small margin.
 """
 

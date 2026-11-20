@@ -67,7 +67,7 @@ struct Series {
 // The float64 pass of a series is kept while sum (k+1)|t_k| <= kFastSeries |s|. A step
 // rounds about six times (a + k, the products, b + k, the division), so term k carries
 // at most ~3 (k + 1) ULP and the accepted sum at most ~3 kFastSeries = 12 ULP (well
-// inside the 45 of the contract; measured: 4.1 ULP at most, bench/special/opt3).
+// inside the 45 of the contract; measured: 4.1 ULP at most, bench/special/opt3 at commit 4151d2a).
 inline constexpr double kFastSeries = 4.0;
 // A series that has not ended after kMaxSeriesTerms terms gives NaN (about 20 ms).
 inline constexpr int kMaxSeriesTerms = 1000000;

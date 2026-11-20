@@ -5,7 +5,7 @@
     .venv/bin/python tools/special_ref.py --jobs=8 NAME ...   # points in 8 processes (default 10)
 
 writes tests/special/ref/<name>.npz (format: tests/special/refdata.py). The files are
-committed; tests and bench/special/accuracy.py read them and never call Arb.
+committed; tests and bench/accuracy read them and never call Arb.
 
 Each reference is an Arb ball [mid +- rad] that contains the true value, evaluated at
 doubling precision until rad is below 2^-110 of the value (or 2^-1132 absolutely, below the

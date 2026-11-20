@@ -1,5 +1,5 @@
 """sd.regression against statsmodels, scikit-learn, scipy and R. From
-bench/regression/g1/speed.py (ols), g1b/speed.py (HAC, cluster, diagnostics, summary),
+bench/regression/g1/speed.py (at commit 4151d2a) (ols), g1b/speed.py (HAC, cluster, diagnostics, summary),
 g2/speed.py (glm), g3/speed.py (penalized), g4/speed.py (rlm M and MM, Theil-Sen,
 Siegel), g5/speed.py (quantreg) and g6/speed.py (nls), with more functions, options,
 shapes and input conditions since. Only the times are kept: the iteration counts,
@@ -233,7 +233,7 @@ def _ols_case(size, setup, quick=False):
     n, k = size
     return Case(
         area="regression",
-        group="최소제곱",
+        group="ols",
         name="ols(y, X)",
         size=_size(n, k),
         setup=setup,
@@ -256,7 +256,7 @@ def _g1_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="최소제곱",
+                    group="ols",
                     name="ols(y, X) + params·bse·pvalues·rsquared",
                     size=_size(n, k),
                     setup=setup,
@@ -296,12 +296,12 @@ def _g1_cases():
     out.append(
         Case(
             area="regression",
-            group="최소제곱 일괄",
-            name="ols(Y, X) + 추론, 한 번 호출",
+            group="ols-batched",
+            name="ols(Y, X) + inference, one call",
             size=size,
             setup=setup,
             sd=lambda d: lambda R=_R(), y=d["ys"], X=d["Xs"]: _ols_inf(R.ols(y, X)),
-            refs=(Ref("statsmodels 반복문", sm_loop, threads="follow", lib="statsmodels"),),
+            refs=(Ref("statsmodels loop", sm_loop, threads="follow", lib="statsmodels"),),
             quick=True,
             note="statsmodels는 Python 반복문으로 하나씩 적합한다",
         )
@@ -309,8 +309,8 @@ def _g1_cases():
     out.append(
         Case(
             area="regression",
-            group="최소제곱 일괄",
-            name="ols(y_i, X_i) + 추론, Python 반복문",
+            group="ols-batched",
+            name="ols(y_i, X_i) + inference, Python loop",
             size=size,
             setup=setup,
             sd=sd_loop,
@@ -345,7 +345,7 @@ def _wls_gls_cases():
         out.append(
             Case(
                 area="regression",
-                group="가중·일반화 최소제곱",
+                group="wls-gls",
                 name="wls(y, X, weights=w)",
                 size=_size(n, k),
                 setup=_g1_data(i, weights=True),
@@ -370,7 +370,7 @@ def _wls_gls_cases():
     out.append(
         Case(
             area="regression",
-            group="가중·일반화 최소제곱",
+            group="wls-gls",
             name="gls(y, X, sigma=S)",
             size=_size(n, k),
             setup=_gls_data(n, k),
@@ -405,7 +405,7 @@ def _linregress_cases():
         out.append(
             Case(
                 area="regression",
-                group="단순 회귀",
+                group="simple",
                 name="linregress(x, y)",
                 size=f"{n:,}",
                 n=n,
@@ -418,8 +418,8 @@ def _linregress_cases():
     out.append(
         Case(
             area="regression",
-            group="단순 회귀",
-            name="linregress(x, y), 일괄",
+            group="simple",
+            name="linregress(x, y), batched",
             size=f"{B:,} × {n:,}",
             n=B * n,
             setup=_slr_data(n, batch=B),
@@ -551,7 +551,7 @@ def _g1b_cases():
                     )
                 ),
             ),
-            ("ols(y, X) + 진단", "지렛대·내적 스튜던트화 잔차·Cook 거리·DW·JB·BP", sd_diag, sm_diag),
+            ("ols(y, X) + diagnostics", "지렛대·내적 스튜던트화 잔차·Cook 거리·DW·JB·BP", sd_diag, sm_diag),
             (
                 "ols(y, X).summary()",
                 "",
@@ -563,7 +563,7 @@ def _g1b_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="최소제곱 공분산·진단",
+                    group="ols-cov-diagnostics",
                     name=name,
                     size=_size(n, k),
                     setup=setup,
@@ -576,7 +576,7 @@ def _g1b_cases():
         out.append(
             Case(
                 area="regression",
-                group="최소제곱 공분산·진단",
+                group="ols-cov-diagnostics",
                 name="ols(y, X).resid_studentized_external",
                 size=_size(n, k),
                 setup=setup,
@@ -701,7 +701,7 @@ def _glm_case(n, k, fam, setup, quick=False, extra=""):
         note += "; " + extra
     return Case(
         area="regression",
-        group="일반화 선형 모형",
+        group="glm",
         name=f"glm(y, X, family='{fam}')",
         size=_size(n, k),
         setup=setup,
@@ -732,8 +732,8 @@ def _g2_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="일반화 선형 모형",
-                    name=f"glm(y, X, family='{fam}'), 중간 반복 QR",
+                    group="glm",
+                    name=f"glm(y, X, family='{fam}'), inner iterations by QR",
                     size=_size(n, k),
                     setup=setup,
                     sd=lambda d, fam=fam: _kernel_option("_glm", "glm_fit", _sd_glm(d, family=fam), inner_chol=False),
@@ -744,7 +744,7 @@ def _g2_cases():
                 out.append(
                     Case(
                         area="regression",
-                        group="일반화 선형 모형",
+                        group="glm",
                         name="glm(y, X, family='binomial', cov_type='HC0')",
                         size=_size(n, k),
                         setup=setup,
@@ -801,20 +801,20 @@ def _g2_cases():
     out.append(
         Case(
             area="regression",
-            group="일반화 선형 모형 일괄",
-            name="glm(Y, X, family='binomial') + 추론, 한 번 호출",
+            group="glm-batched",
+            name="glm(Y, X, family='binomial') + inference, one call",
             size=size,
             setup=setup,
             sd=sd_batch,
-            refs=(Ref("statsmodels 반복문", sm_loop, threads="follow", lib="statsmodels"),),
+            refs=(Ref("statsmodels loop", sm_loop, threads="follow", lib="statsmodels"),),
             note="statsmodels는 Python 반복문으로 하나씩 적합한다",
         )
     )
     out.append(
         Case(
             area="regression",
-            group="일반화 선형 모형 일괄",
-            name="glm(y_i, X_i, family='binomial') + 추론, Python 반복문",
+            group="glm-batched",
+            name="glm(y_i, X_i, family='binomial') + inference, Python loop",
             size=size,
             setup=setup,
             sd=sd_loop,
@@ -883,7 +883,7 @@ def _fam_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="일반화 선형 모형 분포족·링크",
+                    group="glm-families",
                     name=name,
                     size=_size(n, k),
                     setup=_fam_data(n, k, kind),
@@ -953,11 +953,11 @@ def _cond_data(kind):
 
 
 COND_LABEL = {
-    "cond4": "조건수 10^4",
-    "cond7": "조건수 10^7",
-    "scale": "열 척도 1–10^8",
-    "collinear": "겹친 열 하나",
-    "separation": "완전 분리",
+    "cond4": "condition number 10^4",
+    "cond7": "condition number 10^7",
+    "scale": "column scales 1–10^8",
+    "collinear": "one duplicated column",
+    "separation": "complete separation",
 }
 
 
@@ -1014,7 +1014,7 @@ def _cond_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="입력 조건",
+                    group="conditioning",
                     name=f"{name}, {COND_LABEL[kind]}",
                     size=_size(COND_N, COND_K),
                     setup=_cond_data(kind),
@@ -1112,7 +1112,7 @@ def _g3_cases():
             "",
         ),
         (
-            "lasso(y, X, alpha=100개 격자)",
+            "lasso(y, X, alpha=100-point grid)",
             sdq(lambda r, d: r.lasso(d["ys"], d["Xs"], alpha=d["gs"])),
             (
                 (
@@ -1129,13 +1129,13 @@ def _g3_cases():
     ]
     cvs = [
         (
-            "lasso_cv(y, X, alphas=100개 격자)",
+            "lasso_cv(y, X, alphas=100-point grid)",
             sdq(lambda r, d: r.lasso_cv(d["ys"], d["Xs"], rng=_sd_rng(1), alphas=d["gs"])),
             ((T, skq(lambda d: _sk_tol("LassoCV", alphas=d["grid"], cv=d["splits"], tol=1e-10).fit(d["X"], d["y"]))),),
             "5겹(같은 접기)",
         ),
         (
-            "elastic_net_cv(y, X, alphas=100개 격자)",
+            "elastic_net_cv(y, X, alphas=100-point grid)",
             sdq(lambda r, d: r.elastic_net_cv(d["ys"], d["Xs"], rng=_sd_rng(1), alphas=d["gs"])),
             (
                 (
@@ -1150,7 +1150,7 @@ def _g3_cases():
             "l1_ratio = 0.5, 5겹(같은 접기)",
         ),
         (
-            "ridge_cv(y, X, cv='gcv', alphas=100개)",
+            "ridge_cv(y, X, cv='gcv', alphas=100)",
             sdq(lambda r, d: r.ridge_cv(d["ys"], d["Xs"], cv="gcv", alphas=d["rgs"])),
             (("scikit-learn", skq(lambda d: _sk_tol("RidgeCV", alphas=d["rgrid"] * d["n"]).fit(d["X"], d["y"]))),),
             "",
@@ -1227,7 +1227,7 @@ def _g3_cases():
     default_err = {
         ("lasso(y, X, alpha=alpha_max/20)", (100_000, 10)): "기본 tol이면 상대 오차 6–9e-8",
         ("elastic_net(y, X, alpha=alpha_max/20)", (100_000, 10)): "기본 tol이면 상대 오차 5–8e-8",
-        ("lasso(y, X, alpha=100개 격자)", (100_000, 10)): "기본 tol이면 상대 오차 1.5e-6(10^4 × 1000에서 3e-5)",
+        ("lasso(y, X, alpha=100-point grid)", (100_000, 10)): "기본 tol이면 상대 오차 1.5e-6(10^4 × 1000에서 3e-5)",
         ("penalized_glm(y, X, family='binomial', alpha=1e-3, l1_ratio=1)", (100_000, 10)): (
             "saga 기본 tol이면 상대 오차 3–6e-5"
         ),
@@ -1238,7 +1238,7 @@ def _g3_cases():
             "기본 tol이면 상대 오차 lbfgs 1e-4, newton-cholesky 2e-7"
         ),
     }
-    quick = {("lasso_cv(y, X, alphas=100개 격자)", (100_000, 10)), ("ridge(y, X, alpha=0.1)", (100_000, 100))}
+    quick = {("lasso_cv(y, X, alphas=100-point grid)", (100_000, 10)), ("ridge(y, X, alpha=0.1)", (100_000, 100))}
     out = []
 
     def add(group, row, n, k, setup):
@@ -1261,15 +1261,15 @@ def _g3_cases():
     for n, k in G3_SIZES:
         setup = _g3_data(n, k)
         for row in fits:
-            add("벌점 회귀", row, n, k, setup)
+            add("penalized", row, n, k, setup)
         for row in cvs:
-            add("벌점 회귀 교차 검증", row, n, k, setup)
+            add("penalized-cv", row, n, k, setup)
         for row in pglm:
-            add("정규화 GLM", row, n, k, setup)
+            add("penalized-glm", row, n, k, setup)
     for n, k in G3_EXTRA:
         setup = _g3_data(n, k)
         for row in (ridge, lasso):
-            add("벌점 회귀", row, n, k, setup)
+            add("penalized", row, n, k, setup)
     return out
 
 
@@ -1363,7 +1363,7 @@ def _g4_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="강건 회귀",
+                    group="robust",
                     name=f"rlm(y, X, norm='{norm}')",
                     size=_size(n, k),
                     setup=setup,
@@ -1382,7 +1382,7 @@ def _g4_cases():
         out.append(
             Case(
                 area="regression",
-                group="강건 회귀",
+                group="robust",
                 name="rlm(y, X, norm='huber')",
                 size=_size(n, k),
                 setup=_g4_data(n, k),
@@ -1400,7 +1400,7 @@ def _g4_cases():
         out.append(
             Case(
                 area="regression",
-                group="강건 회귀",
+                group="robust",
                 name="rlm(y, X, method='MM')",
                 size=_size(n, k),
                 setup=setup,
@@ -1414,8 +1414,8 @@ def _g4_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="강건 회귀",
-                    name="rlm(y, X, method='MM'), 작은 n 방식",
+                    group="robust",
+                    name="rlm(y, X, method='MM'), small-n method",
                     size=_size(n, k),
                     setup=setup,
                     sd=lambda d, mm=mm: _kernel_option("_robust", "rlm_fit", mm(d), large_n=False),
@@ -1433,12 +1433,12 @@ def _g4_cases():
     out.append(
         Case(
             area="regression",
-            group="강건 회귀 일괄",
-            name="rlm(Y, X, norm='huber'), 한 번 호출",
+            group="robust-batched",
+            name="rlm(Y, X, norm='huber'), one call",
             size=f"{B:,} × ({n}, {k})",
             setup=_batch_data(B, n, k, "outliers"),
             sd=lambda d: lambda r=_R(): r.rlm(d["ys"], d["Xs"], norm="huber"),
-            refs=(Ref("statsmodels 반복문", sm_rlm_loop, threads="follow", lib="statsmodels"),),
+            refs=(Ref("statsmodels loop", sm_rlm_loop, threads="follow", lib="statsmodels"),),
             note="statsmodels는 Python 반복문으로 하나씩 적합한다",
         )
     )
@@ -1454,7 +1454,7 @@ def _g4_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="강건 기울기",
+                    group="robust-slopes",
                     name=f"{name}(y, x)",
                     size=f"{n:,}",
                     n=n,
@@ -1530,7 +1530,7 @@ def _g5_cases():
         out.append(
             Case(
                 area="regression",
-                group="분위 회귀",
+                group="quantreg",
                 name="quantreg(y, X, q=0.5, cov_type='iid')",
                 size=_size(n, k),
                 setup=setup,
@@ -1543,7 +1543,7 @@ def _g5_cases():
         out.append(
             Case(
                 area="regression",
-                group="분위 회귀",
+                group="quantreg",
                 name="quantreg(y, X, q=0.5, cov_type='ker')",
                 size=_size(n, k),
                 setup=setup,
@@ -1556,7 +1556,7 @@ def _g5_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="분위 회귀",
+                    group="quantreg",
                     name="quantreg(y, X, q=0.5)",
                     size=_size(n, k),
                     setup=setup,
@@ -1578,7 +1578,7 @@ def _g5_cases():
     out.append(
         Case(
             area="regression",
-            group="분위 회귀(분위 9개)",
+            group="quantreg-9q",
             name="quantreg(y, X, q=[0.1, ..., 0.9], cov_type='iid')",
             size=_size(n, k),
             setup=setup,
@@ -1598,7 +1598,7 @@ def _g5_cases():
     out.append(
         Case(
             area="regression",
-            group="분위 회귀(분위 9개)",
+            group="quantreg-9q",
             name="quantreg(y, X, q=[0.1, ..., 0.9], cov_type='ker')",
             size=_size(n, k),
             setup=setup,
@@ -1610,8 +1610,8 @@ def _g5_cases():
     out.append(
         Case(
             area="regression",
-            group="분위 회귀(분위 9개)",
-            name="quantreg(y, X, q=q, cov_type='iid'), 분위마다 따로",
+            group="quantreg-9q",
+            name="quantreg(y, X, q=q, cov_type='iid'), one fit per quantile",
             size=_size(n, k),
             setup=setup,
             sd=lambda d: lambda r=_R(): [r.quantreg(d["ys"], d["Xs"], q=q, cov_type="iid") for q in QS9],
@@ -1629,12 +1629,12 @@ def _g5_cases():
     out.append(
         Case(
             area="regression",
-            group="분위 회귀 일괄",
-            name="quantreg(Y, X, q=0.5, cov_type='ker'), 한 번 호출",
+            group="quantreg-batched",
+            name="quantreg(Y, X, q=0.5, cov_type='ker'), one call",
             size=f"{B:,} × ({n}, {k})",
             setup=_batch_data(B, n, k, "t3"),
             sd=lambda d: lambda r=_R(): r.quantreg(d["ys"], d["Xs"], q=0.5, cov_type="ker"),
-            refs=(Ref("statsmodels 반복문", sm_loop, threads="follow", lib="statsmodels"),),
+            refs=(Ref("statsmodels loop", sm_loop, threads="follow", lib="statsmodels"),),
             note="statsmodels는 Python 반복문으로 하나씩 적합한다",
         )
     )
@@ -1766,7 +1766,7 @@ def _g6_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="비선형 최소제곱",
+                    group="nls",
                     name="nls(f, x, y, p0)",
                     size=f"n={n:,}, p={p}",
                     setup=setup,
@@ -1785,7 +1785,7 @@ def _g6_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="비선형 최소제곱",
+                    group="nls",
                     name="nls(f, x, y, p0, jac=J)",
                     size=f"n={n:,}, p={p}",
                     setup=setup,
@@ -1801,7 +1801,7 @@ def _g6_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="비선형 최소제곱",
+                    group="nls",
                     name="nls(f, x, y, p0, bounds=(0, 10))",
                     size=f"n={n:,}, p={p}",
                     setup=setup,
@@ -1816,7 +1816,7 @@ def _g6_cases():
             out.append(
                 Case(
                     area="regression",
-                    group="비선형 최소제곱",
+                    group="nls",
                     name="nls(f, x, y, p0, weights=w)",
                     size=f"n={n:,}, p={p}",
                     setup=setup,
@@ -1832,6 +1832,31 @@ def _g6_cases():
 
 
 # ---------------------------------------------------------------- all
+
+
+# The section title of each group in bench/regression/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "ols": "최소제곱",
+    "ols-batched": "최소제곱 일괄",
+    "wls-gls": "가중·일반화 최소제곱",
+    "ols-cov-diagnostics": "최소제곱 공분산·진단",
+    "simple": "단순 회귀",
+    "glm": "일반화 선형 모형",
+    "glm-batched": "일반화 선형 모형 일괄",
+    "glm-families": "일반화 선형 모형 분포족·링크",
+    "conditioning": "입력 조건",
+    "penalized": "벌점 회귀",
+    "penalized-cv": "벌점 회귀 교차 검증",
+    "penalized-glm": "정규화 GLM",
+    "robust": "강건 회귀",
+    "robust-batched": "강건 회귀 일괄",
+    "robust-slopes": "강건 기울기",
+    "quantreg": "분위 회귀",
+    "quantreg-9q": "분위 회귀(분위 9개)",
+    "quantreg-batched": "분위 회귀 일괄",
+    "nls": "비선형 최소제곱",
+}
 
 
 def cases() -> list[Case]:

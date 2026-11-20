@@ -717,7 +717,7 @@ def test_inner_normal_equations_aliasing():
 @pytest.mark.parametrize("kappa", [1.0, 1e4, 1e8])
 def test_inner_normal_equations_against_arb(family, link, kappa):
     # G40 on problems large enough for the normal equations (n k = 1200): the coefficients stay
-    # u-accurate against Arb (bench/regression/g2/refine.md)
+    # u-accurate against Arb (bench/regression/g2/refine.md at commit 4151d2a)
     import sys
 
     sys.path.insert(0, str(refdata_glm.REF.parents[3] / "tools"))
@@ -765,7 +765,7 @@ NONCANONICAL = [
 @pytest.mark.parametrize("kappa", [1e4, 1e6, 1e8, 1e10])
 def test_noncanonical_against_arb(family, link, base, scale, kappa):
     # G42: Newton's steps through the thin Q in the polishing iterations and the final solve
-    # (bench/regression/g2/noncanonical.md): the canonical links' level up to kappa 1e8, about
+    # (bench/regression/g2/noncanonical.md at commit 4151d2a): the canonical links' level up to kappa 1e8, about
     # 10 u at 1e10 (the canonical links there: 1e-15)
     import sys
 

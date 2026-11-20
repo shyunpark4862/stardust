@@ -727,7 +727,7 @@ def test_beta_family_small_shapes():
                 assert Fd.logcdf(x) == pytest.approx(math.log1p(-cc), rel=1e-13), (a, b, x)
 
 
-# Tiny shapes, tiny and subnormal arguments (bench/stats/opt/f/tiny_shapes.py): the incomplete
+# Tiny shapes, tiny and subnormal arguments (bench/stats/opt/f/tiny_shapes.py at commit 4151d2a): the incomplete
 # beta near 1 while x is far from 1, where 1 - I formed from I lost up to a digit (Boost's
 # betainc and our own BPSER both, 6e-15 to 1e-14), x below the normal doubles (Boost: 1e-4 off;
 # the F argument dfn x / (dfn x + dfd) below the doubles altogether), and a result just above

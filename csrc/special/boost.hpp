@@ -1,5 +1,5 @@
 // Boost.Math where it is no loss (user decision 2026-11-14; docs/design/special.md
-// §5.14, bench/special/boost/routing.md).
+// §5.14, bench/special/boost/routing.md at commit 4151d2a).
 //
 // A region goes to Boost only if Boost keeps the 1e-14 contract there on every
 // reference point and is not slower (within 10%, one thread). Everything else

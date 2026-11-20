@@ -1,6 +1,6 @@
 """Golden cases for the array area (tools/golden.py has the contract).
 
-Written for the merge (bench/merge/golden) against the API of the array package before the
+Written for the merge (bench/merge/golden at commit 4151d2a) against the API of the array package before the
 merge, which the array area of sd keeps: every name in ``__all__`` of the time plus the ndarray
 attributes, methods, operators and Python protocols. Inputs come only from ``L.rng(seed)`` and fixed literals.
 

@@ -327,7 +327,7 @@ struct Beta {
     // Both shapes at most 6: sd.special's betainc and betaincc, which go to Boost there
     // (special/ops/incbeta.hpp, docs/design/special.md §5.14: measured inside the contract on
     // every reference point, and against Arb on 4e4 points of this region as accurate as the
-    // double-double ibeta, 2.7e-15 to its 4.8e-15; bench/stats/opt/b) at half the time or
+    // double-double ibeta, 2.7e-15 to its 4.8e-15; bench/stats/opt/b at commit 4151d2a) at half the time or
     // less. x is the input itself, so nothing is rounded on the way in. Larger shapes, and
     // a result below 2^-960, are ibeta's.
     static bool small_shapes(double a, double b) { return a <= 6.0 && b <= 6.0; }

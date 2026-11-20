@@ -1,4 +1,4 @@
-"""sd.stats against scipy.stats and numpy's Generator. From bench/stats/t4/speed.py
+"""sd.stats against scipy.stats and numpy's Generator. From bench/stats/t4/speed.py (at commit 4151d2a)
 (continuous), t5/speed.py (discrete: small supports and the "wide" set), t6/speed.py
 (extreme value, lifetime, noncentral), t7/speed.py (sample vs numpy), t8/speed.py
 (descriptive), t9/speed.py and t9/cdf_speed.py (multivariate; mvn / mvt cdf) and
@@ -129,19 +129,19 @@ T6 = [
 ]
 
 QUICK_DIST = {
-    ("연속 분포", "Normal.cdf"),
-    ("연속 분포", "Normal.icdf"),
-    ("연속 분포", "Gamma.icdf"),
-    ("연속 분포", "StudentT.cdf"),
-    ("이산 분포", "Binomial.cdf"),
-    ("이산 분포(넓은 지지)", "Poisson.cdf"),
-    ("극값·수명·비중심 분포", "NoncentralT.cdf"),
-    ("연속 분포(스칼라)", "Normal.cdf"),
-    ("이산 분포", "Zipf.icdf"),
-    ("이산 분포(넓은 지지)", "Hypergeometric.cdf"),
-    ("이산 분포(넓은 지지)", "BetaBinomial.icdf"),
-    ("연속 분포(다른 매개변수)", "Gamma(a=0.3).cdf"),
-    ("매개변수 배열", "Binomial.cdf"),
+    ("continuous", "Normal.cdf"),
+    ("continuous", "Normal.icdf"),
+    ("continuous", "Gamma.icdf"),
+    ("continuous", "StudentT.cdf"),
+    ("discrete", "Binomial.cdf"),
+    ("discrete-wide", "Poisson.cdf"),
+    ("extreme-noncentral", "NoncentralT.cdf"),
+    ("continuous-scalar", "Normal.cdf"),
+    ("discrete", "Zipf.icdf"),
+    ("discrete-wide", "Hypergeometric.cdf"),
+    ("discrete-wide", "BetaBinomial.icdf"),
+    ("continuous-params", "Gamma(a=0.3).cdf"),
+    ("param-arrays", "Binomial.cdf"),
 }
 
 # The inverses of the log probabilities, for a subset (their cost keys "<class>.ilogcdf").
@@ -150,7 +150,7 @@ ILOG_DISTS = {"Normal", "Gamma", "Binomial", "Poisson"}
 
 # scipy's new-style distributions (scipy.stats.Normal, ...), built from sd's parameters
 # (scalars or arrays): a second comparator column wherever the class exists.
-NEW_LABEL = "scipy 새 방식"
+NEW_LABEL = "scipy new API"
 NEW = {
     "Normal": lambda st, kw: st.Normal(mu=kw["mu"], sigma=kw["sigma"]),
     "Uniform": lambda st, kw: st.Uniform(a=kw["a"], b=kw["b"]),
@@ -357,7 +357,7 @@ def _dist_cases(group, specs, methods, points, *, no_scipy=frozenset(), sampled=
                     note=note,
                 )
             )
-        out += _scalar_cases(f"{group}(스칼라)", name, params, setup)
+        out += _scalar_cases(f"{group}-scalar", name, params, setup)
     return out
 
 
@@ -390,7 +390,7 @@ def _scalar_cases(group, name, params, setup):
 
 
 def _wide_cases():
-    group = "이산 분포(넓은 지지)"
+    group = "discrete-wide"
     out = []
     for i, (name, _, _) in enumerate(T5_WIDE):
         setup = _wide_setup(i)
@@ -425,7 +425,7 @@ def _wide_cases():
 
 
 def _other_cases():
-    group = "연속 분포(다른 매개변수)"
+    group = "continuous-params"
     out = []
     for name, params, scipy_ref in OTHER:
         setup = _dist_setup(name, params, scipy_ref, "sd")
@@ -525,7 +525,7 @@ def _param_array_setup(name, draw, scipy_ref):
 
 
 def _param_array_cases():
-    group = "매개변수 배열"
+    group = "param-arrays"
     out = []
     for name, draw, scipy_ref, note in PARAM_ARRAY:
         setup = _param_array_setup(name, draw, scipy_ref)
@@ -573,7 +573,7 @@ def _mid_setup(name, params, scipy_ref, n):
 
 
 def _mid_cases():
-    group = "점 10^3·10^4개"
+    group = "points-small"
     out = []
     for name, params, scipy_ref, m in MID:
         for n, size in MID_SIZES:
@@ -688,7 +688,7 @@ def _sample_cases():
         out.append(
             Case(
                 area="stats",
-                group="표본 추출",
+                group="sampling",
                 name=label,
                 size="10^6",
                 n=T7_N,
@@ -702,7 +702,7 @@ def _sample_cases():
         out.append(
             Case(
                 area="stats",
-                group="표본 추출(스칼라)",
+                group="sampling-scalar",
                 name=label,
                 setup=setup,
                 sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(rng=r),
@@ -815,7 +815,7 @@ def _describe_cases():
             out.append(
                 Case(
                     area="stats",
-                    group="기술 통계",
+                    group="descriptive",
                     name=f"{base}({', '.join(call(ax))})",
                     size=size,
                     n=10**6,
@@ -830,7 +830,7 @@ def _describe_cases():
             out.append(
                 Case(
                     area="stats",
-                    group="기술 통계",
+                    group="descriptive",
                     name=f"{base}({', '.join(call(None))})",
                     size=str(T8_SMALL_N),
                     n=T8_SMALL_N,
@@ -913,9 +913,9 @@ def _mv_cases():
         out.append(
             Case(
                 area="stats",
-                group="다변량 분포",
+                group="multivariate",
                 name=f"{label}.{meth}",
-                size="10^5 점",
+                size="10^5 points",
                 n=T9_N,
                 setup=setup,
                 sd=lambda d, meth=meth: lambda f=getattr(d["D"], meth), X=d["X"]: f(X),
@@ -926,9 +926,9 @@ def _mv_cases():
         out.append(
             Case(
                 area="stats",
-                group="다변량 분포",
+                group="multivariate",
                 name=f"{label}.sample",
-                size="10^5 점",
+                size="10^5 points",
                 n=T9_N,
                 setup=lambda setup=setup: _with_rng(setup()),
                 sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(T9_N, rng=r),
@@ -1025,9 +1025,9 @@ def _mvcdf_cases():
         out.append(
             Case(
                 area="stats",
-                group="다변량 정규·t cdf",
+                group="mvn-mvt-cdf",
                 name=f"{cls}({what}).cdf(x, atol={atol:.0e})",
-                size=f"{n_ours:,} 점",
+                size=f"{n_ours:,} points",
                 n=n_ours,
                 setup=_mvcdf_setup(d, df),
                 sd=lambda dd, atol=atol: lambda D=dd["D"], X=dd["X"]: D.cdf(X, atol=atol),
@@ -1134,9 +1134,9 @@ def _matrix_cases():
         out.append(
             Case(
                 area="stats",
-                group="행렬 분포",
+                group="matrix",
                 name=f"{label}.logpdf",
-                size="10^4 행렬",
+                size="10^4 matrices",
                 n=T10_N,
                 setup=setup,
                 sd=lambda d: lambda D=d["D"], X=d["X"]: D.logpdf(X),
@@ -1147,9 +1147,9 @@ def _matrix_cases():
         out.append(
             Case(
                 area="stats",
-                group="행렬 분포",
+                group="matrix",
                 name=f"{label}.sample",
-                size="10^4 행렬",
+                size="10^4 matrices",
                 n=T10_N,
                 setup=lambda setup=setup: _with_rng(setup()),
                 sd=lambda d: lambda D=d["D"], r=d["rng"]: D.sample(T10_N, rng=r),
@@ -1162,13 +1162,35 @@ def _matrix_cases():
 # ---------------------------------------------------------------- all
 
 
+# The section title of each group in bench/stats/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "continuous": "연속 분포",
+    "continuous-scalar": "연속 분포(스칼라)",
+    "continuous-params": "연속 분포(다른 매개변수)",
+    "discrete": "이산 분포",
+    "discrete-scalar": "이산 분포(스칼라)",
+    "discrete-wide": "이산 분포(넓은 지지)",
+    "extreme-noncentral": "극값·수명·비중심 분포",
+    "extreme-noncentral-scalar": "극값·수명·비중심 분포(스칼라)",
+    "param-arrays": "매개변수 배열",
+    "points-small": "점 10^3·10^4개",
+    "sampling": "표본 추출",
+    "sampling-scalar": "표본 추출(스칼라)",
+    "descriptive": "기술 통계",
+    "multivariate": "다변량 분포",
+    "mvn-mvt-cdf": "다변량 정규·t cdf",
+    "matrix": "행렬 분포",
+}
+
+
 def cases() -> list[Case]:
     return [
-        *_dist_cases("연속 분포", T4, CONT, "scipy"),
+        *_dist_cases("continuous", T4, CONT, "scipy"),
         *_other_cases(),
-        *_dist_cases("이산 분포", T5, DISC, "sd", no_scipy=T5_NO_SCIPY, sampled=SMALL_SAMPLED, memo=True),
+        *_dist_cases("discrete", T5, DISC, "sd", no_scipy=T5_NO_SCIPY, sampled=SMALL_SAMPLED, memo=True),
         *_wide_cases(),
-        *_dist_cases("극값·수명·비중심 분포", T6, CONT, "sd"),
+        *_dist_cases("extreme-noncentral", T6, CONT, "sd"),
         *_param_array_cases(),
         *_mid_cases(),
         *_sample_cases(),

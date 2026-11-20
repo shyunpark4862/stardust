@@ -1,6 +1,6 @@
 """Timing, thread control and the facts recorded next to every measurement.
 
-The timing rule is the one the area benches converged on (bench/frame/_harness.py,
+The timing rule is the one the area benches converged on (bench/frame/_harness.py (at commit 4151d2a),
 bench/special/common.py): call the function in batches long enough that the timer's
 resolution and the loop's overhead do not matter, and keep the per-call time of every
 batch. The minimum is the run least disturbed by the OS; the median of the batches

@@ -37,12 +37,15 @@ import pathlib
 import select
 import shutil
 import signal
+import statistics
 import subprocess
 import sys
 import threading
 import time
 
 from . import harness, proc, results
+from .console import WIDTH, Console, block, case_label, fmt_duration, ljust, rule, table
+from .harness import fmt_time
 from .registry import Case, RRef
 
 
@@ -300,15 +303,6 @@ def estimate(cases: list[Case], rounds: int) -> tuple[float, int]:
     return known * rounds, sum(1 for v in exp.values() if not v)
 
 
-def fmt_duration(s: float) -> str:
-    s = max(0, int(s))
-    if s < 60:
-        return f"{s}초"
-    if s < 3600:
-        return f"{s // 60}분 {s % 60:02d}초"
-    return f"{s // 3600}시간 {s % 3600 // 60:02d}분"
-
-
 class Eta:
     def __init__(self, pairs, expected):
         self.expected = expected
@@ -343,7 +337,7 @@ class Eta:
 # ---------------------------------------------------------------- a quiet machine
 
 
-def wait_for_quiet(say, limits: Limits, mode: str = "wait") -> dict | None:
+def wait_for_quiet(con: Console, limits: Limits, mode: str = "wait") -> dict | None:
     """Measure the CPU other processes use; when it is above limits.quiet_cores, list the
     busiest and (mode "wait" or "strict") wait for it to drop. None when the counters
     cannot be read. Returns {"other_cores", "busiest", "waited_s", "quiet", "stopped"}."""
@@ -353,22 +347,20 @@ def wait_for_quiet(say, limits: Limits, mode: str = "wait") -> dict | None:
     t0 = time.monotonic()
     first = (other, top)
     if other <= limits.quiet_cores:
-        say(f"CPU: 다른 프로세스가 {other:.1f}코어를 쓴다(기준 {limits.quiet_cores:g}코어 이하). 시작한다")
         return {"other_cores": round(other, 2), "busiest": top, "waited_s": 0, "quiet": True, "stopped": False}
-    say(
-        f"경고: 다른 프로세스가 CPU {other:.1f}코어를 쓴다(기준 {limits.quiet_cores:g}코어). "
-        f"바쁜 프로세스: {', '.join(top) or '(읽을 수 없는 프로세스)'}"
-    )
+    con.print(f"CPU check: other processes keep {other:.1f} cores busy (limit {limits.quiet_cores:g}).")
+    for row in top or ["(processes that cannot be read)"]:
+        con.print(f"  {row}")
     if mode == "no":
         return {"other_cores": round(other, 2), "busiest": top, "waited_s": 0, "quiet": False, "stopped": False}
-    say(f"조용해질 때까지 최대 {fmt_duration(limits.wait_quiet_s)} 기다린다(--no-wait: 바로 시작)")
+    con.print(f"Waiting up to {fmt_duration(limits.wait_quiet_s)} for a quiet machine (--no-wait starts now).")
     last_report = time.monotonic()
     while time.monotonic() - t0 < limits.wait_quiet_s:
         time.sleep(limits.wait_poll_s)
         other, top = proc.idle_check(limits.idle_window_s)
         if other is not None and other <= limits.quiet_cores:
             waited = time.monotonic() - t0
-            say(f"CPU: 다른 프로세스 {other:.1f}코어로 조용해졌다({fmt_duration(waited)} 기다림). 시작한다")
+            con.print(f"Quiet after {fmt_duration(waited)} ({other:.1f} cores). Starting.")
             return {
                 "other_cores": round(other, 2),
                 "busiest": top,
@@ -378,13 +370,13 @@ def wait_for_quiet(say, limits: Limits, mode: str = "wait") -> dict | None:
                 "at_first": round(first[0], 2),
             }
         if time.monotonic() - last_report >= 60:
-            say(f"  아직 바쁘다: {other:.1f}코어 ({', '.join(top[:3])})")
+            con.print(f"  still busy: {other:.1f} cores ({', '.join(top[:3])})")
             last_report = time.monotonic()
     waited = time.monotonic() - t0
     stopped = mode == "strict"
-    say(
-        f"{fmt_duration(waited)} 기다렸지만 바쁘다({other:.1f}코어). "
-        + ("멈춘다(--strict)." if stopped else "경고를 남기고 시작한다. 결과의 잡음이 클 수 있다.")
+    con.print(
+        f"Still busy after {fmt_duration(waited)} ({other:.1f} cores): "
+        + ("stopping (--strict)." if stopped else "starting anyway; expect more noise.")
     )
     return {
         "other_cores": round(other, 2),
@@ -394,6 +386,189 @@ def wait_for_quiet(say, limits: Limits, mode: str = "wait") -> dict | None:
         "stopped": stopped,
         "at_first": round(first[0], 2),
     }
+
+
+# ---------------------------------------------------------------- what the console shows
+
+
+def _round_desc(rnd: int, rounds: int, smoke: bool) -> str:
+    return "Smoke" if smoke and rounds == 1 else f"Round {rnd + 1}/{rounds}"
+
+
+def _header(cases, rounds, threads, use_r, have_r, smoke, lanes, jobs, limits, env, run_id, check, first, out):
+    git = env.get("git", {})
+    machine = env.get("machine", {})
+    ths = threads or sorted({t for c in cases for t in c.threads})
+    est, unknown = estimate(cases, rounds)
+    if unknown == len(cases):
+        expected = "unknown (no baseline)"
+    elif unknown:
+        expected = f"{fmt_duration(est)} + {unknown} unknown"
+    else:
+        expected = fmt_duration(est)
+    if check is None:
+        cpu = "not checked" if smoke else "no counters"
+    else:
+        cpu = f"{check['other_cores']:.1f} cores" + ("" if check.get("quiet") else " (busy)")
+    has_r = any(isinstance(r, RRef) for c in cases for r in c.refs)
+    r_text = "-" if not has_r else "yes" if use_r else "not found" if shutil.which("R") is None else "off"
+    pairs = [
+        ("Run", run_id),
+        ("Commit", f"{git.get('commit') or '-'} ({'dirty' if git.get('dirty') else 'clean'})"),
+        ("Cases", f"{len(cases):,}"),
+        ("Rounds", str(rounds)),
+        ("sd threads", ", ".join(map(str, ths))),
+        ("R comparators", r_text),
+        ("Expected", "-" if smoke else expected),
+        ("Other CPU", cpu),
+        ("Case limits", f"{fmt_duration(limits.case_timeout_s)}, {limits.rss_bytes / 2**30:g} GB"),
+        ("Machine", f"{machine.get('chip', '?')}, {machine.get('cpus', '?')} cores"),
+    ]
+    if lanes > 1:
+        pairs.append(("Lanes", f"{lanes} (at most {jobs} processes)"))
+    if first:
+        pairs.append(("Resumed at", f"{first:,} of {rounds * len(cases):,}"))
+    areas = ", ".join(sorted({c.area for c in cases}))
+    title = "stardust smoke run (every case called once, nothing timed)" if smoke else "stardust speed run"
+    out = pathlib.Path(out)
+    files = [("Results", _show(out)), ("Log", _show(out.with_suffix(".log")))]
+    return [""] + block(title, pairs, [("Areas", areas), *files])
+
+
+def _show(path) -> str:
+    """A path relative to the repository when it is inside it."""
+    path = pathlib.Path(path).resolve()
+    try:
+        return str(path.relative_to(results.ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _ratios(c) -> dict[str, float]:
+    """comparator label -> comparator time / sd time, per element (a comparator timed on a
+    sample has its own n), at sd's lowest thread count: a "follow" comparator at that count,
+    a "fixed" one at its own threads."""
+    ts = c["timings"]
+    sd = [t for t in ts if t["label"] == "sd" and t.get("min")]
+    if not sd:
+        return {}
+    s = min(sd, key=lambda t: t["threads"])
+    per_sd = s["min"] / (s.get("n") or 1)
+    return {
+        t["label"]: (t["min"] / (t.get("n") or 1)) / per_sd
+        for t in ts
+        if t["label"] != "sd" and t.get("min") and t["threads"] in (None, s["threads"])
+    }
+
+
+def _result_line(con: Console, case, rec, rnd: int, rounds: int) -> str:
+    """One case's result so far (the minimum over the rounds done): sd at each thread count,
+    then each comparator as comparator / sd (red when sd is slower)."""
+    sd = sorted((t for t in rec["timings"] if t["label"] == "sd"), key=lambda t: t["threads"])
+    parts = []
+    for t in sd:
+        v = fmt_time(t["min"]) if t.get("min") is not None else con.color("failed", "31")
+        parts.append(v if len(sd) == 1 and t["threads"] == 1 else f"{t['threads']}T {v}")
+    text = f"sd {' · '.join(parts)}" if sd else "sd -"
+    ratios = _ratios(rec)
+    refs = []
+    for label in dict.fromkeys(t["label"] for t in rec["timings"] if t["label"] != "sd"):
+        r = ratios.get(label)
+        if r is None:
+            refs.append(f"{label} {con.color('failed', '31')}")
+        else:
+            refs.append(f"{label} {con.color(f'{r:.2f}x', '31') if r < 1 else f'{r:.2f}x'}")
+    lead = f"r{rnd + 1} " if rounds > 1 else ""
+    name = ljust(case_label(case), 46)
+    busy = con.color(f"   busy ({rec['other_cpu']:.1f} cores)", "33") if rec.get("busy") else ""
+    return f"  {con.color(lead, '2')}{name}  {text}" + (f"   {' · '.join(refs)}" if refs else "") + busy
+
+
+def _summary(data, total, interrupted, out, log_path) -> list[str]:
+    cs = data["cases"]
+    opts = data["options"]
+    smoke = opts.get("smoke", False)
+    timings = [t for c in cs for t in c["timings"]]
+    failed = [t for t in timings if t.get("min") is None and t.get("error") != "not measured"]
+    stopped = [c for c in cs if c.get("failure")]
+    busy = [c for c in cs if c.get("busy")]
+    peak = max((c.get("peak_rss_mb") or 0 for c in cs), default=0)
+    pairs = [
+        ("Cases", f"{len(cs):,}"),
+        ("Elapsed", fmt_duration(total)),
+        ("Measurements", f"{sum(1 for t in timings if t.get('min') is not None):,}"),
+        ("Failed", f"{len(failed):,}"),
+        ("Stopped cases", f"{len(stopped):,}"),
+        ("Busy cases", f"{len(busy):,}"),
+        ("Peak memory", f"{peak / 1024:.1f} GB"),
+        ("Rounds done", f"{min((c.get('rounds') or 0 for c in cs), default=0)} of {opts['rounds']}"),
+    ]
+    title = "Run summary" + (" (interrupted)" if interrupted else "")
+    lines = [""] + block(title, pairs)
+    by_area: dict[str, list] = {}
+    for c in cs:
+        by_area.setdefault(c["area"], []).append(c)
+    rows = []
+    for area, group in by_area.items():
+        bad = sum(
+            1 for c in group if c.get("failure") or any(t.get("min") is None and t.get("error") for t in c["timings"])
+        )
+        row = [
+            area,
+            f"{len(group):,}",
+            f"{bad:,}",
+            f"{sum(1 for c in group if c.get('busy')):,}",
+            fmt_duration(sum(c.get("seconds_per_round") or 0 for c in group)),
+        ]
+        rows.append(row)
+    headers = ["Area", "Cases", "Failed", "Busy", "Case time" if smoke else "Time per round"]
+    lines += table(headers, rows, "lrrrr")
+    lines.append(rule())
+    if not smoke:
+        per: dict[tuple, list[float]] = {}
+        for c in cs:
+            for label, r in _ratios(c).items():
+                per.setdefault((c["area"], label), []).append(r)
+        if per:
+            crow = [
+                [area, label, f"{len(rs):,}", f"{statistics.median(rs):.2f}x", f"{sum(r < 1 for r in rs):,}"]
+                for (area, label), rs in per.items()
+            ]
+            lines += table(["Area", "Compared with", "Cases", "Others / sd", "sd slower"], crow, "llrrr")
+            lines.append(rule())
+    problems = [(c, c["failure"]) for c in stopped] + [
+        (c, f"{t['label']} ({t['threads'] or 'default'}): {t['error']}")
+        for c in cs
+        if not c.get("failure")
+        for t in c["timings"]
+        if t.get("min") is None and t.get("error") and t["error"] != "not measured"
+    ]
+    if problems:
+        lines.append("Failures:")
+        for c, why in problems[:12]:
+            lines.append(f"  {c['area']} · {c['name']}{' [' + c['size'] + ']' if c.get('size') else ''}")
+            lines.append(f"      {why.strip().splitlines()[-1][: WIDTH - 6]}")
+        if len(problems) > 12:
+            lines.append(f"  ... and {len(problems) - 12} more (see the run file)")
+        lines.append(rule())
+    notes = []
+    if interrupted:
+        notes.append(f"Interrupted. Resume with:\n    .venv/bin/python -m bench.speed run --resume {_show(out)}")
+    if busy:
+        notes.append(
+            f"{len(busy)} cases ran while other processes kept the CPU busy (marked in the tables).\n"
+            f"    Measure them again:\n    .venv/bin/python -m bench.speed run --rerun-busy {_show(out)}"
+        )
+    if not smoke and not interrupted:
+        notes.append(
+            "Others / sd is the median over the cases of comparator time / sd time, per\n"
+            "    element, at sd's lowest thread count: above 1, sd is faster. 'sd slower'\n"
+            "    counts the cases below 1."
+        )
+    notes.append(f"Results: {_show(out)}\n    Log:     {_show(log_path)}")
+    lines.append("Notes:")
+    lines += [f"[{k}] {n}" for k, n in enumerate(notes, 1)]
+    return lines
 
 
 # ---------------------------------------------------------------- the run
@@ -471,17 +646,13 @@ def run(
     log_path = out.with_suffix(".log")
     log = open(log_path, "a", buffering=1)  # noqa: SIM115  (the workers write to it too)
 
-    def say(msg):
-        stamp = datetime.datetime.now().strftime("%H:%M:%S")
-        with lock:
-            log.write(f"{stamp} {msg}\n")
-            if progress:
-                harness.eprint(msg)
+    con = Console(log, show=progress)
+    say = con.print
 
     areas = sorted({c.area for c in cases})
     have_r = use_r and any(isinstance(r, RRef) for c in cases for r in c.refs) and shutil.which("R") is not None
     if use_r and not have_r and any(isinstance(r, RRef) for c in cases for r in c.refs):
-        say("R이 없어 R 비교는 건너뛴다")
+        say("R not found: skipping the R comparators.")
     state.use_r = have_r or (resume is not None and state.use_r)
     lanes = max(1, jobs // (2 if state.use_r else 1)) if smoke else 1
     parallel = lanes > 1
@@ -496,7 +667,7 @@ def run(
 
     load0 = proc.load1()
     env.setdefault("load1_at_start", round(load0, 2))
-    check = None if smoke else wait_for_quiet(say, limits, quiet)
+    check = None if smoke else wait_for_quiet(con, limits, quiet)
     if check is not None:
         env.setdefault("cpu_checks", []).append(check)
         if check.get("stopped"):
@@ -506,11 +677,10 @@ def run(
             return {"path": str(out), "interrupted": True, "stopped_busy": True, "cases": []}
     elif not smoke and load0 > limits.load_warn:
         busy = proc.busy_processes()
-        say(f"경고: 1분 부하가 {load0:.1f}이다(조용한 기계를 바란다). 바쁜 프로세스: {', '.join(busy) or '없음'}")
-    if first == 0:
-        est, unknown = estimate(cases, rounds)
-        tail = f", 기준선에 없는 사례 {unknown}개" if unknown else ""
-        say(f"사례 {len(cases)}개 × {rounds}라운드, 예상 {fmt_duration(est)}{tail}. 결과 {out}, 로그 {log_path}")
+        say(f"Warning: the 1-minute load is {load0:.1f} (a quiet machine is wanted). Busiest: {', '.join(busy) or '-'}")
+    con.lines(
+        _header(cases, rounds, threads, state.use_r, have_r, smoke, lanes, jobs, limits, env, run_id, check, first, out)
+    )
 
     def snapshot(next_round, next_index):
         data = {
@@ -617,9 +787,10 @@ def run(
             if status != "ok":
                 break
             if reply.get("setup_error"):
-                say(f"  {cid} 준비 실패: {reply['setup_error'].strip().splitlines()[-1]}")
+                con.event("setup", case_label(by_id[cid]), reply["setup_error"].strip().splitlines()[-1])
             for label_, t, err in reply["errors"]:
-                say(f"  {cid}: {label_} ({t if t is not None else '기본'} 스레드) 실패: {err}")
+                th = "default threads" if t is None else f"{t} thread{'s' if t != 1 else ''}"
+                con.event("failed", case_label(by_id[cid]), f"{label_} ({th}): {err}")
         dt = time.monotonic() - t0
         other = meter.stop() if meter is not None and status == "ok" else None
         if status != "ok":
@@ -629,19 +800,20 @@ def run(
         with lock:
             if other is not None:
                 state.other[cid] = max(state.other.get(cid, 0.0), other)
-                if other > limits.busy_cores:
-                    say(f"  바빴다: 다른 프로세스가 평균 {other:.1f}코어를 썼다 (--rerun-busy로 다시 잴 수 있다)")
             if status == "ok":
                 state.seconds[cid] += seconds or dt
                 state.rounds_done[cid] += 1
             else:
                 why = {
-                    "timeout": f"제한 시간 {fmt_duration(limits.case_timeout_s)} 초과",
-                    "memory": f"메모리 {limits.rss_bytes / 2**30:.0f} GB 초과(최대 {peak / 2**30:.1f} GB)",
-                    "died": "작업 프로세스가 죽었다",
+                    "timeout": f"timeout: over {fmt_duration(limits.case_timeout_s)}",
+                    "memory": f"memory: over {limits.rss_bytes / 2**30:.0f} GB (peak {peak / 2**30:.1f} GB)",
+                    "died": "the worker died",
                 }[status]
                 state.failure[cid] = why
-                say(f"  {cid} 중단: {why}. 작업 프로세스를 새로 띄운다")
+                if parallel and status == "memory":
+                    con.event("deferred", case_label(by_id[cid]), f"{why}; runs again alone at the end")
+                else:
+                    con.event("stopped", case_label(by_id[cid]), f"{why}; starting a new worker")
         return status, dt
 
     def elapsed():
@@ -657,7 +829,8 @@ def run(
         total = len(todo)
         done: set[int] = set()
         retry: list[int] = []
-        say(f"점검 실행을 {min(lanes, total)}갈래로 나눠 돌린다(작업 프로세스 {jobs}개 이하)")
+        con.start(total, "Smoke")
+        t_lanes = time.monotonic()
 
         def finish(idx, status, dt):
             with lock:
@@ -668,7 +841,17 @@ def run(
                 while next_index[0] in done:
                     next_index[0] += 1
                 mark = "" if status == "ok" else f" ({status})"
-                say(f"{len(done)}/{total} {pairs[idx][1]}{mark}  (경과 {elapsed()})")
+                spent = time.monotonic() - t_lanes
+                left = spent / len(done) * (total - len(done))
+                what = case_label(by_id[pairs[idx][1]]) + mark
+                con.step(
+                    len(done),
+                    "Smoke",
+                    what,
+                    elapsed_before + time.monotonic() - t_run,
+                    left,
+                    f"{len(done)}/{total} {what}  ({elapsed()} elapsed)",
+                )
                 snapshot(*divmod(next_index[0], len(cases)))
 
         def lane(ws):
@@ -699,7 +882,7 @@ def run(
             for key in list(ws):
                 ws.pop(key).close()
         if retry:
-            say(f"메모리 제한에 걸린 사례 {len(retry)}개를 하나씩 다시 돌린다")
+            say(f"Running {len(retry)} cases again one at a time (stopped at the shared memory limit).")
             lane_ws[:] = [{}]
             for idx in sorted(retry):
                 if stop.is_set():
@@ -715,17 +898,29 @@ def run(
     lane_ws: list[dict] = [workers]
     try:
         if not parallel:
+            con.start(len(pairs), _round_desc(pairs[i][0] if i < len(pairs) else rounds - 1, rounds, smoke))
             while i < len(pairs):
                 rnd, cid = pairs[i]
                 left = eta.remaining(pairs[i:])
-                say(
-                    f"[{rnd + 1}/{rounds}] {i % len(cases) + 1}/{len(cases)} {cid}  "
-                    f"(경과 {elapsed()}, 남은 예상 {fmt_duration(left) if left is not None else '?'})"
+                what = case_label(by_id[cid])
+                eta_s = f"~{fmt_duration(left)} left" if left is not None else "time left unknown"
+                con.step(
+                    i,
+                    _round_desc(rnd, rounds, smoke),
+                    what,
+                    elapsed_before + time.monotonic() - t_run,
+                    left,
+                    f"[{rnd + 1}/{rounds}] {i % len(cases) + 1}/{len(cases)} {what}  ({elapsed()} elapsed, {eta_s})",
                 )
-                _, dt = run_case(cid, workers)
+                status, dt = run_case(cid, workers)
+                if status == "ok" and not smoke:
+                    with lock:
+                        rec = state.record(by_id[cid])
+                    con.print(_result_line(con, by_id[cid], rec, rnd, rounds))
                 eta.done(cid, dt)
                 i += 1
                 data = snapshot(*divmod(i, len(cases)))
+            con.step(i, _round_desc(rounds - 1, rounds, smoke), "", elapsed_before + time.monotonic() - t_run, 0, "")
         else:
             data = run_parallel()
             i = len(pairs)
@@ -738,8 +933,8 @@ def run(
         with lock:
             nxt = divmod(next_index[0] if parallel else i, len(cases))
             data = snapshot(*nxt)
-        say(f"중단했다. 이어 달리기: .venv/bin/python -m bench.speed run --resume {out}")
     finally:
+        con.close()
         for ws in lane_ws:
             for w in list(ws.values()):
                 w.close()
@@ -749,15 +944,9 @@ def run(
         data = snapshot(*divmod(len(pairs), len(cases)))
     total = elapsed_before + time.monotonic() - t_run
     errs = sum(1 for c in data["cases"] for t in c["timings"] if t.get("min") is None)
-    if not interrupted:
-        say(
-            f"끝: 사례 {len(cases)}개, {fmt_duration(total)}, 실패한 측정 {errs}개, 중단된 사례 {len(state.failure)}개. {out}"
-        )
-        n_busy = sum(1 for c in data["cases"] if c.get("busy"))
-        if n_busy:
-            say(f"바쁠 때 잰 사례 {n_busy}개. 다시 재기: .venv/bin/python -m bench.speed run --rerun-busy {out}")
-        if notify and total >= limits.notify_after_s:
-            _notify("stardust 속도 측정", f"끝났다: 사례 {len(cases)}개, {fmt_duration(total)}, 실패 {errs}개")
+    con.lines(_summary(data, total, interrupted, out, log_path))
+    if not interrupted and notify and total >= limits.notify_after_s:
+        _notify("stardust speed run", f"Done: {len(cases)} cases, {fmt_duration(total)}, {errs} failed")
     log.close()
     data["path"] = str(out)
     data["interrupted"] = interrupted

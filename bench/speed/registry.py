@@ -76,7 +76,7 @@ class RRef:
 @dataclasses.dataclass
 class Case:
     area: str
-    group: str  # a section of the area's table
+    group: str  # a section of the area's table: an English key (part of the id)
     name: str  # what is called, e.g. "Normal.cdf", "solve", "ols fit"
     sd: Factory
     setup: Callable[[], dict] = dict
@@ -89,6 +89,7 @@ class Case:
     note: str = ""  # one short remark for the table
     timing: dict = dataclasses.field(default_factory=dict)  # harness.measure overrides
     teardown: Callable[[dict], None] | None = None  # undo global settings the setup made
+    title: str = ""  # the group's section title in bench/<area>/speed.md (set by load from TITLES)
 
     def __post_init__(self):
         if self.area not in AREAS:
@@ -118,9 +119,11 @@ def load(areas: Iterable[str] | None = None) -> list[Case]:
                 continue
             raise
         cases = mod.cases()
+        titles = getattr(mod, "TITLES", {})
         for c in cases:
             if c.area != area:
                 raise ValueError(f"{c.id}: listed in cases/{area}.py")
+            c.title = c.title or titles.get(c.group, c.group)
         out.extend(cases)
     seen: set[str] = set()
     for c in out:

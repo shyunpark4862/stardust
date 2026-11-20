@@ -199,14 +199,14 @@ def _env_lines(data: dict, cases: list[dict]) -> list[str]:
 def render(area: str, data: dict, registry_cases: list[Case], source: str) -> str:
     by_id = {c["id"]: c for c in data["cases"] if c["area"] == area}
     order = [c for c in registry_cases if c.area == area]
-    groups: dict[str, list[dict]] = {}
+    groups: dict[str, list[dict]] = {}  # section title -> records
     missing = 0
     for c in order:
         rec = by_id.get(c.id)
         if rec is None or not any(t.get("min") is not None for t in rec["timings"]):
             missing += 1
             continue
-        groups.setdefault(c.group, []).append(rec)
+        groups.setdefault(c.title or c.group, []).append(rec)
     shown = [c for g in groups.values() for c in g]
     lines = [
         f"# {area} 속도",

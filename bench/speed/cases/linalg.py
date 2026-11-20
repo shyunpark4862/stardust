@@ -1,4 +1,4 @@
-"""sd.linalg against numpy and scipy. The base set is the old baseline's (bench/linalg/
+"""sd.linalg against numpy and scipy. The base set is the old baseline's (bench/linalg/ (at commit 4151d2a)
 baseline.py matrix_rows and long_rows, timed by bench/linalg/stage_compare.py, summed up
 by bench/linalg/final_table.py, rerun after the merge through bench/merge/rerun.sh):
 every function on single small and large matrices, batches, long vectors and long
@@ -28,19 +28,19 @@ from ..registry import Case, Ref
 
 MATRIX_SHAPES = [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32), (16, 3, 3), (8, 300, 300)]
 KIND = {
-    (3, 3): "작은 행렬",
-    (32, 32): "작은 행렬",
-    (300, 300): "큰 행렬",
-    (1000, 1000): "큰 행렬",
-    (1000, 3, 3): "행렬 묶음",
-    (100, 32, 32): "행렬 묶음",
-    (16, 3, 3): "행렬 묶음",
-    (8, 300, 300): "행렬 묶음",
+    (3, 3): "small",
+    (32, 32): "small",
+    (300, 300): "large",
+    (1000, 1000): "large",
+    (1000, 3, 3): "batched",
+    (100, 32, 32): "batched",
+    (16, 3, 3): "batched",
+    (8, 300, 300): "batched",
 }
-COMPLEX_GROUP = "복소 행렬"
+COMPLEX_GROUP = "complex"
 COMPLEX_SHAPES = [(300, 300), (100, 32, 32)]
-RECT_GROUP = "직사각 행렬"
-LONG_GROUP = "긴 벡터·띠 행렬"
+RECT_GROUP = "rectangular"
+LONG_GROUP = "vectors-banded"
 LONG_N = 1_000_000
 BAND_N = 100_000
 BAND_BATCH = (100, 128)  # batched banded systems: 100 systems of 128 unknowns
@@ -554,6 +554,18 @@ def _matrix_case(group, shape, name, sdc, ref, note, quick, cplx=False, threads=
         quick=quick,
         threads=threads,
     )
+
+
+# The section title of each group in bench/linalg/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "small": "작은 행렬",
+    "large": "큰 행렬",
+    "batched": "행렬 묶음",
+    "complex": "복소 행렬",
+    "rectangular": "직사각 행렬",
+    "vectors-banded": "긴 벡터·띠 행렬",
+}
 
 
 def cases() -> list[Case]:

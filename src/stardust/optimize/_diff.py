@@ -6,7 +6,7 @@ The accurate differences are 5-point stencils with a step per variable chosen on
 2^-8 |x_j| down by factors of 4 while consecutive estimates get closer by more than 8 times
 (the truncation error, O(h^4), still dominates), powers of two so that x_j +- k h is exact;
 one-sided 5-point stencils at a bound or where the function is not finite on one side
-(bench/regression/g6/accuracy.md). A start at rounding level (|x_j| far below the scale on which
+(bench/regression/g6/accuracy.md at commit 4151d2a). A start at rounding level (|x_j| far below the scale on which
 the function changes, as x_j = 1e-12 next to 1) is too small: the step grows until the
 estimates differ by more than their rounding, then the same search starts from there.
 """

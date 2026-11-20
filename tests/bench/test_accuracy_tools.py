@@ -12,7 +12,9 @@ from tests.special import refdata
 def test_special_cost_header_keeps_where_unmeasured_rows_come_from():
     text = cost.special_header({"erf": 5.0, "_add": 0.19}, 1)
     assert "// 1 of 2 rows measured in the baseline; the rest kept from the previous file (first written" in text
-    assert "// from the hand-measured constants of special/cost.hpp, bench/special/s*/cost.md)." in text
+    assert (
+        "// from the hand-measured constants of special/cost.hpp, bench/special/s*/cost.md at commit 4151d2a)." in text
+    )
     assert "// All 2 rows measured in the baseline." in cost.special_header({"erf": 5.0, "_add": 0.19}, 2)
     # the checked-in header is what the generator writes from its own rows
     rows, n = cost.special_rows()

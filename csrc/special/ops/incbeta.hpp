@@ -19,7 +19,7 @@
 // exponent comes from special/prefix.hpp with E in double-double.
 //
 // Two places differ from BRATIO's choice (both measured against Arb,
-// bench/stats/opt/f):
+// bench/stats/opt/f at commit 4151d2a):
 //   - a, b <= 1: BRATIO takes BPSER for I whenever x^a <= 0.9 (or a >= min(0.2, b)),
 //     so I reaches 0.9 and 1 - I, formed by subtraction, carries 9 times the series'
 //     error (7.5e-15 at a = 2.7e-4, b = 0.014, x = 1.4e-188; Boost, which copies the
@@ -780,7 +780,7 @@ inline double ibeta_inverse(double a, double b, double t, bool upper) {
 // ---- where Boost's ibeta and ibetac are taken -------------------------------------------
 //
 // Shapes at most 6 (special/boost.hpp, docs/design/special.md 5.14), except, all measured
-// against Arb (bench/stats/opt/f):
+// against Arb (bench/stats/opt/f at commit 4151d2a):
 //   - a subnormal x: Boost's value is off by up to 25% there (ours: ibeta_tiny);
 //   - a result below 2^-960: Boost loses digits below 2^-1016 (2e-13 there, an
 //     intermediate in the subnormals; 2.5e-15 from 2^-1016 up over 3e5 points). The floor

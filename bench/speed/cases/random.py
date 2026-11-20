@@ -1,5 +1,5 @@
 """sd.random against numpy's Generator: PCG64 (numpy's default) and Philox (the bit
-generator sd.random uses). The 10^6-element calls are bench/random/t3_speed.py's, with
+generator sd.random uses). The 10^6-element calls are bench/random/t3_speed.py (at commit 4151d2a)'s, with
 more argument kinds (array bounds, sampling from an array, without replacement with
 weights, a large sample without replacement, rows of a 2-D array); the small calls (one
 element to 10^5, around the split threshold of 4096 elements) show the cost of a call.
@@ -14,8 +14,8 @@ from __future__ import annotations
 from ..registry import Case, Ref
 
 N = 1_000_000
-BIG_GROUP = "Generator 메서드"
-SMALL_GROUP = "작은 크기"
+BIG_GROUP = "generator"
+SMALL_GROUP = "small"
 
 
 def _setup():
@@ -177,6 +177,14 @@ def _bind(f, d):
 
 def _bind_g(f, key):
     return lambda d: lambda: f(d, d[key])
+
+
+# The section title of each group in bench/random/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "generator": "Generator 메서드",
+    "small": "작은 크기",
+}
 
 
 def cases() -> list[Case]:

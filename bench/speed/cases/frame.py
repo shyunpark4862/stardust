@@ -1,4 +1,4 @@
-"""sd.frame against pandas. The base set is bench/frame/final_compare.py's (15 calls at
+"""sd.frame against pandas. The base set is bench/frame/final_compare.py (at commit 4151d2a)'s (15 calls at
 1,000, 100,000 and 1,000,000 rows, four per-call-overhead rows at 10 rows) with its
 inputs (data(n, seed)); the post-merge measurement of those rows is in bench/merge/m8/final/.
 On top of it: NA columns, groupby aggregations beyond sum, left / outer / string-key /
@@ -17,9 +17,9 @@ pandas runs on one thread and does sd's work: the same options (stable sorts, dd
 sort=True where pandas' outer merge sorts), NA as NaN in float columns and as the
 nullable Int64 in int columns. The "pandas" column is pandas as installed: with pyarrow
 present its str columns are pyarrow-backed and read_csv uses its default (C) engine.
-String cases also have a "pandas python 문자열" column, pandas' str with python storage
+String cases also have a "pandas python str" column, pandas' str with python storage
 (what pandas uses without pyarrow, and what the old baseline measured), and read_csv a
-"pandas pyarrow 엔진" column (engine="pyarrow"). Polars, a column of the old script, is
+"pandas pyarrow engine" column (engine="pyarrow"). Polars, a column of the old script, is
 not a comparator here."""
 
 from __future__ import annotations
@@ -32,15 +32,15 @@ from ..harness import fresh_count, rotate
 from ..registry import Case, Ref
 
 SIZES = [1_000, 100_000, 262_144, 1_000_000]
-GROUP = {1_000: "1,000행", 100_000: "100,000행", 262_144: "262,144행", 1_000_000: "1,000,000행"}
+GROUP = {1_000: "rows-1e3", 100_000: "rows-1e5", 262_144: "rows-262144", 1_000_000: "rows-1e6"}
 BASE = (1_000, 100_000, 1_000_000)  # final_compare.py's sizes
 MID = (100_000, 1_000_000)
 SPLIT = (262_144,)
 BIG = (1_000_000,)
 SMALL = 10
-SMALL_GROUP = "10행: 호출 한 번의 비용"
+SMALL_GROUP = "rows-10"
 WIDE_ROWS, WIDE_COLS = 100_000, 100
-WIDE_GROUP = "100,000행 × 100열"
+WIDE_GROUP = "wide-1e5x100"
 NA_RATE = 0.1
 
 
@@ -180,7 +180,7 @@ def _objects(lib, raw, keys):
 class Call:
     """One row per size in `sizes`. sd / pd: objects -> zero-argument callable (pd
     defaults to sd's); fresh: a branchy call (rotate fresh inputs); strings: string
-    columns (adds the "pandas python 문자열" column)."""
+    columns (adds the "pandas python str" column)."""
 
     name: str
     keys: str
@@ -612,8 +612,20 @@ def _fresh_note(note, k):
 def _refs(sdc_or_pdc, strings):
     refs = [Ref("pandas", _factory(sdc_or_pdc, "pandas"))]
     if strings:
-        refs.append(Ref("pandas python 문자열", _factory(sdc_or_pdc, "pystr"), lib="pandas"))
+        refs.append(Ref("pandas python str", _factory(sdc_or_pdc, "pystr"), lib="pandas"))
     return tuple(refs)
+
+
+# The section title of each group in bench/frame/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "rows-10": "10행: 호출 한 번의 비용",
+    "rows-1e3": "1,000행",
+    "rows-1e5": "100,000행",
+    "rows-262144": "262,144행",
+    "rows-1e6": "1,000,000행",
+    "wide-1e5x100": "100,000행 × 100열",
+}
 
 
 def cases() -> list[Case]:
@@ -661,7 +673,7 @@ def cases() -> list[Case]:
             if strings:
                 refs.append(
                     Ref(
-                        "pandas python 문자열",
+                        "pandas python str",
                         _read_csv("pystr", pdkw if pdkw is not None else sdkw, strings),
                         lib="pandas",
                     )
@@ -669,7 +681,7 @@ def cases() -> list[Case]:
             if arrow:
                 refs.append(
                     Ref(
-                        "pandas pyarrow 엔진",
+                        "pandas pyarrow engine",
                         _read_csv("pyarrow", pdkw if pdkw is not None else sdkw, strings),
                         lib="pandas",
                     )

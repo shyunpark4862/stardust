@@ -1,6 +1,6 @@
 """The whole array area against numpy: every public function at 3, 10^3 .. 10^7
 elements, in several layouts (contiguous, strided, transposed, broadcast) and dtypes.
-From bench/array/full_scan.py (its case set, without its result check).
+From bench/array/full_scan.py (at commit 4151d2a) (its case set, without its result check).
 
 numpy runs as it is (one thread, except its BLAS). Each case is a statement written
 once with `M` for the library (M = sd on stardust's side, M = np on numpy's), or two
@@ -27,7 +27,7 @@ threshold. The size group adds 2^14 and 2^16 around the elementwise threshold an
 2^18 past the single-lane parallel sort (2 · 2^16).
 
 Comparators. sd sorts stably by default, so numpy's sort and argsort run with
-stable=True; "numpy 기본(불안정)" is numpy's default for a few of them. numpy's
+stable=True; "numpy default (unstable)" is numpy's default for a few of them. numpy's
 unique_values hashes and leaves the values unsorted; sd sorts them, so the comparator
 is np.unique (on this machine both take the same time, so no hash column).
 
@@ -279,46 +279,46 @@ def _stable(stmt: str) -> str:
 #      extra=((label, numpy statement), ...) further numpy comparators,
 #      fresh=True: rotate over fresh inputs (branchy kernels), threads=sd's thread counts)
 
-G_CREATE = "생성"
-G_CONVERT = "변환"
-G_MANIP = "모양 바꾸기"
-G_BIN_F = "이항 f64"
-G_BIN_B = "이항 bool"
-G_BIN_I = "이항 i64"
-G_BIN_C = "이항 c128"
-G_BIN_MIX = "이항 dtype 섞기·스칼라"
-G_BIN_LAYOUT = "이항 메모리 배치"
-G_BIN_MID = "이항 10^4"
-G_UN_F = "단항 f64"
-G_UN_C = "단항 c128"
-G_UN_I = "단항 i64"
-G_UN_B = "단항 bool"
-G_SELECT = "골라 넣기"
-G_RED_F = "리덕션 f64"
-G_RED_I = "리덕션 i64"
-G_RED_C = "리덕션 c128"
-G_RED_B = "리덕션 bool"
-G_RED_AX = "축 리덕션"
-G_RED_MID = "리덕션 10^4"
-G_SCAN = "누적"
-G_NAN = "NaN 건너뛰기"
-G_COUNT = "개수 세기"
-G_STATS = "통계"
-G_SORT = "정렬"
-G_UNIQUE = "고유값"
-G_SEARCH = "찾기·뽑기"
-G_INDEX = "인덱싱"
-G_ASSIGN = "대입"
-G_MATMUL = "행렬곱"
-G_SIZE = "크기별"
-G_TINY = "작은 배열"
+G_CREATE = "creation"
+G_CONVERT = "conversion"
+G_MANIP = "reshape"
+G_BIN_F = "binary-f64"
+G_BIN_B = "binary-bool"
+G_BIN_I = "binary-i64"
+G_BIN_C = "binary-c128"
+G_BIN_MIX = "binary-mixed"
+G_BIN_LAYOUT = "binary-layout"
+G_BIN_MID = "binary-1e4"
+G_UN_F = "unary-f64"
+G_UN_C = "unary-c128"
+G_UN_I = "unary-i64"
+G_UN_B = "unary-bool"
+G_SELECT = "where"
+G_RED_F = "reduce-f64"
+G_RED_I = "reduce-i64"
+G_RED_C = "reduce-c128"
+G_RED_B = "reduce-bool"
+G_RED_AX = "reduce-axis"
+G_RED_MID = "reduce-1e4"
+G_SCAN = "cumulative"
+G_NAN = "nan-skipping"
+G_COUNT = "counting"
+G_STATS = "statistics"
+G_SORT = "sorting"
+G_UNIQUE = "unique"
+G_SEARCH = "search-take"
+G_INDEX = "indexing"
+G_ASSIGN = "assignment"
+G_MATMUL = "matmul"
+G_SIZE = "by-size"
+G_TINY = "small-arrays"
 
 M6 = "10^6"
 SQ = "(1000, 1000)"
 T3 = "(100, 100, 100)"
 P8 = "(125000, 8)"
 
-UNSTABLE = "numpy 기본(불안정)"
+UNSTABLE = "numpy default (unstable)"
 
 
 def _specs() -> list[dict]:
@@ -388,8 +388,8 @@ def _specs() -> list[dict]:
         "sd.asarray(np_f32t)",
         "np.asarray(np_f32t, dtype=np.float64)",
         SQ,
-        "f32 전치 → f64; numpy는 F 순서를 지키고, 'numpy C 순서'는 C 순서로 만든다",
-        extra=(("numpy C 순서", "np.ascontiguousarray(np_f32t, dtype=np.float64)"),),
+        "f32 전치 → f64; numpy는 F 순서를 지키고, 'numpy C order'는 C 순서로 만든다",
+        extra=(("numpy C order", "np.ascontiguousarray(np_f32t, dtype=np.float64)"),),
     )
     conv("sd.asarray(np_f32r)", "np.asarray(np_f32r, dtype=np.float64)", SQ, "f32 행의 일부 m[:, 1:1001] → f64")
     conv("sd.asarray(np_be)", "np.asarray(np_be, dtype=np.float64)", M6, ">f8 → f64")
@@ -776,6 +776,45 @@ def _specs() -> list[dict]:
 def _factory(stmt, lib):
     """Given the data, the timed callable: stmt compiled once per input, in turn."""
     return lambda d: rotate([_compile(stmt, ns) for ns in d[lib]])
+
+
+# The section title of each group in bench/array/speed.md (the group is the English key in
+# the case ids).
+TITLES = {
+    "creation": "생성",
+    "conversion": "변환",
+    "reshape": "모양 바꾸기",
+    "binary-f64": "이항 f64",
+    "binary-bool": "이항 bool",
+    "binary-i64": "이항 i64",
+    "binary-c128": "이항 c128",
+    "binary-mixed": "이항 dtype 섞기·스칼라",
+    "binary-layout": "이항 메모리 배치",
+    "binary-1e4": "이항 10^4",
+    "unary-f64": "단항 f64",
+    "unary-c128": "단항 c128",
+    "unary-i64": "단항 i64",
+    "unary-bool": "단항 bool",
+    "where": "골라 넣기",
+    "reduce-f64": "리덕션 f64",
+    "reduce-i64": "리덕션 i64",
+    "reduce-c128": "리덕션 c128",
+    "reduce-bool": "리덕션 bool",
+    "reduce-axis": "축 리덕션",
+    "reduce-1e4": "리덕션 10^4",
+    "cumulative": "누적",
+    "nan-skipping": "NaN 건너뛰기",
+    "counting": "개수 세기",
+    "statistics": "통계",
+    "sorting": "정렬",
+    "unique": "고유값",
+    "search-take": "찾기·뽑기",
+    "indexing": "인덱싱",
+    "assignment": "대입",
+    "matmul": "행렬곱",
+    "by-size": "크기별",
+    "small-arrays": "작은 배열",
+}
 
 
 def cases() -> list[Case]:

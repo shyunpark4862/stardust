@@ -711,7 +711,7 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
     if (pb.steps > 0) gcombine();
     // The refinement stops once the next correction cannot matter (user decision 2026-11-18:
     // as many steps as needed, at most pb.steps): each step shrinks the error by about
-    // kappa u (measured, bench/regression/g1/refine.log), so after a correction d the error
+    // kappa u (measured, bench/regression/g1/refine.log at commit 4151d2a), so after a correction d the error
     // left is about |d| kappa u, and below 2^-54 |beta| a further step changes nothing. kappa
     // is LAPACK's estimate from R (trcon, within a small factor; kSafety covers it). The test
     // depends only on the data, so the result is the same for any thread count.

@@ -136,7 +136,7 @@ constexpr double kU = 0x1p-53;
 // product cannot go below (m + 2) u sum |terms| (m = 4..16 roundings on a path, W's and r's
 // own), which is 14-22 units for points drawn from the distribution itself and twice that
 // through the matrix normal's two products, while the measured difference from the
-// double-double path stays below 5e-16 (bench/stats/opt/e/mv_sweep.py).
+// double-double path stays below 5e-16 (bench/stats/opt/e/mv_sweep.py at commit 4151d2a).
 constexpr double kQuadBudget = 40.0 * kU;
 constexpr double kBoundSlack = 1.0 + 0x1p-20;  // over the rounding of the bounds' own arithmetic
 // roundings on a term's path in dot8 over n <= 8 nonzero leading terms, by n - 1

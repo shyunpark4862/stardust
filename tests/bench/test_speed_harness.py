@@ -90,6 +90,17 @@ def test_case_checks():
     assert _case("x", size="3").id == "array/g/x [3]"
 
 
+def test_registry_ids_english_and_groups_titled():
+    import re
+
+    hangul = re.compile("[\uac00-\ud7a3]")
+    cases = registry.load()
+    assert not [c.id for c in cases if hangul.search(c.id)]
+    assert not sorted({r.label for c in cases for r in c.refs if hangul.search(r.label)})
+    # every group has a section title for bench/<area>/speed.md
+    assert not sorted({(c.area, c.group) for c in cases if c.title == c.group})
+
+
 def test_registry_ids_unique_and_areas_match():
     cases = registry.load()
     ids = [c.id for c in cases]
@@ -181,7 +192,7 @@ def test_compare_flags_beyond_threshold_and_noise():
     assert [r["id"] for r in res["faster"]] == ["array/g/c"]
     assert res["refs_drift"] == pytest.approx(1.0) and res["missing"] == 1
     text = compare.report(res, show_faster=True)
-    assert "느려짐" in text and "잡음 안" in text and "빨라짐" in text
+    assert "| slower |" in text and "| within noise |" in text and "| faster |" in text
 
 
 def test_cost_tables_merge_measured_rows(tmp_path, monkeypatch):
@@ -252,8 +263,8 @@ def test_supervisor_limits_and_failures(tmp_path, monkeypatch):
     by = {c["name"]: c for c in data["cases"]}
     assert by["sum"]["timings"][0]["min"] > 0 and by["sum"]["rounds"] == 1
     assert {(t["label"], t["threads"]) for t in by["sum"]["timings"]} == {("sd", 1), ("sd", 10), ("numpy", None)}
-    assert "제한 시간" in by["sleep"]["failure"]
-    assert "메모리" in by["hog"]["failure"] and by["hog"]["peak_rss_mb"] >= 500
+    assert by["sleep"]["failure"].startswith("timeout")
+    assert by["hog"]["failure"].startswith("memory") and by["hog"]["peak_rss_mb"] >= 500
     boom = {t["label"]: t for t in by["boom"]["timings"]}
     assert "boom" in boom["sd"]["error"] and boom["numpy"]["min"] is not None
     assert by["sum2"]["timings"][0]["min"] > 0  # the run goes on after the kills
@@ -278,11 +289,11 @@ def test_parallel_smoke_lanes_and_memory_retry(tmp_path, monkeypatch):
     )
     by = {c["name"]: c for c in data["cases"]}
     log = out.with_suffix(".log").read_text()
-    assert "4갈래" in log
+    assert "Lanes:" in log and "4 (at most 4 processes)" in log
     # the hog stops every lane at the memory limit: the stopped cases run again one at a time
-    assert "하나씩 다시 돌린다" in log
-    assert "메모리" in by["hog"]["failure"]
-    assert "제한 시간" in by["sleep"]["failure"]
+    assert "again one at a time" in log
+    assert by["hog"]["failure"].startswith("memory")
+    assert by["sleep"]["failure"].startswith("timeout")
     for name in ("sum", "sum2"):
         assert "failure" not in by[name] and by[name]["timings"][0]["min"] > 0
     assert {(t["label"], t["threads"]) for t in by["sum"]["timings"]} == {("sd", 1), ("sd", 10), ("numpy", None)}
@@ -347,19 +358,23 @@ def test_cpu_meter_excludes_own_process():
 
 
 def test_wait_for_quiet(monkeypatch):
-    seq = iter([(3.0, ["x (pid 1, 3.0코어)"]), (2.5, ["x"]), (0.2, [])])
+    seq = iter([(3.0, ["x (pid 1, 3.0 cores)"]), (2.5, ["x"]), (0.2, [])])
     monkeypatch.setattr(proc, "idle_check", lambda *a, **k: next(seq))
     monkeypatch.setattr(runmod.time, "sleep", lambda s: None)
     said = []
+
+    class Con:
+        print = staticmethod(said.append)
+
     lim = _limits(quiet_cores=1.0, wait_quiet_s=1e9, wait_poll_s=0)
-    res = runmod.wait_for_quiet(said.append, lim, "wait")
+    res = runmod.wait_for_quiet(Con, lim, "wait")
     assert res["quiet"] and not res["stopped"] and res["at_first"] == 3.0
-    assert any("경고" in s for s in said) and any("조용해졌다" in s for s in said)
+    assert any("keep 3.0 cores busy" in s for s in said) and any(s.startswith("Quiet after") for s in said)
     # strict: still busy after the wait -> stop
     monkeypatch.setattr(proc, "idle_check", lambda *a, **k: (2.0, ["y"]))
-    res = runmod.wait_for_quiet(said.append, _limits(wait_quiet_s=0.0, wait_poll_s=0), "strict")
+    res = runmod.wait_for_quiet(Con, _limits(wait_quiet_s=0.0, wait_poll_s=0), "strict")
     assert res["stopped"] and not res["quiet"]
-    res = runmod.wait_for_quiet(said.append, _limits(), "no")
+    res = runmod.wait_for_quiet(Con, _limits(), "no")
     assert not res["quiet"] and not res["stopped"] and res["waited_s"] == 0
 
 
@@ -370,4 +385,4 @@ def test_busy_cases_marked_in_table_and_compare():
     assert "`a` †" in md and "1코어 넘게" in md
     res = compare.compare(_run_data("r2", [rec]), {"array/g/a": _rec("a", 1.0)})
     assert res["slower"][0]["busy"] and not res["slower"][0]["beyond_noise"]
-    assert "바쁠 때 잼" in compare.report(res)
+    assert "| busy |" in compare.report(res)

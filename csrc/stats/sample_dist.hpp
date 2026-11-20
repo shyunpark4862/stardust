@@ -1,5 +1,5 @@
 // The distributions' own sampling methods (T7, docs/design/stats.md §4), where they beat
-// inversion (sample.hpp; measured in bench/stats/t7/). Every method is exact in
+// inversion (sample.hpp; measured in bench/stats/t7/ at commit 4151d2a). Every method is exact in
 // distribution (rejection or composition, no approximation); the acceptance tests of the
 // discrete rejections use the double-double log pmfs of the distributions, so they stay
 // exact where lgamma differences of size 1e16 would not (huge mu or n); a plain-double

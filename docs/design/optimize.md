@@ -116,7 +116,7 @@
 | O96 코드 리뷰 (O6) | 성능 작업 뒤에 optimize 영역 전체의 코드 리뷰를 한다 (사용자 결정 2026-11-20) |
 | O97 최적화의 범위 (O6) | 알려진 것(BFGS 갱신은 O94대로 재기만, m = n = 40의 `least_squares`, `root('lm')`)과 함께 모든 공개 함수와 방법을 크기마다 scipy와 견주어 느리거나 겨우 빠른 곳을 찾고, 비트를 지키며 고칠 수 있는 것을 고친다 (사용자 결정 2026-11-20) |
 | O98 골든의 다시 기록 (O6) | O95가 바꾼 골든의 `least_squares` 'lm' 경우를 다시 기록한다 (사용자 결정 2026-11-20) |
-| O99 BFGS의 O(n²) 갱신 (O6) | O61을 바꾼다: BFGS는 H를 O(n²)로 갱신한다(같은 BFGS 식을 싼 순서로: v = Hy, H − ρ(s vᵀ + v sᵀ) + (ρ² yᵀv + ρ) s sᵀ). O9의 명시적 예외로, 걸음이 scipy와 반올림만큼 다를 수 있다. 잰 값: n = 1000에서 반복당 8.8 → 0.29 ms(`bench/optimize/o6/speed.md`), 상태가 같은 것 113/114(O102로 n = 1을 곱의 꼴로 둔 최종 구현도 113/114, §7) (사용자 결정 2026-11-20) |
+| O99 BFGS의 O(n²) 갱신 (O6) | O61을 바꾼다: BFGS는 H를 O(n²)로 갱신한다(같은 BFGS 식을 싼 순서로: v = Hy, H − ρ(s vᵀ + v sᵀ) + (ρ² yᵀv + ρ) s sᵀ). O9의 명시적 예외로, 걸음이 scipy와 반올림만큼 다를 수 있다. 잰 값: n = 1000에서 반복당 8.8 → 0.29 ms(커밋 4151d2a의 `bench/optimize/o6/speed.md`), 상태가 같은 것 113/114(O102로 n = 1을 곱의 꼴로 둔 최종 구현도 113/114, §7) (사용자 결정 2026-11-20) |
 | O100 'trf'의 SVD (O6) | 경계 없는 'trf'의 SVD를 n × n으로 바꾸지 않는다(이득 5%, nls의 비트가 바뀐다) (사용자 결정 2026-11-20) (D-33 뒤에 다시 물어도 그대로다: BP-11) |
 | O101 bench/speed의 사례 (O6) | optimize의 `bench/speed` 사례는 벤치 세션이 넣는다(이쪽은 목록만 넘긴다) (사용자 결정 2026-11-20) |
 | O102 BFGS의 n = 1 (O6) | n = 1이면 scipy의 곱의 꼴(어차피 O(1))로, n ≥ 2이면 O(n²)의 펼친 식으로 갱신한다. 펼친 식은 1차원에서 H − 2H + H + s/y를 계산하므로 s/y ≪ H이면 상쇄로 곡률을 잃는다(Chebyquad n = 1의 10x0·100x0이 반복 1–2번 만에 멈췄다). 더 큰 n에서도 극단적인 척도에서는 scipy와 다를 수 있다(Brown almost-linear 100x0) (사용자 결정 2026-11-20) |
@@ -203,7 +203,7 @@
 - 커널은 `csrc/optimize/batch.cpp`(`find_root_solve`, `find_minimum_solve`, `bracket_root_solve`, `bracket_minimum_solve`)다. scipy `elementwise`의 넷(`_chandrupatla`, `_chandrupatla_minimize`, `_bracket_root`, `_bracket_minimum`)과 그 고리(`eim._loop`)를 원소마다 옮겼다: 반복마다 남은 원소의 점을 새 float64 `sd.ndarray`에 모아 사용자 함수를 한 번 부르고(O38), 원소마다 갱신·멈춤 판정·다음 걸음을 계산한다. 원소의 `n_iter`와 `nfev`는 그 원소가 멈출 때까지의 반복 수와 함수값 수다(scipy의 고리와 같다).
 - scipy는 단계마다(새 점, 갱신, 판정 하나하나, 다음 걸음) 남은 원소 전체에 numpy 연산을 하고 배열을 줄인다. 모두 원소별 연산이라 여기서는 원소 하나를 한 번 지나가며 갱신, 판정, 줄이기, 다음 걸음을 하고, 한 번 더 지나가며 다음 호출의 점을 쓴다. 원소 하나의 상태(find_root는 double 10개)는 한곳에 둔다: 반복마다 원소를 차례로 읽는다. 상태를 필드마다 다른 배열에 두면 10⁶ 원소에서 열 개 넘는 흐름을 메모리에서 읽게 되어 같은 계산이 4–5배 느리다.
 - `bracket_root`는 scipy처럼 원소 하나를 두 쪽(왼쪽 n개, 오른쪽 n개)으로 나눠 따로 넓히고, 한쪽이 부호 바뀜을 찾으면 다른 쪽도 멈춘다(내부 status 2). 결과는 scipy의 `customize_result`처럼 수렴한 쪽(둘 다면 좁은 쪽)의 구간이다. 둘 다 수렴하고 너비가 같으면 왼쪽의 구간이고, 결과는 언제나 xl ≤ xr로 정렬한다(O116; scipy는 두 쪽의 끝을 섞는다).
-- 진행 중인 원소가 2¹⁵개 이상이면 원소를 지나가는 패스(다음 점 쓰기, `args` 모으기, 갱신과 판정; `bracket_root`도 갱신, 부호 판정, 다른 쪽의 멈춤, 표시 지우기를 각각 한 패스로: 쪽 i가 쓰는 짝 (i + n) mod 2n은 쪽마다 달라 겹치지 않는다)를 스레드에 나누고 그동안 GIL을 놓는다(2¹³개씩의 조각; 그보다 작으면 1스레드로 GIL만 놓는다). 원소마다의 계산은 어느 스레드에서도 같고 계속 가는 원소는 순서를 지키므로 스레드 수와 상관없이 비트가 같다. 호출 사이의 계산은 1스레드에서 함수값 하나에 4.4–9.7 ns다(10³–10⁶ 원소; `bench/optimize/o6/speed.md`). 10⁶ 원소의 전체 시간은 10스레드에서 find_root 32 ms, find_minimum 57.2 ms다(1스레드 123 ms, 189 ms).
+- 진행 중인 원소가 2¹⁵개 이상이면 원소를 지나가는 패스(다음 점 쓰기, `args` 모으기, 갱신과 판정; `bracket_root`도 갱신, 부호 판정, 다른 쪽의 멈춤, 표시 지우기를 각각 한 패스로: 쪽 i가 쓰는 짝 (i + n) mod 2n은 쪽마다 달라 겹치지 않는다)를 스레드에 나누고 그동안 GIL을 놓는다(2¹³개씩의 조각; 그보다 작으면 1스레드로 GIL만 놓는다). 원소마다의 계산은 어느 스레드에서도 같고 계속 가는 원소는 순서를 지키므로 스레드 수와 상관없이 비트가 같다. 호출 사이의 계산은 1스레드에서 함수값 하나에 4.4–9.7 ns다(10³–10⁶ 원소; 커밋 4151d2a의 `bench/optimize/o6/speed.md`). 10⁶ 원소의 전체 시간은 10스레드에서 find_root 32 ms, find_minimum 57.2 ms다(1스레드 123 ms, 189 ms).
 - 원소마다 다른 상수는 `args`(O39)로 받는다. 값마다 Python에서 배치 모양으로 브로드캐스트한 1차원 배열(자기 dtype)이 되고, 커널이 호출마다 남은 원소(`bracket_root`는 쪽 i의 원소 i mod n)를 새 배열에 모아 `f(x, *args)`로 넘긴다.
 
 ### 3.4 최소제곱
@@ -211,7 +211,7 @@
 - 'trf'와 nls의 'lm'은 야코비안마다 m 크기의 일이 LAPACK의 Householder QR 하나(J = Q₀R₀, Q₀ᵀf)이고 나머지는 n 크기다(lmder의 열 피벗 QR은 R₀의 것, trf의 SVD는 [R₀d; D]의 것). m < n이면('trf'만) scipy처럼 QR 없이 경계가 없으면 J_h(m × n)의, 있으면 [J_h; diag(√dh)]((m + n) × n)의 SVD를 한다(m = 5, n = 1000에서 반복당 72 ms이던 것이 0.1 ms; scipy 0.2 ms). 잔차 제곱합이나 기울기가 넘치면(|f| ≳ 10¹⁵⁴) SVD 전에 status 0으로 끝낸다(scipy는 진전 없이 `max_nfev`까지 가서 status 0이다). SVD가 수렴하지 않으면(gesdd info > 0) `LinAlgError`(`least_squares(): SVD did not converge`)다.
 - lmder는 한 소스의 두 빌드다(O95; `lsq.cpp`의 템플릿 인자 `Fu`): `least_squares('lm')`과 `root('lm')`은 scipy의 빌드(아래), nls는 축약 없는 빌드(LAPACK QR 뒤 R₀의 피벗 QR)를 쓴다. `least_squares('lm')`은 m ≥ 10n이고 mn ≥ 2000이면 nls의 빌드를 쓴다(O113; 모양으로만 정하므로 스레드 수와 상관없다). 잰 값(야코비안 하나에 드는 시간, 사용자 함수 포함, 1스레드): (100, 10) 1.0배, (300, 100) 1.1배, (1000, 100) 1.9배, (4000, 40) 1.4배, (10⁵, 10) 1.7배 빠르고, 그 아래에서는 scipy의 빌드가 빠르다(m = n = 40에서 2배, (80, 40) 2배). 그래서 scipy의 빌드를 쓰는 모양에서 `least_squares('lm')`과 `root('lm')`은 지금 scipy와 부르는 점이 비트까지 같다(§7; 약속은 아니다, §3.7).
   - scipy의 MINPACK C 판은 clang의 기본 축약으로 빌드되어 있다. 기계어(`otool -tv`)에서 읽은 규칙: 한 식의 a·b + c는 FMA 하나이고 a·b + c·d는 왼쪽 곱을 합친다(clang의 규칙), MINPACK에서 `t**2`로 적힌 제곱은 따로 반올림한다(actred의 (fnorm1/fnorm)², qrfac의 하향 갱신 판정 0.05·(rdiag/wa)², Givens의 cotan²), MINPACK의 enorm, 누적 합은 FMA인데 clang이 벡터화한 두 고리(qrfac의 내적, gtol 판정의 Σ fjac·(qtf/fnorm))는 8개씩의 곱을 따로 반올림해 차례로 더한다(`minpack.hpp`의 dot8). 예외 하나: qrsolv의 대각 회전 r(k,k) = cos·r(k,k) + sin·sdiag(k)는 둘째 곱을 합친다(scipy의 C가 두 문장으로 적은 꼴). prered = temp1² + temp2²/p5는 앞의 제곱을 합친다(fma(temp1, temp1, temp2²/0.5)), dirder는 −fma(temp1, temp1, temp2²)다.
-  - scipy처럼 m × n의 J에 MINPACK의 열 피벗 qrfac을 바로 하고 Q^T f는 그 반사로 만든다(LAPACK QR을 먼저 하지 않는다). 그래서 m ≫ n에서는 반복당 비용이 nls의 길보다 크다((10⁴, 100) 1스레드에서 반복당 6.6 ms에서 17.7 ms; scipy는 36.8 ms; `bench/optimize/o6/speed.md`). 열마다의 합은 MINPACK의 순서 그대로이고, 서로 독립인 열 여덟 개를 함께 계산하고(두 행씩의 곱, 열마다 따로 더하는 사슬) 큰 단계는 열을 스레드에 나눈다(4×10⁵ 플롭부터): 비트는 열 하나씩 계산한 것과 같다.
+  - scipy처럼 m × n의 J에 MINPACK의 열 피벗 qrfac을 바로 하고 Q^T f는 그 반사로 만든다(LAPACK QR을 먼저 하지 않는다). 그래서 m ≫ n에서는 반복당 비용이 nls의 길보다 크다((10⁴, 100) 1스레드에서 반복당 6.6 ms에서 17.7 ms; scipy는 36.8 ms; 커밋 4151d2a의 `bench/optimize/o6/speed.md`). 열마다의 합은 MINPACK의 순서 그대로이고, 서로 독립인 열 여덟 개를 함께 계산하고(두 행씩의 곱, 열마다 따로 더하는 사슬) 큰 단계는 열을 스레드에 나눈다(4×10⁵ 플롭부터): 비트는 열 하나씩 계산한 것과 같다.
 - 커널이 nls와 다른 것은 꼴뿐이다(nls를 부를 때는 지금까지와 같은 계산): 사용자 함수에 새 float64 `sd.ndarray`를 넘기기(nls는 Python float의 리스트), 돌려받은 값이 float64 `sd.ndarray`이고 모양이 맞으면 그대로 읽고 아니면 Python의 검사(`_conform`)를 거치기, x0에서의 값을 받기(모양을 알려고 Python에서 먼저 부른 것; nfev에 센다), scipy의 2점·3점 차분, 마지막 반복점의 잔차와 야코비안을 돌려주기('lm'은 마지막 야코비안이 다른 점의 것이면 x에서 한 번 더 계산한다: scipy의 `jac(x)`).
 - 결과(`grad` = Jᵀf, `optimality`, `active_mask`)는 scipy의 정의다(`optimality`는 'trf'가 Coleman–Li 척도의 ‖v·g‖∞, 'lm'은 ‖g‖∞; `active_mask`는 `find_active_constraints`(rtol = xtol)).
 - nls에만 있는 것(다듬기 G73, 정확한 야코비안의 공분산, 겹친 모수 G76)은 `nls` 쪽에 남겼다. scipy의 `loss`, `x_scale`, `f_scale`, `tr_solver='lsmr'`, `jac_sparsity`, `callback`, `workers`, 다듬기 옵션은 넣지 않았다(O22).
@@ -340,7 +340,7 @@ O1에서 확인한 것(2026-11-20):
 - **NIST StRD** (27개 × 시작점 2개 = 54적합, scipy를 실행하며 견줌): 같은 status는 trf 해석적 52, trf 2점 49, lm 해석적 50, lm 2점 52이고, x가 10⁻⁶ 안인 것은 54, 50, 51, 52다. 갈리는 것은 MGH09, MGH10, MGH17, BoxBOD, Bennett5(대부분 시작점 1)다. 인증값을 6자리 이상 맞히는 적합의 수는 scipy와 같거나 많다(trf 해석적 35/35, 2점 30/29, lm 해석적 35/34, 2점 31/31).
 - **Fortran LMDER1** (드라이버의 53경우, tol = √ε, gtol = 0, maxfev = 100(n + 1)): 'lm' 해석적이 같은 info 48, 같은 호출 수(f와 야코비안) 47, x가 10⁻¹² 안 35, 10⁻⁶ 안 44다(scipy `leastsq`는 44, 47, 37, 45). 커널을 nls의 fdjac2 차분으로 돌리면 LMDIF1과 같은 info 50, 같은 호출 수 30, x 13·31이다(scipy `leastsq`는 52, 34, 13, 31).
 - **approx_fprime**: `epsilon=2**-26`(scipy의 기본)이면 MGH 47경우의 기울기와 야코비안이 scipy와 비트까지 같고 `check_grad`는 10⁻¹² 안이다. 기본(정확한 차분)은 해석적 도함수와의 상대 차이가 최대 1.2×10⁻¹¹(야코비안), 6.4×10⁻¹¹(기울기)이다.
-- 속도는 `bench/optimize/o1/speed.md`: 작은 문제의 반복당 자기 비용이 scipy의 1/4–1/20, (10⁴, 100)의 'lm'은 반복당 6.5 ms 대 42 ms, m = n = 40에서만 비슷하다.
+- 속도는 커밋 4151d2a의 `bench/optimize/o1/speed.md`: 작은 문제의 반복당 자기 비용이 scipy의 1/4–1/20, (10⁴, 100)의 'lm'은 반복당 6.5 ms 대 42 ms, m = n = 40에서만 비슷하다.
 
 O2에서 확인한 것(2026-11-20):
 
@@ -350,7 +350,7 @@ O2에서 확인한 것(2026-11-20):
   - `args`(O39): 원소마다 다른 c의 x³ − c와 (x − c/10)² + kx⁴(k는 (5, 1)로 브로드캐스트)에서 배치 넷이 scipy의 `args`와 필드 전부, 호출마다의 x와 args가 같다.
 - **Arb 참값** (`data/scalar_roots.json`): 기본 허용오차로 수렴한 구간법의 근(brentq 185, toms748 204, bisect 204)은 모두 Arb 근에서 xtol + rtol·|x| 안이거나 f가 double로 정확히 0인 점이다. `xtol=0`이면: brentq(`max_iter=200`) 197문제 수렴, 근을 끼는 두 double에서 3 ULP 안(171문제가 1 ULP 안), toms748(`rtol` = ε) 199문제, 1 ULP 안, bisect(`max_iter=1100`) 204문제, 4 ULP 안(나머지는 모두 f가 double로 0인 점). `find_root`(기본)는 204문제 가운데 182문제가 4 ULP 안이고, 13문제는 f가 0인 점, 9문제는 x⁹·x¹⁹꼴의 근 0에서 |f| ≤ fatol(tiny)로 멈춘 10⁻¹⁷–10⁻³⁵의 점이다(scipy와 같은 점).
 - **배치와 원소 하나**: 2,000원소의 `find_root`·`bracket_root` 배치는 원소마다 그 원소 하나로 부른 결과와 필드가 모두 같다. 근은 `root_scalar`(toms748)와 10⁻⁹ 안이다.
-- 속도는 `bench/optimize/o6/speed.md`(o2의 문제와 재는 규칙을 그대로 돌린 것; 1스레드): 스칼라 방법 자체의 비용이 호출 하나에 0.17–1.6 µs(scipy의 C 구현의 1/1.5–1/2.8, Python 구현의 1/1.8–1/36), 배치(c는 `args`)는 함수값 하나에 4.4–9.7 ns(scipy 6.5–97 ns): 10⁶ 원소에서 find_root 123 ms 대 286 ms, find_minimum 189 ms 대 588 ms, bracket_minimum 54 ms 대 62 ms(10스레드는 원소 패스와 사용자 함수의 sd 연산이 나뉘어 32, 57, 27 ms; scipy 290, 592, 63 ms).
+- 속도는 커밋 4151d2a의 `bench/optimize/o6/speed.md`(o2의 문제와 재는 규칙을 그대로 돌린 것; 1스레드): 스칼라 방법 자체의 비용이 호출 하나에 0.17–1.6 µs(scipy의 C 구현의 1/1.5–1/2.8, Python 구현의 1/1.8–1/36), 배치(c는 `args`)는 함수값 하나에 4.4–9.7 ns(scipy 6.5–97 ns): 10⁶ 원소에서 find_root 123 ms 대 286 ms, find_minimum 189 ms 대 588 ms, bracket_minimum 54 ms 대 62 ms(10스레드는 원소 패스와 사용자 함수의 sd 연산이 나뉘어 32, 57, 27 ms; scipy 290, 592, 63 ms).
 
 O3에서 확인한 것(2026-11-20):
 
@@ -360,7 +360,7 @@ O3에서 확인한 것(2026-11-20):
 - **L-BFGS-B 3.0의 Fortran 원본** (`data/fortran_lbfgsb.json`, 83번): 모든 실행이 scipy의 기록(`fortran_vs_scipy.json`)과 x의 비트, nfev, nit, message까지 같다. 그래서 원본과의 거리도 scipy와 같다: 호출 수와 반복 수가 같은 것 74, x가 10⁻¹² 안 62, 10⁻⁶ 안 79, 같은 멈춤 판정 82번. driver1(m = 5)은 원본 드라이버처럼 23반복, 28계산이다.
 - O18의 셈과 scipy의 셈이 같다: scipy의 `minimize`는 `ScalarFunction.nfev`로 차분의 호출을 센다(`least_squares`와 다르다).
 - scipy에서 찾은 것: L-BFGS-B의 setulb는 f를 값으로 받아 ABNORMAL에서 결과의 `fun`이 되돌린 `x`의 값이 아니다(여기서는 `x`의 값을 준다, O59: 기록과 다른 것은 이 `fun`뿐이다). `hess_inv`는 저장 순서의 쌍을 쓴다. Cauchy 점의 마지막 구간 판정(`nbreak == n`)은 0부터 세는 번호에서 참이 될 수 없다. BFGS의 zoom 보간은 사용자 함수가 Python float과 numpy float 가운데 무엇을 돌려주는지에 따라 넘침의 처리가 다르다.
-- 속도는 `bench/optimize/o3/speed.md`: 작은 n의 반복당 자기 비용이 scipy의 1/2–1/20(BFGS n = 2: 1.0 µs 대 22 µs), 차분의 기울기는 1/3–1/12(L-BFGS-B n = 1000: 0.35 ms 대 4.3 ms), Nelder–Mead n = 1000은 0.14 ms 대 0.76 ms, BFGS n = 1000은 같은 dgemm이라 9.4 ms 대 11.5 ms, L-BFGS-B n = 10⁴는 같은 C 알고리즘이라 0.35 ms 대 0.37 ms다.
+- 속도는 커밋 4151d2a의 `bench/optimize/o3/speed.md`: 작은 n의 반복당 자기 비용이 scipy의 1/2–1/20(BFGS n = 2: 1.0 µs 대 22 µs), 차분의 기울기는 1/3–1/12(L-BFGS-B n = 1000: 0.35 ms 대 4.3 ms), Nelder–Mead n = 1000은 0.14 ms 대 0.76 ms, BFGS n = 1000은 같은 dgemm이라 9.4 ms 대 11.5 ms, L-BFGS-B n = 10⁴는 같은 C 알고리즘이라 0.35 ms 대 0.37 ms다.
 
 O4에서 확인한 것(2026-11-20):
 
@@ -369,7 +369,7 @@ O4에서 확인한 것(2026-11-20):
   - 무작위 비볼록 사차 함수 Σa_i x_i⁴ + xᵀBx/2 + cᵀx(n = 2–12, 넷에 하나는 비대칭 헤시안) 300문제 × 7가지(2,100번)와 Rosenbrock n = 64–200 28번도 모두 같다. trust-exact의 실패한 분해(앞 블록 k = 2–12)와 어려운 경우를 지나고, ‖g‖ ≤ n·ε·‖H‖∞의 가지는 `gtol=0`의 무작위 60문제 120번에서 지나며 모두 같다.
   - 비트까지 맞추는 데 둘이 필요했다. numpy의 `np.dot`(벡터 둘)은 0.0 + cblas_ddot이라 BLAS의 −0.0이 +0.0이 된다: cblas_ddot을 그대로 쓰면 z = 0에서 b = 2zᵀd가 −0.0이 되고 `copysign`이 다른 근의 식을 골라 MGH 8경우의 trust-ncg 걸음이 끝자리에서 갈렸다. trust-exact는 실패한 분해의 앞 블록을 scipy처럼 전치해 아래 삼각으로 푼다.
 - **scipy에서 찾은 것**: trust-ncg의 Steihaug CG에는 상한이 없어 비대칭 헤시안에서 끝나지 않는 경우가 있다(무작위 문제 하나가 26번째 부분문제에서 돈다). 대칭 헤시안에서는 CG 걸음이 n번 남짓이므로(MGH에서 많아야 1.2n, 무작위 대칭 400문제에서 n, Rosenbrock n = 1000에서 8번) 여기서는 20n번(Newton-CG의 상한)에서 status 3으로 멈춘다(O67). 그 밖에: newton-cg의 결과 `jac`은 x가 아니라 마지막 반복을 시작한 점의 기울기다. trust-ncg는 `hessp`만 주면 `nhev`에 부르지 않은 자리 채움 `hess`의 1을 더하고, 결과 `hess`를 셈 뒤에 계산해 그 호출을 세지 않는다. trust의 `max_iter=0`은 반복 하나를 한다. trust-exact의 `subproblem_maxiter`가 작으면 걸음 없이 끝나 `UnboundLocalError`가 난다. 받아들인 점의 기울기나 trust-exact가 새 점에서 만든 헤시안이 유한하지 않으면 `scipy.linalg`의 `check_finite`가 `ValueError`를 낸다.
-- 속도는 `bench/optimize/o4/speed.md`: n = 2–100의 반복당 자기 비용이 scipy의 1/3–1/60(trust-exact n = 10: 2.2 µs 대 59 µs), 차분의 헤세 곱은 n = 1000에서도 1/9(Newton-CG '2-point': 0.034 ms 대 0.31 ms), 행렬 `hess`를 쓰는 n = 1000의 Newton-CG·trust-ncg는 같은 dgemv가 대부분이라 비슷하거나 조금 느리고(0.23 대 0.22 ms, 0.17 대 0.13 ms; 사용자의 행렬을 복사해 두는 몫), trust-exact n = 1000은 5.2 ms 대 7.2 ms다.
+- 속도는 커밋 4151d2a의 `bench/optimize/o4/speed.md`: n = 2–100의 반복당 자기 비용이 scipy의 1/3–1/60(trust-exact n = 10: 2.2 µs 대 59 µs), 차분의 헤세 곱은 n = 1000에서도 1/9(Newton-CG '2-point': 0.034 ms 대 0.31 ms), 행렬 `hess`를 쓰는 n = 1000의 Newton-CG·trust-ncg는 같은 dgemv가 대부분이라 비슷하거나 조금 느리고(0.23 대 0.22 ms, 0.17 대 0.13 ms; 사용자의 행렬을 복사해 두는 몫), trust-exact n = 1000은 5.2 ms 대 7.2 ms다.
 
 O5에서 확인한 것(2026-11-20):
 
@@ -383,7 +383,7 @@ O5에서 확인한 것(2026-11-20):
 - nls의 골든 출력 338적합이 lsq.cpp에 root의 옵션을 더한 뒤에도 바이트까지 같다(`cmp`).
 - **소스 없이 맞춘 방법**: scipy 1.18.1의 MINPACK(`_minpack`)과 `nnls`(`_slsqplib`)는 C 판인데 설치본에는 컴파일된 모듈만 있다(내려받지 않았다). MINPACK은 O0에서 빌드한 Fortran 원본(netlib file05)을 옮기고, 설치된 바이너리의 기계어를 `otool -tv`로 읽어 반올림의 꼴(enorm의 상수, FMA를 쓰는 곳과 쓰지 않는 곳, 벡터화된 내적)을 맞췄다. `nnls`는 같은 방법으로 기계어에서 알고리즘 전체(LAPACK 호출의 순서, 판정, 작업 버퍼의 배치)를 읽어 옮겼다. 결과가 위의 비트 동일로 확인된다.
 - **scipy에서 찾은 것**: `nnls`의 C 판은 판정에서 떨어진 열의 꼬리를 반사 벡터로 바꾼 채 두고, 열을 빼다가 P가 비면 음수의 개수로 계속 가고(색인 배열 앞을 쓰는 버그다; 시험한 문제에서는 일어나지 않았고, 여기서는 그 자리에서 안쪽 고리를 끝낸다), 반복 상한이 원본보다 하나 적다(`iter >= maxiter`). `trf_linear`의 `backtracking`은 x를 바꾸지 않는다. `root`는 x0에서 `fun`을 두 번 더 부르고 그것을 `nfev`에 센다. 'hybr'에서 시험점의 NaN은 Broyden 갱신으로 QR 인자 전체에 퍼진다.
-- 속도는 `bench/optimize/o5/speed.md`: `root`의 반복당 자기 비용은 scipy와 비슷하다(scipy도 반복이 C다; hybr n = 100 29 µs 대 28 µs, lm n = 100 0.17 ms 대 0.17 ms, 작은 n의 lm은 1/2). `lsq_linear` (100, 10)의 'trf'는 1/9(0.04 ms 대 0.35 ms), 'bvls'는 1/1.7이고, (1000, 100)·(10⁴, 100)은 같은 LAPACK이라 같다. `nnls`는 크기마다 같고 (100, 10)에서만 4 µs 느리다(입력 확인과 결과의 잔차).
+- 속도는 커밋 4151d2a의 `bench/optimize/o5/speed.md`: `root`의 반복당 자기 비용은 scipy와 비슷하다(scipy도 반복이 C다; hybr n = 100 29 µs 대 28 µs, lm n = 100 0.17 ms 대 0.17 ms, 작은 n의 lm은 1/2). `lsq_linear` (100, 10)의 'trf'는 1/9(0.04 ms 대 0.35 ms), 'bvls'는 1/1.7이고, (1000, 100)·(10⁴, 100)은 같은 LAPACK이라 같다. `nnls`는 크기마다 같고 (100, 10)에서만 4 µs 느리다(입력 확인과 결과의 잔차).
 
 
 O6 1부(성능, 2026-11-20)에서 확인한 것:
@@ -395,8 +395,8 @@ O6 1부(성능, 2026-11-20)에서 확인한 것:
   - Fortran LMDER1(53경우)과의 거리가 scipy `leastsq`와 같아졌다: 같은 호출 수 47, x가 10⁻¹² 안 37, 10⁻⁶ 안 45.
   - `cost`, `grad`, `optimality`는 이쪽의 계산(`vecdot`, `matmul`)이다. scipy는 numpy의 `np.dot`과 `J.T.dot(f)`(야코비안의 메모리 배치에 따라 BLAS의 길이 다르다)라 끝자리가 다를 수 있다(해석적 108경우에서 cost 88·grad 108, 2점 104경우에서 cost 76·grad 44가 같다).
   - nls의 골든 출력 338적합(O1)을 다시 만들어 바이트까지 같다(`cmp`). 고정 골든(`tests/golden`)에서는 optimize의 `least_squares` 'lm' 175경우(MGH의 해석적 83, 2점 91, `max_nfev=5` 하나)가 바뀌었고, O98대로 optimize 영역만 다시 기록했다. 다시 기록한 뒤 모든 영역이 같고 1·3·10스레드도 같다.
-- **속도** (O94, O97): 모든 공개 함수와 방법을 O1–O5의 문제와 크기에서 scipy와 견주었다(`bench/optimize/o6/speed.md`). 결과의 비트를 지키며 바꾼 것: hybrd의 qrfac·qform과 lmder의 qrfac에서 열 여덟 개를 함께 반사하기(열마다의 합은 제 순서; hybr n = 100의 반복당 자기 비용 29 → 24 µs, n = 300에서 scipy의 0.55배), lmder qrfac의 큰 단계를 열마다 스레드에 나누기, 야코비안 읽기, 배치 함수의 `args` 모으기와 원소 패스를 2¹⁵개부터 스레드에 나누기(10⁶ 원소 10스레드 find_root 89 → 32 ms, find_minimum 120 → 57 ms), `nnls`의 쓰지 않는 Aᵀr. C 순서의 사용자 헤시안을 복사하지 않고 쥐면 newton-cg·trust-ncg n = 1000의 반복당 자기 비용이 0.23 → 0.15 ms, 0.16 → 0.10 ms로 줄지만 넣지 않았다: 사용자가 돌려준 배열을 나중에 고치면 쥔 행렬이 바뀐다(§3.5). 복사하는 지금은 0.24 ms, 0.20 ms다(scipy 0.22, 0.14 ms). O95로 `least_squares('lm')`은 m ≫ n에서 반복당 비용이 커졌다((10⁴, 100) 6.6 → 17.7 ms, 10스레드 7.8 ms; scipy 36.8 ms). m = n에서는 빨라졌다(m = n = 40 0.063 → 0.035 ms, `root('lm')` n = 100 0.17 → 0.11 ms; scipy 0.051, 0.17 ms).
-- **비트를 바꾸는 후보** (O94: 재서 물었다; `bench/optimize/o6/speed.md`): BFGS의 O(n²) 갱신은 넣었고(O99) 경계 없는 'trf'의 n × n SVD(m = n = 40에서 5%; nls의 비트도 바뀐다)는 넣지 않는다(O100).
+- **속도** (O94, O97): 모든 공개 함수와 방법을 O1–O5의 문제와 크기에서 scipy와 견주었다(커밋 4151d2a의 `bench/optimize/o6/speed.md`). 결과의 비트를 지키며 바꾼 것: hybrd의 qrfac·qform과 lmder의 qrfac에서 열 여덟 개를 함께 반사하기(열마다의 합은 제 순서; hybr n = 100의 반복당 자기 비용 29 → 24 µs, n = 300에서 scipy의 0.55배), lmder qrfac의 큰 단계를 열마다 스레드에 나누기, 야코비안 읽기, 배치 함수의 `args` 모으기와 원소 패스를 2¹⁵개부터 스레드에 나누기(10⁶ 원소 10스레드 find_root 89 → 32 ms, find_minimum 120 → 57 ms), `nnls`의 쓰지 않는 Aᵀr. C 순서의 사용자 헤시안을 복사하지 않고 쥐면 newton-cg·trust-ncg n = 1000의 반복당 자기 비용이 0.23 → 0.15 ms, 0.16 → 0.10 ms로 줄지만 넣지 않았다: 사용자가 돌려준 배열을 나중에 고치면 쥔 행렬이 바뀐다(§3.5). 복사하는 지금은 0.24 ms, 0.20 ms다(scipy 0.22, 0.14 ms). O95로 `least_squares('lm')`은 m ≫ n에서 반복당 비용이 커졌다((10⁴, 100) 6.6 → 17.7 ms, 10스레드 7.8 ms; scipy 36.8 ms). m = n에서는 빨라졌다(m = n = 40 0.063 → 0.035 ms, `root('lm')` n = 100 0.17 → 0.11 ms; scipy 0.051, 0.17 ms).
+- **비트를 바꾸는 후보** (O94: 재서 물었다; 커밋 4151d2a의 `bench/optimize/o6/speed.md`): BFGS의 O(n²) 갱신은 넣었고(O99) 경계 없는 'trf'의 n × n SVD(m = n = 40에서 5%; nls의 비트도 바뀐다)는 넣지 않는다(O100).
 - **BFGS의 O(n²) 갱신** (O99, O102; `tests/optimize/test_minimize.py`). 반복당 자기 비용(Rosenbrock, 1스레드)은 n = 100 0.022 → 0.0062 ms, n = 1000 8.8 → 0.29 ms(10스레드 4.8 → 0.28), n = 2000 83 → 1.7 ms이고, 전체 시간은 n = 1000(40회) 352 → 12 ms다(scipy 441 ms). scipy와 견주면(MGH 110경우와 Rosenbrock 4경우, 114경우): x가 비트까지 같은 것 13(n = 1의 셋 포함), 반복 수와 nfev가 같은 것 80, status가 같은 것 113, x가 상대 10⁻⁶ 안 89다. 기록된 113번에서 해석적 기울기는 status 112·x 10⁻⁶ 안 94·f 10⁻⁸·max(1, |f|) 안 102, 차분은 107·79·88이고, 수렴한 실행은 모두 ‖g‖∞ ≤ gtol이다. status가 다른 것(해석적 Brown–Dennis 100x0, 차분 여섯)은 scipy가 수렴하고 이쪽이 같은 최솟값 근처에서 status 2(선 탐색이 걸음을 못 찾음)로 멈춘 것이다. n = 1을 펼친 식으로 계산하면 Chebyquad n = 1의 10x0·100x0이 상쇄로 반복 1–2번 만에 멈췄다(status 해석적 111, 차분 105): 그래서 n = 1은 scipy의 곱의 꼴이다(O102; Chebyquad n = 1의 셋은 scipy와 비트까지 같고 수렴한다). 옵션과 가장자리의 BFGS 사례(4문제)는 status·message와 반복 수(몇 번 안), x(10⁻⁵ 안)로 견주고, 끝에서 0과 2가 갈리면 f(10⁻⁶ 안)로 견준다. `hess_inv`: 갱신 한 번 뒤의 행렬이 scipy와 상대 1.7×10⁻¹⁵ 안이고(110경우) 비트까지 대칭이다. 끝의 `hess_inv`는 경로가 반올림만큼 갈려 상대 차이의 중앙값 4×10⁻⁹, 큰 것은 O(1)이다. 고정 골든에는 BFGS 경우가 없어 바뀐 것이 없다.
 
 ---
@@ -404,13 +404,13 @@ O6 1부(성능, 2026-11-20)에서 확인한 것:
 ## 8. 마일스톤 (안)
 | 마일스톤 | 내용 |
 |---|---|
-| O0 준비 | API 문서 초안, 결과 객체의 틀, 시험 문제 모음(MGH 35, scipy 시험 함수), 대조 도구, 벤치마크 기준선(scipy). 완료(2026-11-20): §7, docs/api/optimize.md, `bench/optimize/o0/` |
-| O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일). 완료(2026-11-20): §3.1, §3.4, §7, `bench/optimize/o1/` |
-| O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum`. 완료(2026-11-20, 승인 대기): §3.2, §3.3, §7, `bench/optimize/o2/` |
-| O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B. 완료(2026-11-20, 승인 대기): §3.5, §7, `bench/optimize/o3/` |
-| O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact. 완료(2026-11-20, 승인 대기): §3.5, §7, `bench/optimize/o4/` |
-| O5 방정식계와 선형 최소제곱 | `root`(hybr, lm), `lsq_linear`, `nnls`. 완료(2026-11-20, 승인 대기): §3.4, §3.6, §7, `bench/optimize/o5/` |
-| O6 최적화와 일관성 점검 | 커널 속도(BFGS의 H를 n²으로 갱신하기, O61), `root('lm')`과 `least_squares('lm')`을 scipy와 비트까지 맞추기(O87), 메시지·시그니처의 영역 간 일관성, 코드 리뷰. 1부(성능, O94–O97) 완료(2026-11-20, 승인 대기): §3.4, §3.6, §7, `bench/optimize/o6/`. BFGS의 O(n²) 갱신(O99), 골든의 'lm' 175경우를 다시 기록(O98). 2부 코드 리뷰(O96) |
+| O0 준비 | API 문서 초안, 결과 객체의 틀, 시험 문제 모음(MGH 35, scipy 시험 함수), 대조 도구, 벤치마크 기준선(scipy). 완료(2026-11-20): §7, docs/api/optimize.md, 커밋 4151d2a의 `bench/optimize/o0/` |
+| O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일). 완료(2026-11-20): §3.1, §3.4, §7, 커밋 4151d2a의 `bench/optimize/o1/` |
+| O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum`. 완료(2026-11-20, 승인 대기): §3.2, §3.3, §7, 커밋 4151d2a의 `bench/optimize/o2/` |
+| O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B. 완료(2026-11-20, 승인 대기): §3.5, §7, 커밋 4151d2a의 `bench/optimize/o3/` |
+| O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact. 완료(2026-11-20, 승인 대기): §3.5, §7, 커밋 4151d2a의 `bench/optimize/o4/` |
+| O5 방정식계와 선형 최소제곱 | `root`(hybr, lm), `lsq_linear`, `nnls`. 완료(2026-11-20, 승인 대기): §3.4, §3.6, §7, 커밋 4151d2a의 `bench/optimize/o5/` |
+| O6 최적화와 일관성 점검 | 커널 속도(BFGS의 H를 n²으로 갱신하기, O61), `root('lm')`과 `least_squares('lm')`을 scipy와 비트까지 맞추기(O87), 메시지·시그니처의 영역 간 일관성, 코드 리뷰. 1부(성능, O94–O97) 완료(2026-11-20, 승인 대기): §3.4, §3.6, §7, 커밋 4151d2a의 `bench/optimize/o6/`. BFGS의 O(n²) 갱신(O99), 골든의 'lm' 175경우를 다시 기록(O98). 2부 코드 리뷰(O96) |
 
 진행 원칙은 다른 영역과 같다: 마일스톤마다 시작 전에 §9의 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
 
