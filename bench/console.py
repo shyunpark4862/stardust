@@ -1,9 +1,13 @@
-"""Console output of the speed runs, in English: summary blocks laid out like a regression
-summary (78 columns, '=' rules, "Key:" on the left and the value on the right of each half),
-small tables, a progress bar (tqdm) and event lines printed above it.
+"""Console output of the benchmarks and tools, in English, one look for all of them: summary
+blocks laid out like a regression summary (78 columns, '=' rules, "Key:" on the left and the
+value on the right of each half), tables with a '-' rule under the header, per-item blocks of a
+few lines within the terminal width, a progress bar (tqdm) with event lines printed above it,
+and numbered notes at the end.
 
-The log file next to a run file gets every line with a time stamp, and one plain line per
-case instead of the bar. When stderr is not a terminal the plain lines go there too.
+bench.speed uses all of it; bench.accuracy and tools/test.py use the same helpers. The log file
+of a run gets every line with a time stamp, and one plain line per step instead of the bar.
+When stderr is not a terminal, or tqdm is not installed (it is in the "bench" extra), the plain
+lines go there too.
 """
 
 from __future__ import annotations
@@ -186,7 +190,10 @@ class Console:
             self.total = total
             if not (self.show and self.tty):
                 return
-            from tqdm import tqdm
+            try:
+                from tqdm import tqdm
+            except ImportError:  # without the "bench" extra: plain lines, as on a non-terminal
+                return
 
             self.bar = tqdm(
                 total=total,
@@ -224,3 +231,15 @@ class Console:
             if self.bar is not None:
                 self.bar.close()
                 self.bar = None
+
+
+def notes(items: list[str]) -> list[str]:
+    """'Notes:' and the items numbered [1], [2], ...; an item's further lines are indented 4."""
+    if not items:
+        return []
+    out = ["Notes:"]
+    for k, text in enumerate(items, 1):
+        first, *rest = text.splitlines()
+        out.append(f"[{k}] {first}")
+        out += [f"    {line.strip()}" for line in rest]
+    return out

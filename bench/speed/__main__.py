@@ -36,22 +36,54 @@ def _select(a) -> list[registry.Case]:
     return registry.select(cases, match=a.match, quick=a.quick, groups=a.group)
 
 
+def _out(lines) -> None:
+    print("\n".join(lines), flush=True)
+
+
+def _rel(path) -> str:
+    import pathlib
+
+    path = pathlib.Path(path).resolve()
+    try:
+        return str(path.relative_to(results.ROOT))
+    except ValueError:
+        return str(path)
+
+
 def cmd_list(a) -> int:
+    from ..console import block, rule, width
+
     cases = _select(a)
+    by_area: dict[str, list] = {}
     for c in cases:
-        refs = ", ".join(r.label for r in c.refs)
-        flags = ("Q " if c.quick else "  ") + ("C " if c.cost else "  ")
-        print(f"{flags}{c.id}  [{', '.join(map(str, c.threads))}T; {refs or '-'}]")
-    print(
-        f"{len(cases):,} cases (Q: {sum(c.quick for c in cases)} in the quick subset, "
-        f"C: {sum(bool(c.cost) for c in cases)} feed a cost table)",
-        file=sys.stderr,
+        by_area.setdefault(c.area, []).append(c)
+    lines = [""] + block(
+        "bench.speed cases",
+        [
+            ("Cases", f"{len(cases):,}"),
+            ("Areas", str(len(by_area))),
+            ("Quick subset (Q)", f"{sum(c.quick for c in cases):,}"),
+            ("Cost table (C)", f"{sum(bool(c.cost) for c in cases):,}"),
+        ],
     )
+    for area, cs in by_area.items():
+        lines += ["", f"{area} ({len(cs):,})", rule("-")]
+        for c in cs:
+            flags = ("Q" if c.quick else " ") + ("C" if c.cost else " ")
+            head = f"  {flags}  {c.id}"
+            refs = ", ".join(r.label for r in c.refs) or "-"
+            tail = f"{', '.join(map(str, c.threads))} thread{'s' if c.threads != (1,) else ''} · {refs}"
+            if width(head) + 3 + width(tail) <= 100:
+                lines.append(head + " " * (100 - width(head) - width(tail)) + tail)
+            else:
+                lines += [head, "        " + tail]
+    lines += ["", rule()]
+    _out(lines)
     return 0
 
 
 def cmd_estimate(a) -> int:
-    from .console import fmt_duration, rule, table
+    from ..console import block, fmt_duration, notes, rule, table
     from .run import estimate
 
     cases = _select(a)
@@ -64,12 +96,25 @@ def cmd_estimate(a) -> int:
         total += s
         total_unknown += unknown
         rows.append([area, f"{len(cs):,}", f"{len(cs) - unknown:,}", fmt_duration(s) if unknown < len(cs) else "-"])
-    rows.append(["Total", f"{len(cases):,}", f"{len(cases) - total_unknown:,}", fmt_duration(total)])
-    lines = table(["Area", "Cases", "In a baseline", f"Expected ({a.rounds} rounds)"], rows, "lrrr")
-    lines.insert(-1, rule("-"))
-    print("\n".join(lines))
+    lines = [""] + block(
+        "bench.speed estimate",
+        [
+            ("Cases", f"{len(cases):,}"),
+            ("Rounds", str(a.rounds)),
+            ("In a baseline", f"{len(cases) - total_unknown:,}"),
+            ("Expected", fmt_duration(total) if total_unknown < len(cases) else "unknown"),
+        ],
+    )
+    lines += table(["Area", "Cases", "In a baseline", "Expected"], rows, "lrrr")
+    lines.append(rule())
     if total_unknown:
-        print(f"{total_unknown:,} cases have no baseline yet: their time is not in the total.")
+        lines += notes(
+            [
+                f"{total_unknown:,} cases have no baseline yet: their time is not in the total.\n"
+                "A run's progress bar estimates them from the cases measured so far."
+            ]
+        )
+    _out(lines)
     return 0
 
 
@@ -128,18 +173,24 @@ def cmd_run(a) -> int:
 
 
 def _promote(data) -> None:
+    from ..console import notes, rule, table
     from . import tables
 
     known = [c.id for c in registry.load()]
     rep = results.promote(data, known_ids=known)
     cases = registry.load()
+    rows = []
     for area, (n, dropped) in rep.items():
         base = results.load_baseline(area)
         path = tables.write(area, base, cases, f"bench/speed/results/{area}.json")
-        extra = f", {dropped} no longer registered dropped" if dropped else ""
-        print(f"{area}: {n} cases into the baseline{extra}; wrote {path.relative_to(results.ROOT)}")
+        rows.append([area, f"{n:,}", f"{dropped:,}", _rel(path)])
+    lines = ["", "Baselines updated".center(78).rstrip(), rule()]
+    lines += table(["Area", "Cases in", "Dropped", "Table written"], rows, "lrrl")
+    lines.append(rule())
+    extra = ["'Dropped' counts baseline cases no longer in the registry."]
     if any(c.get("cost") for c in data["cases"]):
-        print("Cost-table cases changed: run `.venv/bin/python -m bench.speed cost` to rewrite the C++ cost tables.")
+        extra.append("Cost-table cases changed: rewrite the C++ cost tables with\n.venv/bin/python -m bench.speed cost")
+    _out(lines + notes(extra))
 
 
 def cmd_promote(a) -> int:
@@ -155,7 +206,7 @@ def cmd_promote(a) -> int:
 
 
 def cmd_compare(a) -> int:
-    from .compare import compare, report
+    from .compare import compare, console_report, report
 
     new = results.load(a.run)
     if a.base:
@@ -164,45 +215,53 @@ def cmd_compare(a) -> int:
     else:
         base = results.baseline_cases(sorted({c["area"] for c in new["cases"]}))
     res = compare(new, base, threshold=a.threshold)
-    text = report(res, threshold=a.threshold, show_faster=a.faster)
-    print(text)
+    _out(console_report(res, new, a.base or "the baselines (bench/speed/results)", a.threshold, a.faster))
     if a.out:
         with open(a.out, "w") as fh:
-            fh.write(text)
+            fh.write(report(res, threshold=a.threshold, show_faster=a.faster))
     return 1 if any(r["beyond_noise"] for r in res["slower"]) else 0
 
 
 def cmd_table(a) -> int:
+    from ..console import rule, table
     from . import tables
 
     cases = registry.load()
+    rows = []
     if a.from_:
         data = results.load(a.from_)
-        areas = a.areas or sorted({c["area"] for c in data["cases"]})
-        for area in areas:
-            path = tables.write(area, data, cases, a.from_, path=a.out)
-            print(path)
-        return 0
-    for area in a.areas or registry.AREAS:
-        base = results.load_baseline(area)
-        if base is None:
-            if a.areas:
-                print(f"{area}: no baseline", file=sys.stderr)
-            continue
-        print(tables.write(area, base, cases, f"bench/speed/results/{area}.json").relative_to(results.ROOT))
+        for area in a.areas or sorted({c["area"] for c in data["cases"]}):
+            rows.append([area, _rel(tables.write(area, data, cases, a.from_, path=a.out)), _rel(a.from_)])
+    else:
+        for area in a.areas or registry.AREAS:
+            base = results.load_baseline(area)
+            if base is None:
+                if a.areas:
+                    rows.append([area, "-", "no baseline"])
+                continue
+            path = tables.write(area, base, cases, f"bench/speed/results/{area}.json")
+            rows.append([area, _rel(path), f"bench/speed/results/{area}.json"])
+    _out(["", "Tables written".center(78).rstrip(), rule(), *table(["Area", "Table", "From"], rows, "lll"), rule()])
     return 0
 
 
 def cmd_cost(a) -> int:
+    from ..console import notes, rule, table
     from . import cost
 
     changed_any = False
+    rows = []
     for path, changed, n in cost.generate(check=a.check):
         changed_any |= changed
         state = ("differs" if changed else "up to date") if a.check else ("rewritten" if changed else "unchanged")
-        print(f"{path.relative_to(results.ROOT)}: {n} rows measured in the baselines, {state}")
+        rows.append([_rel(path), f"{n:,}", state])
+    title = "Cost tables (check)" if a.check else "Cost tables"
+    lines = ["", title.center(78).rstrip(), rule(), *table(["Header", "Rows measured", "State"], rows, "lrl"), rule()]
     if changed_any and not a.check:
-        print("A C++ header changed: the next import rebuilds the core.")
+        lines += notes(["A C++ header changed: the next import rebuilds the core."])
+    if changed_any and a.check:
+        lines += notes(["Rewrite them with: .venv/bin/python -m bench.speed cost"])
+    _out(lines)
     return 1 if (a.check and changed_any) else 0
 
 

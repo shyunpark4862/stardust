@@ -10,6 +10,9 @@ requires-python = ">=3.15"
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov", "pytest-xdist", "hypothesis", "numpy", "scipy", "pandas", "polars", "python-flint", "statsmodels", "scikit-learn"]
+# python -m bench.speed / bench.accuracy: the comparators of "test" plus the progress bar, the
+# string backend of the pandas comparator and the BLAS thread control
+bench = ["stardust[test]", "tqdm", "pyarrow", "threadpoolctl"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

@@ -113,3 +113,80 @@ def report(res: dict, *, threshold: float = 0.10, show_faster: bool = False) -> 
     if show_faster and res["faster"]:
         lines += table(res["faster"], "Faster")
     return "\n".join(lines) + "\n"
+
+
+def _label(cid: str) -> str:
+    """'area · name [size]' from a case id 'area/group/name [size]'."""
+    area, _, rest = cid.split("/", 2)
+    return f"{area} · {rest}"
+
+
+def _threads(t) -> str:
+    return "default threads" if t is None else f"{t} thread" + ("" if t == 1 else "s")
+
+
+def console_report(res: dict, new: dict, base_label: str, threshold: float = 0.10, show_faster: bool = False) -> list:
+    """The comparison for the console (bench/console.py): a summary block, then each slower
+    sd timing as a few lines (and the faster ones with show_faster), then notes."""
+    from ..console import block, notes, rule, split_label
+
+    n_slow = len(res["slower"])
+    real = sum(r["beyond_noise"] for r in res["slower"])
+    busy = sum(1 for r in res["slower"] + res["faster"] if r.get("busy"))
+    drift = res["refs_drift"]
+    git = (new.get("env") or {}).get("git") or {}
+    lines = [""] + block(
+        "bench.speed compare",
+        [
+            ("New run", new.get("run", "?")),
+            ("Threshold", f"{threshold * 100:.0f}%"),
+            ("Slower", f"{n_slow:,}"),
+            ("Beyond the noise", f"{real:,}"),
+            ("Faster", f"{len(res['faster']):,}"),
+            ("About the same", f"{res['same']:,}"),
+            ("Measured while busy", f"{busy:,}"),
+            ("Comparators moved", f"{drift:.2f}x" if drift is not None else "-"),
+            ("Commit", f"{git.get('commit') or '?'}{' (dirty)' if git.get('dirty') else ''}"),
+            ("Not in the baseline", f"{res['missing']:,}"),
+        ],
+        [("Baseline", base_label)],
+    )
+
+    def section(rows, title):
+        out = ["", title, rule("-")]
+        for r in rows:
+            out += ["  " + h for h in split_label(_label(r["id"]), 4, 98)]
+            if r.get("busy"):
+                verdict = "measured while busy: run it again"
+            elif r["ratio"] > 1:
+                verdict = "slower" if r["beyond_noise"] else "within the noise"
+            else:
+                verdict = "faster"
+            change = f"{r['ratio']:.2f}x slower" if r["ratio"] > 1 else f"{1 / r['ratio']:.2f}x faster"
+            out.append(
+                f"      {_threads(r['threads'])}: {fmt_time(r['base'])} -> {fmt_time(r['new'])}   "
+                f"{change}   noise {r['band'] * 100:.0f}%   {verdict}"
+            )
+        return out
+
+    if res["slower"]:
+        lines += section(res["slower"], f"Slower than the baseline by more than {threshold * 100:.0f}%")
+    if show_faster and res["faster"]:
+        lines += section(res["faster"], f"Faster than the baseline by more than {threshold * 100:.0f}%")
+    lines += ["", rule()]
+    items = [
+        "A timing is 'slower' when it is past the threshold and past the noise band (the larger\n"
+        "of the two measurements' median / min - 1); inside the band it may be the machine.",
+    ]
+    if drift is not None and abs(drift - 1) > threshold:
+        items.append(
+            f"The comparator libraries moved too ({drift:.2f}x, new / baseline): the machine may\n"
+            "have changed between the runs."
+        )
+    if busy:
+        items.append(
+            "Timings measured while other processes kept the CPU busy do not count; measure\nthem again with run --rerun-busy."
+        )
+    if res["faster"] and not show_faster:
+        items.append("--faster lists the faster timings too.")
+    return lines + notes(items)

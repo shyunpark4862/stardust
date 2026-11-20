@@ -44,8 +44,8 @@ import sys
 import threading
 import time
 
+from ..console import WIDTH, Console, block, case_label, fmt_duration, ljust, rjust, rule, split_label, table, width
 from . import harness, proc, results
-from .console import WIDTH, Console, block, case_label, fmt_duration, ljust, rjust, rule, split_label, table, width
 from .harness import fmt_time
 from .registry import Case, RRef
 
