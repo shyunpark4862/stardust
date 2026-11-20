@@ -279,7 +279,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
 - **엔트로피**: 정규는 (d/2)(1 + log 2π) + log det/2다. t는 ν/2 ≥ 12에서 정규의 값 + [(a+h)Δψ − (a+h−½)log1p(h/a) − ΔS]다(크기 a log a인 항이 없어진다). Δψ는 `digamma_diff_asym`이다. 다항은 −log n! − nΣp log p + Σ E[log X_i!]다. 기댓값은 최빈값에서 바깥으로 double-double로 더하고, 각 pmf는 double-double log Γ에서 exp_full로 구한다. 이항의 log pmf는 앞 인자의 log를 double로 반올림해서, n = 1e5에서 4e-11이 틀렸다. 디리클레는 베타 엔트로피의 G·Gc 묶음을 K개로 넓혔다: ΣG(a_i) + Gc(a0) + Σlog(a_i)/2 + (K−1)log(2π)/2 + (2−K)ψ(a0) − 3 log(a0)/2. Σa_i와 a0이 정확히 지워진다.
 - **다항 logpmf**: log n! − Σlog x_i! + Σx_i log p_i − n log(Σp)를 double-double로 계산한다. p를 합으로 나누지 않고 log의 차로 쓴다(나누면 log p_i마다 1 ULP, 전체로 n·eps가 틀린다). log k!은 4096까지 double-double 표(log의 누적합)에서 찾고, 그 위는 log_gamma다.
 - **표본**: 벡터 하나가 스트림 원소 하나다(표본 커널의 Words, §4). 정규는 ziggurat d개, t는 거기에 감마(log) 하나를 더한다. 다항은 조건부 이항(BTRS·역함수, §4)이고, 남은 질량은 끝에서부터 더한다. 디리클레는 log 감마를 정규화한다.
-- **잰 값**: bench/stats/t9/(accuracy.md, speed.md).
+- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; scipy 대비는 bench/stats/t9/accuracy.md), 속도는 bench/stats/t9/speed.md.
 - 행렬 분포는 §6.3(T10).
 
 ### 6.2 다변량 정규·t의 cdf (T16, T29; `csrc/stats/mvcdf.hpp`, `csrc/bind/stats_mvcdf.cpp`)
@@ -309,7 +309,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
   - 오차 추정은 통계적이다. 잰 값으로 0–7%의 점이 추정을 넘었고, 넘은 폭은 최대 1.9배였다.
 - **t의 역 카이** (d ≥ 4의 QMC): df마다 조각별 Chebyshev 표를 쓴다(w ≤ Φ(−2)는 log w, 그 위는 z = Φ⁻¹(w)에서). 조각마다 33점을 1e-14로 확인했고, 촘촘한 표본 512k개에서 최악 1.4e-14다. 호출당 260 ns가 15 ns가 됐다. 같은 격자에서 정확한 역함수와의 치우침은 8.3e-17 이하다. df < 1이면 정확한 gammaincinv를 쓴다.
 - **결정성**: 스레드 1·3·10에서, 그리고 점을 혼자 계산하든 묶어 계산하든 같은 비트다.
-- **잰 값**: bench/stats/t9/(cdf_accuracy.md, cdf_speed.md). 참값은 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py)이다. 정규(bvn, tvn, 한 인자 d = 4–10)와 d = 2, 3의 t는 Arb의 엄밀한 값이고, 한 인자 t(d = 2–8)는 scipy의 2단 적응 구적(약 1e-11)이다.
+- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; P의 크기별 표는 bench/stats/t9/cdf_accuracy.md), 속도는 bench/stats/t9/cdf_speed.md. 참값은 tests/stats/ref_mvcdf/(tools/mvcdf_ref.py)이다. 정규(bvn, tvn, 한 인자 d = 4–10)와 d = 2, 3의 t는 Arb의 엄밀한 값이고, 한 인자 t(d = 2–8)는 scipy의 2단 적응 구적(약 1e-11)이다.
 
 ### 6.3 행렬 분포 (T10; `src/stardust/stats/_matrix.py`, `csrc/bind/stats_matrix.cpp`, `csrc/stats/dd_linalg.hpp`)
 - **결정**: T30. 배치와 매개변수의 촐레스키 분해(`mv_chol`)는 T9와 같다. double-double 선형대수(제곱근, log1p, 촐레스키, 앞으로 대입, L에서 역행렬, log Γ_p)는 `stats/dd_linalg.hpp`에 모아 T9 커널과 함께 쓴다.
@@ -329,7 +329,7 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
   IW의 식은 X = Y⁻¹, Y ~ W(n, Ψ⁻¹)로 변수를 바꿔 얻는다(야코비안 |Y|^−(p+1), E log|Y| = ψ_p(n/2) + p log 2 − log|Ψ|). scipy 1.18의 invwishart.entropy는 이 값과 다르고, 몬테카를로(−E log pdf)는 우리 값과 맞는다.
 - **행렬 정규** MN(M, U, V): A = L_U⁻¹(X − M)L_V⁻ᵀ다. X − M은 two_sum으로 정확히 빼고, 열마다 L_U, 행마다 L_V로 앞으로 대입한다. log pdf = −(np/2) log 2π − (p/2) log|U| − (n/2) log|V| − ‖A‖²/2다.
 - **표본**: Wishart는 Bartlett 분해다. A는 아래 삼각이고, A_jj = √(2 G((n − j)/2))(j = 0..p−1, 실수 n), 그 아래는 N(0, 1)이다. 결과는 (LA)(LA)ᵀ다. 역Wishart는 X⁻¹ ~ W(n, Ψ⁻¹)이고 W(n, I)가 직교 불변이라 Ψ⁻¹의 아무 제곱근을 써도 되므로, X = (L_Ψ A⁻ᵀ)(L_Ψ A⁻ᵀ)ᵀ다. 행렬 정규는 M + L_U Z L_Vᵀ다. 결과는 정확히 대칭으로 쓴다.
-- **잰 값**: bench/stats/t10/(accuracy.md, speed.md). 참값에서 x는 아래 삼각에서 대칭으로 만든다. scipy의 표본은 반올림만큼 비대칭이라, 특이에 가까운 X에서는 그 차이가 X⁻¹를 움직였다(처음 측정에서 3e-8로 보였다).
+- **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; scipy 대비는 bench/stats/t10/accuracy.md), 속도는 bench/stats/t10/speed.md. 참값에서 x는 아래 삼각에서 대칭으로 만든다. scipy의 표본은 반올림만큼 비대칭이라, 특이에 가까운 X에서는 그 차이가 X⁻¹를 움직였다(처음 측정에서 3e-8로 보였다).
 
 ## 7. `sd.stats.tests` (나중, 이 영역에서 뺌)
 - 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다).

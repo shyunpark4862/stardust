@@ -13,7 +13,9 @@ from collections.abc import Callable
 
 import numpy as np
 
-AREAS = ("special", "stats", "regression")
+from .common import Custom
+
+AREAS = ("special", "stats", "multivariate", "regression")
 GUARANTEED = 1e-14
 
 
@@ -203,8 +205,13 @@ def sweeps(areas=None):
         out += special_sweeps()
     if "stats" in areas:
         out += stats_sweeps()
+    if "multivariate" in areas:
+        from . import multivariate
+
+        out += multivariate.sweeps()
     if "regression" in areas:
         out += regression_sweeps()
+
     return out
 
 
@@ -225,6 +232,10 @@ def _p999(e):
 def measure(sw) -> dict:
     if isinstance(sw, RegSweep):
         return measure_regression(sw)
+    if isinstance(sw, Custom):
+        regions = sw.run()
+        return {"id": sw.id, "area": sw.area, "name": sw.name, "points": sum(r["points"] for r in regions.values()),
+                "regions": regions}  # fmt: skip
     from tests.special import refdata as R
 
     xs, hi, lo, g, scale = sw.load()

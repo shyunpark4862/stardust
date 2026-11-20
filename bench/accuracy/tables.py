@@ -10,6 +10,24 @@ HEAD = {
     "special": "sd.special",
     "stats": "sd.stats",
     "regression": "sd.regression",
+    "multivariate": "sd.stats 다변량·행렬 분포",
+}
+
+# where an area's table goes (default bench/<area>/accuracy.md)
+PATH = {"multivariate": "bench/stats/accuracy_multivariate.md"}
+
+# the paragraph under the title (default: the Arb references of tests/<area>/ref)
+INTRO = {
+    "multivariate": (
+        "참값은 Arb로 계산한 값이다: 밀도·엔트로피는 tests/stats/ref_mv(tools/mv_ref.py; 행렬식과 풀이는 주어진 "
+        "행렬 그대로 Arb의 LU), cdf는 tests/stats/ref_mvcdf(tools/mvcdf_ref.py; factor_t는 2단 적응 구적의 약 1e-11 "
+        "참값)다. 밀도·엔트로피의 점은 모두 보장 영역(κ ≤ 1e9, d·p ≤ 100, Wishart df ≤ 1e30) 안이고 계약은 "
+        "|오차| ≤ 1e-14·max(1, |값|), pdf는 그 오차가 exp를 지난 상대 1e-14·max(1, |logpdf|)다(|logpdf| < 700인 점). "
+        "cdf의 영역과 한계는 tests/stats/test_mvcdf.py의 것이다: guaranteed는 상대 1e-14, loose는 그 밖의 정규수 "
+        "범위(bvn 10·eps·max(1, −ln P), tvn 8u·조건수), tiny는 P < 1e-300(절대 1e-300), bvt·tvt는 상대 5e-15·1e-14, "
+        "QMC(atol=…)는 오차 추정 ≤ atol, 실제 오차 ≤ 1.5·atol, 실제 오차 ≤ 2·추정 + 여유이고, factor_t의 d ≤ 3은 "
+        "정확한 혼합이라 상대 1e-13이다."
+    ),
 }
 
 
@@ -43,20 +61,35 @@ COLUMNS = [
     ("mixed_max", "mixed (최대 / 99.9%)", lambda r: f"{num(r['mixed_max'])} / {num(r['mixed_p999'])}"),
     ("rel_max", "최대 상대오차", lambda r: num(r["rel_max"])),
     ("norm_rel", "노름 상대오차", lambda r: num(r["norm_rel"])),
+    ("abs_max", "최대 절대오차", lambda r: num(r["abs_max"])),
+    ("rel_cond_max", "상대오차/(u·조건수)", lambda r: num(r["rel_cond_max"])),
+    ("est_ratio_max", "오차/추정", lambda r: num(r["est_ratio_max"])),
     ("contract", "계약 대비", lambda r: contract_cell(r)),
 ]
+
+
+# (column key, line) for the columns above that the fixed legend in render() does not explain
+LEGEND_EXTRA = [
+    ("abs_max", "- 최대 절대오차: |sd − 참값|의 최대."),
+    ("rel_cond_max", "- 상대오차/(u·조건수): 입력의 반올림(u = 2⁻⁵³)이 조건수만큼 커진 크기에 대한 상대오차. 조건수는 "
+     "입력마다 |d log P/d log x|의 합이다(sd 자신의 값의 중앙 차분)."),
+    ("est_ratio_max", "- 오차/추정: 실제 오차를 sd가 돌려준 오차 추정(표준오차의 3배)으로 나눈 값의 최대. "
+     "추정은 통계적이라 1을 넘는 점이 있다."),
+]  # fmt: skip
 
 
 def render(area: str, data: dict) -> str:
     sweeps = sorted((s for s in data["sweeps"] if s["area"] == area), key=lambda s: s["name"])
     runs = data.get("runs") or {data["run"]: data["env"]}
+    present = {k for sw in sweeps for r in sw["regions"].values() for k, v in r.items() if v is not None}
     lines = [
         f"# {HEAD.get(area, area)} 정확도",
         "",
         "`.venv/bin/python -m bench.accuracy promote`가 bench/accuracy/results/"
         f"{area}.json에서 만든다. 손으로 고치지 않는다.",
         "",
-        "참값은 tests/"
+        INTRO.get(area)
+        or "참값은 tests/"
         + area
         + "/ref의 Arb 참값이다. 오차는 그 파일의 모든 점에서 잰다."
         + (
@@ -74,6 +107,7 @@ def render(area: str, data: dict) -> str:
         "- 계약 대비: 그 영역의 계약 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, mixed는 "
         "|오차|/max(1, |값|))로 잰 가장 큰 오차를 한계로 나눈 값. 1 이하가 계약 안이다.",
         "- 영역: guaranteed는 보장 영역, loose와 mixed는 그 밖(mixed는 그 척도로 잰다).",
+        *[line for key, line in LEGEND_EXTRA if key in present],
         "",
         "측정: "
         + ", ".join(
@@ -83,7 +117,6 @@ def render(area: str, data: dict) -> str:
         + ".",  # fmt: skip
         "",
     ]
-    present = {k for sw in sweeps for r in sw["regions"].values() for k, v in r.items() if v is not None}
     cols = [c for c in COLUMNS if c[0] in present or c[0] in ("ulp_max", "rel_max")]
     lines.append("| 함수 | 영역 | 점 | " + " | ".join(c[1] for c in cols) + " |")
     lines.append("|---|---|---:|" + "---:|" * len(cols))
@@ -100,7 +133,7 @@ def write(areas, data=None) -> list:
         d = data or results.load_baseline(area)
         if d is None:
             continue
-        path = results.ROOT / "bench" / area / "accuracy.md"
+        path = results.ROOT / PATH.get(area, f"bench/{area}/accuracy.md")
         path.write_text(render(area, d))
         out.append(path)
     return out

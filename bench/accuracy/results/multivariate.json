@@ -1,0 +1,541 @@
+{
+ "schema": 1,
+ "area": "multivariate",
+ "runs": {
+  "20261120-152811-deeafe2": {
+   "commit": "deeafe2",
+   "dirty": true,
+   "date": "2026-11-20T15:28:11",
+   "machine": "arm64",
+   "python": "3.15.0"
+  }
+ },
+ "sweeps": [
+  {
+   "id": "multivariate/Dirichlet.entropy",
+   "area": "multivariate",
+   "name": "Dirichlet.entropy",
+   "points": 5,
+   "regions": {
+    "guaranteed": {
+     "points": 5,
+     "ulp_max": 2.6988205319769283,
+     "ulp_p999": 2.6988205319769283,
+     "mixed_max": 1.5221451400220978,
+     "mixed_p999": 1.5221451400220978,
+     "rel_max": 3.3798411625476316e-16,
+     "contract": 0.03379841162547632,
+     "bound": 1e-14,
+     "worst": [
+      "alpha=[0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1] point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/Dirichlet.logpdf",
+   "area": "multivariate",
+   "name": "Dirichlet.logpdf",
+   "points": 20,
+   "regions": {
+    "guaranteed": {
+     "points": 20,
+     "ulp_max": 5.347750793931628,
+     "ulp_p999": 5.347750793931628,
+     "mixed_max": 0.8782426226274729,
+     "mixed_p999": 0.8782426226274729,
+     "rel_max": 7.767976857941894e-16,
+     "contract": 0.019500903616964056,
+     "bound": 1e-14,
+     "worst": [
+      "alpha=[50. , 0.3, 7. ] point 3"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/InverseWishart.entropy",
+   "area": "multivariate",
+   "name": "InverseWishart.entropy",
+   "points": 52,
+   "regions": {
+    "guaranteed": {
+     "points": 52,
+     "ulp_max": 5.855498778042222,
+     "ulp_p999": 5.855498778042222,
+     "mixed_max": 4.41229670453502,
+     "mixed_p999": 4.41229670453502,
+     "rel_max": 9.797266785704961e-16,
+     "contract": 0.09797266785704961,
+     "bound": 1e-14,
+     "worst": [
+      "p=30 df=40 kappa=10000 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/InverseWishart.logpdf",
+   "area": "multivariate",
+   "name": "InverseWishart.logpdf",
+   "points": 247,
+   "regions": {
+    "guaranteed": {
+     "points": 247,
+     "ulp_max": 1228.3116896864562,
+     "ulp_p999": 1228.3116896864562,
+     "mixed_max": 1216.6686399140228,
+     "mixed_p999": 1216.6686399140228,
+     "rel_max": 2.701547074743844e-13,
+     "contract": 27.01547074743844,
+     "bound": 1e-14,
+     "worst": [
+      "p=2 df=1e+30 kappa=1e+09 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MatrixNormal.entropy",
+   "area": "multivariate",
+   "name": "MatrixNormal.entropy",
+   "points": 13,
+   "regions": {
+    "guaranteed": {
+     "points": 13,
+     "ulp_max": 0.44339830675351416,
+     "ulp_p999": 0.44339830675351416,
+     "mixed_max": 0.3761054334587634,
+     "mixed_p999": 0.3761054334587634,
+     "rel_max": 8.351218238250877e-17,
+     "contract": 0.008351218238250878,
+     "bound": 1e-14,
+     "worst": [
+      "2x3 kappa=1 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MatrixNormal.logpdf",
+   "area": "multivariate",
+   "name": "MatrixNormal.logpdf",
+   "points": 52,
+   "regions": {
+    "guaranteed": {
+     "points": 52,
+     "ulp_max": 1.018537510675342,
+     "ulp_p999": 1.018537510675342,
+     "mixed_max": 0.7380763973761569,
+     "mixed_p999": 0.7380763973761569,
+     "rel_max": 1.6388588205987918e-16,
+     "contract": 0.016388588205987917,
+     "bound": 1e-14,
+     "worst": [
+      "2x3 kappa=1 point 1"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/Multinomial.entropy",
+   "area": "multivariate",
+   "name": "Multinomial.entropy",
+   "points": 5,
+   "regions": {
+    "guaranteed": {
+     "points": 5,
+     "ulp_max": 3.404333074868994,
+     "ulp_p999": 3.404333074868994,
+     "mixed_max": 2.2176805575705014,
+     "mixed_p999": 2.2176805575705014,
+     "rel_max": 4.924240032556651e-16,
+     "contract": 0.04924240032556652,
+     "bound": 1e-14,
+     "worst": [
+      "n=100000 K=3 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/Multinomial.logpmf",
+   "area": "multivariate",
+   "name": "Multinomial.logpmf",
+   "points": 25,
+   "regions": {
+    "guaranteed": {
+     "points": 25,
+     "ulp_max": 0.4989273489010227,
+     "ulp_p999": 0.4989273489010227,
+     "mixed_max": 0.40441588340762546,
+     "mixed_p999": 0.40441588340762546,
+     "rel_max": 8.979836505665372e-17,
+     "contract": 0.008979836505665372,
+     "bound": 1e-14,
+     "worst": [
+      "n=1000 K=5 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MultivariateNormal.entropy",
+   "area": "multivariate",
+   "name": "MultivariateNormal.entropy",
+   "points": 17,
+   "regions": {
+    "guaranteed": {
+     "points": 17,
+     "ulp_max": 0.48283148639099555,
+     "ulp_p999": 0.48283148639099555,
+     "mixed_max": 0.31707757930798364,
+     "mixed_p999": 0.31707757930798364,
+     "rel_max": 7.040536582802651e-17,
+     "contract": 0.007040536582802651,
+     "bound": 1e-14,
+     "worst": [
+      "d=20 kappa=1e+06 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MultivariateNormal.logpdf",
+   "area": "multivariate",
+   "name": "MultivariateNormal.logpdf",
+   "points": 150,
+   "regions": {
+    "guaranteed": {
+     "points": 150,
+     "ulp_max": 4.427653562232297,
+     "ulp_p999": 4.427653562232297,
+     "mixed_max": 3.667929086279042,
+     "mixed_p999": 3.667929086279042,
+     "rel_max": 8.14443864855861e-16,
+     "contract": 0.08144438648558609,
+     "bound": 1e-14,
+     "worst": [
+      "d=2 kappa=1e+06 point 1"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MultivariateNormal.pdf",
+   "area": "multivariate",
+   "name": "MultivariateNormal.pdf",
+   "points": 132,
+   "regions": {
+    "guaranteed": {
+     "points": 132,
+     "ulp_max": 1.7568505691874112,
+     "ulp_p999": 1.7568505691874112,
+     "rel_max": 2.280914970657474e-16,
+     "contract": 0.009976040176346061,
+     "bound": 1e-14,
+     "worst": [
+      "d=2 kappa=1 point 7"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MultivariateT.entropy",
+   "area": "multivariate",
+   "name": "MultivariateT.entropy",
+   "points": 68,
+   "regions": {
+    "guaranteed": {
+     "points": 68,
+     "ulp_max": 2.3226756279840512,
+     "ulp_p999": 2.3226756279840512,
+     "mixed_max": 1.4063732277575434,
+     "mixed_p999": 1.4063732277575434,
+     "rel_max": 3.122775877345648e-16,
+     "contract": 0.03122775877345648,
+     "bound": 1e-14,
+     "worst": [
+      "d=1 kappa=1 df=4.5 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MultivariateT.logpdf",
+   "area": "multivariate",
+   "name": "MultivariateT.logpdf",
+   "points": 600,
+   "regions": {
+    "guaranteed": {
+     "points": 600,
+     "ulp_max": 4.108070467240242,
+     "ulp_p999": 4.108070467240242,
+     "mixed_max": 2.275351821390716,
+     "mixed_p999": 2.275351821390716,
+     "rel_max": 5.052295962461519e-16,
+     "contract": 0.05052295962461519,
+     "bound": 1e-14,
+     "worst": [
+      "d=2 kappa=1e+09 df=1e+09 point 9"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/MultivariateT.pdf",
+   "area": "multivariate",
+   "name": "MultivariateT.pdf",
+   "points": 564,
+   "regions": {
+    "guaranteed": {
+     "points": 564,
+     "ulp_max": 132.79008189806885,
+     "ulp_p999": 132.79008189806885,
+     "rel_max": 1.704655995950966e-14,
+     "contract": 0.01564450838823137,
+     "bound": 1e-14,
+     "worst": [
+      "d=1 kappa=1 df=0.7 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/Wishart.entropy",
+   "area": "multivariate",
+   "name": "Wishart.entropy",
+   "points": 52,
+   "regions": {
+    "guaranteed": {
+     "points": 52,
+     "ulp_max": 1.9578332570899417,
+     "ulp_p999": 1.9578332570899417,
+     "mixed_max": 1.619072417448145,
+     "mixed_p999": 1.619072417448145,
+     "rel_max": 3.5950629527728872e-16,
+     "contract": 0.03595062952772887,
+     "bound": 1e-14,
+     "worst": [
+      "p=30 df=1e+08 kappa=1 point 0"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/Wishart.logpdf",
+   "area": "multivariate",
+   "name": "Wishart.logpdf",
+   "points": 247,
+   "regions": {
+    "guaranteed": {
+     "points": 247,
+     "ulp_max": 10.02180000493036,
+     "ulp_p999": 10.02180000493036,
+     "mixed_max": 6.570946942103162,
+     "mixed_p999": 6.570946942103162,
+     "rel_max": 1.4590433177426392e-15,
+     "contract": 0.14590433177426393,
+     "bound": 1e-14,
+     "worst": [
+      "p=2 df=1e+30 kappa=1e+09 point 3"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/cdf.bvn",
+   "area": "multivariate",
+   "name": "cdf.bvn",
+   "points": 7620,
+   "regions": {
+    "guaranteed": {
+     "points": 4778,
+     "ulp_max": 42.13011622209603,
+     "ulp_p999": 24.563836382178717,
+     "rel_max": 5.195461284971415e-15,
+     "contract": 0.5195461284971414,
+     "bound": 1e-14,
+     "worst": [
+      "h=np.float64(-5.071321752671912) k=np.float64(-3.4885061205502232) r=np.float64(-0.0620041561023994)"
+     ]
+    },
+    "loose": {
+     "points": 2110,
+     "ulp_max": 347.3574204569456,
+     "ulp_p999": 299.57872156235686,
+     "rel_max": 5.200022652497201e-14,
+     "contract": 0.1002873984901303,
+     "bound": 1.0,
+     "worst": [
+      "h=np.float64(0.3656624651924787) k=np.float64(-9.41655223783359) r=np.float64(-0.13414605063812401)"
+     ]
+    },
+    "tiny": {
+     "points": 732,
+     "abs_max": 9.449512507e-315,
+     "contract": 9.449512506642227e-15,
+     "bound": 1e-300,
+     "worst": [
+      "h=np.float64(-37.0) k=np.float64(-5.0) r=np.float64(0.1)"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/cdf.bvt",
+   "area": "multivariate",
+   "name": "cdf.bvt",
+   "points": 119,
+   "regions": {
+    "guaranteed": {
+     "points": 119,
+     "ulp_max": 3.933589588817994,
+     "ulp_p999": 3.933589588817994,
+     "rel_max": 4.708307548376931e-16,
+     "contract": 0.09416615096753862,
+     "bound": 5e-15,
+     "worst": [
+      "h=[np.float64(-5.128925157041598), np.float64(-4.142108756309709)] r=[np.float64(-0.15925936826604956)] nu=np.float64(3.0)"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/cdf.factor_normal",
+   "area": "multivariate",
+   "name": "cdf.factor_normal",
+   "points": 168,
+   "regions": {
+    "atol=1e-06": {
+     "points": 84,
+     "abs_max": 2.400884099029721e-07,
+     "est_ratio_max": 0.8732627538967136,
+     "contract": 0.8742331657941922,
+     "bound": 1.0,
+     "worst": [
+      "d=4 h=[np.float64(0.022741294789766497), np.float64(0.26748676037246233), np.float64(2.4775014171719634), np.float64(1.4633095960687652)] lam=[np.float64(-0.060923589596930526), np.float64(-0.37423838904330425), np.float64(-0.42099133700853064), np.float64(-0.4657477834571632)] nu=np.float64(inf)"
+     ]
+    },
+    "atol=0.0001": {
+     "points": 84,
+     "abs_max": 1.6547770497754577e-06,
+     "est_ratio_max": 0.8732627538967136,
+     "contract": 0.4331617838170177,
+     "bound": 1.0,
+     "worst": [
+      "d=10 h=[np.float64(-1.0135049291630343), np.float64(1.7369812952121237), np.float64(0.5470241386219749), np.float64(0.04479656182209579), np.float64(-2.064841072034003), np.float64(1.4315775121617174), np.float64(-2.1703780892978806), np.float64(2.3257557086847913), np.float64(1.8848729701599294), np.float64(-0.9851570377533397)] lam=[np.float64(-0.17461855738820256), np.float64(0.2156764308557126), np.float64(0.7341421799933964), np.float64(0.39167350263264805), np.float64(-0.055317666304077806), np.float64(0.5976754916849466), np.float64(-0.027918426785893524), np.float64(0.8806935058347954), np.float64(-0.41325104914056215), np.float64(-0.7079553945173495)] nu=np.float64(inf)"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/cdf.factor_t",
+   "area": "multivariate",
+   "name": "cdf.factor_t",
+   "points": 84,
+   "regions": {
+    "exact d<=3": {
+     "points": 24,
+     "rel_max": 3.978239863107221e-15,
+     "contract": 0.03978239863107221,
+     "bound": 1e-13,
+     "worst": [
+      "d=2 h=[np.float64(2.443867993365771), np.float64(-1.906114453508549)] lam=[np.float64(-0.8515122602183192), np.float64(0.866582230265209)] nu=np.float64(30.0)"
+     ]
+    },
+    "atol=1e-05": {
+     "points": 60,
+     "abs_max": 3.999818983290229e-06,
+     "est_ratio_max": 1.157786879991961,
+     "contract": 0.8096524760097713,
+     "bound": 1.0,
+     "worst": [
+      "d=5 h=[np.float64(1.1600310987362543), np.float64(1.1966649044887938), np.float64(1.29178566156632), np.float64(0.9915190655871176), np.float64(0.58597437272708)] lam=[np.float64(0.5373702839488457), np.float64(-0.3973332867818492), np.float64(-0.5669511381441747), np.float64(-0.8338857404509792), np.float64(-0.12045617872416785)] nu=np.float64(2.5)"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/cdf.tvn",
+   "area": "multivariate",
+   "name": "cdf.tvn",
+   "points": 2979,
+   "regions": {
+    "guaranteed": {
+     "points": 1607,
+     "ulp_max": 64.73587921084392,
+     "ulp_p999": 39.38391203384454,
+     "rel_max": 9.481853429062985e-15,
+     "contract": 0.9481853429062985,
+     "bound": 1e-14,
+     "worst": [
+      "h=[np.float64(3.5589580881851055), np.float64(-5.391102196212962), np.float64(-0.8129124482335928)] r=[np.float64(-0.43549065458234143), np.float64(-0.17856879085262994), np.float64(-0.14239852391746988)]"
+     ]
+    },
+    "loose": {
+     "points": 1205,
+     "ulp_max": 1052.3133654162148,
+     "ulp_p999": 914.8819930129102,
+     "rel_max": 1.4779668468244963e-13,
+     "rel_cond_max": 2.174917362353538,
+     "contract": 0.27186467029419226,
+     "bound": 1.0,
+     "worst": [
+      "h=[np.float64(3.8244234922319427), np.float64(0.5563442502446496), np.float64(-6.345329114896348)] r=[np.float64(-0.20006413926210792), np.float64(-0.1741412964382727), np.float64(-0.20231104623850188)]"
+     ]
+    },
+    "tiny": {
+     "points": 167,
+     "abs_max": 2.4608105e-317,
+     "contract": 2.460810548604747e-17,
+     "bound": 1e-300,
+     "worst": [
+      "h=[np.float64(-19.824425826818548), np.float64(-19.6745414587969), np.float64(-12.135979536454487)] r=[np.float64(-0.222280281268159), np.float64(0.21583229441010782), np.float64(-0.4190782983881424)]"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  },
+  {
+   "id": "multivariate/cdf.tvt",
+   "area": "multivariate",
+   "name": "cdf.tvt",
+   "points": 59,
+   "regions": {
+    "guaranteed": {
+     "points": 59,
+     "ulp_max": 20.639481260437396,
+     "ulp_p999": 20.639481260437396,
+     "rel_max": 3.4451698575208523e-15,
+     "contract": 0.3445169857520852,
+     "bound": 1e-14,
+     "worst": [
+      "h=[np.float64(-28.630665485431898), np.float64(-17.77008990323197), np.float64(-6.978793259381205)] r=[np.float64(-0.6694666919517707), np.float64(-0.5200841831563014), np.float64(0.5052408616312666)] nu=np.float64(200.0)"
+     ]
+    }
+   },
+   "run": "20261120-152811-deeafe2"
+  }
+ ]
+}

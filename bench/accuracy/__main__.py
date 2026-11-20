@@ -30,6 +30,9 @@ MEASURES = (
     "mixed_p999",
     "rel_max",
     "norm_rel",
+    "abs_max",
+    "rel_cond_max",
+    "est_ratio_max",
 )
 
 

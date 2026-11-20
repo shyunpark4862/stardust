@@ -79,4 +79,7 @@ Arb 참값 대비 오차를 함수마다 재서 표로 만들고, 이전 측정�
 - 지표는 (함수, 영역)마다: 최대·99.9% ULP, 역함수의 ULP/max(1, κ), 0을 지나는 값의 mixed(|오차|/max(1, |값|), 2⁻⁵² 단위), 최대 상대오차, 계약 대비(1 이하가 계약 안). 계약 판정은 `tests/<영역>/test_reference.py`의 것을 그대로 부른다.
 - `run`은 계약을 넘는 것이 있으면 종료 코드 1이다. `compare`는 계약을 넘거나, 계약 안이라도 어느 지표든 기준선보다 커진 것을 모두 `WORSE`로 적고 종료 코드 1이다.
 - 기준선은 `bench/accuracy/results/<영역>.json`(커밋한다), 표는 `bench/<영역>/accuracy.md`(기준선에서 만든다. 손으로 고치지 않는다), 실행 파일은 `build/accuracy/`(커밋하지 않는다).
-- 영역은 special, stats(단변량), regression(문제별 고정 참값: linear 17, glm 17, penalized 21, robust 19; 필드마다 상대오차와 ULP, 수치 계약이 없어 기준선과의 비교만)이다. 다변량·행렬 분포와 mvcdf, linalg, array, optimize는 아직 없다.
+- 영역은 special, stats(단변량), multivariate, regression이다.
+  - multivariate: 다변량·행렬 분포 7개의 log 밀도·밀도·엔트로피(참값 `tests/stats/ref_mv`, `tools/mv_ref.py`로 만든다; 2.4MB, 8프로세스로 약 3초)와 다변량 정규·t의 cdf(`tests/stats/ref_mvcdf`). 계약과 영역은 `tests/stats/test_multivariate.py`·`test_matrix.py`·`test_mvcdf.py`의 것이고, 표는 `bench/stats/accuracy_multivariate.md`다.
+  - regression: 문제별 고정 참값(linear 17, glm 17, penalized 21, robust 19). 필드마다 상대오차와 ULP이고, 수치 계약이 없어 기준선과의 비교만 한다.
+  - linalg, array, optimize는 아직 없다.
