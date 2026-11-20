@@ -1,6 +1,6 @@
 # sd.optimize API
 
-> 상태: **초안** (O0, 2026-11-20; O1·O2·O3·O4 2026-11-20). 지금 공개된 것은 결과 객체 `OptimizeResult`(§1.3), 수치 미분 `approx_fprime`·`check_grad`(§2), 비선형 최소제곱 `least_squares`(§3)(O1), 스칼라 근 `root_scalar`(§4), 스칼라 최솟값 `minimize_scalar`(§5), 배치 스칼라 `find_root`·`bracket_root`·`find_minimum`·`bracket_minimum`(§6)(O2), 다변수 최소화 `minimize`의 Nelder–Mead·BFGS·L-BFGS-B(§7)(O3)와 Newton-CG·trust-ncg·trust-exact(§7)(O4)다. 나머지 풀이 함수는 O5에서 구현한다(docs/design/optimize.md §8). 아래 시그니처는 scipy 1.18.1의 이름과 인자 이름(O3, O10–O12)에 stardust의 규칙을 입힌 안이다. 마일스톤을 시작할 때 정할 것은 본문에 "(O1에서 정한다)"처럼 적고 §9에 모았다.
+> 상태: **초안** (O0, 2026-11-20; O1·O2·O3·O4·O5 2026-11-20). 공개된 것은 결과 객체 `OptimizeResult`(§1.3), 수치 미분 `approx_fprime`·`check_grad`(§2), 비선형 최소제곱 `least_squares`(§3)(O1), 스칼라 근 `root_scalar`(§4), 스칼라 최솟값 `minimize_scalar`(§5), 배치 스칼라 `find_root`·`bracket_root`·`find_minimum`·`bracket_minimum`(§6)(O2), 다변수 최소화 `minimize`의 Nelder–Mead·BFGS·L-BFGS-B(§7)(O3)와 Newton-CG·trust-ncg·trust-exact(§7)(O4), 선형 최소제곱 `lsq_linear`·`nnls`(§3)와 방정식계의 근 `root`(§8)(O5)다. 계획한 풀이 함수는 모두 공개되었다(docs/design/optimize.md §8). 아래 시그니처는 scipy 1.18.1의 이름과 인자 이름(O3, O10–O12)에 stardust의 규칙을 입힌 것이다. 마일스톤마다 정한 것과 남은 질문은 §9에 모았다.
 
 ## §1. 공통 규칙
 
@@ -28,7 +28,7 @@
 ```
 OptimizeResult
 ```
-- 모든 함수가 이 클래스 하나를 돌려준다(`nnls`는 O5에서 정한다, §9). 방법이 주는 필드만 있고, 없는 필드를 읽으면 `AttributeError`(`'OptimizeResult' object has no attribute 'hess_inv' (its method does not give it)`)다. 그래서 `hasattr(r, 'hess_inv')`로 알 수 있다.
+- 모든 함수가 이 클래스 하나를 돌려준다(`nnls`도 그렇다, O77). 방법이 주는 필드만 있고, 없는 필드를 읽으면 `AttributeError`(`'OptimizeResult' object has no attribute 'hess_inv' (its method does not give it)`)다. 그래서 `hasattr(r, 'hess_inv')`로 알 수 있다.
 - 필드는 읽기 전용이다(regression G98; 대입하면 `property 'x' of 'OptimizeResult' object has no setter`). 배열 필드는 읽을 때마다 새 복사본이다(G113): 돌려받은 배열을 고쳐도 결과는 그대로다. 결과가 만들어질 때 받은 배열도 복사해 둔다.
 - 이름은 다른 영역의 결과와 같은 규칙이다(O4): scipy의 `success`는 `converged`, `nit`는 `n_iter`다. 별칭은 없다.
 - `repr`는 한 줄 요약이다: `OptimizeResult(method='bfgs', converged=True, fun=1.2e-17, n_iter=34, nfev=41, x=[1.0 1.0])`. 최소제곱은 `fun` 대신 `cost`를 보인다. 배치는 `OptimizeResult(batch shape (1000,), 998 of 1000 converged)`다. `summary()`는 없다(추론이 없다).
@@ -37,11 +37,11 @@ OptimizeResult
 | 필드 | 뜻 | 주는 함수 |
 |---|---|---|
 | `x` | 해. 다변수는 (n,) `sd.ndarray`, 스칼라는 `float`, 배치는 배치 모양의 배열 | 모두(`bracket_root`·`bracket_minimum` 빼고) |
-| `fun` | 해에서의 함수값: 스칼라 목적함수는 `float`, `least_squares`·`root`·`lsq_linear`는 잔차 (m,) | 모두(`root_scalar`·`bracket_root`·`bracket_minimum` 빼고) |
+| `fun` | 해에서의 함수값: 스칼라 목적함수는 `float`, `least_squares`·`root`·`lsq_linear`·`nnls`는 잔차 (m,) | 모두(`root_scalar`·`bracket_root`·`bracket_minimum` 빼고) |
 | `jac` | 해에서의 기울기(최소화) 또는 야코비안 (m, n)(최소제곱) | `minimize`의 기울기를 쓰는 방법, `least_squares` |
 | `hess` | 해에서의 헤시안 | `minimize`의 trust-ncg·trust-exact(`hess`를 줄 때) |
 | `hess_inv` | 헤시안 역행렬의 근사 (n, n): BFGS는 반복의 행렬, L-BFGS-B는 저장된 쌍으로 처음 읽을 때 만든다(O55) | `minimize`의 BFGS, L-BFGS-B |
-| `grad`, `cost`, `optimality`, `active_mask` | scipy `least_squares`와 같은 뜻: Jᵀf, ½‖f‖², 1차 최적성의 척도, 경계에 걸린 변수(−1 아래, 0 안, 1 위) | `least_squares`, `lsq_linear` |
+| `grad`, `cost`, `optimality`, `active_mask` | scipy `least_squares`와 같은 뜻: Jᵀf, ½‖f‖², 1차 최적성의 척도, 경계에 걸린 변수(−1 아래, 0 안, 1 위) | `least_squares`, `lsq_linear`(`grad` 빼고), `nnls`(`cost`만) |
 | `bracket`, `f_bracket` | 마지막 구간과 그 끝의 함수값(배열의 튜플) | 배치 스칼라(§6) |
 | `final_simplex` | 마지막 단체와 그 꼭짓점의 함수값: 튜플 ((N + 1, N), (N + 1,)), 값의 순서(O56) | `minimize`의 Nelder–Mead |
 | `converged` | 방법의 멈춤 판정을 통과했는지(bool, 배치면 bool 배열) | 모두 |
@@ -56,7 +56,7 @@ OptimizeResult
 - `root_scalar`의 결과도 이 클래스다: scipy `RootResults`의 `root`·`iterations`·`function_calls`·`flag` 대신 `x`·`n_iter`·`nfev`(와 `njev`·`nhev`)·`message`다(O4, §4).
 
 ### §1.4 멈춤, 상한, 경고
-- **모든 호출은 정해진 시간 안에 끝난다.** 반복 방법은 반복 수와 함수 호출 수에 상한이 있다(기본값은 scipy의 것). 상한에 닿으면 마지막 점과 `converged=False`를 돌려준다(regression G32와 같다). 예외는 내지 않는다(scipy의 `nnls`는 `RuntimeError`를 낸다; O5에서 정한다).
+- **모든 호출은 정해진 시간 안에 끝난다.** 반복 방법은 반복 수와 함수 호출 수에 상한이 있다(기본값은 scipy의 것). 상한에 닿으면 마지막 점과 `converged=False`를 돌려준다(regression G32와 같다). 예외는 내지 않는다(scipy의 `nnls`는 `RuntimeError`를 낸다; 여기서는 status 3, O77).
 - 경고를 내지 않는다. 수렴, 상한, 유한하지 않은 값은 `converged`, `status`, `message`로 알린다. scipy의 `disp`, `verbose`, `iprint`, `return_all`은 없다(화면에 쓰지 않는다).
 - `converged`는 scipy의 `success`와 같은 판정이다. 다만 판정을 통과해도 마지막 값(`least_squares`의 `cost`)이 유한하지 않으면 False다(O20, nls의 G89). 그때 `status`와 `message`는 scipy의 것 그대로다.
 - 같은 입력이면 스레드 수와 상관없이 같은 비트다. 사용자 함수가 결정론적이면 결과도 결정론적이다.
@@ -100,8 +100,16 @@ nnls(A, b, /, *, max_iter=None)
   - 셈(O18): `nfev`는 `fun`을 부른 수 전부(차분의 호출 포함), `njev`는 야코비안을 계산한 수, `n_iter`는 반복이 계산한 야코비안 수(nls와 같다; scipy의 결과에는 반복 수가 없다). 'lm'은 scipy처럼 마지막 반복점의 야코비안을 결과로 주므로, 마지막 야코비안이 다른 점에서 계산됐으면 한 번 더 계산하고 센다(O24): 그때 `njev = n_iter + 1`이다. scipy와 견주면 'trf'의 `njev`와 'lm'의 `n_iter`가 scipy의 `njev`이고, scipy의 `nfev`는 `nfev − (2점 n, 3점 2n)·njev`다.
   - 사용자 함수가 낸 에러는 그대로 나간다. 반복 중 야코비안이 유한하지 않으면 `ValueError`(O26, `least_squares(): 'jac' is not finite at x = [...]`, 차분이면 `the differences of 'fun' are not finite`)다(nls와 같다).
   - 넣지 않은 것(O22): scipy의 `loss`(soft_l1·huber·cauchy·arctan)·`f_scale`, `x_scale`, `tr_solver='lsmr'`·`tr_options`, `jac_sparsity`, `callback`, `workers`, nls의 다듬기(G73). `verbose`는 없다(§1.4).
-- **`lsq_linear`** (O5): ½‖Ax − b‖²를 `bounds` 안에서 최소화한다. `method='trf'`(scipy의 신뢰 영역 반사법)와 `'bvls'`(Stark–Parker). `max_iter`의 기본은 scipy처럼 trf 100, bvls n이다. `A`는 (m, n) `sd.ndarray`(희소 행렬과 `LinearOperator`는 받지 않는다), `b`는 (m,)이다. 결과는 `x cost fun optimality active_mask converged status message n_iter method`다(scipy의 `unbounded_sol`은 O5에서 정한다). scipy의 `lsq_solver='lsmr'`·`lsmr_tol`·`lsmr_maxiter`를 넣을지는 O5에서 정한다.
-- **`nnls`** (O5): x ≥ 0에서 ‖Ax − b‖₂를 최소화한다(Lawson–Hanson, scipy 1.18.1의 구현과 같은 걸음). `max_iter`의 기본은 3n(scipy의 `maxiter`)이다. scipy는 `(x, rnorm)` 튜플을 돌려주고 상한에서 `RuntimeError`를 낸다. 이 라이브러리에서 결과를 `OptimizeResult`(`x cost fun converged status message n_iter`, rnorm = √(2·cost))로 할지 이름 붙은 튜플 `NNLSResult(x, rnorm)`로 할지는 O5에서 정한다(§9).
+- **`lsq_linear`** (O5): ½‖Ax − b‖²를 `bounds` 안에서 최소화한다. scipy 1.18.1과 같은 걸음이고 결과의 모든 필드가 비트까지 같다(docs/design/optimize.md §7).
+  - 먼저 numpy의 `lstsq(A, b, rcond=-1)`로 경계 없는 해를 구하고, 그것이 경계 안이면 그 해로 끝낸다(`status=3`, `n_iter` 0). 아니면 `method`로 푼다: `'trf'`(기본; scipy의 신뢰 영역 반사법: A의 열 피벗 QR 하나와 반복마다의 Coleman–Li 척도, 안에 머무는 걸음)와 `'bvls'`(Stark–Parker의 경계 있는 변수 최소제곱: 자유 변수의 lstsq를 되풀이하는 활성 집합법; 끝에서 KKT 조건이 정확히 선다).
+  - `A`는 (m, n)의 실수 행렬(`sd.ndarray`, 중첩 시퀀스, numpy 배열; 희소 행렬과 `LinearOperator`는 받지 않는다), `b`는 (m,)이다. 둘 다 유한하고 `A`는 비어 있지 않아야 하며 `b`는 1차원이다(O91, `ValueError`: `lsq_linear(): 'A' must be finite`, `lsq_linear(): 'b' must have 3 values (one per row of 'A'), not 2`). scipy의 `lsq_solver='lsmr'`·`lsmr_tol`·`lsmr_maxiter`는 없다(O81: 정확한 밀집 풀이만).
+  - `bounds`: `None`(기본, 경계 없음) 또는 `(lower, upper)`, 각각 수 하나 또는 n개, ±inf는 경계 없음(`least_squares`와 같은 꼴). lower < upper여야 한다(scipy와 같다).
+  - `tol`(기본 10⁻¹⁰): 'trf'는 척도를 곱한 기울기의 ‖·‖∞ < tol 또는 비용 감소 < tol·cost에서, 'bvls'는 KKT 최적성 < tol 또는 비용 감소 < tol·cost에서 멈춘다. `max_iter`: None이면 scipy처럼 'trf' 100, 'bvls' n(첫 단계의 반복에 더한다).
+  - 결과: `x cost fun optimality active_mask converged status message n_iter method`. `fun`은 A x − b, `cost`는 ½‖fun‖², `optimality`는 'trf'가 척도를 곱한 기울기의 ‖·‖∞, 'bvls'와 경계 없는 해가 KKT 최적성(경계 없는 해는 ‖Aᵀ(Ax − b)‖∞), `active_mask`는 int64 (n,)다(O93; 'trf'는 scipy의 `find_active_constraints(rtol=tol)`). scipy의 `unbounded_sol`은 없다(O81). `status`·`message`는 scipy의 것이다: −1 `The algorithm was not able to make progress on the last iteration.`, 0 `The maximum number of iterations is exceeded.`, 1 `` The first-order optimality measure is less than `tol`.``, 2 `` The relative change of the cost function is less than `tol`.``, 3 `The unconstrained solution is optimal.`. `converged`는 `status > 0`이다.
+  - 'trf'는 안쪽 점 방법이라 x가 경계에 닿지 않고 경계 바로 안에서 멈춘다(scipy와 같다). 비용이 늘어 되돌아가는 걸음(`backtracking`)에서는 scipy처럼 그 반복의 x가 바뀌지 않는다(O92). 정확한 경계 위의 해가 필요하면 'bvls'를 쓴다.
+- **`nnls`** (O5): x ≥ 0에서 ‖Ax − b‖₂를 최소화한다(Lawson–Hanson의 NNLS, scipy 1.18.1의 C 판과 같은 걸음; x가 비트까지 같다). `A`, `b`는 `lsq_linear`와 같은 규칙이다. `max_iter`의 기본은 3n(scipy의 `maxiter`)이다.
+  - 결과는 `OptimizeResult`다(O77; scipy는 `(x, rnorm)` 튜플): `x cost fun converged status message n_iter`(O90: `method`와 `rnorm`은 없다). `cost`는 ½‖Ax − b‖²(`fun`으로 계산한다; scipy의 rnorm은 √(2·cost)와 반올림만큼 다르다)다. `status`는 scipy C 판의 번호다(O89): 1 `The solution has been computed successfully.`, 3 `Maximum number of iterations reached.`(반복 상한; scipy는 이 글의 `RuntimeError`를 낸다). `converged`는 `status == 1`이다.
+  - 해는 정확한 KKT 점이다: 양수인 x_j에서 기울기 Aᵀ(Ax − b)가 0, x_j = 0에서 0 이상이다(반올림 안에서).
 
 ## §4. 스칼라 근 (O2)
 ```
@@ -189,10 +197,20 @@ minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds=Non
 ```
 root(fun, x0, /, *, method='hybr', jac=None, tol=None, options=None)
 ```
-- `method='hybr'`: MINPACK `hybrj`(`jac`를 주면)·`hybrd`(차분), Powell의 dogleg. `'lm'`: §3의 `lmder` 커널(m = n). scipy의 `broyden1`·`krylov` 같은 다른 방법을 넣을지는 O5에서 정한다.
-- `jac`: 야코비안 함수, `True`(fun이 (f, J)를 돌려준다), None(hybrd의 전진 차분, `'lm'`은 `lmdif`의 차분).
-- 옵션(scipy의 기본): hybr `xtol=1.49012e-08`, `max_nfev=None`(scipy의 `maxfev=0`; `jac`이 있으면 100(n + 1), 없으면 200(n + 1)), `band=None`, `eps=None`, `factor=100`, `diag=None`; lm `xtol=1.49012e-08`, `ftol=1.49012e-08`, `gtol=0.0`, `max_nfev=None`(scipy의 `maxiter=0`, 실제로는 함수 계산 수의 상한; `jac`이 있으면 100(n + 1), 없으면 200(n + 1)), `eps=0.0`, `factor=100`, `diag=None`. scipy의 `col_deriv`는 없다(야코비안은 언제나 (m, n)이다). `tol`은 `xtol`이다. scipy의 `root`도 이 두 방법에는 `callback`을 쓰지 않는다.
-- 결과: `x fun converged status message nfev njev method`(`status`는 MINPACK의 info). scipy가 주는 MINPACK의 내부 값(`fjac`, `r`, `qtf`)을 줄지는 O5에서 정한다.
+- n개 식의 방정식계 `fun(x) = 0`의 근을 `x0`에서 시작해 찾는다. `fun(x)`는 길이 n의 1차원 값을 돌려준다(x는 새 float64 `sd.ndarray` (n,); `root(): 'fun' must return 3 values (one per variable), not 2`). 식이 변수보다 많으면 `least_squares`를 쓴다.
+- `method`(O78): `'hybr'`(MINPACK의 hybrj(`jac`을 줄 때)·hybrd(전진 차분), Powell의 혼성법: dogleg 걸음과 야코비안 QR 인자의 Broyden 갱신)와 `'lm'`(§3의 `lmder` 커널, m = n; `jac`이 없으면 lmdif의 차분). 'hybr'은 scipy 1.18.1과 사용자 함수를 부르는 점이 차례대로 비트까지 같다. 'lm'은 같은 걸음이지만 끝자리가 달라 반올림이 결정하는 문제에서 갈릴 수 있고, 같은 정방 문제의 `least_squares(method='lm')`과도 끝자리가 다를 수 있다(O87; 비트까지 맞추는 일은 O6, docs/design/optimize.md §7). 식은 변수와 같은 수여야 한다(O84). scipy의 broyden1·broyden2·anderson·linearmixing·diagbroyden·excitingmixing·krylov·df-sane은 없다.
+- `jac`: 야코비안 함수(`jac(x)`가 (n, n)을 돌려준다; n = 1이면 (1,)도), `True`(`fun`이 (F, J)를 돌려준다; scipy의 `MemoizeJac`처럼 마지막 x의 값을 쓰고 다른 점에서만 다시 부른다), None(차분). 차분은 MINPACK의 fdjac1·fdjac2다: (F(x + h e_j) − F(x))/h, h = √max(`eps`, u)·|x_j|(x_j = 0이면 √max(`eps`, u)). 한쪽 값이 유한하지 않으면 반대쪽으로 한 번 더 해 본다(`least_squares`의 '2-point'와 같다).
+- 옵션(scipy의 이름과 기본값, O80; 반복 상한은 O14의 이름):
+
+  | 방법 | 옵션 |
+  |---|---|
+  | hybr | `xtol=1.49012e-08`(걸음 한계가 xtol·‖Dx‖ 이하이면 멈춘다), `max_nfev=None`(함수 계산 수의 상한, 차분의 호출 포함; None이면 `jac`이 있을 때 100(n + 1), 없을 때 200(n + 1); scipy의 `maxfev`), `band=None`(차분일 때만: 야코비안의 아래·위 띠 너비 (ml, mu), 0 이상의 정수), `eps=None`(차분일 때만: 함수값의 상대 오차, None이면 u), `factor=100`(처음 걸음 한계 factor·‖Dx0‖, 양수), `diag=None`(변수의 척도 D, n개의 양수; None이면 야코비안 열 노름으로 정한다(MINPACK mode 1), 주면 mode 2) |
+  | lm | `xtol=1.49012e-08`, `ftol=1.49012e-08`(제곱합의 상대 감소), `gtol=0.0`(F와 야코비안 열의 코사인), `max_nfev=None`(scipy의 `maxiter`: 실제로는 함수 계산 수의 상한; 기본은 hybr과 같다), `eps=0.0`(차분일 때만), `factor=100`, `diag=None` |
+
+  `tol`은 `xtol`이다(`options['xtol']`과 함께 주면 `ValueError`). scipy의 `col_deriv`는 없다(야코비안은 언제나 (n, n)). `band`·`eps`를 호출 가능한 `jac`이나 `jac=True`와 함께 주면 `ValueError`(`root(): 'eps' is only used when 'jac' is None`; scipy는 무시한다), `factor` ≤ 0이나 `diag`의 0 이하 값도 `ValueError`(`root(): 'factor' must be finite and > 0`)다(O88). 모르는 키와 scipy의 상한 이름은 `ValueError`다(`root(): method='hybr' has no option 'maxfev' (the cap on function evaluations is 'max_nfev')`). scipy의 `root`도 이 두 방법에는 `callback`을 쓰지 않는다.
+- 셈: `nfev`는 `fun`을 부른 수 전부(x0와 차분의 호출 포함; MINPACK의 nfev)다. scipy의 `nfev`는 x0에서 두 번 더 부른 것(모양 확인과 감싸개)까지 세어 이쪽보다 2 많다. `njev`는 야코비안을 계산한 수(차분도 센다; `jac=True`면 야코비안을 요청한 수), `n_iter`는 'hybr'이 시험한 걸음 수, 'lm'이 반복이 계산한 야코비안 수(`least_squares`와 같다)다(O82, O83; scipy의 `root`에는 `n_iter`가 없고 차분일 때 `njev`도 없다).
+- 유한하지 않은 값: x0에서 `fun`이 유한하지 않으면 `ValueError`(`root(): 'fun' is not finite at 'x0'`), 야코비안이 유한하지 않으면 그 점을 적은 `ValueError`(`root(): 'jac' is not finite at x = [...]`, 차분이면 `the differences of 'fun' are not finite`; O26)다. 시험점에서 유한하지 않으면 실패한 걸음으로 걸음 한계를 줄이고 계속 간다('hybr'은 그 점의 Broyden 갱신을 건너뛴다, O85).
+- 결과: `x fun converged status message n_iter nfev njev method`. scipy가 주는 MINPACK의 내부 값(`fjac`, `r`, `qtf`, lm의 `ipvt`·`cov_x`)은 없다(O79). `status`와 `message`는 scipy의 것이다(O17, O86: 서식까지 그대로). hybr: 1 `The solution converged.`, 2 `The number of calls to function has reached maxfev = 600.`, 3 `xtol=0.000000 is too small, no further improvement in the approximate\n solution is possible.`, 4·5 `The iteration is not making good progress, …`(야코비안 다섯 번, 반복 열 번). lm: `leastsq`의 1–8(1–4 수렴: ftol, xtol, 둘 다, gtol; 5 `max_nfev`; 6–8 허용오차가 너무 작음). `converged`는 hybr이 status 1, lm이 1–4다.
 
 ## §9. 마일스톤을 시작할 때 정할 것
 O0에서 본문에 남긴 질문을 마일스톤별로 모았다. docs/design/optimize.md §9의 질문에 더해진 것이다.
@@ -202,7 +220,7 @@ O0에서 본문에 남긴 질문을 마일스톤별로 모았다. docs/design/op
 - **O2**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O32–O38, 구현하며 생긴 질문은 O39–O49).
 - **O3**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O50–O57, 구현하며 생긴 질문은 O58–O62).
 - **O4**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O63–O66, 구현하며 생긴 질문은 O67–O76).
-- **O5**: hybr의 기본 허용오차, `root`의 다른 방법, `fjac`·`r`·`qtf`, `nnls`의 결과(§3), `lsq_linear`의 `unbounded_sol`과 `lsmr`.
+- **O5**: 정했다(2026-11-20, docs/design/optimize.md §1.1 O77–O81, 구현하며 생긴 질문은 O82–O93).
 
 ## §10. 다른 라이브러리와의 대응 (안)
 | 하는 일 | scipy 1.18.1 | R | sd.optimize |

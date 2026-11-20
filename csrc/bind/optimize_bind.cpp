@@ -1,8 +1,10 @@
 // The optimize area: the submodule stardust._core.optimize (docs/design/optimize.md §6).
 #include "bind/optimize_bind.hpp"
 
+#include "optimize/linear.hpp"
 #include "optimize/lsq.hpp"
 #include "optimize/minimize.hpp"
+#include "optimize/root.hpp"
 #include "optimize/scalar.hpp"
 
 namespace nb = nanobind;
@@ -19,6 +21,8 @@ void bind_optimize(nb::module_& core) {
     optimize::bind_lbfgsb(m);
     optimize::bind_newton_cg(m);
     optimize::bind_trust(m);
+    optimize::bind_hybr(m);
+    optimize::bind_linear(m);
 }
 
 }  // namespace sd

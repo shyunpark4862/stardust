@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5–O6 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -371,7 +371,7 @@
 
 # 최적화 영역 (sd.optimize)
 
-> 상태: **O0 완료·승인**, **O1 완료·승인**, **O2 완료·승인**, **O3 완료·승인**, **O4 완료·승인** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
+> 상태: **O0 완료·승인**, **O1 완료·승인**, **O2 완료·승인**, **O3 완료·승인**, **O4 완료·승인**, **O5 완료·승인** (2026-11-20). 설계는 [docs/design/optimize.md](docs/design/optimize.md), API의 초안은 [docs/api/optimize.md](docs/api/optimize.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -383,6 +383,7 @@
 - O2의 결정(사용자, 2026-11-20): 근을 끼지 않는 구간은 `ValueError`(배치는 status −1), 허용오차의 기본은 scipy의 것(`xtol=0`이면 더 간다), `fprime=True` 없음, 배치 결과는 `fun`, 배치의 허용오차는 키워드, `callback` 없음, 배치는 남은 원소만 1차원으로 부른다 (O32–O38). 구현 뒤의 결정(2026-11-20): 배치 함수만 scipy의 `args`(남은 원소로 함께 줄인다), `root_scalar`는 `fun` 없이 f·f′·f″를 따로 센다, scipy 경고의 글을 `message`로, brent·golden의 status 3·4, toms748의 유한하지 않은 값은 status −3(scipy와 다름), 구간의 끝과 배치 입력의 규칙 (O39–O49).
 - O3의 결정(사용자, 2026-11-20): 기본 방법은 scipy의 것, `bounds`는 `(lower, upper)` 하나, 경계 밖의 `x0`는 `ValueError`, 반복 중의 유한하지 않은 값은 scipy의 처리(`x0`에서는 `ValueError`), `callback` 없음, L-BFGS-B의 `hess_inv`는 처음 읽을 때 만드는 (n, n) 행렬, `final_simplex`는 scipy처럼, 선 탐색 상한은 `max_ls` (O50–O57). 구현 뒤의 결정(2026-11-20): 고정 변수는 scipy처럼(뺀 변수가 있으면 `hess_inv` 필드 없음), ABNORMAL의 `fun`은 `x`의 값(scipy와 다름), `hess_inv`는 scipy의 순서, BFGS의 n³ 갱신은 O6에서 다시, 옵션 검사는 그대로 (O58–O62).
 - O4의 결정(사용자, 2026-11-20): `hess`는 (n, n), `hessp`는 (n,)을 돌려준다(`LinearOperator`·희소 행렬·`HessianUpdateStrategy`는 받지 않는다), `hess='2-point'`·`'3-point'`를 받는다(`'cs'` 없음), 세 방법은 `jac`이 꼭 있다, `bounds`는 `ValueError` (O63–O66). 구현 뒤의 결정(2026-11-20): trust-ncg의 CG는 20n번까지(status 3), `nhev`는 실제 호출만(자리 채움 1 없음, trust-ncg 결과의 `hess` 호출 포함), newton-cg의 `jac`은 x의 기울기, 반복 중의 유한하지 않은 기울기·헤시안은 점을 적은 `ValueError`, trust-exact 부분문제의 상한은 status 3, `subproblem_max_iter`, newton-cg의 `hess`+`hessp`는 `ValueError`, 신뢰 영역의 `max_iter=0`은 반복 없음, trust-exact의 차분 `hess`는 `ValueError` (O67–O76).
+- O5의 결정(사용자, 2026-11-20): `nnls`는 `OptimizeResult`(상한에서 예외 없이 `converged=False`), `root`는 'hybr'·'lm'만, `fjac`·`r`·`qtf`는 없음, `root`의 기본 허용오차는 scipy의 것, `lsq_linear`에 lsmr과 `unbounded_sol`은 없음 (O77–O81). 구현 뒤의 결정(2026-11-20): `root`에 `n_iter`, 차분에도 `njev`, 정방 계만, hybr 시험점의 유한하지 않은 F는 실패한 걸음(랭크 1 갱신 건너뜀), scipy의 글 그대로, lm의 비트 동일은 O6(`root('lm')`과 `least_squares('lm')`은 끝자리가 다를 수 있다), 옵션 검사는 `ValueError`, `nnls`의 status 1·3, `nnls`에 `method`·`rnorm` 없음, 유한하지 않거나 빈 입력은 `ValueError`, trf의 backtracking은 scipy대로, `active_mask`는 int64 (O82–O93).
 - 기존 영역의 결과는 비트까지 같아야 한다(nls를 옮겨도).
 
 ## 진행 상태
@@ -393,8 +394,8 @@
 | O2 스칼라: `root_scalar minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum` | 완료·승인 (2026-11-20) |
 | O3 최소화 1: Nelder–Mead, BFGS, L-BFGS-B | 완료·승인 (2026-11-20) |
 | O4 최소화 2: Newton-CG, trust-ncg, trust-exact | 완료·승인 (2026-11-20) |
-| O5 방정식계와 선형 최소제곱: `root`(hybr, lm), `lsq_linear`, `nnls` | 시작 전 |
-| O6 최적화와 일관성 점검(BFGS의 n² 갱신, O61) | 시작 전 |
+| O5 방정식계와 선형 최소제곱: `root`(hybr, lm), `lsq_linear`, `nnls` | 완료·승인 (2026-11-20) |
+| O6 최적화와 일관성 점검(BFGS의 n² 갱신, O61; `root('lm')`·`least_squares('lm')`의 scipy 비트 동일, O87) | 시작 전 |
 
 ## 마일스톤
 
@@ -431,3 +432,10 @@
 - 결과: csrc/optimize/(newton_cg.cpp, trust.cpp, hessian.hpp, wolfe.hpp(bfgs.cpp의 선 탐색을 옮겨 같이 씀), objective.hpp의 점 셈과 기억을 거치지 않는 기울기, minimize.hpp), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_minimize.py`, `_common.py`); docs/api/optimize.md §7·§9, docs/design/optimize.md §1.1·§2.2·§3.5·§6·§7·§8·§9; 측정 bench/optimize/o4/(speed.py, speed.md); 테스트 tests/optimize/(test_minimize_newton.py, test_minimize.py, test_api_surface.py).
 - 결과 수치: 세 방법 모두 scipy 1.18.1과 호출점이 비트까지 같다(결정으로 다른 곳만 빼고: newton-cg 끝의 기울기 호출, `nhev`, 신뢰 영역의 `max_iter=0`): 기록된 실행 339번의 필드, 실행하며 견준 MGH·시험 함수 1,130번(`hess`·`hessp`·차분·기울기 차분의 열 묶음; 결과의 `hess`·`jac`까지)과 옵션·가장자리 525번의 모든 호출점, 무작위 비볼록 사차 함수 2,100번. 반복당 자기 비용은 n = 2–100에서 scipy의 1/3–1/60, 차분 헤세 곱은 n = 1000에서도 1/9, 행렬 `hess`의 n = 1000은 같은 dgemv라 비슷하다(Newton-CG 0.23 대 0.22 ms, trust-ncg 0.17 대 0.13 ms), trust-exact n = 1000은 5.2 대 7.2 ms.
 - 찾은 것: numpy의 `np.dot`은 0.0 + cblas_ddot이라 BLAS의 −0.0을 +0.0으로 바꾼다(trust-ncg의 경계 교점이 그 부호를 쓴다: 맞추기 전에는 MGH 8경우가 끝자리에서 갈렸다). scipy의 trust-ncg CG는 상한이 없어 비대칭 헤시안에서 끝나지 않는다(여기서는 20n번에서 status 3). newton-cg의 결과 `jac`은 마지막 반복을 시작한 점의 것, `hessp`만 준 trust-ncg의 `nhev`는 부르지 않은 자리 채움 1을 더한 수, trust의 `max_iter=0`은 반복 하나, 작은 `subproblem_maxiter`의 trust-exact는 `UnboundLocalError`다.
+
+### O5. 방정식계와 선형 최소제곱
+- `root`('hybr': MINPACK hybrj·hybrd, 'lm': lmder·lmdif; 해석적·`jac=True`·차분 야코비안, `band`·`eps`·`factor`·`diag`), `lsq_linear`('trf', 'bvls'), `nnls`.
+- 결정(사용자, 2026-11-20): docs/design/optimize.md §1.1 O77–O81. 구현 뒤에 O82–O93.
+- 결과: csrc/optimize/(hybrd.cpp, root.hpp, linear.cpp, linear.hpp, lsq.cpp의 lmder 옵션(factor, diag, epsfcn, lmder의 info, m = n의 바로 QR)과 `lm_solve`), csrc/bind/optimize_bind.cpp, CMakeLists.txt, src/stardust/optimize/(`_root.py`, `_linear.py`, `__init__.py`); docs/api/optimize.md §1·§3·§8·§9, docs/design/optimize.md §1.1·§3.4·§3.6·§6·§7·§8·§9; 측정 bench/optimize/o5/(speed.py, speed.md); 테스트 tests/optimize/(test_root.py, test_lsq_linear.py, test_api_surface.py).
+- 결과 수치: 'hybr'은 MINPACK 계 55경우 × 야코비안 유무 110번 모두 scipy 1.18.1과 호출점이 비트까지 같고 기록된 필드(x의 비트, F, status, message, njev, nfev − 2)가 같다(옵션 42번, `jac=True`도). Fortran HYBRJ1·HYBRD1 110번은 scipy `fsolve`의 기록과 x의 비트까지 같아 원본과의 거리도 scipy와 같다(HYBRJ1 같은 info 50/55, x 10⁻⁶ 안 44; HYBRD1 48, 44). 'lm'은 같은 status 54/55(해석적·차분), x 10⁻⁶ 안 49·45. `lsq_linear`('trf'·'bvls')는 기록된 12문제와 무작위 824번씩, 작은 모양 480번, (10⁴, 100)까지 모든 필드가 비트까지 같고, `nnls`는 무작위 801번(반복 상한 포함)에서 x가 비트까지 같다. nls 골든 출력 338적합은 바이트까지 같다. 반복당 자기 비용은 `root`가 scipy와 비슷하고(scipy도 반복이 C; lm 작은 n은 1/2), `lsq_linear` (100, 10) 'trf'는 1/9, 큰 문제는 같은 LAPACK이라 같다.
+- 찾은 것: scipy의 C 판 MINPACK은 FMA 축약으로 빌드되어 있고, 제곱(`t**2`)은 따로 반올림하며, qrfac의 내적만 clang이 벡터화해 8개씩의 곱을 따로 반올림한다: 셋 다 맞춰야 비트까지 같다(이쪽 clang은 다른 합 고리도 같은 식으로 벡터화해, 합을 `std::fma`로 적었다). Accelerate의 gelsd는 numpy의 버퍼 배치(정렬)에 따라 끝자리가 달라 그 배치를 따랐다. scipy `nnls`의 C 판은 기계어에서 읽어 옮겼다(dlarfgp·dlarf·dlartgp; 떨어진 열의 꼬리를 바꾼 채 두고, P가 비면 음수 개수로 계속 가는 버그가 있다). `trf_linear`의 `backtracking`은 x를 바꾸지 않는다. scipy의 `root`는 x0에서 `fun`을 두 번 더 부르고 `nfev`에 센다.

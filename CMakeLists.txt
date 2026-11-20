@@ -56,7 +56,9 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/linalg/ops/special.cpp
   csrc/optimize/batch.cpp
   csrc/optimize/bfgs.cpp
+  csrc/optimize/hybrd.cpp
   csrc/optimize/lbfgsb.cpp
+  csrc/optimize/linear.cpp
   csrc/optimize/lsq.cpp
   csrc/optimize/nelder_mead.cpp
   csrc/optimize/newton_cg.cpp

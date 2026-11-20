@@ -1,5 +1,6 @@
 // Nonlinear least squares' iterations (docs/design/optimize.md §3.4, docs/design/regression.md
-// §3.7): sd.optimize.least_squares and sd.regression.nls.
+// §3.7): sd.optimize.least_squares and sd.regression.nls; sd.optimize.root's 'lm' (§3.6) runs
+// the lmder loop with m = n (lm_solve).
 //
 // The residual vector r(x) (length m) comes from a Python callback (least_squares: the
 // user's fun; nls: sqrt(w) (f(x, *theta) - y) on the rows used), and so does a user Jacobian;
@@ -118,6 +119,8 @@ struct Model {
     bool array_x = false;           // x as an sd.ndarray (least_squares), else a list of floats (nls)
     const vec* lb = nullptr;        // the bounds the differences keep to (fdjac2: TRF's only)
     const vec* ub = nullptr;
+    double epsfcn = 0;              // fdjac2's epsfcn (root's 'eps'): h = sqrt(max(epsfcn, eps)) |x_j|
+    bool minpack_h = false;         // fdjac2 divides by h (MINPACK, root), not by (x_j + h) - x_j (nls)
     lint nfev = 0, njev = 0;
     Scratch sc;
     vec wb;  // '3-point': the second value
@@ -184,10 +187,10 @@ struct Model {
         }
         if (diff == kTwoPoint) return two_point(x, r, J, wa);
         if (diff == kThreePoint) return three_point(x, r, J, wa);
-        // MINPACK's fdjac2 with epsfcn = eps: h = sqrt(eps) |x_j| (sqrt(eps) at 0), the step
-        // actually taken ((x_j + h) - x_j) in the quotient; backwards when forwards leaves the
-        // bounds or the model is not finite there.
-        const double eps = std::sqrt(kEps);
+        // MINPACK's fdjac2: h = sqrt(max(epsfcn, eps)) |x_j| (that at 0), the step actually
+        // taken ((x_j + h) - x_j) in the quotient (nls) or h itself (MINPACK; root); backwards
+        // when forwards leaves the bounds or the model is not finite there.
+        const double eps = std::sqrt(std::max(epsfcn, kEps));
         for (lint j = 0; j < p; ++j) {
             const double t = x[j];
             double h = eps * std::abs(t);
@@ -200,7 +203,7 @@ struct Model {
                     if (lb && (t + h < (*lb)[j] || t + h > (*ub)[j])) break;
                 }
                 x[j] = t + h;
-                const double hh = x[j] - t;
+                const double hh = minpack_h ? h : x[j] - t;
                 ok = eval(x, wa);
                 x[j] = t;
                 if (ok)
@@ -510,7 +513,17 @@ void lmpar(
     }
 }
 
-// lmder's loop (factor 100, mode 1: the scaling from the Jacobian's column norms).
+// lmder's options beyond the tolerances: least_squares and nls use the defaults (factor 100,
+// mode 1: the scaling from the Jacobian's column norms) and scipy's status; root takes factor,
+// mode 2's diag and lmder's own info (1-8).
+struct LmOptions {
+    double factor = 100;
+    const vec* diag = nullptr;  // mode 2's scaling (nullptr: mode 1)
+    bool info = false;          // return lmder's info, not least_squares' status
+    bool direct = false;        // m = n: no QR of J before lmder's (root)
+};
+
+// lmder's loop.
 int levenberg_marquardt(
     Model& M,
     vec& x,
@@ -521,7 +534,8 @@ int levenberg_marquardt(
     double gtol,
     lint maxfev,
     lint& n_iter,
-    Final& fin
+    Final& fin,
+    const LmOptions& opt = {}
 ) {
     const lint m = M.m, n = M.p;
     const auto un = static_cast<std::size_t>(n), um = static_cast<std::size_t>(m);
@@ -533,17 +547,25 @@ int levenberg_marquardt(
     double par = 0, delta = 0, xnorm = 0;
     lint iter = 1;
     int info = 0;
-    constexpr double factor = 100;
+    const double factor = opt.factor;
+    const bool mode2 = opt.diag != nullptr;
+    if (mode2) diag = *opt.diag;
     auto F = [&](lint i, lint j) -> double& { return fjac[static_cast<std::size_t>(i + j * n)]; };
     for (;;) {
         if (!M.jacobian(x, fvec.data(), J.data(), wa4.data())) return sJacNonfinite;
         ++n_iter;
         fin.keep(J.data(), m, n);
-        M.qr(J.data(), fvec.data(), R0.data(), qtf0.data());
+        if (opt.direct) {  // m = n: lmder's own QR of J (qrfac below), Q^T f from its reflections
+            R0.assign(J.begin(), J.end());
+            qtf0.assign(fvec.begin(), fvec.end());
+        } else {
+            M.qr(J.data(), fvec.data(), R0.data(), qtf0.data());
+        }
         fjac = R0;
         qrfac(n, fjac.data(), ipvt.data(), wa1.data(), wa2.data(), wa3.data());
         if (iter == 1) {
-            for (lint j = 0; j < n; ++j) diag[j] = wa2[j] == 0 ? 1.0 : wa2[j];
+            if (!mode2)
+                for (lint j = 0; j < n; ++j) diag[j] = wa2[j] == 0 ? 1.0 : wa2[j];
             for (lint j = 0; j < n; ++j) wa3[j] = diag[j] * x[j];
             xnorm = enorm(wa3);
             delta = factor * xnorm;
@@ -572,7 +594,8 @@ int levenberg_marquardt(
         }
         if (gnorm <= gtol) info = 4;
         if (info != 0) break;
-        for (lint j = 0; j < n; ++j) diag[j] = std::max(diag[j], wa2[j]);
+        if (!mode2)
+            for (lint j = 0; j < n; ++j) diag[j] = std::max(diag[j], wa2[j]);
         double ratio = 0;
         do {
             lmpar(
@@ -636,6 +659,7 @@ int levenberg_marquardt(
         if (!M.jacobian(x, fvec.data(), fin.J.data(), wa4.data())) return sJacNonfinite;
         fin.fresh = true;
     }
+    if (opt.info) return info;
     switch (info) {
         case 1:
         case 6: return sFtol;
@@ -1128,6 +1152,61 @@ nb::object lsq_solve(
     });
 }
 
+// lm_solve(func, fun, jac, check, x0, f0, ftol, xtol, gtol, max_nfev, epsfcn, factor, diag)
+//   -> (x [n] list, f (m,), info, nfev, njev, n_iter)
+// root's 'lm': lmder (jac(x) -> (m, n)) or lmdif (jac None: fdjac2 with epsfcn) from f0 =
+// fun(x0) (the caller's call, counted in nfev), lmder's info (1-8; -1: a Jacobian is not
+// finite). diag: mode 2's scaling, empty for mode 1.
+nb::object lm_solve(
+    const std::string& func,
+    nb::callable fun,
+    nb::object jac,
+    nb::object check,
+    const vec& x0,
+    nb::object f0,
+    double ftol,
+    double xtol,
+    double gtol,
+    std::int64_t max_nfev,
+    double epsfcn,
+    double factor,
+    const vec& diag
+) {
+    const char* fn = func.c_str();
+    return call_named(fn, [&]() -> nb::object {
+        Model M;
+        M.fun = fun;
+        M.jac = jac;
+        M.check = check;
+        M.fn = fn;
+        M.p = static_cast<lint>(x0.size());
+        M.diff = kFdjac2;
+        M.array_x = true;
+        M.epsfcn = epsfcn;
+        M.minpack_h = true;
+        Input in(f0, fn, "f0");  // float64 (m,), checked by the Python layer
+        M.m = static_cast<lint>(in.shape(0));
+        vec x = x0, f(static_cast<std::size_t>(M.m));
+        for (lint i = 0; i < M.m; ++i)
+            std::memcpy(&f[static_cast<std::size_t>(i)], in.data() + i * in.stride(0), sizeof(double));
+        M.nfev = 1;
+        Final fin;
+        LmOptions opt;
+        opt.factor = factor;
+        if (!diag.empty()) opt.diag = &diag;
+        opt.info = true;
+        opt.direct = M.m == M.p;
+        lint n_iter = 0;
+        const int info = levenberg_marquardt(M, x, f, true, ftol, xtol, gtol, max_nfev, n_iter, fin, opt);
+        nb::list xs;
+        for (double v : x) xs.append(v);
+        return nb::make_tuple(
+            xs, vector_out(f), info, static_cast<std::int64_t>(M.nfev), static_cast<std::int64_t>(M.njev),
+            static_cast<std::int64_t>(n_iter)
+        );
+    });
+}
+
 }  // namespace
 
 void bind_lsq(nb::module_& m) {
@@ -1136,6 +1215,11 @@ void bind_lsq(nb::module_& m) {
         nb::arg("x0"), nb::arg("lb"), nb::arg("ub"), nb::arg("method"), nb::arg("ftol"), nb::arg("xtol"),
         nb::arg("gtol"), nb::arg("max_nfev"), nb::arg("m"), nb::arg("diff"), nb::arg("diff_step"), nb::arg("array_x"),
         nb::arg("f0").none(), nb::arg("final")
+    );
+    m.def(
+        "lm_solve", &lm_solve, nb::arg("func"), nb::arg("fun"), nb::arg("jac").none(), nb::arg("check"), nb::arg("x0"),
+        nb::arg("f0"), nb::arg("ftol"), nb::arg("xtol"), nb::arg("gtol"), nb::arg("max_nfev"), nb::arg("epsfcn"),
+        nb::arg("factor"), nb::arg("diag")
     );
 }
 

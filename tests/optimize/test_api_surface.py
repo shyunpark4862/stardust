@@ -1,6 +1,6 @@
-"""docs/api/optimize.md and the module agree: every name its signature blocks define is either
-exported or planned for a later milestone (O1-O5), nothing else is exported, and the exported
-functions' signatures are the documented ones."""
+"""docs/api/optimize.md and the module agree: every name its signature blocks define is
+exported (O1-O5 are all implemented), nothing else is exported, and the exported functions'
+signatures are the documented ones."""
 
 import inspect
 import pathlib
@@ -12,15 +12,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "optimize.md"
 
-# Documented, not implemented yet (docs/design/optimize.md §8): O5 root lsq_linear nnls. (O1's
-# approx_fprime check_grad least_squares, O2's root_scalar minimize_scalar find_root bracket_root
-# find_minimum bracket_minimum and O3's minimize are exported; O4 added minimize's newton-cg,
-# trust-ncg and trust-exact.)
-PLANNED = {
-    "lsq_linear",
-    "nnls",
-    "root",
-}
+# Documented, not implemented yet (docs/design/optimize.md §8): none since O5 (root,
+# lsq_linear, nnls).
+PLANNED = set()
 RESULTS = {"OptimizeResult"}
 
 
