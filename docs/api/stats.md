@@ -12,7 +12,7 @@
 - 같은 입력이면 스레드 수와 상관없이 같은 비트다. 표본도 같은 `rng` 상태에서는 같다(docs/api/random.md). scipy와 비트가 같다는 약속은 없다: 반올림 수준의 값은 정확도 계약 안이면 되고, 반올림이 아닌 규칙(NaN·±0, 지지집합, 기본값)은 scipy와 같게 둔다(사용자 결정 2026-11-20, D-33).
 - 결과 배열: 입력을 받는 메서드(`pdf`부터 `ilogccdf`, 다변량의 `cdf`)의 결과는 새 배열이고 쓸 수 있다(`out=`과 같다). 결과 객체(`CdfResult`, 기술통계의 `DescribeResult`·`ModeResult`)의 배열 필드는 쓰기 금지다(D-4). 매개변수만의 메서드(모멘트, `median`, `mode`, `entropy`, `support`, 다변량의 `mean`·`covariance`, 행렬 분포의 `mean`·`mode`·`variance`)가 내는 배열은 쓰기 금지다(사용자 결정 2026-11-20, D-4; 고치려면 `.copy()`). 쓰면 `ValueError: assignment destination is read-only`다.
 - 정확도: 보장 영역에서 참값 대비 상대 1e-14(special과 같은 계약). 분포마다 보장 영역과 잰 값은 해당 절에 적는다.
-- 검정과 상관은 아직 없다. 나중에 `sd.stats.tests`에 둔다(§6).
+- 검정과 상관은 이 영역에 없다. 새 최상위 모듈 `sd.htest`에 둔다(§6, docs/design/htest.md).
 
 ## §2. 단변량 분포
 ```
@@ -243,7 +243,6 @@ differential_entropy(x, /, *, window_length=None, base=None, axis=None, method='
 - 배열(T0, 완료): `cov`, `corrcoef`, `quantile`, `median`, NaN 리덕션. docs/api/array.md §7.9–§7.11.
 - special(T1, T2): `stdtr stdtrit chdtr chdtrc chdtri fdtr fdtrc fdtri pdtr pdtrc bdtr bdtrc nbdtr nbdtrc`, `chndtr chndtrix nctdtr nctdtrit ncfdtr ncfdtri ndtri_exp`. docs/api/special.md에 더한다.
 
-## §6. `sd.stats.tests` (나중, 이 영역에서 뺌)
-- 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다). 아래는 그때를 위해 정해 둔 위치다.
-- 검정, 상관(Pearson·Spearman·Kendall의 계수와 p값). 목록과 결과 객체는 분포·기술통계를 구현한 뒤에 정한다.
-- scipy 이름 → 위치의 대응표를 그때 이 절에 둔다(예: `scipy.stats.ttest_ind` → `sd.stats.tests.ttest_ind`, `scipy.stats.pearsonr` → `sd.stats.tests.pearsonr`).
+## §6. 검정과 상관 (`sd.htest`로 옮김)
+- 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18). 2026-11-20에 위치를 새 최상위 모듈 `sd.htest`로 정했다(docs/design/htest.md H1). 검정과 상관(Pearson·Spearman·Kendall의 계수와 p값)은 그곳에 있다.
+- scipy 이름 → 위치: `scipy.stats.ttest_ind` → `sd.htest.ttest_ind`, `scipy.stats.pearsonr` → `sd.htest.pearsonr`처럼 같은 이름이다. 전체 대응표는 htest의 API 문서에 둔다.

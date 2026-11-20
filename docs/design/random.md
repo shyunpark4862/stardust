@@ -5,7 +5,7 @@
 `sd.random`은 난수의 바탕이다. 분포별 표본은 여기가 아니라 `sd.stats`의 각 분포(`X.sample(shape, rng=rng)`, [stats.md](stats.md) §4)에 있다.
 
 - 공개 함수와 시그니처는 [docs/api/random.md](../api/random.md)에 있다.
-- 쓰는 곳: `sd.stats`의 표본, `sd.stats.tests`의 순열·부트스트랩, frame의 표본 뽑기·섞기, 테스트 데이터.
+- 쓰는 곳: `sd.stats`의 표본, `sd.htest`의 순열·부트스트랩, frame의 표본 뽑기·섞기, 테스트 데이터.
 
 ---
 

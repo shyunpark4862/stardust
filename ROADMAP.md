@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 1부 완료·승인 대기)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 1부 완료·승인 대기), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(설계 초안, H0–H10 모두 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -222,7 +222,7 @@
 | T9 다변량: 정규, t, 다항, 디리클레 | 완료·승인 (2026-11-16, 승인 2026-11-18) |
 | T10 행렬 분포: Wishart, 역Wishart, 행렬 정규 | 완료·승인 (2026-11-16, 승인 2026-11-18) |
 | stats 최적화: chunk 커널, 이산 메모, 비중심 합, 다변량 빠른 경로 (docs/design/stats.md §3.4) | 완료·승인 (2026-11-17, 승인 2026-11-18) |
-| ~~T11 `sd.stats.tests`~~ | 이 영역에서 뺌 (2026-11-18, 나중에 따로) |
+| ~~T11 `sd.stats.tests`~~ | 이 영역에서 뺌 (2026-11-18, 나중에 따로). 2026-11-20 새 영역 `sd.htest`로 옮김: [가설검정 영역](#가설검정-영역-sdhtest) |
 
 ## 마일스톤
 
@@ -293,6 +293,7 @@
 
 ### T11. `sd.stats.tests` (뺌)
 - 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다). 위치(`sd.stats.tests`, 상관도 그곳)만 정해 둔 상태다(docs/design/stats.md §7).
+- 위치를 바꿨다(사용자 결정 2026-11-20): 검정은 `sd.stats.tests`가 아니라 새 최상위 모듈 `sd.htest`다(상관도 그곳). 계획은 이 문서 끝의 [가설검정 영역](#가설검정-영역-sdhtest), 설계는 [docs/design/htest.md](docs/design/htest.md)(H1).
 
 ---
 
@@ -446,3 +447,68 @@
 - 결과: csrc/optimize/(minpack.hpp: scipy MINPACK의 enorm·dot8·열 여덟 개의 반사를 hybrd.cpp와 같이 씀; lsq.cpp: lmder를 템플릿 `Fu`의 두 빌드로, scipy 빌드는 m × n의 피벗 QR·열 묶음·스레드, 야코비안 읽기; hybrd.cpp: qrfac·qform의 열 묶음; batch.cpp: `args` 모으기와 원소 패스의 스레드; hessian.hpp·trust.cpp: C 순서의 사용자 헤시안을 그대로 쥠; bfgs.cpp: H의 O(n²) 갱신(O99; n = 1은 곱의 꼴, O102); linear.cpp: nnls의 남는 계산, 유한성 검사를 커널에서), src/stardust/optimize/(`_lsq.py`: 'lm'은 scipy 빌드, `_linear.py`); docs/api/optimize.md §3·§8, docs/design/optimize.md §1.1·§3.3.1·§3.4·§3.5·§3.6·§7·§8·§9; 측정(커밋 4151d2a) bench/optimize/o6/(speed.py: O1–O5의 사례를 그대로 돌리는 전체 대조, speed.md, speed_before.json, speed_after.json); 테스트 tests/optimize/(test_root.py, test_least_squares.py, test_elementwise.py, test_minimize.py: BFGS는 허용오차로 견줌); 골든 tests/golden/data/optimize.json(O98: 'lm' 175경우를 다시 기록).
 - 결과 수치: `root('lm')`은 55계 × 야코비안 유무 110번 모두 scipy와 호출점과 결과가 비트까지 같다(옵션 36번도). `least_squares('lm')`은 MGH 110경우 가운데 해석적 108, 2점 104경우가 비트까지 같다(scipy가 기억으로 건너뛰는 같은 x의 호출과 O24의 끝 호출을 빼고; 나머지는 G74의 유한하지 않은 시험점과 O25의 `max_nfev`). NIST 54적합 52·52. nls 골든 338적합은 바이트까지 같다. 고정 골든은 optimize의 'lm' 175경우만 바뀌어 다시 기록했다(O98). BFGS는 O(n²) 갱신으로 n = 1000의 반복당 8.8 → 0.28 ms, scipy와 status가 같은 것 113/114(기록된 113번에서 해석적 112, 차분 107). 속도는 커밋 4151d2a의 bench/optimize/o6/speed.md: hybr n = 300 자기 비용이 scipy의 0.55배, `root('lm')` n = 100 0.17 → 0.11 ms, m = n = 40의 'lm' 0.063 → 0.036 ms, 배치 10⁶ 10스레드 find_root 89 → 31 ms, newton-cg·trust-ncg `hess` n = 1000 0.23 → 0.15, 0.16 → 0.10 ms. O95로 m ≫ n의 'lm'은 느려졌다((10⁴, 100) 6.6 → 17 ms; scipy 37 ms).
 - 비트를 바꾸는 후보(O94로 재서 물음): BFGS O(n²) 갱신은 넣었고(O99), 경계 없는 'trf'의 n × n SVD(5%)는 넣지 않는다(O100).
+
+---
+
+# 가설검정 영역 (sd.htest)
+
+> 상태: **설계 초안** (2026-11-20). H0–H10 모두 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md)이고, API의 초안(docs/api/htest.md)은 H0에서 쓴다.
+>
+> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+
+## 진행 원칙
+- 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/htest.md §9)을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
+- 큰 결정(사용자, 2026-11-20): 새 최상위 모듈 `sd.htest`(`sd.stats.tests`가 아니다, 상관도 여기), 첫 판에 scipy.stats의 가설검정 전부(모수, 순위, 적합도, 분할표, 상관, 재표본과 그 밖), scipy의 이름과 stardust의 규칙(위치 입력과 키워드 옵션, 별칭 없음, `nan_policy`, sd.stats의 `axis`·배치, `rng=`, 읽기 전용 결과 객체), 통계량과 p값은 Arb·정확한 유리수 참값에 대한 상대 1e-14 계약(scipy·R과 비트 동일은 목표가 아니다), statsmodels의 다중 비교 보정(`multipletests` 등)과 비율·이항 검정(`proportions_ztest`, `proportion_confint`, 두 독립 비율, `mcnemar`, `cochrans_q`); TOST와 검정력 분석은 뺀다 (docs/design/htest.md §1.1 H1–H5).
+- 비교 대상은 scipy 1.18.1, statsmodels 0.15.0, R 4.6.2이고, 정확도 체계(`bench/accuracy`)와 속도 체계(`bench/speed`)에서 견준다.
+- 기존 영역의 결과는 비트까지 같아야 한다(regression의 `jarque_bera()` 진단 등 같은 커널을 쓰게 되는 곳도).
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| H0 준비: API 문서, 결과 객체, 공통 입력 층, 참값(Arb·정확한 유리수)·R 대조 도구, 기준선 | 시작 전 |
+| H1 평균과 분산: `ttest_1samp ttest_rel ttest_ind ttest_ind_from_stats f_oneway alexandergovern bartlett levene fligner` | 시작 전 |
+| H2 적합도 1: `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp kstest cramervonmises` | 시작 전 |
+| H3 순위 검정: `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test` | 시작 전 |
+| H4 적합도 2: `ks_2samp cramervonmises_2samp anderson_ksamp epps_singleton_2samp` | 시작 전 |
+| H5 상관: `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi` | 시작 전 |
+| H6 분할표: `chi2_contingency fisher_exact barnard_exact boschloo_exact mcnemar cochrans_q` | 시작 전 |
+| H7 비율과 이항: `binomtest quantile_test poisson_means_test proportions_ztest proportions_chisquare proportion_confint test_proportions_2indep confint_proportions_2indep` | 시작 전 |
+| H8 다중 비교와 보정: `tukey_hsd dunnett multipletests false_discovery_control combine_pvalues` | 시작 전 |
+| H9 재표본: `permutation_test monte_carlo_test bootstrap`, 재표본 `method=` 객체, `bws_test` | 시작 전 |
+| H10 최적화와 일관성 점검 | 시작 전 |
+
+## 마일스톤
+
+### H0. 준비
+- API 초안 docs/api/htest.md(모든 공개 함수의 시그니처, scipy·statsmodels 이름 → sd 이름의 대응표, 마일스톤별 질문), 결과 객체의 틀(`_TestResult`, `ConfidenceInterval`), 공통 입력 층(`axis`·배치·`keepdims`·`nan_policy`·`alternative`·`rng`), 참값 도구의 틀(`tools/htest_ref.py` Arb, `tools/htest_exact.py` 정확한 유리수), R 대조 도구(`tools/gen_htest_r.py`), scipy·statsmodels·R 기준선(정확도·속도).
+- 시작 전에 물을 것: docs/design/htest.md §9의 H0(결과 객체의 꼴과 이름, 튜플 풀기, 신뢰구간의 이름, `axis` 기본값, `dof`·`df`, 퇴화한 입력, 새 귀무분포의 공개, R 꾸러미 설치).
+
+### H1. 평균과 분산
+- t 검정 넷(Student, Welch, Yuen의 절삭), 일원 분산분석(Welch 포함), Alexander–Govern, 분산의 동질성(Bartlett, Levene, Fligner–Killeen). 신뢰구간은 `confidence_interval()`.
+
+### H2. 적합도 1: 분포를 정한 검정
+- 카이제곱과 Cressie–Read, D'Agostino의 셋, Jarque–Bera, Shapiro–Wilk(AS R94), Anderson–Darling(1.17부터의 꼴), Kolmogorov–Smirnov 한 표본(정확·근사·점근), Cramér–von Mises 한 표본.
+
+### H3. 순위 검정
+- Mann–Whitney(정확·정규), 순위 합, Wilcoxon 부호 순위(정확·정규·나열), Kruskal–Wallis, Friedman, Brunner–Munzel, Ansari–Bradley(정확·정규), Mood, Mood의 중앙값 검정, Page의 경향 검정.
+
+### H4. 적합도 2: 표본끼리
+- Kolmogorov–Smirnov 두 표본(격자 경로의 정확 분포), Cramér–von Mises 두 표본(정확·점근), Anderson–Darling k 표본, Epps–Singleton.
+
+### H5. 상관
+- Pearson(1 − r²을 상쇄 없이), Spearman(두 꼴), 점 이연 상관, Kendall τ-b·τ-c(정확·정규), 가중 τ, Somers' D, Chatterjee ξ.
+
+### H6. 분할표
+- 카이제곱 독립성 검정(Yates, Cressie–Read), Fisher 정확 검정(2 × 2와 r × c), Barnard·Boschloo(장애 모수의 참 상한), McNemar, Cochran Q.
+
+### H7. 비율과 이항
+- 이항 검정과 비율의 구간, 분위수 검정, 포아송 평균의 E-test, statsmodels의 비율 z·카이제곱 검정, 비율의 신뢰구간(모든 방법), 두 독립 비율의 차·비·오즈비 검정과 구간. 비교 대상에 R `prop.test`·`binom.test`.
+
+### H8. 다중 비교와 보정
+- Tukey HSD(스튜던트화 범위 분포), Dunnett(다변량 t), `multipletests`(열 방법), `false_discovery_control`, `combine_pvalues`. 비교 대상에 R `p.adjust`·`ptukey`.
+
+### H9. 재표본
+- `permutation_test`, `monte_carlo_test`, `bootstrap`, `PermutationMethod`·`MonteCarloMethod`·`BootstrapMethod`와 앞 검정들의 `method=`, Baumgartner–Weiss–Schindler(그리고 §9의 질문에 따라 `multiscale_graphcorr`, `goodness_of_fit`).
+
+### H10. 최적화와 일관성 점검
+- 모든 공개 함수를 크기마다 scipy·statsmodels·R과 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 점검하고, 코드 리뷰를 한다.

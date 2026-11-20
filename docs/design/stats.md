@@ -18,7 +18,7 @@
 | 번호 | 결정 |
 |---|---|
 | T1 범위 | `sd.stats` = 분포 + 기술통계 (§1.2) |
-| T2 검정 | 하위 모듈 `sd.stats.tests`. 상관(Pearson·Spearman·Kendall)은 계수까지 전부 tests에 둔다. 상세 설계(검정 목록, 결과 객체, 정확 검정)는 분포·기술통계를 구현한 뒤에 정한다 (§7) |
+| T2 검정 | 하위 모듈 `sd.stats.tests`(2026-11-20 H1로 바뀜: 새 최상위 모듈 `sd.htest`, §7). 상관(Pearson·Spearman·Kendall)은 계수까지 전부 tests에 둔다. 상세 설계(검정 목록, 결과 객체, 정확 검정)는 분포·기술통계를 구현한 뒤에 정한다 (§7) |
 | T3 경계 | p값을 내거나 귀무분포를 쓰면 tests, 아니면 stats. `rankdata`·`zscore`·`skew`·`kurtosis`·`describe` 같은 보조·요약 함수는 stats의 공개 함수이고, tests가 stats를 부르는 방향만 허용한다. 단순 공분산·Pearson 상관행렬은 배열 영역의 `sd.cov`, `sd.corrcoef`다 |
 | T4 단변량 분포 | 기본 17 + 극값·수명 6 + 비중심 3 + 이산 추가 5 = 31개 (§1.2) |
 | T5 다변량 분포 | 다변량 정규, 다변량 t, 다항, 디리클레, Wishart, 역Wishart, 행렬 정규 (§6) |
@@ -85,7 +85,7 @@
   - 분포 맞추기(`fit`), KDE, 분포 변환·혼합·순서통계량
   - 고전형 API(`norm.cdf(x, loc, scale)`)와 그 `loc`·`scale` 규칙
   - 평균의 변형(`gmean` 등), 절삭 통계(`trim_mean` 등)
-  - 검정은 `sd.stats.tests`에 따로 (§7)
+  - 검정은 새 최상위 모듈 `sd.htest`에 따로 (§7, docs/design/htest.md)
 
 ### 1.3 공통 원칙
 - special의 원칙을 그대로 따른다: 입력은 위치로만(`/` 앞), 옵션은 키워드로만(`*` 뒤), float64 실수(bool·int64는 float64로), 같은 입력이면 스레드 수와 무관하게 같은 비트, `f(x)[i] == f(x[i])`, 경고 없음.
@@ -339,10 +339,11 @@ T4–T10을 마치고 속도를 재 보니 1스레드에서 scipy보다 느린 �
 - **표본**: Wishart는 Bartlett 분해다. A는 아래 삼각이고, A_jj = √(2 G((n − j)/2))(j = 0..p−1, 실수 n), 그 아래는 N(0, 1)이다. 결과는 (LA)(LA)ᵀ다. 역Wishart는 X⁻¹ ~ W(n, Ψ⁻¹)이고 W(n, I)가 직교 불변이라 Ψ⁻¹의 아무 제곱근을 써도 되므로, X = (L_Ψ A⁻ᵀ)(L_Ψ A⁻ᵀ)ᵀ다. 행렬 정규는 M + L_U Z L_Vᵀ다. 결과는 정확히 대칭으로 쓴다.
 - **잰 값**: 정확도는 bench/stats/accuracy_multivariate.md(`python -m bench.accuracy`; scipy 대비도 같은 표의 비교 패키지 열), 속도는 커밋 4151d2a의 bench/stats/t10/speed.md. 참값에서 x는 아래 삼각에서 대칭으로 만든다. scipy의 표본은 반올림만큼 비대칭이라, 특이에 가까운 X에서는 그 차이가 X⁻¹를 움직였다(처음 측정에서 3e-8로 보였다).
 
-## 7. `sd.stats.tests` (나중, 이 영역에서 뺌)
+## 7. 검정 (`sd.htest`로 옮김; 이 영역에서 뺌)
 - 검정은 이 영역에서 뺐다(사용자 결정 2026-11-18: 나중에 따로 한다).
-- 위치와 경계만 정했다(T2, T3). 검정 목록, 결과 객체(`statistic`, `pvalue`, 자유도, 신뢰구간), 대립가설, 정확 검정과 점근 근사, 순열·부트스트랩은 분포·기술통계를 구현한 뒤에 묻는다.
-- 그때 필요하면 배열에 `searchsorted`, `bincount` 등을, special에 `kolmogorov`·`smirnov` 등을 더한다.
+- **위치를 바꿨다** (사용자 결정 2026-11-20, [htest.md](htest.md)의 H1): 검정은 하위 모듈 `sd.stats.tests`가 아니라 새 최상위 모듈 `sd.htest`다. T2의 위치(`sd.stats.tests`, 상관도 그곳)는 이것으로 바뀐다. 상관(Pearson·Spearman·Kendall 등)의 계수와 p값도 `sd.htest`에 둔다. T3의 경계(p값을 내거나 귀무분포를 쓰면 검정, 아니면 stats; 검정이 stats를 부르는 방향만)는 그대로이고, 그 "tests"는 `sd.htest`로 읽는다. 이 문서의 다른 곳(T2·T3, §1.2, §1.4)과 docs/api/stats.md의 `sd.stats.tests`도 `sd.htest`로 읽는다.
+- 검정 목록(scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정), 결과 객체, 정확 검정과 점근 근사, 재표본, 정확도 계약, 마일스톤(H0–H10)은 [htest.md](htest.md)에 있다.
+- htest가 쓰는 새 귀무분포(Kolmogorov–Smirnov, 스튜던트화 범위, Fisher의 비중심 초기하)를 sd.stats의 분포나 sd.special의 함수(`kolmogorov`, `smirnov` 등)로 공개할지는 htest.md §9의 H0에서 묻는다.
 
 ## 8. 배열과 special에 더하는 것
 
