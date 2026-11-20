@@ -125,7 +125,16 @@ def exact(value, dtype):
 
 def full_na(length, dtype=None):
     """A column of `length` NA rows (float64 unless `dtype` says otherwise, docs/api/frame.md §2.2)."""
-    return Column.from_list([None] * length, NA, dtype)
+    return _core.full(Column.from_list([None], NA, dtype), length)
+
+
+def full(value, length, dtype=None, func=None):
+    """A column of `length` rows of the scalar `value`: the column of a list
+    of `length` copies of `value` (its inference, dtype= and messages), made
+    without the list. No rows: the empty list's column."""
+    if length == 0:
+        return Column.from_list([], NA, dtype, func=func)
+    return _core.full(Column.from_list([value], NA, dtype, func=func), length)
 
 
 def article(word):
@@ -135,11 +144,11 @@ def article(word):
 
 def _plain(value):
     """A numpy scalar as the Python scalar of its kind (numpy.bool_ -> bool,
-    numpy integers -> int, numpy floats -> float), as fillna reads them;
-    anything else unchanged."""
+    numpy integers -> int, numpy floats -> float, numpy.str_ -> str), as
+    fillna reads them; anything else unchanged."""
     np = sys.modules.get("numpy")
     if np is not None and isinstance(value, np.generic):
-        for kind, plain in ((np.bool_, bool), (np.integer, int), (np.floating, float)):
+        for kind, plain in ((np.bool_, bool), (np.integer, int), (np.floating, float), (np.str_, str)):
             if isinstance(value, kind):
                 return plain(value)
     return value
@@ -201,6 +210,7 @@ def to_numpy(col, dtype, copy, na_value, func):
         col, fresh = col.astype(dtype, func=func), True  # dtype= is explicit (docs/api/frame.md §2.7)
     if na_value is not _NO_VALUE:
         _check_na_value(na_value, col.dtype, func)
+        na_value = _plain(na_value)  # the array holds Python scalars (a string column's object array)
     elif col.null_count > 0:
         raise ValueError(
             named(

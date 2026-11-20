@@ -12,6 +12,7 @@ import math
 import numbers
 import textwrap
 
+from .. import _calls
 from .. import _core as _sd
 from .. import random as _random
 from .. import special as _special
@@ -20,7 +21,6 @@ from ._glm import _broadcast_shape, _check_int, _check_positive
 from ._linear import (
     _WIDTH,
     _as_real,
-    _call_errors,
     _check_alpha,
     _check_batches,
     _check_bool,
@@ -39,8 +39,11 @@ from ._linear import (
     _quantile_label,
     _read_y,
     _RegressionResult,
+    _ro,
     _rows_message,
     _type_name,
+    _y_units,
+    _y_unscale,
 )
 
 _k = _sd.regression
@@ -108,9 +111,9 @@ class RLMResult(_RegressionResult):
     def df_resid(self):
         return self._cached("df_resid", lambda: self._nan_where(self.nobs - self._stat(_R_RANK)))
 
-    def cov_params(self):
-        """The covariance of the parameters (k x k); rows and columns of aliased parameters are
-        NaN, and all of it with no degree of freedom left (n = rank: 0/0, G95)."""
+    def _cov_s(self):
+        """The covariance in the fit's units; all of it NaN with no degree of freedom left
+        (n = rank: 0/0, G95)."""
 
         def make():
             c = self._raw[1]
@@ -119,7 +122,16 @@ class RLMResult(_RegressionResult):
                 return _sd.where(_expand(df == 0.0, 2), math.nan, c)
             return c * math.nan if df == 0 else c
 
-        return self._cached("cov_params", make)
+        return self._cached("cov_s", make)
+
+    def _perfect(self):
+        """A scale of exactly 0 (an exact fit of the rows that decide it) with df_resid > 0:
+        t and p NaN (D-3)."""
+        z = self._stat(_R_SCALE) == 0.0
+        df = self.df_resid
+        if self._batch:
+            return _sd.logical_and(z, df > 0.0)
+        return bool(z) and df > 0
 
     @property
     def converged(self):
@@ -268,6 +280,7 @@ def _check_c(c, func, norm, method):
     return (v, 0.0, 0.0) if norm == "huber" else (0.0, 0.0, v)
 
 
+@_calls.function
 def rlm(
     y,
     X,
@@ -315,6 +328,9 @@ def rlm(
 
     columns = _frame_columns(X)
     yy, XX, _, names, _, _, _ = _prepare(func, y, X, None, nan_policy, intercept=intercept)
+    # y far outside [2^-256, 2^256] is fitted in power-of-two units (exact; the M and S
+    # estimates are equivariant under y's scale)
+    yy, fy = _y_units(yy)
     keys = None
     if method == "MM":
         shape = _broadcast_shape(func, tuple(yy.shape[:-1]), tuple(XX.shape[:-2]))
@@ -337,11 +353,16 @@ def rlm(
         tol,
         _NRESAMPLE,
     )
+    extra = None
+    if fy is not None:
+        raw = list(raw)
+        extra = _y_unscale(raw, fy, (_R_SCALE,))
     est = scale_est if method == "M" else "S"
     if est == "huber":
         est = "Huber"
     return RLMResult(
         raw,
+        extra=extra,
         method=method,
         norm=norm,
         scale_est=est,
@@ -385,31 +406,42 @@ def _slopes_input(func, y, x, nan_policy):
         if bool(_sd.any(bad)):
             keep = _sd.logical_not(bad)
             yy, xx = yy[keep], xx[keep]
-    if yy.shape[-1] < 2:
-        raise ValueError(f"{func}(): 'x' and 'y' must have length at least 2")
     return yy, xx, batch
 
 
 def _out(v, batch, cls):
     if batch:
-        return cls(*(v[..., i] for i in range(v.shape[-1])))
+        return cls(*(_ro(v[..., i]) for i in range(v.shape[-1])))
     return cls(*(float(a) for a in v.tolist()))
 
 
-def theilslopes(y, x=None, /, *, alpha=0.95, method="separate", nan_policy="propagate"):
+def _too_few(yy, xx, batch, cls):
+    """Fewer than 2 points: no slope; every field NaN (G96's empty-input rule; scipy 1.18.1
+    gives NaN with a warning), or None when there are enough."""
+    if yy.shape[-1] >= 2:
+        return None
+    nf = len(cls._fields)
+    if not batch:
+        return cls(*([math.nan] * nf))
+    shape = _broadcast_shape("", tuple(yy.shape[:-1]), tuple(xx.shape[:-1]))
+    return cls(*(_ro(_sd.full(shape, math.nan)) for _ in range(nf)))
+
+
+@_calls.function
+def theilslopes(y, x=None, /, *, alpha=0.05, method="separate", nan_policy="propagate"):
     """scipy.stats.theilslopes: the median of the pairwise slopes, the intercept
     median(y) - slope median(x) ('separate') or median(y - slope x) ('joint'), and Sen's
-    (1968) confidence bounds on the slope at level alpha (folded: 0.1 and 0.9 both mean 90%).
-    x=None is arange(len(y))."""
+    (1968) confidence bounds on the slope at significance level alpha, the 1 - alpha interval
+    (as conf_int's alpha; folded as scipy's, so 0.05 and 0.95 both mean 95%). x=None is
+    arange(len(y))."""
     func = "theilslopes"
     _check_choice(method, func, "method", ("joint", "separate"))
-    if isinstance(alpha, bool) or not isinstance(alpha, numbers.Real):
-        raise TypeError(f"{func}(): 'alpha' must be an int or a float, not {_type_name(alpha)}")
-    a = float(alpha)
-    if not 0 < a < 1:
-        raise ValueError(f"{func}(): 'alpha' must be between 0 and 1 (exclusive)")
+    a = _check_alpha(alpha, func)
     _check_policy(nan_policy, func)
     yy, xx, batch = _slopes_input(func, y, x, nan_policy)
+    few = _too_few(yy, xx, batch, TheilslopesResult)
+    if few is not None:
+        return few
     if a > 0.5:
         a = 1.0 - a
     z = float(_special.ndtri(a / 2.0))
@@ -417,6 +449,7 @@ def theilslopes(y, x=None, /, *, alpha=0.95, method="separate", nan_policy="prop
     return _out(v, batch, TheilslopesResult)
 
 
+@_calls.function
 def siegelslopes(y, x=None, /, *, method="hierarchical", nan_policy="propagate"):
     """scipy.stats.siegelslopes: the repeated median of the slopes (per point the median of
     its slopes to the others, then their median), and the intercept median(y - slope x)
@@ -426,9 +459,12 @@ def siegelslopes(y, x=None, /, *, method="hierarchical", nan_policy="propagate")
     _check_choice(method, func, "method", ("hierarchical", "separate"))
     _check_policy(nan_policy, func)
     yy, xx, batch = _slopes_input(func, y, x, nan_policy)
+    few = _too_few(yy, xx, batch, SiegelslopesResult)
+    if few is not None:
+        return few
     v = _k.slopes(func, yy, xx, 1, method == "separate", 0.0)
     return _out(v, batch, SiegelslopesResult)
 
 
 # the methods' call-shape errors in the library's form (R89)
-_call_errors(RLMResult)
+_calls.methods(RLMResult)

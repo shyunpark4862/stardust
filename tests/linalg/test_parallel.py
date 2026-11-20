@@ -155,9 +155,11 @@ def test_long_sums_same_for_any_thread_count(n):
         lambda: sd.linalg.matrix_norm(m, ord=math.inf),
     ):
         same_for_all_counts(call)
-    # still numpy's pairwise bits (docs/design/linalg.md §8.2)
-    assert sd.linalg.vecdot(X, Y) == np.sum(x * y)
-    assert sd.linalg.vector_norm(X, ord=1) == np.sum(np.abs(x))
+    # pairwise sums (docs/design/linalg.md §8.2): plain ones are sd.sum's bits, fused ones
+    # within the error bound of numpy's
+    assert sd.linalg.vector_norm(X, ord=1) == sd.sum(sd.abs(X))
+    bound = 2 * (math.log2(n) + 2) * 2.0**-52
+    assert abs(sd.linalg.vecdot(X, Y) - np.sum(x * y)) <= bound * np.sum(np.abs(x * y))
 
 
 def test_long_norm_rescaling_and_nan_on_threads():

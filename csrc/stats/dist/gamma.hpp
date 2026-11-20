@@ -85,7 +85,7 @@ inline constexpr double kMaxShape = 0x1p100;
 // A shape below the normal range has lost bits itself, and so do the incomplete gamma's
 // pieces at it (a / tail, sqrt(2 pi a), y / a beyond the doubles): its tails come from the
 // reference shape a0 = 2^-600 instead. For a tiny shape
-//     Q(a, y) = a E1(y) (1 + O(a (1 + log^2 y))),
+//     Q(a, y) = a E1(y) (1 + O(a (1 + |log y|))),
 // so Q(a, y) = (a / a0) Q(a0, y) to 2^-570 relatively for every y a quotient of doubles
 // (|log y| < 1500), and P = 1 - Q is 1 to 2^-1010.
 inline constexpr double kMinNormalShape = 0x1p-1022;

@@ -57,31 +57,52 @@ def contract_cell(r):
 COLUMNS = [
     ("ulp_max", "최대 ULP", lambda r: num(r["ulp_max"])),
     ("ulp_p999", "99.9% ULP", lambda r: num(r["ulp_p999"])),
-    ("ulp_cond_max", "ULP/max(1, κ)", lambda r: num(r["ulp_cond_max"])),
+    ("ulp_cond_max", "ULP/배율", lambda r: num(r["ulp_cond_max"])),  # the key keeps its old name: baselines hold it
     ("mixed_max", "mixed (최대 / 99.9%)", lambda r: f"{num(r['mixed_max'])} / {num(r['mixed_p999'])}"),
     ("rel_max", "최대 상대오차", lambda r: num(r["rel_max"])),
     ("norm_rel", "노름 상대오차", lambda r: num(r["norm_rel"])),
+    ("nonfinite", "NaN·inf 점", lambda r: str(r["nonfinite"])),
     ("abs_max", "최대 절대오차", lambda r: num(r["abs_max"])),
     ("rel_cond_max", "상대오차/(u·조건수)", lambda r: num(r["rel_cond_max"])),
     ("est_ratio_max", "오차/추정", lambda r: num(r["est_ratio_max"])),
     ("contract", "계약 대비", lambda r: contract_cell(r)),
 ]
 
-
-# (column key, line) for the columns above that the fixed legend in render() does not explain
-LEGEND_EXTRA = [
+# (column key, line): a line appears when its column is in the table ("region": the areas whose
+# region column is the guaranteed region, not a result field).
+LEGEND = [
+    ("ulp_max", "- ULP: |sd − 참값|을 참값에서의 float64 간격으로 나눈 값. 99.9%는 그 분위수다."),
+    ("ulp_cond_max", "- ULP/배율: ULP를 그 점의 계약 배율로 나눈 값. 배율은 상대 한계 1e-14에 곱하는 수로, 역함수는 "
+     "max(1, κ)(κ는 입력에 대한 상대 조건수), Bessel·Airy와 복소 오차함수·wofz는 영점 근처에서 max(1, M/|f|)"
+     "(M은 크기의 포락선)다. 배율이 1보다 큰 점이 있는 함수에만 있다. 계약 대비처럼 배율을 나눈 값이라 둘이 함께 "
+     "움직인다(상대 계약이면 ULP/배율 약 45–90이 계약 대비 1이다). 최대 ULP 열은 배율을 나누지 않은 값이라, 배율이 큰 "
+     "점(역함수가 0을 지나는 곳, 진동 함수의 영점 근처)에서는 계약 안이어도 크다."),
+    ("mixed_max", "- mixed: |sd − 참값|/max(1, |참값|)를 2⁻⁵² 단위로 잰 값(45가 1e-14다). 0을 지나는 값(log 밀도, "
+     "엔트로피, gammaln 등)의 계약 척도이고, 그 함수에만 있다. 최대와 99.9%다."),
+    ("rel_max", "- 상대오차: |sd − 참값|/|참값|."),
+    ("norm_rel", "- 노름 상대오차: 벡터 필드의 ‖sd − 참값‖₂/‖참값‖₂."),
+    ("nonfinite", "- NaN·inf 점: 참값은 유한한데 sd가 NaN이나 inf를 낸 점의 수. 그런 점의 오차는 inf로 센다."),
     ("abs_max", "- 최대 절대오차: |sd − 참값|의 최대."),
     ("rel_cond_max", "- 상대오차/(u·조건수): 입력의 반올림(u = 2⁻⁵³)이 조건수만큼 커진 크기에 대한 상대오차. 조건수는 "
      "입력마다 |d log P/d log x|의 합이다(sd 자신의 값의 중앙 차분)."),
     ("est_ratio_max", "- 오차/추정: 실제 오차를 sd가 돌려준 오차 추정(표준오차의 3배)으로 나눈 값의 최대. "
      "추정은 통계적이라 1을 넘는 점이 있다."),
+    ("contract", "- 계약 대비: 그 영역의 계약 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, mixed는 "
+     "|오차|/max(1, |값|))로 잰 가장 큰 오차를 한계로 나눈 값. 1 이하가 계약 안이다."),
+    ("region", "- 영역: guaranteed는 보장 영역, loose와 mixed는 그 밖(mixed는 그 척도로 잰다)."),
 ]  # fmt: skip
+
+
+def _legend(area: str, cols) -> list[str]:
+    keys = {c[0] for c in cols} | ({"region"} if area in ("special", "stats") else set())
+    return [line for key, line in LEGEND if key in keys]
 
 
 def render(area: str, data: dict) -> str:
     sweeps = sorted((s for s in data["sweeps"] if s["area"] == area), key=lambda s: s["name"])
     runs = data.get("runs") or {data["run"]: data["env"]}
     present = {k for sw in sweeps for r in sw["regions"].values() for k, v in r.items() if v is not None}
+    cols = [c for c in COLUMNS if c[0] in present]
     lines = [
         f"# {HEAD.get(area, area)} 정확도",
         "",
@@ -99,15 +120,7 @@ def render(area: str, data: dict) -> str:
             else ""
         ),
         "",
-        "- ULP: |sd − 참값|을 참값에서의 float64 간격으로 나눈 값. 99.9%는 그 분위수다.",
-        "- ULP/max(1, κ): 역함수의 계약 단위(κ는 입력에 대한 상대 조건수). 역함수만 있다.",
-        "- mixed: |sd − 참값|/max(1, |참값|)를 2⁻⁵² 단위로 잰 값(45가 1e-14다). 0을 지나는 값(log 밀도, "
-        "엔트로피, gammaln 등)의 계약 척도이고, 그 함수에만 있다. 최대와 99.9%다.",
-        "- 상대오차: |sd − 참값|/|참값|. 노름 상대오차: 벡터 필드의 ‖sd − 참값‖₂/‖참값‖₂.",
-        "- 계약 대비: 그 영역의 계약 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, mixed는 "
-        "|오차|/max(1, |값|))로 잰 가장 큰 오차를 한계로 나눈 값. 1 이하가 계약 안이다.",
-        "- 영역: guaranteed는 보장 영역, loose와 mixed는 그 밖(mixed는 그 척도로 잰다).",
-        *[line for key, line in LEGEND_EXTRA if key in present],
+        *_legend(area, cols),
         "",
         "측정: "
         + ", ".join(
@@ -117,7 +130,6 @@ def render(area: str, data: dict) -> str:
         + ".",  # fmt: skip
         "",
     ]
-    cols = [c for c in COLUMNS if c[0] in present or c[0] in ("ulp_max", "rel_max")]
     lines.append("| 함수 | 영역 | 점 | " + " | ".join(c[1] for c in cols) + " |")
     lines.append("|---|---|---:|" + "---:|" * len(cols))
     for sw in sweeps:

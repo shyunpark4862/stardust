@@ -9,6 +9,7 @@ shape, else checked and converted here.
 """
 
 import math
+import numbers
 
 from .. import _core as _sd
 from ._common import (
@@ -17,9 +18,13 @@ from ._common import (
     _check_method,
     _check_options,
     _check_tol,
+    _is_number,
+    _not_a_pair,
     _real,
     _real_vector,
+    _show_x,
     _type_name,
+    _values_text,
     _x0,
 )
 from ._lsq import _returned
@@ -74,10 +79,14 @@ def _checks(func, n):
         if a.ndim != 1:
             raise ValueError(f"{func}(): 'fun' must return a 1-dimensional array, not shape {tuple(a.shape)}")
         if a.shape[0] != n:
-            raise ValueError(f"{func}(): 'fun' must return {n} values (one per variable), not {a.shape[0]}")
+            raise ValueError(f"{func}(): 'fun' must return {_values_text(n)} (one per variable), not {a.shape[0]}")
         return a
 
     def jacobian(v):
+        if n == 1 and isinstance(v, numbers.Real) and not isinstance(v, bool):
+            v = [[float(v)]]  # a number for the (1, 1) Jacobian, as minimize's (1, 1) Hessian
+        elif n == 1 and getattr(v, "ndim", None) == 0 and getattr(getattr(v, "dtype", None), "kind", "") in "iuf":
+            v = [[float(v)]]
         a = _returned(v, func, "jac")
         if n == 1 and a.ndim == 1 and a.shape[0] == 1:
             a = _sd.reshape(a, (1, 1))
@@ -90,10 +99,11 @@ def _checks(func, n):
             return values(v)
         if what == "jac":
             return jacobian(v)
-        if isinstance(v, (tuple, list)) and len(v) == 2:
+        # a pair (F, J); with n >= 2 its J is not a number, so that F alone as a list of two
+        # numbers is not read as a pair
+        if isinstance(v, (tuple, list)) and len(v) == 2 and (n == 1 or not _is_number(v[1])):
             return (values(v[0]), jacobian(v[1]))
-        got = f"{len(v)} values" if isinstance(v, (tuple, list)) else _type_name(v)
-        raise TypeError(f"{func}(): 'fun' must return a pair (F, J) when jac=True, not {got}")
+        raise TypeError(f"{func}(): 'fun' must return a pair (F, J) when jac=True, not {_not_a_pair(v)}")
 
     return check
 
@@ -127,7 +137,7 @@ def _band(v, func, n):
     if isinstance(v, (str, bytes)) or not hasattr(v, "__len__") or not hasattr(v, "__getitem__"):
         raise TypeError(f"{func}(): 'band' must be a pair (ml, mu), not {_type_name(v)}")
     if len(v) != 2:
-        raise ValueError(f"{func}(): 'band' must be a pair (ml, mu), not {len(v)} values")
+        raise ValueError(f"{func}(): 'band' must be a pair (ml, mu), not {_values_text(len(v))}")
     ml, mu = (_check_int(t, func, "band", 0) for t in (v[0], v[1]))
     return min(ml, n - 1), min(mu, n - 1)
 
@@ -151,7 +161,10 @@ def root(fun, x0, /, *, method="hybr", jac=None, tol=None, options=None):
         raise ValueError(f"{func}(): 'jac' must be callable, True or None, not False")
     else:
         raise TypeError(f"{func}(): 'jac' must be callable, True or None, not {_type_name(jac)}")
-    opts = _check_options(options, func, method, _OPTIONS[method])
+    # root's only cap is max_nfev (scipy's 'lm' maxiter caps the calls too)
+    opts = _check_options(
+        options, func, method, _OPTIONS[method], {"maxiter": " (the cap on function evaluations is 'max_nfev')"}
+    )
     if tol is not None:
         tol = _check_tol(tol, func, "tol")
         if opts.get("xtol") is not None:
@@ -170,6 +183,9 @@ def root(fun, x0, /, *, method="hybr", jac=None, tol=None, options=None):
     else:
         max_nfev = _check_int(opts["max_nfev"], func, "max_nfev", 1)
 
+    if method == "lm":  # every option is checked before the user's function is called
+        ftol = _XTOL if opts.get("ftol") is None else _check_tol(opts["ftol"], func, "ftol")
+        gtol = 0.0 if opts.get("gtol") is None else _check_tol(opts["gtol"], func, "gtol")
     check = _checks(func, n)
     xl = [float(v) for v in x.tolist()]
     f0 = check(fun(_sd.asarray(xl)), "fun" if mode != _J_WITH_FUN else "pair")
@@ -196,12 +212,10 @@ def root(fun, x0, /, *, method="hybr", jac=None, tol=None, options=None):
         )
         if status < 0:
             what = "the differences of 'fun' are" if mode == _J_DIFF else "'jac' is"
-            raise ValueError(f"{func}(): {what} not finite at x = {xs}")
+            raise ValueError(f"{func}(): {what} not finite at x = {_show_x(xs)}")
         message = _hybr_message(status, xtol, max_nfev)
         converged = status == 1
     else:
-        ftol = _XTOL if opts.get("ftol") is None else _check_tol(opts["ftol"], func, "ftol")
-        gtol = 0.0 if opts.get("gtol") is None else _check_tol(opts["gtol"], func, "gtol")
         f_call, j_call = fun, (jac if mode == _J_CALLABLE else None)
         if mode == _J_WITH_FUN:
             f_call, j_call = _memo_pair(fun, check, xl, f0)
@@ -211,10 +225,10 @@ def root(fun, x0, /, *, method="hybr", jac=None, tol=None, options=None):
         )
         if status < 0:
             what = "the differences of 'fun' are" if mode == _J_DIFF else "'jac' is"
-            raise ValueError(f"{func}(): {what} not finite at x = {xs}")
+            raise ValueError(f"{func}(): {what} not finite at x = {_show_x(xs)}")
         message = _lm_message(status, ftol, xtol, gtol, max_nfev)
         converged = 1 <= status <= 4
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=_sd.asarray(xs),
         fun=f,
         converged=converged and bool(_sd.all(_sd.isfinite(f))),

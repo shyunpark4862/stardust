@@ -1,5 +1,6 @@
 """Series: one Column plus its row labels (docs/design/frame.md §3.1)."""
 
+from .. import _calls
 from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._column import _NO_VALUE
 from ._dtypes import resolve
@@ -15,6 +16,7 @@ Column = _core.Column
 class Series(Reductions):
     __slots__ = ("_col", "_index", "_name")
 
+    @_calls.method("Series")
     def __init__(self, data=None, /, *, index=None, dtype=None, name=None):
         dtype = resolve(dtype, "Series") if dtype is not None else None
         target = ensure_index(index, "Series") if index is not None else None
@@ -179,7 +181,7 @@ class Series(Reductions):
             return Series._new(self._col.astype("int64"), self._index, self._name)
         if self._dtype not in ("int64", "float64"):
             raise TypeError(f"unsupported operand dtype for unary +: {self._dtype}")
-        return self
+        return Series._new(self._col, self._index, self._name)  # a new object; the Buffer is shared (CoW)
 
     def __invert__(self):
         return self._unary("invert")
@@ -340,6 +342,9 @@ def assignment_values(value, dtype, labels):
     if labels is None:
         raise TypeError("assign a scalar to a single row")
     if isinstance(value, (list, tuple)):
+        _check_no_bool_mix(value)
+    elif _column.is_ndarray(value) and value.dtype.kind == "O":
+        value = value.tolist()  # Python objects: the list rules, the bool check included
         _check_no_bool_mix(value)
     col = _column.implicit(_column.column_from(value), dtype)
     if len(col) != len(labels):

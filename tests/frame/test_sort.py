@@ -135,3 +135,43 @@ def test_arguments():
     ):
         with pytest.raises(error):
             bad()
+
+
+# --- long common prefixes and one-byte keys -------------------------------------
+
+
+@pytest.mark.parametrize("n", [5, 300, 20_000, 300_000])
+def test_strings_with_a_long_common_prefix(n):
+    # Runs of equal 8-byte prefixes go one radix level deeper (docs/design/frame.md §9.4),
+    # down to strings that differ only in trailing NUL bytes; the order is the byte order.
+    rng = np.random.default_rng(n)
+    vals = [f"customer_{int(v):07d}" for v in rng.integers(0, 10**7, n)]
+    vals[: n // 10] = ["https://example.com/" + "ab\0"[int(v) % 3] * int(v % 9) for v in rng.integers(0, 100, n // 10)]
+    vals[-3:] = ["https://example.com/", "https://example.com/\0", "https://example.com/\0\0"]
+    expected = sorted(vals, key=lambda v: v.encode())
+    results, default = set(), sd.get_num_threads()
+    for t in sorted({1, 3, default}):
+        sd.set_num_threads(t)
+        try:
+            s = sd.frame.Series(vals)
+            got = s.sort_values()
+            down = s.sort_values(descending=True).tolist()
+            uniq = tuple(s.unique_values().tolist()) if n <= 20_000 else None
+        finally:
+            sd.set_num_threads(default)
+        assert got.tolist() == expected
+        assert got.index.tolist() == sorted(range(n), key=lambda i: vals[i].encode())  # stable
+        assert down == sorted(vals, key=lambda v: v.encode(), reverse=True)
+        results.add((tuple(got.index.tolist()), uniq))
+    assert len(results) == 1
+
+
+def test_bool_keys_sort_stably_in_one_pass():
+    b = (np.random.default_rng(1).random(300_000) < 0.5).tolist()
+    s = sd.frame.Series(b)
+    assert s.sort_values().index.tolist() == sorted(range(len(b)), key=lambda i: b[i])
+    assert s.sort_values(descending=True).index.tolist() == sorted(range(len(b)), key=lambda i: not b[i])
+    df = sd.frame.DataFrame({"b": b, "i": list(range(len(b)))})
+    assert df.sort_values(["b", "i"], descending=[True, False])["i"].tolist() == sorted(
+        range(len(b)), key=lambda i: (not b[i], i)
+    )

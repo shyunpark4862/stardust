@@ -9,9 +9,10 @@
 // + rho) s s^T, each entry written so that H stays symmetric to the bit. scipy forms the same
 // matrix by two O(n^3) products, so the steps differ from scipy's by rounding (the one exception
 // to O9 in minimize). For n = 1 it is scipy's product form (O102): the expanded form computes
-// H - 2H + H + s/y there and loses the curvature to cancellation when s/y << H. It stops when the gradient's norm ('norm', the largest |g_i| by default) is at most
-// gtol, at max_iter iterations, when the step is below xrtol (|x| + xrtol), or when f is not
-// finite.
+// H - 2H + H + s/y there and loses the curvature to cancellation when s/y << H. It stops when the
+// gradient's norm ('norm', the largest |g_i| by default) is at most gtol, at max_iter
+// iterations, when the step is below xrtol (|x| + xrtol), or when f is not finite. The direction's
+// product H g and the update run without the GIL when large (the 10 us rule).
 //
 // The rest of the arithmetic is scipy's (numpy's, without fused multiply-adds): the dot products
 // and the matrix-vector product are numpy's BLAS calls (Accelerate's cblas_ddot, cblas_dgemv), the
@@ -44,7 +45,7 @@ using namespace linesearch;
 
 enum Warn : int { wSuccess = 0, wMaxIter = 1, wPrLoss = 2, wNaN = 3 };
 
-// bfgs_solve(func, fun, jac, check, mode, x0, H0, gtol, norm, steps, lb, ub, max_iter, xrtol, c1, c2)
+// bfgs_solve(func, fun, jac, check, mode, x0, H0, gtol, norm, steps, max_iter, xrtol, c1, c2)
 //   -> (x, fun, jac, hess_inv (n, n), status, n_iter, nfev, njev)
 // mode: objective.hpp's GradMode; steps: eps (kGradAbsolute) or rel_step (empty: none); H0:
 // hess_inv0 row-major n x n, or empty for the identity. status: scipy's warnflag.
@@ -100,7 +101,13 @@ nb::object bfgs_solve(
         vec sk(n), yk(n), xkp1(n), gfkp1;
         double gnorm = vecnorm(B.gfk, norm, B.work);
         while (gnorm > gtol && k < max_iter) {
-            cblas_dgemv(CblasRowMajor, CblasNoTrans, ln, ln, 1.0, Hk.data(), ln, B.gfk.data(), 1, 0.0, B.pk.data(), 1);
+            {
+                std::optional<nb::gil_scoped_release> rel;
+                if (big) rel.emplace();
+                cblas_dgemv(
+                    CblasRowMajor, CblasNoTrans, ln, ln, 1.0, Hk.data(), ln, B.gfk.data(), 1, 0.0, B.pk.data(), 1
+                );
+            }
             for (std::size_t i = 0; i < n; ++i) B.pk[i] = -B.pk[i];
             double alpha_k, fval;
             bool have_g = true;

@@ -50,6 +50,18 @@ VecOrd parse_vector_ord(nb::handle o, const char* func) {
 // (bytes), walked in logical C order. For the 2-norm of complex values the
 // real and imaginary parts are separate terms (|z|^2 = re^2 + im^2, no hypot):
 // an extra innermost axis of length 2 over the two doubles.
+// True if the doubles of a region (shape, byte strides) follow each other in memory in
+// logical C order: the 2-norm then reads them in place (vnorm's `direct`).
+bool c_contiguous_doubles(int nd, const std::int64_t* shape, const std::int64_t* strides) {
+    std::int64_t step = sizeof(double);
+    for (int d = nd; d-- > 0;) {
+        if (shape[d] == 1) continue;
+        if (strides[d] != step) return false;
+        step *= shape[d];
+    }
+    return true;
+}
+
 double region_norm(
     VecOrd ord, const Input& x, const std::byte* base, int nd, const std::int64_t* shape, const std::int64_t* strides
 ) {
@@ -61,12 +73,17 @@ double region_norm(
         st[nd] = sizeof(double);
         auto mag = [](double v) { return std::fabs(v); };  // a lambda type, so it inlines
         Walk<double, decltype(mag)> w(base, nd + 1, sh, st, mag);
-        return vnorm(ord, w.count(), w);
+        const bool direct = c_contiguous_doubles(nd + 1, sh, st);
+        return vnorm(ord, w.count(), w, direct ? reinterpret_cast<const double*>(base) : nullptr);
     }
     return visit_storage(x.dtype(), [&]<class S>(std::type_identity<S>) {
         auto mag = [](S v) { return magnitude(v); };
         Walk<S, decltype(mag)> w(base, nd, shape, strides, mag);
-        return vnorm(ord, w.count(), w);
+        const double* direct = nullptr;
+        if constexpr (std::is_same_v<S, double>)
+            if (ord.kind == Ord::Two && c_contiguous_doubles(nd, shape, strides))
+                direct = reinterpret_cast<const double*>(base);
+        return vnorm(ord, w.count(), w, direct);
     });
 }
 
@@ -130,7 +147,9 @@ MatOrd parse_matrix_ord(nb::handle o) {
     } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
         throw nb::type_error(("matrix_norm(): 'ord' must be a str, an int or a float, not " + py_type_name(o)).c_str());
     }
-    throw nb::value_error("matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
+    throw nb::value_error((std::string("matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf, not ") +
+                           nb::repr(o).c_str())
+                              .c_str());
 }
 
 // ord 2, -2, 'nuc' from the singular values. These call LAPACK, so NaN and inf
@@ -231,11 +250,13 @@ nb::object matrix_norm(nb::handle xo, nb::handle keepdims_o, nb::handle ord_o) {
 
 void bind_norms(nb::module_& m) {
     m.def(
-        "vector_norm", named("vector_norm", &vector_norm), nb::arg().none(), nb::kw_only(),
+        "vector_norm", named("vector_norm", &vector_norm),
+        nb::sig("def vector_norm(x, /, *, axis=None, keepdims=False, ord=2)"), nb::arg().none(), nb::kw_only(),
         nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false, nb::arg("ord").none() = 2
     );
     m.def(
-        "matrix_norm", named("matrix_norm", &matrix_norm), nb::arg().none(), nb::kw_only(),
+        "matrix_norm", named("matrix_norm", &matrix_norm),
+        nb::sig("def matrix_norm(x, /, *, keepdims=False, ord='fro')"), nb::arg().none(), nb::kw_only(),
         nb::arg("keepdims").none() = false, nb::arg("ord").none() = "fro"
     );
 }

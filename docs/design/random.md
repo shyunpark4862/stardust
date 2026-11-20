@@ -40,14 +40,18 @@
 |---|---|
 | `random` | 첫 단어의 위 53비트 × 2⁻⁵³ (numpy와 같은 변환) |
 | `integers` | Lemire의 거의 나눗셈 없는 방법(r = high − low, w·r의 위 64비트; 아래 64비트가 2⁶⁴ mod r보다 작으면 기각하고 그 원소의 추가 단어로 다시). 범위가 하나인 흔한 호출은 2⁶⁴ mod r을 한 번만 구한다(범위 2⁶³에서 원소 절반이 나눗셈을 했다: 5.7 → 1.5 ms). 64비트 부호 없는 산술이라 int64의 어떤 쌍이든 정확하다 |
-| `permutation` | Fisher–Yates. 걸음 i는 원소 pos + i의 단어로 [i, n)을 고른다. **재서 골랐다**: 무작위 64비트 키를 정렬하는 방법(병렬)은 10⁶개 1스레드 8.6 ms, 10스레드 3.8 ms였고 Fisher–Yates(순차)는 3.0 ms다 |
+| `permutation` | Fisher–Yates. 걸음 i는 원소 pos + i의 단어로 [i, n)을 고른다. 결과 배열 안에서 바로 섞는다(따로 받는 메모리가 없다). **재서 골랐다**: 무작위 64비트 키를 정렬하는 방법(병렬)은 10⁶개 1스레드 8.6 ms, 10스레드 3.8 ms였고 Fisher–Yates(순차)는 3.0 ms다. 이 비교는 10⁶에서 쟀다. n이 캐시를 넘으면 Fisher–Yates는 걸음마다 임의 접근이라 정렬 방식(10스레드)이 10⁷에서 1.8배, 3·10⁷에서 2.7배 빨랐다(2026-11-20). 그래도 그대로 둔다(사용자 결정 2026-11-20): 크기에 따라 방법이 바뀌면 `choice(n, shape=k, replace=False)`가 `permutation(n)`의 앞 k개라는 관계가 깨진다 |
 | `choice` 복원 | 균등은 `integers`, 가중치는 누적합(마지막을 1로 나눔)과 `searchsorted(side='right')`(확률 0인 원소는 뽑히지 않는다) |
-| `choice` 비복원 | 균등은 Fisher–Yates의 앞 k걸음. k ≤ n/16이면 건드린 항목만 해시 맵에 둔다(O(k): 10⁶개에서 1000개 0.03 ms; 처음에는 전체를 섞어 8.9 ms였다). 가중치는 Efraimidis–Spirakis: 원소마다 E/p(E는 표준 지수)를 만들어 작은 k개(확률 0은 inf) |
+| `choice` 비복원 | 균등은 Fisher–Yates의 앞 k걸음. k ≤ n/16이면 건드린 항목만 해시 맵에 둔다(O(k): 10⁶개에서 1000개 0.03 ms; 처음에는 전체를 섞어 8.9 ms였다). 그 밖에는 결과 옆에 n개짜리 배열을 두고 섞는다. 같은 걸음, 같은 단어라서 `choice(n, shape=k, replace=False)`는 `permutation(n)`의 앞 k개다. 가중치는 Efraimidis–Spirakis: 원소마다 E/p(E는 표준 지수)를 만들어 작은 k개(확률 0은 inf) |
 - dtype: 실수는 float64, 정수는 int64.
+- **메모리 검사** (API.md §2): 호출이 받는 메모리 전체를 스트림을 움직이기 전에 물리 메모리와 비교한다(`_check_alloc`, `_take`). 결과만 보면 안 된다. 섞기의 작업 메모리가 결과보다 클 수 있다.
+  - 비복원 균등 `choice`: 결과 8k바이트에 해시 경로는 원소당 64바이트(노드와 버킷의 상한, 10⁶개에서 잰 값은 약 45바이트), 배열 경로는 8n바이트를 더한다(`_shuffle_bytes`). `permutation(n)`은 8n바이트뿐이다.
+  - 배열을 섞는 `permutation(x)`는 섞은 복사본(n × 한 행의 바이트)을, 배열 모집단의 `choice`는 고른 원소(k × 원소 크기, complex는 16바이트)를 더한다.
+- **메시지**: `shape`의 `()`와 음수 축은 배열을 만들 때와 같은 문장이다(`0-dimensional arrays are not supported (stardust has no 0-d arrays)`, `negative dimensions are not allowed`). 배열 인자의 dtype이 틀리면 `…, not float64`, 배열이 아니면 `'p' must be an sd.ndarray, not list`다. `sd.stats`의 `sample()`도 같은 `shape` 해석(`_sample_shape`)과 같은 문장을 쓴다. 틀린 호출 모양(인자 개수, 없는 키워드, positional-only를 키워드로)은 `default_rng`만 `_calls.function`이 `default_rng(): …` 꼴로 바꾼다. Generator의 메서드는 Python의 문장 그대로다: 짧은 호출이라 감싸는 비용(약 60ns)을 쓰지 않는다 (사용자 결정 2026-11-20, API.md §2.1).
 
 ## 5. 시드 (R6)
 - numpy `SeedSequence`(풀 크기 4)를 Python으로 옮겼다(numpy에 기대지 않으려고). 키는 `generate_state(2, uint64)`라 numpy Philox의 키와 같다. `spawn`도 numpy와 같은 키다(spawn_key에 번호를 붙인다). 테스트가 numpy와 비교한다.
-- `None`은 `secrets.randbits(128)`이다.
+- `None`은 `secrets.randbits(128)`이다. `state` 대입의 `entropy`에는 `None`을 받지 않는다(`TypeError`). 대입할 때마다 다른 상태가 되어 "그 상태로 돌아간다"는 약속이 깨지기 때문이다.
 
 ## 6. 측정
 - bench/random/t3_speed.md: numpy Generator(PCG64, Philox)와 1·10스레드 비교. 요약은 docs/api/random.md §1.8.

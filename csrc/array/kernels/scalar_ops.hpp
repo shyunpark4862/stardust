@@ -15,6 +15,7 @@
 #pragma once
 
 #include "base/dtype.hpp"
+#include "special/sincos.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -521,18 +522,31 @@ struct Positive {
     template <typename T> static T f(T a) { return a; }
 };
 
-// numpy's |z| (its SIMD cabs): larger * sqrt(1 + (smaller/larger)^2), with
-// an inf part winning over a nan part. Not libm's hypot, which differs by up
-// to 1 ULP.
+// |z| = sqrt(fma(re, re, im * im)): one rounding fewer than re*re + im*im, at
+// most 1.5 ULP (measured against Arb: max 1.16 ULP, docs/design/array.md
+// §5.3), and no division. When the larger part is outside [2^-500, 2^500]
+// the squares could overflow or lose precision, so both parts are first
+// scaled by an exact power of 2 (2^-600 or 2^600) and the result scaled back.
+// An inf part wins over a nan part.
 inline double complex_abs(c128 z) {
     constexpr double inf = std::numeric_limits<double>::infinity();
     constexpr double nan = std::numeric_limits<double>::quiet_NaN();
     double re = std::fabs(z.real()), im = std::fabs(z.imag());
     if (re == inf || im == inf) return inf;
     if (re != re || im != im) return nan;
-    const double larger = std::max(re, im), smaller = std::min(re, im);
-    const double ratio = larger == 0 ? 0.0 : smaller / larger;
-    return std::sqrt(std::fma(ratio, ratio, 1.0)) * larger;
+    const double larger = std::max(re, im);
+    constexpr double kBig = 0x1p500, kSmall = 0x1p-500;
+    if (larger > kBig) [[unlikely]] {
+        re *= 0x1p-600;
+        im *= 0x1p-600;
+        return std::sqrt(std::fma(re, re, im * im)) * 0x1p600;
+    }
+    if (larger < kSmall) [[unlikely]] {  // also 0: sqrt(0) * 2^-600 = 0
+        re *= 0x1p600;
+        im *= 0x1p600;
+        return std::sqrt(std::fma(re, re, im * im)) * 0x1p-600;
+    }
+    return std::sqrt(std::fma(re, re, im * im));
 }
 
 struct Abs {
@@ -590,7 +604,8 @@ struct Sign {
 // numpy's formulas for the complex functions C99 does not have.
 inline c128 complex_expm1(c128 z) {
     const double a = std::sin(z.imag() / 2);
-    return {std::fma(std::expm1(z.real()), std::cos(z.imag()), -(2 * a * a)), std::exp(z.real()) * std::sin(z.imag())};
+    const SinCos sc = sincos(z.imag());
+    return {std::fma(std::expm1(z.real()), sc.c, -(2 * a * a)), std::exp(z.real()) * sc.s};
 }
 inline c128 complex_log1p(c128 z) {
     const double l = std::hypot(z.real() + 1, z.imag());

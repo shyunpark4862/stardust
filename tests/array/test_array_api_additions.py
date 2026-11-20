@@ -127,7 +127,7 @@ def test_roll(shift, axis):
 
 
 def test_roll_x_is_positional_only():
-    assert "(arg0: object | None, /, shift" in sd.roll.__nb_signature__[0][0]
+    assert sd.roll.__nb_signature__[0][0] == "def roll(x, /, shift, *, axis=None)"
     with pytest.raises(TypeError):
         sd.roll(x=sd.asarray([1.0]), shift=1)
 
@@ -296,8 +296,13 @@ def test_take():
         sd.take(sd.asarray([5, 6, 7]), sd.asarray([0, 5]))
     with pytest.raises(ValueError, match="'axis' is required"):
         sd.take(sd.asarray(X3), 0)
-    with pytest.raises(TypeError, match="'indices' must be an int64 array, not bool"):
-        sd.take(sd.asarray([5, 6]), sd.asarray([True, False]))
+    # one message for the argument, whatever is wrong (API.md §2.1)
+    for bad, shown in [(sd.asarray([True, False]), "bool"), ([0], "list"), (sd.asarray([0.0]), "float64")]:
+        with pytest.raises(TypeError, match=rf"^take\(\): 'indices' must be an int or an int64 array, not {shown}$"):
+            sd.take(sd.asarray([5, 6]), bad)
+    for bad, shown in [(sd.asarray([[True]]), "bool"), ([0], "list"), (0, "int")]:
+        with pytest.raises(TypeError, match=rf"^take_along_axis\(\): 'indices' must be an int64 array, not {shown}$"):
+            sd.take_along_axis(sd.asarray([[5, 6]]), bad, axis=1)
 
 
 def test_take_along_axis():
@@ -342,7 +347,7 @@ def test_take_along_axis_broadcast_and_bounds():
     )
     with pytest.raises(IndexError, match="index 6 is out of bounds for axis 2 with size 6"):
         sd.take_along_axis(sd.asarray(x), sd.asarray(np.full((4, 5, 1), 6)), axis=2)
-    with pytest.raises(ValueError, match="could not be broadcast"):
+    with pytest.raises(IndexError, match=r"^take_along_axis\(\): shapes could not be broadcast together"):
         sd.take_along_axis(sd.asarray(x), sd.asarray(np.zeros((3, 5, 1), int)), axis=2)
 
 
@@ -526,8 +531,37 @@ def test_tensordot_errors():
         sd.tensordot(sd.asarray([1.0]), sd.asarray([1.0]), axes=2)
 
 
-def test_vecdot_is_linalg_vecdot():
-    assert sd.vecdot is sd.linalg.vecdot
+def test_vecdot_keeps_the_array_dtype_rules():
+    # D-22: the top-level vecdot is sum(conj(x1) * x2, axis): int stays int (wrapping), as
+    # matmul and tensordot; sd.linalg.vecdot computes in float64.
+    x, y = sd.asarray([1, 2]), sd.asarray([3, 4])
+    r = sd.vecdot(x, y)
+    assert r == 11 and type(r) is int
+    assert sd.linalg.vecdot(x, y) == 11.0 and type(sd.linalg.vecdot(x, y)) is float
+    assert sd.vecdot(sd.asarray([True, True]), sd.asarray([True, False])) == 1
+    assert sd.vecdot(sd.asarray([2**62, 2**62]), sd.asarray([4, 4])) == 0  # wraps, as sum does
+    a = np.arange(24).reshape(2, 3, 4)
+    for axis in (-1, 0, 1):
+        same(sd.vecdot(sd.asarray(a), sd.asarray(a), axis=axis), np.sum(a * a, axis=axis))
+    same(sd.vecdot(sd.asarray(a), sd.asarray(a[0, 0]), axis=-1), np.sum(a * a[0, 0], axis=-1))
+    # float64 and complex128: the linalg computation, the same bits
+    rng = np.random.default_rng(4)
+    f = sd.asarray(rng.standard_normal((50, 7)))
+    same(sd.vecdot(f, f), sd.linalg.vecdot(f, f))
+    c = sd.asarray(rng.standard_normal(9) + 1j * rng.standard_normal(9))
+    assert sd.vecdot(c, c) == sd.linalg.vecdot(c, c)
+    assert sd.vecdot(x, sd.asarray([1.5, 2.0])) == 5.5
+    # the shape rules and messages are linalg's
+    with pytest.raises(
+        ValueError, match=r"^vecdot\(\): 'x1' and 'x2' must have the same size along the axis, got 2 and 3$"
+    ):
+        sd.vecdot(x, sd.asarray([1, 2, 3]))
+    with pytest.raises(ValueError, match=r"^vecdot\(\): batch shapes do not broadcast: \(2,\) \(4,\)$"):
+        sd.vecdot(sd.ones((2, 3), dtype=sd.int64), sd.ones((4, 3), dtype=sd.int64))
+    with pytest.raises(ValueError, match=r"^vecdot\(\): axis 3 is out of bounds"):
+        sd.vecdot(x, y, axis=3)
+    with pytest.raises(TypeError, match=r"^vecdot\(\): 'x2' must be an sd.ndarray, not list$"):
+        sd.vecdot(x, [1, 2])
 
 
 # ------------------------------------------------------------------ dlpack
@@ -644,7 +678,13 @@ def test_histogram_bits(kw):
     got = sd.histogram(sd.asarray(HIST_X), **skw)
     hist, edges = np.histogram(HIST_X, **kw)
     assert got.hist is got[0] and got.bin_edges is got[1]
-    same(got.hist, hist)
+    if "weights" in kw and isinstance(kw.get("bins"), np.ndarray) and hist.dtype.kind == "f":
+        # given edges: each bin's own weights summed per block (numpy: differences of
+        # cumulative sums), so the last bits differ, the result is closer
+        assert np.asarray(got.hist).dtype == hist.dtype
+        assert np.allclose(np.asarray(got.hist), hist, rtol=1e-12, atol=1e-9)
+    else:
+        same(got.hist, hist)
     same(got.bin_edges, edges)
 
 

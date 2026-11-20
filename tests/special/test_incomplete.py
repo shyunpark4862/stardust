@@ -67,6 +67,11 @@ def test_beta_inverse_edges_match_scipy(name):
     v = [0.0, 2.0, 3.0, np.inf, -1.0, np.nan]
     for a, b, p in itertools.product(v, v, [0.0, 0.5, 1.0, 1.1, -0.1, np.nan]):
         got, want = f(a, b, p), float(g(a, b, p))
+        if 0.0 < p < 1.0 and a > 0.0 and b > 0.0 and np.isinf(a) != np.isinf(b):
+            # one infinite shape inside (0, 1): the limit, mass at 1 (a) or 0 (b) (user decision
+            # 2026-11-20, as betainc; scipy NaN)
+            assert got == (1.0 if np.isinf(a) else 0.0), (name, a, b, p, got)
+            continue
         assert same_bits(got, want) or abs(got - want) <= 1e-14 * abs(want), (name, a, b, p, got, want)
 
 

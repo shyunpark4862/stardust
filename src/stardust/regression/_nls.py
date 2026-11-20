@@ -16,15 +16,16 @@ import math
 import numbers
 import textwrap
 
+from .. import _calls
 from .. import _core as _sd
 from .. import frame as _frame
 from .. import linalg as _linalg
+from ..optimize._common import _show_x, _values_text
 from ..optimize._diff import Differences as _Differences
 from ._glm import _check_int
 from ._linear import (
     _WIDTH,
     _as_real,
-    _call_errors,
     _check_alpha,
     _check_choice,
     _check_policy,
@@ -374,7 +375,7 @@ def _values(v, n, func, what, rows="'x'"):
     """What f (or jac with p columns) returned, as a float64 sd.ndarray of shape (n,)."""
     if not isinstance(v, _sd.ndarray):
         if isinstance(v, numbers.Number) and not isinstance(v, complex):
-            raise ValueError(f"{func}(): '{what}' must return {n} values (one per row of {rows}), not a scalar")
+            raise ValueError(f"{func}(): '{what}' must return {_values_text(n)} (one per row of {rows}), not a scalar")
         if isinstance(v, (str, bytes)) or v is None:
             raise TypeError(
                 f"{func}(): '{what}' must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}"
@@ -393,7 +394,7 @@ def _values(v, n, func, what, rows="'x'"):
         v = v.astype(_sd.float64)
     if v.ndim != 1 or v.shape[0] != n:
         got = "a scalar" if v.ndim == 0 else f"shape {tuple(v.shape)}"
-        raise ValueError(f"{func}(): '{what}' must return {n} values (one per row of {rows}), not {got}")
+        raise ValueError(f"{func}(): '{what}' must return {_values_text(n)} (one per row of {rows}), not {got}")
     return v
 
 
@@ -422,7 +423,7 @@ def _real_list(v, func, arg, p=None):
         raise ValueError(f"{func}(): '{arg}' must be 1-dimensional")
     out = [float(t) for t in a.tolist()]
     if p is not None and len(out) != p:
-        raise ValueError(f"{func}(): '{arg}' must have {p} values like 'p0', not {len(out)}")
+        raise ValueError(f"{func}(): '{arg}' must have {_values_text(p)} like 'p0', not {len(out)}")
     return out
 
 
@@ -432,7 +433,7 @@ def _bounds(bounds, func, p):
     if isinstance(bounds, (str, bytes)) or not hasattr(bounds, "__len__"):
         raise TypeError(f"{func}(): 'bounds' must be None or a pair (lower, upper), not {_type_name(bounds)}")
     if len(bounds) != 2:  # the right kind, the wrong length
-        raise ValueError(f"{func}(): 'bounds' must be a pair (lower, upper), not {len(bounds)} values")
+        raise ValueError(f"{func}(): 'bounds' must be a pair (lower, upper), not {_values_text(len(bounds))}")
     lb = _real_list(bounds[0], func, "bounds", p)
     ub = _real_list(bounds[1], func, "bounds", p)
     if any(math.isnan(v) for v in lb + ub):
@@ -531,8 +532,13 @@ class _Model:
             return self.user_jac(theta)
         J, bad = self.diff.jacobian(theta, self._rows(v0), zero_noise=True)
         if J is None:
+            if self.diff.too_narrow:
+                raise ValueError(
+                    f"{self.func}(): the bounds are too narrow for the differences of parameter {bad} "
+                    f"at the parameters {_show_x(theta)} (the Jacobian needs points 4 steps to one side)"
+                )
             raise ValueError(
-                f"{self.func}(): the model is not finite near the parameters {list(theta)} "
+                f"{self.func}(): the model is not finite near the parameters {_show_x(theta)} "
                 "(the differences for the Jacobian)"
             )
         return J
@@ -764,12 +770,17 @@ def nls(
         method = "trf" if bounded else "lm"
     _check_choice(method, func, "method", _METHODS)
     if method == "lm" and bounded:
-        raise ValueError(f"{func}(): method='lm' takes no bounds (method='trf' does)")
+        raise ValueError(f"{func}(): method='lm' takes no 'bounds' (method='trf' does)")
     if not _in_box(theta0, lb, ub):
         raise ValueError(f"{func}(): 'p0' must be within 'bounds'")
     ftol = _check_tol(ftol, func, "ftol")
     xtol = _check_tol(xtol, func, "xtol")
     gtol = _check_tol(gtol, func, "gtol")
+    if method == "lm" and min(ftol, xtol, gtol) < _EPS:
+        # least_squares('lm')'s rule (scipy's): lmder would stop on "the tolerance is too small"
+        raise ValueError(
+            f"{func}(): 'ftol', 'xtol' and 'gtol' must each be >= 2.2e-16 (the machine epsilon) when method='lm'"
+        )
     if ftol < _EPS and xtol < _EPS and gtol < _EPS:
         raise ValueError(
             f"{func}(): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16 (the machine epsilon)"
@@ -862,7 +873,7 @@ def nls(
         raise ValueError(f"{func}(): 'f' is not finite at 'p0' (rows used)")
     if status == _ST_JAC:
         what = "'jac' is" if jac is not None else "the model's forward differences are"
-        raise ValueError(f"{func}(): {what} not finite at the parameters {xs}")
+        raise ValueError(f"{func}(): {what} not finite at the parameters {_show_x(xs)}")
     M.nfev, M.njev = 0, 0
     theta = list(xs)
     v = M.values(theta)
@@ -920,5 +931,7 @@ def nls(
     )
 
 
-# the methods' call-shape errors in the library's form (R89)
-_call_errors(NLSResult)
+# the methods' call-shape errors in the library's form (R89), and nls's own (API.md §2.1):
+# "nls(): unexpected keyword argument 'foo'"
+_calls.methods(NLSResult)
+nls = _calls.function(nls)

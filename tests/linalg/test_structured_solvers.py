@@ -200,12 +200,17 @@ def test_solve_banded(seed, batch, n, kl, ku, dtypes, layout, k):
     assert x.shape == ((*batch, n) if k is None else (*batch, n, k))
     b_b = np.broadcast_to(b, x.shape)
     assert residual_ok(a, x, b_b)
-    # bit for bit equal to scipy (gbsv; gtsv for (1, 1)); scipy divides directly when n = 1
+    # scipy's answer (gbsv; gtsv for (1, 1)): bit for bit through gtsv, the same path; a
+    # matrix of at most 8 rows is solved as a dense one (docs/design/linalg.md §7.4), so
+    # within rounding of gbsv's (the matrices are diagonally dominant)
     if n >= 2 and x.size:
         for idx in np.ndindex(*batch):
             abz = np.nan_to_num(np.asarray(ab[idx], want_dt))  # scipy copies the corners into gbsv's input
             want = sl.solve_banded((kl, ku), abz, np.asarray(b_b[idx], want_dt), check_finite=False)
-            assert np.array_equal(x[idx], want)
+            if kl == ku == 1:
+                assert np.array_equal(x[idx], want)
+            else:
+                np.testing.assert_allclose(x[idx], want, rtol=1e-12, atol=1e-12 * np.max(np.abs(want), initial=0))
 
 
 def test_banded_rules():

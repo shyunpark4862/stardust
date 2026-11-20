@@ -55,17 +55,20 @@ inline double select(bool m, double a, double b) { return m ? a : b; }
 inline F2 select(M2 m, F2 a, F2 b) { return {vbslq_f64(m.m, a.v, b.v)}; }
 
 // c[0] x^(N-1) + ... + c[N-1] by Horner's rule (Cephes polevl), and with a
-// leading 1 (p1evl). Separate multiply and add: no contraction.
+// leading 1 (p1evl). Each step one fused multiply-add, r x + c[i] rounded once
+// (the same helper for lanes and the scalar, so both give the same bits; one
+// rounding fewer a step than a multiply and an add, and the chain about 1.6x
+// shorter).
 template <class V, std::size_t N>
 V horner(V x, const std::array<double, N>& c) {
     V r = cst<V>(c[0]);
-    for (std::size_t i = 1; i < N; ++i) r = r * x + cst<V>(c[i]);
+    for (std::size_t i = 1; i < N; ++i) r = fma(r, x, cst<V>(c[i]));
     return r;
 }
 template <class V, std::size_t N>
 V horner1(V x, const std::array<double, N>& c) {
     V r = x + cst<V>(c[0]);
-    for (std::size_t i = 1; i < N; ++i) r = r * x + cst<V>(c[i]);
+    for (std::size_t i = 1; i < N; ++i) r = fma(r, x, cst<V>(c[i]));
     return r;
 }
 

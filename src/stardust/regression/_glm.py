@@ -13,8 +13,10 @@ import numbers
 import operator
 import textwrap
 
+from .. import _calls
 from .. import _core as _sd
 from .. import special as _special
+from ..optimize._common import _values_text
 from ..stats import ChiSquared as _ChiSquared
 from ..stats import Normal as _Normal
 from ..stats import StudentT as _StudentT
@@ -24,7 +26,6 @@ from ._linear import (
     _WIDTH,
     _arg,
     _as_real,
-    _call_errors,
     _check_alpha,
     _check_batches,
     _check_bool,
@@ -44,6 +45,7 @@ from ._linear import (
     _log,
     _names,
     _pairs,
+    _pow2,
     _quantile_label,
     _read_y,
     _RegressionResult,
@@ -158,29 +160,39 @@ class GLMResult(_RegressionResult):
         """(y - mu) g'(mu): the IRLS's working residuals."""
         return self._raw[10]
 
+    # the kernel's sums are in the fit's units when it fitted y / fy (gaussian, gamma; see
+    # glm()): the gaussian's squares scale by fy^2, the log-likelihoods shift by -nobs log fy
+    def _out2(self, v):
+        f2 = self._extra.get("dev2")
+        return v if f2 is None else v * self._scalar(f2)
+
+    def _outll(self, v):
+        sh = self._extra.get("llshift")
+        return v if sh is None else v + self._scalar(sh)
+
     @property
     def deviance(self):
-        return self._stat(_G_DEV)
+        return self._out2(self._stat(_G_DEV))
 
     @property
     def null_deviance(self):
-        return self._stat(_G_NULLDEV)
+        return self._out2(self._stat(_G_NULLDEV))
 
     @property
     def pearson_chi2(self):
-        return self._stat(_G_PEARSON)
+        return self._out2(self._stat(_G_PEARSON))
 
     @property
     def scale(self):
-        return self._stat(_G_SCALE)
+        return self._out2(self._stat(_G_SCALE))
 
     @property
     def llf(self):
-        return self._stat(_G_LLF)
+        return self._outll(self._stat(_G_LLF))
 
     @property
     def llnull(self):
-        return self._stat(_G_LLNULL)
+        return self._outll(self._stat(_G_LLNULL))
 
     @property
     def df_model(self):
@@ -192,14 +204,14 @@ class GLMResult(_RegressionResult):
     def df_resid(self):
         return self._cached("df_resid", lambda: self._nan_where(self.nobs - self._stat(_G_RANK)))
 
-    def cov_params(self):
-        """The covariance of the parameters (k x k); rows and columns of aliased parameters are
-        NaN, and all of it when an estimated scale has no degree of freedom (0/0, G95)."""
+    def _cov_s(self):
+        """The covariance in the fit's units; all of it NaN when an estimated scale has no
+        degree of freedom (0/0, G95)."""
 
         def make():
             c = self._raw[1]
             if not self._robust:
-                c = self._per(self.scale, 2) * c
+                c = self._per(self._stat(_G_SCALE), 2) * c
             if self._scale_fixed:
                 return c
             df = self.df_resid
@@ -207,7 +219,17 @@ class GLMResult(_RegressionResult):
                 return _sd.where(_expand(df == 0.0, 2), math.nan, c)
             return c * math.nan if df == 0 else c
 
-        return self._cached("cov_params", make)
+        return self._cached("cov_s", make)
+
+    def _perfect(self):
+        """An estimated scale of exactly 0 (a perfect fit) with df_resid > 0: t and p NaN (D-3)."""
+        if self._scale_fixed:
+            return False
+        z = self._stat(_G_SCALE) == 0.0
+        df = self.df_resid
+        if self._batch:
+            return _sd.logical_and(z, df > 0.0)
+        return bool(z) and df > 0
 
     @property
     def aic(self):
@@ -305,9 +327,11 @@ class GLMResult(_RegressionResult):
         for name, v in (("offset", offset), ("exposure", exposure)):
             if v is None:
                 continue
-            a, _ = _as_real(v, func, name, per_row=f"{m} values like the rows of 'X_new'")
+            a, _ = _as_real(v, func, name, per_row=f"{_values_text(m)} like the rows of 'X_new'")
             if a.shape[-1] != m:
-                raise ValueError(f"{func}(): '{name}' must have {m} values like the rows of 'X_new', not {a.shape[-1]}")
+                raise ValueError(
+                    f"{func}(): '{name}' must have {_values_text(m)} like the rows of 'X_new', not {a.shape[-1]}"
+                )
             if a.size and bool(_sd.any(_sd.isinf(a))):  # as X_new's (G91)
                 raise ValueError(f"{func}(): '{name}' contains infinity")
             if name == "exposure":
@@ -345,7 +369,7 @@ class GLMResult(_RegressionResult):
             eta = eta + o
         var = self._mean_var_s(Xn)
         q = self._dist().iccdf(alpha / 2)
-        half = q * _sd.sqrt(var)
+        half = q * _sd.sqrt(var) * self._per(self._unit(), 1)
         lo, hi = eta - half, eta + half
         if which == "mean":
             lo, hi = _inverse_link(self.link, lo), _inverse_link(self.link, hi)
@@ -524,6 +548,7 @@ def _broadcast_shape(func, a, b):
     return tuple(out)
 
 
+@_calls.function
 def glm(
     y,
     X,
@@ -651,10 +676,43 @@ def glm(
         [_sd.broadcast_to(a if a is not None else _sd.full((n,), fills[i]), shape + (n,)) for i, a in enumerate(parts)],
         axis=-2,
     )
+    # data far outside [2^-256, 2^256] is fitted in power-of-two units (exact), as the linear
+    # models: the columns for every family (beta_j fx_j), y for the families whose model is
+    # equivariant under its scale (gaussian, gamma: mu / fy; the log link through the offset
+    # -log fy, which leaves beta). Data inside the range is fitted as given.
+    fy = fx = None
+    n = yy.shape[-1]
+    if n:
+        if family in ("gaussian", "gamma"):
+            fy = _pow2(_sd.max(_sd.abs(yy), axis=-1))
+        if XX.shape[-1]:
+            fx = _pow2(_sd.max(_sd.abs(XX), axis=-2))
+    fy1 = None
+    if fy is not None:
+        fy1 = _sd.expand_dims(fy, axis=-1) if isinstance(fy, _sd.ndarray) else fy
+        yy = yy / fy1
+        if link == "log":
+            # mu / fy = exp(eta - log fy): the offset carries the factor
+            if isinstance(fy1, _sd.ndarray):
+                lf = _sd.log(fy1)
+                off = _sd.broadcast_to(0.0 - lf, tuple(lf.shape[:-1]) + (n,)) if off is None else off - lf
+            else:
+                lf = math.log(fy1)
+                off = _sd.full((n,), -lf) if off is None else off - lf
+            parts[3] = off
+            shape = _broadcast_shape(func, shape, tuple(off.shape[:-1]))
+            aux = _sd.stack(
+                [
+                    _sd.broadcast_to(a if a is not None else _sd.full((n,), fills[i]), shape + (n,))
+                    for i, a in enumerate(parts)
+                ],
+                axis=-2,
+            )
+    XK = XX if fx is None else XX / _sd.expand_dims(fx, axis=-2)
     raw = _k.glm_fit(
         func,
         yy,
-        XX,
+        XK,
         aux,
         codes,
         gtot,
@@ -673,9 +731,13 @@ def glm(
         smode,
         svalue,
     )
+    extra = _glm_unscale(list(raw), fy, fx, family, link, intercept) if (fy is not None or fx is not None) else None
+    if extra is not None:
+        raw, extra = extra
     fixed = smode == 3 or (smode == 0 and family in ("binomial", "poisson"))
     return GLMResult(
         raw,
+        extra=extra,
         family=family,
         link=link,
         scale_fixed=fixed,
@@ -687,5 +749,57 @@ def glm(
     )
 
 
+def _glm_unscale(raw, fy, fx, family, link, intercept):
+    """raw (glm_fit's list) from the fit's units to the data's: the kernel fitted y / fy (fy
+    None: y as given) on the columns X_j / fx_j (fx None: as given). The parameters become
+    beta' u / fx_j with u the unit of the linear predictor (fy for the identity link, 1 / fy
+    for the inverse, 1 for the log link, whose factor the offset carried); mu, the response
+    residuals and, for the gaussian, the Pearson and deviance residuals scale by fy; the
+    covariance and the stats stay (the result scales them as it reads them). Returns (raw,
+    extra)."""
+    params = raw[0]
+    batch = tuple(params.shape[:-1])
+    k = params.shape[-1]
+    if fx is None:
+        fxk = _sd.ones(batch + (k,))
+    else:
+        fxk = _sd.concat([_sd.ones(tuple(fx.shape[:-1]) + (1,)), fx], axis=-1) if intercept else fx
+        fxk = _sd.broadcast_to(fxk, batch + (k,))
+    fyv = 1.0 if fy is None else fy
+    if isinstance(fyv, _sd.ndarray):
+        fyb = _sd.broadcast_to(fyv, batch)
+    else:
+        fyb = _sd.full(batch, fyv) if batch else fyv
+    u = 1.0 if link == "log" else (1.0 / fyb if link == "inverse" else fyb)
+    if fy is None:
+        u = _sd.full(batch, 1.0) if batch else 1.0
+    extra = {"fy": u, "fx": fxk, "beff_params_s": params}
+    u1 = _expand(u, 1) if isinstance(u, _sd.ndarray) else u
+    raw[0] = params * u1 / fxk
+    raw[2] = raw[2] * _sd.expand_dims(fxk, axis=-2)
+    if fy is not None:
+        f1 = _expand(fyb, 1) if isinstance(fyb, _sd.ndarray) else fyb
+        raw[3] = raw[3] * f1  # mu
+        if link == "log":
+            raw[4] = raw[4] + (_sd.log(f1) if isinstance(f1, _sd.ndarray) else math.log(f1))
+        else:
+            raw[4] = raw[4] * u1  # eta
+        raw[7] = raw[7] * f1  # y - mu
+        if family == "gaussian":
+            raw[8] = raw[8] * f1  # (y - mu) sqrt(m)
+            raw[9] = raw[9] * f1
+            extra["dev2"] = fyb * fyb
+        # (y - mu) g'(mu): fy for the identity link, 1 / fy for the inverse, 1 for the log
+        if link == "identity":
+            raw[10] = raw[10] * f1
+        elif link == "inverse":
+            raw[10] = raw[10] / f1
+        # -nobs log fy: the gaussian's log sigma^2 and the gamma's -log y
+        nobs = raw[6][..., _G_NOBS]
+        lf = _sd.log(fyb) if isinstance(fyb, _sd.ndarray) else math.log(fyb)
+        extra["llshift"] = (0.0 - nobs) * lf if batch else -float(nobs) * lf
+    return raw, extra
+
+
 # the methods' call-shape errors in the library's form (R89)
-_call_errors(GLMResult)
+_calls.methods(GLMResult)

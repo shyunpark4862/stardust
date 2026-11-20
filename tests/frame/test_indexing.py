@@ -625,3 +625,102 @@ def test_column_from_a_series_needs_unique_labels_in_the_series_only():  # docs/
     s = sd.frame.Series([0, 0, 0], index=[5, 5, 6])
     s.loc[[5]] = sd.frame.Series([7, 8], index=[5, 6])
     assert s.tolist() == [7, 7, 0]
+
+
+# --- position keys, label kinds, containers ------------------------------------
+
+
+def test_position_arrays_are_read_in_one_pass():
+    s = sd.frame.Series([10, 20, 30])
+    for key in ([0, -1, 2], np.array([0, -1, 2]), np.array([0, -1, 2], dtype=np.int8), sd.asarray([0, -1, 2])):
+        assert s.iloc[key].tolist() == [10, 30, 30]
+        assert s.iloc[key].index.tolist() == [0, 2, 2]
+    assert s.iloc[np.array([1], dtype=np.uint64)].tolist() == [20]
+    assert s.iloc[[]].tolist() == [] and s.iloc[np.array([], dtype=np.int64)].tolist() == []
+    # the first bad position, as element by element
+    for key in ([0, 5, 9], np.array([0, 5, 9]), sd.asarray([0, 5, 9])):
+        with pytest.raises(IndexError, match="^position 5 is out of range for 3 rows$"):
+            s.iloc[key]
+    with pytest.raises(IndexError, match="^position -4 is out of range for 3 rows$"):
+        s.iloc[[0, -4]]
+    with pytest.raises(IndexError, match=r"^position 1180591620717411303424 is out of range for 3 rows$"):
+        s.iloc[[2**70]]
+    for key, name in (
+        ([0, True], "bool"),
+        ([1.0], "float"),
+        (np.array([True]), "numpy.bool"),
+        (sd.asarray([True]), "bool"),
+    ):
+        with pytest.raises(IndexError, match=f"^positions must be ints, not {name}$"):
+            s.iloc[key]
+    df = sd.frame.DataFrame({"a": [1], "b": [2], "c": [3]})
+    with pytest.raises(IndexError, match="^position 5 is out of range for 3 columns$"):
+        df.iloc[:, [0, 5]]
+
+
+def test_big_position_arrays_match_numpy():
+    x = np.arange(300_000) * 3
+    s = sd.frame.Series(x)
+    pos = np.random.default_rng(0).integers(-300_000, 300_000, 300_000)
+    assert s.iloc[pos].tolist() == x[pos].tolist()
+    assert s.iloc[pos.tolist()].tolist() == x[pos].tolist()
+    bad = pos.copy()
+    bad[[200_000, 250_000]] = [300_000, -300_001]
+    with pytest.raises(IndexError, match="^position 300000 is out of range"):
+        s.iloc[bad]
+
+
+def test_range_index_numpy_label_is_arithmetic():
+    r = sd.frame.Series([1.5, 2.5, 3.5], index=sd.frame.RangeIndex(10, 40, 10))
+    assert r.loc[np.int64(30)] == 3.5 and r[np.int32(10)] == 1.5
+    assert r.loc[np.int64(20) : np.int64(30)].tolist() == [2.5, 3.5]
+    with pytest.raises(KeyError):
+        r.loc[np.int64(15)]
+    big = sd.frame.Series(index=sd.frame.RangeIndex(30_000_000), dtype="int64")
+    import time
+
+    t0 = time.perf_counter()
+    big.loc[np.int64(29_999_999)]
+    assert time.perf_counter() - t0 < 0.05  # no walk over the range
+
+
+def test_object_array_assignment_checks_bool_mixing():
+    s = sd.frame.Series([1, 2, 3])
+    with pytest.raises(TypeError, match="mixes bool values with int or float values"):
+        s.iloc[0:2] = np.array([True, 2], dtype=object)
+    s.iloc[0:2] = np.array([7, 8], dtype=object)
+    assert s.tolist() == [7, 8, 3]
+
+
+def test_empty_labels_keep_the_index_dtype_whatever_holds_them():
+    s = sd.frame.Series([1], index=["a"])
+    for empty in ([], (), range(0), np.array([], dtype=object), np.array([], dtype=np.int64), sd.asarray([1])[:0]):
+        idx = s.reindex(empty).index
+        assert isinstance(idx, sd.frame.Index) and idx.dtype == sd.string, type(empty)
+    t = sd.frame.Series([1, 2])
+    assert isinstance(t.reindex(range(0)).index, sd.frame.RangeIndex)
+    assert t.reindex(np.array([], dtype=object)).index.dtype == sd.int64
+
+
+def test_dataframe_brackets_take_the_column_lists_loc_takes():
+    df = sd.frame.DataFrame({"a": [1], "b": [2]})
+    for key in (["b", "a"], ("b", "a"), sd.frame.Index(["b", "a"]), np.array(["b", "a"])):
+        assert list(df[key]) == ["b", "a"]
+        assert list(df.loc[:, key]) == ["b", "a"]
+    with pytest.raises(ValueError, match="unique"):
+        df[("a", "a")]
+    with pytest.raises(KeyError):
+        df[("a", "zz")]
+
+
+def test_position_slices_with_non_int_ends_are_index_errors():
+    s = sd.frame.Series([1, 2, 3])
+    df = sd.frame.DataFrame({"a": [1], "b": [2], "c": [3]})
+    with pytest.raises(IndexError, match="^cannot select rows by position with a slice of str; "):
+        s.iloc["a":"b"]
+    with pytest.raises(IndexError, match="^cannot select rows by position with a slice of float; "):
+        s.iloc[0:2:1.0]
+    with pytest.raises(IndexError, match="^cannot select columns by position with a slice of str; "):
+        df.iloc[:, "a":"b"]
+    assert s.iloc[np.int64(1) :].tolist() == [2, 3]
+    assert list(df.iloc[:, ::-1]) == ["c", "b", "a"] and list(df.iloc[:, -2:]) == ["b", "c"]

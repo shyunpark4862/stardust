@@ -28,6 +28,11 @@ struct CsvOptions {
     std::int64_t nrows = -1;                       // -1: all
 };
 
+// The number of bytes from `data` up to the end of its first `records`
+// records (line feeds outside quotes), or -1 when it holds fewer. read_csv's
+// nrows= reads the file only that far.
+std::int64_t csv_records_end(const char* data, std::size_t size, std::int64_t records);
+
 // (column names, columns) of the CSV text in [data, data + size).
 std::pair<std::vector<std::string>, std::vector<Column>> read_csv(
     const char* data, std::size_t size, const CsvOptions& opt

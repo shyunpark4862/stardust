@@ -10,20 +10,18 @@ The reductions move the reduced axes last and run lane by lane in the native ker
 stardust._core.stats.desc_* (compensated sums, two-pass moments).
 """
 
-import functools
 import math
 import operator
-from collections import namedtuple
 
+from .. import _calls
 from .. import _core as _sd_core
-from ._distribution import _real_option
+from .._results import DescribeResult, ModeResult
+from ._distribution import _readonly, _real_option, _real_scalar
 
 _k = _sd_core.stats
 
-DescribeResult = namedtuple("DescribeResult", ("nobs", "minmax", "mean", "variance", "skewness", "kurtosis"))
-ModeResult = namedtuple("ModeResult", ("mode", "count"))
-
 _POLICIES = ("propagate", "omit", "raise")
+_INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
 _EPS = 2.0**-52
 
 
@@ -31,20 +29,46 @@ def _type_name(v):
     return _sd_core._type_name(v)  # (numpy's types as numpy.bool: API.md §2.1)
 
 
+_TAKES = "an sd.ndarray, a sequence of numbers or a frame Series or DataFrame"
+
+
+def _scalar_value(x):
+    """x as a Python number when it is a real scalar (Python's, numpy's, or a 0-d numpy array
+    of a real type), else None."""
+    v = _real_scalar(x)
+    if v is None and type(x).__module__ == "numpy" and getattr(x, "ndim", None) == 0:
+        if getattr(getattr(x, "dtype", None), "kind", "") in "biuf":
+            v = _real_scalar(x[()])
+    return v
+
+
 def _as_array(x, name, arg="x"):
-    """x as a float64 sd.ndarray (Python numbers and sequences through sd.asarray)."""
+    """x as a float64 sd.ndarray (real scalars as one element, sequences through sd.asarray,
+    whose shape errors pass through under this function's name)."""
     sd = _sd_core
     if isinstance(x, sd.ndarray):
         a = x
-    elif isinstance(x, (bool, int, float)):
-        a = sd.asarray([float(x)])
+    elif (v := _scalar_value(x)) is not None:
+        a = sd.asarray([float(v)])
+    elif type(x).__module__.startswith("stardust.frame"):
+        # a frame Series or DataFrame (user decision 2026-11-20, D-30: data-taking functions take
+        # frame columns, as sd.regression's): missing values as NaN, for nan_policy
+        from .. import frame as _frame
+
+        if not isinstance(x, (_frame.Series, _frame.DataFrame)):
+            raise TypeError(f"{name}(): '{arg}' must be {_TAKES}, not {_type_name(x)}")
+        try:
+            a = x.to_array(dtype=sd.float64, na_value=math.nan)
+        except TypeError, ValueError:  # a string column is a ValueError of to_array
+            raise TypeError(f"{name}(): '{arg}' must have numeric columns") from None
     else:
         try:
             a = sd.asarray(x)
         except (TypeError, ValueError) as e:
-            raise TypeError(
-                f"{name}(): '{arg}' must be an sd.ndarray or a sequence of numbers, not {_type_name(x)}"
-            ) from e
+            msg = str(e)
+            if isinstance(e, ValueError) and "0-dimensional" not in msg:  # a ragged sequence, ...
+                raise ValueError(f"{name}(): {msg.partition('(): ')[2] or msg}") from None
+            raise TypeError(f"{name}(): '{arg}' must be {_TAKES}, not {_type_name(x)}") from e
     if a.dtype == sd.complex128:
         raise TypeError(f"{name}(): '{arg}' must be real, not a complex128 array")
     return a if a.dtype == sd.float64 else a.astype(sd.float64)
@@ -102,6 +126,8 @@ def _axes(axis, ndim, name):
             raise TypeError(
                 f"{name}(): 'axis' must be an int or a tuple or list of ints, not {_type_name(ax)}"
             ) from None
+        if not _INT64_MIN <= i <= _INT64_MAX:  # (as the array area's axis arguments, API.md §2)
+            raise OverflowError(f"{name}(): 'axis' is out of range")
         if not -ndim <= i < ndim:
             raise ValueError(f"{name}(): axis {i} is out of bounds for an array of dimension {ndim}")
         out.append(i % ndim)
@@ -176,7 +202,7 @@ def _moments(a, axis, nan_policy, name, kmax=4, minmax=False):
     res = _k.desc_moments(lanes.rows, omit, kmax, minmax)
     n, mean, m2 = res[0], res[1], res[2]
     top = res[kmax]
-    if lanes.n < 2:
+    if lanes.n < 2 or m2.shape[0] == 0:  # (no lanes: a reduction to an empty shape)
         return lanes, res, None
     if m2.shape[0] == 1:  # one lane (axis=None): the test on Python floats, ~0.2 us
         if float(m2[0]) >= _M2_SMALL and math.isfinite(float(top[0])):
@@ -286,26 +312,26 @@ def kurtosis(x, /, *, axis=None, fisher=True, bias=True, nan_policy="propagate",
 def describe(x, /, *, axis=None, correction=1, bias=True, nan_policy="propagate"):
     """DescribeResult(nobs, minmax, mean, variance, skewness, kurtosis): the count, (min, max),
     the mean, the variance with `correction` (1: the sample variance), skew and kurtosis
-    (excess) with `bias`. An empty input is a ValueError (scipy)."""
+    (excess) with `bias`. An empty lane is nobs 0 with NaNs, as every descriptive statistic
+    (user decision 2026-11-20, D-32; scipy raises)."""
     name = "describe"
     _policy(nan_policy, name), _bool(bias, name, "bias")
     corr = _correction(correction, name)
     a = _as_array(x, name)
-    if a.size == 0:
-        raise ValueError("describe(): the input must not be empty")
     lanes, (n, mean, m2, m3, m4, lo, hi, _), unit = _moments(a, axis, nan_policy, name, 4, True)
     mean_u = _mean_in_unit(mean, unit)
     if nan_policy == "omit":
         nobs = lanes.out(n)
     else:
         nobs = lanes.n
+    ro = _readonly  # result objects' arrays are read-only (user decision 2026-11-20, D-4)
     return DescribeResult(
-        nobs,
-        (lanes.out(lo), lanes.out(hi)),
-        lanes.out(mean),
-        lanes.out(_in_unit(_var_of(n, m2, corr), unit, 2)),
-        lanes.out(_skew_of(n, mean_u, m2, m3, bias)),
-        lanes.out(_kurt_of(n, mean_u, m2, m4, True, bias)),
+        ro(nobs),
+        (ro(lanes.out(lo)), ro(lanes.out(hi))),
+        ro(lanes.out(mean)),
+        ro(lanes.out(_in_unit(_var_of(n, m2, corr), unit, 2))),
+        ro(lanes.out(_skew_of(n, mean_u, m2, m3, bias))),
+        ro(lanes.out(_kurt_of(n, mean_u, m2, m4, True, bias))),
     )
 
 
@@ -402,7 +428,8 @@ def zscore(x, /, *, axis=None, correction=0, nan_policy="propagate"):
     std = sd.where(std <= sd.abs(_EPS * mean), float("nan"), std)
     shape = lanes.keep_shape
     # (x - mean) - mean_lo: the mean's rounding would shift every z by it / std
-    return ((a - sd.reshape(mean, shape)) - sd.reshape(mean_lo, shape)) / sd.reshape(std, shape)
+    z = ((a - sd.reshape(mean, shape)) - sd.reshape(mean_lo, shape)) / sd.reshape(std, shape)
+    return float(z[0]) if _scalar_value(x) is not None else z  # a scalar's shape: a Python float
 
 
 _RANK_METHODS = {"average": 0, "min": 1, "max": 2, "dense": 3, "ordinal": 4}
@@ -431,7 +458,8 @@ def rankdata(x, /, *, method="average", axis=None, nan_policy="propagate"):
             raise TypeError(f"rankdata(): 'axis' must be an int or None, not {_type_name(axis)}") from None
     _check_nan(a, nan_policy, name)
     lanes = _Lanes(a, axis, name)
-    return lanes.back(_k.desc_rank(lanes.rows, _RANK_METHODS[method], nan_policy == "omit"))
+    r = lanes.back(_k.desc_rank(lanes.rows, _RANK_METHODS[method], nan_policy == "omit"))
+    return float(r[0]) if _scalar_value(x) is not None else r  # a scalar's shape: a Python float
 
 
 def mode(x, /, *, axis=None, nan_policy="propagate", keepdims=False):
@@ -443,7 +471,7 @@ def mode(x, /, *, axis=None, nan_policy="propagate", keepdims=False):
     lanes = _Lanes(a, axis, name)
     _check_nan(a, nan_policy, name)
     m, c = _k.desc_mode(lanes.rows, nan_policy == "omit")
-    return ModeResult(lanes.out(m, keepdims), lanes.out(c, keepdims))
+    return ModeResult(_readonly(lanes.out(m, keepdims)), _readonly(lanes.out(c, keepdims)))  # (D-4)
 
 
 _NORMAL_IQR = 1.3489795003921634  # 2 sqrt(2) erfinv(1/2): the standard normal's IQR
@@ -456,12 +484,22 @@ def iqr(x, /, *, axis=None, q=(0.25, 0.75), scale=1.0, method="linear", nan_poli
     name = "iqr"
     sd = _sd_core
     _policy(nan_policy, name), _bool(keepdims, name, "keepdims")
+    what = "iqr(): 'q' must be a pair of numbers in [0, 1]"
     try:
-        q0, q1 = (float(v) for v in q)
-    except TypeError, ValueError:
-        raise TypeError("iqr(): 'q' must be a pair of numbers in [0, 1]") from None
-    if not (0.0 <= q0 <= 1.0 and 0.0 <= q1 <= 1.0):
-        raise ValueError("iqr(): 'q' must be a pair of numbers in [0, 1]")
+        items = list(q)
+    except TypeError:
+        raise TypeError(f"{what}, not {_type_name(q)}") from None
+    if len(items) != 2:
+        raise ValueError(what)
+    qs = []
+    for v in items:  # (numbers as every number option: numpy integers too, not bool or str)
+        f = _real_option(v, name, "q")
+        if f is None:
+            raise TypeError(f"{what}, not {_type_name(v)}")
+        if not 0.0 <= f <= 1.0:
+            raise ValueError(what)
+        qs.append(f)
+    q0, q1 = sorted(qs)  # (scipy sorts its rng: the range is never negative)
     if isinstance(scale, str):
         if scale != "normal":
             raise ValueError(f"iqr(): 'scale' must be a number or 'normal', not {scale!r}")
@@ -475,12 +513,12 @@ def iqr(x, /, *, axis=None, q=(0.25, 0.75), scale=1.0, method="linear", nan_poli
     red = _axes(axis, a.ndim, name) if axis is not None else None  # (this function's own messages)
     _check_nan(a, nan_policy, name)
     f = sd.nanquantile if nan_policy == "omit" else sd.quantile
-    try:
-        lo = f(a, q0, axis=red, method=method, keepdims=keepdims)
-        hi = f(a, q1, axis=red, method=method, keepdims=keepdims)
+    try:  # both quantiles in one selection (q's axis first)
+        both = f(a, sd.asarray([q0, q1]), axis=red, method=method, keepdims=keepdims)
     except (TypeError, ValueError) as e:  # method=: the quantile's check, under this function's name
         head, sep, rest = str(e).partition("(): ")
         raise type(e)(f"iqr(): {rest}" if sep else str(e)) from None
+    lo, hi = both[0], both[1]
     # IEEE division (scale = 0 gives inf, or NaN for a zero range, as scipy)
     return sd.divide(hi - lo, float(scale))
 
@@ -545,8 +583,10 @@ def differential_entropy(
             raise TypeError(
                 f"differential_entropy(): 'window_length' must be an int or None, not {_type_name(window_length)}"
             ) from None
+        if not _INT64_MIN <= m <= _INT64_MAX:
+            raise OverflowError("differential_entropy(): 'window_length' is out of range")
         if m < 1:
-            raise ValueError("differential_entropy(): 'window_length' must be positive")
+            raise ValueError("differential_entropy(): 'window_length' must be >= 1")
     _base(base, name)
     a = _as_array(x, name)
     lanes = _Lanes(a, axis, name)
@@ -557,37 +597,16 @@ def differential_entropy(
     return lanes.out(v, keepdims)
 
 
-def _library_call_errors(fn):
-    """fn with Python's own call-shape errors in the library's form (as the distributions'
-    constructors, T36): "moment(): missing 1 required keyword-only argument: 'order'",
-    "skew(): unexpected keyword argument 'ddof'", not "moment() missing ..." (user decision
-    2026-11-19). The function's own checks already say "moment(): ..." and pass through."""
-    head = f"{fn.__qualname__}() "
-
-    @functools.wraps(fn)
-    def call(*args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except TypeError as e:
-            msg = str(e)
-            if not msg.startswith(head):
-                raise
-            rest = msg[len(head) :]
-            if rest.startswith("got an unexpected"):
-                rest = rest[len("got an ") :]
-            raise TypeError(f"{fn.__name__}(): {rest}") from None
-
-    return call
-
-
-describe = _library_call_errors(describe)
-skew = _library_call_errors(skew)
-kurtosis = _library_call_errors(kurtosis)
-moment = _library_call_errors(moment)
-zscore = _library_call_errors(zscore)
-rankdata = _library_call_errors(rankdata)
-sem = _library_call_errors(sem)
-iqr = _library_call_errors(iqr)
-mode = _library_call_errors(mode)
-entropy = _library_call_errors(entropy)
-differential_entropy = _library_call_errors(differential_entropy)
+# a wrong call shape in the library's form, "moment(): missing 1 required keyword-only argument:
+# 'order'" (API.md §2.1)
+describe = _calls.function(describe)
+skew = _calls.function(skew)
+kurtosis = _calls.function(kurtosis)
+moment = _calls.function(moment)
+zscore = _calls.function(zscore)
+rankdata = _calls.function(rankdata)
+sem = _calls.function(sem)
+iqr = _calls.function(iqr)
+mode = _calls.function(mode)
+entropy = _calls.function(entropy)
+differential_entropy = _calls.function(differential_entropy)

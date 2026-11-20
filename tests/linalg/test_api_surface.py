@@ -1,5 +1,6 @@
 """docs/api/linalg.md and the module agree: every name its signature blocks define is
-exported, nothing else is, and the keyword-only options are the documented ones."""
+exported, nothing else is, the keyword-only options are the documented ones, and help()
+shows the documented signature."""
 
 import pathlib
 import re
@@ -50,4 +51,15 @@ def keyword_only(f):
     if "*," not in params and not params.rstrip().endswith("*"):
         return set()
     after = params.split("*,", 1)[1] if "*," in params else ""
-    return {p.split(":")[0].strip() for p in after.split(",") if p.strip()}
+    return {p.split(":")[0].split("=")[0].strip() for p in after.split(",") if p.strip()}
+
+
+def test_signatures_match_api_md():
+    # the bindings' nb::sig (the arguments stay unnamed, so positional-only): help() shows
+    # the documented names, not arg0, arg1
+    for name, sig in documented().items():
+        if name == "LinAlgError":
+            continue
+        f = getattr(sd.linalg, name)
+        assert f.__nb_signature__[0][0] == f"def {name}({sig})", name
+        assert f.__doc__.splitlines()[0] == f"{name}({sig})", name

@@ -232,13 +232,14 @@ nb::object tensordot(nb::handle x1, nb::handle x2, nb::handle axes_obj) {
 
 void bind_dtype_info(nb::module_& m) {
     using nb::arg;
-    m.def("can_cast", named("can_cast", &can_cast), arg().none(), arg().none());
-    m.def("result_type", named("result_type", &result_type));
-    m.def("isdtype", named("isdtype", &isdtype), arg().none(), arg().none());
-    m.def("finfo", named("finfo", &finfo), arg().none());
-    m.def("iinfo", named("iinfo", &iinfo), arg().none());
+    m.def("can_cast", named("can_cast", &can_cast), nb::sig("def can_cast(from_, to, /)"), arg().none(), arg().none());
+    m.def("result_type", named("result_type", &result_type), nb::sig("def result_type(*arrays_and_dtypes)"));
+    m.def("isdtype", named("isdtype", &isdtype), nb::sig("def isdtype(dtype, kind, /)"), arg().none(), arg().none());
+    m.def("finfo", named("finfo", &finfo), nb::sig("def finfo(type, /)"), arg().none());
+    m.def("iinfo", named("iinfo", &iinfo), nb::sig("def iinfo(type, /)"), arg().none());
     m.def(
-        "tensordot", named("tensordot", &tensordot), arg().none(), arg().none(), nb::kw_only(), arg("axes").none() = 2
+        "tensordot", named("tensordot", &tensordot), nb::sig("def tensordot(x1, x2, /, *, axes=2)"), arg().none(),
+        arg().none(), nb::kw_only(), arg("axes").none() = 2
     );
 }
 

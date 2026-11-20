@@ -616,50 +616,63 @@ nb::object bracket_root_solve(
         }
         for (E& e : S) e.d = std::isinf(e.limit) ? e.x - e.x0 : e.limit - e.x;
         std::int64_t nit = 0, nfev = 1;
-        std::vector<char> stop, conv(m, 0);  // conv: the other side of a side that converged
-        std::vector<std::size_t> found;
+        // conv: the other side of a side that converged; hit: the side in progress r found a
+        // sign change in this pass (its other side is i + n mod 2n, one per side, so the writes
+        // of a pass never meet)
+        std::vector<char> stop, conv(m, 0), hit;
 
         // check_termination: the sign test on every side in progress first (stop, and conv for
         // the sides that found a sign change), then the other side of those, the limits and
-        // the non-finite values, then the compression
+        // the non-finite values, then the compression; each a pass over the sides in progress
+        // (for_elements: split over the threads, without the GIL, when there are many)
         auto first = [&](std::size_t r, std::size_t i) {
             const E& e = S[i];
             stop[r] = e.invalid;
+            hit[r] = 0;
             const double sf = npsign(e.f), sfl = npsign(e.f_last);
             if (((sfl == -sf) || (sfl == 0) || (sf == 0)) && !stop[r]) {
                 P.status[i] = sConverged;
                 stop[r] = 1;
                 conv[(i + n) % m] = 1;
-                found.push_back(i);
+                hit[r] = 1;
             }
         };
         auto rest = [&]() {
+            const std::size_t k = P.active.size();
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    const auto i = static_cast<std::size_t>(P.active[r]);
+                    const E& e = S[i];
+                    if (conv[i] && !stop[r]) {
+                        P.status[i] = sOneSide;
+                        stop[r] = 1;
+                    }
+                    if (e.x == e.limit && !stop[r]) {
+                        P.status[i] = sLimits;
+                        stop[r] = 1;
+                    }
+                    if (!(std::isfinite(e.x) && std::isfinite(e.f)) && !stop[r]) {
+                        P.status[i] = sValueErr;
+                        stop[r] = 1;
+                    }
+                    if (stop[r]) P.stopped(i, nit, nfev);
+                }
+            });
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r)
+                    if (hit[r]) conv[(static_cast<std::size_t>(P.active[r]) + n) % m] = 0;
+            });
             std::size_t w = 0;
-            for (std::size_t r = 0; r < P.active.size(); ++r) {
-                const auto i = static_cast<std::size_t>(P.active[r]);
-                const E& e = S[i];
-                if (conv[i] && !stop[r]) {
-                    P.status[i] = sOneSide;
-                    stop[r] = 1;
-                }
-                if (e.x == e.limit && !stop[r]) {
-                    P.status[i] = sLimits;
-                    stop[r] = 1;
-                }
-                if (!(std::isfinite(e.x) && std::isfinite(e.f)) && !stop[r]) {
-                    P.status[i] = sValueErr;
-                    stop[r] = 1;
-                }
-                if (stop[r]) P.stopped(i, nit, nfev);
-                else P.active[w++] = P.active[r];
-            }
+            for (std::size_t r = 0; r < k; ++r)
+                if (!stop[r]) P.active[w++] = P.active[r];
             P.active.resize(w);
-            for (std::size_t i : found) conv[(i + n) % m] = 0;
-            found.clear();
         };
 
         stop.assign(m, 0);
-        for (std::size_t r = 0; r < m; ++r) first(r, r);
+        hit.assign(m, 0);
+        for_elements(m, [&](std::size_t r0, std::size_t r1) {
+            for (std::size_t r = r0; r < r1; ++r) first(r, r);
+        });
         rest();
         while (nit < max_iter && !P.active.empty()) {
             const std::size_t k = P.active.size();
@@ -680,19 +693,26 @@ nb::object bracket_root_solve(
             nfev += 1;
             nit += 1;
             stop.assign(k, 0);
-            for (std::size_t r = 0; r < k; ++r) {
-                const auto i = static_cast<std::size_t>(P.active[r]);
-                E& e = S[i];
-                e.x_last = e.x;
-                e.f_last = e.f;
-                e.x = F.x(r);
-                e.f = F.value(r);
-                first(r, i);
-            }
+            hit.assign(k, 0);
+            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+                for (std::size_t r = r0; r < r1; ++r) {
+                    const auto i = static_cast<std::size_t>(P.active[r]);
+                    E& e = S[i];
+                    e.x_last = e.x;
+                    e.f_last = e.f;
+                    e.x = F.x(r);
+                    e.f = F.value(r);
+                    first(r, i);
+                }
+            });
             rest();
         }
         P.finish(nit, nfev);
-        // the bracket of the side that converged (the narrower when both did)
+        // the bracket of the side that converged (the narrower when both did; the left side's
+        // when both are as narrow: scipy then joins the two sides into a reversed interval
+        // (the right side's left end, the left side's right end) that need not bracket a root).
+        // Without a bracket the interval is the two sides' reach, sorted also for an invalid
+        // start (xl0 > xr0), so that xl <= xr always.
         vec bl(n), br(n), fl(n), fr(n);
         ivec status(n), nits(n), nfevs(n);
         for (std::size_t i = 0; i < n; ++i) {
@@ -703,7 +723,7 @@ nb::object bracket_root_solve(
             const std::int64_t sa = P.status[a], sb = P.status[b];
             const double da = xar - xal, db = xbr - xbl;
             const bool i1 = ((da <= db) && (sa == 0)) || ((sa == 0) && (sb != 0));
-            const bool i2 = ((db <= da) && (sb == 0)) || ((sb == 0) && (sa != 0));
+            const bool i2 = !i1 && (sb == 0);
             if (i1) {
                 xr = xar;
                 fr_ = far;
@@ -711,6 +731,10 @@ nb::object bracket_root_solve(
             if (i2) {
                 xl = xbl;
                 fl_ = fbl;
+            }
+            if (xl > xr) {
+                std::swap(xl, xr);
+                std::swap(fl_, fr_);
             }
             bl[i] = xl;
             br[i] = xr;

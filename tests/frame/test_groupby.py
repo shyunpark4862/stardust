@@ -107,7 +107,35 @@ def test_float_group_sum_is_bitwise_the_series_sum():
     df = sd.frame.DataFrame({"k": keys, "v": vals})
     out = df.groupby("k").sum()
     for row, k in enumerate(out["k"].tolist()):
-        assert same(out["v"].tolist()[row], float(np.sum(vals[keys == k])))  # numpy pairwise on the group's rows
+        group = vals[keys == k]
+        got = out["v"].tolist()[row]
+        assert same(got, sd.frame.Series(group).sum())  # the group's rows alone, bit for bit
+        assert same(got, float(sd.sum(sd.asarray(group))))  # and the array's sum of them
+        assert abs(got - float(np.sum(group))) <= 64 * np.finfo(np.float64).eps * float(np.sum(np.abs(group)))
+
+
+@pytest.mark.parametrize("gsize", [4096, 4097, 10_000])
+@pytest.mark.parametrize("dtype", ["int64", "bool", "float64"])
+def test_group_mean_and_var_are_the_series_bits_at_every_size(gsize, dtype):
+    # The int mean is the exact sum rounded once (base/int_sum.hpp) in the
+    # Series, the array and the groups alike, at any group size.
+    rng = np.random.default_rng(gsize)
+    n = 3 * gsize
+    if dtype == "int64":
+        vals = rng.integers(-(2**50), 2**50, n)
+    elif dtype == "bool":
+        vals = rng.random(n) < 0.3
+    else:
+        vals = rng.standard_normal(n)
+    keys = np.repeat([0, 1, 2], gsize)
+    rng.shuffle(keys)
+    g = sd.frame.DataFrame({"k": keys, "v": vals}).groupby("k")
+    for op in ("mean", "var", "std"):
+        out = getattr(g, op)()
+        for row, k in enumerate(out["k"].tolist()):
+            got = out["v"].tolist()[row]
+            assert same(got, getattr(sd.frame.Series(vals[keys == k]), op)()), (op, k)
+            assert same(got, float(getattr(sd, op)(sd.asarray(vals[keys == k])))), (op, k)
 
 
 @pytest.mark.parametrize("op", ["sum", "mean", "min", "max", "count", "first", "last", "size"])

@@ -1,5 +1,6 @@
 """merge (a hash join) and concat (docs/api/frame.md §9)."""
 
+from .. import _calls
 from . import _column, _core, _dtypes, _sort
 from ._errors import check_bool, check_choice, name_list, type_name
 from ._index import Index, RangeIndex
@@ -19,6 +20,7 @@ def _names(value, what):  # for merge()
     return names
 
 
+@_calls.function
 def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
     """Join two DataFrames on key columns with a hash join (docs/api/frame.md §9.1).
 
@@ -100,6 +102,7 @@ def _promoted(cols, what):
     return [c if c.dtype == dtype else c.astype(dtype) for c in cols]
 
 
+@_calls.function
 def concat(objs, /, *, join="outer", ignore_index=False):
     """DataFrames (or Series) one after another, rows only (docs/api/frame.md §9.2).
     Columns of different dtypes promote as in the array area's concat."""

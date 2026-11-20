@@ -61,6 +61,9 @@ PyObject* seq_item(PyObject* p, Py_ssize_t i) {
 
 // Pass 1a: read the shape off the first element at every depth.
 std::vector<std::int64_t> discover_shape(PyObject* o) {
+    auto too_deep = [] {
+        throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
+    };
     std::vector<std::int64_t> shape;
     for (;;) {
         if (is_ndarray(o)) {
@@ -69,13 +72,14 @@ std::vector<std::int64_t> discover_shape(PyObject* o) {
             break;
         }
         if (!is_seq(o)) break;
+        // Checked inside the loop: a list that holds itself never ends.
+        if (shape.size() == static_cast<size_t>(kMaxNdim)) too_deep();
         const Py_ssize_t n = seq_len(o);
         shape.push_back(n);
         if (n == 0) break;
         o = seq_item(o, 0);
     }
-    if (shape.size() > static_cast<size_t>(kMaxNdim))
-        throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
+    if (shape.size() > static_cast<size_t>(kMaxNdim)) too_deep();
     return shape;
 }
 
@@ -278,6 +282,10 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
 
     bool swapped = false;
     const Src src = parse_format(view.format, view.itemsize, swapped);
+    if (src == Src::U64)  // named after the dtype asked for (int64 when none)
+        throw nb::type_error((std::string("uint64 buffers cannot be converted to ") +
+                              dtype_name(dtype.value_or(DType::Int64)) + " without loss")
+                                 .c_str());
     const DType natural = natural_dtype(src);
     if (view.ndim == 0) throw nb::value_error(kNoZeroDim);
     if (view.ndim > kMaxNdim)
@@ -452,7 +460,9 @@ nb::object asarray(nb::handle obj, nb::handle dtype_obj, nb::handle copy_obj) {
         return from_nested(items, dtype);
     }
     if (PyObject_CheckBuffer(obj.ptr())) return from_buffer(obj, dtype, copy);
-    throw nb::type_error(("cannot convert an object of type '" + py_type_name(obj) + "' to an array").c_str());
+    throw nb::type_error(
+        ("'obj' must be an sd.ndarray, a list, a tuple, a range or a buffer, not " + py_type_name(obj)).c_str()
+    );
 }
 
 }  // namespace sd

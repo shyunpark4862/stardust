@@ -140,6 +140,7 @@ nb::object corrcoef(nb::handle x, nb::handle rowvar_obj) {
         const double v = *reinterpret_cast<const double*>(c.data);
         return to_python(v / v);
     }
+    if (p == 0) return wrap(std::move(c));  // no variables: the empty (0, 0) matrix, as numpy
     // c / sd[:, None] / sd[None, :], then the real (and imaginary) parts clipped to [-1, 1].
     auto clip = [](double v) { return std::isnan(v) ? v : std::min(1.0, std::max(-1.0, v)); };
     visit_dtype(c.dtype, [&]<typename T>(std::type_identity<T>) {
@@ -173,10 +174,13 @@ nb::object corrcoef(nb::handle x, nb::handle rowvar_obj) {
 void bind_covariance(nb::module_& m) {
     using nb::arg;
     m.def(
-        "cov", named("cov", &cov), arg().none(), nb::kw_only(), arg("rowvar").none() = true,
-        arg("correction").none() = 0
+        "cov", named("cov", &cov), nb::sig("def cov(x, /, *, rowvar=True, correction=0)"), arg().none(), nb::kw_only(),
+        arg("rowvar").none() = true, arg("correction").none() = 0
     );
-    m.def("corrcoef", named("corrcoef", &corrcoef), arg().none(), nb::kw_only(), arg("rowvar").none() = true);
+    m.def(
+        "corrcoef", named("corrcoef", &corrcoef), nb::sig("def corrcoef(x, /, *, rowvar=True)"), arg().none(),
+        nb::kw_only(), arg("rowvar").none() = true
+    );
 }
 
 }  // namespace sd

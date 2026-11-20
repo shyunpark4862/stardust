@@ -206,22 +206,21 @@ def _spd(p, kappa, seed):
     return A((v + v.T) / 2)
 
 
-def test_wishart_large_df_nan_depends_on_the_point():
-    # the exact mode and mean (scale = I): W - I is (p + 1)/n or 0, no NaN far past 1e35
+def test_wishart_large_df_has_values_past_the_guarantee():
+    # W - I is formed from B - n A exactly and log|W| - tr W + p has no rounding of size
+    # |W - I|: the bound stays below 1e-14 |value| near the mode at any df, so no NaN
     for D in (S.Wishart, S.InverseWishart):
         X = D(df=1e40, scale=A(np.eye(2)))
-        if D is S.Wishart:
-            assert math.isfinite(X.logpdf(X.mode())) and math.isfinite(X.logpdf(X.mean()))
-    # one ULP off the mean: W - I ~ 1e-16, NaN from about 1e34
-    X = S.Wishart(df=1e35, scale=A(np.eye(2)))
-    m = np.nextafter(np.asarray(X.mean().tolist()), np.inf)
-    assert math.isnan(X.logpdf(A((m + m.T) / 2)))
-    X = S.Wishart(df=1e33, scale=A(np.eye(2)))
-    m = np.nextafter(np.asarray(X.mean().tolist()), np.inf)
-    assert math.isfinite(X.logpdf(A((m + m.T) / 2)))
-    # inside the guarantee (df <= 1e30) the mode, the mean and samples have values
+        assert math.isfinite(X.logpdf(X.mode())) and math.isfinite(X.logpdf(X.mean()))
+    # one ULP off the mean (W - I ~ 1e-16), and as far as 1e100
+    for df in (1e33, 1e35, 1e100):
+        X = S.Wishart(df=df, scale=A(np.eye(2)))
+        m = np.nextafter(np.asarray(X.mean().tolist()), np.inf)
+        assert math.isfinite(X.logpdf(A((m + m.T) / 2))), df
+    # the mode, the mean and samples, inside the guarantee (df <= 1e30) and past it
     for D in (S.Wishart, S.InverseWishart):
         for p, kappa in ((2, 1e2), (3, 1e4), (10, 1e4), (5, 1e9)):
-            X = D(df=1e30, scale=_spd(p, kappa, 1))
-            for pt in (X.mode(), X.mean(), X.sample(rng=sd.random.default_rng(1))):
-                assert math.isfinite(X.logpdf(pt)), (D, p, kappa)
+            for df in (1e30, 1e40):
+                X = D(df=df, scale=_spd(p, kappa, 1))
+                for pt in (X.mode(), X.mean(), X.sample(rng=sd.random.default_rng(1))):
+                    assert math.isfinite(X.logpdf(pt)), (D, p, kappa, df)

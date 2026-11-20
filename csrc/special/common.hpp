@@ -21,6 +21,7 @@
 #include "array/kernels/scalar_ops.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 
@@ -37,22 +38,23 @@ inline constexpr double kEps = 0x1p-53;               // half the spacing at 1: 
 inline constexpr double kMaxLog = 7.09782712893383996843e2;   // log(DBL_MAX)
 inline constexpr double kMinLog = -7.451332191019412076235e2;  // log(smallest subnormal)
 
-// c[0] x^(N-1) + c[1] x^(N-2) + ... + c[N-1], by Horner's rule: one multiply
-// and one add per coefficient, each rounded (-ffp-contract=off: no fused
-// multiply-add unless written). The coefficient order is Cephes' polevl.
+// c[0] x^(N-1) + c[1] x^(N-2) + ... + c[N-1], by Horner's rule: one fused
+// multiply-add per coefficient, r x + c[i] rounded once (written: the build has
+// -ffp-contract=off, so the code decides where contraction happens; the same as
+// the lanes' simd::horner). The coefficient order is Cephes' polevl.
 template <std::size_t N>
-constexpr double horner(double x, const std::array<double, N>& c) {
+inline double horner(double x, const std::array<double, N>& c) {
     double r = c[0];
-    for (std::size_t i = 1; i < N; ++i) r = r * x + c[i];
+    for (std::size_t i = 1; i < N; ++i) r = std::fma(r, x, c[i]);
     return r;
 }
 
 // The same with an implicit leading coefficient 1 (Cephes' p1evl):
 // x^N + c[0] x^(N-1) + ... + c[N-1].
 template <std::size_t N>
-constexpr double horner1(double x, const std::array<double, N>& c) {
+inline double horner1(double x, const std::array<double, N>& c) {
     double r = x + c[0];
-    for (std::size_t i = 1; i < N; ++i) r = r * x + c[i];
+    for (std::size_t i = 1; i < N; ++i) r = std::fma(r, x, c[i]);
     return r;
 }
 

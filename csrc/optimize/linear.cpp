@@ -25,6 +25,7 @@
 #include "array/ndarray.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
+#include "linalg/errors.hpp"
 #include "linalg/input.hpp"
 #include "linalg/lapack.hpp"
 
@@ -65,11 +66,14 @@ double npdot(const double* a, const double* b, lint n) {
     return 0.0 + cblas_ddot(n, a, 1, b, 1);
 }
 
-// np.max (NaN propagates) and np.argmax / np.argmin (the first extreme, the first NaN)
+// np.max (NaN propagates; +0 over -0, as numpy's maximum) and np.argmax / np.argmin (the first
+// extreme, the first NaN)
 double npmax(const double* a, lint n) {
     double m = a[0];
-    for (lint i = 1; i < n; ++i)
-        if (std::isnan(m) || !(a[i] <= m)) m = std::isnan(m) ? m : a[i];
+    for (lint i = 1; i < n; ++i) {
+        if (std::isnan(m)) break;
+        if (!(a[i] <= m) || (a[i] == 0 && m == 0 && std::signbit(m) && !std::signbit(a[i]))) m = a[i];
+    }
     return m;
 }
 lint npargmax(const double* a, lint n) {
@@ -150,6 +154,7 @@ struct Problem {
             &rows, &cols, &nrhs, a, &lda, bb, &ldb, sv, &rcond, &rank, buf2.data(), &lwork,
             reinterpret_cast<lint*>(buf2.data() + nw), &info
         );
+        if (info > 0) throw linalg::LinAlgError("SVD did not converge");  // numpy's lstsq raises too
         for (lint j = 0; j < cols; ++j) x[j] = bb[j];
     }
     vec buf1, buf2;
@@ -705,6 +710,26 @@ int bvls(
     // scipy's nit = iteration + 1 with Python's loop variable: the last value it took
     const lint last = it < max_iter ? it : (max_iter > iteration ? max_iter - 1 : iteration);
     n_iter = last + 1;
+    // A variable that the step x + alpha (z - x) took to a bound is held there (on_bound) at
+    // the rounded value, which can be just outside (scipy keeps it): it is set to its bound,
+    // and any x within rounding outside the bounds is clipped, so that x is always within the
+    // bounds and on_bound means x is at that bound; the residual, gradient, cost and
+    // optimality are then those of the clipped x.
+    bool moved = false;
+    for (lint j = 0; j < n; ++j) {
+        double v = on_bound[j] < 0 ? lb[j] : on_bound[j] > 0 ? ub[j] : std::min(std::max(x[j], lb[j]), ub[j]);
+        if (v != x[j]) {
+            x[j] = v;
+            moved = true;
+        }
+    }
+    if (moved) {
+        np_matvec(P.A.data(), m, n, x.data(), r.data());
+        for (lint i = 0; i < m; ++i) r[i] = r[i] - P.b[i];
+        cost = 0.5 * npdot(r.data(), r.data(), m);
+        np_rmatvec(P.A.data(), m, n, r.data(), g.data());
+        optimality = kkt();
+    }
     return status == -2 ? 0 : status;
 }
 
@@ -722,7 +747,10 @@ struct NnlsWork {
     double* zz() { return buf.data() + 2 * n + m * n + m; }
 };
 
-// Returns info: 1 solved, 3 the iteration cap. iters: scipy's iteration count.
+// Returns info: 1 solved, 0 the iteration cap (more than maxiter iterations needed). iters: the
+// iterations done (scipy's count, at most maxiter). scipy's C code stops at iter >= maxiter, one
+// short of Lawson and Hanson's > itmax; this is theirs, with maxiter = 3n - 1 by default (the
+// same stop as scipy's 3n).
 int nnls_kernel(NnlsWork& W, lint maxiter, lint& iters) {
     const lint m = W.m, n = W.n;
     double *x = W.x(), *a = W.a(), *b = W.b(), *w = W.w(), *zz = W.zz();
@@ -805,8 +833,9 @@ int nnls_kernel(NnlsWork& W, lint maxiter, lint& iters) {
         // the inner loop: move to the solution on P, dropping the columns that reach 0
         for (;;) {
             ++iter;
-            if (iter >= maxiter) {
-                info = 3;
+            if (iter > maxiter) {
+                info = 0;
+                iter = maxiter;
                 goto done;
             }
             if (nsetp < 1) break;
@@ -949,8 +978,8 @@ nb::object lsq_linear_solve(
     });
 }
 
-// nnls_solve(func, A, b, max_iter) -> (x (n,), r (m,), cost, info, n_iter); info 1 solved, 3 the
-// iteration cap.
+// nnls_solve(func, A, b, max_iter) -> (x (n,), r (m,), cost, info, n_iter); info 1 solved, 0 the
+// iteration cap (lsq_linear's numbers).
 nb::object nnls_solve(const std::string& func, nb::handle A, nb::handle b, std::int64_t max_iter) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {

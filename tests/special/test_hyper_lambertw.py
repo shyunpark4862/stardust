@@ -98,7 +98,28 @@ def test_review_fixes_hyper():
 
 
 def test_review_fixes_lambertw_k():
-    with pytest.raises(ValueError, match=r"'k' must be 0 or -1 for a real argument"):
+    # k is read as every int argument: beyond int64 an OverflowError (API.md §2)
+    with pytest.raises(OverflowError, match=r"^lambertw\(\): 'k' is out of range$"):
         S.lambertw(-0.2, k=-(2**70))
-    with pytest.raises(ValueError, match=r"'k' must be 0 or -1 for a real argument"):
+    with pytest.raises(OverflowError, match=r"^lambertw\(\): 'k' is out of range$"):
         S.lambertw(0.5, k=2**70)
+    with pytest.raises(ValueError, match=r"'k' must be 0 or -1 for a real argument"):
+        S.lambertw(0.5, k=2)
+
+
+def test_lambertw_k_numpy_int_and_range():
+    """numpy integers are ints; a complex argument's k is exact up to 2**53 (it reaches the
+    loop as a double) and out of range beyond int64, with the function's prefix."""
+    assert S.lambertw(-0.2, k=np.int64(-1)) == S.lambertw(-0.2, k=-1)
+    assert S.lambertw(1 + 1j, k=np.int32(3)) == S.lambertw(1 + 1j, k=3)
+    z = sd.asarray(np.array([1 + 1j, -0.5 + 0j]))
+    for x in (1 + 1j, z):
+        with pytest.raises(OverflowError, match=r"^lambertw\(\): 'k' is out of range$"):
+            S.lambertw(x, k=2**63)
+        with pytest.raises(ValueError, match=r"^lambertw\(\): 'k' must be at most 2\*\*53 in magnitude$"):
+            S.lambertw(x, k=2**53 + 1)
+    S.lambertw(1 + 1j, k=2**53)
+    with pytest.raises(TypeError, match=r"^lambertw\(\): 'k' must be an int, not float$"):
+        S.lambertw(1.0, k=1.0)
+    with pytest.raises(TypeError, match=r"^lambertw\(\): 'k' must be an int, not bool$"):
+        S.lambertw(1.0, k=True)

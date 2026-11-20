@@ -100,7 +100,12 @@ def test_defaults_are_location_zero_scale_one():
 def test_attributes_are_read_only_and_as_given():
     mu = sd.asarray([0.0, 1.0])
     X = S.Normal(mu=mu, sigma=2)
-    assert X.mu is mu and X.sigma == 2 and isinstance(X.sigma, int)
+    # an array parameter is kept as a read-only copy (D-5): the caller's array may change
+    assert X.mu is not mu and X.mu.tolist() == [0.0, 1.0] and X.sigma == 2 and isinstance(X.sigma, int)
+    mu[0] = 5.0
+    assert X.mu.tolist() == [0.0, 1.0] and float(X.cdf(0.0)[0]) == 0.5
+    with pytest.raises(ValueError, match="read-only"):
+        X.mu[0] = 1.0
     with pytest.raises(AttributeError):
         X.mu = 3.0
     with pytest.raises(AttributeError):
@@ -982,8 +987,6 @@ def test_noncentral_methods_return_outside_the_guaranteed_region():
         ),
         (
             S.NoncentralChiSquared(df=3.5, nc=1e100),
-            ("cdf", 1.0),
-            ("ccdf", 1e308),
             ("icdf", 0.01),
             ("ilogcdf", -1.0),
             ("median",),
@@ -1007,6 +1010,9 @@ def test_noncentral_methods_return_outside_the_guaranteed_region():
     for X, *calls in nan:
         for m, *a in calls:
             assert math.isnan(float(getattr(X, m)(*a))), (type(X).__name__, m, a)
+    # tails far below e^-1000 by the Chernoff bound are exact 0 and 1
+    far = S.NoncentralChiSquared(df=3.5, nc=1e100)
+    assert float(far.cdf(1.0)) == 0.0 and float(far.ccdf(1e308)) == 0.0
     # ... and values where they are right: the density's closed form, the mode from it, a tail
     # beyond every term (Arb for the density; the mode is nc + df - 3 to 1e-15 here)
     X = S.NoncentralChiSquared(df=3.5, nc=1e15)
@@ -1166,7 +1172,7 @@ def test_central_extreme_arguments():
     # .cdf(1e-200) was -2.3e33), the beta family's with both shapes past 2^100 (F(1.7e308,
     # 1.7e308).cdf(0.5) was 1), a df below 2^-1021 (no exact half: StudentT(df=5e-324)
     # .logccdf(40) was +105), the F density with both shapes huge and a beta argument below the
-    # doubles, a deep beta tail next to 1 with b far below the measured shapes (9e-4 off).
+    # doubles.
     nans = [
         S.Gamma(a=1e100, scale=1e-300).cdf(1e-200),
         S.Gamma(a=1e100).icdf(0.5),
@@ -1179,7 +1185,6 @@ def test_central_extreme_arguments():
         S.F(dfn=1.7e308, dfd=1.7e308).cdf(0.5),
         S.F(dfn=1e100, dfd=1e100).logpdf(1e-310),
         S.Beta(a=1e300, b=1e300).icdf(0.5),
-        S.Beta(a=1.0, b=1e-300).logcdf(0.9999999999),
     ]
     assert all(math.isnan(float(v)) for v in nans), [float(v) for v in nans]
     # an inverse outside the measured shapes is returned only if the forward tail reproduces

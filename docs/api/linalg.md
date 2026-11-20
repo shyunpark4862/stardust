@@ -20,6 +20,8 @@
   - 함수의 본 인자. 예: `matrix_power`의 `n`, `eigh`의 `b`
 - **keyword-only (`*` 뒤)**: 이름이 붙은 옵션은 모두 keyword-only다.
   - 필수 옵션이 셋 있다: `solve_triangular`의 `upper`, `solve_banded`의 `lower_bandwidth`, `upper_bandwidth`. 빠뜨리면 `TypeError`다.
+- `help()`는 이 문서의 시그니처를 그대로 보인다. 예: `solve_banded(ab, b, /, *, lower_bandwidth, upper_bandwidth)`
+  - 틀린 호출 모양(없는 키워드, 인자 개수, positional-only 인자를 키워드로)은 nanobind의 `incompatible function arguments` 메시지다. C++로 묶은 함수의 예외다 (API.md §2.1).
 - **이름**
   - Array API(`linalg` 확장)에 있는 함수는 그 이름을 쓴다. 예: `vecdot`, `matrix_norm`, `svdvals`
   - Array API에 없는 함수는 scipy.linalg의 이름을 따르거나 풀어 쓴다. 예: `ldl`, `schur`, `expm`, `cholesky_solve`, `solve_banded`
@@ -155,7 +157,9 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 - **벡터 결과는 연속이다.** 배치 축은 그 바깥에 C 순서로 놓인다.
   - 대상: 해 `(..., N)`, 고유값, 특이값, `perm`, `diagonal`, `det` 등의 배치 결과
 - `cross`, `vecdot`, `vector_norm`, `matrix_norm`, `trace`의 배열 결과는 C 순서다.
-- 결과는 언제나 새 배열이다. 입력과 메모리를 공유하지 않고, 쓸 수 있다.
+- 결과는 언제나 새 배열이다. 입력과 메모리를 공유하지 않는다.
+  - 배열 하나를 돌려주는 함수(`inv`, `solve` 등)의 결과는 쓸 수 있다.
+  - **namedtuple의 배열 필드는 쓰기 금지다** (API.md §2, 모든 영역의 결과 객체와 같다). 쓰면 `ValueError: assignment destination is read-only`다. 그 필드에서 만든 뷰도 쓰기 금지다. 고쳐 쓰려면 `.copy()`를 쓴다.
   - 결과는 자기 메모리를 소유한다. `base`는 `None`이다 (새로 만든 배열과 같다, array.md §10.1).
 
 ### §1.8 실패할 때
@@ -172,6 +176,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
   - LAPACK을 부르는 함수의 입력에 NaN이나 inf가 있다 (§1.9).
   - `lu_solve`의 `perm`이 순열이 아니다.
   - 값이 정의되지 않는다: 빈 행렬의 `cond` (§1.10)
+  - 결과가 너무 크다: 배열을 만들 때와 같은 검사, 같은 메시지다(`array is too big`, `arrays may have at most 32 dimensions`). 브로드캐스트 뷰의 배치 shape 곱이 int64를 넘을 때나, `outer`에 32차원 입력을 줄 때(결과가 33차원) 나온다.
 - **`LinAlgError`** (`ValueError`의 하위 클래스, §8): 수치적인 실패
 
   | 메시지 (`함수(): ` 다음) | 언제 |
@@ -240,10 +245,14 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 - **결과는 입력의 메모리 레이아웃과 무관하다.** C 순서, F 순서, strided 입력이 같은 비트를 낸다.
 - **같은 행렬은 배치 안의 어느 자리에 있어도 같은 비트를 받는다.** 배치 결과는 행렬 하나씩 부른 결과와 같다.
 - 배치와 출력 하나의 긴 합은 `sd.get_num_threads()`개의 스레드로 나눠 계산한다.
-- **부동소수점 합은 배열의 pairwise 합과 같다.**
+- **부동소수점 합은 pairwise 합이다.** 트리는 배열의 합과 같고, 항의 순서는 논리적 C 순서다. 오차는 항 수의 log에 비례한다.
   - 대상: `vecdot`, `trace`, `vector_norm`, `matrix_norm`(`'fro'`, `±1`, `±inf`, `'nuc'`), `cond`(같은 `ord`)
-  - 항의 순서는 논리적 C 순서다. 그래서 같은 항이면 `sd.sum`, `np.sum`과 비트까지 같다.
-  - 예: `vecdot(x, y) == sum(conj(x) * y, axis=-1)`, `trace(x) == sum(diagonal(x), axis=-1)`
+  - 그냥 합(`trace`, `ord=1`과 p-노름, `matrix_norm`의 `±1`, `±inf`)은 같은 항이면 `sd.sum`과 비트까지 같다. 예: `trace(x) == sum(diagonal(x), axis=-1)`
+  - 곱의 합(`vecdot`, 2-노름, `'fro'`)은 곱을 합에 융합한다(곱-덧셈을 한 번 반올림). 그래서 `vecdot(x, y)`는 `sum(conj(x) * y, axis=-1)`과 끝 비트가 다를 수 있다. 정확도는 같거나 낫다.
+- **numpy·scipy와의 비트 일치는 약속하지 않는다** (API.md의 비트 규칙).
+  - 약속하는 것: 위의 비트 불변성(스레드 수, 레이아웃, 배치 위치), 이 문서가 적은 우리 함수끼리의 비트 관계(예: `inv(x)`와 `solve(x, I)`), 정확도다.
+  - 반올림이 아닌 동작(dtype 규칙, NaN과 ±0, 특이의 판정, 에러)은 문서대로 numpy·scipy와 같다.
+  - 이 문서에서 "`np.kron`과 비트까지 같다"처럼 numpy·scipy와 비트가 같다고 적은 곳은 지금의 사실이다. 고침이나 최적화로 마지막 자리가 달라질 수 있다.
 
 ---
 
@@ -337,6 +346,7 @@ matrix_rank(x, /, *, rtol=None)
   - **특이 행렬이면 `inf`다.** `ord=-2`는 `0`이다.
     - "특이"는 정확한 0이다 (§1.8). `ord`가 `±2`이면 가장 작은 특이값이 정확히 0일 때, 그 밖에는 LU의 정확한 0 피벗일 때다.
     - 그래서 반올림 때문에 가장 작은 특이값이 0이 아닌 행렬은 큰 유한값을 낸다. 예: `[[1, 2], [2, 4]]`는 `ord=2`에서 약 `2.76e16`, `ord=1`에서 `inf`다.
+  - 특이가 아니어도 역행렬이 double 범위를 넘으면(`inv(x)`에 `inf`나 `nan`이 나오면) `inf`다. `ord=±2`가 아닌 모든 `ord`에서 같다. 예: `[[1, 0], [0, 5e-324]]`
   - 빈 행렬은 `ValueError`다 (§1.10).
 - **`det`, `slogdet`**
   - LU 분해로 계산한다. 특이 행렬에서 에러를 내지 않는다 (§1.8).
@@ -490,6 +500,7 @@ solve_sylvester(a, b, c, /)            # a x + x b = c
   - 두 대역폭은 필수이고, 0 이상의 `int`다. 음수는 `ValueError`다.
   - 행렬 안에 해당하는 원소만 읽고 검사한다. 모서리(행렬 밖)는 NaN이어도 된다. 대역폭이 행렬보다 넓어도 된다.
   - `lower_bandwidth = upper_bandwidth = 1`이면 `solve_tridiagonal`과 같은 루틴으로 푼다. 결과가 비트까지 같다.
+  - 그 밖에는 띠 행렬의 LU다. 행이 8개 이하이면 띠 밖을 0으로 둔 밀집 행렬의 LU로 푼다(호출 고정비 때문, 결과는 반올림 수준에서 다르다).
   - `b`는 §1.3을 따른다. 특이 행렬(정확한 0 피벗)은 `LinAlgError`다.
 - **`solve_sylvester`**
   - `a`는 `(..., M, M)`, `b`는 `(..., N, N)`, `c`는 `(..., M, N)`이다. 결과는 `(..., M, N)`이다.

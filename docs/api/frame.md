@@ -29,6 +29,7 @@
   - 주 인자: `Series(data)`, `DataFrame(data)`, `Index(data)`, `RangeIndex(start, stop, step)`, `head(n)`, `tail(n)`, `astype(dtype)`, `fillna(value)`, `reindex(labels)`, `equals(other)`, `sort_values(by)`, `groupby(by)`, `duplicated(subset)`, `drop_duplicates(subset)`, `value_counts(subset)`, `merge(left, right)`, `merge(right)`, `concat(objs)`, `read_csv(path)`
   - 주 인자를 키워드로 주면 TypeError다. 예: `s.head(n=3)`, `df.sort_values(by="a")`
   - 주 인자의 이름은 API가 아니다. 문서에 적은 이름은 설명을 위한 것이다.
+- **호출 모양의 에러**(없는 인자, 남는 인자, 모르는 키워드, 주 인자를 키워드로)는 생성자(`Series`, `DataFrame`, `Index`, `RangeIndex`)와 `read_csv`, `merge`(함수와 메서드), `concat`, `groupby`에서 함수 이름을 앞에 붙인다: `Series(): unexpected keyword argument 'foo'`, `read_csv(): takes 1 positional argument but 2 were given`. 다른 메서드는 Python의 꼴 그대로다(`Series.head() takes ...`). 호출 하나가 수백 ns인 메서드에 감싸는 비용(호출마다 약 60 ns)을 더하지 않으려는 것이다 (API.md §2.1).
 - **이름은 배열 영역(Python Array API)을 따른다.**
   - 정렬 방향은 `descending=False`다 (`ascending` 없음). `value_counts`의 기본값은 `descending=True`다 (§4.3).
   - 정렬은 `stable=True`도 받는다. frame의 정렬은 언제나 안정이라서 `stable=False`여도 결과가 같다 (§8.1).
@@ -187,6 +188,7 @@ DataFrame(data=None, /, *, index=None, columns=None, dtype=None)
   - int만 있으면 int64가 되어야 하므로 `OverflowError`다. 예: `Series([2**70])`
   - float64로도 나타낼 수 없을 만큼 크면(약 1.8e308 이상) `OverflowError`다 (Python의 `float(int)`와 같다).
 - **str이 다른 타입과 섞이면 에러다** (`TypeError`). object dtype이 없기 때문이다. `dtype=`을 주어도 같다. **[pandas와 다름]**
+- **받는 값**: bool, int, float, str, `None`, `NA`와 numpy의 bool, 정수, 실수(`float16`, `float32`, `float64`, `longdouble`), `str_` 스칼라다. 그 밖의 값은 TypeError다: `cannot store an object of type 'numpy.complex128' in a column (only bool, int, float, str and None)`. Python `complex`, numpy complex, `datetime64`, `timedelta64`, `void`, `bytes_`가 그렇다. numpy complex의 허수부를 버리고 실수로 받지 않는다.
 
 ### §2.3 생성자의 `dtype=`
 - **`dtype=`은 명시적 변환이다.** `astype`(§3.5)과 같은 요청이다. 배열 영역의 생성 함수 `dtype=`과 같다 (array.md §1.5).
@@ -284,6 +286,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
   - NA를 채우거나(`na_value=`) dtype을 바꿔서 새로 만든 배열, `copy=True`의 배열은 쓸 수 있다. 컬럼과 메모리를 나누지 않는다.
   - string 컬럼은 TypeError다. 배열 영역에는 문자열 dtype이 없다. `dtype=sd.string`도 컬럼의 dtype과 상관없이 TypeError다: `to_array(): 'dtype' must be sd.bool, sd.int64 or sd.float64 (or their names), not sd.string ...`
 - **`DataFrame.to_array`**: 새 2차원 배열을 **F-order**로 만든다. 컬럼 하나가 메모리에서 이어져 있고, 컬럼마다 한 번씩 복사한다. `sd.linalg`는 F-order 행렬을 그대로 받는다. dtype 규칙은 `DataFrame.to_numpy`와 같고, `copy=False`는 ValueError다.
+- **다른 영역의 함수에 넘기기**: 데이터를 받는 상위 함수(기술통계, 회귀, optimize의 `x0`)는 Series를 그대로 받는다 (API.md). 원소별 함수, 배열 연산, 분포는 `sd.ndarray`만 받으므로 `to_array()`로 바꿔 넘긴다.
 - **`Series(배열)`, `DataFrame(2차원 배열)`**: `sd.ndarray`에서 만들면 **언제나 복사한다.** 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있어서 frame의 Copy-on-Write가 따라갈 수 없다.
   - bool, int64, float64 배열을 받는다. complex128은 TypeError다. `Series`는 1차원, `DataFrame`은 2차원만 받는다.
   - `dtype=`는 명시적 변환이다 (§2.3).
@@ -295,7 +298,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
 ### §3.1 피연산자
 - **Series와 Series**: 라벨로 정렬(alignment)한다 (§5.6).
 - **Series와 스칼라, 스칼라와 Series**
-  - 스칼라는 Python 스칼라, numpy 스칼라, `NA`다.
+  - 스칼라는 Python 스칼라(bool, int, float, str), numpy 스칼라, `NA`다. numpy의 complex, `datetime64`, `timedelta64`, `void`, `bytes_` 스칼라는 Python `complex`처럼 스칼라로 받지 않는다. 연산자는 TypeError다.
   - int64 범위 밖의 int 스칼라는 배열과 같은 규칙이다 (array.md §1.5): float64 컬럼과 만나면 float로 바꿔 계산하고(`s_float + 2**70`), 그 밖에는 `OverflowError`다(`s_int + 2**70`).
 - **DataFrame과 스칼라**
 - **DataFrame과 DataFrame**
@@ -478,6 +481,7 @@ RangeIndex.equals(other, /)
 - **`Index(data)`**: 라벨은 int64나 string이다. float, bool, NA는 에러다 (§1.7). 모두 NA이면(`Index([None])`) 추론한 dtype을 말하지 않고 `Index(): an index cannot hold NA`다.
 - **`RangeIndex`**: `start`, `stop`, `step`은 생성 인자다. 배열의 `arange`처럼 위치로만 주고, 첫 인자는 꼭 준다(`RangeIndex(5)`는 `0`부터 `4`). int64 라벨로 친다.
   - 세 인자는 int 인자다 (§1.1): Python int와 numpy 정수를 받고(bool, `numpy.bool_`, float는 TypeError), int64 범위 밖이면 OverflowError다. `arange`와 같다.
+  - 라벨이 2^63 − 1개를 넘으면 ValueError다: `RangeIndex(): the range has more than 2**63 - 1 labels`. 위치가 int64이므로 그 뒤의 라벨에 닿을 수 없다.
 - **`name`**은 `str` 또는 `None`이다 (`Series.name`과 같은 규칙, §2.6).
   - 연산 결과의 Index 이름은 Series 이름 규칙을 따른다: 같으면 유지하고, 다르면 `None`이다 (§3.1).
   - repr은 pandas처럼 이름을 보여 준다.
@@ -499,13 +503,13 @@ DataFrame.reindex(labels, /)        # 행만
 ```
 - 주어진 라벨 순서로 행을 다시 배열한다. 없는 라벨은 NA다.
 - 원래 라벨은 고유해야 한다.
-- 빈 list나 tuple(`reindex([])`)은 행이 없는 결과다. Index의 dtype은 원래 Index의 것이다 (`.loc[[]]`와 같다).
+- 빈 라벨(`reindex([])`)은 행이 없는 결과다. Index의 dtype은 원래 Index의 것이다 (`.loc[[]]`와 같다). list, tuple, range, numpy 배열, `sd.ndarray` 어느 것으로 주어도 같다. 원래 Index가 int64 라벨이면 빈 range는 RangeIndex로 남는다.
 - `method`, `fill_value` 등은 없다.
 
 ### §5.3 `[]`
 - **DataFrame**
   - `df["a"]`: 컬럼 하나 (Series)
-  - `df[["a", "b"]]`: 컬럼 여러 개 (DataFrame). 이름의 1차원 numpy 배열도 list와 같다 (§5.4의 배열 키).
+  - `df[["a", "b"]]`: 컬럼 여러 개 (DataFrame). `.loc`의 열 자리와 같은 것을 받는다: list, tuple, Index, 이름의 1차원 numpy 배열 (§5.4의 배열 키).
   - `df[bool Series]`: 행 필터 (§5.5)
   - `df[1:3]`처럼 `[]`로 행을 자르는 것은 지원하지 않는다. `.iloc`을 쓴다. **[pandas와 다름]**
 - **Series**
@@ -531,7 +535,7 @@ DataFrame.iloc
   - bool Series 마스크 (§5.5)
 - **`.iloc`에 쓸 수 있는 것**: 정수(음수 가능, numpy 정수 포함), 슬라이스, 정수 리스트
   - 범위를 벗어나면 IndexError다. DataFrame의 열 자리는 메시지가 열을 말한다: `position 9 is out of range for 2 columns`
-  - **위치 키의 형태가 틀리면 IndexError다.** 배열의 인덱스와 같다 (API.md §2). 예: `s.iloc[True]`, `s.iloc[1.0]`, `s.iloc["a"]`는 `cannot select rows by position with float; use an int, a slice or a list of ints`, `s.iloc[[1.0]]`은 `positions must be ints, not float`다.
+  - **위치 키의 형태가 틀리면 IndexError다.** 배열의 인덱스와 같다 (API.md §2). 예: `s.iloc[True]`, `s.iloc[1.0]`, `s.iloc["a"]`는 `cannot select rows by position with float; use an int, a slice or a list of ints`, `s.iloc[[1.0]]`은 `positions must be ints, not float`다. 슬라이스의 양 끝이나 step이 int나 `None`이 아니어도 같다: `s.iloc["a":"b"]`는 `cannot select rows by position with a slice of str; the ends and the step must be ints or None`, `df.iloc[:, "a":"b"]`는 같은 문장의 `columns`다.
 - **배열 키**: 리스트를 받는 자리(라벨 리스트, 정수 리스트, DataFrame의 열 자리)는 1차원 numpy 배열과 `sd.ndarray`도 받는다. 리스트와 같은 뜻이고, 두 배열은 같은 결과를 낸다. bool 배열은 마스크가 아니다: bool은 위치나 int 라벨이 아니라서 `.iloc`에서는 IndexError, `.loc`에서는 TypeError다. 마스크는 bool Series다 (§5.5).
 - **DataFrame**
   - `df.loc[행]`, `df.loc[행, 열]`, `df.iloc[행]`, `df.iloc[행, 열]`
@@ -654,18 +658,18 @@ DataFrame.var(*, skipna=True, correction=0)
 - **0.0과 -0.0**: `min`과 `max`는 `-0.0 < 0.0`으로 본다. numpy와 같고, IEEE 754-2019의 minimum, maximum이다.
 
 ### §6.5 계산 순서
-- **float 합의 순서**: numpy의 pairwise summation이다. 블록 128개, 누산기 8개, 절반씩 재귀하고, 0.0에서 시작한다.
-  - NA가 없으면 pandas, numpy와 비트까지 같다.
+- **float 합의 순서**: 모든 영역이 함께 쓰는 pairwise summation이다(numpy와 같은 알고리즘에 잎이 더 넓다: 블록 512개, 누산기 16개). 절반씩 재귀하고, 0.0에서 시작한다.
+  - 배열 영역의 합과 비트까지 같다. NA가 없으면 `s.sum()`은 `sd.sum(s.to_array())`다.
+  - numpy, pandas와는 반올림 오차 안에서 같고 마지막 자리가 다를 수 있다. numpy와 비트까지 같은 것은 약속이 아니다. 약속하는 것은 스레드 수와 상관없는 비트(§12), 배열 영역과 같은 비트, 정확도다 (API.md).
   - NA 행은 0.0으로 채워져 있으므로 그대로 더한다.
   - 재귀 트리의 가지를 나눠서 병렬로 계산하므로, 스레드 수와 상관없이 비트가 같다 (§12).
-- **int64의 `mean`은 배열 영역의 계산을 그대로 쓴다.** `sd.sum(x, dtype=sd.float64)`(NA 행은 0)를 NA가 아닌 값의 개수로 나눈다.
-  - 그래서 NA가 없으면 `sd.mean(s.to_array())`와 비트까지 같다.
-  - int는 더하기 전에 float64로 바뀐다. 2^53을 넘는 값은 반올림된 뒤 더해진다 (numpy, pandas와 같다).
-  - 형변환이 있는 배열의 리덕션은 numpy와 덧셈 순서가 같다고 보장하지 않으므로, 긴 컬럼에서는 numpy와 마지막 비트가 다를 수 있다 (array.md §7.8, DESIGN §9.8).
+- **int64의 `mean`은 정확한 정수 합을 한 번 반올림한 값이다.** NA가 아닌 값의 합을 정수로 정확히 더하고(넘침 없음), double로 한 번 반올림한 뒤 개수로 한 번 나눈다. 배열 영역의 `sd.mean`과 같은 계산이다.
+  - 그래서 NA가 없으면 `sd.mean(s.to_array())`와 비트까지 같고, groupby의 그룹 `mean`(§7.5)과도 같다.
+  - 2^53을 넘는 값도 더하기 전에 반올림되지 않는다. numpy와 pandas는 값마다 float64로 바꾼 뒤 더하므로, 큰 값이나 긴 컬럼에서는 마지막 자리가 다를 수 있다(우리 쪽이 더 정확하다).
   - bool의 `mean`은 True의 개수를 개수로 나눈다.
 - **`var`**는 두 번 훑어서 계산한다.
   1. 평균을 구한다 (int64는 위의 평균).
-  2. 편차 제곱 `(x - 평균)²`을 pairwise로 더한다.
+  2. 편차 제곱 `(x - 평균)²`을 pairwise로 더한다. 제곱마다 fma 하나로 더한다(반올림 한 번). 배열 영역의 `var`와 같아서, NA가 없으면 `sd.var(s.to_array())`와 비트까지 같다.
   3. `개수 - correction`으로 나눈다.
   - `std`는 `sqrt(var)`이다.
 
@@ -734,13 +738,12 @@ GroupBy.last(*, skipna=True)
 - 결과 컬럼 이름이 키 컬럼과 겹치면 에러다.
 
 ### §7.5 계산 순서
-- **float 합은 그룹마다 numpy pairwise로 더한다** (§6.5). **[pandas와 다름]**
+- **float 합은 그룹마다 같은 pairwise로 더한다** (§6.5). **[pandas와 다름]**
   - 행을 그룹별로 모은 뒤(counting sort), 각 그룹의 행을 원래 순서대로 더한다.
   - 그래서 한 그룹의 합은 그 행들만 골라낸 Series의 `sum()`과 비트까지 같다.
   - pandas는 행 순서대로 Kahan 보정 합을 쓴다.
-- **int64의 그룹 `mean`**(과 `std`, `var` 안의 평균)은 그룹의 행을 float64로 바꿔 같은 pairwise로 더한 뒤(0.0에서 시작) 개수로 나눈다.
-  - 그룹이 4,096행 이하이면 그 행들만 골라낸 Series의 `mean()`(§6.5)과 비트까지 같다.
-  - 더 크면 마지막 비트가 다를 수 있다. Series의 `mean()`은 배열 영역의 합을 쓰고, 배열은 형변환을 4,096원소 버퍼 단위로 하며 더한다.
+- **int64의 그룹 `mean`**(과 `std`, `var` 안의 평균)은 Series처럼 그룹의 정확한 정수 합을 한 번 반올림해 개수로 나눈다 (§6.5).
+  - 그래서 그룹의 크기와 상관없이 그 행들만 골라낸 Series의 `mean()`과 비트까지 같다. `var`, `std`도 같다.
 
 ---
 
@@ -860,14 +863,15 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
   - 지정한 컬럼은 추론하지 않고, `astype`의 엄격한 파싱(§3.5)으로 읽는다. 읽을 수 없는 값은 에러이고, 줄 번호를 알려 준다.
 - `na_values`: 빈 필드 말고도 NA로 읽을 문자열의 리스트다.
 - `path`: str, bytes나 경로 객체(`os.PathLike`)다. 다른 값은 TypeError다: `read_csv(): 'path' must be a str or a path-like object, not int`
-- `nrows`: 데이터 행을 최대 몇 개까지 읽을지다. int 인자다 (§1.1): bool은 TypeError, 음수는 ValueError다.
+- `nrows`: 데이터 행을 최대 몇 개까지 읽을지다. int 인자다 (§1.1): bool은 TypeError, 음수는 ValueError다. 파일은 그 행이 끝나는 곳까지만 읽는다.
 - `index_col`: Index가 될 컬럼 이름(str) 하나다.
   - int64나 string이어야 하고, NA가 없어야 한다 (§1.7).
   - Index 이름은 컬럼 이름이다. 이 컬럼은 컬럼 목록에서 빠진다.
 - `encoding`, `skiprows`, `comment`, `quotechar`, `thousands`, `decimal`, `parse_dates`, `converters` 등 나머지 옵션은 없다.
 
 ### §10.2 파일 형식
-- UTF-8만 받는다. 맨 앞의 BOM은 건너뛴다. string 값은 올바른 UTF-8이어야 한다.
+- UTF-8만 받는다. 맨 앞의 BOM은 건너뛴다. string 값과 헤더의 컬럼 이름은 올바른 UTF-8이어야 한다. 아니면 줄 번호와 함께 ValueError다: `read_csv(): line 1: column names are not valid UTF-8`
+  - 에러 메시지에 필드의 값을 보일 때, 올바른 UTF-8이 아닌 바이트는 `\xff`처럼 쓴다: `read_csv(): line 2: column 'a': cannot read '\xff' as int64`
 - **줄바꿈**은 `\n` 또는 `\r\n`이다. 파일 끝의 마지막 줄바꿈은 빈 줄을 만들지 않는다.
   - `\n` 바로 앞이 아닌 `\r`은 값의 일부다. 예: `x\r,y`의 첫 필드는 `x\r`이다.
   - 닫는 따옴표 뒤의 `\r`은 에러다.
@@ -938,7 +942,6 @@ read_csv(path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None,
 - **에러**도 스레드 수와 상관없다. 잘못된 값이 여러 개면 항상 첫 번째(행 순서, CSV는 파일 순서)를 알린다.
 - **GIL**: 작업량이 임계값(131,072 원소) 이상이면 스레드 수와 상관없이 커널을 실행하는 동안 GIL을 놓는다. 그래서 `sd.set_num_threads(1)`이어도 다른 Python 스레드가 함께 돈다.
   - 모든 영역이 같은 규칙을 쓰고, 기준값만 영역마다 다르다 (API.md §3).
-  - int64의 `mean`(과 `std`, `var` 안의 평균)은 배열 영역의 합을 쓰므로(§6.5) 그 부분은 배열의 기준값(32,768 원소)부터 GIL을 놓는다.
 - **동시 대입**: 연산은 호출한 시점의 값을 본다(스냅샷).
   - 대입(`s[i] = v`, `s.iloc[...] = ...`)은 GIL을 쥔 채로 실행한다. 그래서 다른 연산은 대입 전이나 후의 값만 본다.
   - 대입은 먼저 자기만의 Column 객체를 만들고 거기에 쓴다. 진행 중인 연산은 옛 Column 객체를 잡고 있어서 버퍼가 공유 상태이므로, 대입이 Copy-on-Write 규칙(§5.7)에 따라 버퍼를 복사한다.

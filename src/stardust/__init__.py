@@ -1,6 +1,9 @@
-"""stardust: an educational library that rebuilds arrays, linear algebra and dataframes.
+"""stardust: a library that rebuilds arrays, linear algebra, dataframes,
+special functions, statistics, random numbers, regression and optimization.
 
-Usage: ``import stardust as sd``. The top level is the array area (docs/api/array.md).
+Usage: ``import stardust as sd``. The top level is the array area (docs/api/array.md);
+the others are sd.linalg, sd.frame, sd.special, sd.stats, sd.random, sd.regression
+and sd.optimize.
 """
 
 import math as _math
@@ -154,6 +157,7 @@ from ._core import (
     tan,
     tanh,
     tensordot,
+    vecdot,
     tile,
     tril,
     triu,
@@ -356,7 +360,6 @@ __all__ = [
 ]
 
 from . import linalg  # noqa: E402  (sd.linalg; it needs the array objects above)
-from .linalg import vecdot  # noqa: E402  (Array API: the same function at the top level and in linalg)
 from . import frame  # noqa: E402  (sd.frame)
 from . import special  # noqa: E402  (sd.special)
 from . import random  # noqa: E402  (sd.random)

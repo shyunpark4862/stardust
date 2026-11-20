@@ -1,5 +1,6 @@
 """DataFrame: named Columns of one length plus row labels (docs/design/frame.md §5.1)."""
 
+from .. import _calls
 from . import _column, _core, _dtypes, _format, _ops, _select, _sort, _unique
 from ._column import _NO_VALUE
 from ._dtypes import resolve
@@ -12,12 +13,15 @@ from ._series import Series, fill_column
 Column = _core.Column
 
 
+# The containers of several column names (with a 1-D numpy array of names):
+# the constructor's columns=, df[...] and .loc's column place.
+_NAME_LISTS = (list, tuple, dict, type({}.keys()), _IndexBase)
+
+
 def _check_columns(columns, func=None):
     """`func`: the public function, or None for indexing (df[[...]], .loc)."""
-    from ._index import _IndexBase
-
     # a list-like of names; not a generator (as the array area's list arguments)
-    if not isinstance(columns, (list, tuple, dict, type({}.keys()), _IndexBase)) and not _column.is_ndarray(columns):
+    if not isinstance(columns, _NAME_LISTS) and not _column.is_ndarray(columns):
         raise TypeError(named(func, f"column names must be given as a list, not {type_name(columns)}"))
     columns = list(columns)
     for c in columns:
@@ -34,6 +38,7 @@ def _check_columns(columns, func=None):
 class DataFrame(Reductions):
     __slots__ = ("_cols", "_index")
 
+    @_calls.method("DataFrame")
     def __init__(self, data=None, /, *, index=None, columns=None, dtype=None):
         dtype = resolve(dtype, "DataFrame") if dtype is not None else None
         target = ensure_index(index, "DataFrame") if index is not None else None
@@ -141,7 +146,7 @@ class DataFrame(Reductions):
                 {k: _select.select_column(c, sel) for k, c in self._cols.items()},
                 _select.select_index(self._index, sel),
             )
-        if isinstance(key, list) or _column.is_ndarray(key):  # an array of names as a list (docs/api/frame.md §5.4)
+        if isinstance(key, _NAME_LISTS) or _column.is_ndarray(key):  # as .loc's column place (docs/api/frame.md §5.3)
             names = _check_columns(key)
             return DataFrame._new({k: self._column(k) for k in names}, self._index)
         return Series._new(self._column(key), self._index, key)
@@ -156,7 +161,7 @@ class DataFrame(Reductions):
         if isinstance(value, Series):
             col = _select.reindexed(value._col, value._index, self._index)  # matched by label
         elif _column.is_scalar(value):
-            col = _column.column_from([value] * n)
+            col = _column.full(value, n)
         else:
             col = _column.column_from(value)
             if not self._cols and n == 0:  # the first column of an empty frame sets the length
@@ -216,12 +221,14 @@ class DataFrame(Reductions):
         check_bool(ignore_index, "ignore_index", "sort_index")
         return self._take(_sort.order([self._index._column()], descending, "last", stable, "sort_index"), ignore_index)
 
+    @_calls.method("merge")
     def merge(self, right, /, *, how="inner", on=None, left_on=None, right_on=None, sort=False, suffixes=("_x", "_y")):
         """sd.frame.merge(self, right, ...): a hash join on key columns (docs/api/frame.md §9.1)."""
         from ._merge import merge
 
         return merge(self, right, how=how, on=on, left_on=left_on, right_on=right_on, sort=sort, suffixes=suffixes)
 
+    @_calls.method("groupby")
     def groupby(self, by, /, *, sort=True, dropna=True):
         """Group the rows by the values of the key column(s) `by` (docs/api/frame.md §7.1)."""
         from ._groupby import GroupBy
@@ -317,7 +324,7 @@ class DataFrame(Reductions):
         if bad:
             raise TypeError(f"unsupported operand dtype for unary + in columns {bad}")
         if all(c.dtype != "bool" for c in self._cols.values()):
-            return self
+            return DataFrame._new(dict(self._cols), self._index)  # a new object; the Buffers are shared (CoW)
         return self._map_columns(lambda c: c.astype("int64") if c.dtype == "bool" else c)  # bool as int64, as with -
 
     def __invert__(self):
@@ -363,7 +370,7 @@ class DataFrame(Reductions):
             valid = self._cols[k].notna()
             keep = valid if keep is None else _core.binary_op(combine, keep, valid, 0)
         if keep is None:  # no columns to look at: every row stays
-            keep = _core.Column.from_list([True] * len(self), None, "bool")  # "bool": an empty list infers float64
+            keep = _column.full(True, len(self), "bool")  # "bool": an empty list infers float64
         return self._take(keep.nonzero(), ignore_index)
 
     def to_numpy(self, *, dtype=None, copy=None, na_value=_NO_VALUE):
@@ -382,10 +389,17 @@ class DataFrame(Reductions):
         dtype = resolve(dtype, func) if dtype is not None else None
         if dtype is None:
             dtype = _column.common_dtype(self._cols.values(), func, "numpy")
-        arrays = [_column.to_numpy(c, dtype, True, na_value, func) for c in self._cols.values()]
-        if not arrays:
+        if not self._cols:
             return np.empty((len(self), 0))
-        return np.stack(arrays, axis=1)
+        # Each column read once: a column without NA of the result's dtype
+        # through its view, uncopied; then the rows written in order.
+        arrays = [_column.to_numpy(c, dtype, None, na_value, func) for c in self._cols.values()]
+        if dtype != "string":
+            return Column.rows_from_columns(arrays, len(self))
+        out = np.empty((len(self), len(arrays)), dtype=object)
+        for j, a in enumerate(arrays):
+            out[:, j] = a
+        return out
 
     def __array__(self, dtype=None, copy=None):
         """numpy's protocol: to_numpy's array (DESIGN.md §10.1 #6), no function name in messages."""
@@ -478,7 +492,7 @@ def _from_dict(data, dtype, target):
         length = 0
     for k, v in cols.items():
         if _column.is_scalar(v):
-            cols[k] = _column.column_from([v] * length, dtype, "DataFrame")
+            cols[k] = _column.full(v, length, dtype, "DataFrame")
     return cols, index if index is not None else RangeIndex(length)
 
 
@@ -535,14 +549,15 @@ class _FrameIndexer:
                 start = names.index(key.start) if key.start is not None else 0
                 stop = names.index(key.stop) + 1 if key.stop is not None else len(names)  # both ends included
                 return names[start:stop]
-            if not isinstance(key, (list, tuple, dict, type({}.keys()), _IndexBase)) and not _column.is_ndarray(key):
+            if not isinstance(key, _NAME_LISTS) and not _column.is_ndarray(key):
                 raise TypeError(f"column names must be str (or a list or slice of str), not {type_name(key)}")
             names_key = _check_columns(key)
             for k in names_key:
                 self._df._column(k)
             return names_key
         if isinstance(key, slice):
-            return names[key]
+            _, start, stop, step = _select.by_position(len(names), key, "columns")
+            return [names[j] for j in range(start, stop, step)]
         if isinstance(key, list) or _select.is_array(key):  # a numpy array or sd.ndarray of positions too
             return [names[_select.by_position(len(names), j, "columns")[1]] for j in _select.array_items(key)]
         return names[_select.by_position(len(names), key, "columns")[1]]

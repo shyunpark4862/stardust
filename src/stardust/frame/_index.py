@@ -6,8 +6,10 @@ and kept by the Index (docs/design/frame.md §6.2): an Index never changes, so t
 table never goes stale.
 """
 
+import operator
 import sys
 
+from .. import _calls
 from . import _core, _dtypes, _format
 from ._errors import check_int, named, type_name
 from ._na import NA
@@ -183,6 +185,7 @@ class RangeIndex(_IndexBase):
 
     __slots__ = ("_range", "_name", "_labels")
 
+    @_calls.method("RangeIndex")
     def __init__(self, start, stop=None, step=1, /, *, name=None):
         # int arguments, as arange's start/stop/step are required and take ints (API.md §2)
         start, step = check_int(start, "start", "RangeIndex"), check_int(step, "step", "RangeIndex")
@@ -193,6 +196,10 @@ class RangeIndex(_IndexBase):
         if stop is None:
             start, stop = 0, start
         self._range = range(start, stop, step)
+        try:
+            len(self._range)
+        except OverflowError:  # past Py_ssize_t, which is int64: no int64 position reaches the last labels
+            raise ValueError("RangeIndex(): the range has more than 2**63 - 1 labels") from None
         self._name = check_name(name, "an Index", "RangeIndex")
         self._labels = None
 
@@ -257,10 +264,10 @@ class RangeIndex(_IndexBase):
 
     def _position_of(self, label):
         check_label(self, label)
-        r = self._range
-        if label not in r:  # arithmetic, no table needed
+        r, i = self._range, operator.index(label)  # a Python int: range answers by arithmetic only for int
+        if i not in r:  # arithmetic, no table needed
             raise KeyError(label)
-        return r.index(label)
+        return r.index(i)
 
     def _slice(self, start, stop, step=1):  # the labels at positions range(start, stop, step)
         # Not self._range[start:stop:step]: the positions come from slice.indices(), where a
@@ -289,6 +296,7 @@ class Index(_IndexBase):
 
     __slots__ = ("_col", "_name", "_labels")
 
+    @_calls.method("Index")
     def __init__(self, data, /, *, name=None):
         self._col = _labels_from(data, "Index")
         self._name = check_name(name, "an Index", "Index")
@@ -376,11 +384,22 @@ def _labels_from(data, func):
 def ensure_index(labels, func, like=None):
     """An Index or RangeIndex for `labels` (kept as is when it already is one),
     made by the public function `func` (for messages). No labels at all take
-    the dtype of the index `like` (reindex([]) of string labels keeps string
-    labels, as .loc[[]] does)."""
+    the dtype of the index `like`, whatever holds them (reindex([]) of string
+    labels keeps string labels, as .loc[[]] does); an empty range stays a
+    RangeIndex when `like` has int64 labels."""
+    from ._column import is_ndarray, is_sdarray
+
     if isinstance(labels, _IndexBase):
         return labels
-    if like is not None and isinstance(labels, (list, tuple)) and len(labels) == 0:
+    if (
+        like is not None
+        and (
+            isinstance(labels, (list, tuple, range))
+            or ((is_ndarray(labels) or is_sdarray(labels)) and labels.ndim == 1)
+        )
+        and len(labels) == 0
+        and not (isinstance(labels, range) and like._dtype == "int64")
+    ):
         return Index._new(Column.from_list([], NA, like._dtype))
     if isinstance(labels, range):
         return RangeIndex._from_range(labels)

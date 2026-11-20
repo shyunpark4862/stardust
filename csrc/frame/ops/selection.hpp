@@ -3,6 +3,7 @@
 
 #include "frame/column.hpp"
 
+#include <utility>
 #include <vector>
 
 namespace sd::frame {
@@ -42,7 +43,17 @@ void set_rows(Column& col, const Column& positions, const Column& values);
 // The columns one after another (all of one dtype).
 Column concat(const std::vector<Column>& cols);
 
-// int64 start, start + step, ... (n values).
+// int64 start, start + step, ... (n values), wrapping as int64 arithmetic does.
 Column arange(std::int64_t start, std::int64_t step, std::int64_t n);
+
+// Positions given by position (int64, no NA, negative ones counting from the
+// end) as positions in [0, n), with the index of the first one outside
+// [-n, n), or -1 when all are inside. The index is the same for any thread
+// count (parallel::FirstRow), so the caller's message names the first bad key.
+std::pair<Column, std::int64_t> wrap_positions(const Column& positions, std::int64_t n);
+
+// n rows of the one-row `value`: its value in every row, or all NA when it
+// is NA (values 0, docs/design/frame.md §4.5). The dtype is the value's.
+Column full(const Column& value, std::int64_t n);
 
 }  // namespace sd::frame

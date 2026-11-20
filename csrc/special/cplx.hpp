@@ -4,6 +4,7 @@
 // sign of a zero imaginary part (the side of a branch cut).
 #pragma once
 
+#include "special/sincos.hpp"
 #include "array/kernels/scalar_ops.hpp"
 
 #include <cmath>
@@ -47,7 +48,8 @@ inline cplx clog1p(cplx w) {
 }
 inline cplx cexp(cplx z) {
     const double m = std::exp(z.real());
-    return {m * std::cos(z.imag()), m * std::sin(z.imag())};
+    const SinCos sc = sincos(z.imag());
+    return {m * sc.c, m * sc.s};
 }
 // The principal square root (Kahan): the sign of a zero imaginary part picks the side of the cut.
 inline cplx csqrt(cplx z) {

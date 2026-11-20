@@ -416,7 +416,7 @@ int expm_one(const Input& x, std::int64_t off, lint n, T* o, Scratch& s) {
     T* Q = buf[4];
     for (lint k = 0; k < nn; ++k) Q[k] = P[k] - U[k];
     lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
-    if (lapack::getrf(n, n, Q, n, ipiv) > 0) return kSingular;  // not seen: V - U is well conditioned for these degrees
+    if (lapack::lu_in_place(n, n, Q, n, ipiv) > 0) return kSingular;  // not seen: V - U is well conditioned here
     lapack::getrs('N', n, n, Q, n, ipiv, U, n);
     for (lint k = 0; k < nn; ++k) P[k] = U[k] * 2.0;
     for (lint d = 0; d < n; ++d) P[d * n + d] += 1.0;
@@ -470,7 +470,7 @@ nb::object expm(nb::handle xo) {
 }  // namespace
 
 void bind_expm(nb::module_& m) {
-    m.def("expm", named("expm", &expm), nb::arg().none());
+    m.def("expm", named("expm", &expm), nb::sig("def expm(x, /)"), nb::arg().none());
     // For measurements only: move the estimator threshold (docs/design/linalg.md §7.7).
     m.def("_set_expm_estimate_min", [](std::int64_t n) { kExpmEstimateMin = n; });
 }

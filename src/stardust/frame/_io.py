@@ -2,6 +2,7 @@
 
 import os
 
+from .. import _calls
 from . import _core
 from ._dtypes import resolve
 from ._errors import check_bool, check_int, type_name
@@ -19,6 +20,25 @@ def _str_list(value, what):  # for read_csv()
     return list(value)
 
 
+def _read_records(f, records):
+    """The file's bytes up to the end of its first `records` records (all of
+    it when it has fewer): with nrows=, the file is read in growing blocks
+    and no further than needed."""
+    parts, size, block = [], 0, 1 << 16
+    while True:
+        more = f.read(block)
+        if not more:
+            return b"".join(parts)
+        parts.append(more)
+        size += len(more)
+        data = b"".join(parts)
+        end = _core.csv_records_end(data, records)
+        if end >= 0:
+            return data[:end]
+        parts, block = [data], max(block, size)  # doubling: each byte is scanned a few times at most
+
+
+@_calls.function
 def read_csv(
     path, /, *, sep=",", header=True, names=None, usecols=None, dtype=None, na_values=None, nrows=None, index_col=None
 ):
@@ -58,7 +78,7 @@ def read_csv(
         raise ValueError(f"read_csv(): 'nrows' must be >= 0, not {nrows}")
 
     with open(os.fspath(path), "rb") as f:
-        data = f.read()
+        data = f.read() if nrows is None else _read_records(f, nrows + (1 if header else 0))
     out_names, cols = _core.read_csv(
         data, sep, header, names, usecols, dtypes, all_dtype, na_values, -1 if nrows is None else nrows
     )

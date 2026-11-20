@@ -91,7 +91,7 @@ void def_real_complex(nb::module_& m) {
                 return is_complex_operand(x) ? call<Complex>(objs, out) : call<Real>(objs, out);
             });
         },
-        nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+        nb::sig(nary_bind::signature<Real>()), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
     );
 }
 
@@ -118,8 +118,8 @@ void bind_special(nb::module_& core) {
     def_naries<Erfinv, Erfcinv, Ndtr, LogNdtr, Ndtri>(m);  // S2, §2
     def_naries<ErfcSelect, ErfcEstrin>(m);  // S2 measurement variants (special/ops/erf.hpp)
     def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
-    def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §3
-    def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §3
+    def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §4
+    def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §4
     def_naries<
         Stdtr, Stdtrit, Chdtr, Chdtrc, Chdtri, Fdtr, Fdtrc, Fdtri, Pdtr, Pdtrc, Bdtr, Bdtrc, Nbdtr, Nbdtrc,
         NdtriExp>(m);  // T1, §13
@@ -140,23 +140,24 @@ void bind_special(nb::module_& core) {
         "lambertw",
         [](nb::handle x, nb::handle k, nb::handle out) {
             return call_named("lambertw", [&] {
-                if (!PyLong_Check(k.ptr()) || PyBool_Check(k.ptr())) throw nb::type_error("'k' must be an int");
+                // an int as every int argument (numpy integers too, bool not): TypeError, and
+                // OverflowError beyond int64 (API.md §2)
+                const std::int64_t kv = parse_int(k, "k");
                 if (is_complex_operand(x)) {
-                    const long kv = PyLong_AsLong(k.ptr());
-                    if (kv == -1 && PyErr_Occurred()) throw nb::python_error();
+                    // the branch goes to the loop as a double: exact up to 2^53
+                    if (kv > (std::int64_t{1} << 53) || kv < -(std::int64_t{1} << 53))
+                        throw nb::value_error("'k' must be at most 2**53 in magnitude");
                     const nb::object kc = nb::steal(PyComplex_FromDoubles(static_cast<double>(kv), 0.0));
                     const nb::handle objs[] = {x, kc};
                     return call<LambertwComplex>(objs, out);
                 }
-                int overflow = 0;  // a k beyond long is neither 0 nor -1 (not -1 by PyLong_AsLong's error value)
-                const long kv = PyLong_AsLongAndOverflow(k.ptr(), &overflow);
-                if (overflow != 0 || (kv != 0 && kv != -1))
-                    throw nb::value_error("'k' must be 0 or -1 for a real argument");
+                if (kv != 0 && kv != -1) throw nb::value_error("'k' must be 0 or -1 for a real argument");
                 const nb::handle objs[] = {x};
                 return kv == 0 ? call<Lambertw0>(objs, out) : call<LambertwM1>(objs, out);
             });
         },
-        nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0, nb::arg("out").none() = nb::none()
+        nb::sig("def lambertw(x, /, *, k=0, out=None)"), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0,
+        nb::arg("out").none() = nb::none()
     );
     // airy(x, /) -> AiryResult(ai, aip, bi, bip) (§9; stardust._results)
     record<Airy>("airy");
@@ -172,7 +173,7 @@ void bind_special(nb::module_& core) {
                 return cls(*t);
             });
         },
-        nb::arg().none()
+        nb::sig("def airy(x, /)"), nb::arg().none()
     );
     def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
@@ -190,7 +191,8 @@ void bind_special(nb::module_& core) {
                 return call<Hurwitz>(objs, out);
             });
         },
-        nb::arg().none(), nb::arg().none() = nb::none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+        nb::sig("def zeta(x, q=None, /, *, out=None)"), nb::arg().none(), nb::arg().none() = nb::none(), nb::kw_only(),
+        nb::arg("out").none() = nb::none()
     );
     // S5 reductions (§6): the array's max and pairwise sum (special/reduce.cpp)
     m.def(
@@ -198,17 +200,19 @@ void bind_special(nb::module_& core) {
         [](nb::handle x, nb::handle axis, nb::handle keepdims) {
             return call_named("logsumexp", [&] { return logsumexp(x, axis, keepdims); });
         },
-        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
+        nb::sig("def logsumexp(x, /, *, axis=None, keepdims=False)"), nb::arg().none(), nb::kw_only(),
+        nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
     );
     m.def(
         "softmax",
         [](nb::handle x, nb::handle axis) { return call_named("softmax", [&] { return softmax(x, axis); }); },
-        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none()
+        nb::sig("def softmax(x, /, *, axis=None)"), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none()
     );
     m.def(
         "log_softmax",
         [](nb::handle x, nb::handle axis) { return call_named("log_softmax", [&] { return log_softmax(x, axis); }); },
-        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = nb::none()
+        nb::sig("def log_softmax(x, /, *, axis=None)"), nb::arg().none(), nb::kw_only(),
+        nb::arg("axis").none() = nb::none()
     );
     def_naries<Fma3, Sum4, Powers4, CfTan>(m);  // engine tests (special/ops/testing.hpp)
     m.def("_parallel_tasks", &parallel_tasks, nb::arg("n"), nb::arg("weight"));

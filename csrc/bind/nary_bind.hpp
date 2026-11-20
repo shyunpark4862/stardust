@@ -5,15 +5,19 @@
 #pragma once
 
 #include "array/ops/ufunc.hpp"
+#include "array/parallel_limits.hpp"
+#include "bind/pyutil.hpp"
 #include "bind/errors.hpp"
 #include "special/cost.hpp"
 #include "special/kernels/chunked.hpp"
 
 #include <nanobind/nanobind.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <utility>
 
 namespace sd::nary_bind {
@@ -32,11 +36,11 @@ constexpr const LoopTable& table_of() {
     else return nary_table<Op>;
 }
 
-// The weight of a call: the Op's cost, or, for an Op whose cost depends on its scalar
-// parameters (stats' discrete distributions on a narrow support: Op::cost_for), the cost for
-// the parameters given, when every parameter is a Python float or int.
+// The cost of a call per element in ns: the Op's cost, or, for an Op whose cost depends on
+// its scalar parameters (stats' discrete distributions on a narrow support: Op::cost_for),
+// the cost for the parameters given, when every parameter is a Python float or int.
 template <typename Op>
-std::int64_t weight_for(std::span<const nb::handle> objs) {
+double cost_for(std::span<const nb::handle> objs) {
     if constexpr (requires {
                       Op::memo_cost_ns;
                       Op::kParams;
@@ -50,19 +54,74 @@ std::int64_t weight_for(std::span<const nb::handle> objs) {
                     p[k] = PyLong_AsDouble(o);
                     if (p[k] == -1.0 && PyErr_Occurred()) {
                         PyErr_Clear();
-                        return special::weight_of(Op::cost_ns);
+                        return Op::cost_ns;
                     }
-                } else return special::weight_of(Op::cost_ns);
+                } else return Op::cost_ns;
             }
-            return special::weight_of(Op::cost_for(p));
+            return Op::cost_for(p);
         }
     }
-    return special::weight_of(Op::cost_ns);
+    return Op::cost_ns;
+}
+
+// The number of elements of the call's broadcast shape, from its array operands and out=
+// (scalars broadcast): the largest extent on each axis, a 0 anywhere giving 0. Only an
+// estimate for the weight (a mismatch of shapes raises later, in run_nary).
+inline std::int64_t broadcast_size(std::span<const nb::handle> objs, nb::handle out) {
+    Dims dims;  // from the last axis
+    dims.fill(1);
+    int ndim = 0;
+    auto take = [&](nb::handle o) {
+        if (!is_ndarray(o)) return;
+        const NDArray& a = as_ndarray(o);
+        for (int i = 0; i < a.ndim; ++i) {
+            const std::int64_t x = a.shape[a.ndim - 1 - i];
+            std::int64_t& e = dims[i];
+            e = x == 0 || e == 0 ? 0 : std::max(e, x);
+        }
+        ndim = std::max(ndim, a.ndim);
+    };
+    for (nb::handle o : objs) take(o);
+    take(out);
+    std::int64_t n = 1;
+    for (int d = 0; d < ndim; ++d) n *= dims[d];
+    return n;
+}
+
+// The weight of a call (the work per element in adds, docs/design/special.md §3.3). It is
+// capped at special::kMaxWeight, which sets the task size of a heavy function (16 elements);
+// whether the call runs without the GIL is decided by the work before the cap (API.md §3):
+// cost x elements against the parallel threshold. A heavy call below the threshold at the
+// capped weight but above it at its own (jv(1e300, 1e300) on 127 elements: 6 s with the GIL
+// held) gets the weight that just reaches the threshold, threshold / elements, so it runs
+// without the GIL in tasks of about elements / 8. The weight never changes a result.
+template <typename Op>
+std::int64_t weight_for(std::span<const nb::handle> objs, nb::handle out) {
+    const double ns = cost_for<Op>(objs);
+    const std::int64_t w = special::weight_of(ns);
+    if (w < special::kMaxWeight) return w;
+    const std::int64_t n = broadcast_size(objs, out);
+    if (n == 0 || n * w >= kParallelThreshold) return w;
+    if (ns / special::kAddNs * static_cast<double>(n) < static_cast<double>(kParallelThreshold)) return w;
+    return (kParallelThreshold + n - 1) / n;
 }
 
 template <typename Op>
 nb::object call(std::span<const nb::handle> objs, nb::handle out) {
-    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, weight_for<Op>(objs));
+    return run_nary(table_of<Op>(), Op::nout, Op::args, objs, out, weight_for<Op>(objs, out));
+}
+
+// The Python signature, "def name(a, b, /, *, out=None)" from Op::args (API.md §2.1: the
+// inputs named, still positional-only), kept for the module's lifetime.
+template <typename Op>
+const char* signature() {
+    static const std::string s = [] {
+        std::string r = std::string("def ") + Op::name + "(";
+        for (std::size_t i = 0; i < Op::args.size(); ++i) r += std::string(i ? ", " : "") + Op::args[i];
+        r += Op::nout == 1 ? ", /, *, out=None)" : ", /)";
+        return r;
+    }();
+    return s.c_str();
 }
 
 // m.def(Op::name, ...): the inputs, then out= when there is one result.
@@ -78,7 +137,8 @@ void def(nb::module_& m) {
                         return call<Op>(objs, out);
                     });
                 },
-                ((void)I, nb::arg().none())..., nb::kw_only(), nb::arg("out").none() = nb::none()
+                nb::sig(signature<Op>()), ((void)I, nb::arg().none())..., nb::kw_only(),
+                nb::arg("out").none() = nb::none()
             );
         } else {
             m.def(
@@ -89,7 +149,7 @@ void def(nb::module_& m) {
                         return call<Op>(objs, nb::none());
                     });
                 },
-                ((void)I, nb::arg().none())...
+                nb::sig(signature<Op>()), ((void)I, nb::arg().none())...
             );
         }
     }(std::make_index_sequence<Op::nin>{});

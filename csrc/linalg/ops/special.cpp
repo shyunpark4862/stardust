@@ -107,21 +107,30 @@ nb::object solve_tridiagonal(nb::handle dlo, nb::handle do_, nb::handle duo, nb:
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
-        const Failure f =
-            run_batch(b, cost(kBanded, 3.0 * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(
+            b, cost(kBanded, 3.0 * n) + rhs_cost(n, r.k), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 return tri_body<T>(
                     {dl.dtype(), dl.data() + off[0], dl.stride(-1)}, {d.dtype(), d.data() + off[1], d.stride(-1)},
                     {du.dtype(), du.data() + off[2], du.stride(-1)}, n, y, off[3], r,
                     LapackSlot<T>(res + i * n * r.k, n * r.k, s, Scratch::kAlign0).get(), s, kNonFinite, kNonFinite2,
                     kNonFinite3
                 );
-            });
+            }
+        );
         if (f) raise(b, f, func, "dl", "d", "du");
         return to_array(out);
     });
 }
 
 // -------------------------------------------------------------- banded (gbsv) --
+
+// solve_banded solves a matrix of at most this many rows as a dense one (LU +
+// getrs): gbsv's fixed cost of about 1 us per call dominates there. Measured
+// (docs/design/linalg.md §7.4): 2.2-3.2x for one system and 3.4-3.6x for a batch at
+// n = 8, every band from (0, 0) to (5, 5); at n = 12 1.7-2.1x for one system. A
+// variable only so that the measurements can move it (_core._set_band_dense_max).
+std::int64_t kBandDenseMax = 8;
+inline bool band_as_dense(std::int64_t n) { return n <= kBandDenseMax; }
 
 nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handle kuo) {
     const char* func = "solve_banded";
@@ -148,21 +157,46 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
+        // Three paths by shape alone (docs/design/linalg.md §1.3, §10.7): the bandwidths
+        // (1, 1) by gtsv, a small matrix as a dense one (LU), else gbsv.
+        const bool tri = kl == 1 && ku == 1;
+        const bool dense = !tri && band_as_dense(n);
+        // A small band through gbsv is never split (one task), but it still leaves the GIL by its cost.
+        const bool split = tri || dense || double(n) * (kl + ku + 1) >= kBandSplitMin;
+        const double work = dense ? cost(kLU, double(n) * n) : cost(kBanded, double(n) * (kl + ku + 1));
         const Failure f = run_batch(
-            b,
-            (kl == 1 && ku == 1) || double(n) * (kl + ku + 1) >= kBandSplitMin
-                ? cost(kBanded, double(n) * (kl + ku + 1))
-                : 0.0,
+            b, work + rhs_cost(n, r.k),
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 const std::byte* base = a.data() + off[0];
                 LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
                 T* x = xs.get();
-                if (kl == 1 && ku == 1) {
+                if (tri) {
                     // ab[u + i - j, j] = a[i, j]: du = ab[0, 1:], d = ab[1, :], dl = ab[2, :-1].
                     return tri_body<T>(
                         {a.dtype(), base + 2 * rs, cs}, {a.dtype(), base + rs, cs}, {a.dtype(), base + cs, cs}, n, y,
                         off[1], r, x, s, kNonFinite, kNonFinite, kNonFinite
                     );
+                }
+                if (dense) {
+                    // The n x n matrix itself, zero outside the band: a[i, j] = ab[ku + i - j, j]. Only
+                    // the band's elements inside the matrix are read and checked, as for gbsv.
+                    T* d = s.get<T>(static_cast<std::size_t>(n * n));
+                    std::fill(d, d + n * n, T(0));
+                    for (lint j = 0; j < n; ++j) {
+                        const lint r0 = std::max<lint>(0, ku - j), r1 = std::min<lint>(kl + ku, ku + n - 1 - j);
+                        if (!pack(
+                                a.dtype(), base + r0 * rs + j * cs, r1 - r0 + 1, 1, rs, 0, d + j * n + (r0 - ku + j), n,
+                                true
+                            ))
+                            return kNonFinite;
+                    }
+                    const bool b_ok = pack(y.dtype(), y.data() + off[1], n, r.k, r.rs, r.cs, x, n, true);
+                    if (n > 0) {
+                        lint* ipiv = s.get_ints(static_cast<std::size_t>(n));
+                        if (lapack::lu_in_place(n, n, d, n, ipiv) > 0) return kSingular;
+                        if (r.k > 0) lapack::getrs('N', n, r.k, d, n, ipiv, x, n);
+                    }
+                    return b_ok ? 0 : kNonFiniteB;
                 }
                 // gbsv's layout: the band in rows kl .. 2kl+ku, rows 0 .. kl-1 room for the
                 // fill-in. Only the band's elements inside the matrix are read and checked
@@ -184,7 +218,8 @@ nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handl
                     if (lapack::gbsv(n, kl, ku, r.k, w, ldab, ipiv, x, n) > 0) return kSingular;
                 }
                 return b_ok ? 0 : kNonFiniteB;
-            }
+            },
+            split ? (dense ? lu_task_cap(n, r.k) : 0) : 1
         );
         if (f) raise(b, f, func, "ab");
         return to_array(out);
@@ -281,18 +316,21 @@ nb::object solve_sylvester(nb::handle ao, nb::handle bo, nb::handle co) {
 
 void bind_special(nb::module_& m) {
     m.def(
-        "solve_tridiagonal", named("solve_tridiagonal", &solve_tridiagonal), nb::arg().none(), nb::arg().none(),
-        nb::arg().none(), nb::arg().none()
-    );
-    m.def(
-        "solve_banded", named("solve_banded", &solve_banded), nb::arg().none(), nb::arg().none(), nb::kw_only(),
-        nb::arg("lower_bandwidth").none(), nb::arg("upper_bandwidth").none()
-    );
-    m.def(
-        "solve_sylvester", named("solve_sylvester", &solve_sylvester), nb::arg().none(), nb::arg().none(),
+        "solve_tridiagonal", named("solve_tridiagonal", &solve_tridiagonal),
+        nb::sig("def solve_tridiagonal(dl, d, du, b, /)"), nb::arg().none(), nb::arg().none(), nb::arg().none(),
         nb::arg().none()
     );
+    m.def(
+        "solve_banded", named("solve_banded", &solve_banded),
+        nb::sig("def solve_banded(ab, b, /, *, lower_bandwidth, upper_bandwidth)"), nb::arg().none(), nb::arg().none(),
+        nb::kw_only(), nb::arg("lower_bandwidth").none(), nb::arg("upper_bandwidth").none()
+    );
+    m.def(
+        "solve_sylvester", named("solve_sylvester", &solve_sylvester), nb::sig("def solve_sylvester(a, b, c, /)"),
+        nb::arg().none(), nb::arg().none(), nb::arg().none()
+    );
     m.def("_set_schur_pair_min", [](std::int64_t n) { kSchurPairMin = n; });  // experiments only
+    m.def("_set_band_dense_max", [](std::int64_t n) { kBandDenseMax = n; });   // experiments only
 }
 
 }  // namespace sd::linalg

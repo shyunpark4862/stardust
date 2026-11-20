@@ -3,10 +3,11 @@ the serial ones alone (tests/README.md §1; tests/conftest.py has the tiers and 
 
     .venv/bin/python tools/test.py [-n N] [PYTEST ARGS ...]     # e.g. tests/frame, -k merge, --tier deep
 
--n is the worker count (default 6, at most 8: measured 2026-11-20 on this Mac, 7,404 tests,
-serial 145 s / 3.7 GB, 4 workers 59 s / 7.8 GB, 6 workers 46 s / 9.4 GB, 8 workers 48 s / 11 GB
-with a GIL test failing under the load). Every worker keeps sd's default thread count (2 threads
-per worker measured slower). Plain `pytest` stays serial. The exit status is the worse of the two
+-n is the worker count (default 6, at most 8: timed 2026-11-20 on this Mac when the suite had
+7,404 tests, serial 145 s / 3.7 GB, 4 workers 59 s / 7.8 GB, 6 workers 46 s / 9.4 GB, 8 workers
+48 s / 11 GB with a GIL test failing under the load; tests/README.md §1 has the current count
+and how to take it). Every worker keeps sd's default thread count (2 threads per worker
+measured slower). Plain `pytest` stays serial. The exit status is the worse of the two
 runs; "no tests collected" in either counts as success.
 """
 

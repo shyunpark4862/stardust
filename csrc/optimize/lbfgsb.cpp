@@ -38,7 +38,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
+#include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -1089,7 +1092,9 @@ struct Lbfgsb {
 
     // scipy's workspace wa, partitioned as setulb does: the parts start where scipy's do, so they
     // have scipy's 16-byte alignment (Accelerate's ddot sums in an order that depends on it).
-    vec buf;
+    // Zeroed by calloc as scipy's np.zeros: pages not written (most of 11 m^2 for a large maxcor)
+    // take no memory.
+    std::unique_ptr<double[], decltype(&std::free)> buf{nullptr, &std::free};
     Part ws, wy, sy, ss, wt, wn, snd, z, r, d, t, xp, wa;
     vec g;
     ivec index, iwhere, indx2;
@@ -1105,10 +1110,25 @@ struct Lbfgsb {
     Dcsrch ls;
     std::int64_t n_iterations = 0;
     bool big = false;
+    bool stalled = false;  // stopped by the relative reduction of f without moving
 
     Lbfgsb(Objective& o, lint m_) : obj(o), n(static_cast<lint>(o.n)), m(m_) {
         const auto un = static_cast<std::size_t>(n), um = static_cast<std::size_t>(m);
-        buf.assign(2 * um * un + 5 * un + 11 * um * um + 8 * um, 0.0);
+        {
+            // 2 m n + 5 n + 11 m^2 + 8 m doubles, MemoryError when that overflows
+            constexpr std::size_t kMax = std::numeric_limits<std::size_t>::max() / sizeof(double);
+            auto mul = [&](std::size_t a, std::size_t b) {
+                if (a != 0 && b > kMax / a) throw std::bad_alloc();
+                return a * b;
+            };
+            auto add = [&](std::size_t a, std::size_t b) {
+                if (b > kMax - a) throw std::bad_alloc();
+                return a + b;
+            };
+            const std::size_t size = add(add(add(mul(mul(2, um), un), mul(5, un)), mul(mul(11, um), um)), mul(8, um));
+            buf.reset(static_cast<double*>(std::calloc(size, sizeof(double))));
+            if (!buf) throw std::bad_alloc();
+        }
         std::size_t at = 0;
         for (auto [part, size] :
              {std::pair<Part*, std::size_t>{&ws, um * un},
@@ -1124,7 +1144,7 @@ struct Lbfgsb {
               {&t, un},
               {&xp, un},
               {&wa, 8 * um}}) {
-            part->p = buf.data() + at;
+            part->p = buf.get() + at;
             at += size;
         }
         g.assign(un, 0.0);
@@ -1321,6 +1341,11 @@ struct Lbfgsb {
             task_msg = CONV_GRAD;
             return;
         }
+        if (maxiter <= 0) {  // max_iter = 0: no iteration (as the other methods; scipy does one)
+            task = STOP;
+            task_msg = STOP_ITERC;
+            return;
+        }
         for (;;) {
             bool ok;
             {
@@ -1386,6 +1411,10 @@ struct Lbfgsb {
                 task = CONVERGENCE;
                 task_msg = CONV_F;
                 if (iback >= 10) info = -5;
+                // no step was taken (the line search ended at the previous iterate, e.g. after
+                // a non-finite trial value) and the projected gradient is above pgtol: scipy's
+                // test passes on fold - f = 0, but this is no convergence
+                stalled = std::equal(x.begin(), x.end(), t.data());
                 return;
             }
             {
@@ -1398,10 +1427,12 @@ struct Lbfgsb {
 };
 
 // lbfgsb_solve(func, fun, jac, check, mode, x0, lb, ub, m, factr, pgtol, steps, max_nfev, max_iter, max_ls)
-//   -> (x, fun, jac, task, task_msg, n_iter, nfev, njev, S (m, n), Y (m, n), n_corrs)
+//   -> (x, fun, jac, task, task_msg, n_iter, nfev, njev, S (m, n), Y (m, n), n_corrs, stalled)
 // lb, ub: the bounds (+-inf for none); mode, steps: as bfgs_solve. task, task_msg: scipy's
 // codes (task CONVERGENCE, STOP, ABNORMAL; its message number). S, Y: the stored corrections in
-// the order scipy keeps them (its hess_inv uses the first n_corrs rows).
+// the order scipy keeps them (its hess_inv uses the first n_corrs rows). stalled: stopped by
+// the relative reduction of f at the previous iterate (no step), the projected gradient above
+// pgtol (scipy's convergence; not converged here).
 nb::object lbfgsb_solve(
     const std::string& func,
     nb::callable fun,
@@ -1453,7 +1484,7 @@ nb::object lbfgsb_solve(
         return nb::make_tuple(
             out_vector(L.x.data(), n), L.f, out_vector(L.g.data(), n), L.task, L.task_msg, L.n_iterations, obj.nfev,
             obj.ngev, out_matrix(L.ws.data(), static_cast<std::size_t>(L.m), n),
-            out_matrix(L.wy.data(), static_cast<std::size_t>(L.m), n), static_cast<std::int64_t>(ncorr)
+            out_matrix(L.wy.data(), static_cast<std::size_t>(L.m), n), static_cast<std::int64_t>(ncorr), L.stalled
         );
     });
 }

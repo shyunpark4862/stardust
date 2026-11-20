@@ -196,14 +196,25 @@ nb::object linspace(
         const C e = scalar_from_python<C>(stop, ke);
         const C delta = e - s;
         const std::int64_t div = endpoint ? num - 1 : num;
-        const C step = div > 0 ? delta / static_cast<double>(div) : C(0);
+        // Finite ends whose difference overflows (linspace(-1e308, 1e308)):
+        // the step is taken from the ends divided first, so every value is
+        // finite (numpy gives inf and NaN there, with a warning).
+        auto finite = [](C v) {
+            if constexpr (std::is_same_v<C, complex128>) return std::isfinite(v.real()) && std::isfinite(v.imag());
+            else return std::isfinite(v);
+        };
+        const bool overflow = finite(s) && finite(e) && !finite(delta);
+        const C step = div <= 0   ? C(0)
+                       : overflow ? e / static_cast<double>(div) - s / static_cast<double>(div)
+                                  : delta / static_cast<double>(div);
         visit_dtype(target, [&]<typename T>(std::type_identity<T>) {
             T* p = reinterpret_cast<T*>(out.data);
             const parallel::Unlocked unlocked(num >= kParallelThreshold);
             for (std::int64_t i = 0; i < num; ++i) {
                 const double fi = static_cast<double>(i);
                 C y;
-                if (div <= 0) y = fi * delta + s;
+                if (overflow) y = i == 0 ? s : fi * step + s;
+                else if (div <= 0) y = fi * delta + s;
                 else if (step == C(0)) y = (fi / static_cast<double>(div)) * delta + s;  // step underflowed
                 else y = fi * step + s;
                 if (endpoint && num > 1 && i == num - 1) y = e;
@@ -219,8 +230,12 @@ nb::object linspace(
 nb::object eye(nb::handle n_rows_obj, nb::handle n_cols_obj, nb::handle k_obj, nb::handle dtype_obj) {
     const std::int64_t n = parse_int(n_rows_obj, "n_rows");
     const std::int64_t m = n_cols_obj.is_none() ? n : parse_int(n_cols_obj, "n_cols");
-    const std::int64_t k = parse_int(k_obj, "k");
+    const std::int64_t k_raw = parse_int(k_obj, "k");
     NDArray out = new_array(parse_dtype(dtype_obj).value_or(DType::Float64), std::vector<std::int64_t>{n, m}, true);
+    // Past the matrix's corners every k means the same; clamping (after
+    // new_array has rejected negative extents) keeps -k and i + k from
+    // overflowing, as in tril and triu.
+    const std::int64_t k = std::clamp<std::int64_t>(k_raw, -n, m);
     visit_dtype(out.dtype, [&]<typename T>(std::type_identity<T>) {
         T* p = reinterpret_cast<T*>(out.data);
         for (std::int64_t i = std::max<std::int64_t>(0, -k); i < n && i + k < m; ++i)
@@ -232,35 +247,53 @@ nb::object eye(nb::handle n_rows_obj, nb::handle n_cols_obj, nb::handle k_obj, n
 void bind_creation(nb::module_& m) {
     using nb::arg;
     m.def(
-        "asarray", named("asarray", &asarray), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(),
-        arg("copy").none() = nb::none()
-    );
-    m.def("zeros", named("zeros", &zeros), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def("ones", named("ones", &ones), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def("empty", named("empty", &empty), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def("full", named("full", &full), arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def(
-        "zeros_like", named("zeros_like", &zeros_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none()
-    );
-    m.def("ones_like", named("ones_like", &ones_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none());
-    m.def(
-        "empty_like", named("empty_like", &empty_like), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none()
+        "asarray", named("asarray", &asarray), nb::sig("def asarray(obj, /, *, dtype=None, copy=None)"), arg().none(),
+        nb::kw_only(), arg("dtype").none() = nb::none(), arg("copy").none() = nb::none()
     );
     m.def(
-        "full_like", named("full_like", &full_like), arg().none(), arg().none(), nb::kw_only(),
+        "zeros", named("zeros", &zeros), nb::sig("def zeros(shape, /, *, dtype=None)"), arg().none(), nb::kw_only(),
         arg("dtype").none() = nb::none()
     );
     m.def(
-        "arange", named("arange", &arange), arg().none(), arg().none() = nb::none(), arg().none() = 1, nb::kw_only(),
+        "ones", named("ones", &ones), nb::sig("def ones(shape, /, *, dtype=None)"), arg().none(), nb::kw_only(),
         arg("dtype").none() = nb::none()
     );
     m.def(
-        "linspace", named("linspace", &linspace), arg().none(), arg().none(), arg().none(), nb::kw_only(),
-        arg("dtype").none() = nb::none(), arg("endpoint").none() = true
+        "empty", named("empty", &empty), nb::sig("def empty(shape, /, *, dtype=None)"), arg().none(), nb::kw_only(),
+        arg("dtype").none() = nb::none()
     );
     m.def(
-        "eye", named("eye", &eye), arg().none(), arg().none() = nb::none(), nb::kw_only(), arg("k").none() = 0,
-        arg("dtype").none() = nb::none()
+        "full", named("full", &full), nb::sig("def full(shape, fill_value, /, *, dtype=None)"), arg().none(),
+        arg().none(), nb::kw_only(), arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "zeros_like", named("zeros_like", &zeros_like), nb::sig("def zeros_like(x, /, *, dtype=None)"), arg().none(),
+        nb::kw_only(), arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "ones_like", named("ones_like", &ones_like), nb::sig("def ones_like(x, /, *, dtype=None)"), arg().none(),
+        nb::kw_only(), arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "empty_like", named("empty_like", &empty_like), nb::sig("def empty_like(x, /, *, dtype=None)"), arg().none(),
+        nb::kw_only(), arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "full_like", named("full_like", &full_like), nb::sig("def full_like(x, fill_value, /, *, dtype=None)"),
+        arg().none(), arg().none(), nb::kw_only(), arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "arange", named("arange", &arange), nb::sig("def arange(start, stop=None, step=1, /, *, dtype=None)"),
+        arg().none(), arg().none() = nb::none(), arg().none() = 1, nb::kw_only(), arg("dtype").none() = nb::none()
+    );
+    m.def(
+        "linspace", named("linspace", &linspace),
+        nb::sig("def linspace(start, stop, num, /, *, dtype=None, endpoint=True)"), arg().none(), arg().none(),
+        arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(), arg("endpoint").none() = true
+    );
+    m.def(
+        "eye", named("eye", &eye), nb::sig("def eye(n_rows, n_cols=None, /, *, k=0, dtype=None)"), arg().none(),
+        arg().none() = nb::none(), nb::kw_only(), arg("k").none() = 0, arg("dtype").none() = nb::none()
     );
 }
 

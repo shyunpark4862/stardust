@@ -5,10 +5,12 @@ A run file (build/accuracy/<stamp>.json, ignored by git):
     {"schema": 1, "run": "<stamp>-<commit>", "env": {...},
      "sweeps": [{"id", "area", "name", "points", "regions": {region: {"points", "ulp_max",
                  "ulp_p999", "rel_max", "contract", "bound", "worst", ["ulp_cond_max",
-                 "ulp_cond_p999"]}}}]}
+                 "ulp_cond_p999"], ["mixed_max", "mixed_p999"], ["norm_rel", "nonfinite"]}}}]}
 
-region is "guaranteed", "loose" or "mixed"; "contract" is the largest error over the bound
-(at most 1 passes; null where no bound is documented); "worst" is the input where it is.
+region is "guaranteed", "loose" or "mixed" (for regression, a result field); "contract" is the
+largest error over the bound (at most 1 passes; null where no bound is documented); "worst" is
+the input where it is; "ulp_cond_*" is ULP / the bound's scale (sources.py); "nonfinite" (regression)
+counts the points where the reference is finite and stardust's value is not.
 
 A baseline (bench/accuracy/results/<area>.json, in the repository) has the same sweeps, each
 with the "run" it came from, and "runs": {run: env}. Promoting a run replaces the sweeps it

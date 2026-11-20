@@ -803,23 +803,23 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         for (int q = 0; q < kAccFinal; ++q) fin[q] = fin[q] + DD{ap[2 * q], ap[2 * q + 1]};
     }
     // A perfect fit (G95): every used row's residual within rounding of its terms,
-    // |r_t| <= (kk + 16) u (|y_t| + ||x_t||_1 ||beta||_inf) (rlm's and quantreg's test). Its
-    // residuals are rounding, not data: the sum of squares is 0 (scale 0, bse 0 and llf +inf
-    // when df_resid > 0, G22) and the robust covariances' scores vanish. The test stops at the
-    // first row outside it (usually the first).
+    // |r_t| <= (kk + 16) u (|y_t| + sum_j |x_tj| |beta_j|) (rlm's and quantreg's test): rounding
+    // beta moves x_t beta by about u sum_j |x_tj beta_j|, and the residual itself is computed in
+    // double-double. Its residuals are rounding, not data: the sum of squares is 0 (scale 0,
+    // bse 0 and llf +inf when df_resid > 0; t and p NaN, G22) and the robust covariances'
+    // scores vanish. The test stops at the first row outside it (usually the first).
     if (kk > 0 && fin[fSsr].hi > 0.0) {
-        double bmax = 0.0;
-        for (lint jj = 0; jj < kk; ++jj) bmax = std::max(bmax, std::fabs(beta[jj]));
         const double c = static_cast<double>(kk + 16) * 0x1p-53;
-        bool perfect = std::isfinite(bmax);
+        bool perfect = true;
+        for (lint jj = 0; jj < kk; ++jj) perfect = perfect && std::isfinite(beta[jj]);
         for (lint t = 0; t < m && perfect; ++t) {
             const lint i = idx[t];
-            double nx = 0.0;
+            double xb = 0.0;
             for (lint jj = 0; jj < kk; ++jj) {
                 const Col cl = colK(jj);
-                nx += std::fabs(rd(cl.base + i * cl.stride));
+                xb += std::fabs(rd(cl.base + i * cl.stride) * beta[jj]);
             }
-            perfect = std::fabs(r[t]) <= c * (std::fabs(rd(d.y + i * d.ys)) + nx * bmax);
+            perfect = std::fabs(r[t]) <= c * (std::fabs(rd(d.y + i * d.ys)) + xb);
         }
         if (perfect) {
             fin[fSsr] = DD{0.0, 0.0};

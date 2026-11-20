@@ -257,3 +257,19 @@ def test_errors_and_signatures():
         df.duplicated(subset=["a"])  # subset is positional-only (docs/api/frame.md §1.1)
     assert df.value_counts("a", descending=False)["counts"].tolist() == [2]
     assert sd.frame.Series([], dtype="string").value_counts().shape == (0, 2)
+
+
+def test_value_counts_order_is_count_then_first_appearance():
+    import random
+
+    rng = random.Random(3)
+    vals = [rng.randrange(40_000) for _ in range(300_000)]
+    first, counts = {}, {}
+    for i, v in enumerate(vals):
+        first.setdefault(v, i)
+        counts[v] = counts.get(v, 0) + 1
+    vc = sd.frame.Series(vals).value_counts()
+    assert vc["values"].tolist() == sorted(counts, key=lambda v: (-counts[v], first[v]))
+    up = sd.frame.Series(vals).value_counts(descending=False)
+    assert up["values"].tolist() == sorted(counts, key=lambda v: (counts[v], first[v]))
+    assert up["counts"].tolist() == sorted(counts.values())

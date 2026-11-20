@@ -273,7 +273,9 @@ CondOrd parse_cond_ord(nb::handle o) {
     } else {  // a wrong type: TypeError, as in vector_norm (docs/api/linalg.md §3)
         throw nb::type_error(("cond(): 'ord' must be a str, an int or a float, not " + py_type_name(o)).c_str());
     }
-    throw nb::value_error("cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf");
+    throw nb::value_error((std::string("cond(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf, not ") +
+                           nb::repr(o).c_str())
+                              .c_str());
 }
 
 // The `ord` norm of an n x n column-major buffer (fro, nuc, +-1, +-inf).
@@ -331,7 +333,7 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
         Out co = alloc_c(b.shape(), DType::Float64);
         double* C = co.as<double>();
         const Failure f = run_batch(
-            b, cost(kSVD, double(m) * n),
+            b, by_svd ? cost(kSVD, double(m) * n) : cost(kLU, double(n) * n),
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 if (by_svd) {
                     double* sv = s.get<double>(static_cast<std::size_t>(k), 1);
@@ -359,11 +361,19 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
                 if (const int c = square_norm(ord, xa, n, s, nx)) return c;
                 T* xi = s.get<T>(static_cast<std::size_t>(n * n), 2);
                 lu_inverse(lu, ipiv, n, xi);
+                // A nonsingular x whose inverse overflows double (inf and NaN in xi, as in
+                // inv()): the condition number is infinite, as numpy's. The norms would drop
+                // the NaN (max/min) and 'nuc' would hand LAPACK a non-finite matrix.
+                constexpr std::int64_t parts = std::is_same_v<T, cplx> ? 2 : 1;
+                if (!detail::all_finite(reinterpret_cast<const double*>(xi), parts * n * n)) {
+                    C[i] = kInf;
+                    return 0;
+                }
                 if (const int c = square_norm(ord, xi, n, s, ni)) return c;
                 C[i] = nx * ni;
                 return 0;
             },
-            by_svd ? 0 : lu_task_cap(n, n, true)
+            by_svd ? 0 : lu_task_cap(n, n)
         );  // the other ords invert like inv
         if (f) raise(b, f, "cond", "x");
         return b.ndim() == 0 ? py_scalar(C[0]) : to_array(co);
@@ -373,16 +383,30 @@ nb::object cond(nb::handle xo, nb::handle ord_o) {
 }  // namespace
 
 void bind_spectral(nb::module_& m) {
-    m.def("eigh", named("eigh", &eigh), nb::arg().none(), nb::arg().none() = nb::none());
-    m.def("eigvalsh", named("eigvalsh", &eigvalsh), nb::arg().none(), nb::arg().none() = nb::none());
-    m.def("svd", named("svd", &svd), nb::arg().none(), nb::kw_only(), nb::arg("mode").none() = "reduced");
-    m.def("svdvals", named("svdvals", &svdvals), nb::arg().none());
     m.def(
-        "matrix_rank", named("matrix_rank", &matrix_rank), nb::arg().none(), nb::kw_only(),
+        "eigh", named("eigh", &eigh), nb::sig("def eigh(a, b=None, /)"), nb::arg().none(), nb::arg().none() = nb::none()
+    );
+    m.def(
+        "eigvalsh", named("eigvalsh", &eigvalsh), nb::sig("def eigvalsh(a, b=None, /)"), nb::arg().none(),
+        nb::arg().none() = nb::none()
+    );
+    m.def(
+        "svd", named("svd", &svd), nb::sig("def svd(x, /, *, mode='reduced')"), nb::arg().none(), nb::kw_only(),
+        nb::arg("mode").none() = "reduced"
+    );
+    m.def("svdvals", named("svdvals", &svdvals), nb::sig("def svdvals(x, /)"), nb::arg().none());
+    m.def(
+        "matrix_rank", named("matrix_rank", &matrix_rank), nb::sig("def matrix_rank(x, /, *, rtol=None)"),
+        nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none()
+    );
+    m.def(
+        "pinv", named("pinv", &pinv), nb::sig("def pinv(x, /, *, rtol=None)"), nb::arg().none(), nb::kw_only(),
         nb::arg("rtol").none() = nb::none()
     );
-    m.def("pinv", named("pinv", &pinv), nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none());
-    m.def("cond", named("cond", &cond), nb::arg().none(), nb::kw_only(), nb::arg("ord").none() = 2);
+    m.def(
+        "cond", named("cond", &cond), nb::sig("def cond(x, /, *, ord=2)"), nb::arg().none(), nb::kw_only(),
+        nb::arg("ord").none() = 2
+    );
 }
 
 }  // namespace sd::linalg

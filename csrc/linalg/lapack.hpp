@@ -28,6 +28,30 @@ lint getrf(lint m, lint n, T* a, lint lda, lint* ipiv) {
     return checked(info, "getrf");
 }
 
+// The same factorization, unblocked (getf2): the factors getrf would give up to
+// rounding, but not through Accelerate's blocked path (docs/design/linalg.md §7.5).
+template <class T>
+lint getf2(lint m, lint n, T* a, lint lda, lint* ipiv) {
+    lint info = 0;
+    if constexpr (std::is_same_v<T, double>) dgetf2_(&m, &n, a, &lda, ipiv, &info);
+    else zgetf2_(&m, &n, a, &lda, ipiv, &info);
+    return checked(info, "getf2");
+}
+
+// The sizes factored by getf2 instead of getrf: both sides of the matrix in
+// [kGetf2Min, kGetf2Max] (docs/design/linalg.md §7.5). There Accelerate's getrf takes a
+// blocked path that runs serialized on the AMX unit: getf2 was 2.1-4.4x faster on a
+// batch at ten threads (1.2-1.6x on one), and slower from n = 48 on. Variables only so
+// that the measurements can move them (_core.linalg._set_getf2_range).
+inline lint kGetf2Min = 32, kGetf2Max = 46;
+inline bool use_getf2(lint m, lint n) { return m >= kGetf2Min && m <= kGetf2Max && n >= kGetf2Min && n <= kGetf2Max; }
+
+// LU with partial pivoting by the routine the shape selects (getrf or getf2).
+template <class T>
+lint lu_in_place(lint m, lint n, T* a, lint lda, lint* ipiv) {
+    return use_getf2(m, n) ? getf2(m, n, a, lda, ipiv) : getrf(m, n, a, lda, ipiv);
+}
+
 // Solves A X = B (trans 'N') with the factors from getrf; B is overwritten by X.
 template <class T>
 lint getrs(char trans, lint n, lint nrhs, const T* a, lint lda, const lint* ipiv, T* b, lint ldb) {
@@ -66,17 +90,23 @@ lint trtrs(char uplo, char trans, char diag, lint n, lint nrhs, const T* a, lint
 }
 
 // The reciprocal 1-norm condition number of a real triangular matrix (an estimate, Hager's
-// method: within a small factor of the true value). Reads only triangle `uplo`.
-inline double trcon_1(char uplo, lint n, const double* a, lint lda) {
+// method: within a small factor of the true value). Reads only triangle `uplo`. The
+// workspaces come from the wrappers' slots of `s` (docs/design/linalg.md §6.3).
+inline double trcon_1(char uplo, lint n, const double* a, lint lda, Scratch& s) {
     if (n == 0) return 1.0;
-    std::vector<double> work(static_cast<std::size_t>(3 * n));
-    std::vector<lint> iwork(static_cast<std::size_t>(n));
+    double* work = s.get<double>(static_cast<std::size_t>(3 * n), Scratch::kWork);
+    lint* iwork = s.get_ints(static_cast<std::size_t>(n), Scratch::kIWork);
     char norm = '1', diag = 'N';
     double rcond = 0.0;
     lint info = 0;
-    dtrcon_(&norm, &uplo, &diag, &n, a, &lda, &rcond, work.data(), iwork.data(), &info);
+    dtrcon_(&norm, &uplo, &diag, &n, a, &lda, &rcond, work, iwork, &info);
     checked(info, "trcon");
     return rcond;
+}
+// The same for a caller without a Scratch (one of its own, freed on return).
+inline double trcon_1(char uplo, lint n, const double* a, lint lda) {
+    Scratch s;
+    return trcon_1(uplo, n, a, lda, s);
 }
 
 // Solves a tridiagonal system (partial pivoting) in one call: dl, d, du are

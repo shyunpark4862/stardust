@@ -1,7 +1,9 @@
 """The sweeps of each area and how a sweep is measured.
 
 A sweep is one reference file: its inputs, the reference (hi + lo), the guaranteed region,
-the bound's scale (max(1, kappa) for the inverses, else 1) and the area's contract measure.
+the bound's scale (the multiplier of the 1e-14 bound at each point: max(1, kappa) for the
+inverses, max(1, M / |f|) near the zeros of the oscillatory Bessel and Airy functions and of
+the complex error functions, else 1) and the area's contract measure.
 The measures are the tests' own (tests/special/test_reference.py, tests/stats/refdata.py),
 so a table and the tests can never disagree about what "within the contract" means.
 """
@@ -189,9 +191,10 @@ def measure_regression(sw: RegSweep) -> dict:
             den = np.linalg.norm(hi + lo)
             norm = float(np.linalg.norm((got - hi) - lo) / den) if den > 0 else float(np.linalg.norm(got - hi))
         worst = int(np.argmax(np.where(np.isnan(rel), np.inf, rel)))
+        nonfinite = int((np.isfinite(hi) & ~np.isfinite(got)).sum())  # counted as an inf error above
         regions[field] = {
             "points": int(hi.size), "ulp_max": _finite_max(ulp), "ulp_p999": _p999(ulp),
-            "rel_max": _finite_max(rel), "norm_rel": norm if hi.size > 1 else None,
+            "rel_max": _finite_max(rel), "norm_rel": norm if hi.size > 1 else None, "nonfinite": nonfinite,
             "contract": None, "bound": None, "worst": [worst],
         }  # fmt: skip
     return {"id": sw.id, "area": sw.area, "name": sw.name, "points": sum(x["points"] for x in regions.values()),
@@ -211,7 +214,6 @@ def sweeps(areas=None):
         out += multivariate.sweeps()
     if "regression" in areas:
         out += regression_sweeps()
-
     return out
 
 
@@ -268,7 +270,7 @@ def measure(sw) -> dict:
                 m = R.mixed_error(got, hi, lo)[mask] / 2.0**-52
             entry["mixed_max"] = _finite_max(m)
             entry["mixed_p999"] = _p999(m)
-        if (s > 1).any():  # the inverses: ULP / max(1, kappa), their contract's unit
+        if (s > 1).any():  # every function with a scale above 1 somewhere: ULP / scale, the contract's unit
             entry["ulp_cond_max"] = _finite_max(u / s)
             entry["ulp_cond_p999"] = _p999(u / s)
         regions[label] = entry

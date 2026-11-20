@@ -12,6 +12,7 @@ slices and scalar results apart from gathers:
 
 import sys
 
+from .. import _core as _sd_core
 from . import _core
 from ._errors import named, type_name
 from ._index import Index, _IndexBase, mixed_labels
@@ -85,9 +86,21 @@ def by_position(n, key, what="rows"):
             raise IndexError(f"position {key} is out of range for {n} {what}")
         return ("one", pos)
     if isinstance(key, slice):
+        for end in (key.start, key.stop, key.step):
+            if end is not None and not hasattr(type(end), "__index__"):
+                raise IndexError(
+                    f"cannot select {what} by position with a slice of {type_name(end)}; "
+                    "the ends and the step must be ints or None"
+                )
         return ("slice", *key.indices(n))
     if isinstance(key, list) or is_array(key):
-        positions = array_items(key)
+        col = _int_positions(key)
+        if col is not None:  # all ints, read in one pass; the range checked in one kernel
+            wrapped, bad = _core.wrap_positions(col, n)
+            if bad < 0:
+                return ("take", wrapped)
+            raise IndexError(f"position {col.slice(bad, 1).to_list(None)[0]} is out of range for {n} {what}")
+        positions = array_items(key)  # other keys: element by element, for the message
         for p in positions:
             if not _is_int(p):
                 raise IndexError(f"positions must be ints, not {type_name(p)}")
@@ -95,6 +108,31 @@ def by_position(n, key, what="rows"):
                 raise IndexError(f"position {p} is out of range for {n} {what}")
         return ("take", Column.from_list([int(p) + n if p < 0 else int(p) for p in positions], None, "int64"))
     raise IndexError(f"cannot select {what} by position with {type_name(key)}; use an int, a slice or a list of ints")
+
+
+def _int_positions(key):
+    """The int64 Column of a position key whose elements are all ints and can
+    be read in one pass: a list of Python ints, a 1-D numpy integer array
+    (not uint64) or a 1-D int64 sd.ndarray. None for any other key, which
+    by_position then checks element by element."""
+    from ._column import column_from, is_ndarray, is_sdarray
+
+    if isinstance(key, list):
+        if not set(map(type, key)) <= {int}:  # the types, not the values: one pass in C
+            return None
+        try:
+            return Column.from_list(key, None, "int64")
+        except OverflowError:  # an int outside int64: out of range, said element by element
+            return None
+    if key.ndim != 1:
+        return None
+    if is_ndarray(key):
+        if key.dtype.kind not in "iu" or (key.dtype.kind == "u" and key.dtype.itemsize == 8):
+            return None
+        return column_from(key)
+    if is_sdarray(key) and key.dtype == _sd_core.int64:
+        return Column.from_array(key)
+    return None
 
 
 def positions_column(sel):
@@ -186,7 +224,7 @@ def align(a, b, func=None):
 
 
 def _minus_ones(n):
-    return Column.from_list([-1] * n, None, "int64")
+    return _core.full(Column.from_list([-1], None, "int64"), n)
 
 
 def reindexed(col, index, target, func=None):

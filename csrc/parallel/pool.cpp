@@ -19,6 +19,9 @@ namespace {
 
 thread_local bool t_in_task = false;
 
+// Jobs of at most this many tasks do not wake sleeping workers (Pool::run).
+constexpr std::int64_t kWakeTasks = 16;
+
 // Spin-wait for up to kSpin before sleeping. Measured by the clock, not by
 // iterations: the ARM `yield` hint takes a cycle or two, so a count that
 // looks large is over in a few microseconds (docs/design/array.md §10.1).
@@ -84,18 +87,32 @@ public:
             job_ = &fn;
             ntasks_ = ntasks;
             next_ = 0;
-            pending_ = static_cast<int>(workers_.size());
             error_ = nullptr;
-            generation_.fetch_add(1, std::memory_order_release);
+            // A new generation, open, nobody in it yet (release: the job's
+            // fields above are visible to whoever sees it).
+            state_.store((generation(state_.load()) + 1) << kGenShift, std::memory_order_release);
         }
-        cv_work_.notify_all();  // for workers that went to sleep
-        work();                 // the calling thread takes tasks too
-        // Wait for the workers: spin first (they are usually a few us away),
-        // then sleep.
-        spin_until([&] { return pending_.load(std::memory_order_acquire) == 0; });
-        if (pending_.load(std::memory_order_acquire) != 0) {
+        // Spinning workers see the new generation by themselves. Sleeping
+        // ones are woken only for a job long enough to repay it: a wake-up
+        // takes ~25 us to arrive and ~5 us of the caller's time to send,
+        // while a task is ~0.5-1.5 us, so the caller alone finishes a short
+        // job before a woken worker would start (40,000-element x + x after a
+        // 2 ms pause: 16 us with the wake-up, 11 us without, 1 thread 12 us).
+        // Which thread runs a task never changes the result (§10.5).
+        if (ntasks > kWakeTasks) cv_work_.notify_all();
+        work();  // the calling thread takes tasks too
+        // The tasks are all taken: close the job, then wait only for the
+        // workers that joined it (they may still be running a task). A
+        // worker that wakes later sees the job closed and leaves it alone,
+        // so a late wake-up never holds up the call
+        // (docs/design/array.md §10.1). Spin first (they are usually a few
+        // us away), then sleep.
+        state_.fetch_or(kClosed, std::memory_order_acq_rel);
+        auto done = [&] { return (state_.load(std::memory_order_acquire) & kCount) == 0; };
+        spin_until(done);
+        if (!done()) {
             std::unique_lock lock(m_);
-            cv_done_.wait(lock, [&] { return pending_.load() == 0; });
+            cv_done_.wait(lock, done);
         }
         job_ = nullptr;
         std::exception_ptr error = error_;
@@ -142,21 +159,32 @@ private:
             // runs, and waking a sleeping thread costs tens of microseconds on
             // macOS (~25 us per job, docs/design/array.md §10.1), more than a whole
             // 1M-element add.
-            spin_until([&] { return generation_.load(std::memory_order_acquire) != seen || stop_flag_; });
-            if (generation_.load(std::memory_order_acquire) == seen && !stop_flag_) {
+            auto fresh = [&] { return generation(state_.load(std::memory_order_acquire)) != seen; };
+            spin_until([&] { return fresh() || stop_flag_; });
+            if (!fresh() && !stop_flag_) {
                 // Nothing came while spinning: sleep. (Only here is the mutex
                 // taken: nine workers all grabbing it the moment a job appears
                 // was the remaining ~18 us of a small parallel call,
                 // docs/design/array.md §10.1.)
                 std::unique_lock lock(m_);
-                cv_work_.wait(lock, [&] { return stop_ || generation_.load() != seen; });
+                cv_work_.wait(lock, [&] { return stop_ || fresh(); });
             }
             if (stop_flag_) return;
-            // The job's fields were written before generation_ was bumped
-            // (release); this acquire load makes them visible here.
-            seen = generation_.load(std::memory_order_acquire);
+            // Join the job seen, only while it is open: one compare-and-swap
+            // on the generation, the closed bit and the count together, so a
+            // worker can never count itself into a job that already closed or
+            // into a later one. The job's fields were written before the
+            // generation was stored (release); the acquire here makes them
+            // visible.
+            std::uint64_t s = state_.load(std::memory_order_acquire);
+            seen = generation(s);
+            bool joined = false;
+            while (!joined && !(s & kClosed) && generation(s) == seen)
+                joined = state_.compare_exchange_weak(s, s + 1, std::memory_order_acq_rel);
+            if (!joined) continue;  // too late: the caller has finished without us
             work();
-            if (pending_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            const std::uint64_t left = state_.fetch_sub(1, std::memory_order_acq_rel) - 1;
+            if ((left & kClosed) && (left & kCount) == 0) {  // the caller is waiting for the last one
                 std::lock_guard lock(m_);
                 cv_done_.notify_one();
             }
@@ -166,7 +194,7 @@ private:
     void start(int n) {
         stop_ = false;
         stop_flag_ = false;
-        const std::uint64_t now = generation_.load();
+        const std::uint64_t now = generation(state_.load());
         for (int i = 1; i < n; ++i) workers_.emplace_back([this, now] { worker_main(now); });
         nthreads_.store(static_cast<int>(workers_.size()) + 1, std::memory_order_relaxed);
     }
@@ -189,8 +217,14 @@ private:
     const std::function<void(std::int64_t)>* job_ = nullptr;
     std::int64_t ntasks_ = 0;
     std::atomic<std::int64_t> next_{0};
-    std::atomic<int> pending_{0};
-    std::atomic<std::uint64_t> generation_{0};
+    // The job's state in one word: the generation (bits 32-63), whether the
+    // job is closed (bit 31: every task taken, the caller waiting) and how
+    // many workers joined it and have not left yet (bits 0-30).
+    static constexpr int kGenShift = 32;
+    static constexpr std::uint64_t kClosed = std::uint64_t{1} << 31;
+    static constexpr std::uint64_t kCount = kClosed - 1;
+    static std::uint64_t generation(std::uint64_t s) { return s >> kGenShift; }
+    std::atomic<std::uint64_t> state_{0};
     bool stop_ = false;
     std::atomic<bool> stop_flag_{false};  // stop_, readable while spinning
     std::exception_ptr error_;
@@ -198,10 +232,35 @@ private:
     std::atomic<int> nthreads_{1};
 };
 
+// The pool, made on first use. Never destroyed: joining threads during
+// interpreter shutdown is fragile, and the OS reclaims them at exit anyway.
+std::atomic<Pool*> g_pool{nullptr};
+std::atomic<int> g_threads{0};  // the thread count a pool made later starts with (0: the default)
+
+// After fork() only the forking thread exists in the child: the workers are
+// gone, and waiting for them would hang the first parallel call. The child
+// forgets the old pool without touching it (no join, no destructor: its
+// threads and its mutex state are the parent's) and makes a new one, with
+// the same thread count, on first use (OpenBLAS and OpenMP runtimes do the
+// same).
+void after_fork_in_child() {
+    if (Pool* old = g_pool.load(std::memory_order_relaxed)) {
+        g_threads.store(old->threads(), std::memory_order_relaxed);
+        g_pool.store(nullptr, std::memory_order_relaxed);  // leaked on purpose
+    }
+    t_in_task = false;
+}
+
 Pool& pool() {
-    // Never destroyed: joining threads during interpreter shutdown is fragile,
-    // and the OS reclaims them at exit anyway.
-    static Pool* p = new Pool(performance_cores());
+    Pool* p = g_pool.load(std::memory_order_acquire);
+    if (p) [[likely]]
+        return *p;
+    static const bool registered = [] { return pthread_atfork(nullptr, nullptr, &after_fork_in_child) == 0; }();
+    (void)registered;
+    const int n = g_threads.load(std::memory_order_relaxed);
+    Pool* made = new Pool(n > 0 ? n : performance_cores());
+    if (g_pool.compare_exchange_strong(p, made, std::memory_order_acq_rel)) return *made;
+    delete made;  // another thread made one first
     return *p;
 }
 

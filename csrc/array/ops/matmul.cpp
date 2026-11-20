@@ -21,6 +21,8 @@
 #include "array/convert.hpp"
 #include "array/kernels/elementwise.hpp"
 #include "array/ops/copy.hpp"
+#include "array/ops/reduction.hpp"
+#include "array/ops/ufunc.hpp"
 #include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
@@ -294,6 +296,53 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
     return wrap(std::move(out));
 }
 
-void bind_matmul(nb::module_& m) { m.def("matmul", named("matmul", &matmul), nb::arg().none(), nb::arg().none()); }
+// ---------------------------------------------------------------- vecdot
+// The top-level sd.vecdot follows the array's dtype rules (Array API): it is
+// sum(conj(x1) * x2, axis) for every dtype, so bool and int64 inputs give
+// int64 (wrapping), as matmul and tensordot do. sd.linalg.vecdot computes in
+// float64 instead (docs/api/linalg.md §2). For float64 and complex128 inputs
+// both are the same computation, so this hands them to sd.linalg.vecdot
+// (the same bits); the shape rules and messages are that function's.
+nb::object vecdot(nb::handle x1, nb::handle x2, nb::handle axis_obj) {
+    const bool integral =
+        is_ndarray(x1) && is_ndarray(x2) && promote(as_ndarray(x1).dtype, as_ndarray(x2).dtype) <= DType::Int64;
+    if (!integral) {
+        static PyObject* const linalg_vecdot =
+            nb::object(nb::module_::import_("stardust.linalg").attr("vecdot")).release().ptr();  // kept for the process
+        nb::dict kw;
+        kw["axis"] = axis_obj;
+        return nb::handle(linalg_vecdot)(x1, x2, **kw);
+    }
+    const NDArray &a = as_ndarray(x1), &b = as_ndarray(x2);
+    const int nd = std::max(a.ndim, b.ndim);
+    // The axis counts in the broadcast shape and is not broadcast itself.
+    const int ax = normalize_axis(parse_int(axis_obj, "axis"), nd);
+    auto padded = [nd](const NDArray& v) {
+        std::vector<std::int64_t> s(static_cast<size_t>(nd - v.ndim), 1);
+        s.insert(s.end(), v.shape_span().begin(), v.shape_span().end());
+        return s;
+    };
+    std::vector<std::int64_t> sa = padded(a), sb = padded(b);
+    if (sa[ax] != sb[ax])
+        throw nb::value_error(("'x1' and 'x2' must have the same size along the axis, got " + std::to_string(sa[ax]) +
+                               " and " + std::to_string(sb[ax]))
+                                  .c_str());
+    sa.erase(sa.begin() + ax);
+    sb.erase(sb.begin() + ax);
+    for (size_t d = 0; d < sa.size(); ++d)
+        if (sa[d] != sb[d] && sa[d] != 1 && sb[d] != 1)
+            throw nb::value_error(("batch shapes do not broadcast: " + shape_str(sa) + " " + shape_str(sb)).c_str());
+    // conj is the identity on bool and int64.
+    const nb::object products = binary<ops::Multiply>(x1, x2, nb::none());
+    return sum(products, nb::int_(ax), nb::none(), nb::bool_(false));
+}
+
+void bind_matmul(nb::module_& m) {
+    m.def("matmul", named("matmul", &matmul), nb::sig("def matmul(x1, x2, /)"), nb::arg().none(), nb::arg().none());
+    m.def(
+        "vecdot", named("vecdot", &vecdot), nb::sig("def vecdot(x1, x2, /, *, axis=-1)"), nb::arg().none(),
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1
+    );
+}
 
 }  // namespace sd

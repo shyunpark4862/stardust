@@ -9,10 +9,16 @@
 
 #include <algorithm>
 #include <atomic>
-#include <optional>
+#include <climits>
 #include <cstring>
+#include <functional>
+#include <new>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace nb = nanobind;
 
@@ -22,7 +28,7 @@ namespace {
 
 // Where a field's text is in the input. Quoted fields point inside the
 // quotes; kEscaped says the text still holds "" pairs to turn into ".
-struct Field {  // 16 bytes, was 24: a million rows of fields are many megabytes to write (docs/design/frame.md §10.3)
+struct Field {  // 16 bytes: a million rows of fields are many megabytes to write (docs/design/frame.md §10.3)
     std::int64_t start;
     std::uint32_t length;
     std::uint32_t flags;
@@ -92,6 +98,14 @@ public:
     std::int64_t next(Sink&& sink) {
         if (done_ || field_start_ >= n_) return -1;
         const std::int64_t record = field_start_;
+        // any_quote looks only inside this record's fields: the quote masks of
+        // the blocks before it are dropped now and then, so a long input keeps
+        // a few masks, not one per block (docs/design/frame.md §10.6).
+        const std::int64_t keep = (record - origin_) >> 6;
+        if (keep - quotes_base_ >= kKeepQuoteBlocks) {
+            quotes_.erase(quotes_.begin(), quotes_.begin() + (keep - quotes_base_));
+            quotes_base_ = keep;
+        }
         for (std::int64_t count = 0;; ++count) {
             const std::int64_t at = next_structural();
             if (at < 0) {  // the end of the input ends the last record
@@ -153,7 +167,7 @@ private:
         from -= origin_;  // block numbers count from the origin
         to -= origin_;
         for (std::int64_t w = from >> 6; w <= (to - 1) >> 6 && from < to; ++w) {
-            std::uint64_t m = quotes_[w];
+            std::uint64_t m = quotes_[static_cast<std::size_t>(w - quotes_base_)];
             const std::int64_t lo = std::max(from, w * 64) - w * 64, hi = std::min(to, w * 64 + 64) - w * 64;
             m &= (hi == 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << hi) - 1) & ~((std::uint64_t{1} << lo) - 1);
             if (m) return true;
@@ -193,7 +207,9 @@ private:
     std::int64_t field_start_, block_ = 0;
     std::uint64_t bits_ = 0;
     bool inside_ = false, done_ = false, bom_ = false;
-    std::vector<std::uint64_t> quotes_;  // the quote mask of every block scanned so far
+    static constexpr std::int64_t kKeepQuoteBlocks = 1024;  // masks dropped at most this many at a time
+    std::vector<std::uint64_t> quotes_;  // the quote masks of blocks quotes_base_, quotes_base_ + 1, ...
+    std::int64_t quotes_base_ = 0;
 };
 
 // A field's text, with "" pairs made " (only escaped fields need a copy).
@@ -210,6 +226,10 @@ std::string_view text_of(const char* base, const Field& f, std::string& scratch)
 
 bool valid_utf8(std::string_view s) {
     std::size_t i = 0;
+    for (std::uint64_t w; i + 8 <= s.size(); i += 8) {  // ASCII eight bytes at a time
+        std::memcpy(&w, s.data() + i, 8);
+        if (w & 0x8080808080808080u) break;
+    }
     while (i < s.size()) {
         const auto c = static_cast<unsigned char>(s[i]);
         std::size_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 0;
@@ -239,9 +259,12 @@ bool valid_utf8(std::string_view s) {
 //  2. A chunk owns the records that start inside it: it finds its first
 //     record start (after a line feed outside quotes), tokenizes from there
 //     and finishes the last record even past its end.
-//  3. Each column is built chunk by chunk, straight into the final buffers;
-//     the chunks' inferred types are then merged (the rules of
-//     docs/api/frame.md §10.4 hold for the whole column).
+//  3. While a chunk is tokenized, every field goes straight into its
+//     column's Part of the chunk: a number, or text once the chunk's column
+//     holds text. No field positions are kept. The chunks' inferred types
+//     are then merged column by column (the rules of docs/api/frame.md
+//     §10.4 hold for the whole column), and a chunk whose kind the merge
+//     changes to text is read again.
 // Errors are the serial ones: the first chunk with a tokenizing error
 // reports it; then columns in order, the first bad row of a column.
 
@@ -264,122 +287,366 @@ std::int64_t first_record(const char* p, std::int64_t size, std::int64_t from, b
     return size;
 }
 
-struct Chunk {
-    std::vector<std::vector<Field>> fields;  // per output column, one per record
-    std::vector<std::int64_t> starts;  // the byte where each record starts
-    std::string error;  // the chunk's tokenizing error, if any
-};
-
-class ColumnReader {
-public:
-    ColumnReader(
-        const char* base,
-        const std::vector<Chunk>& chunks,
-        const std::vector<std::int64_t>& row0,
-        std::size_t column,
-        const std::unordered_set<std::string>& na,
-        const std::string& name
-    )
-        : base_(base), chunks_(chunks), row0_(row0), j_(column), na_(na), name_(name), n_(row0.back()) {}
-
-    // docs/api/frame.md §10.4: the column inferred (int64, then float64, then bool, then
-    // string), or read as `forced`.
-    Column read(std::optional<DType> forced) {
-        if (forced) return build(*forced);
-        enum Kind : std::uint8_t { Int, Float, Text };
-        Column col = make_fixed(DType::Int64, n_);  // int64 and double values share these 8 bytes per row
-        std::vector<std::uint8_t> valid(static_cast<std::size_t>(n_));
-        std::vector<std::uint8_t> kinds(chunks_.size()), any(chunks_.size());
-        auto* iv = reinterpret_cast<std::int64_t*>(col.values->data());
-        auto* dv = reinterpret_cast<double*>(col.values->data());
-        each_chunk([&](std::size_t c, const std::vector<Field>& f, std::int64_t r0) {
-            std::string scratch;
-            Kind kind = Int;
-            for (std::size_t i = 0; i < f.size() && kind != Text; ++i) {
-                const std::int64_t row = r0 + static_cast<std::int64_t>(i);
-                if (is_na(f[i], scratch)) {
-                    valid[row] = 0;
-                    iv[row] = 0;
-                    continue;
-                }
-                valid[row] = 1;
-                any[c] = 1;
-                const std::string_view s = text_of(base_, f[i], scratch);
-                std::int64_t v;
-                if (kind == Int) {
-                    const int r = text::parse_int64(s, v);
-                    if (r == 1) {
-                        iv[row] = v;
-                        continue;
-                    }
-                    double d;
-                    if (!text::parse_double(s, d)) {  // no number: text. An int beyond int64 is float syntax.
-                        kind = Text;
-                        continue;
-                    }
-                    kind = Float;  // the chunk's ints so far become doubles, rounded as in list inference
-                    for (std::int64_t k = r0; k < row; ++k)
-                        if (valid[k]) dv[k] = static_cast<double>(iv[k]);
-                    dv[row] = d;
-                    continue;
-                }
-                // A float column: an int is rounded to float64 (beyond int64 too: it is float syntax),
-                // as list inference rounds an int next to a float (docs/api/frame.md §2.2, §10.4).
-                if (text::parse_int64(s, v) == 1) dv[row] = static_cast<double>(v);
-                else if (!text::parse_double(s, dv[row])) kind = Text;
+// Bytes that are not valid UTF-8 as \xNN (Python's repr of bytes), the rest
+// as they are: a message must be valid UTF-8 to become a str.
+std::string printable(std::string_view s) {
+    std::string out;
+    std::size_t i = 0;
+    while (i < s.size()) {
+        std::size_t len = 1;
+        const auto c = static_cast<unsigned char>(s[i]);
+        if (c >= 0x80) {
+            len = (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 0;
+            if (len == 0 || i + len > s.size() || !valid_utf8(s.substr(i, len))) {
+                static const char* hex = "0123456789abcdef";
+                out += "\\x";
+                out += hex[c >> 4];
+                out += hex[c & 15];
+                ++i;
+                continue;
             }
-            kinds[c] = kind;
-        });
-        if (std::find(any.begin(), any.end(), 1) == any.end())
-            return build(DType::Float64);  // all NA: float64 (docs/api/frame.md §10.4)
-        Kind kind = Int;
-        for (std::uint8_t k : kinds) kind = std::max(kind, static_cast<Kind>(k));
-        if (kind == Float) {  // chunks of ints become doubles, rounded
-            each_chunk([&](std::size_t c, const std::vector<Field>& f, std::int64_t r0) {
-                if (kinds[c] != Int) return;
-                for (std::int64_t row = r0; row < r0 + static_cast<std::int64_t>(f.size()); ++row)
-                    if (valid[row]) dv[row] = static_cast<double>(iv[row]);
-            });
         }
-        if (kind == Text) return build(all_bool() ? DType::Bool : DType::String);
-        if (kind == Float) col.dtype = DType::Float64;
-        set_validity(col, valid);
-        return col;
+        out.append(s.substr(i, len));
+        i += len;
+    }
+    return out;
+}
+
+// The na_values texts, found by a string_view (no std::string per field).
+struct TextHash {
+    using is_transparent = void;
+    std::size_t operator()(std::string_view s) const noexcept { return std::hash<std::string_view>{}(s); }
+};
+class NaSet {
+public:
+    template <class It>
+    NaSet(It first, It last) : set_(first, last) {
+        for (const std::string& t : set_)
+            lengths_ |= t.size() < 64 ? std::uint64_t{1} << t.size() : 0, long_ |= t.size() >= 64;
+    }
+    bool empty() const { return set_.empty(); }
+    // Most fields have a length no na_values text has: no hash for them.
+    bool contains(std::string_view s) const {
+        if (s.size() < 64 ? !((lengths_ >> s.size()) & 1) : !long_) return false;
+        return set_.find(s) != set_.end();
     }
 
 private:
-    template <class F>
-    void each_chunk(F f) {
-        parallel::parallel_for(static_cast<std::int64_t>(chunks_.size()), [&](std::int64_t c) {
-            const auto k = static_cast<std::size_t>(c);
-            f(k, chunks_[k].fields[j_], row0_[k]);
-        });
+    std::unordered_set<std::string, TextHash, std::equal_to<>> set_;
+    std::uint64_t lengths_ = 0;  // bit k: a text of k bytes
+    bool long_ = false;          // a text of 64 bytes or more
+};
+
+// One output column's rows of one chunk, built while the chunk is tokenized
+// (docs/design/frame.md §10.6).
+struct Part {
+    enum Kind : std::uint8_t { Int, Float, Text };
+    Kind kind = Int;        // inferred: what the chunk's values are so far
+    bool any = false;       // a value that is not NA
+    bool all_bool = true;   // Text: every value is True or False
+    std::vector<std::uint8_t> valid;  // per row: 1 a value, 0 NA
+    std::vector<std::int64_t> num;    // Int, Float, forced int64 and float64: int64 or double bits per row
+    std::vector<std::uint8_t> flag;   // forced bool: 0 or 1 per row
+    std::string bytes;                // Text and forced string: the values back to back
+    std::vector<std::int64_t> ends;   // where each row's bytes end in `bytes`
+    std::int64_t bad = -1;  // the first row that cannot be read as the forced dtype, or that is not valid UTF-8
+    std::string bad_text;   // a forced number or bool: that row's text
+};
+
+struct Chunk {
+    std::int64_t first = 0;            // the byte where its first record starts
+    std::vector<std::int64_t> starts;  // the byte where each record starts
+    std::vector<Part> parts;           // per output column
+    std::string error;                 // the chunk's tokenizing error, if any
+};
+
+// The 1-based line of a row of the file's body: where that record starts.
+std::int64_t line_of(const char* base, const std::vector<Chunk>& chunks, std::size_t c, std::int64_t row) {
+    return line_at(base, chunks[c].starts[static_cast<std::size_t>(row)]);
+}
+
+// Reads the chunks: tokenizes their records and hands every field of an
+// output column straight to that column's Part of the chunk.
+class ChunkReader {
+public:
+    ChunkReader(
+        const char* data,
+        std::size_t size,
+        char sep,
+        const std::vector<std::int64_t>& slot,
+        const std::vector<std::optional<DType>>& forced,
+        const NaSet& na
+    )
+        : data_(data),
+          size_(size),
+          sep_(sep),
+          slot_(slot),
+          forced_(forced),
+          na_(na),
+          width_(static_cast<std::int64_t>(slot.size())) {}
+
+    // The records of `ch` from byte `from`, as long as each starts before
+    // `end` and fewer than `limit` have been read in all (`read`, counted
+    // across chunks). Returns false once the input has no more records.
+    bool read(Chunk& ch, Tokenizer& t, std::int64_t end, std::int64_t limit, std::int64_t& read) {
+        ch.parts.resize(forced_.size());
+        std::string scratch;
+        while (read < limit) {
+            const std::int64_t start = t.offset();
+            if (start >= end) return true;  // the next chunk's record
+            const auto row = static_cast<std::int64_t>(ch.starts.size());
+            const std::int64_t count = t.next([&](std::int64_t i, const Field& f) {
+                if (i < width_ && slot_[i] >= 0) add(ch, static_cast<std::size_t>(slot_[i]), f, row, scratch);
+            });
+            if (count < 0) return false;
+            if (count != width_)
+                csv_error(
+                    line_at(data_, start),
+                    "expected " + std::to_string(width_) + " fields, got " + std::to_string(count)
+                );
+            ch.starts.push_back(start);
+            ++read;
+            if (row == 0) reserve(ch, (end - start) / std::max<std::int64_t>(1, t.offset() - start) + 1);
+        }
+        return false;
+    }
+
+    // Rows [0, rows) of column j of `ch` as text (Part::bytes and ends), read
+    // again from the input: the chunk's numbers so far, once the column
+    // turns out to hold text.
+    void to_text(Chunk& ch, std::size_t j, std::int64_t rows) {
+        Part& p = ch.parts[j];
+        p.num.clear();
+        p.num.shrink_to_fit();
+        p.bytes.clear();
+        p.ends.clear();
+        p.kind = Part::Text;
+        p.all_bool = true;
+        if (rows == 0) return;
+        Tokenizer t(data_, size_, sep_, ch.first);
+        std::string scratch;
+        for (std::int64_t row = 0; row < rows; ++row)
+            t.next([&](std::int64_t i, const Field& f) {
+                if (i >= width_ || slot_[i] != static_cast<std::int64_t>(j)) return;
+                if (p.valid[static_cast<std::size_t>(row)]) append_text(p, text_of(data_, f, scratch), row);
+                else p.ends.push_back(static_cast<std::int64_t>(p.bytes.size()));
+            });
+    }
+
+private:
+    // Room for about `rows` rows (from the first record's length), so the
+    // Parts do not grow step by step; any number of rows still fits.
+    static void reserve(Chunk& ch, std::int64_t rows) {
+        const auto r = static_cast<std::size_t>(rows);
+        ch.starts.reserve(r);
+        for (Part& p : ch.parts) {
+            p.valid.reserve(r);
+            if (p.kind == Part::Text) {
+                p.ends.reserve(r);
+                p.bytes.reserve(p.bytes.size() * r);
+            } else {
+                p.num.reserve(r);
+            }
+        }
     }
 
     // docs/api/frame.md §10.3: NA is the unquoted empty field and the na_values texts.
     bool is_na(const Field& f, std::string& scratch) const {
         if (f.length == 0 && !(f.flags & kQuoted)) return true;
-        return !na_.empty() && na_.count(std::string(text_of(base_, f, scratch)));
+        return !na_.empty() && na_.contains(text_of(data_, f, scratch));
     }
 
-    const Field& field_of(std::int64_t row, std::int64_t& start) const {
-        const auto c = static_cast<std::size_t>(std::upper_bound(row0_.begin(), row0_.end(), row) - row0_.begin() - 1);
-        start = chunks_[c].starts[static_cast<std::size_t>(row - row0_[c])];
-        return chunks_[c].fields[j_][static_cast<std::size_t>(row - row0_[c])];
+    static void append_text(Part& p, std::string_view s, std::int64_t row) {
+        if (p.bad < 0 && !valid_utf8(s)) p.bad = row;
+        if (p.all_bool && s != "True" && s != "False") p.all_bool = false;
+        p.bytes.append(s);
+        p.ends.push_back(static_cast<std::int64_t>(p.bytes.size()));
     }
 
-    bool all_bool() {
-        std::atomic<bool> other{false};
-        each_chunk([&](std::size_t, const std::vector<Field>& f, std::int64_t) {
-            std::string scratch;
-            for (std::size_t i = 0; i < f.size() && !other.load(std::memory_order_relaxed); ++i) {
-                if (is_na(f[i], scratch)) continue;
-                const std::string_view s = text_of(base_, f[i], scratch);
-                if (s != "True" && s != "False") other = true;
+    static std::int64_t bits_of(double d) {
+        std::int64_t b;
+        std::memcpy(&b, &d, sizeof b);
+        return b;
+    }
+
+    void add(Chunk& ch, std::size_t j, const Field& f, std::int64_t row, std::string& scratch) {
+        Part& p = ch.parts[j];
+        if (forced_[j]) return add_forced(p, *forced_[j], f, row, scratch);
+        // docs/api/frame.md §10.4: int64, then float64, then text (bool or string, decided per column).
+        if (is_na(f, scratch)) {
+            p.valid.push_back(0);
+            if (p.kind == Part::Text) p.ends.push_back(static_cast<std::int64_t>(p.bytes.size()));
+            else p.num.push_back(0);
+            return;
+        }
+        p.valid.push_back(1);
+        p.any = true;
+        const std::string_view s = text_of(data_, f, scratch);
+        std::int64_t v;
+        double d;
+        switch (p.kind) {
+            case Part::Int:
+                if (text::parse_int64(s, v) == 1) {
+                    p.num.push_back(v);
+                    return;
+                }
+                if (text::parse_double(s, d)) {  // an int beyond int64 is float syntax
+                    p.kind = Part::Float;  // the chunk's ints so far become doubles, rounded as in list inference
+                    for (std::size_t k = 0; k < p.num.size(); ++k)
+                        if (p.valid[k]) p.num[k] = bits_of(static_cast<double>(p.num[k]));
+                    p.num.push_back(bits_of(d));
+                    return;
+                }
+                break;  // no number: text
+            case Part::Float:
+                // A float column: an int is rounded to float64 (beyond int64 too: it is float syntax),
+                // as list inference rounds an int next to a float (docs/api/frame.md §2.2, §10.4).
+                if (text::parse_int64(s, v) == 1) {
+                    p.num.push_back(bits_of(static_cast<double>(v)));
+                    return;
+                }
+                if (text::parse_double(s, d)) {
+                    p.num.push_back(bits_of(d));
+                    return;
+                }
+                break;
+            case Part::Text: return append_text(p, s, row);
+        }
+        to_text(ch, j, row);
+        append_text(p, s, row);
+    }
+
+    void add_forced(Part& p, DType dt, const Field& f, std::int64_t row, std::string& scratch) {
+        if (p.bad >= 0) return;  // the column cannot be read: it raises (docs/design/frame.md §10.6)
+        const bool na = is_na(f, scratch);
+        p.valid.push_back(!na);
+        const std::string_view s = na ? std::string_view{} : text_of(data_, f, scratch);
+        bool ok = true;
+        switch (dt) {
+            case DType::Int64: {
+                std::int64_t v = 0;
+                ok = na || text::parse_int64(s, v) == 1;
+                p.num.push_back(na ? 0 : v);
+                break;
             }
-        });
-        return !other;
+            case DType::Float64: {
+                double d = 0.0;
+                ok = na || text::parse_double(s, d);
+                p.num.push_back(na ? 0 : bits_of(d));
+                break;
+            }
+            case DType::Bool:
+                ok = na || s == "True" || s == "False";
+                p.flag.push_back(!na && s == "True");
+                break;
+            case DType::String:
+                if (!na && !valid_utf8(s)) p.bad = row;
+                p.bytes.append(s);
+                p.ends.push_back(static_cast<std::int64_t>(p.bytes.size()));
+                return;
+            case DType::Complex128: break;  // not a frame dtype
+        }
+        if (!ok) {
+            p.bad = row;
+            p.bad_text = s;
+        }
     }
+
+    const char* data_;
+    std::size_t size_;
+    char sep_;
+    const std::vector<std::int64_t>& slot_;  // slot_[i]: the output column file column i feeds, or -1
+    const std::vector<std::optional<DType>>& forced_;
+    const NaSet& na_;
+    std::int64_t width_;
+};
+
+// Builds the columns from the chunks' Parts, one column at a time, freeing
+// each column's Parts as it goes: the memory is the result's plus one
+// column's Parts (docs/design/frame.md §10.6).
+class ColumnBuilder {
+public:
+    ColumnBuilder(const char* base, std::vector<Chunk>& chunks, ChunkReader& reader)
+        : base_(base), chunks_(chunks), reader_(reader), row0_(chunks.size() + 1, 0) {
+        for (std::size_t c = 0; c < chunks.size(); ++c)
+            row0_[c + 1] = row0_[c] + static_cast<std::int64_t>(chunks[c].starts.size());
+        n_ = row0_.back();
+    }
+
+    Column build(std::size_t j, std::optional<DType> forced, const std::string& name) {
+        j_ = j;
+        if (forced) {
+            if (auto bad = first_bad()) {
+                const auto [c, row] = *bad;
+                const Part& p = chunks_[c].parts[j];
+                if (*forced == DType::String)
+                    csv_error(line_of(base_, chunks_, c, row), "column '" + name + "' is not valid UTF-8");
+                csv_error(
+                    line_of(base_, chunks_, c, row),
+                    "column '" + name + "': cannot read '" + printable(p.bad_text) + "' as " + dtype_name(*forced)
+                );
+            }
+            return *forced == DType::String ? strings() : fixed(*forced, *forced == DType::Bool);
+        }
+        bool any = false;
+        Part::Kind kind = Part::Int;
+        for (Chunk& ch : chunks_) {
+            any |= ch.parts[j].any;
+            kind = std::max(kind, ch.parts[j].kind);
+        }
+        if (!any) return all_na();  // all NA: float64 (docs/api/frame.md §10.4)
+        if (kind == Part::Float) {  // chunks of ints become doubles, rounded
+            each_part([](Part& p) {
+                if (p.kind != Part::Int) return;
+                for (std::size_t k = 0; k < p.num.size(); ++k)
+                    if (p.valid[k]) {
+                        const double d = static_cast<double>(p.num[k]);
+                        std::memcpy(&p.num[k], &d, sizeof d);
+                    }
+            });
+        }
+        if (kind != Part::Text) return fixed(kind == Part::Float ? DType::Float64 : DType::Int64, false);
+        bool all_bool = true;
+        for (Chunk& ch : chunks_) {
+            const Part& p = ch.parts[j];
+            all_bool &= p.kind == Part::Text ? p.all_bool : !p.any;
+        }
+        if (all_bool) return bools();
+        // A string column: the chunks that held numbers only are read again as text.
+        parallel::parallel_for(static_cast<std::int64_t>(chunks_.size()), [&](std::int64_t c) {
+            Chunk& ch = chunks_[static_cast<std::size_t>(c)];
+            Part& p = ch.parts[j];
+            if (p.kind != Part::Text) reader_.to_text(ch, j, static_cast<std::int64_t>(ch.starts.size()));
+        });
+        if (auto bad = first_bad())
+            csv_error(line_of(base_, chunks_, bad->first, bad->second), "column '" + name + "' is not valid UTF-8");
+        return strings();
+    }
+
+private:
+    template <class F>
+    void each_part(F f) {
+        parallel::parallel_for(static_cast<std::int64_t>(chunks_.size()), [&](std::int64_t c) {
+            f(chunks_[static_cast<std::size_t>(c)].parts[j_]);
+        });
+    }
+
+    template <class F>
+    void each_chunk(F f) {
+        parallel::parallel_for(static_cast<std::int64_t>(chunks_.size()), [&](std::int64_t c) {
+            const auto k = static_cast<std::size_t>(c);
+            f(chunks_[k].parts[j_], row0_[k]);
+        });
+    }
+
+    // (chunk, row) of the column's first bad row in file order, if any.
+    std::optional<std::pair<std::size_t, std::int64_t>> first_bad() const {
+        for (std::size_t c = 0; c < chunks_.size(); ++c)
+            if (chunks_[c].parts[j_].bad >= 0) return std::pair{c, chunks_[c].parts[j_].bad};
+        return std::nullopt;
+    }
+
+    static void release(Part& p) { p = Part{}; }
 
     // valid[0, n) as the column's bitmap; then the NA count and zeroed NA rows.
     void set_validity(Column& col, const std::vector<std::uint8_t>& valid) {
@@ -396,100 +663,80 @@ private:
         finish_fixed(col);
     }
 
-    Column build(DType dt) {
-        if (dt == DType::String) return build_strings();
+    Column all_na() {
+        Column col = make_fixed(DType::Float64, n_);
+        std::memset(col.values->data(), 0, static_cast<std::size_t>(n_ * 8));
+        set_validity(col, std::vector<std::uint8_t>(static_cast<std::size_t>(n_), 0));
+        each_part(release);
+        return col;
+    }
+
+    // int64 or float64 from Part::num, or bool from Part::flag.
+    Column fixed(DType dt, bool from_flags) {
         Column col = make_fixed(dt, n_);
         std::vector<std::uint8_t> valid(static_cast<std::size_t>(n_));
-        parallel::FirstRow bad;
-        each_chunk([&](std::size_t, const std::vector<Field>& f, std::int64_t r0) {
-            std::string scratch;
-            for (std::size_t i = 0; i < f.size(); ++i) {
-                const std::int64_t row = r0 + static_cast<std::int64_t>(i);
-                if (bad.failed_before(row)) return;
-                const bool na = is_na(f[i], scratch);
-                valid[row] = !na;
-                if (na) continue;
-                const std::string_view s = text_of(base_, f[i], scratch);
-                bool ok = true;
-                switch (dt) {
-                    case DType::Int64:
-                        ok = text::parse_int64(s, reinterpret_cast<std::int64_t*>(col.values->data())[row]) == 1;
-                        break;
-                    case DType::Float64:
-                        ok = text::parse_double(s, reinterpret_cast<double*>(col.values->data())[row]);
-                        break;
-                    case DType::Bool:
-                        ok = s == "True" || s == "False";
-                        reinterpret_cast<std::uint8_t*>(col.values->data())[row] = s == "True";
-                        break;
-                    case DType::String: break;
-                    case DType::Complex128: break;  // not a frame dtype
-                }
-                if (!ok) {
-                    bad.offer(row);
-                    return;
-                }
+        std::byte* out = col.values->data();
+        const std::int64_t size = itemsize(dt);
+        each_chunk([&](Part& p, std::int64_t r0) {
+            const std::int64_t rows = static_cast<std::int64_t>(p.valid.size());
+            const void* src = from_flags ? static_cast<const void*>(p.flag.data()) : p.num.data();
+            if (rows > 0) {
+                std::memcpy(out + r0 * size, src, static_cast<std::size_t>(rows * size));
+                std::memcpy(valid.data() + r0, p.valid.data(), static_cast<std::size_t>(rows));
             }
+            release(p);
         });
-        if (bad.any()) {
-            std::int64_t start;
-            std::string scratch;
-            const std::string s(text_of(base_, field_of(bad.row(), start), scratch));
-            csv_error(line_at(base_, start), "column '" + name_ + "': cannot read '" + s + "' as " + dtype_name(dt));
-        }
         set_validity(col, valid);
         return col;
     }
 
-    Column build_strings() {
+    // An inferred bool column: every value is True or False (the Parts of
+    // text), the other Parts are all NA.
+    Column bools() {
+        Column col = make_fixed(DType::Bool, n_);
+        std::vector<std::uint8_t> valid(static_cast<std::size_t>(n_));
+        auto* out = reinterpret_cast<std::uint8_t*>(col.values->data());
+        each_chunk([&](Part& p, std::int64_t r0) {
+            std::int64_t from = 0;
+            for (std::size_t i = 0; i < p.valid.size(); ++i) {
+                const std::int64_t row = r0 + static_cast<std::int64_t>(i);
+                valid[row] = p.valid[i];
+                out[row] = 0;
+                if (p.kind == Part::Text) {
+                    const std::int64_t to = p.ends[i];
+                    out[row] = p.valid[i] && to - from == 4;  // "True"; the others are "False"
+                    from = to;
+                }
+            }
+            release(p);
+        });
+        set_validity(col, valid);
+        return col;
+    }
+
+    Column strings() {
         Column col;
         col.dtype = DType::String;
         col.length = n_;
         col.offsets = Buffer::allocate((n_ + 1) * 8, false);
         auto* offs = reinterpret_cast<std::int64_t*>(col.offsets->data());
         offs[0] = 0;
-        std::vector<std::uint8_t> valid(static_cast<std::size_t>(n_));
-        std::vector<std::int64_t> bytes(chunks_.size() + 1, 0);  // per chunk, then where each starts
-        parallel::FirstRow bad;
-        // Pass 1: each chunk's bytes, checking UTF-8.
-        each_chunk([&](std::size_t c, const std::vector<Field>& f, std::int64_t r0) {
-            std::string scratch;
-            std::int64_t pos = 0;
-            for (std::size_t i = 0; i < f.size(); ++i) {
-                const std::int64_t row = r0 + static_cast<std::int64_t>(i);
-                if (bad.failed_before(row)) return;
-                if (is_na(f[i], scratch)) continue;
-                const std::string_view s = text_of(base_, f[i], scratch);
-                if (!valid_utf8(s)) {
-                    bad.offer(row);
-                    return;
-                }
-                valid[row] = 1;
-                pos += static_cast<std::int64_t>(s.size());
-            }
-            bytes[c + 1] = pos;
-        });
-        if (bad.any()) {
-            std::int64_t start;
-            field_of(bad.row(), start);
-            csv_error(line_at(base_, start), "column '" + name_ + "' is not valid UTF-8");
-        }
-        for (std::size_t c = 0; c < chunks_.size(); ++c) bytes[c + 1] += bytes[c];
-        col.values = Buffer::allocate(bytes.back(), false);
+        std::vector<std::int64_t> at(chunks_.size() + 1, 0);  // where each chunk's bytes start
+        for (std::size_t c = 0; c < chunks_.size(); ++c)
+            at[c + 1] = at[c] + static_cast<std::int64_t>(chunks_[c].parts[j_].bytes.size());
+        col.values = Buffer::allocate(at.back(), false);
         auto* out = reinterpret_cast<char*>(col.values->data());
-        // Pass 2: the bytes and the final offsets, from the chunk's start.
-        each_chunk([&](std::size_t c, const std::vector<Field>& f, std::int64_t r0) {
-            std::string scratch;
-            std::int64_t pos = bytes[c];
-            for (std::size_t i = 0; i < f.size(); ++i) {
-                const std::int64_t row = r0 + static_cast<std::int64_t>(i);
-                if (valid[row]) {
-                    const std::string_view s = text_of(base_, f[i], scratch);
-                    std::memcpy(out + pos, s.data(), s.size());
-                    pos += static_cast<std::int64_t>(s.size());
-                }
-                offs[row + 1] = pos;
+        std::vector<std::uint8_t> valid(static_cast<std::size_t>(n_));
+        parallel::parallel_for(static_cast<std::int64_t>(chunks_.size()), [&](std::int64_t c) {
+            const auto k = static_cast<std::size_t>(c);
+            Part& p = chunks_[k].parts[j_];
+            const std::int64_t r0 = row0_[k];
+            std::memcpy(out + at[k], p.bytes.data(), p.bytes.size());
+            for (std::size_t i = 0; i < p.ends.size(); ++i) {
+                offs[r0 + static_cast<std::int64_t>(i) + 1] = at[k] + p.ends[i];
+                valid[r0 + static_cast<std::int64_t>(i)] = p.valid[i];
             }
+            release(p);
         });
         col.validity = Buffer::allocate(bitmap::num_bytes(n_), false);
         auto* bits = reinterpret_cast<std::uint8_t*>(col.validity->data());
@@ -509,15 +756,25 @@ private:
     }
 
     const char* base_;
-    const std::vector<Chunk>& chunks_;
-    const std::vector<std::int64_t>& row0_;  // the first row of each chunk; back(): the row count
-    std::size_t j_;
-    const std::unordered_set<std::string>& na_;
-    const std::string& name_;
-    std::int64_t n_;
+    std::vector<Chunk>& chunks_;
+    ChunkReader& reader_;
+    std::vector<std::int64_t> row0_;  // the first row of each chunk; back(): the row count
+    std::int64_t n_ = 0;
+    std::size_t j_ = 0;
 };
 
 }  // namespace
+
+std::int64_t csv_records_end(const char* data, std::size_t size, std::int64_t records) {
+    if (records <= 0) return 0;
+    bool inside = false;
+    std::int64_t seen = 0;
+    for (std::size_t i = 0; i < size; ++i) {
+        if (data[i] == '"') inside = !inside;
+        else if (data[i] == '\n' && !inside && ++seen == records) return static_cast<std::int64_t>(i) + 1;
+    }
+    return -1;
+}
 
 std::pair<std::vector<std::string>, std::vector<Column>> read_csv(
     const char* data, std::size_t size, const CsvOptions& opt
@@ -535,7 +792,11 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(
         if (tok.next(collect) < 0) csv_error(1, "the file is empty but header=True");
         const std::int64_t line = 1;
         if (names.empty()) {
-            for (const Field& f : rec) names.emplace_back(text_of(data, f, scratch));
+            for (const Field& f : rec) {
+                names.emplace_back(text_of(data, f, scratch));
+                // docs/api/frame.md §10.2: the names become str, so they must be UTF-8 as values are
+                if (!valid_utf8(names.back())) csv_error(line, "column names are not valid UTF-8");
+            }
         } else if (names.size() != rec.size()) {
             csv_error(
                 line, std::to_string(names.size()) + " names for a header of " + std::to_string(rec.size()) + " fields"
@@ -561,67 +822,72 @@ std::pair<std::vector<std::string>, std::vector<Column>> read_csv(
     const std::size_t ncols = names.size();
     std::vector<std::int64_t> slot(ncols, -1);  // slot[i]: the output column file column i feeds, or -1
     for (std::size_t j = 0; j < source.size(); ++j) slot[source[j]] = static_cast<std::int64_t>(j);
-    const std::int64_t width = static_cast<std::int64_t>(ncols);
+    std::vector<std::optional<DType>> forced(out_names.size());
+    for (std::size_t j = 0; j < out_names.size(); ++j) {
+        if (auto it = opt.dtypes.find(out_names[j]); it != opt.dtypes.end()) forced[j] = it->second;
+        else if (opt.all_dtype) forced[j] = opt.all_dtype;
+    }
+    const NaSet na(opt.na_values.begin(), opt.na_values.end());
+    ChunkReader reader(data, size, opt.sep, slot, forced, na);
 
-    // The chunks. One chunk -- the serial reader -- with nrows (records are
-    // read in order, up to nrows) and when the pool cannot run in parallel:
-    // the result does not depend on the chunks, so they may follow the
-    // thread count (docs/design/frame.md §11.5, as for factorize).
+    // The chunks. With nrows (records are read in order, up to nrows) and
+    // when the pool cannot run in parallel, one tokenizer reads the body in
+    // order, starting a new chunk at the first record past each kChunkBytes;
+    // otherwise the chunks are read in parallel. The result does not depend
+    // on the chunks, so they may follow the thread count (docs/design/frame.md
+    // §11.5, as for factorize).
     const auto n = static_cast<std::int64_t>(size);
     const std::int64_t body = tok.offset();
-    const bool serial = opt.nrows >= 0 || !parallel::available();
-    const std::int64_t nchunks = serial ? 1 : std::max<std::int64_t>(1, (n - body + kChunkBytes - 1) / kChunkBytes);
-    auto chunk_begin = [&](std::int64_t c) { return std::min(n, body + c * kChunkBytes); };
-    auto chunk_end = [&](std::int64_t c) { return c + 1 == nchunks ? n : chunk_begin(c + 1); };
-    std::vector<std::uint8_t> odd(static_cast<std::size_t>(nchunks));
-    if (nchunks > 1)
-        parallel::parallel_for(nchunks, [&](std::int64_t c) {
-            odd[c] = odd_quotes(data, chunk_begin(c), chunk_end(c));
-        });
-    std::vector<std::uint8_t> inside(static_cast<std::size_t>(nchunks), 0);  // inside quotes where chunk c starts
-    for (std::int64_t c = 1; c < nchunks; ++c) inside[c] = inside[c - 1] ^ odd[c - 1];
-
-    std::vector<Chunk> chunks(static_cast<std::size_t>(nchunks));
-    parallel::parallel_for(nchunks, [&](std::int64_t c) {
-        Chunk& ch = chunks[static_cast<std::size_t>(c)];
-        ch.fields.resize(out_names.size());
-        const std::int64_t end = chunk_end(c);
-        const std::int64_t first = c == 0 ? body : first_record(data, n, chunk_begin(c), inside[c]);
-        if (first >= end || first >= n) return;
-        try {
-            Tokenizer t(data, size, opt.sep, first);
-            auto place = [&](std::int64_t i, const Field& f) {
-                if (i < width && slot[i] >= 0) ch.fields[slot[i]].push_back(f);
-            };
-            while (opt.nrows < 0 || static_cast<std::int64_t>(ch.starts.size()) < opt.nrows) {
-                const std::int64_t start = t.offset();
-                if (start >= end) break;  // the next chunk's record
-                const std::int64_t count = t.next(place);
-                if (count < 0) break;
-                if (count != width)
-                    csv_error(
-                        line_at(data, start),
-                        "expected " + std::to_string(ncols) + " fields, got " + std::to_string(count)
-                    );
-                ch.starts.push_back(start);
+    const std::int64_t limit = opt.nrows >= 0 ? opt.nrows : INT64_MAX;
+    std::vector<Chunk> chunks;
+    // A task's std::bad_alloc is rethrown as is (a MemoryError), not taken
+    // for an error in the file.
+    if (opt.nrows >= 0 || !parallel::available()) {
+        Tokenizer t(data, size, opt.sep, body);
+        std::int64_t read = 0;
+        for (bool more = true; more;) {
+            Chunk& ch = chunks.emplace_back();
+            ch.first = t.offset();
+            try {
+                more = reader.read(ch, t, std::min(n, ch.first + kChunkBytes), limit, read) && t.offset() < n;
+            } catch (const std::bad_alloc&) { throw; } catch (const std::exception& e) {
+                ch.error = e.what();
+                more = false;
             }
-        } catch (const std::exception& e) { ch.error = e.what(); }
-    });
+        }
+    } else {
+        const std::int64_t nchunks = std::max<std::int64_t>(1, (n - body + kChunkBytes - 1) / kChunkBytes);
+        auto chunk_begin = [&](std::int64_t c) { return std::min(n, body + c * kChunkBytes); };
+        auto chunk_end = [&](std::int64_t c) { return c + 1 == nchunks ? n : chunk_begin(c + 1); };
+        std::vector<std::uint8_t> odd(static_cast<std::size_t>(nchunks));
+        if (nchunks > 1)
+            parallel::parallel_for(nchunks, [&](std::int64_t c) {
+                odd[c] = odd_quotes(data, chunk_begin(c), chunk_end(c));
+            });
+        std::vector<std::uint8_t> inside(static_cast<std::size_t>(nchunks), 0);  // inside quotes where chunk c starts
+        for (std::int64_t c = 1; c < nchunks; ++c) inside[c] = inside[c - 1] ^ odd[c - 1];
+        chunks.resize(static_cast<std::size_t>(nchunks));
+        parallel::parallel_for(nchunks, [&](std::int64_t c) {
+            Chunk& ch = chunks[static_cast<std::size_t>(c)];
+            ch.parts.resize(out_names.size());
+            const std::int64_t end = chunk_end(c);
+            ch.first = c == 0 ? body : first_record(data, n, chunk_begin(c), inside[c]);
+            if (ch.first >= end || ch.first >= n) return;
+            try {
+                Tokenizer t(data, size, opt.sep, ch.first);
+                std::int64_t read = 0;
+                reader.read(ch, t, end, INT64_MAX, read);
+            } catch (const std::bad_alloc&) { throw; } catch (const std::exception& e) {
+                ch.error = e.what();
+            }
+        });
+    }
     for (const Chunk& ch : chunks)  // the first error in file order
         if (!ch.error.empty()) throw nb::value_error(ch.error.c_str());
-    std::vector<std::int64_t> row0(static_cast<std::size_t>(nchunks) + 1, 0);
-    for (std::int64_t c = 0; c < nchunks; ++c)
-        row0[c + 1] = row0[c] + static_cast<std::int64_t>(chunks[c].starts.size());
 
-    const std::unordered_set<std::string> na(opt.na_values.begin(), opt.na_values.end());
+    ColumnBuilder builder(data, chunks, reader);
     std::vector<Column> cols;
-    for (std::size_t j = 0; j < out_names.size(); ++j) {
-        ColumnReader reader(data, chunks, row0, j, na, out_names[j]);
-        std::optional<DType> forced;
-        if (auto it = opt.dtypes.find(out_names[j]); it != opt.dtypes.end()) forced = it->second;
-        else if (opt.all_dtype) forced = opt.all_dtype;
-        cols.push_back(reader.read(forced));
-    }
+    for (std::size_t j = 0; j < out_names.size(); ++j) cols.push_back(builder.build(j, forced[j], out_names[j]));
     return {out_names, cols};
 }
 

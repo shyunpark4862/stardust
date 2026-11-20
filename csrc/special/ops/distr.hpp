@@ -41,8 +41,24 @@ inline double one(double x) {
 }
 
 // exp(e) for e = hi + lo: one rounding (the result's relative error ~1 ULP
-// whatever |e|; exp(hi) alone would carry hi's rounding times |e|).
-inline double exp_dd(dd::DD e) { return std::exp(e.hi) * (1.0 + e.lo); }
+// whatever |e|; exp(hi) alone would carry hi's rounding times |e|). Past the
+// doubles exp(hi) is 0 or inf as it stands: lo is then ulp(hi)/2, thousands
+// or more, and 1 + lo could be negative and flip the sign of the result.
+inline double exp_dd(dd::DD e) {
+    const double e0 = std::exp(e.hi);
+    if (e0 == 0.0 || std::isinf(e0)) return e0;
+    return e0 * (1.0 + e.lo);
+}
+
+// s B(s, c) = Gamma(s + 1) Gamma(c) / Gamma(s + c) for s, c > 0. As a product it is lost
+// where B(s, c) overflows: a shape below about 5.6e-309 (subnormal; s = 0 for the half of the
+// smallest double). B(s, c) = (s + c) / (s c) (1 + O(s + c)) there for the smaller one, so the
+// product is 1 + s / c (stdtr(1e-310, 1) was 1 for 0.5).
+inline double shape_beta(double s, double c) {
+    const double B = Beta::f(s, c);
+    if (std::isfinite(B)) return s * B;
+    return 1.0 + s / c;
+}
 
 // log(v c) as hi + lo for v > 0 (subnormal too: scaled by 2^64 first) and c > 0 normal.
 inline dd::DD log_product(double v, double c) {
@@ -96,7 +112,7 @@ inline double t_tail(double df, double t) {
         // (the exponent as hi + lo: it reaches -700, and its rounding would enter that many times)
         const double xa =
             r >= 0x1p-1000 ? std::pow(r, df) : exp_dd((dd::log_pos(df) * 0.5 - dd::log_pos(std::fabs(t))) * df);
-        return 0.5 * xa / (a * Beta::f(a, 0.5));
+        return 0.5 * xa / shape_beta(a, 0.5);
     }
     if (a <= 6.0) {
         // Small a: the condition number of I_x in x is at most a x <= 6, so rounding
@@ -260,6 +276,10 @@ struct Stdtrit : Real {
         if (p == 0.5) return 0.0;
         if (std::isinf(df)) return distr_detail::one<Ndtri>(p);
         const bool lower = p < 0.5;
+        // |t| = sqrt(df) (q2 a B(a, 1/2))^(-1/df) (the far tail below) is past the doubles for
+        // every p != 1/2 when df < 2^-1000: -log(q2 a B) >= 2^-54 against 1/df > 2^1000. (For
+        // df = 5e-324, df / 2 is not a double: betaincinv's shape would be 0.)
+        if (df < 0x1p-1000) return lower ? -kInf : kInf;
         const double q2 = 2.0 * (lower ? p : 1.0 - p);  // the two-sided tail, exact
         if (df >= 1.0 && q2 > 1e-12) {  // (farther out the tail and density lose t^2 against df: the general way)
             double t;
@@ -278,7 +298,8 @@ struct Stdtrit : Real {
                 // (near the subnormals betaincinv's x had lost digits: 168 ULP).
                 // log t = log(df)/2 - log(q2 a B) / df (2a = df exactly), in double-double: a
                 // pow with the rounded exponent -1/df cost |log(q2 a B)| / df ULP (191 ULP).
-                const dd::DD logt = dd::log(df) * 0.5 - distr_detail::log_product(q2, a * Beta::f(a, 0.5)) / df;
+                const dd::DD logt =
+                    dd::log(df) * 0.5 - distr_detail::log_product(q2, distr_detail::shape_beta(a, 0.5)) / df;
                 t = distr_detail::exp_dd(logt);
             } else {
                 t = std::sqrt(df) * (std::sqrt(1.0 - x) / std::sqrt(x));  // sqrt(df (1 - x) / x), no overflow
@@ -293,7 +314,7 @@ struct Stdtrit : Real {
 
 // ---------------------------------------------------------------- chi-square
 
-// chdtr(v, x) = P(v/2, x/2); chdtrc its complement; chdtri inverts chdtrc
+// chdtr(df, x) = P(df/2, x/2); chdtrc its complement; chdtri inverts chdtrc
 // (scipy's convention). Halving is exact but for subnormal x, where x/2 may
 // round (or vanish: chdtr(0.18, 5e-324) was 0 for 8e-30, T2): there
 // P(a, y) = y^a / Gamma(a + 1) to the last bit (the series' next term is y), with
@@ -325,36 +346,47 @@ inline double chi2_tiny_upper(double v, double x) {
 struct Chdtr : Real {
     static constexpr const char* name = "chdtr";
     static constexpr int nin = 2, nout = 1;
-    static constexpr std::array<const char*, 2> args{"v", "x"};
+    static constexpr std::array<const char*, 2> args{"df", "x"};
     static constexpr double cost_ns = cost::kGammainc;
-    static double f(double v, double x) {
-        if (distr_detail::chi2_subnormal(v, x)) return distr_detail::chi2_tiny(v, x);
-        return Gammainc::f(0.5 * v, 0.5 * x);
+    static double f(double df, double x) {
+        if (distr_detail::chi2_subnormal(df, x)) return distr_detail::chi2_tiny(df, x);
+        // (no point mass at 0 for df > 0: chdtr(5e-324, 0) was gammainc(0, 0) = NaN, df / 2 = 0)
+        if (x == 0.0 && df > 0.0) return 0.0;
+        return Gammainc::f(0.5 * df, 0.5 * x);
     }
 };
 
 struct Chdtrc : Real {
     static constexpr const char* name = "chdtrc";
     static constexpr int nin = 2, nout = 1;
-    static constexpr std::array<const char*, 2> args{"v", "x"};
+    static constexpr std::array<const char*, 2> args{"df", "x"};
     static constexpr double cost_ns = cost::kGammaincc;
-    static double f(double v, double x) {
-        if (distr_detail::chi2_subnormal(v, x)) return distr_detail::chi2_tiny_upper(v, x);
-        // v subnormal with an odd last bit: its half is not a double, and Q(a, x) is linear in
-        // a -> 0 (to a relative O(a)): half of Q(v, x/2) (chdtrc(5e-324, 1e-300) was 0 for
+    static double f(double df, double x) {
+        if (distr_detail::chi2_subnormal(df, x)) return distr_detail::chi2_tiny_upper(df, x);
+        // df subnormal with an odd last bit: its half is not a double, and Q(a, x) is linear in
+        // a -> 0 (to a relative O(a)): half of Q(df, x/2) (chdtrc(5e-324, 1e-300) was 0 for
         // 1.7e-321; chdtrc(1.5e-323, 1e-300) 6.8e-321 for 5.2e-321, the half rounded up, 2026-11-19)
-        if (v > 0.0 && v < 0x1p-1021 && 2.0 * (0.5 * v) != v) [[unlikely]]
-            return 0.5 * Gammaincc::f(v, 0.5 * x);
-        return Gammaincc::f(0.5 * v, 0.5 * x);
+        // At x = 0 or inf (or a NaN or negative x) the value is that of any positive shape, df's
+        // own (chdtrc(5e-324, 0) was 0.5 for 1).
+        if (df > 0.0 && df < 0x1p-1021 && 2.0 * (0.5 * df) != df) [[unlikely]]
+            return x > 0.0 && std::isfinite(x) ? 0.5 * Gammaincc::f(df, 0.5 * x) : Gammaincc::f(df, x);
+        return Gammaincc::f(0.5 * df, 0.5 * x);
     }
 };
 
 struct Chdtri : Real {
     static constexpr const char* name = "chdtri";
     static constexpr int nin = 2, nout = 1;
-    static constexpr std::array<const char*, 2> args{"v", "p"};
+    static constexpr std::array<const char*, 2> args{"df", "q"};
     static constexpr double cost_ns = cost::kGammainccinv;
-    static double f(double v, double p) { return 2.0 * Gammainccinv::f(0.5 * v, p); }
+    static double f(double df, double q) {
+        // df subnormal with an odd last bit, as in chdtrc: Q(df/2, y) = Q(df, y) / 2 to a relative
+        // O(df), so the root of Q(df/2, y) = q is that of Q(df, y) = 2 q. For q > 1/2 it is below
+        // every double: Q(df, y) ~ df E1(y) there (chdtri(5e-324, q) was NaN, df / 2 = 0).
+        if (df > 0.0 && df < 0x1p-1021 && 2.0 * (0.5 * df) != df && q >= 0.0 && q <= 1.0) [[unlikely]]
+            return q <= 0.5 ? 2.0 * Gammainccinv::f(df, 2.0 * q) : 0.0;
+        return 2.0 * Gammainccinv::f(0.5 * df, q);
+    }
 };
 
 // ------------------------------------------------------------------------- F
@@ -420,6 +452,22 @@ struct Fdtri : Real {
         if (std::isinf(dfd)) return 2.0 * Gammaincinv::f(0.5 * dfn, p) / dfn;
         if (std::isinf(dfn)) return dfd / (2.0 * Gammainccinv::f(0.5 * dfd, p));
         const double a = 0.5 * dfn, b = 0.5 * dfd;
+        if (a == 0.0 || b == 0.0) [[unlikely]] {
+            // dfn or dfd is the smallest double, its half not one (f_value's cases; fdtri(5e-324,
+            // 1, 0.5) was NaN). Both below 2^-699: fdtr is dfd / (dfn + dfd) at every 0 < x < inf,
+            // point masses at 0 and inf (betaincinv's both-small root w / (1 - w) = 1 at the
+            // tie). A vanishing a: fdtr = 1 - a C(x) is above every p < 1, so x = 0. A vanishing
+            // b: fdtr = b C(x), linear in b, so fdtr with b = dfd / 2 equals p where the one with
+            // b = dfd equals 2 p (for p > 1/2 the root is past the doubles).
+            if (std::max(dfn, dfd) < 0x1p-699) {
+                const double m = dfd / (dfn + dfd);
+                return p < m ? 0.0 : (p > m ? kInf : dfd / dfn);
+            }
+            if (a == 0.0) return 0.0;
+            if (p > 0.5) return kInf;
+            const double v = Betainccinv::f(dfd, a, 2.0 * p);
+            return ((1.0 - v) / v) * (dfd / dfn);
+        }
         // One shape far beyond the other (the incomplete beta's gamma limit, ibeta_detail::
         // limit_shapes): w = z / b with P(a, z) = p, or v = z / a with Q(b, z) = p, and x =
         // (b/a) w / (1 - w) = (b/a) (1 - v) / v without the quotient z / b itself (subnormal
@@ -437,18 +485,22 @@ struct Fdtri : Real {
         if (p < Betainc::f(a, b, 0.5)) {
             const double w = Betaincinv::f(a, b, p);
             // p = w^a / (a B) (1 + O((b + 1) w)): x = (dfd/dfn) w from logs in double-double
-            if (w < 0x1p-60 && w * b < 0x1p-56)
-                return distr_detail::exp_dd(
-                    distr_detail::log_product(p, a * Beta::f(a, b)) / a + dd::log(dfd) - dd::log(dfn)
-                );
+            if (w < 0x1p-60 && w * b < 0x1p-56) {
+                const dd::DD l = distr_detail::log_product(p, distr_detail::shape_beta(a, b));
+                // (past 2^1000 the quotient by a small a is below every double, and as a
+                // double-double it would be NaN: fdtri(1e-310, 1, 0.5) was NaN for 0)
+                if (!(l.hi / a > -0x1p1000)) return 0.0;
+                return distr_detail::exp_dd(l / a + dd::log(dfd) - dd::log(dfn));
+            }
             return (w / (1.0 - w)) * (dfd / dfn);
         }
         const double v = Betainccinv::f(b, a, p);  // 1 - I_v(b, a) = p, i.e. I_w(a, b) = p
         // 1 - p = v^b / (b B) (1 + O((a + 1) v)), 1 - p exact here: x = (dfd/dfn) / v
-        if (v < 0x1p-60 && v * a < 0x1p-56 && p >= 0.5)
-            return distr_detail::exp_dd(
-                dd::log(dfd) - dd::log(dfn) - distr_detail::log_product(1.0 - p, b * Beta::f(a, b)) / b
-            );
+        if (v < 0x1p-60 && v * a < 0x1p-56 && p >= 0.5) {
+            const dd::DD l = distr_detail::log_product(1.0 - p, distr_detail::shape_beta(b, a));
+            if (!(l.hi / b > -0x1p1000)) return kInf;  // (as above: fdtri(1, 1e-310, 0.5))
+            return distr_detail::exp_dd(dd::log(dfd) - dd::log(dfn) - l / b);
+        }
         return ((1.0 - v) / v) * (dfd / dfn);
     }
 };

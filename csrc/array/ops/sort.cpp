@@ -9,6 +9,7 @@
 #include "array/kernels/sort.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/lanes.hpp"
+#include "array/ops/pieces.hpp"
 #include "array/parallel_limits.hpp"
 #include "parallel/pool.hpp"
 
@@ -259,15 +260,15 @@ void sort_buffer(T* a, std::int64_t n, bool stable, auto less) {
     }
 }
 
-// Values alone (sort, unique_values). The NEON sort reorders equal values,
+// Values alone (sort, unique_values), below kRadixMinValues (and for a
+// sort's pieces, which are shorter). The NEON sort reorders equal values,
 // which cannot be seen (docs/design/array.md §8.3): for int64 equal values are
 // identical, and for float64 too -- NaNs are already split off -- except that
 // -0.0 == +0.0. A stable float sort of data with zeros of both signs still
 // takes it: the zeros' signs are recorded in their input order, one bit each,
 // and written back over the zero run afterwards, which is exactly what a stable
 // sort leaves there (ascending or descending: equal values keep their input order
-// in both). The merge sort this replaces took 64 ms for 10^6 values, the NEON sort
-// 14; the bits (rather than a copy of the zeros) keep half-zero data at 14 too.
+// in both).
 inline constexpr std::int64_t kSimdMin = 32;  // below this, insertion/merge sort is as fast
 
 // The signs of the zeros of a[0, n) in order, bit z of the result for the z-th zero
@@ -294,7 +295,11 @@ inline ZeroSigns zero_signs(const double* a, std::int64_t n) {
 
 template <typename T>
 void sort_values_serial(T* a, std::int64_t n, bool stable, bool descending) {
-    if constexpr (ops::is_int<T>) {
+    // int64 and float64 alike from kRadixMinValues. The float key takes -0.0
+    // as +0.0 and the radix sort is stable, so the zeros keep their input
+    // order and signs: the stable result, with no sign bits to record
+    // (docs/design/array.md §8.4).
+    if constexpr (ops::is_int<T> || ops::is_float<T>) {
         if (n >= kRadixMinValues) return radix_sort(a, n, [descending](T v) { return radix_key(v, descending); });
     }
     if constexpr (ops::is_float<T> || ops::is_int<T>) {
@@ -453,12 +458,11 @@ namespace {
 template <typename T>
 void sort_values(T* a, std::int64_t n, bool stable, bool descending) {
     // Values alone: the stable order is also a valid unstable one, and the
-    // stable float sort is the faster (NEON sort plus the zeros' sign bits,
-    // 14.8 ms for 10^6 values against 25.2 ms for the unstable sort, which must
-    // always take pieces). Its result does not depend on the thread count either.
+    // stable float sorts are the faster (an unstable one must always take
+    // pieces). Their result does not depend on the thread count either.
     if constexpr (ops::is_float<T>) stable = true;
-    // int64 takes the radix sort, parallel by itself
-    if (ops::is_int<T> || !use_pieces(n, ops::is_float<T> && !stable))
+    // The radix sorts (int64, float64 from kRadixMinValues) are parallel by themselves.
+    if (ops::is_int<T> || (ops::is_float<T> && n >= kRadixMinValues) || !use_pieces(n, ops::is_float<T> && !stable))
         return sort_values_serial(a, n, stable, descending);
     sort_long(a, n, [&](T* p, std::int64_t m) { sort_values_serial(p, m, stable, descending); }, Order<T>{descending});
 }
@@ -557,13 +561,14 @@ UniqueParts unique_parts(const NDArray& x) {
                                        [](std::int64_t i, T v) { return Keyed<T>{v, i}; }
                                    );
         {
-            // A long sort runs without the GIL, as the lanes of sort() do (docs/design/array.md §10.2).
-            const parallel::Unlocked unlocked(m >= kParallelThreshold);
+            // A long sort runs without the GIL, as the lanes of sort() do
+            // (docs/design/array.md §10.2), and so does finding the groups.
+            const parallel::Unlocked unlocked(n >= kParallelThreshold);
             sort_keyed(buf.get(), m, /*stable=*/true, /*descending=*/false);
-        }
-        for (std::int64_t i = 0; i < n; ++i) {
-            order[i] = buf[i].index;
-            if (i == 0 || (i < m && !same(buf[i - 1].value, buf[i].value)) || i == m) starts.push_back(i);
+            for (std::int64_t i = 0; i < n; ++i) {
+                order[i] = buf[i].index;
+                if (i == 0 || (i < m && !same(buf[i - 1].value, buf[i].value)) || i == m) starts.push_back(i);
+            }
         }
         const std::int64_t g[] = {static_cast<std::int64_t>(starts.size())};
         r.values = new_array(x.dtype, g);
@@ -577,23 +582,38 @@ UniqueParts unique_parts(const NDArray& x) {
     auto* idx = reinterpret_cast<std::int64_t*>(r.indices.data);
     auto* cnt = reinterpret_cast<std::int64_t*>(r.counts.data);
     auto* inv = reinterpret_cast<std::int64_t*>(r.inverse.data);  // C order, like `flat`
-    for (std::int64_t k = 0; k < groups; ++k) {
-        const std::int64_t begin = starts[k], end = k + 1 < groups ? starts[k + 1] : n;
-        idx[k] = order[begin];
-        cnt[k] = end - begin;
-        for (std::int64_t i = begin; i < end; ++i) inv[order[i]] = k;
-    }
+    // The groups split into pieces of about kParallelTask elements: every
+    // element belongs to one group, so inv[order[i]] = k writes each cell once.
+    const std::int64_t per =
+        groups > 0 ? std::max<std::int64_t>(1, kParallelTask * groups / std::max<std::int64_t>(n, 1)) : 1;
+    for_pieces(groups, per, n, [&](std::int64_t, std::int64_t k0, std::int64_t k1) {
+        for (std::int64_t k = k0; k < k1; ++k) {
+            const std::int64_t begin = starts[k], end = k + 1 < groups ? starts[k + 1] : n;
+            idx[k] = order[begin];
+            cnt[k] = end - begin;
+            for (std::int64_t i = begin; i < end; ++i) inv[order[i]] = k;
+        }
+    });
     return r;
 }
 
 nb::object result_type(const char* name) { return nb::module_::import_("stardust._results").attr(name); }
 
+// The arrays of a result object are read-only (API.md §2): a field cannot be
+// changed behind the result's back.
+nb::object field(NDArray a) {
+    a.writeable = false;
+    return wrap(std::move(a));
+}
+
 // unique_values needs neither positions nor counts, so it sorts the values
 // alone: half the data to move, and no (value, index) pairs
 // (docs/design/array.md §8.6). Still a stable sort, so of -0.0 and +0.0 the
 // first occurrence is kept, and of the NaNs the first, as in unique_parts.
-nb::object unique_values(nb::handle x_obj) {
-    const NDArray& x = require_ndarray(x_obj);
+// unique_counts needs no positions either: the same sort, and each group's
+// count is the length of its run.
+template <bool Counts>
+std::pair<NDArray, NDArray> sorted_groups(const NDArray& x) {
     const std::int64_t n = x.size();
     NDArray flat = x;
     if (!x.c_contiguous) {
@@ -602,39 +622,56 @@ nb::object unique_values(nb::handle x_obj) {
     }
     return visit_dtype(x.dtype, [&]<typename T>(std::type_identity<T>) {
         auto buf = buffer<T>(n);
+        std::vector<std::int64_t> counts;
         const std::int64_t m =
             n - load_split_nans<T>(
                     flat.data, flat.itemsize(), n, buf.get(), /*nans_first=*/false, [](std::int64_t, T v) { return v; }
                 );
+        std::int64_t groups = 0;
         {
-            const parallel::Unlocked unlocked(m >= kParallelThreshold);  // as in unique_parts
+            const parallel::Unlocked unlocked(n >= kParallelThreshold);  // as in unique_parts
             sort_values(buf.get(), m, /*stable=*/true, /*descending=*/false);
+            // Compact in place: keep the first of every run of equal values.
+            for (std::int64_t i = 0; i < m; ++i) {
+                if (i == 0 || !same(buf[groups - 1], buf[i])) {
+                    buf[groups++] = buf[i];
+                    if constexpr (Counts) counts.push_back(1);
+                } else if constexpr (Counts) {
+                    ++counts.back();
+                }
+            }
+            if (m < n) {  // the NaNs: one value, the first NaN of x
+                buf[groups++] = buf[m];
+                if constexpr (Counts) counts.push_back(n - m);
+            }
         }
-        std::int64_t groups = 0;  // compact in place: keep the first of every run of equal values
-        for (std::int64_t i = 0; i < m; ++i)
-            if (i == 0 || !same(buf[groups - 1], buf[i])) buf[groups++] = buf[i];
-        if (m < n) buf[groups++] = buf[m];  // the NaNs: one value, the first NaN of x
         const std::int64_t g[] = {groups};
-        NDArray out = new_array(x.dtype, g);
-        std::copy(buf.get(), buf.get() + groups, reinterpret_cast<T*>(out.data));
-        return wrap(std::move(out));
+        NDArray values = new_array(x.dtype, g), cnt;
+        std::copy(buf.get(), buf.get() + groups, reinterpret_cast<T*>(values.data));
+        if constexpr (Counts) {
+            cnt = new_array(DType::Int64, g);
+            std::copy(counts.begin(), counts.end(), reinterpret_cast<std::int64_t*>(cnt.data));
+        }
+        return std::pair{std::move(values), std::move(cnt)};
     });
 }
 
+nb::object unique_values(nb::handle x_obj) { return wrap(sorted_groups<false>(require_ndarray(x_obj)).first); }
+
 nb::object unique_counts(nb::handle x) {
-    UniqueParts p = unique_parts(require_ndarray(x));
-    return result_type("UniqueCountsResult")(wrap(std::move(p.values)), wrap(std::move(p.counts)));
+    auto [values, counts] = sorted_groups<true>(require_ndarray(x));
+    return result_type("UniqueCountsResult")(field(std::move(values)), field(std::move(counts)));
 }
 
 nb::object unique_inverse(nb::handle x) {
     UniqueParts p = unique_parts(require_ndarray(x));
-    return result_type("UniqueInverseResult")(wrap(std::move(p.values)), wrap(std::move(p.inverse)));
+    return result_type("UniqueInverseResult")(field(std::move(p.values)), field(std::move(p.inverse)));
 }
 
 nb::object unique_all(nb::handle x) {
     UniqueParts p = unique_parts(require_ndarray(x));
     return result_type("UniqueAllResult")(
-        wrap(std::move(p.values)), wrap(std::move(p.indices)), wrap(std::move(p.inverse)), wrap(std::move(p.counts))
+        field(std::move(p.values)), field(std::move(p.indices)), field(std::move(p.inverse)), field(std::move(p.counts))
     );
 }
 
@@ -644,17 +681,21 @@ void bind_sort(nb::module_& m) {
     using nb::arg;
     // .none() on every argument: None reaches the checks, which name the argument (API.md §2.1).
     m.def(
-        "sort", named("sort", &sort_impl<false>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
-        arg("descending").none() = false, arg("stable").none() = true
+        "sort", named("sort", &sort_impl<false>), nb::sig("def sort(x, /, *, axis=-1, descending=False, stable=True)"),
+        arg().none(), nb::kw_only(), arg("axis").none() = -1, arg("descending").none() = false,
+        arg("stable").none() = true
     );
     m.def(
-        "argsort", named("argsort", &sort_impl<true>), arg().none(), nb::kw_only(), arg("axis").none() = -1,
-        arg("descending").none() = false, arg("stable").none() = true
+        "argsort", named("argsort", &sort_impl<true>),
+        nb::sig("def argsort(x, /, *, axis=-1, descending=False, stable=True)"), arg().none(), nb::kw_only(),
+        arg("axis").none() = -1, arg("descending").none() = false, arg("stable").none() = true
     );
-    m.def("unique_values", named("unique_values", &unique_values), arg().none());
-    m.def("unique_counts", named("unique_counts", &unique_counts), arg().none());
-    m.def("unique_inverse", named("unique_inverse", &unique_inverse), arg().none());
-    m.def("unique_all", named("unique_all", &unique_all), arg().none());
+    m.def("unique_values", named("unique_values", &unique_values), nb::sig("def unique_values(x, /)"), arg().none());
+    m.def("unique_counts", named("unique_counts", &unique_counts), nb::sig("def unique_counts(x, /)"), arg().none());
+    m.def(
+        "unique_inverse", named("unique_inverse", &unique_inverse), nb::sig("def unique_inverse(x, /)"), arg().none()
+    );
+    m.def("unique_all", named("unique_all", &unique_all), nb::sig("def unique_all(x, /)"), arg().none());
 }
 
 }  // namespace sd

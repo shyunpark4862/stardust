@@ -3748,7 +3748,7 @@ def _save(dist, m, xs, guaranteed, results):
         guaranteed=np.asarray(guaranteed, dtype=bool)[keep],
         **{f"x{k}": x[keep] for k, x in enumerate(xs)},
         **extra,
-        arb=flint.__version__,
+        arb=f"python-flint {flint.__version__}",  # the provenance fields of tools/special_ref.py
         target_bits=ar.TARGET_BITS,
     )
     return int(keep.sum()), int(n - keep.sum())

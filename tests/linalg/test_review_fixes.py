@@ -102,19 +102,24 @@ def test_linalg_error_shows_its_public_path():
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_matrix_norm_sums_each_line_pairwise(order):
     # Each column (1, -1) or row (inf, -inf) is summed pairwise in its logical order, whatever
-    # the memory layout: the bits of numpy's sum over that line as a contiguous vector, and of
-    # sqrt(sum(x * x)) for 'fro'. numpy's own matrix norm adds the rows one after another when
-    # the summed axis is not the contiguous one, so it differs in the last bits there.
+    # the memory layout: the bits of sd.sum over that line as a contiguous vector. 'fro' fuses
+    # the squares into the sum (fma), so it agrees with sqrt(sum(x * x)) within rounding.
     rng = np.random.default_rng(7)
     m = rng.standard_normal((300, 500))
     x = sd.asarray(np.asarray(m, order=order))
-    cols = np.array([np.abs(np.ascontiguousarray(m[:, j])).sum() for j in range(m.shape[1])])
-    rows = np.array([np.abs(np.ascontiguousarray(m[i, :])).sum() for i in range(m.shape[0])])
+
+    def line_sum(v):
+        return float(sd.sum(sd.asarray(np.abs(np.ascontiguousarray(v)))))
+
+    cols = np.array([line_sum(m[:, j]) for j in range(m.shape[1])])
+    rows = np.array([line_sum(m[i, :]) for i in range(m.shape[0])])
     assert float(sd.linalg.matrix_norm(x, ord=1)) == cols.max()
     assert float(sd.linalg.matrix_norm(x, ord=-1)) == cols.min()
     assert float(sd.linalg.matrix_norm(x, ord=float("inf"))) == rows.max()
     assert float(sd.linalg.matrix_norm(x, ord=float("-inf"))) == rows.min()
-    assert float(sd.linalg.matrix_norm(x, ord="fro")) == float(np.sqrt((m * m).sum()))
+    fro = float(sd.linalg.matrix_norm(x, ord="fro"))
+    assert fro == pytest.approx(float(np.sqrt((m * m).sum())), rel=1e-14)
+    assert fro == float(sd.linalg.matrix_norm(sd.asarray(np.ascontiguousarray(m)), ord="fro"))
 
 
 def test_bits_shared_with_numpy_and_scipy():

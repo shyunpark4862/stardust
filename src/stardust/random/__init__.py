@@ -13,10 +13,12 @@ Philox would get, but the counters are used differently, so the values are not
 numpy's.
 """
 
+import functools
 import operator
 import secrets
 import threading
 
+from .. import _calls
 from .. import _core as _sd_core
 
 _k = _sd_core.random
@@ -121,12 +123,16 @@ class _SeedSequence:
         return [_SeedSequence(self.entropy, self.spawn_key + (i,)) for i in range(first, first + n)]
 
 
-def _seed_entropy(seed, name, arg="seed"):
-    """The seed as SeedSequence entropy: None (OS entropy), an int >= 0, or a sequence of them."""
+def _seed_entropy(seed, name, arg="seed", allow_none=True):
+    """The seed as SeedSequence entropy: None (OS entropy, when allowed), an int >= 0, or a
+    sequence of them."""
+    kinds = "an int, a sequence of ints or None" if allow_none else "an int or a sequence of ints"
     if seed is None:
+        if not allow_none:
+            raise TypeError(f"{name}(): '{arg}' must be {kinds}, not NoneType")
         return secrets.randbits(128)
     if isinstance(seed, bool):
-        raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, not bool")
+        raise TypeError(f"{name}(): '{arg}' must be {kinds}, not bool")
     try:
         v = operator.index(seed)
     except TypeError:
@@ -136,17 +142,15 @@ def _seed_entropy(seed, name, arg="seed"):
             raise ValueError(f"{name}(): '{arg}' must be non-negative")
         return v
     if isinstance(seed, (str, bytes)) or not hasattr(seed, "__len__"):
-        raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, not {_type_name(seed)}")
+        raise TypeError(f"{name}(): '{arg}' must be {kinds}, not {_type_name(seed)}")
     out = []
     for item in seed:
         if isinstance(item, bool):
-            raise TypeError(f"{name}(): '{arg}' must be an int, a sequence of ints or None, not a sequence of bool")
+            raise TypeError(f"{name}(): '{arg}' must be {kinds}, not a sequence of bool")
         try:
             iv = operator.index(item)
         except TypeError:
-            raise TypeError(
-                f"{name}(): '{arg}' must be an int, a sequence of ints or None, not a sequence of {_type_name(item)}"
-            ) from None
+            raise TypeError(f"{name}(): '{arg}' must be {kinds}, not a sequence of {_type_name(item)}") from None
         if iv < 0:
             raise ValueError(f"{name}(): '{arg}' must be non-negative")
         out.append(iv)
@@ -156,6 +160,19 @@ def _seed_entropy(seed, name, arg="seed"):
 # ---- argument helpers -----------------------------------------------------------------
 
 
+# The array area's sentences for a shape it cannot make (sd.zeros(()), sd.zeros(-1)).
+_NO_0D = "0-dimensional arrays are not supported (stardust has no 0-d arrays)"
+_NEGATIVE = "negative dimensions are not allowed"
+
+
+def _extent(d, name):
+    """One extent of `shape`: an int >= 0 (_count's checks; a negative one in the array
+    area's sentence)."""
+    if not isinstance(d, bool) and hasattr(d, "__index__") and operator.index(d) < 0:
+        raise ValueError(f"{name}(): {_NEGATIVE}")
+    return _count(d, name, "shape")
+
+
 def _shape(shape, name):
     """None (a scalar), an int or a tuple of ints >= 0, as a tuple (None stays None)."""
     if shape is None:
@@ -163,32 +180,32 @@ def _shape(shape, name):
     if isinstance(shape, bool):
         raise TypeError(f"{name}(): 'shape' must be an int or a tuple of ints, not bool")
     try:
-        return (_count(shape, name, "shape"),)
+        return (_extent(shape, name),)
     except TypeError:
         pass
     if not isinstance(shape, tuple):
         raise TypeError(f"{name}(): 'shape' must be an int or a tuple of ints, not {_type_name(shape)}")
-    return tuple(_count(d, name, "shape") for d in shape)
+    return tuple(_extent(d, name) for d in shape)
 
 
 def _result_shape(shape, name):
-    """_shape for the Generator's own methods, whose result has exactly this shape: () is
-    refused (no 0-d arrays; sd.stats' sample() refuses it the same way, _sample_shape)."""
+    """_shape for the Generator's own methods, whose result has exactly this shape: () and
+    negative extents are refused in the array area's sentences (no 0-d arrays)."""
     shp = _shape(shape, name)
     if shp == ():
-        raise ValueError(f"{name}(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)")
+        raise ValueError(f"{name}(): {_NO_0D}")
     return shp
 
 
 def _sample_shape(shape):
     """sd.stats' sample(shape=None): None is one sample per parameter set (the parameters'
     shape, a float when they are scalars); an int or a tuple is added before that shape. () is
-    refused as for the Generator's methods: no 0-d arrays."""
+    refused as for the Generator's methods, in the same sentences: no 0-d arrays."""
     shp = _shape(shape, "sample")
     if shp is None:
         return ()
     if shp == ():
-        raise ValueError("sample(): 'shape' must not be () (stardust has no 0-d arrays; None gives one sample)")
+        raise ValueError(f"sample(): {_NO_0D}")
     return shp
 
 
@@ -204,6 +221,24 @@ def _count(v, name, arg):
     if n >= 2**63:
         raise OverflowError(f"{name}(): '{arg}' is out of range")
     return n
+
+
+def _spawn_key_item(v):
+    """One entry of a state's spawn_key: an int >= 0 (the messages of the sequence check)."""
+    if isinstance(v, bool) or not hasattr(v, "__index__"):
+        raise TypeError(f".state(): 'spawn_key' must be a sequence of ints, not a sequence of {_type_name(v)}")
+    return _count(v, ".state", "spawn_key")
+
+
+def _shuffle_bytes(n, k):
+    """The memory _k.fisher_yates(…, n, k) takes, by its path (csrc/random/random.cpp): the
+    result (8 k) and, for k < n, the shuffled entries -- a hash map of at most k entries
+    (64 bytes each, nodes and buckets) for k <= n / 16, else an array of n."""
+    if k == n:
+        return 8 * k
+    if k <= n // 16:
+        return 8 * k + 64 * k
+    return 8 * k + 8 * n
 
 
 def _check_alloc(nbytes, name):
@@ -232,7 +267,7 @@ def _int_bound(v, name, arg):
 
     if isinstance(v, sd.ndarray):
         if v.dtype != sd.int64:
-            raise TypeError(f"{name}(): '{arg}' must be an int or an int64 array, not an array of {v.dtype}")
+            raise TypeError(f"{name}(): '{arg}' must be an int or an int64 array, not {v.dtype}")
         return v
     if isinstance(v, bool):
         raise TypeError(f"{name}(): '{arg}' must be an int or an int64 array, not bool")
@@ -311,12 +346,13 @@ class Generator:
         if value["bit_generator"] != "Philox4x64-10":
             raise ValueError(f".state: 'bit_generator' must be 'Philox4x64-10', not {value['bit_generator']!r}")
         try:
-            entropy = _seed_entropy(value["entropy"], ".state", "entropy")
+            # a state is a fixed point of the stream: None (fresh OS entropy) is not one
+            entropy = _seed_entropy(value["entropy"], ".state", "entropy", allow_none=False)
             if isinstance(value["spawn_key"], (str, bytes)) or not hasattr(value["spawn_key"], "__iter__"):
                 raise TypeError(
                     f".state(): 'spawn_key' must be a sequence of ints, not {_type_name(value['spawn_key'])}"
                 )
-            spawn_key = tuple(_count(v, ".state", "spawn_key") for v in value["spawn_key"])
+            spawn_key = tuple(_spawn_key_item(v) for v in value["spawn_key"])
             n_spawned = _count(value["n_children_spawned"], ".state", "n_children_spawned")
         except (TypeError, ValueError, OverflowError) as e:  # the helpers write "name(): "
             raise type(e)(str(e).replace(".state(): ", ".state: ", 1)) from None
@@ -429,14 +465,17 @@ class Generator:
                 raise OverflowError("choice(): 'a' is out of range")
             pool = None
         k = 1 if shp is None else _size(shp)
-        _check_alloc(8 * k, "choice")  # (before integers() or random() below take their part)
+        # the indices and, from a population array, the elements taken (before integers()
+        # or random() below take their part of the stream)
+        taken = 0 if pool is None else k * pool.itemsize
+        _check_alloc(8 * k + taken, "choice")
         if p is not None:
             if not isinstance(p, sd.ndarray):
-                raise TypeError(f"choice(): 'p' must be an array, not {_type_name(p)}")
+                raise TypeError(f"choice(): 'p' must be an sd.ndarray, not {_type_name(p)}")
             if p.ndim != 1 or p.shape[0] != n:
                 raise ValueError(f"choice(): 'p' must be 1-dimensional of length {n}")
             if p.dtype == sd.complex128:
-                raise TypeError("choice(): 'p' must be a real array, not an array of complex128")
+                raise TypeError("choice(): 'p' must be a real array, not complex128")
             p = sd.astype(p, sd.float64)
             if bool(sd.any(sd.isnan(p))) or bool(sd.any(p < 0)):
                 raise ValueError("choice(): 'p' must be non-negative")
@@ -457,7 +496,7 @@ class Generator:
                 idx = sd.minimum(sd.searchsorted(cdf, u, side="right"), n - 1)
         else:
             if p is None:  # the first k of a Fisher-Yates shuffle (O(k) for a small sample)
-                key, pos = self._reserve(k)
+                key, pos = self._take(k, "choice", _shuffle_bytes(n, k) + taken)
                 idx = _k.fisher_yates(key[0], key[1], pos, n, k)
             else:
                 if k > int(sd.count_nonzero(p)):
@@ -477,6 +516,7 @@ class Generator:
 
         if isinstance(x, sd.ndarray):
             n = x.shape[0]
+            row = x.itemsize * _size(x.shape[1:])  # bytes of one row of the copy
         else:
             if isinstance(x, bool):
                 raise TypeError("permutation(): 'x' must be an int or an array, not bool")
@@ -488,7 +528,9 @@ class Generator:
                 raise ValueError("permutation(): 'x' must be non-negative")
             if n >= 2**63:
                 raise OverflowError("permutation(): 'x' is out of range")
-        key, pos = self._take(n, "permutation")
+            row = 0
+        # the permutation and, for an array, its permuted copy
+        key, pos = self._take(n, "permutation", _shuffle_bytes(n, n) + n * row)
         # Fisher-Yates (sequential, each step's draw from its own element of the stream:
         # the same on any thread count). Measured against sorting random keys (parallel):
         # 3.0 ms for 10^6 against 8.6 on one thread and 3.8 on ten.
@@ -508,3 +550,6 @@ def default_rng(seed=None, /):
     if isinstance(seed, Generator):
         return seed
     return Generator(_SeedSequence(_seed_entropy(seed, "default_rng")))
+
+
+default_rng = _calls.function(default_rng)  # (API.md §2.1)

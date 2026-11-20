@@ -255,11 +255,11 @@ nb::object ldl(nb::handle xo) {
 }  // namespace
 
 void bind_nonsym(nb::module_& m) {
-    m.def("eig", named("eig", &eig), nb::arg().none());
-    m.def("eigvals", named("eigvals", &eigvals), nb::arg().none());
-    m.def("schur", named("schur", &schur), nb::arg().none());
-    m.def("hessenberg", named("hessenberg", &hessenberg), nb::arg().none());
-    m.def("ldl", named("ldl", &ldl), nb::arg().none());
+    m.def("eig", named("eig", &eig), nb::sig("def eig(x, /)"), nb::arg().none());
+    m.def("eigvals", named("eigvals", &eigvals), nb::sig("def eigvals(x, /)"), nb::arg().none());
+    m.def("schur", named("schur", &schur), nb::sig("def schur(x, /)"), nb::arg().none());
+    m.def("hessenberg", named("hessenberg", &hessenberg), nb::sig("def hessenberg(x, /)"), nb::arg().none());
+    m.def("ldl", named("ldl", &ldl), nb::sig("def ldl(x, /)"), nb::arg().none());
 }
 
 }  // namespace sd::linalg

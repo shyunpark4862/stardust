@@ -166,8 +166,8 @@ def test_edge_cases():
     assert math.isnan(S.entropy(sd.asarray([0.0, 0.0])))
     assert S.entropy(sd.asarray([1.0, 1.0]), base=2) == 1.0
     assert math.isnan(S.differential_entropy(sd.asarray([1.0, 2.0, 3.0])))  # 2m >= n
-    with pytest.raises(ValueError, match="empty"):
-        S.describe(sd.zeros((0,)))
+    d = S.describe(sd.zeros((0,)))  # an empty lane: nobs 0 and NaNs, as the others (D-32)
+    assert d.nobs == 0 and all(math.isnan(v) for v in (*d.minmax, d.mean, d.variance, d.skewness, d.kurtosis))
     # Python numbers and sequences
     assert S.skew([1.0, 2.0, 10.0]) == pytest.approx(st.skew([1.0, 2.0, 10.0]), rel=1e-14)
     assert isinstance(S.sem(sd.asarray([1.0, 2.0, 4.0])), float)

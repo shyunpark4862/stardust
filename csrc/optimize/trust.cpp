@@ -5,10 +5,12 @@
 // The driver: while |g| >= gtol, solve the subproblem in the radius, predict m(p) = f + g.p +
 // p.Bp / 2, compute f at x + p (trust-exact first builds that point's subproblem, which computes
 // hess there), stop with status 2 when the predicted reduction is not positive, shrink the radius
-// by 1/4 when rho = actual / predicted < 1/4, double it (up to max_trust_radius) when rho > 3/4
+// by 1/4 when rho = actual / predicted < 1/4 or is NaN (f NaN at the trial point; scipy keeps
+// the radius and repeats the subproblem), double it (up to max_trust_radius) when rho > 3/4
 // and the step is on the boundary, accept the step when rho > eta; then stop when |g| < gtol
 // (status 0) or at max_iter iterations (status 1). max_iter = 0 stops at x0 before an iteration
-// (O75; scipy checks the cap only after the first).
+// (O75; scipy checks the cap only after the first). trust-exact takes a trial point whose
+// Hessian is not finite as a failed step (rho = -inf, f not computed there; scipy raises).
 //
 // trust-ncg: Steihaug-Toint conjugate gradients from 0 (Nocedal and Wright's algorithm 7.2) with
 // the tolerance min(1/2, sqrt|g|) |g|; a direction of nonpositive curvature goes to the boundary
@@ -29,16 +31,18 @@
 // hess when only hessp is given (O68); trust-ncg computes the result's hess at x when the last
 // subproblem had not (as scipy's m.hess) and counts that call (O69; scipy does not).
 //
-// Where scipy raises (scipy.linalg's check_finite on |g|, on the Hessian of a new subproblem and
-// inside the subproblem, math.sqrt of a negative number) the kernel stops with a negative status
-// and the point, and Python raises ValueError.
+// Where scipy raises (scipy.linalg's check_finite on |g|, on the Hessian at x0 and inside the
+// subproblem, math.sqrt of a negative number) the kernel stops with a negative status and the
+// point, and Python raises ValueError; trust-ncg says so already at a product of the Hessian (or
+// hessp) that is not finite.
 //
 // The arithmetic is numpy's and scipy.linalg's: dot products, matrix-vector products and 2-norms
 // by Accelerate's BLAS as numpy calls it (hessian.hpp's np_dot and np_matvec; cblas_dnrm2), potrf,
 // potrs, trtrs and lange from Accelerate's LAPACK on scipy's layouts (the column-major copy of
 // H + lambda I; a leading block of the factor solved as its transpose, as scipy.linalg's
 // solve_triangular does for a non-contiguous slice), sums numpy's pairwise sums, Python's max and
-// min, no fused multiply-adds.
+// min, no fused multiply-adds. Products and triangular solves of 2 n^2 > 2e5 flops and the
+// factorizations of n^3 / 3 > 2e5 run without the GIL.
 #include "optimize/hessian.hpp"
 #include "optimize/minimize.hpp"
 #include "optimize/objective.hpp"
@@ -78,6 +82,7 @@ enum TrStatus : int {
     trJacNotFinite = -1,
     trHessNotFinite = -2,
     trSubproblemNotFinite = -3,
+    trHesspNotFinite = -4,  // a product of the user's hessp
 };
 
 // Where scipy raises: the status and the point (unwinds to the driver).
@@ -122,12 +127,14 @@ struct Trust {
     bool user_hessp, exact;
     std::int64_t sub_max_iter;
     std::int64_t nhessp = 0;
-    bool big;  // the 10 us rule for the factorizations
+    bool big;     // the 10 us rule for the factorizations
+    bool big_mv;  // ... and for a matrix-vector product or a triangular solve (2 n^2 flops)
     vec Bp, Hr, U, C, work, pp, pm, zmin, vv, ww;
 
     Trust(Objective& o, Hessian& h, int hm, bool uh, bool ex, std::int64_t smi)
         : obj(o), hs(h), n(o.n), ln(static_cast<lint>(o.n)), hmode(hm), user_hessp(uh), exact(ex), sub_max_iter(smi) {
         big = double(n) * double(n) * double(n) / 3 > 2e5;
+        big_mv = 2.0 * double(n) * double(n) > 2e5;
         Bp.resize(n);
     }
 
@@ -172,8 +179,20 @@ struct Trust {
             hs.difference_product(p, out);
             ++nhessp;
         } else {
-            np_matvec(hess(m).data(), p, out, n);
+            matvec(hess(m).data(), p, out);
         }
+    }
+    // np.dot(H, p) into out, without the GIL when it is large
+    void matvec(const double* H, const double* p, double* out) {
+        std::optional<nb::gil_scoped_release> rel;
+        if (big_mv) rel.emplace();
+        np_matvec(H, p, out, n);
+    }
+    // solve_triangular(U, b) (trans 'N' or 'T') in place: trtrs's info, without the GIL when large
+    lint triangular(char trans, const vec& Uf, vec& b) {
+        std::optional<nb::gil_scoped_release> rel;
+        if (big_mv) rel.emplace();
+        return linalg::lapack::trtrs('U', trans, 'N', ln, 1, Uf.data(), ln, b.data(), ln);
     }
     // m(p) = fun + jac.p + 0.5 p.hessp(p)
     double model_value(Model& m, const vec& p) {
@@ -215,6 +234,8 @@ struct Trust {
         for (std::size_t step = 0;; ++step) {
             if (step == cap) throw Stop{trLinAlg};
             hessp(m, d.data(), Bd.data());
+            // a product that is not finite: say what gave it (scipy fails later, on the step)
+            if (!all_finite(Bd.data(), n)) throw Stop{user_hessp ? trHesspNotFinite : trHessNotFinite};
             const double dBd = ddot(d, Bd);
             if (dBd <= 0) {
                 const auto [ta, tb] = intersections(z, d, tr);
@@ -342,7 +363,7 @@ struct Trust {
         }
         if (!all_finite(Uf.data(), n * n) || !all_finite(ww.data(), n)) throw Stop{trSubproblemNotFinite};
         vv = ww;
-        if (linalg::lapack::trtrs('U', 'N', 'N', ln, 1, Uf.data(), ln, vv.data(), ln) > 0) throw Stop{trLinAlg};
+        if (triangular('N', Uf, vv) > 0) throw Stop{trLinAlg};
         const double v_norm = nrm2(vv);
         const double w_norm = nrm2(ww);
         zmin.resize(n);
@@ -428,7 +449,7 @@ struct Trust {
                     break;
                 }
                 w = p;  // solve_triangular(U, p, trans='T')
-                if (linalg::lapack::trtrs('U', 'T', 'N', ln, 1, U.data(), ln, w.data(), ln) > 0) throw Stop{trLinAlg};
+                if (triangular('T', U, w) > 0) throw Stop{trLinAlg};
                 const double w_norm = nrm2(w);
                 const double q = p_norm / w_norm;
                 const double delta_lambda = q * q * (p_norm - tr) / tr;
@@ -438,7 +459,7 @@ struct Trust {
                     const auto [ta, tb] = intersections(p, zmin, tr);
                     const double step_len = std::abs(tb) < std::abs(ta) ? tb : ta;
                     shifted(H, lambda_current);  // np.dot(H, p), H = hess + lambda I
-                    np_matvec(Hr.data(), p.data(), Hp.data(), n);
+                    matvec(Hr.data(), p.data(), Hp.data());
                     const double quadratic_term = ddot(p, Hp);
                     const double relative_error =
                         (step_len * step_len * (s_min * s_min)) / (quadratic_term + lambda_current * (tr * tr));
@@ -547,7 +568,6 @@ nb::object trust_solve(
         int status = trSuccess;
         vec p, xp(n);
         bool hits = false;
-        vec where;
         try {
             if (exact) T.init_exact(m);
             while (T.jac_mag(m) >= gtol) {
@@ -567,19 +587,28 @@ nb::object trust_solve(
                 for (std::size_t i = 0; i < n; ++i) xp[i] = m.x[i] + p[i];
                 Model mp;
                 mp.x = xp;
+                // trust-exact: a trial point whose Hessian is not finite is a failed step, as a
+                // trial value that is not finite (scipy raises there); f is not computed at it
+                bool bad_hess = false;
                 if (exact) {
-                    where = xp;
-                    T.init_exact(mp);
+                    try {
+                        T.init_exact(mp);
+                    } catch (const Stop& s) {
+                        if (s.status != trHessNotFinite) throw;
+                        bad_hess = true;
+                    }
                 }
                 const double fm = T.fun(m);
-                const double actual_reduction = fm - T.fun(mp);
+                const double actual_reduction = bad_hess ? -kInf : fm - T.fun(mp);
                 const double predicted_reduction = fm - predicted_value;
                 if (predicted_reduction <= 0) {
                     status = trBadPrediction;
                     break;
                 }
                 const double rho = actual_reduction / predicted_reduction;
-                if (rho < 0.25) tr *= 0.25;
+                // a NaN rho (f is NaN at the trial point) shrinks the radius as -inf does
+                // (scipy's rho < 0.25 is false for NaN: the same subproblem again until max_iter)
+                if (!(rho >= 0.25)) tr *= 0.25;
                 else if (rho > 0.75 && hits) tr = pymin(2 * tr, max_trust_radius);
                 if (rho > eta) m = std::move(mp);
                 k += 1;
@@ -593,9 +622,8 @@ nb::object trust_solve(
                 }
             }
         } catch (const Stop& s) {
-            const vec& at = s.status == trHessNotFinite && !where.empty() ? where : m.x;
             return nb::make_tuple(
-                out_vector(at.data(), n), nb::none(), nb::none(), nb::none(), s.status, k, obj.nfev, obj.ngev, 0
+                out_vector(m.x.data(), n), nb::none(), nb::none(), nb::none(), s.status, k, obj.nfev, obj.ngev, 0
             );
         }
         const double f = T.fun(m);

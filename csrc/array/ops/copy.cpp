@@ -161,7 +161,10 @@ void copyto(nb::handle dst_obj, nb::handle src_obj) {
 
 void bind_copy(nb::module_& m) {
     using nb::arg;
-    m.def("astype", named("astype", &astype), arg().none(), arg().none(), nb::kw_only(), arg("copy").none() = true);
+    m.def(
+        "astype", named("astype", &astype), nb::sig("def astype(x, dtype, /, *, copy=True)"), arg().none(),
+        arg().none(), nb::kw_only(), arg("copy").none() = true
+    );
     m.def("_iter_plan", &iter_plan, arg("arrays"), arg("mode") = "full");
     m.def("_copy_with_mode", [](const NDArray& a, const std::string& mode) {
         return wrap(cast_copy(a, a.dtype, parse_mode(mode)));

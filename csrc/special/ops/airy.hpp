@@ -21,6 +21,7 @@
 // ~1e10 (zeta past 2^50) the phase itself is no longer resolved (S6 note).
 #pragma once
 
+#include "special/sincos.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/dd.hpp"
@@ -133,9 +134,9 @@ inline Airy negative_asymptotic(double z) {
         if (std::fabs(tu) + std::fabs(tv) <= 0x1p-56) break;
     }
     // theta = zeta - pi/4 = zh + (zl - pi/4): sin, cos of zh from libm, of the rest directly
-    const double sh = std::sin(zh), ch = std::cos(zh);
+    const auto [sh, ch] = sincos(zh);
     const double r = zl - 0.25 * kPi;
-    const double sr = std::sin(r), cr = std::cos(r);
+    const auto [sr, cr] = sincos(r);
     const double st = sh * cr + ch * sr, ct = ch * cr - sh * sr;
     const double q4 = std::sqrt(std::sqrt(z));  // z^(1/4)
     const double a = kInvSqrtPi / q4, ad = kInvSqrtPi * q4;

@@ -105,7 +105,8 @@ NDArray new_array_like(const NDArray& proto, DType dtype, bool zeroed = false);
 // New array with a layout the caller chose: `strides` (bytes, one per axis,
 // none negative) address elements inside `nbytes` of fresh, uninitialized
 // memory. For results whose producer dictates the layout, such as LAPACK's
-// column-major matrices in sd.linalg (docs/design/linalg.md §4).
+// column-major matrices in sd.linalg (docs/design/linalg.md §4). The shape
+// is checked as in checked_size (ValueError), except that 0-d is allowed.
 NDArray new_array_strided(
     DType dtype, std::span<const std::int64_t> shape, std::span<const std::int64_t> strides, std::int64_t nbytes
 );

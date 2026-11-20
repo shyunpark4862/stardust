@@ -2,6 +2,7 @@
 
 #include "bind/errors.hpp"  // py_type_name
 #include "frame/ops/cast.hpp"
+#include "frame/parallel.hpp"
 
 #include <cstring>
 #include <optional>
@@ -25,12 +26,15 @@ Kind classify(PyObject* o, PyObject* na) {
     if (PyLong_Check(o)) return Kind::Int;
     if (PyFloat_Check(o)) return Kind::Float;  // includes numpy.float64
     if (PyUnicode_Check(o)) return Kind::Str;  // includes numpy.str_
-    // Other numpy scalars (numpy.int32, numpy.bool, numpy.float32, ...).
+    // Other numpy scalars, by an allow list: numpy.bool, the integers and the
+    // real floats. Complex, datetime64, timedelta64, void and bytes_ also have
+    // __float__, but a float would drop part of them, so they are refused.
     const char* name = Py_TYPE(o)->tp_name;
-    if (std::strncmp(name, "numpy.", 6) == 0) {
+    if (!PyComplex_Check(o) && std::strncmp(name, "numpy.", 6) == 0) {
         if (std::strcmp(name, "numpy.bool") == 0) return Kind::Bool;
-        if (PyIndex_Check(o)) return Kind::Int;
-        if (Py_TYPE(o)->tp_as_number && Py_TYPE(o)->tp_as_number->nb_float) return Kind::Float;
+        if (PyIndex_Check(o)) return Kind::Int;  // numpy.int8 ... numpy.uint64
+        for (const char* f : {"numpy.float16", "numpy.float32", "numpy.longdouble"})
+            if (std::strcmp(name, f) == 0) return Kind::Float;
     }
     throw nb::type_error(("cannot store an object of type '" + type_name(o) +
                           "' in a column (only bool, int, float, str and None)")
@@ -216,8 +220,11 @@ Column from_list(nb::handle seq, nb::handle na, std::optional<DType> dtype) {
 
 namespace {
 
+// Reads only the buffer (the caller's ndarray keeps it alive), so a large
+// copy runs without the GIL (docs/api/frame.md §12).
 template <class To, class From>
 void widen(To* out, const void* data, std::int64_t n, std::int64_t stride) {
+    const Unlocked unlocked(n);
     const From* in = static_cast<const From*>(data);
     for (std::int64_t i = 0; i < n; ++i) out[i] = static_cast<To>(in[i * stride]);
 }
@@ -328,6 +335,44 @@ nb::dlpack::dtype numpy_dtype(DType dt) {
 }
 
 }  // namespace
+
+nb::object rows_from_columns(
+    const std::vector<nb::ndarray<nb::ro, nb::ndim<1>, nb::device::cpu>>& cols, std::int64_t n
+) {
+    const auto k = static_cast<std::int64_t>(cols.size());
+    if (k == 0) throw nb::value_error("rows_from_columns: at least one column");
+    const nb::dlpack::dtype dt = cols[0].dtype();
+    const std::int64_t size = dt.bits / 8;
+    if (dt.lanes != 1 || (size != 1 && size != 8)) throw nb::type_error("rows_from_columns: 1- or 8-byte values");
+    std::vector<const std::byte*> data(static_cast<std::size_t>(k));
+    std::vector<std::int64_t> stride(static_cast<std::size_t>(k));  // in elements
+    for (std::int64_t j = 0; j < k; ++j) {
+        const auto& c = cols[static_cast<std::size_t>(j)];
+        if (c.dtype() != dt || static_cast<std::int64_t>(c.shape(0)) != n)
+            throw nb::value_error("rows_from_columns: one dtype, n values per column");
+        data[j] = static_cast<const std::byte*>(c.data());
+        stride[j] = c.stride(0);
+    }
+    auto buf = Buffer::allocate(n * k * size, /*zeroed=*/false);
+    std::byte* out = buf->data();
+    auto rows = [&](auto word) {
+        using T = decltype(word);
+        T* o = reinterpret_cast<T*>(out);
+        for_chunks(
+            n,
+            [&](std::int64_t lo, std::int64_t hi) {
+                for (std::int64_t i = lo; i < hi; ++i)
+                    for (std::int64_t j = 0; j < k; ++j)
+                        o[i * k + j] = reinterpret_cast<const T*>(data[j])[i * stride[j]];
+            },
+            k
+        );
+    };
+    if (size == 1) rows(std::uint8_t{});
+    else rows(std::uint64_t{});
+    const std::size_t shape[2] = {static_cast<std::size_t>(n), static_cast<std::size_t>(k)};
+    return nb::ndarray<nb::numpy>(out, 2, shape, buffer_owner(buf), nullptr, dt).cast();
+}
 
 nb::object to_numpy_view(const Column& col) {
     const nb::dlpack::dtype dt = numpy_dtype(col.dtype);

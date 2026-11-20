@@ -23,6 +23,7 @@
 // scipy (Johnson's code) rounds z^2 and loses up to 450 ULP there.
 #pragma once
 
+#include "special/sincos.hpp"
 #include "special/coeffs/wofz_grid.hpp"
 #include "special/cplx.hpp"
 #include "special/common.hpp"
@@ -65,9 +66,9 @@ inline CScaled exp_negsq(double x, double y) {
     if (rd < -1e4) return {{0.0, 0.0}, 0};  // below every subnormal whatever the phase
     const dd::DD p = dd::two_prod(x, y);  // NaN low part once xy overflows: the phase is NaN
     const double th = -2.0 * p.hi, tl = -2.0 * p.lo;  // the phase -2xy = th + tl
-    double c = std::cos(th), s = std::sin(th);
+    auto [s, c] = sincos(th);
     if (tl != 0.0) {
-        const double cl = std::cos(tl), sl = std::sin(tl);
+        const auto [sl, cl] = sincos(tl);
         const double c2 = c * cl - s * sl;
         s = s * cl + c * sl;
         c = c2;

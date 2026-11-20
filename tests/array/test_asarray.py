@@ -72,7 +72,10 @@ def test_range_is_its_list_and_generators_are_rejected():
         sd.asarray(range(3), copy=False)
     with pytest.raises(OverflowError):
         sd.asarray(range(2**63, 2**63 + 1))
-    with pytest.raises(TypeError, match=r"^asarray\(\): cannot convert an object of type 'generator' to an array$"):
+    with pytest.raises(
+        TypeError,
+        match=r"^asarray\(\): 'obj' must be an sd.ndarray, a list, a tuple, a range or a buffer, not generator$",
+    ):
         sd.asarray(i for i in range(3))
     with pytest.raises(TypeError):
         sd.asarray(iter([1, 2]))

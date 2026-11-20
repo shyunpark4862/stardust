@@ -108,12 +108,14 @@ target_compile_definitions(_core PRIVATE BOOST_MATH_STANDALONE)
 
 # The only target is this Mac (Apple M4 Pro): -mcpu=native resolves to apple-m4.
 # -ffast-math is deliberately absent: NaN and inf must keep their meaning.
-# -ffp-contract=off: clang would otherwise fuse `a + b*c` into one FMA (one
-# rounding instead of two), silently changing results versus the source text
-# and versus numpy (and pandas). Kernels that want FMA ask for it explicitly.
-# -fno-builtin-sin/-cos: on Apple targets clang merges sin(x) and cos(x) of the
-# same x into one __sincos_stret call, whose results can differ by 1 ULP from
-# sin()/cos() called separately (which is what numpy does).
+# -ffp-contract=off: the code, not the compiler, decides where an FMA happens.
+# Otherwise clang fuses `a + b*c` (one rounding instead of two) wherever its
+# inlining allows, so the same formula could give other bits on another path
+# (f(x)[i] == f(x[i]), a NEON kernel against its scalar definition). Kernels
+# that want FMA write std::fma / vfmaq.
+# -fno-builtin-sin/-cos: for the same reason clang does not merge sin(x) and
+# cos(x) of one x into a __sincos_stret call by itself; code that wants the
+# merged call writes it (sd::sincos, special/sincos.hpp).
 target_compile_options(_core PRIVATE -mcpu=native -ffp-contract=off -fno-builtin-sin -fno-builtin-cos
                        -Wall -Wextra -Wpedantic)
 

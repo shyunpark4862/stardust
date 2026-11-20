@@ -145,10 +145,12 @@ nb::object race_keys(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, cons
 
 // The first k entries of a Fisher-Yates shuffle of 0 .. n-1 (k <= n): step i swaps
 // entry i with entry i + bounded(n - i), its draw from element pos + i of the stream
-// (extra words for rejections), so the result depends on (key, pos, n, k) only. For a
-// small sample of a large population the entries touched live in a hash map (O(k)
-// time and memory; numpy's choice without replacement does the same in effect); else
-// in the full array. k = n is a permutation.
+// (extra words for rejections), so the result depends on (key, pos, n, k) only. k = n is
+// a permutation, shuffled in the result itself. For a small sample of a large population
+// the entries touched live in a hash map (O(k) time and memory; numpy's choice without
+// replacement does the same in effect); else in a full array of n beside the result.
+// The memory of each path is checked before the stream moves (random/__init__.py
+// _shuffle_bytes, docs/design/random.md §4).
 nb::object fisher_yates(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, std::int64_t n, std::int64_t k) {
     const std::int64_t shape[] = {k};
     NDArray out = new_array(DType::Int64, shape);
@@ -162,7 +164,10 @@ nb::object fisher_yates(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, s
     };
     {
         nb::gil_scoped_release release;  // the loop only: wrap() below needs the GIL
-        if (k <= n / 16) {
+        if (k == n) {
+            for (std::int64_t i = 0; i < n; ++i) o[i] = i;
+            for (std::int64_t i = 0; i < n; ++i) std::swap(o[i], o[draw(i)]);
+        } else if (k <= n / 16) {
             std::unordered_map<std::int64_t, std::int64_t> moved;  // entries that are not their own index
             moved.reserve(static_cast<std::size_t>(2 * k));
             auto at = [&](std::int64_t i) {

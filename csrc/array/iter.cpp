@@ -47,7 +47,10 @@ NdIter::NdIter(std::span<const std::int64_t> shape, std::span<const IterOperand>
     for (int k = 0; k < nop_; ++k) {
         data_[k] = ops[k].data;
         const int offset = ndim - static_cast<int>(ops[k].shape.size());
-        if (offset < 0) throw nb::value_error("operand has more dimensions than the iteration shape");
+        if (offset < 0)  // e.g. out= or x += y with a result of fewer dimensions than an input
+            throw nb::value_error(
+                ("operand of shape " + shape_str(ops[k].shape) + " cannot be broadcast to " + shape_str(shape)).c_str()
+            );
         for (int d = 0; d < ndim; ++d) {
             const int od = d - offset;
             if (od < 0 || ops[k].shape[od] == 1) {

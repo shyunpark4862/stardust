@@ -303,22 +303,6 @@ constexpr bool from_three_way(Op op, int c) {
     }
 }
 
-// Calls f(std::integral_constant<Op, op>) so the comparison is fixed at
-// compile time inside the row loop.
-template <class F>
-Column with_compare_op(Op op, F f) {
-    switch (op) {
-        case Op::Eq: return f(std::integral_constant<Op, Op::Eq>{});
-        case Op::Ne: return f(std::integral_constant<Op, Op::Ne>{});
-        case Op::Lt: return f(std::integral_constant<Op, Op::Lt>{});
-        case Op::Le: return f(std::integral_constant<Op, Op::Le>{});
-        case Op::Gt: return f(std::integral_constant<Op, Op::Gt>{});
-        case Op::Ge: return f(std::integral_constant<Op, Op::Ge>{});
-        default: break;
-    }
-    throw nb::value_error("not a comparison");
-}
-
 template <class A, class B>
 Column compare_plain(Op op, const Column& a, const Column& b, int side) {
     auto run = [&](auto f) { return map2<std::uint8_t, A, B>(a, b, side, DType::Bool, f); };

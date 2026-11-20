@@ -2,7 +2,7 @@
 
 Wishart(df=, scale=), InverseWishart(df=, scale=) and MatrixNormal(mu=, rowcov=, colcov=),
 with scipy's names (mu for the matrix normal's mean: T18, and mean() is a method) and methods
-(pdf, logpdf, sample, mean, mode, var, entropy; the matrix normal without mode and var).
+(pdf, logpdf, sample, mean, mode, variance, entropy; the matrix normal without mode and variance).
 Batched as the multivariate ones (T29): the leading axes of the parameters broadcast, an input
 x (..., p, p) (or (..., n, p)) broadcasts its leading axes against them. A matrix argument's
 lower triangle is read; x not positive definite is off the support (pdf 0). Invalid parameters
@@ -12,8 +12,9 @@ element (T8).
 
 import math
 
+from .. import _calls
 from .. import _core as _sd_core
-from ._distribution import _keyword_constructor
+from ._distribution import _kept, _readonly
 from ._multivariate import (
     _array,
     _broadcast,
@@ -42,7 +43,7 @@ class _MatrixBase:
         a = _array(x, f"{name}()", "x", 2)
         if tuple(a.shape[-2:]) != self._shape:
             raise ValueError(f"{name}(): 'x' must be {self._shape} on its last two axes, not {tuple(a.shape[-2:])}")
-        out = _broadcast(tuple(a.shape[:-2]), self._batch, what=f"{name}(): 'x' and the parameters")
+        out = _broadcast(tuple(a.shape[:-2]), self._batch, func=f"{name}()")
         M = math.prod(out)
         rows = sd.reshape(sd.broadcast_to(a, out + self._shape), (M,) + self._shape)
         if self._batch:
@@ -55,13 +56,14 @@ class _MatrixBase:
         return float(v[0]) if not shape else _sd_core.reshape(v, shape)
 
     def _per_batch(self, v):
-        return float(v[0]) if not self._batch else _sd_core.reshape(v, self._batch)
+        """A per-batch summary: a float without a batch, else read-only (D-4)."""
+        return float(v[0]) if not self._batch else _readonly(_sd_core.reshape(v, self._batch))
 
     def _matrices(self, v):
-        """(B,) + shape rows with NaN where invalid, in the batch shape."""
+        """(B,) + shape rows with NaN where invalid, in the batch shape, read-only (D-4)."""
         sd = _sd_core
         ok = sd.reshape(self._ok, (self._B, 1, 1))
-        return sd.reshape(sd.where(ok != 0.0, v, float("nan")), self._batch + tuple(v.shape[1:]))
+        return _readonly(sd.reshape(sd.where(ok != 0.0, v, float("nan")), self._batch + tuple(v.shape[1:])))
 
     def _sample_rows(self, shape, rng):
         from .. import random as _random
@@ -88,6 +90,7 @@ class _WishartBase(_MatrixBase):
 
     def __init__(self, *, df, scale):
         sd = _sd_core
+        df, scale = _kept(df), _kept(scale)
         cls = type(self).__name__
         df_v = _param(df, cls, "df", 0)
         sc = _param(scale, cls, "scale", 2)
@@ -95,7 +98,7 @@ class _WishartBase(_MatrixBase):
         if sc.shape[-2] != p:
             raise ValueError(f"{cls}(): 'scale' must be square on its last two axes, not {tuple(sc.shape[-2:])}")
         self._p = (df, scale)
-        batch = _broadcast(_shape_of(df_v), tuple(sc.shape[:-2]), what=f"{cls}(): the parameters")
+        batch = _broadcast(_shape_of(df_v), tuple(sc.shape[:-2]), func=f"{cls}()")
         self._batch, self._B, self._shape = batch, math.prod(batch), (p, p)
         self._df = _rows(df_v, batch, ())
         self._scale = _lower_symmetric(_rows(sc, batch, (p, p)))  # (the lower triangle is what is read)
@@ -117,7 +120,7 @@ class _WishartBase(_MatrixBase):
     def _log(self, x, name, as_pdf):
         rows, idx, out = self._points(x, name)
         v = _k.wishart_logpdf(
-            rows, idx, self._df, self._L, self._Ll, self._ldh, self._ldl, self._ok, self._inverse, as_pdf
+            rows, idx, self._df, self._scale, self._L, self._Ll, self._ldh, self._ldl, self._ok, self._inverse, as_pdf
         )
         return self._result(v, out)
 
@@ -163,7 +166,7 @@ class Wishart(_WishartBase):
         df = self._dfm()
         return self._matrices(sd.where(df >= p + 1.0, (df - p - 1.0) * self._scale, float("nan")))
 
-    def var(self):
+    def variance(self):
         """The variance of each entry: df (scale_ij^2 + scale_ii scale_jj)."""
         sd = _sd_core
         p = self._shape[0]
@@ -193,7 +196,7 @@ class InverseWishart(_WishartBase):
         p = self._shape[0]
         return self._matrices(self._scale / (self._dfm() + p + 1.0))
 
-    def var(self):
+    def variance(self):
         """The variance of each entry, ((df-p+1) s_ij^2 + (df-p-1) s_ii s_jj) / ((df-p)(df-p-1)^2 (df-p-3))
         for df > p + 3; inf for p + 1 < df <= p + 3 (the mean finite), NaN for df <= p + 1 (as
         InverseGamma's variance)."""
@@ -217,6 +220,7 @@ class MatrixNormal(_MatrixBase):
 
     def __init__(self, *, mu, rowcov, colcov):
         sd = _sd_core
+        mu, rowcov, colcov = _kept(mu), _kept(rowcov), _kept(colcov)
         cls = "MatrixNormal"
         m = _param(mu, cls, "mu", 2)
         u = _param(rowcov, cls, "rowcov", 2)
@@ -233,9 +237,7 @@ class MatrixNormal(_MatrixBase):
                 f"not {tuple(v.shape[-2:])}"
             )
         self._p = (mu, rowcov, colcov)
-        batch = _broadcast(
-            tuple(m.shape[:-2]), tuple(u.shape[:-2]), tuple(v.shape[:-2]), what=f"{cls}(): the parameters"
-        )
+        batch = _broadcast(tuple(m.shape[:-2]), tuple(u.shape[:-2]), tuple(v.shape[:-2]), func=f"{cls}()")
         self._batch, self._B, self._shape = batch, math.prod(batch), (n, p)
         self._mean = _rows(m, batch, (n, p))
         U, Ul, luh, lul, oku, _, _ = _k.mv_chol(_rows(u, batch, (n, n)))
@@ -296,13 +298,9 @@ class MatrixNormal(_MatrixBase):
         return self._matrices(self._mean)
 
     def entropy(self):
-        """np/2 (1 + log 2 pi) + p/2 log|rowcov| + n/2 log|colcov|."""
-        sd = _sd_core
+        """np/2 (1 + log 2 pi) + p/2 log|rowcov| + n/2 log|colcov|, in double-double."""
         n, p = self._shape
-        lu = self._lu[0] + self._lu[1]
-        lv = self._lv[0] + self._lv[1]
-        h = 0.5 * n * p * (1.0 + math.log(2.0 * math.pi)) + 0.5 * p * lu + 0.5 * n * lv
-        return self._per_batch(sd.where(self._ok != 0.0, h, float("nan")))
+        return self._per_batch(_k.matnorm_entropy(self._lu[0], self._lu[1], self._lv[0], self._lv[1], self._ok, n, p))
 
     def sample(self, shape=None, /, *, rng):
         """Matrices of shape `shape` + the batch shape + (n, p): mean + L_U Z L_V^T."""
@@ -314,4 +312,4 @@ class MatrixNormal(_MatrixBase):
 for _cls in (_MatrixBase, _WishartBase, Wishart, InverseWishart, MatrixNormal):
     _public_names(_cls)
 for _cls in (_WishartBase, MatrixNormal):
-    _keyword_constructor(_cls)  # "Wishart(): unexpected keyword argument ..." (T36)
+    _calls.keyword_init(_cls)  # "Wishart(): unexpected keyword argument ..." (T36)

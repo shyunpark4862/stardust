@@ -49,7 +49,19 @@ Batch::Batch(std::initializer_list<BatchOperand> ops, const char* func) : nops_(
             if (op.shape[d] != 1) strides_[k * nd + lead + d] = op.strides[d];
         ++k;
     }
-    for (std::int64_t s : shape_) size_ *= s;
+    // The batch count, checked as the array area checks an array's size: a product of
+    // broadcast extents (0-stride views) can pass int64 while the inputs stay small.
+    // An empty axis empties the batch; the other extents are still checked (numpy's rule).
+    bool empty = false;
+    std::int64_t n = 1;
+    for (std::int64_t s : shape_) {
+        if (s == 0) {
+            empty = true;
+            continue;
+        }
+        if (__builtin_mul_overflow(n, s, &n)) throw nb::value_error("array is too big");
+    }
+    size_ = empty ? 0 : n;
 }
 
 void Batch::offsets(std::int64_t idx, std::int64_t* out) const {

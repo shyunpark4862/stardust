@@ -11,10 +11,10 @@
 // past the memo (counted in njev, as scipy's ngev counts them). A product with p = 0 is 0.
 //
 // hess(x) returns (n, n) and hessp(x, p) returns (n,) (O63): a value that is not a float64
-// sd.ndarray of that shape goes through Python's check. The matrix is row-major (numpy's C order,
-// as scipy's np.asarray of the user's value): the returned array itself when it is C-ordered (a
-// reference, as scipy keeps it), else a copy; shared with the subproblems that hold it, so hess
-// called again while one is held fills another holder (kept for reuse).
+// sd.ndarray of that shape goes through Python's check. The matrix is a row-major copy (numpy's C
+// order, as scipy's np.asarray of a C-ordered value), so a hess that refills one buffer and
+// returns it does not change a matrix still in use; shared with the subproblems that hold it, so
+// hess called again while one is held fills another holder (kept for reuse).
 #pragma once
 
 #include "optimize/diff.hpp"
@@ -49,10 +49,8 @@ inline void np_matvec(const double* H, const double* p, double* out, std::size_t
     cblas_dgemv(CblasRowMajor, CblasNoTrans, ln, ln, 1.0, H, ln, p, 1, 0.0, out, 1);
 }
 
-// The matrix of hess at a point, row-major (n, n): the user's C-ordered float64 array itself
-// (ref), or a copy of another layout (own). Released only with the GIL held.
+// The matrix of hess at a point: a row-major (n, n) copy.
 struct HessMatrix {
-    nb::object ref;
     std::vector<double> own;
     const double* p = nullptr;
     const double* data() const { return p; }
@@ -96,7 +94,7 @@ struct Hessian {
         return pool.back();
     }
 
-    // A returned (n, n) matrix into out: the array itself when it is C-ordered, else a copy.
+    // A returned (n, n) matrix into out, copied row-major.
     void matrix(nb::object o, HessMatrix& out) const {
         const auto ln = static_cast<std::int64_t>(n);
         if (!(is_ndarray(o) && as_ndarray(o).dtype == DType::Float64 && as_ndarray(o).ndim == 2 &&
@@ -105,20 +103,18 @@ struct Hessian {
         const NDArray& a = as_ndarray(o);
         const std::byte* d = a.data;
         const std::int64_t s0 = a.strides[0], s1 = a.strides[1];
+        out.own.resize(n * n);
+        out.p = out.own.data();
         if ((s1 == static_cast<std::int64_t>(sizeof(double)) || n == 1) && (s0 == ln * s1 || n == 1)) {  // C order
-            out.p = reinterpret_cast<const double*>(d);
-            out.ref = std::move(o);
+            std::memcpy(out.own.data(), d, n * n * sizeof(double));
             return;
         }
-        out.ref = nb::object();
-        out.own.resize(n * n);
         for (std::size_t i = 0; i < n; ++i)
             for (std::size_t j = 0; j < n; ++j)
                 std::memcpy(
                     &out.own[i * n + j], d + static_cast<std::int64_t>(i) * s0 + static_cast<std::int64_t>(j) * s1,
                     sizeof(double)
                 );
-        out.p = out.own.data();
     }
 
     // A returned (n,) product into out.

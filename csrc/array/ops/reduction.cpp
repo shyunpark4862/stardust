@@ -8,7 +8,9 @@
 #include "array/kernels/reduce.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/lanes.hpp"
+#include "array/ops/pieces.hpp"
 #include "array/parallel_limits.hpp"
+#include "base/int_sum.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -378,10 +380,73 @@ nb::object cumulative(nb::handle x_obj, nb::handle axis_obj, nb::handle dtype_ob
 // The dtype mean/var compute in: float64, or complex128 for complex input.
 DType inexact(DType d) { return promote(d, DType::Float64); }
 
+// ---- the mean of integers: an exact sum (base/int_sum.hpp) ----------------
+// The int64 (and bool) values are summed exactly, the sum rounded once and
+// divided once (docs/design/array.md §6.8). Integer addition does not depend
+// on the order, so pieces and lanes run anywhere with the same bits.
+
+// The exact sum of n values at p (stride `step` bytes).
+inline void add_lane(IntSum& s, DType d, const std::byte* p, std::int64_t n, std::int64_t step) {
+    if (d == DType::Bool) {
+        std::int64_t trues = 0;
+        for (std::int64_t i = 0; i < n; ++i) trues += static_cast<std::uint8_t>(p[i * step]);
+        s.add(trues);
+        return;
+    }
+    if (step == 8) {
+        s.add_range(reinterpret_cast<const std::int64_t*>(p), n);
+        return;
+    }
+    for (std::int64_t i = 0; i < n; ++i) s.add(load_as<std::int64_t>(p + i * step));
+}
+
+void int_mean_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
+    IntSum s;
+    add_lane(s, *static_cast<const DType*>(c.user), x, c.n, c.x_stride);
+    *reinterpret_cast<double*>(o) = mean_of(s, c.n);
+}
+
+// The whole array, or the lanes of one axis that is innermost in memory (the
+// usual axis=-1 of a C array). Other reductions (an outer axis, several axes)
+// keep the float sum below: the exact halves there cost more than they save
+// (docs/design/array.md §6.8). Returns false when the case is not one of these.
+bool int_mean(const NDArray& x, const Axes& ax, NDArray& out) {
+    if (x.dtype != DType::Int64 && x.dtype != DType::Bool) return false;
+    const std::int64_t item = x.itemsize();
+    if (ax.count == x.ndim || out.size() == 1) {  // everything into one value
+        const std::int64_t n = x.size();
+        NDArray flat = x;
+        if (!x.c_contiguous && !x.f_contiguous) flat = cast_copy(x, x.dtype);  // order does not matter, only density
+        const std::byte* p = flat.data;
+        const DType d = x.dtype;
+        IntSum total;
+        {
+            const std::int64_t per = kParallelTask * 8 / item;  // pieces of the same bytes for bool and int64
+            std::vector<IntSum> parts(static_cast<size_t>((n + per - 1) / per));
+            for_pieces(n, per, n * item / 8, [&](std::int64_t t, std::int64_t b, std::int64_t e) {
+                add_lane(parts[t], d, p + b * item, e - b, item);
+            });
+            for (const IntSum& part : parts) total.merge(part);
+        }
+        *reinterpret_cast<double*>(out.data) = mean_of(total, n);
+        return true;
+    }
+    if (ax.count != 1) return false;
+    int axis = 0;
+    while (!ax.reduced[axis]) ++axis;
+    for (int d = 0; d < x.ndim; ++d)  // innermost: no other axis steps fewer bytes
+        if (d != axis && x.shape[d] > 1 && std::llabs(x.strides[d]) < std::llabs(x.strides[axis])) return false;
+    DType d = x.dtype;
+    LaneCtx ctx{x.shape[axis], x.strides[axis], out.strides[axis], &int_mean_lane, &d};
+    run_lanes(x, out, axis, ctx);
+    return true;
+}
+
 // Sum over `ax` in the inexact dtype, divided by the count, keepdims shape.
 NDArray mean_keepdims(const NDArray& x, const Axes& ax) {
     const DType d = inexact(x.dtype);
     NDArray out = keepdims_result(x, ax, d, /*zeroed=*/true);  // +0.0 (and 0+0j): the start of a sum
+    if (out.size() > 0 && int_mean(x, ax, out)) return out;
     const double n = static_cast<double>(ax.per_output);
     visit_dtype(d, [&]<typename T>(std::type_identity<T>) {
         if constexpr (ops::is_float<T> || ops::is_cplx<T>) {
@@ -782,43 +847,107 @@ void bind_reductions(nb::module_& m) {
     const auto dtype = arg("dtype").none() = nb::none();
     const auto keepdims = arg("keepdims").none() = false;
     const auto correction = arg("correction").none() = 0;
-    m.def("sum", named("sum", &sum), arg().none(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("prod", named("prod", &prod), arg().none(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("min", named("min", &min), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("max", named("max", &max), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("mean", named("mean", &mean), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("var", named("var", &var), arg().none(), nb::kw_only(), axis, correction, keepdims);
-    m.def("std", named("std", &stddev), arg().none(), nb::kw_only(), axis, correction, keepdims);
-    m.def("argmin", named("argmin", &argmin), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("argmax", named("argmax", &argmax), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("any", named("any", &any), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("all", named("all", &all), arg().none(), nb::kw_only(), axis, keepdims);
     m.def(
-        "cumulative_sum", named("cumulative_sum", &cumulative<ops::Add>), arg().none(), nb::kw_only(), axis, dtype,
-        arg("include_initial").none() = false
+        "sum", named("sum", &sum), nb::sig("def sum(x, /, *, axis=None, dtype=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, dtype, keepdims
     );
     m.def(
-        "cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>), arg().none(), nb::kw_only(), axis,
-        dtype, arg("include_initial").none() = false
+        "prod", named("prod", &prod), nb::sig("def prod(x, /, *, axis=None, dtype=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, dtype, keepdims
+    );
+    m.def(
+        "min", named("min", &min), nb::sig("def min(x, /, *, axis=None, keepdims=False)"), arg().none(), nb::kw_only(),
+        axis, keepdims
+    );
+    m.def(
+        "max", named("max", &max), nb::sig("def max(x, /, *, axis=None, keepdims=False)"), arg().none(), nb::kw_only(),
+        axis, keepdims
+    );
+    m.def(
+        "mean", named("mean", &mean), nb::sig("def mean(x, /, *, axis=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "var", named("var", &var), nb::sig("def var(x, /, *, axis=None, correction=0, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, correction, keepdims
+    );
+    m.def(
+        "std", named("std", &stddev), nb::sig("def std(x, /, *, axis=None, correction=0, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, correction, keepdims
+    );
+    m.def(
+        "argmin", named("argmin", &argmin), nb::sig("def argmin(x, /, *, axis=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "argmax", named("argmax", &argmax), nb::sig("def argmax(x, /, *, axis=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "any", named("any", &any), nb::sig("def any(x, /, *, axis=None, keepdims=False)"), arg().none(), nb::kw_only(),
+        axis, keepdims
+    );
+    m.def(
+        "all", named("all", &all), nb::sig("def all(x, /, *, axis=None, keepdims=False)"), arg().none(), nb::kw_only(),
+        axis, keepdims
+    );
+    m.def(
+        "cumulative_sum", named("cumulative_sum", &cumulative<ops::Add>),
+        nb::sig("def cumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)"), arg().none(),
+        nb::kw_only(), axis, dtype, arg("include_initial").none() = false
+    );
+    m.def(
+        "cumulative_prod", named("cumulative_prod", &cumulative<ops::Multiply>),
+        nb::sig("def cumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)"), arg().none(),
+        nb::kw_only(), axis, dtype, arg("include_initial").none() = false
     );
 
     // NaN-skipping forms (docs/api/array.md §7.9): the same signatures.
-    m.def("nansum", named("nansum", &nansum), arg().none(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("nanprod", named("nanprod", &nanprod), arg().none(), nb::kw_only(), axis, dtype, keepdims);
-    m.def("nanmin", named("nanmin", &nanmin), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("nanmax", named("nanmax", &nanmax), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("nanmean", named("nanmean", &nanmean), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("nanvar", named("nanvar", &nanvar), arg().none(), nb::kw_only(), axis, correction, keepdims);
-    m.def("nanstd", named("nanstd", &nanstd), arg().none(), nb::kw_only(), axis, correction, keepdims);
-    m.def("nanargmin", named("nanargmin", &nanargmin), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("nanargmax", named("nanargmax", &nanargmax), arg().none(), nb::kw_only(), axis, keepdims);
     m.def(
-        "nancumulative_sum", named("nancumulative_sum", &nan_cumulative<ops::Add>), arg().none(), nb::kw_only(), axis,
-        dtype, arg("include_initial").none() = false
+        "nansum", named("nansum", &nansum), nb::sig("def nansum(x, /, *, axis=None, dtype=None, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, dtype, keepdims
     );
     m.def(
-        "nancumulative_prod", named("nancumulative_prod", &nan_cumulative<ops::Multiply>), arg().none(), nb::kw_only(),
-        axis, dtype, arg("include_initial").none() = false
+        "nanprod", named("nanprod", &nanprod), nb::sig("def nanprod(x, /, *, axis=None, dtype=None, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, dtype, keepdims
+    );
+    m.def(
+        "nanmin", named("nanmin", &nanmin), nb::sig("def nanmin(x, /, *, axis=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "nanmax", named("nanmax", &nanmax), nb::sig("def nanmax(x, /, *, axis=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "nanmean", named("nanmean", &nanmean), nb::sig("def nanmean(x, /, *, axis=None, keepdims=False)"), arg().none(),
+        nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "nanvar", named("nanvar", &nanvar), nb::sig("def nanvar(x, /, *, axis=None, correction=0, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, correction, keepdims
+    );
+    m.def(
+        "nanstd", named("nanstd", &nanstd), nb::sig("def nanstd(x, /, *, axis=None, correction=0, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, correction, keepdims
+    );
+    m.def(
+        "nanargmin", named("nanargmin", &nanargmin), nb::sig("def nanargmin(x, /, *, axis=None, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "nanargmax", named("nanargmax", &nanargmax), nb::sig("def nanargmax(x, /, *, axis=None, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "nancumulative_sum", named("nancumulative_sum", &nan_cumulative<ops::Add>),
+        nb::sig("def nancumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)"), arg().none(),
+        nb::kw_only(), axis, dtype, arg("include_initial").none() = false
+    );
+    m.def(
+        "nancumulative_prod", named("nancumulative_prod", &nan_cumulative<ops::Multiply>),
+        nb::sig("def nancumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)"), arg().none(),
+        nb::kw_only(), axis, dtype, arg("include_initial").none() = false
     );
 }
 

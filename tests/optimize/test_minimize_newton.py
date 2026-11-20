@@ -142,12 +142,35 @@ def run_both(method, f, g, h, x0, hv, opts=None, sopts=None, pair=False, tol=Non
     return out
 
 
+def without_recalls(la, lb):
+    """scipy's call log la without the calls that sd's lb leaves out: scipy's newton-cg without
+    hess and hessp computes jac(x_k) again for every difference product (approx_fhess_p calls
+    jac(x_k + eps p), then jac(x_k) past ScalarFunction's memo), where sd uses the iteration's
+    gradient (D-17). Every call left out must be one of jac (or of fun with jac=True) at a point
+    called before. Returns the log and the count left out."""
+    out, removed, seen, j = [], 0, set(), 0
+    for c in la:
+        if j < len(lb) and calls_equal([c], [lb[j]]):
+            out.append(c)
+            j += 1
+        else:
+            assert c[0] in ("g", "fg") and (c[0], repr(c[1])) in seen, c
+            removed += 1
+        if c[0] in ("g", "fg"):
+            seen.add((c[0], repr(c[1])))
+    return out, removed
+
+
 def same_run(a, b, la, lb, method, hv, g):
     """scipy's run (result a, call log la) and sd's (b, lb) are the same steps and agree in every
     field (x, fun, jac and hess bit for bit), but for the decisions that leave scipy: newton-cg's
     jac is the gradient at x (O70: one more call at the end when the memo does not have it, counted
-    in njev), and nhev counts the calls of hess and hessp made (O68, O69; scipy adds 1 for its
-    placeholder hess with hessp alone and leaves out trust-ncg's call for the result's hess)."""
+    in njev), nhev counts the calls of hess and hessp made (O68, O69; scipy adds 1 for its
+    placeholder hess with hessp alone and leaves out trust-ncg's call for the result's hess), and
+    newton-cg without hess and hessp does not compute jac(x_k) again for each product (D-17)."""
+    rg = 0
+    if method == "newton-cg" and hv is None:
+        la, rg = without_recalls(la, lb)
     extra = lb[len(la) :]
     assert calls_equal(la, lb[: len(la)])
     if method == "newton-cg":
@@ -163,9 +186,12 @@ def same_run(a, b, la, lb, method, hv, g):
         assert b.nhev == a.nhev
     assert b.x.tolist() == [float(v) for v in a.x]
     assert b.fun == a.fun or (math.isnan(a.fun) and math.isnan(b.fun))
+    if b.message == "NaN result encountered." and a.message.startswith("Warning: CG iterations"):
+        # D-7: a NaN curvature stops newton-cg's CG at once (scipy runs it 20n steps)
+        a.message = b.message
     assert (b.nfev, b.njev - len(extra), b.n_iter, b.status, b.message) == (
         a.nfev,
-        a.njev,
+        a.njev - rg,
         a.nit,
         a.status,
         a.message,
@@ -230,12 +256,19 @@ VARIANTS = (
 )
 
 
+# quick: every 8th problem and scipy's test functions; deep: all of them (about 40 s)
+QUICK_PROBLEMS = PROBLEMS[::8] + [p for p in PROBLEMS if not p[0].startswith("mgh")]
+
+
 @LIVE
-@pytest.mark.parametrize("variant", VARIANTS)
-def test_every_call_point_follows_scipy(variant):
+@pytest.mark.parametrize(
+    "variant, every",
+    [(v, False) for v in VARIANTS] + [pytest.param(v, True, marks=pytest.mark.deep) for v in VARIANTS],
+)
+def test_every_call_point_follows_scipy(variant, every):
     method, _, hv = variant.partition("/")
     hv = None if hv == "none" else hv
-    for _pid, f, g, h, x0 in PROBLEMS:
+    for _pid, f, g, h, x0 in PROBLEMS if every else QUICK_PROBLEMS:
         (a, la), (b, lb) = run_both(method, f, g, h, x0, hv)
         same_run(a, b, la, lb, method, hv, g)
 
@@ -321,6 +354,9 @@ def test_options_and_edge_cases_follow_scipy(case):
         f, g, h = _cut(f, g, h, x0, *kw["cut"])
     sopts = {SCIPY_KEYS.get(k, k): v for k, v in opts.items()}
     (a, la), (b, lb) = run_both(method, f, g, h, x0, hv, opts, sopts, pair=kw.get("pair", False), tol=kw.get("tol"))
+    if "cut" in kw and not same_path(la, lb, method, hv):
+        departs(a, b, f, x0)
+        return
     if isinstance(a, Exception):
         assert calls_equal(la, lb)
     if isinstance(a, UnboundLocalError):
@@ -337,6 +373,32 @@ def test_options_and_edge_cases_follow_scipy(case):
         return
     assert not isinstance(b, Exception), b
     same_run(a, b, la, lb, method, hv, g)
+
+
+def same_path(la, lb, method, hv):
+    """sd called the user's functions at scipy's points (newton-cg without hess and hessp: but
+    scipy's calls again of jac at x_k), up to newton-cg's one more jac call at the end (O70)."""
+    if method == "newton-cg" and hv is None:
+        try:
+            la, _ = without_recalls(la, lb)
+        except AssertionError:
+            return False
+    extra = len(lb) - len(la)
+    return calls_equal(la, lb[: len(la)]) and 0 <= extra <= (1 if method == "newton-cg" else 0)
+
+
+def departs(a, b, f, x0):
+    """Where the path meets values that are not finite, sd leaves scipy's steps (D-7, D-8, D-9):
+    a NaN trial value shrinks the trust region, a trial Hessian that is not finite is a rejected
+    step, newton-cg ends at its last finite iterate and stops CG at a NaN curvature. The result is
+    then a finite point no worse than x0, and no worse than scipy's when scipy converged."""
+    if isinstance(b, Exception):  # where scipy's run got further: a gradient or hessp not finite
+        assert isinstance(b, ValueError) and "not finite at x = [" in str(b), b
+        return
+    assert all(math.isfinite(v) for v in b.x.tolist()) and math.isfinite(b.fun), b
+    assert b.fun <= f(np.array(x0, dtype=float))
+    if not isinstance(a, Exception) and a.success and math.isfinite(a.fun):
+        assert b.fun <= a.fun + 1e-8 * max(1.0, abs(a.fun)) or b.converged, (a.fun, b.fun)
 
 
 # ---- the decisions
@@ -434,13 +496,13 @@ def test_jac_is_required():
 def test_bounds_are_an_error():
     # O66: scipy warns and ignores them; here bfgs's rule
     for method in ("newton-cg", "trust-ncg", "trust-exact"):
-        with pytest.raises(ValueError, match=rf"method={method!r} takes no bounds \(method='l-bfgs-b' and"):
+        with pytest.raises(ValueError, match=rf"method={method!r} takes no 'bounds' \(method='l-bfgs-b' and"):
             sd.optimize.minimize(quad, X0, method=method, jac=quad_g, hess=quad_h, bounds=(-5.0, 5.0))
 
 
 def test_trust_methods_need_their_hessian():
     m = sd.optimize.minimize
-    with pytest.raises(ValueError, match=r"method='trust-ncg' needs 'hess' or 'hessp'"):
+    with pytest.raises(ValueError, match=r"minimize\(\): 'hess' or 'hessp' is required when method='trust-ncg'"):
         m(quad, X0, method="trust-ncg", jac=quad_g)
     with pytest.raises(ValueError, match=r"'hess' is required when method='trust-exact'"):
         m(quad, X0, method="trust-exact", jac=quad_g)
@@ -502,8 +564,9 @@ def test_result_fields():
     assert isinstance(r.nhev, int) and isinstance(r.njev, int) and isinstance(r.n_iter, int)
     assert not hasattr(r, "hess_inv")
     H = r.hess
-    H[0, 0] = 99.0
-    assert r.hess[0, 0] != 99.0  # a new copy each read (G113)
+    assert r.hess is H  # read-only, no copy (D-4)
+    with pytest.raises(ValueError, match="read-only"):
+        H[0, 0] = 99.0
     r = sd.optimize.minimize(quad, X0, method="trust-ncg", jac=quad_g, hessp=quad_hp)
     assert not hasattr(r, "hess")  # with hess only
     r = sd.optimize.minimize(quad, X0, method="newton-cg", jac=quad_g, hess=quad_h)
@@ -520,8 +583,9 @@ def test_newton_cg_jac_is_at_x():
         _, f, g, h, x0 = BY_ID[pid]
         (a, la), (b, lb) = run_both("newton-cg", f, g, h, x0, hv)
         assert b.jac.tolist() == g(np.array(b.x.tolist())).tolist() != a.jac.tolist()
-        assert b.njev == a.njev + len(lb) - len(la)
-        extra += len(lb) - len(la)
+        la2, _ = without_recalls(la, lb) if hv is None else (la, 0)
+        assert b.njev == a.njev - (len(la) - len(la2)) + len(lb) - len(la2)
+        extra += len(lb) - len(la2)
     assert extra == 2  # the last two: the gradient differences moved the memo away from x
     _, f, g, h, x0 = BY_ID["mgh01-n2-m2-x1"]
     (a, la), (b, lb) = run_both("newton-cg", f, g, h, x0, "h", {"max_iter": 0}, {"maxiter": 0})
@@ -573,13 +637,15 @@ def test_non_finite_at_x0_is_an_error():
 def test_non_finite_on_the_way_where_scipy_raises():
     # O53: scipy's handling (the live sweep above: Newton-CG's line search shrinks the step, the
     # trust-region methods reject it); where scipy.linalg raises (a non-finite gradient at an
-    # accepted point, a non-finite Hessian of a new trust-exact subproblem) a ValueError naming
-    # what and where
+    # accepted point) a ValueError naming what and where. A trial point of trust-exact whose
+    # Hessian is not finite is a rejected step (D-9; scipy raises): the radius shrinks
     def h(x):
         return sd.full((3, 3), math.nan) if x[0] < 2.9 else quad_h(x)
 
-    with pytest.raises(ValueError, match=r"minimize\(\): 'hess' is not finite at x = \["):
-        sd.optimize.minimize(quad, X0, method="trust-exact", jac=quad_g, hess=h)
+    r = sd.optimize.minimize(quad, X0, method="trust-exact", jac=quad_g, hess=h)
+    assert r.x[0] >= 2.9 and math.isfinite(r.fun)
+    with pytest.raises(ValueError, match=r"minimize\(\): 'hess' is not finite at 'x0'"):
+        sd.optimize.minimize(quad, [1.0, 1.0, 1.0], method="trust-exact", jac=quad_g, hess=h)
 
     def g(x):
         return sd.full(3, math.nan) if x[0] < 2.9 else quad_g(x)
@@ -688,3 +754,144 @@ def test_trust_ncg_cg_is_capped():
     r = sd.optimize.minimize(f, x0.tolist(), method="trust-ncg", jac=g, hess=h)
     assert (r.status, r.n_iter, r.converged) == (3, 25, False)
     assert r.message == "A linalg error occurred, such as a non-psd Hessian."
+
+
+# ---- where sd leaves scipy on purpose: failure paths (D-7, D-8, D-9) and D-17
+
+
+def _domain():
+    """sum x^1.5 - 2x: NaN for x < 0 (numpy's power and sqrt), the minimum at 16/9."""
+
+    def a(x):
+        return np.array(x.tolist())
+
+    def f(x):
+        return float(np.sum(a(x) ** 1.5 - 2 * a(x)))
+
+    def g(x):
+        return 1.5 * np.sqrt(a(x)) - 2
+
+    def h(x):
+        return np.diag(0.75 / np.sqrt(a(x)))
+
+    return f, g, h
+
+
+def test_trust_regions_shrink_on_a_nan_trial_value():
+    # NEWTON-1: rho = NaN shrinks the radius as -inf does (scipy keeps it and repeats the same
+    # subproblem to max_iter at x0); trust-exact rejects a trial point whose Hessian is NaN
+    # (NEWTON-4, D-9; scipy raises)
+    f, g, h = _domain()
+    for method in ("trust-ncg", "trust-exact"):
+        with np.errstate(all="ignore"):
+            r = sd.optimize.minimize(
+                f, [9.0, 9.0], method=method, jac=g, hess=h, options={"initial_trust_radius": 20.0}
+            )
+        assert r.converged and r.status == 0 and r.n_iter < 20, method
+        assert max(abs(v - 16 / 9) for v in r.x.tolist()) < 1e-5, method
+
+
+def test_newton_cg_ends_at_the_last_finite_iterate():
+    # NEWTON-7: wolfe2 grows the step into the region where f is NaN; the result is the last
+    # iterate with a finite value (scipy's is the NaN point 9 - 10 * 1024)
+    f, g, h = _domain()
+    with np.errstate(all="ignore"):
+        r = sd.optimize.minimize(f, [9.0, 9.0], method="newton-cg", jac=g, hess=h)
+    assert r.status == 3 and not r.converged and r.message == "NaN result encountered."
+    assert r.x.tolist() == [9.0, 9.0] and math.isfinite(r.fun)
+
+
+def test_newton_cg_zero_curvature_is_not_convergence():
+    # NEWTON-3, D-8: no curvature along -g at the first CG step with g != 0: scipy's p = 0 gives
+    # converged=True at a point that is not stationary; here -g goes to the line search
+    def f(x):
+        return float(sd.sum(x**4) / 4 - sd.sum(x))
+
+    def h(x):
+        v = (3 * x**2).tolist()
+        return sd.asarray([[v[i] if i == j else 0.0 for j in range(2)] for i in range(2)])
+
+    r = sd.optimize.minimize(f, [0.0, 0.0], method="newton-cg", jac=lambda x: x**3 - 1.0, hess=h)
+    assert r.converged and max(abs(v - 1.0) for v in r.x.tolist()) < 1e-6
+    a = so.minimize(
+        lambda x: np.sum(x**4) / 4 - np.sum(x),
+        [0.0, 0.0],
+        method="Newton-CG",
+        jac=lambda x: x**3 - 1,
+        hess=lambda x: np.diag(3 * x**2),
+    )
+    assert a.success and a.x.tolist() == [0.0, 0.0]  # scipy's false convergence
+    # a linear function (H = 0) has no minimum: not converged
+    r = sd.optimize.minimize(
+        lambda x: float(x[0] + x[1]),
+        [0.0, 0.0],
+        method="newton-cg",
+        jac=lambda x: sd.ones(2),
+        hess=lambda x: sd.zeros((2, 2)),
+    )
+    assert not r.converged
+
+
+def test_nan_hessian_products():
+    # NEWTON-6: a NaN curvature stops newton-cg's CG at once (scipy runs it 20n steps); trust-ncg
+    # names what was not finite
+    def f(x):
+        return float(sd.sum(x * x))
+
+    def hp(x, p):
+        return p * math.nan
+
+    r = sd.optimize.minimize(f, X0, method="newton-cg", jac=lambda x: 2 * x, hessp=hp)
+    assert (r.status, r.message, r.nhev, r.x.tolist()) == (3, "NaN result encountered.", 1, X0)
+    with pytest.raises(ValueError, match=r"minimize\(\): 'hessp' is not finite at x = \[3.0, -2.0, 0.5\]"):
+        sd.optimize.minimize(f, X0, method="trust-ncg", jac=lambda x: 2 * x, hessp=hp)
+
+    def h(x):  # NaN past the first point
+        return sd.full((3, 3), math.nan) if float(x[0]) != 3.0 else sd.eye(3) * 2.0
+
+    with pytest.raises(ValueError, match=r"minimize\(\): 'hess' is not finite at x = \[1.35167"):
+        sd.optimize.minimize(
+            f, X0, method="trust-ncg", jac=lambda x: 2 * x, hess=h, options={"initial_trust_radius": 2.0}
+        )
+
+
+def test_a_hess_that_refills_one_buffer():
+    # NEWTON-2: the returned matrix is copied, so a hess that refills and returns one buffer gives
+    # the run of new arrays (trust-exact held the buffer and its rejected step overwrote it)
+    _, f, g, h, x0 = BY_ID["rosen-n5"]
+    buf = sd.zeros((5, 5))
+
+    def h_buf(x):
+        H = h(np.array(x.tolist()))
+        for i in range(5):
+            for j in range(5):
+                buf[i, j] = float(H[i, j])
+        return buf
+
+    def F(x):
+        return f(np.array(x.tolist()))
+
+    def G(x):
+        return g(np.array(x.tolist()))
+
+    for method in ("trust-exact", "trust-ncg", "newton-cg"):
+        a = sd.optimize.minimize(
+            F, x0, method=method, jac=G, hess=lambda x: sd.asarray(h(np.array(x.tolist())).tolist())
+        )
+        b = sd.optimize.minimize(F, x0, method=method, jac=G, hess=h_buf)
+        assert (b.x.tolist(), b.n_iter, b.status) == (a.x.tolist(), a.n_iter, a.status), method
+
+
+def test_newton_cg_differences_use_the_iterations_gradient():
+    # D-17: without hess and hessp, each product is (jac(x_k + eps p) - jac(x_k)) / eps with the
+    # iteration's jac(x_k): jac is not called again at x_k (scipy does, for every product)
+    _, f, g, h, x0 = BY_ID["rosen-n5"]
+    pts = []
+
+    def G(x):
+        pts.append(tuple(x.tolist()))
+        return g(np.array(x.tolist()))
+
+    r = sd.optimize.minimize(lambda x: f(np.array(x.tolist())), x0, method="newton-cg", jac=G)
+    assert r.converged and r.njev == len(pts)
+    assert len(set(pts)) >= len(pts) - 1  # at most the result's jac at x is a second call

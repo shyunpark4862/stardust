@@ -1,9 +1,12 @@
 """Reductions (docs/api/frame.md §6).
 
-Float sums are numpy's pairwise summation, so numpy run over the same values
-(NA rows hold 0.0, docs/design/frame.md §4.5) is a bit-for-bit oracle; without NA,
-pandas is too. int64 means are the array area's float64 sum over the count
-(DESIGN.md §9.1 #11), so sd.sum(..., dtype=sd.float64) is their oracle.
+Float sums are the pairwise sum every area shares (base/pairwise.hpp), so the
+array area over the same values (NA rows hold 0.0, docs/design/frame.md §4.5)
+is a bit-for-bit oracle, and without NA the array's mean, var and std are too.
+int64 means are the exact integer sum rounded once (base/int_sum.hpp), which
+Python's own int arithmetic gives exactly. numpy and pandas round in another
+order, so against them the results are compared within a tolerance (rounding
+is not a promise, only non-rounding behaviour is: min, max, NA and NaN rules).
 """
 
 import math
@@ -36,6 +39,11 @@ def same(x, y):
     return x == y and type(x) is type(y)
 
 
+def close(x, y, scale, ulps=64):
+    """x and y agree within `ulps` roundings of `scale` (the size of the terms)."""
+    return abs(x - y) <= ulps * np.finfo(np.float64).eps * scale
+
+
 FLOATS = st.floats(allow_nan=False, allow_infinity=False, min_value=-1e12, max_value=1e12) | st.sampled_from(
     [0.0, -0.0, 1e-300]
 )
@@ -44,36 +52,41 @@ LENGTHS = st.sampled_from([0, 1, 7, 8, 9, 127, 128, 129, 300, 1000, 5000]) | st.
 
 @settings(max_examples=EXAMPLES, deadline=None)
 @given(st.data())
-def test_float_reductions_match_numpy_bitwise(data):
+def test_float_reductions_match_the_array_and_numpy(data):
     n = data.draw(LENGTHS)
     values = data.draw(st.lists(FLOATS | st.none(), min_size=n, max_size=n))
     s = sd.frame.Series(values, dtype="float64")
     filled = np.array([0.0 if v is None else v for v in values], dtype=np.float64)
     valid = np.array([v is not None for v in values], dtype=bool)
     count = int(valid.sum())
-    assert same(s.sum(), float(np.sum(filled)))
+    scale = float(np.sum(np.abs(filled)))
+    array_sum = float(sd.sum(sd.asarray(filled)))
+    assert same(s.sum(), array_sum)  # the same tree: the array's bits
+    assert close(s.sum(), float(np.sum(filled)), scale)
     assert s.count() == count
     if count == 0:
         assert s.mean() is NA and s.min() is NA and s.var() is NA
         return
-    mean = np.sum(filled) / count
-    assert same(s.mean(), float(mean))
-    assert same(s.min(), float(np.min(filled[valid])))
+    assert same(s.mean(), array_sum / count)
+    assert close(s.mean(), float(np.sum(filled)) / count, scale / count)
+    assert same(s.min(), float(np.min(filled[valid])))  # not rounding: exactly numpy's
     assert same(s.max(), float(np.max(filled[valid])))
+    mean = np.sum(filled) / count
     for correction in (0, 1):
         if count - correction <= 0:
             assert s.var(correction=correction) is NA
             continue
         sqr = np.where(valid, (filled - mean) ** 2, 0.0)  # pandas' nanvar, step by step
         var = np.sum(sqr) / (count - correction)
-        assert same(s.var(correction=correction), float(var))
-        assert same(s.std(correction=correction), float(np.sqrt(var)))
-    if count == n:  # no NA: pandas itself is the oracle
+        got = s.var(correction=correction)
+        assert close(got, float(var), float(var) + abs(float(mean)) * scale / count / (count - correction), 1024)
+        assert same(s.std(correction=correction), math.sqrt(got))
+        if count == n:  # no NA: the array's var, bit for bit
+            assert same(got, float(sd.var(sd.asarray(filled), correction=correction)))
+            assert same(s.std(correction=correction), float(sd.std(sd.asarray(filled), correction=correction)))
+    if count == n:  # no NA: pandas agrees within rounding
         p = pd.Series(values, dtype="float64")
-        assert same(s.sum(), float(p.sum())) and same(s.mean(), float(p.mean()))
-        if n > 1:
-            assert same(s.var(correction=1), float(p.var())) and same(s.std(correction=1), float(p.std()))
-            assert same(s.var(), float(p.var(ddof=0)))  # the default is correction=0, as in the array area
+        assert close(s.sum(), float(p.sum()), scale) and close(s.mean(), float(p.mean()), scale / n)
 
 
 @settings(max_examples=EXAMPLES, deadline=None)
@@ -86,18 +99,22 @@ def test_int_reductions(values):
     if not present:
         assert s.mean() is NA and s.min() is NA and s.max() is NA
         return
-    # the array area's float64 sum of the column (NA rows hold 0), then divide (DESIGN.md §9.1 #11)
-    filled_i = [0 if v is None else v for v in values]
-    mean = float(sd.sum(sd.asarray(filled_i), dtype=sd.float64)) / len(present)
+    # the exact sum rounded once, divided once (base/int_sum.hpp): Python's int and float do the same
+    mean = float(sum(present)) / len(present)
     assert same(s.mean(), mean)
-    if len(present) == len(values):  # short and without NA: numpy's mean too
-        assert same(s.mean(), float(np.mean(np.array(values, dtype=np.int64))))
+    if len(present) == len(values):  # without NA: the array's mean and var, bit for bit
+        x = sd.asarray(np.array(values, dtype=np.int64))
+        assert same(s.mean(), float(sd.mean(x)))
+        assert same(s.var(), float(sd.var(x)))
+        scale = sum(abs(v) for v in present) / len(present)
+        assert close(s.mean(), float(np.mean(np.array(values, dtype=np.int64))), scale)
     assert s.min() == min(present) and s.max() == max(present)
     filled = np.array([float(v) if v is not None else 0.0 for v in values])
     sqr = np.where([v is not None for v in values], (filled - mean) ** 2, 0.0)
-    assert same(s.var(), float(np.sum(sqr) / len(present)))
+    var = float(np.sum(sqr) / len(present))
+    assert close(s.var(), var, var, 1024)
     if len(present) > 1:
-        assert same(s.var(correction=1), float(np.sum(sqr) / (len(present) - 1)))
+        assert close(s.var(correction=1), float(np.sum(sqr) / (len(present) - 1)), var * 2, 1024)
 
 
 def test_nan_propagates_whatever_skipna_says():

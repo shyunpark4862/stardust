@@ -109,8 +109,8 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
         T* X = xo.as<T>();
         double* S = so.as<double>();
         std::int64_t* RK = rk.as<std::int64_t>();
-        const Failure f =
-            run_batch(b, cost(kSVD, double(m) * n), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
+        const Failure f = run_batch(
+            b, cost(kSVD, double(m) * n) + rhs_cost(m, r.k), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 T* A = s.get<T>(static_cast<std::size_t>(lda * n));
                 if (!pack(a.dtype(), a.data() + off[0], m, n, a.stride(-2), a.stride(-1), A, lda, true))
                     return kNonFinite;
@@ -149,11 +149,13 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                         for (lint q = rn; q < keep; ++q) wh[j * nh + q - rn] = w[j * mn + q] / (sd[q] * kSingularShift);
                     for (lint j = 0; j < r.k; ++j)
                         for (lint q = 0; q < mn; ++q) w[j * mn + q] = q < rn ? w[j * mn + q] / sd[q] : T(0);
-                    lapack::gemm<T>(h, 'N', n, r.k, mn, vh, mn, w, mn, xi, n);
+                    // the solution's slot in the output, 16-byte aligned for gemm (kAlign0 holds sv)
+                    LapackSlot<T> xs(xi, n * r.k, s, Scratch::kAlign1);
+                    lapack::gemm<T>(h, 'N', n, r.k, mn, vh, mn, w, mn, xs.get(), n);
                     if (nh > 0) {  // rare: a kept singular value in the subnormals
                         std::vector<T> xh(static_cast<std::size_t>(n * r.k));
                         lapack::gemm<T>(h, 'N', n, r.k, nh, vh + rn, mn, wh.data(), nh, xh.data(), n);
-                        add_shifted(xi, xh.data(), n * r.k);
+                        add_shifted(xs.get(), xh.data(), n * r.k);
                     }
                     return 0;
                 };
@@ -198,7 +200,8 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
                 }
                 RK[i] = rank;
                 return 0;
-            });
+            }
+        );
         if (f) raise(b, f, "lstsq", "a");
         nb::object rank_obj = b.ndim() == 0 ? py_scalar(RK[0]) : to_array(rk);
         return make_result(Result::Lstsq, {to_array(xo), rank_obj, to_array(so)});
@@ -208,14 +211,17 @@ nb::object lstsq(nb::handle ao, nb::handle bo, nb::handle rtol_o) {
 }  // namespace
 
 void bind_qr(nb::module_& m) {
-    m.def("qr", named("qr", &qr), nb::arg().none(), nb::kw_only(), nb::arg("mode").none() = "reduced");
     m.def(
-        "qr_pivoted", named("qr_pivoted", &qr_pivoted), nb::arg().none(), nb::kw_only(),
+        "qr", named("qr", &qr), nb::sig("def qr(x, /, *, mode='reduced')"), nb::arg().none(), nb::kw_only(),
         nb::arg("mode").none() = "reduced"
     );
     m.def(
-        "lstsq", named("lstsq", &lstsq), nb::arg().none(), nb::arg().none(), nb::kw_only(),
-        nb::arg("rtol").none() = nb::none()
+        "qr_pivoted", named("qr_pivoted", &qr_pivoted), nb::sig("def qr_pivoted(x, /, *, mode='reduced')"),
+        nb::arg().none(), nb::kw_only(), nb::arg("mode").none() = "reduced"
+    );
+    m.def(
+        "lstsq", named("lstsq", &lstsq), nb::sig("def lstsq(a, b, /, *, rtol=None)"), nb::arg().none(),
+        nb::arg().none(), nb::kw_only(), nb::arg("rtol").none() = nb::none()
     );
 }
 

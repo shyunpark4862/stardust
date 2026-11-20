@@ -805,3 +805,107 @@ def test_frame_dict_values():  # docs/api/frame.md §2.5
         sd.frame.DataFrame({"a": 1})
     with pytest.raises(ValueError, match=r"^DataFrame\(\): expected a 1-D array, got 2 dimensions$"):
         sd.frame.DataFrame({"a": sd.asarray([[1.5, 2.5]])})
+
+
+# --- numpy scalars a column cannot hold ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value",
+    [np.complex128(1 + 2j), np.complex64(1 + 2j), np.datetime64("2020-01-01"), np.timedelta64(5, "s"), np.void(b"ab")],
+)
+def test_numpy_scalars_without_a_column_dtype_are_refused(value):
+    # A numpy complex has __float__, but the imaginary part must not be dropped
+    # (docs/api/frame.md §2.2): TypeError, and no ComplexWarning.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(TypeError, match=r"cannot store an object of type 'numpy\.\w+' in a column"):
+            sd.frame.Series([value])
+        with pytest.raises(TypeError, match="cannot store"):
+            sd.frame.Series([1.0]).iloc[0] = value
+        with pytest.raises(TypeError):
+            sd.frame.Series([1.0, None]).fillna(value)
+
+
+def test_numpy_real_scalars_are_still_stored():
+    s = sd.frame.Series([np.float16(1.5), np.float32(2.5), np.longdouble(3.5), np.int8(4), np.uint32(5)])
+    assert s.dtype == sd.float64 and s.tolist() == [1.5, 2.5, 3.5, 4.0, 5.0]
+    assert sd.frame.Series([np.bool_(True)]).dtype == sd.bool
+
+
+def test_range_index_longer_than_int64_is_a_value_error():
+    with pytest.raises(ValueError, match=r"RangeIndex\(\): the range has more than 2\*\*63 - 1 labels"):
+        sd.frame.RangeIndex(-(2**63), 2**63 - 1)
+    r = sd.frame.RangeIndex(-(2**63), 2**63 - 1, 2**62)  # i * step passes int64 although every label fits
+    assert r.tolist() == [-(2**63), -(2**62), 0, 2**62]
+    assert sd.frame.Series([1, 2, 3, 4], index=r).index.tolist() == r.tolist()
+    assert sd.frame.Series([1, 2, 3, 4], index=r).iloc[[3, 0]].index.tolist() == [2**62, -(2**63)]
+
+
+def test_scalar_column_fill_keeps_the_list_rules():
+    df = sd.frame.DataFrame({"a": [1, 2, 3]})
+    for value, dtype in [(0, sd.int64), (1.5, sd.float64), (True, sd.bool), ("x", sd.string), (None, sd.float64)]:
+        df["c"] = value
+        assert df["c"].dtype == dtype
+        assert df["c"].tolist() == [value if value is not None else NA] * 3
+    with pytest.raises(OverflowError):
+        df["c"] = 2**70
+    d = sd.frame.DataFrame({"a": [1, 2], "b": "s", "c": None}, index=["x", "y"])
+    assert d["b"].tolist() == ["s", "s"] and d["c"].dtype == sd.float64 and d["c"].tolist() == [NA, NA]
+    assert sd.frame.DataFrame({"a": [1, 2], "b": 2**70}, dtype="float64")["b"].tolist() == [2.0**70] * 2
+    empty = sd.frame.DataFrame()
+    empty["c"] = 5  # no rows: the empty list's column, as before
+    assert empty["c"].dtype == sd.float64 and len(empty) == 0
+    s = sd.frame.Series(index=sd.frame.RangeIndex(5), dtype="string")
+    assert s.dtype == sd.string and s.tolist() == [NA] * 5
+
+
+def test_dataframe_to_numpy_writes_each_column_once():
+    df = sd.frame.DataFrame({"a": [1, None, 3], "b": [1.5, 2.5, 3.5], "c": [True, False, True]})
+    out = df.to_numpy(na_value=-1)
+    assert out.dtype == np.float64 and out.flags.c_contiguous and out.flags.writeable
+    assert out.tolist() == [[1.0, 1.5, 1.0], [-1.0, 2.5, 0.0], [3.0, 3.5, 1.0]]
+    s = sd.frame.DataFrame({"a": ["x", None], "b": ["y", "z"]}).to_numpy(na_value=None)
+    assert s.dtype == object and s.tolist() == [["x", "y"], [None, "z"]]
+    assert sd.frame.DataFrame({"a": [1, 2]}).to_numpy(dtype="bool").tolist() == [[True], [True]]
+    x = sd.frame.Series(["a", None]).to_numpy(na_value=np.str_("z"))
+    assert type(x[1]) is str  # numpy.str_ too becomes the Python scalar of its kind
+
+
+# --- call-shape errors of the entry points -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "call, msg",
+    [
+        (lambda: sd.frame.Series([1], foo=1), "Series(): unexpected keyword argument 'foo'"),
+        (lambda: sd.frame.Series([1], [2]), "Series(): takes from 0 to 1 positional arguments but 2 were given"),
+        (lambda: sd.frame.DataFrame(data={}), "DataFrame(): got some positional-only arguments passed as keyword"),
+        (lambda: sd.frame.Index(), "Index(): missing 1 required positional argument: 'data'"),
+        (
+            lambda: sd.frame.RangeIndex(1, 2, 3, 4),
+            "RangeIndex(): takes from 1 to 3 positional arguments but 4 were given",
+        ),
+        (lambda: sd.frame.read_csv("x.csv", ","), "read_csv(): takes 1 positional argument but 2 were given"),
+        (lambda: sd.frame.merge(sd.frame.DataFrame()), "merge(): missing 1 required positional argument: 'right'"),
+        (lambda: sd.frame.DataFrame().merge(), "merge(): missing 1 required positional argument: 'right'"),
+        (lambda: sd.frame.concat([], axis=0), "concat(): unexpected keyword argument 'axis'"),
+        (
+            lambda: sd.frame.DataFrame({"a": [1]}).groupby("a", True),
+            "groupby(): takes 1 positional argument but 2 were given",
+        ),
+    ],
+)
+def test_entry_points_name_themselves_in_call_shape_errors(call, msg):
+    with pytest.raises(TypeError) as e:
+        call()
+    assert str(e.value).startswith(msg)
+
+
+def test_errors_inside_an_entry_point_pass_unchanged():
+    with pytest.raises(TypeError, match=r"^Series\(\): cannot make a column from int"):
+        sd.frame.Series(5)
+    with pytest.raises(TypeError, match=r"^Series\.head\(\) takes"):  # methods keep Python's form
+        sd.frame.Series([1]).head(1, 2)

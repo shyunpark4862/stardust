@@ -205,16 +205,18 @@ RootOut bisect(Fn& f, double xa, double xb, double xtol, double rtol, std::int64
     if (std::isnan(fb)) return {xb, rValueErr};
     o.fa = fa;
     o.fb = fb;
-    if (fa * fb > 0) {
-        o.status = rSignErr;
-        return o;
-    }
     if (fa == 0) {
         o.x = xa;
         return o;
     }
     if (fb == 0) {
         o.x = xb;
+        return o;
+    }
+    // the signs by their sign bits, not the product fa * fb, which underflows to 0 when both
+    // values are tiny
+    if (std::signbit(fa) == std::signbit(fb)) {
+        o.status = rSignErr;
         return o;
     }
     dm = xb - xa;
@@ -228,7 +230,7 @@ RootOut bisect(Fn& f, double xa, double xb, double xtol, double rtol, std::int64
             o.status = rValueErr;
             return o;
         }
-        if (fm * fa >= 0) xa = xm;
+        if (std::signbit(fm) == std::signbit(fa)) xa = xm;
         if (fm == 0 || std::abs(dm) < std::fma(rtol, std::abs(xm), xtol)) {
             o.x = xm;
             return o;

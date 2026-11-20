@@ -6,6 +6,7 @@
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/convert.hpp"
+#include "array/kernels/elementwise.hpp"
 #include "array/kernels/scalar_ops.hpp"
 #include "array/ops/copy.hpp"
 #include "array/ops/creation.hpp"
@@ -39,25 +40,24 @@ nb::object gather_named(nb::handle x, nb::handle key) {
     }
 }
 
-// An index argument: a Python int or an int64 array. A bool array would be
-// read as a mask by indexing, which is not what take means.
-void check_indices(nb::handle o, const char* what) {
+// An index argument: an int64 array, or also a Python int when `int_too`.
+// A bool array would be read as a mask by indexing, which is not what take
+// means. One message for the argument, whatever is wrong (API.md §2.1).
+void check_indices(nb::handle o, const char* what, bool int_too) {
+    const std::string expected =
+        "'" + std::string(what) + "' must be " + (int_too ? "an int or " : "") + "an int64 array, not ";
     std::int64_t v = 0;
-    if (!is_ndarray(o) && index_value(o, v) == IndexResult::NotInt)
-        throw nb::type_error(
-            ("'" + std::string(what) + "' must be an int or an int64 array, not " + py_type_name(o)).c_str()
-        );
+    if (!is_ndarray(o) && (!int_too || index_value(o, v) == IndexResult::NotInt))
+        throw nb::type_error((expected + py_type_name(o)).c_str());
     if (is_ndarray(o) && as_ndarray(o).dtype != DType::Int64)
-        throw nb::type_error(("'" + std::string(what) + "' must be an int64 array, not " +
-                              std::string(dtype_name(as_ndarray(o).dtype)))
-                                 .c_str());
+        throw nb::type_error((expected + dtype_name(as_ndarray(o).dtype)).c_str());
 }
 
 // ------------------------------------------------------------ take
 
 nb::object take(nb::handle x, nb::handle indices, nb::handle axis_obj) {
     const NDArray& a = require_ndarray(x);
-    check_indices(indices, "indices");
+    check_indices(indices, "indices", true);
     int axis = 0;
     if (axis_obj.is_none()) {
         if (a.ndim != 1)  // docs/design/array.md §2.8, as cumulative_sum
@@ -95,9 +95,7 @@ void along_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
 
 nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj) {
     const NDArray& a = require_ndarray(x);
-    if (!is_ndarray(indices))
-        throw nb::type_error(("'indices' must be an int64 array, not " + py_type_name(indices)).c_str());
-    check_indices(indices, "indices");
+    check_indices(indices, "indices", false);
     const NDArray& ix = as_ndarray(indices);
     if (ix.ndim != a.ndim)
         throw nb::value_error(("'indices' must have as many dimensions as 'x' (" + std::to_string(a.ndim) + "), not " +
@@ -118,7 +116,8 @@ nb::object take_along_axis(nb::handle x, nb::handle indices, nb::handle axis_obj
             std::vector<std::int64_t> xs(a.shape_span().begin(), a.shape_span().end()),
                 is(ix.shape_span().begin(), ix.shape_span().end());
             xs[axis] = is[axis] = 1;
-            throw nb::value_error(
+            // IndexError, as for indexing arrays that do not broadcast (§5.2; numpy too).
+            throw nb::index_error(
                 ("shapes could not be broadcast together: " + shape_str(xs) + " " + shape_str(is)).c_str()
             );
         }
@@ -288,15 +287,34 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
     nb::object keys_obj = nb::borrow(x1);
     if (!sorter_obj.is_none()) {
         // An array of positions only: an int would not sort anything.
-        if (!is_ndarray(sorter_obj))
-            throw nb::type_error(("'sorter' must be an int64 array, not " + py_type_name(sorter_obj)).c_str());
-        check_indices(sorter_obj, "sorter");
+        check_indices(sorter_obj, "sorter", false);
         if (as_ndarray(sorter_obj).ndim != 1 || as_ndarray(sorter_obj).shape[0] != a.shape[0])
             throw nb::value_error("'sorter' must be a 1-D int64 array as long as 'x1'");
+        // Positions in [0, n): a negative one is out of range too (it does not
+        // count from the end, as an index would), the same IndexError as a
+        // position past the end. The first bad one in order is named.
+        {
+            const NDArray& so = as_ndarray(sorter_obj);
+            const std::int64_t n = a.shape[0];
+            for (std::int64_t i = 0; i < n; ++i) {
+                const std::int64_t k = load_as<std::int64_t>(so.data + i * so.strides[0]);
+                if (k < 0 || k >= n)
+                    throw nb::index_error(("index " + std::to_string(k) + " is out of bounds for axis 0 with size " +
+                                           std::to_string(n))
+                                              .c_str());
+            }
+        }
         keys_obj = gather_named(x1, sorter_obj);  // x1 in sorted order
     }
-    NDArray keys = new_array(d, as_ndarray(keys_obj).shape_span());
-    if (keys.size() > 0) assign(keys, as_ndarray(keys_obj));
+    // Both sides contiguous in the promoted dtype: x1 is searched where it
+    // lies (a copy made one key search O(n), not O(log n)), and so are the values.
+    auto contiguous = [d](const NDArray& v) {
+        if (v.dtype == d && v.c_contiguous) return v;
+        NDArray c = new_array(d, v.shape_span());
+        if (c.size() > 0) assign(c, v);
+        return c;
+    };
+    const NDArray keys = contiguous(as_ndarray(keys_obj));
 
     const bool scalar = !is_ndarray(x2);
     NDArray vals;
@@ -308,8 +326,7 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
         one_value.append(x2);
         vals = as_ndarray(asarray(one_value, dtype_object(d), nb::none()));
     } else {
-        vals = new_array(d, as_ndarray(x2).shape_span());
-        if (vals.size() > 0) assign(vals, as_ndarray(x2));
+        vals = contiguous(as_ndarray(x2));
     }
     NDArray out = new_array(DType::Int64, vals.shape_span());
     std::int64_t* o = reinterpret_cast<std::int64_t*>(out.data);
@@ -346,18 +363,24 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
 
 void bind_searching(nb::module_& m) {
     using nb::arg;
-    m.def("take", named("take", &take), arg().none(), arg().none(), nb::kw_only(), arg("axis").none() = nb::none());
     m.def(
-        "take_along_axis", named("take_along_axis", &take_along_axis), arg().none(), arg().none(), nb::kw_only(),
+        "take", named("take", &take), nb::sig("def take(x, indices, /, *, axis=None)"), arg().none(), arg().none(),
+        nb::kw_only(), arg("axis").none() = nb::none()
+    );
+    m.def(
+        "take_along_axis", named("take_along_axis", &take_along_axis),
+        nb::sig("def take_along_axis(x, indices, /, *, axis=-1)"), arg().none(), arg().none(), nb::kw_only(),
         arg("axis").none() = -1
     );
-    m.def("nonzero", named("nonzero", &nonzero), arg().none());
+    m.def("nonzero", named("nonzero", &nonzero), nb::sig("def nonzero(x, /)"), arg().none());
     m.def(
-        "count_nonzero", named("count_nonzero", &count_nonzero), arg().none(), nb::kw_only(),
+        "count_nonzero", named("count_nonzero", &count_nonzero),
+        nb::sig("def count_nonzero(x, /, *, axis=None, keepdims=False)"), arg().none(), nb::kw_only(),
         arg("axis").none() = nb::none(), arg("keepdims").none() = false
     );
     m.def(
-        "searchsorted", named("searchsorted", &searchsorted), arg().none(), arg().none(), nb::kw_only(),
+        "searchsorted", named("searchsorted", &searchsorted),
+        nb::sig("def searchsorted(x1, x2, /, *, side='left', sorter=None)"), arg().none(), arg().none(), nb::kw_only(),
         arg("side").none() = "left", arg("sorter").none() = nb::none()
     );
 }

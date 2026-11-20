@@ -81,10 +81,20 @@ struct DiscreteUniform {
     static Fns at(double lo, double hi, double p) {
         return disc::with_guess(fns(lo, hi), lo + std::ceil(p * (hi - lo)) - 1.0);
     }
-    static double icdf(double t, double lo, double hi) { return disc::icdf(t, at(lo, hi, t)); }
-    static double iccdf(double t, double lo, double hi) { return disc::iccdf(t, at(lo, hi, 1.0 - t)); }
-    static double ilogcdf(double t, double lo, double hi) { return disc::ilogcdf(t, at(lo, hi, std::exp(t))); }
-    static double ilogccdf(double t, double lo, double hi) { return disc::ilogccdf(t, at(lo, hi, -std::expm1(t))); }
+    static double icdf(double t, double lo, double hi) {
+        return disc::settle<DiscreteUniform>(disc::Inv::icdf, t, disc::icdf(t, at(lo, hi, t)), lo, hi);
+    }
+    static double iccdf(double t, double lo, double hi) {
+        return disc::settle<DiscreteUniform>(disc::Inv::iccdf, t, disc::iccdf(t, at(lo, hi, 1.0 - t)), lo, hi);
+    }
+    static double ilogcdf(double t, double lo, double hi) {
+        return disc::settle<DiscreteUniform>(disc::Inv::ilogcdf, t, disc::ilogcdf(t, at(lo, hi, std::exp(t))), lo, hi);
+    }
+    static double ilogccdf(double t, double lo, double hi) {
+        return disc::settle<DiscreteUniform>(
+            disc::Inv::ilogccdf, t, disc::ilogccdf(t, at(lo, hi, -std::expm1(t))), lo, hi
+        );
+    }
     SD_DISC_MEMO_SCALAR(DiscreteUniform, 2, logcdf, true)  // a log each; the rest is arithmetic
     SD_DISC_MEMO_SCALAR(DiscreteUniform, 2, logccdf, true)
 
@@ -714,6 +724,7 @@ struct BetaBinomial {
         return std::floor(t) + 1.0;
     }
     static double entropy(double n, double a, double b) {
+        if (n == 0.0) return 0.0;  // the point mass at 0 (T50: exactly 0, the sum's log pmf(0) is not)
         if (!has_pmf(n, a, b)) return kNaN;  // no pmf to sum
         auto lp = [&](double j) { return log_pmf(j, n, a, b); };
         // pmf(j + 1) / pmf(j) = (n - j) (j + a) / ((j + 1) (n - j - 1 + b)); one step down, its

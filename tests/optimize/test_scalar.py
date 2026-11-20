@@ -541,7 +541,7 @@ def test_minimize_errors():
     err(ValueError, "minimize_scalar(): 'method' must be lowercase: 'brent', not 'Brent'", ms, f, method="Brent")
     err(
         ValueError,
-        "minimize_scalar(): method='brent' takes no bounds (method='bounded' does)",
+        "minimize_scalar(): method='brent' takes no 'bounds' (method='bounded' does)",
         ms,
         f,
         bounds=(0, 1),
@@ -549,7 +549,7 @@ def test_minimize_errors():
     )
     err(
         ValueError,
-        "minimize_scalar(): method='bounded' takes no bracket (it searches 'bounds')",
+        "minimize_scalar(): method='bounded' takes no 'bracket' (it searches 'bounds')",
         ms,
         f,
         bracket=(0, 1),
@@ -557,6 +557,13 @@ def test_minimize_errors():
     )
     err(ValueError, "minimize_scalar(): 'bounds' is required when method='bounded'", ms, f, method="bounded")
     err(ValueError, "minimize_scalar(): 'bounds' must be a pair (lower, upper), not 3 values", ms, f, bounds=(0, 1, 2))
+    err(
+        ValueError,
+        "minimize_scalar(): 'bracket' must be a pair (xa, xb) or a triple (xa, xb, xc), not 1 value",
+        ms,
+        math.cos,
+        bracket=(1,),
+    )
     err(ValueError, "minimize_scalar(): the lower bound must not be greater than the upper bound", ms, f, bounds=(1, 0))
     err(ValueError, "minimize_scalar(): the values of 'bounds' must be finite", ms, f, bounds=(0, math.inf))
     err(
@@ -605,7 +612,11 @@ def test_minimize_errors():
         tol=1e-3,
         options={"xtol": 1e-3},
     )
-    err(ValueError, "minimize_scalar(): 'xtol' must be a finite number >= 0", ms, f, tol=-1.0)
+    err(ValueError, "minimize_scalar(): 'tol' must be a finite number >= 0", ms, f, tol=-1.0)
+    err(ValueError, "minimize_scalar(): 'xtol' must be a finite number >= 0", ms, f, options={"xtol": -1.0})
+    # None means the default for every option (D-28); a conflict is between values given
+    assert ms(f, tol=1e-6, options={"xtol": None}).converged
+    assert ms(f, options={"max_iter": None, "xtol": None}).converged
     err(ValueError, "minimize_scalar(): 'max_iter' must be >= 0", ms, f, options={"max_iter": -1})
     err(ValueError, "minimize_scalar(): 'fun' must return a real number, not shape (2,)", ms, lambda x: [x, x])
 
@@ -623,3 +634,33 @@ def test_user_errors_pass_through():
     for kw in (dict(), dict(bounds=(0, 1)), dict(method="golden")):
         with pytest.raises(Boom):
             sd.optimize.minimize_scalar(f, **kw)
+
+
+# ---- bisect's signs by sign bits (SCALAR-1), the bracket's range (SCALAR-5)
+
+
+def test_bisect_tiny_values():
+    # the product fa * fb underflows to 0 below about 1e-162: the signs are read from the sign
+    # bits, as scipy's bisect.c does
+    rs = sd.optimize.root_scalar
+    r = rs(lambda x: math.sin(x) * 1e-300, bracket=(2, 4), method="bisect")
+    assert r.converged and abs(r.x - math.pi) < 1e-11
+    assert r.x == scipy_root(lambda x: math.sin(x) * 1e-300, bracket=(2, 4), method="bisect").root
+    r = rs(lambda x: (x - 3.3) * 1e-170, bracket=(2, 4), method="bisect")
+    assert r.converged and abs(r.x - 3.3) < 1e-11
+    with pytest.raises(ValueError, match=r"root_scalar\(\): 'bracket' does not enclose a root"):
+        rs(lambda x: 1e-200, bracket=(2, 4), method="bisect")
+    rng = np.random.default_rng(5)
+    for _ in range(50):
+        s, a = 10.0 ** float(rng.integers(-320, 0)), float(rng.uniform(-3, 3))
+        lo, hi = a - float(rng.uniform(0.1, 4)), a + float(rng.uniform(0.1, 4))
+        fx = lambda x, s=s, a=a: s * math.tanh(x - a)  # noqa: E731
+        r = rs(fx, bracket=(lo, hi), method="bisect")
+        assert r.converged and r.x == scipy_root(fx, bracket=(lo, hi), method="bisect").root
+
+
+def test_bracket_out_of_range():
+    with pytest.raises(OverflowError, match=r"^root_scalar\(\): 'bracket' is out of range$"):
+        sd.optimize.root_scalar(lambda x: x, bracket=(0, 10**400))
+    with pytest.raises(OverflowError, match=r"^minimize_scalar\(\): 'bounds' is out of range$"):
+        sd.optimize.minimize_scalar(lambda x: x, bounds=(0, 10**400))

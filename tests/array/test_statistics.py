@@ -139,8 +139,10 @@ def test_quantile_errors():
         ):
             sd.quantile(x, bad)
     assert sd.quantile(x, 1) == sd.quantile(x, 1.0)
-    with pytest.raises(TypeError, match="'q' must be real"):
-        sd.quantile(x, sd.asarray([0.5j]))
+    # A real array: bool is no number here, as the bool scalar above is not (§7.10).
+    for bad, shown in [(sd.asarray([0.5j]), "complex128"), (sd.asarray([True]), "bool")]:
+        with pytest.raises(TypeError, match=rf"^quantile\(\): 'q' must be an int64 or float64 array, not {shown}$"):
+            sd.quantile(x, bad)
     # The string-option message (API.md §2.1): the same list for a wrong value and a wrong type.
     methods = r"'method' must be 'inverted_cdf', 'averaged_inverted_cdf', .*, 'midpoint' or 'nearest', not "
     with pytest.raises(ValueError, match=r"^quantile\(\): " + methods + "'foo'$"):

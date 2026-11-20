@@ -16,12 +16,13 @@
 // approx_derivative '2-point' and '3-point' with its steps and their adjustment to the bounds
 // (least_squares; diff.hpp).
 // lmder comes in two builds of one source (O95, below): scipy's (least_squares and root), which
-// factors J (m x n) with MINPACK's own pivoted QR as scipy does, and nls's, for which the m x p
+// factors J (m x n) with MINPACK's own pivoted QR as scipy does, and nls's (also least_squares
+// with m >> n), for which the m x p
 // work per Jacobian is one Householder QR (LAPACK geqrf, then ormqr for Q0^T r): J = Q0 R0, and
 // everything after it is p-sized (lmder's pivoted QR of J is the pivoted QR of R0: Q0 keeps the
 // columns' norms and inner products). TRF's SVD of [J d; D] is the SVD of [R0 d; D] (with the
-// first p entries of U^T [r; 0] from Q0^T r). With fewer residuals than variables (trf only) J
-// gets zero rows up to p: the same problem.
+// first p entries of U^T [r; 0] from Q0^T r). With fewer residuals than variables (trf only)
+// the SVD is scipy's: of J_h (m x p) without bounds, of [J_h; diag(dh)^1/2] with them.
 // A trial point whose residuals are not all finite is rejected and the trust region shrunk
 // (regression G74): lm takes its norm as +inf (lmder's own rule then shrinks the bound
 // tenfold), trf sets Delta to a quarter of the step (scipy's rule).
@@ -33,6 +34,7 @@
 #include "array/ndarray.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
+#include "linalg/errors.hpp"
 #include "linalg/input.hpp"
 #include "linalg/lapack.hpp"
 #include "parallel/pool.hpp"
@@ -193,14 +195,16 @@ struct Model {
         if (diff == kTwoPoint) return two_point(x, r, J, wa);
         if (diff == kThreePoint) return three_point(x, r, J, wa);
         // MINPACK's fdjac2: h = sqrt(max(epsfcn, eps)) |x_j| (that at 0), the step actually
-        // taken ((x_j + h) - x_j) in the quotient (nls) or h itself (MINPACK; root); backwards
-        // when forwards leaves the bounds or the model is not finite there.
+        // taken ((x_j + h) - x_j) in the quotient (nls) or h itself (MINPACK; root); within
+        // bounds the step is scipy's adjust_one_sided (backwards when forwards leaves them and
+        // backwards fits, else the distance to the farther bound), and backwards when the
+        // model is not finite forwards.
         const double eps = std::sqrt(std::max(epsfcn, kEps));
         for (lint j = 0; j < p; ++j) {
             const double t = x[j];
             double h = eps * std::abs(t);
             if (h == 0) h = eps;
-            if (ub && t + h > (*ub)[j]) h = -h;
+            if (lb) h = adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
             bool ok = false;
             for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
                 if (attempt == 1) {
@@ -280,20 +284,9 @@ struct Model {
         return true;
     }
 
-    // J (destroyed) = Q0 R0: R0 (p x p column-major, upper) and qtf = (Q0^T r)[0:p]. With
-    // m < p (trf), [J; 0] and [r; 0] (p rows).
-    void qr(double* J, const double* r, double* R0, double* qtf) {
-        if (m < p) {
-            const auto up = static_cast<std::size_t>(p);
-            vec Jp(up * up, 0.0), rp(up, 0.0);
-            for (lint j = 0; j < p; ++j)
-                for (lint i = 0; i < m; ++i) Jp[static_cast<std::size_t>(i + j * p)] = J[i + j * m];
-            for (lint i = 0; i < m; ++i) rp[static_cast<std::size_t>(i)] = r[i];
-            qr_rows(p, Jp.data(), rp.data(), R0, qtf);
-            return;
-        }
-        qr_rows(m, J, r, R0, qtf);
-    }
+    // J (destroyed) = Q0 R0: R0 (p x p column-major, upper) and qtf = (Q0^T r)[0:p]; m >= p
+    // (trf with m < p works on J itself).
+    void qr(double* J, const double* r, double* R0, double* qtf) { qr_rows(m, J, r, R0, qtf); }
 
     void qr_rows(lint rows, double* J, const double* r, double* R0, double* qtf) {
         vec tau(static_cast<std::size_t>(p)), c(r, r + rows);
@@ -332,9 +325,10 @@ struct Final {
 //     fuses the left product of a*b + c*d), squares written t**2 are rounded on their own,
 //     MINPACK's enorm, and the two loops clang vectorized (qrfac's inner product, the gradient
 //     test) add rounded products in blocks of 8 (dot8). lmder factors J itself (m x n).
-//     least_squares and root run it: their call points are scipy's to the bit.
+//     root and least_squares run it (their call points are scipy's to the bit), but
 //   - Fu = false: nls's, unfused, with a plain norm (enorm above) after LAPACK's QR of J
-//     (Model::qr), so the column-pivoted QR is of the p x p R0. Its results stay as they were.
+//     (Model::qr), so the column-pivoted QR is of the p x p R0; least_squares runs it too when
+//     m >> n (its Python layer decides by the shape: faster there).
 
 // qrfac splits a step (and the column norms) over the threads from this many flops (about 50 us
 // on one thread), in tasks of at least eight columns, at most this many
@@ -797,13 +791,19 @@ int levenberg_marquardt(
 
 struct Quad {  // the model 1/2 ||J_h s||^2 + 1/2 s^T diag(dh) s + g_h^T s with J_h = Q0 Rh
     lint p;
-    const vec& Rh;  // p x p column-major, upper
+    lint rows;      // Rh's rows: p (m >= p: Rh upper triangular) or m (m < p: Rh = J_h)
+    const vec& Rh;  // rows x p column-major
     const vec& gh;
     const vec& dh;
     vec mul(const vec& s) const {
-        vec out(static_cast<std::size_t>(p), 0.0);
-        for (lint j = 0; j < p; ++j)
-            for (lint i = 0; i <= j; ++i) out[i] += Rh[i + j * p] * s[j];
+        vec out(static_cast<std::size_t>(rows), 0.0);
+        if (rows == p) {
+            for (lint j = 0; j < p; ++j)
+                for (lint i = 0; i <= j; ++i) out[i] += Rh[i + j * p] * s[j];
+        } else {
+            for (lint j = 0; j < p; ++j)
+                for (lint i = 0; i < rows; ++i) out[i] += Rh[i + j * rows] * s[j];
+        }
         return out;
     }
     double dsd(const vec& a, const vec& b) const {
@@ -909,24 +909,27 @@ void cl_scaling(const vec& x, const vec& g, const vec& lb, const vec& ub, vec& v
 }
 
 // solve_lsq_trust_region: min ||J_h p + f|| + reg with ||p|| <= Delta from the SVD
-// (s descending, V = Vt^T column-major p x p in Vt, uf = U^T f)
-vec solve_lsq_trust_region(lint p, lint m, const vec& uf, const vec& s, const vec& Vt, double Delta, double& alpha) {
-    const auto up = static_cast<std::size_t>(p);
+// (k singular values s descending, V = Vt^T column-major: Vt is k x p, uf = U^T f; k = p but
+// for the unbounded m < p, where k = m)
+vec solve_lsq_trust_region(
+    lint p, lint m, lint k, const vec& uf, const vec& s, const vec& Vt, double Delta, double& alpha
+) {
+    const auto up = static_cast<std::size_t>(p), uk = static_cast<std::size_t>(k);
     auto Vdot = [&](const vec& w) {
         vec out(up, 0.0);
         for (lint i = 0; i < p; ++i) {
             double t = 0;
-            for (lint k = 0; k < p; ++k) t += Vt[k + i * p] * w[k];
+            for (lint l = 0; l < k; ++l) t += Vt[l + i * k] * w[l];
             out[i] = t;
         }
         return out;
     };
-    vec suf(up);
-    for (std::size_t i = 0; i < up; ++i) suf[i] = s[i] * uf[i];
+    vec suf(uk);
+    for (std::size_t i = 0; i < uk; ++i) suf[i] = s[i] * uf[i];
     auto phi = [&](double al, double& dphi) {
-        vec q(up);
+        vec q(uk);
         double t = 0;
-        for (std::size_t i = 0; i < up; ++i) {
+        for (std::size_t i = 0; i < uk; ++i) {
             const double den = s[i] * s[i] + al;
             q[i] = suf[i] / den;
             t += suf[i] * suf[i] / (den * den * den);
@@ -965,8 +968,8 @@ vec solve_lsq_trust_region(lint p, lint m, const vec& uf, const vec& s, const ve
         alpha -= (ph + Delta) * ratio / Delta;
         if (std::abs(ph) < 0.01 * Delta) break;
     }
-    vec w(up);
-    for (std::size_t i = 0; i < up; ++i) w[i] = suf[i] / (s[i] * s[i] + alpha);
+    vec w(uk);
+    for (std::size_t i = 0; i < uk; ++i) w[i] = suf[i] / (s[i] * s[i] + alpha);
     vec pp = Vdot(w);
     const double pn = enorm(pp);
     for (double& v : pp) v = -v * (Delta / pn);
@@ -1080,14 +1083,34 @@ int trust_region_reflective(
     Final& fin
 ) {
     const lint m = M.m, p = M.p;
-    const auto up = static_cast<std::size_t>(p), um = static_cast<std::size_t>(m);
-    vec fnew(um), wa(um), J(um * up), R0(up * up), qtf(up), g(up), v(up), dv(up), d(up), dh(up), gh(up), Rh(up * up),
-        A(2 * up * up), U(2 * up * up), s(up), Vt(up * up), uf(up), step, step_h;
+    // m >= p: J = Q0 R0 and the work is p x p (R0 upper triangular, qtf = (Q0^T f)[0:p]); m < p:
+    // R0 is J itself (m x p) and qtf f, as scipy's trf (the SVD of J_h, or of [J_h; diag(dh)^1/2]
+    // with bounds)
+    const bool wide = m < p;
+    const bool unbounded = std::all_of(lb.begin(), lb.end(), [](double t) { return t == -kInf; }) &&
+                           std::all_of(ub.begin(), ub.end(), [](double t) { return t == kInf; });
+    const lint r = wide ? m : p;                          // R0's rows
+    const lint ar = wide ? (unbounded ? m : m + p) : 2 * p;  // the SVD's rows
+    const lint k = std::min(ar, p);                       // its singular values
+    const auto up = static_cast<std::size_t>(p), um = static_cast<std::size_t>(m), ur = static_cast<std::size_t>(r),
+               uar = static_cast<std::size_t>(ar), uk = static_cast<std::size_t>(k);
+    vec fnew(um), wa(um), J(um * up), R0(ur * up), qtf(ur), g(up), v(up), dv(up), d(up), dh(up), gh(up), Rh(ur * up),
+        A(uar * up), U(uar * uk), s(uk), Vt(uk * up), uf(uk), step, step_h;
     if (!have_f0 && !M.eval(x, f.data())) return sStartNonfinite;
     auto refresh = [&]() {  // J, its QR and the gradient g = J^T f = R0^T Q0^T f at x
         if (!M.jacobian(x, f.data(), J.data(), wa.data())) return false;
         ++n_iter;
         fin.keep(J.data(), m, p);
+        if (wide) {
+            R0.assign(J.begin(), J.end());
+            qtf.assign(f.begin(), f.end());
+            for (lint j = 0; j < p; ++j) {
+                double t = 0;
+                for (lint i = 0; i < m; ++i) t += R0[i + j * m] * qtf[i];
+                g[j] = t;
+            }
+            return true;
+        }
         M.qr(J.data(), f.data(), R0.data(), qtf.data());
         for (lint j = 0; j < p; ++j) {
             double t = 0;
@@ -1114,29 +1137,40 @@ int trust_region_reflective(
         for (std::size_t i = 0; i < up; ++i) g_norm = std::max(g_norm, std::abs(g[i] * v[i]));
         if (g_norm < gtol) status = sGtol;
         if (status != -100 || M.nfev >= max_nfev) break;
+        // the sum of squares or the gradient overflowed (residuals near 1e154): the model has
+        // no finite value to work with; scipy goes on without progress up to max_nfev
+        if (!std::isfinite(cost) || !std::all_of(g.begin(), g.end(), [](double t) { return std::isfinite(t); })) {
+            status = sMaxNfev;
+            break;
+        }
         for (std::size_t i = 0; i < up; ++i) {
             d[i] = std::sqrt(v[i]);
             dh[i] = g[i] * dv[i];
             gh[i] = d[i] * g[i];
         }
         for (lint j = 0; j < p; ++j)
-            for (lint i = 0; i < p; ++i) Rh[i + j * p] = R0[i + j * p] * d[j];
-        // the SVD of [Rh; diag(sqrt(dh))] (2p x p)
+            for (lint i = 0; i < r; ++i) Rh[i + j * r] = R0[i + j * r] * d[j];
+        // the SVD of [Rh; diag(sqrt(dh))] (r + p rows), or of Rh alone (unbounded, m < p)
         for (lint j = 0; j < p; ++j)
-            for (lint i = 0; i < 2 * p; ++i)
-                A[i + j * 2 * p] = i < p ? Rh[i + j * p] : (i - p == j ? std::sqrt(dh[j]) : 0.0);
-        if (lapack::gesdd('S', 2 * p, p, A.data(), 2 * p, s.data(), U.data(), 2 * p, Vt.data(), p, M.sc) != 0)
-            return sJacNonfinite;
-        for (lint k = 0; k < p; ++k) {
-            double t = 0;
-            for (lint i = 0; i < p; ++i) t += U[i + k * 2 * p] * qtf[i];
-            uf[k] = t;
+            for (lint i = 0; i < ar; ++i) A[i + j * ar] = i < r ? Rh[i + j * r] : (i - r == j ? std::sqrt(dh[j]) : 0.0);
+        lint info;
+        {
+            // the GIL is let go for a large factorization (linalg's 10 us rule, about 2e5 flops)
+            std::optional<nb::gil_scoped_release> rel;
+            if (4.0 * double(ar) * double(p) * double(k) > 2e5) rel.emplace();
+            info = lapack::gesdd('S', ar, p, A.data(), ar, s.data(), U.data(), ar, Vt.data(), k, M.sc);
         }
-        const Quad Q{p, Rh, gh, dh};
+        if (info != 0) throw linalg::LinAlgError("SVD did not converge");  // gesdd info > 0
+        for (lint l = 0; l < k; ++l) {
+            double t = 0;
+            for (lint i = 0; i < r; ++i) t += U[i + l * ar] * qtf[i];
+            uf[l] = t;
+        }
+        const Quad Q{p, r, Rh, gh, dh};
         const double theta = std::max(0.995, 1 - g_norm);
         double actual_reduction = -1;
         while (actual_reduction <= 0 && M.nfev < max_nfev) {
-            vec ph = solve_lsq_trust_region(p, m, uf, s, Vt, Delta, alpha);
+            vec ph = solve_lsq_trust_region(p, m, k, uf, s, Vt, Delta, alpha);
             vec pp(up);
             for (std::size_t i = 0; i < up; ++i) pp[i] = d[i] * ph[i];
             const double predicted = select_step(x, Q, gh, pp, ph, d, Delta, lb, ub, theta, step, step_h);

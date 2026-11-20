@@ -86,9 +86,9 @@ def test_nist_against_arb(name):
     bound = CONTRACT
     assert norm_err(r.params, ref["params"]) <= bound
     if meta["exact_fit"]:
-        # Wampler1: y is in the span of X even in doubles; the fit is exact
+        # Wampler1: y is in the span of X even in doubles; the fit is exact (t and p NaN, D-3)
         assert r.ssr == 0.0 and np.all(a(r.bse) == 0.0)
-        assert np.all(np.isinf(a(r.tvalues))) and np.all(a(r.pvalues) == 0.0)
+        assert np.all(np.isnan(a(r.tvalues))) and np.all(np.isnan(a(r.pvalues)))
         return
     # standard errors come from R: about kappa u (Filip 7e-8; Wampler2's residuals are at the
     # rounding level of the fitted values, so its tiny standard errors are not relatively accurate)
@@ -283,9 +283,10 @@ def test_linregress_degenerate_like_scipy():
         want = [want.slope, want.intercept, want.rvalue, want.pvalue, want.stderr, want.intercept_stderr]
         for f, g, w in zip(got._fields, got, want):
             assert (math.isnan(g) and math.isnan(w)) or g == pytest.approx(float(w), rel=1e-14, abs=1e-15), (x, y, f)
-    # an exact line: scipy's p-value comes from its 1e-20 guard (9e-11); here t is infinite and p 0
+    # an exact line: scipy's p-value comes from its 1e-20 guard (9e-11); here a perfect fit has
+    # no p (D-3: NaN, as nls's G109)
     got = R.linregress([1.0, 2, 3], [2.0, 4, 6])
-    assert got.slope == 2.0 and got.rvalue == 1.0 and got.stderr == 0.0 and got.pvalue == 0.0
+    assert got.slope == 2.0 and got.rvalue == 1.0 and got.stderr == 0.0 and math.isnan(got.pvalue)
     # two points: no degree of freedom left, the inference is 0/0 (G95; scipy 1.18.1 gives NaN
     # too); fewer than two points is an error (G96; scipy warns and gives NaN)
     got = R.linregress([1.0, 2], [3.0, 5])
@@ -295,9 +296,14 @@ def test_linregress_degenerate_like_scipy():
     assert all(math.isnan(v) for v in (sp.pvalue, sp.stderr, sp.intercept_stderr))
     assert got.slope == 2.0 and got.intercept == 1.0 and got.rvalue == 1.0
     assert all(math.isnan(v) for v in (got.pvalue, got.stderr, got.intercept_stderr))
+    # fewer than two points: every field NaN (G96's empty input; scipy 1.18.1 too, with a warning)
     for x, y in (([1.0], [2.0]), ([], [])):
-        with pytest.raises(ValueError, match=r"linregress\(\): 'x' and 'y' must have length at least 2"):
-            R.linregress(x, y)
+        got = R.linregress(x, y)
+        assert all(math.isnan(v) for v in got)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sp = st.linregress(x, y) if x else None
+        assert sp is None or all(math.isnan(v) for v in sp)
 
 
 def test_linregress_batch():
@@ -391,7 +397,9 @@ def test_exact_fit():
     r = R.ols(1 + 2 * x + 3 * x**2, X)
     assert np.array_equal(a(r.params), [1.0, 2.0, 3.0])
     assert r.ssr == 0.0 and r.scale == 0.0 and np.all(a(r.bse) == 0.0)
-    assert np.all(np.isinf(a(r.tvalues))) and np.all(a(r.pvalues) == 0.0)
+    # a perfect fit: t and p are NaN (D-3), the intervals [theta, theta]
+    assert np.all(np.isnan(a(r.tvalues))) and np.all(np.isnan(a(r.pvalues)))
+    assert np.array_equal(a(r.conf_int())[:, 0], a(r.params)) and np.array_equal(a(r.conf_int())[:, 1], a(r.params))
     assert r.rsquared == 1.0 and math.isinf(r.fvalue) and r.f_pvalue == 0.0 and r.llf == math.inf
 
 
@@ -630,8 +638,9 @@ def test_constant_y_is_zero_over_zero():
 
 
 def test_linregress_messages():
-    with pytest.raises(ValueError, match=r"^linregress\(\): 'x' and 'y' must have length at least 2$"):
-        R.linregress([], [])
+    assert all(math.isnan(v) for v in R.linregress([], []))  # no points: NaN, not an error (D-20)
+    with pytest.raises(ValueError, match=r"^linregress\(\): inhomogeneous nested sequence"):
+        R.linregress([[1.0, 2.0], [3.0]], [1.0, 2.0])  # asarray's words, not a type error (CX-11)
     with pytest.raises(ValueError, match=r"^linregress\(\): 'x' contains infinity$"):
         R.linregress([1.0, math.inf, 3], [1.0, 2, 3])
     with pytest.raises(ValueError, match=r"^linregress\(\): 'y' contains infinity$"):

@@ -49,7 +49,7 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
     base/                         모든 영역이 쓰는 바닥
       buffer.hpp/.cpp             참조 카운트 메모리 블록 (numpy판 + pandas판 통합, §4.2)
       dtype.hpp                   DType enum과 이름, 저장 타입 (§4.3)
-      pairwise.hpp                numpy식 pairwise 합의 정의 (트리, 잎, 병렬 계획; 세 벌 → 한 벌)
+      pairwise.hpp                pairwise 합의 정의 (n으로만 정하는 트리, 잎, 병렬 계획; 세 벌 → 한 벌)
       saturate.hpp                float64 → int64 명시적 변환 (포화, NaN → 0; 배열, linalg, frame이 함께 쓴다, M6)
     parallel/
       pool.hpp/.cpp               스레드풀 하나 (pandas판의 의미, §4.1), FirstRow
@@ -161,8 +161,9 @@ stardust/                         (저장소: ~/Desktop/stardust/stardust)
 
 ## 5. 빌드
 - `nanobind_add_module(_core NB_STATIC NOMINSIZE ...)` 하나.
-- 컴파일 플래그는 numpy판으로 통일한다: `-mcpu=native -ffp-contract=off -fno-builtin-sin -fno-builtin-cos -Wall -Wextra -Wpedantic`
-  - linalg와 pandas에는 `-fno-builtin-sin/-cos`가 없었다. 넣어도 결과가 같다: linalg는 M2, frame은 M5의 골든 출력으로 확인했다.
+- 컴파일 플래그는 모듈 전체에 하나다: `-mcpu=native -ffp-contract=off -fno-builtin-sin -fno-builtin-cos -Wall -Wextra -Wpedantic`
+  - `-ffp-contract=off`: 컴파일러가 곱셈과 덧셈을 FMA로 스스로 합치지 않는다. 축약이 어디서 일어나는지는 코드가 정한다: FMA는 재서 이득이 확인된 곳에만 명시적으로(`std::fma`, NEON `vfmaq`) 쓴다 (DESIGN.md §1.6).
+  - `-fno-builtin-sin`, `-fno-builtin-cos`: 같은 x의 `sin`과 `cos`를 컴파일러가 `sincos` 하나로 바꾸지 않는다. 함께 구하는 곳은 코드가 명시적인 sincos 함수로 적는다. 같은 이유다.
 - editable 설치는 바뀐 파일만 다시 컴파일한다. 전체 빌드는 세 프로젝트를 합친 만큼 길어진다.
 
 ## 6. 영역별 세부 구조

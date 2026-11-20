@@ -20,6 +20,7 @@
 //     i1(+-inf) = +-inf, j0, j1, y0, y1 -> 0.
 #pragma once
 
+#include "special/sincos.hpp"
 #include "special/boost.hpp"
 
 #include "special/coeffs/cephes_bessel.hpp"
@@ -83,16 +84,18 @@ struct Hankel {
 };
 inline Hankel hankel0(double x) {
     const double w = 5.0 / x, z = w * w;
+    const SinCos sc = sincos(x);
     return {
         horner(z, cephes::kJ0Pp) / horner(z, cephes::kJ0Pq), horner(z, cephes::kJ0Qp) / p1evl(z, cephes::kJ0Qq), w,
-        std::sin(x), std::cos(x)
+        sc.s, sc.c
     };
 }
 inline Hankel hankel1(double x) {
     const double w = 5.0 / x, z = w * w;
+    const SinCos sc = sincos(x);
     return {
         horner(z, cephes::kJ1Pp) / horner(z, cephes::kJ1Pq), horner(z, cephes::kJ1Qp) / p1evl(z, cephes::kJ1Qq), w,
-        std::sin(x), std::cos(x)
+        sc.s, sc.c
     };
 }
 // sqrt(2/pi)/sqrt(x) times p cos(chi) - w q sin(chi), with chi = x - pi/4 or x - 3pi/4 written out:

@@ -258,8 +258,6 @@ def test_every_call_returns_and_an_unfinished_sum_is_nan():
     for f, args in [
         (S.chndtr, (3.5, 1e15, 1e15)),
         (S.chndtrc, (3.5, 1e15, 1e15)),
-        (S.chndtr, (3.5, 1e100, 1.0)),
-        (S.chndtrc, (3.5, 1e100, 1e308)),
         (S.chndtrix, (3.5, 1e15, 0.5)),
         (S.chndtrix, (3.5, 1e100, 0.01)),
         (S.nctdtr, (9.0, 1e100, 0.5)),
@@ -272,6 +270,9 @@ def test_every_call_returns_and_an_unfinished_sum_is_nan():
         (S.ncfdtri, (4.0, 13.0, 1e100, 0.5)),
     ]:
         assert math.isnan(f(*args)), (f.__name__, args)
+    # a chi-square tail below e^-1000 by Chernoff's bound is 0 (its complement 1) before any sum
+    assert S.chndtr(3.5, 1e100, 1.0) == 0.0 and S.chndtrc(3.5, 1e100, 1.0) == 1.0
+    assert S.chndtrc(3.5, 1e100, 1e308) == 0.0 and S.chndtr(3.5, 1e100, 1e308) == 1.0
     # the side near 1 that runs out of terms is 1 minus the other side where that one is
     # summed (here 0: x far beyond the bulk)
     assert S.chndtr(3.5, 1e15, 1e16) == 1.0 and S.chndtrc(3.5, 1e15, 0.5) == 1.0

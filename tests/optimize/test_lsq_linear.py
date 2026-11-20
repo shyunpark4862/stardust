@@ -26,8 +26,34 @@ def problem(pid):
     return np.array(A), np.array(b), bounds
 
 
-def same_as_scipy(r, rs):
-    """Every field of sd's lsq_linear result is scipy's, to the bit."""
+def clipped(rs, bounds, method):
+    """scipy's x as sd returns it: within the bounds, and for 'bvls' a variable on a bound
+    (active_mask +-1) at that bound exactly ('bvls' leaves a bound reached by a step at its
+    rounded value; 'trf''s active_mask only says x is near a bound)."""
+    n = rs.x.shape[0]
+    lb, ub = (np.broadcast_to(np.asarray(v, dtype=float), (n,)) for v in bounds)
+    x = np.clip(rs.x, lb, ub)
+    if method == "bvls":
+        am = np.asarray(rs.active_mask)
+        x = np.where(am < 0, lb, np.where(am > 0, ub, x))
+    return x
+
+
+def same_as_scipy(r, rs, bounds=None):
+    """Every field of sd's lsq_linear result is scipy's, to the bit; where scipy's x is outside
+    its bounds by rounding (bounds given), sd's x is the clipped one and fun, cost and optimality
+    are those of that x (to rounding)."""
+    if bounds is not None and rs.status != 3:
+        x = clipped(rs, bounds, r.method)
+        if x.tolist() != rs.x.tolist():
+            A_x_b = r.fun  # A x - b at sd's x
+            return (
+                r.x.tolist() == x.tolist()
+                and math.isclose(r.cost, 0.5 * float(np.dot(A_x_b.tolist(), A_x_b.tolist())), rel_tol=1e-14)
+                and math.isclose(r.cost, rs.cost, rel_tol=1e-12, abs_tol=1e-300)
+                and r.active_mask.tolist() == [int(v) for v in rs.active_mask]
+                and (r.status, r.message, r.n_iter, r.converged) == (rs.status, rs.message, rs.nit, rs.success)
+            )
     return (
         r.x.tolist() == rs.x.tolist()
         and r.fun.tolist() == rs.fun.tolist()
@@ -106,7 +132,7 @@ def test_random_problems_are_scipy_to_the_bit(method, seed):
             warnings.simplefilter("ignore")
             rs = scipy_lsq_linear(A, b, bounds=bounds, method=method)
         r = sd.optimize.lsq_linear(A, b, bounds=bounds, method=method)
-        assert same_as_scipy(r, rs), (A.shape, method)
+        assert same_as_scipy(r, rs, bounds), (A.shape, method)
 
 
 @pytest.mark.parametrize("shape", [(1, 1), (1, 3), (3, 1), (2, 2), (1, 2), (2, 1)])
@@ -119,7 +145,7 @@ def test_small_shapes_are_scipy_to_the_bit(shape):
         for bounds in ((np.zeros(n), np.full(n, np.inf)), (np.full(n, -0.2), np.full(n, 0.2))):
             for method in ("trf", "bvls"):
                 rs = scipy_lsq_linear(A, b, bounds=bounds, method=method)
-                assert same_as_scipy(sd.optimize.lsq_linear(A, b, bounds=bounds, method=method), rs)
+                assert same_as_scipy(sd.optimize.lsq_linear(A, b, bounds=bounds, method=method), rs, bounds)
         assert sd.optimize.nnls(A, b).x.tolist() == scipy_nnls(A, b)[0].tolist()
 
 
@@ -134,13 +160,15 @@ def test_larger_problems_are_scipy_to_the_bit(shape):
         assert same_as_scipy(
             sd.optimize.lsq_linear(A, b, bounds=bounds, method=method),
             scipy_lsq_linear(A, b, bounds=bounds, method=method),
+            bounds,
         )
     assert sd.optimize.nnls(A, b).x.tolist() == scipy_nnls(A, b)[0].tolist()
 
 
 def test_nnls_is_scipy_to_the_bit():
     # x's bits on random problems: tall, wide, rank-deficient, nonnegative A, b in A's cone;
-    # with an iteration cap scipy raises where the status is 3 (O77)
+    # with an iteration cap scipy raises where the status is 0 (D-26); scipy's maxiter stops one
+    # iteration short of the cap (iter >= maxiter), so its maxiter = cap + 1 is max_iter = cap
     rng = np.random.default_rng(7)
     for k in range(300):
         m, n = int(rng.integers(1, 80)), int(rng.integers(1, 80))
@@ -154,13 +182,13 @@ def test_nnls_is_scipy_to_the_bit():
         b = A @ np.abs(rng.standard_normal(n)) if kind == 3 else rng.standard_normal(m)
         cap = int(rng.integers(1, 2 * n + 1)) if k % 5 == 0 else None
         try:
-            want = scipy_nnls(A, b, maxiter=cap)[0].tolist()
+            want = scipy_nnls(A, b, maxiter=None if cap is None else cap + 1)[0].tolist()
         except RuntimeError:
             want = None
         r = sd.optimize.nnls(A, b, max_iter=cap)
         if want is None:
-            assert r.status == 3 and not r.converged
-            assert r.message == "Maximum number of iterations reached."
+            assert r.status == 0 and not r.converged and r.n_iter == cap
+            assert r.message == "The maximum number of iterations is exceeded."
         else:
             assert r.status == 1 and r.converged and r.x.tolist() == want, (m, n, cap)
 
@@ -218,14 +246,23 @@ def test_iteration_caps():
         A, b, bounds = problem(pid)
         r = sd.optimize.lsq_linear(A, b, bounds=bounds, method=method, max_iter=cap)
         rs = scipy_lsq_linear(A, b, bounds=bounds, method=method, max_iter=cap)
-        assert same_as_scipy(r, rs)
+        assert same_as_scipy(r, rs, bounds)
         assert r.status == 0 and not r.converged and r.message == "The maximum number of iterations is exceeded."
-    # nnls's default cap is 3n (scipy's)
+    # nnls (D-26): at most max_iter iterations (status 0 past it, lsq_linear's message); the
+    # default 3n - 1 stops where scipy's maxiter = 3n does
     A, b, _ = problem("hilbert.12x6.nonneg")
     r = sd.optimize.nnls(A, b, max_iter=1)
-    assert (r.status, r.converged, r.n_iter) == (3, False, 1)
+    assert (r.status, r.converged, r.n_iter) == (0, False, 1)
+    assert r.message == "The maximum number of iterations is exceeded."
     with pytest.raises(RuntimeError):
-        scipy_nnls(A, b, maxiter=1)
+        scipy_nnls(A, b, maxiter=2)
+    # a problem solved in one iteration finishes with max_iter = 1 (scipy needs maxiter = 2)
+    r = sd.optimize.nnls(np.eye(1), [2.0], max_iter=1)
+    assert (r.x.tolist(), r.status, r.converged, r.n_iter) == ([2.0], 1, True, 1)
+    with pytest.raises(RuntimeError):
+        scipy_nnls(np.eye(1), [2.0], maxiter=1)
+    full = sd.optimize.nnls(A, b)
+    assert full.n_iter <= 3 * 6 - 1 and full.x.tolist() == scipy_nnls(A, b)[0].tolist()
 
 
 def test_result_fields():
@@ -239,10 +276,11 @@ def test_result_fields():
     assert r.active_mask.dtype == sd.int64 and r.method == "trf"
     assert repr(r).startswith("OptimizeResult(method='trf', converged=True, cost=")
     r = sd.optimize.nnls(A, b)
-    for name in ("x", "cost", "fun", "converged", "status", "message", "n_iter"):
+    for name in ("x", "cost", "fun", "converged", "status", "message", "n_iter", "method"):
         assert hasattr(r, name), name
-    for name in ("rnorm", "optimality", "active_mask", "method", "nfev"):
+    for name in ("rnorm", "optimality", "active_mask", "nfev"):
         assert not hasattr(r, name), name
+    assert r.method == "nnls" and repr(r).startswith("OptimizeResult(method='nnls', converged=True")
     assert r.message == "The solution has been computed successfully."
     assert r.fun.tolist() == (A @ np.array(r.x.tolist()) - b).tolist()
 
@@ -313,5 +351,77 @@ def test_errors():
         f(A, b, bounds=(0, 1, 2))
     with pytest.raises(ValueError, match=r"lsq_linear\(\): 'tol' must be a finite number >= 0"):
         f(A, b, tol=-1.0)
-    with pytest.raises(TypeError, match=r"lsq_linear\(\) got an unexpected keyword argument 'lsq_solver'"):
+    with pytest.raises(TypeError, match=r"lsq_linear\(\): unexpected keyword argument 'lsq_solver'"):
         f(A, b, lsq_solver="lsmr")
+
+
+def test_bvls_optimality_is_plus_zero():
+    # API-10: np.max picks +0.0 over -0.0 (numpy's maximum), as scipy's optimality
+    rng = np.random.default_rng(0)
+    for m, n in ((10, 3), (30, 10), (5, 8), (1, 1)):  # (the draws before the case)
+        for _ in range(4):
+            rng.standard_normal((m, n)), rng.standard_normal(m), rng.uniform(-0.3, 0, n), rng.uniform(0, 0.3, n)
+    A, b = rng.standard_normal((1, 4)), rng.standard_normal(1)
+    r = sd.optimize.lsq_linear(A, b, bounds=(0, np.inf), method="bvls")
+    s = scipy_lsq_linear(A, b, bounds=(0, np.inf), method="bvls")
+    assert r.optimality == 0.0 and math.copysign(1.0, r.optimality) == 1.0
+    assert r.x.tolist() == s.x.tolist() and math.copysign(1.0, s.optimality) == 1.0
+
+
+def test_nnls_infinite_cost_is_not_converged():
+    # API-5: as lsq_linear, a cost that is not finite is not convergence
+    A = [[1e200, 0.0], [0.0, 1e200], [1.0, 1.0]]
+    b = [-1e200, 1e200, 1e200]
+    r = sd.optimize.nnls(A, b)
+    assert math.isinf(r.cost) and not r.converged
+
+
+# ---- x within the bounds; the bounds' form
+
+
+def test_bvls_x_is_within_the_bounds():
+    # a variable that the step x + alpha (z - x) took to its lower bound 0 is -1.39e-17 in scipy
+    rng = sd.random.default_rng(3)
+    t = sd.linspace(0, 5, 40)
+    b = 2 * sd.exp(-0.5 * t) + sd.exp(-3 * t) + 0.005 * sd.stats.Normal().sample(40, rng=rng)
+    A = sd.exp(-t[:, None] * (0.25 * 1.25 ** sd.arange(14)))
+    r = sd.optimize.lsq_linear(A, b, bounds=(0, sd.inf), method="bvls")
+    x, am = r.x.tolist(), r.active_mask.tolist()
+    assert x[7] == 0.0 and am[7] == -1
+    assert all(v >= 0 for v in x) and all((v == 0.0) == (a == -1) for v, a in zip(x, am))
+    assert r.fun.tolist() == (A @ r.x - b).tolist()
+    rs = scipy_lsq_linear(np.array(A.tolist()), np.array(b.tolist()), bounds=(0, np.inf), method="bvls")
+    assert rs.x[7] < 0 and same_as_scipy(r, rs, (0, np.inf))
+
+
+@pytest.mark.parametrize("method", ["trf", "bvls"])
+def test_random_problems_stay_within_the_bounds(method):
+    clipped_runs = 0
+    for seed in (3, 11):
+        for A, b, (lb, ub) in random_problems(seed, 150):
+            r = sd.optimize.lsq_linear(A, b, bounds=(lb, ub), method=method)
+            x = np.array(r.x.tolist())
+            assert np.all(x >= lb) and np.all(x <= ub)
+            if method == "bvls":
+                am = np.array(r.active_mask.tolist())
+                assert np.all(x[am == -1] == lb[am == -1]) and np.all(x[am == 1] == ub[am == 1])
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    rs = scipy_lsq_linear(A, b, bounds=(lb, ub), method=method)
+                clipped_runs += x.tolist() != rs.x.tolist()
+        r = sd.optimize.nnls(A, b)
+        assert all(v >= 0 for v in r.x.tolist())
+    if method == "bvls":
+        assert clipped_runs > 0  # the case this guards occurs in these problems
+
+
+def test_bounds_messages():
+    A, b = [[1.0, 0.0], [0.0, 1.0]], [1.0, 2.0]
+    msg = r"^lsq_linear\(\): 'bounds' must have 2 values \(one per column of 'A'\), not 3$"
+    with pytest.raises(ValueError, match=msg):
+        sd.optimize.lsq_linear(A, b, bounds=([0, 0, 0], 1))
+    with pytest.raises(ValueError, match=r"^lsq_linear\(\): 'b' must have 1 value \(one per row of 'A'\), not 2$"):
+        sd.optimize.lsq_linear([[1.0, 2.0]], b)
+    msg = r"^lsq_linear\(\): 'bounds' must be a pair \(lower, upper\), not a sequence of \(low, high\) pairs$"
+    with pytest.raises(ValueError, match=msg):
+        sd.optimize.lsq_linear([[1.0, 0.0, 0.0]] * 3, [1.0, 2.0, 3.0], bounds=[(0, 1), (0, 1), (0, 1)])

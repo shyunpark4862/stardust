@@ -20,6 +20,7 @@ from .. import linalg as _linalg
 from ._common import (
     _EPS,
     _as_array,
+    _as_array_raw,
     _bounds,
     _callable,
     _check_bool,
@@ -27,10 +28,14 @@ from ._common import (
     _check_method,
     _check_options,
     _check_tol,
+    _not_a_pair,
     _real,
     _real_vector,
+    _returned_real,
     _scalar_check,
+    _show_x,
     _type_name,
+    _values_text,
     _x0,
 )
 from ._result import OptimizeResult, _Lazy
@@ -112,8 +117,7 @@ def _checks(func, n):
         if what == "pair":
             if isinstance(v, (tuple, list)) and len(v) == 2:
                 return (v[0], v[1])
-            got = f"{len(v)} values" if isinstance(v, (tuple, list)) else _type_name(v)
-            raise TypeError(f"{func}(): 'fun' must return a pair (f, g) when jac=True, not {got}")
+            raise TypeError(f"{func}(): 'fun' must return a pair (f, g) when jac=True, not {_not_a_pair(v)}")
         if what == "hess":
             return _hessian(v, func, n)
         return _gradient(v, func, n, what)
@@ -135,13 +139,15 @@ def _gradient(v, func, n, name="jac"):
     if scalar and not isinstance(v, complex) and getattr(getattr(v, "dtype", None), "kind", "f") in "iuf":
         if n == 1:
             return _sd.asarray([float(v)])
-        raise ValueError(f"{func}(): {name!r} must return {n} values (one per variable), not a scalar")
+        raise ValueError(f"{func}(): {name!r} must return {_values_text(n)} (one per variable), not a scalar")
     try:
-        a = _as_array(v, func, name)
+        a = _returned_real(_as_array_raw(v, func, name), func, name)
     except TypeError as e:
         raise TypeError(str(e).replace(f"{name!r} must be", f"{name!r} must return")) from None
     if a.ndim != 1 or a.shape[0] != n:
-        raise ValueError(f"{func}(): {name!r} must return {n} values (one per variable), not shape {tuple(a.shape)}")
+        raise ValueError(
+            f"{func}(): {name!r} must return {_values_text(n)} (one per variable), not shape {tuple(a.shape)}"
+        )
     return a
 
 
@@ -156,7 +162,7 @@ def _hessian(v, func, n):
             return _sd.asarray([[float(v)]])
         raise ValueError(f"{func}(): 'hess' must return shape ({n}, {n}), not a scalar")
     try:
-        a = _as_array(v, func, "hess")
+        a = _returned_real(_as_array_raw(v, func, "hess"), func, "hess")
     except TypeError as e:
         raise TypeError(str(e).replace("'hess' must be", "'hess' must return")) from None
     except ValueError:
@@ -224,6 +230,7 @@ def minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds
     _callable(fun, func, "fun")
     x = _x0(x0, func)
     n = x.shape[0]
+    given = method
     if method is None:
         method = "bfgs" if bounds is None else "l-bfgs-b"  # O50
     else:
@@ -231,11 +238,16 @@ def minimize(fun, x0, /, *, method=None, jac=None, hess=None, hessp=None, bounds
     if method not in _NEWTON:
         for name, v in (("hess", hess), ("hessp", hessp)):
             if v is not None:
-                raise ValueError(f"{func}(): method={method!r} takes no {name!r}")
+                which = f"method={method!r}" if given is not None else f"method=None ({method})"
+                raise ValueError(
+                    f"{func}(): {which} takes no {name!r} (method='newton-cg', 'trust-ncg' and 'trust-exact' do)"
+                )
     if method == "nelder-mead" and jac is not None:
         raise ValueError(f"{func}(): method='nelder-mead' takes no 'jac'")
     if method in ("bfgs",) + _NEWTON and bounds is not None:  # O66
-        raise ValueError(f"{func}(): method={method!r} takes no bounds (method='l-bfgs-b' and method='nelder-mead' do)")
+        raise ValueError(
+            f"{func}(): method={method!r} takes no 'bounds' (method='l-bfgs-b' and method='nelder-mead' do)"
+        )
     mode = _jac_mode(jac, func, method) if method != "nelder-mead" else None
     if method in _NEWTON:
         _needs_jac(jac, mode, func, method)  # O65
@@ -292,7 +304,7 @@ def _nelder_mead(fun, xl, bd, opts, func):
     x, f, n_iter, nfev, status, sim, fsim = _k.nelder_mead_solve(
         func, fun, _checks(func, n), xl, sim0, lb, ub, bd is not None, adaptive, xatol, fatol, max_iter, max_nfev
     )
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         fun=f,
         final_simplex=(sim, fsim),
@@ -343,7 +355,7 @@ def _bfgs(fun, jac, mode, xl, opts, func):
     x, f, g, H, status, n_iter, nfev, njev = _k.bfgs_solve(
         func, fun, jac, _checks(func, n), mode, xl, h0, gtol, norm, steps, max_iter, xrtol, c1, c2
     )
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         fun=f,
         jac=g,
@@ -396,20 +408,20 @@ def _lbfgsb(fun, jac, mode, xl, bd, opts, func):
         f = _fun_value(fun, x.copy(), func)
         if not math.isfinite(f):
             raise ValueError(f"{func}(): 'fun' is not finite at 'x0'")
-        return OptimizeResult(
+        return OptimizeResult._make(
             x=x, fun=f, converged=True, status=0, message=_FIXED, n_iter=0, nfev=1, njev=0, method="l-bfgs-b"
         )
     removed = any(fixed) and mode != _G_CALLABLE and mode != _G_WITH_FUN  # scipy removes them for differences
     user = fun
     if removed:
         free = [i for i in range(n) if not fixed[i]]
-        base = list(lb)
+        base = _sd.asarray(lb)  # the fixed values where fixed
+        free_idx = _sd.asarray(free, dtype=_sd.int64)
 
         def user(xr):
-            full = list(base)
-            for i, v in zip(free, xr.tolist()):
-                full[i] = v
-            return fun(_sd.asarray(full))
+            full = base.copy()
+            full[free_idx] = xr
+            return fun(full)
 
         xl = [xl[i] for i in free]
         lb = [lb[i] for i in free]
@@ -417,7 +429,7 @@ def _lbfgsb(fun, jac, mode, xl, bd, opts, func):
         if len(steps) == n:
             steps = [steps[i] for i in free]
     k = len(xl)
-    x, f, g, task, task_msg, n_iter, nfev, njev, S, Y, nc = _k.lbfgsb_solve(
+    x, f, g, task, task_msg, n_iter, nfev, njev, S, Y, nc, stalled = _k.lbfgsb_solve(
         func, user, jac, _checks(func, k), mode, xl, lb, ub, m, ftol / _EPS, gtol, steps, max_nfev, max_iter, max_ls
     )
     if task == 4:
@@ -437,12 +449,13 @@ def _lbfgsb(fun, jac, mode, xl, bd, opts, func):
     else:
         hess_inv = _Lazy(lambda: _lbfgs_inverse_hessian(S[:nc], Y[:nc]))  # O55: computed when first read
     fields = {} if hess_inv is None else {"hess_inv": hess_inv}
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         fun=f,
         jac=g,
         **fields,
-        converged=status == 0 and math.isfinite(f),
+        # stalled: scipy's relative-reduction test passed without a step (D-7)
+        converged=status == 0 and math.isfinite(f) and not stalled,
         status=status,
         message=message,
         n_iter=n_iter,
@@ -492,13 +505,13 @@ def _hess_mode(hess, hessp, func, method):
             raise ValueError(f"{func}(): 'hess' is required when method='trust-exact' (a callable giving the matrix)")
         raise ValueError(f"{func}(): method='trust-exact' needs 'hess' as a callable (the matrix), not {hess!r}")
     if method == "trust-ncg" and hess is None and hessp is None:
-        raise ValueError(f"{func}(): method='trust-ncg' needs 'hess' or 'hessp'")
+        raise ValueError(f"{func}(): 'hess' or 'hessp' is required when method='trust-ncg'")
     return hmode
 
 
 def _not_finite(status, xs, func):
-    what = {-1: "'jac' is", -2: "'hess' is", -3: "the trust-region subproblem is"}[status]
-    raise ValueError(f"{func}(): {what} not finite at x = {xs}")
+    what = {-1: "'jac' is", -2: "'hess' is", -3: "the trust-region subproblem is", -4: "'hessp' is"}[status]
+    raise ValueError(f"{func}(): {what} not finite at x = {_show_x(xs)}")
 
 
 def _newton_cg(fun, jac, hess, hessp, mode, hmode, xl, opts, func):
@@ -513,7 +526,7 @@ def _newton_cg(fun, jac, hess, hessp, mode, hmode, xl, opts, func):
         func, fun, jac, hess, hessp, _checks(func, n), mode, hmode, xl, xtol, eps, max_iter, c1, c2
     )
     status, message = _NCG_RESULTS[kstatus]
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         fun=f,
         jac=g,
@@ -565,7 +578,7 @@ def _trust(fun, jac, hess, hessp, mode, hmode, method, xl, opts, func):
     if status < 0:
         _not_finite(status, x.tolist(), func)
     fields = {} if H is None else {"hess": H}
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         fun=f,
         jac=g,

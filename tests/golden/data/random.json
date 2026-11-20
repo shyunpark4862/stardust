@@ -1439,7 +1439,7 @@ false
 "choice err p complex": {
 "r": {
 "error": "TypeError",
-"msg": "choice(): 'p' must be a real array, not an array of complex128"
+"msg": "choice(): 'p' must be a real array, not complex128"
 }
 },
 "choice err p length": {
@@ -3113,13 +3113,13 @@ false
 "err default_rng keyword": {
 "r": {
 "error": "TypeError",
-"msg": "default_rng() got some positional-only arguments passed as keyword arguments: 'seed'"
+"msg": "default_rng(): got some positional-only arguments passed as keyword arguments: 'seed'"
 }
 },
 "err default_rng two args": {
 "r": {
 "error": "TypeError",
-"msg": "default_rng() takes from 0 to 1 positional arguments but 2 were given"
+"msg": "default_rng(): takes from 0 to 1 positional arguments but 2 were given"
 }
 },
 "err permutation huge": {
@@ -5104,7 +5104,7 @@ false
 "integers err float array": {
 "r": {
 "error": "TypeError",
-"msg": "integers(): 'high' must be an int or an int64 array, not an array of float64"
+"msg": "integers(): 'high' must be an int or an int64 array, not float64"
 }
 },
 "integers err high float": {
@@ -5122,7 +5122,7 @@ false
 "integers err shape ()": {
 "r": {
 "error": "ValueError",
-"msg": "integers(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)"
+"msg": "integers(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)"
 }
 },
 "integers full int64 endpoint shape=(131075,)": {
@@ -6930,7 +6930,7 @@ false
 "random shape=()": {
 "r": {
 "error": "ValueError",
-"msg": "random(): 'shape' must not be () (stardust has no 0-d arrays; None gives a scalar)"
+"msg": "random(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)"
 }
 },
 "random shape=(131075,)": {
@@ -7080,7 +7080,7 @@ false
 "random shape=(2, -1)": {
 "r": {
 "error": "ValueError",
-"msg": "random(): 'shape' must be non-negative"
+"msg": "random(): negative dimensions are not allowed"
 }
 },
 "random shape=(2, 0, 3)": {
@@ -7349,7 +7349,7 @@ false
 "random shape=-1": {
 "r": {
 "error": "ValueError",
-"msg": "random(): 'shape' must be non-negative"
+"msg": "random(): negative dimensions are not allowed"
 }
 },
 "random shape=0": {

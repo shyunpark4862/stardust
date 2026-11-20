@@ -68,7 +68,13 @@ inline double log_tail(double a, double b, DD x, DD y, bool upper) {
     const double small = lower_small ? r.i : r.ic;
     if (upper != lower_small) {  // the small side is asked for
         if (small >= kDeep) return std::log(small);
-        return lower_small ? log_lower_deep(a, b, x, y) : log_lower_deep(b, a, y, x);
+        // A shape below 1e-3 with x past 0.9 (y for the upper side) has no log from the pieces
+        // (log_lower_deep's NaN); a tail that is still a normal double there is its log: ibeta's
+        // value is within 4e-16 of Arb (b = 2^-1021 to 1e-291, a = 0.01 to 1e5, x - 1 down to
+        // 2^-53), and log takes that as an absolute error (Beta(1, 1e-300).logcdf(0.95)).
+        const double l = lower_small ? log_lower_deep(a, b, x, y) : log_lower_deep(b, a, y, x);
+        const bool no_pieces = lower_small ? (b < 1e-3 && x.hi > 0.9) : (a < 1e-3 && y.hi > 0.9);
+        return l != l && no_pieces && small >= 0x1p-1022 ? std::log(small) : l;
     }
     return std::log1p(-small);
 }

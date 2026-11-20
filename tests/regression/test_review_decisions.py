@@ -192,12 +192,13 @@ def test_df_resid_zero_is_nan():
 
 def test_perfect_fit_by_tolerance():
     """y = 1 + 2x + 3x^2 exactly: the QR leaves residuals of rounding size; within the
-    (k + 16) u tolerance they are a perfect fit (ssr 0, bse 0, p 0, llf +inf, diagnostics NaN)."""
+    (k + 16) u tolerance they are a perfect fit (ssr 0, bse 0, t and p NaN (D-3), llf +inf,
+    diagnostics NaN)."""
     x = np.arange(10.0)
     y = 1 + 2 * x + 3 * x**2
     Xs = np.column_stack([x, x**2])
     r = R.ols(y, Xs)
-    assert r.ssr == 0.0 and r.scale == 0.0 and np.all(a(r.bse) == 0.0) and np.all(a(r.pvalues) == 0.0)
+    assert r.ssr == 0.0 and r.scale == 0.0 and np.all(a(r.bse) == 0.0) and np.all(np.isnan(a(r.pvalues)))
     assert r.llf == math.inf and r.rsquared == 1.0
     assert math.isnan(r.durbin_watson) and np.all(np.isnan(a(r.resid_studentized_internal)))
     assert np.max(np.abs(a(r.resid))) <= 1e-12  # the residuals themselves stay the computed ones
@@ -270,14 +271,19 @@ def test_zero_weights_are_empty():
 
 
 def test_linregress_and_slopes_too_few_points():
+    """D-20: fewer than two points give G96's NaN result (scipy 1.18.1's NaN), not an error;
+    a batch too."""
     for f in (
         lambda: R.linregress([1.0], [2.0]),
         lambda: R.linregress([], []),
         lambda: R.theilslopes([1.0]),
         lambda: R.siegelslopes([1.0, np.nan], nan_policy="omit"),
     ):
-        with pytest.raises(ValueError, match=r"'x' and 'y' must have length at least 2$"):
-            f()
+        assert all(math.isnan(v) for v in f())
+    b = R.theilslopes(np.ones((3, 1)))
+    assert all(v.shape == (3,) and bool(sd.all(sd.isnan(v))) for v in b)
+    b = R.linregress(np.ones((2, 1)), np.ones((2, 1)))
+    assert all(v.shape == (2,) and bool(sd.all(sd.isnan(v))) for v in b)
 
 
 # ---- G98, G99: read-only configuration, conf_int's keyword
@@ -847,21 +853,30 @@ def test_nls_perfect_fit_no_significance():
 
 
 def test_configuration_fields_are_fresh_copies():
-    """G113: a list or array field is a new copy at each access."""
+    """G113: a list field is a new copy at each access; an array field is read-only (D-4)."""
     r = R.ols(Y, X)
     names = r.param_names
     names.append("zz")
     assert r.param_names == ["const", "x1", "x2"]
     q = R.quantreg(Y, X, q=[0.3, 0.6])
-    qq = q.q
-    qq[0] = 0.9
+    with pytest.raises(ValueError, match="read-only"):
+        q.q[0] = 0.9
     assert a(q.q).tolist() == [0.3, 0.6]
     lp = R.lasso(Y, X, alpha=[0.2, 0.1])
-    al = lp.alpha
-    al[0] = 5.0
+    with pytest.raises(ValueError, match="read-only"):
+        lp.alpha[0] = 5.0
     assert a(lp.alpha).tolist() == [0.2, 0.1]
     lp.param_names.append("zz")
     assert len(lp.param_names) == 3
+
+
+def test_configuration_field_docstrings_say_the_behaviour():
+    """The site quotes these docstrings: they say what the field does, with no decision number."""
+    import re
+
+    for r in (R.ols(Y, X), R.lasso(Y, X, alpha=0.1)):
+        doc = " ".join(type(r).param_names.__doc__.split())
+        assert "new list at each access" in doc and not re.search(r"\b[GDOR]\d+\b", doc)
 
 
 def test_method_call_shape_messages():

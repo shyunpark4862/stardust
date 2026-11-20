@@ -162,6 +162,7 @@ def linear(L):
     )
     yield "linregress const x", lambda: R.linregress(sd.full((30,), 2.0), y1())
     yield "linregress two points", lambda: R.linregress(sd.asarray([1.0, 2.0]), sd.asarray([3.0, 5.0]))
+    yield "linregress one point", lambda: R.linregress(sd.asarray([1.0]), sd.asarray([3.0]))
     yield "linregress large", lambda: R.linregress(a(D["XL"][:, 0]), a(D["yL"]))
     yield "err linregress lengths", lambda: R.linregress(x1(), a(D["y1"][:29]))
 
@@ -257,15 +258,20 @@ def penalized(L):
     rng = sd.random.default_rng
     for fn in ("ridge_cv", "lasso_cv", "elastic_net_cv"):
         f = getattr(R, fn)
-        yield f"{fn}", lambda f=f: fit_and_predict(L, f(y(), X(), rng=rng(5)), Xn())
-        yield f"{fn} 1se", lambda f=f: f(y(), X(), rng=rng(6), select="1se")
+        # 5 folds given (ridge_cv's default is cv='gcv', D-18)
+        yield f"{fn}", lambda f=f: fit_and_predict(L, f(y(), X(), rng=rng(5), cv=5), Xn())
+        yield f"{fn} 1se", lambda f=f: f(y(), X(), rng=rng(6), cv=5, select="1se")
         yield f"{fn} cv=3 alphas=10", lambda f=f: f(y(), X(), rng=rng(7), cv=3, alphas=10)
-        yield f"{fn} alphas array", lambda f=f: f(y(), X(), rng=rng(8), alphas=a(np.array([1.0, 0.1, 0.01])))
-        yield f"{fn} standardize weights", lambda f=f: f(y(), X(), rng=rng(9), standardize=True, weights=a(D["w"]))
-        yield f"err {fn} rng int", lambda f=f: f(y(), X(), rng=1)
+        yield f"{fn} alphas array", lambda f=f: f(y(), X(), rng=rng(8), cv=5, alphas=a(np.array([1.0, 0.1, 0.01])))
+        yield (
+            f"{fn} standardize weights",
+            lambda f=f: f(y(), X(), rng=rng(9), cv=5, standardize=True, weights=a(D["w"])),
+        )
+        yield f"err {fn} rng int", lambda f=f: f(y(), X(), rng=1, cv=5)
         yield f"err {fn} cv too big", lambda f=f: f(y(), X(), rng=rng(1), cv=61)
     yield "ridge_cv gcv", lambda: R.ridge_cv(y(), X(), cv="gcv")
-    yield "err ridge_cv no rng", lambda: R.ridge_cv(y(), X())
+    yield "ridge_cv default", lambda: R.ridge_cv(y(), X())
+    yield "err ridge_cv no rng", lambda: R.ridge_cv(y(), X(), cv=5)
     yield "err ridge_cv gcv rng", lambda: R.ridge_cv(y(), X(), cv="gcv", rng=rng(1))
     yield "err ridge_cv gcv 1se", lambda: R.ridge_cv(y(), X(), cv="gcv", select="1se")
     yield "err ridge_cv cv str", lambda: R.ridge_cv(y(), X(), cv="x")
@@ -352,6 +358,10 @@ def robust(L):
     yield "siegelslopes no x", lambda: R.siegelslopes(y1())
     yield "siegelslopes large", lambda: R.siegelslopes(a(D["yL"][:2000]), a(D["XL"][:2000, 0]))
     yield "err theilslopes method", lambda: R.theilslopes(y1(), x1(), method="x")
+    yield "err theilslopes alpha big int", lambda: R.theilslopes(y1(), x1(), alpha=10**400)
+    yield "theilslopes default alpha", lambda: R.theilslopes(y1(), x1())
+    yield "theilslopes one point", lambda: R.theilslopes(sd.asarray([1.0]), sd.asarray([2.0]))
+    yield "siegelslopes one point", lambda: R.siegelslopes(sd.asarray([1.0]))
     yield "err siegelslopes lengths", lambda: R.siegelslopes(y1(), a(D["x1"][:5]))
 
 

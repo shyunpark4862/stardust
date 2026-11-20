@@ -101,17 +101,21 @@ nb::object roll(nb::handle x, nb::handle shift_obj, nb::handle axis_obj) {
         r.update_flags();
         return wrap(std::move(r));
     }
-    const std::vector<int> axes = parse_axes(axis_obj, a.ndim);
+    std::vector<int> axes = parse_axes(axis_obj, a.ndim);
+    const bool axis_seq = PyTuple_Check(axis_obj.ptr()) || PyList_Check(axis_obj.ptr());
     std::vector<std::int64_t> shifts;
     if (PyTuple_Check(shift_obj.ptr()) || PyList_Check(shift_obj.ptr())) {
         for (nb::handle h : shift_obj) shifts.push_back(parse_shift(h));
-        if (shifts.size() != axes.size())
+        if (!axis_seq) axes = std::vector<int>(shifts.size(), axes[0]);  // one axis, rolled by every shift (numpy too)
+        else if (shifts.size() != axes.size())
             throw nb::value_error("'shift' and 'axis' must have the same length when both are sequences");
     } else {
         shifts.assign(axes.size(), parse_shift(shift_obj));
     }
-    // Per rolled axis: the amount in [0, n). Each output is made of 2^k
-    // blocks, one per choice of "front / back" piece along each rolled axis.
+    // Per rolled axis: the amount in [0, n), the shifts of a repeated axis
+    // added (each reduced first, so the sum cannot overflow). Each output is
+    // made of 2^k blocks, one per choice of "front / back" piece along each
+    // rolled axis.
     struct Rolled {
         int axis;
         std::int64_t n, s;
@@ -121,8 +125,11 @@ nb::object roll(nb::handle x, nb::handle shift_obj, nb::handle axis_obj) {
         const std::int64_t n = a.shape[axes[i]];
         if (n == 0) continue;
         const std::int64_t s = ((shifts[i] % n) + n) % n;
-        if (s) rolled.push_back({axes[i], n, s});
+        auto same = std::find_if(rolled.begin(), rolled.end(), [&](const Rolled& r) { return r.axis == axes[i]; });
+        if (same == rolled.end()) rolled.push_back({axes[i], n, s});
+        else same->s = (same->s + s) % n;
     }
+    std::erase_if(rolled, [](const Rolled& r) { return r.s == 0; });
     NDArray out = new_array(a.dtype, shape_of(a));
     const int k = static_cast<int>(rolled.size());
     for (int mask = 0; mask < (1 << k); ++mask) {
@@ -332,7 +339,9 @@ nb::object tile(nb::handle x, nb::handle reps_obj) {
         std::vector<int> group(todo.begin() + next, todo.begin() + next + take);
         next += take;
         std::vector<std::int64_t> final_shape = shape_of(cur);
-        for (int d : group) final_shape[d] *= reps[d];
+        for (int d : group)
+            if (__builtin_mul_overflow(final_shape[d], reps[d], &final_shape[d]))
+                throw nb::value_error("array is too big");
         NDArray out = new_array(a.dtype, final_shape);
         if (room) {
             NDArray v = cur, dst = out;
@@ -420,7 +429,8 @@ nb::tuple meshgrid(nb::args arrays, nb::handle indexing_obj) {
         const NDArray& a = as_ndarray(h);
         const int along = xy && i < 2 ? 1 - i : i;  // 'xy': the first two arrays vary along axes 1 and 0
         // Filled directly in C order: value k of the input over the block of
-        // the trailing axes, for every position of the leading ones.
+        // the trailing axes, for every position of the leading ones. The
+        // pieces on the pool each write their own part of the result.
         NDArray o = new_array(a.dtype, shape);
         std::int64_t outer = 1, inner = 1;
         for (int d = 0; d < along; ++d) outer *= shape[d];
@@ -429,15 +439,31 @@ nb::tuple meshgrid(nb::args arrays, nb::handle indexing_obj) {
         if (o.size() > 0)
             visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) {
                 T* dst = reinterpret_cast<T*>(o.data);
-                auto at = [&](std::int64_t k) { return *reinterpret_cast<const T*>(a.data + k * a.strides[0]); };
+                const std::byte* src = a.data;
+                const std::int64_t step = a.strides[0];
+                auto at = [src, step](std::int64_t k) { return *reinterpret_cast<const T*>(src + k * step); };
                 if (inner == 1) {  // the input itself is the last axis: copy it once, then whole rows
-                    for (std::int64_t k = 0; k < len; ++k) dst[k] = at(k);
-                    for (std::int64_t r = 1; r < outer; ++r)
-                        std::memcpy(dst + r * len, dst, static_cast<size_t>(len) * sizeof(T));
-                } else {
-                    for (std::int64_t r = 0; r < outer; ++r)
-                        for (std::int64_t k = 0; k < len; ++k, dst += inner) std::fill_n(dst, inner, at(k));
+                    {
+                        const parallel::Unlocked unlocked(len >= kParallelThreshold);
+                        for (std::int64_t k = 0; k < len; ++k) dst[k] = at(k);
+                    }
+                    const std::int64_t per = kParallelTask / std::min(len, kParallelTask);
+                    for_pieces(outer - 1, per, (outer - 1) * len, [&](std::int64_t, std::int64_t b, std::int64_t e) {
+                        for (std::int64_t r = b + 1; r < e + 1; ++r)
+                            std::memcpy(dst + r * len, dst, static_cast<size_t>(len) * sizeof(T));
+                    });
+                    return;
                 }
+                // Unit u (leading position r, value k: u = r * len + k) is the
+                // block of `inner` elements at u * inner.
+                const std::int64_t per = kParallelTask / std::min(inner, kParallelTask);
+                for_pieces(outer * len, per, o.size(), [&](std::int64_t, std::int64_t b, std::int64_t e) {
+                    std::int64_t k = b % len;
+                    for (std::int64_t u = b; u < e; ++u) {
+                        std::fill_n(dst + u * inner, inner, at(k));
+                        if (++k == len) k = 0;
+                    }
+                });
             });
         out.append(wrap(std::move(o)));
         ++i;
@@ -461,21 +487,25 @@ nb::object triangle(nb::handle x, nb::handle k_obj) {
     const std::int64_t kk = std::clamp<std::int64_t>(k, -rows - 1, cols + 1);
     const std::int64_t mats = out.size() / (rows * cols);
     std::byte* p = out.data;
-    for (std::int64_t m = 0; m < mats; ++m)
-        for (std::int64_t i = 0; i < rows; ++i) {
-            std::byte* row = p + (m * rows + i) * cols * item;
-            // tril keeps j <= i + k; triu keeps j >= i + k. All-zero bytes are
-            // 0 / False / +0.0 / 0j in every dtype.
-            std::int64_t lo, hi;  // the zeroed columns [lo, hi)
-            if constexpr (Lower) {
-                lo = std::clamp<std::int64_t>(i + kk + 1, 0, cols);
-                hi = cols;
-            } else {
-                lo = 0;
-                hi = std::clamp<std::int64_t>(i + kk, 0, cols);
+    // Row by row, in place; large ones without the GIL, as the copy above (API.md §3).
+    {
+        const parallel::Unlocked unlocked(out.size() >= kParallelThreshold);
+        for (std::int64_t m = 0; m < mats; ++m)
+            for (std::int64_t i = 0; i < rows; ++i) {
+                std::byte* row = p + (m * rows + i) * cols * item;
+                // tril keeps j <= i + k; triu keeps j >= i + k. All-zero bytes are
+                // 0 / False / +0.0 / 0j in every dtype.
+                std::int64_t lo, hi;  // the zeroed columns [lo, hi)
+                if constexpr (Lower) {
+                    lo = std::clamp<std::int64_t>(i + kk + 1, 0, cols);
+                    hi = cols;
+                } else {
+                    lo = 0;
+                    hi = std::clamp<std::int64_t>(i + kk, 0, cols);
+                }
+                if (hi > lo) std::memset(row + lo * item, 0, static_cast<size_t>((hi - lo) * item));
             }
-            if (hi > lo) std::memset(row + lo * item, 0, static_cast<size_t>((hi - lo) * item));
-        }
+    }
     return wrap(std::move(out));
 }
 
@@ -518,6 +548,7 @@ nb::object diff(nb::handle x, nb::handle axis_obj, nb::handle n_obj, nb::handle 
     const std::int64_t n = parse_int(n_obj, "n");
     if (n < 0) throw nb::value_error("'n' must be non-negative");
     nb::object cur = nb::borrow(x);
+    if (n == 0) return cur;  // x itself, before prepend and append are joined (numpy too)
     if (!prepend.is_none() || !append.is_none()) {
         nb::list parts;
         if (!prepend.is_none()) parts.append(edge(prepend, a, axis, "prepend"));
@@ -542,23 +573,40 @@ nb::object diff(nb::handle x, nb::handle axis_obj, nb::handle n_obj, nb::handle 
 
 void bind_manipulation(nb::module_& m) {
     using nb::arg;
-    m.def("flip", named("flip", &flip), arg().none(), nb::kw_only(), arg("axis").none() = nb::none());
+    m.def(
+        "flip", named("flip", &flip), nb::sig("def flip(x, /, *, axis=None)"), arg().none(), nb::kw_only(),
+        arg("axis").none() = nb::none()
+    );
     // nanobind prints no "/" before a named positional argument; x is positional-only all the same.
     m.def(
-        "roll", named("roll", &roll), arg().none(), arg("shift").none(), nb::kw_only(), arg("axis").none() = nb::none(),
-        nb::sig("def roll(arg0: object | None, /, shift: object | None, *, axis: object | None = None) -> object")
+        "roll", named("roll", &roll), nb::sig("def roll(x, /, shift, *, axis=None)"), arg().none(), arg("shift").none(),
+        nb::kw_only(), arg("axis").none() = nb::none()
     );
     m.def(
-        "repeat", named("repeat", &repeat), arg().none(), arg().none(), nb::kw_only(), arg("axis").none() = nb::none()
+        "repeat", named("repeat", &repeat), nb::sig("def repeat(x, repeats, /, *, axis=None)"), arg().none(),
+        arg().none(), nb::kw_only(), arg("axis").none() = nb::none()
     );
-    m.def("tile", named("tile", &tile), arg().none(), arg().none());
-    m.def("unstack", named("unstack", &unstack), arg().none(), nb::kw_only(), arg("axis").none() = 0);
-    m.def("meshgrid", named("meshgrid", &meshgrid), arg("arrays"), nb::kw_only(), arg("indexing").none() = "xy");
-    m.def("tril", named("tril", &triangle<true>), arg().none(), nb::kw_only(), arg("k").none() = 0);
-    m.def("triu", named("triu", &triangle<false>), arg().none(), nb::kw_only(), arg("k").none() = 0);
+    m.def("tile", named("tile", &tile), nb::sig("def tile(x, repetitions, /)"), arg().none(), arg().none());
     m.def(
-        "diff", named("diff", &diff), arg().none(), nb::kw_only(), arg("axis").none() = -1, arg("n").none() = 1,
-        arg("prepend").none() = nb::none(), arg("append").none() = nb::none()
+        "unstack", named("unstack", &unstack), nb::sig("def unstack(x, /, *, axis=0)"), arg().none(), nb::kw_only(),
+        arg("axis").none() = 0
+    );
+    m.def(
+        "meshgrid", named("meshgrid", &meshgrid), nb::sig("def meshgrid(*arrays, indexing='xy')"), arg("arrays"),
+        nb::kw_only(), arg("indexing").none() = "xy"
+    );
+    m.def(
+        "tril", named("tril", &triangle<true>), nb::sig("def tril(x, /, *, k=0)"), arg().none(), nb::kw_only(),
+        arg("k").none() = 0
+    );
+    m.def(
+        "triu", named("triu", &triangle<false>), nb::sig("def triu(x, /, *, k=0)"), arg().none(), nb::kw_only(),
+        arg("k").none() = 0
+    );
+    m.def(
+        "diff", named("diff", &diff), nb::sig("def diff(x, /, *, axis=-1, n=1, prepend=None, append=None)"),
+        arg().none(), nb::kw_only(), arg("axis").none() = -1, arg("n").none() = 1, arg("prepend").none() = nb::none(),
+        arg("append").none() = nb::none()
     );
 }
 

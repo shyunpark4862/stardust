@@ -314,3 +314,67 @@ def test_na_values_apply_to_quoted_fields(tmp_path):  # docs/api/frame.md §10.3
     assert df["a"].tolist() == [NA, NA, ""] and df["b"].tolist() == ["x", NA, "y"] and df["c"].tolist() == [1, 2, NA]
     df = sd.frame.read_csv(p, na_values=[""])
     assert df["a"].tolist() == ["NA", "NA", NA]  # the quoted empty field too
+
+
+# --- UTF-8 in names and messages, nrows, na_values, chunks -----------------------
+
+
+def test_invalid_utf8_header_and_message_are_value_errors(tmp_path):
+    p = tmp_path / "x.csv"
+    p.write_bytes(b"\xff\n1\n")
+    with pytest.raises(ValueError, match=r"^read_csv\(\): line 1: column names are not valid UTF-8$"):
+        sd.frame.read_csv(p)
+    p.write_bytes(b"\xff\n1\n")
+    assert sd.frame.read_csv(p, names=["a"])["a"].tolist() == [1]  # names= replaces the header
+    p.write_bytes(b"a\nx\xffy\xc3\xa9\n")
+    with pytest.raises(ValueError, match=r"^read_csv\(\): line 2: column 'a': cannot read 'x\\xffy\xe9' as int64$"):
+        sd.frame.read_csv(p, dtype="int64")
+    with pytest.raises(ValueError, match=r"^read_csv\(\): line 2: column 'a' is not valid UTF-8$"):
+        sd.frame.read_csv(p)
+
+
+def test_nrows_reads_only_the_records_it_needs(tmp_path):
+    p = tmp_path / "x.csv"
+    body = "".join(f'{i},"q\n{i}"\r\n' for i in range(200_000))
+    p.write_text("a,b\n" + body + "bad,row,here\n", newline="")
+    for nrows in (0, 1, 3, 70_000, 200_000):
+        df = sd.frame.read_csv(p, nrows=nrows)
+        assert df["a"].tolist() == list(range(nrows))
+        assert df["b"].tolist() == [f"q\n{i}" for i in range(nrows)]
+    with pytest.raises(ValueError, match="expected 2 fields, got 3"):
+        sd.frame.read_csv(p, nrows=200_001)
+    q = tmp_path / "y.csv"
+    q.write_text("1\n2\n3")  # no final line feed
+    assert sd.frame.read_csv(q, header=False, names=["a"], nrows=5)["a"].tolist() == [1, 2, 3]
+    assert sd.frame.read_csv(q, header=False, names=["a"], nrows=3)["a"].tolist() == [1, 2, 3]
+
+
+def test_na_values_match_only_their_texts(tmp_path):
+    p = tmp_path / "x.csv"
+    p.write_text('a,b\nNA,N\n"NA",NAN\nNAx,-\n' + "a" * 70 + ",x\n")
+    df = sd.frame.read_csv(p, na_values=["NA", "-", "a" * 70])
+    assert df["a"].tolist() == [sd.frame.NA, sd.frame.NA, "NAx", sd.frame.NA]
+    assert df["b"].tolist() == ["N", "NAN", sd.frame.NA, "x"]
+
+
+def test_columns_that_turn_to_text_late_in_a_chunk(tmp_path):
+    # Fields go straight into per-chunk values; a chunk read as numbers is
+    # read again as text when its column becomes a string column.
+    rows = [f"{i},{i * 0.5},{'x' if i == 150_000 else i},{'True' if i % 2 else 'False'}" for i in range(200_000)]
+    rows[3] = "3,,,"
+    p = tmp_path / "x.csv"
+    p.write_text("a,b,c,d\n" + "\n".join(rows) + "\n")
+    out = set()
+    for t in sorted({1, 3, sd.get_num_threads()}):
+        default = sd.get_num_threads()
+        sd.set_num_threads(t)
+        try:
+            df = sd.frame.read_csv(p)
+        finally:
+            sd.set_num_threads(default)
+        assert [df[c].dtype for c in df] == [sd.int64, sd.float64, sd.string, sd.bool]
+        c = df["c"].tolist()
+        assert c[150_000] == "x" and c[149_999] == "149999" and c[3] is sd.frame.NA
+        assert df["b"].tolist()[3] is sd.frame.NA and df["d"].tolist()[3] is sd.frame.NA
+        out.add(tuple(tuple(df[k].tolist()) for k in df))
+    assert len(out) == 1

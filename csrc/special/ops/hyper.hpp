@@ -1058,7 +1058,25 @@ inline double hyp2f1(double a, double b, double c, double z) {
         return kNaN;  // diverges (docs/api/special.md §11)
     }
     if (z > 1.0) return kNaN;
-    if (poly) return f_series(a, b, c, z);
+    if (poly) {
+        const double r = f_series(a, b, c, z);
+        if (!std::isnan(r) || !(z > 0.0)) return r;
+        // The sum lost more than kMaxCancel2 for 0 < z < 1 (the alternating (p)_k: from degree
+        // 60-200, hyp2f1(-200, 1, 2, 0.3) was NaN). Pfaff, 2F1(p, q; c; z) = (1 - z)^-p
+        // 2F1(p, c - q; c; w), w = z / (z - 1) < 0, is the same polynomial in w, and for
+        // c > 0, c - q > 0 every term of it is positive (Jacobi and Gegenbauer polynomials
+        // are this form). Else NaN as before. (A transformation, not a new region's branch.)
+        const double p = pa && n == a ? a : b, q = (p == a) ? b : a;
+        const dd::DD cq = dd::two_sum(c, -q);  // c - q, exact
+        if (!(c > 0.0 && cq.hi > 0.0)) return r;
+        const dd::DD omz = dd::two_sum(1.0, -z);  // 1 - z, exact
+        const dd::DD wq = dd::DD{-z, 0.0} / omz;
+        const double tilt = -p * omz.lo / omz.hi;  // (1 - z)^-p = hi^-p (1 + lo/hi)^-p
+        const double low_power = std::fabs(tilt) < 0x1p-27 ? 1.0 + tilt : std::exp(-p * std::log1p(omz.lo / omz.hi));
+        return value(
+            pow_scaled(omz.hi, -p) * scaled(low_power) * f_series_scaled(p, cq.hi, c, wq.hi, {0.0, cq.lo, 0.0, wq.lo})
+        );
+    }
     if (z > 0.0) return f_unit(a, b, c, z);
     // z < 0: Pfaff with the larger of a, b first: (1-z)^-a 2F1(a, c-b; c; w)
     const double A = std::max(a, b), B = std::min(a, b);

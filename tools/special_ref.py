@@ -2248,7 +2248,8 @@ def build_reduce():
 
 # ---------------------------------------------------------------- writing
 
-_PROVENANCE = {"arb": f"python-flint {flint.__version__}", "bits": arbref.TARGET_BITS}
+# The reference files of special and stats carry the same two fields (tests/special/refdata.py provenance).
+_PROVENANCE = {"arb": f"python-flint {flint.__version__}", "target_bits": arbref.TARGET_BITS}
 
 
 def double_double(v):

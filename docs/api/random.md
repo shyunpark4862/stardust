@@ -14,8 +14,10 @@ rng.spawn(n, /)
 rng.state
 ```
 - 물리 메모리보다 큰 결과를 요청하면 스트림을 움직이기 전에 `MemoryError`다: `permutation(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`(API.md §2). 생성기의 `position`은 그대로다.
+  - 검사하는 양은 그 호출이 실제로 받는 메모리다. 결과(배열 `permutation`은 섞은 복사본, 배열 `a`의 `choice`는 고른 원소)와 섞기에 쓰는 자리를 더한다. 비복원 `choice`는 작은 표본이면 원소당 64바이트, 그 밖에는 모집단 n개의 자리(8n바이트)를 더 쓴다.
 - 전역 함수와 전역 상태가 없다. 난수는 언제나 Generator에서 받는다. 분포의 표본은 `sd.stats`의 각 분포에 있다(`X.sample(shape, rng=rng)`).
 - 생성기는 **Philox4×64-10**이다(R5). 같은 시드와 같은 호출 순서면 같은 값이고, **스레드 수와 상관없다**. 한 호출을 둘로 나누어 불러도 앞의 원소들은 같다. numpy의 `default_rng`와 값은 다르다.
+- 틀린 호출 모양(인자 개수, 없는 키워드, positional-only를 키워드로)의 에러: `default_rng`는 라이브러리의 꼴로 함수 이름으로 시작한다(`default_rng(): got some positional-only arguments passed as keyword arguments: 'seed'`). Generator의 메서드는 Python의 꼴 그대로다(`Generator.random() takes from 1 to 2 positional arguments but 3 were given`). 짧은 호출에 감싸는 비용(약 60ns)을 더하지 않으려는 예외다 (API.md §2.1).
 - **`shape`**: `None`이면 스칼라(Python `float`/`int`), 또는 int, int의 tuple이다. `integers`에서 `low`·`high`가 배열이면 `None`은 그 둘을 브로드캐스트한 모양이다(numpy의 `size=None`과 같다). 0인 축도 된다.
 
 ### §1.1 `default_rng(seed=None, /)`
@@ -23,7 +25,7 @@ rng.state
 - 키는 numpy의 `SeedSequence`와 같은 해시로 만든다(R6). 그래서 비슷한 시드(0, 1, 2)도 서로 무관한 수열이다.
 
 ### §1.2 `random(shape=None, /)`
-- `shape`(모든 메서드 공통): `None`이면 스칼라, int나 int의 tuple이면 배열이다. `()`는 `ValueError`다(0차원 배열이 없다. 메시지는 `메서드(): 'shape' must not be ()`로 같다).
+- `shape`(모든 메서드 공통): `None`이면 스칼라, int나 int의 tuple이면 배열이다. `()`는 `ValueError`다. 0차원 배열이 없다. 메시지는 배열을 만들 때와 같다: `메서드(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)`. 음수 축도 배열과 같은 `메서드(): negative dimensions are not allowed`다. `sd.stats`의 `sample()`도 같은 문장이다.
 - [0, 1)의 float64. 64비트의 위 53비트 × 2⁻⁵³ (numpy와 같은 변환).
 
 ### §1.3 `integers(low, high=None, /, *, shape=None, endpoint=False)`
@@ -44,6 +46,7 @@ rng.state
 ### §1.6 `spawn(n, /)`, `state`, 복사와 피클
 - `spawn(n)`: 키가 다른 독립 생성기 n개의 리스트(numpy `SeedSequence.spawn`과 같은 키). 다시 부르면 번호가 이어진다.
 - `state`: 시드 수열과 위치를 담은 dict(`bit_generator`, `entropy`, `spawn_key`, `n_children_spawned`, `position`). 대입하면 그 상태로 돌아간다. 잘못된 값의 에러는 모두 `.state: '키' …`로 시작한다(dict가 아니거나 키가 빠진 경우 포함).
+  - `entropy`는 int나 int의 시퀀스다. `None`은 `TypeError`다. `state`가 내놓는 값에는 `None`이 없고, `None`(OS 엔트로피)을 받으면 대입할 때마다 다른 상태가 되기 때문이다.
 - `copy.copy`, `copy.deepcopy`, `pickle`은 같은 상태의 독립 생성기를 만든다.
 
 ### §1.7 여러 Python 스레드

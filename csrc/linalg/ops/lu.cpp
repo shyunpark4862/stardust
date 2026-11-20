@@ -12,6 +12,7 @@
 #include "linalg/pyrefs.hpp"
 #include "linalg/ops/common.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -39,16 +40,53 @@ void sign_logabs(const T* lu, const lint* ipiv, lint n, bool singular, T& sign, 
     }
 }
 
+// d = m * 2^e with m's larger component in [0.5, 1) (0 stays 0).
+inline void normalize(double& m, std::int64_t& e) {
+    int k;
+    m = std::frexp(m, &k);
+    e += k;
+}
+inline void normalize(cplx& m, std::int64_t& e) {
+    int k;
+    std::frexp(std::max(std::fabs(m.real()), std::fabs(m.imag())), &k);
+    m = cplx(std::ldexp(m.real(), -k), std::ldexp(m.imag(), -k));
+    e += k;
+}
+inline bool normal(double v) { return std::isnormal(v); }
+inline bool normal(cplx v) {
+    // a component may be an exact 0 (a real matrix in complex arithmetic)
+    return (std::isnormal(v.real()) || v.real() == 0) && (std::isnormal(v.imag()) || v.imag() == 0) && v != cplx(0);
+}
+
 // The determinant itself: the product of U's diagonal, with the swaps' sign.
 template <class T>
 T det_of(const T* lu, const lint* ipiv, lint n, bool singular) {
     if (singular) return T(0);
     T d = T(1);
+    bool ok = true;
     for (lint i = 0; i < n; ++i) {
         d *= lu[i * n + i];
         if (ipiv[i] != i + 1) d = -d;
+        ok &= normal(d);
     }
-    return d;
+    if (ok) return d;
+    // A partial product overflowed or left the normal range, although the determinant
+    // may not (diag(1e200, 1e200, 1e-300)). Again with every factor and partial product
+    // scaled into [0.5, 1) and the powers of 2 summed apart: scaling by a power of 2 is
+    // exact, so the products round as above while they stay normal, and only the final
+    // ldexp can overflow or underflow.
+    d = T(1);
+    std::int64_t e = 0;
+    for (lint i = 0; i < n; ++i) {
+        T u = lu[i * n + i];
+        normalize(u, e);
+        d *= u;
+        normalize(d, e);
+        if (ipiv[i] != i + 1) d = -d;
+    }
+    const int k = static_cast<int>(std::clamp<std::int64_t>(e, -4000, 4000));  // past either end: 0 or inf
+    if constexpr (std::is_same_v<T, cplx>) return cplx(std::ldexp(d.real(), k), std::ldexp(d.imag(), k));
+    else return std::ldexp(d, k);
 }
 
 // A body for det/slogdet: factor, tolerate singular matrices (docs/design/linalg.md §2.2).
@@ -77,7 +115,7 @@ nb::object det(nb::handle xo) {
                         d = det_of(lu, ipiv, n, sing);
                     });
                 },
-                lu_task_cap(n, 0, true)
+                lu_task_cap(n, 0)
             );
             if (f) raise(b, f, "det", "x");
             return py_scalar(d);
@@ -91,7 +129,7 @@ nb::object det(nb::handle xo) {
                     res[i] = det_of(lu, ipiv, n, sing);
                 });
             },
-            lu_task_cap(n, 0, true)
+            lu_task_cap(n, 0)
         );
         if (f) raise(b, f, "det", "x");
         return to_array(out);
@@ -115,7 +153,7 @@ nb::object slogdet(nb::handle xo) {
                         sign_logabs(lu, ipiv, n, sing, sign, logabs);
                     });
                 },
-                lu_task_cap(n, 0, true)
+                lu_task_cap(n, 0)
             );
             if (f) raise(b, f, "slogdet", "x");
             return make_slogdet(py_scalar(sign), py_scalar(logabs));
@@ -131,7 +169,7 @@ nb::object slogdet(nb::handle xo) {
                     sign_logabs(lu, ipiv, n, sing, sign[i], logabs[i]);
                 });
             },
-            lu_task_cap(n, 0, true)
+            lu_task_cap(n, 0)
         );
         if (f) raise(b, f, "slogdet", "x");
         return make_slogdet(to_array(sign_out), to_array(logabs_out));
@@ -156,7 +194,7 @@ nb::object inv(nb::handle xo) {
                 lu_inverse(a, ipiv, n, rs.get());  // this element's slot, filled in place
                 return 0;
             },
-            lu_task_cap(n, n, true)
+            lu_task_cap(n, n)
         );
         if (f) raise(b, f, "inv", "x");
         return to_array(out);
@@ -176,7 +214,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
         Out out = r.vec ? alloc_vectors(b.shape(), n, dtype_of<T>()) : alloc_matrices(b.shape(), n, k, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(
-            b, cost(kLU, double(n) * n),
+            b, cost(kLU, double(n) * n) + rhs_cost(n, k),
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 T* lu;
                 lint* ipiv;
@@ -187,7 +225,7 @@ nb::object solve(nb::handle ao, nb::handle bo) {
                 if (n > 0 && k > 0) lapack::getrs('N', n, k, lu, n, ipiv, x, n);
                 return 0;
             },
-            lu_task_cap(n, k, true)
+            lu_task_cap(n, k)
         );
         if (f) raise(b, f, "solve", "a");
         return to_array(out);
@@ -199,10 +237,10 @@ nb::object solve(nb::handle ao, nb::handle bo) {
 void bind_lu(nb::module_& m) {
     // Unnamed args are positional-only (docs/api/linalg.md §1.1). .none() lets None reach
     // Input, which rejects every non-sd.ndarray argument with the same TypeError.
-    m.def("solve", named("solve", &solve), nb::arg().none(), nb::arg().none());
-    m.def("inv", named("inv", &inv), nb::arg().none());
-    m.def("det", named("det", &det), nb::arg().none());
-    m.def("slogdet", named("slogdet", &slogdet), nb::arg().none());
+    m.def("solve", named("solve", &solve), nb::sig("def solve(a, b, /)"), nb::arg().none(), nb::arg().none());
+    m.def("inv", named("inv", &inv), nb::sig("def inv(x, /)"), nb::arg().none());
+    m.def("det", named("det", &det), nb::sig("def det(x, /)"), nb::arg().none());
+    m.def("slogdet", named("slogdet", &slogdet), nb::sig("def slogdet(x, /)"), nb::arg().none());
 }
 
 }  // namespace sd::linalg

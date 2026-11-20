@@ -6,11 +6,18 @@ the true value and is settled to 2^-110 of it, and stores, in tests/special/ref/
     x0, x1, ...   the inputs (float64)
     hi, lo        the reference as a double-double: value ~= hi + lo, |lo| <= ulp(hi) / 2
     guaranteed    bool: the input lies in the function's guaranteed region (docs/api/special.md §1.4)
-    scale         the bound's multiplier at each point (S4 on): max(1, kappa) for the inverses,
-                  whose contract is |dx / x| <= 1e-14 max(1, kappa); 1 elsewhere (absent in
-                  older files)
+    scale         the bound's multiplier at each point: the contract is |error| <= 1e-14 scale
+                  (relative). max(1, kappa) for the inverses (|dx / x| <= 1e-14 max(1, kappa));
+                  max(1, M / |f|), M the envelope of |f|, near the zeros of the oscillatory
+                  Bessel and Airy functions and of the complex error functions and wofz;
+                  1 elsewhere (absent in older files)
+    arb           the provenance: "python-flint <version>" that computed the reference
+    target_bits   the settling target: each ball's radius is below 2^-target_bits of its value
+                  (some older files call it bits, or give the bare version in arb;
+                  provenance() reads both)
 
-so an error can be measured to a fraction of an ULP without Arb at test time.
+so an error can be measured to a fraction of an ULP without Arb at test time. The stats
+reference files (tools/stats_ref.py, tests/stats/refdata.py) have the same format.
 """
 
 import pathlib
@@ -64,6 +71,17 @@ def load(name):
     with np.load(REF / f"{name}.npz") as f:
         nin = int(f["nin"])
         return tuple(f[f"x{k}"] for k in range(nin)), f["hi"], f["lo"], f["guaranteed"]
+
+
+def provenance(name, ref=REF):
+    """{"arb": "python-flint <version>", "target_bits": int} of a reference file in `ref`
+    (tests/stats/ref too), from either spelling of the fields; None where the file has none."""
+    with np.load(ref / f"{name}.npz") as f:
+        arb = str(f["arb"]) if "arb" in f.files else None
+        bits = next((int(f[k]) for k in ("target_bits", "bits") if k in f.files), None)
+    if arb is not None and not arb.startswith("python-flint"):
+        arb = f"python-flint {arb}"
+    return {"arb": arb, "target_bits": bits}
 
 
 def scale(name):

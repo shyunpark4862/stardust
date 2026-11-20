@@ -408,10 +408,18 @@ struct Bernoulli {
     static double ccdf(double x, double p) { return x < 0.0 ? 1.0 : (x < 1.0 ? p : 0.0); }
     static double logcdf(double x, double p) { return x < 0.0 ? -kInf : (x < 1.0 ? std::log1p(-p) : 0.0); }
     static double logccdf(double x, double p) { return x < 0.0 ? 0.0 : (x < 1.0 ? std::log(p) : -kInf); }
-    static double icdf(double t, double p) { return Binomial::icdf(t, 1.0, p); }
-    static double iccdf(double t, double p) { return Binomial::iccdf(t, 1.0, p); }
-    static double ilogcdf(double t, double p) { return Binomial::ilogcdf(t, 1.0, p); }
-    static double ilogccdf(double t, double p) { return Binomial::ilogccdf(t, 1.0, p); }
+    static double icdf(double t, double p) {
+        return disc::settle<Bernoulli>(disc::Inv::icdf, t, Binomial::icdf(t, 1.0, p), p);
+    }
+    static double iccdf(double t, double p) {
+        return disc::settle<Bernoulli>(disc::Inv::iccdf, t, Binomial::iccdf(t, 1.0, p), p);
+    }
+    static double ilogcdf(double t, double p) {
+        return disc::settle<Bernoulli>(disc::Inv::ilogcdf, t, Binomial::ilogcdf(t, 1.0, p), p);
+    }
+    static double ilogccdf(double t, double p) {
+        return disc::settle<Bernoulli>(disc::Inv::ilogccdf, t, Binomial::ilogccdf(t, 1.0, p), p);
+    }
     static double mean(double p) { return p; }
     static double variance(double p) { return p * (1.0 - p); }
     static double skewness(double p) { return Binomial::skewness(1.0, p); }
@@ -661,10 +669,18 @@ struct Geometric {
     static Fns at(double p, double log_upper) {
         return disc::with_guess(fns(p), std::ceil(log_upper / std::log1p(-p)));
     }
-    static double icdf(double t, double p) { return disc::icdf(t, at(p, std::log1p(-t))); }
-    static double iccdf(double t, double p) { return disc::iccdf(t, at(p, std::log(t))); }
-    static double ilogcdf(double t, double p) { return disc::ilogcdf(t, at(p, std::log(-std::expm1(t)))); }
-    static double ilogccdf(double t, double p) { return disc::ilogccdf(t, at(p, t)); }
+    static double icdf(double t, double p) {
+        return disc::settle<Geometric>(disc::Inv::icdf, t, disc::icdf(t, at(p, std::log1p(-t))), p);
+    }
+    static double iccdf(double t, double p) {
+        return disc::settle<Geometric>(disc::Inv::iccdf, t, disc::iccdf(t, at(p, std::log(t))), p);
+    }
+    static double ilogcdf(double t, double p) {
+        return disc::settle<Geometric>(disc::Inv::ilogcdf, t, disc::ilogcdf(t, at(p, std::log(-std::expm1(t)))), p);
+    }
+    static double ilogccdf(double t, double p) {
+        return disc::settle<Geometric>(disc::Inv::ilogccdf, t, disc::ilogccdf(t, at(p, t)), p);
+    }
 
     // ---- chunk kernels: log q and log p once per chunk for a scalar p, vForce's exp ----
 
@@ -763,8 +779,10 @@ struct Geometric {
     // in k is e / |log q| + e r; so when r is further than 64u (1 / |log q| + r) from both
     // g - 1 and g, the search can only return g, and the kernel returns it without the two
     // evaluations. Everything else (the ends t = 0 and 1, tiny or huge r, p = 1) is searched.
+    // The g of the fast path is still checked one step below (disc::settle, D-13): a target that
+    // is a rounded cdf(k) can be far from k in r when it is near 1.
     template <class LogUpper, class Scalar>
-    static void inverse_kernel(const Chunk<1>& c, double* out, LogUpper&& log_upper, Scalar&& scalar) {
+    static void inverse_kernel(const Chunk<1>& c, double* out, LogUpper&& log_upper, Scalar&& scalar, disc::Inv which) {
         const bool same = c.same[0];
         double lq = same ? std::log1p(-c.p[0][0]) : 0.0;
         for (int i = 0; i < c.n; ++i) {
@@ -774,7 +792,7 @@ struct Geometric {
                 const double r = log_upper(t) / lq, g = std::ceil(r);
                 const double margin = 64.0 * kUlp * (r - 1.0 / lq);
                 if (g - r > margin && r - (g - 1.0) > margin && g < 0x1p52) {
-                    out[i] = g;
+                    out[i] = disc::settle<Geometric>(which, t, g, p);
                     continue;
                 }
             }
@@ -782,10 +800,10 @@ struct Geometric {
         }
     }
     static void icdf_chunk(const Chunk<1>& c, double* out) {
-        inverse_kernel(c, out, [](double t) { return std::log1p(-t); }, &Geometric::icdf);
+        inverse_kernel(c, out, [](double t) { return std::log1p(-t); }, &Geometric::icdf, disc::Inv::icdf);
     }
     static void iccdf_chunk(const Chunk<1>& c, double* out) {
-        inverse_kernel(c, out, [](double t) { return std::log(t); }, &Geometric::iccdf);
+        inverse_kernel(c, out, [](double t) { return std::log(t); }, &Geometric::iccdf, disc::Inv::iccdf);
     }
 
     static double mean(double p) { return 1.0 / p; }

@@ -56,8 +56,8 @@ bool parse_bool(nb::handle o, const char* what);
 enum class IndexResult { Ok, NotInt, Overflow };
 IndexResult index_value(nb::handle o, std::int64_t& out);
 
-// A real-number argument (correction=, ord=, rtol=): a Python float (numpy.float64
-// is one), or an int by the rule above. nullopt for anything else; an int beyond the
+// A real-number argument (correction=, ord=, rtol=): a Python float, any numpy
+// floating scalar (numpy.float64, float32, float16), or an int by the rule above. nullopt for anything else; an int beyond the
 // double range is OverflowError "'what' is out of range" (what: the argument's name).
 std::optional<double> real_value(nb::handle o, const char* what = nullptr);
 

@@ -267,7 +267,11 @@ std::vector<double> parse_q(nb::handle o, bool& scalar) {
     std::vector<double> qs;
     if (is_ndarray(o)) {
         const NDArray& a = as_ndarray(o);
-        if (a.dtype == DType::Complex128) throw nb::type_error("'q' must be real, not complex128");
+        // A real array: int64 or float64. bool is no number here, as a bool scalar is not.
+        if (a.dtype == DType::Complex128 || a.dtype == DType::Bool)
+            throw nb::type_error(
+                (std::string("'q' must be an int64 or float64 array, not ") + dtype_name(a.dtype)).c_str()
+            );
         if (a.ndim > 1) throw nb::value_error("'q' must be a scalar or 1-D");
         scalar = false;
         NDArray d = new_array(DType::Float64, a.shape_span());
@@ -377,15 +381,23 @@ void bind_quantile(nb::module_& m) {
     const auto keepdims = arg("keepdims").none() = false;
     const auto method = arg("method").none() = "linear";
     m.def(
-        "quantile", named("quantile", &quantile_impl<false>), arg().none(), arg().none(), nb::kw_only(), axis, method,
-        keepdims
+        "quantile", named("quantile", &quantile_impl<false>),
+        nb::sig("def quantile(x, q, /, *, axis=None, method='linear', keepdims=False)"), arg().none(), arg().none(),
+        nb::kw_only(), axis, method, keepdims
     );
     m.def(
-        "nanquantile", named("nanquantile", &quantile_impl<true>), arg().none(), arg().none(), nb::kw_only(), axis,
-        method, keepdims
+        "nanquantile", named("nanquantile", &quantile_impl<true>),
+        nb::sig("def nanquantile(x, q, /, *, axis=None, method='linear', keepdims=False)"), arg().none(), arg().none(),
+        nb::kw_only(), axis, method, keepdims
     );
-    m.def("median", named("median", &median_impl<false>), arg().none(), nb::kw_only(), axis, keepdims);
-    m.def("nanmedian", named("nanmedian", &median_impl<true>), arg().none(), nb::kw_only(), axis, keepdims);
+    m.def(
+        "median", named("median", &median_impl<false>), nb::sig("def median(x, /, *, axis=None, keepdims=False)"),
+        arg().none(), nb::kw_only(), axis, keepdims
+    );
+    m.def(
+        "nanmedian", named("nanmedian", &median_impl<true>),
+        nb::sig("def nanmedian(x, /, *, axis=None, keepdims=False)"), arg().none(), nb::kw_only(), axis, keepdims
+    );
 }
 
 }  // namespace sd

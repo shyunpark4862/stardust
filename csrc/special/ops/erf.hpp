@@ -186,8 +186,12 @@ struct Erf : Real {
             const double a = std::fabs(x[i]);
             if (a < 1.0) {
                 o[i] = erf_small(x[i]);
+            } else if (a != a) {
+                // the NaN itself (the tail's arithmetic made it -NaN on one path: erf(nan) was
+                // 0xfff8... for a scalar and 0x7ff8... in an array; ndtr and scipy keep the input)
+                o[i] = x[i];
             } else {
-                const double v = 1.0 - erfc_tail(a, e[i], lo[i]);  // NaN stays NaN
+                const double v = 1.0 - erfc_tail(a, e[i], lo[i]);
                 o[i] = x[i] < 0.0 ? -v : v;
             }
         }
@@ -209,6 +213,8 @@ struct Erfc : Real {
             const double a = std::fabs(x[i]);
             if (a < 1.0) {
                 o[i] = 1.0 - erf_small(x[i]);
+            } else if (a != a) {
+                o[i] = x[i];  // the NaN itself (as erf)
             } else {
                 const double y = erfc_tail(a, e[i], lo[i]);
                 o[i] = x[i] < 0.0 ? 2.0 - y : y;

@@ -366,7 +366,8 @@ def test_exact_fit_and_iteration_cap():
     for r in (R.rlm(y, X, norm="bisquare"), R.rlm(y, X, method="MM", rng=sd.random.default_rng(0))):
         assert r.scale == 0.0 and r.converged
         assert r.params.tolist() == [1.0, 2.0, -1.0]
-        assert np.all(a(r.bse) == 0.0) and np.all(a(r.pvalues) == 0.0)
+        # a scale of 0: bse 0, t and p NaN (D-3)
+        assert np.all(a(r.bse) == 0.0) and np.all(np.isnan(a(r.pvalues)))
         assert np.all(a(r.weights)[:10] == 0.0) and np.all(a(r.weights)[10:] == 1.0)
     y2, X2 = contaminated(seed=9)
     c = R.rlm(y2, X2, norm="bisquare", max_iter=1)
@@ -655,8 +656,7 @@ def test_slopes_batch_nan_errors():
         R.theilslopes(yn, x, nan_policy="raise")
     with pytest.raises(ValueError, match=r"siegelslopes\(\): 'y' contains infinity"):
         R.siegelslopes(np.r_[y[:-1], np.inf], x)
-    with pytest.raises(ValueError, match="length at least 2"):
-        R.theilslopes([1.0], [2.0])
+    assert all(math.isnan(v) for v in R.theilslopes([1.0], [2.0]))  # too few points: NaN (D-20)
     with pytest.raises(ValueError, match=r"theilslopes\(\): 'method' must be 'joint' or 'separate', not 'x'"):
         R.theilslopes(y, x, method="x")
     with pytest.raises(ValueError, match=r"siegelslopes\(\): 'method' must be 'hierarchical' or 'separate'"):

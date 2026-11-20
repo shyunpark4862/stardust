@@ -266,9 +266,15 @@ def test_nist_against_scipy():
                     a[2] += (min(N.lre(v, cv) for v, cv in zip(r.x.tolist(), d["params"])) >= 6) - (
                         min(N.lre(v, cv) for v, cv in zip(q.x, d["params"])) >= 6
                     )
-                    if method == "lm":
-                        same = r.x.tolist() == q.x.tolist() and r.status == q.status
-                        assert same == (f"{name}/{start}" not in NIST_LM_APART[jac]), (name, start, jac)
+                    if method == "lm" and f"{name}/{start}" not in NIST_LM_APART[jac]:
+                        m, p = len(yn), len(p0)
+                        if m >= 10 * p and m * p >= 2000:
+                            # nls's build of lmder (m >> n, BP-3): the same steps up to rounding
+                            assert r.status == q.status and dist(r.x.tolist(), q.x, p0) <= 1e-8, (name, start, jac)
+                            calls = r.nfev - (len(p0) * r.njev if jac == "2-point" else 0)
+                            assert abs(calls - q.nfev) <= 3, (name, start, jac, calls, q.nfev)
+                        else:  # scipy's build: its steps to the bit (O95)
+                            assert r.x.tolist() == q.x.tolist() and r.status == q.status, (name, start, jac)
     # of 54 fits each: 'trf' parts on MGH09, MGH10, MGH17, BoxBOD and Bennett5 (start 1)
     least = {
         ("trf", "analytic"): (52, 54),
@@ -286,7 +292,8 @@ def test_nist_against_scipy():
 def test_lm_against_fortran_lmder1():
     # MINPACK's LMDER1 driver runs (tol = sqrt(u), gtol 0, maxfev 100 (n + 1)), compiled from
     # netlib: as close as scipy's leastsq (docs/design/optimize.md §7: calls 47, x 37/45 of 53),
-    # whose steps 'lm' takes to the bit (O95)
+    # whose steps 'lm' takes to the bit (O95). 'lm' needs gtol >= u (scipy's rule): u, whose
+    # test |g| <= u does not stop these runs before the others
     tol = math.sqrt(2.0**-52)
     info_of = {2: 1, 3: 2, 4: 3, 1: 4, 0: 5}
     same = [0, 0, 0, 0]
@@ -294,14 +301,16 @@ def test_lm_against_fortran_lmder1():
         c = mgh.BY_ID[rec["id"]]
         F, J = sd_fns(c)
         r = sd.optimize.least_squares(
-            F, c.x0(), jac=J, method="lm", ftol=tol, xtol=tol, gtol=0.0, max_nfev=100 * (c.n + 1)
+            F, c.x0(), jac=J, method="lm", ftol=tol, xtol=tol, gtol=2.0**-52, max_nfev=100 * (c.n + 1)
         )
         d = max(abs(u - v) for u, v in zip(r.x.tolist(), rec["x"])) / max(max(abs(v) for v in rec["x"]), 1e-300)
         same[0] += info_of[r.status] == rec["info"]
         same[1] += r.nfev == rec["calls_f"] and r.n_iter == rec["calls_j"]
         same[2] += d <= 1e-12
         same[3] += d <= 1e-6
-    assert same[0] >= 47 and same[1] >= 47 and same[2] >= 37 and same[3] >= 45, same
+    # (gtol = u: Powell's singular function from x0 stops one call earlier, near its solution 0,
+    # so one fewer x within 1e-12 and 1e-6 of the Fortran run's than with gtol 0)
+    assert same[0] >= 47 and same[1] >= 47 and same[2] >= 36 and same[3] >= 44, same
 
 
 # ---- counts (O18, O23), bounds (O19), stopping (O20)
@@ -499,8 +508,9 @@ def test_result_fields():
         assert repr(r).startswith(f"OptimizeResult(method='{method}', converged=True, cost=")
         with pytest.raises(AttributeError):
             r.x = x
-        r.x[0] = 99.0
-        assert r.x.tolist() == x.tolist()
+        with pytest.raises(ValueError, match="read-only"):  # D-4: read-only, no copy
+            r.x[0] = 99.0
+        assert r.x is x
 
 
 def test_fun_gets_a_new_array_and_results_may_be_any_sequence():
@@ -562,7 +572,7 @@ def test_errors():
         (
             lambda: sd.optimize.least_squares(F, [1.0], method="lm", bounds=(0, 2)),
             ValueError,
-            "least_squares(): method='lm' takes no bounds (method='trf' does)",
+            "least_squares(): method='lm' takes no 'bounds' (method='trf' does)",
         ),
         (
             lambda: sd.optimize.least_squares(F, [3.0], bounds=(0, 2)),
@@ -577,7 +587,12 @@ def test_errors():
         (
             lambda: sd.optimize.least_squares(F, [1.0], bounds=([0, 0], 2)),
             ValueError,
-            "least_squares(): 'bounds' must have 1 values like 'x0', not 2",
+            "least_squares(): 'bounds' must have 1 value like 'x0', not 2",
+        ),
+        (
+            lambda: sd.optimize.least_squares(F, [1.0], bounds=[(0, 2)]),
+            ValueError,
+            "least_squares(): 'bounds' must be a pair (lower, upper), not a sequence of (low, high) pairs",
         ),
         (
             lambda: sd.optimize.least_squares(F, [1.0], bounds=(2, 2)),
@@ -593,6 +608,22 @@ def test_errors():
             lambda: sd.optimize.least_squares(F, [1.0], ftol=0, xtol=0, gtol=1e-17),
             ValueError,
             "least_squares(): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16 (the machine epsilon)",
+        ),
+        (
+            lambda: sd.optimize.least_squares(F, [1.0], method="lm", gtol=0.0),
+            ValueError,
+            "least_squares(): 'ftol', 'xtol' and 'gtol' must each be >= 2.2e-16 (the machine epsilon) when method='lm'",
+        ),
+        (
+            # a large point is shown by its first values and its size (LSQ-11)
+            lambda: sd.optimize.least_squares(lambda x: x, [1.0] * 12, jac=lambda x: sd.full((12, 12), math.nan)),
+            ValueError,
+            "least_squares(): 'jac' is not finite at x = [1.0, 1.0, 1.0, 1.0, 1.0, ...] (12 values)",
+        ),
+        (
+            lambda: sd.optimize.least_squares(F, [1.0], foo=1),
+            TypeError,
+            "least_squares(): unexpected keyword argument 'foo'",
         ),
         (
             lambda: sd.optimize.least_squares(F, [1.0], ftol=-1.0),
@@ -689,3 +720,59 @@ def test_user_errors_pass_through():
 
     with pytest.raises(ValueError, match="^later$"):
         sd.optimize.least_squares(G, [3.0])
+
+
+# ---- trf: an overflowing sum of squares (LSQ-2), fewer residuals than variables (LSQ-3);
+# 'lm' on tall problems (BP-3); the int64 caps (LSQ-9)
+
+
+def test_trf_overflowing_cost_stops():
+    # |f| near 1e160: the sum of squares and the gradient overflow; scipy goes on without progress
+    # to max_nfev and stops with status 0; here at once, with no LAPACK error
+    for F, x0 in (
+        (lambda x: sd.asarray([1e160 * x[0], x[1] - 1.0]), [1.0, 0.0]),
+        (lambda x: sd.asarray([1e200 * (x[0] - 1.0), x[1]]), [0.0, 0.0]),
+    ):
+        r = sd.optimize.least_squares(F, x0)
+        assert r.status == 0 and not r.converged and r.message.startswith("The maximum number")
+    r = sd.optimize.least_squares(lambda x: sd.asarray([1e160 * x[0], x[1] - 1.0]), [1.0, 0.0], method="lm")
+    assert r.converged and r.x.tolist() == [0.0, 1.0]
+
+
+def test_trf_wide_problems():
+    # m < n: scipy's SVD of J_h (m x n), or of [J_h; diag(dh)^1/2] with bounds, not an n x n
+    # problem; the same steps as scipy's to rounding
+    rng = np.random.default_rng(1)
+    for m, n, bounded in ((5, 300, False), (3, 40, True), (1, 8, False)):
+        A = rng.standard_normal((m, n))
+        b = rng.standard_normal(m)
+        As, bs = sd.asarray(A.tolist()), sd.asarray(b.tolist())
+        kw = {"bounds": (-1.0, 1.0)} if bounded else {}
+        r = sd.optimize.least_squares(lambda x: As @ (x + 0.1 * x**3) - bs, [0.1] * n, **kw)
+        q = scipy_ls(lambda x: A @ (x + 0.1 * x**3) - b, np.full(n, 0.1), **kw)
+        assert r.converged and q.success and r.cost <= 1e-12 + q.cost, (m, n)
+        if not bounded:
+            assert r.status == q.status and abs(r.njev - q.njev) <= 2, (m, n, r.njev, q.njev)
+
+
+def test_lm_tall_problems_take_the_qr_first():
+    # BP-3: from m >= 10 n and m n >= 2000, lmder after one LAPACK QR of J (nls's build): scipy's
+    # steps to rounding
+    rng = np.random.default_rng(2)
+    for m, n in ((400, 5), (3000, 20)):
+        A = rng.standard_normal((m, n))
+        b = A @ rng.standard_normal(n) + 0.01 * rng.standard_normal(m)
+        As, bs = sd.asarray(A.tolist()), sd.asarray(b.tolist())
+        r = sd.optimize.least_squares(lambda x: As @ (x + 0.1 * x**3) - bs, [0.0] * n, method="lm")
+        q = scipy_ls(lambda x: A @ (x + 0.1 * x**3) - b, np.zeros(n), method="lm")
+        # (nfev counts the difference calls here, n per Jacobian; scipy's 'lm' does not)
+        assert r.status == q.status and abs(r.nfev - n * r.njev - q.nfev) <= 2, (m, n)
+        assert max(abs(u - v) for u, v in zip(r.x.tolist(), q.x)) <= 1e-10 * max(1.0, max(abs(q.x)))
+
+
+def test_caps_are_int64():
+    # LSQ-9: the default max_nfev can pass 2^31 for large n; a value given may too
+    r = sd.optimize.least_squares(lambda x: x - 1.0, [0.0, 0.0], max_nfev=2**40)
+    assert r.converged
+    with pytest.raises(OverflowError, match=r"least_squares\(\): 'max_nfev' is out of range"):
+        sd.optimize.least_squares(lambda x: x - 1.0, [0.0], max_nfev=2**63)

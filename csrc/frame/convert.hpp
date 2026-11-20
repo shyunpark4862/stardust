@@ -33,4 +33,12 @@ nb::object to_numpy_view(const Column& col);
 // A fresh numpy bool array: True where the row has a value.
 nb::object validity_mask(const Column& col);
 
+// A new, writable (n, k) numpy array in C order from k 1-D numpy arrays of n
+// values of one dtype (bool, int64 or float64), each read once: the rows are
+// written in order, so every output line is written once (an assignment per
+// column into a C-order result writes with the row stride, k passes over it).
+nb::object rows_from_columns(
+    const std::vector<nb::ndarray<nb::ro, nb::ndim<1>, nb::device::cpu>>& cols, std::int64_t n
+);
+
 }  // namespace sd::frame

@@ -724,17 +724,43 @@ struct PolishOut {
     std::vector<double> H;   // Z_A^T Omega Z_A + l2 I
 };
 
+// Whether the solver's columns j and k are exact copies: the same values over the fit's rows
+// and the same center and scale (so the same z, bit for bit).
+bool same_column(const Src& src, const Prep& P, lint j, lint k) {
+    const lint cj = P.cols[j], ck = P.cols[k];
+    if (P.cx[cj] != P.cx[ck] || P.sc[cj] != P.sc[ck]) return false;
+    for (lint t = 0; t < P.m; ++t) {
+        const std::byte* row = src.X + P.idx[t] * src.xrs;
+        if (rd(row + cj * src.xcs) != rd(row + ck * src.xcs)) return false;
+    }
+    return true;
+}
+
 // The KKT polish of a converged iterate s.b (see the file comment): the system on the active
 // set solved by Cholesky of its Gram block, refined with double-double residuals from the
 // data (G51) when the estimated condition number of that block exceeds refine_cond times its
 // size (the Gram solve's error is about kappa u). On success s.b holds the polished coefficients.
+// Without an L2 term, exact copies of a column that are active together make the system
+// singular (any split of their total with their sign is a minimizer, R116): the first copy
+// keeps the total and the later ones leave the active set (0), and the KKT test of the
+// inactive columns confirms the point (a copy's gradient is its column's, l1). The polished
+// point is then the same whatever split the descent left (a path's or a single fit's, R118).
 PolishOut polish(Solver& s, const Src& src, const Prep& P, bool intercept, double l1, double l2, double refine_cond) {
     PolishOut o;
     std::vector<lint> A;
     std::vector<double> sg;
-    for (lint j = 0; j < s.pc; ++j)
+    for (lint j = 0; j < s.pc; ++j) {
         // without an L1 term every column is in the system and the signs are free
-        if (s.b[j] != 0.0 || (l1 == 0.0 && s.d[j] > 0.0)) A.push_back(j), sg.push_back(s.b[j] > 0 ? 1.0 : -1.0);
+        if (!(s.b[j] != 0.0 || (l1 == 0.0 && s.d[j] > 0.0))) continue;
+        bool copy = false;
+        if (l2 == 0.0 && l1 > 0.0)
+            for (const lint q : A)
+                if (s.d[q] == s.d[j] && same_column(src, P, q, j)) {
+                    copy = true;
+                    break;
+                }
+        if (!copy) A.push_back(j), sg.push_back(s.b[j] > 0 ? 1.0 : -1.0);
+    }
     const lint a = static_cast<lint>(A.size());
     o.a = a;
     active_gram(s, A, l2, o.H);

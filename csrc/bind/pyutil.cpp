@@ -1,4 +1,5 @@
 #include "bind/pyutil.hpp"
+#include "array/convert.hpp"
 
 #include <cstring>
 #include <stdexcept>
@@ -17,7 +18,15 @@ PyObject* g_dtype_objects[kNumDTypes] = {};
 void register_dtypes(nb::module_& m) {
     auto cls = nb::class_<PyDType>(m, "DType")
                    .def("__repr__", [](const PyDType& d) { return dtype_name(d.value); })
-                   .def("__str__", [](const PyDType& d) { return dtype_name(d.value); });
+                   .def("__str__", [](const PyDType& d) { return dtype_name(d.value); })
+                   // There is no constructor, as for ndarray. Without this __init__,
+                   // nanobind says "stardust._core.DType: no constructor defined!".
+                   .def("__init__", [](PyDType*, nb::args, nb::kwargs) {
+                       throw nb::type_error(
+                           "DType(): there is no constructor; use sd.bool, sd.int64, sd.float64, sd.complex128 or "
+                           "sd.string"
+                       );
+                   });
     use_short_type_name(cls);
 
     for (DType d : {DType::Bool, DType::Int64, DType::Float64, DType::Complex128, DType::String}) {
@@ -120,9 +129,12 @@ std::optional<double> real_value(nb::handle o, const char* what) {
             if (!r.is_valid()) throw nb::python_error();
             return as_double(r.ptr(), what);
         }
-        case IndexResult::NotInt: return std::nullopt;
+        case IndexResult::NotInt: break;
     }
-    __builtin_unreachable();
+    // The other real scalars, as everywhere a Python scalar is taken
+    // (docs/api/array.md §1.4): numpy.float32, numpy.float16, ...
+    if (scalar_dtype(o) == DType::Float64) return as_double(p, what);
+    return std::nullopt;
 }
 
 std::optional<DType> parse_dtype(nb::handle o) {

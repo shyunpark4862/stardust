@@ -406,9 +406,11 @@ nb::object nelder_mead_solve(
         vec sim((N + 1) * N);
         for (std::size_t k = 0; k <= N; ++k)
             std::copy(S.row(k), S.row(k) + N, sim.begin() + static_cast<std::ptrdiff_t>(k * N));
+        // n_iter: the iterations done (scipy's nit counts one more: its loop starts at 1)
         return nb::make_tuple(
-            out_vector(sim.data(), N), fval, static_cast<std::int64_t>(iterations), static_cast<std::int64_t>(fcalls),
-            warnflag, out_matrix(sim.data(), N + 1, N), out_vector(S.fsim.data(), N + 1)
+            out_vector(sim.data(), N), fval, static_cast<std::int64_t>(iterations) - 1,
+            static_cast<std::int64_t>(fcalls), warnflag, out_matrix(sim.data(), N + 1, N),
+            out_vector(S.fsim.data(), N + 1)
         );
     });
 }

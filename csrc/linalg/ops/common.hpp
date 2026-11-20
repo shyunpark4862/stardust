@@ -165,7 +165,7 @@ int lu_factor(const Input& x, std::int64_t off, lint n, Scratch& s, T*& a, lint*
     ipiv = s.get_ints(static_cast<std::size_t>(n));
     if (!pack(x.dtype(), x.data() + off, n, n, x.stride(-2), x.stride(-1), a, n, true)) return kNonFinite;
     if (n == 0) return 0;
-    return lapack::getrf(n, n, a, n, ipiv) > 0 ? kSingular : 0;
+    return lapack::lu_in_place(n, n, a, n, ipiv) > 0 ? kSingular : 0;
 }
 
 // The inverse from an LU factorization, written to `r` (n x n, column-major):

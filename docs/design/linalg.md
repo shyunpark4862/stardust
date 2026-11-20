@@ -32,7 +32,8 @@
   - 직접 짜는 것은 LAPACK에 없는 것뿐이다: `expm`(§11), 그리고 LAPACK이 필요 없는 원소 루프(`vecdot`, `outer`, `trace`, `diagonal`, `kron`, `cross`, 노름, §10.8)
 - **래퍼**: 루틴 하나에 템플릿 함수 하나다. `double`이면 `d*`, `std::complex<double>`이면 `z*`를 부른다 (예: `getrf<T>`).
   - LAPACK의 `info`를 돌려준다. 음수 `info`는 우리 인자의 버그이므로 `std::logic_error`다.
-  - 감싼 루틴: `getrf getrs potrf potrs trtrs geqrf geqp3 orgqr gelsd syevd sygv gesdd gesvd sytrf geev gees gehrd orghr gtsv gbsv trsyl3 lacn2`, 그리고 BLAS `gemm`, `gemv`. complex판(`ungqr`, `heevd`, `hegvd` 등)은 같은 래퍼가 부른다. `sygv`는 인자 하나로 `sygvd`와 `sygv`를 고른다.
+  - 감싼 루틴: `getrf getf2 getrs potrf potrs trtrs geqrf geqp3 orgqr gelsd syevd sygv gesdd gesvd sytrf geev gees gehrd orghr gtsv gbsv trsyl3 lacn2`, 그리고 BLAS `gemm`, `gemv`.
+  - 회귀 영역(regression.md §3.1)이 쓰는 실수 전용 루틴: `ormqr potri larfg larf trcon`. `trcon`(1-노름 조건수의 역수 추정)은 작업 공간을 Scratch에서 받는다(§6.3). complex판(`ungqr`, `heevd`, `hegvd` 등)은 같은 래퍼가 부른다. `sygv`는 인자 하나로 `sygvd`와 `sygv`를 고른다.
   - 행렬곱(`matrix_power`, `expm`, `solve_sylvester`)은 `sd.matmul`을 거치지 않고 `cblas_dgemm`/`cblas_zgemm`을 직접 부른다. 작업 버퍼가 이미 C++ 안에 F-order로 있기 때문이다.
 - **인터페이스**: 새 LAPACK, ILP64 (`ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`, array.md §1.3). 정수 인자는 `lint`(64비트)이고 `static_assert`로 확인한다.
 - `accelerate/`에는 LAPACK(`lapack.hpp`, linalg), BLAS(`blas.hpp`, 배열의 `matmul`), vForce(`vforce.hpp`, 배열의 초월함수) 래퍼가 함께 있다 (ARCHITECTURE §4.4).
@@ -51,11 +52,15 @@
 ### 1.3 공통 원칙
 - **모든 함수가 일관된 시그니처와 동작을 가진다.** 그 안에서 가급적 효율적으로 만든다. 라이브러리 전체의 일관성 원칙(DESIGN §1.4)의 linalg판이다.
 - **함수마다 LAPACK 드라이버는 하나다.** `driver=` 옵션이 없고, 입력 값을 보고 드라이버를 고르지 않는다. 어느 드라이버로 할지는 속도와 정확도를 재서 정했다 (§10.1).
-  - 예외는 둘이다. 둘 다 "입력 값으로 고르기"가 아니다.
+  - 예외는 넷이다. 모두 "입력 값으로 고르기"가 아니다.
     - `solve_banded`의 대역폭 (1, 1)은 `gtsv`로 푼다. 대역폭은 값이 아니라 옵션이다 (§10.7).
+    - `solve_banded`의 n ≤ 8은 밀집 행렬의 LU로 푼다 (§7.4, 아래 크기 규칙).
+    - LU 분해의 n = 32–46은 `getf2`다 (§7.5, 아래 크기 규칙).
     - `expm`의 대각·삼각 입력 처리는 알고리즘의 일부다. 결과의 의미(exp(x))는 그대로다 (§11.3).
 - **구조는 함수 이름으로 고른다.** `solve`는 항상 LU다. scipy의 `assume_a=` 같은 자동 판별은 없다.
-- **크기에 따라 경로를 바꾸지 않는다.** 경로가 바뀌면 같은 함수의 결과 비트가 크기에 따라 다른 계산에서 나온다. `inv`의 `getri` 전환을 이 이유로 택하지 않았다 (§10.2).
+- **크기에 따라 경로를 바꾸는 것은 이득이 2배를 넘을 때만이다** (사용자 결정 2026-11-20, BP-9). 경로가 바뀌면 같은 함수의 결과 비트가 크기에 따라 다른 계산에서 나온다. 그래서 작은 이득으로는 바꾸지 않는다. `inv`의 `getri` 전환(n ≥ 256에서 최대 1.6배)은 이 이유로 택하지 않았다 (§10.2).
+  - 고르는 것은 모양(크기, 대역폭)뿐이다. 값을 보고 고르지 않는다. 그래서 같은 모양이면 언제나 같은 경로이고, 레이아웃·배치 위치·스레드 수와 무관한 비트도 그대로다.
+  - 경계 양쪽의 크기를 테스트한다(§13).
   - 결과를 바꾸지 않는 경로 선택(병렬 분할, 그 자리에서 읽기, 큰 행렬의 병렬 패킹)은 크기로 정해도 된다.
 
 ### 1.4 파일
@@ -123,6 +128,7 @@
   - 보고하는 것은 **가장 작은 실패 인덱스**다. 스레드 수와 무관하게 같은 메시지가 나온다 (§6.5).
 - C++ 쪽은 `sd::linalg::LinAlgError`(`std::runtime_error`)를 던지고, 등록한 변환기가 Python `LinAlgError`로 바꾼다 (`errors.cpp`).
 - 메시지는 함수 이름으로 시작한다 (API.md §2.1). 공개 함수는 배열처럼 `bind/errors.hpp`의 `named("inv", &inv)`로 감싸 바인딩한다(`ops/*.cpp`의 `m.def`). 함수 이름을 이미 아는 곳(배치 실패의 `raise`, `ops/common.hpp`; 인자 검사, `args.cpp`)은 직접 `func(): `를 붙이고, `named`는 이미 그 이름으로 시작하는 메시지를 그대로 둔다 (array.md §12.2).
+- 시그니처: 배열 인자는 이름 없는 `nb::arg()`로 둔다. nanobind는 이름 없는 인자만 positional-only로 받기 때문이다. 대신 `m.def`마다 `nb::sig("def solve(a, b, /)")`로 api 문서의 시그니처를 그대로 준다. `help()`와 nanobind의 호출 모양 에러가 `arg0: object | None` 대신 문서의 이름을 보인다. tests/linalg/test_api_surface.py가 문서와 대조한다.
 
 ### 2.3 유한성 검사
 - **LAPACK을 부르는 호출은 항상 유한성을 검사한다.** NaN이나 inf가 있으면 `ValueError`(`"det(): 'x' contains NaN or infinity"`)다.
@@ -217,9 +223,14 @@
   - 행렬은 열 우선이고, 배치 축은 바깥에 C-order다 (§4).
   - 벡터 결과(`(..., M)`, 고유값, 특이값, `perm`)와 행렬이 아닌 결과(노름, `det`, 랭크)는 C-order다.
   - 길이 0인 축이 있어도 strides 공식은 그대로다(0을 곱한다). 배열의 `new_array`는 0인 축을 1로 쳐서 strides가 다르다. linalg 결과의 strides는 옛 패키지와 같아야 하므로(골든 출력) linalg의 공식을 쓴다.
-- 메모리는 배열의 `Buffer`다. 128B로 정렬된다 (array.md §3.2). 결과는 쓰기 가능하고 자기 메모리를 소유한다(`base`는 None).
+- **크기 검사는 배열의 `new_array`와 같다.** 축은 32개까지(`arrays may have at most 32 dimensions`), 바이트 수는 int64 안(`array is too big`)이다. 메시지 앞에 함수 이름이 붙는다.
+  - 0 stride 브로드캐스트 뷰는 메모리가 작아도 shape이 커서, 배치 shape의 곱이나 결과 바이트 수가 int64를 넘을 수 있다. `Batch`가 배치 원소 수를, `alloc_*`가 결과의 축 수와 바이트 수를 `__builtin_mul_overflow`로 검사한다. `kron`은 M·P, N·Q도 검사한다.
+  - 길이 0인 축이 있으면 빈 배열이지만, 나머지 축의 곱은 그래도 검사한다(numpy와 같다).
+  - `outer`만 결과가 입력보다 한 차원 많다. 32차원 입력은 계산 전에 막는다.
+- 메모리는 배열의 `Buffer`다. 128B로 정렬된다 (array.md §3.2). 결과는 자기 메모리를 소유한다(`base`는 None). 배열 하나인 결과는 쓰기 가능하다.
 - **결과가 0차원이면 Python 스칼라다** (array.md §2.2). 예: 배치 없는 `det`, `trace`, `vector_norm(axis=None)`, `lstsq`의 `rank`. 이때는 배열을 만들지 않는다.
 - 결과 namedtuple은 C++가 필드 배열을 모두 만든 뒤 캐시해 둔 타입을 vectorcall로 불러 채운다 (`make_result`). 필드 2개짜리 namedtuple 하나에 77ns다.
+  - `make_result`가 배열 필드의 `writeable`을 끈다(쓰기 금지, API.md §2). 복사하지 않는다. 결과 객체의 필드는 한 계산에서 나온 값들이라 따로 고치지 않는다.
 
 ### 3.4 Python 객체 캐시 (`linalg/pyrefs.*`)
 - C++가 쓰는 Python 객체는 **결과 namedtuple 타입 11개와 `LinAlgError`뿐이다.** `_setup`이 import할 때 한 번 받는다.
@@ -356,7 +367,7 @@
   - 행렬마다 물을 때는 작은 행렬 배치의 분해가 scipy보다 느렸다(`qr` (1000, 3, 3) 0.75배: `geqrf`, `orgqr`에서 두 번 물었다). 이것과 §9의 고정비 정리로 작은 행렬 배치의 분해가 1.2–1.4배 빨라져 numpy와 같거나 빨라졌다.
 
 ### 6.4 16바이트 정렬 (`LapackSlot`, `ops/common.hpp`)
-- **LAPACK과 BLAS에 넘기는 배열은 모두 16바이트 정렬한다.** 예외는 `lstsq`의 `gelsd` 경로의 b 하나다: numpy와 비트를 맞추려고 numpy가 두는 자리(a 뒤 8mn바이트, 실수에서 m·n이 홀수이면 16바이트 경계에서 8바이트 어긋남)에 일부러 둔다(§10.4, 2026-11-19).
+- **LAPACK과 BLAS에 넘기는 배열은 모두 16바이트 정렬한다.** 예외는 아래 구현의 scratch 하위 배열 몇 개와 `lstsq`의 `gelsd` 경로의 b다. b는 numpy와 비트를 맞추려고 numpy가 두는 자리(a 뒤 8mn바이트, 실수에서 m·n이 홀수이면 16바이트 경계에서 8바이트 어긋남)에 일부러 둔다(§10.4, 2026-11-19).
 - 이유: Accelerate는 배열이 16바이트 정렬인지에 따라 다르게 반올림한다.
   - float64 배치에서 행렬 크기가 홀수이면(3×3이면 72바이트 간격) 홀수 번째 원소의 자리가 8바이트 어긋난다. 같은 행렬이 배치 안의 위치에 따라 다른 비트를 받았다.
   - n = 3, 5, 7, 9의 무작위 120개 중 실수 `schur` 18–30개, `svd` 3–17개, `eigh` 27–45개가 달랐다. `eigh(a, b)`도 같다. complex(원소 16바이트라 늘 정렬)는 0개였다.
@@ -365,6 +376,7 @@
   - `LapackSlot<T>(slot, count, scratch, scratch_slot)`: 출력 자리가 정렬이면 그대로, 아니면 scratch 대역을 주고 소멸할 때 자리로 복사한다. 그 자리에 쓰는 모든 것은 `get()`을 거친다.
   - scratch 안의 하위 배열(`gees`의 `wr`/`wi`, `solve_sylvester`의 R/S/U/W, 삼중대각의 세 대각)도 16바이트 경계에서 시작한다 (`pad2`).
   - 그 자리에서 읽는 삼각(§5.5)도 정렬 조건을 둔다.
+  - 예외: scratch 안에서 위치가 원소마다 같은 하위 배열은 16바이트 경계가 아닐 수 있다. `lstsq` SVD 풀이(`rtol < eps`)의 `vh`(`u` 뒤 m·min(m, n)개)와 그 행 `rn`부터의 부분(`vh + rn`), `pinv`의 `u`의 열 `rn`부터의 부분(`u + rn·m`)이다. 어긋남이 배치 위치와 무관하므로 같은 행렬은 어디서나 같은 비트를 받는다. 뒤의 둘은 비정규 특이값이 있을 때만 지난다.
 - 결과: 모든 함수에서 배치 결과가 행렬 하나씩 부른 결과와 비트까지 같다. 테스트로 고정한다(n = 3, 5, 7, 40, §13).
 
 ### 6.5 실패 보고
@@ -386,11 +398,11 @@
 
 | 계열 | a | c | 함수 | w |
 |---|---:|---:|---|---|
-| `kLU` | 70 | 3 | `solve`, `inv`, `det`, `slogdet`, `lu`, `cholesky`, `ldl`, `matrix_power` | m·n |
+| `kLU` | 70 | 3 | `solve`, `inv`, `det`, `slogdet`, `lu`, `cholesky`, `ldl`, `matrix_power`, `cond`(±2 외) | m·n |
 | `kTriangular` | 30 | 0.5 | `solve_triangular`, `cholesky_solve`, `lu_solve` | n² |
 | `kQR` | 180 | 10 | `qr`, `qr_pivoted`, `hessenberg` | m·n |
 | `kEigh` | 250 | 45 | `eigh`, `eigvalsh` (일반화 포함) | n² |
-| `kSVD` | 1000 | 80 | `svd`, `svdvals`, `matrix_rank`, `pinv`, `cond`, `lstsq`, `matrix_norm` 2/−2/nuc | m·n |
+| `kSVD` | 1000 | 80 | `svd`, `svdvals`, `matrix_rank`, `pinv`, `cond`(±2), `lstsq`, `matrix_norm` 2/−2/nuc | m·n |
 | `kEig` | 700 | 200 | `eig`, `eigvals`, `schur` | n² |
 | `kSylvester` | 500 | 370 | `solve_sylvester` | (m² + n²)/2 |
 | `kBanded` | 20 | 3 | `solve_tridiagonal`, `solve_banded` | n·(대역폭 + 1) |
@@ -398,6 +410,11 @@
 | `kCopy` | 2 | 0.5 | `diagonal`, `outer`, `kron`, `cross` | 복사하는 원소 수 |
 | `kExpm` | 600 | 15 | `expm` | n² (n = 2–256의 직렬 시간에 0.65–1.5배로 맞음) |
 
+- **우변 항**: 풀이 계열(`solve`, `lstsq`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `solve_tridiagonal`, `solve_banded`)은 위 값에 `kRhsNs·n·k`(`kRhsNs` = 1ns, n×k는 우변, `lstsq`는 m×k)를 더한다.
+  - 행렬 항만으로는 작은 행렬에 우변이 많은 호출(3×3 행렬과 우변 3·10⁶열)을 100ns 남짓으로 보고 GIL을 쥔 채 돈다. 실제로는 수 ms다.
+  - 1ns는 n = 3–4에서 잰 우변 원소 하나의 시간(0.9–1.6ns, 패킹과 대입)이다. 큰 n에서는 과소 추정하지만 그때는 행렬 항이 크다.
+  - 배치 하나는 나누지 않으므로 결과는 그대로다. 배치를 나누는 크기만 달라진다(결과는 원소가 어디서 돌든 같다, §6.4).
+- `cond`의 `ord`가 `±2`가 아니면 LU와 역행렬로 계산하므로 `kLU`를 쓴다. `±2`는 `kSVD`다.
 - 기각한 대안: 첫 원소의 시간을 재서 정하기. 상수가 필요 없지만, 실행마다 분할 여부가 달라질 수 있다.
 
 ### 7.2 두 상수
@@ -406,7 +423,7 @@
 | `kParallelMinNs` | 10µs | 배치 전체의 추정 직렬 시간(`element_ns × n`)이 이보다 작으면 직렬이다. 직렬로 약 8–10µs를 넘으면 나누는 쪽이 이기기 시작했다(3×3 `svd` 배치 8은 17µs → 0.51배 시간, 3×3 `solve` 배치 64는 8µs → 0.70배). 그 아래에서 나누면 3–10% 손해다 |
 | `kTaskNs` | 5µs | 태스크 하나의 추정 직렬 시간. 태스크 하나는 `max(1, kTaskNs / element_ns)`개의 원소다. 2.5µs는 작은 배치에 조금 낫고 큰 배치에 조금 나빴고, 10µs는 그 반대였다. 80µs는 태스크 수가 모자라 느렸다 |
 
-- 나누는 조건: 배치 원소 2개 이상, `element_ns > 0`, `element_ns × n ≥ kParallelMinNs`, 그리고 `begin_parallel()`이 참(태스크 밖, 2스레드 이상)
+- 나누는 조건: 배치 원소 2개 이상, `max_tasks ≠ 1`(§7.4), `element_ns × n ≥ kParallelMinNs`, 그리고 `begin_parallel()`이 참(태스크 밖, 2스레드 이상)
 - 배열의 기준값 `kParallelThreshold`(원소 2¹⁵개, array.md §10.4)는 linalg의 배치 분할에 쓰지 않는다. 일의 크기를 원소 수가 아니라 시간으로 재기 때문이다 (ARCHITECTURE §4.1).
 
 ### 7.3 크기 기준은 없다
@@ -417,27 +434,33 @@
 ### 7.4 예외: 작은 띠의 `gbsv`는 나누지 않는다
 - `gbsv`에는 원소마다 약 1µs의 고정비가 있다. 이 부분은 스레드를 늘려도 빨라지지 않았다. 작은 띠에서 나누면 1.1–2.7배 느려졌다.
 - 교차점: kl = ku = 2에서 n = 64–96, kl = ku = 5에서 n = 32–48
-- 그래서 `n·(kl + ku + 1) ≥ 400`(`kBandSplitMin`)일 때만 나눈다. 그 이상에서는 2–4배 빨라진다. 그 아래는 `element_ns = 0`(나누지 않음)을 넘긴다.
+- 그래서 `n·(kl + ku + 1) ≥ 400`(`kBandSplitMin`)일 때만 나눈다. 그 이상에서는 2–4배 빨라진다. 그 아래는 `max_tasks = 1`(나누지 않음)을 넘긴다.
+  - 비용은 그대로 넘긴다. 나누지 않아도 배치 전체의 추정 시간이 기준(§7.2) 이상이면 GIL을 놓는다 (§8.1). 나눌지와 GIL을 놓을지는 따로 정한다.
 - 대역폭 (1, 1)은 `gtsv`라서(§10.7) 이 문제가 없다. 항상 비용 모델대로 한다.
+- **n ≤ 8은 밀집 행렬로 푼다** (`kBandDenseMax`, §1.3의 크기 규칙). 띠 밖을 0으로 채운 n × n 행렬을 LU(`lu_in_place`)와 `getrs`로 푼다. `gbsv`의 호출당 고정비가 여기서는 계산보다 크다.
+  - 측정 (`gbsv` 대 밀집, 대역폭 (0, 0)–(5, 5), (0, 4)): n = 8에서 행렬 하나 2.2–2.5배, 1스레드 배치 3.4–3.6배, n = 4에서 2.7–3.2배와 6.2–6.4배다. n = 12는 행렬 하나 1.7–2.1배라 2배를 넘지 않는다. n = 24부터는 `gbsv`가 빠르다.
+  - 밀집 경로는 `gbsv`의 고정비가 없으므로 비용 모델대로 나눈다(`kLU`). 10스레드 배치는 n = 8에서 21–23배다(`gbsv` 쪽은 나누지 않는 경로).
+  - 읽고 검사하는 원소는 `gbsv`와 같다(행렬 안의 띠 원소만). 특이는 똑같이 정확한 0 피벗이다. 결과는 `gbsv`와 반올림 수준에서 다르다.
 
 ### 7.5 태스크 수 상한: AMX에서 직렬로 도는 경로
 - **Accelerate는 두 경로를 코어들이 함께 쓰는 AMX에서 직렬로 돌린다.** 스레드를 늘려도 빨라지지 않고, 몇 개를 넘으면 오히려 느려진다.
   - `getrf`의 n = 32–40 (n ≤ 31과 n ≥ 48은 잘 나뉜다)
   - 우변 **8개 이상**의 삼각 풀기(`trsm`, `getrs`/`trtrs`/`potrs` 안)의 n = 24–40. 우변 7개 이하와 n ≤ 23은 잘 나뉜다. 경계는 정확히 k = 7과 8 사이다.
     - k ≥ 8이면 `trsm`이 블록 경로로 바뀐다. 이 경로는 호출마다 약 1.3–1.5µs의 고정비가 있고, 10스레드에서도 원소당 시간이 1스레드와 같다.
-- **규칙** (`lu_task_cap(n, k, factors)`, 가장 작은 값을 쓴다)
+- **n = 32–46의 LU 분해는 `getf2`로 한다** (`lapack::lu_in_place`, `kGetf2Min`/`kGetf2Max`, §1.3의 크기 규칙). 블록이 없는 `getf2`는 AMX 경로를 타지 않는다. 행과 열이 모두 이 범위일 때다(`lu`의 직사각 입력도 같다). LU를 쓰는 모든 곳이 같은 규칙이다: `solve`, `inv`, `det`, `slogdet`, `lu`, `cond`(±2 외), `matrix_power`(n < 0), `expm`의 Padé 풀기.
+  - 측정 (`getrf`+상한 대 `getf2`, `det` 배치): 10스레드에서 n = 32–46이 2.1–4.4배, 47은 1.96배, 48은 1.7배다. 1스레드에서도 1.2–1.6배, 행렬 하나는 1.2–1.7배다. n ≤ 31은 같고, n ≥ 64는 `getf2`가 느리다(n = 128에서 0.4배).
+  - 결과는 `getrf`와 반올림 수준에서 다를 수 있다. 피벗 규칙(부분 피벗)과 특이의 판정(정확한 0 피벗)은 같다.
+- **규칙** (`lu_task_cap(n, k)`, 우변을 푸는 경로만)
 
   | 경로 | 크기 | 상한 |
   |---|---|---:|
-  | `getrf`로 분해 | n = 32–35 | 5 |
   | 우변 k ≥ 8 | n = 24–34 | 3 |
   | 우변 k ≥ 8 | n = 35–40 | 5 |
 
-  - `getrf` 규칙을 40이 아니라 35까지로 줄였다. `lu`는 n = 36–40에서 상한을 두면 5–12% 느려졌다. 분해 뒤의 L/U 풀기는 잘 나뉘기 때문이다.
 - 대상: `solve`, `inv`, `det`, `slogdet`, `lu`, `lu_solve`, `solve_triangular`, `cholesky_solve`, `matrix_power`(n < 0), `cond`(±2 외의 ord)
 - 측정 (상한 끔/켬): 해당 크기에서 1.1–1.5배(`inv` (100, 32, 32) 1.39배), 그 밖에서는 같다.
 - 어느 원소가 어디서 도는지는 결과를 바꾸지 않는다 (§8.5).
-- 이 경로 자체를 피하는 방법(우변을 4열씩 나눠 풀기, `getf2`)은 결과 비트를 바꾸므로 하지 않았다 (§12.5).
+- 우변 쪽 경로를 피하는 방법(우변을 4열씩 나눠 풀기)은 n, k, 스레드 수에 따른 규칙이 필요해서 하지 않았다 (§12.5).
 
 ### 7.6 관찰: 일부 크기에서 확장성이 낮다
 - 배치 512, 10스레드의 속도 향상은 대부분 5–9배다. `det` n = 32(2.1배), `cholesky` n = 48(3.2배), `matrix_power` n ≥ 48(3.6–4.3배)이 낮다.
@@ -452,6 +475,8 @@
 | `_core.linalg._set_tuning(min_ns, task_ns)` | `kParallelMinNs`, `kTaskNs` |
 | `_set_pack_parallel_min(n)` | `kPackParallelMin` (§5.6) |
 | `_set_lu_task_cap(on)` | `lu_task_cap` 켜고 끄기 (§7.5) |
+| `_set_getf2_range(lo, hi)` | `getf2`로 분해하는 크기 `kGetf2Min`, `kGetf2Max` (§7.5) |
+| `_set_band_dense_max(n)` | `solve_banded`를 밀집으로 푸는 크기 `kBandDenseMax` (§7.4) |
 | `_set_schur_pair_min(n)` | `kSchurPairMin` (§8.4) |
 | `_set_expm_estimate_min(n)` | `kExpmEstimateMin` (§11.2) |
 
@@ -465,7 +490,7 @@
 - 배열 영역의 풀 하나를 쓴다 (array.md §10). 상주 워커, spin 후 대기, atomic 카운터로 태스크 분배, 호출 스레드 참여다.
 - **GIL**: 배치의 추정 시간(원소당 추정 시간 × 원소 수)이 `kParallelMinNs`(10µs) 이상이면 스레드 수와 상관없이 GIL을 놓고 돈다 (API.md §3). 풀로 나누는 기준과 같은 값이다.
   - 나눠서 돌 때는 `parallel_for`가 놓는다. 나누지 않을 때(행렬이 하나, 1스레드, 풀이 바쁨)는 `run_batch`의 직렬 루프가 `parallel::Unlocked`로 놓는다. 본문은 태스크에서 도는 것과 같은 함수라 Python 객체를 만지지 않는다.
-  - 원소당 추정 시간이 0인 함수(나누지 않기로 한 것, `cost.hpp`)는 GIL을 쥔 채 돈다.
+  - 나누지 않기로 한 경로(`max_tasks = 1`, 작은 띠의 `gbsv`, §7.4)도 같은 기준으로 GIL을 놓는다.
   - 긴 합(`kSumParallelMin` = 2¹⁵ 항 이상의 `pairwise_sum_mt`, `vnorm`, 행렬 노름의 줄 합)도 나누지 않을 때 `parallel::Unlocked`로 놓는다.
 - **중첩하지 않는다.** 태스크 안에서는 `begin_parallel()`이 false다(`parallel::available()`). 그래서 배치를 나눈 태스크 안의 긴 합, 큰 패킹, Schur 쌍은 그 스레드에서 직렬로 돈다.
 - 다른 Python 스레드가 풀을 쓰는 중이면 그 호출은 호출 스레드 혼자 돈다 (array.md §10.1).
@@ -473,26 +498,32 @@
 - 다른 Python 스레드의 일로 풀이 바쁘면 `available()`이 false라 그 호출은 나누지 않는다 (array.md §10.2).
 
 ### 8.2 pairwise 합 (`base/pairwise.hpp`, `linalg/pairwise.hpp`)
-- **부동소수점 합은 모두 numpy의 pairwise 합이다.** 대상: `vecdot`, `trace`, `vector_norm`(1, 2, p), `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)
-  - 알고리즘과 순서는 numpy의 `DOUBLE_pairwise_sum`/`CDOUBLE_pairwise_sum`, 배열의 합과 같다 (array.md §6.2): 128개 이하는 누산기 8개, 그보다 길면 8의 배수에서 둘로 나눠 재귀한다. complex는 잎 하나가 64개이고 실수부, 허수부에 누산기 4개씩이다.
-  - 합은 `0.0 + 트리`다. numpy의 `add.reduce`와 같다(확인함).
+- **부동소수점 합은 모두 pairwise 합이다.** 대상: `vecdot`, `trace`, `vector_norm`(1, 2, p), `matrix_norm`(fro, ±1, ±inf, nuc), `cond`(fro, ±1, ±inf, nuc)
+  - 트리는 배열의 합과 같다 (`base/pairwise.hpp`, array.md §6.2): 잎 하나 분량 이하는 바로 더하고, 그보다 길면 8의 배수에서 둘로 나눠 재귀한다. 트리는 길이로만 정해진다.
+  - 합은 `0.0 + 트리`다.
+- **두 가지 잎**
+  - 그냥 합(`trace`, 1-노름과 p-노름, `matrix_norm`의 ±1, ±inf): 배열의 잎(`pairwise::leaf`, `leaf_complex`)이다. 같은 항이면 `sd.sum`과 비트까지 같다.
+  - 곱의 합(`vecdot`, 2-노름과 'fro'의 제곱): 곱을 잎 안에서 합에 융합한다(`fma_dot_leaf`, `fma_cdot_leaf`, `linalg/pairwise.hpp`). NEON 레지스터 8개(레인 16개)에 `vfmaq`로 곱-덧셈을 한 번 반올림하고, 레인은 pairwise로 더한다. complex `vecdot`은 complex 4개를 레지스터 쌍으로 둔다: `x·y`의 두 레인 합이 실수부, `x·swap(y)`의 두 레인 차가 허수부다.
+    - 곱마다의 반올림 하나가 없어서 오차는 같거나 작다. 여전히 log n에 비례한다.
+    - 그래서 `vecdot(x, y)`는 `sum(conj(x) * y)`와, 2-노름은 `sqrt(sum(x * x))`와 끝 비트가 다를 수 있다(사용자 결정 2026-11-20, BP-4). numpy와의 비트도 약속이 아니다 (§12.2).
 - **항의 순서는 논리적 C 순서다**(마지막 축이 가장 빠름). 메모리 레이아웃과 무관하므로 결과도 레이아웃과 무관하다.
-- 그래서 같은 항이면 numpy, 배열의 합과 비트까지 같다. 테스트로 고정한다.
-  - `matrix_norm`의 ±1, ±inf는 열(±1)이나 행(±inf) 하나하나를 논리 순서로 pairwise 합한다. 그 줄을 연속 벡터로 놓고 numpy로 더한 값과 비트가 같고, 'fro'는 `sqrt(sum(x * x))`와 같다(테스트로 고정). **numpy의 `matrix_norm` 자체와는 끝 비트가 다를 수 있다**(사용자 결정 2026-11-18: 코드는 두고 문서를 실제대로): numpy와 배열의 `sum(axis=)`은 더하는 축이 메모리에서 연속이 아니면 바깥 축을 따라 줄을 차례로 더한다(pairwise가 아니다). 그래서 C 순서 입력의 ±1과 F 순서 입력의 ±inf는 500×500 무작위 20개 가운데 0–2개만 numpy와 비트가 같았다. C 순서의 ±inf와 F 순서의 ±1은 20개 모두 같다. 'fro'는 numpy가 다른 식을 써서 15–16개가 같다. 우리 값은 레이아웃과 무관하다.
-  - `vecdot(x, y) == sum(conj(x) * y, axis=-1)`, `trace(x) == sum(diagonal(x))`
-  - 실수의 2-노름은 재조정이 필요 없을 때 `sqrt(sum(x * x))`와 같다.
-- 항은 보통 잎 하나 분량을 버퍼에 채운 뒤 더한다(어떤 레이아웃이든 같은 합산 루프). **연속 float64 `vecdot`은 버퍼 없이** 잎 안에서 곱을 바로 더한다. 같은 항을 같은 순서로 더하고 FMA 축약이 꺼져 있으므로 비트가 같다((1000, 1000) 행마다: 200 → 150µs, numpy 149µs).
+- 그냥 합은 같은 항이면 배열의 합과 비트까지 같다. 테스트로 고정한다.
+  - `matrix_norm`의 ±1, ±inf는 열(±1)이나 행(±inf) 하나하나를 논리 순서로 pairwise 합한다. 그 줄을 연속 벡터로 놓고 `sd.sum`으로 더한 값과 비트가 같다(테스트로 고정). **numpy의 `matrix_norm` 자체와는 끝 비트가 다를 수 있다**(사용자 결정 2026-11-18: 코드는 두고 문서를 실제대로): numpy와 배열의 `sum(axis=)`은 더하는 축이 메모리에서 연속이 아니면 바깥 축을 따라 줄을 차례로 더한다(pairwise가 아니다). 그래서 C 순서 입력의 ±1과 F 순서 입력의 ±inf는 500×500 무작위 20개 가운데 0–2개만 numpy와 비트가 같았다. C 순서의 ±inf와 F 순서의 ±1은 20개 모두 같다. 'fro'는 numpy가 다른 식을 써서 15–16개가 같다. 우리 값은 레이아웃과 무관하다.
+  - `trace(x) == sum(diagonal(x))`
+- **입력을 읽는 길**: 그냥 합은 잎 하나 분량을 버퍼에 채운 뒤 더한다(어떤 레이아웃이든 같은 합산 루프). 곱의 합은 계산 dtype의 연속 입력이면 **버퍼 없이** 입력을 바로 읽는다. 그 밖(strided, 다른 dtype)은 두 버퍼에 값을 바꿔 채운 뒤 같은 잎을 부른다. 잎은 항의 값만의 함수라서 두 길의 비트가 같다(레이아웃 불변, §5.7).
+  - 2-노름의 연속 float64 입력은 제곱합과 최댓값(|x|), NaN을 한 번 읽으며 구한다(`sq_leaf_in_place`). `x·x`와 `|x|·|x|`는 정확히 같으므로 버퍼 길(크기를 채운 뒤 `fma_dot_leaf`)과 비트가 같다. 연속의 판정은 논리적 C 순서로 double이 이어지는지다(complex는 실수부, 허수부를 따로 센다).
+  - 재조정 패스(넘쳤거나 모두 아주 작을 때, §10.8)는 그대로다: 크기를 최댓값으로 나눈 제곱을 그냥 합으로 더한다.
 - complex의 2-노름은 실수부와 허수부를 따로 항으로 넣는다(`re0², im0², re1², …`). complex의 크기(`std::abs`)는 `np.abs`와 마지막 비트가 다를 수 있다. 합과는 무관한 차이다.
-- **잎 버퍼를 거친다.** `fill(begin, len, buf)`이 항을 잎(최대 128개)에 채우고, 같은 루프가 더한다. 원본 레이아웃과 무관하게 더하는 루프가 하나라서 벡터화된다. 대가로 1스레드의 긴 합은 numpy보다 느리다 (§12.4).
+- **그냥 합은 잎 버퍼를 거친다.** `fill(begin, len, buf)`이 항을 잎에 채우고, 같은 루프가 더한다. 원본 레이아웃과 무관하게 더하는 루프가 하나라서 벡터화된다.
 - 오차는 n이 아니라 log n에 비례해 자란다.
 - 기각한 대안: 단순 누산기 8개(오차가 여전히 n에 비례하고, 어떤 기준과도 비트가 맞지 않음)
-- **정의는 한 벌이다** (`base/pairwise.hpp`): 트리 모양(`split`), 잎의 합(`leaf`, `leaf_complex`), 병렬 계획과 합치기(`plan`, `combine`)를 배열과 함께 쓴다. linalg만의 것은 잎을 채우는 방식(위의 `fill`)뿐이다. 배열은 같은 정의를 접근자로 부른다 (array.md §6.2).
+- **정의는 한 벌이다** (`base/pairwise.hpp`): 트리 모양(`split`), 그냥 합의 잎(`leaf`, `leaf_complex`), 병렬 계획과 합치기(`plan`, `combine`)를 배열과 함께 쓴다. linalg만의 것은 잎을 채우는 방식(위의 `fill`)과 곱의 합의 잎이다. 배열은 같은 정의를 접근자로 부른다 (array.md §6.2).
 - **잎 하나짜리 합은 트리를 부르지 않는다**: n ≤ 128(complex는 64)이면 채우고 바로 더한다 (`pairwise_sum`). 3×3 행렬의 열 합처럼 짧은 합이 배치마다 반복될 때 재귀 함수 호출이 드러난다: `matrix_norm(ord=1)`의 (1000, 3, 3)이 이 길 없이 17µs, 있으면 13µs다(1스레드).
 
 ### 8.3 출력 하나의 긴 합
 - **출력 하나의 합이 2¹⁵항(`kSumParallelMin`, 배열의 `kParallelThreshold`) 이상이면 나눈다.** 배열과 같은 방법이다 (array.md §6.2).
   - pairwise 트리는 길이로만 정해진다. 2¹²항(`kSumLeaf`, 배열의 `kParallelTask`) 이하인 부분 트리(잎)를 병렬로 더하고, 같은 트리 순서로 합친다 (`pairwise_plan`, `pairwise_run`, `pairwise_combine`).
-  - 덧셈 하나하나가 직렬과 같은 순서이므로 결과는 직렬(그리고 numpy)과 비트까지 같다.
+  - 덧셈 하나하나가 직렬과 같은 순서이므로 결과는 직렬과 비트까지 같다. 곱의 합도 같은 계획을 쓴다 (`pairwise_tree_mt`).
 - 대상: `vecdot`, `trace`, `vector_norm`(모든 ord), `matrix_norm` fro
   - 최댓값, 최솟값, 개수(`ord=0`)는 순서와 무관하므로 잎마다 구해 합친다.
   - 2-노름의 최댓값과 NaN 추적은 잎마다 따로 둔다. 공유 변수에 쓰면 경쟁이 생긴다.
@@ -648,8 +679,9 @@
 ### 10.7 특수 구조 (`solve_tridiagonal`, `solve_banded`, `solve_sylvester`)
 - **`solve_tridiagonal`은 `gtsv`다.** `gttrf` + `gttrs`보다 1.2–3배 빠르고 결과 비트가 같다. 역오차는 둘 다 `0.15·n·eps` 이하다.
 - **`solve_banded`는 `gbsv`다.** `gbtrf` + `gbtrs`와 속도도 비트도 같다. 호출이 하나라 단순한 쪽을 골랐다.
+  - **n ≤ 8은 밀집 행렬의 LU다** (§7.4). 호출당 고정비 때문이다.
   - **대역폭 (1, 1)은 `gtsv`로 푼다.** 삼중대각에서 `gtsv`가 `gbsv`보다 4–5배 빠르고(n = 1000: 8µs, 38µs), 두 결과는 반올림 수준에서 다르다. 그래서 `solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)`은 `solve_tridiagonal`과 비트까지 같고, scipy와도 같다(scipy도 이 경우 `gtsv`를 부른다).
-  - 기각한 대안: 항상 `gbsv`. 규칙은 단순하지만 (1, 1)에서 scipy보다 느리고 비트도 다르다.
+  - 기각한 대안: 항상 `gbsv`. 규칙은 단순하지만 (1, 1)에서 4–5배 느리다.
 - **`solve_sylvester`는 Bartels–Stewart다.** `a = U R Uᴴ`, `b = W S Wᴴ`(`gees`), `F = Uᴴ c W`(gemm 2번), `trsyl3`로 `R Y + Y S = F`, `x = U Y Wᴴ`(gemm 2번)
   - `trsyl3`(LAPACK 3.11의 블록 버전)는 `trsyl`보다 n = 300에서 1.5배, 1000에서 4.8배 빠르다. n ≤ 32에서는 결과 비트까지 같고, 잔차는 둘 다 eps 수준이다.
   - scipy는 `b`의 켤레 전치를 Schur 분해하고 `trsyl(tranb='C')`를 부른다. 우리는 `b`를 바로 분해하고 'N', 'N'으로 부른다. 수학적으로 같은 방정식이다.
@@ -763,17 +795,23 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
 - **답이 하나로 정해지는 값**(고유값, 특이값, `det`, `solve`의 해)은 numpy, scipy와 직접 비교한다.
 
 ### 12.2 비트 동일성
-테스트가 이 구분을 그대로 고정한다 (§13).
+- **numpy·scipy와의 비트 일치는 약속이 아니다** (사용자 결정 2026-11-20, API.md의 비트 규칙). 아래 표는 지금의 사실이다.
+  - 약속은 셋이다: 스레드 수·레이아웃·배치 위치와 무관한 비트, 우리 함수끼리의 비트 관계(아래), 우리 골든 출력과 정확도 계약.
+  - 지금 비트가 같은 코드를 그것만을 위해 바꾸지 않는다. 고침이나 최적화에 필요하면 깨도 된다. 그때 numpy·scipy와 비트로 비교하던 테스트는 허용오차 비교로 바꾼다.
+- 테스트가 이 구분을 지금 상태대로 고정한다 (§13).
 
 | 범주 | 관계 |
 |---|---|
 | `eigh`, `qr`, `lstsq` | numpy와 비트까지 같다 (같은 드라이버, 같은 호출) |
 | `outer`, `kron`, `cross` | numpy와 같다 (같은 곱셈 식, §10.8) |
-| 부동소수점 합 (`vecdot`, `trace`, `vector_norm`) | numpy와 같다 (같은 pairwise 트리, §8.2) |
+| 그냥 합 (`trace`, 1-노름, p-노름) | 배열의 합과 같다 (같은 트리와 잎, §8.2). numpy와는 배열의 잎이 numpy의 것일 때만 같다 |
+| 곱의 합 (`vecdot`, 2-노름, 'fro') | 곱을 잎에 융합한다(FMA). `sum(conj(x)*y)`, numpy와 끝 비트가 다를 수 있다 (§8.2) |
 | `matrix_norm`의 ±1, ±inf, 'fro' | 줄마다의 pairwise 합이다. numpy와는 더하는 축이 연속일 때만 같다 (§8.2) |
 | `cholesky`, `cholesky_solve` | numpy·scipy와 비트까지 같다 (같은 `potrf`/`potrs`) |
 | `qr_pivoted` | perm, Q, R 모두 scipy와 비트까지 같다 (같은 `geqp3`) |
-| `ldl`, `solve_tridiagonal`, `solve_banded` | scipy와 같다 (같은 피벗 해석, 같은 `gtsv`/`gbsv`) |
+| `ldl`, `solve_tridiagonal`, `solve_banded`(n > 8) | scipy와 같다 (같은 피벗 해석, 같은 `gtsv`/`gbsv`) |
+| `solve_banded`(n ≤ 8, 대역폭 (1, 1) 외) | scipy와 반올림 수준에서 다르다 (밀집 LU, §7.4) |
+| LU 계열의 n = 32–46 | `getf2`라서 numpy·scipy(`getrf`)와 반올림 수준에서 다를 수 있다 (§7.5) |
 | `solve` | numpy와 반올림 수준에서 다르다 (`gesv` 대 `getrf + getrs`, §10.2) |
 | `svd` | 다를 수 있다 (`gesdd`의 `lwork`, §10.5) |
 | `eigvalsh`, `svdvals` | `eigh`/`svd`의 값과 1e-15 수준에서 다르다 (값 전용 모드, numpy도 같음) |
@@ -805,6 +843,8 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
   - 배치는 1.45배다. numpy와 같은 LAPACK을 부르면서 호출 비용만큼 빠르다.
   - **긴 합과 노름은 numpy보다 느리다** (0.2–0.7배). 잎 버퍼를 거치는 두 단계 때문이다 (§8.2).
 
+    - 아래 표는 곱의 합을 잎 버퍼로 더하던 때의 측정이다. 융합 잎(§8.2) 뒤의 값은 다시 재야 한다.
+
     | 1스레드, 1e6 | sd.linalg | 같은 트리 (배열, NEON) | numpy |
     |---|---:|---:|---:|
     | `vecdot` | 198µs | `sd.sum` 112µs (곱은 미리) | `np.dot` 74µs (BLAS) |
@@ -823,18 +863,15 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
   | `matrix_norm` fro (1000,3,3) | 0.77 | 짧은 합 1000개의 고정비 |
 
 ### 12.5 하지 않은 최적화
-- **결과 비트를 바꾸므로 하지 않은 것** (설계 결정이 필요하다)
+- **결과 비트를 바꾸므로 하지 않은 것** (설계 결정이 필요하다). numpy·scipy와의 비트는 이유가 되지 않는다(§12.2). 남은 이유는 크기에 따른 경로(§1.3), 레이아웃 불변성(§5.7), 규칙의 복잡도다.
 
   | 후보 | 이득 | 바뀌는 것 |
   |---|---|---|
-  | 작은 띠의 `solve_banded`를 dense LU로 | 2–54배 (n ≤ 8) | scipy의 `gbsv`와 비트가 달라지고, 드라이버가 n에 따라 바뀐다 |
-  | n ≈ 32의 `getrf`를 `getf2`로 | `getrf` 부분 6배 | 비트, 크기에 따른 경로 (§1.3) |
   | 우변을 4열씩 나눠 풀기 (§7.5) | n = 24–48, k = 8에서 1스레드 1.2–2배, 10스레드 4.6–17배 | 비트. k가 n만큼 많으면 1스레드에서 0.4–0.8배로 느리고, n, k ≥ 64이면 10스레드에서도 블록 경로가 3–7배 낫다. n, k, 스레드 수에 따른 규칙이 필요하다 |
   | C-order 입력의 삼각 풀기를 `trans='T'`로 그 자리에서 | 전치 패킹 제거 | 레이아웃 불변성 (§5.7) |
   | 작은 띠 행렬을 직접 구현 | `gbsv`의 호출당 1µs 고정비 제거 | "LAPACK을 감싼다"(§1.2)의 예외가 된다 |
 
 - **결과를 바꾸지 않지만 아직 하지 않은 것**
-  - pairwise 잎의 NEON 벡터화: 곱(또는 제곱)과 잎 합을 NEON 레지스터 안에서 합치면 1스레드의 긴 합과 노름이 1.5–1.8배 빨라질 것으로 본다(`vecdot` 1e6 약 110–130µs, 노름 230µs 근처). 같은 트리이므로 비트는 그대로다. 통합 중 M3에서 배열의 pairwise 합과 합치면 저절로 해결될 수 있다.
   - `matrix_power`의 F-order 입력을 패킹 없이 `gemm`에: 300² 185 → 약 170µs, 1000² 4409 → 약 4110µs(numpy 4108µs)
   - `lu`의 L/U 풀기: n = 300에서 `getrf` 302µs 뒤의 풀기가 51µs다(scipy 28µs). 약 8%다.
 - **할 것이 없는 곳**: 큰 행렬 하나의 LAPACK 분해(같은 Accelerate, 0.94–1.28배). 바꾸려면 분해를 직접 짜야 한다(§1.2의 원칙 밖).
@@ -849,11 +886,12 @@ LAPACK에 없으므로 직접 구현한다. 알고리즘은 Al-Mohy & Higham 200
   - 분해는 재구성 잔차(`‖x[perm] − L U‖` 등), 직교성(`‖QᴴQ − I‖`), 고유값/특이값의 numpy 비교로 본다.
 - **규칙 테스트**: 빈 행렬, 배치 크기 0, NaN 입력의 ValueError, 특이 행렬의 `LinAlgError`와 그 배치 인덱스, 에러 순서, 결과 dtype, F-order 결과, 배열이 아닌 인자의 TypeError
 - **비트 동일성 테스트** (§12.2)
-  - numpy/scipy와 같아야 하는 함수, 우리 함수끼리의 비트 관계
+  - 지금 numpy/scipy와 비트가 같은 함수(약속이 아니다, §12.2), 우리 함수끼리의 비트 관계
   - 레이아웃: 같은 행렬을 C, F, strided로 넣어 같은 바이트
   - 배치 안의 위치: 홀수 n(3, 5, 7, 40)의 배치 결과가 하나씩 부른 결과와 같은 바이트 (§6.4)
   - 스레드 수: 36개 호출 × 2 dtype × 배치 3가지를 스레드 1, 3, 10에서 비교, 실패 메시지 비교, Python 스레드 4개 동시 호출, 반복 20회
   - 최적화를 끄고 켜기: §7.7의 비공개 함수로 끈 경로와 켠 경로, 스레드 1/3/10의 비트를 비교한다(328개).
+- **크기로 고르는 경로의 경계** (`test_review_fixes_2.py`): LU 계열의 n = 31, 32, 46, 47과 직사각 `lu`, `solve_banded`의 n = 7, 8, 9, 12에서 답(잔차, numpy와의 허용오차), 레이아웃·배치 위치·스레드 수와 무관한 비트, 모서리를 읽지 않음, 특이의 판정을 본다 (§1.3).
 - **끝나지 않던 입력** (`test_review_fixes.py`): `expm`의 극단값(§11.4)은 자식 프로세스에서 시간 제한을 두고 돈다. 가드가 없으면 약 2³¹번 제곱해서 테스트 전체가 멈춘다.
 - **API 표면** (`test_api_surface.py`): `docs/api/linalg.md`의 코드 블록에 있는 이름과 모듈이 내보내는 이름이 같은지, keyword-only 옵션이 문서와 같은지 확인한다. nanobind 함수는 `inspect.signature`가 `(*args, **kwargs)`라서 `__nb_signature__`를 읽는다.
 - **골든 출력**: 통합 중에는 옛 패키지로 만든 linalg 1,844개 결과(에러 메시지 포함)를 스레드 수 1, 3, 10에서 바이트로 비교한다 (`bench/merge/golden/`, ROADMAP 진행 원칙).

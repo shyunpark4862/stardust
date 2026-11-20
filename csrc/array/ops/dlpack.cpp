@@ -11,8 +11,12 @@
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "array/ops/copy.hpp"
+#include "array/parallel_limits.hpp"
+#include "parallel/pool.hpp"
 
+#include <climits>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -131,10 +135,25 @@ void legacy_capsule_destructor(PyObject* cap) {
     }
 }
 
-bool cpu_device(nb::handle dev) {
+// A device: None, or a (device_type, device_id) tuple of two ints (the int
+// rule of index_value, so no bool). nullopt when it has another form; `bad`
+// is then what to name in the message.
+std::optional<bool> cpu_device(nb::handle dev, std::string& bad) {
     if (dev.is_none()) return true;
-    if (!PyTuple_Check(dev.ptr()) || nb::len(dev) != 2) return false;
-    return nb::cast<std::int64_t>(dev[0]) == kDLCPU && nb::cast<std::int64_t>(dev[1]) == 0;
+    if (!PyTuple_Check(dev.ptr()) || PyTuple_GET_SIZE(dev.ptr()) != 2) {
+        bad = py_type_name(dev);
+        return std::nullopt;
+    }
+    std::int64_t v[2];
+    for (Py_ssize_t i = 0; i < 2; ++i) {
+        nb::handle item = PyTuple_GET_ITEM(dev.ptr(), i);
+        switch (index_value(item, v[i])) {
+            case IndexResult::Ok: break;
+            case IndexResult::Overflow: return false;  // an int, just not the CPU's
+            case IndexResult::NotInt: bad = "a tuple holding " + py_type_name(item); return std::nullopt;
+        }
+    }
+    return v[0] == kDLCPU && v[1] == 0;
 }
 
 nb::object dlpack(
@@ -142,13 +161,30 @@ nb::object dlpack(
 ) {
     const NDArray& a = as_ndarray(self);
     if (!stream.is_none()) throw nb::buffer_error("'stream' must be None for CPU arrays");
-    if (!cpu_device(dl_device)) throw nb::buffer_error("only the CPU device (1, 0) is supported");
+    std::string bad;
+    const std::optional<bool> cpu = cpu_device(dl_device, bad);
+    if (!cpu)
+        throw nb::type_error(
+            ("'dl_device' must be None or a (device_type, device_id) tuple of ints, not " + bad).c_str()
+        );
+    if (!*cpu) throw nb::buffer_error("only the CPU device (1, 0) is supported");
     const std::optional<bool> copy = parse_copy(copy_obj);
     bool versioned = false;
     if (!max_version.is_none()) {
-        if (!PyTuple_Check(max_version.ptr()) || nb::len(max_version) != 2)
-            throw nb::type_error("'max_version' must be None or a (major, minor) tuple");
-        versioned = nb::cast<std::int64_t>(max_version[0]) >= 1;
+        const char* kVersion = "'max_version' must be None or a (major, minor) tuple of ints, not ";
+        if (!PyTuple_Check(max_version.ptr()) || PyTuple_GET_SIZE(max_version.ptr()) != 2)
+            throw nb::type_error((kVersion + py_type_name(max_version)).c_str());
+        std::int64_t v[2];
+        for (Py_ssize_t i = 0; i < 2; ++i) {
+            nb::handle item = PyTuple_GET_ITEM(max_version.ptr(), i);
+            switch (index_value(item, v[i])) {
+                case IndexResult::Ok: break;
+                case IndexResult::Overflow: v[i] = INT64_MAX; break;  // a version past any we know
+                case IndexResult::NotInt:
+                    throw nb::type_error((kVersion + ("a tuple holding " + py_type_name(item))).c_str());
+            }
+        }
+        versioned = v[0] >= 1;
     }
     auto* e = new Export{copy == true ? cast_copy(a, a.dtype) : view_of(self), {}, {}};
     const bool read_only = !e->keep.writeable;
@@ -200,8 +236,12 @@ void owner_legacy(PyObject* cap) {
 
 nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
     const std::optional<bool> copy = parse_copy(copy_obj);
-    if (!device.is_none() && !cpu_device(device))
-        throw nb::value_error("'device' must be None or the CPU device (1, 0)");
+    {
+        std::string bad;
+        const std::optional<bool> cpu = cpu_device(device, bad);
+        if (!cpu) throw nb::type_error(("'device' must be None or the CPU device (1, 0), not " + bad).c_str());
+        if (!*cpu) throw nb::value_error("'device' must be None or the CPU device (1, 0)");
+    }
     // Each attribute looked up once, the names, the keyword names and the version
     // tuple made once, and the call a vectorcall (the generic attribute and keyword
     // path: 252 ns per import of a numpy array, numpy's own from_dlpack 114).
@@ -219,7 +259,13 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
         const nb::object dev_method = nb::steal(raw);
         PyObject* dev = PyObject_CallNoArgs(dev_method.ptr());
         if (!dev) throw nb::python_error();
-        if (!cpu_device(nb::steal(dev))) throw nb::buffer_error("only CPU arrays can be imported");
+        std::string bad;
+        const std::optional<bool> cpu = cpu_device(nb::steal(dev), bad);
+        if (!cpu)
+            throw nb::type_error(
+                ("__dlpack_device__ must return a (device_type, device_id) tuple of ints, not " + bad).c_str()
+            );
+        if (!*cpu) throw nb::buffer_error("only CPU arrays can be imported");
     }
     nb::object cap;
     {
@@ -301,21 +347,23 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
     bool aligned = reinterpret_cast<std::uintptr_t>(a.data) % align == 0;
     for (int k = 0; k < a.ndim; ++k) aligned = aligned && a.strides[k] % static_cast<std::int64_t>(align) == 0;
     auto for_each = [&](auto&& fn) {  // fn(i, element pointer), i in C order
-        std::vector<std::int64_t> at(a.ndim, 0);
-        for (std::int64_t i = 0, n = a.size(); i < n; ++i) {
-            std::int64_t off = 0;
-            for (int k = 0; k < a.ndim; ++k) off += at[k] * a.strides[k];
-            fn(i, a.data + off);
-            for (int k = a.ndim - 1; k >= 0; --k) {
-                if (++at[k] < a.shape[k]) break;
-                at[k] = 0;
-            }
-        }
+        std::int64_t i = 0;
+        for_each_element<1>(a.shape_span(), {a.data}, {a.strides.data()}, [&](std::byte* p) { fn(i++, p); });
     };
     bool valid = true;
     if (a.dtype == DType::Bool) {
+        // The OR of all bytes is at most 1 exactly when every byte is 0 or 1
+        // (as for a buffer, §3.3): a flat branch-free scan when contiguous.
+        // Bool is one byte, so its threshold is 8 times the array's.
+        const std::int64_t n = a.size();
         std::uint8_t any = 0;
-        for_each([&](std::int64_t, const std::byte* p) { any |= static_cast<std::uint8_t>(*p); });
+        const parallel::Unlocked unlocked(n >= 8 * kParallelThreshold);
+        if (a.c_contiguous) {
+            const auto* q = reinterpret_cast<const std::uint8_t*>(a.data);
+            for (std::int64_t i = 0; i < n; ++i) any |= q[i];
+        } else {
+            for_each([&](std::int64_t, const std::byte* p) { any |= static_cast<std::uint8_t>(*p); });
+        }
         valid = any <= 1;
     }
     if (!aligned || !valid) {
@@ -341,8 +389,8 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
 void bind_dlpack(nb::module_& m, nb::class_<NDArray>& cls) {
     using nb::arg;
     m.def(
-        "from_dlpack", named("from_dlpack", &from_dlpack), arg().none(), nb::kw_only(),
-        arg("device").none() = nb::none(), arg("copy").none() = nb::none()
+        "from_dlpack", named("from_dlpack", &from_dlpack), nb::sig("def from_dlpack(x, /, *, device=None, copy=None)"),
+        arg().none(), nb::kw_only(), arg("device").none() = nb::none(), arg("copy").none() = nb::none()
     );
     cls.def(
         "__dlpack__", named("__dlpack__", &dlpack), nb::kw_only(), arg("stream").none() = nb::none(),

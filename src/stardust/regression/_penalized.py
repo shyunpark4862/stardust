@@ -16,13 +16,13 @@ import math
 import numbers
 import operator
 
+from .. import _calls
 from .. import _core as _sd
 from .. import random as _random
 from .. import special as _special
 from . import _glm as _glm_mod
 from ._glm import _broadcast_shape
 from ._linear import (
-    _call_errors,
     _check_bool,
     _check_choice,
     _check_params,
@@ -34,9 +34,10 @@ from ._linear import (
     _names,
     _new_design,
     _number_or_1d,
-    _own,
+    _pow2,
     _prepare,
     _real,
+    _ro,
 )
 
 _k = _sd.regression
@@ -141,14 +142,17 @@ class _PenalizedResult:
         "_path",
         "_fit",
         "_columns",
+        "_fy",
     )
 
-    def __init__(self, P, S, *, alpha, l1_ratio, path, param_names, intercept, standardize, fit, columns=None):
-        self._P = P + 0.0  # params (batch..., L, k); exact zeros are +0 (G84)
+    def __init__(self, P, S, *, alpha, l1_ratio, path, param_names, intercept, standardize, fit, columns=None, fy=None):
+        self._P = _ro(P + 0.0)  # params (batch..., L, k); exact zeros are +0 (G84); read-only (D-4)
         self._columns = columns  # the fit's DataFrame column names, or None
-        self._S = S  # stats (batch..., L, nstat)
+        self._S = _ro(S)  # stats (batch..., L, nstat); those in the units of y^2 in the fit's (fy)
+        # y's power-of-two factor of a fit in those units (_run), or None
+        self._fy = fy
         self._cache = {}
-        self._alpha = alpha
+        self._alpha = _ro(alpha)
         self._l1_ratio = l1_ratio
         self._standardize = standardize
         self._param_names = param_names
@@ -160,14 +164,15 @@ class _PenalizedResult:
     # the fit's configuration: read-only (G98)
     @property
     def param_names(self):
-        """The coefficients' names ('const' for the intercept, then the columns'): a new list
-        at each access (G113)."""
+        """The coefficients' names ('const' for the intercept, then the columns'), as a new list
+        at each access: changing the list returned does not change the result."""
         return _fresh(self._param_names)
 
     @property
     def alpha(self):
-        """The penalty's alpha as given (a number or the path's array; the CV's chosen one)."""
-        return _fresh(self._alpha)
+        """The penalty's alpha as given (a number or the path's array, read-only; the CV's
+        chosen one)."""
+        return self._alpha
 
     @property
     def l1_ratio(self):
@@ -180,8 +185,12 @@ class _PenalizedResult:
     def _cached(self, name, make):
         c = self._cache
         if name not in c:
-            c[name] = make()
+            c[name] = _ro(make())
         return c[name]
+
+    def _sq(self, v):
+        """A per-alpha scalar in the fit's units of y^2 in y's (times fy^2)."""
+        return _sq_units(v, self._fy, 1 if self._path else 0)
 
     def _stat(self, i):
         """A per-alpha scalar: (batch..., L) for a path, the batch shape (a float for one
@@ -255,12 +264,17 @@ class _LinearPenalized(_PenalizedResult):
     def resid(self):
         return self._fitted_resid()[1]
 
-    @property
-    def ssr(self):
-        """sum w (y - fitted)^2 over the fit's rows (from resid, whose terms are in double-double)."""
+    def _ssr_s(self):
+        """sum w (y - fitted)^2 over the fit's rows (from resid, whose terms are in double-double),
+        in the fit's units (resid / fy) when it ran in them."""
 
         def make():
             r = self.resid
+            if self._fy is not None:
+                f = self._fy
+                if isinstance(f, _sd.ndarray):
+                    f = _sd.reshape(f, tuple(f.shape) + (1,) * (2 if self._path else 1))
+                r = r / f
             w = self._fit[2]
             rr = r * r
             if w is not None:
@@ -268,12 +282,36 @@ class _LinearPenalized(_PenalizedResult):
                 rr = rr * ww
             return _scalar_or(_sd.sum(rr, axis=-1))
 
-        return self._cached("ssr", make)
+        return self._cached("ssr_s", make)
+
+    @property
+    def ssr(self):
+        """sum w (y - fitted)^2 over the fit's rows (from resid, whose terms are in double-double)."""
+        return self._cached("ssr", lambda: _scalar_or(self._sq(self._ssr_s())))
 
     @property
     def rsquared(self):
-        """1 - ssr / tss, tss about the weighted mean of y (uncentered without the intercept, as ols)."""
-        return self._cached("rsquared", lambda: _zero_total(1.0 - _div(self.ssr, self._stat(_TSS)), self._stat(_TSS)))
+        """1 - ssr / tss, tss about the weighted mean of y (uncentered without the intercept, as
+        ols); 0 when no slope enters the model (no columns, or every slope exactly 0), as ols's
+        intercept alone."""
+
+        def make():
+            tss = self._stat(_TSS)
+            r2 = _zero_total(1.0 - _div(self._ssr_s(), tss), tss)
+            slopes = self._P[..., (1 if self._intercept else 0) :]
+            if slopes.shape[-1] == 0:
+                none = True
+            else:
+                none = _sd.all(slopes == 0.0, axis=-1)
+                if not self._path:
+                    none = none[..., 0]
+                if not isinstance(r2, _sd.ndarray):
+                    none = bool(none)
+            if isinstance(none, bool):
+                return 0.0 if none and not math.isnan(r2) else r2
+            return _sd.where(_sd.logical_and(none, _sd.logical_not(_sd.isnan(r2))), 0.0, r2)
+
+        return self._cached("rsquared", make)
 
     def predict(self, X_new, /):
         """X_new params, the intercept added (..., [L,] m)."""
@@ -300,7 +338,7 @@ class _Iterative:
     def dual_gap(self):
         """The duality gap at the returned coefficients, in the objective's units (scikit-learn's
         formulation; the penalized GLM's is that of its last quadratic (IRLS) model)."""
-        return self._stat(_GAP)
+        return self._sq(self._stat(_GAP))
 
 
 class RidgeResult(_LinearPenalized):
@@ -472,7 +510,113 @@ def _aux(w, tw, n):
     return _sd.stack([_sd.broadcast_to(w, shape), _sd.broadcast_to(tw, shape)], axis=-2)
 
 
+# the per-alpha scalars in the units of y^2 (the objective's, the sums of squares, GCV)
+_SQUARED = (_GAP, _RSS, _TSS, _TEST_SSE, _GCV)
+
+
 def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol, tw=None):
+    """The kernel's path. A linear fit whose y is far outside [2^-256, 2^256] is solved in
+    power-of-two units (exact), as the linear models: y / fy with the penalty that makes the
+    objective G45 times 1/fy^2, the l1 part alpha l1_ratio / fy and the l2 part alpha
+    (1 - l1_ratio) unchanged (ridge keeps alpha; the lasso takes alpha / fy; the elastic net
+    alpha (l1_ratio / fy + 1 - l1_ratio) and l1_ratio / (l1_ratio + (1 - l1_ratio) fy)). The
+    coefficients come back times fy; the scalars in the units of y^2 (_SQUARED) stay in the fit's
+    units, which the result and the cross-validation scale as they read them. Returns (P, S,
+    fy), fy None for a fit as given."""
+    fy = _fy_of(kind, y)
+    if fy is not None:
+        P, S = _run_scaled(func, kind, y, X, w, alphas, l1_ratio, intercept, standardize, max_iter, tol, tw, fy)
+        return P, S, fy
+    P, S = _run_kernel(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol, tw)
+    return P, S, None
+
+
+def _fy_of(kind, y):
+    """The power-of-two factor of each regression's y (a number, or an array of y's batch
+    shape) for a linear fit, None when every y is inside [2^-256, 2^256] (and for the GLM)."""
+    if kind == _GLMNET or not y.shape[-1]:
+        return None
+    return _pow2(_sd.max(_sd.abs(y), axis=-1))
+
+
+def _sq_units(v, fy, lead):
+    """v (a per-regression scalar field in the fit's units of y^2: the batch shape, then `lead`
+    more axes) in y's units: times fy^2."""
+    if fy is None:
+        return v
+    if isinstance(fy, _sd.ndarray):
+        f = _sd.reshape(fy, tuple(fy.shape) + (1,) * lead)
+        return v * (f * f)
+    return v * (fy * fy)
+
+
+def _run_scaled(func, kind, y, X, w, alphas, l1_ratio, intercept, standardize, max_iter, tol, tw, fy):
+    if isinstance(fy, _sd.ndarray) and kind == _ENET and 0.0 < l1_ratio < 1.0:
+        vals = set(fy.tolist() if fy.ndim == 1 else _sd.reshape(fy, (fy.size,)).tolist())
+        if len(vals) > 1:
+            # l1_ratio' depends on fy, and the kernel takes one: each regression alone (the
+            # batch's result is the regressions' one by one, bit for bit)
+            return _run_each(func, kind, y, X, w, alphas, l1_ratio, intercept, standardize, max_iter, tol, tw)
+        fy = vals.pop()
+    f1 = _sd.expand_dims(fy, axis=-1) if isinstance(fy, _sd.ndarray) else fy
+    ys = y / f1
+    a, r = alphas, l1_ratio
+    if kind == _ENET:
+        if l1_ratio == 1.0:
+            a = alphas / f1
+        elif l1_ratio > 0.0:
+            a = alphas * (l1_ratio / fy + (1.0 - l1_ratio))  # fy a number here (one value)
+            r = l1_ratio / (l1_ratio + (1.0 - l1_ratio) * fy)
+    P, S = _run_kernel(func, kind, ys, X, w, a, r, "gaussian", intercept, standardize, max_iter, tol, tw)
+    # the coefficients back to y's units (batch..., L, k)
+    fb = _sd.expand_dims(f1, axis=-1) if isinstance(f1, _sd.ndarray) else f1
+    return P * fb, S
+
+
+def _run_each(func, kind, y, X, w, alphas, l1_ratio, intercept, standardize, max_iter, tol, tw):
+    """_run one regression at a time over the batch (y, X, w, tw and a batch of alphas
+    broadcast against one another), the results stacked in the batch's shape."""
+    shape = tuple(y.shape[:-1])
+    for a, d in ((X, 2), (w, 1), (tw, 1), (alphas, 1)):
+        if isinstance(a, _sd.ndarray) and a.ndim > d:
+            shape = _broadcast_shape(func, shape, tuple(a.shape[:-d]))
+
+    def at(a, d, idx):
+        if not isinstance(a, _sd.ndarray) or a.ndim <= d:
+            return a
+        a = _sd.broadcast_to(a, shape + tuple(a.shape[-d:]))
+        return a[idx]
+
+    Ps, Ss = [], []
+    for flat in range(math.prod(shape)):
+        idx, rest = [], flat
+        for s in reversed(shape):
+            idx.append(rest % s)
+            rest //= s
+        idx = tuple(reversed(idx))
+        P, S, _ = _run(
+            func,
+            kind,
+            at(y, 1, idx),
+            at(X, 2, idx),
+            at(w, 1, idx),
+            at(alphas, 1, idx),
+            l1_ratio,
+            "gaussian",
+            intercept,
+            standardize,
+            max_iter,
+            tol,
+            at(tw, 1, idx),
+        )
+        Ps.append(P)
+        Ss.append(S)
+    P = _sd.reshape(_sd.stack(Ps, axis=0), shape + tuple(Ps[0].shape))
+    S = _sd.reshape(_sd.stack(Ss, axis=0), shape + tuple(Ss[0].shape))
+    return P, S
+
+
+def _run_kernel(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol, tw=None):
     aux = _aux(w, tw, y.shape[-1])
     P, S = _k.penalized_path(
         func,
@@ -531,10 +675,10 @@ def _common(func, y, X, weights, intercept, standardize, nan_policy):
     _check_bool(standardize, func, "standardize")
     _check_policy(nan_policy, func)
     columns = _frame_columns(X)
-    y, X, w, names, _, _, _ = _prepare(func, y, X, weights, nan_policy)
+    # the result's fitted values read y, X and w later: arrays of its own (G86)
+    y, X, w, names, _, _, _ = _prepare(func, y, X, weights, nan_policy, own=True)
     _check_params(func, X.shape[-1], intercept)
-    # the result's fitted values read y, X and w later: copies (G86)
-    return _own(y), _own(X), _own(w), _names(names, X.shape[-1], intercept), columns
+    return y, X, w, _names(names, X.shape[-1], intercept), columns
 
 
 def _fit(
@@ -556,12 +700,13 @@ def _fit(
 ):
     y, X, w, names, columns = _common(func, y, X, weights, intercept, standardize, nan_policy)
     alphas, path, echo = _check_alpha(alpha, func)
-    P, S = _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol)
+    P, S, fy = _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol)
     if kind == _GLMNET:
         extra["family"] = family
     return cls(
         P,
         S,
+        fy=fy,
         alpha=echo,
         l1_ratio=l1_ratio,
         path=path,
@@ -574,6 +719,7 @@ def _fit(
     )
 
 
+@_calls.function
 def ridge(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, nan_policy="propagate"):
     """Ridge regression: minimizes (1/(2 sw)) sum w (y - b0 - X beta)^2 + alpha/2 ||S beta||^2
     (scikit-learn's ElasticNet objective at l1_ratio = 0; its Ridge's alpha is sw times this
@@ -581,6 +727,7 @@ def ridge(y, X, /, *, alpha, weights=None, intercept=True, standardize=False, na
     return _fit("ridge", RidgeResult, _RIDGE, y, X, alpha, 0.0, weights, intercept, standardize, 1, 1.0, nan_policy)
 
 
+@_calls.function
 def lasso(
     y, X, /, *, alpha, weights=None, intercept=True, standardize=False, max_iter=1000, tol=1e-4, nan_policy="propagate"
 ):
@@ -592,6 +739,7 @@ def lasso(
     return _fit(func, LassoResult, _ENET, y, X, alpha, 1.0, weights, intercept, standardize, max_iter, tol, nan_policy)
 
 
+@_calls.function
 def elastic_net(
     y,
     X,
@@ -618,6 +766,7 @@ def elastic_net(
     )
 
 
+@_calls.function
 def penalized_glm(
     y,
     X,
@@ -643,7 +792,7 @@ def penalized_glm(
     tol = _check_tol(tol, func)
     y, X, w, names, columns = _common(func, y, X, weights, intercept, standardize, nan_policy)
     alphas, path, echo = _check_alpha(alpha, func)
-    P, S = _run(func, _GLMNET, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol)
+    P, S, _ = _run(func, _GLMNET, y, X, w, alphas, l1_ratio, family, intercept, standardize, max_iter, tol)
     zero = [v == 0.0 for v in alphas.tolist()]
     sep = _sd.zeros(tuple(S.shape[:-1]))
     glm0 = None
@@ -760,7 +909,7 @@ def _cv(
     nan = math.nan
     if n == 0:
         # no rows (or none left after nan_policy='omit'): a NaN result with nobs 0 (G96)
-        P, S = _run(
+        P, S, _ = _run(
             func, kind, y, X, w, _sd.asarray([0.0]), l1_ratio, "gaussian", intercept, standardize, max_iter, tol
         )
         batch = tuple(S.shape[:-2])
@@ -778,10 +927,16 @@ def _cv(
             fit=(y, X, w),
             columns=columns,
         )
-        r._cv_fields = {"alphas": grid, "cv_error": err, "cv_se": err, "alpha_min": amin, "alpha_1se": amin}
+        r._cv_fields = {
+            k: _ro(v)
+            for k, v in (("alphas", grid), ("cv_error", err), ("cv_se", err), ("alpha_min", amin), ("alpha_1se", amin))
+        }
         return r
+    # the curve in the fit's units (fy: y's power-of-two factor, as _run's) for the choices; the
+    # fields in y's units
+    fy = _fy_of(kind, y)
     if gcv:
-        Pg, Sg = _run(func, kind, y, X, w, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
+        Pg, Sg, _ = _run(func, kind, y, X, w, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
         err = Sg[..., _GCV]
         se = err * nan
     else:
@@ -800,7 +955,7 @@ def _cv(
         test = _sd.where(fold == ks, 1.0, 0.0)  # (cv, 1..., n)
         tw = test * base
         trw = (1.0 - test) * base
-        _, S = _run(func, kind, y, X, trw, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol, tw=tw)
+        _, S, _ = _run(func, kind, y, X, trw, grid, l1_ratio, "gaussian", intercept, standardize, max_iter, tol, tw=tw)
         sw = S[..., _TEST_SW]
         mse = S[..., _TEST_SSE] / sw  # (cv, batch..., L)
         empty = sw == 0.0
@@ -861,7 +1016,7 @@ def _cv(
             P = _sd.take_along_axis(Pg, _sd.expand_dims(pick, axis=-1), axis=-2)
             S = _sd.take_along_axis(Sg, _sd.expand_dims(pick, axis=-1), axis=-2)
     else:
-        P, S = _run(func, kind, y, X, w, refit_alphas, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
+        P, S, _ = _run(func, kind, y, X, w, refit_alphas, l1_ratio, "gaussian", intercept, standardize, max_iter, tol)
     # no choice (a NaN curve): NaN coefficients and scalars, but the rows' count stays (nobs 0
     # for a regression without rows, G96)
     keep_cols = _sd.logical_or(_sd.arange(S.shape[-1]) == _NOBS, _sd.arange(S.shape[-1]) == _SUMW)
@@ -875,6 +1030,7 @@ def _cv(
     r = cls(
         P,
         S,
+        fy=fy,
         alpha=chosen,
         l1_ratio=l1_ratio,
         path=False,
@@ -884,17 +1040,22 @@ def _cv(
         fit=(y, X, w),
         columns=columns,
     )
-    r._cv_fields = {"alphas": grid, "cv_error": err, "cv_se": se, "alpha_min": amin, "alpha_1se": a1se}
+    err, se = _sq_units(err, fy, 1), _sq_units(se, fy, 1)  # the curve's alpha axis last
+    r._cv_fields = {
+        k: _ro(v)
+        for k, v in (("alphas", grid), ("cv_error", err), ("cv_se", se), ("alpha_min", amin), ("alpha_1se", a1se))
+    }
     return r
 
 
+@_calls.function
 def ridge_cv(
     y,
     X,
     /,
     *,
     rng=None,
-    cv=5,
+    cv="gcv",
     alphas=100,
     eps=1e-6,
     select="min",
@@ -903,8 +1064,9 @@ def ridge_cv(
     standardize=False,
     nan_policy="propagate",
 ):
-    """ridge with alpha chosen by k-fold cross-validation (folds from `rng`) or, cv='gcv', by
-    generalized cross-validation; refit on all the data at the chosen alpha. The default grid
+    """ridge with alpha chosen by generalized cross-validation (cv='gcv', the default: one SVD
+    of all the data, no folds) or by k-fold cross-validation (cv an int, folds from `rng`);
+    refit on all the data at the chosen alpha. The default grid
     reaches eps = 1e-6 of its alpha_max (G87): one SVD serves every alpha, so a wide grid costs
     nothing, and 1e-3 stopped at the lasso's alpha_max, often above a clear signal's optimum."""
     return _cv(
@@ -928,6 +1090,7 @@ def ridge_cv(
     )
 
 
+@_calls.function
 def lasso_cv(
     y,
     X,
@@ -971,6 +1134,7 @@ def lasso_cv(
     )
 
 
+@_calls.function
 def elastic_net_cv(
     y,
     X,
@@ -1019,5 +1183,5 @@ def elastic_net_cv(
 
 
 # the methods' call-shape errors in the library's form (R89)
-_call_errors(_LinearPenalized)
-_call_errors(PenalizedGLMResult)
+_calls.methods(_LinearPenalized)
+_calls.methods(PenalizedGLMResult)

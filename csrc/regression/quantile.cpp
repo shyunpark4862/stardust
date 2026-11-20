@@ -774,11 +774,19 @@ inline double inf_norm(const std::vector<double>& v) {
     return m;
 }
 
-// The snapping tolerance of a residual: (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf). A
-// residual within it is taken as exactly 0 and keeps its side (residuals are plain double;
-// they decide signs only beyond it).
-inline double snap_tol(const QP& P, lint i, double bn) {
-    return (static_cast<double>(P.k) + 16.0) * kU * (std::fabs(P.y[i]) + P.l1[i] * bn);
+// The snapping tolerance of a residual: (k + 16) u (|y_i| + sum_c |x_ic| |beta_c|), the
+// size by which rounding beta moves x_i beta. A residual within it is taken as exactly 0 and
+// keeps its side (residuals are plain double; they decide signs only beyond it). The bound
+// (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf) (bn: ||beta||_inf) is tried first, so that the
+// row's sum is formed only for a residual near 0.
+inline bool snaps(const QP& P, lint i, double ri, const double* beta, double bn) {
+    const double c = (static_cast<double>(P.k) + 16.0) * kU;
+    const double a = std::fabs(ri), ay = std::fabs(P.y[i]);
+    if (a > c * (ay + P.l1[i] * bn)) return false;
+    const double* xi = P.row(i);
+    double xb = 0.0;
+    for (lint j = 0; j < P.k; ++j) xb += std::fabs(xi[j] * beta[j]);
+    return a <= c * (ay + xb);
 }
 
 // The multipliers lambda: X_B^T lambda = -g, g = q (sum over nonbasic rows of m x) - neg
@@ -821,7 +829,7 @@ bool evaluate(const QP& P, double tau, State& S, Work& W, bool want_lam, Scratch
                 continue;
             }
             double ri = P.y[i] - av[i - i0];
-            if (std::fabs(ri) <= snap_tol(P, i, bn)) ri = 0.0;
+            if (snaps(P, i, ri, beta, bn)) ri = 0.0;
             else S.side[i] = ri > 0.0 ? 1 : -1;
             W.r[i] = ri;
             if (want_lam && S.side[i] < 0) {
@@ -867,15 +875,28 @@ struct Blk {
 inline bool blk_less(const Blk& a, const Blk& b) { return a.t < b.t || (a.t == b.t && a.i < b.i); }
 
 // The breakpoints along d (X_B d = sigma e_a): the nonbasic rows whose residual moves towards
-// and through 0, t_i = r_i / (x_i d) >= 0, weight m_i |x_i d|; |x_i d| below
-// (k + 16) u ||x_i||_1 ||d||_inf is taken as 0 (the row does not move). With `recompute` the
+// and through 0, t_i = r_i / (x_i d) >= 0, weight m_i |x_i d|. |x_i d| is taken as 0 (the row
+// does not move) below (k + 16) u times the smaller of ||x_i||_1 ||d||_inf and
+// max(sum_c |x_ic| |d_c|, max over the basis rows b of sum_c |x_bc| |d_c|): the rounding of
+// x_i d, and that of d itself (solved to about u sum_c |x_bc| |d_c| in each basis row); the
+// first alone is far too large when a large column meets a small component of d (a column of
+// times, an intercept that cancels it). With `recompute` the
 // residuals at beta are computed in the same pass (their sides updated, neg following);
 // otherwise W.r is used.
 void blockers(const QP& P, State& S, Work& W, const double* d, bool recompute, std::vector<Blk>& out) {
     const lint n = P.n, k = P.k;
     double dn = 0.0;
     for (lint c = 0; c < k; ++c) dn = std::max(dn, std::fabs(d[c]));
-    const double tv = (static_cast<double>(k) + 16.0) * kU * dn;
+    const double tu = (static_cast<double>(k) + 16.0) * kU, tv = tu * dn;
+    // the error of d itself: X_B d = sigma e_a is solved to u sum_c |x_Bc| |d_c| per basis row
+    double db = 0.0;
+    for (lint a = 0; a < k; ++a) {
+        const double* xb = P.row(S.B[a]);
+        double s = 0.0;
+        for (lint c = 0; c < k; ++c) s += std::fabs(xb[c] * d[c]);
+        db = std::max(db, s);
+    }
+    const double tb = tu * db;
     const double bn = inf_norm(W.beta);
     const double* beta = W.beta.data();
     const lint nc = row_chunks(n);
@@ -898,16 +919,22 @@ void blockers(const QP& P, State& S, Work& W, const double* d, bool recompute, s
             int sd = sd0;
             if (recompute && sd0 != 0) {
                 ri = P.y[i] - av[i - i0];
-                if (std::fabs(ri) <= snap_tol(P, i, bn)) ri = 0.0;
+                if (snaps(P, i, ri, beta, bn)) ri = 0.0;
                 else sd = ri > 0.0 ? 1 : -1;
                 W.r[i] = ri;
                 if (sd != sd0) changes[static_cast<std::size_t>(ci)].push_back({i, static_cast<std::int8_t>(sd)});
             } else {
                 ri = W.r[i];
             }
-            // a breakpoint (branch-free: written always, kept when it is one)
+            // a breakpoint (written always, kept when it is one)
             const double sv = static_cast<double>(sd) * v;
-            const bool keep = sv > tv * P.l1[i];
+            bool keep = sv > tv * P.l1[i];
+            if (!keep && sv > tb) {
+                const double* xi = P.row(i);
+                double xd = 0.0;
+                for (lint c = 0; c < k; ++c) xd += std::fabs(xi[c] * d[c]);
+                keep = sv > tu * xd;
+            }
             const double t = ri / v;
             o[no] = {t > 0.0 ? t : 0.0, i, P.m[i] * sv};
             no += keep ? 1 : 0;

@@ -1,8 +1,8 @@
 #include "frame/interop.hpp"
 
 #include "array/ndarray.hpp"
-#include "array/ops/reduction.hpp"
 #include "bind/pyutil.hpp"
+#include "frame/parallel.hpp"
 
 #include <cstring>
 #include <string>
@@ -41,6 +41,7 @@ Column from_array(nb::handle obj) {
     Column col = make_fixed(a.dtype, a.shape[0]);
     const std::int64_t size = itemsize(a.dtype);
     std::byte* out = col.values->data();
+    const Unlocked unlocked(a.shape[0]);  // only the bytes: `obj` keeps the array alive
     if (a.strides[0] == size) {
         std::memcpy(out, a.data, static_cast<std::size_t>(a.shape[0] * size));
     } else {
@@ -54,19 +55,20 @@ nb::object columns_to_array(const std::vector<Column>& cols, std::int64_t n) {
     const DType d = cols.empty() ? DType::Float64 : cols[0].dtype;
     const std::int64_t size = itemsize(d), k = static_cast<std::int64_t>(cols.size());
     const std::int64_t shape[2] = {n, k}, strides[2] = {size, n * size};
-    NDArray out = new_array_strided(d, shape, strides, n * k * size);
-    for (std::int64_t j = 0; j < k; ++j) {
-        const Column& c = cols[j];
+    for (const Column& c : cols)
         if (c.dtype != d || c.null_count != 0 || c.length != n)
             throw nb::value_error("columns_to_array: one dtype, no NA, n rows");
-        std::memcpy(out.data + j * n * size, c.values->data() + c.offset * size, static_cast<std::size_t>(n * size));
+    NDArray out = new_array_strided(d, shape, strides, n * k * size);  // with the GIL: the NDArray is Python's
+    {
+        const Unlocked unlocked(n * k);
+        for (std::int64_t j = 0; j < k; ++j) {
+            const Column& c = cols[j];
+            std::memcpy(
+                out.data + j * n * size, c.values->data() + c.offset * size, static_cast<std::size_t>(n * size)
+            );
+        }
     }
     return wrap(std::move(out));
-}
-
-double array_sum_float64(const Column& col) {
-    const nb::object view = wrap(view_of(col, /*writeable=*/false));
-    return nb::cast<double>(sd::sum(view, nb::none(), dtype_object(DType::Float64), /*keepdims=*/nb::handle(Py_False)));
 }
 
 }  // namespace sd::frame

@@ -66,6 +66,21 @@ def check(s, r, keys):
             assert same(v, s[k]), (k, v, s[k])
 
 
+def check_bracket_root(s, r):
+    """bracket_root against scipy's record: the same fields, except where both sides found a
+    sign change in the same iteration with brackets as wide. scipy then returns the right side's
+    left end and the left side's right end, a reversed interval; here it is the left side's
+    bracket, which ends at the same right end and brackets the root."""
+    if s["status"] == 0 and s["bracket"][0] > s["bracket"][1]:
+        check(s, r, ("nfev", "nit", "status", "success"))
+        (xl, xr), (fl, fr) = r.bracket, r.f_bracket
+        assert xl < xr and same(xr, s["bracket"][1]) and same(fr, s["f_bracket"][1])
+        assert fl == 0 or fr == 0 or (fl < 0) != (fr < 0)
+        return 1
+    check(s, r, BRACKET_KEYS)
+    return 0
+
+
 ROOT_KEYS = ("x", "f_x", "nfev", "nit", "status", "success", "bracket", "f_bracket")
 BRACKET_KEYS = ("nfev", "nit", "status", "success", "bracket", "f_bracket")
 MIN3 = [c for c in fn.MIN_CASES if len(c.bracket) == 3]
@@ -79,7 +94,7 @@ def test_find_root_and_bracket_root_against_recorded_scipy(c):
         check(REF[c.id]["find_root/paper"], r, ROOT_KEYS)
         assert r.nfev == c.nfev_paper
     x0 = c.x0 if c.x0 is not None else c.bracket[0]
-    check(REF[c.id]["bracket_root"], sd.optimize.bracket_root(vec(c), x0), BRACKET_KEYS)
+    check_bracket_root(REF[c.id]["bracket_root"], sd.optimize.bracket_root(vec(c), x0))
 
 
 @pytest.mark.parametrize("c", fn.MIN_CASES, ids=repr)
@@ -532,3 +547,71 @@ def test_user_errors_pass_through():
     ):
         with pytest.raises(Boom, match="^inside$"):
             call()
+
+
+# ---- bool values (SCALAR-6), xr0 by keyword (SCALAR-4, D-25), bracket_root's passes (SCALAR-3)
+
+
+def test_a_bool_array_is_an_error():
+    with pytest.raises(TypeError, match=r"find_root\(\): 'f' must return real values, not a bool array"):
+        sd.optimize.find_root(lambda x: x > 1.26, (sd.zeros(2), sd.full((2,), 2.0)))
+
+
+def test_bracket_root_xr0_by_keyword():
+    a = sd.optimize.bracket_root(lambda x: x - 5, 0.0, 1.0)
+    b = sd.optimize.bracket_root(lambda x: x - 5, 0.0, xr0=1.0)
+    assert a.bracket == b.bracket and a.status == b.status
+
+
+def test_bracket_root_threads_give_the_same_bits():
+    # from 2^15 sides in progress the passes split over the threads without the GIL
+    rng = np.random.default_rng(3)
+    xl0 = sd.asarray(rng.uniform(-10, 10, 50_000).tolist())
+    c = sd.asarray(rng.uniform(-100, 100, 50_000).tolist())
+    old = sd.get_num_threads()
+    try:
+        out = []
+        for t in (1, 4):
+            sd.set_num_threads(t)
+            r = sd.optimize.bracket_root(lambda x, c: x - c, xl0, args=(c,))
+            out.append([v.tolist() for v in r.bracket + r.f_bracket] + [r.status.tolist(), r.nfev.tolist()])
+        assert out[0] == out[1]
+    finally:
+        sd.set_num_threads(old)
+
+
+# ---- the bracket is sorted and brackets a root whenever status is 0
+
+
+def test_bracket_root_when_both_sides_find_a_sign_change_as_narrow():
+    # f(0) = -1, f(1) = -2; the next points are -1 (f = 0) and 2 (f = 3): both sides find a sign
+    # change in the same iteration with brackets of width 1. scipy returns (1, 0), f (-2, -1).
+    r = sd.optimize.bracket_root(lambda x: x**3 - 2 * x - 1, 0.0)
+    assert (r.bracket, r.f_bracket, r.status, r.converged) == ((-1.0, 0.0), (0.0, -1.0), 0, True)
+    # unequal widths: the narrower side's, as scipy
+    r = sd.optimize.bracket_root(lambda x: x - 0.5, 0.0)
+    assert (r.bracket, r.f_bracket, r.status) == ((0.0, 1.0), (-0.5, 0.5), 0)
+
+
+def test_bracket_root_status_0_brackets_a_root_and_is_sorted():
+    rng = np.random.default_rng(11)
+    n = 3000
+    # cubics with three integer roots and integer starts: many sides land on a root exactly, and
+    # in 215 of them both sides find a sign change as narrow (scipy returns a reversed interval)
+    r1, r2, r3 = (np.round(rng.uniform(-4, 4, n), 0) for _ in range(3))
+    xl0 = np.round(rng.uniform(-3, 3, n), 0)
+    args = tuple(sd.asarray(v.tolist()) for v in (r1, r2, r3))
+    r = sd.optimize.bracket_root(lambda x, a, b, c: (x - a) * (x - b) * (x - c), sd.asarray(xl0.tolist()), args=args)
+    xl, xr = (v.tolist() for v in r.bracket)
+    fl, fr = (v.tolist() for v in r.f_bracket)
+    status = r.status.tolist()
+    assert status.count(0) > n // 2
+    for i in range(n):
+        assert xl[i] <= xr[i]
+        if status[i] == 0:
+            assert fl[i] == 0 or fr[i] == 0 or (fl[i] < 0) != (fr[i] < 0), i
+
+
+def test_bracket_root_invalid_start_is_sorted():
+    r = sd.optimize.bracket_root(lambda x: x, 2.0, 1.0)
+    assert (r.bracket, r.f_bracket, r.status) == ((1.0, 2.0), (1.0, 2.0), -5)

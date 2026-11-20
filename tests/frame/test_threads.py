@@ -192,13 +192,17 @@ def test_reductions(name):
 
 
 @pytest.mark.parametrize("n", [16_384, 16_385, 200_003, 1_048_583])
-def test_float_sum_is_numpy_pairwise(n):
-    # The parallel tree adds the same nodes as numpy's serial recursion.
+def test_float_sum_is_the_array_pairwise_sum(n):
+    # The parallel tree adds the same nodes as the serial recursion, which is
+    # the array area's (base/pairwise.hpp): the same bits. numpy's own tree
+    # has a narrower leaf, so it agrees within rounding only.
     v = np.random.default_rng(n).standard_normal(n) * 1e6
     s = sd.frame.Series(v)
     got = same_for_all_thread_counts(lambda: s.sum())
-    assert got == bits(float(np.add.reduce(v)))
-    assert same_for_all_thread_counts(lambda: s.mean()) == bits(float(np.add.reduce(v)) / n)
+    assert got == bits(float(sd.sum(sd.asarray(v))))
+    assert same_for_all_thread_counts(lambda: s.mean()) == bits(float(sd.mean(sd.asarray(v))))
+    assert same_for_all_thread_counts(lambda: s.var()) == bits(float(sd.var(sd.asarray(v))))
+    assert abs(s.sum() - float(np.add.reduce(v))) <= 64 * np.finfo(np.float64).eps * float(np.sum(np.abs(v)))
 
 
 HASHING = {
@@ -389,6 +393,45 @@ def test_gil_is_released_by_chunked_kernels_with_one_thread():
         for name, call in calls.items():
             before = count[0]
             call()  # several ms in C++
+            during[name] = count[0] - before
+    finally:
+        stop.set()
+        t.join()
+        sd.set_num_threads(DEFAULT)
+    assert all(v > 1000 for v in during.values()), during
+
+
+def test_gil_is_released_by_large_copies_with_one_thread():
+    # Columns from numpy and sd arrays, DataFrame.to_array, isna without NA and
+    # scalar fills copy without the GIL (docs/design/frame.md §11.4).
+    n = 16_000_000
+    a32 = np.arange(n, dtype=np.int32)
+    a64 = np.random.default_rng(6).standard_normal(n)
+    sda = sd.asarray(a64)
+    df = sd.frame.DataFrame({"x": a64, "y": a64})
+    s = sd.frame.Series(a64)
+    calls = {
+        "Series(int32)": lambda: sd.frame.Series(a32),
+        "Series(sd.ndarray)": lambda: sd.frame.Series(sda),
+        "to_array": lambda: df.to_array(),
+        "isna": lambda: s.isna(),
+        "df['c'] = 0": lambda: df.__setitem__("c", 0),
+    }
+    count, stop, during = [0], threading.Event(), {}
+
+    def counter():
+        while not stop.is_set():
+            count[0] += 1
+
+    t = threading.Thread(target=counter)
+    try:
+        sd.set_num_threads(1)
+        t.start()
+        while count[0] == 0:
+            pass
+        for name, call in calls.items():
+            before = count[0]
+            call()
             during[name] = count[0] - before
     finally:
         stop.set()

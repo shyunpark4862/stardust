@@ -4,7 +4,7 @@ import stardust as sd
 
 
 def test_import_and_surface():
-    assert sd.linalg.__version__ == "0.0.1"
+    assert not hasattr(sd.linalg, "__version__")  # one package, no version of its own
     for name in sd.linalg.__all__:
         assert hasattr(sd.linalg, name)
     assert issubclass(sd.linalg.LinAlgError, ValueError)

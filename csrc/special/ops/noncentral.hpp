@@ -1436,6 +1436,22 @@ inline bool ncx2_edge(double df, double nc, double x, bool upper, double& out) {
     return true;
 }
 
+// A tail of the probability below e^-1000 by Chernoff's bound from the moment generating
+// function (1 - 2s)^(-df/2) e^(nc s / (1 - 2s)): P(X <= x) <= e^(x/2) 2^(-df/2) e^(-nc/4)
+// (s = -1/2), P(X >= x) <= e^(-x/4) 2^(df/2) e^(nc/2) (s = 1/4). 0 and 1 without the walk,
+// which could not reach the terms' peak there (chndtr(1, 1e16, 1) was NaN for 0). (Not for
+// sd.stats' log forms: they want the tail's value, chndtr_tail.)
+inline bool ncx2_obvious(double df, double nc, double x, bool upper, double& out) {
+    if (0.5 * x - kLn2Hi * 0.5 * df - 0.25 * nc < -1000.0) {
+        out = upper ? 1.0 : 0.0;
+    } else if (-0.25 * x + kLn2Hi * 0.5 * df + 0.5 * nc < -1000.0) {
+        out = upper ? 0.0 : 1.0;
+    } else {
+        return false;
+    }
+    return true;
+}
+
 struct Chndtr : Real {
     static constexpr const char* name = "chndtr";
     static constexpr int nin = 3, nout = 1;
@@ -1443,7 +1459,7 @@ struct Chndtr : Real {
     static constexpr double cost_ns = cost::kChndtr;
     static double f(double df, double nc, double x) {
         double out;
-        if (ncx2_edge(df, nc, x, false, out)) return out;
+        if (ncx2_edge(df, nc, x, false, out) || ncx2_obvious(df, nc, x, false, out)) return out;
         return nc_detail::ncx2(df, nc, x, false);
     }
 };
@@ -1455,7 +1471,7 @@ struct Chndtrc : Real {
     static constexpr double cost_ns = cost::kChndtrc;
     static double f(double df, double nc, double x) {
         double out;
-        if (ncx2_edge(df, nc, x, true, out)) return out;
+        if (ncx2_edge(df, nc, x, true, out) || ncx2_obvious(df, nc, x, true, out)) return out;
         return nc_detail::ncx2(df, nc, x, true);
     }
 };
@@ -1594,7 +1610,7 @@ inline bool ncf_edge(double dfn, double dfd, double nc, double x, bool upper, do
 struct Ncfdtr : Real {
     static constexpr const char* name = "ncfdtr";
     static constexpr int nin = 4, nout = 1;
-    static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "f"};
+    static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "x"};
     static constexpr double cost_ns = cost::kNcfdtr;
     static double f(double dfn, double dfd, double nc, double x) {
         dfn = nc_detail::halvable_dfn(dfn);
@@ -1607,7 +1623,7 @@ struct Ncfdtr : Real {
 struct Ncfdtrc : Real {
     static constexpr const char* name = "ncfdtrc";
     static constexpr int nin = 4, nout = 1;
-    static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "f"};
+    static constexpr std::array<const char*, 4> args{"dfn", "dfd", "nc", "x"};
     static constexpr double cost_ns = cost::kNcfdtrc;
     static double f(double dfn, double dfd, double nc, double x) {
         dfn = nc_detail::halvable_dfn(dfn);

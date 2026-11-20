@@ -1,6 +1,6 @@
 #include "frame/ops/reduce.hpp"
 
-#include "frame/interop.hpp"
+#include "base/int_sum.hpp"
 #include "frame/ops/pairwise.hpp"
 #include "frame/parallel.hpp"
 
@@ -68,11 +68,29 @@ double as_double(const Column& c, std::int64_t i) {
     }
 }
 
-// The mean of the rows with a value; count > 0. int64 is summed as float64 the
-// way the array area sums it (NA rows hold 0), then divided (docs/api/frame.md §6.3).
+// The exact sum of an int64 column's values (NA rows hold 0): integer
+// addition, so the chunks merge in any order with the same bits.
+IntSum int_sum(const Column& c) {
+    const auto* v = c.data<std::int64_t>();
+    return over_chunks<IntSum>(
+        c.length, IntSum{},
+        [v](std::int64_t lo, std::int64_t hi) {
+            IntSum s;
+            s.add_range(v + lo, hi - lo);
+            return s;
+        },
+        [](IntSum a, const IntSum& b) {
+            a.merge(b);
+            return a;
+        }
+    );
+}
+
+// The mean of the rows with a value; count > 0. int64: the exact sum, rounded
+// once and divided once, as the array area's mean (base/int_sum.hpp,
+// docs/api/frame.md §6.5); NA rows hold 0.
 double mean_of(const Column& c, std::int64_t count) {
-    if (c.dtype == DType::Int64)  // the array area's float64 sum, so both areas agree to the bit (DESIGN.md §9.1 #11)
-        return array_sum_float64(c) / static_cast<double>(count);
+    if (c.dtype == DType::Int64) return sd::mean_of(int_sum(c), count);
     if (c.dtype == DType::Bool) {
         const auto* v = c.data<std::uint8_t>();
         const std::int64_t trues = over_chunks<std::int64_t>(
@@ -281,12 +299,13 @@ Column reduce(std::string_view op, const Column& c, bool skipna, double correcti
         return na_value(DType::Float64);  // too few values (docs/api/frame.md §6.4)
     // NA rows add 0.0. The validity is a byte per row (docs/design/frame.md §4.4), so this is a
     // select, not a branch; the sum's order and bits are as before.
+    // Each square added by one fma, as the array area's var (pairwise::leaf_squares).
     const std::vector<std::uint8_t> m = valid_bytes(c);
-    const double ssd = float_sum(
+    const double ssd = squares_sum(
         c.length,
         [&](std::int64_t i) {
             const double d = as_double(c, i) - mean;
-            return m[i] ? d * d : 0.0;
+            return m[i] ? d : 0.0;
         },
         4
     );

@@ -142,6 +142,87 @@ inline void max_and_nan(const double* a, std::int64_t n, double& mx, bool& nan) 
     nan |= bad != 0;
 }
 
+// The same for the magnitudes |x[0..n)| of float64 values read in place.
+inline void max_abs_and_nan(const double* x, std::int64_t n, double& mx, bool& nan) {
+    double m0 = mx, m1 = mx, m2 = mx, m3 = mx;
+    std::uint64_t bad = 0;
+    std::int64_t k = 0;
+    for (; k + 4 <= n; k += 4) {
+        const double a0 = std::fabs(x[k]), a1 = std::fabs(x[k + 1]), a2 = std::fabs(x[k + 2]), a3 = std::fabs(x[k + 3]);
+        bad |= (a0 != a0) | (a1 != a1) | (a2 != a2) | (a3 != a3);
+        m0 = a0 > m0 ? a0 : m0;
+        m1 = a1 > m1 ? a1 : m1;
+        m2 = a2 > m2 ? a2 : m2;
+        m3 = a3 > m3 ? a3 : m3;
+    }
+    for (; k < n; ++k) {
+        const double a = std::fabs(x[k]);
+        bad |= a != a;
+        m0 = a > m0 ? a : m0;
+    }
+    m0 = m1 > m0 ? m1 : m0;
+    m2 = m3 > m2 ? m3 : m2;
+    mx = m2 > m0 ? m2 : m0;
+    nan |= bad != 0;
+}
+
+// The largest magnitude and NaN seen by the leaves of one task.
+struct NormSide {
+    double m = 0;
+    bool nan = false;
+    std::int64_t nonzero = 0;
+};
+
+// fma_dot_leaf(x, x, n) -- the same lanes, the same operations, so the same bits -- with
+// the largest |x| and NaN found in the same pass (vmaxq propagates NaN: a NaN lane is
+// noted and leaves the largest as it was, as max_and_nan does).
+inline double sq_leaf_in_place(const double* x, std::int64_t n, NormSide& sd) {
+    if (n < 16) {
+        max_abs_and_nan(x, n, sd.m, sd.nan);
+        return detail::fma_dot_leaf(x, x, n);
+    }
+    float64x2_t acc[8], mx[4];
+    for (int j = 0; j < 8; ++j) {
+        const float64x2_t v = vld1q_f64(x + 2 * j);
+        acc[j] = vmulq_f64(v, v);
+        if (j < 4) mx[j] = vabsq_f64(v);
+        else mx[j - 4] = vmaxq_f64(mx[j - 4], vabsq_f64(v));
+    }
+    std::int64_t i = 16;
+    for (; i + 16 <= n; i += 16)
+        for (int j = 0; j < 8; ++j) {
+            const float64x2_t v = vld1q_f64(x + i + 2 * j);
+            acc[j] = vfmaq_f64(acc[j], v, v);
+            mx[j & 3] = vmaxq_f64(mx[j & 3], vabsq_f64(v));
+        }
+    const float64x2_t s = vaddq_f64(
+        vaddq_f64(vaddq_f64(acc[0], acc[1]), vaddq_f64(acc[2], acc[3])),
+        vaddq_f64(vaddq_f64(acc[4], acc[5]), vaddq_f64(acc[6], acc[7]))
+    );
+    double r = vgetq_lane_f64(s, 0) + vgetq_lane_f64(s, 1);
+    const float64x2_t m = vmaxq_f64(vmaxq_f64(mx[0], mx[1]), vmaxq_f64(mx[2], mx[3]));
+    const double m0 = vgetq_lane_f64(m, 0), m1 = vgetq_lane_f64(m, 1);
+    if (m0 != m0 || m1 != m1) sd.nan = true;
+    else sd.m = std::max(sd.m, std::max(m0, m1));
+    if (i < n) max_abs_and_nan(x + i, n - i, sd.m, sd.nan);
+    for (; i < n; ++i) r = std::fma(x[i], x[i], r);
+    return r;
+}
+
+// One leaf of the 2-norm's sum of squares: terms b .. b+len-1 squared and summed by the
+// fused leaf (fma_dot_leaf, docs/design/linalg.md §8.2), their largest magnitude and NaN
+// noted in `sd`. From the magnitudes `fill` writes or, for float64 values contiguous in
+// logical order, from the values in place (x * x is |x| * |x| exactly, so both give the
+// same bits).
+template <class Fill>
+inline double two_leaf(Fill& fill, const double* direct, std::int64_t b, std::int64_t len, NormSide& sd) {
+    if (direct) return sq_leaf_in_place(direct + b, len, sd);
+    double buf[kPairwiseBlock];
+    fill(b, len, buf);
+    max_and_nan(buf, len, sd.m, sd.nan);
+    return detail::fma_dot_leaf(buf, buf, len);
+}
+
 // The end of a 2- or p-norm from the plain sum s of a^p: NaN, inf, or the
 // rescaled second pass when s overflowed or every term was tiny.
 template <class Fill>
@@ -168,7 +249,7 @@ inline double finish_pnorm(bool two, double p, double s, double amax, bool nan, 
 
 // The serial norm (short sets, or no pool): no allocation, one pass.
 template <class Fill>
-inline double vnorm_serial(VecOrd ord, std::int64_t count, Fill&& fill) {
+inline double vnorm_serial(VecOrd ord, std::int64_t count, Fill&& fill, const double* direct) {
     double buf[kPairwiseBlock];
     auto chunks = [&](auto&& f) {
         for (std::int64_t b = 0; b < count; b += kPairwiseBlock) {
@@ -203,22 +284,24 @@ inline double vnorm_serial(VecOrd ord, std::int64_t count, Fill&& fill) {
             return static_cast<double>(c);
         }
         case Ord::One: return pairwise_sum<double>(count, fill);
-        case Ord::Two:
+        case Ord::Two: {
+            NormSide sd;
+            const double s = 0. + pairwise::tree(0, count, [&](std::int64_t b, std::int64_t len) {
+                                 return two_leaf(fill, direct, b, len, sd);
+                             });
+            return finish_pnorm(true, 2.0, s, sd.m, sd.nan, count, fill);
+        }
         case Ord::P: {
-            const bool two = ord.kind == Ord::Two;
             const double p = ord.p;
             double amax = 0;
             bool nan = false;
             auto powers = [&](std::int64_t b, std::int64_t len, double* out) {
                 fill(b, len, out);
                 max_and_nan(out, len, amax, nan);
-                if (two)
-                    for (std::int64_t k = 0; k < len; ++k) out[k] = out[k] * out[k];
-                else
-                    for (std::int64_t k = 0; k < len; ++k) out[k] = std::pow(out[k], p);
+                for (std::int64_t k = 0; k < len; ++k) out[k] = std::pow(out[k], p);
             };
             const double s = pairwise_sum<double>(count, powers);
-            return finish_pnorm(two, p, s, amax, nan, count, fill);
+            return finish_pnorm(false, p, s, amax, nan, count, fill);
         }
     }
     return kNaN;
@@ -229,23 +312,21 @@ inline double vnorm_serial(VecOrd ord, std::int64_t count, Fill&& fill) {
 // (docs/design/linalg.md §2.5). Long sets are cut into the pairwise tree's
 // leaves and run on the pool (docs/design/linalg.md §8.3): the sums are
 // combined along the tree and max/min/count are order-free, so the result is
-// the serial one bit for bit. `fill` must not write anything shared.
+// the serial one bit for bit. `fill` must not write anything shared. `direct`, when not
+// null, holds the `count` values themselves (float64, contiguous in logical order, their
+// magnitudes the ones `fill` writes): the 2-norm then reads them in place.
 template <class Fill>
-inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
+inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill, const double* direct = nullptr) {
     if (count == 0) return 0.0;
-    if (count < kSumParallelMin) return vnorm_serial(ord, count, fill);
+    if (count < kSumParallelMin) return vnorm_serial(ord, count, fill, direct);
     const auto plan = pairwise_plan(count, false);
     if (plan.size() == 1) {  // no pool: the serial pass, without the GIL like the split one
         const parallel::Unlocked unlocked(true);
-        return vnorm_serial(ord, count, fill);
+        return vnorm_serial(ord, count, fill, direct);
     }
     const std::size_t parts = plan.size();
     // max (or min) and NaN, or the nonzero count, of one leaf, chunk by chunk
-    struct Side {
-        double m = 0;
-        bool nan = false;
-        std::int64_t nonzero = 0;
-    };
+    using Side = NormSide;
     std::vector<Side> side(parts);
     auto chunks = [&](std::int64_t t, auto&& f) {
         double buf[kPairwiseBlock];
@@ -293,9 +374,25 @@ inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
             return static_cast<double>(c);
         }
         case Ord::One: return pairwise_sum_mt<double>(count, fill);
-        case Ord::Two:
+        case Ord::Two: {
+            // the fused leaves on the pool, each task noting its leaves' largest magnitude and NaN
+            std::vector<double> sums(parts);
+            pairwise_run(plan, [&](std::int64_t t) {
+                Side& sd = side[t];
+                sums[t] = pairwise::tree(plan[t].first, plan[t].second, [&](std::int64_t b, std::int64_t len) {
+                    return two_leaf(fill, direct, b, len, sd);
+                });
+            });
+            double amax = 0;
+            bool nan = false;
+            for (const Side& sd : side) {
+                nan |= sd.nan;
+                amax = std::max(amax, sd.m);
+            }
+            const double s = 0. + pairwise_combine(count, false, sums);
+            return finish_pnorm(true, 2.0, s, amax, nan, count, fill);
+        }
         case Ord::P: {
-            const bool two = ord.kind == Ord::Two;
             const double p = ord.p;
             // one pass: the terms a^p for the sum, and each leaf's largest a and
             // NaN on the side (its own Side, so leaves on other threads do not race)
@@ -305,10 +402,7 @@ inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
                 auto powers = [&](std::int64_t b, std::int64_t len, double* out) {
                     fill(b, len, out);
                     max_and_nan(out, len, sd.m, sd.nan);
-                    if (two)
-                        for (std::int64_t k = 0; k < len; ++k) out[k] = out[k] * out[k];
-                    else
-                        for (std::int64_t k = 0; k < len; ++k) out[k] = std::pow(out[k], p);
+                    for (std::int64_t k = 0; k < len; ++k) out[k] = std::pow(out[k], p);
                 };
                 sums[t] = detail::pairwise(plan[t].first, plan[t].second, powers);
             });
@@ -319,7 +413,7 @@ inline double vnorm(VecOrd ord, std::int64_t count, Fill&& fill) {
                 amax = std::max(amax, sd.m);
             }
             const double s = 0. + pairwise_combine(count, false, sums);
-            return finish_pnorm(two, p, s, amax, nan, count, fill);
+            return finish_pnorm(false, p, s, amax, nan, count, fill);
         }
     }
     return kNaN;

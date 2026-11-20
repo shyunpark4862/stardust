@@ -6,7 +6,9 @@ The accurate differences are 5-point stencils with a step per variable chosen on
 2^-8 |x_j| down by factors of 4 while consecutive estimates get closer by more than 8 times
 (the truncation error, O(h^4), still dominates), powers of two so that x_j +- k h is exact;
 one-sided 5-point stencils at a bound or where the function is not finite on one side
-(bench/regression/g6/accuracy.md).
+(bench/regression/g6/accuracy.md). A start at rounding level (|x_j| far below the scale on which
+the function changes, as x_j = 1e-12 next to 1) is too small: the step grows until the
+estimates differ by more than their rounding, then the same search starts from there.
 """
 
 import math
@@ -14,7 +16,7 @@ import numbers
 
 from .. import _core as _sd
 from .. import linalg as _linalg
-from ._common import _callable, _check_choice, _real, _real_vector, _type_name, _x0
+from ._common import _callable, _check_choice, _real, _real_vector, _type_name, _values_text, _x0
 
 # the steps: powers of two from 2^-8 |x_j| down to 2^-30 |x_j|
 _FD_START, _FD_END = -8, -30
@@ -23,6 +25,11 @@ _FD_START, _FD_END = -8, -30
 # on top of the rounding of each value that the level counts
 _NOISE_FACTOR = 16.0
 _U = 2.0**-53  # the unit roundoff: rounding a value moves it by at most u |f|
+# a column whose rounding level is above sqrt(u) of its 2-norm has lost half its digits to
+# rounding: its step is too small for the variable's scale (the start 2^-8 |x_j| with x_j near 0)
+_ROUNDING_TOL = 2.0**-26
+# the largest start of that search: x_j = 0's (2^-8 of a variable of size 1)
+_FD_CAP = math.ldexp(1.0, math.frexp(1.0)[1] + _FD_START)
 
 
 class Differences:
@@ -45,6 +52,10 @@ class Differences:
         self.steps = [None] * p  # the step per variable, chosen once
         self.central = [None] * p  # (h, g(x - h e_j), g(x + h e_j)) of the last Jacobian
         self.noise = [0.0] * p  # the rounding level of the last difference column
+        self.fits = False  # some stencil of the last column asked fitted within the bounds
+        # a failed jacobian(): no stencil fitted within the bounds at any step (else g was not
+        # finite at the points of every stencil that fitted)
+        self.too_narrow = False
 
     def column(self, x, j, h, g0):
         """dg/dx_j (unweighted) by the first feasible 5-point stencil with step h, or None;
@@ -54,9 +65,11 @@ class Differences:
         sum_o w_o g_o / (12 h) adds those with the weights, so element i is uncertain by up to
         (sum_o |w_o|) / (12 h) u max_o |g_i(x + o h e_j)|."""
         t = x[j]
+        self.fits = False
         for kind, (offs, wts) in enumerate(self._STENCILS):
             if not (self.lb[j] <= t + min(offs) * h and t + max(offs) * h <= self.ub[j]):
                 continue
+            self.fits = True
             acc = None
             vals = {}
             for o, w in zip(offs, wts):
@@ -86,24 +99,92 @@ class Differences:
                 return acc / (12.0 * h)
         return None
 
+    def _wnorm(self, col):
+        """The 2-norm of a column weighted as the Jacobian (noise[j]'s scale)."""
+        return float(_linalg.vector_norm(col if self.weights is None else col * self.weights))
+
+    def _rounding(self, col, j):
+        """noise[j] (of the column just computed) relative to the column's size: inf for 0."""
+        size = self._wnorm(col)
+        return self.noise[j] / size if size > 0 else math.inf
+
     def choose_step(self, x, j, g0):
         """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
         consecutive estimates get closer by more than 8 times; the last such estimate and its
-        step."""
+        step. A start at rounding level is moved up first (_grow); when no larger step leaves
+        rounding level (a column that is 0 or noise) the search is the plain one from the start."""
         base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
+        e0 = base + _FD_START
+        col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
+        if col0 is None or math.ldexp(1.0, e0) >= _FD_CAP or self._rounding(col0, j) <= _ROUNDING_TOL:
+            return self._descend(x, j, g0, e0, (col0, self.fits))
+        fits0 = self.fits
+        e = self._grow(x, j, g0, e0, col0)
+        if e is not None:
+            best, hbest = self._descend(x, j, g0, e)
+            if best is not None:
+                return best, hbest
+        best, hbest = self._descend(x, j, g0, e0, strict=False)
+        self.fits = self.fits or fits0
+        return best, hbest
+
+    def _grow(self, x, j, g0, e0, col0):
+        """The exponent of the step to start from when the start 2^e0 is at rounding level:
+        moved by the factor that brings the rounding to sqrt(u) of the column (at most to
+        _FD_CAP), then up by factors of 4 until consecutive estimates differ by more than their
+        rounding levels (the truncation error shows) or _FD_CAP; None when no such step leaves
+        rounding level (a column that is 0 or noise at every step: the usual search decides)."""
+        cap = math.frexp(_FD_CAP)[1] - 1
+        r = self._rounding(col0, j)
+        jump = cap - e0 if math.isinf(r) else math.ceil(math.log2(r / _ROUNDING_TOL))
+        e = min(cap, e0 + max(jump, 2))
+        col = self.column(x, j, math.ldexp(1.0, e), g0)
+        if col is None:
+            return None
+        lvl = self.noise[j]
+        while e + 2 <= cap:
+            nxt = self.column(x, j, math.ldexp(1.0, e + 2), g0)
+            if nxt is None:
+                break
+            nlvl = self.noise[j]
+            e += 2
+            shows = self._wnorm(nxt - col) > lvl + nlvl
+            col, lvl = nxt, nlvl
+            if shows:
+                break
+        size = self._wnorm(col)
+        if not (size > 0 and lvl / size <= _ROUNDING_TOL):
+            return None
+        return e
+
+    def _descend(self, x, j, g0, e0, first=None, strict=True):
+        """The search from the step 2^e0 down by factors of 4 (12 steps): the estimate where
+        consecutive ones stop getting closer by more than 8 times. first: (column, fits) at
+        2^e0 when just computed. strict: the second estimate is not taken over the first when
+        it is rounding noise (within _NOISE_FACTOR of its rounding level, regression G88's test)
+        and the first is not."""
         best = hbest = None
         dprev = math.inf
         prev = None
-        for e in range(_FD_START, _FD_END - 1, -2):
-            h = math.ldexp(1.0, base + e)
-            col = self.column(x, j, h, g0)
+        prev_ok = False  # the first estimate is not rounding noise
+        fits = False
+        for e in range(e0, e0 + _FD_END - _FD_START - 1, -2):
+            h = math.ldexp(1.0, e)
+            if first is not None and e == e0:
+                col, self.fits = first
+            else:
+                col = self.column(x, j, h, g0)
+            fits = fits or self.fits
             if col is None:
                 if best is not None:
                     break
                 continue
             if prev is None:
                 best, hbest = col, h
+                prev_ok = strict and self._rounding(col, j) * _NOISE_FACTOR < 1
             else:
+                if prev_ok and dprev == math.inf and self._rounding(col, j) * _NOISE_FACTOR >= 1:
+                    break
                 sc = float(_sd.max(_sd.abs(col)))
                 dd = float(_sd.max(_sd.abs(col - prev))) / sc if sc > 0 else 0.0
                 if dd >= dprev / 8:
@@ -113,6 +194,7 @@ class Differences:
                 if dd == 0:
                     break
             prev = col
+        self.fits = fits
         return best, hbest
 
     def jacobian(self, x, g0, zero_noise=False):
@@ -121,14 +203,19 @@ class Differences:
         gives (J is None then). zero_noise: a column within _NOISE_FACTOR of its rounding level
         is set to 0 (regression G88)."""
         self.central = [None] * self.p
+        self.too_narrow = False
         cols = []
         for j in range(self.p):
             col = None
+            fits = False
             if self.steps[j] is not None:
                 col = self.column(x, j, self.steps[j], g0)
+                fits = self.fits
             if col is None:
                 col, self.steps[j] = self.choose_step(x, j, g0)
+                fits = fits or self.fits
             if col is None:
+                self.too_narrow = not fits
                 return None, j
             cols.append(col)
         J = _sd.stack(cols, axis=1)
@@ -213,7 +300,7 @@ def _f_values(v, func, what, m=None):
             ) from None
         a = _sd.asarray([t])
         if m is not None and m != 1:
-            raise ValueError(f"{func}(): '{what}' must return {m} values as at the first point, not a scalar")
+            raise ValueError(f"{func}(): '{what}' must return {_values_text(m)} as at the first point, not a scalar")
         return a, True
     else:
         if isinstance(v, (str, bytes)) or v is None:
@@ -239,7 +326,9 @@ def _f_values(v, func, what, m=None):
             f"{func}(): '{what}' must return a real number or a 1-dimensional array, not shape {tuple(a.shape)}"
         )
     if m is not None and a.shape[0] != m:
-        raise ValueError(f"{func}(): '{what}' must return {m} values as at the first point, not shape {tuple(a.shape)}")
+        raise ValueError(
+            f"{func}(): '{what}' must return {_values_text(m)} as at the first point, not shape {tuple(a.shape)}"
+        )
     return a, False
 
 
@@ -273,6 +362,8 @@ def _derivative(func, what, f, x, epsilon):
     xl = [float(v) for v in x.tolist()]
     f0, scalar = _f_values(f(x.copy()), func, what)
     m = 1 if scalar else f0.shape[0]
+    if m == 0:  # least_squares' message (O28)
+        raise ValueError(f"{func}(): '{what}' must return at least 1 value")
 
     def g(th):
         return _f_values(f(_sd.asarray(th)), func, what, m)[0]
@@ -329,10 +420,9 @@ def check_grad(func, grad, x0, /, *, epsilon=None, direction="all", rng=None):
             raise ValueError(f"{fn}(): 'func' must return a real number, not shape {tuple(a.shape)}")
         return float(a[0])
 
-    g0, scalar = _f_values(grad(x.copy()), fn, "grad")
-    if scalar or g0.shape[0] != n:
-        got = "a scalar" if scalar else f"shape {tuple(g0.shape)}"
-        raise ValueError(f"{fn}(): 'grad' must return {n} values (one per variable), not {got}")
+    from ._minimize import _gradient  # minimize's jac rules: a number when n = 1, no bool array
+
+    g0 = _gradient(grad(x.copy()), fn, n, "grad")
     if direction == "all":
         J, _ = _derivative(fn, "func", value, x, epsilon)
         return float(_linalg.vector_norm(g0 - J[0]))

@@ -9,12 +9,12 @@ checks and converts the inputs, computes quantreg's bandwidths and builds the re
 import math
 import textwrap
 
+from .. import _calls
 from .. import _core as _sd
 from .. import special as _special
 from ._glm import _check_int, _check_positive
 from ._linear import (
     _WIDTH,
-    _call_errors,
     _check_alpha,
     _check_bool,
     _check_choice,
@@ -25,7 +25,6 @@ from ._linear import (
     _div,
     _forg,
     _frame_columns,
-    _fresh,
     _names,
     _new_design,
     _number_or_1d,
@@ -33,6 +32,9 @@ from ._linear import (
     _prepare,
     _quantile_label,
     _RegressionResult,
+    _ro,
+    _y_units,
+    _y_unscale,
 )
 
 _k = _sd.regression
@@ -63,15 +65,14 @@ class QuantRegResult(_RegressionResult):
 
     def __init__(self, raw, *, q, bw_rule, qaxis, **kw):
         super().__init__(raw, **kw)
-        self._q = q
+        self._q = _ro(q)
         self._bw_rule = bw_rule
         self._qaxis = qaxis
 
     @property
     def q(self):
-        """The quantile(s) as given: a number, or the 1-D array (a new copy at each access,
-        G113; read-only, G98)."""
-        return _fresh(self._q)
+        """The quantile(s) as given: a number, or the 1-D array (read-only, G98, D-4)."""
+        return self._q
 
     @property
     def resid(self):
@@ -277,6 +278,7 @@ def _check_q(q, func):
     return vals, (a.copy() if qaxis else vals[0]), qaxis
 
 
+@_calls.function
 def quantreg(
     y,
     X,
@@ -307,6 +309,9 @@ def quantreg(
 
     columns = _frame_columns(X)
     yy, XX, _, names, _, _, _ = _prepare(func, y, X, None, nan_policy, intercept=intercept)
+    # y far outside [2^-256, 2^256] is fitted in power-of-two units (exact; the solution and
+    # its standard errors are equivariant under y's scale, G67)
+    yy, fy = _y_units(yy)
     nobs = yy.shape[-1]
     hs = bandwidth == "hall-sheather"
     hraw, hhalf, kerc = [], [], []
@@ -320,8 +325,13 @@ def quantreg(
     raw = _k.quantreg_fit(
         func, yy, XX, qs, intercept, rt, _COV_TYPES.index(cov_type), hraw, hhalf, kerc, max_iter, tol, qaxis
     )
+    extra = None
+    if fy is not None:
+        raw = list(raw)
+        extra = _y_unscale(raw, fy, (_Q_OBJ, _Q_NULL), lead=1 if qaxis else 0)
     return QuantRegResult(
         raw,
+        extra=extra,
         q=qkeep,
         bw_rule=bandwidth,
         qaxis=qaxis,
@@ -334,4 +344,4 @@ def quantreg(
 
 
 # the methods' call-shape errors in the library's form (R89)
-_call_errors(QuantRegResult)
+_calls.methods(QuantRegResult)

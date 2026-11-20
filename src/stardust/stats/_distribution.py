@@ -6,8 +6,10 @@ the native elementwise functions stardust._core.stats.<name>_<method>, whose inp
 Parameters outside their domain give NaN (T8), never an error.
 """
 
+import numbers
 import operator
 
+from .. import _calls
 from .. import _core as _sd_core
 from .. import random as _random
 
@@ -62,18 +64,58 @@ def _renamed(e, method, arg, value=None):
     return type(e)(f"{method}(): {msg}")
 
 
+def _real_scalar(v):
+    """A real scalar as a Python number, or None when v is not one: bool, int and float as
+    given (numpy's float64, a float, as float), numpy's other floating and integer scalars as
+    float, numpy's bool as bool (API.md §2: numpy integers are ints)."""
+    if isinstance(v, (bool, int)):
+        return v
+    if isinstance(v, float):
+        return v if type(v) is float else float(v)
+    if type(v).__module__ == "numpy":
+        if type(v).__name__ in ("bool", "bool_"):
+            return bool(v)
+        if isinstance(v, numbers.Integral):
+            return float(operator.index(v))  # (int64 and uint64: always inside the doubles)
+        if isinstance(v, numbers.Real):
+            return float(v)
+    return None
+
+
 def _check_param(cls, name, value):
-    """A parameter is a real Python number or a non-complex sd.ndarray (T19); errors name the
-    constructor, "Normal(): ..." (API.md §2.1)."""
+    """A parameter is a real number or a non-complex sd.ndarray (T19), returned as kept (a
+    numpy scalar as a Python number: _real_scalar); errors name the constructor, "Normal():
+    ..." (API.md §2.1)."""
     if isinstance(value, _sd_core.ndarray):
         if value.dtype == _sd_core.complex128:
             raise TypeError(f"{cls}(): '{name}' must be real, not a complex128 array")
-        return
-    if isinstance(value, (bool, int, float)):
-        if isinstance(value, int) and abs(value) > _MAX_DOUBLE_INT:  # float(value) would overflow
-            raise OverflowError(f"{cls}(): '{name}' is out of range")
-        return
-    raise TypeError(f"{cls}(): '{name}' must be a real number or an sd.ndarray, not {_sd_core._type_name(value)}")
+        return value
+    v = _real_scalar(value)
+    if v is None:
+        raise TypeError(f"{cls}(): '{name}' must be a real number or an sd.ndarray, not {_sd_core._type_name(value)}")
+    if isinstance(v, int) and abs(v) > _MAX_DOUBLE_INT:  # float(v) would overflow
+        raise OverflowError(f"{cls}(): '{name}' is out of range")
+    return v
+
+
+def _kept(v):
+    """A parameter as the distribution keeps it (user decision 2026-11-20, D-5): an sd.ndarray
+    copied once and read-only (the caller's array may change later; the attribute and every
+    method see the copy), a real scalar as _real_scalar's Python number, anything else as
+    given (for the constructor's own type check)."""
+    if isinstance(v, _sd_core.ndarray):
+        c = v.copy()
+        c._set_readonly()
+        return c
+    r = _real_scalar(v)
+    return v if r is None else r
+
+
+def _readonly(v):
+    """A summary's array result read-only (user decision 2026-11-20, D-4); a Python float as is."""
+    if isinstance(v, _sd_core.ndarray):
+        v._set_readonly()
+    return v
 
 
 def _real_option(v, func, arg):
@@ -94,39 +136,15 @@ def _real_option(v, func, arg):
         raise OverflowError(f"{func}(): '{arg}' is out of range") from None
 
 
-def _keyword_constructor(cls):
-    """cls.__init__ (keyword-only parameters, T19) with Python's own call-shape errors in the
-    constructors' form (T36, API.md §2.1): "Normal(): unexpected keyword argument 'cool'",
-    "Gamma(): missing 1 required keyword-only argument: 'a'", "Normal(): takes no positional
-    arguments but 1 was given", not "Normal.__init__() got ...". The class named is the one
-    called (Wishart for the __init__ it shares with InverseWishart)."""
-    init = cls.__dict__.get("__init__")
-    if init is None or getattr(init, "_keyword_constructor", False):
-        return
-    head = f"{init.__qualname__}() "
-
-    def __init__(self, *args, **kwargs):
-        if args:
-            n = len(args)
-            raise TypeError(
-                f"{type(self).__name__}(): takes no positional arguments but {n} {'was' if n == 1 else 'were'} given"
-            )
-        try:
-            init(self, **kwargs)
-        except TypeError as e:
-            msg = str(e)
-            if not msg.startswith(head):  # a parameter's own check (already "Normal(): ...")
-                raise
-            rest = msg[len(head) :]
-            if rest.startswith("got an unexpected"):
-                rest = rest[len("got an ") :]
-            raise TypeError(f"{type(self).__name__}(): {rest}") from None
-
-    __init__.__wrapped__ = init  # (inspect.signature shows the keyword-only parameters)
-    __init__.__doc__ = init.__doc__
-    __init__.__qualname__ = init.__qualname__
-    __init__._keyword_constructor = True
-    cls.__init__ = __init__
+def _public_methods(cls):
+    """Every method of cls named by itself in Python's call errors: its __qualname__ the
+    method's name alone ("cdf() got an unexpected keyword argument 'foo'"), not the private
+    base class that defines it. The methods keep Python's own form, not the constructors'
+    "Normal(): ..." (user decision 2026-11-20, D-29 (b): a wrapper costs ~50 ns on calls of a
+    few hundred ns; API.md §2.1)."""
+    for name, f in list(vars(cls).items()):
+        if callable(f) and hasattr(f, "__qualname__") and not name.startswith("__"):
+            f.__qualname__ = name
 
 
 def _parameter(i, name):
@@ -157,7 +175,7 @@ class _Distribution:
         cls._ops = ops
         for i, p in enumerate(cls._params):  # read-only attributes (T19)
             setattr(cls, p, _parameter(i, p))
-        _keyword_constructor(cls)
+        _calls.keyword_init(cls)
 
     def __init__(self, *args, **kwargs):
         # (every distribution defines its own __init__: only the bases arrive here)
@@ -169,8 +187,8 @@ class _Distribution:
     def _set(self, *values):
         cls = type(self).__name__
         arrays = []
-        for name, v in zip(self._params, values):
-            _check_param(cls, name, v)
+        values = tuple(_kept(_check_param(cls, name, v)) for name, v in zip(self._params, values))
+        for v in values:
             if isinstance(v, _sd_core.ndarray):
                 arrays.append(v)
         if len(arrays) > 1:
@@ -264,42 +282,42 @@ class _Distribution:
     def mean(self):
         """The mean (NaN where it is undefined, inf where infinite)."""
         try:
-            return self._ops["mean"](*self._p)
+            return _readonly(self._ops["mean"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "mean", None) from None
 
     def variance(self):
         """The variance."""
         try:
-            return self._ops["variance"](*self._p)
+            return _readonly(self._ops["variance"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "variance", None) from None
 
     def standard_deviation(self):
         """The standard deviation."""
         try:
-            return self._ops["standard_deviation"](*self._p)
+            return _readonly(self._ops["standard_deviation"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "standard_deviation", None) from None
 
     def skewness(self):
         """The skewness."""
         try:
-            return self._ops["skewness"](*self._p)
+            return _readonly(self._ops["skewness"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "skewness", None) from None
 
     def kurtosis(self):
         """The excess kurtosis (0 for the normal distribution; T23)."""
         try:
-            return self._ops["kurtosis"](*self._p)
+            return _readonly(self._ops["kurtosis"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "kurtosis", None) from None
 
     def median(self):
         """The median."""
         try:
-            return self._ops["median"](*self._p)
+            return _readonly(self._ops["median"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "median", None) from None
 
@@ -307,7 +325,7 @@ class _Distribution:
         """The mode: the point of the largest density, even at an end of the support where the
         density diverges; NaN where no single point is the largest (T21)."""
         try:
-            return self._ops["mode"](*self._p)
+            return _readonly(self._ops["mode"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "mode", None) from None
 
@@ -315,14 +333,14 @@ class _Distribution:
         """The entropy, in nats: differential for a continuous distribution, Shannon's for a
         discrete one."""
         try:
-            return self._ops["entropy"](*self._p)
+            return _readonly(self._ops["entropy"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "entropy", None) from None
 
     def support(self):
         """(lo, hi): the ends of the support."""
         try:
-            return self._ops["support_lo"](*self._p), self._ops["support_hi"](*self._p)
+            return _readonly(self._ops["support_lo"](*self._p)), _readonly(self._ops["support_hi"](*self._p))
         except _RENAMED as e:
             raise _renamed(e, "support", None) from None
 
@@ -414,10 +432,7 @@ class DiscreteDistribution(_Distribution):
             raise _renamed(e, "logpmf", "k", k) from None
 
 
-# Python's own call errors (a missing rng=, an unknown keyword such as mean(out=...)) name a
-# function by its __qualname__: the method's name alone, as every message of a method (API.md
-# §2.1), not the private base class that defines it.
+# Python's own call errors (a missing rng=, an unknown keyword such as mean(out=...)) name the
+# method alone (API.md §2.1).
 for _cls in (_Distribution, ContinuousDistribution, DiscreteDistribution):
-    for _name, _f in list(vars(_cls).items()):
-        if callable(_f) and not _name.startswith("__"):
-            _f.__qualname__ = _name
+    _public_methods(_cls)

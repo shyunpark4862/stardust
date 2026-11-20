@@ -412,25 +412,30 @@ nb::object run_nary(
 
 namespace {
 
+// The signatures help() and inspect show, with the argument names of
+// docs/api/array.md (unnamed nb::arg()s stay positional-only); one string
+// per function, kept for the module's lifetime.
 template <typename Op>
 void def_unary(nb::module_& m) {
+    static const std::string sig = std::string("def ") + Op::name + "(x, /, *, out=None)";
     m.def(
         Op::name,
         named(
             Op::name, +[](nb::handle x, nb::handle out) { return unary<Op>(x, out); }
         ),
-        nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+        nb::sig(sig.c_str()), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
     );
 }
 
 template <typename Op>
 void def_binary(nb::module_& m) {
+    static const std::string sig = std::string("def ") + Op::name + "(x1, x2, /, *, out=None)";
     m.def(
         Op::name,
         named(
             Op::name, +[](nb::handle a, nb::handle b, nb::handle out) { return binary<Op>(a, b, out); }
         ),
-        nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
+        nb::sig(sig.c_str()), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
     );
 }
 
@@ -457,12 +462,13 @@ void bind_ufuncs(nb::module_& m) {
         Atan, Sinh, Cosh, Tanh, Asinh, Acosh, Atanh, Floor, Ceil, Trunc, Round, IsNan, IsInf, IsFinite, LogicalNot,
         BitwiseInvert, Conj, Reciprocal, Signbit>(m);
     m.def(
-        "where", named("where", &where), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::kw_only(),
-        nb::arg("out").none() = nb::none()
+        "where", named("where", &where), nb::sig("def where(condition, x1, x2, /, *, out=None)"), nb::arg().none(),
+        nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
     );
     m.def(
-        "clip", named("clip", &clip), nb::arg().none(), nb::kw_only(), nb::arg("min").none() = nb::none(),
-        nb::arg("max").none() = nb::none(), nb::arg("out").none() = nb::none()
+        "clip", named("clip", &clip), nb::sig("def clip(x, /, *, min=None, max=None, out=None)"), nb::arg().none(),
+        nb::kw_only(), nb::arg("min").none() = nb::none(), nb::arg("max").none() = nb::none(),
+        nb::arg("out").none() = nb::none()
     );
 }
 

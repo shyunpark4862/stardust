@@ -177,14 +177,21 @@ template <typename Op>
 nb::object op_equality(nb::handle self, nb::handle other) {
     constexpr bool eq = std::is_same_v<Op, ops::Equal>;
     if (is_operand(other)) return binary<Op>(self, other, nb::none(), eq ? "==" : "!=");
+    const std::string refused = std::string("'") + (eq ? "==" : "!=") + "' not supported between instances of ";
     if (richcmpfunc cmp = Py_TYPE(other.ptr())->tp_richcompare) {
         nb::object r = nb::steal(cmp(other.ptr(), self.ptr(), eq ? Py_EQ : Py_NE));  // == and != reflect to themselves
-        if (!r.is_valid()) throw nb::python_error();
-        if (r.ptr() != Py_NotImplemented) return r;
+        if (!r.is_valid()) {
+            // The other side's refusal names the operands in its own order
+            // ('Series' and 'ndarray'); ours below keeps the user's order.
+            // Any other error is the other side's to tell.
+            nb::python_error err;
+            if (!err.matches(PyExc_TypeError) || std::string(nb::str(err.value()).c_str()).rfind(refused, 0) != 0)
+                throw err;
+        } else if (r.ptr() != Py_NotImplemented) {
+            return r;
+        }
     }
-    throw nb::type_error((std::string("'") + (eq ? "==" : "!=") + "' not supported between instances of '" +
-                          py_type_name(self) + "' and '" + py_type_name(other) + "'")
-                             .c_str());
+    throw nb::type_error((refused + "'" + py_type_name(self) + "' and '" + py_type_name(other) + "'").c_str());
 }
 
 // Operators keep Python's message form, with the operator's symbol and no
@@ -246,7 +253,9 @@ void bind_ndarray(nb::module_& m) {
             .def_prop_ro("mT", named(".mT", &matrix_transpose))
             .def("tolist", [](const NDArray& a) { return tolist(a, 0, a.data); })
             .def("astype", named("astype", &astype), nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = true)
-            .def("copy", [](const NDArray& a) { return wrap(cast_copy(a, a.dtype)); })
+            .def(
+                "copy", [](const NDArray& a) { return call_named("copy", [&] { return wrap(cast_copy(a, a.dtype)); }); }
+            )
             .def(
                 "reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)),
                 nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = nb::none()
@@ -340,6 +349,7 @@ void bind_ndarray(nb::module_& m) {
                     return d;
                 }
             )
+            .def("_set_readonly", [](NDArray& a) { a.writeable = false; })
             .def("__repr__", [](nb::handle self) { return format_call("array_repr", self); })
             .def("__str__", [](nb::handle self) { return format_call("array_str", self); })
             // An array is never a scalar, whatever its size

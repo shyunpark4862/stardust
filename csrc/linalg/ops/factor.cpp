@@ -40,7 +40,7 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, nb::handle upper_o, nb
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(
-            b, cost(kTriangular, double(n) * n),
+            b, cost(kTriangular, double(n) * n) + rhs_cost(n, r.k),
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 // Only the triangle trtrs reads; the diagonal too unless it is taken as 1.
                 const T* t;
@@ -56,7 +56,7 @@ nb::object solve_triangular(nb::handle ao, nb::handle bo, nb::handle upper_o, nb
                 if (n > 0) lapack::trtrs(upper ? 'U' : 'L', 'N', unit_diagonal ? 'U' : 'N', n, r.k, t, ld, x, n);
                 return 0;
             },
-            lu_task_cap(n, r.k, false)
+            lu_task_cap(n, r.k)
         );
         if (f) raise(b, f, "solve_triangular", "a");
         return to_array(out);
@@ -112,7 +112,7 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, nb::handle upper_o) {
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(
-            b, cost(kTriangular, double(n) * n),
+            b, cost(kTriangular, double(n) * n) + rhs_cost(n, r.k),
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 const T* t;
                 lint ld;
@@ -126,7 +126,7 @@ nb::object cholesky_solve(nb::handle lo, nb::handle bo, nb::handle upper_o) {
                 if (n > 0 && r.k > 0) lapack::potrs(upper ? 'U' : 'L', n, r.k, t, ld, x, n);
                 return 0;
             },
-            lu_task_cap(n, r.k, false)
+            lu_task_cap(n, r.k)
         );
         if (f) raise(b, f, "cholesky_solve", "l");
         return to_array(out);
@@ -156,7 +156,7 @@ nb::object lu(nb::handle xo) {
                     return kNonFinite;
                 // A singular matrix still has an LU factorization; U just has a zero
                 // on its diagonal (docs/design/linalg.md §10.2), so info > 0 is not an error here.
-                if (m > 0 && n > 0) lapack::getrf(m, n, a, m, ipiv);
+                if (m > 0 && n > 0) lapack::lu_in_place(m, n, a, m, ipiv);
                 T* li = L + i * m * kk;
                 T* ui = U + i * kk * n;
                 for (lint j = 0; j < kk; ++j)
@@ -170,7 +170,7 @@ nb::object lu(nb::handle xo) {
                 for (lint r = 0; r < kk; ++r) std::swap(p[r], p[ipiv[r] - 1]);
                 return 0;
             },
-            lu_task_cap(std::min(m, n), 0, true)
+            lu_task_cap(std::min(m, n), 0)
         );
         if (f) raise(b, f, "lu", "x");
         return make_result(Result::LU, {to_array(lo), to_array(uo), to_array(po)});
@@ -189,7 +189,10 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
         throw nb::value_error(("lu_solve(): 'l' is " + std::to_string(n) + "x" + std::to_string(n) + " but 'u' is " +
                                std::to_string(u.shape(-1)) + "x" + std::to_string(u.shape(-1)))
                                   .c_str());
-    if (p.dtype() != DType::Int64) throw nb::type_error("lu_solve(): 'perm' must be an int64 array");
+    if (p.dtype() != DType::Int64)
+        throw nb::type_error(
+            (std::string("lu_solve(): 'perm' must be an int64 array, not ") + dtype_name(p.dtype())).c_str()
+        );
     if (p.shape(-1) != n)
         throw nb::value_error(("lu_solve(): 'perm' must have length " + std::to_string(n) + ", got " +
                                std::to_string(p.shape(-1)))
@@ -208,7 +211,7 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
         Out out = alloc_rhs(b, r, n, dtype_of<T>());
         T* res = out.as<T>();
         const Failure f = run_batch(
-            b, cost(kTriangular, double(n) * n),
+            b, cost(kTriangular, double(n) * n) + rhs_cost(n, r.k),
             [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
                 // L strictly below the diagonal (its unit diagonal is not read), U on
                 // and above it: read in place when column-major, else packed
@@ -258,7 +261,7 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
                 }
                 return 0;
             },
-            lu_task_cap(n, r.k, false)
+            lu_task_cap(n, r.k)
         );
         if (f) raise(b, f, "lu_solve", "l");
         return to_array(out);
@@ -269,17 +272,23 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
 
 void bind_factor(nb::module_& m) {
     m.def(
-        "solve_triangular", named("solve_triangular", &solve_triangular), nb::arg().none(), nb::arg().none(),
+        "solve_triangular", named("solve_triangular", &solve_triangular),
+        nb::sig("def solve_triangular(a, b, /, *, upper, unit_diagonal=False)"), nb::arg().none(), nb::arg().none(),
         nb::kw_only(), nb::arg("upper").none(), nb::arg("unit_diagonal").none() = false
     );
-    m.def("cholesky", named("cholesky", &cholesky), nb::arg().none(), nb::kw_only(), nb::arg("upper").none() = false);
     m.def(
-        "cholesky_solve", named("cholesky_solve", &cholesky_solve), nb::arg().none(), nb::arg().none(), nb::kw_only(),
+        "cholesky", named("cholesky", &cholesky), nb::sig("def cholesky(x, /, *, upper=False)"), nb::arg().none(),
+        nb::kw_only(), nb::arg("upper").none() = false
+    );
+    m.def(
+        "cholesky_solve", named("cholesky_solve", &cholesky_solve),
+        nb::sig("def cholesky_solve(l, b, /, *, upper=False)"), nb::arg().none(), nb::arg().none(), nb::kw_only(),
         nb::arg("upper").none() = false
     );
-    m.def("lu", named("lu", &lu), nb::arg().none());
+    m.def("lu", named("lu", &lu), nb::sig("def lu(x, /)"), nb::arg().none());
     m.def(
-        "lu_solve", named("lu_solve", &lu_solve), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::arg().none()
+        "lu_solve", named("lu_solve", &lu_solve), nb::sig("def lu_solve(l, u, perm, b, /)"), nb::arg().none(),
+        nb::arg().none(), nb::arg().none(), nb::arg().none()
     );
 }
 

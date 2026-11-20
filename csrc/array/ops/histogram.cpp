@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -107,6 +108,7 @@ nb::object bincount(nb::handle x_obj, nb::handle weights_obj, nb::handle minleng
         top = *std::max_element(maxs.begin(), maxs.end());
     }
     if (lo < 0) throw nb::value_error("'x' must be non-negative");
+    if (top == std::numeric_limits<std::int64_t>::max()) throw nb::value_error("array is too big");
     const std::int64_t shape[] = {std::max(top + 1, minlength)};
     if (weights_obj.is_none()) {
         NDArray out = new_array(DType::Int64, shape, /*zeroed=*/true);
@@ -120,9 +122,22 @@ nb::object bincount(nb::handle x_obj, nb::handle weights_obj, nb::handle minleng
     const double* p = reinterpret_cast<const double*>(wf.data);
     NDArray out = new_array(DType::Float64, shape, /*zeroed=*/true);
     double* o = reinterpret_cast<double*>(out.data);
-    {
-        const parallel::Unlocked unlocked(n >= kParallelThreshold);  // serial by its order; a long one without the GIL
-        for (std::int64_t i = 0; i < n; ++i) o[v[i]] += p[i];  // in order, as numpy
+    const std::int64_t bins = shape[0];
+    if (n >= kParallelThreshold && bins * kGroups <= n) {
+        // kGroups fixed ranges of [0, n), chosen by n and the length alone (not
+        // by whether the pool is free): each sums its weights per bin from 0.0
+        // in element order, and the ranges are added in order. The same bits
+        // on any number of threads (docs/design/array.md §6.13).
+        std::vector<double> local(static_cast<size_t>(kGroups * bins), 0.0);
+        for_pieces(n, (n + kGroups - 1) / kGroups, n, [&](std::int64_t g, std::int64_t b0, std::int64_t e0) {
+            double* c = local.data() + g * bins;
+            for (std::int64_t i = b0; i < e0; ++i) c[v[i]] += p[i];
+        });
+        for (std::int64_t g = 0; g < kGroups; ++g)
+            for (std::int64_t b = 0; b < bins; ++b) o[b] += local[g * bins + b];
+    } else {
+        const parallel::Unlocked unlocked(n >= kParallelThreshold);
+        for (std::int64_t i = 0; i < n; ++i) o[v[i]] += p[i];  // in element order
     }
     return wrap(std::move(out));
 }
@@ -188,6 +203,8 @@ Edges make_edges(const double* a, std::int64_t n, nb::handle bins, nb::handle ra
     std::int64_t nb_ = 0;
     if (index_value(bins, nb_) == IndexResult::Ok) {
         if (nb_ < 1) throw nb::value_error("'bins' must be positive, when an int");
+        // bins + 1 edges; the largest int64 has no successor.
+        if (nb_ == std::numeric_limits<std::int64_t>::max()) throw nb::value_error("array is too big");
         const auto [first, last] = outer_edges(a, n, range);
         e.uniform = true;
         e.first = first;
@@ -288,24 +305,28 @@ nb::object histogram(
                 const NDArray wc = c_order(w, wt);
                 const T* ws = reinterpret_cast<const T*>(wc.data);
                 T* h = reinterpret_cast<T*>(hist.data);
-                if (e.uniform) {
-                    // numpy: per block, np.bincount(indices, weights) -- a sum
-                    // from 0.0 in double (complex: real and imaginary apart),
-                    // cast back to the weights' dtype -- then n += block.
-                    using Acc = std::conditional_t<std::is_same_v<T, complex128>, complex128, double>;
-                    // Each block's sums are independent of the others: they are
-                    // computed in parallel when memory allows, then added to
-                    // the result in block order -- the same bits as one by one.
+                // Per block of kBlock values, the weights are summed per bin
+                // from zero in element order, then the blocks are added to the
+                // result in block order. Uniform bins follow numpy (np.bincount
+                // per block: a double sum, cast back to the weights' dtype);
+                // given edges sum in the weights' own dtype (int64 exactly).
+                // The blocks depend on n only and are computed in parallel
+                // when memory allows: the same bits on any number of threads.
+                auto weighted = [&]<typename Acc>(std::type_identity<Acc>, auto bin) {
                     const std::int64_t nblk = (n + kBlock - 1) / kBlock;
                     auto block_sums = [&](std::int64_t blk, Acc* out_) {
                         std::fill(out_, out_ + bins, Acc(0));
-                        const UniformBins u = ub;  // locals: no reloads after each store
+                        const auto u = bin;  // locals: no reloads after each store
                         const double* av = a;
                         const T* wv = ws;
                         for (std::int64_t k = blk * kBlock, end = std::min(n, (blk + 1) * kBlock); k < end; ++k)
                             if (const std::int64_t i = u(av[k]); i >= 0) {
                                 if constexpr (std::is_same_v<T, complex128>)
                                     out_[i] = {out_[i].real() + wv[k].real(), out_[i].imag() + wv[k].imag()};
+                                else if constexpr (std::is_same_v<Acc, std::int64_t>)  // wraps, as int64 sums do
+                                    out_[i] = static_cast<std::int64_t>(
+                                        static_cast<std::uint64_t>(out_[i]) + static_cast<std::uint64_t>(wv[k])
+                                    );
                                 else out_[i] += static_cast<double>(wv[k]);
                             }
                     };
@@ -313,6 +334,11 @@ nb::object histogram(
                         for (std::int64_t i = 0; i < bins; ++i) {
                             if constexpr (std::is_same_v<T, complex128>)
                                 h[i] = {h[i].real() + blk[i].real(), h[i].imag() + blk[i].imag()};
+                            else if constexpr (std::is_same_v<T, std::int64_t>)
+                                h[i] = static_cast<std::int64_t>(
+                                    static_cast<std::uint64_t>(h[i]) +
+                                    static_cast<std::uint64_t>(static_cast<T>(blk[i]))
+                                );
                             else h[i] = h[i] + static_cast<T>(blk[i]);
                         }
                     };
@@ -328,50 +354,20 @@ nb::object histogram(
                             add_block(blk.data());
                         }
                     }
-                } else {
-                    // numpy: per block, sort by value, cumulative sums of the
-                    // weights read at the edges, accumulated; n = diff.
-                    std::vector<T> cum(bins + 1, T(0));
-                    std::vector<std::int64_t> order;
-                    std::vector<T> cw;
-                    for (std::int64_t b0 = 0; b0 < n; b0 += kBlock) {
-                        const std::int64_t len = std::min(n, b0 + kBlock) - b0;
-                        order.resize(len);
-                        std::iota(order.begin(), order.end(), b0);
-                        std::stable_sort(order.begin(), order.end(), [&](std::int64_t p, std::int64_t q) {
-                            const double u = a[p], v = a[q];
-                            return u < v || (std::isnan(v) && !std::isnan(u));
-                        });
-                        cw.assign(len + 1, T(0));
-                        for (std::int64_t k = 0; k < len; ++k) {
-                            if constexpr (std::is_same_v<T, complex128>)
-                                cw[k + 1] = {cw[k].real() + ws[order[k]].real(), cw[k].imag() + ws[order[k]].imag()};
-                            else cw[k + 1] = cw[k] + ws[order[k]];
-                        }
-                        // searchsorted of each edge in the sorted block: left for the inner edges, right for the last.
-                        auto less = [&](double u, double v) { return u < v || (std::isnan(v) && !std::isnan(u)); };
-                        std::vector<double> sorted(len);
-                        for (std::int64_t k = 0; k < len; ++k) sorted[k] = a[order[k]];
-                        for (std::int64_t j = 0; j <= bins; ++j) {
-                            const auto at = j < bins ? std::lower_bound(sorted.begin(), sorted.end(), edge[j], less)
-                                                     : std::upper_bound(sorted.begin(), sorted.end(), edge[j], less);
-                            const T add = cw[at - sorted.begin()];
-                            if constexpr (std::is_same_v<T, complex128>)
-                                cum[j] = {cum[j].real() + add.real(), cum[j].imag() + add.imag()};
-                            else cum[j] = cum[j] + add;
-                        }
-                    }
-                    for (std::int64_t i = 0; i < bins; ++i) {
-                        if constexpr (std::is_same_v<T, complex128>)
-                            h[i] = {cum[i + 1].real() - cum[i].real(), cum[i + 1].imag() - cum[i].imag()};
-                        else h[i] = cum[i + 1] - cum[i];
-                    }
-                }
+                };
+                using Uniform = std::conditional_t<std::is_same_v<T, complex128>, complex128, double>;
+                if (e.uniform) weighted(std::type_identity<Uniform>{}, ub);
+                else weighted(std::type_identity<T>{}, [edge, bins](double v) { return edges_bin(v, edge, bins); });
             }
         });
     }
 
-    nb::object edges_out = wrap(NDArray(e.edges));
+    // The arrays of a result object are read-only (API.md §2). The edges may be
+    // the caller's own array (numpy returns them as given): the result holds a
+    // read-only view of it, and the caller's array stays as it was.
+    NDArray edges_view = e.edges;
+    edges_view.writeable = false;
+    nb::object edges_out = wrap(std::move(edges_view));
     if (density) {
         // numpy: n / db / n.sum(), db = diff(edges) as float64.
         const nb::object total = sum(wrap(NDArray(hist)), nb::none(), nb::none(), nb::bool_(false));
@@ -396,6 +392,7 @@ nb::object histogram(
         });
         hist = std::move(out);
     }
+    hist.writeable = false;
     return nb::module_::import_("stardust._results").attr("HistogramResult")(wrap(std::move(hist)), edges_out);
 }
 
@@ -404,12 +401,14 @@ nb::object histogram(
 void bind_histogram(nb::module_& m) {
     using nb::arg;
     m.def(
-        "bincount", named("bincount", &bincount), arg().none(), nb::kw_only(), arg("weights").none() = nb::none(),
-        arg("minlength").none() = 0
+        "bincount", named("bincount", &bincount), nb::sig("def bincount(x, /, *, weights=None, minlength=0)"),
+        arg().none(), nb::kw_only(), arg("weights").none() = nb::none(), arg("minlength").none() = 0
     );
     m.def(
-        "histogram", named("histogram", &histogram), arg().none(), nb::kw_only(), arg("bins").none() = 10,
-        arg("range").none() = nb::none(), arg("weights").none() = nb::none(), arg("density").none() = false
+        "histogram", named("histogram", &histogram),
+        nb::sig("def histogram(x, /, *, bins=10, range=None, weights=None, density=False)"), arg().none(),
+        nb::kw_only(), arg("bins").none() = 10, arg("range").none() = nb::none(), arg("weights").none() = nb::none(),
+        arg("density").none() = false
     );
 }
 

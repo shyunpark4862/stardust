@@ -55,25 +55,42 @@ def test_fields_are_read_only():
         r.foo = 1
 
 
-def test_array_fields_are_copies():
+def test_array_fields_are_read_only_views():
+    # D-4 (API.md §2): the same read-only array at each access, no copy; .copy() to change one
     r = one()
     x = r.x
-    x[0] = 99.0
+    assert r.x is x
+    with pytest.raises(ValueError, match="assignment destination is read-only"):
+        x[0] = 99.0
+    with pytest.raises(ValueError, match="assignment destination is read-only"):
+        x[0:1][0] = 99.0  # a view of it is read-only too
+    y = x.copy()
+    y[0] = 99.0
     assert r.x.tolist() == [1.0, 2.0]
-    assert r.x is not r.x
-    # the arrays given at construction are copied too
+    # the arrays given to the public constructor are copied once: the caller's stays writable
     src = sd.asarray([3.0, 4.0])
     r2 = R(x=src, converged=True)
     src[0] = -1.0
     assert r2.x.tolist() == [3.0, 4.0]
 
 
-def test_tuple_of_arrays_fields_are_copies():
+def test_solver_results_are_read_only():
+    r = sd.optimize.minimize(lambda x: float(x[0] ** 2 + x[1] ** 2), [1.0, 2.0])
+    for name in ("x", "jac", "hess_inv"):
+        a = getattr(r, name)
+        assert getattr(r, name) is a
+        with pytest.raises(ValueError, match="read-only"):
+            a[0] = 1.0
+
+
+def test_tuple_of_arrays_fields_are_read_only():
     lo, hi = sd.asarray([0.0, 1.0]), sd.asarray([2.0, 3.0])
     r = R(batch=(2,), x=sd.asarray([1.0, 2.0]), bracket=(lo, hi), converged=sd.asarray([True, True]))
     b = r.bracket
     assert isinstance(b, tuple) and len(b) == 2
-    b[0][0] = 7.0
+    with pytest.raises(ValueError, match="read-only"):
+        b[0][0] = 7.0
+    lo[0] = 7.0  # the caller's array: copied at construction
     assert r.bracket[0].tolist() == [0.0, 1.0]
 
 

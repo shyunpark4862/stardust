@@ -220,8 +220,47 @@ inline double variance(int fam, double mu, double muc) {
     }
 }
 
+// ---- mu or 1 - mu below the normal doubles
+// At a finite eta, mu and 1 - mu of the binomial's logit, probit and cloglog links, and mu of
+// a log link, are positive: a 0 (or a subnormal with few digits left) there is an underflow
+// of a tiny value, not the boundary. Such a row is a valid iterate (D-2), and its log mu,
+// log(1 - mu), unit deviance, Pearson and working residuals come from eta itself.
+constexpr double kTiny = std::numeric_limits<double>::min();  // 2^-1022
+
+template <typename Op>
+inline double chunk1(double x) {
+    double o;
+    Op::chunk(&x, &o, 1);
+    return o;
+}
+
+// log mu: from the complements (binomial) or log mu while mu is normal, else from eta
+inline double log_mu_at(int fam, int link, double eta, double mu, double muc) {
+    if (mu >= kTiny) return fam == fBinomial ? log_mu(mu, muc) : std::log(mu);
+    switch (link) {
+        case lLog:
+        case lLogit:  // log expit(eta) = eta - log1p(e^eta), e^eta < 2^-1022 here
+        case lCloglog: return eta;  // log(1 - exp(-t)) = eta - t/2 + ..., t = e^eta < 2^-1022
+        case lProbit: return chunk1<special::LogNdtr>(eta);
+        case lIdentity: return std::log(eta);
+        case lSqrt: return 2.0 * std::log(eta);
+        default: return -std::log(eta);
+    }
+}
+
+// log(1 - mu) of the binomial: from the complements while 1 - mu is normal, else from eta
+inline double log_muc_at(int link, double eta, double mu, double muc) {
+    if (muc >= kTiny) return log_muc(mu, muc);
+    switch (link) {
+        case lLogit: return -eta;
+        case lProbit: return chunk1<special::LogNdtr>(-eta);
+        case lCloglog: return -std::exp(eta);
+        default: return std::log(muc);
+    }
+}
+
 // The unit deviance (no weight).
-inline double unit_dev(int fam, double y, double mu, double muc) {
+inline double unit_dev(int fam, int link, double y, double eta, double mu, double muc) {
     switch (fam) {
         case fGaussian: {
             const double d = y - mu;
@@ -229,13 +268,61 @@ inline double unit_dev(int fam, double y, double mu, double muc) {
         }
         case fPoisson:
             if (y == 0.0) return 2.0 * mu;
+            if (mu < kTiny) return 2.0 * (y * (std::log(y) - log_mu_at(fam, link, eta, mu, muc)) - y + mu);
             return 2.0 * mu * phi_fn((y - mu) / mu, y / mu);
         case fGamma: return 2.0 * mu_fn((y - mu) / mu, y / mu);
         default:  // binomial
-            if (y == 0.0) return -2.0 * log_muc(mu, muc);
-            if (y == 1.0) return -2.0 * log_mu(mu, muc);
+            if (y == 0.0) return -2.0 * log_muc_at(link, eta, mu, muc);
+            if (y == 1.0) return -2.0 * log_mu_at(fam, link, eta, mu, muc);
+            if (mu < kTiny || muc < kTiny)
+                return 2.0 * (y * (std::log(y) - log_mu_at(fam, link, eta, mu, muc)) +
+                              (1.0 - y) * (std::log1p(-y) - log_muc_at(link, eta, mu, muc)));
             return 2.0 * (mu * phi_fn((y - mu) / mu, y / mu) + muc * phi_fn((mu - y) / muc, (1.0 - y) / muc));
     }
+}
+
+// The Pearson residual's ratio r / sqrt(V(mu)) (r = y - mu as y_minus_mu): as written while
+// V is normal; below, from the logs (binomial: |r| / sqrt(mu (1 - mu)); poisson |r| / sqrt(mu))
+// or r / mu (gamma, V = mu^2)
+inline double pearson_ratio(int fam, int link, double y, double eta, double mu, double muc, double r, double V) {
+    if (!(V < kTiny)) return r / std::sqrt(V);
+    double la;  // log |r| (-inf for r = 0)
+    double lv;  // log V / 2
+    switch (fam) {
+        case fBinomial:
+            la = y == 0.0   ? log_mu_at(fam, link, eta, mu, muc)
+                 : y == 1.0 ? log_muc_at(link, eta, mu, muc)
+                            : std::log(std::fabs(r));
+            lv = 0.5 * (log_mu_at(fam, link, eta, mu, muc) + log_muc_at(link, eta, mu, muc));
+            break;
+        case fPoisson:
+            la = y == 0.0 ? log_mu_at(fam, link, eta, mu, muc) : std::log(std::fabs(r));
+            lv = 0.5 * log_mu_at(fam, link, eta, mu, muc);
+            break;
+        case fGamma: return r / mu;
+        default: return r / std::sqrt(V);
+    }
+    return std::copysign(std::exp(la - lv), r);
+}
+
+// The working residual r / mu' (mu' = d1): as written while mu' is normal; below, from the
+// logs of |r| and of mu' (logit mu (1 - mu), log mu, cloglog e^eta (1 - mu), probit phi(eta))
+inline double working_ratio(int fam, int link, double y, double eta, double mu, double muc, double r, double g) {
+    if (!(std::fabs(g) < kTiny)) return r / g;
+    double lg;
+    switch (link) {
+        case lLogit: lg = log_mu_at(fam, link, eta, mu, muc) + log_muc_at(link, eta, mu, muc); break;
+        case lLog: lg = eta; break;
+        case lCloglog: lg = eta + log_muc_at(link, eta, mu, muc); break;
+        case lProbit: lg = -0.5 * eta * eta - 0.91893853320467274178; break;  // log phi(eta)
+        default: return r / g;
+    }
+    double la;
+    if (fam == fBinomial && y == 0.0) la = log_mu_at(fam, link, eta, mu, muc);
+    else if (fam == fBinomial && y == 1.0) la = log_muc_at(link, eta, mu, muc);
+    else if (fam == fPoisson && y == 0.0) la = log_mu_at(fam, link, eta, mu, muc);
+    else la = std::log(std::fabs(r));
+    return std::copysign(std::exp(la - lg), r);
 }
 
 // One regression's model: per-row arrays are contiguous (n).
@@ -334,13 +421,17 @@ void link_fun(const Model& M, const double* mu, double* eta, lint i0, lint i1) {
     }
 }
 
-// R's validmu and valideta for a row of the fit
+// R's validmu and valideta for a row of the fit, on eta: mu or 1 - mu that underflows at a
+// finite eta of a link that keeps it positive is not the boundary (D-2). The binomial's log
+// link needs eta < 0 (mu < 1), the identity, sqrt and inverse links of the poisson and gamma
+// families eta > 0 (mu > 0).
 inline bool row_valid(const Model& M, double eta, double mu, double muc) {
+    (void)muc;
     if (!std::isfinite(mu) || !std::isfinite(eta)) return false;
     switch (M.fam) {
-        case fBinomial: return mu > 0.0 && muc > 0.0;
-        case fPoisson: return mu > 0.0 && (M.link == lIdentity || M.link == lSqrt ? eta > 0.0 : true);
-        case fGamma: return mu > 0.0;
+        case fBinomial: return M.link == lLog ? eta < 0.0 : true;
+        case fPoisson:
+        case fGamma: return M.link == lLog ? true : eta > 0.0;
         default: return true;
     }
 }
@@ -367,7 +458,7 @@ void evaluate(const Model& M, State& s, double* part) {
                 b = 1;
                 continue;
             }
-            acc = acc + DD{M.pw[i] * unit_dev(M.fam, M.y[i], s.mu[i], s.muc[i]), 0.0};
+            acc = acc + DD{M.pw[i] * unit_dev(M.fam, M.link, M.y[i], s.eta[i], s.mu[i], s.muc[i]), 0.0};
         }
         part[2 * c] = acc.hi;
         part[2 * c + 1] = acc.lo;
@@ -696,6 +787,10 @@ IrlsOut irls(
     // Newton's steps for the rest (a non-canonical link; for a canonical one they agree)
     bool newton_mode = false;
     int slow_runs = 0;
+    // the last iteration's full step left the valid range and was halved back into it: the
+    // deviance may then settle because the step vanished, not because the iterate is a
+    // maximum (a boundary in the way), so the fit is not converged (G93)
+    bool blocked = false;
     for (int t = 1; t <= max_lean; ++t) {
         working(M, W.cur, W.z, W.w, W.rho);
         // past the deviance's convergence, Newton's steps (quadratic) in place of Fisher's
@@ -732,6 +827,7 @@ IrlsOut irls(
         const bool first = !W.have_beta;
         bool eta_only = false;
         bool halved = false;
+        const bool invalid_step = !W.nxt.valid;
         if (!ok_state(first)) {
             halved = true;
             bool ok = false;
@@ -780,13 +876,14 @@ IrlsOut irls(
                 eta_only = true;
             }
             if (!ok) {
-                // stuck: the last valid iterate stays
+                // stuck: the last valid iterate stays (not converged when the range stopped it)
                 out.iters = t;
-                out.converged = conv;
+                out.converged = conv && !invalid_step;
                 out.ok = W.have_beta;
                 return out;
             }
         }
+        blocked = halved && invalid_step;
         // the coefficients' step (columns kept in both)
         double step = kInf, bn = 0.0;
         if (W.have_beta) {
@@ -850,7 +947,7 @@ IrlsOut irls(
     }
     // converged: the deviance's test passed and the polish finished; max_iter cutting the
     // polish short leaves the coefficients short of rounding (decision 1, G93)
-    out.converged = conv && polished;
+    out.converged = conv && polished && !blocked;
     return out;
 }
 
@@ -1325,15 +1422,17 @@ int glm_one(
             o.eta[i] = e;
             const double r = y_minus_mu(op.fam, y[i], mu, muc);
             const double V = variance(op.fam, mu, muc);
-            const double ud = unit_dev(op.fam, y[i], mu, muc);
+            const double ud = unit_dev(op.fam, op.link, y[i], e, mu, muc);
             o.rresp[i] = r;
-            o.rpear[i] = std::sqrt(m[i]) * r / std::sqrt(V);
+            const bool tiny = V < kTiny;  // mu or 1 - mu underflowed: the ratios from eta
+            const double pr = tiny ? pearson_ratio(op.fam, op.link, y[i], e, mu, muc, r, V) : 0.0;
+            o.rpear[i] = tiny ? std::sqrt(m[i]) * pr : std::sqrt(m[i]) * r / std::sqrt(V);
             const double dd = m[i] * ud;
             o.rdev[i] = std::copysign(std::sqrt(std::max(dd, 0.0)), r);
-            o.rwork[i] = r / g;
+            o.rwork[i] = working_ratio(op.fam, op.link, y[i], e, mu, muc, r, g);
             if (pw[i] > 0.0) {
                 dv = dv + DD{f[i] * dd, 0.0};
-                pe = pe + DD{pw[i] * r * r / V, 0.0};
+                pe = pe + DD{tiny ? pw[i] * pr * pr : pw[i] * r * r / V, 0.0};
                 if (op.has_var) slw = slw + DD{f[i] * std::log(v[i]), 0.0};
             }
         }
@@ -1388,7 +1487,8 @@ int glm_one(
             o.rresp[i] = r;
             o.rwork[i] = r / d10;
             o.rpear[i] = std::sqrt(m[i]) * r / std::sqrt(V0);
-            o.rdev[i] = std::copysign(std::sqrt(std::max(m[i] * unit_dev(op.fam, y[i], y0, muc0), 0.0)), r);
+            o.rdev[i] =
+                std::copysign(std::sqrt(std::max(m[i] * unit_dev(op.fam, op.link, y[i], etac, y0, muc0), 0.0)), r);
         }
         if (op.cov != kNonrobust && !(op.cov == kCluster && !(o.stats[gNGroups] >= 2.0)))  // the scores vanish
             for (lint a = 0; a < k; ++a)
@@ -1432,8 +1532,8 @@ int glm_one(
             }
         });
     }
-    auto llf_at = [&](const double* mus, const double* mucs, double mconst, double mcconst, const std::uint8_t* sp,
-                      bool concentrated, double ssr_c, double dev_at = kNaN) -> double {
+    auto llf_at = [&](const double* mus, const double* mucs, const double* etas, double mconst, double mcconst,
+                      const std::uint8_t* sp, bool concentrated, double ssr_c, double dev_at = kNaN) -> double {
         if (!concentrated && phi == 0.0) {
             // an estimated scale of 0 (a perfect fit): the likelihood's limit, +inf where the
             // model fits every row exactly (its deviance 0), -inf elsewhere (G97, as ols's G22)
@@ -1449,6 +1549,7 @@ int glm_one(
             for (lint i = i0; i < i1; ++i) {
                 if (!(pw[i] > 0.0) || (sp && sp[i])) continue;  // separated rows: 0 at the boundary
                 const double mu = mus ? mus[i] : mconst, muc = mucs ? mucs[i] : mcconst;
+                const double et = etas ? etas[i] : kNaN;  // used only where mu or 1 - mu underflowed
                 const double yy = y[i];
                 double l;
                 switch (op.fam) {
@@ -1457,7 +1558,10 @@ int glm_one(
                         l = -0.5 * (v[i] * d * d / phi + std::log(phi / v[i]) + std::log(2.0 * M_PI));
                         break;
                     }
-                    case fPoisson: l = (v[i] * ((yy == 0.0 ? 0.0 : yy * std::log(mu)) - mu) - aux[i]) / phi; break;
+                    case fPoisson:
+                        l = (v[i] * ((yy == 0.0 ? 0.0 : yy * log_mu_at(op.fam, op.link, et, mu, muc)) - mu) - aux[i]) /
+                            phi;
+                        break;
                     case fGamma: {
                         const double ws = v[i] / phi;
                         l = ws * std::log(ws * yy / mu) - ws * yy / mu - aux[i] - std::log(yy);
@@ -1466,8 +1570,8 @@ int glm_one(
                     default: {
                         const double nt = tr[i], sv = nt * yy, fl = nt - sv;
                         l = 0.0;
-                        if (sv != 0.0) l += sv * log_mu(mu, muc);
-                        if (fl != 0.0) l += fl * log_muc(mu, muc);
+                        if (sv != 0.0) l += sv * log_mu_at(op.fam, op.link, et, mu, muc);
+                        if (fl != 0.0) l += fl * log_muc_at(op.link, et, mu, muc);
                         l = aux[i] + v[i] * l;
                         break;
                     }
@@ -1482,16 +1586,17 @@ int glm_one(
         return t.hi;
     };
     double llf = kNaN;
-    if (gid) llf = llf_at(nullptr, nullptr, 0, 0, nullptr, true, D);
-    else if (gconst) llf = llf_at(nullptr, nullptr, y0, muc0, nullptr, false, 0, D);  // at mu = y0 exactly
-    else if (fin) llf = llf_at(fmu, fmuc, 0, 0, sep.data(), false, 0, D);
+    if (gid) llf = llf_at(nullptr, nullptr, nullptr, 0, 0, nullptr, true, D);
+    else if (gconst) llf = llf_at(nullptr, nullptr, nullptr, y0, muc0, nullptr, false, 0, D);  // at mu = y0 exactly
+    else if (fin) llf = llf_at(fmu, fmuc, feta, 0, 0, sep.data(), false, 0, D);
     else if (separated) llf = 0.0;  // every row at its boundary
 
     // the null model: the intercept alone (closed form without an offset, else IRLS), or
     // eta = offset without an intercept (R's glm)
     double Dnull = kNaN, llnull = kNaN;
     {
-        std::vector<double> mun(static_cast<std::size_t>(nn)), mucn(static_cast<std::size_t>(nn));
+        std::vector<double> mun(static_cast<std::size_t>(nn)), mucn(static_cast<std::size_t>(nn)),
+            etan(static_cast<std::size_t>(nn), kNaN);
         bool const_mu = false;
         double mc = kNaN, mcc = kNaN;
         bool okn = true;
@@ -1527,11 +1632,13 @@ int glm_one(
                 IrlsOut r0 = irls(M0, W0, op.max_iter, op.tol, 0, op.inner_chol, sc);
                 okn = r0.ok;
                 std::copy(W0.cur.mu, W0.cur.mu + n, mun.begin());
+                std::copy(W0.cur.eta, W0.cur.eta + n, etan.begin());
                 std::copy(W0.cur.muc, W0.cur.muc + n, mucn.begin());
             }
         } else {
             std::vector<double> e0(off, off + n), d0(static_cast<std::size_t>(nn));
             link_eval(M, e0.data(), mun.data(), mucn.data(), d0.data(), 0, n);
+            std::copy(e0.begin(), e0.end(), etan.begin());
         }
         if (okn) {
             std::vector<DD> pd(static_cast<std::size_t>(2 * ncn), DD{0.0, 0.0});
@@ -1540,7 +1647,7 @@ int glm_one(
                 for (lint i = i0; i < i1; ++i) {
                     if (!(pw[i] > 0.0)) continue;
                     const double mu = const_mu ? mc : mun[i], muc = const_mu ? mcc : mucn[i];
-                    a = a + DD{pw[i] * unit_dev(op.fam, y[i], mu, muc), 0.0};
+                    a = a + DD{pw[i] * unit_dev(op.fam, op.link, y[i], const_mu ? kNaN : etan[i], mu, muc), 0.0};
                     if (gid) {
                         const double d = y[i] - mu;
                         b = b + DD{pw[i] * d * d, 0.0};
@@ -1553,13 +1660,18 @@ int glm_one(
             Dnull = dn.hi;
             if (gconst) Dnull = sn.hi = 0.0;  // the null model is the fit itself
             if (gconst) llnull = llf;
-            else if (gid) llnull = llf_at(nullptr, nullptr, 0, 0, nullptr, true, sn.hi);
+            else if (gid) llnull = llf_at(nullptr, nullptr, nullptr, 0, 0, nullptr, true, sn.hi);
             else
-                llnull = const_mu ? llf_at(nullptr, nullptr, mc, mcc, nullptr, false, 0, Dnull)
-                                  : llf_at(mun.data(), mucn.data(), 0, 0, nullptr, false, 0, Dnull);
+                llnull = const_mu ? llf_at(nullptr, nullptr, nullptr, mc, mcc, nullptr, false, 0, Dnull)
+                                  : llf_at(mun.data(), mucn.data(), etan.data(), 0, 0, nullptr, false, 0, Dnull);
         }
     }
 
+    // coefficients that are not numbers (a kept column's NaN) are no converged fit; a separated
+    // fit's NaN coefficients are G33's answer, not a failure
+    if (!separated)
+        for (lint c = 0; c < k; ++c)
+            if (o.kept[c] && std::isnan(o.params[c])) converged = false;
     double* st = o.stats;
     st[gNobs] = nob;
     st[gRank] = static_cast<double>(rank);

@@ -577,7 +577,7 @@ double new_scale(const ScaleRule& sr, const double* r, lint n, double s, Buffers
 }
 
 // ---- exact fits to rounding --------------------------------------------------------------
-// A residual is 0 to rounding when |r_i| <= (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf),
+// A residual is 0 to rounding when |r_i| <= (k + 16) u (|y_i| + sum_c |x_ic| |beta_c|),
 // quantreg's snapping tolerance (regression/quantile.cpp): rounding beta alone moves a row
 // on the fitted plane by about that much. When the rows that decide the scale are 0 to
 // rounding, the scale rule would give 0 for the exact fit: MAD, more than half the rows;
@@ -608,10 +608,13 @@ inline double beta_inf(const double* beta, lint k) {  // NaN marks a column with
     return m;
 }
 
-inline double zero_tol_row(const Design& D, const double* y, lint i, double bn) {
-    double l1 = 0.0;
-    for (lint c = 0; c < D.k; ++c) l1 += std::fabs(D.at(i, c));
-    return (static_cast<double>(D.k) + 16.0) * (0.5 * kEps) * (std::fabs(y[i]) + l1 * bn);
+// (k + 16) u (|y_i| + sum_c |x_ic| |beta_c|); a NaN beta_c (a column without a coefficient)
+// takes no part. At most the quick bound (k + 16) u (|y_i| + ||x_i||_1 ||beta||_inf).
+inline double zero_tol_row(const Design& D, const double* y, lint i, const double* beta) {
+    double xb = 0.0;
+    for (lint c = 0; c < D.k; ++c)
+        if (!std::isnan(beta[c])) xb += std::fabs(D.at(i, c) * beta[c]);
+    return (static_cast<double>(D.k) + 16.0) * (0.5 * kEps) * (std::fabs(y[i]) + xb);
 }
 
 // The rows 0 to rounding a zero scale needs (more than n: the rule has no exact fit).
@@ -636,7 +639,7 @@ bool zero_scale(const Design& D, const ZeroTol& zt, const double* y, const doubl
     if (c0 < need) return false;
     lint c = 0;
     for (lint i = 0; i < n; ++i)
-        if (std::fabs(r[i]) <= emax && std::fabs(r[i]) <= zero_tol_row(D, y, i, bn)) ++c;
+        if (std::fabs(r[i]) <= emax && std::fabs(r[i]) <= zero_tol_row(D, y, i, beta)) ++c;
     return c >= need;
 }
 
@@ -645,10 +648,9 @@ bool zero_scale(const Design& D, const ZeroTol& zt, const double* y, const doubl
 // refined QR. beta, kept and r (Dot2) become its; unchanged when it would lose a column.
 void exact_fit(const Design& D, const double* y, double* beta, std::uint8_t* kept, double* r, Buffers& B, Scratch& sc) {
     const lint n = D.n, k = D.k;
-    const double bn = beta_inf(beta, k);
     lint had = 0;
     for (lint c = 0; c < k; ++c) had += kept[c] != 0;
-    for (lint i = 0; i < n; ++i) B.w[i] = std::fabs(r[i]) <= zero_tol_row(D, y, i, bn) ? 1.0 : 0.0;
+    for (lint i = 0; i < n; ++i) B.w[i] = std::fabs(r[i]) <= zero_tol_row(D, y, i, beta) ? 1.0 : 0.0;
     if (qr_wls(D, y, B.w.data(), B.beta_new.data(), B.kept_new.data(), B.fit.data(), kRefineSteps, sc) < had) return;
     std::copy(B.beta_new.begin(), B.beta_new.begin() + k, beta);
     std::copy(B.kept_new.begin(), B.kept_new.begin() + k, kept);
@@ -1657,10 +1659,9 @@ int rlm_one(
     for (lint c = 0; c < k; ++c) rk += kept[c] != 0;
     for (lint c = 0; c < k; ++c) o.params[c] = beta[c], o.kept[c] = kept[c];
     std::vector<double> z(static_cast<std::size_t>(std::max<lint>(n, 1)));
-    const double bn = beta_inf(beta.data(), k);
     for (lint i = 0; i < n; ++i) {
         // an exact fit (s = 0): the rows whose residual is 0 to rounding are on the fit
-        const bool on = s == 0.0 && std::fabs(o.resid[i]) <= zero_tol_row(D, y.data(), i, bn);
+        const bool on = s == 0.0 && std::fabs(o.resid[i]) <= zero_tol_row(D, y.data(), i, beta.data());
         z[i] = on ? 0.0 : std_resid(o.resid[i], s);
         o.weights[i] = nf.weight(z[i]);
     }

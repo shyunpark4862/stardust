@@ -40,6 +40,7 @@ std::pair<Column, Column> join_indices(
         auto as_column = [](const std::vector<std::int64_t>& v) {
             Column c = make_fixed(DType::Int64, static_cast<std::int64_t>(v.size()));
             std::uint8_t* bits = add_validity(c);
+            const Unlocked unlocked(static_cast<std::int64_t>(v.size()));
             for (std::size_t i = 0; i < v.size(); ++i) {
                 reinterpret_cast<std::int64_t*>(c.values->data())[i] = v[i] < 0 ? 0 : v[i];
                 if (v[i] < 0) bitmap::clear(bits, static_cast<std::int64_t>(i));

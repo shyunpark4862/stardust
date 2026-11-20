@@ -256,6 +256,7 @@ from_dlpack(x, /, *, device=None, copy=None)
   - `endpoint=True`이면 `stop`을 포함한다.
   - `start`, `stop`은 complex도 받는다.
   - `dtype=`을 주면 계산한 값을 그 dtype으로 명시적 변환한다.
+  - 값은 `start + i * step`(`step = (stop - start) / div`, `div`는 `endpoint`이면 `num - 1`, 아니면 `num`)이다. 양 끝이 유한한데 `stop - start`가 float64를 넘으면 `step = stop / div - start / div`로 구해서 모든 값이 유한하다. 예: `linspace(-1e308, 1e308, 5)`는 `[-1e308, -5e307, 0, 5e307, 1e308]`이다. numpy는 여기서 `nan`과 `inf`를 낸다(경고와 함께).
 - **`eye(n_rows, n_cols=None, /, *, k=0, dtype=None)`**
   - `n_cols`를 생략하면 `n_rows`와 같다.
   - `k`는 대각선 오프셋이다. 양수는 위쪽, 음수는 아래쪽이다. 범위를 벗어나면 0 행렬이다.
@@ -337,7 +338,7 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
 ### §4.4 `flip`, `roll`, `repeat`, `tile`, `unstack`, `diff`
 - **`flip`**: `axis`(int 또는 tuple, `None`은 모든 축)의 순서를 뒤집은 **뷰**다. 음수 stride를 쓴다.
 - **`roll`**: 축을 따라 원소를 돌린 새 배열이다.
-  - `shift`는 int 또는 int의 tuple이나 리스트, `axis`는 int 또는 tuple이나 리스트다(§1.3). `shift`는 `axis`와 짝을 이루므로 `axis`처럼 리스트도 받는다. 둘 다 시퀀스이면 길이가 같아야 한다(`ValueError`). `shift`가 int이고 `axis`가 시퀀스이면 모든 축에 같은 양이다.
+  - `shift`는 int 또는 int의 tuple이나 리스트, `axis`는 int 또는 tuple이나 리스트다(§1.3). `shift`는 `axis`와 짝을 이루므로 `axis`처럼 리스트도 받는다. 둘 다 시퀀스이면 길이가 같아야 한다(`ValueError`). `shift`가 int이고 `axis`가 시퀀스이면 모든 축에 같은 양이다. `shift`가 시퀀스이고 `axis`가 int이면 그 축을 `shift`의 합만큼 돌린다(numpy와 같다). 예: `roll(x, (1, 2), axis=0)`은 `roll(x, 3, axis=0)`이다.
   - `axis=None`이면 평탄화해서 돌리고 원래 shape으로 되돌린다. 이때 `shift`는 int여야 한다(`TypeError`).
   - 결과는 메모리를 직접 소유한다. `base`는 `None`이다 (§10.1).
 - **`repeat`**: 축을 따라 각 원소를 `repeats`번 되풀이한 새 배열이다.
@@ -351,7 +352,7 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
   - 축을 따라 `x[1:] - x[:-1]`을 `n`번 한다. 빼기는 `subtract`의 규칙이다. 그래서 bool은 int64가 된다(numpy는 `not_equal`로 bool을 낸다).
   - `prepend`, `append`는 배열 또는 Python 스칼라다. 그 밖의 값은 `TypeError`다. 스칼라는 그 축의 길이가 1인 배열로 넓혀 붙인다.
   - 배열은 `x`와 차원 수가 같고, `axis` 밖의 축 길이가 `x`와 같아야 한다(`ValueError`). 붙이는 일과 dtype은 `concat`의 규칙을 따른다.
-  - `n=0`이면 `x` 자신이다. 음수는 `ValueError`다.
+  - `n=0`이면 `x` 자신이다. `prepend`, `append`는 붙이지 않는다(numpy와 같다). 음수는 `ValueError`다.
 
 ---
 
@@ -412,7 +413,7 @@ nonzero(x, /)
   - `indices`는 int 또는 int64 배열이다. numpy처럼 여러 차원도 받는다. 결과 shape은 `x.shape[:axis] + indices.shape + x.shape[axis+1:]`이다. bool 배열은 `TypeError`다(마스크가 아니다).
   - 음수는 뒤에서 센다. 범위 밖은 `IndexError`다.
   - `axis`는 int다. 1차원 `x`이면 생략할 수 있고, 2차원 이상이면 필수다(`cumulative_sum`과 같다).
-- **`take_along_axis`**: `indices`(int64, `x`와 같은 차원 수)를 축을 따라 고른다. 다른 축은 서로 브로드캐스트한다. `argsort`의 결과로 정렬된 값을 얻을 때 쓴다.
+- **`take_along_axis`**: `indices`(int64 배열, `x`와 같은 차원 수)를 축을 따라 고른다. 다른 축은 서로 브로드캐스트한다. 브로드캐스트되지 않으면 고급 인덱스처럼 `IndexError`다(§5.2). `argsort`의 결과로 정렬된 값을 얻을 때 쓴다.
 - **`nonzero`**: `x != 0`인 위치를 축마다 int64 배열 하나씩, 그 tuple로 돌려준다. 위치는 C 순서다. NaN은 0이 아니다. complex는 실수부나 허수부가 0이 아니면 참이다.
 
 ---
@@ -589,7 +590,8 @@ where(condition, x1, x2, /, *, out=None)
     - numpy와 다른 곳은 둘이다. **[numpy와 다름]** (1) 스칼라 지수 0.5에서 numpy는 `sqrt`를 그대로 써서 `(-0.0) ** 0.5`가 `-0.0`, `(-inf) ** 0.5`가 `nan`이다. 여기는 C99 `pow`처럼 `+0.0`, `+inf`다. (2) numpy는 지수가 배열이면 이 다섯 값에서도 libm `pow`를 불러, 2, −1, 0.5에서 원소의 약 0.1%가 1 ULP 다르다(libm `pow`는 그 자리에서 올바르게 반올림되지 않는다). 여기는 지수의 모양과 상관없이 정확한 꼴이고, numpy의 스칼라 지수와 같다.
   - 특수값(±0, ±inf, NaN)은 부호까지 정확하다.
   - 같은 입력이면 위치, stride, 스레드 수와 상관없이 같은 비트가 나온다. 예: `exp(x)[i] == exp(x[i])`
-  - 그 밖의 원소별 함수는 numpy와 비트까지 같다.
+  - complex `abs`는 `sqrt(re² + im²)`을 1.5 ULP 안으로 계산한다(numpy와 끝자리가 다를 수 있다).
+  - 그 밖의 원소별 함수는 지금 numpy와 비트까지 같지만, 그것을 약속하지는 않는다. 약속하는 것은 위의 정확도와, 스레드 수·위치·stride와 상관없는 같은 비트다 (API.md §3).
 
 ---
 
@@ -662,7 +664,9 @@ cumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)
 ### §7.8 계산 순서
 - float/complex 리덕션의 덧셈·곱셈 순서는 numpy와 같다고 보장하지 않는다.
   - 그래서 결과의 마지막 비트가 numpy와 다를 수 있다. 결과는 결정적이다 (API.md §3).
-  - 형변환이 없고 출력이 하나인 긴 합(예: float64 배열의 `sum(x)`)은 numpy와 비트가 같다.
+  - 긴 합은 numpy와 같은 pairwise 합이지만 잎이 더 넓다(누산기 16개, 512개 단위; numpy는 8개, 128개). 오차는 같은 수준(log n)이고 마지막 비트는 numpy와 다를 수 있다.
+  - `var`, `std`의 편차 제곱은 반올림 한 번으로 더한다(`fma`).
+- **int64(와 bool)의 `mean`은 정확한 정수합이다.** 값을 모두 정확히 더한 뒤 한 번 float64로 반올림하고 개수로 나눈다. 전체 리덕션과, 메모리에서 가장 안쪽인 축 하나의 리덕션(C 배열의 `axis=-1`)이 그렇다. 그 밖의 축(바깥 축, 여러 축)은 float64로 바꾼 값을 더한다. 합이 2⁵³을 넘지 않으면 두 방법의 결과는 같다. numpy는 원소를 float64로 바꾼 뒤 더하므로 큰 정수에서는 마지막 비트가 다를 수 있다(여기가 더 정확하다). 결과는 스레드 수와 무관하다.
 - **float/complex `prod`, `cumulative_prod`의 오버플로**
   - 곱하는 순서가 numpy와 달라서, 중간값이 float 범위를 넘는 입력에서는 결과가 numpy와 크게 다를 수 있다.
   - numpy가 유한한 값을 낼 때 `inf`나 `nan`이 나올 수 있고, 그 반대도 있다.
@@ -703,7 +707,7 @@ nanquantile(x, q, /, *, axis=None, method='linear', keepdims=False)
 median(x, /, *, axis=None, keepdims=False)
 nanmedian(x, /, *, axis=None, keepdims=False)
 ```
-- `q`는 Python int·float이거나 1차원 실수 배열이다. 모든 값이 [0, 1] 안이어야 한다(밖이거나 NaN이면 `ValueError`).
+- `q`는 Python int·float이거나 1차원 실수(int64, float64) 배열이다. bool은 스칼라도 배열도 받지 않는다(`TypeError`). 모든 값이 [0, 1] 안이어야 한다(밖이거나 NaN이면 `ValueError`).
   - 리스트는 받지 않는다(`TypeError`). `sd.asarray([...])`로 넘긴다.
 - `method`는 numpy의 13가지다.
   - `inverted_cdf`, `averaged_inverted_cdf`, `closest_observation`, `interpolated_inverted_cdf`
@@ -743,17 +747,17 @@ corrcoef(x, /, *, rowvar=True)
 bincount(x, /, *, weights=None, minlength=0)
 histogram(x, /, *, bins=10, range=None, weights=None, density=False)
 ```
-- numpy의 함수다(Array API에는 없다). 값은 numpy와 비트까지 같다.
+- numpy의 함수다(Array API에는 없다). 개수는 numpy와 같다. 가중치 합은 아래 순서로 더하고, 마지막 비트가 numpy와 다를 수 있다. 어느 경우든 결과는 스레드 수와 무관하다.
 - **`bincount`**: `x`는 0 이상의 1차원 bool 또는 int64 배열이다(음수는 `ValueError`).
   - 결과 길이는 `max(x) + 1`과 `minlength` 중 큰 쪽이다.
-  - 결과는 개수(int64)다. `weights`(1차원, `x`와 같은 길이)를 주면 그 합(float64)이다. 합은 원소 순서대로 더한다.
+  - 결과는 개수(int64)다. `weights`(1차원, `x`와 같은 길이)를 주면 그 합(float64)이다. 합은 원소 순서대로 더한다. 다만 원소가 2¹⁵개 이상이고 결과 길이의 16배 이하이면, `x`를 길이만으로 정한 16구간으로 나눠 구간마다 0.0부터 원소 순서대로 더한 뒤 구간 순서대로 합친다(병렬로 돈다).
     - `weights`는 실수 dtype(bool, int64, float64)이다. float64로 바꿔서 더한다(numpy와 같다). complex는 `TypeError`다.
-- **`histogram`**: 결과는 `HistogramResult(hist, bin_edges)`이다(tuple로 풀 수 있다).
+- **`histogram`**: 결과는 `HistogramResult(hist, bin_edges)`이다(tuple로 풀 수 있다). 두 배열은 쓰기 금지다(결과 객체의 규칙, §8.1). `bins`로 준 경계 배열은 그 배열을 공유하는 읽기 전용 뷰로 돌려준다(그 배열 자체는 그대로 쓸 수 있다).
   - `x`는 아무 shape이나 받는다(C 순서로 편다). complex는 `TypeError`다.
   - `bins`가 int이면 `range`(기본은 데이터의 최솟값·최댓값) 사이의 같은 너비 구간이다. 경계는 `linspace`다. 1차원 배열이면 그 값들이 경계다(단조 증가해야 한다; 그 dtype을 그대로 돌려준다). 경계가 0개나 1개이면 구간이 없어서 `hist`가 비어 있다(numpy와 같다). 문자열 규칙(`'auto'` 등)은 없다.
   - 마지막 구간은 오른쪽 끝을 포함한다. 범위 밖의 값과 NaN은 세지 않는다. `range` 없이 데이터에 NaN이나 inf가 있으면 `ValueError`다.
   - `hist`는 개수(int64)다. `weights`(`x`와 같은 shape)를 주면 그 dtype의 합이다(bool은 int64). 같은 너비 구간에서는 numpy처럼 65536개씩 블록으로 더한다.
-  - 경계 배열과 가중치를 함께 쓰면 numpy처럼 블록마다 정렬한 누적합의 차로 계산한다. 같은 값의 원소들 사이에서는 정렬 순서가 numpy와 다를 수 있어서, 그때는 마지막 비트가 다를 수 있다.
+  - 경계 배열과 가중치를 함께 쓰면, 65536개 블록마다 구간별 합을 0(가중치의 dtype)부터 원소 순서대로 더하고 블록 순서대로 합친다. int64 가중치는 정확하다. numpy는 블록마다 정렬한 누적합의 차로 계산해서, float 가중치에서는 마지막 비트가 다르다(여기는 구간 자신의 합만큼의 오차라 더 정확하다).
   - `density=True`이면 `hist / 구간 너비 / hist의 합`(float64)이다.
 
 ---
@@ -805,12 +809,13 @@ count_nonzero(x, /, *, axis=None, keepdims=False)
   - `indices`: 각 값이 평탄화한 입력에서 처음 나온 위치
   - `inverse_indices`: 입력의 각 원소가 `values`의 몇 번째인지. shape은 `x`와 같다.
   - `indices`, `inverse_indices`, `counts`는 int64다.
+  - **결과 객체의 배열은 모두 쓰기 금지다** (API.md §2). `r.counts[0] = 1`은 `ValueError: assignment destination is read-only`다. 바꾸려면 `asarray(r.counts, copy=True)`로 복사한다. `histogram`의 `HistogramResult`도 같다.
 
 ### §8.4 `searchsorted`, `count_nonzero`
 - **`searchsorted`**: 정렬된 1차원 `x1`에서 `x2`의 각 값이 들어갈 위치(int64, `x2`와 같은 shape)다.
   - `side='left'`는 같은 값의 앞, `'right'`는 뒤다. 순서는 `sort`와 같다(NaN이 가장 크다, §8.2).
   - `x2`는 배열 또는 Python 스칼라다(스칼라면 결과도 Python `int`). 둘을 승격한 dtype으로 비교한다. complex는 `TypeError`다.
-  - `sorter`는 `x1`을 정렬하는 int64 위치 배열이다(`argsort`의 결과). 배열만 받는다: int나 리스트는 `TypeError`다. `x1`과 길이가 다른 1차원 배열이 아니면 `ValueError`, 범위 밖의 위치는 `IndexError`다. `x1`이 1차원이 아니면 `ValueError`다.
+  - `sorter`는 `x1`을 정렬하는 int64 위치 배열이다(`argsort`의 결과). 배열만 받는다: int나 리스트는 `TypeError`다. `x1`과 길이가 다른 1차원 배열이 아니면 `ValueError`, 범위 밖의 위치는 `IndexError`다. 위치는 `[0, len(x1))` 안이어야 한다: 음수도 뒤에서 세지 않고 범위 밖이다. `x1`이 1차원이 아니면 `ValueError`다.
   - `x2`의 Python int는 승격한 dtype이 int64일 때만 int64 범위 안이어야 한다(§1.5). 예: float64 `x1`에 `2**70`은 정상이다.
 - **`count_nonzero`**: `x != 0`인 원소 수(int64)다. `axis`, `keepdims`는 리덕션과 같다(§7.2). NaN은 0이 아니다.
 
@@ -835,7 +840,9 @@ vecdot(x1, x2, /, *, axis=-1)
 
 - **`tensordot`**: `axes`가 int `n`이면 `x1`의 마지막 `n`축과 `x2`의 처음 `n`축을 줄인다. 두 축 목록의 쌍(`([1, 0], [0, 2])`)이면 그 축들을 차례로 짝지어 줄인다. 짝지은 축의 길이가 다르거나, 한 목록에 같은 축이 두 번 있으면 `ValueError`다.
   - 결과 shape은 `x1`의 남은 축 다음 `x2`의 남은 축이다. 모두 줄이면 Python 스칼라다. 계산은 `matmul` 한 번이다(dtype도 `matmul`과 같다).
-- **`vecdot`**: `sd.linalg.vecdot`과 같은 함수다(docs/api/linalg.md). `x1`을 켤레로 바꾼다.
+- **`vecdot`**: `sum(conj(x1) * x2, axis=axis)`다. `x1`을 켤레로 바꾼다. `axis`는 브로드캐스트한 shape에서 세고, 그 축의 길이는 두 배열이 같아야 한다(`ValueError`, 그 축은 브로드캐스트하지 않는다). 나머지 축은 서로 브로드캐스트한다.
+  - dtype은 배열의 규칙이다. bool과 int64 입력은 int64다(곱과 합은 wrap한다). `matmul`, `tensordot`과 같다. 예: `vecdot(asarray([1, 2]), asarray([3, 4]))`는 `11`이다.
+  - `sd.linalg.vecdot`은 bool과 int64를 float64로 계산한다(docs/api/linalg.md §2). 그래서 같은 int 입력에 `sd.linalg.vecdot`은 `11.0`이다. float64와 complex128 입력에서는 두 함수가 같은 계산이고 결과의 비트도 같다.
 
 ---
 

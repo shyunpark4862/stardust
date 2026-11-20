@@ -293,7 +293,7 @@ def test_ridge_cv_gcv():
     np.testing.assert_allclose(a(r.cv_error), gcv, rtol=1e-10)
     assert r.alpha_min == grid[int(np.argmin(gcv))] and math.isnan(r.alpha_1se)
     assert np.all(np.isnan(a(r.cv_se)))
-    k = R.ridge_cv(y, X, rng=sd.random.default_rng(0), alphas=grid)
+    k = R.ridge_cv(y, X, rng=sd.random.default_rng(0), cv=5, alphas=grid)
     assert k.alpha_min in grid and not math.isnan(k.alpha_1se)
     # the default grid: alpha_max at l1_ratio 1e-3 (glmnet's rule for ridge)
     d = R.ridge_cv(y, X, cv="gcv")
@@ -376,15 +376,15 @@ def test_edge_cases():
     # just below: one coefficient enters
     r = R.lasso(y, X, alpha=am * (1 - 1e-6))
     assert np.count_nonzero(a(r.params)[1:]) == 1 and r.converged
-    # collinear columns: the lasso's solutions are not unique (any split of the coefficient
-    # with one sign), the coordinate descent iterate stands (the Gram block is singular, no
-    # polish); ridge splits it evenly
+    # a copied column: the lasso's solutions are not unique (any split of the coefficient with
+    # one sign); the polish puts the total on the first copy and the later one at 0 (R116), the
+    # fit without the copy; ridge splits it evenly
     Xd = np.c_[X, X[:, 0]]
     r = R.lasso(y, Xd, alpha=0.05)
     one = R.lasso(y, X, alpha=0.05)
     pd = a(r.params)
-    assert r.converged and np.sign(pd[1]) == np.sign(pd[-1])
-    np.testing.assert_allclose(np.r_[pd[0], pd[1] + pd[-1], pd[2:-1]], a(one.params), rtol=1e-5)
+    assert r.converged and pd[-1] == 0.0 and r.df_model == one.df_model
+    np.testing.assert_allclose(pd[:-1], a(one.params), rtol=1e-13)
     rr = R.ridge(y, Xd, alpha=0.05)
     assert a(rr.params)[1] == pytest.approx(a(rr.params)[-1], rel=1e-10)
     # a constant column has coefficient 0
@@ -557,7 +557,7 @@ def test_errors():
     with pytest.raises(TypeError, match=r"lasso_cv\(\): 'rng' must be an sd.random.Generator"):
         R.lasso_cv(y, X, rng=1)
     with pytest.raises(TypeError, match=r"ridge_cv\(\): 'rng' must be an sd.random.Generator"):
-        R.ridge_cv(y, X)
+        R.ridge_cv(y, X, cv=5)
     with pytest.raises(ValueError, match=r"'cv' must be >= 2"):
         R.lasso_cv(y, X, rng=sd.random.default_rng(0), cv=1)
     with pytest.raises(ValueError, match=r"'cv' must be <= the number of rows \(30\), not 31"):

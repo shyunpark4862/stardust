@@ -624,10 +624,55 @@ inline UV as109(double p, double q, double t) {
     return {1.0 - 2.0 / (u + 1.0), 2.0 / (u + 1.0)};
 }
 
+// The root of I_u(p, q) = t for p, q >= 2^60 (both_large's shapes) from the normal limit
+// with the skewness term (Cornish-Fisher): u = m + sigma (z + g (z^2 - 1) / 6), z the
+// normal deviate of t, m = p / (p + q), sigma = m sqrt((1 - m) / p) and g = 2 (1 - 2 m) /
+// sqrt(p (1 - m)) (no p + q, which may overflow). The next term is sigma z^3 / min(p, q),
+// below 2^-74 of the root for |z| <= 38.5 (every t from 5e-324 up). For a subnormal t,
+// where the tail itself has no bits left (betaincinv(1e100, 1e100, 5e-324) was NaN for 0.5).
+inline UV normal_limit_root(double p, double q, double t) {
+    double tt = t, z;
+    Ndtri::chunk(&tt, &z, 1);
+    const double mu = 1.0 / (1.0 + q / p), mv = 1.0 / (1.0 + p / q);
+    const double sigma = mu * std::sqrt(mv / p), g = 2.0 * (mv - mu) / std::sqrt(p * mv);
+    const double d = sigma * (z + g * (z * z - 1.0) / 6.0);
+    return {mu + d, mv - d};
+}
+
 // The x with I_x(a, b) = t (upper: 1 - I = t), 0 < t <= 1/2, a, b > 0 finite.
 inline double ibeta_inverse(double a, double b, double t, bool upper) {
     // upper: 1 - I_x(a, b) = I_y(b, a) = t, a lower problem in y
     const double p = upper ? b : a, q = upper ? a : b;
+    // A tiny shape (AS 109's start and the Halley steps lose its bits: betaincinv(1, 5e-324,
+    // 5e-324) was 1 for 1 - 1/e, betainccinv(1.17e-301, 0.137, 1.57e-300) 1.5e-12 off). Every
+    // term of I_u(p, q) past the first carries the small shape:
+    //   - one subnormal and both below 2^-700 (ibeta's own branch): I = m + p q / (p + q)
+    //     log(u / v), m = q / (p + q), so u / v = e^L, L = (t - m) (1/p + 1/q): 0 or 1 but at
+    //     t = m (1/2 there);
+    //   - p subnormal (q from 2^-700): I = 1 - p C(u) for u > 0, above every t <= 1/2: u = 0;
+    //   - q below q* = min(2^-200, 2^-80 p): 1 - I = I_v(q, p) = e^(-q K(u)) (1 + O(q / p)) for
+    //     one function K of u and p, so t = q K(u) (1 + O(t)) and the root depends on t / q
+    //     alone. It is the root with q and t scaled by one power of 2 to q's binade at q* (the
+    //     steps below are exact there), while the scaled t stays below 2^-60 (the error is then
+    //     O(t' t / q) in q K, inside the root's condition). Past that t / q > 2^20 / p and
+    //     2^140, and log v ~ -t/q + 1/p - psi(1 + p) is below every double: u = 1.
+    if (std::min(p, q) < 0x1p-1022 && std::max(p, q) < 0x1p-700) [[unlikely]] {
+        const double m = q / (p + q), d = t - m;
+        double u = 0.5, v = 0.5;
+        if (d != 0.0) {
+            const double L = d * (1.0 / p + 1.0 / q);
+            u = 1.0 / (1.0 + std::exp(-L)), v = 1.0 / (1.0 + std::exp(L));
+        }
+        return upper ? v : u;
+    }
+    if (p < 0x1p-1022) [[unlikely]]
+        return upper ? 1.0 : 0.0;
+    if (const int estar = std::ilogb(std::min(0x1p-200, 0x1p-80 * p)); std::ilogb(q) < estar) [[unlikely]] {
+        const int k = estar - std::ilogb(q);
+        const double ts = std::ldexp(t, k), qs = std::ldexp(q, k);
+        if (!(ts <= 0x1p-60)) return upper ? 0.0 : 1.0;
+        return upper ? ibeta_inverse(qs, p, ts, true) : ibeta_inverse(p, qs, ts, false);
+    }
     // One shape far beyond the other (limit_shapes): the gamma limit's root, I_u(p, q) =
     // P(p, q u) for a huge q and 1 - I_u(p, q) = P(q, p (1 - u)) for a huge p, to 2^-60.
     // (AS 109's start is 0 or NaN for these shapes.)
@@ -698,9 +743,14 @@ inline double ibeta_inverse(double a, double b, double t, bool upper) {
             const auto [g, xd] = inc ? log_tail(sa, sb, xw, yw, lt) : log_tail(sb, sa, yw, xw, lt);
             if (std::isnan(g)) {
                 // neither BPSER nor BFRAC (a large shape with the other <= 1 next to x = 1,
-                // BGRAT's ground): Halley's root stands for a normal t, where the tail still
-                // has its bits; for a subnormal t there is no value
-                if (t < 0x1p-1022) return kNaN;
+                // BGRAT's ground, or both shapes huge): Halley's root stands for a normal t,
+                // where the tail still has its bits; for a subnormal t the root of both shapes
+                // from 2^60 is the normal limit's (normal_limit_root), else there is no value
+                if (t < 0x1p-1022) {
+                    if (std::min(p, q) < kPlainShape) return kNaN;
+                    const UV r = normal_limit_root(p, q, t);
+                    return upper ? r.v : r.u;
+                }
                 root = w;
                 settled = true;
                 break;
@@ -798,8 +848,10 @@ struct Betaincc : Real {
 };
 
 // scipy's ends: p = 0 -> 0, p = 1 -> 1 (betainccinv: the other way), also for
-// an infinite a or b; NaN for a or b not > 0, NaN inputs, p outside [0, 1],
-// and an infinite a or b inside (0, 1).
+// an infinite a or b; NaN for a or b not > 0, NaN inputs, p outside [0, 1].
+// Inside (0, 1) an infinite shape is the limit, as betainc's (user decision
+// 2026-11-20): a = inf puts the mass at 1, b = inf at 0, so every quantile is
+// 1 or 0 (betainccinv the same root); both infinite: NaN.
 inline bool ibeta_inverse_edge(double a, double b, double p, bool upper, double& out) {
     if (std::isnan(a) || std::isnan(b) || std::isnan(p) || !(a > 0.0) || !(b > 0.0) || p < 0.0 || p > 1.0) {
         out = kNaN;
@@ -808,7 +860,7 @@ inline bool ibeta_inverse_edge(double a, double b, double p, bool upper, double&
     } else if (p == 1.0) {
         out = upper ? 0.0 : 1.0;
     } else if (std::isinf(a) || std::isinf(b)) {
-        out = kNaN;
+        out = std::isinf(a) && std::isinf(b) ? kNaN : (std::isinf(a) ? 1.0 : 0.0);
     } else {
         return false;
     }

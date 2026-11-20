@@ -246,18 +246,20 @@ struct StudentT {
         if (p > 0.5) return -lower_t(1.0 - p, num::log_dd(1.0 - p), df);
         return lower_t(p, num::log_dd(p), df);
     }
-    static double iccdf(double p, double df) { return -icdf(p, df); }
+    // (+ 0.0: the median's -0.0 is 0, as the normal's and the limit df = inf's)
+    static double iccdf(double p, double df) { return -icdf(p, df) + 0.0; }
     static double ilogcdf(double lp, double df) {
         if (!(lp <= 0.0) || !halvable(df)) return kNaN;
         if (lp == 0.0) return kInf;
         if (lp == -kInf) return -kInf;
+        if (lp == -num::kLn2.hi) return 0.0;  // log(1/2) rounded, logcdf(0)'s value: the median
         if (lp > -num::kLn2.hi) {
             const double q = -std::expm1(lp);
             return -lower_t(q, num::log_dd(q), df);
         }
         return lower_t(std::exp(lp), num::DD{lp, 0.0}, df);
     }
-    static double ilogccdf(double lp, double df) { return -ilogcdf(lp, df); }
+    static double ilogccdf(double lp, double df) { return -ilogcdf(lp, df) + 0.0; }
 
     static double mean(double df) { return df > 1.0 ? 0.0 : kNaN; }
     static double variance(double df) { return df > 2.0 ? df / (df - 2.0) : (df > 1.0 ? kInf : kNaN); }

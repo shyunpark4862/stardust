@@ -67,9 +67,10 @@ struct Pareto {
 
     static bool valid(double b, double s) { return b > 0.0 && std::isfinite(b) && s > 0.0 && std::isfinite(s); }
 
-    // log(x / s) for x >= s finite.
+    // log(x / s) for x >= s > 0 finite. (The scaling needs s > 0: at s <= 0 it would not
+    // end, s = 0 staying 0 and s < 0 going to -inf.)
     static num::DD log_ratio(double x, double s) {
-        if (s < 0x1p-700 && x < 0x1p-600) [[unlikely]]
+        if (s > 0.0 && s < 0x1p-700 && x < 0x1p-600) [[unlikely]]
             return log_ratio(x * 0x1p200, s * 0x1p200);  // (x - s may be subnormal: scaled, exactly)
         if (x <= 2.0 * s) return lifetime_detail::log1p_dd(num::ratio(x - s, s));  // x - s exact
         return weibull_detail::log_ratio(x, s);

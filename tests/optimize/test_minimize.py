@@ -112,7 +112,29 @@ def run_scipy(method, f, g, x0, bounds, fd, log, **kw):
 
 
 # ---- scipy 1.18.1, recorded (O9): the same steps bit for bit, so every field is scipy's (BFGS:
-# below)
+# below) but two: Nelder-Mead's n_iter is the iterations done (scipy's nit counts one more, D-27),
+# and L-BFGS-B is not converged where scipy's relative reduction test passed without a step
+# (D-7: the line search ended at the previous iterate, the projected gradient above gtol)
+
+
+def sd_n_iter(r, nit):
+    return nit - 1 if r.method == "nelder-mead" else nit
+
+
+def check_converged(r, success):
+    """sd's converged against scipy's success: the same, or a stall of L-BFGS-B (D-7)."""
+    if r.converged == success:
+        return
+    assert r.method == "l-bfgs-b" and success and not r.converged
+    assert r.message == "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH"
+    assert float(np.max(np.abs(np.array(r.jac.tolist())))) > 1e-5  # (no bounds: the gradient)
+
+
+# the recorded runs that stall so (their f is far above the problem's minimum)
+LBFGSB_STALLED = {
+    "L-BFGS-B": {"mgh06-n2-m10-x1"},
+    "L-BFGS-B/fd": {"mgh06-n2-m10-x1", "mgh18-n6-m13-x100"},
+}
 
 
 RECORDED = ("Nelder-Mead", "L-BFGS-B", "L-BFGS-B/fd")
@@ -129,8 +151,9 @@ def test_against_recorded_scipy(group):
         assert r.x.tolist() == rec["x"], pid
         # O59: after ABNORMAL, fun is the value at x (scipy's is the last trial's)
         assert r.fun == (f(np.array(rec["x"])) if rec["message"].startswith("ABNORMAL") else rec["fun"]), pid
-        assert (r.nfev, r.n_iter, r.status, r.message) == (rec["nfev"], rec["nit"], rec["status"], rec["message"]), pid
-        assert r.converged == rec["success"], pid
+        want = (rec["nfev"], sd_n_iter(r, rec["nit"]), rec["status"], rec["message"])
+        assert (r.nfev, r.n_iter, r.status, r.message) == want, pid
+        assert r.converged == (rec["success"] and pid not in LBFGSB_STALLED.get(group, ())), pid
         if "njev" in rec:
             assert r.njev == rec["njev"], pid
 
@@ -212,13 +235,13 @@ def same_run(a, b, f):
     assert b.x.tolist() == [float(v) for v in a.x]
     want = f(np.array(a.x)) if a.message.startswith("ABNORMAL") else a.fun
     assert b.fun == want or (math.isnan(want) and math.isnan(b.fun))
-    assert (b.nfev, b.n_iter, b.status, b.message, b.converged) == (
+    assert (b.nfev, b.n_iter, b.status, b.message) == (
         a.nfev,
-        a.get("nit", 0),
+        sd_n_iter(b, a.get("nit", 0)) if a.get("nit", 0) else 0,
         a.get("status", 0),
         a.message,
-        bool(a.success),
     )
+    check_converged(b, bool(a.success))
     if "njev" in a:
         assert b.njev == a.njev
 
@@ -420,8 +443,9 @@ def test_lbfgsb_hess_inv_is_dense_and_lazy():
     H = r.hess_inv
     assert isinstance(H, sd.ndarray) and H.shape == (3, 3) and H.dtype == sd.float64
     assert not isinstance(r._fields["hess_inv"], _Lazy)  # computed once, kept
-    H[0, 0] = 99.0
-    assert r.hess_inv[0, 0] != 99.0  # a new copy each read (G113)
+    assert r.hess_inv is H  # the same read-only array at each read, no copy (D-4)
+    with pytest.raises(ValueError, match="read-only"):
+        H[0, 0] = 99.0
     b = sd.optimize.minimize(lambda x: float(sd.sum((x - 1.0) ** 2)), [0.0, 3.0, -1.0], method="bfgs")
     assert b.hess_inv.shape == (3, 3)
 
@@ -527,8 +551,22 @@ def test_bounds_take_one_form():
     assert r.x[1] == 2.0 and abs(r.x[0] - 1.0) < 1e-7
     r = sd.optimize.minimize(quad, [0.0, 0.0], bounds=(-math.inf, [0.5, 0.25]), method="nelder-mead")
     assert max(abs(a - b) for a, b in zip(r.x.tolist(), [0.5, 0.25])) < 1e-4
-    with pytest.raises(ValueError, match=r"'bounds' must be a pair \(lower, upper\), not 3 values"):
+    msg = r"^minimize\(\): 'bounds' must be a pair \(lower, upper\), not a sequence of \(low, high\) pairs$"
+    with pytest.raises(ValueError, match=msg):
         sd.optimize.minimize(quad, [0.0, 0.0, 0.0], bounds=[(0, 1), (0, 1), (0, 1)])
+    with pytest.raises(ValueError, match=r"not a sequence of \(low, high\) pairs$"):
+        sd.optimize.minimize(quad, [0.0], bounds=[(0, 1)])
+    with pytest.raises(ValueError, match=r"not a sequence of \(low, high\) pairs$"):
+        sd.optimize.minimize(quad, [0.0, 0.0, 0.0], bounds=np.array([[0.0, 1.0]] * 3))
+    with pytest.raises(ValueError, match=r"'bounds' must be a pair \(lower, upper\), not 3 values$"):
+        sd.optimize.minimize(quad, [0.0, 0.0, 0.0], bounds=[0, 1, 2])
+    with pytest.raises(ValueError, match=r"'bounds' must be a pair \(lower, upper\), not 1 value$"):
+        sd.optimize.minimize(quad, [0.0, 0.0], bounds=[0.0])
+    # two pairs cannot be told from (lower, upper) and are read so: lower = (0, 2), upper = (0, 2)
+    with pytest.raises(ValueError, match=r"'x0' must be within 'bounds'"):
+        sd.optimize.minimize(quad, [1.0, 1.0], bounds=[(0, 2), (0, 2)])
+    r = sd.optimize.minimize(quad, [0.0, 2.0], bounds=[(0, 2), (0, 2)])
+    assert r.x.tolist() == [0.0, 2.0]
     with pytest.raises(ValueError, match=r"'bounds' must have 2 values like 'x0', not 3"):
         sd.optimize.minimize(quad, [0.0, 0.0], bounds=([0.0, 0.0, 0.0], 1.0))
     with pytest.raises(TypeError, match="'bounds' must be None or a pair"):
@@ -537,7 +575,7 @@ def test_bounds_take_one_form():
         sd.optimize.minimize(quad, [0.0, 0.0], bounds=(1.0, 0.0))
     with pytest.raises(ValueError, match="'bounds' contains NaN"):
         sd.optimize.minimize(quad, [0.0, 0.0], bounds=(math.nan, 1.0))
-    with pytest.raises(ValueError, match=r"method='bfgs' takes no bounds"):
+    with pytest.raises(ValueError, match=r"method='bfgs' takes no 'bounds'"):
         sd.optimize.minimize(quad, [0.0, 0.0], method="bfgs", bounds=(0.0, 1.0))
 
 
@@ -617,8 +655,12 @@ def test_iteration_caps_are_max_iter_and_max_nfev():
             sd.optimize.minimize(quad, [3.0], method=method, options={key: 5})
     r = sd.optimize.minimize(quad, [3.0, 1.0, 2.0], method="nelder-mead", options={"max_nfev": 20})
     assert r.nfev == 20 and r.status == 1 and not r.converged
+    # Nelder-Mead stops as scipy after max_iter - 1 iterations; n_iter counts the iterations
+    # done (scipy's nit is one more, D-27)
     r = sd.optimize.minimize(quad, [3.0, 1.0, 2.0], method="nelder-mead", options={"max_iter": 5})
-    assert r.n_iter == 5 and r.status == 2
+    assert r.n_iter == 4 and r.status == 2
+    r = sd.optimize.minimize(quad, [3.0, 1.0, 2.0], method="nelder-mead", options={"max_iter": 0})
+    assert r.n_iter == 0 and r.status == 2 and r.nfev == 4
     r = sd.optimize.minimize(lambda x: float(fn.rosen(x.tolist())), [-1.2, 1.0], options={"max_iter": 4})
     assert r.n_iter == 4 and r.status == 1 and r.message == "Maximum number of iterations has been exceeded."
 
@@ -656,8 +698,8 @@ def test_result_fields():
     with pytest.raises(AttributeError, match="has no setter"):
         r.x = None
     x = r.x
-    x[0] = 7.0
-    assert r.x[0] != 7.0
+    with pytest.raises(ValueError, match="read-only"):  # D-4
+        x[0] = 7.0
     assert repr(r).startswith("OptimizeResult(method='bfgs', converged=True, fun=")
 
 
@@ -737,8 +779,18 @@ def test_errors():
         m(quad, [0.0], method="BFGS")
     with pytest.raises(ValueError, match=r"'method' must be 'nelder-mead', 'bfgs', 'l-bfgs-b', 'newton-cg', "):
         m(quad, [0.0], method="cg")
-    with pytest.raises(ValueError, match=r"method='bfgs' takes no 'hess'"):
+    with pytest.raises(ValueError, match=r"method=None \(bfgs\) takes no 'hess' \(method='newton-cg', 'trust-ncg'"):
         m(quad, [0.0], hess=lambda x: None)
+    with pytest.raises(ValueError, match=r"method='bfgs' takes no 'hess' \(method='newton-cg'"):
+        m(quad, [0.0], method="bfgs", hess=lambda x: None)
+    with pytest.raises(TypeError, match=r"^minimize\(\): unexpected keyword argument 'foo'$"):
+        m(quad, [0.0], foo=1)
+    with pytest.raises(TypeError, match=r"^minimize\(\): takes 2 positional arguments but 3 were given$"):
+        m(quad, [0.0], "bfgs")
+    with pytest.raises(TypeError, match=r"'fun' must return a pair \(f, g\) when jac=True, not a list of 1 number$"):
+        m(lambda x: [1.0], [0.0], jac=True)
+    with pytest.raises(TypeError, match=r"minimize\(\): 'jac' must return real values, not a bool array"):
+        m(quad, [1.0, 2.0], jac=lambda x: np.array([True, False]))
     with pytest.raises(ValueError, match=r"method='l-bfgs-b' takes no 'hessp'"):
         m(quad, [0.0], method="l-bfgs-b", hessp=lambda x, p: None)
     with pytest.raises(ValueError, match=r"method='nelder-mead' takes no 'jac'"):
@@ -781,3 +833,84 @@ def test_errors():
         m(quad, [0.0], method="l-bfgs-b", options={"max_ls": 0})
     with pytest.raises(ValueError, match=r"'gtol' must be a finite number >= 0"):
         m(quad, [0.0], options={"gtol": -1.0})
+
+
+# ---- L-BFGS-B's false convergence (D-7), max_iter = 0 (D-27), options None (D-28)
+
+
+def _inf_past_half(x):
+    x = list(x)
+    return math.inf if x[0] > 0.5 else (x[0] - 1) ** 2 + (x[1] - 1) ** 2
+
+
+def _inf_past_half_g(x):
+    x = list(x)
+    return [2 * (x[0] - 1), 2 * (x[1] - 1)]
+
+
+def test_lbfgsb_no_step_is_not_convergence():
+    # QN-1: an infinite trial value ends the line search at x0; scipy's relative-reduction test
+    # passes on fold - f = 0 (converged=True with the gradient [-2, -2]); status and message stay
+    r = sd.optimize.minimize(_inf_past_half, [0.0, 0.0], method="l-bfgs-b", jac=_inf_past_half_g)
+    assert r.status == 0 and r.message == "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH"
+    assert not r.converged and r.x.tolist() == [0.0, 0.0] and r.jac.tolist() == [-2.0, -2.0]
+    a = so.minimize(_inf_past_half, [0.0, 0.0], method="L-BFGS-B", jac=_inf_past_half_g)
+    assert a.success and a.x.tolist() == [0.0, 0.0]
+
+
+def test_lbfgsb_max_iter_zero_does_no_iteration():
+    # D-27: as bfgs, newton-cg and the trust methods (scipy's L-BFGS-B does one iteration)
+    r = sd.optimize.minimize(quad, [3.0, 1.0], method="l-bfgs-b", options={"max_iter": 0})
+    assert (r.n_iter, r.status, r.converged) == (0, 1, False)
+    assert r.x.tolist() == [3.0, 1.0] and r.message == "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT"
+    r = sd.optimize.minimize(quad, [3.0, 1.0], method="l-bfgs-b", options={"max_iter": 1})
+    assert r.n_iter == 1
+
+
+def test_options_none_is_the_default():
+    # D-28: None is the default of every option; tol conflicts only with a value given
+    for method, opts in (
+        ("bfgs", {"gtol": None, "norm": None, "c1": None}),
+        ("nelder-mead", {"xatol": None, "adaptive": None}),
+        ("l-bfgs-b", {"ftol": None, "max_ls": None}),
+    ):
+        a = sd.optimize.minimize(quad, [3.0, 1.0], method=method)
+        b = sd.optimize.minimize(quad, [3.0, 1.0], method=method, options=opts)
+        assert b.x.tolist() == a.x.tolist(), method
+    r = sd.optimize.minimize(quad, [3.0, 1.0], tol=1e-9, options={"gtol": None})
+    assert r.converged
+
+
+def test_lbfgsb_large_maxcor_takes_no_memory_up_front():
+    # QN-3: the workspace of 11 maxcor^2 doubles is calloc'd (pages not written take no memory)
+    import resource
+
+    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    r = sd.optimize.minimize(quad, [3.0, 1.0], method="l-bfgs-b", options={"maxcor": 3000})
+    after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    assert r.converged
+    assert after - before < 200 * 2**20  # bytes on macOS (800 MB written before)
+
+
+def test_fixed_variables_with_differences():
+    # QN-4: the fixed variables' values are filled into a new array for each call
+    seen = []
+
+    def f(x):
+        seen.append(x)
+        return quad(x)
+
+    r = sd.optimize.minimize(f, [3.0, 1.0, 2.0], method="l-bfgs-b", bounds=([0.0, 1.0, 0.0], [5.0, 1.0, 5.0]))
+    assert r.converged and r.x[1] == 1.0 and math.isnan(r.jac[1])
+    assert all(float(x[1]) == 1.0 for x in seen) and len({id(x) for x in seen}) == len(seen)
+
+
+def test_x0_takes_the_data_forms():
+    # D-30: x0 is data: an sd.ndarray, a sequence, a numpy array or a frame column
+    want = sd.optimize.minimize(quad, [3.0, 1.0]).x.tolist()
+    for x0 in (sd.asarray([3.0, 1.0]), (3.0, 1.0), np.array([3.0, 1.0]), sd.frame.Series([3.0, 1.0])):
+        assert sd.optimize.minimize(quad, x0).x.tolist() == want
+    with pytest.raises(TypeError, match=r"minimize\(\): 'x0' must be numeric, not a Series of string"):
+        sd.optimize.minimize(quad, sd.frame.Series(["a", "b"]))
+    with pytest.raises(ValueError, match=r"minimize\(\): 'x0' must be finite"):
+        sd.optimize.minimize(quad, sd.frame.Series([1.0, None]))

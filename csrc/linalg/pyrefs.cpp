@@ -1,5 +1,7 @@
 #include "linalg/pyrefs.hpp"
 
+#include "array/ndarray.hpp"
+
 #include <string>
 #include <vector>
 
@@ -31,8 +33,14 @@ void bind_setup(nb::module_& m) {
 }
 
 nb::object make_result(Result r, std::initializer_list<nb::handle> fields) {
+    // The array fields are read-only (API.md §2): a result object's fields are views of one
+    // computation, never edited in place; .copy() gives a writable array.
     std::vector<PyObject*> args;
-    for (nb::handle f : fields) args.push_back(f.ptr());
+    for (nb::handle f : fields) {
+        NDArray* a = nullptr;
+        if (nb::try_cast<NDArray*>(f, a) && a != nullptr) a->writeable = false;
+        args.push_back(f.ptr());
+    }
     PyObject* o = PyObject_Vectorcall(refs().results[static_cast<int>(r)], args.data(), args.size(), nullptr);
     if (!o) throw nb::python_error();
     return nb::steal(o);

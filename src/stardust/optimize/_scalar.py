@@ -182,7 +182,7 @@ def root_scalar(
         fields["njev"] = njev
     if method == "halley":
         fields["nhev"] = nhev
-    return OptimizeResult(**fields)
+    return OptimizeResult._make(**fields)
 
 
 def minimize_scalar(fun, /, *, bracket=None, bounds=None, method=None, tol=None, options=None):
@@ -197,7 +197,7 @@ def minimize_scalar(fun, /, *, bracket=None, bounds=None, method=None, tol=None,
     br, lo, hi = [], 0.0, 0.0
     if method == "bounded":
         if bracket is not None:
-            raise ValueError(f"{func}(): method='bounded' takes no bracket (it searches 'bounds')")
+            raise ValueError(f"{func}(): method='bounded' takes no 'bracket' (it searches 'bounds')")
         if bounds is None:
             raise ValueError(f"{func}(): 'bounds' is required when method='bounded'")
         lo, hi = _real_pair(bounds, func, "bounds", "pair (lower, upper)")
@@ -206,7 +206,7 @@ def minimize_scalar(fun, /, *, bracket=None, bounds=None, method=None, tol=None,
         key, xtol, max_iter = "xatol", 1e-5, 500
     else:
         if bounds is not None:
-            raise ValueError(f"{func}(): method={method!r} takes no bounds (method='bounded' does)")
+            raise ValueError(f"{func}(): method={method!r} takes no 'bounds' (method='bounded' does)")
         if bracket is not None:
             br = _real_pair(bracket, func, "bracket", "pair (xa, xb) or a triple (xa, xb, xc)", (2, 3))
             if len(br) == 3:
@@ -220,6 +220,7 @@ def minimize_scalar(fun, /, *, bracket=None, bounds=None, method=None, tol=None,
         xtol, max_iter = (1.48e-8, 500) if method == "brent" else (math.sqrt(_EPS), 5000)
     opts = _check_options(options, func, method, (key, "max_iter"))
     if tol is not None:
+        tol = _check_tol(tol, func, "tol")
         if key in opts:
             raise ValueError(f"{func}(): give 'tol' or options[{key!r}], not both")
         opts[key] = tol
@@ -246,7 +247,7 @@ def minimize_scalar(fun, /, *, bracket=None, bounds=None, method=None, tol=None,
         )
     else:
         message = _BRACKET_MESSAGES[status]
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         fun=f,
         converged=status == 0,

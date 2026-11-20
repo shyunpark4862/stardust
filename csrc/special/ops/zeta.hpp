@@ -61,6 +61,13 @@ inline double euler_maclaurin(double s, double sm1, double q) {
 // 9 - q terms at most).
 inline constexpr double kDirectBelow = 64.0;
 
+inline Scaled hurwitz_negative(double s, double sm1, double q);
+
+// q < 0 is a half-integer: 2 (q + N) - 1 = 0, N = ceil(-q), formed exactly (q + N itself
+// rounds for -1/2 < q < 0: q = -0.49999999999999994 gave 1/2).
+inline double twice_fraction_less_one(double q) { return 2.0 * q + (2.0 * std::ceil(-q) - 1.0); }
+inline bool half_integer(double q) { return twice_fraction_less_one(q) == 0.0; }
+
 // Hurwitz zeta(s, q), s >= 1 (s = 1: inf), with Cephes' conventions: NaN for
 // s < 1; inf at q = 0, -1, -2, ...; NaN for q < 0 when s is not an integer
 // (q^-s is complex); q > 1e8 by the first terms of the asymptotic series.
@@ -82,19 +89,24 @@ inline double hurwitz(double s, double sm1, double q) {
         const double sq = s / q;
         return (1.0 / sm1 + (6.0 + sq) / q / 12.0) * std::pow(q, -sm1);
     }
-    if (q < -1.0) {
+    if (q < 0.0) {
         // (s an integer here.) The N = ceil(-q) terms below 0 are a difference of two sums
         // over positive arguments: with d = q + N in (0, 1),
         //     zeta(s, q) = zeta(s, d) + (-1)^s (zeta(s, 1 - d) - zeta(s, 1 - q)).
-        const double d = q + std::ceil(-q);  // exact: q's fraction
+        // (d is exact for q <= -1/2; above, 1 + q may round)
+        const double d = q + std::ceil(-q);
         const double sgn = std::fmod(s, 2.0) == 0.0 ? 1.0 : -1.0;
         // At a half-integer q with an odd s the two sums near 0 cancel exactly; summed term by
-        // term they leave rounding noise 2^s 2^-53 (polygamma(20, -2.5) was -4.2e8 for -9.2e6).
-        if (d == 0.5 && sgn < 0.0) return hurwitz(s, sm1, 1.0 - q);
+        // term they leave rounding noise 2^s 2^-53 (polygamma(20, -2.5) was -4.2e8 for -9.2e6),
+        // or inf - inf for a large s (zeta(1025, -0.5)).
+        if (half_integer(q) && sgn < 0.0) return hurwitz(s, sm1, 1.0 - q);
         // Far below 0 the direct sum would take |q| terms.
-        if (q < -kDirectBelow)
-            return (euler_maclaurin(s, sm1, d) + sgn * euler_maclaurin(s, sm1, 1.0 - d)) -
-                   sgn * hurwitz(s, sm1, 1.0 - q);
+        const double r = q < -kDirectBelow ? (euler_maclaurin(s, sm1, d) + sgn * euler_maclaurin(s, sm1, 1.0 - d)) -
+                                                 sgn * hurwitz(s, sm1, 1.0 - q)
+                                           : euler_maclaurin(s, sm1, q);
+        // The terms next to 0 beyond the doubles with opposite signs (an odd s): inf - inf.
+        if (std::isnan(r)) return value(hurwitz_negative(s, sm1, q));
+        return r;
     }
     return euler_maclaurin(s, sm1, q);
 }
@@ -136,7 +148,7 @@ inline double hurwitz_relative(double s, double sm1, double q) {
 }
 
 inline Scaled hurwitz_scaled(double s, double sm1, double q) {
-    if (q < -1.0 && q != std::floor(q) && q + std::ceil(-q) == 0.5 && std::fmod(s, 2.0) == 1.0)
+    if (q < 0.0 && q != std::floor(q) && half_integer(q) && std::fmod(s, 2.0) == 1.0)
         return hurwitz_scaled(s, sm1, 1.0 - q);  // (hurwitz: the sums near 0 cancel, zeta(s, 1 - q) is left)
     if (q > 1e8 && s * std::log2(q) >= 900.0) {  // hurwitz's three terms, q^-(s-1) apart
         const double sq = s / q;
@@ -171,6 +183,41 @@ inline Scaled hurwitz_scaled(double s, double sm1, double q) {
         k += 1.0;
     }
     return first * scaled(sum);
+}
+
+// a + b as m 2^e.
+inline Scaled add_scaled(Scaled a, Scaled b) {
+    if (!std::isfinite(a.m) || !std::isfinite(b.m)) return {a.m + b.m, 0};
+    if (a.m == 0.0) return b;
+    if (b.m == 0.0) return a;
+    const std::int64_t e = std::max(a.e, b.e);
+    auto at = [&](Scaled v) { return std::ldexp(v.m, static_cast<int>(std::max<std::int64_t>(v.e - e, -1100))); };
+    Scaled r = scaled(at(a) + at(b));
+    r.e += e;
+    return r;
+}
+
+// zeta(s, q) for q < 0 not an integer and s an integer, as m 2^e: hurwitz's three sums,
+// zeta(s, d) + (-1)^s (zeta(s, e) - zeta(s, 1 - q)), d = q + N, e = 1 - d = -(q + N - 1)
+// (exact), with the two next to 0 taken relative to the nearer one's first term x1^-s
+// (x1 = min(d, e), x2 the other):
+//     zeta(s, x1) +- zeta(s, x2) = x1^-s (1 +- r + R1 +- r R2),  r = (x1 / x2)^s,
+// R the rest of each sum (hurwitz_relative - 1). For an odd s the pair is a difference,
+// 1 - r = -expm1(s log1p((x1 - x2) / x2)) with x1 - x2 = -|2 d - 1| exact next to d = 1/2,
+// where the two first terms nearly cancel. For a large s, where both are beyond the doubles
+// (summed as doubles: inf - inf, polygamma(3000, -2.25) was NaN for inf).
+inline Scaled hurwitz_negative(double s, double sm1, double q) {
+    const double n = std::ceil(-q);
+    const double d = q + n, e = -(q + (n - 1.0));
+    const bool odd = std::fmod(s, 2.0) != 0.0;
+    const double x1 = std::min(d, e), x2 = std::max(d, e);
+    const double R1 = hurwitz_relative(s, sm1, x1) - 1.0, R2 = hurwitz_relative(s, sm1, x2) - 1.0;
+    const double l = s * std::log1p(-std::fabs(twice_fraction_less_one(q)) / x2), r = std::exp(l);
+    const double pair = odd ? -std::expm1(l) + (R1 - r * R2) : 1.0 + r + (R1 + r * R2);
+    // the odd pair is zeta(s, d) - zeta(s, 1 - d): negative when 1 - d is the nearer
+    const Scaled near = pow_scaled(x1, -s) * scaled(odd && x1 == e ? -pair : pair);
+    const Scaled far = hurwitz_scaled(s, sm1, 1.0 - q);
+    return add_scaled(near, odd ? far : Scaled{-far.m, far.e});
 }
 
 // zeta(x) for -60 < x < -1, x not an integer, by the functional equation

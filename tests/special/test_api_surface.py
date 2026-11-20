@@ -58,10 +58,18 @@ def test_keyword_options_match_api_md():
 
 def keyword_only(f):
     """The keyword-only parameter names of a nanobind function, from its
-    __nb_signature__ ('def f(arg0: object, /, *, out: object = \\0) -> object')."""
+    __nb_signature__ ('def f(x, /, *, out=None)', or with annotations when nanobind writes it)."""
     text = f.__nb_signature__[0][0]
     params = text[text.index("(") + 1 : text.rindex(")")]
     if "*," not in params and not params.rstrip().endswith("*"):
         return set()
     after = params.split("*,", 1)[1] if "*," in params else ""
-    return {p.split(":")[0].strip() for p in after.split(",") if p.strip()}
+    return {p.split(":")[0].split("=")[0].strip() for p in after.split(",") if p.strip()}
+
+
+def test_signatures_are_the_documented_ones():
+    # every function shows its docs/api/special.md signature, input names included (they stay
+    # positional-only: the names are for help() and the call errors)
+    for name, sig in documented().items():
+        f = getattr(sd.special, name)
+        assert f.__nb_signature__[0][0] == f"def {name}({sig})", name

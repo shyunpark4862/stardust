@@ -2,8 +2,9 @@
 
 The iterations are the native kernel stardust._core.optimize.lsq_solve, which sd.regression.nls
 runs too: 'trf' is scipy 1.18.1's trust region reflective method (the 'exact' subproblem,
-x_scale 1, no loss), 'lm' MINPACK's lmder; difference Jacobians are scipy's approx_derivative
-'2-point' and '3-point' (with diff_step and the bounds). The user's fun and jac get a new
+x_scale 1, no loss), 'lm' MINPACK's lmder (in scipy's build, or nls's for m >> n); difference
+Jacobians are scipy's approx_derivative '2-point' and '3-point' (with diff_step and the
+bounds). The user's fun and jac get a new
 float64 sd.ndarray x; what they return is taken as it is when it is a float64 sd.ndarray of
 the right shape, else checked and converted here (_conform).
 """
@@ -12,12 +13,28 @@ import math
 
 from .. import _core as _sd
 from .. import linalg as _linalg
-from ._common import _EPS, _bounds, _callable, _check_int, _check_method, _check_tol, _real_vector, _type_name, _x0
+from ._common import (
+    _EPS,
+    _bounds,
+    _callable,
+    _check_int,
+    _check_method,
+    _check_tol,
+    _real_vector,
+    _show_x,
+    _type_name,
+    _values_text,
+    _x0,
+)
 from ._result import OptimizeResult
 
 _k = _sd.optimize
 
 _METHODS = ("trf", "lm")
+# 'lm' takes the nls build of lmder (one LAPACK QR of J, then p-sized work; csrc/optimize/lsq.cpp)
+# from m >= 10 n residuals and m n >= 2000: measured 1.0-1.9 times faster per Jacobian there, and
+# slower below (to 2 times at m = n = 40), where scipy's build factors J itself; by the shape only
+_LM_TALL, _LM_TALL_SIZE = 10, 2000
 _JACS = ("2-point", "3-point")
 _DIFF = {"2-point": 1, "3-point": 2}
 
@@ -46,7 +63,7 @@ def _conform(func, n):
                 raise ValueError(f"{func}(): 'fun' must return a 1-dimensional array, not shape {tuple(a.shape)}")
             m = state.get("m")
             if m is not None and a.shape[0] != m:
-                raise ValueError(f"{func}(): 'fun' must return {m} values as at 'x0', not {a.shape[0]}")
+                raise ValueError(f"{func}(): 'fun' must return {_values_text(m)} as at 'x0', not {a.shape[0]}")
             return a
         m = state["m"]
         if n == 1 and a.ndim == 1 and a.shape[0] == m:
@@ -84,6 +101,8 @@ def _returned(v, func, what):
         raise TypeError(f"{func}(): '{what}' must return real values, not a complex128 array")
     if a.dtype == _sd.string:
         raise TypeError(f"{func}(): '{what}' must return real values, not a string array")
+    if a.dtype == _sd.bool:  # a comparison returned where numbers were meant
+        raise TypeError(f"{func}(): '{what}' must return real values, not a bool array")
     if a.dtype != _sd.float64:
         a = a.astype(_sd.float64)
     return a
@@ -154,13 +173,18 @@ def least_squares(
     lb, ub = _bounds(bounds, func, n)
     bounded = any(math.isfinite(a) or math.isfinite(b) for a, b in zip(lb, ub))
     if method == "lm" and bounded:
-        raise ValueError(f"{func}(): method='lm' takes no bounds (method='trf' does)")
+        raise ValueError(f"{func}(): method='lm' takes no 'bounds' (method='trf' does)")
     xl = [float(v) for v in x.tolist()]
     if not all(a <= t <= b for t, a, b in zip(xl, lb, ub)):
         raise ValueError(f"{func}(): 'x0' must be within 'bounds'")
     ftol = _check_tol(ftol, func, "ftol")
     xtol = _check_tol(xtol, func, "xtol")
     gtol = _check_tol(gtol, func, "gtol")
+    if method == "lm" and min(ftol, xtol, gtol) < _EPS:
+        # as scipy: lmder stops with "the tolerance is too small" (its info 6-8) otherwise
+        raise ValueError(
+            f"{func}(): 'ftol', 'xtol' and 'gtol' must each be >= 2.2e-16 (the machine epsilon) when method='lm'"
+        )
     if ftol < _EPS and xtol < _EPS and gtol < _EPS:
         raise ValueError(
             f"{func}(): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16 (the machine epsilon)"
@@ -188,6 +212,12 @@ def least_squares(
         raise ValueError(f"{func}(): 'fun' is not finite at 'x0'")
     if method == "lm" and m < n:
         raise ValueError(f"{func}(): method='lm' needs at least as many residuals as variables, not {m} < {n}")
+    if method == "trf":
+        code = 1
+    elif m >= _LM_TALL * n and m * n >= _LM_TALL_SIZE:
+        code = 0  # lmder after one LAPACK QR of J (nls's build): faster when m >> n
+    else:
+        code = 2  # lmder on J itself in scipy's build (its call points)
     xs, status, nfev, njev, n_iter, f, J = _k.lsq_solve(
         func,
         fun,
@@ -196,7 +226,7 @@ def least_squares(
         xl,
         lb,
         ub,
-        1 if method == "trf" else 2,  # 'lm' in scipy's build of lmder (nls runs 0)
+        code,
         ftol,
         xtol,
         gtol,
@@ -210,7 +240,7 @@ def least_squares(
     )
     if status == _ST_JAC:
         what = "'jac' is" if diff == 0 else "the differences of 'fun' are"
-        raise ValueError(f"{func}(): {what} not finite at x = {xs}")
+        raise ValueError(f"{func}(): {what} not finite at x = {_show_x(xs)}")
     x = _sd.asarray(xs)
     cost = 0.5 * float(_linalg.vecdot(f, f))
     grad = _sd.matmul(f, J)
@@ -231,7 +261,7 @@ def least_squares(
         active = [0] * n
     # converged: the stopping test passed at a finite cost (O20, regression G89)
     converged = status > 0 and math.isfinite(cost)
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         cost=cost,
         fun=f,

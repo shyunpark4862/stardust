@@ -31,9 +31,16 @@ COMPARE = ("eq", "ne", "lt", "le", "gt", "ge")
 
 
 def is_operand_scalar(value):
+    """Whether an operator takes `value` as a scalar operand. numpy complex,
+    datetime64, timedelta64, void and bytes_ scalars are not, as Python's
+    complex is not: the operator then raises Python's TypeError."""
     np = sys.modules.get("numpy")
+    if value is NA or isinstance(value, (bool, int, float, str)):
+        return True
     return (
-        value is NA or isinstance(value, (bool, int, float, str)) or (np is not None and isinstance(value, np.generic))
+        np is not None
+        and isinstance(value, np.generic)
+        and not isinstance(value, (np.complexfloating, np.datetime64, np.timedelta64, np.void, np.bytes_))
     )
 
 

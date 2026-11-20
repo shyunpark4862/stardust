@@ -1,5 +1,7 @@
 #include "frame/ops/groupby.hpp"
 
+#include "base/int_sum.hpp"
+
 #include "frame/ops/hash.hpp"
 #include "frame/ops/pairwise.hpp"
 #include "frame/ops/radix.hpp"
@@ -177,17 +179,18 @@ Column Groups::reduce(std::string_view op, const Column& col, bool skipna, doubl
                 std::int64_t trues = 0;
                 for (std::int64_t k = 0; k < n; ++k) trues += col.data<std::uint8_t>()[rows_[b + k]];
                 mean = static_cast<double>(trues) / static_cast<double>(count);
-            } else {  // float64, and int64 as float64 the way the array area sums it: 0 + pairwise,
-                  // the column mean's bits for groups of up to 4096 rows (docs/api/frame.md §7.5)
+            } else if (col.dtype == DType::Int64) {  // the exact sum, as the column mean (base/int_sum.hpp)
+                IntSum s;
+                for (std::int64_t k = 0; k < n; ++k) s.add(col.data<std::int64_t>()[rows_[b + k]]);  // NA rows hold 0
+                mean = sd::mean_of(s, count);
+            } else {
                 mean = float_sum(n, get) / static_cast<double>(count);
             }
             double value = mean;
-            if (is_var) {
-                const double ssd = float_sum(n, [&](std::int64_t k) {
+            if (is_var) {  // one fma per square, as the column var
+                const double ssd = squares_sum(n, [&](std::int64_t k) {
                     const std::int64_t r = rows_[b + k];
-                    if (!col.is_valid(r)) return 0.0;
-                    const double d = row_double(col, r) - mean;
-                    return d * d;
+                    return col.is_valid(r) ? row_double(col, r) - mean : 0.0;
                 });
                 value = ssd / (static_cast<double>(count) - correction);
                 if (op == "std") value = std::sqrt(value);
@@ -219,12 +222,18 @@ Column sort_groups(const std::vector<Column>& keys) {
         // The distinct values in order (radix sort): values first, then
         // the NA code last (docs/api/frame.md §7.2).
         std::vector<std::int64_t> valued, na_code;
-        for (std::int64_t g = 0; g < f.ngroups; ++g) (k.is_valid(first[g]) ? valued : na_code).push_back(first[g]);
+        {
+            const Unlocked unlocked(f.ngroups);
+            for (std::int64_t g = 0; g < f.ngroups; ++g) (k.is_valid(first[g]) ? valued : na_code).push_back(first[g]);
+        }
         order_rows(k, valued);
         std::vector<std::int64_t> rank(static_cast<std::size_t>(f.ngroups));
-        std::int64_t r = 0;
-        for (std::int64_t row : valued) rank[code[row]] = r++;
-        for (std::int64_t row : na_code) rank[code[row]] = r++;
+        {
+            const Unlocked unlocked(f.ngroups);
+            std::int64_t r = 0;
+            for (std::int64_t row : valued) rank[code[row]] = r++;
+            for (std::int64_t row : na_code) rank[code[row]] = r++;
+        }
         // Stable sort of `order` by rank (keeps the order of earlier passes).
         std::vector<std::int64_t> key(static_cast<std::size_t>(n)), start, perm;
         for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {

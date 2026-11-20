@@ -1,59 +1,104 @@
-// numpy's pairwise float summation (DOUBLE_pairwise_sum / CDOUBLE_pairwise_sum),
-// defined once for every area: the shape of the tree, the leaf sums, and how a
-// long sum is cut into leaves for the pool and put back together. What these
-// functions do decides the bits of every float sum in stardust; the areas only
-// choose how the terms reach a leaf (array: an accessor, docs/design/array.md
-// §6.2; linalg: a buffer filled per leaf, docs/design/linalg.md §8.3).
+// Pairwise float summation, defined once for every area: the shape of the
+// tree, the leaf sums, and how a long sum is cut into leaves for the pool and
+// put back together. What these functions do decides the bits of every float
+// sum in stardust; the areas only choose how the terms reach a leaf (array: an
+// accessor, docs/design/array.md §6.2; linalg: a buffer filled per leaf,
+// docs/design/linalg.md §8.3).
 //
-// The tree depends on the length only. Runs of at most kBlock doubles (64
-// complex numbers) are summed with 8 independent accumulators (4 per part for
-// complex), longer runs are split in two at a multiple of 8 doubles,
-// recursively. The rounding error grows like log n instead of n, and the 8
-// chains keep the FP units busy.
+// The tree depends on the length only. Runs of at most kBlock doubles (256
+// complex numbers) are summed with kLanes = 16 independent accumulators (8 per
+// part for complex) -- eight NEON registers, which the compiler fills from the
+// 16 chains -- and longer runs are split in two at a multiple of 16 doubles,
+// recursively. The rounding error grows like log n instead of n. This is
+// numpy's algorithm (DOUBLE_pairwise_sum) with a wider leaf (numpy: 8
+// accumulators, blocks of 128), so the last bits can differ from numpy's: a
+// long sum ran 1.2-1.6x faster on one thread (docs/design/array.md §6.2).
 #pragma once
 
 #include "base/dtype.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <utility>
 #include <vector>
 
 namespace sd::pairwise {
 
-inline constexpr std::int64_t kBlock = 128;  // numpy's PW_BLOCKSIZE, in doubles
+inline constexpr std::int64_t kBlock = 512;  // in doubles
+inline constexpr int kLanes = 16;            // accumulators of a real leaf (8 per part for complex)
 
-// Where a run of n terms splits: half of it, rounded down to a multiple of 8
-// doubles. numpy counts doubles, so for complex terms the cut is at
-// ((2n)/2 - ((2n)/2) % 8) doubles, i.e. (n - n % 8) / 2 complex numbers.
+// Where a run of n terms splits: half of it, rounded down to a multiple of 16
+// doubles. Complex terms count as two doubles, so the cut is at
+// (n - n % 16) / 2 complex numbers.
 inline std::int64_t split(std::int64_t n) {
     const std::int64_t m = n / 2;
-    return m - m % 8;
+    return m - m % kLanes;
 }
-inline std::int64_t split_complex(std::int64_t n) { return (n - n % 8) / 2; }
+inline std::int64_t split_complex(std::int64_t n) { return (n - n % kLanes) / 2; }
+
+// The 16 accumulators of a leaf, added in a fixed tree: adjacent pairs, then
+// pairs of pairs.
+[[gnu::always_inline]] inline double fold_lanes(double* r) {
+    for (int w = 1; w < kLanes; w *= 2)
+        for (int j = 0; j < kLanes; j += 2 * w) r[j] += r[j + w];
+    return r[0];
+}
 
 // A leaf: get(0) + ... + get(n - 1) for n <= kBlock.
 template <typename Get>
 [[gnu::always_inline]] inline double leaf(std::int64_t n, const Get& get) {
-    if (n < 8) {
+    if (n < kLanes) {
         double res = 0.;
         for (std::int64_t i = 0; i < n; ++i) res += get(i);
         return res;
     }
-    double r[8];
-    for (int j = 0; j < 8; ++j) r[j] = get(j);
-    std::int64_t i = 8;
-    for (; i < n - (n % 8); i += 8)
-        for (int j = 0; j < 8; ++j) r[j] += get(i + j);  // 8 independent chains
-    double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
+    double r[kLanes];
+    for (int j = 0; j < kLanes; ++j) r[j] = get(j);
+    std::int64_t i = kLanes;
+    for (; i + kLanes <= n; i += kLanes)
+        for (int j = 0; j < kLanes; ++j) r[j] += get(i + j);  // 16 independent chains
+    double res = fold_lanes(r);
     for (; i < n; ++i) res += get(i);
     return res;
 }
 
+// A leaf of squares, dev(0)^2 + ... + dev(n - 1)^2, each square added with one
+// rounding: fma(d, d, acc) (the second pass of var, docs/design/array.md §6.8).
+template <typename Dev>
+[[gnu::always_inline]] inline double leaf_squares(std::int64_t n, const Dev& dev) {
+    if (n < kLanes) {
+        double res = 0.;
+        for (std::int64_t i = 0; i < n; ++i) {
+            const double d = dev(i);
+            res = std::fma(d, d, res);
+        }
+        return res;
+    }
+    double r[kLanes];
+    for (int j = 0; j < kLanes; ++j) {
+        const double d = dev(j);
+        r[j] = d * d;
+    }
+    std::int64_t i = kLanes;
+    for (; i + kLanes <= n; i += kLanes)
+        for (int j = 0; j < kLanes; ++j) {
+            const double d = dev(i + j);
+            r[j] = std::fma(d, d, r[j]);
+        }
+    double res = fold_lanes(r);
+    for (; i < n; ++i) {
+        const double d = dev(i);
+        res = std::fma(d, d, res);
+    }
+    return res;
+}
+
 // A complex leaf (n <= kBlock / 2): real and imaginary parts side by side,
-// 4 accumulators each.
+// 8 accumulators each.
 template <typename Get>
 [[gnu::always_inline]] inline complex128 leaf_complex(std::int64_t n, const Get& get) {
-    if (n < 4) {
+    constexpr int kPart = kLanes / 2;
+    if (n < kPart) {
         double rr = 0., ri = 0.;
         for (std::int64_t i = 0; i < n; ++i) {
             const complex128 z = get(i);
@@ -62,21 +107,25 @@ template <typename Get>
         }
         return {rr, ri};
     }
-    double re[4], im[4];
-    for (int j = 0; j < 4; ++j) {
+    double re[kPart], im[kPart];
+    for (int j = 0; j < kPart; ++j) {
         const complex128 z = get(j);
         re[j] = z.real();
         im[j] = z.imag();
     }
-    std::int64_t i = 4;
-    for (; i < n - (n % 4); i += 4)
-        for (int j = 0; j < 4; ++j) {
+    std::int64_t i = kPart;
+    for (; i + kPart <= n; i += kPart)
+        for (int j = 0; j < kPart; ++j) {
             const complex128 z = get(i + j);
             re[j] += z.real();
             im[j] += z.imag();
         }
-    double rr = (re[0] + re[1]) + (re[2] + re[3]);
-    double ri = (im[0] + im[1]) + (im[2] + im[3]);
+    for (int w = 1; w < kPart; w *= 2)
+        for (int j = 0; j < kPart; j += 2 * w) {
+            re[j] += re[j + w];
+            im[j] += im[j + w];
+        }
+    double rr = re[0], ri = im[0];
     for (; i < n; ++i) {
         const complex128 z = get(i);
         rr += z.real();

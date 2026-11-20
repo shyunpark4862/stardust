@@ -10,7 +10,7 @@ float64 matrix (no sparse matrices or LinearOperator; no lsmr, O81).
 import math
 
 from .. import _core as _sd
-from ._common import _as_array, _bounds, _check_int, _check_method, _check_tol
+from ._common import _as_array, _bounds, _check_int, _check_method, _check_tol, _values_text
 from ._result import OptimizeResult
 
 _k = _sd.optimize
@@ -24,11 +24,11 @@ _MESSAGES = {
     2: "The relative change of the cost function is less than `tol`.",
     3: "The unconstrained solution is optimal.",
 }
-# nnls (O77): scipy's __nnls info; 1 has no text in scipy (Lawson and Hanson's mode 1), 3 is the
-# text of scipy's RuntimeError
+# nnls: lsq_linear's numbers (scipy gives nnls none): 1 solved (Lawson and Hanson's mode 1, no
+# text in scipy), 0 the iteration cap with lsq_linear's text
 _NNLS_MESSAGES = {
+    0: _MESSAGES[0],
     1: "The solution has been computed successfully.",
-    3: "Maximum number of iterations reached.",
 }
 
 
@@ -47,7 +47,7 @@ def _system(A, b, func):
     if bb.ndim != 1:
         raise ValueError(f"{func}(): 'b' must be 1-dimensional, not shape {tuple(bb.shape)}")
     if bb.shape[0] != m:
-        raise ValueError(f"{func}(): 'b' must have {m} values (one per row of 'A'), not {bb.shape[0]}")
+        raise ValueError(f"{func}(): 'b' must have {_values_text(m)} (one per row of 'A'), not {bb.shape[0]}")
     # (the kernel checks that A and b are finite as it reads them)
     return a, bb, m, n
 
@@ -64,13 +64,13 @@ def lsq_linear(A, b, /, *, bounds=None, method="trf", tol=1e-10, max_iter=None):
     func = "lsq_linear"
     a, bb, m, n = _system(A, b, func)
     _check_method(method, func, _METHODS)
-    lb, ub = _bounds(bounds, func, n)
+    lb, ub = _bounds(bounds, func, n, like="(one per column of 'A')")
     tol = _check_tol(tol, func, "tol")
     cap = -1 if max_iter is None else _check_int(max_iter, func, "max_iter", 1)
     x, f, cost, optimality, active, status, n_iter = _k.lsq_linear_solve(
         func, a, bb, lb, ub, 0 if method == "trf" else 1, tol, cap
     )
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         cost=cost,
         fun=f,
@@ -89,14 +89,16 @@ def nnls(A, b, /, *, max_iter=None):
     (docs/api/optimize.md §3)."""
     func = "nnls"
     a, bb, m, n = _system(A, b, func)
-    cap = 3 * n if max_iter is None else _check_int(max_iter, func, "max_iter", 1)
+    # at most max_iter iterations; scipy's maxiter = 3n stops at the same point as 3n - 1 here
+    cap = 3 * n - 1 if max_iter is None else _check_int(max_iter, func, "max_iter", 1)
     x, f, cost, status, n_iter = _k.nnls_solve(func, a, bb, cap)
-    return OptimizeResult(
+    return OptimizeResult._make(
         x=x,
         cost=cost,
         fun=f,
-        converged=status == 1,
+        converged=status == 1 and math.isfinite(cost),
         status=status,
         message=_NNLS_MESSAGES[status],
         n_iter=n_iter,
+        method="nnls",
     )

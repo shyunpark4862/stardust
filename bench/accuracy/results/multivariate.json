@@ -2,10 +2,10 @@
  "schema": 1,
  "area": "multivariate",
  "runs": {
-  "20261120-152811-deeafe2": {
-   "commit": "deeafe2",
+  "20261120-160850-0710101": {
+   "commit": "0710101",
    "dirty": true,
-   "date": "2026-11-20T15:28:11",
+   "date": "2026-11-20T16:08:50",
    "machine": "arm64",
    "python": "3.15.0"
   }
@@ -31,7 +31,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/Dirichlet.logpdf",
@@ -53,7 +53,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/InverseWishart.entropy",
@@ -75,7 +75,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/InverseWishart.logpdf",
@@ -85,19 +85,19 @@
    "regions": {
     "guaranteed": {
      "points": 247,
-     "ulp_max": 1228.3116896864562,
-     "ulp_p999": 1228.3116896864562,
-     "mixed_max": 1216.6686399140228,
-     "mixed_p999": 1216.6686399140228,
-     "rel_max": 2.701547074743844e-13,
-     "contract": 27.01547074743844,
+     "ulp_max": 0.5068019505651327,
+     "ulp_p999": 0.5068019505651327,
+     "mixed_max": 0.48287580475794084,
+     "mixed_p999": 0.48287580475794084,
+     "rel_max": 1.0721996729533353e-16,
+     "contract": 0.010721996729533353,
      "bound": 1e-14,
      "worst": [
-      "p=2 df=1e+30 kappa=1e+09 point 0"
+      "p=5 df=15 kappa=1 point 3"
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MatrixNormal.entropy",
@@ -119,7 +119,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MatrixNormal.logpdf",
@@ -141,7 +141,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/Multinomial.entropy",
@@ -163,7 +163,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/Multinomial.logpmf",
@@ -185,7 +185,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MultivariateNormal.entropy",
@@ -207,7 +207,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MultivariateNormal.logpdf",
@@ -229,7 +229,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MultivariateNormal.pdf",
@@ -249,7 +249,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MultivariateT.entropy",
@@ -271,7 +271,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MultivariateT.logpdf",
@@ -293,7 +293,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/MultivariateT.pdf",
@@ -313,7 +313,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/Wishart.entropy",
@@ -335,7 +335,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/Wishart.logpdf",
@@ -345,19 +345,19 @@
    "regions": {
     "guaranteed": {
      "points": 247,
-     "ulp_max": 10.02180000493036,
-     "ulp_p999": 10.02180000493036,
-     "mixed_max": 6.570946942103162,
-     "mixed_p999": 6.570946942103162,
-     "rel_max": 1.4590433177426392e-15,
-     "contract": 0.14590433177426393,
+     "ulp_max": 0.49513262809705,
+     "ulp_p999": 0.49513262809705,
+     "mixed_max": 0.4726115086863705,
+     "mixed_p999": 0.4726115086863705,
+     "rel_max": 1.0494083572928813e-16,
+     "contract": 0.010494083572928813,
      "bound": 1e-14,
      "worst": [
-      "p=2 df=1e+30 kappa=1e+09 point 3"
+      "p=30 df=1e+30 kappa=1 point 0"
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/cdf.bvn",
@@ -397,7 +397,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/cdf.bvt",
@@ -417,7 +417,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/cdf.factor_normal",
@@ -446,7 +446,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/cdf.factor_t",
@@ -474,7 +474,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/cdf.tvn",
@@ -515,7 +515,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   },
   {
    "id": "multivariate/cdf.tvt",
@@ -535,7 +535,7 @@
      ]
     }
    },
-   "run": "20261120-152811-deeafe2"
+   "run": "20261120-160850-0710101"
   }
  ]
 }

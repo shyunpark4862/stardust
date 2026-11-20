@@ -46,6 +46,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -474,10 +475,17 @@ int hybrid(System& S, vec& x, vec& fvec, double xtol, lint maxfev, double factor
     lint iter = 1, ncsuc = 0, ncfail = 0, nslow1 = 0, nslow2 = 0;
     double delta = 0, xnorm = 0;
     int info = 0;
+    // the O(n^3) factorization and Q, and the O(n^2) rotations, run without the GIL when large
+    // (the 10 us rule, about 2e5 flops; they touch no Python object)
+    const bool big = 2.0 * double(n) * double(n) * double(n) > 2e5, big2 = 4.0 * double(n) * double(n) > 2e5;
     for (;;) {
         bool jeval = true;
         if (!S.jacobian(x.data(), fvec.data(), fjac.data(), wa1.data(), wa2.data())) return kJacNonfinite;
-        qrfac(n, fjac.data(), wa1.data(), wa2.data());
+        {
+            std::optional<nb::gil_scoped_release> rel;
+            if (big) rel.emplace();
+            qrfac(n, fjac.data(), wa1.data(), wa2.data());
+        }
         if (iter == 1) {
             if (!mode2)
                 for (lint j = 0; j < n; ++j) diag[j] = wa2[j] == 0 ? 1.0 : wa2[j];
@@ -502,7 +510,11 @@ int hybrid(System& S, vec& x, vec& fvec, double xtol, lint maxfev, double factor
             }
             r[l] = wa1[j];
         }
-        qform(n, fjac.data(), wa1.data());
+        {
+            std::optional<nb::gil_scoped_release> rel;
+            if (big) rel.emplace();
+            qform(n, fjac.data(), wa1.data());
+        }
         if (!mode2)
             for (lint j = 0; j < n; ++j) diag[j] = std::max(diag[j], wa2[j]);
         for (;;) {
@@ -574,9 +586,13 @@ int hybrid(System& S, vec& x, vec& fvec, double xtol, lint maxfev, double factor
                 wa1[j] = diag[j] * ((diag[j] * wa1[j]) / pnorm);
                 if (ratio >= 1e-4) qtf[j] = sum;
             }
-            r1updt(n, r.data(), wa1.data(), wa2.data(), wa3.data());
-            r1mpyq(n, n, fjac.data(), n, wa2.data(), wa3.data());
-            r1mpyq(1, n, qtf.data(), 1, wa2.data(), wa3.data());
+            {
+                std::optional<nb::gil_scoped_release> rel;
+                if (big2) rel.emplace();
+                r1updt(n, r.data(), wa1.data(), wa2.data(), wa3.data());
+                r1mpyq(n, n, fjac.data(), n, wa2.data(), wa3.data());
+                r1mpyq(1, n, qtf.data(), 1, wa2.data(), wa3.data());
+            }
         }
     }
 }

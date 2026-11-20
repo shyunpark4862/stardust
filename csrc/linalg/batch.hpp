@@ -169,12 +169,13 @@ void run_tasks(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn)
 // `max_tasks` > 0 caps the number of tasks, and so of threads working at once:
 // for the LAPACK paths that run serialized on the AMX unit the cores share
 // (linalg/cost.hpp: lu_task_cap, docs/design/linalg.md §7.5). Which element
-// runs where does not change any result.
+// runs where does not change any result. `max_tasks` == 1 never splits (small
+// gbsv bands, linalg/cost.hpp); the GIL is still released by `element_ns`.
 template <class F>
 Failure run_batch(const Batch& b, double element_ns, F&& body, int max_tasks = 0) {
     const std::int64_t n = b.size();
-    // element_ns == 0 means: never split (e.g. small gbsv bands, linalg/cost.hpp)
-    if (n >= 2 && element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs && detail::begin_parallel()) {
+    if (n >= 2 && max_tasks != 1 && element_ns > 0 && element_ns * static_cast<double>(n) >= kParallelMinNs &&
+        detail::begin_parallel()) {
         std::int64_t per = std::max<std::int64_t>(1, static_cast<std::int64_t>(kTaskNs / element_ns));
         if (max_tasks > 0 && (n + per - 1) / per > max_tasks) per = (n + max_tasks - 1) / max_tasks;
         const std::int64_t ntasks = (n + per - 1) / per;

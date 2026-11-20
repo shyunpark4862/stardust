@@ -1,6 +1,6 @@
 # stardust 설계 문서
 
-> 상태: **확정** (2026-11-12). 1라운드 질문(§6)은 Q9만 사용자가 다른 안을 골랐고, 나머지는 추천안을 수락했다. 일관성 원칙(§1.4)이 더해져 §4.4와 시그니처·이름 규칙을 2라운드(§8)에서 다시 정했고, 그 목록(§9)을 M6에서 구현했다. 남은 미확정은 §7에 있다.
+> 정하지 않은 것은 §7에 있다. 진행 상황은 [ROADMAP.md](ROADMAP.md)에만 적는다.
 
 stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `stardust`로 합친다. 앞으로 영역을 하나씩 더해 가며 키운다.
 
@@ -39,9 +39,23 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 ### 1.5 이어받는 것
 세 프로젝트에서 같았던 것은 그대로 둔다.
 - 대상 기기: Apple M4 Pro 한 대. 언어: C++20 + nanobind. 빌드: scikit-build-core + CMake. Python: 3.15만.
-- "얇은 Python, 두꺼운 C++". 경고를 내지 않는다. 결과는 스레드 수와 무관하게 비트까지 같다.
+- "얇은 Python, 두꺼운 C++". 경고를 내지 않는다. 결과는 sd의 스레드 수와 무관하게 비트까지 같다. BLAS·LAPACK을 부르는 계산은 Accelerate의 스레드 모드(단일·다중, `VECLIB_MAXIMUM_THREADS`)가 같을 때 같다. 그 모드는 sd가 정하지 않고 바꾸지도 않는다 (API.md §3).
 - 코드, 식별자, 코드 주석, 커밋 메시지는 영어, 문서는 한글 (세 저장소가 실제로 이렇게 했다).
-- 정답지와 비교 기준: numpy, scipy, pandas, Polars (각 프로젝트에서 쓰던 버전 그대로)
+- 정답지와 비교 기준: numpy, scipy, pandas, Polars (각 프로젝트에서 쓰던 버전 그대로). 무엇까지 같아야 하는지는 §1.6이 정한다.
+
+### 1.6 정답지와 같아야 하는 것
+numpy·scipy와 비트까지 같은 것은 약속이 아니다. 아래 네 규칙이 무엇을 지키고 무엇은 달라도 되는지 정한다 (API.md §4).
+
+1. **지키는 것**: 결과의 비트가 sd의 스레드 수와 무관하다(§1.5). 회귀 검사는 sd 자신의 저장된 출력(골든, tests/README.md §2)과 견준다. 정확도는 Arb 참값과 견준 계약으로 잰다(영역 설계 문서의 정확도 절, `bench.accuracy`).
+   - 이유: 재현성(같은 프로그램이 같은 답을 낸다)은 sd가 스스로 정하고 지킬 수 있다. 바뀌면 안 되는 변경(리팩터링, 포매터, 옮기기)을 확인하는 데는 자기 출력과의 비교가 가장 엄하다. 옳음은 참값으로 잰다. 다른 라이브러리의 반올림과 같다는 것은 옳다는 뜻이 아니다.
+2. **반올림이 아닌 동작은 numpy·scipy와 똑같다**: dtype 규칙, 정수 연산, 정렬 순서, NaN과 ±0의 규칙, 상태 값의 뜻, 기본값, 멈춤 규칙. 일부러 다르게 정한 곳은 영역 문서에 `[numpy와 다름]`처럼 이유와 함께 적는다.
+   - 이유: 사용자 코드가 기대는 것이 이것들이다. 결과의 dtype, 고르는 원소, 분기, 반복 수가 다르면 반올림 차이가 아니라 다른 프로그램이 된다. numpy·scipy에서 옮겨 오는 코드가 그대로 돌아야 한다.
+3. **반올림 크기의 결과는 정확도 계약 안이면 된다**: 마지막 자리는 numpy·scipy와 다를 수 있고, 더 빠르거나 더 정확한 계산 순서를 써도 된다. 최적화는 같은 알고리즘과 같은 멈춤 규칙을 쓰고, 마지막 자리의 차이로 반복의 경로가 조금 달라지는 것은 받아들인다.
+   - 이유: 마지막 자리까지 맞추려면 정답지의 안쪽 계산 순서(합의 묶음, 버퍼 크기, 커널의 FMA)를 흉내 내야 한다. 그것은 정답지의 공개 약속이 아니어서 판과 기기에 따라 바뀌고, 흉내 내는 동안은 병렬화, SIMD, 더 정확한 합을 쓸 수 없다.
+   - 이 규칙으로 쓰는 것: int 평균의 정확한 정수 합, 누산기를 넓힌 pairwise 합, 다항식 계산(Horner)과 복소 절댓값의 FMA, 같은 x의 sin·cos를 함께 구하는 sincos. 모두 계약 안이고, 결과는 여전히 데이터 크기로만 정해져 스레드 수와 무관하다.
+   - FMA는 코드가 정한 곳에서만 쓴다. 컴파일러의 자동 축약은 전역으로 끈다(`-ffp-contract=off`): 축약이 어디서 일어나는지를 코드가 정해야, 같은 소스가 언제나 같은 비트를 내고 FMA는 재서 이득이 확인된 곳에만 명시적으로(`std::fma`, NEON `vfmaq`) 들어간다.
+4. **지금 비트까지 같은 코드는 바꾸려고 바꾸지 않는다**: 고침이나 최적화가 필요로 할 때만 깬다. 정답지와 비트까지 견주는 테스트는 통과하는 동안 남긴다. 의도한 고침이나 최적화 때문에만 깨지는 테스트는 허용오차와 반복 수의 비교로 바꾼다.
+   - 이유: 비트가 같으면 그것은 따로 비용이 들지 않는 가장 강한 검사다. 이유 없이 버리면 회귀를 잡을 힘만 잃는다. 하지만 그 검사가 고침과 개선을 막아서는 안 된다.
 
 ---
 
@@ -149,9 +163,9 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 - 옛 저장소 세 개는 통합이 끝나면 동결한다. 지우지 않고 README에 "stardust로 옮겨 감"을 적는다.
 
 ### 5.3 테스트와 벤치마크
-- 테스트: `tests/array`, `tests/linalg`, `tests/frame`, `tests/interop`
-- 통합 전후 비교: 옛 패키지 세 개로 만든 골든 출력, 같은 자리에서 다시 잰 벤치마크 기준선 (ROADMAP 진행 원칙)
-- 세 프로젝트의 `test_api_surface.py`는 옛 API.md를 읽어 공개 이름과 시그니처를 맞춘다. 영역을 옮기는 마일스톤에서 새 API 문서를 함께 쓰고, 테스트가 그 문서를 읽게 바꾼다 (§5.4).
+- 테스트는 영역마다 `tests/<영역>`(배열, linalg, frame, special, stats, regression, random, optimize)과 영역을 잇는 `tests/interop`에 있다. 실행, 등급, 골든, 정확도 측정은 [tests/README.md](tests/README.md)에 있다.
+- 바뀌면 안 되는 변경의 전후는 sd 자신의 골든 출력과 비트까지 견준다(§1.6 1번). 속도는 `bench/speed`의 기준선과 견준다.
+- 영역마다 `test_api_surface.py`가 그 영역의 API 문서(`docs/api/<영역>.md`)를 읽어 공개 이름과 시그니처를 맞춘다.
 
 ### 5.4 문서: 옮기지 않고 새로 쓴다 (1라운드 Q9, 사용자 결정 2026-11-12)
 - 옛 문서(DESIGN, ARCHITECTURE, API, 안내서, 마일스톤 해설, bench 결과, experiments)는 **새 저장소로 옮기지 않는다.** 동결한 옛 저장소에 그대로 남는다.
@@ -188,7 +202,6 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 ## 7. 미확정
 - 원격 저장소(GitHub)를 만들지, 만든다면 공개 범위 (1단계 뒤)
 - ~~§4.4의 3번과 11번의 비용 확인~~: M6 준비에서 배열 규칙으로 통일하기로 정했다 (§8, §9.1).
-- numpy의 int 평균 덧셈 순서(8192개 버퍼)를 흉내 내 배열의 1차원 평균을 numpy와 비트까지 맞출지 (§9.8 끝)
 - ~~2라운드 (§8)~~: 결정했고 M6에서 구현했다 (§9).
 - ~~**`axis`에 리스트**~~ **사용자 결정 (2026-11-12): 배열도 리스트를 받는다.** linalg의 `vector_norm`(§9.6)과 같게, 배열의 모든 `axis`/`axes` 인자가 리스트를 tuple처럼 받는다 (`bind/pyutil.cpp`의 `parse_axes`, docs/api/array.md §1.3). int만 받는 함수와 shape은 그대로다.
 
@@ -227,6 +240,7 @@ stardust-numpy, stardust-linalg, stardust-pandas를 하나의 라이브러리 `s
 ### 8.2 R2. `std`/`var`의 기본 자유도
 - 인자 이름은 R1에 따라 `correction` 하나다. 기본값은 하나로 정해야 한다.
 - **추천: `correction=0`** (Array API, numpy). 표본 분산은 `correction=1`로 명시한다.
+- 예외: `sd.stats`의 `describe`와 `sem`은 scipy.stats처럼 `correction=1`이다. 통계 영역은 scipy.stats의 기본값을 따르고, 차이는 API.md §6과 README에 적는다.
 - 대안: `correction=1` (pandas, 통계에서 흔히 쓰는 값). 배열의 결과가 바뀐다.
 
 ### 8.3 R3. 값 규칙 다시 정하기 (§4.4의 "유지" 항목)
@@ -285,7 +299,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
     - ~~**bool의 단항 `+`**: frame의 `+s`는 bool이면 `TypeError`였다.~~ M6 마지막 커밋(900cac8)에서 해결: `-s`, `abs(s)`처럼 int64다 (docs/api/frame.md §3.2).
     - ~~**CSV 추론의 정확성 규칙**: list에서 만들 때는 int64 범위 밖이거나 2⁵³을 넘는 int가 float와 섞이면 float64로 반올림한다(§9.1 5번, 12번). `read_csv`의 추론은 그런 값이 있으면 컬럼을 string으로 남긴다 (docs/api/frame.md §10.4).~~ M8에서 해결: `read_csv`도 list 추론처럼 float64로 반올림한다 (§10.1 3번).
   - 배열 ↔ linalg ↔ frame (M8에서 메시지를 고치다 찾음)
-    - 호출 모양이 틀린 경우(없는 키워드 이름, 인자 개수)는 배열과 linalg에서 nanobind의 `incompatible function arguments` 덤프가 그대로 나온다. 그대로: 인자의 값이 틀린 것이 아니라 호출이 틀린 것이고, Python의 `got an unexpected keyword argument`에 해당한다. 고치려면 바인딩마다 `*args, **kwargs`로 받아 직접 풀어야 한다 (API.md §2.1).
+    - 호출 모양이 틀린 경우(없는 키워드 이름, 인자 개수)는 배열과 linalg에서 nanobind의 `incompatible function arguments` 덤프가 그대로 나온다. 그대로: 인자의 값이 틀린 것이 아니라 호출이 틀린 것이고, Python의 `got an unexpected keyword argument`에 해당한다. 고치려면 바인딩마다 `*args, **kwargs`로 받아 직접 풀어야 한다. Python으로 쓴 무거운 입구(모듈 수준 함수, 생성자)는 호출 모양의 에러도 `f(): ` 꼴이고, 작은 메서드는 Python의 기본 꼴이다 (API.md §2.1).
 
 ### 8.5 언제 바꾸나
 - 옮기기(M1, M2, M5)는 2라운드와 상관없이 지금 규칙 그대로 한다.
@@ -296,9 +310,9 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 
 ## 9. M6 변경 목록 (확정, 2026-11-12)
 
-> **M6에서 구현했다** (2026-11-12, 커밋 7c8a128, b3116e4, 031dc61, cf1d6f1, 139146a, a6476c6). 아래 목록과 다르게 구현한 곳: (a) 배열의 int 인자(`shape`, `axis`, `k`, `num`)도 linalg처럼 int64 범위 밖이면 OverflowError다 (§9.6은 linalg만 적었다, API.md §2). (b) frame의 그룹별 `mean(int64)`은 배열을 부르지 않고 그룹마다 float64 pairwise로 더한다. Series의 `mean`과 비트가 같은 것은 그룹이 4,096행 이하일 때다 (§9.1 11번의 "같은 덧셈 순서"는 Series에서만, docs/api/frame.md §7.5). (c) `to_numpy(dtype=)`, `to_array(dtype=)`도 생성자의 `dtype=`처럼 명시적 변환이다 (§9.1 5번). (d) list에서 int와 float가 섞이면 int를 float64로 반올림한다. 2⁵³을 넘어도 에러가 아니다 (§9.1 5번, 배열의 `asarray`와 같다). 그 밖에 조회 `x in s`는 손실 없는 변환을 남겼다 (docs/api/frame.md §5.8). 구현하며 찾은, 코드에 남은 차이는 §8.4 끝에 있다. `axis` 리스트는 사용자 결정으로 두 영역 모두 받는다 (§7).
+> **M6에서 구현했다** (2026-11-12, 커밋 7c8a128, b3116e4, 031dc61, cf1d6f1, 139146a, a6476c6). 아래 목록과 다르게 구현한 곳: (a) 배열의 int 인자(`shape`, `axis`, `k`, `num`)도 linalg처럼 int64 범위 밖이면 OverflowError다 (§9.6은 linalg만 적었다, API.md §2). (b) `mean(int64)`은 배열, Series, 그룹별 모두 같은 정확한 정수 합(상위·하위 32비트를 int64로 따로 더하고 조각은 int128로 합친다, `csrc/base/`의 함수 하나)을 한 번 반올림해 나눈다. 그래서 그룹 크기와 상관없이 그룹별 평균이 그 그룹의 Series `mean`과 비트가 같다 (docs/design/array.md, docs/api/frame.md §7.5). (c) `to_numpy(dtype=)`, `to_array(dtype=)`도 생성자의 `dtype=`처럼 명시적 변환이다 (§9.1 5번). (d) list에서 int와 float가 섞이면 int를 float64로 반올림한다. 2⁵³을 넘어도 에러가 아니다 (§9.1 5번, 배열의 `asarray`와 같다). 그 밖에 조회 `x in s`는 손실 없는 변환을 남겼다 (docs/api/frame.md §5.8). 구현하며 찾은, 코드에 남은 차이는 §8.4 끝에 있다. `axis` 리스트는 사용자 결정으로 두 영역 모두 받는다 (§7).
 
-> §4.4, §8의 결정과 후보를 함수 하나하나로 풀어 쓴 목록이다. 사용자가 확정하면 M6의 범위가 되고, 골든 비교의 "예상된 차이"가 된다(§8.5). **결정** = 이미 정함, **추천** = 확정을 기다림.
+> §4.4, §8의 결정을 함수 하나하나로 풀어 쓴 목록이고, 골든 비교의 "예상된 차이"다(§8.5). 모든 항목이 확정이다.
 > 골든 분류: 값(결과가 바뀜), 메시지(에러 메시지만), 종류(예외 종류), 시그니처(인자 이름·위치), 새것(없던 기능).
 
 ### 9.1 값 규칙
@@ -324,7 +338,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
   - 배열: 지금은 이름 문자열이 TypeError → 받는다 (새것).
   - frame: 지금은 Python 타입을 받는다 → TypeError (종류).
 - frame의 `.dtype`(Series, Index)은 이름 문자열 → 객체 (값).
-- `DataFrame.dtypes`: 지금은 string Series다. frame에 객체 dtype이 없으므로 **`{컬럼 이름: dtype 객체}` dict로 바꾼다** (추천, 값).
+- `DataFrame.dtypes`: 지금은 string Series다. frame에 객체 dtype이 없으므로 **`{컬럼 이름: dtype 객체}` dict로 바꾼다** (값).
 
 ### 9.3 frame 시그니처 (R1: 배열 인자와 주 인자는 `/` 앞, 옵션은 `*` 뒤)
 | 지금 | M6 |
@@ -334,7 +348,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 | `Index(data, *, name=None)` | `Index(data, /, *, name=None)` |
 | `RangeIndex(start=0, stop=None, step=1, *, name=None)` | `RangeIndex(start=0, stop=None, step=1, /, *, name=None)` (`arange`와 같다) |
 | `head(n=5)`, `tail(n=5)` | `head(n=5, /)`, `tail(n=5, /)` |
-| `astype(dtype)` | `astype(dtype, /)`. `copy`는 두지 않는다: Copy-on-Write라 뜻이 없다 (추천) |
+| `astype(dtype)` | `astype(dtype, /)`. `copy`는 두지 않는다: Copy-on-Write라 뜻이 없다 |
 | `fillna(value)` | `fillna(value, /)` |
 | `reindex(labels)` | `reindex(labels, /)` |
 | `Index.equals(other)`, `RangeIndex.equals(other)` | `equals(other, /)` |
@@ -352,13 +366,13 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 
 ### 9.4 frame 이름: 바꾸는 것, 더하는 것, 숨기는 것
 - `to_list()` → `tolist()` (Series, Index, RangeIndex)
-- `Series.unique()` → `unique_values()`: 처음 나온 순서 → **정렬한 순서**(배열의 `unique_values`와 같다). NaN은 하나, NA는 맨 뒤. 결과는 Series (추천, 값)
+- `Series.unique()` → `unique_values()`: 처음 나온 순서 → **정렬한 순서**(배열의 `unique_values`와 같다). NaN은 하나, NA는 맨 뒤. 결과는 Series (값)
 - 새것
   - `Series.to_array(*, dtype=None, copy=None, na_value=…)`, `DataFrame.to_array(…)`: §4.3. `copy`는 배열의 `asarray`와 같은 뜻(None: 필요할 때만, False: 복사 금지, True: 언제나)
   - `to_numpy`의 `copy=False`도 같은 뜻의 `copy=None`으로 (시그니처)
   - `Series(배열)`, `DataFrame(2차원 배열)`: 언제나 복사 (§4.3)
   - `isnan()` (Series, DataFrame): NaN 판별. NA 판별 `isna()`와 별개다. float이 아닌 컬럼은 모두 False(배열과 같다)
-  - int 비트 연산 `&`, `|`, `^`, `~`, `<<`, `>>` (int64 Series): 배열에 있는 것과 같은 규칙, NA는 전파 (추천)
+  - int 비트 연산 `&`, `|`, `^`, `~`, `<<`, `>>` (int64 Series): 배열에 있는 것과 같은 규칙, NA는 전파
 - 숨기기: 하위 모듈 `frame`, `index`, `io`, `series`, `groupby`, `merge` → `_frame` 등. `sd.frame.index`가 Index가 아니라 모듈이 되는 문제를 없앤다 (시그니처)
 - 그대로 두는 것: `GroupBy.size()`(그룹별 행 수. 배열의 `.size`와 같은 "원소 수"의 뜻이고 메서드라 헷갈림이 적다), `skipna`, `na_position`, `by`, `how`, `on`, `keep`, `dropna` (배열에 없는 개념)
 
@@ -374,8 +388,8 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 
 ### 9.6 linalg
 - 결과 dtype: bool/int64 입력을 float64로 계산하는 함수(`vecdot`, `trace`, `outer`, `kron`, `cross`, `matrix_power`)
-  - **추천: 그대로 둔다.** linalg는 BLAS/LAPACK이 float에서만 돈다. Array API도 `matrix_power`, 분해, 노름은 float만 정의한다. `vecdot`, `trace`, `outer`, `cross`는 Array API가 int를 int로 두지만, 배열의 `matmul`·`sum`이 이미 그 일을 한다.
-  - 대안: Array API대로 이 넷은 int를 int64로 (값). 정수 오버플로는 wrap이 된다.
+  - **그대로 둔다.** linalg는 BLAS/LAPACK이 float에서만 돈다. Array API도 `matrix_power`, 분해, 노름은 float만 정의한다. `vecdot`, `trace`, `outer`, `cross`는 Array API가 int를 int로 두지만, 배열의 `matmul`·`sum`이 이미 그 일을 한다.
+  - 최상위 `sd.vecdot`은 `sd.linalg.vecdot`과 다른 함수다: 배열의 함수라서 `matmul`처럼 int를 int64로 두고 `sum(conj(x1) * x2)`를 계산한다 (docs/api/array.md). `sd.linalg.vecdot`은 위의 규칙대로 float64다.
 - 결과 레이아웃 F-order(§3.3)는 그대로 둔다. 배열 문서의 "새 배열은 C-order"를 "영역마다 정한 순서"로 고쳐 적는다 (없음)
 - 에러 종류: 잘못된 `ord`의 타입은 세 함수 모두 TypeError, int64를 넘는 Python int(`k`, `n`, `axis`)는 OverflowError (API.md §2) (종류)
 - `axis=[0]`: 리스트도 튜플처럼 받는다 (새것)
@@ -412,7 +426,7 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 
 - 3번: frame의 비교가 int를 float64로 바꿔 비교한다. 배열 쪽 비용 없음. frame의 섞인 dtype 비교는 느린 길이 없어져 빨라진다. 결과는 |int| > 2⁵³인 행에서만 바뀐다.
 - 11번: frame의 `mean(int64)`이 배열과 같은 float64 합(같은 덧셈 순서)을 쓴다. 배열 쪽 비용 없음. frame은 int128 합(164µs)보다 빠르다. 결과는 합이 2⁵³을 넘을 때 마지막 비트만 바뀐다.
-- 덧붙여 확인한 것: numpy의 int 평균은 8192개씩 끊은 버퍼마다 pairwise 합을 내어 차례로 더한다. 이 순서를 흉내 내면 1차원 평균이 numpy와 비트까지 같다(무작위 int64 25가지, 원소 9천–300만 개, 띄엄띄엄한 열 포함, 모두 같음). 배열이 지금 큰 값에서 numpy와 마지막 비트가 다른 것도 이렇게 고칠 수 있다. 이것은 §9의 범위 밖이라 따로 정한다.
+- 덧붙여 확인한 것: numpy의 int 평균은 8192개씩 끊은 버퍼마다 pairwise 합을 내어 차례로 더한다. 이 순서를 흉내 내면 1차원 평균이 numpy와 비트까지 같다(무작위 int64 25가지, 원소 9천–300만 개, 띄엄띄엄한 열 포함, 모두 같음). 이 순서는 흉내 내지 않는다: numpy와 마지막 자리까지 같은 것은 목표가 아니다(§1.6 3번). int 평균은 위 표의 상위·하위 정수 합으로 정확히 더하고 마지막에 한 번 반올림한다(§9 머리말 (b)). numpy보다 빠르고 더 정확하며, 합이 2⁵³을 넘지 않으면 numpy와 비트도 같다.
 
 
 ---
@@ -464,6 +478,5 @@ R1이 추천안대로 정해지면, 아래 후보를 함수 하나하나 확정�
 - NA에서 나온 차이: `int // 0`·`% 0`·`** 음수`의 NA, 값이 모자란 리덕션의 NA (§9.1 1, 8번).
 - frame은 numpy와 배열에서 만들 때 언제나 복사한다 (Copy-on-Write).
 - linalg는 int 입력을 float64로 계산한다 (§9.6). `GroupBy.size()`, linalg의 `k`, `svd(mode=)` (§9.4, §9.6).
-- 그룹별 int 평균은 4,096행까지만 `Series.mean`과 비트가 같다 (§9 머리말 (b)).
 - frame에만 object 배열 입력이 있다 (10번).
 - Series에 `ndim`, `size`, `prod`, `any`, `all` 등이 없는 것은 기능의 범위 문제라 이번 목록 밖이다.

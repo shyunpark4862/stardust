@@ -323,7 +323,7 @@ def _calls(module, names):
                 yield name, good[:i] + [b] + good[i + 1 :], dict(base_kw)
         for p in kw_only:
             for b in bad_values:
-                yield name, good, {**base_kw, p.split(":")[0].strip(): b}
+                yield name, good, {**base_kw, p.split(":")[0].split("=")[0].strip(): b}
 
 
 def test_no_argument_value_shows_nanobinds_dump_or_a_module_path():

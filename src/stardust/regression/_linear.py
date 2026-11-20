@@ -8,16 +8,13 @@ output with sd.stats' distributions. Every field is an sd.ndarray, or a Python n
 scalar of one regression; a batch of regressions puts the batch shape in front.
 """
 
-import functools
-import inspect
 import math
 import numbers
 import operator
-import re
 import textwrap
 
+from .. import _calls, _results
 from .. import _core as _sd
-from .. import _results
 from .. import frame as _frame
 from .. import linalg as _linalg
 from ..stats import ChiSquared as _ChiSquared
@@ -229,6 +226,15 @@ def _as_real(x, func, arg, per_row=None):
     """(x as a float64 sd.ndarray, its column names or None). Takes sd.ndarrays, sequences of
     numbers and frame Series/DataFrames (missing values become NaN). per_row: for an argument
     with a value per row, what it must have (e.g. "5 values like 'y'"), said for a scalar."""
+    a, names, _ = _as_real_owned(x, func, arg, per_row)
+    return a, names
+
+
+def _as_real_owned(x, func, arg, per_row=None):
+    """_as_real's (array, names) and whether the array is new memory of its own (a list's
+    conversion, a dtype conversion, a DataFrame's to_array), which no caller's object can
+    change later; False for the caller's sd.ndarray, a view of a numpy array (asarray shares
+    a buffer's memory) or a Series' view of its column."""
     names = None
     if isinstance(x, (_frame.Series, _frame.DataFrame)):
         if isinstance(x, _frame.Series):
@@ -239,7 +245,8 @@ def _as_real(x, func, arg, per_row=None):
             a = x.to_array(dtype=_sd.float64, na_value=math.nan)
         except TypeError, ValueError:  # a string column is a ValueError of to_array
             raise TypeError(f"{func}(): '{arg}' must have numeric columns") from None
-        return a, names
+        return a, names, isinstance(x, _frame.DataFrame)
+    owned = False
     if isinstance(x, _sd.ndarray):
         a = x
     elif isinstance(x, numbers.Number):
@@ -253,16 +260,24 @@ def _as_real(x, func, arg, per_row=None):
             a = _sd.asarray(x)
         except OverflowError:
             raise OverflowError(f"{func}(): Python int too large to convert to float64") from None
-        except TypeError, ValueError:
+        except ValueError as e:
+            # a shape the arrays do not take (a ragged list, a 0-d numpy array): asarray's own
+            # words under the function's name (CX-11)
+            msg = str(e)
+            head = "asarray(): "
+            raise ValueError(f"{func}(): {msg[len(head) :] if msg.startswith(head) else msg}") from None
+        except TypeError:
             raise TypeError(
                 f"{func}(): '{arg}' must be an sd.ndarray, a sequence of numbers or a frame "
                 f"Series or DataFrame, not {_seq_name(x)}"
             ) from None
+        owned = isinstance(x, (list, tuple))
     if a.dtype == _sd.complex128:
         raise TypeError(f"{func}(): '{arg}' must be real, not a complex128 array")
     if a.dtype != _sd.float64:
         a = a.astype(_sd.float64)
-    return a, names
+        owned = True
+    return a, names, owned
 
 
 def _seq_name(x):
@@ -344,6 +359,19 @@ def _expand(v, nd):
     return _sd.reshape(v, tuple(v.shape) + (1,) * nd)
 
 
+def _ro(v):
+    """v as a result keeps and gives it (D-4, API.md §2): an sd.ndarray is made read-only in
+    place (no copy; views made from it later are read-only too), so that changing a returned
+    field cannot change the fields computed from it later; a tuple's arrays too (a cached pair,
+    a result namedtuple). Other values pass."""
+    if isinstance(v, _sd.ndarray):
+        v._set_readonly()
+    elif isinstance(v, tuple):
+        for e in v:
+            _ro(e)
+    return v
+
+
 # ---- the result object
 
 
@@ -372,6 +400,8 @@ class _RegressionResult:
         if not isinstance(raw, list):
             raw = list(raw)
         raw[0] = raw[0] + 0.0
+        for a in raw:
+            _ro(a)  # the result's arrays are read-only views (D-4)
         self._raw = raw  # params, cov, R, fitted, resid, kept, stats
         self._columns = columns  # the fit's DataFrame column names, or None
         self._cache = {}
@@ -387,8 +417,8 @@ class _RegressionResult:
     # -- the fit's configuration: read-only (G98)
     @property
     def param_names(self):
-        """The coefficients' names ('const' for the intercept, then the columns'): a new list
-        at each access (G113)."""
+        """The coefficients' names ('const' for the intercept, then the columns'), as a new list
+        at each access: changing the list returned does not change the result."""
         return _fresh(self._param_names)
 
     @property
@@ -400,7 +430,7 @@ class _RegressionResult:
     def _cached(self, name, make):
         c = self._cache
         if name not in c:
-            c[name] = make()
+            c[name] = _ro(make())
         return c[name]
 
     def _stat(self, i):
@@ -454,9 +484,25 @@ class _RegressionResult:
     def condition_number(self):
         return self._cached("condition_number", lambda: _k.cond(self._raw[2], self._raw[5]))
 
-    # -- inference
-    def cov_params(self):
-        """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
+    # -- the internal units. A fit may run on y / fy and the columns X_j / fx_j (powers of two,
+    # exact; only for data whose magnitude would leave the doubles in the fit's sums or
+    # covariance, docs/design/regression.md §3.1): params are given back on the data's scale,
+    # the covariance stays in the fit's units (_cov_s) and the inference fields are formed from
+    # it and scaled once at the end, so that they are scale-equivariant. extra["fy"] is the
+    # unit of a fitted value (per regression), extra["fx"] the columns' factors (..., k) and
+    # extra["beff_params_s"] the parameters in the fit's units.
+    def _fy(self):
+        return self._extra.get("fy", 1.0)
+
+    def _unit(self):
+        return self._fy()
+
+    def _xfactor(self):
+        """None, or the columns' factors (..., k) the internal covariance is in."""
+        return self._extra.get("fx")
+
+    def _cov_s(self):
+        """The covariance in the fit's units (the scale applied to a classical one)."""
 
         def make():
             c = self._raw[1]
@@ -464,15 +510,62 @@ class _RegressionResult:
                 return c
             return self._per(self.scale, 2) * c
 
+        return self._cached("cov_s", make)
+
+    def _colfactor(self):
+        """fy / fx per parameter (..., k): a parameter in the data's units over the fit's; None
+        without scaling."""
+        fx = self._xfactor()
+        if fx is None:
+            return None
+        return self._per(self._fy(), 1) / fx
+
+    def _perfect(self):
+        """Where the fit is perfect with degrees of freedom left (an estimated scale of exactly
+        0, df_resid > 0): False here; the families with a scale say."""
+        return False
+
+    # -- inference
+    def cov_params(self):
+        """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
+
+        def make():
+            g = self._colfactor()
+            c = self._cov_s()
+            if g is None:
+                return c
+            return c * (_sd.expand_dims(g, axis=-1) * _sd.expand_dims(g, axis=-2))
+
         return self._cached("cov_params", make)
 
     @property
     def bse(self):
-        return self._cached("bse", lambda: _sd.sqrt(_linalg.diagonal(self.cov_params())))
+        def make():
+            b = _sd.sqrt(_linalg.diagonal(self._cov_s()))
+            g = self._colfactor()
+            return b if g is None else b * g
+
+        return self._cached("bse", make)
 
     @property
     def tvalues(self):
-        return self._cached("tvalues", lambda: self.params / self.bse)
+        """params / bse; NaN for a perfect fit (an estimated scale of 0 with df_resid > 0: bse
+        is 0, and a coefficient of rounding size over 0 would show a significance the fit cannot
+        have; D-3, as nls's G109)."""
+
+        def make():
+            if "beff_params_s" not in self._extra:
+                t = self.params / self.bse
+            else:
+                # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there,
+                # while a parameter or its standard error in the data's units may overflow
+                t = (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
+            bad = self._perfect()
+            if isinstance(bad, _sd.ndarray):
+                return _sd.where(_expand(bad, 1), math.nan, t)
+            return t * math.nan if bad else t
+
+        return self._cached("tvalues", make)
 
     def _df_inference(self):
         """The degrees of freedom of the t and F reference distributions: df_resid, or the
@@ -502,8 +595,17 @@ class _RegressionResult:
         (alpha keyword-only, G99)."""
         alpha = _check_alpha(alpha, "conf_int")
         q = self._dist().iccdf(alpha / 2)
-        half = q * self.bse
-        return _sd.stack([self.params - half, self.params + half], axis=-1)
+        if "beff_params_s" not in self._extra:
+            half = q * self.bse
+            return _sd.stack([self.params - half, self.params + half], axis=-1)
+        # the ends in the fit's own units, beta' -+ q sqrt(C'), then scaled as the parameter is:
+        # each end keeps its sign and may overflow to +-inf, never inf - inf = NaN
+        b = self._extra["beff_params_s"]
+        half = q * _sd.sqrt(_linalg.diagonal(self._cov_s()))
+        fy = self._fy()
+        fy1 = _expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy
+        fxk = self._xfactor()
+        return _sd.stack([(b - half) * fy1 / fxk, (b + half) * fy1 / fxk], axis=-1)
 
     # -- prediction
     def _beff(self):
@@ -542,18 +644,6 @@ class _RegressionResult:
         _check_pred_batch(func, Xn, self._batch)
         return Xn
 
-    # the internal units of the covariance (the linear models' power-of-two scaling) and the
-    # factor that brings a standard error of a prediction back
-    def _cov_s(self):
-        return self.cov_params()
-
-    def _xfactor(self):
-        """None, or the columns' factors (..., k) the internal covariance is in."""
-        return None
-
-    def _unit(self):
-        return 1.0
-
     def _mean_var_s(self, Xn):
         """The variance of x params at the rows of X_new (..., [L,] m), internal units: the
         aliased columns take no part (as in the prediction), a NaN in a column in the model
@@ -587,68 +677,12 @@ class _RegressionResult:
         return _sd.stack([mean - half, mean + half], axis=-1)
 
 
-_TAKES = re.compile(
-    r"takes (from (\d+) to )?(\d+) positional arguments? but (\d+)( positional arguments?)?(.*) "
-    r"(was|were) given"
-)
-
-
-def _call_message(name, rest):
-    """Python's call-shape error of a method (its numbers count self) in the library's form:
-    "conf_int(): takes 0 positional arguments but 1 was given" (the form of sd.stats'
-    constructors, T36)."""
-    m = _TAKES.match(rest)
-    if m:
-        lo, hi, got = (int(m.group(2)) - 1 if m.group(2) else None), int(m.group(3)) - 1, int(m.group(4)) - 1
-        span = f"from {lo} to {hi}" if lo is not None else f"{hi}"
-        noun = "argument" if hi == 1 and lo is None else "arguments"
-        was = "was" if got == 1 else "were"
-        tail = m.group(6) or ""
-        if m.group(5):
-            tail = f" positional argument{'' if got == 1 else 's'}{tail}"
-        rest = f"takes {span} positional {noun} but {got}{tail} {was} given"
-    elif rest.startswith("got an unexpected"):
-        rest = rest[len("got an ") :]
-    return f"{name}(): {rest}"
-
-
-def _call_errors(cls):
-    """Wraps the public methods defined in cls so that a wrong call shape (positional for a
-    keyword-only option, a missing or an unexpected argument) says the method's name, as
-    every other error of the library: "summary(): takes 0 positional arguments but 1 was
-    given", not "_LinearResult.summary() takes 1 ...". Errors from inside the method pass."""
-    for name, fn in list(vars(cls).items()):
-        if name.startswith("_") or not inspect.isfunction(fn) or getattr(fn, "_call_errors", False):
-            continue
-
-        def make(fn=fn, name=name):
-            head = f"{fn.__qualname__}() "
-
-            @functools.wraps(fn)
-            def method(self, *args, **kwargs):
-                try:
-                    return fn(self, *args, **kwargs)
-                except TypeError as e:
-                    msg = str(e)
-                    # only the call's own binding error (no frame of fn beneath this one)
-                    if not msg.startswith(head) or e.__traceback__.tb_next is not None:
-                        raise
-                    raise TypeError(_call_message(name, msg[len(head) :])) from None
-
-            method._call_errors = True
-            return method
-
-        setattr(cls, name, make())
-    return cls
-
-
 def _fresh(v):
-    """A configuration field as the result gives it (G113): a new list or array at each
-    access, so that changing what was returned does not change the result."""
+    """A configuration field as the result gives it: a list is copied at each access, so that
+    changing the list returned does not change the result. Any other value is returned as it
+    is (an array field is a read-only view, which cannot be changed)."""
     if isinstance(v, list):
         return list(v)
-    if isinstance(v, _sd.ndarray):
-        return v.copy()
     return v
 
 
@@ -673,16 +707,6 @@ class _LinearResult(_RegressionResult):
     (decision 2026-11-19)."""
 
     __slots__ = ()
-
-    # -- the internal units (fy per regression, fx per column; 1 and None without scaling)
-    def _fy(self):
-        return self._extra.get("fy", 1.0)
-
-    def _unit(self):
-        return self._fy()
-
-    def _xfactor(self):
-        return self._extra.get("fx")
 
     def _out2(self, v):
         """A sum of squares from the fit's units to the data's."""
@@ -847,61 +871,13 @@ class _LinearResult(_RegressionResult):
 
         return self._cached("cov_s", make)
 
-    def _colfactor(self):
-        """fy / fx per parameter (..., k): a parameter in the data's units over the fit's; None
-        without scaling."""
-        fx = self._xfactor()
-        if fx is None:
-            return None
-        return self._per(self._fy(), 1) / fx
-
-    def cov_params(self):
-        """The covariance of the parameters (k x k); rows and columns of aliased parameters are NaN."""
-
-        def make():
-            g = self._colfactor()
-            c = self._cov_s()
-            if g is None:
-                return c
-            return c * (_sd.expand_dims(g, axis=-1) * _sd.expand_dims(g, axis=-2))
-
-        return self._cached("cov_params", make)
-
-    @property
-    def bse(self):
-        def make():
-            b = _sd.sqrt(_linalg.diagonal(self._cov_s()))
-            g = self._colfactor()
-            return b if g is None else b * g
-
-        return self._cached("bse", make)
-
-    @property
-    def tvalues(self):
-        def make():
-            if "beff_params_s" not in self._extra:
-                return self.params / self.bse
-            # the fit's own units, beta' / sqrt(C'): neither can leave the doubles there, while a
-            # parameter or its standard error in the data's units may overflow or underflow
-            return (self._extra["beff_params_s"] + 0.0) / _sd.sqrt(_linalg.diagonal(self._cov_s()))
-
-        return self._cached("tvalues", make)
-
-    def conf_int(self, *, alpha=0.05):
-        """(..., k, 2): the lower and upper bounds of the 1 - alpha confidence intervals
-        (alpha keyword-only, G99)."""
-        if "beff_params_s" not in self._extra:
-            return super().conf_int(alpha=alpha)
-        alpha = _check_alpha(alpha, "conf_int")
-        # the ends in the fit's own units, beta' -+ q sqrt(C'), then scaled as the parameter is:
-        # each end keeps its sign and may overflow to +-inf, never inf - inf = NaN
-        q = self._dist().iccdf(alpha / 2)
-        b = self._extra["beff_params_s"]
-        half = q * _sd.sqrt(_linalg.diagonal(self._cov_s()))
-        fy = self._fy()
-        fy1 = _expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy
-        fxk = self._extra["fx"]
-        return _sd.stack([(b - half) * fy1 / fxk, (b + half) * fy1 / fxk], axis=-1)
+    def _perfect(self):
+        """A perfect fit (ssr 0, G95) with df_resid > 0: t and p are NaN there (D-3)."""
+        z = self._ssr_s() == 0.0
+        df = self.df_resid
+        if self._batch:
+            return _sd.logical_and(z, df > 0.0)
+        return bool(z) and df > 0
 
     def predict(self, X_new, /):
         """X_new @ params (the intercept added), summed in double-double. Aliased columns take
@@ -1091,8 +1067,8 @@ class _LinearResult(_RegressionResult):
         return f"{name}(nobs={self.nobs:g}, rank={self.rank}, rsquared={self.rsquared:.6g}, params={self.params})"
 
 
-_call_errors(_RegressionResult)
-_call_errors(_LinearResult)
+_calls.methods(_RegressionResult)
+_calls.methods(_LinearResult)
 
 
 class OLSResult(_LinearResult):
@@ -1299,11 +1275,15 @@ def _rows_message(func, arg, n, got, yshape, unit="rows"):
 
 def _read_y(y, func):
     """y as an sd.ndarray: a one-column frame DataFrame is read as that column (n,) (G105)."""
+    return _read_y_owned(y, func)[0]
+
+
+def _read_y_owned(y, func):
+    """(_read_y's array, whether it is new memory of its own: _as_real_owned)."""
+    a, _, owned = _as_real_owned(y, func, "y")
     if isinstance(y, _frame.DataFrame) and len(list(y.columns)) == 1:
-        a, _ = _as_real(y, func, "y")
-        return _sd.reshape(a, (a.shape[0],))
-    a, _ = _as_real(y, func, "y")
-    return a
+        a = _sd.reshape(a, (a.shape[0],))
+    return a, owned
 
 
 def _check_rows(func, named, nonneg=()):
@@ -1319,14 +1299,18 @@ def _check_rows(func, named, nonneg=()):
             raise ValueError(f"{func}(): '{arg}' must be >= 0")
 
 
-def _prepare(func, y, X, weights, nan_policy, extra_rows=None, groups=None, cov_type="nonrobust", intercept=None):
+def _prepare(
+    func, y, X, weights, nan_policy, extra_rows=None, groups=None, cov_type="nonrobust", intercept=None, own=False
+):
     """Converted and checked y, X (..., n, p), weights and cluster groups; NaN rows (and rows
     with a missing group label) dropped for 'omit'. Returns (y, X, w, names, batch_shape,
-    keep_rows or None, (codes, gtot))."""
-    y = _read_y(y, func)
+    keep_rows or None, (codes, gtot)). own: y, X and w are arrays of the result's own (G86), so
+    that changing the caller's arrays (or the numpy arrays they view) later changes nothing: a
+    copy of those the conversion did not already make new."""
+    y, own_y = _read_y_owned(y, func)
     if y.ndim == 0:
         raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
-    X, names = _as_real(X, func, "X")
+    X, names, own_x = _as_real_owned(X, func, "X")
     if X.ndim == 0:
         raise ValueError(f"{func}(): 'X' must have at least 1 dimension")
     if X.ndim == 1:
@@ -1337,8 +1321,9 @@ def _prepare(func, y, X, weights, nan_policy, extra_rows=None, groups=None, cov_
     if intercept is not None:
         _check_params(func, X.shape[-1], intercept)
     w = None
+    own_w = True
     if weights is not None:
-        w, _ = _as_real(weights, func, "weights", per_row=f"{n} value{'' if n == 1 else 's'} like 'y'")
+        w, _, own_w = _as_real_owned(weights, func, "weights", per_row=f"{n} value{'' if n == 1 else 's'} like 'y'")
         if w.shape[-1] != n:
             raise ValueError(_rows_message(func, "weights", n, w.shape[-1], y.shape, "values"))
     codes, gtot, gmiss = _groups(groups, func, n, cov_type)
@@ -1370,10 +1355,15 @@ def _prepare(func, y, X, weights, nan_policy, extra_rows=None, groups=None, cov_
         if bool(_sd.any(bad)):
             keep = _sd.logical_not(bad)
             y, X = y[keep], X[keep]
+            own_y = own_x = own_w = True  # the selection is new memory
             if w is not None:
                 w = w[keep]
             if codes is not None:
                 codes = codes[keep]
+    if own:
+        y = y if own_y else y.copy()
+        X = X if own_x else X.copy()
+        w = w if (w is None or own_w) else w.copy()
     return y, X, w, names, batch, keep, (codes, gtot)
 
 
@@ -1381,11 +1371,6 @@ def _check_params(func, p, intercept):
     """A model must have a parameter (G101): X's columns or the intercept."""
     if p == 0 and not intercept:
         raise ValueError(f"{func}(): the model has no parameters (no columns in 'X' and intercept=False)")
-
-
-def _own(a):
-    """A copy of a (None stays None) that a result can keep for its lazy fields."""
-    return None if a is None else a.copy()
 
 
 def _names(names, p, intercept):
@@ -1536,6 +1521,44 @@ def _fit_kernel(func, y, X, w, u, intercept, tol, cov, codes, gtot, lags):
     return raw, extra, y, X
 
 
+def _y_units(y):
+    """(y / fy, fy): fy the power-of-two factor of each regression's y (_pow2 of max |y_i|),
+    None (and y as given) when every y is inside [2^-256, 2^256]. For the fits that are
+    equivariant under y's scale alone (rlm, quantreg)."""
+    if y.shape[-1] == 0:
+        return y, None
+    fy = _pow2(_sd.max(_sd.abs(y), axis=-1))
+    if fy is None:
+        return y, None
+    return y / (_sd.expand_dims(fy, axis=-1) if isinstance(fy, _sd.ndarray) else fy), fy
+
+
+def _y_unscale(raw, fy, stat_cols, lead=0):
+    """raw (a kernel's list: params, cov, R, fitted, resid, kept, stats, ...) of a fit of y / fy
+    back to y's units: params, fitted values, residuals and the stats in `stat_cols` times fy;
+    the covariance stays in the fit's units (the result scales it as it reads it). lead: axes
+    between the batch and the fields' own (quantreg's quantile axis). Returns extra."""
+    params = raw[0]
+    batch = tuple(params.shape[:-1])
+    if isinstance(fy, _sd.ndarray):
+        fyl = _sd.reshape(fy, tuple(fy.shape) + (1,) * lead)
+        fyb = _sd.broadcast_to(fyl, batch)
+    else:
+        fyb = _sd.full(batch, fy) if batch else fy
+    f1 = _expand(fyb, 1) if isinstance(fyb, _sd.ndarray) else fyb
+    extra = {"fy": fyb, "fx": _sd.ones(batch + (params.shape[-1],)), "beff_params_s": params}
+    raw[0] = params * f1
+    raw[3] = raw[3] * f1
+    raw[4] = raw[4] * f1
+    st = raw[6]
+    cols = _sd.arange(st.shape[-1])
+    sel = cols == stat_cols[0]
+    for c in stat_cols[1:]:
+        sel = _sd.logical_or(sel, cols == c)
+    raw[6] = _sd.where(sel, st * f1, st)
+    return extra
+
+
 def _unscale(raw, extra):
     """raw's params, R, fitted values and residuals from the fit's units to the data's (the
     covariance and the sums of squares stay; the result scales them as it reads them)."""
@@ -1554,12 +1577,11 @@ def _unscale(raw, extra):
 def _linear(func, cls, y, X, weights, intercept, cov_type, maxlags, groups, rtol, nan_policy):
     lags, tol = _check_options(func, intercept, cov_type, maxlags, rtol, nan_policy)
     columns = _frame_columns(X)
+    # the diagnostics read y, X and w later: arrays of the result's own (G86), so that changing
+    # the caller's arrays (or the numpy arrays they view) does not change the result
     y, X, w, names, _, _, (codes, gtot) = _prepare(
-        func, y, X, weights, nan_policy, groups=groups, cov_type=cov_type, intercept=intercept
+        func, y, X, weights, nan_policy, groups=groups, cov_type=cov_type, intercept=intercept, own=True
     )
-    # the diagnostics read y, X and w later: copies (G86), so that changing the caller's
-    # arrays (or the numpy arrays they view) does not change the result
-    y, X, w = _own(y), _own(X), _own(w)
     raw, extra, ys, Xs = _fit_kernel(func, y, X, w, None, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot, lags)
     _exact_constant(raw, ys, w, intercept, cov_type)
     _unscale(raw, extra)
@@ -1575,11 +1597,13 @@ def _linear(func, cls, y, X, weights, intercept, cov_type, maxlags, groups, rtol
     )
 
 
+@_calls.function
 def ols(y, X, /, *, intercept=True, cov_type="nonrobust", maxlags=None, groups=None, rtol=None, nan_policy="propagate"):
     """Ordinary least squares of y (..., n) on X (..., n, k) or (n,), an intercept column first."""
     return _linear("ols", OLSResult, y, X, None, intercept, cov_type, maxlags, groups, rtol, nan_policy)
 
 
+@_calls.function
 def wls(
     y,
     X,
@@ -1601,6 +1625,7 @@ def wls(
     return _linear("wls", WLSResult, y, X, weights, intercept, cov_type, maxlags, groups, rtol, nan_policy)
 
 
+@_calls.function
 def gls(
     y,
     X,
@@ -1700,7 +1725,7 @@ def gls(
     fitted, resid = _k.apply(func, X, res._beff(), intercept, y)
     if raw[3].shape != fitted.shape:  # sigma's batch axes added to y's
         fitted, resid = _sd.broadcast_to(fitted, raw[3].shape), _sd.broadcast_to(resid, raw[3].shape)
-    raw[3], raw[4] = fitted, resid
+    raw[3], raw[4] = _ro(fitted), _ro(resid)
     if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
         wr = res._wresid()
         res._cache["wresid"] = (
@@ -1723,6 +1748,7 @@ def _constant(v, batch):
     return _sd.broadcast_to(_sd.max(v, axis=-1) == _sd.min(v, axis=-1), batch)
 
 
+@_calls.function
 def linregress(x, y, /, *, nan_policy="propagate"):
     """scipy.stats.linregress: the least squares line y = intercept + slope x, with the
     correlation, the two-sided p-value of slope = 0 (Student t, n - 2 degrees of freedom) and
@@ -1753,7 +1779,12 @@ def linregress(x, y, /, *, nan_policy="propagate"):
             keep = _sd.logical_not(bad)
             xa, ya = xa[keep], ya[keep]
     if ya.shape[-1] < 2:
-        raise ValueError(f"{func}(): 'x' and 'y' must have length at least 2")
+        # fewer than 2 points: no line; every field NaN (G96's empty-input rule; scipy 1.18.1
+        # gives NaN with a warning)
+        if not batch:
+            return _results.LinregressResult(*([math.nan] * 6))
+        shape = _check_batches(func, [("x", xa.shape[:-1]), ("y", ya.shape[:-1])])
+        return _results.LinregressResult(*(_ro(_sd.full(shape, math.nan)) for _ in range(6)))
     X = _sd.expand_dims(xa, axis=-1)
     # only an exactly constant x is degenerate here (scipy): rtol 0
     raw, extra, _, _ = _fit_kernel(func, ya, X, None, None, True, 0.0, 0, None, 0, -1)
@@ -1799,10 +1830,10 @@ def linregress(x, y, /, *, nan_policy="propagate"):
     y0 = _sd.full(r._batch, float(ya[0])) if ya.ndim == 1 else _sd.broadcast_to(ya[..., 0], r._batch)
     b0 = _sd.where(yconst, y0, b0)
     return _results.LinregressResult(
-        _sd.where(xconst, nan, b1) + 0.0,
-        _sd.where(xconst, nan, b0) + 0.0,
-        _sd.where(degen, nan, rvalue),
-        _sd.where(degen, nan, pvalue),
-        _sd.where(degen, nan, se1),
-        _sd.where(degen, nan, se0),
+        _ro(_sd.where(xconst, nan, b1) + 0.0),
+        _ro(_sd.where(xconst, nan, b0) + 0.0),
+        _ro(_sd.where(degen, nan, rvalue)),
+        _ro(_sd.where(degen, nan, pvalue)),
+        _ro(_sd.where(degen, nan, se1)),
+        _ro(_sd.where(degen, nan, se0)),
     )

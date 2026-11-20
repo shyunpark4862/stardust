@@ -32,6 +32,7 @@
 // half-integers: yv(-1/2, 0) = 0, scipy -inf).
 #pragma once
 
+#include "special/sincos.hpp"
 #include "special/boost.hpp"
 
 #include "special/cf.hpp"
@@ -135,7 +136,7 @@ inline bool hankel_pq(double nu, double x, double& P, double& Q) {
 inline bool jy_hankel(double nu, double x, JY& out) {
     double P0, Q0, P1, Q1;
     if (!hankel_pq(nu, x, P0, Q0) || !hankel_pq(nu + 1.0, x, P1, Q1)) return false;
-    const double s = std::sin(x), c = std::cos(x);
+    const auto [s, c] = sincos(x);
     const double amp = std::sqrt(kTwoOverPi / x);
     auto jy = [&](double v, double P, double Q, double& J, double& Y) {
         // chi = x - pi v/2 - pi/4: cos chi = (c (cv + sv) + s (sv... written via phi = pi v/2:
@@ -156,6 +157,12 @@ inline bool jy_hankel(double nu, double x, JY& out) {
 // NR bessjy for nu >= 0, 0 < x < inf.
 inline JY jy_temme(double nu, double x) {
     if (!((x < 2.0 ? nu : nu - x) <= kMaxOrderSteps)) return kNoJY;  // the recurrences' length
+    // CF1 known not to settle within kMaxCfTerms (jv(1e300, 1e300) walked all of them, 45 ms,
+    // for NaN): from x = 2^53 its step 2/x is below half an ulp of b = 2 nu / x >= 2 (nu >= x
+    // here), so b stays fl(2 nu / x) = 2 + delta, and the fraction of a constant b settles
+    // after about 18 / sqrt(delta) terms (its ratio is 1 - sqrt(delta)): more than kMaxCfTerms
+    // for delta = 2 (nu - x) / x below 2e-12.
+    if (x >= 0x1p53 && nu - x < 1e-12 * x) return kNoJY;
     const std::int64_t nl = x < 2.0 ? static_cast<std::int64_t>(nu + 0.5)
                                     : std::max<std::int64_t>(0, static_cast<std::int64_t>(nu - x + 1.5));
     const double mu = nu - nl, mu2 = mu * mu;

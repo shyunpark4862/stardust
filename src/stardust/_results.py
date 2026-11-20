@@ -60,3 +60,9 @@ LINALG = (
     HessenbergResult,
     LDLResult,
 )
+
+# stats: describe, mode (scipy.stats' fields and order, docs/api/stats.md §4)
+DescribeResult = namedtuple("DescribeResult", ["nobs", "minmax", "mean", "variance", "skewness", "kurtosis"])
+ModeResult = namedtuple("ModeResult", ["mode", "count"])
+# stats: MultivariateNormal.cdf and MultivariateT.cdf with return_error=True (docs/api/stats.md §3)
+CdfResult = namedtuple("CdfResult", ["value", "error"])

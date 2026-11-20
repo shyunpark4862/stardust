@@ -65,47 +65,40 @@ nb::object vecdot(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
                 if constexpr ((std::is_same_v<SX, cplx> || std::is_same_v<SY, cplx>) && !std::is_same_v<T, cplx>) {
                     return nb::none();  // unreachable: a complex input makes T complex
                 } else {
-                    // sum_i conj(x1[i]) * x2[i]  (x1 is conjugated: Array API), the
-                    // products summed pairwise (docs/design/linalg.md §8.2): the bits of
-                    // sd.sum(conj(x1) * x2).
+                    // sum_i conj(x1[i]) * x2[i]  (x1 is conjugated: Array API), summed
+                    // pairwise with the products fused into the leaves (fma_dot_leaf,
+                    // fma_cdot_leaf; docs/design/linalg.md §8.2). Contiguous inputs of the
+                    // computing type are read in place; any other layout or dtype is
+                    // converted into two buffers first. The leaf sees the same values either
+                    // way, so the bits do not depend on the layout.
+                    constexpr bool direct_type = std::is_same_v<SX, T> && std::is_same_v<SY, T>;
+                    constexpr std::int64_t isx = sizeof(SX), isy = sizeof(SY);
+                    [[maybe_unused]] const bool direct = direct_type && sx == isx && sy == isy;
                     auto dot = [&](const std::int64_t* off) {
                         const std::byte* p = x.data() + off[0];
                         const std::byte* q = y.data() + off[1];
-                        auto fill = [&](std::int64_t b0, std::int64_t k, T* out) {
+                        auto leaf = [&](std::int64_t b0, std::int64_t k) -> T {
+                            if constexpr (direct_type) {
+                                if (direct) {
+                                    const T* a = reinterpret_cast<const T*>(p) + b0;
+                                    const T* c = reinterpret_cast<const T*>(q) + b0;
+                                    if constexpr (std::is_same_v<T, cplx>) return detail::fma_cdot_leaf(a, c, k);
+                                    else return detail::fma_dot_leaf(a, c, k);
+                                }
+                            }
+                            alignas(16) double ra[kPairwiseBlock], rc[kPairwiseBlock];  // no constructor runs
+                            T* a = reinterpret_cast<T*>(ra);
+                            T* c = reinterpret_cast<T*>(rc);
                             const std::byte* pp = p + b0 * sx;
                             const std::byte* qq = q + b0 * sy;
-                            if (sx == static_cast<std::int64_t>(sizeof(SX)) &&
-                                sy == static_cast<std::int64_t>(sizeof(SY))) {
-                                for (std::int64_t i = 0; i < k; ++i)
-                                    out[i] =
-                                        mul(conj_if_complex(
-                                                convert<T>(load<SX>(pp + i * static_cast<std::int64_t>(sizeof(SX))))
-                                            ),
-                                            convert<T>(load<SY>(qq + i * static_cast<std::int64_t>(sizeof(SY)))));
-                            } else {
-                                for (std::int64_t i = 0; i < k; ++i)
-                                    out[i] =
-                                        mul(conj_if_complex(convert<T>(load<SX>(pp + i * sx))),
-                                            convert<T>(load<SY>(qq + i * sy)));
+                            for (std::int64_t i = 0; i < k; ++i) {
+                                a[i] = convert<T>(load<SX>(pp + i * sx));
+                                c[i] = convert<T>(load<SY>(qq + i * sy));
                             }
+                            if constexpr (std::is_same_v<T, cplx>) return detail::fma_cdot_leaf(a, c, k);
+                            else return detail::fma_dot_leaf(a, c, k);
                         };
-                        if constexpr (std::is_same_v<T, double> && std::is_same_v<SX, double> &&
-                                      std::is_same_v<SY, double>) {
-                            if (sx == 8 && sy == 8 && len < kSumParallelMin) {
-                                // Contiguous float64: the products computed inside the leaf,
-                                // no buffer in between -- the same terms in the same order,
-                                // so the same bits (FMA contraction is off). (Through the
-                                // buffer: (1000, 1000) rows 200 us against numpy's 132.)
-                                const double* a = reinterpret_cast<const double*>(p);
-                                const double* c = reinterpret_cast<const double*>(q);
-                                return 0. + pairwise::tree(0, len, [&](std::int64_t b0, std::int64_t m) {
-                                           return pairwise::leaf(m, [&](std::int64_t i) {
-                                               return a[b0 + i] * c[b0 + i];
-                                           });
-                                       });
-                            }
-                        }
-                        return pairwise_sum_mt<T>(len, fill);  // on the pool when long (docs/design/linalg.md §8.3)
+                        return pairwise_tree_mt<T>(len, leaf);  // on the pool when long (docs/design/linalg.md §8.3)
                     };
                     if (b.ndim() == 0) {
                         std::int64_t off[2] = {0, 0};
@@ -132,6 +125,9 @@ nb::object outer(nb::handle x1o, nb::handle x2o) {
     // (..., M) and (..., N) -> (..., M, N); batch axes broadcast (docs/api/linalg.md §2).
     const std::int64_t m = x.shape(-1), n = y.shape(-1), sx = x.stride(-1), sy = y.stride(-1);
     Batch b({{x.batch_shape(1), x.batch_strides(1)}, {y.batch_shape(1), y.batch_strides(1)}}, "outer");
+    // The result has one axis more than the inputs: a 32-dimensional input has no result.
+    if (b.ndim() + 2 > static_cast<std::size_t>(kMaxNdim))
+        throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
     const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
         Out out = alloc_matrices(b.shape(), m, n, dtype_of<T>());
@@ -319,7 +315,7 @@ nb::object matrix_power(nb::handle xo, nb::handle n_o) {
                 }
                 return 0;
             },
-            n < 0 ? lu_task_cap(m, m, true) : 0
+            n < 0 ? lu_task_cap(m, m) : 0
         );  // x^-1 is getrf + getrs(I)
         if (f) raise(b, f, "matrix_power", "x");
         return to_array(out);
@@ -337,11 +333,15 @@ nb::object kron(nb::handle x1o, nb::handle x2o) {
     // every other matrix function's (np.kron differs for ndim > 2, docs/design/linalg.md §2.7).
     const std::int64_t m = x.shape(-2), n = x.shape(-1), p = y.shape(-2), q = y.shape(-1);
     Batch b({{x.batch_shape(2), x.batch_strides(2)}, {y.batch_shape(2), y.batch_strides(2)}}, "kron");
+    // M*P and N*Q of broadcast views can pass int64; the rest is checked by alloc_matrices.
+    std::int64_t rows, cols;
+    if (__builtin_mul_overflow(m, p, &rows) || __builtin_mul_overflow(n, q, &cols))
+        throw nb::value_error("array is too big");
     const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());
     return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
-        Out out = alloc_matrices(b.shape(), m * p, n * q, dtype_of<T>());
+        Out out = alloc_matrices(b.shape(), rows, cols, dtype_of<T>());
         T* res = out.as<T>();
-        const std::int64_t rows = m * p, block = rows * n * q;
+        const std::int64_t block = rows * cols;
         run_batch(b, cost(kCopy, double(block)), [&](std::int64_t i, const std::int64_t* off, Scratch& s) {
             // both operands converted into scratch once, column-major; NaN passes through
             T* a = s.get<T>(static_cast<std::size_t>(m * n), 0);
@@ -419,21 +419,28 @@ nb::object cross(nb::handle x1o, nb::handle x2o, nb::handle axis_o) {
 }  // namespace
 
 void bind_basic(nb::module_& m) {
-    m.def("kron", named("kron", &kron), nb::arg().none(), nb::arg().none());
+    m.def("kron", named("kron", &kron), nb::sig("def kron(x1, x2, /)"), nb::arg().none(), nb::arg().none());
     m.def(
-        "cross", named("cross", &cross), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1
+        "cross", named("cross", &cross), nb::sig("def cross(x1, x2, /, *, axis=-1)"), nb::arg().none(),
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1
     );
     m.def(
-        "vecdot", named("vecdot", &vecdot), nb::arg().none(), nb::arg().none(), nb::kw_only(),
-        nb::arg("axis").none() = -1
+        "vecdot", named("vecdot", &vecdot), nb::sig("def vecdot(x1, x2, /, *, axis=-1)"), nb::arg().none(),
+        nb::arg().none(), nb::kw_only(), nb::arg("axis").none() = -1
     );
-    m.def("outer", named("outer", &outer), nb::arg().none(), nb::arg().none());
+    m.def("outer", named("outer", &outer), nb::sig("def outer(x1, x2, /)"), nb::arg().none(), nb::arg().none());
     m.def(
-        "trace", named("trace", &trace), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0,
-        nb::arg("dtype").none() = nb::none()
+        "trace", named("trace", &trace), nb::sig("def trace(x, /, *, k=0, dtype=None)"), nb::arg().none(),
+        nb::kw_only(), nb::arg("k").none() = 0, nb::arg("dtype").none() = nb::none()
     );
-    m.def("diagonal", named("diagonal", &diagonal), nb::arg().none(), nb::kw_only(), nb::arg("k").none() = 0);
-    m.def("matrix_power", named("matrix_power", &matrix_power), nb::arg().none(), nb::arg().none());
+    m.def(
+        "diagonal", named("diagonal", &diagonal), nb::sig("def diagonal(x, /, *, k=0)"), nb::arg().none(),
+        nb::kw_only(), nb::arg("k").none() = 0
+    );
+    m.def(
+        "matrix_power", named("matrix_power", &matrix_power), nb::sig("def matrix_power(x, n, /)"), nb::arg().none(),
+        nb::arg().none()
+    );
 }
 
 }  // namespace sd::linalg

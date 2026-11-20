@@ -71,7 +71,7 @@
   - `_column.py`: 사용자 데이터 → Column(`column_from`), 변환의 세 갈래(§2.4), `to_numpy`, `to_array`의 규칙
   - `_dtypes.py`: dtype 인자 읽기(`resolve`)와 dtype 객체(`obj`). Column은 이름 문자열(`"int64"`)을 들고, 공개 `.dtype`만 객체다
   - `_errors.py`: 메시지의 함수 이름(`named`)과 여러 함수가 함께 쓰는 인자 검사 (§3.1)
-- 컴파일 플래그는 모듈 전체의 것이다 (array.md §1.3). frame에는 특히 `-ffp-contract=off`(FMA로 합치면 pandas, numpy와 비트가 달라진다)와 `-ffast-math` 없음(NaN은 평범한 값이다, §2.2)이 중요하다. frame은 Accelerate를 쓰지 않는다.
+- 컴파일 플래그는 모듈 전체의 것이다 (array.md §1.3). frame에는 특히 `-ffp-contract=off`(곱셈과 덧셈을 FMA로 합치는 곳은 컴파일러가 아니라 코드가 정한다)와 `-ffast-math` 없음(NaN은 평범한 값이다, §2.2)이 중요하다. frame은 Accelerate를 쓰지 않는다.
 
 ---
 
@@ -115,16 +115,19 @@
   - 조회만 손실 없는 변환을 쓴다. `x in s`는 컬럼 dtype에 `x`와 같은 값이 있는지 묻는 것이라, 그 dtype에 같은 값이 없으면 답은 False다. 그래서 `2**53 + 1 in Series([2.0**53])`은 False이고, `==`는 배열처럼 반올림해 비교하므로 True다 (§7.2).
   - 범위 밖 Python int는 float64가 될 자리에서만 받는다(`implicit_scalar`, 연산자의 `scalar_column`, `from_list`). int64가 되어야 하면 OverflowError다 (배열과 같다, array.md §2.2).
 
-### 2.5 numpy, pandas와 비트를 맞추는 곳
+### 2.5 numpy, pandas와 비트가 같은 곳
+- numpy, pandas와 비트까지 같은 것은 약속이 아니다 (루트 DESIGN.md). 약속하는 것은 스레드 수와 상관없는 비트(§11.5), 이 영역 안의 같은 결과(그룹 합 = 그 행만 고른 Series의 합 등)와 정확도다. 반올림이 아닌 동작(dtype, 정수 연산, 정렬 순서, NaN과 ±0의 규칙)은 numpy, pandas와 정확히 같게 둔다.
+- 아래는 지금 비트까지 같은 곳과 그 방법이다. 고치거나 빠르게 하는 데 필요하면 마지막 자리가 달라질 수 있다. 이유 없이 바꾸지는 않는다.
+
 | 연산 | 맞추는 방법 |
 |---|---|
-| float 합, mean, var, std | numpy의 pairwise 합, `0.0 +` 시작 (§7.4). groupby의 그룹 합도 같다 |
+| float 합, mean, var, std | numpy와 같은 pairwise 알고리즘에 잎이 더 넓다(누산기 16개, 블록 512개), `0.0 +` 시작, var의 제곱은 fma (§7.4). 지금은 numpy와 마지막 자리가 다를 수 있다. 배열 영역과는 비트까지 같다 |
 | float `//`, `%` | numpy의 `npy_divmod`를 그대로 (§7.2) |
 | float min/max | IEEE 754-2019 minimum/maximum = AArch64 `FMIN`/`FMAX` (§7.4) |
 | int64 산술 | wrap, 바닥 나눗셈 (numpy, Python과 같다) |
 | float → string | Python `str(float)` (§7.5) |
 | string → float, CSV의 float | Python `float(text)`와 비트까지 같다 (§10.4) |
-| int64 평균 | 배열 영역의 `sd.sum(x, dtype=sd.float64)` / 개수. 배열의 `sd.mean`과 비트가 같다. numpy와는 짧은 컬럼에서 같다 (§7.4) |
+| int64 평균 | 정확한 정수 합(`base/int_sum.hpp`)을 한 번 반올림 / 개수. 배열의 `sd.mean`, groupby의 그룹 평균과 비트가 같다. numpy보다 정확해서 numpy와는 마지막 자리가 다를 수 있다 (§7.4) |
 
 - pandas의 groupby 합은 Kahan 보정 합이라서 우리와 비트가 다를 수 있다. 우리 그룹 합은 그 그룹의 행만 고른 `Series.sum()`과 같다 (§9.1).
 
@@ -316,21 +319,19 @@ s._col ─────────► Column B ──┘          s.iloc[0] = 99
 - 테스트: 한 스레드가 `s.iloc[k] = 1`을 k = 0, 1, 2, …로 쓰는 동안 다른 스레드가 `s + 0`을 반복한다. 모든 결과가 "앞의 k개만 1"인 꼴이어야 한다.
 
 ### 5.4 배열과의 경계
-- **frame이 배열 영역을 만나는 곳은 `frame/interop.{hpp,cpp}` 하나다** (루트 DESIGN §4.3, ARCHITECTURE §1). `array/`의 헤더(`ndarray.hpp`, `ops/reduction.hpp`)와 `bind/pyutil.hpp`를 include하는 frame 파일은 이것뿐이다. 하는 일은 넷이다.
+- **frame이 배열 영역을 만나는 곳은 `frame/interop.{hpp,cpp}` 하나다** (루트 DESIGN §4.3, ARCHITECTURE §1). `array/`의 헤더(`ndarray.hpp`)와 `bind/pyutil.hpp`를 include하는 frame 파일은 이것뿐이다. 하는 일은 셋이다. 두 영역이 같은 비트를 내야 하는 합(pairwise 트리, 정확한 정수 합)은 `base/`에 있어서 두 영역이 각자 부른다.
 
   | 함수 | 하는 일 | 쓰는 곳 |
   |---|---|---|
   | `to_array_view(col, writeable)` | NA 없는 bool/int64/float64 컬럼의 값 위에 1차원 `NDArray`를 만든다. `buffer`는 Column의 values Buffer를 그대로 가리키고, `data`는 `offset`만큼 민 자리다. 복사하지 않는다 | `Series.to_array`, `Column.to_array_view` |
   | `from_array(arr)` | 1차원 배열을 새 Column으로 복사한다. 연속이면 `memcpy` 한 번, 아니면 원소마다. complex128은 TypeError | `Series(arr)`, `DataFrame(arr2d)`(열마다 `arr[:, j]`) |
   | `columns_to_array(cols, n)` | 같은 dtype, NA 없는 k개 컬럼으로 (n, k) F-order 배열을 만든다. strides는 `(itemsize, n·itemsize)`, 컬럼마다 `memcpy` 한 번 | `DataFrame.to_array` |
-  | `array_sum_float64(col)` | int64/bool 컬럼 위의 읽기 전용 뷰로 배열의 `sd::sum(view, dtype=float64)`를 부른다. NA 행은 0이라 그대로 더한다 | int64 `mean` (§7.4) |
 
 - **나갈 때는 공유, 읽기 전용이다.** 뷰의 `NDArray::buffer`는 Column과 같은 `shared_ptr<Buffer>`이므로, 뷰가 살아 있는 동안 그 Buffer의 `use_count()`가 하나 늘어 있다. frame 쪽 대입은 §5.2의 규칙 그대로 이것을 보고 먼저 복사한다. Copy-on-Write를 고칠 필요가 없었다. 뷰의 값은 바뀌지 않는다.
   - 읽기 전용이어야 하는 이유는 numpy 뷰와 같다(§3.4): 쓸 수 있으면 배열을 통해 Series가 바뀐다.
   - 예외: 이 호출이 방금 만든 Column(dtype 변환이나 NA 채우기의 결과)은 아무도 들고 있지 않으므로 쓸 수 있는 배열로 내준다 (`writeable`, `_column.array_column`의 `fresh`). `copy=True`는 배열 쪽 `asarray(copy=True)`로 복사한다.
 - **들어올 때는 언제나 복사한다.** 배열은 다른 쓰기 가능한 뷰를 통해 바뀔 수 있어서, frame의 Copy-on-Write가 그 쓰기를 볼 수 없다. numpy에서 들어올 때(§3.4)와 같은 이유다.
 - **F-order**: Column은 컬럼마다 따로 연속이다. (n, k) 배열을 F-order로 만들면 컬럼 하나가 연속된 한 덩어리라서 복사가 컬럼마다 `memcpy` 한 번이다. `sd.linalg`의 패킹은 F-order 입력을 가장 빠른 경로(열마다 복사와 유한성 검사를 한 패스로)로 읽는다 (linalg.md §5.3).
-- **int64 평균이 배열의 합을 부르는 이유**: 두 영역의 `mean(int64)`가 비트까지 같아야 한다 (루트 DESIGN §9.1 11번). 같은 계산을 frame에 다시 쓰면 배열의 덧셈 순서(4,096원소 버퍼 단위의 형변환과 블록, array.md §4.3, §6.9)를 따라 해야 한다. 배열의 함수를 그대로 부르면 순서가 저절로 같다. 대가로 이 호출은 Python 객체(읽기 전용 뷰)를 하나 만들고 배열의 공개 함수를 거치므로 GIL이 필요하다 (`interop.hpp`의 "Needs the GIL").
 - 테스트: `tests/interop/test_frame_array.py`가 공유와 복사, 읽기 전용 뷰, 경계를 넘는 Copy-on-Write, F-order strides, `sd.linalg.lstsq(df.to_array(), ...)`, int 평균의 비트, 비교와 float → int 변환이 두 영역에서 같은지를 본다.
 
 ---
@@ -382,6 +383,9 @@ else:                                           # 양쪽 라벨이 고유해야 
 
 - 라벨 슬라이스는 양 끝 라벨의 위치를 찾아 위치 슬라이스로 바꾼다. 양 끝 라벨은 있어야 하고 고유해야 한다. 정렬된 Index에서도 이진 탐색으로 없는 라벨을 받아 주지 않는다 (§1.3).
 - 마스크로 고르는 행은 컬럼마다 바로 압축한다 (§7.3).
+- **위치 리스트**(`.iloc[list]`, 정수 numpy 배열, int64 `sd.ndarray`)는 한 번에 int64 Column으로 바꾸고, 범위 검사와 음수 보정을 커널 하나(`wrap_positions`)가 한다. 범위 밖 위치는 `parallel::FirstRow`로 첫 것을 찾아 메시지에 쓴다. 원소가 모두 int가 아닌 키(bool, float, 섞인 list)만 원소마다 검사해 메시지를 만든다. 1M 위치에서 원소마다 Python으로 검사하면 100~170ms, 커널로 몇 ms다.
+- RangeIndex의 라벨 하나는 `operator.index`로 Python int로 바꿔 range의 산술로 찾는다. `range`는 정확히 `int`일 때만 산술로 답하고, numpy 정수면 처음부터 훑는다(3천만 행에 1.5초).
+- 스칼라로 컬럼을 채울 때(`df["c"] = 0`, dict의 스칼라 값, 모두 NA인 컬럼)는 1행 Column으로 dtype을 정하고 커널(`full`)이 n행으로 넓힌다. 길이 n의 Python list를 만들지 않는다.
 - `.iloc[i]` 435ns(pandas 1.42µs), `.iloc[a:b]` 837ns(pandas 4.76µs)
 
 ---
@@ -448,24 +452,24 @@ s + 1  →  Series.__add__  →  1행 Column(1)
 ### 7.4 리덕션 (`ops/reduce.cpp`, `ops/pairwise.hpp`)
 - **결과는 1행 Column이다** (NA면 1행 NA). Series는 스칼라로 꺼내고, DataFrame은 컬럼마다 하나씩 모아 1행 DataFrame을 만든다. 행 라벨은 연산 이름이다.
 - 값이 모자라면(`n - correction ≤ 0`, 모두 NA인 `mean`) NA다. NaN은 실제 계산에서 나올 때만 쓴다. `correction`은 배열처럼 int나 float이고 double로 받는다 (`_reduce._check_correction`).
-- **float 합은 numpy의 pairwise 합이다.** 정의는 모든 영역이 함께 쓰는 `base/pairwise.hpp` 한 벌이다(트리 모양, 잎의 합, 병렬 계획과 합치기; array.md §6.2). frame은 접근자로 부른다.
+- **float 합은 pairwise 합이다.** 정의는 모든 영역이 함께 쓰는 `base/pairwise.hpp` 한 벌이다(트리 모양, 잎의 합, 병렬 계획과 합치기; array.md §6.2). frame은 접근자로 부른다. 그래서 frame의 합은 배열의 합과 비트까지 같다.
   ```
-  n < 8      : 0.0에서 시작해 차례로
-  n ≤ 128    : 누산기 8개에 8개씩 번갈아 → ((r0+r1)+(r2+r3)) + ((r4+r5)+(r6+r7)), 나머지를 차례로
-  그 밖      : 절반(8의 배수로 맞춤)씩 재귀
-  sum = 0.0 + pairwise(전체)          ← numpy reduce는 항등원 0.0에서 시작한다
+  n < 16     : 0.0에서 시작해 차례로
+  n ≤ 512    : 누산기 16개에 16개씩 번갈아 → 이웃끼리, 그 다음 짝끼리 접기, 나머지를 차례로
+  그 밖      : 절반(16의 배수로 맞춤)씩 재귀
+  sum = 0.0 + pairwise(전체)          ← reduce는 항등원 0.0에서 시작한다
   ```
-  - 사슬 8개가 동시에 진행되어 빠르고(1M에 86~98µs, Polars 85µs, pandas 202µs), 반올림 오차가 log n에 비례한다.
+  - numpy와 같은 알고리즘에 잎이 넓다(numpy는 누산기 8개, 블록 128개). 그래서 numpy와 마지막 자리가 다를 수 있다. 사슬이 여럿 동시에 진행되어 빠르고, 반올림 오차가 log n에 비례한다. 1M 합의 시간 86~98µs(Polars 85µs, pandas 202µs)는 누산기 8개의 잎으로 잰 값이다.
   - **`0.0 +`**: `np.sum([-0.0] * 9)`는 `+0.0`이다. 이 시작 때문이다.
   - NA 행은 0.0이라 분기 없이 함께 더한다 (§4.5). 0.0을 더해도 합은 변하지 않는다.
-  - float의 `mean`, `var`, `std`는 pandas가 계산하는 식(평균 → `(x - 평균)²` → pairwise 합 → `/(n - correction)`)을 따른다. NA가 없으면 pandas와(`var`, `std`는 같은 자유도를 줄 때), 언제나 numpy로 한 단계씩 재현한 값과 비트까지 같다.
-  - **병렬**: 2¹⁴개(`kPairwiseLeaf`) 이하의 부분 트리가 태스크이고(`pairwise::plan`), 위쪽 노드는 같은 트리 모양으로 더한다(`pairwise::combine`). 모든 노드가 직렬 재귀의 노드라서 스레드 수와 무관하게 numpy와 비트가 같다. 잎 크기는 배열(2¹²)과 다르지만 같은 트리 위의 서로 다른 자르기라서 비트는 같다. 나누는 기준은 frame의 기준값이다 (§11.2).
+  - float의 `mean`, `var`, `std`는 pandas가 계산하는 식(평균 → `(x - 평균)²` → pairwise 합 → `/(n - correction)`)을 따른다. 제곱은 배열의 `var`처럼 잎에서 fma 하나로 더한다(`pairwise::leaf_squares`, `squares_sum`). 그래서 NA가 없으면 배열의 `var`, `std`와 비트까지 같다. pandas, numpy와는 반올림 오차 안에서 같다.
+  - **병렬**: 2¹⁴개(`kPairwiseLeaf`) 이하의 부분 트리가 태스크이고(`pairwise::plan`), 위쪽 노드는 같은 트리 모양으로 더한다(`pairwise::combine`). 모든 노드가 직렬 재귀의 노드라서 스레드 수와 무관하게 비트가 같다. 잎 크기는 배열(2¹²)과 다르지만 같은 트리 위의 서로 다른 자르기라서 비트는 같다. 나누는 기준은 frame의 기준값이다 (§11.2).
 - **int64 합**은 wrap한다. 결합법칙이 성립하므로 청크 결과를 청크 순서로 접는다.
-- **int64 평균은 배열 영역의 float64 합이다** (`mean_of` → `interop.cpp`의 `array_sum_float64`, §5.4). 컬럼 위의 읽기 전용 뷰로 `sd.sum(x, dtype=sd.float64)`을 부르고 NA가 아닌 개수로 나눈다. NA 행은 0이라 그대로 더한다.
-  - 그래서 `Series.mean()`과 `sd.mean(s.to_array())`가 비트까지 같다 (루트 DESIGN §9.1 11번, 테스트 `test_int_mean_has_the_array_bits`). int는 더하기 전에 float64로 반올림된다(numpy, pandas와 같다).
-  - 덧셈 순서는 배열의 것이다: 4,096원소 버퍼로 형변환하며 접는다 (array.md §4.3, §6.9). 그래서 frame의 float 합(위의 pairwise)과는 순서가 다르고, 길면 numpy와 마지막 비트가 다를 수 있다.
-  - int128로 정확히 더하는 안과 비용 비교는 루트 DESIGN §9.8에 있다. 이 경로의 시간은 frame에서 다시 재지 않았다(배열의 `sd.mean(int 배열)`은 191µs, 같은 절).
-  - `var`, `std`의 평균도 이 값이다. 편차 제곱의 합은 frame의 pairwise다.
+- **int64 평균은 정확한 정수 합이다** (`mean_of` → `int_sum`, `base/int_sum.hpp`의 `IntSum`). 값을 위 32비트와 아래 32비트로 나눠 int64 두 개로 더하고(벡터화되는 정수 덧셈 둘), 청크의 합을 `__int128`로 합친다. 정수 덧셈이라 청크를 어느 순서로 합쳐도 비트가 같다. 합을 double로 한 번 반올림하고 NA가 아닌 개수로 한 번 나눈다(`sd::mean_of`). NA 행은 0이라 그대로 더한다.
+  - 배열의 `sd.mean(int)`이 같은 `IntSum`을 쓴다. 그래서 `Series.mean()`과 `sd.mean(s.to_array())`가 비트까지 같다 (루트 DESIGN §9.1 11번, 테스트 `test_int_mean_has_the_array_bits`). groupby의 그룹 평균도 같은 합이라서 그룹 크기와 상관없이 Series와 같다 (§9.1).
+  - 2^53을 넘는 값도 반올림 없이 더한다. numpy, pandas(값마다 float64로 바꿔 더한다)보다 정확하고, 마지막 자리가 다를 수 있다.
+  - 이 경로의 시간은 frame에서 다시 재지 않았다.
+  - `var`, `std`의 평균도 이 값이다. 편차 제곱의 합은 위의 fma pairwise다.
   - bool 평균은 True의 개수(정수 합)를 개수로 나눈다.
 - **float min/max는 IEEE 754-2019 minimum/maximum이다** (`ieee_minmax`). AArch64의 `FMIN`/`FMAX`가 정확히 이것이다: NaN을 전파하고 `-0.0 < 0.0`이다.
   - NA가 없으면 NEON 누산기 4개(각 2레인)로 접는다. 스칼라 경우도 같은 명령의 한 레인으로 계산해서 두 경로의 비트가 같다.
@@ -512,7 +516,7 @@ first   [0, 1, 2, 4, 6]                           코드마다 처음 나온 행
 | `duplicated(keep="first")` | `위치 != first.take(codes)` |
 | `duplicated(keep="last")` | 위와 같고 코드마다 마지막 행을 쓴다 |
 | `duplicated(keep="none")` | `counts.take(codes) > 1` |
-| `value_counts()` | 개수로 안정 정렬한 코드 순서대로 `take(first)`와 개수 |
+| `value_counts()` | 개수로 안정 정렬한 코드 순서대로 `take(first)`와 개수. 정렬은 개수(내림차순이면 `~개수`) 키의 기수 정렬이다(§9.3) |
 | groupby | 코드가 그룹 번호 (§9.1) |
 | merge | 오른쪽 키의 코드로 왼쪽 키를 조회 (§9.7) |
 | Index 엔진 | 라벨의 코드 (§6.2) |
@@ -654,7 +658,7 @@ rows    [0, 2, 1, 3]            그룹 안에서는 원래 행 순서
 2. `Groups`가 안정 counting sort로 행을 그룹별로 모은다. 그룹 안에서 원래 행 순서를 지킨다.
 3. 그룹마다 §7.4와 같은 함수로 리덕션한다.
    - **sum, mean, var, std**: 그룹의 행을 원래 순서대로 pairwise로 더한다. 그래서 그룹 결과는 `df[df["k"] == 키]["v"].sum()`과 **비트까지 같다.** 테스트의 정답이 이것이다.
-   - **int64의 mean**(과 var, std 안의 평균): 그룹의 행을 float64로 바꿔 `0.0 +` pairwise로 더한다. Series의 int64 `mean`은 배열의 합(§7.4)이라서, 같은 비트가 나오는 것은 그룹이 4,096행 이하일 때다. 4,096은 배열이 형변환하며 접는 버퍼의 크기다 (array.md §4.3). 더 긴 그룹은 마지막 비트가 다를 수 있다 (`docs/api/frame.md` §7.5).
+   - **int64의 mean**(과 var, std 안의 평균): 그룹의 행을 `IntSum`으로 정확히 더해 한 번 반올림한다. Series의 int64 `mean`(§7.4)과 같은 계산이라 그룹 크기와 상관없이 비트가 같다.
    - **min, max, first, last**: 그룹마다 이긴 행을 고른 뒤 `take`한다 (§7.1). 값이 없는 그룹은 -1이라 NA가 된다.
 4. 출력 순서: 코드 순서(처음 나타난 순서)다. `sort=True`면 §9.2의 순서, `dropna=True`면 NA 키 그룹을 뺀다.
 - 행을 그룹별로 모으는 대가로 행 위치 배열(8B × n)을 한 번 더 쓴다. 대신 float 합이 Series와 같아지고, 그룹을 태스크로 나누기 쉽다.
@@ -690,16 +694,18 @@ rows    [0, 2, 1, 3]            그룹 안에서는 원래 행 순서
   - **내림차순은 키의 모든 비트를 뒤집는다**(`~key`). 순서가 정확히 뒤집히고 같은 키는 계속 같아서 **안정성이 유지된다.** "오름차순으로 정렬한 뒤 뒤집기"는 같은 값의 순서까지 뒤집는다.
   - **NA는 키에 넣지 않는다.** 정렬 전에 떼어 두었다가 `na_position`에 따라 앞이나 뒤에 붙인다. 방향과 상관없이 위치가 정해진다.
 - **LSD 기수 정렬**: 1바이트 자리 8개, 낮은 자리부터 안정적으로 나눠 담는다. O(8n)이고 비교가 없다. 행마다 키 8바이트와 위치 8바이트를 8번 옮긴다.
-  - **모든 자리를 지난다.** ±10억 범위의 int64는 위쪽 4바이트가 거의 같지만, 그런 자리를 히스토그램을 보고 건너뛰는 것은 데이터를 보는 경로 선택이라 하지 않는다 (§1.3).
+  - **자리 수는 키의 종류로만 정한다.** bool 키는 1바이트라서 1패스(counting sort 한 번)다. 문자열 정렬의 순위 키는 고유값 개수 u 아래라서 `u − 1`을 담는 바이트 수만큼이다. 오름차순이면 위쪽 바이트가 모두 0, 내림차순(`~key`)이면 모두 0xff라서 빼도 순서가 같다. 2M 행 1스레드에서 bool 정렬이 8패스면 29.6ms(int64는 21.9ms), 1패스면 10.2ms다.
+  - **정한 자리는 모두 지난다.** ±10억 범위의 int64는 위쪽 4바이트가 거의 같지만, 그런 자리를 히스토그램을 보고 건너뛰는 것은 데이터를 보는 경로 선택이라 하지 않는다 (§1.3).
 - **다중 키**: 마지막 키부터 한 키씩 안정 정렬한다. 키마다 자기 방향과 NA 위치만 적용하면 된다.
 - 결과 (1M 행): int64 1스레드 14.6ms, 10스레드 2.72ms (pandas `kind="stable"` 87.0ms, Polars 14스레드 3.18ms). pandas는 비교 정렬이다.
 
 ### 9.4 문자열의 순서
 1. 문자열마다 앞 8바이트를 big-endian uint64로 읽는다(모자라면 0으로 채움). 정수의 대소가 바이트 사전식 순서와 같다.
 2. 이 접두사로 LSD 기수 정렬한다.
-3. 접두사가 같은 구간에서만 남은 바이트로 비교 정렬한다. 구간은 시작하는 청크가 맡는다(구간끼리 독립).
-- `"a"`와 `"a\0"`는 접두사가 같지만 같은 구간이 되어 3단계에서 정확히 정렬된다.
+3. 접두사가 같은 구간은 다음 8바이트로 같은 일을 되풀이한다(MSD로 내려가기). 구간이 128행(`kStringRadixRun`) 아래이거나, 구간의 문자열에 남은 바이트가 없으면 비교 정렬한다. 구간은 시작하는 청크가 맡는다(구간끼리 독립). 기준값(131,072행) 이상인 구간은 호출 스레드가 하나씩 맡아 다음 8바이트를 병렬 기수 정렬한다.
+- `"a"`와 `"a\0"`는 0으로 채운 키가 끝까지 같아서 같은 구간에 남고, 비교 정렬에서 정확히 정렬된다.
 - 무작위 키에서는 접두사가 거의 다 달라 3단계가 거의 없다.
+- 흔한 키(`customer_…`, `https://…`)는 컬럼 전체가 접두사 하나라서, 비교 정렬로만 하면 직렬 비교 정렬 하나가 된다. 1M 고유 문자열 `customer_` 접두사의 `sort_values`가 비교 정렬로만 하면 1스레드 314ms, 10스레드 200ms이고, MSD로 내려가면 139ms, 25ms다(무작위 12자 키는 94ms, 20ms). 어느 경로든 결과는 하나의 안정 정렬이라서 같다.
 - 고유 문자열 10만 개를 비교 정렬하면 비교가 약 170만 번이고, string 키 groupby 시간의 대부분이 그 안의 `memcmp`였다. 접두사 기수 정렬로 groupby string(10만 종) 38.4 → 22.6ms.
 - `sort_values`의 string 정렬과 groupby의 그룹 순서가 같은 코드(`order_rows`)를 쓴다. `sort_values`에서 문자열 키는 키가 하나여도 고유값의 순위가 키를 대신한다(방향 반전 = 순위 반전): factorize → 고유값을 `order_rows`로 정렬 → 행마다 순위를 기수 정렬한다.
 - 결과: string 정렬 1M 행(고유값 10만) 1스레드 38.8ms, 10스레드 8.63ms (pandas 541ms, Polars 14스레드 11.7ms).
@@ -783,10 +789,13 @@ simdjson/simdcsv의 방식이다.
 - 바이트마다 상태 기계를 돌던 토크나이저에서: float 1M 73.6 → 64.8ms. 기대보다 작았다. 시간 대부분이 다른 곳(§10.3, §10.4)에 있었다.
 
 ### 10.3 한 번에 읽기
-- 토크나이저가 필드마다 콜백(sink)을 부르고, 읽을 컬럼의 16바이트 `Field`(시작, 길이, 따옴표 플래그)를 바로 쓴다. 레코드마다 필드 벡터를 채우고 컬럼별로 옮기지 않는다.
+- 토크나이저가 필드마다 콜백(sink)을 부르고, 그 필드를 바로 그 청크의 컬럼 조각(`Part`)에 값으로 쓴다. 필드의 위치(`Field`, 16바이트)는 남기지 않는다.
   - 필드는 복사하지 않는다. `""`가 있는 필드만 값을 만들 때 따옴표 하나로 바꾸며 복사한다.
-  - `Field`가 24바이트에서 16바이트가 되었다. 1M 행의 필드는 수 MB를 쓴다.
-- **추론하면서 값을 만든다.** int로 읽다가 int가 아닌 필드를 만나면 그 컬럼의 앞 값들을 double로 바꾸고(가장 가까운 값으로 반올림, §10.5) float로 계속 읽는다. string이 되면 그때 문자열로 다시 만든다.
+  - 모든 필드의 `Field`를 끝까지 모은 뒤 컬럼을 만들면, 짧은 필드(숫자 한 자리)에서 필드당 16바이트가 원본의 8배다. 20열 × 125만 행(50MB) 파일의 최대 메모리가 그 방식으로 1스레드 1,047MB, 값을 바로 쓰면 462MB다(결과 200MB, 원본 50MB).
+- **추론하면서 값을 만든다.** 조각은 int로 읽다가 int가 아닌 필드를 만나면 그 조각의 앞 값들을 double로 바꾸고(가장 가까운 값으로 반올림, §10.5) float로 계속 읽는다. 숫자가 아닌 필드를 만나면 그 조각의 앞 행들을 입력에서 다시 토큰화해 문자열로 바꾸고, 그 뒤로는 문자열(바이트와 끝 위치)을 쌓는다.
+- 조각의 벡터는 청크의 첫 레코드 길이로 행 수를 어림해 미리 잡는다. 몇 번씩 자라며 옮기지 않는다.
+- `na_values`는 길이 집합으로 먼저 거른다. 그 길이의 텍스트가 없는 필드는 해시를 계산하지 않고, 있으면 `string_view`로 찾는다(새 `std::string`을 만들지 않는다).
+- 토크나이저는 현재 레코드가 시작한 블록 이후의 따옴표 마스크만 남긴다(`kKeepQuoteBlocks`마다 앞을 버린다). 직렬로 읽어도 파일 크기의 1/8씩 자라지 않는다.
 - **줄 번호는 에러가 났을 때만 센다** (`line_at`). 정상 경로는 줄을 세지 않는다.
 - 결과: float 64.8 → 48.6ms, int 52.1 → 28.7ms.
 
@@ -822,13 +831,17 @@ CSV는 아무 데서나 자를 수 없다. 따옴표 안의 줄바꿈은 레코�
    → 누적 XOR = 각 청크 시작이 따옴표 안인가          (정확, 추측 없음)
 2. 청크는 자기 안에서 시작하는 레코드를 토큰화         병렬
    (첫 레코드 = 따옴표 밖 줄바꿈 다음, 마지막 레코드는 경계를 넘어 끝까지)
-3. 컬럼마다, 청크마다 추론 + 값을 최종 버퍼에 바로 쓰기   병렬
-   → 청크들의 종류를 합친다 (Int < Float < Text)
+   토큰화하며 필드를 바로 그 청크의 컬럼 조각에 값으로 (추론 포함)
+3. 컬럼마다 청크들의 종류를 합치고 (Int < Float < Text)     병렬
+   조각을 최종 버퍼로 옮긴다
 ```
-- simdcsv와 Polars는 경계의 따옴표 상태를 **추측**하고 틀리면 다시 읽는다. 홀짝을 먼저 세면 추측이 없다 (§1.3).
+- simdcsv는 경계의 따옴표 상태를 **추측**하고 틀리면 다시 읽는다. 여기서는 Polars처럼 홀짝을 먼저 세므로 추측이 없다 (§1.3).
 - **종류 합치기**: 청크 A가 모두 int이고 B에 float가 있으면 열은 float다. A의 int를 double로 반올림해 바꾼다(2⁵³ + 1은 2⁵³이 된다). §10.5의 규칙을 열 전체에 적용한 것과 같다.
 - **에러 순서는 직렬과 같다**: 가장 앞 청크의 토큰화 에러 → 열 순서 → 열 안에서 가장 앞 행 (§11.6).
-- **청크 수는 파일 크기와 스레드로 정한다.** 결과가 자르는 방식과 무관하므로, 풀을 쓸 수 없거나 `nrows`가 있으면(레코드를 순서대로 `nrows`개까지) 청크 하나, 곧 직렬로 읽는다 (§11.5). 512KB보다 작은 파일은 청크 하나다.
+- **청크 수는 파일 크기와 스레드로 정한다.** 결과가 자르는 방식과 무관하므로, 풀을 쓸 수 없거나 `nrows`가 있으면(레코드를 순서대로 `nrows`개까지) 토크나이저 하나가 순서대로 읽고, 512KB를 지날 때마다 다음 레코드에서 새 청크를 연다 (§11.5). 홀짝 세기가 필요 없고, 조각이 512KB씩 끊겨 메모리가 결과만큼만 쌓인다. 512KB보다 작은 파일은 청크 하나다.
+- **컬럼은 하나씩 만든다.** 청크들의 조각을 최종 버퍼로 옮기고 그 조각을 바로 버린다. 메모리는 결과와 아직 만들지 않은 컬럼의 조각이다. 종류를 합쳐 string이 된 컬럼에서 숫자만 있던 조각은 그 청크만 다시 읽는다.
+- **`nrows`**: Python 쪽이 파일을 64KB부터 두 배씩 자라는 블록으로 읽고, 따옴표 밖 줄바꿈으로 레코드를 세어(`csv_records_end`) `nrows`개가 끝나는 곳에서 멈춘다. 큰 파일의 앞 1,000행이 0.3ms다.
+- **에러 순서**: 지정 dtype으로 읽을 수 없는 값과 올바르지 않은 UTF-8은 조각마다 첫 행을 적어 두고, 토큰화 에러가 없을 때 컬럼 순서대로, 컬럼 안에서는 가장 앞 청크의 것을 알린다. 태스크의 `std::bad_alloc`은 파일의 에러로 바꾸지 않고 그대로 던진다(MemoryError).
 - 파싱은 Python 객체를 만지지 않으므로 GIL을 놓고 돈다.
 - 결과 (10스레드): float 1M 24.2 → 5.13ms, int 1M × 2 23.0 → 5.81ms, mixed 1M × 4 64.6 → 12.9ms. pandas는 float 6.11ms, mixed 90.1ms, Polars는 5.18ms, 11.9ms다. 1스레드로는 pandas의 C 토크나이저보다 4배 느리다(필드 하나에 약 12ns).
 
@@ -877,9 +890,8 @@ CSV는 아무 데서나 자를 수 없다. 따옴표 안의 줄바꿈은 레코�
   - `for_chunks`는 기준값 이상이면 `run_unlocked`를 부른다. `run_unlocked`는 먼저 GIL을 놓고(`parallel::Unlocked`) `parallel_for`를 부른다. `parallel_for`만 부르면 태스크가 하나일 때 GIL을 쥔 채 돌기 때문이다(array.md §10.2). 기준값 이상에서만 태스크를 나누는 float 합의 잎(`pairwise_sum_parallel`)과 groupby의 그룹 태스크(`for_groups`)도 `run_unlocked`를 쓴다.
   - 이미 GIL을 놓은 곳(태스크 안, `Unlocked` 아래)에서는 `GilRelease`가 아무 일도 하지 않는다. 그런 곳의 `parallel_for`(병렬 factorize와 counting sort의 파티션 단계, CSV의 청크)는 그대로 부른다.
   - 1스레드에서 더 드는 비용은 `run_unlocked`마다 GIL을 한 번 놓고 잡는 것이다. 131,072행부터 1M 행까지 여덟 연산(`f + f`, `sum`, `min`, 필터, groupby `sum` 등)을 전후 빌드를 번갈아 쟀을 때 기하평균 +0.6%였고, 경우별 차이(대부분 ±3% 안)는 실행마다 부호가 바뀌는 측정 잡음이었다.
-  - 나누지 않는 직렬 구간(직렬 factorize, 직렬 기수 정렬과 counting sort, merge의 번호 매기기, CSV 파싱, 대량 복사)은 `Unlocked(work)`로 놓는다.
+  - 나누지 않는 직렬 구간(직렬 factorize, 직렬 기수 정렬과 counting sort, merge의 번호 매기기, CSV 파싱, 대량 복사)은 `Unlocked(work)`로 놓는다. 대량 복사는 numpy와 `sd.ndarray`에서 컬럼 만들기(`from_numpy`의 넓히기, `from_array`), `columns_to_array`, NA 없는 `isna`, 스칼라 채우기(`full`), 다중 키 merge의 압축, 그룹 순서의 순위 매기기다. NDArray를 만들고 없애는 일은 GIL 구간에 남긴다(그 `base`가 Python 참조다).
   - 기준값 아래면 GIL을 쥔 채 돈다. 작은 호출에 GIL을 놓고 잡는 비용이 더해지지 않는다.
-  - int64 `mean`(과 그 평균을 쓰는 `var`, `std`)은 배열의 `sd::sum`을 부르므로(§5.4) 그 합은 배열의 기준값(2¹⁵)부터 GIL을 놓는다 (array.md §10.2).
 - 다른 영역도 같은 규칙을 쓴다. 기준값만 영역마다 다르다 (array.md §10.2, API.md §3).
 - **태스크는 Python 객체를 만지지 않는다.** 에러 메시지(값의 `repr`이 들어간다)는 병렬 구간이 끝나고 GIL을 다시 잡은 뒤 만든다 (§11.6).
 - **GIL을 쥐는 곳**: `set_rows`(§5.3), Index 엔진의 CSR을 만들 때(§6.2).
@@ -985,8 +997,8 @@ CSV는 아무 데서나 자를 수 없다. 따옴표 안의 줄바꿈은 레코�
   - pandas 3.1.1. `docs/api/frame.md`의 "pandas와 다름" 항목은 변환 규칙을 따로 두고 비교한다.
   - 규칙을 Python으로 그대로 옮긴 참조 구현: factorize(Python dict), merge(행 순서 규칙의 이중 반복문), read_csv(옵션과 추론 규칙)
   - Python 자체: 정렬은 `sorted()`(`reverse=True`에서도 안정), `str(float)`, `float(text)`
-  - 배열 영역: int 평균은 `sd.sum(x, dtype=sd.float64)` / 개수, int–float 비교와 float → int 변환은 `sd.equal`, `sd.astype`의 결과와 같아야 한다 (`tests/interop/`)
-  - numpy: float 합과 mean/var/std를 한 단계씩 재현해 **비트 단위로** 비교한다. `-0.0`과 `0.0`도 구분한다.
+  - 배열 영역: float 합과 mean/var/std, int 평균은 같은 배열의 `sd.sum`, `sd.mean`, `sd.var`, `sd.std`와 **비트 단위로** 같아야 한다. int–float 비교와 float → int 변환은 `sd.equal`, `sd.astype`의 결과와 같아야 한다 (`tests/interop/`, `tests/frame/test_reduce.py`)
+  - numpy, pandas: 합과 mean/var/std는 반올림 오차의 허용 범위 안에서 비교한다. min, max, `-0.0`과 `0.0`, NaN 같은 반올림이 아닌 동작은 비트로 비교한다.
   - groupby: 그 그룹의 행만 고른 Series의 리덕션 (§9.1)
 - repr은 pandas 출력과 글자 단위로 같다(행 0~100, 열 0~23, 극단적 float, 탭과 줄바꿈이 든 문자열).
 - **스레드**: 1, 3, 기본 스레드 수에서 같은 결과. CSV는 여러 512KB 청크에 걸친 파일(따옴표 안 줄바꿈, `""`, CRLF, 한글, 세 청크에 걸친 1.5MB 따옴표 필드, 앞뒤의 에러 두 개)을 직렬 정답과 비교한다.

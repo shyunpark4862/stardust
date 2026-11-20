@@ -513,7 +513,7 @@ def test_errors():
         nls(decay, xn, yn, p0=[1.0, math.nan, 1.0])
     with pytest.raises(ValueError, match=r"^nls\(\): 'method' must be 'lm' or 'trf', not 'dogbox'$"):
         nls(decay, xn, yn, p0=p0, method="dogbox")
-    with pytest.raises(ValueError, match=r"^nls\(\): method='lm' takes no bounds \(method='trf' does\)$"):
+    with pytest.raises(ValueError, match=r"^nls\(\): method='lm' takes no 'bounds' \(method='trf' does\)$"):
         nls(decay, xn, yn, p0=p0, method="lm", bounds=(0, 10))
     with pytest.raises(ValueError, match=r"^nls\(\): each lower bound must be less than its upper bound$"):
         nls(decay, xn, yn, p0=p0, bounds=([0, 0, 2], [10, 10, 2]))
@@ -521,6 +521,14 @@ def test_errors():
         nls(decay, xn, yn, p0=p0, bounds=(2, 10))
     with pytest.raises(ValueError, match=r"^nls\(\): 'bounds' must have 3 values like 'p0', not 2$"):
         nls(decay, xn, yn, p0=p0, bounds=([0, 0], [10, 10]))
+    # one parameter, one value: the count's noun agrees (as optimize's messages)
+    with pytest.raises(ValueError, match=r"^nls\(\): 'bounds' must have 1 value like 'p0', not 2$"):
+        nls(lambda x, a: a * x, xn, yn, p0=[1.0], bounds=([0, 0], [10, 10]))
+    with pytest.raises(ValueError, match=r"^nls\(\): 'bounds' must be a pair \(lower, upper\), not 1 value$"):
+        nls(decay, xn, yn, p0=p0, bounds=([0, 0, 0],))
+    r = nls(lambda x, a: a * x if x.shape[0] > 1 else [a, a], xn, yn, p0=[1.0])
+    with pytest.raises(ValueError, match=r"^predict\(\): 'f' must return 1 value \(one per row of 'x_new'\), not "):
+        r.predict(xn[:1])
     with pytest.raises(TypeError, match=r"^nls\(\): 'bounds' must be None or a pair \(lower, upper\), not int$"):
         nls(decay, xn, yn, p0=p0, bounds=3)
     with pytest.raises(
@@ -550,6 +558,10 @@ def test_errors():
     with pytest.raises(TypeError, match=r"^nls\(\): 'xtol' must be an int or a float, not NoneType$"):
         nls(decay, xn, yn, p0=p0, xtol=None)
     with pytest.raises(ValueError, match=r"^nls\(\): at least one of 'ftol', 'xtol' and 'gtol' must be >= 2.2e-16"):
+        nls(decay, xn, yn, p0=p0, method="trf", ftol=0, xtol=0, gtol=0)
+    with pytest.raises(
+        ValueError, match=r"^nls\(\): 'ftol', 'xtol' and 'gtol' must each be >= 2.2e-16 .* method='lm'$"
+    ):
         nls(decay, xn, yn, p0=p0, ftol=0, xtol=0, gtol=0)
     with pytest.raises(ValueError, match=r"^nls\(\): 'max_nfev' must be >= 1$"):
         nls(decay, xn, yn, p0=p0, max_nfev=0)

@@ -484,6 +484,39 @@ double inverse(Inv which, double t, const F& f) {
     return f.unknown ? kNaN : k;
 }
 
+// The quantile k that the search found (from its exact comparisons, T25) checked against
+// the methods' own doubles one step below (user decision 2026-11-20, D-13): where the cdf
+// method at k - 1 already reaches the target, k - 1 (iccdf: the ccdf at k - 1 already at or
+// below it; the log forms likewise). A target that is a rounded cdf(k) then gives k back
+// (icdf(cdf(k)) == k). k - 1 is taken only where it is also one of T25's answers (an exact
+// quantile of a target within relative 1e-14 of the smaller side): for icdf at p > 1/2 the
+// side is 1 - p, which the rounding of cdf(k - 1) near 1 can pass by far (Poisson(0.0025) at
+// p = 1 - 7.8e-16: cdf(4) rounds to p, ccdf(4) = 8.1e-16), so there the ccdf at k - 1 must be
+// within 1e-15 of 1 - p too (iccdf at q > 1/2 likewise with the cdf). The log forms are
+// relative in t itself, which the methods' rounding keeps. A smaller side (for the log forms
+// |t|) below kTinyP is left as found: a subnormal tail's double is not relative to it
+// (LogSeries at q = 1.2e-320, ilogcdf(-5e-324)). One or two method evaluations; NaN, infinities and the
+// support's lower end pass.
+inline constexpr double kSettleSlack = 1e-15;
+template <class D, class... P>
+double settle(Inv which, double t, double k, P... p) {
+    if (!(k == k) || std::isinf(k)) return k;
+    const double km = k - 1.0;
+    if (!(km >= D::support_lo(p...)) || km + 1.0 != k) return k;  // (past 2^53 k - 1 is no double)
+    const bool log = which == Inv::ilogcdf || which == Inv::ilogccdf;
+    if (!((log ? -t : std::min(t, 1.0 - t)) >= kTinyP) || t == -kInf) return k;  // (the ends are exact)
+    switch (which) {
+        case Inv::icdf:
+            if (!(method_of<D, method::Cdf>(km, p...) >= t)) return k;
+            return t <= 0.5 || method_of<D, method::Ccdf>(km, p...) <= (1.0 - t) * (1.0 + kSettleSlack) ? km : k;
+        case Inv::iccdf:
+            if (!(method_of<D, method::Ccdf>(km, p...) <= t)) return k;
+            return t <= 0.5 || method_of<D, method::Cdf>(km, p...) >= (1.0 - t) * (1.0 - kSettleSlack) ? km : k;
+        case Inv::ilogcdf: return method_of<D, method::Logcdf>(km, p...) >= t ? km : k;
+        default: return method_of<D, method::Logccdf>(km, p...) <= t ? km : k;
+    }
+}
+
 // The search's start for a distribution that is wide (sd >= kWideSd: a start at the mean
 // would be thousands of steps from a tail quantile, ~2 log2 of them evaluations): the
 // Cornish-Fisher estimate mean + sd (z + skew (z^2 - 1) / 6), z the standard normal quantile
@@ -680,16 +713,18 @@ F with_guess(F f, double g) {
     }
 // The four inverses of Self from `searcher(which, t, memo, params...)` (the Fns to search,
 // with its start): the scalar definition and the chunk kernel that gives the search the memo.
-#define SD_DISC_INVERSE(Self, NP, fname)                                                               \
-    template <class... P>                                                                              \
-    static double fname(double t, P... p) {                                                            \
-        return disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, nullptr, p...)); \
-    }                                                                                                  \
-    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                       \
-        disc::InvMemo* m = disc::inv_memo_for<Self>(c);                                                \
-        disc::scalar_kernel<Self>(c, out, [m](double t, auto... p) {                                   \
-            return disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, m, p...));   \
-        });                                                                                            \
+#define SD_DISC_INVERSE(Self, NP, fname)                                                                         \
+    template <class... P>                                                                                        \
+    static double fname(double t, P... p) {                                                                      \
+        const double k = disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, nullptr, p...)); \
+        return disc::settle<Self>(disc::Inv::fname, t, k, p...);                                                 \
+    }                                                                                                            \
+    static void fname##_chunk(const Chunk<NP>& c, double* out) {                                                 \
+        disc::InvMemo* m = disc::inv_memo_for<Self>(c);                                                          \
+        disc::scalar_kernel<Self>(c, out, [m](double t, auto... p) {                                             \
+            const double k = disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, m, p...));   \
+            return disc::settle<Self>(disc::Inv::fname, t, k, p...);                                             \
+        });                                                                                                      \
     }
 #define SD_DISC_INVERSES(Self, NP)     \
     SD_DISC_INVERSE(Self, NP, icdf)    \

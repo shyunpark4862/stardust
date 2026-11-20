@@ -4,6 +4,7 @@
 #include "linalg/batch.hpp"
 #include "linalg/cost.hpp"
 #include "linalg/errors.hpp"
+#include "linalg/lapack.hpp"
 #include "linalg/outblock.hpp"
 #include "linalg/pack.hpp"
 #include "linalg/pyrefs.hpp"
@@ -45,6 +46,11 @@ void bind_linalg(nb::module_& core) {
     // (docs/design/linalg.md §5.6).
     m.def("_set_pack_parallel_min", [](std::int64_t n) { sd::linalg::detail::kPackParallelMin = n; });
     m.def("_set_lu_task_cap", [](bool on) { sd::linalg::kLuTaskCapOn = on; });
+    // For measurements only: the sizes factored by getf2 (docs/design/linalg.md §7.5).
+    m.def("_set_getf2_range", [](std::int64_t lo, std::int64_t hi) {
+        sd::linalg::lapack::kGetf2Min = lo;
+        sd::linalg::lapack::kGetf2Max = hi;
+    });
 }
 
 }  // namespace sd

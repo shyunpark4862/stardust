@@ -47,8 +47,9 @@ using special::Real;
 //
 // c.x and c.p[k] are contiguous arrays of c.n <= kChunkSize elements (a broadcast scalar
 // parameter fills its array; c.same[k] says so, for constants worth computing once). The
-// kernel writes every out[i]; the engine then puts NaN where the parameters are invalid or x
-// is NaN, so a kernel only has to be safe (not right) on such elements. A kernel is the
+// kernel writes every out[i]. It only ever sees valid parameters (not at a limit) and a
+// non-NaN x: the engine gives the other elements a good element's values in the kernel's
+// copy of the chunk and puts their own values (NaN, a limit's) afterwards. A kernel is the
 // method's definition for every layout: a single element is a chunk of n = 1, and its
 // building blocks (vForce's exp, log, pow, ...: accelerate/vforce.hpp; elementwise loops)
 // do not depend on an element's position, so f(x)[i] == f(x[i]) on any thread count.
@@ -171,10 +172,53 @@ struct Median {
 // own estimate when it gives one, else a middling default. A cost several times too
 // high cuts a chunk kernel's work into tasks of a few dozen elements, and ten threads
 // then run slower than one.
+//
+// The table has the methods with an input. Of the parameter-only ones, those that sum over the
+// support, search it or integrate (the entropy and the median of the discrete and the
+// noncentral distributions, the noncentral mode) take microseconds per element and more: they
+// count 1 us, a floor. The discrete mode and moments and the gamma family's entropy (digamma,
+// log-gamma) count as the heaviest measured functions, kMaxWeight adds. At the default 20 ns a
+// call of a few hundred such elements ran on one thread holding the GIL (200 negative
+// binomial entropies took 36 s on any thread count). Only the split depends on these values,
+// never a result.
+template <class D>
+constexpr bool is_discrete = requires { &D::pmf; };
+constexpr bool name_is(const char* s, const char* t) {
+    while (*s && *s == *t) ++s, ++t;
+    return *s == *t;
+}
+constexpr bool name_starts(const char* s, const char* prefix) {
+    while (*prefix && *s == *prefix) ++s, ++prefix;
+    return *prefix == 0;
+}
+inline constexpr double kIterativeNs = 1000.0;
+inline constexpr double kHeavyNs = static_cast<double>(special::kMaxWeight) * special::kAddNs;
+template <class D, class M>
+constexpr double param_cost() {
+    using namespace method;
+    constexpr bool noncentral = name_starts(D::name, "noncentral");
+    constexpr bool gamma_family =
+        name_is(D::name, "gamma") || name_is(D::name, "chisquared") || name_is(D::name, "inversegamma");
+    constexpr bool moment = std::is_same_v<M, Mean> || std::is_same_v<M, Variance> ||
+                            std::is_same_v<M, StandardDeviation> || std::is_same_v<M, Skewness> ||
+                            std::is_same_v<M, Kurtosis>;
+    if constexpr (std::is_same_v<M, Entropy> || std::is_same_v<M, Median>) {
+        if constexpr (is_discrete<D> || noncentral) return kIterativeNs;
+        else if constexpr (gamma_family && std::is_same_v<M, Entropy>) return kHeavyNs;
+        else return 0.0;
+    } else if constexpr (std::is_same_v<M, Mode>) {
+        return noncentral ? kIterativeNs : (is_discrete<D> ? kHeavyNs : 0.0);
+    } else if constexpr (moment) {
+        return is_discrete<D> ? kHeavyNs : 0.0;
+    } else {
+        return 0.0;
+    }
+}
 template <class D, class M>
 constexpr double cost_of() {
     if (const double ns = cost_table::find(D::name, M::name); ns > 0.0) return ns;
     if constexpr (requires { D::template cost<M>(); }) return D::template cost<M>();
+    else if constexpr (!M::input && param_cost<D, M>() > 0.0) return param_cost<D, M>();
     else return 20.0;
 }
 
@@ -234,11 +278,24 @@ template <std::size_t>
 using Dbl = double;
 
 // The loop of a method with a chunk kernel. args: the parameters, x, out.
+//
+// Each element is one of: good (valid parameters, not at a limit, x not NaN: the kernel's
+// value), at a limit (the limit's value, NaN for a NaN x) or bad (NaN). The kernel only sees
+// good elements: a bad or limit element gets the parameters and x of a good one in the
+// kernel's copy of the chunk, and its own value afterwards. A kernel falls back to the
+// scalar definition for the elements its fast path leaves, and the scalar definition
+// assumes valid() (a Pareto with scale <= 0 never ends there); an element's kernel value
+// depends on that element alone, so the good elements keep their bits.
 template <class D, class M, std::size_t... I>
 void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t* s, std::index_sequence<I...>) {
     constexpr std::size_t NP = sizeof...(I);
+    constexpr bool kLimits = has_limit<D, Dbl<I>...>;
     using namespace vforce_detail;
+    enum : unsigned char { kGood, kBad, kLimit };
     double xb[kChunk], ob[kChunk], pb[NP][kChunk];
+    unsigned char state[kChunk];
+    [[maybe_unused]] double lim[kLimits ? kChunk : 1];
+    const bool all_same = ((s[I] == 0) && ...);
     for (std::int64_t off = 0; off < n; off += kChunk) {
         const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
         Chunk<NP> c{
@@ -247,23 +304,52 @@ void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t*
             {gather(args[I] + off * s[I], s[I], m, pb[I])...},
             {(s[I] == 0)...}
         };
-        M::template run_chunk<D, Chunk<NP>>(c, ob);
         // the NaNs, and for a probability or a density + 0.0 (kNonNegative) in the same pass
         constexpr double zero = kNonNegative<M> ? 0.0 : -0.0;  // v + -0.0 is v for every v
-        if ((c.same[I] && ...)) {
-            if (!D::valid(c.p[I][0]...)) {
-                for (int i = 0; i < m; ++i) ob[i] = kNaN;
-            } else {
-                for (int i = 0; i < m; ++i) ob[i] = c.x[i] != c.x[i] ? kNaN : ob[i] + zero;
-            }
+        int good = -1, bad = 0;
+        auto classify = [&](int i, bool limit, bool valid) {
+            const bool nan = c.x[i] != c.x[i];
+            state[i] = limit ? (nan ? kBad : kLimit) : (valid && !nan ? kGood : kBad);
+            if (state[i] == kGood) good = good < 0 ? i : good;
+            else ++bad;
+        };
+        if (all_same) {
+            bool limit = false;
+            if constexpr (kLimits) limit = D::at_limit(c.p[I][0]...);
+            const bool valid = !limit && D::valid(c.p[I][0]...);
+            for (int i = 0; i < m; ++i) classify(i, limit, valid);
         } else {
-            for (int i = 0; i < m; ++i) ob[i] = (!D::valid(c.p[I][i]...) || c.x[i] != c.x[i]) ? kNaN : ob[i] + zero;
+            for (int i = 0; i < m; ++i) {
+                bool limit = false;
+                if constexpr (kLimits) limit = D::at_limit(c.p[I][i]...);
+                classify(i, limit, !limit && D::valid(c.p[I][i]...));
+            }
         }
-        if constexpr (has_limit<D, Dbl<I>...>) {  // the limits: another distribution's values
-            if (!(c.same[I] && ...) || D::at_limit(c.p[I][0]...))
+        if constexpr (kLimits) {  // the limits: another distribution's values (before the copy below)
+            if (bad > 0)
                 for (int i = 0; i < m; ++i)
-                    if (D::at_limit(c.p[I][i]...))
-                        ob[i] = c.x[i] != c.x[i] ? kNaN : D::template limit_in<M>(c.x[i], c.p[I][i]...) + zero;
+                    if (state[i] == kLimit) lim[i] = D::template limit_in<M>(c.x[i], c.p[I][i]...) + zero;
+        }
+        if (good >= 0) {
+            if (bad > 0) {  // the kernel's copy: every element a good one
+                auto own = [&](const double*& p, double* buf) {
+                    if (p != buf) std::memcpy(buf, p, static_cast<std::size_t>(m) * sizeof(double));
+                    p = buf;
+                };
+                own(c.x, xb);
+                ((c.same[I] ? void() : own(c.p[I], pb[I])), ...);
+                for (int i = 0; i < m; ++i) {
+                    if (state[i] == kGood) continue;
+                    xb[i] = xb[good];
+                    ((c.same[I] ? void() : void(pb[I][i] = pb[I][good])), ...);
+                }
+            }
+            M::template run_chunk<D, Chunk<NP>>(c, ob);
+        }
+        for (int i = 0; i < m; ++i) {
+            if (state[i] == kGood) ob[i] += zero;
+            else if constexpr (kLimits) ob[i] = state[i] == kLimit ? lim[i] : kNaN;
+            else ob[i] = kNaN;
         }
         std::byte* o = args[NP + 1] + off * s[NP + 1];
         if (s[NP + 1] == sizeof(double)) std::memcpy(o, ob, static_cast<std::size_t>(m) * sizeof(double));
@@ -385,10 +471,25 @@ struct DistOp<D, M, std::index_sequence<I...>> : Real {
         requires(!M::input)
     {
         if constexpr (has_limit<D, P<I>...>) {
-            if (D::at_limit(p...)) return D::template limit_par<M>(p...);
+            if (D::at_limit(p...)) return signed_zero(D::template limit_par<M>(p...), p...);
         }
         if (!D::valid(p...)) return kNaN;
-        return M::template call<D>(p...);
+        return signed_zero(M::template call<D>(p...), p...);
+    }
+    // A variance or a standard deviation is never negative, nor a mean, median or mode on a
+    // support in [0, inf): never -0.0 either (Poisson(mu=-0.0), whose formulas give it). v + 0.0
+    // turns -0.0 into +0.0 and changes no other value, as kNonNegative.
+    static double signed_zero(double v, P<I>... p)
+        requires(!M::input)
+    {
+        if constexpr (std::is_same_v<M, method::Variance> || std::is_same_v<M, method::StandardDeviation>) {
+            return v + 0.0;
+        } else if constexpr (std::is_same_v<M, method::Mean> || std::is_same_v<M, method::Median> ||
+                             std::is_same_v<M, method::Mode>) {
+            return v == 0.0 && DistOp<D, method::SupportLo>::f(p...) >= 0.0 ? 0.0 : v;
+        } else {
+            return v;
+        }
     }
 };
 

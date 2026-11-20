@@ -35,6 +35,9 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 
+// A compensated sum. Once the sum is not finite (an infinite term, or an overflow) the
+// correction is inf - inf = NaN and means nothing: the plain sum is the value (inf, or NaN for
+// both infinities), as sd.sum's.
 struct Neumaier {
     double s = 0.0, c = 0.0;
     void add(double x) {
@@ -42,7 +45,7 @@ struct Neumaier {
         c += std::fabs(s) >= std::fabs(x) ? (s - t) + x : (x - t) + s;
         s = t;
     }
-    double value() const { return s + c; }
+    double value() const { return std::isfinite(s) ? s + c : s; }
 };
 
 const NDArray& lanes_arg(nb::handle o) {
@@ -190,8 +193,13 @@ struct Neu4 {
         c[k] += (s[k] - (t - bb)) + (x - bb);
         s[k] = t;
     }
+    // (a chain whose sum is not finite has a meaningless correction, NaN: left out, as in
+    // Neumaier::value; a sum never comes back to finite, so a finite one's correction is sound)
     void into(Neumaier& tot) const {
-        for (int k = 0; k < 8; ++k) tot.add(s[k]), tot.add(c[k]);
+        for (int k = 0; k < 8; ++k) {
+            tot.add(s[k]);
+            if (std::isfinite(s[k])) tot.add(c[k]);
+        }
     }
 #if defined(__aarch64__)
     // chains 2 q and 2 q + 1 take the two lanes of x: the bits of add(2 q, x[0]), add(2 q + 1, x[1])

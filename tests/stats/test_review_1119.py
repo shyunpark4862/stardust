@@ -203,7 +203,7 @@ def test_summaries_read_the_lower_triangle():
     t = np.asarray(S.MultivariateT(mu=A([0.0, 0.0]), shape=C, df=5.0).covariance())
     assert t[0, 1] == t[1, 0]
     W = S.Wishart(df=5.0, scale=C)
-    for m in (W.mean(), W.mode(), W.var(), S.InverseWishart(df=5.0, scale=C).mean()):
+    for m in (W.mean(), W.mode(), W.variance(), S.InverseWishart(df=5.0, scale=C).mean()):
         v = np.asarray(m)
         assert v[0, 1] == v[1, 0]
     assert np.asarray(W.mean()).tolist() == [[5.0, 2.5], [2.5, 5.0]]
@@ -274,6 +274,38 @@ def test_wishart_large_df_against_arb(inverse, df):
         assert err <= 1e-14, (scale, v, err)
 
 
+def test_wishart_large_df_ill_conditioned_scale():
+    # kappa(scale) = 1e9, df = 1e30 (tests/stats/ref_mv/invwishart.npz, p = 2, point 0): W built
+    # as a product of factors had kappa 2^-104 of 1 in W - I, 2.7e-13 here (9.1e-6 absolute)
+    V = np.array([[66927843.72155424, -249896991.82516235], [-249896991.82516235, 933072157.2784451]])
+    X = np.array([[6.692784372155421e-23, -2.4989699182516217e-22], [-2.4989699182516217e-22, 9.330721572784442e-22]])
+    v = S.InverseWishart(df=1e30, scale=A(V)).logpdf(A(X))
+    assert abs(v - -33875534.976640659) <= 1e-14 * 33875534.976640659, v  # Arb, 512 and 4096 bits
+    ref = _wishart_ref(1e30, V, X, True)
+    assert float((abs(arb(v) - ref) / abs(ref)).mid()) <= 2e-16
+    # the Wishart with the same scale, at its mean
+    W = S.Wishart(df=1e30, scale=A(V))
+    m = np.asarray(W.mean().tolist())
+    v = W.logpdf(A(m))
+    assert float((abs(arb(v) - _wishart_ref(1e30, V, m, False)) / abs(v)).mid()) <= 2e-16
+
+
+def test_wishart_large_df_small_value_is_not_nan():
+    # a value of size 1 at df ~ 1e30: the n/2 (log|W| - tr W + p) part has no rounding of size
+    # |W - I| (it had 2^-106 |W - I| times n / 2, and the bound gave NaN)
+    rng = np.random.default_rng(2)
+    q, _ = np.linalg.qr(rng.standard_normal((5, 5)))
+    V = (q * np.logspace(0, 4, 5)) @ q.T
+    V = (V + V.T) / 2
+    df = 10 ** (30 + 1 / 8)
+    D = S.InverseWishart(df=df, scale=A(V))
+    m = np.asarray(D.mean().tolist())
+    v = D.logpdf(A(m))
+    ref = _wishart_ref(df, V, m, True)
+    assert abs(float(ref.mid())) < 10.0
+    assert float((abs(arb(v) - ref) / max(arb(1), abs(ref))).mid()) <= 1e-15, v
+
+
 @pytest.mark.parametrize("df", [1e10, 1e13, 1e15, 1e17])
 def test_wishart_p1_is_gamma(df):
     for x in (df - 2.0, df * 0.999, df * 1.001):
@@ -299,7 +331,7 @@ def test_constructor_messages_name_the_class():
         S.MultivariateNormal(mu=A([0.0, 0.0]), cov=A([[1.0]]))
     with pytest.raises(TypeError, match=r"^Multinomial\(\): 'n' must be a real number or an sd.ndarray, not str$"):
         S.Multinomial(n="a", p=A([0.5, 0.5]))
-    with pytest.raises(ValueError, match=r"^Wishart\(\): the parameters could not be broadcast together"):
+    with pytest.raises(ValueError, match=r"^Wishart\(\): shapes could not be broadcast together: "):
         S.Wishart(df=A([3.0, 4.0, 5.0]), scale=A(np.stack([np.eye(2)] * 2)))
     with pytest.raises(TypeError, match=r"^ContinuousDistribution\(\): a base class"):
         S.ContinuousDistribution()
@@ -313,7 +345,7 @@ def test_method_messages():
         M.cdf(A([0.0, 0.0]), atol="a")
     with pytest.raises(TypeError, match=r"^cdf\(\): 'max_points' must be an int or None, not float$"):
         M.cdf(A([0.0, 0.0]), max_points=1.5)
-    with pytest.raises(ValueError, match=r"^cdf\(\): 'max_points' must be positive$"):
+    with pytest.raises(ValueError, match=r"^cdf\(\): 'max_points' must be >= 1$"):
         M.cdf(A([0.0, 0.0]), max_points=0)
     with pytest.raises(TypeError, match=r"^cdf\(\): 'return_error' must be True or False, not int$"):
         M.cdf(A([0.0, 0.0]), return_error=1)
@@ -418,7 +450,7 @@ def test_entropy_doc_and_sample_shape():
     assert isinstance(S.Normal().sample(None, rng=rng), float)
     assert S.Normal(mu=A([0.0, 1.0])).sample(rng=rng).shape == (2,)
     assert S.Normal(mu=A([0.0, 1.0])).sample(3, rng=rng).shape == (3, 2)
-    msg = r"^sample\(\): 'shape' must not be \(\) \(stardust has no 0-d arrays; None gives one sample\)$"
+    msg = r"^sample\(\): 0-dimensional arrays are not supported \(stardust has no 0-d arrays\)$"
     for X in (
         S.Normal(),
         S.Poisson(mu=2.0),

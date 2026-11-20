@@ -395,6 +395,16 @@ def test_errors():
         sd.optimize.root(lambda x: [[1.0, 2.0], [[1.0, 0.0], [0.0, 1.0]], 3], [0.0, 0.0], jac=True)
     with pytest.raises(TypeError, match=r"root\(\): 'fun' must return a pair \(F, J\) when jac=True, not ndarray"):
         sd.optimize.root(lambda x: x, [0.0, 0.0], jac=True)
+    # F alone as a list: for n = 2 not read as a pair (F, J) either
+    for n in (1, 2, 3):
+        got = f"a list of {n} number" + ("s" if n > 1 else "")
+        with pytest.raises(TypeError, match=rf"^root\(\): 'fun' must return a pair \(F, J\) when jac=True, not {got}$"):
+            sd.optimize.root(lambda x: [float(v) - 1 for v in x.tolist()], [0.0] * n, jac=True)
+    with pytest.raises(TypeError, match=r"when jac=True, not a tuple of 2 numbers$"):
+        sd.optimize.root(lambda x: (x[0] - 1, x[1] - 2), [0.0, 0.0], jac=True)
+    # n = 1: (F, J) with J a number is a pair
+    r = sd.optimize.root(lambda x: ([x[0] ** 2 - 4], 2 * x[0]), [1.0], jac=True)
+    assert r.converged and abs(r.x[0] - 2.0) < 1e-12
     with pytest.raises(ValueError, match=r"root\(\): 'fun' is not finite at 'x0'"):
         sd.optimize.root(lambda x: [math.inf, 0.0], [0.0, 0.0])
     # options (O16, O14, O62)
@@ -404,7 +414,9 @@ def test_errors():
         sd.optimize.root(f, [0.0, 0.0], options={"ftol": 1e-3})
     with pytest.raises(ValueError, match=r"method='hybr' has no option 'maxfev' \(the cap on function"):
         sd.optimize.root(f, [0.0, 0.0], options={"maxfev": 10})
-    with pytest.raises(ValueError, match=r"method='lm' has no option 'maxiter' \(the iteration cap is 'max_iter'\)"):
+    with pytest.raises(
+        ValueError, match=r"method='lm' has no option 'maxiter' \(the cap on function evaluations is 'max_nfev'\)"
+    ):
         sd.optimize.root(f, [0.0, 0.0], method="lm", options={"maxiter": 10})
     with pytest.raises(ValueError, match=r"method='lm' has no option 'band'"):
         sd.optimize.root(f, [0.0, 0.0], method="lm", options={"band": (1, 1)})
@@ -449,3 +461,31 @@ def test_user_errors_pass_through():
 
         with pytest.raises(ZeroDivisionError, match="later"):
             sd.optimize.root(g, [0.0], method=method)
+
+
+# ---- options before the user's function (API-8), a number for the (1, 1) Jacobian (API-9)
+
+
+def test_options_are_checked_first():
+    calls = []
+
+    def f(x):
+        calls.append(1)
+        return x * x - 2.0
+
+    for key in ("ftol", "gtol"):
+        with pytest.raises(ValueError, match=rf"root\(\): '{key}' must be a finite number >= 0"):
+            sd.optimize.root(f, [2.0], method="lm", options={key: -1.0})
+    assert calls == []
+
+
+def test_one_variable_jacobian_as_a_number():
+    for method in ("hybr", "lm"):
+        r = sd.optimize.root(lambda x: x**3 - 8.0, [3.0], method=method, jac=lambda x: 3 * float(x[0]) ** 2)
+        assert r.converged and abs(r.x[0] - 2.0) < 1e-9
+
+
+def test_options_none_is_the_default():
+    a = sd.optimize.root(lambda x: x**3 - 8.0, [3.0], method="lm")
+    b = sd.optimize.root(lambda x: x**3 - 8.0, [3.0], method="lm", options={"xtol": None, "ftol": None, "eps": None})
+    assert a.x.tolist() == b.x.tolist()

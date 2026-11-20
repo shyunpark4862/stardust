@@ -5,8 +5,11 @@
 #include <nanobind/nanobind.h>
 
 #include <atomic>
+#include <climits>
+#include <new>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nb = nanobind;
@@ -228,6 +231,7 @@ Column isna(const Column& col, bool want_na) {
     const std::uint8_t flip = want_na ? 1 : 0;  // isna is 1 - valid, notna is valid
     auto bits = rebased_validity(col);
     if (!bits) {
+        const Unlocked unlocked(col.length);
         std::memset(o, flip ^ 1, static_cast<std::size_t>(col.length));
         return out;
     }
@@ -482,9 +486,78 @@ Column arange(std::int64_t start, std::int64_t step, std::int64_t n) {
     auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
     for_chunks(n, [=](std::int64_t lo, std::int64_t hi) {
         std::int64_t* w = o;  // locals: see isna
-        const std::int64_t a = start, d = step;
-        for (std::int64_t i = lo; i < hi; ++i) w[i] = a + i * d;
+        // In uint64: i * step may overflow int64 even when start + i * step does not.
+        const auto a = static_cast<std::uint64_t>(start), d = static_cast<std::uint64_t>(step);
+        for (std::int64_t i = lo; i < hi; ++i) w[i] = static_cast<std::int64_t>(a + static_cast<std::uint64_t>(i) * d);
     });
+    return out;
+}
+
+std::pair<Column, std::int64_t> wrap_positions(const Column& positions, std::int64_t n) {
+    const std::int64_t* pos = positions_of(positions);
+    const std::int64_t len = positions.length;
+    Column out = make_fixed(DType::Int64, len);
+    auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
+    parallel::FirstRow bad;
+    for_chunks(len, [=, &bad](std::int64_t lo, std::int64_t hi) {
+        const std::int64_t* p = pos;  // locals: see isna
+        std::int64_t* w = o;
+        const std::int64_t size = n;
+        for (std::int64_t i = lo; i < hi; ++i) {
+            const std::int64_t v = p[i];
+            if (v < -size || v >= size) {
+                bad.offer(i);
+                return;
+            }
+            w[i] = v < 0 ? v + size : v;
+        }
+    });
+    return {std::move(out), bad.any() ? bad.row() : -1};
+}
+
+Column full(const Column& value, std::int64_t n) {
+    if (value.length != 1 || n < 0) throw nb::value_error("full: one value and a length >= 0");
+    const bool na = value.null_count != 0;
+    Column out;
+    if (value.dtype == DType::String) {
+        const std::string_view s = na ? std::string_view{} : value.string_at(0);
+        const auto size = static_cast<std::int64_t>(s.size());
+        if (size != 0 && n > INT64_MAX / size) throw std::bad_alloc();
+        out.dtype = DType::String;
+        out.length = n;
+        out.values = Buffer::allocate(size * n, /*zeroed=*/false);
+        out.offsets = Buffer::allocate((n + 1) * 8, /*zeroed=*/false);
+        auto* bytes = reinterpret_cast<char*>(out.values->data());
+        auto* offs = reinterpret_cast<std::int64_t*>(out.offsets->data());
+        offs[0] = 0;
+        for_chunks(n, [=](std::int64_t lo, std::int64_t hi) {
+            for (std::int64_t i = lo; i < hi; ++i) {
+                std::memcpy(bytes + i * size, s.data(), static_cast<std::size_t>(size));
+                offs[i + 1] = (i + 1) * size;
+            }
+        });
+    } else {
+        out = make_fixed(value.dtype, n);
+        const std::int64_t size = itemsize(value.dtype);
+        std::byte* o = out.values->data();
+        std::byte one[8] = {};  // NA rows hold 0 (docs/design/frame.md §4.5)
+        if (!na) std::memcpy(one, value.values->data() + value.offset * size, static_cast<std::size_t>(size));
+        if (size == 1) {
+            const Unlocked unlocked(n);
+            std::memset(o, static_cast<int>(one[0]), static_cast<std::size_t>(n));
+        } else {
+            std::int64_t word;
+            std::memcpy(&word, one, 8);
+            for_chunks(n, [=](std::int64_t lo, std::int64_t hi) {
+                auto* w = reinterpret_cast<std::int64_t*>(o);
+                for (std::int64_t i = lo; i < hi; ++i) w[i] = word;
+            });
+        }
+    }
+    if (na && n > 0) {
+        out.validity = Buffer::allocate(bitmap::num_bytes(n), /*zeroed=*/true);
+        out.null_count = n;
+    }
     return out;
 }
 

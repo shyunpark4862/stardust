@@ -735,3 +735,37 @@ def test_float_parsing_is_correctly_rounded(texts):
     texts = [t for t in texts if "nan" not in t and "inf" not in t] + HARD_FLOATS
     got = sd.frame.Series(texts).astype("float64").tolist()
     assert all(same(g, float(t)) for g, t in zip(got, texts))
+
+
+# --- operands that are not scalars, and unary + --------------------------------
+
+
+@pytest.mark.parametrize(
+    "value",
+    [np.complex128(1 + 2j), np.complex64(1j), np.datetime64("2020-01-01"), np.timedelta64(1, "s"), np.bytes_(b"a")],
+)
+def test_numpy_scalars_without_a_column_dtype_are_not_operands(value):
+    # As Python's complex: a TypeError, never the real part with a ComplexWarning.
+    import warnings
+
+    s = sd.frame.Series([1.0, 2.0])
+    df = sd.frame.DataFrame({"a": [1.0]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for f in (lambda: s + value, lambda: value + s, lambda: s == value, lambda: s < value, lambda: df * value):
+            with pytest.raises(TypeError):
+                f()
+
+
+def test_unary_plus_returns_a_new_object():
+    # Copy-on-Write (docs/api/frame.md §5.7): writing to +s does not change s.
+    s = sd.frame.Series([1, 2])
+    t = +s
+    assert t is not s
+    t.iloc[0] = 99
+    assert s.tolist() == [1, 2] and t.tolist() == [99, 2]
+    df = sd.frame.DataFrame({"a": [1, 2]})
+    d2 = +df
+    assert d2 is not df
+    d2["b"] = [3, 4]
+    assert list(df) == ["a"]

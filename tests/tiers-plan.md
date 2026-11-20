@@ -145,14 +145,22 @@ quick의 2분을 넘기는 것은 몇 개의 무거운 테스트다. 이것들�
 
 ### optimize
 
+모듈 12개, 2,859개다(2026-11-20에 다시 센 값; 시간은 다른 작업과 기계를 나눈 채 한 프로세스로 잰 것이라 조용한 기계보다 길 수 있다).
+
 | 모듈 | 테스트 | 시간(초) | 등급 | hypothesis | xdist |
 |---|---:|---:|---|---|---|
-| `optimize/test_api_surface.py` | 5 | 0.0 | quick |  |  |
+| `optimize/test_api_surface.py` | 6 | 0.0 | quick |  |  |
 | `optimize/test_diff.py` | 100 | 0.1 | quick |  |  |
-| `optimize/test_least_squares.py` | 29 | 4.0 | quick |  |  |
-| `optimize/test_problems.py` | 170 | 0.1 | quick |  |  |
-| `optimize/test_reference_data.py` | 10 | 0.0 | quick |  |  |
+| `optimize/test_elementwise.py` | 278 | 1.5 | quick |  |  |
+| `optimize/test_least_squares.py` | 31 | 5.5 | quick |  |  |
+| `optimize/test_lsq_linear.py` | 23 | 0.6 | quick |  |  |
+| `optimize/test_minimize.py` | 197 | 13.9 | quick |  |  |
+| `optimize/test_minimize_newton.py` | 554 | 51.5 | quick |  |  |
+| `optimize/test_problems.py` | 170 | 0.3 | quick |  |  |
+| `optimize/test_reference_data.py` | 10 | 0.1 | quick |  |  |
 | `optimize/test_result.py` | 10 | 0.0 | quick |  |  |
+| `optimize/test_root.py` | 37 | 3.5 | quick |  |  |
+| `optimize/test_scalar.py` | 1443 | 0.5 | quick |  |  |
 
 ### random
 

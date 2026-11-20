@@ -121,6 +121,7 @@ void bind_column(nb::module_& m) {
             nb::arg("arr"), kFunc
         )
         .def("validity_mask", &sd::frame::validity_mask)
+        .def_static("rows_from_columns", &sd::frame::rows_from_columns, nb::arg("cols"), nb::arg("n"))
         // For tests: whether two columns share their values Buffer (zero-copy).
         .def("_shares_values_with", [](const Column& a, const Column& b) { return a.values == b.values; })
         .def_static(
@@ -233,10 +234,19 @@ void bind_column(nb::module_& m) {
         nb::arg("data"), nb::arg("sep"), nb::arg("header"), nb::arg("names"), nb::arg("usecols"), nb::arg("dtypes"),
         nb::arg("all_dtype").none(), nb::arg("na_values"), nb::arg("nrows")
     );
+    m.def(
+        "csv_records_end",
+        [](nb::bytes data, std::int64_t records) {
+            return sd::frame::csv_records_end(data.c_str(), data.size(), records);
+        },
+        nb::arg("data"), nb::arg("records")
+    );
     m.def("binary_op", &sd::frame::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::frame::unary_op, nb::arg("op"), nb::arg("a"));
     m.def("isnan", &sd::frame::isnan, nb::arg("col"));
     m.def("arange", &sd::frame::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));
+    m.def("wrap_positions", &sd::frame::wrap_positions, nb::arg("positions"), nb::arg("n"));
+    m.def("full", &sd::frame::full, nb::arg("value"), nb::arg("n"));
     // (codes, first, ngroups) of the rows of `cols` taken together.
     m.def(
         "factorize_rows",

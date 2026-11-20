@@ -37,8 +37,9 @@ namespace dd = num::dd;
 inline DD log_ratio(double x, double s) {
     if (x < 0x1p-960) [[unlikely]] {
         // the quotient's remainder would be subnormal: both scaled up (exact) when s is small
-        // too, else the quotient is far below 1 and the two logs do not cancel
-        if (s < 0x1p-700) return log_ratio(x * 0x1p200, s * 0x1p200);
+        // too, else the quotient is far below 1 and the two logs do not cancel (the scaling
+        // needs s > 0 to end: s = 0 stays 0, s < 0 goes to -inf)
+        if (s > 0.0 && s < 0x1p-700) return log_ratio(x * 0x1p200, s * 0x1p200);
         return num::log_dd(x) - num::log_dd(s);
     }
     const DD y = num::ratio(x, s);

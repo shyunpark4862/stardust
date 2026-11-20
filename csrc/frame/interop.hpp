@@ -1,6 +1,6 @@
 // The frame area and the array area meet here, and only here (DESIGN.md §4.3,
-// ARCHITECTURE.md §2): Column <-> sd.ndarray, and the array's float sum that
-// the frame's int mean uses so both areas give the same bits.
+// ARCHITECTURE.md §2): Column <-> sd.ndarray. (The sums both areas share --
+// the pairwise tree and the exact int sum -- are in base/.)
 #pragma once
 
 #include "frame/column.hpp"
@@ -30,9 +30,5 @@ Column from_array(nb::handle arr);
 // A new (n, k) sd.ndarray in F order from k columns of one dtype without NA:
 // each column is one memcpy, and sd.linalg takes F-order matrices as they are.
 nb::object columns_to_array(const std::vector<Column>& cols, std::int64_t n);
-
-// The array area's float64 sum of an int64 or bool column's values (NA rows
-// hold 0), in the array's order: sd.sum(x, dtype=sd.float64). Needs the GIL.
-double array_sum_float64(const Column& col);
 
 }  // namespace sd::frame

@@ -394,6 +394,8 @@ struct Beta : Real {
         if (std::fabs(a) < std::fabs(b)) std::swap(a, b);
         if (a == kInf)
             return b == kInf ? kNaN : (b > 0.0 ? 0.0 : (Gamma::f(b) > 0 ? kInf : -kInf));  // B(inf, inf): NaN (scipy)
+        // Both subnormal: Gamma(a) and Gamma(a + b) overflow, and B = (a + b) / (a b) (1 + O(a + b))
+        if (a > 0.0 && b > 0.0 && a < 0x1p-1022) return 1.0 / a + 1.0 / b;
         if (a > 0.0 && b > 0.0 && a + b <= 170.0) {
             // no Gamma overflows: Cephes' Gamma three times, a + b kept as hi + lo
             // (Gamma(a)/Gamma(c) <= 1 for c > a, so the order cannot overflow)

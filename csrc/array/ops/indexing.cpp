@@ -6,6 +6,7 @@
 #include "array/kernels/cast.hpp"
 #include "array/kernels/elementwise.hpp"
 #include "array/ops/creation.hpp"
+#include "array/ops/pieces.hpp"
 #include "parallel/pool.hpp"
 
 #include <array>
@@ -50,6 +51,31 @@ Item array_item(nb::handle o, nb::object arr) {
     return it;
 }
 
+// A list or tuple with no element at any depth: [], [[]], ([], []). Deeper
+// than an array can be is not empty here (asarray then names the limit; a
+// list that holds itself must not recurse forever).
+bool holds_nothing(PyObject* p, int depth = 0) {
+    if (!PyList_Check(p) && !PyTuple_Check(p)) return false;
+    if (depth == kMaxNdim) return false;
+    const Py_ssize_t n = PySequence_Fast_GET_SIZE(p);
+    for (Py_ssize_t i = 0; i < n; ++i)
+        if (!holds_nothing(PySequence_Fast_GET_ITEM(p, i), depth + 1)) return false;
+    return true;
+}
+
+// True for an object exporting a 0-dimensional buffer (numpy.array(1)).
+bool zero_dim_buffer(PyObject* p) {
+    if (!PyObject_CheckBuffer(p)) return false;
+    Py_buffer view;
+    if (PyObject_GetBuffer(p, &view, PyBUF_RECORDS_RO) != 0) {
+        PyErr_Clear();  // asarray will report it
+        return false;
+    }
+    const bool zero = view.ndim == 0;
+    PyBuffer_Release(&view);
+    return zero;
+}
+
 Item classify(nb::handle o) {
     PyObject* p = o.ptr();
     if (p == Py_None) return Item(Kind::NewAxis, o);
@@ -61,13 +87,14 @@ Item classify(nb::handle o) {
     if (is_ndarray(o)) return array_item(o, nb::borrow(o));
     const bool text = PyUnicode_Check(p) || PyBytes_Check(p);  // sequences, but never indices
     if (!text && PySequence_Check(p)) {
-        // A list (or numpy array, ...) is an integer array or a mask. An empty
-        // list would come out float64 from asarray; as an index it means "no
-        // positions".
-        if ((PyList_Check(p) || PyTuple_Check(p)) && PySequence_Size(p) == 0) {
-            const std::int64_t zero[] = {0};
-            return array_item(o, wrap(new_array(DType::Int64, zero)));
-        }
+        // A list (or numpy array, ...) is an integer array or a mask. A list
+        // with no element ([], [[]]) would come out float64 from asarray; as
+        // an index it means "no positions".
+        if (holds_nothing(p)) return array_item(o, asarray(o, dtype_object(DType::Int64), nb::none()));
+        // No 0-d arrays, so a 0-d buffer is no array index either (§5.1:
+        // other objects are IndexError).
+        if (!PyList_Check(p) && !PyTuple_Check(p) && zero_dim_buffer(p))
+            raise(PyExc_IndexError, "a 0-dimensional array is not a valid index; use an int");
         return array_item(o, asarray(o, nb::none(), nb::none()));
     }
     if (!text && PyIndex_Check(p)) {  // int, or anything with __index__ (e.g. numpy.int64)
@@ -317,24 +344,29 @@ std::vector<std::int64_t> index_shape(const Plan& plan) {
     return b;
 }
 
-// Walks the index shape B in C order, turning each point into the byte offset
-// of its block in the plan's view (bounds-checked; negative indices wrap) and,
-// when `w_strides` is given, into the offset in a second array laid out over
-// the result shape (the value of a scatter). Offsets are produced a chunk at a
-// time into small buffers and handed to emit(view_off, w_off, n, first_b)
-// right away, so they never make a full pass through memory
-// (docs/design/array.md §7.3).
+// Walks points [begin, end) of the index shape B in C order, turning each
+// point into the byte offset of its block in the plan's view (negative
+// indices wrap) and, when `w_strides` is given, into the offset in a second
+// array laid out over the result shape (the value of a scatter). Every index
+// must have been checked before (check_indices): the walk has no error path,
+// so it can run in pieces on several threads and without the GIL. Offsets are
+// produced a chunk at a time into small buffers and handed to
+// emit(view_off, w_off, n, first_b) right away, so they never make a full
+// pass through memory (docs/design/array.md §7.3).
 template <typename Emit>
 void for_each_offset_chunk(
-    const Plan& plan, std::span<const std::int64_t> bshape, const std::int64_t* w_strides, Emit&& emit
+    const Plan& plan,
+    std::span<const std::int64_t> bshape,
+    const std::int64_t* w_strides,
+    std::int64_t begin,
+    std::int64_t end,
+    Emit&& emit
 ) {
     constexpr std::int64_t kChunk = 1024;
     const NDArray& v = plan.view;
     const int k = static_cast<int>(plan.indices.size());
     const int bd = static_cast<int>(bshape.size());
-    std::int64_t nb = 1;
-    for (std::int64_t e : bshape) nb *= e;
-    if (nb == 0) return;
+    if (begin >= end) return;
 
     // Each index array broadcast to B: stride 0 on stretched axes.
     std::array<std::array<std::int64_t, kMaxNdim>, kMaxNdim> st;
@@ -345,29 +377,31 @@ void for_each_offset_chunk(
         for (int d = 0; d < bd; ++d) st[j][d] = d < offset || ix.shape[d - offset] == 1 ? 0 : ix.strides[d - offset];
         ptr[j] = ix.data;
     }
-    std::array<std::int64_t, kMaxNdim> bidx{};
-    std::array<std::int64_t, kChunk> voff, woff;
-    std::int64_t w = 0, fill = 0, chunk_start = 0;
     // The last B axis is a tight run; the odometer only moves between runs.
     const int last = bd - 1;
     const std::int64_t run = bshape[last];
     const std::int64_t w_last = w_strides ? w_strides[plan.first + last] : 0;
-    auto check = [&](std::int64_t raw, int axis) {
-        const std::int64_t n = v.shape[axis];
-        const std::int64_t i = raw < 0 ? raw + n : raw;
-        if (i < 0 || i >= n) [[unlikely]]
-            raise(
-                PyExc_IndexError, "index " + std::to_string(raw) + " is out of bounds for axis " +
-                                      std::to_string(axis) + " with size " + std::to_string(n)
-            );
-        return i;
-    };
-    for (std::int64_t done = 0; done < nb; done += run) {
-        for (std::int64_t t = 0; t < run; ++t) {
+    // Start at the multi-index of `begin`.
+    std::array<std::int64_t, kMaxNdim> bidx{};
+    std::int64_t w = 0;
+    for (std::int64_t d = last, rem = begin; d >= 0; --d) {
+        bidx[d] = rem % bshape[d];
+        rem /= bshape[d];
+        if (d == last) continue;  // the run position: t below
+        for (int j = 0; j < k; ++j) ptr[j] += bidx[d] * st[j][d];
+        if (w_strides) w += bidx[d] * w_strides[plan.first + d];
+    }
+    std::array<std::int64_t, kChunk> voff, woff;
+    std::int64_t fill = 0, chunk_start = begin;
+    std::int64_t t0 = bidx[last];
+    for (std::int64_t done = begin; done < end;) {
+        const std::int64_t t1 = std::min(run, t0 + (end - done));
+        for (std::int64_t t = t0; t < t1; ++t) {
             std::int64_t o = 0;
             for (int j = 0; j < k; ++j) {
                 const std::int64_t raw = *reinterpret_cast<const std::int64_t*>(ptr[j] + t * st[j][last]);
-                o += check(raw, plan.first + j) * v.strides[plan.first + j];
+                const std::int64_t n = v.shape[plan.first + j];
+                o += (raw < 0 ? raw + n : raw) * v.strides[plan.first + j];
             }
             voff[fill] = o;
             woff[fill] = w + t * w_last;
@@ -377,6 +411,8 @@ void for_each_offset_chunk(
                 fill = 0;
             }
         }
+        done += t1 - t0;
+        t0 = 0;
         for (int d = last - 1; d >= 0; --d) {  // C-order odometer over the other B axes
             for (int j = 0; j < k; ++j) ptr[j] += st[j][d];
             if (w_strides) w += w_strides[plan.first + d];
@@ -891,10 +927,23 @@ nb::object gather(const Plan& plan) {
     // point b starts b * (stride of the last B axis) bytes in.
     const std::int64_t step = out.strides[plan.first + bd - 1];
     const NDArray src = block_of(plan.view, plan.first, k), dst = block_of(out, plan.first, bd);
+    for (int j = 0; j < k; ++j) check_indices(plan.indices[j], plan.view.shape[plan.first + j], plan.first + j);
+    // Each point writes its own block of the fresh result, so the points
+    // split into pieces freely (the bits do not depend on the split).
+    std::int64_t nb = 1, block = 1;
+    for (std::int64_t e : bshape) nb *= e;
+    for (int d = 0; d < src.ndim; ++d) block *= src.shape[d];
+    if (nb == 0 || block == 0) return wrap(std::move(out));
     with_block_copy(src, dst, [&](auto copy) {
-        for_each_offset_chunk(
-            plan, bshape, nullptr, [&](const std::int64_t* voff, const std::int64_t*, std::int64_t n, std::int64_t b0) {
-                for (std::int64_t i = 0; i < n; ++i) copy(src.data + voff[i], dst.data + (b0 + i) * step);
+        for_pieces(
+            nb, kParallelTask / std::min(block, kParallelTask), nb * block,
+            [&](std::int64_t, std::int64_t b, std::int64_t e) {
+                for_each_offset_chunk(
+                    plan, bshape, nullptr, b, e,
+                    [&](const std::int64_t* voff, const std::int64_t*, std::int64_t n, std::int64_t b0) {
+                        for (std::int64_t i = 0; i < n; ++i) copy(src.data + voff[i], dst.data + (b0 + i) * step);
+                    }
+                );
             }
         );
     });
@@ -915,6 +964,13 @@ nb::object value_array(nb::handle value, DType target) {
         return wrap(std::move(s));
     }
     if (is_ndarray(value)) return nb::borrow(value);
+    PyObject* p = value.ptr();
+    if (!PyList_Check(p) && !PyTuple_Check(p) && !PyRange_Check(p) && !PyObject_CheckBuffer(p))
+        throw nb::type_error(
+            ("only a scalar, an sd.ndarray, a list, a tuple, a range or a buffer can be assigned, not " +
+             py_type_name(value))
+                .c_str()
+        );
     return asarray(value, nb::none(), nb::none());
 }
 
@@ -1059,9 +1115,16 @@ void scatter(nb::handle x, Plan& plan, nb::handle value) {
     const int k = static_cast<int>(plan.indices.size());
     const int bd = nd - (plan.view.ndim - k);
     const NDArray from = block_of(w, plan.first, bd), to = block_of(plan.view, plan.first, k);
-    with_block_copy(from, to, [&](auto copy) {  // in order: with repeated indices the last write wins
+    const auto bshape = std::span(shape).subspan(plan.first, bd);
+    std::int64_t nb = 1, block = 1;
+    for (std::int64_t e : bshape) nb *= e;
+    for (int d = 0; d < to.ndim; ++d) block *= to.shape[d];
+    with_block_copy(from, to, [&](auto copy) {
+        // In order on the calling thread: with repeated indices the last
+        // write wins. Large ones without the GIL all the same (API.md §3).
+        const parallel::Unlocked unlocked(nb * block >= kParallelThreshold);
         for_each_offset_chunk(
-            plan, std::span(shape).subspan(plan.first, bd), w.strides.data(),
+            plan, bshape, w.strides.data(), 0, nb,
             [&](const std::int64_t* voff, const std::int64_t* woff, std::int64_t n, std::int64_t) {
                 for (std::int64_t i = 0; i < n; ++i) copy(from.data + woff[i], to.data + voff[i]);
             }

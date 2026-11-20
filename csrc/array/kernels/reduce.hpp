@@ -78,6 +78,23 @@ double pairwise_sum_mt(std::int64_t n, const Get& get) {
     return pairwise_parallel<double>(n, kLeaf, [&](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); });
 }
 
+// The sum of dev(i)^2, each square added by one fma (pairwise::leaf_squares),
+// along the same tree, on many threads with the same bits.
+template <typename Dev>
+double pairwise_squares(std::int64_t begin, std::int64_t n, const Dev& dev) {
+    return pairwise::tree(begin, n, [&](std::int64_t b, std::int64_t m) {
+        return pairwise::leaf_squares(m, [&](std::int64_t i) { return dev(b + i); });
+    });
+}
+
+template <typename Dev>
+double pairwise_squares_mt(std::int64_t n, const Dev& dev) {
+    if (n < kParallelThreshold || !parallel::available()) return pairwise_squares(0, n, dev);
+    return pairwise_parallel<double>(n, kLeaf, [&](std::int64_t b, std::int64_t m) {
+        return pairwise_squares(b, m, dev);
+    });
+}
+
 template <typename Get>
 complex128 pairwise_sum_complex_mt(std::int64_t n, const Get& get) {
     if (n < kParallelThreshold || !parallel::available()) return pairwise_sum_complex(0, n, get);
@@ -407,35 +424,49 @@ void count_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
     for (std::int64_t i = 0; i < n; ++i) *reinterpret_cast<std::int64_t*>(o + i * s[1]) += hit(i);
 }
 
-// Sum of squared deviations, the second pass of var: out += |x - m|^2.
-// With SkipNan (nanvar) a NaN element adds +0.0 instead, which leaves every
-// partial sum of the pairwise tree unchanged.
+// Sum of squared deviations, the second pass of var: out += |x - m|^2, each
+// square added with one rounding (fma; complex: fma(re, re, im * im)).
+// With SkipNan (nanvar) a NaN element's deviation reads as +0.0, so it adds
+// +0.0, which leaves every partial sum of the pairwise tree unchanged.
 // args: x, m (the mean, broadcast), out (float64)
 template <typename T, bool SkipNan = false>
 void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     const std::byte* x = args[0];
     const std::byte* m = args[1];
     std::byte* o = args[2];
-    auto sq = [&](std::int64_t i) {
-        const T v = load_as<T>(x + i * s[0]);
-        const T d = v - load_as<T>(m + i * s[1]);
-        double sq;
-        if constexpr (ops::is_cplx<T>) sq = d.real() * d.real() + d.imag() * d.imag();
-        else sq = d * d;
-        if constexpr (SkipNan) {
-            // A select, not a branch: NaNs scattered at random defeat branch prediction.
-            bool nan;
-            if constexpr (ops::is_cplx<T>) nan = v.real() != v.real() || v.imag() != v.imag();
-            else nan = v != v;
-            return nan ? 0.0 : sq;
+    if constexpr (ops::is_cplx<T>) {
+        auto sq = [&](std::int64_t i) {
+            const T v = load_as<T>(x + i * s[0]);
+            const T d = v - load_as<T>(m + i * s[1]);
+            const double q = std::fma(d.real(), d.real(), d.imag() * d.imag());
+            if constexpr (SkipNan) {
+                // A select, not a branch: NaNs scattered at random defeat branch prediction.
+                return v.real() != v.real() || v.imag() != v.imag() ? 0.0 : q;
+            }
+            return q;
+        };
+        if (s[2] == 0) {  // inner-axis: pairwise, like sum
+            *reinterpret_cast<double*>(o) += pairwise_sum_mt(n, sq);
+            return;
         }
-        return sq;
-    };
-    if (s[2] == 0) {  // inner-axis: pairwise, like sum
-        *reinterpret_cast<double*>(o) += pairwise_sum_mt(n, sq);
-        return;
+        for (std::int64_t i = 0; i < n; ++i) *reinterpret_cast<double*>(o + i * s[2]) += sq(i);
+    } else {
+        auto dev = [&](std::int64_t i) {
+            const T v = load_as<T>(x + i * s[0]);
+            const T d = v - load_as<T>(m + i * s[1]);
+            if constexpr (SkipNan) return v != v ? 0.0 : d;  // a select, as above
+            return d;
+        };
+        if (s[2] == 0) {  // inner-axis: pairwise, like sum
+            *reinterpret_cast<double*>(o) += pairwise_squares_mt(n, dev);
+            return;
+        }
+        for (std::int64_t i = 0; i < n; ++i) {
+            double* oi = reinterpret_cast<double*>(o + i * s[2]);
+            const double d = dev(i);
+            *oi = std::fma(d, d, *oi);
+        }
     }
-    for (std::int64_t i = 0; i < n; ++i) *reinterpret_cast<double*>(o + i * s[2]) += sq(i);
 }
 
 // ---- argmin / argmax over one lane (index order, so ties keep the first) ----

@@ -16,7 +16,7 @@ import math
 import numbers
 
 from .. import _core as _sd
-from ._common import _EPS, _as_array, _callable, _check_int, _check_tol, _real, _type_name
+from ._common import _EPS, _as_array, _callable, _check_int, _check_tol, _real, _type_name, _values_text
 from ._result import OptimizeResult
 
 _k = _sd.optimize
@@ -53,6 +53,8 @@ def _values(func):
             raise TypeError(f"{func}(): 'f' must return real values, not a complex128 array")
         if a.dtype == _sd.string:
             raise TypeError(f"{func}(): 'f' must return real values, not a string array")
+        if a.dtype == _sd.bool:  # a comparison returned where numbers were meant
+            raise TypeError(f"{func}(): 'f' must return real values, not a bool array")
         if a.ndim != 1 or a.shape[0] != k:
             raise ValueError(f"{func}(): 'f' must return shape ({k},) like its argument, not {tuple(a.shape)}")
         if a.dtype != _sd.float64:
@@ -150,7 +152,7 @@ def _init(init, func, names):
     else:
         raise TypeError(f"{func}(): 'init' must be a {form} {listed}, not {_type_name(init)}")
     if len(parts) != want:
-        raise ValueError(f"{func}(): 'init' must be a {form} {listed}, not {len(parts)} values")
+        raise ValueError(f"{func}(): 'init' must be a {form} {listed}, not {_values_text(len(parts))}")
     return parts
 
 
@@ -170,7 +172,7 @@ def _result(shape, status, nit, nfev, **fields):
         k: (tuple(_shaped(a, shape) for a in v) if isinstance(v, tuple) else _shaped(v, shape))
         for k, v in fields.items()
     }
-    return OptimizeResult(
+    return OptimizeResult._make(
         batch=shape,
         **out,
         converged=_shaped(status == 0, shape),
@@ -222,7 +224,7 @@ def _check_factor(a, func):
         raise ValueError(f"{func}(): 'factor' must be > 1")
 
 
-def bracket_root(f, xl0, xr0=None, /, *, xmin=None, xmax=None, factor=None, args=(), max_iter=1000):
+def bracket_root(f, xl0, /, xr0=None, *, xmin=None, xmax=None, factor=None, args=(), max_iter=1000):
     """A bracket (xl, xr) of a root of f for each element: the interval (xl0, xr0) grown by
     'factor' in both directions until f changes sign (scipy.optimize.elementwise.bracket_root;
     docs/api/optimize.md §6)."""

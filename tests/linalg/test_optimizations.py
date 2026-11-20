@@ -1,7 +1,8 @@
 """The optimizations keep the results.
 
-- sums are pairwise (docs/design/linalg.md §8.2): the bits of numpy's and
-  sd's sum of the same terms, whatever the input layout;
+- sums are pairwise (docs/design/linalg.md §8.2): plain sums have the bits of sd's
+  sum of the same terms, sums of products (vecdot, 2-norm) fuse the products and are
+  within the pairwise error bound of numpy's; whatever the input layout;
 - workspace sizes are asked once per batch, and every LAPACK array is 16-byte
   aligned: a batch gives each matrix's own result, bit for bit;
 - read-only triangles are used in place when column-major: the same bits as packed.
@@ -28,6 +29,14 @@ def bits_equal(a, b):
     return a.shape == b.shape and a.dtype == b.dtype and a.tobytes() == b.tobytes()
 
 
+def within_pairwise_bound(got, want, terms_abs, n):
+    """|got - want| within two pairwise sums' error bounds of each other: 2 (log2 n + 2) eps
+    times the sum of the terms' magnitudes (numpy-bit identity is no promise, D-33)."""
+    got, want, terms_abs = np.asarray(got), np.asarray(want), np.asarray(terms_abs)
+    bound = 2 * (math.log2(max(n, 1)) + 2) * 2.0**-52 * terms_abs
+    return got.shape == want.shape and bool(np.all(np.abs(got - want) <= bound))
+
+
 # ------------------------------------------------------------ pairwise sums --
 
 
@@ -46,27 +55,30 @@ def test_sums_are_numpys_pairwise(seed, rows, n, dtype, layout):
     xc, yc = np.ascontiguousarray(x), np.ascontiguousarray(y)
     calc = np.complex128 if dtype == "complex128" else np.float64
     xf, yf = xc.astype(calc), yc.astype(calc)
-    # vecdot: sum(conj(x1) * x2) along the axis, numpy's and sd's bits
+    # vecdot: sum(conj(x1) * x2) along the axis, the products fused into the leaves:
+    # within the pairwise bound of numpy's sum, the same bits for every layout
     v = npy(sd.linalg.vecdot(as_sd(x), as_sd(y)))
     want = np.sum(np.conj(xf) * yf, axis=-1)
-    assert bits_equal(v, want)
-    assert bits_equal(v, npy(sd.sum(sd.conj(as_sd(xf)) * as_sd(yf), axis=-1)))
-    # vector_norm ord=1 and matrix_norm ord=inf: sums of |x| along the rows (real
-    # values: a complex modulus can differ from np.abs in the last bit, which is not
-    # about the sum)
+    assert within_pairwise_bound(v, want, np.sum(np.abs(xf) * np.abs(yf), axis=-1), n)
+    assert bits_equal(v, npy(sd.linalg.vecdot(as_sd(xc), as_sd(yc))))
+    # vector_norm ord=1 and matrix_norm ord=inf: plain sums of |x| along the rows, the bits
+    # of sd.sum (real values: a complex modulus can differ from np.abs in the last bit,
+    # which is not about the sum); numpy's within the bound
     if dtype != "complex128":
         a = np.abs(xf)
-        assert bits_equal(npy(sd.linalg.vector_norm(as_sd(x), ord=1, axis=-1)), np.sum(a, axis=-1))
+        r1 = npy(sd.linalg.vector_norm(as_sd(x), ord=1, axis=-1))
+        assert bits_equal(r1, npy(sd.sum(as_sd(a), axis=-1)))
+        assert within_pairwise_bound(r1, np.sum(a, axis=-1), np.sum(a, axis=-1), n)
         if n:
-            assert sd.linalg.matrix_norm(as_sd(x), ord=math.inf) == np.max(np.sum(a, axis=-1))
-    # 2-norm and fro of real values (no rescaling at these magnitudes): sqrt(sum(x*x)) over
-    # the flattened C-order sequence
-    if dtype != "complex128":
-        assert sd.linalg.vector_norm(as_sd(x)) == np.sqrt(np.sum(xf * xf))
-        assert sd.linalg.matrix_norm(as_sd(x)) == np.sqrt(np.sum(xf * xf))
-    else:  # the parts are separate terms: re0, im0, re1, im1, ...
-        parts = xf.view(np.float64)
-        assert sd.linalg.vector_norm(as_sd(x)) == np.sqrt(np.sum(parts * parts))
+            assert sd.linalg.matrix_norm(as_sd(x), ord=math.inf) == np.max(r1)
+    # 2-norm and fro (no rescaling at these magnitudes): the squares over the flattened
+    # C-order sequence (complex: the parts re0, im0, re1, ... as separate terms), fused
+    parts = xf.view(np.float64) if dtype == "complex128" else xf
+    sq = np.sum(parts * parts)
+    for got in (sd.linalg.vector_norm(as_sd(x)), sd.linalg.matrix_norm(as_sd(x))):
+        assert within_pairwise_bound(got * got, sq, sq, parts.size) or abs(got - math.sqrt(sq)) <= 4e-16 * got
+    assert sd.linalg.vector_norm(as_sd(x)) == sd.linalg.vector_norm(as_sd(xc))
+    assert sd.linalg.matrix_norm(as_sd(x)) == sd.linalg.matrix_norm(as_sd(xc))
 
 
 @SETTINGS
@@ -84,8 +96,9 @@ def test_trace_is_sum_of_diagonal(seed, n, k, dtype, layout):
     d = npy(sd.linalg.diagonal(as_sd(x), k=k))
     if dtype in ("bool", "int64"):
         d = d.astype(np.float64)
-    assert bits_equal(t, np.sum(d, axis=-1))
+    # the bits of sd.sum over the diagonal; numpy's sum agrees within rounding (DESIGN.md §1.6)
     assert bits_equal(t, npy(sd.sum(as_sd(d), axis=-1)))
+    assert np.allclose(t, np.sum(d, axis=-1), rtol=1e-13, atol=1e-13 * np.abs(d).sum())
 
 
 def test_pairwise_is_more_accurate():

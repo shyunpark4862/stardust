@@ -1,5 +1,7 @@
 #include "frame/ops/hash.hpp"
 
+#include "frame/ops/radix.hpp"
+
 #include <nanobind/nanobind.h>
 
 #include <algorithm>
@@ -106,14 +108,23 @@ std::pair<Column, Column> group_counts(const Column& codes, std::int64_t ngroups
 
 Column stable_order(const Column& counts, bool ascending) {
     const std::int64_t n = counts.length;
-    Column out = make_fixed(DType::Int64, n);
-    auto* o = reinterpret_cast<std::int64_t*>(out.values->data());
-    std::iota(o, o + n, std::int64_t{0});
+    // The counts are >= 0, so as uint64 they keep their order; descending
+    // flips every bit (docs/design/frame.md §9.3). The stable radix sort keeps
+    // equal counts in order of first appearance, for any thread count.
+    std::vector<std::uint64_t> keys(static_cast<std::size_t>(n));
+    std::vector<std::int64_t> rows(static_cast<std::size_t>(n));
     const auto* v = counts.data<std::int64_t>();
-    Unlocked unlocked(n);
-    // A comparison sort: it orders one count per distinct value, not the rows.
-    if (ascending) std::stable_sort(o, o + n, [v](std::int64_t x, std::int64_t y) { return v[x] < v[y]; });
-    else std::stable_sort(o, o + n, [v](std::int64_t x, std::int64_t y) { return v[x] > v[y]; });
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        for (std::int64_t i = lo; i < hi; ++i) {
+            const auto k = static_cast<std::uint64_t>(v[i]);
+            keys[i] = ascending ? k : ~k;
+            rows[i] = i;
+        }
+    });
+    radix_sort(keys, rows);
+    Column out = make_fixed(DType::Int64, n);
+    const Unlocked unlocked(n);
+    std::copy(rows.begin(), rows.end(), reinterpret_cast<std::int64_t*>(out.values->data()));
     return out;
 }
 

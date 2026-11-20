@@ -14,8 +14,6 @@ _core = _sd_core.linalg
 # The C++ core builds these Python objects itself.
 _core._setup(LinAlgError, _results.LINALG)
 
-__version__ = "0.0.1"
-
 __all__ = [
     "LinAlgError",
     "cholesky",

@@ -78,7 +78,9 @@ void sort_by(const Column& key, bool ascending, bool na_last, std::vector<std::i
                 keys[j] = ascending ? k : ~k;
             }
         });
-        radix_sort(keys, valid_rows);
+        // A rank is below the number of distinct strings: that count's bytes
+        // are all the digits there are (radix.hpp).
+        radix_sort(keys, valid_rows, digits_for(distinct.empty() ? 0 : distinct.size() - 1));
     } else {
         std::vector<std::uint64_t> keys(valid_rows.size());
         for_chunks(nv, [&](std::int64_t lo, std::int64_t hi) {
@@ -87,7 +89,7 @@ void sort_by(const Column& key, bool ascending, bool na_last, std::vector<std::i
                 keys[j] = ascending ? k : ~k;  // the reverse order; equal keys stay equal, so ties keep their order
             }
         });
-        radix_sort(keys, valid_rows);
+        radix_sort(keys, valid_rows, key.dtype == DType::Bool ? 1 : 8);  // a bool key is one byte (radix.hpp)
     }
 
     std::size_t at = 0;

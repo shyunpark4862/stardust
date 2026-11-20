@@ -156,14 +156,18 @@ def test_results_do_not_depend_on_thread_count():
                 assert got == reference[name], f"{name}: differs with {n} threads"
 
 
-def test_parallel_sum_still_equals_numpy():
-    # The parallel pairwise sum walks numpy's recursion tree: same bits.
+def test_parallel_sum_is_the_serial_tree():
+    # The parallel pairwise sum walks the serial recursion tree: the same bits on any
+    # thread count; numpy's tree has a narrower leaf, so only the value is close.
     x = np.random.default_rng(1).standard_normal(3_000_001)
+    c = x[:2_000_000] + 1j * x[1_000_001:]
+    got = []
     for n in (1, 10):
         sd.set_num_threads(n)
-        assert sd.sum(sd.asarray(x)) == np.sum(x)
-        c = x[:2_000_000] + 1j * x[1_000_001:]
-        assert sd.sum(sd.asarray(c)) == np.sum(c)
+        got.append((sd.sum(sd.asarray(x)), sd.sum(sd.asarray(c))))
+    assert got[0] == got[1]
+    assert abs(got[0][0] - np.sum(x)) <= 1e-12 * np.sum(np.abs(x))
+    assert abs(got[0][1] - np.sum(c)) <= 1e-12 * np.sum(np.abs(c))
 
 
 def test_set_and_get_num_threads():

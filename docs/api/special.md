@@ -1,6 +1,6 @@
 # 특수함수 API (sd.special)
 
-> 상태: **확정** (2026-11-12). S3까지 구현했다(§2의 8개, §3의 8개, §5의 7개, §7의 `zeta`). 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다. 보장 영역과 특수값 표는 각 마일스톤에서 측정한 뒤 채운다.
+> 상태: **확정** (2026-11-12). §2–§14의 함수가 모두 구현되어 있다. 설계와 결정 근거는 [docs/design/special.md](../design/special.md)에 있다.
 
 `import stardust as sd`의 하위 모듈 `sd.special`이 특수함수 API다 (scipy.special의 부분집합).
 
@@ -8,13 +8,32 @@
 - 절 번호(`§N`, `§N.M`)는 코드 주석이 인용한다. 번호를 바꾸지 않는다.
 - 언어 표시가 없는 코드 블록은 `tests/special/test_api_surface.py`가 읽는다. 공개 이름과 시그니처만 쓰고, 한 줄에 함수 하나다.
 
+**인자 순서** (사용자 결정 2026-11-20). 입력은 모두 위치 전용이라 순서를 바꿔 넣으면 에러 없이 다른 값이 나온다. 인자가 둘 이상인 함수의 순서는 아래와 같다. 굵게 적은 줄만 scipy.special과 순서가 다르다.
+
+| 함수 | 순서 |
+|---|---|
+| `polygamma`, `expn` | (차수, x) |
+| `beta`, `betaln`, `binom` | (a, b), (a, b), (n, k) |
+| `gammainc`, `gammaincc`, `gammaincinv`, `gammainccinv` | (a, x), (a, x), (a, p), (a, q) |
+| `betainc`, `betaincc`, `betaincinv`, `betainccinv` | (a, b, x), (a, b, x), (a, b, p), (a, b, q) |
+| `xlogy`, `xlog1py`, `rel_entr` | (x, y) |
+| `zeta`, `jv yv iv kv jve yve ive kve` | (x, q), (v, x) |
+| `hyp1f1`, `hyp2f1` | (a, b, x), (a, b, c, z) |
+| `stdtr`, `stdtrit` | (df, t), (df, p) |
+| `chdtr`, `chdtrc`, `chdtri` | (df, x), (df, x), (df, q) |
+| `fdtr`, `fdtrc`, `fdtri` | (dfn, dfd, x), (dfn, dfd, x), (dfn, dfd, p) |
+| `pdtr`, `pdtrc`, `bdtr`, `bdtrc`, `nbdtr`, `nbdtrc` | (k, m), (k, n, p) |
+| **`chndtr`, `chndtrc`, `chndtrix`** | **(df, nc, x), (df, nc, p)**. scipy는 `chndtr(x, df, nc)`, `chndtrix(p, df, nc)` |
+| `nctdtr`, `nctdtrc`, `nctdtrit` | (df, nc, t), (df, nc, p) |
+| `ncfdtr`, `ncfdtrc`, `ncfdtri` | (dfn, dfd, nc, x), (dfn, dfd, nc, p) |
+
 ---
 
 ## §1. 특수함수 공통 규칙
 
 ### §1.1 시그니처와 이름
 - 함수 이름은 scipy.special의 이름이다. Array API에는 특수함수가 없다.
-- **입력은 모두 positional-only(`/` 앞)다.** 옵션(`out`, `axis`, `keepdims`, `k`)은 keyword-only(`*` 뒤)다.
+- **입력은 모두 positional-only(`/` 앞)다.** 옵션(`out`, `axis`, `keepdims`, `k`)은 keyword-only(`*` 뒤)다. 입력에도 이름이 있다(`help()`와 에러 메시지에 아래 시그니처의 이름이 나온다). 이름은 보여 주기만 하고 키워드로는 받지 않는다.
 - sd에 이미 있는 함수(`expm1`, `log1p`, `round` 등)는 여기에 다시 두지 않는다. 별칭(`psi`, `jn`)도 없다.
 
 ### §1.2 피연산자와 결과
@@ -35,6 +54,7 @@
 - 모든 호출은 정해진 시간 안에 끝난다 (사용자 결정 2026-11-17). 급수·연분수·반복은 횟수의 상한이 있고, 상한 안에 수렴하지 않으면 부분합이나 마지막 반복값 대신 NaN을 낸다. 보장 영역 안에서는 상한에 닿지 않는다. NaN이 되는 범위는 함수별 절에 적는다.
 - 진동 함수(`j0 j1 y0 y1 jv yv jve yve`, x < 0의 `airy`)는 상대오차 대신 `|오차| ≤ 1e-14 × 포락선`을 보장한다. 영점 근처에서는 상대오차를 정의할 수 없기 때문이다. 포락선의 식은 함수별 절에 적는다.
 - 같은 입력이면 위치, stride, 스레드 수와 상관없이 같은 비트가 나온다 (`f(x)[i] == f(x[i])`, API.md §3).
+- scipy와 같은 비트는 약속이 아니다 (사용자 결정 2026-11-20). 특수값, NaN, ±0, 극점의 규약은 아래 표대로 scipy와 같고(다른 곳은 굵게 적는다), 그 밖의 값은 위의 정확도 계약 안이면 마지막 자리가 다를 수 있다.
 - 일부 함수는 구간에 따라 Boost.Math를 부른다(S10, docs/design/special.md §5.14). 그 구간도 같은 계약을 지키고, 특수값은 이 문서의 규칙을 따른다.
 
 ### §1.5 scipy와 다른 곳
@@ -110,6 +130,7 @@ binom(n, k, /, *, out=None)
   | `polygamma(n, x)` | n이 음수·정수 아님·±inf이면 NaN | **`polygamma(inf, 1)`: scipy는 inf**. ψ⁽ⁿ⁾(1) = (−1)ⁿ⁺¹ n! ζ(n+1)은 크기가 발산하고 부호가 n마다 바뀌어 극한이 없다 |
   | `beta`, `betaln`의 0·음의 정수 인자 | scipy(Cephes `beta.c`)의 규약 | NaN이 하나라도 있으면 NaN (**scipy는 inf**) |
   | `beta(inf, 1e300)` | 0 | **scipy는 NaN** (내부의 1e6·b 오버플로) |
+  | `beta(a, b)`, a, b 모두 서브노멀 | 1/a + 1/b | B = (a + b)/(ab)·(1 + O(a + b)). 대부분 inf다(`beta(5e-324, 5e-324)`) |
   | **`beta(-inf, 1)`**, **`betaln(-inf, 1)`** | −0.0, −inf | 극한(B(a, 1) = 1/a). **scipy는 inf, inf** |
   | `binom(n, k)`, k ≥ 0 정수 | n(n−1)…(n−k+1)/k! | **음의 정수 n도** (`binom(-5, 2) = 15`, scipy NaN) |
   | **`binom(-inf, 2)`** | inf | 극한(n(n−1)/2). **scipy는 NaN** |
@@ -117,6 +138,7 @@ binom(n, k, /, *, out=None)
   | `binom(n, k)`, 거대한 k | 반사식과 Γ 비율 | `binom(-0.5, 1e300) = 5.6e-151` (**scipy −5.1e-151**), `binom(0, 1e300) = 0` (**scipy −2.9e-301**) |
   | `zeta(1)`, `zeta(inf)`, `zeta(-2n)` | inf, 1, 0 | |
   | `zeta(inf, q)` | q > 1이면 0, q = 1이면 1, 0 < q < 1이면 inf | **scipy는 q > 1에서 NaN** |
+  | `zeta(s, q)`, `polygamma(n, x)`, 음수 q·x와 큰 차수 | 값 또는 ±inf | 0 옆의 두 항((q + N − 1)⁻ˢ, (q + N)⁻ˢ)이 double을 넘을 때는 가까운 쪽의 첫 항에 대한 상대값으로 더한다(m·2ᵉ). 반정수 q이고 s가 홀수이면 두 합이 정확히 지워져 ζ(s, 1 − q)가 남는다: `zeta(1025, -0.5)` = `zeta(1025, 1.5)`, `polygamma(7000, -0.5)` = −inf, `polygamma(3000, -2.25)` = inf |
 
 ## §4. 불완전 감마와 베타
 ```
@@ -151,10 +173,14 @@ betainccinv(a, b, q, /, *, out=None)
   | `betainc(a, b, x)`, a, b < 2⁻⁷⁰⁰, 0 < x < 1 | b/(a + b) | 두 끝에 질량이 몰린 극한. `betainc(5e-324, 5e-324, 0.3) = 0.5` (2026-11-18, 전에는 1.0) |
   | `gammaincinv(a, 0)`, `gammaincinv(a, 1)` | 0, inf | `gammainccinv`은 반대. a = 0, inf이면 (0, 1) 안에서 NaN |
   | `gammaincinv(5e-324, 0.5)` | 0 | **scipy는 NaN** (근 0.5^(1/a)가 언더플로) |
-  | `betaincinv(a, b, 0)`, `betaincinv(a, b, 1)` | 0, 1 | `betainccinv`은 반대. a, b가 0이면 끝점에서도 NaN, inf이면 (0, 1) 안에서 NaN |
+  | `betaincinv(a, b, 0)`, `betaincinv(a, b, 1)` | 0, 1 | `betainccinv`은 반대. a, b가 0이면 끝점에서도 NaN |
+  | **`betaincinv(inf, b, p)`**, **`betaincinv(a, inf, p)`**, 0 < p < 1 | 1, 0 | 극한(`betainc(inf, b, x) = 0`처럼 질량이 1, 0에 몰린다; 사용자 결정 2026-11-20). `betainccinv`도 같은 근이다. a, b가 모두 inf이면 NaN. **scipy는 NaN** |
+  | `betaincinv(a, b, p)`, 아주 작은 모양 | 극한 꼴의 근 | 작은 모양이 곱해지지 않은 첫 항 말고는 모든 항에 그 모양이 곱해진다. 하나가 서브노멀이고 둘 다 2⁻⁷⁰⁰ 아래이면 질량 b/(a + b)와 p를 비교해 0이나 1이다. b가 min(2⁻²⁰⁰, 2⁻⁸⁰a) 아래이면(서브노멀이든 정규수든) 근은 p/b에만 달려서(`betaincinv(1, 5e-324, 5e-324)` = 1 − 1/e) p와 b를 같은 2의 거듭제곱으로 그 크기까지 키운 문제의 근이다. 서브노멀 a만 작으면 0이다 |
   | `betaincinv(2, 3, 5e-324)`, `betainccinv(2, 3, 5e-324)` | 9.07e-163, 1.0 | **scipy는 NaN** |
   | `betaincinv(0.0102, 36.2, 3.13e-169)` | 0 | **scipy는 2.2e-308** (DBL_MIN에 고정. 근은 1e-16522) |
-- **아주 작은 a의 역함수** (2026-11-19, T52): a < 2⁻⁹⁰⁰(서브노멀 a 포함)이면 double이 닿는 모든 y에서 Q(a, y) = a·E₁(y)가 반올림 안에서 맞으므로, `gammainccinv(a, q)`는 E₁(y) = c의 근이다. c = q/a는 나눗셈 한 번으로 구한다(log q − log a는 −710 근처의 두 로그의 차라 c에 1e-13의 오차를 넣고, 근의 상대오차는 c배가 된다). c > 40이면 y = e^(−c−γ), 그 밖은 이분이다. Arb 대비 Q의 상대오차는 c = 5–700에서 2.2e-16 이하다(`gammainccinv(1e-310, 5e-310)` = 0.0037974640015846885). 2⁻¹⁰²² 근처의 정규수 a에서 q < 1e-300이면(Boost를 쓰지 않는 곳) 다른 경로가 NaN이나 7e-13의 오차를 냈는데, 이 식은 거기도 같다. `gammaincinv(a, p)`는 서브노멀 a에서 p < 1이면 0이다(근이 e^(log p / a), 모든 double 아래).
+  | `betaincinv(a, b, p)`, a, b ≥ 2⁶⁰, 서브노멀 p | 정규 극한의 근 | 꼬리의 로그로 풀 수 없는 곳에서 평균 m = a/(a + b)와 표준편차 σ에 왜도 항을 더한 m + σ(z + g(z² − 1)/6)를 낸다(Cornish–Fisher). 다음 항은 근의 2⁻⁷⁴ 아래다. `betaincinv(1e100, 1e100, 5e-324)` = 0.5 |
+- **NaN이 되는 곳**: 한 모양이 약 2.3e6에서 2⁸⁰(1.2e24) 사이이고 다른 모양이 1보다 작을 때, 서브노멀 p의 `betaincinv(큰 모양, 작은 모양, p)`와 `betainccinv(작은 모양, 큰 모양, p)`(근이 x = 1 쪽에 붙는 꼬리)는 NaN이다. 꼬리의 로그를 구할 급수도 연분수도 거기에 닿지 않는다. 2⁸⁰ 위는 감마 극한으로 값을 낸다. `fdtri(dfn, dfd, p)`도 dfn/2가 그 범위이고 dfd < 2이면 같다.
+- **아주 작은 a의 역함수** (2026-11-19, T52): a < 2⁻⁹⁰⁰(서브노멀 a 포함)이면 double이 닿는 모든 y에서 Q(a, y) = a·E₁(y)가 반올림 안에서 맞으므로, `gammainccinv(a, q)`는 E₁(y) = c의 근이다. c = q/a는 나눗셈 한 번으로 구한다(log q − log a는 −710 근처의 두 로그의 차라 c에 1e-13의 오차를 넣고, 근의 상대오차는 c배가 된다). c > 40이면 y = e^(−c−γ), 그 밖은 이분이다. Arb 대비 Q의 상대오차는 c = 5–700에서 4.5e-16 이하다(`gammainccinv(1e-310, 5e-310)` = 0.0037974640015846885). 근 y 자체의 반올림이 Q를 y·|Q′/Q|배로 옮기므로, c가 아주 작아 y가 크면 Q의 상대오차는 근의 반올림의 y배까지 커진다(`gammainccinv(2⁻¹⁰²², 1e-320)`에서 1.6e-15). 근의 정확도는 §4의 역함수 기준 안이다. 2⁻¹⁰²² 근처의 정규수 a에서 q < 1e-300이면(Boost를 쓰지 않는 곳) 다른 경로가 NaN이나 7e-13의 오차를 냈는데, 이 식은 거기도 같다. `gammaincinv(a, p)`는 서브노멀 a에서 p < 1이면 0이다(근이 e^(log p / a), 모든 double 아래).
 
 ## §5. 로지스틱과 정보량
 ```
@@ -271,7 +297,7 @@ kve(v, x, /, *, out=None)
 ```
 - 차수 `v`와 인자 `x`는 실수다. 음의 `x`는 정수 차수에서만 정의되고, 그 밖은 NaN이다 (scipy와 같다).
 - 실수 인자에서 `jve`, `yve`는 `jv`, `yv`와 같은 값이다 (scipy와 같다: 스케일 인자 `exp(-|Im x|)`가 1이다).
-- 큰 차수(|v| ≫ x)는 맞는 값이지만 계산 시간이 |v|에 비례한다. 점화와 연분수는 1e7번에서 멈추고, 그보다 많이 필요한 `jv yv jve yve`는 NaN이다. 그런 곳은 둘이다. (가) x > |v| > 1e7이고 x가 (|v| + 1)²/4 아래일 때다(위로 가는 점화가 1e7걸음을 넘고, 큰 x의 Hankel 전개는 첫 항 (4v² − 1)/(8x)가 2를 넘어 받지 않는다. v = 1.2e7–2e7에서 잰 경계가 v²/x = 4.0이다). (나) |v| − x > 1e7이고 값이 0이나 무한대로 증명되지 않을 때다(연분수가 1e7항을 넘는다). x = v 근처는 값이다: `jv(2e7, 2e7)` = 0.0016479. 1e7걸음의 점화 한 번은 약 0.25초다(`yv(2e7, 1e7)` = −inf에 0.23초. 같은 점의 `jv`는 아래의 0 판정으로 바로 0이다).
+- 큰 차수(|v| ≫ x)는 맞는 값이지만 계산 시간이 |v|에 비례한다. 점화와 연분수는 1e7번에서 멈추고, 그보다 많이 필요한 `jv yv jve yve`는 NaN이다. 그런 곳은 셋이다. (가) x > |v| > 1e7이고 x가 (|v| + 1)²/4 아래일 때다(위로 가는 점화가 1e7걸음을 넘고, 큰 x의 Hankel 전개는 첫 항 (4v² − 1)/(8x)가 2를 넘어 받지 않는다. v = 1.2e7–2e7에서 잰 경계가 v²/x = 4.0이다). (나) |v| − x > 1e7이고 값이 0이나 무한대로 증명되지 않을 때다(연분수가 1e7항을 넘는다). (다) |v| ≳ 1e12이고 x가 전이 구간 |v| − x ≲ 1000·|v|^(1/3) 안에 있을 때다(x = v에서 연분수의 항 수가 약 6|v|^(1/3)로 늘고, 그 뒤의 Y 연분수와 점화가 끝나지 않는다. 1e12–2e12는 점마다 다르고, 2e12부터는 이 구간 전체가 NaN이다). x = v 근처는 |v| < 1e12에서 값이다: `jv(2e7, 2e7)` = 0.0016479, `jv(1e12, 1e12)` = 4.473e-05. x ≥ 2⁵³이고 |v| − x < 1e-12·x이면 연분수의 걸음 2/x가 반올림에 묻혀 끝나지 않는 것이 미리 보이므로 걷지 않고 바로 NaN이다(`jv(1e300, 1e300)`). 1e7걸음의 점화 한 번은 약 0.25초다(`yv(2e7, 1e7)` = −inf에 0.23초. 같은 점의 `jv`는 아래의 0 판정으로 바로 0이다).
   - **J의 0** (사용자 결정 2026-11-19): 0 < x < v에서 엄밀한 상한이 가장 작은 서브노멀의 절반(2⁻¹⁰⁷⁵ = e^−745.13) 아래임을 보이면 `jv`, `jve`는 0이다. 상한은 둘이다. DLMF 10.14.5의 |J_v(v sech α)| ≤ e^(−v(α − tanh α))(Debye의 지수)와 DLMF 10.14.4의 (x/2)^v/Γ(v + 1)(x ≪ v에서 더 좁다). 반올림을 덮으려고 e^−746.2 아래일 때만 쓴다. 예: `jv(3e7, 1.9e7)` = 0(참값 약 e^(−7.6e6); 전에는 NaN, scipy 0). 음의 정수 차수는 (−1)ⁿ·0, 음의 비정수 차수는 Y_a가 함께 들어가므로 이 판정을 쓰지 않는다.
   - **Y**: |Y_v|의 엄밀한 하한이 없어서(DLMF 10.14는 J만 다룬다) `yv`의 −inf는 넓히지 않았다. J와 Y를 함께 정하는 옛 판정(x < v/2이고 (x/2)^v/Γ(v + 1) < e^(−760)/(2v), `jv(3e7, 1.49e7)` = 0과 `yv` = −inf)만 −inf이고, 그 밖에서 |v| − x > 1e7이면 `yv`는 NaN이다(`yv(3e7, 1.9e7)`; scipy −inf).
 - **보장** (사용자 결정 2026-11-14): `iv`·`ive`(v ≥ 0 또는 정수), `kv`, `kve`는 정의역 전체에서 상대오차 1e-14다. `jv yv jve yve`는 §8.1의 진동 함수 기준이다. M = √(J_v² + Y_v²)이고, 음의 비정수 v는 모든 x에서 포락선 기준이다. 음의 비정수 v의 `iv`·`ive`는 I₋ₐ = Iₐ + (2/π)sin(aπ)Kₐ의 두 항이 상쇄할 수 있어서 |오차| ≤ 1e-14·(|Iₐ| + |(2/π)sin(aπ)Kₐ|)다(`ive`는 두 항에 e⁻ˣ를 곱한 크기). 테스트는 |v| ≤ 1000, x ≤ 1e5를 덮는다(`ive`의 참값 파일은 v ≥ 0만).
@@ -317,8 +343,9 @@ lambertw(x, /, *, k=0, out=None)
 ```
 - `hyp1f1`은 Kummer 함수 ₁F₁(a; b; x)다. `b`가 0 이하의 정수이면 극점이다.
 - `hyp2f1`은 Gauss 함수 ₂F₁(a, b; c; z)다. z < 1에서 정의된다.
+  - 다항식(a나 b가 0 이하의 정수 −n)은 급수를 그대로 더한다. 0 < z < 1에서 그 합이 1e16배 넘게 상쇄하면(교대하는 (−n)ₖ 때문에 차수 60–200부터) Pfaff 변환 ₂F₁(−n, b; c; z) = (1 − z)ⁿ ₂F₁(−n, c − b; c; z/(z − 1))의 다항식으로 더한다. c > 0이고 c − b > 0이면 모든 항이 양수다(Jacobi·Gegenbauer 다항식이 이 꼴이다): `hyp2f1(-200, 1, 2, 0.3)` = 0.016583747927031506. 그 밖은 NaN이다.
   - z ≥ 1: 다항식(a나 b가 0 이하의 정수)이면 그 값, z = 1이고 `c-a-b > 0`이면 Gauss 공식의 값이다. 그 밖은 NaN이다. **scipy는 일부 경우에 `inf`를 낸다** (docs/design/special.md §2.2).
-- `lambertw(x, *, k=0)`: `k`는 0 또는 −1인 int다. 다른 값은 `ValueError`다(long을 넘는 int도).
+- `lambertw(x, *, k=0)`: `k`는 0 또는 −1인 int다(numpy 정수도 받는다. bool과 float는 `TypeError`). int64 밖은 다른 int 인자처럼 `OverflowError: lambertw(): 'k' is out of range`이고, 그 안의 다른 값은 `ValueError`다.
   - k = 0은 x ≥ −1/e, k = −1은 −1/e ≤ x < 0에서 정의된다. 그 밖은 NaN이다.
   - 결과는 float64다. scipy는 complex를 돌려주고 `tol=`을 받는다. 우리는 둘 다 다르다.
   - **−1/e에 가장 가까운 double(−0.36787944117144233)은 분기점으로 본다**: 두 가지 모두 −1이다 (사용자 결정 2026-11-14, Boost와 같다). 그 double은 참 −1/e보다 8e-18 바깥이라 scipy는 NaN이다. 그보다 작은 x는 NaN이다.
@@ -328,7 +355,7 @@ lambertw(x, /, *, k=0, out=None)
   - `hyp2f1`: a, b ≥ 0, c > 0, c ≥ min(a, b), −1 ≤ z ≤ 0.9에서 상대 1e-14다. 그 밖은 느슨한 영역이다.
   - 느슨한 영역은 값을 내되 보장하지 않는다(사용자 결정 2026-11-18: 값 유지, 잰 최대를 적는다). 잰 최대(Arb 참값 대비 상대오차, 무작위 1.1만 점씩, 인자 크기 1e6까지): `hyp1f1` 9e-12(Tricomi 전개; Boost를 쓰는 |a|, |b| ≤ 100은 1.2e-12), `hyp2f1` 1.7e-12(z < −9이고 |c| > 1e4). 1e-12를 넘는 점은 각각 3점이었다. 정확도표에서는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 `hyp1f1`, `hyp2f1` loose 행이다. 같은 점에서 scipy는 `hyp1f1` 2.33e3 ULP, `hyp2f1` 1.83e12 ULP다(bench/special/arb/accuracy.md).
   - NaN이 되는 곳(보장 영역 밖, 2026-11-18 갱신): 손실을 아는 식이 없으면 값을 내지 않는다.
-    - `hyp1f1`: 인자 하나가 크기 1e6을 넘을 때(짧은 다항식과 큰 x의 점근식은 값). 그 안에서는 max(|a|, |b|) > 100이고 다음 가운데 어느 것도 쓸 수 없을 때다: 상쇄 손실이 1e13배 이하인 급수(1e6항까지), b > 0에서 a에 대한 점화식(53비트를 지킬 때), 큰 |x|의 점근식, Tricomi 전개(a < −1e3, b ≤ 170). 실제로는 대부분 b < 0이고 |a|나 |b|가 큰 곳이다. |a|, |b| ≤ 100은 Boost의 값을 쓴다.
+    - `hyp1f1`: 인자 하나가 크기 1e6을 넘을 때(짧은 다항식과 큰 x의 점근식은 값). 그 안에서는 max(|a|, |b|) > 100이고 다음 가운데 어느 것도 쓸 수 없을 때다: 상쇄 손실이 1e13배 이하인 급수(1e6항까지), b > 0에서 a에 대한 점화식(53비트를 지킬 때), 큰 |x|의 점근식, Tricomi 전개(a < −1e3, b ≤ 170). 대부분 b < 0이고 |a|나 |b|가 큰 곳이지만, b > 0에도 a < 0이고 x ≈ |a|·b 근처인 띠가 있다: `hyp1f1(-150.5, 1, 150)`은 NaN이다(scipy는 1e-15 안으로 맞는다). |a|, |b| ≤ 100은 Boost의 값을 쓴다.
     - `hyp2f1`: 급수가 1e6항(극한 꼴의 합은 1e5항) 안에 끝나지 않을 때, 급수의 상쇄가 1e16배를 넘을 때, 1 − z(z < −9에서는 1/(1 − z))가 1e-3 아래인데 c − a − b가 정수에서 2⁻⁴⁸–1e-3만큼 떨어져 있을 때, 극한 꼴의 합이 64배 넘게 상쇄하거나 Γ가 범위를 벗어날 때, 큰 항들이 정확히 지워진 합(전에는 0을 냈다)이다.
     - 이 정리 전에는 느슨한 영역에서 조용히 틀린 값이 났다: `hyp1f1(-1000, -100.5, 0.999)`가 4.29e152(참값 34799.142), `hyp2f1(20, 1, 1, -10)`이 0(참값 1.486e-21)이었다. 무작위 1.1만 점에서 1e-12 넘게 틀린 점이 `hyp1f1` 256 → 3, `hyp2f1` 103 → 3이 됐다(남은 최대 9e-12, 1.7e-12).
 - **특수값**: 아래 표의 굵은 줄 말고는 scipy와 같다.
@@ -351,7 +378,7 @@ loggamma(z, /, *, out=None)
 - S8부터 `erf`, `erfc`, `erfcx`, `lambertw`가 complex를 받는다. 입력이 complex(complex128 배열이나 Python complex)이면 복소 루프로 가고 결과도 complex128이다. 실수 입력은 그대로 실수 루프다(결과 float64).
 - `wofz`는 Faddeeva 함수 `w(z) = exp(-z²)·erfc(-iz)`다. 실수 입력도 결과는 complex128이다(scipy와 같다).
 - `loggamma`는 log Γ의 주가지다. 음의 실수축을 자른 평면에서 연속인 가지이고(scipy, mpmath와 같다), 자름 위의 x ± 0i는 허수부 0의 부호로 위·아래를 고른다. 실수 입력은 x > 0에서 `gammaln`과 같고, `loggamma(±0.0)`은 `inf`, x < 0은 NaN이다(scipy와 같다).
-- `lambertw(z, *, k=0)`: `k`는 int다. complex 입력은 모든 정수 가지를 받는다. 실수 입력은 그대로 0과 −1만 받는다(다른 값은 `ValueError`). `k`가 int가 아니면(bool 포함) `TypeError`다.
+- `lambertw(z, *, k=0)`: `k`는 int다. complex 입력은 |k| ≤ 2⁵³인 모든 정수 가지를 받는다(k는 double로 루프에 들어가므로 그 위는 `ValueError`, int64 밖은 `OverflowError`). 실수 입력은 그대로 0과 −1만 받는다(다른 값은 `ValueError`). `k`가 int가 아니면(bool 포함) `TypeError: lambertw(): 'k' must be an int, not float` 꼴이다.
   - 가지 자름(k = 0은 (−∞, −1/e], k ≠ 0은 (−∞, 0)) 위의 x ± 0i는 C99처럼 허수부 0의 부호로 위(+0)·아래(−0)의 극한을 고른다(사용자 결정 2026-11-14). **(−1/e, 0) 위의 x − 0i에서 k = −1은 아래쪽 극한(= k = 1 위쪽 값의 켤레)이다. scipy는 이곳에서 실수 값(위쪽)을 낸다.**
 - **오차의 정의** (사용자 결정 2026-11-14): 복소수의 상대오차는 크기 기준 |오차| / |값|이다. 실수부와 허수부를 따로 재지 않는다.
 - **보장** (사용자 결정 2026-11-14): 정의역 전체에서 아래와 같다.
@@ -382,9 +409,9 @@ loggamma(z, /, *, out=None)
 ```
 stdtr(df, t, /, *, out=None)
 stdtrit(df, p, /, *, out=None)
-chdtr(v, x, /, *, out=None)
-chdtrc(v, x, /, *, out=None)
-chdtri(v, p, /, *, out=None)
+chdtr(df, x, /, *, out=None)
+chdtrc(df, x, /, *, out=None)
+chdtri(df, q, /, *, out=None)
 fdtr(dfn, dfd, x, /, *, out=None)
 fdtrc(dfn, dfd, x, /, *, out=None)
 fdtri(dfn, dfd, p, /, *, out=None)
@@ -398,7 +425,7 @@ ndtri_exp(y, /, *, out=None)
 ```
 - 누적분포 P(X ≤ x)와 그 보수(`*c`), 역함수다. 이름과 뜻은 scipy.special과 같다.
   - `stdtr`: Student t. `stdtrit`은 `stdtr(df, t) = p`의 t다.
-  - `chdtr`: 카이제곱, `gammainc(v/2, x/2)`. `chdtri`는 **`chdtrc`의** 역함수다(scipy와 같다): `chdtrc(v, x) = p`의 x.
+  - `chdtr`: 카이제곱, `gammainc(df/2, x/2)`. `chdtri`는 **`chdtrc`의** 역함수다(scipy와 같다): `chdtrc(df, x) = q`의 x.
   - `fdtr`: F 분포. `fdtri`는 `fdtr(dfn, dfd, x) = p`의 x다.
   - `pdtr`: 포아송, `bdtr`: 이항, `nbdtr`: 음이항(n번째 성공 전의 실패 수, 성공 확률 p).
   - `ndtri_exp(y)`: `ndtri(exp(y))`. `exp(y)`가 언더플로하는 y도 double의 끝(−1.8e308)까지 계산한다(2026-11-19; 전에는 −2y가 넘치는 y ≤ −8.99e307에서 NaN이었다).
@@ -412,6 +439,11 @@ ndtri_exp(y, /, *, out=None)
   | `stdtr(df, ±inf)`, `stdtr(df, 0)` | 1 / 0, 0.5 | df ≤ 0, NaN이면 NaN |
   | **`stdtrit(df, 0)`**, `stdtrit(df, 1)` | −inf, inf | p = 0의 분위수. **scipy는 `stdtrit(df, 0)`에서 inf** |
   | `stdtrit(3, 5e-324)` | −6.07e107 | **scipy는 inf** |
+  | `stdtrit(df, p)`, df < 2⁻¹⁰⁰⁰ | p < 0.5이면 −inf, p > 0.5이면 inf | \|t\| = √df·(q·a·B)^(−1/df)가 double을 넘는다 |
+  | `stdtr(df, t)`, 서브노멀 df, t ≠ 0 유한 | 0.5 | df → 0에서 질량이 ±∞로 반씩 간다. df = 5e-324의 df/2는 double이 아니라 반을 a·B(a, 1/2) → 1의 극한으로 들고 간다 |
+  | `chdtr(df, 0)`, `chdtrc(df, 0)`, df > 0 | 0, 1 | 서브노멀 df도(df > 0에는 0의 점질량이 없다) |
+  | `chdtri(df, q)`, 마지막 비트가 홀수인 서브노멀 df | Q(df, y) = 2q의 근의 2배 | df/2가 double이 아니다. Q(a, y)는 a → 0에서 a에 선형이라 Q(df/2, y) = Q(df, y)/2. q > 1/2이면 0 |
+  | `fdtri(dfn, dfd, p)`, dfn이나 dfd가 5e-324 | 극한 | dfn만이면 0(분포가 0에 몰린다), dfd만이면 inf(p ≤ 1/2이면 dfd에 대해 선형인 `fdtr`로 2p의 근), 둘 다 2⁻⁶⁹⁹ 아래이면 질량 dfd/(dfn + dfd)와 p를 비교해 0이나 inf |
   | `chdtr(0, x)`, x > 0 | 1 | `chdtr(0, 0)`은 NaN(scipy와 같다) |
   | **`fdtr(dfn, inf, x)`** | `gammainc(dfn/2, dfn·x/2)` | 극한(dfn·F → 카이제곱). **scipy는 NaN** |
   | **`fdtr(inf, dfd, x)`** | `gammaincc(dfd/2, dfd/(2x))` | 극한(dfd/F → 카이제곱). **scipy는 NaN** |
@@ -440,12 +472,12 @@ chndtrix(df, nc, p, /, *, out=None)
 nctdtr(df, nc, t, /, *, out=None)
 nctdtrc(df, nc, t, /, *, out=None)
 nctdtrit(df, nc, p, /, *, out=None)
-ncfdtr(dfn, dfd, nc, f, /, *, out=None)
-ncfdtrc(dfn, dfd, nc, f, /, *, out=None)
+ncfdtr(dfn, dfd, nc, x, /, *, out=None)
+ncfdtrc(dfn, dfd, nc, x, /, *, out=None)
 ncfdtri(dfn, dfd, nc, p, /, *, out=None)
 ```
 - 비중심 카이제곱·t·F의 누적분포 P(X ≤ x), 위꼬리 P(X > x)(`*c`), 아래꼬리의 역함수다. nc는 비중심 모수다(카이제곱·F는 λ ≥ 0, t는 δ, 부호가 있다).
-- **인자 순서** (T2 결정): 모든 함수에서 x(또는 p)가 맨 뒤다. **scipy의 `chndtr(x, df, nc)`, `chndtrix(p, df, nc)`와 순서가 다르다.** §13의 `chdtr(v, x)`와 다른 비중심 함수에 맞췄다.
+- **인자 순서** (T2 결정): 모든 함수에서 x(또는 p)가 맨 뒤다. **scipy의 `chndtr(x, df, nc)`, `chndtrix(p, df, nc)`와 순서가 다르다.** §13의 `chdtr(df, x)`와 다른 비중심 함수에 맞췄다(머리말의 순서 표).
 - **위꼬리** (T2 결정): `chndtrc nctdtrc ncfdtrc`는 scipy.special에 없는 이름이다. 1에서 빼지 않고 직접 더하므로 꼬리에서도 상대 정확도가 유지된다. 매개변수에 대한 역함수(scipy의 `chndtridf`, `nctdtrinc` 등)는 두지 않는다.
 - **계산**: 카이제곱·F는 포아송 혼합 Σ_j e^(−λ/2)(λ/2)^j/j! · G(j)이다. G는 불완전 감마·베타이고, 두 꼬리 모두 양의 항만 더한다. t는 같은 꼴의 두 급수다. 다만 δ와 반대쪽 꼬리는 그 두 급수가 상쇄하므로 T = (Z + δ)/√(V/df)의 적분으로 계산한다. 역함수는 작은 쪽 꼬리를 브래킷과 Brent법으로 푼다. 자세한 것은 docs/design/special.md §5.16에 있다.
 - **특수값** (참값·극한, T1·T2 결정). scipy와 다른 곳은 굵게 적었다.
@@ -468,10 +500,11 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   | **`ncfdtr(inf, dfd, nc, f)`** | `fdtr(inf, dfd, f)` | 분자 → 1. **scipy는 NaN** |
   | **`ncfdtr(dfn, dfd, inf, f)`** | 0 (`ncfdtrc`는 1) | **scipy는 NaN**. f도 inf이면 NaN |
   | 역함수의 p = 0, 1 | 정의역의 두 끝(0 또는 −inf, inf) | |
+  | `chndtr(df, nc, x)`, Chernoff 한계가 e⁻¹⁰⁰⁰ 아래인 꼬리 | 0 또는 1 | 적률생성함수에서 P(X ≤ x) ≤ e^(x/2)·2^(−df/2)·e^(−nc/4), P(X ≥ x) ≤ e^(−x/4)·2^(df/2)·e^(nc/2). 합을 걷기 전에 거른다: `chndtr(1, 1e16, 1)` = 0 |
 - **보장 영역** (사용자 결정 2026-11-15): 아래 '잰 범위' 전체다. 순방향 6개는 상대오차 1e-14(약 45 ULP), 역함수 `chndtrix nctdtrit ncfdtri`는 §4처럼 `|Δx/x| ≤ 1e-14·max(1, κ)`다. 결과가 서브노멀이면 docs/design/special.md §2.3의 절대오차 규칙을 따른다. `chndtr(0, nc, 0)` = NaN(`chdtr(0, 0)`과 일관)도 같은 날 확정했다.
   - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
   - 같은 점에서 scipy(Boost, bench/special/arb/accuracy.md): 최대 7e3 ULP(`ncfdtrc`)부터 8.8e15 ULP(0이나 엉뚱한 값), inf·NaN(역함수)까지.
   - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).
-  - NaN이 되는 곳(잰 범위 밖, 2026-11-18): `ncfdtr`·`ncfdtrc`는 먼 꼬리에서 구한 쪽의 보수가 1/64 아래일 때(dfn이나 dfd ≤ 1e-10에서만 봤다. 전에는 `ncfdtr(1e7, 1e-300, 2, 0.1)`이 참값 3.4e-298 대신 2.2e-16). `chndtrix nctdtrit ncfdtri`는 nc ≠ 0이고 p < 2⁻¹⁰²²(서브노멀)일 때다(전에는 9–16% 틀렸다). t 함수는 |nc| < 2⁻⁵⁰⁰이면 중심 분포의 값이다.
+  - NaN이 되는 곳(잰 범위 밖): 포아송 혼합을 걷는 길이가 2¹⁸걸음에서 멈추므로(정해진 시간), 비중심 모수가 크면 분포의 중심에서 NaN이다. 카이제곱·F는 λ ≳ 4e9(λ/2 ≳ 2e9)부터 중심 근처에서, λ ≥ 9e15(무게의 최빈값이 2⁵²를 넘는다)부터는 위의 Chernoff 한계로 걸러지지 않는 모든 x에서 NaN이다(`chndtr(1, 4e9, 4e9)`, `chndtrix(1, 1e10, 0.5)`). t는 |δ| ≳ 3.9e4(δ²/2 ≈ 7.6e8)부터 모든 t에서 NaN이다(`nctdtr(10, 4e4, 4e4)`, `nctdtrit(3.64e23, 51019.1, 0.0564)`). 모두 몇 ms 안에 끝난다. `ncfdtr`·`ncfdtrc`는 먼 꼬리에서 구한 쪽의 보수가 1/64 아래일 때(dfn이나 dfd ≤ 1e-10에서만 봤다. 전에는 `ncfdtr(1e7, 1e-300, 2, 0.1)`이 참값 3.4e-298 대신 2.2e-16). `chndtrix nctdtrit ncfdtri`는 nc ≠ 0이고 p < 2⁻¹⁰²²(서브노멀)일 때다(전에는 9–16% 틀렸다). t 함수는 |nc| < 2⁻⁵⁰⁰이면 중심 분포의 값이다.
   - 잰 범위 밖의 값은 보장하지 않는다(사용자 결정 2026-11-18: 값 유지): `nctdtr`·`nctdtrc`는 df ≤ 1e-3에서 상대 2.4e-13까지 틀린 점이 있었다(극단 인자 점검의 23점).
   - 그 밖(거대한 t·f에서 작은 인자가 2⁻¹⁰⁰⁰ 아래인 꼬리)은 첫 항 y^b로 계산한다. mpmath와 1e-16 수준으로 맞지만 보장하지 않는다.

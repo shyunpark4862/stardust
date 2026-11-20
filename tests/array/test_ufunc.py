@@ -189,6 +189,8 @@ def reference_binary(name, a, b, loop):
 def check(got, want, name, loop):
     if name in VFORCE and loop is F:
         assert_ulp(got, want, 8)
+    elif name == "abs" and loop is C:  # sqrt(fma(re, re, im*im)), 1.5 ULP; numpy's cabs is up to 1.9 ULP off
+        assert_ulp(got, want, 4)
     else:
         assert_same(got, want)
 
@@ -255,7 +257,7 @@ def test_random_strided_broadcast_operands(data):
 
 
 def test_complex_arithmetic_on_random_values():
-    # Complex multiply/divide/square/abs use numpy's exact formulas, including
+    # Complex multiply/divide/square use numpy's exact formulas, including
     # where its compiler fused a multiply-add (see scalar_ops.hpp).
     rng = np.random.default_rng(0)
     a = rng.standard_normal(5000) * 10.0 ** rng.integers(-5, 5, 5000) + 1j * rng.standard_normal(5000)
@@ -264,8 +266,12 @@ def test_complex_arithmetic_on_random_values():
     with np.errstate(all="ignore"):  # numpy warns on overflow; stardust never does
         for name in ("add", "subtract", "multiply", "divide", "pow"):
             assert_same(getattr(sd, name)(sa, sb), getattr(np, name)(a, b))
-        for name in ("square", "abs", "sqrt", "exp", "expm1", "log", "log1p", "log2", "log10", "sign", "tanh"):
+        for name in ("square", "sqrt", "exp", "log", "log1p", "log2", "log10", "sign", "tanh"):
             assert_same(getattr(sd, name)(sa), getattr(np, name)(a))
+        assert_ulp(sd.abs(sa), np.abs(a), 4)  # not numpy's cabs formula: within the 1.5 ULP contract of each
+        # sin and cos of the imaginary part may come from one sincos call: 2 ULP of numpy
+        finite = np.isfinite(np.expm1(a))
+        assert_ulp(sd.expm1(sa)[sd.asarray(finite)], np.expm1(a)[finite], 2)
     small = sd.asarray(np.arange(-5, 6) + 0j)
     assert_same(sd.pow(sa[:11], small), np.power(a[:11], np.arange(-5, 6) + 0j))  # integer-exponent path
 

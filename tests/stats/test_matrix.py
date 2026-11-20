@@ -159,7 +159,7 @@ def test_moments_match_scipy():
     for df in (2.5, 4.0, 7.5):
         W, Ws = S.Wishart(df=df, scale=sd.asarray(V)), st.wishart(df, V)
         np.testing.assert_allclose(np.asarray(W.mean()), Ws.mean(), rtol=1e-14)
-        np.testing.assert_allclose(np.asarray(W.var()), Ws.var(), rtol=1e-14)
+        np.testing.assert_allclose(np.asarray(W.variance()), Ws.var(), rtol=1e-14)
         if df >= 4.0:
             np.testing.assert_allclose(np.asarray(W.mode()), Ws.mode(), rtol=1e-14)
         else:
@@ -167,14 +167,14 @@ def test_moments_match_scipy():
     I, Is = S.InverseWishart(df=8.0, scale=sd.asarray(V)), st.invwishart(8.0, V)
     np.testing.assert_allclose(np.asarray(I.mean()), Is.mean(), rtol=1e-14)
     np.testing.assert_allclose(np.asarray(I.mode()), Is.mode(), rtol=1e-14)
-    np.testing.assert_allclose(np.asarray(I.var()), Is.var(), rtol=1e-13)
+    np.testing.assert_allclose(np.asarray(I.variance()), Is.var(), rtol=1e-13)
     # divergence, as InverseGamma: the mean diverges for df <= p + 1, the variance is inf for
     # p + 1 < df <= p + 3 and NaN below
     Vd = np.array([[2.0, 0.0], [0.0, 1.0]])
     m = np.asarray(S.InverseWishart(df=2.5, scale=sd.asarray(Vd)).mean())
     assert m[0, 0] == math.inf and m[0, 1] == 0.0
-    assert np.isinf(np.asarray(S.InverseWishart(df=4.5, scale=sd.asarray(Vd)).var())).all()
-    assert np.isnan(np.asarray(S.InverseWishart(df=2.5, scale=sd.asarray(Vd)).var())).all()
+    assert np.isinf(np.asarray(S.InverseWishart(df=4.5, scale=sd.asarray(Vd)).variance())).all()
+    assert np.isnan(np.asarray(S.InverseWishart(df=2.5, scale=sd.asarray(Vd)).variance())).all()
     # p = 1: the inverse Wishart is InverseGamma(df/2, scale/2)
     for df in (1.5, 3.0, 5.5, 9.0):
         I1 = S.InverseWishart(df=df, scale=sd.asarray([[3.0]]))
