@@ -112,7 +112,7 @@ void working(const Model& M, const State& s, double* z, double* w, double* rho) 
 시작값은 R의 `family$initialize`와 같아요. 이항은 $\mu_0 = (m y + \tfrac12)/(m + 1)$, 포아송은 $y + \tfrac1{10}$, 정규와 감마는 $y$이고, $\eta_0 = g(\mu_0)$에서 $\mu$를 다시 구해 첫 상태로 삼아요(`glm.fit`과 같아요).
 
 ```cpp
-// csrc/regression/glm.cpp (start)
+    // csrc/regression/glm.cpp (start)
     for (lint i = 0; i < n; ++i) {
         const double y = M.y[i];
         switch (M.fam) {
@@ -165,7 +165,7 @@ R `glm.fit`의 판정 그대로예요. 척도와 상관없는 상대 판정이�
 - $\lVert d_t\rVert$ 자체가 그 아래이거나, $r \gt 1/2$로 걸음이 줄지 않으면(반올림의 바닥) 멈춰요.
 
 ```cpp
-// csrc/regression/glm.cpp (irls, 편차의 판정 뒤)
+            // csrc/regression/glm.cpp (irls, 편차의 판정 뒤)
             const double lim = 0x1p-50 * bn;
             if (step <= lim) {
                 polished = true;
@@ -250,14 +250,14 @@ True
 정규방정식은 조건수를 제곱해요. 해의 상대오차가 $\kappa(X^{\mathsf T}WX)u$ 정도예요($u = 2^{-53}$). 그래도 중간 반복에서는 괜찮아요. 걸음에 상대오차 $e$가 있으면 이차 수렴 앞에서 반복이 걸음마다 오차를 $e$배로만 줄이는데, 편차의 판정에 필요한 계수 정확도가 $\sqrt{\text{tol}} = 10^{-4}$ 정도라서 $e \le 10^{-4}$이면 반복 수가 QR과 같아요. 그래서 LAPACK `trcon`으로 어림한 Cholesky 인자의 조건수 $\kappa(U)$로 $\kappa(U)^2 \cdot 2^{-53} \gt 10^{-4}$(대략 $\kappa(\sqrt W X) \gtrsim 10^6$)이면 그 반복은 QR로 가요.
 
 ```cpp
-// csrc/regression/glm.cpp (solve_chol)
+    // csrc/regression/glm.cpp (solve_chol)
     if (linalg::lapack::potrf('U', kk, U, kk) > 0) return false;
     const double rc = linalg::lapack::trcon_1('U', kk, U, kk);
     if (!(rc > 0.0) || 0x1p-53 / (rc * rc) > max_err) return false;
 ```
 
 ```cpp
-// csrc/regression/glm.cpp (solve_chol, 같은 함수)
+    // csrc/regression/glm.cpp (solve_chol, 같은 함수)
     lint m = 0;
     for (lint i = 0; i < n; ++i) m += w[i] > 0.0;
     const double tol = M.rtol >= 0 ? M.rtol : static_cast<double>(std::max(m, kk)) * 0x1p-52;
@@ -316,7 +316,7 @@ $$
 이에요($\phi$는 빼고 썼어요). $c_i$는 $h(\eta) = \mu'/V$의 도함수에 $y - \mu$를 곱한 것이고, 정준 링크는 $\mu' = V$라서 $h \equiv 1$, 곧 $c_i = 0$이에요. 그래서 관측 정보는 $\mathcal I_O = X^{\mathsf T}(W - C)X$이고($C = \operatorname{diag}(c_i)$), 정준 링크에서만 기대 정보와 같아요.
 
 ```cpp
-// csrc/regression/glm.cpp (obs_correction)
+            // csrc/regression/glm.cpp (obs_correction)
             const double V = variance(M.fam, mu, muc);
             double Vp = 0.0;  // V'(mu)
             switch (M.fam) {
@@ -353,7 +353,7 @@ $$
 예요($T = 0$이면 OLS의 보정과 같아요). 잔차 $g = -X^{\mathsf T}Wr - X^{\mathsf T}C(X\beta - \eta_0)$는 double-double로 더해요. Gram 행렬 $X^{\mathsf T}CX$를 만들지 않으므로 $\kappa(X)^2$이 들어오지 않고, $I - T$의 조건수(관측 정보와 기대 정보의 비)만 개선의 멈춤 규칙에 곱해요.
 
 ```cpp
-// csrc/regression/linear.cpp (fit_one)
+    // csrc/regression/linear.cpp (fit_one)
     // Newton's step: I - T = U^T U (else Fisher's stays), beta = b0 + R^-1 (I - T)^-1 (c_1 - R b0)
     // as the start the refinement corrects
     if (newton && kk > 0) {
@@ -399,7 +399,7 @@ $\kappa \le 10^8$에서 $3.5\times10^{-15}$ 안으로 정준 링크와 같은 �
 판정 전에도 Fisher 득점법이 느리면 뉴턴으로 넘어가요. 걸음이 직전 걸음의 1/2 아래로 줄지 않는 반복(반감하지 않았고, 직전 계수가 있는 반복)이 3번 이어지면, 남은 반복을 같은 얇은 $Q$의 뉴턴 걸음으로 해요(걸음 반감은 그대로예요). 정준 링크는 두 걸음이 같으니 정준이 아닌 링크만 해당해요.
 
 ```cpp
-// csrc/regression/glm.cpp (irls)
+        // csrc/regression/glm.cpp (irls)
         if (!conv && !newton_mode && newton > 1 && !canonical(M)) {
             // the ratio of successive Fisher steps; a halved step, the first one and an
             // iteration from a state without coefficients say nothing about the rate
@@ -496,7 +496,7 @@ $$
 이면 $b$가 무한대로 가는 방향이고 $S$가 그 행들이에요. 내적은 `two_prod`·`two_sum`으로 정확히 더해요. 오른쪽은 반올림보다 확실히 큰 여유인데, 그 크기를 사영한 $b$가 아니라 사영 전의 $d$로 재요. 나머지 행이 영공간을 남기지 않으면(나머지 행만으로 계수가 모두 정해지면) $b$는 $d$에서 거의 같은 값을 뺀 반올림 잡음이에요. 기준을 $b$ 자신의 크기로 두면 잡음을 잡음과 견주게 되어 우연히 통과할 수 있어요. $d$의 크기에 비하면 그런 잡음은 $\sqrt u$배보다 훨씬 작아서 걸러져요. 조건을 못 지킨 행은 $S$에서 빼고 다시 사영해요. 남는 $S$가 없으면 분리가 아니에요(느린 수렴이나 `max_iter`에 닿은 반복 같은 경우이고, 결과를 그대로 내요).
 
 ```cpp
-// csrc/regression/glm.cpp (direction)
+        // csrc/regression/glm.cpp (direction)
         std::vector<lint> good;
         for (lint i : S) {
             double P = 0.0, Sd = 0.0, mag = 0.0;
@@ -639,7 +639,7 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 그래서 커널이 IRLS 전에 쓰인 행(가중치 > 0)의 $y$를 보고, 정확히 한 값 $y_0$이면 링크의 값 $\eta_0 = g(y_0)$, $\eta_0$에서의 $d\mu/d\eta$, 분산 $V(y_0)$를 한 번 구해 둬요. $\eta_0$가 유한해야 정확한 해가 있어요. 이항의 $y$가 모두 0이면 네 링크 모두, 모두 1이면 logit·probit·cloglog가 $\pm\infty$이고, 포아송 log의 $y$가 모두 0이면 $\log 0 = -\infty$예요. 그런 자료는 이 길을 타지 않고 분리와 경계의 규칙 그대로예요(위 분리의 증명서 절). $\eta_0$가 유한하면 $V(y_0)$가 길을 둘로 나눠요. $V(y_0) > 0$이면 $y_0$가 분포족의 범위 안이라 IRLS를 그대로 돌리고 그 결과를 정확한 해로 바꿔요. $V(y_0) = 0$이면 $y_0$가 범위의 경계라 IRLS를 건너뛰어요(아래 경계의 상수 $y$ 절).
 
 ```cpp
-// csrc/regression/glm.cpp (glm_one)
+    // csrc/regression/glm.cpp (glm_one)
     // y exactly constant over the fit's rows (y0) with an intercept and no offset, g(y0) finite:
     // the exact solution (g(y0), 0, ..., 0) for every family and link. With y0
     // inside the family's range (V(y0) > 0) the iterations run and their result is replaced (§5);
@@ -686,7 +686,7 @@ array([0.9999999999999997, 1.1547005383792512], dtype=float64)
 - $d\mu/d\eta$가 $\eta_0$에서 유한하고 0이 아니에요(작업 잔차를 그것으로 나눠요).
 
 ```cpp
-// csrc/regression/glm.cpp (glm_one)
+    // csrc/regression/glm.cpp (glm_one)
     // y constant inside the family's range (see bconst above): the iterations leave rounding
     // in place of the exact solution (a slope of 1e-32, a scale of 1e-66 and a spurious t)
     const bool gconst = (yconst && !bconst && !separated && have_beta && o.kept[0] && V0 > 0.0 &&
@@ -878,7 +878,7 @@ True
 빵은 관측 정보의 역행렬이에요. statsmodels가 `model.hessian(observed=True)`로 하는 것과 같아요. R의 `sandwich`는 기대 정보를 써서 정준이 아닌 링크의 값이 달라요. 관측 정보는 $R^{\mathsf T}(I - T)R$이라 빵은 $R^{-1}(I - T)^{-1}R^{-\mathsf T}$이고, $I - T$의 Cholesky 인자로 고기를 양쪽에서 풀어요. $X^{\mathsf T}X$를 만들지 않아요. $I - T$가 양정치가 아니면(최대점이 아니면) 공분산이 NaN이에요. 정준 링크는 $c = 0$이라 OLS와 같은 계산이에요.
 
 ```cpp
-// csrc/regression/linear.cpp (fit_one)
+    // csrc/regression/linear.cpp (fit_one)
     if (oim) {
         // the bread (R^T (I - T) R)^-1 = R^-1 (I - T)^-1 R^-T: with I - T = U^T U (Cholesky; it is
         // positive definite at a maximum of the likelihood), the meat becomes U^-1 U^-T S U^-1 U^-T

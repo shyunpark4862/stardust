@@ -113,7 +113,7 @@ MAX_CALLS = 1 << 24
 배치 크기와 배치 수를 정하는 부분이에요.
 
 ```python
-# bench/speed/harness.py (measure)
+    # bench/speed/harness.py (measure)
     n = 1
     per = first
     if first < target_s:
@@ -139,7 +139,7 @@ MAX_CALLS = 1 << 24
 최솟값만 보면 그 측정이 얼마나 흔들렸는지 알 수 없어요. 그래서 배치들의 중앙값을 함께 남기고, 둘의 차이를 **잡음 폭**으로 써요.
 
 ```python
-# bench/speed/harness.py (Sample)
+    # bench/speed/harness.py (Sample)
     @property
     def noise(self) -> float:
         """The noise band: how far the median batch lies above the best one."""
@@ -210,7 +210,7 @@ numpy, scipy, sd의 BLAS·LAPACK은 모두 Accelerate예요. Accelerate는 스�
 그래서 감독 프로세스는 BLAS 스레드 설정마다 측정 프로세스를 따로 띄워요.
 
 ```python
-# bench/speed/run.py (WorkerHandle.__init__)
+        # bench/speed/run.py (WorkerHandle.__init__)
         env = dict(os.environ)
         env.pop("VECLIB_MAXIMUM_THREADS", None)
         if blas_threads is not None:
@@ -237,7 +237,7 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
 사례 하나는 **한 크기에서의 호출 하나**예요. 데이터를 만드는 `setup`과, 그 데이터를 받아 잴 함수를 돌려주는 공장(factory)으로 이루어져요. numpy 배열을 sd 배열로 바꾸거나 상수 열을 붙이는 변환은 `setup`이나 공장에서 해서 시간에 들어가지 않게 해요. regression의 실제 사례 하나예요.
 
 ```python
-# bench/speed/cases/regression.py (_ols_case)
+    # bench/speed/cases/regression.py (_ols_case)
     return Case(
         area="regression",
         group="최소제곱",
@@ -490,7 +490,7 @@ CPU 계수기를 읽을 수 없는 기계에서는 1분 부하가 3을 넘을 �
 판단의 중심은 이 몇 줄이에요.
 
 ```python
-# bench/speed/compare.py (compare)
+        # bench/speed/compare.py (compare)
         band = max(t.get("noise") or 0.0, bt.get("noise") or 0.0)
         busy = bool(c.get("busy") or base[c["id"]].get("busy"))
 ```
