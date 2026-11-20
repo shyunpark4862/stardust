@@ -6,6 +6,7 @@ summary: stardust의 여덟 영역이 어떤 층으로 쌓이고 서로 어떻�
 seeAlso: [python-boundary, threads]
 ---
 import Steps from '../../../components/fig/Steps.astro';
+import RepoMap from '../../../components/fig/RepoMap.astro';
 import Layers from '../../../components/fig/Layers.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import Callout from '../../../components/Callout.astro';
@@ -194,44 +195,38 @@ NB_MODULE(_core, m) {
 
 ## 디렉터리 지도
 
-```text
-stardust/
-  pyproject.toml            scikit-build-core 설정 (빌드 백엔드, Release, editable 재빌드)
-  CMakeLists.txt            _core 타깃 하나, 컴파일 플래그
-  third_party/boost_math/   sd.special이 쓰는 Boost.Math 헤더 125개 (고치지 않음)
-  src/stardust/             Python 패키지 (위 표)
-  csrc/
-    base/                   dtype.hpp  buffer.*  pairwise.hpp  saturate.hpp
-    parallel/               pool.*
-    accelerate/             blas.hpp  vforce.hpp
-    array/                  ndarray.*  iter.*  convert.*  parallel_limits.hpp
-      kernels/              elementwise buffered cast scalar_ops neon vforce reduce sort simd_sort
-      ops/                  asarray copy creation dlpack dtype_info histogram indexing manipulation
-                            matmul quantile covariance reduction searching shape sort ufunc
-                            lanes.hpp pieces.hpp
-    linalg/                 args batch pack cost errors input outblock pyrefs types pairwise lapack
-      ops/                  lu basic norms vnorm factor qr spectral svals nonsym special expm
-    frame/                  column bitmap convert interop parallel.hpp
-      ops/                  cast elementwise groupby hash join reduce selection sort radix parse pow5_table
-      io/                   csv
-    special/                common dd cplx gamma_core halley prefix cost reduce coeffs/
-      ops/  kernels/        함수별 헤더, NEON + vForce 덩어리 커널
-    stats/                  engine numeric chunk chunk_dd cost_table discrete sample sample_dist
-                            mvcdf dd_linalg coeffs/
-      dist/                 normal t_f gamma beta exponential uniform laplace cauchy lognormal weibull
-                            extreme lifetime noncentral two_point discrete_basic discrete_more
-    random/                 philox.hpp  random.*
-    regression/             linear glm penalized robust slopes quantile lsq.hpp dot2.hpp
-    optimize/               scalar batch nelder_mead bfgs lbfgsb newton_cg trust lsq hybrd linear
-                            objective.hpp wolfe.hpp hessian.hpp diff.hpp minpack.hpp
-    bind/                   module array_bind pyutil errors nary_bind
-                            linalg_bind frame_bind special_bind regression_bind optimize_bind
-                            stats_bind stats_sample stats_desc stats_mv stats_mvcdf stats_matrix
-  tests/                    array/ linalg/ frame/ special/ stats/ random/ regression/ optimize/ interop/
-                            test_build.py  test_error_messages.py  test_gil_release.py  test_out_of_range.py
-  bench/                    array/ linalg/ frame/ special/ stats/ random/ regression/ optimize/  merge/ (골든 출력)
-  docs/design/  docs/api/   영역별 설계 문서와 API 문서
-```
+<Fig column caption="저장소의 디렉터리. C++ 코어는 영역마다 폴더 하나이고, 모든 영역이 바닥 세 폴더 위에 서요. 확장자를 뺀 이름은 그 이름의 .hpp나 .cpp(둘 다인 것도 있어요)이고, .*는 같은 이름의 .hpp와 .cpp예요.">
+  <RepoMap
+    top={[
+      { name: 'pyproject.toml', note: 'scikit-build-core 설정(빌드 백엔드, Release, editable 재빌드)' },
+      { name: 'CMakeLists.txt', note: '_core 타깃 하나와 컴파일 플래그' },
+      { name: 'src/stardust/', note: 'Python 패키지(위 표)' },
+      { name: 'csrc/', note: 'C++ 코어(아래)' },
+      { name: 'third_party/boost_math/', note: 'sd.special이 쓰는 Boost.Math 헤더 125개(고치지 않아요)' },
+      { name: 'tests/', note: '영역별 폴더(array/ … optimize/, interop/)와 영역을 가로지르는 test_*.py' },
+      { name: 'bench/', note: '영역별 측정과, merge/의 골든 출력' },
+      { name: 'docs/', note: 'design/과 api/: 영역별 설계 문서와 API 문서' },
+    ]}
+    groups={[
+      { title: '영역', note: 'csrc/', cards: [
+          { name: 'array/', area: 'array', files: ['ndarray.*', 'iter.*', 'convert.*', 'parallel_limits.hpp'], subs: [{ name: 'kernels/', files: ['elementwise', 'buffered', 'cast', 'scalar_ops', 'neon', 'vforce', 'reduce', 'sort', 'simd_sort'] }, { name: 'ops/', files: ['asarray', 'copy', 'creation', 'dlpack', 'dtype_info', 'histogram', 'indexing', 'manipulation', 'matmul', 'quantile', 'covariance', 'reduction', 'searching', 'shape', 'sort', 'ufunc', 'lanes.hpp', 'pieces.hpp'] }] },
+          { name: 'linalg/', area: 'linalg', files: ['args', 'batch', 'pack', 'cost', 'errors', 'input', 'outblock', 'pyrefs', 'types', 'pairwise', 'lapack'], subs: [{ name: 'ops/', files: ['lu', 'basic', 'norms', 'vnorm', 'factor', 'qr', 'spectral', 'svals', 'nonsym', 'special', 'expm'] }] },
+          { name: 'frame/', area: 'frame', files: ['column', 'bitmap', 'convert', 'interop', 'parallel.hpp'], subs: [{ name: 'ops/', files: ['cast', 'elementwise', 'groupby', 'hash', 'join', 'reduce', 'selection', 'sort', 'radix', 'parse', 'pow5_table'] }, { name: 'io/', files: ['csv'] }] },
+          { name: 'special/', area: 'special', files: ['common', 'dd', 'cplx', 'gamma_core', 'halley', 'prefix', 'cost', 'reduce', 'coeffs/'], subs: [{ name: 'ops/', note: '함수별 헤더' }, { name: 'kernels/', note: 'NEON + vForce 덩어리 커널' }] },
+          { name: 'stats/', area: 'stats', files: ['engine', 'numeric', 'chunk', 'chunk_dd', 'cost_table', 'discrete', 'sample', 'sample_dist', 'mvcdf', 'dd_linalg', 'coeffs/'], subs: [{ name: 'dist/', files: ['normal', 't_f', 'gamma', 'beta', 'exponential', 'uniform', 'laplace', 'cauchy', 'lognormal', 'weibull', 'extreme', 'lifetime', 'noncentral', 'two_point', 'discrete_basic', 'discrete_more'] }] },
+          { name: 'regression/', area: 'regression', files: ['linear', 'glm', 'penalized', 'robust', 'slopes', 'quantile', 'lsq.hpp', 'dot2.hpp'] },
+          { name: 'optimize/', area: 'optimize', files: ['scalar', 'batch', 'nelder_mead', 'bfgs', 'lbfgsb', 'newton_cg', 'trust', 'lsq', 'hybrd', 'linear', 'objective.hpp', 'wolfe.hpp', 'hessian.hpp', 'diff.hpp', 'minpack.hpp'] },
+          { name: 'random/', area: 'random', files: ['philox.hpp', 'random.*'] },
+      ] },
+      { title: '바닥과 바인딩', note: 'csrc/', cards: [
+          { name: 'base/', files: ['dtype.hpp', 'buffer.*', 'pairwise.hpp', 'saturate.hpp'] },
+          { name: 'parallel/', files: ['pool.*'] },
+          { name: 'accelerate/', files: ['blas.hpp', 'vforce.hpp'] },
+          { name: 'bind/', files: ['module', 'array_bind', 'pyutil', 'errors', 'nary_bind', 'linalg_bind', 'frame_bind', 'special_bind', 'regression_bind', 'optimize_bind', 'stats_bind', 'stats_sample', 'stats_desc', 'stats_mv', 'stats_mvcdf', 'stats_matrix'] },
+      ] },
+    ]}
+  />
+</Fig>
 
 테스트는 Python으로만 써요(pytest와 hypothesis). C++ 단위 테스트는 없어요. 테스트 코드는 약 31,000줄이에요.
 

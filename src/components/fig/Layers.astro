@@ -24,6 +24,19 @@ interface Props {
   layers: Layer[];
 }
 const { layers } = Astro.props;
+// Boxes per row: at most four, and few enough that the longest file name
+// fits a box on one line (the text column holds about 66 code characters
+// across). Boxes that do not fit one row are split into rows as even as
+// possible, longer rows first: 7 → 3 + 2 + 2, 8 → 4 + 4, 5 → 3 + 2.
+const rowsOf = (items: Item[]) => {
+  const n = items.length;
+  const longest = Math.max(...items.flatMap((it) => it.name.split(/[\s,]+/).map((w) => w.length)));
+  const most = Math.min(4, Math.max(2, Math.floor(66 / (longest + 4))), n);
+  const count = Math.ceil(n / most);
+  const sizes = Array.from({ length: count }, (_, i) => Math.floor(n / count) + (i < n % count ? 1 : 0));
+  let at = 0;
+  return sizes.map((k) => items.slice(at, (at += k)));
+};
 ---
 
 <div class="layers">
@@ -34,15 +47,19 @@ const { layers } = Astro.props;
           <span class="layer__title">{l.title}</span>
           {l.note && <span class="layer__note">{l.note}</span>}
         </header>
-        <ul class="layer__items" style={`--n:${l.items.length}`}>
-          {l.items.map((it) => (
-            <li class="layer__item">
-              <code class="layer__name">{it.name}</code>
-              {it.note && <span class="layer__desc">{it.note}</span>}
-              {it.uses && <span class="layer__uses">→ {it.uses}</span>}
-            </li>
+        <div class="layer__rows">
+          {rowsOf(l.items).map((row) => (
+            <ul class="layer__items" style={`--n:${row.length}`}>
+              {row.map((it) => (
+                <li class="layer__item">
+                  <code class="layer__name">{it.name}</code>
+                  {it.note && <span class="layer__desc">{it.note}</span>}
+                  {it.uses && <span class="layer__uses">→ {it.uses}</span>}
+                </li>
+              ))}
+            </ul>
           ))}
-        </ul>
+        </div>
       </section>
     ))
   }
@@ -92,6 +109,11 @@ const { layers } = Astro.props;
     font-size: var(--text-xs);
     color: var(--fg-subtle);
   }
+  .layer__rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
   .layer__items {
     display: grid;
     grid-template-columns: repeat(var(--n), minmax(0, 1fr));
@@ -119,6 +141,8 @@ const { layers } = Astro.props;
     font-weight: 600;
     color: var(--blue-800);
     white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
   .layer__desc {
     font-size: var(--text-xs);
