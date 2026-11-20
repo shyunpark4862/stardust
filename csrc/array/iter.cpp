@@ -72,7 +72,7 @@ NdIter::NdIter(std::span<const std::int64_t> shape, std::span<const IterOperand>
         return;
     }
 
-    if (mode != IterMode::Naive) {
+    if (mode == IterMode::Full) {
         // 2. Drop extent-1 axes.
         int n = 0;
         for (int d = 0; d < ndim_; ++d) {
@@ -113,7 +113,7 @@ NdIter::NdIter(std::span<const std::int64_t> shape, std::span<const IterOperand>
         // 4. Coalesce: axis d (outer) and d+1 (inner) are one run when, for
         //    every operand, stepping once along d equals stepping extent(d+1)
         //    times along d+1.
-        if (mode == IterMode::Full && ndim_ > 1) {
+        if (ndim_ > 1) {
             int out = 0;
             for (int d = 1; d < ndim_; ++d) {
                 bool mergeable = true;

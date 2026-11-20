@@ -48,11 +48,11 @@ struct IterOperand {
 
 inline IterOperand operand(const NDArray& a) { return {a.data, a.shape_span(), a.strides_span()}; }
 
-// Naive and Reorder exist so the effect of each step can be measured;
-// production code uses Full, except where the index
-// order itself matters: the one-index scatter runs Naive (C order, one
-// thread) so that with repeated indices the last write wins.
-enum class IterMode { Naive, Reorder, Full };
+// How far NdIter simplifies the traversal. Full drops extent-1 axes, reorders
+// the axes by stride and coalesces them; every operation uses it, except where
+// the index order itself matters: the one-index scatter runs Naive (broadcast
+// only, C order, one thread) so that with repeated indices the last write wins.
+enum class IterMode { Naive, Full };
 
 // How run() may split the work across threads (docs/design/array.md §10.5).
 // Results never depend on it -- only which splits are safe does:

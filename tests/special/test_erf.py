@@ -1,8 +1,8 @@
 """S2: erf erfc erfcx erfinv erfcinv ndtr log_ndtr ndtri (docs/api/special.md §2).
 
 Accuracy is tests/special/test_reference.py's. Here: the special values, bit for bit
-against scipy except where docs/design/special.md §2.4 says otherwise, the layouts of the
-chunk kernels, and the measurement variants of erfc."""
+against scipy except where docs/design/special.md §2.4 says otherwise, and the layouts of
+the chunk kernels."""
 
 import numpy as np
 import pytest
@@ -11,7 +11,6 @@ import scipy.special as sp
 import stardust as sd
 
 S = sd.special
-C = sd.special._core
 
 NAMES = ["erf", "erfc", "erfcx", "erfinv", "erfcinv", "ndtr", "log_ndtr", "ndtri"]
 EDGES = [
@@ -103,7 +102,7 @@ def test_erfinv_subnormal_inputs():
     assert S.erfinv(5e-324) == 5e-324 and S.erfinv(-5e-324) == -5e-324
 
 
-CHUNKED = ["erf", "erfc", "ndtr", "log_ndtr", "ndtri", "erfinv", "erfcinv", "_erfc_select", "_erfc_estrin"]
+CHUNKED = ["erf", "erfc", "ndtr", "log_ndtr", "ndtri", "erfinv", "erfcinv"]
 
 
 def sample(name, rng, n):
@@ -117,7 +116,7 @@ def sample(name, rng, n):
 
 
 def fn(name):
-    return getattr(S, name, None) or getattr(C, name)
+    return getattr(S, name)
 
 
 @pytest.mark.parametrize("name", CHUNKED)
@@ -143,15 +142,6 @@ def test_chunk_kernels_in_place(name):
     want = np.asarray(fn(name)(a))
     fn(name)(a, out=a)
     np.testing.assert_array_equal(np.asarray(a).view(np.uint64), want.view(np.uint64))
-
-
-def test_select_variant_gives_the_same_bits():
-    # NEON lanes computing every region then selecting do each element's arithmetic exactly as
-    # the shipped per-element branches (special/ops/erf.hpp)
-    x = np.concatenate([np.random.default_rng(2).normal(scale=12, size=20000), EDGES])
-    np.testing.assert_array_equal(
-        np.asarray(S.erfc(sd.asarray(x))).view(np.uint64), np.asarray(C._erfc_select(sd.asarray(x))).view(np.uint64)
-    )
 
 
 def test_same_bits_for_any_thread_count():

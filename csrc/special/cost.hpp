@@ -96,8 +96,6 @@ inline constexpr double kExpi = cost_table::ns("expi");  // Boost for x >= -700
 inline constexpr double kExpn = cost_table::ns("expn");
 inline constexpr double kEllipk = cost_table::ns("ellipk");
 inline constexpr double kEllipe = cost_table::ns("ellipe");
-inline constexpr double kEllipkAgm = 30;   // the comparison variants (not in the speed cases)
-inline constexpr double kEllipeCarlson = 65;
 // S6 (special/ops/bessel01.hpp, bessel.hpp, airy.hpp)
 inline constexpr double kI0 = cost_table::ns("i0"), kI0e = cost_table::ns("i0e"), kI1 = cost_table::ns("i1"),
                         kI1e = cost_table::ns("i1e");  // Boost (and its value times e^-+x, S11)

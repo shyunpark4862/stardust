@@ -5,8 +5,6 @@
 #include "array/convert.hpp"
 #include "array/kernels/cast.hpp"
 
-#include <nanobind/stl/string.h>
-
 #include <algorithm>
 #include <numeric>
 #include <cstdint>
@@ -39,9 +37,9 @@ ByteRange byte_range(const NDArray& a) {
     return {lo, hi + static_cast<std::uintptr_t>(a.itemsize())};
 }
 
-void run_cast(const NDArray& src, NDArray& dst, IterMode mode) {
+void run_cast(const NDArray& src, NDArray& dst) {
     const IterOperand ops[] = {operand(src), operand(dst)};  // inputs first, output last
-    NdIter(dst.shape_span(), ops, mode).run(cast_kernel(src.dtype, dst.dtype));
+    NdIter(dst.shape_span(), ops).run(cast_kernel(src.dtype, dst.dtype));
 }
 
 }  // namespace
@@ -82,10 +80,10 @@ void assign(NDArray& dst, const NDArray& src) {
     if (may_share_memory(dst, src)) {
         // e.g. a[1:] = a[:-1]: walking forward would read values already overwritten.
         NDArray tmp = cast_copy(src, src.dtype);
-        run_cast(tmp, dst, IterMode::Full);
+        run_cast(tmp, dst);
         return;
     }
-    run_cast(src, dst, IterMode::Full);
+    run_cast(src, dst);
 }
 
 void assign_checked(NDArray& dst, const NDArray& src) {
@@ -94,10 +92,10 @@ void assign_checked(NDArray& dst, const NDArray& src) {
     assign(dst, src);
 }
 
-NDArray cast_copy(const NDArray& src, DType to, IterMode mode) {
+NDArray cast_copy(const NDArray& src, DType to) {
     check_castable(src.dtype, to);
     NDArray dst = new_array_like(src, to);
-    run_cast(src, dst, mode);
+    run_cast(src, dst);
     return dst;
 }
 
@@ -116,41 +114,6 @@ nb::object astype(nb::handle x, nb::handle dtype_obj, nb::handle copy_obj) {
 
 namespace {
 
-IterMode parse_mode(const std::string& s) {
-    if (s == "naive") return IterMode::Naive;
-    if (s == "reorder") return IterMode::Reorder;
-    if (s == "full") return IterMode::Full;
-    throw nb::value_error("mode must be 'naive', 'reorder' or 'full'");
-}
-
-// Private, for tests and measurements: the iteration plan after
-// broadcasting/reordering/coalescing (`mode` picks how far to simplify).
-nb::dict iter_plan(nb::list arrays, const std::string& mode) {
-    std::vector<IterOperand> ops;
-    std::vector<std::span<const std::int64_t>> shapes;
-    for (nb::handle h : arrays) {
-        const NDArray& a = require_ndarray(h, "every operand");
-        ops.push_back(operand(a));
-        shapes.push_back(a.shape_span());
-    }
-    if (ops.empty() || ops.size() > static_cast<size_t>(kMaxOperands))
-        throw nb::value_error(("between 1 and " + std::to_string(kMaxOperands) + " operands").c_str());
-    const std::vector<std::int64_t> shape = broadcast_shapes(shapes);
-    const NdIter it(shape, ops, parse_mode(mode));
-    nb::list ext, strides;
-    for (int d = 0; d < it.ndim(); ++d) ext.append(it.extent(d));
-    for (int k = 0; k < it.nop(); ++k) {
-        nb::list s;
-        for (int d = 0; d < it.ndim(); ++d) s.append(it.stride(k, d));
-        strides.append(nb::tuple(s));
-    }
-    nb::dict out;
-    out["shape"] = nb::tuple(ext);
-    out["strides"] = strides;
-    out["empty"] = it.empty();
-    return out;
-}
-
 // Private: dst[...] = src with the setitem rules (writeable, upward
 // conversion only, overlap: docs/design/array.md §7.5).
 void copyto(nb::handle dst_obj, nb::handle src_obj) {
@@ -165,10 +128,6 @@ void bind_copy(nb::module_& m) {
         "astype", named("astype", &astype), nb::sig("def astype(x, dtype, /, *, copy=True)"), arg().none(),
         arg().none(), nb::kw_only(), arg("copy").none() = true
     );
-    m.def("_iter_plan", &iter_plan, arg("arrays"), arg("mode") = "full");
-    m.def("_copy_with_mode", [](const NDArray& a, const std::string& mode) {
-        return wrap(cast_copy(a, a.dtype, parse_mode(mode)));
-    });
     m.def("_copyto", &copyto);
     m.def("_may_share_memory", [](const NDArray& a, const NDArray& b) { return may_share_memory(a, b); });
 }

@@ -116,7 +116,6 @@ void bind_special(nb::module_& core) {
     def_real_complex<Erfc, ErfcComplex>(m);
     def_real_complex<Erfcx, ErfcxComplex>(m);
     def_naries<Erfinv, Erfcinv, Ndtr, LogNdtr, Ndtri>(m);  // S2, §2
-    def_naries<ErfcSelect, ErfcEstrin>(m);  // S2 measurement variants (special/ops/erf.hpp)
     def_naries<Gamma, Rgamma, Gammaln, Digamma, Polygamma, Beta, Betaln, Binom>(m);  // S3, §3
     def_naries<Gammainc, Gammaincc, Gammaincinv, Gammainccinv>(m);  // S4, §4
     def_naries<Betainc, Betaincc, Betaincinv, Betainccinv>(m);  // S4, §4
@@ -125,7 +124,6 @@ void bind_special(nb::module_& core) {
         NdtriExp>(m);  // T1, §13
     def_naries<Chndtr, Chndtrc, Chndtrix, Nctdtr, Nctdtrc, Nctdtrit, Ncfdtr, Ncfdtrc, Ncfdtri>(m);  // T2, §14
     def_naries<Expi, Expn, Ellipk, Ellipe>(m);  // S5, §7, §10
-    def_naries<EllipkAgm, EllipeCarlson>(m);  // S5 measurement variants (the design's methods)
     def_naries<I0, I0e, I1, I1e, K0, K0e, K1, K1e, J0, J1, Y0, Y1>(m);  // S6, §8.1
     def_naries<Jv, Yv, Iv, Kv, Jve, Yve, Ive, Kve>(m);  // S6, §8.2
     def_naries<Hyp1f1, Hyp2f1>(m);  // S7, §11
@@ -175,7 +173,6 @@ void bind_special(nb::module_& core) {
         },
         nb::sig("def airy(x, /)"), nb::arg().none()
     );
-    def_naries<GammaLanczos>(m);  // S3 measurement variant (gamma candidate A)
     // zeta(x, q=None, /, *, out=None): Riemann with one argument, Hurwitz with two (§7)
     record<Zeta>("zeta");
     record<Hurwitz>("zeta_hurwitz");

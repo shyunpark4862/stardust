@@ -12,7 +12,6 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <utility>
 
 namespace sd::special::simd {
 
@@ -70,50 +69,6 @@ V horner1(V x, const std::array<double, N>& c) {
     V r = x + cst<V>(c[0]);
     for (std::size_t i = 1; i < N; ++i) r = fma(r, x, cst<V>(c[i]));
     return r;
-}
-
-// The same polynomials by Estrin's scheme: pairs a + b x first, then pairs of
-// pairs with x^2, x^4, ... -- a tree of depth log2(N) instead of a chain of N
-// steps, so independent multiplies can overlap. Different rounding, so not
-// bit-equal to horner(); measured against it in S2.
-// Unrolled at compile time (the levels are template recursion).
-namespace detail {
-template <class V, std::size_t N>
-V estrin_level(V x, const std::array<V, N>& t) {  // t: lowest power first
-    if constexpr (N == 1) {
-        return t[0];
-    } else {
-        constexpr std::size_t M = (N + 1) / 2;
-        std::array<V, M> u;
-        [&]<std::size_t... I>(std::index_sequence<I...>) {
-            ((u[I] =
-                  [&] {
-                      if constexpr (2 * I + 1 < N) return t[2 * I] + t[2 * I + 1] * x;
-                      else return t[2 * I];
-                  }()),
-             ...);
-        }(std::make_index_sequence<M>{});
-        return estrin_level<V, M>(x * x, u);
-    }
-}
-}  // namespace detail
-
-template <class V, std::size_t N>
-V estrin(V x, const std::array<double, N>& c) {
-    std::array<V, N> t;
-    [&]<std::size_t... I>(std::index_sequence<I...>) {
-        ((t[I] = cst<V>(c[N - 1 - I])), ...);
-    }(std::make_index_sequence<N>{});
-    return detail::estrin_level<V, N>(x, t);
-}
-template <class V, std::size_t N>
-V estrin1(V x, const std::array<double, N>& c) {
-    std::array<V, N + 1> t;
-    [&]<std::size_t... I>(std::index_sequence<I...>) {
-        ((t[I] = cst<V>(c[N - 1 - I])), ...);
-    }(std::make_index_sequence<N>{});
-    t[N] = cst<V>(1.0);
-    return detail::estrin_level<V, N + 1>(x, t);
 }
 
 }  // namespace sd::special::simd

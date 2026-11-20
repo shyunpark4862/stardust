@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "stardust"
 version = "0.0.1"
-description = "An educational rebuild of array, linear algebra and dataframe libraries in C++"
+description = "A numerical library in C++ with a Python API: arrays, linear algebra, dataframes, special functions, statistics, regression and optimization"
 requires-python = ">=3.15"
 
 [project.optional-dependencies]

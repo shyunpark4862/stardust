@@ -37,20 +37,10 @@ void bind_linalg(nb::module_& core) {
     sd::linalg::bind_nonsym(m);
     sd::linalg::bind_special(m);
     sd::linalg::bind_expm(m);
-    // For measurements only: move the split constants (docs/design/linalg.md §7.7).
-    m.def("_set_tuning", [](double min_ns, double task_ns) {
-        sd::linalg::kParallelMinNs = min_ns;
-        sd::linalg::kTaskNs = task_ns;
-    });
     // For measurements only: the size from which one matrix is packed on the pool
     // (docs/design/linalg.md §5.6).
     m.def("_set_pack_parallel_min", [](std::int64_t n) { sd::linalg::detail::kPackParallelMin = n; });
     m.def("_set_lu_task_cap", [](bool on) { sd::linalg::kLuTaskCapOn = on; });
-    // For measurements only: the sizes factored by getf2 (docs/design/linalg.md §7.5).
-    m.def("_set_getf2_range", [](std::int64_t lo, std::int64_t hi) {
-        sd::linalg::lapack::kGetf2Min = lo;
-        sd::linalg::lapack::kGetf2Max = hi;
-    });
 }
 
 }  // namespace sd

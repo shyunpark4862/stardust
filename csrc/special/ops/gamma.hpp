@@ -212,18 +212,6 @@ struct Gamma : Real {
     }
 };
 
-// The same with candidate A (Lanczos) for x > 0; private, measured in S3.
-struct GammaLanczos : Real {
-    static constexpr const char* name = "_gamma_lanczos";
-    static constexpr int nin = 1, nout = 1;
-    static constexpr std::array<const char*, 1> args{"x"};
-    static constexpr double cost_ns = cost::kGamma;
-    static double f(double x) {
-        if (x > 0.0 && x <= 171.6) return value(gamma_scaled(x));
-        return Gamma::f(x);
-    }
-};
-
 // 1/Gamma(x): 0 at the poles, +-0 at +-0, 0 at +-inf (scipy). Its own scaled
 // path, so it is a value (not 0) up to x = 177 and keeps the subnormals of
 // rgamma(x) = x (1 + euler x) for tiny x (rgamma(-5e-324) = -5e-324).

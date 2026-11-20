@@ -472,11 +472,8 @@
 
 | 함수 | 바꾸는 것 |
 |---|---|
-| `_core.linalg._set_tuning(min_ns, task_ns)` | `kParallelMinNs`, `kTaskNs` |
 | `_set_pack_parallel_min(n)` | `kPackParallelMin` (§5.6) |
 | `_set_lu_task_cap(on)` | `lu_task_cap` 켜고 끄기 (§7.5) |
-| `_set_getf2_range(lo, hi)` | `getf2`로 분해하는 크기 `kGetf2Min`, `kGetf2Max` (§7.5) |
-| `_set_band_dense_max(n)` | `solve_banded`를 밀집으로 푸는 크기 `kBandDenseMax` (§7.4) |
 | `_set_schur_pair_min(n)` | `kSchurPairMin` (§8.4) |
 | `_set_expm_estimate_min(n)` | `kExpmEstimateMin` (§11.2) |
 

@@ -155,11 +155,9 @@ struct Failure {
 // every task skips elements past the smallest failure seen so far; the
 // smallest index overall is reported, as in the serial loop.
 inline constexpr std::size_t kMaxOperands = 4;
-// Measured (docs/design/linalg.md §7.2). Variables only so that measurements
-// can move them (_core._set_tuning, docs/design/linalg.md §7.7); nothing else
-// changes them.
-inline double kParallelMinNs = 10000;  // a batch whose estimated serial time is below this runs serially
-inline double kTaskNs = 5000;          // estimated serial time of one task
+// Measured (docs/design/linalg.md §7.2).
+inline constexpr double kParallelMinNs = 10000;  // a batch whose estimated serial time is below this runs serially
+inline constexpr double kTaskNs = 5000;          // estimated serial time of one task
 
 namespace detail {
 bool begin_parallel();  // true if the shared pool may split this call (more than one thread, not inside a task)

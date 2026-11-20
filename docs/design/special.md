@@ -100,7 +100,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
   | `special/cost.hpp` | 연산마다 원소당 비용과 가중치 (§3.3) |
   | `special/cost_table.hpp` | 함수마다 잰 원소당 비용. `python -m bench.speed cost`가 만든다 (§3.3) |
 - 테스트 `tests/special/`, 벤치마크 `bench/special/`, 기준값 생성 `tools/special_ref.py` (§6)
-- **측정용 비공개 함수** (사용자 결정 2026-11-20): 알고리즘 후보를 견준 변형(`_erfc_select`, `_erfc_estrin`, `_ellipk_agm`, `_ellipe_carlson`, `_gamma_lanczos`)과 엔진 시험 함수(`_fma3`, `_sum4`, `_powers4`, `_cf_tan`)는 `stardust._core.special`에 그대로 둔다. `sd.special`(`__all__`)에는 없다. 측정(`bench/speed/cases/special.py`)과 엔진 테스트가 같은 빌드에서 부르기 때문이다. 무게 표(`_weight`)에도 들어간다.
+- **측정용 비공개 함수** (사용자 결정 2026-11-20): 엔진 시험 함수(`_fma3`, `_sum4`, `_powers4`, `_cf_tan`)는 `stardust._core.special`에 그대로 둔다. `sd.special`(`__all__`)에는 없다. 측정(`bench/speed/cases/special.py`)과 엔진 테스트가 같은 빌드에서 부르기 때문이다. 무게 표(`_weight`)에도 들어간다.
 - **바인딩의 시그니처** (사용자 결정 2026-11-20): 모든 함수에 docs/api/special.md와 같은 시그니처를 붙인다(`nb::sig`, 원소별 함수는 `Op::args`에서 만든다: `erf(x, /, *, out=None)`). 입력은 위치 전용 그대로이고 이름은 `help()`와 nanobind의 호출 에러에 보인다. 호출 모양 에러는 nanobind의 꼴 그대로다(API.md §2.1의 예외).
 
 ---
@@ -366,7 +366,7 @@ csrc/special/                ─────▶ array/ (NdIter, n항 디스패�
 - `ellipk`: AGM. `K = π / (2·AGM(1, √(1-m)))`, 이차 수렴(약 5회). `m < 0`은 변환. m → 1의 log 특이점은 `1-m`이 정확하므로(m ≥ 0.5에서 Sterbenz) AGM이 그대로 처리한다.
 - `ellipe`: AGM의 `E = K·(1 - Σ 2^{n-1} c_n²)`는 m → 1에서 `∞ × 0`의 소거가 생긴다. 그래서 Carlson 대칭형 `E = R_F(0, 1-m, 1) - (m/3)·R_D(0, 1-m, 1)`(복제 정리)를 쓴다. 두 방법의 대비가 해설의 주제다.
 - **S5에서 바꾼 것** (사용자 결정 2026-11-14): 공개 함수는 Cephes `ellpk`·`ellpe`의 다항식 `P(y) − log(y)·Q(y)`, `P(y) − log(y)·y·Q(y)`(y = 1 − m)다. 위의 AGM·Carlson과 정확도가 같고(최대 2.3/2.0 대 2.9/4.2 ULP) 4–7배 빠르다. m < 0은 y = 1/(1−m)를 직접 만든다.
-  - AGM과 Carlson은 비교용 비공개 함수 `_ellipk_agm`, `_ellipe_carlson`으로 남겼다. 위의 Carlson 식은 m → 1에서 K − (K − E)의 상쇄가 있어서(y = 1e-16에서 약 20배), 두 항이 모두 양수인 `E = (y/3)(R_D(0, y, 1) + R_D(0, 1, y))`(DLMF 19.25.1)로 바꿨다.
+  - 견준 Carlson 쪽은 위의 식이 아니라 두 항이 모두 양수인 `E = (y/3)(R_D(0, y, 1) + R_D(0, 1, y))`(DLMF 19.25.1)다. 위의 식은 m → 1에서 K − (K − E)의 상쇄가 있다(y = 1e-16에서 약 20배).
 
 ### 5.11 초기하와 Lambert W
 - `hyp1f1(a, b, x)`: 거듭제곱급수, `x < 0`은 Kummer 변환 `e^x M(b-a, b, -x)`, 큰 |x|는 점근전개. **3구간**. `b`가 0 이하의 정수이면 극점. 큰 |a|에서의 소거는 느슨한 영역으로 적는다.

@@ -15,7 +15,6 @@
 // lanes save, and the M4's branch predictor and wide out-of-order core make
 // the scalar branches cheap. Branching was faster or equal on every input
 // mix but uniformly random regions; the bits are the same either way.
-// _erfc_select and _erfc_estrin keep the measured alternatives.
 //
 // exp(-x^2) without the error of x^2. Rounding x^2 to hi costs a relative
 // error up to 2^-53 x^2 in exp(-hi): 2^-53 * 384 at x = 19.6, which is
@@ -136,40 +135,6 @@ inline NdtriParts ndtri_parts(double q, double L) {
     return {false, 0.0, q < 0.0 ? -t : t};
 }
 
-// ---- The measured alternatives of pass 3 (erfc only) -----------------------
-
-struct Horner {
-    template <class V, std::size_t N> static V p(V x, const std::array<double, N>& c) { return simd::horner(x, c); }
-    template <class V, std::size_t N> static V p1(V x, const std::array<double, N>& c) { return simd::horner1(x, c); }
-};
-struct Estrin {
-    template <class V, std::size_t N> static V p(V x, const std::array<double, N>& c) { return simd::estrin(x, c); }
-    template <class V, std::size_t N> static V p1(V x, const std::array<double, N>& c) { return simd::estrin1(x, c); }
-};
-
-// Every region's rational in NEON lanes, then selected: no branches.
-template <class P, class V>
-V erfc_select(V x, V e0, V c) {
-    const V a = simd::fabs(x);
-    const V z = x * x;
-    const V small = cst<V>(1.0) - x * P::p(z, cephes::kNdtrT) / P::p1(z, cephes::kNdtrU);
-    const auto big = a >= cst<V>(8.0);
-    const V p = select(big, P::p(a, cephes::kNdtrR), P::p(a, cephes::kNdtrP));
-    const V q = select(big, P::p1(a, cephes::kNdtrS), P::p1(a, cephes::kNdtrQ));
-    V y = (e0 * (p - p * c)) / q;
-    y = select(e0 == cst<V>(0.0), cst<V>(0.0), y);
-    return select(a < cst<V>(1.0), small, select(x < cst<V>(0.0), cst<V>(2.0) - y, y));
-}
-
-template <class P>
-void erfc_select_chunk(const double* x, double* o, int n) {
-    alignas(16) double lo[kChunk], e[kChunk];
-    exp_minus_square(x, e, lo, n);
-    for_lanes(n, [&]<class V>(int i) {
-        simd::store(o + i, erfc_select<P>(simd::load(x + i, V{}), simd::load(e + i, V{}), simd::load(lo + i, V{})));
-    });
-}
-
 }  // namespace erf_detail
 
 // erf(x): x T(x^2) / U(x^2) for |x| < 1, else sign(x) (1 - erfc(|x|)).
@@ -221,24 +186,6 @@ struct Erfc : Real {
             }
         }
     }
-};
-
-// The measured alternatives of erfc's pass 3 (bench/special/s2_variants.py),
-// private: every region in NEON lanes then select (same bits as erfc), and
-// the same with Estrin's scheme (different bits).
-struct ErfcSelect : Real {
-    static constexpr const char* name = "_erfc_select";
-    static constexpr int nin = 1, nout = 1;
-    static constexpr std::array<const char*, 1> args{"x"};
-    static constexpr double cost_ns = cost::kErfc;
-    static void chunk(const double* x, double* o, int n) { erf_detail::erfc_select_chunk<erf_detail::Horner>(x, o, n); }
-};
-struct ErfcEstrin : Real {
-    static constexpr const char* name = "_erfc_estrin";
-    static constexpr int nin = 1, nout = 1;
-    static constexpr std::array<const char*, 1> args{"x"};
-    static constexpr double cost_ns = cost::kErfc;
-    static void chunk(const double* x, double* o, int n) { erf_detail::erfc_select_chunk<erf_detail::Estrin>(x, o, n); }
 };
 
 // ndtr(x) = erfc(-x / sqrt 2) / 2, with t = x / sqrt 2:

@@ -127,9 +127,8 @@ nb::object solve_tridiagonal(nb::handle dlo, nb::handle do_, nb::handle duo, nb:
 // solve_banded solves a matrix of at most this many rows as a dense one (LU +
 // getrs): gbsv's fixed cost of about 1 us per call dominates there. Measured
 // (docs/design/linalg.md §7.4): 2.2-3.2x for one system and 3.4-3.6x for a batch at
-// n = 8, every band from (0, 0) to (5, 5); at n = 12 1.7-2.1x for one system. A
-// variable only so that the measurements can move it (_core._set_band_dense_max).
-std::int64_t kBandDenseMax = 8;
+// n = 8, every band from (0, 0) to (5, 5); at n = 12 1.7-2.1x for one system.
+constexpr std::int64_t kBandDenseMax = 8;
 inline bool band_as_dense(std::int64_t n) { return n <= kBandDenseMax; }
 
 nb::object solve_banded(nb::handle abo, nb::handle bo, nb::handle klo, nb::handle kuo) {
@@ -330,7 +329,6 @@ void bind_special(nb::module_& m) {
         nb::arg().none(), nb::arg().none(), nb::arg().none()
     );
     m.def("_set_schur_pair_min", [](std::int64_t n) { kSchurPairMin = n; });  // experiments only
-    m.def("_set_band_dense_max", [](std::int64_t n) { kBandDenseMax = n; });   // experiments only
 }
 
 }  // namespace sd::linalg

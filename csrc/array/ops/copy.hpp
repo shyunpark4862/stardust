@@ -36,7 +36,7 @@ void assign(NDArray& dst, const NDArray& src);
 void assign_checked(NDArray& dst, const NDArray& src);
 
 // New array with src's values converted to `to`, laid out like src.
-NDArray cast_copy(const NDArray& src, DType to, IterMode mode = IterMode::Full);
+NDArray cast_copy(const NDArray& src, DType to);
 
 nb::object astype(nb::handle x, nb::handle dtype, nb::handle copy);
 

@@ -1,66 +1,66 @@
-"""The n-d iterator's plan (broadcast, drop, reorder, coalesce)."""
+"""The n-d iterator through what it drives: copies and elementwise operations on any
+layout (broadcast, extent-1 axes, transposed and stepped views, several operands that
+disagree) give numpy's values, empty shapes stay empty, and incompatible shapes raise."""
 
 import numpy as np
 import pytest
 
 import stardust as sd
 
-plan = sd._core._iter_plan
+BASE = np.arange(2.0 * 3 * 4 * 6).reshape(2, 3, 4, 6)
+
+LAYOUTS = {
+    "contiguous": lambda a: a,
+    "transposed": lambda a: a.T,
+    "every second element": lambda a: a[..., ::2],
+    "every second row": lambda a: a[:, :, ::2],
+    "reversed": lambda a: a[::-1, :, ::-1],
+    "extent-1 axes": lambda a: a[:1, :, :1],
+    "one element": lambda a: a[:1, :1, :1, :1],
+}
 
 
 def as_sd(np_array):
     return sd.asarray(np_array)  # zero-copy, keeps numpy's strides
 
 
-def test_contiguous_array_becomes_one_run():
-    assert plan([sd.zeros((2, 3, 4))]) == {"shape": (24,), "strides": [(8,)], "empty": False}
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_copy_of_any_layout_matches_numpy(layout):
+    view = LAYOUTS[layout](BASE)
+    got = sd.astype(as_sd(view), sd.float64, copy=True)
+    np.testing.assert_array_equal(np.asarray(got), view)
 
 
-def test_transposed_array_is_walked_in_memory_order():
-    t = as_sd(np.zeros((2, 3, 4)).T)  # shape (4, 3, 2), strides (8, 32, 96)
-    assert plan([t], "naive")["strides"] == [(8, 32, 96)]
-    assert plan([t], "reorder") == {"shape": (2, 3, 4), "strides": [(96, 32, 8)], "empty": False}
-    assert plan([t]) == {"shape": (24,), "strides": [(8,)], "empty": False}
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_operands_in_different_layouts(layout):
+    view = LAYOUTS[layout](BASE)
+    c = np.ascontiguousarray(view) * 0.5  # the other operand C-ordered
+    np.testing.assert_array_equal(np.asarray(sd.add(as_sd(view), as_sd(c))), view + c)
+    out = sd.zeros(view.shape)
+    sd.subtract(as_sd(c), as_sd(view), out=out)
+    np.testing.assert_array_equal(np.asarray(out), c - view)
 
 
-def test_uniform_slices_coalesce_across_rows():
-    # Every second element of a (4, 6) array is one evenly spaced run of 12.
-    assert plan([as_sd(np.zeros((4, 6))[:, ::2])])["shape"] == (12,)
-    # Every second row is not: two runs of 6, 96 bytes apart.
-    assert plan([as_sd(np.zeros((4, 6))[::2])]) == {"shape": (2, 6), "strides": [(96, 8)], "empty": False}
-
-
-def test_extent_one_axes_are_dropped():
-    assert plan([sd.zeros((1, 5, 1))]) == {"shape": (5,), "strides": [(8,)], "empty": False}
-    assert plan([sd.zeros((1, 1))]) == {"shape": (1,), "strides": [(0,)], "empty": False}
-
-
-def test_broadcast_operands_get_stride_zero():
-    p = plan([sd.zeros((3, 1)), sd.zeros(4)])
-    assert p == {"shape": (3, 4), "strides": [(8, 0), (0, 8)], "empty": False}
-
-
-def test_coalescing_requires_every_operand_to_agree():
-    c = sd.zeros((3, 4))
-    t = as_sd(np.zeros((4, 3)).T)
-    p = plan([t, c])  # input transposed, output C-order
-    assert p["shape"] == (3, 4)  # cannot merge: contiguous for one, not the other
-    assert p["strides"][1] == (32, 8)  # the output (last operand) decides the order
+def test_broadcast_operands():
+    a, b = np.arange(3.0).reshape(3, 1), np.arange(4.0)
+    np.testing.assert_array_equal(np.asarray(sd.add(as_sd(a), as_sd(b))), a + b)
+    np.testing.assert_array_equal(np.asarray(sd.add(as_sd(a.T), as_sd(b[::-1, None]))), a.T + b[::-1, None])
 
 
 def test_empty_iteration():
-    assert plan([sd.zeros((3, 0, 2))])["empty"] is True
-
-
-@pytest.mark.parametrize("shapes", [[(2, 3), (3, 2)], [(4,), (5,)], [(2, 1, 3), (4, 3, 1), (2,)]])
-def test_incompatible_broadcast_raises(shapes):
-    with pytest.raises(ValueError):
-        plan([sd.zeros(s) for s in shapes])
+    got = sd.add(sd.zeros((3, 0, 2)), 1.0)
+    assert got.shape == (3, 0, 2)
 
 
 @pytest.mark.parametrize("shapes", [[(5, 1, 4), (3, 1)], [(1,), (2, 3)], [(2, 1, 3), (4, 1), (1, 3)], [(0, 3), (1, 3)]])
 def test_broadcast_shape_matches_numpy(shapes):
     arrays = [sd.zeros(s) for s in shapes]
-    want = np.broadcast_shapes(*shapes)
-    got = plan(arrays, "naive")["shape"]
-    assert got == want
+    got = sd.add(*arrays) if len(arrays) == 2 else sd.where(sd.astype(arrays[0], sd.bool), *arrays[1:])
+    assert got.shape == np.broadcast_shapes(*shapes)
+
+
+@pytest.mark.parametrize("shapes", [[(2, 3), (3, 2)], [(4,), (5,)], [(2, 1, 3), (4, 3, 1), (2,)]])
+def test_incompatible_broadcast_raises(shapes):
+    arrays = [sd.zeros(s) for s in shapes]
+    with pytest.raises(ValueError):
+        sd.add(*arrays) if len(arrays) == 2 else sd.where(sd.astype(arrays[0], sd.bool), *arrays[1:])

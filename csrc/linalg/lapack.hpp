@@ -41,9 +41,8 @@ lint getf2(lint m, lint n, T* a, lint lda, lint* ipiv) {
 // The sizes factored by getf2 instead of getrf: both sides of the matrix in
 // [kGetf2Min, kGetf2Max] (docs/design/linalg.md §7.5). There Accelerate's getrf takes a
 // blocked path that runs serialized on the AMX unit: getf2 was 2.1-4.4x faster on a
-// batch at ten threads (1.2-1.6x on one), and slower from n = 48 on. Variables only so
-// that the measurements can move them (_core.linalg._set_getf2_range).
-inline lint kGetf2Min = 32, kGetf2Max = 46;
+// batch at ten threads (1.2-1.6x on one), and slower from n = 48 on.
+inline constexpr lint kGetf2Min = 32, kGetf2Max = 46;
 inline bool use_getf2(lint m, lint n) { return m >= kGetf2Min && m <= kGetf2Max && n >= kGetf2Min && n <= kGetf2Max; }
 
 // LU with partial pivoting by the routine the shape selects (getrf or getf2).
