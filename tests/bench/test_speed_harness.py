@@ -261,6 +261,37 @@ def test_supervisor_limits_and_failures(tmp_path, monkeypatch):
     assert out.with_suffix(".log").exists()
 
 
+def test_parallel_smoke_lanes_and_memory_retry(tmp_path, monkeypatch):
+    monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
+    cases = registry.load(["array"])
+    out = tmp_path / "run.json"
+    data = run(
+        cases,
+        out=out,
+        limits=_limits(case_timeout_s=8, rss_bytes=600 * 2**20),
+        notify=False,
+        progress=False,
+        keep_awake=False,
+        smoke=True,
+        jobs=4,
+        use_r=False,
+    )
+    by = {c["name"]: c for c in data["cases"]}
+    log = out.with_suffix(".log").read_text()
+    assert "4갈래" in log
+    # the hog stops every lane at the memory limit: the stopped cases run again one at a time
+    assert "하나씩 다시 돌린다" in log
+    assert "메모리" in by["hog"]["failure"]
+    assert "제한 시간" in by["sleep"]["failure"]
+    for name in ("sum", "sum2"):
+        assert "failure" not in by[name] and by[name]["timings"][0]["min"] > 0
+    assert {(t["label"], t["threads"]) for t in by["sum"]["timings"]} == {("sd", 1), ("sd", 10), ("numpy", None)}
+    boom = {t["label"]: t for t in by["boom"]["timings"]}
+    assert "boom" in boom["sd"]["error"] and boom["numpy"]["min"] is not None
+    assert data["options"]["complete"] and data["options"]["smoke"]
+    assert all(c["other_cpu"] is None for c in data["cases"])  # no busy marks in a parallel smoke run
+
+
 def test_supervisor_resume(tmp_path, monkeypatch):
     monkeypatch.setenv("SDBENCH_CASES_MODULE", FAKE)
     cases = registry.select(registry.load(["array"]), quick=True)

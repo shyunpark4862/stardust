@@ -4,7 +4,7 @@
     .venv/bin/python -m bench.speed estimate [selection] [--rounds R]
     .venv/bin/python -m bench.speed run [selection] [--rounds R] [--threads 1,10] [--no-r] [--out F]
                                         [--promote] [--timeout MIN] [--max-rss GB] [--no-notify]
-                                        [--no-wait | --strict] [--quiet-cores C] [--smoke]
+                                        [--no-wait | --strict] [--quiet-cores C] [--smoke [--jobs N]]
     .venv/bin/python -m bench.speed run --resume build/speed/<run>.json
     .venv/bin/python -m bench.speed run --rerun-busy build/speed/<run>.json   # cases measured while busy
     .venv/bin/python -m bench.speed compare RUN.json [--base FILE] [--threshold 0.10] [--faster]
@@ -108,6 +108,7 @@ def cmd_run(a) -> int:
         notify=not a.no_notify,
         resume=a.resume,
         smoke=a.smoke,
+        jobs=a.jobs,
         quiet="strict" if a.strict else ("no" if a.no_wait else "wait"),
     )
     if data.get("stopped_busy"):
@@ -224,6 +225,13 @@ def main(argv=None) -> int:
     s.add_argument("--max-rss", type=float, default=16.0, help="GB, the worker and R together (default 16)")
     s.add_argument("--no-notify", action="store_true")
     s.add_argument("--smoke", action="store_true", help="call every case once: does it run? (not promotable)")
+    s.add_argument(
+        "--jobs",
+        type=int,
+        default=10,
+        help="processes a --smoke run may use at once, R sessions included (default 10); measuring runs "
+        "always go one case at a time",
+    )
     s.add_argument("--rerun-busy", metavar="RUN.json", help="measure again the cases a run marked busy")
     s.add_argument("--no-wait", action="store_true", help="do not wait for a quiet machine")
     s.add_argument("--strict", action="store_true", help="stop when the machine does not get quiet")

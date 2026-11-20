@@ -39,6 +39,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 from . import harness, proc, results
@@ -73,6 +74,12 @@ DEFAULT_THREADS = int(proc.perf_cores() or 10)
 # ---------------------------------------------------------------- the worker handle
 
 
+class WorkerStartError(RuntimeError):
+    def __init__(self, status):
+        super().__init__(f"the worker did not start ({status}); see the log")
+        self.status = status
+
+
 class WorkerHandle:
     """A worker process. blas_threads: VECLIB_MAXIMUM_THREADS for it (None: Accelerate's
     default, all cores)."""
@@ -98,20 +105,26 @@ class WorkerHandle:
         WorkerHandle.live.add(self.p.pid)
         self.buf = b""
         self.served = 0
-        _, status, _ = self._read(limits.startup_timeout_s)
+        _, status, _ = self._read(limits.startup_timeout_s, starting=True)
         if status != "ok":
             self.kill()
-            raise RuntimeError(f"the worker did not start ({status}); see the log")
+            raise WorkerStartError(status)
 
-    def _read(self, timeout_s):
-        """One reply line: (dict | None, "ok" | "timeout" | "memory" | "died", peak RSS)."""
+    def _read(self, timeout_s, starting=False):
+        """One reply line: (dict | None, "ok" | "timeout" | "memory" | "died", peak RSS).
+
+        The memory limit counts every live worker (idle ones too, and parallel lanes) with
+        its R session. Past it, only the worker holding the most stops its case: the others
+        wait for that one to be killed. A starting worker counts only itself."""
         t0 = time.monotonic()
         peak = 0
         fd = self.p.stdout.fileno()
         while b"\n" not in self.buf:
-            rss = sum(proc.tree_rss(pid) for pid in list(WorkerHandle.live))  # every worker (idle ones too) and R
+            own = proc.tree_rss(self.p.pid)
+            others = [] if starting else [proc.tree_rss(pid) for pid in list(WorkerHandle.live) if pid != self.p.pid]
+            rss = own + sum(others)
             peak = max(peak, rss)
-            if rss > self.limits.rss_bytes:
+            if rss > self.limits.rss_bytes and own >= max(others, default=0):
                 return None, "memory", peak
             if time.monotonic() - t0 > timeout_s:
                 return None, "timeout", peak
@@ -408,6 +421,7 @@ def run(
     keep_awake: bool = True,
     smoke: bool = False,
     quiet: str = "wait",
+    jobs: int = 1,
 ) -> dict:
     """Time `cases` over `rounds` rounds; write and return the results dict.
 
@@ -415,9 +429,14 @@ def run(
     resume: a run file to continue (its cases, rounds and options win).
     smoke: call everything once, untimed in effect (does every case run?); such a run
     cannot be promoted.
+    jobs: processes a smoke run may use at once (workers and their R sessions); above 1 the
+    cases are spread over that many lanes, each with one worker (half as many when R
+    runs). Measuring runs ignore it: their cases run one at a time.
     quiet: "wait" for a quiet machine before starting (at most limits.wait_quiet_s), "no"
     (only report), "strict" (stop if it does not get quiet)."""
     limits = limits or Limits()
+    lock = threading.RLock()  # the state, the run file and the log, shared by the lanes
+    stop = threading.Event()
     if resume is not None:
         prev = results.load(resume)
         by_id = {c.id: c for c in cases}
@@ -454,15 +473,18 @@ def run(
 
     def say(msg):
         stamp = datetime.datetime.now().strftime("%H:%M:%S")
-        log.write(f"{stamp} {msg}\n")
-        if progress:
-            harness.eprint(msg)
+        with lock:
+            log.write(f"{stamp} {msg}\n")
+            if progress:
+                harness.eprint(msg)
 
     areas = sorted({c.area for c in cases})
     have_r = use_r and any(isinstance(r, RRef) for c in cases for r in c.refs) and shutil.which("R") is not None
     if use_r and not have_r and any(isinstance(r, RRef) for c in cases for r in c.refs):
         say("R이 없어 R 비교는 건너뛴다")
     state.use_r = have_r or (resume is not None and state.use_r)
+    lanes = max(1, jobs // (2 if state.use_r else 1)) if smoke else 1
+    parallel = lanes > 1
     pairs = [(r, c.id) for r in range(rounds) for c in cases]
     first = start_round * len(cases) + start_index
     expected = expected_seconds(cases)
@@ -521,37 +543,42 @@ def run(
         "without it (Accelerate's default)"
     )
 
-    def worker_for(key):
-        w = workers.get(key)
+    def worker_for(ws, key):
+        w = ws.get(key)
         if w is not None and (w.served >= limits.restart_every or w.p.poll() is not None):
             w.close()
             w = None
         if w is None:
             w = WorkerHandle(areas, log, limits, smoke=smoke, blas_threads=key)
-            workers[key] = w
+            ws[key] = w
             if key is None and "versions" not in env:
                 pkgs = sorted({p for c in cases for r in c.refs if isinstance(r, RRef) for p in r.packages})
                 reply, status, _ = w.request(
                     {"cmd": "env", "r_packages": pkgs if state.use_r else []}, limits.startup_timeout_s
                 )
                 if status == "ok":
-                    env.update(reply["env"])
+                    with lock:
+                        env.update(reply["env"])
         return w
 
-    def kill_worker(key):
-        w = workers.pop(key, None)
+    def kill_worker(ws, key):
+        w = ws.pop(key, None)
         if w is not None:
             w.kill()
 
-    def trim_idle(active):
+    def trim_idle(ws, active):
         """Close the idle workers that hold much memory (they start again when needed)."""
-        for key in [k for k in workers if k != active]:
-            if proc.tree_rss(workers[key].p.pid) > limits.idle_rss_bytes:
-                workers.pop(key).close()
+        for key in [k for k in ws if k != active]:
+            if proc.tree_rss(ws[key].p.pid) > limits.idle_rss_bytes:
+                ws.pop(key).close()
 
     def parts(case):
-        """(BLAS key, sd thread counts, measure the fixed comparators) per worker, in order."""
+        """(BLAS key, sd thread counts, measure the fixed comparators) per worker, in order. A
+        parallel smoke run calls everything in one worker: nothing is timed, so the BLAS
+        setting does not matter, and one worker per lane keeps the process count down."""
         ths = [t for t in case.threads if threads is None or t in threads]
+        if parallel:
+            return [(None, ths, True)]
         out = {}
         for t in ths:
             out.setdefault(None if t == DEFAULT_THREADS else t, []).append(t)
@@ -561,43 +588,45 @@ def run(
             keys.append(None)
         return [(k, out.get(k, []), k is None) for k in keys]
 
-    data = None
-    failures = 0
-    interrupted = False
-    i = first
-    try:
-        while i < len(pairs):
-            rnd, cid = pairs[i]
-            left = eta.remaining(pairs[i:])
-            say(
-                f"[{rnd + 1}/{rounds}] {i % len(cases) + 1}/{len(cases)} {cid}  "
-                f"(경과 {fmt_duration(elapsed_before + time.monotonic() - t_run)}, "
-                f"남은 예상 {fmt_duration(left) if left is not None else '?'})"
-            )
+    def run_case(cid, ws) -> tuple[str, float]:
+        """One round of one case in the workers `ws` (BLAS key -> WorkerHandle); records the
+        result in `state` and returns (status, wall seconds)."""
+        with lock:
             state.load[cid] = max(state.load[cid], proc.load1())
-            meter = proc.CpuMeter().start()
-            t0 = time.monotonic()
-            status, seconds = "ok", 0.0
-            for key, ths, fixed in parts(by_id[cid]):
-                budget = limits.case_timeout_s - (time.monotonic() - t0)
-                trim_idle(key)
-                worker = worker_for(key)
-                reply, status, peak = worker.request(
-                    {"cmd": "case", "id": cid, "threads": ths, "use_r": state.use_r, "fixed": fixed},
-                    max(budget, 1.0),
-                )
-                worker.served += 1
+        meter = None if parallel else proc.CpuMeter().start()
+        t0 = time.monotonic()
+        status, seconds, key, peak = "ok", 0.0, None, 0
+        for key, ths, fixed in parts(by_id[cid]):
+            budget = limits.case_timeout_s - (time.monotonic() - t0)
+            trim_idle(ws, key)
+            try:
+                worker = worker_for(ws, key)
+            except WorkerStartError as e:
+                status = e.status
+                break
+            reply, status, peak = worker.request(
+                {"cmd": "case", "id": cid, "threads": ths, "use_r": state.use_r, "fixed": fixed},
+                max(budget, 1.0),
+            )
+            worker.served += 1
+            with lock:
                 state.rss[cid] = max(state.rss[cid], peak)
-                if status != "ok":
-                    break
-                state.add_reply(reply)
-                seconds += reply.get("seconds", 0.0)
-                if reply.get("setup_error"):
-                    say(f"  준비 실패: {reply['setup_error'].strip().splitlines()[-1]}")
-                for label_, t, err in reply["errors"]:
-                    say(f"  {label_} ({t if t is not None else '기본'} 스레드) 실패: {err}")
-            dt = time.monotonic() - t0
-            other = meter.stop() if status == "ok" else None
+                if status == "ok":
+                    state.add_reply(reply)
+                    seconds += reply.get("seconds", 0.0)
+            if status != "ok":
+                break
+            if reply.get("setup_error"):
+                say(f"  {cid} 준비 실패: {reply['setup_error'].strip().splitlines()[-1]}")
+            for label_, t, err in reply["errors"]:
+                say(f"  {cid}: {label_} ({t if t is not None else '기본'} 스레드) 실패: {err}")
+        dt = time.monotonic() - t0
+        other = meter.stop() if meter is not None and status == "ok" else None
+        if status != "ok":
+            kill_worker(ws, key)
+            if stop.is_set():  # interrupted: the case is not done, not failed
+                return status, dt
+        with lock:
             if other is not None:
                 state.other[cid] = max(state.other.get(cid, 0.0), other)
                 if other > limits.busy_cores:
@@ -612,22 +641,108 @@ def run(
                     "died": "작업 프로세스가 죽었다",
                 }[status]
                 state.failure[cid] = why
-                failures += 1
-                say(f"  중단: {why}. 작업 프로세스를 새로 띄운다")
-                kill_worker(key)
-            eta.done(cid, dt)
-            i += 1
-            data = snapshot(*divmod(i, len(cases)))
+                say(f"  {cid} 중단: {why}. 작업 프로세스를 새로 띄운다")
+        return status, dt
+
+    def elapsed():
+        return fmt_duration(elapsed_before + time.monotonic() - t_run)
+
+    next_index = [first]  # the first (round, case) not done yet, for the run file
+
+    def run_parallel():
+        """The pairs from `first` on, spread over `lanes` lanes. A case stopped for memory is
+        run again at the end on its own: the limit counts every lane's worker, so a case may
+        be stopped for another's memory."""
+        todo = list(range(first, len(pairs)))
+        total = len(todo)
+        done: set[int] = set()
+        retry: list[int] = []
+        say(f"점검 실행을 {min(lanes, total)}갈래로 나눠 돌린다(작업 프로세스 {jobs}개 이하)")
+
+        def finish(idx, status, dt):
+            with lock:
+                if stop.is_set() and status != "ok":
+                    return
+                done.add(idx)
+                eta.done(pairs[idx][1], dt)
+                while next_index[0] in done:
+                    next_index[0] += 1
+                mark = "" if status == "ok" else f" ({status})"
+                say(f"{len(done)}/{total} {pairs[idx][1]}{mark}  (경과 {elapsed()})")
+                snapshot(*divmod(next_index[0], len(cases)))
+
+        def lane(ws):
+            while not stop.is_set():
+                with lock:
+                    if not todo:
+                        return
+                    idx = todo.pop(0)
+                status, dt = run_case(pairs[idx][1], ws)
+                if status == "memory" and not stop.is_set():
+                    with lock:
+                        state.failure.pop(pairs[idx][1], None)
+                        retry.append(idx)
+                    continue
+                finish(idx, status, dt)
+                w = ws.get(None)  # macOS keeps freed blocks: do not sit on them next to the other lanes
+                if w is not None and proc.tree_rss(w.p.pid) > limits.idle_rss_bytes:
+                    ws.pop(None).close()
+
+        lane_ws[:] = [{} for _ in range(min(lanes, len(todo)))]
+        threads_ = [threading.Thread(target=lane, args=(ws,), daemon=True) for ws in lane_ws]
+        for t in threads_:
+            t.start()
+        while any(t.is_alive() for t in threads_):
+            for t in threads_:
+                t.join(timeout=0.5)
+        for ws in lane_ws:
+            for key in list(ws):
+                ws.pop(key).close()
+        if retry:
+            say(f"메모리 제한에 걸린 사례 {len(retry)}개를 하나씩 다시 돌린다")
+            lane_ws[:] = [{}]
+            for idx in sorted(retry):
+                if stop.is_set():
+                    break
+                status, dt = run_case(pairs[idx][1], lane_ws[0])
+                finish(idx, status, dt)
+        with lock:
+            return snapshot(*divmod(next_index[0], len(cases)))
+
+    data = None
+    interrupted = False
+    i = first
+    lane_ws: list[dict] = [workers]
+    try:
+        if not parallel:
+            while i < len(pairs):
+                rnd, cid = pairs[i]
+                left = eta.remaining(pairs[i:])
+                say(
+                    f"[{rnd + 1}/{rounds}] {i % len(cases) + 1}/{len(cases)} {cid}  "
+                    f"(경과 {elapsed()}, 남은 예상 {fmt_duration(left) if left is not None else '?'})"
+                )
+                _, dt = run_case(cid, workers)
+                eta.done(cid, dt)
+                i += 1
+                data = snapshot(*divmod(i, len(cases)))
+        else:
+            data = run_parallel()
+            i = len(pairs)
     except KeyboardInterrupt:
         interrupted = True
-        for key in list(workers):
-            kill_worker(key)
-        nxt = divmod(i, len(cases))
-        data = snapshot(*nxt)
+        stop.set()
+        for ws in lane_ws:
+            for key in list(ws):
+                kill_worker(ws, key)
+        with lock:
+            nxt = divmod(next_index[0] if parallel else i, len(cases))
+            data = snapshot(*nxt)
         say(f"중단했다. 이어 달리기: .venv/bin/python -m bench.speed run --resume {out}")
     finally:
-        for w in workers.values():
-            w.close()
+        for ws in lane_ws:
+            for w in list(ws.values()):
+                w.close()
         if caff is not None:
             caff.terminate()
     if data is None:
@@ -635,7 +750,9 @@ def run(
     total = elapsed_before + time.monotonic() - t_run
     errs = sum(1 for c in data["cases"] for t in c["timings"] if t.get("min") is None)
     if not interrupted:
-        say(f"끝: 사례 {len(cases)}개, {fmt_duration(total)}, 실패한 측정 {errs}개, 중단된 사례 {failures}개. {out}")
+        say(
+            f"끝: 사례 {len(cases)}개, {fmt_duration(total)}, 실패한 측정 {errs}개, 중단된 사례 {len(state.failure)}개. {out}"
+        )
         n_busy = sum(1 for c in data["cases"] if c.get("busy"))
         if n_busy:
             say(f"바쁠 때 잰 사례 {n_busy}개. 다시 재기: .venv/bin/python -m bench.speed run --rerun-busy {out}")

@@ -28,7 +28,7 @@
 .venv/bin/python -m bench.speed list --area stats --quick       # 사례 보기 (Q: 빠른 묶음, C: 비용표)
 .venv/bin/python -m bench.speed run --quick                       # 모든 영역의 빠른 묶음, 1라운드
 .venv/bin/python -m bench.speed run --area special --match erf    # 이름에 erf가 든 사례, 3라운드
-.venv/bin/python -m bench.speed run --area stats --smoke          # 사례가 모두 도는지만 (한 번씩 부른다)
+.venv/bin/python -m bench.speed run --area stats --smoke          # 사례가 모두 도는지만 (한 번씩, 10개 프로세스로 나눠)
 .venv/bin/python -m bench.speed compare build/speed/<실행>.json   # 기준선보다 느려진 것
 .venv/bin/python -m bench.speed promote build/speed/<실행>.json   # 기준선에 넣고 speed.md 다시 만들기
 .venv/bin/python -m bench.speed cost                              # C++ 비용표 다시 만들기
@@ -98,6 +98,7 @@ Case(area="stats", group="연속 분포", name="Normal.cdf", size="10^5", n=100_
 - **바쁠 때 잰 사례**: 실행 중에도 사례마다 다른 프로세스가 평균 몇 코어를 썼는지(`other_cpu`) 적는다. 실행 자신(감독, 작업 프로세스, R)의 CPU는 뺀다. 1코어를 넘은 사례는 `busy`로 적고 진행 줄에 알린다. 표에서는 이름 옆에 †가 붙고, `compare`는 그 사례를 "바쁠 때 잼"으로 두어 느려짐으로 세지 않는다. `run --rerun-busy build/speed/<실행>.json`은 그 사례들만 다시 잰다. 그 실행을 `promote`하면 기준선의 그 사례들만 바뀐다.
 - **부하**: 1분 부하를 사례마다 적는다(CPU 계수기를 읽을 수 없는 기계에서는 시작할 때 3을 넘으면 경고한다).
 - **알림**: 1분 넘게 걸린 실행이 끝나면 macOS 알림을 띄운다(`--no-notify`로 끈다).
+- **점검 실행의 병렬**: `--smoke`는 아무것도 재지 않으므로 사례를 여러 갈래로 나눠 동시에 돌린다. 프로세스는 R 세션까지 합쳐 `--jobs`개(기본 10) 이하다. 갈래마다 작업 프로세스 하나를 띄우고, R을 쓰면 갈래 수를 절반으로 줄인다. 메모리 제한은 모든 갈래의 작업 프로세스를 합쳐 본다. 합이 넘으면 메모리를 가장 많이 쥔 작업 프로세스의 사례만 멈추고, 그 사례는 마지막에 혼자 다시 돌린다. 다른 갈래와 함께 돌 때만 넘는 사례가 있어서다. 측정 실행은 늘 사례를 하나씩 잰다.
 
 ## 전체를 다시 잴 때
 
