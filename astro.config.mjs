@@ -39,10 +39,23 @@ const dedentTransformer = {
  * drawn by CSS, so selecting the code copies only what one would type, and
  * output lines are marked so they can be set apart from input.
  */
+// Output that is laid out in columns (a summary table, a ruled report) must
+// keep its lines: wrapping it breaks the columns. Such a block scrolls sideways
+// instead; any other output wraps so long messages stay readable.
+const isOutput = (l) => !(l.startsWith('>>> ') || l === '>>>' || l.startsWith('... ') || l === '...');
+const isTabular = (source) => {
+  const out = source.split('\n').filter((l) => l.trim() && isOutput(l));
+  const ruled = out.some((l) => /^[=\-─━]{20,}$/.test(l.trim()));
+  const columns = out.filter((l) => /\S {2,}\S/.test(l.trim())).length;
+  return ruled || columns >= 3;
+};
+
 const replTransformer = {
   name: 'repl',
   pre(node) {
-    if (this.source.includes('>>> ')) this.addClassToHast(node, 'repl');
+    if (!this.source.includes('>>> ')) return;
+    this.addClassToHast(node, 'repl');
+    if (isTabular(this.source)) this.addClassToHast(node, 'repl-table');
   },
   line(node, number) {
     if (!this.source.includes('>>> ')) return;
@@ -54,6 +67,8 @@ const replTransformer = {
       this.addClassToHast(node, input ? 'repl-in' : 'repl-more');
     } else {
       this.addClassToHast(node, 'repl-out');
+      // An error message inside a table-like block still wraps.
+      if (/^(Traceback|[\w.]*(Error|Warning|Exception)\b)/.test(text)) this.addClassToHast(node, 'repl-msg');
     }
   },
 };

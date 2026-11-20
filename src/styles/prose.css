@@ -205,6 +205,16 @@
   overflow-wrap: anywhere;
 }
 
+/* Columns (summary tables, aligned arrays) keep their lines and scroll.
+   A step smaller type fits the usual 80-column report in the text column. */
+.prose pre.repl-table {
+  font-size: 0.78125rem; /* 12.5 */
+}
+.prose pre.repl-table .repl-out:not(.repl-msg) {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
 /* Figures keep their own rhythm inside prose. */
 .prose figure {
   margin-inline: 0;
