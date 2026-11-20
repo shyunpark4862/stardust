@@ -31,6 +31,16 @@ stable=True; "numpy default (unstable)" is numpy's default for a few of them. nu
 unique_values hashes and leaves the values unsorted; sd sorts them, so the comparator
 is np.unique (on this machine both take the same time, so no hash column).
 
+R joins where the accuracy measurement compares with R (bench/accuracy/array.py:
+R_ELEMENTWISE and the reductions of _red_values) and the case does the same work: the
+float64 element-wise functions and complex abs on contiguous arrays, sum (also over
+axis 0), mean, prod and matmul (R_STMTS below). Not var and std (sd's default
+correction is 0, R's var and sd divide by n - 1), not the row-wise vecdot of two
+matrices (the accuracy side's vecdot is the dot product of two vectors), not strided,
+transposed-view or out= inputs (R has no views: its copy would be contiguous), not
+batched or integer matmul. R gets plain float64 copies of the numpy side's arrays
+under "r_<name>" keys; complex numbers are built in R's setup.
+
 The arrays (names as in the old script):
     f, g     10^6 float64 in [0.5, 1.5)          fs   10^6 standard normal
     u        10^6 in (-0.99, 0.99)               fh   10^6 in [1.5, 2.5)
@@ -60,7 +70,7 @@ import math
 import zlib
 
 from ..harness import fresh_count, rotate
-from ..registry import Case, Ref
+from ..registry import Case, Ref, RRef
 
 N = 1_000_000
 MID = 10_000
@@ -773,6 +783,67 @@ def _specs() -> list[dict]:
     return S
 
 
+# R's version of a statement: R expression, or (expression, {R variable: numpy-side name or
+# name.real / name.imag}, R setup). The variables default to the statement's array names.
+_R_UNARY = ("exp", "log", "log2", "log10", "sin", "atan", "sinh", "cosh", "tanh", "asinh")
+R_STMTS: dict = {
+    **{f"M.{op}(f)": f"{op}(f)" for op in _R_UNARY},
+    **{f"M.{op}(u)": f"{op}(u)" for op in ("asin", "acos", "atanh")},
+    "M.acosh(fh)": "acosh(fh)",
+    "M.exp(fm)": "exp(fm)",
+    "M.pow(f, g)": "f^g",
+    "M.atan2(f, g)": "atan2(f, g)",
+    "M.abs(c)": ("Mod(z)", {"zre": "c.real", "zim": "c.imag"}, "z <- complex(real = zre, imaginary = zim)"),
+    "M.sum(f)": "sum(f)",
+    "M.prod(f)": "prod(f)",
+    "M.mean(f)": "mean(f)",
+    "M.sum(f2, axis=0)": "colSums(f2)",
+    "M.sum(fm)": "sum(fm)",
+    "M.matmul(m512, m512)": "m512 %*% m512",
+    "M.matmul(m1k, m1k)": "m1k %*% m1k",
+    "M.matmul(f2, v)": "f2 %*% v",
+    "M.matmul(v, v)": "v %*% v",
+    "M.matmul(ft, f2)": ("crossprod(f2, f2)", {"f2": "f2"}, ""),  # t(f2) %*% f2 without a transposed copy
+    "M.exp(a)": "exp(a)",
+    "M.sin(a)": "sin(a)",
+    "M.sum(a)": "sum(a)",
+    "M.exp(s3)": "exp(s3)",
+    "M.sum(s3)": "sum(s3)",
+    "M.mean(s3)": "mean(s3)",
+    "M.sum(sm, axis=0)": "colSums(sm)",
+    "M.matmul(sm.T, sm)": ("crossprod(sm, sm)", {"sm": "sm"}, ""),
+}
+
+
+def _r_ref(stmt):
+    """The R comparator of an sd statement (None if R_STMTS has none) and its {R variable:
+    source} map."""
+    spec = R_STMTS.get(stmt)
+    if spec is None:
+        return None, {}
+    expr, rvars, rsetup = (spec, None, "") if isinstance(spec, str) else spec
+    if rvars is None:
+        rvars = {nm: nm for nm in sorted(_names(stmt) - {"M", "sd", "np"})}
+    return RRef("R", expr, data={f"r_{v}": v for v in rvars}, setup=rsetup), rvars
+
+
+def _with_r(setup, rvars):
+    """setup, plus the float64 arrays R reads ("r_<variable>") from the numpy side's first input."""
+
+    def wrapped():
+        import numpy as np
+
+        d = setup()
+        ns = d["np"][0]
+        for var, src in rvars.items():
+            name, _, part = src.partition(".")
+            v = ns[name]
+            d[f"r_{var}"] = np.ascontiguousarray(getattr(v, part) if part else v, dtype=np.float64)
+        return d
+
+    return wrapped
+
+
 def _factory(stmt, lib):
     """Given the data, the timed callable: stmt compiled once per input, in turn."""
     return lambda d: rotate([_compile(stmt, ns) for ns in d[lib]])
@@ -819,12 +890,21 @@ TITLES = {
 
 def cases() -> list[Case]:
     out = []
+    used = set()
     for s in _specs():
         np_stmt = s["np"] if s["np"] is not None else s["stmt"]
         extra_stmts = [e[1] for e in s["extra"]]
         names = _names(s["stmt"], np_stmt, *extra_stmts)
         refs = [Ref("numpy", _factory(np_stmt, "np"))]
         refs += [Ref(label, _factory(st, "np"), lib="numpy") for label, st in s["extra"]]
+        setup = _make_setup(frozenset(names), dict(s["alias"]), s["fresh"])
+        rref, rvars = _r_ref(s["stmt"])
+        if rref is not None:
+            if s["fresh"]:
+                raise ValueError(f"{s['stmt']}: R times one input, the case rotates fresh ones")
+            refs.append(rref)
+            setup = _with_r(setup, rvars)
+            used.add(s["stmt"])
         out.append(
             Case(
                 area="array",
@@ -832,7 +912,7 @@ def cases() -> list[Case]:
                 name=s["name"],
                 size=s["size"],
                 n=_n(s["size"]),
-                setup=_make_setup(frozenset(names), dict(s["alias"]), s["fresh"]),
+                setup=setup,
                 sd=_factory(s["stmt"], "sd"),
                 refs=tuple(refs),
                 threads=s["threads"],
@@ -840,4 +920,6 @@ def cases() -> list[Case]:
                 note=s["note"],
             )
         )
+    if set(R_STMTS) - used:
+        raise ValueError(f"R_STMTS without a case: {sorted(set(R_STMTS) - used)}")
     return out

@@ -196,6 +196,33 @@ def _env_lines(data: dict, cases: list[dict]) -> list[str]:
     return lines
 
 
+# How each comparator library is timed, for the tables' "비교 대상을 잰 방법" section
+HOW = {
+    "R": (
+        "R: 실행 하나에 R 세션(`R --vanilla`) 하나를 띄우고, 사례의 입력을 float64 파일로 넘긴 뒤 R 안에서 "
+        "같은 규칙(예열, 배치 크기를 두 배씩 늘려 20 ms 이상, 배치 중 가장 빠른 값)으로 잰다. R의 벡터 함수를 "
+        "한 번 부르는 식이고, 행렬 연산은 R 자체의 BLAS(1스레드)다. 사례의 비고에 R의 호출이 다른 점을 적는다."
+    ),
+    "Boost": (
+        "Boost.Math: C++ 반복문(`bench/speed/boost_speed.cpp`)이 배열의 원소마다 Boost 함수를 직접 부른다. "
+        "함수 이름은 호출마다 한 번 풀고, 매개변수가 스칼라인 분포는 호출마다 한 번 만든다. sd와 같은 최적화 "
+        "옵션(-O3 -mcpu=native -ffp-contract=off)으로 빌드하고, Python에서는 배열 하나에 ctypes 호출 한 번이다. "
+        "오류 정책은 정확도 측정의 비교 대상과 같다(오류 대신 NaN·inf)."
+    ),
+    "python": (
+        "numpy, scipy, pandas, statsmodels, scikit-learn: 같은 프로세스에서 Python으로 부르고 sd와 같은 규칙으로 "
+        "잰다. 입력은 그 라이브러리의 배열(numpy)로 미리 만들어 둔다."
+    ),
+}
+
+
+def _how_lines(cases: list[dict]) -> list[str]:
+    libs = {t.get("lib") for c in cases for t in c["timings"] if t["label"] != "sd"}
+    lines = ["- " + HOW["python"]] if libs - {"R", "Boost"} else []
+    lines += ["- " + HOW[k] for k in ("R", "Boost") if k in libs]
+    return ["", "## 비교 대상을 잰 방법", "", *lines] if lines else []
+
+
 def render(area: str, data: dict, registry_cases: list[Case], source: str) -> str:
     by_id = {c["id"]: c for c in data["cases"] if c["area"] == area}
     order = [c for c in registry_cases if c.area == area]
@@ -223,6 +250,7 @@ def render(area: str, data: dict, registry_cases: list[Case], source: str) -> st
         "## 측정 환경",
         "",
         *_env_lines(data, shown),
+        *_how_lines(shown),
     ]
     for group, cases in groups.items():
         lines += ["", f"## {group}", "", *group_table(cases)]

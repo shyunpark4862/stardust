@@ -386,3 +386,35 @@ def test_busy_cases_marked_in_table_and_compare():
     res = compare.compare(_run_data("r2", [rec]), {"array/g/a": _rec("a", 1.0)})
     assert res["slower"][0]["busy"] and not res["slower"][0]["beyond_noise"]
     assert "| busy |" in compare.report(res)
+
+
+def test_boost_speed_driver_matches_the_accuracy_comparator():
+    """The speed driver knows the same Boost functions and distributions as the accuracy
+    comparator, and returns the same values (the same calls, a different loop) up to the last
+    bits: the speed build uses sd's flags (-O3 -mcpu=native -ffp-contract=off), the accuracy
+    build -O2 with clang's default contraction into fused multiply-adds."""
+    import numpy as np
+
+    from bench.accuracy import boost as acc
+    from bench.accuracy.compare import BOOST_SPECIAL
+    from bench.speed import boost
+
+    if not boost.available():
+        pytest.skip("no Boost.Math checkout")
+    mine = boost.names()
+    assert {n for n in mine if not n.endswith(":")} == BOOST_SPECIAL
+    assert {n for n in mine if n.endswith(":")} == {n for n in acc.names() if n.endswith(":")}
+    rng = np.random.default_rng(0)
+    x = rng.uniform(0.1, 3.0, 64)
+    for name, args in (("erf", (x,)), ("gammainc", (x, x[::-1].copy())), ("jv", (x, x))):
+        f = boost.special(name, args)
+        f()
+        out = np.asarray(f.__defaults__[-1][1])  # the call's output buffer
+        np.testing.assert_allclose(out, acc.evaluate(name, *args), rtol=1e-13, atol=0)
+    k = np.arange(0.0, 20.0)
+    for dname, method, params, pts in (("normal", "cdf", (1.5, 2.0), x), ("binomial", "logpmf", (40.0, 0.3), k)):
+        f = boost.dist(dname, method, params, pts)
+        f()
+        out = np.asarray(f.__defaults__[-1][1])
+        ref = acc.evaluate(f"{dname}:{method}", *(np.full(pts.size, p) for p in params), pts)
+        np.testing.assert_allclose(out, ref, rtol=1e-13, atol=0)

@@ -15,6 +15,15 @@ follow sd's mode, scipy's cho_solve gets cho_factor's factor as sd gets its chol
 Every call is a functools.partial over the prepared arrays where the call allows it, so
 the timed callable adds no Python frame of its own on either side.
 
+R joins where the accuracy measurement compares with R (bench/accuracy/linalg_ops.py, _R)
+and R's call does sd's work (R_ROWS below): single real matrices only (R has no batched
+or, on the accuracy side, complex calls), with R's matrices built from the numpy arrays
+before the timing; and vecdot(v, v) of the long vectors (the accuracy side's vecdot is
+the array area's, of two vectors: R's crossprod). Not qr (R's LAPACK qr pivots the columns: it is qr_pivoted's work;
+its default LINPACK qr is another algorithm), not lstsq (R's qr.coef solves by pivoted
+QR; sd's lstsq also returns the singular values and the rank), not the generalized
+eigh, not svd(mode="complete") (the accuracy side calls svd(A) only).
+
 A single small matrix has nothing to split (the batch split is the only parallel path
 below the BLAS), so (3,3) and (32,32) run at one thread only, except solve_sylvester and
 two rows that catch a misuse of the pool at 10 threads."""
@@ -24,7 +33,7 @@ from __future__ import annotations
 import functools
 import importlib
 
-from ..registry import Case, Ref
+from ..registry import Case, Ref, RRef
 
 MATRIX_SHAPES = [(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32), (16, 3, 3), (8, 300, 300)]
 KIND = {
@@ -376,6 +385,38 @@ def matrix_rows(shape):
     ]
 
 
+# R's version of a row on a single real matrix, as the accuracy measurement calls R:
+# name -> (R expression, numpy data keys R reads (same names in R), R setup, packages).
+# eigen gets symmetric = FALSE where the accuracy side leaves it to isSymmetric (an
+# all.equal of the matrix and its transpose, not part of the eigenvalue problem).
+R_ROWS = {
+    "solve(a, b)": ("solve(a, b)", ("a", "b")),
+    "solve(a, b16)": ("solve(a, b16)", ("a", "b16")),
+    "inv(a)": ("solve(a)", ("a",)),
+    "det(a)": ("det(a)", ("a",)),
+    "cholesky(spd)": ("chol(spd)", ("spd",)),
+    "qr_pivoted(a)": ("q <- qr(a, LAPACK = TRUE); list(qr.Q(q), qr.R(q), q$pivot)", ("a",)),
+    "eigh(h)": ("eigen(h, symmetric = TRUE)", ("h",)),
+    "eigvalsh(h)": ("eigen(h, symmetric = TRUE, only.values = TRUE)", ("h",)),
+    "svd(a)": ("svd(a)", ("a",)),
+    "svdvals(a)": ("svd(a, 0, 0)", ("a",)),
+    "eig(a)": ("eigen(a, symmetric = FALSE)", ("a",)),
+    "eigvals(a)": ("eigen(a, symmetric = FALSE, only.values = TRUE)", ("a",)),
+    "expm(a)": ("expm(A)", ("a",), "A <- Matrix(a)", ("Matrix",)),
+    "expm(t)": ("expm(A)", ("ut",), "A <- Matrix(ut)", ("Matrix",)),
+    "expm(0.01·a)": ("expm(A)", ("a001",), "A <- Matrix(a001)", ("Matrix",)),
+    "vecdot(v, v)": ("crossprod(v, v)", ("v",)),  # long vectors: the accuracy side's array vecdot
+}
+
+
+def _r_ref(name):
+    spec = R_ROWS.get(name)
+    if spec is None:
+        return None
+    expr, keys, setup, packages = (*spec, "", ())[:4]
+    return RRef("R", expr, data={k: k for k in keys}, setup=setup, packages=tuple(packages))
+
+
 _BASE_SHAPES = {(3, 3), (32, 32), (300, 300), (1000, 1000), (1000, 3, 3), (100, 32, 32)}
 _SPLIT = {
     (16, 3, 3): {
@@ -528,11 +569,9 @@ def _keys(*calls):
     return sorted({k for c in calls if c is not None for k in c.keys if isinstance(k, str)})
 
 
-def _ref(r):
-    if r is None:
-        return ()
-    lib, call = r
-    return (Ref(lib, call.make),)
+def _ref(r, rref=None):
+    out = () if r is None else (Ref(r[0], r[1].make),)
+    return out if rref is None else (*out, rref)
 
 
 def _size(shape):
@@ -540,7 +579,8 @@ def _size(shape):
 
 
 def _matrix_case(group, shape, name, sdc, ref, note, quick, cplx=False, threads=(1, 10)):
-    keys = _keys(sdc, ref[1] if ref else None)
+    rref = _r_ref(name) if not cplx and len(shape) == 2 else None  # R: single real matrices
+    keys = sorted({*_keys(sdc, ref[1] if ref else None), *(rref.data if rref else ())})
     quiet = name.startswith(("det(", "slogdet("))
     return Case(
         area="linalg",
@@ -549,7 +589,7 @@ def _matrix_case(group, shape, name, sdc, ref, note, quick, cplx=False, threads=
         size=_size(shape),
         setup=lambda: _matrix_data(shape, keys, quiet, cplx),
         sd=sdc.make,
-        refs=_ref(ref),
+        refs=_ref(ref, rref),
         note=note,
         quick=quick,
         threads=threads,
@@ -590,7 +630,8 @@ def cases() -> list[Case]:
     for name, shape, sdc, ref, note in rect_rows():
         out.append(_matrix_case(RECT_GROUP, shape, name, sdc, ref, note, (name, shape) in QUICK_RECT))
     for name, size, n, sdc, ref, note in long_rows():
-        keys = _keys(sdc, ref[1])
+        rref = _r_ref(name) if name == "vecdot(v, v)" else None
+        keys = sorted({*_keys(sdc, ref[1]), *(rref.data if rref else ())})
         out.append(
             Case(
                 area="linalg",
@@ -600,7 +641,7 @@ def cases() -> list[Case]:
                 n=n,
                 setup=lambda keys=keys: _long_data(keys),
                 sd=sdc.make,
-                refs=_ref(ref),
+                refs=_ref(ref, rref),
                 note=note,
                 quick=(name, size) in QUICK,
             )

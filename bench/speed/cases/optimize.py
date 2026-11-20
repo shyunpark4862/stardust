@@ -1,4 +1,5 @@
-"""sd.optimize against scipy.optimize. The problems, sizes, starting points and seeds are those
+"""sd.optimize against scipy.optimize and, where the accuracy measurement compares with R
+(bench/accuracy/optimize.py), against R. The problems, sizes, starting points and seeds are those
 of bench/optimize/o1-o6/speed.py (at commit 4151d2a):
 
   - least_squares ('trf', 'lm'): the Moré-Garbow-Hillstrom problems Rosenbrock (n = 2), Osborne 2
@@ -31,6 +32,15 @@ nothing, so nothing is rotated. scipy follows sd's thread count (its BLAS pool).
 element-wise solvers from 10^5 elements, minimize from n = 1000, lsq_linear and nnls at
 (10^4, 100).
 
+R is timed where bench/accuracy/optimize.py has an R comparator: uniroot for root_scalar
+'brentq', optim for minimize 'nelder-mead', 'bfgs' and 'l-bfgs-b', minpack.lm's nls.lm (MINPACK's
+lmder, lmdif without the Jacobian) for least_squares 'lm'. R's user functions are written in R
+(vectorized arithmetic), not called through reticulate, so that R's time is its solver's and
+not the bridge's; the problem, start, data, caps and tolerances are those of the Python calls
+as far as R's interface allows, and each case's note says where R's algorithm or stopping rule
+differs. No R for least_squares 'lm' with jac='3-point' (nls.lm differences forward only) or
+for Nelder-Mead with bounds (optim's Nelder-Mead takes none).
+
 Left out: the old scripts' Nelder-Mead at n = 1000, BFGS and L-BFGS-B with differences at
 n = 1000, trust-exact at n = 1000 (0.5 s: the Hessian's factorization, as at n = 100), and the
 loop of root_scalar against brentq per element.
@@ -41,7 +51,7 @@ from __future__ import annotations
 import math
 import warnings
 
-from ..registry import Case, Ref
+from ..registry import Case, Ref, RRef
 
 AREA = "optimize"
 
@@ -90,6 +100,9 @@ def _exp_setup(m, n, x0=0.0):
         Xs, ys = sd.asarray(X), sd.asarray(y)
         return {
             "x0": [x0] * n,
+            "X": X,
+            "y": y,
+            "rx0": np.full(n, x0),
             "sF": lambda t: ys - sd.exp(sd.matmul(Xs, t)),
             "sJ": lambda t: -sd.reshape(sd.exp(sd.matmul(Xs, t)), (m, 1)) * Xs,
             "nF": lambda t: y - np.exp(X @ t),
@@ -109,6 +122,8 @@ def _mgh_setup(cid):
         c = mgh.BY_ID[cid]
         return {
             "x0": c.x0(),
+            "rx0": np.array(c.x0()),
+            "ry": np.array(mgh.OSBORNE2_Y),
             "sF": lambda x: sd.asarray(c.fun(x.tolist())),
             "sJ": lambda x: sd.asarray(c.jac(x.tolist())),
             "nF": lambda x: np.array(c.fun(x.tolist())),
@@ -118,8 +133,64 @@ def _mgh_setup(cid):
     return setup
 
 
-def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False):
-    """jac: "analytic" (the user's Jacobian), "2-point" or "3-point"."""
+# The residuals F and Jacobians J in R (the formulas of tests/optimize/mgh.py and of _exp_setup),
+# with the data the setup passes: x0 (all), y (Osborne 2's table; the exponential problem's y),
+# X (the exponential problem).
+R_LSQ = {
+    "Rosenbrock": (
+        "F <- function(x) c(10 * (x[2] - x[1] * x[1]), 1 - x[1])\n"
+        "J <- function(x) matrix(c(-20 * x[1], 10, -1, 0), 2, 2, byrow = TRUE)"
+    ),
+    "Osborne 2": (
+        "tt <- (0:64) / 10\n"
+        "F <- function(x) { t1 <- exp(-x[5] * tt); t2 <- exp(-x[6] * (tt - x[9])^2); "
+        "t3 <- exp(-x[7] * (tt - x[10])^2); t4 <- exp(-x[8] * (tt - x[11])^2); "
+        "y - (x[1] * t1 + x[2] * t2 + x[3] * t3 + x[4] * t4) }\n"
+        "J <- function(x) { d2 <- tt - x[9]; d3 <- tt - x[10]; d4 <- tt - x[11]; t1 <- exp(-x[5] * tt); "
+        "t2 <- exp(-x[6] * d2^2); t3 <- exp(-x[7] * d3^2); t4 <- exp(-x[8] * d4^2); "
+        "cbind(-t1, -t2, -t3, -t4, tt * x[1] * t1, x[2] * d2^2 * t2, x[3] * d3^2 * t3, x[4] * d4^2 * t4, "
+        "-2 * x[2] * x[6] * d2 * t2, -2 * x[3] * x[7] * d3 * t3, -2 * x[4] * x[8] * d4 * t4) }"
+    ),
+    "Brown almost-linear": (
+        "F <- function(x) { k <- length(x); out <- x + (sum(x) - (k + 1)); out[k] <- prod(x) - 1; out }\n"
+        "J <- function(x) { k <- length(x); Jm <- matrix(1, k, k); diag(Jm) <- 2; Jm[k, ] <- prod(x) / x; Jm }"
+    ),
+    "exp": (
+        "F <- function(t) y - exp(drop(X %*% t))\n"  # the 1-thread reference BLAS
+        "J <- function(t) -exp(drop(X %*% t)) * X"
+    ),
+}
+R_LSQ_DATA = {
+    "Rosenbrock": {"rx0": "x0"},
+    "Osborne 2": {"rx0": "x0", "ry": "y"},
+    "Brown almost-linear": {"rx0": "x0"},
+    "exp": {"rx0": "x0", "X": "X", "y": "y"},
+}
+
+
+def _r_nls_lm(problem, jac, n):
+    """minpack.lm's nls.lm (bench/accuracy/optimize.py's R for least_squares 'lm'): MINPACK's
+    lmder with J, lmdif (forward differences) without; scipy's tolerances and evaluation cap
+    (max_nfev = 100 n, not counting the differences: lmdif counts them, hence (n + 1) times),
+    and no iteration cap (nls.lm's own default is 50; 1024 is its largest)."""
+    if jac == "3-point":  # nls.lm differences forward only
+        return None
+    nfev = 100 * n if jac == "analytic" else 100 * n * (n + 1)
+    control = f"nls.lm.control(ftol = 1e-8, ptol = 1e-8, gtol = 1e-8, maxfev = {nfev}, maxiter = 1024)"
+    return RRef(
+        "R",
+        f"nls.lm(x0, fn = F{', jac = J' if jac == 'analytic' else ''}, control = {control})",
+        data=R_LSQ_DATA[problem],
+        setup=R_LSQ[problem],
+        packages=("minpack.lm",),
+    )
+
+
+R_LSQ_NOTE = {"analytic": "R은 minpack.lm의 nls.lm(MINPACK lmder)", "2-point": "R은 nls.lm(MINPACK lmdif, 전진 차분)"}
+
+
+def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False, r=None):
+    """jac: "analytic" (the user's Jacobian), "2-point" or "3-point". r: the R comparator."""
 
     def sdf(d):
         import stardust as sd
@@ -142,6 +213,10 @@ def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False)
         name += f", jac='{jac}'"
     if bounds is not None:
         name += ", bounds"
+    refs = (Ref("scipy", spf, threads="follow"),)
+    if r is not None:
+        refs += (r,)
+        note = "; ".join(t for t in (note, R_LSQ_NOTE[jac]) if t)
     return Case(
         area=AREA,
         group=LSQ_GROUP,
@@ -149,7 +224,7 @@ def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False)
         size=size,
         setup=setup,
         sd=sdf,
-        refs=(Ref("scipy", spf, threads="follow"),),
+        refs=refs,
         threads=threads,
         quick=quick,
         note=note,
@@ -158,19 +233,24 @@ def _lsq_case(size, setup, method, jac, threads, note, bounds=None, quick=False)
 
 def _lsq_cases():
     out = []
-    problems = [(name, _mgh_setup(cid), None, MGH_NOTE[name]) for name, cid in MGH.items()]
-    problems += [(_size(m, n), _exp_setup(m, n), (m, n), "") for m, n in ((1000, 10), (100_000, 10), (10_000, 100))]
+    problems = [(name, _mgh_setup(cid), None, MGH_NOTE[name], name) for name, cid in MGH.items()]
+    problems += [
+        (_size(m, n), _exp_setup(m, n), (m, n), "", "exp") for m, n in ((1000, 10), (100_000, 10), (10_000, 100))
+    ]
     differenced = ("Osborne 2", "Brown almost-linear", _size(1000, 10), _size(10_000, 100))
-    for size, setup, shape, note in problems:
+    for size, setup, shape, note, problem in problems:
         threads = (1, 10) if shape and shape[0] * shape[1] >= 400_000 else (1,)
+        n = shape[1] if shape else int(MGH[size].split("-")[1][1:])  # mghNN-n<n>-m<m>-x<f>
         for method in ("trf", "lm"):
-            out.append(
-                _lsq_case(size, setup, method, "analytic", threads, note, quick=method == "trf" and shape == (1000, 10))
+            jacs = (
+                ["analytic"]
+                + (["2-point"] if size in differenced else [])
+                + (["3-point"] if size == "Osborne 2" else [])
             )
-            if size in differenced:
-                out.append(_lsq_case(size, setup, method, "2-point", threads, note))
-            if size == "Osborne 2":
-                out.append(_lsq_case(size, setup, method, "3-point", threads, note))
+            for jac in jacs:
+                r = _r_nls_lm(problem, jac, n) if method == "lm" else None
+                quick = method == "trf" and jac == "analytic" and shape == (1000, 10)
+                out.append(_lsq_case(size, setup, method, jac, threads, note, quick=quick, r=r))
     for m, n in ((1000, 10), (10_000, 100)):
         out.append(
             _lsq_case(
@@ -323,6 +403,41 @@ def _minimize_kwargs(fs, deriv, cap, bounds, n, scipy):
     return kw
 
 
+# optim's methods (bench/accuracy/optimize.py's R_METHOD), and scipy's rosen, rosen_der in R.
+R_OPTIM = {"nelder-mead": "Nelder-Mead", "bfgs": "BFGS", "l-bfgs-b": "L-BFGS-B"}
+R_ROSEN = (
+    "rosen <- function(x) { k <- length(x); a <- x[-1] - x[-k] * x[-k]; b <- 1 - x[-k]; sum(100 * (a * a) + b * b) }\n"
+    "rosen_der <- function(x) { k <- length(x); xi <- x[-k]; a <- x[-1] - xi * xi; "
+    "g <- c(-400 * xi * a - 2 * (1 - xi), 0); g[-1] <- g[-1] + 200 * a; g }"
+)
+R_OPTIM_NOTE = {
+    "nelder-mead": "R은 optim(Nelder–Mead): 단체 규칙·멈춤 규칙이 다르고 maxit은 f 호출 수",
+    "bfgs": "R은 optim(BFGS): 직선 탐색이 다르고 f의 상대 감소(reltol, 약 1.5e-8)로 멈춘다",
+    "l-bfgs-b": "R은 optim(L-BFGS-B, lmm = 10, pgtol = 1e-5): 같은 방법의 옛 판",
+}
+
+
+def _r_optim(method, deriv, n, cap, bounds):
+    """optim on the same problem: scipy's caps (maxiter = 200 n for Nelder-Mead and BFGS, where
+    Nelder-Mead's maxfev = 200 n too; 15000 for L-BFGS-B) where the case sets none, and
+    L-BFGS-B's scipy defaults (maxcor = 10, gtol = 1e-5; factr = 1e7 is both defaults).
+    Without the gradient optim differences centrally (ndeps = 1e-3)."""
+    if method not in R_OPTIM or (bounds and method == "nelder-mead"):  # optim's Nelder-Mead has no bounds
+        return None
+    if n % 2:
+        raise ValueError("the start (-1.2, 1, ...) needs an even n")
+    control = [f"maxit = {cap or (15000 if method == 'l-bfgs-b' else 200 * n)}"]
+    if method == "l-bfgs-b":
+        control += ["lmm = 10", "pgtol = 1e-5"]
+    gr = "rosen_der" if deriv == "jac" else "NULL"
+    lim = ", lower = -2, upper = 0.8" if bounds else ""
+    return RRef(
+        "R",
+        f'optim(x0, rosen, {gr}, method = "{R_OPTIM[method]}"{lim}, control = list({", ".join(control)}))',
+        setup=R_ROSEN + f"\nx0 <- rep(c(-1.2, {0.8 if bounds else 1.0}), {n // 2})",
+    )
+
+
 def _minimize_cases():
     out = []
     for method, deriv, n, cap, bounds, quick in MINIMIZE:
@@ -350,6 +465,12 @@ def _minimize_cases():
         if bounds:
             parts.append("−2 ≤ x ≤ 0.8")
         parts.append(f"{cap}회 반복" if cap else "수렴까지")
+        note = ", ".join(parts)
+        refs = (Ref("scipy", spf, threads="follow"),)
+        r = _r_optim(method, deriv, n, cap, bounds)
+        if r is not None:
+            refs += (r,)
+            note += "; " + R_OPTIM_NOTE[method] + (", 기울기는 중심 차분" if deriv == "diff" else "")
         out.append(
             Case(
                 area=AREA,
@@ -357,10 +478,10 @@ def _minimize_cases():
                 name=f"minimize {method}{_DERIV_NAME[deriv]}" + (", bounds" if bounds else ""),
                 size=f"n={n:,}",
                 sd=sdf,
-                refs=(Ref("scipy", spf, threads="follow"),),
+                refs=refs,
                 threads=(1, 10) if n >= 1000 else (1,),
                 quick=quick,
-                note=", ".join(parts),
+                note=note,
             )
         )
     return out
@@ -464,6 +585,17 @@ SCALAR_ROOTS = {
     "Chandrupatla 1": (_ch1, lambda x: 3 * x * x - 2, lambda x: 6 * x, (2.0, 3.0), 2.5),
 }
 SCALAR_ROOT_NOTE = {"APS 1": "sin x − x/2, 구간 (π/2, π)", "Chandrupatla 1": "x³ − 2x − 5, 구간 (2, 3)"}
+R_SCALAR_ROOT = {"APS 1": "function(x) sin(x) - x / 2", "Chandrupatla 1": "function(x) x^3 - 2 * x - 5"}
+
+
+def _r_uniroot(problem, bracket):
+    """uniroot (Brent's zeroin, bench/accuracy/optimize.py's R for 'brentq') at brentq's defaults:
+    tol = xtol = 2e-12 (zeroin's tolerance 2 eps |x| + tol / 2 is brentq's (xtol + 4 eps |x|) / 2)
+    and 100 iterations."""
+    lo, hi = bracket
+    return RRef(
+        "R", f"uniroot(f, c({lo!r}, {hi!r}), tol = 2e-12, maxiter = 100)", setup=f"f <- {R_SCALAR_ROOT[problem]}"
+    )
 
 
 def _scalar_cases():
@@ -492,6 +624,10 @@ def _scalar_cases():
 
                 return _quiet(lambda: so.root_scalar(f, **kw))
 
+            refs, note = (Ref("scipy", spf),), SCALAR_ROOT_NOTE[problem] + start
+            if method == "brentq":  # R has Brent's zeroin only
+                refs += (_r_uniroot(problem, bracket),)
+                note += "; R은 uniroot(같은 Brent 방법, tol = 2e-12)"
             out.append(
                 Case(
                     area=AREA,
@@ -499,10 +635,10 @@ def _scalar_cases():
                     name=f"root_scalar {method}",
                     size=problem,
                     sd=sdf,
-                    refs=(Ref("scipy", spf),),
+                    refs=refs,
                     threads=(1,),
                     quick=method == "brentq" and problem == "APS 1",
-                    note=SCALAR_ROOT_NOTE[problem] + start,
+                    note=note,
                 )
             )
 

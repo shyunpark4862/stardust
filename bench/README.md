@@ -53,6 +53,9 @@ Case(area="stats", group="연속 분포", name="Normal.cdf", size="10^5", n=100_
 - `Ref(label, make, threads=...)`: Python 비교 대상. `"fixed"`(기본)는 라운드마다 한 번, 그 라이브러리의 기본 스레드로 잰다(numpy·scipy의 원소별 계산은 1스레드, BLAS는 기본 스레드). `"follow"`는 sd의 스레드 수마다 BLAS 스레드를 같게 묶어 잰다. 회귀처럼 BLAS가 일의 대부분인 비교에 쓴다.
 - `RRef(label, expr, data, setup, packages)`: R 비교 대상. 실행 전체가 R 프로세스 하나를 쓰고, 꾸러미는 한 번만 불러온다. `data`의 배열은 float64 원시 파일로 넘어가고 시간은 R 안에서 같은 규칙으로 잰다. R은 1스레드다.
 - `Ref.n`: 비교 대상이 너무 느려 입력의 일부만 재는 경우 그 원소 수. 표는 사례의 크기로 환산하고 `*`를 붙인다.
+- **비교 대상은 정확도 측정과 같다.** 영역마다 같은 일을 하는 비교 대상이 정확도 측정(`bench/accuracy`)에 있으면 속도 사례에도 둔다. array는 numpy와 R, linalg는 numpy·scipy.linalg·R, special은 scipy·R·Boost.Math, stats는 scipy·R(mvtnorm)·Boost.Math, regression은 statsmodels·scikit-learn·R, optimize는 scipy·R이다. special과 stats의 R 식과 Boost 이름은 정확도 측정의 표(`bench/accuracy/compare.py`의 `R_SPECIAL`, `BOOST_SPECIAL`, `R_DIST`, `R_METHOD`, `BOOST_*`)를 그대로 가져다 쓴다. 그래서 한쪽에 함수를 더하면 다른 쪽에도 따라온다. 한 줄씩 Python으로 부르는 스칼라 사례에는 R과 Boost를 두지 않는다. 그 비용은 배열 사례에서 본다.
+- **Boost.Math**(`bench/speed/boost.py`, `boost_speed.cpp`): 정확도 측정이 받아 둔 Boost 소스(`build/comparators/boost-math`)를 sd와 같은 최적화 옵션으로 빌드한다. 배열 하나에 ctypes 호출 한 번이고, 원소마다 Boost 함수를 직접 부르는 C++ 반복문이다. 이름은 호출마다 한 번 풀고, 매개변수가 스칼라인 분포는 호출마다 한 번 만든다. 소스가 없으면 Boost 열을 빼고 돈다.
+- **optimize의 R**: 목적 함수, 잔차, 기울기를 R로 다시 쓴다(sd는 sd 배열, scipy는 numpy 배열로 쓴 것과 같은 원칙이다). 정확도 측정은 reticulate로 같은 Python 함수를 부르지만, 속도에서는 그 다리의 비용이 시간을 차지하기 때문이다. R의 반복 상한과 허용오차(optim의 maxit·pgtol·lmm, nls.lm의 ftol·ptol·gtol·maxfev)는 sd·scipy 호출과 같은 멈춤 일이 되도록 Python 쪽 값에 맞춘다. 정확도 측정의 R 호출은 R의 기본값이라 아직 이 점이 다르다. R의 알고리즘이 다른 곳(optim의 BFGS·Nelder–Mead, 차분 기울기)은 사례의 비고에 적는다.
 - `quick`: 빠른 묶음. 영역마다 1–3분 안에 도는 대표 사례들이다.
 - `cost`: 이 사례의 1스레드 시간이 들어가는 C++ 비용표와 그 키 (아래).
 - 사례 id(`영역/묶음/이름 [크기]`)는 영어로만 쓴다(테스트가 확인한다). 묶음(`group`)은 짧은 영어 키(`continuous`, `binary-f64` 등)이고, 생성되는 표의 절 제목은 사례 파일의 `TITLES`(키 → 한글 제목)에서 온다. 비교 대상 이름(`Ref.label`)도 영어다. `note`는 표의 비고 열이라 한글로 쓴다.

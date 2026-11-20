@@ -22,8 +22,10 @@ point per function (SCALAR_POINT).
 
 from __future__ import annotations
 
+import re
+
 from ..harness import fresh_count, rotate
-from ..registry import Case, Ref
+from ..registry import Case, Ref, RRef
 
 N = 10**6
 N_NONCENTRAL = 10**5
@@ -320,16 +322,68 @@ def _refs(name, key):
     return (Ref(lib, _call("ref", key)),) if lib else ()
 
 
+# (function, comparator) -> the elements it is timed on, where one call over the case's inputs
+# takes seconds (the smoke run's times, about 1-2 s a call at these sizes); the tables scale the
+# time to the case's size and mark it
+COMPARATOR_SAMPLE = {
+    ("ive", "R"): 30_000,
+    ("binom", "R"): 200_000,
+    ("i0", "R"): 200_000,
+    ("i0e", "R"): 200_000,
+    ("i1", "R"): 200_000,
+    ("i1e", "R"): 200_000,
+    ("stdtrit", "R"): 500_000,
+    ("chndtrix", "R"): 10_000,
+    ("ncfdtri", "R"): 30_000,
+    ("nctdtrit", "R"): 3_000,
+    ("expn", "Boost"): 100_000,
+    ("jv", "Boost"): 300_000,
+    ("yv", "Boost"): 300_000,
+    ("nctdtrit", "Boost"): 50,
+}
+
+
+def _r_boost(name, rotated=False):
+    """R and Boost.Math for an array case of `name`, where the accuracy measurement compares
+    with them (bench/accuracy/compare.py: R_SPECIAL, BOOST_SPECIAL): R's vectorized function in
+    the run's R session on the case's inputs (one input set of a rotated case), Boost in a C++
+    loop over them (bench/speed/boost.py)."""
+    from bench.accuracy.compare import BOOST_SPECIAL, R_SPECIAL
+
+    from .. import boost
+
+    out = []
+    if name in R_SPECIAL:
+        expr = R_SPECIAL[name]
+        used = [v for v in "abcd" if re.search(rf"\b{v}\b", expr)]
+        k = COMPARATOR_SAMPLE.get((name, "R"))
+        setup = "; ".join(f"{v} <- {v}[seq_len({k})]" for v in used) if k else ""
+        out.append(RRef("R", expr, data={f"arg{'abcd'.index(v)}": v for v in used}, setup=setup, n=k))
+    if name in BOOST_SPECIAL and boost.available():
+        k = COMPARATOR_SAMPLE.get((name, "Boost"))
+        if rotated:
+            make = lambda d: rotate([boost.special(name, xs) for xs in d["xs"]])  # noqa: E731
+        else:
+            make = lambda d, k=k: boost.special(name, [x[:k] for x in d["xs"]] if k else d["xs"])  # noqa: E731
+        out.append(Ref("Boost", make, lib="Boost", n=k))
+    return tuple(out)
+
+
 def _funcs(name):
     common = _common()
     return {"f": common.sd_function(name), "ref": common.scipy_function(name)}
 
 
 def _with_sd(d, xs):
+    import numpy as np
+
     import stardust as sd
 
     d["xs"] = xs
     d["sxs"] = tuple(sd.asarray(x) for x in xs)
+    for i, x in enumerate(xs):  # R's inputs (float64 arrays only travel)
+        if not np.iscomplexobj(x):
+            d[f"arg{i}"] = np.asarray(x, dtype=np.float64)
     return d
 
 
@@ -364,6 +418,9 @@ def _mid_setup(name, n):
     d = _funcs(name)
     d["xs"] = sets
     d["sxs"] = [tuple(sd.asarray(x) for x in s) for s in sets]
+    for i, x in enumerate(sets[0]):  # R times the first input set
+        if not np.iscomplexobj(x):
+            d[f"arg{i}"] = np.asarray(x, dtype=np.float64)
     return d
 
 
@@ -467,7 +524,7 @@ def cases() -> list[Case]:
                 n=n,
                 setup=lambda name=name, n=n: _setup(name, n),
                 sd=_call("f", "sxs"),
-                refs=_refs(name, "xs"),
+                refs=_refs(name, "xs") + _r_boost(name),
                 threads=(1, 10),
                 quick=name in QUICK,
                 cost=("special", name),
@@ -484,7 +541,7 @@ def cases() -> list[Case]:
                 n=N,
                 setup=lambda name=name: _typical_setup(name),
                 sd=_call("f", "sxs"),
-                refs=_refs(name, "xs"),
+                refs=_refs(name, "xs") + _r_boost(name),
                 threads=(1, 10),
                 quick=name in TYPICAL_QUICK,
                 note=_join(TYPICAL[name][1], _note(name)),
@@ -501,7 +558,7 @@ def cases() -> list[Case]:
                     n=n,
                     setup=lambda name=name, n=n: _mid_setup(name, n),
                     sd=_rotated("f", "sxs"),
-                    refs=(Ref(_lib(name), _rotated("ref", "xs")),),
+                    refs=(Ref(_lib(name), _rotated("ref", "xs")),) + _r_boost(name, rotated=True),
                     threads=(1, 10),
                     note=_join(
                         f"입력 {fresh_count(n)}벌을 돌려 쓴다",

@@ -212,6 +212,13 @@ def library_versions(libs: Sequence[str] = PY_LIBS) -> dict:
             except importlib.metadata.PackageNotFoundError:
                 pass
         out[name] = version
+    try:  # the Boost.Math checkout of the Boost comparator (bench/speed/boost.py), if there is one
+        from . import boost
+
+        if boost.available():
+            out["Boost.Math"] = boost.version()
+    except Exception:  # noqa: BLE001  (a version string is not worth failing a run)
+        pass
     return out
 
 

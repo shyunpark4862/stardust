@@ -35,7 +35,7 @@ from __future__ import annotations
 import math
 
 from ..harness import fresh_count, rotate
-from ..registry import Case, Ref
+from ..registry import Case, Ref, RRef
 
 N = 100_000
 
@@ -324,6 +324,91 @@ def _refs(name, m, *, no_scipy=False, sampled=None, new_sampled=None):
     return tuple(refs)
 
 
+def _dist_key(name):
+    from tests.stats import refdata
+
+    return {v: k for k, v in refdata.CLASSES.items()}[name]
+
+
+def _param_values(name, params):
+    """sd's parameters of `name` in order (tests/stats/refdata.CLASSES order), defaults filled."""
+    import stardust as sd
+
+    X = getattr(sd.stats, name)(**params)
+    return [float(getattr(X, p)) for p in X._params]
+
+
+# (case name, comparator) -> the points it is timed on, where one call over the case's points
+# takes seconds (the smoke run's times); the tables scale the time to the case's size
+COMPARATOR_SAMPLE = {
+    ("NoncentralT(df=9, nc=20).icdf", "R"): 20_000,
+    ("NoncentralChiSquared.icdf", "R"): 20_000,
+    ("NoncentralChiSquared.iccdf", "R"): 20_000,
+    ("NoncentralChiSquared(df=3.5, nc=200).icdf", "R"): 50_000,
+    ("Hypergeometric.icdf", "R"): 1_000,
+    ("Hypergeometric.iccdf", "R"): 1_000,
+    ("Poisson.logccdf", "Boost"): 10_000,
+    ("MultivariateNormal(d=3).cdf(x, atol=1e-06)", "R abseps=atol"): 1_000,
+}
+
+
+def _r_boost(name, m, params=None, arrays=None, key_prefix="", case=None):
+    """R and Boost.Math for distribution `name`'s method m, where the accuracy measurement
+    compares with them (bench/accuracy/compare.py: R_DIST, R_METHOD, BOOST_CONT, BOOST_DISC,
+    BOOST_DISCRETE_DISTS). params: scalar parameters (a dict as the case gives them; R gets
+    them as literals, Boost builds the distribution once a call), or arrays: the data keys of
+    the parameter arrays in order (both evaluate per element). The points are the case data's
+    numpy array of the method (x, p or log p), under key_prefix (the first set of a rotated
+    case)."""
+    from bench.accuracy.compare import BOOST_CONT, BOOST_DISC, BOOST_DISCRETE_DISTS, R_DIST, R_METHOD, R_SHIFT
+
+    from .. import boost
+
+    dist = _dist_key(name)
+    point = key_prefix + _arg_keys(m)[1]
+    out = []
+    if dist in R_DIST and m in R_METHOD:
+        stem, args = R_DIST[dist]
+        pre, extra, kind = R_METHOD[m]
+        if arrays is None:
+            vals = [repr(v) for v in _param_values(name, params)]
+            data = {point: "v"}
+        else:
+            vals = [f"q{i}" for i in range(len(arrays))]
+            data = {point: "v", **{k: f"q{i}" for i, k in enumerate(arrays)}}
+        x = "v"
+        shift = R_SHIFT.get(dist, 0.0)
+        if kind == "x" and shift:
+            x = f"(v - {shift})"
+        expr = f"{pre}{stem}({x}, {args.format(*vals)}{extra})"
+        if kind == "p" and shift:
+            expr = f"({expr} + {shift})"
+        k = COMPARATOR_SAMPLE.get((case, "R"))
+        setup = "; ".join(f"{r} <- {r}[seq_len({k})]" for r in data.values()) if k else ""
+        out.append(RRef("R", expr, data=data, setup=setup, n=k))
+    ok = BOOST_DISC if dist in BOOST_DISCRETE_DISTS else BOOST_CONT
+    if m in ok and boost.available() and f"{dist}:" in _boost_names():
+        k = COMPARATOR_SAMPLE.get((case, "Boost"))
+        if arrays is None:
+            vals = _param_values(name, params)
+            make = lambda d: boost.dist(dist, m, vals, d[point][:k])  # noqa: E731
+        else:
+            make = lambda d: boost.dist(dist, m, [d[a][:k] for a in arrays], d[point][:k])  # noqa: E731
+        out.append(Ref("Boost", make, lib="Boost", n=k))
+    return tuple(out)
+
+
+_BOOST_NAMES = []
+
+
+def _boost_names():
+    from .. import boost
+
+    if not _BOOST_NAMES:
+        _BOOST_NAMES.append(boost.names())
+    return _BOOST_NAMES[0]
+
+
 def _methods(name, methods):
     return methods + ILOG if name in ILOG_DISTS else methods
 
@@ -351,7 +436,8 @@ def _dist_cases(group, specs, methods, points, *, no_scipy=frozenset(), sampled=
                     n=N,
                     setup=setup,
                     sd=_sd_call(m),
-                    refs=_refs(name, m, no_scipy=(name, m) in no_scipy, sampled=k),
+                    refs=_refs(name, m, no_scipy=(name, m) in no_scipy, sampled=k)
+                    + _r_boost(name, m, params, case=f"{name}.{m}"),
                     cost=("stats", f"{name.lower()}.{m}" + ("@memo" if memo else "")),
                     quick=(group, f"{name}.{m}") in QUICK_DIST,
                     note=note,
@@ -415,7 +501,8 @@ def _wide_cases():
                     n=n,
                     setup=setup,
                     sd=_sd_call(m),
-                    refs=_refs(name, m, no_scipy=no_scipy, sampled=sampled, new_sampled=new_sampled),
+                    refs=_refs(name, m, no_scipy=no_scipy, sampled=sampled, new_sampled=new_sampled)
+                    + _r_boost(name, m, T5_WIDE[i][1], case=f"{name}.{m}"),
                     cost=("stats", f"{name.lower()}.{m}"),
                     quick=(group, f"{name}.{m}") in QUICK_DIST,
                     note=note,
@@ -441,7 +528,7 @@ def _other_cases():
                     n=N,
                     setup=setup,
                     sd=_sd_call(m),
-                    refs=_refs(name, m, sampled=k),
+                    refs=_refs(name, m, sampled=k) + _r_boost(name, m, params, case=f"{label}.{m}"),
                     cost=("stats", f"{name.lower()}.{m}"),
                     quick=(group, f"{label}.{m}") in QUICK_DIST,
                 )
@@ -513,15 +600,25 @@ def _param_array_setup(name, draw, scipy_ref):
         p = rng.uniform(0, 1, N)
         X = getattr(sd.stats, name)(**{k: sd.asarray(v) for k, v in kw.items()})
         x = np.asarray(X.icdf(sd.asarray(p)))
-        return {
+        d = {
             "X": X,
             "ref": scipy_ref(st, kw),
             "new": NEW[name](st, kw) if name in NEW else None,
             "x": x,
             "sx": sd.asarray(x),
         }
+        for i, par in enumerate(X._params):  # sd's parameters in order (defaults filled), for R and Boost
+            v = kw[par] if par in kw else np.asarray(getattr(X, par), dtype=np.float64)
+            d[f"par{i}"] = np.broadcast_to(np.asarray(v, dtype=np.float64), (N,)).copy()
+        return d
 
     return setup
+
+
+def _par_keys(name):
+    import stardust as sd
+
+    return [f"par{i}" for i in range(len(getattr(sd.stats, name)._params))]
 
 
 def _param_array_cases():
@@ -539,7 +636,7 @@ def _param_array_cases():
                     n=N,
                     setup=setup,
                     sd=_sd_call(m),
-                    refs=_refs(name, m),
+                    refs=_refs(name, m) + _r_boost(name, m, arrays=_par_keys(name)),
                     quick=(group, f"{name}.{m}") in QUICK_DIST,
                     note=note,
                 )
@@ -567,9 +664,16 @@ def _mid_setup(name, params, scipy_ref, n):
 
         rng = np.random.default_rng(0)
         sets = [_dist_data(name, params, scipy_ref, rng.uniform(0, 1, n), "sd") for _ in range(fresh_count(n))]
-        return {"sets": sets}
+        first = {f"first_{k}": sets[0][k] for k in ("x", "p", "lp")}  # R times the first set
+        return {"sets": sets, **first}
 
     return setup
+
+
+def _boost_dist(name, m, params, x):
+    from .. import boost
+
+    return boost.dist(_dist_key(name), m, _param_values(name, params), x)
 
 
 def _mid_cases():
@@ -578,6 +682,20 @@ def _mid_cases():
     for name, params, scipy_ref, m in MID:
         for n, size in MID_SIZES:
             refs = [Ref("scipy", lambda d, m=m: rotate([_ref_call("ref", m)(s) for s in d["sets"]]))]
+            for r in _r_boost(name, m, params, key_prefix="first_"):
+                if isinstance(r, RRef):
+                    refs.append(r)
+                else:  # Boost over every set in turn, as the others
+                    key = _arg_keys(m)[1]
+                    refs.append(
+                        Ref(
+                            "Boost",
+                            lambda d, m=m, name=name, params=params, key=key: rotate(
+                                [_boost_dist(name, m, params, s[key]) for s in d["sets"]]
+                            ),
+                            lib="Boost",
+                        )
+                    )
             if name in NEW:
                 refs.append(
                     Ref(NEW_LABEL, lambda d, m=m: rotate([_ref_call("new", m)(s) for s in d["sets"]]), lib="scipy")
@@ -870,6 +988,8 @@ def _mv_setup(which):
                     "ref": st.multivariate_normal(mu, cov),
                     "x": x,
                     "X": sd.asarray(x),
+                    "mu": mu,
+                    "cov": cov,
                 }
             if which == ("MultivariateT", d):
                 return {
@@ -877,6 +997,8 @@ def _mv_setup(which):
                     "ref": st.multivariate_t(mu, cov, df=5.0),
                     "x": x,
                     "X": sd.asarray(x),
+                    "mu": mu,
+                    "cov": cov,
                 }
         p = np.array([0.1, 0.2, 0.3, 0.4])
         xm = rng.multinomial(20, p, size=T9_N).astype(float)
@@ -886,6 +1008,7 @@ def _mv_setup(which):
                 "ref": st.multinomial(20, p),
                 "x": xm,
                 "X": sd.asarray(xm),
+                "p": p,
             }
         al = np.array([0.5, 2.0, 3.0, 1.5])
         xd = rng.dirichlet(al, size=T9_N)
@@ -919,8 +1042,9 @@ def _mv_cases():
                 n=T9_N,
                 setup=setup,
                 sd=lambda d, meth=meth: lambda f=getattr(d["D"], meth), X=d["X"]: f(X),
-                refs=(Ref("scipy", ref),),
+                refs=(Ref("scipy", ref), *_mv_r(which[0])),
                 quick=f"{label}.{meth}" in quick,
+                note=MV_R_NOTE.get(which[0], ""),
             )
         )
         out.append(
@@ -937,6 +1061,35 @@ def _mv_cases():
             )
         )
     return out
+
+
+# R where the accuracy measurement compares with it (bench/accuracy/multivariate.py): mvtnorm's
+# dmvnorm and dmvt, base R's dmultinom (one row a call: it takes one vector), none for Dirichlet
+MV_R_NOTE = {"Multinomial": "R의 dmultinom은 한 행씩 받는다(apply로 행마다 부른다)"}
+
+
+def _mv_r(cls):
+    if cls == "MultivariateNormal":
+        return (
+            RRef(
+                "R",
+                "dmvnorm(X, mean = M, sigma = S, log = TRUE)",
+                data={"x": "X", "mu": "M", "cov": "S"},
+                packages=("mvtnorm",),
+            ),
+        )
+    if cls == "MultivariateT":
+        return (
+            RRef(
+                "R",
+                "dmvt(X, delta = M, sigma = S, df = 5, log = TRUE)",
+                data={"x": "X", "mu": "M", "cov": "S"},
+                packages=("mvtnorm",),
+            ),
+        )
+    if cls == "Multinomial":
+        return (RRef("R", "apply(X, 1, function(r) dmultinom(r, prob = P, log = TRUE))", data={"x": "X", "p": "P"}),)
+    return ()
 
 
 def _with_rng(d):
@@ -999,7 +1152,7 @@ def _mvcdf_setup(d, df):
         else:
             D = sd.stats.MultivariateT(mu=sd.asarray(np.zeros(d)), shape=sd.asarray(S), df=df)
             ref = st.multivariate_t(np.zeros(d), S, df=df, seed=0)
-        return {"D": D, "X": sd.asarray(X), "xs": X[:n_sc].copy(), "S": S, "ref": ref, "st": st, "d": d}
+        return {"D": D, "X": sd.asarray(X), "xn": X, "xs": X[:n_sc].copy(), "S": S, "ref": ref, "st": st, "d": d}
 
     return setup
 
@@ -1031,12 +1184,29 @@ def _mvcdf_cases():
                 n=n_ours,
                 setup=_mvcdf_setup(d, df),
                 sd=lambda dd, atol=atol: lambda D=dd["D"], X=dd["X"]: D.cdf(X, atol=atol),
-                refs=(_mvcdf_ref(d, df, atol, n_sc),),
+                refs=(_mvcdf_ref(d, df, atol, n_sc), _mvcdf_r(df, atol, f"{cls}({what}).cdf(x, atol={atol:.0e})")),
                 quick=(d, df, atol) in quick,
                 note=note,
             )
         )
     return out
+
+
+def _mvcdf_r(df, atol, case):
+    """mvtnorm's pmvnorm / pmvt at sd's accuracy (Genz-Bretz, abseps = atol, releps = 0), one
+    row a call as the accuracy measurement calls it, a fixed seed per row."""
+    call = (
+        "pmvnorm(upper = X[i, ], sigma = S, algorithm = alg)[1]"
+        if math.isinf(df)
+        else f"pmvt(upper = X[i, ], sigma = S, df = {int(df)}, algorithm = alg)[1]"
+    )
+    expr = (
+        f"vapply(seq_len(nrow(X)), function(i) {{ set.seed(0); "
+        f"alg <- GenzBretz(abseps = {atol!r}, releps = 0); {call} }}, 0.0)"
+    )
+    k = COMPARATOR_SAMPLE.get((case, "R abseps=atol"))
+    setup = f"X <- X[seq_len({k}), , drop = FALSE]" if k else ""
+    return RRef("R abseps=atol", expr, data={"xn": "X", "S": "S"}, packages=("mvtnorm",), setup=setup, n=k)
 
 
 MVN_LABEL = "scipy abseps=atol"
