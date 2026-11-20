@@ -845,7 +845,11 @@ numpy 2.5.4와 scipy 1.18.1도 Accelerate의 LAPACK을 불러요. 같은 루틴�
 
 ## 정확도
 
-수치적 정확도(역오차, 잔차)는 LAPACK 루틴의 성질이고, 각 알고리즘 글이 다뤄요. 이 영역이 구조로 보장하는 것은 **재현성**이에요.
+수치적 정확도(역오차, 잔차)는 LAPACK 루틴의 성질이고, 각 알고리즘 글이 다뤄요. 계약은 잔차로 적어요. 잔차를 $n\varepsilon$과 문제의 척도로 나눈 값이 10 이하여야 해요($n = \max(m, n)$, 무한 노름). `solve`는 $\lVert Ax - b\rVert/(\lVert A\rVert\lVert x\rVert + \lVert b\rVert)$, 분해(`lu`, `qr`, `cholesky`, `svd`)는 $\lVert A - \text{인수의 곱}\rVert/\lVert A\rVert$를 보고, 직교 인수는 $\lVert Q^{\mathsf H}Q - I\rVert$도 봐요.
+
+이 계약은 조건수 $\kappa_2 = 1$–$10^{12}$의 정사각·대칭·직사각 행렬(`tests/linalg/ref/`, `tools/linalg_ref.py`)에서 재요(`bench/linalg/accuracy.md`). 잔차를 $n\varepsilon$·척도로 나눈 값은 최대 1.12(`svd`, $\kappa_2 = 10^{12}$), 직교성은 최대 1.95(`svd`, $\kappa_2 = 1$)라 모든 함수가 한계의 0.2배 안이에요. 답이 하나로 정해지는 값(`solve`·`lstsq`의 해, `det`, `eigvalsh`, `svdvals`, `eigvals`, `expm`)은 Arb(구간 산술)로 만든 참값과의 오차를 기록해요. 상대오차를 $u$·조건수로 나눈 값이 `solve`의 해 0.66, `det` 0.27, `lstsq`의 해 10.5, `svdvals` 5.29, `eigvalsh` 22.8, `eigvals` 25.2, `expm` 1.09 이하예요. numpy 2.5.4와 R 4.6.2도 같은 점에서 같은 척도로 재요.
+
+이 영역이 구조로 보장하는 것은 **재현성**이에요.
 
 **같은 입력은 언제나 같은 비트를 내요.** 아래 세 가지가 바뀌어도 결과는 그대로예요.
 

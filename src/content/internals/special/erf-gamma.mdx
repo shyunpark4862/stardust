@@ -44,7 +44,7 @@ import Steps from '../../../components/fig/Steps.astro';
 
 ## 정확도를 말하는 단위
 
-**ULP**(unit in the last place)는 어떤 수 바로 옆의 float64까지의 거리예요. 1과 2 사이에서는 $2^{-52} \approx 2.2 \times 10^{-16}$이고, 수가 두 배가 될 때마다 두 배가 돼요. "오차가 3 ULP"라는 말은 "참값과 계산값 사이에 float64가 세 칸쯤 있다"는 뜻이에요. 상대오차로는 가수의 위치에 따라 $1.1 \times 10^{-16}$에서 $2.2 \times 10^{-16}$ 사이가 한 칸이에요. 이 영역이 약속하는 상대오차 $10^{-14}$는 대략 45–90 ULP예요.
+**ULP**(unit in the last place)는 어떤 수 바로 옆의 float64까지의 거리예요. 1과 2 사이에서는 $2^{-52} \approx 2.2 \times 10^{-16}$이고, 수가 두 배가 될 때마다 두 배가 돼요. 오차를 ULP로 잴 때는 참값에 가장 가까운 float64에서 계산값까지 float64가 몇 칸인지 세요. "오차가 3 ULP"라는 말은 "세 칸 떨어져 있다"는 뜻이에요. 상대오차로는 가수의 위치에 따라 $1.1 \times 10^{-16}$에서 $2.2 \times 10^{-16}$ 사이가 한 칸이에요. 이 영역이 약속하는 상대오차 $10^{-14}$는 대략 45–90 ULP예요.
 
 **소거**(catastrophic cancellation)는 거의 같은 두 수를 뺄 때 생겨요. 뺄셈 자체는 정확하지만, 두 수에 이미 들어 있던 반올림 오차는 그대로 남고 결과만 작아지므로 **상대**오차가 커져요. 예를 들어 $1 - 0.9999999$의 두 피연산자가 각각 $10^{-16}$의 상대오차를 지녔다면, 결과 $10^{-7}$의 상대오차는 $10^{-9}$까지 커질 수 있어요. 일반적으로 $a - b$의 오차 증폭은 $\lvert a \rvert / \lvert a - b \rvert$배예요.
 
@@ -154,13 +154,13 @@ $$
 
 | x | `erfc(x)` | stardust 오차 | scipy 오차 |
 |:---:|---|:---:|:---:|
-| 5.5 | 7.357847917974398e-15 | 0.14 ULP | 0.86 ULP |
-| 19.6 | 4.169052842365249e-169 | 1.0 ULP | 187 ULP |
-| 26.0 | 5.663192408856145e-296 | 2.3 ULP | 2.3 ULP |
+| 5.5 | 7.357847917974398e-15 | 1 ULP | 1 ULP |
+| 19.6 | 4.169052842365249e-169 | 0 ULP | 187 ULP |
+| 26.0 | 5.663192408856145e-296 | 2 ULP | 2 ULP |
 
 (Arb 참값 대비. x = 26.0에서 둘이 같은 이유는 $26^2 = 676$이 float64로 정확해서 $\ell = 0$이기 때문이에요.)
 
-Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \times 10^{-14}$로 적어요 [2]. 같은 유리식에 $e^{-x^2}$만 위처럼 만든 stardust의 `erfc`는 최대 7.8 ULP(약 $1.7 \times 10^{-15}$)이므로, 그 차이는 대부분 지수에서 와요.
+Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \times 10^{-14}$로 적어요 [2]. 같은 유리식에 $e^{-x^2}$만 위처럼 만든 stardust의 `erfc`는 최대 6 ULP(상대 약 $8 \times 10^{-16}$)이므로, 그 차이는 대부분 지수에서 와요.
 
 ### 청크 커널: NEON, vForce, 분기
 
@@ -190,7 +190,7 @@ Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \tim
 
 차수 5–8의 유리식 셋을 모두 계산하는 비용이 레인 두 개로 얻는 이득보다 커요. M4의 분기 예측기와 넓은 비순차 실행 코어 덕에 분기가 싸서, 구간이 무작위로 섞인 입력을 빼면 분기 쪽이 빠르거나 같아요. 결과 비트는 두 방식이 같아요(같은 연산을 같은 순서로 하니까요). 그래서 3단계는 스칼라 분기예요.
 
-다항식을 계산하는 순서에는 두 후보가 있어요. **Horner** 방식은 $c_0 x^n + \dots + c_n = (\dots((c_0 x + c_1)x + c_2)\dots)x + c_n$으로 곱셈-덧셈이 한 줄로 이어져서, 앞 단계가 끝나야 다음을 시작할 수 있어요. **Estrin** 방식은 $(c_{n-1}x + c_n) + x^2(c_{n-3}x + c_{n-2}) + \dots$처럼 짝을 먼저 만들고 $x^2, x^4$로 묶어 나가는 트리라서, 독립된 곱셈이 동시에 돌 수 있어요. 두 방식은 속도가 비슷하고(위 표의 셋째 열), 오차는 Estrin이 커요(지금 빌드에서 최대 9.13 대 6.11 ULP, 99.9% 지점 4.19 대 3.74). 정확도를 먼저 보므로 Horner를 써요. Horner의 각 단계는 FMA 하나라 반올림이 한 번이에요. 컴파일러가 스스로 곱셈과 덧셈을 FMA로 합치지 않게(`-ffp-contract=off`) 빌드하고 FMA는 코드에 적은 곳에서만 생기므로, NEON 레인(`vfmaq_f64`)과 스칼라(`std::fma`)가 같은 반올림을 해서 비트가 같아요.
+다항식을 계산하는 순서에는 두 후보가 있어요. **Horner** 방식은 $c_0 x^n + \dots + c_n = (\dots((c_0 x + c_1)x + c_2)\dots)x + c_n$으로 곱셈-덧셈이 한 줄로 이어져서, 앞 단계가 끝나야 다음을 시작할 수 있어요. **Estrin** 방식은 $(c_{n-1}x + c_n) + x^2(c_{n-3}x + c_{n-2}) + \dots$처럼 짝을 먼저 만들고 $x^2, x^4$로 묶어 나가는 트리라서, 독립된 곱셈이 동시에 돌 수 있어요. 두 방식은 속도가 비슷하고(위 표의 셋째 열), 오차는 Estrin이 커요(`erfc`의 참값 파일에서 최대 9 대 6 ULP). 정확도를 먼저 보므로 Horner를 써요. Horner의 각 단계는 FMA 하나라 반올림이 한 번이에요. 컴파일러가 스스로 곱셈과 덧셈을 FMA로 합치지 않게(`-ffp-contract=off`) 빌드하고 FMA는 코드에 적은 곳에서만 생기므로, NEON 레인(`vfmaq_f64`)과 스칼라(`std::fma`)가 같은 반올림을 해서 비트가 같아요.
 
 ### erfcx: 같은 유리식, 그리고 발산하는 급수
 
@@ -242,7 +242,7 @@ $$
 
 **음수 쪽.** $\operatorname{erfc}(-x) = 2 - \operatorname{erfc}(x)$를 지수와 함께 쓰면 $\operatorname{erfcx}(x) = 2e^{x^2} - \operatorname{erfcx}(-x)$예요. $x \le -1$에서 $2e^{x^2} \ge 5.4$이고 $\operatorname{erfcx}(-x) \le 0.43$이므로 소거가 거의 없어요. $e^{x^2}$은 `erfc`와 같은 방법으로 $e^{h}(1 + \ell)$로 계산해요. $x \lt -26.63$에서는 $e^{x^2}$이 넘쳐서 inf예요.
 
-**Faddeeva 패키지의 방식을 쓰지 않는 이유.** S. G. Johnson의 Faddeeva 패키지(scipy가 `erfcx`에 써요)는 실수 `erfcx`를 $0 \le x \le 50$에서 $y = 4/(4 + x)$를 100개의 같은 구간으로 나눈 Chebyshev 다항식 표로, $x \gt 50$에서 연분수로 계산해요 [2]. 정확하지만 구간이 많고 표가 커요. 같은 일을 세 갈래로 할 수 있고 정확도(최대 6.05 ULP)도 충분하므로 여기서는 쓰지 않아요.
+**Faddeeva 패키지의 방식을 쓰지 않는 이유.** S. G. Johnson의 Faddeeva 패키지(scipy가 `erfcx`에 써요)는 실수 `erfcx`를 $0 \le x \le 50$에서 $y = 4/(4 + x)$를 100개의 같은 구간으로 나눈 Chebyshev 다항식 표로, $x \gt 50$에서 연분수로 계산해요 [2]. 정확하지만 구간이 많고 표가 커요. 같은 일을 세 갈래로 할 수 있고 정확도(참값 파일에서 최대 9 ULP)도 충분하므로 여기서는 쓰지 않아요.
 
 `erfcx`는 분기가 많은 함수라 청크 커널이 아니라 원소마다 libm `exp`를 부르는 스칼라 정의예요.
 
@@ -264,7 +264,7 @@ y & x \lt 0 \\
 \end{cases}, \qquad y = \tfrac12\, e^{-x^2/2}\,\frac{P(\lvert t \rvert)}{Q(\lvert t \rvert)} \ (\text{8 위는 } R/S)
 $$
 
-이에요. $x = -30$에서 stardust는 0.84 ULP, scipy 1.18.1은 376 ULP예요. 왼쪽 꼬리 $x \lt -37.5$에서는 값이 서브노멀인데, stardust는 그 값을 그대로 내고(−38.47까지), scipy는 −37.7 아래를 0으로 내요.
+이에요. $x = -30$에서 stardust는 0 ULP, scipy 1.18.1은 376 ULP예요. 왼쪽 꼬리 $x \lt -37.5$에서는 값이 서브노멀인데, stardust는 그 값을 그대로 내고(−38.47까지), scipy는 −37.7 아래를 0으로 내요.
 
 ### log_ndtr: 두 갈래로 충분한 이유
 
@@ -340,20 +340,20 @@ $\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로�
 
 | 함수 | 최대 ULP | 99.9% | scipy 최대 | 1스레드 ms | 10스레드 ms | scipy 대비 (1스레드) | 스칼라 µs |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `erf` | 2.29 | 1.73 | 2.29 | ⟦SPEED erf t1⟧ | ⟦SPEED erf t10⟧ | ⟦SPEED erf ratio1⟧ | ⟦SPEED erf scalar⟧ |
-| `erfc` | 6.11 | 3.74 | 2.3e13 | ⟦SPEED erfc t1⟧ | ⟦SPEED erfc t10⟧ | ⟦SPEED erfc ratio1⟧ | ⟦SPEED erfc scalar⟧ |
-| `erfcx` | 9.05 | 3.09 | 500 | ⟦SPEED erfcx t1⟧ | ⟦SPEED erfcx t10⟧ | ⟦SPEED erfcx ratio1⟧ | ⟦SPEED erfcx scalar⟧ |
-| `ndtr` | 8.14 | 4.83 | 1.1e13 | ⟦SPEED ndtr t1⟧ | ⟦SPEED ndtr t10⟧ | ⟦SPEED ndtr ratio1⟧ | ⟦SPEED ndtr scalar⟧ |
-| `log_ndtr` | 5.27 | 4.02 | 1.1e13 | ⟦SPEED log_ndtr t1⟧ | ⟦SPEED log_ndtr t10⟧ | ⟦SPEED log_ndtr ratio1⟧ | ⟦SPEED log_ndtr scalar⟧ |
-| `ndtri` | 4.67 | 3.49 | 2.81 | ⟦SPEED ndtri t1⟧ | ⟦SPEED ndtri t10⟧ | ⟦SPEED ndtri ratio1⟧ | ⟦SPEED ndtri scalar⟧ |
-| `erfinv` | 4.07 | 3.42 | 1.95 | ⟦SPEED erfinv t1⟧ | ⟦SPEED erfinv t10⟧ | ⟦SPEED erfinv ratio1⟧ | ⟦SPEED erfinv scalar⟧ |
-| `erfcinv` | 4.47 | 3.48 | inf | ⟦SPEED erfcinv t1⟧ | ⟦SPEED erfcinv t10⟧ | ⟦SPEED erfcinv ratio1⟧ | ⟦SPEED erfcinv scalar⟧ |
-| `ndtri_exp` | 3.56 | 3.09 | 5.3e3 | ⟦SPEED ndtri_exp t1⟧ | ⟦SPEED ndtri_exp t10⟧ | ⟦SPEED ndtri_exp ratio1⟧ | ⟦SPEED ndtri_exp scalar⟧ |
+| `erf` | 2 | 2 | 2 | ⟦SPEED erf t1⟧ | ⟦SPEED erf t10⟧ | ⟦SPEED erf ratio1⟧ | ⟦SPEED erf scalar⟧ |
+| `erfc` | 6 | 4 | 2.3e13 | ⟦SPEED erfc t1⟧ | ⟦SPEED erfc t10⟧ | ⟦SPEED erfc ratio1⟧ | ⟦SPEED erfc scalar⟧ |
+| `erfcx` | 9 | 3 | 500 | ⟦SPEED erfcx t1⟧ | ⟦SPEED erfcx t10⟧ | ⟦SPEED erfcx ratio1⟧ | ⟦SPEED erfcx scalar⟧ |
+| `ndtr` | 8 | 5 | 1.1e13 | ⟦SPEED ndtr t1⟧ | ⟦SPEED ndtr t10⟧ | ⟦SPEED ndtr ratio1⟧ | ⟦SPEED ndtr scalar⟧ |
+| `log_ndtr` | 5 | 4 | 1.1e13 | ⟦SPEED log_ndtr t1⟧ | ⟦SPEED log_ndtr t10⟧ | ⟦SPEED log_ndtr ratio1⟧ | ⟦SPEED log_ndtr scalar⟧ |
+| `ndtri` | 5 | 4 | 3 | ⟦SPEED ndtri t1⟧ | ⟦SPEED ndtri t10⟧ | ⟦SPEED ndtri ratio1⟧ | ⟦SPEED ndtri scalar⟧ |
+| `erfinv` | 4 | 3 | 2 | ⟦SPEED erfinv t1⟧ | ⟦SPEED erfinv t10⟧ | ⟦SPEED erfinv ratio1⟧ | ⟦SPEED erfinv scalar⟧ |
+| `erfcinv` | 4 | 3 | 1.5e12 (2) | ⟦SPEED erfcinv t1⟧ | ⟦SPEED erfcinv t10⟧ | ⟦SPEED erfcinv ratio1⟧ | ⟦SPEED erfcinv scalar⟧ |
+| `ndtri_exp` | 146 | 3.00 | 5.3e3 | ⟦SPEED ndtri_exp t1⟧ | ⟦SPEED ndtri_exp t10⟧ | ⟦SPEED ndtri_exp ratio1⟧ | ⟦SPEED ndtri_exp scalar⟧ |
 
-(정확도는 지금 빌드로 잰 값이에요. 기준값은 `tests/special/ref`(Arb)이고, scipy 1.18.1의 같은 값을 함께 적었어요.)
+(정확도는 정확도 측정 도구 `bench/accuracy/`가 지금 빌드로 잰 값이에요. 기준값은 `tests/special/ref`(Arb)이고, scipy 1.18.1의 같은 값을 함께 적었어요. scipy 최대는 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요. `ndtri_exp`는 ULP를 조건수로 나눈 값이고, 146은 결과가 0을 지나는 $y = \log(1/2)$의 점 하나예요. 그 점은 조건수가 커서 계약 안이고, 빼면 최대는 4예요.)
 
-- scipy의 최대 오차가 큰 줄(`erfc`, `ndtr`, `log_ndtr`의 $10^{13}$)은 모두 서브노멀 꼬리를 0으로 내는 점이에요. 그 밖에도 위에서 본 $x^2$와 $t$의 반올림 때문에 꼬리에서 수백 ULP가 나요. `erfcx`의 500 ULP는 큰 x의 $R/S$에서, `erfcinv`의 inf는 $z/2$의 언더플로에서 와요.
-- `ndtri`과 `erfinv`는 scipy가 조금 더 정확해요(최대 2.8, 2.0 대 4.7, 4.1 ULP). 둘 다 약속($10^{-14}$, 약 45 ULP)보다 한참 작아요.
+- scipy의 최대 오차가 큰 줄(`erfc`, `ndtr`, `log_ndtr`의 $10^{13}$)은 모두 서브노멀 꼬리를 0으로 내는 점이에요. 그 밖에도 위에서 본 $x^2$와 $t$의 반올림 때문에 꼬리에서 수백 ULP가 나요. `erfcx`의 500 ULP는 음의 큰 x($x \approx -25$)에서 $e^{x^2}$의 인자 $x^2$를 반올림하는 데서, `erfcinv`의 큰 값과 뺀 두 점은 $z/2$의 언더플로에서 와요.
+- `ndtri`과 `erfinv`는 scipy가 조금 더 정확해요(최대 3, 2 대 5, 4 ULP). 둘 다 약속($10^{-14}$, 45–90 ULP)보다 한참 작아요.
 - 청크 커널을 쓰는 일곱 함수는 `erf`, `erfc`, `ndtr`, `log_ndtr`, `ndtri`, `erfinv`, `erfcinv`예요. scipy는 원소마다 libm `exp`·`log`를 불러요. scipy의 `erfcx`는 위에서 본 Faddeeva 패키지 방식이에요.
 
 ## 감마
@@ -486,7 +486,7 @@ $$
 \frac{d}{d\,\text{zgh}}\Bigl[(z - \tfrac12)\log \text{zgh} - \text{zgh}\Bigr]\cdot\delta = \Bigl(\frac{z - \frac12}{\text{zgh}} - 1\Bigr)\delta = -\frac{g}{\text{zgh}}\,\delta
 $$
 
-곧 상대오차 $g \cdot 2^{-53}$, 몇 ULP가 남아요. 여기에 `pow`와 `exp`의 반올림이 더해져요. 잰 최대 오차가 10.2 ULP인 것이 이것과 맞아요. stardust 자체의 Lanczos 경로(`gamma_scaled`, 아래)는 zgh를 hi + lo로 나눠 두고 두 인수를 따로 1차 보정해요.
+곧 상대오차 $g \cdot 2^{-53}$, 몇 ULP가 남아요. 여기에 `pow`와 `exp`의 반올림이 더해져요. 잰 최대 오차가 10 ULP인 것이 이것과 맞아요. stardust 자체의 Lanczos 경로(`gamma_scaled`, 아래)는 zgh를 hi + lo로 나눠 두고 두 인수를 따로 1차 보정해요.
 
 **Cephes 감마.** Boost 구간 밖에서 지수를 따로 둘 필요가 없을 때, 그리고 `rgamma`와 `beta`의 일부 구간에서는 Cephes `gamma.c`를 써요(`gamma_cephes_pos`, 계수는 `coeffs/cephes_gamma.hpp`) [1, 2].
 
@@ -494,7 +494,7 @@ $$
 - $3 \le x \lt 33$은 점화식으로 $[2, 3)$까지 내리며 곱하고, $x \lt 2$는 올리며 나눠요($x \lt 10^{-9}$이면 $1/((1 + \gamma x)x)$)
 - $x \ge 33$은 Stirling 공식 $\sqrt{2\pi}\,x^{x - 1/2} e^{-x}\,(1 + \text{STIR}(1/x)/x)$. STIR은 DLMF 5.11.3의 계수 $g_1 = \tfrac1{12}, g_2 = \tfrac1{288}, g_3 = -\tfrac{139}{51840}, \dots$를 $x \ge 33$에 맞게 조금 조정한 차수 4 다항식이에요. $x \gt 143.016$이면 $x^{x - 1/2}$가 넘치므로 $v = x^{x/2 - 1/4}$로 $v \cdot (v / e^x)$를 만들어요.
 
-같은 기준값의 $x \gt 0$ 점에서 잰 최대 오차는 Cephes 감마(scipy의 `gamma`와 같은 Cephes 식)가 4.4 ULP, stardust 자체 Lanczos(`_gamma_lanczos`, 비교용 비공개 함수)가 6.5 ULP예요. 두 경로를 고를 때 1스레드, 원소 $10^6$개로 잰 시간은 Cephes가 3.4배 빨랐어요. 자체 Lanczos는 지수를 따로 두는 계산 때문에 무거워서, 넘치는 결과를 다뤄야 하는 경로에만 써요.
+같은 기준값의 $x \gt 0$ 점에서 Cephes 감마(scipy의 `gamma`와 같은 Cephes 식)의 최대 오차는 4 ULP예요. 두 경로를 고를 때 잰 stardust 자체 Lanczos의 최대 오차는 이보다 조금 컸고, 1스레드, 원소 $10^6$개로 잰 시간은 Cephes가 3.4배 빨랐어요. 자체 Lanczos는 지수를 따로 두는 계산 때문에 무거워서, 넘치는 결과를 다뤄야 하는 경로에만 써요.
 
 **stardust의 Lanczos: `gamma_scaled`.** 결과를 $m \cdot 2^e$로 내야 하는 곳(171.6 위의 `rgamma`, `beta`, `binom`, 음수 `zeta`, `polygamma`의 $n!$)은 같은 Lanczos 식을 지수를 따로 두고 계산해요.
 
@@ -578,12 +578,12 @@ Cephes `lgam`은 $x \lt 13$을 $[2, 3]$으로 옮긴 뒤 $(x - 2)P/Q$의 유리�
 
 | x | `gammaln(x)` | stardust | scipy |
 |:---:|---|:---:|:---:|
-| 0.999 | 5.780385328913802e-4 | 0.07 ULP | 1.2e3 ULP |
-| 0.999999997 | 1.7316470172162927e-9 | 0.68 ULP | 6.9e8 ULP |
-| 1.00000001 | −5.772156531688512e-9 | 0.14 ULP | 1.3e7 ULP |
-| 2.0000001 | 4.227843666532498e-8 | 0.24 ULP | 0.76 ULP |
+| 0.999 | 5.780385328913802e-4 | 0 ULP | 1.2e3 ULP |
+| 0.999999997 | 1.7316470172162927e-9 | 1 ULP | 6.9e8 ULP |
+| 1.00000001 | −5.772156531688512e-9 | 0 ULP | 1.3e7 ULP |
+| 2.0000001 | 4.227843666532498e-8 | 0 ULP | 1 ULP |
 
-(2 근처는 Cephes도 $(x - 2)$를 인수로 빼서 정확해요.) Boost.Math의 `lgamma`는 stardust보다 조금 더 정확하지만(최대 2.42 대 5.53 ULP) 같은 기준값 입력에서 1스레드로 1.28배 느려서 쓰지 않아요(`bench/special/boost/compare.md`).
+(2 근처는 Cephes도 $(x - 2)$를 인수로 빼서 정확해요.) Boost.Math의 `lgamma`는 stardust보다 조금 더 정확하지만(같은 기준값에서 최대 2 대 6 ULP) 같은 기준값 입력에서 1스레드로 1.28배 느려서 쓰지 않아요.
 
 ### digamma: 근을 인수로 뺀 유리식
 
@@ -600,7 +600,7 @@ $\psi(x) = \Gamma'(x)/\Gamma(x)$는 양수 쪽에서 $x_0 = 1.4616321449\ldots$ 
 3. **근의 처리**: $x_0$은 무리수라 float64 하나로 나타낼 수 없어요. 반올림한 근을 빼면 $x$가 $x_0$에 가장 가까운 double일 때 결과가 0이 되어 상대오차가 무한대예요. Boost는 $x_0$을 세 조각 $r_1 + r_2 + r_3$로 나눠 두고($r_1 = 1569415565/2^{30}$, $r_2 = 381566830/2^{60}$, $r_3 \approx 9.0 \times 10^{-20}$) 차례로 빼요. 첫 빼기 $x - r_1$은 $x \in [1, 2]$이고 $r_1 \approx 1.46$이라 Sterbenz로 정확하고, 남은 두 조각이 근의 아래 자리를 채워요.
 4. **$x \ge 10$은 점근급수** (DLMF 5.11.2 [8]): $\psi(x) \sim \log x - \tfrac1{2x} - \sum B_{2k}/(2k\,x^{2k})$. Boost는 한 칸 옮긴 $y = x - 1$로 $\psi(x) = \psi(y) + 1/y = \log y + \tfrac{1}{2y} - \sum_{k=1}^{8} B_{2k}/(2k\,y^{2k})$를 계산해요. $\log$ 앞의 $-\tfrac{1}{2x}$가 $+\tfrac{1}{2y}$로 바뀌어 두 항이 같은 부호가 돼요.
 
-$x_0$에 가장 가까운 double `1.4616321449683622`에서 stardust의 결과는 −9.241265521729427e-17(0.21 ULP)이에요.
+$x_0$에 가장 가까운 double `1.4616321449683622`에서 stardust의 결과는 −9.241265521729427e-17이에요. 참값에 가장 가까운 double 그대로(0 ULP)예요.
 
 **stardust, $x \lt 0$.** Boost의 반사는 $x \le -1$이면 먼저 `x = 1 - x`를 계산해요. 이 반올림이 극점까지의 거리를 흐려서 음의 극점 근처에서 틀려요. stardust는 $-x$를 쓰는 꼴로 반사해요.
 
@@ -634,7 +634,7 @@ $$
 
 음의 비정수 $x$에서 큰 $n$은 가장 가까운 극점의 항 $d^{-(n+1)}$ 또는 $(1-d)^{-(n+1)}$($d$는 $x$의 소수 부분) 하나가 지배해서 $n!$과 곱하면 언제나 범위 밖, 곧 부호 있는 inf예요. $d = \tfrac12$이고 $n + 1$이 홀수일 때만 두 항이 정확히 지워져서 $\zeta(n+1, 1 - x)$가 남아요.
 
-Boost.Math의 `polygamma`는 같은 기준값에서 최대 556 ULP였고 4.9배 느려서 쓰지 않아요(`bench/special/boost/compare.md`).
+Boost.Math의 `polygamma`는 같은 기준값에서 넘칠 때 부호가 반대인 inf를 내고 유한한 값도 556 ULP까지 틀렸고, 4.9배 느려서 쓰지 않아요.
 
 ### beta와 betaln
 
@@ -660,7 +660,7 @@ $$
 
 예요(`beta_imp`). $S(x) = L(x)/e^g$는 Boost의 `lanczos_sum_expG_scaled`이고, $a \ge b$가 되게 바꾼 뒤 계산해요. 거듭제곱의 밑이 모두 1 근처의 비라서 넘치지 않고, 큰 거듭제곱 $\text{agh}^{a - 1/2}$ 같은 것이 만들어지지 않아요. 큰 $a$($a \gt 100$이고 $\lvert b(a - \tfrac12 - b) \rvert \lt 100\,\text{cgh}$)에서는 첫 거듭제곱을 $\exp\bigl((a - \tfrac12 - b)\operatorname{log1p}(-b/\text{cgh})\bigr)$로 바꾸지만, $a + b \lt 40$ 구간에서는 이 갈래를 타지 않아요. 특수한 경우로 $b = 1$이면 $1/a$, 한쪽이 $\varepsilon$보다 작으면 $1/b$ 같은 극한을 바로 내요. (Boost 문서는 1보다 작은 인자를 점화식으로 1 위로 옮긴다고 적지만, 이 판의 소스에서는 그 부분이 "더는 필요 없다"는 주석과 함께 꺼져 있어요.)
 
-이 식의 오차는 주로 거듭제곱에서 와요. 밑 $\text{agh}/\text{cgh}$의 반올림 $2^{-53}$이 지수 $a - \tfrac12 - b$배로 커지므로, $a + b \lt 40$에서 수십 ULP까지 날 수 있어요. 잰 최대 오차 52.8 ULP가 이것이에요. 그래도 상대오차는 $10^{-14}$ 안이고(가수가 2에 가까운 값에서는 한 ULP가 상대 $1.1 \times 10^{-16}$이에요), 속도가 같아서(27.6 대 28.3 ns) 이 구간은 Boost예요.
+이 식의 오차는 주로 거듭제곱에서 와요. 밑 $\text{agh}/\text{cgh}$의 반올림 $2^{-53}$이 지수 $a - \tfrac12 - b$배로 커지므로, $a + b \lt 40$에서 수십 ULP까지 날 수 있어요. 잰 최대 오차 53 ULP가 이것이에요. 그래도 상대오차는 $10^{-14}$ 안이고(가수가 2에 가까운 값에서는 한 ULP가 상대 $1.1 \times 10^{-16}$이에요), 속도가 같아서(27.6 대 28.3 ns) 이 구간은 Boost예요.
 
 **Cephes 감마 셋.** $40 \le a + b \le 170$에서는 어느 감마도 넘치지 않으므로 Cephes 감마를 세 번 불러요. $\Gamma(a)/\Gamma(c)$를 먼저 나누는 이유는 $c \gt a$면 이 비가 1 이하라 곱하는 순서에서 넘침이 없기 때문이에요. $c$는 `two_sum`으로 hi + lo를 만들고 $1/\Gamma(c)$에 $(1 - \psi(\text{hi})\,\text{lo})$를 곱해요.
 
@@ -710,18 +710,18 @@ $B(x, y)$는 두 인자 중 작은 쪽이 1100을 넘으면 $B(y, y) \approx 4^{
 
 | 함수 | 영역 | 최대 | 99.9% | scipy 최대 | 1스레드 ms | 10스레드 ms | scipy 대비 (1스레드) | 스칼라 µs |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `gamma` | 보장 | 10.2 | 7.35 | 8.0e15 | ⟦SPEED gamma t1⟧ | ⟦SPEED gamma t10⟧ | ⟦SPEED gamma ratio1⟧ | ⟦SPEED gamma scalar⟧ |
-| `rgamma` | 보장 | 5.11 | 4.08 | inf | ⟦SPEED rgamma t1⟧ | ⟦SPEED rgamma t10⟧ | ⟦SPEED rgamma ratio1⟧ | ⟦SPEED rgamma scalar⟧ |
-| `gammaln` | 보장 / 혼합 | 5.53 / 2.09 | 2.55 / 1.83 | inf / 1.34 | ⟦SPEED gammaln t1⟧ | ⟦SPEED gammaln t10⟧ | ⟦SPEED gammaln ratio1⟧ | ⟦SPEED gammaln scalar⟧ |
-| `digamma` | 보장 / 혼합 | 2.11 / 14.9 | 1.65 / 8.63 | 2.11 / 2.6e13 | ⟦SPEED digamma t1⟧ | ⟦SPEED digamma t10⟧ | ⟦SPEED digamma ratio1⟧ | ⟦SPEED digamma scalar⟧ |
-| `polygamma` | 보장 / 혼합 | 17.3 / 3.13 | 8.03 / 2.68 | 9.0e15 / 3.13 | ⟦SPEED polygamma t1⟧ | ⟦SPEED polygamma t10⟧ | ⟦SPEED polygamma ratio1⟧ | ⟦SPEED polygamma scalar⟧ |
-| `beta` | 보장 / 혼합 | 52.8 / 6.78 | 33.3 / 5.01 | 3.1e8 / 839 | ⟦SPEED beta t1⟧ | ⟦SPEED beta t10⟧ | ⟦SPEED beta ratio1⟧ | ⟦SPEED beta scalar⟧ |
-| `betaln` | 혼합 | 27.3 | 12.9 | inf | ⟦SPEED betaln t1⟧ | ⟦SPEED betaln t10⟧ | ⟦SPEED betaln ratio1⟧ | ⟦SPEED betaln scalar⟧ |
-| `binom` | 보장 / 혼합 | 9.26 / 7.98 | 8.38 / 6.91 | 2.8e4 / inf | ⟦SPEED binom t1⟧ | ⟦SPEED binom t10⟧ | ⟦SPEED binom ratio1⟧ | ⟦SPEED binom scalar⟧ |
+| `gamma` | 보장 | 10 | 7 | 1.5e17 | ⟦SPEED gamma t1⟧ | ⟦SPEED gamma t10⟧ | ⟦SPEED gamma ratio1⟧ | ⟦SPEED gamma scalar⟧ |
+| `rgamma` | 보장 | 5 | 4 | 1.1e15 (21) | ⟦SPEED rgamma t1⟧ | ⟦SPEED rgamma t10⟧ | ⟦SPEED rgamma ratio1⟧ | ⟦SPEED rgamma scalar⟧ |
+| `gammaln` | 보장 / 혼합 | 6 / 2.09 | 3 / 1.89 | 4.4e18 (68) / 1.34 | ⟦SPEED gammaln t1⟧ | ⟦SPEED gammaln t10⟧ | ⟦SPEED gammaln ratio1⟧ | ⟦SPEED gammaln scalar⟧ |
+| `digamma` | 보장 / 혼합 | 2 / 14.9 | 2 / 9.24 | 2 / 2.5e13 | ⟦SPEED digamma t1⟧ | ⟦SPEED digamma t10⟧ | ⟦SPEED digamma ratio1⟧ | ⟦SPEED digamma scalar⟧ |
+| `polygamma` | 보장 / 혼합 | 17 / 3.13 | 8 / 3.13 | 4.3e18 / 3.13 | ⟦SPEED polygamma t1⟧ | ⟦SPEED polygamma t10⟧ | ⟦SPEED polygamma ratio1⟧ | ⟦SPEED polygamma scalar⟧ |
+| `beta` | 보장 / 혼합 | 53 / 6.78 | 35 / 6.78 | 3.1e8 / 839 | ⟦SPEED beta t1⟧ | ⟦SPEED beta t10⟧ | ⟦SPEED beta ratio1⟧ | ⟦SPEED beta scalar⟧ |
+| `betaln` | 혼합 | 27.3 | 12.9 | 9.8e5 (184) | ⟦SPEED betaln t1⟧ | ⟦SPEED betaln t10⟧ | ⟦SPEED betaln ratio1⟧ | ⟦SPEED betaln scalar⟧ |
+| `binom` | 보장 / 혼합 | 9 / 7.98 | 8 / 6.99 | 2.8e4 / 6844 (320) | ⟦SPEED binom t1⟧ | ⟦SPEED binom t10⟧ | ⟦SPEED binom ratio1⟧ | ⟦SPEED binom scalar⟧ |
 
-("보장"은 상대오차를 ULP로, "혼합"은 음수 쪽과 `betaln`처럼 0이 많은 곳에서 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$를 $2^{-52}$ 단위로 잰 값이에요. 조건은 오차함수 표와 같아요.)
+("보장"은 ULP로, "혼합"은 음수 쪽과 `betaln`처럼 0을 지나는 곳에서 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$를 $2^{-52}$ 단위로 잰 값이에요. 괄호 안은 scipy를 잴 때 뺀 점(참값은 유한한데 scipy가 NaN이나 inf를 낸 점)의 수예요. 조건은 오차함수 표와 같아요.)
 
-- scipy의 최대 오차가 inf나 $10^{15}$인 줄은 서브노멀 꼬리(`gamma`의 −184…−171, `rgamma`의 171.6…177.8)를 0으로 내거나, `gammaln(±5e-324)`를 inf로 내는 점이에요. `beta`의 $3 \times 10^8$은 큰 인자에서 $\exp(\log B)$류의 계산이 상대오차를 잃는 점이에요. `beta(300, 2.5)`에서 stardust는 1.4 ULP, scipy는 2.4e3 ULP예요.
+- scipy의 최대 오차가 $10^{15}$을 넘는 줄은 서브노멀 꼬리(`gamma`의 −184…−171, `rgamma`의 171.6…177.8)를 0으로 내거나 1 근처의 `gammaln`(위의 상쇄)에서 틀리는 점이고, 뺀 점은 `gammaln(±5e-324)`나 음의 정수 근처의 `rgamma`에서 inf를 낸 점이에요. `beta`의 $3 \times 10^8$은 큰 인자에서 $\exp(\log B)$류의 계산이 상대오차를 잃는 점이에요. `beta(300, 2.5)`에서 stardust는 1 ULP, scipy는 2.4e3 ULP예요.
 - 원소 하나의 계산량으로 보면, `gamma`의 Boost Lanczos는 차수 12 유리식 둘과 `pow`, `exp`를 써서 scipy(Cephes)의 차수 6/7 유리식 하나보다 무거워요. `beta`와 `binom`은 정수가 아닌 인자에서 지수를 따로 둔 계산(`frexp`, `pow_scaled`, Γ 셋)을 해요. scipy.special의 원소별 함수는 1스레드예요.
 - scipy 1.18.1의 `polygamma`는 Python 함수로, `gamma`, `zeta`, `psi`를 따로 부르고 numpy 연산으로 합쳐요. stardust는 한 번의 C++ 호출이에요(스칼라 한 번 ⟦SPEED polygamma scalar⟧ µs).
 
@@ -771,7 +771,7 @@ $\log\sin(\pi z)$에는 두 가지를 더 챙겨요(`log_sinpi`). 첫째, $z$가
 
 **무한대와 극점.** 방향이 극한을 정하는 곳은 그 극한을 내요. $\operatorname{loggamma}(\infty \pm 0i) = \infty \pm 0i$, $\operatorname{loggamma}(x \pm \infty i) = -\infty \pm \infty i$ 같은 것이에요. 극점 $-n \pm 0i$는 $\infty + \text{NaN}\,i$예요(실수부는 무한대, 허수부는 다가가는 방향마다 달라요). scipy는 이 경우들을 모두 NaN으로 내요.
 
-**정확도와 속도.** 보장은 $\operatorname{Re} z \gt 0$에서 상대 $10^{-14}$, $\operatorname{Re} z \le 0$에서 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\operatorname{loggamma}(z)\rvert)$예요. 잰 최대 오차는 8.21 ULP(99.9% 지점 5.86)이고 scipy 1.18.1은 224 ULP예요. 원소 $10^6$개에 1스레드 ⟦SPEED loggamma_complex t1⟧ ms, 10스레드 ⟦SPEED loggamma_complex t10⟧ ms, scipy 대비 ⟦SPEED loggamma_complex ratio1⟧배예요. 1–2 둘레의 영역에서 복소 로그 여섯 번($\mu$)과 49항 복소 다항식을 계산하므로 Stirling 경로보다 무거워요.
+**정확도와 속도.** 보장은 $\operatorname{Re} z \gt 0$에서 상대 $10^{-14}$, $\operatorname{Re} z \le 0$에서 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\operatorname{loggamma}(z)\rvert)$예요. 잰 최대 오차는 상대 $1.0 \times 10^{-15}$(계약의 0.1배)이고, scipy 1.18.1은 상대 $2.5 \times 10^{-14}$로 계약의 2.5배예요. 원소 $10^6$개에 1스레드 ⟦SPEED loggamma_complex t1⟧ ms, 10스레드 ⟦SPEED loggamma_complex t10⟧ ms, scipy 대비 ⟦SPEED loggamma_complex ratio1⟧배예요. 1–2 둘레의 영역에서 복소 로그 여섯 번($\mu$)과 49항 복소 다항식을 계산하므로 Stirling 경로보다 무거워요.
 
 복소수 `erf`, `erfc`, `erfcx`는 Faddeeva 함수 $w(z)$로 계산해요. [제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)에서 다뤄요.
 

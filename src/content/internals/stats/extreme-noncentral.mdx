@@ -735,7 +735,7 @@ nan
 
 엔트로피는 영역 안에서도 NaN일 수 있어요. 질량이 double 범위 밖에 남는 아주 작은 자유도(F의 $d_2 = 0.01$, 카이제곱 $df = 0.01$에 $nc \le 30$ 등)와, 반분 12번에 수렴하지 않는 큰 $nc$(카이제곱 $df = 3.5$에서 약 $7 \times 10^7$부터)에서예요.
 
-정확도는 Arb 참값 60만 점과 대조해 재요. 보장 영역 안 최대가 계약 단위로 $4.7 \times 10^{-15}$(`NoncentralT.kurtosis`), 영역 밖도 $1.2 \times 10^{-15}$ 안이고, 같은 점에서 scipy 1.18.1은 `NoncentralF.cdf`가 상대오차 $2.3 \times 10^{95}$, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf`가 inf예요(`bench/stats/t6/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
+정확도는 Arb 참값 60만 점과 대조해 재요. 보장 영역 안 최대가 계약 단위로 $4.7 \times 10^{-15}$(`NoncentralT.kurtosis`), 영역 밖도 $1.2 \times 10^{-15}$ 안이고, 같은 점에서 scipy 1.18.1은 `NoncentralF.cdf`가 상대오차 $2.3 \times 10^{95}$, `NoncentralT.cdf`·`GEV.ccdf`·`Pareto.logcdf`가 inf예요(`bench/stats/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
 
 ## 참고 문헌
 

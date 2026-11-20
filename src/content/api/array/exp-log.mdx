@@ -357,6 +357,17 @@ Traceback (most recent call last):
 TypeError: exp(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
 ```
 
+## 얼마나 정확한가요
+
+`exp`, `log`, `log2`, `log10`의 결과는 정확한 값을 float64로 반올림한 값에서 정해진 칸 수 안에 있어요. 한 칸은 이웃한 두 float64 사이의 간격(ULP)이에요([`nextafter`](/api/array/nextafter/)). 0칸이면 정확한 값에 가장 가까운 float64 그대로예요. 약속하는 칸 수와, 정밀한 참값과 견줘 잰 최대는 이래요.
+
+| 함수 | 약속 | 잰 최대 |
+|---|:---:|:---:|
+| `exp` | 3칸 | 1칸 |
+| `log`, `log2`, `log10` | 4칸 | 2칸 |
+
+4칸은 상대오차로 약 8.9e-16이에요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치나 스레드 수와 상관없이 같은 값이 나와요.
+
 ## 조심할 점
 
 - 범위를 벗어나도 에러가 없어요. `log(0)`은 `-inf`, `log(-1)`은 NaN, `exp(1000)`은 `inf`예요. 결과를 `sd.isfinite`로 확인하세요.
@@ -378,5 +389,5 @@ TypeError: exp(): cannot implicitly convert float64 to int64 (that would lose in
 
 - `exp2`, `logaddexp2` 함수는 없어요. `2.0 ** x`와 `logaddexp(a * log(2), b * log(2)) / log(2)`처럼 계산하세요.
 - 0이나 음수의 로그는 경고 없이 `-inf`나 NaN이에요. `errstate`도 없어요.
-- `exp`, `log`, `log2`, `log10`은 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요. `expm1`, `log1p`, `logaddexp`는 지금은 numpy와 비트까지 같아요(약속은 아니에요).
+- `exp`, `log`, `log2`, `log10`은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 최대 2칸). 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요. `expm1`, `log1p`, `logaddexp`는 지금은 numpy와 비트까지 같아요(약속은 아니에요).
 - `out`은 keyword-only이고 `where=` 인자는 없어요. Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`·`complex`가 나와요.

@@ -326,6 +326,20 @@ Traceback (most recent call last):
 TypeError: sin(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
 ```
 
+## 얼마나 정확한가요
+
+`sin`, `asin`, `acos`, `atan`, `atan2`의 결과는 정확한 값을 float64로 반올림한 값에서 정해진 칸 수 안에 있어요. 한 칸은 이웃한 두 float64 사이의 간격(ULP)이에요([`nextafter`](/api/array/nextafter/)). 0칸이면 정확한 값에 가장 가까운 float64 그대로예요. 약속하는 칸 수와, 정밀한 참값과 견줘 잰 최대는 이래요.
+
+| 함수 | 약속 | 잰 최대 |
+|---|:---:|:---:|
+| `sin` | 5칸 | 3칸 |
+| `asin` | 4칸 | 2칸 |
+| `acos` | 3칸 | 1칸 |
+| `atan` | 3칸 | 1칸 |
+| `atan2` | 3칸 | 1칸 |
+
+5칸은 상대오차로 약 1.1e-15예요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치나 스레드 수와 상관없이 같은 값이 나와요.
+
 ## 조심할 점
 
 ### 정확히 0이 나오지 않아요
@@ -380,4 +394,4 @@ array([nan, nan], dtype=float64)
 - `asin(2.0)`처럼 정의역 밖의 값은 경고 없이 NaN이에요. `errstate` 같은 설정도 없어요.
 - `out`은 keyword-only예요. `where=` 인자와 `deg2rad`, `rad2deg`, `degrees`, `radians` 함수는 없어요. `π / 180`을 직접 곱하세요.
 - Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요.
-- 값은 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 같아요.
+- `sin`, `asin`, `acos`, `atan`, `atan2`의 값은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 최대 3칸). `cos`, `tan`은 지금은 numpy와 비트까지 같아요(약속은 아니에요). ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 같아요.

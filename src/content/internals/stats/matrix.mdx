@@ -422,19 +422,18 @@ $$
 
 ## 정확도
 
-참값은 Arb(구간 산술)로 행렬을 입력 그대로 LU 분해해 행렬식과 풀이를 계산하고, 구간의 반지름이 $2^{-80}\max(1, \lvert\text{값}\rvert)$ 아래가 될 때까지 정밀도를 두 배씩 올려 만들었어요. 오차는 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$이에요. 표는 `bench/stats/t10/accuracy.md`의 일부예요.
+참값은 `tools/stats_ref.py`가 `tools/mvref.py`로 만들어 `tests/stats/ref/mv/`에 둬요. Arb(구간 산술)로 행렬을 입력 그대로 LU 분해해 행렬식과 풀이를 계산하고, 구간의 반지름이 $2^{-110}\max(1, \lvert\text{값}\rvert)$ 아래가 될 때까지 정밀도를 두 배씩 올려 만들어요. 오차는 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$이에요. Wishart·역Wishart는 $p \in \lbrace 1, 2, 5, 12, 30\rbrace$, df $= p - 1/2$, $p + 10$, $p + 10^8$, $p + 10^{30}$, $\kappa \in \lbrace 1, 10^4, 10^9\rbrace$이고, 행렬 정규는 $(n, p)$가 20×15까지예요.
 
-| 분포 | $p$ | df | $\kappa$ | sd logpdf | scipy logpdf | sd entropy | scipy entropy |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Wishart | 2 | 1.5 | $10^8$ | 0 | $4.9 \times 10^{-5}$ | 0 | $3.1 \times 10^{-11}$ |
-| Wishart | 2 | $10^8$ | 1 | 0 | $8.2 \times 10^{-16}$ | 0 | $6.5 \times 10^{-9}$ |
-| Wishart | 12 | $10^8$ | $10^8$ | 0 | $2.0 \times 10^{-11}$ | $1.5 \times 10^{-16}$ | $2.1 \times 10^{-9}$ |
-| 역Wishart | 5 | 4.5 | $10^8$ | 0 | $6.5 \times 10^{-8}$ | 0 | $4.9 \times 10^{-2}$ |
-| 역Wishart | 12 | 11.5 | 1 | 0 | $5.0 \times 10^{-14}$ | $4.1 \times 10^{-16}$ | 2.9 |
-| 행렬 정규 | 2×3 | – | $10^8$ | 0 | $1.9 \times 10^{-10}$ | 0 | $2.3 \times 10^{-10}$ |
-| 행렬 정규 | 10×6 | – | $10^8$ | 0 | $3.2 \times 10^{-12}$ | 0 | $3.2 \times 10^{-12}$ |
+| 분포 | 메서드 | 점 | sd | scipy |
+|---|---|---:|---:|---:|
+| Wishart | logpdf | 247 | $1.1 \times 10^{-16}$ | $5.5 \times 10^{14}$ |
+| Wishart | entropy | 52 | $3.6 \times 10^{-16}$ | $4.8 \times 10^{13}$ |
+| 역Wishart | logpdf | 247 | $1.1 \times 10^{-16}$ | $1.1 \times 10^{14}$ |
+| 역Wishart | entropy | 52 | $9.8 \times 10^{-16}$ | $2.6 \times 10^{13}$ |
+| 행렬 정규 | logpdf | 52 | $1.6 \times 10^{-16}$ | $1.1 \times 10^{-9}$ |
+| 행렬 정규 | entropy | 13 | $8.4 \times 10^{-17}$ | $1.1 \times 10^{-9}$ |
 
-$p \in \lbrace 2, 5, 12\rbrace$, df 세 가지, $\kappa \in \lbrace 1, 10^4, 10^8\rbrace$의 63칸 전체에서 sd의 logpdf는 $1.6 \times 10^{-16}$ 이하, 엔트로피는 $5.3 \times 10^{-16}$ 이하예요. 다변량 분포와 함께 모은 표(`bench/stats/accuracy_multivariate.md`, `python -m bench.accuracy`가 만들어요)는 $\kappa = 10^9$, $p = 30$(행렬 정규 20×15), df $= 10^{30}$까지의 점을 재요. 보장 영역 안의 모든 점에서 Wishart·역Wishart의 logpdf는 $1.1 \times 10^{-16}$, 엔트로피는 $9.8 \times 10^{-16}$, 행렬 정규는 $1.7 \times 10^{-16}$ 이하이고, 가장 큰 것도 계약의 10%예요. 보장 영역은 $\kappa(\text{scale}), \kappa(U), \kappa(V) \le 10^9$, $p \le 100$에서 logpdf·entropy가 $10^{-14}\max(1, \lvert\text{값}\rvert)$이에요.
+다변량 분포와 함께 모은 표(`bench/stats/accuracy_multivariate.md`, `python -m bench.accuracy`가 만들어요)의 값이에요. 보장 영역 안의 모든 점에서 Wishart·역Wishart의 logpdf는 $1.1 \times 10^{-16}$, 엔트로피는 $9.8 \times 10^{-16}$, 행렬 정규는 $1.6 \times 10^{-16}$ 이하이고, 가장 큰 것도 계약의 10%예요. scipy 1.18.1의 Wishart·역Wishart는 df $= p + 10^{30}$인 점에서 값 자체가 틀려요. 보장 영역은 $\kappa(\text{scale}), \kappa(U), \kappa(V) \le 10^9$, $p \le 100$에서 logpdf·entropy가 $10^{-14}\max(1, \lvert\text{값}\rvert)$이에요.
 
 ## 속도
 

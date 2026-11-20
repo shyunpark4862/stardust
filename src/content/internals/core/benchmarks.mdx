@@ -17,9 +17,11 @@ import Tree from '../../../components/fig/Tree.astro';
 | 파일 | 하는 일 |
 |---|---|
 | `harness.py` | 시간 재기(예열, 배치 크기, 최솟값·중앙값·잡음), 스레드 조절, 기계·라이브러리 정보 |
-| `registry.py` | 사례 모델(`Case`, `Ref`, `RRef`)과 사례 고르기 |
+| `registry.py` | 사례 모델(`Case`, `Ref`, `RRef`, `Check`), 사례 고르기, 사례 id 규칙 |
+| `check.py` | 점검 실행(`--smoke`)의 결과 확인. sd와 비교 대상의 값 견주기, NaN 비율 |
 | `cases/<영역>.py` | 영역의 사례 목록(`cases()`) |
 | `rsession.py` | 실행 하나에 R 프로세스 하나 |
+| `boost.py`, `boost_speed.cpp` | Boost.Math 비교 대상의 빌드와 호출 |
 | `run.py`, `worker.py`, `proc.py` | 감독 프로세스와 측정 프로세스, 메모리·CPU 감시 |
 | `results.py` | 실행 파일과 기준선 파일 |
 | `tables.py` | 영역의 속도 표 `bench/<영역>/speed.md` 만들기 |
@@ -28,11 +30,11 @@ import Tree from '../../../components/fig/Tree.astro';
 
 측정 하나가 표와 비용표에 이르는 길은 이래요.
 
-<Fig column caption="속도 측정의 흐름. 사례를 고르면 감독이 측정 프로세스를 띄워 재고, 사례 하나가 끝날 때마다 실행 파일을 다시 써요. 실행 파일을 기준선에 넣으면 표가 다시 만들어지고, 비용표는 기준선에서 만들어요.">
+<Fig column caption="속도 측정의 흐름. 사례를 고르면 감독이 측정 프로세스를 띄워 재고, 사례 하나가 끝날 때마다 실행 파일에 한 줄을 덧붙여요. 실행 파일을 기준선에 넣으면 표가 다시 만들어지고, 비용표는 기준선에서 만들어요.">
   <Steps steps={[
     { label: 'cases/<영역>.py', note: '영역의 사례 목록. 사례 하나는 한 크기에서의 호출 하나와 그 비교 대상', where: 'bench/speed/' },
     { label: 'run', note: '감독 프로세스가 BLAS 스레드 설정마다 측정 프로세스를 띄우고, 사례마다 시간·메모리를 지켜봐요', where: 'run.py, worker.py' },
-    { label: 'build/speed/<시각>.json', note: '실행 파일. 배치 시간 전부와 기계·라이브러리 판', depth: 1 },
+    { label: 'build/speed/<시각>.jsonl', note: '실행 파일. 배치 시간 전부와 기계·라이브러리 판', depth: 1 },
     { label: 'compare', note: '기준선보다 10% 넘게, 잡음 폭 밖으로 느려진 sd 측정', depth: 1 },
     { label: 'promote', note: '잰 사례만 기준선에 넣고 표를 다시 만들어요', where: 'results.py' },
     { label: 'bench/speed/results/<영역>.json', note: '영역의 기준선(저장소에 둬요)', depth: 1 },
@@ -41,19 +43,21 @@ import Tree from '../../../components/fig/Tree.astro';
   ]} />
 </Fig>
 
-등록된 사례는 1861개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
+등록된 사례는 1,989개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
 
 | 영역 | 사례 | 묶음 | 빠른 묶음 | 비용표 사례 | 비교 대상 |
 |---|---:|---:|---:|---:|---|
-| array | 407 | 33 | 21 | 0 | numpy |
-| linalg | 308 | 6 | 16 | 0 | numpy, scipy |
+| array | 407 | 33 | 21 | 0 | numpy, R |
+| linalg | 308 | 6 | 16 | 0 | numpy, scipy, R |
 | frame | 144 | 6 | 16 | 0 | pandas |
+| special | 232 | 6 | 17 | 98 | scipy, R, Boost.Math |
+| stats | 577 | 16 | 26 | 362 | scipy, numpy, R, Boost.Math |
+| regression | 190 | 21 | 15 | 0 | statsmodels, scikit-learn, scipy, R |
 | random | 18 | 2 | 4 | 0 | numpy(PCG64, Philox) |
-| special | 232 | 6 | 17 | 98 | scipy |
-| stats | 577 | 16 | 26 | 362 | scipy, numpy |
-| regression | 158 | 19 | 13 | 0 | statsmodels, scikit-learn, scipy, R |
-| optimize | 17 | 5 | 5 | 0 | scipy |
-| 합계 | 1861 | 93 | 118 | 460 | |
+| optimize | 113 | 7 | 7 | 0 | scipy, R |
+| 합계 | 1,989 | 97 | 122 | 460 | |
+
+비교 대상은 [정확도 측정](/internals/core/accuracy/)이 쓰는 것과 같아요. 영역마다 같은 일을 하는 비교 대상이 정확도 측정에 있으면 속도 사례에도 둬요. special과 stats의 R 식과 Boost 함수 이름은 정확도 측정의 표(`bench/accuracy/compare.py`)를 그대로 가져다 써서, 한쪽에 함수를 더하면 다른 쪽에도 따라와요. 한 번에 스칼라 하나를 넣는 사례에는 R과 Boost를 두지 않아요. 그 비용은 배열 사례에서 봐요.
 
 모든 숫자는 한 기계에서 나와요. Apple M4 Pro(성능 코어 10개와 효율 코어 4개, macOS)예요. stardust는 이 기계를 겨냥해 기준값과 비용을 정하고, 측정도 이 기계에서 해요. 다른 기계에서는 절대 시간이 다르고, 배율도 캐시 크기와 코어 수에 따라 달라질 수 있어요.
 
@@ -131,7 +135,7 @@ MAX_CALLS = 1 << 24
 
 시계는 `time.perf_counter_ns`예요. 배치 하나가 20 ms면, 시계의 눈금이나 루프 한 바퀴의 비용은 그 시간에 비해 무시할 만큼 작아요. 측정 하나는 배치 시간 목록(`Sample.times`)과 배치당 호출 수(`Sample.calls`)를 남겨요.
 
-`--smoke`로 돌리면 호출을 한 번만 해요. 시간을 재려는 것이 아니라 모든 사례가 오류 없이 도는지 보려는 실행이에요.
+`--smoke`로 돌리면 시간을 재지 않고 sd와 비교 대상을 한 번씩만 불러요. 모든 사례가 오류 없이 도는지, 그리고 두 쪽이 같은 값을 내는지 보는 점검 실행이에요([결과 확인](#결과-확인---smoke)).
 
 ### 최솟값, 중앙값, 잡음 폭
 
@@ -191,7 +195,7 @@ stardust와 비교 대상이 각각 몇 스레드로 도는지 정해 두지 않
 
 사례의 `threads`가 sd를 잴 스레드 수들이에요. 기본은 `(1, 10)`이고, 10은 이 기계의 성능 코어 수이자 sd의 기본 스레드 수예요. 측정 프로세스는 `harness.sd_threads(n)` 안에서 `sd.set_num_threads(n)`을 부르고, 측정이 끝나면 원래 값으로 되돌려요.
 
-1861개 중 1501개는 1·10스레드를 모두 재고, 358개는 1스레드만, 2개는 10스레드만 재요. 1스레드만 재는 사례는 나눌 일이 없는 호출이에요. 3×3 행렬 하나, 원소 $10^3$개, 스칼라 하나, 뷰 만들기처럼 병렬 경로가 없거나 병렬 기준값 아래인 경우예요. 그중 몇 개는 일부러 10스레드로도 재요. 기준값 아래에서 풀을 쓰는 실수를 잡으려는 줄이에요.
+1,989개 중 1,550개는 1·10스레드를 모두 재고, 437개는 1스레드만, 2개는 10스레드만 재요. 1스레드만 재는 사례는 나눌 일이 없는 호출이에요. 3×3 행렬 하나, 원소 $10^3$개, 스칼라 하나, 뷰 만들기처럼 병렬 경로가 없거나 병렬 기준값 아래인 경우예요. 그중 몇 개는 일부러 10스레드로도 재요. 기준값 아래에서 풀을 쓰는 실수를 잡으려는 줄이에요.
 
 ### 비교 대상의 스레드: `fixed`와 `follow`
 
@@ -199,10 +203,10 @@ Python 비교 대상(`Ref`)은 두 방식 중 하나로 재요.
 
 | 방식 | 언제 | 어떻게 재나 |
 |---|---|---|
-| `"fixed"` (기본) | regression·optimize 밖의 모든 비교 대상과 regression의 scipy·R | 라운드마다 한 번, 그 라이브러리의 기본 스레드로 재요. numpy·scipy의 원소별 계산과 pandas는 1스레드, BLAS는 기본 스레드예요 |
-| `"follow"` | 회귀처럼 BLAS가 일의 대부분인 비교, optimize의 scipy | sd의 스레드 수마다, 비교 대상의 BLAS·OpenMP 스레드를 같은 수로 묶어 재요(threadpoolctl의 `threadpool_limits`) |
+| `"fixed"` (기본) | 원소별 계산, 리덕션, 정렬, 데이터프레임, 특수함수와 분포 함수처럼 BLAS를 거의 쓰지 않는 비교 | 라운드마다 한 번, 그 라이브러리의 기본 스레드로 재요. numpy·scipy의 원소별 계산과 pandas는 1스레드예요 |
+| `"follow"` | BLAS·LAPACK이 일의 대부분인 비교. array의 `matmul`·`cov`·`corrcoef`·`tensordot`, linalg 전체, regression, optimize | sd의 스레드 수마다, 비교 대상의 BLAS·OpenMP 스레드를 같은 수로 묶어 재요 |
 
-`fixed`는 사용자가 그 라이브러리를 그대로 쓸 때의 시간이에요. numpy의 `sin`은 설정을 바꿔도 1스레드로 도니, sd의 1스레드와 10스레드를 모두 numpy 하나와 견줘요. `follow`는 같은 스레드 수에서 누가 빠른지를 봐요. 회귀는 일의 대부분이 BLAS라, 비교 대상의 BLAS 스레드를 sd와 같게 두어야 스레드 수마다 견줄 수 있어요. regression의 158개 중 100개가 `follow` 비교 대상을 가져요. optimize는 17개 모두 scipy를 `follow`로 재요.
+`fixed`는 사용자가 그 라이브러리를 그대로 쓸 때의 시간이에요. numpy의 `sin`은 설정을 바꿔도 1스레드로 도니, sd의 1스레드와 10스레드를 모두 numpy 하나와 견줘요. `follow`는 같은 스레드 수에서 누가 빠른지를 봐요. BLAS가 일의 대부분이면, 비교 대상의 BLAS 스레드를 sd와 같게 두어야 스레드 수마다 견줄 수 있어요. 그래서 sd의 1스레드 줄은 1스레드 BLAS와, 10스레드 줄은 10스레드 BLAS와 만나요. linalg는 308개 모두, regression은 190개 중 120개, optimize는 113개 중 86개, array는 10개가 `follow` 비교 대상을 가져요. R은 어느 쪽이든 늘 1스레드로 돌아요([R과 비교하기](#r과-비교하기)).
 
 ### BLAS 스레드는 측정 프로세스마다 묶어요
 
@@ -225,7 +229,7 @@ numpy, scipy, sd의 BLAS·LAPACK은 모두 Accelerate예요. Accelerate는 스�
 | 1스레드용 | `1` | sd 1스레드, `follow` 비교 대상의 1스레드 |
 | 기본용 | 설정하지 않아요(Accelerate의 기본값) | sd 10스레드, `follow` 비교 대상의 10스레드, `fixed` 비교 대상, R |
 
-그 밖의 스레드 수(`--threads 1,4,10`처럼)를 주면 그 수마다 프로세스를 하나씩 더 띄워요. scikit-learn의 OpenMP는 threadpoolctl로 같은 프로세스 안에서 묶을 수 있어서 따로 띄우지 않아요. 사례의 데이터는 프로세스마다 `setup`으로 다시 만들어요.
+그 밖의 스레드 수(`--threads 1,4,10`처럼)를 주면 그 수마다 프로세스를 하나씩 더 띄워요. scikit-learn의 OpenMP는 threadpoolctl로 같은 프로세스 안에서 묶을 수 있어서 따로 띄우지 않아요. 라운드가 여럿이면 라운드마다 측정 프로세스를 다시 띄워요. 짧은 병렬 호출은 프로세스마다 빠른 쪽이나 느린 쪽에 자리 잡을 수 있어서, 최솟값이 여러 프로세스에서 나오게 하려는 거예요. 사례의 데이터는 프로세스마다 `setup`으로 다시 만들어요.
 
 <Callout type="note" title="sd 1스레드는 BLAS도 1스레드예요">
 sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요. 그래서 `matmul`, `cov`, linalg의 분해처럼 Accelerate를 부르는 사례는 1스레드와 10스레드의 차이가 sd 풀만이 아니라 BLAS의 차이까지 담아요. 사용자가 `sd.set_num_threads(1)`만 부르면 Accelerate는 여전히 여러 코어를 쓸 수 있으니, 표의 1스레드 줄은 그보다 엄격한 조건이에요.
@@ -233,7 +237,7 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
 
 ## 사례
 
-### 모델: `Case`, `Ref`, `RRef`
+### 모델: `Case`, `Ref`, `RRef`, `Check`
 
 사례 하나는 **한 크기에서의 호출 하나**예요. 데이터를 만드는 `setup`과, 그 데이터를 받아 잴 함수를 돌려주는 공장(factory)으로 이루어져요. numpy 배열을 sd 배열로 바꾸거나 상수 열을 붙이는 변환은 `setup`이나 공장에서 해서 시간에 들어가지 않게 해요. regression의 실제 사례 하나예요.
 
@@ -241,7 +245,7 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
     # bench/speed/cases/regression.py (_ols_case)
     return Case(
         area="regression",
-        group="최소제곱",
+        group="ols",
         name="ols(y, X)",
         size=_size(n, k),
         setup=setup,
@@ -259,53 +263,56 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
 
 | 필드 | 뜻 |
 |---|---|
-| `area`, `group`, `name`, `size` | 사례의 id를 이뤄요. `group`은 생성되는 표의 절 제목이에요 |
+| `area`, `group`, `name`, `size` | 사례의 id를 이뤄요. `group`은 짧은 영어 키(`ols`, `binary-f64` 등)이고, 표의 절 제목은 사례 파일의 `TITLES`(키 → 한글 제목)에서 와요 |
 | `n` | 호출 하나가 다루는 원소 수. 원소당 비용을 낼 때 써요 |
 | `setup` | 사례마다, 라운드마다 한 번 데이터를 만들어요 |
 | `sd`, `refs` | sd의 공장과 비교 대상들 |
 | `threads` | sd를 잴 스레드 수들(기본 `(1, 10)`) |
 | `quick` | 빠른 묶음에 드는지 |
 | `cost` | 이 사례의 1스레드 시간이 들어갈 비용표와 키, 예: `("stats", "normal.cdf")` |
-| `note` | 표의 비고 열 |
+| `note` | 표의 비고 열(한글) |
 | `timing` | `measure`의 기본값을 바꿔요 |
 | `teardown` | `setup`이 바꾼 전역 설정을 되돌려요 |
+| `check` | 점검 실행에서 결과를 견주는 방법(`Check`) |
 
 비교 대상은 두 종류예요.
 
-- **`Ref(label, make, threads=..., lib=..., n=...)`**: Python 비교 대상이에요. `label`은 표의 열 이름("scipy", "scikit-learn lbfgs tol=1e-10")이고, `lib`은 결과에 적는 라이브러리 이름이에요(생략하면 `label`의 첫 단어). `n`은 비교 대상이 너무 느려 입력의 일부만 잴 때 그 원소 수예요.
-- **`RRef(label, expr, data, setup, packages)`**: R 비교 대상이에요. `expr`은 부를 때마다 평가할 R 식이고, `data`는 사례 데이터의 어느 배열을 R의 어느 이름으로 넘길지예요([R과 비교하기](#r과-비교하기)).
+- **`Ref(label, make, threads=..., lib=..., n=..., differs=...)`**: Python 비교 대상이에요. `label`은 표의 열 이름("scipy", "scikit-learn lbfgs tol=1e-10")이고, `lib`은 결과에 적는 라이브러리 이름이에요(생략하면 `label`의 첫 단어). `n`은 비교 대상이 너무 느려 입력의 일부만 잴 때 그 원소 수예요. `differs`는 비교 대상이 이 입력에서 원래 다른 계산을 할 때 그 까닭이에요(R의 `choose`는 정수가 아닌 k를 반올림한다 등). 그런 비교 대상은 결과 확인에서 빼고, 까닭을 표의 비고에 붙여요.
+- **`RRef(label, expr, data, setup, packages, sets)`**: R 비교 대상이에요. `expr`은 부를 때마다 평가할 R 식이고, `data`는 사례 데이터의 어느 배열을 R의 어느 이름으로 넘길지예요. `sets`는 새 입력을 돌려 쓰는 사례의 입력 묶음 목록이고, R도 다른 쪽처럼 호출마다 다음 묶음을 써요([R과 비교하기](#r과-비교하기)).
+- **`Check(sd, ref, rtol, atol, agree, skip)`**: 점검 실행이 결과를 견주는 방법이에요. 결과의 꼴이 다르면 견줄 값을 고르는 함수(`sd`, `ref`)를 주고, 값을 견줄 수 없으면(두 난수 흐름, 대입문 등) 까닭을 `skip`에 적어요([결과 확인](#결과-확인---smoke)).
 
 ### id와 고르기
 
-사례 id는 `영역/묶음/이름 [크기]`예요. 같은 id가 둘이면 등록부를 불러올 때 오류가 나요. `list`로 보면 이래요.
+사례 id는 `영역/묶음/이름 [크기]`예요. 같은 id가 둘이면 등록부를 불러올 때 오류가 나요. id는 ASCII로만 쓰고, 크기는 정해진 표기 하나로 적어요(`registry.py`의 `SIZE_RE`, 테스트가 확인해요).
+
+| 크기 표기 | 뜻 | 예 |
+|---|---|---|
+| `COUNT [UNIT]` | 원소 수. $10^3$ 이상의 10의 거듭제곱은 `10^k`로 쓰고, 단위는 `rows`, `points`, `matrices` 중 하나 | `10^6`, `200`, `10^5 rows` |
+| `(m, n)` | 모양. 쉼표 뒤에 빈칸 하나, 자릿수 쉼표 없이 | `(100000, 10)` |
+| `B x (m, n)` | 같은 모양의 문제 B개의 배치 | `1000 x (8, 8)` |
+| `n=COUNT` | 최적화 문제의 차원 | `n=100` |
+
+이름이 붙은 시험 문제는 크기가 아니라 이름에 넣어요. 비교 대상의 이름(`Ref.label`)도 ASCII이고, 비고(`note`)만 한글로 써요. `list`로 보면 이래요.
 
 ```text
-Q C special/배열 10^6개/erf(x) [10^6]  [1, 10T; scipy]
-  C special/배열 10^6개/erfc(x) [10^6]  [1, 10T; scipy]
-    special/배열 10^2–10^4개/erf(x) [10^3]  [1, 10T; scipy]
-Q   regression/최소제곱/ols(y, X) [(100,000, 10)]  [1, 10T; statsmodels, scikit-learn]
+  QC  special/array-1e6/erf(x) [10^6]                                   1, 10 threads · scipy, Boost
+      special/array-small/erf(x) [10^3]                                 1, 10 threads · scipy, Boost
+  Q   special/scalar/erf(x)                                                         1 thread · scipy
+  Q   regression/ols/ols(y, X) [(100000, 10)]              1, 10 threads · statsmodels, scikit-learn
 ```
 
-맨 앞의 `Q`는 빠른 묶음, `C`는 비용표 사례예요. 대괄호 안은 sd의 스레드 수와 비교 대상이에요.
+맨 앞의 `Q`는 빠른 묶음, `C`는 비용표 사례예요. 끝은 sd의 스레드 수와 비교 대상이에요.
 
-`list`, `estimate`, `run`은 고르기 옵션을 같이 써요.
-
-| 옵션 | 뜻 |
-|---|---|
-| `--area A` | 영역(여러 번 줄 수 있어요) |
-| `--match P` | id 전체에서 찾는 정규식. `*`나 `?`가 있으면 glob이에요. 여러 번 주면 하나만 맞아도 돼요 |
-| `--group G` | 묶음 이름과 정확히 같은 것 |
-| `--quick` | 빠른 묶음만 |
-
-정규식이라 크기의 `[`와 `^`는 `\[`, `\^`로 써요.
+`list`, `estimate`, `run`은 고르기를 같이 써요. 영역은 위치 인자로 주고(주지 않으면 모든 영역), `--match`는 id 전체에 맞춰요. `*`나 `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이에요. `[`와 `]`는 보통 글자라서 표에서 복사한 id가 그대로 맞아요. 여러 번 주면 하나만 맞아도 돼요. `--quick`은 빠른 묶음만 골라요.
 
 ```bash
-.venv/bin/python -m bench.speed list --area special --match erf
-.venv/bin/python -m bench.speed list --area regression --match '^regression/최소제곱/ols\(y, X\) \['
-.venv/bin/python -m bench.speed list --area stats --quick
+.venv/bin/python -m bench.speed list special --match erf
+.venv/bin/python -m bench.speed list --match 'regression/ols/ols(y, X) [*'
+.venv/bin/python -m bench.speed list --match 'stats/discrete/*'
+.venv/bin/python -m bench.speed list stats --quick
 ```
 
-**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 118개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
+**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 122개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
 
 ### 공정하게 맞추기
 
@@ -314,18 +321,27 @@ Q   regression/최소제곱/ols(y, X) [(100,000, 10)]  [1, 10T; statsmodels, sci
 - **같은 입력.** 한 사례의 모든 호출은 같은 `setup`이 만든 데이터를 써요. sd 배열은 같은 numpy 배열에서 `sd.asarray`로 만들어요. 새 입력을 돌려 쓰는 사례는 양쪽이 같은 입력을 같은 순서로 받아요.
 - **같은 일.** 비교 대상은 sd와 같은 결과를 내도록 옵션을 맞춰요. sd의 정렬은 기본이 안정 정렬이라 numpy의 `sort`와 `argsort`는 `stable=True`로 불러요. pandas는 같은 옵션(안정 정렬, `ddof=0`)과 같은 결측값 표현으로 불러요. linalg에서는 numpy의 `full_matrices`와 `mode`를 sd에 맞추고, scipy의 `cho_solve`는 sd가 `cholesky`의 결과를 받듯 `cho_factor`의 결과를 받아요.
 - **같은 정확도.** 반복해서 푸는 비교 대상은 sd의 정확도까지 풀게 해요. scikit-learn의 풀이기는 `tol=1e-10`(saga는 `1e-8`)을 받고, 그 사실이 열 이름에 들어가요("scikit-learn lbfgs tol=1e-10"). 기본 `tol`로 풀었을 때 계수의 오차가 얼마인지는 그 사례의 비고에 적어요. scipy의 다변량 정규 cdf는 sd의 `atol`을 `abseps`로 받아요(`releps=0`). 느슨한 정확도로 빨리 끝내는 쪽이 이겨 보이지 않게 하려는 거예요.
-- **기본과 대안을 함께.** 라이브러리에 방식이 여럿이면 열을 더해요. stats의 "scipy 새 방식"(`scipy.stats.Normal` 같은 새 클래스, 64개)과 "scipy.special"(스칼라 cdf, 14개), frame의 "pandas python 문자열"(38개)과 "pandas pyarrow 엔진"(`read_csv`의 `engine="pyarrow"`, 14개), array의 "numpy 기본(불안정)", random의 PCG64와 Philox(sd가 쓰는 비트 생성기)가 그런 열이에요.
-- **너무 느린 비교 대상.** scipy가 입력 전체에 약 2초를 넘게 걸리는 경우에는 입력의 앞부분만 재고(`Ref.n`), 표에서 원소 수에 비례해 사례의 크기로 늘린 값에 `*`를 붙여요. stats의 23개 사례가 그래요.
+- **기본과 대안을 함께.** 라이브러리에 방식이 여럿이면 열을 더해요. stats의 "scipy new API"(`scipy.stats.Normal` 같은 새 클래스, 64개)와 "scipy.special"(스칼라 cdf, 14개), frame의 "pandas python str"(38개)과 "pandas pyarrow engine"(`read_csv`의 `engine="pyarrow"`, 14개), array의 "numpy default (unstable)", random의 "numpy PCG64"와 "numpy Philox"(sd가 쓰는 비트 생성기)가 그런 열이에요.
+- **너무 느린 비교 대상.** 비교 대상이 입력 전체에 너무 오래 걸리는 경우에는 입력의 앞부분만 재고(`Ref.n`), 표에서 원소 수에 비례해 사례의 크기로 늘린 값에 `*`를 붙여요. stats에서는 scipy 비교 37개 사례가 그래요.
 
-<Callout type="note" title="결과가 같은지는 여기서 보지 않아요">
-속도 측정은 두 쪽의 결과를 비교하지 않아요. 결과가 맞는지는 [테스트 체계](/internals/core/testing/)와 [정확도 측정](/internals/core/accuracy/)이 맡아요. 여기서는 같은 일을 시키도록 호출을 짜는 데까지 해요.
-</Callout>
+### 결과 확인: `--smoke`
+
+같은 일을 시키도록 호출을 짰는지는 점검 실행으로 확인해요. `run --smoke`는 시간을 재지 않고 사례마다 sd와 비교 대상을 한 번씩 부른 뒤 결과를 견줘요(`check.py`). 견주는 상대는 첫 Python 비교 대상과 모든 R·Boost 비교 대상이고, `differs`가 있는 비교 대상은 빼요. R의 값은 같은 R 세션에서 받아 와요.
+
+- 두 값은 둘 다 NaN이거나, 같거나, 큰 쪽 크기의 $10^{-6}$(사례의 `Check.rtol`) 안이면 맞아요. 0 근처에서 다르게 언더플로하는 값($10^{-300}$ 안)도 맞아요.
+- 한쪽만 NaN인 값은 틀린 것으로 세지 않고 NaN 비율로 따로 적어요. 비교 대상이 sd보다 NaN을 1%p 넘게 더 내면 표의 비고에 그 비율이 붙어요.
+- 둘 다 값을 낸 점 중 절반(`Check.agree`) 이상이 맞아야 통과해요. special과 stats의 입력은 함수의 어려운 구석에 몰려 있어 비교 대상의 정확도가 떨어지는 점이 섞이지만, 다른 함수를 계산하는 비교 대상(인자 순서가 틀리거나 인자를 반올림하는 것)은 거의 모든 점에서 틀리기 때문이에요.
+- 결과 확인이 실패한 사례는 실패로 세고, 종료 코드가 1이에요.
+
+점검 실행은 아무것도 재지 않으므로 사례를 여러 갈래로 나눠 동시에 돌려요. 프로세스는 R 세션까지 합쳐 `--jobs`개(기본 8, 최대 10) 이하이고, R을 쓰면 갈래 수를 절반으로 줄여요. 메모리 한도는 모든 갈래를 합쳐 보고, 넘으면 메모리를 가장 많이 쥔 갈래의 사례만 멈췄다가 마지막에 혼자 다시 돌려요. 측정 실행은 늘 사례를 하나씩 재요.
+
+결과가 참값에 얼마나 가까운지는 [테스트 체계](/internals/core/testing/)와 [정확도 측정](/internals/core/accuracy/)이 맡아요. 점검 실행은 두 쪽이 같은 계산을 하는지만 봐요.
 
 ## R과 비교하기
 
-regression의 30개 사례가 R 비교 대상(34개)을 가져요. `robustbase::lmrob`(5개), `quantreg`의 `rq.fit`과 `rq`(14개), `nls`(15개)예요.
+R 비교 대상은 array 46개, linalg 60개, special 85개, stats 290개, regression 56개, optimize 29개예요. base R 함수가 대부분이고, 다변량 정규·t 누적분포의 `mvtnorm`, 분위 회귀의 `quantreg`, 강건 회귀의 `robustbase`, 모형 검정의 `lmtest`와 `car`, 띠 행렬의 `Matrix`, 비선형 최소제곱의 `minpack.lm` 꾸러미를 써요. optimize의 R은 목적 함수, 잔차, 기울기를 R로 다시 써서 불러요. R의 반복 상한과 허용오차는 sd·scipy 호출과 같은 멈춤 일이 되도록 Python 쪽 값에 맞추고, R의 알고리즘이 다른 곳은 사례의 비고에 적어요.
 
-R을 사례마다 새로 띄우면 시작 비용과 꾸러미 불러오기가 매번 들어요. 그래서 실행 하나가 R 프로세스(`R --vanilla`) 하나를 띄워 끝까지 써요(`rsession.py`). R 프로세스는 표준 입력으로 요청을 받아요.
+R을 사례마다 따로 띄우면 시작 비용과 꾸러미 불러오기가 매번 들어요. 그래서 실행 하나가 R 프로세스(`R --vanilla`) 하나를 띄워 끝까지 써요(`rsession.py`). R 프로세스는 표준 입력으로 요청을 받아요.
 
 <Fig column caption="R 비교 하나가 도는 길. 데이터는 파일로 넘기고, 시간은 R 안에서 같은 규칙으로 재요.">
   <Steps steps={[
@@ -337,9 +353,13 @@ R을 사례마다 새로 띄우면 시작 비용과 꾸러미 불러오기가 �
   ]} />
 </Fig>
 
-시간은 R 안에서 재므로, Python과 R 사이에 데이터를 넘기는 비용은 들어가지 않아요. R은 1스레드(기준 BLAS)로 돌아요. R의 표준 오류 출력은 파이프가 아니라 파일로 받아요. 파이프가 차면 R이 멈추기 때문이에요. R 세션은 기본용 측정 프로세스의 자식이고 같은 프로세스 그룹에 들어가요. 감독이 한계를 넘은 측정 프로세스의 그룹을 죽이면 R도 함께 죽어요.
+시간은 R 안에서 재므로, Python과 R 사이에 데이터를 넘기는 비용은 들어가지 않아요. R의 시계는 `Sys.time()`이에요. R은 배치 안에서 쓰레기 수집을 끌 수 없어서 배치 전에 `gc()`를 한 번 불러요. R은 1스레드로 돌아요. 이 기계의 R은 OpenMP판 OpenBLAS를 쓰므로 `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`로 띄워요. R의 표준 오류 출력은 파이프가 아니라 파일로 받아요. 파이프가 차면 R이 멈추기 때문이에요. R 세션은 기본용 측정 프로세스의 자식이고 같은 프로세스 그룹에 들어가요. 감독이 한계를 넘은 측정 프로세스의 그룹을 죽이면 R도 함께 죽어요.
 
 R이 설치되어 있지 않으면 R 비교만 건너뛰고 나머지는 그대로 재요. `--no-r`로 일부러 뺄 수도 있어요.
+
+### Boost.Math
+
+special과 stats의 Boost.Math 비교 대상(`boost.py`, `boost_speed.cpp`)은 정확도 측정이 쓰는 Boost 소스(`build/comparators/boost-math`)를 정확도 측정과 같은 함수와 같은 옵션(sd의 최적화 옵션 `-O3 -mcpu=native -ffp-contract=off`와 `-std=c++17`)으로 빌드해요. 배열 하나에 ctypes 호출 한 번이고, 그 안에서 원소마다 Boost 함수를 직접 부르는 C++ 반복문이 돌아요. 빌드한 라이브러리의 이름에 소스, 옵션, Boost 체크아웃의 커밋이 들어가서 하나라도 바뀌면 다시 빌드해요. 소스가 없으면 Boost 열을 빼고 돌아요. 비교 대상의 Boost 판과 sd.special이 담은 Boost 판은 다를 수 있어서 결과 파일에 둘 다 적어요.
 
 ## 긴 실행
 
@@ -387,32 +407,34 @@ R이 설치되어 있지 않으면 R 비교만 건너뛰고 나머지는 그대�
 
 다른 프로그램이 CPU를 쓰고 있으면 결과가 흔들려요. 그래서 실행기는 CPU를 두 번 살펴요.
 
-1. **시작하기 전.** 3초 동안 다른 프로세스가 쓰는 CPU를 재요. 커널의 CPU별 시간 계수기(`host_processor_info`)에서 기계 전체의 사용 시간을 읽고, 실행 자신(감독, 측정 프로세스, R)의 CPU 시간을 빼요. 평균 1코어(`--quiet-cores`)를 넘으면 가장 바쁜 프로세스들을 보여 주고, 10초 간격으로 다시 재며 조용해질 때까지 최대 10분 기다려요. 그래도 바쁘면 경고를 남기고 시작해요. `--no-wait`는 기다리지 않고, `--strict`는 바쁘면 멈춰요(종료 코드 3).
+1. **시작하기 전.** 3초 동안 다른 프로세스가 쓰는 CPU를 재요. 커널의 CPU별 시간 계수기(`host_processor_info`)에서 기계 전체의 사용 시간을 읽고, 실행 자신(감독, 측정 프로세스, R)의 CPU 시간을 빼요. 평균 1코어(`--quiet-cores`)를 넘으면 가장 바쁜 프로세스들을 보여 주고, 10초 간격으로 다시 재며 조용해질 때까지 최대 10분 기다려요. 그래도 바쁘면 경고를 남기고 시작해요. `--no-wait`는 기다리지 않고, `--strict`는 바쁘면 멈춰요(종료 코드 1). `--smoke`는 재지 않으므로 검사하지 않아요.
 2. **사례마다.** 사례 하나를 재는 동안 다른 프로세스가 평균 몇 코어를 썼는지(`other_cpu`) 적어요. 1코어를 넘으면 그 사례를 `busy`로 표시하고 진행 줄에 알려요.
 
 `busy`인 사례는 표에서 이름 옆에 †가 붙고, `compare`는 느려짐으로 세지 않아요. 이런 사례만 골라 다시 잴 수 있어요.
 
 ```bash
-.venv/bin/python -m bench.speed run --rerun-busy build/speed/<실행>.json
+.venv/bin/python -m bench.speed run --rerun-busy build/speed/<실행>.jsonl
 ```
+
+다시 잴 때는 원래 실행의 라운드 수, 스레드 수, R 사용 여부를 따라요(명령행에 주면 그 값이에요). 그 실행을 `promote`하면 기준선의 그 사례들만 바뀌어요.
 
 CPU 계수기를 읽을 수 없는 기계에서는 1분 부하가 3을 넘을 때 경고만 해요. 1분 부하는 사례마다 기록도 해요.
 
 ### 끊겨도 이어 달리기
 
-사례 하나가 끝날 때마다 실행 파일을 배치 시간까지 통째로 다시 써요(임시 파일에 쓰고 바꿔치기). Ctrl-C나 전원 문제로 끊겨도 많아야 사례 하나를 잃어요. 같은 실행을 남은 곳부터 이어요.
+실행 파일은 JSON Lines예요. 첫 줄은 실행의 머리이고, 사례 하나가 끝날 때마다 그 사례의 줄을 배치 시간까지 덧붙여요. Ctrl-C나 전원 문제로 끊겨도 많아야 사례 하나를 잃고, 끊긴 마지막 줄은 읽을 때 버려요. 같은 실행을 남은 곳부터 이어요.
 
 ```bash
-.venv/bin/python -m bench.speed run --resume build/speed/<실행>.json
+.venv/bin/python -m bench.speed run --resume build/speed/<실행>.jsonl
 ```
 
 진행 줄에는 경과 시간과 남은 예상 시간이 나와요. 예상은 기준선에 적힌 사례별 라운드당 시간으로 어림하고, 이번 실행이 지금까지 기준선보다 얼마나 빨랐는지의 비율로 고쳐요. 기준선에 없는 사례는 그런 사례 중 이번 실행에서 이미 잰 것들의 평균으로 어림해요. `estimate` 명령은 같은 방식으로 재기 전에 걸릴 시간을 보여 줘요.
 
 ```bash
-.venv/bin/python -m bench.speed estimate --area stats
+.venv/bin/python -m bench.speed estimate stats
 ```
 
-1분 넘게 걸린 실행이 끝나면 macOS 알림을 띄워요(`--no-notify`로 꺼요). 로그는 실행 파일 옆의 `.log`에 진행 줄과 측정 프로세스의 표준 오류가 함께 쌓여요.
+1분 넘게 걸린 실행이 끝나면 macOS 알림을 띄워요(`--no-notify`로 꺼요). 로그는 `build/logs/speed/<시각>.log`에 쌓여요. 터미널에 나온 줄(시각과 함께), 사례마다 한 줄의 진행, 측정 프로세스의 표준 오류가 들어가고, 로그의 경로는 실행 파일에도 적어 둬요.
 
 ## 결과와 표
 
@@ -420,32 +442,33 @@ CPU 계수기를 읽을 수 없는 기계에서는 1분 부하가 3을 넘을 �
 
 | | 실행 파일 | 기준선 |
 |---|---|---|
-| 위치 | `build/speed/<날짜-시각>[-이름].json` (git이 무시해요) | `bench/speed/results/<영역>.json` (저장소에 둬요) |
+| 위치 | `build/speed/<날짜-시각>[-이름].jsonl` (git이 무시해요) | `bench/speed/results/<영역>.json` (저장소에 둬요) |
 | 범위 | 실행 하나가 잰 사례 | 영역 하나의 모든 사례 |
-| 내용 | 커밋과 작업 중 변경 여부, 기계(칩, 코어, macOS, 메모리), 라이브러리 판(numpy, scipy, pandas, statsmodels, scikit-learn, R과 그 꾸러미), BLAS와 그 스레드 수, sd의 기본 스레드 수, 시작할 때의 부하, 사례마다 측정 전부 | 사례마다 그 사례가 온 실행의 이름, 그리고 그 실행들의 환경 |
+| 내용 | 커밋과 작업 중 변경 여부, 기계(칩, 코어, macOS, 메모리), 라이브러리 판(numpy, scipy, pandas, statsmodels, scikit-learn, R과 그 꾸러미, 비교 대상의 Boost와 sd.special이 담은 Boost), BLAS(numpy·scipy와 R이 쓰는 BLAS·LAPACK, 그 스레드 변수), sd의 기본 스레드 수, 시작할 때의 부하, 사례마다 측정 전부 | 측정마다 그 측정이 온 실행과 라운드 수, 그리고 그 실행들의 환경 |
 
-사례의 측정 하나에는 대상, 스레드 수, 최솟값, 중앙값, 잡음 폭, 배치 수, 배치당 호출 수, 배치 시간 전부가 들어가요. 사례에는 라운드당 시간, 1분 부하, 최대 메모리, `other_cpu`, `busy`도 붙어요.
+사례의 측정 하나에는 대상, 스레드 수, 최솟값, 중앙값, 잡음 폭, 배치 수, 배치당 호출 수, 배치 시간 전부, 결과의 NaN 비율이 들어가요. 점검 실행이면 결과 확인도 들어가요. 사례에는 라운드당 시간, 1분 부하, 최대 메모리, `other_cpu`, `busy`도 붙어요. 배치 시간 전부는 실행 파일에만 있고 기준선에는 넣지 않아요.
 
 `promote`가 실행 파일을 기준선에 넣어요.
 
 ```bash
-.venv/bin/python -m bench.speed promote build/speed/<실행>.json
+.venv/bin/python -m bench.speed promote build/speed/<실행>.jsonl
 ```
 
-- 실행이 잰 사례만 바꾸고 나머지는 그대로 둬요. 함수 하나만 다시 재서 넣을 수 있어요.
-- 측정이 모두 실패한 사례는 넣지 않아요.
+- 측정 하나(대상, 스레드 수) 단위로 합쳐요. 실행이 잰 측정만 바꾸고, 실행에 없거나 실패한 측정(1스레드만 잰 실행의 10스레드, 시간 초과한 R 등)은 기준선 값을 둬요. 그래서 함수 하나, 스레드 수 하나만 다시 재서 넣을 수 있어요.
+- 기준선보다 적은 라운드로 잰 측정은 `--force` 없이는 넣지 않아요.
 - 등록부에서 사라진 사례는 기준선에서 빼고, 사례 순서는 등록부의 순서를 따라요.
-- 끝나지 않은 실행은 넣지 않아요(`--force`로 넣을 수 있어요). `--smoke` 실행은 넣을 수 없어요.
+- 끝나지 않은 실행은 넣지 않아요(`--force`로 넣을 수 있어요). `--smoke` 실행은 넣을 수 없어요. 넣을 수 없는 실행을 넣으려 하면 종료 코드가 2예요.
 - 넣고 나면 그 영역의 표 `bench/<영역>/speed.md`를 다시 만들어요. 실행에 비용표 사례가 들어 있으면 `cost`를 돌리라고 알려요.
 
 ### 생성되는 표 읽기
 
-`bench/<영역>/speed.md`는 기준선에서 만드는 파일이에요. 손으로 고치지 않아요. 묶음마다 절이 하나이고, 맨 위에 측정 환경(기계, 라이브러리 판)이 있어요.
+`bench/<영역>/speed.md`는 기준선에서 만드는 파일이에요(`promote`가 만들고, `table` 명령으로 따로 만들 수도 있어요). 손으로 고치지 않아요. 묶음마다 절이 하나이고, 절 제목은 사례 파일의 `TITLES`에서 와요. 맨 위에 측정 환경(기계, 라이브러리 판)이 있어요.
 
 - **시간**은 호출 한 번의 시간이에요. 모든 라운드의 배치 중 가장 빠른 값이에요.
 - **배율(÷ sd)**은 비교 대상 시간 ÷ sd 시간이에요. 1보다 크면 sd가 빨라요. sd가 느린 줄은 배율을 굵게 써요.
 - **잡음**은 그 줄의 측정마다 잡음 폭을 구한 것 중 가장 큰 값이에요.
 - **†**는 잴 때 다른 프로세스가 CPU를 1코어 넘게 쓴 사례, **\***는 입력의 일부로 재서 늘린 값이에요.
+- 비고에는 사례의 `note`, 비교 대상의 `differs` 까닭, 비교 대상이 sd보다 NaN을 1%p 넘게 더 낸 비율이 붙어요.
 - 측정이 실패한 것은 표 끝의 "측정 실패" 절에 오류와 함께 모여요.
 
 묶음은 비교 대상의 방식에 따라 두 모양 중 하나로 나와요.
@@ -462,8 +485,8 @@ CPU 계수기를 읽을 수 없는 기계에서는 1분 부하가 3을 넘을 �
 코드를 고친 뒤에는 그 영역을 다시 재고 기준선과 비교해요.
 
 ```bash
-.venv/bin/python -m bench.speed run --area special --match erf
-.venv/bin/python -m bench.speed compare build/speed/<실행>.json
+.venv/bin/python -m bench.speed run special --match erf
+.venv/bin/python -m bench.speed compare build/speed/<실행>.jsonl
 ```
 
 `compare`는 sd의 측정마다 새 최솟값 ÷ 기준선 최솟값을 구하고, 이렇게 판단해요.
@@ -493,7 +516,7 @@ CPU 계수기를 읽을 수 없는 기계에서는 1분 부하가 3을 넘을 �
 ```python
         # bench/speed/compare.py (compare)
         band = max(t.get("noise") or 0.0, bt.get("noise") or 0.0)
-        busy = bool(c.get("busy") or base[c["id"]].get("busy"))
+        busy = bool(c.get("busy") or base[c["id"]].get("busy") or bt.get("busy"))
 ```
 
 ```python
@@ -502,7 +525,16 @@ CPU 계수기를 읽을 수 없는 기계에서는 1분 부하가 3을 넘을 �
 
 10%를 넘게 느려졌어도 그 차이가 잡음 폭 안이면 코드가 아니라 기계 탓일 수 있어요. 예를 들어 잡음 폭이 15%인 측정이 12% 느려졌다면 "잡음 안"으로 적고, 종료 코드에도 세지 않아요.
 
-비교 대상 라이브러리의 시간 변화도 함께 보여요. 비교 대상들의 새 ÷ 기준선의 중앙값이에요. numpy와 scipy도 같이 느려졌다면 코드가 아니라 기계 상태가 달라진 것이고, 이 값이 10%를 넘게 벗어나면 그렇게 알려요. 문턱은 `--threshold`(기본 0.10)로 바꾸고, `--base FILE`로 기준선 대신 다른 결과 파일과 비교할 수 있어요.
+비교 대상 라이브러리의 시간 변화도 함께 보여요. 비교 대상들의 새 ÷ 기준선의 중앙값이에요. numpy와 scipy도 같이 느려졌다면 코드가 아니라 기계 상태가 달라진 것이고, 이 값이 10%를 넘게 벗어나면 그렇게 알려요. 문턱은 `--threshold`(기본 0.10)로 바꾸고, `--base FILE`로 기준선 대신 다른 결과 파일과 비교할 수 있어요. `--faster`는 빨라진 것도 보이고, `--out FILE`은 보고서를 Markdown 표로 써요. 실행의 사례가 기준선에 하나도 없으면 비교할 것이 없다고 알리고 종료 코드 1로 끝나요.
+
+### 종료 코드
+
+| 코드 | 뜻 |
+|---:|---|
+| 0 | 모두 됐어요 |
+| 1 | 실패한 사례가 있어요(예외, 시간 초과, 메모리 초과, 점검 실행의 결과 확인 실패. 실행 파일은 남아요). `compare`가 잡음 밖의 느려짐을 찾았거나 비교할 기준선이 없어요. `cost --check`가 바뀔 헤더를 찾았어요. `--strict`로 바빠서 멈췄어요 |
+| 2 | 명령행 오류, 또는 넣을 수 없는 실행을 `promote`하려 했어요 |
+| 130 | Ctrl-C로 멈췄어요(`--resume`으로 이어요) |
 
 ## 비용표
 
@@ -540,9 +572,9 @@ constexpr std::int64_t weight_of(double ns) {
 | `csrc/stats/cost_table.hpp` | `분포.메서드`(`normal.cdf`) | stats의 연속·이산·극값 분포의 배열 사례 |
 
 - 같은 키의 사례가 여럿이면(매개변수 묶음이 여럿) 기하평균을 써요.
-- 이산 분포의 좁은 지지 사례는 키 `분포.메서드@memo`로 따로 재요. 스칼라 매개변수에서 정수점 기억 표가 답하는 호출은 원소당 1–2 ns인데, 넓은 지지의 계산(수백 ns에서 수십 µs)과 섞으면 좁은 호출이 무거운 가중치를 받아 10스레드가 1스레드보다 느려져요. 이 줄은 표에서 `memo = true`가 돼요.
-- 기준선에 없는 키는 지금 헤더의 값을 그대로 둬요. 영역 하나나 함수 하나만 다시 재고 `cost`를 돌리면 잰 줄만 바뀌어요. 헤더 맨 위의 주석은 몇 줄을 기준선에서 쟀는지와, 나머지 줄이 앞 파일에서 이어 온 값이라는 것을 적어요. special 표에서 기준선이 재지 않은 줄은 함수마다 손으로 잰 상수(`bench/special/s*/cost.md`)에서 온 값이에요.
-- 헤더의 주석이 아니라 줄이 달라질 때만 "바뀜"으로 세요.
+- 이산 분포의 좁은 지지 사례는 키 `분포.메서드@memo`로 따로 재요. 스칼라 매개변수에서 정수점 기억 표가 답하는 호출은 원소당 1–2 ns인데, 넓은 지지의 계산(수백 ns에서 수십 µs)과 섞으면 좁은 호출이 무거운 가중치를 받아 10스레드가 1스레드보다 느려져요. 이 줄은 표에서 `memo = true`가 돼요. 잰 적이 없는 `@memo` 줄은 `cost.py`의 값으로 채워서, 첫 측정 전에도 좁은 지지의 가중치가 켜져요. 역함수 줄은 점검 실행에서 잰 1스레드 시간(`MEMO_PRESET_NS`), 나머지는 `MEMO_DEFAULT_NS`(1.5 ns)이고, 측정하면 잰 값으로 바뀌어요.
+- 기준선에 없는 키는 지금 헤더의 값을 그대로 둬요. 영역 하나나 함수 하나만 다시 재고 `cost`를 돌리면 잰 줄만 바뀌어요. 헤더 맨 위의 주석은 몇 줄을 기준선에서 쟀는지와, 나머지 줄이 앞 파일에서 이어 온 값이라는 것을 적어요.
+- 헤더의 주석이 아니라 줄이 달라질 때만 "바뀜"으로 세요. `cost --check`는 기준선이 없는 영역, 먹이는 사례가 없어 바뀌지 않을 줄, 줄이 없는 사례 키도 함께 알려요.
 - 헤더가 바뀌면 다음 `import stardust`에서 C++가 다시 빌드돼요.
 
 생성된 special 표의 일부예요.
@@ -595,15 +627,17 @@ constexpr double find(std::string_view dist, std::string_view method, bool memo 
 명령은 모두 라이브러리 저장소 맨 위에서 돌려요.
 
 ```bash
-.venv/bin/python -m bench.speed list --area stats --quick         # 사례 보기 (Q: 빠른 묶음, C: 비용표)
-.venv/bin/python -m bench.speed estimate                          # 걸릴 시간 어림
-.venv/bin/python -m bench.speed run --area stats --smoke          # 모든 사례가 도는지만 (한 번씩 불러요)
-.venv/bin/python -m bench.speed run --quick                       # 모든 영역의 빠른 묶음, 1라운드
-.venv/bin/python -m bench.speed run --area stats --label stats    # 영역 하나, 3라운드
-.venv/bin/python -m bench.speed run --resume build/speed/<실행>.json
-.venv/bin/python -m bench.speed run --rerun-busy build/speed/<실행>.json
-.venv/bin/python -m bench.speed compare build/speed/<실행>.json   # 기준선보다 느려진 것
-.venv/bin/python -m bench.speed promote build/speed/<실행>.json   # 기준선에 넣고 speed.md 다시 만들기
-.venv/bin/python -m bench.speed table special                     # 표만 다시 만들기
-.venv/bin/python -m bench.speed cost                              # C++ 비용표 다시 만들기
+.venv/bin/python -m bench.speed list stats --quick                 # 사례 보기 (Q: 빠른 묶음, C: 비용표)
+.venv/bin/python -m bench.speed estimate                           # 걸릴 시간 어림
+.venv/bin/python -m bench.speed run stats --smoke                  # 모든 사례가 돌고 값이 맞는지만 (한 번씩 불러요)
+.venv/bin/python -m bench.speed run --quick                        # 모든 영역의 빠른 묶음, 1라운드
+.venv/bin/python -m bench.speed run stats --label stats            # 영역 하나, 3라운드
+.venv/bin/python -m bench.speed run --resume build/speed/<실행>.jsonl
+.venv/bin/python -m bench.speed run --rerun-busy build/speed/<실행>.jsonl
+.venv/bin/python -m bench.speed compare build/speed/<실행>.jsonl   # 기준선보다 느려진 것
+.venv/bin/python -m bench.speed promote build/speed/<실행>.jsonl   # 기준선에 넣고 speed.md 다시 만들기
+.venv/bin/python -m bench.speed table special                      # 표만 다시 만들기
+.venv/bin/python -m bench.speed cost                               # C++ 비용표 다시 만들기
 ```
+
+전체를 다시 잴 때는 먼저 `--smoke`로 모든 사례가 돌고 값이 맞는지 본 다음, 영역마다 재서 `compare`와 `promote`를 하고, stats나 special을 다시 쟀으면 `cost`로 비용표를 다시 만들어요. 비용표가 바뀌면 다음 `import stardust`에서 C++가 다시 빌드되므로 테스트도 다시 돌려요. 영역마다 따로 재서 넣어도 돼요.

@@ -276,6 +276,18 @@ Traceback (most recent call last):
 TypeError: cosh(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
 ```
 
+## 얼마나 정확한가요
+
+결과는 정확한 값을 float64로 반올림한 값에서 정해진 칸 수 안에 있어요. 한 칸은 이웃한 두 float64 사이의 간격(ULP)이에요([`nextafter`](/api/array/nextafter/)). 0칸이면 정확한 값에 가장 가까운 float64 그대로예요. 약속하는 칸 수와, 정밀한 참값과 견줘 잰 최대는 이래요.
+
+| 함수 | 약속 | 잰 최대 |
+|---|:---:|:---:|
+| `sinh`, `cosh`, `tanh` | 4칸 | 2칸 |
+| `asinh`, `acosh` | 4칸 | 2칸 |
+| `atanh` | 5칸 | 3칸 |
+
+5칸은 상대오차로 약 1.1e-15예요. ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 정확하고, 같은 입력이면 배열 안의 위치나 스레드 수와 상관없이 같은 값이 나와요.
+
 ## 조심할 점
 
 ### sinh와 cosh는 금방 넘쳐요
@@ -329,5 +341,5 @@ array([9.99999993922529e-09], dtype=float64)
 
 - 역함수의 이름이 `arcsinh`, `arccosh`, `arctanh`가 아니라 `asinh`, `acosh`, `atanh`예요. 별칭은 없어요.
 - 정의역 밖의 값(`acosh(0.5)`, `atanh(2.0)`)은 경고 없이 NaN, `atanh(±1)`은 경고 없이 ±inf예요.
-- 값은 numpy와 마지막 몇 자리(8 ULP 이내)가 다를 수 있어요. 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요.
+- 값은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 `atanh`에서 최대 4칸). 특수값(±0, ±inf, NaN)의 결과는 부호까지 같아요.
 - `out`은 keyword-only이고 `where=` 인자는 없어요. Python 숫자를 넣으면 Python `float`·`complex`가 나와요.

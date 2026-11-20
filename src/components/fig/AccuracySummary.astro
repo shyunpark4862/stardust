@@ -3,32 +3,37 @@
  * Accuracy measured against the reference values, from src/data/accuracy.json
  * (written by tools/sync_accuracy.py from the library's accuracy baselines).
  *
- * Without `area`: one row per measured area (sweeps, points, how many
- * (function, region) rows are within the contract, the largest contract ratio).
- * With `area`: that area's rows, one per (function, region): points, max and
- * 99.9% ULP, ULP over the bound's multiplier, mixed error, relative errors, the
- * multivariate cdfs' absolute error, error over u·condition and error over the
- * returned estimate, the count of NaN/inf points (shown only when nonzero) and the
- * contract ratio (columns no shown row has are left out).
+ * Without `area`: one row per measured area, in the library's order (sweeps,
+ * points, (function, region) rows, how many of the rows with a numerical contract
+ * are within it, the largest contract ratio), and under an area one indented row
+ * per group of it (the stats area's multivariate group, sweeps mv/...).
+ * With `area`: that area's rows, one per (function, region), with the columns of
+ * the library's tables (bench/accuracy/tables.py) that some shown row has; the
+ * count of NaN/inf points only when nonzero.
  *
- *   area     'special' | 'stats' | 'multivariate' | 'regression'
- *   names    only these sweeps (reference files; regression: kind/problem)
- *   regions  only these regions (guaranteed, loose, mixed; multivariate also tiny,
- *            'exact d<=3', 'atol=...'; regression: field names)
+ *   area     'array' | 'linalg' | 'special' | 'stats' | 'regression' | 'optimize'
+ *   names    only these sweeps (array, linalg, special: function; stats:
+ *            distribution_method, or mv/Class.method and mv/cdf.kind for the
+ *            multivariate group; regression: kind/problem; optimize: method)
+ *   regions  only these regions (guaranteed, loose, mixed, tiny, 'exact d<=3',
+ *            'atol=...'; array: input kind and shape; linalg: kappa=...; optimize:
+ *            problem set or stopping test; regression: field names)
  *   caption  text under the table
  */
 import data from '../../data/accuracy.json';
 
 type Cell = number | string | null;
+interface Summary {
+  sweeps: number;
+  points: number;
+  regions: number;
+  judged: number;
+  within: number;
+  worst?: { contract: number; name: string; region: string };
+}
 interface AreaData {
-  summary: {
-    sweeps: number;
-    points: number;
-    regions: number;
-    judged: number;
-    within: number;
-    worst?: { contract: number; name: string; region: string };
-  };
+  summary: Summary;
+  groups?: Record<string, Summary>;
   regions: string[];
   sweeps: [string, number, Cell[][]][];
 }
@@ -43,17 +48,22 @@ const D = data as unknown as { fields: string[]; areas: Record<string, AreaData>
 const col = Object.fromEntries(D.fields.map((f, i) => [f, i]));
 
 const AREA_NAMES: Record<string, string> = {
+  array: 'sd 배열',
+  linalg: 'sd.linalg',
   special: 'sd.special',
   stats: 'sd.stats',
-  multivariate: 'sd.stats 다변량·행렬',
   regression: 'sd.regression',
+  optimize: 'sd.optimize',
+};
+const GROUP_NAMES: Record<string, string> = {
+  'stats/mv': '다변량·행렬 분포 묶음',
 };
 const REGION_NAMES: Record<string, string> = {
   guaranteed: '보장',
   loose: '느슨',
   mixed: '혼합',
   tiny: '아주 작은 값',
-  'exact d<=3': '정확한 혼합(d ≤ 3)',
+  'exact d<=3': '정확 계산(d ≤ 3)',
 };
 
 /** Three significant digits; outside [1e-3, 1e5) as m × 10^e. */
@@ -92,18 +102,39 @@ const get = (r: Row, f: string) => (r.cells.length > col[f] ? r.cells[col[f]] : 
 const has = (f: string) => rows.some((r) => get(r, f) !== null);
 const regression = area === 'regression';
 const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
-  { key: 'ulp_max', head: '최대 ULP', show: true },
-  { key: 'ulp_p999', head: '99.9% ULP', show: true },
-  { key: 'ulp_cond_max', head: 'ULP / 배율', show: has('ulp_cond_max') },
+  { key: 'ulp_max', head: '최대 ULP', show: has('ulp_max') },
+  { key: 'ulp_p999', head: '99.9% ULP', show: has('ulp_p999') },
+  { key: 'ulp_scale_max', head: 'ULP / 배율', show: has('ulp_scale_max') },
   { key: 'mixed_max', head: 'mixed (최대 / 99.9%)', show: has('mixed_max'), pair: 'mixed_p999' },
-  { key: 'rel_max', head: '최대 상대오차', show: true },
+  { key: 'rel_max', head: '최대 상대오차', show: has('rel_max') },
   { key: 'norm_rel', head: '노름 상대오차', show: has('norm_rel') },
+  { key: 'norm_inf_rel_max', head: '노름 상대오차(∞)', show: has('norm_inf_rel_max') },
+  { key: 'numpy_dist_max', head: 'numpy와의 ULP', show: has('numpy_dist_max') },
+  { key: 'nonfinite', head: 'NaN·inf 점', show: rows.some((r) => Number(get(r, 'nonfinite') ?? 0) > 0) },
   { key: 'abs_max', head: '최대 절대오차', show: has('abs_max') },
   { key: 'rel_cond_max', head: '상대오차 / (u·조건수)', show: has('rel_cond_max') },
+  { key: 'backward_max', head: '잔차 / (n·ε·척도)', show: has('backward_max') },
+  { key: 'orth_max', head: '직교성 / (n·ε)', show: has('orth_max') },
+  { key: 'grad_max', head: '최대 ‖∇f‖', show: has('grad_max') },
+  { key: 'excess_max', head: '최대 (f − f*) / max(1, f*)', show: has('excess_max') },
+  { key: 'tol_ratio_max', head: '거리 / 허용오차', show: has('tol_ratio_max') },
+  { key: 'fnorm_max', head: '최대 ‖F‖∞', show: has('fnorm_max') },
+  { key: 'kkt_max', head: 'KKT 잔차 / ε', show: has('kkt_max') },
+  { key: 'unconverged', head: '수렴 못 함', show: has('unconverged') },
+  { key: 'off_target', head: '판정 밖', show: has('off_target') },
   { key: 'est_ratio_max', head: '오차 / 추정', show: has('est_ratio_max') },
-  { key: 'nonfinite', head: 'NaN·inf 점', show: rows.some((r) => Number(get(r, 'nonfinite') ?? 0) > 0) },
   { key: 'contract', head: '계약 대비', show: has('contract') },
 ].filter((c) => c.show);
+
+/** The summary rows: each area, then its groups indented under it. */
+const summaryRows: { label: string; group: boolean; s: Summary }[] = Object.entries(D.areas).flatMap(([key, a]) => [
+  { label: AREA_NAMES[key] ?? key, group: false, s: a.summary },
+  ...Object.entries(a.groups ?? {}).map(([g, s]) => ({
+    label: GROUP_NAMES[`${key}/${g}`] ?? g,
+    group: true,
+    s,
+  })),
+]);
 ---
 
 {
@@ -121,14 +152,11 @@ const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
           </tr>
         </thead>
         <tbody>
-          {Object.entries(D.areas).map(([key, a]) => {
-            const s = a.summary;
+          {summaryRows.map(({ label, group, s }) => {
             const w = s.worst ? parts(s.worst.contract) : undefined;
             return (
-              <tr>
-                <td>
-                  <code>{AREA_NAMES[key] ?? key}</code>
-                </td>
+              <tr class:list={[group && 'acc__group']}>
+                <td>{group ? <span class="acc__sub">{label}</span> : <code>{label}</code>}</td>
                 <td class="acc__num">{int(s.sweeps)}</td>
                 <td class="acc__num">{int(s.points)}</td>
                 <td class="acc__num">{int(s.regions)}</td>
@@ -137,7 +165,8 @@ const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
                   {s.worst && w ? (
                     <>
                       <span class:list={['acc__ratio', s.worst.contract > 1 && 'is-over']}>{w.m}</span>{' '}
-                      <code>{s.worst.name}</code> {REGION_NAMES[s.worst.region] ?? s.worst.region}
+                      <code>{s.worst.name}</code>{' '}
+                      {REGION_NAMES[s.worst.region] ?? <code>{s.worst.region}</code>}
                     </>
                   ) : (
                     '기준선과 비교만'
@@ -172,7 +201,7 @@ const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
               <td>
                 <code>{r.name}</code>
               </td>
-              <td>{regression ? <code>{r.region}</code> : (REGION_NAMES[r.region] ?? r.region)}</td>
+              <td>{REGION_NAMES[r.region] ?? <code>{r.region}</code>}</td>
               <td class="acc__num">{int(get(r, 'points') as number)}</td>
               {columns.map((c) => {
                 const v = get(r, c.key);
@@ -228,6 +257,12 @@ const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
   .is-over {
     color: var(--warn);
     font-weight: 600;
+  }
+  .acc__group td {
+    color: var(--fg-muted);
+  }
+  .acc__sub {
+    padding-left: 1.25em;
   }
   .acc__caption {
     margin-top: var(--space-3);

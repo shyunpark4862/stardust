@@ -207,27 +207,27 @@ True
 2. 구간이 적은가
 3. 빠른가 (1스레드, 원소 $10^6$개)
 
-정확도가 먼저예요. 예를 들어 `wofz`(Faddeeva 함수)는 scipy가 쓰는 Faddeeva Package의 방법 대신 0.1 간격 격자점 둘레의 Taylor 급수를 골랐어요. 같은 참값 파일에서 scipy 1.18.1의 `wofz`는 최대 255 ULP, stardust는 2.01 ULP예요. 정확도가 같으면 속도로 정해요. 완전 타원적분 `ellipk`, `ellipe`는 산술-기하 평균(AGM)과 Carlson 대칭형으로도 계산할 수 있지만, Cephes 다항식 $P(y) - \log(y)\,Q(y)$($y = 1-m$)가 정확도는 같은 수준이고 1스레드 원소 $10^6$개에서 AGM·Carlson 판보다 4–7배 빨라서 공개 함수는 Cephes 쪽이에요. 두 비교용 함수는 비공개 `_ellipk_agm`, `_ellipe_carlson`으로 남아 있어요.
+정확도가 먼저예요. 예를 들어 `wofz`(Faddeeva 함수)는 scipy가 쓰는 Faddeeva Package의 방법 대신 0.1 간격 격자점 둘레의 Taylor 급수를 골랐어요. 같은 참값 파일에서 scipy 1.18.1의 `wofz`는 오차가 계약 한계의 3배까지 커지고, stardust는 한계의 0.03배 안이에요. 정확도가 같으면 속도로 정해요. 완전 타원적분 `ellipk`, `ellipe`는 산술-기하 평균(AGM)과 Carlson 대칭형으로도 계산할 수 있지만, Cephes 다항식 $P(y) - \log(y)\,Q(y)$($y = 1-m$)가 정확도는 같은 수준이고 1스레드 원소 $10^6$개에서 AGM·Carlson 판보다 4–7배 빨라서 공개 함수는 Cephes 쪽이에요. 두 비교용 함수는 비공개 `_ellipk_agm`, `_ellipe_carlson`으로 남아 있어요.
 
 ## 정확도 계약
 
 ### ULP와 상대오차
 
-부동소수점 수는 띄엄띄엄 있어요. float64는 $[1, 2)$ 사이에 $2^{52}$개의 수가 같은 간격 $2^{-52} \approx 2.2 \times 10^{-16}$으로 있고, $[2, 4)$에서는 간격이 두 배예요. **ULP**(unit in the last place)는 그 자리의 간격 하나예요 [2]. 계산값 $\hat y$와 참값 $y$의 차이를 $y$ 자리의 간격으로 나누면 "몇 ULP 틀렸나"가 돼요.
+부동소수점 수는 띄엄띄엄 있어요. float64는 $[1, 2)$ 사이에 $2^{52}$개의 수가 같은 간격 $2^{-52} \approx 2.2 \times 10^{-16}$으로 있고, $[2, 4)$에서는 간격이 두 배예요. **ULP**(unit in the last place)는 그 자리의 간격 하나예요 [2]. stardust는 오차를 ULP로 잴 때 참값 $y$를 float64로 반올림한 값 $\mathrm{fl}(y)$에서 계산값 $\hat y$까지 float64가 몇 칸인지 세요. float64를 크기 순서로 늘어놓고 매긴 번호를 $N(x)$라 하면
 
 $$
-\text{ULP 오차} = \frac{\lvert \hat y - y \rvert}{\operatorname{ulp}(y)}, \qquad \text{상대오차} = \frac{\lvert \hat y - y \rvert}{\lvert y \rvert}
+\text{ULP 오차} = \lvert N(\hat y) - N(\mathrm{fl}(y)) \rvert, \qquad \text{상대오차} = \frac{\lvert \hat y - y \rvert}{\lvert y \rvert}
 $$
 
-가장 잘 반올림한 결과도 0.5 ULP까지는 틀려요. 참값이 두 float 사이에 있기 때문이에요. 두 척도의 관계는 $y$가 간격 구간의 어디에 있느냐에 따라 달라요. $y$가 $[2^e, 2^{e+1})$에 있으면 $\operatorname{ulp}(y) = 2^{e-52}$이므로, 1 ULP는 상대오차 $2^{-53}$(구간 끝)에서 $2^{-52}$(구간 시작) 사이예요.
+이에요. 0 ULP는 올바르게 반올림한 값, 1 ULP는 그 바로 옆 float64예요. 올바르게 반올림한 값도 참값과는 간격의 절반까지 차이가 나요. 참값이 두 float 사이에 있기 때문이에요. 0을 사이에 두면 양쪽의 float64를 모두 세므로, 참값이 0에 아주 가까운 곳에서 부호가 틀리면 ULP가 아주 커져요. 두 척도의 관계는 $y$가 간격 구간의 어디에 있느냐에 따라 달라요. $y$가 $[2^e, 2^{e+1})$에 있으면 $\operatorname{ulp}(y) = 2^{e-52}$이므로, 1 ULP는 상대오차 $2^{-53}$(구간 끝)에서 $2^{-52}$(구간 시작) 사이예요.
 
-stardust의 계약은 **상대오차 $10^{-14}$**예요. ULP로 바꾸면 $10^{-14} / 2^{-52} \approx 45$에서 $10^{-14}/2^{-53} \approx 90$ ULP 사이예요. 그래서 측정표에서 최대 ULP가 45를 넘는 줄도 계약 안일 수 있어요. 예를 들어 `beta`는 최대 52.8 ULP인데 상대오차로는 $6.6 \times 10^{-15}$이라 $10^{-14}$ 안이에요. 실제 오차는 이보다 훨씬 작아서, 공개 함수의 보장 영역 95줄 가운데 68줄이 최대 10 ULP 아래예요.
+stardust의 계약은 **상대오차 $10^{-14}$**예요. ULP로 바꾸면 $10^{-14} / 2^{-52} \approx 45$에서 $10^{-14}/2^{-53} \approx 90$ ULP 사이예요. 그래서 측정표에서 최대 ULP가 45를 넘는 줄도 계약 안일 수 있어요. 예를 들어 `beta`는 최대 53 ULP인데 상대오차로는 $6.6 \times 10^{-15}$이라 $10^{-14}$ 안이에요. 실제 오차는 이보다 훨씬 작아서, 실수 공개 함수의 보장 영역 86줄 가운데 59줄이 최대 10 ULP 이하예요.
 
 ### 무엇과 비교하나
 
-참값은 구간 산술 라이브러리 Arb [3]로 계산해요. Arb의 값은 참값을 품는다고 보장된 공 $[m \pm r]$이고, 반지름이 값의 $2^{-110}$배 아래가 될 때까지 정밀도를 두 배씩 올려요. 그러면 공의 중심을 float64 두 개의 합 $\text{hi} + \text{lo}$로 반올림한 값이 참값을 반올림한 값이에요. 이 값을 저장해요(`tests/special/ref/*.npz`). float64 하나로 저장하면 참값 자체가 0.5 ULP 틀리므로, 1 ULP 안팎의 오차를 잴 수 없어요. 합으로 저장하면 약 106비트라 ULP의 작은 분수까지 잴 수 있어요. 오차는 $\lvert (\hat y - \text{hi}) - \text{lo} \rvert / \operatorname{ulp}(\text{hi})$로 계산해요(`tests/special/refdata.py`).
+참값은 구간 산술 라이브러리 Arb [3]로 계산해요. Arb의 값은 참값을 품는다고 보장된 공 $[m \pm r]$이고, 반지름이 값의 $2^{-110}$배 아래가 될 때까지 정밀도를 두 배씩 올려요. 그러면 공의 중심을 float64 두 개의 합 $\text{hi} + \text{lo}$로 반올림한 값이 참값을 반올림한 값이에요. 이 값을 저장해요(`tests/special/ref/*.npz`). 합으로 저장하면 약 106비트라, 상대오차를 참값의 반올림 없이 $\lvert (\hat y - \text{hi}) - \text{lo} \rvert / \lvert \text{hi} \rvert$로 잴 수 있어요(`tests/special/refdata.py`). ULP는 hi에서 결과까지의 칸 수로 세요(`bench/accuracy/common.py`의 `ulp_distance`).
 
-scipy는 정답지가 아니에요. scipy가 틀리는 곳이 적지 않아서, scipy와의 차이는 허용치로 삼지 않고 따로 보고해요. scipy의 값도 같은 참값으로 재서 나란히 적어요. 예를 들어 `erfc`는 scipy 1.18.1이 $x \approx 26.7$부터 0을 내는 꼬리(참값은 서브노멀)에서 $2.3 \times 10^{13}$ ULP까지 벌어지고, stardust의 `erfc`는 같은 참값 파일 전체에서 최대 6.11 ULP예요.
+scipy는 정답지가 아니에요. scipy가 틀리는 곳이 적지 않아서, scipy와의 차이는 허용치로 삼지 않고 따로 보고해요. scipy의 값도 같은 참값으로 재서 나란히 적어요. 예를 들어 `erfc`는 scipy 1.18.1이 $x \approx 26.7$부터 0을 내는 꼬리(참값은 서브노멀)에서 $2.3 \times 10^{13}$ ULP까지 벌어지고, stardust의 `erfc`는 같은 참값 파일 전체에서 최대 6 ULP예요.
 
 ### 보장 영역과 느슨한 영역
 
@@ -390,10 +390,10 @@ static double f(double x) {
 | `lambertw` ($k = -1$) | $\lvert x + 1/e \rvert \ge 0.05$ | Fukushima의 방법 [12]: $W$의 정수 부분을 표에서 찾고, 지수 함수 없이 이분법으로 소수 부분을 8–11번 좁힌 뒤, 5차 Schröder 갱신 한 번. $\lvert x \rvert$가 아주 작으면 $L_1 - L_2 + L_2/L_1$에서 Halley 반복 | 분기점 근처 |
 | `hyp1f1` | 보장 영역의 $0 \le x < 16$, $b < 11$, $a \le 100$. 느슨한 영역에서는 stardust의 급수·점화식·점근전개가 안 될 때 $\lvert a\rvert, \lvert b\rvert \le 100$ | 매개변수 영역마다 거듭제곱급수(넘침을 지수로 따로 세는 판), Kummer 변환, 큰 인자의 점근전개, Bessel 함수 전개, $a$·$b$에 대한 점화식과 함수 비율 중 하나를 골라요 | 보장 영역의 나머지 (Boost는 $x \ge 18$부터 45 ULP를 넘는 점이 생기고 $x \approx 500$에서 297 ULP). 느슨한 영역의 나머지는 상쇄를 아는 급수, $a$의 점화식, 점근전개, 큰 음의 $a$의 Tricomi 전개 순이고, 모두 안 되면 NaN |
 
-Boost를 쓰지 않는 함수에도 이유가 있어요. `erf` 계열, `gammaln`, `j0 j1 y0 y1`은 Boost가 더 정확해도 느려서 이 저장소의 코드예요. `airy`는 stardust가 값 넷을 한 번에 계산하고 Boost는 넷을 따로 불러야 해서, 1스레드 원소당 시간이 stardust는 넷을 합쳐 약 277ns, Boost는 값 하나에 143–218ns였어요. 게다가 Boost는 $x \approx -10^{11}$ 같은 큰 음수에서 위상을 잃어 $10^{16}$ ULP까지 틀려요. 불완전 감마, `expn`, `polygamma`, 타원적분, `jv`·`yv`도 Boost가 느리거나 틀려요. 비중심 분포는 scipy 1.18이 쓰는 Boost 구현이 깊은 꼬리에서 0을 내거나 수천 ULP가 틀려서 직접 계산해요. Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, `hyp2f1`, Hurwitz 제타, 리덕션)도 이 저장소의 코드예요. 구간을 고른 측정은 `bench/special/boost/routing.md`에 있고 [정확도와 성능](/internals/special/accuracy-performance/)에서 정리해요.
+Boost를 쓰지 않는 함수에도 이유가 있어요. `erf` 계열, `gammaln`, `j0 j1 y0 y1`은 Boost가 더 정확해도 느려서 이 저장소의 코드예요. `airy`는 stardust가 값 넷을 한 번에 계산하고 Boost는 넷을 따로 불러야 해서, 1스레드 원소당 시간이 stardust는 넷을 합쳐 약 277ns, Boost는 값 하나에 143–218ns였어요. 게다가 Boost는 $x \approx -10^{11}$ 같은 큰 음수에서 위상을 잃어 부호까지 틀려요. 불완전 감마, `expn`, `polygamma`, 타원적분, `jv`·`yv`도 Boost가 느리거나 틀려요. 비중심 분포는 scipy 1.18이 쓰는 Boost 구현이 깊은 꼬리에서 0을 내거나 수천 ULP가 틀려서 직접 계산해요. Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, `hyp2f1`, Hurwitz 제타, 리덕션)도 이 저장소의 코드예요. 구간을 고른 근거는 [정확도와 성능](/internals/special/accuracy-performance/)에서 정리해요.
 
 <Callout type="warn" title="Boost 구간은 betainc와 betaincc가 같아야 해요">
-  `betainc`와 `betaincc`는 더하면 1이에요. 한쪽만 Boost이고 다른 쪽이 BRATIO인 점이 넓게 생기면 두 구현의 오차가 따로 놀아요. 그래서 두 함수의 Boost 구간을 $a, b \le 6$으로 맞춰 두었어요. 그래도 이 구간에서는 Boost가 두 값을 따로 계산하고, 서브노멀 $x$나 Boost가 1에서 빼서 만드는 쪽처럼 한쪽만 BRATIO로 가는 점도 있어서 합이 1에서 최대 4.5 ULP 벗어나요. BRATIO 구간에서는 한 호출이 $I$와 $1 - I$를 함께 내므로 합이 2 ULP 안이에요.
+  `betainc`와 `betaincc`는 더하면 1이에요. 한쪽만 Boost이고 다른 쪽이 BRATIO인 점이 넓게 생기면 두 구현의 오차가 따로 놀아요. 그래서 두 함수의 Boost 구간을 $a, b \le 6$으로 맞춰 두었어요. 그래도 이 구간에서는 Boost가 두 값을 따로 계산하고, 서브노멀 $x$나 Boost가 1에서 빼서 만드는 쪽처럼 한쪽만 BRATIO로 가는 점도 있어서 합이 1에서 최대 $1.0 \times 10^{-15}$($4.5\varepsilon$, $\varepsilon = 2^{-52}$) 벗어나요. BRATIO 구간에서는 한 호출이 $I$와 $1 - I$를 함께 내므로 합이 2 ULP 안이에요.
 </Callout>
 
 ## 정답지: Arb 참값 파일
@@ -410,8 +410,8 @@ Boost를 쓰지 않는 함수에도 이유가 있어요. `erf` 계열, `gammaln`
 | 어디 | 무엇을 |
 |---|---|
 | `tests/special/test_reference.py` | 모든 함수가 모든 점에서 계약을 지키는지 (보장 영역 $10^{-14}$, 느슨한 영역은 문서에 적은 한계) |
-| `bench/special/accuracy.py` | 함수마다 보장·느슨한 영역의 최대와 99.9% ULP, 같은 점에서 scipy의 값 |
-| `bench/special/boost/` | Boost를 부를 구간을 고를 때 계약 위반 점을 찾기 |
+| `bench/accuracy/` | 함수마다 보장·느슨한 영역의 최대와 99.9% ULP, 계약 대비, 같은 점에서 scipy·Boost.Math·R의 값 |
+| `bench/speed/cases/special.py` | 속도 측정의 배열 입력(보장 영역의 점에서 뽑아요) |
 
 정확도 표 전체와 scipy와 비교한 결과는 [정확도와 성능](/internals/special/accuracy-performance/)에 있어요.
 

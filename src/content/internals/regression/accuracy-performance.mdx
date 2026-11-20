@@ -34,11 +34,12 @@ import Steps from '../../../components/fig/Steps.astro';
 
 <Fig column caption="참값이 만들어지고 쓰이는 길.">
   <Steps steps={[
-    { label: 'tools/regref.py', note: '같은 double 입력을 정확한 공(ball)으로 받아 Arb로 계산', where: 'tools/' },
+    { label: 'tools/regression_ref.py', note: '문제를 만들고 참값 파일을 써요. 식은 tools/regref.py', where: 'tools/' },
+    { label: 'tools/regref.py', note: '같은 double 입력을 정확한 공(ball)으로 받아 Arb로 계산', where: 'tools/', depth: 1 },
     { label: 'ols / glm / penalized / rlm / s_estimate / quantreg / nls', note: '모형마다의 참값 함수. 닫힌 꼴은 정밀도 배가, 반복 방법은 증명 판정까지', where: 'regref.py', depth: 1 },
     { label: 'tools/arbref.py', note: 'settled: 공의 반지름이 값의 2⁻¹¹⁰배 밑인가, 128비트에서 8192비트까지', where: 'tools/', depth: 1 },
-    { label: 'tests/regression/ref/*.json', note: 'linear, glm, penalized, robust의 참값(double-double)과 R의 고정 결과(*_r.json)', where: 'tests/regression/' },
-    { label: 'bench/regression/g1–g6/accuracy.py', note: '모형마다 sd와 참조 라이브러리의 오차', where: 'bench/regression/', depth: 1 },
+    { label: 'tests/regression/ref/*.json', note: 'linear, glm, penalized, robust, model_tests의 참값(double-double). R의 고정 결과는 data/*_r.json', where: 'tests/regression/' },
+    { label: 'bench/accuracy', note: '모형과 필드마다 sd와 statsmodels·R·scikit-learn의 오차(표는 bench/regression/accuracy.md)', depth: 1 },
   ]} />
 </Fig>
 
@@ -286,13 +287,13 @@ Fisher 득점법은 정준이 아닌 링크에서 선형으로 수렴해, 수렴
 
 ### 정규화 회귀
 
-`bench/regression/g3/accuracy.md`의 계수 벡터 상대오차예요.
+계수 벡터의 상대오차예요. sd 열은 `bench/regression/accuracy.md`의 `penalized/*` 행이에요.
 
 | 문제 | sd | scikit-learn `tol=1e-4` | `tol=1e-12` |
 |---|---:|---:|---:|
 | lasso·엘라스틱 넷($n = 60$; 가중치, 0인 가중치, 표준화, 절편 없음, 상수 열, 8개) | 6.9e-16 – 1.5e-15 | 3.6e-6 – 7.8e-5 | 5.2e-14 – 1.4e-12 |
 | ridge(3개) | 5.1e-16 – 1.2e-15 | 7.1e-16 – 1.2e-15 | 5.1e-16 – 1.3e-15 |
-| 로지스틱·포아송, l1_ratio 1, 0.5, 0(7개) | 1.0e-16 – 2.8e-16 | 5.1e-7 – 1.6e-4 | 3.2e-15 – 1.9e-12 |
+| 로지스틱·포아송, l1_ratio 1, 0.5, 0(7개) | 9.4e-17 – 2.8e-16 | 5.1e-7 – 1.6e-4 | 3.2e-15 – 1.9e-12 |
 | 조건수 $10^6$: lasso / 엘라스틱 넷 / ridge(alpha 1e-8) | 7.6e-17 / 5.3e-17 / 1.4e-17 | 7.2e-5 / 6.0e-2 / 2.5e-9 | 7.4e-13 / 7.8e-10 / 2.6e-12 |
 
 - scikit-learn의 기본 `tol`은 쌍대 간격만 보므로 계수가 대략 $\sqrt{\text{간격}/\mu}$까지만 맞아요($\mu$는 활성 집합의 이차 항의 가장 작은 고윳값). 조건수를 바꾼 문제($n = 200$, $k = 8$, $\kappa = 10^2$–$10^6$)에서 $1.8 \times 10^{-4}$–0.34이고, sd는 $8.6 \times 10^{-15}$ 안이에요.
@@ -302,7 +303,7 @@ Fisher 득점법은 정준이 아닌 링크에서 선형으로 수렴해, 수렴
 
 ### 강건 회귀
 
-`bench/regression/g4/accuracy.md`와 `tests/regression/test_robust.py`.
+`bench/regression/accuracy.md`의 `robust/*` 행과 `tests/regression/test_robust.py`.
 
 - **Arb**: 19개 문제(ψ 3가지 × 척도 2가지 × 짝·홀 $n$, 절편 없음, $n = 400$, 스택 손실 ψ 3가지, MM 2개)에서 계수 벡터 $1.1 \times 10^{-16}$, 척도 $1.4 \times 10^{-15}$, 표준오차 $1.2 \times 10^{-15}$, 가중치(절대) $1.1 \times 10^{-15}$ 안이에요. 척도의 오차는 가운데 잔차의 상쇄($\lvert r_m\rvert$가 $\lvert y\rvert$보다 작아요)에서 와요. MM의 S는 `s_estimate`로 증명한 고정점과 원소마다 $9.4 \times 10^{-16}$, 척도 $2.2 \times 10^{-16}$ 안이에요.
 - 뉴턴 걸음 없이 IRLS만이면 두 문제가 `max_iter` 50에 닿아 계수 오차가 $6.7 \times 10^{-10}$, $8.7 \times 10^{-11}$이에요. MM의 avar1을 $X^{\mathsf T}\Psi'X$로 직접 만들면 스택 손실의 표준오차가 $8 \times 10^{-14}$(얇은 Q 좌표에서 $6.7 \times 10^{-16}$)예요.

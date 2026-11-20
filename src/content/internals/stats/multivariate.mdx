@@ -480,19 +480,22 @@ Arb로 만든 참값과 $10^{-14}$ 안이에요. scipy 1.18.1은 −14.561152815
 
 ## 정확도
 
-참값은 Arb(구간 산술)로 행렬을 입력 그대로 LU 분해하고 풀어서, 구간의 반지름이 $2^{-80}\max(1, \lvert\text{값}\rvert)$ 아래가 될 때까지 정밀도를 두 배씩 올려 만들었어요. 공분산은 고유값을 1에서 $\kappa$까지 로그 간격으로 둔 무작위 회전이고, 점은 평균에서 약 2σ 떨어진 곳이에요. 오차는 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$이에요(`bench/stats/t9/accuracy.md`에서 일부).
+참값은 `tools/stats_ref.py`가 `tools/mvref.py`로 만들어 `tests/stats/ref/mv/`에 둬요. Arb(구간 산술)로 행렬을 입력 그대로 LU 분해하고 풀어서, 구간의 반지름이 $2^{-110}\max(1, \lvert\text{값}\rvert)$ 아래가 될 때까지 정밀도를 두 배씩 올려 만들어요. 정규·t는 $d \in \lbrace 1, 2, 5, 20, 100\rbrace$, 공분산의 조건수 $\kappa \in \lbrace 1, 10^3, 10^6, 10^9\rbrace$이고, t는 $\nu \in \lbrace 0.7, 4.5, 30, 10^9\rbrace$예요. 오차는 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$이고 `pdf`만 상대오차예요(`bench/stats/accuracy_multivariate.md`).
 
-| 분포 | $d$ | $\kappa$ | sd logpdf | scipy logpdf | sd entropy | scipy entropy |
-|---|---:|---:|---:|---:|---:|---:|
-| 정규 | 2 | $10^6$ | 0 | $3.8 \times 10^{-13}$ | 0 | $9.5 \times 10^{-14}$ |
-| 정규 | 5 | $10^9$ | 0 | $5.5 \times 10^{-9}$ | 0 | $1.1 \times 10^{-9}$ |
-| 정규 | 100 | $10^9$ | 0 | $6.3 \times 10^{-11}$ | 0 | $2.7 \times 10^{-11}$ |
-| t, $\nu = 4.5$ | 2 | $10^9$ | $4.4 \times 10^{-16}$ | $3.2 \times 10^{-9}$ | 0 | $1.1 \times 10^{-9}$ |
-| t, $\nu = 4.5$ | 100 | $10^9$ | 0 | $2.1 \times 10^{-11}$ | 0 | $1.7 \times 10^{-11}$ |
-| t, $\nu = 10^9$ | 2 | 1 | $2.2 \times 10^{-16}$ | $7.7 \times 10^{-7}$ | 0 | 0 |
-| t, $\nu = 10^9$ | 100 | $10^9$ | 0 | $1.7 \times 10^{-9}$ | 0 | $6.4 \times 10^{-12}$ |
+| 분포 | 메서드 | 점 | sd | scipy |
+|---|---|---:|---:|---:|
+| 정규 | logpdf | 150 | $8.1 \times 10^{-16}$ | $1.5 \times 10^{-8}$ |
+| 정규 | pdf | 132 | $2.3 \times 10^{-16}$ | $5.5 \times 10^{-8}$ |
+| 정규 | entropy | 17 | $7.0 \times 10^{-17}$ | $1.2 \times 10^{-10}$ |
+| t | logpdf | 600 | $5.1 \times 10^{-16}$ | $8.8 \times 10^{-7}$ |
+| t | pdf | 564 | $1.7 \times 10^{-14}$ | $1.7 \times 10^{-6}$ |
+| t | entropy | 68 | $3.1 \times 10^{-16}$ | $5.6 \times 10^{-10}$ |
+| 다항 | logpmf | 25 | $9.0 \times 10^{-17}$ | $1.1 \times 10^{-11}$ |
+| 다항 | entropy | 5 | $4.9 \times 10^{-16}$ | $3.8 \times 10^{-10}$ |
+| 디리클레 | logpdf | 20 | $2.0 \times 10^{-16}$ | $8.1 \times 10^{-10}$ |
+| 디리클레 | entropy | 5 | $3.4 \times 10^{-16}$ | $2.1 \times 10^{-10}$ |
 
-$d \in \lbrace 2, 5, 20, 100\rbrace$, $\kappa \in \lbrace 1, 10^3, 10^6, 10^9\rbrace$, 세 분포의 48칸 전체에서 sd의 최대는 $4.4 \times 10^{-16}$이에요. 보장 영역은 $\kappa(\Sigma) \le 10^9$, $d \le 100$에서 logpdf·entropy가 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$, pdf가 상대 $10^{-14}$이에요. 다항의 logpmf·entropy와 디리클레의 logpdf·entropy는 위의 예처럼 큰 매개변수($n = 10^5$, $\alpha = 10^6$)에서 Arb 참값과 $10^{-14}$ 안이에요.
+scipy의 최대는 정규 logpdf가 $d = 20$, $\kappa = 10^9$인 점, t logpdf가 $d = 2$, $\kappa = 1$, $\nu = 10^9$인 점이에요. 보장 영역은 $\kappa(\Sigma) \le 10^9$, $d \le 100$에서 logpdf·entropy가 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$, pdf가 상대 $10^{-14}\max(1, \lvert\text{logpdf}\rvert)$이에요. t의 pdf는 상대오차가 $1.7 \times 10^{-14}$까지 가지만 이 한계의 0.016배예요. 다른 메서드도 모두 한계의 0.1배 안이에요.
 
 ## 속도
 

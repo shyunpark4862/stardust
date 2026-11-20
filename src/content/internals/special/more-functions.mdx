@@ -35,7 +35,7 @@ import Steps from '../../../components/fig/Steps.astro';
 4. **역함수는 좋은 초기값 + Halley 반복이에요.** Lambert W는 분기점 급수나 로그 점근식에서 출발해 Halley 반복 두세 번으로 끝나요.
 5. **Boost.Math가 같은 정확도로 더 빠른 구간은 Boost를 불러요.** `zeta`의 $x \ge -1$과 음의 홀수, `expi`의 $x \ge -700$, `lambertw`의 분기점 밖, `hyp1f1`의 일부예요. 그 구간에서 Boost가 쓰는 식도 아래에 적었어요(소스는 GitHub `boostorg/math` 커밋 4682f44를 `third_party/boost_math`에 옮긴 것, Boost Software License 1.0).
 
-정확도는 참값 대비 ULP로 재요. 참값은 Arb(python-flint의 구간 산술)로 구해요. 참값을 품은 공 $[\text{mid} \pm \text{rad}]$의 반지름이 값의 $2^{-110}$ 아래가 될 때까지 정밀도를 두 배씩 올려서, 그 공에서 꺼낸 $\text{hi} + \text{lo}$가 참값을 반올림한 값이 돼요(`tools/arbref.py`, `tools/special_ref.py`). ULP는 그 값 근처에서 이웃한 float64 사이의 간격이고, 1 근처에서 $2^{-52} \approx 2.2 \times 10^{-16}$이에요. 영역 전체의 계약은 보장 영역에서 상대오차 $10^{-14}$, 대략 45 ULP예요([특수함수 영역의 구조](/internals/special/overview/)).
+정확도는 참값 대비 ULP로 재요. 참값은 Arb(python-flint의 구간 산술)로 구해요. 참값을 품은 공 $[\text{mid} \pm \text{rad}]$의 반지름이 값의 $2^{-110}$ 아래가 될 때까지 정밀도를 두 배씩 올려서, 그 공에서 꺼낸 $\text{hi} + \text{lo}$가 참값을 반올림한 값이 돼요(`tools/arbref.py`, `tools/special_ref.py`). ULP는 그 값 근처에서 이웃한 float64 사이의 간격이고(1 근처에서 $2^{-52} \approx 2.2 \times 10^{-16}$), 오차는 참값에 가장 가까운 float64에서 결과까지 float64가 몇 칸인지로 세요. 영역 전체의 계약은 보장 영역에서 상대오차 $10^{-14}$, 45–90 ULP예요([특수함수 영역의 구조](/internals/special/overview/)).
 
 ## 제타 함수
 
@@ -114,12 +114,12 @@ NaN, $\pm\infty$, $x = 1$의 극은 그 전에 정해요. Boost의 결과가 정
 
 Boost에 맡기는 구간과 맡기지 않는 구간은 Boost가 그곳에서 쓰는 식으로 갈려요. 아래 두 곳이 Boost 밖이에요.
 
-- **양의 짝수.** Boost는 짝수에서 닫힌 꼴 $\zeta(2n) = \frac{2^{2n-1}\pi^{2n}\lvert B_{2n}\rvert}{(2n)!}$를 그대로 계산해요. `pow(π, 2n)`과 나눗셈의 반올림이 쌓여서 9 ULP까지 틀리고, $\zeta(50) = 1 + 8.9 \times 10^{-16}$은 1보다 작게 나와요. 그래서 $\zeta(2), \zeta(4), \ldots, \zeta(52)$를 `tools/gen_zeta_even.py`가 Arb로($2^{-200}$까지 정한 공) 계산해 가장 가까운 double로 반올림해 표로 두었어요. $\zeta(54) - 1 \approx 2^{-54}$은 1의 반 ULP 아래라 54부터는 1이에요. 다른 $x > 1$은 Boost가 1.3 ULP 안이에요.
+- **양의 짝수.** Boost는 짝수에서 닫힌 꼴 $\zeta(2n) = \frac{2^{2n-1}\pi^{2n}\lvert B_{2n}\rvert}{(2n)!}$를 그대로 계산해요. `pow(π, 2n)`과 나눗셈의 반올림이 쌓여서 9 ULP까지 틀리고, $\zeta(50) = 1 + 8.9 \times 10^{-16}$은 1보다 작게 나와요. 그래서 $\zeta(2), \zeta(4), \ldots, \zeta(52)$를 `tools/gen_zeta_even.py`가 Arb로($2^{-200}$까지 정한 공) 계산해 가장 가까운 double로 반올림해 표로 두었어요. $\zeta(54) - 1 \approx 2^{-54}$은 1의 반 ULP 아래라 54부터는 1이에요. 다른 $x > 1$은 Boost가 1 ULP 안이에요(참값 파일의 2512점).
 - **$-1$보다 작은 비정수.** Boost의 반사식은 $1 - x$를 반올림한 뒤 감마에 넣고, 반올림한 $2\pi$를 거듭제곱해요. 감마는 인자의 반올림을 $\psi(z)z/2$ ULP로 키우고 $(2\pi)^x$는 밑의 상대오차를 $\lvert x\rvert$배로 키워서, $(-32, -31)$에서 65 ULP까지 틀려요. $-1 \le x < 0$에서는 $1 - x$가 정확하거나 거의 정확해서 11 ULP 안이에요. 음의 홀수는 Boost가 $-B_{2n}/(2n)$을 표에서 읽으므로 반올림이 없어요.
 
 ### x ≥ −1: Boost의 구간별 근사
 
-Boost가 double에서 하는 일은 이래요(`zeta.hpp`의 `zeta_imp`, `zeta_imp_prec`의 53비트 판, Boost 문서 [13]). 1스레드 시간이 우리 Euler–Maclaurin 경로의 1/7이에요(`bench/special/boost/routing.md`).
+Boost가 double에서 하는 일은 이래요(`zeta.hpp`의 `zeta_imp`, `zeta_imp_prec`의 53비트 판, Boost 문서 [13]). 1스레드 시간이 우리 Euler–Maclaurin 경로의 1/7이에요.
 
 1. **$x > 53$이면 1.** $\zeta(x) - 1 \approx 2^{-x}$이 $2^{-54}$보다 작아 1로 반올림돼요.
 2. **정수면 닫힌 꼴.** 음의 짝수는 0, 음의 홀수는 $\zeta(1-2n) = -B_{2n}/(2n)$, 양의 짝수는 위의 닫힌 꼴(우리는 52까지 표를 써요), 양의 홀수 3–113은 113비트로 미리 계산한 표예요.
@@ -162,11 +162,11 @@ $$
 - **$\zeta(1+y)$만 반올림한 $1+y$를 봐요.** 그 값은 Boost에서 받아요. $1 + y > 2$에서 $\zeta(s) - 1 \approx 2^{-s}$이라 인자의 반올림이 값을 1 ULP도 움직이지 않아요.
 - $\sin(\pi x/2)$는 `sinpi`로 인자를 정확히 줄여서 자명한 영점 근처에서도 상대 정확도가 남아요.
 
-참값 파일의 이 구간 점(268개)에서 최대 6.2 ULP예요.
+참값 파일의 이 구간 점(257개)에서 최대 6 ULP예요.
 
 ### x ≤ −60: 함수방정식을 넘치지 않게
 
-$x \le -60$은 인수 하나하나가 float64를 넘을 수 있어서 같은 식을 가수·지수로 나눈 꼴로 계산해요. Boost는 그곳(참값 파일의 $x \approx -250$)에서 $1.7 \times 10^3$ ULP까지 틀렸어요.
+$x \le -60$은 인수 하나하나가 float64를 넘을 수 있어서 같은 식을 가수·지수로 나눈 꼴로 계산해요. Boost는 그곳(참값 파일의 $x \approx -250$)에서 $1.5 \times 10^3$ ULP까지 틀려요.
 
 - $y = -x$는 정확해요. $\Gamma(1-x) = y\,\Gamma(y)$로 써서 $1 - x$를 반올림하지 않아요.
 - $\zeta(1-x) = \zeta(1+y)$는 위의 Euler–Maclaurin에 $x - 1 = y$를 그대로 넘겨요.
@@ -208,7 +208,7 @@ $$
   />
 </Fig>
 
-scipy 1.18.1은 $x_0$를 반올림한 double $0.3725074107813666$에서 참값 $-5.12 \times 10^{-17}$ 대신 $+1.02 \times 10^{-17}$을 내요($10^{16}$ ULP, 부호까지 틀림). 이 점은 수학적으로 조건이 나쁘지 않아요. 입력이 정확한 수이니 그 수에서의 값은 정확히 정해지고, 그 값을 상대 정확도로 내려면 영점을 식에 품어야 해요.
+scipy 1.18.1은 $x_0$를 반올림한 double $0.3725074107813666$에서 참값 $-5.12 \times 10^{-17}$ 대신 $+1.02 \times 10^{-17}$을 내요($8.7 \times 10^{18}$ ULP, 부호까지 틀림). 이 점은 수학적으로 조건이 나쁘지 않아요. 입력이 정확한 수이니 그 수에서의 값은 정확히 정해지고, 그 값을 상대 정확도로 내려면 영점을 식에 품어야 해요.
 
 ```python
 >>> sd.special.expi(0.3725074107813666)
@@ -242,7 +242,7 @@ Boost의 결과가 정상 범위를 벗어나는 곳은 우리 코드예요. 실
 
 ### E_n: 급수와 연분수
 
-`expn`은 Boost를 쓰지 않아요. Boost의 $E_n$은 정확도에서는 비슷했지만 참값 표본(큰 $n$이 섞임)에서 93배 느렸어요(`bench/special/boost/compare.md`, 1스레드). Numerical Recipes [4]의 `expint` 구조로 두 구간이에요.
+`expn`은 Boost를 쓰지 않아요. Boost의 $E_n$은 정확도에서는 비슷했지만 참값 표본(큰 $n$이 섞임)에서 93배 느렸어요(1스레드). Numerical Recipes [4]의 `expint` 구조로 두 구간이에요.
 
 **$x \le 1$: 거듭제곱급수.**
 
@@ -260,7 +260,7 @@ $$
 
 $x \ge 1$에서 빠르게 수렴하는 짝수 꼴 연분수예요. Lentz 방법으로 필요한 항 수를 세고, 값은 꼬리부터 거꾸로 다시 계산해요(`lentz_backward`, [공통 수치 기법](/internals/special/techniques/)). $e^{-x}$는 가수·지수로 곱해서 $x > 709.8$에서도 서브노멀 값을 내요(scipy는 0).
 
-큰 $n$에 대한 균등 점근전개는 넣지 않았어요. 연분수의 분모 $x + n$이 크면 몇 항에 수렴하고, 급수는 $x^k/k!$로 줄어서 $n = 10^5$까지 6.3 ULP 안이에요. 방법을 하나 더 두는 비용에 비해 얻을 것이 없어요. $n$은 0 이상의 정수 값만 받고(int64나 float64), 정수가 아니면 NaN이에요. scipy처럼 $n$을 잘라 쓰지 않아요.
+큰 $n$에 대한 균등 점근전개는 넣지 않았어요. 연분수의 분모 $x + n$이 크면 몇 항에 수렴하고, 급수는 $x^k/k!$로 줄어서 참값 파일의 $n \le 10^5$ 점에서 최대 6 ULP예요. 방법을 하나 더 두는 비용에 비해 얻을 것이 없어요. $n$은 0 이상의 정수 값만 받고(int64나 float64), 정수가 아니면 NaN이에요. scipy처럼 $n$을 잘라 쓰지 않아요.
 
 ## 타원적분
 
@@ -284,9 +284,9 @@ $$
 
 $y = 1 - m$은 $m \ge \tfrac12$에서 Sterbenz 보조정리로 **정확**해요. 그래서 $m$이 1에 아주 가까워도 $\log y$에 들어가는 인자가 반올림되지 않아요. $m < 0$은 허수 모듈러스 변환 $K(m) = K\!\left(\frac{-m}{1-m}\right)/\sqrt{1-m}$, $E(m) = \sqrt{1-m}\,E\!\left(\frac{-m}{1-m}\right)$을 쓰는데, 새 매개변수의 $y$가 $\frac{1}{1-m}$이므로 그 값을 직접 만들어요. $1 - \frac{-m}{1-m}$을 거쳐 다시 빼지 않아서 반올림이 한 번 줄어요.
 
-### 비교용: AGM과 Carlson 대칭형
+### 다른 방법: AGM과 Carlson 대칭형
 
-같은 적분을 계산하는 다른 방법이 둘 있고, stardust는 이 둘을 비공개 함수 `_ellipk_agm`, `_ellipe_carlson`으로 함께 두었어요. 공개 함수가 이 둘이 아닌 이유는 측정 때문이에요. 정확도가 같고(최대 3.0, 4.2 ULP 대 Cephes의 2.3, 2.0) Cephes가 4–7배 빨랐어요(1스레드 원소당 AGM 30 ns, Carlson 65 ns. 공개 함수는 ⟦COST ellipk⟧, ⟦COST ellipe⟧ ns).
+같은 적분을 계산하는 다른 방법이 둘 있어요. 공개 함수가 이 둘이 아닌 이유는 측정 때문이에요. 두 방법을 구현해 견주었을 때 정확도는 비슷했고 Cephes가 4–7배 빨랐어요(1스레드 원소당 AGM 30 ns, Carlson 65 ns. 공개 함수는 ⟦COST ellipk⟧, ⟦COST ellipe⟧ ns).
 
 **AGM(산술-기하 평균).** $a_0 = 1$, $b_0 = \sqrt{1-m}$에서 시작해 $a_{n+1} = \tfrac{a_n + b_n}{2}$, $b_{n+1} = \sqrt{a_n b_n}$을 반복하면 둘이 같은 값 $\mathrm{AGM}(1, \sqrt{1-m})$으로 모이고, Gauss가 보였듯이
 
@@ -342,8 +342,8 @@ $$
 
 급수의 항은 앞 항에 비 $\frac{(a+k)x}{(b+k)(k+1)}$를 곱해 만들어요. 곱할 때마다 반올림이 끼어서 $k$번째 항은 $k$ ULP쯤의 오차를 들고 있어요. 항이 처음부터 줄어들면 앞 몇 항이 합을 정하니 문제없지만, $x \approx 500$처럼 항이 $k \approx x$ 근처에서 정점을 찍는 급수는 합이 $k \approx 500$의 항들로 이루어져 120–180 ULP를 잃어요. 그래서 급수를 두 단계로 계산해요(`m_series`, `f_series2`).
 
-1. **float64 첫 패스.** 그냥 더하면서 $\sum_k (k+1)\lvert t_k\rvert$를 함께 재요. 한 걸음에 반올림이 여섯 번쯤($a + k$, 곱 둘, $b + k$, 나눗셈)이라 항 $k$의 오차는 많아야 약 $3(k+1)$ ULP예요. 그러니 이 가중합이 $4\lvert s\rvert$ 이하이면 합의 오차는 많아야 약 12 ULP이고(잰 최대 4.1), 그 합을 답으로 써요. 합 자체는 보상 합(`dd::Sum`, 덧셈의 반올림을 따로 모으는 합)이에요. 항이 처음부터 줄어드는 대부분의 입력이 여기서 끝나요.
-2. **긴 급수는 보정 루프.** 위 조건을 넘으면 처음부터 다시 더하되, 비의 곱셈과 나눗셈의 반올림을 `fma`로 정확히 구해서 1차까지 들고 가요. 항과 합을 $\mathrm{hi} + \mathrm{lo}$로 들고, 항당 나눗셈은 한 번이에요. 남는 오차는 2차($k\varepsilon^2$)라 항마다 완전한 double-double 곱셈·나눗셈을 하는 루프와 정확도가 같고(₂F₁의 $z \in [0.5, 0.9]$에서 둘 다 최대 2.7 ULP) 시간은 1/3이에요.
+1. **float64 첫 패스.** 그냥 더하면서 $\sum_k (k+1)\lvert t_k\rvert$를 함께 재요. 한 걸음에 반올림이 여섯 번쯤($a + k$, 곱 둘, $b + k$, 나눗셈)이라 항 $k$의 오차는 많아야 약 $3(k+1)$ ULP예요. 그러니 이 가중합이 $4\lvert s\rvert$ 이하이면 합의 오차는 많아야 약 12 ULP이고(잰 값은 이보다 훨씬 작았어요), 그 합을 답으로 써요. 합 자체는 보상 합(`dd::Sum`, 덧셈의 반올림을 따로 모으는 합)이에요. 항이 처음부터 줄어드는 대부분의 입력이 여기서 끝나요.
+2. **긴 급수는 보정 루프.** 위 조건을 넘으면 처음부터 다시 더하되, 비의 곱셈과 나눗셈의 반올림을 `fma`로 정확히 구해서 1차까지 들고 가요. 항과 합을 $\mathrm{hi} + \mathrm{lo}$로 들고, 항당 나눗셈은 한 번이에요. 남는 오차는 2차($k\varepsilon^2$)라 항마다 완전한 double-double 곱셈·나눗셈을 하는 루프와 정확도가 같고(₂F₁의 $z \in [0.5, 0.9]$에서 둘의 최대 오차가 같았어요) 시간은 1/3이에요.
 
 $a + k$, $b + k$는 TwoSum으로 정확한 $\mathrm{hi} + \mathrm{lo}$로 만들고, 항이 $2^{600}$을 넘으면 합과 함께 $2^{-600}$을 곱하고 지수를 따로 세서 $e^x$에 가까운 합도 넘치지 않게 해요. $b < 0$이면 반대 방향의 문제도 있어요. 항이 $b + k = 0$에 닿기 전에 정상 범위 아래로 줄었다가, 그 뒤에 $1/\lvert b + k\rvert$씩 다시 커져서 합 전체가 될 수 있어요. 그래서 항이 $2^{-700}$ 아래로 내려가면 항에만 $2^{600}$을 곱하고 그 지수 차이(`lag`)를 따로 들고 가서, 반올림되거나 사라진 항 위에 뒤의 항을 쌓지 않아요.
 
@@ -530,7 +530,7 @@ $x > -2^{-1000}$인 $W_{-1}$(서브노멀을 포함한 아주 작은 음수)은 
 
 ### Boost가 하는 일 (|x + 1/e| ≥ 0.05)
 
-분기점에서 0.05 넘게 떨어진 곳은 Boost.Math를 불러요. 1스레드에서 우리 Halley 경로의 1/3 시간이고(`bench/special/boost/routing.md`) 계약을 지켰어요. Boost의 double 구현은 두 가지가 아주 달라요(`lambert_w.hpp`, Boost 문서 [13]).
+분기점에서 0.05 넘게 떨어진 곳은 Boost.Math를 불러요. 1스레드에서 우리 Halley 경로의 1/3 시간이고 계약을 지켰어요. Boost의 double 구현은 두 가지가 아주 달라요(`lambert_w.hpp`, Boost 문서 [13]).
 
 **$W_0$: 반복 없이 구간별 minimax 유리 근사.**
 
@@ -570,7 +570,7 @@ $x > -2^{-1000}$인 $W_{-1}$(서브노멀을 포함한 아주 작은 음수)은 
 | `entr(x)` | $-x\log x$, 0이면 0, 음수면 $-\infty$ | 규약(오목 함수를 $-\infty$로 연장) |
 | `rel_entr(x, y)` | $x/y \in [\tfrac12, 2]$: $x\,\mathrm{log1p}\frac{x-y}{y}$; 비가 정상이면 $x\log\frac{x}{y}$; 비가 넘치거나 서브노멀이면 $x(\log x - \log y)$ | $x \approx y$에서 $\log(x/y)$의 반올림(그대로면 상대 $7 \times 10^{-5}$) |
 
-`logit`과 `rel_entr`가 Sterbenz 보조정리를 쓰는 전형적인 예예요. $p \in [\tfrac14, \tfrac34]$이면 $2p \in [\tfrac12, \tfrac32]$라 $2p - 1$이 정확하고, $\mathrm{atanh}$는 정확한 인자를 받아요. $\log\frac{p}{1-p} = 2\,\mathrm{atanh}(2p-1)$은 항등식이에요. 바깥에서는 $\lvert\log\frac{p}{1-p}\rvert \ge \log 3$이라 비의 반올림 두 번이 몇 ULP에 그쳐요(잰 최대 2.8). 바깥 식으로 더 정확한 $\log p - \mathrm{log1p}(-p)$를 쓰지 않는 이유는 아래 vForce 경로에 맞는 `log1p`가 없기 때문이에요(Accelerate의 `vvlog1p`가 $-0$의 부호를 잃어요). `rel_entr`의 $x - y$도 $x/y \in [\tfrac12, 2]$에서 Sterbenz로 정확해서, $\mathrm{log1p}$가 정확한 작은 인자를 받아요.
+`logit`과 `rel_entr`가 Sterbenz 보조정리를 쓰는 전형적인 예예요. $p \in [\tfrac14, \tfrac34]$이면 $2p \in [\tfrac12, \tfrac32]$라 $2p - 1$이 정확하고, $\mathrm{atanh}$는 정확한 인자를 받아요. $\log\frac{p}{1-p} = 2\,\mathrm{atanh}(2p-1)$은 항등식이에요. 바깥에서는 $\lvert\log\frac{p}{1-p}\rvert \ge \log 3$이라 비의 반올림 두 번이 몇 ULP에 그쳐요(이 구간에서 잰 최대 2). 바깥 식으로 더 정확한 $\log p - \mathrm{log1p}(-p)$를 쓰지 않는 이유는 아래 vForce 경로에 맞는 `log1p`가 없기 때문이에요(Accelerate의 `vvlog1p`가 $-0$의 부호를 잃어요). `rel_entr`의 $x - y$도 $x/y \in [\tfrac12, 2]$에서 Sterbenz로 정확해서, $\mathrm{log1p}$가 정확한 작은 인자를 받아요.
 
 `expit`, `logit`은 NEON과 Accelerate vForce로 1024원소씩 처리해요. NEON으로 $-\lvert x\rvert$(또는 $2p - 1$과 $p/(1-p)$)를 버퍼에 만들고, `vvexp`(또는 `vvatanh`, `vvlog`)를 버퍼 전체에 한 번 부른 뒤, NEON의 `vbslq`로 원소마다 식을 골라요. 분기가 없어서 두 레인이 같은 길을 가요. 스칼라 입력도 $n = 1$로 같은 경로를 타서 `f(x)[i] == f(x[i])`예요([원소별 엔진과 병렬화](/internals/special/engine/)). 나머지 다섯은 libm을 부르는 스칼라 정의예요.
 
@@ -617,13 +617,13 @@ $$
 w(z) = \frac{i}{\sqrt\pi}\cdot\cfrac{1}{z - \cfrac{1/2}{z - \cfrac{1}{z - \cfrac{3/2}{z - \cdots}}}}
 $$
 
-원점에서 멀수록 빨리 수렴해요. 항 수 $\nu$는 Poppe–Wijers [9]의 식을 S. G. Johnson이 Faddeeva Package [12]에서 다시 맞춘 $\nu = \lfloor 3.9 + 11.398/(0.08254x + 0.1421y + 0.2023)\rfloor$에 **4를 더해** 정하고, 뒤에서부터 계산해요. 4를 더하지 않으면 76 ULP, 더하면 2.8 ULP였어요. 실수축 근처에서 연분수는 $e^{-x^2}$ 성분을 놓치지만 $\mathrm{Re}\,z > 7$이면 그 성분이 $\lvert w\rvert$의 $10^{-21}$ 아래예요. $\lvert z\rvert > 3 \times 10^8$이면 첫 항 $\frac{i}{\sqrt\pi z}$만 써요(다음 항 $\frac{1}{2z^2}$이 $2^{-56}$ 아래).
+원점에서 멀수록 빨리 수렴해요. 항 수 $\nu$는 Poppe–Wijers [9]의 식을 S. G. Johnson이 Faddeeva Package [12]에서 다시 맞춘 $\nu = \lfloor 3.9 + 11.398/(0.08254x + 0.1421y + 0.2023)\rfloor$에 **4를 더해** 정하고, 뒤에서부터 계산해요. 4를 더하지 않으면 $\lvert\text{오차}\rvert$가 $\lvert w\rvert$의 마지막 자리 간격의 76배까지 커졌고, 더하면 3배 안이었어요. 실수축 근처에서 연분수는 $e^{-x^2}$ 성분을 놓치지만 $\mathrm{Re}\,z > 7$이면 그 성분이 $\lvert w\rvert$의 $10^{-21}$ 아래예요. $\lvert z\rvert > 3 \times 10^8$이면 첫 항 $\frac{i}{\sqrt\pi z}$만 써요(다음 항 $\frac{1}{2z^2}$이 $2^{-56}$ 아래).
 
 **$e^{-z^2}$를 정확히.** $z = x + iy$이면 $-z^2 = (y - x)(y + x) - 2ixy$예요. 실수부는 TwoSum으로 만든 $y \pm x$의 double-double 곱, 위상 $-2xy$는 `two_prod`의 $\mathrm{hi} + \mathrm{lo}$로 정확히 만들어요. 위상은 $\mathrm{hi}$를 libm의 `sin`·`cos`(정확한 인자 축소)에 넣고 $\mathrm{lo}$를 덧셈정리로 더해요. scipy(Johnson의 코드)는 $z^2$를 반올림해서 이곳에서 450 ULP까지 잃어요. 크기 $e^{\mathrm{Re}}$는 가수·지수로 나눠 들어서 `erfc`의 오버플로하는 결과도 정확한 위상의 부호를 가진 $\pm\infty$가 돼요.
 
 ### 고르지 않은 후보
 
-Weideman [10]의 유리 근사와 Poppe–Wijers의 한 식 방법도 후보였지만 쓰지 않았어요. scipy가 쓰는 Johnson의 Faddeeva Package(연분수와 Zaghloul–Ali의 Algorithm 916 [11])를 재 보니 위쪽 반평면에서도 178 ULP였고, 정확도가 먼저라는 기준으로 격자 Taylor를 골랐어요. Faddeeva Package(MIT 라이선스)의 코드는 쓰지 않았고, 연분수 항 수의 식만 출처를 밝혀 썼어요.
+Weideman [10]의 유리 근사와 Poppe–Wijers의 한 식 방법도 후보였지만 쓰지 않았어요. scipy가 쓰는 Johnson의 Faddeeva Package(연분수와 Zaghloul–Ali의 Algorithm 916 [11])를 재 보니 위쪽 반평면에서도 $\lvert\text{오차}\rvert$가 $\lvert w\rvert$의 마지막 자리 간격의 178배였고, 정확도가 먼저라는 기준으로 격자 Taylor를 골랐어요. Faddeeva Package(MIT 라이선스)의 코드는 쓰지 않았고, 연분수 항 수의 식만 출처를 밝혀 썼어요.
 
 ### 복소 erf, erfc, erfcx
 
@@ -665,33 +665,33 @@ Weideman [10]의 유리 근사와 Poppe–Wijers의 한 식 방법도 후보였�
 
 - **`hyp1f1`, `hyp2f1`.** 항이 정점을 지나는 긴 급수(₂F₁의 $z$가 0.5–0.9, ₁F₁의 $x$가 수백)는 첫 패스를 버리고 보정 루프를 다시 돌아요. 항마다 곱셈·나눗셈의 반올림을 `fma`로 구해 1차까지 들고 가는 비용이에요. 이 루프는 항마다 완전한 double-double 곱셈·나눗셈을 하는 루프보다 세 배 빨랐어요(같은 정확도, $z \in [0.5, 0.9]$).
 - **`expn`.** 연분수를 앞으로(Lentz) 한 번, 뒤로 한 번 계산해요. 앞으로 가는 계산만 쓰면 수십 항에서 반올림이 쌓여요.
-- **`wofz`와 복소 erf 계열.** $e^{-z^2}$를 double-double로 만들고 위상을 두 조각으로 나눠 `sin`·`cos`를 두 번 불러요. $z^2$를 반올림하는 계산(Johnson의 코드)이 450 ULP까지 잃는 곳을 정확하게 하는 비용이에요.
+- **`wofz`와 복소 erf 계열.** $e^{-z^2}$를 double-double로 만들고 위상을 두 조각으로 나눠 `sin`·`cos`를 두 번 불러요. $z^2$를 반올림하는 계산(Johnson의 코드)이 마지막 자리 간격의 450배까지 잃는 곳을 정확하게 하는 비용이에요.
 - **`ellipe`.** Cephes와 같은 다항식이지만 $m < 0$의 $y$를 직접 만드는 분기와 특수값 검사가 더 있어요.
 - 원소당 비용이 함수마다 1 ns 안팎에서 수 µs까지 다르므로, 병렬 분할의 시작점은 함수마다의 원소당 비용(`cost.hpp`)으로 정해요([원소별 엔진과 병렬화](/internals/special/engine/)).
 
 ## 정확도
 
-Arb 참값 대비, 보장 영역 참값 파일에서 지금 빌드로 잰 최대 ULP예요(`bench/special/accuracy.py`). 느슨한 영역은 따로 적었어요. scipy 1.18.1의 같은 입력도 적었어요.
+Arb 참값 대비, 보장 영역 참값 파일에서 지금 빌드로 잰 최대 ULP예요(정확도 측정 도구 `bench/accuracy/`, 결과는 `bench/accuracy/results/special.json`). 느슨한 영역은 따로 적었어요. scipy 1.18.1의 같은 입력도 적었어요. 복소수는 ULP 대신 계약 대비($\lvert\text{오차}\rvert$를 $10^{-14}\lvert\text{값}\rvert$로 나눈 값의 최대, 영점 근처는 포락선 배율을 곱한 한계로 나눠요)로 적어요. 복소수의 ULP는 두 성분 가운데 큰 쪽이라, 한 성분이 0에 가까운 점에서 아주 커지기 때문이에요. scipy 열은 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요.
 
 | 함수 | stardust 최대 | scipy 최대 | 비고 |
 |---|:---:|:---:|---|
-| `zeta` (Riemann) | 9.42 | 5.5e15 | 최대는 $x = -3.3 \times 10^{-4}$(Boost의 반사식), 상대 $1.1 \times 10^{-15}$. 짝수 2–52는 0.5 ULP 이하 |
-| `zeta` (Hurwitz) | 5.51 | 44.5 | |
-| `expi` | 4.69 | inf | scipy: 영점 근처 $10^{16}$, 709.8부터 inf |
-| `expn` | 6.28 | 3.4e18 | scipy: $n$을 잘라 쓰는 곳과 서브노멀 꼬리 |
-| `ellipk` / `ellipe` | 2.3 / 2.04 | 2.25 / 3.96 | |
-| `hyp1f1` (보장) | 15.9 | 248 | 최대는 $a = 4.21$, $b = 4.37$, $x = 4.24$(Boost 구간), 상대 $1.8 \times 10^{-15}$ |
-| `hyp1f1` (느슨) | 1.2e3 | 2.3e3 | 상대 $2.6 \times 10^{-13}$ |
+| `zeta` (Riemann) | 9 | 2.9e15 | 최대는 $x = -3.3 \times 10^{-4}$와 $-4.7 \times 10^{-8}$(Boost의 반사식), 상대 $1.0 \times 10^{-15}$. 짝수 2–52는 0 ULP(올바르게 반올림한 값) |
+| `zeta` (Hurwitz) | 6 | 45 | |
+| `expi` | 5 | 8.7e18 (9) | scipy: 영점 근처에서 부호까지 틀림, 709.8부터 inf |
+| `expn` | 6 | 4.1e16 | scipy: $n$을 잘라 쓰는 곳과 서브노멀 꼬리 |
+| `ellipk` / `ellipe` | 2 / 2 | 2 / 4 | |
+| `hyp1f1` (보장) | 16 | 248 | 최대는 $a = 4.21$, $b = 4.37$, $x = 4.24$(Boost 구간), 상대 $1.8 \times 10^{-15}$ |
+| `hyp1f1` (느슨) | 1173 | 2329 | 상대 $2.6 \times 10^{-13}$ |
 | `hyp2f1` (보장) | 11 | 208 | |
-| `hyp2f1` (느슨) | 2.7e3 | 1.8e12 | 상대 $3.6 \times 10^{-13}$ |
-| `lambertw` (k = 0 / −1) | 1.89 / 2.63 | 4.2e7 / 4.5e11 | scipy: 분기점의 $ex + 1$ 상쇄 |
-| `lambertw` (complex k = 0, −1, 1, 4) | 1.86, 1.75, 1.76, 0.95 | inf, inf, 1.0e8, 0.70 | |
-| `expit` / `logit` / `log_expit` | 2.06 / 2.8 / 1.24 | 1.1e15 / 1.22 / 1.24 | scipy `expit`: 서브노멀 꼬리가 0 |
-| `xlogy` / `xlog1py` / `entr` / `rel_entr` | 1.19 / 1.24 / 1.25 / 2.07 | 같음 | |
-| `wofz` | 2.01 | 255 | |
-| `erf` / `erfc` / `erfcx` (complex) | 3.44 / 3.44 / 1.94 | inf | |
+| `hyp2f1` (느슨) | 2730 | 1.8e12 | 상대 $3.6 \times 10^{-13}$ |
+| `lambertw` (k = 0 / −1) | 2 / 3 | 4.2e7 / 4.5e11 | scipy: 분기점의 $ex + 1$ 상쇄 |
+| `lambertw` (complex k = 0, −1, 1, 4) | 0.028, 0.023, 0.028, 0.016 | 1.2e6, 2.3e8, 2.3e6, 0.011 | 계약 대비 |
+| `expit` / `logit` / `log_expit` | 2 / 3 / 1 | 1.1e15 / 1 / 1 | scipy `expit`: 서브노멀 꼬리가 0 |
+| `xlogy` / `xlog1py` / `entr` / `rel_entr` | 1 / 1 / 1 / 2 | 같음 | |
+| `wofz` | 0.031 | 2.95 | 계약 대비 |
+| `erf` / `erfc` / `erfcx` (complex) | 0.047 / 0.047 / 0.028 | inf | 계약 대비 |
 
-보장 영역의 줄은 모두 16 ULP 아래라 계약($10^{-14}$, 45–90 ULP)에서 멀리 안쪽이에요. ULP 한 칸은 가수에 따라 상대 $1.1$–$2.2 \times 10^{-16}$이라, 같은 상대오차가 ULP로는 두 배까지 달라요. 느슨한 영역의 두 줄은 참값 파일의 표본(400점, 991점)이에요. 인자 크기 $10^6$까지의 무작위 입력 1만 1천 개씩으로 넓혀 재면 최대 상대오차가 `hyp1f1` $9 \times 10^{-12}$(Tricomi 전개, Boost를 쓰는 곳은 $1.2 \times 10^{-12}$), `hyp2f1` $1.7 \times 10^{-12}$($z < -9$이고 $\lvert c\rvert > 10^4$)예요. 값을 믿을 수 없는 곳은 위에서 말한 대로 NaN이에요. `logit`은 scipy(1.22)보다 커요(2.8). 바깥 구간에서 비 $p/(1-p)$를 반올림한 뒤 로그를 취하기 때문이고(vForce에 맞는 `log1p`가 없어서 고른 식), 계약에서 멀리 안쪽이에요.
+실수 함수의 보장 영역 줄은 모두 16 ULP 이하라 계약($10^{-14}$, 45–90 ULP)에서 멀리 안쪽이고, 복소수 줄도 한계의 0.05배 아래예요. ULP 한 칸은 가수에 따라 상대 $1.1$–$2.2 \times 10^{-16}$이라, 같은 상대오차가 ULP로는 두 배까지 달라요. 느슨한 영역의 두 줄은 참값 파일의 표본(400점, 991점)이에요. 인자 크기 $10^6$까지의 무작위 입력 1만 1천 개씩으로 넓혀 재면 최대 상대오차가 `hyp1f1` $9 \times 10^{-12}$(Tricomi 전개, Boost를 쓰는 곳은 $1.2 \times 10^{-12}$), `hyp2f1` $1.7 \times 10^{-12}$($z < -9$이고 $\lvert c\rvert > 10^4$)예요. 값을 믿을 수 없는 곳은 위에서 말한 대로 NaN이에요. `logit`은 scipy(1)보다 커요(3). 가장 큰 점은 중심 구간에서 묶음으로 부르는 vForce `vvatanh`의 오차이고([정확도와 성능](/internals/special/accuracy-performance/)), 계약에서 멀리 안쪽이에요.
 
 <Callout>
 경로를 원소의 값으로만 고르고 병렬 분할이 결과에 닿지 않으므로 1·3·10스레드의 결과가 비트까지 같아요. `expit`, `logit`의 NEON·vForce 청크 경로는 스칼라 입력과 비연속 레이아웃도 같은 버퍼 경로를 타서, 세 레이아웃(연속, 스칼라 브로드캐스트, strided)의 결과가 비트로 같아요.

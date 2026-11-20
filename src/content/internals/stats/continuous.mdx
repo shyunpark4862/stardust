@@ -1019,7 +1019,7 @@ True
 
 감마·베타·t·F·역감마의 밀도는 배열 입력에서 log 둘과 선형 항의 합 $k_1\log x_1 + k_2\log x_2 - \text{lin} + c$로 다시 쓴 묶음 커널이 먼저 맡아요. 스칼라 호출도 원소 하나짜리 커널이라 어느 길로 부르든 같은 비트예요. 커널이 오차 예산 안에서 답할 수 없는 원소(거대한 모양의 최빈값 근처, 먼 꼬리, 지지집합의 끝)만 위 표의 double-double 정의로 가요([원소별 엔진과 빠른 경로](/internals/stats/engine/)).
 
-정확도는 Arb로 만든 참값과 대조해 재요. 보장 영역 안 87만 점의 최대가 계약 단위로 $9.2 \times 10^{-15}$이고, 같은 점에서 scipy 1.18.1은 꼬리에서 상대오차 1에 이르거나 inf를 내요(`bench/stats/t4/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
+정확도는 Arb로 만든 참값과 대조해 재요. 보장 영역 안 87만 점의 최대가 계약 단위로 $9.2 \times 10^{-15}$이고, 같은 점에서 scipy 1.18.1은 꼬리에서 상대오차 1에 이르거나 inf를 내요(`bench/stats/accuracy.md`, [정확도와 성능](/internals/stats/accuracy-performance/)).
 
 ## 참고 문헌
 

@@ -85,8 +85,8 @@ scipy `_tstutils`의 이계도함수 셋은 틀려 있어요. `aps02_fpp`는 부
     { label: 'data/scipy_*.json', note: 'x, fun 또는 cost, nfev·njev·nhev·nit, status, success, message, 또는 낸 예외', where: 'tests/optimize/', depth: 1 },
     { label: 'tools/gen_optimize_fortran.py', note: 'netlib MINPACK(file05)과 드라이버 넷, L-BFGS-B 3.0을 gfortran 16.2 -O2 -ffp-contract=off로', where: 'tools/' },
     { label: 'data/fortran_*.json, *_drivers.txt', note: '드라이버의 요약표, 모든 계산점을 기록한 실행, scipy의 옮긴 판과의 비교', where: 'tests/optimize/', depth: 1 },
-    { label: 'tools/optimize_ref.py', note: '스칼라 근 204개를 Arb로 1 ULP까지', where: 'tools/' },
-    { label: 'data/scalar_roots.json', note: '이웃한 double 두 개, 또는 f가 정확히 0인 double', where: 'tests/optimize/', depth: 1 },
+    { label: 'tools/optimize_ref.py', note: '스칼라 근 204개를 Arb로 1 ULP까지, 스칼라 극소점 57문제, MGH 47경우의 도함수', where: 'tools/' },
+    { label: 'ref/scalar_roots.json 등', note: '근은 이웃한 double 두 개, 또는 f가 정확히 0인 double', where: 'tests/optimize/', depth: 1 },
     { label: 'tests/optimize/test_*.py', note: '기록과의 비교, 그리고 scipy를 실행하며 부르는 점을 차례대로 견주기', where: 'tests/optimize/' },
   ]} />
 </Fig>
@@ -188,13 +188,13 @@ bisect 51 True
 
 | 방법 | 설정 | 수렴 | Arb 근과의 거리 |
 |---|---|---:|---|
-| brentq, toms748, bisect | 기본 | 185, 204, 204 | 모두 `xtol` + `rtol`·\|x\| 안이거나 double로 계산한 $f$가 정확히 0인 점 |
-| brentq | `xtol=0`, `max_iter=200` | 197 | 근을 끼는 두 double에서 3 ULP 안(171문제는 1 ULP 안) |
-| toms748 | `xtol=0`, `rtol` = ε | 199 | 1 ULP 안 |
+| brentq, toms748, bisect | 기본 | 185, 204, 204 | 모두 `xtol` + `rtol`·\|x\| 안이거나 double로 계산한 $f$가 정확히 0인 점. 허용오차 대비 최대 0.43, 0.50, 0.89 |
+| brentq | `xtol=0`, `max_iter=200` | 197 | 근을 끼는 두 double에서 3 ULP 안 |
+| toms748 | `xtol=0`, `rtol` = ε | 204 | 1 ULP 안 |
 | bisect | `xtol=0`, `max_iter=1100` | 204 | 4 ULP 안 |
-| `find_root` | 기본 | 204 | 182문제가 4 ULP 안, 13문제는 $f$가 0인 점, 9문제는 아래 |
+| `find_root` | 기본 | 204 | 근이 0이 아닌 191문제가 3 ULP 안, 근이 0인 13문제는 0에서 $5.6 \times 10^{-17}$ 안 |
 
-`xtol=0`의 줄은 $f$가 double로 정확히 0인 점에서 멈춘 경우를 빼고 센 거예요. 근이 0이면 정규수의 끝까지 줄어들어야 하므로 `max_iter`를 늘렸어요. `find_root`의 9문제는 $x^9$, $x^{19}$ 꼴의 근 0에서 $\lvert f\rvert$가 `fatol`(가장 작은 정규수)보다 작아져 $10^{-17}$–$10^{-35}$의 점에서 멈춘 것이에요. scipy `elementwise`도 같은 점에서 멈춰요. Chandrupatla 7번 $x e^{-x^{-2}}$는 $\lvert x\rvert \lt 0.037$에서 double로 0이 되므로 그 구간의 어느 점에서든 $f$가 정확히 0이에요.
+ULP는 근을 끼는 두 double에서 센 거리예요. 0이면 그 둘 가운데 하나에서 멈춘 거예요. `xtol=0`의 ULP는 근이 0이 아닌 191문제에서 센 것이고(brentq는 그 가운데 수렴한 189문제), 근이 0인 13문제는 세 방법 모두 수렴하면 정확히 0에서 멈춰요(brentq는 8문제가 수렴해요). 근이 0이면 정규수의 끝까지 줄어들어야 하므로 `max_iter`를 늘렸어요. `find_root`의 근이 0인 문제 가운데 9문제는 $x^9$, $x^{19}$ 꼴의 근 0에서 $\lvert f\rvert$가 `fatol`(가장 작은 정규수)보다 작아져 $10^{-17}$–$10^{-35}$의 점에서 멈춘 것이에요. scipy `elementwise`도 같은 점에서 멈춰요. Chandrupatla 7번 $x e^{-x^{-2}}$는 $\lvert x\rvert \lt 0.037$에서 double로 0이 되므로 그 구간의 어느 점에서든 $f$가 정확히 0이에요.
 
 ## 정확도의 약속
 
@@ -211,10 +211,15 @@ bisect 51 True
 
 허용오차의 기본값은 scipy의 것이에요. 더 가까이 가려면 허용오차를 줄여요(구간법의 `xtol=0`처럼). 잰 값은 이래요.
 
+정확도 측정(`bench/optimize/accuracy.md`, 비교는 scipy 1.18.1과 R 4.6.2)은 결과만으로 확인되는 판정을 계약으로 보고, 나머지는 기록해요.
+
 - 구간법의 근: 위의 Arb 표예요.
-- `lsq_linear`·`nnls`: 무작위 100문제(긴 모양)에서 'bvls'와 `nnls`의 결과는 KKT 조건을 상대 10⁻⁹ 안에서 만족하고, 'trf'의 `cost`는 'bvls'의 것과 상대 1.2×10⁻¹¹ 안이에요. 'trf'는 안쪽 점 방법이라 척도를 곱한 기울기로 멈추기 때문이에요.
-- `approx_fprime`과 `check_grad`의 기본(5점 차분): MGH 47경우에서 해석적 도함수와의 상대 차이가 야코비안 최대 1.2×10⁻¹¹, 기울기 최대 6.4×10⁻¹¹이에요. `epsilon=2**-26`의 앞쪽 차분은 지금 scipy와 비트까지 같고 10⁻⁸ 근처예요([수치 미분](/internals/optimize/derivatives/)).
-- `minimize_scalar`: 최솟값 근처에서 $f$가 평평해서 위치의 상대 정확도는 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$ 근처에서 막혀요. 기본 허용오차가 그 크기예요.
+- 기울기로 멈추는 `minimize`: MGH 문제에서 기울기 판정으로 수렴했다고 한 실행은 정확한 기울기의 노름이 `gtol`의 0.98배(bfgs, 102실행), 0.96배(l-bfgs-b, 사영 기울기로 멈추는 48문제), 0.95배(trust-exact, 94실행), 0.98배(trust-ncg, 96실행) 안이에요.
+- `root`: MINPACK의 55경우에서 수렴한 점의 $\lVert F\rVert_\infty$가 hybr 최대 $9.1 \times 10^{-9}$(41경우), lm 최대 0.048(46경우)이고 scipy와 같아요.
+- `least_squares`: NIST StRD 27문제 × 시작점 2에서 인증값에 6자리까지 닿는 35실행의 모수 상대오차가 'lm' 최대 $6.6 \times 10^{-7}$, 'trf' 최대 $7.7 \times 10^{-7}$이에요. 인증값은 10진 자료 그대로의 값이라, 자료를 double로 반올림한 몫도 들어 있어요.
+- `lsq_linear`·`nnls`: 무작위 100문제(긴 모양)에서 'bvls'와 `nnls`의 결과는 KKT 조건을 상대 10⁻⁹ 안에서 만족하고, 'trf'의 `cost`는 'bvls'의 것과 상대 1.2×10⁻¹¹ 안이에요. 'trf'는 안쪽 점 방법이라 척도를 곱한 기울기로 멈추기 때문이에요. scipy의 12문제에서 KKT 잔차를 $\varepsilon\lVert A\rVert_1(\lVert A\rVert_\infty\lVert x\rVert_\infty + \lVert b\rVert_\infty)$로 나누면 `nnls`가 0.36, 기본 'trf'의 `lsq_linear`가 $1.3 \times 10^{12}$이고 scipy와 같아요.
+- `approx_fprime`과 `check_grad`의 기본(5점 차분): MGH 47경우의 시작점에서 Arb로 계산한 도함수와의 노름 상대 차이가 야코비안 최대 1.2×10⁻¹¹, 기울기 최대 6.4×10⁻¹¹이에요. `epsilon=2**-26`의 앞쪽 차분은 지금 scipy와 비트까지 같고 10⁻⁸ 근처예요([수치 미분](/internals/optimize/derivatives/)).
+- `minimize_scalar`: 최솟값 근처에서 $f$가 평평해서 위치의 상대 정확도는 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$ 근처에서 막혀요. 기본 허용오차가 그 크기예요. 57문제에서 멈춘 점과 가장 가까운 Arb 극소점의 거리를 재면 $f'' = 0$인 극소점에서는 double로 $f$를 구분할 수 있는 거리 자체가 허용오차보다 넓어서, 가장 먼 점이 상대 $1.3 \times 10^{-3}$(brent, bounded), $1.4 \times 10^{-3}$(golden, `find_minimum`)이에요. scipy도 같은 거리예요.
 - [`nls`](/internals/regression/nls/)는 같은 반복 커널을 쓰지만 멈춘 뒤 정확한 야코비안으로 다듬으므로, 결과가 멈춤 판정과 거의 상관없이 반올림 수준이에요. 그 약속은 회귀 영역의 것이에요.
 
 ## scipy와 비트까지 같은 범위

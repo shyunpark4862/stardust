@@ -5,9 +5,11 @@
 reads PATH/bench/accuracy/results/<area>.json (PATH defaults to ../stardust next to this
 repository) for the areas that exist and writes src/data/accuracy.json, which
 src/components/fig/AccuracySummary.astro renders. Only the measures are kept: the run
-records (commit, date, machine) and the worst inputs are dropped. Numbers are rounded to
-three significant digits; the within-contract counts and the worst contract ratios are
-computed from the unrounded values. Standard library only.
+records (commit, date, machine), the comparator libraries and the worst inputs are dropped.
+Numbers are rounded to three significant digits; the within-contract counts and the worst
+contract ratios are computed from the unrounded values. The stats area's multivariate group
+(sweeps named mv/...) is part of the stats area and also gets a summary of its own. Standard
+library only.
 """
 
 from __future__ import annotations
@@ -19,33 +21,48 @@ import pathlib
 
 SITE = pathlib.Path(__file__).resolve().parents[1]
 OUT = SITE / "src" / "data" / "accuracy.json"
-AREAS = ("special", "stats", "multivariate", "regression")
+# The areas the library measures, in its order (bench/areas.py without frame and random).
+AREAS = ("array", "linalg", "special", "stats", "regression", "optimize")
+GROUPS = {"stats": {"mv": "mv/"}}  # area -> {group: sweep name prefix}
 
-# The output: {"fields": FIELDS, "areas": {area: {"summary": {...}, "regions": [names],
-# "sweeps": [[name, points, [row, ...]], ...]}}}, the sweeps sorted by name.
+# The output: {"fields": FIELDS, "areas": {area: {"summary": {...}, "groups": {group: summary},
+# "regions": [names], "sweeps": [[name, points, [row, ...]], ...]}}}, the areas in AREAS order,
+# the sweeps sorted by name.
 #
-# The columns of a region row, in this order; trailing missing values are dropped, so the
-# measures most rows have come first. "region" is an index into the area's "regions" list
-# (the region names: guaranteed, loose, mixed; for multivariate also tiny, "exact d<=3" and
-# "atol=..."; for regression the result's field names). The last four measures are newer and
-# only some areas have them, so they come last and the earlier indices stay put.
+# The columns of a region row, in this order; trailing missing values are dropped. "region" is
+# an index into the area's "regions" list (the region names: guaranteed, loose, mixed for special
+# and stats, and for the multivariate group also tiny, "exact d<=3" and "atol=..."; for array the
+# input kind and shape, for linalg the condition number kappa=..., for optimize the problem set
+# or stopping test; for regression the result's field names). The measures follow the column
+# order of the library's tables (bench/accuracy/tables.py).
 FIELDS = (
     "region",
     "points",
     "ulp_max",
     "ulp_p999",
-    "rel_max",
-    "norm_rel",
-    "contract",
-    "bound",
-    "ulp_cond_max",
-    "ulp_cond_p999",
+    "ulp_scale_max",
+    "ulp_scale_p999",
     "mixed_max",
     "mixed_p999",
+    "rel_max",
+    "norm_rel",
+    "norm_inf_rel_max",
+    "numpy_dist_max",
     "nonfinite",
     "abs_max",
     "rel_cond_max",
+    "backward_max",
+    "orth_max",
+    "grad_max",
+    "excess_max",
+    "tol_ratio_max",
+    "fnorm_max",
+    "kkt_max",
+    "unconverged",
+    "off_target",
     "est_ratio_max",
+    "contract",
+    "bound",
 )
 
 
@@ -75,21 +92,33 @@ def row(index, r):
 def summarize(area, data):
     sweeps = sorted((s for s in data["sweeps"] if s["area"] == area), key=lambda s: s["name"])
     out = []
-    judged = within = 0
-    worst = None
-    by_label = {}
     names = []  # the region names, in the order first seen
     for s in sweeps:
         regions = []
         for label, r in s["regions"].items():
             if r.get("unmapped"):
                 continue
-            if label not in by_label:
+            if label not in names:
                 names.append(label)
             regions.append(row(names.index(label), r))
-            b = by_label.setdefault(label, {"regions": 0, "points": 0})
-            b["regions"] += 1
-            b["points"] += r["points"]
+        out.append([s["name"], s["points"], regions])
+    groups = {g: counts([s for s in sweeps if s["name"].startswith(p)]) for g, p in GROUPS.get(area, {}).items()}
+    result = {"summary": counts(sweeps), "regions": names, "sweeps": out}
+    if groups:
+        result["groups"] = groups
+    return result
+
+
+def counts(sweeps):
+    """Sweeps, points, (function, region) rows, the rows with a numerical contract and those
+    within it, and the largest contract ratio."""
+    judged = within = rows = 0
+    worst = None
+    for s in sweeps:
+        for label, r in s["regions"].items():
+            if r.get("unmapped"):
+                continue
+            rows += 1
             c = r.get("contract")
             if c is None:
                 continue
@@ -98,18 +127,16 @@ def summarize(area, data):
                 within += 1
             if worst is None or not c <= worst[0]:
                 worst = (c, s["name"], label)
-        out.append([s["name"], s["points"], regions])
     summary = {
         "sweeps": len(sweeps),
         "points": sum(s["points"] for s in sweeps),
-        "regions": sum(len(s[2]) for s in out),
+        "regions": rows,
         "judged": judged,
         "within": within,
-        "by_region": by_label,
     }
     if worst is not None:
         summary["worst"] = {"contract": num(worst[0]), "name": worst[1], "region": worst[2]}
-    return {"summary": summary, "regions": names, "sweeps": out}
+    return summary
 
 
 def main(argv=None):
@@ -132,8 +159,11 @@ def main(argv=None):
     text = json.dumps({"fields": FIELDS, "areas": areas}, ensure_ascii=False, separators=(",", ":"))
     OUT.write_text(text + "\n")
     for area, d in areas.items():
-        s = d["summary"]
-        print(f"{area}: {s['sweeps']} sweeps, {s['points']} points, {s['within']}/{s['judged']} within the contract")
+        for label, s in [(area, d["summary"])] + [(f"{area}/{g}", gs) for g, gs in d.get("groups", {}).items()]:
+            print(
+                f"{label}: {s['sweeps']} sweeps, {s['points']} points, {s['regions']} rows,"
+                f" {s['within']}/{s['judged']} within the contract"
+            )
     print(f"wrote {OUT.relative_to(SITE)} ({len(text) // 1024} KB)")
 
 

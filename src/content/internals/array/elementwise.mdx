@@ -20,7 +20,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 | 경로 | 언제 | 어디 | 결과 |
 |---|---|---|---|
-| vForce | float64 초월함수 15개 (`exp`, `log`, `sin`, `atan2` …), 모든 레이아웃 | `array/kernels/vforce.hpp`, `accelerate/vforce.hpp` | numpy와 최대 8 ULP (계약), 잰 최대 4 ULP |
+| vForce | float64 초월함수 15개 (`exp`, `log`, `sin`, `atan2` …), 모든 레이아웃 | `array/kernels/vforce.hpp`, `accelerate/vforce.hpp` | Arb 참값에서 함수마다 3–5 ULP (계약), 잰 최대 3 ULP |
 | libm `pow`와 정확한 꼴 | float64 `pow`, 모든 레이아웃 | `array/kernels/elementwise.hpp`, `array/kernels/scalar_ops.hpp` | 보통 지수는 지금 numpy와 비트까지 같음. 지수 2, 0, 1, −1, 0.5는 정확한 꼴 |
 | 손으로 짠 NEON | float64 `maximum`/`minimum`/`clip`, complex128 곱셈. 연속 또는 스칼라 브로드캐스트 | `array/kernels/neon.hpp` | 스칼라 정의와 비트까지 같음 |
 | 인덱스 루프 (컴파일러가 벡터화) | 그 밖의 연산, 모두 연속이거나 한쪽이 스칼라(stride 0) | `array/kernels/elementwise.hpp` | 스칼라 정의와 비트까지 같음 |
@@ -50,7 +50,7 @@ import Bench from '../../../components/fig/Bench.astro';
 
 1. 어느 경로를 타든 값이 같아요. NEON 커널과 인덱스 루프는 스칼라 정의 `Op::f`와 비트까지 같아야 해요. 테스트가 연속, 스칼라 브로드캐스트, strided 세 레이아웃을 모두 numpy와 비트로 비교하므로, 경로가 갈려도 결과는 갈리지 않아요.
 2. numpy가 식을 적어 둔 연산은 같은 식을 같은 순서로 쓰고, 컴파일러가 식을 바꾸지 못하게 막아요. 그래서 지금은 대부분의 원소별 연산이 numpy 2.5.4와 비트까지 같아요. 다만 이것은 지금의 사실이고 목표는 아니에요. 더 빠르거나 더 정확한 식이 있으면 정확도 계약 안에서 그 식을 써요. complex `abs`([아래](#z-complex-함수-pow))와 complex `expm1`이 그런 경우예요.
-3. 정확도는 계약으로 정해요. 초월함수는 속도를 위해 Apple의 vForce를 쓰고, numpy와의 차이는 최대 8 ULP로 계약해 둬요. complex `abs`는 참값과 1.5 ULP 이하예요. 특수값은 비트까지 같고, 결과가 원소의 위치·배열 길이·스레드 수에 의존하지 않아요.
+3. 정확도는 계약으로 정해요. 초월함수는 속도를 위해 Apple의 vForce를 쓰고, Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 함수마다 3–5 ULP 안을 계약해 둬요. complex `abs`는 3 ULP예요. 특수값은 비트까지 정확하고, 결과가 원소의 위치·배열 길이·스레드 수에 의존하지 않아요.
 
 ## 연속 fast path
 
@@ -432,7 +432,7 @@ inline c128 cdiv(c128 a, c128 b) {   // |br| >= |bi| 쪽
   }
   ```
 
-  계약은 1.5 ULP 이하예요. Arb(구간 산술)로 만든 참값과 비교하면 무작위 20만 개(지수 폭 $e^{\pm 5}$)에서 최대 1.16 ULP예요. numpy의 SIMD `absolute` 루프가 쓰는 공식 $\max(\lvert a \rvert, \lvert b \rvert) \cdot \sqrt{1 + (\min/\max)^2}$는 같은 입력에서 최대 1.90 ULP였고, 나눗셈과 분기 둘이 있어 계산 부분이 약 2.7배 느렸어요(원소당 0.71 대 0.26ns). 그래서 numpy와 끝자리가 다를 수 있어요.
+  계약은 Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 3 ULP 안이에요. 참값 2만 9천 점에서 잰 최대는 1 ULP예요. numpy의 SIMD `absolute` 루프가 쓰는 공식 $\max(\lvert a \rvert, \lvert b \rvert) \cdot \sqrt{1 + (\min/\max)^2}$는 같은 점에서 최대 2 ULP이고, 나눗셈과 분기 둘이 있어 계산 부분이 약 2.7배 느렸어요(원소당 0.71 대 0.26ns). 그래서 numpy와 끝자리가 다를 수 있어요.
 - complex 초월함수: C 라이브러리의 C99 함수(`cexp`, `clog`, `csin` …)를 스칼라로 불러요. numpy가 그 함수들을 부르기 때문이에요. libc++의 `std::exp(std::complex)`는 자체 구현이라 결과가 달라요. C++에는 `<complex.h>`가 없어서 직접 선언하고, `std::complex<double>`과 C의 `double _Complex`가 같은 메모리 배치(`double[2]`)라는 점을 이용해 `memcpy`로 오가요.
 
 ```cpp
@@ -511,7 +511,7 @@ if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {
 | 스레드 안전성 | 14개 스레드 동시 호출에서 불일치 0 | 스레드풀의 여러 워커가 동시에 불러요 |
 | 내부 스레드 | 쓰지 않음 (CPU 시간 / 경과 시간 = 1.00) | stardust의 풀과 겹쳐 과다 구독하지 않아요 |
 | 특수값 (±0, ±inf, NaN) | 15개 함수 모두 부호까지 정확 | 특수값은 비트까지 같아야 한다는 계약 |
-| 정확도 | 최대 4 ULP (아래 "정확도: ULP로 재기") | 계약 8 ULP 안 |
+| 정확도 | Arb 참값에서 최대 3 ULP (아래 "정확도: ULP로 재기") | 함수마다 3–5 ULP의 계약 안 |
 
 위치 독립성이 가장 중요해요. SIMD 구현 중에는 배열의 앞뒤 나머지 원소를 다른 코드(스칼라 경로)로 계산하는 것도 있는데, 그러면 같은 값이 배열의 어디에 있느냐에 따라 다른 결과가 나올 수 있어요. 그런 함수라면 스레드 조각 경계가 결과를 바꾸고, 결과가 스레드 수와 무관하다는 결정성([스레드풀과 결정성](/internals/core/threads/))이 깨져요. vForce 15개 함수는 그렇지 않아요(위 표의 위치 독립성 검사).
 
@@ -552,49 +552,47 @@ for (std::int64_t off = 0; off < n; off += kChunk) {
 
 ### 정확도: ULP로 재기
 
-ULP(unit in the last place)는 두 float 사이에 있는 표현 가능한 float의 개수로 잰 거리예요 [8]. float64의 비트 패턴을 부호 있는 정수 $b$로 읽고 순서를 보존하도록
+ULP(unit in the last place)는 두 float 사이에 있는 표현 가능한 float의 개수로 잰 거리예요 [8]. 같은 값이면 0, 이웃이면 1이에요. float64의 비트 패턴을 부호 있는 정수 $b$로 읽고 순서를 보존하도록
 
 $$
 \operatorname{ord}(b) = \begin{cases} b & b \ge 0 \\ -2^{63} - b & b < 0 \end{cases}
 $$
 
-로 바꾸면, 두 값의 ULP 거리는 $\lvert \operatorname{ord}(b_1) - \operatorname{ord}(b_2) \rvert$예요. 테스트의 `assert_ulp`가 이 방법을 써요.
+로 바꾸면, 두 값의 ULP 거리는 $\lvert \operatorname{ord}(b_1) - \operatorname{ord}(b_2) \rvert$예요. 테스트와 정확도 측정이 모두 이 거리(`bench/accuracy/common.py`의 `ulp_distance`)를 써요.
 
-계약은 numpy와 최대 8 ULP이고, 특수값(±0, ±inf, NaN)은 비트까지 같아야 해요. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같으므로(`tanh`만 최대 1 ULP 차이) numpy와의 거리는 곧 libm과의 거리예요.
+계약은 Arb(구간 산술)로 만든 참값을 float64로 반올림한 값에서 함수마다 정한 ULP 안이에요(`exp` `acos` `atan` `atan2` 3, `sin` `atanh` 5, 나머지 4). 특수값(±0, ±inf, NaN)은 비트까지 정확해야 해요. numpy와의 거리는 기록만 해요. 이 Mac의 numpy float64 초월함수는 libm과 비트가 같으므로(`tanh`만 최대 1 ULP 차이) numpy와의 거리는 곧 libm과의 거리예요.
 
-아래는 원소 20만 개, `tests/array/test_vforce.py`와 같은 입력 분포(예: `sin`은 $[-10^5, 10^5]$ 균등, `log`는 $[10^{-300}, 10^{300}]$ 로그 균등)에서 잰 값이에요.
+아래는 함수마다 약 2만 2천–2만 4천 개의 참값 점(`tests/array/ref/`; `test_vforce.py`와 같은 범위에 오차가 몰리는 곳을 더한 점)에서 잰 값이에요(`bench/array/accuracy.md`).
 
-| 함수 | 최대 ULP | 비트까지 같음 | 1 ULP 이내 |
+| 함수 | 계약 | 참값과의 최대 | numpy와의 거리 최대 |
 |---|:---:|:---:|:---:|
-| `exp` | 1 | 74.8% | 100% |
-| `log` | 2 | 83.4% | 99.9995% |
-| `log2` | 2 | 99.9% | 99.9995% |
-| `log10` | 2 | 74.5% | 99.9995% |
-| `sin` | 3 | 36.5% | 92.3% |
-| `asin` | 2 | 76.1% | 99.8% |
-| `acos` | 1 | 83.3% | 100% |
-| `atan` | 1 | 89.4% | 100% |
-| `sinh` | 2 | 64.5% | 99.97% |
-| `cosh` | 2 | 64.5% | 99.97% |
-| `tanh` | 3 | 86.5% | 99.95% |
-| `asinh` | 3 | 82.9% | 99.97% |
-| `acosh` | 2 | 83.1% | 99.999% |
-| `atanh` | 4 | 52.6% | 93.8% |
-| `atan2` | 1 | 74.1% | 100% |
-| `cos`, `tan`, `expm1`, `log1p` (libm) | 0 | 100% | 100% |
-| `pow` (libm, 밑 $[0, 100]$, 지수 $[-60, 60]$) | 0 | 100% | 100% |
+| `exp` | 3 | 1 | 1 |
+| `log` | 4 | 2 | 2 |
+| `log2` | 4 | 2 | 2 |
+| `log10` | 4 | 2 | 2 |
+| `sin` | 5 | 3 | 3 |
+| `asin` | 4 | 2 | 2 |
+| `acos` | 3 | 1 | 1 |
+| `atan` | 3 | 1 | 1 |
+| `sinh` | 4 | 2 | 2 |
+| `cosh` | 4 | 2 | 2 |
+| `tanh` | 4 | 2 | 2 |
+| `asinh` | 4 | 2 | 3 |
+| `acosh` | 4 | 2 | 2 |
+| `atanh` | 5 | 3 | 4 |
+| `atan2` | 3 | 1 | 1 |
 
-가장 큰 차이는 `atanh`의 4 ULP예요. 상대오차로는 $4 \cdot 2^{-52} \approx 8.9 \times 10^{-16}$ 이하예요. 계약의 8은 측정 최대에 여유를 둔 값이에요.
+참값과의 거리는 `sin`과 `atanh`의 3 ULP가 가장 커요. 상대오차로는 $3 \cdot 2^{-52} \approx 6.7 \times 10^{-16}$ 이하예요. 계약의 한계는 잰 최대에 2를 더한 값이에요. numpy와는 `atanh`에서 4 ULP까지 떨어져요.
 
 <Callout type="warn" title="numpy와 비트가 같다는 가정은 이 15개 함수에서 깨져요">
-  `sd.sin(x)`의 결과를 `np.sin(x)`와 `==`로 비교하면 원소의 3분의 2 가까이가 다를 수 있어요(위 표). 차이는 몇 ULP이고 결정적이지만, 비트 비교를 하는 코드라면 이 15개 함수에는 ULP나 상대오차 허용치를 써야 해요.
+  `sd.sin(x)`의 결과를 `np.sin(x)`와 `==`로 비교하면 많은 원소가 다를 수 있어요. 차이는 몇 ULP이고 결정적이지만, 비트 비교를 하는 코드라면 이 15개 함수에는 ULP나 상대오차 허용치를 써야 해요.
 </Callout>
 
 ## float64 `pow`: libm과 정확한 꼴
 
 ### libm을 쓰는 이유
 
-float64 `pow`(연산자 `**`)는 초월함수지만 vForce로 보내지 않아요. 원소마다 libm의 `std::pow`를 불러요. numpy도 같은 함수를 부르므로 보통의 지수에서는 numpy와 비트까지 같고, 무엇보다 `vvpow`보다 정확해요. 무작위 400만 쌍을 Arb로 구한 올바르게 반올림한 값과 비교하면 libm은 최대 0.75 ULP에 올바르게 반올림되지 않는 원소가 0.014–1.2%이고, `vvpow`는 최대 1.35 ULP에 2.6–26%예요(범위는 입력 분포마다 잰 값의 범위, 자세한 것은 [정확도와 검증](/internals/array/accuracy/#pow-libm과-정확한-꼴)).
+float64 `pow`(연산자 `**`)는 초월함수지만 vForce로 보내지 않아요. 원소마다 libm의 `std::pow`를 불러요. numpy도 같은 함수를 부르므로 보통의 지수에서는 numpy와 비트까지 같고, 무엇보다 `vvpow`보다 정확해요. 무작위 400만 쌍을 Arb로 구한 올바르게 반올림한 값과 비교하면 올바르게 반올림되지 않는 원소가 libm은 0.014–1.2%이고, `vvpow`는 2.6–26%예요(범위는 입력 분포마다 잰 값의 범위, 자세한 것은 [정확도와 검증](/internals/array/accuracy/#pow-libm과-정확한-꼴)).
 
 대가는 속도예요. 원소 $10^6$개의 `x ** 2.5`가 1스레드 5.0 ms(numpy 4.7 ms), 10스레드 0.55 ms예요. `vvpow`로 계산하면 4.0 ms, 0.45 ms라서 1.2–1.25배 걸리는 셈이에요.
 
@@ -816,17 +814,17 @@ numpy의 arm64 빌드는 분모 $d = z_r + z_i r$를 FMA 하나로 묶어요. �
 |---|---|
 | 산술, 비교, 논리, 비트, 반올림, 실수 `abs`, `sign`, `sqrt`, `maximum`/`minimum`/`clip`, `where` | 비트까지 같아요 (의도적으로 다른 정수 규칙 제외: `% 0`, 음수 지수, bool 산술) |
 | complex 곱셈·나눗셈·제곱·`pow`, complex 초월함수(`expm1` 제외) | 지금은 비트까지 같아요 (같은 식, 같은 FMA 자리, 같은 C99 함수) |
-| complex `abs` | 1.5 ULP 이하 (계약), 잰 최대 1.16 ULP. 끝자리가 다를 수 있어요 |
+| complex `abs` | 끝자리가 다를 수 있어요. Arb 참값에서 3 ULP (계약), 잰 최대 1 ULP |
 | complex `expm1` | 끝자리가 다를 수 있어요 (`sd::sincos`) |
 | float64 `expm1`, `log1p`, `cos`, `tan` | 지금은 비트까지 같아요 (libm) |
-| vForce 15개 | 최대 8 ULP (계약), 잰 최대 4 ULP (`atanh`). 특수값은 비트까지 같아요 |
+| vForce 15개 | 끝자리가 다를 수 있어요(잰 거리 최대 4 ULP, `atanh`). Arb 참값에서 3–5 ULP (계약). 특수값은 비트까지 같아요 |
 | float64 `pow` | 비트까지 같아요 (libm `pow`). 지수 2, −1, 0.5를 배열로 줄 때와 스칼라 지수 0.5의 $-0$, $-\infty$만 달라요(정확한 꼴) |
 | Array API 2024 함수 6개 | 비트까지 같아요 (`reciprocal`의 정수 입력은 float64 결과로 의도적으로 달라요) |
 
 어느 경우든 결과는 결정적이에요. 같은 입력이면 레이아웃(연속, 브로드캐스트, strided, 뒤집기)과 스레드 수와 무관하게 같은 비트가 나와요. 테스트는 이것을 세 갈래로 고정해요.
 
 - `assert_same`: shape, dtype, 비트까지 같음. NaN은 어떤 NaN과도 같다고 보지만 `-0.0`과 `+0.0`은 달라요.
-- `assert_ulp`: vForce 함수용. 위의 순서 보존 정수 변환으로 ULP 거리를 재고, 허용치 8, 특수값은 비트까지 같아야 해요.
+- `assert_ulp`: vForce 함수용. 위의 순서 보존 정수 변환으로 numpy와의 ULP 거리를 재고(허용치 8, 가벼운 확인), 특수값은 비트까지 같아야 해요. 정확도 계약은 Arb 참값과 견주는 `test_reference.py`가 확인해요.
 - 세 레이아웃: 원소별 연산의 dtype 쌍 테스트는 연속, 스칼라 브로드캐스트, strided를 모두 돌아요. 레이아웃마다 커널 경로(NEON, 인덱스 루프, strided 루프)가 갈리기 때문이에요.
 
 검증 방법 전체는 [정확도와 검증](/internals/array/accuracy/)에 있어요.

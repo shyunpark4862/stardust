@@ -208,6 +208,10 @@ array([1.0], dtype=float64)
 array([inf], dtype=float64)
 ```
 
+### 얼마나 정확한가요
+
+실수의 거듭제곱은 정확한 값을 float64로 반올림한 값에서 3칸 안이에요. 한 칸은 이웃한 두 float64 사이의 간격(ULP)이에요([`nextafter`](/api/array/nextafter/)). 정밀한 참값과 견줘 잰 최대는 1칸이에요. 지수가 2, −1, 0.5이면 언제나 정확한 값에 가장 가까운 float64가 나와요.
+
 ## square: 제곱
 
 `sd.square(x)`는 `x * x`, `x ** 2`와 같은 값이에요. dtype도 pow와 같은 규칙이라 정수는 정수로 남고, bool은 int64가 돼요.

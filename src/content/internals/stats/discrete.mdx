@@ -751,7 +751,7 @@ nan
 
 ## 정확도
 
-보장 영역의 61만 점을 Arb(구간 산술)로 만든 참값과 대조하면, 값 메서드(pmf부터 엔트로피까지)의 최대 오차는 계약 단위로 $6.3 \times 10^{-15}$(`LogSeries.logccdf`)이고 분위수는 모든 점이 허용 구간 안이에요(bench/stats/t5/accuracy.md). 엔트로피는 모든 분포에서 $4.5 \times 10^{-16}$ 이하예요. 같은 점에서 scipy 1.18.1은 꼬리에서 크게 틀리는 메서드가 있고(이항·음이항의 cdf 상대오차 1.0, 초기하의 cdf와 로그 급수의 logpmf inf, 초기하의 logpmf $2 \times 10^{293}$), 분위수가 허용 구간 안에 드는 비율이 64–100%예요(기하와 포아송의 `isf`가 64%). 메서드별 표와 속도는 [정확도와 성능](/internals/stats/accuracy-performance/)에 있어요.
+보장 영역의 61만 점을 Arb(구간 산술)로 만든 참값과 대조하면, 값 메서드(pmf부터 엔트로피까지)의 최대 오차는 계약 단위로 $6.3 \times 10^{-15}$(`LogSeries.logccdf`)이고 분위수는 모든 점이 허용 구간 안이에요(`bench/stats/accuracy.md`). 엔트로피는 모든 분포에서 $4.5 \times 10^{-16}$ 이하예요. 같은 점에서 scipy 1.18.1은 꼬리에서 크게 틀리는 메서드가 있고(이항·음이항의 cdf 상대오차 1.0, 초기하의 cdf와 로그 급수의 logpmf inf, 초기하의 logpmf $2 \times 10^{293}$), 기하와 포아송의 `isf`는 4000점 가운데 1443점에서 참값이 유한한데 inf나 NaN을 내요. 메서드별 표와 속도는 [정확도와 성능](/internals/stats/accuracy-performance/)에 있어요.
 
 ## 참고 문헌
 
