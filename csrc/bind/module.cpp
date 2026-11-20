@@ -7,6 +7,7 @@
 #include "bind/linalg_bind.hpp"
 #include "bind/optimize_bind.hpp"
 #include "bind/regression_bind.hpp"
+#include "bind/sparse_bind.hpp"
 #include "bind/special_bind.hpp"
 #include "bind/stats_bind.hpp"
 #include "random/random.hpp"
@@ -137,4 +138,5 @@ NB_MODULE(_core, m) {
     sd::bind_regression(m);  // after linalg (its batch driver and results)
     sd::bind_optimize(m);  // after the array (it returns ndarrays)
     sd::bind_htest(m);  // after stats (its distributions) and the array
+    sd::bind_sparse(m);  // after linalg (its LinAlgError) and the array
 }

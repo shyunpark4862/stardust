@@ -1,0 +1,14 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 11, "dropped": []},
+"anderson/norm": {"digest": "91ddb9568059325258585cf2940b407b1ceef0a95ec7907aa32b1a1728b77651", "statistic": [0.4237053026273682, -2.083485244614885e-17], "pvalue": [0.15, 0.0], "kappa": 0.0, "kappa_stat": 237.01309537526836},
+"anderson/norm-large": {"digest": "733b95ddc075a890e12d8f7d34e44002652ae5f0cf3e34709a4c9a8ff5d69aab", "statistic": [0.25510914301491694, -1.626657421779718e-18], "pvalue": [0.15, 0.0], "kappa": 0.0, "kappa_stat": 15680.563471255553},
+"anderson/expon": {"digest": "1a52a0958cf8cd56365b6d06f8cb6dfd9b89ad97500c49e68be023249256ed00", "statistic": [0.5562526325183103, -3.3982636598938545e-17], "pvalue": [0.15, 0.0], "kappa": 0.0, "kappa_stat": 216.7293161143825},
+"anderson/norm-n8": {"digest": "74a274bb62910395d8a1c8d6df7f6f069430921484a8fb74c29eeb691faa0b33", "statistic": [0.22829016778468814, 1.019199826373954e-17], "pvalue": [0.15, 0.0], "kappa": 0.0, "kappa_stat": 71.08624223838846},
+"anderson/norm-skewed": {"digest": "e1dcf831754823d2b74fdbff8d9bc50027f8a415e337a32b1bcfd66d042ffa51", "statistic": [5.945521852051637, 3.3513892808269384e-16], "pvalue": [0.01, 0.0], "kappa": 0.0, "kappa_stat": 34.638762917166886},
+"anderson/logistic": {"digest": "b1a0d08b9a9bc908f28a44243c3a74b93443cf8e849d191018f4ddf8f0340a68", "statistic": [0.3756167517381259, 2.180375499767756e-17], "pvalue": [0.25, 0.0], "kappa": 0.0, "kappa_stat": 426.9660924589153},
+"anderson/logistic-normal": {"digest": "a8b13be467ce3be9e59a617ac825ce1e4c17f0e645cf4172ebd4e2f769526a1a", "statistic": [0.6290749271135915, -2.1663396734856878e-17], "pvalue": [0.06558597546167112, 6.180521532812147e-19], "kappa": 4.995628850507411, "kappa_stat": 954.781456134332},
+"anderson/gumbel": {"digest": "4f0f2453dcaa2bd854994b405a5a1bdac72bb2da7d45ce1472261cd4d8a10cc5", "statistic": [0.23093759581949774, -5.333651899866654e-18], "pvalue": [0.25, 0.0], "kappa": 0.0, "kappa_stat": 607.2243763437499},
+"anderson/gumbel-normal": {"digest": "bf44d09a4eb18921526d8b2ff8cb2607b2e642201dd74435e830743703a91770", "statistic": [4.4624877150341495, -3.442517711074296e-16], "pvalue": [0.01, 0.0], "kappa": 0.0, "kappa_stat": 180.27220220792876},
+"anderson/expon-large": {"digest": "ab4e274f6441bdbec914cca63d41304ebaecf84d8796fdbdcd484fa6ca952459", "statistic": [0.5323765905861739, -4.58285926471384e-17], "pvalue": [0.15, 0.0], "kappa": 0.0, "kappa_stat": 11271.217560456014},
+"anderson/constant": {"digest": "a8c939887e42186fe449e77941080b50ce1920fa9675f8f2f8de9b32645d00f9", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0], "kappa": NaN, "kappa_stat": NaN}
+}

@@ -1,8 +1,8 @@
 # sd.htest API
 
-> 상태: **초안** (H0, 2026-11-20; H1 구현 2026-11-20). 공개된 검정은 H1의 아홉 함수(§2)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
+> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20). 공개된 검정은 H1의 아홉 함수(§2)와 H2의 열 함수(§3)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
 
-- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H33), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H44), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/htest/test_api_surface.py`가 읽는다. 블록의 이름이 계획한 공개 이름 전부이고, 공개된 함수는 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -39,7 +39,7 @@
 
 ### §1.5 결과 객체 (H6, H7, H10, H12, H16, H18, H19, H21)
 - 검정마다 결과 클래스가 하나이고 이름은 `<함수>Result`다: `ttest_ind` → `TtestIndResult`, `pearsonr` → `PearsonrResult`, `chi2_contingency` → `Chi2ContingencyResult`(H6). 공통 바탕 클래스를 쓴다. 클래스는 내보내지 않는다(`sd.htest`의 공개 이름은 함수뿐이다). `isinstance`가 아니라 필드로 읽는다.
-- **예외: 두 영역이 같은 검정을 돌려주는 클래스**(H18). 같은 검정은 같은 형이다: Jarque–Bera의 결과 클래스는 htest의 것이고, `sd.regression`이 내보내는 공개 이름 `JarqueBeraResult`가 그 클래스를 가리킨다(`sd.htest.jarque_bera(x)`와 `r.jarque_bera()`가 같은 형을 돌려준다; 지금의 namedtuple은 H2에서 이 클래스로 바뀐다). 그 밖의 결과는 H6대로 내보내지 않는다.
+- **예외: 두 영역이 같은 검정을 돌려주는 클래스**(H18). 같은 검정은 같은 형이다: Jarque–Bera의 결과 클래스는 htest의 것이고, `sd.regression`이 내보내는 공개 이름 `JarqueBeraResult`가 그 클래스를 가리킨다(`sd.htest.jarque_bera(x)`와 `r.jarque_bera()`가 같은 형을 돌려준다; H39, regression G165: namedtuple이 아니어서 튜플 비교·해시·`_asdict`·`_replace`·`_fields`가 없고 `(statistic, pvalue)` 풀기는 그대로다). 그 밖의 결과는 H6대로 내보내지 않는다.
 - **필드는 읽기 전용 속성이다**(regression의 G98, optimize의 `OptimizeResult`와 같다): 대입하면 `AttributeError`다. 배열 필드는 쓰기 금지 배열이고 읽을 때 복사하지 않는다(H21, API.md §2.2, regression의 G120; 고치려면 `.copy()`). 리스트인 설정 필드는 읽을 때마다 새 리스트다(G113). 그 호출에서 주지 않는 필드(근사가 아닐 때의 `wilcoxon`의 `zstatistic`)는 `AttributeError`라 `hasattr()`로 안다.
 - 검정 하나면 필드는 Python 수다(`statistic`·`pvalue`·`df`는 float, 개수는 int, `method`는 str). 배치면 배치 모양의 sd 배열이다.
 - **튜플 풀기**(H7): scipy의 결과가 풀리는 검정만 scipy와 같은 개수와 순서로 풀린다(`stat, p = sd.htest.ttest_ind(a, b)`; `chi2_contingency`는 넷, `median_test`도 넷). 인덱스(`r[0]`)와 `len(r)`도 그 튜플의 것이다. scipy의 결과가 풀리지 않는 검정(`binomtest`, `cramervonmises`, `alexandergovern`, `barnard_exact`, `somersd`, `page_trend_test`, 재표본 결과 등)은 풀리지 않는다(`TypeError: cannot unpack non-iterable BinomtestResult object`). statsmodels의 튜플을 돌려주는 함수는 §8·§9에 적는다.
@@ -91,17 +91,18 @@ jarque_bera(x, /, *, axis=None, nan_policy='propagate', keepdims=False)
 shapiro(x, /, *, axis=None, nan_policy='propagate', keepdims=False)
 anderson(x, /, *, axis=None, dist=None, method='interpolate', nan_policy='propagate', keepdims=False)
 ks_1samp(x, cdf, /, *, axis=None, alternative='two-sided', method='auto', nan_policy='propagate', keepdims=False)
-kstest(rvs, cdf, /, *, axis=None, alternative='two-sided', method='auto', nan_policy='propagate', keepdims=False)   # 둘지 H2에서 정한다
 cramervonmises(rvs, cdf, /, *, axis=None, nan_policy='propagate', keepdims=False)
 ```
-- 결과는 모두 `statistic pvalue`이다. `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp kstest`는 둘로 풀리고, `cramervonmises`는 풀리지 않는다(scipy와 같다).
-- `chisquare`·`power_divergence`: `ddof`는 기대 빈도를 맞춘 모수의 수다(§1.1). `lambda_`는 수나 scipy의 이름(`'pearson'`, `'log-likelihood'`, `'freeman-tukey'`, `'mod-log-likelihood'`, `'neyman'`, `'cressie-read'`)이다. `sum_check`는 관측과 기대의 합이 scipy의 상대 허용오차 안에서 같은지 본다.
-- `jarque_bera`(H17, H18, H20): 커널은 htest의 것이고 `sd.regression`의 `r.jarque_bera()`가 그것을 부른다. 통계량은 평균을 뺀 2·3·4차 합(double-double)에서 n/6·(S² + (K − 3)²/4), p값은 `ChiSquared(df=2).ccdf(jb)`다(닫힌 꼴 e^(−JB/2)는 그와 1 ulp 다를 수 있어 쓰지 않는다). 그래서 `sd.htest.jarque_bera(r.resid)`와 OLS의 `r.jarque_bera()`는 비트까지 같고 같은 형(`JarqueBeraResult`, `sd.regression`이 내보내는 이름; H18)을 돌려준다. 예외는 완전 적합이다: regression은 잔차를 0으로 보아 NaN을 내고(G95, G117), `jarque_bera(r.resid)`는 반올림 크기의 잔차로 계산한다. WLS·GLS는 백색화한 잔차의 값이다(regression이 `wresid`를 두면 그 쓰인 행을 넘긴다). 분산 0의 판정은 sd.stats `skew`의 규칙이다(m2 ≤ (ε·평균)²이면 NaN; H20). 커널은 H2에서 regression의 `resid_stats`를 옮겨 오고, regression의 골든은 H20이 바꾸는 퇴화한 경우 말고는 그대로다.
-- `shapiro`: Royston(1995) AS R94의 W와 p값이다(scipy·R과 같은 알고리즘). n < 3은 NaN이다(§1.3).
-- `anderson`: scipy 1.17부터의 꼴만이다(`statistic pvalue`; 옛 `critical_values`, `significance_level`, `fit_result`는 없다). `dist=None`은 정규 분포다. 받는 분포 족과 그 이름(sd.stats의 분포 클래스 또는 scipy의 문자열)은 H2에서 정한다. `method`는 `'interpolate'`(Stephens의 표 보간)이고 `MonteCarloMethod`는 H9에서 더한다. scipy 1.18은 `method`를 주지 않으면 경고와 함께 옛 꼴을 낸다. 여기서는 기본값이 `'interpolate'`다(`[scipy와 다름]`).
-- `ks_1samp`·`kstest`·`cramervonmises`의 `cdf`: sd.stats의 분포 객체(`sd.stats.Normal(mu=0, sigma=1)`; 그 `cdf`를 쓴다)나 `cdf(x)`를 돌려주는 호출 가능한 객체다. scipy의 분포 이름 문자열(`'norm'`)과 `args=()`는 받지 않는다(optimize의 O12와 같다; H2에서 정한다).
-- `ks_1samp`: `method`는 `'auto'`, `'exact'`, `'approx'`, `'asymp'`(scipy의 이름)이다. 결과에 `statistic_location`, `statistic_sign`(scipy와 같다), `method`(H12)가 있다.
-- `kstest`는 한 표본·두 표본을 고르는 scipy의 감싸개다. 둘지는 H2에서 정한다(추천: 두지 않는다).
+- 결과는 모두 `statistic pvalue`이고, `cramervonmises` 말고는 둘로 풀린다(scipy와 같다). 다른 필드: `chisquare`·`power_divergence`의 `df`(k − 1 − `ddof`; scipy의 결과에는 없다. H29처럼 튜플에 들지 않는다, H43), `ks_1samp`의 `statistic_location`, `statistic_sign`(scipy와 같다; 검정 하나면 int, 배치면 int64 배열, NaN인 줄은 0), `method`.
+- `kstest`(한 표본·두 표본을 고르는 scipy의 감싸개)는 없다(H34): 한 표본은 `ks_1samp`, 두 표본은 `ks_2samp`(H4)이다.
+- `chisquare`·`power_divergence`: `ddof`는 기대 빈도를 맞춘 모수의 수다(§1.1; int, 음수도 받는다). `f_exp=None`이면 기대 빈도는 관측의 평균(double-double)이고, 주면 `f_obs`와 브로드캐스트되는 배열이다(짝지은 표본이라 `nan_policy='omit'`은 쌍을 뺀다). `lambda_`는 None(Pearson), 실수, scipy의 이름(`'pearson'` 1, `'log-likelihood'` 0, `'freeman-tukey'` −1/2, `'mod-log-likelihood'` −1, `'neyman'` −2, `'cressie-read'` 2/3)이다. `chisquare(sum_check=True)`와 `power_divergence`(scipy처럼 언제나)는 `f_exp`를 주면 각 표본의 두 합이 상대 2⁻²⁶(scipy의 √ε) 안에서 같은지 보고, 아니면 `ValueError`다. 관측이 0인 칸은 그 극한이다: λ > −1이면 유한한 값, λ ≤ −1이면 inf(`[scipy와 다름]`: scipy는 −1 < λ < 0과 λ < −1에서 0·inf의 NaN). 자유도가 0 이하이면 p값은 NaN이다.
+- `skewtest`(n < 8은 NaN), `kurtosistest`(n < 5는 NaN), `normaltest`(n < 8은 NaN): scipy의 D'Agostino·Anscombe–Glynn 변환이다. 표본 왜도가 정확히 0이면 `skewtest`의 통계량은 0, p값은 1이다(`[scipy와 다름]`: scipy 1.18.1은 그 경우 y = 0을 1로 바꿔 0이 아닌 값을 낸다). `normaltest`의 p값은 `ChiSquared(df=2).ccdf`다.
+- `jarque_bera`(H17, H18, H20, H38): 커널은 htest의 것이고 `sd.regression`의 `r.jarque_bera()`가 그것을 부른다. 통계량은 평균을 뺀 2·3·4차 합(double-double)에서 n/6·(S² + (K − 3)²/4), p값은 `ChiSquared(df=2).ccdf(jb)`다(닫힌 꼴 e^(−JB/2)는 그와 1 ulp 다를 수 있어 쓰지 않는다). 그래서 `sd.htest.jarque_bera(r.resid)`와 OLS의 `r.jarque_bera()`는 비트까지 같다. 예외는 완전 적합이다: regression은 잔차를 0으로 보아 NaN을 내고(G95, G117), `jarque_bera(r.resid)`는 반올림 크기의 잔차로 계산한다. WLS·GLS는 백색화한 잔차의 값이다(regression이 `wresid`를 두면 그 쓰인 행을 넘긴다). 분산 0의 판정은 sd.stats `skew`의 규칙이다(m2 ≤ (ε·평균)²이면 NaN; H20). 결과는 `sd.regression.JarqueBeraResult`로 공개된 htest의 클래스다(H18, H39; regression G165).
+- `shapiro`(H37): Royston(1995) AS R94의 W와 p값이다(scipy·R과 같은 알고리즘, 같은 상수). n < 3은 NaN이다. n = 3은 scipy처럼 W를 [0.75, 1]로 자르고 정확한 분포의 p값이다. n의 위 한계는 없다(scipy는 n > 5000에서 경고, R은 에러).
+- `anderson`(H36): scipy 1.17부터의 꼴만이다(`statistic pvalue`; 옛 `critical_values`, `significance_level`, `fit_result`는 없다). `dist`는 sd.stats의 분포 클래스다: None과 `sd.stats.Normal`(평균과 표준편차(n − 1)), `sd.stats.Exponential`(평균; 위치 0), `sd.stats.Logistic`, `sd.stats.Gumbel`(최댓값의 Gumbel, scipy의 `'gumbel_r'`; 둘 다 최우추정을 끝자리까지 푼다). scipy의 문자열 이름, 클래스가 아닌 분포 객체, 다른 클래스는 받지 않는다(scipy `'weibull_min'`의 Weibull은 위치를 포함한 최우추정과 함께 H9의 `goodness_of_fit`에서 더한다, H40). `method`는 `'interpolate'`이고 기본값이다(`[scipy와 다름]`: scipy 1.18은 주지 않으면 경고와 함께 옛 꼴을 낸다). p값은 scipy의 표(Stephens)와 `np.interp` 그대로라 표의 수준 범위(정규·지수 0.01–0.15, 로지스틱 0.005–0.25, Gumbel 0.01–0.25) 밖으로 나가지 않는다. `MonteCarloMethod`는 H9에서 더한다. n < 2와 상수 표본은 NaN이다.
+- `ks_1samp`·`cramervonmises`의 `cdf`(H35): sd.stats의 분포 객체(`sd.stats.Normal(mu=0, sigma=1)`; 그 `cdf`)나 `cdf(x)`를 돌려주는 호출 가능한 객체다. 정렬한 표본을 배치의 모양(…, n)으로 한 번 넘기고, 같은 모양의 수 배열을 받아야 한다. scipy의 분포 이름 문자열(`'norm'`)과 `args=()`는 받지 않는다(optimize의 O12와 같다).
+- `ks_1samp`: `method`는 `'auto'`, `'exact'`, `'approx'`, `'asymp'`(scipy의 이름과 뜻)이다. 양쪽 검정은 `'auto'`가 언제나 `'exact'`(scipy와 같다)이고, 한쪽 검정은 `method`와 상관없이 Smirnov의 정확 분포다(scipy와 같다). 결과의 `method`는 쓴 분포다(H12; 한쪽 검정은 `'exact'`). `'exact'`의 양쪽 분포는 n·D²가 6.5보다 작고 n이 약 1000 이하인 곳에서 double-double의 Durbin 행렬, 그 위의 꼬리는 Smirnov의 정확한 한쪽 꼬리의 두 배(빠뜨린 두 꼬리의 확률은 1e-17 아래)이고, 행렬이 상한(곱셈 4·10⁷번)을 넘는 큰 n의 가운데는 Pelz–Good 근사다(scipy·Simard–L'Ecuyer와 같은 선택이며 계약이 느슨한 곳; docs/design/htest.md §4). 계산량이 언제나 유한해 `ValueError`는 없다(H42).
+- `cramervonmises`: p값은 Csörgő–Faraway의 유한 표본 근사식의 값이고 scipy처럼 0 아래는 0이다. 1 − cdf라 절대 오차가 약 1e-16이다(H41). n < 2는 NaN이다.
 
 ## §4. 순위 검정 (H3)
 ```
@@ -253,7 +254,10 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 | `proportion_confint(method='beta')` | `method='exact'` | H7에서 정한다 |
 | `chi2_contingency(...).dof`, `cochrans_q` 결과의 `df` | `df` | H10 |
 | scipy의 결과 형 `TtestResult`, `SignificanceResult` 등 | 함수마다 `<함수>Result`(내보내지 않음) | H6 |
-| `kstest` | 미정 | H2에서 정한다 |
+| `kstest` | 없음(`ks_1samp`, `ks_2samp`) | H34 |
+| 분포 인자의 이름 문자열(`'norm'`)과 `args=()` | sd.stats 분포 객체나 호출 가능한 `cdf` | H35 |
+| `anderson(dist='norm')`(문자열), `method` 없으면 옛 꼴 | `dist=sd.stats.Normal`(클래스), 기본 `method='interpolate'` | H36 |
+| `power_divergence`·`chisquare`의 결과 `statistic pvalue` | `statistic pvalue df` | H43(H29의 꼴) |
 | `statsmodels.stats.multitest.fdrcorrection` | 없음(`multipletests(method='fdr_bh')`·`false_discovery_control`) | H8에서 정한다 |
 | `statsmodels` `binom_test` | 없음(`binomtest`) | 같은 검정 |
 
@@ -261,7 +265,7 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 그 문서를 함께 고친다.
 
 - **H1**: 정했다(H22–H33, docs/design/htest.md §1.1).
-- **H2**: `kstest`를 두지 않는다(추천) / 둔다. `cdf` 인자는 sd.stats 분포 객체와 호출 가능한 객체(추천) / 문자열 이름도. `anderson`의 `dist`는 sd.stats의 분포 클래스(추천; `gumbel_l`은 없다) / scipy의 문자열. `anderson`의 기본 `method='interpolate'`(추천). Shapiro–Wilk는 AS R94의 정의(추천).
+- **H2**: 정했다(H34–H44, docs/design/htest.md §1.1).
 - **H3**: 동점이 있을 때 `'exact'`는 조건부 정확 분포(추천) / scipy처럼 동점이 없는 분포 / `ValueError`. `'auto'`의 문턱은 scipy 그대로(추천). `ranksums`를 둔다(추천). `wilcoxon`의 `zstatistic`은 정규 근사로 계산한 때마다(추천; scipy는 사용자가 `'asymptotic'`을 준 때만). 배치의 `method` 필드는 줄마다의 문자열 배열(추천) / 줄이 모두 같을 때만 str. `median_test`의 배치: `axis`를 더한다(추천) / scipy처럼 없다.
 - **H4**: `ks_2samp`의 동점: scipy의 정확 분포(추천, H4 전에 R `psmirnov`와 다시 대조) / R처럼 조건부. `cramervonmises_2samp`의 `'exact'`를 동적 계획으로 크게(추천). `anderson_ksamp`의 기본 `variant='midrank'`(추천)와 풀기: scipy 1.18.1의 실제 동작(둘로 풀린다; 추천) / scipy 문서(풀리지 않는다).
 - **H5**: `spearmanr`와 `spearmanrho` 둘 다(추천). Spearman 정확 분포는 넣지 않는다(추천). `weightedtau`는 `pvalue` NaN 그대로(추천).
@@ -290,7 +294,7 @@ docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 
 
 | | 지금의 regression | 결정 |
 |---|---|---|
-| 형 | 두 namedtuple(`stardust._results`), `sd.regression`이 내보낸다 | Jarque–Bera는 htest의 결과 클래스가 되고 `sd.regression.JarqueBeraResult`가 그 클래스를 가리킨다(H18, H2에서). `BreuschPaganResult`는 htest에 짝이 없어 regression이 정한다 |
+| 형 | 두 namedtuple(`stardust._results`), `sd.regression`이 내보낸다 | Jarque–Bera는 htest의 결과 클래스가 되고 `sd.regression.JarqueBeraResult`가 그 클래스를 가리킨다(H18). H2에서 커널을 옮기고(H38) 클래스를 바꿨다(H39, regression G165). `BreuschPaganResult`는 htest에 짝이 없어 regression이 정한다 |
 | 풀기 | JB 둘(scipy와 같다), BP 넷(statsmodels `het_breuschpagan`의 순서) | H7과 맞는다. htest의 JB 클래스도 둘로 풀린다 |
 | 필드 이름 | BP는 `lm lm_pvalue fvalue f_pvalue`(statsmodels) | scipy에 없는 결과는 statsmodels의 이름(H5)이라 맞는다 |
 | 자유도 | BP에 자유도 필드가 없다 | 둔다면 카이제곱은 `df`, F는 `df_num`·`df_denom`(H19; regression이 정한다) |

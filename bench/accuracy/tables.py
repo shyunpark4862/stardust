@@ -14,6 +14,8 @@ HEAD = {
     "array": "sd 배열",
     "linalg": "sd.linalg",
     "optimize": "sd.optimize",
+    "htest": "sd.htest",
+    "sparse": "sd.sparse",
 }
 MV = "mv/"  # the stats area's multivariate group: its sweeps' name prefix
 MV_HEAD = "sd.stats 다변량·행렬 분포"
@@ -89,6 +91,18 @@ INTRO = {
         "L-BFGS-B는 maxit = 15000·lmm = 10·pgtol = 1e-5, nls.lm은 ftol = ptol = gtol = 1e-8·maxfev = 100n·maxiter = 1024. "
         "멈춤 판정 자체는 R의 것이다(optim의 BFGS·Nelder-Mead는 f의 상대 감소 √eps로 멈춘다). 속도 측정"
         "(bench/speed)도 같은 호출을 잰다."
+    ),
+    "htest": (
+        "참값은 tests/htest/ref의 Arb와 정확한 유리수 참값이다(tools/htest_ref.py; 문제는 tests/htest/problems.py). "
+        "묶음(검정의 족)마다 한 줄이고, 결과의 필드(통계량, p값, 자유도, 신뢰구간)가 영역이며 문제 하나가 점 하나다. "
+        "계약은 tests/htest/refdata.py의 척도다(docs/design/htest.md §4; 테스트가 같은 함수로 판정한다): 통계량은 "
+        "상대 1e-14·max(1, κ_stat)(κ_stat은 D'Agostino 변환이 받는 적률, Anderson–Darling의 상쇄하는 합에 대한 "
+        "조건수, 그 밖은 1), p값은 1e-14·max(1, κ_p)·max(1, κ_stat)(κ_p는 통계량에 대한 p값의 조건수), "
+        "Cramér–von Mises의 p값(Csörgő–Faraway 근사식의 1 − cdf)은 절대 1e-15도 받고, 자유도는 1e-14, t 검정의 "
+        "신뢰구간 끝은 추정값과 반폭의 크기에 대한 1e-14다. 정의한 근사(D'Agostino, AS R94, 보간 표, Pelz–Good, "
+        "Csörgő–Faraway)는 그 근사식의 값이 참값이다. 비교 패키지는 scipy 1.18.1·statsmodels 0.15.0·R 4.6.2의 기록이다"
+        "(tests/htest/data; tools/gen_htest_scipy.py, tools/gen_htest_r.py): 같은 문제에서 같은 척도로 잰 통계량과 "
+        "p값이고, R의 통계량은 정의가 scipy와 같은 검정만이다."
     ),
 }
 

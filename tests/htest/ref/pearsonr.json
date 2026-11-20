@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 8, "dropped": []},
 "pearsonr/small": {"digest": "09c94645b24925e19e33da7ad31466d4c3e24fe514ee2da447b16a886c248da9", "statistic": [0.6401868989825017, 3.639071195948464e-17], "pvalue": [0.0461711937172946, -2.542202862584894e-19], "confidence_interval": [[0.01769177144601582, 2.888731020555209e-19], [0.9050193495515452, -7.973062421599438e-18]]},
 "pearsonr/small-greater": {"digest": "3411fd14091f037d74ab6fa99760f64a78932f9cfb63e937050227688d21705e", "statistic": [0.6401868989825017, 3.639071195948464e-17], "pvalue": [0.0230855968586473, -1.271101431292447e-19], "confidence_interval": [[0.13594721691437883, -9.815950270934203e-18], [1.0, 0.0]]},
 "pearsonr/large": {"digest": "1e4c0327f786e01ca771f7f9ed1ffffdf2fedd5e58753b0d8a3b9f1d0390c639", "statistic": [0.06310495487151484, -6.839849089140739e-18], "pvalue": [0.04603778929042672, 2.535377586741153e-18], "confidence_interval": [[0.0011162391949538263, 8.808071985022842e-20], [0.12461055206846934, 6.306506549591674e-18]]},

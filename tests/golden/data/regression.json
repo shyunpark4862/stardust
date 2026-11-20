@@ -83667,19 +83667,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -84855,19 +84851,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -86043,19 +86035,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -87231,19 +87219,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -88419,19 +88403,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -89607,19 +89587,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -92333,27 +92309,8 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"nd": "float64",
-"shape": [
-4
-],
-"strides": [
-8
-],
-"v": [
-"0x1.da5ad0ffd9f3ap-1",
-"0x1.62d5b9aa30a70p-1",
-"0x1.dfcfe9e823df2p-2",
-"0x1.1bc4ebe252b8ap+1"
-]
-},
-{
+"attrs": {
+"pvalue": {
 "nd": "float64",
 "shape": [
 4
@@ -92367,9 +92324,24 @@ false
 "0x1.950fff1a412d6p-1",
 "0x1.51fbe1228d390p-2"
 ]
-}
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
 ],
-"tuple": "stardust._results.JarqueBeraResult"
+"strides": [
+8
+],
+"v": [
+"0x1.da5ad0ffd9f3ap-1",
+"0x1.62d5b9aa30a70p-1",
+"0x1.dfcfe9e823df2p-2",
+"0x1.1bc4ebe252b8ap+1"
+]
+}
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -94822,19 +94794,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -96010,19 +95978,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -97198,19 +97162,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.a6920eaf9450fp-4"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.e6424ac259a6ap-1"
+},
+"statistic": {
+"f": "0x1.a6920eaf9450fp-4"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -98382,19 +98342,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.a6920eaf9450fp-4"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.e6424ac259a6ap-1"
+},
+"statistic": {
+"f": "0x1.a6920eaf9450fp-4"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -99487,19 +99443,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -100675,19 +100627,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -101863,19 +101811,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -103051,19 +102995,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -104239,19 +104179,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -105427,19 +105363,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -108153,27 +108085,8 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"nd": "float64",
-"shape": [
-4
-],
-"strides": [
-8
-],
-"v": [
-"0x1.c3a01cc42deaap+0",
-"0x1.b5007d1127999p+0",
-"0x1.34b61f04aef5cp+1",
-"0x1.f652bcc747fdfp+0"
-]
-},
-{
+"attrs": {
+"pvalue": {
 "nd": "float64",
 "shape": [
 4
@@ -108187,9 +108100,24 @@ false
 "0x1.329b79a66615cp-2",
 "0x1.7fe563b1973acp-2"
 ]
-}
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
 ],
-"tuple": "stardust._results.JarqueBeraResult"
+"strides": [
+8
+],
+"v": [
+"0x1.c3a01cc42deaap+0",
+"0x1.b5007d1127999p+0",
+"0x1.34b61f04aef5cp+1",
+"0x1.f652bcc747fdfp+0"
+]
+}
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -110642,19 +110570,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -111830,19 +111754,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -113018,19 +112938,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.7f0537c7a44b2p+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.e4a134e13448cp-2"
+},
+"statistic": {
+"f": "0x1.7f0537c7a44b2p+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -114202,19 +114118,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.7f0537c7a44b2p+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.e4a134e13448cp-2"
+},
+"statistic": {
+"f": "0x1.7f0537c7a44b2p+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -115293,19 +115205,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.9897a3f5e9c70p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.9f1d64496ae7cp-3"
+},
+"statistic": {
+"f": "0x1.9897a3f5e9c70p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -116467,19 +116375,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -117495,19 +117399,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.4a3bb74d48e8ep+3"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7853df5b83131p-8"
+},
+"statistic": {
+"f": "0x1.4a3bb74d48e8ep+3"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -118676,19 +118576,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.327df6689a4eep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3546e88c3f078p-2"
+},
+"statistic": {
+"f": "0x1.327df6689a4eep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -119850,19 +119746,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.baaff85ec5662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.6b5a0cc7fd48cp-3"
+},
+"statistic": {
+"f": "0x1.baaff85ec5662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -121024,19 +120916,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -122052,19 +121940,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.41d5c014714dcp+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.2349186a10da6p-2"
+},
+"statistic": {
+"f": "0x1.41d5c014714dcp+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -123233,19 +123117,15 @@ false
 "msg": "goldfeld_quandt(): takes an ols or wls result; the GLS whitening mixes the rows that the test splits"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5239f3300a662p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1138293d34405p-2"
+},
+"statistic": {
+"f": "0x1.5239f3300a662p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -266830,19 +266710,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.a0f52e31c2c16p+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.c58c4d4a4e0f8p-2"
+},
+"statistic": {
+"f": "0x1.a0f52e31c2c16p+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -267939,19 +267815,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -269141,19 +269013,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -270343,19 +270211,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -271545,19 +271409,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -272747,19 +272607,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -273949,19 +273805,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -276737,27 +276589,8 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"nd": "float64",
-"shape": [
-4
-],
-"strides": [
-8
-],
-"v": [
-"0x1.2ef258a1bac7ap+0",
-"0x1.356945af9f885p+0",
-"0x1.115285e4cc027p+1",
-"0x1.7200c0f78910ap+0"
-]
-},
-{
+"attrs": {
+"pvalue": {
 "nd": "float64",
 "shape": [
 4
@@ -276771,9 +276604,24 @@ true
 "0x1.600fc97deaefep-2",
 "0x1.f11bf7486e8eap-2"
 ]
-}
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
 ],
-"tuple": "stardust._results.JarqueBeraResult"
+"strides": [
+8
+],
+"v": [
+"0x1.2ef258a1bac7ap+0",
+"0x1.356945af9f885p+0",
+"0x1.115285e4cc027p+1",
+"0x1.7200c0f78910ap+0"
+]
+}
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -279265,19 +279113,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -280467,19 +280311,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -281669,19 +281509,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.f304fd2500b47p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3a815ae594070p-1"
+},
+"statistic": {
+"f": "0x1.f304fd2500b47p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -282867,19 +282703,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.f304fd2500b47p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3a815ae594070p-1"
+},
+"statistic": {
+"f": "0x1.f304fd2500b47p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -283982,19 +283814,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -284673,19 +284501,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -285474,19 +285298,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -286591,19 +286411,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.42de25e0d627fp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1085ec5f3c9e1p-1"
+},
+"statistic": {
+"f": "0x1.42de25e0d627fp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "chunk": 256,
@@ -287528,19 +287344,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -288348,19 +288160,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.d99c0f311a239p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.42683c282828ap-1"
+},
+"statistic": {
+"f": "0x1.d99c0f311a239p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -289536,19 +289344,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -290591,19 +290395,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.0e7fb990cb3e2p+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.63f74f771bdafp-2"
+},
+"statistic": {
+"f": "0x1.0e7fb990cb3e2p+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -291786,19 +291586,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.ee80f04a9050ap-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.3be533980d41dp-1"
+},
+"statistic": {
+"f": "0x1.ee80f04a9050ap-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -329758,19 +329554,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -330960,19 +330752,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -332162,19 +331950,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -333364,19 +333148,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -334566,19 +334346,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -335768,19 +335544,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -338556,27 +338328,8 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"nd": "float64",
-"shape": [
-4
-],
-"strides": [
-8
-],
-"v": [
-"0x1.23344db8adc2ap+0",
-"0x1.540da89dfbe9ap-1",
-"0x1.cc2422e2b47cep+1",
-"0x1.75f2c2d913382p-2"
-]
-},
-{
+"attrs": {
+"pvalue": {
 "nd": "float64",
 "shape": [
 4
@@ -338590,9 +338343,24 @@ true
 "0x1.53678cd85587dp-3",
 "0x1.aa8d23540c830p-1"
 ]
-}
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
 ],
-"tuple": "stardust._results.JarqueBeraResult"
+"strides": [
+8
+],
+"v": [
+"0x1.23344db8adc2ap+0",
+"0x1.540da89dfbe9ap-1",
+"0x1.cc2422e2b47cep+1",
+"0x1.75f2c2d913382p-2"
+]
+}
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -341059,19 +340827,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -342261,19 +342025,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -343463,19 +343223,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.3d4130351c38cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1386fbfc44dbfp-1"
+},
+"statistic": {
+"f": "0x1.3d4130351c38cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -344661,19 +344417,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.3d4130351c38cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1386fbfc44dbfp-1"
+},
+"statistic": {
+"f": "0x1.3d4130351c38cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -345766,19 +345518,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.8dadaf0d30dfep+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.d6f3b332bb7c0p-2"
+},
+"statistic": {
+"f": "0x1.8dadaf0d30dfep+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -346954,19 +346702,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -348009,19 +347753,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.c1372d85828e0p+2"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.ea13ea1299b76p-6"
+},
+"statistic": {
+"f": "0x1.c1372d85828e0p+2"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -349204,19 +348944,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.45f8401b4ce93p-1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.7468e77823ae2p-1"
+},
+"statistic": {
+"f": "0x1.45f8401b4ce93p-1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -350406,19 +350142,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -351608,19 +351340,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -352810,19 +352538,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -354012,19 +353736,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -355214,19 +354934,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -356416,19 +356132,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -359204,27 +358916,8 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"nd": "float64",
-"shape": [
-4
-],
-"strides": [
-8
-],
-"v": [
-"0x1.9f3534468911dp+1",
-"0x1.3ea50dc573850p-1",
-"0x1.edafe79f68644p+1",
-"0x1.308a7d622fea7p-2"
-]
-},
-{
+"attrs": {
+"pvalue": {
 "nd": "float64",
 "shape": [
 4
@@ -359238,9 +358931,24 @@ true
 "0x1.29b855b87f82cp-3",
 "0x1.b94148c0e13fdp-1"
 ]
-}
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
 ],
-"tuple": "stardust._results.JarqueBeraResult"
+"strides": [
+8
+],
+"v": [
+"0x1.9f3534468911dp+1",
+"0x1.3ea50dc573850p-1",
+"0x1.edafe79f68644p+1",
+"0x1.308a7d622fea7p-2"
+]
+}
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -361707,19 +361415,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -362909,19 +362613,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -364111,19 +363811,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.3b87cedf3393ep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.2a8c4afe10fcap-2"
+},
+"statistic": {
+"f": "0x1.3b87cedf3393ep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -365309,19 +365005,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.3b87cedf3393ep+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.2a8c4afe10fcap-2"
+},
+"statistic": {
+"f": "0x1.3b87cedf3393ep+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -366414,19 +366106,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.5c6089af5660dp+1"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.06990c5d9b127p-2"
+},
+"statistic": {
+"f": "0x1.5c6089af5660dp+1"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -367602,19 +367290,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
+"attrs": {
+"pvalue": {
 "f": "nan"
 },
-{
+"statistic": {
 "f": "nan"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -368657,19 +368341,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.13a925168f6fbp+3"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.b96ce3c756577p-7"
+},
+"statistic": {
+"f": "0x1.13a925168f6fbp+3"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",
@@ -369852,19 +369532,15 @@ true
 "obj": "stardust.regression._tests.GoldfeldQuandtResult"
 },
 "jarque_bera()": {
-"fields": [
-"statistic",
-"pvalue"
-],
-"items": [
-{
-"f": "0x1.2ac594f22047cp+0"
-},
-{
+"attrs": {
+"pvalue": {
 "f": "0x1.1da7c3baab98ep-1"
+},
+"statistic": {
+"f": "0x1.2ac594f22047cp+0"
 }
-],
-"tuple": "stardust._results.JarqueBeraResult"
+},
+"obj": "stardust.htest._gof.JarqueBeraResult"
 },
 "leverage": {
 "nd": "float64",

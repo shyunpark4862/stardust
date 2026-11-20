@@ -23,7 +23,7 @@ DATA = ROOT / "tests" / "htest" / "data"
 
 def load(path):
     d = json.loads(path.read_text())
-    meta = d.pop("_meta")
+    meta = d.pop("_provenance")
     return meta, d
 
 
@@ -49,6 +49,8 @@ def rel(v, ref):
         v = v[0]
     if ref != ref:
         return 0.0 if v != v else math.inf
+    if v != v:
+        return math.inf
     if ref == 0:
         return 0.0 if v == 0 else abs(v)
     return abs(v - ref) / abs(ref)
@@ -66,10 +68,16 @@ def test_data_cover_the_collection_with_its_digests():
             assert rec["digest"] == P.digest(P.PROBLEMS[pid]), (fam, pid)
 
 
-def test_versions():
+def test_versions_and_provenance():
     meta = load(DATA / "scipy_h1.json")[0]
     assert meta["scipy"] == "1.18.1" and meta["statsmodels"] == "0.15.0"
+    assert meta["tool"] == "tools/gen_htest_scipy.py"
     assert load(DATA / "r.json")[0]["R"].startswith("R version 4.6.2")
+    for path in sorted(REF.glob("*.json")):
+        prov = load(path)[0]
+        assert prov["arb"].startswith("python-flint ") and prov["target_bits"] == 110, path
+        assert prov["tool"] == "tools/htest_ref.py" and prov["dropped"] == [], path
+        assert prov["n_requested"] == len(load(path)[1]), path
 
 
 def test_reference_fields_are_double_doubles():
@@ -179,6 +187,37 @@ SCIPY_KNOWN = {
     ("fligner/large", "pvalue"): 6.4e-9,
     ("fligner/tail", "statistic"): 2.2e-9,
     ("fligner/tail", "pvalue"): 2.9e-7,
+    # H2's problems: the Cressie-Read statistics cancelling to the first order when O ~ E (the G
+    # test's above, lambda near 0 and -1, and two O ~ E lambdas), the NaN of a zero count (0 inf;
+    # the limit here), scipy's y = 0 replaced by 1 in skewtest, the D'Agostino moments of offset
+    # data, 1 - W formed from a rounded W (shapiro, large n), the logistic fit's fsolve xtol 1e-5
+    # (anderson), the two-sided Kolmogorov-Smirnov tail of Pelz-Good above n = 140 and the
+    # Cramér-von Mises series cut at 1e-7
+    ("power_divergence/zero-freeman-tukey", "statistic"): math.inf,
+    ("power_divergence/zero-freeman-tukey", "pvalue"): math.inf,
+    ("power_divergence/lambda-small", "statistic"): 2.4e-8,
+    ("power_divergence/lambda-small", "pvalue"): 7.8e-9,
+    ("power_divergence/lambda-near-minus-1", "statistic"): 7.0e-12,
+    ("power_divergence/lambda-near-minus-1", "pvalue"): 2.3e-12,
+    ("power_divergence/cr-near-equal", "statistic"): 66,
+    ("power_divergence/cr-near-equal", "pvalue"): math.inf,
+    ("power_divergence/ft-near-equal", "statistic"): 110,
+    ("power_divergence/ft-near-equal", "pvalue"): math.inf,
+    ("skewtest/symmetric", "statistic"): 1.0,
+    ("skewtest/symmetric", "pvalue"): 0.69,
+    ("skewtest/offset", "statistic"): 7.7e-10,
+    ("skewtest/offset", "pvalue"): 1.6e-8,
+    ("kurtosistest/offset", "statistic"): 2.8e-8,
+    ("kurtosistest/offset", "pvalue"): 1.7e-8,
+    ("shapiro/n5000", "pvalue"): 1.8e-12,
+    ("shapiro/n20000", "pvalue"): 1.6e-12,
+    ("anderson/logistic", "statistic"): 2.2e-11,
+    ("anderson/logistic-normal", "statistic"): 7.8e-9,
+    ("anderson/logistic-normal", "pvalue"): 3.9e-8,
+    ("ks_1samp/n141", "pvalue"): 3.5e-6,
+    ("ks_1samp/n400", "pvalue"): 1.7e-7,
+    ("ks_1samp/expon", "pvalue"): 1.9e-6,
+    ("cramervonmises/tail", "pvalue"): 0.016,
 }
 # R's: the same cancellations (and ttest_rel's x - y), its own methods where they differ from scipy's
 # (ks.test is exact only below n = 100 (one sample) or m n = 10^4 (two), its two-sample exact
@@ -234,6 +273,19 @@ R_KNOWN = {
     # car::leveneTest (H33): R's median of an even group rounded to a double, as scipy's
     ("levene/offset", "statistic"): 8.4e-9,
     ("levene/offset", "pvalue"): 4.2e-8,
+    # H2's problems: ks.test's exact tail as 1 - cdf (0 where the truth is 1e-113, 1e-251, 1e-107)
+    # and its asymptotic form above n = 100; shapiro.test's W of offset data and 1 - W
+    ("shapiro/offset", "statistic"): 3.3e-10,
+    ("shapiro/offset", "pvalue"): 2.8e-8,
+    ("shapiro/n5000", "pvalue"): 4.4e-11,
+    ("shapiro/n3-low", "pvalue"): 3.1e-11,
+    ("ks_1samp/n141", "pvalue"): 0.043,
+    ("ks_1samp/n400", "pvalue"): 0.043,
+    ("ks_1samp/deep", "pvalue"): 1.1e97,
+    ("ks_1samp/deep-400", "pvalue"): 4.9e43,
+    ("ks_1samp/greater-deep", "pvalue"): 1.8e10,
+    ("ks_1samp/approx-deep", "pvalue"): 1.1e97,
+    ("ks_1samp/expon", "pvalue"): 0.037,
 }
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
 R_SAME_STATISTIC = {
@@ -246,6 +298,7 @@ R_SAME_STATISTIC = {
     "ks_1samp",
     "ks_2samp",
     "mannwhitneyu",
+    "shapiro",
 }
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
 TOL = 1e-12
@@ -330,10 +383,15 @@ def test_confidence_intervals_against_the_references():
 
 def test_condition_numbers():
     # kappa (the p-value's condition number) is given wherever the p-value is a positive number
-    for fam in ("ttest", "f_oneway", "alexandergovern", "bartlett", "levene", "fligner"):
+    for fam in ("ttest", "f_oneway", "alexandergovern", "bartlett", "levene", "fligner", "power_divergence",
+                "jarque_bera", "dagostino", "shapiro", "anderson", "ks_1samp", "cramervonmises"):  # fmt: skip
         for pid, rec in REFS[fam].items():
             p, k = rec["pvalue"][0], rec["kappa"]
-            assert (k == k and k >= 0) if p == p and p > 0 else k != k, (pid, p, k)
+            # (a p-value below the doubles, 0 here, keeps its Arb value's condition number)
+            assert (k == k and k >= 0) if p == p and p > 0 else (k != k or p == 0), (pid, p, k)
+            if "kappa_stat" in rec:
+                ks = rec["kappa_stat"]
+                assert ks != ks or ks >= 0, (pid, ks)
 
 
 # ---- the tool's H1 definitions against independent forms ----------------------------------

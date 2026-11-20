@@ -29,6 +29,7 @@
 #include "regression/dot2.hpp"
 
 #include "bind/errors.hpp"
+#include "htest/normality.hpp"
 #include "linalg/ops/common.hpp"
 #include "parallel/pool.hpp"
 #include "special/dd.hpp"
@@ -1352,11 +1353,13 @@ nb::object apply(const std::string& func, nb::handle xo, nb::handle bo, bool int
     });
 }
 
-// resid_stats(e (..., n), w (..., n) | None) -> (..., 4): over the rows with w > 0 (every row
-// without w), in order: Durbin-Watson's sum (e_t - e_{t-1})^2 over consecutive such rows and
-// the central sums sum d^p, d = e - mean(e), p = 2, 3, 4 (Jarque-Bera), all in double-double
-// (special/dd.hpp) and rounded once. Chunks of rows fixed by n are added in order: the same
-// bits for any thread count. NaN in e gives NaN.
+// resid_stats(e (..., n), w (..., n) | None) -> (..., 5): over the rows with w > 0 (every row
+// without w), in order: Durbin-Watson's sum (e_t - e_{t-1})^2 over consecutive such rows, the
+// central sums sum d^p, d = e - mean(e), p = 2, 3, 4 (Jarque-Bera) and the mean, all in
+// double-double (special/dd.hpp) and rounded once. The central sums are sd.htest's kernel
+// (htest/normality.hpp, H17): jarque_bera() takes its statistic from them as
+// sd.htest.jarque_bera does. Chunks of rows fixed by n are added in order: the same bits for
+// any thread count. NaN in e gives NaN.
 nb::object resid_stats(nb::handle eo, nb::handle wo) {
     const char* fn = "resid_stats";
     return call_named(fn, [&]() -> nb::object {
@@ -1371,8 +1374,8 @@ nb::object resid_stats(nb::handle eo, nb::handle wo) {
              has_w ? linalg::BatchOperand{w->batch_shape(1), w->batch_strides(1)} : none},
             fn
         );
-        Out so = linalg::alloc_c(with(b.shape(), {4}), DType::Float64);
-        constexpr lint kChunk = 4096;
+        Out so = linalg::alloc_c(with(b.shape(), {5}), DType::Float64);
+        constexpr lint kChunk = htest::kSumChunk;
         const double element_ns = 100.0 + 40.0 * double(n);
         linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
             const lint nch = (n + kChunk - 1) / kChunk;
@@ -1385,57 +1388,32 @@ nb::object resid_stats(nb::handle eo, nb::handle wo) {
                 if (has_w && !(rd(w->data() + off[1] + t * w->stride(-1)) > 0)) continue;
                 x[m++] = rd(e.data() + off[0] + t * e.stride(-1));
             }
-            double* out = so.as<double>() + i * 4;
+            double* out = so.as<double>() + i * 5;
             if (m == 0) {
-                std::fill(out, out + 4, kNaN);
+                std::fill(out, out + 5, kNaN);
                 return 0;
             }
             const lint nc = (m + kChunk - 1) / kChunk;
-            auto chunks = [&](auto&& body) {
-                if (nc >= 2 && m >= (1 << 16)) {
-                    parallel::parallel_for(nc, [&](std::int64_t c) { body(static_cast<lint>(c)); });
-                } else {
-                    for (lint c = 0; c < nc; ++c) body(c);
-                }
-            };
-            auto total = [&](int q) {
-                DD acc{0.0, 0.0};
-                for (lint c = 0; c < nc; ++c) acc = acc + DD{part[c * 8 + 2 * q], part[c * 8 + 2 * q + 1]};
-                return acc;
-            };
-            // the sum (for the mean) and Durbin-Watson's sum
-            chunks([&](lint c) {
+            // Durbin-Watson's sum
+            htest::sum_chunks(m, [&](lint c) {
                 const lint t0 = c * kChunk, t1 = std::min(m, t0 + kChunk);
-                DD s1{0.0, 0.0}, dw{0.0, 0.0};
-                for (lint t = t0; t < t1; ++t) {
-                    s1 = s1 + DD{x[t], 0.0};
-                    if (t > 0) {
-                        double h, l;
-                        two_sum(x[t], -x[t - 1], h, l);
-                        const DD d = dd_of(h, l);
-                        dw = dw + d * d;
-                    }
+                DD dw{0.0, 0.0};
+                for (lint t = std::max<lint>(t0, 1); t < t1; ++t) {
+                    double h, l;
+                    two_sum(x[t], -x[t - 1], h, l);
+                    const DD d = dd_of(h, l);
+                    dw = dw + d * d;
                 }
-                part[c * 8 + 0] = s1.hi, part[c * 8 + 1] = s1.lo, part[c * 8 + 2] = dw.hi, part[c * 8 + 3] = dw.lo;
+                part[c * 8 + 2] = dw.hi, part[c * 8 + 3] = dw.lo;
             });
-            const DD mean = special::dd::operator/(total(0), DD{static_cast<double>(m), 0.0});
-            out[0] = total(1).hi;
-            chunks([&](lint c) {
-                const lint t0 = c * kChunk, t1 = std::min(m, t0 + kChunk);
-                DD a2{0.0, 0.0}, a3{0.0, 0.0}, a4{0.0, 0.0};
-                for (lint t = t0; t < t1; ++t) {
-                    const DD d = DD{x[t], 0.0} - mean;
-                    const DD d2 = d * d;
-                    a2 = a2 + d2;
-                    a3 = a3 + d2 * d;
-                    a4 = a4 + d2 * d2;
-                }
-                part[c * 8 + 0] = a2.hi, part[c * 8 + 1] = a2.lo, part[c * 8 + 2] = a3.hi, part[c * 8 + 3] = a3.lo;
-                part[c * 8 + 4] = a4.hi, part[c * 8 + 5] = a4.lo;
-            });
-            out[1] = total(0).hi;
-            out[2] = total(1).hi;
-            out[3] = total(2).hi;
+            DD dw{0.0, 0.0};
+            for (lint c = 0; c < nc; ++c) dw = dw + DD{part[c * 8 + 2], part[c * 8 + 3]};
+            out[0] = dw.hi;
+            const htest::CentralSums cs = htest::central_sums(x, m, part);
+            out[1] = cs.s2.hi;
+            out[2] = cs.s3.hi;
+            out[3] = cs.s4.hi;
+            out[4] = cs.mean.hi;
             return 0;
         });
         return linalg::to_array(so);

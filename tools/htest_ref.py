@@ -3,12 +3,14 @@ exact rationals (Python's int and fractions; docs/design/htest.md §4, §7).
 
     .venv/bin/python tools/htest_ref.py                  # every family, on 10 processes
     .venv/bin/python tools/htest_ref.py ttest ks_1samp   # only these families
-    .venv/bin/python tools/htest_ref.py --jobs=4 ttest   # 4 processes instead of 10
+    .venv/bin/python tools/htest_ref.py --jobs 4 ttest   # 4 processes instead of 10
     .venv/bin/python tools/htest_ref.py --list           # the families and their problems
 
-writes tests/htest/ref/<family>.json: for each problem of tests/htest/problems.py that the family
-covers, the inputs' digest (problems.digest), the method the reference follows ('exact',
-'asymptotic', ...: scipy's choice for the problem, H12) and each reference field as [hi, lo], a
+writes tests/htest/ref/<family>.json ("_provenance": the Arb, the target, the tool, the problems
+asked for and the ones left out, as every reference file; bench/README.md §2.2): for each problem
+of tests/htest/problems.py that the family covers, the inputs' digest (problems.digest), the
+method the reference follows ('exact', 'asymptotic', ...: scipy's choice for the problem, H12)
+and each reference field as [hi, lo], a
 double-double (hi the value rounded to a double, lo the rest rounded). Integer fields (counts) are
 ints and text fields strings. NaN marks a degenerate input (H11). Confidence intervals
 ("conf_int", alpha = 0.05) are a pair of such values; "kappa" is a plain float, the p-value's
@@ -53,6 +55,7 @@ from pathlib import Path
 
 import numpy as np
 from flint import arb, arb_mat, fmpq
+from flint import ctx as flint_ctx
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -615,10 +618,14 @@ LAMBDA = {
 }
 
 
+# ---- H2: goodness of fit to a given distribution
+
+
 @family("power_divergence", ("chisquare", "power_divergence"))
 def power_divergence(p):
     """The Cressie-Read family: Pearson's chi^2 exact, the others in Arb (O log(O/E) and
-    (O/E)^lambda), the chi^2 (k - 1 - ddof) tail."""
+    (O/E)^lambda), the chi^2 (k - 1 - ddof) tail. A zero count O = 0 contributes its limit: 0 for
+    lambda > -1, +inf for lambda <= -1 (scipy: NaN, 0 inf, for -1 < lambda < 0 and lambda < -1)."""
     obs = fvec(p.args[0])
     k = len(obs)
     exp = fvec(p.args[1]) if len(p.args) > 1 else [sum(obs) / k] * k
@@ -627,7 +634,16 @@ def power_divergence(p):
     df = k - 1 - p.kwargs.get("ddof", 0)
     if lam == 1:
         stat = sum((o - e) ** 2 / e for o, e in zip(obs, exp))
-        return {"statistic": stat, "pvalue": lambda: chi2_sf(stat, df)}
+        if df <= 0:
+            return {"statistic": stat, "pvalue": NAN, "df": Fraction(df), "kappa": NAN}
+        return {
+            "statistic": stat,
+            "pvalue": lambda: chi2_sf(stat, df),
+            "df": Fraction(df),
+            "kappa": kappa(chi2_p_arb, stat, (df,)),
+        }
+    if lam <= -1 and any(o == 0 for o in obs):
+        return {"statistic": math.inf, "pvalue": 0.0, "df": Fraction(df), "kappa": NAN}
 
     def S():
         if lam == 0:
@@ -635,32 +651,414 @@ def power_divergence(p):
         if lam == -1:
             return 2 * sum(A(e) * (A(e) / A(o)).log() for o, e in zip(obs, exp))
         L = A(lam)
-        return 2 / (L * (L + 1)) * sum(A(o) * ((A(o) / A(e)) ** L - 1) for o, e in zip(obs, exp))
+        return 2 / (L * (L + 1)) * sum((A(o) * ((A(o) / A(e)) ** L - 1) if o else arb(0)) for o, e in zip(obs, exp))
 
-    return {"statistic": S, "pvalue": lambda: chi2_sf(S(), df)}
+    return {
+        "statistic": S,
+        "pvalue": lambda: chi2_sf(S(), df),
+        "df": Fraction(df),
+        "kappa": kappa(chi2_p_arb, S, (df,)),
+    }
+
+
+def _moments(x):
+    """The exact mean and the central moments m2, m3, m4 (over n) of rationals."""
+    n = len(x)
+    m = sum(x) / n
+    return n, m, *(sum((v - m) ** k for v in x) / n for k in (2, 3, 4))
 
 
 @family("jarque_bera", ("jarque_bera",))
 def jarque_bera(p):
     """JB = n/6 (S^2 + (K - 3)^2/4) with the biased moments: rational (S^2 = m3^2/m2^3); its p-value
-    is the chi^2 (2) tail, exactly exp(-JB/2) (sd computes it as ChiSquared(df=2).ccdf, H17)."""
-    x = fvec(p.args[0])
-    n = len(x)
-    m = sum(x) / n
-    m2, m3, m4 = (sum((v - m) ** k for v in x) / n for k in (2, 3, 4))
+    is the chi^2 (2) tail, exactly exp(-JB/2) (sd computes it as ChiSquared(df=2).ccdf, H17). A
+    constant sample is NaN (H20)."""
+    n, _, m2, m3, m4 = _moments(fvec(p.args[0]))
+    if m2 == 0:
+        return _nan_fields()
     jb = Fraction(n, 6) * (m3 * m3 / m2**3 + (m4 / (m2 * m2) - 3) ** 2 / 4)
-    return {"statistic": jb, "pvalue": lambda: (-A(jb) / 2).exp()}
+    return {"statistic": jb, "pvalue": lambda: (-A(jb) / 2).exp(), "kappa": float(jb) / 2}
+
+
+def _skew_z(n, b):
+    """D'Agostino's Z of the sample skewness b (an arb): scipy's formula, as asinh."""
+    y = b * (A(Fraction((n + 1) * (n + 3), 6 * (n - 2)))).sqrt()
+    beta2 = A(Fraction(3 * (n * n + 27 * n - 70) * (n + 1) * (n + 3), (n - 2) * (n + 5) * (n + 7) * (n + 9)))
+    W2 = -1 + (2 * (beta2 - 1)).sqrt()
+    delta = 1 / (W2.log() / 2).sqrt()
+    alpha = (2 / (W2 - 1)).sqrt()
+    return delta * (y / alpha).asinh()
+
+
+def _kurt_z(n, b2):
+    """Anscombe and Glynn's Z of the sample kurtosis b2 (an arb): scipy's formula."""
+    E = A(Fraction(3 * (n - 1), n + 1))
+    varb2 = A(Fraction(24 * n * (n - 2) * (n - 3), (n + 1) ** 2 * (n + 3) * (n + 5)))
+    x = (b2 - E) / varb2.sqrt()
+    sb1 = (
+        A(Fraction(6 * (n * n - 5 * n + 2), (n + 7) * (n + 9)))
+        * A(Fraction(6 * (n + 3) * (n + 5), n * (n - 2) * (n - 3))).sqrt()
+    )
+    Aa = 6 + 8 / sb1 * (2 / sb1 + (1 + 4 / (sb1 * sb1)).sqrt())
+    term1 = 1 - 2 / (9 * Aa)
+    denom = 1 + x * (2 / (Aa - 4)).sqrt()
+    if not (denom > 0 or denom < 0):
+        raise NotSettled("denom straddles 0")
+    q = (1 - 2 / Aa) / denom
+    term2 = q.root(3) if q > 0 else -((-q).root(3))
+    return (term1 - term2) / (2 / (9 * Aa)).sqrt()
+
+
+def _cond(f, v):
+    """|v f'(v) / f(v)| by a central difference in Arb at KAPPA_BITS (f of an arb; NaN at f = 0)."""
+    with ar.precision(KAPPA_BITS):
+        v = v() if callable(v) else A(v)
+        fv = f(v)
+        if fv.is_zero() or not fv.is_finite():
+            return NAN
+        h = arb(2) ** -120
+        return float(abs((f(v * (1 + h)) - f(v * (1 - h))) / (2 * h * fv)).mid())
+
+
+@family("dagostino", ("skewtest", "kurtosistest", "normaltest"))
+def dagostino(p):
+    """D'Agostino's skewness test, Anscombe and Glynn's kurtosis test and their omnibus K^2 (scipy's
+    formulas in Arb) of the exact sample skewness and kurtosis; the normal and chi^2 (2) tails.
+    'kappa_stat' is the statistic's condition number in the moment it transforms (the
+    kurtosis test's Z crosses 0 where the kurtosis is E)."""
+    n, _, m2, m3, m4 = _moments(fvec(p.args[0]))
+    alt = p.kwargs.get("alternative", "two-sided")
+    need = 5 if p.func == "kurtosistest" else 8
+    if n < need or m2 == 0:
+        return {**_nan_fields(), "kappa_stat": NAN}
+    b2 = m4 / (m2 * m2)
+
+    def b():
+        return A(m3) / (A(m2) * A(m2).sqrt())
+
+    if p.func == "skewtest":
+        Z = lambda: _skew_z(n, b())  # noqa: E731
+        ks = _cond(lambda v: _skew_z(n, v), b) if m3 != 0 else 1.0
+        return {
+            "statistic": Z,
+            "pvalue": lambda: norm_p(Z(), alt),
+            "kappa": kappa(lambda z: norm_p(z, alt), Z),
+            "kappa_stat": ks,
+        }
+    if p.func == "kurtosistest":
+        Z = lambda: _kurt_z(n, A(b2))  # noqa: E731
+        return {
+            "statistic": Z,
+            "pvalue": lambda: norm_p(Z(), alt),
+            "kappa": kappa(lambda z: norm_p(z, alt), Z),
+            "kappa_stat": _cond(lambda v: _kurt_z(n, v), b2),
+        }
+
+    def K2():
+        return _skew_z(n, b()) ** 2 + _kurt_z(n, A(b2)) ** 2
+
+    with ar.precision(KAPPA_BITS):
+        bb = b()
+        k2 = K2()
+        ks = (_cond(lambda v: _skew_z(n, v) ** 2 + _kurt_z(n, A(b2)) ** 2, bb) if m3 != 0 else 0.0) + _cond(
+            lambda v: _skew_z(n, bb) ** 2 + _kurt_z(n, v) ** 2, b2
+        )
+        del k2
+    return {
+        "statistic": K2,
+        "pvalue": lambda: (-K2() / 2).exp(),
+        "kappa": kappa(chi2_p_arb, K2, (2,)),
+        "kappa_stat": ks,
+    }
+
+
+# Royston's AS R94 constants (scipy's _swilk and R's swilk.c), as the decimals written there
+_SW_C1 = [Fraction(s) for s in ("0.221157", "-0.147981", "-2.071190", "4.434685", "-2.706056")]
+_SW_C2 = [Fraction(s) for s in ("0.042981", "-0.293762", "-1.752461", "5.682633", "-3.582633")]
+_SW_SMALL = (
+    Fraction("-2.273"),
+    Fraction("0.459"),
+    [Fraction(s) for s in ("0.5440", "-0.39978", "0.025054", "-0.0006714")],
+    [Fraction(s) for s in ("1.3822", "-0.77857", "0.062767", "-0.0020322")],
+)
+_SW_LARGE = ([Fraction(s) for s in ("-1.5861", "-0.31082", "-0.083751", "0.0038915")],
+             [Fraction(s) for s in ("-0.4803", "-0.082676", "0.0030302")])  # fmt: skip
+
+
+def _poly(cs, u, first=0):
+    """first + sum c_i u^(i+1) (Royston's corrections) when first is given, else sum c_i u^i."""
+    return sum(A(c) * u ** (i + 1) for i, c in enumerate(cs)) + first
+
+
+def _sw_coefficients(n):
+    """AS R94's a_1..a_n (arbs) at the current precision."""
+    half = n // 2
+    m = [-norm_isf((Fraction(i + 1) - Fraction(3, 8)) / (n + Fraction(1, 4))) for i in range(half)]
+    mtm = 2 * sum(v * v for v in m)
+    u = 1 / arb(n).sqrt()
+    mn = -m[0]
+    an = _poly(_SW_C1, u, mn / mtm.sqrt())
+    a = [arb(0)] * n
+    if n > 5:
+        mnm1 = -m[1]
+        anm1 = _poly(_SW_C2, u, mnm1 / mtm.sqrt())
+        phi = (mtm - 2 * mn * mn - 2 * mnm1 * mnm1) / (1 - 2 * an * an - 2 * anm1 * anm1)
+    else:
+        phi = (mtm - 2 * mn * mn) / (1 - 2 * an * an)
+    for i in range(half):
+        a[i] = m[i] / phi.sqrt()
+        a[n - 1 - i] = -a[i]
+    a[0], a[n - 1] = -an, an
+    if n > 5:
+        a[1], a[n - 2] = -anm1, anm1
+    return a
+
+
+def _sw_p(n, one_m_w):
+    """Royston's p-value of 1 - W (an arb)."""
+    y = one_m_w.log()
+    if n <= 11:
+        g0, g1, cm, cs = _SW_SMALL
+        gamma = A(g0 + g1 * n)
+        mu = A(sum(c * Fraction(n) ** i for i, c in enumerate(cm)))
+        sigma = A(sum(c * Fraction(n) ** i for i, c in enumerate(cs))).exp()
+        if not (gamma - y > 0):
+            if gamma - y < 0 or (gamma - y).is_zero():
+                return arb(0)
+            raise NotSettled("gamma - log(1 - W) straddles 0")
+        gw = -(gamma - y).log()
+    else:
+        cm, cs = _SW_LARGE
+        ln = arb(n).log()
+        mu = sum(A(c) * ln**i for i, c in enumerate(cm))
+        sigma = sum(A(c) * ln**i for i, c in enumerate(cs)).exp()
+        gw = y
+    return norm_sf((gw - mu) / sigma)
+
+
+@family("shapiro", ("shapiro",), seconds=900)
+def shapiro(p):
+    """The Shapiro-Wilk W of AS R94 (the coefficients from the exact normal quantiles of
+    (i - 3/8)/(n + 1/4) and Royston's decimal constants) and Royston's p-value, in Arb; 'kappa' is
+    the p-value's condition number in 1 - W (the quantity sd forms directly)."""
+    x = sorted(fvec(p.args[0]))
+    n = len(x)
+    _, m, m2, _, _ = _moments(x)
+    if n < 3 or m2 == 0:
+        return _nan_fields()
+    sst = m2 * n
+
+    def parts():
+        if n == 3:
+            c = A(Fraction(1, 2)).sqrt()
+            S = c * (A(x[2]) - A(x[0]))
+        else:
+            a = _sw_coefficients(n)
+            S = sum(ai * A(xi) for ai, xi in zip(a, x))
+        return S * S / A(sst)
+
+    def W():
+        w = parts()
+        return amax([w, A(Fraction(3, 4))]) if n == 3 else w
+
+    def pv():
+        w = W()
+        if n == 3:
+            q = 6 / arb.pi() * (w.sqrt().asin() - arb.pi() / 3)
+            return q
+        return _sw_p(n, 1 - w)
+
+    if n == 3:
+        return {
+            "statistic": W,
+            "pvalue": pv,
+            "kappa": _cond(lambda v: 6 / arb.pi() * (v.sqrt().asin() - arb.pi() / 3), W),
+        }
+    return {"statistic": W, "pvalue": pv, "kappa": _cond(lambda v: _sw_p(n, v), lambda: 1 - parts())}
+
+
+# Stephens' critical values (scipy's _Avals_*) and their levels, by family
+_AD = {
+    "norm": ((0.561, 0.631, 0.752, 0.873, 1.035), (15, 10, 5, 2.5, 1), lambda N: 1.0 + 0.75 / N + 2.25 / N / N),
+    "expon": ((0.916, 1.062, 1.321, 1.591, 1.959), (15, 10, 5, 2.5, 1), lambda N: 1.0 + 0.6 / N),
+    "logistic": ((0.426, 0.563, 0.660, 0.769, 0.906, 1.010), (25, 10, 5, 2.5, 1, 0.5), lambda N: 1.0 + 0.25 / N),
+    "gumbel_r": ((0.474, 0.637, 0.757, 0.877, 1.038), (25, 10, 5, 2.5, 1), lambda N: 1.0 + 0.2 / math.sqrt(N)),
+}
+
+
+def _ad_table(dist, N):
+    """scipy's critical values (np.around(Avals / den, 3) in doubles) and levels (sig / 100)."""
+    av, sig, den = _AD[dist]
+    d = den(N)
+    crit = [round((a / d) * 1000.0) / 1000.0 for a in av]
+    return [Fraction(c) for c in crit], [Fraction(s / 100) for s in sig]
+
+
+def _ad_interp(a2, xp, fp):
+    """np.interp at a ball a2: the segment of its midpoint, the ball's radius times the largest
+    slope added (the interpolant is continuous)."""
+    mid = a2.mid()
+    if float(mid) <= xp[0]:
+        v = A(fp[0])
+    elif float(mid) >= xp[-1]:
+        v = A(fp[-1])
+    else:
+        j = max(i for i in range(len(xp) - 1) if xp[i] <= float(mid))
+        v = A(fp[j]) + A((fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j])) * (arb(mid) - A(xp[j]))
+    smax = max(abs((fp[i + 1] - fp[i]) / (xp[i + 1] - xp[i])) for i in range(len(xp) - 1))
+    return ar.add_error(v, arb(a2.rad()) * A(smax))
+
+
+def _logistic_mle(x):
+    """The logistic's maximum likelihood (location, scale) of rationals, by Newton's steps on
+    (alpha, beta), w = beta x - alpha, at the current precision; the last step's size is added to
+    the balls."""
+    xs = np.asarray([float(v) for v in x])
+    al, be = (
+        float(np.mean(xs)) * (math.pi / math.sqrt(3) / np.std(xs, ddof=1)),
+        math.pi / math.sqrt(3) / np.std(xs, ddof=1),
+    )
+    al, be = arb(al), arb(be)
+    X = [A(v) for v in x]
+    N = len(X)
+    step = arb(1)
+    for _ in range(200):
+        g1 = g2 = h11 = h12 = h22 = arb(0)
+        for v in X:
+            th = ((be * v - al) / 2).tanh()
+            h = -(1 - th * th) / 2
+            g1 += th
+            g2 -= v * th
+            h11 += h
+            h12 -= h * v
+            h22 += h * v * v
+        g2 += N / be
+        h22 -= N / (be * be)
+        det = h11 * h22 - h12 * h12
+        da = -(h22 * g1 - h12 * g2) / det
+        db = -(-h12 * g1 + h11 * g2) / det
+        al, be = (al + da).mid(), (be + db).mid()
+        al, be = arb(al), arb(be)
+        step = abs(da) + abs(db)
+        if step.mid() < arb(2) ** (-flint_ctx.prec + 8) * (1 + abs(be.mid())):
+            break
+    r = arb(abs(step.mid())) * 16 + arb(2) ** (-flint_ctx.prec + 8)
+    return ar.add_error(al, r), ar.add_error(be, r)
+
+
+def _gumbel_mle(x):
+    """The Gumbel's (maximum's) maximum likelihood (loc, scale) of rationals: Newton on the scale's
+    equation mean(x) - sum x e^(-x/b) / sum e^(-x/b) - b = 0 at the current precision."""
+    xs = np.asarray([float(v) for v in x])
+    X = [A(v) for v in x]
+    N = len(X)
+    mean = sum(X) / N
+    xmin = A(min(x))
+
+    def f(b):
+        w = [(-(v - xmin) / b).exp() for v in X]
+        s0 = sum(w)
+        m1 = sum(v * e for v, e in zip(X, w)) / s0
+        m2 = sum(v * v * e for v, e in zip(X, w)) / s0
+        return mean - m1 - b, -(m2 - m1 * m1) / (b * b) - 1, s0
+
+    b = arb(float(np.std(xs, ddof=1)) * math.sqrt(6) / math.pi)
+    step = arb(1)
+    for _ in range(200):
+        v, d, _ = f(b)
+        step = v / d
+        b = arb((b - step).mid())
+        if abs(step.mid()) < arb(2) ** (-flint_ctx.prec + 8) * abs(b.mid()):
+            break
+    b = ar.add_error(b, arb(abs(step.mid())) * 16 + arb(2) ** (-flint_ctx.prec + 8) * abs(b))
+    _, _, s0 = f(b)
+    loc = -b * (-xmin / b + s0.log() - arb(N).log())
+    return loc, b
+
+
+def _ad_terms(dist, x):
+    """The (log F(w_i), log(1 - F(w_i))) of the sorted rationals x under the fitted family."""
+    N = len(x)
+    _, m, m2, _, _ = _moments(x)
+    if dist == "norm":
+        s = A(m2 * N / (N - 1)).sqrt()
+        ws = [(A(v) - A(m)) / s for v in x]
+        lc = [(-w / arb(2).sqrt()).erfc().log() - arb(2).log() for w in ws]
+        ls = [(w / arb(2).sqrt()).erfc().log() - arb(2).log() for w in ws]
+    elif dist == "expon":
+        ws = [A(v / m) for v in x]
+        lc = [(1 - (-w).exp()).log() for w in ws]
+        ls = [-w for w in ws]
+    elif dist == "logistic":
+        al, be = _logistic_mle(x)
+        ws = [be * A(v) - al for v in x]
+        lc = [-(1 + (-w).exp()).log() for w in ws]
+        ls = [-(1 + w.exp()).log() for w in ws]
+    else:
+        loc, sc = _gumbel_mle(x)
+        ws = [(A(v) - loc) / sc for v in x]
+        lc = [-(-w).exp() for w in ws]
+        ls = [(1 - (-(-w).exp()).exp()).log() for w in ws]
+    return lc, ls
+
+
+@family("anderson", ("anderson",), seconds=900)
+def anderson(p):
+    """A^2 = -N - sum (2i - 1)/N (log F(w_(i)) + log(1 - F(w_(N+1-i)))) under the fitted family
+    (the normal's mean and standard deviation, the exponential's mean, the logistic's and the
+    Gumbel's maximum likelihood estimates solved in Arb), and scipy's interpolated p-value from
+    its tables computed in doubles as numpy does. 'kappa_stat' is the condition number of the sum
+    (A^2 is a sum of N terms of size ~1 cancelling to ~1), 'kappa' the interpolation's."""
+    x = sorted(fvec(p.args[0]))
+    dist = p.kwargs.get("dist", "norm")
+    N = len(x)
+    _, _, m2, _, _ = _moments(x)
+    if N < 2 or m2 == 0:
+        return {**_nan_fields(), "kappa_stat": NAN}
+    xp, fp = _ad_table(dist, float(N))
+
+    def A2():
+        lc, ls = _ad_terms(dist, x)
+        return -N - sum(A(Fraction(2 * i + 1, N)) * (lc[i] + ls[N - 1 - i]) for i in range(N))
+
+    with ar.precision(200):
+        lc, ls = _ad_terms(dist, x)
+        tot = sum(abs(float((A(Fraction(2 * i + 1, N)) * (lc[i] + ls[N - 1 - i])).mid())) for i in range(N))
+        a2 = float((-N - sum(A(Fraction(2 * i + 1, N)) * (lc[i] + ls[N - 1 - i]) for i in range(N))).mid())
+        pf = float(_ad_interp(arb(a2), xp, fp).mid())
+    ks = (N + tot) / abs(a2)
+    slope = 0.0
+    for j in range(len(xp) - 1):
+        if xp[j] <= a2 < xp[j + 1]:
+            slope = float((fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j]))
+    return {
+        "statistic": A2,
+        "pvalue": lambda: _ad_interp(A2(), xp, fp),
+        "kappa": abs(a2 * slope / pf),
+        "kappa_stat": ks,
+    }
+
+
+def _cdf(name):
+    """The cdf of scipy's named standard distribution, of a rational, as a ball."""
+    if name == "norm":
+        return lambda v: (-A(v) / arb(2).sqrt()).erfc() / 2
+    if name == "uniform":
+        return lambda v: arb(0) if v <= 0 else arb(1) if v >= 1 else A(v)
+    if name == "expon":
+        return lambda v: arb(0) if v <= 0 else 1 - (-A(v)).exp()
+    raise KeyError(name)
 
 
 def _phi(x):
     return (-A(fr(x)) / arb(2).sqrt()).erfc() / 2
 
 
-def _ks_d(x):
-    """D+ and D- of the sorted sample against the standard normal, as balls."""
-    xs = sorted(float(v) for v in np.ravel(x))
+def _ks_d(x, name="norm"):
+    """D+ and D- of the sorted sample against the named distribution, as balls."""
+    xs = sorted(fr(v) for v in np.ravel(x))
     n = len(xs)
-    F = [_phi(v) for v in xs]
+    F = [_cdf(name)(v) for v in xs]
     dplus = amax([A(Fraction(i + 1, n)) - f for i, f in enumerate(F)])
     dminus = amax([f - A(Fraction(i, n)) for i, f in enumerate(F)])
     return n, dplus, dminus
@@ -725,31 +1123,132 @@ def kolmogorov_sf(lam):
         k += 1
 
 
-@family("ks_1samp", ("ks_1samp",), seconds=600)
+@family("ks_1samp", ("ks_1samp",), seconds=900)
 def ks_1samp(p):
-    """One-sample Kolmogorov-Smirnov against the standard normal (Arb erfc): the exact two-sided
-    distribution (scipy's kstwo; 'auto' and 'exact'), twice the one-sided one ('approx'),
-    Kolmogorov's limit ('asymp'); the one-sided tests by Smirnov's exact distribution (scipy's
-    ksone, whatever the method)."""
+    """One-sample Kolmogorov-Smirnov against the named distribution (Arb erfc for the normal): the
+    exact two-sided distribution (scipy's kstwo; 'auto' and 'exact'), twice the one-sided one
+    ('approx'), Kolmogorov's limit ('asymp'); the one-sided tests by Smirnov's exact distribution
+    (scipy's ksone, whatever the method). 'kappa' is the p-value's condition number in D."""
     alt = p.kwargs.get("alternative", "two-sided")
     method = p.kwargs.get("method", "auto")
 
     def stat():
-        n, dp, dm = _ks_d(p.args[0])
+        n, dp, dm = _ks_d(p.args[0], p.args[1])
         return n, (dp if alt == "greater" else dm if alt == "less" else amax([dp, dm]))
 
-    def pv():
-        n, d = stat()
+    n = int(np.size(p.args[0]))
+
+    def pfun(d):
         if alt != "two-sided":
             return smirnov_sf(n, d)
         if method in ("auto", "exact"):
+            if d > arb(0.5):  # (both tails cannot be crossed)
+                return 2 * smirnov_sf(n, d)
             return 1 - kolmogorov_cdf_exact(n, d)
         if method == "asymp":
             return kolmogorov_sf(arb(n).sqrt() * d)
         return 2 * smirnov_sf(n, d)
 
     used = method if alt == "two-sided" else "exact"
-    return {"statistic": lambda: stat()[1], "pvalue": pv, "method": "exact" if used == "auto" else used}
+    return {
+        "statistic": lambda: stat()[1],
+        "pvalue": lambda: pfun(stat()[1]),
+        "method": "exact" if used == "auto" else used,
+        "kappa": kappa(pfun, lambda: stat()[1]),
+    }
+
+
+def _series(term, tail_bits=20):
+    """sum_{k >= 0} term(k) until a term is below 2^-(prec + tail_bits) of the sum; that term's
+    size is added to the ball (the terms fall faster than geometrically there)."""
+    tot = arb(0)
+    for k in range(100000):
+        t = term(k)
+        tot += t
+        if k > 0 and abs(t) < arb(2) ** (-flint_ctx.prec - tail_bits) * abs(tot):
+            return ar.add_error(tot, abs(t))
+    raise NotSettled("series")
+
+
+def cvm_cdf_inf(x):
+    """Csörgő and Faraway's V(x) (eq. 1.2, 1.3), x an arb."""
+    pi = arb.pi()
+
+    def term(k):
+        y = arb(4 * k + 1)
+        q = y * y / (16 * x)
+        u = (A(k + Fraction(1, 2)).lgamma() - arb(k + 1).lgamma()).exp() / (pi * pi.sqrt() * x.sqrt())
+        return u * y.sqrt() * (-q).exp() * q.bessel_k(A(Fraction(1, 4)))
+
+    return _series(term)
+
+
+def cvm_psi1_mod(x):
+    """Their psi1(x) without V(x)/12 (eq. 1.10; scipy's _psi1_mod), x an arb."""
+    pi = arb.pi()
+    sx = 2 * x.sqrt()
+    y1, y2 = x ** A(Fraction(3, 4)), x ** A(Fraction(5, 4))
+    k14, k34, k54 = A(Fraction(1, 4)), A(Fraction(3, 4)), A(Fraction(5, 4))
+
+    def ed2(y):
+        z = y * y / 4
+        return (-z).exp() * (y / 2) ** A(Fraction(3, 2)) * (z.bessel_k(k14) + z.bessel_k(k34)) / pi.sqrt()
+
+    def ed3(y):
+        z = y * y / 4
+        return (
+            (-z).exp()
+            * (y / 2) ** A(Fraction(5, 2))
+            * (2 * z.bessel_k(k14) + 3 * z.bessel_k(k34) - z.bessel_k(k54))
+            / pi.sqrt()
+        )
+
+    def term(k):
+        m = 2 * k + 1
+        g1 = (A(k + Fraction(1, 2)).lgamma() - arb(k + 1).lgamma()).exp()
+        g3 = g1 * A(k + Fraction(1, 2))
+        e1 = m * g1 * ed2((4 * k + 3) / sx) / (9 * y1)
+        e2 = g1 * ed3((4 * k + 1) / sx) / (72 * y2)
+        e3 = 2 * (m + 2) * g3 * ed3((4 * k + 5) / sx) / (12 * y2)
+        e4 = 7 * m * g1 * ed2((4 * k + 1) / sx) / (144 * y1)
+        e5 = 7 * m * g1 * ed2((4 * k + 5) / sx) / (144 * y1)
+        return -(e1 + e2 + e3 + e4 + e5) / pi
+
+    return _series(term)
+
+
+def cvm_sf(x, n):
+    """max(0, 1 - F_n(x)) by Csörgő and Faraway's form (1 below 1/(12n), 0 from n/3)."""
+    lo, hi = A(Fraction(1, 12 * n)), A(Fraction(n, 3))
+    if x < lo or (x - lo).is_zero():
+        return arb(1)
+    if x > hi or (x - hi).is_zero():
+        return arb(0)
+    if not (x > lo and x < hi):
+        raise NotSettled("on the support's end")
+    v = 1 - (cvm_cdf_inf(x) * A(1 + Fraction(1, 12 * n)) + cvm_psi1_mod(x) / n)
+    if v < 0:
+        return arb(0)
+    if v > 0:
+        return v
+    raise NotSettled("1 - F_n straddles 0")
+
+
+@family("cramervonmises", ("cramervonmises",), seconds=900)
+def cramervonmises(p):
+    """W^2 = 1/(12n) + sum ((2i - 1)/(2n) - F(x_(i)))^2 against the named distribution (Arb), and
+    max(0, 1 - F_n(W^2)) by Csörgő and Faraway's finite-sample form with its Bessel series in Arb
+    (scipy's formula, its series not cut at 1e-7). n < 2 is NaN."""
+    xs = sorted(fr(v) for v in np.ravel(p.args[0]))
+    n = len(xs)
+    if n < 2:
+        return _nan_fields()
+    F = _cdf(p.args[1])
+
+    def W():
+        return A(Fraction(1, 12 * n)) + sum((A(Fraction(2 * i + 1, 2 * n)) - F(v)) ** 2 for i, v in enumerate(xs))
+
+    return {"statistic": W, "pvalue": lambda: cvm_sf(W(), n), "kappa": kappa(lambda w: cvm_sf(w, n), W)}
 
 
 def mwu_counts(m, n):
@@ -1316,7 +1815,7 @@ def _point(task):
         fields = fam.compute(p)
         rec = {"digest": P.digest(p)}
         for k, v in fields.items():
-            rec[k] = v if k == "kappa" else _encode(v)  # (a plain float: a tolerance factor)
+            rec[k] = v if k.startswith("kappa") else _encode(v)  # (a plain float: a tolerance factor)
         return name, pid, rec, time.monotonic() - t0, None
     except Exception as e:  # a point that cannot be settled (time limit, a ball on a boundary)
         return name, pid, None, time.monotonic() - t0, f"{type(e).__name__}: {e}"
@@ -1326,50 +1825,58 @@ def _point(task):
 
 
 def build(names, jobs):
-    import flint
-
     tasks = [(n, p.id) for n in names for p in FAMILIES[n].problems()]
     res = {n: {} for n in names}
-    dropped = []
+    dropped = {n: [] for n in names}
     start = time.monotonic()
     # forked workers replaced every 50 problems: a long run's memory stays flat
     with multiprocessing.get_context("fork").Pool(jobs, maxtasksperchild=50) as pool:
         for name, pid, rec, secs, err in pool.imap_unordered(_point, tasks):
             if rec is None:
-                dropped.append((pid, err))
+                dropped[name].append(pid)
+                print(f"  left out {pid}: {err}", flush=True)
             else:
                 res[name][pid] = rec
             if secs > 20:
                 print(f"  {pid}: {secs:.0f} s", flush=True)
-    meta = {"tool": "tools/htest_ref.py", "python-flint": flint.__version__, "target_bits": ar.TARGET_BITS}
     OUT.mkdir(parents=True, exist_ok=True)
     for name in names:
         order = [p.id for p in FAMILIES[name].problems() if p.id in res[name]]
-        lines = [f"{json.dumps('_meta')}: {json.dumps(meta)}"]
+        prov = {
+            **ar.provenance(ar.TARGET_BITS, "exact rationals"),
+            "tool": "tools/htest_ref.py",
+            "n_requested": len(order) + len(dropped[name]),
+            "dropped": sorted(dropped[name]),
+        }
+        lines = [f"{json.dumps('_provenance')}: {json.dumps(prov)}"]
         lines += [f"{json.dumps(pid)}: {json.dumps(res[name][pid])}" for pid in order]
         (OUT / f"{name}.json").write_text("{\n" + ",\n".join(lines) + "\n}\n")
         print(f"{name}: {len(order)} problems", flush=True)
-    for pid, err in dropped:
-        print(f"  left out {pid}: {err}", flush=True)
-    print(f"{len(tasks)} problems, {len(dropped)} left out, {(time.monotonic() - start):.0f} s", flush=True)
+    left = sum(len(v) for v in dropped.values())
+    print(f"{len(tasks)} problems, {left} left out, {(time.monotonic() - start):.0f} s", flush=True)
 
 
-def main(argv):
-    jobs = JOBS
-    names = []
-    for a in argv:
-        if a.startswith("--jobs="):
-            jobs = min(JOBS, int(a.split("=", 1)[1]))
-        elif a == "--list":
-            for n, f in FAMILIES.items():
-                print(f"{n}: {', '.join(p.id for p in f.problems())}")
-            return
-        else:
-            if a not in FAMILIES:
-                raise SystemExit(f"unknown family {a!r} (known: {', '.join(FAMILIES)})")
-            names.append(a)
-    build(names or list(FAMILIES), jobs)
+def main(argv=None):
+    import argparse
+
+    from bench import cli
+
+    ap = argparse.ArgumentParser(prog="tools/htest_ref.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument("names", nargs="*", metavar="FAMILY", help=", ".join(FAMILIES))
+    ap.add_argument("--list", action="store_true", help="list the families and their problems")
+    cli.add_jobs(ap, default=JOBS)
+    a = ap.parse_args(argv)
+    if a.list:
+        for n, f in FAMILIES.items():
+            print(f"{n}: {', '.join(p.id for p in f.problems())}")
+        return 0
+    bad = [n for n in a.names if n not in FAMILIES]
+    if bad:
+        ap.error(f"unknown family {bad[0]!r} (known: {', '.join(FAMILIES)})")
+    with ar.logged("htest_ref"):
+        build(a.names or list(FAMILIES), a.jobs)
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main())

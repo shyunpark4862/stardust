@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 10, "dropped": []},
 "f_oneway/small": {"digest": "4c2beee354b3871e6cc8c6aa4d0d9ddca8c71a2f9b5708a7f6e9ad0c3f979a0b", "statistic": [4.762540813451238, 1.3505274526274447e-16], "pvalue": [0.018117437558064768, -1.1273835195960745e-18], "df_num": [2.0, 0.0], "df_denom": [24.0, 0.0], "kappa": 3.4094168895656907},
 "f_oneway/welch": {"digest": "ee6fa5966ab6c885bd898514850aaab30d2dc4ddd587a5d8de9a720c0852bedd", "statistic": [7.38151296323787, -4.0696488907270586e-16], "pvalue": [0.007275115939637782, 3.797192109203503e-19], "df_num": [2.0, 0.0], "df_denom": [12.924355856082784, 7.963031378141731e-16], "kappa": 4.9232955293315985},
 "f_oneway/large": {"digest": "d3fc25e6fb357af4e22a8cc5bcf5d0eea3b098356cb3778e1bc071831d0316c9", "statistic": [3.1601638940528956, -1.342356373579269e-16], "pvalue": [0.04259557530556263, 1.5290332989726757e-18], "df_num": [2.0, 0.0], "df_denom": [2397.0, 0.0], "kappa": 3.151853195123746},

@@ -1,6 +1,6 @@
 # 회귀 영역 설계 (sd.regression)
 
-> 상태: **G1–G6 구현·승인** (2026-11-19): 선형 모형, GLM, 정규화, 강건·분위 회귀, 비선형 최소제곱의 수치 핵심(§2, §3.1–§3.7). 큰 결정은 사용자가 정했다(§1.1). 그 뒤의 사이트 작업과 코드 리뷰에서 찾은 문제와 그 사용자 결정 G83–G125(2026-11-19–20)를 반영했다. G7(변수 선택, 모형 비교와 일반 검정, 진단 추가)은 큰 결정 G126–G130과 htest와의 공통 규칙 G131–G136(2026-11-20)으로 시작했고, **G7a(비교·검정·진단)는 G137–G164로 구현, 승인 대기**(2026-11-20)다. G7b(변수 선택)는 설계 초안(§3.8)만 있고 시작 전이다. 마일스톤마다 시작 전에 물은 것과 물을 것은 §8에 있다.
+> 상태: **G1–G6 구현·승인** (2026-11-19): 선형 모형, GLM, 정규화, 강건·분위 회귀, 비선형 최소제곱의 수치 핵심(§2, §3.1–§3.7). 큰 결정은 사용자가 정했다(§1.1). 그 뒤의 사이트 작업과 코드 리뷰에서 찾은 문제와 그 사용자 결정 G83–G125(2026-11-19–20)를 반영했다. G7(변수 선택, 모형 비교와 일반 검정, 진단 추가)은 큰 결정 G126–G130과 htest와의 공통 규칙 G131–G136(2026-11-20)으로 시작했고, **G7a(비교·검정·진단)는 G137–G164로 구현, 승인 대기**(2026-11-20)다. Jarque–Bera의 결과는 htest의 클래스다(G165). G7b(변수 선택)는 설계 초안(§3.8)만 있고 시작 전이다. 마일스톤마다 시작 전에 물은 것과 물을 것은 §8에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -175,6 +175,7 @@
 | G162 GLM 결과의 X와 y (G7a) | `GLMResult`는 비교 검정·Type I 분산분석·영향력을 위해 적합할 때의 X(적합의 단위)·y·가중치 묶음의 사본을 들고 있다(G86; 메모리는 n·k만큼 더) (사용자 결정 2026-11-20) |
 | G163 검정 결과의 바탕 클래스 (G7a, 전체) | G7a의 새 검정 결과 클래스는 htest의 결과 바탕 `stardust.htest._result._TestResult`를 상속한다(같은 규칙: 읽기 전용 필드, 없는 필드의 `AttributeError`, 풀기, `conf_int`). htest는 그 바탕 클래스의 API(`_FIELDS`, `_UNPACK`, `_CI`, `_make`, 생성자)를 안정되게 유지한다(docs/design/htest.md §1.4) (사용자 결정 2026-11-20) |
 | G164 GLM의 우도비 Type III (G7a) | R `drop1`(glm)과 같은 우도비의 Type III는 지금 두지 않고 나중 후보에 적는다(§3.8; 지금의 GLM Type III는 Wald, car `test.statistic = "Wald"`) (사용자 결정 2026-11-20) |
+| G165 Jarque–Bera의 결과는 htest의 클래스 (전체) | `r.jarque_bera()`가 돌려주는 `sd.regression.JarqueBeraResult`는 htest의 결과 클래스다(htest H18·H39; 한 검정에 한 형). 값은 그대로다(htest의 커널, H38: 골든 804케이스가 옮기기 전과 같은 비트). 사용자에게 보이는 변화: namedtuple이 아니라 튜플 비교(`r.jarque_bera() == (jb, p)`와 두 결과끼리의 `==`), 해시, 순서 비교와 `+`·`*`, `count`·`index`, `_asdict`·`_replace`·`_fields`·`_make`, `isinstance(r, tuple)`가 없다. 필드(`statistic`, `pvalue`)는 읽기 전용이고, `(statistic, pvalue)` 풀기, 인덱스, `len`, 조각은 그대로다. `repr`는 htest의 꼴(6자리)이고 배치는 `JarqueBeraResult(batch shape (…))`다. 골든은 그 저장 꼴만 다시 기록했다(81케이스, 값은 같다) (사용자 결정 2026-11-20) |
 | G16 NaN (G1) | `nan_policy`의 기본은 'propagate'(결과 값이 모두 NaN). 'omit'은 NaN이 있는 행을 빼고, 'raise'는 `ValueError` |
 | G17 진단 (G1) | 지렛대(hat), 스튜던트화 잔차, Cook 거리와 Durbin–Watson, Jarque–Bera, Breusch–Pagan. `summary()`에는 Durbin–Watson과 Jarque–Bera를 넣는다(statsmodels와 같다) |
 | G18 linregress (G1) | scipy와 같은 꼴: `linregress(x, y)`(인자 순서도 scipy), 결과는 `slope intercept rvalue pvalue stderr intercept_stderr` namedtuple |
@@ -682,11 +683,11 @@ G7a는 G126–G164로 정했고 구현했다(2026-11-20). 변수 선택(G7b)은 
 - **htest와의 관계** (docs/design/htest.md §1.4, docs/api/htest.md §13):
   - 경계는 htest의 것과 같다: 표본·표를 받는 검정은 `sd.htest`, 적합한 모형을 받는 검정과 진단(위의 것 모두)은 `sd.regression`이다. 정규성·이분산 검정 가운데 regression은 Jarque–Bera(잔차)와 설계가 필요한 Breusch–Pagan·White·Goldfeld–Quandt만 둔다. 잔차의 다른 정규성 검정(Shapiro–Wilk, Anderson–Darling, D'Agostino)은 잔차를 htest에 넘긴다. htest의 분산 동질성 검정(Bartlett, Levene, Fligner)은 집단을 받는 다른 검정이라 겹치지 않는다.
   - 공유 커널의 자리(G132): 두 영역이 같은 값을 계산하는 커널은 htest에 둔다(htest H17).
-  - Jarque–Bera(G132, G135): regression의 `jarque_bera()`는 htest의 H2 마일스톤에서 htest의 Jarque–Bera 커널을 부르게 된다. 그 커널은 지금 regression의 `resid_stats`(평균을 뺀 2·3·4차 합, double-double)와 같은 비트를 내고, p값은 두 쪽 모두 `ChiSquared(df=2).ccdf`다(htest 초안의 e^(−JB/2)는 jb = 1.3에서 1 ulp 달라서 쓰지 않는다). 골든이 바뀌는 것은 분산 0의 판정뿐이다: 지금 regression은 정확한 0/0만 NaN이고, 옮긴 뒤에는 sd.stats `skew`의 규칙(m2 ≤ (ε·평균)²이면 NaN; G135)이다. 완전 적합(G95, G117)에서 regression은 잔차를 0으로 보아 NaN이므로 `htest.jarque_bera(r.wresid)`(반올림 크기의 잔차로 계산한 값)와 다를 수 있다. WLS·GLS의 백색화한 잔차는 `wresid`(G158)로 htest에 넘긴다.
+  - Jarque–Bera(G132, G135, G165): regression의 `jarque_bera()`는 htest의 H2에서부터 htest의 Jarque–Bera 커널(`csrc/htest/normality.hpp`)을 부르고 htest의 결과 클래스를 돌려준다(G165). 아래는 옮기기 전의 설명이다: 그 커널은 지금 regression의 `resid_stats`(평균을 뺀 2·3·4차 합, double-double)와 같은 비트를 내고, p값은 두 쪽 모두 `ChiSquared(df=2).ccdf`다(htest 초안의 e^(−JB/2)는 jb = 1.3에서 1 ulp 달라서 쓰지 않는다). 골든이 바뀌는 것은 분산 0의 판정뿐이다: 지금 regression은 정확한 0/0만 NaN이고, 옮긴 뒤에는 sd.stats `skew`의 규칙(m2 ≤ (ε·평균)²이면 NaN; G135)이다. 완전 적합(G95, G117)에서 regression은 잔차를 0으로 보아 NaN이므로 `htest.jarque_bera(r.wresid)`(반올림 크기의 잔차로 계산한 값)와 다를 수 있다. WLS·GLS의 백색화한 잔차는 `wresid`(G158)로 htest에 넘긴다.
   - 일원 분산분석: 집단 더미의 OLS로 만든 `anova` 표(항 하나)와 `htest.f_oneway`는 같은 F·p다. 주인은 htest(`f_oneway`)다. regression의 표는 설계 행렬만 받아 집단 레이블이 없으므로 적합의 QR에서 계산한다: 같은 커널을 쓸 수 없어 통계량은 두 쪽의 정확도 계약 안에서 같고 비트는 같지 않다(G159; htest 문서의 "같은 비트"는 그렇게 고칠 곳이다). p값은 같은 `F(df1, df2).ccdf` 호출이다. 두 집단의 `ttest_ind`과 더미 계수의 t, `pearsonr`과 `linregress`는 htest 초안 그대로다.
   - p값의 꼬리는 두 영역 모두 sd.stats 분포의 `ccdf`를 같은 인자로 부른다.
   - 결과의 꼴:
-    - 같은 검정은 같은 형이다(G133, htest H18): `sd.regression.JarqueBeraResult`는 htest의 결과 클래스를 가리킨다. G7a의 새 검정 결과(White, Goldfeld–Quandt, RESET, `t_test`·`wald_test`, `compare_*`, `anova`)는 htest의 결과 바탕 위의 읽기 전용 결과 클래스이고 다른 regression 결과처럼 공개다(G98, G120, G155).
+    - 같은 검정은 같은 형이다(G133, G165, htest H18·H39): `sd.regression.JarqueBeraResult`는 htest의 결과 클래스다. G7a의 새 검정 결과(White, Goldfeld–Quandt, RESET, `t_test`·`wald_test`, `compare_*`, `anova`)는 htest의 결과 바탕 위의 읽기 전용 결과 클래스이고 다른 regression 결과처럼 공개다(G98, G120, G155).
     - 풀기(htest H7과 같은 규칙): statsmodels가 튜플을 돌려주는 곳만 같은 개수와 순서로 풀린다: `het_white` 넷(lm, lm_pvalue, fvalue, f_pvalue), `het_goldfeldquandt` 셋(fvalue, pvalue, 그리고 ordering 자리에 `alternative`; statsmodels 0.15.0은 `result_object=True`면 namedtuple `fval pval ordering`), `compare_f_test` 셋(fvalue, pvalue, df_num = statsmodels의 df_diff), `compare_lr_test` 셋(statistic, pvalue, df; statsmodels 0.15.0의 namedtuple `statistic pvalue df_diff`). `linear_reset`·`t_test`·`wald_test`·`f_test`(`ContrastResults`)와 분산분석표(`DataFrame`)는 풀리지 않는다.
     - 구간(G131): 구간이 있는 새 결과(`t_test`)는 `conf_int(*, alpha=0.05)`다. htest도 같은 꼴이다(htest H16).
     - 자유도(G134): F 꼴은 `df_num`·`df_denom`, χ²와 t는 `df`다. 지금 regression의 `df_model`·`df_resid`·`df_resid_inference`(모형의 자유도, statsmodels의 이름)는 그대로다. `BreuschPaganResult`에는 `df`를 더하지 않는다(G157).

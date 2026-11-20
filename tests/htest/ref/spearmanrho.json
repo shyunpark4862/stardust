@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 4, "dropped": []},
 "spearmanrho/small": {"digest": "01b6594bb52cb60cb1551c67d55109c42441e3649244644eb723c7745c80a005", "statistic": [0.8909090909090909, 3.633457171500512e-17], "pvalue": [0.0005421442248338663, 3.6156910110444945e-20]},
 "spearmanrho/ties": {"digest": "30b7844da3bf23fdc07856881854a70f457d6614ba70e098aa83c852f84bb7a2", "statistic": [-0.3266704761457708, -1.3724244125524393e-17], "pvalue": [0.0780827428238255, 3.0284511049403652e-18]},
 "spearmanrho/large": {"digest": "cebaff02099f1d267f046dc05488b856de3b1519cb5282f1ae154c9d1cc33715", "statistic": [0.01863983463983464, -1.2544002557383136e-18], "pvalue": [0.5560241286568879, -3.9456586623707104e-17]},

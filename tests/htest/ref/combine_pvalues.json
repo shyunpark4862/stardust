@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 6, "dropped": []},
 "combine_pvalues/fisher": {"digest": "735035c68db1f2e3929c097d1c4afb31e5441b6fc4ced109e2a669fdc57133bd", "statistic": [1610.5123284476153, -9.458518749180297e-14], "pvalue": [0.0, 0.0]},
 "combine_pvalues/pearson": {"digest": "709963dfa882c727618d1fe64add334476e27c2888e9def027fc3fc76e8fc06b", "statistic": [-0.2360930685291343, 1.009532322894636e-17], "pvalue": [1.3708628227654706e-20, 3.266614549758163e-37]},
 "combine_pvalues/tippett": {"digest": "0a3e36910e265438486f1d11cec110bb4206cab167203fbf96a40926fd7ba783", "statistic": [1e-300, 0.0], "pvalue": [1.2e-299, -6.63123685e-316]},

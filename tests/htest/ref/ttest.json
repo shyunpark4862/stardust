@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 32, "dropped": []},
 "ttest_1samp/small": {"digest": "40751c890713fdce6f8d6796a3f51a069c44db3dcbab74ed7b299b198071e699", "statistic": [2.260167793057129, 1.3200976788426928e-16], "pvalue": [0.058316948265241135, 4.0348670346186087e-20], "df": [7.0, 0.0], "conf_int": [[-0.02767415482295251, 1.0742107404545446e-18], [1.2252685268274945, -9.127983149124851e-17]], "kappa": 3.3333280527236195},
 "ttest_1samp/small-less": {"digest": "56a18d0998095f0088605623daa0726673ac1b327a64d033da06002c802bbdf3", "statistic": [2.260167793057129, 1.3200976788426928e-16], "pvalue": [0.9708415258673795, -5.2061878614477304e-17], "df": [7.0, 0.0], "conf_int": [[-Infinity, 0.0], [1.1007370600562718, -7.335699275022004e-17]], "kappa": 0.1001139292162471},
 "ttest_1samp/small-greater": {"digest": "fd6682d5c7a944ed9855c8dcfc929cf48d949362279f3b86844ad2a5069829d6", "statistic": [2.260167793057129, 1.3200976788426928e-16], "pvalue": [0.029158474132620568, 2.0174335173093043e-20], "df": [7.0, 0.0], "conf_int": [[0.0968573119482702, 3.9680537111477595e-18], [Infinity, 0.0]], "kappa": 3.3333280527236195},

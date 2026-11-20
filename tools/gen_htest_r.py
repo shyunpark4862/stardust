@@ -17,7 +17,10 @@ Each record: the R call (its data vectors shown as c(...)), the inputs' digest, 
 parameter (df), p.value, conf.int, estimate; for TukeyHSD the matrix of diff, lwr, upr, p adj;
 for p.adjust the adjusted vector. Doubles go to R as %.17g (exact) and come back as %.17g.
 
-Run: .venv/bin/python tools/gen_htest_r.py      (needs Rscript on PATH)
+Also writes tests/htest/data/r_gof.json: the goodness-of-fit packages nortest and goftest (decision
+H44; GOF_PRELUDE below).
+
+Run: .venv/bin/python tools/gen_htest_r.py      (needs Rscript on PATH, and nortest and goftest)
 """
 
 import json
@@ -32,6 +35,7 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "tests" / "htest" / "data" / "r.json"
+OUT_GOF = ROOT / "tests" / "htest" / "data" / "r_gof.json"  # nortest and goftest (H44)
 
 PRELUDE = r"""
 out <- function(id, name, v) {
@@ -116,8 +120,9 @@ def r_call(p):
         return f"chisq.test({vec(a[0])})"
     if f == "shapiro" and 3 <= np.size(a[0]) <= 5000:
         return f"shapiro.test({vec(a[0])})"
-    if f == "ks_1samp" and a[1] == "norm":
-        return f"ks.test({vec(a[0])}, 'pnorm', alternative = '{alt(p)}', exact = {exact(kw.get('method', 'auto'))})"
+    if f == "ks_1samp" and a[1] in ("norm", "uniform", "expon") and np.ndim(a[0]) == 1:
+        cdf = {"norm": "pnorm", "uniform": "punif", "expon": "pexp"}[a[1]]
+        return f"ks.test({vec(a[0])}, '{cdf}', alternative = '{alt(p)}', exact = {exact(kw.get('method', 'auto'))})"
     if f == "ks_2samp":
         e = exact(kw.get("method", "auto"))
         return f"ks.test({vec(a[0])}, {vec(a[1])}, alternative = '{alt(p)}', exact = {e})"
@@ -197,12 +202,60 @@ def shown(call):
     return re.sub(r"c\([^()]*\)", "c(...)", call)
 
 
-def main():
-    from tests.htest import problems as P
+# The goodness-of-fit packages (H44: installed for comparison only; nortest 1.0-4 and goftest 1.2-3,
+# both importing only stats): on the normal-data problems of anderson and shapiro, nortest's five
+# tests of normality with estimated parameters (ad.test, cvm.test, lillie.test, pearson.test with
+# its class counts, sf.test) and goftest's ad.test with the fitted normal taken as given; on the
+# cramervonmises problems, goftest's cvm.test and ad.test against the problem's distribution.
+GOF_PRELUDE = """
+nt_pearson <- function(x) {
+  n <- length(x); k <- ceiling(2 * (n^(2/5)))
+  num <- floor(1 + k * pnorm(x, mean(x), sd(x)))
+  h <- nortest::pearson.test(x)
+  list(statistic = h$statistic, p.value = h$p.value, counts = tabulate(num, k))
+}
+gof_list <- function(...) {
+  L <- list(...)
+  out <- list()
+  for (nm in names(L)) {
+    r <- tryCatch(L[[nm]], error = function(e) NULL)
+    if (is.null(r)) next
+    out[[paste0(nm, ".statistic")]] <- r$statistic
+    out[[paste0(nm, ".p.value")]] <- r$p.value
+    if (!is.null(r$counts)) out[[paste0(nm, ".counts")]] <- r$counts
+  }
+  out
+}
+"""
+GOF_CDF = {"norm": "pnorm", "uniform": "punif", "expon": "pexp"}
 
-    calls = {pid: r_call(p) for pid, p in P.PROBLEMS.items()}
-    calls = {k: v for k, v in calls.items() if v is not None}
-    script = PRELUDE + "\n".join(f"run({json.dumps(pid)}, {c})" for pid, c in calls.items())
+
+def r_gof_call(p):
+    """The nortest and goftest calls of problem p as one named list, or None."""
+    if "batch" in p.tags or "axis" in p.kwargs or p.func not in ("anderson", "shapiro", "cramervonmises"):
+        return None
+    x = vec(p.args[0])
+    n = int(np.size(p.args[0]))
+    if (p.func == "anderson" and p.kwargs.get("dist", "norm") == "norm") or p.func == "shapiro":
+        if n < 8 or np.ptp(p.args[0]) == 0:
+            return None
+        sf = "nortest::sf.test(x)" if n <= 5000 else "NULL"
+        return (
+            f"local({{x <- {x}; gof_list(ad = nortest::ad.test(x), cvm = nortest::cvm.test(x), "
+            f"lillie = nortest::lillie.test(x), pearson = nt_pearson(x), sf = {sf}, "
+            "gof_ad = goftest::ad.test(x, 'pnorm', mean = mean(x), sd = sd(x)))})"
+        )
+    if p.func == "cramervonmises" and p.args[1] in GOF_CDF and n >= 2:
+        f = GOF_CDF[p.args[1]]
+        return (
+            f"local({{x <- {x}; gof_list(gof_cvm = goftest::cvm.test(x, '{f}'), gof_ad = goftest::ad.test(x, '{f}'))}})"
+        )
+    return None
+
+
+def run_r(prelude, calls, P):
+    """{problem: record} of R's results for {problem: call}, and R's version."""
+    script = prelude + "\n".join(f"run({json.dumps(pid)}, {c})" for pid, c in calls.items())
     with tempfile.TemporaryDirectory() as d:
         path = pathlib.Path(d) / "htest.R"
         path.write_text(script)
@@ -220,10 +273,34 @@ def main():
             recs[pid]["error"] = vals.strip()
             continue
         rec[field] = [None if t == "NA" else float(t) for t in vals.split()]
-    lines = [f"{json.dumps('_meta')}: {json.dumps({'R': version})}"]
+    return recs, version
+
+
+def write(path, prov, recs):
+    lines = [f"{json.dumps('_provenance')}: {json.dumps(prov)}"]
     lines += [f"{json.dumps(k)}: {json.dumps(v)}" for k, v in recs.items()]
-    OUT.write_text("{\n" + ",\n".join(lines) + "\n}\n")
+    path.write_text("{\n" + ",\n".join(lines) + "\n}\n")
+
+
+def main():
+    from tests.htest import problems as P
+
+    calls = {pid: r_call(p) for pid, p in P.PROBLEMS.items()}
+    calls = {k: v for k, v in calls.items() if v is not None}
+    recs, version = run_r(PRELUDE, calls, P)
+    write(OUT, {"tool": "tools/gen_htest_r.py", "R": version}, recs)
     print(f"{len(recs)} problems run in R ({version})")
+    gof = {pid: r_gof_call(p) for pid, p in P.PROBLEMS.items()}
+    gof = {k: v for k, v in gof.items() if v is not None}
+    recs, _ = run_r(PRELUDE + GOF_PRELUDE, gof, P)
+    pkgs = subprocess.run(
+        ["Rscript", "--vanilla", "-e", 'cat(sapply(c("nortest", "goftest"), function(p) paste(p, packageVersion(p))))'],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    write(OUT_GOF, {"tool": "tools/gen_htest_r.py", "R": version, "packages": pkgs}, recs)
+    print(f"{len(recs)} problems run with nortest and goftest ({pkgs})")
 
 
 if __name__ == "__main__":

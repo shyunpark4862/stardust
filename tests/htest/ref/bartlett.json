@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 6, "dropped": []},
 "bartlett/small": {"digest": "bccd8b68067d2867498849254f92f06a0d81a802b92bba834693a5947551af90", "statistic": [8.481114969688765, -2.1238502238559983e-16], "pvalue": [0.014399562067462852, -8.217449505870051e-19], "df": [2.0, 0.0], "kappa": 4.240557484844382},
 "bartlett/near-equal": {"digest": "a9ca01b940973793354d53017f784408ddb4db63b2c308da4f565cf271e8fe87", "statistic": [1.5942242939174607e-15, 3.631090160660958e-32], "pvalue": [0.9999999999999992, -1.9956029721120468e-17], "df": [2.0, 0.0], "kappa": 7.971121469587303e-16},
 "bartlett/large": {"digest": "0a5d63d937b1519990b969dcb8d3ef965fbd20ec4e96ffb9b26a448ebe755898", "statistic": [16.94489536471827, 1.1656522205094673e-18], "pvalue": [3.8480650973126814e-05, -8.921818200228937e-22], "df": [1.0, 0.0], "kappa": 8.925854939224445},

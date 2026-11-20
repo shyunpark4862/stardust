@@ -7,7 +7,8 @@ docs/design/regression.md §1.1.
 """
 
 from .. import _calls
-from .._results import BreuschPaganResult, JarqueBeraResult, LinregressResult, SiegelslopesResult, TheilslopesResult
+from .._results import BreuschPaganResult, LinregressResult, SiegelslopesResult, TheilslopesResult
+from ..htest._gof import JarqueBeraResult  # one class for the one test (G165, htest H18)
 from ._glm import GLMResult, glm
 from ._linear import GLSResult, OLSResult, WLSResult, gls, linregress, ols, wls
 from ._nls import NLSResult, nls

@@ -39,8 +39,7 @@ LinregressResult = namedtuple(
     "LinregressResult", ["slope", "intercept", "rvalue", "pvalue", "stderr", "intercept_stderr"]
 )
 # regression: the linear models' diagnostics (docs/api/regression.md §2; statsmodels' het_breuschpagan
-# fields and order)
-JarqueBeraResult = namedtuple("JarqueBeraResult", ["statistic", "pvalue"])
+# fields and order). Jarque-Bera's result is sd.htest's class (G165, htest H18, H39).
 BreuschPaganResult = namedtuple("BreuschPaganResult", ["lm", "lm_pvalue", "fvalue", "f_pvalue"])
 # regression: theilslopes, siegelslopes (scipy.stats' fields and order, docs/api/regression.md §5)
 TheilslopesResult = namedtuple("TheilslopesResult", ["slope", "intercept", "low_slope", "high_slope"])

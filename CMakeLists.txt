@@ -72,6 +72,8 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/regression/robust.cpp
   csrc/regression/slopes.cpp
   csrc/htest/parametric.cpp
+  csrc/htest/gof.cpp
+  csrc/sparse/direct.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -100,6 +102,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/regression_bind.cpp
   csrc/bind/htest_bind.cpp
   csrc/bind/optimize_bind.cpp
+  csrc/bind/sparse_bind.cpp
   csrc/bind/module.cpp)
 
 target_include_directories(_core PRIVATE csrc)

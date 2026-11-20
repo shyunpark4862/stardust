@@ -5,7 +5,7 @@ tools all take their area names and their default order from here. A tool that d
 cover an area yet says so where it filters this tuple; it never keeps a list of its own.
 """
 
-AREAS = ("array", "linalg", "frame", "special", "stats", "regression", "random", "optimize")
+AREAS = ("array", "linalg", "frame", "special", "stats", "regression", "random", "optimize", "htest", "sparse")
 
 
 def check(names, available=AREAS):

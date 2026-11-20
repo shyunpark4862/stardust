@@ -13,12 +13,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "htest.md"
 
-# Documented, not implemented yet (docs/design/htest.md §8): the tests after H1. A milestone moves
+# Documented, not implemented yet (docs/design/htest.md §8): the tests after H2. A milestone moves
 # its names from here to sd.htest.__all__.
 PLANNED = {
-    # H2
-    "chisquare", "power_divergence", "skewtest", "kurtosistest", "normaltest", "jarque_bera", "shapiro", "anderson",
-    "ks_1samp", "kstest", "cramervonmises",
     # H3
     "mannwhitneyu", "ranksums", "wilcoxon", "kruskal", "friedmanchisquare", "brunnermunzel", "ansari", "mood",
     "median_test", "page_trend_test",
@@ -89,9 +86,10 @@ def test_signatures_match_api_md():
 
 
 def test_result_classes_are_not_exported():
-    # H6: the result classes stay private (read through their fields)
+    # H6: the result classes stay private (read through their fields); kstest is not there (H34)
     assert not [n for n in sd.htest.__all__ if n.endswith("Result")]
     assert not hasattr(sd.htest, "ConfidenceInterval") and not hasattr(sd.htest, "JarqueBeraResult")
+    assert not hasattr(sd.htest, "kstest")
 
 
 def test_data_positional_options_keyword():
@@ -178,7 +176,6 @@ def test_auto_methods():
     auto = {n for n, s in documented().items() if params(s).get("method") == "'auto'"}
     assert auto == {
         "ks_1samp",
-        "kstest",
         "ks_2samp",
         "mannwhitneyu",
         "wilcoxon",

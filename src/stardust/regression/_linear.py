@@ -17,6 +17,7 @@ from .. import _calls, _results
 from .. import _core as _sd
 from .. import frame as _frame
 from .. import linalg as _linalg
+from ..htest._gof import JarqueBeraResult, _jb_of_sums
 from ..stats import ChiSquared as _ChiSquared
 from ..stats import F as _F
 from ..stats import StudentT as _StudentT
@@ -1044,7 +1045,7 @@ class _LinearResult(_RegressionResult):
 
     def _resid_stat(self, i):
         """The whitened residuals' sums over the fit's rows (the kernel's resid_stats, double-
-        double): 0 Durbin-Watson's numerator, 1-3 the central sums of powers 2, 3, 4."""
+        double): 0 Durbin-Watson's numerator, 1-3 the central sums of powers 2, 3, 4, 4 the mean."""
 
         def make():
             w = self._fitargs[3]
@@ -1059,19 +1060,18 @@ class _LinearResult(_RegressionResult):
         return self._cached("durbin_watson", lambda: _div(self._resid_stat(0), self._ssr_s()))
 
     def jarque_bera(self):
-        """JarqueBeraResult(statistic, pvalue): n/6 (S^2 + (K - 3)^2 / 4) with the skewness S and
+        """JarqueBeraResult (sd.htest's class, G165), fields statistic and pvalue, unpacking as
+        (statistic, pvalue): n/6 (S^2 + (K - 3)^2 / 4) with the skewness S and
         kurtosis K of the whitened residuals (central moments over n, summed in double-double),
-        against chi-square with 2 degrees of freedom (statsmodels' jarque_bera of wresid)."""
+        against chi-square with 2 degrees of freedom (statsmodels' jarque_bera of wresid). The
+        sums and the statistic are sd.htest's Jarque-Bera kernel (H17): the bits of
+        sd.htest.jarque_bera on the same residuals; NaN where they are constant by sd.stats skew's
+        rule (H20)."""
 
         def make():
-            n = self.nobs
-            mu2 = _div(self._resid_stat(1), n)
-            skew = _div(_div(self._resid_stat(2), n), mu2 * _sqrt(mu2))
-            kurt = _div(_div(self._resid_stat(3), n), mu2 * mu2)
-            ek = kurt - 3.0
-            jb = n / 6.0 * (skew * skew + ek * ek / 4.0)
-            p = self._scalar(_ChiSquared(df=2.0).ccdf(_arg(jb)))
-            return _results.JarqueBeraResult(jb, p)
+            sums = (self._resid_stat(i) for i in (1, 2, 3, 4))
+            jb, p = _jb_of_sums(self.nobs, *sums)
+            return JarqueBeraResult._make(batch=self._batch, statistic=jb, pvalue=p)
 
         return self._cached("jarque_bera", make)
 

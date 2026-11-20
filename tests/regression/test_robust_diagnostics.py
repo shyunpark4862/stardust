@@ -202,7 +202,8 @@ def test_diagnostics_against_statsmodels():
         np.testing.assert_allclose(a(r.cooks_distance), inf.cooks_distance[0], rtol=1e-11)
         assert r.durbin_watson == pytest.approx(durbin_watson(s.wresid), rel=1e-13)
         jb, jbp, _, _ = jarque_bera(s.wresid)  # statsmodels centers the moments (no intercept: mean != 0)
-        assert r.jarque_bera() == pytest.approx((jb, jbp), rel=1e-12)
+        j = r.jarque_bera()
+        assert (j.statistic, j.pvalue) == pytest.approx((jb, jbp), rel=1e-12)
         # the auxiliary regression always has a constant (statsmodels: the exog given)
         Z = sm.add_constant(X)
         for stud in (True, False):
@@ -216,7 +217,8 @@ def test_diagnostics_against_statsmodels():
     Z = np.column_stack([np.ones(len(y)), s.model.wexog])
     assert tuple(r.breusch_pagan()) == pytest.approx(het_breuschpagan(s.wresid, Z), rel=1e-12)
     assert r.durbin_watson == pytest.approx(durbin_watson(s.wresid), rel=1e-13)
-    assert r.jarque_bera() == pytest.approx(jarque_bera(s.wresid)[:2], rel=1e-12)
+    j = r.jarque_bera()
+    assert (j.statistic, j.pvalue) == pytest.approx(jarque_bera(s.wresid)[:2], rel=1e-12)
     ow = sm.OLS(s.model.wendog, s.model.wexog).fit().get_influence()
     np.testing.assert_allclose(a(r.leverage), ow.hat_matrix_diag, rtol=1e-12)
     np.testing.assert_allclose(a(r.cooks_distance), ow.cooks_distance[0], rtol=1e-10)
@@ -250,7 +252,7 @@ def test_zero_weights_out_of_robust_sums():
         v = a(getattr(r, name))
         assert np.all(v[zero] == 0.0), name
         np.testing.assert_allclose(v[keep], a(getattr(sub, name)), rtol=1e-13, atol=1e-15, err_msg=name)
-    assert r.durbin_watson == sub.durbin_watson and r.jarque_bera() == sub.jarque_bera()
+    assert r.durbin_watson == sub.durbin_watson and tuple(r.jarque_bera()) == tuple(sub.jarque_bera())
     assert r.breusch_pagan() == pytest.approx(sub.breusch_pagan(), rel=1e-13)
 
 
@@ -268,7 +270,7 @@ def test_aliased_columns():
     r, ref = R.ols(y, X2), R.ols(y, X)
     for name in ("leverage", "resid_studentized_internal", "resid_studentized_external", "cooks_distance"):
         np.testing.assert_array_equal(a(getattr(r, name)), a(getattr(ref, name)), err_msg=name)
-    assert r.durbin_watson == ref.durbin_watson and r.jarque_bera() == ref.jarque_bera()
+    assert r.durbin_watson == ref.durbin_watson and tuple(r.jarque_bera()) == tuple(ref.jarque_bera())
     assert r.breusch_pagan() == pytest.approx(ref.breusch_pagan(), rel=1e-14)
     assert "Aliased" in r.summary() and "x3" in r.summary().split("Aliased")[1]
 
@@ -558,7 +560,7 @@ def test_gls_diagnostics_are_the_whitened_problems():
     for name in ("leverage", "resid_studentized_internal", "resid_studentized_external", "cooks_distance"):
         np.testing.assert_allclose(a(getattr(gl, name)), a(getattr(wl, name)), rtol=1e-12, atol=1e-15, err_msg=name)
     assert gl.durbin_watson == pytest.approx(wl.durbin_watson, rel=1e-13)
-    assert gl.jarque_bera() == pytest.approx(wl.jarque_bera(), rel=1e-12)
+    assert tuple(gl.jarque_bera()) == pytest.approx(tuple(wl.jarque_bera()), rel=1e-12)
     assert gl.breusch_pagan() == pytest.approx(wl.breusch_pagan(), rel=1e-12)
     for ct, kw in (("HAC", {"maxlags": 3}), ("cluster", {"groups": g})):
         np.testing.assert_allclose(

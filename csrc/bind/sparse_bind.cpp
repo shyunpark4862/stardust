@@ -1,0 +1,15 @@
+// The sparse area: the submodule stardust._core.sparse (docs/design/sparse.md §6).
+#include "bind/sparse_bind.hpp"
+
+#include "sparse/direct.hpp"
+
+namespace nb = nanobind;
+
+namespace sd {
+
+void bind_sparse(nb::module_& core) {
+    nb::module_ m = core.def_submodule("sparse", "stardust sparse arrays native core");
+    sparse::bind_direct(m);
+}
+
+}  // namespace sd

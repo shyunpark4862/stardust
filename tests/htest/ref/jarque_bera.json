@@ -1,7 +1,10 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
-"jarque_bera/n8": {"digest": "0043e3285e42a6f449964ed6d558f681ff0e30f139f6be6de96d5a28bb067bfd", "statistic": [0.9112985957553352, 1.9178235571575035e-18], "pvalue": [0.6340361559379489, -2.0554111737001377e-17]},
-"jarque_bera/n50": {"digest": "70c0de8a3238e0e6398f9acaed0c101cf3a4895545ebf117b0c8cdde8833db13", "statistic": [0.6153857781720516, 4.060958243877153e-17], "pvalue": [0.73514105318517, 2.0582331232548818e-17]},
-"jarque_bera/n2000": {"digest": "d8be1ae620edf8b2d7fbd8e31dd1ae64db04e5100c305ddf2f3b79565103229e", "statistic": [0.62765178546907, -1.9493672626731702e-17], "pvalue": [0.7306462279026663, -1.4006581944401158e-17]},
-"jarque_bera/skewed": {"digest": "b6b0d4f526d751c7d6505dcbeb892e36d75ebbbb621902febef9630c0684f5d1", "statistic": [2597.2917080955335, -6.197397247868111e-15], "pvalue": [0.0, 0.0]}
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 7, "dropped": []},
+"jarque_bera/n8": {"digest": "0043e3285e42a6f449964ed6d558f681ff0e30f139f6be6de96d5a28bb067bfd", "statistic": [0.9112985957553352, 1.9178235571575035e-18], "pvalue": [0.6340361559379489, -2.0554111737001377e-17], "kappa": 0.4556492978776676},
+"jarque_bera/n50": {"digest": "70c0de8a3238e0e6398f9acaed0c101cf3a4895545ebf117b0c8cdde8833db13", "statistic": [0.6153857781720516, 4.060958243877153e-17], "pvalue": [0.73514105318517, 2.0582331232548818e-17], "kappa": 0.3076928890860258},
+"jarque_bera/n2000": {"digest": "d8be1ae620edf8b2d7fbd8e31dd1ae64db04e5100c305ddf2f3b79565103229e", "statistic": [0.62765178546907, -1.9493672626731702e-17], "pvalue": [0.7306462279026663, -1.4006581944401158e-17], "kappa": 0.313825892734535},
+"jarque_bera/skewed": {"digest": "b6b0d4f526d751c7d6505dcbeb892e36d75ebbbb621902febef9630c0684f5d1", "statistic": [2597.2917080955335, -6.197397247868111e-15], "pvalue": [0.0, 0.0], "kappa": 1298.6458540477668},
+"jarque_bera/offset": {"digest": "5c8d11da06f624d655539e85efb691773eda03e59aa175cb1d812a0fafb5e3f3", "statistic": [0.9647775374148428, 8.016221695424844e-19], "pvalue": [0.6173070254540323, -7.534184398960945e-18], "kappa": 0.4823887687074214},
+"jarque_bera/constant": {"digest": "bab0b98b3f7330b4d1e9aa045955bed80c2435e9286e0c6c202f083ec87bafe9", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0], "kappa": NaN},
+"jarque_bera/n2": {"digest": "36638673c997dae8a56f938c639b84820840dc43439aa46674b895b3e1a438c4", "statistic": [0.3333333333333333, 1.850371707708594e-17], "pvalue": [0.8464817248906141, -5.488615932082012e-17], "kappa": 0.16666666666666666}
 }

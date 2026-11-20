@@ -16,7 +16,7 @@ Not run: fisher_exact on an r x c table (scipy's default is an unseeded Monte Ca
 answer to keep). dunnett's p-values come from scipy's randomized quasi-Monte Carlo and are
 recorded with rng=12345.
 
-Run: .venv/bin/python tools/gen_htest_scipy.py [--jobs=N]   (up to 10 processes)
+Run: .venv/bin/python tools/gen_htest_scipy.py [--jobs N]   (up to 10 processes)
 """
 
 import json
@@ -86,8 +86,8 @@ def scipy_call(p):
     from scipy.stats import contingency
 
     args, kw = list(p.args), dict(p.kwargs)
-    if p.func in ("ks_1samp", "kstest") and args[1] == "norm":
-        args[1] = st.norm.cdf
+    if p.func in ("ks_1samp", "kstest") and isinstance(args[1], str):
+        args[1] = getattr(st, args[1]).cdf
     if p.func == "dunnett":
         kw["rng"] = 12345
     f = getattr(contingency, p.func) if p.func in ("odds_ratio", "relative_risk") else getattr(st, p.func)
@@ -174,25 +174,32 @@ def run(pid):
 
 
 def write(path, meta, recs):
-    lines = [f"{json.dumps('_meta')}: {json.dumps(meta)}"]
+    lines = [f"{json.dumps('_provenance')}: {json.dumps(meta)}"]
     lines += [f"{json.dumps(k)}: {json.dumps(v)}" for k, v in recs]
     path.write_text("{\n" + ",\n".join(lines) + "\n}\n")
 
 
-def main(argv):
+def main(argv=None):
+    import argparse
+
     import scipy
     import statsmodels
 
+    from bench import cli
     from tests.htest import problems as P
 
-    jobs = JOBS
-    for a in argv:
-        if a.startswith("--jobs="):
-            jobs = min(JOBS, int(a.split("=", 1)[1]))
+    ap = argparse.ArgumentParser(prog="tools/gen_htest_scipy.py", description=__doc__.split("\n\n")[0])
+    cli.add_jobs(ap, default=JOBS)
+    jobs = ap.parse_args(argv).jobs
     ids = list(P.PROBLEMS)
     with mp.get_context("spawn").Pool(jobs, maxtasksperchild=50) as pool:
         res = dict(pool.imap(run, ids, chunksize=4))
-    meta = {"scipy": scipy.__version__, "statsmodels": statsmodels.__version__, "numpy": np.__version__}
+    meta = {
+        "tool": "tools/gen_htest_scipy.py",
+        "scipy": scipy.__version__,
+        "statsmodels": statsmodels.__version__,
+        "numpy": np.__version__,
+    }
     DATA.mkdir(parents=True, exist_ok=True)
     for ms in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8"):
         recs = [(i, res[i]) for i in ids if P.PROBLEMS[i].milestone == ms and P.PROBLEMS[i].func not in P.STATSMODELS]
@@ -204,4 +211,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main())

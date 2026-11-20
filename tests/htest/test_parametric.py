@@ -3,9 +3,7 @@
 lane by lane, nan_policy, the degenerate inputs (H11, H20 and the H1 decisions), the result
 objects, the messages, and the agreement with sd.regression and with scipy's definitions."""
 
-import json
 import math
-import pathlib
 
 import numpy as np
 import pytest
@@ -14,9 +12,9 @@ import scipy.stats as st
 import stardust as sd
 
 from . import problems as P
+from . import refdata as R
 
-REF = pathlib.Path(__file__).parent / "ref"
-FAMILIES = ("ttest", "f_oneway", "alexandergovern", "bartlett", "levene", "fligner")
+FAMILIES = R.H1
 H1 = (
     "ttest_1samp",
     "ttest_rel",
@@ -28,32 +26,12 @@ H1 = (
     "levene",
     "fligner",
 )
-
-
-def _load(fam):
-    d = json.loads((REF / f"{fam}.json").read_text())
-    d.pop("_meta")
-    return d
-
-
-REFS = {fam: _load(fam) for fam in FAMILIES}
+REFS = {fam: R.load(fam) for fam in FAMILIES}
 CASES = [(fam, pid) for fam in FAMILIES for pid in REFS[fam]]
 
 
 def call(p, **extra):
     return getattr(sd.htest, p.func)(*p.args, **{**p.kwargs, **extra})
-
-
-def err(v, ref):
-    """|v - ref| / |ref| for ref a double-double [hi, lo] (NaN against NaN is 0)."""
-    hi, lo = ref
-    if hi != hi:
-        return 0.0 if v != v else math.inf
-    if math.isinf(hi):
-        return 0.0 if v == hi else math.inf
-    if hi == 0.0:
-        return abs(v)
-    return abs((v - hi) - lo) / abs(hi)
 
 
 # ---- the accuracy contract (docs/design/htest.md §4) --------------------------------------
@@ -62,31 +40,13 @@ def err(v, ref):
 @pytest.mark.parametrize(("fam", "pid"), CASES, ids=[pid for _, pid in CASES])
 def test_contract_against_the_references(fam, pid):
     """statistic and df to 1e-14 relative, the p-value to 1e-14 max(1, kappa_p), the interval's
-    ends to 1e-14 of the estimate's and the half width's sizes (the ends subtract them)."""
-    rec = REFS[fam][pid]
-    p = P.PROBLEMS[pid]
-    r = call(p)
-    kappa = rec.get("kappa", 1.0)
-    kappa = 1.0 if kappa != kappa else max(1.0, kappa)
-    assert err(r.statistic, rec["statistic"]) <= 1e-14, r.statistic
-    assert err(r.pvalue, rec["pvalue"]) <= 1e-14 * kappa, r.pvalue
-    for f in ("df", "df_num", "df_denom"):
-        if f in rec and hasattr(r, f):
-            assert err(getattr(r, f), rec[f]) <= 1e-14, f
-    if "conf_int" in rec:
-        ci = r.conf_int()
-        assert ci.shape == (2,)
-        alt = p.kwargs.get("alternative", "two-sided")
-        two = r if alt == "two-sided" else call(p, alternative="two-sided")
-        lo2, hi2 = two.conf_int(alpha=0.05 if alt == "two-sided" else 0.1).tolist()
-        scale = abs(lo2 + hi2) / 2 + abs(hi2 - lo2) / 2
-        for i in range(2):
-            hi, lo = rec["conf_int"][i]
-            v = float(ci[i])
-            if hi != hi or math.isinf(hi):
-                assert v == hi or (v != v and hi != hi), (i, v)
-            else:
-                assert abs((v - hi) - lo) <= 1e-14 * max(abs(hi), scale), (i, v, hi)
+    ends to 1e-14 of the estimate's and the half width's sizes (the ends subtract them;
+    tests/htest/refdata.py)."""
+    r = call(P.PROBLEMS[pid])
+    if "conf_int" in REFS[fam][pid]:
+        assert r.conf_int().shape == (2,)
+    for field, (e, c) in R.errors(fam, pid, r).items():
+        assert c <= 1.0, (field, e)
 
 
 def test_every_h1_function_has_references():

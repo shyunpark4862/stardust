@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 7, "dropped": []},
 "levene/median": {"digest": "3b0129ec2a8430452b98cf78bb8d96cbbbaff8bd01ac85f383b08b50cd6a49c6", "statistic": [5.787124144299425, -4.040263392166997e-16], "pvalue": [0.006027778576995157, -4.202272891816956e-19], "df_num": [2.0, 0.0], "df_denom": [42.0, 0.0], "kappa": 4.536866532428815},
 "levene/mean": {"digest": "960a192d071660dbcf7685cbe7083cf7b01f93683e383ee476d4ed6286ed7919", "statistic": [5.926188167808507, 1.770935515824633e-17], "pvalue": [0.005406706368033355, 2.89217657506076e-19], "df_num": [2.0, 0.0], "df_denom": [42.0, 0.0], "kappa": 4.621892662577626},
 "levene/trimmed": {"digest": "028afc108eff09536cbf63b5b71d8e5ed40bb4e9432d27ec6bc657f8c9ba7b47", "statistic": [5.926188167808507, 1.770935515824633e-17], "pvalue": [0.005406706368033355, 2.89217657506076e-19], "df_num": [2.0, 0.0], "df_denom": [42.0, 0.0], "kappa": 4.621892662577626},

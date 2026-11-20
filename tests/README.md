@@ -8,7 +8,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 결과와 표도 이 순서다. |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 결과와 표도 이 순서다. |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -32,7 +32,7 @@
 - **등급**은 `--tier`나 환경 변수 `SD_TIER` 하나로 고른다. 정의는 `tests/conftest.py`와 `tests/_tier.py`에 있다.
   - `quick`(기본): `deep`·`external` 마커가 없는 모든 테스트. hypothesis는 `derandomize=True`라 매번 같은 예제다(병렬로 돌려도 결정적이다).
   - `deep`: quick과 `@pytest.mark.deep` 테스트(Arb 참값을 그 자리에서 계산하는 것, 넓은 격자, 골든 비교 `tests/golden/test_golden.py`, 정확도 비교 `tests/bench/test_accuracy_baseline.py`). hypothesis는 무작위이고 예제 수가 10배다.
-  - `all`: deep과 `@pytest.mark.external`(R이나 Fortran 컴파일러를 실제로 부르는 테스트; 지금은 없다).
+  - `all`: deep과 `@pytest.mark.external`(R이나 Fortran 컴파일러를 실제로 부르는 테스트와, 저장소 밖에서 받은 파일을 읽는 테스트: `tests/sparse/test_suitesparse.py`는 `tools/sparse_suitesparse.py`로 받은 행렬이 없으면 건너뛴다).
   - 고르지 않은 등급의 테스트는 deselect된다(요약에 `N deselected`).
 - **예제 수**: hypothesis 테스트는 대부분 프로필 기본값(quick 100, deep 1000)을 쓴다. 수를 따로 정하는 테스트는 `examples(n)`(`tests/_tier.py`)으로 써서 quick에서 n, deep에서 10n이다.
 - **고르기**: `AREA`는 `tests/<영역>`이고, 주지 않으면 영역 밖(`tests/interop`, `tests/bench`, `tests/test_*.py`)까지 모두다. `--match`는 테스트 id(`tests/<영역>/test_<주제>.py::test_<이름>[…]`)에 맞춘다. `tests/conftest.py`가 적용하므로 `pytest`에 바로 줘도 된다.
@@ -61,7 +61,7 @@
 .venv/bin/python tools/golden.py list                     # 영역별 케이스 수
 ```
 
-- 케이스는 `tests/golden/cases_<영역>.py`, 기록은 `tests/golden/data/<영역>.json`이다. 영역은 `bench/areas.py`의 여덟이다.
+- 케이스는 `tests/golden/cases_<영역>.py`, 기록은 `tests/golden/data/<영역>.json`이다. 영역은 `bench/areas.py`의 열이다(sparse는 공개 함수가 생기는 SP1부터 케이스가 있다).
 - 영역마다 스레드 수 1, 3, 10에서 따로 프로세스를 띄워 돌리고(동시에 `--jobs`개), 세 결과가 같아야 한다. 스레드 수에 따라 결과가 다른 케이스는 저장하지 않는다: `record`가 그 케이스 이름을 적고 종료 코드 1로 끝난다. 예외는 케이스 파일의 `THREAD_DEPENDENT = {케이스 이름: 이유}`에 적은 케이스뿐이고, 그 결과는 스레드 수마다 저장한다.
 - 전체 비교(2026-11-20, 24,422케이스, `--jobs` 기본 8)는 약 25초이고, 작업 프로세스 하나의 최대 RSS는 약 1.6GB다.
 - **저장 형식**(형식 2): 결과를 정확한 JSON으로 바꿔 정규화한 글자열끼리 비교한다. 그래서 형도 결과의 일부다(`True`는 `1`이 아니고, numpy 스칼라는 Python 스칼라가 아니다).

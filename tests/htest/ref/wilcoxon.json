@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 11, "dropped": []},
 "wilcoxon/exact-10": {"digest": "c3e28ab89f992679837f3bc44ad627c7704c38f17082ee4ca0f0ca08e2e73f87", "statistic": [9.0, 0.0], "pvalue": [0.064453125, 0.0], "method": "exact"},
 "wilcoxon/exact-40": {"digest": "d17dfe1f57935b0333bc41c841970388df4ed572abbfa07876a754375f591041", "statistic": [182.0, 0.0], "pvalue": [0.0016823487039800966, 0.0], "method": "exact"},
 "wilcoxon/exact-greater": {"digest": "1afb2775693086c6d2044279f09e86c9ca7fcc63acaaa3fe32ec1c224bccef7f", "statistic": [46.0, 0.0], "pvalue": [0.0322265625, 0.0], "method": "exact"},

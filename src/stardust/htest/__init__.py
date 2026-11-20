@@ -12,6 +12,18 @@ share; the tests come milestone by milestone (docs/design/htest.md §8): H1's me
 (_parametric.py) so far.
 """
 
+from ._gof import (
+    anderson,
+    chisquare,
+    cramervonmises,
+    jarque_bera,
+    ks_1samp,
+    kurtosistest,
+    normaltest,
+    power_divergence,
+    shapiro,
+    skewtest,
+)
 from ._parametric import (
     alexandergovern,
     bartlett,
@@ -34,4 +46,14 @@ __all__ = [
     "bartlett",
     "levene",
     "fligner",
+    "chisquare",
+    "power_divergence",
+    "skewtest",
+    "kurtosistest",
+    "normaltest",
+    "jarque_bera",
+    "shapiro",
+    "anderson",
+    "ks_1samp",
+    "cramervonmises",
 ]

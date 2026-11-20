@@ -224,6 +224,79 @@ def _h2():
     add(m, "ks_1samp", "approx", normal(86, 40), "norm", method="approx")
     add(m, "cramervonmises", "n10", normal(87, 10), "norm")
     add(m, "cramervonmises", "n200", normal(88, 200, 0.2), "norm")
+    _h2_more(m)
+
+
+def _h2_more(m):
+    """H2's own problems (2026-11-20): zero counts in the Cressie-Read family, the degenerate
+    inputs, the D'Agostino transforms at their small-n bounds and at zero skewness, the families of
+    anderson, the deep tails of the Kolmogorov-Smirnov distributions (where scipy's two-sided
+    tail is 0 or 2 smirnov and R's exact one is 1 - cdf), and the Cramér-von Mises tails."""
+    zc = np.array([12.0, 0, 9, 15, 4])
+    for lam in ("freeman-tukey", "cressie-read", "log-likelihood", "pearson"):
+        add(m, "power_divergence", f"zero-{lam}", zc, lambda_=lam, tags=("ties",))
+    add(m, "power_divergence", "lambda-small", obs_h2(), lambda_=1e-7)
+    add(m, "power_divergence", "lambda-near-minus-1", obs_h2(), lambda_=-0.999)
+    add(m, "power_divergence", "cr-near-equal", np.array([1e6 + 2e-3, 1e6 - 1e-3, 1e6 - 1e-3]), lambda_="cressie-read",
+        tags=("offset",))  # fmt: skip
+    add(m, "power_divergence", "ft-near-equal", np.array([5e5 + 1e-3, 5e5 - 1e-3, 5e5]), lambda_="freeman-tukey",
+        tags=("offset",))  # fmt: skip
+    add(m, "chisquare", "one-cell", np.array([7.0]), tags=("degenerate",))
+    add(m, "chisquare", "ddof-minus-1", obs_h2(), np.array([15.0, 15, 15, 15, 15, 13]), ddof=-1, sum_check=False)
+    add(m, "chisquare", "large", ints(64, 3000, 50) + 1, tags=("large",))
+    add(m, "skewtest", "n8", normal(130, 8), tags=("small",))
+    add(m, "skewtest", "symmetric", np.array([-4.0, -3, -2, -1, 0, 1, 2, 3, 4]), tags=("small",))
+    add(m, "skewtest", "offset", normal(131, 200, 1e8) + _g(132).exponential(size=200), tags=("offset",))
+    add(m, "skewtest", "constant", np.full(20, 3.25), tags=("degenerate",))
+    add(m, "skewtest", "tail", _g(133).exponential(size=5000) ** 2, tags=("tail",))
+    add(m, "kurtosistest", "n5", normal(134, 5), tags=("small",))
+    add(m, "kurtosistest", "light-less", _g(135).uniform(size=400), alternative="less", tags=("tail",))
+    add(m, "kurtosistest", "offset", normal(136, 300, 1e8), tags=("offset",))
+    add(m, "kurtosistest", "constant", np.full(20, -1.5), tags=("degenerate",))
+    add(m, "kurtosistest", "batch", normal(137, (4, 30)), axis=-1, tags=("batch",))
+    add(m, "normaltest", "n8", normal(138, 8), tags=("small",))
+    add(m, "normaltest", "tail", _g(133).exponential(size=5000) ** 2, tags=("tail",))
+    add(m, "normaltest", "batch", normal(139, (4, 30)), axis=-1, tags=("batch",))
+    add(m, "jarque_bera", "offset", normal(140, 300, 1e8), tags=("offset",))
+    add(m, "jarque_bera", "constant", np.full(10, 2.5), tags=("degenerate",))
+    add(m, "jarque_bera", "n2", np.array([1.0, 4.0]), tags=("small",))
+    for n in (4, 5, 6, 11, 12, 5000, 20000):
+        add(m, "shapiro", f"n{n}", normal(141 + n, n), tags=("large",) if n >= 5000 else ())
+    add(m, "shapiro", "n3-low", np.array([0.0, 0.0001, 1.0]), tags=("small",))
+    add(m, "shapiro", "constant", np.full(10, 4.0), tags=("degenerate",))
+    add(m, "shapiro", "tail", _g(142).exponential(size=2000) ** 3, tags=("tail",))
+    add(m, "shapiro", "batch", normal(143, (4, 25)), axis=-1, tags=("batch",))
+    add(m, "anderson", "norm-n8", normal(144, 8), method="interpolate", tags=("small",))
+    add(m, "anderson", "norm-skewed", _g(145).exponential(size=100), method="interpolate", tags=("tail",))
+    add(m, "anderson", "logistic", _g(146).logistic(1.0, 2.0, size=80), dist="logistic", method="interpolate")
+    add(m, "anderson", "logistic-normal", normal(147, 300), dist="logistic", method="interpolate")
+    add(m, "anderson", "gumbel", _g(148).gumbel(0.5, 1.5, size=70), dist="gumbel_r", method="interpolate")
+    add(m, "anderson", "gumbel-normal", normal(149, 400, 3.0), dist="gumbel_r", method="interpolate")
+    add(m, "anderson", "expon-large", _g(150).exponential(2.0, size=3000), dist="expon", method="interpolate")
+    add(m, "anderson", "constant", np.full(10, 1.0), method="interpolate", tags=("degenerate",))
+    add(m, "anderson", "batch", normal(151, (4, 30)), method="interpolate", axis=-1, tags=("batch",))
+    add(m, "ks_1samp", "n1", np.array([0.7]), "norm", tags=("small", "exact"))
+    add(m, "ks_1samp", "n2", np.array([-0.3, 1.9]), "norm", tags=("small", "exact"))
+    add(m, "ks_1samp", "n141", normal(152, 141, 0.2), "norm", tags=("exact",))
+    add(m, "ks_1samp", "n400", normal(153, 400, 0.08), "norm", tags=("exact",))
+    add(m, "ks_1samp", "deep", normal(154, 60, 4.0), "norm", tags=("tail",))
+    add(m, "ks_1samp", "deep-400", normal(155, 400, 2.5), "norm", tags=("tail",))
+    add(m, "ks_1samp", "greater-deep", normal(156, 300, -1.5), "norm", alternative="greater", tags=("tail",))
+    add(m, "ks_1samp", "asymp-deep", normal(154, 60, 4.0), "norm", method="asymp", tags=("tail",))
+    add(m, "ks_1samp", "approx-deep", normal(154, 60, 4.0), "norm", method="approx", tags=("tail",))
+    add(m, "ks_1samp", "uniform", _g(157).uniform(size=50) ** 1.3, "uniform")
+    add(m, "ks_1samp", "expon", _g(158).exponential(size=200), "expon")
+    add(m, "ks_1samp", "batch", normal(159, (4, 30), 0.2), "norm", axis=-1, tags=("batch",))
+    add(m, "cramervonmises", "n2", np.array([-0.4, 0.9]), "norm", tags=("small",))
+    add(m, "cramervonmises", "n3", np.array([0.1, 0.5, 2.0]), "norm", tags=("small",))
+    add(m, "cramervonmises", "tail", normal(160, 100, 0.7), "norm", tags=("tail",))
+    add(m, "cramervonmises", "large", normal(161, 2000, 0.03), "norm", tags=("large",))
+    add(m, "cramervonmises", "uniform", _g(162).uniform(size=40) ** 1.2, "uniform")
+    add(m, "cramervonmises", "batch", normal(163, (4, 30), 0.2), "norm", axis=-1, tags=("batch",))
+
+
+def obs_h2():
+    return np.array([16.0, 18, 16, 14, 12, 12])
 
 
 # ---- H3: rank tests -----------------------------------------------------------------------

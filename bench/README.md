@@ -10,7 +10,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 여섯(array, linalg, special, stats, regression, optimize)을 다룬다. |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 여덟(array, linalg, special, stats, regression, optimize, htest, sparse)을 다룬다(sparse는 공개 함수가 생기면 스윕이 생긴다). |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -68,7 +68,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 - `differs`(`Ref`, `RRef`): 비교 대상이 이 입력에서 원래 다른 계산을 할 때 그 까닭(R의 `choose`는 정수가 아닌 k를 반올림한다 등). 결과 확인에서 빼고, 표의 비고에 붙는다.
 - `check`(`Check`): 결과 확인 방법(§1.4). 기본은 sd와 첫 Python 비교 대상의 값을 그대로 견준다. 결과의 꼴이 다르면 견줄 값을 고르는 함수(`sd`, `ref`)를, 값을 견줄 수 없으면 까닭을 `skip`에 둔다(두 난수 흐름, 대입문 등).
 - `Ref.n`: 비교 대상이 너무 느려 입력의 일부만 재는 경우 그 원소 수. 표는 사례의 크기로 환산하고 `*`를 붙인다.
-- **비교 대상은 정확도 측정과 같다.** 영역마다 같은 일을 하는 비교 대상이 정확도 측정(`bench/accuracy`)에 있으면 속도 사례에도 둔다. array는 numpy와 R, linalg는 numpy·scipy.linalg·R, special은 scipy·R·Boost.Math, stats는 scipy·R(mvtnorm)·Boost.Math, regression은 statsmodels·scikit-learn·R, optimize는 scipy·R이다. special과 stats의 R 식과 Boost 이름은 정확도 측정의 표(`bench/accuracy/compare.py`의 `R_SPECIAL`, `BOOST_SPECIAL`, `R_DIST`, `R_METHOD`, `BOOST_*`)를 그대로 가져다 쓴다. 그래서 한쪽에 함수를 더하면 다른 쪽에도 따라온다. 한 줄씩 Python으로 부르는 스칼라 사례에는 R과 Boost를 두지 않는다. 그 비용은 배열 사례에서 본다.
+- **비교 대상은 정확도 측정과 같다.** 영역마다 같은 일을 하는 비교 대상이 정확도 측정(`bench/accuracy`)에 있으면 속도 사례에도 둔다. array는 numpy와 R, linalg는 numpy·scipy.linalg·R, special은 scipy·R·Boost.Math, stats는 scipy·R(mvtnorm)·Boost.Math, regression은 statsmodels·scikit-learn·R, optimize는 scipy·R, htest는 scipy·statsmodels·R이다. special과 stats의 R 식과 Boost 이름은 정확도 측정의 표(`bench/accuracy/compare.py`의 `R_SPECIAL`, `BOOST_SPECIAL`, `R_DIST`, `R_METHOD`, `BOOST_*`)를 그대로 가져다 쓴다. 그래서 한쪽에 함수를 더하면 다른 쪽에도 따라온다. 한 줄씩 Python으로 부르는 스칼라 사례에는 R과 Boost를 두지 않는다. 그 비용은 배열 사례에서 본다.
 - **Boost.Math**(`bench/speed/boost.py`, `boost_speed.cpp`): 정확도 측정이 쓰는 Boost 소스(`build/comparators/boost-math`)를 정확도 측정과 같은 함수(`bench.accuracy.boost.build`)와 같은 옵션(`bench.accuracy.boost.FLAGS`: sd의 최적화 옵션 `-O3 -mcpu=native -ffp-contract=off`와 `-std=c++17`)으로 빌드한다. 빌드한 라이브러리의 이름에 소스·옵션·Boost 체크아웃의 커밋이 들어가므로 체크아웃을 올리면 다시 빌드한다. 비교 대상의 Boost 판과 sd.special이 담은 Boost 판(`third_party/boost_math/README.md`)은 다를 수 있어 결과 파일의 환경에 둘 다 적는다. 사례 목록은 정적 이름 표(`bench.accuracy.compare`의 `BOOST_SPECIAL`, `BOOST_DISTS`)만 보므로 `list`는 아무것도 빌드하지 않고, 빌드는 비교 대상을 처음 부를 때 한다. 배열 하나에 ctypes 호출 한 번이고, 원소마다 Boost 함수를 직접 부르는 C++ 반복문이다. 이름은 호출마다 한 번 풀고, 매개변수가 스칼라인 분포는 호출마다 한 번 만든다. 인자는 sd의 순서로 받는다(`chndtr(df, nc, x)` 등). 소스가 없으면 Boost 열을 빼고 돈다.
 - **optimize의 R**: 목적 함수, 잔차, 기울기를 R로 다시 쓴다(sd는 sd 배열, scipy는 numpy 배열로 쓴 것과 같은 원칙이다). 정확도 측정은 reticulate로 같은 Python 함수를 부르지만, 속도에서는 그 다리의 비용이 시간을 차지하기 때문이다. R의 반복 상한과 허용오차(optim의 maxit·pgtol·lmm, nls.lm의 ftol·ptol·gtol·maxfev)는 sd·scipy 호출과 같은 멈춤 일이 되도록 Python 쪽 값에 맞추고, 정확도 측정과 같은 정의(`bench/accuracy/optimize.py`의 `r_optim_control`, `r_nlslm_control`)를 가져다 쓴다. Boost의 빌드 옵션도 정확도 측정의 것(`bench.accuracy.boost.FLAGS`)을 쓴다. R의 알고리즘이 다른 곳(optim의 BFGS·Nelder–Mead, 차분 기울기)은 사례의 비고에 적는다.
 - `quick`: 빠른 묶음. 영역마다 1–3분 안에 도는 대표 사례들이다.
@@ -182,7 +182,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 .venv/bin/python -m bench.accuracy table                             # 기준선에서 표만 다시
 ```
 
-- 영역은 참값이 있는 여섯이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize. 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
+- 영역은 참값이 있는 일곱이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest. 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
 - `--jobs`개(기본 8, 최대 10) 작업 프로세스가 스윕을 나눠 잰다. 워커는 sd 1스레드이고 몇 스윕마다 새로 띄운다. 결과는 프로세스 수와 무관하다.
 - `run --promote`는 재고 바로 기준선에 넣는다. `-q`는 터미널에 아무것도 쓰지 않는다(로그만).
 - 콘솔은 머리 블록, 스윕마다 sd와 비교 대상의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes다. 같은 줄이 시각과 함께 `build/logs/accuracy/<시각>.log`에 남는다.
@@ -197,6 +197,8 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 | stats(단변량) | `tests/stats/ref` | `tools/stats_ref.py` |
 | stats(다변량·행렬 분포, 다변량 cdf) | `tests/stats/ref/mv` | `tools/stats_ref.py` (`tools/mvref.py`, `tools/mvcdfref.py`를 부른다) |
 | regression | `tests/regression/ref/<종류>.json` | `tools/regression_ref.py` (식은 `tools/regref.py`) |
+| htest | `tests/htest/ref/<묶음>.json`(다른 라이브러리의 기록은 `tests/htest/data`) | `tools/htest_ref.py` (기록은 `tools/gen_htest_scipy.py`, `tools/gen_htest_r.py`) |
+| sparse | `tests/sparse/ref/<묶음>.npz`(다른 라이브러리의 기록은 `tests/sparse/data`; 공개 함수가 생기면 스윕이 된다) | `tools/sparse_ref.py` (기록은 `tools/gen_sparse_scipy.py`, `tools/gen_sparse_r.py`) |
 | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
 | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |
 | optimize | `tests/optimize/ref`(`scalar_roots.json`, `scalar_minima.json`, `derivatives.npz`), NIST StRD 인증값 | `tools/optimize_ref.py` |
@@ -217,6 +219,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
   - linalg: 잔차/(n·eps·척도) ≤ 10.
   - regression: 선형 모형(ols·wls)의 계수 벡터가 설계 행렬의 κ₂ ≤ 1e11에서 노름 상대오차 1e-14 안이다. 그 밖의 필드는 수치 계약이 없어 기준선과의 비교만 한다.
   - optimize: 결과로 확인되는 멈춤 판정(구간법의 xtol + rtol·|x*|, 기울기 판정의 gtol). 그 밖의 측정(xtol = 0의 ULP, 최적값까지의 거리 등)은 기준선과의 비교만 한다.
+  - htest: `tests/htest/refdata.py`의 척도. 통계량은 상대 1e-14·max(1, κ_stat)(D'Agostino 변환의 0 근처, Anderson–Darling의 상쇄하는 합), p값은 1e-14·max(1, κ_p)·max(1, κ_stat), Cramér–von Mises의 p값(근사식의 1 − cdf)은 절대 1e-15도 받는다, 자유도는 1e-14, t 검정의 신뢰구간 끝은 추정값·반폭의 크기에 대한 1e-14(docs/design/htest.md §4).
 
 **비교 대상**(`--compare`): scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS·robustbase·glmnet·Matrix·mvtnorm), Boost.Math 단독(`bench/accuracy/boost_comparator.cpp`).
 

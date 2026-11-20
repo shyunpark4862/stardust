@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 시작 전), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 1부 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0–SP8 시작 전, 설계 초안)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 시작 전), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 1부 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1–SP8 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -460,7 +460,7 @@
 
 # 가설검정 영역 (sd.htest)
 
-> 상태: **H0 완료·승인, H1 완료·승인** (2026-11-20). H2–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
+> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인** (2026-11-20). H3–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -476,7 +476,7 @@
 |---|---|
 | H0 준비: API 문서, 결과 객체, 공통 입력 층, 참값(Arb·정확한 유리수)·R 대조 도구, 기준선 | 완료·승인 (2026-11-20) |
 | H1 평균과 분산: `ttest_1samp ttest_rel ttest_ind ttest_ind_from_stats f_oneway alexandergovern bartlett levene fligner` | 완료·승인 (2026-11-20) |
-| H2 적합도 1: `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp kstest cramervonmises` | 시작 전 |
+| H2 적합도 1: `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp cramervonmises` | 완료·승인 (2026-11-20) |
 | H3 순위 검정: `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test` | 시작 전 |
 | H4 적합도 2: `ks_2samp cramervonmises_2samp anderson_ksamp epps_singleton_2samp` | 시작 전 |
 | H5 상관: `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi` | 시작 전 |
@@ -503,6 +503,10 @@
 
 ### H2. 적합도 1: 분포를 정한 검정
 - 카이제곱과 Cressie–Read, D'Agostino의 셋, Jarque–Bera, Shapiro–Wilk(AS R94), Anderson–Darling(1.17부터의 꼴), Kolmogorov–Smirnov 한 표본(정확·근사·점근), Cramér–von Mises 한 표본.
+- 결정(사용자, 2026-11-20): `kstest` 감싸개는 없다, 분포 인자는 sd.stats 분포 객체나 호출 가능한 `cdf`(문자열·`args` 없음), `anderson`의 `dist`는 sd.stats 분포 클래스이고 기본 `method='interpolate'`, Shapiro–Wilk는 AS R94, Jarque–Bera의 커널을 지금 htest로 옮기고 H20의 분산 0 규칙을 쓴다 (docs/design/htest.md §1.1 H34–H38). 결과를 보고(사용자, 2026-11-20): `sd.regression.JarqueBeraResult`를 htest의 클래스로(namedtuple의 튜플 동작이 없어진다; regression G165), `anderson`의 Weibull은 H9에서, Cramér–von Mises 꼬리의 절대 1e-16은 그대로, 큰 n의 `ks_1samp(method='exact')`는 scipy처럼 근사로, `chisquare`·`power_divergence`의 `df`는 둔다, R `nortest`·`goftest`를 대조용으로 설치 (H39–H44).
+- 결과: src/stardust/htest/_gof.py(열 함수와 결과 클래스), csrc/htest/(gof.cpp: 검정; normality.hpp: 중심 적률 합과 Jarque–Bera, regression의 `resid_stats`·`jarque_bera()`가 부른다; ks.hpp: Smirnov(double-double 로그의 Birnbaum–Tingey 합), Kolmogorov, 한 표본 양쪽 분포(double-double Durbin 행렬); cvm.hpp: Csörgő–Faraway; lanes.hpp), tests/htest/(test_goodness_of_fit.py, refdata.py: 테스트와 정확도 측정이 같이 쓰는 계약), 참값 7묶음 111문제, 측정 bench/speed/cases/htest.py·bench/accuracy/htest.py(영역 htest를 측정 체계에 넣었다; H0·H1의 bench/htest/h0·h1은 지웠다), 골든 tests/golden/cases_htest.py.
+- 찾은 것: 모든 참값이 계약 안이다. regression의 골든 804케이스가 옮긴 커널에서 비트까지 같다(분산 0 규칙은 상수 잔차의 적합만 바꾼다: 옛 JB 245.66, 지금 NaN). scipy는 O ≈ E의 Cressie–Read(λ = 2/3에서 66배), 관측 0의 Freeman–Tukey(NaN), 왜도 0의 `skewtest`(y = 0을 1로 바꿔 Z ≠ 0), 오프셋 데이터의 D'Agostino(1e-8), 로지스틱 Anderson의 맞추기(fsolve xtol 1e-5: 통계량 7.8e-9), n > 140의 한 표본 KS 양쪽 p값(Pelz–Good, 4.4e-6), Cramér–von Mises의 1e-7에서 멈춘 급수(꼬리 0.016)에서 틀린다. R의 `ks.test`는 깊은 꼬리에서 1 − cdf = 0(참 1e-113, 1e-251)을 낸다.
+- R의 `nortest` 1.0-4·`goftest` 1.2-3(H44; 더 설치된 꾸러미 없음)과 견주면 같은 통계량은 1e-12 안이고, `goftest::cvm.test`의 p값은 꼬리(참 5.2e-11)에서 0이다.
 
 ### H3. 순위 검정
 - Mann–Whitney(정확·정규), 순위 합, Wilcoxon 부호 순위(정확·정규·나열), Kruskal–Wallis, Friedman, Brunner–Munzel, Ansari–Bradley(정확·정규), Mood, Mood의 중앙값 검정, Page의 경향 검정.
@@ -531,7 +535,7 @@
 
 # 희소 영역 (sd.sparse)
 
-> 상태: **설계 초안** (2026-11-20). SP0–SP8은 모두 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md)다. API의 초안(`docs/api/sparse.md`)은 SP0에서 쓴다.
+> 상태: **설계 초안** (2026-11-20). SP0은 완료·승인, SP1–SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -545,7 +549,7 @@
 ## 진행 상태
 | 마일스톤 | 상태 |
 |---|---|
-| SP0 준비: API 문서, 시험 행렬, 참값(Arb)·scipy·R 대조 도구, Accelerate 탐침, 색인 dtype의 측정, 기준선 | 시작 전 |
+| SP0 준비: API 문서, 시험 행렬, 참값(Arb)·scipy·R 대조 도구, Accelerate 탐침, 색인 dtype의 측정, 기준선 | 완료·승인 (2026-11-20) |
 | SP1 형식과 변환: `coo_array csr_array csc_array dok_array`, 표준 꼴, `sd.ndarray`·numpy·scipy와 주고받기 | 시작 전 |
 | SP2 연산: 산술·비교·원소별 함수, SpMV·SpMM·SpGEMM, 리덕션 | 시작 전 |
 | SP3 인덱싱과 만들기: 인덱싱과 대입, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find` | 시작 전 |
@@ -559,6 +563,10 @@
 
 ### SP0. 준비
 - API 초안(scipy.sparse·scipy.sparse.linalg → sd.sparse 이름의 대응표 포함), 시험 행렬(격자, 대류-확산, 무작위, 특이, 복소 에르미트 등; 실제 행렬은 내려받아도 되는지 묻는다), Arb 참값 도구, scipy·R `Matrix` 대조 데이터, Accelerate 탐침(결정성, 특이 판정, int32 한계), int32·int64 색인의 SpMV 측정, 속도 기준선, 정확도·속도 체계에 넣는 계획.
+- 결정(사용자, 2026-11-20·21): docs/design/sparse.md §1.1 SP6–SP20(BSR·DIA 없음과 `format=None`의 CSR, DOK만, int64 색인, dtype 넷, 언제나 표준 꼴인 CSR·CSC, 0 지우기는 scipy의 규칙, 강한 0과 예외 없는 `A / 0`, 1·2차원, 이름과 `norm`, 합의 순서, 반복법은 이 라이브러리, 실제 행렬은 목록을 보이고 승인 뒤, 직접 풀이는 모두 LU/AMD; SP0 뒤에 int64 색인 유지와 SuiteSparse 여덟 개).
+- 결과: docs/api/sparse.md(계획한 공개 이름 41개와 클래스의 메서드·속성 80개의 시그니처, scipy.sparse·scipy.sparse.linalg → sd.sparse 대응표, 마일스톤별 질문 §10), src/stardust/sparse/(`sd.sparse`, 공개 이름은 아직 없다), csrc/accelerate/sparse.hpp(Accelerate LU 래퍼: 언제나 넘기는 `reportError`, status와 메시지의 예외 변환, LU/AMD 고정, RAII)·csrc/sparse/direct.cpp(비공개 `_lu_solve`)·csrc/bind/sparse_bind.cpp, 시험 행렬 tests/sparse/matrices.py(64개), 참값 tools/sparse_ref.py(Arb·정확한 유리수 7묶음 310점 → tests/sparse/ref/), 기록 tools/gen_sparse_scipy.py(scipy 1.18.1 661개)·tools/gen_sparse_r.py(R Matrix 1.7.6, 행렬 23개) → tests/sparse/data/, 탐침 tools/sparse_probe.py(Accelerate 결정성·동시 호출·특이, int32·int64 SpMV), 측정 등록 bench/speed/cases/sparse.py(마일스톤마다의 사례 계획)·bench/accuracy/sparse.py·tests/golden/cases_sparse.py(아직 비었다), 테스트 tests/sparse/(test_api_surface.py, test_accelerate.py, test_matrices.py, test_reference_data.py, test_suitesparse.py), 받는 도구 tools/sparse_suitesparse.py. 결과는 docs/design/sparse.md §5·§7.
+- 찾은 것: LU/AMD는 아홉 꼴·세 크기·두 스레드 모드·동시 호출에서 한 번도 비트가 바뀌지 않았다. Metis는 동시 호출에서 매번 다르고, MTMetis(LU의 기본 순서)는 동시 호출에서 프로세스가 죽는다. 정확히 특이하지만 반올림 피벗이 0이 아닌 행렬은 Accelerate(와 scipy의 SuperLU)가 크기 1/ε의 유한한 해를 내고 정규화 역오차가 ε 크기라, SP4의 특이 판정에 조건수 추정이 필요하다. Accelerate는 0 × 0을 받지 않고, LU에 COLAMD를 주면 메시지를 보내고도 status 0이다. 우변이 여럿이면 열을 함께 풀어 열 하나의 비트가 혼자 푼 것과 다르다. int64 색인의 SpMV는 1스레드 1.02–1.16배(문턱 1.3 안)이고 10스레드의 2차원 라플라시안 n = 10⁶은 1.33–1.39배다(int64 유지, SP19). SpMV(CSR·CSC·COO, int32·int64, SpMM k = 16)는 scipy와 비트까지 같다. scipy의 중복 더하기는 경로마다 순서가 다르다(`tocsr`은 줄이 15개 이하일 때만 입력 순서). Accelerate LU/AMD는 scipy `splu`보다 2차원 격자에서 1.2–3.4배, 3차원에서 4–18배 빠르다. SuiteSparse 행렬 여덟 개(약 14 MB)는 받기로 했지만(SP20) 2026-11-21에 파일 서버가 403을 돌려줘 아직 받지 못했다(docs/design/sparse.md §7.2).
+
 
 ### SP1. 형식과 변환
 - COO·CSR·CSC·DOK, 언제나 표준 꼴인 CSR·CSC(정렬, 중복은 입력 순서대로 더함), 형식 변환, `sd.ndarray`·numpy·scipy.sparse와 주고받기(scipy로는 복사 없는 뷰), 전치·`astype`·`reshape` 등.

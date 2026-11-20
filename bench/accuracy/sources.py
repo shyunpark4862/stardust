@@ -348,6 +348,8 @@ def sweeps(areas=None):
         "array": lambda: _module("array").sweeps(),
         "linalg": lambda: _module("linalg").sweeps(),
         "optimize": lambda: _module("optimize").sweeps(),
+        "htest": lambda: _module("htest").sweeps(),
+        "sparse": lambda: _module("sparse").sweeps(),
     }
     out = []
     for a in check_areas(areas):

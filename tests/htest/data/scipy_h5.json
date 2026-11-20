@@ -1,5 +1,5 @@
 {
-"_meta": {"scipy": "1.18.1", "statsmodels": "0.15.0", "numpy": "2.5.4"},
+"_provenance": {"tool": "tools/gen_htest_scipy.py", "scipy": "1.18.1", "statsmodels": "0.15.0", "numpy": "2.5.4"},
 "pearsonr/small": {"digest": "09c94645b24925e19e33da7ad31466d4c3e24fe514ee2da447b16a886c248da9", "result": {"statistic": 0.6401868989825019, "pvalue": 0.04617119371729451, "confidence_interval": [0.017691771446016174, 0.9050193495515452], "unpack": 2}},
 "pearsonr/small-greater": {"digest": "3411fd14091f037d74ab6fa99760f64a78932f9cfb63e937050227688d21705e", "result": {"statistic": 0.6401868989825019, "pvalue": 0.023085596858647254, "confidence_interval": [0.13594721691437928, 1.0], "unpack": 2}},
 "pearsonr/large": {"digest": "1e4c0327f786e01ca771f7f9ed1ffffdf2fedd5e58753b0d8a3b9f1d0390c639", "result": {"statistic": 0.06310495487151484, "pvalue": 0.04603778929042693, "confidence_interval": [0.0011162391949538165, 0.12461055206846934], "unpack": 2}},

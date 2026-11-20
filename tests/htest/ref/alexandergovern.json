@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 4, "dropped": []},
 "alexandergovern/small": {"digest": "4c2beee354b3871e6cc8c6aa4d0d9ddca8c71a2f9b5708a7f6e9ad0c3f979a0b", "statistic": [10.949297955089111, -2.3777585607843365e-17], "pvalue": [0.004191699672482477, -9.174985686412864e-20], "df": [2.0, 0.0], "kappa": 5.474648977544556},
 "alexandergovern/large": {"digest": "492ec0e83278190819234f08e9a1d5f1219c2f4ea96200b850f46c621b7924e6", "statistic": [2.775980687386404, -1.4769022331001098e-16], "pvalue": [0.24957636369810898, 1.0803956011901819e-17], "df": [2.0, 0.0], "kappa": 1.387990343693202},
 "alexandergovern/offset": {"digest": "f6d59cc2ae446382bd5797666338cc358b432fdd64b09a7a750b9b4e3ed098bf", "statistic": [6.140935008300449, 3.05879539621836e-16], "pvalue": [0.046399457846993584, -1.819550268665561e-18], "df": [2.0, 0.0], "kappa": 3.0704675041502245},

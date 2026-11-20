@@ -1,5 +1,5 @@
 {
-"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 8, "dropped": []},
 "fligner/median": {"digest": "ae84e0d3708d823fa4ed549e5bae7eb7c07e3f6053ba73b29a5d7e30156df587", "statistic": [13.610953442258953, -7.104527242814065e-17], "pvalue": [0.0011076919850573, 2.437404401119343e-20], "df": [2.0, 0.0], "kappa": 6.805476721129477},
 "fligner/mean": {"digest": "15e398c311c3d83d6599199402aea6c914569b8d6bd3e04cdb885d3764d088e3", "statistic": [15.53597011421057, -3.1643924409839836e-16], "pvalue": [0.0004230648600988837, -2.1000081105157818e-20], "df": [2.0, 0.0], "kappa": 7.767985057105285},
 "fligner/trimmed": {"digest": "e17679718ff3fabfa46bb330127249ec3fb6b236cdd17e87592a650ef565f44b", "statistic": [15.53597011421057, -3.1643924409839836e-16], "pvalue": [0.0004230648600988837, -2.1000081105157818e-20], "df": [2.0, 0.0], "kappa": 7.767985057105285},

@@ -24,6 +24,7 @@
 #include "array/ops/pieces.hpp"
 #include "array/parallel_limits.hpp"
 #include "bind/pyutil.hpp"
+#include "htest/lanes.hpp"
 #include "htest/moments.hpp"
 #include "special/dd.hpp"
 #include "special/ops/erf.hpp"
@@ -42,47 +43,6 @@ namespace nb = nanobind;
 namespace sd::htest {
 
 namespace {
-
-const NDArray& rows_arg(nb::handle o) {
-    const NDArray& a = require_ndarray(o);
-    if (a.dtype != DType::Float64 || a.ndim != 2) throw nb::type_error("htest: expects a 2-D float64 array");
-    return a;
-}
-const NDArray& vec_arg(nb::handle o, std::int64_t n) {
-    const NDArray& a = require_ndarray(o);
-    if (a.dtype != DType::Float64 || a.ndim != 1 || a.shape[0] != n)
-        throw nb::type_error("htest: expects a 1-D float64 array of the lanes");
-    return a;
-}
-double vec_at(const NDArray& a, std::int64_t i) { return *reinterpret_cast<const double*>(a.data + i * a.strides[0]); }
-
-// k new 1-D float64 arrays of n elements and their data
-struct Outs {
-    std::vector<NDArray> arrays;
-    std::vector<double*> p;
-    Outs(int k, std::int64_t n) {
-        const std::int64_t shape[] = {n};
-        for (int i = 0; i < k; ++i) {
-            arrays.push_back(new_array(DType::Float64, shape));
-            p.push_back(reinterpret_cast<double*>(arrays.back().data));
-        }
-    }
-    nb::tuple tuple() {
-        nb::list l;
-        for (NDArray& a : arrays) l.append(wrap(std::move(a)));
-        return nb::tuple(l);
-    }
-};
-
-// fn(r) for every lane on the pool, `cost` the work of one lane in elements (roughly)
-template <class F>
-void each_lane(std::int64_t lanes, std::int64_t cost, F&& fn) {
-    const std::int64_t c = std::max<std::int64_t>(1, cost);
-    const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / c);
-    for_pieces(lanes, per, lanes * c, [&](std::int64_t, std::int64_t b, std::int64_t e) {
-        for (std::int64_t r = b; r < e; ++r) fn(r);
-    });
-}
 
 // The lanes' unit exponents (htest/moments.hpp) from their largest magnitudes; empty when every
 // lane is in range (the usual data: no scaling).

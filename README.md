@@ -53,6 +53,8 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 회귀 | `sd.regression` | 선형(OLS·WLS·GLS)·GLM·정규화(ridge·lasso·elastic net, 교차검증)·강건·분위·비선형 최소제곱. 함수 + 결과 객체, 추론과 예측을 함께 | [docs/api/regression.md](docs/api/regression.md) |
 | 난수 | `sd.random` | Philox4×64-10 계수기형 생성기(스레드 수와 무관한 결정성), Generator와 `random`·`integers`·`choice`·`permutation`·`spawn`. 분포별 표본은 `sd.stats` | [docs/api/random.md](docs/api/random.md) |
 | 최적화 | `sd.optimize` | scipy.optimize의 부분집합: 수치 미분, 비선형·선형 최소제곱(`least_squares`, `lsq_linear`, `nnls`), 스칼라 근과 최솟값, 배치 스칼라 풀이, `minimize`(Nelder–Mead, BFGS, L-BFGS-B, newton-cg, trust 방법), `root` | [docs/api/optimize.md](docs/api/optimize.md) |
+| 가설검정 | `sd.htest` | scipy.stats의 가설검정(마일스톤마다 공개): 평균과 분산(t 검정, 분산분석, 분산의 동질성), 적합도(카이제곱·Cressie–Read, D'Agostino, Jarque–Bera, Shapiro–Wilk, Anderson–Darling, Kolmogorov–Smirnov, Cramér–von Mises). 읽기 전용 결과 객체, 배치, `nan_policy` | [docs/api/htest.md](docs/api/htest.md) |
+| 희소 | `sd.sparse` | 준비 중(공개 이름은 SP1부터): scipy.sparse의 희소 배열(`coo_array csr_array csc_array dok_array`)과 scipy.sparse.linalg의 희소 선형대수(직접 풀이, 반복법, 고유값·특이값, 행렬 함수, `LinearOperator`)를 하위 모듈 없이 `sd.sparse`에 | [docs/api/sparse.md](docs/api/sparse.md) |
 
 - 모든 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 결과의 배열, 스레드와 결정성, 정답지와 같아야 하는 것, 받는 입력, 같은 이름의 다른 뜻)은 [API.md](API.md)에 있다.
 
@@ -62,7 +64,7 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | [API.md](API.md) | 공통 규칙과 영역별 API 문서의 색인 |
 | [DESIGN.md](DESIGN.md) | 통합의 결정과 일관성 규칙 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 층 구조, 디렉터리, 공통 부품 |
-| `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md), [통계](docs/design/stats.md), [회귀](docs/design/regression.md), [난수](docs/design/random.md), [최적화](docs/design/optimize.md) |
+| `docs/design/` | 영역의 설계: [배열](docs/design/array.md), [선형대수](docs/design/linalg.md), [데이터프레임](docs/design/frame.md), [특수함수](docs/design/special.md), [통계](docs/design/stats.md), [회귀](docs/design/regression.md), [난수](docs/design/random.md), [최적화](docs/design/optimize.md), [가설검정](docs/design/htest.md), [희소](docs/design/sparse.md) |
 | [ROADMAP.md](ROADMAP.md) | 진행 순서 |
 | [tests/README.md](tests/README.md) | 테스트, 골든, 커버리지의 실행 |
 | [bench/README.md](bench/README.md) | 속도와 정확도 측정 |
