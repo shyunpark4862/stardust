@@ -1,0 +1,9 @@
+{
+"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"kendalltau/exact-10": {"digest": "a4d7177d2a617c23893ba8ad06e33e32487b7c3b621c1655e5a7f4afe490eea2", "statistic": [0.7777777777777778, -1.2335811384723961e-17], "pvalue": [0.0009463183421516755, -2.5531335814861472e-20], "method": "exact"},
+"kendalltau/exact-30": {"digest": "4f04f68d617355dfaeeb524d57c794fab98a56b0de7e1f42ad345bb70f6770b7", "statistic": [-0.07126436781609195, -9.889917748097659e-19], "pvalue": [0.5955097487125379, 9.074252480039283e-18], "method": "exact"},
+"kendalltau/exact-less": {"digest": "2a612288d8619523b7828ec9e85717cd8d5d7dd4d5d29057ef991f1335c0ce11", "statistic": [-0.07126436781609195, -9.889917748097659e-19], "pvalue": [0.29775487435626896, 4.537126240019642e-18], "method": "exact"},
+"kendalltau/ties": {"digest": "e6c82a3a20dd50806cd85a146cf99161d0b197483baf9a3ebb0f5f5c899262a3", "statistic": [0.194543971622459, -3.1866997727122668e-18], "pvalue": [0.10002156536579584, 3.4072308346282315e-19], "method": "asymptotic"},
+"kendalltau/variant-c": {"digest": "7957a566f665f5565d03f53a398c36922b9fe60ba5e203d442d5e084b67e162c", "statistic": [0.18954545454545454, 7.065055611250996e-19], "pvalue": [0.10002156536579584, 3.4072308346282315e-19], "method": "asymptotic"},
+"kendalltau/large": {"digest": "1ffd52891a58c8d2977f4b9b091f609f7115e92c9827f4e4b16d7aa5ff8b2502", "statistic": [0.002970970970970971, -5.055876749403475e-20], "pvalue": [0.8881232929634733, -9.723383429930043e-18], "method": "asymptotic"}
+}

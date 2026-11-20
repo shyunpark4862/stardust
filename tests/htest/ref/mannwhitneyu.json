@@ -1,0 +1,11 @@
+{
+"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"mannwhitneyu/exact-5-7": {"digest": "952ac6348a273f53806871faa41a88be3217902a2e90c45768fd35c8f36f2461", "statistic": [10.0, 0.0], "pvalue": [0.2676767676767677, -2.803593496528173e-18], "method": "exact"},
+"mannwhitneyu/exact-8-8": {"digest": "e2e0fe8bd0c1f58b1a65a21203db6abac50f6947a8b3dbae48e4e5a103267cb9", "statistic": [8.0, 0.0], "pvalue": [0.010411810411810413, -8.583309320140099e-19], "method": "exact"},
+"mannwhitneyu/exact-less": {"digest": "a7e77d4d1fdb25153dc482dbac30fe4656a8a207074b255a57a0b41fe83ade65", "statistic": [8.0, 0.0], "pvalue": [0.005205905205905206, -4.2916546600700497e-19], "method": "exact"},
+"mannwhitneyu/exact-forced": {"digest": "98b5e3691c437f30de77ff6964cf1c563b6924fb8c85cffab634460fb3c87d4c", "statistic": [60.0, 0.0], "pvalue": [0.0020953002145517844, -1.3912220599118253e-19], "method": "exact"},
+"mannwhitneyu/ties": {"digest": "461f8f68d2be155949c3b7ce7209fd30f628d0c5d0d7cdb310b3dfee7039022e", "statistic": [248.0, 0.0], "pvalue": [0.9725062892871009, 2.2178134242724947e-17], "method": "asymptotic"},
+"mannwhitneyu/no-continuity": {"digest": "0d842777bdfda65ff71a1aeff4b52a92ac3cd93613c1c05630b6acb98244e5b6", "statistic": [248.0, 0.0], "pvalue": [0.9633473619962021, -5.314871685287605e-18], "method": "asymptotic"},
+"mannwhitneyu/large": {"digest": "b6629798650a24680b16f07ff267151ee59ba3fb6348e6c45da464531db8bea8", "statistic": [147014.0, 0.0], "pvalue": [0.5693195553392297, 1.4867801039955618e-17], "method": "asymptotic"},
+"mannwhitneyu/separated": {"digest": "f55bf3641f277c3c7d49c24caa92b2cab79c8dd39f0e3f1de893030dcfad55aa", "statistic": [0.0, 0.0], "pvalue": [4.830856390397608e-67, -1.975072229047512e-83], "method": "asymptotic"}
+}

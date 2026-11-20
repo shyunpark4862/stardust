@@ -1,0 +1,14 @@
+{
+"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"wilcoxon/exact-10": {"digest": "c3e28ab89f992679837f3bc44ad627c7704c38f17082ee4ca0f0ca08e2e73f87", "statistic": [9.0, 0.0], "pvalue": [0.064453125, 0.0], "method": "exact"},
+"wilcoxon/exact-40": {"digest": "d17dfe1f57935b0333bc41c841970388df4ed572abbfa07876a754375f591041", "statistic": [182.0, 0.0], "pvalue": [0.0016823487039800966, 0.0], "method": "exact"},
+"wilcoxon/exact-greater": {"digest": "1afb2775693086c6d2044279f09e86c9ca7fcc63acaaa3fe32ec1c224bccef7f", "statistic": [46.0, 0.0], "pvalue": [0.0322265625, 0.0], "method": "exact"},
+"wilcoxon/asymptotic-60": {"digest": "b1bdc4d5939364251eefc611488bb71402c314cb26f213622c4f22434cecd6a6", "statistic": [560.0, 0.0], "pvalue": [0.00896544291760829, 1.4271822549654895e-19], "method": "asymptotic"},
+"wilcoxon/asymptotic-forced": {"digest": "4a10d8473abf8daff3b53ec096eb92e80dcaed15cca2fc8eb789eb4a357b60ad", "statistic": [560.0, 0.0], "pvalue": [0.00896544291760829, 1.4271822549654895e-19], "method": "asymptotic"},
+"wilcoxon/zeros-wilcox": {"digest": "1d1259a0064eb1442f18fc53e814f7ab7ff018736fcb087acb5b19485148c127", "statistic": [151.0, 0.0], "pvalue": [0.22514631086465808, -8.97844835815513e-18], "method": "asymptotic"},
+"wilcoxon/zeros-pratt": {"digest": "2e2fed1ff22aa6db65bce8923e597a2698bae5505542ef1069c3ff131af6edf3", "statistic": [177.0, 0.0], "pvalue": [0.2572453305940248, 2.7575708625382224e-17], "method": "asymptotic"},
+"wilcoxon/zeros-zsplit": {"digest": "3559787df2daa5d340b2a6c87e999cb6f6b6f9b864c8930ba8de5b9bfb56fe35", "statistic": [178.5, 0.0], "pvalue": [0.25736311134199946, -2.1374086297587575e-17], "method": "asymptotic"},
+"wilcoxon/correction": {"digest": "2eac095acd8a88df5034fbcda1198345fe3149275dfd49d6014e94c11da8a718", "statistic": [1071.0, 0.0], "pvalue": [0.31696063425427307, 1.2120306454209167e-17], "method": "asymptotic"},
+"wilcoxon/paired": {"digest": "0345a0226ef200270a4bb323ff30c7436aedc94dbe6963ed7fe17eda0f6e4517", "statistic": [25.0, 0.0], "pvalue": [0.04791259765625, 0.0], "method": "exact"},
+"wilcoxon/tail": {"digest": "eefb1e276c1ba9283cca3134f94e40a2989e357eccfb7826f481015bc7fed1b9", "statistic": [1.0, 0.0], "pvalue": [6.144866877758261e-51, -4.557939359540208e-67], "method": "asymptotic"}
+}

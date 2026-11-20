@@ -1,0 +1,7 @@
+{
+"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"jarque_bera/n8": {"digest": "0043e3285e42a6f449964ed6d558f681ff0e30f139f6be6de96d5a28bb067bfd", "statistic": [0.9112985957553352, 1.9178235571575035e-18], "pvalue": [0.6340361559379489, -2.0554111737001377e-17]},
+"jarque_bera/n50": {"digest": "70c0de8a3238e0e6398f9acaed0c101cf3a4895545ebf117b0c8cdde8833db13", "statistic": [0.6153857781720516, 4.060958243877153e-17], "pvalue": [0.73514105318517, 2.0582331232548818e-17]},
+"jarque_bera/n2000": {"digest": "d8be1ae620edf8b2d7fbd8e31dd1ae64db04e5100c305ddf2f3b79565103229e", "statistic": [0.62765178546907, -1.9493672626731702e-17], "pvalue": [0.7306462279026663, -1.4006581944401158e-17]},
+"jarque_bera/skewed": {"digest": "b6b0d4f526d751c7d6505dcbeb892e36d75ebbbb621902febef9630c0684f5d1", "statistic": [2597.2917080955335, -6.197397247868111e-15], "pvalue": [0.0, 0.0]}
+}

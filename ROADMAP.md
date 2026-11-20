@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 1부 완료·승인 대기), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(설계 초안, H0–H10 모두 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6, 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 1부 완료·승인 대기), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1–H10 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -308,6 +308,8 @@
 - 큰 결정(사용자, 2026-11-18): 추론과 예측을 동등하게, 선형·GLM·정규화·강건·분위·비선형 전부, 함수 + 결과 객체(배열 입력), 모듈 `sd.regression`, 절편 기본, 회귀에 딸린 t·p·F·구간은 결과에, 참값은 Arb와 statsmodels·scikit-learn 대조 (docs/design/regression.md §1.1 G1–G7).
 - 기존 영역의 결과는 비트까지 같아야 한다.
 - G0·G1의 질문은 정했다(사용자, 2026-11-18): docs/design/regression.md §1.1 G8–G18.
+- G7의 큰 결정(사용자, 2026-11-20): 범위는 변수 선택·모형 비교와 일반 검정·진단 추가이고 다른 모형족은 나중 후보, 변수 선택은 결과 객체를 돌려주는 독립 함수(`stepwise`, `best_subset`), 대상은 `ols wls gls glm`, 교차검증 순차 선택은 정규화 교차검증과 같은 겹과 `rng`, 비교·검정·진단은 결과의 메서드이고 분산분석표는 함수 `anova` (docs/design/regression.md §1.1 G126–G130, 설계 초안 §3.8, 시작 전에 물을 것 §8; htest와 겹치는 곳도 §3.8·§8).
+- htest와의 공통 규칙(사용자, 2026-11-20; docs/design/regression.md §1.1 G131–G136): 구간은 `conf_int(alpha=)`, 두 영역이 같은 값을 계산하는 커널은 htest에(`jarque_bera()`는 htest의 H2에서 htest 커널을 부른다; 같은 비트, p값은 `ChiSquared(df=2).ccdf`), 같은 검정은 같은 형(`JarqueBeraResult`는 htest의 클래스), F는 `df_num`·`df_denom`이고 χ²·t는 `df`, 분산 0은 sd.stats `skew`의 규칙(이것만 `jarque_bera()`의 골든을 바꾼다), 결과 배열은 복사 없는 쓰기 금지.
 
 ## 진행 상태
 | 마일스톤 | 상태 |
@@ -321,6 +323,8 @@
 | G6 비선형 최소제곱: `nls` | 완료·승인 (2026-11-19) |
 | 회귀 최적화: Dot2 행 훑기, 64행 타일, 정준 링크 연마, expit 공유, MM의 S 뉴턴 | 완료·승인 (2026-11-19) |
 | 코드 리뷰와 사이트 작업에서 찾은 문제 (P1–P4, R1–R112) | 고침 (2026-11-19–20, 결정 G83–G116) |
+| G7a 비교·검정·진단: `t_test wald_test compare_f_test compare_lr_test anova vif dffits dfbetas white_test goldfeld_quandt reset_test` | 시작 전 (설계 초안 2026-11-20) |
+| G7b 변수 선택: `stepwise best_subset`(AIC·BIC·p값·교차검증; `ols wls gls glm`) | 시작 전 (설계 초안 2026-11-20) |
 
 ## 마일스톤
 
@@ -452,20 +456,21 @@
 
 # 가설검정 영역 (sd.htest)
 
-> 상태: **설계 초안** (2026-11-20). H0–H10 모두 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md)이고, API의 초안(docs/api/htest.md)은 H0에서 쓴다.
+> 상태: **H0 완료·승인** (2026-11-20). H1–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
 ## 진행 원칙
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/htest.md §9)을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
 - 큰 결정(사용자, 2026-11-20): 새 최상위 모듈 `sd.htest`(`sd.stats.tests`가 아니다, 상관도 여기), 첫 판에 scipy.stats의 가설검정 전부(모수, 순위, 적합도, 분할표, 상관, 재표본과 그 밖), scipy의 이름과 stardust의 규칙(위치 입력과 키워드 옵션, 별칭 없음, `nan_policy`, sd.stats의 `axis`·배치, `rng=`, 읽기 전용 결과 객체), 통계량과 p값은 Arb·정확한 유리수 참값에 대한 상대 1e-14 계약(scipy·R과 비트 동일은 목표가 아니다), statsmodels의 다중 비교 보정(`multipletests` 등)과 비율·이항 검정(`proportions_ztest`, `proportion_confint`, 두 독립 비율, `mcnemar`, `cochrans_q`); TOST와 검정력 분석은 뺀다 (docs/design/htest.md §1.1 H1–H5).
+- H0의 결정(사용자, 2026-11-20): 검정마다 읽기 전용 결과 클래스 `<함수>Result`(공통 바탕, 내보내지 않음), scipy가 푸는 곳만 같은 개수로 풀기, 신뢰구간은 ~~scipy의 `confidence_interval(confidence_level=0.95)`~~ regression의 `conf_int(alpha=0.05)`(H16), `axis=None` 기본과 표의 앞 축 배치, 자유도는 어디서나 `df`(`chisquare`의 `ddof`는 그대로), 퇴화한 입력은 경고 없는 NaN, `'auto'`가 쓴 방법을 `method` 필드에, `'exact'`의 상한을 넘으면 `ValueError`, 새 귀무분포는 htest 안에만, R 꾸러미는 마일스톤마다 묻는다 ; 영역 사이(H16–H21): 신뢰구간은 regression의 `conf_int(*, alpha=0.05)`, 두 영역이 함께 계산하는 값의 커널은 htest(Jarque–Bera는 H2에서 옮기고 p값은 `ChiSquared(df=2).ccdf`), 같은 검정은 같은 형(`sd.regression.JarqueBeraResult`가 htest의 클래스), F 꼴의 자유도는 `df_num`·`df_denom`, 분산 0은 sd.stats `skew`의 규칙 하나, 배열 필드는 복사 없는 쓰기 금지 (docs/design/htest.md §1.1 H6–H21).
 - 비교 대상은 scipy 1.18.1, statsmodels 0.15.0, R 4.6.2이고, 정확도 체계(`bench/accuracy`)와 속도 체계(`bench/speed`)에서 견준다.
 - 기존 영역의 결과는 비트까지 같아야 한다(regression의 `jarque_bera()` 진단 등 같은 커널을 쓰게 되는 곳도).
 
 ## 진행 상태
 | 마일스톤 | 상태 |
 |---|---|
-| H0 준비: API 문서, 결과 객체, 공통 입력 층, 참값(Arb·정확한 유리수)·R 대조 도구, 기준선 | 시작 전 |
+| H0 준비: API 문서, 결과 객체, 공통 입력 층, 참값(Arb·정확한 유리수)·R 대조 도구, 기준선 | 완료·승인 (2026-11-20) |
 | H1 평균과 분산: `ttest_1samp ttest_rel ttest_ind ttest_ind_from_stats f_oneway alexandergovern bartlett levene fligner` | 시작 전 |
 | H2 적합도 1: `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp kstest cramervonmises` | 시작 전 |
 | H3 순위 검정: `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test` | 시작 전 |
@@ -480,11 +485,14 @@
 ## 마일스톤
 
 ### H0. 준비
-- API 초안 docs/api/htest.md(모든 공개 함수의 시그니처, scipy·statsmodels 이름 → sd 이름의 대응표, 마일스톤별 질문), 결과 객체의 틀(`_TestResult`, `ConfidenceInterval`), 공통 입력 층(`axis`·배치·`keepdims`·`nan_policy`·`alternative`·`rng`), 참값 도구의 틀(`tools/htest_ref.py` Arb, `tools/htest_exact.py` 정확한 유리수), R 대조 도구(`tools/gen_htest_r.py`), scipy·statsmodels·R 기준선(정확도·속도).
-- 시작 전에 물을 것: docs/design/htest.md §9의 H0(결과 객체의 꼴과 이름, 튜플 풀기, 신뢰구간의 이름, `axis` 기본값, `dof`·`df`, 퇴화한 입력, 새 귀무분포의 공개, R 꾸러미 설치).
+- API 초안, 결과 객체의 틀, 공통 입력 층, 참값 도구, scipy·statsmodels·R 대조 데이터, 속도 기준선, 정확도·속도 체계에 넣는 계획.
+- 결정(사용자, 2026-11-20): docs/design/htest.md §1.1 H6–H15, 영역 사이의 결정 H16–H21.
+- 결과: docs/api/htest.md(계획한 공개 이름 72개의 시그니처, 결과 필드와 풀기, 에러, scipy·statsmodels → sd 이름의 대응표, 마일스톤별 질문 §12), src/stardust/htest/(`__init__.py` — `sd.htest`, 공개 이름은 아직 없다; `_result.py`의 `_TestResult`와 `conf_int`; `_common.py`의 `Samples`·`Tables`와 옵션 검사), tests/htest/(`problems.py` 문제 281개, test_api_surface.py, test_result.py, test_common.py, test_reference_data.py; 63개), tools/htest_ref.py(Arb·정확한 유리수, 17묶음 138문제 → tests/htest/ref/), tools/gen_htest_scipy.py(→ tests/htest/data/scipy_h1–h8.json, statsmodels.json), tools/gen_htest_r.py(base R 145문제 → tests/htest/data/r.json), bench/htest/h0/(speed.py, speed.md, speed.json: scipy·statsmodels 41검정 × n = 10, 10³, 10⁶, 배치 10⁴ × 30), docs/design/htest.md §2.2·§7(정확도·속도 체계에 넣는 파일 목록).
+- 찾은 것: scipy·R이 참값에서 크게 벗어나는 곳은 상쇄다: Bartlett의 거의 같은 분산(scipy 53배, R은 음수의 통계량), G 검정의 O ≈ E(scipy 1e-7), |r| ≈ 1의 Pearson p값(scipy 5e-7–0.11, R 2e-7–0.09), 큰 오프셋의 t(scipy·R 1e-8–3e-7; R은 짝 t 1e-6, F 2e-8). R은 깊은 꼬리에서 p = 0을 낸다(한 표본 KS 정확 n = 80의 참 1.7e-21, wilcox.test 정규 근사의 참 6.1e-51). 그 밖의 scipy 값은 참값과 1e-12 안이고, 정수 통계량의 정확 분포는 3e-16 안이다. scipy의 2 × 2 `fisher_exact`는 양쪽 규칙의 허용오차가 1e-14다(설계 초안의 1e-7은 `binomtest`와 R의 것). scipy `wilcoxon`의 `zstatistic`은 `method='asymptotic'`을 준 때만 있다. 작은 표본에서 scipy 호출 하나의 고정 비용은 0.06–0.25 ms, 배치에서 줄마다 Python 고리인 `kendalltau`는 10⁴ × 30에 950 ms다.
+- sd.regression과 겹치는 곳(`jarque_bera`와 `r.jarque_bera()`, `f_oneway`와 분산분석표·더미 OLS, `pearsonr`과 `linregress`, `multipletests`와 단계적 선택): H16–H21로 정했고 docs/design/htest.md §1.4, docs/api/htest.md §13에 적었다(Jarque–Bera의 커널과 클래스는 H2에서 옮긴다; `anova`와 `f_oneway`는 계약 안에서 같고 비트는 아니다).
 
 ### H1. 평균과 분산
-- t 검정 넷(Student, Welch, Yuen의 절삭), 일원 분산분석(Welch 포함), Alexander–Govern, 분산의 동질성(Bartlett, Levene, Fligner–Killeen). 신뢰구간은 `confidence_interval()`.
+- t 검정 넷(Student, Welch, Yuen의 절삭), 일원 분산분석(Welch 포함), Alexander–Govern, 분산의 동질성(Bartlett, Levene, Fligner–Killeen). 신뢰구간은 `conf_int(alpha=0.05)`.
 
 ### H2. 적합도 1: 분포를 정한 검정
 - 카이제곱과 Cressie–Read, D'Agostino의 셋, Jarque–Bera, Shapiro–Wilk(AS R94), Anderson–Darling(1.17부터의 꼴), Kolmogorov–Smirnov 한 표본(정확·근사·점근), Cramér–von Mises 한 표본.

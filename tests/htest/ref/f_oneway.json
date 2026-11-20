@@ -1,0 +1,8 @@
+{
+"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"f_oneway/small": {"digest": "4c2beee354b3871e6cc8c6aa4d0d9ddca8c71a2f9b5708a7f6e9ad0c3f979a0b", "statistic": [4.762540813451238, 1.3505274526274447e-16], "pvalue": [0.018117437558064768, -1.1273835195960745e-18], "df_num": [2.0, 0.0], "df_denom": [24.0, 0.0]},
+"f_oneway/welch": {"digest": "ee6fa5966ab6c885bd898514850aaab30d2dc4ddd587a5d8de9a720c0852bedd", "statistic": [7.38151296323787, -4.0696488907270586e-16], "pvalue": [0.007275115939637782, 3.797192109203503e-19], "df_num": [2.0, 0.0], "df_denom": [12.924355856082784, 7.963031378141731e-16]},
+"f_oneway/large": {"digest": "d3fc25e6fb357af4e22a8cc5bcf5d0eea3b098356cb3778e1bc071831d0316c9", "statistic": [3.1601638940528956, -1.342356373579269e-16], "pvalue": [0.04259557530556263, 1.5290332989726757e-18], "df_num": [2.0, 0.0], "df_denom": [2397.0, 0.0]},
+"f_oneway/offset": {"digest": "d3713addc8ecfdca00845808f5dd430798f18eaf97c4860b513f4da69709219e", "statistic": [2.8918456729545086, -1.188218850866542e-16], "pvalue": [0.05944875905762523, 2.3019685835725064e-18], "df_num": [2.0, 0.0], "df_denom": [117.0, 0.0]},
+"f_oneway/tail": {"digest": "58e2a40ddb935f7fe2d25c702f71298f2b2cb77b43d00cdbd8d60ce70aa79063", "statistic": [438.6893275731163, 2.225673079290155e-14], "pvalue": [2.572968612807056e-69, 2.1621093419984705e-85], "df_num": [2.0, 0.0], "df_denom": [177.0, 0.0]}
+}

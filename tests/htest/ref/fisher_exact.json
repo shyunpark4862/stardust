@@ -1,0 +1,11 @@
+{
+"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"fisher_exact/small": {"digest": "7f18f18de83df53075a8b76d72b9f7c58861acc8de700833313aa2a104225779", "statistic": [0.09523809523809523, 5.28677630773884e-18], "pvalue": [0.029973122852379817, 9.416952261656154e-19]},
+"fisher_exact/zero": {"digest": "814828fb3e4f98d2b852bd30e2bc42f5aa0bc7a143dc40e41d33528a01a4debf", "statistic": [0.0, 0.0], "pvalue": [0.02097902097902098, -8.491653378907448e-19]},
+"fisher_exact/large": {"digest": "21b7484177bffc95618a9a9474304451123f1844d247c205474dbc5c26d6d0d8", "statistic": [8.0, 0.0], "pvalue": [2.262833236177402e-16, 6.496370029152705e-35]},
+"fisher_exact/balanced": {"digest": "354953d0ec134c86dd0f12ce58d4c1d2d657f8f16a2331e76899172f81d9540c", "statistic": [1.0, 0.0], "pvalue": [1.0, 0.0]},
+"fisher_exact/less": {"digest": "4b2515d76a8572e825dbca24675b5ae94e43116da91bd588eb50e5aa3bad3783", "statistic": [0.09523809523809523, 5.28677630773884e-18], "pvalue": [0.024172422005239343, 5.453286468895892e-20]},
+"fisher_exact/greater": {"digest": "f2948a400a00c188d1a07e74e0e312b221d67a03c1bb626a27d04738f5ee13a8", "statistic": [0.09523809523809523, 5.28677630773884e-18], "pvalue": [0.9982819038546593, -4.1163578138893464e-17]},
+"fisher_exact/tail": {"digest": "31981774ef856269f1a7e67354e6f69143eea7667f98d13feae27bbcbf8657cf", "statistic": [900.0, 0.0], "pvalue": [5.465846024822999e-149, -3.4383373987869036e-165]},
+"fisher_exact/3x3": {"digest": "87394d4123e47be62af6430319ed11483378a554c92daaa6abde7b0f98c80d7b", "pvalue": [0.282360228768354, -4.735672981175987e-18], "rule": "R"}
+}

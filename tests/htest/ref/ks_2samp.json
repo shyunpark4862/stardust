@@ -1,0 +1,9 @@
+{
+"_meta": {"tool": "tools/htest_ref.py", "python-flint": "0.9.0", "target_bits": 110},
+"ks_2samp/exact-8-10": {"digest": "80d52aa2b869636f88910bb5212730a07671f28bfc13f7beb94b743020a9d0c4", "statistic": [0.675, -4.4408920985006264e-17], "pvalue": [0.020659079482608894, 2.2200400990607708e-19], "method": "exact"},
+"ks_2samp/exact-100-120": {"digest": "60df6306caf391cbb5ef5ec12ac45b72dbb2baae527b5acf91f619c8a6883e22", "statistic": [0.23833333333333334, -8.141635513917815e-18], "pvalue": [0.0033338104686767116, 1.6222378251699305e-19], "method": "exact"},
+"ks_2samp/exact-less": {"digest": "44c6540c8bfb6659109383631ec2145abd05dc178feaf884ef11f8184dcca8b1", "statistic": [0.016666666666666666, 2.312964634635743e-19], "pvalue": [0.9585137985937772, 3.6474461790701685e-17], "method": "exact"},
+"ks_2samp/exact-greater": {"digest": "1f7c9fd864fb5273e8cee53d651c4886d32a3b90aed6bd5788c38e02571227b8", "statistic": [0.23833333333333334, -8.141635513917815e-18], "pvalue": [0.0016669052377437353, -7.309708589215109e-20], "method": "exact"},
+"ks_2samp/ties": {"digest": "433d1b882f5e1e1934bafcf957b175acf467e8b49600b963938ec88bbd6eb6ef", "statistic": [0.315, -2.220446049250313e-18], "pvalue": [0.019204755125812448, 7.701291354902552e-19], "method": "exact"},
+"ks_2samp/tail": {"digest": "3c25327266e4f2e72debe63e3cb23fa5c5edfc70c1c12142859626272fe1d0d4", "statistic": [0.5466666666666666, 3.256654205567126e-17], "pvalue": [1.67933866362364e-41, 8.331585890218747e-58], "method": "exact"}
+}

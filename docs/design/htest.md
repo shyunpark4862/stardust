@@ -1,12 +1,12 @@
 # 가설검정 영역 설계 (sd.htest)
 
-> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 H1–H5)은 사용자가 정했다. 마일스톤(§8 H0–H10)은 모두 시작 전이고, 나머지는 안이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **H0 완료, 승인 대기** (2026-11-20). 큰 결정(§1.1 H1–H21)은 사용자가 정했다. H0(준비)의 결과는 §7과 §8에 있다. H1–H10은 시작 전이고, 나머지는 안이다. 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
 `sd.htest`(가설검정: 검정통계량, p값, 신뢰구간)의 확정 사항과 내부 구조의 안을 적는다.
 
-- 공통 규칙은 [DESIGN.md](../../DESIGN.md), 층 구조는 [ARCHITECTURE.md](../../ARCHITECTURE.md), 모든 영역의 API 규칙은 [API.md](../../API.md)에 있다. 공개 함수와 시그니처의 안은 H0에서 docs/api/htest.md로 쓴다.
+- 공통 규칙은 [DESIGN.md](../../DESIGN.md), 층 구조는 [ARCHITECTURE.md](../../ARCHITECTURE.md), 모든 영역의 API 규칙은 [API.md](../../API.md)에 있다. 공개 함수와 시그니처의 안은 [docs/api/htest.md](../api/htest.md)다(H0).
 - 비교 대상은 scipy 1.18.1의 `scipy.stats`(검정, `scipy.stats.contingency`), statsmodels 0.15.0의 `statsmodels.stats`(`multitest`, `proportion`, `contingency_tables`), R 4.6.2의 `stats` 꾸러미(`t.test`, `wilcox.test`, `ks.test`, `fisher.test`, `prop.test`, `binom.test`, `p.adjust`, `mcnemar.test` 등)다.
 - 바닥은 `sd.stats`의 분포(p값과 신뢰구간의 cdf·ccdf·icdf), `sd.special`, `sd.stats.rankdata`, 기술통계의 보상 합 커널([stats.md](stats.md) §5), `sd.optimize`(신뢰구간을 뒤집는 근 찾기, 장애 모수의 최대화, 분포의 최우추정), `sd.random`(재표본)이다.
 - 이 영역은 [stats.md](stats.md) §7의 "검정은 나중에 따로"를 잇는다. 위치는 `sd.stats.tests`에서 `sd.htest`로 바뀌었다(H1).
@@ -20,9 +20,25 @@
 |---|---|
 | H1 위치와 이름 | 새 최상위 모듈 `sd.htest`다. `sd.stats.tests`가 아니다. stats.md의 T2(하위 모듈 `sd.stats.tests`, 상관도 그곳)를 바꾼다(stats.md §7에 적었다). 상관(Pearson·Spearman·Kendall 등)의 계수와 p값도 여기 둔다. T3의 경계(p값을 내거나 귀무분포를 쓰면 검정, 아니면 stats; 검정이 stats를 부르는 방향만)는 그대로다 (사용자 결정 2026-11-20) |
 | H2 범위 | 첫 판에 scipy.stats의 가설검정 전부를 마일스톤으로 나눠 넣는다: 모수(t, F·분산분석, 분산의 동질성, 카이제곱), 비모수 순위 검정, 적합도, 분할표, 상관, 재표본(`permutation_test`, `bootstrap`, `monte_carlo_test`)과 그 밖(`binomtest`, `poisson_means_test`, `page_trend_test`, `median_test` 등). 목록은 scipy 1.18.1의 공개 API에서 뽑았다(§1.2). `sd.stats`에 이미 있는 기술통계와 검정이 아닌 것은 뺀다 (사용자 결정 2026-11-20) |
-| H3 API | scipy의 함수 이름과 인자 이름을 따르고 stardust의 규칙을 쓴다: 입력은 위치로, 옵션은 키워드로만, 별칭 없음, stardust의 메시지, `nan_policy`, `axis`와 배치는 sd.stats 기술통계의 규칙, 무작위는 `rng=`(sd.random·sd.stats와 같다). 결과는 `statistic`, `pvalue`, scipy에 있으면 신뢰구간, 자유도 등을 담은 객체이고, 필드는 읽기 전용이며 복사 규칙은 regression의 G98·G113(와 G120, API.md §2.2)을 따른다. 결과의 세부 꼴은 §2.2의 안이고 §9 H0에서 묻는다 (사용자 결정 2026-11-20) |
+| H3 API | scipy의 함수 이름과 인자 이름을 따르고 stardust의 규칙을 쓴다: 입력은 위치로, 옵션은 키워드로만, 별칭 없음, stardust의 메시지, `nan_policy`, `axis`와 배치는 sd.stats 기술통계의 규칙, 무작위는 `rng=`(sd.random·sd.stats와 같다). 결과는 `statistic`, `pvalue`, scipy에 있으면 신뢰구간, 자유도 등을 담은 객체이고, 필드는 읽기 전용이며 복사 규칙은 regression의 G98·G113(와 G120, API.md §2.2)을 따른다. 결과의 세부 꼴은 H6–H12와 §2.2다 (사용자 결정 2026-11-20) |
 | H4 정확도 | 검정통계량과 p값은 다른 영역처럼 Arb 참값에 대한 정확도 계약을 갖는다: 보장 영역에서 상대 1e-14, 느슨한 영역은 잰 값을 문서화한다. scipy·R과의 비트 동일은 목표가 아니다. 정확한 귀무분포(작은 표본의 순위 검정, 정확 분할표 검정, Kolmogorov–Smirnov의 정확한 분포)는 Arb나 정확한 유리수 참값으로 확인한다. p값은 sd.stats·sd.special의 분포를 쓴다. scipy·R·statsmodels와의 비교는 정확도 체계(`bench/accuracy`, 비교 패키지 열)와 속도 체계(`bench/speed`)에서 한다 (§4, §7) (사용자 결정 2026-11-20) |
 | H5 statsmodels 두 묶음 | scipy의 검정에 더해 statsmodels.stats의 두 묶음을 넣는다. (1) 다중 비교 보정: `multipletests`(bonferroni, sidak, holm-sidak, holm, simes-hochberg, hommel, fdr_bh, fdr_by, fdr_tsbh, fdr_tsbky)와 `fdrcorrection`(scipy `false_discovery_control`과 겹친다; 한 가지 API의 안은 §3.9). (2) 비율과 이항: `proportions_ztest`, `proportions_chisquare`, `proportion_confint`(모든 방법), 두 독립 비율의 차·비·오즈비 검정과 구간(`test_proportions_2indep`, `confint_proportions_2indep`), McNemar(`mcnemar`), Cochran Q(`cochrans_q`). TOST 동등성 검정과 검정력 분석은 지금은 뺀다(나중 후보, §1.2). 비교 대상은 statsmodels와 R(`prop.test`, `binom.test`, `p.adjust`, `mcnemar.test`)이다. 이름은 scipy에 같은 개념이 있으면 scipy의 이름, statsmodels에만 있으면 statsmodels의 이름에 stardust의 규칙을 쓴다(이름의 질문은 §9) (사용자 결정 2026-11-20) |
+| H6 결과 객체 | 검정마다 읽기 전용 결과 클래스 하나이고, 모두 공통 바탕 클래스 위에 있다. 규칙은 regression·optimize의 결과와 같다: 필드는 읽기 전용 속성이다(배열 필드는 H21). 이름은 `<함수>Result`(`TtestIndResult`)다. 클래스는 공개 이름으로 내보내지 않는다(예외는 H18) (사용자 결정 2026-11-20) |
+| H7 튜플 풀기 | scipy의 결과가 풀리는 곳만 scipy와 같은 개수로 풀린다(대개 `statistic, pvalue`; `chi2_contingency`는 넷). 그 밖은 필드로만 읽는다 (사용자 결정 2026-11-20) |
+| H8 신뢰구간 | ~~scipy에 있는 곳은 scipy의 꼴인 메서드 `r.confidence_interval(confidence_level=0.95)`다~~ — H16이 바꿨다 (사용자 결정 2026-11-20) |
+| H9 `axis` | 기본값은 None이다(sd.stats 기술통계처럼 전체를 표본 하나로). 배치는 `axis`로 한다. 표를 받는 함수(분할표 등)는 마지막 축들이 표이고 앞 축이 배치다 (사용자 결정 2026-11-20) |
+| H10 자유도 | 자유도는 어디서나 `df`다(scipy `chi2_contingency`의 `dof`도 `df`). `chisquare`의 인자 `ddof`는 이름을 그대로 둔다(뜻이 다르다: 기대 빈도를 맞춘 모수의 수). F 꼴 검정의 이름은 H19가 다듬는다 (사용자 결정 2026-11-20) |
+| H11 퇴화한 입력 | 관측이 너무 적거나 분산이 0인 입력의 결과는 NaN이고 경고는 없다. 배치에서는 다른 줄이 그대로 계산된다 (사용자 결정 2026-11-20) |
+| H12 `'auto'`의 기록 | `method='auto'`는 실제로 쓴 방법(`'exact'`, `'asymptotic'` 등)을 결과의 `method` 필드에 적는다 (사용자 결정 2026-11-20) |
+| H13 정확한 방법의 상한 | `method='exact'`의 작업량이 문서화한 상한을 넘으면 `ValueError`다(메시지가 `'asymptotic'`이나 순열 방법을 알려 준다). 모든 호출은 정해진 시간 안에 끝난다 (사용자 결정 2026-11-20) |
+| H14 새 귀무분포 | 검정에만 필요한 새 귀무분포(Kolmogorov–Smirnov, 스튜던트화 범위, Fisher의 비중심 초기하)는 처음에 htest 안에만 둔다(sd.stats의 공개 분포가 아니다) (사용자 결정 2026-11-20) |
+| H15 R 꾸러미 | R 대조 꾸러미(`coin`, `Exact`, `kSamples` 등)는 마일스톤마다 이름·CRAN 출처·크기를 적어 묻고 설치한다. 지금은 설치하지 않는다(base R만) (사용자 결정 2026-11-20) |
+| H16 신뢰구간 (H8을 바꾼다) | 신뢰구간은 어디서나 regression의 꼴인 `r.conf_int(alpha=0.05)`다(G99: `alpha`는 키워드로만, (…, 2)의 아래·위 끝). scipy의 `confidence_interval(confidence_level=)`은 쓰지 않는다: 영역 사이의 통일이 먼저다. 신뢰수준을 받는 함수의 인자도 `alpha`다. scipy와의 차이는 docs/api/htest.md §11의 표에 적는다 (사용자 결정 2026-11-20) |
+| H17 같은 값의 커널 | 두 영역이 함께 계산하는 값의 커널은 htest에 있다. Jarque–Bera와 그에 딸린 적률 검정은 htest의 것이고 regression이 htest의 커널을 부른다. p값은 regression이 지금 하는 대로 `ChiSquared(df=2).ccdf`다. 그래서 `htest.jarque_bera(x)`와 `r.jarque_bera()`는 같은 비트다. 커널(regression의 `resid_stats`의 그 부분)은 H2에서 옮기고, regression의 골든은 그대로여야 한다 (사용자 결정 2026-11-20) |
+| H18 같은 검정은 같은 형 | Jarque–Bera의 결과 클래스는 htest의 것이고, regression의 공개 이름 `JarqueBeraResult`가 그 같은 클래스를 가리킨다(이름이 그대로라 깨지는 것이 없다). 그 밖의 htest 결과는 H6대로 내보내지 않는 클래스다. 이 예외는 문서에 적는다 (사용자 결정 2026-11-20) |
+| H19 자유도의 이름 (H10을 다듬는다) | F 꼴 검정은 `df_num`과 `df_denom`, 카이제곱과 t는 `df`다 (사용자 결정 2026-11-20) |
+| H20 분산 0의 규칙 | 분산 0의 판정은 어디서나 하나다: sd.stats `skew`의 규칙(m2 ≤ (ε·평균)²이면 NaN). regression의 `jarque_bera()`도 그렇다. regression의 결과는 그런 퇴화한 경우에만 바뀌고, 커널을 옮길 때 그런 경우가 있으면 그것만 골든을 다시 기록한다 (사용자 결정 2026-11-20) |
+| H21 결과 배열 (H6을 고친다) | 배열 필드는 regression·optimize처럼 복사하지 않는 쓰기 금지 배열이다. 리스트인 설정 필드는 읽을 때마다 새 복사본이다(G113) (사용자 결정 2026-11-20) |
 
 ### 1.2 범위 (안)
 목록은 scipy 1.18.1 `scipy.stats` 모듈 문서의 "Hypothesis Tests and related functions" 절과 공개 이름 전체(`dir(scipy.stats)`)를 대조해 만들었다. "출처"의 sm은 statsmodels 0.15.0이다. 마일스톤은 §8이다. "재표본(H9)"은 그 검정의 `method=`에 재표본 객체를 받는 것을 H9에서 더한다는 뜻이다.
@@ -30,7 +46,7 @@
 **모수: 평균과 분산 (마일스톤 H1)**
 | 함수 | 출처 | p값과 결과(안) |
 |---|---|---|
-| `ttest_1samp(a, popmean, /, *, ...)` | scipy | t 분포. `statistic pvalue df`, `confidence_interval()` |
+| `ttest_1samp(a, popmean, /, *, ...)` | scipy | t 분포. `statistic pvalue df`, `conf_int()` |
 | `ttest_rel(a, b, /, *, ...)` | scipy | 같다 |
 | `ttest_ind(a, b, /, *, equal_var, trim, method, ...)` | scipy | Student·Welch, `trim`이면 Yuen. 재표본(H9) |
 | `ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2, /, *, ...)` | scipy | 같다(요약값에서) |
@@ -78,7 +94,7 @@
 **상관 (마일스톤 H5)**
 | 함수 | 출처 | p값과 결과(안) |
 |---|---|---|
-| `pearsonr(x, y, /, *, alternative, method, ...)` | scipy | 베타 분포(정확한 정규 이론), `confidence_interval()`(Fisher z). 재표본(H9) |
+| `pearsonr(x, y, /, *, alternative, method, ...)` | scipy | 베타 분포(정확한 정규 이론), `conf_int()`(Fisher z). 재표본(H9) |
 | `spearmanrho(x, y, /, *, alternative, method, ...)` | scipy | t 근사. 1.18의 새 꼴(브로드캐스트). 재표본(H9) |
 | `spearmanr(a, b=None, /, *, ...)` | scipy | 열들의 상관 행렬 꼴(§9 H5: 둘지) |
 | `pointbiserialr(x, y, /, *, ...)` | scipy | `pearsonr`과 같다 |
@@ -101,8 +117,8 @@
 **비율과 이항 (마일스톤 H7)**
 | 함수 | 출처 | p값과 결과(안) |
 |---|---|---|
-| `binomtest(k, n, /, *, p, alternative)` | scipy | 정확(양쪽은 1 + 10⁻⁷ 규칙), `proportion_ci()`(exact, wilson, wilsoncc) |
-| `quantile_test(x, /, *, q, p, alternative)` | scipy | 이항, `confidence_interval()` |
+| `binomtest(k, n, /, *, p, alternative)` | scipy | 정확(양쪽은 1 + 10⁻⁷ 규칙), `conf_int(method=)`(exact, wilson, wilsoncc; scipy의 `proportion_ci`, H16) |
+| `quantile_test(x, /, *, q, p, alternative)` | scipy | 이항, `conf_int()` |
 | `poisson_means_test(k1, n1, k2, n2, /, *, diff, alternative)` | scipy | E-test(이중 합) |
 | `proportions_ztest(count, nobs, /, *, value, alternative, prop_var)` | sm | 정규 |
 | `proportions_chisquare(count, nobs, /, *, value)` | sm | 카이제곱(`table`, `expected_freq`) |
@@ -113,8 +129,8 @@
 **다중 비교와 보정 (마일스톤 H8)**
 | 함수 | 출처 | p값과 결과(안) |
 |---|---|---|
-| `tukey_hsd(*samples, equal_var)` | scipy | 스튜던트화 범위 분포, `confidence_interval()` |
-| `dunnett(*samples, control, alternative, rng)` | scipy | 다변량 t의 cdf(`sd.stats.MultivariateT`), `confidence_interval()` |
+| `tukey_hsd(*samples, equal_var)` | scipy | 스튜던트화 범위 분포, `conf_int()` |
+| `dunnett(*samples, control, alternative, rng)` | scipy | 다변량 t의 cdf(`sd.stats.MultivariateT`), `conf_int()` |
 | `multipletests(pvals, /, *, alpha, method, max_iter, ...)` | sm | 열 방법(§3.9) |
 | `false_discovery_control(ps, /, *, axis, method)` | scipy | bh, by |
 | `combine_pvalues(pvalues, /, *, method, weights, ...)` | scipy | fisher, pearson, tippett, stouffer, mudholkar_george |
@@ -124,7 +140,7 @@
 |---|---|---|
 | `permutation_test(data, statistic, /, *, permutation_type, vectorized, n_resamples, batch, alternative, axis, rng)` | scipy | 전부 나열(가능하면) 또는 무작위 순열, `null_distribution` |
 | `monte_carlo_test(data, rvs, statistic, /, *, ...)` | scipy | 같다 |
-| `bootstrap(data, statistic, /, *, n_resamples, batch, vectorized, paired, axis, confidence_level, alternative, method, rng)` | scipy | percentile, basic, BCa. `confidence_interval`, `bootstrap_distribution`, `standard_error` |
+| `bootstrap(data, statistic, /, *, n_resamples, batch, vectorized, paired, axis, alternative, method, rng)` | scipy | percentile, basic, BCa. `conf_int()`(H16), `bootstrap_distribution`, `standard_error` |
 | `PermutationMethod`, `MonteCarloMethod`, `BootstrapMethod` | scipy | 앞 검정들의 `method=`에 넘기는 설정 객체(§9 H9) |
 | `bws_test(x, y, /, *, alternative, method)` | scipy | Baumgartner–Weiss–Schindler, 순열 |
 | `multiscale_graphcorr(x, y, /, *, ...)` | scipy | MGC, 순열(§9 H9: 넣을지) |
@@ -142,11 +158,25 @@
 ### 1.3 공통 원칙 (다른 영역에서 이어받는 것)
 - 데이터는 위치로, 옵션은 키워드로만 받는다. 별칭이 없다(scipy 결과의 `correlation`, MGC의 `stat` 같은 같은 값의 둘째 이름도 두지 않는다). float64 실수로 계산하고(bool·int64는 바꿔서) complex는 `TypeError`다.
 - 같은 입력이면 스레드 수와 상관없이 같은 비트다. 무작위가 드는 함수는 같은 `rng` 상태에서 스레드 수와 상관없이 같은 비트다.
-- **모든 호출은 정해진 시간 안에 끝난다**(stats.md §1.3). 정확한 분포의 동적 계획, 무한 급수, 장애 모수의 최대화, 근 찾기에는 근거 있는 상한을 둔다. 상한에 닿으면 조용히 틀린 값이 아니라 NaN이다(원소별 값의 규칙, API.md §2.2). 정확한 방법을 사용자가 고른 경우(`method='exact'`)에 작업량이 상한을 넘으면 `ValueError`로 알린다(§9 H0).
+- **모든 호출은 정해진 시간 안에 끝난다**(stats.md §1.3). 정확한 분포의 동적 계획, 무한 급수, 장애 모수의 최대화, 근 찾기에는 근거 있는 상한을 둔다. 상한에 닿으면 조용히 틀린 값이 아니라 NaN이다(원소별 값의 규칙, API.md §2.2). 정확한 방법을 사용자가 고른 경우(`method='exact'`)에 작업량이 상한을 넘으면 `ValueError`로 알린다(H13).
 - 경고를 내지 않는다. scipy가 경고(`ConstantInputWarning`, `SmallSampleWarning`, 근사가 부정확하다는 경고)를 내는 곳은 NaN이나 문서다.
 - 참값은 Arb(python-flint)와 정확한 유리수(Python의 int·`fractions`)만 쓴다. mpmath는 쓰지 않는다.
-- 영역 간 일관성이 먼저다: 자유도 인자 이름(`correction`이 아니라 scipy·statsmodels의 `ddof`가 나오는 곳은 §9 H0), `nan_policy`, `axis`, 메시지의 꼴(`ttest_ind(): …`), `rng`, 결과의 읽기 전용 규칙은 기존 영역을 따른다.
+- 영역 간 일관성이 먼저다: 자유도 인자 이름(`chisquare`의 `ddof`는 뜻이 달라 그대로, 결과의 자유도는 `df`; H10), `nan_policy`, `axis`, 메시지의 꼴(`ttest_ind(): …`), `rng`, 결과의 읽기 전용 규칙은 기존 영역을 따른다.
 - 반올림이 아닌 동작(기본값, `'auto'`가 고르는 방법, 양쪽 p값의 정의, 연속성 보정, 동점 보정)은 scipy·statsmodels와 같다(API.md §4의 규칙 2). 다르게 정한 곳은 `[scipy와 다름]`으로 이유와 함께 적는다.
+
+
+### 1.4 다른 영역과의 관계: sd.regression
+- **경계**: 표본·표를 받는 검정은 htest, 적합한 모형을 받는 검정과 진단은 regression이다. regression에는 이미 `jarque_bera()`, `breusch_pagan()`, `durbin_watson`이 있고, regression의 G7a·G7b(변수 선택, `anova` 표와 F·LR·Wald의 모형 비교, VIF·DFFITS·DFBETAS·White·Goldfeld–Quandt·RESET; docs/design/regression.md §3.8)도 regression의 것이다. 모형을 받는 검정은 설계 행렬이 필요해 htest에 두지 않는다. 잔차의 다른 정규성 검정(Shapiro–Wilk, Anderson–Darling, D'Agostino)은 잔차를 htest에 넘긴다. htest의 분산 동질성 검정(Bartlett, Levene, Fligner)은 집단을 받는 다른 검정이라 겹치지 않는다.
+- **같은 값의 커널은 htest에 있다**(H17), **같은 검정은 같은 형이다**(H18). 표는 docs/api/htest.md §13이다.
+  - Jarque–Bera: 커널(평균을 뺀 2·3·4차 합, double-double; 지금 `csrc/regression/linear.cpp`의 `resid_stats`의 그 부분)은 H2에서 htest로 옮기고 regression의 `r.jarque_bera()`가 부른다. p값은 두 쪽 모두 `ChiSquared(df=2).ccdf(jb)`다: 닫힌 꼴 e^(−JB/2)는 그와 1 ulp 다를 수 있다(jb = 1.3에서 0.5220457767610162와 0.522045776761016; regression 설계자가 찾았다). 그래서 `htest.jarque_bera(r.resid)`와 OLS의 `r.jarque_bera()`는 같은 비트이고 같은 형(`JarqueBeraResult`)이다. regression의 골든은 H20이 바꾸는 퇴화한 경우 말고 그대로여야 한다(옮긴 뒤 `tools/golden.py check regression`).
+  - 예외 하나: 완전 적합(G95, G117)에서 regression은 잔차를 정확히 0으로 보아 NaN을 내고, `htest.jarque_bera(r.resid)`는 반올림 크기의 잔차로 값을 낸다.
+  - WLS·GLS: `r.jarque_bera()`는 백색화한 잔차(쓰인 행의 √w·`resid`, GLS는 L⁻¹`resid`; 가중치 0인 행은 빠진다)의 값이다. `resid`는 원래 척도라 지금은 htest에 그대로 넘길 수 없다. regression이 `wresid`(statsmodels의 이름)를 두면 그 쓰인 행을 넘겨 같은 비트가 된다(regression §8의 질문).
+  - 일원 분산분석: 집단 더미의 OLS로 만든 `anova` 표(항 하나)와 `htest.f_oneway`는 같은 F·p이지만 비트까지 같지는 않다: `anova`는 설계 행렬만 받아 집단 레이블이 없으므로 적합의 QR에서 계산하고, `f_oneway`는 집단 제곱합에서 계산한다. 통계량은 두 쪽의 정확도 계약 안에서 같고 p값은 같은 `F(df_num, df_denom).ccdf` 호출이다. 주인은 htest(`f_oneway`)다. 두 집단의 `ttest_ind`과 더미 계수의 t도 계약 안에서 같다.
+  - Pearson: `pearsonr(x, y)`의 r·p와 `linregress(x, y)`의 `rvalue`·`pvalue`는 같은 검정이다. 1 − r²의 커널은 H17에 따라 H5에서 htest에 두고 `linregress`가 부른다(그때 regression의 골든이 바뀌는 경우가 있으면 따로 묻는다).
+  - p값의 꼬리: 두 영역 모두 sd.stats 분포의 `ccdf`·`logccdf`를 부른다(같은 인자면 같은 비트).
+  - 신뢰구간: 두 영역 모두 `conf_int(*, alpha=0.05)`이고 같은 검사와 메시지(`'alpha' must be between 0 and 1 (exclusive)`)다(H16, G99).
+  - 다중 검정 보정: `multipletests`(H8 마일스톤)는 계수 여럿의 `r.pvalues`와 단계적 변수 선택의 p값을 보정하는 짝이다(`multipletests(r.pvalues, axis=-1)`, 배치 (…, k)). 다만 선택 뒤의 p값은 같은 자료로 고르고 검정했기 때문에 명목 수준을 지키지 않고, 보정도 선택의 편향을 고치지 못한다(regression 설계자의 주의; 두 영역의 문서에 함께 적는다). 분산분석 뒤의 쌍 비교는 `tukey_hsd`·`dunnett`(H8)다.
+- **regression의 지금 결과**: `JarqueBeraResult`·`BreuschPaganResult`는 `stardust._results`의 namedtuple이고 `sd.regression`이 내보낸다(D-25). Jarque–Bera는 H2에서 htest의 결과 클래스가 되고 `sd.regression.JarqueBeraResult`가 그 클래스를 가리킨다(H18). 그 클래스는 지금처럼 둘로 풀리고 인덱스·`len`도 같다. namedtuple에만 있는 것(`==`의 튜플 비교, `_asdict`, `_replace`, `_fields`)과 골든이 결과를 적는 꼴이 바뀌는지는 H2에서 확인하고, 바뀌면 그 차이를 묻는다. `BreuschPaganResult`는 htest에 짝이 없어 regression이 정한다(자유도 필드를 둔다면 H19의 `df`). 퇴화한 입력의 경고 없는 NaN(완전 적합의 0/0, BP 자유도 ≤ 0)은 H11과 같고, 분산 0의 판정은 H20으로 sd.stats `skew`의 규칙 하나다(regression의 `jarque_bera()`는 그런 퇴화한 경우에만 값이 바뀐다). regression의 코드는 H0에서 바꾸지 않았다.
 
 ---
 
@@ -155,24 +185,24 @@
 ### 2.1 입력
 - **데이터**(표본, 표, 개수): API.md §5의 데이터 입력이다. `sd.ndarray`, 실수의 시퀀스, numpy 배열, frame의 `Series`(`DataFrame`은 여러 열을 받는 곳만)를 받고 float64 배열로 바꾼다. frame의 결측은 NaN이 되어 `nan_policy`를 따른다. 실수 스칼라는 길이 1의 표본이 아니라 스칼라 인자(`popmean`, `k`, `n`)에만 받는다.
 - **개수**(`binomtest`의 k·n, 분할표, 비율의 count·nobs): 음이 아닌 정수 값이어야 한다. scipy처럼 정수가 아닌 값은 `ValueError`, 정수 값의 float는 받는다(§9 H6: 분할표의 소수 기댓값).
-- **`axis`와 배치**(H3, sd.stats 기술통계의 규칙 T28·T37): `axis`는 None(전체를 하나의 표본으로), int, int의 tuple·리스트다. 축을 따라 표본을 읽고 나머지 축은 배치다. 두 표본 이상을 받는 검정은 배치 축끼리 브로드캐스트하고 표본 축의 길이는 달라도 된다(scipy의 `_axis_nan_policy` 규칙과 같다). `keepdims`를 둔다. 기본값은 §9 H0의 질문이다(추천: sd.stats처럼 None).
+- **`axis`와 배치**(H3, sd.stats 기술통계의 규칙 T28·T37): `axis`는 None(전체를 하나의 표본으로), int, int의 tuple·리스트다. 축을 따라 표본을 읽고 나머지 축은 배치다. 두 표본 이상을 받는 검정은 배치 축끼리 브로드캐스트하고 표본 축의 길이는 달라도 된다(scipy의 `_axis_nan_policy` 규칙과 같다). `keepdims`를 둔다. 기본값은 None이다(H9).
   - 배치는 줄(lane)마다 독립인 검정이다. 줄 하나의 계산은 어디서 돌든 같으므로 배치는 줄을 하나씩 부른 것과 비트까지 같다.
-  - 축이 정해진 입력(분할표 (r, c), `page_trend_test`의 (m, n), `cochrans_q`의 (N, k), `chi2_contingency`)은 마지막 축들이 표이고 앞 축이 배치다(regression의 `theilslopes`처럼; §9 H0).
+  - 축이 정해진 입력(분할표 (r, c), `page_trend_test`의 (m, n), `cochrans_q`의 (N, k), `chi2_contingency`)은 마지막 축들이 표이고 앞 축이 배치다(H9).
 - **`nan_policy`**: `'propagate'`(NaN이 있는 줄은 결과가 NaN), `'omit'`(줄마다 NaN을 빼고 남은 크기로; 짝지은 검정은 쌍을 뺀다), `'raise'`(`ValueError`). 메시지는 T41의 꼴이다. 줄마다 남은 크기가 달라도 배치로 계산한다(scipy는 마스크 배열로 느리다).
 - **무한대**: 순위 검정은 ±inf를 순서대로 다룬다(순위가 정해진다). 적률을 쓰는 검정은 sd.stats의 규칙(합이 유한하지 않으면 보정 없이; inf − inf는 NaN)이다.
 - **`alternative`**: `'two-sided'`, `'less'`, `'greater'`만이다. statsmodels의 `'larger'`, `'smaller'`는 받지 않는다(H5: scipy에 있는 개념은 scipy의 이름; §9 H7). 메시지는 T41의 꼴이다.
 - **무작위**(H3): 무작위가 드는 계산(재표본, 몬테카를로 p값, `dunnett`의 다변량 t를 scipy처럼 QMC로 할 때, r × c Fisher의 몬테카를로)은 `rng=`(sd.random의 `Generator`)를 꼭 받는다. 없으면 O31의 꼴인 `TypeError`(`'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType`)다. scipy처럼 시드 없이 무작위로 도는 기본값은 없다(sd.random의 R3: 전역 상태가 없다).
 - **사용자 함수**(`ks_1samp`·`cramervonmises`의 `cdf`, 재표본의 `statistic`, `monte_carlo_test`의 `rvs`): Python 호출이다. 콜백 동안 GIL을 쥐고(optimize §2.1), 그 사이의 계산은 C++이다. 분포 인자는 sd.stats의 분포 객체(`sd.stats.Normal(mu=0, sigma=1)`)나 `cdf(x)`를 돌려주는 호출 가능한 객체를 받는다. scipy의 분포 이름 문자열('norm')과 `args=()`는 받지 않는다(O12와 같다; §9 H2).
 
-### 2.2 결과 객체 (안)
-- 검정마다 결과 클래스가 있고 공통 기반(`_TestResult`)을 쓴다. 정의는 모든 영역의 결과 형이 있는 `stardust._results`다(D-25). `sd.htest`가 내보낼지는 §9 H0이다(지금 결과 형을 내보내는 영역은 stats와 regression).
-- 필드: `statistic`, `pvalue`와 검정마다 scipy·statsmodels의 필드(`df`, `zstatistic`, `statistic_location`, `statistic_sign`, `expected_freq`, `table`, `null_distribution`, `method`(page_trend_test) 등). 별칭은 없다(§1.3). 이름이 갈리는 곳(scipy `chi2_contingency`의 `dof`와 다른 곳의 `df`)은 §9 H0이다.
-- 필드는 읽기 전용 속성이다(G98; 대입하면 `AttributeError`). 배열 필드는 쓰기 금지 뷰이고 복사하지 않는다(G120, O103, API.md §2.2). 리스트인 설정 필드는 읽을 때마다 새 리스트다(G113). 결과를 만드는 공개 생성자는 받은 배열을 한 번 복사한다(O103).
-- 스칼라 검정의 필드는 Python `float`(개수는 `int`), 배치는 배치 모양의 sd 배열이다(기술통계와 같다). `df`는 Welch처럼 정수가 아닐 수 있어 언제나 float다(§9 H1).
-- **신뢰구간**(안): scipy처럼 메서드 `confidence_interval(*, confidence_level=0.95)`이고 `ConfidenceInterval(low, high)` namedtuple(배치면 배치 모양의 쓰기 금지 배열 둘)을 돌려준다. `binomtest`는 scipy의 `proportion_ci(*, confidence_level=0.95, method='exact')`다. regression의 `conf_int(*, alpha=0.05)`((…, k, 2) 배열)과 이름·인자가 다르다: §9 H0에서 묻는다.
-- **튜플 풀기**(안): scipy의 결과가 풀리는 곳(`stat, p = ttest_ind(...)`; `chi2_contingency`는 넷)은 같은 개수로 풀린다. scipy가 풀지 않는 결과(`binomtest`, `cramervonmises`, `somersd`, 재표본 결과 등)는 풀리지 않는다(API.md §4 규칙 2: 사용자 코드가 기댄다). statsmodels가 튜플을 돌려주는 함수(`proportions_ztest`, `proportion_confint`, `multipletests` 등)는 결과 객체로 바꾸되 같은 순서로 풀리게 한다(§9 H7·H8).
-- `repr`는 짧은 요약이다. `summary()`는 두지 않는다.
-- **`method='auto'`가 고른 방법**: scipy는 `page_trend_test`만 결과에 적는다. 모든 `'auto'` 검정의 결과에 고른 방법을 둘지는 §9 H0이다.
+### 2.2 결과 객체 (H6–H8, H10, H12)
+- 검정마다 결과 클래스가 있고 공통 바탕 `_TestResult`를 쓴다(H6). 정의는 `src/stardust/htest/_result.py`다: 클래스를 내보내지 않으므로(H6) 모든 영역의 공개 결과 형이 있는 `stardust._results`(D-25)가 아니라 optimize의 `_result.py`처럼 영역 안에 둔다. 하위 클래스는 필드 목록(`_FIELDS`), 풀기 순서(`_UNPACK`), 신뢰구간 유무(`_CI`)만 적고, 속성·풀기·`conf_int`은 바탕이 만든다. 예외: Jarque–Bera의 클래스는 `sd.regression.JarqueBeraResult`로 공개된다(H18).
+- 필드: `statistic`, `pvalue`와 검정마다 scipy·statsmodels의 필드(`df`, `zstatistic`, `statistic_location`, `statistic_sign`, `expected_freq`, `table`, `null_distribution` 등). 별칭은 없다(§1.3). 자유도는 카이제곱·t가 `df`, F 꼴이 `df_num`·`df_denom`이다(H10, H19). `method='auto'`가 있는 검정은 쓴 방법을 `method`에 적는다(H12).
+- 필드는 읽기 전용 속성이다(G98; 대입하면 `AttributeError`). 배열 필드는 쓰기 금지 배열이고 읽을 때 복사하지 않는다(H21; G120, O103, API.md §2.2). 리스트인 설정 필드는 읽을 때마다 새 리스트다(G113). 검정이 쓰는 생성자 `_make`는 새 배열을 그대로 받고, 공개 꼴의 생성자는 받은 배열을 한 번 복사한다(O103). 그 호출에서 주지 않는 필드는 `AttributeError`다(`hasattr()`로 안다).
+- 스칼라 검정의 필드는 Python `float`(개수는 `int`), 배치는 배치 모양의 sd 배열이다(기술통계와 같다). `df`(와 `df_num`·`df_denom`)는 Welch처럼 정수가 아닐 수 있어 언제나 float다(§9 H1).
+- **신뢰구간**(H16): regression의 꼴인 메서드 `conf_int(*, alpha=0.05)`이고(G99) 아래·위 끝의 (…, 2) float64 배열을 돌려준다(검정 하나면 (2,); 부를 때마다 새 배열이라 쓸 수 있다, G120). `binomtest`는 scipy `proportion_ci`의 `method`를 받아 `conf_int(*, alpha=0.05, method='exact')`, `odds_ratio`는 `alternative`도 받는다. 신뢰수준을 호출에서 받는 함수(`proportion_confint`, `confint_proportions_2indep`)의 인자도 `alpha=0.05`이고(statsmodels와 같은 이름), `bootstrap`은 호출의 `confidence_level` 대신 결과의 `conf_int(alpha=)`다. 검사와 메시지는 regression의 것과 같다(`conf_int(): 'alpha' must be between 0 and 1 (exclusive)`).
+- **튜플 풀기**(H7): scipy의 결과가 풀리는 곳(`stat, p = ttest_ind(...)`; `chi2_contingency`·`median_test`는 넷)은 같은 개수와 순서로 풀리고 `r[0]`, `len(r)`도 그 튜플의 것이다. scipy가 풀지 않는 결과(`binomtest`, `cramervonmises`, `somersd`, 재표본 결과 등)는 풀리지 않는다. statsmodels가 튜플을 돌려주는 함수(`proportions_ztest`, `proportion_confint`, `multipletests` 등)는 결과 객체로 바꾸되 같은 순서로 풀리게 하는 안이다(§9 H7·H8).
+- `repr`는 한 줄 요약이다(`TtestIndResult(statistic=2.13, pvalue=0.0412, df=27)`, 배치는 `TtestIndResult(batch shape (10,))`). `summary()`는 두지 않는다.
+- 공통 입력 층은 `src/stardust/htest/_common.py`다(H0): 데이터는 sd.stats 기술통계의 변환 함수를 그대로 쓰고(같은 메시지), `Samples`가 `axis`·배치·`keepdims`·`nan_policy`(짝지은 표본은 쌍을 뺀다)를, `Tables`가 표의 배치와 개수 검사를 맡는다. 옵션 검사(`alternative`, `method`와 `resolved`, `check_exact_work`, `rng`, `alpha`, int·실수 인자)는 다른 영역과 같은 메시지 꼴이다.
 
 ---
 
@@ -183,7 +213,7 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 - **p값의 꼬리**: p값은 언제나 작은 쪽 꼬리를 직접 계산한다(`ccdf`는 1 − cdf가 아니다; sd.stats의 `ccdf`·`logccdf`). 양쪽 p값은 연속 분포에서 2·min(cdf, ccdf)를 1로 자른 값이다(scipy와 같다). 대칭 분포(t, 정규)는 2·ccdf(|t|)다. 2⁻¹⁰²² 아래로 내려가는 p값도 서브노멀까지 값을 낸다(0이 아니다).
 - **통계량의 조건수**: p값의 오차는 통계량의 오차가 κ_p = |s·∂p/∂s / p|배로 커진 것과 분포 함수의 오차의 합이다. 깊은 꼬리에서 κ_p는 크다(정규에서 z²쯤). 그래서 계약은 special의 역함수처럼 κ_p를 넣은 꼴이다(§4).
 - **통계량을 정확하게**: 평균·분산·제곱합은 sd.stats 기술통계의 커널(평균을 hi + lo로, TwoSum 보상 합; stats.md §5)을 쓴다. 상쇄가 본질인 통계량은 식을 바꿔 쓴다(묶음마다 아래). 순위는 `sd.stats.rankdata`의 커널(정확한 중간 순위: 반정수라 double로 정확하다)이다.
-- **정확한 검정의 "적어도 그만큼 극단"**: 비교는 통계량의 정수 꼴로 한다(U, T⁺, 역순 쌍의 수, KS의 격자 간격 k/lcm(n₁, n₂), CvM의 정수 합). 수학적으로 같은 두 값이 반올림으로 갈려 한 칸을 빼거나 넣는 일이 없다. 이산 분포의 양쪽 p값은 scipy·R의 규칙 그대로다: 확률이 관측의 확률 × (1 + 10⁻⁷) 이하인 결과를 모두 더한다(`binomtest`, 2 × 2 `fisher_exact`).
+- **정확한 검정의 "적어도 그만큼 극단"**: 비교는 통계량의 정수 꼴로 한다(U, T⁺, 역순 쌍의 수, KS의 격자 간격 k/lcm(n₁, n₂), CvM의 정수 합). 수학적으로 같은 두 값이 반올림으로 갈려 한 칸을 빼거나 넣는 일이 없다. 이산 분포의 양쪽 p값은 scipy의 규칙 그대로다. `binomtest`는 반대편에서 확률이 관측의 확률 × (1 + 10⁻⁷) 이하인 결과를 더한다(R `binom.test`와 같다). 2 × 2 `fisher_exact`는 허용오차가 10⁻¹⁴다: 관측의 확률이 최빈값의 확률과 상대 10⁻¹⁴ 안이면 p = 1이고, 아니면 반대편에서 관측의 확률 × (1 + 10⁻¹⁴)보다 작은(최빈값 아래쪽은 이하인) 결과를 더한다. R의 `fisher.test`(r × c도)는 1 + 10⁻⁷이다(H0에서 scipy 1.18.1 소스로 확인했다).
 - **정확한 분포는 확률로 쌓는다**: 개수(조합의 수)는 n이 조금만 커도 double을 넘는다(C(2000, 1000) ≈ 10⁶⁰⁰). 그래서 점화식을 양수의 볼록 결합으로 고쳐 확률을 직접 쌓는다(예: Mann–Whitney f(m, n, u) = m/(m+n)·f(m−1, n, u−n) + n/(m+n)·f(m, n−1, u)). 항이 모두 양수이고 뺄셈이 없어 상대오차가 점화의 깊이 × ε로 묶이고, 꼬리의 합도 양수의 합이다. 서브노멀 아래의 꼬리는 log 쪽(log-sum-exp)으로 쌓는다.
 - **연속성 보정과 동점 보정**: scipy·statsmodels의 정의 그대로다(Mann–Whitney의 0.5, `wilcoxon(correction=True)`의 0.5, Yates의 min(0.5, |O − E|), McNemar의 (|b − c| − 1)², 순위 검정의 동점 분산 보정).
 - **`'auto'`의 선택은 scipy 그대로다**(API.md §4 규칙 2). scipy 1.18.1 소스에서 읽은 문턱:
@@ -213,14 +243,14 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 
 ### 3.3 적합도 1 (H2)
 - **카이제곱과 Cressie–Read**: Pearson의 Σ(O − E)²/E는 항이 양수라 좋다. 로그 우도비 G = 2ΣO log(O/E)는 O ≈ E이면 항이 서로 상쇄한다(ΣO = ΣE라 일차 항이 지워진다). scipy는 그대로 더해 O − E = 10⁻³, E = 10⁶에서 G가 상대 6e-9 틀렸다(이 초안에서 Arb와 잼: 9.99999996e-12, 참값 1.000000002e-11). 항마다 O·log(O/E) − (O − E) = E·[(1 + δ)log1p(δ) − δ](δ = (O − E)/E, 언제나 ≥ 0)로 바꾸고 δ가 작으면 급수로 계산한다. 일반 λ의 2/(λ(λ + 1))ΣO[(O/E)^λ − 1]도 같은 방법이다(expm1(λ·log1p(δ))에서 일차 항을 뺀 꼴). λ = 0, −1(Neyman, 수정 로그 우도비)은 극한식이다. `sum_check`는 scipy의 상대 허용오차 그대로다.
-- **D'Agostino의 셋**: `skewtest`·`kurtosistest`의 변환은 세제곱근과 로그에 음수 밑이 나올 수 있다(scipy는 부호를 따로 다룬다). 같은 식을 cbrt로, 꼬리 p값은 정규의 `ccdf`로 계산한다. `normaltest`의 K² = Z₁² + Z₂²는 카이제곱(2)이라 p = e^(−K²/2)이다. `jarque_bera`도 p = e^(−JB/2)다(닫힌 꼴; scipy는 `chi2.sf`).
+- **D'Agostino의 셋**: `skewtest`·`kurtosistest`의 변환은 세제곱근과 로그에 음수 밑이 나올 수 있다(scipy는 부호를 따로 다룬다). 같은 식을 cbrt로, 꼬리 p값은 정규의 `ccdf`로 계산한다. `normaltest`의 K² = Z₁² + Z₂²는 카이제곱(2)이라 p = e^(−K²/2)이다. `jarque_bera`의 p값은 `ChiSquared(df=2).ccdf`다(H17: regression과 같은 호출이라 같은 비트; 닫힌 꼴 e^(−JB/2)는 1 ulp 다를 수 있다. scipy는 `chi2.sf`).
 - **`shapiro`**: Royston의 AS R94(scipy와 R의 swilk)를 옮긴다. 계수 a_i는 기대 순서통계량의 다항 근사이므로 W는 "정확한 Shapiro–Wilk의 W"가 아니라 이 알고리즘이 정의한 값이다. 계약은 그 정의에 대한 정확도다(§4). n이 크면 W가 1에 가까워 log(1 − W)의 1 − W가 자릿수를 잃는다: 1 − W = [SST − (Σa_i x_(i))²]/SST를 double-double로 직접 계산한다. scipy와 R은 W를 double로 만든 뒤 1 − W를 한다(이 초안에서 n = 50에서 scipy와 R의 W가 상대 7e-16, p가 1.8e-14 다름).
 - **`anderson`**: A² = −n − Σ(2i − 1)/n·[log F(x_(i)) + log(1 − F(x_(n+1−i)))]의 두 로그를 분포의 `logcdf`·`logccdf`로 계산한다(꼬리의 표본에서 log(1 − F)를 1 − F로 만들지 않는다). 모수 추정: 정규·지수는 닫힌 꼴, 로지스틱·Gumbel·Weibull은 scipy처럼 최우추정(`sd.optimize.root_scalar`로 점수 방정식). p값의 `'interpolate'`는 scipy의 표(Stephens)와 보간식 그대로다(계약은 그 보간에 대한 정확도). 분포 족을 어떻게 받을지는 §9 H2.
 - **`ks_1samp`**: 양쪽 정확 분포는 Simard–L'Ecuyer(2011)의 선택(작은 n은 Durbin 행렬(Marsaglia–Tsang–Wang)이나 Pomeranz, 큰 n은 Pelz–Good 점근과 Kolmogorov 분포)이다. scipy의 `kstwo`도 같은 선택이다. Durbin 행렬은 원소가 유리수이고 d가 double(정확한 유리수)이라 작은 n의 참값은 정확한 유리수로 만든다(§7). 행렬의 거듭제곱은 지수를 따로 들어(넘침 방지) double-double로 곱하는 안이다. 한쪽은 Birnbaum–Tingey의 유한 합(양수 항, log 쪽에서 합)과 큰 n의 점근이다. 정확도는 H0의 기준선에서 scipy·R(`ks.test(exact=TRUE)`)과 함께 잰다.
 - **`cramervonmises`**: 통계량은 정렬한 F(x_(i))에서 보상 합이다. p값은 Csörgő–Faraway(1996)의 유한 표본 분포(점근 분포 + 1/n 보정)이고, 점근 분포는 Bessel `kv` 급수(scipy와 같은 식)다. 급수의 항 수에 상한과 꼬리 상한을 둔다.
 
 ### 3.4 순위 검정 (H3)
-- **Mann–Whitney U**: 정확 분포는 §3.1의 확률 점화식(크기 min(n₁, n₂)·n₁n₂/2의 배열, 대칭을 써서 절반)이다. 정규 근사는 동점 분산 보정과 연속성 보정. p값의 꼬리는 `log_ndtr`·`ndtr(−|z|)`(scipy는 이 초안에서 n = 200 완전 분리에서 4.8e-67을 낸다; 이 값의 정확도는 H0에서 잰다).
+- **Mann–Whitney U**: 정확 분포는 §3.1의 확률 점화식(크기 min(n₁, n₂)·n₁n₂/2의 배열, 대칭을 써서 절반)이다. 정규 근사는 동점 분산 보정과 연속성 보정. p값의 꼬리는 `log_ndtr`·`ndtr(−|z|)`(scipy는 n = 200 완전 분리에서 4.8e-67을 내고, 참값 대비 상대 4.3e-14다; §7).
 - **Wilcoxon 부호 순위**: T⁺의 분포는 ∏(1 + z^i)/2ⁿ이고, g_k(t) = (g_{k−1}(t) + g_{k−1}(t − k))/2로 쌓는다(반으로 나누기는 정확하고 덧셈은 양수끼리). `zero_method`('wilcox', 'pratt', 'zsplit')와 동점이면 정규 근사(`zstatistic`)이고, scipy처럼 n ≤ 13이면 모든 부호를 나열한다(2¹³ = 8192, 정수 꼴 통계량으로 센다).
 - **Ansari–Bradley**: AS 93(scipy의 `gscale`)의 분포를 같은 꼴의 점화식으로 쌓는다. **Mood**: 정규 근사(동점 보정은 scipy의 식).
 - **Kruskal–Wallis, Friedman**: 순위 합의 카이제곱과 동점 보정(`tiecorrect`의 식). 정확 분포는 scipy에 없어 두지 않는다.
@@ -244,7 +274,7 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 
 ### 3.7 분할표 (H6)
 - **`chi2_contingency`**: 기댓값 E = 행합·열합/N은 정확한 정수 곱에서 한 번 나눈다. 자유도 1이면 Yates의 보정(scipy: |O − E|를 min(0.5, |O − E|)만큼 줄인다). `lambda_`는 §3.3의 Cressie–Read다.
-- **`fisher_exact` 2 × 2**: 초기하 분포는 sd.stats의 `Hypergeometric`(전체 120 이하면 정확한 128비트 개수, 그 위는 double-double 비율 점화식; stats.md §3.2)이다. 양쪽 p값은 1 + 10⁻⁷ 규칙(scipy·R과 같다)이고, 그 문턱의 비교는 pmf의 비를 정확한 log 차로 한다. 통계량(표본 오즈비)은 scipy의 정의(무조건 MLE가 아닌 표본 오즈비 ad/bc).
+- **`fisher_exact` 2 × 2**: 초기하 분포는 sd.stats의 `Hypergeometric`(전체 120 이하면 정확한 128비트 개수, 그 위는 double-double 비율 점화식; stats.md §3.2)이다. 양쪽 p값은 scipy의 규칙(§3.1: 허용오차 10⁻¹⁴, 최빈값과 같으면 1; R은 1 + 10⁻⁷)이고, 그 문턱의 비교는 pmf의 비를 정확한 log 차로 한다. 통계량(표본 오즈비)은 scipy의 정의(무조건 MLE가 아닌 표본 오즈비 ad/bc).
 - **`fisher_exact` r × c**: scipy는 시드 없는 몬테카를로(`random_table`)라 같은 입력에서 p값이 매번 다르다. 여기서는 rng 없이 무작위를 쓸 수 없으므로(§2.1) 기본값을 정해야 한다. 안: R의 `fisher.test`처럼 Mehta–Patel의 망 알고리즘(FEXACT)으로 정확한 p값을 내고, 작업량이 상한을 넘으면 `method=MonteCarloMethod(rng=...)`를 쓰라는 `ValueError`(§9 H6).
 - **`barnard_exact`·`boschloo_exact`**: p값은 장애 모수 π에 대한 상한 sup_π P_π(T ≥ t_obs)이고, P_π는 π의 다항식(차수 N)이다. scipy는 `n`(기본 32)개 점의 격자에서 시작하는 `shgo`(전역 최적화)라 상한을 놓쳐도 알 수 없다(이 초안의 세 표에서는 n = 512와 1e-13 안). 여기서는 구간마다 다항식의 Bernstein 계수로 위 경계를 두고 경계가 최댓값 후보보다 작은 구간을 버리는 분할(가지치기)로 최댓값을 상대 1e-14 안에서 찾는다. 참값은 같은 분할을 Arb 구간으로 한 엄밀한 상한이다(§7). `n`의 뜻을 어떻게 둘지는 §9 H6이다.
 - **`mcnemar`**: `exact=True`면 b + c번의 이항(1/2) 양쪽 p값(`binomtest`의 커널), 아니면 카이제곱(1)과 연속성 보정. **`cochrans_q`**: Q 통계량과 카이제곱(k − 1).
@@ -301,29 +331,63 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 ---
 
 ## 6. 층과 파일 (안)
-- `src/stardust/htest/`: `__init__.py`(공개 이름), `_common.py`(입력 정리: 데이터 변환, `axis`·배치·`keepdims`, `nan_policy`, `alternative`, `rng`, 메시지), `_parametric.py`(H1), `_gof.py`(H2·H4), `_rank.py`(H3), `_correlation.py`(H5), `_contingency.py`(H6), `_proportion.py`(H7), `_multitest.py`(H8), `_resampling.py`(H9). 결과 클래스는 `stardust._results`(D-25)에 둔다.
+- `src/stardust/htest/`: `__init__.py`(공개 이름), `_common.py`(입력 정리: 데이터 변환, `axis`·배치·`keepdims`, `nan_policy`, `alternative`, `rng`, 메시지), `_parametric.py`(H1), `_gof.py`(H2·H4), `_rank.py`(H3), `_correlation.py`(H5), `_contingency.py`(H6), `_proportion.py`(H7), `_multitest.py`(H8), `_resampling.py`(H9). 결과 클래스는 `_result.py`(공통 바탕 `_TestResult`; §2.2)에 둔다.
 - `csrc/htest/`: `lanes.hpp`(줄 행렬과 배치·스레드, 기술통계의 `desc_*` 커널과 같은 꼴), `moments.hpp`(t·F·분산 검정의 통계량; sd.stats의 보상 합을 같이 쓴다), `ranks.hpp`(정렬, 중간 순위, 동점 표; `rankdata`의 커널을 같이 쓴다), `exact/`(`mwu.hpp`, `wilcoxon.hpp`, `kendall.hpp`, `ansari.hpp`, `page.hpp`, `ks.hpp`(Durbin·Pomeranz·Smirnov·Kolmogorov·두 표본 격자 경로), `cvm.hpp`, `fexact.hpp`(r × c 망 알고리즘), `nuisance.hpp`(Barnard·Boschloo의 Bernstein 분할)), `divergence.hpp`(Cressie–Read), `swilk.hpp`(AS R94), `studentized_range.hpp`, `multitest.hpp`, `resample.hpp`(순열·부트스트랩 표본의 스트림). 바인딩은 `csrc/bind/htest_bind.cpp`(`stardust._core.htest`).
-- 분포 함수는 `csrc/stats/`의 것을 C++에서 바로 부른다(Python을 거치지 않는다). 새 귀무분포(Kolmogorov–Smirnov, 스튜던트화 범위, Fisher의 비중심 초기하)는 처음에 `csrc/htest/` 안에 두고, sd.stats·sd.special에 공개할지는 묻는다(§9 H0).
-- `tests/htest/`(마일스톤마다 `test_<묶음>.py`, `test_api_surface.py`가 docs/api/htest.md를 읽는다), 참값 `tests/htest/ref/`, 도구 `tools/htest_ref.py`·`tools/htest_exact.py`·`tools/gen_htest_r.py`(§7).
+- 분포 함수는 `csrc/stats/`의 것을 C++에서 바로 부른다(Python을 거치지 않는다). 새 귀무분포(Kolmogorov–Smirnov, 스튜던트화 범위, Fisher의 비중심 초기하)는 처음에 `csrc/htest/` 안에 두고, sd.stats·sd.special에 공개하지 않는다(H14).
+- `tests/htest/`(마일스톤마다 `test_<묶음>.py`, `test_api_surface.py`가 docs/api/htest.md를 읽는다), 문제 모음 `tests/htest/problems.py`, 참값 `tests/htest/ref/`, 대조 데이터 `tests/htest/data/`, 도구 `tools/htest_ref.py`(Arb와 정확한 유리수를 한 도구에)·`tools/gen_htest_scipy.py`·`tools/gen_htest_r.py`, 기준선 `bench/htest/h0/`(§7).
 
 ---
 
-## 7. 참값과 검증 (안)
-- **Arb 참값** (`tools/htest_ref.py`, `tools/arbref.py`를 쓴다): 입력 double을 정확한 값으로 Arb에 넣어 통계량을 계산하고(평균, 제곱합, 로그, 순위의 함수), 그 통계량에서 p값을 Arb의 분포 함수(불완전 감마·베타, erfc, Bessel)로 계산한다. 규칙은 stats와 같다(stats.md §9): 공의 반지름이 2⁻¹¹⁰ 아래로 정착한 값만 쓰고, 자른 급수·적분은 꼬리 상한을 공에 더하고, 점마다 시간 제한, 10프로세스, 워커는 500점마다 교체, 입력점은 고정(`--resample`로 새로 뽑는다), 실행 중 RSS를 감시한다(mpmath는 쓰지 않는다).
-- **정확한 유리수 참값** (`tools/htest_exact.py`): 조합으로 정의되는 귀무분포는 Python의 int·`fractions`로 정확히 센다: Mann–Whitney·Wilcoxon·Kendall·Ansari·Page의 개수, 두 표본 KS·CvM의 격자 경로 수, 초기하·이항의 꼬리(확률이 double인 이항은 그 double의 정확한 유리수), Durbin 행렬의 거듭제곱(한 표본 KS, d는 정확한 유리수). 크기가 커서 유리수가 감당하지 못하는 곳은 Arb로 넘긴다.
-- **장애 모수의 상한**: Barnard·Boschloo는 Arb 구간 산술의 분할로 엄밀한 sup을 구한다(§3.7).
-- **정의한 근사의 참값**: AS R94, D'Agostino, Hill의 변환, 보간 표는 같은 정의식을 Arb로 계산한다(상수는 scipy·R 소스의 십진 상수 그대로).
-- **비교 대상**(H4): 정확도 체계 `bench/accuracy`에 htest를 더하고 비교 패키지 열을 둔다: scipy 1.18.1, statsmodels 0.15.0(H7·H8), R 4.6.2 base `stats`(`t.test`, `var.test`, `bartlett.test`, `fligner.test`, `ansari.test`, `mood.test`, `wilcox.test`, `kruskal.test`, `friedman.test`, `ks.test`, `shapiro.test`, `chisq.test`, `fisher.test`, `mcnemar.test`, `prop.test`, `binom.test`, `poisson.test`, `cor.test`, `oneway.test`, `ptukey`, `p.adjust`; 다변량 t는 이미 있는 mvtnorm). 이 기계의 R에는 그 밖의 꾸러미(`coin`, `Exact`, `exact2x2`, `kSamples`, `goftest`, `BrunnerMunzel`, `PMCMRplus`)가 없다(설치할지는 §9 H0). `bench/accuracy`와 `tests`는 테스트 체계 세션의 파일이라 넣는 방법은 그 세션과 맞춘다.
-- **고정 대조 데이터** (`tools/gen_htest_r.py`): R이 없는 기계에서도 테스트가 돌도록 R의 결과를 `tests/htest/data/`에 고정해 둔다(regression의 `gen_regression_r.py`와 같다).
-- **근사의 품질**: 점근·근사 p값의 실제 1종 오류율과 정확 분포와의 차이를 정확 분포(작은 n)와 몬테카를로(큰 n, sd.random)로 재서 표로 둔다(계약이 아니다, §4).
-- **골든**: 공개 함수마다 `tools/golden.py`에 고정 입력의 결과를 더한다(자기 비트를 지킨다, API.md §4 규칙 1).
+## 7. 참값과 검증
+H0에서 만든 것(2026-11-20). 문제 모음은 `tests/htest/problems.py`, 참값은 `tests/htest/ref/`(80 KB), 대조 데이터는 `tests/htest/data/`(132 KB), 만드는 도구는 `tools/`에 있다. 검사는 `tests/htest/test_reference_data.py`다.
+
+- **문제 모음** (`tests/htest/problems.py`): H1–H8의 모든 검정에 281개다(H1 44, H2 55, H3 39, H4 15, H5 24, H6 26, H7 54, H8 24). 문제 하나는 호출 하나(scipy·statsmodels의 함수 이름, 위치 입력, scipy의 키워드 옵션)이고, 검정이 만나는 입력의 종류를 덮는다: 작은 표본(정확 분포), 큰 표본(10³–3×10³), 동점과 0, 깊은 꼬리(p ≪ 10⁻¹⁶, 10⁻³⁰⁰까지), 큰 오프셋(평균 10⁸–10⁹: 통계량의 상쇄), 퇴화한 입력(상수 표본), 배치(axis=-1). 입력은 numpy PCG64의 고정 시드로 만들고 동점이 필요하면 반올림한다. 모든 데이터·참값 파일은 문제마다 입력의 SHA-256(`digest`)을 적어 두어, numpy의 스트림이 바뀌면 조용히 다른 입력이 되지 않고 테스트가 실패한다.
+- **참값 도구** (`tools/htest_ref.py`): Arb(python-flint)와 정확한 유리수(Python의 int·`fractions`)를 한 도구에 두었다(계획의 `tools/htest_exact.py`를 합쳤다). 입력 double은 정확한 유리수다. 데이터의 유리 함수인 통계량(평균, 제곱합, 순위, 개수, t², r², F, U, T⁺, Kendall의 역순 쌍, KS의 격자 간격, 카이제곱)은 `Fraction`으로 정확히 계산해 한 번 반올림한다. p값은
+  - 정수로 센 정확한 귀무분포: Mann–Whitney(가우스 이항계수의 계수), Wilcoxon 부호 순위(부분합의 수), Kendall(Mahonian 수), 두 표본 KS(격자 경로), Fisher의 2 × 2(초기하)와 r × c(주변합이 같은 모든 표), 이항(p는 그 double의 유리수; 항을 저장하지 않고 흘려 보내 n = 10⁵에서도 메모리가 작다);
+  - Arb의 공: 정칙화 불완전 베타(t, F, 상관), 정칙화 불완전 감마(카이제곱), erfc·erfcinv(정규), 한 표본 KS의 정확 분포(Marsaglia–Tsang–Wang의 행렬 거듭제곱, Arb 행렬)와 한쪽(Birnbaum–Tingey의 양수 항 합), Kolmogorov의 극한(꼬리 상한을 공에 더한다).
+  - Arb 값은 `tools/arbref.py`의 `rigorous()`로 상대 2⁻¹¹⁰까지 정착시킨다(정밀도를 두 배씩 올린다; "두 정밀도가 맞으면" 같은 어림이 없다). 결과는 double-double [hi, lo]다. 문제마다 시간 제한(SIGALRM), 10프로세스, 워커는 50문제마다 교체(`maxtasksperchild`), mpmath는 쓰지 않는다.
+  - 양쪽 규칙의 허용오차는 그 double의 정확한 유리수다: 이항 1 + 10⁻⁷(scipy·R), scipy 2 × 2 Fisher 1 + 10⁻¹⁴(§3.1), r × c Fisher는 R `fisher.test`의 1 + 10⁻⁷.
+  - 첫 참값(17묶음, 138문제; 10프로세스로 2초, 프로세스 RSS 합의 최대 0.3 GB): `ttest`(1표본·짝·Student·Welch·요약값 21), `f_oneway`(Welch 포함 5), `bartlett` 3, `power_divergence`(카이제곱과 Cressie–Read 여섯 이름·λ = 0.3, 14), `jarque_bera` 4, `ks_1samp`(정확·approx·asymp·한쪽 8), `mannwhitneyu`(정확·정규 8), `wilcoxon`(정확·정규·세 0 처리 11), `ks_2samp`(정확 6), `kendalltau`(정확·정규·τ-c 6), `pearsonr`(Fisher z 구간 포함 8), `spearmanrho` 4, `fisher_exact`(2 × 2 7과 3 × 3 1), `chi2_contingency` 5, `binomtest` 9, `combine_pvalues`(Fisher·Pearson·Tippett·Stouffer 6), `multipletests`(보정 p값 여덟 방법과 `false_discovery_control` 12). 참값은 scipy가 그 문제에서 고른 방법을 따르고 그 이름을 `method`에 적는다(H12). 다음 마일스톤은 `FAMILIES`에 같은 꼴로 묶음을 더한다.
+  - 도구 자체의 검사(`test_reference_data.py`): 개수의 합(C(m + n, m), 2ⁿ, n!)과 대칭, 같은 크기의 두 표본 KS 경로 수와 Gnedenko–Korolyuk의 닫힌 꼴, n = 1·2의 Kolmogorov·Smirnov 분포의 닫힌 꼴, 이항과 Fisher의 규칙.
+- **scipy·statsmodels 대조** (`tools/gen_htest_scipy.py` → `data/scipy_h1.json`…`scipy_h8.json`, `data/statsmodels.json`): 281문제 모두를 scipy 1.18.1·statsmodels 0.15.0의 기본값으로 돌려 결과의 모든 필드(`statistic pvalue df dof zstatistic statistic_location statistic_sign expected_freq median table method …`), 신뢰구간(95%; `binomtest`는 `proportion_ci`의 세 방법), 튜플로 풀리는 개수, 낸 경고의 종류, 또는 낸 예외를 적었다. r × c `fisher_exact`는 scipy의 기본이 시드 없는 몬테카를로라 적지 않고, `dunnett`은 `rng=12345`로 적었다.
+- **R 대조** (`tools/gen_htest_r.py` → `data/r.json`): R 4.6.2 base `stats`만(H15)으로 같은 검정이 있는 145문제(`t.test oneway.test bartlett.test fligner.test chisq.test shapiro.test ks.test wilcox.test kruskal.test friedman.test ansari.test mood.test cor.test fisher.test mcnemar.test binom.test prop.test TukeyHSD p.adjust`). R의 정의가 scipy와 다른 곳(ks.test의 정확 분포가 n < 100·mn < 10⁴에서만이고 두 표본은 동점의 조건부, wilcox.test는 n < 50에서 정확, cor.test의 Spearman은 AS 89의 정확 분포, fisher.test의 오즈비는 조건부 MLE)은 R의 값 그대로 적고 비교가 그것을 가린다.
+- **H0에서 본 것** (scipy·R 대 참값, 상대오차; `test_reference_data.py`가 기록된 값으로 지킨다):
+
+  | 문제 | 참값 | scipy | R |
+  |---|---|---|---|
+  | `bartlett` 거의 같은 분산(n = 400 × 3, 차 10⁻⁹) | T = 1.594e-15 | 8.5e-14 (53배) | −8.5e-14 (음수) |
+  | `power_divergence` G, O − E = ±10⁻³, E = 10⁶ | 2.0000001899898e-12 | 9.9e-8 | (없음) |
+  | `pearsonr` y = x + 10⁻⁴·잡음(n = 10)의 p | 1.1885e-34 | 5.4e-7 | 2.4e-7 |
+  | 같은 꼴, 10⁻⁶ | 1.1884e-50 | 8.3e-3 | 1.4e-3 |
+  | 같은 꼴, 10⁻⁷ | 1.1884e-58 | 0.11 | 0.088 |
+  | `ttest_1samp` 평균 10⁸ + 0.1, μ₀ = 10⁸(n = 200)의 t | 0.51438337273546 | 1.7e-8 | 1.8e-8 |
+  | `ttest_ind` 평균 10⁸ + 0.5 대 10⁸의 t·p | 3.05469003894 | 3.4e-8, p 3.2e-7 | 1.1e-8, p 1.0e-7 |
+  | `ttest_rel` 10⁹ 근처 짝의 차의 t | 545.84321315810 | 0 | 1.2e-6, p 1.2e-4 |
+  | `f_oneway` 평균 10⁸(n = 40 × 3)의 F | 2.89184567295 | 1.5e-16 | 1.6e-8 |
+  | `ks_1samp` n = 80의 정확 p | 1.7142e-21 | 5.5e-15 | 0(1 − cdf) |
+  | `wilcoxon` n = 300 정규 근사의 p | 6.1449e-51 | 1.0e-14 | 0 |
+  | `ttest_1samp([1, 1, 1], 0)` | NaN(H11) | inf, 0 | 에러 |
+
+  - 그 밖에 scipy는 모든 참값과 상대 10⁻¹² 안이다. 계약(10⁻¹⁴·max(1, κ_p))에 가까운 곳: `ks_1samp` n = 1000의 정확 p 2.6e-13, `ks_2samp` 정확 한쪽 7.1e-14(p = 1.7e-3), `binomtest` n = 10⁵ 5.9e-14, `mannwhitneyu` 완전 분리 4.3e-14(p = 4.8e-67, z² ≈ 300), `chi2_contingency` 큰 표 7.5e-14(p = 1.5e-197), Stouffer 5.3e-14(p = 1.2e-106). 정수 통계량의 정확 분포(`mannwhitneyu`, `wilcoxon`, `kendalltau`, `fisher_exact`, `binomtest`의 작은 n)는 scipy와 R이 참값과 0–3e-16 안이다. 보정 p값(`multipletests` 여덟 방법, `false_discovery_control`, R `p.adjust`)은 모두 1e-15 안이다.
+  - scipy 1.18.1의 2 × 2 `fisher_exact`는 양쪽 규칙의 허용오차가 10⁻¹⁴다(이 초안이 적었던 10⁻⁷은 `binomtest`와 R의 것이다; §3.1을 고쳤다).
+  - scipy의 `wilcoxon`은 `method='auto'`로 n ≤ 50에서 정확, 동점·0이 있으면 n ≤ 13에서 부호의 나열(순열 검정), 그 밖은 정규 근사를 고르고, `zstatistic` 필드는 사용자가 `method='asymptotic'`을 준 때만 둔다(`'auto'`가 근사를 골라도 없다; §9 H3).
+  - `anderson_ksamp`은 문서에 "`variant`를 주면 풀리지 않는다"고 적었지만 1.18.1의 결과는 둘로 풀린다(§9 H4).
+- **속도 기준선** (`bench/htest/h0/speed.py` → `speed.md`, `speed.json`): scipy·statsmodels의 대표 검정 41개를 n = 10, 10³, 10⁶과 배치 10⁴ × 30에서 1스레드로 쟀다. 작은 표본의 고정 비용은 0.06–0.25 ms(`chisquare` 0.07, `pearsonr` 0.08, `ttest_ind` 0.19, `wilcoxon` 0.21 ms; `tukey_hsd`는 18 ms, `cramervonmises_2samp`의 정확 분포 2.2 ms, `boschloo_exact` 2.0 ms)이고, 10⁶에서는 정렬하는 검정이 150–340 ms(`mannwhitneyu` 196, `kruskal` 297, `brunnermunzel` 339, `chatterjeexi` 310), `weightedtau`가 2.6 s, 적률 검정이 2–20 ms다. 배치에서 줄마다 Python 고리인 `kendalltau`는 950 ms, `ks_2samp`은 88 ms다.
+- **정확도·속도 체계에 넣는 계획** (두 체계는 다른 세션의 파일이라 H0은 고치지 않았다):
+  - `bench/accuracy/sources.py`: `AREAS`에 `"htest"`를 더하고 `sweeps()`에 `if "htest" in areas: from . import htest; out += htest.sweeps()`.
+  - 새 파일 `bench/accuracy/htest.py`: `tests/htest/ref/<묶음>.json`마다 `Custom("htest", 묶음, run, compare)`. `run`은 문제마다 `sd.htest`의 함수를 불러(`problems.py`의 입력, scipy 키워드를 sd 키워드로 바꾸는 표 하나) 필드마다의 상대오차를 `common.region()`으로 모은다. 영역(region)은 `statistic`과 `pvalue`(그리고 `df`·`df_num`·`df_denom`, `conf_int`)이고 계약은 §4다: 통계량 1e-14, p값 1e-14·max(1, κ_p)(정수 통계량이면 κ_p 항 없이), 정의한 근사는 그 식에 대한 1e-14. κ_p는 참값 도구가 함께 적는다(H1부터 `kappa` 필드). `compare`는 `common.compare_libs`로 scipy·statsmodels(실행 중에 부른다)와 R(`tests/htest/data/r.json`의 고정 값; R이 있으면 `rsession`으로 다시 부를 수 있다)의 같은 영역을 잰다.
+  - `bench/accuracy/tables.py`: `HEAD["htest"] = "sd.htest"`, `INTRO["htest"]`(참값의 출처와 계약을 적은 한 문단). 표는 `bench/htest/accuracy.md`.
+  - `bench/accuracy/compare.py`: 할 것 없음(`LIBS`에 statsmodels가 이미 있다).
+  - `bench/speed/registry.py`: `AREAS`에 `"htest"`. 새 파일 `bench/speed/cases/htest.py`: `bench/htest/h0/speed.py`의 사례를 `Case(area="htest", group=마일스톤, name=검정, size, sd=…, refs=(Ref("scipy", …), Ref("statsmodels", …), RRef("R", "t.test(x, y)", …)))`로 옮기고, `TITLES`에 마일스톤의 제목. 마일스톤마다 공개된 함수의 사례만 더한다(O101과 같다: 벤치 세션이 넣고 이쪽은 목록을 넘긴다).
+  - `tools/golden.py`: `AREAS`에 `"htest"`, 새 파일 `tests/golden/cases_htest.py`(H1의 첫 공개 함수부터).
+- **아직 계획인 것**: 장애 모수의 상한(Barnard·Boschloo, H6)은 Arb 구간 산술의 분할로 엄밀한 sup을 구한다(§3.7). 정의한 근사(AS R94, D'Agostino, Hill, 보간 표)는 같은 정의식을 Arb로 계산한다(상수는 scipy·R 소스의 십진 상수 그대로). 근사의 품질(점근·근사 p값의 실제 1종 오류율)은 정확 분포(작은 n)와 몬테카를로(큰 n, sd.random)로 재서 표로 둔다(계약이 아니다, §4). 공개 함수마다 `tools/golden.py`에 고정 입력의 결과를 더한다(API.md §4 규칙 1).
 
 ---
 
-## 8. 마일스톤 (안)
+## 8. 마일스톤
 | 마일스톤 | 내용 |
 |---|---|
-| H0 준비 | API 문서 docs/api/htest.md(모든 공개 함수의 시그니처, scipy·statsmodels 이름 → sd 이름의 대응표, 마일스톤별 질문), 결과 객체의 틀(`_TestResult`, `ConfidenceInterval`), 공통 입력 층(`axis`·배치·`nan_policy`·`alternative`·`rng`), 참값 도구의 틀(Arb·정확한 유리수), R 대조 도구, scipy·statsmodels·R 기준선(정확도·속도) |
+| H0 준비 (완료, 승인 대기 2026-11-20) | API 문서 docs/api/htest.md(모든 공개 함수의 시그니처, scipy·statsmodels 이름 → sd 이름의 대응표, 마일스톤별 질문), 결과 객체의 틀(`_TestResult`, `conf_int`), 공통 입력 층(`axis`·배치·`nan_policy`·`alternative`·`rng`·`method`·정확한 방법의 상한), 참값 도구(Arb·정확한 유리수), scipy·statsmodels·R 대조 도구와 데이터, 속도 기준선, 정확도·속도 체계에 넣는 계획. 결과는 §2.2·§7 |
 | H1 평균과 분산 | `ttest_1samp ttest_rel ttest_ind ttest_ind_from_stats f_oneway alexandergovern bartlett levene fligner` |
 | H2 적합도 1 | `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp kstest cramervonmises` |
 | H3 순위 검정 | `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test` |
@@ -342,27 +406,16 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 ## 9. 마일스톤을 시작하기 전에 물을 것
 추천을 첫째에 둔다.
 
-- **H0 (모든 마일스톤에 걸친 것)**
-  1. 결과 객체의 꼴: 검정마다 결과 클래스(공통 기반 `_TestResult`, 읽기 전용, `stardust._results`)(추천) / 결과 클래스 하나(`TestResult`)에 필드를 더하기 / namedtuple(기술통계의 `DescribeResult`처럼).
-  2. 결과 클래스의 이름: DESIGN의 `<함수>Result` 규칙(`TtestIndResult`, `PearsonrResult`; 추천) / scipy의 이름(`TtestResult`를 셋이 같이 쓰고 여러 함수가 `SignificanceResult`). `sd.htest`가 결과 형을 내보낼지(추천: 내보내지 않는다; 지금 내보내는 것은 stats·regression뿐이다, D-25).
-  3. 튜플 풀기: scipy가 푸는 곳만 같은 개수로(추천, API.md §4 규칙 2) / 모두 (statistic, pvalue)로 / 풀지 않는다.
-  4. 신뢰구간: scipy의 `confidence_interval(*, confidence_level=0.95)` → `ConfidenceInterval(low, high)`(추천; regression의 `conf_int(alpha=)`와 다른 이름임을 API.md §6에 적는다) / regression의 `conf_int(*, alpha=0.05)` → (…, 2) 배열로 맞추기.
-  5. `axis`의 기본값: None(sd.stats 기술통계와 같다; 추천) / scipy의 0(함수마다 0 또는 None). 표를 받는 함수(분할표, `page_trend_test`, `cochrans_q`)는 마지막 축들이 표이고 앞이 배치(추천).
-  6. 필드 이름의 통일: `chi2_contingency`의 `dof`를 다른 곳처럼 `df`로(추천, O4처럼 영역 안의 같은 개념은 같은 이름) / scipy 그대로.
-  7. 자유도 인자: `chisquare`·`power_divergence`의 `ddof`(기술통계는 `correction`) — `ddof` 그대로(추천: 뜻이 다르다. 여기서는 기대 빈도를 맞춘 모수 수다) / `correction`으로.
-  8. 퇴화한 입력과 작은 표본: NaN, 경고 없음(추천; D-32와 같은 원리) / scipy처럼(일부 `ValueError`).
-  9. `'auto'`가 고른 방법을 모든 결과에 `method` 필드로 둘지: 둔다(추천) / scipy처럼 `page_trend_test`만.
-  10. `'exact'`의 작업량이 상한을 넘을 때: `ValueError`(추천) / 점근으로 조용히.
-  11. 새 귀무분포(Kolmogorov–Smirnov `kstwo`·`kstwobign`, 스튜던트화 범위, Fisher 비중심 초기하)의 공개: 처음에는 htest 안에만(추천) / sd.stats의 분포로(T6의 꼴, 같은 계약) / sd.special의 함수로(`kolmogorov`, `smirnov`, scipy 이름).
-  12. R 꾸러미 설치(`coin`, `Exact`, `exact2x2`, `kSamples`, `goftest`, `BrunnerMunzel`, `PMCMRplus`): 필요한 마일스톤에서 하나씩 묻는다(추천) / base R만 / 지금 모두.
-- **H1**: `ttest_*`의 `df`를 언제나 float로(추천) / scipy처럼 Student는 int. 표준오차 0의 t·p(scipy inf·0): NaN(추천, API.md §2.2) / scipy처럼. `ttest_ind`의 `method`(재표본)는 H9에서 더한다(추천). `f_oneway`의 `equal_var=False`(Welch 분산분석, scipy 1.18.1에 있다)를 넣는다(추천).
+- **H0**: 모두 정했다(§1.1 H6–H15).
+- **regression과의 경계**: H16–H21로 정했다(§1.1, §1.4). 남은 것은 regression 쪽의 결정이다(docs/design/regression.md §8의 "htest와의 관계"): 새 회귀 검정의 결과 꼴(H6·H7·H11·H19·H21에 맞출지, 내보낼지), `breusch_pagan()`의 자유도 필드, `wresid`, 단계적 선택의 보정 옵션(둔다면 `multipletests`의 방법 이름과 같은 커널). htest 쪽은 H2에서 Jarque–Bera의 커널과 클래스를 옮길 때 namedtuple에만 있던 동작과 골든의 꼴을 확인해 묻는다.
+- **H1**: `ttest_*`의 `df`를 언제나 float로(추천) / scipy처럼 Student는 int. 표준오차 0의 t·p(scipy inf·0): NaN(추천, API.md §2.2) / scipy처럼. `ttest_ind`의 `method`(재표본)는 H9에서 더한다(추천). `f_oneway`의 `equal_var=False`(Welch 분산분석, scipy 1.18.1에 있다)를 넣는다(추천). `f_oneway`의 결과에 자유도(H19의 `df_num`·`df_denom`)를 더한다(추천: regression의 `anova`·F 검정과 같은 이름) / scipy처럼 `statistic pvalue`만. `ttest_ind_from_stats`에 `df`와 신뢰구간을 더한다(추천: `ttest_ind`과 같은 필드; scipy의 결과는 `statistic pvalue`뿐) / scipy처럼. 표본 인자에 실수 스칼라(원소 하나의 표본)를 받는다(추천: sd.stats D-30과 같다; 결과는 퇴화한 입력의 NaN) / 받지 않는다.
 - **H2**: `kstest` 감싸개: 두지 않는다(추천: `ks_1samp`·`ks_2samp`을 고르기만 하는 감싸개이고, 문자열 분포 이름과 `N`으로 표본을 만드는 옛 꼴이 섞여 있다) / scipy처럼 둔다. 분포 인자: sd.stats 분포 객체와 호출 가능한 `cdf`(추천) / scipy의 문자열 이름도. `anderson`의 `dist`: sd.stats의 분포 클래스(`dist=sd.stats.Normal`; 추천. `gumbel_l`은 sd.stats에 없어 빠진다) / scipy의 문자열(별칭 'gumbel', 'extreme1' 없이). `anderson`의 `method` 기본값 `'interpolate'`(추천; scipy 1.18은 주지 않으면 경고하고 옛 꼴을 낸다) / 꼭 주게. Shapiro–Wilk는 AS R94의 정의(추천) / 정확한 기대 순서통계량의 계수(다른 검정이 된다).
-- **H3**: 동점이 있을 때 `'exact'`: 조건부 순열 분포(추천, `[scipy와 다름]`) / scipy처럼 동점이 없는 분포 / `ValueError`. `'auto'`의 문턱: scipy 그대로(추천) / 정확이 싼 곳까지 넓히기. `ranksums`(scipy는 legacy, `mannwhitneyu`를 권한다): 둔다(추천, 같은 커널) / 뺀다. `wilcoxon`의 `zstatistic` 필드는 근사일 때만 있다(scipy와 같다; 추천).
-- **H4**: `ks_2samp`의 동점: scipy의 정확 분포(동점 무시) 그대로(추천, H4 시작 전에 scipy 소스·R `psmirnov`와 대조하고 다시 묻는다) / R 4.3처럼 조건부 정확. `cramervonmises_2samp`의 `'exact'`를 동적 계획으로 큰 n까지(추천; `'auto'` 문턱은 20 그대로).
+- **H3**: 동점이 있을 때 `'exact'`: 조건부 순열 분포(추천, `[scipy와 다름]`) / scipy처럼 동점이 없는 분포 / `ValueError`. `'auto'`의 문턱: scipy 그대로(추천) / 정확이 싼 곳까지 넓히기. `ranksums`(scipy는 legacy, `mannwhitneyu`를 권한다): 둔다(추천, 같은 커널) / 뺀다. `wilcoxon`의 `zstatistic` 필드는 정규 근사로 계산한 때마다 둔다(추천; scipy 1.18.1은 사용자가 `method='asymptotic'`을 준 때만이고 `'auto'`가 근사를 골라도 없다: §7) / scipy 그대로. 배치의 `method` 필드(H12): 줄마다의 문자열 배열(추천) / 줄이 모두 같을 때만 str. `median_test`에 `axis`(배치)를 더한다(추천) / scipy처럼 없다.
+- **H4**: `ks_2samp`의 동점: scipy의 정확 분포(동점 무시) 그대로(추천, H4 시작 전에 scipy 소스·R `psmirnov`와 대조하고 다시 묻는다) / R 4.3처럼 조건부 정확. `cramervonmises_2samp`의 `'exact'`를 동적 계획으로 큰 n까지(추천; `'auto'` 문턱은 20 그대로). `anderson_ksamp`의 기본 `variant='midrank'`(추천; scipy 1.18.1은 주지 않으면 경고하고 옛 꼴)와 풀기: scipy 1.18.1의 실제 동작(둘로 풀린다; 추천) / scipy 문서(풀리지 않는다).
 - **H5**: `spearmanr`(열들의 상관 행렬 꼴)과 `spearmanrho`(1.18의 새 꼴): 둘 다(추천: scipy에 둘 다 있고 동작이 다르다) / `spearmanrho`만 / `spearmanr`만. Spearman의 정확 분포(R의 AS 89): 넣지 않는다(추천, scipy에 없다) / `method='exact'`로 더한다. `weightedtau`: 넣되 `pvalue`는 NaN(scipy 그대로; 추천) / 결과에 `pvalue` 필드를 두지 않는다 / 뺀다. 결과의 `correlation` 별칭: 두지 않는다(추천).
-- **H6**: r × c `fisher_exact`의 기본: 정확한 망 알고리즘(R `fisher.test`; 추천, `[scipy와 다름]`: scipy는 시드 없는 몬테카를로) / `method`를 꼭 주게(`MonteCarloMethod(rng=...)`). `barnard_exact`·`boschloo_exact`의 `n`: 받되 분할의 처음 격자 크기로만 쓴다(결과는 `n`과 상관없이 참 상한; 추천) / scipy처럼 정확도를 정하는 인자로. `odds_ratio`·`relative_risk`(scipy.stats.contingency, 신뢰구간이 있는 추정): 넣는다(추천: H7의 비·오즈비 구간과 한 묶음이고 조건부 오즈비는 Fisher 검정과 같은 분포) / 뺀다. 소수의 개수(가중 표): scipy처럼 받는 곳은 받는다(`chi2_contingency`, 추천) / 정수만. `mcnemar`의 기본 `exact=True`(statsmodels 그대로; 추천) / R `mcnemar.test`처럼 카이제곱.
+- **H6**: r × c `fisher_exact`의 기본: 정확한 망 알고리즘(R `fisher.test`; 추천, `[scipy와 다름]`: scipy는 시드 없는 몬테카를로) / `method`를 꼭 주게(`MonteCarloMethod(rng=...)`). `barnard_exact`·`boschloo_exact`의 `n`: 받되 분할의 처음 격자 크기로만 쓴다(결과는 `n`과 상관없이 참 상한; 추천) / scipy처럼 정확도를 정하는 인자로. `odds_ratio`·`relative_risk`(scipy.stats.contingency, 신뢰구간이 있는 추정): 넣는다(추천: H7의 비·오즈비 구간과 한 묶음이고 조건부 오즈비는 Fisher 검정과 같은 분포) / 뺀다. 소수의 개수(가중 표): scipy처럼 받는 곳은 받는다(`chi2_contingency`, 추천) / 정수만. `mcnemar`의 기본 `exact=True`(statsmodels 그대로; 추천) / R `mcnemar.test`처럼 카이제곱. `chi2_contingency`의 `df`는 float(추천: H10의 다른 `df`와 같은 형) / scipy처럼 int.
 - **H7** (statsmodels 이름의 질문): 
-  1. `proportion_confint`의 신뢰수준: `confidence_level=0.95`(추천, H0-4의 꼴) / statsmodels의 `alpha=0.05`. `confint_proportions_2indep`도 같다.
+  1. (H16으로 정했다: `proportion_confint`·`confint_proportions_2indep`의 신뢰수준은 `alpha=0.05`.)
   2. `proportion_confint`의 방법 이름: scipy에 있는 것은 scipy의 이름(`'exact'`(Clopper–Pearson; statsmodels `'beta'`), `'wilson'`, 더해서 scipy의 `'wilsoncc'`)과 statsmodels에만 있는 것(`'normal'`, `'agresti_coull'`, `'jeffreys'`, `'binom_test'`)(추천) / statsmodels 이름 그대로(`'beta'`). 기본값: statsmodels의 `'normal'`(추천, 규칙 2) / scipy `proportion_ci`의 `'exact'`.
   3. `alternative`: `'less'`·`'greater'`(추천, H5) / statsmodels의 `'smaller'`·`'larger'`.
   4. `proportions_ztest`의 `prop_var=False`(False 또는 실수): None 또는 실수(추천, bool과 수가 섞인 인자를 피한다) / 그대로.
@@ -371,6 +424,6 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
   7. 기본 방법: statsmodels 0.15.0의 것으로 고정(추천; statsmodels가 바뀌어도 따라가지 않는다고 적는다) / 매번 statsmodels를 따른다.
   8. `binom_test`(statsmodels): 두지 않는다(`binomtest`와 같다; 추천).
   9. `proportions_chisquare`의 Yates 보정(R `prop.test`의 `correct=TRUE`): statsmodels처럼 없다(추천, R과는 `correct=FALSE`로 견준다) / `correction=`을 더한다.
-- **H8**: 보정의 API(§3.9): `false_discovery_control`(scipy) + `multipletests`(statsmodels, 열 방법), `fdrcorrection` 없음(추천) / `multipletests` 하나로(scipy의 것도 뺀다) / 셋 다. `multipletests`의 기본 방법: statsmodels의 `'holm-sidak'`(추천, 규칙 2) / R `p.adjust`의 `'holm'`. 결과 필드 이름: `reject pvalues_corrected alpha_sidak alpha_bonferroni`(추천; statsmodels 튜플의 `pvals_corrected`, `alphacSidak`, `alphacBonf`를 stardust의 이름 꼴로) / statsmodels의 이름 그대로. `multipletests`에 `axis`를 둔다(추천, `false_discovery_control`과 같게; statsmodels는 1차원만). `fdr_gbs`: 넣지 않는다(추천, statsmodels가 대조하지 않았다고 적은 방법) / 넣는다. 스튜던트화 범위 분포를 sd.stats의 `StudentizedRange`로 공개할지(H0-11). `dunnett`의 `rng`: 받지 않는다(다변량 t의 cdf가 결정적; 추천, `[scipy와 다름]`) / scipy처럼 받는다.
-- **H9**: `method=` 설정 객체: sd의 `PermutationMethod(n_resamples=9999, batch=None, *, rng)`, `MonteCarloMethod(..., rvs=None, *, rng)`, `BootstrapMethod(..., method='BCa', *, rng)`(추천: scipy의 이름, `rng` 필수, `random_state` 없음) / 문자열 `method='permutation'`과 `n_resamples`·`rng` 키워드. `monte_carlo_test`의 `rvs` 규약: `rvs(size, *, rng)`(추천) / scipy처럼 `rvs(size)`(사용자가 생성기를 닫아 넣는다). 내장 통계량의 빠른 길(평균의 차 등을 C++로): H10에서(추천) / H9에서. `multiscale_graphcorr`: 넣는다(H2의 "전부"; 추천) / 뺀다(O(n²) 메모리, `workers`). `goodness_of_fit`: sd.stats 분포 일부(정규, 지수, 로지스틱, Gumbel, Weibull 등 `anderson`과 같은 족)의 최우추정으로 넣는다(추천) / 분포 맞추기(`fit`)를 sd.stats에 먼저 더한다 / 뺀다. `bws_test`의 기본(scipy는 시드 없는 `PermutationMethod()`): 가능하면 모든 순열을 나열하고, 그보다 크면 `rng`를 꼭 받는다(추천).
+- **H8**: 보정의 API(§3.9): `false_discovery_control`(scipy) + `multipletests`(statsmodels, 열 방법), `fdrcorrection` 없음(추천) / `multipletests` 하나로(scipy의 것도 뺀다) / 셋 다. `multipletests`의 기본 방법: statsmodels의 `'holm-sidak'`(추천, 규칙 2) / R `p.adjust`의 `'holm'`. 결과 필드 이름: `reject pvalues_corrected alpha_sidak alpha_bonferroni`(추천; statsmodels 튜플의 `pvals_corrected`, `alphacSidak`, `alphacBonf`를 stardust의 이름 꼴로) / statsmodels의 이름 그대로. `multipletests`에 `axis`를 둔다(추천, `false_discovery_control`과 같게; statsmodels는 1차원만). `fdr_gbs`: 넣지 않는다(추천, statsmodels가 대조하지 않았다고 적은 방법) / 넣는다. 스튜던트화 범위 분포는 htest 안에 둔다(H14). `dunnett`의 `rng`: 받지 않는다(다변량 t의 cdf가 결정적; 추천, `[scipy와 다름]`) / scipy처럼 받는다.
+- **H9**: `method=` 설정 객체: sd의 `PermutationMethod(n_resamples=9999, batch=None, *, rng)`, `MonteCarloMethod(..., rvs=None, *, rng)`, `BootstrapMethod(..., method='BCa', *, rng)`(추천: scipy의 이름, `rng` 필수, `random_state` 없음) / 문자열 `method='permutation'`과 `n_resamples`·`rng` 키워드. `monte_carlo_test`의 `rvs` 규약: `rvs(size, *, rng)`(추천) / scipy처럼 `rvs(size)`(사용자가 생성기를 닫아 넣는다). 내장 통계량의 빠른 길(평균의 차 등을 C++로): H10에서(추천) / H9에서. `multiscale_graphcorr`: 넣는다(H2의 "전부"; 추천) / 뺀다(O(n²) 메모리, `workers`). `goodness_of_fit`: sd.stats 분포 일부(정규, 지수, 로지스틱, Gumbel, Weibull 등 `anderson`과 같은 족)의 최우추정으로 넣는다(추천) / 분포 맞추기(`fit`)를 sd.stats에 먼저 더한다 / 뺀다. `bws_test`의 기본(scipy는 시드 없는 `PermutationMethod()`): 가능하면 모든 순열을 나열하고, 그보다 크면 `rng`를 꼭 받는다(추천). 재표본 함수의 `axis` 기본값: None(표본마다 펼치고 `statistic`은 `axis=-1`로 부른다; H9에 맞춘 추천) / scipy의 0. `bootstrap`의 `bootstrap_result`(앞 결과에 잇기): 두지 않는다(추천) / 둔다. R 꾸러미(`coin` 등)는 이 마일스톤에서 묻는다(H15).
 - **H10**: 범위는 O97처럼 모든 공개 함수를 크기마다 견주는 것(추천). 코드 리뷰는 사용자가 따로 하는지(O96 2부처럼) 그때 묻는다.
