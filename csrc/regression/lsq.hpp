@@ -109,6 +109,10 @@ struct Dest {
     // set to 1 when the Newton step of Data::newton_b0 was taken (0: I - T is not positive
     // definite, the least squares solution stands)
     std::uint8_t* newton = nullptr;
+    // hat_only: the thin Q of the fit's QR (n x k row-major: row t of the input, the kept
+    // columns in their places, 0 for the aliased columns and the rows out of the fit), with
+    // R and kept as in the fit, when given
+    double* qmat = nullptr;
 };
 
 // Scans X (n x p) for NaN (sets nan) and infinity (returns kInfX).

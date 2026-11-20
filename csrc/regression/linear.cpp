@@ -212,6 +212,11 @@ inline std::int64_t rd_i64(const std::byte* p) {
 void fill_nan(const Problem& pb, const Dest& o) {
     if (pb.hat_only) {
         std::fill(o.hat, o.hat + pb.n, kNaN);
+        if (o.qmat) {
+            std::fill(o.qmat, o.qmat + pb.n * pb.k, kNaN);
+            std::fill(o.R, o.R + pb.k * pb.k, kNaN);
+            std::fill(o.kept, o.kept + pb.k, std::uint8_t(0));
+        }
         return;
     }
     std::fill(o.params, o.params + pb.k, kNaN);
@@ -512,6 +517,16 @@ int lsq::fit_one(const Problem& pb, const Data& d, const Dest& o, Scratch& sc) {
         if (kk > 0) {
             hat_values();
             for (lint t = 0; t < m; ++t) o.hat[idx[t]] = hat[t];
+        }
+        if (o.qmat) {  // the thin Q, R and the kept columns, in their places
+            std::fill(o.qmat, o.qmat + n * k, 0.0);
+            std::fill(o.R, o.R + k * k, 0.0);
+            std::fill(o.kept, o.kept + k, std::uint8_t(0));
+            for (lint jj = 0; jj < kk; ++jj) {
+                o.kept[K[jj]] = 1;
+                for (lint t = 0; t < m; ++t) o.qmat[idx[t] * k + K[jj]] = Q[jj * m + t];
+                for (lint ii = 0; ii <= jj; ++ii) o.R[K[ii] * k + K[jj]] = A[jj * m + ii];
+            }
         }
         return 0;
     }
@@ -1136,8 +1151,11 @@ std::vector<std::int64_t> with(std::vector<std::int64_t> shape, std::initializer
 }
 
 // fit(func, y (..., n), X (..., n, p), w (..., n) | None, u (..., n) | None, intercept, rtol, cov, steps,
-//     groups (..., n) | None, gtot, maxlags, hat_only)
-// -> (params, cov, R, fitted, resid, kept, stats), or with hat_only the hat values (..., n).
+//     groups (..., n) | None, gtot, maxlags, hat_only, thin_q)
+// -> (params, cov, R, fitted, resid, kept, stats), or with hat_only the hat values (..., n);
+// with hat_only and thin_q (hat, Q (..., n, k), R (..., k, k), kept (..., k)): the thin Q of the
+// fit's QR, its R and the kept columns (the influence measures and the sequential sums of
+// squares, docs/design/regression.md §3.8).
 // Inputs are float64 sd.ndarrays (the Python layer converts); u is GLS's whitened column of
 // ones (it replaces the intercept column and centers the sums of squares); groups are int64
 // codes 0 .. gtot - 1, -1 for a missing label (cov = cluster).
@@ -1154,7 +1172,8 @@ nb::object fit(
     nb::handle go,
     std::int64_t gtot,
     std::int64_t maxlags,
-    bool hat_only
+    bool hat_only,
+    bool thin_q
 ) {
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
@@ -1195,6 +1214,12 @@ nb::object fit(
         const double nk = double(n) * double(std::max<lint>(k, 1));
         if (hat_only) {
             Out ho = linalg::alloc_c(with(b.shape(), {n}), DType::Float64);
+            Out qo, rqo, kqo;
+            if (thin_q) {
+                qo = linalg::alloc_c(with(b.shape(), {n, k}), DType::Float64);
+                rqo = linalg::alloc_c(with(b.shape(), {k, k}), DType::Float64);
+                kqo = linalg::alloc_c(with(b.shape(), {k}), DType::Bool);
+            }
             const double element_ns = 1500.0 + nk * (1.2 * double(k) + 3.0);
             const Failure f =
                 linalg::run_batch(b, element_ns, [&](std::int64_t i, const std::int64_t* off, Scratch& sc) {
@@ -1212,9 +1237,18 @@ nb::object fit(
                         has_g ? g->stride(-1) : 0
                     };
                     Dest o{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, ho.as<double>() + i * n};
+                    if (thin_q) {
+                        o.qmat = qo.as<double>() + i * n * k;
+                        o.R = rqo.as<double>() + i * k * k;
+                        o.kept = kqo.as<std::uint8_t>() + i * k;
+                    }
                     return fit_one(pb, d, o, sc);
                 });
             if (f) raise_failure(b, f, fn);
+            if (thin_q)
+                return nb::make_tuple(
+                    linalg::to_array(ho), linalg::to_array(qo), linalg::to_array(rqo), linalg::to_array(kqo)
+                );
             return linalg::to_array(ho);
         }
         Out po = linalg::alloc_c(with(b.shape(), {k}), DType::Float64);
@@ -1459,7 +1493,8 @@ void bind_linear(nb::module_& m) {
     m.def(
         "fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
         nb::arg("u").none(), nb::arg("intercept"), nb::arg("rtol"), nb::arg("cov"), nb::arg("steps"),
-        nb::arg("groups").none() = nb::none(), nb::arg("gtot") = 0, nb::arg("maxlags") = -1, nb::arg("hat_only") = false
+        nb::arg("groups").none() = nb::none(), nb::arg("gtot") = 0, nb::arg("maxlags") = -1,
+        nb::arg("hat_only") = false, nb::arg("thin_q") = false
     );
     m.def(
         "apply", &apply, nb::arg("func"), nb::arg("X").none(), nb::arg("beta").none(), nb::arg("intercept"),

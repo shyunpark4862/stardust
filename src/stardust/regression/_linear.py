@@ -664,6 +664,31 @@ class _RegressionResult:
             return _sd.where(bad, math.nan, var)
         return var * math.nan if bad else var
 
+    def _cov_factor(self):
+        """(U, s) with the covariance in the fit's units s^2 (U^T U)^-1 on the kept columns (U
+        the identity on the aliased ones), for an accurate quadratic form (G7a); None where the
+        covariance is not of that form (robust ones, rlm, quantreg, nls)."""
+        return None
+
+    # -- linear hypotheses (G7a, docs/api/regression.md §9.1)
+    def t_test(self, R, /, q=None):
+        """TTestResult of each row of R params = q (R (m, k) or one row (k,), q (m,) or a
+        number, default 0): effect = R params, its sd, tvalue, the two-sided pvalue with the
+        coefficients' reference distribution, df, and conf_int(*, alpha=0.05) of effect. A row
+        with a nonzero weight on an aliased parameter is NaN."""
+        from . import _tests
+
+        return _tests.t_test(self, R, q)
+
+    def wald_test(self, R, /, q=None):
+        """WaldTestResult of the joint hypothesis R params = q: F = W / m against F(m,
+        df_resid_inference), or W against chi-square(m) for a GLM whose scale is fixed. Rows
+        that are linear combinations of earlier ones are dropped (m is the rank); a row on an
+        aliased parameter makes the test NaN."""
+        from . import _tests
+
+        return _tests.wald_test(self, R, q)
+
     def _interval(self, X_new, func, alpha, var_extra=None):
         """(..., [L,] m, 2): the 1 - alpha interval mean -+ q sqrt(var) at the rows of X_new."""
         alpha = _check_alpha(alpha, func)
@@ -904,6 +929,19 @@ class _LinearResult(_RegressionResult):
         resid (GLS); 0 for a perfect fit (ssr 0: residuals within rounding, G95)."""
 
         def make():
+            e = self._wresid_raw()
+            zero = self._ssr_s() == 0.0
+            if self._batch:
+                return _sd.where(_expand(zero, 1), 0.0, e)
+            return _sd.zeros(tuple(e.shape)) if zero else e
+
+        return self._cached("wresid", make)
+
+    def _wresid_raw(self):
+        """The whitened residuals in the fit's units as computed (a GLS fit of a constant y:
+        exactly 0, its whitened residuals L^-1 (y - y0 1))."""
+
+        def make():
             func, y, X, w, u, tol, codes, gtot = self._fitargs
             r = self._extra.get("resid_s", self.resid)
             if u is not None:
@@ -921,12 +959,45 @@ class _LinearResult(_RegressionResult):
                 e = _sd.sqrt(w) * r
             else:
                 e = r
-            zero = self._ssr_s() == 0.0
-            if self._batch:
-                return _sd.where(_expand(zero, 1), 0.0, e)
-            return _sd.zeros(tuple(e.shape)) if zero else e
+            const = self._extra.get("const")
+            if const is not None:
+                if self._batch:
+                    e = _sd.where(_sd.expand_dims(const, axis=-1), 0.0, e)
+                else:
+                    e = _sd.zeros(tuple(e.shape))
+            return e
 
-        return self._cached("wresid", make)
+        return self._cached("wresid_raw", make)
+
+    @property
+    def wresid(self):
+        """The whitened residuals (..., n) on the data's scale (statsmodels' wresid): resid (OLS),
+        sqrt(w) resid (WLS; 0 at the rows with weight 0), L^-1 resid (GLS). The residuals the
+        diagnostics use, e.g. for sd.htest's normality tests."""
+
+        def make():
+            e = self._wresid_raw()
+            fy = self._fy()
+            if isinstance(fy, float) and fy == 1.0:
+                return e
+            return e * (_expand(fy, 1) if isinstance(fy, _sd.ndarray) else fy)
+
+        return self._cached("wresid_public", make)
+
+    def _cov_factor(self):
+        if self._robust:
+            return None
+
+        def make():
+            from ._tests import _unit_triangle
+
+            R = self._raw[2]
+            fx = self._xfactor()
+            if fx is not None:
+                R = R / _sd.expand_dims(fx, axis=-2)
+            return _unit_triangle(R, self._raw[5]), _sqrt(self._scale_s())
+
+        return self._cached("cov_factor", make)
 
     @property
     def leverage(self):
@@ -1049,6 +1120,76 @@ class _LinearResult(_RegressionResult):
             return _results.BreuschPaganResult(lm, p, a.fvalue, a.f_pvalue)
 
         return self._cached(("breusch_pagan", studentize), make)
+
+    # -- diagnostics added in G7a (docs/api/regression.md §9.2)
+    @property
+    def vif(self):
+        """The variance inflation factors (..., k) at the places of params: 1 / (1 - R_j^2), R_j^2
+        the centered R^2 of column j on the intercept and the other columns (the whitened
+        design; an intercept is put in for the auxiliary regressions of a model without one).
+        NaN at the intercept and the aliased columns."""
+        from . import _diagnostics
+
+        return self._cached("vif", lambda: _diagnostics.vif(self))
+
+    @property
+    def dffits(self):
+        """t_i sqrt(h_i / (1 - h_i)) (..., n), t the external studentized residual (R's dffits,
+        statsmodels' dffits[0]); 0 for the rows with weight 0."""
+
+        def make():
+            h = self.leverage
+            return self.resid_studentized_external * _sd.sqrt(h / (1.0 - h))
+
+        return self._cached("dffits", make)
+
+    @property
+    def dfbetas(self):
+        """(..., n, k): (beta - beta_(i))_j / (s_(i) sqrt([(X^T X)^-1]_jj)) for each row i and
+        parameter j, the intercept included (R's dfbetas, statsmodels' dfbetas), from the fit's
+        thin Q (no refit). NaN for the aliased parameters, 0 for the rows with weight 0."""
+        from . import _diagnostics
+
+        return self._cached("dfbetas", lambda: _diagnostics.dfbetas(self))
+
+    def white_test(self, *, cross_terms=True):
+        """WhiteTestResult(lm, lm_pvalue, fvalue, f_pvalue): e~^2 on a constant, the whitened
+        design's columns, their squares and (cross_terms) their cross products."""
+        from . import _diagnostics
+
+        return self._cached(("white_test", cross_terms), lambda: _diagnostics.white_test(self, cross_terms))
+
+    def goldfeld_quandt(self, *, split=0.5, drop=0, order_by=None, alternative="greater"):
+        """GoldfeldQuandtResult(fvalue, pvalue, alternative): the fit's rows (ordered by
+        order_by) split into the first `split` rows (or that fraction) and the rows after `drop`
+        more; F = (SSR_2 / df_2) / (SSR_1 / df_1) against F(df_2, df_1). ols and wls only."""
+        from . import _diagnostics
+
+        return _diagnostics.goldfeld_quandt(self, split, drop, order_by, alternative)
+
+    def reset_test(self, *, power=(2, 3), kind="fitted"):
+        """ResetTestResult(fvalue, pvalue, df_num, df_denom): Ramsey's RESET, the F test of the
+        powers of the fitted values (kind='fitted') or of each column (kind='regressor') added
+        to the model (a robust covariance: the Wald F with the extended model's)."""
+        from . import _diagnostics
+
+        return _diagnostics.reset_test(self, power, kind)
+
+    # -- nested models (G7a, docs/api/regression.md §9.1)
+    def compare_f_test(self, small, /):
+        """CompareFTestResult(fvalue, pvalue, df_num, df_denom) of this model against the
+        nested `small` one fitted to the same data: F = ((SSR_s - SSR_b) / (r_b - r_s)) / (SSR_b
+        / df_resid_b)."""
+        from . import _tests
+
+        return _tests.compare_f_test(self, small)
+
+    def compare_lr_test(self, small, /):
+        """CompareLRTestResult(lr, pvalue, df) of this model against the nested `small` one:
+        lr = -2 (llf_s - llf_b) against chi-square(r_b - r_s)."""
+        from . import _tests
+
+        return _tests.compare_lr_test(self, small)
 
     # -- summary (G13)
     def summary(self, *, alpha=0.05):
@@ -1579,12 +1720,16 @@ def _linear(func, cls, y, X, weights, intercept, cov_type, maxlags, groups, rtol
     columns = _frame_columns(X)
     # the diagnostics read y, X and w later: arrays of the result's own (G86), so that changing
     # the caller's arrays (or the numpy arrays they view) does not change the result
-    y, X, w, names, _, _, (codes, gtot) = _prepare(
+    prepared = _prepare(
         func, y, X, weights, nan_policy, groups=groups, cov_type=cov_type, intercept=intercept, own=True
     )
+    y, X, w, names, _, keep, (codes, gtot) = prepared
     raw, extra, ys, Xs = _fit_kernel(func, y, X, w, None, intercept, tol, _COV_TYPES.index(cov_type), codes, gtot, lags)
     _exact_constant(raw, ys, w, intercept, cov_type)
     _unscale(raw, extra)
+    extra["maxlags"] = lags
+    if keep is not None:
+        extra["keep"] = keep
     return cls(
         raw,
         param_names=_names(names, X.shape[-1], intercept),
@@ -1727,10 +1872,12 @@ def gls(
         fitted, resid = _sd.broadcast_to(fitted, raw[3].shape), _sd.broadcast_to(resid, raw[3].shape)
     raw[3], raw[4] = _ro(fitted), _ro(resid)
     if const is not None:  # the whitened residuals L^-1 (y - y0 1) are exactly 0 there
-        wr = res._wresid()
-        res._cache["wresid"] = (
-            _sd.where(_sd.expand_dims(const, axis=-1), 0.0, wr) if res._batch else _sd.zeros(tuple(wr.shape))
-        )
+        res._extra["const"] = const
+    res._extra["L"] = L
+    res._extra["X0"] = X.copy()
+    res._extra["maxlags"] = lags
+    if keep is not None:
+        res._extra["keep"] = keep
     logdet = 2.0 * _sd.sum(_sd.log(_linalg.diagonal(L)), axis=-1)
     if res._batch:
         logdet = _sd.broadcast_to(logdet, res._batch) if isinstance(logdet, _sd.ndarray) else logdet

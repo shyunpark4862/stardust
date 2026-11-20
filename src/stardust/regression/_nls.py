@@ -157,6 +157,10 @@ class NLSResult(_RegressionResult):
 
         return self._cached("tvalues", make)
 
+    def _perfect(self):
+        """ssr exactly 0 with df_resid > 0 (G109): the tests' t and statistics are NaN there."""
+        return self.ssr == 0.0 and self.df_resid > 0
+
     @property
     def llf(self):
         """The Gaussian log-likelihood at its maximum over sigma, as ols / wls:

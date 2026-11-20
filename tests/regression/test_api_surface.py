@@ -12,8 +12,8 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "regression.md"
 
-# Documented, not implemented yet (docs/design/regression.md §7).
-PLANNED = set()
+# Documented, not implemented yet (docs/design/regression.md §7: G7b).
+PLANNED = {"stepwise", "best_subset"}
 RESULTS = {
     "OLSResult",
     "WLSResult",
@@ -34,6 +34,14 @@ RESULTS = {
     "SiegelslopesResult",
     "QuantRegResult",
     "NLSResult",
+    "TTestResult",
+    "WaldTestResult",
+    "CompareFTestResult",
+    "CompareLRTestResult",
+    "AnovaResult",
+    "WhiteTestResult",
+    "GoldfeldQuandtResult",
+    "ResetTestResult",
 }
 
 

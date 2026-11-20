@@ -6,6 +6,7 @@ Usage: ``import stardust as sd`` then ``r = sd.regression.ols(y, X)`` and ``r.pa
 docs/design/regression.md §1.1.
 """
 
+from .. import _calls
 from .._results import BreuschPaganResult, JarqueBeraResult, LinregressResult, SiegelslopesResult, TheilslopesResult
 from ._glm import GLMResult, glm
 from ._linear import GLSResult, OLSResult, WLSResult, gls, linregress, ols, wls
@@ -28,6 +29,17 @@ from ._penalized import (
 )
 from ._quantile import QuantRegResult, quantreg
 from ._robust import RLMResult, rlm, siegelslopes, theilslopes
+from ._tests import (
+    AnovaResult,
+    CompareFTestResult,
+    CompareLRTestResult,
+    GoldfeldQuandtResult,
+    ResetTestResult,
+    TTestResult,
+    WaldTestResult,
+    WhiteTestResult,
+)
+from ._tests import anova as _anova
 
 __all__ = [
     "ols",
@@ -47,6 +59,7 @@ __all__ = [
     "siegelslopes",
     "quantreg",
     "nls",
+    "anova",
     "OLSResult",
     "WLSResult",
     "GLSResult",
@@ -66,4 +79,22 @@ __all__ = [
     "SiegelslopesResult",
     "QuantRegResult",
     "NLSResult",
+    "TTestResult",
+    "WaldTestResult",
+    "CompareFTestResult",
+    "CompareLRTestResult",
+    "AnovaResult",
+    "WhiteTestResult",
+    "GoldfeldQuandtResult",
+    "ResetTestResult",
 ]
+
+
+@_calls.function
+def anova(*results, typ=None, terms=None, test=None):
+    """The analysis of variance (docs/api/regression.md §9.1): with several fitted models of the
+    same data, nested in order, the table of each against the one before (R's anova(m1, m2, ...));
+    with one, its terms' table, typ=1 (sequential, R's anova) or typ=3 (each term last, its Wald
+    test; R's drop1). terms: the columns (positions or names) of each term, every column once;
+    None makes each column a term. test: None (R's default), 'F' or 'Chisq'."""
+    return _anova(*results, typ=typ, terms=terms, test=test)

@@ -26,6 +26,7 @@ from ._linear import (
     _WIDTH,
     _arg,
     _as_real,
+    _as_real_owned,
     _check_alpha,
     _check_batches,
     _check_bool,
@@ -47,7 +48,7 @@ from ._linear import (
     _pairs,
     _pow2,
     _quantile_label,
-    _read_y,
+    _read_y_owned,
     _RegressionResult,
     _rows_message,
 )
@@ -320,6 +321,73 @@ class GLMResult(_RegressionResult):
         if self._normal():
             return _Normal()
         return _StudentT(df=self._per(self._df_inference(), nd))
+
+    def _cov_factor(self):
+        if self._robust:
+            return None
+
+        def make():
+            from ._tests import _unit_triangle
+
+            R = self._raw[2]
+            fx = self._xfactor()
+            if fx is not None:  # back to the fit's units (powers of two, exact)
+                R = R / _sd.expand_dims(fx, axis=-2)
+            s = self._stat(_G_SCALE)
+            return _unit_triangle(R, self._raw[5]), _sd.sqrt(s) if isinstance(s, _sd.ndarray) else math.sqrt(
+                s
+            ) if s >= 0 else math.nan
+
+        return self._cached("cov_factor", make)
+
+    # -- influence (G7a decision 14): the linear models' measures of the final IRLS's weighted
+    # least squares, with the Pearson residuals
+    def _influence(self):
+        from . import _diagnostics
+
+        return self._cached("influence", lambda: _diagnostics.glm_influence(self))
+
+    @property
+    def leverage(self):
+        """The hat values (..., n) of sqrt(W) X, W the final IRLS weights (the expected
+        information's, times the frequency weights; R's hatvalues of a glm). 0 for the rows out
+        of the fit."""
+        return self._influence()[0]
+
+    @property
+    def cooks_distance(self):
+        """e_i^2 h_i / (scale rank (1 - h_i)^2), e the Pearson residual (R's cooks.distance of a
+        glm, statsmodels' GLMInfluence.cooks_distance[0])."""
+        return self._influence()[1]
+
+    @property
+    def dffits(self):
+        """e_i sqrt(h_i) / (s_(i) (1 - h_i)), e the Pearson residual, s_(i) the scale without row
+        i for a family whose scale is estimated (R's dffits of a glm), sqrt(scale) for a fixed one."""
+        return self._influence()[2]
+
+    @property
+    def dfbetas(self):
+        """(..., n, k): the one-step change of the parameters when row i is deleted, (X~^T X~)^-1
+        x~_i e_i / (1 - h_i), over s_(i) sqrt([(X~^T X~)^-1]_jj) (dffits' s_(i)); NaN for the
+        aliased parameters."""
+        return self._influence()[3]
+
+    # -- nested models (G7a decision 8)
+    def compare_f_test(self, small, /):
+        """CompareFTestResult of this GLM against the nested `small` one: R's anova.glm F,
+        ((D_s - D_b) / (r_b - r_s)) / scale_b against F(r_b - r_s, df_resid_b). Only for an
+        estimated scale; with a fixed one the deviance's test is compare_lr_test()."""
+        from . import _tests
+
+        return _tests.compare_f_test(self, small)
+
+    def compare_lr_test(self, small, /):
+        """CompareLRTestResult of this GLM against the nested `small` one: -2 (llf_s - llf_b)
+        against chi-square(r_b - r_s), each model's llf (statsmodels)."""
+        from . import _tests
+
+        return _tests.compare_lr_test(self, small)
 
     # -- prediction
     def _offset(self, offset, exposure, func, m):
@@ -596,11 +664,11 @@ def glm(
     if exposure is not None and link != "log":
         raise ValueError(f"{func}(): 'exposure' is only used with the log link")
 
-    yy = _read_y(y, func)
+    yy, own_y = _read_y_owned(y, func)
     if yy.ndim == 0:
         raise ValueError(f"{func}(): 'y' must have at least 1 dimension")
     columns = _frame_columns(X)
-    XX, names = _as_real(X, func, "X")
+    XX, names, own_x = _as_real_owned(X, func, "X")
     if XX.ndim == 0:
         raise ValueError(f"{func}(): 'X' must have at least 1 dimension")
     if XX.ndim == 1:
@@ -658,6 +726,7 @@ def glm(
         if bool(_sd.any(bad)):
             keep = _sd.logical_not(bad)
             yy, XX = yy[keep], XX[keep]
+            own_y = own_x = True  # the selection is new memory
             rows = {k: a[keep] for k, a in rows.items()}
             if codes is not None:
                 codes = codes[keep]
@@ -691,6 +760,7 @@ def glm(
     if fy is not None:
         fy1 = _sd.expand_dims(fy, axis=-1) if isinstance(fy, _sd.ndarray) else fy
         yy = yy / fy1
+        own_y = True
         if link == "log":
             # mu / fy = exp(eta - log fy): the offset carries the factor
             if isinstance(fy1, _sd.ndarray):
@@ -735,6 +805,23 @@ def glm(
     if extra is not None:
         raw, extra = extra
     fixed = smode == 3 or (smode == 0 and family in ("binomial", "poisson"))
+    # what the comparisons, the analysis of variance and the influence measures read later:
+    # arrays of the result's own (G86)
+    fitargs = {
+        "y": yy if own_y else yy.copy(),
+        "X": XK if (fx is not None or own_x) else XK.copy(),
+        "aux": aux,
+        "has": (parts[0] is not None, parts[1] is not None, parts[2] is not None, off is not None),
+        "family": family,
+        "link": link,
+        "family_code": _FAMILY_CODE[family],
+        "link_code": _LINK_CODE[link],
+        "rtol": rt,
+        "max_iter": max_iter,
+        "tol": tol,
+        "smode": smode,
+        "svalue": svalue,
+    }
     return GLMResult(
         raw,
         extra=extra,
@@ -746,6 +833,7 @@ def glm(
         cov_type=cov_type,
         batch=tuple(raw[0].shape[:-1]),
         columns=columns,
+        fitargs=fitargs,
     )
 
 
