@@ -413,6 +413,10 @@ ValueError: lu(): 'x' must have at least 2 dimensions, got 1
 
 `lu`는 아무 조건 없이 어떤 행렬이든 분해해요. 행렬이 대칭이면서 양정치임을 안다면 `cholesky`가 일도 절반이고 결과도 단순해요.
 
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 LU 분해는 [`sd.sparse.splu`](/api/sparse/splu/)예요. 분해 결과의 `solve(b, trans=)`가 [`lu_solve`](/api/linalg/lu_solve/)와 같은 일을 하고, `trans`의 값(`'N'`, `'T'`, `'H'`)도 같아요. 희소 분해는 0이 덜 채워지도록 행과 열의 순서를 함께 바꾸므로 `L`, `U`가 여기의 결과와 달라요. 희소 배열을 `lu`에 넣으면 `sd.sparse.splu`를 알려 주는 `TypeError`예요.
+
 ## numpy·scipy를 아는 분께
 
 - numpy에는 LU 분해 함수가 없어요. scipy의 `scipy.linalg.lu`에 해당해요.

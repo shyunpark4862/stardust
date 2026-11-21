@@ -211,6 +211,19 @@ array([-1,  3, -1,  5,  7], dtype=int64)
 1
 ```
 
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)은 메서드 `A.nonzero()`로 0이 아닌 자리를 구하고, [`sd.sparse.find`](/api/sparse/find/)로 자리와 값을 한 번에 꺼내요. 밀집 배열에서 `find`와 같은 일은 `nonzero`로 자리를 구해 그 자리로 [인덱싱](/api/array/indexing/)하는 것이에요. 희소 배열을 `sd.nonzero`에 넣으면 `A.nonzero()`를 알려 주는 `TypeError`예요.
+
+```python
+>>> g = sd.asarray([[0.0, 2.0], [3.0, 0.0]])
+>>> r, c = sd.nonzero(g)
+>>> r, c, g[r, c]
+(array([0, 1], dtype=int64), array([1, 0], dtype=int64), array([2.0, 3.0], dtype=float64))
+>>> sd.sparse.find(sd.sparse.csr_array(g))
+(array([0, 1], dtype=int64), array([1, 0], dtype=int64), array([2.0, 3.0], dtype=float64))
+```
+
 ## numpy를 아는 분께
 
 - 동작은 numpy의 `np.nonzero`와 같아요. 위치는 행 우선(C 순서)으로 늘어놓아요.

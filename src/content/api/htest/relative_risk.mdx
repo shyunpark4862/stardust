@@ -1,0 +1,153 @@
+---
+kind: function
+title: relative_risk
+names: [relative_risk]
+group: 분할표
+order: 8
+signatures:
+  - "sd.htest.relative_risk(exposed_cases, exposed_total, control_cases, control_total, /)"
+summary: 노출 집단과 대조 집단의 위험(사례가 일어난 비율)의 비인 상대위험과 그 신뢰구간(Katz 구간)이에요. 개수 네 개를 받아요. 검정이 아니라 추정이라 p값이 없어요.
+params:
+  - name: exposed_cases
+    type: int
+    kind: positional-only
+    desc: 노출 집단에서 사례(병, 사건)가 일어난 수. 0 이상이고 exposed_total 이하예요.
+  - name: exposed_total
+    type: int
+    kind: positional-only
+    desc: 노출 집단의 크기. 1 이상이에요.
+  - name: control_cases
+    type: int
+    kind: positional-only
+    desc: 대조 집단에서 사례가 일어난 수. 0 이상이고 control_total 이하예요.
+  - name: control_total
+    type: int
+    kind: positional-only
+    desc: 대조 집단의 크기. 1 이상이에요.
+returns:
+  type: RelativeRiskResult
+  desc: "relative_risk(상대위험)와 받은 네 개수(exposed_cases, exposed_total, control_cases, control_total)를 가진 결과 객체. conf_int(*, alpha=0.05)로 신뢰구간을, summary(*, alpha=0.05)로 요약 상자를 얻어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: 개수가 int가 아닐 때(float·bool·배열도 안 돼요), 키워드로 줬을 때, 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "사례 수가 음수일 때, 총수가 1보다 작을 때, 사례 수가 총수를 넘을 때."
+seeAlso: [odds_ratio, fisher_exact, test_proportions_2indep, confint_proportions_2indep, basics, results]
+---
+## 무엇을 하나요
+
+흡연자 122명 가운데 27명, 비흡연자 487명 가운데 44명에게 어떤 병이 생겼어요. 병이 생길 **위험**은 흡연자가 $27/122 = 0.221$, 비흡연자가 $44/487 = 0.090$이에요. 그 비가 **상대위험**(위험비)이에요.
+
+$$
+\mathrm{RR} = \frac{a / n_1}{c / n_2}
+$$
+
+$a, n_1$은 노출 집단의 사례 수와 크기, $c, n_2$는 대조 집단의 것이에요. RR = 2.45는 "흡연자에게 병이 생길 위험이 비흡연자의 2.45배"라는 뜻이에요. 1이면 두 집단의 위험이 같아요.
+
+상대위험은 집단의 크기를 정해 두고 사례를 센 자료(코호트 연구, 임상 시험)에서 의미가 있어요. 사례–대조 연구처럼 사례 수를 정해 두고 모은 자료에서는 위험을 추정할 수 없으니 [`odds_ratio`](/api/htest/odds_ratio/)를 써요. 사례가 드물면 두 값이 비슷해요.
+
+`relative_risk`는 추정과 신뢰구간만 줘요. "두 위험이 같은가"를 검정하려면 [`test_proportions_2indep`](/api/htest/test_proportions_2indep/)(비 `compare='ratio'`도 있어요)나 [`fisher_exact`](/api/htest/fisher_exact/)를 써요.
+
+<Reference />
+
+## 기본 사용
+
+개수 네 개를 노출 사례, 노출 총수, 대조 사례, 대조 총수의 순서로 위치로 줘요.
+
+```python
+>>> import stardust as sd
+>>> r = sd.htest.relative_risk(27, 122, 44, 487)
+>>> r
+RelativeRiskResult(relative_risk=2.44952, exposed_cases=27, exposed_total=122, control_cases=44, control_total=487)
+>>> r.relative_risk
+2.44951564828614
+>>> r.conf_int()
+array([1.5836990926700119,  3.788678631546636], dtype=float64)
+```
+
+상대위험 2.45의 95% 신뢰구간은 [1.58, 3.79]이에요. 구간이 1을 포함하지 않아서 흡연자의 위험이 더 높다고 말할 수 있어요.
+
+결과는 튜플로 풀리지 않고 `pvalue`가 없어요. 받은 개수도 필드로 남아요.
+
+```python
+>>> print(r.summary())
+                                Relative risk
+==============================================================================
+Relative risk:                   2.450
+Exposed cases:                      27
+Exposed total:                     122
+Control cases:                      44
+Control total:                     487
+==============================================================================
+                   [0.025     0.975]
+------------------------------------------------------------------------------
+relative risk       1.584      3.789
+==============================================================================
+```
+
+## 신뢰구간: Katz 구간
+
+상대위험의 로그가 대략 정규분포를 따른다고 보고
+
+$$
+\exp\!\left(\log \mathrm{RR} \mp z_{\alpha/2}\sqrt{\frac1a - \frac1{n_1} + \frac1c - \frac1{n_2}}\right)
+$$
+
+로 구해요. `conf_int(*, alpha=0.05)`의 `alpha`는 유의수준이고 구간은 1 − alpha예요. 한쪽 구간은 없어요.
+
+```python
+>>> r.conf_int(alpha=0.1)
+array([1.6987301352871564, 3.5321248422925033], dtype=float64)
+```
+
+근사 구간이라 사례 수가 아주 작으면(한 자리) 실제 포함 확률이 1 − alpha에서 벗어날 수 있어요. 그럴 때는 [`confint_proportions_2indep`](/api/htest/confint_proportions_2indep/)에 `compare='ratio'`를 주고 점수 구간(`method='score'`) 같은 다른 방법을 볼 수 있어요.
+
+## 사례가 0일 때
+
+- 노출 사례가 0이면 RR = 0이고 구간은 (0, NaN)이에요. 로그가 정해지지 않아 위 끝을 낼 수 없어요.
+- 대조 사례가 0이면 RR = inf이고 구간은 (NaN, inf)예요.
+- 둘 다 0이면 RR과 구간이 모두 NaN이에요.
+
+```python
+>>> sd.htest.relative_risk(0, 10, 3, 10).conf_int()
+array([0.0, nan], dtype=float64)
+>>> sd.htest.relative_risk(3, 10, 0, 10).conf_int()
+array([nan, inf], dtype=float64)
+>>> sd.htest.relative_risk(0, 10, 0, 10)
+RelativeRiskResult(relative_risk=nan, exposed_cases=0, exposed_total=10, control_cases=0, control_total=10)
+```
+
+## 에러
+
+개수는 Python의 int(또는 numpy 정수)예요. 1.0 같은 float나 True·False, 배열은 받지 않아요. 배치가 없으므로 여러 표의 상대위험은 하나씩 불러요.
+
+```python
+>>> sd.htest.relative_risk(1.0, 10, 3, 10)
+Traceback (most recent call last):
+    ...
+TypeError: relative_risk(): 'exposed_cases' must be an int, not float
+>>> sd.htest.relative_risk(11, 10, 3, 10)
+Traceback (most recent call last):
+    ...
+ValueError: relative_risk(): 'exposed_cases' must not exceed 'exposed_total'
+>>> sd.htest.relative_risk(1, 0, 3, 10)
+Traceback (most recent call last):
+    ...
+ValueError: relative_risk(): 'exposed_total' must be >= 1
+>>> sd.htest.relative_risk(-1, 10, 3, 10)
+Traceback (most recent call last):
+    ...
+ValueError: relative_risk(): 'exposed_cases' must be >= 0
+```
+
+## 정확도
+
+상대위험은 정확한 몫 $a n_2 / (n_1 c)$를 한 번 반올림한 값이고, 구간의 표준오차도 정확한 유리수에서 한 번 반올림해요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 6문제(0인 개수 셋, 큰 표 포함)에서 상대위험은 상대오차 7.5e-17 안, 구간의 끝은 3.2e-16 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.contingency.relative_risk`와 같은 인자 순서, 같은 추정과 Katz 구간, 같은 0인 사례의 끝이에요. 다른 점이에요.
+
+- 신뢰구간은 `r.conf_int(alpha=0.05)`예요. scipy의 `confidence_interval(confidence_level=0.95)`에 해당하고, 돌려주는 것은 두 칸의 배열이에요.
+- 개수는 위치로만 받아요.
+- 상대위험을 몫 셋의 반올림 대신 정확한 몫의 한 번 반올림으로 구해서, scipy와 끝자리가 다를 수 있어요.

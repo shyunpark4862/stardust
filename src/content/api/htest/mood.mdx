@@ -1,0 +1,154 @@
+---
+kind: function
+title: mood
+names: [mood]
+group: 순위 검정
+order: 8
+signatures:
+  - "sd.htest.mood(x, y, /, *, axis=None, alternative='two-sided', nan_policy='propagate', keepdims=False)"
+summary: 가운데(위치)가 같은 독립 두 표본의 퍼짐(척도)이 같은지 묻는 Mood의 제곱 순위 검정이에요. 순위가 가운데에서 얼마나 떨어졌는지의 제곱을 더한 통계량을 표준화한 z와 정규분포의 p값을 줘요.
+params:
+  - name: x, y
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: 두 표본. 길이는 달라도 되고, 합쳐 3개 이상이어야 값이 나와요. 가운데가 같다고 보는 검정이에요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 표본마다 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 표본을 읽고, 나머지 축은 배치예요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(x의 퍼짐이 y보다 작다), 'greater'(x의 퍼짐이 y보다 크다) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: MoodResult
+  desc: "statistic(z)과 pvalue(표준정규분포)예요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, keepdims가 True·False가 아닐 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "alternative·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때."
+seeAlso: [ansari, fligner, levene, bartlett, basics, results]
+---
+
+## 무엇을 묻나요
+
+[`ansari`](/api/htest/ansari/)와 같은 질문이에요. 같은 시료를 옛 기계와 새 기계로 쟀을 때 퍼짐이 다른지 봐요.
+
+```python
+>>> import stardust as sd
+>>> old = [10.1, 9.4, 11.8, 8.2, 12.5, 7.9, 10.9, 13.1]
+>>> new = [10.2, 9.9, 10.5, 9.7, 10.0, 10.4, 9.8]
+>>> sd.htest.mood(old, new)
+MoodResult(statistic=2.61299, pvalue=0.00897532)
+```
+
+**Mood 검정**은 두 표본을 합쳐 순위 1..N을 매기고, 순위가 가운데 $(N+1)/2$에서 얼마나 떨어졌는지를 제곱해서 x의 몫만 더해요.
+
+$$
+T = \sum_{i \in x} \left(r_i - \frac{N+1}{2}\right)^2
+$$
+
+퍼짐이 큰 표본의 값은 양 끝으로 밀려나 순위가 가운데에서 멀어지므로 T가 커져요. 귀무가설 아래 T의 평균과 분산으로 표준화한 $z$가 통계량이고, p값은 표준정규 꼬리예요.
+
+- **귀무가설**: 두 표본이 같은 분포에서 나왔어요(가운데가 같다는 전제 아래, 퍼짐이 같아요).
+- **대립가설**(양쪽): 두 표본의 퍼짐이 달라요.
+
+$z = 2.61$이 양수라 옛 기계(x)의 퍼짐이 더 크다는 쪽이에요.
+
+Ansari–Bradley는 가운데에서의 거리를 순위의 차로, Mood는 그 제곱으로 재요. 그래서 Mood는 양 끝의 값에 무게를 더 실어요. 정규분포에 가까운 자료에서 Mood가 조금 더 예민하다고 알려져 있어요. `mood`에는 정확한 분포가 없고 정규 근사만 있어서, 아주 작은 표본에서 정확한 p값이 필요하면 `ansari(method='exact')`를 써요.
+
+가운데가 같아야 한다는 전제도 `ansari`와 같아요. 위치가 다를 수 있으면 [`levene`](/api/htest/levene/)이나 [`fligner`](/api/htest/fligner/)를 고려하세요.
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | 표준화한 $z$. x의 퍼짐이 클수록 양수예요. |
+| `pvalue` | `alternative`에 맞는 표준정규분포의 p값 |
+
+```python
+>>> r = sd.htest.mood(old, new)
+>>> stat, p = r
+>>> print(r.summary())
+                        Mood two-sample test of scale
+==============================================================================
+Statistic:                       2.613  Alternative:                 two-sided
+P-value:                       0.00898  No. Observations:                 8, 7
+==============================================================================
+```
+
+## `alternative`: 한쪽 검정
+
+`'greater'`는 x의 퍼짐이 y보다 크다(z가 크다)는 대립가설이에요.
+
+```python
+>>> sd.htest.mood(old, new, alternative='greater')
+MoodResult(statistic=2.61299, pvalue=0.00448766)
+>>> sd.htest.mood(old, new, alternative='less').pvalue
+0.9955123396438817
+```
+
+## 동점이 있을 때
+
+같은 값은 중간 순위를 받아요. 동점이 있으면 통계량과 분산을 Mielke의 꼴로 고쳐요. 같은 값 묶음 안에서는 $(r - (N+1)/2)^2$를 묶음의 평균으로 바꿔 x의 개수만큼 더하고, 분산도 그 값들로 구해요.
+
+```python
+>>> sd.htest.mood([1, 2, 2, 3, 5, 6, 6, 7], [3, 4, 4, 4, 5, 5])
+MoodResult(statistic=2.66566, pvalue=0.00768382)
+```
+
+## 퇴화한 입력
+
+합친 값이 3개보다 적으면 NaN이에요. 모든 값이 같아 순위가 흩어지지 않아도 NaN이에요. 경고는 내지 않아요.
+
+```python
+>>> sd.htest.mood([1.0], [2.0])
+MoodResult(statistic=nan, pvalue=nan)
+>>> sd.htest.mood([1.0, 1.0, 1.0], [1.0, 1.0])
+MoodResult(statistic=nan, pvalue=nan)
+```
+
+## 여러 검정을 한 번에: `axis`
+
+```python
+>>> rng = sd.random.default_rng(9)
+>>> N = sd.stats.Normal()
+>>> X = N.sample((2, 25), rng=rng)
+>>> Y = N.sample((2, 25), rng=rng) * sd.asarray([[1.0], [2.0]])
+>>> sd.htest.mood(X, Y, axis=1).pvalue
+array([  0.8191568176994304, 5.768744665681835e-05], dtype=float64)
+```
+
+둘째 실험에서만 y의 퍼짐을 두 배로 했어요. `nan_policy`, `keepdims`는 다른 검정과 같아요.
+
+## 정확도
+
+통계량은 정수인 제곱 순위의 합에서 계산해요. 문제 5개에서 Arb(구간 산술)로 만든 참값에 견주어 통계량은 상대 7.4e-17, p값은 상대 1.3e-15 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.mood`와 통계량(동점이면 Mielke의 꼴)과 p값의 정의가 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.mood(old, new)
+SignificanceResult(statistic=np.float64(2.612992746342204), pvalue=np.float64(0.0089753207122366))
+```
+
+- 결과 클래스가 `MoodResult`예요(scipy는 `SignificanceResult`). 필드는 같아요.
+- 합친 값이 3개보다 적으면 NaN이에요. scipy도 NaN이지만 경고를 내요.
+- `axis`의 기본값이 None이에요(scipy는 0). 옵션은 키워드로만 받아요.
+- R의 `mood.test`도 같은 통계량을 줘요.

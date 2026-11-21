@@ -22,7 +22,7 @@ export const activeK = [[1,1000],[2,1000],[3,1000],[4,1000],[5,1000],[6,1000],[7
 | `bracket_root` | 양쪽으로 넓혀 부호 바뀜 찾기 | `_bracket_root` |
 | `bracket_minimum` | 내리막으로 걸음을 늘려 세 점 찾기 | `_bracket_minimum` |
 
-커널은 `csrc/optimize/batch.cpp`의 `find_root_solve`, `find_minimum_solve`, `bracket_root_solve`, `bracket_minimum_solve`예요. Python 층(`src/stardust/optimize/_elementwise.py`)은 입력과 `args`를 브로드캐스트해 1차원 배열로 펴고, 허용오차의 기본값을 정하고, 결과를 배치 모양으로 되돌려요.
+커널은 `csrc/optimize/batch.cpp`의 `find_root_solve`, `find_minimum_solve`, `bracket_root_solve`, `bracket_minimum_solve`예요. 반복의 틀(원소를 나눠 지나가는 `for_elements`, 사용자 함수를 부르는 `Call`, 셈)은 `sd.differentiate`와 `sd.integrate`의 원소별 반복과 함께 쓰는 `csrc/elementwise/loop.hpp`에 있어요. Python 층(`src/stardust/optimize/_elementwise.py`)은 입력과 `args`를 브로드캐스트해 1차원 배열로 펴고, 허용오차의 기본값을 정하고, 결과를 배치 모양으로 되돌려요.
 
 ## 고리: 남은 원소만 모아 한 번 부르기
 
@@ -94,19 +94,20 @@ scipy는 단계마다 남은 원소 전체에 numpy 연산을 하고 배열을 �
 
 ### 사용자 함수를 부르는 자리
 
-`Call`이 한 번의 호출을 맡아요. 점은 새 `sd.ndarray`와 커널 안의 복사본에 함께 써요(사용자 함수가 인자를 고쳐도 반복에는 영향이 없게). 사용자의 `args`는 Python에서 배치 모양으로 브로드캐스트해 원소 n개의 1차원 배열로 펴 두고, 호출마다 남은 원소의 값을 새 배열에 모아 `f(x, *args)`로 넘겨요. 값은 dtype 그대로 바이트를 옮겨요.
+`Call`이 한 번의 호출을 맡아요. 점은 새 `sd.ndarray`와 커널 안의 복사본에 함께 써요(사용자 함수가 인자를 고쳐도 반복에는 영향이 없게). 사용자의 `args`는 Python에서 배치 모양으로 브로드캐스트해 원소 n개의 1차원 배열로 펴 두고, 호출마다 남은 원소의 값을 새 배열에 모아 `f(x, *args)`로 넘겨요. 값은 dtype 그대로 바이트를 옮겨요. 미분과 적분은 원소마다 점을 여러 개((k, p)) 넘기고 인자도 (k, 1)로 만들지만(`rows_`), 이 영역의 배치 함수는 원소마다 점 하나라 x와 인자가 모두 (k,)예요.
 
 ```cpp
-        // csrc/optimize/batch.cpp
+        // csrc/elementwise/loop.hpp
         if (args_.empty()) {
             r = f_(arr_);
         } else {
             nb::tuple call = nb::steal<nb::tuple>(PyTuple_New(static_cast<Py_ssize_t>(args_.size() + 1)));
             PyTuple_SET_ITEM(call.ptr(), 0, arr_.release().ptr());
-            const std::int64_t shape[1] = {k_};
+            const std::int64_t shape[2] = {k_, 1};
+            const std::span<const std::int64_t> sh(shape, rows_ ? 2 : 1);
             for (std::size_t j = 0; j < args_.size(); ++j) {
                 const NDArray& src = *args_[j];
-                NDArray a = new_array(src.dtype, shape);
+                NDArray a = new_array(src.dtype, sh);
                 // the element of q: idx[q] < 2 n (bracket_root's sides), so mod n is one subtraction
                 gather(a.data, src.data, src.strides[0], src.itemsize(), idx, n_, k_);
                 PyTuple_SET_ITEM(call.ptr(), static_cast<Py_ssize_t>(j + 1), wrap(std::move(a)).release().ptr());
@@ -335,18 +336,18 @@ a는 원소의 왼쪽, b는 오른쪽이에요. `i1`은 왼쪽이 끝났고 그 
 남은 원소가 2¹⁵개 이상이면 원소를 지나가는 패스(점 쓰기, `args` 모으기, 갱신과 판정)를 2¹³개씩의 조각으로 나눠 스레드에서 돌려요. 그동안 GIL은 놓아요. `bracket_root`도 갱신, 부호 판정, 반대쪽 멈추기, 표시 지우기를 각각 한 패스로 나눠요. 쪽 i가 건드리는 반대쪽 (i + n) mod 2n은 쪽마다 달라서 조각끼리 겹치지 않아요.
 
 ```cpp
-// csrc/optimize/batch.cpp
+// csrc/elementwise/loop.hpp
 // fn(r0, r1) over [0, k) in pieces (no Python objects inside)
 template <class Fn>
 void for_elements(std::size_t k, Fn&& fn) {
-    if (k >= kBatchParallel && parallel::available()) {
-        const auto tasks = static_cast<std::int64_t>((k + kBatchTask - 1) / kBatchTask);
+    if (k >= kParallel && parallel::available()) {
+        const auto tasks = static_cast<std::int64_t>((k + kTask - 1) / kTask);
         parallel::parallel_for(tasks, [&](std::int64_t t) {
-            const std::size_t r0 = static_cast<std::size_t>(t) * kBatchTask;
-            fn(r0, std::min(k, r0 + kBatchTask));
+            const std::size_t r0 = static_cast<std::size_t>(t) * kTask;
+            fn(r0, std::min(k, r0 + kTask));
         });
     } else {
-        parallel::Unlocked u(k >= kBatchParallel);
+        parallel::Unlocked u(k >= kParallel);
         fn(std::size_t{0}, k);
     }
 }

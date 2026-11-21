@@ -15,16 +15,19 @@ import Steps from '../../../components/fig/Steps.astro';
 
 ## 한눈에 보기
 
-`sd.linalg`의 함수 대부분은 LAPACK을 감싸지만, 몇 개는 LAPACK이 필요 없어요. 원소를 곱하고, 더하고, 옮기는 것이 전부인 함수들이에요. 이 함수들은 `csrc/linalg/ops/basic.cpp`(기본 연산)와 `ops/norms.cpp`, `ops/vnorm.hpp`(노름)에 직접 짠 루프로 있어요.
+`sd.linalg`의 함수 대부분은 LAPACK을 감싸지만, 몇 개는 LAPACK이 필요 없어요. 원소를 곱하고, 더하고, 옮기고, 살펴보는 것이 전부인 함수들이에요. 이 함수들은 `csrc/linalg/ops/basic.cpp`(기본 연산)와 `ops/norms.cpp`, `ops/vnorm.hpp`(노름)에 직접 짠 루프로 있어요.
 
-| 함수 | 계산하는 것 | 구현 | numpy와의 관계 |
+| 함수 | 계산하는 것 | 구현 | numpy·scipy와의 관계 |
 |---|---|---|---|
 | `vecdot` | $\sum_i \overline{x_i}\, y_i$ | 곱을 잎에 융합한 pairwise 합(FMA) | `np.sum(np.conj(x) * y, axis)`와 끝 비트가 다를 수 있음 |
 | `outer` | $x_i y_j$ | 원소 곱 | `x[..., :, None] * y[..., None, :]`와 같음 |
-| `kron` | $a_{ij} B$ 블록 | 원소 곱 | `np.kron`(2차원)과 같음 |
+| `kron` | $a_{ij} B$ 블록 | 원소 곱 | `np.kron`(1·2차원)과 같음 |
+| `kronsum` | $I \otimes A + B \otimes I$ | 값을 제자리에 놓기, 주대각만 덧셈 한 번 | numpy에 없음 |
+| `block_diag` | 블록을 대각에 차례로 | 복사 | `scipy.linalg.block_diag`와 같음 |
 | `cross` | $u \times v$ | 곱 두 개의 차 | `np.cross`와 같음 |
 | `trace` | $\sum_i a_{ii}$ | 대각을 pairwise 합 | `np.trace`와 같음 |
 | `diagonal` | $a_{i,i+k}$ | 복사 | 같음 (dtype 유지) |
+| `bandwidth` | 아래·위 띠 폭 | 바깥쪽부터 훑다가 멈추기 | `scipy.linalg.bandwidth`와 같은 값 |
 | `matrix_power` | $A^e$ | 이진 거듭제곱, `gemm` | $e = 0$–4에서 같음 |
 | `vector_norm` | $\lVert x\rVert_p$ | pairwise 합(2-노름은 제곱을 잎에 융합), 필요할 때만 다시 스케일 | 1-노름과 $p$-노름은 넘치지 않는 범위에서 지금 같음. 2-노름은 끝 비트가 다를 수 있음 |
 | `matrix_norm` (fro, ±1, ±inf) | 행렬 노름 | 줄마다 pairwise 합 | 레이아웃에 따라 끝 비트가 다를 수 있음 |
@@ -238,36 +241,274 @@ $$
 
 ### 배치 규칙
 
-`kron`은 다른 행렬 함수처럼 **행렬 묶음**을 받아서 `(..., M, N) ⊗ (..., P, Q) → (..., M·P, N·Q)`를 계산해요. 앞의 배치 축은 브로드캐스트해요. `np.kron`은 이와 달리 모든 축에 크로네커 곱을 해요. `(2, 2, 3)`과 `(2, 4, 5)`를 넣으면 numpy 2.5.4는 `(4, 8, 15)`, stardust는 `(2, 8, 15)`를 돌려줘요. 2차원 입력에서는 둘이 같아요. 입력은 2차원 이상이어야 해요.
+`kron`은 다른 행렬 함수처럼 **행렬 묶음**을 받아서 `(..., M, N) ⊗ (..., P, Q) → (..., M·P, N·Q)`를 계산해요. 앞의 배치 축은 브로드캐스트해요. `np.kron`은 이와 달리 모든 축에 크로네커 곱을 해요. `(2, 2, 3)`과 `(2, 4, 5)`를 넣으면 numpy 2.5.4는 `(4, 8, 15)`, stardust는 `(2, 8, 15)`를 돌려줘요. 1·2차원 입력에서는 둘이 같아요.
+
+1차원 입력 `(N,)`은 한 행 `(1, N)`으로 읽고, 배치 축이 없다고 봐요. 둘 다 1차원이면 결과도 1차원 `(N·Q,)`이고, 하나만 1차원이면 결과는 행렬이에요. `np.kron`과 `sd.sparse.kron`이 1차원 입력을 읽는 방법과 같아요.
+
+```python
+>>> sd.linalg.kron(sd.asarray([1, 2]), sd.asarray([1, 10, 100]))
+array([  1.0,  10.0, 100.0,   2.0,  20.0, 200.0], dtype=float64)
+>>> sd.linalg.kron(sd.asarray([1.0, 2.0]), sd.asarray([[1.0], [3.0]]))
+array([[1.0, 2.0],
+       [3.0, 6.0]], dtype=float64)
+>>> sd.linalg.kron(sd.ones((3, 2, 2)), sd.asarray([1.0, 2.0])).shape
+(3, 2, 4)
+```
+
+마지막 예에서 1차원 `[1, 2]`는 `(1, 2)` 행렬 하나라서, `(3, 2, 2)`의 배치 축 3과 브로드캐스트돼요.
 
 정수 입력은 float64로 계산해요(`np.kron`은 정수를 유지해요). 계산하는 linalg 함수의 공통 규칙이에요.
 
 ### 구현
 
-두 인자를 `Scratch`에 열 우선으로 패킹한 뒤, 결과를 메모리 순서대로 채워요.
+피연산자 하나를 행렬로 읽는 방법은 `KronOperand`가 정해요. 1차원이면 행 수 1, 행 간격 0, 배치 축 없음이에요.
 
 ```cpp
-// linalg/ops/basic.cpp의 kron (발췌)
-pack(x.dtype(), x.data() + off[0], m, n, x.stride(-2), x.stride(-1), a, m, false);   // A: m×n
-pack(y.dtype(), y.data() + off[1], p, q, y.stride(-2), y.stride(-1), c, p, false);   // B: p×q
-T* o = res + i * block;                                   // 결과: (m·p)×(n·q), 열 우선
-for (std::int64_t j = 0; j < n; ++j)                      // A의 열
-    for (std::int64_t l = 0; l < q; ++l) {                // B의 열 → 결과의 열 j·q + l
-        T* col = o + (j * q + l) * rows;
-        const T* cl = c + l * p;
-        for (std::int64_t r = 0; r < m; ++r) {            // A의 행 → 결과 열 안의 블록
-            const T arj = a[j * m + r];
-            T* dst = col + r * p;
-            for (std::int64_t k = 0; k < p; ++k) dst[k] = mul(arj, cl[k]);   // a가 왼쪽
-        }
-    }
+// csrc/linalg/ops/basic.cpp
+struct KronOperand {
+    std::int64_t rows, cols, rs, cs;
+    std::span<const std::int64_t> bshape, bstrides;
+    explicit KronOperand(const Input& x)
+        : rows(x.ndim() == 1 ? 1 : x.shape(-2)),
+          cols(x.shape(-1)),
+          rs(x.ndim() == 1 ? 0 : x.stride(-2)),
+          cs(x.stride(-1)),
+          bshape(x.ndim() == 1 ? std::span<const std::int64_t>{} : x.batch_shape(2)),
+          bstrides(x.ndim() == 1 ? std::span<const std::int64_t>{} : x.batch_strides(2)) {}
+};
+```
+
+`kron`은 두 피연산자를 이렇게 읽고 결과의 모양을 정해요.
+
+```cpp
+    // csrc/linalg/ops/basic.cpp
+    // A 1-D operand is one row; two 1-D operands give the 1-D (N*Q,).
+    const KronOperand ox(x), oy(y);
+    const std::int64_t m = ox.rows, n = ox.cols, p = oy.rows, q = oy.cols;
+    const bool vector = x.ndim() == 1 && y.ndim() == 1;
+    Batch b({{ox.bshape, ox.bstrides}, {oy.bshape, oy.bstrides}}, "kron");
+    // M*P and N*Q of broadcast views can pass int64; the rest is checked by alloc_matrices.
+    std::int64_t rows, cols;
+    if (__builtin_mul_overflow(m, p, &rows) || __builtin_mul_overflow(n, q, &cols))
+        throw nb::value_error("array is too big");
+    const bool complex = computes_complex(x.dtype()) || computes_complex(y.dtype());
+    return with_type(complex, [&]<class T>(std::type_identity<T>) -> nb::object {
+        // (1, N*Q) column-major is the contiguous vector (N*Q,)
+        Out out = vector ? alloc_vectors(b.shape(), cols, dtype_of<T>())
+                         : alloc_matrices(b.shape(), rows, cols, dtype_of<T>());
+```
+
+두 피연산자의 배치 축을 `Batch`에 넘기면 브로드캐스트한 배치 모양이 나와요. 1차원 피연산자는 배치 축이 비어 있으니 다른 쪽의 배치를 그대로 따라가요. $M \cdot P$, $N \cdot Q$는 브로드캐스트된 뷰에서 int64를 넘을 수 있어서 `__builtin_mul_overflow`로 따로 검사해요. 둘 다 1차원이면 결과를 `(1, N·Q)` 행렬 대신 길이 $N \cdot Q$의 벡터로 만들어요. 열 우선 `(1, N·Q)`가 메모리에서 곧 연속 벡터라서 채우는 루프는 같아요.
+
+배치 원소 하나는 두 인자를 `Scratch`에 열 우선으로 패킹한 뒤, 결과를 메모리 순서대로 채워요.
+
+```cpp
+            // csrc/linalg/ops/basic.cpp
+            // both operands converted into scratch once, column-major; NaN passes through
+            T* a = s.get<T>(static_cast<std::size_t>(m * n), 0);
+            T* c = s.get<T>(static_cast<std::size_t>(p * q), 1);
+            pack(x.dtype(), x.data() + off[0], m, n, ox.rs, ox.cs, a, m, false);
+            pack(y.dtype(), y.data() + off[1], p, q, oy.rs, oy.cs, c, p, false);
+            T* o = res + i * block;
+            // result column j*q + l, row block i: a[i, j] * c[:, l], with a on the left as
+            // np.kron's multiply (the complex product's bits depend on the order)
+            for (std::int64_t j = 0; j < n; ++j)
+                for (std::int64_t l = 0; l < q; ++l) {
+                    T* col = o + (j * q + l) * rows;
+                    const T* cl = c + l * p;
+                    for (std::int64_t r = 0; r < m; ++r) {
+                        const T arj = a[j * m + r];
+                        T* dst = col + r * p;
+                        for (std::int64_t k = 0; k < p; ++k) dst[k] = mul(arj, cl[k]);
+                    }
+                }
+            return 0;
 ```
 
 - 루프 순서는 결과의 열 우선 순서와 같아요. 결과의 열 $jq + l$은 $a_{\cdot j} \otimes b_{\cdot l}$이고, 그 안에서 $A$의 행 $r$마다 길이 $p$짜리 조각 $a_{rj} \cdot b_{\cdot l}$을 연속으로 써요. 결과 전체를 한 번, 순서대로 써요.
-- 패킹의 마지막 인자 `false`는 유한성 검사를 끈다는 뜻이에요. NaN은 그대로 결과로 가요.
+- 패킹의 마지막 인자 `false`는 유한성 검사를 끈다는 뜻이에요. NaN은 그대로 결과로 가요. 1차원 피연산자는 행 간격 `rs`가 0이지만 행이 하나뿐이라 그 값을 쓰지 않아요.
 - 곱셈은 결과 원소 수 $mnpq$번이고, 결과를 쓰는 것이 시간의 대부분이에요. 그래서 비용 계열은 `kCopy`이고 $w$는 결과 원소 수예요.
 
-결과는 지금 `np.kron`(2차원)과 비트까지 같아요. 배치 입력은 numpy의 브로드캐스트 곱을 모양만 바꾼 `(a[..., :, None, :, None] * b[..., None, :, None, :]).reshape(...)`와 같아요.
+결과는 지금 `np.kron`(1·2차원)과 비트까지 같아요(약속은 아니에요). 배치 입력은 numpy의 브로드캐스트 곱을 모양만 바꾼 `(a[..., :, None, :, None] * b[..., None, :, None, :]).reshape(...)`와 같아요.
+
+## kronsum
+
+### 수학
+
+크로네커 합(Kronecker sum)은 $m \times m$ 행렬 $A$와 $n \times n$ 행렬 $B$로
+
+$$
+A \oplus B = I_n \otimes A + B \otimes I_m
+$$
+
+을 만든 $mn \times mn$ 행렬이에요 [4][6]. $m \times m$ 블록이 $n \times n$ 격자로 놓인 모양이고, 대각 블록 $(i, i)$는 $A + b_{ii} I$, 나머지 블록 $(i, j)$는 $b_{ij} I$예요. 원소로 쓰면
+
+$$
+(A \oplus B)_{im + p,\ jm + q} = a_{pq}\,\delta_{ij} + b_{ij}\,\delta_{pq}
+$$
+
+이에요(번호는 0부터). 그래서 원소마다 $A$의 값, $B$의 값, 0 가운데 하나이고, 두 값이 겹치는 곳은 주대각의 $a_{pp} + b_{ii}$뿐이에요.
+
+```python
+>>> A = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> B = sd.asarray([[10.0, 20.0], [30.0, 40.0]])
+>>> sd.linalg.kronsum(A, B)
+array([[11.0,  2.0, 20.0,  0.0],
+       [ 3.0, 14.0,  0.0, 20.0],
+       [30.0,  0.0, 41.0,  2.0],
+       [ 0.0, 30.0,  3.0, 44.0]], dtype=float64)
+```
+
+크로네커 합은 1차원 격자의 연산자 둘로 2차원 격자의 연산자를 만들 때 나와요. $\operatorname{vec}(X)$에 곱하면 $\operatorname{vec}(AX + XB^{\mathsf T})$가 되므로, $A$가 $x$ 방향, $B$가 $y$ 방향으로 따로 작용하는 연산자예요. 고유값은 $A$의 고유값과 $B$의 고유값의 모든 합 $\lambda_p + \mu_i$예요 [6].
+
+규칙은 `kron`과 같아요. `x1`은 `(..., M, M)`, `x2`는 `(..., N, N)`이고 정사각이어야 해요(아니면 `ValueError`). 배치 축은 브로드캐스트하고, bool과 int64는 float64로 계산해요.
+
+### 구현: 곱하지 않고 놓기
+
+식대로 `kron(I, A) + kron(B, I)`를 만들면 단위 행렬의 0을 $A$, $B$의 원소와 곱하게 돼요. 원소에 inf가 있으면 $0 \cdot \infty = \text{NaN}$이 블록 곳곳에 생겨요. `kronsum`은 곱하지 않고 값을 제자리에 놓아요.
+
+```cpp
+            // csrc/linalg/ops/basic.cpp
+            // column J = j*m + q (column-major): A's column q in block row j, then b_ij at
+            // row i*m + q of every block row i (added to a_qq on block row j)
+            for (std::int64_t j = 0; j < n; ++j)
+                for (std::int64_t q = 0; q < m; ++q) {
+                    T* col = o + (j * m + q) * size;
+                    std::fill(col, col + size, T(0));
+                    std::copy(a + q * m, a + (q + 1) * m, col + j * m);
+                    const T* cj = c + j * n;
+                    for (std::int64_t r = 0; r < n; ++r) {
+                        if (r == j) col[r * m + q] = col[r * m + q] + cj[r];  // kron(I, A) + kron(B, I)
+                        else col[r * m + q] = cj[r];
+                    }
+                }
+            return 0;
+```
+
+결과의 열 $J = jm + q$ 하나를 위에서 아래로 채워요. 먼저 열 전체를 +0으로 채우고, 블록 행 $j$ 자리에 $A$의 $q$열을 복사해요(대각 블록). 그다음 블록 행 $r$마다 그 블록의 대각 자리(행 $rm + q$)에 $b_{rj}$를 놓아요. $r = j$이면 그 자리에 이미 $a_{qq}$가 있으므로 더해요. 원소 하나에 덧셈은 많아야 한 번이고, $A$ 쪽이 먼저예요.
+
+```python
+>>> Ai = sd.asarray([[float('inf'), 0.0], [0.0, 1.0]])
+>>> sd.linalg.kronsum(Ai, B)
+array([[ inf,  0.0, 20.0,  0.0],
+       [ 0.0, 11.0,  0.0, 20.0],
+       [30.0,  0.0,  inf,  0.0],
+       [ 0.0, 30.0,  0.0, 41.0]], dtype=float64)
+>>> I = sd.eye(2)
+>>> sd.linalg.kron(I, Ai) + sd.linalg.kron(B, I)
+array([[ inf,  0.0,  nan,  0.0],
+       [ 0.0, 11.0,  0.0, 20.0],
+       [ nan,  0.0,  inf,  0.0],
+       [ 0.0, 30.0,  0.0, 41.0]], dtype=float64)
+```
+
+- inf와 NaN은 제자리에만 있어요. 위의 `kron` 식에서는 $(0, 2)$ 자리가 $0 \cdot \infty + 20 = \text{NaN}$이 돼요.
+- 패킹은 `kron`처럼 유한성 검사를 끈 채(`false`) 두 인자를 `Scratch`에 열 우선으로 옮겨요. 결과를 한 번, 열 순서대로 써요.
+- $m \cdot n$은 `__builtin_mul_overflow`로 검사해요. 비용 계열은 `kCopy`, $w$는 결과 원소 수 $(mn)^2$예요.
+- `sd.sparse.kronsum(A, B).toarray()`와는 float64와 complex128에서 0의 부호만 다를 수 있어요. 희소 쪽도 곱하지 않고 같은 자리에 같은 값을 놓고, 주대각의 덧셈도 $A$ 쪽이 먼저예요. 희소 쪽의 `toarray()`는 0에 저장된 값을 더해 밀집 배열을 만들므로, −0.0(complex면 허수부의 −0.0)이 +0.0으로 나와요. 정수 입력이면 희소 쪽은 int64를 유지해요.
+
+## block_diag
+
+### 규칙
+
+`block_diag(arrays)`는 행렬 여러 개를 대각선을 따라 차례로 놓고 나머지를 0으로 채워요. 블록 $(..., M_i, N_i)$들에서 $(..., \sum M_i, \sum N_i)$가 나와요. 인자는 `sd.ndarray`의 list나 tuple 하나예요(`concat`, `sd.sparse.block_diag`처럼). 빈 목록은 `ValueError`예요.
+
+```python
+>>> sd.linalg.block_diag([sd.asarray([[1, 2], [3, 4]]), sd.asarray([5, 6, 7])])
+array([[1, 2, 0, 0, 0],
+       [3, 4, 0, 0, 0],
+       [0, 0, 5, 6, 7]], dtype=int64)
+>>> sd.linalg.block_diag([sd.zeros((0, 2)), sd.asarray([[1.0]])])
+array([[0.0, 0.0, 1.0]], dtype=float64)
+```
+
+- 1차원 블록 `(N,)`은 `kron`처럼 한 행 `(1, N)`이에요. 같은 `KronOperand`로 읽어요.
+- 빈 블록도 자리를 차지해요. 위의 `(0, 2)` 블록은 행은 없지만 열 두 개를 차지해요.
+- 값을 옮기기만 하므로 결과 dtype은 입력들의 승격이에요. int64 블록끼리는 int64이고, bool끼리는 bool이에요. `diagonal`과 같은 예외예요.
+- 배치 축은 모든 블록 사이에서 브로드캐스트해요.
+
+```python
+>>> sd.linalg.block_diag([sd.ones((2, 1, 1)), sd.asarray([[5.0]])])
+array([[[1.0, 0.0],
+        [0.0, 5.0]],
+
+       [[1.0, 0.0],
+        [0.0, 5.0]]], dtype=float64)
+>>> sd.linalg.block_diag([sd.ones((2, 1, 1)), sd.ones((3, 1, 1))])
+Traceback (most recent call last):
+    ...
+ValueError: block_diag(): batch shapes do not broadcast: (2,) (3,)
+```
+
+### 구현
+
+다른 함수는 피연산자의 배치 축을 `Batch`에 넘겨 브로드캐스트하지만, `Batch`가 받는 피연산자는 4개(`kMaxOperands`)까지예요. 블록 수에는 한계가 없으므로 `block_diag`는 브로드캐스트한 배치 모양을 직접 구하고, 블록마다 배치 축의 바이트 간격을 따로 들고 가요.
+
+```cpp
+    // csrc/linalg/ops/basic.cpp
+    // the broadcast batch shape (right-aligned, size-1 axes stretch), as Batch's
+    std::vector<std::int64_t> bshape(nd, 1);
+    for (const KronOperand& o : ops) {
+        const std::size_t lead = nd - o.bshape.size();
+        for (std::size_t d = 0; d < o.bshape.size(); ++d) {
+            std::int64_t& r = bshape[lead + d];
+            if (o.bshape[d] == r || o.bshape[d] == 1) continue;
+            if (r == 1) {
+                r = o.bshape[d];
+                continue;
+            }
+            std::string msg = "block_diag(): batch shapes do not broadcast:";
+            for (const KronOperand& q : ops) msg += " " + shape_str(q.bshape);
+            throw nb::value_error(msg.c_str());
+        }
+    }
+    // each operand's byte stride per broadcast batch axis (0 where it broadcasts)
+    std::vector<std::int64_t> bstride(ops.size() * nd, 0);
+    for (std::size_t j = 0; j < ops.size(); ++j) {
+        const std::size_t lead = nd - ops[j].bshape.size();
+        for (std::size_t d = 0; d < ops[j].bshape.size(); ++d)
+            if (ops[j].bshape[d] != 1) bstride[j * nd + lead + d] = ops[j].bstrides[d];
+    }
+    const std::vector<std::int64_t> zero(nd, 0);
+    Batch b({{bshape, zero}}, "block_diag");  // walks the batch (and checks its size)
+```
+
+`Batch`에는 이렇게 구한 모양과 간격 0인 가짜 피연산자 하나만 넘겨요. 배치를 걷고 배치 크기를 검사하는 데만 써요. 배치 원소 하나의 몸체는 원소 번호를 배치 좌표로 풀어 블록마다 자기 위치를 구해요.
+
+```cpp
+            // csrc/linalg/ops/basic.cpp
+            R* o = res + i * block;
+            std::fill(o, o + block, R(0));
+            std::int64_t coord[kMaxNdim];
+            for (std::int64_t d = static_cast<std::int64_t>(nd) - 1, t = i; d >= 0; --d) {
+                coord[d] = t % bshape[d];
+                t /= bshape[d];
+            }
+            std::int64_t r0 = 0, c0 = 0;
+            for (std::size_t j = 0; j < ops.size(); ++j) {
+                const KronOperand& op = ops[j];
+                std::int64_t off = 0;
+                for (std::size_t d = 0; d < nd; ++d) off += coord[d] * bstride[j * nd + d];
+                const std::byte* p = in[j].data() + off;
+                visit_storage(in[j].dtype(), [&]<class S>(std::type_identity<S>) {
+                    if constexpr (!(std::is_same_v<S, cplx> && !std::is_same_v<R, cplx>)) {
+                        for (std::int64_t c = 0; c < op.cols; ++c) {
+                            R* dst = o + (c0 + c) * rows + r0;
+                            for (std::int64_t r = 0; r < op.rows; ++r)
+                                dst[r] = convert<R>(load<S>(p + r * op.rs + c * op.cs));
+                        }
+                    }
+                    return 0;
+                });
+                r0 += op.rows;
+                c0 += op.cols;
+            }
+```
+
+- 결과를 먼저 0으로 채우고, 블록을 결과의 열 우선 순서로 하나씩 복사해요. `r0`, `c0`가 다음 블록이 놓일 왼쪽 위 자리예요.
+- 원소마다 하는 일은 저장 타입을 읽어 결과 dtype으로 바꾸는 `convert<R>(load<S>(...))`뿐이에요. 계산이 없으므로 값이 그대로 가고, NaN도 그대로 복사해요.
+- 결과는 지금 `scipy.linalg.block_diag`와 바이트까지 같아요(약속은 아니에요). `sd.sparse.block_diag(arrays).toarray()`와는 0의 부호만 다를 수 있어요.
+- 비용 계열은 `kCopy`, $w$는 결과 원소 수예요.
 
 ## cross
 
@@ -372,6 +613,90 @@ struct Diag {
 ### diagonal
 
 `diagonal`은 계산하지 않고 원소를 꺼내기만 하므로 **입력 dtype을 유지해요**(int64 행렬의 대각선은 int64예요). 결과는 뷰가 아니라 복사본이에요. 다른 linalg 함수처럼 결과가 언제나 새 배열이에요. 복사는 저장 타입을 아는 루프로 해요(원소마다 `memcpy`를 부르지 않아요).
+
+## bandwidth: 띠 폭 재기
+
+### 정의
+
+`bandwidth(x)`는 0이 아닌 원소가 주대각선에서 얼마나 멀리 퍼져 있는지를 재요. 아래 띠 폭 `lower`는 0이 아닌 $x_{ij}$($i > j$) 가운데 $i - j$의 최댓값, 위 띠 폭 `upper`는 $j > i$인 것 가운데 $j - i$의 최댓값이고, 없으면 0이에요. 정사각이 아니어도 돼요.
+
+```python
+>>> T = sd.asarray([[2.0, -1.0, 0.0, 0.0],
+...                 [-1.0, 2.0, -1.0, 0.0],
+...                 [0.0, -1.0, 2.0, -1.0],
+...                 [0.0, 0.0, -1.0, 2.0]])
+>>> sd.linalg.bandwidth(T)
+BandwidthResult(lower=1, upper=1)
+>>> sd.linalg.bandwidth(sd.triu(T))
+BandwidthResult(lower=0, upper=1)
+>>> sd.linalg.bandwidth(sd.stack([T, sd.triu(T)]))
+BandwidthResult(lower=array([1, 0], dtype=int64), upper=array([1, 1], dtype=int64))
+```
+
+- "0이 아니다"는 `!= 0`이에요. NaN은 0이 아니고, −0.0은 0이에요. complex는 실수부나 허수부가 0이 아니면 0이 아니에요.
+- 결과는 namedtuple `BandwidthResult(lower, upper)`예요. 2차원이면 두 필드가 Python `int`이고, 배치면 배치 모양의 int64 배열이에요(행렬마다 하나). 입력 dtype과 상관없이 정수예요.
+- `upper == 0`이면 아래 삼각, `lower == 0`이면 위 삼각이에요. 두 값을 `solve_banded`의 `lower_bandwidth`, `upper_bandwidth`에 그대로 넘길 수 있어요.
+- NaN을 그대로 셀 뿐이라 유한성 검사를 하지 않아요.
+
+```python
+>>> sd.linalg.bandwidth(sd.asarray([[1.0, -0.0, float('nan')], [0.0, 1.0, 0.0]]))
+BandwidthResult(lower=0, upper=2)
+```
+
+### 구현: 바깥쪽부터 훑기
+
+```cpp
+// csrc/linalg/ops/basic.cpp
+template <class S>
+inline bool nonzero_at(const std::byte* p) {
+    const S v = load<S>(p);
+    if constexpr (std::is_same_v<S, cplx>) return v.real() != 0 || v.imag() != 0;
+    else return v != S(0);
+}
+
+template <class S>
+std::pair<std::int64_t, std::int64_t> band_of(
+    const std::byte* p, std::int64_t m, std::int64_t n, std::int64_t rs, std::int64_t cs
+) {
+    std::int64_t lower = 0, upper = 0;
+    auto at = [&](std::int64_t r, std::int64_t c) { return nonzero_at<S>(p + r * rs + c * cs); };
+    if ((rs < 0 ? -rs : rs) <= (cs < 0 ? -cs : cs)) {  // columns are contiguous-ish: scan down columns
+        for (std::int64_t c = 0; c < n; ++c) {
+            for (std::int64_t r = m - 1; r > c + lower; --r)  // below: from the bottom up
+                if (at(r, c)) {
+                    lower = r - c;
+                    break;
+                }
+            for (std::int64_t r = 0; r < std::min(m, c - upper); ++r)  // above: from the top down
+                if (at(r, c)) {
+                    upper = c - r;
+                    break;
+                }
+        }
+    } else {  // rows are: scan along rows
+        for (std::int64_t r = 0; r < m; ++r) {
+            for (std::int64_t c = 0; c < std::min(n, r - lower); ++c)  // below: from the left
+                if (at(r, c)) {
+                    lower = r - c;
+                    break;
+                }
+            for (std::int64_t c = n - 1; c > r + upper; --c)  // above: from the right
+                if (at(r, c)) {
+                    upper = c - r;
+                    break;
+                }
+        }
+    }
+    return {lower, upper};
+}
+```
+
+- **메모리가 빠른 축을 따라 훑어요.** 행 간격 `rs`가 열 간격 `cs`보다 작으면(F 순서처럼 열이 연속이면) 열마다 위아래로, 아니면 행마다 좌우로 훑어요. 패킹하지 않고 입력을 stride로 바로 읽고, 저장 타입 그대로 비교해요(`visit_storage`). dtype 변환도 없어요.
+- **바깥쪽부터 보고, 찾으면 멈춰요.** 열 $c$의 아래쪽은 맨 아래 행부터 올라오며 지금의 띠 바로 바깥(`r > c + lower`)까지만 봐요. 처음 만난 0이 아닌 원소가 이 열에서 가장 먼 것이라, 그 거리로 `lower`를 늘리고 멈춰요. 위쪽은 맨 위 행부터 내려오며 같은 일을 해요. 이미 찾은 띠 안의 원소는 다시 읽지 않아요.
+- 그래서 읽는 양은 행렬 모양에 따라 크게 달라요. 꽉 찬 행렬은 모서리의 원소에서 곧바로 가장 넓은 띠가 정해지고, 그 뒤로는 열마다 원소 하나 정도만 읽고 끝나요. 반대로 띠가 좁은 행렬(삼중대각 등)과 0 행렬은 띠 바깥의 0을 하나하나 확인해야 해서 원소 거의 전부를 읽어요. 띠가 좁다는 결론은 바깥이 모두 0이라는 것을 다 봐야 내릴 수 있기 때문이에요.
+- 배치면 행렬마다 따로 재요. 비용 계열은 `kStream`, $w$는 행렬 원소 수 $mn$이에요. 꽉 찬 행렬에서는 이 추정이 실제보다 커요.
+
+결과는 지금 `scipy.linalg.bandwidth`와 같은 값이에요. `sd.sparse.spbandwidth`는 저장된 0도 0이 아닌 칸으로 세므로, 저장된 0이 없는 희소 배열 `A`에서만 `bandwidth(A.toarray())`와 같아요.
 
 ## matrix_power: 이진 거듭제곱
 
@@ -730,8 +1055,8 @@ if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
 
 | 계열 | $a$, $c$ (ns) | 함수 | $w$ |
 |---|:---:|---|---|
-| `kStream` | 12, 0.3 | `vecdot`, `trace`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf) | 출력 하나에 더하는 원소 수 |
-| `kCopy` | 2, 0.5 | `diagonal`, `outer`, `kron`, `cross` | 출력 하나가 쓰는 원소 수 (`cross`는 6) |
+| `kStream` | 12, 0.3 | `vecdot`, `trace`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf), `bandwidth` | 출력 하나에 더하는 원소 수 (`bandwidth`는 행렬 원소 수) |
+| `kCopy` | 2, 0.5 | `diagonal`, `outer`, `kron`, `kronsum`, `block_diag`, `cross` | 출력 하나가 쓰는 원소 수 (`cross`는 6) |
 | `kLU` | 70, 3 | `matrix_power` | $m^2$ |
 
 원소 하나의 일이 아주 작아서, 배치가 커야 나눠요. 예를 들어 (1000, 3, 3)의 `diagonal`은 원소 하나가 3.5ns로 추정되어 배치 전체가 3.5µs라 직렬로 돌아요. `vecdot`의 행(3000개, 원소 하나 12.9ns)은 태스크 8개로 나눠요.
@@ -755,6 +1080,9 @@ if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
 | `vecdot` | $2n$ | 입력 $2n$ 읽기 |
 | `outer` | $mn$ | 출력 $mn$ 쓰기 |
 | `kron` | $mnpq$ | 출력 $mnpq$ 쓰기 |
+| `kronsum` | $mn$ (주대각의 덧셈) | 출력 $(mn)^2$ 쓰기 |
+| `block_diag` | 0 | 출력 $(\sum M_i)(\sum N_i)$ 쓰기 |
+| `bandwidth` | 0 | 많아야 $mn$ 읽기 (꽉 찬 행렬은 $O(m + n)$) |
 | `cross` | 9 (곱 6, 뺄셈 3) | 6 읽기, 3 쓰기 |
 | `trace`, `diagonal` | $\min(m, n)$ | 대각선 읽기 |
 | `matrix_power` | $(\lfloor \log_2 e\rfloor + \operatorname{popcount}(e) - 1)\cdot 2m^3$ | 작업 버퍼 $3m^2$ |
@@ -763,14 +1091,17 @@ if (lines * len >= kSumParallelMin && lines > 1 && detail::begin_parallel()) {
 
 ## 정확도
 
-### numpy와의 비트 관계
+### numpy·scipy와의 비트 관계
 
-numpy 2.5.4와 비교한 지금의 관계예요. "같음"은 결과 바이트가 같다는 뜻이고, 약속은 아니에요. 약속하는 것은 레이아웃·배치 위치·스레드 수와 상관없는 같은 비트, 아래에 적은 우리 함수끼리의 관계(`trace(x) == sum(diagonal(x))` 등), 그리고 오차 한계예요.
+numpy 2.5.4(numpy에 없는 것은 scipy 1.18.1)와 비교한 지금의 관계예요. "같음"은 결과 바이트가 같다는 뜻이고, 약속은 아니에요. 약속하는 것은 레이아웃·배치 위치·스레드 수와 상관없는 같은 비트, 아래에 적은 우리 함수끼리의 관계(`trace(x) == sum(diagonal(x))` 등), 그리고 오차 한계예요.
 
 | 함수 | numpy와 | 이유 |
 |---|---|---|
 | `outer` | `x[..., :, None] * y[..., None, :]`와 같음 | 같은 FMA 곱 (배열의 곱과도 같음) |
-| `kron` | `np.kron`(2차원)과 같음 | 같은 FMA 곱, 왼쪽 인자가 왼쪽 |
+| `kron` | `np.kron`(1·2차원)과 같음 | 같은 FMA 곱, 왼쪽 인자가 왼쪽 |
+| `kronsum` | numpy에 없음. `kron(I, A) + kron(B, I)`와는 inf·NaN이 있으면 다름 | 단위 행렬과 곱하지 않음 |
+| `block_diag` | `scipy.linalg.block_diag`와 같음 | 복사 |
+| `bandwidth` | `scipy.linalg.bandwidth`와 같은 값 | 정수 결과 |
 | `cross` | `np.cross`와 같음 | 곱마다 반올림한 뒤 빼기 |
 | `vecdot` | 끝 비트가 다를 수 있음 | 곱을 잎 안에서 합에 융합(FMA). `sd.sum(conj(x) * y)`와도 끝 비트가 다를 수 있음. `np.vecdot`은 BLAS 내적 |
 | `trace` | `sd.sum(diagonal(x), axis=-1)`과 같음, numpy와는 끝 비트가 다를 수 있음 | 대각선을 배열의 잎과 트리로 더함 |
@@ -790,6 +1121,8 @@ complex의 2-노름은 실수부와 허수부를 따로 항으로 넣어요(`re0
 ### 오차 한계
 
 - **곱(`outer`, `kron`):** 실수는 반올림 한 번이라 상대오차 $u = 2^{-53}$ 이하예요. complex 곱은 FMA 덕분에 성분마다 반올림이 두 번이에요.
+- **`kronsum`:** 주대각의 원소만 덧셈 한 번이라 올바르게 반올림한 값이에요(상대오차 $u$ 이하). 나머지 원소는 입력의 값 그대로예요.
+- **`block_diag`, `bandwidth`:** 계산이 없어서 오차가 없어요.
 - **합(`vecdot`, `trace`, 노름):** pairwise 트리라서 $|\hat s - s| \le \gamma_h \sum |x_i|$, $h \lesssim 49 + \lceil \log_2(n/512)\rceil$이에요 [7]. 원소 100만 개면 $h \le 60$ 정도예요. 내적은 곱을 합에 융합해서 대부분의 항에 곱의 반올림이 따로 없어요(레인의 첫 항만 곱을 반올림해요). 한계는 $\gamma_{h+1} \sum |x_i y_i|$ 이하예요. 이 한계는 $\sum |x_i y_i|$를 기준으로 한 것이라서, 결과가 소거로 작아지면 상대오차는 커질 수 있어요.
 - **노름:** 2-노름은 제곱의 합이라 모든 항이 음이 아니고, 소거가 없어요. 그래서 상대오차가 작아요. 제곱의 반올림과 합의 $\gamma_h$, 제곱근이 오차를 절반으로 줄이는 것과 제곱근 자체의 반올림을 합치면 대략 $(h/2 + 2)u$ 이하예요. 다시 스케일할 때는 나눗셈 하나의 반올림이 더해져요.
 - **`cross`:** 성분 하나가 곱 두 개의 차라서 소거가 생길 수 있어요(위의 주의).

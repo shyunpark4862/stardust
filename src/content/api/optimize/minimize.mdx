@@ -158,7 +158,7 @@ $$
 ...     return 100.0 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0])
 >>> r
-OptimizeResult(method='bfgs', converged=True, fun=2.69158e-11, n_iter=31, nfev=114, x=[0.9999948121915613 0.9999896195042199])
+OptimizeResult(method='bfgs', converged=True, fun=2.69158e-11, n_iter=31, nfev=114, x=[0.999995, 0.99999])
 ```
 
 `method`를 주지 않았고 경계도 없으니 BFGS를 썼어요. `converged=True`는 방법의 멈춤 판정을 통과했다는 뜻이에요. BFGS의 판정은 "기울기의 가장 큰 성분이 `gtol`(기본 $10^{-5}$) 이하"예요. 그래서 x는 (1, 1)에 $10^{-5}$ 정도까지 가까워요.
@@ -344,7 +344,7 @@ ValueError: minimize(): 'jac' is required when method='newton-cg' (a callable, o
 ...             [-400.0 * x[0], 200.0]]
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='trust-exact', jac=rosen_grad, hess=rosen_hess)
 >>> r
-OptimizeResult(method='trust-exact', converged=True, fun=3.33125e-19, n_iter=25, nfev=26, x=[0.9999999994467651 0.9999999988770814])
+OptimizeResult(method='trust-exact', converged=True, fun=3.33125e-19, n_iter=25, nfev=26, x=[1, 1])
 >>> r.njev, r.nhev
 (23, 26)
 >>> sd.optimize.minimize(rosen, [-1.2, 1.0], hess=rosen_hess)
@@ -362,7 +362,7 @@ Rosenbrock에 $x \le 0.5$를 걸면 골짜기 바닥 (1, 1)에 갈 수 없어요
 ```python
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], bounds=([-math.inf, -math.inf], [0.5, math.inf]))
 >>> r
-OptimizeResult(method='l-bfgs-b', converged=True, fun=0.25, n_iter=20, nfev=87, x=[                0.5 0.24999999500294875])
+OptimizeResult(method='l-bfgs-b', converged=True, fun=0.25, n_iter=20, nfev=87, x=[0.5, 0.25])
 >>> r.message
 'CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL'
 ```
@@ -526,7 +526,7 @@ True
 >>> def two_wells(x):
 ...     return (x[0]**2 - 1)**2 + x[1]**2
 >>> sd.optimize.minimize(two_wells, [0.0, 1.0])
-OptimizeResult(method='bfgs', converged=True, fun=1, n_iter=2, nfev=9, x=[1.0371798405709289e-07 -9.442323121305884e-09])
+OptimizeResult(method='bfgs', converged=True, fun=1, n_iter=2, nfev=9, x=[1.03718e-07, -9.44232e-09])
 >>> sd.optimize.minimize(two_wells, [0.1, 1.0]).x
 array([     0.9999999777808422, -2.2591758443137532e-08], dtype=float64)
 ```
@@ -563,7 +563,7 @@ array([     0.9999999777808422, -2.2591758443137532e-08], dtype=float64)
 ...         return math.inf
 ...     return x[0] * math.log(x[0]) + x[1] * math.log(x[1]) - x[0] - 2 * x[1]
 >>> sd.optimize.minimize(entropy_like, [5.0, 5.0])
-OptimizeResult(method='bfgs', converged=True, fun=-3.71828, n_iter=9, nfev=33, x=[ 0.999998352983895 2.7182851639401058])
+OptimizeResult(method='bfgs', converged=True, fun=-3.71828, n_iter=9, nfev=33, x=[0.999998, 2.71829])
 ```
 
 L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되고, 선 탐색이 걸음 없이 끝난 뒤 f가 줄지 않은 것이 "상대 감소가 `ftol` 이하"의 판정을 통과해 해가 아닌 점에서 멈춰요. 그때 `status`와 `message`는 수렴의 것이지만 `converged`는 False예요. L-BFGS-B에서는 범위를 `bounds`로 줘요.
@@ -605,7 +605,7 @@ L-BFGS-B에는 이 방법이 맞지 않아요. 차분의 기울기가 NaN이 되
   >>> def rosen_res(x):
   ...     return [10.0 * (x[1] - x[0]**2), 1.0 - x[0]]
   >>> sd.optimize.least_squares(rosen_res, [-1.2, 1.0])
-  OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1.0 1.0])
+  OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1, 1])
   ```
 
   데이터에 모형을 맞추는 일이고 표준오차까지 필요하면 [`sd.regression.nls`](/api/regression/nls/)가 그 일을 해요.

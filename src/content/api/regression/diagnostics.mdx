@@ -329,7 +329,7 @@ JarqueBeraResult(statistic=1.53634, pvalue=0.46386)
 
 ### 다른 정규성 검정
 
-Jarque–Bera는 왜도와 첨도만 봐요. Shapiro–Wilk, D'Agostino–Pearson, Anderson–Darling 같은 다른 정규성 검정은 표본 하나를 받는 검정이라 회귀 결과에 메서드로 붙어 있지 않아요. 잔차를 `sd.htest`의 함수에 넘겨요. 이때 넘길 잔차는 `resid`가 아니라 `wresid`예요. 가중 적합과 GLS에서는 진단이 실제로 쓰는 잔차가 `wresid`이기 때문이에요([아래](#wresid-진단이-쓰는-잔차)). `ols`에서는 둘이 같아요.
+Jarque–Bera는 왜도와 첨도만 봐요. Shapiro–Wilk([`shapiro`](/api/htest/shapiro/)), D'Agostino–Pearson([`normaltest`](/api/htest/normaltest/)), Anderson–Darling([`anderson`](/api/htest/anderson/)) 같은 다른 정규성 검정은 표본 하나를 받는 검정이라 회귀 결과에 메서드로 붙어 있지 않아요. 잔차를 [`sd.htest`](/api/htest/basics/)의 함수에 넘겨요. 이때 넘길 잔차는 `resid`가 아니라 `wresid`예요. 가중 적합과 GLS에서는 진단이 실제로 쓰는 잔차가 `wresid`이기 때문이에요([아래](#wresid-진단이-쓰는-잔차)). `ols`에서는 둘이 같아요.
 
 ```python
 >>> sd.htest.shapiro(heavy.wresid)
@@ -340,7 +340,7 @@ ShapiroResult(statistic=0.962135, pvalue=0.198039)
 NormaltestResult(statistic=14.2237, pvalue=0.000815399)
 ```
 
-`sd.htest.jarque_bera`에 `wresid`를 넘기면 `jarque_bera()`와 비트까지 같은 값이에요. 두 쪽이 같은 계산을 써요. 다른 곳은 완전 적합 하나예요([특수한 경우](#특수한-경우)).
+[`sd.htest.jarque_bera`](/api/htest/jarque_bera/)에 `wresid`를 넘기면 `jarque_bera()`와 비트까지 같은 값이에요. 두 쪽이 같은 계산을 써요. 다른 곳은 완전 적합 하나예요([특수한 경우](#특수한-경우)).
 
 ```python
 >>> tuple(heavy.jarque_bera()) == tuple(sd.htest.jarque_bera(heavy.wresid))
@@ -367,7 +367,7 @@ $x$가 클수록 오차가 커지는 데이터에서는 잔차가 오른쪽으�
 >>> yh = 1.0 + 2.0 * xh + 0.5 * xh * sd.stats.Normal().sample(40, rng=rng)
 >>> h = sd.regression.ols(yh, xh)
 >>> h.breusch_pagan()
-BreuschPaganResult(lm=9.073105298386446, lm_pvalue=0.002593962000254338, fvalue=11.148160999193262, f_pvalue=0.0018928884050162017)
+BreuschPaganResult(lm=9.07311, lm_pvalue=0.00259396, fvalue=11.1482, f_pvalue=0.00189289)
 >>> h.breusch_pagan(studentize=False).lm
 14.75439672274299
 ```
@@ -414,7 +414,7 @@ Breusch–Pagan은 분산이 설명변수의 일차식을 따라 변하는지를
 | `JarqueBeraResult` | `statistic`(JB 통계량), `pvalue` |
 | `BreuschPaganResult` | `lm`(LM 통계량), `lm_pvalue`, `fvalue`(보조 회귀의 F), `f_pvalue` |
 
-`JarqueBeraResult`는 `sd.htest.jarque_bera`가 돌려주는 것과 같은 클래스예요. 같은 검정이니 어디서 불러도 같은 꼴의 결과예요. 필드는 읽기만 하고, `(statistic, pvalue)`로 풀어서 받을 수 있어요. 번호로 꺼내기와 `len`도 그 두 값의 차례로 돼요.
+`JarqueBeraResult`는 [`sd.htest.jarque_bera`](/api/htest/jarque_bera/)가 돌려주는 것과 같은 클래스예요. 같은 검정이니 어디서 불러도 같은 꼴의 결과예요. 필드는 읽기만 하고, `(statistic, pvalue)`로 풀어서 받을 수 있어요. 번호로 꺼내기와 `len`도 그 두 값의 차례로 돼요.
 
 ```python
 >>> jb = r.jarque_bera()

@@ -369,6 +369,10 @@ array([], dtype=complex128)
 
 고유값과 [특이값](/api/linalg/svd/)은 다른 값이에요. 고유값은 "방향이 그대로인 벡터의 배율"이라 음수나 복소수일 수 있고 정사각 행렬에만 있어요. 특이값은 "가장 많이 늘어나는 방향의 배율"이라 언제나 0 이상의 실수이고 어떤 모양의 행렬에도 있어요.
 
+## 희소 행렬과 큰 행렬에서는
+
+큰 행렬에서 고유값 몇 개만 필요하면 [`sd.sparse.eigs`](/api/sparse/eigs/)를 써요(대칭이면 [`eigsh`](/api/sparse/eigsh/)). 행렬과 벡터의 곱만으로 고유값 몇 개를 찾아서, 행렬 전체를 분해하지 않아요. 희소 행렬과 밀집 배열을 모두 받아요. 희소 배열을 `eig`에 넣으면 `sd.sparse.eigs`를 알려 주는 `TypeError`예요.
+
 ## numpy·scipy를 아는 분께
 
 - 결과가 언제나 complex128인 것은 `np.linalg.eig`, `scipy.linalg.eig`와 같아요. 고유값이 모두 실수여도 그래요.

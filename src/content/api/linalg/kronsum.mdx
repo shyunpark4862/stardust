@@ -1,0 +1,209 @@
+---
+title: kronsum
+names: [kronsum]
+group: 곱과 거듭제곱
+order: 4
+signatures:
+  - "sd.linalg.kronsum(x1, x2, /)"
+summary: 두 정사각 행렬의 크로네커 합 kron(I, x1) + kron(x2, I)를 계산해요. 1차원 격자의 연산자 둘로 2차원 격자의 연산자를 만들 때 써요.
+params:
+  - name: x1
+    type: ndarray
+    kind: positional-only
+    desc: 첫째 정사각 행렬. 모양은 (..., M, M). 결과의 대각 블록마다 놓여요.
+  - name: x2
+    type: ndarray
+    kind: positional-only
+    desc: 둘째 정사각 행렬. 모양은 (..., N, N). 원소마다 블록의 대각선에 놓여요.
+returns:
+  type: ndarray
+  desc: 모양이 (..., M*N, M*N)인 행렬. 실수 입력(bool, int64 포함)은 float64, 복소수가 섞이면 complex128이에요.
+raises:
+  - type: TypeError
+    desc: x1이나 x2가 배열이 아닐 때(리스트, Python 숫자, 희소 배열 포함).
+  - type: ValueError
+    desc: x1이나 x2가 2차원보다 작거나 정사각이 아닐 때, 앞쪽 배치 축끼리 브로드캐스팅이 안 될 때.
+seeAlso: [kron, block_diag, solve_sylvester, eigh, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+**크로네커 합**(Kronecker sum)은 정사각 행렬 두 개로 큰 정사각 행렬 하나를 만드는 계산이에요. `A`가 M×M, `B`가 N×N이면 결과는 MN×MN이고, 크로네커 곱 두 개의 합으로 정의해요.
+
+$$
+A \oplus B = I_N \otimes A + B \otimes I_M
+$$
+
+여기서 $I_N$, $I_M$은 단위행렬이고 $\otimes$는 [크로네커 곱](/api/linalg/kron/)이에요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> B = sd.asarray([[10.0, 20.0], [30.0, 40.0]])
+>>> sd.linalg.kronsum(A, B)
+array([[11.0,  2.0, 20.0,  0.0],
+       [ 3.0, 14.0,  0.0, 20.0],
+       [30.0,  0.0, 41.0,  2.0],
+       [ 0.0, 30.0,  3.0, 44.0]], dtype=float64)
+```
+
+결과를 2×2 블록 넷으로 나눠 보면 모양이 보여요. 대각 블록(왼쪽 위, 오른쪽 아래)에는 `A`가 통째로 놓이고, `B`의 원소 bᵢⱼ는 블록 (i, j)의 대각선에 놓여요. 대각 블록의 대각선에서는 두 값이 겹쳐서 더해져요(11 = 1 + 10, 44 = 4 + 40).
+
+<Fig caption="kronsum(A, B): 대각 블록에 A(진한 칸), 블록 (i, j)의 대각선에 B의 원소(연한 칸)가 놓이고, 둘이 겹치는 주대각선은 그 합이에요.">
+  <ArrayFig name="A" data={[[1, 2], [3, 4]]} tones={[['b', 'b'], ['b', 'b']]} />
+  <Op note="kronsum">⊕</Op>
+  <ArrayFig name="B" data={[[10, 20], [30, 40]]} tones={[['a', 'a'], ['a', 'a']]} />
+  <Op>=</Op>
+  <ArrayFig name="kronsum(A, B)" data={[[11, 2, 20, 0], [3, 14, 0, 20], [30, 0, 41, 2], [0, 30, 3, 44]]} tones={[['', 'b', 'a', 'm'], ['b', '', 'm', 'a'], ['a', 'm', '', 'b'], ['m', 'a', 'b', '']]} note="shape (4, 4)" />
+</Fig>
+
+정의대로 크로네커 곱 두 개를 더해도 같은 행렬이 나와요.
+
+```python
+>>> I2 = sd.eye(2)
+>>> bool(sd.all(sd.linalg.kronsum(A, B) == sd.linalg.kron(I2, A) + sd.linalg.kron(B, I2)))
+True
+```
+
+<Reference />
+
+## 어디에 쓰나요: 2차원 격자의 라플라시안
+
+크로네커 합이 가장 많이 나오는 곳은 격자 위의 미분 연산자예요. 직선 위에 점 n개를 같은 간격으로 놓고 이차 미분을 차분으로 근사하면, 대각선이 2이고 바로 위아래가 −1인 삼중대각 행렬 `T`가 나와요. 평면 위의 n×n 격자에서 가로와 세로의 이차 미분을 더한 연산자(라플라시안)는 `kronsum(T, T)`예요. `kron(I, T)`가 가로 방향, `kron(T, I)`가 세로 방향의 이웃을 잇기 때문이에요.
+
+```python
+>>> off = sd.asarray([-1.0, -1.0])
+>>> T = sd.diag(sd.asarray([2.0, 2.0, 2.0])) + sd.diag(off, k=1) + sd.diag(off, k=-1)
+>>> sd.linalg.kronsum(T, T)
+array([[ 4.0, -1.0,  0.0, -1.0,  0.0,  0.0,  0.0,  0.0,  0.0],
+       [-1.0,  4.0, -1.0,  0.0, -1.0,  0.0,  0.0,  0.0,  0.0],
+       [ 0.0, -1.0,  4.0,  0.0,  0.0, -1.0,  0.0,  0.0,  0.0],
+       [-1.0,  0.0,  0.0,  4.0, -1.0,  0.0, -1.0,  0.0,  0.0],
+       [ 0.0, -1.0,  0.0, -1.0,  4.0, -1.0,  0.0, -1.0,  0.0],
+       [ 0.0,  0.0, -1.0,  0.0, -1.0,  4.0,  0.0,  0.0, -1.0],
+       [ 0.0,  0.0,  0.0, -1.0,  0.0,  0.0,  4.0, -1.0,  0.0],
+       [ 0.0,  0.0,  0.0,  0.0, -1.0,  0.0, -1.0,  4.0, -1.0],
+       [ 0.0,  0.0,  0.0,  0.0,  0.0, -1.0,  0.0, -1.0,  4.0]], dtype=float64)
+```
+
+행마다 대각선의 4와, 상하좌우 이웃 넷의 −1이 있어요(격자의 가장자리에서는 이웃이 모자라요). 3×3 격자의 9개 점을 한 줄로 늘어놓은 순서가 행과 열의 번호예요.
+
+격자가 커지면 이 행렬은 대부분이 0이에요. n×n 격자에서 행렬은 n²×n²인데 행마다 0이 아닌 원소는 다섯 개 이하예요. 그런 크기에서는 아래의 [희소 행렬의 짝](#희소-행렬의-짝-sdsparsekronsum)을 써요.
+
+## 알아 두면 좋은 성질
+
+### 고유값은 두 행렬의 고유값의 합
+
+`A`의 고유값이 λ₁, …, λ_M이고 `B`의 고유값이 μ₁, …, μ_N이면, `kronsum(A, B)`의 고유값은 모든 쌍의 합 λᵢ + μⱼ예요. 위의 라플라시안으로 확인해 보면, `T`의 고유값 셋으로 만든 합 아홉 개가 `kronsum(T, T)`의 고유값과 반올림 차이 안에서 같아요.
+
+```python
+>>> lt = sd.linalg.eigvalsh(T)
+>>> sums = sd.sort(sd.reshape(lt[:, None] + lt[None, :], (9,)))
+>>> big = sd.linalg.eigvalsh(sd.linalg.kronsum(T, T))
+>>> float(sd.max(sd.abs(big - sums))) < 1e-14
+True
+```
+
+그래서 격자 연산자의 고유값을 구할 때 큰 행렬을 분해하지 않고 작은 행렬의 고유값만으로 셀 수 있어요.
+
+### 행렬 방정식과의 관계
+
+`X`가 N×M 행렬이고 `x`가 그 행들을 차례로 이은 벡터(`reshape(X, (N*M,))`)이면, `kronsum(A, B) @ x`는 `B @ X + X @ A.T`를 같은 순서로 편 것이에요.
+
+```python
+>>> A3 = sd.asarray([[0.0, 1.0, 0.0], [2.0, 0.0, 1.0], [0.0, 0.0, 5.0]])
+>>> X = sd.asarray([[1.0, -1.0], [2.0, 0.5], [0.0, 3.0]])
+>>> sd.linalg.kronsum(A, A3) @ sd.reshape(X, (6,))
+array([ 1.0, -0.5,  5.0,  9.0,  6.0, 27.0], dtype=float64)
+>>> sd.reshape(A3 @ X + X @ A.T, (6,))
+array([ 1.0, -0.5,  5.0,  9.0,  6.0, 27.0], dtype=float64)
+```
+
+그래서 행렬 방정식 $BX + XA^{\mathsf T} = C$는 `kronsum(A, B)`를 계수 행렬로 한 연립방정식이에요. 다만 그렇게 만든 행렬은 MN×MN으로 커지므로, 이 꼴의 방정식은 [`solve_sylvester`](/api/linalg/solve_sylvester/)로 바로 푸는 편이 좋아요.
+
+## 값을 곱하지 않고 놓아요
+
+`kronsum`은 정의의 크로네커 곱을 실제로 계산하지 않아요. 결과의 원소는 `x1`의 원소 하나, `x2`의 원소 하나, 또는 주대각선에서 겹치는 합 하나(`x1[p, p] + x2[i, i]`, 덧셈 한 번)이고 나머지는 +0.0이에요. 단위행렬의 0을 곱하는 일이 없어서 NaN과 무한대가 제자리에만 있어요. 정의대로 `kron(I, A)`를 계산하면 `0 × inf`가 NaN이라 다른 블록까지 NaN이 퍼져요.
+
+```python
+>>> Ai = sd.asarray([[sd.inf, 0.0], [0.0, 1.0]])
+>>> sd.linalg.kronsum(Ai, sd.eye(2))
+array([[inf, 0.0, 0.0, 0.0],
+       [0.0, 2.0, 0.0, 0.0],
+       [0.0, 0.0, inf, 0.0],
+       [0.0, 0.0, 0.0, 2.0]], dtype=float64)
+>>> sd.linalg.kron(sd.eye(2), Ai)
+array([[inf, 0.0, nan, 0.0],
+       [0.0, 1.0, 0.0, 0.0],
+       [nan, 0.0, inf, 0.0],
+       [0.0, 0.0, 0.0, 1.0]], dtype=float64)
+```
+
+유한한 값만 있으면 두 방법의 결과는 같아요(위의 첫 예).
+
+## 여러 행렬을 한꺼번에
+
+3차원 이상의 배열은 행렬을 쌓은 것으로 봐요. 마지막 두 축이 정사각 행렬이고, 앞의 배치 축은 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요.
+
+```python
+>>> sd.linalg.kronsum(sd.ones((5, 2, 2)), sd.ones((3, 3))).shape
+(5, 6, 6)
+```
+
+## 결과의 dtype
+
+`sd.linalg`의 다른 함수처럼 정수와 bool은 float64로 계산하고, 복소수가 섞이면 complex128이에요.
+
+```python
+>>> sd.linalg.kronsum(sd.asarray([[1, 2], [3, 4]]), sd.asarray([[1]]))
+array([[2.0, 2.0],
+       [3.0, 5.0]], dtype=float64)
+```
+
+`x2`가 1×1 행렬 `[[c]]`이면 결과는 `x1`의 대각선에 c를 더한 것이에요.
+
+## 희소 행렬의 짝: sd.sparse.kronsum
+
+격자 연산자처럼 크고 대부분이 0인 행렬은 희소 행렬(0이 아닌 원소만 저장한 행렬)로 만드는 것이 맞아요. 희소 행렬의 크로네커 합은 [`sd.sparse.kronsum`](/api/sparse/kronsum/)이에요. 인자의 순서와 뜻이 같아요.
+
+두 함수는 같은 계산의 짝이에요. float64·complex128 입력이면 `sd.linalg.kronsum(x1, x2)`의 값은 `sd.sparse.kronsum(x1, x2).toarray()`와 비트까지 같아요. 다를 수 있는 것은 0의 부호뿐이에요. 희소 행렬은 0을 저장하지 않아서 −0.0이 나올 자리가 +0.0이에요. 정수와 bool은 희소 쪽이 int64로 두고 이쪽은 float64로 계산해서 dtype이 달라요.
+
+```python
+>>> S = sd.sparse.kronsum(sd.sparse.csr_array(T), sd.sparse.csr_array(T))
+>>> bool(sd.all(sd.linalg.kronsum(T, T) == S.toarray()))
+True
+```
+
+희소 배열을 `sd.linalg.kronsum`에 넣으면 `sd.sparse.kronsum`을 알려 주는 `TypeError`예요.
+
+## 조심할 점
+
+### 두 행렬 모두 정사각이어야 해요
+
+크로네커 합은 단위행렬과 더하는 계산이라서 정사각 행렬에만 뜻이 있어요. 1차원 배열도 받지 않아요.
+
+```python
+>>> sd.linalg.kronsum(sd.ones((2, 3)), A)
+Traceback (most recent call last):
+    ...
+ValueError: kronsum(): 'x1' must be square in its last two dimensions, got 2x3
+```
+
+### 인자의 순서
+
+`kronsum(A, B)`에서 `A`는 블록 안(작은 구조), `B`는 블록 사이(큰 구조)에 놓여요. [`kron`](/api/linalg/kron/)과 반대로 보일 수 있지만 정의 $I \otimes A + B \otimes I$를 따른 것이에요. 순서를 바꾸면 행과 열의 번호가 바뀐 다른 행렬이 나와요(고유값은 같아요).
+
+### 결과가 빨리 커져요
+
+결과는 (M·N)×(M·N)이에요. 100×100 행렬 두 개의 크로네커 합은 10,000×10,000(800MB)이에요. 큰 격자에서는 [`sd.sparse.kronsum`](/api/sparse/kronsum/)을 써요.
+
+## numpy·scipy를 아는 분께
+
+- numpy와 `scipy.linalg`에는 이 함수가 없어요. `scipy.sparse.kronsum`과 같은 정의(`kron(I_n, A) + kron(B, I_m)`)예요.
+- 밀집 배열을 받아 밀집 배열을 돌려줘요. `format=`은 없어요.
+- 배치 축을 받아요. 마지막 두 축이 행렬이에요.
+- 정수와 bool 입력의 결과가 float64예요.

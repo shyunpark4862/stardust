@@ -1,0 +1,146 @@
+---
+title: spbandwidth
+names: [spbandwidth]
+group: 인덱싱과 만들기
+order: 15
+signatures:
+  - "sd.sparse.spbandwidth(A, /)"
+summary: 희소 행렬의 띠 폭, 곧 원소가 저장된 대각선이 주대각선에서 아래와 위로 얼마나 멀리 있는지를 구해요. 저장된 0도 원소로 세요.
+params:
+  - name: A
+    type: 희소 배열
+    kind: positional-only
+    desc: 2차원 희소 배열. 정사각이 아니어도 돼요.
+returns:
+  type: BandwidthResult
+  desc: 필드 lower(가장 먼 아래 대각선까지의 거리)와 upper(가장 먼 위 대각선까지의 거리)를 가진 결과. 둘 다 0 이상의 int이고 (lower, upper)로 풀 수 있어요.
+raises:
+  - type: TypeError
+    desc: A가 희소 배열이 아닐 때. 밀집 sd.ndarray면 sd.linalg.bandwidth를 쓰라고 알려 줘요.
+  - type: ValueError
+    desc: A가 2차원이 아닐 때.
+seeAlso: [is_sptriangular, diags_array, tril, triu, spsolve]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+행렬의 원소가 주대각선 근처의 몇 줄에만 모여 있으면 **띠 행렬**(band matrix)이라고 해요. 띠의 폭은 두 수로 나타내요. 주대각선 아래로 몇 번째 대각선까지 원소가 있는지(`lower`), 위로 몇 번째까지 있는지(`upper`)예요. `spbandwidth`는 희소 행렬의 이 두 수를 구해요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 2.0, 0.0, 0.0],
+...                                     [0.0, 3.0, 4.0, 0.0],
+...                                     [5.0, 0.0, 6.0, 7.0]]))
+>>> bw = sd.sparse.spbandwidth(A)
+>>> bw
+BandwidthResult(lower=2, upper=1)
+```
+
+원소 (i, j)는 i − j > 0이면 주대각선에서 i − j만큼 아래, j − i > 0이면 j − i만큼 위에 있어요. 위 행렬에서 가장 아래에 있는 원소는 (2, 0)의 5로 2칸 아래, 가장 위에 있는 원소는 (0, 1)의 2, (1, 2)의 4, (2, 3)의 7로 1칸 위예요.
+
+<Fig caption="lower는 가장 아래의 원소(2, 0)까지의 거리 2, upper는 가장 위의 원소들까지의 거리 1이에요.">
+  <ArrayFig name="A" data={[[1, 2, 0, 0], [0, 3, 4, 0], [5, 0, 6, 7]]} tones={[['', 'a', 'g', 'g'], ['g', '', 'a', 'g'], ['b', 'g', '', 'a']]} note="lower=2, upper=1" />
+</Fig>
+
+<Reference />
+
+## 결과 읽기
+
+결과는 `lower`, `upper` 두 필드를 가진 `BandwidthResult`예요. 이름으로 읽거나, 두 수의 tuple로 풀어요.
+
+```python
+>>> bw.lower
+2
+>>> bw.upper
+1
+>>> lower, upper = sd.sparse.spbandwidth(A)
+>>> lower, upper
+(2, 1)
+```
+
+몇 가지 행렬의 띠 폭이에요.
+
+| 행렬 | (lower, upper) |
+|---|---|
+| 대각 행렬 | (0, 0) |
+| 삼중대각 행렬 | (1, 1) |
+| 아래 삼각 행렬 | (n − 1, 0) 이하 |
+| 위 삼각 행렬 | (0, n − 1) 이하 |
+
+```python
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(5, 5))
+>>> sd.sparse.spbandwidth(T)
+BandwidthResult(lower=1, upper=1)
+>>> sd.sparse.spbandwidth(sd.sparse.eye_array(3))
+BandwidthResult(lower=0, upper=0)
+```
+
+`upper == 0`이면 아래 삼각, `lower == 0`이면 위 삼각이에요. 그 판정만 필요하면 [`is_sptriangular`](/api/sparse/is_sptriangular/)가 bool 둘로 바로 알려 줘요.
+
+## 어디에 쓰나요
+
+띠 폭이 작은 행렬은 띠 안만 다루는 방법으로 빠르고 적은 메모리로 풀 수 있어요. 밀집 배열에서는 [`sd.linalg.solve_banded`](/api/linalg/banded/)가 그 방법이고, 띠 폭을 인자로 받아요. 행렬을 어떤 방법으로 풀지 고르기 전에 띠 폭을 보면 도움이 돼요. 2차원 격자의 라플라시안처럼 행렬은 아주 희소해도 띠 폭이 큰 경우가 있어요. 3 × 3 격자의 9 × 9 라플라시안은 행마다 원소가 5개 이하인데 띠 폭은 3이에요(격자 한 줄의 길이).
+
+```python
+>>> T3 = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(3, 3))
+>>> sd.sparse.spbandwidth(sd.sparse.kronsum(T3, T3))
+BandwidthResult(lower=3, upper=3)
+```
+
+## 저장된 0도 세요
+
+`spbandwidth`는 값이 아니라 **어디에 원소가 저장돼 있는지**(패턴)만 봐요. 그래서 값이 0이어도 저장돼 있으면 띠에 들어가요. 저장된 0을 빼고 싶으면 먼저 `eliminate_zeros()`를 불러요.
+
+```python
+>>> Z = sd.sparse.csr_array((sd.asarray([1.0, 0.0]), sd.asarray([0, 2]), sd.asarray([0, 2, 2, 2])), shape=(3, 3))
+>>> Z.toarray()
+array([[1.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.sparse.spbandwidth(Z)
+BandwidthResult(lower=0, upper=2)
+>>> Z.eliminate_zeros()
+>>> sd.sparse.spbandwidth(Z)
+BandwidthResult(lower=0, upper=0)
+```
+
+아무것도 저장하지 않은 행렬은 `(0, 0)`이에요.
+
+```python
+>>> sd.sparse.spbandwidth(sd.sparse.csr_array((3, 3)))
+BandwidthResult(lower=0, upper=0)
+```
+
+형식(CSR, CSC, COO, DOK)과 상관없이 같은 결과예요. 정사각이 아니어도 돼요.
+
+## 에러
+
+밀집 배열을 주면 `TypeError`이고, 밀집 배열의 함수를 알려 줘요. 1차원 희소 배열은 `ValueError`예요.
+
+```python
+>>> sd.sparse.spbandwidth(A.toarray())
+Traceback (most recent call last):
+    ...
+TypeError: spbandwidth(): 'A' must be a sparse array, not ndarray; for a dense array use sd.linalg.bandwidth
+>>> sd.sparse.spbandwidth(sd.sparse.coo_array(sd.asarray([1.0, 2.0])))
+Traceback (most recent call last):
+    ...
+ValueError: spbandwidth(): 'A' must have 2 dimensions, got 1
+```
+
+## 밀집 배열의 짝: sd.linalg.bandwidth
+
+밀집 행렬의 띠 폭은 [`sd.linalg.bandwidth(x)`](/api/linalg/bandwidth/)예요. 같은 `BandwidthResult(lower, upper)`를 돌려줘요. 밀집 배열에는 "저장된 0"이 없으므로 0이 아닌 원소로 띠를 재요. 그래서 저장된 0이 없는 희소 행렬이면 두 함수의 결과가 같아요.
+
+```python
+>>> sd.linalg.bandwidth(A.toarray())
+BandwidthResult(lower=2, upper=1)
+```
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.spbandwidth`는 `(below, above)` tuple을 돌려줘요. 여기의 결과도 tuple이라서 `below, above = spbandwidth(A)`로 그대로 풀려요. 필드 이름은 `lower`, `upper`예요.
+- 아무것도 저장하지 않은 행렬은 `(0, 0)`이에요. scipy 1.18.1은 빈 CSR 행렬에서 예외를 내요.
+- 이름공간이 평평해서 `sd.sparse.spbandwidth`예요(`sd.sparse.linalg`는 없어요).

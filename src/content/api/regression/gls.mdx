@@ -120,7 +120,7 @@ array([[               1.0,                0.8, 0.6400000000000001],
 >>> o = sd.regression.ols(y, t)
 >>> g = sd.regression.gls(y, t, sigma=S)
 >>> g
-GLSResult(nobs=30, rank=2, rsquared=0.806533, params=[2.094439045499515 0.504882151727979])
+GLSResult(nobs=30, rank=2, rsquared=0.806533, params=[2.09444, 0.504882])
 >>> o.params, o.bse
 (array([1.5731911067934918, 0.5280449155833218], dtype=float64), array([ 0.36480223458697264, 0.021602703769317427], dtype=float64))
 >>> g.params, g.bse

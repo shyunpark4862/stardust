@@ -1,0 +1,520 @@
+---
+title: 공통 속성과 메서드
+names: [sparray]
+group: 희소 배열
+order: 1
+signatures:
+  - "A.toarray()"
+  - "A.tocoo(*, copy=None)"
+  - "A.tocsr(*, copy=None)"
+  - "A.tocsc(*, copy=None)"
+  - "A.todok(*, copy=None)"
+  - "A.asformat(format, /, *, copy=None)"
+  - "A.to_scipy(*, copy=None)"
+  - "A.astype(dtype, /, *, copy=True)"
+  - "A.copy()"
+  - "A.transpose()"
+  - "A.conj()"
+  - "A.reshape(shape, /, *, copy=None)"
+  - "A.resize(shape, /)"
+  - "A.nonzero()"
+  - "A.count_nonzero(*, axis=None, keepdims=False)"
+  - "A.diagonal(*, k=0)"
+  - "A.trace(*, k=0)"
+  - "A.setdiag(values, /, *, k=0)"
+summary: 네 형식(COO·CSR·CSC·DOK)의 희소 배열이 모두 가진 속성과 메서드예요. 모양과 저장한 원소의 수를 읽고, 밀집 배열이나 다른 형식으로 바꾸고, dtype과 모양을 바꾸고, 전치하고, 0이 아닌 자리와 대각을 읽어요.
+params:
+  - name: copy
+    type: bool 또는 None
+    kind: keyword-only
+    desc: "값 배열을 복사할지. None(기본값)은 필요할 때만, True는 언제나 복사해요. False는 복사하지 않겠다는 뜻이라, 복사가 필요한 변환이면 ValueError예요. astype의 기본값은 True예요."
+  - name: format
+    type: str 또는 None
+    kind: positional-only
+    desc: "asformat이 바꿀 형식. 'coo', 'csr', 'csc', 'dok' 가운데 하나이고, None이면 지금 형식 그대로예요."
+  - name: dtype
+    type: dtype 또는 그 이름
+    kind: positional-only
+    desc: "astype이 바꿀 dtype. sd.bool, sd.int64, sd.float64, sd.complex128이나 그 이름('float64' 등)이에요."
+  - name: shape
+    type: int 또는 int의 tuple
+    kind: positional-only
+    desc: "reshape·resize의 새 모양. 1차원이나 2차원이에요. reshape은 -1 하나를 받아요(나머지에서 길이를 정해요)."
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: "count_nonzero가 셀 축. None(기본값)이면 전체를 세요. 음수는 뒤에서 세요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: "count_nonzero에서 줄인 축을 길이 1로 남길지. 기본값은 False예요."
+  - name: k
+    type: int
+    kind: keyword-only
+    desc: "diagonal·trace·setdiag가 다룰 대각. 0(기본값)은 주대각선, 양수는 그 위, 음수는 그 아래예요."
+  - name: values
+    type: 수 또는 1차원 ndarray
+    kind: positional-only
+    desc: "setdiag가 대각에 넣을 값. 수면 대각 전체에, 1차원 배열이면 대각의 앞에서부터 그 길이만큼 넣어요."
+returns:
+  type: 메서드마다 달라요
+  desc: "toarray는 밀집 ndarray, to*·asformat·astype·copy·transpose·conj·reshape는 희소 배열, to_scipy는 scipy의 희소 배열, nonzero는 int64 ndarray의 tuple, count_nonzero·trace는 Python 수(축이 있으면 ndarray), diagonal은 1차원 ndarray, resize·setdiag는 None이에요."
+raises:
+  - type: TypeError
+    desc: "sparray(...)를 직접 부를 때, np.asarray·sd.asarray·len·bool·iter에 희소 배열을 넣을 때, 받지 않는 dtype이나 complex → 실수 변환(astype), 위치로 줘야 할 인자를 키워드로 주거나 그 반대일 때."
+  - type: ValueError
+    desc: "copy=False인데 복사가 필요할 때, 모르는 형식 이름(asformat), 1차원 배열을 CSC로 바꿀 때, 1차원에 .T·.mT·diagonal·trace·setdiag를 쓸 때, 원소 수가 맞지 않는 reshape, 차원 수를 바꾸는 resize, data에 다른 모양의 배열을 대입할 때, 범위 밖의 axis·k."
+  - type: AttributeError
+    desc: "shape·indices·indptr·coords 같은 읽기 전용 속성에 대입할 때, 형식에 없는 메서드(DOK의 eliminate_zeros 등)를 부를 때."
+seeAlso: [basics, coo_array, csr_array, csc_array, dok_array, issparse, indexing]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+희소 배열의 네 클래스 [`coo_array`](/api/sparse/coo_array/), [`csr_array`](/api/sparse/csr_array/), [`csc_array`](/api/sparse/csc_array/), [`dok_array`](/api/sparse/dok_array/)는 모두 `sd.sparse.sparray`라는 바탕 클래스를 물려받아요. 이 페이지는 네 클래스가 함께 가진 속성과 메서드를 설명해요. 형식마다 따로 있는 것(CSR의 `indptr`, COO의 `sum_duplicates()` 등)은 그 클래스의 페이지에 있어요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0], [0.0, 3.0, 0.0]]))
+>>> A
+<csr_array of shape (2, 3), float64, 3 stored elements>
+>>> isinstance(A, sd.sparse.sparray)
+True
+>>> A.shape, A.nnz, A.format
+((2, 3), 3, 'csr')
+>>> A.toarray()
+array([[1.0, 0.0, 2.0],
+       [0.0, 3.0, 0.0]], dtype=float64)
+```
+
+`sparray`는 어떤 값이 희소 배열인지 `isinstance`로 검사할 때 써요([`issparse`](/api/sparse/issparse/)와 같아요). 직접 만들지는 않아요.
+
+```python
+>>> sd.sparse.sparray()
+Traceback (most recent call last):
+    ...
+TypeError: sparray(): the base class is not constructed directly; use coo_array, csr_array, csc_array or dok_array
+```
+
+<Reference />
+
+## 속성
+
+괄호 없이 `A.shape`처럼 읽어요. 위의 `A`로 읽은 값이에요.
+
+| 속성 | 뜻 | `A`의 값 |
+|---|---|---|
+| `shape` | 모양. 행과 열의 수(1차원이면 길이 하나)의 tuple | `(2, 3)` |
+| `ndim` | 차원 수, 1이나 2 | `2` |
+| `size` | 원소의 수(0 포함). Python int | `6` |
+| `nnz` | 저장한 원소의 수(저장된 0 포함) | `3` |
+| `dtype` | 값의 dtype | `float64` |
+| `format` | 형식의 이름 `'coo'`, `'csr'`, `'csc'`, `'dok'` | `'csr'` |
+| `T`, `mT` | 전치 | `csc_array`, 모양 `(3, 2)` |
+| `real`, `imag` | 실수부와 허수부 | 같은 모양의 희소 배열 |
+
+`size`는 행 수 × 열 수예요. 희소 배열은 아주 큰 모양을 가질 수 있어서 `size`가 2⁶³을 넘기도 해요. 그래서 numpy 정수가 아니라 Python int예요.
+
+```python
+>>> big = sd.sparse.coo_array((2**32, 2**32))
+>>> big
+<coo_array of shape (4294967296, 4294967296), float64, 0 stored elements>
+>>> big.size
+18446744073709551616
+```
+
+저장한 원소를 담은 배열은 형식마다 달라요. CSR과 CSC는 `data`, `indices`, `indptr`, COO는 `data`와 `coords`가 있어요. DOK는 해시 표라서 이런 배열이 없어요.
+
+### data는 쓸 수 있고 색인은 쓸 수 없어요
+
+`data`(저장한 값)는 쓸 수 있는 `sd.ndarray`예요. 패턴은 그대로 두고 값만 바꾸고 싶을 때 바로 고쳐요.
+
+```python
+>>> B = A.copy()
+>>> B.data *= 10
+>>> B.toarray()
+array([[10.0,  0.0, 20.0],
+       [ 0.0, 30.0,  0.0]], dtype=float64)
+```
+
+`data`에는 같은 모양의 `sd.ndarray`를 통째로 대입할 수도 있어요. dtype은 바뀌어도 돼요.
+
+```python
+>>> B.data = sd.asarray([1, 2, 3])
+>>> B
+<csr_array of shape (2, 3), int64, 3 stored elements>
+>>> B.data = sd.asarray([1, 2])
+Traceback (most recent call last):
+    ...
+ValueError: .data: the values must have shape (3,), got (2,)
+```
+
+자리를 적는 배열(`indices`, `indptr`, `coords`)은 읽기만 할 수 있어요. 고치면 [표준 꼴](/api/sparse/basics/#표준-꼴)이 깨져서 다른 계산이 틀린 자리를 읽게 되기 때문이에요. 자리를 바꾸려면 [대입](/api/sparse/indexing/)이나 생성자로 새 배열을 만들어요.
+
+```python
+>>> A.indices[0] = 2
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+`data`, `indices` 같은 배열은 읽을 때 복사하지 않아요. `A.data`는 A가 실제로 쓰는 값 배열 그 자체라서, 그것을 고치면 A가 바뀌어요.
+
+## 밀집 배열로
+
+`toarray()`는 모든 칸을 담은 새 밀집 배열(C 순서의 `sd.ndarray`)을 돌려줘요. 0으로 채운 배열에 저장한 값을 더해서 만들어요. 그래서 저장된 −0.0은 +0.0이 되고, COO에서 같은 자리가 여러 번 나오면 저장한 순서로 더한 값이 돼요.
+
+```python
+>>> Z = sd.sparse.csr_array(([-0.0, 1.0], [0, 1], [0, 2]), shape=(1, 2))
+>>> Z.data
+array([-0.0,  1.0], dtype=float64)
+>>> Z.toarray()
+array([[0.0, 1.0]], dtype=float64)
+```
+
+희소 배열은 밀집 배열로 몰래 바뀌지 않아요. 행렬이 크면 그 한 번의 변환으로 메모리가 바닥날 수 있어서예요. `np.asarray(A)`, `sd.asarray(A)`, 그리고 배열을 숫자 하나나 길이로 읽는 `len(A)`, `bool(A)`, `iter(A)`는 모두 `TypeError`예요.
+
+```python
+>>> import numpy as np
+>>> np.asarray(A)
+Traceback (most recent call last):
+    ...
+TypeError: a sparse array is not converted to a dense array implicitly; use A.toarray() (csr_array)
+>>> len(A)
+Traceback (most recent call last):
+    ...
+TypeError: the length of a sparse array is ambiguous; use A.nnz or A.shape[0]
+>>> bool(A)
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of a sparse array is ambiguous
+```
+
+## 형식 바꾸기
+
+`tocoo()`, `tocsr()`, `tocsc()`, `todok()`가 그 형식으로 바꿔요. `asformat(format)`은 형식을 문자열로 받는 같은 일이에요. 언제 어느 형식을 쓰는지는 [형식 고르기](/api/sparse/basics/#형식-고르기)에 있어요.
+
+```python
+>>> A.tocsc()
+<csc_array of shape (2, 3), float64, 3 stored elements>
+>>> A.asformat('coo')
+<coo_array of shape (2, 3), float64, 3 stored elements>
+>>> A.asformat('lil')
+Traceback (most recent call last):
+    ...
+ValueError: asformat(): 'format' must be 'coo', 'csr', 'csc', 'dok' or None, not 'lil'
+```
+
+이미 그 형식이면 자신을 그대로 돌려줘요(`copy=True`면 복사본). `asformat(None)`도 자신이에요.
+
+```python
+>>> A.tocsr() is A
+True
+>>> A.tocsr(copy=True) is A
+False
+```
+
+다른 형식으로 바꿀 때는 나눌 수 있는 배열을 나눠 써요. CSR을 COO로 바꾸면 값 배열과 열 번호를 그대로 쓰고 행 번호만 새로 만들어요. 그래서 바꾼 쪽의 `data`를 고치면 원래 배열에도 보여요. 나누고 싶지 않으면 `copy=True`를 줘요.
+
+```python
+>>> C = A.copy()
+>>> K = C.tocoo()
+>>> K.data[0] = 100.0
+>>> C.data
+array([100.0,   2.0,   3.0], dtype=float64)
+```
+
+CSR ↔ CSC, DOK와의 변환, 정렬이나 중복 더하기가 필요한 변환은 언제나 새 배열을 만들어요. 이런 변환에 `copy=False`를 주면 `ValueError`예요. `copy=False`는 "복사가 일어나면 알려 달라"는 뜻이에요.
+
+```python
+>>> A.tocsc(copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: tocsc(): copy=False, but converting csr to csc requires a copy
+```
+
+원소의 순서는 이래요. DOK에서 바꾸면 넣은 순서와 상관없이 행 우선 순서(행 번호, 같은 행이면 열 번호 순)예요. CSC에서 COO로 바꾸면 열 우선 순서예요. 1차원 배열은 CSC가 될 수 없어요.
+
+```python
+>>> D = sd.sparse.dok_array((2, 2))
+>>> D[1, 1] = 1.0
+>>> D[0, 1] = 2.0
+>>> D[1, 0] = 3.0
+>>> D.tocoo().coords
+(array([0, 1, 1], dtype=int64), array([1, 0, 1], dtype=int64))
+>>> sd.sparse.csr_array(sd.asarray([1.0, 0.0])).tocsc()
+Traceback (most recent call last):
+    ...
+ValueError: tocsc(): a csc_array has 2 dimensions, the array has 1
+```
+
+## dtype 바꾸기
+
+`astype(dtype)`은 값의 dtype을 바꾼 같은 형식의 배열이에요. 배열의 [astype](/api/array/astype/)과 같은 규칙이에요. float에서 int로 바꾸면 소수점 아래를 버리고, 범위를 넘는 값은 int64의 끝값으로, NaN은 0으로 바꿔요. 복소수를 실수로 바꾸는 것은 허수부를 잃으므로 `TypeError`예요.
+
+```python
+>>> F = sd.sparse.csr_array(sd.asarray([[1.5, 0.0], [float('nan'), 1e300]]))
+>>> F.astype(sd.int64).data
+array([                  1,                   0, 9223372036854775807], dtype=int64)
+>>> sd.sparse.csr_array(sd.asarray([[1 + 2j, 0]])).astype(sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+```
+
+바꾼 뒤 0이 된 값도 저장된 원소로 남아요. 위에서 NaN이 0이 되었지만 `nnz`는 그대로 3이에요. 지우려면 `eliminate_zeros()`를 써요.
+
+```python
+>>> F.astype(sd.int64).nnz
+3
+```
+
+`copy`는 배열의 `astype`과 같아요. 기본값 `copy=True`는 같은 dtype이어도 새 배열을 만들고, `copy=False`는 같은 dtype이면 자신을, 다른 dtype이면 `ValueError`를 돌려줘요.
+
+```python
+>>> A.astype(sd.float64, copy=False) is A
+True
+>>> A.astype(sd.int64, copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: astype(): copy=False, but a dtype conversion requires a copy
+```
+
+## 복사
+
+`copy()`는 같은 형식, 같은 값의 새 배열이에요. 값 배열을 따로 가지므로 복사본의 `data`를 고쳐도 원래 배열은 그대로예요(읽기 전용인 색인 배열은 나눠 써요. 어차피 고칠 수 없어서 차이가 없어요).
+
+```python
+>>> C = A.copy()
+>>> C.data[0] = -1.0
+>>> A.data
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+## 전치와 켤레
+
+`A.T`, `A.mT`, `A.transpose()`는 2차원이면 모두 같은 전치예요. CSR의 전치는 같은 세 배열을 열 방향으로 읽은 CSC예요. 복사가 없어서 아주 큰 행렬도 바로 전치돼요. CSC의 전치는 CSR, COO와 DOK의 전치는 같은 형식이에요.
+
+```python
+>>> A.T
+<csc_array of shape (3, 2), float64, 3 stored elements>
+>>> A.T.toarray()
+array([[1.0, 0.0],
+       [0.0, 3.0],
+       [2.0, 0.0]], dtype=float64)
+>>> sd.sparse.matrix_transpose(A)
+<csc_array of shape (3, 2), float64, 3 stored elements>
+```
+
+1차원 배열의 `.T`와 `.mT`는 밀집 배열처럼 `ValueError`이고, `transpose()`는 자신을 돌려줘요.
+
+```python
+>>> w = sd.sparse.csr_array(sd.asarray([1.0, 0.0, 2.0]))
+>>> w.T
+Traceback (most recent call last):
+    ...
+ValueError: .T: the array must have 2 dimensions, got 1
+>>> w.transpose() is w
+True
+```
+
+`real`, `imag`, `conj()`는 복소 배열의 실수부, 허수부, 켤레예요. CSR·CSC·COO는 같은 형식을 돌려주고, DOK의 `real`·`imag`와 복소 DOK의 `conj()`는 CSR을 돌려줘요. 실수 배열의 `real`은 값 배열을 나눠 쓰는 새 배열이고 `imag`는 같은 패턴의 0이에요.
+
+```python
+>>> c = sd.sparse.csr_array(sd.asarray([[1 + 2j, 0], [0, 3 - 1j]]))
+>>> c.real.data
+array([1.0, 3.0], dtype=float64)
+>>> c.imag.data
+array([ 2.0, -1.0], dtype=float64)
+>>> c.conj().data
+array([(1-2j), (3+1j)], dtype=complex128)
+>>> c.todok().real
+<csr_array of shape (2, 2), float64, 2 stored elements>
+```
+
+## 모양 바꾸기
+
+`reshape(shape)`은 원소를 C 순서(행 우선)로 읽어 새 모양에 다시 놓은 배열이에요. 모양은 인자 하나로 줘요(`A.reshape((3, 2))`, `A.reshape(6)`). 결과는 어느 형식에서든 COO예요. 원소 수가 맞아야 하고, 길이 하나를 -1로 두면 나머지에서 정해요.
+
+```python
+>>> A.reshape((3, 2))
+<coo_array of shape (3, 2), float64, 3 stored elements>
+>>> A.reshape((3, 2)).toarray()
+array([[1.0, 0.0],
+       [2.0, 0.0],
+       [3.0, 0.0]], dtype=float64)
+>>> A.reshape(-1).toarray()
+array([1.0, 0.0, 2.0, 0.0, 3.0, 0.0], dtype=float64)
+>>> A.reshape((4, 2))
+Traceback (most recent call last):
+    ...
+ValueError: reshape(): cannot reshape array of size 6 into shape (4, 2)
+>>> A.reshape(3, 2)
+Traceback (most recent call last):
+    ...
+TypeError: reshape(): takes 1 positional argument but 2 were given
+```
+
+모양이 같으면 자신을 돌려줘요. 값 배열은 나눠 쓰고, DOK는 COO로 바꾸면서 복사하므로 `copy=False`면 `ValueError`예요.
+
+`resize(shape)`은 다른 메서드와 달리 **제자리에서** 모양을 바꾸고 None을 돌려줘요. 새 모양 밖으로 나간 원소는 버리고, 늘어난 행과 열은 비어 있어요. 차원 수는 바꿀 수 없어요.
+
+```python
+>>> R = A.copy()
+>>> R.resize((3, 2))
+>>> R
+<csr_array of shape (3, 2), float64, 2 stored elements>
+>>> R.toarray()
+array([[1.0, 0.0],
+       [0.0, 3.0],
+       [0.0, 0.0]], dtype=float64)
+>>> R.resize((6,))
+Traceback (most recent call last):
+    ...
+ValueError: resize(): the shape must have 2 dimensions, got 1
+```
+
+`reshape`은 원소를 C 순서로 다시 놓고, `resize`는 원소의 (행, 열)을 그대로 둔 채 테두리만 옮겨요. 위에서 `reshape((3, 2))`는 `2.0`을 (1, 0)으로 옮겼지만, `resize((3, 2))`는 열 2에 있던 `2.0`을 버렸어요.
+
+## 0이 아닌 자리
+
+`nonzero()`는 0이 아닌 값의 자리를 축마다 int64 배열 하나씩 담은 tuple로 돌려줘요. 저장된 0은 빠져요. 순서는 CSR·CSC·DOK가 행 우선이고, COO는 저장한 순서(같은 자리가 여러 번 저장되어 있으면 그대로 여러 번)예요.
+
+```python
+>>> A.nonzero()
+(array([0, 0, 1], dtype=int64), array([0, 2, 1], dtype=int64))
+```
+
+`count_nonzero()`는 0이 아닌 값의 수예요. `nnz`는 저장된 0도 세지만 `count_nonzero()`는 세지 않아요. `axis=`를 주면 축을 따라 세서, 다른 축의 번호마다의 수를 int64 배열로 돌려줘요. `keepdims=True`면 줄인 축을 길이 1로 남겨요. COO에서 같은 자리가 여러 번 저장되어 있으면 먼저 더한 값으로 세요(배열은 바꾸지 않아요).
+
+```python
+>>> E = sd.sparse.csr_array(([1.0, 0.0, 2.0], [0, 1, 2], [0, 2, 3]), shape=(2, 3))
+>>> E.nnz, E.count_nonzero()
+(3, 2)
+>>> E.count_nonzero(axis=0)
+array([1, 0, 1], dtype=int64)
+>>> E.count_nonzero(axis=1, keepdims=True)
+array([[1],
+       [1]], dtype=int64)
+```
+
+`nonzero()`의 결과로 같은 자리의 값을 읽으려면 [`find`](/api/sparse/find/)를 써요. `(행, 열, 값)`을 한 번에 돌려줘요.
+
+## 대각
+
+`diagonal(k=0)`은 k번째 대각선(원소 `A[i, i + k]`)을 밀집 1차원 배열로 돌려줘요. 대각선이 행렬 밖이면 길이 0이에요. `trace(k=0)`은 그 대각선의 합인 Python 수예요. 2차원 배열만 받아요.
+
+```python
+>>> M = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0], [0.0, 3.0, 0.0], [4.0, 0.0, 5.0]]))
+>>> M.diagonal()
+array([1.0, 3.0, 5.0], dtype=float64)
+>>> M.diagonal(k=-2)
+array([4.0], dtype=float64)
+>>> M.diagonal(k=5)
+array([], dtype=float64)
+>>> M.trace()
+9.0
+```
+
+bool과 int64 배열의 `trace`는 int64로 더해요. 결과는 밀집 배열의 [`sd.linalg.diagonal`·`sd.linalg.trace`](/api/linalg/trace-diagonal/)를 `M.toarray()`에 쓴 것과 같아요.
+
+`setdiag(values, k=0)`은 **제자리에서** 대각선을 바꾸고 None을 돌려줘요. `values`가 수면 대각선 전체를, 1차원 배열이면 대각선의 앞에서부터 그 길이만큼(대각선보다 길면 나머지는 버려요) 바꿔요.
+
+```python
+>>> N = M.copy()
+>>> N.setdiag(9.0)
+>>> N.toarray()
+array([[9.0, 0.0, 2.0],
+       [0.0, 9.0, 0.0],
+       [4.0, 0.0, 9.0]], dtype=float64)
+>>> N.setdiag(sd.asarray([7.0, 8.0]))
+>>> N.diagonal()
+array([7.0, 8.0, 9.0], dtype=float64)
+>>> N.setdiag(1.0, k=3)
+Traceback (most recent call last):
+    ...
+ValueError: setdiag(): k 3 exceeds the array's dimensions (3, 3)
+```
+
+0을 넣었을 때 저장하는지는 [대입](/api/sparse/indexing/)과 같은 규칙이에요. CSR·CSC·COO는 0도 저장된 원소로 남기고, DOK는 그 자리를 지워요.
+
+```python
+>>> P = M.copy()
+>>> P.setdiag(0.0)
+>>> P.nnz, P.count_nonzero()
+(5, 2)
+>>> Q = M.todok()
+>>> Q.setdiag(0.0)
+>>> Q.nnz
+2
+```
+
+## 인덱싱
+
+`A[i, j]`, `A[1:3, :]`, `A[[0, 2]]`처럼 대괄호로 일부를 읽고 쓰는 것은 모든 형식에서 돼요. 규칙은 밀집 배열의 인덱싱과 같고, 결과는 희소 배열이에요. [인덱싱과 대입](/api/sparse/indexing/)에서 설명해요.
+
+```python
+>>> A[1, 1]
+3.0
+>>> A[:, 2].toarray()
+array([2.0, 0.0], dtype=float64)
+```
+
+## scipy와 주고받기
+
+`to_scipy()`는 같은 형식의 scipy 희소 배열(`scipy.sparse.csr_array` 등)을 만들어요. 다른 라이브러리가 scipy의 희소 배열을 받을 때 써요. 복사하지 않고 같은 메모리를 numpy 배열로 보여 주므로 큰 행렬도 바로 넘어가요.
+
+```python
+>>> s = A.to_scipy()
+>>> type(s).__name__
+'csr_array'
+>>> s.indices.dtype
+dtype('int64')
+>>> s.data[0] = 5.0
+>>> A.toarray()
+array([[5.0, 0.0, 2.0],
+       [0.0, 3.0, 0.0]], dtype=float64)
+```
+
+값 배열은 둘이 나눠 쓰므로 한쪽에서 고치면 다른 쪽에도 보여요. 색인 배열은 읽기 전용으로 보여 줘요. 그래서 그 scipy 객체에서 색인을 제자리에서 고치는 scipy 메서드(`eliminate_zeros`, `sort_indices` 등)는 에러가 나요. 따로 쓰고 싶으면 `to_scipy(copy=True)`로 복사해요. DOK는 언제나 복사해요(`copy=False`면 `ValueError`).
+
+반대 방향은 생성자예요. scipy의 희소 배열과 옛 희소 행렬(모든 형식)을 받고, 언제나 복사해요. scipy의 int32 색인은 int64로 넓혀요.
+
+```python
+>>> import scipy.sparse
+>>> t = scipy.sparse.csc_array(np.array([[0.0, 1.0], [2.0, 0.0]]))
+>>> sd.sparse.csr_array(t)
+<csr_array of shape (2, 2), float64, 2 stored elements>
+>>> sd.sparse.csr_array(t, copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: csr_array(): copy=False, but an input from scipy requires a copy
+```
+
+## 화면에 보이는 꼴
+
+`repr`과 `str`은 같은 한 줄이에요. 형식, 모양, dtype, 저장한 원소의 수를 보여 줘요. 값은 보여 주지 않으므로 값을 보려면 `toarray()`나 `data`를 읽어요.
+
+```python
+>>> print(A)
+<csr_array of shape (2, 3), float64, 3 stored elements>
+>>> sd.sparse.dok_array((1, 1), dtype=sd.bool)
+<dok_array of shape (1, 1), bool, 0 stored elements>
+```
+
+## scipy를 아는 분께
+
+- **별칭이 없어요.** `todense()`, `conjugate()`, `dot()`이 없어요. `toarray()`, `conj()`, `@`, `nnz`를 써요.
+- **`trace`와 `diagonal`의 인자는 `k`예요.** scipy의 `trace(offset=)`가 아니라 `sd.linalg.trace`와 같은 이름이에요.
+- **1차원의 `.T`는 에러예요.** scipy는 자신을 돌려줘요. `transpose()`는 scipy처럼 자신이에요.
+- **`len`, `bool`, `np.asarray`가 `TypeError`예요.** scipy는 DOK의 `len`이 저장 수이고, (1, 1) 행렬의 `bool`이 그 값이에요.
+- **색인 배열은 읽기 전용이에요.** scipy는 `indices`, `indptr`, `coords`를 고칠 수 있어요.
+- **`count_nonzero()`가 COO를 바꾸지 않아요.** scipy는 제자리에서 `sum_duplicates()`를 해요. `axis=`와 함께 `keepdims=`도 있어요.
+- **`resize`는 차원 수를 바꾸지 않아요.** scipy의 COO는 바꿀 수 있어요.
+- **DOK에서 바꾸면 행 우선 순서예요.** scipy의 DOK는 Python dict라서 넣은 순서예요.
+- **`astype`에 `casting=`이 없어요.** float32 같은 dtype도 받지 않아요(dtype은 넷이에요).
+- **`to_scipy()`가 있어요.** scipy 쪽에서 쓰려면 이것으로 넘겨요. 생성자는 scipy 객체를 언제나 복사해요.

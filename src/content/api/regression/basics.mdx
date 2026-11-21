@@ -118,7 +118,7 @@ t값, p값, R² 같은 나머지 필드와 그 뜻은 [결과 객체 읽기](/ap
 | 반응이 실수이고, 오차가 관측마다 고르게 흔들린다고 볼 수 있어요 | `ols` | [ols](/api/regression/ols/) |
 | 관측마다 정밀도가 달라서 믿을 만한 관측에 더 무게를 주고 싶어요 | `wls` | [wls](/api/regression/wls/) |
 | 오차끼리 상관이 있고, 그 공분산 행렬을 알아요 | `gls` | [gls](/api/regression/gls/) |
-| 설명변수 하나로 기울기, 절편, 상관계수를 구하고 싶어요 | `ols(y, x)`, `sd.htest.pearsonr` | [ols](/api/regression/ols/#직선-하나-기울기-절편-상관계수) |
+| 설명변수 하나로 기울기, 절편, 상관계수를 구하고 싶어요 | `ols(y, x)`, [`sd.htest.pearsonr`](/api/htest/pearsonr/) | [ols](/api/regression/ols/#직선-하나-기울기-절편-상관계수) |
 | 잔차가 모형의 가정에 맞는지, 영향이 큰 관측이 있는지 보고 싶어요 | 결과의 진단 필드 | [회귀 진단](/api/regression/diagnostics/) |
 | 분산이 고른지, 빠진 비선형 항이 없는지 검정하고 싶어요 | 결과의 `white_test`, `goldfeld_quandt`, `reset_test` | [모형 꼴의 검정](/api/regression/specification-tests/) |
 | 두 계수가 같은지, 계수 몇 개가 모두 0인지 검정하고 싶어요 | 결과의 `t_test`, `wald_test` | [선형 가설 검정](/api/regression/hypothesis-tests/) |

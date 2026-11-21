@@ -50,7 +50,7 @@ import Layers from '../../../components/fig/Layers.astro';
 |---|---|
 | 입력을 LAPACK의 형태로 옮기는 방법, 결과가 열 우선인 이유, 16바이트 정렬 | [패킹과 결과 레이아웃](/internals/linalg/packing/) |
 | 행렬 묶음을 스레드에 나누는 기준, 작업 메모리, 결정성 | [배치와 병렬화](/internals/linalg/batch/) |
-| `vecdot`, `outer`, `trace`, `kron`, 노름처럼 LAPACK 없이 계산하는 함수 | [LAPACK 없이 계산하는 함수](/internals/linalg/basic/) |
+| `vecdot`, `outer`, `trace`, `kron`, `bandwidth`, 노름처럼 LAPACK 없이 계산하는 함수 | [LAPACK 없이 계산하는 함수](/internals/linalg/basic/) |
 | LU 분해, `solve`, `inv`, `det`, 삼각 시스템 | [LU 분해와 선형 시스템](/internals/linalg/lu/) |
 | Cholesky, LDL | [대칭 행렬의 분해: Cholesky와 LDL](/internals/linalg/symmetric/) |
 | QR, 열 피벗 QR, 최소제곱 | [QR 분해와 최소제곱](/internals/linalg/qr/) |
@@ -63,11 +63,11 @@ import Layers from '../../../components/fig/Layers.astro';
 
 | 묶음 | 함수 |
 |---|---|
-| 기본 연산 | `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `cross` |
+| 기본 연산 | `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `kronsum`, `cross` |
 | 노름과 지표 | `vector_norm`, `matrix_norm`, `det`, `slogdet`, `matrix_rank`, `cond` |
 | 선형 시스템 | `solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lstsq`, `inv`, `pinv` |
 | 분해 | `lu`, `cholesky`, `qr`, `qr_pivoted`, `ldl`, `eigh`, `eigvalsh`, `eig`, `eigvals`, `schur`, `hessenberg`, `svd`, `svdvals` |
-| 특수 구조 | `solve_tridiagonal`, `solve_banded`, `solve_sylvester` |
+| 특수 구조 | `solve_tridiagonal`, `solve_banded`, `bandwidth`, `block_diag`, `solve_sylvester` |
 | 행렬 함수 | `expm` |
 
 행렬곱 `matmul`과 전치 `matrix_transpose`는 배열 영역에 있어요([행렬곱](/internals/array/matmul/)). 선형대수 영역에서 다시 만들지 않아요.
@@ -75,7 +75,7 @@ import Layers from '../../../components/fig/Layers.astro';
 모든 함수가 지키는 규칙은 이래요. 사용자가 보는 쪽의 설명은 [선형대수의 기본](/api/linalg/basics/)에 있어요.
 
 - 행렬 묶음을 받아요. 인자의 모양은 `(..., M, N)`이에요. 마지막 두 축이 행렬 하나이고 앞의 축들은 "배치"예요. `(1000, 3, 3)`은 3×3 행렬 1000개예요. 벡터 인자는 마지막 축 하나가 벡터예요.
-- float64와 complex128로 계산해요. bool과 int64 입력은 float64로 바꿔 계산해요. 인자가 여럿이면 하나라도 complex128일 때 전부 complex128로 계산해요. 원소를 꺼내기만 하는 `diagonal`은 입력 dtype을 그대로 둬요.
+- float64와 complex128로 계산해요. bool과 int64 입력은 float64로 바꿔 계산해요. 인자가 여럿이면 하나라도 complex128일 때 전부 complex128로 계산해요. 원소를 꺼내거나 옮기기만 하는 `diagonal`과 `block_diag`은 입력 dtype(`block_diag`은 그 승격)을 그대로 두고, `bandwidth`는 언제나 정수예요.
 - 배열 인자는 `sd.ndarray`만 받아요. 리스트나 numpy 배열은 `sd.asarray`로 먼저 바꿔요.
 - 경고를 내지 않아요. 결과가 넘치면 inf이고, 정의되지 않는 계산은 에러예요.
 
@@ -163,13 +163,15 @@ m.def("solve", named("solve", &solve), nb::sig("def solve(a, b, /)"), nb::arg().
 
 ### C++가 쓰는 Python 객체
 
-C++ 코어가 호출 중에 쓰는 Python 객체는 **결과 namedtuple 타입 11개와 `LinAlgError`**뿐이에요. `_setup`이 import 때 한 번 받아 `csrc/linalg/pyrefs.cpp`의 정적 구조체에 넣어 둬요.
+C++ 코어가 호출 중에 쓰는 Python 객체는 **결과 namedtuple 타입 12개와 `LinAlgError`**뿐이에요. `_setup`이 import 때 한 번 받아 `csrc/linalg/pyrefs.cpp`의 정적 구조체에 넣어 둬요.
 
 ```cpp
-// pyrefs.hpp
-enum class Result { Slogdet, LU, QR, QRPivoted, Lstsq, Eigh, SVD, Eig, Schur, Hessenberg, LDL, Count };
+// csrc/linalg/pyrefs.hpp
+// The result namedtuples defined in stardust/_results.py (LINALG), in the order _setup receives them.
+enum class Result { Slogdet, LU, QR, QRPivoted, Lstsq, Eigh, SVD, Eig, Schur, Hessenberg, LDL, Bandwidth, Count };
 
 struct PyRefs {
+    // From stardust.linalg's Python files, via _core._setup().
     PyObject* linalg_error = nullptr;
     PyObject* results[static_cast<int>(Result::Count)] = {};
 };
@@ -499,7 +501,7 @@ stardust의 `solve`는 **언제나 LU**예요. 구조를 쓰고 싶으면 그 �
 | `inv` | `getrf` + `getrs` | 우변을 단위행렬로 둔 `solve`: $AX = I$의 해가 $A^{-1}$ | [LU](/internals/linalg/lu/) |
 | `det`, `slogdet` | `getrf` | $\det A = \pm \prod_i u_{ii}$. 부호는 행 교환 횟수로 정하고, 곱은 stardust가 계산 | [LU](/internals/linalg/lu/) |
 | `lu` | `getrf` | $A = PLU$를 $L$, $U$, `perm`으로 풀어 돌려줌(직사각 행렬도 됨) | [LU](/internals/linalg/lu/) |
-| `lu_solve` | `trtrs` 두 번 | `b`의 행을 `perm`으로 모은 뒤 $LY = B$(대각 1), $UX = Y$를 대입으로 풂 | [LU](/internals/linalg/lu/) |
+| `lu_solve` | `trtrs` 두 번 | `b`의 행을 `perm`으로 모은 뒤 $LY = B$(대각 1), $UX = Y$를 대입으로 풂. `trans='T'`, `'H'`는 $U^{\mathsf T}$, $L^{\mathsf T}$ 순서로 푼 뒤 `perm` 자리로 흩음 | [LU](/internals/linalg/lu/) |
 | `solve_triangular` | `trtrs` | 삼각 시스템 $TX = B$를 위에서부터(아래 삼각) 또는 아래에서부터(위 삼각) 대입으로 풂 | [LU](/internals/linalg/lu/) |
 | `cond` (2, −2 외의 `ord`) | `getrf` + `getrs` | $\lVert A\rVert \cdot \lVert A^{-1}\rVert$. 역행렬은 `inv`와 같은 경로 | [LU](/internals/linalg/lu/) |
 | `matrix_power` (음수 지수) | `getrf` + `getrs`, `gemm` | `inv`와 같은 경로로 $A^{-1}$을 구한 뒤 이진 거듭제곱 | [기본 연산](/internals/linalg/basic/) |
@@ -554,7 +556,7 @@ stardust의 `solve`는 **언제나 LU**예요. 구조를 쓰고 싶으면 그 �
 
 ### LAPACK을 부르지 않는 함수
 
-`vecdot`, `outer`, `trace`, `diagonal`, `kron`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf), `matrix_power`(0 이상의 지수, BLAS `gemm`만 써요)는 직접 짠 루프예요. [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)에서 다뤄요.
+`vecdot`, `outer`, `trace`, `diagonal`, `kron`, `kronsum`, `block_diag`, `bandwidth`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf), `matrix_power`(0 이상의 지수, BLAS `gemm`만 써요)는 직접 짠 루프예요. [LAPACK 없이 계산하는 함수](/internals/linalg/basic/)에서 다뤄요.
 
 ## Accelerate에 대해 알아 둔 사실
 
@@ -644,7 +646,7 @@ LAPACK은 유한하지 않은 입력에서 결과를 보장하지 않아요. LU�
 
 세부 규칙이 세 가지 있어요.
 
-- **LAPACK을 쓰지 않는 함수는 NaN을 그대로 전파해요.** `vecdot`, `outer`, `trace`, `diagonal`, `kron`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf)은 원소별 연산처럼 NaN이 들어가면 NaN이 나와요.
+- **LAPACK을 쓰지 않는 함수는 NaN을 그대로 전파해요.** `vecdot`, `outer`, `trace`, `diagonal`, `kron`, `kronsum`, `block_diag`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf)은 원소별 연산처럼 NaN이 들어가면 NaN이 나와요. `bandwidth`는 NaN을 0이 아닌 원소로 세요.
 - **규칙은 함수가 아니라 호출 단위예요.** `matrix_power(x, n)`은 $n \ge 0$이면 BLAS 곱만 하므로 전파하고, $n$이 음수이면 역행렬을 `getrf`로 구하므로 검사해요. `matrix_norm`은 `ord`가 2, −2, `'nuc'`일 때만 SVD를 부르므로 그때만 검사해요.
 - **읽는 원소만 검사해요.** 대칭 입력을 받는 함수(`cholesky`, `eigh`, `eigvalsh`, `ldl`)는 아래 삼각만 읽으므로 위 삼각에 무엇이 있든 상관없어요. `solve_triangular`는 지정한 삼각만, `solve_banded`는 띠 저장 형식에서 행렬 안에 해당하는 원소만 봐요.
 
@@ -715,7 +717,7 @@ constexpr int kNoConvergenceEig = 8;   // 고유값 알고리즘이 수렴하지
 
 결과 배열의 메모리는 배열 영역의 `Buffer`예요. 128바이트로 정렬돼 있고, 자기 메모리를 가진 배열이에요(`base`가 `None`). 배열 하나를 돌려주는 함수의 결과는 쓸 수 있어요.
 
-결과를 만들 때도 배열을 만들 때와 같은 크기 검사를 해요. 축은 32개까지(`arrays may have at most 32 dimensions`), 바이트 수는 int64 안(`array is too big`)이고, 메시지 앞에 함수 이름이 붙어요. 0 stride 브로드캐스트 뷰는 메모리가 작아도 모양이 커서, 배치 모양의 곱이나 결과 바이트 수가 int64를 넘을 수 있어요. `Batch`가 배치 원소 수를, `alloc_*`가 결과의 축 수와 바이트 수를 `__builtin_mul_overflow`로 검사해요. `kron`은 $M \cdot P$, $N \cdot Q$도 검사하고, 결과가 입력보다 한 차원 많은 `outer`는 32차원 입력을 계산 전에 막아요. 길이 0인 축이 있어도 나머지 축의 곱은 검사해요(numpy와 같아요).
+결과를 만들 때도 배열을 만들 때와 같은 크기 검사를 해요. 축은 32개까지(`arrays may have at most 32 dimensions`), 바이트 수는 int64 안(`array is too big`)이고, 메시지 앞에 함수 이름이 붙어요. 0 stride 브로드캐스트 뷰는 메모리가 작아도 모양이 커서, 배치 모양의 곱이나 결과 바이트 수가 int64를 넘을 수 있어요. `Batch`가 배치 원소 수를, `alloc_*`가 결과의 축 수와 바이트 수를 `__builtin_mul_overflow`로 검사해요. `kron`은 $M \cdot P$, $N \cdot Q$를, `kronsum`은 $M \cdot N$을, `block_diag`은 블록의 행 수와 열 수의 합을 따로 검사하고, 결과가 입력보다 한 차원 많은 `outer`는 32차원 입력을 계산 전에 막아요. 길이 0인 축이 있어도 나머지 축의 곱은 검사해요(numpy와 같아요).
 
 값을 여러 개 돌려주는 함수는 namedtuple을 돌려줘요.
 
@@ -801,7 +803,7 @@ scipy에는 옵션에 따라 돌려주는 값의 개수가 바뀌는 함수가 �
 | `csrc/linalg/ops/nonsym.cpp` | `eig`, `eigvals`, `schur`, `hessenberg`, `ldl` |
 | `csrc/linalg/ops/special.cpp` | `solve_tridiagonal`, `solve_banded`, `solve_sylvester` |
 | `csrc/linalg/ops/expm.cpp` | `expm` |
-| `csrc/linalg/ops/basic.cpp` | `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `cross` |
+| `csrc/linalg/ops/basic.cpp` | `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `cross`, `block_diag`, `kronsum`, `bandwidth` |
 | `csrc/linalg/ops/norms.cpp`, `vnorm.hpp` | `vector_norm`, `matrix_norm` |
 | `src/stardust/linalg/` | `__init__.py`, `_errors.py` |
 | `tests/linalg/` | pytest와 hypothesis 테스트 |

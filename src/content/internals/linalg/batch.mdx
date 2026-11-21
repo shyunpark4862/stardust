@@ -194,7 +194,7 @@ $$
 \text{element\_ns} = a + c \cdot w
 $$
 
-- $w$는 행렬의 원소 수 $m \cdot n$(정사각이면 $n^2$)이에요. 스트리밍 함수(`vecdot`, `trace`, 노름)는 출력 하나에 더하는 원소 수, 복사 함수(`diagonal`, `outer`, `kron`, `cross`)는 복사하는 원소 수예요.
+- $w$는 행렬의 원소 수 $m \cdot n$(정사각이면 $n^2$)이에요. 스트리밍 함수(`vecdot`, `trace`, 노름)는 출력 하나에 더하는 원소 수(`bandwidth`는 행렬 원소 수), 복사 함수(`diagonal`, `outer`, `kron`, `kronsum`, `block_diag`, `cross`)는 복사하는 원소 수예요.
 - $a$는 호출 하나의 고정비(인자 해석, 작은 버퍼, LAPACK 진입), $c$는 원소 하나당 비용이에요.
 
 ```cpp

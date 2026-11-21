@@ -48,7 +48,7 @@ raises:
     desc: 행렬이 특이해서 해가 하나로 정해지지 않을 때.
   - type: OverflowError
     desc: 띠 폭이 int64 범위를 벗어날 때.
-seeAlso: [solve, solve_triangular, cholesky_solve, lu_solve, trace-diagonal, basics, errors]
+seeAlso: [bandwidth, solve, solve_triangular, cholesky_solve, lu_solve, trace-diagonal, basics, errors]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -360,6 +360,13 @@ array([[0.0, 0.0, 2.0, 2.0, 2.0],
        [0.0, 3.0, 1.0, 2.0, 1.0],
        [7.0, 9.0, 5.0, 7.0, 6.0],
        [3.0, 5.0, 5.0, 1.0, 0.0]], dtype=float64)
+```
+
+띠 폭을 모르면 [`bandwidth`](/api/linalg/bandwidth/)로 재요. 결과 두 값을 그대로 `to_banded`와 `solve_banded`의 띠 폭으로 쓸 수 있어요.
+
+```python
+>>> sd.linalg.bandwidth(A)
+BandwidthResult(lower=1, upper=2)
 ```
 
 실제로 큰 문제를 풀 때는 행렬 전체를 만들지 않고 처음부터 대각선 줄을 따로 계산해서 `ab`의 행으로 쌓아요. 행렬 전체를 만들면 메모리를 아끼는 의미가 없어지니까요.

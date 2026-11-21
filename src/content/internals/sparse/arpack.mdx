@@ -1,0 +1,423 @@
+---
+title: ARPACK의 Lanczos와 Arnoldi
+group: 고유값과 특이값
+order: 1
+summary: eigsh와 eigs가 쓰는 ARPACK의 암시적 재시작 Lanczos·Arnoldi를 설명해요. scipy 1.18.1이 돌리는 계산 순서를 서브루틴 하나에 C++ 함수 하나로 옮겼고, 큰 벡터의 일은 스레드 수와 상관없이 같은 비트를 내는 이 라이브러리의 커널로 해요.
+seeAlso: [svds, accuracy-performance, expm, overview]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`eigsh`](/api/sparse/eigsh/)와 [`eigs`](/api/sparse/eigs/)는 큰 희소 행렬의 고유값 가운데 몇 개만 구해요. 행렬을 분해하지 않고 행렬과 벡터의 곱만 거듭하므로, 곱을 아는 [`LinearOperator`](/api/sparse/linearoperator/)도 받아요. 이 일을 하는 표준 알고리즘은 ARPACK(Lehoucq, Sorensen, Yang 1998)의 암시적 재시작 Lanczos·Arnoldi예요 [1]. Accelerate에는 ARPACK이 없어서, 이 라이브러리는 scipy 1.18.1이 돌리는 ARPACK(arpack-ng를 C로 옮긴 판)의 계산 순서를 `csrc/sparse/arpack.cpp`에 옮겼어요.
+
+| 함수 | 문제 | ARPACK 루틴 | 작은 밀집 문제(LAPACK) |
+|---|---|---|---|
+| `eigsh`, 실수 | 실수 대칭 | `dsaupd`·`dseupd` (Lanczos) | `dsteqr` |
+| `eigs`, 실수 | 실수 비대칭 | `dnaupd`·`dneupd` (Arnoldi) | `dlahqr`, `dtrevc`, `dgeqr2` |
+| `eigs`·`eigsh`, 복소 | 복소 비대칭·에르미트 | `znaupd`·`zneupd` (Arnoldi) | `zlahqr`, `ztrevc`, `zgeqr2` |
+
+복소 에르미트 문제는 scipy처럼 복소 Arnoldi로 풀어요(대칭 Lanczos의 복소판이 ARPACK에 없어요). 요점은 다섯 가지예요.
+
+1. 시작 벡터 하나로 만든 Krylov 부분공간 안에서 고유값을 어림해요. 행렬의 양 끝 고유값이 먼저 맞아 들어가요.
+2. 기저는 `ncv`개까지만 둬요. 다 차면 원하지 않는 Ritz 값을 이동으로 쓰는 암시적 QR로 부분공간을 줄이고 다시 늘려요(암시적 재시작).
+3. 기저 벡터는 매번 이미 있는 모든 벡터에 대해 다시 직교화해요(DGKS 판정).
+4. 행렬 한가운데의 고유값은 연산자 OP를 바꿔(스펙트럼 변환) 양 끝으로 옮겨요.
+5. 시작 벡터는 정해진 생성기에서 뽑고, 내적·노름·기저 갱신은 크기로만 나누는 결정적인 커널이라 스레드 수, 행렬의 형식, 연산자의 꼴과 상관없이 같은 비트예요.
+
+<Fig column caption="eigsh 한 번의 흐름. eigs도 같은 꼴이고, 가운데의 루틴이 dnaup2·dneupd(복소는 znaup2·zneupd)로 바뀌어요.">
+  <Steps
+    steps={[
+      { label: 'eigsh(A, k=, which=, sigma=, ...)', where: '_eigen.py', note: '인자 검사, k와 ncv(기본 min(max(2k + 1, 20), n)), 문제의 dtype을 정해요.' },
+      { label: '시작 벡터', where: '_eigen.py', note: 'v0가 없으면 default_rng(0)에서 2u − 1을 뽑아요. 재시작에 쓸 벡터를 뽑는 함수도 함께 넘겨요.' },
+      { label: '역의 준비', where: '_eigen.py', note: 'sigma나 M이 있으면 (A − σM)⁻¹, M⁻¹를 희소 LU(행렬)나 gmres(연산자)로 만들어요.' },
+      { label: '_eigsh', where: 'arpack.cpp', note: '연산자를 C++의 Op로 풀고, 일이 크면 GIL을 놓아요.' },
+      { label: 'saup2', where: 'arpack.cpp', note: '재시작 고리', depth: 1 },
+      { label: 'getv0 → saitr', where: 'arpack.cpp', note: '처음 k걸음의 Lanczos', depth: 2 },
+      { label: 'saitr → seigt → sgets → sconv', where: 'arpack.cpp', note: 'ncv걸음까지 늘리고, Ritz 값과 오차 어림, 이동 고르기, 수렴 세기', depth: 2 },
+      { label: 'sapps', where: 'arpack.cpp', note: '이동으로 암시적 QR, k걸음으로 줄이기', depth: 2 },
+      { label: 'seupd', where: 'arpack.cpp', note: '수렴한 Ritz 값과 Ritz 벡터, 스펙트럼 변환의 되돌림', depth: 1 },
+      { label: 'EigshResult', where: '_result.py', note: '(w, v)로 풀리는 결과. 수렴하지 못하면 상태와 수렴한 쌍을 담아요.' },
+    ]}
+  />
+</Fig>
+
+## Krylov 부분공간과 Ritz 값
+
+### 거듭제곱에서 부분공간으로
+
+벡터 $v$에 행렬을 거듭 곱하면 $A^j v$는 절댓값이 가장 큰 고유값의 고유벡터 쪽으로 기울어요(거듭제곱법). 마지막 벡터 하나만 보지 않고 지나온 벡터를 모두 모은 공간
+
+$$
+\mathcal K_m(A, v) = \operatorname{span}\{v, Av, A^2v, \ldots, A^{m-1}v\}
+$$
+
+을 Krylov 부분공간이라고 해요. 이 공간의 원소는 $p(A)v$ 꼴($p$는 $m-1$차 이하의 다항식)이라서, 거듭제곱법이 쓰는 $A^{m-1}$보다 훨씬 나은 다항식으로 원하는 고유벡터를 골라낼 수 있어요. 공간의 정규직교 기저 $V_m$을 두고 $A$를 그 공간에 사영한 작은 행렬 $V_m^{\mathsf H} A V_m$의 고유값을 **Ritz 값**, $V_m y$를 **Ritz 벡터**라고 해요(Rayleigh–Ritz). 대칭 행렬에서는 $m$이 커질수록 양 끝 고유값부터 Ritz 값이 빠르게 맞아 들어가요(Kaniel–Paige의 수렴 이론) [6].
+
+### Lanczos와 Arnoldi
+
+기저는 새 방향 $Av_j$를 앞의 벡터들에 대해 직교화해서 만들어요(Arnoldi). 결과를 행렬로 쓰면
+
+$$
+A V_m = V_m H_m + r_m e_m^{\mathsf T},\qquad V_m^{\mathsf H} r_m = 0
+$$
+
+이고 $H_m$은 위 Hessenberg 행렬이에요. $A$가 대칭이면 $H_m = V_m^{\mathsf H} A V_m$도 대칭이라 삼중대각 $T_m$이 되고, 수학적으로는 바로 앞 두 벡터에만 직교화하면 되는 세 항 점화식이 나와요(Lanczos).
+
+Ritz 쌍 $(\theta, x = V_m y)$의 잔차는 위 식에서 바로 나와요.
+
+$$
+\lVert A x - \theta x\rVert = \lVert r_m\rVert\,\lvert e_m^{\mathsf T} y\rvert
+$$
+
+작은 행렬 $T_m$의 고유벡터 $y$의 마지막 성분만 알면 큰 벡터를 하나도 만들지 않고 잔차를 알 수 있어요. `seigt`(`dseigt`)가 이 일을 해요. `dsteqr`로 $T_m$의 고유값과 고유벡터를 구하고, 마지막 행에 $\lVert r\rVert$를 곱해 오차 어림 `bounds`로 둬요.
+
+```cpp
+    // csrc/sparse/arpack.cpp, Sym::seigt
+    int seigt(int64_t kp) {
+        std::vector<double> e(kp > 1 ? kp - 1 : 1), z(static_cast<std::size_t>(kp * kp)),
+            work(std::max<int64_t>(1, 2 * kp - 2));
+        for (int64_t i = 0; i < kp; ++i) ritz[i] = h2[i];
+        for (int64_t i = 0; i + 1 < kp; ++i) e[i] = h1[i + 1];
+        if (lapack::steqr(kp, ritz.data(), e.data(), z.data(), kp, work.data()) != 0) return -1;
+        for (int64_t i = 0; i < kp; ++i) bounds[i] = S.rnorm * std::fabs(z[(kp - 1) + i * kp]);
+        return 0;
+    }
+```
+
+`h2`가 $T$의 대각, `h1`이 부대각이에요(`h1[0]`은 빈 자리). ARPACK 원본의 `dstqrb`는 고유벡터 행렬의 마지막 행만 갱신하는 `dsteqr`의 변형인데, 행마다 따로 갱신되므로 전체 고유벡터 행렬을 구해 마지막 행을 읽어도 같은 값이에요.
+
+1차원 Dirichlet 라플라시안(대각 2, 옆 −1)은 고유값이 $2 - 2\cos(\pi j/(n+1))$로 알려져 있어 견주기 좋아요.
+
+```python
+>>> import math
+>>> n = 100
+>>> A = sd.sparse.diags_array([sd.full(n, 2.0), sd.full(n - 1, -1.0), sd.full(n - 1, -1.0)], offsets=[0, 1, -1])
+>>> r = sd.sparse.eigsh(A, k=3, which='LA')
+>>> r.eigenvalues
+array([3.9912986959380334, 3.9961311942671727, 3.9990325645839535], dtype=float64)
+>>> [2 - 2 * math.cos(math.pi * j / (n + 1)) for j in (98, 99, 100)]
+[3.9912986959380374, 3.9961311942671887, 3.999032564583976]
+>>> r.n_op, r.n_iter
+(541, 32)
+```
+
+가장 큰 세 고유값이 서로 0.005 안쪽으로 붙어 있어 32번 재시작하며 곱을 541번 했어요. 닫힌 꼴을 float64로 계산한 값과의 어긋남은 $2.3\times10^{-14}$ 이하이고, 계약 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2 \approx 8.9\times10^{-13}$($C_{\mathrm{EIG}} = 1000$, [정확도와 성능](/internals/sparse/accuracy-performance/)) 안이에요.
+
+## 직교성을 지키기: DGKS
+
+### 반올림이 직교성을 깨요
+
+Lanczos의 세 항 점화식은 정확한 산술에서만 직교 기저를 줘요. 부동소수점에서는 Ritz 값 하나가 수렴하는 순간 그 고유벡터 방향이 기저에 다시 섞여 들어와 직교성이 무너지고, 같은 고유값이 여러 번 나타나요(Paige의 분석) [6]. ARPACK은 이 문제를 가장 단순하고 튼튼하게 풀어요. 걸음마다 새 벡터를 **이미 있는 모든 기저 벡터**에 대해 고전 Gram–Schmidt로 직교화하고, 그 결과가 많이 줄었으면 한 번 더 해요. 이 판정은 Daniel, Gragg, Kaufman, Stewart(1976)의 것이라 DGKS라고 불러요 [4].
+
+$r$을 직교화하기 전의 노름이 $w$, 뒤의 노름이 $\lVert r\rVert$일 때 $\lVert r\rVert > 0.717\,w$이면 한 번으로 충분해요. 상쇄가 크면($r$의 큰 몫이 이미 기저 안에 있었으면) 남은 몫의 상대오차가 커지므로 다시 직교화해요. 두 번째에도 0.717 아래로 줄면 $r$이 수치적으로 기저 안에 있다고 보고 0으로 둬요. 0.717은 ARPACK이 쓰는 값이에요($1/\sqrt2 \approx 0.7071$보다 조금 커요).
+
+```cpp
+            // csrc/sparse/arpack.cpp, Sym::saitr
+            gemv_t(S.V.data(), n, j, P.mode != 2 ? pj : vjw, rj);
+            orth_sub(S.V.data(), n, j, rj, resid, S.tmp);
+            h2[j - 1] = rj[j - 1];
+            h1[j - 1] = (j == 1 || rstart) ? 0.0 : S.rnorm;
+            if (P.gen) {
+                vcopy(resid, rj, n);
+                P.bx(rj, pj);
+            } else vcopy(resid, pj, n);
+            S.rnorm = P.gen ? bnorm(resid, pj, n) : nrm2(resid, n);
+            if (!(S.rnorm > 0.717 * wnorm)) {
+```
+
+`gemv_t`가 $V^{\mathsf H}(Br)$의 열 내적, `orth_sub`가 $r \leftarrow r - Vh$예요. 대칭이므로 $h$의 마지막 원소가 $T$의 대각 $\alpha_j$가 되고, 앞 걸음의 $\lVert r\rVert$가 부대각 $\beta_j$가 돼요. 일반화 문제($M$이 있을 때, ARPACK의 `bmat = 'G'`)는 내적과 노름이 모두 $M$-내적 $\langle x, y\rangle_M = x^{\mathsf H} M y$라서 `P.bx`로 $Mr$을 만들어 둬요.
+
+### 불변 부분공간
+
+$\lVert r\rVert = 0$이면 Krylov 부분공간이 $A$의 불변 부분공간이 되었다는 뜻이에요. 그 안의 Ritz 쌍은 정확한 고유쌍이지만 더 늘릴 방향이 없어요. 이때 `getv0`가 무작위 벡터를 뽑아 기저에 직교화하고 이어 가요(세 번까지; 실패하면 상태 −9999). 무작위 벡터는 시작 벡터를 뽑은 생성기에서 나와요([시작 벡터와 결정성](#시작-벡터와-결정성)).
+
+## 암시적 재시작
+
+### 왜 다시 시작하나
+
+Krylov 부분공간을 계속 늘리면 기저 벡터의 메모리($n \times m$)와 직교화 비용($O(nm^2)$)이 끝없이 커져요. 그래서 기저를 `ncv`개까지만 두고, 다 차면 원하는 쪽 정보만 남긴 짧은 부분공간에서 다시 늘려요. 가장 단순한 재시작은 원하는 Ritz 벡터들의 합을 새 시작 벡터로 삼는 것이지만, Sorensen(1992)의 암시적 재시작은 기저를 버리지 않고 같은 일을 더 정확하게 해요 [2].
+
+### 정확한 이동과 다항식 거르개
+
+$m = k + p$걸음의 분해 $AV_m = V_m H_m + r_m e_m^{\mathsf T}$에서, 원하지 않는 Ritz 값 $\mu_1, \ldots, \mu_p$를 이동으로 삼아 $H_m$에 이동 QR을 $p$번 해요.
+
+$$
+H_m - \mu_j I = Q_j R_j,\qquad H_m \leftarrow Q_j^{\mathsf H} H_m Q_j
+$$
+
+$Q = Q_1\cdots Q_p$로 기저를 $V_m Q$로 바꾸면 앞의 $k$열이 다시 $k$걸음의 Krylov 분해를 이뤄요. 그 시작 벡터는
+
+$$
+v_1^{+} \propto \psi(A)\,v_1,\qquad \psi(\lambda) = \prod_{j=1}^{p}(\lambda - \mu_j)
+$$
+
+이에요. $\psi$는 원하지 않는 Ritz 값에서 0이 되는 다항식이라 그 방향의 성분을 지우고 원하는 방향을 남기는 거르개예요. 이동으로 원하지 않는 Ritz 값을 그대로 쓰는 것을 **정확한 이동**이라고 해요. 남은 $k$걸음에서 $p$걸음만 더 늘리면 되므로, 곱은 재시작마다 $p$번이에요.
+
+`sapps`(`dsapps`)는 이 QR을 삼중대각 행렬에서 Givens 회전으로 해요. $T - \mu I$의 첫 열로 첫 회전을 정하고, 그 회전이 만든 대각 밖의 혹(bulge)을 회전으로 아래로 밀어내요([고유값 분해](/internals/linalg/eigen/)의 암시적 shift와 같은 생각이에요). 부대각이 $u\,(|\alpha_i| + |\alpha_{i+1}|)$ 아래이면 0으로 두고 블록을 나눠 따로 돌려요. 끝나면 `update_basis`가 $V Q$의 필요한 열만 만들고 나머지 $r$을 고쳐요.
+
+```cpp
+    // csrc/sparse/arpack.cpp, Sym::update_basis
+    void update_basis(int64_t n, int64_t kev, int64_t kp, bool use_beta, double beta, const double* Qd) {
+        double* wd = S.workd.data();
+        auto Qcol = [&](int64_t j) { return Qd + (j - 1) * ncv; };
+        if (use_beta) gemv_n(S.V.data(), n, kp, Qcol(kev + 1), wd + n, true);
+        for (int64_t i = 1; i <= kev; ++i) {
+            gemv_n(S.V.data(), n, kp - i + 1, Qcol(kev - i + 1), wd, true);
+            vcopy(wd, S.v(kp - i + 1), n);
+        }
+        for (int64_t j = 1; j <= kev; ++j) vcopy(S.v(kp - kev + j), S.v(j), n);
+        if (use_beta) vcopy(wd + n, S.v(kev + 1), n);
+        scal(Qcol(kev)[kp - 1], S.resid.data(), n);
+        if (use_beta) axpy(beta, S.v(kev + 1), S.resid.data(), n);
+    }
+```
+
+$Q$는 아래 띠가 $p$인 위 Hessenberg 꼴이라 $VQ$의 $i$째 열은 앞의 $k_p - i + 1$열만 섞어요. 그래서 뒤에서부터 계산해 $V$의 뒤쪽 칸에 덮어쓰고 마지막에 앞으로 옮겨요. 작업 공간이 벡터 하나로 끝나요.
+
+### 이동 고르기와 수렴
+
+`sgets`(`dsgets`)는 Ritz 값을 `which`의 순서로 정렬해 원하는 $k$개를 뒤에, 이동 $p$개를 앞에 둬요. 정렬은 ARPACK의 shell sort(`dsortr`)를 그대로 옮겼어요. 같은 값의 순서까지 ARPACK과 같아야 이동의 순서와 결과의 비트가 같기 때문이에요. `'BE'`는 대수적으로 정렬한 뒤 양 끝에서 반씩 고르도록 자리를 맞바꿔요. 이동은 오차 어림이 큰 것부터 써요.
+
+수렴은 Ritz 값마다 오차 어림을 그 크기와 견줘요.
+
+```cpp
+    // csrc/sparse/arpack.cpp, Sym::sconv
+    int64_t sconv(int64_t m, const double* r, const double* b) const {
+        int64_t c = 0;
+        for (int64_t i = 0; i < m; ++i)
+            if (b[i] <= tol * std::max(eps23(), std::fabs(r[i]))) ++c;
+        return c;
+    }
+```
+
+판정은 $\lVert r\rVert\,|e_m^{\mathsf T}y| \le \mathrm{tol}\cdot\max(u^{2/3}, |\theta|)$이에요. `tol = 0`(기본)이면 $\varepsilon = 2^{-52}$를 쓰고, $u^{2/3}$의 $u$는 LAPACK `dlamch('E')` $= 2^{-53}$이에요. 0에 가까운 Ritz 값은 상대 판정이 너무 엄격하므로 $u^{2/3} \approx 2.3\times10^{-11}$을 바닥으로 둬요.
+
+수렴한 것이 적으면 재시작의 정체를 막으려고 남길 벡터 수를 늘려요(`dsaup2`의 nev 조정).
+
+```cpp
+            // csrc/sparse/arpack.cpp, Sym::saup2
+            } else if (nconv < nev) {
+                const int64_t nevbef = nev;
+                nev = nev + std::min(nconv, np / 2);
+                if (nev == 1 && kplusp >= 6) nev = kplusp / 2;
+                else if (nev == 1 && kplusp > 2) nev = 2;
+                np = kplusp - nev;
+                if (nevbef < nev) sgets(true, nev, np, ritz.data(), bounds.data());
+            }
+```
+
+이미 수렴한 Ritz 벡터를 버리면 다시 만들어야 하므로 그만큼 더 남겨요. 오차 어림이 정확히 0인 이동은 쓰지 않고 남길 쪽으로 옮겨요(정확한 고유쌍이에요). 수렴한 쌍을 재시작에서 지키는 이런 처리의 이론은 Lehoucq–Sorensen(1996)에 있어요 [3].
+
+고리는 원하는 $k$개가 모두 수렴하거나, 재시작이 `max_iter`(기본 $10n$)를 넘거나, 쓸 이동이 없을 때 끝나요. 상태는 ARPACK의 `info` 그대로예요.
+
+| `status` | 뜻 |
+|---|---|
+| 0 | 원하는 $k$개가 모두 수렴 |
+| 1 | 재시작 상한 `max_iter`에 닿음 |
+| 3 | 재시작에서 쓸 이동이 없음(`ncv`를 늘리면 나아질 수 있어요) |
+| −9999 | 불변 부분공간을 만난 뒤 무작위 벡터 세 번으로도 분해를 늘리지 못함 |
+
+수렴하지 못해도 예외가 아니라 결과의 상태예요. 그때도 수렴한 쌍은 결과에 들어 있어요.
+
+### Ritz 벡터: `seupd`
+
+고리가 끝나면 `seupd`(`dseupd`)가 수렴한 Ritz 값과 벡터를 꺼내요. 마지막 $T$를 `dsteqr`로 다시 분해해 고유벡터 행렬 $Z$를 얻고, 수렴한 열을 앞으로 모아요. 그 $Z$의 앞 $k$열을 `dgeqr2`로 QR 분해해 Householder 반사를 $V$에 오른쪽에서 곱하면(ARPACK의 `dorm2r`) $V Z$의 앞 $k$열이 정규직교 Ritz 벡터가 돼요. 반사를 곱하는 일은 $V$의 행 구간마다 따로 하므로 스레드에 나뉘어도 원소 하나의 계산은 같아요. 값은 오름차순으로 정렬해요(`dsesrt`).
+
+## 스펙트럼 변환
+
+### 가운데의 고유값
+
+Krylov 방법은 양 끝 고유값을 빨리 찾지만, 0 근처처럼 스펙트럼 안쪽이나 붙어 있는 작은 고유값은 느려요. 위의 라플라시안에서 가장 작은 세 개를 `'SA'`로 구하면 곱이 626번 들어요. 그 대신 $(A - \sigma I)^{-1}$의 가장 큰 고유값을 구하면, $\lambda$ 근처의 고유값이 $\nu = 1/(\lambda - \sigma)$로 바뀌어 가장 큰 쪽으로 떨어져 나와요.
+
+```python
+>>> t = sd.sparse.eigsh(A, k=3, which='SA')
+>>> t.n_op
+626
+>>> s = sd.sparse.eigsh(A, k=3, sigma=0.0)
+>>> s.eigenvalues
+array([0.0009674354160238701,  0.003868805732811313,  0.008701304061962843], dtype=float64)
+>>> s.n_op, s.n_iter
+(21, 1)
+```
+
+shift-invert는 재시작 없이 곱 21번으로 끝났어요. 곱 하나가 희소 LU의 풀이(아래)라서 곱 하나는 비싸지만, 대개는 그 값을 하고도 남아요.
+
+ARPACK은 연산자 OP와 내적의 행렬 $B$를 바꾸는 다섯 모드를 둬요. `eigsh`의 `mode`와 `M`, `sigma`가 이 모드를 골라요.
+
+| 모드 | 쓰는 때 | OP | $B$ | OP의 고유값 $\nu$에서 $\lambda$ |
+|---|---|---|---|---|
+| 1 | 보통 | $A$ | $I$ | $\lambda = \nu$ |
+| 2 | `M`이 있음 | $M^{-1}A$ | $M$ | $\lambda = \nu$ |
+| 3 | `sigma`, `mode='normal'` | $(A - \sigma M)^{-1}M$ | $M$ | $\lambda = \sigma + 1/\nu$ |
+| 4 | `mode='buckling'` | $(A - \sigma M)^{-1}A$ | $A$ | $\lambda = \sigma\nu/(\nu - 1)$ |
+| 5 | `mode='cayley'` | $(A - \sigma M)^{-1}(A + \sigma M)$ | $M$ | $\lambda = \sigma(\nu + 1)/(\nu - 1)$ |
+
+모드 2–5는 OP가 $B$-내적에 대해 자기수반이라서 대칭 Lanczos를 그대로 쓸 수 있어요(Ericsson–Ruhe의 스펙트럼 변환 Lanczos) [7]. 모드 4는 $A$가 양정치이고 $M$이 부정일 수 있는 좌굴 문제, 모드 5는 Cayley 변환이에요. `Problem::op1`이 ARPACK의 요청 `ido = 1`(이미 계산한 $Bx$가 있을 때의 OP·x)을 모드마다 이렇게 받아요.
+
+```cpp
+    // csrc/sparse/arpack.cpp, Problem::op1
+    void op1(T* x, const T* bx, T* y) {
+        ++nopx;
+        if (sym) {
+            switch (mode) {
+                case 1: A.apply(x, y); return;
+                case 2:
+                    A.apply(x, t1.data());
+                    vcopy(t1.data(), x, n);
+                    inv.apply(x, y);
+                    return;
+                case 5:
+                    A.apply(x, t1.data());
+                    for (int64_t i = 0; i < n; ++i) t2[i] = add(t1[i], mul(T(sigma), bx[i]));
+                    inv.apply(t2.data(), y);
+                    return;
+                default: inv.apply(bx, y); return;
+            }
+        }
+```
+
+ARPACK은 원래 역통신(reverse communication)이라 `ido`로 "이 벡터에 OP를 곱해 달라"고 요청하고 호출자가 곱해 돌려줘요. 여기서는 그 요청 자리에서 연산자를 바로 불러요. 무엇을 곱하는지는 scipy의 래퍼(`arpack.py`의 `iterate`)가 요청을 받는 순서와 같아요. 모드 2는 $x$ 자리에 $Ax$를 남겨 두는데, `dsaitr`가 그 값으로 $M$-노름을 재기 때문이에요.
+
+### 역은 희소 LU로
+
+`inv`, 곧 $(A - \sigma M)^{-1}$이나 $M^{-1}$은 Python 층(`_eigen.py`)이 만들어요. $A$와 $M$이 행렬(희소나 밀집)이면 $A - \sigma M$을 CSC로 만들어 [`splu`](/api/sparse/splu/)와 같은 Accelerate LU(AMD 순서)로 한 번 분해하고, 곱마다 풀이 하나와 반복 다듬기 한 번을 해요. $\sigma$가 고유값이면 분해가 특이로 판정되어 `LinAlgError("eigsh(): singular matrix")`예요. 일반 `LinearOperator`는 역을 만들 수 없으므로 scipy처럼 곱마다 [`gmres`](/api/sparse/gmres/)로 풀어요. 상대 허용오차는 $\max(\mathrm{tol}, 1000\sqrt n\,\varepsilon)$(`tol = 0`이면 $2\varepsilon$)이에요.
+
+```python
+        # src/stardust/sparse/_eigen.py, _Inverse.__init__
+        else:
+            n = op.shape[0]
+            t = tol if tol > 0 else 2 * _EPS
+            self.rtol = max(t, 1000 * math.sqrt(n) * _EPS)
+```
+
+### 정화
+
+모드 3–5에서 Ritz 벡터는 OP의 고유벡터 어림이에요. `dseupd`는 그 벡터에 남은 잔차 방향을 한 번 더 더해 다듬어요(정화, Nour-Omid, Parlett, Ericsson, Jensen 1987) [5]. $x = Vz$의 OP 잔차는 $r\,(e_m^{\mathsf T} z)$이므로, $\theta$를 OP의 Ritz 값이라 할 때
+
+$$
+x \leftarrow x + \frac{e_m^{\mathsf T} z}{\theta}\, r
+$$
+
+로 고치면 $M$이 특이일 때 생기는 영공간 쪽 성분이 줄어요.
+
+```cpp
+            // csrc/sparse/arpack.cpp, Sym::seupd
+            std::vector<double> pw(nconv);
+            for (int64_t k = 0; k < nconv; ++k) {
+                if (type == "BUCKLE") pw[k] = e[k] / (iw[k] - 1.0);
+                else pw[k] = e[k] / iw[k];
+            }
+            // z = V(:, 1:nconv) + resid pw^T (the purification, dger)
+            const double* resid = S.resid.data();
+            for (int64_t j = 0; j < nconv; ++j) {
+                double* zj = S.v(j + 1);
+                const double t = pw[j];
+                each(n, [&](int64_t i) { zj[i] = std::fma(resid[i], t, zj[i]); });
+            }
+```
+
+`e`는 QR로 바꾼 $Z$의 마지막 행, `iw`는 되돌리기 전의 Ritz 값 $\theta$예요.
+
+## 비대칭 행렬: Arnoldi
+
+### Hessenberg와 그 고유값
+
+`eigs`는 `naitr`(`dnaitr`)로 Arnoldi 분해를 늘려요. 직교화와 DGKS는 Lanczos와 같고, 열 하나의 내적 전체가 $H$의 $j$째 열이 돼요. 걸음이 끝나면 부부대각 $h_{i+1,i}$가 $\mathrm{ulp}\cdot(|h_{ii}| + |h_{i+1,i+1}|)$ 아래인 곳을 0으로 둬요.
+
+작은 Hessenberg $H$의 Ritz 값은 `dlahqr`(Francis 이중 shift QR)로, Ritz 벡터는 Schur 꼴에서 `dtrevc`로 구해요([고유값 분해](/internals/linalg/eigen/)의 `lahqr`·`trevc3`와 같은 알고리즘이에요). 오차 어림은 Schur 벡터 행렬의 마지막 행과 고유벡터를 곱한 값에 $\lVert r\rVert$를 곱한 것이에요. Accelerate의 `dlahqr`는 Schur 벡터의 행 하나만 갱신하게 주면(`iloz = ihiz = 1`, `ldz = 1`) 그 행을 바꾸지 않아서, 단위 행렬 전체를 주고 마지막 행을 읽어요. 행마다 따로 갱신되므로 ARPACK의 값과 같아요.
+
+### 실수 행렬의 켤레 쌍과 이중 이동
+
+실수 비대칭 행렬의 고유값은 켤레 쌍 $\mu, \bar\mu$로 나와요. 복소 이동을 하나씩 쓰면 복소 산술이 필요하지만, 쌍을 함께 쓰면 $(H - \mu I)(H - \bar\mu I) = H^2 - 2\operatorname{Re}\mu\,H + |\mu|^2 I$가 실수 행렬이에요. `napps`(`dnapps`)는 이 이중 이동을 Francis의 방법대로 암시적으로 해요. 그 행렬의 첫 열(세 원소만 0이 아니에요)을 $h_{21}$로 나눈 벡터로 3 × 3 Householder 반사를 정하고, 생긴 혹을 반사로 아래로 밀어내요.
+
+```cpp
+                        // csrc/sparse/arpack.cpp, Real::napps
+                        const double s = 2.0 * sigmar, t = lapy2(sigmar, sigmai);
+                        double u[3];
+                        u[0] = (h11 * (h11 - s) + t * t) / h21 + h12;
+                        u[1] = h11 + h22 - s;
+                        u[2] = h32;
+```
+
+`s`가 $2\operatorname{Re}\mu$, `t`가 $|\mu|$예요. 첫 열은 $(h_{11}^2 + h_{12}h_{21} - s\,h_{11} + t^2,\; h_{21}(h_{11} + h_{22} - s),\; h_{21}h_{32})$이고 $h_{21}$로 나누면 위의 세 값이에요. 실수 이동은 Givens 회전 하나로 해요.
+
+이동을 고르는 `ngets`(`dngets`)는 켤레 쌍을 가르지 않아요. 원하는 $k$개와 이동의 경계가 쌍을 가르면 하나를 원하는 쪽으로 옮겨요($k$가 하나 늘어요). 그래서 `eigs`는 $k < n - 1$, `ncv` $> k + 1$을 요구하고, scipy가 `dnaup2`에 덧댄 조정($k \le$ `ncv` − 2를 지킴)도 함께 옮겼어요. 결과의 고유값은 언제나 complex128이고, 켤레 쌍은 실수부·허수부로 나온 ARPACK의 출력을 scipy의 순서대로 짝지어 $k$개를 내요.
+
+복소 문제는 `znaupd`로 같은 일을 복소 Givens로 해요. 이중 이동이 필요 없어요.
+
+### 모드
+
+`eigs`의 모드는 1(보통), 2(`M`), 3(shift-invert)이고, 실수 $A$에 복소 $\sigma$를 주면 $(A - \sigma M)^{-1}$이 복소라서 그 실수부(`OPpart='r'`, 모드 3)나 허수부(`'i'`, 모드 4)를 실수 연산자로 써요. 그때 고유값은 OP의 Ritz 값에서 되돌릴 수 없고 Ritz 벡터의 Rayleigh 몫 $x^{\mathsf H}Ax/x^{\mathsf H}x$로 구해요. 그래서 `return_eigenvectors=False`여도 안에서는 벡터를 구해 값을 내요.
+
+## 시작 벡터와 결정성
+
+### 정해진 시작 벡터
+
+`v0`를 주지 않으면 `sd.random.default_rng(0)`의 균등 난수로 $2u - 1$을 만들어요($[-1, 1)$, scipy의 시작 벡터와 같은 꼴). 복소 문제는 연속한 두 값이 실수부와 허수부예요. `rng=`를 주면 그 생성기에서 뽑아요. 불변 부분공간에서 ARPACK이 무작위 벡터를 청할 때도 같은 생성기의 다음 값을 써요. 그래서 같은 호출은 언제나 같은 결과예요.
+
+```python
+>>> u = sd.random.default_rng(0).random(n) * 2.0 - 1.0
+>>> bool(sd.all(sd.sparse.eigsh(A, k=3, which='LA', v0=u).eigenvalues == r.eigenvalues))
+True
+```
+
+`getv0`는 받은 시작 벡터에 OP를 한 번 곱한 $\mathrm{OP}\,v_0$에서 출발해요(arpack-ng의 동작이에요). 그래서 첫 곱의 입력은 $v_0$ 자체예요.
+
+### 스레드 수와 상관없는 비트
+
+큰 벡터의 일은 모두 `csrc/sparse/krylov.hpp`의 결정적인 커널이에요. 반복법([`cg`](/api/sparse/cg/) 등)과 함께 쓰는 커널이라 같은 연산은 같은 비트예요.
+
+- 내적은 `sd.linalg.vecdot`의 합이에요. 512개짜리 잎을 FMA로 더하고 잎의 합을 정해진 이진 트리로 합쳐요. $V^{\mathsf H}x$처럼 여러 열의 내적(`dots`)은 잎마다 모든 열을 한꺼번에 계산해서 $x$의 잎을 캐시에서 한 번만 읽지만, 열마다의 트리는 `dot` 하나와 같아요.
+- 노름은 `sd.linalg.vector_norm`이에요.
+- $y \leftarrow y + Vc$(`gaxpy`)는 원소마다 열 순서의 FMA예요. 행 구간으로 나눠도 원소 하나의 계산 순서는 그대로예요.
+
+```cpp
+    // csrc/sparse/krylov.hpp, dots
+    for_tasks(nt, n * j, [&](int64_t t) {
+        for (int64_t q = t * per; q < std::min(nl, (t + 1) * per); ++q) {
+            const int64_t b0 = lv[static_cast<std::size_t>(q)].first, m = lv[static_cast<std::size_t>(q)].second;
+            int64_t l = 0;
+            if constexpr (!kComplex<T>)
+                for (; l + 2 <= j; l += 2)
+                    dot_leaf2(
+                        V + l * n + b0, V + (l + 1) * n + b0, x + b0, m, parts[l * nl + q], parts[(l + 1) * nl + q]
+                    );
+            for (; l < j; ++l) parts[l * nl + q] = dot_leaf(V + l * n + b0, x + b0, m);
+        }
+    });
+    for (int64_t l = 0; l < j; ++l) y[l] = dot_of_leaves(n, parts.data() + l * nl, nl);
+```
+
+일을 나누는 기준이 $n$과 열 수뿐이라 스레드풀이 어떻게 나눠 맡든 같은 비트예요. 행렬의 곱은 희소 SpMV(합의 순서가 형식과 무관해요)이고, 밀집 행렬과 `aslinearoperator`로 감싼 행렬도 같은 SpMV를 타요. 그래서 CSR·CSC·COO·DOK, 밀집 배열, `aslinearoperator(A)`, `A @ v`를 부르는 Python `LinearOperator`가 모두 같은 비트를 내요. 큰 문제에서 연산자가 모두 C++ 커널이면 반복 내내 GIL을 놓고, Python `LinearOperator`는 곱마다 GIL을 쥐고 Python을 불러요.
+
+<Callout>
+shift-invert의 LU는 Accelerate가 계산해요. 그 비트는 sd의 스레드 수와 무관하고, Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같으면 같아요. BLAS·LAPACK을 부르는 다른 함수와 같은 규칙이에요.
+</Callout>
+
+### 고유벡터의 부호
+
+고유벡터의 부호(복소면 위상)는 정하지 않아요. ARPACK이 내는 그대로이고, [`sd.linalg.eigh`](/api/linalg/eigh/)와 같은 규칙이에요.
+
+## scipy·R과 다른 곳
+
+- **같은 계산 순서.** 같은 `v0`로 scipy와 견준 스무 문제(1·2차원 라플라시안, 무작위 대칭·비대칭·복소, 모든 `which`)에서 상태가 모두 같고, 열다섯 문제에서 곱의 수까지 같아요. 나머지 다섯은 겹친 고유값이나 느린 수렴 때문에 scipy 자신이 `v0`의 한 원소를 1 ulp 바꾸면 곱의 수가 흔들리는 문제이고, sd의 수는 그 폭을 10% 넓힌 범위 안이에요. 값은 순서와 상관없이 상대 $10^{-9}$ 안에서 같아요. 모드 2–5, 복소 $\sigma$와 `OPpart`, 복소 에르미트 문제에서도 값과 그 순서가 같아요.
+- **`tol = 0`.** scipy의 ARPACK이 쓰는 $2^{-52}$예요(LAPACK의 `dlamch('E')`는 $2^{-53}$이지만, scipy의 수렴 판정과 같은 곱의 수가 나오는 것은 $2^{-52}$예요). $u^{2/3}$과 `dsapps`의 분리 판정은 $2^{-53}$의 것이에요.
+- **시작 벡터.** scipy는 `v0`가 없으면 시드 없는 난수를 써서 실행마다 결과의 끝자리와 곱의 수가 달라질 수 있어요. sd는 정해진 생성기예요.
+- **`k`가 클 때.** scipy는 $k \ge n$(eigs는 $n - 1$)에서 경고를 내고 밀집 풀이로 넘어가요. sd는 `ValueError`이고 메시지가 `sd.linalg.eigh(A.toarray())`(`eig`)를 짚어요.
+- **`sigma` 없는 `mode`.** scipy는 조용히 보통 모드로 풀어요. sd는 `ValueError`예요.
+- **실수 $A$와 복소 $\sigma$의 값만.** scipy의 `eigs(return_eigenvectors=False)`는 이 경우 고유값이 모두 0이에요(벡터 없이 Rayleigh 몫을 구해요). sd는 안에서 벡터를 구해 값을 내요.
+- **수렴 실패.** scipy는 `ArpackNoConvergence` 예외에 부분 결과를 담아요. sd는 결과의 `status`와 수렴한 쌍이에요.
+- **R의 RSpectra**(Spectra의 재시작 Lanczos·Arnoldi)는 겹친 고유값의 중복도를 놓칠 수 있어요. 30 × 30 격자의 2차원 라플라시안 `'LM'`에서 두 번씩 있는 고유값을 한 번씩만 찾아요. ARPACK의 전체 재직교화는 같은 고유값의 두 고유벡터를 모두 찾아요.
+
+## 참고 문헌
+
+1. R. B. Lehoucq, D. C. Sorensen, C. Yang, *ARPACK Users' Guide: Solution of Large-Scale Eigenvalue Problems with Implicitly Restarted Arnoldi Methods*, SIAM, 1998.
+2. D. C. Sorensen, "Implicit application of polynomial filters in a k-step Arnoldi method," *SIAM J. Matrix Anal. Appl.* 13 (1992) 357–385.
+3. R. B. Lehoucq, D. C. Sorensen, "Deflation techniques for an implicitly restarted Arnoldi iteration," *SIAM J. Matrix Anal. Appl.* 17 (1996) 789–821.
+4. J. W. Daniel, W. B. Gragg, L. Kaufman, G. W. Stewart, "Reorthogonalization and stable algorithms for updating the Gram–Schmidt QR factorization," *Math. Comp.* 30 (1976) 772–795.
+5. B. Nour-Omid, B. N. Parlett, T. Ericsson, P. S. Jensen, "How to implement the spectral transformation," *Math. Comp.* 48 (1987) 663–673.
+6. B. N. Parlett, *The Symmetric Eigenvalue Problem*, SIAM, 1998(Kaniel–Paige 이론과 Paige의 직교성 분석).
+7. T. Ericsson, A. Ruhe, "The spectral transformation Lanczos method for the numerical solution of large sparse generalized symmetric eigenvalue problems," *Math. Comp.* 35 (1980) 1251–1268.

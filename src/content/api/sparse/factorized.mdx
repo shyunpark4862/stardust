@@ -1,0 +1,144 @@
+---
+kind: function
+title: factorized
+names: [factorized]
+group: 직접 풀이
+order: 3
+signatures:
+  - "sd.sparse.factorized(A, /)"
+summary: 정사각 희소 행렬 A를 한 번 분해하고, 우변 b를 받아 A x = b의 해를 돌려주는 함수를 돌려줘요. splu(A).solve와 같은 것이라, 분해를 함수 하나로 넘기고 싶을 때 써요.
+params:
+  - name: A
+    type: 희소 배열
+    kind: positional-only
+    desc: 분해할 행렬. 2차원 정사각이어야 하고 형식은 무엇이든 돼요.
+returns:
+  type: 호출 가능한 객체
+  desc: "solve(b, *, trans='N'). splu(A)의 solve 메서드 그 자체예요. b는 밀집 (n,)이나 (n, k)이고 결과는 b와 같은 모양이에요."
+raises:
+  - type: TypeError
+    desc: A가 희소 배열이 아닐 때(밀집 배열이면 sd.linalg.lu를 쓰라고 알려 줘요).
+  - type: ValueError
+    desc: A가 2차원이 아니거나 정사각이 아닐 때, A에 NaN·inf가 저장돼 있을 때.
+  - type: LinAlgError
+    desc: A가 특이할 때(spsolve와 같은 판정). factorized를 부르는 순간에 나요.
+seeAlso: [splu, spsolve, linearoperator, cg, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`factorized(A)`는 `A`를 분해해 두고, 그 분해로 푸는 **함수**를 돌려줘요. 돌아온 함수에 우변을 넣으면 해가 나와요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[4.0, -1.0, 0.0],
+...                                     [-1.0, 4.0, -1.0],
+...                                     [0.0, -1.0, 4.0]]))
+>>> solve = sd.sparse.factorized(A)
+>>> solve(sd.asarray([3.0, 2.0, 3.0]))
+array([1.0, 1.0, 1.0], dtype=float64)
+>>> solve(sd.asarray([4.0, -1.0, 0.0]))
+array([1.0, 0.0, 0.0], dtype=float64)
+```
+
+분해는 `factorized`를 부를 때 한 번 하고, `solve`를 부를 때마다 대입만 해요.
+
+<Reference />
+
+## `splu(A).solve`와 같아요
+
+`factorized(A)`가 돌려주는 것은 [`splu(A)`](/api/sparse/splu/)가 만드는 분해 객체의 `solve` 메서드예요. 그래서 할 수 있는 일, 결과, 에러가 모두 `splu(A).solve`와 같고, `trans=`로 전치 시스템도 풀어요.
+
+```python
+>>> solve
+<bound method SparseLU.solve of SparseLU(shape=(3, 3), dtype=float64)>
+>>> solve(sd.asarray([3.0, 2.0, 3.0]), trans="T")
+array([1.0, 1.0, 1.0], dtype=float64)
+>>> solve(sd.asarray([[3.0, 4.0], [2.0, -1.0], [3.0, 0.0]]))
+array([[1.0, 1.0],
+       [1.0, 0.0],
+       [1.0, 0.0]], dtype=float64)
+```
+
+둘 가운데 무엇을 쓸지는 손에 쥐고 싶은 것이 무엇이냐에 달렸어요.
+
+- 분해 객체를 두고 `shape`을 보거나 이름 붙은 메서드로 부르고 싶으면 [splu](/api/sparse/splu/).
+- "벡터를 받아 벡터를 돌려주는 함수" 하나를 다른 코드에 넘기고 싶으면 `factorized`.
+
+## 함수로 넘기기: 전처리기
+
+함수 하나로 넘길 수 있다는 점이 쓸모 있는 곳이 **전처리기**예요. 반복법 [cg](/api/sparse/cg/)는 `M=`으로 "$A^{-1}$에 가까운 연산"을 받으면 더 적은 반복으로 수렴해요. $A$와 비슷하면서 분해하기 쉬운 행렬 $P$가 있으면, `factorized(P)`를 [LinearOperator](/api/sparse/linearoperator/)로 감싸서 그대로 넘길 수 있어요.
+
+아래 $A$는 한 방향(격자의 가로)으로는 강하게, 다른 방향으로는 0.01배로 약하게 엮인 30 × 30 격자의 행렬이에요. 약한 방향의 엮임을 대각만 남기고 버린 $P$는 가로줄마다 따로인 삼중대각 행렬이라 분해가 쉬워요.
+
+```python
+>>> m = 30
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(m, m))
+>>> I = sd.sparse.eye_array(m)
+>>> A2 = sd.sparse.kron(I, T) + 0.01 * sd.sparse.kron(T, I)
+>>> P = sd.sparse.kron(I, T) + 0.02 * sd.sparse.eye_array(m * m)
+>>> M = sd.sparse.LinearOperator(A2.shape, sd.sparse.factorized(P))
+>>> b2 = sd.ones(m * m)
+>>> sd.sparse.cg(A2, b2).n_iter
+98
+>>> sd.sparse.cg(A2, b2, M=M).n_iter
+12
+```
+
+전처리기 없이 98번 걸리던 반복이 12번으로 줄었어요. 반복마다 `M`을 한 번 부르니까, 분해를 미리 해 둔 `factorized`가 제격이에요.
+
+## 밀집 짝
+
+밀집 배열에는 `factorized`에 해당하는 함수가 따로 없어요. [`sd.linalg.lu`](/api/linalg/lu/)로 분해하고 [`sd.linalg.lu_solve`](/api/linalg/lu_solve/)에 분해 결과를 묶어 두면 같은 일을 해요.
+
+```python
+>>> import functools
+>>> dense_solve = functools.partial(sd.linalg.lu_solve, *sd.linalg.lu(A.toarray()))
+>>> dense_solve(sd.asarray([3.0, 2.0, 3.0]))
+array([1.0, 1.0, 1.0], dtype=float64)
+```
+
+## 조심할 점
+
+### 에러가 나는 때
+
+특이 행렬과 잘못된 행렬은 `factorized`를 부를 때 에러예요. 메시지는 `factorized(): `로 시작해요. 돌아온 함수에 잘못된 우변을 주면 메서드 이름 `solve(): `로 시작하는 에러예요.
+
+```python
+>>> sd.sparse.factorized(sd.sparse.csr_array(sd.asarray([[1.0, 2.0], [2.0, 4.0]])))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: factorized(): singular matrix
+>>> sd.sparse.factorized(A.toarray())
+Traceback (most recent call last):
+    ...
+TypeError: factorized(): 'A' must be a sparse array, not ndarray; for a dense array use sd.linalg.lu
+>>> solve(sd.ones(2))
+Traceback (most recent call last):
+    ...
+ValueError: solve(): the factor is 3x3 but 'b' has 2 rows
+```
+
+### `trans`는 키워드로
+
+`solve(b, "T")`처럼 위치로 넘기면 `TypeError`예요. `trans="T"`로 쓰세요.
+
+```python
+>>> solve(sd.ones(3), "T")
+Traceback (most recent call last):
+    ...
+TypeError: solve(): takes 1 positional argument but 2 were given
+```
+
+<Callout type="note" title="분해는 함수가 들고 있어요">
+
+돌아온 함수가 살아 있는 동안 분해도 메모리에 남아 있어요. 큰 행렬의 분해는 원래 행렬보다 몇 배 클 수 있으니, 다 쓴 함수는 지워 두세요.
+
+</Callout>
+
+## scipy를 아는 분께
+
+- scipy의 `factorized`는 UMFPACK이 있으면 그것으로, 없으면 SuperLU의 `solve`를 돌려줘요. 여기서는 언제나 `splu(A).solve`이고 `use_umfpack` 같은 설정은 없어요.
+- 돌아온 함수는 `trans='N' | 'T' | 'H'`를 키워드로 받아요.
+- 특이 행렬은 `factorized(): singular matrix`(`LinAlgError`)예요. scipy는 `RuntimeError`이거나 경고 없이 분해해요.

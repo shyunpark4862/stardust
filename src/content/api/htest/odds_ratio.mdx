@@ -1,0 +1,192 @@
+---
+kind: function
+title: odds_ratio
+names: [odds_ratio]
+group: 분할표
+order: 7
+signatures:
+  - "sd.htest.odds_ratio(table, /, *, kind='conditional')"
+summary: 2 × 2 표의 오즈비를 추정하고 그 신뢰구간을 줘요. 기본은 Fisher 정확 검정과 짝이 맞는 조건부 최우추정과 정확한 구간이고, kind='sample'이면 표본 오즈비 ad/bc와 Woolf 구간이에요. 검정이 아니라 추정이라 p값이 없어요.
+params:
+  - name: table
+    type: ndarray, 정수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 2 × 2 개수 표 [[a, b], [c, d]]. 앞의 축이 있으면 표의 배치예요. 음이 아닌 정수 값이어야 해요(정수 값의 float도 받아요).
+  - name: kind
+    type: str
+    kind: keyword-only
+    desc: "'conditional'(기본값, 주변합을 고정한 조건부 최우추정과 정확한 구간) 또는 'sample'(표본 오즈비 ad/bc와 Woolf 구간)이에요."
+returns:
+  type: OddsRatioResult
+  desc: "statistic(오즈비)을 가진 결과 객체. conf_int(*, alpha=0.05, alternative='two-sided')로 신뢰구간을, summary(*, alpha=0.05)로 요약 상자를 얻어요. 튜플로 풀리지 않고 pvalue가 없어요."
+raises:
+  - type: TypeError
+    desc: table이 배열·수의 시퀀스·frame이 아닐 때, 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "표가 2 × 2가 아닐 때, 음수·정수가 아닌 값·NaN이 있을 때, kind 이름이 틀렸을 때."
+seeAlso: [fisher_exact, relative_risk, chi2_contingency, basics, results]
+---
+## 무엇을 하나요
+
+어떤 일이 일어날 확률이 $p$이면 **오즈**는 $p/(1-p)$예요. 일어날 가능성이 일어나지 않을 가능성의 몇 배인지예요. **오즈비**는 두 집단의 오즈의 비예요.
+
+| | 나음 | 낫지 않음 |
+|---|---:|---:|
+| 치료 | $a = 8$ | $b = 2$ |
+| 대조 | $c = 1$ | $d = 5$ |
+
+치료 집단의 나을 오즈는 $8/2 = 4$, 대조 집단은 $1/5$이라 오즈비는 $4 / (1/5) = 20$이에요. 오즈비가 1이면 두 집단이 같고, 1보다 크면 첫 행(치료)에서 첫 열(나음)이 더 잘 일어나요.
+
+오즈비는 행과 열을 바꿔도 같아서, 사례–대조 연구처럼 열의 크기를 실험에서 정한 자료에서도 쓸 수 있어요. 위험 자체의 비(위험비)는 [`relative_risk`](/api/htest/relative_risk/)예요.
+
+`odds_ratio`는 오즈비의 **추정**과 **신뢰구간**을 줘요. "오즈비가 1인가"의 검정은 [`fisher_exact`](/api/htest/fisher_exact/)예요. 기본 `kind='conditional'`의 구간은 그 검정을 뒤집은 것이라 둘이 짝이 맞아요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> table = [[8, 2],
+...          [1, 5]]
+>>> r = sd.htest.odds_ratio(table)
+>>> r
+OddsRatioResult(statistic=15.4658)
+>>> r.conf_int()
+array([1.0088492079476903, 1059.6394950862812], dtype=float64)
+```
+
+조건부 추정값은 15.5이고 95% 신뢰구간은 [1.01, 1060]이에요. 표가 작아서 구간이 아주 넓지만 아래 끝이 1을 넘으므로, 같은 표의 Fisher 검정도 유의수준 0.05에서 기각해요(p = 0.035).
+
+결과는 튜플로 풀리지 않고 `pvalue`가 없어요.
+
+```python
+>>> print(r.summary())
+                 Odds ratio (conditional maximum likelihood)
+==============================================================================
+Statistic:                       15.47
+==============================================================================
+                [0.025     0.975]
+------------------------------------------------------------------------------
+odds ratio       1.009   1059.639
+==============================================================================
+```
+
+## `kind`: 두 가지 추정
+
+### `'conditional'`(기본값)
+
+행합과 열합을 고정하면 왼쪽 위 칸 $a$는 오즈비 $\omega$를 모수로 하는 **Fisher의 비중심 초기하 분포**를 따라요($\omega = 1$이면 Fisher 검정의 초기하 분포예요). 관측한 $a$에서 이 분포의 우도가 가장 큰 $\omega$가 조건부 최우추정이에요. 표본 오즈비보다 1 쪽으로 줄어드는 편이에요.
+
+구간은 그 분포의 꼬리를 뒤집은 정확한 구간이에요. 아래 끝은 $P(X \ge a \mid \omega) = \alpha/2$, 위 끝은 $P(X \le a \mid \omega) = \alpha/2$인 $\omega$예요.
+
+### `'sample'`
+
+표본 오즈비 $ad/bc$와 **Woolf의 구간**이에요. 오즈비의 로그가 대략 정규분포를 따른다고 보고
+
+$$
+\exp\!\left(\log\frac{ad}{bc} \mp z_{\alpha/2}\sqrt{\frac1a + \frac1b + \frac1c + \frac1d}\right)
+$$
+
+예요. 계산이 간단하고 표가 크면 조건부와 거의 같아요.
+
+```python
+>>> s = sd.htest.odds_ratio(table, kind='sample')
+>>> s
+OddsRatioResult(statistic=20)
+>>> s.conf_int()
+array([1.4161851393939537,  282.4489460263488], dtype=float64)
+```
+
+작은 표에서는 근사라 정확한 구간과 많이 달라요. 큰 표에서는 둘이 가까워요.
+
+```python
+>>> big = [[120, 80],
+...        [60, 140]]
+>>> sd.htest.odds_ratio(big).statistic, sd.htest.odds_ratio(big, kind='sample').statistic
+(3.4883529019109667, 3.5)
+>>> sd.htest.odds_ratio(big).conf_int()
+array([2.2662474703015136, 5.4129718112745095], dtype=float64)
+>>> sd.htest.odds_ratio(big, kind='sample').conf_int()
+array([2.3132304095994187, 5.2956246594222005], dtype=float64)
+```
+
+## `conf_int`: alpha와 한쪽 구간
+
+`conf_int(*, alpha=0.05, alternative='two-sided')`예요. `alpha`는 유의수준이고 구간은 1 − alpha예요. `alternative`가 `'greater'`면 위 끝이 inf인 한쪽 구간, `'less'`면 아래 끝이 0인 한쪽 구간이에요.
+
+```python
+>>> r.conf_int(alpha=0.1)
+array([1.3715862463412491,  519.6114483384354], dtype=float64)
+>>> r.conf_int(alternative='greater')
+array([1.3715862463412491,                inf], dtype=float64)
+>>> r.conf_int(alternative='less')
+array([              0.0,  519.6114483384354], dtype=float64)
+```
+
+한쪽 구간의 유한한 끝은 양쪽 90% 구간의 끝과 같아요. `summary(alpha=0.1)`처럼 상자에도 `alpha`를 줄 수 있어요(한쪽 구간은 `conf_int`로만 봐요).
+
+## 0인 칸
+
+- $a$가 가능한 가장 작은 값(주변합이 허락하는 범위의 끝)이면 조건부 추정은 0, 가장 큰 값이면 inf예요. 구간의 한 끝도 0이나 inf예요.
+- `'sample'`에서 $b$나 $c$가 0이면 $ad/bc = \infty$이고, Woolf 구간의 표준오차가 무한대라 끝이 NaN이나 inf가 될 수 있어요.
+- 모두 0인 행이나 열이 있으면 오즈비를 정할 수 없어 NaN이고 구간은 (0, inf)예요.
+
+```python
+>>> sd.htest.odds_ratio([[3, 0], [2, 4]])
+OddsRatioResult(statistic=inf)
+>>> sd.htest.odds_ratio([[3, 0], [2, 4]]).conf_int()
+array([0.3779195591655736,                inf], dtype=float64)
+>>> sd.htest.odds_ratio([[3, 0], [2, 4]], kind='sample').conf_int()
+array([nan, inf], dtype=float64)
+>>> sd.htest.odds_ratio([[0, 0], [2, 4]]).conf_int()
+array([0.0, inf], dtype=float64)
+```
+
+0인 칸이 있으면 기본 `'conditional'`이 더 쓸모 있는 구간을 줘요.
+
+## 배치와 에러
+
+앞의 축이 있으면 2 × 2 표의 배치예요. `conf_int()`는 (배치 모양, 2) 배열이에요.
+
+```python
+>>> B = sd.asarray([[[8, 2], [1, 5]],
+...                 [[20, 10], [10, 20]]])
+>>> rb = sd.htest.odds_ratio(B)
+>>> rb.statistic
+array([15.465819716920992,  3.901234226103989], dtype=float64)
+>>> rb.conf_int().shape
+(2, 2)
+```
+
+정수 값이면 float로 된 표도 받아요.
+
+```python
+>>> sd.htest.odds_ratio([[3.0, 1.0], [2.0, 4.0]])
+OddsRatioResult(statistic=4.91837)
+>>> sd.htest.odds_ratio([[3.5, 1], [2, 4]])
+Traceback (most recent call last):
+    ...
+ValueError: odds_ratio(): 'table' must hold non-negative integer counts
+>>> sd.htest.odds_ratio(table, kind='cond')
+Traceback (most recent call last):
+    ...
+ValueError: odds_ratio(): 'kind' must be 'conditional' or 'sample', not 'cond'
+>>> sd.htest.odds_ratio([[1, 2, 3], [4, 5, 6]])
+Traceback (most recent call last):
+    ...
+ValueError: odds_ratio(): 'table' must be a 2 x 2 table, not 2 x 3
+```
+
+## 정확도
+
+조건부 추정과 정확한 구간의 끝은 비중심 초기하 분포의 방정식을 반올림 몇 번 안으로 풀어요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 10문제(0인 칸, inf, 큰 표, 0인 행, 두 `kind`)에서 추정값은 상대오차 1.4e-16 안, 양쪽 구간의 끝은 1.2e-15 안, 한쪽 구간의 끝은 2.5e-15 안이에요.
+
+## scipy·R을 아는 분께
+
+`scipy.stats.contingency.odds_ratio`와 같은 두 `kind`, 같은 추정과 구간이에요. 다른 점이에요.
+
+- 신뢰구간은 `r.conf_int(alpha=0.05, alternative='two-sided')`예요. scipy의 `confidence_interval(confidence_level=0.95, alternative='two-sided')`에 해당하고, 돌려주는 것은 두 칸의 배열이에요.
+- 정수 값의 float 표를 받아요. scipy는 정수 dtype만 받아요.
+- 앞 축의 배치가 있어요.
+- scipy의 조건부 구간은 근 찾기의 허용오차 때문에 상대 8e-12쯤 다르고, R `fisher.test`의 조건부 추정과 구간은 6e-4까지 달라요.

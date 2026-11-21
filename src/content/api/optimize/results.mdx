@@ -19,12 +19,14 @@ import Callout from '../../../components/Callout.astro';
 >>> grad = lambda x: [-2 * (1 - x[0]) - 400 * x[0] * (x[1] - x[0]**2), 200 * (x[1] - x[0]**2)]
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=grad)
 >>> r
-OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[0.9999999710014291 0.9999999461191459])
+OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[1, 1])
 ```
 
-화면에 보이는 한 줄은 요약이에요. 이 결과에 든 필드를 모두 보려면 `hasattr`로 골라요. `summary`는 필드가 아니라 결과를 표로 그리는 메서드예요([출력하기](#출력하기)).
+화면에 보이는 한 줄은 요약이라 수를 유효숫자 6자리로 줄여 보여 줘요. `x=[1, 1]`의 끝자리까지의 값은 필드 `r.x`로 읽어요. 이 결과에 든 필드를 모두 보려면 `hasattr`로 골라요. `summary`는 필드가 아니라 결과를 표로 그리는 메서드예요([출력하기](#출력하기)).
 
 ```python
+>>> r.x
+array([0.9999999710014291, 0.9999999461191459], dtype=float64)
 >>> [k for k in dir(r) if not k.startswith('_') and hasattr(r, k)]
 ['converged', 'fun', 'hess_inv', 'jac', 'message', 'method', 'n_iter', 'nfev', 'njev', 'status', 'summary', 'x']
 >>> r.converged, r.status, r.message
@@ -347,7 +349,7 @@ $c = 200$인 원소는 $\sqrt{200} \approx 14.1$이 구간 $[0, 10]$ 밖이라 �
 ```python
 >>> b = sd.optimize.find_root(lambda x: x**2 - 2, (0.0, 10.0))
 >>> b
-OptimizeResult(converged=True, fun=-4.44089e-16, n_iter=10, nfev=12, x=1.414213562373095)
+OptimizeResult(converged=True, fun=-4.44089e-16, n_iter=10, nfev=12, x=1.41421)
 >>> type(b.x), type(b.status)
 (<class 'float'>, <class 'int'>)
 ```
@@ -381,11 +383,13 @@ array([              99.0, 1.0000422197517715], dtype=float64)
 
 ## 출력하기
 
-`repr`(그리고 `print`)은 한 줄 요약이에요. 방법, `converged`, 함숫값(최소제곱은 `cost`, 6자리), `n_iter`, `nfev`, `x`를 있는 것만 보여 줘요. 배치는 모양과 수렴한 수만 보여 줘요.
+`repr`(그리고 `print`)은 한 줄 요약이에요. 방법, `converged`, 함숫값(최소제곱은 `cost`), `n_iter`, `nfev`, `x`를 있는 것만 보여 줘요. `root`처럼 함숫값이 배열이면 함숫값은 빼요. 수는 유효숫자 6자리로 적어서 2.0은 `2`로, 0.9999999710014291은 `1`로 보여요. `x`는 원소가 6개까지면 `[5.07832, 0.504554]`처럼 값을 늘어놓고, 더 길면 `<array of shape (7,)>`처럼 모양만 적어요. 배치는 모양과 수렴한 수만 보여 줘요. 회귀 모형과 검정 결과의 `repr`도 같은 꼴이에요.
 
 ```python
 >>> print(sd.optimize.least_squares(lambda p: p[0] * sd.exp(-p[1] * t) - y, [1.0, 1.0]))
-OptimizeResult(method='trf', converged=True, cost=0.00562354, n_iter=7, nfev=21, x=[5.078321029016653 0.504553719846044])
+OptimizeResult(method='trf', converged=True, cost=0.00562354, n_iter=7, nfev=21, x=[5.07832, 0.504554])
+>>> sd.optimize.minimize(lambda x: float(sd.sum((x - sd.arange(7.0))**2)), sd.zeros(7))
+OptimizeResult(method='bfgs', converged=True, fun=6.13839e-16, n_iter=5, nfev=56, x=<array of shape (7,)>)
 ```
 
 `summary()`는 결과를 상자 모양의 표로 그린 글(`str`)이에요. 회귀 모형의 `summary()`와 같은 꼴이라, 한 번 익히면 어느 결과든 같은 방식으로 읽어요. 인자는 없어요. 맨 위의 BFGS 풀이를 그려 볼게요.

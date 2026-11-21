@@ -106,7 +106,7 @@ export const data4 = [[1, 3.1], [2, 5.3], [3, 6.4], [4, 9.0], [5, 11.7], [6, 13.
 
 ```python
 >>> r
-TheilslopesResult(slope=1.876388888888889, intercept=-5.152083333333334, low_slope=0.09999999999999964, high_slope=1.97)
+TheilslopesResult(slope=1.87639, intercept=-5.15208, low_slope=0.1, high_slope=1.97)
 ```
 
 | 칸 | 뜻 |
@@ -115,9 +115,11 @@ TheilslopesResult(slope=1.876388888888889, intercept=-5.152083333333334, low_slo
 | `intercept` | 절편. 구하는 방법은 `method`가 정해요. |
 | `low_slope`, `high_slope` | 기울기의 신뢰구간(기본 95%)의 아래·위 끝 |
 
-이름으로도, 번호로도 꺼낼 수 있고 풀어서 받을 수도 있어요.
+결과를 그대로 찍은 줄은 수를 유효숫자 여섯 자리로 줄여 보여 줘요. 칸에는 계산한 값이 그대로 있어요. 이름으로도, 번호로도 꺼낼 수 있고 풀어서 받을 수도 있어요.
 
 ```python
+>>> r.slope, r.low_slope
+(1.876388888888889, 0.09999999999999964)
 >>> slope, intercept, lo, hi = r
 >>> r[0] == r.slope
 True
@@ -249,9 +251,9 @@ $$
 ```python
 >>> monthly = [10.2, 10.8, 11.1, 11.9, 30.0, 12.6, 13.1, 13.4]
 >>> sd.regression.theilslopes(monthly)
-TheilslopesResult(slope=0.45999999999999996, intercept=10.64, low_slope=0.34999999999999964, high_slope=0.6000000000000014)
->>> sd.regression.theilslopes(monthly, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]).slope
-0.45999999999999996
+TheilslopesResult(slope=0.46, intercept=10.64, low_slope=0.35, high_slope=0.6)
+>>> sd.regression.theilslopes(monthly, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]) == sd.regression.theilslopes(monthly)
+True
 ```
 
 다섯째 달의 30.0은 튀는 값이지만 기울기는 한 달에 0.46 정도로 나머지 달의 추세를 따라요.
@@ -264,7 +266,7 @@ x가 같은 두 점은 기울기를 만들지 않아요. 남은 쌍만으로 중
 
 ```python
 >>> sd.regression.theilslopes([1.0, 2.0, 2.0, 3.0, 3.0, 5.0], [1.0, 1.0, 2.0, 2.0, 3.0, 3.0])
-TheilslopesResult(slope=1.0, intercept=0.5, low_slope=0.0, high_slope=3.0)
+TheilslopesResult(slope=1, intercept=0.5, low_slope=0, high_slope=3)
 ```
 
 x가 모두 같으면 기울기를 하나도 만들 수 없어서 모든 값이 NaN이에요. 에러는 아니에요.
@@ -278,7 +280,9 @@ y가 모두 같으면 기울기는 0이에요. 0은 언제나 +0.0으로 내요.
 
 ```python
 >>> sd.regression.theilslopes([1.0, 1.0, 1.0])
-TheilslopesResult(slope=0.0, intercept=1.0, low_slope=0.0, high_slope=0.0)
+TheilslopesResult(slope=0, intercept=1, low_slope=0, high_slope=0)
+>>> sd.regression.theilslopes([1.0, 1.0, 1.0]).slope
+0.0
 ```
 
 x와 y가 float64의 끝(±1e308 근처)까지 퍼져 있으면 두 점의 차 $x_i - x_j$, $y_i - y_j$가 모두 inf로 넘칠 수 있어요. 그 쌍의 기울기는 inf/inf라 값이 없으니, x가 같은 쌍처럼 빼고 셈해요. 구간의 $N$(유한한 기울기의 수)에도 넣지 않아요.
@@ -287,7 +291,7 @@ x와 y가 float64의 끝(±1e308 근처)까지 퍼져 있으면 두 점의 차 $
 >>> xb = [-1e308, 0.0, 1.0, 2.0, 3.0, 1e308]
 >>> yb = [-1e308, 0.5, 1.4, 2.6, 3.5, 1e308]
 >>> sd.regression.theilslopes(yb, xb)
-TheilslopesResult(slope=1.0, intercept=0.5, low_slope=0.8999999999999999, high_slope=1.05)
+TheilslopesResult(slope=1, intercept=0.5, low_slope=0.9, high_slope=1.05)
 ```
 
 양 끝 두 점을 잇는 쌍만 inf/inf이고, 나머지 14쌍의 기울기로 중앙값과 구간을 구했어요.
@@ -301,7 +305,9 @@ TheilslopesResult(slope=1.0, intercept=0.5, low_slope=0.8999999999999999, high_s
 >>> sd.regression.theilslopes(yn)
 TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
 >>> sd.regression.theilslopes(yn, nan_policy='omit')
-TheilslopesResult(slope=1.0, intercept=1.0, low_slope=1.0, high_slope=1.0)
+TheilslopesResult(slope=1, intercept=1, low_slope=1, high_slope=1)
+>>> sd.regression.theilslopes(yn, nan_policy='omit').slope
+1.0
 >>> sd.regression.theilslopes(yn, nan_policy='raise')
 Traceback (most recent call last):
     ...

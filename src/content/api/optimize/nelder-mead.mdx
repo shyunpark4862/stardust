@@ -135,7 +135,7 @@ Nelder–Mead(1965)는 기울기 없이 **함수값의 크기 비교만으로** 
 ...     return 100.0 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0], method='nelder-mead')
 >>> r
-OptimizeResult(method='nelder-mead', converged=True, fun=8.17766e-10, n_iter=84, nfev=159, x=[1.0000220217835696 1.0000422197517715])
+OptimizeResult(method='nelder-mead', converged=True, fun=8.17766e-10, n_iter=84, nfev=159, x=[1.00002, 1.00004])
 >>> r.message
 'Optimization terminated successfully.'
 ```

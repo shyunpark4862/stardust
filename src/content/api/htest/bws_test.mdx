@@ -1,0 +1,159 @@
+---
+kind: function
+title: bws_test
+names: [bws_test]
+group: 재표본
+order: 6
+signatures:
+  - "sd.htest.bws_test(x, y, /, *, axis=None, alternative='two-sided', method=None)"
+summary: 두 표본이 같은 분포에서 왔는지를 Baumgartner–Weiss–Schindler 검정으로 봐요. 합친 표본의 순위가 기대에서 벗어난 정도를 꼬리에 무게를 두어 모은 통계량이고, p값은 순위의 순열로 정확하게 구해요. 위치뿐 아니라 퍼짐이나 모양의 차이도 잘 잡아요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, frame Series 또는 DataFrame
+    kind: positional-only
+    desc: 첫째 표본. 관측이 둘 이상이어야 해요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, frame Series 또는 DataFrame
+    kind: positional-only
+    desc: 둘째 표본. 관측이 둘 이상이어야 해요.
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 표본마다 펼쳐요. 정수면 그 축을 따라 표본을 읽고 나머지 축은 배치예요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값, 두 분포가 다름), 'less'(x의 분포가 확률적으로 작음), 'greater'(x의 분포가 확률적으로 큼) 중 하나예요."
+  - name: method
+    type: PermutationMethod 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 모든 순열을 나열해요(10⁶개까지). 그보다 많으면 rng가 있는 PermutationMethod를 줘야 해요.
+returns:
+  type: BwsTestResult
+  desc: "statistic(B), pvalue, null_distribution(순열마다의 통계량)과 summary()가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: x·y가 배열로 바꿀 수 없을 때, method가 None이나 PermutationMethod가 아닐 때, method=None인데 순열이 10⁶개를 넘을 때, 무작위 순열에 rng가 없을 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 관측이 둘 미만인 표본이 있을 때, alternative 이름이 틀렸을 때, axis가 범위 밖일 때.
+seeAlso: [mannwhitneyu, ks_2samp, cramervonmises_2samp, anderson_ksamp, permutation_test, methods, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+두 공정에서 만든 부품의 길이예요.
+
+```python
+>>> x = [12.1, 14.3, 11.8, 15.2, 13.9, 16.0, 12.6]
+>>> y = [10.4, 11.9, 12.2, 9.8, 11.1, 13.0]
+```
+
+- **귀무가설**: x와 y가 같은 분포에서 왔어요.
+- **대립가설**: 두 분포가 달라요(`'two-sided'`). 한쪽은 x의 분포가 확률적으로 작거나(`'less'`) 커요(`'greater'`).
+
+두 표본을 합쳐 순위를 매기면, 귀무가설에서 x(크기 n)의 i번째로 작은 관측의 순위는 i·(n + m)/n 둘레에 있어야 해요. BWS 통계량은 순위가 이 기대에서 벗어난 제곱을, 그 순번의 분산에 비례하는 (i/(n + 1))(1 − i/(n + 1))로 나눠 모아요. y에 대해서도 같은 합을 만들고 둘을 평균해요. 나누는 값이 양 끝(가장 작은 관측, 가장 큰 관측)에서 작으므로, 끝에서 벗어난 것이 크게 세어져요. 그래서 Mann–Whitney처럼 위치만 보는 검정보다 꼬리와 퍼짐의 차이에 민감해요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.bws_test(x, y)
+>>> r
+BwsTestResult(statistic=2.78179, pvalue=0.0384615, null_distribution=<array of shape (1716,)>)
+>>> print(r.summary())
+                       Baumgartner-Weiss-Schindler test
+==============================================================================
+Statistic:                       2.782  Alternative:                 two-sided
+P-value:                        0.0385  No. Observations:                 7, 6
+                                        Resamples:                  1716 (all)
+==============================================================================
+```
+
+13개를 7개와 6개로 나누는 C(13, 7) = 1716가지를 모두 나열해서 p값이 정확한 몫이에요. 통계량이 큰 쪽이 극단이에요.
+
+순위만 쓰므로 단위를 바꾸거나 단조 변환(로그 등)을 해도 결과가 같아요. 동점은 중간 순위로 다뤄요.
+
+## 한쪽 검정
+
+한쪽 검정은 벗어난 양의 부호를 살린 꼴(제곱 대신 부호 있는 제곱, x의 합에서 y의 합을 빼요)의 통계량을 써요. `'greater'`는 큰 통계량이, `'less'`는 작은 통계량이 극단이에요.
+
+```python
+>>> sd.htest.bws_test(x, y, alternative='greater').pvalue
+0.019813519813519812
+>>> sd.htest.bws_test(x, y, alternative='less').pvalue
+0.9807692307692307
+```
+
+## 퍼짐의 차이
+
+가운데는 같고 퍼짐만 다른 두 표본이에요. 위치를 보는 [mannwhitneyu](/api/htest/mannwhitneyu/)는 차이를 거의 못 보지만 BWS는 더 작은 p값을 줘요.
+
+```python
+>>> a = [9.6, 10.1, 9.9, 10.3, 10.0, 9.8, 10.2]
+>>> b = [7.9, 12.4, 9.1, 11.8, 8.4, 10.9, 12.0]
+>>> sd.htest.bws_test(a, b).pvalue
+0.09848484848484848
+>>> sd.htest.mannwhitneyu(a, b).pvalue
+0.7103729603729604
+```
+
+퍼짐의 차이만 묻는다면 [ansari](/api/htest/ansari/)나 [mood](/api/htest/mood/)도 있어요.
+
+## 큰 표본
+
+순열이 10⁶개를 넘으면 나열하지 않고, `rng`가 있는 [PermutationMethod](/api/htest/methods/)로 무작위 순열을 쓰라고 알려 줘요.
+
+```python
+>>> big_x = list(range(12))
+>>> big_y = [v + 0.5 for v in range(12)]
+>>> sd.htest.bws_test(big_x, big_y)
+Traceback (most recent call last):
+    ...
+TypeError: bws_test(): the 2.7e+06 permutations are more than the 1e+06 it enumerates; pass method=PermutationMethod(rng=sd.random.default_rng(seed))
+>>> pm = sd.htest.PermutationMethod(n_resamples=2000, rng=sd.random.default_rng(0))
+>>> sd.htest.bws_test(big_x, big_y, method=pm).pvalue
+1.0
+```
+
+## 배치
+
+`axis`를 주면 그 축을 따라 읽은 줄마다 독립인 검정이고, 모든 줄이 같은 순열을 써요.
+
+```python
+>>> X = sd.asarray([x[:6], a[:6]])
+>>> Y = sd.asarray([y, b[:6]])
+>>> rb = sd.htest.bws_test(X, Y, axis=1)
+>>> rb.pvalue, rb.null_distribution.shape
+(array([0.03896103896103896, 0.16666666666666666], dtype=float64), (924, 2))
+```
+
+## 입력과 에러
+
+```python
+>>> sd.htest.bws_test([1.], [2., 3])
+Traceback (most recent call last):
+    ...
+ValueError: bws_test(): 'x' must hold at least 2 observations, not 1
+>>> sd.htest.bws_test(x, y, method=sd.htest.MonteCarloMethod(rng=sd.random.default_rng(0)))
+Traceback (most recent call last):
+    ...
+TypeError: bws_test(): 'method' must be None or a PermutationMethod, not MonteCarloMethod
+```
+
+## 정확도
+
+통계량은 정확한 유리수 참값과 상대 2.7e-16 안이고(동점 포함), 모든 순열을 나열한 p값은 상대 7e-17 안이에요(시험한 5문제).
+
+## scipy를 아는 분께
+
+- `method=None`이면 모든 순열을 나열하고(10⁶개까지), 그보다 많으면 `rng`가 있는 `PermutationMethod`를 요구해요. scipy의 기본은 시드 없는 `PermutationMethod()`예요.
+- 통계량의 정의(한쪽의 부호 있는 꼴 포함)와 p값은 scipy와 같아요. 나열한 귀무분포도 같은 순서예요.
+- `axis`의 기본값은 None이에요.
+
+```python
+>>> import numpy as np, scipy.stats
+>>> s = scipy.stats.bws_test(x, y, method=scipy.stats.PermutationMethod(n_resamples=np.inf))
+>>> float(s.statistic), float(s.pvalue)
+(2.781787614313124, 0.038461538461538464)
+```

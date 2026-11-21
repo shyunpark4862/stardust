@@ -1,0 +1,225 @@
+---
+kind: function
+title: chatterjeexi
+names: [chatterjeexi]
+group: 상관
+order: 8
+signatures:
+  - "sd.htest.chatterjeexi(x, y, /, *, axis=None, y_continuous=False, method='asymptotic', nan_policy='propagate', keepdims=False)"
+summary: y가 x의 함수인 정도를 재는 Chatterjee의 ξ와 독립성의 검정이에요. 관계가 직선이나 단조가 아니어도(U자, 물결) 잡아내요. 비대칭이라 x와 y를 바꾸면 값이 달라지고, p값은 큰 ξ 쪽의 한쪽 검정이에요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 설명하는 변수. y와 표본 축의 길이가 같아야 해요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 설명되는 변수. ξ는 y가 x로 얼마나 정해지는지를 재요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽는 축. None(기본값)이면 각각 펼쳐서 검정 하나를 해요. 축을 주면 나머지 축이 배치예요.
+  - name: y_continuous
+    type: bool
+    kind: keyword-only
+    desc: True면 y가 연속(동점이 없음)이라고 보고 더 단순한 귀무 분산 2/5를 써요. False(기본값)면 y의 동점을 반영한 분산을 데이터에서 구해요.
+  - name: method
+    type: str 또는 PermutationMethod
+    kind: keyword-only
+    desc: "'asymptotic'(기본값, 정규 근사) 또는 PermutationMethod(x를 두고 y의 순서를 섞은 순열 분포)예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN이 든 쌍을 뺌), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: ChatterjeexiResult
+  desc: "statistic(ξ)과 pvalue(큰 ξ 쪽의 한쪽 p값)를 가진 결과 객체. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: x·y가 배열·수의 시퀀스·frame이 아닐 때, y_continuous가 True·False가 아닐 때, method가 문자열이나 PermutationMethod가 아닐 때, alternative 같은 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "x와 y의 표본 축 길이가 다를 때, method가 'asymptotic'이 아닌 문자열일 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [pearsonr, spearmanrho, kendalltau, permutation_test, basics, results]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const cross = (pts, dx, dy) => pts.flatMap(([x, y]) => [[x - dx, y], [x + dx, y], [NaN, NaN], [x, y - dy], [x, y + dy], [NaN, NaN]]);
+export const para = Array.from({ length: 21 }, (_, i) => [i - 10, (i - 10) * (i - 10)]);
+
+## 무엇을 묻는 검정인가요
+
+y가 x의 제곱이면 y는 x로 완전히 정해져요. 그런데 x가 −10에서 10까지 고르게 있으면 피어슨 상관도, 스피어만 상관도, 켄달 τ도 0이에요. 왼쪽 절반은 내려가고 오른쪽 절반은 올라가서 서로 지우기 때문이에요.
+
+<Fig caption="y = x². y는 x로 완전히 정해지지만 왼쪽은 내려가고 오른쪽은 올라가서, 직선이나 단조인 경향을 재는 상관은 모두 0이에요. x 순으로 늘어놓은 y의 순위가 이웃끼리 거의 같으므로 ξ는 커요.">
+  <Plot
+    curves={[{ points: cross(para, 0.25, 2.5), label: '(x, x²)' }]}
+    domain={[-11, 11]}
+    range={[-5, 105]}
+    xTicks={[
+      { v: -10, label: '−10' },
+      { v: -5, label: '−5' },
+      { v: 0, label: '0' },
+      { v: 5, label: '5' },
+      { v: 10, label: '10' },
+    ]}
+    yTicks={[
+      { v: 0, label: '0' },
+      { v: 50, label: '50' },
+      { v: 100, label: '100' },
+    ]}
+  />
+</Fig>
+
+**Chatterjee의 ξ**는 이런 관계도 잡아요. 쌍을 x가 작은 순으로 늘어놓고, 그 순서에서 y의 순위가 이웃끼리 얼마나 크게 뛰는지 봐요. y가 x의 매끄러운 함수이면 x가 가까운 점끼리 y도 가까워서 순위가 조금씩만 움직여요. x와 y가 독립이면 y의 순위가 마구 뛰어요. y에 동점이 없을 때
+
+$$
+\xi = 1 - \frac{3\sum_{i=1}^{n-1} |r_{i+1} - r_i|}{n^2 - 1}
+$$
+
+이고 $r_i$는 x 순으로 i번째인 점의 y 순위예요. 동점이 있으면 동점을 반영한 꼴을 써요.
+
+- ξ는 대략 0(독립)에서 1(y가 x의 함수) 사이예요. 표본에서는 0보다 조금 작을 수도 있어요.
+- **비대칭**이에요. "y가 x로 정해지는 정도"라서 x와 y를 바꾸면 값이 달라져요. y = x²에서 y는 x로 정해지지만 x는 y로 정해지지 않아요(부호를 모르니까요).
+
+검정은 이렇게 물어요.
+
+- **귀무가설**: x와 y가 독립이에요.
+- **대립가설**: y가 x에 따라 달라져요. ξ가 클수록 귀무가설에 반하는 증거라서 p값은 **큰 ξ 쪽의 한쪽**이에요. `alternative` 인자가 없어요.
+
+이런 때 써요.
+
+- 관계가 있는지 없는지가 궁금하고, 그 모양(직선, 단조, U자)은 모를 때.
+- y가 x로 정해지는지 묻고 싶을 때(방향이 있는 질문).
+
+관계가 단조라는 것을 알면 [`spearmanrho`](/api/htest/spearmanrho/)나 [`kendalltau`](/api/htest/kendalltau/)가 같은 표본에서 더 잘 잡아내요(검정력이 커요). ξ는 모든 모양을 넓게 보는 대신 단조인 관계에서는 덜 예민해요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> x = [float(i) for i in range(-10, 11)]
+>>> y = [v * v for v in x]
+>>> sd.htest.spearmanrho(x, y).statistic, sd.htest.kendalltau(x, y).statistic
+(0.0, 0.0)
+>>> r = sd.htest.chatterjeexi(x, y)
+>>> r
+ChatterjeexiResult(statistic=0.727273, pvalue=1.0009e-07)
+>>> print(r.summary())
+                       Chatterjee's xi correlation test
+==============================================================================
+Statistic:                      0.7273  No. Observations:                   21
+P-value:                      1.00e-07
+==============================================================================
+```
+
+순위 상관은 0이고(피어슨 상관도 반올림 크기의 값이에요) ξ = 0.73이고 p값이 아주 작아서 독립이라는 귀무가설을 기각해요. 방향을 바꾸면 x는 y로 정해지지 않으므로 ξ가 작고 p값이 커요.
+
+```python
+>>> sd.htest.chatterjeexi(y, x)
+ChatterjeexiResult(statistic=-0.431818, pvalue=0.999074)
+```
+
+결과는 `(statistic, pvalue)`로 풀려요. 신뢰구간은 없어요.
+
+## ξ의 크기 읽기
+
+표본이 유한하면 y가 x의 함수여도 ξ가 1에 닿지 않아요. y에 동점이 없으면 가장 큰 값이 $(n-2)/(n+1)$이에요. n = 21이면 0.864예요.
+
+```python
+>>> sd.htest.chatterjeexi(x, [float(v) for v in range(21)]).statistic
+0.8636363636363636
+```
+
+y = x²는 y에 동점(같은 제곱 값)이 있어서 0.727이에요. 독립인 두 표본의 ξ는 0 근처예요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> N = sd.stats.Normal()
+>>> sd.htest.chatterjeexi(N.sample(200, rng=rng), N.sample(200, rng=rng))
+ChatterjeexiResult(statistic=-0.0363759, pvalue=0.79199)
+```
+
+## `y_continuous`: 귀무 분산
+
+독립일 때 $\sqrt n\,\xi$는 대략 정규분포를 따르고, p값은 그 위쪽 꼬리예요. 분산은
+
+- `y_continuous=False`(기본값): y의 동점을 반영해서 데이터에서 구한 분산,
+- `y_continuous=True`: y가 연속(동점이 없음)일 때의 분산 2/5
+
+예요. y에 동점이 없으면 표본이 클수록 둘이 가까워져요. y에 동점이 있는데 True를 주면 분산이 맞지 않아요.
+
+```python
+>>> sd.htest.chatterjeexi(x, y, y_continuous=True).pvalue
+6.836383411945654e-08
+```
+
+## `method`: 순열 p값
+
+정규 근사는 표본이 클 때 맞아요. 표본이 작으면 `PermutationMethod`로 x를 두고 y의 순서를 섞은 순열 분포를 써요. 큰 ξ가 극단이에요.
+
+```python
+>>> pm = sd.htest.PermutationMethod(n_resamples=999, rng=sd.random.default_rng(3))
+>>> sd.htest.chatterjeexi(x, y, method=pm)
+ChatterjeexiResult(statistic=0.727273, pvalue=0.001)
+```
+
+999개의 순열 가운데 관측만큼 큰 ξ가 없어서 p값이 $1/1000$이에요. 다른 방법은 받지 않아요.
+
+```python
+>>> sd.htest.chatterjeexi(x, y, method='auto')
+Traceback (most recent call last):
+    ...
+ValueError: chatterjeexi(): 'method' must be 'asymptotic' or a PermutationMethod, not 'auto'
+```
+
+## x의 동점
+
+ξ는 x 순으로 늘어놓은 순서에 따라 정해지므로, x가 같은 점들을 어떤 순서로 둘지 정해야 해요. 여기서는 **입력의 위치 순서**로 가르므로 같은 입력이면 언제나 같은 값이에요. 같은 x를 가진 점의 순서를 바꾸면 ξ가 달라질 수 있어요.
+
+```python
+>>> sd.htest.chatterjeexi([1.0, 1.0, 2.0, 2.0, 3.0], [5.0, 4.0, 3.0, 2.0, 1.0])
+ChatterjeexiResult(statistic=0.5, pvalue=0.0523787)
+>>> sd.htest.chatterjeexi([1.0, 1.0, 2.0, 2.0, 3.0], [4.0, 5.0, 2.0, 3.0, 1.0])
+ChatterjeexiResult(statistic=0.125, pvalue=0.342535)
+```
+
+x에 동점이 많으면 이 임의성이 결과를 흔들어요. Chatterjee는 동점을 무작위로 가르기를 권해요. 그렇게 하려면 쌍의 순서를 미리 무작위로 섞어서 넘겨요.
+
+## 배치와 NaN
+
+`axis`를 주면 나머지 축의 줄마다 따로 검정해요.
+
+```python
+>>> X = sd.asarray([x, x])
+>>> Y = sd.asarray([y, [float(v) for v in range(21)]])
+>>> sd.htest.chatterjeexi(X, Y, axis=1).statistic
+array([0.7272727272727273, 0.8636363636363636], dtype=float64)
+```
+
+`nan_policy='omit'`은 NaN이 든 쌍을 빼요. y가 상수이거나 쌍이 2개보다 적으면 NaN이에요.
+
+```python
+>>> sd.htest.chatterjeexi(x, [1.0] * 21)
+ChatterjeexiResult(statistic=nan, pvalue=nan)
+```
+
+## 정확도
+
+ξ는 정수 순위의 합에서 정확한 유리수를 한 번 반올림한 값이고, 귀무 분산의 합도 정수로 모아요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 6문제(연속 y, y의 동점, p값이 1e-195쯤인 꼬리, 상수 y, 배치)에서 ξ는 상대오차 5.7e-17 안, p값은 계약 대비 0.0044 안이에요(상대 3.9e-14는 통계량의 작은 변화에 p값이 크게 움직이는 깊은 꼬리의 값이에요).
+
+## scipy를 아는 분께
+
+`scipy.stats.chatterjeexi`와 같은 통계량, 같은 `y_continuous`, 같은 한쪽 p값이에요. 다른 점이에요.
+
+- x의 동점을 입력의 위치 순서로 갈라요. scipy는 정렬 알고리즘이 정하는 순서로 갈라서, 같은 x의 점이 어떤 순서가 될지 약속하지 않아요.
+- `axis`의 기본값은 None이고 데이터는 위치로만 받아요.
+- 깊은 꼬리에서 scipy의 p값은 상대 1.6e-12쯤 틀려요.
+- `method`는 `'asymptotic'`이나 `PermutationMethod`이고, scipy처럼 x를 두고 y를 섞어요.

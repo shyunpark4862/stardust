@@ -1,0 +1,95 @@
+---
+title: issparse
+names: [issparse]
+group: 희소 배열
+order: 6
+signatures:
+  - "sd.sparse.issparse(x, /)"
+summary: 값이 stardust의 희소 배열(coo_array, csr_array, csc_array, dok_array)인지 알려 줘요. 희소 배열과 밀집 배열을 모두 받는 함수를 쓸 때 둘을 가르는 데 써요.
+params:
+  - name: x
+    type: 아무 객체
+    kind: positional-only
+    desc: 검사할 값.
+returns:
+  type: bool
+  desc: "x가 sd.sparse의 희소 배열이면 True, 아니면(밀집 배열, scipy의 희소 객체, LinearOperator 포함) False예요."
+raises:
+  - type: TypeError
+    desc: 인자를 주지 않거나 키워드(x=)로 줬을 때.
+seeAlso: [sparray, basics, coo_array, csr_array]
+---
+
+## 한눈에 보기
+
+`issparse(x)`는 `x`가 희소 배열이면 True예요. 네 형식 가운데 어느 것이든 True이고, 밀집 배열이나 리스트는 False예요.
+
+```python
+>>> import stardust as sd
+>>> sd.sparse.issparse(sd.sparse.csr_array((2, 2)))
+True
+>>> sd.sparse.issparse(sd.sparse.dok_array((3,)))
+True
+>>> sd.sparse.issparse(sd.eye(2))
+False
+>>> sd.sparse.issparse([[1, 0], [0, 1]])
+False
+```
+
+`isinstance(x, sd.sparse.sparray)`와 같은 일이에요. 네 형식이 모두 [`sparray`](/api/sparse/sparray/)를 물려받기 때문이에요.
+
+```python
+>>> A = sd.sparse.coo_array((2, 2))
+>>> sd.sparse.issparse(A) == isinstance(A, sd.sparse.sparray)
+True
+```
+
+<Reference />
+
+## 어디에 쓰나요
+
+희소 배열과 밀집 배열에서 쓰는 함수가 다를 때 갈라 쓰는 데 써요. 희소 배열은 밀집 배열 자리에 넣으면 `TypeError`이고, 그 반대도 마찬가지라서 미리 갈라야 해요.
+
+```python
+>>> def solve_any(a, b):
+...     if sd.sparse.issparse(a):
+...         return sd.sparse.spsolve(a, b)
+...     return sd.linalg.solve(a, b)
+>>> M = sd.asarray([[2.0, 0.0], [0.0, 4.0]])
+>>> solve_any(M, sd.ones(2))
+array([ 0.5, 0.25], dtype=float64)
+>>> solve_any(sd.sparse.csr_array(M), sd.ones(2))
+array([ 0.5, 0.25], dtype=float64)
+```
+
+밀집 배열로 바꿔야 하는지 볼 때도 써요.
+
+```python
+>>> def as_dense(a):
+...     return a.toarray() if sd.sparse.issparse(a) else a
+>>> as_dense(sd.sparse.csr_array(M))
+array([[2.0, 0.0],
+       [0.0, 4.0]], dtype=float64)
+```
+
+## 희소 배열이 아닌 것
+
+scipy의 희소 배열·행렬과 [`LinearOperator`](/api/sparse/linearoperator/)는 희소 배열이 아니라서 False예요. scipy의 객체는 생성자로 바꿔서 쓰고, `LinearOperator`는 곱하는 함수만 가진 연산자예요.
+
+```python
+>>> import numpy as np
+>>> import scipy.sparse
+>>> sd.sparse.issparse(scipy.sparse.csr_array(np.eye(2)))
+False
+>>> sd.sparse.issparse(sd.sparse.aslinearoperator(sd.eye(2)))
+False
+```
+
+## scipy를 아는 분께
+
+`scipy.sparse.issparse`와 이름과 뜻이 같지만 서로의 객체는 알아보지 않아요. `sd.sparse.issparse`는 scipy의 희소 객체에 False이고, `scipy.sparse.issparse`도 stardust의 희소 배열에 False예요. scipy의 `isspmatrix` 같은 옛 행렬용 함수는 없어요.
+
+```python
+>>> scipy.sparse.issparse(sd.sparse.csr_array((2, 2)))
+False
+```

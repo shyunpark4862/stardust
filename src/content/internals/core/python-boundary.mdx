@@ -429,8 +429,8 @@ numpy 2.5.4에서 `np.ones(3) + x`(연산자 쪽)는 numpy의 다른 경로를 �
 
 | 함수 | 받는 것 | 다른 것을 주면 |
 |---|---|---|
-| 배열, 선형대수, 특수함수의 함수와 분포의 매개변수·메서드 | `sd.ndarray`만. 원소별 함수와 분포는 Python 스칼라도 받아요 | TypeError (`sum(): 'x' must be an sd.ndarray, not list`, `erf(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list`) |
-| `sd.stats`의 기술통계, `sd.regression`의 모형 함수, `sd.optimize`의 시작점 `x0` | `sd.ndarray`, 수의 리스트·튜플, numpy 배열, `sd.frame`의 열(`Series`, 회귀는 `DataFrame`도) | 받은 것을 그 함수가 계산하는 dtype의 배열로 바꿔 써요. frame의 결측값은 NaN이 돼요 |
+| 배열, 선형대수, 특수함수의 함수와 분포의 매개변수·메서드, 희소 행렬의 함수 | `sd.ndarray`만(희소 함수는 희소 배열과 `LinearOperator`도). 원소별 함수와 분포는 Python 스칼라도 받아요 | TypeError (`sum(): 'x' must be an sd.ndarray, not list`, `erf(): 'x' must be an sd.ndarray or a bool, int, float or complex, not list`) |
+| `sd.stats`의 기술통계, `sd.htest`의 검정, `sd.regression`의 모형 함수, `sd.optimize`의 시작점 `x0` | `sd.ndarray`, 수의 리스트·튜플, numpy 배열, `sd.frame`의 열(`Series`, 기술통계·가설검정·회귀는 `DataFrame`도) | 받은 것을 그 함수가 계산하는 dtype의 배열로 바꿔 써요. frame의 결측값은 NaN이 돼요 |
 
 첫째 줄의 함수는 다른 계산을 짜는 부품이라 작은 입력으로 자주 불려요. 리스트를 몰래 배열로 바꾸면 그때마다 복사와 dtype 추론이 숨어서 일어나고, sd의 dtype은 numpy보다 적어서 어떤 dtype이 나오는지가 코드에 보여야 해요. 그래서 `sd.asarray`로 먼저 바꾸게 해요. 둘째 줄의 함수는 밖에서 가져온 자료를 처음 넣는 자리예요. 바꾸는 비용이 계산에 비해 작아서 그 자리에서 바꿔 줘요.
 
@@ -704,7 +704,7 @@ const char* name_of(const Func& func) {
 
 | 함수 | 꼴 | 예 |
 |---|---|---|
-| Python으로 쓴 무거운 입구: 모듈 수준 함수(`sd.stats`의 기술통계, `sd.regression`과 `sd.optimize`의 모든 함수, `sd.random.default_rng`, `sd.frame`의 `read_csv`·`merge`·`concat`), 생성자(frame의 `Series`·`DataFrame`·`Index`·`RangeIndex`, 분포), frame의 `groupby` | `f(): ` 다음에 Python의 문장 | `minimize(): unexpected keyword argument 'foo'`, `Normal(): takes no positional arguments but 1 was given` |
+| Python으로 쓴 무거운 입구: 모듈 수준 함수(`sd.stats`의 기술통계, `sd.regression`, `sd.optimize`, `sd.htest`, `sd.sparse`의 모든 함수, `sd.random.default_rng`, `sd.frame`의 `read_csv`·`merge`·`concat`), 생성자(frame의 `Series`·`DataFrame`·`Index`·`RangeIndex`, 분포, 희소 배열), 희소 배열·`LinearOperator`·`SparseLU`의 메서드, frame의 `groupby` | `f(): ` 다음에 Python의 문장 | `minimize(): unexpected keyword argument 'foo'`, `Normal(): takes no positional arguments but 1 was given` |
 | 작은 메서드: frame의 메서드, `Generator`의 메서드, 분포의 메서드 | Python의 기본 꼴 그대로 | `Series.head() got some positional-only arguments passed as keyword arguments: 'n'`, `sample() missing 1 required keyword-only argument: 'rng'` |
 | C++ 바인딩으로 바로 묶은 함수: 배열의 함수와 메서드, `sd.linalg`, `sd.special` | nanobind의 메시지와 받을 수 있는 시그니처 | `solve(): incompatible function arguments. The following argument types are supported: 1. solve(a, b, /) ...` |
 
@@ -738,7 +738,7 @@ def _converted(e, head, name, self_counted):
 | `BufferError` | 버퍼나 DLPack으로 데이터를 주고받을 수 없어요(CPU가 아닌 장치, 읽기 전용 배열을 옛 DLPack 형식으로, 버퍼 내보내기 실패) |
 | `OverflowError` | int64 밖의 Python int를 int64로 바꿔야 해요. float로 계산할 수 있으면 float로 바꿔요(`float_arr + 2**70`은 정상). float로 바꿔야 하는데 double 범위도 넘으면(`10**400`) 역시 `OverflowError`예요 |
 | `MemoryError` | 배열 하나의 요청이 이 컴퓨터의 물리 메모리보다 커요. 할당하기 전에 내요 |
-| `LinAlgError(ValueError)` | 선형대수의 수치적 실패 |
+| `LinAlgError(ValueError)` | 선형대수의 수치적 실패. 희소 직접 풀이의 특이 행렬도 같은 예외예요(`spsolve(): singular matrix`) |
 
 경고는 어느 영역도 내지 않아요. 문제가 있으면 에러를 내요. 배열의 원소별 연산은 원소의 값 때문에 실패하지 않아요(정수 오버플로는 wrap, `a // 0`은 0).
 
@@ -807,9 +807,11 @@ private:
 | special, stats의 분포 함수 | 배열의 이터레이터를 거치므로 배열과 같아요 |
 | random | 배열과 같은 기준을 `for_pieces`로 적용해요(원소 4096개부터). `permutation`과 비복원 추출은 언제나 |
 | frame | 2¹⁷행(`frame/parallel.hpp`의 `Unlocked`) |
+| htest | 배열과 같은 기준을 배치의 줄에 적용해요(줄 수 × 줄 하나의 비용, `htest/lanes.hpp`). 재표본에서 사용자의 `statistic`을 부르는 동안은 Python 층이라 쥐어요 |
+| sparse | 저장된 원소와 출력 크기로 센 일 2¹⁵개 분량부터(`sparse/parallel.hpp`). Accelerate LU의 분해와 풀이는 언제나 놓아요. 반복법과 고유값 풀이는 연산자가 Python 함수(`LinearOperator`)이면 쥐고, 희소 행렬이면 한 걸음의 일이 기준값 이상일 때 풀이 전체에서 놓아요 |
 | optimize | 반복은 쥐어요. 사용자 함수를 부르는 사이의 큰 선형대수(BFGS의 H 갱신, L-BFGS-B의 방향 계산, Nelder–Mead의 무게중심, 야코비안의 QR 등)는 linalg와 같은 10µs 규칙(추정 2×10⁵ 플롭), 배치 스칼라의 원소 패스는 2¹⁵개부터 놓아요. 사용자 함수가 없는 `lsq_linear`과 `nnls`는 2mn² > 2×10⁵이면 풀이 전체에서 놓아요 |
 
-모든 영역이 같은 규칙을 쓰고, 다른 것은 기준값과 사용자 함수를 부르는 동안 쥐는 optimize뿐이에요. 비용은 기준값 이상인 호출마다 GIL을 한 번 놓았다 잡는 것으로, 호출당 0.1µs 안팎이에요([스레드풀과 결정성](/internals/core/threads/)).
+모든 영역이 같은 규칙을 쓰고, 다른 것은 기준값과, 사용자 함수를 부르는 동안 쥐는 곳(optimize, Python 연산자를 받은 희소 풀이)뿐이에요. 비용은 기준값 이상인 호출마다 GIL을 한 번 놓았다 잡는 것으로, 호출당 0.1µs 안팎이에요([스레드풀과 결정성](/internals/core/threads/)).
 
 ### 다른 스레드에서 GIL을 다시 잡는 곳
 

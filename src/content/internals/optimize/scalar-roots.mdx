@@ -282,7 +282,7 @@ $$
         if (fprime) {
             fder = (*fprime)(p0);
         } else {  // scipy's approx_derivative '2-point' (its f(p0) is fval)
-            const double h = absolute_step(p0, rstep, false, 0.0);
+            const double h = differentiate::absolute_step(p0, rstep, false, 0.0);
             const double x1 = p0 + h;
             fder = (f(x1) - fval) / (x1 - p0);
         }

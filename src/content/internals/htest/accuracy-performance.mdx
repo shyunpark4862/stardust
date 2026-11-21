@@ -1,0 +1,152 @@
+---
+title: 정확도와 성능
+group: 정확도와 성능
+order: 1
+summary: sd.htest의 정확도를 재는 문제 모음과 Arb·정확한 유리수 참값, 통계량·p값·신뢰구간의 계약, 그리고 잰 결과를 모았어요. 재표본의 무작위 p값은 계약 대신 재현성과 통계적 검사로 봐요. 성능은 어디서 빠르고 어디서 정확도를 위해 시간을 쓰는지를 질적으로 정리했어요.
+seeAlso: [overview, contingency, barnard-boschloo, proportion, post-hoc, p-adjust, resampling, mgc-gof]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+가설검정의 결과는 통계량, p값, 신뢰구간의 끝이에요. 모두 입력 double의 수학적 함수라서 정답이 하나 있어요. 그래서 이 영역의 정확도는 세 가지로 확인해요.
+
+1. **참값과의 거리.** 입력 double을 정확한 값으로 보고, 정확한 유리수 계산이나 Arb(구간 산술)로 만든 참값과 견줘요. 계약은 통계량과 p값의 조건수를 넣은 상대오차예요.
+2. **비교 대상과의 거리.** 같은 문제를 scipy 1.18.1, statsmodels 0.15.0, R 4.6.2로 돌린 기록을 같은 참값, 같은 척도로 재요. 차이는 계약이 아니라 기록이에요.
+3. **무작위인 부분.** 재표본과 몬테카를로의 p값은 정답이 없으므로, 같은 `rng` 상태에서 같은 비트인지와 통계적으로 타당한지를 고정 시드의 검사로 봐요.
+
+<Fig column caption="참값과 대조 기록이 만들어지고 쓰이는 길.">
+  <Steps
+    steps={[
+      { label: 'tests/htest/problems.py', note: '836문제: 호출 하나(scipy·statsmodels의 이름, 위치 입력, 키워드)와 입력의 SHA-256', where: 'tests/htest/' },
+      { label: 'tools/htest_ref.py', note: '정확한 유리수(int, Fraction)와 Arb(python-flint)로 참값을 double-double [hi, lo]로', where: 'tools/' },
+      { label: 'tests/htest/ref/*.json', note: '묶음(검정의 족)마다 문제의 참값과 조건수 kappa, kappa_stat', where: 'tests/htest/', depth: 1 },
+      { label: 'tools/gen_htest_scipy.py, gen_htest_r.py', note: 'scipy·statsmodels·R의 결과 필드, 경고, 예외', where: 'tools/' },
+      { label: 'tests/htest/data/*.json', note: '비교 대상의 기록', where: 'tests/htest/', depth: 1 },
+      { label: 'tests/htest/refdata.py', note: '계약의 척도: 테스트와 정확도 측정이 같은 함수로 판정', where: 'tests/htest/' },
+      { label: 'bench/accuracy/htest.py', note: '묶음마다 한 스윕, 필드마다 한 영역, 문제 하나가 점 하나', where: 'bench/' },
+    ]}
+  />
+</Fig>
+
+## 문제 모음
+
+`tests/htest/problems.py`의 문제 하나는 호출 하나예요. scipy나 statsmodels의 함수 이름, 위치 입력, 그 라이브러리의 키워드 옵션을 적어 두고, 테스트가 sd를 부를 때 이름만 바꿔요(예를 들어 statsmodels의 `'larger'`는 sd의 `'less'`). 문제들은 검정이 만나는 입력의 종류를 덮어요.
+
+- 작은 표본(정확한 귀무분포)과 큰 표본($10^3$–$3 \times 10^3$)
+- 동점과 0, 0인 칸·행·열, 받침의 끝(이항의 $k = 0$, $k = n$)
+- 깊은 꼬리($p \ll 10^{-16}$, $10^{-300}$까지: 2 × 2 Fisher의 $2/\binom{1000}{500} = 7.4 \times 10^{-300}$, 이항의 $2^{-999}$)
+- 큰 오프셋(평균 $10^8$–$10^9$: 평균의 차가 상쇄해요)
+- 경계(alpha에 정확히 닿는 Bonferroni, 귀무값에 아주 가까운 비율의 차, 거울 표)
+- 퇴화한 입력(상수 표본, 분산 0)과 배치
+
+입력은 numpy PCG64의 고정 시드로 만들고, 동점이 필요하면 반올림해요. 모든 참값과 대조 파일은 문제마다 입력의 SHA-256을 적어 두어서, 입력을 만드는 스트림이 바뀌면 조용히 다른 입력이 되지 않고 테스트가 실패해요.
+
+## 참값
+
+### 두 가지 정확한 계산
+
+`tools/htest_ref.py`는 정확한 유리수 계산과 Arb를 한 도구에 둬요. 입력 double은 정확한 유리수예요.
+
+- **정확한 유리수**: 데이터의 유리 함수인 통계량(평균, 제곱합, 순위, 개수, $t^2$, $r^2$, $F$, U, $T^+$, 역순 쌍, 카이제곱, 분할표의 기댓값)은 `Fraction`으로 계산해 한 번 반올림해요. 정수로 셀 수 있는 귀무분포도 정확히 세요(초기하, r × c 표, 이항, 순열의 나열).
+- **Arb의 공**: 불완전 베타·감마, erfc 같은 연속 분포의 꼬리는 Arb로 계산해요. 값은 `tools/arbref.py`의 `rigorous()`가 정밀도를 두 배씩 올리며 공의 반지름이 값의 $2^{-110}$ 아래가 될 때까지 가요. "두 정밀도의 값이 맞으면 멈춘다" 같은 어림은 쓰지 않아요.
+
+결과는 double-double $[hi, lo]$로 저장해요. 양쪽 규칙의 허용오차도 그 double의 정확한 유리수로 적용해요(이항의 $1 + 10^{-7}$, 2 × 2 Fisher의 $1 + 10^{-14}$, r × c Fisher의 $1 + 10^{-7}$). 문제마다 시간 제한이 있고, 여러 프로세스로 나눠 돌리며 워커는 일정한 문제 수마다 바꿔 메모리가 쌓이지 않게 해요.
+
+### 이 영역의 어려운 참값
+
+분할표와 비율, 다중 비교, 재표본의 참값은 sd와 다른 길로 만들어요. 같은 알고리즘을 두 번 쓰면 같은 실수를 두 번 할 수 있기 때문이에요.
+
+| 묶음 | 참값을 만드는 법 |
+|---|---|
+| `fisher_exact` r × c | 열의 동적 계획(남은 행합 → $\{\prod x!$: 경로 수$\}$의 정수). 작은 표에서 모든 표의 나열과 같은 유리수인지 도구가 스스로 검사해요 |
+| `barnard_exact`, `boschloo_exact` | 정확한 기각역(유리수 $T^2$, 유리수 Fisher p값)과 정수 다항식 $f$의 도함수의 근을 flint로 고립시켜, 그 점들과 양 끝에서의 $f$의 최댓값. C++의 분기 한정과 다른 길이에요 |
+| `odds_ratio` | 최우추정과 정확 구간의 끝을 정수 다항식의 양의 근(flint)으로. Woolf 구간은 Arb |
+| `binomtest`, `proportion_confint` | Clopper–Pearson은 Beta 꼬리의 근을 뉴턴과 부호 바뀜으로 인증, `'binom_test'`는 정확한 유리수의 이분으로 조각마다(계단점, 최솟점, 근을 $2^{-118}$까지) |
+| `poisson_means_test` | $T$를 유리수의 제곱으로 정확히 견주고, $x_2$마다 $X_1$의 꼬리를 pmf 점화의 Arb 합으로, 남은 꼬리를 공의 반지름에 더해요 |
+| `test_proportions_2indep` | 점수 검정의 제한된 최우추정을 flint의 근 고립으로(가능한 구간 안의 근 또는 끝) |
+| `tukey_hsd`, `dunnett` | 두 겹 적분. 안쪽은 Arb `acb.integral`의 엄밀한 적분에 자른 꼬리의 상한을 더한 공, 바깥쪽(카이 변수)은 16점과 24점 Gauss–Legendre가 $2^{-80}$ 안에서 맞을 때까지 나누는 패널이에요 |
+| `multipletests` | 정확한 유리수. 두 단계 절차의 기각 수도 정확히 세고, Hommel은 $O(m^2)$ 정의식 |
+| `permutation_test`, `bws_test` | 모든 배열을 `Fraction`으로 나열한 정확한 몫 |
+| `multiscale_graphcorr` | 1차원 자료의 거리(정확한 유리수)에서 국소 공분산·분산을 `Fraction`으로, 상관의 제곱근만 Arb |
+| `goodness_of_fit` | 모수는 닫힌 꼴이거나 점수 방정식을 320비트 할선으로 푼 값, 통계량은 Arb의 cdf·logcdf·logsf |
+
+안쪽 적분이 sd와 다른 식이라는 점도 중요해요. 스튜던트화 범위의 꼬리는 교과서의 $k\int\varphi[A^m - B^m]$을 거듭제곱의 차로 인수분해한 $C\,(A^{m-1} + \dots + B^{m-1})$로, Dunnett의 꼬리는 $1 - \prod(1 - u_j)$를 $u_1 + (1 - u_1)u_2 + \cdots$로 써서 모든 항이 양수예요. sd의 `−expm1`·`log1p` 꼴([스튜던트화 범위와 Dunnett](/internals/htest/post-hoc/))과 다른 식이라 서로를 검사해요. 바깥 적분은 엄밀한 공이 아니라 추정이므로, 사후 비교의 p값 계약은 그 추정($2^{-80}$) 위의 계약이에요.
+
+도구 자체의 검사(`test_reference_data.py`)도 있어요. 두 집단의 스튜던트화 범위가 $\sqrt2|T|$와 같은지, 처리 하나의 Dunnett 꼬리가 t 꼬리와 같은지, 장애 모수의 상한이 촘촘한 격자의 최댓값 이상이고 그와 가까운지, 오즈비의 근이 $E X = x$와 꼬리 = $\alpha/2$를 푸는지, `'binom_test'`의 끝이 바로 밖에서 기각하고 안에서 채택하는지 봐요.
+
+## 계약
+
+| 필드 | 계약 |
+|---|---|
+| 통계량 | 상대 $10^{-14}\max(1, \kappa_{\text{stat}})$. $\kappa_{\text{stat}}$은 통계량이 변환하는 양에 대한 조건수(D'Agostino의 적률, Anderson–Darling의 상쇄하는 합)이고 그 밖은 1이에요. 개수와 순위에서 나오는 통계량(U, $T^+$, 분할표의 개수)은 정확한 값이에요 |
+| p값 | 상대 $10^{-14}\max(1, \kappa_p)\max(1, \kappa_{\text{stat}})$. $\kappa_p = \lvert s\,\partial p/\partial s\,/\,p\rvert$는 통계량에 대한 p값의 조건수예요. 정확한 귀무분포의 p값은 상대 $10^{-14}$, 서브노멀 p값은 절대 $45 \cdot 2^{-1074}$예요 |
+| 자유도 등 | 상대 $10^{-14}$ |
+| 신뢰구간의 끝 | 끝을 정의하는 식(분위수, 뒤집은 검정)에 대해 $10^{-14}\max(1, \kappa)$. 차의 구간처럼 끝이 빼기로 만들어지면 추정값과 반폭의 크기에 대해 재요 |
+| 배열 필드 | `tukey_hsd`·`dunnett`의 비교마다, `multipletests`의 보정값마다 한 점이에요. 기각은 정확한 판정과 같아야 해요 |
+
+깊은 꼬리에서는 $\kappa_p$가 커요(정규분포의 꼬리에서 $z^2$쯤). 통계량이 한 번 반올림되기만 해도 p값은 그만큼 움직이므로, 계약은 special의 역함수처럼 조건수를 넣은 꼴이에요.
+
+정의한 근사(점근 근사, D'Agostino·Royston 같은 정규화 변환, 보간 표)의 p값은 "그 근사식의 값"이 참값이에요. 근사가 참 귀무분포와 얼마나 다른지는 계약이 아니에요. 상한(작업량, 표의 수)에 닿거나 남은 반올림의 상한이 계약 안임을 보일 수 없으면 값을 내지 않고 NaN이에요. Barnard·Boschloo의 큰 표가 그런 곳이에요.
+
+## 잰 결과
+
+아래 표는 참값이 있는 모든 묶음의 결과예요. 줄 하나가 (묶음, 필드) 한 칸이고, 점은 문제의 수(배열 필드는 원소의 수)예요. 계약 대비가 1 이하이면 계약 안이에요.
+
+<AccuracySummary area="htest" caption="sd.htest 전체. 계약 대비가 가장 큰 곳은 Cramér–von Mises의 p값(절대 10⁻¹⁵ 규칙으로 판정하는 꼬리)이고, 이 페이지들의 검정에서는 오즈비의 한쪽 구간 끝(0.25: 근을 푸는 t의 4 ULP), Dunnett 구간의 끝(0.18: 임계값의 근과 꼬리의 반올림), 두 비율 구간의 끝(0.13)이 커요. 비교 패키지의 열은 같은 점에서 같은 척도로 잰 그 라이브러리의 오차예요." />
+
+분할표와 비율, 다중 비교에서 눈여겨볼 곳은 이래요.
+
+- 분할표의 통계량은 정확한 유리수(나 그 제곱근)를 한 번 반올림한 값이라 상대 $1.5 \times 10^{-16}$ 안이고, 정확한 귀무분포의 p값(초기하, r × c, 이항, 장애 모수의 상한)은 $7.4 \times 10^{-300}$의 깊은 꼬리까지 상대 $6.1 \times 10^{-16}$ 안이에요.
+- 비율의 통계량·분산·제한된 추정값·차·비·오즈비는 상대 $3.4 \times 10^{-16}$ 안이에요. 귀무값 근처의 차도 $2 \times 10^{-16}$이에요. `'binom_test'` 구간의 끝은 정확한 유리수 참값과 1 ULP 안이에요.
+- 사후 비교의 평균의 차와 $t$·$q$는 오프셋 $10^8$·$10^9$에서도 상대 $10^{-16}$ 안이에요. p값의 가장 큰 상대오차는 Tukey 꼬리($p = 7.8 \times 10^{-21}$)의 $5.2 \times 10^{-15}$인데, $q$의 반올림에 $\kappa_p = 56$을 곱한 크기라 계약 안이에요. 보정 p값은 정확한 유리수와 $1.2 \times 10^{-16}$ 안이고 기각은 모두 정확한 판정과 같아요.
+
+<Callout type="note" title="재표본의 정해진 답">
+재표본 묶음의 정해진 부분(나열한 순열의 p값, BWS의 통계량, MGC의 통계량, `goodness_of_fit`의 맞춘 모수와 통계량)은 위 표에 없고 `tests/htest/test_resampling.py`가 참값과 견줘요. 57문제 모두 계약 안이에요. 나열의 p값은 셈의 몫이라 상대 $5.6 \times 10^{-17}$(`permutation_test`)·$7 \times 10^{-17}$(`bws_test`) 안이고, MGC의 통계량은 $7.5 \times 10^{-15}$(n = 25, 국소 상관의 합과 제곱근), 맞춘 모수는 $9.3 \times 10^{-16}$ 안이에요.
+</Callout>
+
+### 무작위 p값
+
+재표본과 몬테카를로의 무작위 p값에는 수치 계약이 없어요. 약속은 정의식과 재현성이에요. 같은 `rng` 상태면 1·3·10스레드와 `batch` 1·7·1000에서 비트까지 같아요(테스트와 골든 출력이 지켜요). 통계적 타당성은 고정 시드의 한정된 검사로 봐요.
+
+- 무작위 순열 p값이 정확한 나열의 p값에서 5 표준오차 안
+- 몬테카를로 검정의 크기 0.1이 300번 가운데 이항 한계 안
+- BCa 90% 구간의 포함률이 200번 가운데 한계 안
+- `goodness_of_fit`의 크기가 100번 가운데 한계 안
+
+## 비교 대상
+
+비교 대상이 참값에서 $10^{-12}$보다 벗어나는 곳은 각 페이지의 끝에 정리했어요. 이 영역의 페이지에서 큰 것만 모으면 이래요.
+
+| 곳 | 비교 대상 | 까닭 | 페이지 |
+|---|---|---|---|
+| Barnard의 거울 표 | scipy, 상대 $9.5 \times 10^{-4}$ 낮음 | 반올림한 $T$로 기각역을 정해요 | [장애 모수의 최댓값](/internals/htest/barnard-boschloo/) |
+| Barnard의 최댓값 | scipy, 낮게 나오기도 함 | `shgo`가 봉우리를 놓쳐도 알리지 않아요 | 같은 곳 |
+| r × c Fisher | R, $1.7 \times 10^{-10}$ | FEXACT가 가까운 과거 값을 합쳐요 | [분할표의 검정](/internals/htest/contingency/) |
+| E-test의 꼬리 | scipy, 41%까지 낮음 | 이중 합을 잘라요 | [비율과 이항](/internals/htest/proportion/) |
+| 차의 점수 검정 | statsmodels, $3.7 \times 10^{-4}$ | 삼차식의 계수 | 같은 곳 |
+| Tukey의 깊은 꼬리 | scipy 0, R $3.1 \times 10^{-10}$ | $1 - \text{cdf}$ | [스튜던트화 범위와 Dunnett](/internals/htest/post-hoc/) |
+| Dunnett | scipy 절대 $9 \times 10^{-5}$ | 무작위 준몬테카를로 | 같은 곳 |
+| `alpha_sidak` | statsmodels, $1.3 \times 10^{-14}$ | $1 - (1 - \alpha)^{1/m}$의 상쇄 | [p값 보정과 결합](/internals/htest/p-adjust/) |
+
+## 성능
+
+수치는 여기 적지 않고, 어디서 시간이 줄고 어디서 정확도를 위해 시간을 쓰는지만 정리해요.
+
+### 시간이 주는 곳
+
+- **호출의 고정 비용.** scipy의 검정은 `_axis_nan_policy` 장식자를 지나며 호출마다 고정 비용이 커요. 작은 표본에서는 그 비용이 계산보다 커요. 여기서는 입력 정리가 가볍고 검정 하나의 계산이 C++ 호출 하나라, 작은 표본에서 이득의 대부분이 이 부분이에요.
+- **배치.** 줄마다 독립이라 줄을 스레드풀에 나눠요. scipy의 배치는 벡터화된 곳과 줄마다 Python 고리를 도는 곳이 섞여 있어요.
+- **정확 분포의 공유.** 같은 크기의 줄들이 같은 정확 분포를 쓰면 호출 안에서 한 번만 만들어요.
+- **double-double 훑기.** 1스레드의 double-double 합은 NEON의 두 칸으로 해요. 긴 줄 하나는 항을 병렬로 계산해 차례로 더해서 합의 순서가 스레드 수와 상관없어요.
+- **재표본.** 순열과 붓스트랩 표본은 C++에서 병렬로 만들고, `ttest_ind`·`pearsonr`·`spearmanrho` 같은 내장 통계량은 p값 없이 통계량만 계산하는 커널을 바로 불러요. MGC는 순열마다 공분산만 다시 세서 $O(n^2)$이에요.
+- **분포 메서드의 배열 호출.** `goodness_of_fit`, `anderson`, z의 p값처럼 맞춘 분포의 cdf를 여러 점에서 부르는 곳은 원소마다가 아니라 배열로 한 번에 불러요.
+
+### 정확도를 위해 시간을 쓰는 곳
+
+- `tukey_hsd`와 `dunnett`은 두 겹의 적응 구적이라, $1 - \text{cdf}$ 꼴의 R `ptukey`나 준몬테카를로보다 느릴 수 있어요. 대신 깊은 꼬리까지 상대 정확도를 지키고 결정적이에요.
+- 한 표본 Kolmogorov–Smirnov의 정확한 Durbin 행렬, Cressie–Read 계열의 double-double 항, 작은 r × c Fisher 표의 망 알고리즘도 근사나 double 계산보다 느릴 수 있어요.
+- t·F·카이제곱 분포의 cdf에는 sd.stats의 덩어리 커널이 없어서, 배치의 p값이 줄마다 불완전 베타·감마 한 번이에요. 순위 검정의 배치는 줄마다 정렬 하나예요.

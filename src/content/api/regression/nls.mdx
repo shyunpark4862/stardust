@@ -147,7 +147,7 @@ $$
 ...     return a * sd.exp(-k * t) + c
 >>> r = sd.regression.nls(decay, t, y, p0=[1.0, 1.0, 0.0])
 >>> r
-NLSResult(method='lm', nobs=25, ssr=0.201028, converged=True, params=[ 5.030580751301966 0.4048767917071542 0.5239091983451125])
+NLSResult(method='lm', nobs=25, ssr=0.201028, converged=True, params=[5.03058, 0.404877, 0.523909])
 >>> r.param_names
 ['a', 'k', 'c']
 >>> r.params

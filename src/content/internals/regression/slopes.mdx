@@ -39,9 +39,9 @@ import Steps from '../../../components/fig/Steps.astro';
 ```python
 >>> y = [1.0, float("nan"), 3.0, 4.0, 7.0]
 >>> sd.regression.theilslopes(y, nan_policy="omit")
-TheilslopesResult(slope=1.25, intercept=0.375, low_slope=1.0, high_slope=3.0)
+TheilslopesResult(slope=1.25, intercept=0.375, low_slope=1, high_slope=3)
 >>> sd.regression.theilslopes(y, [0.0, 1, 2, 3, 4], nan_policy="omit")
-TheilslopesResult(slope=1.25, intercept=0.375, low_slope=1.0, high_slope=3.0)
+TheilslopesResult(slope=1.25, intercept=0.375, low_slope=1, high_slope=3)
 >>> sd.regression.theilslopes([1.0])
 TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
 ```
@@ -153,9 +153,11 @@ scipy는 신뢰구간의 순위를 유한한 기울기 수 `nt`로 정해요(무
 >>> x = [0.0, 1, 2, 3, 4, 5, 6]
 >>> y = [1e308, -1e308, 0.0, 1, 2, 4, 3]
 >>> sd.regression.theilslopes(y, x)
-TheilslopesResult(slope=1.0, intercept=-1.0, low_slope=-3.333333333333333e+307, high_slope=2.5e+307)
+TheilslopesResult(slope=1, intercept=-1, low_slope=-3.33333e+307, high_slope=2.5e+307)
 >>> [float(v) for v in st.theilslopes(y, x)]
 [1.0, -1.0, -3.333333333333333e+307, 2.5e+307]
+>>> list(sd.regression.theilslopes(y, x)) == [float(v) for v in st.theilslopes(y, x)]
+True
 ```
 
 ### 기울기가 없는 쌍 세기
@@ -178,12 +180,12 @@ $x$가 같은 쌍의 수는 $x$를 정렬해 동률을 세는 것으로 정확�
 ```python
 >>> xo = [-1e308, 1e308, 0.0, 1, 2, 3, 4]
 >>> yo = [-1e308, 1e308, 0.0, 1, 2, 4, 3]
->>> sd.regression.theilslopes(yo, xo)
-TheilslopesResult(slope=1.0, intercept=0.0, low_slope=0.6666666666666666, high_slope=1.3333333333333333)
->>> [float(v) for v in st.theilslopes(yo, xo)]
+>>> list(sd.regression.theilslopes(yo, xo))
 [1.0, 0.0, 0.6666666666666666, 1.3333333333333333]
->>> sd.regression.siegelslopes(yo, xo), [float(v) for v in st.siegelslopes(yo, xo)]
-(SiegelslopesResult(slope=1.0, intercept=0.0), [1.0, 0.0])
+>>> list(sd.regression.theilslopes(yo, xo)) == [float(v) for v in st.theilslopes(yo, xo)]
+True
+>>> list(sd.regression.siegelslopes(yo, xo)) == [float(v) for v in st.siegelslopes(yo, xo)]
+True
 ```
 
 첫 두 점의 쌍만 $x$의 차와 $y$의 차가 둘 다 넘쳐 기울기가 없어요. 나머지 20쌍의 기울기로 scipy와 같은 값이에요.
@@ -208,7 +210,7 @@ $z = \Phi^{-1}(a/2)$이고, $a$는 `alpha`를 0.5 이하로 접은 값이에요(
 
 ```python
 >>> sd.regression.theilslopes([1.0, 1, 1, 1], [1.0, 1, 1, 2])
-TheilslopesResult(slope=0.0, intercept=1.0, low_slope=nan, high_slope=nan)
+TheilslopesResult(slope=0, intercept=1, low_slope=nan, high_slope=nan)
 >>> r1 = sd.regression.theilslopes([1.0, 3, 2, 5, 4, 6], alpha=0.1)
 >>> r2 = sd.regression.theilslopes([1.0, 3, 2, 5, 4, 6], alpha=0.9)
 >>> r1 == r2

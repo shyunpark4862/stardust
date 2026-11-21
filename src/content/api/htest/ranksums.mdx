@@ -1,0 +1,166 @@
+---
+kind: function
+title: ranksums
+names: [ranksums]
+group: 순위 검정
+order: 2
+signatures:
+  - "sd.htest.ranksums(x, y, /, *, axis=None, alternative='two-sided', nan_policy='propagate', keepdims=False)"
+summary: 두 독립 표본의 Wilcoxon 순위 합 검정이에요. 합친 표본에서 x가 받은 순위의 합을 표준화한 z와 정규분포의 p값을 줘요. 동점 보정과 연속성 보정이 없는 단순한 꼴이라, 보정과 정확한 분포가 필요하면 mannwhitneyu를 써요.
+params:
+  - name: x, y
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: 두 표본. 길이는 달라도 돼요. bool·정수는 float64로 바꿔서 계산하고, ±inf는 가장 크거나 작은 값으로 순위를 받아요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 표본마다 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 표본을 읽고, 나머지 축은 배치예요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(x가 작은 쪽으로 치우쳤다), 'greater'(x가 큰 쪽으로 치우쳤다) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: RanksumsResult
+  desc: "statistic(z)과 pvalue(표준정규분포)예요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, keepdims가 True·False가 아닐 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "alternative·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때."
+seeAlso: [mannwhitneyu, brunnermunzel, kruskal, basics, results]
+---
+
+## 무엇을 묻나요
+
+[`mannwhitneyu`](/api/htest/mannwhitneyu/)와 같은 질문이에요. 독립인 두 표본에서 한쪽 값이 다른 쪽보다 큰 경향이 있는지 순위로 물어요. 귀무가설은 "두 표본이 같은 분포에서 나왔다"예요.
+
+두 표본을 합쳐 작은 값부터 1, 2, …, N의 순위를 매기고, x가 받은 순위의 합 $R_x$를 봐요. 귀무가설이 맞으면 x의 순위는 1..N에서 무작위로 고른 것과 같아서, 평균이 $n_x(N+1)/2$이고 분산이 $n_x n_y (N+1)/12$예요. 이것으로 표준화한 값이 통계량이에요.
+
+$$
+z = \frac{R_x - n_x (N + 1)/2}{\sqrt{n_x n_y (N + 1)/12}}
+$$
+
+p값은 $z$의 표준정규 꼬리예요.
+
+```python
+>>> import stardust as sd
+>>> a = [3.1, 4.5, 2.8, 5.2, 4.0, 3.7]
+>>> b = [5.6, 6.1, 4.9, 7.0, 5.8, 6.4, 5.1]
+>>> r = sd.htest.ranksums(a, b)
+>>> r
+RanksumsResult(statistic=-2.71429, pvalue=0.00664189)
+>>> stat, p = r
+```
+
+$z$가 음수이면 x의 순위가 기대보다 작다는 뜻이에요. 여기서는 A안의 값이 대체로 작아요.
+
+순위 합과 [`mannwhitneyu`](/api/htest/mannwhitneyu/)의 $U$는 $U_x = R_x - n_x(n_x + 1)/2$로 이어져 있어서 같은 검정이에요. 동점이 없으면 `ranksums`는 `mannwhitneyu(method='asymptotic', use_continuity=False)`의 정규 근사와 같은 p값을 줘요.
+
+```python
+>>> sd.htest.mannwhitneyu(a, b, method='asymptotic', use_continuity=False)
+MannwhitneyuResult(statistic=2, pvalue=0.00664189, zstatistic=-2.71429, method='asymptotic')
+```
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | 위의 $z$ |
+| `pvalue` | `alternative`에 맞는 표준정규분포의 p값 |
+
+```python
+>>> print(r.summary())
+                            Wilcoxon rank-sum test
+==============================================================================
+Statistic:                      -2.714  Alternative:                 two-sided
+P-value:                       0.00664  No. Observations:                 6, 7
+==============================================================================
+```
+
+한쪽 검정은 `alternative`로 해요. `'less'`는 x가 작은 쪽으로 치우쳤다는 대립가설이에요.
+
+```python
+>>> sd.htest.ranksums(a, b, alternative='less').pvalue
+0.003320942738213315
+```
+
+## 동점이 있을 때
+
+`ranksums`는 동점이 있어도 위의 분산을 그대로 써요. 동점이 있으면 순위가 덜 흩어져서 실제 분산이 이보다 작아요. 그래서 동점이 많을수록 p값이 조금 커지는(보수적인) 쪽으로 치우쳐요. 동점 보정이 든 정규 근사는 `mannwhitneyu`에 있어요.
+
+```python
+>>> x = [1, 2, 2, 3, 3, 3, 4]
+>>> y = [3, 4, 4, 5, 5, 6]
+>>> sd.htest.ranksums(x, y)
+RanksumsResult(statistic=-2.5, pvalue=0.0124193)
+>>> sd.htest.mannwhitneyu(x, y, method='asymptotic', use_continuity=False)
+MannwhitneyuResult(statistic=3.5, pvalue=0.0105632, zstatistic=-2.55683, method='asymptotic')
+```
+
+모든 값이 같으면 순위가 모두 같아서 $R_x$가 기대값과 정확히 같아요. 보정 없는 분산은 0이 아니므로 $z = 0$, p값은 1이에요.
+
+```python
+>>> sd.htest.ranksums([1.0, 1.0, 1.0], [1.0, 1.0])
+RanksumsResult(statistic=0, pvalue=1)
+```
+
+## 언제 쓰나요
+
+`ranksums`는 교과서에 흔히 나오는 정규 근사 그대로라 손으로 계산한 값과 맞춰 볼 때 좋아요. 실제 분석에는 [`mannwhitneyu`](/api/htest/mannwhitneyu/)를 권해요.
+
+- 작은 표본에서 정규 근사는 정확한 p값과 꽤 달라요. 위의 6개와 7개에서 정규 근사는 0.0066, 정확한 값은 0.0047이에요. `mannwhitneyu`는 작은 표본에서 정확한 분포를 골라요.
+- 동점이 있으면 `mannwhitneyu`가 동점 보정을 해요.
+
+## 여러 검정과 NaN
+
+`axis`, 배치, `keepdims`, `nan_policy`는 다른 검정과 같아요. 아래는 두 실험(행)에서 x 30개와 y 25개를 견줘요. 둘째 실험에서만 y를 0.8 밀었어요.
+
+```python
+>>> rng = sd.random.default_rng(2)
+>>> X = sd.stats.Normal().sample((2, 30), rng=rng)
+>>> Y = sd.stats.Normal().sample((2, 25), rng=rng) + sd.asarray([[0.0], [0.8]])
+>>> rb = sd.htest.ranksums(X, Y, axis=1)
+>>> rb.pvalue
+array([ 0.7353166906373405, 0.03761004704415354], dtype=float64)
+```
+
+```python
+>>> nan = float('nan')
+>>> sd.htest.ranksums([1.0, nan], [2.0, 3.0])
+RanksumsResult(statistic=nan, pvalue=nan)
+>>> sd.htest.ranksums([1.0, nan], [2.0, 3.0], nan_policy='omit')
+RanksumsResult(statistic=-1.22474, pvalue=0.220671)
+```
+
+표본이 비면 NaN이에요.
+
+## 정확도
+
+순위 합은 정확한 정수(의 반)예요. 통계량과 p값은 Arb(구간 산술)로 만든 참값과 문제 4개에서 견주어 통계량이 상대 3e-17, p값이 상대 7.9e-15 안이에요(p값의 오차는 깊은 꼬리에서 $z$의 반올림이 커진 몫이에요).
+
+## scipy를 아는 분께
+
+`scipy.stats.ranksums`와 식이 같아요. scipy가 legacy로 표시한 함수이지만 같은 이름으로 둬요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.ranksums(x, y)
+RanksumsResult(statistic=np.float64(-2.5), pvalue=np.float64(0.012419330651552268))
+```
+
+- `axis`의 기본값이 None이에요(scipy는 0).
+- 표본은 위치로만, 옵션은 키워드로만 받아요.
+- R의 `wilcox.test`는 정규 근사에 동점 보정을 넣어서 동점이 있으면 값이 달라요.

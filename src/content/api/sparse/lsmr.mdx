@@ -1,0 +1,237 @@
+---
+kind: function
+title: lsmr
+names: [lsmr]
+group: 반복법
+order: 7
+signatures:
+  - "sd.sparse.lsmr(A, b, /, *, damp=0.0, atol=1e-06, btol=1e-06, conlim=100000000.0, max_iter=None, x0=None)"
+summary: 아무 모양(m × n)의 희소 행렬 A로 최소제곱 문제 min ‖Ax − b‖²(+ damp²‖x − x0‖²)를 LSMR로 풀어요. lsqr과 같은 문제와 판정이지만 ‖Aᴴr‖이 반복마다 줄어서, 일찍 멈춰도 답이 덜 흔들려요.
+params:
+  - name: A
+    type: 희소 배열, 2차원 ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: 계수 행렬 (m, n). 정사각이 아니어도 돼요. LinearOperator면 matvec과 rmatvec(Aᴴ의 곱)이 모두 있어야 해요.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 모양이 (m,)이나 (m, 1)인 sd.ndarray예요.
+  - name: damp
+    type: float
+    kind: keyword-only
+    desc: 감쇠 계수. 0보다 크면 ‖Ax − b‖² + damp²‖x − x0‖²를 최소화해요. 유한한 0 이상의 수이고 기본값은 0.0이에요.
+  - name: atol
+    type: float
+    kind: keyword-only
+    desc: 멈춤 판정의 허용오차(A의 값이 믿을 만한 상대 정도). 유한한 0 이상의 수이고 기본값은 1e-06이에요.
+  - name: btol
+    type: float
+    kind: keyword-only
+    desc: 멈춤 판정의 허용오차(b의 값이 믿을 만한 상대 정도). 유한한 0 이상의 수이고 기본값은 1e-06이에요.
+  - name: conlim
+    type: float
+    kind: keyword-only
+    desc: 조건수의 한계. 조건수의 어림이 이것을 넘으면 멈춰요. 0 이상의 수이고, 0이나 inf면 한계가 없어요. 기본값은 1e8이에요.
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: 반복의 상한(1 이상). None(기본값)이면 min(m, n)이에요. 조건수가 큰 문제에는 모자랄 수 있어요. 닿으면 그때의 x와 status = 7, converged=False를 돌려줘요.
+  - name: x0
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 시작점 (n,)이나 (n, 1). None(기본값)이면 0 벡터예요. damp는 x − x0에 걸려요.
+returns:
+  type: LsmrResult
+  desc: "x(해, (n,)), converged, status(0–7), message, n_iter, normr(‖b − Ax‖), normar(‖Aᴴr‖), norma, conda, normx(‖x‖)의 어림. scipy의 여덟 값 튜플로 풀려요."
+raises:
+  - type: TypeError
+    desc: A가 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차·damp·conlim이 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, show 등)를 줬을 때.
+  - type: ValueError
+    desc: A가 2차원이 아닐 때, b의 모양이 (m,)·(m, 1)이 아니거나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·b·x0에 NaN·inf가 있을 때, damp·atol·btol이 음수이거나 유한하지 않을 때, conlim이 음수이거나 NaN일 때, max_iter가 1보다 작을 때, rmatvec이 없는 LinearOperator를 줬을 때.
+seeAlso: [iterative, lsqr, minres, linearoperator]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const lsqrAr = [[1,3.58],[2,3.38],[3,3.28],[4,3.32],[5,3.25],[6,3.1],[7,3.19],[8,3.04],[9,2.9],[10,2.76],[11,2.8],[12,2.73],[13,2.78],[14,2.6],[15,2.39],[16,2.44],[17,2.85],[18,2.46],[19,2.39],[20,2.39],[21,2.81],[22,2.32],[23,2.47],[24,2.64],[25,2.41],[26,2.79],[27,2.89],[28,2.5],[29,2.38],[30,3.31],[31,2.15],[32,2.66],[33,1.89],[34,2.3],[35,2.19],[36,2.16],[37,2.53],[38,1.88],[39,2.86],[40,2.16],[41,2.31],[42,1.77],[43,2.43],[44,2.64],[45,2.57],[46,1.79],[47,2.44],[48,1.89],[49,1.74],[50,2.46],[51,2.09],[52,1.88],[53,1.76],[54,1.77],[55,2.2],[56,2.51],[57,2.04],[58,1.75],[59,2.54],[60,1.81],[61,2.01],[62,2.58],[63,2.48],[64,2.85],[65,2.85],[66,2.91],[67,1.76],[68,1.67],[69,2.52],[70,1.7],[71,1.45],[72,2.16],[73,2.31],[74,2.24],[75,2.16],[76,2.6],[77,2.77],[78,1.48],[79,2.36],[80,1.8]];
+export const lsmrAr = [[1,3.53],[2,3.29],[3,3.13],[4,3.06],[5,2.98],[6,2.89],[7,2.84],[8,2.76],[9,2.67],[10,2.56],[11,2.5],[12,2.44],[13,2.4],[14,2.32],[15,2.2],[16,2.14],[17,2.13],[18,2.09],[19,2.04],[20,2.0],[21,2.0],[22,1.95],[23,1.93],[24,1.92],[25,1.9],[26,1.9],[27,1.9],[28,1.88],[29,1.86],[30,1.86],[31,1.81],[32,1.81],[33,1.7],[34,1.68],[35,1.66],[36,1.64],[37,1.64],[38,1.58],[39,1.58],[40,1.56],[41,1.56],[42,1.49],[43,1.48],[44,1.48],[45,1.48],[46,1.44],[47,1.43],[48,1.41],[49,1.37],[50,1.37],[51,1.36],[52,1.34],[53,1.31],[54,1.29],[55,1.28],[56,1.28],[57,1.28],[58,1.25],[59,1.25],[60,1.24],[61,1.23],[62,1.23],[63,1.23],[64,1.23],[65,1.23],[66,1.23],[67,1.21],[68,1.18],[69,1.18],[70,1.16],[71,1.11],[72,1.11],[73,1.11],[74,1.11],[75,1.11],[76,1.11],[77,1.11],[78,1.07],[79,1.07],[80,1.06]];
+
+## 무엇을 하나요
+
+[`lsqr`](/api/sparse/lsqr/)과 같은 문제를 풀어요. 최소제곱 해 $\min_x \lVert Ax - b\rVert^2$(damp > 0이면 $+\ \text{damp}^2\lVert x - x_0\rVert^2$)이고, A는 아무 모양이어도 되며, 랭크가 모자라면 x0에 가장 가까운 해에 다가가요.
+
+차이는 반복마다 무엇을 줄이느냐예요. 최소제곱 해는 정규방정식 $A^{\mathsf H}(b - Ax) = 0$을 만족하는 점이에요. 그래서 $\lVert A^{\mathsf H}r\rVert$가 "해에서 얼마나 먼가"를 재는 자연스러운 잣대예요.
+
+- LSQR은 정규방정식에 [`cg`](/api/sparse/cg/)를 쓴 것과 같아요. ‖r‖은 반복마다 줄지만 ‖Aᴴr‖은 크게 오르내려요.
+- LSMR(Fong–Saunders)은 정규방정식에 [`minres`](/api/sparse/minres/)를 쓴 것과 같아요. **‖Aᴴr‖이 반복마다 줄고**, ‖r‖도 줄어요.
+
+두 방법 모두 같은 Golub–Kahan 쌍대각화로 기저를 만들고, 반복마다 A와 Aᴴ의 곱을 한 번씩 해요. 끝까지 풀면 같은 답이에요. 판정을 느슨하게 해서 일찍 멈출 때 LSMR의 x가 더 안정적이에요.
+
+<Reference />
+
+## 기본 사용
+
+300 × 60 희소 행렬로 최소제곱을 풀어요. 열마다 크기를 1부터 1,000까지 다르게 해서 조건수가 1,200쯤이에요.
+
+```python
+>>> rng = sd.random.default_rng(5)
+>>> A = sd.sparse.random_array((300, 60), density=0.08, format='csr', rng=rng)
+>>> A = A @ sd.sparse.diags_array(10.0 ** sd.linspace(0, 3, 60))
+>>> b = sd.stats.Normal().sample(300, rng=rng)
+>>> round(float(sd.linalg.cond(A.toarray())))
+1223
+>>> r = sd.sparse.lsmr(A, b)
+>>> r
+LsmrResult(converged=False, status=7, n_iter=60, normr=15.6523, x=<array of shape (60,)>)
+>>> r.message
+'the iteration limit was reached'
+```
+
+기본 상한 min(m, n) = 60에 닿았어요. 반올림이 없다면 크기 60인 문제는 60번 안에 끝나지만, 실제로는 조건수가 크면 그보다 오래 걸려요. 상한을 늘려요.
+
+```python
+>>> r = sd.sparse.lsmr(A, b, max_iter=1000)
+>>> r.converged, r.status, r.n_iter
+(True, 2, 211)
+>>> r.message
+'the least-squares solution is good enough, given atol'
+```
+
+밀집 최소제곱 [`sd.linalg.lstsq`](/api/linalg/lstsq/)의 답과 견줘 봐요. 잔차는 최솟값과 다섯째 자리까지 같지만, x는 3%쯤 달라요.
+
+```python
+>>> ref = sd.linalg.lstsq(A.toarray(), b).solution
+>>> resid = lambda x: round(float(sd.linalg.vector_norm(b - A @ x)), 4)
+>>> resid(r.x), resid(ref)
+(15.3753, 15.3751)
+>>> rel = lambda x: f'{float(sd.linalg.vector_norm(x - ref) / sd.linalg.vector_norm(ref)):.0e}'
+>>> rel(r.x)
+'3e-02'
+>>> r10 = sd.sparse.lsmr(A, b, atol=1e-10, btol=1e-10, max_iter=1000)
+>>> r10.n_iter, rel(r10.x)
+(405, '1e-06')
+```
+
+최소제곱의 잔차는 해 근처에서 아주 평평해서, 잔차가 거의 최소여도 x는 조건수만큼 틀릴 수 있어요. 기본 `atol=1e-6`은 "A의 값이 여섯 자리쯤 믿을 만하다"는 뜻의 판정이에요. x 자체가 정확해야 하면 `atol`과 `btol`을 줄여요.
+
+<Callout type="warn" title="기본 max_iter가 짧아요">
+`lsmr`의 기본 상한은 min(m, n)이라 `lsqr`(2n)보다 짧아요. 조건수가 큰 문제에서는 판정에 닿기 전에 끊기기 쉬우니 `converged`를 꼭 보고, 모자라면 `max_iter`를 늘려요.
+</Callout>
+
+## ‖Aᴴr‖이 반복마다 줄어요
+
+같은 문제를 `lsqr`과 `lsmr`로 k번에서 멈춰 보고, 그 x의 ‖Aᴴr‖을 직접 계산해요. 계산은 늘 같은 순서라 `max_iter=k`의 결과가 k번째 반복의 점이에요. 판정을 끄려고 `atol=btol=0`으로 둬요.
+
+```python
+>>> def gap(f, k):
+...     x = f(A, b, atol=0.0, btol=0.0, max_iter=k).x
+...     return round(float(sd.linalg.vector_norm(A.T @ (b - A @ x))), 1)
+>>> [gap(sd.sparse.lsqr, k) for k in (20, 30, 40)]
+[247.3, 2041.8, 146.0]
+>>> [gap(sd.sparse.lsmr, k) for k in (20, 30, 40)]
+[100.3, 72.9, 36.5]
+```
+
+`lsqr`은 30번째 반복의 ‖Aᴴr‖이 20번째보다 여덟 배 커요. `lsmr`은 꾸준히 줄어요.
+
+<Fig caption="위 문제에서 반복 k의 ‖Aᴴr_k‖ (세로축은 로그 눈금). lsqr은 크게 오르내리고 lsmr은 반복마다 줄어요. 두 방법의 ‖r_k‖은 둘 다 반복마다 줄고 거의 같아요(16.9에서 15.5쯤으로).">
+  <Plot
+    curves={[
+      { points: lsqrAr, label: 'lsqr' },
+      { points: lsmrAr, label: 'lsmr' },
+    ]}
+    domain={[1, 80]}
+    range={[0.8, 3.8]}
+    xTicks={[
+      { v: 1, label: '1' },
+      { v: 20, label: '20' },
+      { v: 40, label: '40' },
+      { v: 60, label: '60' },
+      { v: 80, label: '80번' },
+    ]}
+    yTicks={[
+      { v: 1, label: '10' },
+      { v: 2, label: '10²' },
+      { v: 3, label: '10³' },
+    ]}
+  />
+</Fig>
+
+판정 2(‖Aᴴr‖ ≤ atol·‖A‖·‖r‖)가 바로 이 값을 보므로, LSMR은 판정을 통과하는 시점이 예측하기 쉽고 통과한 뒤의 x도 매끄러워요. 큰 문제를 느슨한 허용오차(`atol=1e-3` 같은)로 빨리 풀고 싶을 때 `lsmr`이 알맞아요.
+
+## 멈춤 판정
+
+`lsqr`과 같은 판정과 `status`예요.
+
+| `status` | 판정 |
+|---|---|
+| 0 | b = 0(또는 x0이 이미 답) |
+| 1 | ‖r‖ ≤ btol·‖b‖ + atol·‖A‖·‖x‖ (계가 풀렸어요) |
+| 2 | ‖Aᴴr‖ ≤ atol·‖A‖·‖r‖ (최소제곱 해예요) |
+| 3 | cond(A)의 어림 ≥ conlim |
+| 4, 5, 6 | 1, 2, 3과 같지만 반올림의 한계(ε)로 |
+| 7 | 반복이 `max_iter`에 닿았어요 |
+
+`converged`는 `status`가 0, 1, 2, 4, 5일 때 True예요. 메시지와 허용오차를 고르는 법은 [`lsqr`](/api/sparse/lsqr/#멈춤-판정-atol-btol-conlim)에 있어요. `status` 0의 메시지만 조금 달라요.
+
+```python
+>>> sd.sparse.lsmr(A, sd.zeros(300)).message
+'the exact solution is x = 0, or x = x0 if x0 was given'
+```
+
+## damp와 x0
+
+`damp > 0`이면 $\lVert Ax - b\rVert^2 + \text{damp}^2\lVert x - x_0\rVert^2$를 최소화해요. 정규화가 조건수를 줄여서 반복도 줄어요.
+
+```python
+>>> rd = sd.sparse.lsmr(A, b, damp=10.0, max_iter=1000)
+>>> rd.converged, rd.n_iter
+(True, 115)
+>>> round(rd.normx, 3), round(r.normx, 3)
+(0.203, 0.774)
+```
+
+반복이 211번에서 115번으로 줄고, 벌점 때문에 x가 작아졌어요.
+
+x0의 뜻은 [`lsqr`](/api/sparse/lsqr/#시작점-x0)과 같아요.
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 해 (n,). 쓰기 금지 배열이에요 |
+| `converged` | `status`가 0, 1, 2, 4, 5인지 |
+| `status` | 위 표의 0–7 |
+| `message` | 멈춘 까닭 |
+| `n_iter` | 반복 수 |
+| `normr` | ‖b − Ax‖의 어림 |
+| `normar` | ‖Aᴴr‖의 어림 |
+| `norma`, `conda` | ‖A‖와 cond(A)의 어림(반복이 본 부분에서) |
+| `normx` | ‖x‖ |
+
+`lsqr`과 달리 `normr_damped`와 `var`는 없어요. 결과는 scipy의 여덟 값으로 풀려요.
+
+```python
+>>> x, istop, itn, normr, normar, norma, conda, normx = sd.sparse.lsmr(A, b, max_iter=1000)
+>>> istop, itn
+(2, 211)
+```
+
+## 입력과 에러
+
+입력 규칙은 [`lsqr`](/api/sparse/lsqr/#입력과-에러)과 같아요. 전처리기 `M`이 없고, `LinearOperator`라면 `rmatvec`이 있어야 해요.
+
+```python
+>>> sd.sparse.lsmr(A, b, maxiter=100)
+Traceback (most recent call last):
+    ...
+TypeError: lsmr(): unexpected keyword argument 'maxiter'. Did you mean 'max_iter'?
+```
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.lsmr`과 같은 알고리즘과 판정이에요. `status`가 `istop`, `n_iter`가 `itn`이에요.
+- `maxiter`는 `max_iter`이고 기본값(min(m, n))은 scipy와 같아요. `show`가 없어요.
+- 결과는 scipy의 `(x, istop, itn, normr, normar, norma, conda, normx)`로 풀려요. 필드 이름도 같아요.
+- 반복이 수백 번인 문제에서는 반올림의 차이로 반복 수가 scipy와 조금 다를 수 있어요. 상태는 같아요.

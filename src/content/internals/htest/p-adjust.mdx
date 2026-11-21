@@ -1,0 +1,177 @@
+---
+title: p값 보정과 결합
+group: 다중 비교
+order: 2
+summary: multipletests와 false_discovery_control이 함께 쓰는 보정 커널 하나, 보정값을 double-double로 들고 기각을 그 값으로 판정하는 이유, Hommel의 보정을 볼록 껍질로 O(m log m)에 계산하는 방법, combine_pvalues가 로그의 합의 반올림을 꼬리에 일차로 되돌리는 방법을 설명해요.
+seeAlso: [post-hoc, accuracy-performance]
+---
+
+## 한눈에 보기
+
+[`multipletests`](/api/htest/multipletests/)(statsmodels의 열 가지 방법)와 [`false_discovery_control`](/api/htest/false_discovery_control/)(scipy의 `'bh'`, `'by'`)은 같은 C++ 커널(`csrc/htest/multitest.hpp`) 하나를 불러요. 그래서 같은 p값이면 `false_discovery_control(p, method='bh')`와 `multipletests(p, method='fdr_bh').pvalues_corrected`가 같은 비트예요. [`combine_pvalues`](/api/htest/combine_pvalues/)는 `csrc/htest/multicomp.cpp`의 `combine`이에요. 배치의 가족(줄)마다 독립이라 스레드풀이 나눠 맡고, 줄마다 쓰는 작업 공간은 스레드마다 다시 써요.
+
+```python
+>>> p = [0.01, 0.04, 0.03, 0.005, 0.2, 0.04]
+>>> sd.htest.false_discovery_control(p)
+array([ 0.03, 0.048, 0.048,  0.03,   0.2, 0.048], dtype=float64)
+>>> sd.htest.multipletests(p, method='fdr_bh').pvalues_corrected
+array([ 0.03, 0.048, 0.048,  0.03,   0.2, 0.048], dtype=float64)
+```
+
+## 보정 커널
+
+### 정렬과 방법
+
+가족 하나($m$개의 p값)를 (값, 위치) 짝으로 정렬해요. 같은 값은 위치 순서로 놓이므로 정렬이 안정적이고, 같은 p값은 입력의 순서와 상관없이 같은 보정값을 받아요. Bonferroni와 Šidák은 p값마다 따로 정해지므로 정렬하지 않아요. 정렬한 순서 $p_{(1)} \le \dots \le p_{(m)}$에서 방법마다 이래요.
+
+| 방법 | 보정값 |
+|---|---|
+| `bonferroni` | $m\,p$ |
+| `sidak` | $1 - (1 - p)^m$ |
+| `holm-sidak` | $1 - (1 - p_{(i)})^{m - i + 1}$의 앞에서부터 누적 최대(단계 내림) |
+| `holm` | $(m - i + 1)\,p_{(i)}$의 누적 최대 |
+| `simes-hochberg` | $(m - i + 1)\,p_{(i)}$의 뒤에서부터 누적 최소(단계 올림) |
+| `hommel` | Hommel의 보정값(아래) |
+| `fdr_bh` | $m\,p_{(i)}/i$의 뒤에서부터 누적 최소 |
+| `fdr_by` | `fdr_bh`의 값 × 조화수 $H_m = \sum_{i=1}^m 1/i$ |
+| `fdr_tsbh`, `fdr_tsbky` | 두 단계 절차: `fdr_bh`의 값 × $m_0/m$(`tsbky`는 × $(1 + \alpha)$ 더) |
+
+모두 1에서 잘라요. 두 단계 절차의 $m_0$은 참 귀무가설의 수의 추정이고, statsmodels의 `fdrcorrection_twostage`처럼 BH 기각 수를 `max_iter` 단계까지 되풀이해 정해요.
+
+### double-double로 들고, 그 값으로 판정하기
+
+보정값은 double-double로 끝까지 가져가 마지막에 한 번 반올림해요. 곱과 몫($m\,p/i$, $H_m$), 누적 최대·최소가 모두 double-double 위에서 일어나요. Šidák 꼴은 지수 $y = n\log1p(-p)$를 double-double로 들고, 값은 $-\text{expm1}(y)$로 만들어요. 그래서 아주 작은 $p$도 $1 - (1 - p)^m$의 상쇄 없이 $mp$에 가까운 값을 얻어요.
+
+```cpp
+// csrc/htest/multitest.hpp
+// log1p(-p) as a double-double (p in [0, 1]): -p - mu(-p), mu(t) = t - log(1 + t)
+inline DD log1m(double p) {
+    if (p >= 1.0) return DD{-std::numeric_limits<double>::infinity(), 0.0};
+    if (p == 0.0) return DD{0.0, 0.0};
+    return DD{-p, 0.0} - dd::log1pmx_neg(DD{-p, 0.0});
+}
+// n log1p(-p) (-inf at p = 1)
+inline DD sidak_exponent(double p, double n) {
+    const DD l = log1m(p);
+    return std::isfinite(l.hi) ? l * n : DD{l.hi, 0.0};
+}
+// -expm1(y) for y = hi + lo <= 0, rounded once (first order in lo)
+inline double sidak_value(DD y) {
+    if (!std::isfinite(y.hi)) return y.hi < 0.0 ? 1.0 : std::numeric_limits<double>::quiet_NaN();
+    return -std::expm1(y.hi) - std::exp(y.hi) * y.lo;
+}
+```
+
+기각(`reject`)은 반올림한 보정값이 아니라 double-double 보정값을 $\alpha$와 견줘 정해요. 주어진 double들에 대한 그 절차의 판정이 그대로 나오게 하려는 거예요. 반올림한 값으로 견주면 경계에 걸친 값의 판정이 반올림에 따라 바뀌어요. 아래 예에서 0.07의 `fdr_tsbh` 보정값은 정확히는 $0.05 + 5 \times 10^{-18}$이라 $\alpha = 0.05$에서 기각되지 않지만, double로 반올림하면 0.05예요.
+
+```python
+>>> P = [1e-300, 3e-17, 1e-10, 2e-6, 0.0004, 0.001, 0.003, 0.009, 0.012, 0.02,
+...      0.03, 0.041, 0.05, 0.07, 0.2, 0.3, 0.45, 0.6, 0.85, 1.0]
+>>> r = sd.htest.multipletests(P, method='fdr_tsbh')
+>>> r.pvalues_corrected[13], bool(r.reject[13])
+(0.05, False)
+>>> sd.htest.multipletests([1e-20, 0.5], method='sidak').pvalues_corrected
+array([2e-20,  0.75], dtype=float64)
+```
+
+두 단계 절차의 기각 수도 $q_{(i)}\,n_0\,(1 + \alpha) \le i\,\alpha$를 double-double로 세요. `alpha_sidak`은 $-\text{expm1}\big(\log1p(-\alpha)/m\big)$이에요.
+
+## Hommel의 보정
+
+### 정의
+
+Hommel(1988)의 절차는 Simes 검정을 닫힌 검정 원리로 묶은 거예요. 보정값은 Wright(1992)의 꼴로 쓸 수 있어요. 가장 큰 $k$개의 p값의 Simes p값을
+
+$$
+s_k = k\min_{1 \le j \le k}\frac{p_{(m-k+j)}}{j}
+$$
+
+라 하고, $S_k = \max_{k' \ge k}s_{k'}$($S_{m+1} = 0$)라 하면 $p_i$의 보정값은
+
+$$
+\tilde p_i = \min_{0 \le k \le m}\max\big(S_{k+1},\; k\,p_i\big)
+$$
+
+이에요. 수준 $\alpha$에서 $h(\alpha) = \max\{k : s_k > \alpha\}$는 $[S_{k+1}, S_k)$에서 정확히 $k$이고, $H_i$는 $p_i \le \alpha/h(\alpha)$일 때 기각되므로 이 식이 나와요. 정의대로 계산하면 $s_k$ 하나에 $O(k)$, 전체 $O(m^2)$이에요. statsmodels와 R `p.adjust`가 그 비용이에요.
+
+### 볼록 껍질
+
+$a = m - k + 1$로 두면 $s_k = k\min_{t \ge a}p_{(t)}/(t - a + 1)$이에요. $p_{(t)}/(t - a + 1)$은 점 $(a, 0)$에서 점 $(t + 1, p_{(t)})$로 가는 기울기예요. 오른쪽에 놓인 점들 가운데 기울기가 가장 작은 점은 그 점들의 **아래 볼록 껍질**에 접하는 점이에요. $a$를 $m$에서 1로 줄이며 점을 왼쪽에 하나씩 더하면, 아래 볼록 껍질은 스택으로 유지돼요. 새 점과 스택의 둘째 점을 잇는 선분 위에 맨 위의 점이 있으면 그 점은 껍질에서 빠져요. 껍질을 왼쪽 끝부터 따라가면 $(a, 0)$에서의 기울기는 줄다가 늘어나는 단봉 수열이라 이분으로 최솟점을 찾아요.
+
+```cpp
+    // csrc/htest/multitest.hpp
+    for (std::int64_t a = m; a >= 1; --a) {
+        while (st.size() >= 2) {  // the top is not below the segment from the new point to the next
+            const std::int64_t u = st[st.size() - 1], v = st[st.size() - 2];
+            const double cr = (X(u) - X(a)) * (Y(v) - Y(a)) - (Y(u) - Y(a)) * (X(v) - X(a));
+            if (cr <= 0.0) st.pop_back();
+            else break;
+        }
+        st.push_back(a);
+        // the slope from (a, 0) along the hull from its left end is unimodal: bisection
+        const auto n = static_cast<std::int64_t>(st.size());
+        auto vert = [&](std::int64_t i) { return st[static_cast<std::size_t>(n - 1 - i)]; };
+        auto slope = [&](std::int64_t i) {
+            const std::int64_t t = vert(i);
+            return Y(t) / static_cast<double>(t + 1 - a);
+        };
+        std::int64_t lo = 0, hi = n - 1;
+        while (lo < hi) {
+            const std::int64_t mid = (lo + hi) / 2;
+            if (slope(mid + 1) < slope(mid)) lo = mid + 1;
+            else hi = mid;
+        }
+        const std::int64_t k = m - a + 1, t = vert(lo);
+        S[static_cast<std::size_t>(k)] = dd::two_prod(Y(t), static_cast<double>(k)) / static_cast<double>(t + 1 - a);
+    }
+```
+
+그다음 $S_k$를 뒤에서부터 누적 최대로 만들어요. $\tilde p_i$의 최소에서 $k\,p_i$는 $k$에 대해 증가하고 $S_{k+1}$은 감소하므로, 최솟값은 두 수열이 엇갈리는 곳이에요. 그곳도 이분으로 찾아요. 전체가 $O(m\log m)$이에요. Meijer, Krebs, Goeman(2019)은 같은 양을 선형 시간에 구하는 방법을 보였어요. 마지막으로 $\tilde p_i$를 $p_i$보다 작지 않게 해요.
+
+```python
+>>> sd.htest.multipletests([0.01, 0.04, 0.03, 0.005, 0.2, 0.04], method='hommel')
+MultipletestsResult(reject=[True, False, False, True, False, False], pvalues_corrected=[0.05, 0.08, 0.06, 0.03, 0.2, 0.08], alpha_sidak=0.00851244, alpha_bonferroni=0.00833333)
+```
+
+$m = 400$인 문제에서도 정확한 유리수로 계산한 $O(m^2)$ 정의식과 상대 $1.1 \times 10^{-16}$ 안이에요.
+
+## p값의 결합
+
+`combine_pvalues`의 다섯 방법은 이래요.
+
+| 방법 | 통계량 | p값 |
+|---|---|---|
+| `fisher` | $S = -2\sum\log p_i$ | 카이제곱($2n$)의 위 꼬리 $Q(n, S/2)$ |
+| `pearson` | $S = 2\sum\log1p(-p_i)$ | 그 음수의 아래 꼬리 $P(n, -S/2)$ |
+| `tippett` | $\min p_i$ | $1 - (1 - \min)^n = -\text{expm1}\big(n\log1p(-\min)\big)$ |
+| `stouffer` | $\sum w_i\,\Phi^{-1}(1 - p_i)/\lVert w\rVert$ | 정규분포의 위 꼬리 |
+| `mudholkar_george` | $-\sum\log\big(p_i/(1 - p_i)\big)$ | scipy의 배율 $\sqrt{3/n}/\pi\cdot\sqrt{\nu/(\nu - 2)}$을 곱한 t($\nu = 5n + 4$)의 위 꼬리 |
+
+### 합의 반올림을 꼬리에 되돌리기
+
+로그의 합은 로그마다 double-double로 계산해서(`special/dd.hpp`의 `log_pos`, $\log1p(-p) = -p - \mu(-p)$) 보상 합으로 더해요. 그래도 꼬리 함수는 double을 받으므로 합 $S = S_{hi} + S_{lo}$의 아래 부분 $S_{lo}$를 그냥 버리면, $S = 1000$인 Fisher의 꼬리가 $S$의 반올림(약 500 eps의 상대 이동)만큼 틀려요. 그래서 꼬리를 $S_{hi}$에서 계산하고 아래 부분은 일차로 반영해요. $Q(a, x_{hi} + x_{lo}) \approx Q(a, x_{hi}) - x_{lo}\cdot\text{밀도}(x_{hi})$예요.
+
+```cpp
+// csrc/htest/multicomp.cpp
+double gamma_q(double a, DD x) {
+    const double q = special::Gammaincc::f(a, x.hi);
+    if (!(q > 0.0) || x.lo == 0.0) return q;
+    return q - x.lo * gamma_pdf(a, x.hi);
+}
+```
+
+Stouffer는 같은 일을 정규분포의 위험률(hazard) $\varphi(z)/\Phi(-z)$로 해요. $\Phi(-(z_{hi} + z_{lo})) \approx \Phi(-z_{hi})\,(1 - z_{lo}\,\varphi/\Phi(-z_{hi}))$예요. Mudholkar–George는 t 분포의 밀도로 해요. 무게는 p값과 짝지은 표본이라 `nan_policy='omit'`이 NaN인 p값과 그 무게를 함께 빼요.
+
+```python
+>>> sd.htest.combine_pvalues([1e-20, 0.3, 0.5, 0.7, 0.9], method='tippett')
+CombinePvaluesResult(statistic=1e-20, pvalue=5e-20)
+```
+
+$1 - (1 - 10^{-20})^5$를 double로 그대로 계산하면 0이에요.
+
+## 비교 대상과 다른 곳
+
+- statsmodels의 `alpha_sidak`은 $1 - (1 - \alpha)^{1/m}$이라 상쇄해서 $m = 32$에서 상대 $1.3 \times 10^{-14}$ 달라요.
+- statsmodels의 `fdr_tsbh`는 반올림한 보정값과 $\alpha$를 견줘요. 위 예에서는 판정이 우연히 같아요(보정값 $0.05000000000000001$).
+- statsmodels와 R `p.adjust`의 Hommel은 $O(m^2)$의 고리예요. 값은 같아요.
+- scipy의 Stouffer는 깊은 꼬리(p = $1.2 \times 10^{-106}$)에서 통계량의 반올림 × $\kappa_p$만큼, 상대 $5.3 \times 10^{-14}$ 달라요.

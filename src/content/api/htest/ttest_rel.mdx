@@ -1,0 +1,225 @@
+---
+kind: function
+title: ttest_rel
+names: [ttest_rel]
+group: 평균과 분산
+order: 2
+signatures:
+  - "sd.htest.ttest_rel(a, b, /, *, axis=None, alternative='two-sided', nan_policy='propagate', keepdims=False)"
+summary: 짝지은 두 표본의 t 검정이에요. 같은 대상을 두 번 잰 값(전과 후, 두 방법)의 차 a − b의 평균이 0인지 검정하고, 평균 차의 신뢰구간도 conf_int()로 줘요.
+params:
+  - name: a
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 첫 측정. b와 원소가 하나씩 짝이에요. bool·정수는 float64로 바꿔서 계산해요.
+  - name: b
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 둘째 측정. 표본 축의 길이가 a와 같아야 하고, 표본 축 밖의 축은 a와 브로드캐스트해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 두 배열을 각각 펼쳐 짝을 지어요(크기가 같아야 해요).
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값, 차의 평균 ≠ 0), 'less'(a가 b보다 작아요), 'greater'(a가 b보다 커요) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값, 그 검정의 결과가 NaN), 'omit'(한쪽이라도 NaN인 짝을 빼고 검정), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과의 필드에 표본 축을 길이 1로 남겨요.
+returns:
+  type: TtestRelResult
+  desc: "필드 statistic(t), pvalue, df(짝의 수 − 1, float)와 메서드 conf_int(alpha=0.05)(평균 차 a − b의 구간), summary(alpha=0.05)가 있어요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: a·b를 키워드로 줬을 때, 옵션을 위치로 줬을 때, 없는 옵션을 줬을 때, a·b가 배열·수의 시퀀스·frame이 아닐 때, 복소수일 때, keepdims가 True·False가 아닐 때.
+  - type: ValueError
+    desc: 짝지은 두 표본의 크기(axis=None)나 표본 축의 길이가 다를 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때, alternative·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때.
+seeAlso: [basics, results, ttest_1samp, ttest_ind, wilcoxon]
+---
+
+## 무엇을 하나요
+
+수면 보조제를 먹기 전과 먹은 뒤에 같은 사람 여덟 명의 수면 시간을 쟀어요. 먹은 뒤에 평균 0.46시간 더 잤는데, 사람마다 원래 자는 시간이 크게 달라요(5.5시간에서 7시간).
+
+이런 데이터에서 중요한 것은 사람마다의 **차**예요. 원래 오래 자는 사람과 적게 자는 사람의 차이는 보조제와 상관이 없으니, 같은 사람의 "뒤 − 전"만 보면 그 흔들림이 빠져요. **짝지은 t 검정**은 이 차를 표본 하나로 놓고 [한 표본 t 검정](/api/htest/ttest_1samp/)을 해요.
+
+- 귀무가설: 짝마다의 차 a − b의 모집단 평균이 0이에요.
+- 대립가설: 그 평균이 0이 아니에요(`alternative`로 한쪽을 고를 수 있어요).
+
+차 $d_i = a_i - b_i$의 평균 $\bar d$, 표준편차 $s_d$, 짝의 수 $n$으로 통계량은 이래요. 귀무가설에서 자유도 n − 1의 t 분포를 따라요.
+
+$$
+t = \frac{\bar d}{s_d / \sqrt{n}}
+$$
+
+이런 때 써요.
+
+- 같은 대상을 처치 전과 후에 잰 값
+- 같은 시료를 두 방법이나 두 기계로 잰 값
+- 쌍둥이, 짝지은 환자처럼 비슷한 대상끼리 묶어 한쪽씩 다른 처치를 한 값
+
+두 집단이 서로 다른 대상이면 짝이 없으니 [`ttest_ind`](/api/htest/ttest_ind/)를 써요. 차가 정규분포에서 크게 벗어나고 짝이 적으면 순위를 쓰는 [`wilcoxon`](/api/htest/wilcoxon/)이 안전해요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> before = [6.1, 5.8, 7.0, 6.4, 5.5, 6.8, 6.0, 6.3]
+>>> after = [6.8, 6.1, 7.4, 6.6, 6.4, 7.1, 6.2, 7.0]
+>>> r = sd.htest.ttest_rel(after, before)
+>>> r
+TtestRelResult(statistic=4.90077, pvalue=0.00175159, df=7)
+>>> r.conf_int()
+array([0.23934347998560573,  0.6856565200143943], dtype=float64)
+```
+
+p값 0.0018은 보조제가 효과가 없다면 이만큼 고르게 늘어나는 일이 드물다는 뜻이에요. 평균 차는 95% 신뢰로 0.24시간과 0.69시간 사이예요. 차는 첫 인자에서 둘째 인자를 뺀 a − b라서, `ttest_rel(after, before)`는 "뒤 − 전"이에요. 순서를 바꾸면 t와 구간의 부호가 바뀌고 양쪽 p값은 같아요.
+
+같은 데이터를 짝을 무시하고 [`ttest_ind`](/api/htest/ttest_ind/)로 견주면 사람 사이의 흔들림이 그대로 남아서 차이가 잘 보이지 않아요.
+
+```python
+>>> sd.htest.ttest_ind(after, before)
+TtestIndResult(statistic=1.93515, pvalue=0.0734354, df=14)
+```
+
+짝지은 검정은 차의 한 표본 검정과 같아요.
+
+```python
+>>> d = sd.asarray(after) - sd.asarray(before)
+>>> sd.htest.ttest_1samp(d, 0.0)
+Ttest1sampResult(statistic=4.90077, pvalue=0.00175159, df=7)
+```
+
+## 결과 읽기
+
+| 필드·메서드 | 뜻 |
+|---|---|
+| `statistic` | t 통계량. 차 a − b의 평균이 양수면 양수예요 |
+| `pvalue` | p값. `alternative`의 방향으로 잰 꼬리 넓이예요 |
+| `df` | 자유도. 짝의 수 − 1이고 `float`이에요 |
+| `conf_int(alpha=0.05)` | 평균 차 a − b의 1 − alpha 신뢰구간 |
+| `summary(alpha=0.05)` | 검정을 표로 적은 글 |
+
+```python
+>>> print(r.summary())
+                                Paired t-test
+==============================================================================
+Statistic:                       4.901  Alternative:                 two-sided
+P-value:                       0.00175  No. Observations:                    8
+Df:                                  7
+==============================================================================
+                     [0.025     0.975]
+------------------------------------------------------------------------------
+mean difference       0.239      0.686
+==============================================================================
+```
+
+`No. Observations`는 짝의 수예요.
+
+## 한쪽 검정: alternative
+
+`'greater'`는 "a가 b보다 크다"(차의 평균 > 0), `'less'`는 "a가 b보다 작다"가 대립가설이에요. 보조제가 수면을 **늘리는지**만 보려면 `ttest_rel(after, before, alternative='greater')`예요.
+
+```python
+>>> g = sd.htest.ttest_rel(after, before, alternative='greater')
+>>> g.pvalue
+0.0008757934943564714
+>>> g.conf_int()
+array([0.2837030650870529,                inf], dtype=float64)
+```
+
+## 짝 맞추기와 axis
+
+두 표본은 원소 순서대로 짝을 지어요. 그래서 크기가 같아야 하고, 다르면 `ValueError`예요. 축을 주면 표본 축의 길이가 같아야 하고, 표본 축 밖의 축끼리는 브로드캐스트해요.
+
+```python
+>>> sd.htest.ttest_rel(after, before[:7])
+Traceback (most recent call last):
+    ...
+ValueError: ttest_rel(): the paired samples must agree in size, not 8 and 7
+>>> A = sd.asarray([after, [6.0, 5.9, 7.1, 6.5, 5.4, 6.9, 6.1, 6.2]])
+>>> sd.htest.ttest_rel(A, before, axis=1).pvalue
+array([0.0017515869887129428,    0.5164895523012234], dtype=float64)
+>>> sd.htest.ttest_rel(A, before[:7], axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: ttest_rel(): the paired samples must agree in length along the sample axes, not 8 and 7
+```
+
+둘째 줄은 둘째 약(효과가 없는 위약)의 기록이에요. `before` 하나가 두 줄 모두에 짝으로 쓰였어요. axis와 배치의 규칙은 [가설검정의 기본](/api/htest/basics/#axis와-배치)에 있어요.
+
+## NaN: 짝째로 빼요
+
+`nan_policy='omit'`은 a나 b의 한쪽이라도 NaN인 **짝**을 통째로 빼요. 짝의 한쪽만 남은 값은 쓸 데가 없기 때문이에요.
+
+```python
+>>> after2 = [6.8, 6.1, sd.nan, 6.6, 6.4, 7.1, 6.2, 7.0]
+>>> sd.htest.ttest_rel(after2, before)
+TtestRelResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.ttest_rel(after2, before, nan_policy='omit')
+TtestRelResult(statistic=4.34562, pvalue=0.0048456, df=6)
+```
+
+frame의 두 열을 그대로 줄 수 있고, 빠진 값(NA)도 NaN으로 읽어 같은 규칙을 따라요.
+
+```python
+>>> df = sd.frame.DataFrame({'before': before, 'after': [6.8, 6.1, None, 6.6, 6.4, 7.1, 6.2, 7.0]})
+>>> sd.htest.ttest_rel(df['after'], df['before'], nan_policy='omit').df
+6.0
+```
+
+## 특수한 경우
+
+| 입력 | `statistic`, `pvalue` | `df` | `conf_int()` |
+|---|---|---|---|
+| 짝이 없음 | NaN | NaN | NaN |
+| 짝이 하나 | NaN | 0 | NaN |
+| 모든 짝의 차가 같음(분산 0) | NaN | n − 1 | (차, 차) |
+| `'propagate'`에서 NaN이 있음 | NaN | NaN | NaN |
+
+```python
+>>> sd.htest.ttest_rel([6.5, 7.0, 6.2], [6.0, 6.5, 5.7])
+TtestRelResult(statistic=nan, pvalue=nan, df=2)
+>>> sd.htest.ttest_rel([6.5, 7.0, 6.2], [6.0, 6.5, 5.7]).conf_int()
+array([0.5, 0.5], dtype=float64)
+```
+
+모든 사람이 정확히 0.5시간씩 더 잤다면 차의 흩어짐이 0이라 t를 정할 수 없어요. 평균 차 0.5는 구간에서 읽어요.
+
+## 정확도
+
+- t의 상대오차는 $10^{-14}$ 안이고, p값은 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요(t 검정 전체에서 잰 최대는 t가 $2.1 \times 10^{-16}$, p값이 $2.0 \times 10^{-14}$).
+- 차 a − b를 float64 하나로 반올림하지 않고 두 배 정밀도로 들고 계산해요. 그래서 크기가 크게 다른 두 값의 차도 정확해요. `sd.asarray(a) - sd.asarray(b)`처럼 먼저 빼서 한 표본 검정을 하면 차마다 반올림이 생겨요.
+
+```python
+>>> a9 = [3e9 + 0.0011, 3e9 + 0.0032, 3e9 + 0.0019, 3e9 + 0.0026]
+>>> b9 = [1e9 + 0.0004, 1e9 + 0.0013, 1e9 + 0.0011, 1e9 + 0.0002]
+>>> sd.htest.ttest_rel(a9, b9).statistic
+4792486173517.7705
+>>> sd.htest.ttest_1samp(sd.asarray(a9) - sd.asarray(b9), 0.0).statistic
+4791980511817.83
+```
+
+첫 값이 입력의 double을 정확한 값으로 보고 계산한 t를 반올림한 값이에요. 둘째 값은 먼저 뺀 차가 반올림되어 상대 $10^{-4}$만큼 틀렸어요.
+
+- 데이터를 어떤 수로 곱해도 t와 p값은 반올림 차이 안에서 같아요. 아주 크거나 작은 값은 2의 거듭제곱으로 단위를 옮겨 계산해요.
+
+참값은 Arb(구간 산술)로 만들었어요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1의 `scipy.stats.ttest_rel`과 같은 검정이에요.
+
+- `axis`의 기본값이 None이에요(scipy는 0). 데이터는 위치로만, 옵션은 키워드로만 받아요.
+- 신뢰구간은 `conf_int(alpha=0.05)`이고 (아래 끝, 위 끝)의 배열이에요. 정의(평균 차 ∓ t 분위수 × 표준오차)는 같아요.
+- `df`는 언제나 `float`이에요.
+- 차의 분산이 0이면 NaN이에요. scipy는 차가 0이 아닌 상수면 t = ±inf, p = 0을 내요.
+- scipy는 a − b를 double로 만든 뒤 검정해서, 위의 `a9`, `b9`에서 t = 4791980365216.947을 내요(상대오차 $1.1 \times 10^{-4}$). R의 `t.test(paired = TRUE)`도 차를 double로 만들어서, 잰 문제(오프셋 $10^9$의 짝)에서 t가 상대 $1.2 \times 10^{-6}$까지 틀렸어요. 여기서는 짝마다의 차를 정확하게 들어서 4792486173517.7705예요.

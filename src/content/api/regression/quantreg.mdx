@@ -129,7 +129,7 @@ x가 커질수록 퍼짐이 커지는 데이터 60개를 만들어 중앙값 회
 >>> y = 2 + 0.5 * x + (0.2 + 0.15 * x) * sd.stats.Normal().sample(n, rng=rng)
 >>> r = sd.regression.quantreg(y, x)
 >>> r
-QuantRegResult(q=0.5, nobs=60, rank=2, objective=22.7544, params=[1.8361726710057302 0.5415194134757703])
+QuantRegResult(q=0.5, nobs=60, rank=2, objective=22.7544, params=[1.83617, 0.541519])
 >>> r.param_names
 ['const', 'x1']
 >>> r.params

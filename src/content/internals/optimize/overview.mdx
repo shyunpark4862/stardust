@@ -23,17 +23,19 @@ import Steps from '../../../components/fig/Steps.astro';
       { name: '_lsq.py', note: 'least_squares' },
       { name: '_linear.py', note: 'lsq_linear, nnls' },
       { name: '_root.py', note: 'root' },
-      { name: '_diff.py', note: 'approx_fprime, check_grad, 5점 차분' },
+      { name: '_diff.py', note: 'approx_fprime, check_grad' },
     ] },
     { title: '공통 (Python)', items: [
       { name: '_common.py', note: '입력·옵션 검사와 메시지' },
       { name: '_result.py', note: 'OptimizeResult' },
+      { name: '../_results.py', note: '결과의 바탕 _FieldResult' },
+      { name: '../differentiate/_differences.py', note: '간격을 고르는 5점 차분' },
     ] },
     { title: '커널 (C++)', note: 'csrc/optimize/', items: [
       { name: 'scalar.cpp', note: '스칼라 근과 최솟값' },
-      { name: 'batch.cpp', note: '배치 스칼라' },
+      { name: 'batch.cpp', note: '배치 스칼라', uses: 'elementwise/loop.hpp' },
       { name: 'nelder_mead.cpp, bfgs.cpp, lbfgsb.cpp, newton_cg.cpp, trust.cpp', note: 'minimize', uses: 'objective.hpp, hessian.hpp, wolfe.hpp' },
-      { name: 'lsq.cpp', note: "least_squares, root('lm'), regression.nls", uses: 'diff.hpp, minpack.hpp' },
+      { name: 'lsq.cpp', note: "least_squares, root('lm'), regression.nls", uses: 'differentiate/steps.hpp, minpack.hpp' },
       { name: 'hybrd.cpp', note: "root('hybr')", uses: 'minpack.hpp' },
       { name: 'linear.cpp', note: 'lsq_linear, nnls' },
     ] },
@@ -171,24 +173,24 @@ GIL을 놓은 동안에는 Python 객체를 건드리지 않아요. 갱신에 �
 
 ### 배치 함수의 스레드
 
-배치 함수는 사용자 함수를 한 번 부를 때마다 남은 원소 모두의 상태를 갱신하고 다음 점을 계산해요. 원소 하나의 일이 수 ns라서 원소가 적으면 한 스레드로 하고, 남은 원소가 $2^{15} = 32{,}768$개 이상이면 $2^{13}$개씩 나눠 스레드풀에 맡겨요. 이때 GIL을 놓아요.
+배치 함수는 사용자 함수를 한 번 부를 때마다 남은 원소 모두의 상태를 갱신하고 다음 점을 계산해요. 원소 하나의 일이 수 ns라서 원소가 적으면 한 스레드로 하고, 남은 원소가 $2^{15} = 32{,}768$개 이상이면 $2^{13}$개씩 나눠 스레드풀에 맡겨요. 이때 GIL을 놓아요. 이 반복의 틀(원소를 나눠 지나가기, 사용자 함수 부르기, 셈)은 `sd.differentiate`와 `sd.integrate`의 원소별 반복과 함께 쓰는 `csrc/elementwise/loop.hpp`에 있어요.
 
 ```cpp
-// csrc/optimize/batch.cpp
-constexpr std::size_t kBatchParallel = std::size_t{1} << 15;
-constexpr std::size_t kBatchTask = std::size_t{1} << 13;
+// csrc/elementwise/loop.hpp
+constexpr std::size_t kParallel = std::size_t{1} << 15;
+constexpr std::size_t kTask = std::size_t{1} << 13;
 
 // fn(r0, r1) over [0, k) in pieces (no Python objects inside)
 template <class Fn>
 void for_elements(std::size_t k, Fn&& fn) {
-    if (k >= kBatchParallel && parallel::available()) {
-        const auto tasks = static_cast<std::int64_t>((k + kBatchTask - 1) / kBatchTask);
+    if (k >= kParallel && parallel::available()) {
+        const auto tasks = static_cast<std::int64_t>((k + kTask - 1) / kTask);
         parallel::parallel_for(tasks, [&](std::int64_t t) {
-            const std::size_t r0 = static_cast<std::size_t>(t) * kBatchTask;
-            fn(r0, std::min(k, r0 + kBatchTask));
+            const std::size_t r0 = static_cast<std::size_t>(t) * kTask;
+            fn(r0, std::min(k, r0 + kTask));
         });
     } else {
-        parallel::Unlocked u(k >= kBatchParallel);
+        parallel::Unlocked u(k >= kParallel);
         fn(std::size_t{0}, k);
     }
 }
@@ -286,10 +288,10 @@ void for_elements(std::size_t k, Fn&& fn) {
 
 ## 결과 객체
 
-`OptimizeResult`는 필드 이름의 고정된 목록(`FIELDS`)과 dict 하나(`_fields`)로 된 작은 클래스예요. 필드마다 읽기 전용 프로퍼티를 만들어 붙이고, 그 프로퍼티가 없는 필드에는 `AttributeError`를, 배열에는 읽기 전용으로 만든 그 배열을 돌려줘요.
+`OptimizeResult`는 필드 이름의 고정된 목록(`FIELDS`)과 dict 하나(`_fields`)로 된 작은 클래스예요. 바탕 클래스 `_FieldResult`가 필드마다 읽기 전용 프로퍼티를 만들어 붙이고, 그 프로퍼티가 없는 필드에는 `AttributeError`를, 배열에는 읽기 전용으로 만든 그 배열을 돌려줘요. `sd.integrate`와 `sd.differentiate`의 결과도 같은 바탕 클래스를 쓰고, `OptimizeResult`는 필드 목록과 없는 필드의 까닭(`its method does not give it`)만 정해요.
 
 ```python
-# src/stardust/optimize/_result.py
+# src/stardust/_results.py
 def _own(v, copy=False):
     """An array field (or a tuple of them) made read-only, as the result keeps and gives it:
     copied first when copy (an array the caller may still hold), else taken as it is."""
@@ -302,14 +304,12 @@ def _own(v, copy=False):
     return v
 
 
-def _field(name):
+def _result_field(name):
     def get(self):
         try:
             v = self._fields[name]
         except KeyError:
-            raise AttributeError(
-                f"'OptimizeResult' object has no attribute '{name}' (its method does not give it)"
-            ) from None
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}' ({self._ABSENT})") from None
         if isinstance(v, _Lazy):
             v = self._fields[name] = _own(v.make())
         return v
@@ -319,7 +319,7 @@ def _field(name):
 - **읽기 전용 배열**: 결과의 배열은 쓰기를 막아 두고, 읽을 때마다 복사하지 않고 같은 배열을 돌려줘요. 원소에 쓰면 `ValueError: assignment destination is read-only`이고, 고치려면 `.copy()`를 해요. 풀이 함수는 커널이 막 만든 배열을 `OptimizeResult._make`로 복사 없이 넘기고, 사용자가 `OptimizeResult(...)`를 직접 만들면 받은 배열을 한 번 복사해요(그 배열을 사용자가 아직 쥐고 있으니까요). 다른 영역의 결과 객체와 같은 규칙이에요.
 - **처음 읽을 때 계산**: L-BFGS-B의 `hess_inv`는 저장해 둔 걸음의 쌍으로 $(n, n)$ 행렬을 만들어야 해요. $n = 10^4$이면 800 MB라, 결과를 만들 때는 계산하지 않고 `_Lazy`로 두었다가 처음 읽을 때 만들어 `_fields`에 넣어요.
 
-`repr`는 한 줄 요약이에요. `method`, `converged`, `cost`나 `fun`(실수일 때만, 6자리), `n_iter`, `nfev`, `x`를 있는 것만 차례로 보여 주고, 배치 결과는 모양과 수렴한 수만 보여 줘요. 여러 줄의 `summary()`는 회귀 결과와 같은 상자 그리기([summary의 상자](/internals/regression/overview/#summary의-상자))로 만들어요. 머리에 방법, 수렴, 상태, 함숫값(최소제곱은 `cost`와 `optimality`), 셈, 메시지를 두고, 표는 x의 원소마다 한 줄이에요(`root`는 그 점의 f(x) 열이 붙어요). 배치 스칼라 함수는 원소마다 한 줄이에요.
+`repr`는 회귀와 가설검정의 결과와 같은 꼴의 한 줄이고, 같은 함수(`one_line`)가 적어요. `method`, `converged`, `cost`나 `fun`(실수일 때만; `root`처럼 배열이면 빼요), `n_iter`, `nfev`, `x`를 있는 것만 차례로 보여 줘요. 수는 유효숫자 6자리(`f'{v:.6g}'`, 그래서 2.0은 `2`)이고, 원소가 6개까지인 1차원 배열은 `[v, v]`, 더 긴 배열은 `<array of shape (7,)>`처럼 모양만 적어요. 배치 결과는 모양과 수렴한 수만 보여 줘요. 여러 줄의 `summary()`는 회귀 결과와 같은 상자 그리기([summary의 상자](/internals/regression/overview/#summary의-상자))로 만들어요. 머리에 방법, 수렴, 상태, 함숫값(최소제곱은 `cost`와 `optimality`), 셈, 메시지를 두고, 표는 x의 원소마다 한 줄이에요(`root`는 그 점의 f(x) 열이 붙어요). 배치 스칼라 함수는 원소마다 한 줄이에요.
 
 ## 옵션과 입력의 검사
 
@@ -498,7 +498,7 @@ inline double norm(lint n, const double* v) {
 
 두 벌을 복사하지 않고 템플릿 인자 하나로 갈라서, 알고리즘을 고치면 두 빌드가 함께 바뀌어요. `'trf'`는 빌드가 하나라 `least_squares`와 nls가 같은 계산을 해요.
 
-차분도 함께 써요. `approx_fprime`의 기본인 간격을 고르는 5점 차분(`_diff.py`의 `Differences`)은 nls가 해의 야코비안을 구할 때도 쓰는 것이에요. 차이는 하나, 반올림 수준에 묻힌 열을 0으로 두는 처리(`zero_noise`)를 nls만 켜요. 자세한 것은 [수치 미분](/internals/optimize/derivatives/)에 있어요.
+차분도 함께 써요. `approx_fprime`의 기본인 간격을 고르는 5점 차분(`differentiate/_differences.py`의 `Differences`)은 nls가 해의 야코비안을 구할 때도 쓰는 것이에요. 차이는 하나, 반올림 수준에 묻힌 열을 0으로 두는 처리(`zero_noise`)를 nls만 켜요. 자세한 것은 [수치 미분](/internals/optimize/derivatives/)에 있어요.
 
 다른 영역의 전용 풀이는 이 영역의 범용 방법으로 바꾸지 않았어요. special과 stats의 역함수가 쓰는 근 찾기, glm과 rlm의 IRLS, 정규화 회귀의 좌표 하강, quantreg의 내부점법과 단체법은 문제의 구조를 쓰는 풀이라, 범용 최적화로 바꾸면 느려지고 정확도를 잃어요.
 
@@ -510,6 +510,7 @@ inline double norm(lint n, const double* v) {
 | `src/stardust/optimize/_result.py` | `OptimizeResult` |
 | `src/stardust/optimize/_scalar.py`, `csrc/optimize/scalar.cpp` | `root_scalar`, `minimize_scalar` |
 | `src/stardust/optimize/_elementwise.py`, `csrc/optimize/batch.cpp` | 배치 스칼라 넷 |
+| `csrc/elementwise/loop.hpp` | 원소별 반복의 틀(`for_elements`, `Call`; 미분·적분과 함께) |
 | `src/stardust/optimize/_minimize.py` | `minimize`의 검사와 결과 |
 | `csrc/optimize/objective.hpp` | 함숫값과 기울기의 기억, 차분 기울기 |
 | `csrc/optimize/hessian.hpp` | 헤시안의 기억, 차분 헤시안, numpy 꼴의 `dot`과 행렬·벡터 곱 |
@@ -519,6 +520,8 @@ inline double norm(lint n, const double* v) {
 | `csrc/optimize/minpack.hpp` | scipy 빌드의 MINPACK 산술(`enorm`, 8개 묶음 내적, 열 반사) |
 | `src/stardust/optimize/_root.py`, `csrc/optimize/hybrd.cpp` | `root('hybr')` |
 | `src/stardust/optimize/_linear.py`, `csrc/optimize/linear.cpp` | `lsq_linear`, `nnls` |
-| `csrc/optimize/diff.hpp` | scipy `approx_derivative`의 간격과 경계 조정 |
-| `src/stardust/optimize/_diff.py` | `approx_fprime`, `check_grad`, 5점 차분 |
+| `csrc/differentiate/steps.hpp` | scipy `approx_derivative`의 간격과 경계 조정 |
+| `src/stardust/optimize/_diff.py` | `approx_fprime`, `check_grad` |
+| `src/stardust/differentiate/_differences.py` | 간격을 고르는 5점 차분(`approx_fprime`의 기본, nls의 야코비안) |
+| `src/stardust/_results.py` | 결과의 바탕 클래스 `_FieldResult` |
 | `csrc/bind/optimize_bind.cpp` | `stardust._core.optimize` 모듈 |

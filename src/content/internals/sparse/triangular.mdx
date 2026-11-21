@@ -1,0 +1,120 @@
+---
+title: 삼각 풀이
+group: 직접 풀이
+order: 3
+summary: spsolve_triangular가 희소 삼각 행렬을 앞·뒤 대입으로 푸는 커널을 설명해요. 고른 삼각만 읽는 법, 줄 합의 순서, 우변 여럿을 열 묶음으로 나누는 법, 결과의 비트가 스레드 수와 다른 열에 무관한 이유를 다뤄요.
+seeAlso: [lu, solve, products, determinism]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`spsolve_triangular`](/api/sparse/spsolve_triangular/)는 분해 없이 대입으로 풀어요. Accelerate의 Sparse Solvers에는 삼각 풀이가 투명한 행렬(`Solve.h`의 `SparseMatrix`)에 없고 Sparse BLAS의 불투명 객체에만 있어서, 그것을 쓰려면 원소를 하나씩 객체에 복사해 넣어야 해요. 대입은 짧은 고리라 이 라이브러리가 짜요(`csrc/sparse/triangular.cpp`).
+
+<Fig column caption="spsolve_triangular(A, b, upper=...) 한 번.">
+  <Steps steps={[
+    { label: 'spsolve_triangular()', note: 'upper·unit_diagonal 검사, A를 CSR로, A와 b를 같은 dtype(float64나 complex128)으로', where: '_direct.py' },
+    { label: '_sptrsv', note: '', where: 'csrc/sparse/triangular.cpp' },
+    { label: '행마다 대각의 자리 찾기', note: '이분 탐색, 대각이 없거나 0이면 풀기 전에 LinAlgError', where: 'triangular.cpp', depth: 1 },
+    { label: '대입', note: '열 16개씩의 묶음이 한 태스크, 묶음 안에서 행을 차례로', where: 'triangular.cpp', depth: 1 },
+  ]} />
+</Fig>
+
+## 대입
+
+아래 삼각 행렬 $L$의 $Lx = b$는 위에서부터 한 행씩 풀려요. 행 $i$에서 $x_1, \ldots, x_{i-1}$은 이미 알므로
+
+$$
+x_i = \frac{b_i - s_i}{l_{ii}}, \qquad s_i = \sum_{j < i} l_{ij}\,x_j
+$$
+
+이에요(앞 대입). 위 삼각은 아래 행부터 같은 식을 $j > i$에 대해 풀어요(뒤 대입). 희소 행렬이면 $s_i$의 합이 행에 저장된 원소만 돌므로, 일은 저장 수 + n이에요.
+
+CSR로 바꾸는 이유가 여기 있어요. 행의 원소가 연속이라 $s_i$가 한 줄의 합이 되고, 다른 희소 곱(SpMV)과 같은 규칙으로 더할 수 있어요. CSC·COO·DOK 입력도 CSR로 바꾸므로 결과의 비트가 형식과 무관해요.
+
+## 고른 삼각만 읽기
+
+`upper`는 꼭 주는 키워드이고, 고른 삼각 밖의 원소는 읽지 않아요. 행 $i$의 원소는 열 번호 오름차순으로 저장돼 있으므로, 열 번호가 $i$ 이상인 첫 원소의 자리 `split[i]`를 이분 탐색으로 찾으면 행이 "대각 왼쪽 / 대각 / 대각 오른쪽"으로 나뉘어요.
+
+```cpp
+    // csrc/sparse/triangular.cpp, sptrsv_typed
+    // split[i]: the first entry of row i with column >= i; diag[i]: whether that entry is (i, i).
+    std::vector<int64_t> split(static_cast<std::size_t>(n));
+    std::vector<char> diag(static_cast<std::size_t>(n));
+    bool singular = false;
+    for_tasks(1, nnz + n, [&](int64_t) {
+        for (int64_t i = 0; i < n; ++i) {
+            const int64_t p = std::lower_bound(ix + ip[i], ix + ip[i + 1], i) - ix;
+            split[static_cast<std::size_t>(i)] = p;
+            const bool has = p < ip[i + 1] && ix[p] == i;
+            diag[static_cast<std::size_t>(i)] = has;
+            if (!unit && (!has || is_zero(v[p]))) singular = true;
+        }
+    });
+    if (singular) throw linalg::LinAlgError(func + "(): singular matrix");
+```
+
+이 훑기는 태스크 하나예요. `for_tasks`로 감싼 것은 일이 2¹⁵ 단위 이상이면 GIL을 놓기 위해서예요. 대각이 없거나 정확히 0이면(`unit_diagonal=False`일 때) 풀기 전에 `LinAlgError("spsolve_triangular(): singular matrix")`예요. 밀집의 `sd.linalg.solve_triangular`가 대각의 0을 보는 것과 같은 판정이에요. `unit_diagonal=True`면 대각을 읽지 않고 1로 봐요.
+
+```python
+>>> A = sd.sparse.csr_array(sd.asarray([[2.0, 9.0, 9.0], [1.0, 4.0, 9.0], [3.0, 1.0, 5.0]]))
+>>> b = sd.asarray([2.0, 5.0, 9.0])
+>>> sd.sparse.spsolve_triangular(A, b, upper=False)      # 9.0들은 읽지 않아요
+array([1.0, 1.0, 1.0], dtype=float64)
+>>> sd.sparse.spsolve_triangular(A, b, upper=False, unit_diagonal=True)
+array([2.0, 3.0, 0.0], dtype=float64)
+```
+
+## 대입 커널
+
+```cpp
+    // csrc/sparse/triangular.cpp, sptrsv_typed
+    NDArray out = new_array(dtype_of<T>, b.shape_span());
+    T* x = typed<T>(out);
+    const int64_t blocks = (k + kColumnBlock - 1) / kColumnBlock;
+    for_tasks(blocks, (nnz + n) * std::max<int64_t>(k, 1), [&](int64_t t) {
+        const int64_t c0 = t * kColumnBlock, c1 = std::min(k, c0 + kColumnBlock);
+        std::vector<T> parts;
+        auto row = [&](int64_t i) {
+            const int64_t s = split[static_cast<std::size_t>(i)];
+            const bool has = diag[static_cast<std::size_t>(i)];
+            const int64_t lo = lower ? ip[i] : s + (has ? 1 : 0);
+            const int64_t hi = lower ? s : ip[i + 1];
+            for (int64_t c = c0; c < c1; ++c) {
+                auto step = [&](int64_t p, T acc) { return madd(v[p], x[ix[p] * k + c], acc); };
+                const T r = minus(bp[i * k + c], ordered_sum<T>(lo, hi, step, parts));
+                x[i * k + c] = unit ? r : divide(r, v[s]);
+            }
+        };
+        if (lower)
+            for (int64_t i = 0; i < n; ++i) row(i);
+        else
+            for (int64_t i = n - 1; i >= 0; --i) row(i);
+    });
+```
+
+- **줄 합의 순서.** $s_i$는 `ordered_sum`이에요. 0에서 시작해 열 번호 오름차순으로 항마다 `fma(a, x, acc)`를 하고(복소는 numpy의 복소 곱 뒤 덧셈), 항이 4096개를 넘는 줄은 4096개씩의 고정 조각을 각각 차례로 더한 뒤 조각 합을 쌍 트리로 더해요. SpMV·SpGEMM·리덕션과 같은 규칙이라([곱](/internals/sparse/products/)), 결과가 값과 모양만으로 정해져요. 그 다음 $b_i - s_i$를 한 번 빼고 대각으로 한 번 나눠요. 복소 나눗셈은 배열의 `divide`와 같은 꼴(`ops::cdiv`)이에요.
+- **우변 여럿.** 열끼리는 서로 기대지 않아요. 열 16개(`kColumnBlock`)를 한 태스크로 묶고, 묶음들이 스레드풀에서 돌아요. 묶음 안에서는 행을 차례로 지나며 그 행의 16열을 풀어요. 행의 원소를 한 번 읽어 여러 열에 쓰는 셈이에요. 열 하나의 계산은 같은 행 순서, 같은 줄 합이므로 **열의 비트가 k나 다른 열, 스레드 수와 무관해요**.
+- **우변 하나**는 한 스레드예요. 대입은 행이 앞 행의 결과를 기다리므로 그대로는 나눌 수 없어요. 서로 기대지 않는 행들을 단계로 묶어 단계 안에서 나누는 방법(level scheduling)이 있지만 쓰지 않아요.
+
+## 정확도
+
+대입의 표준 역오차 한계(Higham 2002, 8장)를 원소마다 확인해요.
+
+$$
+|b - T\hat x| \ \le\ \gamma_n\,|T|\,|\hat x|, \qquad \gamma_n = \frac{n u}{1 - n u}, \quad u = 2^{-53}
+$$
+
+잔차는 정확한 유리수로 계산하고, 실수·복소와 긴 행(4096 넘는 줄)에서 봐요. 계산 순서가 정해져 있으므로 Python의 `math.fma`로 같은 순서를 짠 것과 비트까지 같은지도 봐요.
+
+## scipy와 다른 점
+
+- scipy는 `lower=True`가 기본이에요. 여기서는 `upper`를 꼭 줘야 해요(`sd.linalg.solve_triangular`와 같아요).
+- scipy 1.18.1은 고른 삼각 밖의 원소가 있으면 그것을 SuperLU의 `gstrs`에 그대로 넘겨 경고 없이 틀린 답을 내요. 여기서는 읽지 않아요.
+- scipy는 $A\,\mathrm{diag}(1/d)$로 단위 삼각을 푼 뒤 $1/d$를 곱하는 순서라 반올림이 달라요. `overwrite_A`, `overwrite_b`는 없어요.
+
+## 참고 문헌
+
+1. N. J. Higham, *Accuracy and Stability of Numerical Algorithms*, 2판, SIAM, 2002, 8장.
+2. E. Anderson, Y. Saad, Solving sparse triangular linear systems on parallel computers, *Int. J. High Speed Comput.* 1(1), 1989(단계 스케줄링).

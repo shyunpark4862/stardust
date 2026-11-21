@@ -1,0 +1,182 @@
+---
+kind: function
+title: friedmanchisquare
+names: [friedmanchisquare]
+group: 순위 검정
+order: 5
+signatures:
+  - "sd.htest.friedmanchisquare(*samples, axis=None, nan_policy='propagate', keepdims=False)"
+summary: 같은 대상(블록)을 세 조건 이상에서 잰 반복 측정 자료에서 조건 사이에 차이가 있는지 블록 안의 순위로 묻는 Friedman 검정이에요. 반복 측정 분산분석의 순위판이고, 동점 보정이 든 통계량과 카이제곱(k − 1) p값을 줘요.
+params:
+  - name: "*samples"
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional
+    desc: "조건(처리)마다 표본 하나, 셋 이상. 모든 표본의 길이가 같아야 하고, 표본마다 j번째 값이 같은 블록(같은 대상)이에요."
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 표본마다 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 블록을 읽고, 나머지 축은 배치예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN이 든 블록을 통째로 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: FriedmanchisquareResult
+  desc: "statistic(동점 보정이 든 Friedman 통계량), pvalue(카이제곱 분포의 위꼬리), df(k − 1, float)예요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: "표본이 셋보다 적을 때(friedmanchisquare(): at least three samples are required, not 2), 표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, keepdims가 True·False가 아닐 때, 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "표본의 길이가 서로 다를 때, nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때."
+seeAlso: [page_trend_test, kruskal, wilcoxon, ttest_rel, basics, results]
+---
+
+## 무엇을 묻나요
+
+심사위원 여덟 명이 요리법 A, B, C를 맛보고 10점 만점으로 점수를 매겼어요. 위원마다 점수를 후하게 주거나 짜게 주는 버릇이 달라요.
+
+```python
+>>> import stardust as sd
+>>> A = [7.0, 6.5, 8.0, 5.5, 7.5, 6.0, 7.0, 8.5]
+>>> B = [8.0, 7.0, 8.5, 6.5, 7.0, 7.5, 8.0, 9.0]
+>>> C = [6.0, 6.5, 7.5, 5.0, 7.0, 5.5, 6.5, 8.0]
+>>> sd.htest.friedmanchisquare(A, B, C)
+FriedmanchisquareResult(statistic=12.2, pvalue=0.00224287, df=2)
+```
+
+표본마다 j번째 값이 같은 위원의 점수예요. 이렇게 같은 대상이 모든 조건을 받은 자료에서, 대상 하나를 **블록**이라 불러요.
+
+**Friedman 검정**은 블록마다 따로 순위를 매겨요. 위원 1은 B(8.0) > A(7.0) > C(6.0)라서 B에 3, A에 2, C에 1을 줘요. 이렇게 하면 위원의 버릇(모든 점수가 높거나 낮은 것)이 사라지고 "이 위원 안에서 무엇이 더 나았나"만 남아요. 조건마다 순위를 모두 더한 $R_j$를 보면, 조건 사이에 차이가 없을 때는 어느 조건이든 $R_j$가 $n(k+1)/2$ 근처예요.
+
+$$
+Q = \frac{12}{n k (k + 1)} \sum_{j=1}^{k} \left(R_j - \frac{n(k+1)}{2}\right)^2
+$$
+
+$n$은 블록의 수, $k$는 조건의 수예요. 블록 안에 동점이 있으면 동점 보정으로 나눠요. 귀무가설 아래에서 $Q$는 자유도 $k - 1$의 카이제곱 분포에 가까워지고, p값은 그 위꼬리예요.
+
+- **귀무가설**: 블록 안에서 조건의 순서가 무작위예요(조건 사이에 차이가 없어요).
+- **대립가설**: 적어도 한 조건이 다른 조건보다 큰 쪽(또는 작은 쪽)으로 치우쳤어요.
+
+위의 p값 0.0022는 요리법 사이에 차이가 있다는 근거예요.
+
+이런 때 써요.
+
+- 같은 사람(대상)을 세 조건 이상에서 쟀을 때. 반복 측정 분산분석의 대신이에요.
+- 대상마다 기준선이 크게 달라서, 대상끼리의 차이가 조건의 차이를 가릴 때.
+
+짝을 무시하고 [`kruskal`](/api/htest/kruskal/)로 같은 값을 견주면 위원끼리의 차이가 섞여 들어가 차이가 흐려져요.
+
+```python
+>>> sd.htest.kruskal(A, B, C)
+KruskalResult(statistic=5.03157, pvalue=0.0807995, df=2)
+```
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | 동점 보정이 든 Friedman 통계량 $Q$ |
+| `pvalue` | 자유도 `df`의 카이제곱 분포에서 $Q$ 이상일 확률 |
+| `df` | 자유도 $k - 1$(float) |
+
+```python
+>>> r = sd.htest.friedmanchisquare(A, B, C)
+>>> stat, p = r
+>>> r.df
+2.0
+>>> print(r.summary())
+                            Friedman rank sum test
+==============================================================================
+Statistic:                       12.20  No. Observations:                    8
+P-value:                       0.00224
+Df:                                  2
+==============================================================================
+```
+
+`No. Observations`는 블록의 수예요. 대립가설에 방향이 없어서 `alternative`가 없어요. 조건의 순서를 미리 예상했다면(예: 용량이 늘수록 효과가 커진다) [`page_trend_test`](/api/htest/page_trend_test/)가 그 방향을 써서 더 예민해요.
+
+## 자료를 표로 가지고 있을 때
+
+블록 × 조건의 표(행이 블록, 열이 조건)라면 열을 표본으로 풀어 넘겨요. 조건 × 블록의 배열이라면 `*`로 행을 풀어요.
+
+```python
+>>> table = sd.asarray([A, B, C])
+>>> table.shape
+(3, 8)
+>>> sd.htest.friedmanchisquare(*table)
+FriedmanchisquareResult(statistic=12.2, pvalue=0.00224287, df=2)
+```
+
+## 동점, NaN, 퇴화한 입력
+
+- 블록 안의 같은 값은 중간 순위를 나눠 가지고, 통계량에 동점 보정이 들어가요.
+- `nan_policy='omit'`은 NaN이 든 **블록**을 통째로 빼요. 한 위원의 점수 하나가 빠지면 그 위원의 다른 점수도 블록 안 순위를 매길 수 없기 때문이에요.
+- 모든 블록에서 모든 값이 같으면 순위가 흩어지지 않아 NaN이에요.
+
+```python
+>>> nan = float('nan')
+>>> A2 = [7.0, nan, 8.0, 5.5, 7.5, 6.0, 7.0, 8.5]
+>>> sd.htest.friedmanchisquare(A2, B, C)
+FriedmanchisquareResult(statistic=nan, pvalue=nan, df=2)
+>>> sd.htest.friedmanchisquare(A2, B, C, nan_policy='omit')
+FriedmanchisquareResult(statistic=10.8889, pvalue=0.00432024, df=2)
+>>> sd.htest.friedmanchisquare([1.0, 1.0], [1.0, 1.0], [1.0, 1.0])
+FriedmanchisquareResult(statistic=nan, pvalue=nan, df=2)
+```
+
+표본이 둘뿐이면 `TypeError`예요. 조건이 둘인 짝지은 자료는 [`wilcoxon`](/api/htest/wilcoxon/)으로 검정해요.
+
+```python
+>>> sd.htest.friedmanchisquare(A, B)
+Traceback (most recent call last):
+    ...
+TypeError: friedmanchisquare(): at least three samples are required, not 2
+```
+
+## 카이제곱 근사의 품질
+
+p값은 카이제곱 분포로 어림한 값이고, 정확한 순열 분포는 계산하지 않아요. 블록이 적으면 근사가 꽤 벗어날 수 있어요. 정확한 순열 p값과 견주면 조건 3개·블록 10개에서 0.04556 대 0.04505(근사)로 가깝지만, 조건 4개·블록 5개에서는 0.6522 대 0.5641로 13% 차이가 나요. 블록이 적으면 [`permutation_test`](/api/htest/permutation_test/)에 `permutation_type='samples'`를 주어 블록 안 순열의 분포를 셀 수 있어요.
+
+## 여러 검정을 한 번에: `axis`
+
+`axis`를 주면 그 축을 따라 블록을 읽고 나머지 축의 칸마다 따로 검정해요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> N = sd.stats.Normal()
+>>> shift = sd.asarray([[0.0], [0.6]])
+>>> S = [N.sample((2, 10), rng=rng) + shift * i for i in range(3)]
+>>> rb = sd.htest.friedmanchisquare(*S, axis=1)
+>>> rb.statistic
+array([2.6, 5.4], dtype=float64)
+```
+
+## 정확도
+
+통계량은 정수인 순위 합의 편차에서 상쇄 없이 계산해요. 문제 5개에서 Arb(구간 산술)로 만든 참값에 견주어 통계량은 상대 6e-17, p값은 상대 2.6e-15 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.friedmanchisquare`와 통계량(동점 보정 포함)과 p값의 정의가 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.friedmanchisquare(A, B, C)
+FriedmanchisquareResult(statistic=np.float64(12.2), pvalue=np.float64(0.002242867719485803))
+```
+
+다른 점이에요.
+
+- 결과에 `df`가 있어요. 튜플로 풀면 scipy와 같이 둘이에요.
+- 통계량: scipy는 순위 제곱합에서 큰 수를 빼는 꼴이라 상대 1e-13쯤 틀릴 때가 있어요. R의 `friedman.test`는 sd와 같은 값을 줘요.
+- 표본이 셋보다 적으면 `TypeError`예요(scipy는 `ValueError`).
+- `axis`의 기본값이 None이에요(scipy는 0). `nan_policy='omit'`은 NaN이 든 블록을 빼요.
+- 모든 값이 같으면 NaN이고 경고를 내지 않아요.

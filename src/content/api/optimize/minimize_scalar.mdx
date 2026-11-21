@@ -123,7 +123,7 @@ $f(x) = e^x - 5x$는 $x = \ln 5 \approx 1.6094$에서 가장 작아요.
 ...     return math.exp(x) - 5*x
 >>> r = sd.optimize.minimize_scalar(f)
 >>> r
-OptimizeResult(method='brent', converged=True, fun=-3.04719, n_iter=9, nfev=12, x=1.6094379057065267)
+OptimizeResult(method='brent', converged=True, fun=-3.04719, n_iter=9, nfev=12, x=1.60944)
 >>> r.x, r.fun
 (1.6094379057065267, -3.0471895621705025)
 >>> math.log(5)
@@ -165,7 +165,7 @@ f는 Python `float` 하나를 받아 실수 하나를 돌려줘요. 상수는 �
 brent 1.6094379124493254 10 13
 golden 1.609437890452532 38 43
 >>> sd.optimize.minimize_scalar(f, bounds=(0, 3))
-OptimizeResult(method='bounded', converged=True, fun=-3.04719, n_iter=10, nfev=10, x=1.6094378607855377)
+OptimizeResult(method='bounded', converged=True, fun=-3.04719, n_iter=10, nfev=10, x=1.60944)
 ```
 
 `method=None`(기본값)이면 `bounds`가 있을 때 `'bounded'`, 없으면 `'brent'`예요. 방법 이름은 소문자만 받아요.
@@ -245,7 +245,7 @@ $e^x - 5x$는 (0, 1)에서 내려가기만 해서 오른쪽 끝 1 가까이에�
 
 ```python
 >>> sd.optimize.minimize_scalar(math.cos, bounds=(2, 2))
-OptimizeResult(method='bounded', converged=True, fun=-0.416147, n_iter=1, nfev=1, x=2.0)
+OptimizeResult(method='bounded', converged=True, fun=-0.416147, n_iter=1, nfev=1, x=2)
 >>> sd.optimize.minimize_scalar(f, bounds=(3, 0))
 Traceback (most recent call last):
     ...
@@ -283,7 +283,7 @@ brent와 golden의 `xtol`은 **상대** 크기이고, bounded의 `xatol`은 **�
 
 ```python
 >>> sd.optimize.minimize_scalar(f, options={'xtol': 1e-3})
-OptimizeResult(method='brent', converged=True, fun=-3.04719, n_iter=6, nfev=9, x=1.6093908716934102)
+OptimizeResult(method='brent', converged=True, fun=-3.04719, n_iter=6, nfev=9, x=1.60939)
 >>> sd.optimize.minimize_scalar(f, tol=1e-3, options={'xtol': 1e-4})
 Traceback (most recent call last):
     ...
@@ -376,7 +376,7 @@ The returned value satisfies the termination criteria
 
 ```python
 >>> sd.optimize.minimize_scalar(lambda x: abs(x - 1.0), bracket=(0, 0.5, 3))
-OptimizeResult(method='brent', converged=True, fun=6.61814e-09, n_iter=23, nfev=26, x=1.0000000066181411)
+OptimizeResult(method='brent', converged=True, fun=6.61814e-09, n_iter=23, nfev=26, x=1)
 >>> sd.optimize.minimize_scalar(lambda x: (x, 1.0))
 Traceback (most recent call last):
     ...

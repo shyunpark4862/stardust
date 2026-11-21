@@ -4,8 +4,8 @@ names: [lu_solve]
 group: 선형 시스템
 order: 4
 signatures:
-  - "sd.linalg.lu_solve(l, u, perm, b, /)"
-summary: lu가 만든 분해 결과 셋을 받아서 원래 행렬의 연립일차방정식 a @ x = b를 풀어요. 같은 행렬로 우변만 바꿔 여러 번 풀 때 써요.
+  - "sd.linalg.lu_solve(l, u, perm, b, /, *, trans='N')"
+summary: lu가 만든 분해 결과 셋을 받아서 원래 행렬의 연립일차방정식 a @ x = b(또는 전치한 aᵀ @ x = b)를 풀어요. 같은 행렬로 우변만 바꿔 여러 번 풀 때 써요.
 params:
   - name: l
     type: ndarray
@@ -23,14 +23,18 @@ params:
     type: ndarray
     kind: positional-only
     desc: 우변. 1차원이면 길이 N인 벡터 하나, 2차원 이상이면 (..., N, K)로 우변 K개를 열로 나란히 놓은 것이에요.
+  - name: trans
+    type: str
+    kind: keyword-only
+    desc: "푸는 방정식. 'N'(기본값)은 a x = b, 'T'는 aᵀ x = b, 'H'는 켤레 전치 aᴴ x = b예요. 실수 행렬에서 'H'는 'T'와 같아요."
 returns:
   type: ndarray
   desc: 해 x. b가 1차원이면 (..., N), 2차원 이상이면 (..., N, K). 정수 입력이어도 float64이고, 복소수가 섞이면 complex128이에요.
 raises:
   - type: TypeError
-    desc: 네 인자 가운데 배열이 아닌 것이 있을 때, perm이 int64 배열이 아닐 때, 인자 개수가 틀렸거나 키워드로 넘겼을 때.
+    desc: 네 인자 가운데 배열이 아닌 것이 있을 때(희소 배열 포함), perm이 int64 배열이 아닐 때, trans가 문자열이 아닐 때, 인자 개수가 틀렸거나 네 인자를 키워드로 넘겼을 때.
   - type: ValueError
-    desc: l이나 u가 정사각이 아니거나 크기가 서로 다를 때, perm의 길이나 b의 행 수가 맞지 않을 때, perm이 0부터 N-1까지의 순열이 아닐 때, 배치 축끼리 브로드캐스팅이 안 될 때, 읽는 원소나 b에 NaN·inf가 있을 때.
+    desc: trans가 'N', 'T', 'H'가 아닐 때, l이나 u가 정사각이 아니거나 크기가 서로 다를 때, perm의 길이나 b의 행 수가 맞지 않을 때, perm이 0부터 N-1까지의 순열이 아닐 때, 배치 축끼리 브로드캐스팅이 안 될 때, 읽는 원소나 b에 NaN·inf가 있을 때.
   - type: LinAlgError
     desc: u의 대각선에 정확한 0이 있을 때(원래 행렬이 특이 행렬일 때).
 seeAlso: [lu, solve, solve_triangular, cholesky_solve, inv, basics, errors]
@@ -205,6 +209,38 @@ array([[1.0, 2.0],
 
 1차원 `b`는 모든 행렬에 똑같이 써요. 네 인자의 배치 축은 [브로드캐스팅](/api/array/broadcasting/)으로 맞춰요. 행렬마다 다른 우변 벡터를 짝지으려면 `b[..., None]`으로 끝에 길이 1인 축을 붙여요(이유는 [solve](/api/linalg/solve/) 문서에 있어요).
 
+## `trans`: 전치한 방정식 풀기
+
+같은 분해로 전치한 행렬의 방정식 $A^{\mathsf T}x = b$도 풀 수 있어요. `trans='T'`를 주면 돼요. `a.T`를 다시 분해할 필요가 없어요.
+
+```python
+>>> x = sd.linalg.lu_solve(L, U, perm, b, trans='T')
+>>> x
+array([-0.5, 3.75], dtype=float64)
+>>> a.T @ x
+array([7.0, 6.0], dtype=float64)
+```
+
+복소수 행렬에서는 켤레 전치 $A^{\mathsf H}x = b$를 `trans='H'`로 풀어요. 실수 행렬에서는 `'H'`와 `'T'`가 같아요.
+
+```python
+>>> c = sd.asarray([[1.0 + 1j, 2.0], [3j, 4.0]])
+>>> xh = sd.linalg.lu_solve(*sd.linalg.lu(c), sd.asarray([1.0 + 0j, 2.0]), trans='H')
+>>> sd.conj(c).T @ xh
+array([                    (1+0j), (2+2.220446049250313e-16j)], dtype=complex128)
+```
+
+$A = P^{\mathsf T}LU$이므로 $A^{\mathsf T} = U^{\mathsf T}L^{\mathsf T}P$예요. 그래서 `'T'`는 순서를 바꿔서 $U^{\mathsf T}y = b$, $L^{\mathsf T}z = y$를 차례로 풀고 `perm`으로 행을 되돌려요. `a.T`를 따로 분해하는 `solve(a.T, b)`와는 계산이 달라서 마지막 자리가 다를 수 있어요.
+
+값은 `'N'`, `'T'`, `'H'` 셋뿐이고 대문자로 써요. 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`예요. `trans`는 이름을 붙여서 넘겨요.
+
+```python
+>>> sd.linalg.lu_solve(L, U, perm, b, trans='n')
+Traceback (most recent call last):
+    ...
+ValueError: lu_solve(): 'trans' must be 'N', 'T' or 'H', not 'n'
+```
+
 ## `solve`와 마지막 자리까지 같아요
 
 `solve(a, b)`가 속에서 하는 일이 바로 "분해하고, 그것으로 풀기"예요. `lu`와 `lu_solve`는 그 두 단계를 따로 꺼낸 것이라서, 결과가 비슷한 정도가 아니라 마지막 자리까지 똑같아요. 반올림 오차에 민감한 행렬에서도 그래요.
@@ -354,12 +390,21 @@ array([(1+1j), (2+2j)], dtype=complex128)
 
 마지막 줄은 흔히 오해하는 부분이에요. 같은 행렬로 여러 번 풀 거라서 역행렬을 미리 구해 둔다는 생각은 자연스럽지만, 그 목적에는 `lu`와 `lu_solve`가 맞는 도구예요. 준비도 더 빠르고, 풀 때마다 나오는 답도 더 정확해요.
 
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 "분해 한 번, 풀이 여러 번"은 [`sd.sparse.splu`](/api/sparse/splu/)로 분해하고 그 결과의 `solve(b, trans=)`로 풀어요. `trans`의 값과 뜻이 이 함수와 같아요. 분해 결과를 함수 하나로 묶어 주는 [`sd.sparse.factorized`](/api/sparse/factorized/)도 있어요. 두 쪽은 분해하는 방법이 달라서 마지막 자리가 다를 수 있어요.
+
+```python
+>>> sd.sparse.splu(sd.sparse.csc_array(a)).solve(b, trans='T')
+array([-0.5, 3.75], dtype=float64)
+```
+
 ## numpy·scipy를 아는 분께
 
 - `scipy.linalg.lu_solve`에 해당해요. numpy에는 이 함수가 없어요.
 - 인자의 꼴이 달라요. scipy는 `lu_factor`가 돌려준 튜플 `(lu, piv)`를 통째로 받아요. `lu`는 `L`과 `U`를 겹쳐 담은 배열 하나예요. 여기서는 `L`, `U`, `perm`을 따로따로 넘겨요. `lu_factor`에 해당하는 함수는 없고 `sd.linalg.lu`의 결과를 써요.
 - `perm`은 `piv`와 뜻이 달라요. scipy의 `piv`는 "i번째 행을 `piv[i]`번째 행과 맞바꾼다"를 차례로 적은 것이고, 여기의 `perm`은 최종 행 순서를 적은 순열이에요(`a[perm] == L @ U`). 둘을 서로 바꿔 쓸 수 없어요.
 - `scipy.linalg.lu`의 기본 결과는 `a == P @ L @ U`가 되는 순열 행렬 `P`예요. `sd.linalg.lu`는 행렬이 아니라 인덱스 벡터를 주고, 관계식도 `a[perm] == L @ U`예요.
-- `trans=` 옵션이 없어요. 전치된 시스템은 `a.T`를 분해해서 푸세요.
+- `trans`는 scipy의 정수 0·1·2가 아니라 문자 `'N'`·`'T'`·`'H'`예요. 희소 행렬의 `SparseLU.solve(trans=)`와 같은 값이에요.
 - `check_finite=`, `overwrite_b=`가 없어요. 언제나 검사하고, NaN·inf가 있으면 `ValueError`예요.
 - `b`의 규칙은 `sd.linalg.solve`와 같고(1차원일 때만 벡터), 배치를 받아요.

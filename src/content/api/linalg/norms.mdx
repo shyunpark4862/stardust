@@ -496,6 +496,10 @@ ValueError: matrix_norm(): 'x' must have at least 2 dimensions, got 1
 | 행렬이 계산 오차를 얼마나 키우는지 | [`cond`](/api/linalg/cond/) | 가장 큰 배율과 가장 작은 배율의 비예요. |
 | 0이 아닌 원소의 개수 | [`sd.count_nonzero`](/api/array/count_nonzero/) | `ord=0`과 같은 수를 정수로 돌려줘요. |
 
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 노름은 [`sd.sparse.norm`](/api/sparse/norm/)이에요. `ord`의 뜻과 받는 값이 `matrix_norm`, `vector_norm`과 같아요. 큰 희소 행렬의 1-노름을 행렬 곱 몇 번으로 어림하는 [`sd.sparse.onenormest`](/api/sparse/onenormest/)도 있어요. 희소 배열을 `matrix_norm`이나 `vector_norm`에 넣으면 `sd.sparse.norm`을 알려 주는 `TypeError`예요.
+
 ## numpy·scipy를 아는 분께
 
 - `np.linalg.norm`처럼 벡터와 행렬을 한 함수로 다루는 함수는 없어요. `vector_norm`과 `matrix_norm` 둘로 나뉘어 있고, 인자의 이름과 기본값은 `np.linalg.vector_norm`, `np.linalg.matrix_norm`과 같아요.

@@ -1,0 +1,210 @@
+---
+title: 재시작 GMRES
+group: 반복법
+order: 3
+summary: gmres가 Arnoldi 과정과 수정 Gram–Schmidt로 Krylov 기저를 쌓고, LAPACK의 lartg와 같은 Givens 회전으로 작은 최소제곱 문제를 풀고, restart마다 참 잔차로 판정하는 과정을 코드로 따라가요. 안쪽 판정의 문턱을 바꾸는 규칙과 무너짐도 다뤄요.
+seeAlso: [krylov, minres, cg-bicgstab, lsqr-lsmr]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+export const gmresHist = [[1,-0.03],[2,-0.06],[3,-0.08],[4,-0.11],[5,-0.13],[6,-0.16],[7,-0.19],[8,-0.22],[9,-0.25],[10,-0.28],[11,-0.32],[12,-0.35],[13,-0.4],[14,-0.44],[15,-0.49],[16,-0.55],[17,-0.62],[18,-0.71],[19,-0.83],[20,-1.01],[21,-1.12],[22,-1.22],[23,-1.29],[24,-1.36],[25,-1.43],[26,-1.5],[27,-1.57],[28,-1.62],[29,-1.67],[30,-1.71],[31,-1.74],[32,-1.77],[33,-1.8],[34,-1.83],[35,-1.85],[36,-1.88],[37,-1.9],[38,-1.93],[39,-1.96],[40,-1.98],[41,-1.99],[42,-2.01],[43,-2.04],[44,-2.06],[45,-2.08],[46,-2.11],[47,-2.14],[48,-2.17],[49,-2.21],[50,-2.24],[51,-2.27],[52,-2.31],[53,-2.35],[54,-2.4],[55,-2.45],[56,-2.52],[57,-2.58],[58,-2.65],[59,-2.75],[60,-2.86],[61,-2.96],[62,-3.05],[63,-3.12],[64,-3.19],[65,-3.26],[66,-3.32],[67,-3.37],[68,-3.41],[69,-3.45],[70,-3.48],[71,-3.51],[72,-3.55],[73,-3.58],[74,-3.61],[75,-3.64],[76,-3.67],[77,-3.69],[78,-3.71],[79,-3.73],[80,-3.74],[81,-3.75],[82,-3.77],[83,-3.79],[84,-3.81],[85,-3.83],[86,-3.87],[87,-3.9],[88,-3.93],[89,-3.97],[90,-4.0],[91,-4.03],[92,-4.07],[93,-4.11],[94,-4.16],[95,-4.22],[96,-4.28],[97,-4.35],[98,-4.42],[99,-4.5],[100,-4.6],[101,-4.69],[102,-4.78],[103,-4.86],[104,-4.92],[105,-4.98],[106,-5.04],[107,-5.09],[108,-5.13],[109,-5.17],[110,-5.21],[111,-5.24],[112,-5.27],[113,-5.3],[114,-5.34],[115,-5.37],[116,-5.39],[117,-5.41],[118,-5.43],[119,-5.45],[120,-5.46],[121,-5.48],[122,-5.49],[123,-5.51],[124,-5.53],[125,-5.55],[126,-5.59],[127,-5.62],[128,-5.65],[129,-5.69],[130,-5.72],[131,-5.75],[132,-5.79],[133,-5.83],[134,-5.88],[135,-5.94],[136,-6.0],[137,-6.07],[138,-6.14],[139,-6.23],[140,-6.32],[141,-6.41],[142,-6.5],[143,-6.57],[144,-6.64],[145,-6.7],[146,-6.76],[147,-6.81],[148,-6.85],[149,-6.89],[150,-6.92],[151,-6.95],[152,-6.99],[153,-7.02],[154,-7.05],[155,-7.09],[156,-7.11],[157,-7.13],[158,-7.15],[159,-7.16],[160,-7.18],[161,-7.19],[162,-7.21],[163,-7.23],[164,-7.25],[165,-7.27],[166,-7.3],[167,-7.33],[168,-7.36],[169,-7.4],[170,-7.43],[171,-7.46],[172,-7.5],[173,-7.54],[174,-7.59],[175,-7.65],[176,-7.71],[177,-7.78],[178,-7.85],[179,-7.94],[180,-8.03]];
+export const minresHist = [[0,0.0],[1,-0.03],[2,-0.06],[3,-0.08],[4,-0.11],[5,-0.13],[6,-0.16],[7,-0.19],[8,-0.22],[9,-0.25],[10,-0.28],[11,-0.32],[12,-0.35],[13,-0.4],[14,-0.44],[15,-0.49],[16,-0.55],[17,-0.62],[18,-0.71],[19,-0.83],[20,-1.01],[21,-1.22],[22,-1.36],[23,-1.43],[24,-1.52],[25,-1.67],[26,-1.78],[27,-1.9],[28,-2.04],[29,-2.15],[30,-2.29],[31,-2.42],[32,-2.56],[33,-2.73],[34,-2.88],[35,-3.08],[36,-3.27],[37,-3.51],[38,-3.75],[39,-4.02],[40,-4.3],[41,-4.58],[42,-4.85]];
+
+## 한눈에 보기
+
+GMRES(Saad–Schultz 1986)는 $k$번째 반복점을 Krylov 공간 $x_0 + \mathcal K_k$ 안에서 **잔차의 2-노름이 가장 작은 점**으로 골라요. 그러려면 공간의 정규직교 기저를 모두 들고 있어야 해서, 반복이 길어지면 메모리와 직교화의 일이 늘어요. [`gmres`](/api/sparse/gmres/)는 scipy처럼 `restart`(기본 20, n 이하)번마다 지금의 x로 다시 시작해요.
+
+<Fig column caption="gmres의 바깥 반복(주기) 하나. 안쪽 반복은 많아야 restart번이에요.">
+  <Steps steps={[
+    { label: 'v₀ = M r / ‖M r‖', note: '첫 주기 전에만 r = b − A x를 계산해 판정', where: 'iterative.cpp' },
+    { label: '안쪽 반복 col', note: 'w = M A v_col, 수정 Gram–Schmidt로 h와 v_{col+1}', depth: 1 },
+    { label: 'Givens 회전', note: '지난 회전을 새 열에, 새 회전(lartg)을 h와 S에', depth: 1 },
+    { label: 'presid = |S[col+1]|', note: 'presid ≤ ptol이거나 무너지면 안쪽을 끝냄', depth: 1 },
+    { label: '뒤 대입', note: 'H y = S, x += Σ y_k v_k' },
+    { label: '참 잔차', note: '‖b − A x‖ ≤ atol이면 끝, 아니면 ptol을 고쳐 다음 주기' },
+  ]} />
+</Fig>
+
+판정의 기준은 scipy와 같아요. 바깥 판정은 참 잔차 $\lVert b - Ax\rVert \le \max(\text{rtol}\,\lVert b\rVert, \text{atol})$이고, `max_iter`는 **바깥 반복(주기)의 수**(기본 10n)예요. 결과의 `n_iter`는 주기 수, `n_inner`는 안쪽 반복의 총수예요.
+
+## Arnoldi와 수정 Gram–Schmidt
+
+기저 $v_0, v_1, \ldots$는 Arnoldi 과정으로 만들어요. 새 벡터 $w = M A v_{\text{col}}$에서 앞의 기저 성분을 하나씩 빼고, 남은 것의 길이로 나눈 것이 다음 기저예요. 뺀 계수들이 Hessenberg 행렬 $\bar H$의 열이 되고
+
+$$
+M A V_k = V_{k+1}\bar H_k
+$$
+
+가 성립해요. 그러면 $x = x_0 + V_k y$의 (전처리한) 잔차는 $\lVert \beta e_1 - \bar H_k y\rVert$이고, n차원의 최소화가 $(k+1) \times k$의 작은 최소제곱 문제가 돼요.
+
+```cpp
+        // csrc/sparse/iterative.cpp
+        for (col = 0; col < restart; ++col) {
+            A.apply(V(col), tmp.data());
+            M.apply(tmp.data(), w.data());
+            // modified Gram-Schmidt
+            const double h0 = nrm2(w.data(), n);
+            T hk = dot(V(0), w.data(), n);
+            for (int64_t k = 0; k <= col; ++k) {  // w -= h V(k) and the next dot in one pass
+                H(col, k) = hk;
+                hk = axpy_dot(neg(hk), V(k), w.data(), k < col ? V(k + 1) : nullptr, n);
+            }
+            const double h1 = nrm2(w.data(), n);
+            H(col, col + 1) = of<T>(h1);
+            std::memcpy(V(col + 1), w.data(), un * sizeof(T));
+            if (h1 <= kEps * h0) {  // the exact solution indicator
+                H(col, col + 1) = T{};
+                breakdown = true;
+            } else {
+                scal(of<T>(1 / h1), V(col + 1), n);
+            }
+            // the past rotations on the new column of h
+            for (int64_t k = 0; k < col; ++k) {
+                const T c = of<T>(gc[k]), s = gs[k];
+                const T n0 = H(col, k), n1 = H(col, k + 1);
+                H(col, k) = add(mul(c, n0), mul(s, n1));
+                H(col, k + 1) = add(mul(neg(conj(s)), n0), mul(c, n1));
+            }
+            // the new rotation, on h and S
+            const Rot g = lartg(H(col, col), H(col, col + 1));
+            T gsv, gr;
+            if constexpr (kComplex<T>) {
+                gsv = g.s;
+                gr = g.r;
+            } else {
+                gsv = g.s.real();
+                gr = g.r.real();
+            }
+            gc[col] = g.c;
+            gs[col] = gsv;
+            H(col, col) = gr;
+            H(col, col + 1) = T{};
+            const T t = mul(neg(conj(gsv)), S[col]);
+            S[col] = mul(of<T>(g.c), S[col]);
+            S[col + 1] = t;
+            presid = mag(t);
+            ++o.n_inner;
+            o.history.push_back(presid);
+            if (presid <= ptol || breakdown) break;
+        }
+```
+
+- **수정 Gram–Schmidt**(MGS)는 성분을 뺄 때마다 고친 $w$로 다음 내적을 계산해요. 처음 $w$와 모든 내적을 한 번에 계산하는 고전 Gram–Schmidt보다 직교성을 잘 지켜요. `axpy_dot`은 $w \mathrel{-}= h_k v_k$와 다음 내적 $v_{k+1}^{\mathsf H}w$를 메모리 한 번 훑기로 해요. 잎의 경계와 트리가 `dot`과 같아 따로 부른 것과 비트가 같아요.
+- **무너짐 표시.** 빼고 남은 길이가 처음 길이의 ε배 이하($h_1 \le \varepsilon h_0$)면 Krylov 공간이 해를 담았다는 뜻(정확한 해의 표시)이라, 그 열의 아래 원소를 0으로 두고 안쪽 반복을 끝내요.
+- **Givens 회전.** $\bar H$를 위 삼각으로 만드는 회전을 열이 생길 때마다 하나씩 더해요. 새 열에는 지난 회전을 모두 차례로 걸고, 그 다음 대각 아래 원소를 없애는 새 회전을 구해 $\bar H$와 우변 $S$(처음 $\beta e_1$)에 걸어요. 회전 뒤의 $|S_{\text{col}+1}|$이 그 시점의 최소 잔차, `presid`예요. 해를 계산하지 않고도 잔차의 크기를 알 수 있어요.
+
+### `lartg`
+
+회전 $[c\ \ s;\ -\bar s\ \ c]$는 $(f, g)$를 $(r, 0)$으로 보내는 것이에요. 식은 $c = |f|/\sqrt{|f|^2 + |g|^2}$이지만 $f^2 + g^2$는 넘치거나 사라질 수 있어요. scipy는 LAPACK의 `lartg`를 불러요. LAPACK 3.10부터의 `lartg`는 Anderson(2017)의 알고리즘이에요(Accelerate의 LAPACK 3.12도 같아요). 이 라이브러리는 회전 하나에 LAPACK 호출을 하지 않고 같은 알고리즘을 `krylov.hpp`에 옮겼어요.
+
+```cpp
+// csrc/sparse/krylov.hpp
+inline Rot lartg(double f, double g) {
+    const double safmin = 0x1p-1022, safmax = 0x1p1022;
+    const double rtmin = std::sqrt(safmin), rtmax = std::sqrt(safmax / 2);
+    const double f1 = std::fabs(f), g1 = std::fabs(g);
+    if (g == 0) return {1.0, 0.0, f};
+    if (f == 0) return {0.0, std::copysign(1.0, g), g1};
+    if (f1 > rtmin && f1 < rtmax && g1 > rtmin && g1 < rtmax) {
+        const double d = std::sqrt(f * f + g * g);
+        const double c = f1 / d, r = std::copysign(d, f);
+        return {c, g / r, r};
+    }
+    const double u = std::min(safmax, std::max(safmin, std::max(f1, g1)));
+    const double fs = f / u, gs = g / u;
+    const double d = std::sqrt(fs * fs + gs * gs);
+    const double c = std::fabs(fs) / d, r = std::copysign(d, f);
+    return {c, gs / r, r * u};
+}
+```
+
+$|f|$, $|g|$가 모두 $[\sqrt{\text{safmin}}, \sqrt{\text{safmax}/2}]$ 안이면 제곱해도 안전하므로 바로 계산해요. 밖이면 둘을 $u = \max(|f|, |g|)$(안전한 범위로 자른 것)로 나눠 같은 식을 쓰고 r에 u를 다시 곱해요. r의 부호는 f를 따르고 c는 0 이상이에요. 복소판은 $|f|^2$, $|g|^2$의 상대 크기에 따라 $c = \sqrt{f_2/h_2}$와 $s$를 계산하는 순서를 골라 반올림과 넘침을 줄여요.
+
+## 뒤 대입과 해의 갱신
+
+```cpp
+        // csrc/sparse/iterative.cpp
+        if (col == restart) col = restart - 1;
+        // the upper triangular h(col, col) system, singular cases pseudo-solved (scipy)
+        if (is_zero(H(col, col))) S[col] = T{};
+        for (int64_t k = 0; k <= col; ++k) y[k] = S[k];
+        for (int64_t k = col; k > 0; --k) {
+            if (!is_zero(y[k])) {
+                y[k] = dvd(y[k], H(k, k));
+                const T t = y[k];
+                for (int64_t j = 0; j < k; ++j) y[j] = sub(y[j], mul(t, H(k, j)));
+            }
+        }
+        if (!is_zero(y[0])) y[0] = dvd(y[0], H(0, 0));
+        // x += y @ v[:col + 1]
+        each(n, [&](int64_t i) {
+            T acc{};
+            for (int64_t k = 0; k <= col; ++k) acc = madd(y[k], V(k)[i], acc);
+            x[i] = add(x[i], acc);
+        });
+```
+
+위 삼각 계 $H y = S$를 뒤에서부터 풀어요. scipy와 같은 꼴로 0인 대각을 만나면 그 성분을 0으로 두는 "유사 풀이"를 해서 무너진 경우에도 멈추지 않아요. 해의 갱신 $x \mathrel{+}= \sum_k y_k v_k$는 원소마다 k 순서의 합을 x에 한 번 더해요(scipy는 `y @ v`, numpy의 행렬 곱이라 끝자리가 달라요).
+
+## 바깥 판정과 안쪽 문턱
+
+```cpp
+        // csrc/sparse/iterative.cpp
+        residual(A, b, x, r, tmp, false);
+        rnorm = nrm2(r.data(), n);
+        if (rnorm <= atol) break;
+        if (breakdown) {  // the exact solution, but the outer test failed
+            o.stop = 1;
+            break;
+        }
+        if (presid <= ptol) ptol_max_factor = std::max(kEps, 0.25 * ptol_max_factor);
+        else ptol_max_factor = std::min(1.0, 1.5 * ptol_max_factor);
+        ptol = presid * std::min(ptol_max_factor, atol / rnorm);
+```
+
+안쪽 판정은 전처리한 잔차의 어림 `presid`에 대한 것이라, 참 잔차와 다를 수 있어요. 그래서 주기마다 $b - Ax$를 다시 계산해 바깥 판정을 해요. 안쪽 문턱 `ptol`은 scipy의 규칙으로 주기마다 고쳐요. 처음은 $\lVert Mb\rVert \cdot \min(1, \text{atol}/\lVert b\rVert)$이고, 안쪽이 문턱에 닿았는데 바깥이 실패하면 배율을 1/4로(ε까지) 줄이고, 안쪽이 문턱에 못 닿았으면 1.5배로(1까지) 늘려, 다음 문턱을 $\text{presid}\cdot\min(\text{배율}, \text{atol}/\lVert r\rVert)$로 둬요. 전처리한 잔차와 참 잔차의 비가 어긋날 때 안쪽 반복을 너무 일찍 끝내거나 너무 오래 끌지 않게 하는 장치예요.
+
+무너진 주기(`breakdown`)에서 바깥 판정이 실패하면 더 돌아도 나아지지 않으므로 멈추고 status가 `max_iter`예요. 메시지는 "breakdown: the Krylov space holds the solution, but the residual norm is above the tolerance"예요.
+
+## 재시작이 하는 일
+
+에르미트 행렬이면 MINRES도 같은 Krylov 공간에서 잔차의 노름을 가장 작게 해요. 그래서 정확한 산술에서는 첫 주기의 안쪽 반복이 MINRES의 반복과 같은 잔차를 줘요. 아래 그림의 처음 20걸음이 그것이에요. 재시작한 뒤에는 앞의 기저를 버리므로 그 정보가 사라져 수렴이 느려져요.
+
+<Fig caption="2차원 라플라시안(n = 900), b = 1, rtol 10⁻⁸에서 log₁₀(어림한 잔차 / ‖b‖). 실선은 gmres(20)의 안쪽 반복마다의 presid(9주기, 180번), 점선은 minres의 φ̄(42번). 첫 20걸음은 두 선이 같고, 재시작마다 gmres의 기울기가 꺾여요. minres가 −4.9에서 멈춘 것은 판정이 ‖r‖ / (‖A‖‖x‖)에 대한 것이기 때문이에요.">
+  <Plot
+    curves={[
+      { points: gmresHist, label: 'gmres(20)' },
+      { points: minresHist, label: 'minres', dashed: true },
+    ]}
+    domain={[0, 180]}
+    range={[-9, 0.5]}
+    xTicks={[{ v: 0, label: '0' }, { v: 20, label: '20' }, { v: 40, label: '40' }, { v: 60, label: '60' }, { v: 100, label: '100' }, { v: 140, label: '140' }, { v: 180, label: '180' }]}
+    yTicks={[{ v: 0, label: '1' }, { v: -2, label: '10⁻²' }, { v: -4, label: '10⁻⁴' }, { v: -6, label: '10⁻⁶' }, { v: -8, label: '10⁻⁸' }]}
+  />
+</Fig>
+
+```python
+>>> g = 30
+>>> T = sd.sparse.diags_array([-sd.ones(g - 1), 2 * sd.ones(g), -sd.ones(g - 1)], offsets=[-1, 0, 1], format="csr")
+>>> A = sd.sparse.kronsum(T, T, format="csr")
+>>> b = sd.ones(g * g)
+>>> r = sd.sparse.gmres(A, b, rtol=1e-8)
+>>> r.n_iter, r.n_inner, r.status
+(9, 180, 0)
+```
+
+기저 $V$는 `restart + 1`개의 n-벡터라 메모리가 $(\text{restart} + 1)\,n$이에요. `restart`를 키우면 재시작으로 잃는 것이 줄지만, 안쪽 반복 col의 직교화가 col번의 내적과 갱신이라 주기 하나의 일이 restart²에 비례해 늘어요.
+
+## scipy와 다른 점
+
+- 반복 수와 상태는 시험 기록에서 scipy와 같아요(`n_inner`는 scipy의 `callback_type='pr_norm'` 호출 수와 같아요). 단계마다의 `presid × ‖b‖`가 scipy의 `pr_norm × ‖b‖`와 상대 10⁻⁶ 안이에요. SuiteSparse의 memplus에서 GMRES(20)는 안쪽 5,425번으로 scipy와 같고, young1c는 2,809번(scipy 2,822)이에요.
+- 내적·노름은 결정적인 쌍 트리, 해의 갱신은 원소마다의 순차 합이라 numpy와 끝자리가 달라요.
+- `callback`과 `callback_type`이 없어요. scipy의 옛 동작(`callback_type='legacy'`에서 `maxiter`가 안쪽 반복을 세던 것)도 없고, `max_iter`는 언제나 주기의 수예요.
+
+## 참고 문헌
+
+1. Y. Saad, M. H. Schultz, GMRES: a generalized minimal residual algorithm for solving nonsymmetric linear systems, *SIAM J. Sci. Stat. Comput.* 7(3), 1986.
+2. E. Anderson, Algorithm 978: Safe scaling in the Level 1 BLAS, *ACM Trans. Math. Softw.* 44(1), 2017.
+3. Y. Saad, *Iterative Methods for Sparse Linear Systems*, 2판, SIAM, 2003, 6장.

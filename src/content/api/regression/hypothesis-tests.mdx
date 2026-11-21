@@ -390,7 +390,7 @@ TypeError: t_test(): 'q' must be a number or a sequence of numbers, not str
 - 튜플처럼 풀리지 않아요. 필드를 이름으로 읽어요.
 - `conf_int`의 `alpha`는 키워드로만 받아요. 부를 때마다 새 배열을 돌려줘요.
 - `repr`는 주된 필드를 한 줄로 보여 줘요. 수는 유효숫자 여섯 자리이고, 배치는 배치 모양만 적어요.
-- `summary()`는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자를 글로 돌려줘요. `TTestResult`는 `summary(*, alpha=0.05)`이고, 머리에 자유도와 식의 수, 관측 수를 두고 $R$의 줄마다(`c0`, `c1`, …) 추정값 `coef`(= `effect`), 표준오차, t, p값, 1 − alpha 구간을 한 줄씩 적어요. t는 `coef`에서 `q`를 뺀 값을 표준오차로 나눈 것이라, 위처럼 `coef`가 커도 0에 가까울 수 있어요. 정규분포로 재는 모형은 `z`, `P>|z|`예요. `WaldTestResult`의 `summary()`는 인자가 없고, 머리에 통계량, p값, 자유도, 분포만 적어요. 배치면 회귀마다 한 줄인 표예요.
+- `summary()`는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자를 글로 돌려줘요. `TTestResult`는 `summary(*, alpha=0.05)`이고, 머리에 자유도와 식의 수, 관측 수를 두고 $R$의 줄마다(`c0`, `c1`, …) 추정값 `coef`(= `effect`), 표준오차, t, p값, 1 − alpha 구간을 한 줄씩 적어요. t는 `coef`에서 `q`를 뺀 값을 표준오차로 나눈 것이라, 위처럼 `coef`가 커도 0에 가까울 수 있어요. 정규분포로 재는 모형은 `z`, `P>|z|`예요. `WaldTestResult`의 `summary()`는 인자가 없고, 머리에 통계량, p값, 자유도, 분포만 적어요. 배치면 회귀마다 한 줄인 표예요. 자유도는 모든 회귀가 같으면 머리에 한 번 적고, 회귀마다 다르면 표의 열(`t_test`는 끝의 `df` 열)로 적어요.
 
 ```python
 >>> print(tt.summary())

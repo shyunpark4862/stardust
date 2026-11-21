@@ -1,0 +1,169 @@
+---
+kind: function
+title: dunnett
+names: [dunnett]
+group: 다중 비교와 보정
+order: 2
+signatures:
+  - "sd.htest.dunnett(*samples, control, alternative='two-sided')"
+summary: 처리 집단 여럿의 평균을 대조군 하나와 견주는 Dunnett 검정이에요. 처리마다 t 통계량, 여러 번 견준 것을 함께 고려한 p값과 동시 신뢰구간을 주고, 무작위 없이 결정적으로 계산해요.
+params:
+  - name: "*samples"
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional
+    desc: "처리 집단마다 표본 하나, 하나 이상. 길이는 달라도 돼요. 각 표본은 펼쳐서 하나의 집단으로 봐요."
+  - name: control
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: keyword-only
+    desc: 대조군의 표본. 꼭 키워드로 줘요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(처리의 평균이 대조군보다 작다), 'greater'(처리의 평균이 대조군보다 크다) 중 하나예요. 모든 비교에 같이 적용돼요."
+returns:
+  type: DunnettResult
+  desc: "statistic(처리마다의 t), pvalue(처리마다의 가족 전체 p값), df(N − k − 1의 float), conf_int(alpha=0.05)((처리 수, 2): 평균의 차의 동시 신뢰구간)예요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: "control을 주지 않았을 때(dunnett(): missing 1 required keyword-only argument: 'control'), 처리 표본이 없을 때, 표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, alternative가 문자열이 아닐 때, 없는 키워드(rng 등)를 줬을 때."
+  - type: ValueError
+    desc: "alternative의 이름이 틀렸을 때, conf_int()·summary()의 alpha가 0과 1 사이가 아닐 때."
+seeAlso: [tukey_hsd, ttest_ind, f_oneway, multipletests, basics, results]
+---
+
+## 무엇을 묻나요
+
+새 사료 세 가지(A, B, C)를 기존 사료(대조군)와 견줘요. 집단마다 여섯 마리의 몸무게(kg)예요. 관심은 "새 사료가 기존 사료와 다른가"뿐이고, A와 B끼리는 견주지 않아요.
+
+```python
+>>> import stardust as sd
+>>> control = [55.2, 53.8, 56.1, 54.7, 55.9, 54.0]
+>>> feed_a = [57.9, 58.4, 56.6, 59.3, 57.1, 58.0]
+>>> feed_b = [55.8, 54.1, 56.9, 55.0, 56.2, 54.9]
+>>> feed_c = [56.9, 55.3, 57.8, 56.0, 57.2, 55.6]
+>>> r = sd.htest.dunnett(feed_a, feed_b, feed_c, control=control)
+>>> r
+DunnettResult(statistic=[5.20378, 0.946141, 2.69059], pvalue=[0.000123117, 0.668817, 0.036578], df=20)
+```
+
+처리마다 대조군과의 t 검정을 따로 하면 세 번 검정하는 셈이라, 적어도 하나를 잘못 기각할 확률이 5%보다 커요. **Dunnett 검정**은 비교 세 개를 한꺼번에 보고 "어느 하나라도 잘못 기각할 확률"(가족 전체의 오류율)을 유의수준 안에 둬요.
+
+처리 $i$의 통계량은 대조군과의 t예요.
+
+$$
+t_i = \frac{\bar x_i - \bar x_0}{s \sqrt{1/n_i + 1/n_0}}
+$$
+
+$s^2$은 모든 집단(대조군 포함)을 합친 집단 안 분산이고 자유도는 $N - k - 1$이에요($k$는 처리의 수). 모든 비교가 같은 대조군을 쓰므로 $t_i$들은 서로 상관이 있어요. p값은 이 상관을 고려한 다변량 t 분포에서 구해요. 양쪽 검정이면 "모든 비교 가운데 가장 큰 $|T_j|$가 $|t_i|$를 넘을 확률"이에요.
+
+- **귀무가설**(처리마다): 그 처리의 평균이 대조군과 같아요.
+- **대립가설**: 평균이 대조군과 달라요(또는 `alternative`의 방향).
+
+위에서 A(p = 0.0001)와 C(p = 0.037)가 기존 사료와 다르고, B는 근거가 없어요.
+
+이런 때 써요.
+
+- 대조군 하나와 처리 여럿을 견주는 실험. 약의 여러 용량과 위약, 새 방법 여럿과 표준 방법이에요.
+
+모든 짝을 견주는 [`tukey_hsd`](/api/htest/tukey_hsd/)도 대조군과의 비교를 포함하지만, 짝이 많아서 짝마다 더 엄격해요. 대조군과의 비교만 관심이면 Dunnett이 더 예민해요. 위의 C는 Tukey로는 0.05를 넘어요.
+
+```python
+>>> sd.htest.tukey_hsd(control, feed_a, feed_b, feed_c).pvalue[0, 3]
+0.06225508139648937
+```
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | 처리마다의 $t_i$, 모양 (처리 수,) |
+| `pvalue` | 처리마다의 가족 전체 p값 |
+| `df` | 합동 분산의 자유도 $N - k - 1$(float) |
+| `conf_int(alpha=0.05)` | 평균의 차(처리 − 대조군)의 동시 신뢰구간, (처리 수, 2) |
+
+```python
+>>> r.df
+20.0
+>>> r.conf_int()
+array([[ 1.5013555860491186,   4.365311080617546],
+       [ -0.898644413950881,  1.9653110806175462],
+       [0.08468891938245204,  2.9486444139508796]], dtype=float64)
+>>> print(r.summary())
+                                Dunnett's test
+==============================================================================
+Df:                                 20  Alternative:                 two-sided
+                                        No. Observations:              6, 6, 6
+                                        Control Observations:                6
+==============================================================================
+                statistic     pvalue     [0.025     0.975]
+------------------------------------------------------------------------------
+(0 - control)       5.204      0.000      1.501      4.365
+(1 - control)       0.946      0.669     -0.899      1.965
+(2 - control)       2.691      0.037      0.085      2.949
+==============================================================================
+```
+
+구간은 **동시** 구간이에요. 세 구간이 한꺼번에 참 차를 담을 확률이 1 − alpha예요. 구간이 0을 담지 않는 처리가 p값이 alpha보다 작은 처리와 같아요. 결과는 튜플로 풀리지 않아요.
+
+## `alternative`: 한쪽 검정
+
+"새 사료가 몸무게를 늘린다"처럼 방향을 미리 정했다면 `'greater'`를 써요. 모든 비교에 같은 방향이 적용되고, 구간은 위 끝이 inf인 한쪽 구간이에요.
+
+```python
+>>> g = sd.htest.dunnett(feed_a, feed_b, feed_c, control=control, alternative='greater')
+>>> g.pvalue
+array([6.155879079733401e-05,   0.35125980748872476,   0.01829401941298911], dtype=float64)
+>>> g.conf_int()
+array([[ 1.6975580992505586,                 inf],
+       [ -0.702441900749441,                 inf],
+       [0.28089143258389204,                 inf]], dtype=float64)
+```
+
+`'less'`는 처리의 평균이 대조군보다 작다는 쪽이고, 구간의 아래 끝이 −inf예요.
+
+## 계산은 결정적이에요
+
+p값과 구간의 임계값은 다변량 t 분포의 확률이에요. 대조군을 함께 쓰는 비교의 상관 구조를 이용하면 이 확률이 1차원 적분 두 겹으로 바뀌어서, 무작위 없이 정해진 정밀도로 계산해요. 그래서 `rng`가 없고 같은 입력이면 언제나 같은 값이에요.
+
+## 특수한 경우
+
+- 처리가 하나면 비교가 하나라 p값은 Student t 검정과 반올림 크기 안에서 같아요(계산하는 길이 달라서 끝자리가 다를 수 있어요).
+
+  ```python
+  >>> sd.htest.dunnett(feed_a, control=control).pvalue
+  array([0.00033813984215491785], dtype=float64)
+  >>> sd.htest.ttest_ind(feed_a, control).pvalue
+  0.0003381398421549171
+  ```
+
+- 모든 집단이 상수라 합동 분산이 0이면 t를 정할 수 없어서 NaN이에요. NaN이 든 표본은 NaN을 퍼뜨려요.
+- 표본을 펼쳐 쓰므로 `axis`, `nan_policy`, 배치가 없어요.
+
+## 정확도
+
+평균의 차와 t는 반올림을 줄여 계산해서 평균이 아주 커도(10⁹) 자릿수를 잃지 않아요. 문제 8개(비교 20개)에서 Arb(구간 산술)로 만든 참값에 견주어 t는 상대 8.9e-17, p값은 상대 1.8e-15, 구간의 끝은 상대 1.8e-15 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.dunnett`과 통계량, p값의 정의(양쪽 $P(\max_j|T_j| > |t_i|)$, 한쪽 $P(\max_j T_j > t_i)$와 $P(\min_j T_j < t_i)$), `control`을 키워드로 받는 것이 같아요.
+
+다른 점이에요.
+
+- 무작위가 없어요. scipy는 무작위 준몬테카를로 적분이라 `rng`에 따라 p값이 달라지고 참값과 절대 9e-5까지 틀려요.
+
+  ```python
+  >>> import scipy.stats
+  >>> scipy.stats.dunnett(feed_a, feed_b, feed_c, control=control, rng=0).pvalue
+  array([1.25886709e-04, 6.68865564e-01, 3.66618641e-02])
+  >>> scipy.stats.dunnett(feed_a, feed_b, feed_c, control=control, rng=1).pvalue
+  array([1.12337482e-04, 6.68836993e-01, 3.65317759e-02])
+  ```
+
+- 신뢰구간은 `conf_int(alpha=0.05)`이고 (처리 수, 2) 배열을 돌려줘요. scipy는 `confidence_interval(confidence_level=0.95)`예요.
+- 자유도는 공개 필드 `df`예요(scipy는 비공개 속성).
+- 모든 집단이 상수면 sd는 NaN이에요(scipy는 ±inf).
+- R의 `multcomp`는 mvtnorm 적분의 허용오차만큼(절대 7e-7까지) 참값과 달라요.

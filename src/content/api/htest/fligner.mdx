@@ -1,0 +1,168 @@
+---
+kind: function
+title: fligner
+names: [fligner]
+group: 평균과 분산
+order: 9
+signatures:
+  - "sd.htest.fligner(*samples, axis=None, center='median', proportiontocut=0.05, nan_policy='propagate', keepdims=False)"
+summary: Fligner–Killeen의 등분산 검정이에요. 둘 이상인 집단의 분산이 모두 같은지, 중심에서의 거리를 순위로 바꾼 점수로 검정해요. 순위를 쓰기 때문에 이상값과 정규분포에서 벗어난 데이터에 강해요.
+params:
+  - name: samples
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 집단마다의 표본 두 개 이상. 크기는 서로 달라도 돼요. 축을 주면 표본 축 밖의 축끼리 브로드캐스트해야 해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 표본마다 모든 원소를 펼쳐요.
+  - name: center
+    type: str
+    kind: keyword-only
+    desc: "집단의 중심. 'median'(기본값, 중앙값), 'mean'(평균), 'trimmed'(절삭 평균) 중 하나예요."
+  - name: proportiontocut
+    type: int 또는 float
+    kind: keyword-only
+    desc: center='trimmed'일 때 양 끝에서 잘라 낼 비율. 0 이상 0.5 미만이고 기본값은 0.05예요. 집단마다 int(n · proportiontocut)개씩 잘라요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값, 그 검정의 결과가 NaN), 'omit'(표본마다 NaN을 빼고 검정), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과의 필드에 표본 축을 길이 1로 남겨요.
+returns:
+  type: FlignerResult
+  desc: "필드 statistic, pvalue, df(카이제곱 분포의 자유도 k − 1, float)와 summary()가 있어요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: 표본이 둘보다 적을 때, 옵션을 위치로 줬을 때, 없는 옵션을 줬을 때, 표본이 배열·수의 시퀀스·frame이 아닐 때, 복소수일 때, proportiontocut이 수가 아닐 때, keepdims가 True·False가 아닐 때.
+  - type: ValueError
+    desc: center·nan_policy의 이름이 틀렸을 때, proportiontocut이 0 이상 0.5 미만이 아닐 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때.
+seeAlso: [levene, bartlett, basics, results, kruskal]
+---
+
+## 무엇을 하나요
+
+**Fligner–Killeen의 검정**도 [`levene`](/api/htest/levene/), [`bartlett`](/api/htest/bartlett/)처럼 집단의 분산이 모두 같은지 물어요.
+
+- 귀무가설: k개 집단의 흩어짐이 모두 같아요.
+- 대립가설: 적어도 한 집단의 흩어짐이 달라요.
+
+Levene처럼 값마다 제 집단의 중심에서의 거리 $a_{ij} = \lvert x_{ij} - c_i \rvert$를 구하지만, 거리를 그대로 쓰지 않고 **순위**로 바꿔요. 모든 집단의 거리 N개를 함께 정렬해 순위 $r_{ij}$를 매기고(같은 거리는 중간 순위), 순위를 정규분포의 분위수로 바꾼 점수를 써요.
+
+$$
+s_{ij} = \Phi^{-1}\!\left( \frac12 + \frac{r_{ij}}{2(N + 1)} \right), \qquad
+X^2 = \frac{\sum_i n_i (\bar s_i - \bar s)^2}{V^2}
+$$
+
+$\Phi^{-1}$은 표준정규분포의 분위수 함수, $\bar s_i$는 집단 i의 점수의 평균, $\bar s$와 $V^2$은 모든 점수의 평균과 분산(N − 1로 나눈 것)이에요. 흩어짐이 큰 집단은 거리가 커서 높은 순위, 큰 점수를 받아요. 귀무가설에서 $X^2$은 근사로 자유도 k − 1의 [카이제곱 분포](/api/stats/chi-squared/)를 따라요.
+
+순위만 쓰니 이상값 하나가 아무리 커도 가장 높은 순위 하나일 뿐이에요. 그래서 꼬리가 두껍거나 치우친 분포, 이상값이 섞인 데이터에 강해요. 데이터가 정규분포에 가까우면 [`bartlett`](/api/htest/bartlett/)이 더 힘이 세요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> g1 = [20.1, 21.4, 19.8, 22.0, 20.7, 21.1]
+>>> g2 = [22.3, 23.1, 21.9, 24.0, 22.8, 23.4]
+>>> h3 = [19.5, 23.2, 16.9, 22.8, 17.7, 21.4, 18.0, 24.1]
+>>> r = sd.htest.fligner(g1, g2, h3)
+>>> r
+FlignerResult(statistic=9.98942, pvalue=0.00677368, df=2)
+```
+
+p값 0.0068로 세 집단의 흩어짐이 같다는 귀무가설을 버려요. 셋째 집단의 거리가 높은 순위를 차지했어요.
+
+## 결과 읽기
+
+| 필드·메서드 | 뜻 |
+|---|---|
+| `statistic` | $X^2$ 통계량. 0 이상이에요 |
+| `pvalue` | 자유도 k − 1의 카이제곱 분포의 위쪽 꼬리 넓이 |
+| `df` | 자유도 k − 1(`float`) |
+| `summary()` | 검정을 표로 적은 글. 머리에 쓴 중심(`Center:`)이 있어요 |
+
+```python
+>>> print(r.summary())
+               Fligner-Killeen test of homogeneity of variances
+==============================================================================
+Statistic:                       9.989  No. Observations:              6, 6, 8
+P-value:                       0.00677  Center:                         median
+Df:                                  2
+==============================================================================
+>>> x2, p = r
+>>> r.df
+2.0
+```
+
+## center와 proportiontocut
+
+중심은 [`levene`](/api/htest/levene/#center와-proportiontocut)과 같은 셋이에요. 기본값은 중앙값이고, `'trimmed'`는 집단마다 양 끝에서 int(n · `proportiontocut`)개씩 잘라 낸 평균이에요.
+
+```python
+>>> sd.htest.fligner(g1, g2, h3, center='mean')
+FlignerResult(statistic=9.86181, pvalue=0.00721996, df=2)
+>>> sd.htest.fligner(g1, g2, h3, center='trimmed', proportiontocut=0.25).statistic
+9.861812784565062
+```
+
+## 이상값에 강해요
+
+흩어짐이 같은 세 집단의 셋째에 큰 값 하나(26.0)를 넣어도 순위 하나만 바뀌어서 결과가 크게 움직이지 않아요.
+
+```python
+>>> g3 = [19.5, 20.2, 18.9, 20.8, 19.7, 20.4]
+>>> sd.htest.fligner(g1, g2, g3).pvalue, sd.htest.fligner(g1, g2, g3 + [26.0]).pvalue
+(0.6367931997675204, 0.6968069695876931)
+>>> sd.htest.bartlett(g1, g2, g3 + [26.0]).pvalue
+0.014973817889510674
+```
+
+## axis와 배치
+
+```python
+>>> S1 = sd.asarray([g1, [20.5, 20.9, 21.2, 20.0, 21.8, 20.6]])
+>>> S2 = sd.asarray([g2, [21.9, 22.4, 21.5, 22.8, 22.1, 22.2]])
+>>> S3 = sd.asarray([h3, [20.7, 21.3, 20.1, 20.9, 21.6, 20.3, 21.0, 20.8]])
+>>> sd.htest.fligner(S1, S2, S3, axis=1).pvalue
+array([0.006773677043536276,   0.6500128650715564], dtype=float64)
+```
+
+## 특수한 경우
+
+| 입력 | 결과 |
+|---|---|
+| 표본을 하나만 줌 | `TypeError` |
+| 한 집단이 비었음 | 통계량, p값이 NaN |
+| 모든 점수가 같음(모든 거리가 같은 순위) | 통계량, p값이 NaN($V^2 = 0$이에요) |
+| `'propagate'`에서 NaN이 있음 | 모든 필드가 NaN |
+
+```python
+>>> sd.htest.fligner([2.0, 4], [3.0, 5], [5.0, 7])
+FlignerResult(statistic=nan, pvalue=nan, df=2)
+>>> sd.htest.fligner(g1, [], h3)
+FlignerResult(statistic=nan, pvalue=nan, df=2)
+```
+
+위의 첫 예는 모든 값이 제 집단의 중앙값에서 정확히 1만큼 떨어져 있어서 모든 거리가 같은 중간 순위를 받아요.
+
+## 정확도
+
+- 통계량의 상대오차는 $10^{-14}$ 안이고(잰 최대 $2.1 \times 10^{-16}$), p값은 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요.
+- 중심을 반올림 없이 구하고 거리도 정확하게 들어요. 크기가 짝수인 집단의 두 가운데 값은 중앙값에서 정확히 같은 거리라서 같은 중간 순위를 받아요. 중앙값을 double로 반올림하면 이 동점이 갈려서 순위가 1/2씩 움직여요.
+- 점수 $\Phi^{-1}(1/2 + r / (2(N + 1)))$는 그 인자를 double로 만들지 않고 순위의 정확한 몫에서 바로 계산해요.
+
+참값은 Arb(구간 산술)로 만들었어요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1의 `scipy.stats.fligner`, R의 `fligner.test`와 같은 정의예요.
+
+- 결과에 `df`(k − 1)가 있어요. `(statistic, pvalue)`로 푸는 것은 scipy와 같아요.
+- scipy와 R은 중앙값을 double로 반올림해서, 짝수 크기 집단의 두 가운데 값의 동점이 갈려요. 위의 g1, g2, h3에서 scipy 1.18.1은 통계량 9.97097, p값 0.0068365를 내요. 입력을 정확한 값으로 보고 계산한 통계량은 9.98942로 여기 값과 같아요. 잰 문제(집단마다 500–1500개)에서 scipy와 R의 p값은 상대 $2.9 \times 10^{-7}$까지 달랐어요.
+- 표본이 하나면 `TypeError`예요. scipy는 `ValueError`예요.
+- `axis`의 기본값이 None이에요(scipy는 0).

@@ -1,0 +1,212 @@
+---
+kind: function
+title: quantile_test
+names: [quantile_test]
+group: 비율과 이항
+order: 8
+signatures:
+  - "sd.htest.quantile_test(x, /, *, axis=None, q=0.0, p=0.5, alternative='two-sided', nan_policy='propagate', keepdims=False)"
+summary: 모집단의 p 분위수가 q라는 귀무가설을 검정해요(p = 0.5면 중앙값 검정, 부호 검정). q 아래에 있는 관측의 수를 이항 분포와 견주는 정확한 검정이라 분포의 모양을 가정하지 않고, 결과의 conf_int()로 분위수의 신뢰구간도 순서통계량으로 얻어요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, frame Series 또는 DataFrame
+    kind: positional-only
+    desc: 표본. float64로 바꿔 계산해요.
+  - name: axis
+    type: int, int의 tuple 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모두 펼쳐 검정 하나예요. 정수면 그 축을 따라 읽고 나머지 축이 배치예요.
+  - name: q
+    type: float
+    kind: keyword-only
+    desc: 귀무가설의 분위수 값. 기본값 0이에요.
+  - name: p
+    type: float
+    kind: keyword-only
+    desc: 분위수의 확률. (0, 1) 안이고 기본값 0.5(중앙값)예요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(p 분위수가 q보다 작음), 'greater'(q보다 큼) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 줄은 NaN), 'omit'(NaN을 빼고), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: QuantileTestResult
+  desc: "statistic(관측의 수 T1 = #(x ≤ q) 또는 T2 = #(x < q), float), statistic_type(1 또는 2), pvalue와 메서드 conf_int(*, alpha=0.05), summary(*, alpha=0.05)가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: x가 배열로 바꿀 수 없거나 복소수일 때, q·p가 수가 아닐 때, 문자열 옵션이 문자열이 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: p가 (0, 1) 밖일 때, axis가 범위 밖이거나 중복될 때, alternative·nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때. conf_int()에서 alpha가 (0, 1) 밖일 때.
+seeAlso: [binomtest, wilcoxon, ttest_1samp, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+택배 12건의 배송 시간(시간)이에요. 회사는 "배송 시간의 중앙값이 11시간"이라고 말해요. 맞는 말일까요?
+
+```python
+>>> x = [12.1, 9.8, 15.3, 11.0, 13.7, 10.2, 14.9, 16.4, 12.8, 9.5, 17.2, 13.1]
+```
+
+중앙값이 정말 11이라면 관측 하나가 11 이하일 확률은 0.5예요. 그러면 11 이하인 관측의 수는 Binomial(12, 0.5)를 따라야 해요. 일반적으로 p 분위수가 q라면 q 이하인 관측의 수가 Binomial(n, p)를 따라요. 그 수가 이항 분포에서 얼마나 드문지가 p값이에요.
+
+- **귀무가설**: 모집단의 p 분위수가 q예요.
+- **대립가설**: p 분위수가 q와 달라요(`'two-sided'`), q보다 작아요(`'less'`), q보다 커요(`'greater'`).
+
+값의 크기는 쓰지 않고 q의 어느 쪽에 있는지만 쓰므로, 분포가 치우치거나 이상값이 있어도 그대로 쓸 수 있어요. p = 0.5인 이 검정을 흔히 **부호 검정**이라고 불러요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.quantile_test(x, q=11, p=0.5)
+>>> r
+QuantileTestResult(statistic=4, statistic_type=1, pvalue=0.387695)
+```
+
+12건 중 11시간 이하가 4건(9.8, 11.0, 10.2, 9.5)이에요. 반반이 기대인데 4건이면 조금 적지만, 양쪽 p값이 0.39라서 중앙값이 11이 아니라고 말할 근거는 없어요.
+
+`statistic_type`은 통계량이 어느 셈인지 알려 줘요.
+
+| statistic_type | 통계량 | 쓰는 곳 |
+|---|---|---|
+| 1 | T1 = #(x ≤ q) | `'greater'`: p값 P(Y ≤ T1) |
+| 2 | T2 = #(x < q) | `'less'`: p값 P(Y ≥ T2) |
+
+Y ~ Binomial(n, p)예요. 양쪽 검정은 두 한쪽 p값 중 작은 것의 두 배(1에서 잘라요)이고, 통계량도 그 작은 쪽의 것이에요. T1과 T2는 q와 같은 관측(위의 11.0)이 있을 때만 달라요. 어느 한쪽 검정에서나 q와 같은 관측은 p값이 커지는 쪽으로 세어요. 그래서 동점이 있어도 p값이 지나치게 작아지지 않아요.
+
+```python
+>>> sd.htest.quantile_test(x, q=11, alternative='greater')
+QuantileTestResult(statistic=4, statistic_type=1, pvalue=0.193848)
+>>> sd.htest.quantile_test(x, q=11, alternative='less')
+QuantileTestResult(statistic=3, statistic_type=2, pvalue=0.980713)
+>>> float(sd.stats.Binomial(n=12, p=0.5).cdf(4))
+0.19384765625000003
+```
+
+`'greater'`의 p값 0.194가 P(Y ≤ 4)예요.
+
+## 분위수의 신뢰구간
+
+`r.conf_int()`는 모집단의 p 분위수의 1 − alpha 신뢰구간이에요. 끝은 표본의 순서통계량(정렬한 값)이고, 어느 순번을 쓸지는 Binomial(n, p)의 분위수로 정해요. 그래서 분포를 가정하지 않아요.
+
+```python
+>>> r.conf_int()
+array([10.2, 15.3], dtype=float64)
+>>> sorted(x)
+[9.5, 9.8, 10.2, 11.0, 12.1, 12.8, 13.1, 13.7, 14.9, 15.3, 16.4, 17.2]
+```
+
+중앙값의 95% 구간은 [10.2, 15.3]이에요. 정렬한 값의 셋째와 열째예요.
+
+p가 0이나 1에 가깝고 표본이 작으면 한쪽 끝을 만들 순서통계량이 표본 안에 없어요. 그 끝은 NaN이에요.
+
+```python
+>>> r90 = sd.htest.quantile_test(x, q=15, p=0.9)
+>>> r90
+QuantileTestResult(statistic=9, statistic_type=1, pvalue=0.22174)
+>>> r90.conf_int()
+array([13.7,  nan], dtype=float64)
+```
+
+12개로는 0.9 분위수의 위쪽 95% 한계를 정할 수 없다는 뜻이에요. 한쪽 검정의 구간은 열린 쪽이 −∞나 ∞예요.
+
+```python
+>>> sd.htest.quantile_test(x, q=11, alternative='greater').conf_int()
+array([10.2,  inf], dtype=float64)
+```
+
+`summary()`는 머리에 분위수, 확률, 통계량의 종류를, 아래에 구간을 보여 줘요.
+
+```python
+>>> print(r.summary())
+                                Quantile test
+==============================================================================
+Statistic:                       4.000  Alternative:                 two-sided
+P-value:                         0.388  No. Observations:                   12
+                                        Quantile:                           11
+                                        Probability:                       0.5
+                                        Statistic Type:             1 (x <= q)
+==============================================================================
+               [0.025     0.975]
+------------------------------------------------------------------------------
+quantile       10.200     15.300
+==============================================================================
+```
+
+## 짝지은 자료의 부호 검정
+
+전과 후처럼 짝지은 자료의 부호 검정은 차에 이 검정을 하면 돼요(q = 0, p = 0.5). 차의 크기까지 쓰는 [wilcoxon](/api/htest/wilcoxon/)보다 가정이 적지만 검정력은 보통 낮아요.
+
+```python
+>>> before = [72., 80, 65, 90, 77, 84, 69]
+>>> after = [70., 76, 66, 85, 72, 80, 67]
+>>> d = sd.asarray(before) - sd.asarray(after)
+>>> sd.htest.quantile_test(d, q=0.0).pvalue
+0.125
+```
+
+## 배치와 NaN
+
+`axis`를 주면 그 축을 따라 읽은 줄마다 독립인 검정이에요.
+
+```python
+>>> X = sd.asarray([[1., 2, 3, 4, 5, 6], [3, 4, 5, 6, 7, 8]])
+>>> rb = sd.htest.quantile_test(X, q=4, axis=1)
+>>> rb.statistic, rb.pvalue
+(array([3.0, 2.0], dtype=float64), array([   1.0, 0.6875], dtype=float64))
+>>> rb.conf_int()
+array([[1.0, 6.0],
+       [3.0, 8.0]], dtype=float64)
+```
+
+NaN은 `nan_policy`를 따라요. 빈 표본은 NaN이에요.
+
+```python
+>>> sd.htest.quantile_test([1., 2, sd.nan, 4], q=2)
+QuantileTestResult(statistic=nan, statistic_type=nan, pvalue=nan)
+>>> sd.htest.quantile_test([1., 2, sd.nan, 4], q=2, nan_policy='omit')
+QuantileTestResult(statistic=2, statistic_type=1, pvalue=1)
+>>> sd.htest.quantile_test([], q=1)
+QuantileTestResult(statistic=nan, statistic_type=nan, pvalue=nan)
+```
+
+구간은 검정을 부를 때의 표본으로 만들어요. 나중에 원래 배열을 바꿔도 `conf_int()`는 바뀌지 않아요.
+
+## 입력과 에러
+
+```python
+>>> sd.htest.quantile_test(x, q=11, p=1.0)
+Traceback (most recent call last):
+    ...
+ValueError: quantile_test(): 'p' must be in (0, 1)
+```
+
+공통 규칙(axis, nan_policy, keepdims)은 [기본 개념](/api/htest/basics/)에 있어요.
+
+## 정확도
+
+통계량과 구간은 셈과 정렬이라 정확해요. p값은 정확한 이항 꼬리의 참값과 상대 4.2e-16 안이에요(계약 대비 0.042).
+
+## scipy를 아는 분께
+
+- 같은 검정이고 `statistic`·`statistic_type`도 scipy처럼 float예요.
+- `q`와 `p`는 스칼라만 받아요(여러 검정은 `axis`로). `p`가 (0, 1) 밖이면 scipy는 NaN을 내지만 여기는 `ValueError`예요.
+- scipy에 없는 `nan_policy`와 `keepdims`가 있고 `axis`의 기본값은 None이에요.
+- 구간은 `confidence_interval(confidence_level=0.95)` 대신 `conf_int(alpha=0.05)`이고 (2,) 배열이에요.
+- p값은 scipy의 것과 반올림 크기까지 같아요. 시험한 문제에서 scipy의 p값은 상대 1.8e-14까지 벗어나요.
+
+```python
+>>> import scipy.stats
+>>> s = scipy.stats.quantile_test(x, q=11, p=0.5)
+>>> float(s.pvalue), [float(v) for v in s.confidence_interval()]
+(0.3876953125, [10.2, 15.3])
+```

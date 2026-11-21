@@ -181,6 +181,16 @@
   --area-soft: #f4f0ff;
   --area-line: #d9ccfb;
 }
+[data-area='sparse'] {
+  --area: #866500;
+  --area-soft: #fbf5e3;
+  --area-line: #ecdba6;
+}
+[data-area='htest'] {
+  --area: #5e6e0e;
+  --area-soft: #f3f6e4;
+  --area-line: #d7e0a8;
+}
 [data-area='frame'] {
   --area: #0b7a6d;
   --area-soft: #e8f6f3;

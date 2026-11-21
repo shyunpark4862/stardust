@@ -1,0 +1,443 @@
+---
+kind: concept
+title: 결과 객체 읽기
+group: 기본 개념
+order: 2
+summary: sd.htest의 검정이 돌려주는 결과 객체를 읽는 법을 설명해요. 통계량과 p값, 자유도, 검정마다 더 있는 필드, 튜플로 풀기, 신뢰구간 conf_int(alpha=), 한 줄 repr와 표로 보는 summary(), 읽기 전용 규칙, sd.regression과 함께 쓰는 결과 클래스를 다뤄요.
+seeAlso: [basics, ttest_ind, chi2_contingency, binomtest, tukey_hsd, jarque_bera]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+검정 함수는 결과 객체 하나를 돌려줘요. 커피 봉지 무게의 두 표본 t 검정으로 보면 이래요([가설검정의 기본](/api/htest/basics/)과 같은 데이터예요).
+
+```python
+>>> import stardust as sd
+>>> a = [251.2, 249.8, 252.1, 250.6, 251.9, 250.3, 252.4, 251.0]
+>>> b = [249.1, 250.2, 248.7, 249.9, 250.8, 248.9, 249.6]
+>>> r = sd.htest.ttest_ind(a, b)
+>>> r
+TtestIndResult(statistic=3.56201, pvalue=0.00347552, df=13)
+>>> r.statistic, r.pvalue, r.df
+(3.562014733011916, 0.0034755247785208912, 13.0)
+>>> r.conf_int()
+array([0.6148408018391772,  2.510159198160829], dtype=float64)
+```
+
+결과의 값은 모두 이름으로 읽는 필드예요. 검정마다 결과 클래스가 하나씩 있고 이름은 함수 이름을 딴 `<함수>Result`예요(`ttest_ind` → `TtestIndResult`, `chi2_contingency` → `Chi2ContingencyResult`). 클래스는 `sd.htest`에서 꺼내 쓰지 않아요. `isinstance`로 종류를 가리지 말고 필드로 읽어요.
+
+| 필드·메서드 | 뜻 | 있는 검정 |
+|---|---|---|
+| `statistic` | 검정통계량 | 모든 검정 |
+| `pvalue` | p값 | 모든 검정 |
+| `df` | 자유도(t 분포, 카이제곱 분포) | t 검정, `bartlett`, `fligner`, `alexandergovern`, `kruskal`, `chi2_contingency` 등 |
+| `df_num`, `df_denom` | F 분포의 분자와 분모 자유도 | `f_oneway`, `levene` |
+| `method` | 실제로 쓴 방법(정확한 분포 또는 근사) | `method='auto'`가 있는 검정 |
+| `zstatistic` | 정규 근사에 쓴 z | 정규 근사를 쓴 `mannwhitneyu`, `wilcoxon` |
+| `conf_int(alpha=0.05)` | 1 − alpha 신뢰구간 | 구간이 정의된 검정(t 검정, `pearsonr`, `binomtest`, `odds_ratio`, `tukey_hsd` 등) |
+| `summary()` | 검정을 표로 적은 글 | 모든 검정 |
+
+그 밖의 필드(`chi2_contingency`의 `expected_freq`, `median_test`의 `table`, `permutation_test`의 `null_distribution` 등)는 각 검정의 페이지에 있어요.
+
+## 통계량과 p값
+
+`statistic`은 데이터가 귀무가설에서 얼마나 벗어났는지 재는 수예요. 무엇을 재는지는 검정마다 달라요. t 검정은 t, `f_oneway`는 F, `mannwhitneyu`는 U, `pearsonr`는 상관계수예요. `pvalue`는 귀무가설이 맞을 때 관측한 만큼 또는 그보다 극단인 통계량이 나올 확률이고, `alternative`로 정한 방향의 꼬리예요.
+
+```python
+>>> sd.htest.mannwhitneyu(a, b)
+MannwhitneyuResult(statistic=51, pvalue=0.00590521, method='exact')
+>>> sd.htest.pearsonr([1.0, 2, 3, 4, 5], [2.0, 1, 4, 3, 5])
+PearsonrResult(statistic=0.8, pvalue=0.104088)
+```
+
+결과에 상관계수가 들어 있어도 이름은 `statistic`이에요. `correlation` 같은 다른 이름은 없어요.
+
+## 자유도: df, df_num, df_denom
+
+자유도가 있는 검정은 이름이 정해져 있어요. t 분포와 카이제곱 분포의 자유도는 `df`, F 분포의 두 자유도는 `df_num`(분자)과 `df_denom`(분모)이에요. p값을 그 분포로 다시 구해 보거나, 보고서에 "t(13) = 3.56"처럼 적을 때 써요.
+
+```python
+>>> c = [250.1, 249.5, 250.9, 250.4, 249.8, 250.6]
+>>> f = sd.htest.f_oneway(a, b, c)
+>>> f
+FOnewayResult(statistic=7.84517, pvalue=0.00354735, df_num=2, df_denom=18)
+>>> sd.stats.F(dfn=f.df_num, dfd=f.df_denom).ccdf(f.statistic) == f.pvalue
+True
+```
+
+자유도는 정수 값이어도 언제나 `float`이에요. Welch의 t 검정처럼 정수가 아닌 자유도가 나오는 검정이 있어서, 같은 필드가 경우에 따라 형이 바뀌지 않게 했어요. `repr`와 `summary()`는 정수 값이면 정수로 보여요.
+
+```python
+>>> type(r.df).__name__
+'float'
+>>> sd.htest.ttest_ind(a, b, equal_var=False).df
+12.969675092683447
+```
+
+## 필드의 형
+
+검정 하나의 결과는 필드가 Python의 수예요. 통계량, p값, 자유도는 `float`이고, `binomtest`의 `k`, `n` 같은 개수는 `int`, `method`와 `alternative` 같은 이름은 `str`이에요.
+
+```python
+>>> bt = sd.htest.binomtest(7, 20)
+>>> bt
+BinomtestResult(k=7, n=20, alternative='two-sided', statistic=0.35, pvalue=0.263176)
+>>> type(bt.k).__name__, type(bt.statistic).__name__
+('int', 'float')
+```
+
+[배치](/api/htest/basics/#배치-검정-여러-개를-한-번에)의 결과는 필드가 배치 모양의 `sd.ndarray`예요. `method`는 sd의 배열에 문자열 형이 없어서, 줄마다의 이름을 배치 모양으로 중첩한 리스트예요.
+
+```python
+>>> X = sd.asarray([a[:7], b])
+>>> rb = sd.htest.ttest_1samp(X, 250.0, axis=1)
+>>> rb
+Ttest1sampResult(batch shape (2,))
+>>> rb.statistic
+array([  3.172038867115106, -1.3976724838434145], dtype=float64)
+>>> rb.df
+array([6.0, 6.0], dtype=float64)
+>>> sd.htest.mannwhitneyu(sd.asarray([a[:5], [1.0, 2, 3, 4, 5]]), [250.0, 251.0, 1.5, 1.5], axis=1).method
+['asymptotic', 'asymptotic']
+```
+
+### 주지 않는 필드
+
+어떤 필드는 그 호출에서 쓴 방법일 때만 있어요. 정확한 분포를 쓴 `wilcoxon`에는 정규 근사의 `zstatistic`이 없고, 읽으면 `AttributeError`예요. 있는지는 `hasattr()`로 알아봐요.
+
+```python
+>>> w = sd.htest.wilcoxon([1.0, 2, -3, 4, 5, 6, -0.5, 8])
+>>> w
+WilcoxonResult(statistic=5, pvalue=0.078125, method='exact')
+>>> hasattr(w, 'zstatistic')
+False
+>>> w.zstatistic
+Traceback (most recent call last):
+    ...
+AttributeError: 'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call). Did you mean '.statistic' instead of '.zstatistic'?
+```
+
+배치에서는 한 줄이라도 정규 근사를 쓰면 필드가 있고, 정확한 분포를 쓴 줄의 값이 NaN이에요. 모든 줄이 정확한 분포면 필드가 없어요.
+
+```python
+>>> ub = sd.htest.mannwhitneyu(sd.asarray([[1.0, 2, 3, 4], [1.0, 2, 3, 4]]), sd.asarray([[5.0, 6, 7], [2.0, 2, 5]]), axis=1)
+>>> ub.method, ub.zstatistic
+(['exact', 'asymptotic'], array([                nan, -0.1834498464263357], dtype=float64))
+```
+
+## 튜플로 풀기
+
+scipy의 결과가 튜플처럼 풀리는 검정은 같은 개수와 순서로 풀려요. 대부분 `(statistic, pvalue)` 둘이에요. 번호로 꺼내기(`r[0]`)와 `len(r)`도 그 튜플의 것이에요.
+
+```python
+>>> stat, p = sd.htest.ttest_ind(a, b)
+>>> stat, p
+(3.562014733011916, 0.0034755247785208912)
+>>> r[0], r[1], len(r)
+(3.562014733011916, 0.0034755247785208912, 2)
+```
+
+자유도는 튜플에 들지 않아요. 필드로 읽어요. 몇 검정은 scipy처럼 넷으로 풀려요(`chi2_contingency`는 통계량, p값, 자유도, 기대 빈도, `median_test`는 통계량, p값, 중앙값, 표).
+
+```python
+>>> chi2, p, dof, expected = sd.htest.chi2_contingency([[12, 5], [3, 10]])
+>>> dof
+1.0
+>>> expected
+array([[8.5, 8.5],
+       [6.5, 6.5]], dtype=float64)
+```
+
+scipy의 결과가 풀리지 않는 검정(`alexandergovern`, `binomtest`, `cramervonmises`, `barnard_exact`, `somersd`, `page_trend_test`, 재표본의 결과 등)은 여기서도 풀리지 않아요.
+
+```python
+>>> s, p = sd.htest.alexandergovern(a, b, c)
+Traceback (most recent call last):
+    ...
+TypeError: cannot unpack non-iterable AlexandergovernResult object
+```
+
+풀리는 결과도 튜플은 아니에요. 결과끼리 `==`로 견주면 같은 값이어도 False예요(같은 객체인지만 봐요). 값을 견줄 때는 필드끼리 견줘요. namedtuple의 `_asdict()`, `_replace()`, `_fields`도 없어요.
+
+```python
+>>> r == sd.htest.ttest_ind(a, b)
+False
+>>> r.pvalue == sd.htest.ttest_ind(a, b).pvalue
+True
+```
+
+## 신뢰구간: conf_int
+
+신뢰구간이 정의된 검정은 결과에 `conf_int()` 메서드가 있어요. [sd.regression의 `conf_int`](/api/regression/results/#신뢰구간-conf_int)와 같은 메서드예요.
+
+- `alpha`는 키워드로만 받는 유의수준이고, 구간은 1 − alpha예요. 기본값 0.05는 95% 구간이에요.
+- 돌려주는 것은 (아래 끝, 위 끝)의 float64 배열이에요. 검정 하나면 모양이 (2,), 배치면 (배치 모양, 2)예요.
+- 부를 때마다 새 배열이라, 받은 배열을 고쳐도 결과는 그대로예요.
+
+```python
+>>> r.conf_int(alpha=0.1)
+array([0.7856690100591656, 2.3393309899408408], dtype=float64)
+>>> rb.conf_int()
+array([[250.27105388610042, 252.10037468532815],
+       [ 248.8997181015065,  250.3002818984935]], dtype=float64)
+>>> lo, hi = r.conf_int()
+>>> round(hi - lo, 4)
+1.8953
+```
+
+무엇의 구간인지는 검정마다 달라요. `ttest_1samp`는 평균, `ttest_ind`와 `ttest_rel`은 평균의 차, `pearsonr`는 상관계수, `binomtest`는 성공 비율, `odds_ratio`는 오즈비의 구간이에요. 비교가 여럿인 검정은 비교마다 구간이 있어요. 집단이 k개인 `tukey_hsd`는 모든 짝의 (k, k, 2), 처리 집단이 m개인 `dunnett`은 대조군과의 비교마다 (m, 2)예요.
+
+```python
+>>> g = [[24.5, 23.5, 26.4, 27.1, 29.9], [28.4, 34.2, 29.5, 32.2, 30.1], [26.1, 28.3, 24.3, 26.2, 27.8]]
+>>> sd.htest.tukey_hsd(*g).conf_int().shape
+(3, 3, 2)
+>>> sd.htest.dunnett(g[1], g[2], control=g[0]).conf_int().shape
+(2, 2)
+```
+
+### 한쪽 검정의 구간
+
+구간의 방향은 그 검정의 `alternative`를 따라요. `'greater'`면 위 끝이 inf, `'less'`면 아래 끝이 −inf인 한쪽 구간이에요. 한쪽 p값이 alpha보다 작다는 것과 한쪽 구간에 귀무가설의 값이 들지 않는다는 것이 같은 이야기가 되도록 맞춘 거예요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, alternative='greater').conf_int()
+array([0.7856690100591656,                inf], dtype=float64)
+>>> sd.htest.ttest_ind(a, b, alternative='less').conf_int()
+array([              -inf, 2.3393309899408408], dtype=float64)
+```
+
+### 검정마다 더 받는 인자
+
+구간을 만드는 방법이 여럿인 검정은 `conf_int`가 인자를 더 받아요. `binomtest`의 `conf_int`는 `method`(`'exact'`, `'wilson'`, `'wilsoncc'`)를, `odds_ratio`의 `conf_int`는 `alternative`를 받아요.
+
+```python
+>>> bt.conf_int()
+array([0.15390920478454115,  0.5921885345328282], dtype=float64)
+>>> bt.conf_int(method='wilson')
+array([0.1811918241010821, 0.5671457233147638], dtype=float64)
+```
+
+### alpha의 검사
+
+`alpha`는 0과 1 사이(양 끝은 빼고)의 수여야 해요. 위치로 주면 `TypeError`예요. 메시지는 sd.regression과 같아요.
+
+```python
+>>> r.conf_int(alpha=1.5)
+Traceback (most recent call last):
+    ...
+ValueError: conf_int(): 'alpha' must be between 0 and 1 (exclusive)
+>>> r.conf_int(alpha='5%')
+Traceback (most recent call last):
+    ...
+TypeError: conf_int(): 'alpha' must be an int or a float, not str
+>>> r.conf_int(0.1)
+Traceback (most recent call last):
+    ...
+TypeError: conf_int(): takes 0 positional arguments but 1 was given
+```
+
+구간이 정의되지 않은 검정(`bartlett`, `levene`, `f_oneway` 등)에는 `conf_int`가 없어요.
+
+```python
+>>> sd.htest.bartlett(a, b).conf_int()
+Traceback (most recent call last):
+    ...
+AttributeError: 'BartlettResult' object has no attribute 'conf_int'
+```
+
+## repr: 한 줄 요약
+
+결과를 그대로 출력하면 한 줄 `이름(필드=값, …)`이에요. 수는 유효숫자 6자리까지 보이고, 정확한 값은 필드로 읽어요. 짧은 1차원 배열(6개까지)은 값으로, 그보다 큰 배열은 모양으로 적어요. 배치 결과는 배치 모양만 적어요.
+
+```python
+>>> sd.htest.chi2_contingency([[12, 5], [3, 10]])
+Chi2ContingencyResult(statistic=4.88688, pvalue=0.0270616, df=1, expected_freq=<array of shape (2, 2)>)
+>>> sd.htest.ttest_1samp(a, 250.0, keepdims=True)
+Ttest1sampResult(statistic=[3.58185], pvalue=[0.00895405], df=[7])
+>>> rb
+Ttest1sampResult(batch shape (2,))
+```
+
+## summary(): 표로 보기
+
+`summary()`는 검정을 표로 적은 글(`str`)을 돌려줘요. `print`로 보면 이래요.
+
+```python
+>>> print(r.summary())
+                         Two-sample t-test (Student)
+==============================================================================
+Statistic:                       3.562  Alternative:                 two-sided
+P-value:                       0.00348  No. Observations:                 8, 7
+Df:                                 13
+==============================================================================
+                     [0.025     0.975]
+------------------------------------------------------------------------------
+mean difference       0.615      2.510
+==============================================================================
+```
+
+꼴은 sd.regression의 [회귀 결과 `summary()`](/api/regression/results/#summary)와 같은 상자예요. 회귀, 가설검정, 최적화의 결과가 모두 이 꼴이라 한 번 익히면 어디서든 읽을 수 있어요.
+
+- **제목**은 검정의 이름이에요. 갈래가 있는 검정은 괄호 안에 갈래를 적어요(`Two-sample t-test (Welch)`, `Two-sample trimmed t-test (Yuen, Student)`).
+- **머리의 왼쪽**은 결과의 수예요. 통계량(`Statistic:`), p값(`P-value:`), 자유도(`Df:`, `Df Num:`, `Df Denom:`)와 그 밖의 수 필드예요.
+- **머리의 오른쪽**은 호출의 설명이에요. 대립가설(`Alternative:`), 쓴 방법(`Method:`), 표본 크기(`No. Observations:`, 표본이 여럿이면 `8, 7`처럼), 옵션(`Center:`, `Trim:` 등)이에요.
+- **구간**이 있는 검정은 머리 아래에 구간 한 줄이 있어요. 열 이름은 구간의 두 끝의 분위수예요(95% 양쪽 구간이면 `[0.025 0.975]`).
+
+머리의 수는 통계량이 유효숫자 4자리, p값이 3자리예요. 정확한 값은 필드로 읽어요.
+
+표본이 다섯 개 이상이면 크기를 하나씩 적지 않고 합(`No. Observations:`)과 표본 수(`No. Samples:`)를 적어요. `nan_policy='omit'`으로 NaN을 뺀 호출은 남은 크기를 따로 세지 않아서 표본 크기를 적지 않아요.
+
+```python
+>>> print(sd.htest.levene(a, b, c, center='trimmed').summary())
+                   Levene test of homogeneity of variances
+==============================================================================
+Statistic:                       1.145  No. Observations:              8, 7, 6
+P-value:                         0.340  Center:                        trimmed
+Df Num:                              2  Proportion Cut:                   0.05
+Df Denom:                           18
+==============================================================================
+```
+
+### alpha와 한쪽 구간
+
+구간이 있는 결과는 `summary(alpha=0.05)`처럼 `alpha`를 받아요. 검사와 메시지는 `conf_int`와 같아요. 한쪽 검정의 구간은 열 이름이 `[0.050 1.000]`이나 `[0.000 0.950]`이고 끝이 ±inf예요(상관계수는 ±1).
+
+```python
+>>> print(sd.htest.ttest_ind(a, b, alternative='greater').summary(alpha=0.1))
+                         Two-sample t-test (Student)
+==============================================================================
+Statistic:                       3.562  Alternative:                   greater
+P-value:                       0.00174  No. Observations:                 8, 7
+Df:                                 13
+==============================================================================
+                     [0.100     1.000]
+------------------------------------------------------------------------------
+mean difference       0.970        inf
+==============================================================================
+```
+
+구간이 없는 결과의 `summary()`는 인자를 받지 않아요.
+
+```python
+>>> sd.htest.bartlett(a, b).summary(alpha=0.1)
+Traceback (most recent call last):
+    ...
+TypeError: summary(): unexpected keyword argument 'alpha'
+```
+
+### 배열 필드
+
+검정 하나의 결과에 배열 필드가 있으면 머리 아래에 표로 보여요. 행 이름은 `[i]`, 열 이름은 `[j]`이고, 20을 넘는 행이나 열은 앞뒤 5개씩만 두고 가운데를 `...`로 줄여요.
+
+```python
+>>> print(sd.htest.chi2_contingency([[12, 5], [3, 10]]).summary())
+                       Chi-squared test of independence
+==============================================================================
+Statistic:                       4.887  Table:                           2 x 2
+P-value:                        0.0271  Correction:                      Yates
+Df:                                  1
+==============================================================================
+expected_freq         [0]        [1]
+------------------------------------------------------------------------------
+[0]                 8.500      8.500
+[1]                 6.500      6.500
+==============================================================================
+```
+
+### 배치 결과의 summary
+
+배치의 `summary()`는 줄마다 한 검정인 표예요. 줄 이름은 그 검정의 첨자(`[0]`, `[1, 2]`)이고, 열은 줄마다의 필드와 구간이에요. 자유도와 `method`는 모든 줄이 같으면 머리에 한 번, 줄마다 다르면 표의 열에 둬요.
+
+```python
+>>> Y = sd.asarray([a[:7], b])
+>>> Z = sd.asarray([b, c + [250.0]])
+>>> print(sd.htest.ttest_ind(Y, Z, axis=1).summary())
+                         Two-sample t-test (Student)
+==============================================================================
+Df:                                 12  Batch shape:                      (2,)
+                                        Alternative:                 two-sided
+                                        No. Observations:                 7, 7
+==============================================================================
+            statistic     pvalue     [0.025     0.975]
+------------------------------------------------------------------------------
+[0]             3.368      0.006      0.560      2.611
+[1]            -1.727      0.110     -1.324      0.153
+==============================================================================
+>>> print(sd.htest.ttest_ind(Y, Z, axis=1, equal_var=False).summary())
+                          Two-sample t-test (Welch)
+==============================================================================
+Batch shape:                      (2,)  No. Observations:                 7, 7
+Alternative:                 two-sided
+==============================================================================
+            statistic     pvalue         df     [0.025     0.975]
+------------------------------------------------------------------------------
+[0]             3.368      0.006      11.24      0.552      2.619
+[1]            -1.727      0.114      10.17     -1.340      0.168
+==============================================================================
+```
+
+Student의 자유도는 두 줄 모두 12라서 머리에, Welch의 자유도는 줄마다 달라서 열에 있어요. 표의 p값은 소수 셋째 자리까지예요. 줄이 20개를 넘으면 앞뒤 5줄씩만 두고 가운데에 `...` 줄을 둬요. 줄마다의 표(배치의 `expected_freq` 같은 것)는 보이지 않아요.
+
+## 결과는 읽기 전용
+
+결과의 필드에는 값을 넣을 수 없어요. 배열 필드는 결과가 들고 있는 배열을 복사하지 않고 쓰기 금지로 돌려줘서, 원소를 고치려 하면 `ValueError`예요. 그래서 돌려받은 배열을 실수로 고쳐도 결과의 다른 값(`conf_int()`, `summary()`)이 바뀌지 않아요. 고쳐 쓰려면 `.copy()`로 복사해요.
+
+```python
+>>> r.pvalue = 0.5
+Traceback (most recent call last):
+    ...
+AttributeError: property 'pvalue' of 'TtestIndResult' object has no setter
+>>> rb.statistic[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> s = rb.statistic.copy()
+>>> s[0] = 0.0
+>>> s, rb.statistic
+(array([                0.0, -1.3976724838434145], dtype=float64), array([  3.172038867115106, -1.3976724838434145], dtype=float64))
+```
+
+리스트인 필드(배치의 `method`)는 읽을 때마다 새 리스트라서, 고쳐도 결과는 그대로예요. `conf_int()`가 돌려주는 배열은 부를 때마다 만드는 것이라 쓸 수 있어요.
+
+## sd.regression과 함께 쓰는 결과
+
+회귀 결과의 검정 메서드(`t_test`, `wald_test`, `compare_f_test` 등)가 돌려주는 결과도 같은 바탕의 결과 객체예요. 읽기 전용 필드, `conf_int(alpha=)`, `summary()`의 상자, 한 줄 `repr`의 규칙이 이 페이지와 같아요([선형 가설 검정](/api/regression/hypothesis-tests/)).
+
+같은 검정은 두 영역에서 같은 클래스를 돌려줘요. Jarque–Bera 검정은 `sd.htest.jarque_bera(x)`로 표본에, 회귀 결과의 `jarque_bera()`로 잔차에 할 수 있는데, 두 결과는 같은 클래스 `sd.regression.JarqueBeraResult`예요. OLS의 잔차를 넘기면 값도 비트까지 같아요.
+
+```python
+>>> fit = sd.regression.ols([1.0, 2, 4, 3, 5, 7, 6, 9], [1.0, 2, 3, 4, 5, 6, 7, 8])
+>>> fit.jarque_bera()
+JarqueBeraResult(statistic=0.670171, pvalue=0.715277)
+>>> isinstance(sd.htest.jarque_bera(fit.resid), sd.regression.JarqueBeraResult)
+True
+>>> sd.htest.jarque_bera(fit.resid).pvalue == fit.jarque_bera().pvalue
+True
+```
+
+이 클래스만 `sd.regression`에서 꺼낼 수 있는 이름이에요. 다른 검정의 결과 클래스는 꺼내 쓰는 이름이 없어요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1, statsmodels 0.15.0 기준이에요.
+
+| scipy·statsmodels | sd.htest |
+|---|---|
+| 결과 형 `TtestResult`, `SignificanceResult` 등을 여러 검정이 나눠 써요 | 검정마다 `<함수>Result`(꺼내 쓰는 이름은 없어요) |
+| `res.confidence_interval(confidence_level=0.95)` → `ConfidenceInterval(low, high)` | `res.conf_int(alpha=0.05)` → (…, 2) 배열 |
+| `binomtest(...).proportion_ci(confidence_level=0.95, method=)` | `conf_int(alpha=0.05, method=)` |
+| `chi2_contingency(...).dof` | `df` |
+| 결과의 `correlation`(상관 검정) | 없음(`statistic`) |
+| `f_oneway`, `levene`의 결과 `statistic pvalue` | `df_num`, `df_denom`을 더해요 |
+| `bartlett`, `fligner`, `alexandergovern`, `kruskal`, `chisquare` 등의 결과 `statistic pvalue` | `df`를 더해요 |
+| `ttest_ind_from_stats`의 결과 `statistic pvalue` | `df`와 `conf_int()`를 더해요 |
+| `mannwhitneyu`, `wilcoxon`의 `zstatistic`(`method='asymptotic'`을 준 때만) | 정규 근사를 쓴 때마다 |
+| `method='auto'`로 고른 방법(`page_trend_test`에만 있어요) | `method='auto'`가 있는 모든 검정의 `method` 필드 |
+
+- 풀기는 scipy가 풀리는 곳에서 같은 개수와 순서예요. 자유도처럼 더한 필드는 튜플에 들지 않아서, scipy에서 옮긴 `stat, p = ...` 코드는 그대로 돌아요.
+- 결과는 namedtuple이 아니에요. `_asdict()`, `_replace()`, 튜플 비교가 없어요.
+- 필드에 값을 넣을 수 없고, 배열 필드는 쓰기 금지예요. scipy의 결과는 고칠 수 있는 numpy 배열을 들고 있어요.
+- scipy에 `summary()`는 없어요. statsmodels의 회귀 결과와 같은 꼴의 상자를 모든 검정이 내요.
+- 수는 Python 수와 `sd.ndarray`예요. numpy의 `np.float64`가 아니에요.
+- 구간의 정의는 scipy와 같아요. 예를 들어 t 검정의 구간은 추정값 ∓ t 분위수 × 표준오차이고, 한쪽 구간의 방향도 같아요.

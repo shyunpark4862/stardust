@@ -524,6 +524,10 @@ array([[0.0, 0.0],
 
 행렬이 정사각이고 특이하지 않아야 정상인 상황이면 `inv`를 쓰고, 정사각이 아니거나 특이할 수 있음을 알면서도 그 경우에 답이 필요하면 `pinv`를 써요.
 
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 역행렬은 [`sd.sparse.inv`](/api/sparse/inv/)예요. 다만 희소 행렬의 역행렬은 대부분 꽉 차서 저장을 아끼지 못해요. 연립방정식을 풀려면 역행렬 대신 [`sd.sparse.spsolve`](/api/sparse/spsolve/)나 [`sd.sparse.splu`](/api/sparse/splu/)를 써요. 희소 배열을 `inv`에 넣으면 `sd.sparse.inv`를 알려 주는 `TypeError`예요.
+
 ## numpy·scipy를 아는 분께
 
 - `inv`는 `np.linalg.inv`, `pinv`는 `np.linalg.pinv`에 해당해요. 배치를 받는 것도 같아요.

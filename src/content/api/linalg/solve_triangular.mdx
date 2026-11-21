@@ -422,6 +422,10 @@ array([2.0, 3.0, 1.0], dtype=float64)
 
 `cholesky_solve`에 넘기는 `L`과 `solve_triangular`에 넘기는 `L`은 같은 배열이지만 푸는 문제가 달라요. `solve_triangular(L, b, upper=False)`는 삼각 행렬 `L` 자체가 계수인 문제를, `cholesky_solve(L, b)`는 `L`로 분해되기 전의 원래 행렬이 계수인 문제를 풀어요.
 
+## 희소 행렬에서는
+
+희소 삼각 행렬의 풀이는 [`sd.sparse.spsolve_triangular`](/api/sparse/spsolve_triangular/)예요. `upper`, `unit_diagonal`의 뜻과 반대쪽을 읽지 않는 규칙이 같아요. 더하는 순서가 달라서 마지막 자리는 다를 수 있어요. 희소 배열을 `solve_triangular`에 넣으면 그 함수를 알려 주는 `TypeError`예요.
+
 ## numpy·scipy를 아는 분께
 
 - `scipy.linalg.solve_triangular`에 해당해요. numpy에는 이 함수가 없어요.

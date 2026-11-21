@@ -1,0 +1,269 @@
+---
+title: 리덕션
+names: []
+group: 연산
+order: 3
+signatures:
+  - "A.sum(*, axis=None, dtype=None, keepdims=False)"
+  - "A.mean(*, axis=None, keepdims=False)"
+  - "A.max(*, axis=None, keepdims=False, explicit=False)"
+  - "A.min(*, axis=None, keepdims=False, explicit=False)"
+  - "A.nanmax(*, axis=None, keepdims=False, explicit=False)"
+  - "A.nanmin(*, axis=None, keepdims=False, explicit=False)"
+  - "A.argmax(*, axis=None, keepdims=False, explicit=False)"
+  - "A.argmin(*, axis=None, keepdims=False, explicit=False)"
+summary: 희소 배열의 원소를 모아 합, 평균, 최댓값·최솟값과 그 자리를 구하는 메서드예요. 전체를 하나로 줄이면 Python 수, 축을 따라 줄이면 밀집 배열이에요. 저장하지 않은 0도 원소로 세고, explicit=True면 저장한 값만 봐요.
+params:
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: "줄일 축. None(기본값)이면 모든 원소를 하나로 줄여요. 0은 열마다(행을 따라), 1은 행마다(열을 따라) 줄여요. 음수는 뒤에서 세요. tuple은 받지 않아요."
+  - name: dtype
+    type: dtype, 그 이름, 또는 None
+    kind: keyword-only
+    desc: "sum이 합을 구할 dtype. None(기본값)이면 bool·int64는 int64, float64·complex128은 그대로예요. 배열의 sum과 같은 규칙이에요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: "줄인 축을 길이 1로 남길지. True면 결과가 언제나 밀집 배열이고, axis=None이면 모든 축이 1인 배열이에요. 기본값은 False예요."
+  - name: explicit
+    type: bool
+    kind: keyword-only
+    desc: "True면 저장한 값만 보고 저장하지 않은 0은 후보로 넣지 않아요. 아무것도 저장하지 않은 줄의 결과는 0이에요. 기본값 False는 저장하지 않은 자리도 0인 원소로 봐요."
+returns:
+  type: Python 수 또는 ndarray
+  desc: "axis=None이고 keepdims=False면 Python 수(argmax·argmin은 펼친 C 순서의 자리인 int), 그 밖에는 밀집 ndarray예요. 1차원 배열의 axis=0도 전체 리덕션이라 수예요."
+raises:
+  - type: TypeError
+    desc: "axis가 int나 None이 아닐 때(tuple, float, bool), 받지 않는 dtype일 때(복소수의 max·min·argmax 등, sum(dtype=sd.bool)), 옵션을 위치로 줄 때."
+  - type: ValueError
+    desc: "axis가 범위 밖일 때, 빈 배열이나 길이 0인 축의 max·min·argmax·argmin, 아무것도 저장하지 않은 배열의 argmax·argmin(explicit=True, axis=None)."
+seeAlso: [operators, elementwise, sparray, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+리덕션은 여러 원소를 모아 값 하나로 줄이는 계산이에요. 희소 배열의 리덕션은 밀집 배열의 같은 이름 메서드([sum](/api/array/sum/), [mean](/api/array/mean/), [min·max](/api/array/min-max/), [argmin·argmax](/api/array/argmin/), [nanmin·nanmax](/api/array/nan-reductions/))와 같은 값을 돌려줘요. 저장하지 않은 자리는 0인 원소로 세요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, -4.0], [0.0, 9.0, 0.0]]))
+>>> A.sum()
+6.0
+>>> A.mean()
+1.0
+>>> A.max(), A.min()
+(9.0, -4.0)
+>>> A.argmax(), A.argmin()
+(4, 2)
+```
+
+`mean()`은 저장한 세 값이 아니라 여섯 원소 모두의 평균이에요. 6 ÷ 6 = 1이에요. `argmax()`는 배열을 행 순서로 펼쳤을 때의 자리라서 (1, 1)이 4예요.
+
+축을 주면 그 축을 따라 줄여서 **밀집 배열**을 돌려줘요. `axis=0`은 열마다, `axis=1`은 행마다예요.
+
+```python
+>>> A.sum(axis=0)
+array([ 1.0,  9.0, -4.0], dtype=float64)
+>>> A.sum(axis=1)
+array([-3.0,  9.0], dtype=float64)
+>>> A.max(axis=0)
+array([1.0, 9.0, 0.0], dtype=float64)
+```
+
+<Fig caption="axis=1은 행마다 하나씩, axis=0은 열마다 하나씩 줄여요. 저장하지 않은 칸도 0으로 들어가서, 열 2의 max는 0과 −4 가운데 큰 0이에요.">
+  <ArrayFig name="A" data={[[1, 0, -4], [0, 9, 0]]} tones={[['a', 'g', 'a'], ['g', 'a', 'g']]} axes />
+  <Op note="max(axis=0)">→</Op>
+  <ArrayFig data={['1.0', '9.0', '0.0']} tones={['b', 'b', 'b']} />
+</Fig>
+
+<Reference />
+
+## 결과의 꼴
+
+| 호출 | 결과 |
+|---|---|
+| `axis=None` (기본값) | Python 수 (`float`, `int`, `complex`) |
+| `axis=0`, `axis=1` | 밀집 1차원 `sd.ndarray` |
+| `keepdims=True` | 밀집 `sd.ndarray`, 줄인 축은 길이 1 |
+| 1차원 배열의 `axis=0` | Python 수 (전체 리덕션과 같아요) |
+
+축 리덕션의 결과는 줄마다 값이 하나씩이라 대개 0이 아닌 값이 많아요. 그래서 희소 배열이 아니라 밀집 배열로 돌려줘요. `keepdims=True`는 결과를 원래 배열과 브로드캐스트할 때 써요.
+
+```python
+>>> A.sum(axis=1, keepdims=True)
+array([[-3.0],
+       [ 9.0]], dtype=float64)
+>>> A.sum(keepdims=True)
+array([[6.0]], dtype=float64)
+>>> w = sd.sparse.csr_array(sd.asarray([0.0, -3.0, 0.0, 1.0]))
+>>> w.sum(axis=0), w.argmin()
+(-2.0, 1)
+```
+
+`axis`는 int나 None이에요. 밀집 배열처럼 축의 tuple을 받지 않아요. 2차원 배열에서 두 축을 모두 줄이는 것은 `axis=None`이에요.
+
+```python
+>>> A.sum(axis=(0, 1))
+Traceback (most recent call last):
+    ...
+TypeError: sum(): 'axis' must be an int or None, not tuple
+>>> A.sum(axis=2)
+Traceback (most recent call last):
+    ...
+ValueError: sum(): axis 2 is out of bounds for an array of dimension 2
+```
+
+## sum과 mean
+
+`sum`은 원소의 합이에요. 저장하지 않은 자리는 0이라 합에 영향이 없어서 저장한 값만 더해요. COO에서 같은 자리가 여러 번 저장되어 있으면 먼저 더해서 그 자리의 값을 정한 다음 합해요.
+
+dtype은 배열의 `sum`과 같아요. bool과 int64의 합은 int64이고, int64의 범위를 넘으면 돌아 감아요(wrap). `dtype=`으로 합을 구할 dtype을 고를 수 있어요.
+
+```python
+>>> G = sd.sparse.csr_array(sd.asarray([[True, False], [True, True]]))
+>>> G.sum(), G.sum(axis=0)
+(3, array([2, 1], dtype=int64))
+>>> A.sum(axis=1, dtype=sd.complex128)
+array([(-3+0j),  (9+0j)], dtype=complex128)
+```
+
+`mean`은 합을 원소 수(축을 주면 그 축의 길이)로 나눈 값이에요. bool과 int64의 평균은 float64예요. 정수는 합을 정확히 구한 뒤 한 번 반올림해서 나눠요. 그래서 `sum`이 돌아 감을 만큼 큰 정수의 평균도 맞아요.
+
+```python
+>>> J = sd.sparse.csr_array([[2**62, 0], [2**62, 3]])
+>>> J.sum()
+-9223372036854775805
+>>> J.mean()
+2.305843009213694e+18
+```
+
+`sum()`은 2⁶³ + 3이 int64를 넘어 음수로 돌아 감았지만, `mean()`은 정확한 합 (2⁶³ + 3)을 4로 나눈 값이에요. 밀집 배열의 `sd.mean`과 같아요.
+
+빈 배열의 `sum`은 0, `mean`은 NaN이에요(밀집 배열과 같아요).
+
+```python
+>>> E = sd.sparse.csr_array((0, 3))
+>>> E.sum(), E.mean()
+(0.0, nan)
+```
+
+### 더하는 순서
+
+어느 형식이든, 스레드가 몇 개든 합은 같은 순서로 더해서 마지막 한 자리까지 같아요. 축 합은 줄마다 번호 순서로 차례로 더하고, 전체 합은 원소를 행 우선 순서로 놓고 짝지어 더해요. 같은 행렬을 CSR로 더하든 CSC로 더하든 같은 비트예요.
+
+```python
+>>> rng = sd.random.default_rng(0)
+>>> R = sd.sparse.random_array((300, 300), density=0.05, format='csr', rng=rng)
+>>> R.sum() == R.tocsc().sum() == R.tocoo().sum()
+True
+>>> bool(sd.all(R.sum(axis=0) == R.tocsc().sum(axis=0)))
+True
+```
+
+`mean`의 float·complex 값은 같은 순서로 더한 합 ÷ 원소 수예요. CSR의 전체 합은 `sd.sum(A.data)`와 같아요.
+
+## max와 min
+
+`max`, `min`은 저장하지 않은 0도 후보로 봐요. 그래서 모든 값이 양수여도 빈 칸이 하나라도 있으면 `min()`은 0이에요. 행렬이 꽉 차 있으면(저장하지 않은 칸이 없으면) 0은 후보가 아니에요.
+
+```python
+>>> P = sd.sparse.csr_array(sd.asarray([[2.0, 3.0], [0.0, 0.0], [-1.0, 0.0]]))
+>>> P.min(), P.max()
+(-1.0, 3.0)
+>>> P.max(axis=1)
+array([3.0, 0.0, 0.0], dtype=float64)
+>>> sd.sparse.csr_array(sd.asarray([[2.0, 3.0], [4.0, 5.0]])).min()
+2.0
+```
+
+`explicit=True`면 저장한 값만 봐요. 저장하지 않은 0을 없는 값으로 다루고 싶을 때(예를 들어 점수가 없는 칸) 써요. 아무것도 저장하지 않은 줄의 결과는 0이에요.
+
+```python
+>>> P.max(axis=1, explicit=True)
+array([ 3.0,  0.0, -1.0], dtype=float64)
+```
+
+셋째 행은 −1.0만 저장했어요. 0도 후보이면 최댓값이 0이지만, `explicit=True`면 −1.0이에요. 둘째 행은 아무것도 저장하지 않아서 0이에요.
+
+NaN이 있으면 `max`, `min`의 결과는 NaN이에요(밀집 배열과 같아요). NaN을 건너뛰려면 `nanmax`, `nanmin`을 써요. 저장하지 않은 0은 NaN이 아니라서 후보로 남아요.
+
+```python
+>>> N = sd.sparse.csr_array(sd.asarray([[float('nan'), 1.0], [float('nan'), float('nan')]]))
+>>> N.max(), N.nanmax()
+(nan, 1.0)
+>>> N.nanmax(axis=1)
+array([1.0, nan], dtype=float64)
+```
+
+둘째 행은 두 칸 모두 저장한 NaN이라 건너뛸 수 없어서 NaN이에요.
+
+복소수는 크기 순서가 없어서 `max`, `min`, `nanmax`, `nanmin`, `argmax`, `argmin`이 `TypeError`예요. 빈 배열이나 길이 0인 축은 최댓값이 정해지지 않아 `ValueError`예요.
+
+```python
+>>> sd.sparse.csr_array(sd.asarray([[1 + 1j, 0]])).max()
+Traceback (most recent call last):
+    ...
+TypeError: max(): not supported for complex128
+>>> E.max()
+Traceback (most recent call last):
+    ...
+ValueError: max(): undefined for an empty array (or along an empty axis)
+```
+
+## argmax와 argmin
+
+`argmax`, `argmin`은 최댓값, 최솟값이 있는 자리예요. 저장하지 않은 자리도 자리로 세요. 같은 값이 여러 자리에 있으면 행 우선 순서로 첫 자리이고, NaN이 있으면 첫 NaN의 자리예요. 모두 밀집 배열의 `argmax`, `argmin`과 같아요.
+
+```python
+>>> P.argmin(), P.argmax()
+(4, 1)
+>>> P.argmax(axis=0)
+array([0, 0], dtype=int64)
+>>> sd.sparse.csr_array(sd.asarray([[1.0, 0.0], [float('nan'), 3.0]])).argmax()
+2
+```
+
+`axis=None`이면 2차원 배열을 행 우선으로 펼친 자리(int)예요. (행, 열)로 바꾸려면 열 수로 나눠요.
+
+```python
+>>> divmod(A.argmax(), A.shape[1])
+(1, 1)
+```
+
+`explicit=True`면 저장한 값 가운데서 고르고, 저장한 것이 없는 줄은 0이에요. 아무것도 저장하지 않은 배열의 `axis=None`은 고를 자리가 없어서 `ValueError`예요.
+
+```python
+>>> P.argmin(axis=1, explicit=True)
+array([0, 0, 0], dtype=int64)
+>>> sd.sparse.csr_array((2, 3)).argmax(explicit=True)
+Traceback (most recent call last):
+    ...
+ValueError: argmax(): the array stores no values (explicit=True)
+```
+
+## 밀집의 짝
+
+`explicit=False`인 리덕션은 `A.toarray()`에 같은 이름의 배열 함수를 쓴 것과 같아요. 다를 수 있는 것은 0의 부호뿐이에요(`toarray()`가 저장된 −0.0을 +0.0으로 만들기 때문이에요).
+
+```python
+>>> bool(sd.all(A.max(axis=0) == sd.max(A.toarray(), axis=0)))
+True
+>>> A.mean() == sd.mean(A.toarray())
+True
+```
+
+0이 아닌 값의 수는 [`count_nonzero()`](/api/sparse/sparray/#0이-아닌-자리), 대각선의 합은 [`trace()`](/api/sparse/sparray/#대각), 노름은 [`norm`](/api/sparse/norm/)이에요.
+
+## scipy를 아는 분께
+
+- **축 리덕션은 언제나 밀집 배열이에요.** scipy의 `sum(axis=)`·`mean(axis=)`은 밀집이지만 `max(axis=)`·`min(axis=)`·`nanmax(axis=)`·`nanmin(axis=)`은 COO 희소 배열이에요.
+- **`keepdims=`가 있고 `out=`이 없어요.** `axis`는 int나 None만 받아요.
+- **`mean`은 합 ÷ 원소 수예요.** scipy는 값마다 1/원소 수를 곱해서 더해서 끝자리가 다를 수 있어요. 정수의 평균은 정확한 합에서 구해요.
+- **빈 배열의 `mean`은 NaN이에요.** scipy는 `ZeroDivisionError`예요.
+- **`argmax`·`argmin`은 NaN의 자리를 돌려줘요.** scipy는 NaN이 있어도 첫 번째 저장하지 않은 0의 자리를 돌려줄 수 있어요.
+- **축 합의 순서.** 자기 줄을 가로지르는 합(CSR의 `axis=0`, CSC의 `axis=1`)은 지금은 scipy와 비트까지 같아요(약속은 아니에요). 자기 줄을 따르는 합(CSR의 `axis=1`, CSC의 `axis=0`)은 scipy가 numpy의 짝지어 더하기를 써서 줄이 길면 끝자리가 다를 수 있어요. 전체 합도 scipy는 저장 순서로 짝지어 더해서 끝자리가 다를 수 있어요.

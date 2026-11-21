@@ -25,6 +25,15 @@ const gamma = pts((x) => {
 const rand = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
 const r1 = rand(7);
 const dots = Array.from({ length: 34 }, () => [16 + r1() * 136, 8 + r1() * 50, 0.35 + r1() * 0.65]);
+// A banded matrix with a few stray entries: only the stored cells are drawn.
+const r3 = rand(11);
+const sparseCells = Array.from({ length: 5 }, (_, r) =>
+  Array.from({ length: 10 }, (_, c) => [r, c] as const).filter(([rr, c]) => Math.abs(c - 2 * rr - 0.5) < 1.6 || r3() < 0.06),
+)
+  .flat()
+  .map(([r, c]) => [r, c, Math.abs(c - 2 * r - 0.5) < 1.6 ? 0.75 : 0.35] as const);
+// A heavy-tailed null density for the test card.
+const tdist = pts((x) => 56 - 44 / (1 + ((x - 72) / 16) ** 2) ** 1.5, 16, 150);
 const r2 = rand(3);
 const scatter = Array.from({ length: 16 }, (_, i) => {
   const x = 20 + i * 8 + r2() * 4;
@@ -52,6 +61,31 @@ const scatter = Array.from({ length: 16 }, (_, i) => {
         )}
         <path d="M118 32h18m-6-6 6 6-6 6" />
         <path d="M148 10v44" opacity="0.4" />
+      </g>
+    )
+  }
+  {
+    area === 'sparse' && (
+      <g>
+        <rect x="16" y="6" width="104" height="52" rx="3" fill="none" stroke="var(--line-strong)" stroke-width="1" />
+        {sparseCells.map(([r, c, o]) => (
+          <rect x={19 + c * 10} y={9 + r * 10} width="7" height="7" rx="1.5" fill="var(--area)" opacity={o} />
+        ))}
+        <path d="M128 32h12m-5-5 5 5-5 5" fill="none" stroke="var(--area)" stroke-width="1.6" stroke-linecap="round" />
+        {[0, 1, 2].map((i) => (
+          <rect x="146" y={14 + i * 13} width="8" height="8" rx="1.5" fill="var(--area)" opacity={0.85 - i * 0.2} />
+        ))}
+      </g>
+    )
+  }
+  {
+    area === 'htest' && (
+      <g>
+        <path d={`M110 ${tdist.find(([x]) => x >= 110)![1].toFixed(1)} ${path(tdist.filter(([x]) => x >= 110)).replace(/^M/, 'L')} L150 56 L110 56 Z`} fill="var(--area)" opacity="0.22" />
+        <path d={path(tdist)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d="M16 56H152" stroke="var(--line-strong)" stroke-width="1" />
+        <path d="M122 60V20" stroke="var(--area)" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="3 3" />
+        <circle cx="122" cy="20" r="3" fill="var(--area)" />
       </g>
     )
   }

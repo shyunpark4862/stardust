@@ -1,0 +1,255 @@
+---
+title: 줄과 병렬
+group: 구조
+order: 2
+summary: 검정 하나가 줄 행렬의 한 줄이고, 커널이 줄을 스레드풀에 나누는 법을 설명해요. 긴 줄 하나를 고정된 덩어리로 자르는 법, NEON의 double-double 합이 한 원소씩 더한 것과 같은 비트인 이유, sd.stats의 분포를 C++에서 부르는 법, 그래서 결과가 스레드 수와 배치에 상관없는 이유를 다뤄요.
+seeAlso: [overview, ttest, normality, shapiro]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+Python이 넘기는 표본은 (줄 수, 표본 크기)의 float64 배열이고 한 줄이 검정 하나예요([영역의 구조](/internals/htest/overview/#입력-정리-_commonpy)). 커널은 결과를 줄마다 한 칸인 1차원 배열로 돌려줘요. 병렬은 두 갈래예요.
+
+- **줄이 많으면** 줄을 묶어 스레드풀에 나눠요. 줄 하나의 계산은 한 스레드 안에서 처음부터 끝까지 가요.
+- **줄이 길면** 줄 하나를 표본 크기로만 정해지는 덩어리로 잘라 나누고, 덩어리의 합을 정해진 순서로 더해요.
+
+어느 쪽이든 나누는 단위가 데이터의 모양으로만 정해지고 합치는 순서가 고정이라, 결과가 스레드 수와 상관없이 같은 비트예요. 줄 하나는 배치 안에서나 혼자서나 같은 비트이기도 해요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(5)
+>>> x = sd.stats.Normal().sample((4, 30), rng=rng)
+>>> y = sd.stats.Normal(mu=0.3).sample((4, 35), rng=rng)
+>>> batch = sd.htest.ttest_ind(x, y, axis=-1).statistic.tolist()
+>>> batch == [sd.htest.ttest_ind(x[i], y[i]).statistic for i in range(4)]
+True
+>>> big = sd.stats.Normal(mu=5.0).sample(300000, rng=rng)
+>>> n0 = sd.get_num_threads()
+>>> sd.set_num_threads(1)
+>>> one = sd.htest.jarque_bera(big), sd.htest.ttest_1samp(big, 5.0)
+>>> sd.set_num_threads(10)
+>>> ten = sd.htest.jarque_bera(big), sd.htest.ttest_1samp(big, 5.0)
+>>> sd.set_num_threads(n0)
+>>> one[0].statistic == ten[0].statistic, one[1].statistic == ten[1].statistic
+(True, True)
+```
+
+## 줄 행렬과 결과
+
+커널은 줄 행렬을 보폭(stride)째 받아요. 표본 축을 뒤로 보낸 배열이 연속이 아니어도 복사하지 않고 원소를 읽어요.
+
+```cpp
+// csrc/htest/moments.hpp
+struct Rows {
+    const std::byte* data = nullptr;
+    std::int64_t s0 = 0, s1 = 0, lanes = 0, n = 0;
+    Rows() = default;
+    explicit Rows(const NDArray& a)
+        : data(a.data), s0(a.strides[0]), s1(a.strides[1]), lanes(a.shape[0]), n(a.shape[1]) {}
+    double at(std::int64_t r, std::int64_t j) const { return *reinterpret_cast<const double*>(data + r * s0 + j * s1); }
+};
+```
+
+결과는 `Outs`가 만든 1차원 배열 k개에 줄마다 한 칸씩 써요. 줄 r의 칸은 줄 r을 계산한 스레드만 쓰니 잠금이 없어요. 커널은 이 배열들을 튜플로 돌려주고 Python의 `Samples.out`이 배치 모양으로 바꿔요(줄이 하나면 Python float).
+
+## 줄을 나누기
+
+### 줄마다
+
+줄마다 독립인 검정(`shapiro`, `anderson`, `dagostino`, `ks`, `kgroups`의 대부분)은 `each_lane`으로 돌려요. `cost`는 줄 하나의 일을 원소 수로 어림한 값이고, 한 조각에 대략 2¹²원소의 일이 들도록 줄을 묶어요.
+
+```cpp
+// csrc/htest/lanes.hpp
+template <class F>
+void each_lane(std::int64_t lanes, std::int64_t cost, F&& fn) {
+    const std::int64_t c = std::max<std::int64_t>(1, cost);
+    const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / c);
+    for_pieces_woken(lanes, per, lanes * c, [&](std::int64_t, std::int64_t b, std::int64_t e) {
+        for (std::int64_t r = b; r < e; ++r) fn(r);
+    });
+}
+```
+
+밑의 `for_pieces`(배열 영역의 것)는 일이 2¹⁵원소에 못 미치면 부른 스레드에서 차례로 돌고, 넘으면 GIL을 놓고 스레드풀에 조각을 나눠요. 조각의 경계는 `n`과 `per`로만 정해져요.
+
+### 무거운 조각 몇 개: 자는 일꾼 깨우기
+
+스레드풀은 일이 17개 이상일 때만 자는 일꾼을 깨워요. 깨우는 데 수십 µs가 들어서, 1 µs쯤의 작은 일 몇 개로는 손해이기 때문이에요. 그런데 검정에는 조각 하나가 50 µs를 넘는 무거운 일이 2–16개만 있는 경우가 있어요(배치 몇 줄의 Shapiro–Wilk, 긴 줄 하나의 덩어리 몇 개). 그대로 두면 부른 스레드와 마침 깨어 있던 일꾼만 일해요. `for_pieces_woken`은 그런 경우에 빈 일을 덧붙여 17개로 채워 모든 일꾼을 깨워요.
+
+```cpp
+// csrc/htest/lanes.hpp
+template <class F>
+void for_pieces_woken(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
+    per = std::max<std::int64_t>(per, 1);
+    const std::int64_t pieces = (n + per - 1) / per;
+    if (work < kParallelThreshold || pieces < 2 || pieces >= kWakeTasks || work / pieces < kHeavyPiece) {
+        for_pieces(n, per, work, fn);
+        return;
+    }
+    const parallel::Unlocked unlocked(true);
+    if (!parallel::available()) {
+        for (std::int64_t t = 0; t < pieces; ++t) fn(t, t * per, std::min(n, (t + 1) * per));
+        return;
+    }
+    parallel::parallel_for(kWakeTasks, [&](std::int64_t t) {
+        if (t < pieces) fn(t, t * per, std::min(n, (t + 1) * per));
+    });
+}
+```
+
+조각은 `for_pieces`와 같아서 결과의 비트도 같아요. 바뀌는 것은 몇 개의 스레드가 일하느냐뿐이에요.
+
+### 긴 줄 하나: (줄, 덩어리)
+
+t 검정과 분산분석의 적률은 줄 안에서도 나눠요. 줄마다 8192원소의 덩어리로 자르고, (줄, 덩어리) 쌍 하나를 일의 단위로 삼아요. 줄이 많고 짧으면 줄마다 덩어리 하나라 줄마다 나누는 것과 같고, `axis=None`의 긴 줄 하나는 덩어리들로 나뉘어 병렬이 돼요.
+
+```cpp
+// csrc/htest/moments.hpp
+inline constexpr std::int64_t kTask = 1 << 14;
+template <class F>
+void each_block(std::int64_t lanes, std::int64_t n, F&& body) {
+    const std::int64_t nb = std::max<std::int64_t>(1, (n + kBlock - 1) / kBlock);
+    const std::int64_t per = std::max<std::int64_t>(1, kTask / std::max<std::int64_t>(1, std::min(n, kBlock)));
+    for_pieces_woken(lanes * nb, per, lanes * n * 4, [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+        for (std::int64_t it = b0; it < b1; ++it) {
+            const std::int64_t r = it / nb, b = it % nb;
+            body(it, r, b * kBlock, std::min(n, (b + 1) * kBlock));
+        }
+    });
+}
+```
+
+덩어리마다의 부분합은 `it` 자리에 따로 두었다가, 모든 덩어리가 끝난 뒤 줄마다 덩어리 0, 1, 2, …의 순서로 한 스레드가 더해요(`lane_moments`). 어느 스레드가 어느 덩어리를 했는지는 결과에 들어가지 않아요.
+
+<Fig column caption="lane_moments의 두 번 훑기. 평균이 나와야 편차를 계산할 수 있어서 두 번이고, 두 번 모두 (줄, 덩어리)를 스레드풀에 나눠요.">
+  <Steps steps={[
+    { label: 'lane_maxabs', note: '줄마다 |x|의 최댓값. 2^500 이상이나 2^-400 아래면 그 줄은 2의 거듭제곱 단위로 계산', where: 'moments.hpp' },
+    { label: '첫 훑기: block_sum', note: '덩어리마다 합(double-double)과 개수, NaN을 만났는지', where: 'each_block', depth: 1 },
+    { label: '줄마다 차례로', note: '덩어리 순서로 합쳐 개수와 double-double 평균', where: 'lane_moments' },
+    { label: '둘째 훑기: block_ss', note: '덩어리마다 (x - 평균)^2의 double-double 합', where: 'each_block', depth: 1 },
+    { label: '줄마다 차례로', note: '덩어리 순서로 합쳐 편차 제곱합', where: 'lane_moments' },
+  ]} />
+</Fig>
+
+이 두 번 훑기의 수치(double-double 편차와 그 제곱)는 [적률과 t 검정](/internals/htest/ttest/#줄의-적률)에 있어요.
+
+정규성 검정의 중심 적률은 같은 생각을 4096원소의 덩어리로 해요(`normality.hpp`의 `central_sums`). 덩어리가 둘 이상이고 줄이 2¹⁶원소 이상이면 덩어리 쌍을 스레드풀에 나눠요. regression의 `resid_stats`도 같은 함수를 부르므로 regression 안에서 줄이 나뉘어도 같은 덩어리, 같은 비트예요.
+
+항이 무거운 합(Anderson–Darling의 A², Cressie–Read 통계량의 칸마다의 항)은 `ordered_sum`처럼 항만 스레드풀에서 계산해 배열에 두고, 더하기는 한 스레드가 0번부터 차례로 해요. 한 스레드로 고리를 돈 것과 같은 연산이 같은 순서로 일어나요.
+
+```cpp
+// csrc/htest/moments.hpp
+template <class Term>
+Acc ordered_sum(std::int64_t n, std::int64_t cost, Term&& term) {
+    Acc s;
+    if (n * cost < kParallelThreshold || n < 2 * kTask || !parallel::available()) {
+        for (std::int64_t i = 0; i < n; ++i) s.add(term(i));
+        return s;
+    }
+    std::vector<double> t(static_cast<std::size_t>(n));
+    for_pieces(n, kTask, n * cost, [&](std::int64_t, std::int64_t b, std::int64_t e) {
+        for (std::int64_t i = b; i < e; ++i) t[static_cast<std::size_t>(i)] = term(i);
+    });
+    for (double v : t) s.add(v);
+    return s;
+}
+```
+
+### 정렬
+
+Shapiro–Wilk, Anderson–Darling, Fligner–Killeen은 줄을 정렬해요. 2¹⁵원소 이하는 한 번에, 그 위는 2¹⁵원소의 조각을 나란히 정렬한 뒤 둘씩 병합해요(`sort_on_pool`). 병합 하나도 출력의 2¹⁵원소 구간으로 잘라 나눠요. 구간마다 두 입력에서 몇 개씩 오는지(co-rank)를 이분 탐색으로 찾으면, 구간들이 서로 기다리지 않고 동시에 `std::merge`를 할 수 있어요. 같은 값이면 첫 입력의 원소가 먼저라는 `std::merge`의 규칙을 co-rank에서도 지켜서, 결과가 한 번에 병합한 것과 같아요. 조각은 길이로만 정해지니 순서도 스레드 수와 상관없어요.
+
+## NEON의 double-double 합
+
+적률의 합은 double-double이에요. 원소 하나를 더할 때마다 TwoSum(덧셈 여섯 번)이 드는데, 한 사슬로만 더하면 앞 덧셈의 결과를 기다리는 지연에 묶여요. 그래서 두 가지를 해요.
+
+**네 사슬.** 원소 j를 j mod 4번째 합에 넣고, 끝에 네 합을 0, 1, 2, 3의 순서로 합쳐요. 사슬은 j로만 정해지니 덩어리를 어떻게 나눠도 같아요.
+
+```cpp
+// csrc/htest/moments.hpp
+struct Acc4 {
+    Acc c[4];
+    void add(std::int64_t j, double h, double l) { c[j & 3].add(h, l); }
+    Acc total() const {
+        Acc s = c[0];
+        s.add(c[1]);
+        s.add(c[2]);
+        s.add(c[3]);
+        return s;
+    }
+};
+```
+
+**두 칸 레지스터.** 연속인 줄에서는 사슬 0과 1을 NEON 레지스터 하나의 두 칸에, 2와 3을 다른 레지스터에 두고 같은 IEEE 연산을 칸마다 해요. TwoSum의 여섯 연산이 그대로 `vaddq_f64`·`vsubq_f64`가 되고, NaN인 원소는 마스크로 그 칸의 합에서 빼요. 칸마다 한 원소씩의 스칼라 고리와 연산도 순서도 같으니 비트도 같아요. FMA를 쓰는 곳(TwoProd)도 `vfmaq_f64`가 `std::fma`처럼 한 번만 반올림해서 같아요.
+
+```cpp
+// csrc/htest/moments.hpp
+inline void add(float64x2_t& hi, float64x2_t& lo, float64x2_t x, float64x2_t y, uint64x2_t ok) {
+    const float64x2_t s = vaddq_f64(hi, x), bb = vsubq_f64(s, hi);
+    const float64x2_t e = vaddq_f64(vsubq_f64(hi, vsubq_f64(s, bb)), vsubq_f64(x, bb));
+    const float64x2_t nl = vaddq_f64(lo, vaddq_f64(e, y));
+    hi = vbslq_f64(ok, s, hi), lo = vbslq_f64(ok, nl, lo);
+}
+```
+
+연속이 아닌 줄이나 덩어리의 끝자락은 스칼라 고리(`for4`)로 가요. `for4`는 j mod 4를 컴파일 시간의 상수로 넘겨 네 사슬이 레지스터에 머물게 해요. 실행 중에 `j & 3`으로 사슬을 고르면 사슬이 메모리를 거쳐 원소당 수 ns가 들어요.
+
+`central_sums`는 다른 방법으로 두 칸을 채워요. 덩어리 하나가 사슬 하나이고, 꽉 찬 덩어리 둘을 레지스터의 두 칸에 나란히 놓아 함께 더해요(`vdd.hpp`의 `add`, `mul`이 `special/dd.hpp`의 연산을 칸마다 같은 순서로 해요). 어느 쪽이든 칸 하나는 스칼라의 사슬 하나와 같은 비트예요.
+
+## 분포를 C++에서 부르기
+
+p값은 sd.stats의 분포예요. 커널은 Python을 거치지 않고 `csrc/stats/`의 분포 구조체를 직접 불러요. 이때 `method_of`를 써서, Python에서 `sd.stats.StudentT(df=df).ccdf(t)`를 부른 것과 같은 비트를 내요.
+
+```cpp
+// csrc/htest/parametric.cpp
+double t_pvalue(double t, double df, int alt) {
+    using stats::StudentT;
+    namespace m = stats::method;
+    if (alt == kTwoSided) return 2.0 * stats::method_of<StudentT, m::Ccdf>(std::fabs(t), df);
+    if (alt == kLess) return stats::method_of<StudentT, m::Cdf>(t, df);
+    return stats::method_of<StudentT, m::Ccdf>(t, df);
+}
+```
+
+`method_of`는 그 분포에 청크 커널(배열을 한 번에 계산하는 길)이 있으면 원소 하나짜리 청크로 그 커널을 부르고, 없으면 원소 함수를 불러요. Python의 분포 메서드도 같은 커널을 지나니 비트가 같아요([sd.stats의 엔진](/internals/stats/engine/)). 양쪽 p값은 대칭 분포에서 2·ccdf(|t|)이고, 작은 쪽 꼬리를 직접 계산하므로 1 − cdf의 상쇄가 없어요.
+
+```python
+>>> r = sd.htest.ttest_ind([1., 2, 3, 4, 6], [2., 3, 4, 5, 7, 9], equal_var=False)
+>>> r.pvalue == 2 * sd.stats.StudentT(df=r.df).ccdf(abs(r.statistic))
+True
+>>> j = sd.htest.jarque_bera([1., 2, 3, 4, 6, 9, 13, 2.5])
+>>> j.pvalue == sd.stats.ChiSquared(df=2).ccdf(j.statistic)
+True
+```
+
+배열 하나에 같은 분포를 여러 번 부르는 곳(Anderson–Darling에서 표본 전체의 `logcdf`·`logccdf`, 비율 검정의 z p값들)은 `method_array`로 청크 커널을 배열 전체에 한 번 돌려요. 청크 커널에서 원소의 값은 그 원소에만 달려 있고 `method_of`가 바로 그 커널의 원소 하나짜리 호출이라, 배열로 불러도 원소마다 `method_of`의 비트예요. 원소마다 드는 호출의 고정 비용만 없어져요.
+
+```cpp
+// csrc/htest/dist_array.hpp
+template <class T, class M, class... A>
+inline void method_array(const double* x, std::int64_t n, double* out, A... a) {
+    constexpr std::size_t NP = sizeof...(A);
+    if constexpr (M::template chunked<T, stats::Chunk<NP>>) {
+        double pv[NP] = {a...};
+        std::byte* args[NP + 2];
+        std::int64_t st[NP + 2];
+        for (std::size_t k = 0; k < NP; ++k) args[k] = reinterpret_cast<std::byte*>(&pv[k]), st[k] = 0;
+        args[NP] = reinterpret_cast<std::byte*>(const_cast<double*>(x)), st[NP] = sizeof(double);
+        args[NP + 1] = reinterpret_cast<std::byte*>(out), st[NP + 1] = sizeof(double);
+        stats::chunk_loop<T, M>(args, n, st, nullptr);
+    } else {
+        for (std::int64_t i = 0; i < n; ++i) out[i] = stats::method_of<T, M>(x[i], a...);
+    }
+}
+```
+
+모수는 보폭 0으로 넘겨 모든 원소가 같은 모수를 읽어요.
+
+검정에만 필요한 귀무분포(한 표본 Kolmogorov–Smirnov와 Cramér–von Mises, 스튜던트화 범위, Fisher의 비중심 초기하)는 sd.stats의 공개 분포가 아니라 `csrc/htest/` 안의 함수예요([Kolmogorov–Smirnov 한 표본](/internals/htest/ks-1samp/), [Anderson–Darling과 Cramér–von Mises](/internals/htest/edf/)).
+
+## GIL
+
+커널은 GIL을 쥔 채 불려요. `for_pieces`가 일을 스레드풀에 나누는 순간(일이 2¹⁵원소 이상) GIL을 놓고, 그 안의 코드는 Python 객체를 건드리지 않아요. 작은 검정은 GIL을 놓고 다시 잡는 비용도 치르지 않고, 큰 검정 동안에는 다른 Python 스레드가 돌 수 있어요. 사용자 함수를 부르는 검정(`ks_1samp`·`cramervonmises`의 `cdf`, 재표본의 `statistic`)은 사용자 함수를 Python에서 한 번 부르고 그 값을 커널에 넘겨요. 커널 안에서 Python으로 되돌아오지 않아요.

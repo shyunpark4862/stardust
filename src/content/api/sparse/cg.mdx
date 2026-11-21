@@ -1,0 +1,273 @@
+---
+kind: function
+title: cg
+names: [cg]
+group: 반복법
+order: 2
+signatures:
+  - "sd.sparse.cg(A, b, /, *, x0=None, rtol=1e-05, atol=0.0, max_iter=None, M=None)"
+summary: 에르미트 양정치 행렬의 연립방정식 Ax = b를 켤레기울기법으로 풀어요. 반복마다 A와 벡터의 곱 한 번이면 돼서, 열·확산·탄성처럼 에너지가 가장 작은 상태를 찾는 문제의 큰 희소 계에 가장 먼저 쓰는 방법이에요.
+params:
+  - name: A
+    type: 희소 배열, 2차원 ndarray, 또는 LinearOperator
+    kind: positional-only
+    desc: 계수 행렬 (n, n). 에르미트(실수면 대칭)이고 양정치여야 해요. 이 성질은 검사하지 않아요. LinearOperator면 곱마다 그 matvec을 불러요.
+  - name: b
+    type: ndarray
+    kind: positional-only
+    desc: 우변. 모양이 (n,)이나 (n, 1)인 sd.ndarray예요. 리스트와 numpy 배열은 받지 않아요.
+  - name: x0
+    type: ndarray 또는 None
+    kind: keyword-only
+    desc: 시작점 (n,)이나 (n, 1). None(기본값)이면 0 벡터예요.
+  - name: rtol
+    type: float
+    kind: keyword-only
+    desc: 상대 허용오차. ‖b − Ax‖ < max(rtol·‖b‖, atol)이면 멈춰요. 유한한 0 이상의 수이고 기본값은 1e-05예요.
+  - name: atol
+    type: float
+    kind: keyword-only
+    desc: 절대 허용오차(잔차의 바닥). 유한한 0 이상의 수이고 기본값은 0.0이에요.
+  - name: max_iter
+    type: int 또는 None
+    kind: keyword-only
+    desc: 반복의 상한(1 이상). None(기본값)이면 10n이에요. 닿으면 그때의 x와 status = max_iter, converged=False를 돌려줘요.
+  - name: M
+    type: 희소 배열, 2차원 ndarray, LinearOperator, 또는 None
+    kind: keyword-only
+    desc: 전처리기. A⁻¹을 어림한 (n, n) 에르미트 양정치 행렬이나 연산자예요. 반복마다 잔차에 곱해요. None(기본값)이면 전처리하지 않아요.
+returns:
+  type: CgResult
+  desc: "x(해, (n,)), converged, status(0은 수렴, 상한에 닿으면 max_iter), message, n_iter(반복 수), normr(마지막 잔차의 크기). (x, status)로 풀려요."
+raises:
+  - type: TypeError
+    desc: A나 M이 희소 배열·sd.ndarray·LinearOperator가 아닐 때, b나 x0이 sd.ndarray가 아닐 때, 허용오차가 수가 아니거나 max_iter가 int가 아닐 때, 옵션을 위치로 주거나 없는 키워드(maxiter, callback 등)를 줬을 때, 실수로 선언한 LinearOperator가 복소수를 돌려줄 때.
+  - type: ValueError
+    desc: A가 2차원이 아니거나 정사각이 아닐 때, M의 모양이 A와 다를 때, b나 x0의 모양이 (n,)·(n, 1)이 아닐 때, A·M·b·x0에 NaN·inf가 있을 때, rtol·atol이 음수이거나 유한하지 않을 때, max_iter가 1보다 작을 때.
+seeAlso: [iterative, minres, gmres, spsolve, linearoperator, eigsh]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+A가 에르미트 양정치이면, $Ax = b$를 푸는 일은 그릇 모양의 함수
+
+$$
+f(x) = \tfrac12\, x^{\mathsf H}Ax - \operatorname{Re}(b^{\mathsf H}x)
+$$
+
+의 바닥을 찾는 일과 같아요. 바닥에서 기울기 $Ax - b$가 0이 되기 때문이에요. 열이 퍼진 판, 늘어난 용수철, 확산이 멈춘 농도처럼 "에너지가 가장 작은 상태"를 찾는 문제가 대부분 이런 꼴이에요.
+
+켤레기울기법(conjugate gradient, CG)은 이 그릇을 내려가는 방법이에요. 단순히 가장 가파른 쪽으로만 가면 좁고 긴 골짜기에서 지그재그로 헤매요. CG는 매번 앞서 간 방향들과 "A에 대해 직교하는"(켤레인) 방향을 골라서, 한 방향으로 줄인 것을 뒤의 걸음이 다시 망치지 않게 해요. 그래서 k번 반복한 점은 크릴로프 공간 $\{b, Ab, \dots, A^{k-1}b\}$ 안에서 A로 잰 오차 $\lVert x - x_\ast\rVert_A$가 가장 작은 점이에요. 반복마다 드는 것은 A와 벡터의 곱 한 번과 벡터 몇 개뿐이에요.
+
+<Reference />
+
+## 기본 사용
+
+가장자리가 0도인 30 × 30 판을 고르게 데울 때의 온도예요. 행렬은 칸마다 "4 × 자기 − 이웃 넷"이에요([반복법의 기본](/api/sparse/iterative/)에 만드는 법이 있어요).
+
+```python
+>>> n = 30
+>>> T = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n))
+>>> A = sd.sparse.kronsum(T, T)
+>>> b = sd.ones(n * n)
+>>> r = sd.sparse.cg(A, b)
+>>> r
+CgResult(converged=True, status=0, n_iter=43, normr=0.000294991, x=<array of shape (900,)>)
+>>> r.message
+'the residual norm is within the tolerance'
+```
+
+43번 반복으로 잔차를 ‖b‖ = 30의 10⁻⁵배 아래로 줄였어요. 판의 가운데가 가장 뜨거워요.
+
+```python
+>>> grid = sd.reshape(r.x, (n, n))
+>>> round(float(grid[0, 0]), 3), round(float(grid[15, 15]), 2)
+(2.004, 70.62)
+>>> float(sd.linalg.vector_norm(b - A @ r.x)) < 1e-5 * 30
+True
+```
+
+결과는 `(x, status)`로 풀 수도 있어요.
+
+```python
+>>> x, status = sd.sparse.cg(A, b)
+>>> status
+0
+```
+
+## 언제 쓰나요
+
+A가 **에르미트(실수면 대칭)이고 양정치**일 때만 써요. 양정치는 모든 고유값이 양수라는 뜻이고, 0이 아닌 모든 x에서 $x^{\mathsf H}Ax > 0$이라는 뜻이기도 해요. 이런 행렬은 흔해요.
+
+- 격자 위의 라플라시안(열, 확산, 정전기 퍼텐셜)
+- 유한요소법의 강성 행렬(경계 조건이 걸린 탄성 문제)
+- 최소제곱의 정규방정식 $A^{\mathsf H}A$, 능형 회귀의 $A^{\mathsf H}A + \lambda I$
+- 공분산 행렬, 가우스 과정의 커널 행렬
+
+대칭인지는 바로 볼 수 있어요. 양정치인지는 가장 작은 고유값을 [`eigsh`](/api/sparse/eigsh/)로 구해 보면 돼요.
+
+```python
+>>> (A - A.T).count_nonzero()
+0
+>>> sd.sparse.eigsh(A, k=1, which='SA').eigenvalues
+array([0.02052270643241964], dtype=float64)
+```
+
+### 대칭이 아니면
+
+`cg`는 대칭인지 검사하지 않아요. 대칭이 아닌 행렬에서는 이론이 성립하지 않아 대개 수렴하지 않아요. 바람이 부는 판(대류가 있는 확산)의 행렬은 대칭이 아니에요.
+
+```python
+>>> D1 = sd.sparse.diags_array([-1.0, 1.0], offsets=[-1, 0], shape=(n, n))
+>>> C = A + 1.5 * sd.sparse.kron(sd.sparse.eye_array(n), D1)
+>>> (C - C.T).count_nonzero()
+1740
+>>> sd.sparse.cg(C, b, max_iter=500)
+CgResult(converged=False, status=500, n_iter=500, normr=15265.8, x=<array of shape (900,)>)
+>>> sd.sparse.gmres(C, b)
+GmresResult(converged=True, status=0, n_iter=6, n_inner=102, normr=0.000256024, x=<array of shape (900,)>)
+```
+
+잔차가 처음(30)보다 수백 배 커졌어요. 대칭이 아니면 [`gmres`](/api/sparse/gmres/)나 [`bicgstab`](/api/sparse/bicgstab/)을 써요.
+
+### 양정치가 아니면
+
+에르미트이지만 음의 고유값이 있는(부정) 행렬에서는 CG의 나눗셈이 0으로 나누게 될 수 있어요. 그러면 x가 NaN이 되고, 반복은 상한까지 가서 멈춰요.
+
+```python
+>>> K = sd.asarray([[0.0, 1.0], [1.0, 0.0]])
+>>> sd.sparse.cg(K, sd.asarray([1.0, 0.0]))
+CgResult(converged=False, status=20, n_iter=20, normr=nan, x=[nan, nan])
+```
+
+부정 행렬에서도 운 좋게 풀릴 때가 있지만 보장되지 않아요. 부정인 에르미트 행렬에는 [`minres`](/api/sparse/minres/)를 써요.
+
+## 반복 수는 무엇으로 정해지나요
+
+k번 반복한 뒤 A로 잰 오차는 처음 오차의
+
+$$
+2\left(\frac{\sqrt{\kappa} - 1}{\sqrt{\kappa} + 1}\right)^{k}
+$$
+
+배를 넘지 않아요(κ는 A의 조건수, 가장 큰 고유값 ÷ 가장 작은 고유값). κ가 클수록 이 비가 1에 가까워 느려지고, 반복 수는 대략 $\sqrt{\kappa}$에 비례해요. 판의 격자를 촘촘히 하면 κ가 한 변의 칸 수의 제곱에 비례해 커지므로, 반복 수는 한 변의 칸 수에 비례해 늘어요.
+
+```python
+>>> for m in (30, 60, 120):
+...     Tm = sd.sparse.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(m, m))
+...     print(m * m, sd.sparse.cg(sd.sparse.kronsum(Tm, Tm), sd.ones(m * m)).n_iter)
+900 43
+3600 87
+14400 177
+```
+
+미지수가 4배가 될 때마다 반복이 2배씩 늘어요. 아주 큰 격자에서는 이 증가를 줄이는 [전처리기](#전처리기-m)가 필요해요.
+
+고유값이 몇 개의 값에만 몰려 있으면 κ가 커도 빨라요. 서로 다른 고유값이 k개뿐이면 반올림이 없을 때 CG는 k번 안에 정확한 답에 닿아요.
+
+## 전처리기 M
+
+M은 A⁻¹을 값싸게 어림한 에르미트 양정치 행렬이에요. 대각의 역수(Jacobi 전처리기)가 가장 단순해요. 행마다 크기가 크게 다른 행렬에서 효과가 커요.
+
+```python
+>>> Dg = sd.sparse.diags_array(10.0 ** sd.linspace(0, 4, n * n))
+>>> B = Dg @ A @ Dg
+>>> sd.sparse.cg(B, b).converged
+False
+>>> sd.sparse.cg(B, b, M=sd.sparse.diags_array(1.0 / B.diagonal()))
+CgResult(converged=True, status=0, n_iter=93, normr=0.000254256, x=<array of shape (900,)>)
+```
+
+M에 `LinearOperator`를 주면 어떤 근사 풀이든 전처리기로 쓸 수 있어요. 전처리기를 고르는 법과 반복 중의 잔차 그림은 [반복법의 기본](/api/sparse/iterative/#m-전처리기)에 있어요.
+
+<Callout type="warn" title="M도 에르미트 양정치여야 해요">
+`cg`는 M을 검사하지 않아요. 대칭이 아니거나 음의 고유값이 있는 M을 주면 수렴이 보장되지 않아요. 대각에 음수가 있는 행렬의 Jacobi 전처리기(대각의 역수)가 그런 예예요.
+</Callout>
+
+## 멈춤과 정확도
+
+`cg`는 반복 안에서 잔차를 점화식 $r_{k+1} = r_k - \alpha_k A p_k$로 갱신하고, 그 크기가 `max(rtol * ‖b‖, atol)`보다 작아지면 멈춰요. 결과의 `normr`이 그 마지막 잔차예요. 점화식의 잔차는 참 잔차 $b - Ax_k$와 반올림만큼만 달라서, 돌려준 x에서 다시 계산해도 판정을 만족해요.
+
+```python
+>>> r = sd.sparse.cg(A, b, rtol=1e-10)
+>>> r.n_iter
+62
+>>> true = float(sd.linalg.vector_norm(b - A @ r.x))
+>>> true < 1e-10 * 30, abs(true - r.normr) / r.normr < 1e-3
+(True, True)
+```
+
+오차는 잔차보다 조건수만큼 클 수 있어요. `rtol`을 고르는 법은 [반복법의 기본](/api/sparse/iterative/#멈춤-판정-rtol과-atol)에 있어요.
+
+## 시작점 x0
+
+답에 가까운 점을 `x0`로 주면 반복이 줄어요. 판정의 기준은 여전히 ‖b‖예요.
+
+```python
+>>> r1 = sd.sparse.cg(A, b, rtol=1e-8)
+>>> sd.sparse.cg(A, 1.01 * b, rtol=1e-8).n_iter, sd.sparse.cg(A, 1.01 * b, rtol=1e-8, x0=r1.x).n_iter
+(55, 48)
+```
+
+## 복소수
+
+복소 에르미트 양정치 행렬도 그대로 풀어요. A, b, x0, M 가운데 하나라도 복소수면 complex128로 풀어요.
+
+```python
+>>> U = sd.sparse.diags_array([1.0], offsets=[1], shape=(n * n, n * n))
+>>> H = A + 0.5 * sd.sparse.eye_array(n * n) + 0.5j * (U - U.T)
+>>> (H - H.conj().T).count_nonzero()
+0
+>>> r = sd.sparse.cg(H, b)
+>>> r.converged, r.n_iter, r.x.dtype
+(True, 30, complex128)
+```
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `x` | 해 (n,). 쓰기 금지 배열이에요 |
+| `converged` | `status == 0`인지 |
+| `status` | 0은 수렴, 상한에 닿으면 `max_iter` |
+| `message` | `'the residual norm is within the tolerance'`, `'the iteration limit was reached'`, `'the right-hand side is zero: x = 0'` |
+| `n_iter` | 반복 수 |
+| `normr` | 마지막 반복의 (점화식) 잔차 크기 |
+
+`summary()`의 표와 결과를 다루는 법은 [반복법의 기본](/api/sparse/iterative/#결과-읽기)에 있어요.
+
+## 입력과 에러
+
+```python
+>>> sd.sparse.cg(A, [1.0] * 900)
+Traceback (most recent call last):
+    ...
+TypeError: cg(): 'b' must be an sd.ndarray, not list
+>>> sd.sparse.cg(A[:, :899], b)
+Traceback (most recent call last):
+    ...
+ValueError: cg(): 'A' must be square, got 900x899
+>>> sd.sparse.cg(A, b, rtol=-1)
+Traceback (most recent call last):
+    ...
+ValueError: cg(): 'rtol' must be a finite number >= 0
+>>> sd.sparse.cg(A, b, maxiter=10)
+Traceback (most recent call last):
+    ...
+TypeError: cg(): unexpected keyword argument 'maxiter'. Did you mean 'max_iter'?
+>>> sd.sparse.cg(A, b, max_iter=0)
+Traceback (most recent call last):
+    ...
+ValueError: cg(): 'max_iter' must be >= 1
+```
+
+A에 저장된 값에 NaN·inf가 있으면 `ValueError: cg(): 'A' contains NaN or infinity`예요. 수렴하지 않는 것은 에러가 아니에요. `converged`와 `status`로 알려요.
+
+## scipy를 아는 분께
+
+- `scipy.sparse.linalg.cg`와 같은 알고리즘과 멈춤 판정(점화식 잔차 < max(rtol·‖b‖, atol))이에요. 시험 문제에서 반복 수와 상태가 scipy와 같아요.
+- `maxiter`는 `max_iter`예요. 0은 받지 않아요.
+- `callback`이 없어요. 결과는 `(x, info)`로 풀리는 `CgResult`이고 `info`는 `status`예요.
+- `b`와 `x0`은 `sd.ndarray`만 받아요. 복소 `x0`나 복소 `M`을 주면 복소수로 풀어요(scipy는 A와 b로 dtype을 정해 복소 `x0`의 허수부를 버려요).
+- 경고 없이 `status`로 알려요.

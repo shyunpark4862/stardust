@@ -33,8 +33,10 @@ export const obsBand = [[15.0, 47.563], [15.5, 49.153], [16.0, 50.74], [16.5, 52
 >>> df = sd.frame.DataFrame({'temp': temp, 'rain': rain, 'sales': sales})
 >>> r = sd.regression.ols(df['sales'], df[['temp', 'rain']])
 >>> r
-OLSResult(nobs=30, rank=3, rsquared=0.816592, params=[  19.708601395933567    2.997447946508792 -0.03789720249661012])
+OLSResult(nobs=30, rank=3, rsquared=0.816592, params=[19.7086, 2.99745, -0.0378972])
 ```
+
+결과를 그대로 찍으면 주된 필드를 한 줄로 보여 줘요. 수는 유효숫자 여섯 자리로 줄여 적고, 계수가 6개까지면 `[v, v]`처럼 늘어놓고 7개 이상이면 `params=<array of shape (7,)>`처럼 모양만 적어요. 배치 결과는 `OLSResult(batch shape (3,), 2 parameters)`처럼 배치 모양과 계수의 수예요. 계산에 쓸 온전한 값은 [`params`](#계수-params)처럼 필드에서 읽어요.
 
 `summary()`는 중요한 필드를 상자 하나로 보여 줘요. 상자의 칸마다 어느 필드이고 어느 절에서 설명하는지는 상자 아래에 모았어요. 상자의 꼴과 수를 읽는 법은 [summary](#summary) 절에 있어요.
 
@@ -666,7 +668,7 @@ params          const       temp       rain
 ==============================================================================
 ```
 
-- 머리의 `Batch shape:`가 배치 모양이에요. 머리에는 모든 회귀에 같은 값(모형, 방법, 공분산의 종류, 모형 자유도)만 적어요.
+- 머리의 `Batch shape:`가 배치 모양이에요. 머리에는 모든 회귀에 같은 값(모형, 방법, 공분산의 종류, 모형 자유도)만 적어요. 어느 회귀에서 열이 겹쳐 빠져 회귀마다 모형 자유도가 다르면 `Df Model:`은 머리에 없고, 첫 표의 `nobs` 다음에 `df_model` 열이 생겨요.
 - 첫 표는 회귀마다의 적합 통계예요. OLS·WLS·GLS는 `nobs`, `rsquared`, `fvalue`, `f_pvalue`, `llf`이고, GLM은 `nobs`, `deviance`, `llf`, `n_iter`, `converged`처럼 결과에 따라 열이 달라요. 둘째 표는 회귀마다의 계수(`params`)예요.
 - 줄의 이름은 그 회귀의 첨자예요. 배치 모양이 (2, 2)면 `[0, 0]`, `[0, 1]`, …예요.
 - 구간 칸은 없어요. `alpha`를 주면 값만 검사해요.

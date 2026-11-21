@@ -1,0 +1,318 @@
+---
+kind: function
+title: ttest_ind
+names: [ttest_ind]
+group: 평균과 분산
+order: 3
+signatures:
+  - "sd.htest.ttest_ind(a, b, /, *, axis=None, equal_var=True, alternative='two-sided', trim=0, method=None, nan_policy='propagate', keepdims=False)"
+summary: 독립인 두 표본의 t 검정이에요. 두 집단의 평균이 같은지 검정하고, 평균 차의 신뢰구간도 conf_int()로 줘요. 분산이 같다고 보는 Student의 검정, 분산이 달라도 되는 Welch의 검정, 이상값에 강한 Yuen의 절삭 t 검정, 순열이나 몬테카를로로 구한 p값을 고를 수 있어요.
+params:
+  - name: a
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 첫 표본. bool·정수는 float64로 바꿔서 계산해요. frame의 결측값은 NaN으로 읽어요.
+  - name: b
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 둘째 표본. 크기는 a와 달라도 돼요. 축을 주면 표본 축 밖의 축이 a와 브로드캐스트해야 해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 두 배열을 각각 펼쳐 표본 하나씩으로 봐요.
+  - name: equal_var
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 두 모집단의 분산이 같다고 보고 합동 분산을 쓰는 Student의 t 검정, False면 분산이 달라도 되는 Welch의 t 검정이에요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값, 두 평균이 달라요), 'less'(a의 평균이 더 작아요), 'greater'(a의 평균이 더 커요) 중 하나예요."
+  - name: trim
+    type: int 또는 float
+    kind: keyword-only
+    desc: 0 이상 0.5 미만. 0(기본값)이 아니면 Yuen의 절삭 t 검정이에요. 표본마다 양 끝에서 int(n·trim)개씩 잘라 낸 평균(절삭 평균)을 견주고, 분산은 잘라 낸 값을 남은 끝값으로 바꾼 윈저화 분산이에요.
+  - name: method
+    type: None, PermutationMethod, 또는 MonteCarloMethod
+    kind: keyword-only
+    desc: p값을 구하는 방법. None(기본값)은 t 분포, PermutationMethod는 두 표본을 합쳐 다시 나눈 순열 아래의 t 분포, MonteCarloMethod는 그 rvs가 뽑은 표본(기본은 표준정규)의 t 분포예요. df와 conf_int()는 어느 방법이든 t 분포의 것이에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값, 그 검정의 결과가 NaN), 'omit'(표본마다 NaN을 빼고 검정), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과의 필드에 표본 축을 길이 1로 남겨요.
+returns:
+  type: TtestIndResult
+  desc: "필드 statistic(t), pvalue, df(float; Welch는 정수가 아닐 수 있어요)와 메서드 conf_int(alpha=0.05)(평균 차 a − b의 구간, trim이면 절삭 평균의 차), summary(alpha=0.05)가 있어요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: a·b를 키워드로 줬을 때, 옵션을 위치로 줬을 때, 없는 옵션을 줬을 때, a·b가 배열·수의 시퀀스·frame이 아닐 때, 복소수일 때, equal_var·keepdims가 True·False가 아닐 때, trim이 수가 아닐 때(bool 포함), method가 None·PermutationMethod·MonteCarloMethod가 아닐 때, 무작위가 필요한 method에 rng가 없을 때.
+  - type: ValueError
+    desc: trim이 0 이상 0.5 미만이 아닐 때, alternative·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때.
+seeAlso: [basics, results, ttest_ind_from_stats, ttest_rel, f_oneway, mannwhitneyu, levene, methods]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+포장 기계 A로 담은 커피 봉지 여덟 개와 기계 B로 담은 일곱 개의 무게예요. A의 평균이 1.6g 커요. 두 기계가 사실 같은 평균으로 담는데 표본이 우연히 이렇게 나온 걸까요?
+
+**독립 두 표본 t 검정**은 서로 다른 대상으로 이뤄진 두 집단의 평균을 견줘요.
+
+- 귀무가설: 두 모집단의 평균이 같아요(μ₁ = μ₂).
+- 대립가설: 두 평균이 달라요(`alternative`로 한쪽을 고를 수 있어요).
+
+검정통계량은 두 표본 평균의 차를 그 차의 표준오차로 나눈 t예요. 표준오차를 어떻게 어림하느냐에 따라 두 갈래가 있어요.
+
+| `equal_var` | 검정 | 차의 표준오차 | 자유도 |
+|---|---|---|---|
+| `True`(기본) | Student | $s_p \sqrt{1/n_1 + 1/n_2}$, $s_p^2 = \dfrac{(n_1 - 1)s_1^2 + (n_2 - 1)s_2^2}{n_1 + n_2 - 2}$ | $n_1 + n_2 - 2$ |
+| `False` | Welch | $\sqrt{s_1^2/n_1 + s_2^2/n_2}$ | 아래의 Welch–Satterthwaite 식 |
+
+$$
+t = \frac{\bar x_1 - \bar x_2}{\text{차의 표준오차}}, \qquad
+\nu_{\text{Welch}} = \frac{(s_1^2/n_1 + s_2^2/n_2)^2}{\dfrac{(s_1^2/n_1)^2}{n_1 - 1} + \dfrac{(s_2^2/n_2)^2}{n_2 - 1}}
+$$
+
+Student의 검정은 두 표본의 분산을 합쳐(합동 분산 $s_p^2$) 하나로 어림해요. 두 모집단의 분산이 정말 같으면 가장 힘이 센 검정이에요. Welch의 검정은 분산을 따로 어림하고 자유도를 그에 맞춰 줄여요. 분산이 같을 때도 Student와 거의 같은 힘을 내고, 분산과 표본 크기가 함께 다를 때 Student보다 p값을 훨씬 믿을 만하게 내요. 분산이 같다는 확신이 없으면 `equal_var=False`를 쓰는 편이 안전해요.
+
+이런 때 써요.
+
+- 처치군과 대조군, 두 공장, 두 지역처럼 서로 다른 대상의 평균을 견줄 때
+- 같은 대상을 두 번 잰 것이면 짝이 있으니 [`ttest_rel`](/api/htest/ttest_rel/)을 써요
+- 집단이 셋 이상이면 [`f_oneway`](/api/htest/f_oneway/)를 써요
+- 평균이 아니라 분포의 위치를 순위로 견주려면 [`mannwhitneyu`](/api/htest/mannwhitneyu/)를 써요. 표본이 작고 분포가 크게 치우쳤거나 이상값이 많을 때 알맞아요
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> a = [251.2, 249.8, 252.1, 250.6, 251.9, 250.3, 252.4, 251.0]
+>>> b = [249.1, 250.2, 248.7, 249.9, 250.8, 248.9, 249.6]
+>>> r = sd.htest.ttest_ind(a, b)
+>>> r
+TtestIndResult(statistic=3.56201, pvalue=0.00347552, df=13)
+>>> r.conf_int()
+array([0.6148408018391772,  2.510159198160829], dtype=float64)
+```
+
+p값 0.0035로 두 기계의 평균이 같다는 귀무가설을 버려요. A가 B보다 평균 0.61g에서 2.51g 더 담는다고 봐요(95% 구간). 차는 언제나 a − b예요.
+
+Welch의 검정도 거의 같은 답이에요. 자유도가 정수가 아니라는 점이 달라요.
+
+```python
+>>> w = sd.htest.ttest_ind(a, b, equal_var=False)
+>>> w
+TtestIndResult(statistic=3.61095, pvalue=0.003176, df=12.9697)
+>>> w.conf_int()
+array([ 0.627460551622682, 2.4975394483773243], dtype=float64)
+```
+
+## 결과 읽기
+
+| 필드·메서드 | 뜻 |
+|---|---|
+| `statistic` | t 통계량. a의 평균이 더 크면 양수예요 |
+| `pvalue` | p값. `alternative`의 방향으로 잰 꼬리 넓이예요 |
+| `df` | 자유도(`float`). Student는 $n_1 + n_2 - 2$, Welch는 위의 식이에요 |
+| `conf_int(alpha=0.05)` | 평균 차 a − b의 1 − alpha 신뢰구간. 차 ∓ t 분위수 × 차의 표준오차예요 |
+| `summary(alpha=0.05)` | 검정을 표로 적은 글. 제목에 갈래(Student, Welch, Yuen)가 있어요 |
+
+```python
+>>> print(w.summary())
+                          Two-sample t-test (Welch)
+==============================================================================
+Statistic:                       3.611  Alternative:                 two-sided
+P-value:                       0.00318  No. Observations:                 8, 7
+Df:                              12.97
+==============================================================================
+                     [0.025     0.975]
+------------------------------------------------------------------------------
+mean difference       0.627      2.498
+==============================================================================
+```
+
+## Student와 Welch
+
+두 기계 가운데 C는 평균이 A와 비슷하지만 무게가 훨씬 들쭉날쭉해요.
+
+```python
+>>> c = [249.6, 251.8, 247.9, 252.7, 250.1, 248.2, 251.5]
+>>> sd.var(sd.asarray(a), correction=1), sd.var(sd.asarray(c), correction=1)
+(0.8426785714285667, 3.3561904761904775)
+>>> sd.htest.ttest_ind(a, c)
+TtestIndResult(statistic=1.2361, pvalue=0.238291, df=13)
+>>> sd.htest.ttest_ind(a, c, equal_var=False)
+TtestIndResult(statistic=1.18391, pvalue=0.268239, df=8.57135)
+```
+
+분산이 네 배쯤 달라서 Welch의 자유도가 13에서 8.6으로 줄었어요. 흩어짐이 큰 C의 평균이 덜 정확하니, 차를 어림하는 정보가 적다고 본 거예요. 두 분산이 같은지 먼저 [`levene`](/api/htest/levene/)으로 검정하고 그 결과로 갈래를 고르는 방법은 권하지 않아요. 두 단계의 검정이 겹쳐서 실제 유의수준이 정한 값에서 벗어나요. 처음부터 Welch를 쓰면 돼요.
+
+## 한쪽 검정: alternative
+
+`'greater'`는 "a의 평균이 더 크다", `'less'`는 "a의 평균이 더 작다"가 대립가설이에요. 한쪽 구간의 한 끝은 ±inf예요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, alternative='greater')
+TtestIndResult(statistic=3.56201, pvalue=0.00173776, df=13)
+>>> sd.htest.ttest_ind(a, b, alternative='greater').conf_int()
+array([0.7856690100591656,                inf], dtype=float64)
+```
+
+## 이상값에 강하게: trim
+
+B에 아주 가벼운 봉지(235g) 하나가 섞였다고 해 봐요. 평균은 이상값 하나에 크게 끌려가서, 보통의 t 검정은 두 기계의 차이를 놓쳐요.
+
+```python
+>>> b_out = b + [235.0]
+>>> sd.htest.ttest_ind(a, b_out)
+TtestIndResult(statistic=1.81137, pvalue=0.0915866, df=14)
+>>> sd.htest.ttest_ind(a, b_out, trim=0.2)
+TtestIndResult(statistic=3.68724, pvalue=0.00419589, df=10)
+```
+
+`trim=0.2`는 **Yuen의 절삭 t 검정**이에요. 표본마다 크기 n의 20%(g = int(n · trim)개)씩 양 끝에서 잘라 낸 **절삭 평균**을 견줘요.
+
+- 절삭 평균: 작은 쪽 g개와 큰 쪽 g개를 빼고 가운데 h = n − 2g개의 평균이에요.
+- 분산: 잘라 낸 값을 남은 가장 작은 값과 가장 큰 값으로 바꾼 표본(윈저화한 표본)의 제곱합을 h − 1로 나눈 값이에요. 이것을 h로 나눈 것이 절삭 평균의 표준오차의 제곱이에요.
+- 자유도는 h에서 정해져요. 위 예는 a와 b_out이 모두 8개라 g = 1, h = 6이고, Student 갈래의 자유도가 6 + 6 − 2 = 10이에요.
+
+`trim`은 `equal_var`와 함께 써요. `equal_var=False`면 Welch의 자유도 식을 h로 써요. 구간은 절삭 평균의 차의 구간이에요.
+
+```python
+>>> y = sd.htest.ttest_ind(a, b_out, trim=0.2, equal_var=False)
+>>> y
+TtestIndResult(statistic=3.68724, pvalue=0.00441933, df=9.69722)
+>>> y.conf_int()
+array([0.7011171751502724, 2.8655494915163997], dtype=float64)
+>>> print(sd.htest.ttest_ind(a, b_out, trim=0.2).summary().splitlines()[0].strip())
+Two-sample trimmed t-test (Yuen, Student)
+```
+
+절삭은 귀무가설을 바꿔요. 묻는 것이 "평균이 같은가"에서 "절삭 평균이 같은가"로 바뀌어요. 분포가 대칭이면 둘이 같은 값이지만, 치우친 분포에서는 달라요. `trim`은 0 이상 0.5 미만이에요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, trim=0.5)
+Traceback (most recent call last):
+    ...
+ValueError: ttest_ind(): 'trim' must be >= 0 and < 0.5
+```
+
+## 분포 가정 없이: method
+
+`method`에 [재표본 방법](/api/htest/methods/)을 주면 p값을 t 분포 대신 재표본으로 구해요. 통계량은 같은 t이고, 귀무분포만 바꿔요.
+
+- `PermutationMethod()`: 귀무가설에서는 두 표본의 이름표가 의미가 없으니, 두 표본을 합쳐 크기대로 다시 나눈 모든 방법(순열)마다 t를 계산하고 관측한 t가 그 가운데 얼마나 극단인지로 p값을 정해요. 정규분포 가정이 필요 없어요. 나누는 방법의 수가 `n_resamples`(기본 9999) 이하이면 모두 세서 정확한 순열 p값이 나오고, 그보다 많으면 무작위로 뽑아서 `rng`가 필요해요.
+- `MonteCarloMethod(rng=...)`: 그 `rvs`가 뽑은 표본(기본은 표준정규)의 t로 귀무분포를 만들어요. 다른 분포를 가정하고 싶을 때 써요.
+
+```python
+>>> sd.htest.ttest_ind(a, b, method=sd.htest.PermutationMethod())
+TtestIndResult(statistic=3.56201, pvalue=0.00528361, df=13)
+>>> print(sd.htest.ttest_ind(a, b, method=sd.htest.PermutationMethod()).summary())
+                         Two-sample t-test (Student)
+==============================================================================
+Statistic:                       3.562  Alternative:                 two-sided
+P-value:                       0.00528  No. Observations:                 8, 7
+Df:                                 13  P-value:                   permutation
+                                        Resamples:                  6435 (all)
+==============================================================================
+                     [0.025     0.975]
+------------------------------------------------------------------------------
+mean difference       0.615      2.510
+==============================================================================
+```
+
+8 + 7개를 8개와 7개로 나누는 방법은 $\binom{15}{8} = 6435$가지라 모두 셌어요(`6435 (all)`). 그보다 큰 표본은 `rng`를 줘요. 아래 30개와 25개의 표본에서 9999번 뽑은 순열의 p값은 t 분포의 p값과 비슷해요. 데이터가 정규분포에서 뽑혔으니 t 분포가 맞는 귀무분포이기 때문이에요.
+
+```python
+>>> rng = sd.random.default_rng(4)
+>>> x = sd.stats.Normal().sample(30, rng=rng)
+>>> z = sd.stats.Normal(mu=0.2).sample(25, rng=rng)
+>>> sd.htest.ttest_ind(x, z, method=sd.htest.PermutationMethod(rng=sd.random.default_rng(1)))
+TtestIndResult(statistic=-2.35341, pvalue=0.0196, df=53)
+>>> sd.htest.ttest_ind(x, z).pvalue
+0.022343876266020735
+>>> sd.htest.ttest_ind(x, z, method=sd.htest.PermutationMethod())
+Traceback (most recent call last):
+    ...
+TypeError: ttest_ind(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+```
+
+`df`와 `conf_int()`는 `method`와 상관없이 t 분포의 것이에요. 재표본으로 구간을 구하려면 [`bootstrap`](/api/htest/bootstrap/)을 써요. `BootstrapMethod`는 받지 않아요.
+
+## 표본 크기와 axis
+
+두 표본의 크기는 달라도 돼요. 축을 주면 표본 축 밖의 축끼리 브로드캐스트하고, 남은 축마다 검정해요. 아래는 세 기계를 같은 기준 기계 B와 한 번에 견준 예예요.
+
+```python
+>>> M = sd.asarray([a[:7], c, [249.3, 250.0, 248.8, 249.7, 250.6, 249.0, 249.5]])
+>>> rb = sd.htest.ttest_ind(M, b, axis=1)
+>>> rb
+TtestIndResult(batch shape (3,))
+>>> rb.pvalue
+array([0.005587964704194857,  0.39766292081842686,   0.9092886627393877], dtype=float64)
+>>> rb.conf_int().shape
+(3, 2)
+```
+
+배치의 규칙은 [가설검정의 기본](/api/htest/basics/#표본이-여럿일-때의-배치)에 있어요. `nan_policy='omit'`은 표본마다 NaN을 따로 빼요(짝이 없으니 짝째로 빼지 않아요).
+
+## 회귀와의 관계
+
+Student의 t 검정은 집단을 나타내는 0·1 열 하나로 맞춘 회귀에서 그 열의 계수를 검정한 것과 같아요. 기울기가 평균의 차, 그 t값과 p값이 이 검정의 t와 p값이에요(부호는 0·1을 매긴 방향을 따라요). 두 계산은 반올림 차이 안에서 같아요.
+
+```python
+>>> fit = sd.regression.ols(a + b, [1.0] * 8 + [0.0] * 7)
+>>> round(float(fit.tvalues[1]), 10), round(r.statistic, 10)
+(3.562014733, 3.562014733)
+```
+
+집단이 셋 이상이면 [`f_oneway`](/api/htest/f_oneway/)가 같은 관계예요.
+
+## 특수한 경우
+
+| 입력 | 결과 |
+|---|---|
+| 한 표본이 비었음 | 모든 필드가 NaN |
+| Student에서 $n_1 + n_2 - 2 \le 0$(두 표본이 모두 원소 하나) | t, p값이 NaN, `df`는 0 |
+| Student에서 한 표본이 원소 하나 | 그 표본의 분산을 0으로 보고 검정해요(편차가 하나도 없으니 제곱합이 0이에요) |
+| Welch에서 한 표본이라도 원소 하나 | t, p값, `df`가 NaN(그 표본의 분산을 어림할 수 없어요) |
+| 두 표본이 모두 상수(차의 표준오차 0) | t, p값이 NaN, `conf_int()`는 폭 0의 (차, 차) |
+| `'propagate'`에서 NaN이 있음 | 모든 필드가 NaN |
+| ±inf가 있음 | t, p값이 NaN |
+
+```python
+>>> sd.htest.ttest_ind([0.7], [1.0, 2, 3, 4])
+TtestIndResult(statistic=-1.24708, pvalue=0.30086, df=3)
+>>> sd.htest.ttest_ind([0.7], [1.0, 2, 3, 4], equal_var=False)
+TtestIndResult(statistic=nan, pvalue=nan, df=nan)
+>>> k = sd.htest.ttest_ind([2.0, 2, 2, 2], [3.0, 3, 3])
+>>> k, k.conf_int()
+(TtestIndResult(statistic=nan, pvalue=nan, df=5), array([-1.0, -1.0], dtype=float64))
+```
+
+## 정확도
+
+- t의 상대오차는 $10^{-14}$ 안이고(잰 최대 $2.1 \times 10^{-16}$), Welch의 `df`도 $10^{-14}$ 안이에요(잰 최대 $1.7 \times 10^{-16}$).
+- p값은 t 분포의 꼬리를 직접 계산해서 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요. 평균이 표준편차만큼 다른 500개씩의 두 표본처럼 p값이 아주 작은 깊은 꼬리까지 쟀어요.
+- 신뢰구간의 끝은 차와 반폭의 크기에 대해 $10^{-14}$ 안이에요.
+- 두 평균을 반올림 오차가 거의 없게 들고 그 차를 구해서, 두 표본의 평균이 $10^8$처럼 크고 차이가 0.5 수준이어도 자릿수를 지켜요. 데이터를 어떤 수로 곱해도 t와 p값은 반올림 차이 안에서 같아요.
+- 재표본 p값(`method=`)은 무작위라 정확도 대신 같은 `rng` 상태면 같은 비트라는 것을 약속해요. 모든 순열을 센 p값은 정확한 값(센 수의 비)이에요.
+
+참값은 Arb(구간 산술)로 만들었어요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1의 `scipy.stats.ttest_ind`와 같은 검정이에요. `equal_var`, `trim`, `method`의 정의(Yuen의 g = int(n · trim), 순열과 몬테카를로의 귀무분포)도 같아요.
+
+- `axis`의 기본값이 None이에요(scipy는 0). 데이터는 위치로만, 옵션은 키워드로만 받아요.
+- 신뢰구간은 `conf_int(alpha=0.05)`이고 (아래 끝, 위 끝)의 배열이에요.
+- `df`는 언제나 `float`이에요.
+- Welch에서 한 표본이 원소 하나면 `df`도 NaN이에요. scipy는 t, p값이 NaN인데 `df`를 1로 내요.
+- 두 표본이 모두 상수면 NaN이에요. scipy는 평균이 다르면 t = ±inf, p = 0을 내요.
+- `method`의 재표본 방법은 `random_state`가 아니라 sd의 생성기 `rng`를 받고, 모든 순열을 셀 수 없을 때는 `rng`가 꼭 있어야 해요. scipy는 시드 없이 돌아요.

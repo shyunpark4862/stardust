@@ -1,0 +1,191 @@
+---
+kind: function
+title: cramervonmises_2samp
+names: [cramervonmises_2samp]
+group: 두 표본의 분포
+order: 2
+signatures:
+  - "sd.htest.cramervonmises_2samp(x, y, /, *, axis=None, method='auto', nan_policy='propagate', keepdims=False)"
+summary: 두 표본이 같은 분포에서 왔는지 보는 두 표본 Cramér–von Mises 검정이에요. 두 경험 분포 함수의 차의 제곱을 합친 표본 전체에 걸쳐 모은 T로 재요. 표본마다 100개쯤까지 정확한 분포를 쓰고, 동점이 있으면 동점을 조건으로 한 분포예요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 첫째 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 둘째 표본. 크기가 x와 달라도 돼요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 각 표본의 모든 원소를 펼쳐 검정 하나예요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축은 두 표본 사이에서 브로드캐스트해서 칸마다 따로 검정해요.
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "'auto'(기본값, 큰 표본이 20개 이하면 'exact', 넘으면 'asymptotic'), 'exact'(T의 정확한 분포), 'asymptotic'(극한 분포) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 검정의 결과가 NaN), 'omit'(표본마다 NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: Cramervonmises2sampResult
+  desc: "statistic(T), pvalue, method(쓴 분포의 이름)가 든 결과 객체예요. 검정 하나면 Python float와 str, 배치면 배치 모양의 배열이고 method는 배치 모양의 중첩 리스트예요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: x·y가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis·keepdims의 형이 틀렸을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: "method='exact'의 계산량이 상한을 넘을 때(method='asymptotic'을 알려 줘요), method·nan_policy 이름이 틀렸을 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때, axis가 범위 밖이거나 겹칠 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [ks_2samp, anderson_ksamp, epps_singleton_2samp, cramervonmises, basics, results]
+---
+
+## 한눈에 보기
+
+두 표본 Cramér–von Mises 검정은 [`ks_2samp`](/api/htest/ks_2samp/)와 같은 것을 물어요. "두 표본이 같은 분포에서 왔다고 봐도 되나요?"
+
+- **귀무가설**: 두 표본이 같은 연속분포에서 왔어요.
+- **대립가설**: 다른 분포에서 왔어요. 한쪽 검정은 없어요.
+
+어느 두 정류장의 버스 대기 시간(분)을 쟀어요.
+
+```python
+>>> import stardust as sd
+>>> st1 = [3.2, 5.1, 1.4, 7.8, 2.9, 4.4, 6.0, 2.2, 3.7, 5.5, 1.9, 4.8]
+>>> st2 = [2.1, 9.4, 0.8, 11.2, 1.5, 6.9, 0.4, 8.3, 3.0, 12.5, 1.1, 7.2, 10.1, 0.9, 5.8]
+>>> r = sd.htest.cramervonmises_2samp(st1, st2)
+>>> r
+Cramervonmises2sampResult(statistic=0.314198, pvalue=0.130195, method='exact')
+>>> sd.htest.ks_2samp(st1, st2).pvalue
+0.22266067490189176
+```
+
+두 정류장의 대기 시간은 가운데가 비슷하고 둘째 정류장이 훨씬 넓게 퍼져 있어요. Cramér–von Mises의 p값이 KS보다 작아요. 표본이 작아서(20개 이하) `'auto'`가 정확한 분포를 골랐어요.
+
+<Reference />
+
+## 통계량
+
+두 표본을 합쳐 순위를 매기고, $x$의 $i$번째로 작은 값의 합친 순위를 $r_i$, $y$의 $j$번째 값의 순위를 $s_j$라 해요. $n_x$, $n_y$는 표본 크기, $N = n_x + n_y$예요.
+
+$$
+U = n_x\sum_{i=1}^{n_x} (r_i - i)^2 + n_y\sum_{j=1}^{n_y} (s_j - j)^2, \qquad T = \frac{U}{n_x n_y N} - \frac{4 n_x n_y - 1}{6N}
+$$
+
+$T$는 두 경험 분포 함수의 차의 제곱을 합친 표본의 모든 점에서 더한 값을 표준화한 것이에요(Anderson 1962). [`ks_2samp`](/api/htest/ks_2samp/)의 $D$가 가장 큰 차 하나만 보는 것과 달리 모든 곳의 차를 더해서, 퍼짐이나 모양이 조금씩 다른 경우에 흔히 더 힘이 있어요. 동점이 있으면 중간 순위를 써요.
+
+$T$는 순위만으로 정해져서, 값을 단조롭게 바꿔도(로그를 씌우는 등) 그대로예요.
+
+```python
+>>> sd.htest.cramervonmises_2samp(sd.log(sd.asarray(st1)), sd.log(sd.asarray(st2))).statistic == r.statistic
+True
+```
+
+## `method`: 정확한 분포와 점근
+
+| `method` | p값 | 결과의 `method` |
+|---|---|---|
+| `'auto'`(기본값) | 큰 표본이 20개 이하면 정확, 넘으면 점근 | `'exact'` 또는 `'asymptotic'` |
+| `'exact'` | 합친 표본을 두 표본으로 나누는 모든 방법에 걸친 $T$의 정확한 분포 | `'exact'` |
+| `'asymptotic'` | $T$를 표준화해서 한 표본 Cramér–von Mises의 극한 분포와 견줘요 | `'asymptotic'` |
+
+`'auto'`의 문턱은 20이지만, `'exact'`를 직접 주면 표본마다 100개쯤까지 정확한 분포를 계산할 수 있어요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> a = sd.stats.Normal().sample(50, rng=rng)
+>>> b = sd.stats.Normal(sigma=2.0).sample(50, rng=rng)
+>>> sd.htest.cramervonmises_2samp(a, b)
+Cramervonmises2sampResult(statistic=0.3722, pvalue=0.0859878, method='asymptotic')
+>>> sd.htest.cramervonmises_2samp(a, b, method='exact')
+Cramervonmises2sampResult(statistic=0.3722, pvalue=0.0868366, method='exact')
+```
+
+50 × 50에서 점근 p값은 정확한 p값과 0.001쯤 달라요. 계산량이 상한(합친 목록의 항목 10⁹개, 동시에 드는 항목 10⁷개)을 넘으면 `method='exact'`는 `ValueError`로 `'asymptotic'`을 알려 줘요.
+
+```python
+>>> big1 = sd.stats.Normal().sample(3000, rng=rng)
+>>> big2 = sd.stats.Normal().sample(2999, rng=rng)
+>>> sd.htest.cramervonmises_2samp(big1, big2, method='exact')
+Traceback (most recent call last):
+    ...
+ValueError: cramervonmises_2samp(): method='exact' needs about 4.61e+11 operations for this input, more than its cap of 1e+09; use method='asymptotic'
+>>> sd.htest.cramervonmises_2samp(big1, big2).method
+'asymptotic'
+```
+
+## 동점이 있을 때
+
+정확한 분포는 **관측한 동점을 조건으로 한** 분포예요. 합친 값의 묶음은 그대로 두고 어느 표본에 속하는지만 모든 방법으로 바꿔서 센 분포라, 값이 몇 가지뿐인 개수 데이터에도 맞는 p값이에요.
+
+```python
+>>> d1 = [0, 1, 1, 2, 0, 3, 1, 1, 2, 0, 1, 4, 2, 1, 0]
+>>> d2 = [1, 2, 3, 2, 1, 4, 2, 3, 5, 2, 1, 3, 2, 4, 3]
+>>> sd.htest.cramervonmises_2samp(d1, d2)
+Cramervonmises2sampResult(statistic=0.778889, pvalue=0.00758589, method='exact')
+```
+
+## 결과 읽기
+
+결과는 `statistic`(T), `pvalue`, `method` 세 필드예요. scipy의 결과처럼 튜플로 풀리지 않으니 이름으로 읽어요. 필드는 읽기만 해요.
+
+```python
+>>> r.statistic, r.pvalue, r.method
+(0.31419753086419755, 0.13019461730593782, 'exact')
+>>> print(r.summary())
+                       Two-sample Cramer-von Mises test
+==============================================================================
+Statistic:                      0.3142  Method:                          exact
+P-value:                         0.130  No. Observations:               12, 15
+==============================================================================
+```
+
+결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고, 나머지 축은 두 표본 사이에서 브로드캐스트해서 칸마다 따로 검정해요. 방법은 줄마다 그 크기로 고르고, 결과의 `method`는 줄마다의 이름을 담은 리스트예요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> B = sd.stats.Normal().sample((3, 15), rng=sd.random.default_rng(14))
+>>> C = sd.stats.Normal(sigma=1.5).sample((3, 12), rng=sd.random.default_rng(15))
+>>> rb = sd.htest.cramervonmises_2samp(B, C, axis=1)
+>>> rb.pvalue, rb.method
+(array([ 0.6362717486219976,  0.3983055546926862, 0.48892587722174474], dtype=float64), ['exact', 'exact', 'exact'])
+```
+
+## 특수한 경우
+
+- **한 표본의 값이 2개 미만**이면 NaN이에요.
+- 점근 p값은 극한 분포의 누적분포를 1에서 빼서 얻어서, 오차가 절대 1e-16쯤이에요. 1e-15보다 작은 점근 p값은 "아주 작다"는 것 말고는 뜻이 없어요. 정확한 p값은 깊은 꼬리에서도 상대오차로 맞아요.
+- NaN은 `nan_policy`를 따라요.
+
+```python
+>>> sd.htest.cramervonmises_2samp([1.0], [1.0, 2.0, 3.0])
+Cramervonmises2sampResult(statistic=nan, pvalue=nan, method='exact')
+>>> sd.htest.cramervonmises_2samp(a, b, alternative='less')
+Traceback (most recent call last):
+    ...
+TypeError: cramervonmises_2samp(): unexpected keyword argument 'alternative'
+```
+
+## 정확도
+
+- $T$는 정수로 센 $U$에서 한 번 반올림한 값이라 정확한 유리수 참값과 견줘 13문제에서 상대오차가 6.8e-17 안이에요.
+- 정확한 분포의 p값은 확률을 양수로만 더해서 상대 1e-16 안이에요(동점의 조건부 분포, 30 × 26, 서로소인 23 × 19, 완전히 갈린 표본 포함).
+- 점근 p값은 극한 분포의 1 − cdf라 절대오차로 약속해요. 꼬리(참값 1.9e-24)에서 절대 2.2e-16이에요.
+- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1 기준이에요.
+
+- `scipy.stats.cramervonmises_2samp(x, y)`와 같은 통계량, 같은 `method`의 이름과 `'auto'`의 문턱(20)이에요. scipy처럼 결과가 풀리지 않아요. 기본 `axis`는 None이에요(scipy는 0). 결과에 쓴 분포의 이름 `method`가 있어요.
+- `'exact'`를 큰 표본까지 쓸 수 있어요. scipy의 `'exact'`는 모든 경우를 하나씩 늘어놓아서 40 × 35쯤이면 몇 초가 걸려요.
+- 동점이 있을 때 `'exact'`가 달라요. scipy는 동점이 없는 분포에 중간 순위의 $U$를 넣어서 조건부 분포와 1.2–7.4% 달라요.
+- $T$를 정수에서 바로 계산해요. scipy는 $U/(kN) - (4k - 1)/(6N)$의 뺄셈으로 2000 × 3000에서 8.5e-14 틀려요.
+- 점근 p값의 꼬리가 맞아요. scipy는 극한 분포의 급수를 1e-7에서 멈춰서 300 × 300의 꼬리(참값 1.9e-24)에서 1.1e-10을 내요.
+- 한 표본이 2개 미만이면 경고 없이 NaN이에요. scipy도 NaN이지만 경고(`SmallSampleWarning`)를 내요.

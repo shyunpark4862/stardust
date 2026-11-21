@@ -1,0 +1,163 @@
+---
+kind: function
+title: poisson_means_test
+names: [poisson_means_test]
+group: 비율과 이항
+order: 7
+signatures:
+  - "sd.htest.poisson_means_test(k1, n1, k2, n2, /, *, diff=0, alternative='two-sided')"
+summary: 두 포아송 과정의 발생률(단위 크기당 평균 횟수)이 같은지, 또는 차가 diff인지를 Krishnamoorthy–Thomson의 E-test로 봐요. 귀무가설 아래에서 모든 결과의 확률을 더해 p값을 구해서, 개수가 작거나 꼬리가 깊어도 p값을 빠뜨리지 않아요.
+params:
+  - name: k1
+    type: int
+    kind: positional-only
+    desc: 첫째 과정에서 센 횟수. 0 이상의 int예요.
+  - name: n1
+    type: float
+    kind: positional-only
+    desc: 첫째 과정을 지켜본 크기(시간, 면적, 인원 등). 양의 유한한 실수예요.
+  - name: k2
+    type: int
+    kind: positional-only
+    desc: 둘째 과정에서 센 횟수. 0 이상의 int예요.
+  - name: n2
+    type: float
+    kind: positional-only
+    desc: 둘째 과정을 지켜본 크기. 양의 유한한 실수예요.
+  - name: diff
+    type: float
+    kind: keyword-only
+    desc: 귀무가설의 발생률 차 λ₁ − λ₂. 0 이상의 유한한 수이고 기본값은 0이에요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값, λ₁ − λ₂ ≠ diff), 'less'(λ₁ − λ₂ < diff), 'greater'(λ₁ − λ₂ > diff) 중 하나예요."
+returns:
+  type: PoissonMeansTestResult
+  desc: "statistic(T), pvalue와 summary()가 있고 (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: k1·k2가 int가 아닐 때, n1·n2·diff가 수가 아닐 때, alternative가 문자열이 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: k1·k2가 음수일 때, n1·n2가 양의 유한한 수가 아닐 때, diff가 음수이거나 유한하지 않을 때, alternative 이름이 틀렸을 때.
+seeAlso: [binomtest, test_proportions_2indep, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+공장 A에서는 10일 동안 사고가 30건, 공장 B에서는 12일 동안 18건 났어요. 하루당 사고율은 A가 3.0건, B가 1.5건이에요. 두 공장의 사고율이 같은데 우연히 이만큼 차이가 났을까요?
+
+드물게 일어나는 사건의 횟수는 흔히 포아송 분포를 따라요. k₁ ~ Poisson(λ₁n₁), k₂ ~ Poisson(λ₂n₂)이고 λ가 단위 크기당 발생률이에요.
+
+- **귀무가설**: λ₁ − λ₂ = diff (기본값 0, 두 발생률이 같음)
+- **대립가설**: λ₁ − λ₂ ≠ diff, < diff(`'less'`), > diff(`'greater'`)
+
+E-test는 표준화한 차
+
+$$
+T = \frac{k_1/n_1 - k_2/n_2 - d}{\sqrt{k_1/n_1^2 + k_2/n_2^2}}
+$$
+
+를 통계량으로 써요. p값은 귀무가설을 만족하도록 추정한 두 발생률 아래에서, 가능한 모든 횟수의 쌍 (x₁, x₂) 가운데 T가 관측만큼 극단인 쌍의 확률을 더한 값이에요. 정규 근사가 아니라 포아송 분포를 그대로 더하므로, 횟수가 작을 때도 쓸 수 있어요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.poisson_means_test(30, 10.0, 18, 12.0)
+>>> r
+PoissonMeansTestResult(statistic=2.30089, pvalue=0.0213527)
+>>> T, p = r
+```
+
+p = 0.021이라 유의수준 0.05에서 두 공장의 사고율이 다르다고 봐요. A의 사고율이 더 높다는 방향을 처음부터 물었다면 한쪽 검정이에요.
+
+```python
+>>> sd.htest.poisson_means_test(30, 10.0, 18, 12.0, alternative='greater').pvalue
+0.009243788265411751
+```
+
+`summary()`는 머리에 개수와 크기를 함께 적어요.
+
+```python
+>>> print(r.summary())
+                         Poisson means test (E-test)
+==============================================================================
+Statistic:                       2.301  Alternative:                 two-sided
+P-value:                        0.0214  Counts:                         30, 18
+                                        Sizes:                          10, 12
+==============================================================================
+```
+
+## 차가 diff인지
+
+"A의 사고율이 B보다 하루 0.5건 넘게 높은가"는 `diff=0.5`, `alternative='greater'`로 물어요. 귀무가설은 λ₁ − λ₂ = 0.5이고, 통계량의 분자에서 0.5를 빼요.
+
+```python
+>>> sd.htest.poisson_means_test(30, 10.0, 18, 12.0, diff=0.5, alternative='greater')
+PoissonMeansTestResult(statistic=1.53393, pvalue=0.058184)
+```
+
+`diff`는 0 이상이어야 해요. 첫째 과정이 더 작다는 가설을 세우려면 두 과정의 순서를 바꿔서 줘요.
+
+## 퇴화한 입력
+
+두 횟수가 모두 0이면 T = 0이고 p값은 1이에요. 귀무가설 아래에서 추정한 둘째 발생률 (k₁ + k₂ − diff·n₁)/(n₁ + n₂)가 0 이하가 되면 검정할 수 없어 (0, 1)을 돌려줘요.
+
+```python
+>>> sd.htest.poisson_means_test(0, 10.0, 0, 12.0)
+PoissonMeansTestResult(statistic=0, pvalue=1)
+>>> sd.htest.poisson_means_test(2, 10.0, 0, 12.0, diff=1.0)
+PoissonMeansTestResult(statistic=0, pvalue=1)
+```
+
+## 입력과 에러
+
+횟수는 int, 크기는 양의 실수예요. 크기에는 정수가 아닌 값(관찰한 날수 9.5 등)도 돼요.
+
+```python
+>>> sd.htest.poisson_means_test(30, 9.5, 18, 12.0).pvalue
+0.014147455252614283
+>>> sd.htest.poisson_means_test(1.5, 10.0, 2, 12.0)
+Traceback (most recent call last):
+    ...
+TypeError: poisson_means_test(): 'k1' must be an int, not float
+>>> sd.htest.poisson_means_test(3, 0.0, 2, 12.0)
+Traceback (most recent call last):
+    ...
+ValueError: poisson_means_test(): 'n1' must be positive and finite
+>>> sd.htest.poisson_means_test(3, 10.0, 2, 12.0, diff=-1)
+Traceback (most recent call last):
+    ...
+ValueError: poisson_means_test(): 'diff' must be non-negative and finite
+```
+
+## 다른 검정과 고르기
+
+- diff = 0이면, 횟수의 합 k₁ + k₂를 조건으로 k₁이 Binomial(k₁ + k₂, n₁/(n₁ + n₂))를 따른다는 조건부 검정([binomtest](/api/htest/binomtest/))도 쓸 수 있어요(아래 예). E-test는 보통 그보다 검정력이 커요.
+- 개수가 아니라 "n번 중 k번"의 비율이면 [test_proportions_2indep](/api/htest/test_proportions_2indep/)예요.
+
+```python
+>>> sd.htest.binomtest(30, 48, p=10.0 / 22.0).pvalue
+0.02008247898762943
+```
+
+## 정확도
+
+p값의 합은 가능한 모든 결과를 다 더해요. 남은 확률이 합의 2⁻⁶⁰ 아래가 될 때까지 더해서 버리는 부분이 반올림보다 작아요. Arb(구간 산술)로 T를 정확히 견주고 포아송 꼬리를 더한 참값과 견주면, p값은 시험한 13문제에서 상대 3.5e-16 안이에요(4.6e-21 같은 깊은 꼬리 포함, 계약 대비 0.035).
+
+## scipy를 아는 분께
+
+- 같은 E-test이고 통계량은 반올림 크기까지 같아요. p값은 scipy와 다를 수 있어요. scipy는 두 합을 포아송 분포의 [ppf(1e-10), ppf(1 − 1e-16)] 범위로 잘라 깊은 꼬리에서 p값을 낮게 내요(시험한 문제에서 9000배까지). 또 격자의 T와 관측의 T를 다른 부동소수 식으로 계산해, 관측과 같은 결과를 빠뜨리기도 해요. 여기서는 모든 결과를 더하고 같은 T는 같게 판정해요.
+- `k1`, `n1`, `k2`, `n2`는 위치로만, 나머지는 키워드로만 받아요.
+
+```python
+>>> import scipy.stats
+>>> float(scipy.stats.poisson_means_test(26, 2.89, 30, 5.86, alternative='less').pvalue)
+0.9812573909586674
+>>> sd.htest.poisson_means_test(26, 2.89, 30, 5.86, alternative='less').pvalue
+0.981912903261572
+```
+
+이 예에서 scipy의 p값은 관측과 같은 극단의 결과를 빠뜨려 6.6e-4 낮아요.

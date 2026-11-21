@@ -407,6 +407,10 @@ array([], dtype=float64)
 
 `svd`는 행렬에 대해 가장 많은 것을 알려 주는 분해지만 그만큼 계산이 무거워요. 연립방정식을 푸는 것이 목적이라면 [solve](/api/linalg/solve/)나 [lstsq](/api/linalg/lstsq/)를, 숫자 하나(랭크, 조건수, 노름)만 필요하다면 그 함수를 바로 쓰세요.
 
+## 희소 행렬과 큰 행렬에서는
+
+큰 행렬에서 가장 큰 특이값 몇 개와 그 특이벡터만 필요하면 [`sd.sparse.svds`](/api/sparse/svds/)를 써요. 행렬 전체를 분해하지 않고 행렬과 벡터의 곱으로 찾아요. 희소 행렬과 밀집 배열을 모두 받아요. 희소 배열을 `svd`에 넣으면 `sd.sparse.svds`를 알려 주는 `TypeError`예요.
+
 ## numpy·scipy를 아는 분께
 
 - **기본이 줄인 꼴이에요.** `np.linalg.svd`와 `scipy.linalg.svd`의 기본은 `full_matrices=True`(여기의 `mode='complete'`)지만, `sd.linalg.svd`의 기본은 `mode='reduced'`(`full_matrices=False`)예요. 정사각이 아닌 행렬에서 `U`나 `Vh`의 모양이 numpy의 기본 결과와 달라요.

@@ -1,0 +1,153 @@
+---
+title: bandwidth
+names: [bandwidth]
+group: 특수 구조
+order: 3
+signatures:
+  - "sd.linalg.bandwidth(x, /)"
+summary: 행렬의 0이 아닌 원소가 주대각선에서 아래로 몇 줄, 위로 몇 줄까지 퍼져 있는지(띠 폭)를 재요. 삼각 행렬인지 알아볼 때도 써요.
+params:
+  - name: x
+    type: ndarray
+    kind: positional-only
+    desc: 잴 행렬. 모양은 (..., M, N)이고 정사각이 아니어도 돼요. 어떤 dtype이든 받아요.
+returns:
+  type: BandwidthResult
+  desc: 아래 띠 폭 lower와 위 띠 폭 upper. 행렬 하나면 두 Python int이고, 배치면 배치 모양의 int64 배열(쓰기 금지)이에요. (lower, upper)로 풀 수 있어요.
+raises:
+  - type: TypeError
+    desc: x가 stardust 배열이 아닐 때(리스트, 희소 배열 포함).
+  - type: ValueError
+    desc: x가 2차원보다 작을 때.
+seeAlso: [banded, solve_triangular, block_diag, trace-diagonal, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+0이 아닌 원소가 주대각선 근처의 몇 줄에만 모인 행렬을 **띠 행렬**이라고 해요. `bandwidth`는 그 띠가 주대각선 아래로 몇 줄(`lower`), 위로 몇 줄(`upper`)인지 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> T = sd.asarray([[2.0, -1.0, 0.0, 0.0],
+...                 [-1.0, 2.0, -1.0, 0.0],
+...                 [0.0, -1.0, 2.0, -1.0],
+...                 [0.0, 0.0, -1.0, 2.0]])
+>>> sd.linalg.bandwidth(T)
+BandwidthResult(lower=1, upper=1)
+```
+
+<Fig caption="삼중대각 행렬: 0이 아닌 원소(진한 칸)가 주대각선과 바로 아래 한 줄, 바로 위 한 줄에만 있어요. 그래서 lower = 1, upper = 1이에요.">
+  <ArrayFig name="T" data={[[2, -1, 0, 0], [-1, 2, -1, 0], [0, -1, 2, -1], [0, 0, -1, 2]]} tones={[['b', 'b', 'm', 'm'], ['b', 'b', 'b', 'm'], ['m', 'b', 'b', 'b'], ['m', 'm', 'b', 'b']]} note="lower 1, upper 1" />
+</Fig>
+
+정확히 말하면 `lower`는 0이 아닌 원소 `x[i, j]`(i > j) 가운데 i − j가 가장 큰 값, `upper`는 j > i인 원소 가운데 j − i가 가장 큰 값이에요. 그런 원소가 없으면 0이에요.
+
+<Reference />
+
+## 결과 읽기
+
+결과는 `lower`, `upper` 두 필드를 가진 `BandwidthResult`예요. 이름으로 읽거나 두 수로 풀어서 받아요.
+
+```python
+>>> r = sd.linalg.bandwidth(T)
+>>> r.lower, r.upper
+(1, 1)
+>>> lo, up = r
+>>> lo + up + 1
+3
+```
+
+`lo + up + 1`은 띠의 줄 수예요. 띠 행렬 풀이 [`solve_banded`](/api/linalg/banded/)의 띠 저장 형식이 이 줄 수만큼의 행을 가져요. 두 값을 `lower_bandwidth=`, `upper_bandwidth=`에 그대로 넘길 수 있어요.
+
+## 삼각 행렬인지 알아보기
+
+`upper`가 0이면 주대각선 위가 모두 0이라 아래 삼각 행렬이고, `lower`가 0이면 위 삼각 행렬이에요. 둘 다 0이면 대각 행렬이에요.
+
+```python
+>>> sd.linalg.bandwidth(sd.tril(sd.ones((4, 4))))
+BandwidthResult(lower=3, upper=0)
+>>> sd.linalg.bandwidth(sd.triu(sd.ones((4, 4))))
+BandwidthResult(lower=0, upper=3)
+>>> sd.linalg.bandwidth(sd.eye(3))
+BandwidthResult(lower=0, upper=0)
+```
+
+그래서 [`solve_triangular`](/api/linalg/solve_triangular/)에 넘기기 전에 행렬이 정말 삼각인지 확인하는 데 쓸 수 있어요. `solve_triangular`는 `upper=`로 고른 쪽만 읽고 반대쪽은 보지 않으므로, 삼각이 아닌 행렬을 넣어도 에러 없이 다른 답을 내요.
+
+```python
+>>> L = sd.asarray([[2.0, 0.0], [1.0, 3.0]])
+>>> sd.linalg.bandwidth(L).upper == 0
+True
+```
+
+## 무엇을 0이 아닌 것으로 보나요
+
+0이 아닌 것은 `x != 0`이에요. −0.0은 0이고, NaN은 0이 아니에요. 복소수는 실수부나 허수부 가운데 하나라도 0이 아니면 0이 아니에요. bool은 `True`가 0이 아니에요.
+
+```python
+>>> sd.linalg.bandwidth(sd.asarray([[1.0, -0.0], [sd.nan, 1.0]]))
+BandwidthResult(lower=1, upper=0)
+```
+
+값의 크기는 보지 않아요. 1e-300처럼 아주 작은 수도 0이 아니므로 띠를 넓혀요. 반올림 오차로 생긴 작은 값을 0으로 치고 싶으면 먼저 [`where`](/api/array/where/)로 0으로 바꾼 다음 재요.
+
+## 정사각이 아닌 행렬과 빈 행렬
+
+정사각이 아니어도 같은 정의예요. 원소가 하나도 없으면 두 값 모두 0이에요.
+
+```python
+>>> sd.linalg.bandwidth(sd.asarray([[1.0, 0.0, 0.0, 5.0], [0.0, 1.0, 0.0, 0.0]]))
+BandwidthResult(lower=0, upper=3)
+>>> sd.linalg.bandwidth(sd.zeros((0, 3)))
+BandwidthResult(lower=0, upper=0)
+```
+
+## 여러 행렬을 한꺼번에
+
+3차원 이상의 배열이면 마지막 두 축의 행렬마다 따로 재요. 두 필드는 배치 모양의 int64 배열이고, 쓰기 금지예요.
+
+```python
+>>> stack = sd.stack([sd.eye(3), T[:3, :3], sd.tril(sd.ones((3, 3)))])
+>>> b = sd.linalg.bandwidth(stack)
+>>> b.lower
+array([0, 1, 2], dtype=int64)
+>>> b.upper
+array([0, 1, 0], dtype=int64)
+```
+
+## 띠 밖의 원소만 읽어요
+
+`bandwidth`는 띠를 넓힐 수 있는 원소만 봐요. 지금까지 찾은 띠의 바깥쪽부터 살펴서, 이미 찾은 띠 안의 원소는 읽지 않아요. 그래서 꽉 찬 행렬이면 모서리의 원소에서 바로 가장 넓은 띠가 정해져 일찍 끝나요. 띠 행렬은 띠 바깥의 0을 모두 읽어야 띠가 그보다 넓지 않다는 것을 알 수 있어요.
+
+## 희소 행렬의 짝: spbandwidth
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 띠 폭은 [`sd.sparse.spbandwidth`](/api/sparse/spbandwidth/)가 재요. 같은 `BandwidthResult`를 돌려주고, 희소 행렬이 이 행렬에서 만들어졌다면(저장된 0이 없으면) 두 함수의 값이 같아요. 희소 행렬의 삼각 판정은 [`sd.sparse.is_sptriangular`](/api/sparse/is_sptriangular/)이고, 밀집 행렬에서는 위의 `upper == 0`, `lower == 0`이 그 짝이에요.
+
+```python
+>>> sd.sparse.spbandwidth(sd.sparse.csr_array(T))
+BandwidthResult(lower=1, upper=1)
+```
+
+희소 배열을 `sd.linalg.bandwidth`에 넣으면 `spbandwidth`를 알려 주는 `TypeError`예요.
+
+## 조심할 점
+
+### 2차원 이상이어야 해요
+
+1차원 배열에는 대각선이 없어서 `ValueError`예요. 리스트도 받지 않아요(`TypeError`).
+
+```python
+>>> sd.linalg.bandwidth(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+ValueError: bandwidth(): 'x' must have at least 2 dimensions, got 1
+```
+
+## numpy·scipy를 아는 분께
+
+- `scipy.linalg.bandwidth`와 같은 정의예요. 결과는 튜플 대신 이름 있는 `BandwidthResult`이고, 튜플처럼 풀 수 있어요.
+- 배치를 받아요. 배치면 scipy처럼 행렬마다 하나씩, 배치 모양의 배열이에요.
+- numpy에는 이 함수가 없어요.

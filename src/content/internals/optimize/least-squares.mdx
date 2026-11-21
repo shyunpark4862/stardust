@@ -194,7 +194,7 @@ m = n이면 거꾸로 QR이 두 번(LAPACK, 그 뒤 R₀의 피벗 QR)에서 한
 
 ## 반복 안의 차분: scipy의 2점과 3점
 
-`least_squares`의 반복은 scipy 1.18.1 `approx_derivative`의 차분을 C++로 옮긴 것을 써요(`csrc/optimize/diff.hpp`). 간격의 규칙과 경계에 맞추는 방법이 scipy와 같아서 부르는 점도 같아요.
+`least_squares`의 반복은 scipy 1.18.1 `approx_derivative`의 차분을 C++로 옮긴 것을 써요(`csrc/differentiate/steps.hpp`). 간격의 규칙과 경계에 맞추는 방법이 scipy와 같아서 부르는 점도 같아요.
 
 ### 간격
 
@@ -203,7 +203,7 @@ m = n이면 거꾸로 QR이 두 번(LAPACK, 그 뒤 R₀의 피벗 QR)에서 한
 scipy는 간격을 $h = r\cdot\operatorname{sign}(x_j)\cdot\max(1, \lvert x_j\rvert)$로 잡아요($r = \sqrt{\varepsilon}$ 또는 $\varepsilon^{1/3}$). $\lvert x_j\rvert \lt 1$에서 $\max(1, \cdot)$가 간격을 절대 간격으로 바꿔서, $x_j = 0$ 근처에서 간격이 0으로 줄지 않아요. `diff_step`을 주면 상대 간격 $\text{diff\_step}\cdot\lvert x_j\rvert$를 쓰되, 그것이 $x_j$에 더해서 사라지면 기본 간격으로 돌아가요.
 
 ```cpp
-// csrc/optimize/diff.hpp
+// csrc/differentiate/steps.hpp
 inline double absolute_step(double x, double rstep, bool has_rel, double rel) {
     const double sign = x >= 0 ? 1.0 : -1.0;
     const double dflt = rstep * sign * std::max(1.0, std::abs(x));
@@ -220,7 +220,7 @@ inline double absolute_step(double x, double rstep, bool has_rel, double rel) {
 `'trf'`에 경계가 있으면 `fun`은 경계 밖의 점을 받지 않아요. 2점 차분은 $x_j + h$가 경계를 넘고 반대쪽에 그만한 여유가 있으면 $-h$로 바꾸고, 어느 쪽에도 여유가 없으면 더 넓은 쪽 경계까지의 거리를 간격으로 써요. 3점 차분은 양쪽에 $h$만큼의 여유가 있으면 중앙 차분이고, 아니면 넓은 쪽으로 한쪽 3점 꼴 $(x, x + h, x + 2h)$를 써요. 그 간격은 넓은 쪽 거리의 절반을 넘지 않게 줄여요.
 
 ```cpp
-// csrc/optimize/diff.hpp
+// csrc/differentiate/steps.hpp
 inline double adjust_two_sided(double x, double h, double lb, double ub, bool& one_sided) {
     h = std::abs(h);
     one_sided = false;

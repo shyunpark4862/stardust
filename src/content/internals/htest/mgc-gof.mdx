@@ -1,0 +1,148 @@
+---
+title: MGC, BWS, 적합도의 몬테카를로
+group: 재표본
+order: 2
+summary: multiscale_graphcorr가 국소 상관의 지도를 순위 칸의 2차원 누적합으로 만들고 순열마다 공분산만 다시 세는 방법, bws_test의 순위 통계량과 나열, goodness_of_fit이 최우추정을 괄호와 단조인 점수 방정식으로 풀어 몬테카를로 표본마다 다시 맞추는 방법을 설명해요.
+seeAlso: [resampling, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+이 페이지의 세 검정은 [재표본](/internals/htest/resampling/)의 틀(스트림, 나열, p값의 규칙)을 그대로 쓰고, 통계량을 C++에서 계산해요.
+
+| 검정 | 통계량 | 귀무분포 | 코드 |
+|---|---|---|---|
+| [`multiscale_graphcorr`](/api/htest/multiscale_graphcorr/) | 국소 상관 지도의 매끄럽게 한 최댓값 | $y$의 행·열을 함께 섞는 순열 | `csrc/htest/mgc.hpp` |
+| [`bws_test`](/api/htest/bws_test/) | Baumgartner–Weiss–Schindler의 $B$ | 합친 표본의 순위의 순열 | `resampling.cpp`의 `bws` |
+| [`goodness_of_fit`](/api/htest/goodness_of_fit/) | 맞춘 분포에 대한 A², D, W², Filliben | 맞춘 분포에서 뽑은 표본(모수를 다시 맞춰요) | `csrc/htest/mle.hpp` |
+
+## 다중 척도 그래프 상관
+
+### 거리 행렬의 순위와 중심화
+
+MGC(Vogelstein 외, 2019)는 두 표본의 거리 행렬 $D^x$, $D^y$에서 출발해요. 계산은 scipy의 `_mgc_stat`과 같아요.
+
+1. 행렬마다 열 $j$에서 거리의 **조밀 순위**를 매겨요. 같은 거리는 같은 순위이고, 다음 값은 바로 다음 순위예요. 순위 $k$는 "점 $j$의 $k$번째 이웃까지"를 뜻해요.
+2. 열마다 중심화해요. $c_{ij} = d_{ij} - \sum_i d_{ij}/(n - 1)$이고 대각은 0이에요.
+
+국소 공분산은 척도 $(k, l)$마다, $x$에서 순위가 $k$ 이하이고 $y$에서 순위가 $l$ 이하인 짝들의 $a_{ij}b_{ji}$를 더하고 두 합의 곱 / $n^2$을 빼요. scipy가 $x$의 $(i, j)$와 $y$의 $(j, i)$를 짝지으므로 여기서도 그래요. 모든 $(k, l)$을 따로 더하면 $O(n^2m^2)$인데, 짝 하나는 칸 $(\text{rank}^x_{ij}, \text{rank}^y_{ji})$ 하나에만 들어가요. 그래서 각 짝의 곱을 그 칸에 한 번 더하고, 순위 칸의 2차원 누적합을 만들면 모든 척도의 합이 한 번에 나와요.
+
+```cpp
+    // csrc/htest/mgc.hpp
+    for (i64 i = 0; i < n; ++i) {
+        const i64 pi = perm[i];
+        for (i64 j = 0; j < n; ++j) {
+            // y's entry (j, i): scipy's _local_covariance(cent_x, cent_y.T, rank_x, rank_y.T)
+            const std::size_t qx = static_cast<std::size_t>(i * n + j), qy = static_cast<std::size_t>(perm[j] * n + pi);
+            sc.cov[static_cast<std::size_t>(x.rank[qx] * my + y.rank[qy])] += x.cent[qx] * y.cent[qy];
+        }
+    }
+    double* c = sc.cov.data();
+    for (i64 k = 1; k < mx; ++k) c[k * my] += c[(k - 1) * my];
+    for (i64 l = 1; l < my; ++l) c[l] += c[l - 1];
+    for (i64 k = 0; k + 1 < mx; ++k)
+        for (i64 l = 0; l + 1 < my; ++l)
+            c[(k + 1) * my + l + 1] += c[(k + 1) * my + l] + c[k * my + l + 1] - c[k * my + l];
+```
+
+국소 분산은 같은 행렬의 짝 $(i, j)$와 $(j, i)$의 곱을 두 순위 가운데 큰 쪽의 칸에 더한 누적합이에요. 국소 상관은 공분산을 두 분산의 제곱근으로 나눈 값이고(분산이 양수가 아니면 0, 1을 넘으면 1), 그 지도가 `mgc_dict['mgc_map']`이에요.
+
+### 문턱과 연결 영역
+
+통계량은 지도의 최댓값을 그대로 쓰지 않아요. 우연히 큰 국소 상관을 피하려고 scipy의 규칙대로 매끄럽게 해요.
+
+- 문턱은 국소 상관의 귀무분포를 Beta$(a, a)$로 근사한 분위수예요. $a = (n - 1)(n - 4)/4 - 1/2$, 분위수의 수준은 $1 - 0.02/(n - 1)$이고 $[-1, 1]$로 옮겨요(sd.stats `Beta`의 `icdf`). 전역 상관(지도의 마지막 칸)이 더 크면 그것이 문턱이에요.
+- 문턱을 넘는 칸들의 4-연결 영역에 래스터 순서로 번호를 붙여요(`scipy.ndimage.label`과 같은 번호). 가장 큰 영역(같으면 먼저 것)이 그 넓이가 $\lceil 0.02\max(m_x, m_y)\rceil\cdot\min(m_x, m_y)$ 이상이면, 그 안의 최댓값이 전역 상관 이상일 때 그것이 통계량이고, 그 칸이 최적 척도예요. 아니면 전역 상관이 통계량이에요.
+
+### 순열은 공분산만 다시
+
+순열 $p$는 $y$의 관측을 섞으므로 $D^y$의 행과 열을 함께 섞어요. 순위와 중심화한 값은 원래 행렬의 $(p_i, p_j)$에서 읽으면 되고, 국소 분산과 순위별 합은 바뀌지 않아요. 그래서 순열 하나는 위의 공분산 누적과 누적합만 다시 해서 $O(n^2)$이에요. 순열은 스레드풀에서 나란히 돌고, 메모리는 입력 거리 행렬과 순위·중심화(약 $24n^2$ 바이트)에 스레드마다 약 $20n^2$ 바이트예요.
+
+```python
+>>> t = sd.linspace(-1.0, 1.0, 15)
+>>> u = t * t
+>>> sd.htest.pearsonr(t, u).statistic
+-1.6785764916270176e-16
+>>> m = sd.htest.multiscale_graphcorr(t, u, reps=500, rng=sd.random.default_rng(0))
+>>> m
+MultiscaleGraphcorrResult(statistic=0.384323, pvalue=0.0279441)
+>>> m.mgc_dict['opt_scale']
+[2, 11]
+```
+
+$u = t^2$는 $t$와 선형 상관이 없지만, MGC는 $x$의 가까운 이웃(척도 2)에서 관계를 찾아요.
+
+## Baumgartner–Weiss–Schindler
+
+`bws_test`는 합친 표본의 중간 순위(sd.stats `rankdata`)를 두 표본으로 나눈 뒤, 레인마다 정렬해 scipy의 식을 계산해요. 표본 $x$($n$개)의 정렬한 순위 $R_1 \le \dots \le R_n$과 다른 표본의 크기 $m$에서
+
+$$
+B_x = \frac1n\sum_{i=1}^n\frac{\big(R_i - \frac{m + n}{n}i\big)^2}{\frac{i}{n+1}\big(1 - \frac{i}{n+1}\big)\frac{m(m + n)}{n}}
+$$
+
+이고 $B_y$도 같아요. 양쪽은 $B = (B_x + B_y)/2$, 한쪽은 제곱 대신 부호 있는 제곱 $v|v|$를 쓴 $(B_x - B_y)/2$예요. 합은 보상 합이에요. 귀무분포는 `permutation_test`의 `'independent'` 나열이고, `method=None`이면 $\binom{n + m}{n}$개를 모두 나열해요($10^6$개를 넘으면 `rng`를 준 `PermutationMethod`가 필요해요). 순위를 섞으므로 동점이 있어도 관측한 중간 순위의 조건부 분포예요.
+
+```python
+>>> xs = [1.1, 2.3, 0.4, 3.3, 2.2, 1.9, 2.8, 0.7]
+>>> ys = [3.0, 4.1, 2.9, 5.5, 2.4, 3.8, 4.6]
+>>> sd.htest.bws_test(xs, ys)
+BwsTestResult(statistic=4.89723, pvalue=0.0045066, null_distribution=<array of shape (6435,)>)
+```
+
+## 적합도의 몬테카를로 검정
+
+### 두 번 맞추기
+
+`goodness_of_fit`은 scipy의 정의를 따라요. 모수는 두 번 맞춰요.
+
+- **귀무분포**: `known_params`와 `fit_params`를 고정하고 나머지를 데이터에 맞춰요. 몬테카를로 표본은 이 분포의 `sample((B, n), rng=rng)`에서 와요.
+- **통계량**: 관측과 각 몬테카를로 표본 모두, `known_params`만 고정하고 다시 맞춘 분포에 대해 계산해요. 그래서 귀무분포가 "모수를 추정한 뒤의 통계량"의 분포가 돼요.
+
+맞추기와 통계량은 C++(`gof_fit`)이 레인마다 해요. 몬테카를로 표본 $B$개가 한 번의 호출로 맞춰져요.
+
+<Fig column caption="goodness_of_fit 한 번의 흐름.">
+  <Steps
+    steps={[
+      { label: '_fit_lanes(data, null_fixed)', note: '귀무분포의 모수(known_params와 fit_params를 고정)', where: '_resampling.py' },
+      { label: 'stat_of(data)', note: '관측의 통계량: known_params만 고정해 다시 맞추고 A², D, W² 또는 Filliben', where: 'mle.hpp' },
+      { label: 'null_dist.sample((B, n))', note: '덩어리마다 B개의 표본', where: 'sd.stats' },
+      { label: 'stat_of(draws)', note: '표본마다 다시 맞추고 통계량(레인마다)', where: 'mle.hpp', depth: 1 },
+      { label: 'resample_pvalue', note: '(b + 1)/(R + 1), Filliben은 작은 쪽이 극단', where: 'resampling.cpp' },
+    ]}
+  />
+</Fig>
+
+### 최우추정
+
+모든 족의 최우추정은 닫힌 꼴이거나, 모수 하나에 대한 단조인 점수 방정식이에요. 단조 방정식은 근이 하나이므로 시작값이 필요 없어요. 괄호를 두 배씩 넓혀 잡고 이분과 Illinois 할선으로 상대 $2^{-52}$까지 풀어요.
+
+| 족 | 맞추기 |
+|---|---|
+| Normal | 평균과 $n - 1$의 표준편차(scipy의 `_fit_norm`), double-double |
+| Exponential | 평균(위치 0) |
+| Rayleigh | $\sqrt{\sum x^2/2n}$ |
+| LogNormal | $\log x$의 평균과 $n$의 표준편차 |
+| Laplace | 중앙값과 그로부터의 평균 절대편차 |
+| Logistic | $\sum\tanh(t/2) = 0$, $\sum t\tanh(t/2) = n$, $t = (x - \mu)/\sigma$ |
+| Gumbel | $\sigma$는 $\bar x - \sum xe^{-x/\sigma}/\sum e^{-x/\sigma} = \sigma$의 근, $\mu = -\sigma\log\overline{e^{-x/\sigma}}$ |
+| Weibull | 형상 $c$는 $1/c + \overline{\log x} = \sum x^c\log x/\sum x^c$의 근(감소), 척도 $(\overline{x^c})^{1/c}$ |
+
+모수 하나를 고정한 경우도 한 모수의 단조 방정식이에요(예를 들어 Gumbel의 위치를 고정하면 $\sum t(1 - e^{-t}) = n$). 맞출 수 없는 표본(받침 밖의 값, 상수 표본)은 모수가 NaN이고 그 표본의 통계량도 NaN이에요.
+
+통계량은 맞춘 분포의 `logcdf`·`logccdf`로 만든 Anderson–Darling A², Kolmogorov–Smirnov D, Cramér–von Mises W², 그리고 Filliben의 상관(Beta$(i, n + 1 - i)$의 중앙값을 맞춘 분포의 `icdf`로 옮긴 점과 정렬한 표본의 상관)이에요. 분포 메서드는 배열로 한 번에 불러요.
+
+```python
+>>> xg = [4.2, 5.1, 3.9, 6.0, 5.5, 4.8, 5.2, 4.4, 6.3, 5.0]
+>>> g = sd.htest.goodness_of_fit(sd.stats.Normal, xg, n_mc_samples=499, rng=sd.random.default_rng(1))
+>>> g
+GoodnessOfFitResult(statistic=0.147788, pvalue=0.98, null_distribution=<array of shape (499,)>)
+>>> g.fit_result
+Normal(mu=5.04, sigma=0.7618690467819548)
+```
+
+## scipy와 다른 곳
+
+- scipy의 MGC 순열 검정은 순열마다 `_mgc_stat`을 처음부터 다시 불러 순위를 다시 매기고 지도를 다시 만들어요. 여기서는 순위와 분산을 재사용하고 공분산만 다시 세요. 결과(통계량, 지도, 최적 척도, 나열한 순열의 p값)는 같아요.
+- scipy의 Weibull 맞추기는 범용 최적화(위치를 고정한 `weibull_min.fit`)라 통계량이 $5 \times 10^{-6}$–$5.4 \times 10^{-5}$ 달라요. 다른 족의 맞춘 모수와 통계량은 scipy와 같아요. R `MASS::fitdistr`는 닫힌 꼴(로그정규, 지수)이 같고, 최적화를 쓰는 로지스틱이 $3 \times 10^{-6}$, Weibull이 $8 \times 10^{-5}$ 달라요.

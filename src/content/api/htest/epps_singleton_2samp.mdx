@@ -1,0 +1,186 @@
+---
+kind: function
+title: epps_singleton_2samp
+names: [epps_singleton_2samp]
+group: 두 표본의 분포
+order: 4
+signatures:
+  - "sd.htest.epps_singleton_2samp(x, y, /, *, axis=None, t=(0.4, 0.8), nan_policy='propagate', keepdims=False)"
+summary: 두 표본이 같은 분포에서 왔는지 보는 Epps–Singleton 검정이에요. 두 표본의 경험 특성함수를 몇 개의 점 t에서 견줘요. 연속분포를 가정하지 않아서 개수처럼 값이 몇 가지뿐인 데이터에도 써요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 첫째 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 둘째 표본. 크기가 x와 달라도 돼요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 각 표본의 모든 원소를 펼쳐 검정 하나예요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축은 두 표본 사이에서 브로드캐스트해서 칸마다 따로 검정해요.
+  - name: t
+    type: 양수 하나 또는 양수의 1차원 시퀀스
+    kind: keyword-only
+    desc: 특성함수를 견줄 점. 합친 표본의 사분위범위의 절반으로 나눠서 써요. 기본값 (0.4, 0.8)은 Epps와 Singleton이 여러 분포에서 고루 힘이 있도록 고른 값이에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 검정의 결과가 NaN), 'omit'(표본마다 NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: EppsSingleton2sampResult
+  desc: "statistic(W), pvalue, df(카이제곱의 자유도, float)가 든 결과 객체예요. 검정 하나면 Python float, 배치면 배치 모양의 배열이에요. (statistic, pvalue) 둘로 풀려요(df는 들지 않아요)."
+raises:
+  - type: TypeError
+    desc: t가 수나 수의 시퀀스가 아닐 때, x·y가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis·keepdims의 형이 틀렸을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: "t에 양의 유한한 수가 아닌 값이 있을 때, t가 비었거나 1차원이 아닐 때, nan_policy 이름이 틀렸을 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때, axis가 범위 밖이거나 겹칠 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [ks_2samp, cramervonmises_2samp, anderson_ksamp, basics, results]
+---
+
+## 한눈에 보기
+
+Epps–Singleton 검정은 [`ks_2samp`](/api/htest/ks_2samp/)와 같은 것을 물어요. "두 표본이 같은 분포에서 왔다고 봐도 되나요?" 다만 경험 분포 함수가 아니라 **경험 특성함수**를 견줘요.
+
+- **귀무가설**: 두 표본이 같은 분포에서 왔어요.
+- **대립가설**: 다른 분포에서 왔어요. 한쪽 검정은 없어요.
+
+평균은 같고 표준편차가 1과 2로 다른 정규분포의 표본 50개씩이에요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> a = sd.stats.Normal().sample(50, rng=rng)
+>>> b = sd.stats.Normal(sigma=2.0).sample(50, rng=rng)
+>>> r = sd.htest.epps_singleton_2samp(a, b)
+>>> r
+EppsSingleton2sampResult(statistic=18.1909, pvalue=0.00113248, df=4)
+>>> sd.htest.ks_2samp(a, b).pvalue
+0.17858668181221735
+```
+
+KS가 p = 0.18로 놓친 퍼짐의 차이를 p = 0.0011로 잡아요.
+
+<Reference />
+
+## 통계량
+
+확률변수 $X$의 특성함수는 $\varphi(s) = E[\cos(sX)] + i\,E[\sin(sX)]$이고, 분포를 하나로 정해요. 표본의 **경험 특성함수**는 그 평균을 표본으로 바꾼 것이에요. 검정은 몇 개의 점에서 두 표본의 경험 특성함수를 견줘요.
+
+1. 합친 표본의 사분위범위의 절반 $\sigma$를 구하고, 견줄 점을 $s_k = t_k/\sigma$로 정해요. 그래서 데이터의 단위와 상관없이 같은 `t`를 써요.
+2. 관측마다 $g(x) = (\cos(s_1 x), \sin(s_1 x), \dots, \cos(s_m x), \sin(s_m x))$를 만들고, 표본마다 $g$의 평균과 공분산을 구해요.
+3. 두 평균의 차 $d$를 공분산으로 표준화한 이차형식이 통계량이에요.
+
+$$
+W = N\, d^\top \hat\Sigma^{+} d, \qquad \hat\Sigma = \frac{N}{n_x}\hat\Sigma_x + \frac{N}{n_y}\hat\Sigma_y
+$$
+
+$\hat\Sigma^{+}$는 의사역행렬이에요. 귀무가설에서 $W$는 표본이 클 때 자유도가 $\hat\Sigma$의 계수(보통 $2m$, 기본 `t`면 4)인 카이제곱 분포를 따르고, p값은 그 위 꼬리예요. 두 표본이 모두 25개보다 작으면 Epps와 Singleton의 작은 표본 보정을 $W$에 곱해요.
+
+## 언제 쓰나요
+
+- 두 표본의 분포가 어떤 식으로든 다른지 물을 때 써요. Epps와 Singleton은 KS보다 힘이 있는 경우가 많다고 보고했어요.
+- 연속분포를 가정하지 않아요. 그래서 개수나 점수처럼 값이 몇 가지뿐인 데이터에 잘 맞아요. 연속 데이터는 표본마다 25개 이상일 때 권하고, 그보다 작은 연속 표본에는 [`anderson_ksamp`](/api/htest/anderson_ksamp/)를 권해요.
+- p값은 카이제곱 근사라, 아주 작은 표본에서는 대략의 값이에요.
+
+하루에 받은 민원의 건수를 두 지점에서 보름씩 셌어요.
+
+```python
+>>> d1 = [0, 1, 1, 2, 0, 3, 1, 1, 2, 0, 1, 4, 2, 1, 0]
+>>> d2 = [1, 2, 3, 2, 1, 4, 2, 3, 5, 2, 1, 3, 2, 4, 3]
+>>> sd.htest.epps_singleton_2samp(d1, d2)
+EppsSingleton2sampResult(statistic=8.37089, pvalue=0.0788987, df=4)
+```
+
+두 표본이 15개씩이라 작은 표본 보정이 들어간 값이에요. p = 0.079라 5% 수준에서는 분포가 다르다고 말하기 어려워요.
+
+## `t`: 특성함수를 견줄 점
+
+기본값 (0.4, 0.8)은 여러 분포에서 고루 힘이 있도록 고른 값이에요. 점의 수 $m$을 늘리면 자유도가 $2m$으로 늘어요. 특정한 대립가설에 맞춘 값을 쓸 수도 있지만, 데이터를 본 뒤에 `t`를 고르면 p값이 실제보다 작게 나와요.
+
+```python
+>>> sd.htest.epps_singleton_2samp(a, b, t=(0.2, 0.5, 1.0))
+EppsSingleton2sampResult(statistic=18.3805, pvalue=0.0053485, df=6)
+>>> sd.htest.epps_singleton_2samp(a, b, t=0.5)
+EppsSingleton2sampResult(statistic=15.3292, pvalue=0.000469133, df=2)
+>>> sd.htest.epps_singleton_2samp(a, b, t=(0.4, -1.0))
+Traceback (most recent call last):
+    ...
+ValueError: epps_singleton_2samp(): 't' must hold positive finite numbers
+>>> sd.htest.epps_singleton_2samp(a, b, t=[[0.4]])
+Traceback (most recent call last):
+    ...
+ValueError: epps_singleton_2samp(): 't' must be a number or a 1-D sequence of numbers, not of shape (1, 1)
+```
+
+## 결과 읽기
+
+결과는 `statistic`(W), `pvalue`, `df` 세 필드예요. 튜플로 풀면 앞의 둘이 나와요. `df`는 p값에 쓴 자유도이고 float예요. 필드는 읽기만 해요.
+
+```python
+>>> w, p = r
+>>> r.df
+4.0
+>>> print(r.summary())
+                        Epps-Singleton two-sample test
+==============================================================================
+Statistic:                       18.19  No. Observations:               50, 50
+P-value:                       0.00113
+Df:                                  4
+==============================================================================
+```
+
+값이 두 가지뿐이면 공분산의 계수가 모자라서 `df`가 1로 줄어요. 결과의 `df`를 보면 실제로 쓴 자유도를 알 수 있어요.
+
+```python
+>>> sd.htest.epps_singleton_2samp([1.0, 2.0, 1.0, 2.0, 1.0, 2.0], [2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0])
+EppsSingleton2sampResult(statistic=0.030743, pvalue=0.860815, df=1)
+```
+
+결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고, 나머지 축은 두 표본 사이에서 브로드캐스트해서 칸마다 따로 검정해요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> B = sd.stats.Normal().sample((3, 40), rng=sd.random.default_rng(14))
+>>> C = sd.stats.Normal(sigma=1.5).sample((3, 30), rng=sd.random.default_rng(15))
+>>> sd.htest.epps_singleton_2samp(B, C, axis=1).pvalue
+array([0.15353997431246816, 0.02416932210455553, 0.07933111282153728], dtype=float64)
+```
+
+## 특수한 경우
+
+- **한 표본의 값이 5개 미만**이면 NaN이에요.
+- **유한하지 않은 값**(±inf)이 있으면 NaN이에요. NaN은 `nan_policy`를 따라요.
+- **합친 표본의 사분위범위가 0**이면(값의 대부분이 같으면) 점을 정할 수 없어 NaN이에요.
+
+```python
+>>> sd.htest.epps_singleton_2samp(a[:4], b)
+EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.epps_singleton_2samp([1.0, 1, 1, 1, 1, 1, 2], [1.0, 1, 1, 1, 1, 1, 1])
+EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.epps_singleton_2samp(list(a) + [float('inf')], b)
+EppsSingleton2sampResult(statistic=nan, pvalue=nan, df=nan)
+```
+
+## 정확도
+
+- 통계량과 p값은 Arb(구간 산술)로 계산한 참값과 견줘 7문제(작은 표본 보정, 큰 표본, 세 점의 `t`, 꼬리, 오프셋 10⁸ 포함)에서 통계량의 상대오차가 7.8e-16, p값이 2.2e-14 안이에요. 자유도는 정확해요.
+- 평균이 아주 큰 데이터(예: 10⁸ 근처)에서도 코사인과 사인의 인자를 자릿수를 잃지 않게 만들어요.
+- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1 기준이에요.
+
+- `scipy.stats.epps_singleton_2samp(x, y, t=(0.4, 0.8))`과 같은 통계량과 p값이에요. 기본 `axis`는 None이에요(scipy는 0).
+- 결과에 자유도 `df`가 있어요(scipy의 결과에는 없어요). 튜플로 풀면 scipy처럼 둘이에요.
+- 평균이 10⁸만큼 떨어진 데이터에서 scipy는 코사인의 인자를 반올림해서 통계량이 9.6e-10, p값이 4.5e-9 틀려요. `t=(0.2, 0.5, 1.0)`에서는 통계량이 3.8e-12, p값이 1.4e-11 틀려요.
+- 5개 미만인 표본은 경고 없이 NaN이에요(scipy는 경고와 함께 NaN). 사분위범위가 0이면 NaN이에요(scipy는 `LinAlgError`).

@@ -1,0 +1,206 @@
+---
+kind: function
+title: 재표본 방법 객체
+names: [PermutationMethod, MonteCarloMethod, BootstrapMethod]
+group: 재표본
+order: 4
+signatures:
+  - "sd.htest.PermutationMethod(n_resamples=9999, batch=None, *, rng=None)"
+  - "sd.htest.MonteCarloMethod(n_resamples=9999, batch=None, rvs=None, *, rng)"
+  - "sd.htest.BootstrapMethod(n_resamples=9999, batch=None, method='BCa', *, rng)"
+summary: 이미 있는 검정의 p값을 순열이나 몬테카를로로, 신뢰구간을 붓스트랩으로 구하라고 알려 주는 설정 객체예요. ttest_ind, mannwhitneyu, pearsonr, chi2_contingency 같은 검정의 method=에 넘기면, 통계량은 그 검정의 것 그대로 두고 p값(또는 구간)만 재표본으로 바꿔요.
+params:
+  - name: n_resamples
+    type: int (PermutationMethod는 math.inf도)
+    kind: positional-or-keyword
+    desc: 재표본의 수(기본값 9999). PermutationMethod는 서로 다른 순열이 이 수 이하이면 모두 나열하고, math.inf면 언제나 나열해요.
+  - name: batch
+    type: int 또는 None
+    kind: positional-or-keyword
+    desc: 한 번에 계산하는 재표본의 수. None이면 메모리에 맞게 정해요. 결과의 비트는 batch와 상관없어요.
+  - name: rvs
+    type: callable, callable의 list·tuple, 또는 None
+    kind: positional-or-keyword
+    desc: "MonteCarloMethod만. 귀무가설의 분포에서 표본을 뽑는 rvs(size, *, rng). None(기본값)이면 표준정규분포예요."
+  - name: method
+    type: str
+    kind: positional-or-keyword
+    desc: "BootstrapMethod만. 'percentile', 'basic', 'BCa'(기본값) 중 하나예요."
+  - name: rng
+    type: sd.random.Generator
+    kind: keyword-only
+    desc: 재표본을 뽑을 생성기. MonteCarloMethod와 BootstrapMethod는 꼭 줘야 해요. PermutationMethod는 모든 순열을 나열할 때는 없어도 되고, 무작위 순열이 필요한데 없으면 검정이 TypeError를 내요.
+returns:
+  type: PermutationMethod, MonteCarloMethod, BootstrapMethod
+  desc: "설정 객체. 속성 n_resamples, batch, rng(와 rvs, method)는 읽기 전용이에요."
+raises:
+  - type: TypeError
+    desc: rng가 sd.random.Generator가 아닐 때(MonteCarloMethod·BootstrapMethod에 없을 때 포함), rvs가 호출이 아닐 때, n_resamples·batch가 int가 아닐 때, 검정이 받지 않는 종류의 객체를 method=에 줬을 때.
+  - type: ValueError
+    desc: n_resamples·batch가 1보다 작을 때, BootstrapMethod의 method 이름이 틀렸을 때, 표를 뽑는 검정(chi2_contingency, fisher_exact)이나 anderson에 rvs가 있는 MonteCarloMethod를 줬을 때.
+seeAlso: [permutation_test, monte_carlo_test, bootstrap, ttest_ind, mannwhitneyu, pearsonr, chi2_contingency, anderson]
+---
+
+## 무엇을 하나요
+
+[permutation_test](/api/htest/permutation_test/)는 통계량을 직접 써야 해요. 그런데 흔히 바라는 것은 "t 검정을 하되 p값을 정규성 가정 없이 순열로" 같은 것이에요. 이 객체들은 그 일을 해 줘요. 검정에 `method=PermutationMethod()`를 넘기면 그 검정의 통계량(t, U, r 등)을 순열마다 계산해 귀무분포를 만들고 p값을 구해요. 결과 객체의 꼴은 그대로예요.
+
+```python
+>>> x = [12.1, 14.3, 11.8, 15.2, 13.9, 16.0]
+>>> y = [10.4, 11.9, 12.2, 9.8, 11.1]
+>>> sd.htest.ttest_ind(x, y)
+TtestIndResult(statistic=3.27939, pvalue=0.00953851, df=9)
+>>> sd.htest.ttest_ind(x, y, method=sd.htest.PermutationMethod())
+TtestIndResult(statistic=3.27939, pvalue=0.021645, df=9)
+```
+
+통계량은 같고 p값만 달라요. 순열의 p값 0.0216은 두 집단이 같은 분포라는 것만 가정해요. t 분포의 p값 0.0095는 정규성을 더 가정해요. 이 자료처럼 표본이 작을 때 둘의 차이가 커요.
+
+| 객체 | 하는 일 | 받는 검정 |
+|---|---|---|
+| `PermutationMethod` | 귀무가설 아래에서 바꿔도 되는 것을 섞어 p값을 구해요 | `ttest_ind`, `mannwhitneyu`, `wilcoxon`, `ansari`, `anderson_ksamp`, `chatterjeexi`, `bws_test`, `pearsonr`, `spearmanrho`, `chi2_contingency`, `fisher_exact` |
+| `MonteCarloMethod` | 귀무가설의 분포에서 새 표본을 뽑아 p값을 구해요 | `ttest_ind`, `pearsonr`, `spearmanrho`, `chi2_contingency`, `fisher_exact`, `anderson` |
+| `BootstrapMethod` | 복원 추출로 신뢰구간을 구해요 | `pearsonr(...).conf_int(method=)` |
+
+<Reference />
+
+## PermutationMethod
+
+`n_resamples`(기본값 9999)보다 순열이 적으면 모두 나열해서 정확한 p값을 줘요. 그때는 `rng`가 필요 없어요. 더 많으면 `n_resamples`개를 무작위로 뽑으므로 `rng`가 있어야 해요.
+
+```python
+>>> sd.htest.mannwhitneyu(x, y, method=sd.htest.PermutationMethod())
+MannwhitneyuResult(statistic=27, pvalue=0.030303, method='permutation')
+>>> a = list(range(9))
+>>> b = [v + 0.5 for v in range(9)]
+>>> sd.htest.mannwhitneyu(a, b, method=sd.htest.PermutationMethod())
+Traceback (most recent call last):
+    ...
+TypeError: mannwhitneyu(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+>>> pm = sd.htest.PermutationMethod(n_resamples=999, rng=sd.random.default_rng(4))
+>>> sd.htest.mannwhitneyu(a, b, method=pm)
+MannwhitneyuResult(statistic=36, pvalue=0.734, method='permutation')
+```
+
+C(18, 9) = 48620가지라 나열하지 않고 999개를 뽑았어요. 순위 검정은 결과의 `method`가 `'permutation'`이 돼요.
+
+검정마다 섞는 것이 달라요. 두 표본 검정(`ttest_ind`, `mannwhitneyu`, `ansari`, `anderson_ksamp`, `bws_test`)은 합친 관측을 다시 나누고, `wilcoxon`은 짝의 차의 부호를 뒤집고, 상관(`pearsonr`, `spearmanrho`, `chatterjeexi`)은 x를 두고 y의 순서만 섞어요. 분할표(`chi2_contingency`, `fisher_exact`)는 행과 열의 합을 그대로 둔 표들을 써요.
+
+```python
+>>> u = [1.2, 2.3, 2.9, 4.1, 5.0, 6.2, 6.8]
+>>> v = [2.0, 1.9, 3.5, 3.9, 5.8, 5.5, 7.4]
+>>> sd.htest.pearsonr(u, v, method=sd.htest.PermutationMethod())
+PearsonrResult(statistic=0.953359, pvalue=0.0015873)
+```
+
+y의 순서 7! = 5040가지를 모두 나열했어요. p = 8/5040이에요.
+
+`summary()`의 머리에 p값을 어떻게 구했는지와 재표본의 수가 더해져요.
+
+```python
+>>> print(sd.htest.mannwhitneyu(x, y, method=sd.htest.PermutationMethod()).summary())
+                             Mann-Whitney U test
+==============================================================================
+Statistic:                       27.00  Alternative:                 two-sided
+P-value:                        0.0303  Method:                    permutation
+                                        No. Observations:                 6, 5
+                                        P-value:                   permutation
+                                        Resamples:                   462 (all)
+==============================================================================
+```
+
+## MonteCarloMethod
+
+귀무가설의 분포에서 자료와 같은 크기의 표본을 `n_resamples`번 뽑아 그 검정의 통계량을 계산해요. `rvs`가 None이면 표준정규분포예요. 순열과 달리 언제나 무작위이므로 `rng`가 꼭 필요해요.
+
+```python
+>>> mc = sd.htest.MonteCarloMethod(n_resamples=2000, rng=sd.random.default_rng(1))
+>>> mc
+MonteCarloMethod(n_resamples=2000, batch=None, rvs=None, rng=Generator(Philox4x64-10))
+>>> sd.htest.ttest_ind(x, y, method=mc).pvalue
+0.008995502248875561
+```
+
+정규분포에서 뽑은 t의 몬테카를로 p값은 t 분포의 p값(0.0095) 둘레에 있어요. 다른 분포를 쓰려면 `rvs`에 `rvs(size, *, rng)` 꼴의 함수를 줘요. 표본마다 다른 분포면 함수의 리스트를 줘요.
+
+`anderson`은 정규분포 등의 족(family)을 표본마다 맞추며 귀무분포를 만들어요([goodness_of_fit](/api/htest/goodness_of_fit/)과 같은 계산이에요). 기본 방법은 임계값 표의 보간이라 p값이 0.15 같은 표의 끝에 걸리는데, 몬테카를로는 실제 p값을 줘요.
+
+```python
+>>> z = [0.42, -1.10, 0.85, 2.31, -0.27, 0.66, 1.94, -0.58, 0.12, 3.05, 0.77, -0.91]
+>>> sd.htest.anderson(z)
+AndersonResult(statistic=0.262854, pvalue=0.15)
+>>> sd.htest.anderson(z, method=sd.htest.MonteCarloMethod(n_resamples=1000, rng=sd.random.default_rng(3)))
+AndersonResult(statistic=0.262854, pvalue=0.655345)
+```
+
+`anderson`, `chi2_contingency`, `fisher_exact`는 표본(표)을 스스로 뽑으므로 `rvs`가 None이어야 해요.
+
+```python
+>>> t = [[8, 2, 3], [1, 5, 4]]
+>>> sd.htest.chi2_contingency(t, correction=False, method=sd.htest.MonteCarloMethod(n_resamples=2000, rng=sd.random.default_rng(2)))
+Chi2ContingencyResult(statistic=6.59389, pvalue=0.0524738, df=nan, expected_freq=<array of shape (2, 3)>)
+```
+
+재표본의 p값을 쓰면 자유도가 쓰이지 않아 `df`가 NaN이에요. `chi2_contingency`의 재표본은 보정 없는 Pearson 통계량이라 `correction=False`가 필요해요.
+
+## BootstrapMethod
+
+`pearsonr` 결과의 `conf_int(method=)`에 넘기면 상관계수의 구간을 Fisher 변환 대신 붓스트랩으로 만들어요. (x, y)의 짝을 함께 복원 추출하고, `method`로 percentile·basic·BCa를 골라요.
+
+```python
+>>> bm = sd.htest.BootstrapMethod(n_resamples=2000, method='BCa', rng=sd.random.default_rng(1))
+>>> r = sd.htest.pearsonr(u, v)
+>>> r.conf_int()
+array([0.7101216645517637, 0.9932956391682051], dtype=float64)
+>>> r.conf_int(method=bm)
+array([0.8203217940149804, 0.9868840752880359], dtype=float64)
+```
+
+## 속성과 재사용
+
+객체는 설정만 들고 있어요. 속성은 읽기 전용이에요.
+
+```python
+>>> pm = sd.htest.PermutationMethod(n_resamples=2000, rng=sd.random.default_rng(1))
+>>> pm.n_resamples, pm.batch
+(2000, None)
+>>> pm.n_resamples = 5
+Traceback (most recent call last):
+    ...
+AttributeError: property 'n_resamples' of 'PermutationMethod' object has no setter
+```
+
+객체 안의 `rng`는 쓸 때마다 상태가 나아가요. 같은 객체를 두 번 넘기면 두 번째 검정은 다른 무작위 재표본을 써요. 두 검정이 같은 재표본을 쓰게 하려면 시드가 같은 생성기로 객체를 하나씩 만들어요.
+
+## NaN과 배치
+
+`nan_policy='omit'`이면 NaN이 있는 줄은 NaN을 뺀 그 줄만으로 따로 재표본해요(짝지은 자료는 짝을 함께 빼요). NaN이 없는 줄들은 한꺼번에 계산해요.
+
+```python
+>>> X = sd.asarray([[12.1, 14.3, 11.8, 15.2], [1., 2, 3, sd.nan]])
+>>> Y = sd.asarray([y, y])
+>>> sd.htest.mannwhitneyu(X, Y, axis=1, method=sd.htest.PermutationMethod(), nan_policy='omit').pvalue
+array([ 0.1111111111111111, 0.03571428571428571], dtype=float64)
+```
+
+## 받지 않는 객체
+
+검정이 받지 않는 종류를 주면 받는 것을 알려 주는 `TypeError`예요.
+
+```python
+>>> sd.htest.mannwhitneyu(x, y, method=sd.htest.MonteCarloMethod(rng=sd.random.default_rng(1)))
+Traceback (most recent call last):
+    ...
+TypeError: mannwhitneyu(): 'method' must be 'auto', 'exact', 'asymptotic' or a PermutationMethod, not MonteCarloMethod
+>>> sd.htest.MonteCarloMethod()
+Traceback (most recent call last):
+    ...
+TypeError: MonteCarloMethod(): missing 1 required keyword-only argument: 'rng'
+```
+
+## scipy를 아는 분께
+
+- 이름과 속성은 scipy의 것이에요. `random_state`는 없고 `rng`는 sd.random.Generator만 받아요. `MonteCarloMethod`와 `BootstrapMethod`는 `rng`가 꼭 필요해요(시드 없는 기본 생성기가 없어요).
+- `MonteCarloMethod`의 `rvs`는 `rvs(size, *, rng)` 꼴이에요.
+- `anderson`에 `rvs`가 있는 `MonteCarloMethod`를 주면 scipy는 경고와 함께 무시하지만 여기는 `ValueError`예요.
+- `dunnett`은 scipy와 달리 p값을 결정적인 적분으로 구해서 `rng`를 받지 않아요.

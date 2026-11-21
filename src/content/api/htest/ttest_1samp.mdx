@@ -1,0 +1,270 @@
+---
+kind: function
+title: ttest_1samp
+names: [ttest_1samp]
+group: 평균과 분산
+order: 1
+signatures:
+  - "sd.htest.ttest_1samp(a, popmean, /, *, axis=None, alternative='two-sided', nan_policy='propagate', keepdims=False)"
+summary: 한 표본 t 검정이에요. 표본의 평균이 정해 둔 값 popmean과 같은지 검정하고, 평균의 신뢰구간도 conf_int()로 줘요.
+params:
+  - name: a
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 표본. bool·정수는 float64로 바꿔서 계산해요. axis=None(기본값)이면 모든 원소가 표본 하나이고, 축을 주면 그 축을 따라 표본을 읽고 남은 축마다 검정해요(배치). frame의 결측값은 NaN으로 읽어요.
+  - name: popmean
+    type: 실수 또는 배열
+    kind: positional-only
+    desc: 귀무가설의 평균 μ₀. 실수 하나면 모든 검정에 같은 값이에요. 배열이면 결과의 모양(배치 모양)으로 브로드캐스트되거나, 표본 축을 길이 1로 남긴 모양이어야 해요. NaN이나 ±inf이면 그 검정의 t와 p값이 NaN이에요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모든 원소를 펼쳐 검정 하나예요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값, 평균 ≠ popmean), 'less'(평균 < popmean), 'greater'(평균 > popmean) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값, 그 검정의 결과가 NaN), 'omit'(NaN을 빼고 검정), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과의 필드에 표본 축을 길이 1로 남겨요.
+returns:
+  type: Ttest1sampResult
+  desc: "필드 statistic(t), pvalue, df(자유도 n − 1, float)와 메서드 conf_int(alpha=0.05)(평균의 1 − alpha 구간), summary(alpha=0.05)가 있어요. (statistic, pvalue)로 풀려요. 배치면 필드가 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: a·popmean을 키워드로 줬을 때, 옵션을 위치로 줬을 때, 없는 옵션을 줬을 때, a가 배열·수의 시퀀스·frame이 아닐 때, 복소수일 때, popmean이 수·배열이 아닐 때(bool 포함), keepdims가 True·False가 아닐 때.
+  - type: ValueError
+    desc: alternative·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때, popmean이 결과의 모양으로 브로드캐스트되지 않을 때.
+seeAlso: [basics, results, ttest_rel, ttest_ind, wilcoxon, bootstrap]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+커피 봉지에 250g이라고 적혀 있어요. 포장 기계 A가 담은 봉지 여덟 개를 재 보니 평균이 251.2g이에요. 기계가 평균 250g을 담도록 맞춰져 있는데 우연히 무거운 봉지가 걸린 걸까요, 아니면 기계가 실제로 더 담고 있을까요?
+
+**한 표본 t 검정**은 이 질문에 답해요.
+
+- 귀무가설: 표본이 나온 모집단의 평균 μ가 `popmean`(여기서는 250)과 같아요.
+- 대립가설: μ가 `popmean`과 달라요(`alternative`로 한쪽을 고를 수 있어요).
+
+검정통계량은 표본 평균과 `popmean`의 차를 평균의 표준오차로 나눈 t예요. $\bar x$는 표본 평균, $s$는 표본 표준편차(n − 1로 나눈 것), $n$은 표본 크기예요.
+
+$$
+t = \frac{\bar x - \mu_0}{s / \sqrt{n}}
+$$
+
+평균이 `popmean`에서 표준오차의 몇 배만큼 떨어졌는지를 재는 수예요. 귀무가설이 맞고 데이터가 정규분포를 따르면 t는 자유도 n − 1의 [t 분포](/api/stats/student-t/)를 따르고, p값은 그 분포의 꼬리 넓이예요.
+
+이런 때 써요.
+
+- 표본의 평균을 기준값, 규격, 예전의 평균과 견줄 때
+- 짝지은 두 측정의 차(전과 후)의 평균이 0인지 볼 때. 이때는 [`ttest_rel`](/api/htest/ttest_rel/)이 같은 검정을 바로 해 줘요
+
+데이터가 정규분포에서 조금 벗어나도 t 검정은 꽤 잘 버텨요. 표본이 클수록 평균의 분포가 정규분포에 가까워지기 때문이에요. 다만 표본이 작은데 한쪽으로 크게 치우쳤거나 이상값이 있으면 p값을 믿기 어려워요. 그럴 때는 순위를 쓰는 [`wilcoxon`](/api/htest/wilcoxon/)(`a - popmean`을 넣어요)이나 [`bootstrap`](/api/htest/bootstrap/)으로 평균의 구간을 구하는 쪽을 생각해 봐요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> a = [251.2, 249.8, 252.1, 250.6, 251.9, 250.3, 252.4, 251.0]
+>>> r = sd.htest.ttest_1samp(a, 250.0)
+>>> r
+Ttest1sampResult(statistic=3.58185, pvalue=0.00895405, df=7)
+```
+
+t ≈ 3.58은 평균 251.16이 250에서 표준오차의 3.6배쯤 떨어졌다는 뜻이에요. 기계가 정말 평균 250g을 담는다면 이만큼 이상 떨어진 평균이 나올 확률이 0.9%예요. 유의수준 0.05에서 귀무가설을 버려요. 기계가 250g보다 많이 담고 있다고 봐요.
+
+결과는 `(statistic, pvalue)`로 풀 수도 있어요.
+
+```python
+>>> t, p = sd.htest.ttest_1samp(a, 250.0)
+>>> round(t, 4), round(p, 5)
+(3.5818, 0.00895)
+```
+
+## 결과 읽기
+
+| 필드·메서드 | 뜻 |
+|---|---|
+| `statistic` | t 통계량. 평균이 `popmean`보다 크면 양수예요 |
+| `pvalue` | p값. `alternative`의 방향으로 잰 꼬리 넓이예요 |
+| `df` | 자유도 n − 1. 정수 값이어도 `float`이에요 |
+| `conf_int(alpha=0.05)` | 모집단 평균의 1 − alpha 신뢰구간 (아래 끝, 위 끝) |
+| `summary(alpha=0.05)` | 검정을 표로 적은 글 |
+
+```python
+>>> r.df
+7.0
+>>> r.conf_int()
+array([250.39505348008117, 251.92994651991881], dtype=float64)
+>>> print(r.summary())
+                              One-sample t-test
+==============================================================================
+Statistic:                       3.582  Alternative:                 two-sided
+P-value:                       0.00895  No. Observations:                    8
+Df:                                  7
+==============================================================================
+               [0.025     0.975]
+------------------------------------------------------------------------------
+mean          250.395    251.930
+==============================================================================
+```
+
+### 신뢰구간
+
+`conf_int()`는 `popmean`과 상관없는 평균 자체의 구간이에요. 표본 평균 ∓ (t 분포의 분위수) × 표준오차예요.
+
+$$
+\bar x \mp t_{1-\alpha/2,\,n-1} \cdot \frac{s}{\sqrt n}
+$$
+
+기계 A가 담는 평균은 95% 신뢰로 250.4g과 251.9g 사이예요. 250이 이 구간 밖에 있다는 것과 양쪽 p값이 0.05보다 작다는 것은 같은 이야기예요. 구간 안의 값을 `popmean`으로 주면 p값이 0.05보다 커요.
+
+```python
+>>> sd.htest.ttest_1samp(a, 251.0).pvalue
+0.6319466953981161
+>>> r.conf_int(alpha=0.01)
+array([250.02673127215385, 252.29826872784614], dtype=float64)
+```
+
+99% 구간(`alpha=0.01`)은 95% 구간보다 넓어요. 더 확실하게 말하려면 더 넓게 말해야 해요. 구간을 읽는 더 자세한 법은 [결과 객체 읽기](/api/htest/results/#신뢰구간-conf_int)에 있어요.
+
+## 한쪽 검정: alternative
+
+"기계가 250g보다 **많이** 담는가"만 궁금하다면 `alternative='greater'`를 줘요. 대립가설이 μ > 250이 되고, p값은 위쪽 꼬리 하나의 넓이예요.
+
+```python
+>>> g = sd.htest.ttest_1samp(a, 250.0, alternative='greater')
+>>> g.pvalue
+0.004477027122385634
+>>> g.conf_int()
+array([250.54760832906769,                inf], dtype=float64)
+>>> sd.htest.ttest_1samp(a, 250.0, alternative='less').pvalue
+0.9955229728776144
+```
+
+| `alternative` | 대립가설 | p값 | `conf_int()` |
+|---|---|---|---|
+| `'two-sided'`(기본) | μ ≠ `popmean` | 양쪽 꼬리 넓이 $2 \cdot P(T \ge \lvert t\rvert)$ | 양쪽 구간 |
+| `'greater'` | μ > `popmean` | $P(T \ge t)$ | (아래 끝, inf) |
+| `'less'` | μ < `popmean` | $P(T \le t)$ | (−inf, 위 끝) |
+
+한쪽 구간은 "평균이 적어도 250.55g"처럼 한 방향의 한계를 말해요. 방향은 데이터를 보기 전에 정해요.
+
+## popmean: 검정마다 다른 기준값
+
+배치에서 검정마다 다른 기준값을 쓰려면 `popmean`에 배치 모양의 배열을 줘요. 표본 축을 길이 1로 남긴 모양(`keepdims=True`로 얻는 모양)도 받아요.
+
+```python
+>>> X = sd.asarray([[251.2, 249.8, 252.1, 250.6, 251.9],
+...                 [499.1, 500.6, 501.2, 500.4, 499.9]])
+>>> sd.htest.ttest_1samp(X, [250.0, 500.0], axis=1).pvalue
+array([0.05732353147499931,  0.5338745447243785], dtype=float64)
+>>> sd.htest.ttest_1samp(X, [[250.0], [500.0]], axis=1).pvalue
+array([0.05732353147499931,  0.5338745447243785], dtype=float64)
+>>> sd.htest.ttest_1samp(X, [250.0, 500.0, 750.0], axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: ttest_1samp(): 'popmean' cannot be broadcast to the result's shape (2,)
+```
+
+검정이 하나일 때(axis=None) `popmean`은 실수 하나예요. 길이가 2 이상인 배열을 주면 결과의 모양 ()에 맞지 않아 `ValueError`예요. `popmean`을 빠뜨리면 `TypeError`예요(기본값이 없어요).
+
+```python
+>>> sd.htest.ttest_1samp(a)
+Traceback (most recent call last):
+    ...
+TypeError: ttest_1samp(): missing 1 required positional argument: 'popmean'
+```
+
+## axis와 배치
+
+`axis`의 기본값 None은 배열 전체를 표본 하나로 봐요. 축을 주면 그 축을 따라 표본을 읽고 나머지 축마다 검정해요. 위의 `X`를 `axis=1`로 주면 행마다 검정이 하나예요.
+
+```python
+>>> rb = sd.htest.ttest_1samp(X, 250.0, axis=1)
+>>> rb
+Ttest1sampResult(batch shape (2,))
+>>> rb.df
+array([4.0, 4.0], dtype=float64)
+>>> rb.conf_int().shape
+(2, 2)
+>>> sd.htest.ttest_1samp(X, 250.0, axis=1, keepdims=True).statistic.shape
+(2, 1)
+```
+
+배치의 검정은 서로 독립이고, 하나씩 부른 결과와 비트까지 같아요. axis, 배치, `keepdims`의 규칙은 [가설검정의 기본](/api/htest/basics/#axis와-배치)에 있어요.
+
+## NaN: nan_policy
+
+```python
+>>> y = [251.2, 249.8, sd.nan, 250.6, 251.9]
+>>> sd.htest.ttest_1samp(y, 250.0)
+Ttest1sampResult(statistic=nan, pvalue=nan, df=nan)
+>>> sd.htest.ttest_1samp(y, 250.0, nan_policy='omit')
+Ttest1sampResult(statistic=1.96167, pvalue=0.144616, df=3)
+```
+
+`'omit'`은 NaN을 빼고 남은 4개로 검정해서 `df`가 3이에요. 배치에서도 줄마다 남은 크기로 검정해요.
+
+## 특수한 경우
+
+검정할 수 없는 입력은 에러가 아니라 NaN이에요. 경고는 내지 않아요.
+
+| 입력 | `statistic`, `pvalue` | `df` | `conf_int()` |
+|---|---|---|---|
+| 빈 표본 | NaN | NaN | NaN |
+| 원소 하나 | NaN | 0 | NaN |
+| 모든 값이 같음(분산 0) | NaN | n − 1 | (평균, 평균) |
+| `'propagate'`에서 NaN이 있음 | NaN | NaN | NaN |
+| ±inf가 있음(평균을 정할 수 없음) | NaN | n − 1 | NaN |
+| `popmean`이 NaN이나 ±inf | NaN | n − 1 | 평균의 구간 |
+
+```python
+>>> sd.htest.ttest_1samp([250.0], 250.0)
+Ttest1sampResult(statistic=nan, pvalue=nan, df=0)
+>>> c = sd.htest.ttest_1samp([250.0, 250.0, 250.0], 249.0)
+>>> c
+Ttest1sampResult(statistic=nan, pvalue=nan, df=2)
+>>> c.conf_int()
+array([250.0, 250.0], dtype=float64)
+```
+
+모든 값이 같으면 표준오차가 0이라 t가 (평균 − μ₀)/0이에요. 평균이 μ₀와 달라도 "얼마나 드문가"를 잴 흩어짐이 없어서 NaN으로 둬요. 구간은 흩어짐이 0이니 폭 0의 (평균, 평균)이에요. 값이 모두 같은지는 반올림 크기의 흔들림까지 보고 판정해요([퇴화한 입력](/api/htest/basics/#퇴화한-입력은-nan)). 실수 하나를 `a`로 주면 원소가 하나인 표본이에요.
+
+## 정확도
+
+- t의 상대오차는 $10^{-14}$ 안이에요(잰 최대는 $2.1 \times 10^{-16}$). 평균과 편차의 제곱합을 반올림 오차가 거의 남지 않게 쌓아서, 평균이 $10^8$인데 흩어짐이 0.1 수준인 데이터도 자릿수를 지켜요.
+- p값은 t에서 [t 분포](/api/stats/student-t/)의 꼬리를 직접 계산해요. 상대오차는 $10^{-14} \cdot \max(1, \kappa_p)$ 안이고($\kappa_p$는 t의 작은 변화가 p값을 몇 배로 움직이는지), $10^{-200}$ 같은 깊은 꼬리도 앞자리가 맞아요.
+- 신뢰구간의 끝은 평균과 반폭의 크기에 대해 $10^{-14}$ 안이에요.
+- 데이터를 어떤 수로 곱해도 t와 p값은 반올림 차이 안에서 그대로예요. 가장 큰 크기가 $2^{500}$ 이상이거나 $2^{-400}$보다 작으면 2의 거듭제곱으로 단위를 옮겨 계산해서, 제곱하면 float64를 넘거나 0이 되는 크기도 단위를 바꿀 필요가 없어요.
+
+```python
+>>> base = sd.asarray([1.0, 2, 3, 5])
+>>> sd.htest.ttest_1samp(base, 0.0).statistic
+3.2204702407301595
+>>> sd.htest.ttest_1samp(base * 1e300, 0.0).statistic, sd.htest.ttest_1samp(base * 1e-300, 0.0).statistic
+(3.220470240730159, 3.2204702407301595)
+```
+
+참값은 Arb(구간 산술)로 만들었어요. 잰 문제는 작은 표본, 2000개의 큰 표본, 깊은 꼬리, 오프셋 $10^8$, 상수 표본, 배치예요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1의 `scipy.stats.ttest_1samp`와 같은 검정이에요.
+
+- `axis`의 기본값이 None이에요(scipy는 0). 2차원 배열을 주면 scipy는 열마다 검정하고 여기서는 전체가 표본 하나예요. `axis=0`을 주면 scipy와 같아요.
+- 데이터와 `popmean`은 위치로만, 옵션은 키워드로만 받아요.
+- 신뢰구간은 `r.confidence_interval(confidence_level=0.95)` 대신 `r.conf_int(alpha=0.05)`이고 (아래 끝, 위 끝)의 배열이에요. 구간의 정의는 같아요.
+- `df`는 언제나 `float`이에요(scipy는 정수).
+- 모든 값이 같은 표본은 NaN이에요. scipy는 `ttest_1samp([1, 1, 1], 0)`에서 statistic inf, pvalue 0을 내요. 원소가 하나인 표본은 scipy처럼 NaN이지만 경고(`SmallSampleWarning`)가 없어요.
+- `popmean`이 ±inf이면 NaN이에요. scipy는 t ∓inf, p 0을 내요.
+- 아주 크거나 작은 값에서 scipy 1.18.1은 위의 `base * 1e300`에 t = 0과 p = 1을, `base * 1e-300`에 t = inf와 p = 0을 내요. 여기서는 단위와 상관없이 t = 3.22예요.

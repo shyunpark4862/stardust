@@ -107,7 +107,7 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
           { name: '_linear.py', note: 'ols, wls, gls. 입력 정리(_as_real, _prepare, _groups), 결과의 공통 틀 _RegressionResult, 선형 결과 _LinearResult, summary' },
           { name: '_glm.py', note: 'glm과 GLMResult: 분포족·링크 이름, 가중치와 trials, 척도' },
           { name: '_penalized.py', note: 'ridge, lasso, elastic_net, 교차검증, penalized_glm. 결과는 _PenalizedResult(추론 없음)' },
-          { name: '_robust.py · _quantile.py · _nls.py', note: 'rlm과 Theil–Sen·Siegel, quantreg, nls(사용자 함수의 호출, 해의 야코비안은 optimize/_diff.py의 Differences)' },
+          { name: '_robust.py · _quantile.py · _nls.py', note: 'rlm과 Theil–Sen·Siegel, quantreg, nls(사용자 함수의 호출, 해의 야코비안은 differentiate/_differences.py의 Differences)' },
           { name: '_tests.py', note: 't_test, wald_test, compare_f_test, compare_lr_test, anova와 그 결과 클래스(htest의 결과 바탕 위). 결과의 메서드가 여기 함수를 불러요' },
           { name: '_diagnostics.py', note: 'VIF, DFBETAS, White·Goldfeld–Quandt·RESET, GLM의 영향력. 적합의 QR(thin_q 방식)에서 구해요' },
           { name: '_select.py', note: 'stepwise, best_subset과 StepwiseResult, BestSubsetResult. 선형 후보의 평가(_Linear)와 GLM 후보의 배치 적합(_GLM)' },
@@ -540,7 +540,7 @@ def forg(x, prec=3):
     return f"{x:.{prec}f}"
 ```
 
-배치 결과의 summary는 레인(배치 안의 문제 하나)마다 한 줄인 표예요. 줄 이름은 C 순서로 센 그 레인의 첨자(`[3]`, `[1, 2]`)이고, 머리에는 레인들이 함께 가진 것(모형, 공분산 종류, 배치 모양)만 둬요. 회귀의 배치는 적합 통계량의 표와 계수의 표 두 개예요. 줄이 20개를 넘으면 `shown`이 앞뒤 5줄만 남기고 그 사이에 `...` 줄을 넣어요. 최적화의 긴 x와 검정의 큰 분할표도 같은 규칙이에요.
+배치 결과의 summary는 레인(배치 안의 문제 하나)마다 한 줄인 표예요. 줄 이름은 C 순서로 센 그 레인의 첨자(`[3]`, `[1, 2]`)이고, 머리에는 레인들이 함께 가진 것(모형, 공분산 종류, 배치 모양)만 둬요. 자유도(모형의 `df_model`, 검정의 `df`·`df_num`·`df_denom`)는 `shared`가 모든 레인의 값이 같은지(NaN끼리도 같다고 봐요) 보고, 같으면 머리에 한 번, 다르면 표의 열로 둬요. 같은 `X`의 배치라면 어느 결과든 자유도가 같은 자리에 오고, 열이 겹쳐 빠진 레인이 있어 값이 다를 때 첫 레인의 값 하나만 적어 틀리는 일이 없어요. 회귀의 배치는 적합 통계량의 표와 계수의 표 두 개예요. 줄이 20개를 넘으면 `shown`이 앞뒤 5줄만 남기고 그 사이에 `...` 줄을 넣어요. 최적화의 긴 x와 검정의 큰 분할표도 같은 규칙이에요.
 
 ```python
 def shown(n):
@@ -577,7 +577,29 @@ params          const         x1
 ==============================================================================
 ```
 
-여러 줄의 표는 `summary()`가 맡고, `repr`는 한 줄 `Name(field=value, …)`이에요. 배치는 위처럼 모양만 적어요. 검정 결과의 `repr`는 `compact`가 수를 유효숫자 6자리로, 6개까지인 1차원 배열을 `[v, v]`로, 그보다 큰 배열을 `<array of shape (m, k)>`로 적어요.
+여러 줄의 표는 `summary()`가 맡고, `repr`는 한 줄 `Name(field=value, …)`이에요. 배치는 위처럼 모양만 적어요(모형은 계수의 수도). 회귀와 가설검정의 모든 결과(모형, 정규화, 검정, `TheilslopesResult`·`SiegelslopesResult`)는 `one_line`이 (이름, 값) 쌍으로 그 줄을 만들고, 값마다 `compact`가 수를 유효숫자 6자리로, 6개까지인 1차원 배열을 `[v, v]`로, 그보다 큰 배열을 `<array of shape (m, k)>`로 적어요. 그래서 계수가 7개 이상인 모형은 `params=<array of shape (7,)>`예요. 한 줄은 훑어보는 용도이고, 계산에 쓸 값은 필드에서 읽어요.
+
+```python
+def compact(v):
+    """A field's value in a one-line repr: a number with 6 significant digits, a short 1-D array
+    as [v, v, ...] (at most 6 values), a longer one as its shape."""
+    from . import _core as _sd
+
+    if isinstance(v, bool) or isinstance(v, (int, str)) or v is None:
+        return repr(v)
+    if isinstance(v, float):
+        return f"{v:.6g}" if math.isfinite(v) else repr(v)
+    if isinstance(v, _sd.ndarray):
+        if v.ndim == 1 and v.shape[0] <= 6:
+            return "[" + ", ".join(compact(e) for e in v.tolist()) + "]"
+        return f"<array of shape {shape_text(tuple(v.shape))}>"
+    return None
+```
+
+```python
+>>> sd.regression.ols(Yb[0], sd.arange(4.0))
+OLSResult(nobs=4, rank=2, rsquared=0.969231, params=[1.05, 1.05])
+```
 
 ## 공용 부품
 

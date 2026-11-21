@@ -1,0 +1,228 @@
+---
+kind: function
+title: ansari
+names: [ansari]
+group: 순위 검정
+order: 7
+signatures:
+  - "sd.htest.ansari(x, y, /, *, axis=None, alternative='two-sided', method='auto', nan_policy='propagate', keepdims=False)"
+summary: 가운데(위치)가 같은 독립 두 표본의 퍼짐(척도)이 같은지 순위로 묻는 Ansari–Bradley 검정이에요. 정규분포를 가정하지 않고, 작은 표본에서는 정확한 p값을, 동점이 있으면 그 동점을 둔 정확한 분포를 써요.
+params:
+  - name: x, y
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: 두 표본. 길이는 달라도 돼요. 가운데가 같다고 보는 검정이라, 위치가 다르면 미리 각자의 중앙값을 빼서 넘겨요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 표본마다 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 표본을 읽고, 나머지 축은 배치예요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(x의 퍼짐이 y보다 작다), 'greater'(x의 퍼짐이 y보다 크다) 중 하나예요."
+  - name: method
+    type: str 또는 PermutationMethod
+    kind: keyword-only
+    desc: "'auto'(기본값), 'exact'(정확한 분포), 'asymptotic'(정규 근사), 또는 PermutationMethod(합친 표본의 순열)예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: AnsariResult
+  desc: "statistic(x의 AB), pvalue, method(실제로 쓴 방법)예요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, keepdims가 True·False가 아닐 때, 문자열 옵션이 문자열이 아닐 때, method에 MonteCarloMethod·BootstrapMethod를 줬을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "alternative·method·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때, method='exact'의 작업량이 상한(10⁹번)을 넘을 때."
+seeAlso: [mood, fligner, levene, mannwhitneyu, basics, results]
+---
+
+## 무엇을 묻나요
+
+같은 표준 시료를 옛 기계로 8번, 새 기계로 7번 쟀어요. 두 기계 모두 평균은 10 근처로 맞는데, 새 기계가 더 고르게 재는지 알고 싶어요.
+
+```python
+>>> import stardust as sd
+>>> old = [10.1, 9.4, 11.8, 8.2, 12.5, 7.9, 10.9, 13.1]
+>>> new = [10.2, 9.9, 10.5, 9.7, 10.0, 10.4, 9.8]
+>>> sd.htest.ansari(old, new)
+AnsariResult(statistic=24, pvalue=0.0229992, method='exact')
+```
+
+**Ansari–Bradley 검정**은 두 표본을 합쳐 정렬하고, 양 끝에서 가운데로 점수를 매겨요. 가장 작은 값과 가장 큰 값이 1점, 그 안쪽 둘이 2점, …, 가운데가 가장 높은 점수예요. 순위 $r$(1..N)의 점수는 $\min(r,\ N + 1 - r)$이에요.
+
+퍼짐이 큰 표본의 값은 양 끝으로 밀려나서 낮은 점수를 받아요. x가 받은 점수의 합이 통계량 AB예요.
+
+$$
+AB = \sum_{i \in x} \min(r_i,\ N + 1 - r_i)
+$$
+
+위에서 옛 기계의 값이 합친 15개 가운데 가장 작은 셋과 가장 큰 넷을 모두 차지해서 AB = 24로 작아요.
+
+- **귀무가설**: 두 표본이 같은 분포에서 나왔어요(가운데가 같다는 전제 아래, 퍼짐이 같아요).
+- **대립가설**(양쪽): 두 표본의 퍼짐이 달라요.
+
+p값 0.023은 두 기계의 퍼짐이 다르다는 근거예요.
+
+이런 때 써요.
+
+- 두 집단의 퍼짐(정밀도, 변동성)을 견주는데 정규분포를 가정하기 어려울 때. 정규분포를 가정한다면 분산비의 F 검정이나 [`bartlett`](/api/htest/bartlett/)을 써요.
+- 이상값이 섞였을 때. 점수가 순위에서 나오므로 극단값 하나가 결과를 휘두르지 않아요.
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 가운데가 같아야 해요
+
+이 검정은 두 표본의 가운데가 같다고 보고 퍼짐만 견줘요. 가운데가 다르면 한 표본이 한쪽 끝으로 몰려서 퍼짐과 상관없는 결과가 나와요. 새 기계의 값에 5를 더해 보면 차이가 사라져요.
+
+```python
+>>> shifted = [v + 5 for v in new]
+>>> sd.htest.ansari(old, shifted)
+AnsariResult(statistic=36, pvalue=0.76115, method='exact')
+```
+
+위치가 다를 수 있으면 표본마다 자기 중앙값을 빼고 검정하는 방법이 흔해요. 다만 이렇게 하면 귀무분포가 정확하지 않아져서 p값은 어림으로 읽어요. 위치에 덜 민감한 퍼짐의 검정으로는 [`levene`](/api/htest/levene/)(중앙값 중심)과 [`fligner`](/api/htest/fligner/)가 있어요.
+
+```python
+>>> import statistics
+>>> mo, mn = statistics.median(old), statistics.median(new)
+>>> sd.htest.ansari([v - mo for v in old], [v - mn for v in new])
+AnsariResult(statistic=21.5, pvalue=0.00355643, method='asymptotic')
+```
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | x의 AB(점수의 합). 동점이 있으면 반정수일 수 있어요. |
+| `pvalue` | `alternative`에 맞는 p값 |
+| `method` | 실제로 쓴 방법(`'exact'`, `'asymptotic'`, `'permutation'`) |
+
+```python
+>>> r = sd.htest.ansari(old, new)
+>>> stat, p = r
+>>> print(r.summary())
+                             Ansari-Bradley test
+==============================================================================
+Statistic:                       24.00  Alternative:                 two-sided
+P-value:                        0.0230  Method:                          exact
+                                        No. Observations:                 8, 7
+==============================================================================
+```
+
+표본의 순서를 바꾸면 y의 AB가 통계량이 되고 양쪽 p값은 같아요.
+
+```python
+>>> sd.htest.ansari(new, old)
+AnsariResult(statistic=40, pvalue=0.0229992, method='exact')
+```
+
+## `alternative`: 한쪽 검정
+
+`'greater'`는 x의 퍼짐이 y보다 크다는 대립가설이에요. 퍼짐이 크면 AB가 작으므로, `'greater'`의 p값은 AB 분포의 아래 꼬리예요.
+
+```python
+>>> sd.htest.ansari(old, new, alternative='greater')
+AnsariResult(statistic=24, pvalue=0.0114996, method='exact')
+```
+
+"옛 기계가 더 들쭉날쭉하다"를 미리 정했다면 이렇게 써요.
+
+## `method`: 정확한 분포와 정규 근사
+
+- `'exact'`: 합친 순위를 두 표본에 나누는 모든 경우에서 AB의 분포를 정확히 세요.
+- `'asymptotic'`: AB의 평균과 분산으로 표준화해 정규 꼬리를 써요. 동점이 있으면 점수의 제곱합으로 분산을 고쳐요.
+- `'auto'`(기본값): 두 표본이 모두 55개보다 적고 동점이 없으면 `'exact'`, 아니면 `'asymptotic'`이에요.
+
+```python
+>>> sd.htest.ansari(old, new, method='asymptotic')
+AnsariResult(statistic=24, pvalue=0.0198099, method='asymptotic')
+```
+
+동점이 없으면 두 표본을 합쳐 127개까지 정수로 정확하게 세고, 그 위도 작업량 상한(10⁹번) 안이면 `'exact'`가 계산해요. 넘으면 `ValueError`예요.
+
+### 동점이 있을 때
+
+같은 값은 중간 순위를 받고, 점수도 그 중간 순위로 매겨요. `method='exact'`는 **관측한 점수를 그대로 둔 정확한 분포**를 써요. 동점이 있는 데이터의 귀무분포가 이것이에요.
+
+```python
+>>> tx = [1, 2, 2, 3, 5, 6, 6, 7]
+>>> ty = [3, 4, 4, 4, 5, 5]
+>>> sd.htest.ansari(tx, ty)
+AnsariResult(statistic=21.5, pvalue=0.0115273, method='asymptotic')
+>>> sd.htest.ansari(tx, ty, method='exact')
+AnsariResult(statistic=21.5, pvalue=0.004662, method='exact')
+```
+
+동점이 있으면 `'auto'`가 정규 근사를 고르는데, 이 예처럼 작은 표본에서는 정확한 값과 두 배 넘게 다를 수 있어요. 작은 표본에 동점이 있으면 `method='exact'`를 주세요. 동점이 있는 분포는 좌우 대칭이 아닐 수 있어서 양쪽 p값은 두 꼬리를 따로 세서 $\min(1,\ 2\min(P(AB \le s), P(AB \ge s)))$로 구해요.
+
+`sd.htest.PermutationMethod`를 주면 합친 표본의 순열로 AB의 분포를 만들어요. 모든 경우가 `n_resamples` 안이면 `'exact'`와 같은 값이에요. 넘겨주는 법은 [재표본 방법 객체](/api/htest/methods/)에 있어요.
+
+```python
+>>> perm = sd.htest.PermutationMethod(rng=sd.random.default_rng(0))
+>>> sd.htest.ansari(tx, ty, method=perm)
+AnsariResult(statistic=21.5, pvalue=0.004662, method='permutation')
+```
+
+## 여러 검정을 한 번에: `axis`
+
+아래는 두 실험(행)에서 25개씩을 견주고, 둘째 실험에서만 y의 퍼짐을 두 배로 했어요.
+
+```python
+>>> rng = sd.random.default_rng(9)
+>>> N = sd.stats.Normal()
+>>> X = N.sample((2, 25), rng=rng)
+>>> Y = N.sample((2, 25), rng=rng) * sd.asarray([[1.0], [2.0]])
+>>> rb = sd.htest.ansari(X, Y, axis=1)
+>>> rb.pvalue
+array([                  1.0, 6.663371773434072e-05], dtype=float64)
+>>> rb.method
+['exact', 'exact']
+```
+
+방법은 줄마다 골라요. `nan_policy`, `keepdims`, 빈 표본의 NaN은 다른 검정과 같아요.
+
+모든 값이 같으면 점수도 모두 같아서 AB가 어느 나눔에서나 같아요. 정확한 분포로는 p값이 1이에요. 이때 `'auto'`는 동점이 있어 정규 근사를 고르고, 그 근사식은 점수가 모두 같은 경우를 따로 다루지 않아 1이 아닌 값을 내요. 동점이 아주 많은 자료에서는 `method='exact'`로 읽으세요.
+
+```python
+>>> sd.htest.ansari([1.0, 1.0, 1.0], [1.0, 1.0])
+AnsariResult(statistic=9, pvalue=0.220671, method='asymptotic')
+>>> sd.htest.ansari([1.0, 1.0, 1.0], [1.0, 1.0], method='exact')
+AnsariResult(statistic=9, pvalue=1, method='exact')
+```
+
+## 정확도
+
+AB는 정확한 값이에요. 정확한 분포의 p값은 정수나 double-double로 센 개수의 몫이라 상대 1e-16 안이에요. 문제 8개에서 Arb(구간 산술)와 정확한 정수 셈으로 만든 참값에 견주어 p값의 가장 큰 상대오차는 3.3e-16이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.ansari`와 통계량, `alternative`의 방향, `'auto'`의 기준, 정규 근사의 분산이 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.ansari(old, new)
+AnsariResult(statistic=np.float64(24.0), pvalue=np.float64(0.022999222999223))
+```
+
+다른 점이에요.
+
+- 동점이 있을 때 `method='exact'`: sd는 관측한 점수의 조건부 정확 분포예요. scipy는 동점이 없는 분포를 써서 그 데이터의 귀무분포가 아니에요.
+
+  ```python
+  >>> scipy.stats.ansari(tx, ty, method='exact').pvalue
+  np.float64(0.009324009324009324)
+  ```
+
+- 큰 표본의 정확한 p값: scipy는 N이 45–108쯤에서 상대 6.5e-9–2.6e-7 틀려요(54개와 54개에서 2.6e-7). sd는 정수의 셈이에요.
+- 결과에 `method`가 있어요.
+- `axis`의 기본값이 None이에요(scipy는 0). 배치에서는 방법을 줄마다 골라요.
+- R의 `ansari.test`는 동점의 분산과 50개 이상에서의 방법이 달라서 값이 다를 수 있어요.

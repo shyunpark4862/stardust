@@ -1,0 +1,414 @@
+---
+title: 순위와 정확한 분포
+group: 순위와 표본 비교
+order: 1
+summary: 순위 검정이 중간 순위를 정수로 매기는 방법과, Mann–Whitney·Wilcoxon·Ansari–Bradley의 정확한 귀무분포를 가우스 이항계수와 부분합의 동적 계획으로 세는 방법을 설명해요. 개수가 128비트에 들면 정수로 세고, 동점이 있거나 개수가 너무 크면 양수만 더하는 double-double 셈으로 넘어가요.
+seeAlso: [overview, lanes, rank-k-samples, two-sample-distributions, correlation]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+
+## 한눈에 보기
+
+순위 검정 열 개([`mannwhitneyu`](/api/htest/mannwhitneyu/), [`ranksums`](/api/htest/ranksums/), [`wilcoxon`](/api/htest/wilcoxon/), [`kruskal`](/api/htest/kruskal/), [`friedmanchisquare`](/api/htest/friedmanchisquare/), [`brunnermunzel`](/api/htest/brunnermunzel/), [`ansari`](/api/htest/ansari/), [`mood`](/api/htest/mood/), [`median_test`](/api/htest/median_test/), [`page_trend_test`](/api/htest/page_trend_test/))는 Python 층 `src/stardust/htest/_rank.py`에서 인자를 확인하고 표본을 줄 행렬로 맞춘 뒤, C++ 커널(`csrc/htest/rank.cpp`)을 한 번 불러요. 커널은 배치의 줄마다 독립으로 순위를 매기고 통계량과 p값을 내요(줄 행렬과 병렬은 [영역의 구조](/internals/htest/overview/)와 [줄과 병렬](/internals/htest/lanes/)). 정확한 귀무분포는 `csrc/htest/rank_exact.hpp`에 있어요.
+
+이 글은 모든 순위 검정이 같이 쓰는 순위 매기기와, 정확한 분포를 가진 두 표본 검정 셋(Mann–Whitney, Wilcoxon 부호 순위, Ansari–Bradley)을 다뤄요. 나머지 순위 검정은 [여러 표본의 순위 검정](/internals/htest/rank-k-samples/)에 있어요.
+
+<Fig column caption="mannwhitneyu 한 번의 흐름. wilcoxon과 ansari도 같은 꼴이고 점수와 분포만 달라요.">
+  <Steps steps={[
+    { label: 'mannwhitneyu()', note: 'use_continuity, alternative, method 확인. 표본을 (줄, n) 행렬로, NaN은 커널이 처리', where: '_rank.py' },
+    { label: 'mwu', note: '줄마다 lane_keys로 값을 꼬리표와 함께 모으고 mwu_lane을 불러요', where: 'rank.cpp' },
+    { label: 'sort_keys, tie_runs', note: '정렬하고 같은 값의 묶음마다 두 배 중간 순위 2b + t + 1', where: 'moments.hpp, rank.cpp', depth: 1 },
+    { label: '방법 고르기', note: "scipy의 'auto' 문턱과 정확 계산의 일의 양(상한 10⁹)", where: 'rank.cpp', depth: 1 },
+    { label: '정확 분포 또는 정규 근사', note: '정수 가우스 이항계수, double-double 묶음 셈, 또는 동점 보정이 든 z', where: 'rank_exact.hpp', depth: 1 },
+    { label: 'MannwhitneyuResult', note: "줄마다 쓴 방법(method), 정규 근사를 쓴 줄이 있으면 zstatistic", where: '_rank.py' },
+  ]} />
+</Fig>
+
+## 순위는 정수예요
+
+### 꼬리표를 단 정렬
+
+모든 순위 검정은 줄 하나의 값을 그 값이 속한 표본의 번호(꼬리표)와 함께 정렬해요. 키는 값 하나를 double-double의 높은 부분과 낮은 부분으로 들고 있어요. 보통은 낮은 부분이 0이고, Wilcoxon의 차 $x - y$처럼 값 자체가 double-double일 때만 낮은 부분이 쓰여요.
+
+```cpp
+// csrc/htest/moments.hpp
+struct Key {
+    double hi, lo;
+    std::int32_t tag;
+};
+inline bool key_less(const Key& a, const Key& b) { return a.hi < b.hi || (a.hi == b.hi && a.lo < b.lo); }
+inline bool key_equal(const Key& a, const Key& b) { return a.hi == b.hi && a.lo == b.lo; }
+```
+
+같은 값은 정확히 같은 double이에요. −0.0과 0.0은 `==`로 같으므로 동점이고, ±inf는 다른 값처럼 순서대로 순위를 받아요. 정렬(`sort_keys`)은 짧은 줄이면 `std::sort` 한 번이고, 2¹⁵개를 넘는 줄은 고정된 크기의 조각을 스레드풀에서 따로 정렬한 뒤 짝지어 병합해요. 조각의 경계가 줄의 길이로만 정해지므로 스레드 수와 상관없이 같은 순서가 나와요. 같은 값끼리의 순서는 바뀔 수 있지만 순위에는 영향이 없어요.
+
+### 두 배 중간 순위
+
+정렬한 뒤에는 같은 값의 묶음(run)을 차례로 훑어요. 위치 b(0부터)에서 시작하는 t개의 같은 값은 순위 b + 1, …, b + t를 나눠 가지므로 중간 순위가 $(2b + t + 1)/2$예요. 이 값은 정수이거나 반정수라서, 커널은 언제나 그 두 배 $2b + t + 1$을 정수로 들고 다녀요.
+
+```cpp
+// csrc/htest/rank.cpp
+// f(b, t, first) for every run of equal keys of sorted v: t values from position b
+template <class F>
+void tie_runs(const std::vector<Key>& v, F&& f) {
+    const auto n = static_cast<std::int64_t>(v.size());
+    std::int64_t i = 0;
+    while (i < n) {
+        std::int64_t e = i + 1;
+        while (e < n && key_equal(v[static_cast<std::size_t>(e)], v[static_cast<std::size_t>(i)])) ++e;
+        f(i, e - i, i);
+        i = e;
+    }
+}
+```
+
+Mann–Whitney는 이 콜백에서 x의 두 배 순위 합, 동점 보정에 쓸 $\sum (t^3 - t)$, 그리고 정확 분포에 넘길 (점수, 개수)의 목록을 한 번에 모아요.
+
+```cpp
+    // csrc/htest/rank.cpp
+    sort_keys(keys);
+    std::int64_t twoR1 = 0;
+    i128 T3 = 0;
+    bool ties = false;
+    Scores sc;
+    tie_runs(keys, [&](std::int64_t b, std::int64_t t, std::int64_t first) {
+        const std::int64_t a = 2 * b + t + 1;
+        twoR1 += tag_count(keys, first, t, 0) * a;
+        T3 += static_cast<i128>(t) * t * t - t;
+        ties = ties || t > 1;
+        sc.add(a, t);
+    });
+    const std::int64_t twoU1 = twoR1 - n1 * (n1 + 1), twoU2 = 2 * n1 * n2 - twoU1;
+```
+
+그래서 순위 합, U, T⁺, Ansari–Bradley의 AB는 모두 정확한 정수(의 반)예요. 정확 검정에서 "관측만큼 극단적인가"를 이 정수로 견주므로, 수학적으로 같은 두 통계량이 반올림 때문에 한 칸 갈리는 일이 없어요. 통계량을 돌려줄 때만 `0.5 * twoU1`로 double을 만들고, 이 곱은 정확해요.
+
+## Mann–Whitney의 정확한 분포
+
+### U와 가우스 이항계수
+
+동점이 없고 귀무가설 아래에서 두 표본이 같은 분포를 따르면, 합친 표본 N = n₁ + n₂개 가운데 작은 표본(크기 c)이 차지하는 순위의 집합은 $\binom{N}{c}$가지가 모두 같은 확률이에요. U는 "작은 표본의 값이 다른 표본의 값보다 큰 쌍의 수"이므로, 합친 표본을 작은 값부터 늘어놓고 작은 표본의 자리를 1, 다른 표본의 자리를 0으로 적은 낱말을 만들면, U는 그 낱말에서 0이 1보다 앞에 오는 쌍의 수예요.
+
+길이 N이고 1이 c개인 낱말들의 역순 쌍의 수를 생성함수로 모으면 가우스 이항계수(q-이항계수)가 나와요.
+
+$$
+\sum_{\text{낱말}} q^{\,U} \;=\; \begin{bmatrix} N \\ c \end{bmatrix}_q \;=\; \prod_{j=1}^{c} \frac{1 - q^{\,N - j + 1}}{1 - q^{\,j}}
+$$
+
+Mann과 Whitney(1947)의 점화식 $f(n_1, n_2, u) = f(n_1 - 1, n_2, u - n_2) + f(n_1, n_2 - 1, u)$는 이 다항식을 마지막 글자로 가르는 것과 같아요. 곱 공식을 쓰면 $[N, j - 1]_q$에서 $[N, j]_q$로 한 단계를 다항식의 곱셈 하나와 나눗셈 하나로 넘어가요.
+
+- $(1 - q^a)$를 곱하는 것은 계수열에서 a칸 민 사본을 빼는 일이에요. 높은 차수부터 내려가며 빼면 아직 바꾸지 않은 낮은 차수의 값을 읽어요.
+- $1/(1 - q^j) = 1 + q^j + q^{2j} + \cdots$을 곱하는 것은 간격 j의 누적합이에요. 낮은 차수부터 올라가며 더하면 이미 바뀐 값을 읽어 누적이 돼요.
+
+두 연산 모두 차수 v의 계수를 v 이하의 계수로만 만들므로, p값에 필요한 차수 b에서 계수열을 잘라도 b 이하의 계수는 정확해요. 그래서 일이 $c(b + 1)$이에요.
+
+```cpp
+// csrc/htest/rank_exact.hpp
+// P <- P (1 - q^(n-j+1)) / (1 - q^j): [n, j-1]_q to [n, j]_q, truncated at deg P.size() - 1
+inline void qbinom_step(std::vector<i128>& P, std::int64_t n, std::int64_t j) {
+    const auto b = static_cast<std::int64_t>(P.size()) - 1;
+    const std::int64_t a = n - j + 1;
+    for (std::int64_t v = b; v >= a; --v) P[static_cast<std::size_t>(v)] -= P[static_cast<std::size_t>(v - a)];
+    for (std::int64_t v = j; v <= b; ++v) P[static_cast<std::size_t>(v)] += P[static_cast<std::size_t>(v - j)];
+}
+
+// #{U <= b} for U the Mann-Whitney statistic of samples of c and N - c (coefficients of
+// [N, c]_q), C(N, c) below 2^124. Work: c (b + 1).
+inline u128 mwu_lower(std::int64_t N, std::int64_t c, std::int64_t b) {
+    if (b < 0) return 0;
+    if (b >= c * (N - c)) return binom_u128(N, c);
+    std::vector<i128> P(static_cast<std::size_t>(b + 1), 0);
+    P[0] = 1;
+    for (std::int64_t j = 1; j <= c; ++j) qbinom_step(P, N, j);
+    u128 s = 0;
+    for (i128 v : P) s += static_cast<u128>(v);
+    return s;
+}
+```
+
+빼기가 들어가므로 중간 계수가 음수가 될 수 있어 부호 있는 128비트 정수(`__int128`)로 세요. 정수라서 뺄셈도 정확하고, 끝난 계수는 모두 음이 아닌 개수예요. 이 길은 동점이 없고 $\log_2\binom{N}{c} < 124$일 때만 써요. 한 표본이 8개면 다른 표본이 약 17만 개까지 이 길이에요.
+
+### 가까운 쪽 꼬리
+
+U의 분포는 $u \mapsto c(N - c) - u$에 대해 대칭이에요. 그래서 큰 꼬리가 필요하면 반대편의 작은 꼬리를 세서 전체에서 빼요.
+
+$$
+\#\{U \le b\} = \binom{N}{c} - \#\{U \le c(N - c) - b - 1\}
+$$
+
+뺄셈이 정수라 정확하고, 세는 차수는 언제나 $\min(b, \text{top} - b)$ 이하예요. p값은 개수 둘의 몫 하나를 double-double로 나눠 한 번 반올림한 값이에요.
+
+```cpp
+        // csrc/htest/rank.cpp
+        if (ints) {
+            const u128 total = exact::binom_u128(N, c);
+            auto lower = [&](std::int64_t w) {
+                const std::int64_t b = floor_div(w, 2);
+                const u128 v = 2 * b >= top ? total - mwu_lower_memo(N, c, top - b - 1) : mwu_lower_memo(N, c, b);
+                return count_ratio(v, total);
+            };
+            le = lower(twoU1), ge = lower(twoU2);
+```
+
+`le`는 $P(U_1' \le U_1)$이고 `ge`는 대칭을 써서 $P(U_1' \ge U_1) = P(U_2' \le U_2)$로 얻어요. 'less'는 `le`, 'greater'는 `ge`, 양쪽은 $\min(1, 2\min(\text{le}, \text{ge}))$예요. 동점이 없으면 이 양쪽 값이 scipy의 $2P(U' \ge \max(U_1, U_2))$와 같은 규칙이에요.
+
+같은 크기의 줄이 많은 배치(동점이 없는 줄은 분포가 크기와 경계 b에만 기대요)를 위해, `mwu_lower_memo`는 (N, c, b)마다 센 개수를 스레드마다 기억해 둬요. 기억한 값이 정확한 정수라 줄이 혼자 돌든 배치에서 어느 스레드에 가든 같은 비트예요.
+
+```python
+>>> x = sd.arange(30.0)
+>>> r = sd.htest.mannwhitneyu(x, x + 100, method='exact')
+>>> r
+MannwhitneyuResult(statistic=0, pvalue=1.69112e-17, method='exact')
+>>> r.pvalue == 2 / 118264581564861424
+True
+```
+
+완전히 갈린 30 × 30은 양쪽 p값이 $2/\binom{60}{30}$이에요. 'auto'라면 두 표본이 모두 8보다 커서 정규 근사를 골라요(scipy의 문턱).
+
+### 동점이 있을 때: 조건부 분포
+
+동점이 있으면 `method='exact'`는 관측한 중간 순위들의 정확한 분포를 내요. 귀무가설 아래에서 합친 표본의 값(과 그 중간 순위)은 그대로 두고 표본의 꼬리표만 고르게 섞이므로, 작은 표본의 두 배 순위 합은 "점수 $a_g$가 $t_g$개씩 든 묶음들에서 c개를 비복원으로 뽑은 합"의 분포를 따라요. 이것은 순열 검정의 분포와 같고, R `wilcox.test(exact = TRUE)`가 동점일 때 쓰는 분포와도 같아요.
+
+이 분포는 묶음 위의 동적 계획으로 세요. 상태는 (지금까지 고른 수 j, 점수의 합 s)이고, 묶음 g에서 cc개를 고르면 $\binom{t_g}{cc}$가지라 그만큼 곱해서 (j + cc, s + cc·a_g)에 더해요. j를 큰 쪽부터 내려가며 갱신하면 같은 묶음을 두 번 쓰지 않아요.
+
+```cpp
+    // csrc/htest/rank_exact.hpp
+    for (std::size_t g = 0; g < v.size(); ++g) {
+        const std::int64_t tg = t[g], vg = v[g];
+        w.assign(static_cast<std::size_t>(std::min(tg, c) + 1), DD{0.0, 0.0});
+        for (std::int64_t cc = 1; cc <= std::min(tg, c); ++cc) w[static_cast<std::size_t>(cc)] = binom_dd(tg, cc);
+        for (std::int64_t j = c; j >= 1; --j) {
+            DD* out = dp.data() + j * S;
+            std::int64_t r = reach[static_cast<std::size_t>(j)];
+            for (std::int64_t cc = 1; cc <= std::min(tg, j); ++cc) {
+                const std::int64_t from = reach[static_cast<std::size_t>(j - cc)];
+                if (from < 0) continue;
+                const DD* in = dp.data() + (j - cc) * S;
+                const std::int64_t shift = cc * vg, hi = std::min(smax, from + shift);
+                const DD wc = w[static_cast<std::size_t>(cc)];
+                if (wc.hi == 1.0 && wc.lo == 0.0) {
+                    for (std::int64_t s = shift; s <= hi; ++s) out[s] = out[s] + in[s - shift];
+                } else {
+                    for (std::int64_t s = shift; s <= hi; ++s) out[s] = out[s] + in[s - shift] * wc;
+                }
+                r = std::max(r, hi);
+            }
+            reach[static_cast<std::size_t>(j)] = r;
+        }
+    }
+```
+
+개수는 double-double이에요. 갱신이 모두 양수의 곱과 덧셈이라 뺄셈이 없고, 한 단계의 상대오차가 약 2⁻¹⁰⁴이므로 깊이 n의 셈은 n·2⁻¹⁰⁴ 안이에요. 정수 128비트로는 동점 묶음의 $\binom{t}{cc}$ 곱이 금방 넘칠 수 있어서 이 길에는 정수를 쓰지 않아요. 합의 범위를 줄이려고 점수에서 가장 작은 점수를 빼고 최대공약수 g로 나눠 둬요(`Grouped`). 동점이 없는 두 배 순위 2, 4, 6, …는 g = 2라 범위가 반이 돼요. `reach[j]`는 고른 수 j로 닿은 가장 큰 합이라, 아직 0인 칸을 훑지 않게 해요.
+
+동점이 있으면 분포가 대칭이 아닐 수 있어서 두 꼬리를 따로 세요. 동점 묶음이 거울처럼 놓이지 않으면 $P(U \le u)$와 $P(U \ge n_1 n_2 - u)$가 달라요.
+
+```python
+>>> x = [-2.0, -1.0, 0.0, 0.0, 1.0, 2.0, 2.0]
+>>> y = [0.0, 3.0, 3.0]
+>>> sd.htest.mannwhitneyu(x, y, method='exact', alternative='less')
+MannwhitneyuResult(statistic=4, pvalue=0.1, method='exact')
+>>> sd.htest.mannwhitneyu(x, y, method='exact')
+MannwhitneyuResult(statistic=4, pvalue=0.2, method='exact')
+```
+
+여기서 U₁ = 4이고, 120가지 배치를 모두 세면 $P(U_1 \le 4) = 12/120 = 0.1$, 반사한 $P(U_1 \ge 17) = 10/120$이에요. 반사로 반대 꼬리를 대신하면 양쪽 p값이 달라져요. 양쪽 p값은 $\min(1, 2\min(P(S \le s), P(S \ge s)))$예요.
+
+### 정규 근사
+
+정확 분포를 쓰지 않는 줄은 scipy의 정규 근사예요. 분자 $U_1 - n_1 n_2/2 - \text{연속성}$의 두 배는 정수이고, 동점 보정이 든 분산 $\frac{n_1 n_2}{12}\bigl((N + 1) - \frac{\sum(t^3 - t)}{N(N - 1)}\bigr)$도 분자를 128비트 정수로 모은 뒤 double-double로 한 번 나눠요.
+
+```cpp
+    // csrc/htest/rank.cpp
+    const double s = alt == kGreater ? 1.0 : (alt == kLess ? -1.0 : sgn(static_cast<double>(twoU1 - n1 * n2)));
+    const std::int64_t num2 = twoU1 - n1 * n2 - (cont ? static_cast<std::int64_t>(s) : 0);
+    const i128 Nn = N, NN = Nn * (Nn - 1);
+    const DD var = dd_of(static_cast<i128>(n1) * n2 * ((Nn + 1) * NN - T3)) / (12.0 * static_cast<double>(NN));
+    o.z = ratio(DD{0.5 * static_cast<double>(num2), 0.0}, sqrt_dd(var));
+```
+
+연속성 보정 0.5는 두 배 단위에서 1이에요. 모든 값이 같아 분산이 0이면 z와 p값이 NaN이에요. p값은 sd.stats `Normal`의 `ccdf`·`cdf`를 C++에서 바로 불러 작은 쪽 꼬리를 직접 계산해요(1 − cdf가 아니에요).
+
+## Wilcoxon 부호 순위
+
+### 차를 반올림하지 않아요
+
+짝지은 표본의 차 $d = x - y$는 TwoSum으로 double-double을 만들어요. 큰 두 값의 차가 double로 반올림되면 서로 다른 |d|가 같아지거나 순서가 바뀔 수 있는데, (hi, lo)로 견주면 그런 일이 없어요. inf − inf는 NaN이라 그 줄 전체가 NaN이에요.
+
+```cpp
+            // csrc/htest/rank.cpp
+            DD e = paired ? dd::two_sum(u, -v) : DD{u, 0.0};
+            if (e.hi != e.hi) {  // inf - inf
+                bad = true;
+                continue;
+            }
+            if (!std::isfinite(e.hi)) e.lo = 0.0;
+            const int s = e.hi > 0.0 ? 1 : (e.hi < 0.0 ? -1 : 0);
+            const DD m = abs_dd(e);
+            d.push_back(Signed{m.hi, m.lo, s});
+```
+
+부호는 키의 꼬리표(−1, 0, +1에 1을 더한 0, 1, 2)로 들고 가요. 순위를 매긴 뒤 꼬리표 2의 두 배 순위 합이 2T⁺, 0의 합이 2T⁻예요.
+
+```python
+>>> x = [1e16, 0.0, 5.0]
+>>> y = [1.0, 1e16, 2.0]
+>>> sd.htest.wilcoxon(x, y)
+WilcoxonResult(statistic=3, pvalue=1, method='exact')
+>>> d = sd.asarray(x) - sd.asarray(y)
+>>> sd.htest.wilcoxon(d)
+WilcoxonResult(statistic=2.5, pvalue=1, method='exact')
+```
+
+차는 $10^{16} - 1$, $-10^{16}$, 3이에요. 짝으로 넘기면 $|10^{16} - 1| < 10^{16}$이라 순위가 2와 3이고 T⁺ = T⁻ = 3이에요. 먼저 double로 빼면 $10^{16} - 1$이 $10^{16}$으로 반올림되어 두 차가 동점(2.5씩)이 되고 통계량이 2.5로 바뀌어요.
+
+### 0의 처리
+
+`zero_method`는 0인 차를 어떻게 다룰지 정해요.
+
+- `'wilcox'`: 0을 키에 넣지 않아요. 순위는 0이 아닌 차끼리예요.
+- `'pratt'`: 0도 순위를 받고, 통계량과 분포에서는 빠져요. 정규 근사의 평균·분산에서 0의 몫 $n_0(n_0 + 1)$, $n_0(n_0 + 1)(2n_0 + 1)$을 빼고, 0의 묶음을 동점 보정에서도 빼요.
+- `'zsplit'`: 0의 두 배 순위 합의 반을 T⁺와 T⁻에 똑같이 더해요. 0이 $n_0$개면 그 두 배 순위 합이 $n_0(n_0 + 1)$로 짝수라 반도 정수예요.
+
+### 부분합의 셈
+
+귀무가설 아래에서 0이 아닌 차의 부호는 서로 독립이고 반반이므로, T⁺(에서 `zsplit`의 상수를 뺀 것)는 $\sum a_i B_i$($a_i$는 두 배 순위를 최대공약수로 나눈 것, $B_i$는 공정한 0·1)의 분포를 따라요. 생성함수가 $\prod_i (1 + q^{a_i})$라 0·1 배낭 문제처럼 위에서 아래로 갱신하면 돼요. 동점이 없으면 $a_i = 1, \dots, n$이고 이것이 Wilcoxon 부호 순위 통계량의 고전적인 분포예요. 동점이 있으면 관측한 중간 순위에 조건부인 분포가 되는데, 이것은 모든 부호를 뒤집어 보는 순열 분포와 같아요.
+
+```cpp
+// csrc/htest/rank_exact.hpp
+inline std::vector<u128> signed_rank_counts(const std::vector<std::int64_t>& a) {
+    std::int64_t S = 0;
+    for (std::int64_t x : a) S += x;
+    std::vector<u128> c(static_cast<std::size_t>(S + 1), 0);
+    c[0] = 1;
+    std::int64_t top = 0;
+    for (std::int64_t x : a) {
+        top += x;
+        for (std::int64_t s = top; s >= x; --s) c[static_cast<std::size_t>(s)] += c[static_cast<std::size_t>(s - x)];
+    }
+    return c;
+}
+```
+
+전체 개수가 $2^n$이라 차가 124개 이하이면 정수로 세요. 그보다 많으면 확률을 직접 쌓는 판(`signed_rank_probs`)을 써요. 한 단계가 $(x(s) + x(s - a))/2$이고, 2로 나누기는 지수만 바꾸므로 정확해요. 덧셈만 남아 이 길도 양수의 합이에요. 일은 $n(\sum a + 1)$이고, 상한 10⁹ 안에서 차가 약 1,250개까지 정확 분포를 낼 수 있어요.
+
+부호 순위의 분포는 동점이 있어도 대칭이라(모든 부호를 뒤집으면 T⁺와 T⁻가 바뀌어요) 위와 아래 꼬리를 하나의 계수열에서 함께 더해요.
+
+```python
+>>> r = sd.htest.wilcoxon(sd.arange(1.0, 61.0), method='exact')
+>>> r
+WilcoxonResult(statistic=0, pvalue=1.73472e-18, method='exact')
+>>> r.pvalue == 2.0 ** -59
+True
+```
+
+차 60개가 모두 양수면 T⁻ = 0인 배치가 하나뿐이라 양쪽 p값이 $2 \cdot 2^{-60}$이에요.
+
+### 정규 근사
+
+평균과 분산은 scipy의 식을 네 배, 마흔여덟 배 한 정수로 들어요. $4\,\mathbb E = n(n + 1)$, $48\,\mathrm{Var} = 2n(n + 1)(2n + 1) - \sum(t^3 - t)$이고, `correction=True`의 0.5는 네 배 단위에서 2예요. 양쪽 검정의 `zstatistic`은 scipy처럼 $-|z|$예요.
+
+## Ansari–Bradley
+
+### 점수
+
+Ansari–Bradley 검정은 척도(퍼짐)를 견줘요. 합친 표본의 순위 r에 점수 $\min(r, N + 1 - r)$을 주고 x의 점수 합 AB를 통계량으로 써요. 양 끝에 가까운 값일수록 점수가 작아서, x가 더 퍼져 있으면 AB가 작아요. 중간 순위의 두 배 r₂에서 두 배 점수는 $\min(r_2, 2(N + 1) - r_2)$로 정수예요.
+
+```cpp
+    // csrc/htest/rank.cpp
+    tie_runs(keys, [&](std::int64_t b, std::int64_t t, std::int64_t first) {
+        const std::int64_t r2 = 2 * b + t + 1, s2 = std::min(r2, 2 * (N + 1) - r2);
+        twoAB += tag_count(keys, first, t, 0) * s2;
+        A += t * s2;
+        fac4 += static_cast<i128>(t) * s2 * s2;
+        ties = ties || t > 1;
+        sc.add(s2, t);
+    });
+```
+
+### 정확한 분포: 두 사본의 가우스 이항계수
+
+동점이 없으면 점수는 N = 2k일 때 1, …, k가 두 번(앞쪽 반과 뒤쪽 반), N = 2k + 1이면 거기에 가운데의 k + 1이 한 번 더 있어요. x의 값 c개가 앞쪽 사본에서 j개, 뒤쪽 사본에서 c − j개를 차지한다고 하면, 1..k에서 서로 다른 j개를 고른 합은 $j(j + 1)/2$에 $[k, j]_q$를 따르는 U 하나를 더한 것이에요(앞의 Mann–Whitney와 같은 셈). 두 사본은 서로 독립이므로
+
+$$
+\#\{AB \le b\} = \sum_{j} \sum_{u} A_j[u]\cdot \mathrm{cum}A_{c-j}\Bigl[b - \tfrac{j(j+1)}{2} - \tfrac{(c-j)(c-j+1)}{2} - u\Bigr]
+$$
+
+이에요. $A_j$는 $[k, j]_q$의 계수, cum은 그 누적합이에요. N이 홀수면 가운데 값을 고른 경우(c − 1개, 경계 b − (k + 1))를 한 번 더 더해요.
+
+```cpp
+    // csrc/htest/rank_exact.hpp
+    u128 even_lower(std::int64_t c, std::int64_t b) const {
+        u128 tot = 0;
+        if (c < 0) return 0;
+        for (std::int64_t j = std::max<std::int64_t>(0, c - k); j <= std::min(c, k); ++j) {
+            const std::int64_t base = j * (j + 1) / 2 + (c - j) * (c - j + 1) / 2;
+            const std::vector<u128>& a = A[static_cast<std::size_t>(j)];
+            const std::vector<u128>& cb = cum[static_cast<std::size_t>(c - j)];
+            const auto degb = static_cast<std::int64_t>(cb.size()) - 1;
+            for (std::int64_t u = 0; u < static_cast<std::int64_t>(a.size()); ++u) {
+                const std::int64_t idx = b - base - u;
+                if (idx < 0) break;
+                tot += a[static_cast<std::size_t>(u)] * cb[static_cast<std::size_t>(std::min(idx, degb))];
+            }
+        }
+        return tot;
+    }
+    // #{AB <= b} for c scores of N observations (N = 2k or 2k + 1)
+    u128 lower(std::int64_t N, std::int64_t c, std::int64_t b) const {
+        u128 v = even_lower(c, b);
+        if (N % 2 == 1) v += even_lower(c - 1, b - (k + 1));
+        return v;
+    }
+```
+
+$[k, j]_q$(j = 0..k)와 그 누적합은 `qbinom_step`을 k번 돌려 한 번에 만들어요. 이 표는 k마다 한 번 만들어 프로세스 안에 두므로(뮤텍스로 지켜요) 같은 크기의 배치와 되풀이한 호출이 나눠 써요. 일은 약 $(k + 1)^3$이에요. p값은 $P(AB \le ab)$와 $P(AB \ge ab) = 1 - P(AB \le ab - 1)$(정수 뺄셈)이고, 'greater'는 아래 꼬리예요(scipy의 방향).
+
+동점이 있으면 점수 묶음을 값으로 합친 뒤(앞쪽 반과 뒤쪽 반의 같은 점수는 같은 묶음이에요) Mann–Whitney와 같은 `grouped_counts`로 조건부 분포를 세요.
+
+```python
+>>> sd.htest.ansari([-3.0, -2.0, 2.0, 3.0], [-1.0, -0.5, 0.5, 1.0, 0.2])
+AnsariResult(statistic=6, pvalue=0.015873, method='exact')
+```
+
+x의 넷이 양 끝을 모두 차지해서 점수가 1, 1, 2, 2로 가장 작은 합 6이에요. $\binom{9}{4} = 126$가지 가운데 AB ≤ 6인 배치가 하나뿐이라 양쪽 p값이 $2/126$이에요.
+
+정규 근사는 scipy의 평균과 분산이에요. 동점이 있으면 점수 제곱합 $\sum t\,s^2$(두 배 점수로 네 배 한 `fac4`)이 든 분산이고, N의 홀짝에 따라 식이 달라요. 분자와 분모를 모두 128비트 정수로 모은 뒤 double-double로 나눠요.
+
+## 정확 계산을 고르는 규칙과 상한
+
+`method='auto'`의 문턱은 scipy 1.18.1 그대로예요.
+
+| 검정 | 'auto'가 정확을 고르는 조건 |
+|---|---|
+| `mannwhitneyu` | 한 표본이 8개 이하이고 동점이 없어요 |
+| `wilcoxon` | 동점·0이 없으면 차가 50개 이하, 있으면 13개 이하 |
+| `ansari` | 두 표본이 모두 55개 미만이고 동점이 없어요 |
+
+scipy는 동점의 유무를 배치 전체에서 보지만 여기서는 줄마다 봐요. 그래서 배치의 `method`는 줄의 이름을 배치 모양으로 중첩한 리스트예요.
+
+정확 계산에는 일의 상한 10⁹번과 동시에 드는 개수의 상한 10⁷개가 있어요. 커널은 계산하기 전에 일을 미리 세요. 정수 Mann–Whitney는 $c(\min(b, \text{top} - b) + 1)$, Ansari–Bradley는 $(k + 1)^3$, 묶음 셈은 (값의 수) × c × (합의 범위 + 1)이고 칸 수가 10⁷을 넘으면 일을 크게 잡아요. 상한을 넘으면 'auto'는 정규 근사로 가고, `method='exact'`는 그 줄의 일을 돌려줘 Python 층이 에러를 내요.
+
+```python
+>>> x = sd.arange(3000.0) % 7
+>>> y = sd.arange(3000.0) % 5
+>>> sd.htest.mannwhitneyu(x, y, method='exact')
+Traceback (most recent call last):
+    ...
+ValueError: mannwhitneyu(): method='exact' needs about 4.29e+14 operations for this input, more than its cap of 1e+09; use method='asymptotic'
+```
+
+## 정확도
+
+순위에서 나오는 통계량(U, T⁺, AB)은 정확하고, 정확 분포의 p값은 정수(나 double-double) 개수의 몫이라 상대 10⁻¹⁶ 안이에요. 깊은 꼬리 $2^{-200}$, $2/\binom{60}{30}$까지 그래요. 참값은 가우스 이항계수의 계수, 부분합의 수, 동점이 있을 때 두 배 중간 순위의 부분합을 정확한 정수로 센 것이고, 정규 근사의 꼬리는 Arb(구간 산술)로 만든 참값이에요.
+
+<AccuracySummary area="htest" names={['mannwhitneyu', 'ranksums', 'wilcoxon', 'ansari']} caption="두 표본 순위 검정의 정확도. scipy 열의 큰 값은 동점이 있는 'exact'(동점이 없는 분포에 통계량을 넣어요)와 n = 300 정규 근사의 꼬리에서 나와요." />
+
+## scipy·R과 다른 곳
+
+- scipy의 `mannwhitneyu`·`ansari`·`wilcoxon`의 `method='exact'`는 동점이 있어도 동점이 없는 분포에 통계량을 넣어요. 그 p값은 그 데이터의 귀무분포가 아니라서 이 문제들에서 참값과 상대 0.029–3.5 달라요. 여기서는 관측한 중간 순위의 조건부 분포예요. scipy의 `wilcoxon(method='auto')`가 동점·0이 있는 13개 이하에서 하는 부호의 나열은 이 분포와 같아요.
+- R 4.6.2 `wilcox.test(exact = TRUE, correct = FALSE)`는 같은 조건부 분포라, 동점이 있는 Mann–Whitney 36경우와 Wilcoxon(`zero_method='pratt'`과 견줘요: R은 0을 Pratt처럼 순위에 넣어요) 36경우에서 최대 1.3e-15 차이예요.
+- scipy의 Mann–Whitney 정확 분포는 약수 합 σ의 점화(`build_sigma_array`)로 $O(u^2)$이고, 여기서는 꼬리 차수에서 자른 가우스 이항계수라 $O(c\,u)$예요.
+- scipy의 `ansari` 정확 분포는 54 × 54에서 p값이 상대 2.6e-7 틀리고, R `ansari.test`는 50개 이상이면 정규 근사라 0.015 달라요.
+- scipy의 `wilcoxon(method='exact')`은 차 60개가 모두 양수일 때 꼬리를 1 − cdf로 얻어 p값이 0이에요. 여기서는 1.7347e-18이에요.

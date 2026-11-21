@@ -1,0 +1,168 @@
+---
+title: 스튜던트화 범위와 Dunnett
+group: 다중 비교
+order: 1
+summary: tukey_hsd의 p값인 스튜던트화 범위의 꼬리와 dunnett의 다변량 t 꼬리를 두 겹 적분으로 계산하는 방법을 따라가요. 안쪽 적분은 1 − cdf를 거치지 않는 양수의 꼴이라 깊은 꼬리도 상대 정확도를 지키고, 바깥쪽은 카이 변수의 혼합이에요. 난수를 쓰지 않으므로 같은 입력이면 언제나 같은 값이에요.
+seeAlso: [p-adjust, anova, ttest, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`tukey_hsd`](/api/htest/tukey_hsd/)와 [`dunnett`](/api/htest/dunnett/)은 여러 집단의 평균을 짝지어 견줘요. 계산은 `src/stardust/htest/_multicomp.py`(인자와 결과)와 C++의 세 파일에 있어요.
+
+- `csrc/htest/multicomp.cpp`: 집단의 적률, 평균의 차, 표준오차, 짝·비교마다의 p값
+- `csrc/htest/studentized_range.hpp`: 스튜던트화 범위의 꼬리와 꼬리를 뒤집는 근 찾기
+- `csrc/htest/dunnett.hpp`: 한 인자 꼴의 다변량 t 꼬리
+
+두 분포 모두 sd.stats에 공개된 분포가 아니라 htest 안에만 있어요. 짝·비교마다 독립이라 스레드풀에서 나란히 돌고, 스레드 수와 상관없이 같은 비트예요.
+
+<Fig column caption="tukey_hsd 한 번의 흐름. 짝마다 스튜던트화 범위의 꼬리 하나를 계산해요.">
+  <Steps
+    steps={[
+      { label: 'group_moments', note: '집단마다 평균과 제곱합을 double-double로, 모든 집단을 한 단위(가장 큰 크기의 2의 거듭제곱)로', where: 'multicomp.cpp' },
+      { label: 'tukey', note: '짝 (i, j)마다 평균의 차, 표준오차, 자유도', where: 'multicomp.cpp' },
+      { label: 'srange::sf', note: 'P(Q > |d|/se): 카이 변수에 대한 혼합', where: 'studentized_range.hpp', depth: 1 },
+      { label: 't_mixture', note: 'v = log R²의 적응 Gauss–Kronrod', where: 'sd.stats', depth: 2 },
+      { label: 'range_sf', note: '범위의 꼬리 P(W > w): 가장 작은 값에 대한 적분', where: 'studentized_range.hpp', depth: 2 },
+      { label: 'conf_int(alpha)', note: 'P(Q > q*) = alpha의 근 q*, 구간 d ± q*·se', where: '_multicomp.py' },
+    ]}
+  />
+</Fig>
+
+## 평균과 표준오차
+
+집단의 평균과 제곱합은 double-double이에요(`htest/moments.hpp`, [적률과 t 검정](/internals/htest/ttest/)). 모든 집단을 표본 전체의 가장 큰 크기에 맞춘 2의 거듭제곱 단위 하나로 계산하므로, 평균이 $10^8$이고 차이가 0.1인 집단들에서도 평균의 차 $d_{ij} = m_i - m_j$가 자릿수를 잃지 않아요.
+
+- **Tukey–Kramer**(`equal_var=True`): $\text{se}^2 = \tfrac12(1/n_i + 1/n_j)\,\text{MSE}$, 자유도 $N - k$. 집단 크기가 같으면 scipy의 $\sqrt{\text{MSE}/n}$과 같은 식이에요.
+- **Games–Howell**(`equal_var=False`): $\text{se}^2 = \tfrac12(v_i + v_j)$, $v_i = s_i^2/n_i$, 자유도는 짝마다의 Welch 자유도 $(v_i + v_j)^2/\big(v_i^2/(n_i - 1) + v_j^2/(n_j - 1)\big)$.
+
+p값은 스튜던트화 범위 $Q$의 위 꼬리 $P(Q > |d_{ij}|/\text{se})$예요. 대각은 scipy처럼 1이에요. 모든 집단이 상수면(짝의 두 집단이 상수면) 분산이 0이라 NaN이에요.
+
+## 스튜던트화 범위의 꼬리
+
+### 혼합으로 쓰기
+
+$k$개의 독립인 표준정규 값의 범위를 $W$, 그것과 독립인 $R = \sqrt{\chi^2_\nu/\nu}$라 하면 $Q = W/R$이에요. $R$에 대해 조건부로 보면
+
+$$
+P(Q > q) = E\big[P(W > Rq)\big] = \int_0^\infty P(W > rq)\,g_\nu(r)\,dr
+$$
+
+이에요($g_\nu$는 $R$의 밀도). 이 바깥 적분은 sd.stats의 다변량 t cdf가 쓰는 `t_mixture`(`csrc/stats/mvcdf.hpp`)가 맡아요. 변수를 $v = \log R^2$로 바꿔 무게의 봉우리가 $v = 0$ 근처에서 매끄럽게 하고, QUADPACK의 21점 Gauss–Kronrod 규칙으로 패널을 적응적으로 나눠요. $R$이 아주 작은 왼쪽 끝은 적분하지 않고 닫아요. $R \le r_c$에서는 $|P(W > Rq) - 1| \le Rq/\sqrt\pi$이므로, 그 부분은 $P(R \le r_c)$(불완전 감마)를 곱한 값으로 상대 $10^{-17}$ 안이에요. 오른쪽 끝은 카이제곱의 꼬리가 $10^{-300}$ 아래가 되는 곳에서 잘라요. $\nu = \infty$이면 혼합 없이 범위의 꼬리 그 자체예요.
+
+### 범위의 꼬리
+
+안쪽의 $P(W > w)$는 $k$개 가운데 가장 작은 값 $z$에 대한 적분이에요. 가장 작은 값이 $z$이고 나머지 $k - 1$개가 모두 $[z, z + w]$ 안이면 범위가 $w$ 이하이므로
+
+$$
+P(W \le w) = k\int\varphi(z)\big[\Phi(z + w) - \Phi(z)\big]^{k-1}dz
+$$
+
+이고, $k\int\varphi(z)\,\Phi(-z)^{k-1}dz = 1$(가장 작은 값의 분포의 전체 확률)이라
+
+$$
+P(W > w) = k\int\varphi(z)\Big[A^{k-1} - (A - C)^{k-1}\Big]dz,\qquad A = \Phi(-z),\quad C = \Phi(-(z + w))
+$$
+
+예요. 교과서는 보통 $1 - P(W \le w)$를 계산하는데, 그러면 꼬리가 $10^{-16}$ 아래로 가는 순간 값이 0이 돼요. 여기서는 괄호를 $A^{k-1}\big(1 - (1 - C/A)^{k-1}\big)$로 고쳐 쓰고, $1 - (1 - r)^m$을 $-\text{expm1}\big(m\log1p(-r)\big)$로 계산해요. 피적분 함수가 양수이고 뺄셈이 없어서 꼬리가 상대 정확도를 지켜요. $\varphi(z)A^{k-1}$은 $\exp(-z^2/2 + (k - 1)\log A)$로 한 번에 만들고, $-z^2/2$는 double-double이에요.
+
+```cpp
+        // csrc/htest/studentized_range.hpp
+        for (int i = 0; i < n; ++i) {
+            if (!(A[i] > 0.0) || !(C[i] > 0.0)) {
+                o[i] = 0.0;
+                continue;
+            }
+            const double L = z[i] < 0.0 ? std::log1p(-P[i]) : std::log(A[i]);
+            const double r = std::min(1.0, C[i] / A[i]);
+            const double D = -std::expm1(m * std::log1p(-r));
+            const DD e = dd::two_prod(z[i], z[i]) * -0.5 + (m * L - dd::kLogSqrt2Pi.hi) - dd::kLogSqrt2Pi.lo;
+            o[i] = k * special::distr_detail::exp_dd(e) * D;
+        }
+```
+
+$z < 0$이면 $\log A = \log1p(-\Phi(z))$로, $z \ge 0$이면 $\log\Phi(-z)$로 계산해 어느 쪽에서도 $A$의 log가 정확해요.
+
+### 적분 범위와 패널
+
+$z$의 범위는 $[-w - 12, 9]$예요. 아래쪽에서는 $A^m - (A - C)^m \le mC$라 피적분 함수가 $k(k-1)\varphi(z)$ 이하이고, 잘라 낸 부분은 $\Phi(-w - 12) \approx e^{-(w+12)^2/2}$ 아래예요. 꼬리 자체는 $e^{-w^2/4}$ 크기이므로 그 비가 $e^{-72}$ 아래예요. 위쪽은 $\Phi(-9)\Phi(-9 - w)$ 아래예요. 처음 패널은 피적분 함수의 봉우리 $z = -w/2$(가장 작은 값과 가장 큰 값이 $z$와 $z + w$에 있는 곳)와 0 둘레에서 잘라, 적응 분할이 봉우리를 놓치지 않게 해요. $k = 2$이면 $Q = \sqrt2|T|$라서 꼬리가 t 분포의 꼬리와 $2 \times 10^{-16}$ 안에서 같아요.
+
+```python
+>>> b = sd.linspace(-1.0, 1.0, 12)
+>>> r = sd.htest.tukey_hsd(b, b + 0.2, b + 4.0)
+>>> r.pvalue[0, 2]
+8.952105721720878e-16
+```
+
+### 구간의 임계값
+
+`conf_int(alpha)`의 구간은 $d_{ij} \pm q^*\cdot\text{se}$이고 $q^*$는 $P(Q > q^*) = \alpha$의 근이에요. 괄호는 두 가지 사실에서 바로 나와요. 범위는 어느 한 짝의 차보다 작지 않으므로 $P(Q > q) \ge P(\sqrt2|T| > q)$이고, 합집합 상한으로 $P(Q > q) \le \binom{k}{2}P(\sqrt2|T| > q)$예요. 그래서 $q^*$는 한 짝의 $\sqrt2\,t_{\alpha/2}$와 Bonferroni의 $\sqrt2\,t_{\alpha/(2\binom{k}{2})}$ 사이에 있어요. 그 괄호에서 $\log P(Q > q) - \log\alpha$에 Illinois 할선법을 써서 상대 $2^{-50}$까지 가요. 꼬리의 log는 $q$에 대해 거의 일차라 할선이 빨리 수렴해요.
+
+```cpp
+// csrc/htest/studentized_range.hpp
+inline double isf(double a, double k, double nu) {
+    if (a != a || k != k || nu != nu || !(k >= 2.0) || !(nu > 0.0) || !(a > 0.0 && a < 1.0)) return kNaN;
+    const double pairs = 0.5 * k * (k - 1.0);
+    double lo = kSqrt2 * t_isf(0.5 * a, nu), hi = kSqrt2 * t_isf(0.5 * a / pairs, nu);
+    if (!(lo < hi)) return lo;  // k = 2: Q = sqrt 2 |T|
+    return solve_tail([&](double q) { return sf(q, k, nu); }, a, lo, hi);
+}
+```
+
+Tukey–Kramer는 $q^*$ 하나를, Games–Howell은 짝의 자유도마다 하나를 풀어요. 같은 `alpha`의 $q^*$는 결과가 기억해 두므로 `conf_int()`를 다시 불러도 다시 풀지 않아요.
+
+## Dunnett의 다변량 t
+
+### 한 인자 구조
+
+`dunnett`은 처리 $d$개를 대조군 하나와 견줘요. 처리 $j$의 통계량은 $T_j = (m_j - m_0)/(s\sqrt{1/n_j + 1/n_0})$이고, $s^2$은 모든 집단의 합동 분산(자유도 $N - d - 1$)이에요. 모든 비교가 대조군의 평균 $m_0$을 함께 쓰므로 분자들은 상관돼 있어요. 분자를 표준화한 $Z_j$의 상관은
+
+$$
+\operatorname{corr}(Z_i, Z_j) = \frac{1/n_0}{\sqrt{(1/n_i + 1/n_0)(1/n_j + 1/n_0)}} = l_il_j,\qquad l_j = \sqrt{\frac{n_j}{n_j + n_0}}
+$$
+
+이에요. 상관 행렬이 $l l^{\mathsf T}$에 대각을 더한 꼴(한 인자 꼴)이라 $Z_j = l_jZ_0 + s_jE_j$($s_j = \sqrt{1 - l_j^2}$, $Z_0$과 $E_j$는 독립인 표준정규)로 쓸 수 있어요. $Z_0 = z$로 조건을 주면 $Z_j$들은 독립이에요. 그래서 $d$차원 적분이 한 겹으로 줄어요.
+
+$$
+P\big(\max_j|Z_j| > c\big) = \int\varphi(z)\Big[1 - \prod_j\big(1 - u_j(z)\big)\Big]dz,\qquad u_j(z) = \Phi\Big(-\frac{c - l_jz}{s_j}\Big) + \Phi\Big(-\frac{c + l_jz}{s_j}\Big)
+$$
+
+한쪽 검정은 $u_j$의 앞 항만 써요. 괄호 $1 - \prod(1 - u_j)$는 $-\text{expm1}\big(\sum_j\log1p(-u_j)\big)$로 계산해서, 스튜던트화 범위처럼 상쇄 없는 양수예요.
+
+```cpp
+        // csrc/htest/dunnett.hpp
+        for (int j = 0; j < d; ++j) {
+            const double lj = l[j], sj = s[j];
+            for (int i = 0; i < n; ++i) x[i] = -(c - lj * z[i]) / sj;
+            srange::ndtr(x, u, n);
+            if (two) {
+                double v[21];
+                for (int i = 0; i < n; ++i) x[i] = -(c + lj * z[i]) / sj;
+                srange::ndtr(x, v, n);
+                for (int i = 0; i < n; ++i) u[i] += v[i];
+            }
+            for (int i = 0; i < n; ++i) acc[i] += std::log1p(-std::min(1.0, u[i]));
+        }
+```
+
+$z$의 범위는 $[-|c| - 12, |c| + 12]$이고 처음 패널은 봉우리 $z = \pm l_jc$에서 잘라요. t의 혼합은 스튜던트화 범위와 같은 `t_mixture`예요.
+
+p값은 scipy의 정의예요. 양쪽은 $P(\max_j|T_j| > |t_i|)$, `'greater'`는 $P(\max_j T_j > t_i)$, `'less'`는 $P(\min_j T_j < t_i) = P(\max_j(-T_j) > -t_i)$예요. 구간의 허용폭은 $c^*\cdot s\sqrt{1/n_i + 1/n_0}$이고 $c^*$는 꼬리 = $\alpha$의 근이에요. 괄호는 비교 하나의 t 분위수와 Bonferroni의 t 분위수이고, 풀이기는 위의 `solve_tail` 그대로예요. 한쪽 구간은 scipy처럼 한 끝이 $\pm\infty$예요.
+
+```python
+>>> x = [24.5, 23.5, 26.4, 27.1, 29.9]
+>>> y = [28.4, 34.2, 29.5, 32.2, 30.1]
+>>> z = [26.1, 28.3, 24.3, 26.2, 27.8]
+>>> sd.htest.dunnett(x, y, control=z)
+DunnettResult(statistic=[-0.190083, 3.17293], pvalue=[0.973928, 0.0147979], df=12)
+```
+
+sd.stats의 `MultivariateT.cdf`는 일반 상관 행렬을 받으므로 $d \ge 4$에서 준몬테카를로를 써요. Dunnett의 상관은 언제나 한 인자 꼴이라, 여기서는 $d$와 상관없이 두 겹의 결정적인 구적으로 $10^{-15}$ 수준까지 가요. 처리 하나($d = 1$)의 꼬리는 t 분포의 꼬리와 같아요.
+
+## 비교 대상과 다른 곳
+
+- scipy의 `studentized_range.sf`는 $1 - \text{cdf}$ 꼴이라 깊은 꼬리에서 0이 돼요. 위 예제의 $8.95 \times 10^{-16}$을 scipy 1.18.1의 `tukey_hsd`는 0으로 내요. 꼬리 $7.79 \times 10^{-21}$(q = 17.8, ν = 87)에서 R `ptukey`는 상대 $3.1 \times 10^{-10}$ 틀려요. R의 `qtukey`는 허용오차가 $10^{-4}$라서 구간의 끝이 $6.8 \times 10^{-8}$ 달라요.
+- scipy의 `dunnett`은 `rng`를 받는 무작위 준몬테카를로라 같은 입력도 호출마다 값이 달라질 수 있어요(`rng=12345`로 고정한 기록에서 절대 $9 \times 10^{-5}$까지 달라요). R `multcomp`(mvtnorm, abseps $10^{-7}$)는 절대 $7 \times 10^{-7}$까지 달라요.
+- 평균이 $10^8$ 근처인 집단에서 scipy의 평균의 차는 상대 $2.5 \times 10^{-8}$, R의 `TukeyHSD`는 $3.3 \times 10^{-7}$ 틀려요. 여기서는 double-double 평균이라 $10^{-16}$ 안이에요.

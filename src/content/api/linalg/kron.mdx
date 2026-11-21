@@ -10,20 +10,20 @@ params:
   - name: x1
     type: ndarray
     kind: positional-only
-    desc: 첫째 행렬. 모양은 (..., M, N). 2차원 이상이어야 해요. 원소 하나가 결과의 블록 하나가 돼요.
+    desc: 첫째 행렬. 모양은 (..., M, N). 1차원 (N,)은 한 행 (1, N)으로 봐요. 원소 하나가 결과의 블록 하나가 돼요.
   - name: x2
     type: ndarray
     kind: positional-only
-    desc: 둘째 행렬. 모양은 (..., P, Q). 2차원 이상이어야 해요. 블록마다 되풀이되는 무늬예요.
+    desc: 둘째 행렬. 모양은 (..., P, Q). 1차원 (Q,)은 한 행 (1, Q)로 봐요. 블록마다 되풀이되는 무늬예요.
 returns:
   type: ndarray
-  desc: 모양이 (..., M*P, N*Q)인 행렬. 실수 입력(bool, int64 포함)은 float64, 복소수가 섞이면 complex128이에요.
+  desc: 모양이 (..., M*P, N*Q)인 행렬. 둘 다 1차원이면 (N*Q,)인 1차원 배열이에요. 실수 입력(bool, int64 포함)은 float64, 복소수가 섞이면 complex128이에요.
 raises:
   - type: TypeError
     desc: x1이나 x2가 배열이 아닐 때(리스트, Python 숫자 포함).
   - type: ValueError
-    desc: x1이나 x2가 1차원일 때, 앞쪽 배치 축끼리 브로드캐스팅이 안 될 때.
-seeAlso: [outer, matrix_power, solve_sylvester, basics]
+    desc: 앞쪽 배치 축끼리 브로드캐스팅이 안 될 때.
+seeAlso: [kronsum, block_diag, outer, matrix_power, solve_sylvester, basics]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -188,30 +188,39 @@ array([[ 0.0,  3.0,  0.0,  9.0],
 
 행렬 방정식 $AX + XB = C$를 보통의 연립방정식으로 바꿔 쓸 때도 크로네커 곱이 나와요. 다만 그렇게 만든 행렬은 아주 커지기 때문에, 이 방정식은 [`solve_sylvester`](/api/linalg/solve_sylvester/)로 바로 푸는 편이 좋아요.
 
-## 벡터는 2차원으로 바꿔서 넣어요
+## 1차원 배열은 한 행으로 봐요
 
-`kron`은 행렬끼리의 계산이라서 입력이 둘 다 2차원 이상이어야 해요. 1차원 배열을 넣으면 `ValueError`예요.
+1차원 배열 `(N,)`은 가로 한 줄인 행렬 `(1, N)`으로 봐요. 둘 다 1차원이면 결과도 1차원 `(N×Q,)`예요. 첫째 벡터의 원소마다 둘째 벡터 전체를 곱해서 차례로 이어 붙인 것이에요.
 
 ```python
 >>> v = sd.asarray([1.0, 2.0, 3.0])
 >>> w = sd.asarray([1.0, 10.0])
 >>> sd.linalg.kron(v, w)
-Traceback (most recent call last):
-    ...
-ValueError: kron(): 'x1' must have at least 2 dimensions, got 1
+array([ 1.0, 10.0,  2.0, 20.0,  3.0, 30.0], dtype=float64)
 ```
 
-1차원 배열을 가로로 볼지 세로로 볼지에 따라 결과가 달라지기 때문이에요. 어느 쪽인지 [`reshape`](/api/array/reshape/)로 직접 정해서 넣어요. 둘 다 가로 한 줄 `(1, N)`로 놓으면 벡터의 크로네커 곱이 한 줄로 나와요.
+하나만 1차원이면 그 배열을 `(1, N)` 행렬로 넣은 것과 같아서 결과는 행렬이에요. `kron(I, w)`에서는 벡터 `w`가 대각선을 따라 계단처럼 놓이고, `kron(v, I)`에서는 `v`의 원소를 곱한 단위행렬이 옆으로 이어져요.
 
 ```python
->>> sd.linalg.kron(sd.reshape(v, (1, 3)), sd.reshape(w, (1, 2)))
-array([[ 1.0, 10.0,  2.0, 20.0,  3.0, 30.0]], dtype=float64)
+>>> sd.linalg.kron(sd.eye(2), w)
+array([[ 1.0, 10.0,  0.0,  0.0],
+       [ 0.0,  0.0,  1.0, 10.0]], dtype=float64)
+>>> sd.linalg.kron(v, sd.eye(2))
+array([[1.0, 0.0, 2.0, 0.0, 3.0, 0.0],
+       [0.0, 1.0, 0.0, 2.0, 0.0, 3.0]], dtype=float64)
 ```
 
-첫째를 세로 한 줄 `(M, 1)`, 둘째를 가로 한 줄 `(1, N)`로 놓으면 [`outer`](/api/linalg/outer/)와 같은 표가 돼요.
+1차원 배열에는 배치 축이 없어요. 3차원 이상의 배열과 함께 넣으면 그쪽의 행렬마다 같은 한 줄을 곱해요.
 
 ```python
->>> sd.linalg.kron(sd.reshape(v, (3, 1)), sd.reshape(w, (1, 2)))
+>>> sd.linalg.kron(sd.ones((5, 2, 2)), v).shape
+(5, 2, 6)
+```
+
+벡터를 세로 한 줄로 보고 싶으면 [`reshape`](/api/array/reshape/)로 `(N, 1)`로 바꿔서 넣어요. 첫째를 세로 한 줄 `(M, 1)`, 둘째를 가로 한 줄로 놓으면 [`outer`](/api/linalg/outer/)와 같은 표가 돼요.
+
+```python
+>>> sd.linalg.kron(sd.reshape(v, (3, 1)), w)
 array([[ 1.0, 10.0],
        [ 2.0, 20.0],
        [ 3.0, 30.0]], dtype=float64)
@@ -344,6 +353,8 @@ TypeError: kron(): 'x2' must be an sd.ndarray, not float
 | [`A * B`](/api/array/arithmetic/) | 같은 자리끼리 곱하기 | `(2, 2)` | int64 유지 |
 | [`sd.linalg.outer(x, y)`](/api/linalg/outer/) | 벡터 둘의 모든 쌍의 곱을 표로 | `(M, N)` | float64 |
 | [`sd.tensordot(A, B, axes=0)`](/api/array/tensordot/) | 모든 쌍의 곱을 4차원 배열로 | `(2, 2, 2, 2)` | int64 유지 |
+| [`sd.linalg.kronsum(A, B)`](/api/linalg/kronsum/) | 크로네커 합 `kron(I, A) + kron(B, I)` | `(4, 4)` | float64 |
+| [`sd.linalg.block_diag([A, B])`](/api/linalg/block_diag/) | 서로 다른 블록을 대각선에 놓기 | `(4, 4)` | int64 유지 |
 
 - `@`와 `*`는 결과가 커지지 않아요. `@`는 안쪽 길이가 맞아야 하고 `*`는 모양이 같거나 브로드캐스팅돼야 하지만, `kron`은 두 행렬의 모양이 무엇이든 계산해요.
 - `outer`는 같은 생각을 벡터에 적용한 것이에요. 벡터 둘의 모든 쌍의 곱이 `outer`, 행렬 둘의 모든 쌍의 곱을 블록으로 놓은 것이 `kron`이에요.
@@ -362,10 +373,31 @@ array([[0, 1, 0, 2],
        [3, 0, 4, 0]], dtype=int64)
 ```
 
+## 희소 행렬의 크로네커 곱
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)끼리의 크로네커 곱은 [`sd.sparse.kron`](/api/sparse/kron/)이에요. 결과도 희소 행렬이라서, 큰 행렬을 밀집 배열로 만들지 않고 조립할 수 있어요. `sd.linalg.kron`에 희소 배열을 넣으면 그 함수를 알려 주는 `TypeError`예요.
+
+```python
+>>> S = sd.sparse.csr_array(A)
+>>> sd.linalg.kron(S, B)
+Traceback (most recent call last):
+    ...
+TypeError: kron(): 'x1' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.kron
+```
+
+두 함수는 같은 계산의 짝이에요. float64·complex128 입력이면 `sd.linalg.kron(A, B)`의 값은 `sd.sparse.kron(A, B).toarray()`와 비트까지 같아요. 다를 수 있는 것은 0의 부호뿐이에요. 희소 행렬은 0을 저장하지 않아서, 밀집 계산에서 −0.0이 나오는 자리가 +0.0이에요. 1차원 입력을 한 행으로 보는 규칙도 같아요. 정수와 bool은 희소 쪽이 정수로 두고 이쪽은 float64로 계산하므로 dtype이 달라요.
+
+```python
+>>> bool(sd.all(sd.linalg.kron(A, B) == sd.sparse.kron(S, B).toarray()))
+True
+>>> bool(sd.all(sd.linalg.kron(v, w) == sd.sparse.kron(v, w).toarray()))
+True
+```
+
 ## numpy·scipy를 아는 분께
 
-- 2차원 입력에서는 `np.kron`과 결과가 같아요.
+- 1·2차원 입력에서는 `np.kron`과 결과가 같아요. 1차원은 둘 다 한 행으로 보고, 둘 다 1차원이면 1차원을 돌려줘요.
 - 3차원 이상에서는 달라요. `np.kron`은 모든 축의 길이를 곱해요(`(2, 3, 3)`과 `(2, 2, 2)`에서 `(4, 6, 6)`). `sd.linalg.kron`은 마지막 두 축만 곱하고 앞쪽 축은 배치로 브로드캐스팅해요(같은 입력에서 `(2, 6, 6)`).
-- 1차원 입력을 받지 않아요. `np.kron`은 1차원 배열과 스칼라도 받지만, 여기서는 `(1, N)`이나 `(N, 1)`로 바꿔서 넣어야 해요.
+- 스칼라는 받지 않아요. `np.kron`은 스칼라도 받지만, 여기서 수를 곱하려면 `A * 2.0`으로 써요.
 - 정수와 bool 입력의 결과가 float64예요. numpy는 정수를 유지해요.
 - 리스트와 numpy 배열은 받지 않아요(`TypeError`).

@@ -1,0 +1,195 @@
+---
+kind: function
+title: tukey_hsd
+names: [tukey_hsd]
+group: 다중 비교와 보정
+order: 1
+signatures:
+  - "sd.htest.tukey_hsd(*samples, equal_var=True)"
+summary: 집단 k개의 평균을 모든 짝끼리 견주는 Tukey의 HSD 검정이에요. 짝마다 평균의 차, 여러 번 견준 것을 함께 고려한 p값과 동시 신뢰구간을 줘요. 크기가 다른 집단은 Tukey–Kramer, 분산이 다르면 Games–Howell로 계산해요.
+params:
+  - name: "*samples"
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional
+    desc: "집단마다 표본 하나, 둘 이상. 길이는 달라도 돼요. 각 표본은 펼쳐서 하나의 집단으로 봐요."
+  - name: equal_var
+    type: bool
+    kind: keyword-only
+    desc: "True(기본값)면 모든 집단의 분산이 같다고 보고 합동 분산을 써요(Tukey–Kramer). False면 집단마다 분산을 따로 쓰는 Games–Howell이에요."
+returns:
+  type: TukeyHsdResult
+  desc: "statistic((k, k): 평균의 차 meanᵢ − meanⱼ), pvalue((k, k), 대각은 1), df(N − k의 float, Games–Howell이면 짝마다의 (k, k) 배열), conf_int(alpha=0.05)((k, k, 2))예요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: "표본이 둘보다 적을 때(tukey_hsd(): at least two samples are required, not 1), 표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, equal_var가 True·False가 아닐 때, 없는 키워드(axis 등)를 줬을 때."
+  - type: ValueError
+    desc: "conf_int()·summary()의 alpha가 0과 1 사이가 아닐 때."
+seeAlso: [dunnett, f_oneway, ttest_ind, multipletests, kruskal, basics, results]
+---
+
+## 무엇을 묻나요
+
+세 가지 공정으로 만든 부품의 강도를 다섯 개씩 쟀어요.
+
+```python
+>>> import stardust as sd
+>>> g0 = [24.5, 23.5, 26.4, 27.1, 29.9]
+>>> g1 = [28.4, 34.2, 29.5, 32.2, 30.1]
+>>> g2 = [26.1, 28.3, 24.3, 26.2, 27.8]
+>>> sd.htest.f_oneway(g0, g1, g2)
+FOnewayResult(statistic=7.13783, pvalue=0.00907332, df_num=2, df_denom=12)
+```
+
+[일원 분산분석](/api/htest/f_oneway/)의 p값 0.009는 "세 공정의 평균이 모두 같지는 않다"는 근거예요. 그런데 어느 공정이 다른지는 알려 주지 않아요.
+
+짝마다 t 검정을 세 번 하면 어떨까요? 검정마다 5%의 확률로 잘못 기각한다면, 세 번 가운데 적어도 한 번 잘못 기각할 확률은 5%보다 커요. 집단이 많을수록 짝의 수가 $k(k-1)/2$로 늘어서 이 확률이 빠르게 커져요.
+
+**Tukey의 HSD**(honestly significant difference)는 모든 짝을 한꺼번에 견주면서 "어느 짝이든 하나라도 잘못 기각할 확률"(가족 전체의 오류율)을 유의수준 안에 둬요. 짝 $(i, j)$의 평균의 차를 표준오차로 나눈 값을, 집단 k개의 평균 가운데 가장 큰 것과 가장 작은 것의 차가 따르는 **스튜던트화 범위** 분포와 견줘요.
+
+$$
+q_{ij} = \frac{|\bar x_i - \bar x_j|}{\sqrt{\dfrac{\mathrm{MSE}}{2}\left(\dfrac{1}{n_i} + \dfrac{1}{n_j}\right)}}
+$$
+
+MSE는 모든 집단을 합친 집단 안 분산(자유도 $N - k$)이에요. p값은 스튜던트화 범위가 $q_{ij}$보다 클 확률이에요. 모든 짝 가운데 가장 큰 차도 이 분포를 따르므로, 어느 짝의 p값이 0.05 이하이면 가족 전체로 5% 수준에서 그 짝이 다르다고 말할 수 있어요.
+
+```python
+>>> r = sd.htest.tukey_hsd(g0, g1, g2)
+>>> print(r.summary())
+                               Tukey's HSD test
+==============================================================================
+Df:                                 12  No. Groups:                          3
+                                        No. Observations:              5, 5, 5
+==============================================================================
+            statistic     pvalue     [0.025     0.975]
+------------------------------------------------------------------------------
+(0 - 1)        -4.600      0.014     -8.249     -0.951
+(0 - 2)        -0.260      0.980     -3.909      3.389
+(1 - 2)         4.340      0.020      0.691      7.989
+==============================================================================
+```
+
+공정 1이 0과 2보다 강하고(p = 0.014, 0.020), 0과 2는 차이의 근거가 없어요(p = 0.98).
+
+- **귀무가설**(짝마다): 두 집단의 평균이 같아요.
+- **대립가설**: 두 집단의 평균이 달라요(양쪽).
+
+이런 때 써요.
+
+- 분산분석 뒤에 어느 집단끼리 다른지 알고 싶을 때(사후 비교). 모든 짝이 관심일 때 맞아요.
+- 대조군 하나와 나머지를 견주는 것만 관심이라면 짝이 적어서 [`dunnett`](/api/htest/dunnett/)이 더 예민해요.
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+모든 필드가 집단 k개의 짝을 담는 (k, k) 배열이에요.
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | `statistic[i, j]` = 집단 i의 평균 − 집단 j의 평균. 대각은 0이에요. |
+| `pvalue` | 짝 (i, j)의 p값. 대칭이고 대각은 1이에요. |
+| `df` | 자유도 $N - k$(float). Games–Howell이면 짝마다의 (k, k) 배열이에요. |
+| `conf_int(alpha=0.05)` | 평균의 차의 동시 신뢰구간, (k, k, 2) |
+
+```python
+>>> r
+TukeyHsdResult(statistic=<array of shape (3, 3)>, pvalue=<array of shape (3, 3)>, df=12)
+>>> r.statistic[0, 1], r.pvalue[0, 1]
+(-4.600000000000001, 0.014448326736403758)
+>>> r.df
+12.0
+```
+
+결과는 튜플로 풀리지 않아요. `statistic[1, 0]`은 `statistic[0, 1]`의 부호를 바꾼 값이고, `summary()`는 i < j인 짝만 한 줄씩 보여 줘요. 배열 필드는 읽기 전용이에요.
+
+### 동시 신뢰구간
+
+`conf_int(alpha=0.05)`는 짝마다 평균의 차의 구간을 돌려줘요. 모양은 (k, k, 2)이고 마지막 축이 아래 끝과 위 끝이에요.
+
+```python
+>>> ci = r.conf_int()
+>>> ci.shape
+(3, 3, 2)
+>>> ci[1, 0]
+array([0.950840996418675, 8.249159003581328], dtype=float64)
+>>> r.conf_int(alpha=0.1)[1, 0]
+array([1.5011579532359898,  7.698842046764013], dtype=float64)
+```
+
+이 구간은 **동시** 구간이에요. 모든 짝의 구간이 한꺼번에 참 차를 담을 확률이 1 − alpha예요. 그래서 짝 하나의 t 구간보다 넓어요. 구간이 0을 담지 않는 짝이 p값이 alpha보다 작은 짝과 같아요. `summary(alpha=0.1)`도 같은 구간을 보여 줘요.
+
+## 크기가 다른 집단
+
+집단의 크기가 다르면 위의 표준오차에 $1/n_i + 1/n_j$가 들어가는 Tukey–Kramer 꼴이 돼요. 따로 할 것은 없어요.
+
+```python
+>>> u0 = [24.5, 23.5, 26.4, 27.1, 29.9, 25.0, 26.6]
+>>> u1 = [28.4, 34.2, 29.5]
+>>> u2 = [26.1, 28.3, 24.3, 26.2]
+>>> ru = sd.htest.tukey_hsd(u0, u1, u2)
+>>> ru.pvalue
+array([[                 1.0, 0.029960615606765433,   0.9980481870239586],
+       [0.029960615606765433,                  1.0, 0.053446259942213054],
+       [  0.9980481870239586, 0.053446259942213054,                  1.0]], dtype=float64)
+>>> ru.df
+11.0
+```
+
+## `equal_var=False`: Games–Howell
+
+집단의 분산이 크게 다르면 합동 분산이 맞지 않아요. `equal_var=False`면 짝마다 두 집단의 분산을 따로 쓰고, 자유도도 짝마다 Welch의 식으로 구해요. Welch t 검정을 모든 짝으로 넓힌 것이에요.
+
+```python
+>>> rg = sd.htest.tukey_hsd(g0, g1, g2, equal_var=False)
+>>> rg.pvalue[0, 1]
+0.039058048129094386
+>>> rg.df[0, 1]
+7.960220708070199
+```
+
+`df`가 짝마다 다른 (k, k) 배열이고, `summary()`는 제목이 `Games-Howell test`이며 `df` 열을 보여 줘요.
+
+## 특수한 경우
+
+- 집단이 둘이면 짝이 하나뿐이라 Tukey의 p값은 Student t 검정과 같아요.
+
+  ```python
+  >>> a, b = [1.0, 2.0, 3.0, 4.0], [3.0, 4.0, 5.0, 6.0, 7.0]
+  >>> sd.htest.tukey_hsd(a, b).pvalue[0, 1], sd.htest.ttest_ind(a, b).pvalue
+  (0.03833372883603089, 0.03833372883603089)
+  ```
+
+- 원소가 하나인 집단도 쓸 수 있어요(Tukey–Kramer, 자유도 $N - k \ge 1$이면).
+- 모든 집단이 상수라 표준오차가 0이면 p값을 정할 수 없어서 NaN이에요. NaN이 든 표본은 NaN을 퍼뜨려요. 표본을 펼쳐 쓰므로 `axis`, `nan_policy`, 배치가 없어요.
+
+  ```python
+  >>> sd.htest.tukey_hsd([5.0, 5.0, 5.0], [5.0, 5.0, 5.0]).pvalue
+  array([[nan, nan],
+         [nan, nan]], dtype=float64)
+  ```
+
+## 정확도
+
+평균과 제곱합을 반올림을 줄여 모아서, 평균이 아주 커도(10⁸) 평균의 차가 자릿수를 잃지 않아요. p값은 스튜던트화 범위의 위꼬리를 상쇄 없이 적분해서 아주 작은 p값도 상대 정확도를 지켜요. 문제 10개(짝 43개)에서 Arb(구간 산술)로 만든 참값에 견주어 평균의 차는 상대 1e-16, p값은 상대 5.1e-15(꼬리 p = 7.8e-21), 구간의 끝은 상대 2.2e-15 안이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.tukey_hsd`와 통계량(평균의 차)과 p값의 정의, Tukey–Kramer와 Games–Howell의 식이 같아요.
+
+```python
+>>> import scipy.stats
+>>> s = scipy.stats.tukey_hsd(g0, g1, g2)
+>>> float(s.pvalue[0, 1])
+0.014448326736404171
+```
+
+다른 점이에요.
+
+- 신뢰구간은 `conf_int(alpha=0.05)`이고 (k, k, 2) 배열을 돌려줘요. scipy는 `confidence_interval(confidence_level=0.95)`이고 `low`, `high`를 가진 객체예요.
+- 자유도는 공개 필드 `df`예요(scipy는 비공개 속성).
+- 깊은 꼬리: scipy의 스튜던트화 범위 꼬리는 아주 작은 p값을 잃어서 0을 낼 때가 있어요(q = 17.8, ν = 87의 참 7.8e-21에서 0). R의 `TukeyHSD`는 1 − cdf라 같은 곳에서 크게 틀려요.
+- 평균이 큰 자료: 평균이 10⁸쯤인 자료에서 scipy는 평균의 차가 상대 2.5e-8, p값이 상대 1.9e-7 틀려요.
+- 모든 집단이 상수면 sd는 NaN이에요(scipy는 0/0의 경고와 함께).
+- 결과의 `summary()`는 짝 i < j만 보여 줘요. scipy의 `print(res)`는 모든 순서쌍을 보여 줘요.

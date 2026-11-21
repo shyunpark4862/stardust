@@ -1,0 +1,185 @@
+---
+title: 노름과 1-노름 어림
+group: 행렬 함수
+order: 2
+summary: 곱만으로 1-노름의 하한을 구하는 Higham–Tisseur의 블록 추정기 onenormest와, 저장된 값의 결정적인 합으로 계산하는 norm을 설명해요. onenormest의 무작위 열은 고정이라 같은 호출은 같은 어림값이에요.
+seeAlso: [expm, svds, accuracy-performance, overview]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+| 함수 | 계산하는 것 | 방법 |
+|---|---|---|
+| [`onenormest(A)`](/api/sparse/onenormest/) | $\lVert A\rVert_1$의 하한(대개 정확한 값) | Higham–Tisseur(2000) Algorithm 2.4, scipy 1.18.1의 `_onenormest_core` 순서 [1] |
+| [`norm(x, ord=)`](/api/sparse/norm/) | 행렬 노름(`'fro'`, ±1, ±inf, 2), 벡터 노름 | 저장된 값의 결정적인 합, `ord=2`는 [`svds`](/api/sparse/svds/) |
+
+둘 다 Python(`src/stardust/sparse/_matfuncs.py`)이 SpMV·SpMM과 축 리덕션을 불러요. `onenormest`는 행렬을 볼 수 없을 때(곱만 아는 `LinearOperator`, 만들기 비싼 곱 $A^4A^4$이나 $A^{-1}$) 쓰는 것이고, 행렬이 있으면 `norm(A, ord=1)`이 정확한 값을 줘요.
+
+## `onenormest`
+
+### 1-노름은 꼭짓점에서 최대
+
+$\lVert A\rVert_1 = \max_j \lVert Ae_j\rVert_1$(열 절댓값 합의 최댓값)이에요. 곱만 쓸 수 있으면 정확한 값에 곱이 $n$번 들어요. Hager(1984)는 이것을 볼록 함수 $f(x) = \lVert Ax\rVert_1$을 단위 1-노름 공 $\{\lVert x\rVert_1 \le 1\}$ 위에서 최대화하는 문제로 봤어요 [2]. 볼록 함수의 최댓값은 꼭짓점 $\pm e_j$에 있고, $f$의 부분 기울기는 $\xi = \operatorname{sign}(Ax)$일 때 $z = A^{\mathsf H}\xi$예요. 그래서 이렇게 올라가요.
+
+1. $y = Ax$, $\xi = \operatorname{sign}(y)$, $z = A^{\mathsf H}\xi$.
+2. $\lVert z\rVert_\infty \le z^{\mathsf H}x$이면 $x$가 국소 최대라 멈춰요.
+3. 아니면 $x = e_j$($j$는 $|z_j|$가 가장 큰 자리)로 옮겨요.
+
+한 걸음에 곱이 $A$와 $A^{\mathsf H}$ 하나씩이고, 대개 두세 걸음이면 멈춰요. LAPACK의 `lacn2`(밀집 `expm`이 쓰는 것)는 이 방법을 다듬은 Higham(1988)의 판이에요 [3]. 멈춘 값은 어떤 단위 벡터 $v$의 $\lVert Av\rVert_1$이라 언제나 **하한**이에요.
+
+### 블록으로
+
+Higham–Tisseur(2000)는 $x$ 하나 대신 $t$열의 블록 $X$를 함께 올려 국소 최대에 갇힐 위험을 줄였어요 [1]. 블록 곱은 SpMM 한 번이라 열 하나씩 곱하는 것보다 싸요. 첫 열은 $\mathbf 1/n$, 나머지 열은 무작위 ±1 열을 $n$으로 나눈 것이에요.
+
+<Fig column caption="onenormest 한 번의 흐름(Algorithm 2.4). k는 반복 수예요.">
+  <Steps
+    steps={[
+      { label: 'X 준비', note: '첫 열 1, 나머지는 서로 평행하지 않은 ±1 열, 모두 n으로 나눠요.' },
+      { label: 'Y = A X', note: '열 절댓값 합의 최댓값이 어림값. 커지지 않았으면(k ≥ 2) 멈춰요.' },
+      { label: 'S = sign(Y)', note: '모든 열이 앞 반복의 S에 평행하면 멈춰요. 평행한 열은 다시 뽑아요(t > 1).' },
+      { label: 'Z = Aᴴ S', note: 'h_i = max_j |Z_ij|. 가장 큰 h가 지난 최선의 자리면 멈춰요.' },
+      { label: '다음 X', note: 'h가 큰 순서로 아직 쓰지 않은 색인 t개의 단위 벡터. 모두 썼던 것이면 멈춰요.' },
+    ]}
+  />
+</Fig>
+
+```python
+    # src/stardust/sparse/_matfuncs.py, _estimate
+    while True:
+        Y = fwd(X)
+        n_op += 1
+        mags = _sd.sum(_sd.abs(Y), axis=0)
+        best_j = int(_sd.argmax(mags))
+        est = float(mags[best_j])
+        if est > est_old or k == 2:
+            if k >= 2:
+                ind_best = ind[best_j]
+            w = Y[:, best_j].copy()
+        if k >= 2 and est <= est_old:
+            est = est_old
+            break
+        est_old = est
+        S_old = S
+        if k > max_iter:
+            break
+        S = _sd.where(Y == 0, 1, Y / _sd.abs(Y)).astype(dtype)  # sign(Y), sign(0) = 1
+        if all(any(_parallel(S[:, i], S_old[:, j]) for j in range(t)) for i in range(t)):
+            break
+```
+
+평행한 부호 열을 다시 뽑는 까닭은 같은 열 둘이 같은 정보를 주기 때문이에요. 이미 본 색인(`hist`)을 피하는 것도 같은 이유예요. 복소 행렬의 부호는 $y/|y|$(0은 1)예요. 결과의 `v`는 어림값을 준 열의 단위 벡터 $e_j$, `w`는 $Av$예요. $t \ge n$이면 곱 한 번($A\cdot I$)으로 정확한 노름을 구해요.
+
+### 고정된 무작위 열
+
+±1 열은 호출마다 `sd.random.default_rng(0)`의 `integers(0, 2)·2 − 1`로 뽑아요. 그래서 같은 행렬은 언제나 같은 어림값이에요. 또 큰 $h$부터 색인을 고를 때 같은 값끼리는 색인이 작은 쪽이 먼저예요(안정 정렬의 순서; 필요한 앞쪽 몇 개는 argmax를 거듭해 같은 색인을 얻어요).
+
+```python
+>>> g = sd.random.default_rng(3)
+>>> A = sd.sparse.random_array((500, 500), density=0.01, rng=g)
+>>> sd.sparse.onenormest(A)
+OnenormestResult(est=6.96792, v=None, w=None, n_iter=2, n_op=3)
+>>> sd.sparse.norm(A, ord=1)
+6.967920679714759
+>>> sd.sparse.onenormest(A).est == sd.sparse.onenormest(A).est
+True
+```
+
+곱 세 번(`n_op`)으로 정확한 값을 찾았어요. `n_iter`는 $Y = AX$를 구한 횟수예요.
+
+### 얼마나 맞나
+
+작은 정사각 시험 행렬 42개에서 어림값이 참값과 같은 것이 26개, 참값에 대한 가장 작은 비율이 0.76(구조적으로 특이한 40 × 40 행렬)이었어요. 같은 행렬에서 scipy(`np.random.seed(0)`)는 25개, 0.76이에요. 하한이라는 것 말고는 계약이 없어요.
+
+## `norm`
+
+### 행렬 노름
+
+2차원 배열의 두 축(`axis=None`)이면 행렬 노름이에요. 저장되지 않은 0은 합에 아무것도 더하지 않으므로 저장된 값만 보면 돼요.
+
+| `ord` | 계산 |
+|---|---|
+| `'fro'`(기본) | 표준 꼴의 저장된 값 전체의 `sd.linalg.vector_norm` |
+| 1, −1 | 열 절댓값 합(`sum(axis=0)`)의 최댓값, 최솟값 |
+| inf, −inf | 행 절댓값 합의 최댓값, 최솟값 |
+| 2 | `svds(k=1)`의 특이값. 행이나 열이 하나면 그 벡터의 2-노름, 0인 행렬은 0 |
+
+합은 희소 영역의 축 합과 같은 순서(줄마다 4096개까지 FMA 순차 합, 더 긴 줄은 조각 합을 pairwise로)라서 형식과 스레드 수와 상관없이 같은 비트예요. `'nuc'`와 −2는 모든 특이값이 필요해서 희소의 뜻이 없고 받지 않아요. 메시지는 [`sd.linalg.matrix_norm`](/api/linalg/norms/)의 목록에서 둘을 뺀 것이에요.
+
+```python
+    # src/stardust/sparse/_matfuncs.py, _matrix_norm
+    if o == 2:
+        if X.nnz and not bool(_sd.all(_sd.isfinite(X.data))):
+            raise ValueError(f"{func}(): 'x' contains NaN or infinity")
+        if not X.nnz or not bool(_sd.any(X.data != 0)):
+            return 0.0
+        if min(m, n) == 1:  # a single row or column: its vector 2-norm
+            return float(_sd.linalg.vector_norm(X.data))
+        from ._eigen import svds
+
+        r = svds(X, k=1, return_singular_vectors=False)
+        if not r.converged:
+            from ..linalg import LinAlgError
+
+            raise LinAlgError(f"{func}(): the largest singular value did not converge")
+        return float(r.S[0])
+```
+
+`svds`는 1 ≤ k < min(m, n)이라 행이나 열이 하나인 행렬을 따로 다뤄요. 0인 행렬은 시작 벡터가 곧바로 영공간에 떨어지므로 먼저 0을 돌려줘요.
+
+```python
+>>> sd.sparse.norm(A, ord=2)
+3.381277984769363
+>>> sd.linalg.matrix_norm(A.toarray(), ord=2)
+3.38127798476936
+```
+
+### 벡터 노름
+
+1차원 배열이나 축 하나를 준 2차원 배열은 줄마다 벡터 노름이에요. 뜻은 [`sd.linalg.vector_norm`](/api/linalg/norms/)과 같아서 저장되지 않은 0도 원소예요. inf는 절댓값의 최댓값, −inf는 최솟값(0이 있는 줄은 0), 0은 0이 아닌 원소의 수(float), 그 밖의 $p$는 $(\sum|x_i|^p)^{1/p}$이에요. 음수 $p$는 0인 원소의 $|0|^p = \infty$ 때문에 0이 있는 줄이 0이에요. $|x_i|^p$의 합은 줄마다의 축 합이에요.
+
+$p > 0$의 합이 넘치거나 모든 항이 $2^{-969}$ 아래로 작으면 그 줄만 최댓값으로 나눠 다시 더해요. `vector_norm`의 둘째 패스와 같은 판정이에요.
+
+```python
+    # src/stardust/sparse/_matfuncs.py, _line_norms
+    s = _powered(a, p).sum(axis=axis)
+    out = _sd.sqrt(s) if p == 2 else s ** (1.0 / p)
+    amax = a.max(axis=axis)
+    top = amax * amax if p == 2 else amax**p
+    redo = (_sd.isinf(s) | ((amax > 0) & (top < 2.0**-969))) & _sd.isfinite(amax)
+    if bool(_sd.any(redo)):
+        div = _sd.where(redo & (amax > 0), amax, 1.0)
+        r = a.multiply(_sd.reshape(1.0 / div, (-1, 1) if axis == 1 else (1, -1)))
+        t = _powered(r, p).sum(axis=axis)
+        again = div * (_sd.sqrt(t) if p == 2 else t ** (1.0 / p))
+        out = _sd.where(redo, again, out)
+    return _sd.where(_sd.isinf(amax), _INF, out)
+```
+
+넘치지 않는 대부분의 줄은 한 번 읽고 끝나요.
+
+```python
+>>> x = sd.sparse.csr_array(sd.asarray([[1e200, 1e200, 0.0]]))
+>>> sd.sparse.norm(x, axis=1)
+array([1.414213562373095e+200], dtype=float64)
+>>> sd.sparse.norm(x, ord=-1, axis=1)
+array([0.0], dtype=float64)
+```
+
+### 정확도
+
+합으로 된 노름(1, −1, inf, −inf, Frobenius)은 $|\hat v - v| \le (\gamma_m + 2\varepsilon)\,v$가 계약이에요. $\gamma_m = mu/(1 - mu)$, $u = 2^{-53}$이고 $m$은 가장 긴 줄의 항 수(Frobenius는 저장된 원소 수, 4096을 넘으면 조각 합의 항 수)예요. $2\varepsilon$은 복소 원소의 크기를 구하는 반올림과 마지막 반올림의 몫이에요. `ord=2`는 `svds`의 계약 $C_{\mathrm{EIG}}\,\varepsilon\,\lVert A\rVert_2$($C_{\mathrm{EIG}} = 1000$)예요. 참값은 정확한 유리수 합과 Arb의 제곱근, 2-노름은 Arb의 Rayleigh 몫과 역반복을 Kato–Temple 경계로 감싼 값이에요. 잰 가장 큰 오차는 계약 단위로 합의 노름 0.17, Frobenius 0.007, 2-노름 0.013이에요.
+
+## scipy와 다른 곳
+
+- **`onenormest`의 무작위.** scipy는 numpy의 시드 없는 전역 난수라 실행마다 어림값이 다를 수 있어요. 또 `argsort(h)[::-1]`이 안정 정렬이 아니라서 같은 $h$끼리의 순서가 정해져 있지 않아요. sd는 고정된 열과 색인 순서예요. $t = 1$(무작위가 없어요)은 scipy와 상대 $10^{-14}$ 안에서 같아요.
+- **`onenormest`의 결과.** scipy는 옵션에 따라 float 하나나 튜플을 돌려줘요. sd는 언제나 `(est, v, w)`로 풀리는 결과 객체이고, 반복 상한의 이름은 `max_iter`예요.
+- **`norm`의 2-노름.** scipy는 $A^{\mathsf T}A$에 ARPACK을 써요(잰 오차 2 ulp; sd의 `svds`는 18 ulp). scipy는 0인 행이 있는 행렬에서 시작 벡터가 0이 되어 `ArpackError`예요.
+- **`norm`의 규칙.** scipy의 `'f'` 별칭, 위치 인자 `ord`, int로 나오는 `ord=0`, 저장된 원소만 거듭제곱하는 음수 $p$의 값, 중복 있는 COO의 `'fro'`(중복을 더하지 않은 값)는 따르지 않아요. 규칙과 메시지는 `sd.linalg.matrix_norm`·`vector_norm`의 것이에요.
+
+## 참고 문헌
+
+1. N. J. Higham, F. Tisseur, "A block algorithm for matrix 1-norm estimation, with an application to 1-norm pseudospectra," *SIAM J. Matrix Anal. Appl.* 21 (2000) 1185–1201.
+2. W. W. Hager, "Condition estimates," *SIAM J. Sci. Stat. Comput.* 5 (1984) 311–316.
+3. N. J. Higham, "FORTRAN codes for estimating the one-norm of a real or complex matrix, with applications to condition estimation," *ACM Trans. Math. Software* 14 (1988) 381–396.

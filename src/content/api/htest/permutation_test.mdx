@@ -1,0 +1,303 @@
+---
+kind: function
+title: permutation_test
+names: [permutation_test]
+group: 재표본
+order: 1
+signatures:
+  - "sd.htest.permutation_test(data, statistic, /, *, permutation_type='independent', vectorized=None, n_resamples=9999, batch=None, alternative='two-sided', axis=None, rng=None)"
+summary: 직접 정한 통계량으로 순열 검정을 해요. 귀무가설 아래에서 바뀌어도 되는 것(집단의 이름표, 짝, 짝 안의 순서)을 섞어 통계량의 귀무분포를 만들고, 관측한 통계량이 그 분포에서 얼마나 극단인지로 p값을 구해요. 순열이 n_resamples개 이하이면 모두 나열해 정확한 p값을 줘요.
+params:
+  - name: data
+    type: 표본의 list 또는 tuple
+    kind: positional-only
+    desc: 표본들. 표본 하나하나는 배열이나 수의 시퀀스예요. 표본마다 관측이 둘 이상이어야 해요.
+  - name: statistic
+    type: callable
+    kind: positional-only
+    desc: "통계량. 표본 수만큼의 배열을 받아 수를 돌려줘요. axis 인자가 있으면 statistic(*samples, axis=-1)로 여러 재표본을 한 번에 불러요."
+  - name: permutation_type
+    type: str
+    kind: keyword-only
+    desc: "'independent'(기본값, 합친 관측을 표본에 다시 나눠요), 'pairings'(표본마다 순서를 섞어요: 연관의 검정), 'samples'(관측마다 표본 사이에서 값을 섞어요: 짝지은 검정) 중 하나예요."
+  - name: vectorized
+    type: bool 또는 None
+    kind: keyword-only
+    desc: statistic이 axis를 받는지. None(기본값)이면 statistic의 시그니처에 axis가 있는지로 정해요. False면 1차원 표본마다 하나씩 불러요.
+  - name: n_resamples
+    type: int 또는 math.inf
+    kind: keyword-only
+    desc: 무작위 순열의 수(기본값 9999). 서로 다른 순열이 이 수 이하이면 모두 나열해요. math.inf면 언제나 나열하고, 순열이 10⁷개를 넘으면 ValueError예요.
+  - name: batch
+    type: int 또는 None
+    kind: keyword-only
+    desc: statistic을 한 번 부를 때 넘기는 재표본의 수. None이면 한 호출의 데이터가 약 4백만(2²²) 개 값 이하가 되게 정해요. 결과의 비트는 batch와 상관없어요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(통계량이 작은 쪽이 극단), 'greater'(큰 쪽이 극단) 중 하나예요."
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: None(기본값)이면 표본마다 펼쳐요. 정수면 그 축을 따라 표본을 읽고 나머지 축은 표본끼리 브로드캐스트한 배치예요.
+  - name: rng
+    type: sd.random.Generator 또는 None
+    kind: keyword-only
+    desc: 무작위 순열을 뽑을 생성기. 모든 순열을 나열할 때는 필요 없고, 무작위로 뽑아야 하는데 None이면 TypeError예요.
+returns:
+  type: PermutationTestResult
+  desc: "statistic(관측한 통계량), pvalue, null_distribution(순열마다의 통계량, (순열 수, *배치))와 summary()가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: data가 list·tuple이 아닐 때, statistic이 호출할 수 없을 때나 수가 아닌 것을 돌려줄 때, 무작위 순열이 필요한데 rng가 없을 때, rng가 sd.random.Generator가 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: "'independent'인데 표본이 하나일 때, 관측이 둘 미만인 표본이 있을 때, 짝지은 종류에서 표본의 길이가 다를 때, statistic이 맞지 않는 모양을 돌려줄 때, 나열할 순열이 10⁷개를 넘을 때, 문자열 옵션의 이름이 틀렸을 때, n_resamples·batch가 1보다 작을 때."
+seeAlso: [methods, bootstrap, monte_carlo_test, bws_test, ttest_ind, mannwhitneyu, basics, results]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const nullHist = [[-3.6,0],[-3.2,0],[-3.2,4],[-2.8,4],[-2.4,4],[-2.4,15],[-2.0,15],[-2.0,20],[-1.6,20],[-1.6,34],[-1.2,34],[-1.2,43],[-0.8,43],[-0.8,52],[-0.4,52],[-0.4,61],[0.0,61],[0.0,54],[0.4,54],[0.4,53],[0.8,53],[0.8,44],[1.2,44],[1.2,35],[1.6,35],[1.6,21],[2.0,21],[2.0,12],[2.4,12],[2.4,5],[3.2,5],[3.2,0],[3.6,0]];
+export const obsLine = [[2.8033,0],[2.8033,66],[2.8033,NaN],[-2.8033,0],[-2.8033,66]];
+
+## 무엇을 하나요
+
+새 비료를 준 화분 6개와 주지 않은 화분 5개의 키(cm)예요.
+
+```python
+>>> x = [12.1, 14.3, 11.8, 15.2, 13.9, 16.0]
+>>> y = [10.4, 11.9, 12.2, 9.8, 11.1]
+```
+
+평균의 차는 2.8cm예요. 비료가 아무 효과가 없다면 "비료를 줬다"는 이름표는 키와 상관없어요. 그렇다면 11개의 키를 그대로 두고 이름표만 아무렇게나 다시 붙여도 같은 실험 결과로 볼 수 있어요. 11개를 6개와 5개로 나누는 방법은 C(11, 6) = 462가지예요. 그 462가지마다 평균의 차를 계산하면 "효과가 없을 때 평균의 차가 어떻게 퍼지는지"를 알 수 있어요. 이것이 **귀무분포**예요.
+
+<Fig caption="이름표를 다시 붙인 462가지 나눔의 평균 차(계단 막대)와 관측한 차 ±2.80(세로선). 관측보다 바깥에 있는 나눔은 양쪽에 5개씩, 462개 중 10개라서 양쪽 p값이 10/462 = 0.0216이에요.">
+  <Plot
+    curves={[
+      { points: nullHist, label: '순열의 평균 차' },
+      { points: obsLine, label: '관측 ±2.80', dashed: true },
+    ]}
+    domain={[-3.6, 3.6]}
+    range={[0, 70]}
+    xTicks={[{ v: -3, label: '−3' }, { v: -2, label: '−2' }, { v: -1, label: '−1' }, { v: 0, label: '0' }, { v: 1, label: '1' }, { v: 2, label: '2' }, { v: 3, label: '3' }]}
+    yTicks={[{ v: 20, label: '20' }, { v: 40, label: '40' }, { v: 60, label: '60' }]}
+  />
+</Fig>
+
+순열 검정은 분포의 모양을 가정하지 않아요. 통계량도 마음대로 고를 수 있어요. 평균의 차든, 중앙값의 차든, 분산의 비든, 직접 만든 어떤 수든 그 통계량의 귀무분포를 섞기로 만들어요.
+
+<Reference />
+
+## 기본 사용
+
+통계량은 표본들을 받아 수를 돌려주는 함수예요. `axis`를 받게 만들면 여러 순열을 한 번에 계산해 빨라요.
+
+```python
+>>> def mean_diff(a, b, axis):
+...     return sd.mean(a, axis=axis) - sd.mean(b, axis=axis)
+>>> r = sd.htest.permutation_test((x, y), mean_diff)
+>>> r
+PermutationTestResult(statistic=2.80333, pvalue=0.021645, null_distribution=<array of shape (462,)>)
+>>> r.pvalue, 10 / 462
+(0.021645021645021644, 0.021645021645021644)
+```
+
+462가지가 기본값 `n_resamples=9999`보다 적어서 모두 나열했어요. 그래서 p값은 정확한 몫이고 `rng`도 필요 없어요. `null_distribution`에 462개의 통계량이 들어 있어요.
+
+```python
+>>> r.null_distribution.shape
+(462,)
+>>> sd.htest.permutation_test((x, y), mean_diff, alternative='greater').pvalue
+0.010822510822510822
+```
+
+`summary()`는 나열했는지를 `(all)`로 알려 줘요.
+
+```python
+>>> print(r.summary())
+                               Permutation test
+==============================================================================
+Statistic:                       2.803  Alternative:                 two-sided
+P-value:                        0.0216  No. Observations:                 6, 5
+                                        Permutation Type:          independent
+                                        Resamples:                   462 (all)
+==============================================================================
+```
+
+## p값
+
+- `'greater'`: 귀무분포에서 통계량이 관측 이상인 몫, `'less'`: 관측 이하인 몫이에요. 반올림으로 같은 값이 갈리지 않도록 관측의 상대 100 eps 안은 같은 값으로 쳐요.
+- `'two-sided'`: 두 한쪽 p값 중 작은 것의 두 배(1에서 잘라요)예요. 귀무분포가 대칭이 아니어도 쓸 수 있는 정의예요.
+- 모든 순열을 나열했으면 그 몫 b/R이 정확한 p값이에요(관측 자신도 순열 하나로 들어 있어요).
+- 무작위로 R개를 뽑았으면 (b + 1)/(R + 1)이에요. 관측을 한 번 더 세어서 p값이 0이 되지 않고, 검정의 수준을 지켜요.
+
+## 무작위 순열
+
+서로 다른 순열이 `n_resamples`보다 많으면 `n_resamples`개를 무작위로 뽑아요. 그때는 `rng`가 꼭 있어야 해요. 시드를 고정한 생성기를 주면 몇 번을 돌려도 같은 결과예요.
+
+```python
+>>> sd.htest.permutation_test((x, y), mean_diff, n_resamples=200)
+Traceback (most recent call last):
+    ...
+TypeError: permutation_test(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+>>> r200 = sd.htest.permutation_test((x, y), mean_diff, n_resamples=200, rng=sd.random.default_rng(1))
+>>> r200.pvalue, r200.null_distribution.shape
+(0.009950248756218905, (200,))
+```
+
+무작위 p값은 정확한 p값(0.0216) 둘레에서 흔들려요. 정밀하게 알고 싶으면 `n_resamples`를 늘려요. 재표본 하나하나는 생성기의 상태와 자기 번호만으로 정해져서, 스레드 수나 `batch`를 바꿔도 비트까지 같은 결과예요.
+
+```python
+>>> big = list(range(8)), [v + 0.5 for v in range(9)]
+>>> a = sd.htest.permutation_test(big, mean_diff, n_resamples=500, rng=sd.random.default_rng(3))
+>>> b = sd.htest.permutation_test(big, mean_diff, n_resamples=500, rng=sd.random.default_rng(3), batch=7)
+>>> bool(sd.all(a.null_distribution == b.null_distribution))
+True
+```
+
+`n_resamples=math.inf`는 순열이 아무리 많아도 나열하라는 뜻이에요. 다만 10⁷개를 넘으면 에러예요.
+
+```python
+>>> import math
+>>> sd.htest.permutation_test((list(range(15)), list(range(15))), mean_diff, n_resamples=math.inf)
+Traceback (most recent call last):
+    ...
+ValueError: permutation_test(): enumerating all 1.55e+08 permutations is more than the cap of 1e+07; use a finite n_resamples
+```
+
+## 순열의 종류
+
+무엇을 섞을지는 귀무가설이 정해요. 귀무가설 아래에서 "바꿔도 같은 분포"인 것만 섞어야 해요.
+
+| permutation_type | 섞는 것 | 귀무가설 | 순열의 수 |
+|---|---|---|---|
+| `'independent'` | 합친 관측을 표본들에 다시 나눠요 | 모든 표본이 같은 분포 | 다항계수 N!/(n₁!n₂!⋯) |
+| `'pairings'` | 표본마다 관측의 순서를 섞어 짝을 바꿔요 | 표본들이 서로 독립(연관이 없음) | (n!)^(표본 수) |
+| `'samples'` | 관측(짝)마다 표본 사이에서 값을 바꿔요 | 짝 안에서 어느 표본인지가 상관없음 | (표본 수!)^n |
+
+### 짝지은 표본: 'samples'
+
+같은 사람 7명의 처치 전후 혈압이에요. 처치가 효과가 없다면 한 사람의 "전"과 "후"를 바꿔도 같아요.
+
+```python
+>>> before = [72., 80, 65, 90, 77, 84, 69]
+>>> after = [70., 76, 66, 85, 72, 80, 67]
+>>> def mean_change(a, b, axis):
+...     return sd.mean(a - b, axis=axis)
+>>> rs = sd.htest.permutation_test((before, after), mean_change, permutation_type='samples')
+>>> rs.statistic, rs.pvalue, rs.null_distribution.shape
+(3.0, 0.03125, (128,))
+```
+
+7쌍의 순서를 바꾸는 2⁷ = 128가지를 모두 나열했어요. 표본을 하나만 주면 그 값의 부호를 뒤집는 128가지예요(차 d에 대한 같은 검정이에요).
+
+```python
+>>> d = [p - q for p, q in zip(before, after)]
+>>> def mean(a, axis):
+...     return sd.mean(a, axis=axis)
+>>> sd.htest.permutation_test((d,), mean, permutation_type='samples').pvalue
+0.03125
+```
+
+### 연관: 'pairings'
+
+두 변수 사이에 연관이 있는지는 한 변수의 순서를 섞어 짝을 깨뜨려서 봐요. 통계량이 상관계수이면 상관의 순열 검정이에요.
+
+```python
+>>> u = [1.2, 2.3, 2.9, 4.1, 5.0, 6.2, 6.8]
+>>> v = [2.0, 1.9, 3.5, 3.9, 5.8, 5.5, 7.4]
+>>> def corr(a, b, axis):
+...     return sd.htest.pearsonr(a, b, axis=axis).statistic
+>>> rp = sd.htest.permutation_test((u, v), corr, permutation_type='pairings', rng=sd.random.default_rng(7))
+>>> rp.statistic, rp.pvalue
+(0.9533588509146754, 0.004)
+```
+
+`'pairings'`는 모든 표본의 순서를 섞어서, 두 표본이면 (7!)² ≈ 2.5 × 10⁷가지예요. 그래서 무작위로 뽑았어요. 상관계수는 한쪽만 섞어도 같은 분포를 주므로, 한쪽만 섞는 [pearsonr](/api/htest/pearsonr/)의 `method=PermutationMethod(...)`가 7! = 5040가지로 나열할 수 있어 더 나아요([다른 검정에 method로 넘기기](/api/htest/methods/)).
+
+## 통계량 함수
+
+통계량은 표본마다 배열 하나를 받아요. 표본의 마지막 축이 관측이에요.
+
+- `axis`를 받는 함수(벡터화)는 `statistic(*samples, axis=-1)`로 불려요. 관측의 통계량은 표본 (n,)에서, 재표본의 통계량은 (B, n) 배열에서 한 번에 구해요. 돌려주는 모양은 앞의 모양 (B,)여야 해요.
+- `axis`가 없으면 1차원 표본마다 하나씩 불러요. 쓰기는 쉽지만 느려요.
+
+```python
+>>> def mean_diff_1d(a, b):
+...     return float(sd.mean(a) - sd.mean(b))
+>>> sd.htest.permutation_test((x, y), mean_diff_1d).pvalue
+0.021645021645021644
+```
+
+`vectorized=None`(기본값)은 시그니처에 `axis`가 있는지로 정해요. `**kwargs`로 axis를 받는 함수처럼 알아내지 못할 때는 `vectorized=True`나 `False`로 알려 줘요. 모양이 틀리면 에러예요.
+
+```python
+>>> sd.htest.permutation_test((x, y), lambda a, b, axis: sd.mean(a))
+Traceback (most recent call last):
+    ...
+ValueError: permutation_test(): 'statistic' must return shape (462,), not a number
+```
+
+## 배치
+
+`axis`를 주면 그 축을 따라 표본을 읽고, 나머지 축은 서로 독립인 검정이에요. 모든 검정이 같은 순열을 함께 써요.
+
+```python
+>>> X = sd.asarray([x, [1., 2, 3, 4, 5, 6]])
+>>> Y = sd.asarray([y, [3., 4, 5, 6, 7]])
+>>> rb = sd.htest.permutation_test((X, Y), mean_diff, axis=1)
+>>> rb.statistic, rb.pvalue, rb.null_distribution.shape
+(array([2.8033333333333346,               -1.5], dtype=float64), array([0.021645021645021644,   0.2510822510822511], dtype=float64), (462, 2))
+```
+
+## NaN과 작은 표본
+
+`permutation_test`는 NaN을 따로 다루지 않고 통계량 함수에 그대로 넘겨요. 관측한 통계량이 NaN이면 p값은 NaN이에요. NaN을 빼려면 표본에서 미리 빼요.
+
+```python
+>>> sd.htest.permutation_test(([1., 2, sd.nan], [4., 5]), mean_diff).pvalue
+nan
+```
+
+표본마다 관측이 둘 이상이어야 하고, `'independent'`는 표본이 둘 이상이어야 해요.
+
+```python
+>>> sd.htest.permutation_test(([1., 2, 3],), mean)
+Traceback (most recent call last):
+    ...
+ValueError: permutation_test(): permutation_type='independent' needs at least two samples, not 1
+>>> sd.htest.permutation_test(([1., 2, 3], [4.]), mean_diff)
+Traceback (most recent call last):
+    ...
+ValueError: permutation_test(): each sample must hold at least 2 observations, not 1 (data[1])
+```
+
+## 이미 있는 검정을 순열로
+
+t 통계량, U 통계량처럼 이미 있는 검정의 p값만 순열로 바꾸고 싶으면 통계량을 직접 쓰지 않아도 돼요. 그 검정에 `method=PermutationMethod()`를 넘기면 같은 순열 검정을 해 줘요.
+
+```python
+>>> sd.htest.ttest_ind(x, y, method=sd.htest.PermutationMethod()).pvalue
+0.021645021645021644
+```
+
+t 통계량은 평균의 차와 순서가 같아서 p값도 같아요. 자세한 것은 [다른 검정에 method로 넘기기](/api/htest/methods/)에 있어요.
+
+## 정확도
+
+모든 순열을 나열한 p값은 셈의 몫이라, 같은 순열을 Fraction으로 나열한 정확한 유리수 참값과 상대 5.6e-17 안이에요. 무작위 순열의 p값에는 참값이 없어요. 대신 같은 `rng` 상태면 스레드 수(1·3·10)와 `batch`(1·7·1000)에 상관없이 비트까지 같고, 무작위 p값이 정확한 p값의 5 표준오차 안에 드는지를 고정한 시드로 시험해요.
+
+## scipy를 아는 분께
+
+- `axis`의 기본값이 None이에요(scipy는 0). 표본 축은 통계량에 언제나 `axis=-1`로 넘겨요.
+- `random_state`가 없고 무작위는 `rng`(sd.random.Generator)뿐이에요. 나열할 수 있으면 rng 없이 돌고, 무작위가 필요한데 없으면 에러예요(시드 없는 기본 생성기가 없어요).
+- 나열의 순서는 scipy와 같아서, 모든 순열을 나열한 귀무분포는 scipy의 것과 같은 순서로 나와요.
+- `n_resamples=math.inf`로 나열할 수 있는 순열은 10⁷개까지예요.
+- 결과가 같은 필드(`statistic pvalue null_distribution`)이고 튜플로 풀리지 않아요. 배치의 귀무분포는 (순열 수, *배치)예요.
+
+```python
+>>> import numpy as np, scipy.stats
+>>> s = scipy.stats.permutation_test((np.array(x), np.array(y)), lambda a, b, axis: a.mean(axis) - b.mean(axis))
+>>> float(s.pvalue), s.null_distribution.tolist() == r.null_distribution.tolist()
+(0.021645021645021644, True)
+```

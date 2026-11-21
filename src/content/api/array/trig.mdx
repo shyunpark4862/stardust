@@ -33,7 +33,7 @@ raises:
     desc: 리스트처럼 배열도 숫자도 아닌 것을 넣었을 때, atan2에 복소수를 넣었을 때, out의 dtype이 결과를 담을 수 없을 때.
   - type: ValueError
     desc: atan2의 두 인자나 out의 모양이 서로 맞지 않을 때.
-seeAlso: [broadcasting, asarray]
+seeAlso: [deg2rad, broadcasting, asarray]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -69,11 +69,11 @@ array([                  1.0, 6.123233995736766e-17,                  -1.0], dty
 |---|:---:|:---:|:---:|:---:|:---:|
 | 라디안 | 0 | π/6 | π/2 | π | 2π |
 
-π의 값은 `sd.pi`에 있어요. 각도가 도 단위라면 `π / 180`을 곱해서 라디안으로 바꾼 다음 넣어야 해요.
+π의 값은 `sd.pi`에 있어요. 각도가 도 단위라면 [`deg2rad`](/api/array/deg2rad/)로 라디안으로 바꾼 다음 넣어야 해요. `π / 180`을 곱하는 것과 같아요.
 
 ```python
 >>> deg = sd.asarray([0.0, 30.0, 90.0])
->>> sd.sin(deg * (sd.pi / 180))
+>>> sd.sin(sd.deg2rad(deg))
 array([               0.0, 0.4999999999999999,                1.0], dtype=float64)
 ```
 
@@ -84,10 +84,10 @@ array([               0.0, 0.4999999999999999,                1.0], dtype=float6
 array([0.8939966636005577], dtype=float64)
 ```
 
-반대로 `asin`, `acos`, `atan`, `atan2`가 돌려주는 각도도 라디안이에요. 도로 보고 싶으면 `180 / π`를 곱해요.
+반대로 `asin`, `acos`, `atan`, `atan2`가 돌려주는 각도도 라디안이에요. 도로 보고 싶으면 [`rad2deg`](/api/array/deg2rad/)를 써요(`180 / π`를 곱해요).
 
 ```python
->>> sd.asin(sd.asarray([0.5])) * (180 / sd.pi)
+>>> sd.rad2deg(sd.asin(sd.asarray([0.5])))
 array([30.000000000000004], dtype=float64)
 ```
 
@@ -385,6 +385,7 @@ array([nan, nan], dtype=float64)
 | [`sinh`, `cosh`, `tanh`](/api/array/hyperbolic/) | 이름은 비슷하지만 다른 함수인 쌍곡선함수예요. 지수함수로 정의되고 주기가 없어요. |
 | [`asinh`, `acosh`, `atanh`](/api/array/hyperbolic/) | 쌍곡선함수의 역함수예요. |
 | [`hypot(x, y)`](/api/array/pow/) | 점 `(x, y)`까지의 거리예요. `atan2(y, x)`가 주는 방향과 짝을 이뤄요. |
+| [`deg2rad`, `rad2deg`](/api/array/deg2rad/) | 도와 라디안을 서로 바꿔요. 삼각함수에 도 단위의 각도를 넣기 전에 써요. |
 
 좌표 `(x, y)`를 거리와 방향으로 바꾸려면 `sd.hypot(x, y)`와 `sd.atan2(y, x)`를 함께 쓰면 돼요.
 
@@ -392,6 +393,6 @@ array([nan, nan], dtype=float64)
 
 - 역함수의 이름이 `arcsin`, `arccos`, `arctan`, `arctan2`가 아니라 `asin`, `acos`, `atan`, `atan2`예요. 별칭은 없어요.
 - `asin(2.0)`처럼 정의역 밖의 값은 경고 없이 NaN이에요. `errstate` 같은 설정도 없어요.
-- `out`은 keyword-only예요. `where=` 인자와 `deg2rad`, `rad2deg`, `degrees`, `radians` 함수는 없어요. `π / 180`을 직접 곱하세요.
+- `out`은 keyword-only예요. `where=` 인자는 없어요. 도와 라디안을 바꾸는 함수는 [`deg2rad`, `rad2deg`](/api/array/deg2rad/)이고, 별칭 `degrees`, `radians`는 없어요.
 - Python 숫자를 넣으면 numpy 스칼라가 아니라 Python `float`가 나와요.
 - `sin`, `asin`, `acos`, `atan`, `atan2`의 값은 numpy와 마지막 몇 자리가 다를 수 있어요(잰 차이는 최대 3칸). `cos`, `tan`은 지금은 numpy와 비트까지 같아요(약속은 아니에요). ±0, ±inf, NaN 같은 특수값의 결과는 부호까지 같아요.

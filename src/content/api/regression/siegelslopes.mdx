@@ -63,7 +63,7 @@ $$
 0.09999999999999994
 >>> r = sd.regression.siegelslopes(y, x)
 >>> r
-SiegelslopesResult(slope=1.81, intercept=1.7199999999999998)
+SiegelslopesResult(slope=1.81, intercept=1.72)
 ```
 
 진짜 기울기는 2 정도예요. Theil–Sen은 0.1로 무너졌고 Siegel은 1.81로 버텼어요.
@@ -95,7 +95,7 @@ SiegelslopesResult(slope=1.81, intercept=1.7199999999999998)
 
 ## 결과 읽기: `SiegelslopesResult`
 
-결과는 두 칸의 이름 붙은 튜플이에요. Theil–Sen과 달리 신뢰구간은 없어요.
+결과는 두 칸의 이름 붙은 튜플이에요. Theil–Sen과 달리 신뢰구간은 없어요. 그대로 찍은 줄(`SiegelslopesResult(slope=1.81, intercept=1.72)`)은 수를 유효숫자 여섯 자리로 줄인 것이고, 칸에는 계산한 값이 그대로 있어요.
 
 ```python
 >>> slope, intercept = r
@@ -175,11 +175,11 @@ $$
 
 ```python
 >>> sd.regression.siegelslopes(y, x, method='separate')
-SiegelslopesResult(slope=1.81, intercept=2.8000000000000007)
+SiegelslopesResult(slope=1.81, intercept=2.8)
 >>> sd.regression.siegelslopes(y_clean, x)
 SiegelslopesResult(slope=1.9775, intercept=1.31875)
 >>> sd.regression.siegelslopes(y_clean, x, method='separate')
-SiegelslopesResult(slope=1.9775, intercept=1.241666666666664)
+SiegelslopesResult(slope=1.9775, intercept=1.24167)
 ```
 
 `method`는 기울기에 영향을 주지 않아요. 이 예처럼 이상값이 한쪽에 몰려 있으면 `'hierarchical'`이 진짜 절편(1.2 정도)에 더 가까워요. 보통은 기본값을 쓰면 돼요.
@@ -195,7 +195,7 @@ SiegelslopesResult(slope=1.9775, intercept=1.241666666666664)
 
 ```python
 >>> sd.regression.siegelslopes([10.2, 10.8, 11.1, 11.9, 30.0, 12.6, 13.1, 13.4])
-SiegelslopesResult(slope=0.47166666666666657, intercept=10.255833333333333)
+SiegelslopesResult(slope=0.471667, intercept=10.2558)
 >>> sd.regression.siegelslopes([1.0, 2.0, 2.0, 3.0, 3.0, 5.0], [1.0, 1.0, 2.0, 2.0, 3.0, 3.0])
 SiegelslopesResult(slope=1.25, intercept=0.125)
 >>> sd.regression.siegelslopes([1.0, 2.0, 3.0], [2.0, 2.0, 2.0])
@@ -204,11 +204,11 @@ SiegelslopesResult(slope=nan, intercept=nan)
 >>> sd.regression.siegelslopes(yn)
 SiegelslopesResult(slope=nan, intercept=nan)
 >>> sd.regression.siegelslopes(yn, nan_policy='omit')
-SiegelslopesResult(slope=1.0, intercept=1.0)
+SiegelslopesResult(slope=1, intercept=1)
 >>> xb = [-1e308, 0.0, 1.0, 2.0, 3.0, 1e308]
 >>> yb = [-1e308, 0.5, 1.4, 2.6, 3.5, 1e308]
 >>> sd.regression.siegelslopes(yb, xb)
-SiegelslopesResult(slope=1.0, intercept=0.44999999999999996)
+SiegelslopesResult(slope=1, intercept=0.45)
 ```
 
 마지막 예에서 양 끝 두 점을 잇는 쌍만 inf/inf라, 두 끝점은 나머지 네 점으로 그은 기울기로 중앙값을 구해요.

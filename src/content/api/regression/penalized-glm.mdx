@@ -154,8 +154,9 @@ $$
 >>> yp = sd.stats.Poisson(mu=sd.exp(0.5 + 0.6 * Xp[:, 0] - 0.4 * Xp[:, 2])).sample(rng=rp)
 >>> pp = R.penalized_glm(yp, Xp, family='poisson', alpha=0.05)
 >>> pp
-PenalizedGLMResult(alpha=0.05, nobs=60, df_model=1.98308, params=[  0.6464010020599703   0.6509250229865187                  0.0
- -0.29705525267001454])
+PenalizedGLMResult(alpha=0.05, nobs=60, df_model=1.98308, params=[0.646401, 0.650925, 0, -0.297055])
+>>> pp.params[2]
+0.0
 ```
 
 효과가 없는 `x2`의 계수가 정확히 0이에요. 범위 밖의 `y`나 다른 이름은 에러예요.

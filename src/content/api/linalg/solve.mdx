@@ -489,6 +489,18 @@ array([], shape=(2, 0), dtype=float64)
 
 `solve`와 `lu_solve`의 관계는 간단해요. `solve`는 속에서 `a`를 풀기 쉬운 꼴로 나눈 다음 그것으로 푸는데, [lu](/api/linalg/lu/)와 `lu_solve`는 그 두 단계를 따로 꺼내 쓸 수 있게 한 것이에요.
 
+## 희소 행렬에서는
+
+행렬이 크고 대부분이 0이면 0이 아닌 원소만 저장하는 희소 행렬로 풀어요. 희소 행렬의 연립방정식은 [`sd.sparse.spsolve`](/api/sparse/spsolve/)가 희소 LU 분해로 풀고, 아주 큰 행렬은 [반복법](/api/sparse/iterative/)(`cg`, `gmres` 등)으로 풀어요. 희소 배열을 `solve`에 넣으면 `sd.sparse.spsolve`를 알려 주는 `TypeError`예요.
+
+```python
+>>> S = sd.sparse.csr_array(sd.asarray([[3.0, 1.0], [1.0, 2.0]]))
+>>> sd.sparse.spsolve(S, sd.asarray([9.0, 8.0]))
+array([2.0, 3.0], dtype=float64)
+```
+
+두 쪽은 분해할 때 행과 열의 순서를 다르게 고르므로 마지막 자리가 다를 수 있어요.
+
 ## numpy·scipy를 아는 분께
 
 - `b`의 규칙은 `np.linalg.solve`(numpy 2 이상)와 같아요. 1차원일 때만 벡터이고, 그 밖에는 열 묶음이에요.

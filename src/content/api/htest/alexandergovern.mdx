@@ -1,0 +1,165 @@
+---
+kind: function
+title: alexandergovern
+names: [alexandergovern]
+group: 평균과 분산
+order: 6
+signatures:
+  - "sd.htest.alexandergovern(*samples, axis=None, nan_policy='propagate', keepdims=False)"
+summary: Alexander–Govern 검정이에요. 집단마다 분산이 달라도 되는 조건에서 둘 이상인 집단의 평균이 모두 같은지 검정해요. Welch의 분산분석과 같은 질문을 다른 근사로 풀어요.
+params:
+  - name: samples
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 집단마다의 표본 두 개 이상. 크기는 서로 달라도 되고, 집단마다 둘 이상이어야 검정할 수 있어요. 축을 주면 표본 축 밖의 축끼리 브로드캐스트해야 해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 표본마다 모든 원소를 펼쳐요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "NaN을 다루는 방법. 'propagate'(기본값, 그 검정의 결과가 NaN), 'omit'(표본마다 NaN을 빼고 검정), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과의 필드에 표본 축을 길이 1로 남겨요.
+returns:
+  type: AlexandergovernResult
+  desc: "필드 statistic(A), pvalue, df(카이제곱 분포의 자유도 k − 1, float)와 summary()가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: 표본이 둘보다 적을 때, 옵션을 위치로 줬을 때, 없는 옵션을 줬을 때, 표본이 배열·수의 시퀀스·frame이 아닐 때, 복소수일 때, keepdims가 True·False가 아닐 때.
+  - type: ValueError
+    desc: nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위를 벗어나거나 같은 축을 두 번 썼을 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때.
+seeAlso: [f_oneway, basics, results, ttest_ind, kruskal, levene]
+---
+
+## 무엇을 하나요
+
+비료 세 가지로 키운 토마토의 수확량이에요. 셋째 비료는 흩어짐이 큰 다른 품종에 썼어요. 집단마다 분산이 다르니 보통의 분산분석([`f_oneway`](/api/htest/f_oneway/))의 가정이 깨져요.
+
+**Alexander–Govern 검정**은 분산이 같다는 가정 없이 평균을 견줘요.
+
+- 귀무가설: k개 집단의 모집단 평균이 모두 같아요.
+- 대립가설: 적어도 한 집단의 평균이 달라요.
+
+계산은 세 단계예요.
+
+1. 집단마다 평균의 표준오차 $se_i = s_i / \sqrt{n_i}$를 구하고, $1 / se_i^2$에 비례하는 무게로 평균들의 가중 평균 $\bar x_w$를 구해요. 정확한(표준오차가 작은) 집단의 평균을 더 믿는 거예요.
+2. 집단마다 가중 평균에서 떨어진 정도를 t로 재요. $t_i = (\bar x_i - \bar x_w) / se_i$이고, 자유도는 $\nu_i = n_i - 1$이에요.
+3. 각 $t_i$를 Hill의 정규화 변환으로 표준정규분포를 따르는 $z_i$로 바꾸고, 그 제곱합을 통계량으로 써요.
+
+$$
+A = \sum_{i=1}^{k} z_i^2
+$$
+
+평균이 모두 같으면 $z_i$가 표준정규분포에 가까우니, A는 자유도 k − 1의 [카이제곱 분포](/api/stats/chi-squared/)를 따라요. p값은 그 위쪽 꼬리예요.
+
+Welch의 분산분석(`f_oneway(..., equal_var=False)`)과 묻는 것이 같아요. Welch는 F 분포로, Alexander–Govern은 t를 정규분포로 바꾸는 변환으로 근사해요. 집단이 작고 분산이 크게 다를 때 두 근사가 조금 다른 p값을 내요.
+
+이런 때 써요.
+
+- 셋 이상인 집단의 평균을 분산이 같다는 가정 없이 견줄 때
+- 분포가 정규분포에서 크게 벗어나면 순위를 쓰는 [`kruskal`](/api/htest/kruskal/)을 써요
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> g1 = [20.1, 21.4, 19.8, 22.0, 20.7, 21.1]
+>>> g2 = [22.3, 23.1, 21.9, 24.0, 22.8, 23.4]
+>>> h3 = [19.5, 23.2, 16.9, 22.8, 17.7, 21.4, 18.0, 24.1]
+>>> r = sd.htest.alexandergovern(g1, g2, h3)
+>>> r
+AlexandergovernResult(statistic=11.9677, pvalue=0.00251906, df=2)
+```
+
+p값 0.0025로 세 평균이 모두 같다는 귀무가설을 버려요. 같은 데이터에서 Welch의 분산분석도 비슷한 p값이고, 분산이 같다고 본 보통의 분산분석은 차이를 놓쳐요.
+
+```python
+>>> sd.htest.f_oneway(g1, g2, h3, equal_var=False).pvalue
+0.002524130955597971
+>>> sd.htest.f_oneway(g1, g2, h3).pvalue
+0.06714976904661513
+```
+
+## 결과 읽기
+
+| 필드·메서드 | 뜻 |
+|---|---|
+| `statistic` | A 통계량(변환한 z의 제곱합) |
+| `pvalue` | 자유도 k − 1의 카이제곱 분포의 위쪽 꼬리 넓이 |
+| `df` | 자유도 k − 1(`float`) |
+| `summary()` | 검정을 표로 적은 글 |
+
+```python
+>>> print(r.summary())
+                            Alexander-Govern test
+==============================================================================
+Statistic:                       11.97  No. Observations:              6, 6, 8
+P-value:                       0.00252
+Df:                                  2
+==============================================================================
+```
+
+이 결과는 튜플로 풀리지 않아요. 필드로 읽어요.
+
+```python
+>>> stat, p = r
+Traceback (most recent call last):
+    ...
+TypeError: cannot unpack non-iterable AlexandergovernResult object
+```
+
+위쪽 꼬리 하나로 재는 검정이라 `alternative`가 없고, 신뢰구간도 없어요.
+
+## axis와 배치
+
+축을 주면 남은 축마다 검정해요. 행마다 한 해의 기록인 배열 셋을 주면 해마다 검정이 하나예요.
+
+```python
+>>> S1 = sd.asarray([g1, [20.5, 20.9, 21.2, 20.0, 21.8, 20.6]])
+>>> S2 = sd.asarray([g2, [21.9, 22.4, 21.5, 22.8, 22.1, 22.2]])
+>>> S3 = sd.asarray([h3, [20.7, 21.3, 20.1, 20.9, 21.6, 20.3, 21.0, 20.8]])
+>>> sd.htest.alexandergovern(S1, S2, S3, axis=1).pvalue
+array([0.0025190649638900365, 0.0004728187403360395], dtype=float64)
+```
+
+## 특수한 경우
+
+| 입력 | 결과 |
+|---|---|
+| 표본을 하나만 줌 | `TypeError` |
+| 한 집단이 비었거나 크기가 1 | A, p값이 NaN |
+| 한 집단이 상수(표준오차 0) | A, p값이 NaN |
+| `'propagate'`에서 NaN이 있음 | 모든 필드가 NaN |
+
+```python
+>>> sd.htest.alexandergovern(g1, g2, [21.0])
+AlexandergovernResult(statistic=nan, pvalue=nan, df=2)
+>>> sd.htest.alexandergovern(g1, g2, [21.0, 21.0, 21.0])
+AlexandergovernResult(statistic=nan, pvalue=nan, df=2)
+```
+
+원소가 하나인 집단은 분산을, 상수인 집단은 표준오차가 0이라 무게($1/se_i^2$)를 정할 수 없어요. 상수인지는 반올림 크기의 흔들림까지 보고 판정해요([퇴화한 입력](/api/htest/basics/#퇴화한-입력은-nan)).
+
+## 정확도
+
+- A의 상대오차는 $10^{-14}$ 안이에요(잰 최대 $3.8 \times 10^{-16}$). 가중 평균의 분자와 분모를 반올림 오차가 거의 없게 구해서, 평균이 $10^8$인데 집단 차이가 0.5 수준인 데이터도 자릿수를 지켜요.
+- p값은 카이제곱 분포의 위쪽 꼬리를 직접 계산해서 $10^{-14} \cdot \max(1, \kappa_p)$ 안이에요. 잰 가장 큰 상대오차는 오프셋 $10^8$의 꼬리에서 $5.8 \times 10^{-14}$이고, 그곳의 $\kappa_p$가 240이라 약속의 0.04배예요.
+- Hill의 변환은 scipy와 같은 근사식이에요. 정확도는 그 근사식의 값에 대한 것이고, 근사가 참 귀무분포에 얼마나 가까운지와는 따로예요.
+
+참값은 Arb(구간 산술)로 만들었어요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1의 `scipy.stats.alexandergovern`과 같은 검정이에요.
+
+- 결과에 `df`(k − 1)가 있어요. scipy의 결과는 `statistic`, `pvalue`뿐이에요. scipy처럼 튜플로 풀리지 않아요.
+- 크기가 2보다 작은 집단은 NaN이에요. scipy는 `ValueError`를 내요.
+- 상수인 집단의 판정은 sd.stats의 왜도와 같은 기준(편차 제곱의 평균이 $(\varepsilon \cdot \text{평균})^2$ 이하)이에요. scipy는 표준오차를 $\varepsilon \cdot \lvert\text{평균}\rvert$와 견줘요.
+- scipy는 정규화한 무게로 가중 평균을 만들어서, 평균이 $10^8$인 잰 문제에서 A가 상대 $2.7 \times 10^{-8}$, p값이 $8.4 \times 10^{-8}$ 틀렸어요. 여기서는 $3.8 \times 10^{-16}$이에요.
+- `axis`의 기본값이 None이에요(scipy는 0).

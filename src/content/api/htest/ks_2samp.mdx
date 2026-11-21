@@ -1,0 +1,251 @@
+---
+kind: function
+title: ks_2samp
+names: [ks_2samp]
+group: 두 표본의 분포
+order: 1
+signatures:
+  - "sd.htest.ks_2samp(data1, data2, /, *, axis=None, alternative='two-sided', method='auto', nan_policy='propagate', keepdims=False)"
+summary: 두 표본이 같은 분포에서 왔는지 보는 두 표본 Kolmogorov–Smirnov 검정이에요. 두 경험 분포 함수 사이의 가장 큰 세로 거리 D로 재고, p값은 D의 정확한 분포에서 구해요. 동점이 있으면 관측한 동점을 조건으로 한 정확한 분포예요.
+params:
+  - name: data1
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 첫째 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: data2
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 둘째 표본. 크기가 data1과 달라도 돼요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 각 표본의 모든 원소를 펼쳐 검정 하나예요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축은 두 표본 사이에서 브로드캐스트해서 칸마다 따로 검정해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값, 분포가 다름), 'less'(data1의 누적분포가 어딘가에서 data2의 것보다 작음, data1이 큰 쪽으로 치우침), 'greater'(어딘가에서 큼, data1이 작은 쪽으로 치우침) 중 하나예요."
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "'auto'(기본값, 큰 표본이 10000개 이하면 'exact', 넘으면 'asymp'), 'exact'(D의 정확한 분포), 'asymp'(점근 분포) 중 하나예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 검정의 결과가 NaN), 'omit'(표본마다 NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: Ks2sampResult
+  desc: "statistic(D), pvalue, statistic_location(D에 닿는 값), statistic_sign(D⁺면 +1, D⁻면 -1), method(쓴 분포의 이름)가 든 결과 객체예요. 검정 하나면 Python 수와 str, 배치면 배치 모양의 배열이고 method는 배치 모양의 중첩 리스트예요. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: data1·data2가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis·keepdims의 형이 틀렸을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: "method='exact'의 계산량이 상한(작업 10⁹번)을 넘을 때(method='asymp'를 알려 줘요), alternative·method·nan_policy 이름이 틀렸을 때, 표본 축 밖의 모양이 브로드캐스트되지 않을 때, axis가 범위 밖이거나 겹칠 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [cramervonmises_2samp, anderson_ksamp, epps_singleton_2samp, ks_1samp, mannwhitneyu, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const ecdfA = [[-5.0, 0.0], [-1.725, 0.0], [-1.725, 0.02], [-1.589, 0.02], [-1.589, 0.04], [-1.48, 0.04], [-1.48, 0.06], [-1.469, 0.06], [-1.469, 0.08], [-1.338, 0.08], [-1.338, 0.1], [-1.146, 0.1], [-1.146, 0.12], [-1.018, 0.12], [-1.018, 0.14], [-0.996, 0.14], [-0.996, 0.16], [-0.991, 0.16], [-0.991, 0.18], [-0.916, 0.18], [-0.916, 0.2], [-0.91, 0.2], [-0.91, 0.22], [-0.905, 0.22], [-0.905, 0.24], [-0.732, 0.24], [-0.732, 0.26], [-0.679, 0.26], [-0.679, 0.28], [-0.671, 0.28], [-0.671, 0.3], [-0.473, 0.3], [-0.473, 0.32], [-0.469, 0.32], [-0.469, 0.34], [-0.359, 0.34], [-0.359, 0.36], [-0.333, 0.36], [-0.333, 0.38], [-0.211, 0.38], [-0.211, 0.4], [-0.206, 0.4], [-0.206, 0.42], [-0.146, 0.42], [-0.146, 0.44], [-0.131, 0.44], [-0.131, 0.46], [-0.056, 0.46], [-0.056, 0.48], [0.006, 0.48], [0.006, 0.5], [0.031, 0.5], [0.031, 0.52], [0.122, 0.52], [0.122, 0.54], [0.24, 0.54], [0.24, 0.56], [0.324, 0.56], [0.324, 0.58], [0.34, 0.58], [0.34, 0.6], [0.39, 0.6], [0.39, 0.62], [0.4, 0.62], [0.4, 0.64], [0.45, 0.64], [0.45, 0.66], [0.476, 0.66], [0.476, 0.68], [0.661, 0.68], [0.661, 0.7], [0.734, 0.7], [0.734, 0.72], [0.746, 0.72], [0.746, 0.74], [0.755, 0.74], [0.755, 0.76], [0.821, 0.76], [0.821, 0.78], [0.838, 0.78], [0.838, 0.8], [0.844, 0.8], [0.844, 0.82], [0.902, 0.82], [0.902, 0.84], [0.933, 0.84], [0.933, 0.86], [1.09, 0.86], [1.09, 0.88], [1.211, 0.88], [1.211, 0.9], [1.264, 0.9], [1.264, 0.92], [1.591, 0.92], [1.591, 0.94], [1.637, 0.94], [1.637, 0.96], [2.035, 0.96], [2.035, 0.98], [2.101, 0.98], [2.101, 1.0], [5.0, 1.0]];
+export const ecdfB = [[-5.0, 0.0], [-4.738, 0.0], [-4.738, 0.02], [-4.588, 0.02], [-4.588, 0.04], [-4.185, 0.04], [-4.185, 0.06], [-3.855, 0.06], [-3.855, 0.08], [-2.906, 0.08], [-2.906, 0.1], [-2.792, 0.1], [-2.792, 0.12], [-1.882, 0.12], [-1.882, 0.14], [-1.802, 0.14], [-1.802, 0.16], [-1.761, 0.16], [-1.761, 0.18], [-1.71, 0.18], [-1.71, 0.2], [-1.68, 0.2], [-1.68, 0.22], [-1.655, 0.22], [-1.655, 0.24], [-1.464, 0.24], [-1.464, 0.26], [-1.109, 0.26], [-1.109, 0.28], [-1.066, 0.28], [-1.066, 0.3], [-0.993, 0.3], [-0.993, 0.32], [-0.96, 0.32], [-0.96, 0.34], [-0.71, 0.34], [-0.71, 0.36], [-0.486, 0.36], [-0.486, 0.38], [-0.472, 0.38], [-0.472, 0.4], [-0.469, 0.4], [-0.469, 0.42], [-0.402, 0.42], [-0.402, 0.44], [-0.368, 0.44], [-0.368, 0.46], [-0.268, 0.46], [-0.268, 0.48], [-0.186, 0.48], [-0.186, 0.5], [-0.178, 0.5], [-0.178, 0.52], [0.155, 0.52], [0.155, 0.54], [0.526, 0.54], [0.526, 0.56], [0.532, 0.56], [0.532, 0.58], [0.594, 0.58], [0.594, 0.6], [0.69, 0.6], [0.69, 0.62], [0.804, 0.62], [0.804, 0.64], [0.918, 0.64], [0.918, 0.66], [1.077, 0.66], [1.077, 0.68], [1.088, 0.68], [1.088, 0.7], [1.207, 0.7], [1.207, 0.72], [1.236, 0.72], [1.236, 0.74], [1.269, 0.74], [1.269, 0.76], [1.285, 0.76], [1.285, 0.78], [1.29, 0.78], [1.29, 0.8], [1.297, 0.8], [1.297, 0.82], [1.428, 0.82], [1.428, 0.84], [1.47, 0.84], [1.47, 0.86], [1.847, 0.86], [1.847, 0.88], [1.884, 0.88], [1.884, 0.9], [2.082, 0.9], [2.082, 0.92], [2.317, 0.92], [2.317, 0.94], [2.338, 0.94], [2.338, 0.96], [2.382, 0.96], [2.382, 0.98], [2.835, 0.98], [2.835, 1.0], [5.0, 1.0]];
+
+## 한눈에 보기
+
+두 표본 Kolmogorov–Smirnov(KS) 검정은 "두 표본이 같은 분포에서 왔다고 봐도 되나요?"를 물어요. 평균이 같은지가 아니라 분포 전체(위치, 퍼짐, 모양)가 같은지를 봐요.
+
+- **귀무가설**: 두 표본이 같은 연속분포에서 왔어요.
+- **대립가설**: 다른 분포에서 왔어요(`alternative='two-sided'`). 한쪽 방향은 [아래](#alternative-한쪽-검정)예요.
+
+평균은 같고 표준편차가 1과 2로 다른 두 정규분포에서 50개씩 뽑았어요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(3)
+>>> a = sd.stats.Normal().sample(50, rng=rng)
+>>> b = sd.stats.Normal(sigma=2.0).sample(50, rng=rng)
+>>> r = sd.htest.ks_2samp(a, b)
+>>> r
+Ks2sampResult(statistic=0.22, pvalue=0.178587, statistic_location=-1.65478, statistic_sign=-1, method='exact')
+```
+
+$D = 0.22$, p = 0.18이에요. 퍼짐의 차이는 경험 분포 함수가 양 끝에서 조금씩 벌어지는 꼴이라 KS가 잡기 어려운 편이에요([아래](#언제-쓰나요)).
+
+<Reference />
+
+## 통계량
+
+두 표본의 경험 분포 함수 $F_1$, $F_2$는 각각 $t$ 이하인 관측의 비율이에요. KS 통계량은 둘 사이의 가장 큰 세로 거리예요.
+
+$$
+D = \sup_t \lvert F_1(t) - F_2(t) \rvert = \max(D^+, D^-), \qquad D^+ = \sup_t \bigl(F_1(t) - F_2(t)\bigr), \quad D^- = \sup_t \bigl(F_2(t) - F_1(t)\bigr)
+$$
+
+<Fig caption="두 표본의 경험 분포 함수. b(점선, 표준편차 2)는 양 끝으로 넓게 퍼져서 왼쪽에서는 a보다 위, 오른쪽에서는 아래에 있어요. 가장 큰 거리 D = 0.22는 x = -1.65에서 나와요.">
+  <Plot
+    curves={[
+      { points: ecdfA, label: 'a (σ = 1)' },
+      { points: ecdfB, label: 'b (σ = 2)', dashed: true },
+    ]}
+    domain={[-5, 5]}
+    range={[0, 1]}
+    xTicks={[
+      { v: -4, label: '-4' },
+      { v: -1.65, label: '-1.65' },
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+    ]}
+    yTicks={[
+      { v: 0.5, label: '0.5' },
+      { v: 1, label: '1' },
+    ]}
+  />
+</Fig>
+
+$D$는 언제나 $1/\mathrm{lcm}(n_1, n_2)$의 정수배예요. `statistic_location`은 $D$에 처음 닿는 값이고, `statistic_sign`은 $D$가 $D^+$면 +1, $D^-$면 −1이에요. 여기서는 b의 누적분포가 위에 있어서 −1이에요.
+
+```python
+>>> r.statistic, r.statistic_location, r.statistic_sign
+(0.22, -1.6547791806592174, -1)
+>>> d, p = r
+>>> d * 50
+11.0
+```
+
+귀무가설에서 두 표본을 합친 100개의 값을 50개씩 나누는 모든 방법은 같은 확률이에요. p값은 그 가운데 관측한 $D$ 이상이 나오는 비율이고, 정확히 계산해요.
+
+## 언제 쓰나요
+
+- 두 표본의 분포가 어떤 식으로든 다른지 물을 때 써요. 분포의 꼴을 가정하지 않아요.
+- 위치(중앙값)가 옮겨졌는지만 물으면 [`mannwhitneyu`](/api/htest/mannwhitneyu/)나 [`ttest_ind`](/api/htest/ttest_ind/)가 더 힘이 있어요. 반대로 그 둘은 위치가 같고 퍼짐만 다른 차이를 보지 못해요.
+- KS는 가운데의 차이에 민감하고 꼬리의 차이에 둔해요. 꼬리와 퍼짐의 차이에는 [`cramervonmises_2samp`](/api/htest/cramervonmises_2samp/), [`anderson_ksamp`](/api/htest/anderson_ksamp/), [`epps_singleton_2samp`](/api/htest/epps_singleton_2samp/)가 흔히 더 힘이 있어요.
+
+같은 두 표본에 여러 검정을 하면 이렇게 나와요.
+
+```python
+>>> sd.htest.ttest_ind(a, b).pvalue, sd.htest.mannwhitneyu(a, b).pvalue
+(0.4169380550577354, 0.8985164449208333)
+>>> sd.htest.ks_2samp(a, b).pvalue, sd.htest.cramervonmises_2samp(a, b).pvalue
+(0.17858668181221735, 0.0859877935426191)
+>>> sd.htest.anderson_ksamp([a, b]).pvalue, sd.htest.epps_singleton_2samp(a, b).pvalue
+(0.03291797011365928, 0.0011324766342762516)
+```
+
+위치를 보는 두 검정은 차이를 모르고, 분포를 보는 검정은 KS, Cramér–von Mises, Anderson–Darling, Epps–Singleton 순으로 p값이 작아져요. 어떤 검정을 쓸지는 데이터를 보기 전에 정해요. 여러 검정을 해 보고 가장 작은 p값을 고르면 p값이 실제보다 작게 나와요.
+
+## `alternative`: 한쪽 검정
+
+| `alternative` | 대립가설 | 통계량 | data1은 |
+|---|---|---|---|
+| `'less'` | 어딘가에서 $F_1(t) < F_2(t)$ | $D^-$ | 큰 쪽으로 치우쳐요 |
+| `'greater'` | 어딘가에서 $F_1(t) > F_2(t)$ | $D^+$ | 작은 쪽으로 치우쳐요 |
+
+새 공정의 제품(`new`)이 옛 공정(`old`)보다 수명이 길어졌는지 물으면, `new`가 큰 쪽으로 치우쳤는지라 `ks_2samp(new, old, alternative='less')`예요.
+
+```python
+>>> old = sd.stats.Exponential(scale=10.0).sample(30, rng=sd.random.default_rng(12))
+>>> new = sd.stats.Exponential(scale=16.0).sample(30, rng=sd.random.default_rng(13))
+>>> sd.htest.ks_2samp(new, old, alternative='less')
+Ks2sampResult(statistic=0.366667, pvalue=0.0172901, statistic_location=18.594, statistic_sign=-1, method='exact')
+>>> sd.htest.ks_2samp(new, old).pvalue
+0.03458008496333449
+```
+
+방향은 데이터를 보기 전에 정해요.
+
+## `method`: 정확한 분포와 점근
+
+| `method` | p값 | 결과의 `method` |
+|---|---|---|
+| `'auto'`(기본값) | 큰 표본이 10000개 이하면 정확, 넘으면 점근 | `'exact'` 또는 `'asymp'` |
+| `'exact'` | $D$의 정확한 분포 | `'exact'` |
+| `'asymp'` | 양쪽은 한 표본 KS 분포의 $n = \mathrm{round}(n_1 n_2/(n_1 + n_2))$, 한쪽은 Hodges의 식 | `'asymp'` |
+
+```python
+>>> sd.htest.ks_2samp(a, b, method='asymp')
+Ks2sampResult(statistic=0.22, pvalue=0.152586, statistic_location=-1.65478, statistic_sign=-1, method='asymp')
+```
+
+정확한 분포는 두 표본의 크기가 수천 개여도 보통 금방 끝나요. 계산량이 상한(작업 10⁹번)을 넘는 입력에서 `method='exact'`는 `ValueError`로 `'asymp'`를 알려 줘요. `'auto'`가 정확을 고르는 범위는 언제나 상한 안이에요.
+
+## 동점이 있을 때
+
+값에 동점이 있으면 경험 분포 함수가 같은 값에서 한 번에 여러 칸 올라요. 이때 `'exact'`(와 그것을 고른 `'auto'`)는 **관측한 동점을 조건으로 한** 정확한 분포예요. 두 표본을 합친 값의 묶음은 그대로 두고 어느 표본에 속하는지만 모든 방법으로 바꿔서, 같은 값의 묶음 끝에서만 $D$를 봐요.
+
+```python
+>>> x = [1, 2, 2, 3, 3, 3]
+>>> y = [2, 3, 4, 4, 5]
+>>> rt = sd.htest.ks_2samp(x, y)
+>>> rt
+Ks2sampResult(statistic=0.6, pvalue=0.108225, statistic_location=3, statistic_sign=1, method='exact')
+>>> rt.pvalue == 25 / 231
+True
+```
+
+p = 25/231은 정확한 유리수를 반올림한 값이에요. 동점을 무시한 분포를 쓰면 이 값이 0.238이 되어 크게 달라요. 동점이 없으면 두 분포는 같아요.
+
+## 결과 읽기
+
+결과는 `statistic`, `pvalue`, `statistic_location`, `statistic_sign`, `method` 다섯 필드이고, 앞의 둘로 풀려요. 필드는 읽기만 해요.
+
+```python
+>>> print(r.summary())
+                      Two-sample Kolmogorov-Smirnov test
+==============================================================================
+Statistic:                      0.2200  Alternative:                 two-sided
+P-value:                         0.179  Method:                          exact
+Statistic Location:             -1.655  No. Observations:               50, 50
+Statistic Sign:                     -1
+==============================================================================
+```
+
+`No. Observations`는 두 표본의 크기예요. 결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고, 나머지 축은 두 표본 사이에서 브로드캐스트해서 칸마다 따로 검정해요. 두 표본의 표본 축 길이는 달라도 돼요. 방법은 줄마다 그 크기로 고르고, 결과의 `method`는 줄마다의 이름을 담은 리스트예요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> B = sd.stats.Normal().sample((3, 40), rng=sd.random.default_rng(14))
+>>> C = sd.stats.Normal(sigma=1.5).sample((3, 30), rng=sd.random.default_rng(15))
+>>> rb = sd.htest.ks_2samp(B, C, axis=1)
+>>> rb.pvalue, rb.method
+(array([0.17506382575409365,  0.2037547852342292,  0.4003596953167422], dtype=float64), ['exact', 'exact', 'exact'])
+```
+
+## 특수한 경우
+
+- **빈 표본**이 있으면 `statistic`, `pvalue`, `statistic_location`이 NaN이고 `statistic_sign`은 0이에요.
+- NaN은 `nan_policy`를 따라요. `'omit'`은 표본마다 NaN을 빼요.
+
+```python
+>>> sd.htest.ks_2samp([], [1.0, 2.0])
+Ks2sampResult(statistic=nan, pvalue=nan, statistic_location=nan, statistic_sign=0, method='exact')
+>>> sd.htest.ks_2samp([1.0, float('nan'), 3.0, 4.0], [2.0, 5.0, 6.0], nan_policy='omit').pvalue
+0.6
+>>> sd.htest.ks_2samp(a, b, method='asymptotic')
+Traceback (most recent call last):
+    ...
+ValueError: ks_2samp(): 'method' must be 'auto', 'exact' or 'asymp', not 'asymptotic'
+```
+
+## 정확도
+
+- $D$는 정수 꼴로 세어 한 번 반올림한 값이라 Arb(구간 산술)와 정확한 정수 셈으로 만든 참값과 견줘 상대오차가 8.5e-17 안이에요(25문제).
+- 정확한 분포의 p값은 확률을 양수로만 더해서 상대오차가 5.3e-16 안이에요. 완전히 갈린 두 표본의 깊은 꼬리(p = 2.9e-133), 동점의 조건부 분포, 997 × 1000이나 2000 × 1500 같은 큰 표본도 포함해요.
+- 점근 p값도 같은 약속 안이에요(약속 대비 0.0067).
+- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1, R 4.6.2 기준이에요.
+
+- `scipy.stats.ks_2samp(data1, data2)`와 같은 통계량, 같은 `alternative`와 `method`의 이름과 뜻이에요. `'auto'`의 문턱(10000)도 같아요. 기본 `axis`는 None이에요(scipy는 0). 결과에 쓴 분포의 이름 `method`가 있어요.
+- 동점이 있을 때의 `'exact'`가 달라요. scipy는 동점을 무시한 분포라 위 `x`, `y`에서 0.238이에요. 여기서는 R의 `ks.test(x, y, exact = TRUE)`와 같은 조건부 분포이고, R과 1.1e-15 안에서 같아요.
+- scipy는 정확한 계산이 double의 범위를 넘으면 경고와 함께 점근으로 넘어가요. 여기서는 넘치지 않아서 `'auto'`가 고른 정확한 분포를 끝까지 계산해요.
+- scipy의 점근 양쪽 p값은 n > 140에서 한 표본 분포의 근사를 써서 3000 × 2500에서 4.8e-8, 12000 × 1100에서 3.0e-7 틀려요. R의 점근은 다른 식(Kolmogorov의 극한)이라 0.02–0.03쯤 다르고, R의 정확한 p값은 깊은 꼬리(2.9e-133)에서 0이에요.
+- 빈 표본은 경고 없이 NaN이에요. scipy도 NaN이지만 경고(`SmallSampleWarning`)를 내요.

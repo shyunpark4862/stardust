@@ -128,7 +128,7 @@ $$
 >>> score = sd.asarray([52.0, 55.0, 61.0, 58.0, 66.0, 63.0, 70.0, 74.0, 73.0, 82.0])
 >>> r = sd.regression.ols(score, hours)
 >>> r
-OLSResult(nobs=10, rank=2, rsquared=0.94039, params=[47.973684210526315  4.052631578947368])
+OLSResult(nobs=10, rank=2, rsquared=0.94039, params=[47.9737, 4.05263])
 >>> r.param_names
 ['const', 'x1']
 >>> r.params
@@ -163,7 +163,7 @@ array([[ 43.97980799801367,  51.96756042303896],
 
 ## 직선 하나: 기울기, 절편, 상관계수
 
-설명변수가 하나면 결과에서 직선 하나의 값을 바로 읽어요. 두 변수의 피어슨 상관계수는 [`sd.htest.pearsonr`](#상관계수)로 구해요.
+설명변수가 하나면 결과에서 직선 하나의 값을 바로 읽어요. 두 변수의 피어슨 상관계수는 [`sd.htest.pearsonr`](/api/htest/pearsonr/)로 구해요([아래](#상관계수)).
 
 ```python
 >>> slope, intercept = r.params[1], r.params[0]
@@ -791,7 +791,7 @@ statsmodels 0.15.0, scikit-learn 1.9.1, scipy 1.18.1, numpy 2.5.4 기준이에�
 
 **scipy의 `stats.linregress`**
 
-- `scipy.stats.linregress(x, y)`의 여섯 값은 [직선 하나](#직선-하나-기울기-절편-상관계수)의 방법으로 얻어요. `slope`, `intercept`는 `params[1]`, `params[0]`, `stderr`, `intercept_stderr`는 `bse[1]`, `bse[0]`, `pvalue`는 `pvalues[1]`, `rvalue`는 `sd.htest.pearsonr(x, y).statistic`이에요. `ols`는 `y`가 먼저라서 `ols(y, x)`로 불러요.
+- `scipy.stats.linregress(x, y)`의 여섯 값은 [직선 하나](#직선-하나-기울기-절편-상관계수)의 방법으로 얻어요. `slope`, `intercept`는 `params[1]`, `params[0]`, `stderr`, `intercept_stderr`는 `bse[1]`, `bse[0]`, `pvalue`는 `pvalues[1]`, `rvalue`는 [`sd.htest.pearsonr(x, y)`](/api/htest/pearsonr/)`.statistic`이에요. `ols`는 `y`가 먼저라서 `ols(y, x)`로 불러요.
 - 값은 반올림 차이 안에서 같아요. 위의 공부 시간 데이터에서 scipy의 기울기 표준오차는 0.36074394763119694, sd는 0.36074394763119616이에요.
 - 점이 한 직선 위에 있으면 scipy의 `pvalue`는 1.2e-30 같은 작은 값이에요. sd의 `pvalues`는 [완전 적합](/api/regression/collinearity/#완전-적합)의 규칙대로 NaN이고, `pearsonr`의 p값은 0이에요.
 - `y`가 모두 같으면 scipy는 `rvalue`, `pvalue`, 두 표준오차가 NaN이에요. sd도 `pearsonr`이 NaN이고, `ols`는 계수 (y₀, 0)과 완전 적합의 값을 내요. `x`가 모두 같으면 scipy는 모든 값이 NaN이고, `ols`는 기울기가 [겹친 열](/api/regression/collinearity/)이라 NaN이에요.

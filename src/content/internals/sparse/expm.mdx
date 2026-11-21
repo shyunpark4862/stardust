@@ -1,0 +1,265 @@
+---
+title: 행렬 지수와 그 곱
+group: 행렬 함수
+order: 1
+summary: 희소 expm은 밀집 sd.linalg.expm과 같은 스케일링·제곱 알고리즘을 희소 행렬곱과 희소 LU로 해요. expm_multiply는 exp(A)를 만들지 않고 잘린 Taylor 급수를 벡터에 곱해 가는 Al-Mohy–Higham(2011)의 방법을 scipy 1.18.1의 순서대로 옮겼어요.
+seeAlso: [norms, accuracy-performance, overview]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+행렬 지수 $e^{A}$는 선형 미분방정식 $x' = Ax$의 해 $x(t) = e^{tA}x_0$에 나와요. 이 영역에는 두 함수가 있어요.
+
+| 함수 | 계산하는 것 | 알고리즘 | 비용의 바탕 |
+|---|---|---|---|
+| [`expm(A)`](/api/sparse/expm/) | $e^{A}$ 전체(희소 배열) | Al-Mohy–Higham(2009) Algorithm 5.1, 밀집 `sd.linalg.expm`과 같은 선택 [1] | SpGEMM, 희소 LU |
+| [`expm_multiply(A, B)`](/api/sparse/expm_multiply/) | $e^{A}B$, 또는 여러 시각의 $e^{tA}B$ | Al-Mohy–Higham(2011)의 잘린 Taylor [2] | SpMV·SpMM |
+
+둘 다 Python(`src/stardust/sparse/_matfuncs.py`)이 이 라이브러리의 커널을 불러요. 일이 모두 행렬곱, 행렬과 벡터의 곱, 풀이, 리덕션에 있고 호출 하나의 Python 비용이 곱 하나보다 작아서 C++ 파일을 따로 두지 않아요. 부르는 커널이 모두 결정적이라 결과는 스레드 수와 상관없이 같은 비트예요.
+
+## `expm`
+
+### 밀집 `expm`과 같은 알고리즘
+
+Padé 근사, 스케일링과 제곱, 차수 $m \in \{3, 5, 7, 9, 13\}$과 제곱 횟수 $s$를 $\lVert A^k\rVert_1^{1/k}$로 고르는 판정, 보정 $\ell$, $I + 2(V - U)^{-1}U$, 삼각 행렬의 고침은 [밀집 행렬 지수](/internals/linalg/expm/)에 자세히 있어요. 희소 `expm`은 같은 식과 같은 판정의 순서를 따라요. 같은 개념이 영역마다 다른 알고리즘이면 같은 행렬에서 다른 차수를 고르게 되기 때문이에요. 달라지는 것은 각 단계를 무엇으로 계산하느냐예요.
+
+<Fig column caption="희소 expm의 흐름. 밀집 expm의 단계마다 희소 커널을 써요.">
+  <Steps
+    steps={[
+      { label: '입력 정리', where: '_matfuncs.py', note: '모든 형식을 CSR로, bool·int64는 float64로. 저장된 NaN·inf는 ValueError, 저장된 0은 지워요.' },
+      { label: '구조 판별', where: '_matfuncs.py', note: 'is_sptriangular. 대각이면 exp(대각)을 바로 돌려줘요.' },
+      { label: '가드', where: '_matfuncs.py', note: '‖A‖₁이 inf거나 2¹⁰⁰을 넘으면 2의 거듭제곱으로 먼저 줄여요.' },
+      { label: '차수 m과 제곱 수 s', where: '_matfuncs.py', note: 'A² = A @ A(SpGEMM)는 언제나. A⁴, A⁶은 상한이 시험을 못 넘을 때만. n ≥ 100이면 ‖A⁸‖, ‖A¹⁰‖은 onenormest로 어림.' },
+      { label: 'U, V', where: '_matfuncs.py', note: '짝수 거듭제곱의 선형 결합(희소 덧셈)과 SpGEMM.' },
+      { label: '(V − U) X = U', where: '_direct.py', note: 'Accelerate LU/AMD, 우변 U를 열 묶음으로, 반복 다듬기 한 번.' },
+      { label: 's번 제곱', where: '_matfuncs.py', note: 'X @ X(SpGEMM). 삼각이면 매번 대각과 첫 부대각을 정확한 값으로.' },
+      { label: '결과', where: '_matfuncs.py', note: '정확한 0을 빼고 입력의 형식으로.' },
+    ]}
+  />
+</Fig>
+
+### 노름
+
+1-노름은 열마다 절댓값 합의 최댓값이고, 희소 행렬에서는 저장된 값만 더하면 돼요(`_norm1`, 축 합의 결정적인 순서). 밀집과 같이 $\lVert A^2\rVert_1$은 늘 정확히 구하고, $\lVert A^4\rVert_1$, $\lVert A^6\rVert_1$은 이미 아는 노름의 곱으로 만든 상한이 시험을 통과하지 못할 때만 거듭제곱을 만들어요. $\lVert A^8\rVert_1$, $\lVert A^{10}\rVert_1$은 $n < 100$이면 거듭제곱을 만들어 정확히, $n \ge 100$이면 거듭제곱을 만들지 않고 곱 연산자 $A^4 \cdot A^4$, $A^4\cdot A^6$의 1-노름을 어림해요. 밀집 `expm`은 이 문턱에서 LAPACK `lacn2`를 쓰고, 희소 쪽은 같은 일을 하는 블록 추정기 [`onenormest`](/api/sparse/onenormest/)(t = 2, 고정된 무작위 열)를 써요([노름과 1-노름 어림](/internals/sparse/norms/)).
+
+```python
+# src/stardust/sparse/_matfuncs.py
+def _product_norm1(mats, dtype):
+    """onenormest (t = 2, five iterations) of the product of the sparse CSR matrices `mats`."""
+    adjs = [(M.T.conj() if dtype == _sd.complex128 else M.T).tocsr() for M in mats]
+
+    def fwd(X):
+        for M in reversed(mats):
+            X = M @ X
+        return X
+
+    def adj(X):
+        for M in adjs:
+            X = M @ X
+        return X
+
+    return _norm1_of(fwd, adj, mats[0].shape[0], dtype)[0]
+```
+
+희소 행렬의 거듭제곱은 차수가 오를수록 채움이 커지므로, 큰 $n$에서 $A^8$을 만들지 않는 것이 메모리와 시간을 크게 아껴요.
+
+### 보정 $\ell$
+
+보정 $\ell(A, m)$은 Padé 근사의 역방향 오차 급수의 첫 항 $|c_{2m+1}|\,\lVert\,|A|^{2m+1}\rVert_1/\lVert A\rVert_1$을 봐요. $|A|$의 거듭제곱의 1-노름은 $e^{\mathsf T}|A|^{p}$의 최댓값이라서, 행렬을 만들지 않고 $|A|^{\mathsf T}$에 SpMV를 $p$번 하면 정확히 나와요. 넘치지 않게 $B = 2^{-e}|A|$($\lVert B\rVert_1 \le 1$)로 곱하고 로그에서 $pe$를 더해요.
+
+```python
+    # src/stardust/sparse/_matfuncs.py, _AbsPowers
+    def log2norm(self, p):
+        while self.p < p:
+            self.r = self.bt @ self.r
+            self.p += 1
+        top = float(_sd.max(self.r))
+        return (math.log2(top) if top > 0 else -_INF) + self.p * self.e
+```
+
+```python
+    # src/stardust/sparse/_matfuncs.py, expm
+    def ell(m, shift):
+        la = _log2_err_coeff(m) + absp.log2norm(2 * m + 1) - log2nA - 2.0 * m * shift
+        v = math.ceil((la + 53.0) / (2.0 * m)) if la > -_INF else 0
+        return v if v > 0 else 0
+```
+
+$\ell = \max(0, \lceil \log_2(\alpha/u)/(2m)\rceil)$이에요($u = 2^{-53}$). `shift`는 이미 정한 제곱 수 $s$로, $2^{-s}A$의 $\alpha$가 $2^{-2ms}$배가 되는 것을 반영해요. 차수를 올려 가며 다시 부르면 앞에서 만든 $e^{\mathsf T}B^{p}$에 이어서 곱해요.
+
+### 풀이와 제곱
+
+$U$와 $V$는 밀집과 같은 항의 순서(Higham 2005의 계산법 [4])로 만든 희소 행렬이에요. 결과는 $(V - U)^{-1}(V + U)$를 수학적으로 같은 $I + 2(V - U)^{-1}U$로 만들어요. 작은 보정에 단위 행렬을 정확히 더하는 꼴이라 대각의 끝자리를 지켜요.
+
+```python
+    # src/stardust/sparse/_matfuncs.py, expm
+    # r_m = (V - U)^-1 (V + U) = I + 2 (V - U)^-1 U: I added exactly to a small correction
+    factor = _Factor(V - U, func)
+    X = _sparse_solve(factor, U, "csr", func) * 2.0 + eye
+```
+
+$V - U$는 [`splu`](/api/sparse/splu/)와 같은 Accelerate LU/AMD로 한 번 분해하고, 우변 $U$를 정해진 열 묶음으로 나눠 밀집으로 풀어요(반복 다듬기 한 번). 묶음마다 정확한 0을 지워 희소로 모아요. 이 차수들의 $V - U$는 $\theta_m$ 안에서 조건이 좋아 특이가 되지 않지만, 특이로 판정되면 `LinAlgError("expm(): singular matrix")`예요. 제곱은 SpGEMM `X @ X`예요.
+
+### 대각과 삼각
+
+대각 행렬은 원소마다 $e^{a_{ii}}$를 놓고 끝내요. 위·아래 삼각 행렬은 Padé 뒤와 제곱마다 대각을 $e^{2^{-k}a_{ii}}$로, 첫 부대각을 2 × 2 블록의 정확한 식으로 다시 쓰고, 마지막에 반대쪽 삼각을 지워요.
+
+```python
+    # src/stardust/sparse/_matfuncs.py, expm
+    def fix(X, k):  # X ~ exp(2^-k A): its exact diagonal and first off-diagonal
+        f = math.ldexp(1.0, -k) if k <= 1022 else 0.0
+        lk = lam * f
+        X.setdiag(_sd.exp(lk))
+        X.setdiag((tt * f) * _exp_divided_difference(lk[:-1], lk[1:]), k=1 if shape == "upper" else -1)
+```
+
+$\begin{bmatrix}\lambda_1 & t\\ 0 & \lambda_2\end{bmatrix}$의 지수의 (1, 2) 원소는 $t\,(e^{\lambda_2} - e^{\lambda_1})/(\lambda_2 - \lambda_1)$이에요. 두 고유값이 가까우면 차분몫이 상쇄로 자리를 잃으므로 $|\lambda_2 - \lambda_1| < 1$에서는 $t\,e^{(\lambda_1+\lambda_2)/2}\,\operatorname{sinch}((\lambda_2 - \lambda_1)/2)$로 계산해요. $[[10, 1], [0, 10 + 10^{-12}]]$의 (1, 2) 원소는 상대오차 $9\times10^{-16}$이에요.
+
+```python
+>>> T = sd.sparse.csr_array(sd.asarray([[10.0, 1.0], [0.0, 10.0 + 1e-12]]))
+>>> sd.sparse.expm(T).toarray()
+array([[22026.465794806714,  22026.46579481775],
+       [               0.0, 22026.465794828742]], dtype=float64)
+```
+
+### 결과는 대개 거의 밀집이에요
+
+$e^{A} = I + A + A^2/2 + \cdots$의 거듭제곱은 그래프의 경로를 따라 퍼지므로, 연결된 행렬의 지수는 대개 모든 자리가 0이 아니에요. 삼중대각 100 × 100의 지수는 1만 자리가 모두 저장돼요. 값이 아주 작은 원소도 언더플로가 아니면 정확한 0이 아니에요.
+
+```python
+>>> n = 100
+>>> A = sd.sparse.diags_array([sd.full(n, -2.0), sd.full(n - 1, 1.0), sd.full(n - 1, 1.0)], offsets=[0, 1, -1])
+>>> E = sd.sparse.expm(A)
+>>> E.nnz, E.format
+(10000, 'csr')
+```
+
+그래서 메모리가 $n^2$에 비례해요. 행렬 전체가 아니라 벡터에 곱한 결과만 필요하면 아래의 `expm_multiply`가 맞아요.
+
+결과는 입력의 형식이에요(CSR → CSR, CSC → CSC, COO → COO, DOK → DOK). 계산은 언제나 CSR로 하므로 형식과 상관없이 같은 비트예요.
+
+## `expm_multiply`
+
+### 잘린 Taylor를 벡터에
+
+$e^{A}B$만 필요하면 $e^{A}$를 만들 까닭이 없어요. Al-Mohy–Higham(2011)은 $e^{A}B = (e^{A/s})^{s}B$로 나누고, 각 단계에서 $e^{A/s}$를 $m$차 Taylor 다항식 $T_m(A/s) = \sum_{j \le m}(A/s)^j/j!$로 근사해 벡터에 곱해요 [2].
+
+$$
+B_{i+1} = T_m(A/s)\,B_i,\qquad T_m(A/s)\,B_i = \sum_{j=0}^{m} \frac{(A/s)^j}{j!}B_i
+$$
+
+항 하나가 행렬과 블록의 곱 하나라서 전체 비용은 곱 약 $ms$번이에요. Taylor 다항식은 Padé와 달리 풀이가 없어 곱만으로 돼요. 앞서 $\mu = \operatorname{tr}(A)/n$만큼 옮긴 $A - \mu I$를 쓰고 끝에 $e^{\mu}$를 곱해요. 옮기면 1-노름이 대개 줄고($\mu$는 고유값의 평균이에요), 노름이 작을수록 곱이 적게 들어요.
+
+```python
+# src/stardust/sparse/_matfuncs.py
+def _simple_core(prod, B, t, mu, m_star, s):
+    """exp(t (A + mu I)) B by s steps of the degree-m_star Taylor series of t A / s, each stopped
+    early once two terms are below the tolerance (scipy's _expm_multiply_simple_core)."""
+    F = B
+    eta = _exp(t * mu / float(s))
+    for _ in range(s):
+        c1 = _inf_norm(B)
+        for j in range(m_star):
+            coeff = t / float(s * (j + 1))
+            B = prod(B) * coeff
+            c2 = _inf_norm(B)
+            F = F + B
+            if c1 + c2 <= _TOL * _inf_norm(F):
+                break
+            c1 = c2
+        F = F * eta
+        B = F
+    return F
+```
+
+`prod`는 $X \mapsto (A - \mu I)X$예요. 연속한 두 항의 ∞-노름 합이 지금까지의 합의 $u = 2^{-53}$배 아래면 그 단계를 일찍 끝내요. 허용오차는 scipy처럼 $u$로 고정이고 인자로 바꿀 수 없어요.
+
+### 차수와 단계 수 고르기
+
+$T_m(2^{-s}A)^{s}$가 정확히 $e^{A + \Delta A}$가 되는 $\Delta A$(역방향 오차)는 $h_{m+1}(x) = \log(e^{-x}T_m(x))$의 거듭제곱 급수로 쓸 수 있고, $\lVert\Delta A\rVert/\lVert A\rVert \le u$가 되는 가장 큰 $\lVert A/s\rVert$를 $\theta_m$이라고 해요(논문의 표 3.1, $m \le 55$). 그러면 $s = \lceil\lVert A\rVert/\theta_m\rceil$이고, 비용 $ms$가 가장 작은 $m$을 고르면 돼요. 하지만 비정규 행렬에서 $\lVert A\rVert$는 $\lVert A^p\rVert^{1/p}$보다 훨씬 클 수 있어요. 급수의 $p$차 이상 항은 $\alpha_p = \max(d_p, d_{p+1})$, $d_p = \lVert A^p\rVert_1^{1/p}$로 묶을 수 있으므로($m + 1 \ge p(p-1)$일 때), 논문의 Code Fragment 3.1은 $\lVert A\rVert_1$ 대신 $\alpha_p$를 써서 $s$를 줄여요. $d_p$는 [`onenormest`](/api/sparse/onenormest/)로 어림하고, $\lVert A\rVert_1$이 충분히 작아 그 어림이 이득이 없을 때(조건 3.13)는 $\lVert A\rVert_1$만으로 골라요.
+
+```python
+# src/stardust/sparse/_matfuncs.py
+def _fragment_3_1(info, n0):
+    """(m_star, s): the cheapest Taylor degree and number of steps (Al-Mohy & Higham 2011, Code
+    Fragment 3.1, scipy's)."""
+    best_m = best_s = None
+    p_max = _p_max(_M_MAX)
+    if info.onenorm() <= 2 * _ELL * p_max * (p_max + 3) * (_THETA[_M_MAX] / float(n0 * _M_MAX)):
+        for m, theta in _THETA.items():
+            s = int(math.ceil(info.onenorm() / theta))
+            if best_m is None or m * s < best_m * best_s:
+                best_m, best_s = m, s
+    else:
+        for p in range(2, p_max + 1):
+            for m in range(p * (p - 1) - 1, _M_MAX + 1):
+                if m in _THETA:
+                    s = int(math.ceil(info.alpha(p) / _THETA[m]))
+                    if best_m is None or m * s < best_m * best_s:
+                        best_m, best_s = m, s
+        best_s = max(best_s, 1)
+    return best_m, best_s
+```
+
+$m_{\max} = 55$, $\ell = 2$, $p_{\max}$는 $p(p-1) \le m_{\max} + 1$인 가장 큰 $p$(= 8)예요. `n0`은 $B$의 열 수로, 열이 많으면 어림 한 번의 몫이 상대적으로 작아져 조건이 바뀌어요. $\lVert A - \mu I\rVert_1$은 행렬이면 정확히(열 절댓값 합), 일반 `LinearOperator`면 `onenormest`로 구해요. $d_p$의 어림은 거듭제곱 연산자 $X \mapsto (tA)^pX$에 `onenormest`(t = 2)를 써서 캐시해 둬요.
+
+```python
+>>> b = sd.ones(n)
+>>> y = sd.sparse.expm_multiply(A, b)
+>>> y[:3]
+array([0.5237776118026087, 0.8322859343562798, 0.9543161903004841], dtype=float64)
+>>> (E @ b)[:3]
+array([0.5237776118026087, 0.8322859343562793, 0.9543161903004834], dtype=float64)
+```
+
+$e^{A}$를 만들어 곱한 값과 끝자리 몇 ulp 안에서 같아요. 두 값은 서로 다른 근사(Padé와 Taylor)의 반올림이라 비트까지 같지는 않아요.
+
+### 여러 시각
+
+`start`, `stop`, `num`, `endpoint`를 주면 numpy `linspace`의 점 $t_0, \ldots, t_q$에서 $e^{t_kA}B$를 모두 구해 쌓아요(모양 `(num,) + B.shape`). scipy의 세 경로를 그대로 옮겼어요.
+
+- 먼저 $t_0$의 값을 위의 방법으로 구하고, 구간 전체 $[t_0, t_q]$에 맞는 $(m^*, s)$를 골라요.
+- $q \le s$(점이 단계보다 적어요)이면 걸음 $h = (t_q - t_0)/q$에 맞게 $(m^*, s)$를 다시 골라 점마다 $X_{k+1} = e^{hA}X_k$를 구해요.
+- 그렇지 않으면 점 $d = \lfloor q/s\rfloor$개씩 묶어, 묶음의 첫 점 $Z$에서 항 $K_p = (hA)^pZ/p!$를 한 번 만들어 두고 묶음 안의 $k$째 점을 $\sum_p k^p K_p$로 구해요. 같은 항을 여러 점이 나눠 써서 곱이 줄어요. scipy는 이 경우를 $q$가 $s$의 배수인지에 따라 두 함수로 나누지만 같은 값을 계산해서 하나로 짰어요.
+
+```python
+>>> Y = sd.sparse.expm_multiply(A, b, start=0.0, stop=1.0, num=5)
+>>> Y.shape
+(5, 100)
+```
+
+### 대각합과 연산자
+
+`traceA`를 주지 않으면 행렬은 정확한 대각합(희소 `trace()`, 밀집 `sd.linalg.trace`)을 써요. 일반 `LinearOperator`는 대각합을 모르므로 scipy처럼 Hutch++(Meyer, Musco, Musco, Woodruff 2021) [3]로 어림해요. ±1 무작위 행렬 $S$로 $AS$의 QR에서 $Q$를 얻어 $\operatorname{tr}(Q^{\mathsf H}AQ)$를 정확히 더하고, 나머지는 $Q$에 직교인 무작위 열의 Hutchinson 추정으로 더해요. ±1 열은 `sd.random.default_rng(0)`의 고정된 열이라 같은 호출은 같은 결과예요. 대각합은 $A$를 $\mu I$만큼 옮기는 데만 쓰이므로 어떤 값이어도 결과는 $e^{A}B$예요. 값이 나쁘면 곱이 조금 더 들 뿐이에요.
+
+행렬 $A - \mu I$는 희소 배열로 만들어 곱해요(scipy와 같아요). 1스레드에서는 CSC 입력을 그대로 곱하고(흩뿌리기 곱이 CSR의 SpMV와 비슷한 빠르기예요), 여러 스레드에서는 행이 나뉘는 CSR로 바꿔요. 어느 형식의 곱이든 같은 비트라서 결과는 스레드 수와 상관없이 같아요.
+
+## 정확도
+
+계약은 $\max|\hat y - y| \le C_{\mathrm{EXPM}}\,\varepsilon\,\max(1, \lVert sA\rVert_1)\cdot(\text{척도})$이고 $C_{\mathrm{EXPM}} = 10$이에요. 척도는 `expm`이 $\max|e^{sA}|$, `expm_multiply`가 $\max_i(|e^{tsA}|\,|b|)_i$예요. 참값은 Arb의 `arb_mat.exp`·`acb_mat.exp`(n ≤ 200)로 만든 값이에요. 표의 수는 잰 가장 큰 오차를 $\varepsilon\max(1, \lVert sA\rVert_1)\cdot$척도로 나눈 값이에요.
+
+| 함수 | sd | scipy | R Matrix | 밀집 `sd.linalg.expm` |
+|---|---:|---:|---:|---:|
+| `expm` | 2.4 | 4.8 | 4.2 | 3.5 |
+| `expm_multiply` | 2.0 | 2.0 | — | — |
+| `expm_multiply`, 구간 | 2.5 | 2.5 | — | — |
+
+오차가 $\lVert A\rVert_1$에 비례하는 것은 척도 조정과 제곱(또는 Taylor 단계)의 반올림이 노름만큼 쌓이기 때문이고, 세 구현 모두 같은 꼴이에요. 자세한 구성은 [정확도와 성능](/internals/sparse/accuracy-performance/)에 있어요.
+
+## scipy와 다른 곳
+
+- **`expm`의 노름 어림.** scipy는 $n \ge 200$에서 $d_k$의 대부분을 무작위 추정으로 해요. sd는 밀집 `expm`과 같은 판정(정확한 노름과 상한 먼저, $n \ge 100$에서 $\lVert A^8\rVert$, $\lVert A^{10}\rVert$만 고정 열의 `onenormest`)이에요.
+- **`expm`의 삼각 고침.** scipy는 위 삼각 행렬의 차수 13에서만 고쳐요. sd는 위·아래 삼각의 모든 차수에서 고쳐요. 위의 $[[10, 1], [0, 10 + 10^{-12}]]$에서 scipy의 (1, 2) 원소는 상대오차 $2\times10^{-5}$예요.
+- **`expm`의 극단.** 고유값이 $-10^{40}$ 근처인 행렬의 지수는 sd가 0이고 scipy는 단위 행렬이에요(2¹⁰⁰ 가드).
+- **`expm`의 결과 형식.** scipy는 경로마다 달라요(DOK → CSR 등). sd는 입력의 형식이에요.
+- **`expm_multiply`의 비트.** 곱(SpMV·SpMM의 합 순서가 scipy와 같아요), 스칼라 곱과 덧셈, 멈춤 판정의 ∞-노름이 scipy와 같아서 $(m^*, s)$가 같으면 결과가 지금은 비트까지 같아요(약속은 아니에요). scipy의 $d_p$는 시드 없는 무작위 추정이라 실행마다 다른 $(m^*, s)$를 고를 수 있어요. $\lVert A\rVert_1$만으로 고르는 경우는 비트까지 같아요.
+- **희소 `B`와 `traceA` 경고.** scipy는 희소 `B`도 받고, 연산자의 대각합을 어림할 때 경고를 내요. sd는 `B`가 밀집 배열이어야 하고(희소면 `B.toarray()`를 짚는 `TypeError`), 경고 없이 고정 열로 어림해요.
+
+## 참고 문헌
+
+1. A. H. Al-Mohy, N. J. Higham, "A new scaling and squaring algorithm for the matrix exponential," *SIAM J. Matrix Anal. Appl.* 31 (2009) 970–989.
+2. A. H. Al-Mohy, N. J. Higham, "Computing the action of the matrix exponential, with an application to exponential integrators," *SIAM J. Sci. Comput.* 33 (2011) 488–511.
+3. R. A. Meyer, C. Musco, C. Musco, D. P. Woodruff, "Hutch++: Optimal stochastic trace estimation," *Symposium on Simplicity in Algorithms* (2021) 142–155.
+4. N. J. Higham, "The scaling and squaring method for the matrix exponential revisited," *SIAM J. Matrix Anal. Appl.* 26 (2005) 1179–1193.

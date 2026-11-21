@@ -1,0 +1,200 @@
+---
+kind: function
+title: weightedtau
+names: [weightedtau]
+group: 상관
+order: 5
+signatures:
+  - "sd.htest.weightedtau(x, y, /, *, axis=None, rank=True, weigher=None, additive=True, nan_policy='propagate', keepdims=False)"
+summary: 순위의 위쪽(중요한 항목)에서 생긴 어긋남을 더 무겁게 세는 가중 켄달 τ(Vigna)예요. 검색 결과나 추천 목록처럼 상위권의 일치가 더 중요한 두 순위를 견줄 때 써요. 상관의 크기만 재고 p값은 언제나 NaN이에요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 첫째 점수. 값이 클수록 위쪽(중요한) 항목이에요. y와 표본 축의 길이가 같아야 해요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 둘째 점수. i번째 값이 x의 i번째 값과 같은 항목이에요.
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽는 축. None(기본값)이면 각각 펼쳐서 하나를 계산해요. 축을 주면 나머지 축이 배치예요.
+  - name: rank
+    type: True, None, False, 또는 순위의 표본
+    kind: keyword-only
+    desc: "항목의 중요도를 정하는 순위. True(기본값)는 (x, y) 순과 (y, x) 순의 두 순위로 구한 값의 평균, None은 (x, y) 순만, False는 원소의 위치(0번이 가장 중요), 표본을 주면 그 값이 작은 항목이 중요해요(값의 순서만 써요). 표본은 유한한 수여야 해요."
+  - name: weigher
+    type: 호출 가능한 객체 또는 None
+    kind: keyword-only
+    desc: 순위 r(0이 가장 중요)을 받아 가중치를 돌려주는 함수. None(기본값)이면 쌍곡선 가중치 1/(r + 1)이에요. 순위 0, 1, …, n − 1에서 한 번씩 불러요.
+  - name: additive
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 두 항목의 쌍의 가중치를 두 가중치의 합으로, False면 곱으로 해요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 줄의 결과가 NaN), 'omit'(NaN이 든 쌍을 뺌), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: WeightedtauResult
+  desc: "statistic(가중 τ)과 pvalue(언제나 NaN)를 가진 결과 객체. (statistic, pvalue) 둘로 풀려요. 배치면 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: x·y가 배열·수의 시퀀스·frame이 아닐 때, weigher가 None이나 호출 가능한 객체가 아닐 때, weigher가 수가 아닌 값을 돌려줄 때, additive가 True·False가 아닐 때, 데이터를 키워드로 줬거나 옵션을 위치로 줬을 때.
+  - type: ValueError
+    desc: "x·y(와 rank 표본)의 표본 축 길이가 다를 때, rank 표본에 inf나 NaN이 있을 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [kendalltau, spearmanrho, basics, results]
+---
+## 무엇을 하나요
+
+두 검색 엔진이 같은 문서 열 개에 점수를 매겼어요. 한 엔진은 1위와 2위를 바꿔 놓았고, 다른 경우에는 9위와 10위를 바꿔 놓았어요. 사용자는 대개 위쪽 몇 개만 보니, 1위와 2위가 바뀐 쪽이 훨씬 큰 차이예요. 하지만 보통의 [켄달 τ](/api/htest/kendalltau/)는 어느 쌍이 뒤바뀌든 똑같이 하나로 세서 두 경우를 구별하지 못해요.
+
+**가중 켄달 τ**는 쌍마다 가중치를 붙여요. 두 항목이 순위의 위쪽에 있을수록 그 쌍의 일치와 불일치를 무겁게 세요.
+
+$$
+\tau_w = \frac{\sum_{i<j} w_{ij}\,\operatorname{sgn}(x_i - x_j)\operatorname{sgn}(y_i - y_j)}{\sqrt{\sum_{i<j} w_{ij}\,[x_i \ne x_j]\;\sum_{i<j} w_{ij}\,[y_i \ne y_j]}}
+$$
+
+$w_{ij}$는 두 항목의 순위 $r_i, r_j$(0이 가장 중요)에 붙은 가중치 $w(r_i), w(r_j)$의 합(기본값)이나 곱이에요. 기본 가중치는 쌍곡선 $w(r) = 1/(r+1)$이라 1위의 무게가 1, 2위가 1/2, 10위가 1/10이에요. 모든 가중치가 같으면 τ-b와 같아요.
+
+값의 범위는 τ처럼 −1에서 1이에요. 검정이 아니라 상관의 크기만 재는 함수라서 p값은 정의하지 않아요. 결과의 `pvalue`는 언제나 NaN이에요.
+
+<Reference />
+
+## 기본 사용
+
+점수가 클수록 위쪽이에요. 아래 x는 문서 0이 1위, 문서 9가 10위인 점수예요.
+
+```python
+>>> import stardust as sd
+>>> x = [10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+>>> swap_bottom = [10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 1.0, 2.0]
+>>> swap_top = [9.0, 10.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+>>> sd.htest.kendalltau(x, swap_bottom).statistic, sd.htest.kendalltau(x, swap_top).statistic
+(0.9555555555555556, 0.9555555555555556)
+>>> sd.htest.weightedtau(x, swap_bottom)
+WeightedtauResult(statistic=0.983983, pvalue=nan)
+>>> sd.htest.weightedtau(x, swap_top)
+WeightedtauResult(statistic=0.886194, pvalue=nan)
+```
+
+켄달 τ는 둘 다 0.956이지만, 가중 τ는 아래쪽이 바뀐 경우 0.984, 위쪽이 바뀐 경우 0.886이에요.
+
+결과는 `(statistic, pvalue)`로 풀려요.
+
+```python
+>>> r = sd.htest.weightedtau(x, swap_top)
+>>> tau, p = r
+>>> tau, p
+(0.8861942826175315, nan)
+>>> print(r.summary())
+                             Weighted Kendall tau
+==============================================================================
+Statistic:                      0.8862  No. Observations:                   10
+P-value:                           nan
+==============================================================================
+```
+
+p값이 필요하면 [`permutation_test`](/api/htest/permutation_test/)에 이 통계량을 넘겨 순열 p값을 구할 수 있어요.
+
+## `rank`: 누가 중요한가
+
+가중치를 붙이려면 항목마다 순위(0이 가장 중요)가 있어야 해요. `rank`가 그 순위를 정해요.
+
+| `rank` | 중요도의 순위 |
+|---|---|
+| True(기본값) | x가 큰 순(같으면 y가 큰 순)의 순위로 한 번, y가 큰 순(같으면 x가 큰 순)의 순위로 한 번 구해서 평균 |
+| None | x가 큰 순(같으면 y가 큰 순)의 순위만 |
+| False | 원소의 위치. 0번 원소가 가장 중요 |
+| 표본 | 그 값이 작은 항목이 중요. 값의 순서만 써요 |
+
+기본값 True는 x와 y를 똑같이 대접해요. 한쪽이 기준 순위(정답)이면 None으로 그쪽을 기준으로 삼아요. 위 예에서는 x가 이미 큰 순으로 놓여 있어서 세 방법이 같아요.
+
+```python
+>>> sd.htest.weightedtau(x, swap_top, rank=None).statistic
+0.8861942826175315
+>>> sd.htest.weightedtau(x, swap_top, rank=False).statistic
+0.8861942826175315
+```
+
+순위 표본을 직접 주면 그 값이 작을수록 중요해요. 문서 9를 가장 중요하게 두면 위쪽(문서 0과 1)의 뒤바뀜은 가벼워져요.
+
+```python
+>>> sd.htest.weightedtau(x, swap_top, rank=[9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0])
+WeightedtauResult(statistic=0.983983, pvalue=nan)
+```
+
+순위 표본은 유한한 수여야 해요.
+
+```python
+>>> sd.htest.weightedtau(x, swap_top, rank=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, float('inf')])
+Traceback (most recent call last):
+    ...
+ValueError: weightedtau(): 'rank' must hold finite numbers
+```
+
+## `weigher`와 `additive`: 가중치의 모양
+
+`weigher`는 순위 r을 받아 가중치를 돌려주는 함수예요. 모든 가중치를 1로 두면 보통의 τ-b가 되고, 더 빨리 줄어드는 가중치는 위쪽을 더 강조해요.
+
+```python
+>>> sd.htest.weightedtau(x, swap_top, weigher=lambda r: 1.0).statistic
+0.9555555555555556
+>>> sd.htest.weightedtau(x, swap_top, weigher=lambda r: 1.0 / (r + 1) ** 2).statistic
+0.8207616714482182
+```
+
+`weigher`는 순위 0, 1, …, n − 1에서 한 번씩 불려요. 수가 아닌 것을 돌려주면 `TypeError`예요.
+
+`additive=False`면 쌍의 가중치가 두 가중치의 곱이에요. 둘 다 위쪽인 쌍만 크게 남아서 위쪽을 더 강조해요.
+
+```python
+>>> sd.htest.weightedtau(x, swap_top, additive=False).statistic
+0.715468038140832
+```
+
+## NaN과 퇴화한 입력
+
+`nan_policy='propagate'`(기본값)면 NaN이 있는 줄의 결과가 NaN이고, `'omit'`이면 NaN이 든 쌍을 빼요.
+
+```python
+>>> y_nan = [1.0, 2.0, float('nan'), 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+>>> sd.htest.weightedtau(x, y_nan)
+WeightedtauResult(statistic=nan, pvalue=nan)
+>>> sd.htest.weightedtau(x, y_nan, nan_policy='omit')
+WeightedtauResult(statistic=-1, pvalue=nan)
+```
+
+한 변수가 상수이거나 항목이 하나뿐이면 NaN이에요.
+
+```python
+>>> sd.htest.weightedtau([1.0, 1.0, 1.0], [1.0, 2.0, 3.0])
+WeightedtauResult(statistic=nan, pvalue=nan)
+```
+
+배치는 다른 상관 함수와 같아요. `axis`를 주면 나머지 축의 줄마다 따로 계산해요.
+
+## 정확도
+
+Arb와 정확한 정수 계산으로 만든 참값(모든 쌍의 정의식)에 견주면 8문제(동점, `rank`의 네 가지, 곱 가중치, n = 1000, 배치 포함)에서 상대오차 6.9e-17 안이에요. 큰 가중치와 작은 가중치를 함께 더해도 작은 가중치를 잃지 않게 합을 높은 정밀도로 해요. 쌍을 하나씩 보지 않고 정렬로 세므로 시간은 $n \log n$에 비례해요.
+
+## scipy를 아는 분께
+
+`scipy.stats.weightedtau`와 같은 알고리즘, 같은 `rank`·`weigher`·`additive`의 뜻이에요. 다른 점이에요.
+
+- NaN을 `nan_policy`로 다뤄요. scipy는 NaN을 모든 수보다 큰 값으로 보고 순위를 매겨 값을 내요.
+
+  ```python
+  >>> import scipy.stats
+  >>> scipy.stats.weightedtau([1.0, 2.0, float('nan'), 4.0], [1.0, 3.0, 2.0, 4.0])
+  SignificanceResult(statistic=np.float64(0.8133333333333331), pvalue=np.float64(nan))
+  ```
+
+- `axis`, 배치, `keepdims`가 있어요. 데이터는 위치로만, 옵션은 키워드로만 받아요.
+- 동점이 있는 문제에서 scipy는 합에서 작은 가중치를 잃어 상대 1e-14쯤 틀려요.
+- 별칭 `correlation`이 없어요.

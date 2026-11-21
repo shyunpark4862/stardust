@@ -1,0 +1,270 @@
+---
+kind: function
+title: multipletests
+names: [multipletests]
+group: 다중 비교와 보정
+order: 3
+signatures:
+  - "sd.htest.multipletests(pvals, /, *, alpha=0.05, method='holm-sidak', max_iter=1, axis=None)"
+summary: 검정을 여러 번 했을 때 p값들을 보정해요. 하나라도 잘못 기각할 확률(가족 전체의 오류율)을 지키는 Bonferroni·Holm·Hommel 등과, 기각한 것 가운데 잘못 기각한 비율(거짓 발견율)을 지키는 Benjamini–Hochberg 등 열 가지 방법의 보정 p값과 기각 판정을 줘요.
+params:
+  - name: pvals
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 실수 스칼라
+    kind: positional-only
+    desc: "보정할 p값들. 모두 [0, 1] 안이어야 하고 NaN이 없어야 해요."
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: "가족 전체의 오류율(또는 거짓 발견율)의 목표. 0과 1 사이(끝은 빼고)이고 기본값은 0.05예요. reject와 두 단계 방법의 보정값에 쓰여요."
+  - name: method
+    type: str
+    kind: keyword-only
+    desc: "'bonferroni', 'sidak', 'holm-sidak'(기본값), 'holm', 'simes-hochberg', 'hommel', 'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky' 중 하나예요."
+  - name: max_iter
+    type: int
+    kind: keyword-only
+    desc: "두 단계 방법('fdr_tsbh', 'fdr_tsbky')의 단계 수(0 이상, 기본값 1). 끝까지 되풀이하려면 len(pvals)를 줘요. 다른 방법에는 영향이 없어요."
+  - name: axis
+    type: int 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 모든 p값을 한 가족으로 보고 결과를 1차원으로 펼쳐요. 정수면 그 축을 따라 줄마다 한 가족이고, 결과는 입력의 모양이에요."
+returns:
+  type: MultipletestsResult
+  desc: "reject(bool 배열: 그 방법의 기각 판정), pvalues_corrected(보정 p값), alpha_sidak(1 − (1 − alpha)^(1/m)), alpha_bonferroni(alpha/m)예요. statsmodels의 순서대로 넷으로 풀려요."
+raises:
+  - type: TypeError
+    desc: "pvals가 배열·수의 시퀀스·frame이 아니거나 복소수일 때, alpha가 수가 아닐 때, method가 문자열이 아닐 때, max_iter가 int가 아닐 때, axis가 int·None이 아닐 때(tuple 포함), 없는 키워드(maxiter 등)를 줬을 때."
+  - type: ValueError
+    desc: "p값이 [0, 1] 밖이거나 NaN이 있을 때, alpha가 0과 1 사이가 아닐 때, method의 이름이 틀렸을 때('hs' 같은 줄임 포함), max_iter가 음수일 때, axis가 범위 밖일 때."
+seeAlso: [false_discovery_control, combine_pvalues, tukey_hsd, dunnett, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+유전자 열 개가 병과 관련이 있는지 따로따로 검정해서 p값 열 개를 얻었어요.
+
+```python
+>>> import stardust as sd
+>>> p = [0.001, 0.008, 0.039, 0.041, 0.042, 0.060, 0.074, 0.205, 0.212, 0.216]
+```
+
+0.05보다 작은 것이 다섯 개예요. 그런데 검정 하나가 5%의 확률로 잘못 기각한다면, 효과가 하나도 없어도 열 번 가운데 한 번쯤은 0.05 아래가 나오는 것이 보통이에요. 검정을 많이 할수록 "우연히 작은 p값"이 섞여요. **다중 검정 보정**은 이것을 고려해 p값을 키우거나 기준을 엄하게 해요.
+
+무엇을 지킬지에 따라 두 갈래가 있어요.
+
+- **가족 전체의 오류율**(FWER): 참인 귀무가설 가운데 **하나라도** 잘못 기각할 확률을 alpha 아래로 둬요. 하나의 잘못이 비싼 확인 연구에 맞아요. Bonferroni, Šidák, Holm, Hochberg, Hommel이에요.
+- **거짓 발견율**(FDR): 기각한 것 가운데 잘못 기각한 것의 **비율**의 기댓값을 alpha 아래로 둬요. 후보를 많이 골라 다음 단계로 넘기는 탐색 연구에 맞아요. Benjamini–Hochberg와 그 변형이에요.
+
+```python
+>>> r = sd.htest.multipletests(p)
+>>> r.reject
+array([ True, False, False, False, False, False, False, False, False, False], dtype=bool)
+>>> sd.htest.multipletests(p, method='fdr_bh').reject
+array([ True,  True, False, False, False, False, False, False, False, False], dtype=bool)
+```
+
+기본값 Holm–Šidák(가족 전체의 오류율)은 첫째만, Benjamini–Hochberg(거짓 발견율)는 둘째까지 기각해요.
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `reject` | 그 방법이 alpha에서 기각하는지(bool 배열) |
+| `pvalues_corrected` | 보정 p값. 보정 p값이 alpha 이하이면 기각이에요. |
+| `alpha_sidak` | 검정 하나의 Šidák 기준 $1 - (1 - \alpha)^{1/m}$ |
+| `alpha_bonferroni` | 검정 하나의 Bonferroni 기준 $\alpha / m$ |
+
+$m$은 가족의 p값 수예요. statsmodels의 튜플 순서대로 넷으로 풀려요.
+
+```python
+>>> reject, corrected, a_sidak, a_bonf = r
+>>> corrected
+array([0.009955119790251791,  0.06973849601082324,  0.27257687825281474,
+        0.27257687825281474,  0.27257687825281474,  0.27257687825281474,
+        0.27257687825281474,  0.49754012499999994,  0.49754012499999994,
+        0.49754012499999994], dtype=float64)
+>>> a_sidak, a_bonf
+(0.005116196891823701, 0.005)
+>>> print(r.summary())
+                         Multiple testing correction
+==============================================================================
+Alpha:                            0.05  Method:                     holm-sidak
+Alpha Sidak:                  0.005116  No. Tests:                          10
+Alpha Bonferroni:             0.005000  No. Rejected:                        1
+==============================================================================
+            corrected     reject
+------------------------------------------------------------------------------
+[0]             0.010       True
+[1]             0.070      False
+[2]             0.273      False
+[3]             0.273      False
+[4]             0.273      False
+[5]             0.273      False
+[6]             0.273      False
+[7]             0.498      False
+[8]             0.498      False
+[9]             0.498      False
+==============================================================================
+```
+
+보정 p값은 입력과 같은 순서예요. 정렬해서 줄 필요가 없고, 결과도 정렬하지 않아요.
+
+## `method`: 열 가지 방법
+
+$p_{(1)} \le \dots \le p_{(m)}$을 정렬한 p값이라 할게요. 모든 보정값은 1에서 잘라요.
+
+| `method` | 지키는 것 | 보정 p값 |
+|---|---|---|
+| `'bonferroni'` | FWER | $m\,p_i$ |
+| `'sidak'` | FWER(검정이 독립일 때) | $1 - (1 - p_i)^m$ |
+| `'holm'` | FWER | 작은 것부터 $(m - i + 1)\,p_{(i)}$의 누적 최대 |
+| `'holm-sidak'`(기본값) | FWER(독립이거나 양의 상관) | 작은 것부터 $1 - (1 - p_{(i)})^{m - i + 1}$의 누적 최대 |
+| `'simes-hochberg'` | FWER(독립이거나 양의 상관) | 큰 것부터 $(m - i + 1)\,p_{(i)}$의 누적 최소 |
+| `'hommel'` | FWER(독립이거나 양의 상관) | Simes 검정을 모든 부분집합에 닫아 적용 |
+| `'fdr_bh'` | FDR(독립이거나 양의 상관) | 큰 것부터 $m\,p_{(i)} / i$의 누적 최소 |
+| `'fdr_by'` | FDR(어떤 상관이든) | `fdr_bh`의 값 × $\sum_{j=1}^{m} 1/j$ |
+| `'fdr_tsbh'` | FDR | 참 귀무가설의 수 $m_0$을 어림해 `fdr_bh`의 값에 $m_0/m$을 곱해요 |
+| `'fdr_tsbky'` | FDR | 같은 꼴에 $(1 + \alpha)$를 곱하는 Benjamini–Krieger–Yekutieli |
+
+고르는 길이에요.
+
+- 확실히 지켜야 하고 검정 사이의 상관을 모르면 `'holm'`이에요. `'bonferroni'`보다 언제나 같거나 많이 기각하면서 같은 보장을 줘요.
+- 검정이 독립이거나 양의 상관이면 `'holm-sidak'`, `'simes-hochberg'`, `'hommel'`이 `'holm'`과 같거나 더 많이 기각해요. 셋 가운데 `'hommel'`이 가장 많이 기각해요. 위의 p값에서는 넷 모두 하나를 기각해요.
+- 후보를 고르는 탐색이면 `'fdr_bh'`예요. 상관 구조가 걱정되면 더 보수적인 `'fdr_by'`를 써요.
+- 효과가 있는 가설이 많을 것 같으면 두 단계 방법(`'fdr_tsbh'`, `'fdr_tsbky'`)이 $m_0$을 어림해 더 많이 기각해요.
+
+```python
+>>> sd.htest.multipletests(p, method='bonferroni').pvalues_corrected
+array([               0.01,                0.08,                0.39,
+        0.41000000000000003, 0.42000000000000004,                 0.6,
+                       0.74,                 1.0,                 1.0,
+                        1.0], dtype=float64)
+>>> sd.htest.multipletests(p, method='fdr_bh').pvalues_corrected
+array([               0.01,                0.04,               0.084,
+                      0.084,               0.084, 0.09999999999999999,
+         0.1057142857142857,               0.216,               0.216,
+                      0.216], dtype=float64)
+```
+
+같은 p값은 순서와 상관없이 같은 보정값을 받아요.
+
+```python
+>>> sd.htest.multipletests([0.01, 0.02, 0.02, 0.5], method='holm').pvalues_corrected
+array([0.04, 0.06, 0.06,  0.5], dtype=float64)
+```
+
+## `alpha`와 기각
+
+`reject`는 보정 p값과 alpha를 견준 판정이에요. alpha를 바꾸면 기각이 바뀌어요. 보정 p값은 두 단계 방법만 alpha에 기대요($m_0$의 어림과 `'fdr_tsbky'`의 $1 + \alpha$). 다른 방법의 보정 p값은 alpha와 상관없어요.
+
+```python
+>>> sd.htest.multipletests(p, method='fdr_bh', alpha=0.1).reject
+array([ True,  True,  True,  True,  True,  True, False, False, False, False], dtype=bool)
+```
+
+판정은 보정 p값을 반올림하기 전의 정확한 값으로 해요. 보정값이 alpha와 아주 가까워도 반올림 때문에 판정이 뒤집히지 않아요.
+
+## `max_iter`: 두 단계 방법
+
+`'fdr_tsbh'`와 `'fdr_tsbky'`는 먼저 Benjamini–Hochberg로 기각 수를 세서 참 귀무가설의 수 $m_0$을 어림하고, 그 어림으로 다시 보정해요. `max_iter`는 이 어림을 몇 번 되풀이할지예요. 기본값 1은 statsmodels의 기본과 같은 두 단계이고, `max_iter=len(pvals)`이면 기각 수가 더 바뀌지 않을 때까지 되풀이해요. 0이면 $m_0$을 어림하지 않는 한 단계 보정이에요. `'fdr_tsbh'`는 `'fdr_bh'`와 같고, `'fdr_tsbky'`는 그 $1 + \alpha$배예요.
+
+```python
+>>> sd.htest.multipletests(p, method='fdr_tsbky', max_iter=len(p)).pvalues_corrected
+array([             0.0084,              0.0336,             0.07056,
+                    0.07056,             0.07056, 0.08399999999999999,
+        0.08879999999999999,             0.18144,             0.18144,
+                    0.18144], dtype=float64)
+```
+
+## `axis`: 가족 여럿을 한 번에
+
+`axis=None`(기본값)이면 들어온 모든 p값이 한 가족이고 결과는 펼친 1차원이에요. 정수 `axis`를 주면 그 축을 따라 줄마다 따로 보정하고, 결과는 입력과 같은 모양이에요.
+
+```python
+>>> P = sd.asarray([[0.01, 0.02, 0.3], [0.04, 0.5, 0.001]])
+>>> sd.htest.multipletests(P, method='holm', axis=1).pvalues_corrected
+array([[ 0.03,  0.04,   0.3],
+       [ 0.08,   0.5, 0.003]], dtype=float64)
+>>> sd.htest.multipletests(P, method='holm').pvalues_corrected
+array([ 0.05,  0.08,   0.6,  0.12,   0.6, 0.006], dtype=float64)
+```
+
+`axis`는 정수 하나나 None만 받아요. 여러 축을 한 가족으로 묶으려면 먼저 모양을 바꿔요.
+
+### 회귀 계수의 p값
+
+회귀의 `pvalues`를 보정하는 데도 써요. 절편을 빼고 계수의 p값만 한 가족으로 볼 수 있어요.
+
+```python
+>>> rng = sd.random.default_rng(13)
+>>> N = sd.stats.Normal()
+>>> X = N.sample((40, 5), rng=rng)
+>>> y = 1.0 + 0.8 * X[:, 0] + N.sample(40, rng=rng)
+>>> fit = sd.regression.ols(y, X)
+>>> sd.htest.multipletests(fit.pvalues[1:], method='holm').pvalues_corrected
+array([0.000876684153636932,                  1.0,                  1.0,
+                        1.0,                  1.0], dtype=float64)
+```
+
+회귀를 여러 개 한 번에 맞춘 배치라면 `pvalues`의 모양이 (배치, 계수)라서 `axis=-1`로 회귀마다 보정해요.
+
+<Callout type="warn" title="골라낸 뒤의 p값">
+같은 자료로 변수를 고른 뒤(단계적 선택 등) 남은 변수의 p값은 명목 수준을 지키지 않아요. 다중 검정 보정도 그 선택의 편향을 고치지 못해요. 보정은 미리 정한 가족에 써요.
+</Callout>
+
+## 특수한 경우
+
+- 스칼라 하나를 주면 필드도 Python 수예요. $m = 1$이라 보정값이 그대로예요.
+
+  ```python
+  >>> sd.htest.multipletests(0.03)
+  MultipletestsResult(reject=True, pvalues_corrected=0.03, alpha_sidak=0.05, alpha_bonferroni=0.05)
+  ```
+
+- 빈 가족이면 빈 배열과 NaN 기준이에요.
+- p값이 [0, 1] 밖이거나 NaN이면 `ValueError`예요. 결측이 있으면 먼저 빼고 넘겨요.
+
+  ```python
+  >>> sd.htest.multipletests([0.1, 1.2])
+  Traceback (most recent call last):
+      ...
+  ValueError: multipletests(): 'pvals' must hold p-values between 0 and 1 (and no NaN)
+  ```
+
+## 정확도
+
+보정값은 곱과 몫($m\,p_i / i$, 조화수, Šidák의 거듭제곱)을 반올림을 줄여 계산하고 끝에 한 번 반올림해요. Hommel은 정의식이 $m^2$에 비례하는 일을 하는데, 같은 값을 $m \log m$에 비례하는 일로 구해요. 문제 29개(보정값 834개, m = 400의 Hommel 포함)에서 정확한 유리수 셈으로 만든 참값에 견주어 보정 p값은 상대 1.2e-16 안이고, 기각은 모두 정확한 판정과 같아요.
+
+## statsmodels를 아는 분께
+
+`statsmodels.stats.multitest.multipletests`와 방법의 긴 이름, 기본값 `'holm-sidak'`, 결과의 네 칸 순서가 같아요.
+
+```python
+>>> from statsmodels.stats.multitest import multipletests as sm_multipletests
+>>> sm_multipletests(p)[1]
+array([0.00995512, 0.0697385 , 0.27257688, 0.27257688, 0.27257688,
+       0.27257688, 0.27257688, 0.49754012, 0.49754012, 0.49754012])
+```
+
+다른 점이에요.
+
+- 결과는 이름 있는 필드 `reject`, `pvalues_corrected`, `alpha_sidak`, `alpha_bonferroni`이고, 넷으로 풀리는 것은 statsmodels의 튜플과 같아요.
+- 반복 상한의 이름이 `max_iter`예요(statsmodels는 `maxiter`). statsmodels의 `maxiter=-1`은 `max_iter=len(pvals)`로 써요.
+- 방법은 긴 이름 열 개만 받아요. `'hs'`, `'b'` 같은 줄임, `'fdr_gbs'`, `'lfdr'`는 없어요.
+- `is_sorted`, `returnsorted`가 없어요. 입력의 순서 그대로 돌려줘요.
+- `axis`로 가족 여럿을 한 번에 보정해요.
+- 기각을 정확한 보정값으로 판정해요. 반올림한 보정값이 alpha와 같아지는 경계에서 statsmodels와 판정이 다를 수 있어요.
+- `alpha_sidak`을 상쇄 없이 계산해요. statsmodels의 $1 - (1 - \alpha)^{1/m}$은 끝자리가 달라요.
+
+  ```python
+  >>> float(sm_multipletests(p)[2])
+  0.005116196891823743
+  ```
+
+- p값이 [0, 1] 밖이거나 NaN이면 `ValueError`예요.
+- scipy의 [`false_discovery_control`](/api/htest/false_discovery_control/)은 `'fdr_bh'`, `'fdr_by'`와 같은 값을 줘요.

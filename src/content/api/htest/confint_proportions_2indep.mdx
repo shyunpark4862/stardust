@@ -1,0 +1,187 @@
+---
+kind: function
+title: confint_proportions_2indep
+names: [confint_proportions_2indep]
+group: 비율과 이항
+order: 6
+signatures:
+  - "sd.htest.confint_proportions_2indep(count1, nobs1, count2, nobs2, /, *, method=None, compare='diff', alpha=0.05, correction=True)"
+summary: 서로 독립인 두 집단 비율의 차(p₁ − p₂), 비(p₁/p₂), 오즈비의 1 − alpha 신뢰구간을 구해요. Newcombe, 점수 구간(Miettinen–Nurminen, Koopman), 조정한 Wald 꼴 등을 고를 수 있고 개수의 배열이면 구간을 한꺼번에 구해요.
+params:
+  - name: count1
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 첫째 집단의 성공 횟수. 네 개수는 서로 브로드캐스트해요.
+  - name: nobs1
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 첫째 집단의 시도 횟수.
+  - name: count2
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 둘째 집단의 성공 횟수.
+  - name: nobs2
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 둘째 집단의 시도 횟수.
+  - name: method
+    type: str 또는 None
+    kind: keyword-only
+    desc: "None이면 compare마다의 기본값이에요(차 'newcomb', 비 'log-adjusted', 오즈비 'logit-adjusted'). 차는 'wald', 'agresti-caffo', 'newcomb', 'score', 비는 'log', 'log-adjusted', 'score', 오즈비는 'logit', 'logit-adjusted', 'logit-smoothed', 'score'예요."
+  - name: compare
+    type: str
+    kind: keyword-only
+    desc: "'diff'(기본값), 'ratio', 'odds-ratio' 중 하나예요."
+  - name: alpha
+    type: float
+    kind: keyword-only
+    desc: 유의수준. (0, 1) 안이고 기본값 0.05예요. 구간은 양쪽 1 − alpha 구간이에요.
+  - name: correction
+    type: bool
+    kind: keyword-only
+    desc: 점수 구간의 분산에 N/(N − 1)을 곱할지. 기본값 True예요. 'score'에만 쓰여요.
+returns:
+  type: ndarray
+  desc: "아래 끝과 위 끝을 마지막 축에 둔 (…, 2) float64 배열이에요. 개수가 모두 스칼라면 (2,)이라 low, upp = ...로 풀려요. 부를 때마다 새 배열이에요."
+raises:
+  - type: TypeError
+    desc: 개수가 배열로 바꿀 수 없을 때, alpha가 수가 아닐 때, correction이 bool이 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: 개수가 음이 아닌 정수 값이 아닐 때, count가 nobs보다 클 때, 브로드캐스트되지 않을 때, compare·method 이름이 틀렸거나 그 compare에 없는 method일 때, alpha가 (0, 1) 밖일 때.
+seeAlso: [test_proportions_2indep, proportion_confint, odds_ratio, relative_risk, basics]
+---
+
+## 무엇을 구하나요
+
+신약을 받은 100명 중 45명, 위약을 받은 90명 중 30명이 나았어요. p값은 "차이가 있는가"에만 답하지만, 신뢰구간은 "차이가 얼마쯤인가"에 답해요.
+
+```python
+>>> sd.htest.confint_proportions_2indep(45, 100, 30, 90)
+array([-0.02226985907316922,    0.248582972309352], dtype=float64)
+```
+
+나은 비율의 차 p₁ − p₂는 −2.2%p에서 24.9%p 사이쯤이에요. 0이 구간 안에 있으므로 "차이가 없다"를 배제할 수 없어요. 그러면서도 25%p 가까운 큰 효과일 수도 있다는 것까지 알려 줘요.
+
+같은 자료를 비(상대위험)나 오즈비로도 볼 수 있어요.
+
+```python
+>>> sd.htest.confint_proportions_2indep(45, 100, 30, 90, compare='ratio')
+array([0.9370953244149423, 1.9257698298078818], dtype=float64)
+>>> sd.htest.confint_proportions_2indep(45, 100, 30, 90, compare='odds-ratio')
+array([0.9052981131392831,  2.921166304833118], dtype=float64)
+```
+
+나을 확률은 0.94배에서 1.93배, 나을 오즈는 0.91배에서 2.92배쯤이에요. 둘 다 1을 품어요.
+
+<Reference />
+
+## 방법
+
+| compare | method | 구간 |
+|---|---|---|
+| 차 | `'wald'` | 표본 비율의 분산으로 만든 차 ± z·se |
+| 차 | `'agresti-caffo'` | 집단마다 성공과 실패를 하나씩 더해 만든 Wald 꼴 |
+| 차 | `'newcomb'`(기본값) | 두 비율의 Wilson 구간을 엮은 Newcombe의 구간 |
+| 차 | `'score'` | Miettinen–Nurminen 점수 검정을 뒤집은 구간 |
+| 비 | `'log'` | log 비 ± z·se를 지수로 되돌린 구간 |
+| 비 | `'log-adjusted'`(기본값) | 성공과 시도 횟수에 ½씩 더한 log 꼴 |
+| 비 | `'score'` | Koopman의 점수 구간 |
+| 오즈비 | `'logit'` | log 오즈비 ± z·se(Woolf) |
+| 오즈비 | `'logit-adjusted'`(기본값) | 네 칸에 ½씩 더한 Woolf 꼴 |
+| 오즈비 | `'logit-smoothed'` | 두 비율이 같을 때의 칸 확률에 비례해 관측 2개를 나눠 더한 Woolf 꼴 |
+| 오즈비 | `'score'` | 점수 검정을 뒤집은 구간 |
+
+```python
+>>> for cmp, ms in [('diff', ['wald', 'agresti-caffo', 'newcomb', 'score']),
+...                 ('ratio', ['log', 'log-adjusted', 'score']),
+...                 ('odds-ratio', ['logit', 'logit-adjusted', 'logit-smoothed', 'score'])]:
+...     for m in ms:
+...         lo, hi = sd.htest.confint_proportions_2indep(45, 100, 30, 90, compare=cmp, method=m).tolist()
+...         print(f"{cmp:11s}{m:16s}{lo:8.4f}{hi:8.4f}")
+diff       wald             -0.0211  0.2545
+diff       agresti-caffo    -0.0226  0.2506
+diff       newcomb          -0.0223  0.2486
+diff       score            -0.0230  0.2512
+ratio      log               0.9383  1.9423
+ratio      log-adjusted      0.9371  1.9258
+ratio      score             0.9438  1.9560
+odds-ratio logit             0.9077  2.9499
+odds-ratio logit-adjusted    0.9053  2.9212
+odds-ratio logit-smoothed    0.9059  2.9252
+odds-ratio score             0.9085  2.9468
+```
+
+점수 구간은 같은 `method='score'`의 [test_proportions_2indep](/api/htest/test_proportions_2indep/)를 뒤집은 것이에요. 구간의 끝을 귀무값으로 둔 양쪽 점수 검정의 p값이 alpha예요(반올림 크기만 달라요). 그래서 구간이 귀무값을 품는지와 검정이 기각하는지가 언제나 맞아요.
+
+```python
+>>> lo, hi = sd.htest.confint_proportions_2indep(45, 100, 30, 90, method='score')
+>>> sd.htest.test_proportions_2indep(45, 100, 30, 90, method='score', value=float(hi)).pvalue
+0.05000000000000009
+```
+
+## 0인 개수
+
+한 집단에서 한 번도 성공하지 않으면 방법의 차이가 커요. Wald 꼴의 비와 오즈비는 log 0 때문에 위 끝을 정할 수 없어 NaN이에요. 조정한 방법과 점수 구간은 값을 줘요. 점수 구간에서 검정이 끝까지 기각하지 않는 쪽은 정의역의 끝(비·오즈비는 0, 차는 ±1)이에요.
+
+```python
+>>> for cmp, m in [('ratio', 'log'), ('ratio', 'log-adjusted'), ('ratio', 'score'), ('odds-ratio', 'score'), ('diff', 'score')]:
+...     print(f"{cmp:11s}{m:13s}", [round(v, 4) for v in sd.htest.confint_proportions_2indep(0, 20, 3, 20, compare=cmp, method=m).tolist()])
+ratio      log           [0.0, nan]
+ratio      log-adjusted  [0.0079, 2.5944]
+ratio      score         [0.0, 1.2065]
+odds-ratio score         [0.0, 1.235]
+diff       score         [-0.3635, 0.0271]
+```
+
+nobs가 0인 집단이 있으면 구간은 [NaN, NaN]이에요.
+
+```python
+>>> sd.htest.confint_proportions_2indep(0, 0, 3, 10)
+array([nan, nan], dtype=float64)
+```
+
+## 여러 구간을 한 번에
+
+네 개수는 서로 브로드캐스트하고, 결과는 (브로드캐스트한 모양, 2)예요. `alpha`를 바꾸면 신뢰수준이 바뀌어요(아래 둘째 예는 90% 구간이에요).
+
+```python
+>>> sd.htest.confint_proportions_2indep([45, 20], [100, 50], [30, 25], [90, 50], method='score')
+array([[-0.022975593105879703,    0.2512098252443872],
+       [  -0.2878248040628229,   0.09516897429572053]], dtype=float64)
+>>> sd.htest.confint_proportions_2indep(45, 100, 30, 90, alpha=0.1)
+array([-7.287145757124098e-05,    0.22839798750266133], dtype=float64)
+```
+
+## 입력과 에러
+
+방법은 그 `compare`에 있는 것만 받아요. `'newcomb'`은 차의 구간에만 있어요.
+
+```python
+>>> sd.htest.confint_proportions_2indep(45, 100, 30, 90, method='newcomb', compare='ratio')
+Traceback (most recent call last):
+    ...
+ValueError: confint_proportions_2indep(): 'method' must be 'log', 'log-adjusted' or 'score', not 'newcomb'
+>>> sd.htest.confint_proportions_2indep(45, 100, 120, 90)
+Traceback (most recent call last):
+    ...
+ValueError: confint_proportions_2indep(): 'count2' must not exceed 'nobs2'
+```
+
+## 정확도
+
+구간의 끝은 Arb(구간 산술)로 만든 참값과 견줘요. 점수 구간의 끝은 그 검정의 z가 임계값과 같아지는 점을 Arb로 부호를 확정하며 찾은 참값이에요. 시험한 44문제에서 가장 큰 상대오차가 7.2e-14이고 계약 대비 0.13이에요(0인 개수의 `'logit-smoothed'`).
+
+## statsmodels를 아는 분께
+
+- 결과가 `(low, upp)` 튜플이 아니라 (…, 2) 배열이에요. 구간 하나는 `low, upp = ...`로 풀려요.
+- 기본 방법은 statsmodels 0.15.0의 기본값으로 고정되어 있어요. `compare`의 `'or'`은 받지 않아요.
+- 점수 구간에서 검정이 끝까지 기각하지 않는 쪽은 정의역의 끝(차 ±1, 비·오즈비 0·∞)이에요. statsmodels의 근 찾기는 이런 곳에서 에러를 내요. 0인 개수에서 statsmodels는 NaN이나 에러를 내기도 해요.
+- 차의 점수 구간은 statsmodels와 달라요. [test_proportions_2indep](/api/htest/test_proportions_2indep/)에 적은 statsmodels의 삼차식 문제가 귀무값이 0이 아닌 곳(곧 구간의 끝)에 그대로 나타나기 때문이에요.
+
+```python
+>>> from statsmodels.stats.proportion import confint_proportions_2indep as sm_ci
+>>> [round(float(v), 5) for v in sm_ci(45, 100, 30, 90, method='score')]
+[-0.02296, 0.24972]
+>>> [round(v, 5) for v in sd.htest.confint_proportions_2indep(45, 100, 30, 90, method='score').tolist()]
+[-0.02298, 0.25121]
+```

@@ -39,7 +39,7 @@ $x^3 - 2x - 5 = 0$의 근을 찾아요. $x = 2$에서 $-1$, $x = 3$에서 $16$�
 >>> f = lambda x: x**3 - 2*x - 5
 >>> r = sd.optimize.root_scalar(f, bracket=(2.0, 3.0))
 >>> r
-OptimizeResult(method='brentq', converged=True, n_iter=7, nfev=8, x=2.094551481542327)
+OptimizeResult(method='brentq', converged=True, n_iter=7, nfev=8, x=2.09455)
 >>> f(r.x)
 3.552713678800501e-15
 ```
@@ -91,7 +91,9 @@ True
 >>> volume = lambda x: x * (20 - 2*x)**2
 >>> r = sd.optimize.minimize_scalar(lambda x: -volume(x), bounds=(0.0, 10.0))
 >>> r
-OptimizeResult(method='bounded', converged=True, fun=-592.593, n_iter=10, nfev=10, x=3.333333308782097)
+OptimizeResult(method='bounded', converged=True, fun=-592.593, n_iter=10, nfev=10, x=3.33333)
+>>> r.x
+3.333333308782097
 >>> round(volume(r.x), 4)
 592.5926
 ```
@@ -104,7 +106,7 @@ OptimizeResult(method='bounded', converged=True, fun=-592.593, n_iter=10, nfev=1
 >>> rosen = lambda x: (1 - x[0])**2 + 100 * (x[1] - x[0]**2)**2
 >>> r = sd.optimize.minimize(rosen, [-1.2, 1.0])
 >>> r
-OptimizeResult(method='bfgs', converged=True, fun=2.69158e-11, n_iter=31, nfev=114, x=[0.9999948121915613 0.9999896195042199])
+OptimizeResult(method='bfgs', converged=True, fun=2.69158e-11, n_iter=31, nfev=114, x=[0.999995, 0.99999])
 ```
 
 `minimize`의 `x`는 길이 $n$인 `sd.ndarray`예요. 기울기를 주지 않았으니 BFGS가 차분으로 기울기를 어림했고, 그 계산도 `nfev`에 들어가요.
@@ -118,7 +120,7 @@ OptimizeResult(method='bfgs', converged=True, fun=2.69158e-11, n_iter=31, nfev=1
 >>> y = sd.asarray([5.1, 3.0, 1.9, 1.1, 0.72, 0.38, 0.27, 0.13])
 >>> r = sd.optimize.least_squares(lambda p: p[0] * sd.exp(-p[1] * t) - y, [1.0, 1.0])
 >>> r
-OptimizeResult(method='trf', converged=True, cost=0.00562354, n_iter=7, nfev=21, x=[5.078321029016653 0.504553719846044])
+OptimizeResult(method='trf', converged=True, cost=0.00562354, n_iter=7, nfev=21, x=[5.07832, 0.504554])
 ```
 
 [`least_squares`](/api/optimize/least_squares/)에 주는 함수는 제곱합이 아니라 잔차 8개를 돌려줘요. 함수가 잔차 하나하나를 알려 주면 각 잔차가 $a$, $b$에 따라 어떻게 바뀌는지(야코비안)를 쓸 수 있어서, 제곱합 하나만 아는 `minimize`보다 대개 적은 계산으로 풀어요. 결과의 `cost`는 $\tfrac12\sum r_i^2$이에요.
@@ -157,7 +159,7 @@ $a$와 $b$가 얼마나 믿을 만한지(표준오차, 신뢰구간)까지 알�
 >>> F = lambda v: [v[0]**2 + v[1]**2 - 4, sd.exp(v[0]) + v[1] - 1]
 >>> r = sd.optimize.root(F, [1.0, -1.0])
 >>> r
-OptimizeResult(method='hybr', converged=True, n_iter=8, nfev=11, x=[ 1.0041687384746594 -1.7296372870258703])
+OptimizeResult(method='hybr', converged=True, n_iter=8, nfev=11, x=[1.00417, -1.72964])
 >>> r2 = sd.optimize.root(F, [-2.0, 1.0])
 >>> r2.x
 array([-1.8162640688252603,  0.8373677998912576], dtype=float64)
@@ -252,9 +254,9 @@ array([ 1.414213562373095, 1.7320508075688774,   2.23606797749979], dtype=float6
 >>> A = sd.asarray([[1.0, 0.0], [1, 1], [1, 2], [1, 3]])
 >>> b = sd.asarray([1.0, 0.4, -0.3, -0.9])
 >>> sd.optimize.nnls(A, b)
-OptimizeResult(method='nnls', converged=True, cost=1.025, n_iter=1, x=[0.04999999999999998                 0.0])
+OptimizeResult(method='nnls', converged=True, cost=1.025, n_iter=1, x=[0.05, 0])
 >>> sd.optimize.lsq_linear(A, b, bounds=([0.0, -0.5], [2.0, 0.0]), method='bvls')
-OptimizeResult(method='bvls', converged=True, cost=0.05, n_iter=2, x=[ 0.8 -0.5])
+OptimizeResult(method='bvls', converged=True, cost=0.05, n_iter=2, x=[0.8, -0.5])
 ```
 
 기울기를 손으로 쓰기 어렵거나, 쓴 것이 맞는지 확인하고 싶을 때는 수치 미분을 써요.
@@ -360,9 +362,9 @@ array([1.1666666666666665, 2.1666666666666665], dtype=float64)
 
 ```python
 >>> sd.optimize.minimize_scalar(g)
-OptimizeResult(method='brent', converged=True, fun=-1.07023, n_iter=13, nfev=16, x=1.1309011156836581)
+OptimizeResult(method='brent', converged=True, fun=-1.07023, n_iter=13, nfev=16, x=1.1309)
 >>> sd.optimize.minimize_scalar(g, bracket=(-2.0, -1.0))
-OptimizeResult(method='brent', converged=True, fun=-3.51391, n_iter=11, nfev=14, x=-1.3008395689881667)
+OptimizeResult(method='brent', converged=True, fun=-3.51391, n_iter=11, nfev=14, x=-1.30084)
 ```
 
 어디가 가장 깊은지 모를 때는 시작점을 여러 개 써 보고 가장 작은 값을 고르세요. 변수가 하나면 배치 함수로 한 번에 할 수 있어요. 시작점 다섯 개에서 [`bracket_minimum`](/api/optimize/find_minimum/)으로 구간을 찾고 `find_minimum`으로 좁혀요.
@@ -385,7 +387,7 @@ array([-1.3008395596534363,  -1.300839570936242, -1.3008395596534363,
 
 ```python
 >>> sd.optimize.minimize(lambda x: 1e-8 * rosen(x), [-1.2, 1.0])
-OptimizeResult(method='bfgs', converged=True, fun=2.42e-07, n_iter=0, nfev=3, x=[-1.2  1.0])
+OptimizeResult(method='bfgs', converged=True, fun=2.42e-07, n_iter=0, nfev=3, x=[-1.2, 1])
 ```
 
 이럴 때는 함수와 변수가 1 근처의 크기가 되도록 단위를 바꾸거나, 허용오차를 그 척도에 맞춰 주세요.

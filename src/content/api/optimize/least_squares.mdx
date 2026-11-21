@@ -137,7 +137,7 @@ $$
 ...     return p[0] * sd.exp(-p[1] * t) + p[2] - y
 >>> r = sd.optimize.least_squares(resid, [1.0, 1.0, 0.0])
 >>> r
-OptimizeResult(method='trf', converged=True, cost=0.100514, n_iter=10, nfev=41, x=[ 5.030580695833325 0.4048766965148036 0.5239089557296326])
+OptimizeResult(method='trf', converged=True, cost=0.100514, n_iter=10, nfev=41, x=[5.03058, 0.404877, 0.523909])
 >>> r.converged, r.status, r.message
 (True, 2, '`ftol` termination condition is satisfied.')
 ```
@@ -150,7 +150,7 @@ OptimizeResult(method='trf', converged=True, cost=0.100514, n_iter=10, nfev=41, 
 >>> def rosen(x):
 ...     return [10 * (x[1] - x[0] ** 2), 1 - x[0]]
 >>> sd.optimize.least_squares(rosen, [-1.2, 1.0])
-OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1.0 1.0])
+OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1, 1])
 ```
 
 ## 잔차 함수 fun
@@ -184,7 +184,7 @@ OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1.0 
 
 ```python
 >>> sd.optimize.least_squares(rosen, [-1.2, 1.0], method='lm')
-OptimizeResult(method='lm', converged=True, cost=0, n_iter=16, nfev=53, x=[1.0 1.0])
+OptimizeResult(method='lm', converged=True, cost=0, n_iter=16, nfev=53, x=[1, 1])
 ```
 
 <Fig caption="Rosenbrock 잔차를 (−1.2, 1)에서 풀 때 받아들인 반복점(해석적 jac). 점선은 골짜기의 바닥 x₂ = x₁²예요. 두 방법 모두 굽은 골짜기를 따라 (1, 1)까지 가요.">
@@ -247,12 +247,14 @@ ValueError: least_squares(): 'diff_step' is only used when 'jac' is '2-point' or
 >>> inf = sd.inf
 >>> rb = sd.optimize.least_squares(resid, [1.0, 1.0, 0.0], bounds=([-inf, -inf, -inf], [inf, inf, 0.3]))
 >>> rb
-OptimizeResult(method='trf', converged=True, cost=0.191281, n_iter=9, nfev=36, x=[ 5.122035013537235 0.3496573956445815 0.2999999999999907])
+OptimizeResult(method='trf', converged=True, cost=0.191281, n_iter=9, nfev=36, x=[5.12204, 0.349657, 0.3])
 >>> rb.active_mask
 array([0, 0, 1], dtype=int64)
+>>> rb.x[2]
+0.2999999999999907
 ```
 
-경계가 없을 때의 c는 0.524라서, 경계가 있으면 c가 위 경계 0.3에 붙고 a, k도 그에 맞춰 달라져요. `active_mask`는 변수마다 경계에 걸렸는지를 알려 줘요(−1 아래 경계, 0 안쪽, 1 위 경계). `'trf'`의 반복점은 늘 경계 안쪽이라 c도 0.3에 아주 가까운 안쪽 값(0.29999999999999)이에요. `active_mask`는 경계에서 `xtol`·max(1, |경계|) 안에 있으면 걸린 것으로 쳐요.
+경계가 없을 때의 c는 0.524라서, 경계가 있으면 c가 위 경계 0.3에 붙고 a, k도 그에 맞춰 달라져요. `active_mask`는 변수마다 경계에 걸렸는지를 알려 줘요(−1 아래 경계, 0 안쪽, 1 위 경계). `'trf'`의 반복점은 늘 경계 안쪽이라 c도 0.3에 아주 가까운 안쪽 값(0.2999999999999907)이에요. `repr`는 6자리로 줄여 0.3으로 보여 줘요. `active_mask`는 경계에서 `xtol`·max(1, |경계|) 안에 있으면 걸린 것으로 쳐요.
 
 - `x0`은 경계 안에 있어야 해요(밖이면 `ValueError`). 경계 위에 있거나 $10^{-10}\cdot\max(1, \lvert\text{경계}\rvert)$ 안이면 그만큼 안쪽으로 옮겨서 시작해요.
 - 경계에서 차분 간격이 경계를 넘으면 반대쪽(`'2-point'`)이나 한쪽 꼴(`'3-point'`)로 바꿔요. 그래서 `fun`은 경계 밖의 x를 받지 않아요.

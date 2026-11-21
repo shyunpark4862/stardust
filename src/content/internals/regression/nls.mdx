@@ -32,7 +32,7 @@ $$
     { label: 'nls()', note: '입력 검사, NaN 처리, 가중치 0인 행 빼기(남는 행이 없으면 NaN 결과), 방법과 max_nfev·rtol의 기본값', where: '_nls.py' },
     { label: '_Model', note: '쓰인 행의 잔차 √w(f − y)와 사용자 jac을 돌려주는 콜백, f 호출 수 세기', where: '_nls.py', depth: 1 },
     { label: 'lsq_solve', note: "sd.optimize의 최소제곱 커널. 'lm'(lmder) 또는 'trf'(trf_bounds). 야코비안마다 Householder QR 한 번, 그 뒤는 p 크기", where: 'csrc/optimize/lsq.cpp' },
-    { label: 'accurate_jac', note: '해의 5점 중앙 차분(sd.optimize의 Differences). 모수마다 간격을 처음 한 번 고르고 그 뒤에도 써요(jac이 있으면 그것)', where: '_nls.py' },
+    { label: 'accurate_jac', note: '해의 5점 중앙 차분(differentiate/_differences.py의 Differences). 모수마다 간격을 처음 한 번 고르고 그 뒤에도 써요(jac이 있으면 그것)', where: '_nls.py' },
     { label: '_active', note: "'trf'만: 경계에 걸린 모수를 경계값으로 맞추고 다듬기에서 고정", where: '_nls.py', depth: 1 },
     { label: '_polish', note: '가우스–뉴턴 걸음(fit 커널), 느리면 S를 넣은 뉴턴 걸음, 최대 10걸음', where: '_nls.py' },
     { label: 'fit(-r, J)', note: '해의 야코비안으로 공분산 (RᵀR)⁻¹, 쓰인 열(겹친 모수), rank', where: 'csrc/regression/linear.cpp' },
@@ -45,11 +45,11 @@ $$
 | `'lm'` | MINPACK `lmder`(Moré 1978)를 0부터 세는 C++로 옮긴 것: `qrfac`, `lmpar`, `qrsolv`, factor 100, mode 1 | `csrc/optimize/lsq.cpp` |
 | `'trf'` | scipy 1.18.1 `least_squares`의 `trf_bounds`('exact' 부분문제, `x_scale=1`, 손실 함수 없음)를 같은 순서로 | 같은 파일 |
 | 반복의 야코비안 | 사용자 `jac`, 없으면 MINPACK `fdjac2`의 전진 차분 $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$ | 같은 파일 |
-| 해의 야코비안 | 사용자 `jac`, 없으면 5점 중앙 차분. 간격은 모수마다 2의 거듭제곱에서 고른 것 | `src/stardust/optimize/_diff.py` |
+| 해의 야코비안 | 사용자 `jac`, 없으면 5점 중앙 차분. 간격은 모수마다 2의 거듭제곱에서 고른 것 | `src/stardust/differentiate/_differences.py` |
 | 다듬기 | 가우스–뉴턴(선형 모형의 `fit` 커널), 느리면 $(J^{\mathsf T}J + S)$의 뉴턴 | `src/stardust/regression/_nls.py` |
 | 공분산 | $\hat\sigma^2 (J^{\mathsf T} W J)^{-1}$, 해의 야코비안 한 번의 QR | 같은 파일 |
 
-반복과 해의 야코비안은 `sd.optimize`의 것을 함께 써요. 반복은 [`least_squares`](/api/optimize/least_squares/)와 같은 커널 `lsq_solve`이고, 5점 차분은 [`approx_fprime`](/api/optimize/approx_fprime/)과 같은 `Differences`예요. 커널 쪽 이야기는 [최소제곱의 구현](/internals/optimize/least-squares/)에도 있어요.
+반복과 해의 야코비안은 다른 영역과 함께 쓰는 부품이에요. 반복은 [`least_squares`](/api/optimize/least_squares/)와 같은 커널 `lsq_solve`이고, 5점 차분은 [`approx_fprime`](/api/optimize/approx_fprime/)과 같은 `Differences`(`src/stardust/differentiate/_differences.py`)예요. 커널 쪽 이야기는 [최소제곱의 구현](/internals/optimize/least-squares/)에도 있어요.
 
 ## 예: 다듬기가 하는 일
 
@@ -274,7 +274,7 @@ $0.1\lVert f_1\rVert \ge \lVert f\rVert$(잔차가 열 배 넘게 커짐)이면 
             const double t = x[j];
             double h = eps * std::abs(t);
             if (h == 0) h = eps;
-            if (lb) h = adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
+            if (lb) h = differentiate::adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
             bool ok = false;
             for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
                 if (attempt == 1) {
@@ -292,7 +292,7 @@ $0.1\lVert f_1\rVert \ge \lVert f\rVert$(잔차가 열 배 넘게 커짐)이면 
         }
 ```
 
-nls는 `epsfcn`을 0으로 두므로 $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$이고, `minpack_h`가 거짓이라 실제로 더해진 간격으로 나눠요(`root('lm')`은 사용자의 `eps`를 `epsfcn`으로 받고 MINPACK처럼 $h$로 나눠요). $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$($\varepsilon = 2^{-52}$, 기계 엡실론)은 절단 오차 $O(h)$와 반올림 오차 $O(\varepsilon/h)$가 비슷해지는 간격이라, 열의 상대 정확도는 대략 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$이에요. 몫의 분모에는 실제로 더해진 $(\theta_j + h) - \theta_j$를 써서 $\theta_j + h$의 반올림이 몫에 들어가지 않게 해요. 경계가 있으면 간격을 scipy의 `adjust_one_sided`(`csrc/optimize/diff.hpp`)대로 고쳐요. 앞쪽이 경계를 넘고 뒤쪽 간격이 들어가면 뒤쪽으로 빼고, 어느 쪽에도 그 간격이 들어가지 않으면 더 먼 경계까지의 거리를 간격으로 써요. 앞쪽에서 $f$가 유한하지 않으면 뒤쪽으로 빼요. `'trf'`도 같은 $h$예요. scipy의 TRF는 $h = \sqrt\varepsilon\,\max(1, \lvert\theta_j\rvert)$를 쓰지만, 경계 안에서 두 방법이 같은 규칙을 쓰도록 lmder의 것을 따랐어요.
+nls는 `epsfcn`을 0으로 두므로 $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$이고, `minpack_h`가 거짓이라 실제로 더해진 간격으로 나눠요(`root('lm')`은 사용자의 `eps`를 `epsfcn`으로 받고 MINPACK처럼 $h$로 나눠요). $h = \sqrt\varepsilon\,\lvert\theta_j\rvert$($\varepsilon = 2^{-52}$, 기계 엡실론)은 절단 오차 $O(h)$와 반올림 오차 $O(\varepsilon/h)$가 비슷해지는 간격이라, 열의 상대 정확도는 대략 $\sqrt\varepsilon \approx 1.5 \times 10^{-8}$이에요. 몫의 분모에는 실제로 더해진 $(\theta_j + h) - \theta_j$를 써서 $\theta_j + h$의 반올림이 몫에 들어가지 않게 해요. 경계가 있으면 간격을 scipy의 `adjust_one_sided`(`csrc/differentiate/steps.hpp`)대로 고쳐요. 앞쪽이 경계를 넘고 뒤쪽 간격이 들어가면 뒤쪽으로 빼고, 어느 쪽에도 그 간격이 들어가지 않으면 더 먼 경계까지의 거리를 간격으로 써요. 앞쪽에서 $f$가 유한하지 않으면 뒤쪽으로 빼요. `'trf'`도 같은 $h$예요. scipy의 TRF는 $h = \sqrt\varepsilon\,\max(1, \lvert\theta_j\rvert)$를 쓰지만, 경계 안에서 두 방법이 같은 규칙을 쓰도록 lmder의 것을 따랐어요.
 
 ## 신뢰 영역 반사법: scipy least_squares의 trf
 
@@ -404,7 +404,7 @@ $h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \l
 고르는 규칙은 "절단 오차가 앞서는 동안 줄인다"예요. $2^{-8}$에서 시작해 지수를 2씩(간격을 4배씩) 줄이며 이웃한 두 추정의 차이 $\delta_k = \max\lvert c_k - c_{k-1}\rvert/\max\lvert c_k\rvert$를 재요. 절단 오차가 앞서면 $\delta$가 256배 가까이 줄어드니, $\delta_k \lt \delta_{k-1}/8$인 동안 이어 가고 마지막 추정을 써요.
 
 ```python
-    # src/stardust/optimize/_diff.py
+    # src/stardust/differentiate/_differences.py
     def choose_step(self, x, j, g0):
         """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
         consecutive estimates get closer by more than 8 times; the last such estimate and its
@@ -426,7 +426,7 @@ $h = 2^{e}\cdot 2^{\text{base}}$이고 $2^{\text{base}}$는 $\lvert b_3\rvert \l
         return best, hbest
 ```
 
-`src/stardust/optimize/_diff.py`의 `Differences.choose_step`이에요(`_FD_START, _FD_END = -8, -30`). 보통은 시작 $2^{-8}\lvert\theta_j\rvert$에서 바로 위의 규칙대로 내려가요(`_descend`). 두 가지를 더 봐요.
+`src/stardust/differentiate/_differences.py`의 `Differences.choose_step`이에요(`_FD_START, _FD_END = -8, -30`). 보통은 시작 $2^{-8}\lvert\theta_j\rvert$에서 바로 위의 규칙대로 내려가요(`_descend`). 두 가지를 더 봐요.
 
 - 시작 간격의 열이 이미 반올림 수준이면(반올림 수준이 열의 $\sqrt u = 2^{-26}$배를 넘어 자릿수를 반쯤 잃었으면) 시작이 그 모수의 척도에 비해 너무 작은 거예요. $\theta_j$가 0 가까이에 있어 $2^{-8}\lvert\theta_j\rvert$가 작을 때 그래요. 그때는 먼저 간격을 키워요(`_grow`). 반올림 수준이 열의 $\sqrt u$배가 되도록 한 번에 옮긴 뒤(많아야 $\theta_j = 0$의 시작인 $2^{-8}$까지), 이웃한 두 추정의 차가 둘의 반올림 수준의 합을 넘을 때까지(절단 오차가 보일 때까지) 4배씩 키우고, 거기서부터 내려가요. 어느 간격에서도 반올림 수준을 벗어나지 못하면(열이 0이거나 잡음뿐이면) 처음 시작에서 보통대로 내려가요.
 - 내려가는 동안 첫 추정이 잡음이 아닌데 둘째 추정이 반올림 잡음(아래 [반올림 잡음뿐인 차분 열](#반올림-잡음뿐인-차분-열)의 16배 기준)이면 둘째를 받지 않고 첫 추정을 써요.
@@ -639,10 +639,10 @@ $$
 \frac{\sum_o\lvert w_o\rvert}{12h}\,u\,\max_o\bigl\lvert f_i(\theta + o h e_j)\bigr\rvert
 $$
 
-만큼 불확실해요(중앙 공식은 $\sum_o\lvert w_o\rvert = 18$). 이 값을 행마다 모아(가중치가 있으면 $\sqrt{w_i}$를 곱해서) 2-노름을 낸 것이 그 열의 반올림 수준이에요(`src/stardust/optimize/_diff.py`의 `Differences.column`이 `noise[j]`에 적어요). 열의 2-노름이 그 16배 이하이면 열을 0으로 두고, 그러면 위의 판정이 그 모수를 겹친 모수로 빼요. 16배는 $f$ 자신의 계산 오차(sd의 vForce 함수는 몇 ulp, 많아야 8ulp)를 덮는 여유예요. 이 규칙은 nls만 켜요(`Differences.jacobian`의 `zero_noise=True`). 같은 차분을 쓰는 `approx_fprime`은 열을 그대로 돌려줘요.
+만큼 불확실해요(중앙 공식은 $\sum_o\lvert w_o\rvert = 18$). 이 값을 행마다 모아(가중치가 있으면 $\sqrt{w_i}$를 곱해서) 2-노름을 낸 것이 그 열의 반올림 수준이에요(`src/stardust/differentiate/_differences.py`의 `Differences.column`이 `noise[j]`에 적어요). 열의 2-노름이 그 16배 이하이면 열을 0으로 두고, 그러면 위의 판정이 그 모수를 겹친 모수로 빼요. 16배는 $f$ 자신의 계산 오차(sd의 vForce 함수는 몇 ulp, 많아야 8ulp)를 덮는 여유예요. 이 규칙은 nls만 켜요(`Differences.jacobian`의 `zero_noise=True`). 같은 차분을 쓰는 `approx_fprime`은 열을 그대로 돌려줘요.
 
 ```python
-        # src/stardust/optimize/_diff.py
+        # src/stardust/differentiate/_differences.py
         if zero_noise:
             # kept, a noise column has a direction of its own and can take the place of an
             # identified parameter's column (a exp(-k t) + c at a large k: the k column was

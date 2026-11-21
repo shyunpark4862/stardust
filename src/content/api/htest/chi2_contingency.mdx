@@ -1,0 +1,276 @@
+---
+kind: function
+title: chi2_contingency
+names: [chi2_contingency]
+group: 분할표
+order: 1
+signatures:
+  - "sd.htest.chi2_contingency(observed, /, *, correction=True, lambda_=None, method=None)"
+summary: 분할표의 행 변수와 열 변수가 독립인지 보는 카이제곱 검정이에요. 독립일 때 기대되는 개수를 구해 관측과 견주고, 검정통계량, p값, 자유도, 기대 빈도를 돌려줘요. 2 × 2 표에는 Yates의 보정을 하고, 앞 축으로 표 여러 개를 한 번에 검정해요.
+params:
+  - name: observed
+    type: ndarray, 수의 중첩 시퀀스, numpy 배열, 또는 frame의 DataFrame
+    kind: positional-only
+    desc: 관측 개수의 표. 마지막 두 축이 표(행 × 열)이고 앞의 축이 배치예요. 음이 아닌 유한한 수여야 해요. 정수가 아닌 개수(가중치를 준 표)도 받아요.
+  - name: correction
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 자유도가 1인 표(2 × 2)에 Yates의 연속성 보정을 해요. 다른 표에는 영향이 없어요.
+  - name: lambda_
+    type: None, str, 또는 실수
+    kind: keyword-only
+    desc: "통계량의 꼴(Cressie–Read의 거듭제곱 λ). None(기본값)과 'pearson'은 피어슨 카이제곱, 'log-likelihood'는 G 통계량(우도비), 'freeman-tukey', 'mod-log-likelihood', 'neyman', 'cressie-read'(λ = 2/3), 또는 λ의 수예요."
+  - name: method
+    type: None, PermutationMethod, 또는 MonteCarloMethod
+    kind: keyword-only
+    desc: p값을 구하는 방법. None(기본값)이면 카이제곱 분포의 근사, PermutationMethod·MonteCarloMethod면 관측과 같은 행합·열합을 가진 표들 가운데의 분포예요(정수 개수, correction=False, lambda_=None이 필요해요).
+returns:
+  type: Chi2ContingencyResult
+  desc: "statistic, pvalue, df(자유도, float), expected_freq(기대 빈도, 표와 같은 모양의 읽기 전용 배열)를 가진 결과 객체. (statistic, pvalue, df, expected_freq) 넷으로 풀려요. 배치면 statistic·pvalue·df가 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: observed가 배열·수의 시퀀스·frame이 아닐 때, correction이 True·False가 아닐 때, lambda_가 None·문자열·실수가 아닐 때, method가 None·PermutationMethod·MonteCarloMethod가 아닐 때, 없는 인자를 줬을 때.
+  - type: ValueError
+    desc: "observed가 2차원보다 작을 때, 행이나 열이 없을 때, 음수·NaN·inf가 있을 때, lambda_ 이름이 틀렸을 때, 재표본 method에 correction=True·lambda_·정수가 아닌 개수·rvs를 줬을 때."
+seeAlso: [fisher_exact, power_divergence, chisquare, barnard_exact, odds_ratio, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 묻는 검정인가요
+
+세 매장(A, B, C)에서 손님 140명이 두 상품 가운데 무엇을 샀는지 세었어요. 매장마다 상품의 선호가 다를까요?
+
+| | A | B | C |
+|---|---:|---:|---:|
+| 상품 1 | 20 | 15 | 25 |
+| 상품 2 | 30 | 35 | 15 |
+
+이렇게 두 범주형 변수의 개수를 칸마다 적은 표가 **분할표**예요. **카이제곱 독립성 검정**은 묻는 것이 하나예요.
+
+- **귀무가설**: 행 변수(상품)와 열 변수(매장)가 독립이에요. 어느 매장에서든 상품의 비율이 같아요.
+- **대립가설**: 독립이 아니에요. 매장에 따라 비율이 달라요.
+
+독립이라면 칸 $(i, j)$에 기대되는 개수는 행합 × 열합 ÷ 총합이에요.
+
+$$
+E_{ij} = \frac{R_i\, C_j}{N}
+$$
+
+검정통계량은 관측 $O_{ij}$와 기대 $E_{ij}$의 차이를 모든 칸에서 더한 값이에요.
+
+$$
+X^2 = \sum_{i,j} \frac{(O_{ij} - E_{ij})^2}{E_{ij}}
+$$
+
+독립이고 개수가 충분히 크면 $X^2$는 자유도 $(r-1)(c-1)$인 카이제곱 분포를 따라요. 그 위쪽 꼬리가 p값이에요. 방향이 없는 검정이라 `alternative`가 없어요.
+
+이런 때 써요.
+
+- 두 범주형 변수의 연관을 볼 때(성별과 선호, 치료와 결과, 지역과 투표).
+- 표본이 커서 기대 빈도가 대체로 5 이상일 때.
+
+기대 빈도가 작은 칸이 많으면 근사가 나빠져요. 그럴 때는 정확한 검정인 [`fisher_exact`](/api/htest/fisher_exact/)를 써요. 2 × 2 표에서 두 비율을 견주는 것이면 [`barnard_exact`](/api/htest/barnard_exact/)나 [`boschloo_exact`](/api/htest/boschloo_exact/)도 있어요. 범주가 순서를 가지면(낮음·중간·높음) 순서를 쓰는 [`somersd`](/api/htest/somersd/)가 더 예민해요. 개수가 한 줄뿐이고 정해 둔 비율과 견주는 것이면 [`chisquare`](/api/htest/chisquare/)예요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> import stardust as sd
+>>> obs = [[20, 15, 25],
+...        [30, 35, 15]]
+>>> r = sd.htest.chi2_contingency(obs)
+>>> r
+Chi2ContingencyResult(statistic=9.84375, pvalue=0.00728546, df=2, expected_freq=<array of shape (2, 3)>)
+```
+
+p값 0.0073이 유의수준 0.05보다 작아서 독립이라는 귀무가설을 기각해요. 매장에 따라 상품의 선호가 달라요.
+
+## 결과 읽기
+
+필드는 `statistic`, `pvalue`, `df`, `expected_freq`이고 넷으로 풀려요.
+
+```python
+>>> stat, p, df, expected = r
+>>> stat, p, df
+(9.84375, 0.007285457798938988, 2.0)
+>>> expected
+array([[21.428571428571427, 21.428571428571427, 17.142857142857142],
+       [28.571428571428573, 28.571428571428573, 22.857142857142858]], dtype=float64)
+```
+
+`df`는 언제나 float예요. `expected_freq`를 관측과 견주면 어디서 차이가 나는지 보여요. 매장 C에서는 상품 1이 기대(17.1)보다 많고(25), 매장 B에서는 상품 2가 기대(28.6)보다 많아요(35). `expected_freq`는 읽기 전용이라 고치려면 `.copy()`를 써요.
+
+`summary()`는 머리에 통계량, p값, 자유도, 표의 크기를, 아래에 기대 빈도의 표를 보여 줘요.
+
+```python
+>>> print(r.summary())
+                       Chi-squared test of independence
+==============================================================================
+Statistic:                       9.844  Table:                           2 x 3
+P-value:                       0.00729
+Df:                                  2
+==============================================================================
+expected_freq         [0]        [1]        [2]
+------------------------------------------------------------------------------
+[0]                21.429     21.429     17.143
+[1]                28.571     28.571     22.857
+==============================================================================
+```
+
+## `correction`: 2 × 2 표의 Yates 보정
+
+자유도가 1인 2 × 2 표에서는 개수가 정수라서 이산적인 $X^2$를 연속인 카이제곱 분포에 견주면 p값이 작게 나오는 편이에요. **Yates의 보정**은 칸마다 관측을 기대 쪽으로 $\min(1/2, |O - E|)$만큼 옮긴 뒤 통계량을 구해서 이것을 줄여요. `correction=True`(기본값)면 자유도가 1일 때만 해요.
+
+```python
+>>> t22 = [[12, 5],
+...        [7, 16]]
+>>> sd.htest.chi2_contingency(t22)
+Chi2ContingencyResult(statistic=4.81229, pvalue=0.0282575, df=1, expected_freq=<array of shape (2, 2)>)
+>>> sd.htest.chi2_contingency(t22, correction=False)
+Chi2ContingencyResult(statistic=6.31989, pvalue=0.0119391, df=1, expected_freq=<array of shape (2, 2)>)
+```
+
+보정은 보수적이라(p값이 커져요) 정확한 검정보다도 큰 p값을 낼 수 있어요. 2 × 2 표에서 정확한 답이 필요하면 [`fisher_exact`](/api/htest/fisher_exact/)를 써요.
+
+관측이 기대와 1/2 이내로 가까우면 보정이 차이를 0으로 만들어서 통계량이 0, p값이 1이에요.
+
+```python
+>>> sd.htest.chi2_contingency([[10, 10], [9, 11]])
+Chi2ContingencyResult(statistic=0, pvalue=1, df=1, expected_freq=<array of shape (2, 2)>)
+```
+
+## `lambda_`: 통계량의 꼴
+
+피어슨의 $X^2$ 말고도 관측과 기대의 차이를 재는 방법이 여럿 있어요. Cressie–Read의 거듭제곱 발산은 이것들을 λ 하나로 묶어요.
+
+$$
+2\sum_{i,j} \frac{O_{ij}}{\lambda(\lambda+1)}\left[\left(\frac{O_{ij}}{E_{ij}}\right)^{\lambda} - 1\right]
+$$
+
+| `lambda_` | λ | 이름 |
+|---|---:|---|
+| None, `'pearson'` | 1 | 피어슨 카이제곱 |
+| `'log-likelihood'` | 0 | G 통계량(우도비 검정) |
+| `'freeman-tukey'` | −1/2 | Freeman–Tukey |
+| `'mod-log-likelihood'` | −1 | 수정 우도비 |
+| `'neyman'` | −2 | Neyman |
+| `'cressie-read'` | 2/3 | Cressie–Read 권장값 |
+
+λ = 0과 −1은 극한의 꼴이에요. 자유도와 p값의 분포는 모두 같아요. 큰 표본에서는 모두 비슷한 값이에요.
+
+```python
+>>> sd.htest.chi2_contingency(obs, lambda_='log-likelihood')
+Chi2ContingencyResult(statistic=9.90161, pvalue=0.0070777, df=2, expected_freq=<array of shape (2, 3)>)
+>>> sd.htest.chi2_contingency(obs, lambda_=0).statistic
+9.901613357078508
+```
+
+0인 칸은 극한으로 다뤄요. λ > −1이면 그 칸의 항이 0이고, λ ≤ −1(`'mod-log-likelihood'`, `'neyman'`)이면 그 칸의 항이 무한대로 가서 통계량이 inf, p값이 0이에요.
+
+```python
+>>> sd.htest.chi2_contingency([[12, 5], [0, 16]], lambda_='neyman', correction=False)
+Chi2ContingencyResult(statistic=inf, pvalue=0, df=1, expected_freq=<array of shape (2, 2)>)
+```
+
+같은 통계량을 개수 한 줄과 정해 둔 기대로 구하는 함수는 [`power_divergence`](/api/htest/power_divergence/)예요.
+
+## `method`: 순열과 몬테카를로 p값
+
+기대 빈도가 작아 카이제곱 근사가 걱정되면 근사 없는 p값을 고를 수 있어요. 독립이라는 귀무가설 아래에서 행합과 열합을 고정한 표들이 어떻게 흩어지는지 보고, 관측의 피어슨 통계량보다 크거나 같은 표의 비율을 p값으로 써요.
+
+- `PermutationMethod`: 표를 관측 하나하나로 풀어 행 이름표의 순열을 만들어요. 순열의 수 $N!$이 `n_resamples` 이하이면 모두 나열하고, 아니면 무작위로 뽑아요.
+- `MonteCarloMethod`: 행합과 열합을 지키며 칸마다 무작위로 개수를 뽑아 표를 만들어요. 순열과 같은 분포의 표라서 같은 시드면 같은 p값이에요. `rvs`는 None이어야 해요.
+
+통계량은 보정 없는 피어슨 $X^2$뿐이라 `correction=False`와 `lambda_=None`이 필요하고, 개수는 정수여야 해요. `df`는 카이제곱 분포를 쓰지 않으므로 NaN이에요.
+
+```python
+>>> pm = sd.htest.PermutationMethod(n_resamples=2000, rng=sd.random.default_rng(0))
+>>> sd.htest.chi2_contingency(obs, correction=False, method=pm)
+Chi2ContingencyResult(statistic=9.84375, pvalue=0.0069965, df=nan, expected_freq=<array of shape (2, 3)>)
+>>> sd.htest.chi2_contingency(obs, method=pm)
+Traceback (most recent call last):
+    ...
+ValueError: chi2_contingency(): correction=True is not compatible with a resampling method; pass correction=False
+```
+
+설정의 규칙은 [재표본 방법 객체](/api/htest/methods/)에 있어요.
+
+## 배치: 표 여러 개
+
+마지막 두 축이 표이고 앞의 축이 배치예요. (3, 2, 2) 배열은 2 × 2 표 세 개의 검정이에요. 표마다 따로 검정하고, 표 하나의 결과는 혼자 부를 때와 비트까지 같아요.
+
+```python
+>>> B = sd.asarray([[[12, 5], [7, 16]],
+...                 [[10, 10], [9, 11]],
+...                 [[3, 9], [8, 2]]])
+>>> rb = sd.htest.chi2_contingency(B)
+>>> rb
+Chi2ContingencyResult(batch shape (3,))
+>>> rb.pvalue
+array([0.028257528526361302,                  1.0,  0.03228435391076684], dtype=float64)
+>>> rb.expected_freq.shape
+(3, 2, 2)
+```
+
+그래서 3원 분할표(행 × 열 × 층)를 하나의 검정으로 다루지 않아요. 층마다의 2원 표 검정이에요.
+
+## 개수와 퇴화한 표
+
+- 개수는 음이 아닌 유한한 수예요. 정수가 아니어도 돼요(가중치를 준 표). 음수나 NaN, inf는 에러예요. `nan_policy`가 없어요.
+- 행이나 열이 하나뿐이면 자유도가 0이에요. 통계량 0, p값 1이에요.
+- 모두 0인 행이나 열이 있으면 그 기대 빈도가 0이라 통계량을 정할 수 없어 NaN이에요. 경고가 없어요.
+
+```python
+>>> sd.htest.chi2_contingency([[12.5, 5.2], [7.1, 16.3]])
+Chi2ContingencyResult(statistic=5.03881, pvalue=0.0247855, df=1, expected_freq=<array of shape (2, 2)>)
+>>> sd.htest.chi2_contingency([[12, 5, 3]])
+Chi2ContingencyResult(statistic=0, pvalue=1, df=0, expected_freq=<array of shape (1, 3)>)
+>>> sd.htest.chi2_contingency([[12, 0], [7, 0]])
+Chi2ContingencyResult(statistic=nan, pvalue=nan, df=1, expected_freq=<array of shape (2, 2)>)
+```
+
+## 에러
+
+```python
+>>> sd.htest.chi2_contingency([12, 5])
+Traceback (most recent call last):
+    ...
+ValueError: chi2_contingency(): 'observed' must have at least 2 dimensions (the table's), not 1
+>>> sd.htest.chi2_contingency([[12, -5], [7, 16]])
+Traceback (most recent call last):
+    ...
+ValueError: chi2_contingency(): 'observed' must hold non-negative finite counts
+>>> sd.htest.chi2_contingency(obs, lambda_='foo')
+Traceback (most recent call last):
+    ...
+ValueError: chi2_contingency(): 'lambda_' must be 'pearson', 'log-likelihood', 'freeman-tukey', 'mod-log-likelihood', 'neyman' or 'cressie-read', not 'foo'
+>>> sd.htest.chi2_contingency(obs, correction=1)
+Traceback (most recent call last):
+    ...
+TypeError: chi2_contingency(): 'correction' must be True or False, not int
+```
+
+## 정확도
+
+행합, 열합, 기대 빈도는 정확한 유리수를 한 번 반올림한 값이에요. 관측이 기대와 아주 가까운 표에서도 $O - E$의 상쇄로 자릿수를 잃지 않아요. 정확한 유리수 계산과 Arb(구간 산술)로 만든 참값에 견주면 16문제(가중 표, Yates 보정의 1/2 안, 0인 행과 한 행, Cressie–Read의 0인 칸, O ≈ E의 G, 4 × 5 표의 꼬리 포함)에서 통계량은 상대오차 1e-16 안, p값은 1.2e-14 안(계약 대비 0.031)이에요.
+
+## scipy를 아는 분께
+
+`scipy.stats.chi2_contingency`와 기대 빈도, 통계량, Yates 보정, `lambda_`의 이름이 같아요. 다른 점이에요.
+
+- 결과의 자유도 이름이 `df`이고 float예요. scipy는 `dof`(int)예요.
+- 3차원 이상의 입력은 2원 표의 배치예요. scipy는 n원 분할표의 독립 검정을 해요.
+- 0인 행이나 열은 NaN이에요. scipy는 `ValueError`예요.
+
+  ```python
+  >>> import scipy.stats
+  >>> scipy.stats.chi2_contingency([[12, 0], [7, 0]])
+  Traceback (most recent call last):
+      ...
+  ValueError: The internally computed table of expected frequencies has a zero element at (np.int64(0), np.int64(1)).
+  ```
+
+- λ ≤ −1의 0인 칸이 inf와 p = 0이에요. scipy는 NaN이에요.
+- 관측이 기대와 아주 가까운 표의 G 통계량에서 scipy는 상대 1.6e-11쯤 틀려요.
+- `method=`의 재표본은 scipy와 같은 꼴(보정 없는 피어슨 통계량, 주변합 고정)이에요.

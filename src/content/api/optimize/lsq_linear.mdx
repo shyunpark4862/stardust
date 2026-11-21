@@ -121,7 +121,7 @@ array([  0.8801086725575231,   0.5760754771218956, -0.07716907675194648], dtype=
 ```python
 >>> r = sd.optimize.lsq_linear(A, b, bounds=(0, 1))
 >>> r
-OptimizeResult(method='trf', converged=True, cost=0.00686803, n_iter=7, x=[   0.9013757409538872    0.5110590108815836 5.735144465861567e-13])
+OptimizeResult(method='trf', converged=True, cost=0.00686803, n_iter=7, x=[0.901376, 0.511059, 5.73514e-13])
 >>> r.status, r.message
 (1, 'The first-order optimality measure is less than `tol`.')
 >>> r.active_mask
@@ -161,7 +161,7 @@ True
 ```python
 >>> rb = sd.optimize.lsq_linear(A, b, bounds=(0, 1), method='bvls')
 >>> rb
-OptimizeResult(method='bvls', converged=True, cost=0.00686803, n_iter=2, x=[ 0.901375740953729 0.5110590108820666                0.0])
+OptimizeResult(method='bvls', converged=True, cost=0.00686803, n_iter=2, x=[0.901376, 0.511059, 0])
 >>> abs(rb.cost - r.cost) / rb.cost < 1e-11
 True
 ```

@@ -49,6 +49,8 @@ NAMESPACES = {
     "random": sd.random,
     "regression": sd.regression,
     "optimize": sd.optimize,
+    "sparse": sd.sparse,
+    "htest": sd.htest,
 }
 
 

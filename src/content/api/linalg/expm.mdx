@@ -450,6 +450,10 @@ array([], shape=(0, 0), dtype=float64)
 - 시스템이 시간에 따라 어떻게 움직이는지는 `expm`으로, 오래 지난 뒤 잡음 속에서 얼마나 퍼져 있는지는 [solve_sylvester](/api/linalg/solve_sylvester/)(랴푸노프 방정식)로 구해요.
 - 대칭 행렬이면 [eigh](/api/linalg/eigh/)로 고유값을 구한 뒤 고유값마다 지수를 계산하는 방법도 있어요. 고유값과 고유벡터를 따로 쓸 일이 없다면 `expm`을 바로 부르는 편이 간단해요.
 
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)의 행렬 지수는 [`sd.sparse.expm`](/api/sparse/expm/)이에요. 행렬 지수는 대부분 꽉 차므로, 필요한 것이 $e^{A}v$처럼 벡터에 곱한 값이면 행렬 지수를 만들지 않고 그 곱을 바로 구하는 [`sd.sparse.expm_multiply`](/api/sparse/expm_multiply/)가 맞아요. `expm_multiply`는 밀집 배열도 받아요. 희소 배열을 `sd.linalg.expm`에 넣으면 `sd.sparse.expm`을 알려 주는 `TypeError`예요.
+
 ## numpy·scipy를 아는 분께
 
 - `scipy.linalg.expm`과 같은 함수예요. numpy에는 행렬 지수가 없어요(`np.exp`는 원소별이에요).

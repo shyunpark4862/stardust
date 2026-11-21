@@ -119,9 +119,9 @@ export const Valley = ({ id, label, paths = [], polys = [], view = [-1.6, 1.6, -
 >>> def rosen_grad(x):
 ...     return [-400.0 * x[0] * (x[1] - x[0]**2) - 2.0 * (1 - x[0]), 200.0 * (x[1] - x[0]**2)]
 >>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='bfgs', jac=rosen_grad)
-OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[0.9999999710014291 0.9999999461191459])
+OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[1, 1])
 >>> sd.optimize.minimize(rosen, [-1.2, 1.0], method='l-bfgs-b', jac=rosen_grad)
-OptimizeResult(method='l-bfgs-b', converged=True, fun=2.80765e-12, n_iter=36, nfev=44, x=[0.9999989453492616 0.9999980209056968])
+OptimizeResult(method='l-bfgs-b', converged=True, fun=2.80765e-12, n_iter=36, nfev=44, x=[0.999999, 0.999998])
 ```
 
 `method`를 주지 않으면 경계가 없을 때 BFGS, 있을 때 L-BFGS-B예요. 반복 하나에 `fun`과 기울기를 보통 한 번씩, 선 탐색이 걸음을 줄일 때 몇 번 더 불러요.

@@ -84,8 +84,7 @@ export const ridgePath3 = [[-3, 0.16132], [-2.96, 0.16133], [-2.92, 0.16134], [-
 ```python
 >>> r = sd.regression.ridge(y, X, alpha=0.1)
 >>> r
-RidgeResult(alpha=0.1, nobs=40, df_model=1.84954, params=[ 1.1364487002130905  0.9011101673863711    1.05074620606917
- 0.11963673541278859])
+RidgeResult(alpha=0.1, nobs=40, df_model=1.84954, params=[1.13645, 0.90111, 1.05075, 0.119637])
 >>> [round(v, 3) for v in r.params.tolist()]
 [1.136, 0.901, 1.051, 0.12]
 ```
@@ -368,7 +367,7 @@ AttributeError: property 'alpha' of 'RidgeResult' object has no setter
 ['const', 'x1', 'x2', 'x3']
 ```
 
-`summary()`(인자 없음)는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자예요. 머리에 `alpha`, `standardize`, 관측 수, 유효 자유도, 결정계수가 있고, 계수 표는 `coef` 한 열이에요([표준오차와 p값이 없는 까닭](#표준오차와-p값이-없는-까닭)). 경로나 배치의 결과는 `alpha`와 회귀마다 한 줄(`alpha`, `nobs`, `df_model`, `rsquared`)인 표와 계수의 표예요.
+`summary()`(인자 없음)는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자예요. 머리에 `alpha`, `standardize`, 관측 수, 유효 자유도, 결정계수가 있고, 계수 표는 `coef` 한 열이에요([표준오차와 p값이 없는 까닭](#표준오차와-p값이-없는-까닭)). 경로나 배치의 결과는 `alpha`와 회귀마다 한 줄(`alpha`, `nobs`, `df_model`, `rsquared`)인 표와 계수의 표예요. 같은 `X`와 `alpha`로 `y`만 다른 배치처럼 모든 줄의 `df_model`이 같으면 그 값은 열이 아니라 머리의 `Df Model:`에 한 번 적어요.
 
 ```python
 >>> print(r.summary())
@@ -555,7 +554,7 @@ nan
 >>> import math
 >>> yn = sd.where(sd.arange(40) == 3, math.nan, y)
 >>> sd.regression.ridge(yn, X, alpha=0.1)
-RidgeResult(alpha=0.1, nobs=nan, df_model=nan, params=[nan nan nan nan])
+RidgeResult(alpha=0.1, nobs=nan, df_model=nan, params=[nan, nan, nan, nan])
 >>> sd.regression.ridge(yn, X, alpha=0.1, nan_policy='omit').nobs
 39.0
 >>> sd.regression.ridge(yn, X, alpha=0.1, nan_policy='raise')

@@ -2,7 +2,7 @@
 title: 정확도 측정
 group: 검증과 측정
 order: 2
-summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
+summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화, 가설검정의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
 seeAlso: [testing, benchmarks]
 ---
 import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
@@ -21,17 +21,21 @@ stardust는 함수마다 정확도를 약속해요. 비트로 약속하는 것�
 | `sd.linalg` | 잔차를 $n \varepsilon$과 그 척도로 나눈 값이 10 이하 |
 | `sd.regression`의 선형 모형 | 조건수 $\kappa(X) \le 10^{11}$에서 계수 벡터의 노름 상대오차 $10^{-14}$ 이하 |
 | `sd.optimize` | 결과만 보고 확인되는 멈춤 판정(구간법의 허용오차, 기울기 판정의 `gtol`) |
+| `sd.htest` | 통계량은 상대오차 $10^{-14}\max(1, \kappa_\text{stat})$, p값은 거기에 $\max(1, \kappa_p)$를 더 곱한 것, 자유도와 신뢰구간의 끝은 $10^{-14}$($\kappa$는 조건수) |
+| `sd.sparse` | 합과 곱의 합은 같은 순서의 반올림 한계 $\gamma_m \sum_j \lvert a_{ij} x_j\rvert$, 직접 풀이는 정규화한 역오차 $4\varepsilon$, 고유값과 특이값은 $1000\,\varepsilon \lVert A\rVert_2$, `expm`은 $10\,\varepsilon\max(1, \lVert sA\rVert_1)$에 결과의 크기를 곱한 것 |
 
 이 약속을 지키는지, 그리고 얼마나 여유 있게 지키는지를 재는 도구가 `bench/accuracy/`이고, 저장소 맨 위에서 `python -m bench.accuracy`로 불러요.
 
 | 단계 | 하는 일 | 어디에 |
 |---|---|---|
 | 참값 | Arb(구간 산술)나 정확한 산술로 계산해 파일로 저장해요. 측정할 때는 Arb를 부르지 않아요 | `tests/<영역>/ref/` |
-| 측정 | 참값 파일의 모든 점에서 stardust를 불러 오차를 여러 척도로 재요 | `bench/accuracy/sources.py`와 영역별 `array.py`, `linalg.py`, `multivariate.py`, `optimize.py` |
+| 측정 | 참값 파일의 모든 점에서 stardust를 불러 오차를 여러 척도로 재요 | `bench/accuracy/sources.py`와 영역별 `array.py`, `linalg.py`, `multivariate.py`, `optimize.py`, `htest.py`, `sparse.py` |
 | 기준선 | 영역마다 잰 값을 저장소에 넣어 두고, 새 측정과 비교해요 | `bench/accuracy/results/<영역>.json` |
 | 표 | 기준선에서 영역마다 표를 만들어요 | `bench/<영역>/accuracy.md`(stats의 다변량·행렬 분포 묶음은 `bench/stats/accuracy_multivariate.md`) |
 
-지금 재는 영역은 여섯이에요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정, `sd.optimize`의 근 찾기와 최소화예요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요.
+열 영역 가운데 기준선이 있는 영역은 일곱이에요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정과 변수 선택, `sd.optimize`의 근 찾기와 최소화, `sd.htest`의 검정 묶음 53개예요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요.
+
+`sd.sparse`는 참값 파일(`tests/sparse/ref/`)과 스윕 일곱(`spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`, `bench/accuracy/sparse.py`)이 있고 `run sparse`로 잴 수 있지만, 저장소에 기준선(`bench/accuracy/results/sparse.json`)과 표가 없어요. 그래서 아래 요약 표에 줄이 없고, 계약은 테스트(`tests/sparse/refdata.py`의 판정을 쓰는 `tests/sparse/test_reference_data.py`)가 확인해요.
 
 <AccuracySummary caption="영역별 요약. 스윕은 참값 파일의 메서드 하나(회귀는 문제 하나, 최적화는 방법 하나)이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 수치 계약이 있는 줄 가운데 계약 대비가 1 이하인 줄의 수예요. 들여 쓴 줄은 sd.stats 안의 다변량·행렬 분포 묶음이에요." />
 
@@ -123,24 +127,27 @@ def _ndtri_inputs(rng):
 | `method/<m>/dropped` | 생성기가 정밀도와 반복 상한 안에서 정하지 못해 버린 점 |
 | `arb`, `target_bits`, `tool`, `n_requested` | 출처. 계산한 python-flint 판, 참값이 맞는 비트 수, 만든 도구(`tools/<영역>_ref.py`), 요청한 점 수 |
 
-JSON으로 저장하는 참값(회귀, 최적화)도 `_provenance`에 같은 출처를 적어요. 참값 폴더는 영역마다 60 MiB를 넘지 않아야 하고, 가장 큰 stats가 35.5 MiB예요.
+JSON으로 저장하는 참값(회귀, 최적화, 가설검정)도 `_provenance`에 같은 출처를 적어요. 참값 폴더는 영역마다 60 MiB를 넘지 않아야 하고, 가장 큰 stats가 35.5 MiB예요.
 
 ### 회귀의 참값
 
 회귀의 참값도 Arb로 만들어요(`tools/regression_ref.py`, 식은 `tools/regref.py`). 입력은 사용자가 실제로 주는 double이고, double은 Arb에서 반지름 0인 정확한 공이에요. 정규방정식 $X^\top W X \beta = X^\top W y$를 높은 정밀도에서 풀고, 어떤 값이 정해지지 않으면 정밀도를 두 배로 올려 처음부터 다시 풀어요. 높은 정밀도에서는 조건수의 제곱이 비트를 더 쓰게 할 뿐 답을 틀리게 하지 않아요. 반복으로 푸는 모형(GLM, 강건 회귀)은 해 둘레의 상자에서 Krawczyk 판정으로, 정규화 회귀는 0인 계수의 엄격한 KKT 부등식으로 해를 증명해요.
 
-문제는 고정된 목록이에요. `tests/regression/ref/`의 `linear.json`(17개), `glm.json`(17개), `penalized.json`(21개), `robust.json`(19개), `model_tests.json`(9개)에 입력과 필드별 참값을 `[hi, lo]` 쌍으로 넣어 두었어요. `model_tests.json`은 적합한 모형 위의 검정(Breusch–Pagan 같은)의 값이에요.
+문제는 고정된 목록이에요. `tests/regression/ref/`의 `linear.json`(17개), `glm.json`(17개), `penalized.json`(21개), `robust.json`(19개), `model_tests.json`(9개), `selection.json`(7개)에 입력과 필드별 참값을 `[hi, lo]` 쌍으로 넣어 두었어요. `selection.json`은 변수 선택이 견주는 열의 부분집합마다의 기준값(잔차 제곱합, 로그우도, AIC, BIC, 교차 검증 오차)이에요. `model_tests.json`은 적합한 모형 위의 검정(Breusch–Pagan 같은)의 값이에요.
 
 - 선형 모형에는 무작위 문제(절편 유무, 가중치가 0인 행이 있는 WLS), 조건수 $10^5$와 $10^{11}$의 문제, 그리고 [NIST StRD](https://www.itl.nist.gov/div898/strd/lls/)의 선형 최소제곱 11개가 있어요.
 - NIST 문제는 10진 자료와 거듭제곱 열을 double로 한 번 반올림한 것, 곧 사용자가 실제로 넣는 입력으로 참값을 만들어요. NIST의 인증값은 10진 자료의 정확한 답이라, double로 반올림한 자료의 답과 $\kappa u$쯤 달라요. 인증값과의 비교는 조건이 좋은 문제(Norris, NoInt1, NoInt2)에서 테스트가 따로 해요.
 
 회귀의 결과는 필드가 많아서(계수, 표준오차, t값, p값, 잔차, 지렛값, 진단 통계량 등), 측정에서는 문제 하나가 스윕 하나이고 필드 하나가 영역 한 칸이에요.
 
-### 배열, 선형대수, 최적화의 참값
+### 그 밖의 영역의 참값
 
 - **배열**(`tools/array_ref.py`, `tests/array/ref/`). vForce를 쓰는 float64 원소별 함수 15개와 `pow`, 복소수의 절댓값은 Arb 참값이에요. 점은 테스트의 범위에 더해 함수마다 오차가 몰리는 곳(영점과 극 근처, 정의역의 끝, 서브노멀과 아주 큰 인자)에 모았어요. 리덕션(`sum`, `mean`, `var`, `std`, `prod`, `vecdot`, `matmul`)의 참값은 정확한 계산으로 만들었어요. 합은 Shewchuk의 `fsum`으로 올바르게 반올림한 값이고, 분산과 표준편차는 정확한 유리수, 곱은 Arb예요.
 - **선형대수**(`tools/linalg_ref.py`, `tests/linalg/ref/`). 정사각·대칭(양정치 포함)·직사각 행렬을 조건수 $\kappa_2 = 1$부터 $10^{12}$까지 $U \operatorname{diag}(s) V^\top$로 만들어 저장해요. 분해와 풀이는 잔차로 판정하므로 참값이 필요 없고, 답이 하나로 정해지는 값(해, 행렬식, 고유값, 특잇값, `expm`)만 Arb 참값과 조건수를 함께 둬요.
 - **최적화**(`tools/optimize_ref.py`, `tests/optimize/ref/`). 스칼라 근 문제 204개의 근과 극소점 문제 57개의 극소점을 Arb로 찾아요. 근은 부호가 바뀌는 이웃한 두 double의 괄호로 저장해요. 해석적 도함수도 Arb로 계산해 둬요. `least_squares`는 NIST StRD 비선형 문제의 인증값과 견줘요.
+
+- **가설검정**(`tools/htest_ref.py`, `tests/htest/ref/`). 문제 모음(`tests/htest/problems.py`)의 입력 double을 정확한 유리수로 읽어요. 평균, 제곱합, 순위, 세기, $t^2$, $F$, $U$, Kendall의 역순 쌍, KS의 격자 간격, $\chi^2$처럼 데이터의 유리함수인 통계량은 `Fraction`으로 정확히 계산해 한 번 반올림해요. 정확한 귀무분포(Mann–Whitney의 가우스 이항계수, 부호 순위의 부분합, Kendall의 Mahonian 수, 두 표본 KS의 격자 경로, Fisher 검정의 표 나열, 이항 분포)는 정수로 세요. 그 밖의 p값(불완전 베타·감마, erfc, 한 표본 KS 분포, Kolmogorov 급수)은 Arb의 공으로 $2^{-110}$까지 정해요. D'Agostino 변환이나 보간 표처럼 검정이 근사로 정의된 곳은 그 근사식의 값이 참값이에요. 문제마다 p값의 조건수 `kappa`도 함께 적어 계약의 배율로 써요.
+- **희소 행렬**(`tools/sparse_ref.py`, `tests/sparse/ref/`). 시험 행렬(`tests/sparse/matrices.py`)의 표준 꼴을 정확한 유리수로 읽어요. 곱과 합은 정확한 합을 한 번 반올림하고, 노름·고유값·특이값·`expm`은 Arb로 구해요. 연립방정식의 해는 Rump식으로 검증해요. double로 구한 역행렬 $R$로 $\lVert I - RA\rVert_\infty$의 상한 $\alpha$를 반올림 오차까지 넣어 잡아 $\lVert A^{-1}\rVert_\infty$의 상한을 얻고, 잔차를 정확히 계산하며 해를 다듬어 오차 한계가 $2^{-110}\lVert x\rVert_\infty$ 아래로 내려갈 때 멈춰요. 이 증명이 서지 않는 점($\alpha \ge 1$, 12번 안에 수렴하지 않음)은 버리고 적어 둬요.
 
 다변량·행렬 분포의 참값(`tests/stats/ref/mv/`)은 같은 생성기 `tools/stats_ref.py`가 만들어요. 밀도와 엔트로피는 주어진 행렬 그대로 Arb의 LU로, 누적분포는 Plackett 항등식과 척도 혼합으로 $2^{-64}$까지 구해요. 한 요인 구조 t 분포(`factor_t`)는 $d \le 3$을 Arb로 재고, $d > 3$만 scipy의 적응 구적(약 $10^{-11}$)으로 만들어 그 영역은 준몬테카를로의 허용오차 `atol`에 대고만 재요.
 
@@ -246,6 +253,7 @@ $$
 - **배열의 원소별 함수**: 그 점의 ULP, $B$는 함수의 ULP 한계(`tests/array/refdata.py`의 `ULP_BOUND`: `exp`·`acos`·`atan`·`atan2`·`pow`·복소수의 절댓값 3, `log`·`log2`·`log10`·`asin`·`sinh`·`cosh`·`tanh`·`asinh`·`acosh` 4, `sin`·`atanh` 5).
 - **선형대수**: 잔차 / ($n\varepsilon$·척도)와 직교성 가운데 큰 값, $B = 10$.
 - **회귀**: 선형 모형(OLS·WLS)의 계수 벡터에서, 설계 행렬의 $\kappa_2 \le 10^{11}$인 문제만. 노름 상대오차, $B = 10^{-14}$.
+- **가설검정**: 필드마다 `tests/htest/refdata.py`의 척도로, $B = 10^{-14}$예요. 통계량은 상대오차를 $\max(1, \kappa_\text{stat})$로, p값은 $\max(1, \kappa_p)\max(1, \kappa_\text{stat})$로 나눠요. $\kappa_\text{stat}$은 D'Agostino 변환이 받는 적률이나 Anderson–Darling의 상쇄하는 합에 대한 통계량의 조건수이고 다른 검정에서는 1, $\kappa_p$는 통계량에 대한 p값의 조건수예요. 신뢰구간의 끝은 빼는 꼴(t 검정의 추정값 ± 반폭, 비율의 정규 근사)이면 구간의 크기에, 그렇지 않으면 끝 자신에 대고 재요. Cramér–von Mises의 p값은 근사식이 정의하는 값에 절대 $10^{-15}$ 안이어도 계약 안으로 치고, 그런 점의 계약 대비는 1로 적어요.
 - **최적화**: 구간법의 기본 허용오차에서는 Arb 근까지의 거리를 $\text{xtol} + \text{rtol}\cdot\lvert x^*\rvert$로 나눈 값, 기울기로 멈추는 `minimize`는 수렴했다고 한 점에서 정확한 기울기의 노름을 `gtol`로 나눈 값이에요.
 
 special의 판정 함수 몸통은 짧아요(`tests/special/test_reference.py`의 `contract_error`).
@@ -300,9 +308,9 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 .venv/bin/python -m bench.accuracy table                               # 기준선에서 표만 다시
 ```
 
-영역은 위치 인자로 주고(주지 않으면 여섯 영역 모두), `--match`는 스윕 id(`영역/이름`, stats의 다변량 묶음은 `stats/mv/…`)에 맞춰요. `*`나 `?`가 있으면 glob, 없으면 부분 문자열이에요. `run`은 `--out FILE`로 실행 파일의 위치를 정하고, `--promote`로 재고 곧바로 기준선에 넣고, `-q`로 터미널에 아무것도 쓰지 않아요. 터미널에 나온 줄은 시각과 함께 `build/logs/accuracy/`에도 남아요.
+영역은 위치 인자로 주고(주지 않으면 참값이 있는 영역 모두), `--match`는 스윕 id(`영역/이름`, stats의 다변량 묶음은 `stats/mv/…`)에 맞춰요. `*`나 `?`가 있으면 glob, 없으면 부분 문자열이에요. `run`은 `--out FILE`로 실행 파일의 위치를 정하고, `--promote`로 재고 곧바로 기준선에 넣고, `-q`로 터미널에 아무것도 쓰지 않아요. 터미널에 나온 줄은 시각과 함께 `build/logs/accuracy/`에도 남아요.
 
-`--compare`를 주면 같은 참값, 같은 점, 같은 척도로 다른 라이브러리도 재요. scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS, robustbase, glmnet, Matrix, mvtnorm), Boost.Math예요. 같은 양을 계산하는 공개 함수가 없는 칸은 줄표로 비워 두고, R이 없는 기계에서는 "not run"으로 적어요. 참값은 유한한데 그 라이브러리가 NaN이나 inf를 낸 점은 빼고 따로 세요. 호출마다 시간과 메모리(2GB) 한도가 있어요.
+`--compare`를 주면 같은 참값, 같은 점, 같은 척도로 다른 라이브러리도 재요. scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS, robustbase, glmnet, Matrix, mvtnorm, RSpectra), Boost.Math예요. 가설검정의 비교 열은 그 자리에서 부르지 않고, 기록해 둔 scipy·statsmodels·R의 결과(`tests/htest/data/`)를 같은 척도로 재요. 설치된 판에 따라 표가 바뀌지 않게 하려는 거예요. 같은 양을 계산하는 공개 함수가 없는 칸은 줄표로 비워 두고, R이 없는 기계에서는 "not run"으로 적어요. 참값은 유한한데 그 라이브러리가 NaN이나 inf를 낸 점은 빼고 따로 세요. 호출마다 시간과 메모리(2GB) 한도가 있어요.
 
 ### 결과 파일
 
@@ -388,7 +396,7 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 
 ### 회귀
 
-`sd.regression`은 문제 83개(선형 17, GLM 17, 정규화 21, 강건 19, 모형 검정 9)의 필드를 재요. 수치 계약이 있는 줄은 조건수 $10^{11}$ 이하인 선형 모형의 계수 15줄이고, 가장 큰 계약 대비는 0.013(`linear/ols_kappa11`)이에요. 계수(`params`)의 노름 상대오차는 모든 문제에서 $1.5 \times 10^{-15}$ 이하예요. 다른 필드에는 상대오차가 큰 칸도 있어요. 표준오차는 QR의 $R$에서 계산해 상대오차가 $\kappa u$ 꼴이라, 조건수가 큰 문제(NIST Filip, $\kappa \approx 1.8 \times 10^{15}$)에서 $10^{-8}$–$10^{-7}$이에요. 이런 칸도 기준선에 남아서, 더 나빠지면 `compare`가 짚어요. NIST Wampler2는 잔차가 반올림 수준인 거의 완전한 적합이라, stardust가 계산한 잔차 제곱합과 표준오차가 0이 돼요. 그래서 표준오차로 나누는 필드(t값, p값, 스튜던트화 잔차, Cook 거리, 로그우도와 정보 기준 등)는 정할 수 없는 값(NaN)이고, 참값은 유한해서 이 칸들은 NaN·inf 점으로 세어요.
+`sd.regression`은 문제 90개(선형 17, GLM 17, 정규화 21, 강건 19, 모형 검정 9, 변수 선택 7)의 필드를 재요. 수치 계약이 있는 줄은 조건수 $10^{11}$ 이하인 선형 모형의 계수 15줄이고, 가장 큰 계약 대비는 0.013(`linear/ols_kappa11`)이에요. 계수(`params`)의 노름 상대오차는 모든 문제에서 $1.5 \times 10^{-15}$ 이하예요. 다른 필드에는 상대오차가 큰 칸도 있어요. 표준오차는 QR의 $R$에서 계산해 상대오차가 $\kappa u$ 꼴이라, 조건수가 큰 문제(NIST Filip, $\kappa \approx 1.8 \times 10^{15}$)에서 $10^{-8}$–$10^{-7}$이에요. 이런 칸도 기준선에 남아서, 더 나빠지면 `compare`가 짚어요. NIST Wampler2는 잔차가 반올림 수준인 거의 완전한 적합이라, stardust가 계산한 잔차 제곱합과 표준오차가 0이 돼요. 그래서 표준오차로 나누는 필드(t값, p값, 스튜던트화 잔차, Cook 거리, 로그우도와 정보 기준 등)는 정할 수 없는 값(NaN)이고, 참값은 유한해서 이 칸들은 NaN·inf 점으로 세어요.
 
 <AccuracySummary area="regression" names={['linear/nist_Longley', 'linear/nist_Filip', 'glm/poisson_log', 'robust/stackloss_huber']} regions={['params', 'bse', 'ssr']} caption="회귀 일부(계수, 표준오차, SSR). 필드 하나가 한 줄이고, 점은 그 필드의 원소 수예요. 계약 대비는 조건수 10¹¹ 이하인 선형 모형의 계수에만 있어요." />
 
@@ -413,6 +421,14 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 <AccuracySummary area="optimize" names={['root_scalar.brentq', 'root_scalar.bisect', 'minimize.bfgs', 'minimize.l-bfgs-b', 'least_squares.trf', 'root.hybr']} caption="최적화 일부. 구간법은 기본 허용오차의 판정을, 기울기로 멈추는 방법은 gradient stop 영역의 판정을 계약으로 봐요." />
 
 모든 방법의 표와 비교 패키지는 [최적화의 정확도와 성능](/internals/optimize/accuracy-performance/)에 있어요.
+
+### 가설검정
+
+`sd.htest`는 공개 검정의 참값 묶음마다 스윕 하나, 모두 53개를 재요. 영역은 결과의 필드(통계량, p값, 자유도, 신뢰구간 등)이고, 점은 문제 하나예요(다중 비교는 비교 하나, 보정은 p값 하나). 142줄이 모두 계약 안이에요. Cramér–von Mises의 두 p값(한 표본의 근사식, 두 표본의 극한 분포)은 그 식이 정의하는 값에 절대 $10^{-15}$ 안이라서 계약 안이고, 계약 대비가 1로 적혀요. 그 밖에서 가장 큰 것은 `shapiro`의 p값(0.34), `odds_ratio`의 한쪽 구간(0.25), `jarque_bera`의 통계량(0.23)이에요. 정수로 센 정확한 분포를 쓰는 검정(`mannwhitneyu`, `wilcoxon`, `kendalltau`, `fisher_exact`, `binomtest`, `barnard_exact`, `boschloo_exact`)의 p값은 계약 대비가 0.07 아래예요.
+
+<AccuracySummary area="htest" names={['ttest', 'shapiro', 'mannwhitneyu', 'kendalltau', 'fisher_exact', 'cramervonmises', 'dunnett']} caption="가설검정 일부. 묶음 하나가 스윕 하나이고, 필드 하나가 한 줄이에요. p값의 계약에는 통계량에 대한 p값의 조건수가 들어가서, 꼬리의 p값은 최대 ULP가 커도 계약 대비가 작아요." />
+
+검정별 참값과 비교 대상, 원인 분석은 [가설검정의 정확도와 성능](/internals/htest/accuracy-performance/)에 있어요.
 
 <Callout title="숫자를 읽는 순서">
 계약 대비부터 봐요. 1 이하면 약속 안이고, 그 값이 한계까지 남은 여유예요. 다음으로 역함수와 진동 함수는 ULP / 배율을, 0을 지나는 값은 mixed를 봐요. 최대 ULP는 그다음이고, 0 근처를 건너는 칸에서는 아주 크게 나올 수 있어요. 마지막으로 최대와 99.9%의 차이로 나쁜 점이 드문 끝점인지 영역 전체인지 가려요.

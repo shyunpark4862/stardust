@@ -140,7 +140,7 @@ $f(2) = -1 < 0$, $f(3) = 16 > 0$이니 구간 (2, 3)에 근이 있어요.
 ...     return x**3 - 2*x - 5
 >>> r = sd.optimize.root_scalar(f, bracket=(2, 3))
 >>> r
-OptimizeResult(method='brentq', converged=True, n_iter=7, nfev=8, x=2.094551481542327)
+OptimizeResult(method='brentq', converged=True, n_iter=7, nfev=8, x=2.09455)
 >>> r.x, r.converged
 (2.094551481542327, True)
 ```
@@ -152,9 +152,9 @@ f는 Python `float` 하나를 받아 실수 하나를 돌려주면 돼요. 그�
 ```python
 >>> r = sd.optimize.root_scalar(f, x0=2.5, fprime=lambda x: 3*x**2 - 2)
 >>> r
-OptimizeResult(method='newton', converged=True, n_iter=5, nfev=5, x=2.0945514815423265)
->>> r.njev
-5
+OptimizeResult(method='newton', converged=True, n_iter=5, nfev=5, x=2.09455)
+>>> r.x, r.njev
+(2.0945514815423265, 5)
 ```
 
 `njev`는 도함수를 계산한 횟수예요. 두 답은 끝자리에서 조금 달라요. 이 차이는 아래 [허용오차](#허용오차와-반복-상한)에서 설명해요.
@@ -255,7 +255,7 @@ bisect 2.0945514815412025 39 41
 
 ```python
 >>> sd.optimize.root_scalar(f, bracket=(2, 3), method='toms748', options={'k': 2})
-OptimizeResult(method='toms748', converged=True, n_iter=3, nfev=9, x=2.0945514815425073)
+OptimizeResult(method='toms748', converged=True, n_iter=3, nfev=9, x=2.09455)
 >>> sd.optimize.root_scalar(f, bracket=(3, 2), method='toms748')
 Traceback (most recent call last):
     ...
@@ -352,7 +352,7 @@ Newton법은 수렴을 보장하지 않아요. 위 그림 아래쪽처럼 제자
 >>> def g(x):
 ...     return x**3 - 2*x + 2
 >>> sd.optimize.root_scalar(g, x0=0.0, fprime=lambda x: 3*x**2 - 2)
-OptimizeResult(method='newton', converged=False, n_iter=50, nfev=50, x=0.0)
+OptimizeResult(method='newton', converged=False, n_iter=50, nfev=50, x=0)
 >>> sd.optimize.root_scalar(g, bracket=(-3, 0)).x
 -1.7692923542386343
 >>> import math
@@ -389,9 +389,9 @@ $$
 
 ```python
 >>> sd.optimize.root_scalar(f, x0=2.5, x1=3.0)
-OptimizeResult(method='secant', converged=True, n_iter=7, nfev=8, x=2.0945514815423265)
+OptimizeResult(method='secant', converged=True, n_iter=7, nfev=8, x=2.09455)
 >>> sd.optimize.root_scalar(f, x0=2.5, method='secant')
-OptimizeResult(method='secant', converged=True, n_iter=6, nfev=7, x=2.0945514815423287)
+OptimizeResult(method='secant', converged=True, n_iter=6, nfev=7, x=2.09455)
 ```
 
 ## 허용오차와 반복 상한
@@ -432,9 +432,9 @@ bisect 1.1239897901305085e-12 41 4.440892098500626e-16 51
 
 ```python
 >>> sd.optimize.root_scalar(math.sin, bracket=(-1, 2), method='bisect', xtol=0)
-OptimizeResult(method='bisect', converged=False, n_iter=100, nfev=102, x=-7.888609052210118e-31)
+OptimizeResult(method='bisect', converged=False, n_iter=100, nfev=102, x=-7.88861e-31)
 >>> sd.optimize.root_scalar(math.sin, bracket=(-1, 2), method='bisect', xtol=0, max_iter=1100)
-OptimizeResult(method='bisect', converged=True, n_iter=1076, nfev=1078, x=0.0)
+OptimizeResult(method='bisect', converged=True, n_iter=1076, nfev=1078, x=0)
 ```
 
 **newton·halley·secant의 xtol은 걸음의 크기예요.** 마지막 걸음이 작다는 것이지 근과의 거리가 xtol 안이라는 보장이 아니에요. 근에서 f가 평평하면(중근) 걸음이 느리게 줄어서, 걸음이 xtol 아래로 내려갔을 때도 근과의 거리는 그보다 커요.
@@ -518,7 +518,7 @@ ValueError: root_scalar(): 'bracket' does not enclose a root: f(a) and f(b) have
 
 ```python
 >>> sd.optimize.root_scalar(lambda x: x - 2.0, bracket=(2.0, 3.0))
-OptimizeResult(method='brentq', converged=True, n_iter=0, nfev=2, x=2.0)
+OptimizeResult(method='brentq', converged=True, n_iter=0, nfev=2, x=2)
 ```
 
 ### 연속이 아닌 함수

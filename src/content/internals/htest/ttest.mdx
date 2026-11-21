@@ -1,0 +1,272 @@
+---
+title: 적률과 t 검정
+group: 모수 검정
+order: 1
+summary: t 검정 넷이 쓰는 줄의 적률(double-double 평균과 편차 제곱합), 아주 크거나 작은 데이터의 단위, 한 표본·대응·Student·Welch·Yuen의 식, 표준오차가 0인 경우, 신뢰구간을 코드로 따라가요. 평균이 10⁸인 자료에서도 통계량이 끝자리까지 맞는 이유를 정확한 유리수 계산과 견줘 보여요.
+seeAlso: [anova, lanes, overview]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`ttest_1samp`, `ttest_rel`, `ttest_ind`은 커널 함수 하나(`ttest`, `csrc/htest/parametric.cpp`)의 세 갈래이고, `ttest_ind_from_stats`는 요약값을 받는 `ttest_stats`예요. 계산은 두 단계예요.
+
+1. 줄마다 개수 n, 평균 m, 편차 제곱합 SS = Σ(x − m)²를 double-double로 만들어요(`moments.hpp`의 `lane_moments`).
+2. 그 셋에서 t, 자유도, p값, 신뢰구간에 쓸 추정값과 표준오차를 계산해요.
+
+t 검정의 어려움은 뺄셈이에요. 통계량은 평균의 차(m₁ − m₂, m − μ₀)를 표준오차로 나눈 값이라, 평균이 10⁸이고 차가 10⁻³이면 평균을 double로 반올림한 순간 차의 자릿수가 사라져요. 평균과 제곱합을 double-double(약 32자리)로 들고 가서 뺄셈을 그 안에서 하면 이 상쇄가 결과에 남지 않아요.
+
+```python
+>>> import stardust as sd
+>>> import scipy.stats as ss
+>>> from fractions import Fraction as Q
+>>> from decimal import Decimal, getcontext
+>>> getcontext().prec = 40
+>>> def exact_t(a, b):
+...     """Student's t from the exact rational values of the data."""
+...     A, B = [Q(v) for v in a], [Q(v) for v in b]
+...     m1, m2 = sum(A) / len(A), sum(B) / len(B)
+...     sq = sum((v - m1)**2 for v in A) + sum((v - m2)**2 for v in B)
+...     t2 = (m1 - m2)**2 / (sq / (len(A) + len(B) - 2) * (Q(1, len(A)) + Q(1, len(B))))
+...     t = (Decimal(t2.numerator) / Decimal(t2.denominator)).sqrt()
+...     return -t if m1 < m2 else t
+>>> rng = sd.random.default_rng(3)
+>>> a = sd.stats.Normal(mu=1e8, sigma=1e-3).sample(20, rng=rng).tolist()
+>>> b = sd.stats.Normal(mu=1e8 + 1e-3, sigma=1e-3).sample(25, rng=rng).tolist()
+>>> t = exact_t(a, b)
+>>> mine, theirs = sd.htest.ttest_ind(a, b).statistic, float(ss.ttest_ind(a, b).statistic)
+>>> [f'{float(abs(Decimal(v) - t) / abs(t)):.1e}' for v in (mine, theirs)]
+['6.4e-17', '2.6e-05']
+```
+
+같은 자료에서 sd의 t는 정확한 값과 반올림 한 번만큼 다르고, scipy의 t는 다섯째 자리에서 달라요.
+
+## 줄의 적률
+
+### double-double 합
+
+`Acc`는 Neumaier의 보상 합에 낮은 부분을 더한 꼴이에요. `hi`는 보통의 double 합이고, 더할 때마다 TwoSum으로 나온 반올림 오차와 더하는 값의 낮은 부분을 `lo`에 모아요. 끝에 `hi + lo`를 다시 TwoSum으로 정규화해 double-double 하나로 돌려줘요.
+
+```cpp
+// csrc/htest/moments.hpp
+struct Acc {
+    double hi = 0.0, lo = 0.0;
+    void add(double h, double l = 0.0) {
+        const DD s = dd::two_sum(hi, h);
+        hi = s.hi;
+        lo += s.lo + l;
+    }
+    void add(DD v) { add(v.hi, v.lo); }
+    void add(const Acc& o) { add(o.hi, o.lo); }
+    DD value() const { return std::isfinite(hi) ? dd::two_sum(hi, lo) : DD{hi, 0.0}; }
+};
+```
+
+`lo` 자체는 보통의 double 덧셈이라 엄밀한 double-double 덧셈보다 싸요. `lo`에 모이는 값은 저마다 `hi`의 ulp보다 작은 크기라, 그 반올림은 합에 비해 아주 작아요. `hi`가 유한하지 않으면(넘침, inf) 낮은 부분은 뜻이 없어서 버려요.
+
+평균은 이 합을 n으로 나눈 double-double이에요(`DD / double`). 둘째 훑기에서 편차 x − m을 만들 때 x − m.hi를 TwoSum으로 정확히 빼고 거기에 m.lo를 빼면, 편차 d가 double-double로 거의 정확해요. 그 제곱도 TwoProd(FMA 한 번)로 double-double을 만들어요.
+
+```cpp
+// csrc/htest/moments.hpp
+inline DD sq_dev(double xh, double xl, DD m) {
+    const DD d = dd::two_sum(xh, -m.hi);
+    const double dl = d.lo + (xl - m.lo);
+    DD sq = dd::two_prod(d.hi, d.hi);
+    sq.lo += dl * (2.0 * d.hi + dl);
+    return sq;
+}
+```
+
+(d.hi + dl)² = d.hi² + dl(2d.hi + dl)이고, d.hi²는 `two_prod`가 정확히 두 부분으로 줘요. 나머지는 d.hi²보다 2⁻⁵³배쯤 작은 항이라 double 하나로 충분해요. `xl`은 원소에 낮은 부분이 있는 출처(대응 표본의 차, Levene의 편차)를 위한 자리예요.
+
+이렇게 만든 평균과 SS를 쓰는 뺄셈(평균의 차, 집단 평균과 전체 평균의 차)은 double-double끼리 해요. 그러면 평균의 오프셋이 10⁸–10⁹여도 통계량의 상대오차가 반올림 몇 번에 머물러요. 덩어리로 나누는 법과 NEON 판은 [줄과 병렬](/internals/htest/lanes/#긴-줄-하나-줄-덩어리)에 있어요.
+
+### 상수 표본
+
+분산이 0인지의 판정은 sd.stats `skew`와 같은 규칙 하나예요. 2차 중심 적률 m₂ = SS/n이 (ε·평균)² 이하이면(ε = 2⁻⁵²) 상수 표본으로 봐요. 정확히 같은 값만 있는 표본은 SS가 0이고, 평균이 큰 상수 표본은 반올림 크기의 SS가 남아도 이 판정에 걸려요. 원소 하나의 표본도 상수예요.
+
+```cpp
+    // csrc/htest/moments.hpp
+    bool constant() const {
+        if (n < 1) return false;
+        const double m2 = ss.hi / static_cast<double>(n), e = kEps * mean.hi;
+        return m2 <= e * e;
+    }
+```
+
+## 단위: 아주 크거나 아주 작은 데이터
+
+t, F, Levene의 W, Bartlett의 T 같은 이 묶음의 통계량은 모든 표본에 같은 수를 곱해도 그대로예요. 그런데 값이 2⁵⁰⁰ 근처면 편차의 제곱이 double을 넘치고, 2⁻⁴⁰⁰ 아래면 제곱이 정규 수 밖(서브노멀)으로 나가 자릿수를 잃어요. 그래서 먼저 줄마다 |x|의 최댓값을 보고, 그 지수 e가 500 이상이거나 −400 이하면 그 줄의 모든 값에 2⁻ᵉ를 곱해 계산해요.
+
+```cpp
+// csrc/htest/moments.hpp
+inline int unit_exponent(double maxabs) {
+    if (!(maxabs > 0.0) || !std::isfinite(maxabs)) return 0;
+    const int e = std::ilogb(maxabs);
+    return (e >= 500 || e <= -400) ? std::max(e, -1000) : 0;
+}
+```
+
+2의 거듭제곱을 곱하는 것은 정확해요(가장 큰 값보다 2¹⁰⁷⁴배 작은 값이 0이 되는 것 말고는). 통계량은 단위가 없으니 그대로이고, 추정값과 표준오차(신뢰구간의 재료)만 끝에 2ᵉ를 곱해 원래 단위로 돌려요(`TLane::unit`). 범위 안의 보통 데이터는 단위가 0이라 곱셈도 없어요.
+
+```python
+>>> x = [1.0, 2.5, 3.1, 4.7, 2.2]
+>>> sd.htest.ttest_1samp([v * 1e300 for v in x], 2e300)
+Ttest1sampResult(statistic=1.15549, pvalue=0.312213, df=4)
+>>> sd.htest.ttest_1samp([v * 1e300 for v in x], 2e300).conf_int() / 1e300
+array([1.0180149810599137,  4.381985018940087], dtype=float64)
+>>> sd.htest.ttest_1samp(x, 2.0).conf_int()
+array([1.0180149810599137,  4.381985018940087], dtype=float64)
+```
+
+## 한 표본과 대응 표본
+
+한 표본 검정은 t = (m − μ₀)/√(s²/n), s² = SS/(n − 1), 자유도 n − 1이에요. m − μ₀도 double-double 평균에서 빼요. 단위를 쓰는 줄은 μ₀에도 같은 2⁻ᵉ를 곱해요.
+
+대응 표본 `ttest_rel`은 차 a − b의 한 표본 검정이에요. 다만 차를 double로 만들지 않아요. 원소마다 a − b를 TwoSum으로 정확히 빼 double-double로 들고, 그것을 적률의 출처로 써요.
+
+```cpp
+// csrc/htest/moments.hpp
+struct Diff {
+    Rows a, b;
+    bool get(std::int64_t r, std::int64_t j, double& h, double& l) const {
+        const double x = a.at(r, j), y = b.at(r, j);
+        if (x != x || y != y) return false;
+        const DD d = dd::two_sum(x, -y);
+        h = d.hi;
+        l = std::isfinite(d.hi) ? d.lo : 0.0;
+        return true;
+    }
+};
+```
+
+두 값의 크기가 비슷하면 a − b는 double로도 정확하지만(Sterbenz 보조정리), 크기가 다르면 반올림돼요. 3 × 10⁹ 근처와 10⁹ 근처의 차는 double로 만들면 끝자리가 잘리고, 그 반올림이 차들의 작은 퍼짐에 비해 크면 t가 틀려요.
+
+```python
+>>> a = [3e9 + v for v in (0.1, 0.4, 0.25, 0.3, 0.35)]
+>>> b = [1e9 + v for v in (0.05, 0.3, 0.2, 0.3, 0.2)]
+>>> [x - y for x, y in zip(a, b)]
+[2000000000.05, 2000000000.1000001, 2000000000.05, 2000000000.0000002, 2000000000.1499999]
+>>> d = [Q(x) - Q(y) for x, y in zip(a, b)]
+>>> m = sum(d) / 5
+>>> t2 = m**2 / (sum((v - m)**2 for v in d) / 4 / 5)
+>>> t = (Decimal(t2.numerator) / Decimal(t2.denominator)).sqrt()
+>>> mine = sd.htest.ttest_rel(a, b).statistic
+>>> theirs = float(ss.ttest_rel(a, b).statistic)
+>>> [f'{float(abs(Decimal(v) - t) / t):.1e}' for v in (mine, theirs)]
+['8.8e-17', '3.9e-12']
+```
+
+## 두 표본: Student와 Welch
+
+두 표본 검정은 두 줄의 요약(크기, 평균, SS, 상수인지)에서 계산해요. 식은 scipy의 `_equal_var_ttest_denom`과 `_unequal_var_ttest_denom` 그대로이고, 평균의 차만 double-double끼리 빼요.
+
+```cpp
+// csrc/htest/parametric.cpp
+TLane two_sample(const Summary& a, const Summary& b, bool equal_var, int alt) {
+    if (a.bad || b.bad || a.n < 1.0 || b.n < 1.0) return {};
+    const DD diff = a.mean - b.mean;
+    if (equal_var) {
+        const double df = a.n + b.n - 2.0;
+        if (!(df > 0.0)) return {kNaN, kNaN, df, diff.hi, diff.lo, kNaN};
+        const double svar = to_double(a.ss + b.ss) / df;
+        const double se2 = svar * ((a.n + b.n) / (a.n * b.n));
+        return t_finish(diff, diff, se2, df, a.constant && b.constant, alt);
+    }
+    if (a.n < 2.0 || b.n < 2.0) return {};
+    const double vn1 = to_double(a.ss) / (a.n - 1.0) / a.n, vn2 = to_double(b.ss) / (b.n - 1.0) / b.n;
+    const double se2 = vn1 + vn2;
+    const double df = se2 * se2 / (vn1 * vn1 / (a.n - 1.0) + vn2 * vn2 / (b.n - 1.0));
+    return t_finish(diff, diff, se2, df, a.constant && b.constant, alt);
+}
+```
+
+- **Student**: 합동 분산 s_p² = (SS₁ + SS₂)/(n₁ + n₂ − 2), 표준오차² = s_p²(1/n₁ + 1/n₂)이에요. 원소 하나의 표본은 SS = 0이라 분산 0으로 들어가요(scipy와 같아요).
+- **Welch**: 표준오차² = s₁²/n₁ + s₂²/n₂이고 자유도는 Welch–Satterthwaite의 ν = (v₁ + v₂)²/(v₁²/(n₁ − 1) + v₂²/(n₂ − 1)), vᵢ = sᵢ²/nᵢ예요. 한 표본의 크기가 2 미만이면 분산을 정할 수 없어서 자유도까지 NaN이에요.
+
+표준오차는 차보다 상쇄에 덜 민감해요. SS가 이미 double-double의 편차에서 나온 값이라, 이것을 double로 반올림한 뒤의 곱셈과 나눗셈은 반올림 몇 번이에요.
+
+### Yuen의 절삭 평균
+
+`trim > 0`이면 Yuen의 검정이에요. 표본마다 양 끝에서 g = ⌊n·trim⌋개를 잘라요(g는 scipy처럼 double 곱 n·trim의 정수 부분). 평균은 가운데 h = n − 2g개의 평균, 분산은 양 끝 g개를 x₍g+1₎·x₍n−g₎로 바꾼 윈저화 표본의 SS를 h − 1로 나눈 값이에요. 그 뒤는 같은 `two_sample`에 크기 h로 들어가요.
+
+정렬 대신 선택 두 번으로 필요한 순서통계량만 찾아요. `nth_element`로 g번째를 제자리에 두면 그 앞은 모두 작고 뒤는 모두 커요. 뒤쪽에서 다시 n − g − 1번째를 찾으면 가운데 구간이 정해져요. 가운데 구간 안의 순서는 정해지지 않지만 합에는 순서가 상관없어요. 다만 합은 순서대로 더하는 double-double이라, 같은 입력이면 `nth_element`가 남긴 같은 순서로 더해 같은 비트예요.
+
+```cpp
+    // csrc/htest/parametric.cpp
+    const auto g = static_cast<std::int64_t>(static_cast<double>(n) * trim);
+    if (g > 0) {
+        std::nth_element(v.begin(), v.begin() + g, v.end());
+        std::nth_element(v.begin() + g + 1, v.begin() + (n - g - 1), v.end());
+    }
+```
+
+## 표준오차가 0인 경우
+
+관련된 표본이 모두 상수이면 표준오차가 0이에요. scipy는 이때 t = ±inf, p = 0을 내지만, 0/0이나 c/0을 검정통계량으로 읽을 근거가 없어서 t와 p는 NaN이에요. 신뢰구간은 폭 0의 (추정값, 추정값)이고, 자유도는 그대로 적어요.
+
+```cpp
+// csrc/htest/parametric.cpp
+TLane t_finish(DD diff, DD est, double se2, double df, bool zero, int alt) {
+    TLane t;
+    t.df = df;
+    t.est_hi = est.hi, t.est_lo = est.lo;
+    if (zero) {
+        t.se = 0.0;
+        return t;
+    }
+    if (!(se2 >= 0.0) || !(df > 0.0)) return t;
+    t.se = std::sqrt(se2);
+    t.stat = to_double(diff) / t.se;
+    if (alt >= 0) t.p = t_pvalue(t.stat, df, alt);  // (alt < 0: the statistic alone, a resample's)
+    return t;
+}
+```
+
+```python
+>>> r = sd.htest.ttest_1samp([5.0, 5.0, 5.0], 4.0)
+>>> r, r.conf_int()
+(Ttest1sampResult(statistic=nan, pvalue=nan, df=2), array([5.0, 5.0], dtype=float64))
+```
+
+`alt < 0`은 p값 없이 통계량만 원하는 호출이에요. `ttest_ind(method=PermutationMethod(...))`가 재표본마다 t만 다시 계산할 때 이 길로 커널을 불러요. 같은 커널이라 순열 분포의 t와 관측한 t가 같은 식, 같은 반올림이에요.
+
+## 신뢰구간
+
+신뢰구간은 scipy의 정의(추정값 ∓ q·se, q는 t 분포의 위쪽 분위수)예요. 커널은 추정값을 double-double의 두 부분으로, 표준오차를 double로 돌려주고, Python이 `conf_int(alpha=)`를 부를 때 분위수를 구해 끝점을 만들어요.
+
+```python
+    # src/stardust/htest/_parametric.py
+    def ci(alpha):
+        p = alpha / 2.0 if alt == "two-sided" else alpha
+        q = _st.studentt_iccdf(df, p)
+        half = _sd.where(se == 0.0, 0.0, q * se)
+        low = (est_hi - half) + est_lo
+        high = (est_hi + half) + est_lo
+        if alt == "less":
+            low = _sd.full(low.shape, -_INF)
+        elif alt == "greater":
+            high = _sd.full(high.shape, _INF)
+        return out(low), out(high)
+```
+
+`(est_hi − half) + est_lo`의 순서가 중요해요. 오프셋이 큰 자료에서 추정값(한 표본의 평균)은 크고 반폭은 작아요. 높은 부분에서 반폭을 먼저 빼고 낮은 부분을 나중에 더하면, 끝점이 추정값의 double-double 정밀도를 한 번의 반올림까지 이어받아요. 분위수는 `iccdf`(위쪽 꼬리의 역함수)라 작은 alpha에서도 1 − alpha를 만들지 않아요.
+
+## 요약값에서: `ttest_ind_from_stats`
+
+평균, 표준편차, 크기를 받는 판은 같은 식을 줄마다 계산해요. 평균의 차는 `two_sum`으로 정확히 빼고, 결과에 `df`와 `conf_int()`가 `ttest_ind`과 같은 꼴로 있어요. 크기 nᵢ ≤ 0은 NaN, Welch는 nᵢ ≤ 1이면 NaN, 두 표준편차가 모두 0이면 표준오차 0의 규칙으로 NaN이에요.
+
+## 정확도
+
+t 검정 32문제의 Arb 참값에 대한 결과예요. 통계량은 최대 상대오차 2.1 × 10⁻¹⁶(오프셋 10⁸–3 × 10⁹ 포함), p값은 통계량에 대한 조건수 κ_p를 넣은 계약의 0.036배 안이에요. 신뢰구간의 끝은 추정값과 반폭의 크기에 대해 재요. 끝 자체가 상쇄로 작은 경우(평균 근처의 아래 끝)는 그 끝의 상대오차가 커 보여도 이 척도로는 계약 안이에요. scipy와 R 열의 큰 값은 오프셋과 퇴화한 입력(표준오차 0의 inf)에서 나와요.
+
+<AccuracySummary area="htest" names={['ttest']} caption="ttest_1samp, ttest_rel, ttest_ind, ttest_ind_from_stats의 32문제. 한 문제가 점 하나예요." />
+
+## scipy를 아는 분께
+
+- 평균과 제곱합을 double로 계산하는 scipy는 오프셋이 큰 자료에서 t의 자릿수를 잃어요. `ttest_rel`은 a − b를 double로 만들어서, 크기가 다른 두 값의 차가 먼저 반올림돼요.
+- 표준오차가 0이면 scipy는 t = ±inf, p = 0, 여기서는 NaN이에요.
+- Welch에서 한 표본의 크기가 2 미만이면 scipy의 자유도는 1이고 여기서는 NaN이에요.
+- 자유도 `df`는 언제나 float예요. `ttest_ind_from_stats`의 결과에도 `df`와 `conf_int()`가 있어요.
+- p값의 정의(양쪽은 2·ccdf(|t|)), 신뢰구간의 정의, Yuen의 g의 반올림은 scipy와 같아요.

@@ -1,0 +1,249 @@
+---
+title: 재표본의 스트림과 p값
+group: 재표본
+order: 1
+summary: permutation_test, bootstrap, monte_carlo_test와 다른 검정의 method= 인자가 재표본을 C++에서 만드는 방법을 따라가요. 재표본 하나가 (키, 위치, 번호)만의 함수라서 스레드 수와 batch가 비트를 바꾸지 않고, 정확한 나열은 scipy와 같은 순서예요. BCa 구간의 보정과 p값의 허용오차도 설명해요.
+seeAlso: [mgc-gof, rank-tests, contingency, overview, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+재표본은 Python과 C++이 일을 나눠요. `src/stardust/htest/_resampling.py`는 설정 객체(`PermutationMethod`, `BootstrapMethod`, `MonteCarloMethod`), 세 함수, 그리고 다른 검정이 부르는 `method_pvalue`·`method_interval`·`table_pvalues`를 가져요. 재표본을 만드는 일은 C++(`csrc/htest/resampling.cpp`)이 해요. 첨자를 만들어 바로 데이터를 모으고, 재표본 하나가 스레드풀의 일 하나예요. 사용자의 `statistic`은 Python에서 덩어리마다 한 번 불러요.
+
+<Fig column caption="permutation_test 한 번의 흐름. 정확한 나열이면 난수를 쓰지 않고, 무작위면 rng의 스트림에서 구간 하나를 예약해요.">
+  <Steps
+    steps={[
+      { label: '_count', note: '서로 다른 순열의 수(scipy의 n_max). n_resamples 이하이면 정확한 나열', where: '_resampling.py' },
+      { label: 'rng._reserve(R·D)', note: '무작위일 때: 스트림의 연속한 R·D 원소를 한 번에 예약(D는 재표본 하나의 뽑기 수)', where: 'sd.random' },
+      { label: 'perm_resamples', note: '재표본 start..start + count를 만들어 (count, *batch, n)으로', where: 'resampling.cpp' },
+      { label: 'statistic', note: '사용자 함수(또는 검정의 커널)를 덩어리마다', where: 'Python', depth: 1 },
+      { label: 'resample_pvalue', note: 'scipy의 규칙: 허용오차 100 eps, 무작위면 (b + 1)/(R + 1)', where: 'resampling.cpp' },
+    ]}
+  />
+</Fig>
+
+## 재표본의 스트림
+
+### 재표본 하나는 (키, 위치, 번호)의 함수
+
+sd.random의 생성기는 Philox4x64-10이에요. Philox는 카운터 기반 생성기라서, 키와 원소의 위치만 주면 그 원소를 바로 계산할 수 있어요. 앞의 원소를 차례로 만들 필요가 없어요. 재표본은 이 성질을 그대로 써요.
+
+- 호출은 `rng._reserve(R·D)`로 스트림의 연속한 $R \cdot D$ 원소를 한 번에 예약해요. $R$은 재표본 수, $D$는 재표본 하나가 쓰는 뽑기의 수예요(합친 표본을 섞는 순열은 $N - 1$, 붓스트랩은 $N$).
+- 재표본 $j$의 뽑기 $t$는 예약 구간의 시작 위치 + $jD + t$번째 원소예요.
+
+그래서 재표본 $j$는 (키, 시작 위치, $j$)만의 함수예요. 어느 스레드가 어떤 순서로 만들든, `batch`로 몇 개씩 나눠 통계량을 부르든 같은 비트예요. 생성기의 위치는 예약한 만큼만 앞으로 가요.
+
+```python
+>>> x = sd.asarray([1.1, 2.3, 0.4, 3.3, 2.2])
+>>> y = sd.asarray([3.0, 4.1, 2.9, 5.5])
+>>> def md(a, b, axis):
+...     return sd.mean(a, axis=axis) - sd.mean(b, axis=axis)
+>>> g = sd.random.default_rng(5)
+>>> g.state['position']
+0
+>>> r = sd.htest.permutation_test((x, y), md, vectorized=True, n_resamples=100, rng=g)
+>>> g.state['position']
+800
+```
+
+합친 표본이 $N = 9$개라 순열 하나가 8번 뽑고, 100개의 재표본이 800 원소를 예약했어요.
+
+```python
+>>> t0 = sd.get_num_threads()
+>>> nulls = []
+>>> for t in (1, 3, 10):
+...     sd.set_num_threads(t)
+...     r = sd.htest.permutation_test((x, y), md, vectorized=True, n_resamples=2000,
+...                                   rng=sd.random.default_rng(7))
+...     nulls.append(r.null_distribution)
+>>> sd.set_num_threads(t0)
+>>> bool(sd.all(nulls[0] == nulls[1])), bool(sd.all(nulls[0] == nulls[2]))
+(True, True)
+```
+
+### 균등한 첨자와 섞기
+
+$r$ 미만의 균등한 정수는 Lemire의 방법(`random::bounded`)이에요. 64비트 원소 $w$와 $r$의 128비트 곱의 위 64비트가 첨자예요. 아래 64비트가 $2^{64} \bmod r$보다 작으면 그 첨자는 다른 첨자보다 한 번 더 나올 수 있는 쪽이라 다시 뽑아요. 다시 뽑는 단어는 같은 원소의 추가 단어(카운터의 둘째 단어를 바꾼 Philox 블록)에서 와서, 재표본 하나가 쓰는 원소의 수가 기각과 상관없이 $D$로 고정돼요. 순열은 위에서부터의 Fisher–Yates 섞기예요.
+
+```cpp
+// csrc/htest/resampling.cpp
+// A uniform index below r (r >= 1) from element e of the stream.
+inline u64 below(random::Stream& st, u64 e, u64 r) {
+    return random::bounded(st.first(e), r, [&](u64 q) { return st.extra(e, q); });
+}
+
+// a[0..m) shuffled in place (Fisher-Yates from the top: draw t of element e0 + t)
+template <class T>
+void shuffle(random::Stream& st, u64 e0, T* a, i64 m) {
+    for (i64 t = 0; t + 1 < m; ++t) {
+        const i64 i = m - 1 - t;
+        const auto r = static_cast<i64>(below(st, e0 + static_cast<u64>(t), static_cast<u64>(i + 1)));
+        std::swap(a[i], a[r]);
+    }
+}
+```
+
+배치의 레인은 같은 순열을 함께 써요(scipy와 같아요). 붓스트랩은 표본마다 $n_i$개의 첨자를 뽑고, `paired=True`면 한 첨자 집합을 모든 표본에 써요.
+
+## 정확한 나열
+
+서로 다른 순열의 수가 `n_resamples` 이하이면 모든 순열을 나열해요(`n_resamples=inf`도 같아요). 나열의 순서는 scipy와 같아서, 정확한 귀무분포의 원소 순서도 scipy의 것과 같아요. 순열 $j$는 번호에서 바로 풀어요(앞의 순열을 거치지 않아요). 그래서 나열도 스레드풀에 나눠지고 무작위와 같은 틀에서 돌아요.
+
+- **`'independent'`**(합친 표본을 다시 나눔): 표본마다 남은 관측에서 고른 사전식 조합의 곱이에요. 조합의 번호는 조합 수 체계로 풀어요. 남은 $M$개 가운데 $n_i$개를 고를 때, 맨 앞 원소를 고르는 조합은 $\binom{M-1}{n_i-1}$개이므로 번호가 그보다 작으면 고르고, 아니면 그만큼 빼고 다음 원소로 가요.
+- **`'pairings'`**, **`'samples'`**: 사전식 순열(Lehmer 부호)의 곱이고, 마지막 것이 가장 빨리 돌아요. 순열의 번호 $r$은 계승 진법의 자리 $r = d_0(m-1)! + d_1(m-2)! + \cdots$로 풀고, 자리 $d_i$가 남은 원소 가운데 몇 번째를 고를지 정해요.
+
+```cpp
+// csrc/htest/resampling.cpp
+// the permutation of rank r of 0..m-1 in lexicographic order (itertools.permutations' order)
+void lehmer(u64 r, i64 m, i64* out, std::vector<i64>& avail) {
+    avail.resize(static_cast<std::size_t>(m));
+    std::iota(avail.begin(), avail.end(), i64{0});
+    for (i64 i = 0; i < m; ++i) {
+        const u64 f = factorial(static_cast<u64>(m - 1 - i));
+        const auto d = static_cast<std::size_t>(r / f);
+        r %= f;
+        out[i] = avail[d];
+        avail.erase(avail.begin() + static_cast<std::ptrdiff_t>(d));
+    }
+}
+```
+
+나열이 $10^7$개를 넘으면 `ValueError`예요(유한한 `n_resamples`를 쓰라는 메시지). 한 표본의 `'samples'`는 scipy처럼 $[x, -x]$의 두 표본으로 바꿔 부호 뒤집기가 돼요.
+
+```python
+>>> r = sd.htest.permutation_test((x, y), md, vectorized=True)
+>>> r.null_distribution.shape, r.pvalue, r.pvalue * 126
+((126,), 0.047619047619047616, 6.0)
+```
+
+$\binom{9}{5} = 126$개의 나열에서 관측만큼 극단인 것이 6개예요.
+
+## p값
+
+p값은 scipy의 정의 그대로예요. 관측 통계량 $o$에 대해 허용오차 $\gamma = |100\,\varepsilon\,o|$를 두고 $\text{null} \le o + \gamma$와 $\text{null} \ge o - \gamma$를 세요. 무작위 재표본이면 관측 자신을 넣어 $(b + 1)/(R + 1)$, 나열이면 $b/R$이고, 양쪽은 두 한쪽 p값 가운데 작은 쪽의 두 배를 1로 잘라요. 허용오차는 수학적으로 같은 통계량이 계산 순서 때문에 몇 ULP 갈리는 경우(예를 들어 평균의 차가 다른 순서로 더해진 경우)를 같은 값으로 세려는 거예요.
+
+```cpp
+        // csrc/htest/resampling.cpp
+        const double g = std::fabs(kEps100 * o);
+        i64 le = 0, ge = 0;
+        for (i64 r = 0; r < R; ++r) {
+            const double v = nd.at(r, l * col);
+            le += v <= o + g;
+            ge += v >= o - g;
+        }
+        const double den = static_cast<double>(R + adjust);
+        const double pl = static_cast<double>(le + adjust) / den, pg = static_cast<double>(ge + adjust) / den;
+        double p = alt == 1 ? pl : alt == 2 ? pg : 2.0 * std::min(pl, pg);
+        out.p[0][l] = std::min(1.0, std::max(0.0, p));
+```
+
+나열의 p값은 정수 셈의 몫이므로, 정확한 유리수 참값과 한 번의 반올림 안이에요.
+
+## 붓스트랩 구간
+
+[`bootstrap`](/api/htest/bootstrap/)은 재표본 분포를 `(*batch, R)`로 들고 있어요. 구간은 분포·편향 보정 $z_0$·가속 $\hat a$에서 바로 나오므로, `conf_int(alpha=)`를 다른 수준으로 다시 불러도 다시 뽑지 않아요.
+
+- **`'percentile'`**: 재표본 분포의 $\alpha/2$, $1 - \alpha/2$ 분위수예요. numpy의 `'linear'` 분위수와 같은 식(정렬한 값 사이의 lerp, $t \ge 1/2$이면 위쪽 끝에서 빼는 꼴)으로 계산해요. 지금은 numpy와 비트까지 같아요(약속은 아니에요).
+- **`'basic'`**: 관측 통계량 $\hat\theta$에 대해 백분위 구간을 뒤집은 $(2\hat\theta - q_{hi},\ 2\hat\theta - q_{lo})$예요.
+- **`'BCa'`**: 분위수의 수준을 편향과 비대칭에 맞춰 옮겨요.
+
+### BCa
+
+Efron의 BCa 구간은 두 보정량을 써요. 편향 보정 $z_0 = \Phi^{-1}(\hat\theta \text{의 백분위})$는 재표본 분포에서 관측 통계량보다 작은 비율이에요. 같은 값은 반만 세요(scipy의 `_percentile_of_score` 꼴: $(\#(v < \hat\theta) + \#(v \le \hat\theta))/2R$). 가속 $\hat a$는 잭나이프에서 와요. 표본 $j$의 관측을 하나씩 뺀 통계량 $\hat\theta_{(i)}$의 평균에서의 편차를 $U_i = (n_j - 1)(\bar\theta - \hat\theta_{(i)})$라 하면
+
+$$
+\hat a = \frac{1}{6}\,\frac{\sum_j\sum_i U_{ji}^3/n_j^3}{\big(\sum_j\sum_i U_{ji}^2/n_j^2\big)^{3/2}}
+$$
+
+이에요(scipy의 `_bca_interval`, 여러 표본이면 표본마다 잭나이프하고 합해요. 짝지은 표본은 같은 첨자를 모든 표본에서 함께 빼요). 보정한 수준은
+
+$$
+\alpha_1 = \Phi\Big(z_0 + \frac{z_0 + z_{\alpha/2}}{1 - \hat a(z_0 + z_{\alpha/2})}\Big),\qquad \alpha_2 = \Phi\Big(z_0 + \frac{z_0 + z_{1-\alpha/2}}{1 - \hat a(z_0 + z_{1-\alpha/2})}\Big)
+$$
+
+이고, 구간은 재표본 분포의 $\alpha_1$, $\alpha_2$ 분위수예요.
+
+```python
+# src/stardust/htest/_resampling.py
+def _acceleration(rows, batch, stat, paired, per):
+    """BCa's acceleration of each lane (scipy's _bca_interval: the jackknife of every sample)."""
+    lanes = rows[0].shape[0]
+    groups = [list(range(len(rows)))] if paired else [[j] for j in range(len(rows))]
+    nums, dens = None, None
+    for g in groups:
+        n = rows[g[0]].shape[1]
+        B = per or n
+        vals = []
+        for start in range(0, n, B):
+            count = min(B, n - start)
+            arrays = []
+            for i, r in enumerate(rows):
+                if i in g:
+                    a = _k.jackknife(r, start, count)
+                    arrays.append(_sd.reshape(a, tuple(batch) + (count, n - 1)))
+                else:
+                    a = _sd.reshape(r, tuple(batch) + (1, r.shape[1]))
+                    arrays.append(_sd.broadcast_to(a, tuple(batch) + (count, r.shape[1])))
+            v = stat(arrays, tuple(batch) + (count,))
+            vals.append(_sd.reshape(v, (lanes, count)))
+        th = vals[0] if len(vals) == 1 else _sd.concat(vals, axis=1)
+        nf = float(n)
+        u = (nf - 1.0) * (_sd.mean(th, axis=-1, keepdims=True) - th)
+        num = _sd.sum(u**3, axis=-1) / nf**3
+        den = _sd.sum(u**2, axis=-1) / nf**2
+        nums = num if nums is None else nums + num
+        dens = den if dens is None else dens + den
+    return nums / dens**1.5 / 6.0
+```
+
+잭나이프 표본은 C++의 `jackknife`가 `(lanes, count, n - 1)`로 만들어요. 빼지 않는 표본은 복사하지 않고 브로드캐스트로 붙여요.
+
+```python
+>>> xb = sd.asarray([1.1, 2.3, 0.4, 3.3, 2.2, 1.9, 2.8, 0.7])
+>>> b = sd.htest.bootstrap((xb,), lambda a, axis: sd.mean(a, axis=axis), vectorized=True,
+...                        n_resamples=3000, rng=sd.random.default_rng(2))
+>>> b.conf_int()
+array([1.147708494888916,             2.475], dtype=float64)
+>>> b.conf_int(alpha=0.1)
+array([             1.25, 2.3874999999999997], dtype=float64)
+```
+
+## 몬테카를로 검정
+
+[`monte_carlo_test`](/api/htest/monte_carlo_test/)는 표본 $i$를 `rng.spawn(k)`의 자식 $i$에서 `rvs_i((B, n_i), rng=child_i)`로 뽑아요. 표본마다 자기 스트림이 있으므로, `batch`로 덩어리를 어떻게 나누든 표본 $i$의 값은 같은 순서로 나와요. 귀무분포는 배치의 모든 레인이 함께 써요(scipy와 같아요). p값은 위와 같은 `resample_pvalue`이고 언제나 $(b + 1)/(R + 1)$ 꼴이에요.
+
+## 다른 검정의 method=
+
+순위 검정, 상관, `ttest_ind`, `anderson_ksamp`, 분할표 등은 `method=PermutationMethod(...)`나 `MonteCarloMethod(...)`를 받아요(API는 [재표본 설정](/api/htest/methods/)). 그때의 통계량은 그 검정 자신을 `(재표본, n)` 행렬에 `axis=-1`로 부른 값이에요. 예를 들어 `mannwhitneyu`의 재표본 통계량은 `mannwhitneyu(a, b, axis=-1, method='asymptotic').statistic`이에요. `ttest_ind`, `pearsonr`, `spearmanrho`는 p값을 만들지 않고 통계량만 계산하는 커널을 바로 불러요. 어느 쪽이든 같은 재표본에서 그 검정을 부른 통계량과 같은 비트예요.
+
+- 두 표본 검정은 합친 표본의 순열(`'independent'`), `wilcoxon`은 차의 부호 뒤집기(`'samples'`), 상관은 $x$를 두고 $y$의 순서만 섞어요(scipy처럼 나열이 $n!$개).
+- 동점이 있어도 순위 검정의 나열은 관측한 중간 순위의 순열이라, 그 검정의 `method='exact'`(조건부 정확 분포, [순위와 정확한 분포](/internals/htest/rank-tests/))와 같은 분포예요.
+
+```python
+>>> u = [1, 2, 2, 3, 3]
+>>> v = [2, 3, 4, 4]
+>>> a = sd.htest.mannwhitneyu(u, v, method='exact')
+>>> b = sd.htest.mannwhitneyu(u, v, method=sd.htest.PermutationMethod())
+>>> a.pvalue, b.pvalue
+(0.2222222222222222, 0.2222222222222222)
+```
+
+### 분할표의 귀무분포
+
+`chi2_contingency`와 `fisher_exact`의 `method=`는 표를 C++에서 뽑아요(`table_null`). 몬테카를로는 주변합을 고정한 독립 표를 행마다, 칸마다 초기하 분포로 뽑아요. 행 $i$의 남은 필요량을 남은 열들에서 나눌 때, 칸 $(i, j)$는 "남은 관측 가운데 열 $j$의 것이 몇 개 뽑히나"라서 초기하 분포이고, 균등 난수 하나를 `icdf`로 뒤집어요($u > 1/2$이면 `iccdf`로 위쪽 꼬리에서). 마지막 행과 열은 남은 것으로 정해지므로 표 하나가 $(r - 1)(c - 1)$개의 원소를 써요. 순열 검정이면 관측을 하나씩 펼친 $N$개의 행 표식에 대해 열 표식의 모든 순열을 나열해요($N!$개).
+
+```python
+>>> t = [[3, 1, 0], [1, 4, 2]]
+>>> sd.htest.fisher_exact(t, method=sd.htest.MonteCarloMethod(n_resamples=999, rng=sd.random.default_rng(3)))
+FisherExactResult(statistic=0.0606061, pvalue=0.296)
+>>> sd.htest.fisher_exact(t)
+FisherExactResult(statistic=0.0606061, pvalue=0.272727)
+```
+
+## scipy와 다른 곳
+
+- 무작위 재표본은 sd.random의 Philox 스트림에서 오므로 scipy(numpy의 `Generator`)와 값이 달라요. 같은 것은 정의식이에요(p값의 규칙, 허용오차, 나열의 순서).
+- 정확한 나열은 scipy와 같은 순서라, 나열의 귀무분포와 p값이 scipy와 같아요.
+- 순위 검정의 `method='exact'`는 scipy에서 동점을 보정하지 않지만, 여기서는 조건부 정확 분포라 순열 나열과 같은 값이에요.

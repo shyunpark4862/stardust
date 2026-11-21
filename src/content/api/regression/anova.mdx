@@ -285,7 +285,7 @@ array([0.008334942045675276,  0.03222877909354095,  0.15412224098758162,
 
 ### 일원 분산분석
 
-항이 비료 하나뿐인 표는 세 집단의 평균이 같은지 보는 **일원 분산분석**이에요. 집단을 따로 받는 `sd.htest.f_oneway`와 같은 F와 p값이 나와요.
+항이 비료 하나뿐인 표는 세 집단의 평균이 같은지 보는 **일원 분산분석**이에요. 집단을 따로 받는 [`sd.htest.f_oneway`](/api/htest/f_oneway/)와 같은 F와 p값이 나와요.
 
 ```python
 >>> one = sd.regression.anova(sd.regression.ols(yld, d[['fB', 'fC']]), terms=[['fB', 'fC']])

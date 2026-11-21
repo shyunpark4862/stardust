@@ -79,8 +79,7 @@ export const ridgePath3 = [[-3, -0.067443], [-2.97, -0.067431], [-2.94, -0.06741
 >>> y = 1.0 + 2.0 * X[:, 0] + 0.5 * X[:, 1] + sd.stats.Normal().sample(50, rng=rng)
 >>> r = sd.regression.lasso(y, X, alpha=0.1)
 >>> r
-LassoResult(alpha=0.1, nobs=50, df_model=2, params=[0.8288067425441151 1.8928446389125224 0.6763934547169449
-                0.0])
+LassoResult(alpha=0.1, nobs=50, df_model=2, params=[0.828807, 1.89284, 0.676393, 0])
 >>> r.params[3]
 0.0
 ```

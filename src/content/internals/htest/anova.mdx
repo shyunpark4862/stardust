@@ -1,0 +1,275 @@
+---
+title: 분산분석과 등분산 검정
+group: 모수 검정
+order: 2
+summary: 집단 여럿을 받는 검정 여섯(일원 분산분석, Welch의 분산분석, Alexander–Govern, Bartlett, Levene, Fligner–Killeen)의 식과 계산을 따라가요. 집단 평균의 차를 double-double로 빼는 법, Bartlett의 통계량을 음이 아닌 항의 합으로 고쳐 쓰는 법, 중앙값을 정확한 반으로 들어 동점을 지키는 법을 다뤄요.
+seeAlso: [ttest, lanes, overview, chisquare]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+여섯 검정은 커널 함수 `kgroups` 하나의 갈래예요(`csrc/htest/parametric.cpp`). `f_oneway`, Welch의 분산분석, `alexandergovern`, `bartlett`은 집단마다의 적률(개수, double-double 평균, 편차 제곱합)만 있으면 돼요. 그래서 먼저 모든 집단의 적률을 `lane_moments`로 한꺼번에 만들고([적률과 t 검정](/internals/htest/ttest/#줄의-적률)), 줄마다 집단 k개의 적률에서 통계량을 계산해요. `levene`과 `fligner`는 집단의 중심(중앙값 등)과 그로부터의 편차가 필요해서 줄마다 표본을 모아 따로 계산해요.
+
+```cpp
+    // csrc/htest/parametric.cpp
+    each_lane(lanes, 32 * k, [&](std::int64_t r) {
+        const Moments* g = m.data() + r * k;
+        KLane o = kind == kAnova             ? anova(g, k)
+                  : kind == kWelch           ? welch(g, k)
+                  : kind == kAlexanderGovern ? alexander_govern(g, k)
+                                             : bartlett(g, k);
+        o.put(out.p, r);
+    });
+```
+
+모든 p값은 sd.stats의 분포(F, 카이제곱)를 C++에서 불러요. 퇴화한 입력(빈 집단, 크기가 모자란 집단, 상수 집단)은 경고 없이 NaN이고, 자유도는 정할 수 있으면 적어요.
+
+## 일원 분산분석
+
+F = (SSB/(k − 1)) / (SSW/(N − k))이고 SSB = Σnᵢ(mᵢ − m)², SSW = ΣSSᵢ예요. 전체 평균 m은 집단 평균에 크기를 곱한 double-double의 합을 N으로 나눠 만들고, 집단 평균과의 차 mᵢ − m을 double-double끼리 빼요. 평균이 10⁸인 집단들의 평균이 0.3씩 다르면 이 차의 자릿수가 F의 자릿수예요.
+
+```cpp
+    // csrc/htest/parametric.cpp
+    if (!(o.dfd > 0.0) || all_constant) return o;
+    const DD grand = tot.value() / N;
+    double ssb = 0.0;
+    for (std::int64_t i = 0; i < k; ++i) {
+        const double d = to_double(g[i].mean - grand);
+        ssb += static_cast<double>(g[i].n) * d * d;
+    }
+    o.stat = (ssb / o.dfn) / (to_double(ssw.value()) / o.dfd);
+    o.p = f_sf(o.stat, o.dfn, o.dfd);
+```
+
+모든 집단이 상수이면 SSW = 0이에요. scipy는 집단 평균이 다르면 F = inf, p = 0을 내지만, 표준오차가 0인 t 검정(두 집단의 F는 t²예요)처럼 NaN이에요.
+
+```python
+>>> import stardust as sd
+>>> sd.htest.f_oneway([1., 1, 1], [2., 2, 2, 2])
+FOnewayResult(statistic=nan, pvalue=nan, df_num=1, df_denom=5)
+```
+
+## Welch의 분산분석
+
+분산이 같다고 가정하지 않는 판(`equal_var=False`, R의 `oneway.test(var.equal = FALSE)`)이에요. 무게 wᵢ = nᵢ/sᵢ², W = Σwᵢ, 가중 평균 m_w = Σwᵢmᵢ/W로
+
+F = [Σwᵢ(mᵢ − m_w)²/(k − 1)] / [1 + 2(k − 2)T/(k² − 1)], 분모 자유도 (k² − 1)/(3T), T = Σ(1 − wᵢ/W)²/(nᵢ − 1)
+
+이에요(Welch 1951). 두 곳을 손봐요.
+
+- **가중 평균**: 분자 Σwᵢmᵢ와 분모 W를 둘 다 double-double 합으로 두고 나눠요. W를 double로 반올림해 나누면 m_w가 W의 상대 반올림 × 평균의 크기만큼 움직이고, 평균이 10⁸이면 그 움직임이 mᵢ − m_w의 끝자리를 덮어요.
+- **1 − wᵢ/W**: 한 무게가 다른 무게보다 훨씬 크면 wᵢ/W가 1에 가까워 1 − wᵢ/W가 상쇄돼요. 그래서 다른 무게들의 합 / W로 계산해요.
+
+```cpp
+    // csrc/htest/parametric.cpp
+    const double W = to_double(sw.value());
+    const DD mw = swm.value() / sw.value();
+    double num = 0.0, tmp = 0.0;
+    for (std::int64_t i = 0; i < k; ++i) {
+        const double d = to_double(g[i].mean - mw);
+        num += w[static_cast<std::size_t>(i)] * d * d;
+        double others = 0.0;
+        for (std::int64_t j = 0; j < k; ++j)
+            if (j != i) others += w[static_cast<std::size_t>(j)];
+        const double f = others / W;
+        tmp += f * f / static_cast<double>(g[i].n - 1);
+    }
+```
+
+크기가 2 미만이거나 상수인 집단이 있으면 그 무게(nᵢ/sᵢ²)를 정할 수 없어서 NaN이에요.
+
+## Alexander–Govern
+
+Alexander와 Govern(1994)의 검정도 분산이 다른 집단의 평균을 견줘요. 집단마다 표준오차 seᵢ = sᵢ/√nᵢ, 분산 가중 평균 m_w = Σ(mᵢ/seᵢ²)/Σ(1/seᵢ²)에서 tᵢ = (mᵢ − m_w)/seᵢ를 만들고, 자유도 νᵢ = nᵢ − 1의 t를 Hill(1970)의 정규화 변환으로 표준 정규에 가까운 zᵢ로 바꿔요.
+
+a = ν − 1/2, b = 48a², c = √(a·log(1 + t²/ν))
+
+z = c + (c³ + 3c)/b − (4c⁷ + 33c⁵ + 240c³ + 855c)/(10b² + 8bc⁴ + 1000b)
+
+통계량은 A = Σzᵢ²이고 귀무가설에서 자유도 k − 1의 카이제곱을 따라요. c는 t 분포의 꼬리를 정규의 꼬리로 옮기는 첫 근사이고, 뒤의 두 항이 1/ν의 차수로 고쳐 줘요.
+
+```cpp
+    // csrc/htest/parametric.cpp
+    for (std::int64_t i = 0; i < k; ++i) {
+        const double t = to_double(g[i].mean - mw) / std::sqrt(se2[static_cast<std::size_t>(i)]);
+        const auto v = static_cast<double>(g[i].n - 1);
+        const double a = v - 0.5, b = 48.0 * a * a;
+        const double c = std::sqrt(a * std::log1p(t * t / v));
+        const double c2 = c * c, c3 = c2 * c, c4 = c2 * c2, c5 = c4 * c, c7 = c4 * c3;
+        const double z = c + (c3 + 3.0 * c) / b -
+                         (4.0 * c7 + 33.0 * c5 + 240.0 * c3 + 855.0 * c) / (b * b * 10.0 + 8.0 * b * c4 + 1000.0 * b);
+        A += z * z;
+    }
+```
+
+변환은 scipy와 같은 순서로 계산하고, log(1 + t²/ν)만 `log1p`로 해요(작은 t에서 1 + t²/ν가 반올림되지 않게). 다른 곳은 가중 평균이에요. scipy는 정규화한 무게 wᵢ = (1/seᵢ²)/Σ(1/seⱼ²)를 먼저 만들고 Σwᵢmᵢ를 해요. 그러면 무게마다의 반올림이 평균의 크기만큼 커져요. 여기서는 Welch처럼 분자와 분모를 double-double 합으로 두고 한 번 나눠요. 통계량은 모든 값을 같은 수만큼 옮겨도 그대로여야 하는데, 그 성질이 계산에서도 지켜지는지로 차이가 보여요.
+
+```python
+>>> import scipy.stats as ss
+>>> rng = sd.random.default_rng(8)
+>>> gs = [sd.stats.Normal(mu=1e8 + m, sigma=s).sample(n, rng=rng).tolist()
+...       for m, s, n in ((0.0, 1, 40), (0.5, 2, 30), (0.0, 0.5, 35))]
+>>> g0 = [[v - 1e8 for v in g] for g in gs]
+>>> sd.htest.alexandergovern(*gs).statistic == sd.htest.alexandergovern(*g0).statistic
+True
+>>> a, b = float(ss.alexandergovern(*gs).statistic), float(ss.alexandergovern(*g0).statistic)
+>>> f'{abs(a - b) / b:.1e}'
+'1.1e-08'
+```
+
+`v - 1e8`은 Sterbenz 보조정리로 정확하니 `g0`은 `gs`를 정확히 옮긴 자료예요.
+
+## Bartlett
+
+Bartlett(1937)의 통계량은
+
+T = [(N − k)·log s_p² − Σ(nᵢ − 1)·log sᵢ²] / C, C = 1 + (Σ1/(nᵢ − 1) − 1/(N − k)) / (3(k − 1))
+
+이고 s_p² = Σ(nᵢ − 1)sᵢ²/(N − k)는 합동 분산이에요. 분산이 모두 비슷하면 분자의 두 로그 합이 거의 같아 서로 지워져요. 예를 들어 분산이 10⁻⁹씩 다른 집단 셋이면 두 합은 크기가 수십인데 차는 10⁻¹⁷쯤이에요. 그대로 빼면 답이 반올림에 묻혀요.
+
+그래서 식을 고쳐 써요. dᵢ = sᵢ²/s_p² − 1이라 하면 Σ(nᵢ − 1)dᵢ = Σ(nᵢ − 1)sᵢ²/s_p² − (N − k) = 0이에요(합동 분산의 정의). 분자는 −Σ(nᵢ − 1)log(1 + dᵢ)이니 0인 합 Σ(nᵢ − 1)dᵢ를 더해
+
+분자 = Σ(nᵢ − 1)·(dᵢ − log1p(dᵢ))
+
+가 돼요. dᵢ − log1p(dᵢ) ≥ 0이라 모든 항이 음이 아니고, 더하는 동안 지워지는 것이 없어요. sᵢ², s_p², dᵢ는 double-double이고, d − log1p(d)는 sd.special의 double-double 함수 `log1pmx_neg`로 계산해서 dᵢ가 작을 때도 상대오차를 지켜요.
+
+```cpp
+    // csrc/htest/parametric.cpp
+    const double dfw = N - static_cast<double>(k);
+    const DD sp2 = ss.value() / dfw;
+    Acc num;
+    for (std::int64_t i = 0; i < k; ++i) {
+        const auto ni1 = static_cast<double>(g[i].n - 1);
+        const DD d = (g[i].ss / ni1 - sp2) / sp2;
+        num.add(dd::log1pmx_neg(d) * ni1);
+    }
+    const double C = 1.0 + (inv - 1.0 / dfw) / (3.0 * static_cast<double>(k - 1));
+    o.stat = to_double(num.value()) / C;
+```
+
+아래에서는 분산이 10⁻⁹씩 다른 세 집단의 T를 `decimal`의 60자리 계산과 견줘요. 60자리면 두 로그 합의 상쇄(약 18자리)를 빼고도 40자리가 남아요.
+
+```python
+>>> from fractions import Fraction as Q
+>>> from decimal import Decimal, getcontext
+>>> getcontext().prec = 60
+>>> def dec(q):
+...     return Decimal(q.numerator) / Decimal(q.denominator)
+>>> def bartlett_60(groups):
+...     G = [[Q(v) for v in g] for g in groups]
+...     k, ns = len(G), [len(g) for g in G]
+...     N = sum(ns)
+...     vs = [sum((v - sum(g) / len(g))**2 for v in g) / (len(g) - 1) for g in G]
+...     sp = sum((n - 1) * v for n, v in zip(ns, vs)) / (N - k)
+...     num = (N - k) * dec(sp).ln() - sum((n - 1) * dec(v).ln() for n, v in zip(ns, vs))
+...     return num / dec(1 + (sum(Q(1, n - 1) for n in ns) - Q(1, N - k)) / (3 * (k - 1)))
+>>> base = [0.3, -1.2, 0.8, 2.1, -0.4, 1.5, -0.9, 0.2]
+>>> groups = [base, [v * (1 + 1e-9) for v in base[::-1]], [v * (1 - 1e-9) + 0.5 for v in base]]
+>>> T = bartlett_60(groups)
+>>> f'{T:.6e}'
+'2.632836e-17'
+>>> mine, theirs = sd.htest.bartlett(*groups).statistic, float(ss.bartlett(*groups).statistic)
+>>> mine, theirs
+(2.6328357726117454e-17, 0.0)
+>>> f'{float(abs(Decimal(mine) - T) / T):.1e}'
+'2.7e-17'
+```
+
+scipy는 두 로그 합을 빼서 0을 내요. 상수 집단(sᵢ² = 0)이 있으면 log 0이라 scipy는 T = inf, p = 0이고, 여기서는 분산 0의 규칙으로 NaN이에요.
+
+## Levene과 Brown–Forsythe
+
+Levene의 검정은 zᵢⱼ = |xᵢⱼ − cᵢ|의 일원 분산분석이에요. 중심 cᵢ는 `center`로 골라요. 평균이면 Levene(1960)의 원래 꼴, 중앙값(기본값)이면 Brown과 Forsythe(1974)의 꼴, 절삭 평균이면 그 사이예요. 계산은 세 단계예요.
+
+1. **중심을 double-double로**: 평균은 double-double 평균이에요. 중앙값은 가운데 값, 짝수 n이면 두 가운데 값의 정확한 반(`two_sum`의 두 부분에 0.5를 곱해요; 2의 거듭제곱이라 정확해요)이에요. 절삭 평균은 scipy `trim_mean`의 g = ⌊p·n⌋으로 가운데 평균이에요.
+2. **편차를 double-double로**: |x − c|를 `two_sum(x, −c.hi) − c.lo`로 만들어요. 오프셋 10⁸의 자료에서 편차는 1 크기인데, c를 double로 반올림하면 편차마다 c의 반올림 오차가 들어가요.
+3. **분산분석**: 편차를 낮은 부분까지 든 출처(`Vec`)로 `lane_moments`에 넣고 위의 `anova`를 그대로 불러요.
+
+```cpp
+// csrc/htest/parametric.cpp
+DD center_of(std::vector<double>& v, int center, double ptc) {
+    const auto n = static_cast<std::int64_t>(v.size());
+    if (n == 0) return {kNaN, 0.0};
+    if (center == kMean) return moments_of(v.data(), nullptr, n).mean;
+    if (center == kTrimmed) return trimmed(v, ptc).mean;
+    const std::int64_t h = n / 2;
+    std::vector<double> w(v);
+    double hi, lo = kNaN;
+    if (n >= (1 << 16) && parallel::available()) {
+        sort_values(w);
+        hi = w[static_cast<std::size_t>(h)];
+        if (n % 2 == 0) lo = w[static_cast<std::size_t>(h - 1)];
+    } else {
+        std::nth_element(w.begin(), w.begin() + h, w.end());
+        hi = w[static_cast<std::size_t>(h)];
+        if (n % 2 == 0) lo = *std::max_element(w.begin(), w.begin() + h);
+    }
+    if (n % 2) return {hi, 0.0};
+    const DD s = dd::two_sum(lo, hi);
+    return {0.5 * s.hi, 0.5 * s.lo};
+}
+```
+
+중앙값은 정렬 없이 선택으로 찾아요. `nth_element`로 h번째를 제자리에 두면 짝수 n의 다른 가운데 값은 앞쪽 절반의 최댓값이에요. 2¹⁶원소 이상의 긴 집단은 스레드풀의 정렬(`sort_values`)로 찾아요. 어느 길이든 같은 두 값이 나와요.
+
+## Fligner–Killeen
+
+Fligner–Killeen 검정(Conover, Johnson, Johnson 1981의 `FK:med X²`)은 편차 aᵢⱼ = |xᵢⱼ − cᵢ|에 모든 집단을 합쳐 순위 r을 매기고(동점은 중간 순위), 순위를 정규 점수
+
+s(r) = Φ⁻¹(1/2 + r/(2(N + 1)))
+
+로 바꾼 뒤 점수의 집단 평균이 같은지 봐요. 통계량은 Σnᵢ(s̄ᵢ − s̄)²/V²이고 V²는 모든 점수의 표본분산, 귀무분포는 자유도 k − 1의 카이제곱이에요.
+
+### 동점을 지키는 중심
+
+짝수 크기의 집단에서 중앙값 c는 두 가운데 값 x₍h₎, x₍h+1₎의 한가운데라, 정확한 계산에서 두 편차 c − x₍h₎와 x₍h+1₎ − c는 같아요(동점). 그런데 c를 double로 반올림하면 두 편차가 1 ulp쯤 달라져 동점이 갈리고, 한 점수의 순위가 1/2씩 움직여요. 여기서는 c가 정확한 반(double-double)이고 편차도 double-double이라, 두 편차가 같은 double-double로 남고 정렬 뒤의 동점 판정(`key_equal`: 두 부분이 모두 같은지)에 걸려요.
+
+```python
+>>> g1, g2 = [0.3, 1.1, 1.7, 2.2], [0.2, 1.1, 1.9, 2.4, 3.3]
+>>> c = (1.1 + 1.7) / 2
+>>> c - 1.1 == 1.7 - c
+False
+>>> sd.htest.fligner(g1, g2).statistic, float(ss.fligner(g1, g2).statistic)
+(0.43724238140192634, 0.4342357626246835)
+```
+
+scipy와 R은 c를 double로 반올림해서 이 동점이 갈려요. 정확한 유리수로 편차를 만들고 중간 순위를 매겨 같은 식을 계산하면 0.4372423814019262이에요.
+
+### 점수의 인자를 만들지 않기
+
+점수의 인자 1/2 + r/(2(N + 1))를 double로 만들면 1/2 근처의 값이라 반올림이 r/(2(N + 1))의 상대 크기로 커져요(작은 r에서 크게). 그래서 1/2을 더하지 않아요. Φ⁻¹의 AS241 알고리즘(Wichura 1988)은 |p − 1/2| ≤ 0.425인 가운데 구간에서 q = p − 1/2의 유리함수 q·R(q²)로 계산하는데, 여기서는 q = r/(2(N + 1))가 바로 그 q예요. 중간 순위 r = r₂/2(r₂는 정수)이니 q = r₂/(4(N + 1))는 정확한 정수의 몫 하나예요. r이 가운데보다 크면 Φ⁻¹(p) = −Φ⁻¹(1 − p)로 바꾸고, 1 − p도 정수의 몫 하나로 만들어 가운데 꼴이나 꼬리 꼴로 계산해요.
+
+```cpp
+// csrc/htest/parametric.cpp
+double fligner_score(double r2, double N) {
+    using special::erf_detail::ndtri_parts;
+    if (r2 <= N + 1.0) {
+        const double q = r2 / (4.0 * (N + 1.0));
+        return q * ndtri_parts(q, 0.0).ratio;
+    }
+    const double p = (2.0 * N + 2.0 - r2) / (4.0 * (N + 1.0));
+    const double q = p - 0.5;
+    const special::erf_detail::NdtriParts r = ndtri_parts(q, std::log(p));
+    return -(r.central ? q * r.ratio : r.tail);
+}
+```
+
+r ≤ (N + 1)/2이면 q ≤ 1/4이라 언제나 가운데 구간이에요.
+
+정렬은 (편차의 두 부분, 집단 번호)의 열쇠를 값으로 정렬해요(`sort_keys`, 긴 줄은 스레드풀의 정렬과 병합). 같은 값의 원소들의 순서는 정해지지 않지만, 중간 순위는 동점 구간의 처음과 끝 위치로만 정해지니(`first + last + 2`가 r₂) 순서와 상관없어요. 점수는 원소마다라 스레드풀에서 계산하고, 집단마다의 합과 전체의 적률은 정렬 순서대로 더해요.
+
+## 정확도
+
+<AccuracySummary area="htest" names={['f_oneway', 'alexandergovern', 'bartlett', 'levene', 'fligner']} caption="분산분석과 등분산 검정. 통계량과 자유도, p값이 영역이에요." />
+
+다섯 검정의 통계량은 Arb 참값에 대해 상대 4 × 10⁻¹⁶ 안이에요(오프셋 10⁸과 거의 같은 분산 포함). p값의 상대오차가 가장 큰 곳은 Alexander–Govern의 꼬리(5.8 × 10⁻¹⁴)인데 p값의 통계량에 대한 조건수가 240이라 계약 대비 0.038이에요. scipy 열의 큰 값은 Bartlett의 거의 같은 분산(상대 52배), Alexander–Govern의 오프셋(2.7 × 10⁻⁸), Fligner의 반올림한 중앙값(2.2 × 10⁻⁹), 상수 집단의 inf에서 나와요.
+
+## scipy를 아는 분께
+
+- 상수 집단의 결과는 NaN이에요. scipy의 `f_oneway`는 inf와 0(평균이 같으면 NaN), `bartlett`은 inf와 0이에요.
+- 표본이 둘 미만이면 다섯 함수 모두 `TypeError`예요(scipy의 `bartlett`·`levene`·`fligner`는 `ValueError`).
+- `alexandergovern`에서 크기 2 미만인 집단은 NaN이에요(scipy는 `ValueError`).
+- 결과에 자유도가 있어요(`f_oneway`·`levene`은 `df_num`·`df_denom`, 나머지는 `df`). 튜플로 풀리는 개수는 scipy와 같아요.
+- 식, 기본값(`center='median'`, `proportiontocut=0.05`), 절삭의 g는 scipy와 같아요. 다른 것은 중심과 편차, 평균의 정밀도뿐이에요.

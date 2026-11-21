@@ -272,9 +272,10 @@ beta = sd.linalg.lstsq(X, y).solution
   .areas > div {
     display: grid;
   }
-  /* Seven cards on a three-column grid: the first and the sixth take two
-     columns, so every row is full (2+1, 1+1+1, 2+1). */
-  .areas__cell--array {
+  /* Ten cards on a three-column grid: the first and the last take two
+     columns, so every row is full (2+1, 1+1+1, 1+1+1, 1+2). */
+  .areas__cell--array,
+  .areas__cell--random {
     grid-column: span 2;
   }
 
@@ -458,8 +459,9 @@ beta = sd.linalg.lstsq(X, y).solution
     .fact:nth-child(n + 3) {
       border-top: 1px solid var(--line);
     }
-    /* Two columns: eight cards fill four rows, none wide. */
-    .areas__cell--array {
+    /* Two columns: ten cards fill five rows, none wide. */
+    .areas__cell--array,
+    .areas__cell--random {
       grid-column: auto;
     }
   }
@@ -468,7 +470,8 @@ beta = sd.linalg.lstsq(X, y).solution
     .areas {
       grid-template-columns: minmax(0, 1fr);
     }
-    .areas__cell--array {
+    .areas__cell--array,
+    .areas__cell--random {
       grid-column: auto;
     }
     .strength__title {

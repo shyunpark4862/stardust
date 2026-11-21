@@ -1,0 +1,214 @@
+---
+kind: function
+title: power_divergence
+names: [power_divergence]
+group: 분포 적합도
+order: 10
+signatures:
+  - "sd.htest.power_divergence(f_obs, f_exp=None, /, *, axis=None, ddof=0, lambda_=None, nan_policy='propagate', keepdims=False)"
+summary: 관측 빈도와 기대 빈도의 차이를 Cressie–Read 거듭제곱 발산으로 재는 적합도 검정이에요. lambda_ 하나로 Pearson의 카이제곱, 우도비(G) 검정, Freeman–Tukey, Neyman 등을 고르고, 모두 같은 자유도의 카이제곱 분포와 견줘요.
+params:
+  - name: f_obs
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 범주마다의 관측 빈도. 보통 0 이상의 개수예요.
+  - name: f_exp
+    type: ndarray, 실수의 시퀀스, numpy 배열, frame의 Series·DataFrame, 또는 None
+    kind: positional-only
+    desc: 범주마다의 기대 빈도. f_obs와 브로드캐스트되는 모양이에요. None(기본값)이면 모든 범주가 관측 빈도의 평균이에요. 합이 f_obs의 합과 상대 2⁻²⁶ 안에서 같아야 해요(언제나 확인해요).
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 범주의 축. None(기본값)이면 모든 원소를 범주로 펼쳐 검정 하나예요. 축을 주면 그 축을 따라 범주를 읽고, 나머지 축의 칸마다 따로 검정해요.
+  - name: ddof
+    type: int
+    kind: keyword-only
+    desc: 기대 빈도를 맞추느라 데이터에서 추정한 모수의 수. 자유도가 k - 1 - ddof가 돼요. 기본값은 0이에요.
+  - name: lambda_
+    type: None, 실수, 또는 str
+    kind: keyword-only
+    desc: "발산의 거듭제곱 λ. None(기본값)은 Pearson(1)이에요. 이름으로 'pearson'(1), 'log-likelihood'(0, G 검정), 'freeman-tukey'(-1/2), 'mod-log-likelihood'(-1), 'neyman'(-2), 'cressie-read'(2/3)를 줄 수 있어요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 표본의 결과가 NaN), 'omit'(NaN인 범주를 빼고 계산; f_exp를 주면 그 쌍을 빼요), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 범주 축을 길이 1로 남겨요.
+returns:
+  type: PowerDivergenceResult
+  desc: "statistic, pvalue, df(자유도, float)가 든 결과 객체예요. 검정 하나면 Python float, 배치면 배치 모양의 배열이에요. (statistic, pvalue) 둘로 풀려요(df는 들지 않아요)."
+raises:
+  - type: TypeError
+    desc: lambda_가 None·실수·문자열이 아닐 때(bool 포함), ddof가 int가 아닐 때, f_obs·f_exp가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis·keepdims의 형이 틀렸을 때, 옵션을 위치로 주거나 없는 키워드(sum_check 등)를 줬을 때.
+  - type: ValueError
+    desc: "lambda_의 이름이 틀렸을 때, f_obs와 f_exp가 브로드캐스트되지 않거나 두 합이 다를 때, axis가 범위 밖이거나 겹칠 때, nan_policy 이름이 틀렸거나 nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [chisquare, chi2_contingency, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+[`chisquare`](/api/htest/chisquare/)와 같은 것을 물어요. 범주마다 센 관측 빈도가 기대 빈도와 맞나요? 다른 점은 차이를 재는 자예요. Cressie와 Read(1984)는 흔히 쓰는 여러 통계량을 거듭제곱 $\lambda$ 하나로 묶었어요.
+
+$$
+2I^{\lambda} = \frac{2}{\lambda(\lambda + 1)} \sum_{i=1}^{k} O_i\left[\left(\frac{O_i}{E_i}\right)^{\lambda} - 1\right]
+$$
+
+- **귀무가설**: 범주마다의 확률이 기대한 값이에요.
+- **대립가설**: 적어도 한 범주의 확률이 달라요.
+
+어떤 $\lambda$든 귀무가설에서 빈도가 클 때 자유도 $k - 1 - \text{ddof}$의 카이제곱 분포를 따라요. 그래서 p값은 [`chisquare`](/api/htest/chisquare/)와 같은 방법으로 구해요.
+
+```python
+>>> import stardust as sd
+>>> die = [8, 9, 12, 7, 11, 13]
+>>> sd.htest.power_divergence(die)
+PowerDivergenceResult(statistic=2.8, pvalue=0.730786, df=5)
+>>> sd.htest.power_divergence(die, lambda_='log-likelihood')
+PowerDivergenceResult(statistic=2.83378, pvalue=0.725594, df=5)
+```
+
+`lambda_=None`(기본값)은 Pearson의 카이제곱이라 `chisquare(die)`와 같아요. 우도비 검정(G 검정)의 값도 비슷해요. 빈도가 크고 관측이 기대에 가까우면 모든 $\lambda$의 값이 가까워요.
+
+<Reference />
+
+## `lambda_`: 통계량 고르기
+
+| `lambda_` | $\lambda$ | 통계량 | 이름 |
+|---|---|---|---|
+| None, `'pearson'` | 1 | $\sum (O - E)^2/E$ | Pearson의 카이제곱 |
+| `'log-likelihood'` | 0 | $2\sum O\log(O/E)$ | 우도비(G) 검정 |
+| `'freeman-tukey'` | −1/2 | $4\sum (\sqrt{O} - \sqrt{E})^2$ | Freeman–Tukey |
+| `'mod-log-likelihood'` | −1 | $2\sum E\log(E/O)$ | 수정 우도비 |
+| `'neyman'` | −2 | $\sum (O - E)^2/O$ | Neyman의 카이제곱 |
+| `'cressie-read'` | 2/3 | 위 식의 $\lambda = 2/3$ | Cressie–Read |
+
+$\lambda = 0$과 $-1$은 위 식의 극한이에요. 이름 대신 실수를 직접 줄 수도 있어요.
+
+```python
+>>> for lam in ('pearson', 'log-likelihood', 'freeman-tukey', 'neyman', 'cressie-read', 0.5):
+...     print(lam, sd.htest.power_divergence(die, lambda_=lam).statistic)
+pearson 2.8
+log-likelihood 2.8337768768943423
+freeman-tukey 2.864007690869842
+neyman 3.0133755133755136
+cressie-read 2.8074174052036853
+0.5 2.8125510199384736
+```
+
+- **우도비(G) 검정**은 다항분포의 우도비 검정이라 이론적으로 자연스럽고, 범주를 합치거나 나눌 때 값이 더해지는 성질이 있어서 생태학, 유전학에서 흔히 써요.
+- **Cressie–Read**($\lambda = 2/3$)는 Cressie와 Read가 작은 표본에서 카이제곱 근사가 가장 잘 맞는 값으로 권한 것이에요.
+- $\lambda$가 클수록 기대보다 많이 나온 범주를, 작을수록(음수일수록) 기대보다 적게 나온 범주를 무겁게 봐요.
+
+<Callout type="note" title="λ는 데이터를 보기 전에 골라요">
+여러 $\lambda$로 계산해서 가장 작은 p값을 고르면 p값이 실제보다 작게 나와요. 어떤 통계량을 쓸지는 분석을 시작하기 전에 정해요.
+</Callout>
+
+## 관측이 0인 범주
+
+관측 빈도가 0인 범주가 있으면 $\lambda$에 따라 통계량이 달라져요. 0에서의 값은 그 극한이에요.
+
+- $\lambda > -1$(Pearson, G, Freeman–Tukey, Cressie–Read)이면 유한한 값이에요.
+- $\lambda \le -1$(수정 우도비, Neyman)이면 $E/O$나 $1/O$가 끝없이 커져서 inf, p = 0이에요.
+
+```python
+>>> obs0 = [0, 5, 9, 6]
+>>> for lam in ('log-likelihood', 'freeman-tukey', 'mod-log-likelihood', 'neyman'):
+...     print(lam, sd.htest.power_divergence(obs0, lambda_=lam))
+log-likelihood PowerDivergenceResult(statistic=12.768, pvalue=0.00516611, df=3)
+freeman-tukey PowerDivergenceResult(statistic=22.5166, pvalue=5.0924e-05, df=3)
+mod-log-likelihood PowerDivergenceResult(statistic=inf, pvalue=0, df=3)
+neyman PowerDivergenceResult(statistic=inf, pvalue=0, df=3)
+```
+
+관측이 0인 범주가 흔하면 Neyman 쪽은 쓰지 않는 편이 좋아요.
+
+## 기대 빈도와 `ddof`
+
+`f_exp`와 `ddof`는 [`chisquare`](/api/htest/chisquare/)와 같아요. 다만 두 합을 보는 검사를 끌 수 없어요(`sum_check` 인자가 없어요).
+
+```python
+>>> sd.htest.power_divergence([30, 50, 20], [25.0, 50.0, 25.0], lambda_='log-likelihood')
+PowerDivergenceResult(statistic=2.01355, pvalue=0.365395, df=2)
+>>> sd.htest.power_divergence([30, 50, 20], [0.25, 0.5, 0.25])
+Traceback (most recent call last):
+    ...
+ValueError: power_divergence(): the sums of 'f_obs' and 'f_exp' must agree to a relative tolerance of 1.49e-08 in each sample, not 99 (sum_check)
+>>> sd.htest.power_divergence(die, sum_check=False)
+Traceback (most recent call last):
+    ...
+TypeError: power_divergence(): unexpected keyword argument 'sum_check'
+```
+
+## 결과 읽기
+
+결과는 `statistic`, `pvalue`, `df` 세 필드이고, 튜플로 풀면 앞의 둘이 나와요. 필드는 읽기만 해요.
+
+```python
+>>> g = sd.htest.power_divergence(die, lambda_='log-likelihood')
+>>> G, p = g
+>>> g.df
+5.0
+>>> print(g.summary())
+                    Power divergence goodness-of-fit test
+==============================================================================
+Statistic:                       2.834  No. Categories:                      6
+P-value:                         0.726  Lambda:                 log-likelihood
+Df:                                  5
+==============================================================================
+```
+
+머리 오른쪽의 `Lambda`는 고른 통계량의 이름이에요(실수로 주면 그 값). 결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 범주를 읽고 나머지 축의 칸마다 따로 검정해요. `axis=None`(기본값)은 배열 전체를 범주로 펼쳐요. NaN은 `nan_policy`를 따라요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> sd.htest.power_divergence([[8, 9, 12], [7, 11, 13]], axis=1, lambda_='log-likelihood').pvalue
+array([0.6455771031292454, 0.3883150435783438], dtype=float64)
+```
+
+## 특수한 경우와 에러
+
+- 범주가 하나이거나 자유도가 0 이하면 p값이 NaN이에요.
+- 기대 빈도가 0 이하이거나 관측이 음수인 범주는 위 식 그대로 계산해요(뜻이 있는 값이 아닐 수 있어요).
+
+```python
+>>> sd.htest.power_divergence(die, ddof=5).pvalue
+nan
+>>> sd.htest.power_divergence(die, lambda_='g-test')
+Traceback (most recent call last):
+    ...
+ValueError: power_divergence(): 'lambda_' must be 'pearson', 'log-likelihood', 'freeman-tukey', 'mod-log-likelihood', 'neyman' or 'cressie-read', not 'g-test'
+>>> sd.htest.power_divergence(die, lambda_=True)
+Traceback (most recent call last):
+    ...
+TypeError: power_divergence(): 'lambda_' must be None, a real number or one of 'pearson', 'log-likelihood', 'freeman-tukey', 'mod-log-likelihood', 'neyman', 'cressie-read', not bool
+```
+
+## 정확도
+
+- 통계량과 p값은 Arb(구간 산술)로 계산한 참값과 견줘 25문제(관측 0의 극한, $\lambda$가 0과 −1 근처, 관측이 기대와 거의 같은 경우, 큰 표 포함)에서 통계량의 상대오차가 1.3e-15, p값이 1.7e-13 안이에요(정확도 약속의 0.13배와 0.031배).
+- 관측이 기대에 아주 가까울 때도 자릿수를 지켜요. 예를 들어 기대 빈도가 10⁶이고 관측이 1만큼씩 다르면 G는 2e-6쯤인데, $O\log(O/E)$를 그대로 더하면 크기 10⁶의 항들이 서로 지워져서 앞자리가 사라져요. 여기서는 항마다 음이 아닌 꼴로 바꿔 더해요.
+
+```python
+>>> o, e = [1000001.0, 999999.0, 1000000.0], [1e6, 1e6, 1e6]
+>>> sd.htest.power_divergence(o, e, lambda_='log-likelihood').statistic
+2.0000000000003332e-06
+>>> sd.htest.chisquare(o, e).statistic
+2e-06
+```
+
+- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1 기준이에요.
+
+- `scipy.stats.power_divergence(f_obs, f_exp, lambda_=...)`와 같은 통계량, 같은 $\lambda$의 이름이에요. 기본 `axis`는 None이에요(scipy는 0). `ddof`는 키워드로만 받아요.
+- 결과에 자유도 `df`가 있어요(scipy의 결과에는 없어요).
+- 관측이 0인 범주에서 $-1 < \lambda < 0$(Freeman–Tukey 등)이면 유한한 극한, $\lambda < -1$이면 inf예요. scipy는 두 경우 0 × inf로 NaN을 내요. `[0, 5, 9, 6]`의 Freeman–Tukey는 여기서 22.52, scipy는 NaN이에요.
+- 관측이 기대에 가까울 때 scipy는 자릿수를 잃어요. 위 정확도 절의 `o`, `e`에서 scipy의 G는 1.99978e-06(상대오차 1.1e-4)이에요. 기대 빈도 10⁶, 차 ±10⁻³의 G에서 상대오차 9.9e-8, $\lambda = 2/3$에서는 66배 틀리고 p값이 NaN이에요. $\lambda = 10^{-7}$에서 2.4e-8 틀려요.

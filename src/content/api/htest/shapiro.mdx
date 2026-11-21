@@ -1,0 +1,241 @@
+---
+kind: function
+title: shapiro
+names: [shapiro]
+group: 분포 적합도
+order: 1
+signatures:
+  - "sd.htest.shapiro(x, /, *, axis=None, nan_policy='propagate', keepdims=False)"
+summary: 표본이 정규분포에서 왔는지 보는 Shapiro–Wilk 검정이에요. 정렬한 데이터가 정규분포의 기대 순서통계량과 얼마나 한 직선 위에 놓이는지를 W(0과 1 사이)로 재요. 평균과 표준편차를 몰라도 돼요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모든 원소를 표본 하나로 펼쳐요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축의 칸마다 따로 검정해요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 표본의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: ShapiroResult
+  desc: "statistic(W)과 pvalue가 든 결과 객체예요. 검정 하나면 Python float, 배치면 배치 모양의 배열이에요. (statistic, pvalue) 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: x가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis가 int·tuple·리스트·None이 아닐 때, keepdims가 True·False가 아닐 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: "axis가 범위 밖이거나 겹칠 때, nan_policy 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [normaltest, anderson, jarque_bera, skewtest, kurtosistest, ks_1samp, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const cross = (pts, d) => pts.flatMap(([x, y]) => [[x - d, y], [x + d, y], [NaN, NaN], [x, y - d], [x, y + d], [NaN, NaN]]);
+export const qqW = [[-1.739, -1.728], [-1.245, -1.396], [-0.946, -1.197], [-0.714, -0.8], [-0.515, -0.468], [-0.335, -0.27], [-0.165, -0.071], [0.0, 0.062], [0.165, 0.261], [0.335, 0.327], [0.515, 0.46], [0.714, 0.791], [0.946, 0.99], [1.245, 1.321], [1.739, 1.719]];
+export const qqE = [[-2.156, -1.282], [-1.746, -1.214], [-1.512, -1.169], [-1.34, -1.167], [-1.201, -1.164], [-1.081, -1.108], [-0.976, -1.089], [-0.88, -1.049], [-0.792, -1.007], [-0.709, -0.896], [-0.631, -0.821], [-0.557, -0.78], [-0.485, -0.705], [-0.417, -0.683], [-0.35, -0.67], [-0.284, -0.655], [-0.22, -0.541], [-0.156, -0.508], [-0.094, -0.486], [-0.031, -0.316], [0.031, -0.139], [0.094, -0.087], [0.156, 0.105], [0.22, 0.128], [0.284, 0.201], [0.35, 0.242], [0.417, 0.325], [0.485, 0.745], [0.557, 0.79], [0.631, 0.916], [0.709, 1.178], [0.792, 1.178], [0.88, 1.282], [0.976, 1.345], [1.081, 1.351], [1.201, 1.394], [1.34, 1.444], [1.512, 1.463], [1.746, 1.651], [2.156, 1.797]];
+
+## 한눈에 보기
+
+Shapiro–Wilk 검정은 "이 데이터가 정규분포에서 왔다고 봐도 되나요?"를 물어요.
+
+- **귀무가설**: 표본이 어떤 정규분포(평균과 표준편차는 무엇이든)에서 왔어요.
+- **대립가설**: 정규분포가 아닌 분포에서 왔어요.
+
+검정통계량 $W$는 0과 1 사이의 수이고, 데이터가 정규분포 모양에 가까울수록 1에 가까워요. $W$가 작으면 p값이 작고, p값이 유의수준(흔히 0.05)보다 작으면 정규분포가 아니라고 판단해요.
+
+부품 열다섯 개의 무게(g)를 쟀어요.
+
+```python
+>>> import stardust as sd
+>>> w = [61.2, 58.7, 63.1, 60.4, 59.8, 62.5, 57.9, 60.9, 61.7, 59.3,
+...      60.1, 62.0, 58.4, 61.0, 60.6]
+>>> sd.htest.shapiro(w)
+ShapiroResult(statistic=0.983257, pvalue=0.986963)
+```
+
+$W = 0.983$, p = 0.99라서 정규분포에서 벗어났다는 근거가 없어요. 한쪽으로 길게 늘어진 지수분포의 표본은 다르게 나와요.
+
+```python
+>>> rng = sd.random.default_rng(7)
+>>> e = sd.stats.Exponential().sample(40, rng=rng)
+>>> sd.htest.shapiro(e)
+ShapiroResult(statistic=0.897315, pvalue=0.00159845)
+```
+
+p = 0.0016이라 정규분포가 아니라고 봐요.
+
+<Reference />
+
+## W가 재는 것
+
+데이터를 작은 것부터 늘어놓으면 $x_{(1)} \le x_{(2)} \le \dots \le x_{(n)}$이에요. 정규분포에서 뽑은 표본이라면 $i$번째 값은 표준정규분포의 $i$번째 기대 순서통계량 $m_i$에 비례해서 놓일 거예요. 가로축에 $m_i$, 세로축에 $x_{(i)}$를 찍은 그림(**정규 분위수 그림**, QQ 그림)이 한 직선이 되는지가 정규성의 모습이에요.
+
+$$
+W = \frac{\left(\sum_{i=1}^{n} a_i\, x_{(i)}\right)^2}{\sum_{i=1}^{n} (x_i - \bar x)^2}
+$$
+
+- 분자의 $\sum a_i x_{(i)}$는 그 직선의 기울기로 잰 표준편차의 추정이에요. 무게 $a_i$는 $m_i$에서 정해지고 제곱의 합이 1이에요.
+- 분모는 흔한 제곱합이에요. 정규분포면 두 추정이 같은 것을 재서 $W$가 1에 가깝고, 점들이 직선에서 휘면 분자가 작아져요.
+- $W$는 대략 QQ 그림의 점과 직선 사이 상관계수의 제곱이에요.
+
+<Fig caption="정규 분위수 그림. 두 표본 모두 평균을 빼고 표준편차로 나눴어요. 무게(실선의 십자, W = 0.983)는 직선 위에 놓이고, 지수분포의 표본(점선의 십자, W = 0.897)은 아래쪽이 눌려 휘어요.">
+  <Plot
+    curves={[
+      { f: (t) => t, label: '직선' },
+      { points: cross(qqW, 0.05), label: '무게' },
+      { points: cross(qqE, 0.03), label: '지수분포 표본', dashed: true },
+    ]}
+    domain={[-2.4, 2.4]}
+    range={[-2.2, 2.2]}
+    xTicks={[
+      { v: -2, label: '-2' },
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+    ]}
+    yTicks={[
+      { v: -2, label: '-2' },
+      { v: 0, label: '0' },
+      { v: 2, label: '2' },
+    ]}
+  />
+</Fig>
+
+$W$는 데이터를 옮기거나 늘려도 그대로예요. 단위를 g에서 kg으로 바꾸거나 기준값을 빼도 같은 검정이에요.
+
+```python
+>>> kg = [(v - 60.0) / 1000 for v in w]
+>>> round(sd.htest.shapiro(kg).statistic, 12) == round(sd.htest.shapiro(w).statistic, 12)
+True
+```
+
+$W$의 분포는 닫힌 꼴이 없어서, p값은 Royston(1995)의 정규화 변환으로 구해요. $\log(1 - W)$를 표본 크기에 맞춘 평균과 표준편차로 표준화하면 거의 표준정규분포를 따르게 하는 근사예요.
+
+## 언제 쓰나요
+
+- 정규성을 하나의 검정으로 물을 때 흔히 먼저 쓰는 검정이에요. 치우친 분포, 꼬리가 두꺼운 분포, 꼬리가 얇은 분포에 고루 힘이 있어요.
+- 어느 쪽으로 벗어났는지(치우침인지 꼬리인지) 따로 알고 싶으면 [`skewtest`](/api/htest/skewtest/), [`kurtosistest`](/api/htest/kurtosistest/)와 둘을 합친 [`normaltest`](/api/htest/normaltest/)예요.
+- 회귀의 잔차처럼 표본이 크고 왜도와 첨도로 판단하고 싶으면 [`jarque_bera`](/api/htest/jarque_bera/)예요.
+- 정규분포 말고 지수분포, 로지스틱분포, Gumbel 분포, Weibull 분포를 묻거나 꼬리를 무겁게 보고 싶으면 [`anderson`](/api/htest/anderson/)이에요.
+- 평균과 표준편차가 미리 정해진 정규분포(예: 평균 0, 표준편차 1)인지 물으면 [`ks_1samp`](/api/htest/ks_1samp/)나 [`cramervonmises`](/api/htest/cramervonmises/)에 그 분포를 줘요. Shapiro–Wilk는 모수를 데이터에서 맞춘 정규분포족 전체를 귀무가설로 봐요.
+
+<Callout type="note" title="p값이 크다고 정규분포인 것은 아니에요">
+표본이 작으면 정규분포에서 꽤 벗어나도 p값이 커요. 반대로 표본이 수천 개면 쓸모에는 상관없는 작은 벗어남에도 p값이 아주 작아져요. t 검정 같은 방법이 정규성을 얼마나 필요로 하는지와 함께, 정규 분위수 그림을 직접 그려 보며 판단해요.
+</Callout>
+
+## 결과 읽기
+
+결과는 `statistic`(W)과 `pvalue` 두 필드이고, 둘로 풀 수도 있어요. 필드는 읽기만 해요.
+
+```python
+>>> r = sd.htest.shapiro(w)
+>>> r.statistic, r.pvalue
+(0.9832571177030479, 0.9869628748273155)
+>>> W, p = sd.htest.shapiro(w)
+>>> W
+0.9832571177030479
+>>> print(r.summary())
+                         Shapiro-Wilk normality test
+==============================================================================
+Statistic:                      0.9833  No. Observations:                   15
+P-value:                         0.987
+==============================================================================
+```
+
+`summary()`는 회귀 결과와 같은 꼴의 상자를 글로 돌려줘요. 결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고, 나머지 축의 칸마다 따로 검정해요(**배치**). 3 × 25 배열의 행 셋을 한 번에 검정해요.
+
+```python
+>>> b = sd.stats.Normal().sample((3, 25), rng=sd.random.default_rng(1))
+>>> rb = sd.htest.shapiro(b, axis=1)
+>>> rb
+ShapiroResult(batch shape (3,))
+>>> rb.pvalue
+array([0.9871183869172613,  0.857271634850203, 0.9233427472980085], dtype=float64)
+```
+
+배치의 각 줄은 서로 독립인 검정이고, 줄 하나를 따로 검정한 것과 같은 비트예요. `keepdims=True`면 결과에 표본 축이 길이 1로 남아서 원래 배열과 브로드캐스트하기 좋아요. frame의 `DataFrame`은 `axis=0`으로 열마다 검정해요.
+
+```python
+>>> sd.htest.shapiro(b, axis=1, keepdims=True).statistic.shape
+(3, 1)
+>>> df = sd.frame.DataFrame({'a': [1.0, 2.0, 4.0, 8.0, 3.0, 2.0], 'b': [2.0, 2.0, 3.0, 1.0, 5.0, 4.0]})
+>>> sd.htest.shapiro(df, axis=0).pvalue
+array([0.14776387231907584,  0.8042960169926776], dtype=float64)
+```
+
+`axis=None`(기본값)은 배열 전체를 표본 하나로 펼쳐요. 호출 모양과 `axis`의 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+## NaN이 있을 때
+
+```python
+>>> v = [1.0, 2.5, float('nan'), 3.1, 4.7, 2.2]
+>>> sd.htest.shapiro(v)
+ShapiroResult(statistic=nan, pvalue=nan)
+>>> sd.htest.shapiro(v, nan_policy='omit')
+ShapiroResult(statistic=0.975894, pvalue=0.91155)
+>>> sd.htest.shapiro(v, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: shapiro(): the input contains NaN (nan_policy='raise')
+```
+
+`'omit'`은 NaN을 빼고 남은 다섯 개로 검정해요. 배치에서는 줄마다 따로 빼요.
+
+## 작은 표본과 특수한 경우
+
+- **값이 3개 미만**이면 $W$와 p값이 NaN이에요. 경고는 내지 않아요.
+- **값이 정확히 3개**면 $W$의 정확한 분포가 알려져 있어서 근사 대신 그 분포의 p값을 써요. 이때 $W$는 3/4과 1 사이로 잘라요. 같은 간격의 세 값은 $W = 1$이에요.
+- **모든 값이 같으면** 분모가 0이라 NaN이에요.
+- 표본 크기의 위 한계는 없어요. 다만 표본이 아주 크면 위 상자에서 말한 것처럼 작은 벗어남에도 p값이 작아져요.
+
+```python
+>>> sd.htest.shapiro([1.0, 2.0])
+ShapiroResult(statistic=nan, pvalue=nan)
+>>> sd.htest.shapiro([1.0, 2.0, 3.0])
+ShapiroResult(statistic=1, pvalue=1)
+>>> sd.htest.shapiro([1.0, 2.0, 10.0])
+ShapiroResult(statistic=0.832192, pvalue=0.193918)
+>>> sd.htest.shapiro([5.0, 5.0, 5.0, 5.0, 5.0, 5.0])
+ShapiroResult(statistic=nan, pvalue=nan)
+```
+
+옵션은 키워드로만 받고, Shapiro–Wilk에는 한쪽 검정이 없어요.
+
+```python
+>>> sd.htest.shapiro(w, alternative='less')
+Traceback (most recent call last):
+    ...
+TypeError: shapiro(): unexpected keyword argument 'alternative'
+>>> sd.htest.shapiro([1 + 2j, 3])
+Traceback (most recent call last):
+    ...
+TypeError: shapiro(): 'x' must be real, not a complex128 array
+```
+
+## 정확도
+
+- $W$는 Arb(구간 산술)로 같은 알고리즘을 따라 만든 참값과 견줘 상대오차 7.4e-17 안이에요(n = 3–20000, 상수 표본과 오프셋 10⁸인 표본 포함).
+- p값은 정규화 변환의 값에 대한 상대오차가 2.2e-14 안이에요. 가장 큰 오차는 n = 20000에서 나와요. p값은 $1 - W$에서 계산하는데, $W$를 먼저 반올림한 뒤 1에서 빼면 큰 표본에서 앞자리가 지워져요. 그래서 $1 - W$를 따로 정확하게 만들어 써요.
+- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1, R 4.6.2 기준이에요.
+
+- `scipy.stats.shapiro(x)`, R의 `shapiro.test(x)`와 같은 알고리즘(Royston의 AS R94)과 같은 상수예요. 값은 반올림 차이 안에서 같아요.
+- 큰 표본에서 p값이 더 정확해요. scipy와 R은 $W$를 double로 만든 뒤 $1 - W$를 해서, n = 5000에서 p값의 상대오차가 scipy 1.8e-12, R 4.4e-11이에요. 평균이 10⁸만큼 떨어진 데이터에서 R은 $W$가 3.3e-10 틀려요.
+- n > 5000에서 scipy는 경고를 내고 R은 에러를 내요. 여기서는 그대로 계산해요.
+- n ≤ 11이고 $W$가 아주 작아 근사의 범위 밖이면 p값이 그 극한 0이에요. scipy는 NaN, R은 1e-99를 내요.
+- n < 3과 상수 표본은 경고 없이 NaN이에요.
+- 결과는 `ShapiroResult`이고 `statistic`, `pvalue`로 읽거나 둘로 풀어요. 데이터는 위치로만, 옵션은 키워드로만 받아요.

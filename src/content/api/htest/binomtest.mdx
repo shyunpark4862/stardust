@@ -1,0 +1,256 @@
+---
+kind: function
+title: binomtest
+names: [binomtest]
+group: 비율과 이항
+order: 1
+signatures:
+  - "sd.htest.binomtest(k, n, /, *, p=0.5, alternative='two-sided')"
+summary: n번 시도에서 k번 성공했을 때 성공 확률이 p라는 귀무가설을 이항 분포로 정확하게 검정해요. 정규 근사 없이 이항 분포의 꼬리를 그대로 더해서, 시도가 적거나 성공이 드물어도 p값이 정확해요. 결과의 conf_int()로 성공 확률의 신뢰구간도 얻어요.
+params:
+  - name: k
+    type: int
+    kind: positional-only
+    desc: 성공 횟수. 0 이상이고 n 이하인 int예요. bool과 float는 받지 않아요(3.0도 TypeError예요).
+  - name: n
+    type: int
+    kind: positional-only
+    desc: 시도 횟수. 1 이상의 int예요.
+  - name: p
+    type: float
+    kind: keyword-only
+    desc: 귀무가설의 성공 확률. [0, 1] 안의 실수이고 기본값은 0.5예요. 0이나 1이면 결과가 한 값에만 몰린 분포(점질량)로 계산해요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "대립가설. 'two-sided'(기본값, 성공 확률이 p와 다름), 'less'(p보다 작음), 'greater'(p보다 큼) 중 하나예요. 신뢰구간의 방향도 이것을 따라요."
+returns:
+  type: BinomtestResult
+  desc: "k, n, alternative(호출 때 준 값), statistic(표본 비율 k/n), pvalue와 메서드 conf_int(*, alpha=0.05, method='exact'), summary(*, alpha=0.05)가 있어요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: k나 n이 int가 아닐 때(float, bool, 문자열), p가 수가 아닐 때, alternative가 문자열이 아닐 때, 없는 키워드를 줬을 때, k·n을 키워드로 줬을 때.
+  - type: ValueError
+    desc: k가 음수이거나 n보다 클 때, n이 1보다 작을 때, p가 [0, 1] 밖일 때, alternative 이름이 틀렸을 때. conf_int()에서 alpha가 (0, 1) 밖이거나 method 이름이 틀렸을 때.
+seeAlso: [proportion_confint, proportions_ztest, quantile_test, test_proportions_2indep, basics, results]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const rej = [[0, 0], [0, 0.0115], [0, NaN], [7, 0], [7, 0.0545], [7, NaN], [8, 0], [8, 0.0222], [8, NaN], [9, 0], [9, 0.0074], [9, NaN], [10, 0], [10, 0.002], [10, NaN], [11, 0], [11, 0.0005], [11, NaN], [12, 0], [12, 0.0001], [12, NaN]];
+export const acc = [[1, 0], [1, 0.0576], [1, NaN], [2, 0], [2, 0.1369], [2, NaN], [3, 0], [3, 0.2054], [3, NaN], [4, 0], [4, 0.2182], [4, NaN], [5, 0], [5, 0.1746], [5, NaN], [6, 0], [6, 0.1091], [6, NaN]];
+
+## 무엇을 묻는 검정인가요
+
+새 광고를 20명에게 보여 줬더니 7명이 눌렀어요. 지금까지의 광고는 누르는 비율이 20%였어요. 새 광고의 비율이 정말 다른 걸까요, 아니면 20%인 광고라도 20명 중 7명쯤은 우연히 나올 수 있을까요?
+
+이항 검정은 이 질문에 바로 답해요. 성공 확률이 p인 시도를 n번 하면 성공 횟수 X는 이항 분포 Binomial(n, p)를 따라요. 그 분포에서 관측한 k만큼, 또는 그보다 더 극단적인 결과가 나올 확률이 p값이에요.
+
+- **귀무가설**: 성공 확률이 p예요.
+- **대립가설**: 성공 확률이 p와 달라요(`'two-sided'`), p보다 작아요(`'less'`), p보다 커요(`'greater'`).
+
+<Fig caption="귀무가설 Binomial(20, 0.2)의 확률질량. 관측한 7과 확률이 같거나 더 작은 결과(진한 막대: 0, 7, 8, …)의 확률을 모두 더한 0.0982가 양쪽 p값이에요. 1은 7보다 확률이 커서(0.0576 > 0.0545) 들지 않아요. 13 위의 막대는 너무 작아 보이지 않아요.">
+  <Plot
+    curves={[
+      { points: rej, label: '같거나 덜 그럴듯함' },
+      { points: acc, label: '나머지' },
+    ]}
+    domain={[-0.5, 12.5]}
+    range={[0, 0.23]}
+    xTicks={[{ v: 0, label: '0' }, { v: 2, label: '2' }, { v: 4, label: '4' }, { v: 6, label: '6' }, { v: 8, label: '8' }, { v: 10, label: '10' }, { v: 12, label: '12' }]}
+    yTicks={[{ v: 0.05, label: '0.05' }, { v: 0.1, label: '0.1' }, { v: 0.15, label: '0.15' }, { v: 0.2, label: '0.2' }]}
+  />
+</Fig>
+
+정규 근사(z 검정)와 달리 분포를 근사하지 않아요. 그래서 n이 작거나, k가 0이나 n에 가깝거나, p가 0이나 1에 가까워도 p값이 정확해요. 시도가 아주 많아도 느려지지 않아요(꼬리를 닫힌 꼴의 함수로 계산해요).
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.binomtest(7, 20, p=0.2)
+>>> r
+BinomtestResult(k=7, n=20, alternative='two-sided', statistic=0.35, pvalue=0.0982217)
+>>> r.statistic, r.pvalue
+(0.35, 0.09822172861346874)
+```
+
+`statistic`은 표본 비율 k/n = 0.35이고, p값은 0.098이에요. 유의수준 0.05에서는 귀무가설을 기각하지 못해요. 20명은 20%와 35%를 가르기에 적은 수라는 뜻이에요.
+
+새 광고가 "더 낫다"는 것만 궁금했다면 한쪽 검정이에요. 한쪽 p값은 P(X ≥ 7)이에요.
+
+```python
+>>> sd.htest.binomtest(7, 20, p=0.2, alternative='greater').pvalue
+0.08669251356740028
+>>> float(sd.stats.Binomial(n=20, p=0.2).ccdf(6))
+0.08669251356740028
+```
+
+한쪽 p값은 꼬리 확률 그대로예요. `'less'`는 P(X ≤ k), `'greater'`는 P(X ≥ k)예요. 대립가설은 자료를 보기 전에 정해요. 자료를 보고 나서 p값이 작아지는 쪽을 고르면 p값의 뜻이 사라져요.
+
+## 양쪽 p값은 어떻게 정하나요
+
+이항 분포는 p ≠ 0.5이면 좌우가 대칭이 아니에요. 그래서 한쪽 p값을 두 배 하는 방법은 쓰지 않고, **관측한 결과보다 확률이 크지 않은 결과를 모두 더해요**(위 그림의 진한 막대). 관측과 같은 쪽의 꼬리 전체에 더해, 반대쪽에서 확률질량이 관측의 확률 이하인 결과들을 더하는 꼴이에요.
+
+이때 "이하"는 (1 + 10⁻⁷)배의 여유를 두고 판정해요. 수학적으로 확률이 같은 두 결과가 반올림 때문에 한쪽만 들어가는 일을 막아 줘요. R의 `binom.test`와 같은 규칙이에요.
+
+```python
+>>> X = sd.stats.Binomial(n=20, p=0.2)
+>>> float(X.cdf(0) + X.ccdf(6))
+0.09822172861346874
+```
+
+P(X = 0) = 0.0115와 P(X ≥ 7)의 합이에요. 위의 p값과 같은 값이에요.
+
+## 신뢰구간
+
+`r.conf_int()`는 성공 확률의 신뢰구간을 (2,) 배열 [아래 끝, 위 끝]으로 돌려줘요. `alpha`는 유의수준이고 구간의 신뢰수준은 1 − alpha예요.
+
+```python
+>>> r.conf_int()
+array([0.15390920478454115,  0.5921885345328282], dtype=float64)
+>>> r.conf_int(alpha=0.1)
+array([0.1773109175744491, 0.5580345113154888], dtype=float64)
+```
+
+95% 구간 [0.154, 0.592]가 0.2를 품고 있어요. 0.05의 양쪽 검정이 기각하지 못한 것과 맞아요. 90% 구간은 더 좁아요.
+
+`method`로 구간을 만드는 방법을 골라요.
+
+| method | 구간 | 성질 |
+|---|---|---|
+| `'exact'`(기본값) | Clopper–Pearson. 이항 꼬리를 뒤집은 구간이에요 | 어떤 p에서도 포함 확률이 1 − alpha 이상이에요. 그만큼 조금 넓어요 |
+| `'wilson'` | Wilson의 점수 구간. 정규 근사의 이차식을 푼 구간이에요 | 포함 확률이 평균적으로 1 − alpha에 가깝고 더 좁아요 |
+| `'wilsoncc'` | 연속성 보정을 더한 Wilson 구간 | `'wilson'`보다 넓고 보수적이에요 |
+
+```python
+>>> r.conf_int(method='wilson')
+array([0.1811918241010821, 0.5671457233147638], dtype=float64)
+>>> r.conf_int(method='wilsoncc')
+array([0.16308667971630933,  0.5905104338485733], dtype=float64)
+```
+
+방법이 더 필요하면(Jeffreys, Agresti–Coull 등) [proportion_confint](/api/htest/proportion_confint/)를 써요. 같은 k와 n이면 `'exact'`, `'wilson'`, `'wilsoncc'`의 구간이 비트까지 같아요.
+
+```python
+>>> bool(sd.all(r.conf_int(method='wilson') == sd.htest.proportion_confint(7, 20, method='wilson')))
+True
+```
+
+구간은 검정의 `alternative`를 따라요. 한쪽 검정의 구간은 한 끝이 0이나 1이에요.
+
+```python
+>>> sd.htest.binomtest(7, 20, p=0.2, alternative='greater').conf_int()
+array([0.1773109175744491,                1.0], dtype=float64)
+>>> sd.htest.binomtest(7, 20, p=0.2, alternative='less').conf_int()
+array([               0.0, 0.5580345113154888], dtype=float64)
+```
+
+`'greater'`의 구간 [0.177, 1]은 "성공 확률이 적어도 0.177"이라는 뜻이에요. 0.2가 안에 있으니 한쪽 검정도 기각하지 못해요.
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `k`, `n` | 준 성공 횟수와 시도 횟수 (`int`) |
+| `alternative` | 준 대립가설 (`str`) |
+| `statistic` | 표본 비율 k/n (`float`) |
+| `pvalue` | p값 (`float`) |
+
+필드는 읽기 전용이에요. scipy와 같이 결과가 튜플로 풀리지 않아요. 필드를 이름으로 읽어요.
+
+```python
+>>> stat, p = r
+Traceback (most recent call last):
+    ...
+TypeError: cannot unpack non-iterable BinomtestResult object
+```
+
+`summary()`는 머리에 통계량과 p값, 호출의 설명을, 아래에 신뢰구간(`alpha`, 방법은 `'exact'`)을 보여 줘요.
+
+```python
+>>> print(r.summary())
+                             Exact binomial test
+==============================================================================
+Statistic:                      0.3500  Alternative:                 two-sided
+P-value:                        0.0982  No. Observations:                   20
+                                        Null Proportion:                   0.2
+                                        No. Successes:                       7
+==============================================================================
+                [0.025     0.975]
+------------------------------------------------------------------------------
+proportion       0.154      0.592
+==============================================================================
+```
+
+결과 객체의 공통 규칙은 [결과 객체](/api/htest/results/)에 있어요.
+
+## 끝에 있는 경우
+
+k = 0이나 k = n도 그대로 계산해요. 1000번 중 한 번도 성공하지 않았으면 p = 0.5의 양쪽 p값은 2·0.5¹⁰⁰⁰이에요. 이 값은 double의 정규 범위 아래쪽에 가까워도 상대오차를 지켜요.
+
+```python
+>>> sd.htest.binomtest(0, 1000).pvalue
+1.8665272370064378e-301
+>>> sd.htest.binomtest(0, 20, p=0.2).conf_int()
+array([                0.0, 0.16843347098308534], dtype=float64)
+```
+
+p = 0이나 1은 결과가 하나뿐인 분포예요. 그 결과와 같으면 p값이 1, 다르면 0이에요.
+
+```python
+>>> sd.htest.binomtest(0, 10, p=0.0).pvalue, sd.htest.binomtest(3, 10, p=0.0).pvalue
+(1.0, 0.0)
+```
+
+## 입력과 에러
+
+`k`와 `n`은 정수(int)만 받아요. 개수가 float로 들어 있으면 `int()`로 바꿔서 줘요.
+
+```python
+>>> sd.htest.binomtest(21, 20)
+Traceback (most recent call last):
+    ...
+ValueError: binomtest(): 'k' must not exceed 'n'
+>>> sd.htest.binomtest(2.0, 20)
+Traceback (most recent call last):
+    ...
+TypeError: binomtest(): 'k' must be an int, not float
+>>> sd.htest.binomtest(2, 5, p=1.5)
+Traceback (most recent call last):
+    ...
+ValueError: binomtest(): 'p' must be in [0, 1]
+>>> r.conf_int(method='jeffreys')
+Traceback (most recent call last):
+    ...
+ValueError: conf_int(): 'method' must be 'exact', 'wilson' or 'wilsoncc', not 'jeffreys'
+```
+
+인자 검사의 공통 규칙은 [기본 개념](/api/htest/basics/)에 있어요.
+
+## 다른 검정과 고르기
+
+- 시도가 많고 성공도 실패도 넉넉하면 [proportions_ztest](/api/htest/proportions_ztest/)의 정규 근사도 비슷한 답을 줘요. 이항 검정은 언제나 정확하니 하나의 비율에는 이것을 먼저 써요.
+- 두 집단의 비율을 견주려면 [test_proportions_2indep](/api/htest/test_proportions_2indep/)나 2 × 2 분할표의 [fisher_exact](/api/htest/fisher_exact/)를 써요.
+- 성공의 비율이 아니라 "중앙값(분위수)이 q인가"를 묻는다면 [quantile_test](/api/htest/quantile_test/)예요. 안에서는 같은 이항 꼬리를 써요.
+
+## 정확도
+
+p값과 세 구간의 끝은 Arb(구간 산술)로 만든 참값과 상대 4e-16 안이에요(깊은 꼬리 2⁻⁹⁹⁹ 포함). 계약은 상대 1e-14이고, 시험한 문제에서 계약 대비 가장 큰 값이 0.039예요.
+
+## scipy를 아는 분께
+
+- 같은 검정이고 양쪽 p값의 규칙도 scipy 1.18.1의 것이에요. 값은 끝자리 몇 개까지 같아요(아래 예). 차이는 반올림 크기이고, 시험한 문제에서 scipy의 p값은 n = 10⁵에서 상대 5.9e-14까지 벗어나요.
+- 결과에 `proportion_estimate`가 없어요. `statistic`과 같은 값이라 하나만 둬요.
+- 신뢰구간은 `proportion_ci(confidence_level=0.95)` 대신 `conf_int(alpha=0.05)`예요. 돌려주는 것도 `ConfidenceInterval(low, high)`가 아니라 (2,) 배열이에요. `method`의 이름(`'exact'`, `'wilson'`, `'wilsoncc'`)은 같아요.
+- `k`와 `n`은 위치로만, 나머지는 키워드로만 받아요.
+
+```python
+>>> import scipy.stats
+>>> s = scipy.stats.binomtest(7, 20, p=0.2)
+>>> s.pvalue, r.pvalue
+(np.float64(0.09822172861346881), 0.09822172861346874)
+>>> float(s.proportion_ci().low), float(r.conf_int()[0])
+(0.15390920478454118, 0.15390920478454115)
+```

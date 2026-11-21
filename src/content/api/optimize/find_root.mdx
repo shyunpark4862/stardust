@@ -150,7 +150,7 @@ array([10, 10, 10, 10, 10], dtype=int64)
 ```python
 >>> r = sd.optimize.find_root(lambda x: x**3 - 2*x - 5, (2.0, 3.0))
 >>> r
-OptimizeResult(converged=True, fun=-8.88178e-16, n_iter=7, nfev=9, x=2.0945514815423265)
+OptimizeResult(converged=True, fun=-8.88178e-16, n_iter=7, nfev=9, x=2.09455)
 >>> r.x, r.bracket
 (2.0945514815423265, (2.0945514815423265, 2.0945514815423274))
 ```
@@ -323,7 +323,7 @@ x는 구간의 두 끝 가운데 |f|가 작은 쪽, $x_{l0}, x_{r0}$는 처음 �
 
 ```python
 >>> sd.optimize.find_root(lambda x: x**9, (-1.0, 2.0))
-OptimizeResult(converged=True, fun=-1.39067e-309, n_iter=114, nfev=116, x=-4.81482486096809e-35)
+OptimizeResult(converged=True, fun=-1.39067e-309, n_iter=114, nfev=116, x=-4.81482e-35)
 >>> sd.optimize.find_root(lambda x: x**9, (-1.0, 2.0), fatol=0.0).x
 -7.52316384526264e-37
 ```

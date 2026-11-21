@@ -1,0 +1,151 @@
+---
+title: block_diag
+names: [block_diag]
+group: 인덱싱과 만들기
+order: 8
+signatures:
+  - "sd.sparse.block_diag(arrays, /, *, format=None, dtype=None)"
+summary: 행렬 여러 개를 대각선을 따라 늘어놓은 블록 대각 희소 행렬을 만들어요. 블록 밖은 저장하지 않아요.
+params:
+  - name: arrays
+    type: 블록의 리스트
+    kind: positional-only
+    desc: 대각선에 놓을 행렬의 리스트나 tuple. 각각 희소 배열이나 밀집 sd.ndarray이고, 크기가 달라도 되고 정사각이 아니어도 돼요. 1차원 블록은 한 행으로 봐요.
+  - name: format
+    type: str 또는 None
+    kind: keyword-only
+    desc: 결과의 형식. 'coo', 'csr', 'csc', 'dok' 중 하나이고, None이면 COO예요.
+  - name: dtype
+    type: dtype 또는 None
+    kind: keyword-only
+    desc: 값의 dtype. None이면 블록들의 dtype을 승격한 것이에요.
+returns:
+  type: 희소 배열
+  desc: 블록의 행 수의 합 × 열 수의 합 모양인 희소 배열. 블록 안의 저장된 원소(밀집 블록은 0이 아닌 값)만 저장해요.
+raises:
+  - type: TypeError
+    desc: arrays가 리스트나 tuple이 아닐 때, 블록이 희소 배열이나 sd.ndarray가 아닐 때(None 포함).
+  - type: ValueError
+    desc: arrays가 비었을 때, 블록이 3차원 이상일 때, format이 네 형식의 이름이 아닐 때.
+seeAlso: [block_array, kron, hstack, vstack, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+**블록 대각 행렬**은 대각선을 따라 작은 행렬(블록)이 놓이고 나머지가 모두 0인 행렬이에요. `block_diag`는 블록의 리스트를 받아 그 행렬을 희소 행렬로 만들어요. 블록의 크기는 서로 달라도 되고, 정사각이 아니어도 돼요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 2.0], [0.0, 3.0]]))
+>>> B = sd.sparse.csr_array(sd.asarray([[4.0, 5.0, 6.0]]))
+>>> X = sd.sparse.block_diag([A, B])
+>>> X
+<coo_array of shape (3, 5), float64, 6 stored elements>
+>>> X.toarray()
+array([[1.0, 2.0, 0.0, 0.0, 0.0],
+       [0.0, 3.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 4.0, 5.0, 6.0]], dtype=float64)
+```
+
+<Fig caption="A(2 × 2)가 왼쪽 위에, B(1 × 3)가 그 오른쪽 아래에 붙어요. 블록 밖은 저장하지 않아요.">
+  <ArrayFig name="block_diag([A, B])" data={[[1, 2, 0, 0, 0], [0, 3, 0, 0, 0], [0, 0, 4, 5, 6]]} tones={[['a', 'a', 'g', 'g', 'g'], ['g', 'a', 'g', 'g', 'g'], ['g', 'g', 'b', 'b', 'b']]} note="shape (3, 5)" />
+</Fig>
+
+블록마다 바로 앞 블록의 오른쪽 아래 모서리에서 시작해요. 결과의 행 수는 블록들의 행 수의 합, 열 수는 열 수의 합이에요.
+
+<Reference />
+
+## 어디에 쓰나요
+
+서로 영향을 주지 않는 작은 문제 여러 개를 한 행렬로 묶을 때 써요. 블록 대각 행렬로 연립방정식을 풀면 블록마다 따로 푼 것과 같은 답이 나와요. 여러 그룹의 회귀나 따로 떨어진 여러 회로처럼, 한 번에 다루면 편하지만 서로 섞이지 않는 계에 맞아요.
+
+블록이 모두 같다면 `kron(eye_array(n), A)`로도 만들 수 있어요([`kron`](/api/sparse/kron/)). 블록이 다르면 `block_diag`예요.
+
+```python
+>>> blocks = [sd.sparse.diags_array(sd.asarray([float(i + 1)] * 2)) for i in range(3)]
+>>> sd.sparse.block_diag(blocks).diagonal()
+array([1.0, 1.0, 2.0, 2.0, 3.0, 3.0], dtype=float64)
+```
+
+## 블록에 쓸 수 있는 것
+
+블록은 희소 배열이나 밀집 `sd.ndarray`예요. 밀집 블록도 0이 아닌 값만 저장해요. 1차원 블록은 한 행(1 × n)으로 봐요.
+
+```python
+>>> sd.sparse.block_diag([A, sd.asarray([[7.0, 0.0], [0.0, 8.0]])])
+<coo_array of shape (4, 4), float64, 5 stored elements>
+>>> sd.sparse.block_diag([A, sd.asarray([1.0, 0.0, 2.0])]).toarray()
+array([[1.0, 2.0, 0.0, 0.0, 0.0],
+       [0.0, 3.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 1.0, 0.0, 2.0]], dtype=float64)
+```
+
+[`block_array`](/api/sparse/block_array/)와 달리 `None` 블록이 없어요. 빈 자리는 블록 밖에 이미 있기 때문이에요.
+
+```python
+>>> sd.sparse.block_diag([A, None])
+Traceback (most recent call last):
+    ...
+TypeError: block_diag(): arrays[1] must be a sparse array or an sd.ndarray, not NoneType
+```
+
+행이나 열이 0인 블록도 받아요. 그 블록은 자리만 차지해요. 아래에서 2 × 0 블록은 두 행을 차지하지만 열은 차지하지 않아서, `A`가 2행부터 시작해요.
+
+```python
+>>> sd.sparse.block_diag([sd.zeros((2, 0)), A]).toarray()
+array([[0.0, 0.0],
+       [0.0, 0.0],
+       [1.0, 2.0],
+       [0.0, 3.0]], dtype=float64)
+```
+
+## 인자는 리스트 하나
+
+블록은 리스트(또는 tuple) 하나에 담아 넘겨요. 블록을 낱낱이 넘기면 둘째 블록이 위치 인자가 너무 많다는 `TypeError`, 행렬 하나만 넘기면 리스트가 아니라는 `TypeError`예요.
+
+```python
+>>> sd.sparse.block_diag(A, B)
+Traceback (most recent call last):
+    ...
+TypeError: block_diag(): takes 1 positional argument but 2 were given
+>>> sd.sparse.block_diag(A)
+Traceback (most recent call last):
+    ...
+TypeError: block_diag(): 'arrays' must be a list or a tuple, not csr_array
+>>> sd.sparse.block_diag([])
+Traceback (most recent call last):
+    ...
+ValueError: block_diag(): 'arrays' must hold at least one array
+```
+
+## 형식과 dtype
+
+기본 형식은 COO예요. 블록의 원소를 블록 순서대로 이어 붙인 것이에요. 다른 형식이 필요하면 `format`을 줘요. `dtype=None`이면 블록들의 dtype을 승격해요.
+
+```python
+>>> sd.sparse.block_diag([A, B], format='csr')
+<csr_array of shape (3, 5), float64, 6 stored elements>
+>>> sd.sparse.block_diag([sd.asarray([[1, 2]]), sd.asarray([[True]])]).dtype
+int64
+```
+
+## 밀집 배열의 짝: sd.linalg.block_diag
+
+밀집 행렬의 블록 대각 행렬은 [`sd.linalg.block_diag(arrays)`](/api/linalg/block_diag/)예요. 인자의 이름과 꼴이 같고, 같은 블록이면 `block_diag(...).toarray()`와 값이 비트까지 같아요.
+
+```python
+>>> D = sd.linalg.block_diag([A.toarray(), B.toarray()])
+>>> bool(sd.all(D == X.toarray()))
+True
+```
+
+`sd.linalg.block_diag`도 원소를 옮기기만 해서 정수는 정수로 남아요(dtype은 블록들의 승격이에요).
+
+## scipy를 아는 분께
+
+- 인자 이름이 `arrays`예요(scipy는 `mats`). 밀집 짝 `sd.linalg.block_diag`와 같은 이름이에요. 위치로만 받으므로 보통의 쓰임에서는 차이가 없어요.
+- 밀집 블록도 0이 아닌 값만 저장해요. scipy는 밀집 블록의 모든 자리를 0까지 저장해요.
+- 블록은 희소 배열과 `sd.ndarray`예요. 리스트와 numpy 배열은 `TypeError`예요.

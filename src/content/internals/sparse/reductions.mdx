@@ -1,0 +1,141 @@
+---
+title: 리덕션
+group: 형식과 연산
+order: 5
+summary: 희소 배열의 sum과 mean이 값을 어떤 순서로 더하는지(전체 합은 C 순서의 pairwise, 축 합은 줄마다 색인 순서), 정수 합을 128비트로 정확히 더하는 까닭, max·min과 argmax·argmin이 암시적 0을 어떻게 세는지 설명해요.
+seeAlso: [products, determinism, elementwise, formats]
+---
+
+## 두 가지 합
+
+희소 배열의 합은 두 규칙으로 나뉘어요.
+
+| 리덕션 | 순서 | 같은 비트를 내는 밀집 계산 |
+|---|---|---|
+| 전체 합 `sum()` | 저장된 값을 논리적 C 순서(행 우선, 줄 안은 색인 오름차순)로 놓고 pairwise 트리 | CSR이면 `sd.sum(A.data)` |
+| 축 합 `sum(axis=)` | 출력 원소마다 그 줄의 색인 오름차순 순차 합, L = 4096개 넘으면 조각 | SpMV의 합과 같은 규칙 |
+
+두 규칙 모두 결과가 행렬의 값과 모양으로만 정해져요. 형식(CSR, CSC, COO, DOK)과 스레드 수가 비트를 바꾸지 않아요.
+
+### 전체 합: C 순서의 pairwise
+
+전체 합은 값을 C 순서로 모은 뒤 배열의 `sd.sum`에 넘겨요. 배열의 합은 `base/pairwise.hpp`의 pairwise 트리라, 반올림 오차가 log n처럼 자라요.
+
+```python
+# src/stardust/sparse/_reduce.py
+def _row_major_values(A):
+    """The values of A in C order, repeated COO positions summed: what the whole sum adds."""
+    fmt = A.format
+    if fmt == "csr":
+        return A._data
+    if fmt == "csc":
+        return A._swap(None, "sum")._data
+    if fmt == "coo":
+        return A._summed()[2]
+    return A._parts()[2]
+```
+
+CSR은 `data`가 이미 C 순서예요. CSC는 한 번 CSR로 바꿔(전치 한 번) 그 순서를 만들고, COO는 중복을 입력 순서로 더한 표준 꼴의 값을, DOK는 키를 정렬한 값을 써요. 저장 순서가 아니라 논리적 C 순서로 정한 것은 linalg가 합의 항을 논리적 C 순서로 놓는 것과 같은 원칙이에요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0], [0.0, 0.0, 3.0]]))
+>>> A.sum(), sd.sum(A.data), A.tocsc().sum() == A.sum(), A.tocoo().sum() == A.sum()
+(6.0, 6.0, True, True)
+```
+
+### 축 합: 줄마다 순차 합
+
+`sum(axis=)`와 `mean(axis=)`는 `_line_sum` 하나로 가요. 곱이 없을 뿐 SpMV와 같은 커널 구조예요([곱](/internals/sparse/products/)). 줄을 따라 더하면(CSR의 `axis=1`, CSC의 `axis=0`) 모으기, 줄을 가로질러 더하면(CSR의 `axis=0`, CSC의 `axis=1`) 흩뿌리기예요. 흩뿌리기를 줄 순서대로 하면 각 출력이 색인 오름차순의 순차 합이 되므로, 어느 형식이든 출력 원소 하나의 항 순서가 같아요. COO와 DOK는 CSR로 바꿔 계산해요.
+
+```python
+>>> R = sd.sparse.random_array((500, 400), density=0.05, rng=sd.random.default_rng(3), format='csr')
+>>> s0 = R.sum(axis=0).tolist()
+>>> R.tocsc().sum(axis=0).tolist() == s0, R.tocoo().sum(axis=0).tolist() == s0
+(True, True)
+```
+
+축 합을 pairwise로 하지 않은 까닭은 scipy와의 관계예요. scipy의 축 합 가운데 줄을 가로지르는 것은 `ones @ A`·`A @ ones`라 이쪽의 순차 합과 같은 비트이고, 줄을 따르는 것은 `np.add.reduceat`(numpy의 pairwise)라 줄이 8개 이상이면 끝자리가 달라요. 줄마다 pairwise로 하면 긴 줄에서 조금 더 정확하지만, L 이하의 짧은 줄에서도 scipy와 갈라지고 SpMV와 같은 규칙이라는 성질도 잃어요. L보다 긴 줄은 조각으로 나눠 오차가 항 수에 비례해 자라지 않게 해요.
+
+## 정수의 합은 정확하게
+
+bool과 int64의 합은 128비트 정수로 정확히 더한 뒤 int64로 wrap해요. 정수 덧셈은 결합 법칙이 성립하므로 순서와 상관없이 같은 값이고, wrap도 배열의 `sum`과 같아요. 평균은 그 정확한 합을 한 번 반올림해 float64로 만든 뒤 길이로 한 번 나눠요. 중간 합이 int64를 넘쳐도 평균은 맞아요.
+
+```cpp
+    // csrc/sparse/spmv.cpp
+    auto finish = [count](Acc s) -> R {
+        if constexpr (std::is_same_v<Acc, i128>) {
+            if (count > 0) return static_cast<R>(static_cast<double>(s) / static_cast<double>(count));  // IntSum's rule
+            return static_cast<R>(static_cast<int64_t>(static_cast<std::uint64_t>(s)));  // wraps
+        } else {
+            if (count > 0) return s / static_cast<double>(count);
+            return s;
+        }
+    };
+```
+
+```python
+>>> I = sd.sparse.csr_array(sd.asarray([[2**62, 2**62, 2**62, 0]]))
+>>> I.sum(), I.mean(), sd.mean(I.toarray())
+(-4611686018427387904, 3.458764513820541e+18, 3.458764513820541e+18)
+```
+
+합 3·2⁶²은 int64를 넘어 wrap했지만, 평균은 정확한 합 ÷ 4라 밀집 배열의 `mean`과 같아요. 전체 평균도 같은 규칙(`_exact_mean`)이에요. float와 complex의 평균은 위의 규칙(전체는 pairwise, 축은 순차 합)으로 더한 합을 길이로 한 번 나눠요. 길이에는 암시적 0도 들어요.
+
+## max와 min
+
+`max`·`min`은 줄마다 저장된 값을 배열의 `maximum`·`minimum`으로 접고, 그 줄에 저장되지 않은 자리가 하나라도 있으면 암시적 0과 한 번 더 접어요.
+
+```cpp
+            // csrc/sparse/reduce.cpp
+            for (int64_t r = lo; r < hi; ++r) {
+                const int64_t b = ip[r], e = ip[r + 1];
+                if (b == e) {
+                    o[r] = T{};
+                    continue;
+                }
+                T m = v[b];
+                for (int64_t p = b + 1; p < e; ++p) m = Op::f(m, v[p]);
+                if (!explicit_ && e - b < line_len) m = Op::f(m, T{});
+                o[r] = m;
+            }
+```
+
+`Op`이 배열의 `Maximum`·`Minimum`이라 NaN이 퍼지고, `nanmax`·`nanmin`의 `Op`은 NaN을 건너뛰어요. `explicit=True`는 암시적 0과 접는 줄을 건너뛰어 저장된 값만 봐요. 빈 줄은 0이에요. 축이 있으면 그 축을 줄로 하는 형식(`axis=1`은 CSR, `axis=0`은 CSC)으로 맞춰 줄마다 접고, 전체는 C 순서의 값 전체를 줄 하나로 보고 접어요.
+
+```python
+>>> A.min(axis=1).tolist(), A.min(axis=1, explicit=True).tolist()
+([0.0, 0.0], [1.0, 3.0])
+>>> N = sd.sparse.csr_array(sd.asarray([[-1.0, 0.0, float('nan')]]))
+>>> N.max(), N.nanmax()
+(nan, 0.0)
+```
+
+## argmax와 argmin
+
+argmax와 argmin은 암시적 0도 자리로 세요. 동점이면 C 순서의 첫 자리, NaN이 있으면 첫 NaN의 자리예요(배열의 규칙). 커널은 둘을 따로 찾아 견줘요. 먼저 저장된 값 가운데 가장 좋은 것을 찾아요. NaN을 만나면 거기서 멈추고, 아니면 엄격히 더 좋은 값만 받으므로 동점의 첫 자리가 남아요. 다음으로 첫 암시적 0의 자리를 찾아요. 줄의 색인이 정렬되어 있으므로 색인이 0, 1, 2, …와 처음 어긋나는 곳이에요. 마지막으로 가장 좋은 저장된 값이 NaN이거나 0보다 엄격히 좋으면 그 자리, 0과 같으면 두 자리 가운데 앞의 것, 아니면 암시적 0의 자리를 골라요(`choose`). 2차원의 `axis=None`은 CSR의 값 전체에서 같은 일을 하고 펼친 C 순서의 자리를 돌려줘요.
+
+```python
+>>> N.argmax(), N.argmin()
+(2, 2)
+>>> Z = sd.sparse.csr_array(sd.asarray([[-1.0, 0.0, -2.0]]))
+>>> Z.max(), Z.argmax()
+(0.0, 1)
+```
+
+## 결과의 꼴과 dtype
+
+`axis`가 None이면 Python 스칼라, 있으면 언제나 밀집 `sd.ndarray`예요. `keepdims`는 배열과 같은 뜻이에요. dtype과 dtype의 에러는 배열의 것을 그대로 써요. 빈 배열 하나를 같은 함수에 넘겨 보는 방식이라, bool의 `sum`은 int64, complex의 `max`는 배열과 같은 글의 `TypeError`가 돼요.
+
+```python
+    # src/stardust/sparse/_reduce.py
+    res = _sd.sum(_sd.zeros((1, 1), dtype=A.dtype), axis=0, dtype=dtype).dtype  # the array's rule and errors
+```
+
+## scipy를 아는 분께
+
+- scipy의 전체 `sum()`은 `data.sum()`이라 저장 순서의 numpy pairwise예요. 이쪽은 논리적 C 순서이므로 CSC·COO에서 끝자리가 다를 수 있어요.
+- 줄을 가로지르는 축 합은 scipy와 지금은 비트까지 같아요(약속은 아니에요). 줄을 따르는 축 합은 줄이 8개 이상이면 다를 수 있어요.
+- scipy의 `max(axis=)`·`min(axis=)`은 COO 희소 배열을 돌려줘요. 이쪽은 밀집이에요.
+- scipy의 argmax는 NaN이 있어도 첫 암시적 0의 자리를 돌려줄 수 있어요. 이쪽은 배열처럼 첫 NaN이에요.
+- scipy의 빈 `mean`은 `ZeroDivisionError`, 이쪽은 배열처럼 NaN이에요. scipy의 평균은 값마다 1/길이를 곱한 뒤 더해요.

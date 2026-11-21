@@ -33,7 +33,7 @@ raises:
     desc: n_rows나 n_cols가 음수일 때.
   - type: OverflowError
     desc: n_rows, n_cols, k가 int64 범위를 벗어날 때.
-seeAlso: [filled, tril-triu, matmul, indexing]
+seeAlso: [diag, filled, tril-triu, matmul, indexing]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -179,7 +179,7 @@ array([[0, 2, 3],
 
 ### 벡터로 대각행렬 만들기
 
-대각선에 원하는 값이 놓인 행렬(대각행렬)은 `eye`에 그 값을 곱하면 돼요. [브로드캐스팅](/api/array/broadcasting/) 덕분에 `j`번째 열에 `v[j]`가 곱해지고, 대각선이 아닌 칸은 0이라 그대로 0이에요.
+대각선에 원하는 값이 놓인 행렬(대각행렬)은 [`diag`](/api/array/diag/)가 바로 만들어요. `eye`에 그 값을 곱해도 돼요. [브로드캐스팅](/api/array/broadcasting/) 덕분에 `j`번째 열에 `v[j]`가 곱해지고, 대각선이 아닌 칸은 0이라 그대로 0이에요. 다만 곱셈이라서 `v`에 NaN이나 무한대가 있으면 `0 × NaN`이 NaN이 되어 그 열이 NaN으로 채워져요. 그럴 때는 값을 그대로 옮기는 `diag`를 써요.
 
 ```python
 >>> v = sd.asarray([1.0, 2.0, 3.0])
@@ -246,8 +246,19 @@ array([], shape=(0, 3), dtype=float64)
 | 모두 0이나 1인 행렬 | [`zeros`, `ones`](/api/array/filled/) | 대각선이 따로 없어요. 모양은 tuple로 줘요. |
 | 대각선 위쪽이나 아래쪽 전체를 남기기 | [`tril`, `triu`](/api/array/tril-triu/) | 대각선 한 줄이 아니라 삼각형 영역이에요. 기존 배열을 받아요. |
 | 행렬의 대각선 값 꺼내기 | `sd.linalg.diagonal` | 행렬을 만드는 게 아니라 1차원 배열로 꺼내요. |
+| 대각선에 원하는 값을 놓은 행렬 | [`diag`](/api/array/diag/) | 1이 아니라 벡터의 값을 놓아요. 언제나 정사각이에요. |
 
 `tril`과 `triu`의 `k`도 `eye`의 `k`와 뜻이 같아요. `k`번 대각선은 언제나 "열 번호 - 행 번호 = `k`"인 칸이에요.
+
+## 희소 행렬에서는
+
+행렬이 크고 대부분이 0이면 0이 아닌 원소만 저장하는 희소 행렬이 맞아요. 희소 단위행렬은 [`sd.sparse.eye_array`](/api/sparse/eye_array/)로 만들어요. 인자(`n_rows`, `n_cols`, `k`, `dtype`)가 `eye`와 같고, 같은 인자로 만든 두 결과는 값이 비트까지 같아요. 여러 줄의 대각선은 [`sd.sparse.diags_array`](/api/sparse/diags_array/)예요.
+
+```python
+>>> I = sd.sparse.eye_array(3, k=1)
+>>> bool(sd.all(I.toarray() == sd.eye(3, k=1)))
+True
+```
 
 ## numpy를 아는 분께
 

@@ -328,8 +328,21 @@ array([[1, 2, 0],
 | 쌓인 배열을 다시 나누기 | `unstack` | `stack`의 반대예요. 나눈 배열을 tuple로 돌려줘요. |
 | 같은 배열을 여러 번 이어 붙이기 | `tile` | 배열 하나를 되풀이해요. |
 | 원소마다 여러 번 되풀이 | `repeat` | `[1, 1, 2, 2]`처럼 원소 단위로 되풀이해요. |
+| 블록을 가로세로로 배치 | [`block`](/api/array/block/) | 중첩한 리스트의 모양대로 두 방향으로 이어요. |
 
 [`unstack`](/api/array/unstack/)은 `stack`의 반대예요. `sd.stack(sd.unstack(x, axis=k), axis=k)`는 `x`와 같은 배열이 돼요. 같은 배열을 이어 붙이는 일은 `concat([x, x, x])`로도 되지만 [`tile`](/api/array/repeat/)이 더 간단해요.
+
+## 희소 행렬에서는
+
+희소 행렬(0이 아닌 원소만 저장한 행렬)을 옆으로 잇는 것은 [`sd.sparse.hstack`](/api/sparse/hstack/), 위아래로 잇는 것은 [`sd.sparse.vstack`](/api/sparse/vstack/), 블록으로 조립하는 것은 [`sd.sparse.block_array`](/api/sparse/block_array/)예요. 같은 2차원 블록이면 `hstack`은 `concat(..., axis=1)`, `vstack`은 `concat(..., axis=0)`과 값이 비트까지 같아요(희소 쪽은 0을 저장하지 않아서 −0.0이 +0.0이 되는 것만 달라요). 1차원 배열은 다르게 다뤄요. `concat`은 1차원을 이어 1차원을 돌려주지만 `hstack`은 1차원 블록을 한 행으로 봐요.
+
+```python
+>>> p = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> q = sd.asarray([[5.0], [6.0]])
+>>> S = sd.sparse.hstack([sd.sparse.csr_array(p), sd.sparse.csr_array(q)])
+>>> bool(sd.all(S.toarray() == sd.concat([p, q], axis=1)))
+True
+```
 
 ## numpy를 아는 분께
 
@@ -337,5 +350,5 @@ array([[1, 2, 0],
 - `arrays`는 `sd.ndarray`의 list나 tuple만 받아요. 리스트가 섞이거나 제너레이터를 넘기면 `TypeError`예요.
 - `axis`는 keyword-only예요. `np.concatenate([a, b], 1)`처럼 자리로 넘길 수 없어요.
 - `out=`, `dtype=`, `casting=` 인자는 없어요. dtype은 언제나 승격 규칙대로 정해져요.
-- `np.vstack`, `np.hstack`, `np.dstack`, `np.column_stack`, `np.block`은 없어요. 아래로 잇기는 `concat(..., axis=0)`, 옆으로 잇기는 `concat(..., axis=1)`, 1차원 배열 여러 개를 열로 묶기는 `stack(..., axis=1)`로 써요.
+- `np.vstack`, `np.hstack`, `np.dstack`, `np.column_stack`은 없어요. 블록 행렬을 조립하는 `np.block`에 해당하는 것은 [`sd.block`](/api/array/block/)이에요. 아래로 잇기는 `concat(..., axis=0)`, 옆으로 잇기는 `concat(..., axis=1)`, 1차원 배열 여러 개를 열로 묶기는 `stack(..., axis=1)`로 써요.
 - `np.split` 계열은 없어요. 축을 따라 하나씩 나누는 것은 `unstack`, 원하는 구간으로 자르는 것은 슬라이싱으로 해요.

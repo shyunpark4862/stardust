@@ -1,0 +1,146 @@
+---
+title: 카이제곱과 Cressie–Read
+group: 적합도
+order: 1
+summary: chisquare와 power_divergence가 쓰는 Cressie–Read 통계량을 음이 아닌 항의 합과 일차 항으로 나눠 계산하는 법을 따라가요. 관측이 기대와 거의 같을 때 G 통계량이 자릿수를 지키는 이유, 항 g_a를 λ마다 계산하는 세 길, 관측 0의 극한, 분할표 검정과 함께 쓰는 커널을 다뤄요.
+seeAlso: [normality, edf, overview, anova]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+Cressie와 Read(1984)의 멱 발산(power divergence) 통계량은 관측 빈도 O와 기대 빈도 E의 차이를 모수 λ 하나로 묶은 족이에요.
+
+2/(λ(λ + 1)) · Σ O·((O/E)^λ − 1)
+
+λ = 1이 Pearson의 카이제곱 Σ(O − E)²/E, λ = 0(극한)이 우도비의 G = 2ΣO·log(O/E), λ = −1/2이 Freeman–Tukey, λ = −1이 수정 우도비 2ΣE·log(E/O), λ = −2가 Neyman, λ = 2/3이 Cressie와 Read가 권한 값이에요. 어느 λ든 귀무가설에서 자유도 k − 1 − `ddof`의 카이제곱 분포에 가까워져요.
+
+`chisquare`는 λ = 1, `power_divergence`는 `lambda_`로 고른 λ이고, 둘 다 커널 함수 `power_divergence`(`csrc/htest/gof.cpp`)예요. 같은 통계량을 `chi2_contingency`(분할표)와 `median_test`도 써서, 칸마다의 항은 `csrc/htest/divergence.hpp`에 따로 두었어요.
+
+## 식을 둘로 나누기
+
+정의대로 ΣO·((O/E)^λ − 1)을 더하면 O ≈ E에서 문제가 생겨요. 칸마다의 항은 O − E의 일차 크기인데 통계량은 이차 크기라, 일차 항들이 서로 지워지고 남는 것이 반올림에 묻혀요. G 통계량의 2ΣO·log(O/E)에서 E = 10⁶, O − E = 10⁻³이면 항은 10⁻³ 크기, 통계량은 10⁻¹² 크기예요.
+
+그래서 상대 차이 δ = (O − E)/E와 a = λ + 1로 식을 다시 써요. O = E(1 + δ)이니 칸의 항은 E((1 + δ)^a − (1 + δ))이고, (1 + δ)^a − 1 − δ = [(1 + δ)^a − 1 − aδ] + (a − 1)δ로 나누면
+
+통계량 = 2ΣE·g_a(δ) + (2/a)·Σ(O − E), g_a(δ) = ((1 + δ)^a − 1 − aδ) / (a(a − 1))
+
+이에요. g_a(δ)는 볼록 함수 (1 + δ)^a에서 그 접선을 뺀 것을 a(a − 1)로 나눈 값이라 언제나 0 이상이에요. 첫 합은 음이 아닌 항의 합이라 지워지는 것이 없고, 둘째 합 Σ(O − E)는 O와 E의 합이 같으면 0이에요. 두 합이 같은 자리에서 맞서지 않으니 O ≈ E에서도 통계량이 자릿수를 지켜요.
+
+극한도 같은 꼴이에요. a = 1(G 통계량)은 g₁(δ) = (1 + δ)·log(1 + δ) − δ에 둘째 합의 계수 2이고, a = 0(수정 우도비)은 g₀(δ) = δ − log(1 + δ)에 계수 −2예요.
+
+```cpp
+    // csrc/htest/gof.cpp
+    const double coef = lam == -1.0 ? -2.0 : (lam == 1.0 ? 0.0 : 2.0 / aa);
+    Acc tot = pos;
+    tot.add(lin.value() * coef);
+    tot.add(raw.value());
+    out.stat = to_double(tot.value());
+    out.p = (out.df > 0.0 && out.stat == out.stat) ? chi2_sf(out.stat, out.df) : kNaN;
+```
+
+`pos`는 2E·g_a(δ)의 합, `lin`은 O − E의 합이고 둘 다 double-double이에요. O − E는 `two_sum`으로 정확히 빼요. Pearson(λ = 1)은 scipy와 같은 Σ(O − E)²/E이고 이 식도 항이 음이 아니라 둘째 합이 필요 없어요(계수 0). `raw`는 이 꼴이 덮지 못하는 칸(E ≤ 0이나 O < 0)의 scipy 식 그대로의 항이에요.
+
+아래는 E = 10⁶인 세 칸에서 O − E = ±10⁻³일 때의 G 통계량이에요. 참값은 `decimal`의 60자리로 정의 2ΣO·log(O/E)를 계산했어요.
+
+```python
+>>> import stardust as sd
+>>> import scipy.stats as ss
+>>> from decimal import Decimal, getcontext
+>>> getcontext().prec = 60
+>>> e = [1e6, 1e6, 1e6]
+>>> o = [1e6 + 1e-3, 1e6 - 1e-3, 1e6]
+>>> G = 2 * sum(Decimal(x) * (Decimal(x) / Decimal(y)).ln() for x, y in zip(o, e))
+>>> f'{G:.10e}'
+'2.0000001900e-12'
+>>> mine = sd.htest.power_divergence(o, e, lambda_='log-likelihood').statistic
+>>> theirs = float(ss.power_divergence(o, e, lambda_='log-likelihood').statistic)
+>>> [f'{float(abs(Decimal(v) - G) / G):.1e}' for v in (mine, theirs)]
+['3.1e-17', '9.9e-08']
+```
+
+## 항 g_a(δ)를 계산하는 세 길
+
+g_a(δ) 자체도 작은 δ에서 상쇄가 있어요. (1 + δ)^a − 1 − aδ는 δ²의 크기인데 세 항은 1의 크기예요. a에 따라 세 길로 계산해요.
+
+```cpp
+// csrc/htest/divergence.hpp
+inline double ga(double a, double t) {
+    if (t == -1.0) return a > 0.0 ? 1.0 / a : std::numeric_limits<double>::infinity();
+    if (a < 0.5) {
+        // g_a(t) = (1 + t) g_(1-a)(-t / (1 + t))
+        return (1.0 + t) * ga(1.0 - a, -t / (1.0 + t));
+    }
+    if (a == 1.0) return g1(t);
+    if (std::fabs(t) <= 0x1p-4 && std::fabs(a) <= 16.0) {
+        // sum_{k >= 2} c_k t^k, c_2 = 1/2, c_(k+1) = c_k (a - k) / (k + 1)
+        double c = 0.5, p = t * t, s = c * p;
+        for (int k = 2; k < 200; ++k) {
+            c *= (a - k) / (k + 1.0);
+            p *= t;
+            const double term = c * p;
+            s += term;
+            if (std::fabs(term) <= 0x1p-60 * std::fabs(s)) break;
+        }
+        return s;
+    }
+    const double L = std::log1p(t);
+    return (g1(t) + (1.0 + t) * L * psi((a - 1.0) * L)) / a;
+}
+```
+
+**a = 1 (G 통계량).** g₁(δ) = (1 + δ)log1p(δ) − δ = δ² − (1 + δ)μ(δ), μ(δ) = δ − log1p(δ)예요. μ는 sd.special의 double-double `log1pmx_neg`로 계산해요. δ²는 `two_prod`로 정확하고, (1 + δ)μ = μ + δμ도 double-double로 빼서 마지막에 한 번 반올림해요.
+
+**|δ| ≤ 1/16.** 이항 급수 (1 + δ)^a = Σ C(a, k)δᵏ에서 0차와 1차 항이 정확히 빠지니 g_a(δ) = Σ_(k≥2) c_k δᵏ, c_k = C(a, k)/(a(a − 1))예요. c₂ = 1/2이고 c_(k+1) = c_k·(a − k)/(k + 1)이에요. |δ| ≤ 1/16이면 항이 적어도 16배씩 줄어서 수십 항 안에 2⁻⁶⁰ 아래로 가요. 모든 항을 그대로 더하니 상쇄가 없어요.
+
+**그 밖.** L = log1p(δ)라 하면 (1 + δ)^a = (1 + δ)·e^((a−1)L)이고, e^y = 1 + y + y·ψ(y), ψ(y) = (eʸ − 1 − y)/y로 펼치면
+
+g_a(δ) = [g₁(δ) + (1 + δ)·L·ψ((a − 1)L)] / a
+
+예요. g₁은 위의 정확한 꼴이고, ψ는 |y| < 1/2에서 급수, 그 밖에서 `expm1`이에요. 지수의 1을 미리 빼 두었으니 (1 + δ)^a를 직접 만들 때의 상쇄가 없어요.
+
+**a < 1/2.** s = −δ/(1 + δ)로 바꾸면 g_a(δ) = (1 + δ)·g_(1−a)(s)라는 항등식이 있어요(정의에 넣어 정리하면 나와요). 1 − a > 1/2이니 위의 길로 계산해요. 수정 우도비(a = 0)는 g₁로, Neyman(a = −1)은 a = 2로 가요.
+
+## 관측 0과 기대 0
+
+관측 O = 0(δ = −1)은 정의식에 0^λ이나 log 0이 들어가는 자리예요. 여기서는 극한을 써요. a > 0(λ > −1)이면 g_a(−1) = 1/a로 유한하고, a ≤ 0(λ ≤ −1)이면 +inf예요. scipy는 −1 < λ < 0과 λ < −1에서 0·inf를 계산해 NaN을 내요.
+
+```python
+>>> o2 = [0, 5, 7, 8]
+>>> sd.htest.power_divergence(o2, lambda_='freeman-tukey')
+PowerDivergenceResult(statistic=22.0749, pvalue=6.29311e-05, df=3)
+>>> ss.power_divergence(o2, lambda_='freeman-tukey').statistic
+np.float64(nan)
+>>> sd.htest.power_divergence(o2, lambda_='neyman')
+PowerDivergenceResult(statistic=inf, pvalue=0, df=3)
+```
+
+통계량이 +inf면 p값은 카이제곱의 ccdf(inf) = 0이에요. 분할표 검정(`chi2_contingency`, `median_test`)도 같은 `Divergence`를 지나서 0인 칸의 규칙이 같아요. 기대 빈도가 0 이하이거나 관측이 음수인 칸은 정의가 없는 입력이라 scipy의 식(`xlogy` 등)을 그대로 써서 scipy와 같은 값(대개 inf나 NaN)을 내요.
+
+## 기대 빈도를 주지 않으면
+
+`f_exp=None`이면 기대 빈도는 관측의 평균이에요. 이 평균을 double-double로 두고 O − E를 `two_sum(O, −E.hi) − E.lo`로 빼요. 그러면 Σ(O − E)가 0에 아주 가깝게 남아서 둘째 합이 첫 합을 흐리지 않아요. double로 반올림한 평균을 쓰면 Σ(O − E)가 k·(평균의 반올림)만큼 남아요.
+
+## 자유도, p값, sum_check
+
+자유도는 칸의 수 k − 1 − `ddof`이고 0 이하이면 p값이 NaN이에요. 결과의 `df`로 읽혀요. p값은 `ChiSquared(df).ccdf`를 C++에서 불러요.
+
+`f_exp`를 주면 두 합이 scipy처럼 상대 2⁻²⁶(√ε) 안에서 같아야 해요. 커널은 줄마다 |ΣO − ΣE|/min(ΣO, ΣE)를 돌려주고, Python이 가장 큰 값을 보고 `ValueError`를 내요. `chisquare`는 `sum_check=False`로 끌 수 있고 `power_divergence`는 언제나 봐요(scipy와 같아요). 두 합이 다르면 둘째 합 (2/a)Σ(O − E)가 0이 아니고, 그 값도 통계량에 정확히 들어가요.
+
+## 긴 줄
+
+칸이 많은 줄 하나는 항을 스레드풀에서 계산해 배열에 두고 차례로 더해요([줄과 병렬](/internals/htest/lanes/#긴-줄-하나-줄-덩어리)의 `ordered_sum`과 같은 생각). 짧은 줄은 항을 만들며 바로 더해요. 두 길은 같은 연산을 같은 순서로 해서 비트가 같아요.
+
+## 정확도
+
+<AccuracySummary area="htest" names={['power_divergence']} caption="chisquare와 power_divergence의 25문제(여섯 이름의 λ와 λ = 0.3, −0.999, O ≈ E의 세 경우 포함)." />
+
+통계량은 Arb 참값에 대해 최대 상대 1.3 × 10⁻¹⁵이고 계약 대비가 가장 큰 곳은 O ≈ E의 λ = 2/3(0.13)이에요. scipy 열의 inf는 관측 0에서 scipy가 NaN을 낸 점이에요.
+
+## scipy를 아는 분께
+
+- λ ≠ 1의 통계량을 음이 아닌 항의 합과 일차 항으로 나눠 계산해서, O ≈ E에서 scipy보다 자릿수가 많아요(위의 G 통계량에서 scipy는 상대 10⁻⁷).
+- 관측 0은 극한이에요. λ > −1이면 유한, λ ≤ −1이면 inf이고, scipy는 −1 < λ < 0과 λ < −1에서 NaN이에요.
+- 결과에 `df`가 있어요(튜플로는 scipy처럼 둘로 풀려요).
+- 정의, 자유도의 `ddof`, `sum_check`의 허용오차는 scipy와 같아요.

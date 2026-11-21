@@ -1,0 +1,188 @@
+---
+title: csc_array
+names: [csc_array]
+group: 희소 배열
+order: 4
+signatures:
+  - "sd.sparse.csc_array(arg, /, *, shape=None, dtype=None, copy=None)"
+  - "A.eliminate_zeros()"
+summary: 열마다 0이 아닌 원소의 행 번호와 값을 묶어 적는 압축 열(CSC) 형식의 희소 배열이에요. CSR을 열 방향으로 뒤집은 꼴이라 열 고르기와 열마다의 합이 빠르고, CSR의 전치가 이 형식이에요. 2차원만 담아요.
+params:
+  - name: arg
+    type: tuple, 희소 배열, ndarray, numpy 배열, 시퀀스
+    kind: positional-only
+    desc: "(data, indices, indptr) 꼴의 압축된 세 배열(indices는 행 번호, indptr는 열마다), (data, (row, col)) 꼴의 좌표, 모양 tuple (M, N)(빈 배열), 다른 2차원 희소 배열이나 scipy의 희소 객체, 또는 2차원 밀집 배열이나 수의 시퀀스예요."
+  - name: shape
+    type: int의 tuple 또는 None
+    kind: keyword-only
+    desc: "배열의 모양 (M, N). None(기본값)이면 (data, indices, indptr)에서는 열 수가 len(indptr) − 1, 행 수가 가장 큰 행 번호 + 1이고, 좌표에서는 축마다 가장 큰 좌표 + 1이에요."
+  - name: dtype
+    type: dtype, 그 이름, 또는 None
+    kind: keyword-only
+    desc: "값의 dtype. None(기본값)이면 입력에서 정해요(빈 배열은 float64). 주면 그 dtype으로 바꿔요."
+  - name: copy
+    type: bool 또는 None
+    kind: keyword-only
+    desc: "값 배열 data를 복사할지. None(기본값)은 필요할 때만, True는 언제나, False는 복사가 필요하면 ValueError예요. indices와 indptr는 언제나 복사해요."
+returns:
+  type: csc_array
+  desc: "CSC 형식의 2차원 희소 배열. eliminate_zeros()는 제자리에서 바꾸고 None을 돌려줘요."
+raises:
+  - type: TypeError
+    desc: "arg가 받는 꼴이 아닐 때, indices·indptr나 좌표가 정수가 아닐 때, 값을 넓힐 수 없는 dtype일 때."
+  - type: ValueError
+    desc: "입력이나 shape가 2차원이 아닐 때, 행 번호가 범위 밖일 때, indptr가 열 수 + 1개가 아니거나 0에서 시작하지 않거나 줄어들거나 저장 수에서 끝나지 않을 때, shape가 입력과 맞지 않을 때, copy=False인데 복사가 필요할 때."
+seeAlso: [basics, csr_array, sparray, coo_array, operators, spsolve]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+## 한눈에 보기
+
+CSC(compressed sparse column, 압축 열) 형식은 [CSR](/api/sparse/csr_array/)과 같은 생각을 **열마다** 적용한 거예요. 0이 아닌 원소를 열 순서대로(열 안에서는 행 순서대로) 늘어놓고, 각 원소의 행 번호를 적고, 열마다 어디서 시작하는지를 적어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[0.0, 2.0, 0.0, 0.0],
+...                 [1.0, 0.0, 0.0, 3.0],
+...                 [0.0, 0.0, 0.0, 0.0],
+...                 [0.0, 4.0, 5.0, 0.0]])
+>>> A = sd.sparse.csc_array(x)
+>>> A
+<csc_array of shape (4, 4), float64, 5 stored elements>
+>>> A.data
+array([1.0, 2.0, 4.0, 5.0, 3.0], dtype=float64)
+>>> A.indices
+array([1, 0, 3, 3, 1], dtype=int64)
+>>> A.indptr
+array([0, 1, 3, 4, 5], dtype=int64)
+```
+
+- `data`: 0이 아닌 값을 열 순서대로 늘어놓은 것
+- `indices`: `data`의 같은 자리 값이 몇째 **행**에 있는지
+- `indptr`: 열 j의 원소가 `data[indptr[j]:indptr[j+1]]`이에요. 길이는 열 수 + 1이에요
+
+<Fig column caption="1열은 indptr[1] = 1부터 indptr[2] = 3 전까지, 곧 data[1:3] = [2.0, 4.0]이고 그 행 번호가 indices[1:3] = [0, 3]이에요.">
+  <FigRow>
+    <ArrayFig name="x" data={[[0, 2, 0, 0], [1, 0, 0, 3], [0, 0, 0, 0], [0, 4, 5, 0]]} tones={[['m', 'b', 'm', 'm'], ['a', 'm', 'm', 'a'], ['m', 'm', 'm', 'm'], ['m', 'b', 'a', 'm']]} axes />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="indptr" data={[0, 1, 3, 4, 5]} tones={['', 'b', 'b', '', '']} note="열 수 + 1개" />
+    <ArrayFig name="indices" data={[1, 0, 3, 3, 1]} tones={['', 'b', 'b', '', '']} note="행 번호" />
+    <ArrayFig name="data" data={[1, 2, 4, 5, 3]} tones={['', 'b', 'b', '', '']} note="값" />
+  </FigRow>
+</Fig>
+
+열의 원소가 한곳에 모여 있어서 열 고르기와 열마다의 계산이 빨라요.
+
+```python
+>>> A[:, 1:3]
+<csc_array of shape (4, 2), float64, 3 stored elements>
+>>> A.sum(axis=0)
+array([1.0, 6.0, 5.0, 3.0], dtype=float64)
+```
+
+<Reference />
+
+## 만드는 법
+
+만드는 법은 [CSR](/api/sparse/csr_array/#만드는-법)과 같아요. 다른 것은 `(data, indices, indptr)`에서 `indices`가 행 번호이고 `indptr`가 열마다라는 점이에요.
+
+```python
+>>> B = sd.sparse.csc_array(([1.0, 2.0], [2, 0], [0, 2, 2]), shape=(3, 2))
+>>> B.toarray()
+array([[2.0, 0.0],
+       [0.0, 0.0],
+       [1.0, 0.0]], dtype=float64)
+>>> B.indices
+array([0, 2], dtype=int64)
+```
+
+첫 열에 행 2, 0이 이 순서로 들어왔지만 정렬해서 0, 2가 됐어요. CSC도 [표준 꼴](/api/sparse/basics/#표준-꼴)이라서 열 안의 행 번호는 언제나 오름차순이고 중복이 없어요. 검사, 복사, `copy=`의 규칙도 CSR과 같아요.
+
+```python
+>>> sd.sparse.csc_array(([1.0], [5], [0, 1]), shape=(3, 1))
+Traceback (most recent call last):
+    ...
+ValueError: csc_array(): index 5 is out of bounds for axis 0 with size 3
+```
+
+### 2차원만이에요
+
+CSC는 1차원 배열을 담지 않아요. 1차원 희소 벡터는 COO, CSR, DOK로 만들어요.
+
+```python
+>>> sd.sparse.csc_array(sd.asarray([0.0, 3.0, 0.0]))
+Traceback (most recent call last):
+    ...
+ValueError: csc_array(): a dense input must have 2 dimensions, got 1
+>>> sd.sparse.csc_array((5,))
+Traceback (most recent call last):
+    ...
+ValueError: csc_array(): 'arg' must have 2 dimensions, got 1
+```
+
+## 속성
+
+| 속성 | 뜻 |
+|---|---|
+| `data` | 저장한 값. 쓸 수 있어요 |
+| `indices` | 같은 자리 값의 행 번호(int64). 읽기 전용이에요 |
+| `indptr` | 열마다의 시작 자리(int64, 열 수 + 1개). 읽기 전용이에요 |
+
+`eliminate_zeros()`도 CSR과 같아요. 저장된 0을 제자리에서 지워요. 모든 형식이 함께 가진 속성과 메서드는 [공통 속성과 메서드](/api/sparse/sparray/)에 있어요.
+
+## CSR과의 관계
+
+CSC의 세 배열은 그 행렬의 **전치**를 CSR로 적은 세 배열과 같아요. 그래서 CSC의 전치는 복사 없이 같은 세 배열을 읽는 CSR이고, CSR의 전치도 CSC예요.
+
+```python
+>>> A.T
+<csr_array of shape (4, 4), float64, 5 stored elements>
+>>> A.T.indptr
+array([0, 1, 3, 4, 5], dtype=int64)
+```
+
+같은 행렬을 CSR로 바꾸는 `tocsr()`는 원소를 행 방향으로 다시 정렬하므로 새 배열을 만들어요.
+
+희소끼리의 연산은 **왼쪽**이 CSC면 결과가 CSC예요. 오른쪽만 CSC면 결과는 CSR이에요. 스칼라 곱과 원소별 함수도 CSC를 그대로 지켜요.
+
+```python
+>>> A + A
+<csc_array of shape (4, 4), float64, 5 stored elements>
+>>> A @ A
+<csc_array of shape (4, 4), float64, 6 stored elements>
+>>> sd.sparse.csr_array(x) @ A
+<csr_array of shape (4, 4), float64, 6 stored elements>
+>>> A.sqrt()
+<csc_array of shape (4, 4), float64, 5 stored elements>
+```
+
+CSC의 `A @ v`도 CSR의 `A @ v`와 같은 값이에요. 어느 형식이든 한 원소의 합을 같은 순서로 더해서 마지막 한 자리까지 같아요.
+
+```python
+>>> A @ sd.asarray([1.0, 1.0, 1.0, 1.0])
+array([2.0, 4.0, 0.0, 9.0], dtype=float64)
+>>> bool(sd.all(A @ sd.asarray([1.0, 2.0, 3.0, 4.0]) == A.tocsr() @ sd.asarray([1.0, 2.0, 3.0, 4.0])))
+True
+```
+
+## 언제 CSC를 쓰나요
+
+- **열을 고르거나** 열마다의 합·최댓값을 구할 때
+- **전치한 행렬로 계산할 때.** CSR의 `.T`가 그대로 CSC라서 따로 바꿀 필요가 없어요
+- **COO의 원소를 열 우선 순서로 얻고 싶을 때.** CSC에서 `tocoo()`로 바꾸면 열 우선 순서예요
+
+```python
+>>> A.tocoo().coords
+(array([1, 0, 3, 3, 1], dtype=int64), array([0, 1, 1, 2, 3], dtype=int64))
+```
+
+연립방정식을 푸는 [`spsolve`](/api/sparse/spsolve/), [`splu`](/api/sparse/splu/) 같은 함수는 어느 형식이든 받아요. 결과도 형식과 상관없이 같으므로 풀기 위해 CSC로 바꿀 필요는 없어요.
+
+## scipy를 아는 분께
+
+[CSR의 차이](/api/sparse/csr_array/#scipy를-아는-분께)가 CSC에도 그대로예요. 언제나 표준 꼴이고(`sort_indices` 등이 없어요), `indices`·`indptr`는 int64의 읽기 전용 배열이며 언제나 복사해요. scipy의 `csc_matrix`는 없어요.

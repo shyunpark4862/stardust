@@ -1,0 +1,311 @@
+---
+kind: function
+title: wilcoxon
+names: [wilcoxon]
+group: 순위 검정
+order: 3
+signatures:
+  - "sd.htest.wilcoxon(x, y=None, /, *, axis=None, zero_method='wilcox', correction=False, alternative='two-sided', method='auto', nan_policy='propagate', keepdims=False)"
+summary: 짝지은 두 표본(같은 대상을 두 번 잰 값)의 차가 0을 가운데로 대칭인지 묻는 Wilcoxon 부호 순위 검정이에요. 차의 크기 순위와 부호만 써서 정규분포를 가정하지 않고, 작은 표본에서는 정확한 p값을 줘요.
+params:
+  - name: x
+    type: ndarray, 실수의 시퀀스, frame Series, 또는 DataFrame
+    kind: positional-only
+    desc: 첫째 측정. y가 없으면 x 자체를 차로 봐요.
+  - name: y
+    type: ndarray, 실수의 시퀀스, frame Series, DataFrame, 또는 None
+    kind: positional-only
+    desc: "둘째 측정(기본값 None). 주면 차 x − y를 검정해요. 표본 축의 길이가 x와 같아야 해요."
+  - name: axis
+    type: int, int의 tuple, 또는 None
+    kind: keyword-only
+    desc: "None(기본값)이면 모든 값을 펼쳐 검정 하나를 해요. 정수면 그 축을 따라 차를 읽고, 나머지 축은 배치예요."
+  - name: zero_method
+    type: str
+    kind: keyword-only
+    desc: "차가 0인 쌍을 다루는 법. 'wilcox'(기본값, 빼고 계산), 'pratt'(순위에는 넣고 통계량에서 빼요), 'zsplit'(그 순위를 T⁺와 T⁻에 반씩) 중 하나예요."
+  - name: correction
+    type: bool
+    kind: keyword-only
+    desc: "True면 정규 근사에 연속성 보정 0.5를 넣어요. 기본값은 False예요."
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(차가 음수 쪽으로 치우쳤다), 'greater'(차가 양수 쪽으로 치우쳤다) 중 하나예요."
+  - name: method
+    type: str 또는 PermutationMethod
+    kind: keyword-only
+    desc: "'auto'(기본값), 'exact'(정확한 분포), 'asymptotic'(정규 근사), 또는 PermutationMethod(차의 부호를 뒤집는 순열)예요."
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값), 'omit'(NaN이 든 쌍을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축이 길이 1로 남아요.
+returns:
+  type: WilcoxonResult
+  desc: "statistic(양쪽 검정이면 min(T⁺, T⁻), 한쪽이면 T⁺), pvalue, method, 정규 근사를 쓴 때만 zstatistic이 있어요. (statistic, pvalue)로 풀려요."
+raises:
+  - type: TypeError
+    desc: "표본이 배열·수의 시퀀스·frame이 아니거나 복소수일 때, correction·keepdims가 True·False가 아닐 때, 문자열 옵션이 문자열이 아닐 때, method에 MonteCarloMethod·BootstrapMethod를 줬을 때, 옵션을 위치로 주거나 없는 키워드를 줬을 때."
+  - type: ValueError
+    desc: "x와 y의 길이(표본 축의 길이)가 다를 때, zero_method·alternative·method·nan_policy의 이름이 틀렸을 때, nan_policy='raise'인데 NaN이 있을 때, axis가 범위 밖이거나 겹칠 때, method='exact'의 작업량이 상한을 넘을 때."
+seeAlso: [ttest_rel, mannwhitneyu, friedmanchisquare, binomtest, basics, results]
+---
+
+## 무엇을 묻나요
+
+혈압약을 먹기 전과 먹은 뒤에 같은 열 사람의 수축기 혈압을 쟀어요. 한 사람에게서 두 값이 나왔으니, 볼 것은 사람마다의 차예요.
+
+```python
+>>> import stardust as sd
+>>> before = [72.0, 80.5, 68.2, 90.1, 77.3, 85.0, 69.8, 74.4, 88.2, 79.9]
+>>> after = [70.1, 78.0, 68.9, 86.4, 75.2, 83.1, 66.0, 74.9, 85.5, 77.0]
+>>> sd.htest.wilcoxon(before, after)
+WilcoxonResult(statistic=3, pvalue=0.0078125, method='exact')
+```
+
+**Wilcoxon 부호 순위 검정**은 차 $d_i = x_i - y_i$를 이렇게 봐요.
+
+1. 차의 크기 $|d_i|$에 작은 것부터 순위 1, 2, …, n을 매겨요.
+2. 차가 양수인 쌍의 순위를 더한 것이 $T^+$, 음수인 쌍의 순위를 더한 것이 $T^-$예요. 둘의 합은 언제나 $n(n+1)/2$예요.
+
+위에서 차가 음수인 사람은 둘(−0.7, −0.5)이고, 이 둘은 크기가 가장 작아 순위 1과 2를 받아요. 그래서 $T^- = 3$, $T^+ = 52$예요.
+
+- **귀무가설**: 차의 분포가 0을 가운데로 대칭이에요. 그러면 순위마다 부호가 +와 −가 반반의 확률로 붙어서, $2^{10} = 1024$가지 부호의 배치가 모두 같은 확률이에요.
+- **대립가설**(양쪽): 차가 한쪽(양수나 음수)으로 치우쳤어요.
+
+1024가지 가운데 $T^-$가 3 이하인 배치는 4가지, 거울인 $T^+$가 3 이하인 배치도 4가지라 양쪽 p값은 8/1024 = 0.0078이에요. 약을 먹은 뒤 혈압이 내려간 쪽으로 뚜렷이 치우쳤어요.
+
+이런 때 써요.
+
+- 같은 대상을 두 번 쟀을 때(전과 후, 왼쪽과 오른쪽, 두 평가자의 점수). 짝지은 t 검정 [`ttest_rel`](/api/htest/ttest_rel/)과 같은 상황인데 차가 정규분포라고 보기 어려울 때예요.
+- 한 표본의 값이 어떤 기준값을 가운데로 하는지 볼 때. `wilcoxon(x - m)`처럼 기준값을 빼고 y 없이 줘요.
+
+부호만 보는 부호 검정([`binomtest`](/api/htest/binomtest/)로 양수의 개수를 검정)보다 크기의 순위까지 써서 더 예민하고, 차의 값 자체를 쓰는 t 검정보다 이상값에 강해요. 대신 차가 대칭이라는 가정이 들어가요.
+
+공통 규칙은 [가설검정의 기본](/api/htest/basics/)에, 결과를 읽는 법은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+<Reference />
+
+## 결과 읽기
+
+| 필드 | 뜻 |
+|---|---|
+| `statistic` | 양쪽 검정이면 $\min(T^+, T^-)$, 한쪽 검정이면 $T^+$ |
+| `pvalue` | `alternative`에 맞는 p값 |
+| `method` | 실제로 쓴 방법(`'exact'`, `'asymptotic'`, `'permutation'`) |
+| `zstatistic` | 정규 근사를 쓴 때만 있는 표준화한 $T^+$. 양쪽 검정이면 $-\lvert z \rvert$예요. |
+
+```python
+>>> r = sd.htest.wilcoxon(before, after)
+>>> stat, p = r
+>>> stat, p
+(3.0, 0.0078125)
+```
+
+y 없이 차를 바로 줘도 같아요.
+
+```python
+>>> d = [b - a for b, a in zip(before, after)]
+>>> sd.htest.wilcoxon(d)
+WilcoxonResult(statistic=3, pvalue=0.0078125, method='exact')
+```
+
+`summary()`는 정규 근사를 쓴 결과에서 `Z-statistic`도 보여 줘요.
+
+```python
+>>> print(sd.htest.wilcoxon(before, after, method='asymptotic').summary())
+                          Wilcoxon signed-rank test
+==============================================================================
+Statistic:                       3.000  Alternative:                 two-sided
+P-value:                        0.0125  Method:                     asymptotic
+Z-statistic:                    -2.499  No. Observations:                   10
+                                        Zero Method:                    wilcox
+==============================================================================
+```
+
+## `alternative`: 한쪽 검정
+
+`'greater'`는 차 x − y가 양수 쪽으로, `'less'`는 음수 쪽으로 치우쳤다는 대립가설이에요. 한쪽 검정에서 `statistic`은 언제나 $T^+$예요.
+
+```python
+>>> sd.htest.wilcoxon(before, after, alternative='greater')
+WilcoxonResult(statistic=52, pvalue=0.00390625, method='exact')
+```
+
+"약을 먹으면 혈압이 내려간다"를 미리 정해 두었다면 before − after가 양수 쪽이므로 `'greater'`예요.
+
+## `method`: 정확한 분포와 정규 근사
+
+- `'exact'`: $2^n$가지 부호 배치에서 $T^+$의 분포를 세요. 작은 표본에서 정확하고 깊은 꼬리도 끝까지 맞아요.
+- `'asymptotic'`: $T^+$를 평균 $n(n+1)/4$와 분산(동점 보정이 든 것)으로 표준화해 정규 꼬리를 써요. `correction=True`면 연속성 보정 0.5를 넣어요.
+- `'auto'`(기본값): 동점과 0이 없으면 차가 50개 이하에서 `'exact'`, 동점이나 0이 있으면 13개 이하에서 `'exact'`, 그 밖은 `'asymptotic'`이에요.
+
+```python
+>>> sd.htest.wilcoxon(before, after, method='asymptotic')
+WilcoxonResult(statistic=3, pvalue=0.0124581, zstatistic=-2.49889, method='asymptotic')
+```
+
+10쌍에서는 정규 근사(0.012)가 정확한 값(0.0078)보다 커요. 작은 표본이면 정확한 분포를 쓰세요.
+
+정확한 분포는 동점이 없으면 차 124개까지 정수로, 그 위는 double-double로 세요. 작업량 상한(10⁹번) 안이면 차 약 1250개까지 `'exact'`를 쓸 수 있고, 넘으면 `ValueError`예요.
+
+깊은 꼬리에서 정확한 분포의 장점이 보여요. 60쌍의 차가 모두 양수면 양쪽 p값은 $2 / 2^{60} = 2^{-59}$예요.
+
+```python
+>>> rng = sd.random.default_rng(3)
+>>> pos = sd.abs(sd.stats.Normal().sample(60, rng=rng)) + 0.1
+>>> sd.htest.wilcoxon(pos, method='exact').pvalue
+1.734723475976807e-18
+>>> 2.0 ** -59
+1.734723475976807e-18
+```
+
+### 순열로 구하기
+
+`method`에 `sd.htest.PermutationMethod`를 주면 차의 부호를 무작위로 뒤집어 $T^+$의 분포를 만들어요. 모든 부호 배치가 `n_resamples` 안이면 모두 세므로 `'exact'`와 같은 값이에요. 넘겨주는 법은 [재표본 방법 객체](/api/htest/methods/)에 있어요.
+
+```python
+>>> perm = sd.htest.PermutationMethod(rng=sd.random.default_rng(0))
+>>> sd.htest.wilcoxon(before, after, method=perm)
+WilcoxonResult(statistic=3, pvalue=0.0078125, method='permutation')
+```
+
+## 차가 0인 쌍: `zero_method`
+
+차가 0이면 부호가 없어요. 이 쌍을 다루는 법이 셋이에요.
+
+```python
+>>> z = [0.0, 0.0, 1.5, 2.0, -0.5, 3.0, 1.0, 2.5, -1.0, 1.8, 0.7, 2.2]
+>>> sd.htest.wilcoxon(z)
+WilcoxonResult(statistic=4.5, pvalue=0.015625, method='exact')
+>>> sd.htest.wilcoxon(z, zero_method='pratt')
+WilcoxonResult(statistic=8.5, pvalue=0.0195312, method='exact')
+>>> sd.htest.wilcoxon(z, zero_method='zsplit')
+WilcoxonResult(statistic=10, pvalue=0.0195312, method='exact')
+```
+
+| `zero_method` | 하는 일 |
+|---|---|
+| `'wilcox'`(기본값) | 0인 쌍을 버리고 남은 쌍으로만 순위를 매겨요. |
+| `'pratt'` | 0까지 넣어 순위를 매긴 뒤 0의 순위를 $T^+$, $T^-$ 어디에도 넣지 않아요. 남은 쌍의 순위가 0의 몫만큼 커져요. |
+| `'zsplit'` | 0의 순위를 $T^+$와 $T^-$에 반씩 나눠 넣어요. |
+
+0이 많으면 셋의 결과가 꽤 달라질 수 있어요. 0이 "차가 정말 없음"이면 `'pratt'`가 그 정보를 버리지 않아요. R의 `wilcox.test`는 0을 Pratt처럼 순위에 넣어요.
+
+0이 아닌 차가 하나도 없으면(`'wilcox'`) 검정할 것이 없어서 NaN이에요.
+
+```python
+>>> sd.htest.wilcoxon([0.0, 0.0, 0.0])
+WilcoxonResult(statistic=nan, pvalue=nan, method='exact')
+```
+
+## 동점이 있을 때
+
+크기가 같은 차는 중간 순위를 나눠 가져요. `method='exact'`는 **관측한 중간 순위를 그대로 두고** 0이 아닌 차의 부호를 모두 같은 확률로 뒤집은 분포를 써요. 동점이 있는 데이터의 귀무분포는 이것이에요. 부호 순위의 분포는 동점이 있어도 언제나 대칭이에요.
+
+```python
+>>> t = [1.0, 2.0, 2.0, -3.0, 4.0, 4.0, 4.0, 5.0, 6.0, -6.0, 7.0, 8.0, 9.0, 10.0, 11.0]
+>>> sd.htest.wilcoxon(t)
+WilcoxonResult(statistic=13.5, pvalue=0.00818787, zstatistic=-2.64422, method='asymptotic')
+>>> sd.htest.wilcoxon(t, method='exact')
+WilcoxonResult(statistic=13.5, pvalue=0.0057373, method='exact')
+```
+
+차가 15개이고 동점이 있어서 `'auto'`는 정규 근사를 골랐어요. 정확한 분포를 원하면 `method='exact'`를 주세요.
+
+## 차는 정확하게 빼요
+
+차 x − y는 반올림 없이 정확하게 구해서 순위를 매겨요. 아주 큰 값끼리의 작은 차도 동점이 되거나 순서가 바뀌지 않아요.
+
+```python
+>>> xb = [1e16, -1e16, 1e16, -1e16, 1e16, 1e16]
+>>> yb = [1.0, -2.0, 3.0, -4.0, 5.0, 6.0]
+>>> [p - q for p, q in zip(xb, yb)]
+[1e+16, -9999999999999998.0, 9999999999999996.0, -9999999999999996.0, 9999999999999996.0, 9999999999999994.0]
+>>> sd.htest.wilcoxon(xb, yb)
+WilcoxonResult(statistic=8, pvalue=0.6875, method='exact')
+```
+
+참 차는 $10^{16} - 1, -10^{16} + 2, \dots$로 크기가 모두 달라요. 보통의 뺄셈은 셋을 같은 값으로 반올림해 동점을 만들지만, `wilcoxon`은 참 차의 크기로 순위를 매겨요.
+
+## 여러 검정과 NaN
+
+`axis`를 주면 그 축을 따라 쌍을 읽고 나머지 축의 칸마다 따로 검정해요. 방법은 줄마다 그 줄의 크기와 동점으로 골라요.
+
+```python
+>>> rng = sd.random.default_rng(4)
+>>> D = sd.stats.Normal().sample((3, 15), rng=rng) + sd.asarray([[0.0], [0.5], [1.0]])
+>>> rb = sd.htest.wilcoxon(D, axis=1)
+>>> rb.statistic
+array([39.0, 44.0,  7.0], dtype=float64)
+>>> rb.method
+['exact', 'exact', 'exact']
+```
+
+`nan_policy='omit'`은 x나 y가 NaN인 쌍을 통째로 빼요. x와 y는 표본 축의 길이가 같아야 해요.
+
+```python
+>>> sd.htest.wilcoxon([1.0, 2.0, 3.0], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: wilcoxon(): the paired samples must agree in size, not 3 and 2
+```
+
+## 언제 다른 검정을 쓸까요
+
+| 상황 | 검정 |
+|---|---|
+| 차가 정규분포에 가까워요 | [`ttest_rel`](/api/htest/ttest_rel/) |
+| 두 표본이 짝지어 있지 않아요(다른 사람들) | [`mannwhitneyu`](/api/htest/mannwhitneyu/) |
+| 같은 대상을 세 조건 이상에서 쟀어요 | [`friedmanchisquare`](/api/htest/friedmanchisquare/) |
+| 차의 대칭을 가정하기 어려워요(부호만 써요) | [`binomtest`](/api/htest/binomtest/)로 양수의 개수 |
+
+## 정확도
+
+- $T^+$와 $T^-$는 정확한 값이에요. 차를 정확하게 빼고 정확한 중간 순위로 세요.
+- 정확한 분포의 p값은 정수나 double-double로 센 개수의 몫이라 깊은 꼬리까지 상대 1e-16 안이에요.
+- 정규 근사의 p값은 그 근사식의 값이에요. 문제 20개에서 Arb(구간 산술)와 정확한 정수 셈으로 만든 참값에 견준 p값의 가장 큰 상대오차는 4.5e-15예요(정규 근사의 깊은 꼬리).
+
+## scipy를 아는 분께
+
+`scipy.stats.wilcoxon`과 이름, 인자, `statistic`, 세 `zero_method`, `'auto'`의 기준이 같아요. 동점과 0이 없으면 값은 반올림 크기 안에서 같아요.
+
+```python
+>>> import scipy.stats
+>>> scipy.stats.wilcoxon(before, after)
+WilcoxonResult(statistic=np.float64(3.0), pvalue=np.float64(0.0078125))
+```
+
+다른 점이에요.
+
+- 동점이나 0이 있을 때 `method='exact'`: sd는 관측한 중간 순위의 조건부 정확 분포예요. scipy는 동점이 없는 분포를 써서 그 데이터의 귀무분포가 아니에요.
+
+  ```python
+  >>> scipy.stats.wilcoxon(t, method='exact').pvalue
+  np.float64(0.0067138671875)
+  >>> scipy.stats.wilcoxon(z, zero_method='pratt', method='exact').pvalue
+  np.float64(0.0341796875)
+  ```
+
+- 정확한 꼬리: scipy는 $1 - \text{cdf}$로 구해서 아주 작은 p값이 0이 돼요. 위의 60쌍은 scipy에서 0이에요.
+
+  ```python
+  >>> scipy.stats.wilcoxon(pos.tolist(), method='exact').pvalue
+  np.float64(0.0)
+  ```
+
+- 차: sd는 차를 정확하게 빼요. scipy는 double로 빼서 위의 큰 값 예에서 p값이 달라요.
+
+  ```python
+  >>> scipy.stats.wilcoxon(xb, yb).pvalue
+  np.float64(0.65625)
+  ```
+
+- 0이 아닌 차가 없으면 sd는 NaN이에요. scipy는 statistic 0과 p값 1을 내요.
+- 결과의 `method`는 언제나 있어요. `zstatistic`은 정규 근사를 쓸 때마다 있어요(scipy는 `method='asymptotic'`을 직접 준 때만).
+- `axis`의 기본값이 None이에요(scipy는 0). 배치에서는 방법을 줄마다 골라요.
+- 표본은 위치로만, 옵션은 키워드로만 받아요.

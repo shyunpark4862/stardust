@@ -1,0 +1,168 @@
+---
+title: Shapiro–Wilk
+group: 적합도
+order: 3
+summary: Shapiro–Wilk 검정을 Royston의 알고리즘 AS R94로 계산하는 법을 따라가요. 계수 a를 Blom의 정규 점수와 Royston의 다항식으로 근사하는 법, W와 1 − W를 double-double로 직접 만들어 큰 n에서 p값을 지키는 법, log(1 − W)의 정규화 변환과 n = 3의 정확한 분포를 다뤄요.
+seeAlso: [normality, edf, ks-1samp, lanes]
+---
+import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+Shapiro와 Wilk(1965)의 통계량은 정렬한 표본 x₍₁₎ ≤ … ≤ x₍ₙ₎의 가중합을 제곱해 편차 제곱합으로 나눈 값이에요.
+
+W = (Σ aᵢx₍ᵢ₎)² / Σ(xᵢ − x̄)²
+
+계수 a는 정규분포의 순서통계량의 기댓값 m과 공분산 V에서 a = mᵀV⁻¹/‖mᵀV⁻¹‖로 정해져요. 분자는 "정규라면 이랬을 기울기"로 맞춘 분산의 추정이고 분모는 보통의 분산이라, 정규 표본이면 W가 1에 가깝고 정규에서 멀수록 작아져요.
+
+V⁻¹을 n마다 계산하는 것은 비싸고 W의 귀무분포에는 닫힌 꼴이 없어서, 실제 계산은 Royston의 근사를 써요. scipy와 R이 쓰는 Royston(1995)의 알고리즘 AS R94를 옮겼고, 커널 함수는 `shapiro`(`csrc/htest/gof.cpp`)예요. 순서는 이래요.
+
+1. 표본을 정렬하고 double-double 평균과 편차 제곱합을 만들어요. 상수 표본이나 n < 3은 NaN이에요.
+2. 계수 a를 근사해요.
+3. W와 1 − W를 double-double로 만들어요.
+4. n = 3은 정확한 분포, 그 밖은 log(1 − W)의 정규화 변환으로 p값을 내요.
+
+## 계수의 근사
+
+Royston(1992)의 근사는 셋을 합쳐요.
+
+- **정규 점수**: 순서통계량의 기댓값을 Blom의 근사 m̃ᵢ = Φ⁻¹((i − 3/8)/(n + 1/4))로 대신해요.
+- **바깥 두 계수**: 가장 큰 계수 aₙ과 그 다음 aₙ₋₁은 m̃를 정규화한 c = m̃/‖m̃‖에 u = 1/√n의 5차 다항식을 더해 고쳐요. 이 다항식의 계수는 Royston이 정확한 a에 맞춘 값이에요.
+- **나머지**: 가운데 계수는 aᵢ = m̃ᵢ/√φ이고, φ는 Σaᵢ² = 1이 되도록 정해요.
+
+  φ = (m̃ᵀm̃ − 2m̃ₙ² − 2m̃ₙ₋₁²) / (1 − 2aₙ² − 2aₙ₋₁²)
+
+n ≤ 5는 바깥 계수 하나(aₙ)만 고치고, n = 3은 정확한 계수 (−1/√2, 0, 1/√2)예요. 계수는 대칭이라 aₙ₊₁₋ᵢ = −aᵢ예요.
+
+```cpp
+        // csrc/htest/gof.cpp
+        std::vector<double> pr(static_cast<std::size_t>(half)), mm(static_cast<std::size_t>(half));
+        for (std::int64_t i = 0; i < half; ++i)
+            pr[static_cast<std::size_t>(i)] = (static_cast<double>(i + 1) - 0.375) / (nn + 0.25);
+        for (std::int64_t i0 = 0; i0 < half; i0 += special::kChunk) {
+            const int len = static_cast<int>(std::min<std::int64_t>(special::kChunk, half - i0));
+            special::Ndtri::chunk(pr.data() + i0, mm.data() + i0, len);
+        }
+        dd::Sum s2;
+        for (double v : mm) s2.add(dd::two_prod(v, v));
+        const double mtm = 2.0 * (s2.value().hi + s2.value().lo);  // sum of m_i^2 (the middle is 0)
+        const double u = 1.0 / std::sqrt(nn);
+        const double mn = -mm[0], cn = mn / std::sqrt(mtm);  // m_n = -m_1 > 0
+        const double an = cn + 0.221157 * u - 0.147981 * u * u - 2.071190 * u * u * u + 4.434685 * u * u * u * u -
+                          2.706056 * u * u * u * u * u;
+```
+
+정규 점수는 아래 절반(i ≤ n/2, 확률이 1/2보다 작은 쪽)만 `ndtri`로 구하고 위 절반은 부호를 바꿔 써요. 확률이 1에 가까운 쪽의 Φ⁻¹(p)는 1 − p가 이미 반올림된 값이라 정밀도를 잃는데, 대칭을 쓰면 그런 인자를 만들지 않아요. `ndtri`는 sd.special의 청크 커널을 배열에 한 번 돌려요. Σm̃ᵢ²도 `two_prod`의 double-double 합이에요.
+
+## W와 1 − W
+
+W를 double로 만든 뒤 1 − W를 계산하면, 큰 n에서 W가 1에 아주 가까워(n = 5000이면 1 − W ≈ 3 × 10⁻⁴) 1 − W의 상대오차가 W의 반올림 ÷ (1 − W)로 커져요. p값은 log(1 − W)에서 나오니 그 오차가 그대로 p값으로 가요. 그래서 1 − W를 직접 만들어요.
+
+S = Σaᵢx₍ᵢ₎는 `two_prod`의 정확한 곱을 double-double로 더해요(Σaᵢ = 0이라 x에 상수를 더해도 S가 그대로여서 평균을 빼지 않아요). 그러면
+
+1 − W = (SST − S²) / SST
+
+에서 SST − S²의 뺄셈이 double-double 안에서 일어나요.
+
+```cpp
+    // csrc/htest/gof.cpp
+    dd::Sum s, aa;
+    for (std::int64_t i = 0; i < n; ++i) {
+        const double ai = a[static_cast<std::size_t>(i)];
+        s.add(dd::two_prod(ai, x[static_cast<std::size_t>(i)]));
+        aa.add(dd::two_prod(ai, ai));
+    }
+    const DD S = s.value();
+    const DD S2 = S * S;
+    const DD sst = mo.ss * aa.value();
+    const DD w1 = (sst - S2) / sst;  // 1 - W
+    const DD W = S2 / sst;
+```
+
+여기서 SST에 Σaᵢ²를 곱하는 것이 하나 더 있어요. 정확한 계수는 Σaᵢ² = 1이지만(φ를 그렇게 골랐어요), double로 반올림한 계수는 몇 ulp의 공통 배율만큼 어긋나요. 그 배율 ρ = Σaᵢ²는 S²에 ρ로 들어가니, W = S²/(SST·ρ)로 나누면 배율이 정확히 지워져요. 지우지 않으면 1 − W가 상대적으로 (ρ − 1)/(1 − W)만큼 움직이고, n = 20000에서 p값이 10⁻¹²쯤 틀려요.
+
+표본에 2의 거듭제곱을 곱하면 모든 값이 정확히 바뀌니 W와 p값도 같은 비트예요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(4)
+>>> w = sd.stats.Normal().sample(200, rng=rng)
+>>> a, b = sd.htest.shapiro(w), sd.htest.shapiro(w * 0.125)
+>>> a
+ShapiroResult(statistic=0.99171, pvalue=0.312465)
+>>> a.statistic == b.statistic, a.pvalue == b.pvalue
+(True, True)
+```
+
+## p값: log(1 − W)의 정규화
+
+Royston(1992)은 1 − W의 로그를 변환하면 정규분포에 가깝다는 것을 보이고, 그 평균과 표준편차를 n의 다항식으로 맞췄어요.
+
+- **n ≥ 12**: log(1 − W)가 평균 μ(ln n), 표준편차 σ(ln n)의 정규분포에 가까워요. μ와 log σ는 ln n의 삼차·이차 다항식이에요.
+- **4 ≤ n ≤ 11**: 한 번 더 변환해 −log(γ − log(1 − W))가 평균 μ(n), 표준편차 σ(n)의 정규분포에 가까워요. γ = −2.273 + 0.459n이고 μ와 log σ는 n의 삼차 다항식이에요.
+
+p값은 정규분포의 위쪽 꼬리 `Normal.ccdf((g − μ)/σ)`예요. W가 작을수록(1 − W가 클수록) g가 커져 p값이 작아져요.
+
+```cpp
+    // csrc/htest/gof.cpp
+    if (n <= 11) {
+        const double g = -2.273 + 0.459 * nn;
+        mu = 0.5440 - 0.39978 * nn + 0.025054 * nn * nn - 0.0006714 * nn * nn * nn;
+        sigma = std::exp(1.3822 - 0.77857 * nn + 0.062767 * nn * nn - 0.0020322 * nn * nn * nn);
+        const double y = std::log(one_m_w);
+        if (!(g - y > 0.0)) {
+            o.p = y == y ? 0.0 : kNaN;  // the limit of -log(gamma - y) as y -> gamma (scipy: NaN, R: 1e-99)
+            return o;
+        }
+        gw = -std::log(g - y);
+    } else {
+        const double ln = std::log(nn);
+        mu = -1.5861 - 0.31082 * ln - 0.083751 * ln * ln + 0.0038915 * ln * ln * ln;
+        sigma = std::exp(-0.4803 - 0.082676 * ln + 0.0030302 * ln * ln);
+        gw = std::log(one_m_w);
+    }
+    o.p = norm_sf((gw - mu) / sigma);
+```
+
+작은 n의 변환은 log(1 − W)가 γ에 이르면 정의되지 않아요. 그 극한(γ − y → 0⁺이면 −log(γ − y) → +∞)은 p = 0이라 그렇게 둬요.
+
+p값은 이 근사식의 값이에요. 근사식이 W의 참 귀무분포와 얼마나 가까운지는 Royston의 맞춤이 정하고, 정확도 계약은 근사식을 정확히 계산했는지에 대한 것이에요.
+
+## n = 3: 정확한 분포
+
+n = 3이면 W의 분포가 닫힌 꼴이에요. W는 [3/4, 1]에 있고
+
+p = (6/π)·(arcsin √W − arcsin √(3/4)) = (6/π)·(arcsin √W − π/3)
+
+이에요. W가 3/4에 가까우면 두 arcsin이 지워져요. arcsin a − arcsin b = arcsin(a√(1 − b²) − b√(1 − a²))에 a = √W, b = √3/2를 넣고 분자와 분모에 (√W/2 + (√3/2)√(1 − W))를 곱하면
+
+p = (6/π)·arcsin((W − 3/4) / (√W/2 + (√3/2)·√(1 − W)))
+
+가 돼요. W − 3/4는 double-double W에서 빼고, √(1 − W)에는 직접 만든 1 − W를 써요. 그래서 W의 어느 끝에서도 뺄셈이 상쇄되지 않아요. W는 scipy처럼 [3/4, 1]로 잘라요.
+
+```python
+>>> r = sd.htest.shapiro([1.0, 2.0, 4.0])
+>>> r.statistic, 27 / 28
+(0.9642857142857143, 0.9642857142857143)
+>>> from flint import arb, ctx
+>>> ctx.prec = 200
+>>> p = 6 / arb.pi() * ((arb(27) / 28).sqrt().asin() - arb.pi() / 3)
+>>> r.pvalue == float(p.mid())
+True
+```
+
+이 표본의 W는 27/28이에요(분자 (4 − 1)²/2, 분모 14/3). Arb로 계산한 정확한 p값을 double로 반올림한 값과 같아요.
+
+## 정확도
+
+<AccuracySummary area="htest" names={['shapiro']} caption="Shapiro–Wilk 18문제(n = 3부터 20000까지, 오프셋 10⁸ 포함)." />
+
+W는 Arb 참값에 대해 최대 상대 7.4 × 10⁻¹⁷이에요. p값의 계약 대비가 가장 큰 곳은 n = 20000(0.34)이에요. 1 − W가 작아 p값이 W에 아주 민감한 곳인데, 1 − W를 직접 만들고 계수의 배율을 지워서 계약 안에 들어요. scipy와 R은 W를 double로 만든 뒤 1 − W를 해서 p값의 상대오차가 각각 1.8 × 10⁻¹², 2.8 × 10⁻⁸까지 가요. R의 W 자체는 3.3 × 10⁻¹⁰까지 달라요.
+
+## scipy를 아는 분께
+
+- 알고리즘(AS R94의 계수, 변환, n = 3의 분포)은 scipy와 R의 것과 같아요. 다른 것은 W와 1 − W를 double-double로 만들고 계수의 배율을 지운 것이에요.
+- n ≤ 11에서 log(1 − W) ≥ γ이면 p = 0이에요(scipy는 NaN, R은 10⁻⁹⁹).
+- n < 3과 상수 표본은 경고 없이 NaN이에요.
+- scipy는 n > 5000에서 p값이 정확하지 않을 수 있다고 경고해요. 그 경고는 근사의 품질에 대한 것이고, 여기서는 경고를 내지 않아요.

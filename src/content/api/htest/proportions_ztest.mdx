@@ -1,0 +1,189 @@
+---
+kind: function
+title: proportions_ztest
+names: [proportions_ztest]
+group: 비율과 이항
+order: 3
+signatures:
+  - "sd.htest.proportions_ztest(count, nobs, /, *, value=None, alternative='two-sided', prop_var=None)"
+summary: 비율 하나가 주어진 값과 같은지, 또는 두 집단의 비율이 같은지를 정규 근사의 z 검정으로 봐요. 표본이 넉넉할 때 쓰는 간단한 검정이고, 개수의 배열을 주면 여러 검정을 한 번에 해요.
+params:
+  - name: count
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 성공 횟수. 스칼라나 마지막 축의 길이가 1이면 표본 하나, 길이가 2면 두 표본이에요. 앞의 축은 배치예요. 0 이상의 정수 값이고 nobs 이하예요.
+  - name: nobs
+    type: int, 정수 값의 배열, 시퀀스
+    kind: positional-only
+    desc: 시도 횟수. count와 브로드캐스트해요. 0 이상의 정수 값이에요.
+  - name: value
+    type: float 또는 None
+    kind: keyword-only
+    desc: 귀무가설의 값. 표본 하나에서는 비율(꼭 줘야 해요), 두 표본에서는 비율의 차 p₁ − p₂(None이면 0)예요.
+  - name: alternative
+    type: str
+    kind: keyword-only
+    desc: "'two-sided'(기본값), 'less'(비율이나 차가 value보다 작음), 'greater'(큼) 중 하나예요."
+  - name: prop_var
+    type: float 또는 None
+    kind: keyword-only
+    desc: 표준오차를 구할 때 쓸 비율. None(기본값)이면 표본의 비율(두 표본은 합친 비율)이에요. [0, 1]의 실수를 주면 그 값으로 분산을 구해요(0도 그 값으로 써요).
+returns:
+  type: ProportionsZtestResult
+  desc: "statistic(z), pvalue와 summary()가 있고 (statistic, pvalue)로 풀려요. 배치면 두 필드가 배치 모양의 배열이에요."
+raises:
+  - type: TypeError
+    desc: count·nobs가 배열로 바꿀 수 없을 때, value·prop_var가 수가 아닐 때(bool 포함), alternative가 문자열이 아닐 때, 없는 키워드를 줬을 때.
+  - type: ValueError
+    desc: count·nobs가 음이 아닌 정수 값이 아닐 때, count가 nobs보다 클 때, 브로드캐스트되지 않을 때, 마지막 축에 표본이 셋 이상일 때, 표본 하나인데 value가 없을 때, prop_var가 [0, 1] 밖일 때, alternative 이름이 틀렸을 때.
+seeAlso: [binomtest, proportions_chisquare, test_proportions_2indep, proportion_confint, basics, results]
+---
+
+## 무엇을 묻는 검정인가요
+
+**표본 하나**. 동전을 100번 던져 앞면이 58번 나왔어요. 앞면의 확률이 0.5라는 귀무가설에서 58번은 얼마나 드문가요? 시도가 많으면 표본 비율 q = count/nobs는 거의 정규분포를 따르고 표준오차는 √(q(1 − q)/n)쯤이에요. 그래서
+
+$$
+z = \frac{q - p_0}{\sqrt{q(1-q)/n}}
+$$
+
+를 표준정규분포와 견줘요.
+
+**두 표본**. A 반은 100명 중 45명, B 반은 90명 중 30명이 합격했어요. 두 반의 합격률이 같다는 귀무가설에서 두 비율을 합친 p̂ = (45 + 30)/(100 + 90)으로 표준오차를 구하고
+
+$$
+z = \frac{q_1 - q_2 - d_0}{\sqrt{\hat p(1-\hat p)(1/n_1 + 1/n_2)}}
+$$
+
+를 봐요(d₀는 `value`, 기본값 0).
+
+- **귀무가설**: 비율이 `value`예요(두 표본이면 차가 `value`예요).
+- **대립가설**: 다름(`'two-sided'`), 작음(`'less'`), 큼(`'greater'`).
+
+정규 근사이므로 성공과 실패가 표본마다 대략 10번 이상일 때 믿을 만해요. 그보다 적으면 표본 하나는 [binomtest](/api/htest/binomtest/), 두 표본은 [fisher_exact](/api/htest/fisher_exact/)나 [test_proportions_2indep](/api/htest/test_proportions_2indep/)의 점수 검정이 나아요.
+
+<Reference />
+
+## 기본 사용
+
+```python
+>>> r = sd.htest.proportions_ztest(58, 100, value=0.5)
+>>> r
+ProportionsZtestResult(statistic=1.62088, pvalue=0.105043)
+>>> z, p = r
+>>> z, p
+(1.6208817969462155, 0.10504299146532561)
+```
+
+z = 1.62이고 양쪽 p값은 0.105예요. 58번은 공정한 동전에서도 흔히 나올 만한 수예요.
+
+두 표본은 마지막 축에 두 개수를 둬요.
+
+```python
+>>> r = sd.htest.proportions_ztest([45, 30], [100, 90])
+>>> r.statistic, r.pvalue
+(1.6427266128719291, 0.10043950997963552)
+>>> print(r.summary())
+                          Z-test of two proportions
+==============================================================================
+Statistic:                       1.643  Alternative:                 two-sided
+P-value:                         0.100  No. Observations:              100, 90
+                                        Value:                               0
+==============================================================================
+```
+
+차 0.45 − 0.333 = 0.117이 0과 다르다고 말하기엔 p값이 커요.
+
+한쪽 검정과 0이 아닌 차도 돼요. "A 반이 B 반보다 5%p 넘게 높은가"는 이렇게 물어요.
+
+```python
+>>> sd.htest.proportions_ztest([45, 30], [100, 90], value=0.05, alternative='greater').pvalue
+0.17394216006232466
+```
+
+## prop_var: 분산을 귀무가설의 비율로
+
+표본 하나의 기본 표준오차는 표본 비율 q로 만들어요(Wald 꼴). 귀무가설의 비율로 만들고 싶으면 `prop_var`에 그 값을 줘요. 그러면 점수 검정이 되고, 그 z의 제곱은 [proportions_chisquare](/api/htest/proportions_chisquare/)의 카이제곱 통계량과 같아요.
+
+```python
+>>> r = sd.htest.proportions_ztest(58, 100, value=0.5, prop_var=0.5)
+>>> r
+ProportionsZtestResult(statistic=1.6, pvalue=0.109599)
+>>> sd.htest.proportions_chisquare(58, 100, value=0.5).pvalue
+0.10959858339911599
+```
+
+두 표본에서 `prop_var`를 주면 합친 비율 대신 그 값으로 분산을 구해요.
+
+## 여러 검정을 한 번에
+
+count와 nobs의 마지막 축이 표본이고 앞의 축은 서로 독립인 검정들이에요.
+
+```python
+>>> count = [[45, 30], [20, 25], [10, 10]]
+>>> nobs = [[100, 90], [50, 50], [40, 40]]
+>>> rb = sd.htest.proportions_ztest(count, nobs)
+>>> rb
+ProportionsZtestResult(batch shape (3,))
+>>> rb.statistic
+array([1.6427266128719291, -1.005037815259212,                0.0], dtype=float64)
+```
+
+nobs가 모든 검정에서 같으면 스칼라 하나로 줘도 브로드캐스트돼요.
+
+## 퇴화한 입력
+
+표준오차가 0이면 z를 정할 수 없어 통계량과 p값이 NaN이에요. 두 표본의 성공이 모두 0이거나, 표본 하나에서 모두 성공했을 때가 그래요. nobs가 0인 표본도 NaN이에요. 경고는 없어요.
+
+```python
+>>> sd.htest.proportions_ztest([0, 0], [10, 10])
+ProportionsZtestResult(statistic=nan, pvalue=nan)
+>>> sd.htest.proportions_ztest(10, 10, value=0.5)
+ProportionsZtestResult(statistic=nan, pvalue=nan)
+```
+
+모두 성공한 표본은 Wald 표준오차가 0이라 z를 못 구해요. 이럴 때 `prop_var=0.5`(귀무가설의 비율)를 주거나 [binomtest](/api/htest/binomtest/)를 써요.
+
+```python
+>>> sd.htest.proportions_ztest(10, 10, value=0.5, prop_var=0.5).pvalue
+0.0015654022580025488
+>>> sd.htest.binomtest(10, 10).pvalue
+0.001953125
+```
+
+## 입력과 에러
+
+```python
+>>> sd.htest.proportions_ztest(58, 100)
+Traceback (most recent call last):
+    ...
+ValueError: proportions_ztest(): 'value' must be given for a one-sample test
+>>> sd.htest.proportions_ztest([1, 2, 3], [5, 5, 5])
+Traceback (most recent call last):
+    ...
+ValueError: proportions_ztest(): 'count' must hold one or two samples along its last axis, not 3
+>>> sd.htest.proportions_ztest(5, 10, value=0.5, prop_var=False)
+Traceback (most recent call last):
+    ...
+TypeError: proportions_ztest(): 'prop_var' must be an int or a float, not bool
+```
+
+셋 이상의 비율이 같은지는 [proportions_chisquare](/api/htest/proportions_chisquare/)로 봐요.
+
+## 정확도
+
+통계량은 Arb(구간 산술)와 정확한 유리수로 만든 참값과 상대 2e-16 안이에요. 귀무값에 아주 가까운 차(z ≈ 10⁻¹⁵)도 자릿수를 잃지 않아요. 비율과 차를 정수 개수에서 곧바로 정밀하게 만들기 때문이에요. p값은 상대 6.2e-14 안이고 계약 대비 0.015예요(꼬리가 깊어질수록 z의 반올림이 p값에서 커지는 만큼을 계약이 허용해요).
+
+## statsmodels를 아는 분께
+
+- `alternative`는 `'larger'`·`'smaller'`가 아니라 `'greater'`·`'less'`예요.
+- `prop_var`는 None이나 [0, 1]의 수예요. statsmodels의 `prop_var=False`는 받지 않고, 0은 0이라는 값으로 써요(statsmodels는 0을 `False`로 읽어요).
+- 결과가 튜플이 아니라 결과 객체이고, statsmodels와 같은 순서로 `(statistic, pvalue)`로 풀려요.
+- 표준오차가 0이면 NaN이에요. statsmodels는 ±inf와 0을 내요. 셋 이상의 표본은 `NotImplementedError` 대신 `ValueError`예요.
+- 귀무값에 아주 가까운 차에서 statsmodels는 부호까지 틀릴 수 있어요. 보통의 입력에서도 끝자리 몇 개가 달라요. 58/100의 참 z는 1.62088179694621556…이에요.
+
+```python
+>>> from statsmodels.stats.proportion import proportions_ztest as sm_ztest
+>>> float(sm_ztest(58, 100, value=0.5)[0]), sd.htest.proportions_ztest(58, 100, value=0.5).statistic
+(1.6208817969462146, 1.6208817969462155)
+```

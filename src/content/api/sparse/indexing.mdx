@@ -1,0 +1,382 @@
+---
+kind: concept
+title: 인덱싱과 대입
+group: 인덱싱과 만들기
+order: 1
+summary: 대괄호 A[...]로 희소 행렬의 원소, 행, 열, 부분 행렬을 골라 읽고, 고른 자리에 값을 써넣는 규칙이에요. 고르는 규칙은 밀집 배열과 같고, 결과는 원소 하나면 수, 그 밖에는 희소 배열이에요.
+seeAlso: [basics, sparray, find, dok_array, csr_array, coo_array]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+## 한눈에 보기
+
+희소 배열도 밀집 배열처럼 대괄호 `A[...]`로 일부를 골라요. 대괄호 안에 축마다 무엇을 고를지 쉼표로 나눠 적는 것, 정수·슬라이스·정수 배열·bool 마스크를 쓰는 것이 모두 밀집 배열의 [인덱싱](/api/array/indexing/)과 같아요.
+
+```python
+>>> import stardust as sd
+>>> A = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0, 0.0],
+...                                     [0.0, 0.0, 3.0, 0.0],
+...                                     [4.0, 5.0, 0.0, 6.0]]))
+>>> A[0, 2]
+2.0
+>>> A[0, 1]
+0.0
+>>> A[1:3]
+<csr_array of shape (2, 4), float64, 4 stored elements>
+>>> A[1:3].toarray()
+array([[0.0, 0.0, 3.0, 0.0],
+       [4.0, 5.0, 0.0, 6.0]], dtype=float64)
+```
+
+결과는 두 가지예요.
+
+- 모든 축에 정수 하나씩을 주면(원소 하나) **Python 수**예요. 저장되지 않은 자리는 그 dtype의 0이에요.
+- 그 밖에는 **희소 배열**이에요. 고른 영역 안에 저장돼 있던 원소만 결과에 저장돼요.
+
+<Fig caption="A[1:3]은 1행과 2행을 골라요. 고른 영역에 저장된 원소 4개(진하게)만 결과에 저장돼요.">
+  <ArrayFig name="A" data={[[1, 0, 2, 0], [0, 0, 3, 0], [4, 5, 0, 6]]} tones={[['m', 'g', 'm', 'g'], ['g', 'g', 'b', 'g'], ['b', 'b', 'g', 'b']]} axes />
+</Fig>
+
+희소 배열의 인덱싱 결과는 언제나 밀집 배열로 같은 인덱싱을 한 것과 같은 값이에요. `A[key].toarray()`는 `A.toarray()[key]`와 비트까지 같아요.
+
+```python
+>>> bool(sd.all(A[1:3].toarray() == A.toarray()[1:3]))
+True
+```
+
+## 원소 하나 읽기
+
+행 번호와 열 번호를 하나씩 주면 그 원소의 값이 Python 수(float, int, bool, complex)로 나와요. 번호는 0부터 세고, 음수는 끝에서부터 세요.
+
+```python
+>>> A[2, 1]
+5.0
+>>> A[-1, -1]
+6.0
+>>> type(A[2, 1])
+<class 'float'>
+```
+
+저장되지 않은 자리를 읽으면 그 dtype의 0이에요. 에러가 아니에요.
+
+```python
+>>> A[1, 0]
+0.0
+>>> sd.sparse.csr_array(sd.asarray([[0, 7]]))[0, 0]
+0
+```
+
+COO 배열은 같은 자리에 원소를 여러 번 저장할 수 있어요(중복). 그 자리를 읽으면 저장된 값을 모두 더한 값이에요.
+
+```python
+>>> C = sd.sparse.coo_array((sd.asarray([1.0, 2.0, 3.0]),
+...                          (sd.asarray([0, 0, 1]), sd.asarray([1, 1, 0]))), shape=(2, 2))
+>>> C[0, 1]
+3.0
+```
+
+## 행, 열, 부분 행렬 고르기
+
+### 정수 하나와 슬라이스
+
+정수 하나는 그 축을 없애고, 슬라이스(`start:stop:step`)는 축을 남겨요. 그래서 `A[1]`(행 하나)과 `A[:, 2]`(열 하나)는 1차원 희소 배열, `A[1:2]`는 1 × 4의 2차원 희소 배열이에요.
+
+```python
+>>> A[1]
+<coo_array of shape (4,), float64, 1 stored element>
+>>> A[:, 2].toarray()
+array([2.0, 3.0, 0.0], dtype=float64)
+>>> A[1:2]
+<csr_array of shape (1, 4), float64, 1 stored element>
+```
+
+슬라이스의 `step`은 음수여도 돼요. `A[::-1]`은 행의 순서를 뒤집어요.
+
+```python
+>>> A[:, ::2].toarray()
+array([[1.0, 2.0],
+       [0.0, 3.0],
+       [4.0, 0.0]], dtype=float64)
+>>> A[::-1].toarray()
+array([[4.0, 5.0, 0.0, 6.0],
+       [0.0, 0.0, 3.0, 0.0],
+       [1.0, 0.0, 2.0, 0.0]], dtype=float64)
+```
+
+### 정수 배열: 골라서 늘어놓기
+
+한 축에 정수 배열(리스트, `sd.ndarray`)을 주면 그 번호의 행(열)을 그 순서대로 골라요. 같은 번호가 두 번 나와도 되고, 순서도 자유예요.
+
+```python
+>>> A[[2, 0]].toarray()
+array([[4.0, 5.0, 0.0, 6.0],
+       [1.0, 0.0, 2.0, 0.0]], dtype=float64)
+>>> A[:, [3, 0, 0]].toarray()
+array([[0.0, 1.0, 1.0],
+       [0.0, 0.0, 0.0],
+       [6.0, 4.0, 4.0]], dtype=float64)
+```
+
+### 두 축에 배열: 원소 고르기
+
+두 축에 모두 정수 배열을 주면 같은 번째끼리 짝을 지어 원소를 골라요. `A[[0, 2], [2, 1]]`은 `A[0, 2]`와 `A[2, 1]`을 골라 1차원 배열로 놓아요. 밀집 배열과 같은 규칙이에요.
+
+```python
+>>> A[[0, 2], [2, 1]]
+<coo_array of shape (2,), float64, 2 stored elements>
+>>> A[[0, 2], [2, 1]].toarray()
+array([2.0, 5.0], dtype=float64)
+```
+
+행과 열을 각각 골라 부분 행렬을 만들려면 한 축씩 나눠 골라요. `A[[0, 2]][:, [0, 2]]`는 0행과 2행, 0열과 2열이 만나는 2 × 2 부분 행렬이에요.
+
+```python
+>>> A[[0, 2]][:, [0, 2]].toarray()
+array([[1.0, 2.0],
+       [4.0, 0.0]], dtype=float64)
+```
+
+### bool 마스크
+
+축 길이만큼의 bool 배열로 고를 수도 있어요. 2차원 마스크를 주면 True인 자리의 원소를 행 순서로 모은 1차원 배열이에요.
+
+```python
+>>> A[sd.asarray([True, False, True])].toarray()
+array([[1.0, 0.0, 2.0, 0.0],
+       [4.0, 5.0, 0.0, 6.0]], dtype=float64)
+>>> A[A.toarray() > 2.5].toarray()
+array([3.0, 4.0, 5.0, 6.0], dtype=float64)
+```
+
+## 결과의 형식
+
+희소 배열의 결과는 차원 수로 형식이 정해져요.
+
+| 결과의 차원 | 결과의 형식 | 예 |
+|---|---|---|
+| A와 같음 | A와 같은 형식 | CSR의 `A[1:3]`, `A[[2, 0]]`, `A[:, ::2]`는 CSR |
+| A와 다름 | COO | 2차원의 `A[1]`, `A[:, 2]`, `A[[0, 2], [2, 1]]` |
+
+```python
+>>> A.tocsc()[:, [0, 3]]
+<csc_array of shape (3, 2), float64, 3 stored elements>
+>>> D = A.todok()
+>>> D[0:2]
+<dok_array of shape (2, 4), float64, 3 stored elements>
+>>> D[0]
+<coo_array of shape (4,), float64, 2 stored elements>
+```
+
+고른 자리에 저장돼 있던 원소는 값이 0이어도 결과에 저장돼요. COO 배열은 중복과 저장된 순서도 그대로 가져가요.
+
+```python
+>>> C[0]
+<coo_array of shape (2,), float64, 2 stored elements>
+>>> C[0].toarray()
+array([0.0, 3.0], dtype=float64)
+```
+
+### 1차원 희소 배열
+
+COO, CSR, DOK는 1차원일 수 있어요. 1차원 배열도 같은 규칙으로 골라요. `None`(새 축)을 주면 2차원이 돼요.
+
+```python
+>>> v = sd.sparse.coo_array(sd.asarray([0.0, 7.0, 0.0, 8.0, 9.0]))
+>>> v[1]
+7.0
+>>> v[[4, 1]].toarray()
+array([9.0, 7.0], dtype=float64)
+>>> v[None]
+<coo_array of shape (1, 5), float64, 3 stored elements>
+```
+
+## 인덱싱의 에러
+
+범위를 벗어난 번호, 축보다 많은 인덱스, 쓸 수 없는 객체는 밀집 배열과 같은 `IndexError`예요.
+
+```python
+>>> A[0, 4]
+Traceback (most recent call last):
+    ...
+IndexError: index 4 is out of bounds for axis 1 with size 4
+>>> A[0, 0, 0]
+Traceback (most recent call last):
+    ...
+IndexError: too many indices for array: array is 2-dimensional, but 3 were indexed
+```
+
+희소 배열은 1차원이나 2차원이라서, 결과가 3차원이 될 인덱스는 `IndexError`예요.
+
+```python
+>>> A[None, :]
+Traceback (most recent call last):
+    ...
+IndexError: this index gives a result of 3 dimensions; a sparse array has 1 or 2
+```
+
+희소 배열은 인덱스로 쓸 수 없어요. 마스크는 밀집 bool 배열로 바꿔서 써요.
+
+```python
+>>> A[A > 2.5]
+Traceback (most recent call last):
+    ...
+IndexError: a sparse array is not a valid index; use a dense integer or boolean array
+```
+
+## 대입: 고른 자리에 값 쓰기
+
+`A[key] = value`는 고른 자리에 값을 써요. 고르는 규칙은 읽을 때와 같고, 대입한 뒤의 값은 `A.toarray()`에 같은 대입을 한 것과 같아요.
+
+```python
+>>> B = sd.sparse.csr_array((3, 3))
+>>> B[:, 1] = sd.asarray([1.0, 2.0, 3.0])
+>>> B[0, :] = 9.0
+>>> B[[0, 2], [2, 0]] = sd.asarray([-1.0, -2.0])
+>>> B.toarray()
+array([[ 9.0,  9.0, -1.0],
+       [ 0.0,  2.0,  0.0],
+       [-2.0,  3.0,  0.0]], dtype=float64)
+```
+
+`sd.sparse.csr_array((3, 3))`는 아무것도 저장하지 않은 3 × 3 행렬이에요.
+
+### 값의 모양과 dtype
+
+값의 규칙은 밀집 배열의 대입과 같아요.
+
+- 원소 하나의 자리에는 수(bool, int, float, complex)만 넣어요. `[3.0]` 같은 리스트는 `TypeError`예요.
+- 영역에는 수 하나, 또는 영역의 모양으로 브로드캐스트되는 값(`sd.ndarray`, 리스트, 희소 배열)을 넣어요.
+- 값은 A의 dtype으로 바뀌어요. 정보를 잃는 변환(float를 int64 배열에 넣기)은 `TypeError`예요.
+- 같은 자리를 여러 번 고르면 마지막 값이 남아요.
+
+```python
+>>> B[0, 0] = [3.0]
+Traceback (most recent call last):
+    ...
+TypeError: only a bool, int, float or complex can be assigned to a single element, not list
+>>> B[0] = sd.asarray([[1.0, 2.0, 3.0, 4.0]])
+Traceback (most recent call last):
+    ...
+ValueError: cannot broadcast a value of shape (1, 4) to the indexed shape (3,)
+>>> I = sd.sparse.csr_array(sd.asarray([[1, 0], [0, 2]]))
+>>> I[0, 0] = 2.5
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> E = sd.sparse.csr_array((2, 2))
+>>> E[[0, 0], [1, 1]] = sd.asarray([1.0, 2.0])
+>>> E[0, 1]
+2.0
+```
+
+희소 배열을 값으로 넣으면, 영역 안에 저장돼 있던 자리를 0으로 바꾼 뒤 값의 저장된 원소를 넣어요.
+
+```python
+>>> B[0:2, 0:2] = sd.sparse.eye_array(2)
+>>> B.toarray()
+array([[ 1.0,  0.0, -1.0],
+       [ 0.0,  1.0,  0.0],
+       [-2.0,  3.0,  0.0]], dtype=float64)
+```
+
+### 무엇이 저장되나: 형식마다 달라요
+
+대입한 뒤의 값은 형식과 상관없이 같지만, **어떤 원소가 저장되는지**는 형식마다 달라요.
+
+| 형식 | 이미 저장된 자리 | 새 자리 | 0을 넣으면 |
+|---|---|---|---|
+| CSR, CSC | 값만 제자리에서 바꿔요 | 배열을 다시 만들어요 | 0이 저장돼요 |
+| DOK | 값을 바꿔요 | 키를 더해요 | 그 키를 지워요 |
+| COO | 영역의 원소를 지우고 새 값을 뒤에 붙여요 | 뒤에 붙여요 | 원소 하나의 대입은 0도 붙여요 |
+
+CSR에 0을 대입하면 그 자리가 저장된 0으로 남아요. 행 하나를 0으로 지워도 저장된 원소의 수는 줄지 않아요. 저장된 0을 없애려면 `eliminate_zeros()`를 불러요.
+
+```python
+>>> M = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0],
+...                                     [0.0, 0.0, 3.0],
+...                                     [4.0, 5.0, 0.0]]))
+>>> M.nnz
+5
+>>> M[2] = 0.0
+>>> M.nnz
+6
+>>> M.eliminate_zeros()
+>>> M.nnz
+3
+```
+
+`M[2] = 0.0`은 원래 저장돼 있던 4와 5를 0으로 바꾸고, 저장되지 않았던 (2, 2)에도 0을 저장해서 6개가 됐어요. DOK는 0을 넣으면 그 원소를 지워요.
+
+```python
+>>> Dk = sd.sparse.dok_array(sd.asarray([[1.0, 2.0], [0.0, 3.0]]))
+>>> Dk[0, 1] = 0.0
+>>> Dk.nnz
+2
+```
+
+### CSR에 새 자리를 넣는 일은 비싸요
+
+CSR과 CSC는 원소를 행(열) 순서로 빈틈없이 늘어놓은 배열이에요. 이미 저장된 자리의 값은 그 배열 안에서 바로 바꾸지만, 새 자리를 넣으려면 그 뒤의 원소를 모두 밀어야 해서 세 배열을 다시 만들어요. 그래서 원소를 하나씩 많이 넣으면 넣을 때마다 저장된 원소 전체를 복사해요.
+
+<Callout type="tip" title="원소를 하나씩 넣을 때는 DOK나 COO로">
+
+행렬을 원소 단위로 채워 나갈 때는 [`dok_array`](/api/sparse/dok_array/)에 넣거나, 행·열·값을 배열로 모았다가 [`coo_array`](/api/sparse/coo_array/)로 한 번에 만들어요. 다 만든 뒤 `tocsr()`로 바꿔 계산에 써요.
+
+</Callout>
+
+```python
+>>> W = sd.sparse.dok_array((4, 4))
+>>> for i in range(4):
+...     W[i, i] = 2.0
+...     if i > 0:
+...         W[i, i - 1] = -1.0
+>>> W.tocsr()
+<csr_array of shape (4, 4), float64, 7 stored elements>
+```
+
+값 배열을 나누는 다른 배열이 있으면 차이가 보여요. CSR의 `.T`는 같은 배열을 나누는 CSC예요. 이미 저장된 자리를 바꾸면 `.T`에도 보이지만, 새 자리를 넣으면 A가 다시 만든 배열을 가지므로 그 뒤로는 `.T`와 나누지 않아요.
+
+```python
+>>> P = sd.sparse.csr_array(sd.asarray([[1.0, 0.0], [0.0, 2.0]]))
+>>> Pt = P.T
+>>> P[0, 0] = 5.0
+>>> Pt.toarray()
+array([[5.0, 0.0],
+       [0.0, 2.0]], dtype=float64)
+>>> P[0, 1] = 6.0
+>>> Pt.toarray()
+array([[5.0, 0.0],
+       [0.0, 2.0]], dtype=float64)
+```
+
+## 대각선 읽기와 쓰기
+
+대각선은 대괄호 대신 메서드로 다뤄요. `A.diagonal(k=)`는 k번째 대각선(원소 `A[i, i + k]`)을 밀집 1차원 배열로, `A.trace(k=)`는 그 합을 돌려줘요. `A.setdiag(values, k=)`는 대각선을 제자리에서 바꾸고, 무엇이 저장되는지는 위의 대입과 같아요(CSR, CSC, COO는 0도 저장하고 DOK는 지워요).
+
+```python
+>>> Q = sd.sparse.csr_array(sd.asarray([[1.0, 0.0, 2.0],
+...                                     [0.0, 3.0, 0.0],
+...                                     [4.0, 5.0, 6.0]]))
+>>> Q.diagonal()
+array([1.0, 3.0, 6.0], dtype=float64)
+>>> Q.trace()
+10.0
+>>> Q.setdiag(sd.asarray([7.0, 8.0]), k=-1)
+>>> Q.toarray()
+array([[1.0, 0.0, 2.0],
+       [7.0, 3.0, 0.0],
+       [4.0, 8.0, 6.0]], dtype=float64)
+```
+
+세 메서드의 인자와 에러는 [희소 배열의 공통 메서드](/api/sparse/sparray/)에 있어요. 밀집 배열에서는 [`sd.linalg.diagonal`, `sd.linalg.trace`](/api/linalg/trace-diagonal/)로 읽고, 쓰기는 정수 배열 대입(`i = sd.arange(n)`으로 `x[i + max(-k, 0), i + max(k, 0)] = values`)이에요.
+
+## scipy를 아는 분께
+
+- 고르는 규칙과 에러는 이 라이브러리의 밀집 배열과 같아요(범위 밖은 `IndexError`, 결과가 3차원이 되는 키도 `IndexError`).
+- 네 형식이 같은 규칙이에요. scipy의 CSR·CSC는 원소 고르기(`A[rows, cols]`)와 2차원 마스크에 밀집 numpy 배열을 돌려주지만, 여기서는 언제나 희소 배열(COO)이에요.
+- DOK도 고른 자리의 저장된 0을 결과에 남겨요. scipy의 DOK는 대부분의 경우 저장된 0을 빼요.
+- 원소 하나의 자리에는 수만 받아요(scipy는 `[3]`도 받아요). 정보를 잃는 dtype 변환은 `TypeError`예요(scipy는 2.5를 int64 배열에 2로 넣어요). 같은 자리가 여러 번이면 마지막 값이에요(scipy의 COO는 첫 값이에요).
+- CSR에 새 자리를 넣어도 경고(`SparseEfficiencyWarning`)를 내지 않아요.
+- `trace`의 인자 이름이 `k`예요(scipy는 `offset`). `getrow`, `getcol`은 없어요(`A[i]`, `A[:, j]`).

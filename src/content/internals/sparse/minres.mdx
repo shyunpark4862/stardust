@@ -1,0 +1,201 @@
+---
+title: MINRES
+group: 반복법
+order: 4
+summary: 에르미트(부정일 수 있는) 행렬의 minres가 Lanczos 과정으로 삼중대각 행렬을 만들고, 그 QR을 Givens 회전으로 한 걸음씩 늘리며 잔차가 가장 작은 점을 따라가는 과정을 코드로 설명해요. scipy의 멈춤 판정 여섯 가지와, 조건수가 큰 행렬에서 잔차의 어림과 참 잔차가 갈라지는 이유도 다뤄요.
+seeAlso: [krylov, gmres, cg-bicgstab, lsqr-lsmr]
+---
+
+## 한눈에 보기
+
+[`minres`](/api/sparse/minres/)는 Paige와 Saunders(1975)의 MINRES예요. GMRES처럼 Krylov 공간에서 **잔차의 노름이 가장 작은 점**을 고르지만, A가 에르미트라는 성질 덕분에 기저를 쌓지 않고 짧은 점화식으로 돌아요. CG와 달리 A가 양정치일 필요가 없어서, 고유값이 양수와 음수에 걸친 행렬(안장점 행렬, 시프트한 행렬)도 풀어요. 풀리는 계는 $(A - \sigma I)x = b$이고 $\sigma$는 `shift`예요.
+
+| | |
+|---|---|
+| 행렬 | 에르미트(부정 가능), 전처리기 M은 에르미트 양정치 |
+| 반복 하나의 곱 | A 한 번 + M 한 번 |
+| 줄이는 것 | (전처리한) 잔차의 노름, Krylov 공간 위에서 최소 |
+| 멈춤 | 잔차의 어림에 대한 scipy의 판정 여섯 가지 |
+| 반복 상한 | 5n |
+
+## Lanczos와 삼중대각의 QR
+
+A가 에르미트면 Arnoldi 과정의 Hessenberg 행렬이 삼중대각 $T_k$가 돼요. 새 기저 벡터는 바로 앞 두 개와만 직교화하면 되는 **Lanczos 과정**이에요.
+
+$$
+\beta_{k+1} v_{k+1} = A v_k - \alpha_k v_k - \beta_k v_{k-1}, \qquad \alpha_k = v_k^{\mathsf H} A v_k
+$$
+
+잔차를 최소화하는 문제는 $\min_y \lVert \beta_1 e_1 - \bar T_k y\rVert$이고($\bar T_k$는 $T_k$ 아래에 한 행을 붙인 것), GMRES처럼 Givens 회전으로 $\bar T_k$를 위 삼각 $R_k$로 만들어 풀어요. $T_k$가 삼중대각이라 $R_k$는 대각 위로 두 줄만 있는 띠 행렬이고, 회전도 한 걸음에 하나씩 늘어요. 그래서 $x_k = V_k R_k^{-1}(\ldots)$를 $W_k = V_k R_k^{-1}$의 열로 다시 쓰면, $W_k$의 새 열이 앞의 두 열과 새 기저 벡터의 조합이고 x도 한 걸음씩 갱신돼요. 메모리는 n-벡터 아홉 개예요.
+
+전처리기 M이 있으면 $M$-내적으로 Lanczos를 해요. $y = Mr$을 같이 들고 $\beta = \sqrt{r^{\mathsf H}y}$를 쓰므로 M이 양정치여야 하고, $r^{\mathsf H}y < 0$이면 전처리기가 양정치가 아니라는 뜻이에요.
+
+## 시작
+
+```cpp
+    // csrc/sparse/iterative.cpp
+    int64_t istop = 0, itn = 0;
+    double Anorm = 0, Acond = 0, ynorm = 0;
+    T rnorm{}, Arnorm{};
+    Vec<T> x = start(x0, n), r1(n), y(n), tmp(n), v(n), w(n), w1(n), w2(n), r2(n);
+    if (x0) residual(A, b, x, r1, tmp, false);
+    else std::memcpy(r1.data(), b, static_cast<std::size_t>(n) * sizeof(T));
+    M.apply(r1.data(), y.data());
+    const T beta1t = dot(r1.data(), y.data(), n);
+    if (lt(beta1t, 0.0)) throw linalg::LinAlgError("minres(): the preconditioner is not positive definite");
+    if (is_zero(beta1t)) {
+        o.x = std::move(x);
+        o.stop = 0;
+        return;
+    }
+    const double bnorm = nrm2(b, n);
+    if (bnorm == 0) {
+        o.x.assign(b, b + n);
+        o.stop = 0;
+        return;
+    }
+    const double beta1 = std::sqrt(re(beta1t));
+    double oldb = 0, beta = beta1;
+    T dbar{}, epsln{}, phibar = of<T>(beta1), rhs1 = of<T>(beta1), rhs2{}, tnorm2{};
+    double gmax = 0, gmin = std::numeric_limits<double>::max();
+    T cs = of<T>(-1.0), sn{};
+    r2 = r1;
+    o.history.push_back(beta1);
+```
+
+- $r_1 = b - Ax_0$(x0가 없으면 b), $y = Mr_1$, $\beta_1 = \sqrt{r_1^{\mathsf H}y}$예요. $r_1^{\mathsf H}y < 0$이면 `LinAlgError("minres(): the preconditioner is not positive definite")`예요(scipy는 `ValueError`).
+- $\beta_1 = 0$이면 x0가 이미 해라 반복 없이 끝나요(stop 0, "beta1 = 0: the exact solution is x0"). b = 0이면 x = b예요.
+- $\cos = -1$, $\sin = 0$으로 시작해요. 첫 회전이 부호만 바꾸는 꼴이 되게 scipy의 초기값을 그대로 둬요.
+
+## 반복
+
+```cpp
+    // csrc/sparse/iterative.cpp
+    while (itn < maxiter) {
+        ++itn;
+        const double s = 1.0 / beta;
+        each(n, [&](int64_t i) { v[i] = mul(of<T>(s), y[i]); });
+        A.apply(v.data(), y.data());
+        if (shift != 0) axpy(of<T>(-shift), v.data(), y.data(), n);
+        if (itn >= 2) axpy(of<T>(-(beta / oldb)), r1.data(), y.data(), n);
+        const T alfa = dot(v.data(), y.data(), n);
+        axpy(neg(dvd(alfa, of<T>(beta))), r2.data(), y.data(), n);
+        std::swap(r1, r2);  // r1 = r2
+        r2 = y;             // r2 = y
+        M.apply(r2.data(), y.data());
+        oldb = beta;
+        const T betat = dot(r2.data(), y.data(), n);
+        if (lt(betat, 0.0)) throw linalg::LinAlgError("minres(): the matrix is not symmetric");
+        beta = std::sqrt(re(betat));
+        tnorm2 = add(tnorm2, add(add(mul(alfa, alfa), of<T>(oldb * oldb)), of<T>(beta * beta)));
+        if (itn == 1 && beta / beta1 <= 10 * kEps) istop = -1;  // terminate later
+        // the previous rotation Q_{k-1}
+        const T oldeps = epsln;
+        const T delta = add(mul(cs, dbar), mul(sn, alfa));
+        const T gbar = sub(mul(sn, dbar), mul(cs, alfa));
+        epsln = mul(sn, of<T>(beta));
+        dbar = mul(neg(cs), of<T>(beta));
+        const double root = vec2norm(gbar, dbar);
+        Arnorm = mul(phibar, of<T>(root));
+        // the next rotation Q_k (gamma: a real value, numpy's norm cast to the dtype)
+        double gamma = vec2norm(gbar, of<T>(beta));
+        if (gamma < kEps) gamma = kEps;
+        cs = dvd(gbar, of<T>(gamma));
+        sn = dvd(of<T>(beta), of<T>(gamma));
+        const T phi = mul(cs, phibar);
+        phibar = mul(sn, phibar);
+        // update x
+        const T denom = dvd(of<T>(1.0), of<T>(gamma));
+        std::swap(w1, w2);  // w1 = w2
+        std::swap(w2, w);   // w2 = w (w now holds the old w1's storage, overwritten next)
+        each(n, [&](int64_t i) {
+            const T t = sub(sub(v[i], mul(oldeps, w1[i])), mul(delta, w2[i]));
+            w[i] = mul(t, denom);
+        });
+        axpy(phi, w.data(), x.data(), n);
+        gmax = std::max(gmax, gamma);
+        gmin = std::min(gmin, gamma);
+        const T z = dvd(rhs1, of<T>(gamma));
+        rhs1 = sub(rhs2, mul(delta, z));
+        rhs2 = mul(neg(epsln), z);
+        // the norms and the stopping tests
+        Anorm = std::sqrt(re(tnorm2));
+        ynorm = nrm2(x.data(), n);
+        const double epsx = Anorm * ynorm * kEps;
+        rnorm = phibar;
+        T test1, test2;
+        if (ynorm == 0 || Anorm == 0) test1 = of<T>(kInf);
+        else test1 = dvd(rnorm, of<T>(Anorm * ynorm));
+        if (Anorm == 0) test2 = of<T>(kInf);
+        else test2 = of<T>(root / Anorm);
+        Acond = gmax / gmin;
+        if (istop == 0) {
+            const T t1 = add(of<T>(1.0), test1), t2 = add(of<T>(1.0), test2);
+            if (le(t2, 1.0)) istop = 2;
+            if (le(t1, 1.0)) istop = 1;
+            if (itn >= maxiter) istop = 6;
+            if (Acond >= 0.1 / kEps) istop = 4;
+            if (epsx >= beta1) istop = 3;
+            if (le(test2, rtol)) istop = 2;
+            if (le(test1, rtol)) istop = 1;
+        }
+        o.history.push_back(mag(rnorm));
+        if (istop != 0) break;
+    }
+```
+
+한 걸음은 세 부분이에요.
+
+1. **Lanczos.** $v = y/\beta$, $y = Av - \sigma v - (\beta/\beta_{\text{old}})r_1$, $\alpha = v^{\mathsf H}y$, $y \mathrel{-}= (\alpha/\beta)r_2$, 그리고 $r_1 \leftarrow r_2$, $r_2 \leftarrow y$, $y = Mr_2$, $\beta = \sqrt{r_2^{\mathsf H}y}$. 여기서 $r_2^{\mathsf H}y < 0$이면 A가 에르미트가 아니라는 표시라 `LinAlgError("minres(): the matrix is not symmetric")`예요. 벡터를 옮기는 곳은 `std::swap`이라 복사가 없어요. $\lVert T_k\rVert_F^2$의 누적 `tnorm2`가 $\lVert A\rVert$의 어림이 돼요.
+2. **회전.** 지난 회전 $Q_{k-1}$을 새 열 $(\bar\delta, \alpha, \beta)$에 걸어 $\delta$, $\bar\gamma$, $\epsilon$을 얻고, 새 회전 $Q_k$를 $\gamma = \lVert(\bar\gamma, \beta)\rVert$로 정해요. $\gamma$가 ε보다 작으면 ε로 올려 나눗셈을 지켜요. 우변에 회전을 걸면 $\phi = c\bar\phi$, $\bar\phi \leftarrow s\bar\phi$이고, **$|\bar\phi|$가 지금의 잔차 노름**이에요. $\gamma$는 numpy처럼 실수 노름을 계의 dtype으로 바꾼 값이에요.
+3. **갱신.** $w = (v - \epsilon_{\text{old}}w_1 - \delta w_2)/\gamma$, $x \mathrel{+}= \phi w$. $\gamma$의 최대·최소로 조건수 어림 $\gamma_{\max}/\gamma_{\min}$을 따라가요.
+
+## 멈춤 판정
+
+판정은 scipy의 `minres.py`와 같고, 모두 점화식의 어림에 대한 것이에요. 쓰는 양은
+
+$$
+\text{test}_1 = \frac{|\bar\phi|}{\lVert A\rVert\,\lVert x\rVert}, \qquad \text{test}_2 = \frac{\lVert A r\rVert}{\lVert A\rVert\,\lVert r\rVert} = \frac{\text{root}}{\lVert A\rVert}
+$$
+
+이에요($\lVert A\rVert$는 `tnorm2`의 제곱근, $\lVert Ar\rVert$의 어림은 $|\bar\phi|\cdot\text{root}$). 뒤에 놓인 판정이 앞의 것을 덮어쓰는 순서로 stop을 정해요.
+
+| stop | 뜻 | 조건 |
+|---:|---|---|
+| 1 | Ax = b의 해를 찾음 | $\text{test}_1 \le \text{rtol}$, 또는 $1 + \text{test}_1 \le 1$ |
+| 2 | 최소제곱 해를 찾음(특이한 A) | $\text{test}_2 \le \text{rtol}$, 또는 $1 + \text{test}_2 \le 1$ |
+| 3 | 기계 정밀도의 정확도 | $\lVert A\rVert\lVert x\rVert\varepsilon \ge \beta_1$ |
+| 4 | 조건수 어림이 $0.1/\varepsilon$을 넘음 | $\gamma_{\max}/\gamma_{\min} \ge 0.1/\varepsilon$ |
+| 6 | 반복 상한 | $k \ge$ `max_iter` |
+| −1 | $\beta_2 = 0$: M = I면 b와 x가 고유벡터 | 첫 걸음에서 $\beta/\beta_1 \le 10\varepsilon$(그 걸음의 x 갱신을 마치고 멈춤) |
+
+status는 stop이 6일 때만 `max_iter`이고 나머지는 0이에요. 그래서 stop 3·4도 `converged=True`이고, 메시지가 어느 판정이 멈췄는지 말해요. 판정 1이 $\lVert r\rVert / \lVert b\rVert$가 아니라 $\lVert r\rVert / (\lVert A\rVert\lVert x\rVert)$에 대한 것이라, 같은 rtol에서 cg보다 일찍 멈출 수 있어요.
+
+```python
+>>> g = 30
+>>> T = sd.sparse.diags_array([-sd.ones(g - 1), 2 * sd.ones(g), -sd.ones(g - 1)], offsets=[-1, 0, 1], format="csr")
+>>> A = sd.sparse.kronsum(T, T, format="csr")
+>>> b = sd.ones(g * g)
+>>> r = sd.sparse.minres(A, b, rtol=1e-8)
+>>> r.n_iter, r.message
+(42, 'a solution to Ax = b was found, given rtol')
+>>> sd.sparse.cg(A, b, rtol=1e-8).n_iter
+55
+```
+
+## 잔차의 어림과 참 잔차
+
+$|\bar\phi|$는 정확한 산술에서 참 잔차의 노름과 같지만, 반올림이 있으면 둘이 갈라져요. MINRES는 x를 $W_k$의 열로 갱신하는데, $W_k = V_kR_k^{-1}$의 열은 $R_k$의 조건수만큼 커질 수 있어서 그 반올림이 x에 쌓여요. Sleijpen, van der Vorst, Modersitzki(2000)는 참 잔차와 어림의 차이가 $\varepsilon\,\kappa(A)\,\lVert A\rVert\lVert x\rVert$ 크기까지 자란다는 것을 보였어요.
+
+그래서 조건수가 큰 행렬에서는 `converged=True`여도 참 잔차가 판정보다 훨씬 클 수 있어요. 조건수 10¹⁰의 등급 매긴 삼중대각 행렬(graded/100x8)은 rtol 10⁻¹⁰에서 "a solution to Ax = b was found"로 멈추지만 참 상대 잔차가 7×10⁻²예요(graded/400x12는 0.55, near_singular/20은 1.4×10⁻²). scipy도 같은 값으로 멈춰요. 알고리즘의 성질이라 정확도 계약에 이 간격을 넣어요. minres의 앞오차 계약은 $\lVert A^{-1}\rVert_\infty(\text{rtol} + \varepsilon\kappa_\infty)\lVert A\rVert_F\lVert\hat x\rVert_2$예요. 조건수가 큰 에르미트 양정치 행렬이면 cg가, 부정 행렬이면 직접 풀이가 안전해요.
+
+## scipy와 다른 점
+
+- scipy의 `check`(대칭인지 미리 보는 옵션)와 `show`, `callback`이 없어요. 대칭이 아닌 것은 반복 안에서 $\beta^2 < 0$으로 드러날 때만 `LinAlgError`예요.
+- 예외가 `ValueError` 대신 `LinAlgError`예요.
+- 반복 수와 상태는 시험 기록에서 scipy와 같아요. 부정 행렬(random_indef/1500, saddle/600x150)의 뒷부분은 scipy 자신이 반올림에 민감해, 잔차 열은 scipy가 자기 자신과 10⁻⁹ 안에서 같은 앞부분에서만 견줘요. SuiteSparse의 cvxqp3(대칭 부정 KKT)은 scipy와 같은 79번째 반복에서 멈춰요.
+
+## 참고 문헌
+
+1. C. C. Paige, M. A. Saunders, Solution of sparse indefinite systems of linear equations, *SIAM J. Numer. Anal.* 12(4), 1975.
+2. G. L. G. Sleijpen, H. A. van der Vorst, J. Modersitzki, Differences in the effects of rounding errors in Krylov solvers for symmetric indefinite linear systems, *SIAM J. Matrix Anal. Appl.* 22(3), 2000.

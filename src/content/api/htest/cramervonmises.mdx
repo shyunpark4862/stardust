@@ -1,0 +1,169 @@
+---
+kind: function
+title: cramervonmises
+names: [cramervonmises]
+group: 분포 적합도
+order: 8
+signatures:
+  - "sd.htest.cramervonmises(rvs, cdf, /, *, axis=None, nan_policy='propagate', keepdims=False)"
+summary: 표본이 미리 정한 연속분포에서 왔는지 보는 한 표본 Cramér–von Mises 검정이에요. 경험 분포 함수와 주어진 누적분포의 차의 제곱을 분포 전체에 걸쳐 모은 W²로 재요. 가장 큰 차 하나만 보는 Kolmogorov–Smirnov보다 고르게 봐요.
+params:
+  - name: rvs
+    type: ndarray, 실수의 시퀀스, 실수 스칼라, numpy 배열, 또는 frame의 Series·DataFrame
+    kind: positional-only
+    desc: 표본. bool·정수는 float64로 바꿔서 계산해요.
+  - name: cdf
+    type: sd.stats의 분포 객체 또는 호출 가능한 객체
+    kind: positional-only
+    desc: "귀무가설의 누적분포. sd.stats.Normal(mu=0, sigma=1) 같은 분포 객체(그 cdf를 써요)나 cdf(v)를 돌려주는 함수예요. 함수는 정렬한 표본을 배치 모양 (..., n)의 배열로 한 번 받고, 같은 모양의 수 배열을 돌려줘야 해요."
+  - name: axis
+    type: int, int의 tuple·리스트, 또는 None
+    kind: keyword-only
+    desc: 표본을 읽을 축. None(기본값)이면 모든 원소를 표본 하나로 펼쳐요. 축을 주면 그 축을 따라 표본을 읽고, 나머지 축의 칸마다 따로 검정해요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있는 표본의 결과가 NaN), 'omit'(NaN을 빼고 계산), 'raise'(ValueError) 중 하나예요."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    desc: True면 결과에 표본 축을 길이 1로 남겨요.
+returns:
+  type: CramervonmisesResult
+  desc: "statistic(W²)과 pvalue가 든 결과 객체예요. 검정 하나면 Python float, 배치면 배치 모양의 배열이에요. 튜플로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: cdf가 분포 객체나 호출 가능한 객체가 아닐 때(문자열, 분포 클래스 등), cdf가 수가 아닌 것을 돌려줄 때, rvs가 수의 배열·시퀀스·frame이 아니거나 복소수일 때, axis·keepdims의 형이 틀렸을 때, 옵션을 위치로 주거나 없는 키워드(alternative 등)를 줬을 때.
+  - type: ValueError
+    desc: "cdf가 입력과 다른 모양을 돌려줄 때, nan_policy 이름이 틀렸을 때, axis가 범위 밖이거나 겹칠 때, nan_policy='raise'인데 NaN이 있을 때."
+seeAlso: [ks_1samp, anderson, cramervonmises_2samp, goodness_of_fit, basics, results]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+한 표본 Cramér–von Mises 검정은 [`ks_1samp`](/api/htest/ks_1samp/)와 같은 것을 물어요. "이 표본이 내가 정한 이 분포에서 왔다고 봐도 되나요?" 분포는 모수까지 모두 정해져 있어야 해요.
+
+- **귀무가설**: 표본이 `cdf`의 분포에서 왔어요.
+- **대립가설**: 다른 분포에서 왔어요. 한쪽 검정은 없어요.
+
+평균이 0.3인 정규분포에서 뽑은 표본 50개가 표준정규분포에서 왔는지 물어요.
+
+```python
+>>> import stardust as sd
+>>> x = sd.stats.Normal(mu=0.3, sigma=1.0).sample(50, rng=sd.random.default_rng(4))
+>>> r = sd.htest.cramervonmises(x, sd.stats.Normal())
+>>> r
+CramervonmisesResult(statistic=0.316433, pvalue=0.121394)
+>>> sd.htest.ks_1samp(x, sd.stats.Normal()).pvalue
+0.19584887319408734
+```
+
+이 표본에서는 둘 다 0.05보다 크지만, Cramér–von Mises의 p값(0.12)이 KS의 p값(0.20)보다 작아요. 평균이 옮겨지면 경험 분포 함수가 넓은 구간에서 조금씩 어긋나는데, 그것을 모두 더하기 때문이에요.
+
+<Reference />
+
+## 통계량
+
+정렬한 표본을 $x_{(1)} \le \dots \le x_{(n)}$, 경험 분포 함수를 $F_n$, 주어진 누적분포를 $F$라 해요. 통계량은 두 함수의 차의 제곱을 $F$의 눈금으로 적분한 값의 $n$배예요.
+
+$$
+W^2 = n\int_{-\infty}^{\infty} \bigl(F_n(t) - F(t)\bigr)^2\, dF(t) = \frac{1}{12n} + \sum_{i=1}^{n}\left(\frac{2i - 1}{2n} - F(x_{(i)})\right)^2
+$$
+
+- [`ks_1samp`](/api/htest/ks_1samp/)의 $D$는 가장 큰 차 하나만 봐요. $W^2$는 모든 곳의 차를 더해서 여러 종류의 어긋남에 고르게 힘이 있어요.
+- [`anderson`](/api/htest/anderson/)의 $A^2$는 같은 적분에 꼬리를 무겁게 보는 무게를 붙인 것이에요. $W^2$는 무게가 없어서 꼬리를 가운데와 같게 봐요.
+
+$W^2$의 분포도 $F$가 연속이면 $F$가 무엇이든 같아요. p값은 Csörgő와 Faraway(1996)의 유한 표본 근사식으로 구해요. 극한 분포에 $1/n$ 크기의 보정을 더한 식이에요.
+
+## 언제 쓰나요
+
+- 모수가 미리 정해진 연속분포와 견줄 때 써요. [`ks_1samp`](/api/htest/ks_1samp/)와 쓰임이 같고, 위치나 척도가 조금씩 어긋날 때 흔히 더 힘이 있어요.
+- 꼬리의 어긋남이 중요하면 [`anderson`](/api/htest/anderson/)이에요(정규분포 같은 분포족에 모수를 맞춘 검정이에요).
+- 모수를 데이터에서 맞춘 분포를 넘기면 p값이 실제보다 커요. 그럴 때는 [`goodness_of_fit`](/api/htest/goodness_of_fit/)에 통계량 `'cvm'`을 써요.
+- 두 표본이 같은 분포인지는 [`cramervonmises_2samp`](/api/htest/cramervonmises_2samp/)예요.
+
+`cdf`를 주는 법은 [`ks_1samp`](/api/htest/ks_1samp/#cdf-분포-객체나-함수)와 같아요. 분포 객체나 배열을 받는 함수예요.
+
+```python
+>>> u = sd.stats.Uniform(a=0.0, b=1.0).sample(20, rng=sd.random.default_rng(9))
+>>> sd.htest.cramervonmises(u, sd.stats.Uniform(a=0.0, b=1.0))
+CramervonmisesResult(statistic=0.0714783, pvalue=0.748113)
+>>> sd.htest.cramervonmises(u, lambda v: v).statistic
+0.07147826341482312
+```
+
+$[0, 1)$의 균등분포의 누적분포는 $F(t) = t$라 `lambda v: v`도 같아요.
+
+## 결과 읽기
+
+결과는 `statistic`(W²)과 `pvalue` 두 필드예요. 필드는 읽기만 해요. scipy의 결과처럼 튜플로 풀리지 않으니 이름으로 읽어요.
+
+```python
+>>> r.statistic, r.pvalue
+(0.316432919809902, 0.12139397546064024)
+>>> W2, p = r
+Traceback (most recent call last):
+    ...
+TypeError: cannot unpack non-iterable CramervonmisesResult object
+>>> print(r.summary())
+                            Cramer-von Mises test
+==============================================================================
+Statistic:                      0.3164  No. Observations:                   50
+P-value:                         0.121
+==============================================================================
+```
+
+결과 객체의 공통 규칙은 [결과 객체 읽기](/api/htest/results/)에 있어요.
+
+## 여러 표본을 한 번에
+
+`axis`를 주면 그 축을 따라 표본을 읽고 나머지 축의 칸마다 따로 검정해요. `cdf`는 정렬한 배치 전체를 (..., n) 모양으로 한 번 받아요. NaN은 `nan_policy`를 따라요. 공통 규칙은 [가설검정의 기본](/api/htest/basics/)에 있어요.
+
+```python
+>>> b = sd.stats.Normal().sample((3, 30), rng=sd.random.default_rng(10))
+>>> sd.htest.cramervonmises(b, sd.stats.Normal(), axis=1).pvalue
+array([0.24752736935860076, 0.44918441090424444,  0.4106707586297633], dtype=float64)
+```
+
+## 작은 p값과 특수한 경우
+
+p값은 근사식의 누적분포 값을 1에서 빼서 얻어요. 그래서 p값의 오차는 상대오차가 아니라 절대오차 1e-16쯤으로 정해지고, 1e-15보다 작은 p값은 "아주 작다"는 것 말고는 뜻이 없어요.
+
+```python
+>>> far = sd.stats.Normal(mu=2.0).sample(100, rng=sd.random.default_rng(11))
+>>> sd.htest.cramervonmises(far, sd.stats.Normal()).pvalue
+3.3306690738754696e-16
+>>> sd.htest.ks_1samp(far, sd.stats.Normal()).pvalue
+1.7769266388857778e-47
+```
+
+평균이 2만큼 떨어진 표본의 p값은 참값이 훨씬 작은데, 반올림 크기의 값이 나와요. 아주 작은 p값의 크기가 필요하면 꼬리를 직접 계산하는 [`ks_1samp`](/api/htest/ks_1samp/)를 써요.
+
+- 근사식이 꼬리에서 0 아래로 내려가는 곳(작은 $n$의 큰 $W^2$)은 p = 0이에요.
+- **값이 2개 미만**이면 NaN이에요.
+
+```python
+>>> sd.htest.cramervonmises([0.5], sd.stats.Normal())
+CramervonmisesResult(statistic=nan, pvalue=nan)
+>>> sd.htest.cramervonmises(x, sd.stats.Normal(), alternative='less')
+Traceback (most recent call last):
+    ...
+TypeError: cramervonmises(): unexpected keyword argument 'alternative'
+```
+
+## 정확도
+
+- $W^2$는 양수 항의 합을 정확하게 모아서, Arb(구간 산술)로 계산한 참값과 견줘 7문제(n = 2, 3, 2000, 꼬리, 균등분포 포함)에서 상대오차가 2e-16 안이에요.
+- p값은 Csörgő–Faraway 근사식의 값을 참값으로 보고, 그 1 − cdf의 절대오차가 1e-15 안이에요. 근사식 안의 Bessel 급수는 항이 합의 2⁻⁶⁰ 아래가 될 때까지 더해요. p = 5.2e-11인 꼬리에서 절대오차 4.6e-16(상대 8.9e-6)이에요.
+- 근사식이 참 귀무분포와 얼마나 맞는지는 약속에 들지 않아요.
+- 같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+scipy 1.18.1, R 4.6.2(goftest 1.2-3) 기준이에요.
+
+- `scipy.stats.cramervonmises(rvs, cdf)`와 같은 통계량, 같은 근사식의 p값이에요. scipy처럼 결과가 풀리지 않아요. 기본 `axis`는 None이에요(scipy는 0).
+- `cdf`는 sd.stats의 분포 객체나 배열을 받는 함수예요. 분포 이름(`'norm'`)과 `args=()`는 받지 않아요.
+- 꼬리의 p값이 더 정확해요. scipy는 근사식의 급수를 절대 1e-7에서 멈춰서 n = 100, p = 5.2e-11인 꼬리에서 상대오차가 0.016이에요. R의 `goftest::cvm.test`는 같은 근사식이고 참값과 4e-15 안이지만 그 꼬리에서 0을 내요.
+- n < 2는 경고 없이 NaN이에요.
