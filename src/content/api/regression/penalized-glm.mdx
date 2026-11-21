@@ -53,7 +53,7 @@ params:
     desc: "NaN을 다루는 방법. 'propagate'(기본), 'omit', 'raise' 중 하나예요."
 returns:
   type: PenalizedGLMResult
-  desc: "계수 params(절편이 params[0]), fittedvalues(평균 μ), linear_predictor(η), resid_response, deviance, null_deviance, deviance_ratio, df_model, converged, n_iter, dual_gap, separation, family, nobs와 predict(which=). 표준오차·p값은 없어요."
+  desc: "계수 params(절편이 params[0]), fittedvalues(평균 μ), linear_predictor(η), resid_response, deviance, null_deviance, deviance_ratio, df_model, converged, n_iter, dual_gap, separation, family, nobs와 predict(which=), summary(). 표준오차·p값은 없어요."
 raises:
   - type: TypeError
     desc: family를 빠뜨렸을 때, y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), l1_ratio·tol이 수가 아닐 때, max_iter가 int가 아닐 때, link·offset 같은 없는 인자를 줬을 때, 입력이 복소수일 때.
@@ -205,7 +205,32 @@ ValueError: penalized_glm(): 'family' must be 'binomial' or 'poisson', not 'gamm
 2.5222
 ```
 
-선형 회귀의 결과와 달리 `resid`, `ssr`, `rsquared`는 없고, 그 자리에 `resid_response`, `deviance`, `deviance_ratio`가 있어요. 표준오차·p값·`summary()`는 [`ridge`](/api/regression/ridge/)와 같은 까닭으로 없어요. 계수의 추론이 필요하면 벌점 없는 [`glm`](/api/regression/glm/)을 쓰세요. `rank`도 없어요. `alpha > 0`이면 겹친 열도 계수를 받아 빼는 열이 없고, 모형의 크기는 유효 자유도 `df_model`이 말해 줘요(`alpha=0`이면 `df_model`이 `glm`의 것이에요, 아래).
+선형 회귀의 결과와 달리 `resid`, `ssr`, `rsquared`는 없고, 그 자리에 `resid_response`, `deviance`, `deviance_ratio`가 있어요. 표준오차와 p값은 [`ridge`](/api/regression/ridge/)와 같은 까닭으로 없어요. 계수의 추론이 필요하면 벌점 없는 [`glm`](/api/regression/glm/)을 쓰세요. `rank`도 없어요. `alpha > 0`이면 겹친 열도 계수를 받아 빼는 열이 없고, 모형의 크기는 유효 자유도 `df_model`이 말해 줘요(`alpha=0`이면 `df_model`이 `glm`의 것이에요, 아래).
+
+`summary()`(인자 없음)는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자로 계수만 적어요. 머리에 분포족, 벌점(`alpha`, `l1_ratio`, `standardize`), 관측 수, 유효 자유도, 편차와 편차 비, 수렴 여부와 반복 수가 있어요. 경로나 배치의 결과는 `alpha`와 회귀마다 한 줄인 표예요.
+
+```python
+>>> print(e.summary())
+                       Penalized GLM Regression Results
+==============================================================================
+Model:                   Penalized GLM  No. Observations:                   80
+Model Family:                 Binomial  Df Model:                        2.522
+Alpha:                            0.05  Deviance:                       70.154
+L1 Ratio:                          0.5  Deviance Ratio:                  0.363
+Standardize:                     False  Converged:                        True
+                                        No. Iterations:                      5
+==============================================================================
+                 coef
+------------------------------------------------------------------------------
+const         -0.1772
+x1             1.2499
+x2            -0.6234
+x3            -0.1547
+==============================================================================
+
+Notes:
+[1] The coefficients alone: the penalized fit has no standard errors or tests.
+```
 
 ### `deviance_ratio`
 

@@ -12,11 +12,11 @@ import Layers from '../../../components/fig/Layers.astro';
 
 ## 한눈에 보기
 
-`sd.regression`에는 함수 20개가 있고, 검정과 진단은 결과의 메서드와 속성이에요.
+`sd.regression`에는 함수 19개가 있고, 검정과 진단은 결과의 메서드와 속성이에요.
 
 | 묶음 | 함수 | 커널 | 파일 |
 |---|---|---|---|
-| 선형 | `ols`, `wls`, `gls`, `linregress` | `fit`, `apply`, `cond`, `resid_stats` | `csrc/regression/linear.cpp` |
+| 선형 | `ols`, `wls`, `gls` | `fit`, `apply`, `cond`, `resid_stats` | `csrc/regression/linear.cpp` |
 | 일반화 선형 | `glm` | `glm_fit` | `csrc/regression/glm.cpp` |
 | 정규화 | `ridge`, `lasso`, `elastic_net`, `ridge_cv`, `lasso_cv`, `elastic_net_cv`, `penalized_glm` | `penalized_path`, `alpha_max` | `csrc/regression/penalized.cpp` |
 | 강건 | `rlm` | `rlm_fit` | `csrc/regression/robust.cpp` |
@@ -104,14 +104,15 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
         title: 'Python',
         note: 'src/stardust/regression/',
         items: [
-          { name: '_linear.py', note: 'ols, wls, gls, linregress. 입력 정리(_as_real, _prepare, _groups), 결과의 공통 틀 _RegressionResult, 선형 결과 _LinearResult, summary' },
+          { name: '_linear.py', note: 'ols, wls, gls. 입력 정리(_as_real, _prepare, _groups), 결과의 공통 틀 _RegressionResult, 선형 결과 _LinearResult, summary' },
           { name: '_glm.py', note: 'glm과 GLMResult: 분포족·링크 이름, 가중치와 trials, 척도' },
           { name: '_penalized.py', note: 'ridge, lasso, elastic_net, 교차검증, penalized_glm. 결과는 _PenalizedResult(추론 없음)' },
           { name: '_robust.py · _quantile.py · _nls.py', note: 'rlm과 Theil–Sen·Siegel, quantreg, nls(사용자 함수의 호출, 해의 야코비안은 optimize/_diff.py의 Differences)' },
           { name: '_tests.py', note: 't_test, wald_test, compare_f_test, compare_lr_test, anova와 그 결과 클래스(htest의 결과 바탕 위). 결과의 메서드가 여기 함수를 불러요' },
           { name: '_diagnostics.py', note: 'VIF, DFBETAS, White·Goldfeld–Quandt·RESET, GLM의 영향력. 적합의 QR(thin_q 방식)에서 구해요' },
           { name: '_select.py', note: 'stepwise, best_subset과 StepwiseResult, BestSubsetResult. 선형 후보의 평가(_Linear)와 GLM 후보의 배치 적합(_GLM)' },
-          { name: '../_results.py', note: 'namedtuple: LinregressResult, BreuschPaganResult, TheilslopesResult, SiegelslopesResult' },
+          { name: '../_results.py', note: 'namedtuple과 그 summary: BreuschPaganResult, TheilslopesResult, SiegelslopesResult' },
+          { name: '../_summary.py', note: '모든 결과의 summary 상자: 머리, 표, 수의 형식, 배치의 표. htest와 optimize도 함께 써요' },
         ],
       },
       {
@@ -164,7 +165,7 @@ Python 층의 결과 클래스는 두 갈래예요.
 - 검정의 결과(`TTestResult`, `WaldTestResult`, `CompareFTestResult`, `CompareLRTestResult`, `AnovaResult`, `WhiteTestResult`, `GoldfeldQuandtResult`, `ResetTestResult`)는 htest의 결과 바탕 위의 읽기 전용 클래스예요. statsmodels가 튜플을 돌려주는 곳(`white_test()`, `goldfeld_quandt()`, `compare_f_test()`, `compare_lr_test()`)만 같은 개수로 풀려요. `jarque_bera()`의 결과는 htest의 `JarqueBeraResult` 그대로예요.
 - 변수 선택의 결과 `StepwiseResult`, `BestSubsetResult`는 고른 열과 모형 함수의 결과(`fit`)를 담은 읽기 전용 클래스이고, 걸음과 건너뛴 후보는 namedtuple(`SelectionStep`, `SkippedFit`, `SkippedSubset`)이에요.
 
-`linregress`, `theilslopes`, `siegelslopes`의 결과와 `breusch_pagan()`의 결과는 scipy·statsmodels처럼 namedtuple이에요.
+`theilslopes`, `siegelslopes`의 결과와 `breusch_pagan()`의 결과는 scipy·statsmodels처럼 namedtuple이에요. 그 namedtuple을 이어받은 클래스라 `summary()`가 있어요.
 
 ## 입력 정리
 
@@ -241,7 +242,7 @@ ValueError: ols(): the model has no parameters (no columns in 'X' and intercept=
 
 `'omit'`은 NaN이 있는 행을 지우므로, inf와 음수 가중치를 그 뒤에 보면 같은 행의 NaN이 그 잘못을 숨겨요. 그래서 `'omit'`일 때는 행을 빼기 전에 Python이 inf와 음수 가중치를 먼저 봐요. 잘못된 값은 어느 정책에서나 같은 에러예요.
 
-쓰인 행이 하나도 없으면(n = 0, `'omit'`이 모든 행을 뺌, 가중치가 모두 0) 풀 문제가 없어요. 커널은 QR에 가기 전에 그 회귀를 NaN으로 채우고 `nobs`만 0으로 둬요. 자유도도 셀 것이 없으니 NaN이에요. 반복하는 모형은 여기에 `converged=False`, `n_iter` 0이 더해져요. 배치 안에서는 그 회귀만 이렇게 되고 나머지는 그대로예요. 점 두 개가 있어야 기울기가 정의되는 `linregress`, `theilslopes`, `siegelslopes`는 이 경우가 `ValueError`예요.
+쓰인 행이 하나도 없으면(n = 0, `'omit'`이 모든 행을 뺌, 가중치가 모두 0) 풀 문제가 없어요. 커널은 QR에 가기 전에 그 회귀를 NaN으로 채우고 `nobs`만 0으로 둬요. 자유도도 셀 것이 없으니 NaN이에요. 반복하는 모형은 여기에 `converged=False`, `n_iter` 0이 더해져요. 배치 안에서는 그 회귀만 이렇게 되고 나머지는 그대로예요. 점이 둘은 있어야 기울기가 정의되는 `theilslopes`, `siegelslopes`는 점이 둘보다 적으면 모든 필드가 NaN이에요.
 
 ```python
 >>> x = sd.asarray([0.0, 1.0, 2.0, 3.0])
@@ -298,7 +299,7 @@ ValueError: ols(): 'X' contains infinity
 
 ### 배치 모양
 
-y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)(GLS는 `sigma` (…, n, n))의 앞 축은 배치이고 서로 브로드캐스트해요. 맞지 않으면 커널에 가기 전에 `_check_batches`가 인자마다의 배치 모양을 적어 `ValueError`를 내요. 커널도 모양을 검사하지만 인자 이름을 모르기 때문이에요. `linregress`·`theilslopes`·`siegelslopes`(`x`와 `y`), `glm`(행마다 값이 있는 인자와 `groups`), 정규화, `rlm`, `quantreg`도 같은 함수로 검사해요.
+y (…, n), X (…, n, p), 가중치 (…, n), 군집 번호 (…, n)(GLS는 `sigma` (…, n, n))의 앞 축은 배치이고 서로 브로드캐스트해요. 맞지 않으면 커널에 가기 전에 `_check_batches`가 인자마다의 배치 모양을 적어 `ValueError`를 내요. 커널도 모양을 검사하지만 인자 이름을 모르기 때문이에요. `theilslopes`·`siegelslopes`(`x`와 `y`), `glm`(행마다 값이 있는 인자와 `groups`), 정규화, `rlm`, `quantreg`도 같은 함수로 검사해요.
 
 ```python
 >>> sd.regression.wls(sd.ones((3, 4)), sd.ones((2, 4, 1)), weights=sd.ones((2, 4)))
@@ -482,6 +483,102 @@ array([1.4523809523809523, 0.8257142857142857,                0.0], dtype=float6
 array([nan], dtype=float64)
 ```
 
+### summary의 상자
+
+회귀, 가설검정, 최적화의 결과는 모두 `summary()`가 있고 그 꼴은 하나예요. statsmodels OLS 요약의 상자예요. 결과마다 꼴이 다르면 읽는 법도 결과마다 익혀야 하는데, 이 상자는 "이름: 값"으로 된 머리와 열이 있는 표 두 부분이라 모형이든 검정이든 최적화든 담겨요. 그리는 곳도 `src/stardust/_summary.py` 하나예요. 결과는 머리에 넣을 (이름, 값) 쌍과 표(`Table`: 열 이름, 줄마다의 이름과 칸)만 만들고, 자리 맞춤은 `render`가 해요. 검정의 결과는 필드에서 머리와 표를 고르는 `test_box`를, `theilslopes`와 `siegelslopes`는 `slopes_box`를 거쳐요. 문자열을 늘어놓는 일이라 `repr`처럼 Python에 있어요.
+
+```python
+def render(title, *, header=None, wide_rows=(), tables=(), footer=None, notes=()):
+    """The box: header (left, right) pairs and wide rows, tables, footer (left, right) pairs
+    and notes."""
+    width = max([WIDTH] + [t.width() for t in tables])
+    rule = "=" * width
+    lines = [title.center(WIDTH).rstrip(), rule]
+    if header is not None and (header[0] or header[1]):
+        lines += pairs(*header)
+    for label, text in wide_rows:
+        lines += wide(label, text)
+    if len(lines) > 2:
+        lines.append(rule)
+    for t in tables:
+        head, body = t.lines()
+        lines += head
+        lines.append("-" * width)
+        lines += body
+        lines.append(rule)
+    if footer is not None:
+        lines += pairs(*footer)
+        lines.append(rule)
+    if notes:
+        lines.append("")
+        lines.append("Notes:")
+        for i, t in enumerate(notes):
+            lines += textwrap.wrap(f"[{i + 1}] {t}", width, subsequent_indent="    ")
+    return "\n".join(lines)
+```
+
+- 제목은 78칸의 가운데에 두고 그 아래가 `=` 줄이에요. 머리는 38칸씩 두 열이고, 값은 칸의 오른쪽에 붙어요(`pairs`). 최적화의 `Message:`처럼 긴 값은 한 줄을 다 쓰고, 78칸을 넘으면 줄을 바꿔요(`wide`).
+- 표는 열 이름의 줄, `-` 줄, 본문, `=` 줄의 차례예요. 줄 이름 열은 왼쪽 정렬로 10칸 이상, 값의 열은 오른쪽 정렬로 11칸 이상(가장 긴 칸보다 한 칸 넓게)이에요. 표가 78칸보다 넓으면 `=`·`-` 줄과 주석의 폭만 넓어지고, 제목과 머리는 78칸 그대로예요.
+- 표 뒤에는 아래 덩어리(OLS의 Durbin–Watson과 Jarque–Bera)와 `Notes:`가 올 수 있어요.
+
+수의 형식도 statsmodels를 따라요.
+
+| 자리 | 형식 | 예 |
+|---|---|---|
+| 표의 수 | `forg`: 소수 3자리(계수는 4자리), 절댓값이 [10⁻⁴, 10⁴) 밖이면 유효숫자 그만큼 | `0.067`, `1.0500`, `2.69e-11` |
+| 표의 p값 | 소수 3자리 | `0.015` |
+| 머리의 통계량 | `#.4g` | `0.9026` |
+| 머리의 p값 | `#.3g` | `0.414` |
+| 자유도와 개수 | 정수면 정수, 아니면 `#.4g` | `26`, `45.32` |
+
+```python
+def forg(x, prec=3):
+    """statsmodels' forg: fixed with prec decimals, or prec significant digits outside [1e-4, 1e4)."""
+    x = float(x)
+    if math.isfinite(x) and (abs(x) >= 1e4 or abs(x) < 1e-4) and x != 0:
+        return f"{x:.{prec}g}"
+    return f"{x:.{prec}f}"
+```
+
+배치 결과의 summary는 레인(배치 안의 문제 하나)마다 한 줄인 표예요. 줄 이름은 C 순서로 센 그 레인의 첨자(`[3]`, `[1, 2]`)이고, 머리에는 레인들이 함께 가진 것(모형, 공분산 종류, 배치 모양)만 둬요. 회귀의 배치는 적합 통계량의 표와 계수의 표 두 개예요. 줄이 20개를 넘으면 `shown`이 앞뒤 5줄만 남기고 그 사이에 `...` 줄을 넣어요. 최적화의 긴 x와 검정의 큰 분할표도 같은 규칙이에요.
+
+```python
+def shown(n):
+    """The row indices a table of n rows shows: all of them, or EDGE at each end with None (the
+    '...' row) between."""
+    if n <= MAX_ROWS:
+        return list(range(n))
+    return list(range(EDGE)) + [None] + list(range(n - EDGE, n))
+```
+
+```python
+>>> Yb = sd.asarray([[1.0, 2.0, 3.5, 4.0], [1.0, 1.5, 3.0, 5.0], [0.5, 1.0, 1.0, 2.0]])
+>>> rb = sd.regression.ols(Yb, sd.arange(4.0))
+>>> rb
+OLSResult(batch shape (3,), 2 parameters)
+>>> print(rb.summary())
+                            OLS Regression Results
+==============================================================================
+Model:                             OLS  Batch shape:                      (3,)
+Method:                  Least Squares  Df Model:                            1
+Covariance Type:             nonrobust
+==============================================================================
+                 nobs   rsquared     fvalue   f_pvalue        llf
+------------------------------------------------------------------------------
+[0]                 4      0.969     63.000      0.016      0.583
+[1]                 4      0.941     31.696      0.030     -1.796
+[2]                 4      0.853     11.571      0.077      0.583
+==============================================================================
+params          const         x1
+------------------------------------------------------------------------------
+[0]            1.0500     1.0500
+[1]            0.6000     1.3500
+[2]            0.4500     0.4500
+==============================================================================
+```
+
+여러 줄의 표는 `summary()`가 맡고, `repr`는 한 줄 `Name(field=value, …)`이에요. 배치는 위처럼 모양만 적어요. 검정 결과의 `repr`는 `compact`가 수를 유효숫자 6자리로, 6개까지인 1차원 배열을 `[v, v]`로, 그보다 큰 배열을 `<array of shape (m, k)>`로 적어요.
+
 ## 공용 부품
 
 ### 최소제곱 핵심: `lsq.hpp`
@@ -514,7 +611,7 @@ struct Problem {
 
 | 부르는 곳 | 플래그 | 쓰는 것 |
 |---|---|---|
-| `ols`, `wls`, `gls`, `linregress`(`linear.cpp`의 `fit`) | 기본 | 전부: 검사, QR, 개선, 제곱합, 공분산 |
+| `ols`, `wls`, `gls`(`linear.cpp`의 `fit`) | 기본 | 전부: 검사, QR, 개선, 제곱합, 공분산 |
 | 진단의 지렛대(`fit`, `hat_only=True`) | `hat_only` | 검사, 쓰인 행, QR과 겹친 열까지 하고 ‖q_t‖²를 내요 |
 | GLM의 IRLS 반복(`glm.cpp`), `rlm`의 QR 반복(`robust.cpp`) | `lean` | 계수, 쓰인 열, 모든 행의 적합값만. 제곱합과 공분산은 건너뛰어요 |
 | GLM의 마지막 풀이 | `checked`, `glm` | 개선과 공분산(관측 정보의 빵, 빈도 가중치의 점수) |

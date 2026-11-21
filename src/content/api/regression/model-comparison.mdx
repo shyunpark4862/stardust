@@ -15,7 +15,7 @@ params:
     desc: "견줄 작은 모형. 부르는 결과(큰 모형)와 같은 함수로, 같은 y·같은 행·같은 가중치로 적합했고, 열이 모두 큰 모형의 열 공간 안에 있어야 해요. 배치 모양도 같아야 해요."
 returns:
   type: CompareFTestResult, CompareLRTestResult
-  desc: "compare_f_test()는 fvalue, pvalue, df_num(빠진 계수의 수), df_denom(큰 모형의 df_resid)을 담은 CompareFTestResult예요. compare_lr_test()는 statistic(우도비 통계량), pvalue, df를 담은 CompareLRTestResult예요. 둘 다 statsmodels처럼 앞의 세 값으로 풀려요. 배치면 필드가 배치 모양의 배열이에요."
+  desc: "compare_f_test()는 fvalue, pvalue, df_num(빠진 계수의 수), df_denom(큰 모형의 df_resid)을 담은 CompareFTestResult예요. compare_lr_test()는 statistic(우도비 통계량), pvalue, df를 담은 CompareLRTestResult예요. 둘 다 statsmodels처럼 앞의 세 값으로 풀리고 summary()가 있어요. 배치면 필드가 배치 모양의 배열이에요."
 raises:
   - type: TypeError
     desc: small이 부르는 결과와 다른 종류의 결과일 때(OLSResult에 WLSResult를 줬을 때 등), small을 키워드로 줬을 때.
@@ -320,6 +320,29 @@ array([  0.17936185532426896, 3.049994731658557e-08], dtype=float64)
 |---|---|---|
 | `CompareFTestResult` | `fvalue`, `pvalue`, `df_num`, `df_denom` | `fvalue, pvalue, df_num` |
 | `CompareLRTestResult` | `statistic`, `pvalue`, `df` | `statistic, pvalue, df` |
+
+`repr`는 필드를 유효숫자 여섯 자리로 한 줄에 보여 줘요. `summary()`(인자 없음)는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자로, 제목이 검정의 이름이고 머리 왼쪽에 통계량, p값, 자유도, 오른쪽에 관측 수가 있어요. 배치면 회귀마다 한 줄인 표예요.
+
+```python
+>>> print(f.summary())
+                           F test of nested models
+==============================================================================
+F-statistic:                     1.842  No. Observations:                   30
+P-value:                         0.179
+Df Num:                              2
+Df Denom:                           25
+==============================================================================
+>>> print(cf.summary())
+                           F test of nested models
+==============================================================================
+Batch shape:                      (2,)
+==============================================================================
+               fvalue     pvalue     df_num   df_denom
+------------------------------------------------------------------------------
+[0]             1.842      0.179          2         25
+[1]            37.408      0.000          2         25
+==============================================================================
+```
 
 ```python
 >>> isinstance(f, sd.regression.CompareFTestResult), isinstance(lr, sd.regression.CompareLRTestResult)

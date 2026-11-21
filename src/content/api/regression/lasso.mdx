@@ -45,7 +45,7 @@ params:
     desc: "NaN을 다루는 방법. 'propagate'(기본), 'omit', 'raise' 중 하나예요."
 returns:
   type: LassoResult
-  desc: "계수 params(절편이 params[0], 0인 계수는 정확히 0.0), df_model(0 아닌 계수의 수), converged, n_iter, dual_gap, fittedvalues, resid, ssr, rsquared, nobs와 predict(). 표준오차·p값은 없어요."
+  desc: "계수 params(절편이 params[0], 0인 계수는 정확히 0.0), df_model(0 아닌 계수의 수), converged, n_iter, dual_gap, fittedvalues, resid, ssr, rsquared, nobs와 predict(), summary(). 표준오차·p값은 없어요."
 raises:
   - type: TypeError
     desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), max_iter가 int가 아닐 때, tol이 수가 아닐 때, intercept·standardize가 True·False가 아닐 때, 입력이 복소수일 때.
@@ -396,7 +396,9 @@ False
 [2.7217, 1.5052]
 ```
 
-릿지처럼 표준오차, p값, 신뢰구간, `summary()`는 없어요. 결과는 예측을 위한 것이고, 라소의 계수는 0 쪽으로 당겨진 데다 어떤 열이 남을지도 데이터로 정해져서 최소제곱의 검정 공식이 그대로 성립하지 않아요. 까닭은 [`ridge`](/api/regression/ridge/)의 "표준오차와 p값이 없는 까닭"과 같아요. `rank`도 없어요. 겹친 열을 빼는 일이 없어서 셀 것이 없고, 모형의 크기는 `df_model`(0 아닌 계수의 수)이 말해 줘요.
+릿지처럼 표준오차, p값, 신뢰구간은 없어요. 결과는 예측을 위한 것이고, 라소의 계수는 0 쪽으로 당겨진 데다 어떤 열이 남을지도 데이터로 정해져서 최소제곱의 검정 공식이 그대로 성립하지 않아요. 까닭은 [`ridge`](/api/regression/ridge/)의 "표준오차와 p값이 없는 까닭"과 같아요. `rank`도 없어요. 겹친 열을 빼는 일이 없어서 셀 것이 없고, 모형의 크기는 `df_model`(0 아닌 계수의 수)이 말해 줘요.
+
+`summary()`(인자 없음)는 [`ridge`](/api/regression/ridge/#결과-읽기-ridgeresult)와 같은 꼴의 상자로 계수만 적어요. 머리에는 `alpha`, `standardize`, 관측 수, `df_model`, 결정계수와 함께 수렴 여부(`Converged:`)와 반복 수가 있어요. 경로나 배치의 결과는 `alpha`와 회귀마다 한 줄인 표예요.
 
 계수가 0인 열도 모형에 남아 있는 열이에요. 그래서 `X_new`의 그 열에 NaN이 있으면 예측이 NaN이에요. 0을 곱한다고 NaN을 덮지 않아요.
 

@@ -73,7 +73,7 @@ params:
     desc: "model 함수가 받는 키워드를 그대로 넘겨요. wls의 weights, gls의 sigma, glm의 family는 꼭 줘야 하고, link, var_weights, cov_type, rtol, max_iter 같은 것도 받아요. 그 함수에 없는 키워드는 TypeError예요."
 returns:
   type: StepwiseResult
-  desc: "selected(고른 열의 X에서의 위치, 오름차순, include 포함), selected_names, steps(걸음마다 SelectionStep(action, term, criterion), 시작이 첫째), fit(고른 열로 model 함수를 부른 결과), criterion, direction, skipped(고르지 않은 GLM 후보의 SkippedFit(step, action, term, reason))가 들어 있어요. 읽기 전용이고, 목록 필드는 읽을 때마다 새 목록이에요."
+  desc: "selected(고른 열의 X에서의 위치, 오름차순, include 포함), selected_names, steps(걸음마다 SelectionStep(action, term, criterion), 시작이 첫째), fit(고른 열로 model 함수를 부른 결과), criterion, direction, skipped(고르지 않은 GLM 후보의 SkippedFit(step, action, term, reason))와 summary()가 들어 있어요. 읽기 전용이고, 목록 필드는 읽을 때마다 새 목록이에요."
 raises:
   - type: TypeError
     desc: model 함수에 없는 키워드를 줬을 때, 꼭 필요한 키워드(wls의 weights, gls의 sigma, glm의 family)를 빠뜨렸을 때, criterion='cv'에서 rng가 sd.random.Generator가 아닐 때(빠뜨렸을 때 포함), cv·max_steps가 int가 아닐 때, alpha_enter·alpha_remove가 수가 아닐 때, 열을 위치(int)나 이름(str)이 아닌 것으로 줬을 때, model·direction·criterion이 문자열이 아닐 때, 위치 인자를 셋 이상 줬을 때, 그 밖에 model 함수가 TypeError를 내는 경우.
@@ -312,6 +312,27 @@ start None 118.13
 drop x6 118.13
 drop x4 116.14
 drop x5 114.33
+```
+
+`summary()`(인자 없음)는 이 기록을 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자로 그려요. 머리에 모형, 기준, 방향, 걸음 수, 고른 열의 수가 있고, 표는 걸음마다 한 줄이에요. 아래 Notes에 고른 열이 적혀요.
+
+```python
+>>> print(r.summary())
+                          Stepwise Selection Results
+==============================================================================
+Model:                             OLS  Criterion:                         aic
+Direction:                        both  No. Steps:                           2
+                                        No. Selected:                        3
+==============================================================================
+               action        aic  term
+------------------------------------------------------------------------------
+0               start   118.1311
+1                drop   116.1372  x4
+2                drop   114.3266  x5
+==============================================================================
+
+Notes:
+[1] Selected: x1, x2, x3.
 ```
 
 ## 항과 include

@@ -48,7 +48,7 @@ raises:
     desc: y·X가 배열·숫자의 시퀀스·frame이 아닐 때, 복소수일 때, intercept가 True·False가 아닐 때, cov_type·nan_policy가 문자열이 아닐 때, rtol이 수가 아닐 때, maxlags가 int가 아닐 때, 없는 옵션을 줬을 때.
   - type: ValueError
     desc: y·X가 0차원일 때, X의 행 수가 y와 다를 때, X에 열이 없는데 intercept=False일 때(모수가 없는 모형), y·X에 inf가 있을 때(nan_policy='omit'이어도), nan_policy='raise'인데 NaN이 있을 때, 배치에서 nan_policy='omit'을 줬을 때, cov_type·nan_policy 이름이 틀렸을 때, rtol이 음수이거나 유한하지 않을 때, maxlags·groups를 맞지 않는 cov_type과 함께 줬을 때, cov_type='cluster'인데 groups가 없거나 길이가 다를 때.
-seeAlso: [basics, results, covariance, collinearity, wls, gls, linregress, diagnostics]
+seeAlso: [basics, results, covariance, collinearity, wls, gls, theilslopes, diagnostics]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -160,6 +160,49 @@ array([[ 43.97980799801367,  51.96756042303896],
 - **R²** `rsquared`: $y$의 흩어짐 가운데 직선이 설명하는 몫이에요. 0.94면 점수 차이의 94%를 공부 시간으로 설명한다는 뜻이에요.
 
 모든 필드의 뜻과 읽는 법은 [결과 객체 읽기](/api/regression/results/)에 자세히 있어요.
+
+## 직선 하나: 기울기, 절편, 상관계수
+
+설명변수가 하나면 결과에서 직선 하나의 값을 바로 읽어요. 두 변수의 피어슨 상관계수는 [`sd.htest.pearsonr`](#상관계수)로 구해요.
+
+```python
+>>> slope, intercept = r.params[1], r.params[0]
+>>> stderr, intercept_stderr = r.bse[1], r.bse[0]
+>>> pvalue = r.pvalues[1]
+>>> slope, intercept, pvalue
+(4.052631578947368, 47.973684210526315, 3.5381164280859763e-06)
+>>> stderr, intercept_stderr
+(0.36074394763119616, 1.7319466828098458)
+```
+
+| 값 | 읽는 곳 | 뜻 |
+|---|---|---|
+| 기울기 | `params[1]` | `x`가 1 늘 때 `y`가 늘어나는 양 |
+| 절편 | `params[0]` | `x = 0`에서의 직선 높이 |
+| 기울기의 p값 | `pvalues[1]` | 참 기울기가 0이라면 이만큼 가파른 기울기가 나올 확률(두 꼬리, 자유도 n − 2의 t 분포) |
+| 표준오차 | `bse[1]`, `bse[0]` | 기울기와 절편의 표준오차 |
+| 결정계수 | `rsquared` | 상관계수의 제곱 |
+
+### 상관계수
+
+상관계수 $r$은 −1에서 1 사이이고, 두 변수가 얼마나 직선적으로 함께 움직이는지를 말해요. 부호는 기울기와 같고, 제곱하면 결정계수예요.
+
+```python
+>>> c = sd.htest.pearsonr(hours, score)
+>>> c
+PearsonrResult(statistic=0.969737, pvalue=3.53812e-06)
+>>> c.statistic, c.statistic ** 2, r.rsquared
+(0.9697368963556728, 0.940389648153533, 0.940389648153533)
+```
+
+`pearsonr`의 인자 순서는 `(x, y)`이지만 상관계수는 두 변수를 바꿔도 같아요. `pearsonr`의 p값은 "상관이 0이다"를 검정하고, 기울기의 p값(`r.pvalues[1]`)과 반올림 차이 안에서 같아요. 직선을 `y`로 `x`를 설명하는 쪽으로 바꾸면 기울기와 절편은 달라지고 상관계수와 p값은 그대로예요.
+
+```python
+>>> c.pvalue
+3.5381164280859793e-06
+>>> sd.regression.ols(hours, score).params
+array([-10.875690607734807, 0.23204419889502761], dtype=float64)
+```
 
 ## 설명변수가 여럿일 때
 
@@ -428,7 +471,7 @@ Notes:
     correctly specified.
 ```
 
-`summary(alpha=0.1)`처럼 주면 계수 표의 구간이 90% 구간이 돼요. 글은 Python 문자열(`str`)이라 파일에 저장하거나 나눠 볼 수 있어요. 배치 결과에서는 `ValueError`예요.
+`summary(alpha=0.1)`처럼 주면 계수 표의 구간이 90% 구간이 돼요. 글은 Python 문자열(`str`)이라 파일에 저장하거나 나눠 볼 수 있어요. 상자의 수를 읽는 법과 배치 결과의 표는 [결과 객체 읽기](/api/regression/results/#summary)에 있어요.
 
 ## 결과 필드
 
@@ -464,7 +507,7 @@ Notes:
 | `white_test()`, `goldfeld_quandt()`, `reset_test()` | 결과 객체 | 분산과 모형 꼴의 검정([분산과 모형 형태 검정](/api/regression/specification-tests/)) |
 | `t_test(R)`, `wald_test(R)` | 결과 객체 | 계수에 대한 선형 가설의 검정([선형 가설 검정](/api/regression/hypothesis-tests/)) |
 | `compare_f_test(small)`, `compare_lr_test(small)` | 결과 객체 | 작은 모형과의 비교([모형 비교](/api/regression/model-comparison/)) |
-| `summary(alpha=0.05)` | str | 요약표 |
+| `summary(*, alpha=0.05)` | str | 요약 상자([읽는 법](/api/regression/results/#summary)) |
 
 절편이 있으면 설명된 제곱합과 잔차 제곱합을 더한 값이 총제곱합이에요.
 
@@ -662,13 +705,18 @@ array([ 0.998310981143491, 0.9868613138686131, 0.9948233861144945], dtype=float6
 (True, True)
 ```
 
-배치에서는 회귀마다 남는 행이 달라질 수 있어서 `nan_policy='omit'`을 쓸 수 없고, `summary()`도 회귀 하나에만 써요.
+배치에서는 회귀마다 남는 행이 달라질 수 있어서 `nan_policy='omit'`을 쓸 수 없어요. `summary()`는 회귀마다 한 줄인 표 둘을 그려요. 첫 표는 적합 통계(`nobs`, `rsquared`, `fvalue`, `f_pvalue`, `llf`), 둘째 표는 계수예요.
 
 ```python
->>> rb.summary()
-Traceback (most recent call last):
-    ...
-ValueError: summary(): takes one regression, not a batch of shape (3,)
+>>> lines = rb.summary().splitlines()
+>>> print(lines[2])
+Model:                             OLS  Batch shape:                      (3,)
+>>> print('\n'.join(lines[12:17]))
+params          const         x1
+------------------------------------------------------------------------------
+[0]            0.0500     1.9900
+[1]            0.4400     0.5200
+[2]            6.0100    -0.9900
 ```
 
 `y`, `X`의 배치 모양이 어떻게 맞춰지는지는 [회귀분석 기본](/api/regression/basics/)에 있어요.
@@ -709,9 +757,9 @@ array([1.0, 2.0, 3.0, 4.0], dtype=float64)
 
 어떻게 이 정확도를 얻는지는 [최소제곱 풀이](/internals/regression/least-squares/)에 있어요.
 
-## statsmodels·scikit-learn을 아는 분께
+## statsmodels·scikit-learn·scipy를 아는 분께
 
-statsmodels 0.15.0, scikit-learn 1.9.1, numpy 2.5.4 기준이에요.
+statsmodels 0.15.0, scikit-learn 1.9.1, scipy 1.18.1, numpy 2.5.4 기준이에요.
 
 **statsmodels의 `OLS`**
 
@@ -740,3 +788,10 @@ statsmodels 0.15.0, scikit-learn 1.9.1, numpy 2.5.4 기준이에요.
 - 겹친 열에는 최소 노름 해를 줘요(같은 예에서 `coef_`가 `[0.811, 1.621]`).
 - `predict`의 열 규칙은 같아요. 둘 다 `DataFrame`이면 이름과 순서가 같아야 하고(다르면 `ValueError`), 한쪽만 `DataFrame`이면 위치로 맞춰요. 이때 scikit-learn은 `UserWarning`을 내지만 sd는 경고를 내지 않아요.
 - 위의 조건수 5.7e10 문제에서 `LinearRegression`은 `rank_`가 2라 방향 하나를 버리고, 잔차 제곱합이 3.21로 최소제곱 해(sd의 2.957)보다 커요.
+
+**scipy의 `stats.linregress`**
+
+- `scipy.stats.linregress(x, y)`의 여섯 값은 [직선 하나](#직선-하나-기울기-절편-상관계수)의 방법으로 얻어요. `slope`, `intercept`는 `params[1]`, `params[0]`, `stderr`, `intercept_stderr`는 `bse[1]`, `bse[0]`, `pvalue`는 `pvalues[1]`, `rvalue`는 `sd.htest.pearsonr(x, y).statistic`이에요. `ols`는 `y`가 먼저라서 `ols(y, x)`로 불러요.
+- 값은 반올림 차이 안에서 같아요. 위의 공부 시간 데이터에서 scipy의 기울기 표준오차는 0.36074394763119694, sd는 0.36074394763119616이에요.
+- 점이 한 직선 위에 있으면 scipy의 `pvalue`는 1.2e-30 같은 작은 값이에요. sd의 `pvalues`는 [완전 적합](/api/regression/collinearity/#완전-적합)의 규칙대로 NaN이고, `pearsonr`의 p값은 0이에요.
+- `y`가 모두 같으면 scipy는 `rvalue`, `pvalue`, 두 표준오차가 NaN이에요. sd도 `pearsonr`이 NaN이고, `ols`는 계수 (y₀, 0)과 완전 적합의 값을 내요. `x`가 모두 같으면 scipy는 모든 값이 NaN이고, `ols`는 기울기가 [겹친 열](/api/regression/collinearity/)이라 NaN이에요.

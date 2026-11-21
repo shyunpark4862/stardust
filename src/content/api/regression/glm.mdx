@@ -1027,11 +1027,19 @@ array([[  0.668284190716704, 0.23758513873909173],
 >>> one = sd.regression.glm([3, 1, 4, 2, 8, 5, 11, 9, 17, 12], xp, family='poisson')
 >>> B.params[1].tolist() == one.params.tolist(), B.bse[1].tolist() == one.bse.tolist()
 (True, True)
->>> B.summary()
-Traceback (most recent call last):
-    ...
-ValueError: summary(): takes one regression, not a batch of shape (2,)
+>>> print('\n'.join(B.summary().splitlines()[8:17]))
+                 nobs   deviance        llf     n_iter  converged
+------------------------------------------------------------------------------
+[0]                10     28.662    -30.469          7       True
+[1]                10      8.244    -21.928          6       True
+==============================================================================
+params          const         x1
+------------------------------------------------------------------------------
+[0]            0.6683     0.2376
+[1]            0.7937     0.2197
 ```
+
+배치의 `summary()`는 회귀마다 한 줄인 표 둘이에요. 머리에 `Batch shape:`가 있고, 위 표는 적합의 통계(`nobs`, `deviance`, `llf`, `n_iter`, `converged`), 아래 표는 계수예요. 표준오차와 구간은 싣지 않으니 필드로 읽어요. 회귀가 20개를 넘으면 앞뒤 5줄씩만 두고 가운데를 `...`로 줄여요.
 
 배치 모양이 서로 브로드캐스트하지 않으면 배치를 이루는 인자마다 이름과 배치 모양을 적은 `ValueError`예요(`groups`도 들어가요).
 

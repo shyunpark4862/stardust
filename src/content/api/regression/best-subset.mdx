@@ -57,7 +57,7 @@ params:
     desc: "model 함수가 받는 키워드를 그대로 넘겨요. wls의 weights, gls의 sigma, glm의 family는 꼭 줘야 해요. 그 함수에 없는 키워드는 TypeError예요."
 returns:
   type: BestSubsetResult
-  desc: "selected(고른 열의 X에서의 위치, 오름차순, include 포함), selected_names, fit(고른 열로 model 함수를 부른 결과), criterion, subsets(크기 0, 1, …마다 최선의 include 밖 열의 위치 목록, 그 크기의 모형이 없으면 None), values(크기마다 그 최선의 기준값, 'cv'는 교차검증 오차, 없는 크기는 NaN), skipped(고르지 않은 GLM 부분집합의 SkippedSubset(columns, reason))가 들어 있어요. 읽기 전용이에요."
+  desc: "selected(고른 열의 X에서의 위치, 오름차순, include 포함), selected_names, fit(고른 열로 model 함수를 부른 결과), criterion, subsets(크기 0, 1, …마다 최선의 include 밖 열의 위치 목록, 그 크기의 모형이 없으면 None), values(크기마다 그 최선의 기준값, 'cv'는 교차검증 오차, 없는 크기는 NaN), skipped(고르지 않은 GLM 부분집합의 SkippedSubset(columns, reason))와 summary()가 들어 있어요. 읽기 전용이에요."
 raises:
   - type: TypeError
     desc: model 함수에 없는 키워드를 줬을 때, 꼭 필요한 키워드(wls의 weights, gls의 sigma, glm의 family)를 빠뜨렸을 때, criterion='cv'에서 rng가 sd.random.Generator가 아닐 때(빠뜨렸을 때 포함), cv·max_size가 int가 아닐 때, 열을 위치(int)나 이름(str)이 아닌 것으로 줬을 때, 위치 인자를 셋 이상 줬을 때, 그 밖에 model 함수가 TypeError를 내는 경우.
@@ -140,6 +140,29 @@ BestSubsetResult(criterion='aic', 3 columns selected, sizes 0-5)
 ('OLSResult', ['const', 'x1', 'x2', 'x3'])
 >>> b.fit.params.tolist() == sd.regression.ols(y, X[:, [0, 1, 2]]).params.tolist()
 True
+```
+
+`summary()`(인자 없음)는 크기마다의 최선을 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자로 그려요. 머리에 모형, 기준, 고른 크기가 있고, 표는 크기마다 한 줄(기준값과 열 이름)이에요. 고른 크기의 줄에는 `*`가 붙어요.
+
+```python
+>>> print(b.summary())
+                        Best Subset Selection Results
+==============================================================================
+Model:                             OLS  Chosen Size:                         3
+Criterion:                         aic  No. Selected:                        3
+==============================================================================
+size              aic  columns
+------------------------------------------------------------------------------
+0            168.2480
+1            139.5308  x1
+2            115.2675  x1, x2
+3 *          114.3266  x1, x2, x3
+4            116.1372  x1, x2, x3, x5
+5            118.1311  x1, x2, x3, x4, x5
+==============================================================================
+
+Notes:
+[1] Selected: x1, x2, x3.
 ```
 
 <Reference />

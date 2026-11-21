@@ -452,7 +452,7 @@ True
 | `method`, `norm`, `cov_type` | `'M'`·`'MM'`, 쓴 가중치 함수, `'H1'`·`'avar1'` |
 | `predict(X_new, /)` | 새 X의 예측값 |
 | `predict_interval(X_new, /, *, alpha=0.05)` | 새 X에서 적합값의 신뢰구간 (m, 2) |
-| `summary(*, alpha=0.05)` | 표로 된 요약(회귀 하나만) |
+| `summary(*, alpha=0.05)` | 결과를 그린 상자(문자열). 배치는 회귀마다 한 줄인 표 |
 
 `param_names`, `method`, `norm`, `cov_type`은 적합의 설정이라 읽기만 할 수 있어요. 값을 넣으면 `AttributeError`예요. `param_names`는 읽을 때마다 새 리스트라서, 돌려받은 리스트를 고쳐도 결과는 그대로예요. 결과 필드의 `weights`는 추정이 정한 가중치예요. [`wls`](/api/regression/wls/) 같은 함수의 인자 `weights`(사용자가 주는 행의 가중치)와 이름은 같지만 뜻이 달라요.
 
@@ -764,7 +764,7 @@ array([[0.9657894736842105, 0.5118421052631579],
 True
 ```
 
-배치에서는 `summary()`와 `nan_policy='omit'`을 쓸 수 없어요.
+배치에서는 `nan_policy='omit'`을 쓸 수 없어요. 배치의 `summary()`는 회귀마다 한 줄인 표 둘(`nobs`, `scale`, `n_iter`, `converged`의 표와 계수의 표)이에요.
 
 ## 에러
 

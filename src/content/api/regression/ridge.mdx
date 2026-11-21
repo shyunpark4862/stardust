@@ -37,7 +37,7 @@ params:
     desc: "NaN을 다루는 방법. 'propagate'(기본, 그 회귀의 모든 값이 NaN), 'omit'(NaN이 있는 행을 빼요), 'raise'(ValueError) 중 하나예요."
 returns:
   type: RidgeResult
-  desc: "계수 params(절편이 params[0]), 유효 자유도 df_model, 적합값 fittedvalues, 잔차 resid, ssr, rsquared, nobs와 predict(). 표준오차·p값은 없어요. alpha가 배열이면 필드마다 alpha 축이 붙어요."
+  desc: "계수 params(절편이 params[0]), 유효 자유도 df_model, 적합값 fittedvalues, 잔차 resid, ssr, rsquared, nobs와 predict(), summary(). 표준오차·p값은 없어요. alpha가 배열이면 필드마다 alpha 축이 붙어요."
 raises:
   - type: TypeError
     desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), y·X·alpha가 복소수일 때, intercept·standardize가 True·False가 아닐 때.
@@ -334,6 +334,7 @@ ValueError: ridge(): the model has no parameters (no columns in 'X' and intercep
 | `ssr` | 적합에 쓴 행의 $\sum_i w_i r_i^2$ |
 | `rsquared` | 결정계수 1 − `ssr`/TSS. TSS는 가중 평균에 대한 $\sum_i w_i (y_i - \bar y)^2$(절편이 없으면 $\sum_i w_i y_i^2$). TSS가 0이면 NaN이에요(아래 특수한 경우). 기울기 열이 없거나 기울기 계수가 모두 정확히 0이면 0이에요(절편만인 모형과 같아요). |
 | `predict(X_new, /)` | 새 행의 예측 |
+| `summary()` | 결과를 그린 상자(문자열, 아래) |
 
 R²(결정계수)는 반응의 흩어짐 가운데 모형이 설명한 몫이에요. 1이면 완전히 맞고 0이면 평균만큼만 맞아요. 자세한 풀이는 [결과 객체 읽기](/api/regression/results/)에 있어요.
 
@@ -367,6 +368,28 @@ AttributeError: property 'alpha' of 'RidgeResult' object has no setter
 ['const', 'x1', 'x2', 'x3']
 ```
 
+`summary()`(인자 없음)는 [회귀 결과](/api/regression/results/)와 같은 꼴의 상자예요. 머리에 `alpha`, `standardize`, 관측 수, 유효 자유도, 결정계수가 있고, 계수 표는 `coef` 한 열이에요([표준오차와 p값이 없는 까닭](#표준오차와-p값이-없는-까닭)). 경로나 배치의 결과는 `alpha`와 회귀마다 한 줄(`alpha`, `nobs`, `df_model`, `rsquared`)인 표와 계수의 표예요.
+
+```python
+>>> print(r.summary())
+                           Ridge Regression Results
+==============================================================================
+Model:                           Ridge  No. Observations:                   40
+Alpha:                             0.1  Df Model:                        1.850
+Standardize:                     False  R-squared:                       0.752
+==============================================================================
+                 coef
+------------------------------------------------------------------------------
+const          1.1364
+x1             0.9011
+x2             1.0507
+x3             0.1196
+==============================================================================
+
+Notes:
+[1] The coefficients alone: the penalized fit has no standard errors or tests.
+```
+
 ### 유효 자유도 `df_model`
 
 최소제곱에서 자유도는 계수의 수예요. 릿지의 계수는 벌점에 묶여 있어서 그만큼 자유롭지 않아요. `df_model`은 그 정도를 연속적인 수로 나타낸 **유효 자유도**예요.
@@ -388,10 +411,10 @@ $$
 
 ### 표준오차와 p값이 없는 까닭
 
-`RidgeResult`에는 `bse`, `pvalues`, `conf_int()`, `summary()`가 없어요. 정규화 회귀의 결과는 예측을 위한 것이에요. 벌점은 계수를 일부러 0 쪽으로 당기므로 계수가 참값을 중심으로 흩어지지 않고, `alpha`를 데이터로 골랐다면 그 선택도 불확실성에 들어가요. 그래서 최소제곱의 표준오차·p값 공식이 뜻하는 바가 그대로 성립하지 않아요. 계수 하나하나를 검정하거나 신뢰구간이 필요하면 [`ols`](/api/regression/ols/)를 쓰세요.
+`RidgeResult`에는 `bse`, `pvalues`, `conf_int()`가 없고, `summary()`도 계수만 적어요. 정규화 회귀의 결과는 예측을 위한 것이에요. 벌점은 계수를 일부러 0 쪽으로 당기므로 계수가 참값을 중심으로 흩어지지 않고, `alpha`를 데이터로 골랐다면 그 선택도 불확실성에 들어가요. 그래서 최소제곱의 표준오차·p값 공식이 뜻하는 바가 그대로 성립하지 않아요. 계수 하나하나를 검정하거나 신뢰구간이 필요하면 [`ols`](/api/regression/ols/)를 쓰세요.
 
 ```python
->>> hasattr(r, 'bse'), hasattr(r, 'summary')
+>>> hasattr(r, 'bse'), hasattr(r, 'conf_int')
 (False, False)
 ```
 

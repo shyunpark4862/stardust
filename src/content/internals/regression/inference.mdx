@@ -566,7 +566,7 @@ True
 2.4772685414802473
 ```
 
-`jarque_bera()`의 결과는 sd.htest의 결과 클래스(`sd.regression.JarqueBeraResult`)예요. 필드 `statistic`과 `pvalue`는 읽기 전용이고 `stat, p = r.jarque_bera()`처럼 풀리지만, 튜플은 아니어서 결과끼리 `==`로 견주지 않고 필드로 견줘요. `repr`는 htest의 꼴로 유효숫자 6자리까지 보여 줘요. `breusch_pagan()`의 결과는 네 값의 namedtuple이에요.
+`jarque_bera()`의 결과는 sd.htest의 결과 클래스(`sd.regression.JarqueBeraResult`)예요. 필드 `statistic`과 `pvalue`는 읽기 전용이고 `stat, p = r.jarque_bera()`처럼 풀리지만, 튜플은 아니어서 결과끼리 `==`로 견주지 않고 필드로 견줘요. `repr`는 htest의 꼴로 유효숫자 6자리까지 보여 줘요. `breusch_pagan()`의 결과는 네 값의 namedtuple이에요. 두 결과 모두 검정의 `summary()`가 있어요.
 
 같은 자료에서 R의 `lmtest::bptest(m)`은 BP = 3.1629, p = 0.2057, `dwtest(m)`은 DW = 2.477269예요.
 
@@ -594,7 +594,7 @@ statsmodels 0.15.0은 그 행을 `nobs`에 세요. 60행 가운데 2행의 가�
 
 ## summary()
 
-`summary()`는 statsmodels의 OLS 요약과 짜임과 숫자 꼴이 같은 글을 돌려줘요. 회귀 하나만 받고, 배치면 `ValueError`예요.
+`summary()`는 statsmodels의 OLS 요약과 짜임과 숫자 꼴이 같은 글을 돌려줘요. 배치면 회귀마다 한 줄인 표 두 개(적합 통계량과 계수)예요. 상자를 그리는 규칙은 모든 결과가 같아요([summary의 상자](/internals/regression/overview/#summary의-상자)).
 
 ```python
 >>> s = sd.regression.ols(y, X, cov_type="HAC", maxlags=2)

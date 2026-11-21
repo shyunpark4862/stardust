@@ -319,7 +319,7 @@ def _field(name):
 - **읽기 전용 배열**: 결과의 배열은 쓰기를 막아 두고, 읽을 때마다 복사하지 않고 같은 배열을 돌려줘요. 원소에 쓰면 `ValueError: assignment destination is read-only`이고, 고치려면 `.copy()`를 해요. 풀이 함수는 커널이 막 만든 배열을 `OptimizeResult._make`로 복사 없이 넘기고, 사용자가 `OptimizeResult(...)`를 직접 만들면 받은 배열을 한 번 복사해요(그 배열을 사용자가 아직 쥐고 있으니까요). 다른 영역의 결과 객체와 같은 규칙이에요.
 - **처음 읽을 때 계산**: L-BFGS-B의 `hess_inv`는 저장해 둔 걸음의 쌍으로 $(n, n)$ 행렬을 만들어야 해요. $n = 10^4$이면 800 MB라, 결과를 만들 때는 계산하지 않고 `_Lazy`로 두었다가 처음 읽을 때 만들어 `_fields`에 넣어요.
 
-`repr`는 한 줄 요약이에요. `method`, `converged`, `cost`나 `fun`(실수일 때만, 6자리), `n_iter`, `nfev`, `x`를 있는 것만 차례로 보여 주고, 배치 결과는 모양과 수렴한 수만 보여 줘요.
+`repr`는 한 줄 요약이에요. `method`, `converged`, `cost`나 `fun`(실수일 때만, 6자리), `n_iter`, `nfev`, `x`를 있는 것만 차례로 보여 주고, 배치 결과는 모양과 수렴한 수만 보여 줘요. 여러 줄의 `summary()`는 회귀 결과와 같은 상자 그리기([summary의 상자](/internals/regression/overview/#summary의-상자))로 만들어요. 머리에 방법, 수렴, 상태, 함숫값(최소제곱은 `cost`와 `optimality`), 셈, 메시지를 두고, 표는 x의 원소마다 한 줄이에요(`root`는 그 점의 f(x) 열이 붙어요). 배치 스칼라 함수는 원소마다 한 줄이에요.
 
 ## 옵션과 입력의 검사
 

@@ -143,9 +143,12 @@ array([1200.0,  800.0], dtype=float64)
 ```python
 >>> sd.stats.describe(scores["math"]).mean
 75.0
->>> sd.regression.linregress(scores["math"], scores["eng"]).slope
--0.4
+>>> fit = sd.regression.ols(scores["eng"], scores["math"])
+>>> fit.param_names, fit.params
+(['const', 'math'], array([105.0,  -0.4], dtype=float64))
 ```
+
+[`ols`](/api/regression/ols/)는 반응 `y`를 먼저, 설명변수를 다음에 받아요. Series의 이름은 계수의 이름이 돼요.
 
 원소마다 계산하는 함수(`sd.exp`, `sd.special.erf` 등), 배열 연산, 분포는 `sd.ndarray`만 받아요. 이런 함수에는 `to_array()`로 꺼내서 넘겨요.
 

@@ -107,6 +107,21 @@ SiegelslopesResult(slope=1.81, intercept=1.7199999999999998)
 True
 ```
 
+`summary()`는 다른 회귀 결과와 같은 꼴의 상자예요. 구간이 없어서 표는 `coef` 한 열이고, 인자도 없어요([읽는 법](/api/regression/results/#summary)).
+
+```python
+>>> print(r.summary())
+                  Siegel Repeated Medians Regression Results
+==============================================================================
+Method:                   hierarchical  No. Observations:                   20
+==============================================================================
+                 coef
+------------------------------------------------------------------------------
+slope          1.8100
+intercept      1.7200
+==============================================================================
+```
+
 ## Theil–Sen과 견주기
 
 고장 난 점의 수 k를 0부터 10까지 늘려 보면 차이가 보여요.
@@ -234,7 +249,7 @@ Traceback (most recent call last):
 ValueError: siegelslopes(): the batch shapes of 'y' (3,), 'x' (2,) do not broadcast
 ```
 
-배치에서는 `nan_policy='omit'`을 쓸 수 없어요. 공통 규칙은 [회귀분석 기본](/api/regression/basics/)에 있어요.
+배치 결과의 `summary()`는 회귀마다 한 줄(`slope`, `intercept`)인 표예요. 배치에서는 `nan_policy='omit'`을 쓸 수 없어요. 공통 규칙은 [회귀분석 기본](/api/regression/basics/)에 있어요.
 
 ## 정확도와 큰 데이터
 

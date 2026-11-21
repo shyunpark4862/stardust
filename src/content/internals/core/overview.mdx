@@ -118,7 +118,8 @@ Python 코드는 전부 합쳐 약 15,400줄이에요. 그중 회귀가 약 5,70
 |---|---|
 | `__init__.py` | `_core`의 배열 함수와 dtype 객체 약 160개를 재노출하고, 상수 `e`, `pi`, `inf`, `nan`, `newaxis`를 정의해요. 끝에서 `linalg`, `frame`, `special`, `random`, `stats`, `regression`, `optimize` 하위 패키지를 import해요 |
 | `_format.py` | 배열의 `repr`/`str` (75줄). C++이 넘긴 요약 값을 문자열로 배치해요 |
-| `_results.py` | 결과 namedtuple 전부 (`UniqueAllResult`, `SVDResult`, `AiryResult`, `LinregressResult`, `DescribeResult`, `CdfResult` …) |
+| `_results.py` | 결과 namedtuple 전부 (`UniqueAllResult`, `SVDResult`, `AiryResult`, `TheilslopesResult`, `DescribeResult`, `CdfResult` …) |
+| `_summary.py` | 회귀·최적화 결과의 `summary()`가 함께 쓰는 상자 그리기. 머리, 표, 수의 형식, 배치의 표([summary의 상자](/internals/regression/overview/#summary의-상자)) |
 | `linalg/__init__.py` | `_core.linalg`의 함수를 `globals().update(...)`로 옮겨 오고, `LinAlgError`와 결과 namedtuple을 C++에 한 번 넘겨요(`_core._setup`) |
 | `linalg/_errors.py` | `class LinAlgError(ValueError)` 정의. `__module__`을 `"stardust.linalg"`로 바꿔 traceback에 공개 경로가 보이게 해요 |
 | `special/__init__.py` | `_core.special`의 함수를 재노출만 해요 |

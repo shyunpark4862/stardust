@@ -69,15 +69,21 @@ import Callout from '../../../components/Callout.astro';
 >>> a
 AnovaResult(models=3, test='F')
 >>> print(a.summary())
-Analysis of Variance Table (models)
-
-   df_resid      ssr  df_diff  ss_diff        F       Pr(>F)
-1        28  1230.18                                        
-2        27  292.264        1  937.914  92.0511  7.34661e-10
-3        25  254.727        2  37.5378  1.84206     0.179362
+                     Analysis of Variance Table (models)
+==============================================================================
+Model:                             OLS  No. Observations:                   30
+No. Models:                          3  Df Residuals:                       25
+Test:                                F
+==============================================================================
+             df_resid        ssr    df_diff    ss_diff          F     Pr(>F)
+------------------------------------------------------------------------------
+1                  28  1230.1789
+2                  27   292.2644          1   937.9145     92.051      0.000
+3                  25   254.7266          2    37.5378      1.842      0.179
+==============================================================================
 ```
 
-줄 하나가 모형 하나예요. 둘째 줄부터는 바로 앞 줄의 모형과 견준 값이에요.
+위쪽 머리에는 모형의 종류(`Model:`), 견준 모형의 수, 검정(`Test:`), 관측 수와 가장 큰 모형의 잔차 자유도가 있어요. 아래 표의 줄 하나가 모형 하나이고, 둘째 줄부터는 바로 앞 줄의 모형과 견준 값이에요. 표의 p값은 소수 셋째 자리까지라 아주 작은 p값은 `0.000`으로 보여요. 정확한 값은 필드로 읽어요.
 
 | 필드 | 뜻 |
 |---|---|
@@ -115,13 +121,13 @@ F의 분모, 곧 오차 분산의 어림은 줄마다 다르게 쓰지 않고 `d
 모형은 작은 것부터 줘도, 큰 것부터 줘도 돼요. 큰 것부터 주면 `df_diff`와 `ss_diff`가 음수로 나오고, 통계량과 p값은 같아요. 이웃한 두 모형은 어느 쪽이 크든 [모형 비교](/api/regression/model-comparison/#작은-모형은-큰-모형-안에-있어야-해요)처럼 같은 자료인지, 내포인지를 확인해요.
 
 ```python
->>> print(sd.regression.anova(m4, m2, m1).summary())
-Analysis of Variance Table (models)
-
-   df_resid      ssr  df_diff   ss_diff        F       Pr(>F)
-1        25  254.727                                         
-2        27  292.264       -2  -37.5378  1.84206     0.179362
-3        28  1230.18       -1  -937.914  92.0511  7.34661e-10
+>>> rev = sd.regression.anova(m4, m2, m1)
+>>> rev.df_diff
+array([ nan, -2.0, -1.0], dtype=float64)
+>>> rev.ss_diff
+array([               nan, -37.53778899974077, -937.9144743034867], dtype=float64)
+>>> rev.statistic
+array([               nan, 1.8420623432880894,  92.05107601575727], dtype=float64)
 ```
 
 `test='Chisq'`를 주면 `ss_diff`를 척도로 나눈 값을 자유도 `df_diff`의 카이제곱 분포로 재요. 선형 모형에서는 보통 기본값 `'F'`를 써요.
@@ -149,33 +155,38 @@ Type I(`typ=1`, 기본값)은 절편만의 모형에서 시작해 항을 주어�
 
 ```python
 >>> t1 = sd.regression.anova(m4)
->>> print(t1.summary())
-Analysis of Variance Table (Type I)
-
-          df   sum_sq  mean_sq         F       Pr(>F)
-tv         1  872.203  872.203   85.6019  1.50279e-09
-radio      1  937.914  937.914   92.0511  7.34661e-10
-paper      1  2.23554  2.23554  0.219406     0.643551
-sns        1  35.3022  35.3022   3.46472    0.0744897
-Residual  25  254.727  10.1891                       
+>>> t1.terms
+['tv', 'radio', 'paper', 'sns', 'Residual']
+>>> t1.sum_sq
+array([ 872.2034336651993,   937.914474303487, 2.2355441153285445,
+        35.30224488441224, 254.72664603696074], dtype=float64)
+>>> t1.pvalue
+array([1.5027935367212786e-09,  7.346614154818927e-10,
+           0.6435511801530118,    0.07448970648753586,
+                          nan], dtype=float64)
 >>> float(sd.sum(t1.sum_sq)), m4.centered_tss
 (2102.3823430053876, 2102.3823430053876)
 ```
 
-`radio` 줄은 TV가 이미 들어 있을 때 라디오가 더 설명하는 몫이에요. 위 모형 여럿의 표의 둘째 줄과 같은 값인 것도 그래서예요.
+`radio` 줄은 TV가 이미 들어 있을 때 라디오가 더 설명하는 몫이에요. 위 모형 여럿의 표의 둘째 줄도 같은 몫이라, 두 값은 반올림 차이 안에서 같아요.
+
+```python
+>>> t1.sum_sq[1], a.ss_diff[1]
+(937.914474303487, 937.9144743034867)
+```
 
 Type I의 몫은 **순서에 달려 있어요**. 설명변수끼리 상관이 있으면, 앞에 넣은 항이 뒤의 항과 겹치는 몫까지 가져가요. 이 데이터에서 신문 광고비는 우연히 TV(상관 0.24)와 라디오(0.22)와 함께 움직였어요. 신문을 맨 앞에 넣으면 TV와 라디오가 설명할 몫의 일부를 신문이 가져가서, 효과가 없는 신문의 p값이 0.0003이 돼요.
 
 ```python
->>> print(sd.regression.anova(m4, terms=['paper', 'sns', 'tv', 'radio']).summary())
-Analysis of Variance Table (Type I)
-
-          df   sum_sq  mean_sq         F       Pr(>F)
-paper      1  177.007  177.007   17.3722  0.000321489
-sns        1  7.53633  7.53633  0.739648     0.397946
-tv         1  732.563  732.563    71.897  8.00504e-09
-radio      1   930.55   930.55   91.3283  7.94416e-10
-Residual  25  254.727  10.1891                       
+>>> p1 = sd.regression.anova(m4, terms=['paper', 'sns', 'tv', 'radio'])
+>>> p1.terms
+['paper', 'sns', 'tv', 'radio', 'Residual']
+>>> p1.sum_sq
+array([177.00653746221676,  7.536326060806327,  732.5631681558805,
+         930.549665289524, 254.72664603696074], dtype=float64)
+>>> p1.pvalue
+array([0.0003214890076908037,    0.3979461724962051, 8.005036005906393e-09,
+       7.944162049469485e-10,                   nan], dtype=float64)
 ```
 
 `terms`의 순서가 넣는 순서예요. Type I은 "이 순서로 쌓는다"는 물음에 맞는 표라서, 순서에 뜻이 있을 때(통제할 변수를 먼저, 관심 있는 변수를 나중에) 써요.
@@ -186,15 +197,9 @@ Type III(`typ=3`)은 항마다 "다른 항이 모두 있을 때 이 항의 계�
 
 ```python
 >>> t3 = sd.regression.anova(m4, typ=3)
->>> print(t3.summary())
-Analysis of Variance Table (Type III)
-
-          df   sum_sq  mean_sq         F       Pr(>F)
-tv         1  1048.11  1048.11   102.866  2.40897e-10
-radio      1   930.55   930.55   91.3283  7.94416e-10
-paper      1  1.11313  1.11313  0.109247     0.743757
-sns        1  35.3022  35.3022   3.46472    0.0744897
-Residual  25  254.727  10.1891                       
+>>> t3.pvalue
+array([2.408974136094428e-10, 7.944162049469485e-10,    0.7437569746795544,
+         0.07448970648753586,                   nan], dtype=float64)
 >>> t3.statistic[0], m4.tvalues[1] ** 2
 (102.86641834938669, 102.86641834938666)
 >>> drop_tv = sd.regression.ols(df['sales'], df[['radio', 'paper', 'sns']])
@@ -203,6 +208,14 @@ Residual  25  254.727  10.1891
 ```
 
 Type III의 `sum_sq`는 그 항을 뺐을 때 늘어나는 잔차 제곱합이에요. 항들이 서로 겹치는 몫은 어느 항에도 들어가지 않아서, Type I과 달리 모두 더해도 전체 제곱합이 되지 않아요.
+
+```python
+>>> t3.sum_sq
+array([1048.1127094389658,  930.5496652895241, 1.1131264267730816,
+        35.30224488441224, 254.72664603696074], dtype=float64)
+>>> float(sd.sum(t3.sum_sq))
+2269.804392076636
+```
 
 <Callout type="tip" title="Type II는 없어요">
 Type II는 항마다 "그 항을 품는 항(상호작용)을 뺀 나머지가 모두 있을 때"를 검정해요. 어느 항이 어느 항을 품는지는 열 값만으로 알 수 없어서 두지 않았어요. 상호작용이 없는 모형에서는 Type II와 Type III가 같은 검정이에요.
@@ -214,15 +227,12 @@ Type II는 항마다 "그 항을 품는 항(상호작용)을 뺀 나머지가 �
 
 ```python
 >>> g = sd.regression.anova(m4, terms=[['tv', 'radio'], [2, 3]])
->>> print(g.summary())
-Analysis of Variance Table (Type I)
-
-             df   sum_sq  mean_sq        F       Pr(>F)
-tv + radio    2  1810.12  905.059  88.8265  4.36353e-12
-paper + sns   2  37.5378  18.7689  1.84206     0.179362
-Residual     25  254.727  10.1891                      
 >>> g.terms
 ['tv + radio', 'paper + sns', 'Residual']
+>>> g.df
+array([ 2.0,  2.0, 25.0], dtype=float64)
+>>> g.statistic
+array([88.82648989272008,  1.84206234328809,               nan], dtype=float64)
 ```
 
 `terms`는 X의 모든 열을 한 번씩 덮어야 해요. 빠뜨리거나 두 번 쓰면 에러예요.
@@ -256,22 +266,19 @@ ValueError: anova(): the column 'tv' is in more than one term
 >>> d = sd.frame.DataFrame({'fB': fB, 'fC': fC, 'water': water, 'fB:water': fB * water, 'fC:water': fC * water})
 >>> crop = sd.regression.ols(yld, d)
 >>> terms = [['fB', 'fC'], ['water'], ['fB:water', 'fC:water']]
->>> print(sd.regression.anova(crop, terms=terms).summary())
-Analysis of Variance Table (Type I)
-
-                     df   sum_sq  mean_sq        F       Pr(>F)
-fB + fC               2  345.169  172.584  35.8027  3.59086e-07
-water                 1  172.833  172.833  35.8542  9.21413e-06
-fB:water + fC:water   2  19.9253  9.96264  2.06675     0.154122
-Residual             19  91.5882  4.82043                      
->>> print(sd.regression.anova(crop, typ=3, terms=terms).summary())
-Analysis of Variance Table (Type III)
-
-                     df   sum_sq  mean_sq        F      Pr(>F)
-fB + fC               2  60.0093  30.0046  6.22447  0.00833494
-water                 1  25.7408  25.7408  5.33993   0.0322288
-fB:water + fC:water   2  19.9253  9.96264  2.06675    0.154122
-Residual             19  91.5882  4.82043                     
+>>> c1 = sd.regression.anova(crop, terms=terms)
+>>> c3 = sd.regression.anova(crop, typ=3, terms=terms)
+>>> c1.terms
+['fB + fC', 'water', 'fB:water + fC:water', 'Residual']
+>>> c1.sum_sq
+array([345.16867824143077, 172.83283669761184, 19.925287330385977,
+        91.58821440633955], dtype=float64)
+>>> c3.sum_sq
+array([60.009254976007234, 25.740770319167744, 19.925287330385974,
+        91.58821440633955], dtype=float64)
+>>> c3.pvalue
+array([0.008334942045675276,  0.03222877909354095,  0.15412224098758162,
+                        nan], dtype=float64)
 ```
 
 칸의 그루 수가 달라서(균형이 맞지 않아서) 비료와 물이 서로 겹치는 몫이 있고, Type I과 Type III의 주효과 줄이 달라요. 상호작용 줄은 마지막 항이라 둘에서 같아요.
@@ -282,12 +289,8 @@ Residual             19  91.5882  4.82043
 
 ```python
 >>> one = sd.regression.anova(sd.regression.ols(yld, d[['fB', 'fC']]), terms=[['fB', 'fC']])
->>> print(one.summary())
-Analysis of Variance Table (Type I)
-
-          df   sum_sq  mean_sq        F       Pr(>F)
-fB + fC    2  345.169  172.584  13.3529  0.000159682
-Residual  22  284.346  12.9248                      
+>>> one.statistic[0], one.pvalue[0]
+(13.352925455491766, 0.00015968238240301192)
 >>> sd.htest.f_oneway(*[yld[[i for i, f in enumerate(fert) if f == L]] for L in 'ABC'])
 FOnewayResult(statistic=13.3529, pvalue=0.000159682, df_num=2, df_denom=22)
 ```
@@ -320,14 +323,12 @@ FOnewayResult(statistic=13.3529, pvalue=0.000159682, df_num=2, df_denom=22)
 >>> crop_s.ssr, crop.ssr
 (91.58821440633955, 91.58821440633955)
 >>> terms_s = [['fA', 'fB'], ['water'], ['fA:water', 'fB:water']]
->>> print(sd.regression.anova(crop_s, typ=3, terms=terms_s).summary())
-Analysis of Variance Table (Type III)
-
-                     df   sum_sq  mean_sq        F       Pr(>F)
-fA + fB               2  237.136  118.568   24.597  5.34042e-06
-water                 1  154.318  154.318  32.0133  1.86903e-05
-fA:water + fB:water   2  19.9253  9.96264  2.06675     0.154122
-Residual             19  91.5882  4.82043                      
+>>> sd.regression.anova(crop_s, typ=3, terms=terms_s).statistic
+array([24.596959798935277, 32.013341419157136, 2.0667531392070075,
+                      nan], dtype=float64)
+>>> c3.statistic
+array([ 6.224468136727954,  5.339929806845698, 2.0667531392070075,
+                      nan], dtype=float64)
 ```
 
 물 주기의 F가 5.34에서 32.0으로 커졌어요. B에서 물의 효과가 크니, 세 비료에 걸친 평균적인 효과는 A에서의 효과보다 커요. 상호작용 줄은 두 부호화에서 같아요.
@@ -363,22 +364,16 @@ array([ 22.82084929833459, 32.547534730088394,                nan], dtype=float6
 >>> yb = (rng.random(100) < p) * 1.0
 >>> gl = sd.regression.glm(yb, sd.frame.DataFrame({'dose': dose, 'age': age}), family='binomial')
 >>> ga = sd.regression.anova(gl)
->>> print(ga.summary())
-Analysis of Variance Table (Type I)
-
-          df     sum_sq    mean_sq      Chisq     Pr(>Chi)
-dose       1    34.2464    34.2464    34.2464  4.85574e-09
-age        1  0.0268217  0.0268217  0.0268217      0.86991
-Residual  97    95.2161   0.981609                        
+>>> ga.test
+'Chisq'
+>>> ga.statistic
+array([   34.24639712738853, 0.026821736733779744,                  nan], dtype=float64)
+>>> ga.pvalue
+array([4.855735713716006e-09,    0.8699095081518355,                   nan], dtype=float64)
 >>> gl.null_deviance - gl.deviance, float(sd.sum(ga.sum_sq[:2]))
 (34.27321886412231, 34.27321886412231)
->>> print(sd.regression.anova(gl, typ=3).summary())
-Analysis of Variance Table (Type III)
-
-          df     sum_sq    mean_sq      Chisq     Pr(>Chi)
-dose       1     23.047     23.047     23.047  1.58091e-06
-age        1  0.0268219  0.0268219  0.0268219     0.869909
-Residual  97    95.2161   0.981609                        
+>>> sd.regression.anova(gl, typ=3).statistic
+array([   23.04697596085645, 0.026821894469078306,                  nan], dtype=float64)
 >>> gl.tvalues ** 2
 array([   3.938737025754865,    23.04697596085645, 0.026821894469078306], dtype=float64)
 ```
@@ -394,13 +389,10 @@ Type I의 `dose` 줄(34.2)은 절편만의 모형에 투약량을 더할 때 줄
 >>> cost = sd.stats.Gamma(a=4.0).sample(60, rng=rng) * sd.exp(0.5 + 0.8 * x1) / 4.0
 >>> gm = sd.regression.glm(cost, sd.stack([x1, x2], axis=-1), family='gamma', link='log')
 >>> gt = sd.regression.anova(gm)
->>> print(gt.summary())
-Analysis of Variance Table (Type I)
-
-          df     sum_sq    mean_sq         F       Pr(>F)
-x1         1    10.2344    10.2344   47.2125  5.21504e-09
-x2         1  0.0769961  0.0769961  0.355194     0.553547
-Residual  57    11.4649   0.201139                       
+>>> gt.test
+'F'
+>>> gt.statistic
+array([ 47.21253034846571, 0.3551935357588285,                nan], dtype=float64)
 >>> gt.sum_sq[0] / gm.scale, gt.mean_sq[2], gm.scale
 (47.21253034846571, 0.20113895387891895, 0.21677217507770194)
 ```
@@ -497,7 +489,7 @@ ValueError: anova(): the models are not nested: 'radio' of the smaller model is 
 - 배열 필드는 표의 줄 수만큼의 쓰기 금지 배열이고, `terms`는 읽을 때마다 새 리스트예요.
 - 그 표에 없는 열을 읽으면 `AttributeError`예요(항의 표의 `df_resid` 등).
 - `test`는 `'F'` 또는 `'Chisq'`, `typ`은 모형 여럿의 표면 None, 항의 표면 1 또는 3이에요.
-- `summary()`는 표를 글로 돌려줘요.
+- `summary()`는 인자 없이 표를 글로 돌려줘요. 꼴은 [회귀 결과의 `summary()`](/api/regression/results/)와 같은 상자이고, 맨 위 [모형 여럿의 예](#모형-여럿-이웃끼리-견준-표)처럼 머리 아래에 R의 표가 있어요. 항의 표는 머리에 `No. Models:` 대신 `Type:`(I 또는 III)이 있고, 열은 `df`, `sum_sq`, `mean_sq`, `F`, `Pr(>F)`예요(카이제곱이면 `Chisq`, `Pr(>Chi)`). 해당하지 않는 칸(첫 모형의 비교, `Residual` 줄의 검정)은 R처럼 비워요.
 
 ```python
 >>> t1.test, t1.typ, a.typ

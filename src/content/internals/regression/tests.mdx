@@ -58,12 +58,18 @@ $k$는 계수의 수(절편 포함), $m$은 가설의 줄 수, $n$은 행 수예
     if _chi2_model(r):
         p = _ChiSquared(df=float(m) if m else math.nan).ccdf(_arg(W))
         return WaldTestResult._make(
-            batch=lead, statistic=W, pvalue=r._scalar(p) if not lead else p, distribution="chi2", df=float(m)
+            batch=lead,
+            info=_model_info(r),
+            statistic=W,
+            pvalue=r._scalar(p) if not lead else p,
+            distribution="chi2",
+            df=float(m),
         )
     Fv = W / m if m else W
     p = _F(dfn=float(m) if m else math.nan, dfd=_arg(df_inf)).ccdf(_arg(Fv))
     return WaldTestResult._make(
         batch=lead,
+        info=_model_info(r),
         statistic=Fv,
         pvalue=r._scalar(p) if not lead else p,
         distribution="F",
@@ -508,14 +514,11 @@ F의 분모는 모든 줄이 같은 척도, 곧 `df_resid`가 가장 작은 모�
 ```python
 >>> one = sd.regression.ols(y, X[:, :1])
 >>> a = sd.regression.anova(one, small, r)
->>> print(a.summary())
-Analysis of Variance Table (models)
-<BLANKLINE>
-   df_resid      ssr  df_diff  ss_diff        F       Pr(>F)
-1        28  33.7366
-2        27   16.732        1  17.0046  28.7656  1.29136e-05
-3        26  15.3697        1  1.36226  2.30445     0.141071
+>>> a.df_resid.tolist(), a.statistic.tolist(), a.pvalue.tolist()
+([28.0, 27.0, 26.0], [nan, 28.76560363545615, 2.304445810921585], [nan, 1.2913602541557603e-05, 0.14107114704254983])
 ```
+
+첫 모형은 견줄 앞 모형이 없어서 그 줄의 통계량과 p값이 NaN이에요.
 
 statsmodels의 `anova_lm(m1, m2, m3)`은 척도를 마지막 모형에서 가져와요(모형을 복잡해지는 순서로 주면 같은 모형이에요). 그런데 p값의 분모 자유도로는 줄마다 제 `df_resid`를 써요. 그래서 모형이 셋 이상이면 가운데 줄의 p값이 달라요(위에서 둘째 줄이 F(1, 27)로 계산돼요). 또 모형이 복잡해지는 순서로 주지 않으면 에러예요.
 
@@ -571,13 +574,19 @@ $$
 ```python
 >>> a1 = sd.regression.anova(r)
 >>> print(a1.summary())
-Analysis of Variance Table (Type I)
-<BLANKLINE>
-          df    sum_sq   mean_sq         F       Pr(>F)
-x1         1   21.1295   21.1295   35.7434   2.6018e-06
-x2         1  0.286774  0.286774  0.485118     0.492294
-x3         1   18.0801   18.0801   30.5849  8.33781e-06
-Residual  26   15.3697  0.591143
+                     Analysis of Variance Table (Type I)
+==============================================================================
+Model:                             OLS  No. Observations:                   30
+Type:                                I  Df Residuals:                       26
+Test:                                F
+==============================================================================
+                   df     sum_sq    mean_sq          F     Pr(>F)
+------------------------------------------------------------------------------
+x1                  1    21.1295    21.1295     35.743      0.000
+x2                  1     0.2868     0.2868      0.485      0.492
+x3                  1    18.0801    18.0801     30.585      0.000
+Residual           26    15.3697     0.5911
+==============================================================================
 >>> s1, s2 = sd.regression.ols(y, X[:, :1]), sd.regression.ols(y, X[:, :2])
 >>> s1.ssr - s2.ssr, float(a1.sum_sq[1])
 (0.28677427375023967, 0.28677427375023684)
@@ -589,6 +598,8 @@ Residual  26   15.3697  0.591143
 ```
 
 $x_2$의 제곱합 0.2868은 두 적합의 SSR을 빼서 구할 수도 있지만, 33.7과 16.7 같은 큰 SSR의 차라 앞자리가 지워져요. 효과의 제곱은 그 작은 양을 직접 계산해요. 순서를 바꾸면 값이 달라지는 것이 Type I의 정의예요.
+
+`summary()`는 R의 열 그대로인 표를 회귀 모형과 같은 상자에 넣어요([summary의 상자](/internals/regression/overview/#summary의-상자)). 표의 p값은 소수 3자리라 아주 작은 값은 0.000으로 보이고, 끝까지의 값은 필드(`pvalue`)에 있어요. `Residual` 줄처럼 해당하지 않는 칸은 비워요.
 
 statsmodels의 `anova_lm(typ=1)`은 공식으로 만든 모형만 받고, 효과를 `np.linalg.qr(exog)`로 가중치 없는 설계에서 다시 구해요. 그래서 WLS 결과의 항 제곱합은 가중치를 쓰지 않은 값인데 `Residual` 줄은 가중 SSR이에요. 자유도도 랭크가 아니라 항의 열 수라, 겹친 열이 있으면 R과 다르게 세요.
 
@@ -620,13 +631,8 @@ R `anova.glm`도 같은 계산이에요. `glm.fit`을 앞 항들의 열로 다�
 
 ```python
 >>> ag = sd.regression.anova(g)
->>> print(ag.summary())
-Analysis of Variance Table (Type I)
-<BLANKLINE>
-          df   sum_sq  mean_sq    Chisq     Pr(>Chi)
-x1         1   29.814   29.814   29.814  4.75551e-08
-x2         1  6.67139  6.67139  6.67139   0.00979727
-Residual  77  73.9678  0.96062
+>>> ag.test, ag.statistic.tolist(), ag.pvalue.tolist()
+('Chisq', [29.813975830764747, 6.67139006289338, nan], [4.7555146094260485e-08, 0.009797274576806184, nan])
 >>> g1 = sd.regression.glm(yb, Xg[:, :1], family="binomial")
 >>> g.null_deviance - g1.deviance, g1.deviance - g.deviance
 (29.813975830764747, 6.67139006289338)
@@ -673,14 +679,8 @@ Type III는 다른 모든 항이 들어 있을 때 그 항의 계수가 모두 0
 
 ```python
 >>> a3 = sd.regression.anova(r, typ=3)
->>> print(a3.summary())
-Analysis of Variance Table (Type III)
-<BLANKLINE>
-          df   sum_sq   mean_sq        F       Pr(>F)
-x1         1  17.5789   17.5789  29.7372   1.0204e-05
-x2         1  1.36226   1.36226  2.30445     0.141071
-x3         1  18.0801   18.0801  30.5849  8.33781e-06
-Residual  26  15.3697  0.591143
+>>> a3.statistic.tolist(), a3.pvalue.tolist()
+([29.737182361456274, 2.3044458109215853, 30.58493141186105, nan], [1.0204040719316085e-05, 0.14107114704254978, 8.33781348904155e-06, nan])
 >>> small.ssr - r.ssr, float(a3.sum_sq[1])
 (1.3622576915373266, 1.3622576915373268)
 >>> sd.regression.anova(sd.regression.ols(y, X, cov_type="HC3"))

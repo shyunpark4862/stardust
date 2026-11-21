@@ -338,6 +338,22 @@ True
 
 그 밖의 필드는 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/), [`elastic_net`](/api/regression/elastic-net/)의 결과와 같아요. 다시 적합한 결과는 `alpha` 하나의 결과라서 경로 축이 없어요.
 
+`summary()`(인자 없음)도 그 함수들의 결과와 같은 꼴의 상자이고, 머리에 고른 `alpha`와 함께 `alpha_min`(`Alpha (min CV):`)과 `alpha_1se`(`Alpha (1 SE):`)가 더 있어요. 아래는 상자의 머리예요. 그 아래에는 계수의 표가 이어져요.
+
+```python
+>>> print('\n'.join(cv.summary().splitlines()[:10]))
+                         Lasso CV Regression Results
+==============================================================================
+Model:                        Lasso CV  No. Observations:                   60
+Alpha:                        0.196844  Df Model:                        3.000
+Standardize:                     False  R-squared:                       0.399
+                                        Converged:                        True
+                                        No. Iterations:                      2
+                                        Alpha (min CV):               0.196844
+                                        Alpha (1 SE):                 0.601134
+==============================================================================
+```
+
 `converged`, `n_iter`, `dual_gap`도 다시 적합한 것의 값이에요. 겹마다의 적합은 `max_iter`에 닿아 수렴하지 않아도 그때의 계수로 떼어 둔 겹의 오차를 재서 `cv_error`에 넣어요. 경고는 없고, 겹의 수렴 여부는 결과에 남지 않아요. 아래는 반복을 한 번으로 묶은 예예요. 겹마다의 적합도 덜 풀린 채라 `cv_error`가 위와 조금 달라요.
 
 ```python

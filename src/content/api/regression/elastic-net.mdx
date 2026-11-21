@@ -49,7 +49,7 @@ params:
     desc: "NaN을 다루는 방법. 'propagate'(기본), 'omit', 'raise' 중 하나예요."
 returns:
   type: ElasticNetResult
-  desc: "계수 params(절편이 params[0]), 유효 자유도 df_model, converged, n_iter, dual_gap, fittedvalues, resid, ssr, rsquared, nobs와 predict(). 표준오차·p값은 없어요."
+  desc: "계수 params(절편이 params[0]), 유효 자유도 df_model, converged, n_iter, dual_gap, fittedvalues, resid, ssr, rsquared, nobs와 predict(), summary(). 표준오차·p값은 없어요."
 raises:
   - type: TypeError
     desc: y나 X를 이름으로 줬을 때, alpha가 수나 1차원 배열이 아닐 때(bool·bool 배열·문자열·None 포함), l1_ratio·tol이 수가 아닐 때, max_iter가 int가 아닐 때, intercept·standardize가 True·False가 아닐 때, 입력이 복소수일 때.
@@ -254,7 +254,7 @@ $Z_A$는 A의 열에서 평균을 뺀 것(`standardize`면 표준화한 것), $\
 
 계수 셋이 0이 아니지만 유효 자유도는 1.94예요.
 
-표준오차·p값·`summary()`, `rank`가 없는 것도 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/)와 같아요. 결과는 예측을 위한 것이에요.
+표준오차·p값과 `rank`가 없는 것도 [`ridge`](/api/regression/ridge/), [`lasso`](/api/regression/lasso/)와 같아요. 결과는 예측을 위한 것이에요. `summary()`(인자 없음)도 두 함수와 같은 꼴의 상자로 계수만 적고, 머리에 `alpha`와 함께 `l1_ratio`(`L1 Ratio:`)가 있어요.
 
 ## 다른 인자
 

@@ -18,7 +18,7 @@ export const refineErr = {
 
 ## 한눈에 보기
 
-`ols`, `wls`, `gls`, `linregress`의 계수는 모두 `lsq::fit_one`(`csrc/regression/linear.cpp`) 하나가 구해요. 회귀 하나의 흐름은 이래요.
+`ols`, `wls`, `gls`의 계수는 모두 `lsq::fit_one`(`csrc/regression/linear.cpp`) 하나가 구해요. 회귀 하나의 흐름은 이래요.
 
 <Fig column caption="lsq::fit_one의 단계. 굵은 계산은 QR 한 번(geqrf)과 double-double 행 합 서너 번이에요. 겹친 열이 없고 조건이 좋으면 개선은 한 번에 끝나요.">
   <Steps
@@ -628,14 +628,12 @@ Wampler1은 반복 개선이 잔차를 정확히 0까지 줄여 판정 전부터
 
 ### 남은 자유도가 없을 때
 
-`df_resid` = 0(쓰인 행 수 = 랭크)이면 적합이 모든 자유도를 써서 잔차가 늘 0이에요. 그때 $\hat\sigma^2 = \text{SSR}/\text{df\_resid}$는 $0/0$이고, 오차의 크기에 대해 자료가 말해 주는 것이 없어요. 그래서 완전 적합의 판정과 상관없이 `scale`, `cov_params()`, `bse`, t, p, 구간이 모두 NaN이에요(`_div0`). 강건 공분산도 점수가 모두 0이라 같은 이유로 NaN으로 둬요. 계수, 적합값, 잔차, SSR은 그대로예요. 점 두 개의 `linregress`도 같은 규칙이라 `pvalue`와 두 표준오차가 NaN이에요.
+`df_resid` = 0(쓰인 행 수 = 랭크)이면 적합이 모든 자유도를 써서 잔차가 늘 0이에요. 그때 $\hat\sigma^2 = \text{SSR}/\text{df\_resid}$는 $0/0$이고, 오차의 크기에 대해 자료가 말해 주는 것이 없어요. 그래서 완전 적합의 판정과 상관없이 `scale`, `cov_params()`, `bse`, t, p, 구간이 모두 NaN이에요(`_div0`). 강건 공분산도 점수가 모두 0이라 같은 이유로 NaN으로 둬요. 계수, 적합값, 잔차, SSR은 그대로예요.
 
 ```python
 >>> d2 = sd.regression.ols([1.0, 3.0], [0.0, 1.0])
 >>> d2.params, d2.df_resid, d2.bse
 (array([1.0, 2.0], dtype=float64), 0.0, array([nan, nan], dtype=float64))
->>> sd.regression.linregress([0.0, 1.0], [1.0, 3.0])
-LinregressResult(slope=2.0, intercept=1.0, rvalue=1.0, pvalue=nan, stderr=nan, intercept_stderr=nan)
 ```
 
 ### 반응이 모두 같을 때
@@ -828,14 +826,12 @@ array([4.3403891381277555,  2.444902493779801], dtype=float64)
         return self._cached("tvalues", make)
 ```
 
-p는 이 t에서 구하므로 넘친 계수의 p도 맞아요. `linregress`도 p와 r을 이 t에서 만들고, r의 부호를 기울기가 아니라 t에서 읽어요(t가 유한하고 0이 아닐 때). 기울기가 아래로 넘쳐 0이 되어도 r의 부호가 남아요.
+p는 이 t에서 구하므로 넘친 계수의 p도 맞아요.
 
 ```python
 >>> big = sd.regression.ols(1e300 * ys, 1e-300 * xs)
 >>> big.params[1], big.bse[1], big.tvalues[1], big.pvalues[1] == base.pvalues[1]
 (inf, inf, 2.444902493779801, True)
->>> sd.regression.linregress(1e160 * xs, -1e-165 * ys)
-LinregressResult(slope=0.0, intercept=-9.706892633147886e-166, rvalue=-0.49929723052004504, pvalue=0.025005323114196457, stderr=0.0, intercept_stderr=2.2364106821387434e-166)
 ```
 
 신뢰구간도 같은 이유로 적합의 단위에서 만들어요. 데이터 단위의 $\beta \pm q\cdot\text{bse}$로 구하면 계수와 `bse`가 함께 inf로 넘친 원소에서 $\infty - \infty$ = NaN이 나와요. 그래서 `_RegressionResult.conf_int`는 두 끝을 적합의 단위에서 $\beta'_j \mp q\sqrt{C'_{jj}}$로 구한 뒤 계수처럼 $f_y/f_{x_j}$를 곱해요. 적합의 단위에서는 두 끝이 유한하고, 배율을 곱할 때 끝마다 제 부호를 지킨 채 넘쳐요. 그래서 넘친 끝은 $+\infty$나 $-\infty$이고 아래로 넘친 끝은 0이며, NaN은 나오지 않아요. 넘치지 않은 원소는 데이터 단위로 구한 구간과 반올림 안에서 같아요. 척도를 바꾸지 않은 적합(`beff_params_s`가 없음)은 같은 메서드의 앞 갈래, $\beta \pm q\cdot\text{bse}$ 그대로예요([추론](/internals/regression/inference/)). `ols`·`wls`·`gls`와 강건 공분산, 배치가 모두 이 길을 따르고, `y`나 열의 척도를 옮겨 푸는 `glm`·`rlm`·`quantreg`도 `beff_params_s`와 `fx`를 같은 꼴로 남겨 이 길을 함께 써요.

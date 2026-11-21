@@ -36,7 +36,7 @@ export const obsBand = [[15.0, 47.563], [15.5, 49.153], [16.0, 50.74], [16.5, 52
 OLSResult(nobs=30, rank=3, rsquared=0.816592, params=[  19.708601395933567    2.997447946508792 -0.03789720249661012])
 ```
 
-`summary()`는 중요한 필드를 표 하나로 보여 줘요. 표의 칸마다 어느 필드이고 어느 절에서 설명하는지는 표 아래에 모았어요.
+`summary()`는 중요한 필드를 상자 하나로 보여 줘요. 상자의 칸마다 어느 필드이고 어느 절에서 설명하는지는 상자 아래에 모았어요. 상자의 꼴과 수를 읽는 법은 [summary](#summary) 절에 있어요.
 
 ```python
 >>> print(r.summary())
@@ -65,7 +65,7 @@ Notes:
     correctly specified.
 ```
 
-| 표의 칸 | 필드 | 절 |
+| 상자의 칸 | 필드 | 절 |
 |---|---|---|
 | coef | `params` | [계수](#계수-params) |
 | std err | `bse` | [표준오차](#표준오차-bse) |
@@ -560,7 +560,51 @@ array([[ 75.36863139543865,  83.49631325144964],
 
 ## summary
 
-`summary(*, alpha=0.05)`는 [맨 위](#한눈에-보기)의 표를 글(`str`)로 돌려줘요. `alpha`는 계수 표의 구간 칸을 바꿔요. 위의 반쪽은 모형과 적합의 요약, 가운데는 계수 표, 아래는 진단 값이고, 끝의 Notes는 공분산의 종류와 겹친 열을 적어요. 날짜와 시각은 넣지 않아서 같은 결과면 늘 같은 글이에요.
+`summary()`는 결과를 글(`str`) 하나로 돌려줘요. [맨 위](#한눈에-보기)의 상자가 그 글이에요. 날짜와 시각은 넣지 않아서 같은 결과면 늘 같은 글이에요. 파일에 저장하거나 `splitlines()`로 줄을 나눠 볼 수 있어요.
+
+### 상자의 꼴
+
+상자는 위에서부터 이렇게 이루어져요.
+
+- **제목**: 결과의 이름(`OLS Regression Results`)이 가운데에 있어요.
+- **머리**: `=` 줄 아래에 "이름: 값" 칸이 두 열로 놓여요. 모형, 방법, 관측 수, 자유도, 공분산의 종류, R², F처럼 결과 전체에 하나인 값이에요.
+- **표**: 열 이름 줄과 `-` 줄 아래에 계수마다 한 줄이에요. 줄의 이름은 `param_names`예요.
+- **아래 칸**: OLS·WLS·GLS는 잔차 진단(Durbin–Watson, Jarque–Bera)과 조건수를 머리와 같은 두 열로 적어요.
+- **Notes**: 표준오차를 어떻게 구했는지(HAC의 지연 수, 군집 수)와 겹쳐서 뺀 열의 이름을 적어요.
+
+폭은 78칸이에요. 계수 이름이 길어 표가 78칸을 넘으면 `=`·`-` 줄과 Notes의 줄바꿈만 표를 따라 넓어지고, 제목과 머리는 78칸 그대로예요.
+
+회귀의 다른 결과도 모두 이 꼴이에요. `glm`, `rlm`, `quantreg`, `nls`, 정규화, `theilslopes`, `siegelslopes`의 결과, `t_test()`나 `breusch_pagan()` 같은 검정의 결과, [`anova`](/api/regression/anova/)의 표, 변수 선택의 결과가 같은 상자를 그려요. 결과마다 다른 것은 머리에 놓이는 값과 표의 열이에요. 정규화 결과는 표준오차가 없어서 표가 `coef` 한 열이고, 검정 결과는 머리에 통계량과 p값을 적어요.
+
+```python
+>>> print(r.breusch_pagan().summary())
+                  Breusch-Pagan test for heteroscedasticity
+==============================================================================
+LM statistic:                    2.066  No. Observations:                   30
+LM p-value:                      0.356  Studentized:                      True
+F-statistic:                    0.9985
+F p-value:                       0.382
+==============================================================================
+```
+
+### 머리와 표의 수 읽기
+
+상자의 수는 읽기 좋게 반올림한 값이에요. 계산에 쓸 값은 필드에서 읽어요.
+
+- 머리의 통계량은 유효숫자 4자리(F-statistic의 `60.11`), 그 p값은 유효숫자 3자리(`1.14e-10`)예요. 관측 수와 자유도는 정수면 정수로 적어요.
+- 표의 수는 소수 3자리이고, 계수 열(`coef`)만 소수 4자리예요. 크기가 $10^4$ 이상이거나 $10^{-4}$보다 작은 값은 같은 자릿수의 유효숫자로 적어요. 매출을 1,000배 하면 절편이 `1.971e+04`로 보여요.
+- 표의 p값(`P>|t|`)도 소수 3자리라서 `0.000`은 0이 아니라 0.0005보다 작다는 뜻이에요. 기온의 p값은 실제로 1.9e-11이에요.
+
+```python
+>>> print(sd.regression.ols(df['sales'] * 1000, df[['temp', 'rain']]).summary().splitlines()[12])
+const       1.971e+04   7377.396      2.671      0.013   4571.435   3.48e+04
+>>> r.pvalues[1]
+1.911539897240063e-11
+```
+
+### alpha
+
+구간이 있는 결과의 `summary(*, alpha=0.05)`는 `alpha`로 계수 표의 구간 칸을 바꿔요. 구간은 1 − alpha이고, 열 이름도 그 분위로 바뀌어요.
 
 ```python
 >>> print(r.summary(alpha=0.1).splitlines()[10])
@@ -569,7 +613,20 @@ array([[ 75.36863139543865,  83.49631325144964],
 rain          -0.0379      0.410     -0.093      0.927     -0.735      0.660
 ```
 
-`alpha`는 여기서도 키워드로만 받아요. 결과의 메서드(`conf_int`, `cov_params`, `predict`, `predict_interval`, `summary` 등)를 틀린 꼴로 부르면 모두 메서드 이름으로 시작하는 `TypeError`예요.
+`alpha`를 받는 것은 `conf_int(alpha=)`가 있는 결과, 곧 OLS·WLS·GLS, GLM, RLM, QuantReg, NLS의 결과와 `t_test()`의 결과예요. 받는 값과 에러 메시지는 `conf_int`와 같아요. 구간이 없는 결과(정규화, 다른 검정, `anova`, 변수 선택)와 적합할 때 구간을 정하는 `theilslopes`의 결과는 `summary()`에 인자가 없어요.
+
+```python
+>>> r.summary(alpha=1.5)
+Traceback (most recent call last):
+    ...
+ValueError: summary(): 'alpha' must be between 0 and 1 (exclusive)
+>>> sd.regression.ridge(df['sales'], df[['temp', 'rain']], alpha=1.0).summary(alpha=0.1)
+Traceback (most recent call last):
+    ...
+TypeError: summary(): unexpected keyword argument 'alpha'
+```
+
+`alpha`는 키워드로만 받아요. 결과의 메서드(`conf_int`, `cov_params`, `predict`, `predict_interval`, `summary` 등)를 틀린 꼴로 부르면 모두 메서드 이름으로 시작하는 `TypeError`예요.
 
 ```python
 >>> r.summary(0.1)
@@ -582,7 +639,53 @@ Traceback (most recent call last):
 TypeError: predict(): missing 1 required positional argument: 'X_new'
 ```
 
-`summary()`는 회귀 하나의 결과만 받아요. 배치 결과에서는 `ValueError`예요([배치](/api/regression/basics/#배치의-규칙)).
+### 배치 결과의 summary
+
+[배치](/api/regression/basics/#배치-회귀-여러-개를-한-번에) 결과의 `summary()`는 회귀마다 한 줄인 표예요. [표준오차](#표준오차-bse) 절의 오차 2,000벌 가운데 앞의 세 벌로 맞춰 볼게요.
+
+```python
+>>> few = sd.regression.ols(20.0 + 3.0 * temp + E[:3], df[['temp', 'rain']])
+>>> print(few.summary())
+                            OLS Regression Results
+==============================================================================
+Model:                             OLS  Batch shape:                      (3,)
+Method:                  Least Squares  Df Model:                            2
+Covariance Type:             nonrobust
+==============================================================================
+                 nobs   rsquared     fvalue   f_pvalue        llf
+------------------------------------------------------------------------------
+[0]                30      0.865     86.246      0.000    -95.972
+[1]                30      0.859     82.495      0.000   -103.548
+[2]                30      0.859     82.506      0.000    -96.553
+==============================================================================
+params          const       temp       rain
+------------------------------------------------------------------------------
+[0]           22.5024     2.8855     0.0652
+[1]           -0.3583     3.6213     0.3345
+[2]           20.4561     2.8801    -0.0679
+==============================================================================
+```
+
+- 머리의 `Batch shape:`가 배치 모양이에요. 머리에는 모든 회귀에 같은 값(모형, 방법, 공분산의 종류, 모형 자유도)만 적어요.
+- 첫 표는 회귀마다의 적합 통계예요. OLS·WLS·GLS는 `nobs`, `rsquared`, `fvalue`, `f_pvalue`, `llf`이고, GLM은 `nobs`, `deviance`, `llf`, `n_iter`, `converged`처럼 결과에 따라 열이 달라요. 둘째 표는 회귀마다의 계수(`params`)예요.
+- 줄의 이름은 그 회귀의 첨자예요. 배치 모양이 (2, 2)면 `[0, 0]`, `[0, 1]`, …예요.
+- 구간 칸은 없어요. `alpha`를 주면 값만 검사해요.
+
+표가 20줄을 넘으면 앞뒤 5줄만 두고 가운데에 `...` 줄을 넣어요. 2,000벌의 `many`는 표마다 11줄이에요.
+
+```python
+>>> lines = many.summary().splitlines()
+>>> len(lines)
+34
+>>> print('\n'.join(lines[11:16]))
+[3]                30      0.765     43.930      0.000   -104.836
+[4]                30      0.849     75.642      0.000   -104.524
+...               ...        ...        ...        ...        ...
+[1995]             30      0.799     53.614      0.000   -101.863
+[1996]             30      0.807     56.322      0.000   -105.290
+```
+
+회귀 하나의 상자가 필요하면 그 회귀만 따로 맞춰요. 배치의 결과는 하나씩 맞춘 결과와 비트까지 같아요.
 
 ## 설정 필드는 읽기 전용
 
@@ -650,7 +753,8 @@ True
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
 | `params`, `param_names`, `nobs`, `df_model`, `predict()` | ○ | ○ | ○ | ○ | ○ | ○ |
 | `bse`, `tvalues`, `pvalues`, `conf_int()`, `cov_params()`, `df_resid_inference` | ○ | ○ | ○ | ○ | ○ | |
-| `df_resid`, `rank`, `condition_number`, `cov_type`, `summary()` | ○ | ○ | ○ | ○ | ○ | |
+| `df_resid`, `rank`, `condition_number`, `cov_type` | ○ | ○ | ○ | ○ | ○ | |
+| `summary()` | ○ | ○ | ○ | ○ | ○ | 인자 없음 |
 | `fittedvalues` | ○ | ○ | ○ | ○ | ○ | ○ |
 | `resid` | ○ | | ○ | ○ | ○ | 선형만 |
 | `predict_interval()` | ○ | ○ | 평균만 | 평균만 | 평균만 | |
@@ -667,9 +771,9 @@ True
 - RLM(`RLMResult`)의 `scale`은 오차 분산이 아니라 강건한 척도(표준편차의 단위)예요. OLS·GLM·NLS의 `scale`은 분산(제곱의 단위)이라서, 같은 데이터면 RLM의 `scale`은 그 제곱근에 견줄 값이에요. 관측마다의 무게 `weights`가 있어요. [rlm](/api/regression/rlm/)을 보세요.
 - QuantReg(`QuantRegResult`)는 R² 대신 `prsquared`, 목적함수 `objective`가 있어요. [quantreg](/api/regression/quantreg/)을 보세요.
 - NLS(`NLSResult`)의 `param_names`는 모형 함수의 인자 이름이에요. [nls](/api/regression/nls/)를 보세요.
-- 정규화(`RidgeResult`, `LassoResult`, `ElasticNetResult`와 교차검증 결과, `PenalizedGLMResult`)는 예측이 목적이라 표준오차·p값·구간과 `summary()`가 없어요. `resid`, `ssr`, `rsquared`는 선형(`ridge`, `lasso`, `elastic_net`)에만 있고, `penalized_glm`은 `resid_response`와 편차를 줘요. [ridge](/api/regression/ridge/)를 보세요.
+- 정규화(`RidgeResult`, `LassoResult`, `ElasticNetResult`와 교차검증 결과, `PenalizedGLMResult`)는 예측이 목적이라 표준오차·p값·구간이 없어요. `summary()`는 벌점과 적합의 요약을 머리에, 계수를 `coef` 한 열의 표에 적어요. `resid`, `ssr`, `rsquared`는 선형(`ridge`, `lasso`, `elastic_net`)에만 있고, `penalized_glm`은 `resid_response`와 편차를 줘요. [ridge](/api/regression/ridge/)를 보세요.
 - 검정 메서드는 계수의 일차식을 검정하는 `t_test()`·`wald_test()`([선형 가설 검정](/api/regression/hypothesis-tests/))와 내포 모형 둘을 견주는 `compare_f_test()`·`compare_lr_test()`([모형 비교](/api/regression/model-comparison/))예요. `compare_f_test()`는 GLM에서 척도를 추정할 때(기본값의 정규·감마 등)만 써요. 분산분석표는 메서드가 아니라 함수 [`anova`](/api/regression/anova/)이고 OLS·WLS·GLS·GLM의 결과를 받아요.
-- `linregress`, `theilslopes`, `siegelslopes`의 결과는 이름 붙은 튜플이에요. 필드는 [linregress](/api/regression/linregress/), [theilslopes](/api/regression/theilslopes/), [siegelslopes](/api/regression/siegelslopes/)에 있어요.
+- `theilslopes`, `siegelslopes`의 결과는 이름 붙은 튜플이에요. 필드는 [theilslopes](/api/regression/theilslopes/), [siegelslopes](/api/regression/siegelslopes/)에 있어요.
 
 ```python
 >>> rr.scale, r.scale ** 0.5

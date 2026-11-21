@@ -22,11 +22,11 @@ import Callout from '../../../components/Callout.astro';
 OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[0.9999999710014291 0.9999999461191459])
 ```
 
-화면에 보이는 한 줄은 요약이에요. 이 결과에 든 필드를 모두 보려면 `hasattr`로 골라요.
+화면에 보이는 한 줄은 요약이에요. 이 결과에 든 필드를 모두 보려면 `hasattr`로 골라요. `summary`는 필드가 아니라 결과를 표로 그리는 메서드예요([출력하기](#출력하기)).
 
 ```python
 >>> [k for k in dir(r) if not k.startswith('_') and hasattr(r, k)]
-['converged', 'fun', 'hess_inv', 'jac', 'message', 'method', 'n_iter', 'nfev', 'njev', 'status', 'x']
+['converged', 'fun', 'hess_inv', 'jac', 'message', 'method', 'n_iter', 'nfev', 'njev', 'status', 'summary', 'x']
 >>> r.converged, r.status, r.message
 (True, 0, 'Optimization terminated successfully.')
 >>> r.n_iter, r.nfev, r.njev
@@ -306,7 +306,7 @@ array([ 8.177661197416674e-10, 1.1075489735209213e-09,
 
 ## 배치의 결과
 
-`find_root`, `find_minimum`, `bracket_root`, `bracket_minimum`의 결과는 필드마다 배치 모양의 배열이에요. `x`, `fun`은 float64, `converged`는 bool, `status`, `n_iter`, `nfev`는 int64예요. 요약은 몇 개가 수렴했는지만 보여 줘요.
+`find_root`, `find_minimum`, `bracket_root`, `bracket_minimum`의 결과는 필드마다 배치 모양의 배열이에요. `x`, `fun`은 float64, `converged`는 bool, `status`, `n_iter`, `nfev`는 int64예요. `repr`는 몇 개가 수렴했는지만 보여 주고, 원소마다의 값은 `summary()`의 표로 볼 수 있어요([출력하기](#출력하기)).
 
 ```python
 >>> c = sd.asarray([1.0, 2.0, 200.0])
@@ -381,18 +381,63 @@ array([              99.0, 1.0000422197517715], dtype=float64)
 
 ## 출력하기
 
-`repr`(그리고 `print`)은 한 줄 요약이에요. 방법, `converged`, 함숫값(최소제곱은 `cost`, 6자리), `n_iter`, `nfev`, `x`를 있는 것만 보여 줘요. 배치는 모양과 수렴한 수만 보여 줘요. 통계 결과의 `summary()` 같은 표는 없어요. 추론할 것이 없어서예요.
+`repr`(그리고 `print`)은 한 줄 요약이에요. 방법, `converged`, 함숫값(최소제곱은 `cost`, 6자리), `n_iter`, `nfev`, `x`를 있는 것만 보여 줘요. 배치는 모양과 수렴한 수만 보여 줘요.
 
 ```python
 >>> print(sd.optimize.least_squares(lambda p: p[0] * sd.exp(-p[1] * t) - y, [1.0, 1.0]))
 OptimizeResult(method='trf', converged=True, cost=0.00562354, n_iter=7, nfev=21, x=[5.078321029016653 0.504553719846044])
 ```
 
-모든 필드를 보고 싶으면 dict로 모아요.
+`summary()`는 결과를 상자 모양의 표로 그린 글(`str`)이에요. 회귀 모형의 `summary()`와 같은 꼴이라, 한 번 익히면 어느 결과든 같은 방식으로 읽어요. 인자는 없어요. 맨 위의 BFGS 풀이를 그려 볼게요.
+
+```python
+>>> rb = sd.optimize.minimize(rosen, [-1.2, 1.0], jac=grad)
+>>> print(rb.summary())
+                             Optimization Results
+==============================================================================
+Method:                           bfgs  Function value:            2.53530e-15
+Converged:                        True  No. Iterations:                     32
+Status:                              0  Function Evals:                     39
+                                        Jacobian Evals:                     39
+Message:                                 Optimization terminated successfully.
+==============================================================================
+                    x
+------------------------------------------------------------------------------
+x[0]           1.0000
+x[1]           1.0000
+==============================================================================
+```
+
+- **머리**: 왼쪽 열은 방법(`Method:`), `converged`, `status`예요. 오른쪽 열은 함숫값(`Function value:`, 유효숫자 6자리)과 셈(`No. Iterations:`, `Function Evals:`, `Jacobian Evals:`, `Hessian Evals:`)이고, 결과에 있는 필드만 나와요. 최소제곱(`least_squares`, `lsq_linear`, `nnls`)은 함숫값 대신 `Cost:`이고, `optimality`가 있으면 `Optimality:`가 붙어요. 그 아래 한 줄이 `message`예요.
+- **표**: x의 원소마다 한 줄(`x[0]`, `x[1]`, …)이고, 값은 소수 4자리예요. 절댓값이 $10^4$ 이상이거나 $10^{-4}$보다 작으면 유효숫자 4자리로 적어요(`2.692e-11` 꼴). `root`는 그 점의 $F(x)$ 열 `fun`이 붙어서 근에 얼마나 가까운지 함께 보여요. `root_scalar`처럼 x가 수 하나면 `x` 한 줄이에요.
+- **긴 x**: 원소가 20개를 넘으면 앞의 5줄과 뒤의 5줄만 두고 그 사이에 `...` 줄을 둬요.
+
+표의 수는 읽기 좋게 줄인 값이에요. 위의 `x[0]`은 `1.0000`으로 보이지만 실제로는 `0.9999999710014291`이에요. 끝자리까지의 값은 필드(`rb.x`, `rb.fun`)로 읽어요.
+
+배치 함수의 `summary()`는 원소마다 한 줄인 표예요. 줄 이름은 원소의 첨자(`[0]`, 2차원 배치면 `[1, 2]`)이고, 열은 `x`, `fun`, 구간의 끝(`bracket[0]`, `bracket[1]`, …), `converged`, `status`, `n_iter`, `nfev`예요. 머리에는 배치 모양과 수렴한 원소의 수가 있어요. 원소가 20개를 넘으면 긴 x처럼 앞뒤 5줄만 보여요.
+
+```python
+>>> b = sd.optimize.find_root(lambda x, c: x**2 - c, (0.0, 10.0), args=(c,))
+>>> print(b.summary())
+                             Optimization Results
+==================================================================================================
+Batch shape:                      (3,)  Converged:                      2 of 3
+==================================================================================================
+                    x        fun bracket[0] bracket[1]  converged     status     n_iter       nfev
+--------------------------------------------------------------------------------------------------
+[0]            1.0000  -2.22e-16     1.0000     1.0000       True          0         10         12
+[1]            1.4142  -4.44e-16     1.4142     1.4142       True          0         10         12
+[2]               nan        nan     0.0000    10.0000      False         -1          0          2
+==================================================================================================
+```
+
+표가 78칸보다 넓으면 가로줄만 표의 폭으로 늘어나고 제목과 머리는 78칸 그대로예요.
+
+모든 필드를 값으로 보고 싶으면 dict로 모아요.
 
 ```python
 >>> r = sd.optimize.root_scalar(s, bracket=(0.0, 2.0))
->>> {k: getattr(r, k) for k in dir(r) if not k.startswith('_') and hasattr(r, k)}
+>>> {k: getattr(r, k) for k in dir(r) if not k.startswith('_') and k != 'summary' and hasattr(r, k)}
 {'converged': True, 'message': 'converged', 'method': 'brentq', 'n_iter': 8, 'nfev': 9, 'status': 0, 'x': 1.4142135623731364}
 ```
 
@@ -402,6 +447,7 @@ scipy의 `OptimizeResult`와 견주면 이래요.
 
 - **이름**: `success`는 `converged`, `nit`는 `n_iter`예요. Nelder–Mead의 `n_iter`는 한 반복 수라 scipy의 `nit`보다 하나 작아요. 별칭은 없어서 `r.success`는 `AttributeError`예요. `find_root` 등의 `f_x`는 `fun`이에요.
 - **dict가 아니에요**: `r['x']`, `r.keys()`, `r.get(...)`이 없어요. 필드가 있는지는 `hasattr`로 물어요.
+- **출력**: scipy의 결과는 `print`하면 모든 필드를 한 줄에 하나씩 늘어놓고, `summary()`가 없어요. 여기서는 `repr`가 한 줄 요약이고, 표는 `summary()`예요.
 - **`root_scalar`**: scipy는 `RootResults`(`root`, `iterations`, `function_calls`, `converged`, `flag`)를 주지만 여기서는 `OptimizeResult`(`x`, `n_iter`, `nfev`·`njev`·`nhev`, `converged`, `message`)예요. scipy의 `function_calls`는 세 함수의 호출을 합한 수라서, `fprime`을 주면 `nfev + njev + nhev`와 같아요.
 - **`nnls`**: scipy는 `(x, rnorm)` 튜플을 주고, 반복 상한에 닿으면 `RuntimeError`를 내요. 여기서는 `OptimizeResult`이고 상한은 `status=0`, `converged=False`예요. `rnorm` 대신 `cost` $= \tfrac12\lVert Ax - b\rVert^2$을 줘요.
 - **`root`**: MINPACK의 내부 값 `fjac`, `r`, `qtf`는 없고, `n_iter`와 (차분일 때도) `njev`가 있어요. `nfev`는 scipy보다 2 적어요. scipy는 시작점에서 함수를 두 번 더 부르고 그것도 세어요.
