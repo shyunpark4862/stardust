@@ -4,7 +4,8 @@ Every fitting function of __all__ on a few fixed data sets (well conditioned, co
 heavy-tailed, with NaN, batched, large enough for the multithreaded kernels, frame input),
 over its options (cov_type with maxlags and groups, families and links, penalties and paths,
 cross-validation, norms and scales, quantiles, bandwidths, nan_policy, rtol), and the tests on
-fitted models (linear hypotheses, comparisons, anova, the diagnostic tests). A result object
+fitted models (linear hypotheses, comparisons, anova, the diagnostic tests) and the variable
+selections (stepwise and best_subset over their models, directions and criteria). A result object
 is stored whole: every public field and every method without arguments (summary(),
 cov_params(), conf_int(), jarque_bera(), breusch_pagan(), ...); predict and predict_interval
 get new rows. nls runs the 27 NIST StRD problems from both starts with both methods, with
@@ -46,6 +47,8 @@ EXCLUDED = {
     "WhiteTestResult": "a result class: the cases of the function that returns it store it whole",
     "GoldfeldQuandtResult": "a result class: the cases of the function that returns it store it whole",
     "ResetTestResult": "a result class: the cases of the function that returns it store it whole",
+    "StepwiseResult": "a result class: the cases of the function that returns it store it whole",
+    "BestSubsetResult": "a result class: the cases of the function that returns it store it whole",
 }
 
 NAN, INF = math.nan, math.inf
@@ -106,6 +109,7 @@ def cases(L):
     yield from quantile(L)
     yield from nls(L)
     yield from model_tests(L)
+    yield from selection(L)
 
 
 def fit_and_predict(L, res, Xnew):
@@ -631,3 +635,97 @@ def model_tests(L):
     yield "err goldfeld_quandt alternative", lambda: ols().goldfeld_quandt(alternative="x")
     yield "err reset_test power int", lambda: ols().reset_test(power=2)
     yield "err reset_test power 1", lambda: ols().reset_test(power=(1, 2))
+
+
+def selection(L):
+    """stepwise (each direction and criterion, ols, wls with zero weights, gls, glm, terms,
+    include, start, an aliased column, NaN, max_steps) and best_subset (each criterion, the
+    linear models and a GLM), and their errors. The results are stored whole (fit included)."""
+    sd = L.sd
+    R = sd.regression
+    a = L.arr
+    D = data(L)
+    r = L.rng(907)
+    n, k = 80, 6
+    Z = r.standard_normal((n, k))
+    X6 = Z + 0.4 * Z[:, [1, 2, 3, 4, 5, 0]]
+    y6 = 1.0 + X6 @ np.array([0.8, 0.0, -0.45, 0.0, 0.25, 0.1]) + r.standard_normal(n)
+    yb = (r.random(n) < 1 / (1 + np.exp(-(0.2 + X6[:, :4] @ np.array([0.9, 0.0, -0.5, 0.2]))))).astype(np.float64)
+    w = r.uniform(0.3, 3.0, n)
+    w[[3, 30]] = 0.0
+    sigma = 0.4 ** np.abs(np.subtract.outer(np.arange(n), np.arange(n)))
+    X, y = (lambda: a(X6)), (lambda: a(y6))
+    for d in ("both", "forward", "backward"):
+        for c in ("aic", "bic", "pvalue"):
+            yield f"stepwise ols {d} {c}", lambda d=d, c=c: R.stepwise(y(), X(), direction=d, criterion=c)
+        yield (
+            f"stepwise ols {d} cv",
+            lambda d=d: R.stepwise(y(), X(), direction=d, criterion="cv", rng=sd.random.default_rng(5)),
+        )
+    yield "stepwise wls zero weights", lambda: R.stepwise(y(), X(), model="wls", weights=a(w), cov_type="HC1")
+    yield (
+        "stepwise wls cv",
+        lambda: R.stepwise(y(), X(), model="wls", weights=a(w), criterion="cv", cv=4, rng=sd.random.default_rng(2)),
+    )
+    yield "stepwise gls", lambda: R.stepwise(y(), X(), model="gls", sigma=a(sigma))
+    yield "stepwise no intercept", lambda: R.stepwise(y(), X(), intercept=False)
+    yield "stepwise terms include", lambda: R.stepwise(y(), X(), terms=[[0, 1], [2], [3, 4], [5]], include=[2])
+    yield "stepwise start forward", lambda: R.stepwise(y(), X(), start=[3], direction="forward", criterion="bic")
+    yield "stepwise aliased", lambda: R.stepwise(y(), a(np.c_[X6, X6[:, 0] + X6[:, 1]]))
+    yield "stepwise max_steps", lambda: R.stepwise(y(), X(), max_steps=1)
+    yield "stepwise pvalue alphas", lambda: R.stepwise(y(), X(), criterion="pvalue", alpha_enter=0.2, alpha_remove=0.3)
+    ynan = y6.copy()
+    ynan[[5]] = NAN
+    Xnan = X6.copy()
+    Xnan[7, 2] = NAN
+    yield "stepwise nan propagate", lambda: R.stepwise(a(ynan), X())
+    yield "stepwise nan omit X", lambda: R.stepwise(y(), a(Xnan), nan_policy="omit")
+    yield "stepwise frame", lambda: R.stepwise(y(), sd.frame.DataFrame({f"v{j}": X6[:, j].tolist() for j in range(k)}))
+    yield "stepwise glm binomial", lambda: R.stepwise(a(yb), X(), model="glm", family="binomial")
+    yield "stepwise glm binomial bic", lambda: R.stepwise(a(yb), X(), model="glm", family="binomial", criterion="bic")
+    yield (
+        "stepwise glm binomial pvalue",
+        lambda: R.stepwise(a(yb), X(), model="glm", family="binomial", criterion="pvalue"),
+    )
+    yield (
+        "stepwise glm binomial cv",
+        lambda: R.stepwise(
+            a(yb), X(), model="glm", family="binomial", criterion="cv", cv=4, rng=sd.random.default_rng(3)
+        ),
+    )
+    yield "stepwise glm poisson", lambda: R.stepwise(a(D["ypois"]), a(D["X"]), model="glm", family="poisson")
+    yield "stepwise glm gamma", lambda: R.stepwise(a(D["ygamma"]), a(D["X"]), model="glm", family="gamma", link="log")
+    for c in ("aic", "bic", "cp", "adjr2"):
+        yield f"best_subset ols {c}", lambda c=c: R.best_subset(y(), X(), criterion=c)
+    yield "best_subset ols cv", lambda: R.best_subset(y(), X(), criterion="cv", rng=sd.random.default_rng(4))
+    yield "best_subset ols max_size include", lambda: R.best_subset(y(), X(), max_size=2, include=[0])
+    yield "best_subset ols terms", lambda: R.best_subset(y(), X(), terms=[[0, 1], [2], [3, 4], [5]])
+    yield "best_subset wls", lambda: R.best_subset(y(), X(), model="wls", weights=a(w))
+    yield "best_subset gls", lambda: R.best_subset(y(), X(), model="gls", sigma=a(sigma), criterion="bic")
+    yield "best_subset no intercept", lambda: R.best_subset(y(), X(), intercept=False)
+    yield "best_subset glm binomial", lambda: R.best_subset(a(yb), X(), model="glm", family="binomial")
+    yield (
+        "best_subset glm binomial cv",
+        lambda: R.best_subset(
+            a(yb), X(), model="glm", family="binomial", criterion="cv", cv=4, rng=sd.random.default_rng(6)
+        ),
+    )
+    yield "best_subset nan propagate", lambda: R.best_subset(a(ynan), X())
+    yield "err stepwise model", lambda: R.stepwise(y(), X(), model="rlm")
+    yield "err stepwise option", lambda: R.stepwise(y(), X(), foo=1)
+    yield "err stepwise weights missing", lambda: R.stepwise(y(), X(), model="wls")
+    yield "err stepwise cv rng", lambda: R.stepwise(y(), X(), criterion="cv")
+    yield "err stepwise rng aic", lambda: R.stepwise(y(), X(), rng=sd.random.default_rng(1))
+    yield "err stepwise alphas", lambda: R.stepwise(y(), X(), alpha_enter=0.2)
+    yield "err stepwise batch", lambda: R.stepwise(a(np.stack([y6, y6])), X())
+    yield "err stepwise no parameters", lambda: R.stepwise(y(), X(), intercept=False, direction="forward")
+    yield (
+        "err stepwise gls cv",
+        lambda: R.stepwise(y(), X(), model="gls", sigma=a(sigma), criterion="cv", rng=sd.random.default_rng(1)),
+    )
+    yield "err best_subset cp glm", lambda: R.best_subset(a(yb), X(), model="glm", family="binomial", criterion="cp")
+    yield (
+        "err best_subset glm terms",
+        lambda: R.best_subset(a(yb), a(np.zeros((n, 16))), model="glm", family="binomial"),
+    )
+    yield "err best_subset terms", lambda: R.best_subset(y(), X(), terms=[[0, 1]])

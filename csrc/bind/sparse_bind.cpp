@@ -2,6 +2,7 @@
 #include "bind/sparse_bind.hpp"
 
 #include "sparse/direct.hpp"
+#include "sparse/format.hpp"
 
 namespace nb = nanobind;
 
@@ -10,6 +11,9 @@ namespace sd {
 void bind_sparse(nb::module_& core) {
     nb::module_ m = core.def_submodule("sparse", "stardust sparse arrays native core");
     sparse::bind_direct(m);
+    sparse::bind_canonical(m);
+    sparse::bind_convert(m);
+    sparse::bind_dok(m);
 }
 
 }  // namespace sd

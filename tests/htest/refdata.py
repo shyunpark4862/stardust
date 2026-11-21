@@ -13,7 +13,8 @@ The contract, per field, in units of its bound (1 or less is within it):
     sum; 1 elsewhere);
   - pvalue: relative error / (1e-14 max(1, kappa) max(1, kappa_stat)); the Cramér-von Mises
     p-value (1 - cdf of Csörgő and Faraway's approximation) also passes within 1e-15 absolute;
-  - df, df_num, df_denom: relative error / 1e-14;
+  - zstatistic (the normal approximation's z of the rank tests), df, df_num, df_denom, median
+    (median_test's grand median): relative error / 1e-14;
   - conf_int (the t tests' 95% interval): each end's error / (1e-14 times the larger of the end
     and the estimate's and half width's sizes: the ends subtract them).
 """
@@ -30,7 +31,19 @@ CVM_ABS = 1e-15
 # the families by milestone
 H1 = ("ttest", "f_oneway", "alexandergovern", "bartlett", "levene", "fligner")
 H2 = ("power_divergence", "jarque_bera", "dagostino", "shapiro", "anderson", "ks_1samp", "cramervonmises")
-PUBLIC = H1 + H2  # the families of the public functions (the accuracy measurement's sweeps)
+H3 = (
+    "mannwhitneyu",
+    "ranksums",
+    "wilcoxon",
+    "kruskal",
+    "friedmanchisquare",
+    "brunnermunzel",
+    "ansari",
+    "mood",
+    "median_test",
+    "page_trend_test",
+)
+PUBLIC = H1 + H2 + H3  # the families of the public functions (the accuracy measurement's sweeps)
 
 
 def load(fam) -> dict:
@@ -132,7 +145,7 @@ def ci_scale(p):
     return abs(lo2 + hi2) / 2 + abs(hi2 - lo2) / 2
 
 
-FIELDS = ("statistic", "pvalue", "df", "df_num", "df_denom")
+FIELDS = ("statistic", "pvalue", "zstatistic", "df", "df_num", "df_denom", "median")
 
 
 def errors(fam, pid, r=None) -> dict:

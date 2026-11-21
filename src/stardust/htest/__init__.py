@@ -9,7 +9,7 @@ in docs/design/htest.md §1.1).
 
 The module holds the result objects (_result.py) and the input layer (_common.py) the tests
 share; the tests come milestone by milestone (docs/design/htest.md §8): H1's means and variances
-(_parametric.py) so far.
+(_parametric.py), H2's goodness of fit (_gof.py) and H3's rank tests (_rank.py) so far.
 """
 
 from ._gof import (
@@ -35,6 +35,18 @@ from ._parametric import (
     ttest_ind_from_stats,
     ttest_rel,
 )
+from ._rank import (
+    ansari,
+    brunnermunzel,
+    friedmanchisquare,
+    kruskal,
+    mannwhitneyu,
+    median_test,
+    mood,
+    page_trend_test,
+    ranksums,
+    wilcoxon,
+)
 
 __all__ = [
     "ttest_1samp",
@@ -56,4 +68,14 @@ __all__ = [
     "anderson",
     "ks_1samp",
     "cramervonmises",
+    "mannwhitneyu",
+    "ranksums",
+    "wilcoxon",
+    "kruskal",
+    "friedmanchisquare",
+    "brunnermunzel",
+    "ansari",
+    "mood",
+    "median_test",
+    "page_trend_test",
 ]

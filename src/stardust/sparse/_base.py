@@ -1,0 +1,251 @@
+"""sparray: what the four formats share (docs/api/sparse.md §2, docs/design/sparse.md §2.5).
+
+A sparse array is a Python class whose fields are sd.ndarrays (COO: data and coords; CSR and CSC:
+data, indices and indptr) or, for DOK, a native hash map. The index arrays are read-only: CSR and
+CSC are always canonical, and changing an index would break that (docs/design/sparse.md §2.3).
+`data` is writable. Every computation is one call of the native core (stardust._core.sparse).
+
+Each format implements the conversions (_tocoo, _tocsr, _tocsc, _todok with the copy rule of
+the array area: None copies only when it must, True always, False never), _transpose, _copy,
+_with_data, _resize and the counts; the methods here put the checks and the shared rules
+around them.
+"""
+
+import math
+import operator
+
+from .. import _core as _sd
+from . import _common as C
+from ._common import _core
+
+
+class sparray:
+    """The base class of coo_array, csr_array, csc_array and dok_array (isinstance checks only)."""
+
+    __slots__ = ("_shape",)
+    format = None
+
+    def __init__(self, *args, **kwargs):
+        raise TypeError(
+            "sparray(): the base class is not constructed directly; use coo_array, csr_array, csc_array or dok_array"
+        )
+
+    # ---- protocol ----
+
+    __array_ufunc__ = None  # numpy defers to our operators instead of converting us
+    __iter__ = None  # no row iteration: iter(A) is a TypeError
+
+    def __array__(self, dtype=None, copy=None):
+        raise TypeError(
+            f"a sparse array is not converted to a dense array implicitly; use A.toarray() ({type(self).__name__})"
+        )
+
+    def __len__(self):
+        raise TypeError("the length of a sparse array is ambiguous; use A.nnz or A.shape[0]")
+
+    def __bool__(self):
+        raise TypeError("the truth value of a sparse array is ambiguous")
+
+    def __repr__(self):
+        n = self.nnz
+        return (
+            f"<{type(self).__name__} of shape {self._shape}, {self.dtype}, {n} stored element{'' if n == 1 else 's'}>"
+        )
+
+    __str__ = __repr__
+
+    # ---- attributes ----
+
+    @property
+    def shape(self):
+        return self._shape
+
+    @property
+    def ndim(self):
+        return len(self._shape)
+
+    @property
+    def size(self):
+        return math.prod(self._shape)
+
+    @property
+    def T(self):
+        if len(self._shape) != 2:
+            raise ValueError(f".T: the array must have 2 dimensions, got {len(self._shape)}")
+        return self._transpose()
+
+    @property
+    def mT(self):
+        if len(self._shape) != 2:
+            raise ValueError(f".mT: the array must have at least 2 dimensions, got {len(self._shape)}")
+        return self._transpose()
+
+    @property
+    def real(self):
+        if self.dtype == _sd.complex128:
+            return self._with_data(_contiguous(_sd.real(self._values())))
+        return self._with_data(self._values(), share=True)
+
+    @property
+    def imag(self):
+        return self._with_data(_contiguous(_sd.imag(self._values())))
+
+    # ---- conversions ----
+
+    def toarray(self):
+        """The dense array: a new C-ordered sd.ndarray, zeros plus the stored values (a stored -0.0
+        is +0.0 there, as in scipy; duplicates of a COO array add up in stored order)."""
+        return self._toarray()
+
+    def tocoo(self, *, copy=None):
+        return self._convert("coo", C.copy_arg(copy, "tocoo"), "tocoo")
+
+    def tocsr(self, *, copy=None):
+        return self._convert("csr", C.copy_arg(copy, "tocsr"), "tocsr")
+
+    def tocsc(self, *, copy=None):
+        return self._convert("csc", C.copy_arg(copy, "tocsc"), "tocsc")
+
+    def todok(self, *, copy=None):
+        return self._convert("dok", C.copy_arg(copy, "todok"), "todok")
+
+    def asformat(self, format, /, *, copy=None):
+        copy = C.copy_arg(copy, "asformat")
+        if format is None:
+            return self._copy() if copy else self
+        if not isinstance(format, str):
+            raise TypeError(
+                f"asformat(): 'format' must be 'coo', 'csr', 'csc', 'dok' or None, not {C.type_name(format)}"
+            )
+        if format not in C.FORMATS:
+            raise ValueError(f"asformat(): 'format' must be 'coo', 'csr', 'csc', 'dok' or None, not {format!r}")
+        return self._convert(format, copy, "asformat")
+
+    def _convert(self, fmt, copy, func):
+        if fmt == "csc" and len(self._shape) != 2:
+            raise ValueError(f"{func}(): a csc_array has 2 dimensions, the array has {len(self._shape)}")
+        if fmt == self.format:
+            return self._copy() if copy else self
+        return getattr(self, "_to" + fmt)(copy, func)
+
+    def to_scipy(self, *, copy=None):
+        """The scipy.sparse array of the same format (csr_array, ...). The values and index arrays
+        are numpy views of this array's memory (the index views read-only) unless copy=True; a
+        dok_array is always copied (copy=False is then a ValueError)."""
+        from ._interop import to_scipy
+
+        return to_scipy(self, C.copy_arg(copy, "to_scipy"))
+
+    def astype(self, dtype, /, *, copy=True):
+        copy = C.copy_arg(copy, "astype")
+        target = _sd.astype(_sd.empty(0, dtype=self.dtype), dtype, copy=copy).dtype  # the array's checks
+        if target == self.dtype:
+            return self._copy() if copy else self
+        return self._astype(target)
+
+    def _astype(self, dtype):
+        return self._with_data(_sd.astype(self._values(), dtype))
+
+    def copy(self):
+        """A copy whose values share no memory with this array (the read-only index arrays may be
+        shared: they never change)."""
+        return self._copy()
+
+    def transpose(self):
+        """The transpose (.T) of a 2-D array; a 1-D array itself."""
+        if len(self._shape) == 1:
+            return self
+        return self._transpose()
+
+    def conj(self):
+        """The complex conjugate, a new array (a copy for a real dtype)."""
+        if self.dtype == _sd.complex128:
+            return self._with_data(_sd.conj(self._values()))
+        return self._copy()
+
+    def reshape(self, shape, /, *, copy=None):
+        """The same values in C order in a new shape (one entry may be -1): a coo_array (scipy's
+        result for every format), or the array itself when the shape is unchanged."""
+        copy = C.copy_arg(copy, "reshape")
+        new = _reshape_target(shape, self._shape)
+        if new == self._shape:
+            return self._copy() if copy else self
+        coo = self._convert("coo", copy, "reshape")
+        major, minor = coo._split()
+        rows, cols = _core._reshape_coords(major, minor, self._shape, new)
+        coords = (rows, cols) if rows is not None else (cols,)
+        from ._coo import coo_array
+
+        return coo_array._new(new, coords, coo._data, True if coo._canonical is True else None)
+
+    def resize(self, shape, /):
+        """Changes the shape in place: entries outside it are dropped, new rows and columns are
+        empty. The number of dimensions stays (1-D stays 1-D)."""
+        new = C.shape_arg(shape, "resize")
+        if len(new) != len(self._shape):
+            raise ValueError(f"resize(): the shape must have {len(self._shape)} dimensions, got {len(new)}")
+        self._resize(new)
+
+    def nonzero(self):
+        """The positions of the nonzero values: one int64 array per axis, in row-major order (a
+        coo_array: in stored order, repeated positions as stored)."""
+        coo = self._nonzero_coo()
+        major, minor = coo._split()
+        kept = _core._filter_coo(major, minor, coo._data, 2**63 - 1, 2**63 - 1, drop_zeros=True)
+        if kept is not None:
+            major, minor = kept[0], kept[1]
+        if major is None:
+            return (C.writable(minor),)
+        return (C.writable(major), C.writable(minor))
+
+    def _nonzero_coo(self):
+        return self._convert("coo", None, "nonzero")
+
+    def count_nonzero(self, *, axis=None):
+        """How many values are nonzero (duplicates of a COO array summed first): a Python int, or
+        per index of the other axis an int64 sd.ndarray."""
+        nd = len(self._shape)
+        if axis is not None:
+            if not C.is_int(axis):
+                raise TypeError(f"count_nonzero(): 'axis' must be an int or None, not {C.type_name(axis)}")
+            a = axis.__index__()
+            if not -nd <= a < nd:
+                raise ValueError(f"count_nonzero(): axis {a} is out of bounds for an array of dimension {nd}")
+            axis = a % nd
+            if nd == 1:
+                axis = None
+        return self._count_nonzero(axis)
+
+
+def _contiguous(x):
+    return x if C.contiguous(x) else x.copy()
+
+
+def _reshape_target(shape, old):
+    """The new shape of reshape: ints, at most one -1, 1 or 2 dimensions, the same size."""
+    if C.is_int(shape):
+        dims = (operator.index(shape),)
+    elif isinstance(shape, tuple) and all(C.is_int(d) for d in shape):
+        dims = tuple(operator.index(d) for d in shape)
+    else:
+        what = (
+            f"a tuple holding {C.type_name(next(d for d in shape if not C.is_int(d)))}"
+            if isinstance(shape, tuple)
+            else C.type_name(shape)
+        )
+        raise TypeError(f"reshape(): 'shape' must be an int or a tuple of ints, not {what}")
+    C.check_ndim(len(dims), "reshape", (1, 2), what="'shape'")
+    size = math.prod(old)
+    unknown = [i for i, d in enumerate(dims) if d == -1]
+    if len(unknown) > 1:
+        raise ValueError("reshape(): can only specify one unknown dimension")
+    if any(d < -1 for d in dims):
+        raise ValueError("reshape(): negative dimensions are not allowed")
+    if unknown:
+        rest = math.prod(d for d in dims if d != -1)
+        if rest == 0 or size % rest:
+            raise ValueError(f"reshape(): cannot reshape array of size {size} into shape {dims}")
+        dims = tuple(size // rest if d == -1 else d for d in dims)
+    if math.prod(dims) != size:
+        raise ValueError(f"reshape(): cannot reshape array of size {size} into shape {dims}")
+    return dims

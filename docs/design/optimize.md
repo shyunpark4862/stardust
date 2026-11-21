@@ -1,6 +1,6 @@
 # 최적화 영역 설계 (sd.optimize)
 
-> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 O1–O102)은 사용자가 정했다. O0–O5를 구현했고 O6의 1부(성능)를 마쳤다(§8). 나머지는 안이고, 시작 전에 정할 것은 §9에 있다.
+> 상태: **O0–O6 완료·승인** (2026-11-21). 큰 결정(§1.1 O1–O102)은 사용자가 정했다. 공개 함수 13개를 모두 구현했고(§8), O6의 코드 리뷰는 사용자가 직접 했다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -406,11 +406,11 @@ O6 1부(성능, 2026-11-20)에서 확인한 것:
 |---|---|
 | O0 준비 | API 문서 초안, 결과 객체의 틀, 시험 문제 모음(MGH 35, scipy 시험 함수), 대조 도구, 벤치마크 기준선(scipy). 완료(2026-11-20): §7, docs/api/optimize.md, 커밋 4151d2a의 `bench/optimize/o0/` |
 | O1 수치 미분과 최소제곱 | `approx_fprime`, `check_grad`, nls 커널을 `least_squares`로 옮기기(nls 비트 동일). 완료(2026-11-20): §3.1, §3.4, §7, 커밋 4151d2a의 `bench/optimize/o1/` |
-| O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum`. 완료(2026-11-20, 승인 대기): §3.2, §3.3, §7, 커밋 4151d2a의 `bench/optimize/o2/` |
-| O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B. 완료(2026-11-20, 승인 대기): §3.5, §7, 커밋 4151d2a의 `bench/optimize/o3/` |
-| O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact. 완료(2026-11-20, 승인 대기): §3.5, §7, 커밋 4151d2a의 `bench/optimize/o4/` |
-| O5 방정식계와 선형 최소제곱 | `root`(hybr, lm), `lsq_linear`, `nnls`. 완료(2026-11-20, 승인 대기): §3.4, §3.6, §7, 커밋 4151d2a의 `bench/optimize/o5/` |
-| O6 최적화와 일관성 점검 | 커널 속도(BFGS의 H를 n²으로 갱신하기, O61), `root('lm')`과 `least_squares('lm')`을 scipy와 비트까지 맞추기(O87), 메시지·시그니처의 영역 간 일관성, 코드 리뷰. 1부(성능, O94–O97) 완료(2026-11-20, 승인 대기): §3.4, §3.6, §7, 커밋 4151d2a의 `bench/optimize/o6/`. BFGS의 O(n²) 갱신(O99), 골든의 'lm' 175경우를 다시 기록(O98). 2부 코드 리뷰(O96) |
+| O2 스칼라 | `root_scalar`, `minimize_scalar`, 배치 `find_root bracket_root find_minimum bracket_minimum`. 완료·승인(2026-11-20): §3.2, §3.3, §7, 커밋 4151d2a의 `bench/optimize/o2/` |
+| O3 최소화 1 | `minimize`: Nelder–Mead, BFGS, L-BFGS-B. 완료·승인(2026-11-20): §3.5, §7, 커밋 4151d2a의 `bench/optimize/o3/` |
+| O4 최소화 2 | `minimize`: Newton-CG, trust-ncg, trust-exact. 완료·승인(2026-11-20): §3.5, §7, 커밋 4151d2a의 `bench/optimize/o4/` |
+| O5 방정식계와 선형 최소제곱 | `root`(hybr, lm), `lsq_linear`, `nnls`. 완료·승인(2026-11-20): §3.4, §3.6, §7, 커밋 4151d2a의 `bench/optimize/o5/` |
+| O6 최적화와 일관성 점검 | 커널 속도(BFGS의 H를 n²으로 갱신하기, O61), `root('lm')`과 `least_squares('lm')`을 scipy와 비트까지 맞추기(O87), 메시지·시그니처의 영역 간 일관성, 코드 리뷰. 1부(성능, O94–O97) 완료·승인(2026-11-20), 2부 코드 리뷰(O96)는 사용자가 직접 했다(2026-11-21): §3.4, §3.6, §7, 커밋 4151d2a의 `bench/optimize/o6/`. BFGS의 O(n²) 갱신(O99), 골든의 'lm' 175경우를 다시 기록(O98). 2부 코드 리뷰(O96) |
 
 진행 원칙은 다른 영역과 같다: 마일스톤마다 시작 전에 §9의 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
 

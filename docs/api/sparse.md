@@ -1,8 +1,8 @@
 # sd.sparse API
 
-> 상태: **초안** (SP0, 2026-11-20). 공개된 이름은 아직 없다. 모듈 `sd.sparse`와 Accelerate LU 래퍼(비공개)만 있다. 아래 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP20의 결정을 입힌 안이다. 이름은 마일스톤 SP1–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
+> 상태: **초안** (SP1, 2026-11-21). 공개된 이름은 §2의 형식과 변환(SP1)이다: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
 
-- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP20), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP34), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/sparse/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name`), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -10,8 +10,8 @@
 ### §1.1 이름과 호출 모양
 - **scipy의 희소 배열 꼴만 둔다**(SP2): `coo_array`, `csr_array`, `csc_array`, `dok_array`. `*`는 원소별 곱, `@`는 행렬 곱이다(`sd.ndarray`와 같다). 옛 `spmatrix` 클래스(`csr_matrix` 등)와 그것을 돌려주는 옛 함수(`eye`, `identity`, `diags`, `spdiags`, `random`, `rand`, `bmat`)는 없다.
 - **이름공간은 평평하다**(SP3): scipy.sparse.linalg의 함수도 하위 모듈 없이 `sd.sparse`에 있다: `sd.sparse.spsolve`, `sd.sparse.cg`, `sd.sparse.eigsh`, `sd.sparse.norm`, `sd.sparse.LinearOperator`. `sd.sparse.linalg`는 없다(`AttributeError`; 별칭을 두지 않는다). 두 scipy 모듈의 공개 이름은 서로 겹치지 않는다. 다른 영역과 같은 개념의 이름(`inv`, `expm`, `kron`, `tril`, `triu`, `matrix_transpose`)은 그 이름 그대로 둔다(DESIGN.md §1.4).
-- **데이터는 위치로만, 옵션은 키워드로만** 받는다(API.md, 다른 영역과 같다). 데이터 인자의 이름은 scipy의 것이다(`A`, `b`, `B`, `x`, `blocks`). 메시지는 그 이름을 쓴다: `spsolve(): 'A' must be a sparse array, an sd.ndarray or a LinearOperator, not list`.
-- **별칭이 없다**: `toarray`만(`todense` 없음), `conj`만(`conjugate` 없음), `@`만(`dot` 없음), `coords`만(COO의 `row`·`col`은 SP1에서 정한다). scipy의 `random_state`는 없고 무작위는 `rng`뿐이다.
+- **데이터는 위치로만, 옵션은 키워드로만** 받는다(API.md, 다른 영역과 같다). 데이터 인자의 이름은 scipy의 것이다(SP28: `A`, `b`, `B`, `x`, `blocks`). 메시지는 그 이름을 쓴다: `spsolve(): 'A' must be a sparse array, an sd.ndarray or a LinearOperator, not list`.
+- **별칭이 없다**(SP24): `toarray`만(`todense` 없음), `conj`만(`conjugate` 없음), `@`만(`dot` 없음), `coords`만(COO의 `row`·`col` 없음). scipy의 `random_state`는 없고 무작위는 `rng`뿐이다.
 - **반복 상한은 `max_iter`다**(optimize O14): 반복법의 scipy `maxiter`, `lsqr`의 `iter_lim`, `eigsh`·`eigs`·`svds`의 `maxiter`, `onenormest`의 `itmax`가 모두 `max_iter`다(`[scipy와 다름]`).
 - `callback`, `show`, `check`, `calc_var`, `options`, `use_umfpack`, `permc_spec`, `diag_pivot_thresh`, `overwrite_*`, `solver`는 두지 않는다(SP5·SP4·SP6에서 정한다; 추천은 두지 않기, §10).
 - 틀린 호출 모양은 함수 이름으로 시작한다(API.md §2.1): `spsolve(): unexpected keyword argument 'permc_spec'`.
@@ -19,12 +19,12 @@
 ### §1.2 형식과 dtype (SP6–SP9)
 - **형식**: COO, CSR, CSC, DOK. BSR·DIA는 첫 판에 없다(SP6; 나중 후보). 그래서 scipy에서 DIA를 돌려주는 `eye_array`·`diags_array`와 BSR을 돌려주는 `kron`은 `format=None`이면 CSR을 돌려준다(`[scipy와 다름]`; 값은 같고 `.format`만 다르다). `format=`에 `'dia'`·`'bsr'`·`'lil'`을 주면 `ValueError`다.
 - **만들기용 형식은 DOK 하나다**(SP7). LIL(`lil_array`)은 없다. 행 단위로 만들 때는 `coo_array((data, (row, col)))`나 `vstack`을 쓴다.
-- **값의 dtype**은 배열의 넷(`bool`, `int64`, `float64`, `complex128`)이고 승격 규칙도 배열과 같다(SP9, API.md §1). scipy의 다른 dtype(int32, float32, uint8 …)의 입력은 `TypeError`다(배열의 `asarray`와 같은 규칙; `astype`으로 명시적으로 바꾼다). 희소 선형대수는 float64와 complex128로 계산한다: bool·int64는 float64로 바꾼다(sd.linalg와 같다). 직접 풀이·반복법·고유값 모두 complex를 받는다.
-- **색인의 dtype은 안팎 모두 int64다**(SP8). `indices`, `indptr`, `coords`는 int64 `sd.ndarray`다. scipy의 `get_index_dtype`처럼 크기에 따라 int32를 고르지 않는다. scipy 객체를 들여올 때 int32 색인은 int64로 넓힌다.
+- **값의 dtype**은 배열의 넷(`bool`, `int64`, `float64`, `complex128`)이고 승격 규칙도 배열과 같다(SP9, API.md §1). 받는 값은 `sd.asarray`의 규칙으로 바꾼다(docs/api/array.md §3.3): numpy의 정보 손실 없는 dtype(int8–int32, uint8–uint32, float16·float32, complex64)은 넓히고(`[scipy와 다름]`: scipy는 float32 등을 그대로 둔다), uint64·문자열·object는 `TypeError`다. 희소 선형대수는 float64와 complex128로 계산한다: bool·int64는 float64로 바꾼다(sd.linalg와 같다). 직접 풀이·반복법·고유값 모두 complex를 받는다.
+- **색인의 dtype은 안팎 모두 int64다**(SP8). `indices`, `indptr`, `coords`는 int64 `sd.ndarray`다. scipy의 `get_index_dtype`처럼 크기에 따라 int32를 고르지 않는다. 받는 색인 배열은 정수 dtype이어야 하고(int32 등은 넓힌다; bool·float은 `TypeError`), scipy 객체의 int32 색인도 int64로 넓힌다.
 
 ### §1.3 표준 꼴과 0 (SP10–SP12)
 - **CSR·CSC는 언제나 표준 꼴이다**(SP10): 줄마다 색인이 오름차순이고 중복이 없다. 모든 생성자와 연산의 결과가 그렇다. 그래서 CSR·CSC에는 `has_canonical_format`, `has_sorted_indices`, `sort_indices`, `sorted_indices`, `sum_duplicates`, `check_format`, `prune`이 없다(`[scipy와 다름]`). `(data, indices, indptr)`로 만들 때 범위를 검사하고(틀리면 `ValueError`), 정렬되지 않았거나 중복이 있으면 정렬하고 더한다(`copy=False`면 `ValueError`).
-- **COO는 비표준 꼴을 가질 수 있다**(scipy와 같다). `has_canonical_format`과 `sum_duplicates()`는 COO에만 있다.
+- **COO는 비표준 꼴을 가질 수 있다**(scipy와 같다). `has_canonical_format`과 `sum_duplicates()`는 COO에만 있다. `has_canonical_format`은 저장된 원소가 실제로 행 우선 정렬이고 중복이 없는지다(SP32; 처음 물을 때 알아내 둔다; `[scipy와 다름]`: scipy는 `(data, (row, col))`·전치·`astype` 뒤에 확인 없이 False로 둔다).
 - **중복은 입력 순서대로 왼쪽부터 차례로 더한다**: `[1, 1e16, 1, -1e16]`(같은 자리)은 0이다. scipy의 `tocsr()`는 줄의 원소가 15개 이하일 때 이 규칙과 같고, 더 긴 줄과 COO의 `sum_duplicates()`(첫 원소 + 나머지의 `np.add.reduce`)는 순서가 다르다(반올림 크기의 차이, docs/design/sparse.md §2.3).
 - **연산이 만든 0을 지우는지는 연산마다 scipy의 규칙이다**(SP11): 희소끼리의 `+`, `-`, `*`, 비교와 희소 × 희소 곱은 결과의 정확한 0을 지우고, 스칼라 곱(`A * 0`), `-A`, 원소별 함수는 패턴을 그대로 둔다. 표는 §3.1이다.
 - **암시적 0은 강한 0이다**(SP12): 저장되지 않은 원소는 산술에 들지 않는다. `A * nan`, `A * inf`는 저장된 원소만 NaN·inf가 되고, `A @ x`에서 x의 NaN은 그 열에 저장된 원소가 있는 행에만 퍼진다.
@@ -59,15 +59,17 @@ dok_array(arg, /, *, shape=None, dtype=None, copy=None)
 issparse(x, /)
 matrix_transpose(A, /)
 ```
-- `sparray`는 네 형식의 바탕 클래스다(`isinstance(A, sd.sparse.sparray)`). 직접 만들지 않는다. `issparse(x)`는 `isinstance(x, sparray)`와 같다(scipy의 옛 행렬은 False다).
+- 희소 배열은 `sd.ndarray` 필드를 가진 Python 클래스다(SP21). `sparray`는 네 형식의 바탕 클래스다(`isinstance(A, sd.sparse.sparray)`). 직접 만들지 않는다(`sparray(): the base class is not constructed directly; ...`, `TypeError`). `issparse(x)`는 `isinstance(x, sparray)`와 같다(scipy의 희소 객체는 False다).
 - **생성자의 `arg`**(scipy와 같은 꼴):
-  - 다른 희소 배열(형식 변환; `copy`를 따른다), scipy의 희소 배열과 옛 행렬(모든 형식; **언제나 복사한다**, int32 색인은 int64로),
-  - 밀집 `sd.ndarray`·numpy 배열·수의 시퀀스(1·2차원; 0이 아닌 원소만 저장한다. NaN은 저장된다),
+  - 다른 희소 배열(형식 변환; `copy`를 따른다), scipy의 희소 배열과 옛 행렬(모든 형식; **언제나 복사한다**(SP23), int32 색인은 int64로; `copy=False`면 `ValueError`),
+  - 밀집 `sd.ndarray`·numpy 배열·수의 시퀀스(1·2차원; 0이 아닌 원소만 저장한다. NaN은 저장되고 -0.0은 저장되지 않는다),
   - `(M, N)`이나 `(N,)`의 모양 tuple(빈 배열; `dtype=None`이면 float64),
-  - COO·CSR·DOK·CSC 모두 `(data, (row, col))`(1차원은 `(data, (i,))`)과 CSR·CSC의 `(data, indices, indptr)`. 각 배열은 `sd.ndarray`나 numpy 배열이고, 색인은 정수여야 한다(아니면 `TypeError`).
-- `shape`: 없으면 색인의 최댓값 + 1이다(scipy와 같다). 색인이 범위 밖이면 `ValueError`다.
-- `dtype`: 배열의 `dtype=` 규칙이다(dtype 객체나 그 이름; API.md §1). 주면 명시적 변환이다.
-- `copy`: 배열의 `copy=` 규칙이다(None은 필요할 때만 복사, True는 언제나, False는 복사가 필요하면 `ValueError`; docs/api/array.md §1.8). scipy의 기본 `copy=False`는 "복사하지 않을 수 있으면"의 뜻이라 이쪽의 None과 같다.
+  - COO·CSR·DOK·CSC 모두 `(data, (row, col))`(1차원은 `(data, (i,))`; scipy의 DOK는 받지 않는다)과 CSR·CSC의 `(data, indices, indptr)`. 각 배열은 `sd.ndarray`, numpy 배열이나 시퀀스이고, 색인은 정수여야 한다(아니면 `TypeError`). tuple을 가르는 규칙은 scipy와 같다: 정수만이면 모양, 둘째 원소가 배열의 tuple이면 좌표, CSR·CSC에서 원소 셋이 배열이면 압축된 부분이다.
+  - `(data, indices, indptr)`는 검사한다(`ValueError`): `indptr`은 줄 수 + 1개이고 0에서 시작해 줄어들지 않고 저장 수에서 끝난다, 색인은 범위 안이다. 줄 안이 정렬되지 않았거나 중복이 있으면 정렬하고 입력 순서대로 더한다(§1.3).
+- **색인 배열은 언제나 복사하고 검사한다**(SP30; `copy`와 상관없다): 받은 배열을 나중에 고쳐도 이 배열의 표준 꼴이 깨지지 않는다. 범위 밖은 `csr_array(): index 5 is out of bounds for axis 1 with size 4`(`ValueError`)다. `[scipy와 다름]`: scipy는 받은 색인 배열을 검사하지 않고 그대로 쓴다.
+- `shape`: 없으면 색인의 최댓값 + 1이다(scipy와 같다; 빈 색인이면 `ValueError`). int 하나(1차원)나 int의 tuple이고, 입력의 모양과 다르면 `ValueError`다.
+- `dtype`: 배열의 `dtype=` 규칙이다(dtype 객체나 그 이름; API.md §1). 주면 명시적 변환이다(float → int는 포화, NaN → 0). 밀집 입력은 0이 아닌 자리를 원래 값으로 고른 뒤에 바꾼다(scipy와 같다: 0이 된 값도 저장된 원소로 남는다).
+- `copy`(SP27): 배열의 `copy=` 규칙으로 값 배열 `data`에 대한 것이다(None은 필요할 때만 복사, True는 언제나, False는 복사가 필요하면 `ValueError`; docs/api/array.md §1.8). 값 배열은 dtype이 맞고 연속이고, CSR·CSC로는 이미 표준 꼴이면 받은 것을 그대로 쓴다. 밀집 입력, 시퀀스, scipy 객체, DOK로의 변환, 정렬·중복 더하기는 복사다. 같은 형식의 희소 배열을 받으면 배열을 나누는 새 객체다(DOK는 해시 맵을 나눈다, scipy와 같다). scipy의 기본 `copy=False`("복사하지 않을 수 있으면")는 이쪽의 None과 같다.
 - `matrix_transpose(A)`: 2차원의 전치(`A.T`와 같다). 1차원은 `ValueError`다(배열과 같다).
 
 ```
@@ -92,11 +94,11 @@ csc_array.indices
 csc_array.indptr
 sparray.toarray()
 sparray.to_scipy(*, copy=None)
-sparray.tocoo(*, copy=False)
-sparray.tocsr(*, copy=False)
-sparray.tocsc(*, copy=False)
-sparray.todok(*, copy=False)
-sparray.asformat(format, /, *, copy=False)
+sparray.tocoo(*, copy=None)
+sparray.tocsr(*, copy=None)
+sparray.tocsc(*, copy=None)
+sparray.todok(*, copy=None)
+sparray.asformat(format, /, *, copy=None)
 sparray.astype(dtype, /, *, copy=True)
 sparray.copy()
 sparray.transpose()
@@ -105,20 +107,28 @@ sparray.reshape(shape, /, *, copy=None)
 sparray.resize(shape, /)
 sparray.nonzero()
 sparray.count_nonzero(*, axis=None)
-sparray.eliminate_zeros()
+coo_array.eliminate_zeros()
+csr_array.eliminate_zeros()
+csc_array.eliminate_zeros()
 coo_array.sum_duplicates()
 ```
-- `nnz`는 저장된 원소의 수(저장된 0 포함), `count_nonzero()`는 0이 아닌 값의 수다. `format`은 `'coo'`, `'csr'`, `'csc'`, `'dok'`이다.
-- `data`는 쓸 수 있는 `sd.ndarray`이고(값만 바꾸는 흔한 쓰임: `A.data *= 2`), `indices`, `indptr`, `coords`는 **쓰기 금지 배열**이다(바꾸면 표준 꼴이 깨진다; SP1에서 정한다). 읽을 때 복사하지 않는다.
-- `.T`, `.mT`, `transpose()`: 2차원이면 같은 일이다. CSR의 `.T`는 같은 버퍼의 CSC 뷰다(scipy와 같다). 1차원의 `transpose()`는 자신이다.
-- `toarray()`: C 순서의 새 `sd.ndarray`다. `np.asarray(A)`는 `toarray()`를 짚는 `TypeError`다(밀집으로 몰래 바뀌지 않는다; SP1에서 정한다).
-- `to_scipy(copy=None)`: 같은 형식의 scipy 배열(`scipy.sparse.csr_array` 등)이다. 값·색인 배열은 복사하지 않는 numpy 뷰이고 색인 뷰는 읽기 전용이다. `copy=True`면 복사한다(이름과 꼴은 SP1에서 정한다).
-- `astype`: 배열의 명시적 변환 규칙(float → int는 포화, NaN → 0)이고 변환 뒤 0이 된 값도 저장된 원소로 남는다(scipy와 같다). scipy의 `casting=`은 없다.
-- `reshape`: 모양은 인자 하나다(`A.reshape((3, 2))`; 배열과 같다). `order=`는 없다(C 순서). `resize`는 제자리에서 바꾸고 None을 돌려준다(scipy와 같다).
-- `tocoo` 등의 `copy=False`는 같은 형식이면 자신을 돌려준다는 뜻이다(scipy와 같다).
-- `eliminate_zeros()`: 저장된 0을 제자리에서 지운다. `sum_duplicates()`: COO를 제자리에서 표준 꼴(행 우선, 중복은 입력 순서대로 더함)로 만든다.
-- DOK에는 Python `dict`의 메서드(`keys`, `items`, `get`, `pop`, `update` …)가 없다(SP1에서 정한다). 인덱싱(§4)과 `tocoo()`로 쓴다.
-- `repr`는 한 줄이다: `<csr_array of shape (3, 4), float64, 5 stored elements>`.
+- `nnz`는 저장된 원소의 수(저장된 0 포함), `count_nonzero()`는 0이 아닌 값의 수다. `size`는 원소의 수(Python int, 2⁶³을 넘을 수 있다). `format`은 `'coo'`, `'csr'`, `'csc'`, `'dok'`이다.
+- `data`는 쓸 수 있는 `sd.ndarray`이고(SP22; 값만 바꾸는 흔한 쓰임: `A.data *= 2`), 같은 모양의 `sd.ndarray`를 대입할 수 있다(dtype이 바뀌어도 된다, scipy와 같다; 다르면 `.data: the values must have shape (3,), got (2,)`). `indices`, `indptr`, `coords`는 **쓰기 금지 배열**이고 대입할 수 없다(바꾸면 표준 꼴이 깨진다). 읽을 때 복사하지 않는다.
+- `.T`, `.mT`, `transpose()`: 2차원이면 같은 일이다. CSR의 `.T`는 같은 세 배열의 CSC 뷰다(scipy와 같다). 1차원의 `.T`·`.mT`는 `sd.ndarray`처럼 `ValueError`이고(SP31)(`.T: the array must have 2 dimensions, got 1`; `[scipy와 다름]`: scipy는 자신), `transpose()`는 자신이다.
+- `real`, `imag`, `conj()`: 결과의 형식은 scipy의 것이다(COO·CSR·CSC는 같은 형식, DOK의 `real`·`imag`와 complex의 `conj()`는 CSR). 실수 dtype의 `real`은 값 배열을 나누고, `conj()`는 언제나 새 배열이다.
+- `toarray()`: C 순서의 새 `sd.ndarray`이고 0에 저장된 값을 더한 것이다(scipy와 같다): 저장된 -0.0은 +0.0이 되고, COO의 중복은 저장 순서로 더해진다. `np.asarray(A)`와 `sd.asarray(A)`는 `toarray()`를 짚는 `TypeError`다(밀집으로 몰래 바뀌지 않는다; SP26). `len(A)`, `bool(A)`, `iter(A)`도 `TypeError`다(`[scipy와 다름]`: scipy의 DOK는 `len`이 저장 수, `bool`은 `ValueError`이고 (1, 1)이면 값).
+- `to_scipy(copy=None)`(SP23): 같은 형식의 scipy 배열(`scipy.sparse.csr_array` 등)이다. 값·색인 배열은 복사하지 않는 numpy 뷰이고 색인 뷰는 읽기 전용이다(그래서 scipy의 제자리 메서드 `eliminate_zeros` 등은 그 객체에서 `ValueError`다). 값 뷰는 쓸 수 있고 이 배열과 나눈다. `copy=True`면 복사한다. DOK는 언제나 복사한다(`copy=False`면 `ValueError`).
+- `tocoo`, `tocsr`, `tocsc`, `todok`, `asformat`(SP27, SP29): 같은 형식이면 자신(`copy=True`면 복사)이고, 아니면 새 객체다. 나눌 수 있는 배열은 나눈다(CSR → COO는 값과 열 색인을, 표준 꼴 COO → CSR은 값과 열 색인을). 복사가 필요한 변환(CSR ↔ CSC, DOK와의 변환, 정렬·중복 더하기)에 `copy=False`면 `ValueError`다(`tocsc(): copy=False, but converting csr to csc requires a copy`). `asformat(None)`은 자신이고, 그 밖의 형식 이름은 `ValueError`(`'format' must be 'coo', 'csr', 'csc', 'dok' or None, not 'lil'`)다. 1차원은 CSC가 될 수 없다(`ValueError`).
+  - DOK에서 바꾸면 키를 정렬하므로 넣은 순서와 무관한 행 우선 순서다(`[scipy와 다름]`: scipy는 넣은 순서). CSC → COO는 열 우선 순서다(scipy와 같다).
+- `astype`: 배열의 명시적 변환 규칙(float → int는 포화, NaN → 0; complex → 실수는 `TypeError`)이고 변환 뒤 0이 된 값도 저장된 원소로 남는다(scipy와 같다). 형식은 그대로이고, COO는 바꾼 뒤 중복을 더한다(scipy와 같다). `copy`는 배열의 `astype`과 같다(같은 dtype이면 `copy=True`만 복사, 다른 dtype에 `copy=False`면 `ValueError`). scipy의 `casting=`은 없다.
+- `copy()`: 값이 이 배열과 메모리를 나누지 않는 같은 형식의 배열이다(쓰기 금지인 색인 배열은 나눈다).
+- `reshape(shape, copy=None)`: 모양은 인자 하나이고(`A.reshape((3, 2))`, `A.reshape(6)`; -1 하나를 받는다; 배열과 같다) 1·2차원이다. C 순서다(`order=`는 없다). 결과는 모든 형식에서 COO다(scipy와 같다). 모양이 같으면 자신이다(`copy=True`면 복사). 값 배열은 나눈다(DOK는 복사라 `copy=False`면 `ValueError`).
+- `resize(shape)`: 제자리에서 모양을 바꾸고 None을 돌려준다(scipy와 같다). 새 모양 밖의 원소는 버리고 새 행·열은 비어 있다. 차원 수는 바뀌지 않는다(`[scipy와 다름]`: scipy의 COO는 바꾼다).
+- `nonzero()`: 0이 아닌 값의 자리, 축마다 int64 `sd.ndarray` 하나(쓸 수 있는 새 배열)다. 순서는 scipy와 같다: CSR·CSC·DOK는 행 우선, COO는 저장된 순서(중복도 그대로).
+- `count_nonzero(axis=None)`: COO의 중복을 먼저 더해(배열은 바꾸지 않는다; `[scipy와 다름]`: scipy는 제자리에서 `sum_duplicates()`를 한다) 0이 아닌 값을 센다. `axis=None`이면 Python int, 0이나 1(음수 포함)이면 다른 축의 색인마다의 int64 `sd.ndarray`다(1차원은 int).
+- `eliminate_zeros()`: 저장된 0(-0.0 포함)을 제자리에서 지운다(COO·CSR·CSC; scipy처럼 DOK에는 없다). `sum_duplicates()`: COO를 제자리에서 표준 꼴(행 우선, 중복은 입력 순서대로 더함)로 만든다.
+- DOK에는 Python `dict`의 메서드(`keys`, `items`, `get`, `pop`, `update` …)가 없다(SP25). 원소는 `A[i, j]`, `A[i, j] = v`(1차원은 `A[i]`)로 읽고 쓴다: 축마다 int 하나(numpy의 정수 포함, bool 제외; 음수는 끝에서), 범위 밖은 `IndexError`, 읽으면 Python 스칼라(없는 자리는 그 dtype의 0), 쓰기는 배열의 원소 대입 규칙(암묵적 하향 변환은 `TypeError`)이고 0(-0.0 포함)을 넣으면 그 키를 지운다(scipy와 같다). 그 밖의 인덱싱은 §4다. 다른 형식에서 바꿀 때 저장된 0은 남는다(scipy와 같다).
+- `repr`(와 `str`)는 한 줄이다: `<csr_array of shape (3, 4), float64, 5 stored elements>`.
 
 ## §3. 연산 (SP2)
 
@@ -331,16 +341,7 @@ norm(x, /, *, ord=None, axis=None)
 docs/design/sparse.md §9와 같은 목록이다. 결정이 나면 이 문서와 그 문서를 함께 고친다.
 
 - **SP0**: 정했다(SP6–SP20, docs/design/sparse.md §1.1).
-- **SP1**
-  1. 클래스: Python 클래스에 `sd.ndarray` 필드(추천, frame의 `Series`와 같은 예외) / nanobind C++ 클래스.
-  2. `indices`·`indptr`·`coords`는 쓰기 금지, `data`는 쓸 수 있다(추천) / 모두 쓸 수 있다(scipy와 같다).
-  3. scipy와 주고받기: 들여올 때 언제나 복사, 내보내기는 `to_scipy(*, copy=None)`의 뷰(추천) / `sd.sparse.asarray(obj, *, copy=None)` 꼴의 함수 하나.
-  4. 별칭: `toarray`·`conj`·`@`만(추천) / scipy처럼 모두.
-  5. COO의 `row`·`col`: 두지 않고 `coords`만(추천, 별칭 없음) / scipy처럼 `coords[0]`·`coords[1]`의 이름으로 둔다(scipy 사용자의 코드가 많이 쓴다).
-  6. DOK의 `dict` 메서드: 두지 않는다(추천) / 둔다.
-  7. `np.asarray(A)`: `toarray()`를 짚는 `TypeError`(추천) / scipy처럼 0차원 object 배열.
-  8. 생성자의 `copy`: 배열의 `copy=None` 규칙(추천) / scipy의 `copy=False`.
-  9. 데이터 인자의 이름: scipy의 `A`, `b`(추천; 메시지 `'A'`) / sd.linalg의 `x`, `a`.
+- **SP1**: 정했다(SP21–SP34, docs/design/sparse.md §1.1).
 - **SP2**
   1. 밀집 피연산자로 numpy 배열: `TypeError`(추천, API.md §5) / 받는다.
   2. 원소별 함수: 메서드만, `sd.sin(A)`는 메서드를 짚는 `TypeError`(추천) / `sd.sin(A)`도 받는다(f(0) = 0인 함수만).

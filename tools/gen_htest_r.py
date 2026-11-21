@@ -10,8 +10,11 @@ binom.test, prop.test, TukeyHSD, p.adjust, pchisq, car::leveneTest. A problem is
 the same test with the same options; the others (Yuen's trim, alexandergovern, the Cressie-Read family,
 cramervonmises, anderson, brunnermunzel, median_test, page_trend_test, epps_singleton, batches,
 ...) are left out. Where R's definition differs from scipy's (ks.test's exact distribution with
-ties, wilcox.test's exact switch at n < 50, fisher.test's conditional MLE odds ratio, prop.test's
-one-sample variance), the record keeps R's own value; the comparison says which differ.
+ties, wilcox.test's exact switch at n < 50 and its zeros ranked as Pratt's, fisher.test's
+conditional MLE odds ratio, prop.test's one-sample variance), the record keeps R's own value; the
+comparison says which differ. wilcox.test's exact p-values with ties are conditional on the
+midranks, as sd's method='exact' (H45): the H3 problems with ties and method='exact' compare
+the two.
 
 Each record: the R call (its data vectors shown as c(...)), the inputs' digest, and R's htest fields: statistic,
 parameter (df), p.value, conf.int, estimate; for TukeyHSD the matrix of diff, lwr, upr, p adj;
@@ -20,7 +23,15 @@ for p.adjust the adjusted vector. Doubles go to R as %.17g (exact) and come back
 Also writes tests/htest/data/r_gof.json: the goodness-of-fit packages nortest and goftest (decision
 H44; GOF_PRELUDE below).
 
-Run: .venv/bin/python tools/gen_htest_r.py      (needs Rscript on PATH, and nortest and goftest)
+Also writes r_coin.json beside r.json: the `coin` package's conditional exact tests (decision H54;
+COIN_PRELUDE below) on the H3 problems with ties or zeros, where base R has none: ansari_test,
+wilcox_test, wilcoxsign_test (zeros 'Pratt' and 'Wilcoxon') with distribution = "exact", and Page's
+test as friedman_test of an ordered treatment (each distribution coin takes; one that it refuses is
+recorded as its error). One-sided p-values only ("less" and "greater"): coin's two-sided p-value is
+P(|T - mu| >= |t - mu|), another rule than scipy's 2 min(...), and its direction is that of its own
+standardized statistic. Without coin the file is left as it is.
+
+Run: .venv/bin/python tools/gen_htest_r.py      (needs Rscript on PATH, and nortest, goftest and coin)
 """
 
 import json
@@ -36,6 +47,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "tests" / "htest" / "data" / "r.json"
 OUT_GOF = ROOT / "tests" / "htest" / "data" / "r_gof.json"  # nortest and goftest (H44)
+OUT_COIN = ROOT / "tests" / "htest" / "data" / "r_coin.json"  # coin (H54)
 
 PRELUDE = r"""
 out <- function(id, name, v) {
@@ -132,7 +144,11 @@ def r_call(p):
         return f"wilcox.test({vec(a[0])}, {vec(a[1])}, alternative = '{alt(p)}', correct = {c}, exact = {e})"
     if f == "ranksums":
         return f"wilcox.test({vec(a[0])}, {vec(a[1])}, alternative = '{alt(p)}', correct = FALSE, exact = FALSE)"
-    if f == "wilcoxon" and kw.get("zero_method", "wilcox") == "wilcox":
+    # R 4.6's wilcox.test ranks the zeros with the other differences and leaves them out of V
+    # (Pratt's): its exact p-value is zero_method='pratt''s conditional one (H45)
+    if f == "wilcoxon" and (
+        kw.get("zero_method", "wilcox") == "wilcox" or (kw["zero_method"] == "pratt" and kw.get("method") == "exact")
+    ):
         c = "TRUE" if kw.get("correction", False) else "FALSE"
         e = exact(kw.get("method", "auto"))
         if len(a) > 1:
@@ -253,6 +269,64 @@ def r_gof_call(p):
     return None
 
 
+# coin (H54): one problem's two samples as a data frame of y and the group g (x first), or the
+# differences' pair; each test with each alternative, the p-value by coin::pvalue
+COIN_PRELUDE = """
+coin_two <- function(test, x, y, ...) {
+  d <- data.frame(y = c(x, y), g = factor(rep(c("x", "y"), c(length(x), length(y))), levels = c("x", "y")))
+  out <- list()
+  for (alt in c("less", "greater")) {
+    r <- tryCatch(test(y ~ g, data = d, alternative = alt, ...), error = function(e) e)
+    out[[paste0(alt, ".p.value")]] <- if (inherits(r, "error")) NA else coin::pvalue(r)
+  }
+  out
+}
+coin_sign <- function(x, y, zm) {
+  out <- list()
+  for (alt in c("less", "greater")) {
+    r <- tryCatch(coin::wilcoxsign_test(x ~ y, alternative = alt, distribution = "exact", zero.method = zm),
+                  error = function(e) e)
+    out[[paste0(alt, ".p.value")]] <- if (inherits(r, "error")) NA else coin::pvalue(r)
+  }
+  out
+}
+coin_page <- function(m) {
+  d <- data.frame(y = as.vector(t(m)), trt = factor(rep(seq_len(ncol(m)), nrow(m)), ordered = TRUE),
+                  blk = factor(rep(seq_len(nrow(m)), each = ncol(m))))
+  out <- list()
+  for (dist in c("exact", "asymptotic")) {
+    r <- tryCatch(coin::friedman_test(y ~ trt | blk, data = d, distribution = dist, alternative = "greater"),
+                  error = function(e) e)
+    out[[paste0(dist, ".p.value")]] <- if (inherits(r, "error")) NA else coin::pvalue(r)
+  }
+  out
+}
+"""
+COIN = {
+    "mannwhitneyu": ("ties-exact", "ties-exact-greater", "exact-5-7", "exact-forced"),
+    "ansari": ("ties-exact", "exact", "exact-odd"),
+    "wilcoxon": ("ties-exact", "zeros-exact-pratt", "zeros-auto-small", "exact-10", "paired"),
+    "page_trend_test": ("ties", "exact", "exact-20x3"),
+}
+
+
+def r_coin_call(p):
+    """coin's call for problem p (COIN), or None."""
+    func, case = p.id.split("/", 1)
+    if case not in COIN.get(func, ()):
+        return None
+    a = p.args
+    if func == "mannwhitneyu":
+        return f"coin_two(coin::wilcox_test, {vec(a[0])}, {vec(a[1])}, distribution = 'exact')"
+    if func == "ansari":
+        return f"coin_two(coin::ansari_test, {vec(a[0])}, {vec(a[1])}, distribution = 'exact')"
+    if func == "wilcoxon":
+        y = vec(a[1]) if len(a) > 1 else f"rep(0, {np.size(a[0])})"
+        zm = "Pratt" if p.kwargs.get("zero_method", "wilcox") == "pratt" else "Wilcoxon"
+        return f"coin_sign({vec(a[0])}, {y}, '{zm}')"
+    return f"coin_page({mat(a[0])})"
+
+
 def run_r(prelude, calls, P):
     """{problem: record} of R's results for {problem: call}, and R's version."""
     script = prelude + "\n".join(f"run({json.dumps(pid)}, {c})" for pid, c in calls.items())
@@ -301,6 +375,23 @@ def main():
     ).stdout.strip()
     write(OUT_GOF, {"tool": "tools/gen_htest_r.py", "R": version, "packages": pkgs}, recs)
     print(f"{len(recs)} problems run with nortest and goftest ({pkgs})")
+    has_coin = subprocess.run(
+        ["Rscript", "--vanilla", "-e", 'cat(requireNamespace("coin", quietly = TRUE))'], capture_output=True, text=True
+    ).stdout.strip()
+    if has_coin != "TRUE":
+        print("coin is not installed: its record (r_coin.json) is left as it is (H54)")
+        return
+    calls = {pid: r_coin_call(p) for pid, p in P.PROBLEMS.items()}
+    calls = {k: v for k, v in calls.items() if v is not None}
+    recs, _ = run_r(PRELUDE + COIN_PRELUDE, calls, P)
+    pkgs = subprocess.run(
+        ["Rscript", "--vanilla", "-e", 'cat(paste("coin", packageVersion("coin")))'],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    write(OUT_COIN, {"tool": "tools/gen_htest_r.py", "R": version, "packages": pkgs}, recs)
+    print(f"{len(recs)} problems run with coin ({pkgs})")
 
 
 if __name__ == "__main__":

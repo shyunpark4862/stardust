@@ -11,7 +11,7 @@
 - 계약 대비: 그 영역의 계약 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, mixed는 |오차|/max(1, |값|))로 잰 가장 큰 오차를 한계로 나눈 값. 1 이하가 계약 안이다.
 - 비교 패키지(statsmodels 0.15.0, R 4.6.2, scikit-learn 1.9.1): 같은 참값, 같은 점에서 같은 척도로 잰 그 라이브러리의 오차다. 같은 양을 계산하는 공개 함수가 없으면 —, R이 없는 기계에서는 not run, 함수가 입력 전체를 거부하면 에러, 시간(120초)·메모리(2GB) 한도를 넘으면 멈춤, R의 glm이 기본 설정으로 시작값을 찾지 못하면 시작값 필요다. 제외: 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점의 수(정의가 다르거나 실패한 점; 다른 열에서 빠진다). compare는 이 열들의 변화를 알리기만 하고 종료 코드에 넣지 않는다.
 
-측정: 20261120-222439-cc758f7 (2026-11-20T22:24:39, cc758f7, 참값 0fbe4d0eeee7).
+측정: 20261120-222439-cc758f7 (2026-11-20T22:24:39, cc758f7, 참값 0fbe4d0eeee7), 20261121-083442-c080a9e+ (2026-11-21T08:34:42, c080a9e dirty, 참값 d18611e3becf).
 
 | 함수 | 영역 | 점 | 최대 ULP | 99.9% ULP | 최대 상대오차 | 노름 상대오차 | NaN·inf 점 | 계약 대비 | statsmodels 최대 ULP | statsmodels 99.9% ULP | statsmodels 최대 상대오차 | statsmodels 노름 상대오차 | statsmodels 제외 | R 최대 ULP | R 99.9% ULP | R 최대 상대오차 | R 노름 상대오차 | R 제외 | scikit-learn 최대 ULP | scikit-learn 99.9% ULP | scikit-learn 최대 상대오차 | scikit-learn 노름 상대오차 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -1310,3 +1310,83 @@
 | `robust/stackloss_huber` | scale | 1 | 4 | 4 | 6.44e-16 |  | 0 |  | 17 | 17 | 3.18e-15 |  | 0 | 1.06e+11 | 1.06e+11 | 1.93e-5 |  | 0 | — | — | — | — |
 | `robust/stackloss_huber` | weights | 21 | 5 | 5 | 7.01e-16 | 1.48e-16 | 0 |  | 207 | 207 | 2.93e-14 | 6.34e-15 | 0 | 1.47e+11 | 1.47e+11 | 2.23e-5 | 4.91e-6 | 0 | — | — | — | — |
 | `robust/stackloss_huber` | bse | 4 | 8 | 8 | 9.64e-16 | 1.09e-16 | 0 |  | 35 | 35 | 4.34e-15 | 2.98e-15 | 0 | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_both_aic | 3 | 1 | 1 | 1.31e-16 | 8.93e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_both_bic | 3 | 1 | 1 | 1.37e-16 | 9.70e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_both_cv | 3 | 1.11e+04 | 1.11e+04 | 1.30e-12 | 1.07e-12 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_forward_aic | 4 | 1 | 1 | 8.44e-17 | 5.44e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_forward_bic | 4 | 1 | 1 | 8.13e-17 | 5.55e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_forward_cv | 4 | 1 | 1 | 1.50e-16 | 6.98e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_backward_aic | 3 | 1 | 1 | 1.31e-16 | 8.93e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_backward_bic | 3 | 1 | 1 | 1.37e-16 | 9.70e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | step_backward_cv | 3 | 1.11e+04 | 1.11e+04 | 1.30e-12 | 1.07e-12 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | best_aic | 6 | 1 | 1 | 1.31e-16 | 7.27e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | best_bic | 6 | 1 | 1 | 1.37e-16 | 7.74e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | best_cp | 6 | 13 | 13 | 2.24e-15 | 1.14e-15 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | best_adjr2 | 6 | 5 | 5 | 8.81e-16 | 4.17e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | best_cv | 6 | 1.36e+04 | 1.36e+04 | 2.99e-12 | 1.14e-12 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | step_both_aic | 3 | 0 | 0 | 5.49e-17 | 3.39e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | step_both_bic | 3 | 0 | 0 | 4.16e-17 | 3.38e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | step_forward_aic | 3 | 0 | 0 | 5.49e-17 | 3.81e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | step_forward_bic | 3 | 0 | 0 | 5.49e-17 | 3.60e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | step_backward_aic | 3 | 0 | 0 | 5.49e-17 | 3.39e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | step_backward_bic | 3 | 0 | 0 | 4.16e-17 | 3.38e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | best_aic | 5 | 0 | 0 | 5.49e-17 | 3.21e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_gamma` | best_bic | 5 | 0 | 0 | 5.49e-17 | 3.38e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | step_both_aic | 3 | 0 | 0 | 9.14e-17 | 5.47e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | step_both_bic | 4 | 1 | 1 | 1.09e-16 | 6.09e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | step_forward_aic | 3 | 0 | 0 | 1.36e-17 | 1.14e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | step_forward_bic | 2 | 0 | 0 | 2.04e-17 | 1.93e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | step_backward_aic | 3 | 0 | 0 | 9.14e-17 | 5.47e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | step_backward_bic | 4 | 1 | 1 | 1.09e-16 | 6.09e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | best_aic | 5 | 0 | 0 | 9.14e-17 | 4.07e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_logit` | best_bic | 5 | 1 | 1 | 1.09e-16 | 5.32e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | step_both_aic | 3 | 0 | 0 | 5.54e-17 | 4.45e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | step_both_bic | 4 | 0 | 0 | 6.10e-17 | 3.64e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | step_forward_aic | 3 | 0 | 0 | 5.54e-17 | 4.37e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | step_forward_bic | 2 | 0 | 0 | 5.22e-17 | 3.77e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | step_backward_aic | 3 | 0 | 0 | 5.54e-17 | 4.45e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | step_backward_bic | 4 | 0 | 0 | 6.10e-17 | 3.64e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | best_aic | 5 | 0 | 0 | 5.54e-17 | 4.15e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/glm_poisson` | best_bic | 5 | 0 | 0 | 6.10e-17 | 4.02e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_both_aic | 4 | 1 | 1 | 1.11e-16 | 7.64e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_both_bic | 5 | 1 | 1 | 2.04e-16 | 1.29e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_both_cv | 3 | 1 | 1 | 2.35e-16 | 1.91e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_forward_aic | 2 | 1 | 1 | 1.53e-16 | 1.09e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_forward_bic | 1 | 1 | 1 | 2.04e-16 |  | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_forward_cv | 3 | 2 | 2 | 3.11e-16 | 2.14e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_backward_aic | 4 | 1 | 1 | 1.11e-16 | 7.64e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_backward_bic | 5 | 1 | 1 | 2.04e-16 | 1.29e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | step_backward_cv | 3 | 1 | 1 | 2.35e-16 | 1.91e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | best_aic | 5 | 1 | 1 | 1.53e-16 | 9.67e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | best_bic | 5 | 1 | 1 | 2.04e-16 | 1.29e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | best_cp | 5 | 39 | 39 | 4.67e-15 | 1.27e-15 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | best_adjr2 | 5 | 2 | 2 | 3.00e-16 | 2.39e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | best_cv | 5 | 2 | 2 | 3.11e-16 | 2.26e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_both_aic | 5 | 1 | 1 | 1.80e-16 | 1.06e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_both_bic | 5 | 1 | 1 | 2.45e-16 | 1.68e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_both_cv | 5 | 1 | 1 | 9.89e-17 | 5.59e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_forward_aic | 3 | 1 | 1 | 1.43e-16 | 1.09e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_forward_bic | 3 | 1 | 1 | 1.71e-16 | 1.22e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_forward_cv | 3 | 0 | 0 | 2.22e-17 | 1.90e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_backward_aic | 5 | 1 | 1 | 1.80e-16 | 1.06e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_backward_bic | 5 | 1 | 1 | 2.45e-16 | 1.68e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | step_backward_cv | 5 | 1 | 1 | 9.89e-17 | 5.59e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | best_aic | 7 | 1 | 1 | 1.80e-16 | 1.13e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | best_bic | 7 | 1 | 1 | 2.45e-16 | 1.62e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | best_cp | 7 | 21 | 21 | 4.49e-15 | 6.54e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | best_adjr2 | 7 | 3 | 3 | 4.18e-16 | 1.88e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | best_cv | 7 | 1 | 1 | 9.24e-17 | 4.29e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_both_aic | 5 | 0 | 0 | 9.79e-17 | 4.93e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_both_bic | 5 | 0 | 0 | 8.53e-17 | 6.23e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_both_cv | 5 | 2 | 2 | 2.40e-16 | 1.69e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_forward_aic | 3 | 1 | 1 | 1.29e-16 | 9.89e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_forward_bic | 3 | 1 | 1 | 1.15e-16 | 1.01e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_forward_cv | 3 | 0 | 0 | 6.09e-17 | 3.48e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_backward_aic | 5 | 0 | 0 | 9.79e-17 | 4.93e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_backward_bic | 5 | 0 | 0 | 8.53e-17 | 6.23e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | step_backward_cv | 5 | 2 | 2 | 2.40e-16 | 1.69e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | best_aic | 7 | 1 | 1 | 1.29e-16 | 7.65e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | best_bic | 7 | 1 | 1 | 1.15e-16 | 7.89e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | best_cp | 7 | 28 | 28 | 3.67e-15 | 6.07e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | best_adjr2 | 7 | 1 | 1 | 1.69e-16 | 9.97e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | best_cv | 7 | 2 | 2 | 3.21e-16 | 1.82e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |

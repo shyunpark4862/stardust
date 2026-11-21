@@ -564,19 +564,275 @@ def _model_tests_one(item):
     return name, p | {"meta": meta, "ref": vals}
 
 
+# ---------------------------------------------------------------- selection
+
+SEL_RUNS = [(d, c) for d in ("both", "forward", "backward") for c in ("aic", "bic", "pvalue", "cv")]
+SEL_BEST = ("aic", "bic", "cp", "adjr2", "cv")
+SEL_TIE = 1e-9  # a step or size whose best and runner-up (or the move threshold) are this close is flagged
+
+
+def selection_problems():
+    import numpy as np
+
+    import stardust as sd
+
+    def labels(n, seed, cv=5):
+        return np.asarray(sd.take(sd.asarray([i % cv for i in range(n)], dtype=sd.int64),
+                                  sd.random.default_rng(seed).permutation(n)).tolist())  # fmt: skip
+
+    out = {}
+    rng = np.random.default_rng(1121)
+    n = 80
+    Z = rng.standard_normal((n, 6))
+    X = np.round(Z + 0.4 * Z[:, [1, 2, 3, 4, 5, 0]], 6)
+    y = np.round(1.0 + X @ [0.8, 0.0, -0.45, 0.0, 0.25, 0.1] + rng.standard_normal(n), 6)
+    out["ols"] = dict(kind="lin", y=y, X=X, weights=None, intercept=True, labels=labels(n, 11), seed=11)
+    w = np.round(rng.uniform(0.3, 3.0, n), 6)
+    w[[3, 30, 61]] = 0.0
+    out["wls_zero"] = dict(kind="lin", y=y, X=X, weights=w, intercept=True, labels=labels(n, 12), seed=12)
+    Xn = np.round(rng.standard_normal((60, 5)) + 0.5, 6)
+    yn = np.round(Xn @ [0.6, 0.0, 0.35, -0.3, 0.0] + rng.standard_normal(60), 6)
+    out["noint"] = dict(kind="lin", y=yn, X=Xn, weights=None, intercept=False, labels=labels(60, 13), seed=13)
+    # two nearly equal columns: kappa of the design near 1e6
+    x1 = np.round(rng.standard_normal(70), 6)
+    Xc = np.column_stack(
+        [x1, x1 + np.round(1e-5 * rng.standard_normal(70), 11), np.round(rng.standard_normal((70, 3)), 6)]
+    )
+    yc = np.round(0.5 + Xc @ [0.7, 0.0, 0.0, 0.4, -0.2] + rng.standard_normal(70), 6)
+    out["cond"] = dict(kind="lin", y=yc, X=Xc, weights=None, intercept=True, labels=labels(70, 14), seed=14)
+    ng = 70
+    Xg = np.round(rng.standard_normal((ng, 4)), 6)
+    eta = 0.2 + Xg @ [0.9, 0.0, -0.5, 0.2]
+    out["glm_logit"] = dict(kind="glm", y=(rng.uniform(size=ng) < 1 / (1 + np.exp(-eta))).astype(float), X=Xg,
+                            family="binomial", link="logit", intercept=True, weights=None, labels=None)  # fmt: skip
+    out["glm_poisson"] = dict(kind="glm", y=rng.poisson(np.exp(0.5 * eta)).astype(float), X=Xg, family="poisson",
+                              link="log", intercept=True, weights=None, labels=None)  # fmt: skip
+    out["glm_gamma"] = dict(kind="glm", y=np.round(rng.gamma(3.0, np.exp(0.5 * eta) / 3.0), 6), X=Xg, family="gamma",
+                            link="log", intercept=True, weights=None, labels=None)  # fmt: skip
+    return out
+
+
+def _sel_val(dd):
+    return dd[0] + dd[1]
+
+
+def _sel_arb(dd):
+    from flint import arb
+
+    return arb(dd[0]) + arb(dd[1])
+
+
+def _sel_pvalue(p, ref, big, small, glm):
+    """The p-value of `small` within `big` (masks), in Arb: the partial F (big's scale) or the
+    likelihood ratio."""
+    from flint import arb
+
+    dr = bin(big).count("1") - bin(small).count("1")
+    if glm:
+        lr = -2 * (_sel_arb(ref["llf"][small]) - _sel_arb(ref["llf"][big]))
+        if lr < 0:
+            lr = arb(0)
+        return float(regref._chi2_upper(lr, arb(dr)).mid())
+    k = bin(big).count("1") + (1 if p["intercept"] else 0)
+    df = p["meta"]["nobs"] - k
+    sb, ss = _sel_arb(ref["ssr"][big]), _sel_arb(ref["ssr"][small])
+    f = ((ss - sb) / dr) / (sb / df)
+    if f < 0:
+        f = arb(0)
+    return float(regref._f_upper(f, arb(dr), arb(df)).mid())
+
+
+def _sel_simulate(p, ref, direction, crit, glm):
+    """stepwise's path with the reference values (docs/design/regression.md §3.8, G167-G170):
+    ([(action, column)], the smallest gap met, the masks of the path)."""
+    k = len(p["X"][0])
+    full = (1 << k) - 1
+    intercept = p["intercept"]
+    if direction == "forward":
+        cur = 0 if intercept else 1
+    else:
+        cur = full
+    if direction == "forward" and not intercept:
+        cur = 1  # the tests start it from the first column (start=[0])
+    vals = ref.get(crit)
+    moves, path, visited = [], [cur], {cur}
+    gap = float("inf")
+    while True:
+        cands = []
+        for j in range(k):
+            if cur >> j & 1:
+                if direction in ("both", "backward") and (intercept or bin(cur).count("1") > 1):
+                    cands.append((j, True))
+            elif direction in ("both", "forward"):
+                cands.append((j, False))
+        nxt = [cur & ~(1 << j) if d else cur | (1 << j) for j, d in cands]
+        pick = None
+        if crit == "pvalue":
+            pd = [(_sel_pvalue(p, ref, cur, m, glm), j, d, m) for (j, d), m in zip(cands, nxt) if d]
+            over = [x for x in pd if x[0] > 0.10]
+            for x in pd:
+                gap = min(gap, abs(x[0] - 0.10) / 0.10)
+            if over:
+                pick = max(over, key=lambda x: (x[0], -x[1]))
+            else:
+                pa = [(_sel_pvalue(p, ref, m, cur, glm), j, d, m) for (j, d), m in zip(cands, nxt) if not d]
+                for x in pa:
+                    gap = min(gap, abs(x[0] - 0.05) / 0.05)
+                under = [x for x in pa if x[0] <= 0.05]
+                if under:
+                    pick = min(under, key=lambda x: (x[0], x[1]))
+            if pick is not None:
+                pick = pick[1:]
+        else:
+            cv = _sel_val(vals[cur])
+            ds = [(_sel_val(vals[m]) - cv, j, d, m) for (j, d), m in zip(cands, nxt)]
+            if ds:
+                ds.sort(key=lambda x: (x[0], x[1]))
+                scale = max(1.0, abs(cv))
+                if len(ds) > 1:
+                    gap = min(gap, (ds[1][0] - ds[0][0]) / scale)
+                limit = -1e-7 if crit in ("aic", "bic") else 0.0
+                gap = min(gap, abs(ds[0][0] - limit) / scale)
+                if ds[0][0] < limit:
+                    pick = ds[0][1:]
+        if pick is None:
+            break
+        j, d, m = pick
+        if m in visited:
+            break
+        moves.append(("drop" if d else "add", j))
+        cur = m
+        visited.add(m)
+        path.append(m)
+    return moves, gap, path
+
+
+def _sel_best(p, ref, crit, glm):
+    """best_subset's choice with the reference values: (per size the best mask or None, the size
+    picked, the smallest gap, per size the criterion as an arb or None)."""
+    from flint import arb
+
+    k = len(p["X"][0])
+    intercept = p["intercept"]
+    nobs = p["meta"]["nobs"]
+    icpt = 1 if intercept else 0
+    gap = float("inf")
+    sizes = list(range(k + 1))
+
+    def masks_of(s):
+        return [m for m in range(2**k) if bin(m).count("1") == s and (intercept or m)]
+
+    def ranked(key, masks, sign=1.0):
+        nonlocal gap
+        vs = sorted((sign * _sel_val(key(m)), m) for m in masks)
+        if len(vs) > 1:
+            gap = min(gap, (vs[1][0] - vs[0][0]) / max(1.0, abs(vs[0][0])))
+        return vs[0][1]
+
+    if glm:
+        best = [ranked(lambda m: ref["llf"][m], masks_of(s), -1.0) if masks_of(s) else None for s in sizes]
+    else:
+        best = [ranked(lambda m: ref["ssr"][m], masks_of(s)) if masks_of(s) else None for s in sizes]
+    vals = []
+    for s, m in zip(sizes, best):
+        if m is None:
+            vals.append(None)
+        elif crit in ("aic", "bic"):
+            vals.append(_sel_arb(ref[crit][m]))
+        elif crit == "cp":
+            full = (1 << k) - 1
+            s2 = _sel_arb(ref["ssr"][full]) / (nobs - k - icpt)
+            vals.append(_sel_arb(ref["ssr"][m]) / s2 - nobs + 2 * (s + icpt))
+        elif crit == "adjr2":
+            if s == 0 and intercept:
+                vals.append(arb(0))
+            else:
+                tss = _sel_arb(ref["ssr"][0]) if intercept else arb(p["meta"]["utss"])
+                vals.append(1 - arb(nobs - icpt) / (nobs - s - icpt) * (_sel_arb(ref["ssr"][m]) / tss))
+        else:  # cv: per fold the size's best by the training rows, its test error; the folds' mean
+            c = p["meta"]["folds"]
+            errs = []
+            for f in range(c):
+                mf = ranked(lambda q: ref["fold_train_ssr"][q * c + f], masks_of(s))
+                errs.append(_sel_arb(ref["fold_mse"][mf * c + f]))
+            vals.append(sum(errs, arb(0)) / c)
+    fin = [(float(v.mid()), s) for s, v in zip(sizes, vals) if v is not None]
+    order = sorted(fin, key=lambda x: ((-x[0] if crit == "adjr2" else x[0]), x[1]))
+    if len(order) > 1:
+        gap = min(gap, abs(order[1][0] - order[0][0]) / max(1.0, abs(order[0][0])))
+    return best, order[0][1], gap, vals
+
+
+def _selection_one(item):
+    name, p = item
+    import numpy as np
+
+    p = {k: _plain(v) for k, v in p.items()}
+    glm = p["kind"] == "glm"
+    k = len(p["X"][0])
+    if glm:
+        import stardust as sd
+
+        starts = []
+        for mask in range(2**k):
+            cols = [j for j in range(k) if mask >> j & 1]
+            Xs = np.asarray(p["X"])[:, cols]
+            starts.append(sd.regression.glm(p["y"], Xs, family=p["family"], link=p["link"]).params.tolist())
+        ref, meta = regref.selection_glm(p["y"], p["X"], family=p["family"], link=p["link"], starts=starts)
+    else:
+        ref, meta = regref.selection_linear(p["y"], p["X"], weights=p["weights"], intercept=p["intercept"],
+                                            labels=p["labels"])  # fmt: skip
+        if not p["intercept"]:
+            meta["utss"] = float(sum(
+                (wi if p["weights"] else 1.0) * yi * yi
+                for yi, wi in zip(p["y"], p["weights"] or [1.0] * len(p["y"])) if (wi if p["weights"] else 1.0) > 0
+            ))  # fmt: skip
+    p["meta"] = meta
+    with arbref.precision(256):  # the decisions' p-values and the derived values from the [hi, lo] pairs
+        runs, best, derived = _sel_derive(p, ref, glm)
+    for key in ("fold_train_ssr", "fold_mse"):
+        ref.pop(key, None)
+    return name, p | {"subsets": ref, "runs": runs, "best": best, "ref": derived}
+
+
+def _sel_derive(p, ref, glm):
+    runs, best = {}, {}
+    derived = {}
+    for d, c in SEL_RUNS:
+        if glm and c == "cv":
+            continue
+        moves, gap, path = _sel_simulate(p, ref, d, c, glm)
+        runs[f"{d}/{c}"] = {"moves": moves, "near_tie": gap < SEL_TIE, "gap": gap}
+        if c != "pvalue" and gap >= SEL_TIE:
+            derived[f"step_{d}_{c}"] = [ref[c][m] for m in path]
+    for c in SEL_BEST:
+        if glm and c in ("cp", "adjr2", "cv"):
+            continue
+        sets, pick, gap, vals = _sel_best(p, ref, c, glm)
+        best[c] = {"sets": sets, "pick": pick, "near_tie": gap < SEL_TIE, "gap": gap}
+        if gap >= SEL_TIE:
+            derived[f"best_{c}"] = [list(arbref.to_dd(v)) for v in vals if v is not None]
+    return runs, best, derived
+
+
 KINDS = {
     "linear": (linear_problems, _linear_one),
     "glm": (glm_problems, _glm_one),
     "penalized": (penalized_problems, _penalized_one),
     "robust": (robust_problems, _robust_one),
     "model_tests": (model_tests_problems, _model_tests_one),
+    "selection": (selection_problems, _selection_one),
 }
 
 
 def generate(kind, jobs):
     problems, one = KINDS[kind]
     items = list(problems().items())
-    if kind in ("linear", "model_tests"):  # the slow kinds (NIST's fits at high precision, n refits): in processes
+    if kind in (
+        "linear",
+        "model_tests",
+        "selection",
+    ):  # the slow kinds (NIST's fits at high precision, n refits): in processes
         import multiprocessing as mp
 
         with mp.get_context("spawn").Pool(min(jobs, len(items)), maxtasksperchild=4) as pool:

@@ -1467,6 +1467,8 @@ nb::object cond(nb::handle ro, nb::handle ko) {
 
 }  // namespace
 
+void bind_select(nb::module_& m);  // regression/select.cpp
+
 void bind_linear(nb::module_& m) {
     m.def(
         "fit", &fit, nb::arg("func"), nb::arg("y").none(), nb::arg("X").none(), nb::arg("w").none(),
@@ -1480,6 +1482,7 @@ void bind_linear(nb::module_& m) {
     );
     m.def("cond", &cond, nb::arg("R").none(), nb::arg("kept").none());
     m.def("resid_stats", &resid_stats, nb::arg("e").none(), nb::arg("w").none());
+    bind_select(m);
 }
 
 }  // namespace sd::regression

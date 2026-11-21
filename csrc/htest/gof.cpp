@@ -21,6 +21,7 @@
 #include "htest/gof.hpp"
 
 #include "htest/cvm.hpp"
+#include "htest/divergence.hpp"
 #include "htest/ks.hpp"
 #include "htest/lanes.hpp"
 #include "htest/moments.hpp"
@@ -75,66 +76,11 @@ bool lane_values(const Rows& a, std::int64_t r, bool omit, std::vector<double>& 
 // 2 sum E log(E/O) = 2 sum E g_0 - 2 sum (O - E)). The terms of the first sum are never negative,
 // so a statistic near 0 (O close to E) keeps its digits: scipy's direct sum of O log(O/E) cancels
 // to the first order (9.9e-8 relative at O - E = 1e-3, E = 1e6). Pearson's (lambda = 1) is
-// scipy's sum (O - E)^2 / E.
+// scipy's sum (O - E)^2 / E. The terms g_a are htest/divergence.hpp's.
 
-// mu(t) = t - log(1 + t) >= 0 as a double-double (special/dd.hpp)
-special::dd::DD mu_dd(double t) { return special::dd::log1pmx_neg(special::dd::DD{t, 0.0}); }
-
-// g_1(delta) = (1 + delta) log1p(delta) - delta = delta^2 - (1 + delta) mu(delta)
-double g1(double t) {
-    if (t == -1.0) return 1.0;
-    if (!std::isfinite(t)) return t;
-    const DD mu = mu_dd(t);
-    const DD v = dd::two_prod(t, t) - mu - mu * t;  // (1 + t) mu = mu + t mu
-    return v.hi + v.lo;
-}
-
-// psi(y) = (e^y - 1 - y) / y
-double psi(double y) {
-    if (std::fabs(y) < 0.5) {
-        double term = y / 2.0, s = term;
-        for (int k = 3; k < 40; ++k) {
-            term *= y / k;
-            s += term;
-            if (std::fabs(term) <= 0x1p-60 * std::fabs(s)) break;
-        }
-        return s;
-    }
-    return (std::expm1(y) - y) / y;
-}
-
-// g_a(delta) for delta > -1 (O > 0), a != 1
-double ga(double a, double t) {
-    if (t == -1.0) return a > 0.0 ? 1.0 / a : std::numeric_limits<double>::infinity();
-    if (a < 0.5) {
-        // g_a(t) = (1 + t) g_(1-a)(-t / (1 + t))
-        return (1.0 + t) * ga(1.0 - a, -t / (1.0 + t));
-    }
-    if (a == 1.0) return g1(t);
-    if (std::fabs(t) <= 0x1p-4 && std::fabs(a) <= 16.0) {
-        // sum_{k >= 2} c_k t^k, c_2 = 1/2, c_(k+1) = c_k (a - k) / (k + 1)
-        double c = 0.5, p = t * t, s = c * p;
-        for (int k = 2; k < 200; ++k) {
-            c *= (a - k) / (k + 1.0);
-            p *= t;
-            const double term = c * p;
-            s += term;
-            if (std::fabs(term) <= 0x1p-60 * std::fabs(s)) break;
-        }
-        return s;
-    }
-    const double L = std::log1p(t);
-    return (g1(t) + (1.0 + t) * L * psi((a - 1.0) * L)) / a;
-}
-
-// scipy's term for the pairs a rearranged form does not cover (E <= 0 or O < 0)
-double xlogy(double x, double y) { return (x == 0.0 && y == y) ? 0.0 : x * std::log(y); }
-double scipy_term(double lam, double o, double e) {
-    if (lam == 1.0) return (o - e) * (o - e) / e;
-    if (lam == 0.0) return 2.0 * xlogy(o, o / e);
-    if (lam == -1.0) return 2.0 * xlogy(e, e / o);
-    return o * (std::pow(o / e, lam) - 1.0) / (0.5 * lam * (lam + 1.0));
-}
+using div::g1;
+using div::ga;
+using div::scipy_term;
 
 struct PdLane {
     double stat = kNaN, p = kNaN, df = kNaN, rel = 0.0;

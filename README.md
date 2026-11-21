@@ -50,11 +50,11 @@ print([round(b, 12) for b in beta.tolist()])  # [1.0, 1.0]
 | 데이터프레임 | `sd.frame` | `Series`, `DataFrame`, `Index`, NA, Copy-on-Write, groupby, merge, sort, `read_csv`. `to_array()`로 배열과 잇는다 | [docs/api/frame.md](docs/api/frame.md) |
 | 특수함수 | `sd.special` | scipy.special의 부분집합: 로지스틱·정보, 오차함수, 감마·베타·제타, 불완전 감마·베타, 리덕션·지수적분·타원, Bessel·Airy, 초기하·Lambert W, 복소수 판(erf·erfc·erfcx·lambertw·wofz·loggamma) | [docs/api/special.md](docs/api/special.md) |
 | 통계 | `sd.stats` | scipy.stats의 부분집합: 단변량 분포 31(신형 API `Normal(mu=0, sigma=1).cdf(x)`), 다변량 7, 행렬 분포 3, 기술통계 11. 검정과 상관은 아직 없다 | [docs/api/stats.md](docs/api/stats.md) |
-| 회귀 | `sd.regression` | 선형(OLS·WLS·GLS)·GLM·정규화(ridge·lasso·elastic net, 교차검증)·강건·분위·비선형 최소제곱. 함수 + 결과 객체, 추론과 예측을 함께 | [docs/api/regression.md](docs/api/regression.md) |
+| 회귀 | `sd.regression` | 선형(OLS·WLS·GLS)·GLM·정규화(ridge·lasso·elastic net, 교차검증)·강건·분위·비선형 최소제곱, 모형 비교·검정·진단, 변수 선택. 함수 + 결과 객체, 추론과 예측을 함께 | [docs/api/regression.md](docs/api/regression.md) |
 | 난수 | `sd.random` | Philox4×64-10 계수기형 생성기(스레드 수와 무관한 결정성), Generator와 `random`·`integers`·`choice`·`permutation`·`spawn`. 분포별 표본은 `sd.stats` | [docs/api/random.md](docs/api/random.md) |
 | 최적화 | `sd.optimize` | scipy.optimize의 부분집합: 수치 미분, 비선형·선형 최소제곱(`least_squares`, `lsq_linear`, `nnls`), 스칼라 근과 최솟값, 배치 스칼라 풀이, `minimize`(Nelder–Mead, BFGS, L-BFGS-B, newton-cg, trust 방법), `root` | [docs/api/optimize.md](docs/api/optimize.md) |
-| 가설검정 | `sd.htest` | scipy.stats의 가설검정(마일스톤마다 공개): 평균과 분산(t 검정, 분산분석, 분산의 동질성), 적합도(카이제곱·Cressie–Read, D'Agostino, Jarque–Bera, Shapiro–Wilk, Anderson–Darling, Kolmogorov–Smirnov, Cramér–von Mises). 읽기 전용 결과 객체, 배치, `nan_policy` | [docs/api/htest.md](docs/api/htest.md) |
-| 희소 | `sd.sparse` | 준비 중(공개 이름은 SP1부터): scipy.sparse의 희소 배열(`coo_array csr_array csc_array dok_array`)과 scipy.sparse.linalg의 희소 선형대수(직접 풀이, 반복법, 고유값·특이값, 행렬 함수, `LinearOperator`)를 하위 모듈 없이 `sd.sparse`에 | [docs/api/sparse.md](docs/api/sparse.md) |
+| 가설검정 | `sd.htest` | scipy.stats의 가설검정(마일스톤마다 공개): 평균과 분산(t 검정, 분산분석, 분산의 동질성), 적합도(카이제곱·Cressie–Read, D'Agostino, Jarque–Bera, Shapiro–Wilk, Anderson–Darling, Kolmogorov–Smirnov, Cramér–von Mises), 순위 검정(Mann–Whitney, Wilcoxon, Kruskal–Wallis, Friedman, Brunner–Munzel, Ansari–Bradley, Mood, 중앙값, Page). 읽기 전용 결과 객체, 배치, `nan_policy` | [docs/api/htest.md](docs/api/htest.md) |
+| 희소 | `sd.sparse` | 만드는 중: scipy.sparse의 희소 배열(`coo_array csr_array csc_array dok_array`; 지금은 형식과 변환)과 scipy.sparse.linalg의 희소 선형대수(직접 풀이, 반복법, 고유값·특이값, 행렬 함수, `LinearOperator`)를 하위 모듈 없이 `sd.sparse`에 | [docs/api/sparse.md](docs/api/sparse.md) |
 
 - 모든 영역이 함께 쓰는 규칙(dtype 객체, 에러 종류와 메시지, 결과의 배열, 스레드와 결정성, 정답지와 같아야 하는 것, 받는 입력, 같은 이름의 다른 뜻)은 [API.md](API.md)에 있다.
 

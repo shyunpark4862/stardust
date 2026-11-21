@@ -13,11 +13,11 @@
 | 데이터프레임 | `sd.frame` | [docs/api/frame.md](docs/api/frame.md) |
 | 특수함수 | `sd.special` | [docs/api/special.md](docs/api/special.md) (로지스틱·정보, 오차함수, 감마·베타·제타, 불완전 감마·베타, 리덕션·지수적분·타원, Bessel·Airy, 초기하·Lambert W, 복소수 판) |
 | 통계 | `sd.stats` | [docs/api/stats.md](docs/api/stats.md) (단변량·다변량·행렬 분포, 기술통계) |
-| 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (`ols wls gls linregress glm ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm rlm theilslopes siegelslopes quantreg nls anova`) |
+| 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (`ols wls gls linregress glm ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm rlm theilslopes siegelslopes quantreg nls anova stepwise best_subset`) |
 | 난수 | `sd.random` | [docs/api/random.md](docs/api/random.md) (Philox4×64-10, `default_rng`, `random`·`integers`·`choice`·`permutation`·`spawn`·`state`) |
 | 최적화 | `sd.optimize` | [docs/api/optimize.md](docs/api/optimize.md) (`approx_fprime check_grad least_squares lsq_linear nnls root_scalar minimize_scalar find_root bracket_root find_minimum bracket_minimum minimize root`, 결과 객체 `OptimizeResult`) |
-| 가설검정 | `sd.htest` | [docs/api/htest.md](docs/api/htest.md) (초안: H1의 t 검정·분산분석·분산의 동질성과 H2의 적합도 검정이 공개. scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정, 검정마다의 결과 객체) |
-| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개 이름은 SP1부터. 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
+| 가설검정 | `sd.htest` | [docs/api/htest.md](docs/api/htest.md) (초안: H1의 t 검정·분산분석·분산의 동질성, H2의 적합도 검정, H3의 순위 검정이 공개. scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정, 검정마다의 결과 객체) |
+| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환(SP1)이다. 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
 
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md), 진행 상황은 [ROADMAP.md](ROADMAP.md)에 있다.
 

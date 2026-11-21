@@ -1269,11 +1269,87 @@ def mwu_counts(m, n):
     return prev[n]
 
 
+def subset_sum_counts(scores, c):
+    """{sum: count} of the sums of c of the integer scores (with repeats) drawn without
+    replacement: the exact null of a two-sample linear rank statistic, conditional on the scores
+    (with ties, the doubled midranks: decision H45). A dynamic programme over the distinct scores,
+    in Python's integers."""
+    from collections import Counter
+
+    dp = [{} for _ in range(c + 1)]
+    dp[0][0] = 1
+    for v, t in sorted(Counter(scores).items()):
+        new = [dict(d) for d in dp]
+        for j in range(c):
+            for s, cnt in dp[j].items():
+                for cc in range(1, min(t, c - j) + 1):
+                    key = s + cc * v
+                    new[j + cc][key] = new[j + cc].get(key, 0) + cnt * math.comb(t, cc)
+        dp = new
+    return dp[c]
+
+
+def signed_counts(scores):
+    """{sum: count} of sum a_i B_i over the 2^n sign choices (B_i in {0, 1}) of integer scores."""
+    d = {0: 1}
+    for a in scores:
+        nd = dict(d)
+        for s, c in d.items():
+            nd[s + a] = nd.get(s + a, 0) + c
+        d = nd
+    return d
+
+
+def tails(counts, v):
+    """(P(S <= v), P(S >= v)) of {sum: count}, exact."""
+    tot = sum(counts.values())
+    return (
+        Fraction(sum(c for s, c in counts.items() if s <= v), tot),
+        Fraction(sum(c for s, c in counts.items() if s >= v), tot),
+    )
+
+
+def exact_p(le, ge, alt, greater_is="ge"):
+    """The exact p-value from the two tails: 'less' the lower, 'greater' the upper (or the reverse
+    when greater_is='le': Ansari-Bradley's), two-sided min(1, 2 min) (scipy's rule)."""
+    up, dn = (ge, le) if greater_is == "ge" else (le, ge)
+    if alt == "greater":
+        return up
+    if alt == "less":
+        return dn
+    return min(Fraction(1), 2 * min(le, ge))
+
+
+def _z_fields(num, var, alt, zfield="zstatistic", two_sided_neg=False, extra=None):
+    """The normal approximation's fields: z = num / sqrt(var) (num, var Fractions), p, kappa."""
+    if var <= 0:  # (every value tied: no normal approximation, H11)
+        out = {"statistic": NAN, "pvalue": NAN, "kappa": NAN}
+        out.update(extra or {})
+        if zfield:
+            out[zfield] = NAN
+        return out
+
+    def Z():
+        return A(num) / A(var).sqrt()
+
+    out = {"pvalue": lambda: norm_p(Z(), alt), "kappa": kappa(lambda z: norm_p(z, alt), Z)}
+    if zfield:
+        if two_sided_neg and alt == "two-sided":
+            out[zfield] = lambda: -abs(Z())
+        else:
+            out[zfield] = Z
+    if extra:
+        out.update(extra)
+    return out
+
+
 @family("mannwhitneyu", ("mannwhitneyu",), seconds=300)
 def mannwhitneyu(p):
-    """Mann-Whitney U from exact midranks; the exact p-value from the integer counts (scipy's rule:
-    U = max(U1, U2) and twice the tail for two-sided), the normal one with scipy's tie and
-    continuity corrections."""
+    """Mann-Whitney U from exact midranks. Exact p-values from integer counts: without ties the
+    Gaussian binomial's (scipy's rule: U = max(U1, U2) and twice the tail for two-sided), with
+    ties the distribution of the doubled rank sum conditional on the midranks (H45; both tails
+    counted, two-sided min(1, 2 min)). The normal approximation with scipy's tie and continuity
+    corrections, and its z (H47)."""
     x, y = fvec(p.args[0]), fvec(p.args[1])
     n1, n2 = len(x), len(y)
     r, ties = midranks(x + y)
@@ -1284,11 +1360,15 @@ def mannwhitneyu(p):
     has_ties = any(t > 1 for t in ties)
     if method == "auto":
         method = "asymptotic" if (n1 > 8 and n2 > 8) or has_ties else "exact"
-    U, f = (u1, 1) if alt == "greater" else (u2, 1) if alt == "less" else (max(u1, u2), 2)
     if method == "exact":
-        c = mwu_counts(n1, n2)
-        tot = sum(c)
-        pv = min(Fraction(1), f * Fraction(sum(c[math.ceil(U) :]), tot))
+        if not has_ties:
+            U, f = (u1, 1) if alt == "greater" else (u2, 1) if alt == "less" else (max(u1, u2), 2)
+            c = mwu_counts(n1, n2)
+            tot = sum(c)
+            pv = min(Fraction(1), f * Fraction(sum(c[math.ceil(U) :]), tot))
+        else:
+            le, ge = tails(subset_sum_counts([int(2 * v) for v in r], n1), int(2 * sum(r[:n1])))
+            pv = exact_p(le, ge, alt)
         return {"statistic": u1, "pvalue": pv, "method": "exact"}
     n = n1 + n2
     s2 = Fraction(n1 * n2, 12) * ((n + 1) - Fraction(sum(t**3 - t for t in ties), n * (n - 1)))
@@ -1296,7 +1376,7 @@ def mannwhitneyu(p):
     if p.kwargs.get("use_continuity", True):
         sg = 1 if alt == "greater" else -1 if alt == "less" else sign(num)
         num -= Fraction(sg, 2)
-    return {"statistic": u1, "pvalue": lambda: norm_p(A(num) / A(s2).sqrt(), alt), "method": "asymptotic"}
+    return _z_fields(num, s2, alt, extra={"statistic": u1, "method": "asymptotic"})
 
 
 def signed_rank_counts(n):
@@ -1312,8 +1392,12 @@ def signed_rank_counts(n):
 
 @family("wilcoxon", ("wilcoxon",), seconds=300)
 def wilcoxon(p):
-    """The Wilcoxon signed rank test: exact midranks of |d|, T+; the exact p-value from the subset
-    counts (no ties or zeros), the normal one with scipy's zero methods and tie correction."""
+    """The Wilcoxon signed rank test: exact midranks of |d| (d = x - y exact), T+. Exact p-values
+    from counts: without ties or zeros the subset sums of 1..n; with them the distribution of
+    sum r_i B_i over the nonzero differences' midranks (H45; zsplit adds half the zeros' ranks,
+    pratt's zeros keep their ranks out of it), which is the signs' enumeration scipy's 'auto'
+    does up to n = 13. The normal approximation with scipy's zero methods and tie correction,
+    and its z (-|z| for two-sided, scipy's)."""
     d = fvec(p.args[0]) if len(p.args) == 1 else [a - b for a, b in zip(fvec(p.args[0]), fvec(p.args[1]))]
     zm = p.kwargs.get("zero_method", "wilcox")
     alt = p.kwargs.get("alternative", "two-sided")
@@ -1323,30 +1407,34 @@ def wilcoxon(p):
     if zm == "wilcox":
         d = [v for v in d if v != 0]
     r, ties = midranks([abs(v) for v in d])
-    rp = sum(ri for ri, v in zip(r, d) if v > 0)
-    rm = sum(ri for ri, v in zip(r, d) if v < 0)
+    rp = sum((ri for ri, v in zip(r, d) if v > 0), Fraction(0))
+    rm = sum((ri for ri, v in zip(r, d) if v < 0), Fraction(0))
+    rz = sum((ri for ri, v in zip(r, d) if v == 0), Fraction(0)) / 2
     if zm == "zsplit":
-        rz = sum(ri for ri, v in zip(r, d) if v == 0) / 2
         rp, rm = rp + rz, rm + rz
     has_ties = any(t > 1 for t in ties)
     if method == "auto":
         if n_all > 50:
             method = "asymptotic"
-        elif not (has_ties or zeros):
+        elif not (has_ties or zeros) or n_all <= 13:
             method = "exact"
-        elif n_all <= 13:
-            raise NotSettled("scipy enumerates the signs (a permutation test): not a reference here")
         else:
             method = "asymptotic"
     stat = min(rp, rm) if alt == "two-sided" else rp
     count = len(d)
+    if count == 0:
+        return {"statistic": NAN, "pvalue": NAN, "method": method, "kappa": NAN}
     if method == "exact":
-        c = signed_rank_counts(count)
-        tot = sum(c)
-        cdf = Fraction(sum(c[: math.ceil(rp) + 1]), tot)
-        sf = Fraction(sum(c[math.floor(rp) :]), tot)
-        pv = cdf if alt == "less" else sf if alt == "greater" else min(Fraction(1), 2 * min(sf, cdf))
-        return {"statistic": stat, "pvalue": pv, "method": "exact"}
+        if not (has_ties or zeros):
+            c = signed_rank_counts(count)
+            tot = sum(c)
+            cdf = Fraction(sum(c[: math.ceil(rp) + 1]), tot)
+            sf = Fraction(sum(c[math.floor(rp) :]), tot)
+        else:
+            konst = 2 * rz if zm == "zsplit" else 0
+            counts = signed_counts([int(2 * ri) for ri, v in zip(r, d) if v != 0])
+            cdf, sf = tails(counts, int(2 * rp - konst))
+        return {"statistic": stat, "pvalue": exact_p(cdf, sf, alt), "method": "exact"}
     mn = Fraction(count * (count + 1), 4)
     se = Fraction(count * (count + 1) * (2 * count + 1))
     tt = ties
@@ -1355,15 +1443,318 @@ def wilcoxon(p):
         se -= zeros * (zeros + 1) * (2 * zeros + 1)
         tt = [t for t, g in zip(*_tie_groups([abs(v) for v in d])) if g != 0]
     se2 = (se - Fraction(sum(t**3 - t for t in tt), 2)) / 24
+    num = rp - mn
+    if p.kwargs.get("correction", False):
+        sg = 1 if alt == "greater" else -1 if alt == "less" else sign(num)
+        num -= Fraction(sg, 2)
+    return _z_fields(num, se2, alt, two_sided_neg=True, extra={"statistic": stat, "method": "asymptotic"})
 
-    def pv():
-        z = (A(rp) - A(mn)) / A(se2).sqrt()
-        if p.kwargs.get("correction", False):
-            sg = 1 if alt == "greater" else -1 if alt == "less" else sign(rp - mn)
-            z -= sg * arb(1) / 2 / A(se2).sqrt()
-        return norm_p(z, alt)
 
-    return {"statistic": stat, "pvalue": pv, "method": "asymptotic"}
+@family("ranksums", ("ranksums",))
+def ranksums(p):
+    """The rank sum z (scipy's: no tie or continuity correction) and its normal p-value."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    n1, n2 = len(x), len(y)
+    r, _ = midranks(x + y)
+    num = sum(r[:n1]) - Fraction(n1 * (n1 + n2 + 1), 2)
+    out = _z_fields(
+        num, Fraction(n1 * n2 * (n1 + n2 + 1), 12), p.kwargs.get("alternative", "two-sided"), zfield="statistic"
+    )
+    return out
+
+
+@family("kruskal", ("kruskal",))
+def kruskal(p):
+    """Kruskal-Wallis H from exact midranks with scipy's tie correction (exact), chi^2 (k - 1)."""
+    gs = [fvec(a) for a in p.args]
+    k = len(gs)
+    allv = [v for g in gs for v in g]
+    N = len(allv)
+    if any(len(g) == 0 for g in gs):
+        return _nan_fields(df=Fraction(k - 1))
+    r, ties = midranks(allv)
+    pos, R = 0, []
+    for g in gs:
+        R.append(sum(r[pos : pos + len(g)]))
+        pos += len(g)
+    c = 1 - Fraction(sum(t**3 - t for t in ties), N**3 - N)
+    if c == 0:
+        return _nan_fields(df=Fraction(k - 1))
+    H = (Fraction(12, N * (N + 1)) * sum(Ri**2 / len(g) for Ri, g in zip(R, gs)) - 3 * (N + 1)) / c
+    return {
+        "statistic": H,
+        "pvalue": lambda: chi2_sf(H, k - 1),
+        "df": Fraction(k - 1),
+        "kappa": kappa(chi2_p_arb, H, (k - 1,)),
+    }
+
+
+def friedman_exact_sf(k, n, stat):
+    """P(chi^2_F >= stat) under the exact null without ties: the k! orders of each of the n blocks
+    equally likely, a dynamic programme over the vectors of column rank sums (Python integers).
+    The chi^2 approximation's quality (docs/design/htest.md §4), not a contract."""
+    from itertools import permutations
+
+    perms = list(permutations(range(1, k + 1)))
+    d = {tuple([0] * k): 1}
+    for _ in range(n):
+        nd = {}
+        for key, c in d.items():
+            for pm in perms:
+                nk = tuple(a + b for a, b in zip(key, pm))
+                nd[nk] = nd.get(nk, 0) + c
+        d = nd
+    tot = len(perms) ** n
+    hit = 0
+    for key, c in d.items():
+        q = Fraction(12, n * k * (k + 1)) * sum(v * v for v in key) - 3 * n * (k + 1)
+        if q >= stat:
+            hit += c
+    return Fraction(hit, tot)
+
+
+@family("friedmanchisquare", ("friedmanchisquare",), seconds=300)
+def friedmanchisquare(p):
+    """The Friedman chi^2 from exact within-block midranks with scipy's tie correction (exact),
+    chi^2 (k - 1). Small problems without ties also get "pvalue_exact": the exact permutation
+    p-value (the approximation's quality; not a contract)."""
+    cols = [fvec(a) for a in p.args]
+    k, n = len(cols), len(cols[0])
+    R = [Fraction(0)] * k
+    T = 0
+    any_ties = False
+    for j in range(n):
+        r, ties = midranks([c[j] for c in cols])
+        for i in range(k):
+            R[i] += r[i]
+        T += sum(t * (t * t - 1) for t in ties)
+        any_ties = any_ties or any(t > 1 for t in ties)
+    c = 1 - Fraction(T, k * (k * k - 1) * n)
+    if n == 0 or c == 0:
+        return _nan_fields(df=Fraction(k - 1))
+    stat = (Fraction(12, k * n * (k + 1)) * sum(v * v for v in R) - 3 * n * (k + 1)) / c
+    out = {
+        "statistic": stat,
+        "pvalue": lambda: chi2_sf(stat, k - 1),
+        "df": Fraction(k - 1),
+        "kappa": kappa(chi2_p_arb, stat, (k - 1,)),
+    }
+    if not any_ties and math.factorial(k) ** n <= 10**8:
+        out["pvalue_exact"] = friedman_exact_sf(k, n, stat)
+    return out
+
+
+@family("brunnermunzel", ("brunnermunzel",))
+def brunnermunzel(p):
+    """Brunner and Munzel's W from exact midranks (pooled and within each sample), its
+    Satterthwaite df (exact), the t or normal p-value at -W (scipy's). Both placement variances 0
+    (or a sample below 2) is NaN (H11)."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    nx, ny = len(x), len(y)
+    alt = p.kwargs.get("alternative", "two-sided")
+    dist = p.kwargs.get("distribution", "t")
+    nan = _nan_fields(**({"df": NAN} if dist == "t" else {}))
+    if nx < 2 or ny < 2:
+        return nan
+    rc, _ = midranks(x + y)
+    rx, _ = midranks(x)
+    ry, _ = midranks(y)
+    rcx, rcy = rc[:nx], rc[nx:]
+    mcx, mcy = sum(rcx) / nx, sum(rcy) / ny
+    mx, my = sum(rx) / nx, sum(ry) / ny
+    Sx = sum((a - b - mcx + mx) ** 2 for a, b in zip(rcx, rx)) / (nx - 1)
+    Sy = sum((a - b - mcy + my) ** 2 for a, b in zip(rcy, ry)) / (ny - 1)
+    V = nx * Sx + ny * Sy
+    if V == 0:
+        return nan
+    num = Fraction(nx * ny, nx + ny) * (mcy - mcx)
+
+    def W():
+        return A(num) / A(V).sqrt()
+
+    if dist == "normal":
+        return {"statistic": W, "pvalue": lambda: norm_p(-W(), alt), "kappa": kappa(lambda w: norm_p(-w, alt), W)}
+    df = V**2 / ((nx * Sx) ** 2 / (nx - 1) + (ny * Sy) ** 2 / (ny - 1))
+    return {
+        "statistic": W,
+        "pvalue": lambda: t_p(num * num / V, -sign(num), df, alt),
+        "df": df,
+        "kappa": kappa(lambda w, nu: t_p_arb(-w, nu, alt), W, (df,), (0,)),
+    }
+
+
+@family("ansari", ("ansari",), seconds=600)
+def ansari(p):
+    """Ansari-Bradley's AB = sum over x of min(r, N + 1 - r), exact midranks. Exact p-values from
+    the counts of the doubled scores' sums (conditional on them with ties, H45); scipy's normal
+    approximation (its tie-corrected variance) otherwise. 'greater' is the lower tail (scipy)."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    n, m = len(x), len(y)
+    N = n + m
+    r, ties = midranks(x + y)
+    sym = [min(ri, N + 1 - ri) for ri in r]
+    AB = sum(sym[:n])
+    alt = p.kwargs.get("alternative", "two-sided")
+    method = p.kwargs.get("method", "auto")
+    repeats = any(t > 1 for t in ties)
+    if method == "auto":
+        method = "exact" if m < 55 and n < 55 and not repeats else "asymptotic"
+    if method == "exact":
+        le, ge = tails(subset_sum_counts([int(2 * s) for s in sym], n), int(2 * AB))
+        return {"statistic": AB, "pvalue": exact_p(le, ge, alt, greater_is="le"), "method": "exact"}
+    mean = Fraction(n * (N + 1) ** 2, 4 * N) if N % 2 else Fraction(n * (N + 2), 4)
+    if repeats:
+        fac = sum(s * s for s in sym)
+        var = (
+            (m * n * (16 * N * fac - (N + 1) ** 4) / (16 * N**2 * (N - 1)))
+            if N % 2
+            else (m * n * (16 * fac - N * (N + 2) ** 2) / (16 * N * (N - 1)))
+        )
+    else:
+        var = (
+            Fraction(n * m * (N + 1) * (3 + N**2), 48 * N**2)
+            if N % 2
+            else Fraction(m * n * (N + 2) * (N - 2), 48 * (N - 1))
+        )
+    return _z_fields(mean - AB, var, alt, zfield=None, extra={"statistic": AB, "method": "asymptotic"})
+
+
+@family("mood", ("mood",))
+def mood(p):
+    """Mood's z: T the sum over x of its tie run's mean of (I - (N + 1)/2)^2 (Mielke's, scipy's;
+    without ties sum (r - (N + 1)/2)^2), E = m (N^2 - 1)/12 and Mielke's variance, exact."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    m, n = len(x), len(y)
+    N = m + n
+    if m == 0 or n == 0 or N < 3:
+        return _nan_fields()
+    allv = sorted((v, i < m) for i, v in enumerate(x + y))
+    c = Fraction(N + 1, 2)
+    T = Fraction(0)
+    tie = 0
+    i = 0
+    while i < N:
+        j = i
+        while j + 1 < N and allv[j + 1][0] == allv[i][0]:
+            j += 1
+        t = j - i + 1
+        phi = sum((Fraction(I) - c) ** 2 for I in range(i + 1, j + 2)) / t
+        T += phi * sum(1 for q in range(i, j + 1) if allv[q][1])
+        tie += t * (t * t - 1) * (t * t - 4 + 15 * (N - (j + 1) - i) ** 2)
+        i = j + 1
+    E = Fraction(m * (N * N - 1), 12)
+    var = Fraction(m * n * (N + 1) * (N * N - 4), 180) - Fraction(m * n * tie, 180 * N * (N - 1))
+    return _z_fields(T - E, var, p.kwargs.get("alternative", "two-sided"), zfield="statistic")
+
+
+def _median(vals):
+    s = sorted(vals)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _cressie_read(obs, exp, lam):
+    """The Cressie-Read statistic of observed (>= 0) and expected (> 0) rationals: Pearson's exact,
+    the others in Arb (power_divergence's forms; an observed 0 its limit)."""
+    if lam == 1:
+        return sum((o - e) ** 2 / e for o, e in zip(obs, exp))
+
+    def S():
+        if lam == 0:
+            return 2 * sum((A(o) * (A(o) / A(e)).log() if o else arb(0)) for o, e in zip(obs, exp))
+        if lam == -1:
+            return 2 * sum(A(e) * (A(e) / A(o)).log() for o, e in zip(obs, exp))
+        L = A(lam)
+        return 2 / (L * (L + 1)) * sum((A(o) * ((A(o) / A(e)) ** L - 1) if o else arb(0)) for o, e in zip(obs, exp))
+
+    return S
+
+
+@family("median_test", ("median_test",))
+def median_test(p):
+    """Mood's median test: the exact grand median (the mean of the two middle values unrounded),
+    the 2 x k table by exact comparisons, scipy's chi2_contingency of it (expected R_i C_j / N,
+    Yates' correction for k = 2, the Cressie-Read lambda_), chi^2 (k - 1). A table with an empty
+    row (or, with ties='ignore', column) is NaN (scipy raises)."""
+    gs = [fvec(a) for a in p.args]
+    k = len(gs)
+    med = _median([v for g in gs for v in g])
+    ties = p.kwargs.get("ties", "below")
+    above = [sum(1 for v in g if v > med) + (sum(1 for v in g if v == med) if ties == "above" else 0) for g in gs]
+    below = [sum(1 for v in g if v < med) + (sum(1 for v in g if v == med) if ties == "below" else 0) for g in gs]
+    table = [above, below]
+    out = {"median": med, "table": table, "df": Fraction(k - 1)}
+    R = [sum(above), sum(below)]
+    C = [a + b for a, b in zip(above, below)]
+    if 0 in R or 0 in C:
+        return {**_nan_fields(), **out}
+    T = sum(R)
+    obs, exp = [], []
+    corr = p.kwargs.get("correction", True) and k == 2
+    for i in range(2):
+        for j in range(k):
+            E = Fraction(R[i] * C[j], T)
+            d = table[i][j] - E
+            if corr:
+                d = Fraction(0) if abs(d) <= Fraction(1, 2) else d - Fraction(sign(d), 2)
+            obs.append(E + d)
+            exp.append(E)
+    lam = p.kwargs.get("lambda_", 1)
+    lam = LAMBDA[lam] if isinstance(lam, str) else fr(lam)
+    S = _cressie_read(obs, exp, lam)
+    return {
+        **out,
+        "statistic": S,
+        "pvalue": lambda: chi2_sf(S() if callable(S) else S, k - 1),
+        "kappa": kappa(chi2_p_arb, S, (k - 1,)),
+    }
+
+
+def page_row_counts(row):
+    """{sum: count} of 2 sum_j j r_pi(j) over the n! orders of one row's values (doubled, ints)."""
+    from itertools import permutations
+
+    out = {}
+    for pm in permutations(row):
+        s = sum((j + 1) * v for j, v in enumerate(pm))
+        out[s] = out.get(s, 0) + 1
+    return out
+
+
+@family("page_trend_test", ("page_trend_test",), seconds=600)
+def page_trend_test(p):
+    """Page's L from exact within-row midranks (or the given ranks) and the predicted ranks. Exact:
+    each row's distribution over the permutations of its doubled values (conditional with ties,
+    H45), convolved, P(L' >= L); asymptotic: scipy's normal (no tie correction)."""
+    data = np.asarray(p.args[0], dtype=np.float64)
+    m, n = data.shape
+    ranked = p.kwargs.get("ranked", False)
+    pred = p.kwargs.get("predicted_ranks")
+    pred = list(range(1, n + 1)) if pred is None else [int(v) for v in pred]
+    rows = [fvec(r) if ranked else midranks(fvec(r))[0] for r in data]
+    Cs = [sum(rw[j] for rw in rows) for j in range(n)]
+    L = sum(pj * c for pj, c in zip(pred, Cs))
+    method = p.kwargs.get("method", "auto")
+    if method == "auto":
+        method = "asymptotic" if n > 8 or (m > 12 and n > 3) or m > 20 else "exact"
+    if method == "exact":
+        dist = {0: 1}
+        cache = {}
+        for rw in rows:
+            key = tuple(sorted(int(2 * v) for v in rw))
+            if key not in cache:
+                cache[key] = page_row_counts(key)
+            nd = {}
+            for a, ca in dist.items():
+                for b, cb in cache[key].items():
+                    nd[a + b] = nd.get(a + b, 0) + ca * cb
+            dist = nd
+        _, ge = tails(dist, int(2 * L))
+        return {"statistic": L, "pvalue": ge, "method": "exact"}
+    E0 = Fraction(m * n * (n + 1) ** 2, 4)
+    V0 = Fraction(m * n**2 * (n + 1) * (n**2 - 1), 144)
+    out = _z_fields(L - E0, V0, "greater", zfield=None, extra={"statistic": L, "method": "asymptotic"})
+    return out
 
 
 def _tie_groups(values):

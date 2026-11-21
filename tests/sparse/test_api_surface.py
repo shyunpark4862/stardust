@@ -1,7 +1,8 @@
 """docs/api/sparse.md and the module agree: every module-level name its signature blocks define is
 planned or exported, nothing else is exported, an exported name's signature is the documented
-one, and the documented signatures follow the area's rules (decisions SP1-SP18 in
-docs/design/sparse.md §1.1).
+one, an exported class has exactly the documented methods and attributes (a `sparray.` line
+belongs to every format), and the documented signatures follow the area's rules (decisions
+SP1-SP34 in docs/design/sparse.md §1.1).
 
 A block line is a module name (`name(...)`, or `name` for a class used without a call), a
 method (`Class.method(...)`) or an attribute (`Class.attr`)."""
@@ -18,11 +19,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "sparse.md"
 
-# Documented, not implemented yet (docs/design/sparse.md §8): every name until SP1. A milestone
-# moves its names from here to sd.sparse.__all__.
+# Documented, not implemented yet (docs/design/sparse.md §8). A milestone moves its names from
+# here to sd.sparse.__all__.
 PLANNED = {
-    # SP1
-    "sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose",
     # SP3
     "eye_array", "diags_array", "random_array", "kron", "kronsum", "hstack", "vstack", "block_array", "block_diag",
     "tril", "triu", "find",
@@ -37,13 +36,14 @@ PLANNED = {
     "expm", "expm_multiply", "onenormest", "norm",
 }  # fmt: skip
 CLASSES = {"sparray", "coo_array", "csr_array", "csc_array", "dok_array", "SparseLU", "LinearOperator"}
+FORMATS = ("coo_array", "csr_array", "csc_array", "dok_array")
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
 
 
-def entries():
+def entries(text=None):
     """[(class or None, name, signature text or None)] of every block line, in order."""
     out = []
-    for block in signature_blocks(API.read_text()):
+    for block in signature_blocks(API.read_text() if text is None else text):
         for line in block:
             text = line.split("#")[0].strip()
             if not text:
@@ -155,7 +155,34 @@ def test_formats_have_no_dia_default():
         assert params(module_names()[name])["format"] == "None"
 
 
+def members(cls):
+    """{name: signature text or None} the document's §2 (the public milestone SP1) gives class
+    `cls`: its own lines and, for a format, the sparray lines. The methods of §3 on come with
+    their milestones."""
+    owners = {cls, "sparray"} if cls in FORMATS else {cls}
+    sp1 = API.read_text().split("\n## §3.")[0]
+    return {name: sig for c, name, sig in entries(sp1) if c in owners}
+
+
+@pytest.mark.parametrize("cls", FORMATS)
+def test_exported_classes_have_the_documented_members(cls):
+    doc = members(cls)
+    klass = getattr(sd.sparse, cls)
+    public = {n for n in dir(klass) if not n.startswith("_")}
+    assert public == set(doc), (cls, public ^ set(doc))
+    for name, sig in doc.items():
+        attr = getattr(klass, name)
+        if sig is None:
+            assert not callable(attr) or isinstance(attr, property), (cls, name)
+        else:
+            assert callable(attr), (cls, name)
+            got = str(inspect.signature(attr)).removeprefix("(self, ").removeprefix("(self")
+            assert "(" + got == "(" + sig + ")", (cls, name, got)
+
+
 def test_module_is_wired():
-    assert sd.sparse.__all__ == []
+    assert set(sd.sparse.__all__) == {
+        "sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose"
+    }  # fmt: skip
     assert not hasattr(sd.sparse, "linalg")
     assert callable(sd.sparse._core._lu_solve)

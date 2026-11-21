@@ -1,0 +1,12 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 9, "dropped": []},
+"page_trend_test/exact": {"digest": "f9e4f9d35fd22a40755c4e5de2b6eeedcc6e04261913ba9da39f85823ce816c0", "statistic": [62.0, 0.0], "pvalue": [0.32253086419753085, 1.0965165675310187e-17], "method": "exact"},
+"page_trend_test/asymptotic": {"digest": "ed15b4d27b2890af213327c0481a9e21d1c21ba277ac2d688061a82c41c99992", "pvalue": [0.0042238909532980925, 2.041040044778383e-19], "kappa": 7.755657952787479, "statistic": [534.0, 0.0], "method": "asymptotic"},
+"page_trend_test/exact-12x8": {"digest": "053ddd57ea2b81a45a140439c92b48a994a579629b2eb16eef3aaa77f0e45441", "statistic": [2018.0, 0.0], "pvalue": [0.09122142259785554, -1.0107849734139322e-19], "method": "exact"},
+"page_trend_test/exact-20x3": {"digest": "358caa8c04373ee411d5d93e540ad4eeb8823fc59c4dc58a09e486dd4e025843", "statistic": [245.0, 0.0], "pvalue": [0.2398963393645124, 4.568523221593829e-18], "method": "exact"},
+"page_trend_test/ties": {"digest": "515737c7c88bc6791f227c7fa9760c069e4a380e97ecfde664a58e97946bb946", "statistic": [306.0, 0.0], "pvalue": [0.00027190277777777776, 2.107149331563739e-20], "method": "exact"},
+"page_trend_test/asymptotic-forced": {"digest": "4402ee22e91a0aec32df21a1a156bd7c2db50e55661d059da4edf4b0ffe48a3f", "pvalue": [0.26354462843276905, -3.256439895850039e-18], "kappa": 0.7838392313869891, "statistic": [62.0, 0.0], "method": "asymptotic"},
+"page_trend_test/predicted": {"digest": "607a4d7c988db51e4180b89464f13ef9ef07970efba3cc49eb96ea453349ec98", "statistic": [189.0, 0.0], "pvalue": [0.03833241172724246, -2.9633867884084826e-18], "method": "exact"},
+"page_trend_test/ranked": {"digest": "50fc86741b40f2f29f5b1dfa533ca8080804a607984636bb9c65d5508d62f389", "statistic": [229.0, 0.0], "pvalue": [0.34525718571484676, -2.5878693476503673e-17], "method": "exact"},
+"page_trend_test/tail": {"digest": "d16a007e08baddde46804e271e8b94f446539ddf9933200b503779f62a57ef08", "pvalue": [4.742045744219604e-28, -6.913261507959249e-45], "kappa": 120.18061904307446, "statistic": [2673.0, 0.0], "method": "asymptotic"}
+}

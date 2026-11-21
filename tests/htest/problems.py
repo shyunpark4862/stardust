@@ -345,6 +345,73 @@ def _h3():
     add(m, "median_test", "ties-above", rounded(147, 20), rounded(148, 22, loc=1), ties="above")
     add(m, "page_trend_test", "exact", normal(149, (5, 3)) + np.arange(3) * 0.5, tags=("exact",))
     add(m, "page_trend_test", "asymptotic", normal(150, (20, 4)) + np.arange(4) * 0.3)
+    # added with H3: the exact distributions with ties (conditional on the midranks, H45), the
+    # 'auto' thresholds, the deep exact tails, the z of the normal approximation, degenerate input
+    tx, ty = rounded(3001, 12), rounded(3002, 15, loc=1.0)
+    add(m, "mannwhitneyu", "ties-exact", tx, ty, method="exact", tags=("ties", "exact"))
+    add(m, "mannwhitneyu", "ties-exact-greater", ty, tx, method="exact", alternative="greater", tags=("ties", "exact"))
+    add(m, "mannwhitneyu", "ties-small-auto", rounded(3003, 6), rounded(3004, 7, loc=1.0), tags=("ties", "small"))
+    add(m, "mannwhitneyu", "asymptotic-forced", normal(3005, 30), normal(3006, 25, 0.4), method="asymptotic")
+    add(m, "mannwhitneyu", "exact-8-300", normal(3007, 8), normal(3008, 300, 0.5), tags=("exact",))
+    add(
+        m, "mannwhitneyu", "exact-deep", normal(3009, 30), normal(3010, 30, 6.0), method="exact", tags=("tail", "exact")
+    )
+    add(m, "mannwhitneyu", "constant", np.full(6, 2.0), np.full(7, 2.0), tags=("degenerate",))
+    add(m, "ranksums", "tail", normal(3011, 300), normal(3012, 300, 3.0), alternative="less", tags=("tail",))
+    add(m, "ranksums", "ties", rounded(3013, 40), rounded(3014, 35, loc=0.5), tags=("ties",))
+    half = np.round(normal(3015, 25, 0.4, 2.0)) / 2 + 0.25  # ties, no zeros
+    add(m, "wilcoxon", "ties-exact", half, method="exact", tags=("ties", "exact"))
+    zz = rounded(3016, 22, step=1.0, loc=0.7, scale=2.0)
+    add(m, "wilcoxon", "zeros-exact-pratt", zz, zero_method="pratt", method="exact", tags=("ties", "exact"))
+    add(m, "wilcoxon", "zeros-exact-zsplit", zz, zero_method="zsplit", method="exact", tags=("ties", "exact"))
+    add(m, "wilcoxon", "zeros-auto-small", zz[:12], tags=("ties", "small", "exact"))
+    add(m, "wilcoxon", "ties-auto-small", half[:11], alternative="greater", tags=("ties", "small", "exact"))
+    add(m, "wilcoxon", "exact-deep", normal(3017, 60, 3.0), method="exact", tags=("tail", "exact"))
+    add(m, "wilcoxon", "exact-200", normal(3018, 200, 0.15), method="exact", tags=("large", "exact"))
+    add(m, "wilcoxon", "less", normal(3019, 35, -0.4), alternative="less")
+    add(m, "wilcoxon", "constant-zeros", np.zeros(10), tags=("degenerate",))
+    mixed = np.stack([normal(3020, 20, 0.3), rounded(3021, 20, loc=0.5), normal(3022, 20, -0.1)])
+    add(m, "wilcoxon", "batch-mixed", mixed, axis=-1, tags=("batch",))
+    add(m, "kruskal", "tail", normal(3023, 50), normal(3024, 50, 3.0), normal(3025, 50, 6.0), tags=("tail",))
+    add(m, "kruskal", "five", *[normal(3026 + i, 8 + i, 0.3 * i) for i in range(5)])
+    add(m, "kruskal", "constant", np.full(4, 1.5), np.full(5, 1.5), tags=("degenerate",))
+    add(m, "kruskal", "batch", normal(3031, (4, 10)), normal(3032, (4, 12), 0.5), axis=-1, tags=("batch",))
+    add(m, "friedmanchisquare", "four-small", *[normal(3033 + i, 5, 0.4 * i) for i in range(4)], tags=("small",))
+    add(m, "friedmanchisquare", "large", normal(3037, 500), normal(3038, 500, 0.1), normal(3039, 500), tags=("large",))
+    add(m, "friedmanchisquare", "tail", *[normal(3040 + i, 40, 1.5 * i) for i in range(4)], tags=("tail",))
+    add(m, "brunnermunzel", "ties", rounded(3044, 25), rounded(3045, 30, loc=1.0), tags=("ties",))
+    add(m, "brunnermunzel", "less", normal(3046, 15), normal(3047, 18, 0.6), alternative="less")
+    add(m, "brunnermunzel", "greater-normal", normal(3046, 15), normal(3047, 18, 0.6), alternative="greater",
+        distribution="normal")  # fmt: skip
+    add(m, "brunnermunzel", "separated", normal(3048, 8), normal(3049, 9, 50.0), tags=("degenerate",))
+    add(m, "ansari", "exact-54", normal(3050, 54), normal(3051, 54, 0, 1.4), tags=("exact",))
+    add(m, "ansari", "exact-odd", normal(3052, 20), normal(3053, 25, 0, 2.0), tags=("exact",))
+    add(m, "ansari", "exact-greater", normal(3052, 20), normal(3053, 25, 0, 2.0), alternative="greater")
+    add(
+        m, "ansari", "ties-exact", rounded(3054, 15), rounded(3055, 18, scale=6), method="exact", tags=("ties", "exact")
+    )
+    add(m, "ansari", "less-asymptotic", normal(3056, 40), normal(3057, 50, 0, 0.7), alternative="less",
+        method="asymptotic")  # fmt: skip
+    add(m, "mood", "ties", rounded(3058, 30), rounded(3059, 35, scale=6), tags=("ties",))
+    add(m, "mood", "tail", normal(3060, 300), normal(3061, 300, 0, 4.0), tags=("tail",))
+    add(m, "mood", "less", normal(3062, 25), normal(3063, 20, 0, 0.5), alternative="less")
+    add(m, "median_test", "two", normal(3064, 20), normal(3065, 25, 0.8))
+    add(m, "median_test", "two-no-correction", normal(3064, 20), normal(3065, 25, 0.8), correction=False)
+    add(m, "median_test", "log-likelihood", normal(144, 15), normal(145, 18, 0.7), normal(146, 12, -0.4),
+        lambda_="log-likelihood")  # fmt: skip
+    add(m, "median_test", "ties-ignore", rounded(147, 20), rounded(148, 22, loc=1), ties="ignore")
+    add(m, "median_test", "ties-below", rounded(147, 20), rounded(148, 22, loc=1), rounded(3066, 15, loc=-1))
+    add(m, "median_test", "all-tied", np.full(3, 1.0), np.full(4, 1.0), tags=("degenerate",))
+    add(m, "page_trend_test", "exact-12x8", normal(3067, (12, 8)) + np.arange(8) * 0.15, tags=("exact",))
+    add(m, "page_trend_test", "exact-20x3", normal(3068, (20, 3)) + np.arange(3) * 0.2, tags=("exact",))
+    add(m, "page_trend_test", "ties", np.round(normal(3069, (6, 5)) + np.arange(5) * 0.4), tags=("ties", "exact"))
+    add(m, "page_trend_test", "asymptotic-forced", normal(149, (5, 3)) + np.arange(3) * 0.5, method="asymptotic")
+    add(m, "page_trend_test", "predicted", normal(3070, (7, 4)) + np.array([0.6, 0.0, 0.3, 0.9]),
+        predicted_ranks=np.array([3, 1, 2, 4]))  # fmt: skip
+    gr = _g(3071)
+    ranks = np.array([gr.permutation(4) + 1.0 for _ in range(9)])
+    add(m, "page_trend_test", "ranked", ranks, ranked=True)
+    add(m, "page_trend_test", "tail", normal(3072, (30, 6)) + np.arange(6) * 1.0, tags=("tail",))
 
 
 # ---- H4: goodness of fit between samples --------------------------------------------------

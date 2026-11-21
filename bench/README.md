@@ -219,7 +219,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
   - linalg: 잔차/(n·eps·척도) ≤ 10.
   - regression: 선형 모형(ols·wls)의 계수 벡터가 설계 행렬의 κ₂ ≤ 1e11에서 노름 상대오차 1e-14 안이다. 그 밖의 필드는 수치 계약이 없어 기준선과의 비교만 한다.
   - optimize: 결과로 확인되는 멈춤 판정(구간법의 xtol + rtol·|x*|, 기울기 판정의 gtol). 그 밖의 측정(xtol = 0의 ULP, 최적값까지의 거리 등)은 기준선과의 비교만 한다.
-  - htest: `tests/htest/refdata.py`의 척도. 통계량은 상대 1e-14·max(1, κ_stat)(D'Agostino 변환의 0 근처, Anderson–Darling의 상쇄하는 합), p값은 1e-14·max(1, κ_p)·max(1, κ_stat), Cramér–von Mises의 p값(근사식의 1 − cdf)은 절대 1e-15도 받는다, 자유도는 1e-14, t 검정의 신뢰구간 끝은 추정값·반폭의 크기에 대한 1e-14(docs/design/htest.md §4).
+  - htest: `tests/htest/refdata.py`의 척도. 통계량은 상대 1e-14·max(1, κ_stat)(D'Agostino 변환의 0 근처, Anderson–Darling의 상쇄하는 합), p값은 1e-14·max(1, κ_p)·max(1, κ_stat), Cramér–von Mises의 p값(근사식의 1 − cdf)은 절대 1e-15도 받는다, 순위 검정의 `zstatistic`·자유도·중앙값 검정의 중앙값은 1e-14, t 검정의 신뢰구간 끝은 추정값·반폭의 크기에 대한 1e-14(docs/design/htest.md §4).
 
 **비교 대상**(`--compare`): scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS·robustbase·glmnet·Matrix·mvtnorm), Boost.Math 단독(`bench/accuracy/boost_comparator.cpp`).
 

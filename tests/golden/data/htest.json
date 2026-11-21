@@ -388,6 +388,446 @@
 "obj": "stardust.htest._gof.AndersonResult"
 }
 },
+"ansari batch": {
+"r": {
+"attrs": {
+"method": [
+"exact",
+"exact",
+"exact",
+"exact"
+],
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.3d78d7238dd75p-2",
+"0x1.d8c5ed8e42dfap-3",
+"0x1.3218099d61526p-5",
+"0x1.6c10063ae66cdp-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0200000000000p+8",
+"0x1.0600000000000p+8",
+"0x1.1900000000000p+8",
+"0x1.0000000000000p+8"
+]
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari batch keepdims": {
+"r": {
+"attrs": {
+"method": [
+[
+"exact"
+],
+[
+"exact"
+],
+[
+"exact"
+],
+[
+"exact"
+]
+],
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.3d78d7238dd75p-2",
+"0x1.d8c5ed8e42dfap-3",
+"0x1.3218099d61526p-5",
+"0x1.6c10063ae66cdp-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.0200000000000p+8",
+"0x1.0600000000000p+8",
+"0x1.1900000000000p+8",
+"0x1.0000000000000p+8"
+]
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari empty": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari exact 54": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.24fc356a5f169p-9"
+},
+"statistic": {
+"f": "0x1.b100000000000p+10"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari exact odd": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.550c283e62ccap-11"
+},
+"statistic": {
+"f": "0x1.3400000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari greater asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.ac98bd0ed9cb6p-2"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari greater auto": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.c14753121ee75p-2"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari greater exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.c14753121ee75p-2"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari less asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.29b3a178931a5p-1"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari less auto": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.32869eb6a0655p-1"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari less exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.32869eb6a0655p-1"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari long": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.51f1be382591bp-408"
+},
+"statistic": {
+"f": "0x1.331def6600000p+32"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari nan omit": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.e20b0cceb61b7p-1"
+},
+"statistic": {
+"f": "0x1.8800000000000p+5"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari nan propagate": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "ansari(): the input contains NaN (nan_policy='raise')"
+}
+},
+"ansari ties greater asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.495952e3fd71dp-1"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties greater auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.495952e3fd71dp-1"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties greater exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.051966ea22b7bp-1"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties less asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.6d4d5a38051c6p-2"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties less auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.6d4d5a38051c6p-2"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties less exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.feff8d46df486p-2"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties two-sided asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.6d4d5a38051c6p-1"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties two-sided auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.6d4d5a38051c6p-1"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari ties two-sided exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.feff8d46df486p-1"
+},
+"statistic": {
+"f": "0x1.6900000000000p+8"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari two-sided asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.ac98bd0ed9cb6p-1"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari two-sided auto": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.c14753121ee75p-1"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
+"ansari two-sided exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.c14753121ee75p-1"
+},
+"statistic": {
+"f": "0x1.5400000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.AnsariResult"
+}
+},
 "bartlett": {
 "r": {
 "attrs": {
@@ -470,6 +910,400 @@
 }
 },
 "obj": "stardust.htest._parametric.BartlettResult"
+}
+},
+"brunnermunzel batch": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4f7827abbb305p+5",
+"0x1.57b4f4cd0b1bap+5",
+"0x1.1bb47908283a0p+5",
+"0x1.50bf9a9de5f50p+5"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.dde0d31ebdb2ap-2",
+"0x1.eddc51160a658p-1",
+"0x1.9d88b38e5482ap-1",
+"0x1.2af27eaf2f702p-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.781c12e3ae635p-1",
+"0x1.6dff2cab88b87p-5",
+"0x1.f640dc2e583a5p-3",
+"-0x1.113779820606bp+0"
+]
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel batch keepdims": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.4f7827abbb305p+5",
+"0x1.57b4f4cd0b1bap+5",
+"0x1.1bb47908283a0p+5",
+"0x1.50bf9a9de5f50p+5"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.dde0d31ebdb2ap-2",
+"0x1.eddc51160a658p-1",
+"0x1.9d88b38e5482ap-1",
+"0x1.2af27eaf2f702p-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"-0x1.781c12e3ae635p-1",
+"0x1.6dff2cab88b87p-5",
+"0x1.f640dc2e583a5p-3",
+"-0x1.113779820606bp+0"
+]
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel empty": {
+"r": {
+"attrs": {
+"df": {
+"f": "nan"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel greater normal": {
+"r": {
+"attrs": {
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'BrunnermunzelResult' object has no attribute 'df' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.a5e2c53afa152p-3"
+},
+"statistic": {
+"f": "-0x1.a409397fcc865p-1"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel greater t": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.73e24494c2279p+4"
+},
+"pvalue": {
+"f": "0x1.ae6b96d06e05cp-3"
+},
+"statistic": {
+"f": "-0x1.a409397fcc865p-1"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel less normal": {
+"r": {
+"attrs": {
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'BrunnermunzelResult' object has no attribute 'df' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.96874eb1417acp-1"
+},
+"statistic": {
+"f": "-0x1.a409397fcc865p-1"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel less t": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.73e24494c2279p+4"
+},
+"pvalue": {
+"f": "0x1.94651a4be47e9p-1"
+},
+"statistic": {
+"f": "-0x1.a409397fcc865p-1"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel long": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8251a1a40290ep+17"
+},
+"pvalue": {
+"f": "0x1.98a6bf0f10058p-1"
+},
+"statistic": {
+"f": "0x1.05e24d3ba2f2ep-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel nan omit": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.a4aa2c1508095p+3"
+},
+"pvalue": {
+"f": "0x1.5a2b3c2a03cbap-1"
+},
+"statistic": {
+"f": "-0x1.b5816faecf80cp-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel nan propagate": {
+"r": {
+"attrs": {
+"df": {
+"f": "nan"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "brunnermunzel(): the input contains NaN (nan_policy='raise')"
+}
+},
+"brunnermunzel separated": {
+"r": {
+"attrs": {
+"df": {
+"f": "nan"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel ties greater normal": {
+"r": {
+"attrs": {
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'BrunnermunzelResult' object has no attribute 'df' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.5670c87307efap-1"
+},
+"statistic": {
+"f": "0x1.bf29b78aaead7p-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel ties greater t": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.906b6fd960699p+4"
+},
+"pvalue": {
+"f": "0x1.557b61562d3bcp-1"
+},
+"statistic": {
+"f": "0x1.bf29b78aaead7p-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel ties less normal": {
+"r": {
+"attrs": {
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'BrunnermunzelResult' object has no attribute 'df' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.531e6f19f020cp-2"
+},
+"statistic": {
+"f": "0x1.bf29b78aaead7p-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel ties less t": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.906b6fd960699p+4"
+},
+"pvalue": {
+"f": "0x1.55093d53a5889p-2"
+},
+"statistic": {
+"f": "0x1.bf29b78aaead7p-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel ties two-sided normal": {
+"r": {
+"attrs": {
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'BrunnermunzelResult' object has no attribute 'df' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.531e6f19f020cp-1"
+},
+"statistic": {
+"f": "0x1.bf29b78aaead7p-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel ties two-sided t": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.906b6fd960699p+4"
+},
+"pvalue": {
+"f": "0x1.55093d53a5889p-1"
+},
+"statistic": {
+"f": "0x1.bf29b78aaead7p-2"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel two-sided normal": {
+"r": {
+"attrs": {
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'BrunnermunzelResult' object has no attribute 'df' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.a5e2c53afa152p-2"
+},
+"statistic": {
+"f": "-0x1.a409397fcc865p-1"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
+}
+},
+"brunnermunzel two-sided t": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.73e24494c2279p+4"
+},
+"pvalue": {
+"f": "0x1.ae6b96d06e05cp-2"
+},
+"statistic": {
+"f": "-0x1.a409397fcc865p-1"
+}
+},
+"obj": "stardust.htest._rank.BrunnermunzelResult"
 }
 },
 "chisquare": {
@@ -1147,6 +1981,174 @@
 "obj": "stardust.htest._parametric.FlignerResult"
 }
 },
+"friedmanchisquare": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "0x1.63e397e022073p-3"
+},
+"statistic": {
+"f": "0x1.c000000000000p+1"
+}
+},
+"obj": "stardust.htest._rank.FriedmanchisquareResult"
+}
+},
+"friedmanchisquare axis tuple": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+10
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+10
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6edd3122f2ea4p-1",
+"0x1.6edd3122f2ea4p-1",
+"0x1.6edd3122f2ea4p-1",
+"0x1.0dec687e1adf1p-2",
+"0x1.6edd3122f2ea4p-1",
+"0x1.0000000000000p+0",
+"0x1.3c678f5489eabp-8",
+"0x1.0000000000000p+0",
+"0x1.97db0ccceb0afp-5",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+10
+],
+"strides": [
+8
+],
+"v": [
+"0x1.5555555555555p-1",
+"0x1.5555555555555p-1",
+"0x1.5555555555555p-1",
+"0x1.5555555555555p+1",
+"0x1.5555555555555p-1",
+"0x0.0p+0",
+"0x1.5555555555555p+3",
+"0x0.0p+0",
+"0x1.8000000000000p+2",
+"0x0.0p+0"
+]
+}
+},
+"obj": "stardust.htest._rank.FriedmanchisquareResult"
+}
+},
+"friedmanchisquare constant": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.FriedmanchisquareResult"
+}
+},
+"friedmanchisquare long": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "0x1.f8457acbaabedp-1"
+},
+"statistic": {
+"f": "0x1.f266ba493c89fp-6"
+}
+},
+"obj": "stardust.htest._rank.FriedmanchisquareResult"
+}
+},
+"friedmanchisquare nan omit": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "0x1.4c71b2477ab20p-2"
+},
+"statistic": {
+"f": "0x1.2000000000000p+1"
+}
+},
+"obj": "stardust.htest._rank.FriedmanchisquareResult"
+}
+},
+"friedmanchisquare nan propagate": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.FriedmanchisquareResult"
+}
+},
+"friedmanchisquare nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "friedmanchisquare(): the input contains NaN (nan_policy='raise')"
+}
+},
+"friedmanchisquare ties": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "friedmanchisquare(): the paired samples must agree in size, not 30 and 15 and 30"
+}
+},
+"friedmanchisquare two samples": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "friedmanchisquare(): at least three samples are required, not 2"
+}
+},
 "jarque_bera batch": {
 "r": {
 "attrs": {
@@ -1374,10 +2376,175 @@
 "obj": "stardust.htest._gof.JarqueBeraResult"
 }
 },
+"kruskal batch": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.dbfa088fed234p-2",
+"0x1.ed581866c2111p-1",
+"0x1.9a6d43b869b52p-1",
+"0x1.2c6e69e06b3acp-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.118aa404a158cp-1",
+"0x1.118aa404a158cp-9",
+"0x1.02950f0c6085fp-4",
+"0x1.1a9fbe76c8b44p+0"
+]
+}
+},
+"obj": "stardust.htest._rank.KruskalResult"
+}
+},
+"kruskal constant": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.KruskalResult"
+}
+},
+"kruskal long": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "0x1.609cb9ea1f35fp-2"
+},
+"statistic": {
+"f": "0x1.10ec1eacb4821p+1"
+}
+},
+"obj": "stardust.htest._rank.KruskalResult"
+}
+},
+"kruskal nan omit": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"pvalue": {
+"f": "0x1.a248c11dbaa50p-1"
+},
+"statistic": {
+"f": "0x1.b6db6db6db6dbp-5"
+}
+},
+"obj": "stardust.htest._rank.KruskalResult"
+}
+},
+"kruskal nan propagate": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.KruskalResult"
+}
+},
+"kruskal nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "kruskal(): the input contains NaN (nan_policy='raise')"
+}
+},
+"kruskal one sample": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "kruskal(): at least two samples are required, not 1"
+}
+},
+"kruskal three": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "0x1.6afa6a8137de8p-4"
+},
+"statistic": {
+"f": "0x1.3632bd1dfb633p+2"
+}
+},
+"obj": "stardust.htest._rank.KruskalResult"
+}
+},
+"kruskal ties": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "0x1.5ae69dba1c1afp-2"
+},
+"statistic": {
+"f": "0x1.151a5131745d4p+1"
+}
+},
+"obj": "stardust.htest._rank.KruskalResult"
+}
+},
 "ks_1samp batch": {
 "r": {
 "attrs": {
-"method": "exact",
+"method": [
+"exact",
+"exact",
+"exact",
+"exact"
+],
 "pvalue": {
 "nd": "float64",
 "shape": [
@@ -1445,7 +2612,20 @@
 "ks_1samp batch keepdims": {
 "r": {
 "attrs": {
-"method": "exact",
+"method": [
+[
+"exact"
+],
+[
+"exact"
+],
+[
+"exact"
+],
+[
+"exact"
+]
+],
 "pvalue": {
 "nd": "float64",
 "shape": [
@@ -2382,6 +3562,2114 @@
 "obj": "stardust.htest._parametric.LeveneResult"
 }
 },
+"mannwhitneyu batch": {
+"r": {
+"attrs": {
+"method": [
+"asymptotic",
+"asymptotic",
+"asymptotic",
+"asymptotic"
+],
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e3266fa86172ep-2",
+"0x1.f20186c802c5dp-1",
+"0x1.9ef42e3007556p-1",
+"0x1.31d61f9b21daap-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.1a00000000000p+8",
+"0x1.f000000000000p+7",
+"0x1.de00000000000p+7",
+"0x1.2800000000000p+8"
+]
+},
+"zstatistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.7063b4f7a78dbp-1",
+"-0x1.18ad7db07fa8fp-5",
+"-0x1.eb2f9bf4df67ap-3",
+"0x1.0a0f1f24a3ad7p+0"
+]
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu batch keepdims": {
+"r": {
+"attrs": {
+"method": [
+[
+"asymptotic"
+],
+[
+"asymptotic"
+],
+[
+"asymptotic"
+],
+[
+"asymptotic"
+]
+],
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.e3266fa86172ep-2",
+"0x1.f20186c802c5dp-1",
+"0x1.9ef42e3007556p-1",
+"0x1.31d61f9b21daap-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.1a00000000000p+8",
+"0x1.f000000000000p+7",
+"0x1.de00000000000p+7",
+"0x1.2800000000000p+8"
+]
+},
+"zstatistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.7063b4f7a78dbp-1",
+"-0x1.18ad7db07fa8fp-5",
+"-0x1.eb2f9bf4df67ap-3",
+"0x1.0a0f1f24a3ad7p+0"
+]
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu empty": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu exact 8 x 2000": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.43de477b0581fp-1"
+},
+"statistic": {
+"f": "0x1.12e8000000000p+13"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu exact cap": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.484dc0b187e67p-1"
+},
+"statistic": {
+"f": "0x1.ac73000000000p+18"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu exact deep": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.ee21fc1273ff9p-24"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu greater asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.aed9923bf8838p-3"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.9c385e6cd6b13p-1"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu greater auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.aed9923bf8838p-3"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.9c385e6cd6b13p-1"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu greater exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.b55f8b509d0dfp-3"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu less asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.9b5a4bdae153ap-1"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.b534070e9620cp-1"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu less auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.9b5a4bdae153ap-1"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.b534070e9620cp-1"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu less exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.99beb61302146p-1"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu long": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.9890ebacd836ep-1"
+},
+"statistic": {
+"f": "0x1.29d385f800000p+32"
+},
+"zstatistic": {
+"f": "-0x1.061abd9b62c16p-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu method": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "mannwhitneyu(): 'method' must be 'auto', 'asymptotic' or 'exact', not 'permutation'"
+}
+},
+"mannwhitneyu nan omit": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.5cd8fc8fb4eebp-1"
+},
+"statistic": {
+"f": "0x1.0c00000000000p+6"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu nan propagate": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "mannwhitneyu(): the input contains NaN (nan_policy='raise')"
+}
+},
+"mannwhitneyu no continuity": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.4956736e2ba82p-1"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"f": "-0x1.da4b00504193ap-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties greater asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.5d8fad4bfa58cp-1"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"f": "-0x1.e6c63cf40d685p-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties greater auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.5d8fad4bfa58cp-1"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"f": "-0x1.e6c63cf40d685p-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties greater exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.5bd4e19d1652bp-1"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties less asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.4dd2b851f70a4p-2"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"f": "-0x1.cdcfc3ac75beep-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties less auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.4dd2b851f70a4p-2"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"f": "-0x1.cdcfc3ac75beep-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties less exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.4c9da9a7b4a72p-2"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties two-sided asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.4dd2b851f70a4p-1"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"f": "-0x1.cdcfc3ac75beep-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties two-sided auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.4dd2b851f70a4p-1"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"f": "-0x1.cdcfc3ac75beep-2"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu ties two-sided exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.4c9da9a7b4a72p-1"
+},
+"statistic": {
+"f": "0x1.9c00000000000p+7"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu two-sided asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.aed9923bf8838p-2"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.9c385e6cd6b13p-1"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu two-sided auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.aed9923bf8838p-2"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.9c385e6cd6b13p-1"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"mannwhitneyu two-sided exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.b55f8b509d0dfp-2"
+},
+"statistic": {
+"f": "0x1.ac00000000000p+6"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'MannwhitneyuResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.MannwhitneyuResult"
+}
+},
+"median_test above correction=False lambda=0.4": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.0e1302208ef34p-3"
+},
+"statistic": {
+"f": "0x1.229a079d0f32ep+1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test above correction=False lambda=1": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.14e2a232dd2b1p-3"
+},
+"statistic": {
+"f": "0x1.1dab031bfbdabp+1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test above correction=False lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.ff9fd6be0ed70p-4"
+},
+"statistic": {
+"f": "0x1.2d65d5df81c00p+1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test above correction=False lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.08569eb80842bp-3"
+},
+"statistic": {
+"f": "0x1.26dd9313ca929p+1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test above correction=True lambda=0.4": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.e6ac3aa7dac27p-3"
+},
+"statistic": {
+"f": "0x1.65032fcaf0582p+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test above correction=True lambda=1": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.ec804b32dc77ap-3"
+},
+"statistic": {
+"f": "0x1.60b669b7730b6p+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test above correction=True lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.daedf71a911fep-3"
+},
+"statistic": {
+"f": "0x1.6dde629443f9cp+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test above correction=True lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.e1e7a9e5eefb9p-3"
+},
+"statistic": {
+"f": "0x1.68939ece4f6c7p+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+15,
+11,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test batch": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+},
+"median": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.80e0b51d676c8p-8",
+"0x1.a36cd74e73bb7p-3",
+"0x1.58fd5d71b3076p-3",
+"-0x1.0439f895a7854p-5"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.5452e3198d150p-1",
+"0x1.5452e3198d150p-1"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0",
+"0x1.80c246d47d787p-3",
+"0x1.80c246d47d787p-3"
+]
+},
+"table": {
+"nd": "int64",
+"shape": [
+4,
+2,
+2
+],
+"strides": [
+32,
+16,
+8
+],
+"v": [
+10,
+12,
+10,
+13,
+10,
+12,
+10,
+13,
+11,
+11,
+9,
+14,
+11,
+11,
+9,
+14
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test batch keepdims": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+},
+"median": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.80e0b51d676c8p-8",
+"0x1.a36cd74e73bb7p-3",
+"0x1.58fd5d71b3076p-3",
+"-0x1.0439f895a7854p-5"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.5452e3198d150p-1",
+"0x1.5452e3198d150p-1"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0",
+"0x1.80c246d47d787p-3",
+"0x1.80c246d47d787p-3"
+]
+},
+"table": {
+"nd": "int64",
+"shape": [
+4,
+1,
+2,
+2
+],
+"strides": [
+32,
+32,
+16,
+8
+],
+"v": [
+10,
+12,
+10,
+13,
+10,
+12,
+10,
+13,
+11,
+11,
+9,
+14,
+11,
+11,
+9,
+14
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=False lambda=0.4": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.09fcdd37a63a2p-1"
+},
+"statistic": {
+"f": "0x1.a8d405709ae8dp-2"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=False lambda=1": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.098698c234b1cp-1"
+},
+"statistic": {
+"f": "0x1.aaaaaaaaaaaabp-2"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=False lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.0a80218a1a36ep-1"
+},
+"statistic": {
+"f": "0x1.a6cb5382f7e60p-2"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=False lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.0a3dfc3219b58p-1"
+},
+"statistic": {
+"f": "0x1.a7d17c4f1fa67p-2"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=True lambda=0.4": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.7e8f3c8b36631p-1"
+},
+"statistic": {
+"f": "0x1.a99deca92720cp-4"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=True lambda=1": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.7e67cb3287188p-1"
+},
+"statistic": {
+"f": "0x1.aaaaaaaaaaaabp-4"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=True lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.7ec3768016b69p-1"
+},
+"statistic": {
+"f": "0x1.a83aa4b8ba197p-4"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test below correction=True lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.7ea77878bd778p-1"
+},
+"statistic": {
+"f": "0x1.a8f8fcc07e5f6p-4"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+19,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test constant": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "0x1.4000000000000p+1"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+0,
+0,
+8,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=False lambda=0.4": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.e07a80c678be7p-3"
+},
+"statistic": {
+"f": "0x1.69a6b8f2c994fp+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=False lambda=1": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.e2392bfaf27a3p-3"
+},
+"statistic": {
+"f": "0x1.6856594d156e2p+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=False lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.da13ab871225ep-3"
+},
+"statistic": {
+"f": "0x1.6e85a5d0107e2p+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=False lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.de3296a458596p-3"
+},
+"statistic": {
+"f": "0x1.6b60afd7a1eb8p+0"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=True lambda=0.4": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.a1f1efe5f975cp-2"
+},
+"statistic": {
+"f": "0x1.5e4d72445fb36p-1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=True lambda=1": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.a244d052c9ea6p-2"
+},
+"statistic": {
+"f": "0x1.5dd48daad83a6p-1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=True lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.a08e4badfe7d4p-2"
+},
+"statistic": {
+"f": "0x1.6055c94ab3007p-1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ignore correction=True lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.a1764bb07328cp-2"
+},
+"statistic": {
+"f": "0x1.5f020f09deb5cp-1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+7,
+15,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test long": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"median": {
+"f": "0x1.a20be4922ac37p-8"
+},
+"pvalue": {
+"f": "0x1.005861cdc9661p-2"
+},
+"statistic": {
+"f": "0x1.628bdd60099cbp+1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+49865,
+50133,
+8,
+50135,
+49867,
+4
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test nan omit": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "0x1.99f0a27f68065p-2"
+},
+"pvalue": {
+"f": "0x1.4bd0bb33e74a1p-1"
+},
+"statistic": {
+"f": "0x1.aaaaaaaaaaaabp-3"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+3,
+7,
+5,
+5
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test nan propagate": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "nan"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+0,
+0,
+0,
+0
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "median_test(): the input contains NaN (nan_policy='raise')"
+}
+},
+"median_test three": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"median": {
+"f": "0x1.ba0e56f6780e9p-4"
+},
+"pvalue": {
+"f": "0x1.fb2f8c5516fddp-4"
+},
+"statistic": {
+"f": "0x1.0b60b60b60b61p+2"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+8,
+8,
+2,
+4,
+7,
+7
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"median_test ties": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"median": {
+"f": "-0x0.0p+0"
+},
+"pvalue": {
+"f": "0x1.a0fb11ea9005fp-3"
+},
+"statistic": {
+"f": "0x1.9771b7c7f310bp+1"
+},
+"table": {
+"nd": "int64",
+"shape": [
+2,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+11,
+7,
+1,
+19,
+8,
+8
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
+"mood batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.52365f04476d8p-3",
+"0x1.cb0bd9d42d030p-2",
+"0x1.3314a7b8fe38ap-7",
+"0x1.8b83f98b1e94cp-3"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.6352bc8adc630p+0",
+"-0x1.843c657a34113p-1",
+"-0x1.4c91dab126f46p+1",
+"-0x1.4d284ffe91a9cp+0"
+]
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood batch keepdims": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.52365f04476d8p-3",
+"0x1.cb0bd9d42d030p-2",
+"0x1.3314a7b8fe38ap-7",
+"0x1.8b83f98b1e94cp-3"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"-0x1.6352bc8adc630p+0",
+"-0x1.843c657a34113p-1",
+"-0x1.4c91dab126f46p+1",
+"-0x1.4d284ffe91a9cp+0"
+]
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood empty": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.cf5f5fe4f8326p-2"
+},
+"statistic": {
+"f": "0x1.e8b8885dc844bp-4"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.1850500d83e6dp-1"
+},
+"statistic": {
+"f": "0x1.e8b8885dc844bp-4"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood long": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.22ed9a88cba8fp-509"
+},
+"statistic": {
+"f": "-0x1.a6d353e7cde8bp+4"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood nan omit": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.a335aabed4c1cp-1"
+},
+"statistic": {
+"f": "0x1.d54178e8830d5p-3"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood nan propagate": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "mood(): the input contains NaN (nan_policy='raise')"
+}
+},
+"mood ties greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.5d57190328967p-1"
+},
+"statistic": {
+"f": "-0x1.e588c12272a79p-2"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood ties less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.4551cdf9aed32p-2"
+},
+"statistic": {
+"f": "-0x1.e588c12272a79p-2"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood ties two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.4551cdf9aed32p-1"
+},
+"statistic": {
+"f": "-0x1.e588c12272a79p-2"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
+"mood two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.cf5f5fe4f8326p-1"
+},
+"statistic": {
+"f": "0x1.e8b8885dc844bp-4"
+}
+},
+"obj": "stardust.htest._rank.MoodResult"
+}
+},
 "normaltest batch": {
 "r": {
 "attrs": {
@@ -2607,6 +5895,168 @@
 }
 },
 "obj": "stardust.htest._gof.NormaltestResult"
+}
+},
+"page_trend_test 20 x 3": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.63cfdd550cb56p-2"
+},
+"statistic": {
+"f": "0x1.e600000000000p+7"
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
+}
+},
+"page_trend_test asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.efb3e6e8f1fb9p-1"
+},
+"statistic": {
+"f": "0x1.1500000000000p+10"
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
+}
+},
+"page_trend_test auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.efb3e6e8f1fb9p-1"
+},
+"statistic": {
+"f": "0x1.1500000000000p+10"
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
+}
+},
+"page_trend_test batch": {
+"r": {
+"attrs": {
+"method": [
+"asymptotic",
+"asymptotic",
+"asymptotic"
+],
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.efb3e6e8f1fb9p-1",
+"0x1.24ef2dded8227p-1",
+"0x1.f4e1dac28ef84p-4"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.1500000000000p+10",
+"0x1.2c00000000000p+10",
+"0x1.3e80000000000p+10"
+]
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
+}
+},
+"page_trend_test exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f0336dd9331cbp-1"
+},
+"statistic": {
+"f": "0x1.1500000000000p+10"
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
+}
+},
+"page_trend_test exact cap": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "page_trend_test(): method='exact' needs about inf operations for this input, more than its cap of 1e+09; use method='asymptotic'"
+}
+},
+"page_trend_test large": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.f66fae36187aap-2"
+},
+"statistic": {
+"f": "0x1.b7ee040000000p+22"
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
+}
+},
+"page_trend_test nan": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "page_trend_test(): 'data' must not contain NaN"
+}
+},
+"page_trend_test predicted": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "page_trend_test(): 'predicted_ranks' must hold each integer from 1 to 10 once"
+}
+},
+"page_trend_test ranked": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.7b425ed097b42p-9"
+},
+"statistic": {
+"f": "0x1.6000000000000p+6"
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
+}
+},
+"page_trend_test shape": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "page_trend_test(): 'data' must be at least a 2 x 3 table (2 blocks, 3 treatments), not 3 x 2"
+}
+},
+"page_trend_test ties": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.436e669a9b0a7p-1"
+},
+"statistic": {
+"f": "0x1.29e0000000000p+10"
+}
+},
+"obj": "stardust.htest._rank.PageTrendTestResult"
 }
 },
 "power_divergence None": {
@@ -2949,6 +6399,181 @@
 }
 },
 "obj": "stardust.htest._gof.PowerDivergenceResult"
+}
+},
+"ranksums batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.dbfa088fed238p-2",
+"0x1.ed581866c2111p-1",
+"0x1.9a6d43b869b51p-1",
+"0x1.2c6e69e06b3acp-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.763ca795ff8bep-1",
+"-0x1.763ca795ff8bep-5",
+"-0x1.0149b3371fb03p-2",
+"0x1.0cfb9873cfac9p+0"
+]
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums batch keepdims": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.dbfa088fed238p-2",
+"0x1.ed581866c2111p-1",
+"0x1.9a6d43b869b51p-1",
+"0x1.2c6e69e06b3acp-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.763ca795ff8bep-1",
+"-0x1.763ca795ff8bep-5",
+"-0x1.0149b3371fb03p-2",
+"0x1.0cfb9873cfac9p+0"
+]
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums empty": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.a0939775a4006p-3"
+},
+"statistic": {
+"f": "0x1.a8b632bdb6690p-1"
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.97db1a2296ffep-1"
+},
+"statistic": {
+"f": "0x1.a8b632bdb6690p-1"
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums long": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.9890eaabf448dp-1"
+},
+"statistic": {
+"f": "-0x1.061ac034c1f04p-2"
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums nan omit": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.4d8179c9deebdp-1"
+},
+"statistic": {
+"f": "0x1.ceb141cf4affep-2"
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums nan propagate": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
+}
+},
+"ranksums nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "ranksums(): the input contains NaN (nan_policy='raise')"
+}
+},
+"ranksums two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.a0939775a4006p-2"
+},
+"statistic": {
+"f": "0x1.a8b632bdb6690p-1"
+}
+},
+"obj": "stardust.htest._rank.RanksumsResult"
 }
 },
 "shapiro batch": {
@@ -4930,6 +8555,870 @@
 }
 },
 "obj": "stardust.htest._parametric.TtestRelResult"
+}
+},
+"wilcoxon all zeros": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon batch": {
+"r": {
+"attrs": {
+"method": [
+"exact",
+"exact",
+"exact",
+"exact"
+],
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.2d50800000000p-2",
+"0x1.51e7000000000p-2",
+"0x1.f88b000000000p-1",
+"0x1.bd2d800000000p-1"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.3000000000000p+6",
+"0x1.3800000000000p+6",
+"0x1.a000000000000p+6",
+"0x1.9000000000000p+6"
+]
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon batch mixed": {
+"r": {
+"attrs": {
+"method": [
+"exact",
+"exact"
+],
+"pvalue": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6900000000000p-3",
+"0x1.2800000000000p-5"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.5000000000000p+4",
+"0x1.9000000000000p+3"
+]
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon exact 200": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.c1d32164f9a92p-1"
+},
+"statistic": {
+"f": "0x1.3620000000000p+13"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon exact cap": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "wilcoxon(): method='exact' needs about 1.35e+10 operations for this input, more than its cap of 1e+09; use method='asymptotic'"
+}
+},
+"wilcoxon exact deep": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.0000000000000p-69"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon greater asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.ace7ef8070a14p-4"
+},
+"statistic": {
+"f": "0x1.b800000000000p+5"
+},
+"zstatistic": {
+"f": "0x1.415111aa791b0p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon greater auto": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.de00000000000p-4"
+},
+"statistic": {
+"f": "0x1.b800000000000p+5"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon greater exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.de00000000000p-4"
+},
+"statistic": {
+"f": "0x1.b800000000000p+5"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon less asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.ca63020ff1ebep-1"
+},
+"statistic": {
+"f": "0x1.b800000000000p+5"
+},
+"zstatistic": {
+"f": "0x1.415111aa791b0p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon less auto": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.cbe0000000000p-1"
+},
+"statistic": {
+"f": "0x1.b800000000000p+5"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon less exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.cbe0000000000p-1"
+},
+"statistic": {
+"f": "0x1.b800000000000p+5"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon long": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.e88549c553bb1p-1"
+},
+"statistic": {
+"f": "0x1.29f6b00c00000p+31"
+},
+"zstatistic": {
+"f": "-0x1.d71766103016cp-5"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon nan omit": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.d800000000000p-2"
+},
+"statistic": {
+"f": "0x1.8000000000000p+3"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon nan propagate": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "wilcoxon(): the input contains NaN (nan_policy='raise')"
+}
+},
+"wilcoxon ties greater asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.f08c4a8293944p-2"
+},
+"statistic": {
+"f": "0x1.a800000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.35eedc0029f57p-5"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties greater auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.f08c4a8293944p-2"
+},
+"statistic": {
+"f": "0x1.a800000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.35eedc0029f57p-5"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties greater exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f93ac00000000p-2"
+},
+"statistic": {
+"f": "0x1.a800000000000p+6"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties less asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.07b9dabeb635ep-1"
+},
+"statistic": {
+"f": "0x1.a800000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.35eedc0029f57p-5"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties less auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.07b9dabeb635ep-1"
+},
+"statistic": {
+"f": "0x1.a800000000000p+6"
+},
+"zstatistic": {
+"f": "0x1.35eedc0029f57p-5"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties less exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.08e4400000000p-1"
+},
+"statistic": {
+"f": "0x1.a800000000000p+6"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties two-sided asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.f08c4a8293944p-1"
+},
+"statistic": {
+"f": "0x1.a000000000000p+6"
+},
+"zstatistic": {
+"f": "-0x1.35eedc0029f57p-5"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties two-sided auto": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.f08c4a8293944p-1"
+},
+"statistic": {
+"f": "0x1.a000000000000p+6"
+},
+"zstatistic": {
+"f": "-0x1.35eedc0029f57p-5"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon ties two-sided exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f93ac00000000p-1"
+},
+"statistic": {
+"f": "0x1.a000000000000p+6"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon two-sided asymptotic": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.ace7ef8070a14p-3"
+},
+"statistic": {
+"f": "0x1.7000000000000p+4"
+},
+"zstatistic": {
+"f": "-0x1.415111aa791b0p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon two-sided auto": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.de00000000000p-3"
+},
+"statistic": {
+"f": "0x1.7000000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon two-sided exact": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.de00000000000p-3"
+},
+"statistic": {
+"f": "0x1.7000000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zero_method": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "wilcoxon(): 'zero_method' must be 'wilcox', 'pratt' or 'zsplit', not 'drop'"
+}
+},
+"wilcoxon zeros pratt asymptotic correction=False": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.ce43752e55e41p-4"
+},
+"statistic": {
+"f": "0x1.2800000000000p+4"
+},
+"zstatistic": {
+"f": "-0x1.95e2059b988b2p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros pratt asymptotic correction=True": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.f44baa59f112cp-4"
+},
+"statistic": {
+"f": "0x1.2800000000000p+4"
+},
+"zstatistic": {
+"f": "-0x1.8bbc5f114e547p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros pratt auto correction=False": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.2800000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros pratt auto correction=True": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.2800000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros pratt exact correction=False": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.2800000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros pratt exact correction=True": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.2800000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros small auto": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.5800000000000p-2"
+},
+"statistic": {
+"f": "0x1.b000000000000p+3"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros wilcox asymptotic correction=False": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.d798db35464a9p-4"
+},
+"statistic": {
+"f": "0x1.f000000000000p+3"
+},
+"zstatistic": {
+"f": "-0x1.9355688a2a01cp+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros wilcox asymptotic correction=True": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.01d347b8da9f8p-3"
+},
+"statistic": {
+"f": "0x1.f000000000000p+3"
+},
+"zstatistic": {
+"f": "-0x1.87cf4f9c28ce8p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros wilcox auto correction=False": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.e400000000000p-4"
+},
+"statistic": {
+"f": "0x1.f000000000000p+3"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros wilcox auto correction=True": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.e400000000000p-4"
+},
+"statistic": {
+"f": "0x1.f000000000000p+3"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros wilcox exact correction=False": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.e400000000000p-4"
+},
+"statistic": {
+"f": "0x1.f000000000000p+3"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros wilcox exact correction=True": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.e400000000000p-4"
+},
+"statistic": {
+"f": "0x1.f000000000000p+3"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros zsplit asymptotic correction=False": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.cf6be5ae1cd69p-4"
+},
+"statistic": {
+"f": "0x1.3000000000000p+4"
+},
+"zstatistic": {
+"f": "-0x1.95907eb87ab44p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros zsplit asymptotic correction=True": {
+"r": {
+"attrs": {
+"method": "asymptotic",
+"pvalue": {
+"f": "0x1.f57f2f09767d8p-4"
+},
+"statistic": {
+"f": "0x1.3000000000000p+4"
+},
+"zstatistic": {
+"f": "-0x1.8b6ce1f3de096p+0"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros zsplit auto correction=False": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.3000000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros zsplit auto correction=True": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.3000000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros zsplit exact correction=False": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.3000000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
+}
+},
+"wilcoxon zeros zsplit exact correction=True": {
+"r": {
+"attrs": {
+"method": "exact",
+"pvalue": {
+"f": "0x1.f800000000000p-4"
+},
+"statistic": {
+"f": "0x1.3000000000000p+4"
+},
+"zstatistic": {
+"error": "builtins.AttributeError",
+"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+}
+},
+"obj": "stardust.htest._rank.WilcoxonResult"
 }
 }
 },

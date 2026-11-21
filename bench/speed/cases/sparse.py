@@ -1,8 +1,9 @@
 """sd.sparse against scipy.sparse 1.18.1 and R Matrix 1.7.6 (docs/design/sparse.md §5, §7).
 
-The plan of the area's cases, milestone by milestone: every case below names the sd.sparse
-names it needs, and cases() keeps a case only once they are public (SP0 has none, so the area
-has no case yet; SP1 brings the conversions, SP2 the products and reductions, and so on). The
+The plan of the area's cases, milestone by milestone: every case below names its milestone and
+the sd.sparse names it needs, and cases() keeps a case once its milestone is in DONE and the
+names are public (SP1 brings the formats and conversions, SP2 the products and reductions, and
+so on; the operators of SP2 need no new name, hence the milestone). The
 comparators are the ones the accuracy measurement will use: scipy.sparse and scipy.sparse.linalg
 at their defaults (one thread), R's Matrix in its one session.
 
@@ -24,7 +25,7 @@ from typing import Callable
 
 import numpy as np
 
-from ..registry import Case, Ref, RRef
+from ..registry import Case, Check, Ref, RRef
 
 NNZ = ((10**4, "10^4"), (10**5, "10^5"), (10**6, "10^6"), (10**7, "10^7"))
 GRIDS = ("lap2d/100", "lap2d/300", "lap2d/1000", "lap3d/22", "lap3d/45")
@@ -57,11 +58,13 @@ def _array_setup(nnz):
         a = sp.csr_array((v, (r, c)), shape=(n, n))
         b = sp.csr_array((v2, (r2, c2)), shape=(n, n))
         cr, cc = g.integers(0, n, nnz), g.integers(0, n, nnz)
+        cx = g.uniform(-1, 1, nnz)
         return {
             "n": n, "row": r, "col": c, "val": v, "row2": r2, "col2": c2, "val2": v2,
-            "a": a, "b": b, "csc": a.tocsc(), "coo": sp.coo_array((g.uniform(-1, 1, nnz), (cr, cc)), shape=(n, n)),
+            "a": a, "b": b, "csc": a.tocsc(), "coo": sp.coo_array((cx, (cr, cc)), shape=(n, n)), "coo_x": cx,
             "x": g.uniform(-1, 1, n), "X": g.uniform(-1, 1, (n, 16)),
             "r_i": (r + 1).astype(np.float64), "r_j": (c + 1).astype(np.float64), "r_x": v,
+            "r_ci": (cr + 1).astype(np.float64), "r_cj": (cc + 1).astype(np.float64),
             "r_n": np.array([float(n)]),
         }  # fmt: skip
 
@@ -96,8 +99,44 @@ def _sd(x):
     return sd.asarray(x)
 
 
+def _sd_coo(d, key="a"):
+    import stardust as sd
+
+    a = d[key].tocoo()
+    return sd.sparse.coo_array(
+        (sd.asarray(a.data), (sd.asarray(a.coords[0].astype(np.int64)), sd.asarray(a.coords[1].astype(np.int64)))),
+        shape=a.shape,
+    )
+
+
 R_SETUP = "suppressMessages(library(Matrix)); A <- sparseMatrix(i = r_i, j = r_j, x = r_x, dims = c(n, n))"
 R_DATA = {"r_i": "r_i", "r_j": "r_j", "r_x": "r_x"}
+
+
+def _summary(x):
+    """A sparse result for the smoke check: the sums of the values, of value x (row + 1) and of
+    value x (col + 1) -- the matrix up to rounding, whatever the format, order or repeats. Dense
+    and other results pass."""
+    import scipy.sparse as sp
+
+    import stardust as sd
+
+    if isinstance(x, sd.sparse.sparray) or sp.issparse(x):
+        c = x.tocoo()
+        r, j, v = (np.asarray(a) for a in (c.coords[0], c.coords[1], c.data))
+        return np.array([v.sum(), (v * (r + 1)).sum(), (v * (j + 1)).sum()])
+    return x
+
+
+SPARSE_CHECK = Check(sd=_summary, ref=lambda label, x: x if label == "R" else _summary(x), rtol=1e-9)
+# The same three sums of an R sparse matrix (1-based indices).
+R_SUMMARY = "{ s <- summary(.v); c(sum(s$x), sum(s$x * s$i), sum(s$x * s$j)) }"
+
+
+def _summed(A):
+    B = A.copy()
+    B.sum_duplicates()
+    return B
 
 
 @dataclasses.dataclass(frozen=True)
@@ -112,6 +151,8 @@ class Spec:
     limit: int | None = None  # the largest nnz the case runs at
     quick: bool = False
     note: str = ""
+    r_differs: str = ""  # the R expression computes something else by design: why
+    r_data: tuple = ()  # more (case data key, R variable) pairs the R expression reads
 
 
 def _quiet(f):
@@ -124,12 +165,38 @@ ARRAY_SPECS = (
     Spec("SP1", "convert", "COO to CSR", ("coo_array",), lambda d: (lambda A: lambda: A.tocsr())(
         __import__("stardust").sparse.coo_array((_sd(d["coo"].data), (_sd(d["coo"].coords[0].astype(np.int64)),
             _sd(d["coo"].coords[1].astype(np.int64)))), shape=d["coo"].shape)),
-         lambda d: lambda: d["coo"].tocsr(), r="sparseMatrix(i = r_i, j = r_j, x = r_x, dims = c(n, n))",
-         quick=True, note="중복이 있는 무작위 자리"),
+         lambda d: lambda: d["coo"].tocsr(), r="sparseMatrix(i = ci, j = cj, x = cx, dims = c(n, n))",
+         r_data=(("r_ci", "ci"), ("r_cj", "cj"), ("coo_x", "cx")), quick=True, note="중복이 있는 무작위 자리"),
     Spec("SP1", "convert", "CSR to CSC", ("csr_array",), lambda d: (lambda A: lambda: A.tocsc())(_sd_csr(d)),
-         lambda d: lambda: d["a"].tocsc(), r="t(A)"),
+         lambda d: lambda: d["a"].tocsc(), r="t(A)", r_differs="t(A): the transpose, the same reordering of a dgCMatrix"),
+    Spec("SP1", "convert", "COO to CSR (sorted)", ("coo_array",), lambda d: (lambda A: lambda: A.tocsr())(_sd_coo(d)),
+         lambda d: (lambda A: lambda: A.tocsr())(d["a"].tocoo()), note="표준 꼴의 COO: 정렬 없이 indptr만"),
+    Spec("SP1", "convert", "CSR to COO", ("csr_array",), lambda d: (lambda A: lambda: A.tocoo())(_sd_csr(d)),
+         lambda d: lambda: d["a"].tocoo(), r='as(A, "TsparseMatrix")'),
+    Spec("SP1", "convert", "COO sum_duplicates", ("coo_array",),
+         lambda d: (lambda A: lambda: _summed(A))(_sd_coo(d, "coo")),
+         lambda d: lambda: _summed(d["coo"]), note="복사 포함(제자리 연산이라)"),
+    Spec("SP1", "construct", "coo_array((data, (row, col)))", ("coo_array",),
+         lambda d: (lambda v, r, c, n: lambda: __import__("stardust").sparse.coo_array((v, (r, c)), shape=(n, n)))(
+             _sd(d["val"]), _sd(d["row"]), _sd(d["col"]), d["n"]),
+         lambda d: lambda: __import__("scipy.sparse", fromlist=["coo_array"]).coo_array(
+             (d["val"], (d["row"], d["col"])), shape=(d["n"], d["n"])),
+         r="sparseMatrix(i = r_i, j = r_j, x = r_x, dims = c(n, n), repr = \"T\")",
+         note="sd는 색인을 복사하고 검사한다, scipy는 그대로 쓴다"),
+    Spec("SP1", "construct", "csr_array((data, indices, indptr))", ("csr_array",),
+         lambda d: (lambda p, n: lambda: __import__("stardust").sparse.csr_array(p, shape=(n, n)))(
+             (_sd(d["a"].data), _sd(d["a"].indices.astype(np.int64)), _sd(d["a"].indptr.astype(np.int64))), d["n"]),
+         lambda d: (lambda p, n: lambda: __import__("scipy.sparse", fromlist=["csr_array"]).csr_array(p, shape=(n, n)))(
+             (d["a"].data, d["a"].indices.astype(np.int64), d["a"].indptr.astype(np.int64)), d["n"]),
+         note="sd는 표준 꼴을 검사하고 색인을 복사한다, scipy는 검사 없이 그대로 쓴다"),
+    Spec("SP1", "construct", "csr_array(dense)", ("csr_array",),
+         lambda d: (lambda x: lambda: __import__("stardust").sparse.csr_array(x))(_sd(d["a"].toarray())),
+         lambda d: (lambda x: lambda: __import__("scipy.sparse", fromlist=["csr_array"]).csr_array(x))(d["a"].toarray()),
+         limit=10**5),
     Spec("SP1", "convert", "toarray", ("csr_array",), lambda d: (lambda A: lambda: A.toarray())(_sd_csr(d)),
          lambda d: lambda: d["a"].toarray(), limit=10**5),
+    Spec("SP1", "convert", "to_scipy", ("csr_array",), lambda d: (lambda A: lambda: A.to_scipy())(_sd_csr(d)),
+         lambda d: lambda: d["a"].copy(), note="sd는 복사 없는 뷰, scipy 쪽은 같은 객체의 copy()"),
     Spec("SP2", "products", "A @ x", ("csr_array",), lambda d: (lambda A, x: lambda: A @ x)(_sd_csr(d), _sd(d["x"])),
          lambda d: lambda: d["a"] @ d["x"], r="A %*% x", quick=True),
     Spec("SP2", "products", "A @ X (k = 16)", ("csr_array",),
@@ -229,27 +296,42 @@ def _grid_r(setup):
     return wrapped
 
 
-def _public(names) -> bool:
+# The milestones whose cases run.
+DONE = ("SP1",)
+
+
+def _public(spec) -> bool:
     import stardust as sd
 
-    return all(n in sd.sparse.__all__ for n in names)
+    return spec.milestone in DONE and all(n in sd.sparse.__all__ for n in spec.needs)
 
 
 def cases() -> list[Case]:
     out = []
     for s in ARRAY_SPECS:
-        if not _public(s.needs):
+        if not _public(s):
             continue
         for nnz, size in NNZ:
             if s.limit and nnz > s.limit:
                 continue
             refs = [Ref("scipy", lambda d, f=s.scipy: _quiet(lambda: f(d)))]
             if s.r:
-                refs.append(RRef("R", s.r, data={**R_DATA, "r_n": "n", "x": "x"}, setup=R_SETUP, packages=("Matrix",)))
+                refs.append(
+                    RRef(
+                        "R",
+                        s.r,
+                        data={**R_DATA, "r_n": "n", "x": "x", **dict(s.r_data)},
+                        setup=R_SETUP,
+                        packages=("Matrix",),
+                        differs=s.r_differs,
+                        value=R_SUMMARY if s.milestone == "SP1" else "",
+                    )
+                )
+            check = SPARSE_CHECK if s.milestone == "SP1" else Check()
             out.append(Case(area="sparse", group=s.group, name=s.name, size=size, n=nnz, setup=_array_setup(nnz),
-                            sd=s.sd, refs=tuple(refs), quick=s.quick and nnz == 10**6, note=s.note))  # fmt: skip
+                            sd=s.sd, refs=tuple(refs), quick=s.quick and nnz == 10**6, note=s.note, check=check))  # fmt: skip
     for s in SOLVER_SPECS:
-        if not _public(s.needs):
+        if not _public(s):
             continue
         for mid in GRIDS:
             refs = [Ref("scipy", lambda d, f=s.scipy: _quiet(lambda: f(d)))]

@@ -18,6 +18,8 @@ _jb_of_sums on the sums of its whitened residuals, the same function this module
 uses on a sample's.
 """
 
+import math
+
 from .. import _calls
 from .. import _core as _sd
 from ..stats import _distribution as _dist
@@ -271,6 +273,14 @@ def anderson(x, /, *, axis=None, dist=None, method="interpolate", nan_policy="pr
 # ---- the empirical distribution function tests -------------------------------------------
 
 
+def _nest(flat, shape):
+    """flat (a list) as nested lists of the shape."""
+    if len(shape) <= 1 or shape[0] == 0:
+        return list(flat)
+    step = len(flat) // shape[0]
+    return [_nest(flat[i * step : (i + 1) * step], shape[1:]) for i in range(shape[0])]
+
+
 def _cdf_function(cdf, name):
     """The cdf to call: an sd.stats distribution object's cdf, or a callable (H35)."""
     if isinstance(cdf, (_dist.ContinuousDistribution, _dist.DiscreteDistribution)):
@@ -315,7 +325,8 @@ def ks_1samp(x, cdf, /, *, axis=None, alternative="two-sided", method="auto", na
     pvalue, statistic_location (the observation where D is reached), statistic_sign (+1 for D+,
     -1 for D-) and method, the distribution used: the two-sided test's 'exact' (also 'auto'),
     'approx' (twice the one-sided tail) or 'asymp' (Kolmogorov's limit); the one-sided tests
-    always use Smirnov's exact distribution ('exact'). Unpacks as (statistic, pvalue)."""
+    always use Smirnov's exact distribution ('exact'). A batch's method is the lanes' names in
+    nested lists of its shape (H48). Unpacks as (statistic, pvalue)."""
     name = "ks_1samp"
     alt = C.alternative(alternative, name)
     meth = C.method(method, name, tuple(_KS_METHODS))
@@ -324,6 +335,9 @@ def ks_1samp(x, cdf, /, *, axis=None, alternative="two-sided", method="auto", na
     stat, p, loc, sign = _k.ks(xs, fs, _ALT[alt], _KS_METHODS[used], s.policy == "omit")
     sign = s.out(sign)
     sign = int(sign) if isinstance(sign, float) else sign.astype(_sd.int64)
+    shape = s.keep_shape if s.keepdims else s.batch
+    if shape or s.keepdims:  # a batch: the lanes' names, nested in its shape (H48)
+        used = _nest([used] * math.prod(shape), shape)
     return Ks1sampResult._make(
         batch=s.batch,
         statistic=s.out(stat),

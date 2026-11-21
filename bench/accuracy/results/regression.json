@@ -29,6 +29,75 @@
     "Boost": "boostorg/math 75cb4c4 2026-11-18",
     "Boost in sd.special": "4682f44"
    }
+  },
+  "20261121-083442-c080a9e+": {
+   "commit": "c080a9e",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/htest.py",
+    "bench/accuracy/results/htest.json",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/sparse.py",
+    "bench/htest/accuracy.md",
+    "bench/htest/speed.md",
+    "bench/speed/cases/htest.py",
+    "bench/speed/cases/regression.py",
+    "bench/speed/cases/sparse.py",
+    "bench/speed/results/htest.json",
+    "csrc/bind/htest_bind.cpp",
+    "csrc/bind/sparse_bind.cpp",
+    "csrc/htest/gof.cpp",
+    "csrc/regression/linear.cpp",
+    "docs/api/htest.md",
+    "docs/api/regression.md",
+    "docs/api/sparse.md",
+    "docs/design/htest.md",
+    "docs/design/regression.md",
+    "docs/design/sparse.md",
+    "src/stardust/htest/__init__.py",
+    "src/stardust/htest/_gof.py",
+    "src/stardust/htest/_result.py",
+    "src/stardust/regression/__init__.py",
+    "src/stardust/sparse/__init__.py",
+    "tests/README.md",
+    "tests/golden/cases_htest.py",
+    "tests/golden/cases_regression.py",
+    "tests/golden/cases_sparse.py",
+    "tests/golden/data/htest.json",
+    "tests/golden/data/regression.json",
+    "tests/golden/data/sparse.json",
+    "tests/htest/data/r.json",
+    "tests/htest/data/scipy_h3.json",
+    "tests/htest/problems.py",
+    "tests/htest/ref/mannwhitneyu.json",
+    "tests/htest/ref/wilcoxon.json",
+    "tests/htest/refdata.py",
+    "tests/htest/test_api_surface.py",
+    "tests/htest/test_goodness_of_fit.py",
+    "tests/htest/test_reference_data.py",
+    "tests/regression/test_api_surface.py",
+    "tests/sparse/test_api_surface.py",
+    "tools/gen_htest_r.py",
+    "tools/htest_ref.py",
+    "tools/regref.py",
+    "tools/regression_ref.py"
+   ],
+   "date": "2026-11-21T08:34:42",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+   }
   }
  },
  "sweeps": [
@@ -37117,6 +37186,1109 @@
    "comparator_seconds": 120.0,
    "run": "20261120-222439-cc758f7",
    "comparators_run": "20261120-222439-cc758f7"
+  },
+  {
+   "id": "regression/selection/cond",
+   "area": "regression",
+   "name": "selection/cond",
+   "points": 60,
+   "regions": {
+    "step_both_aic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.3078567475603837e-16,
+     "norm_rel": 8.932626832744007e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_both_bic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.373788930965754e-16,
+     "norm_rel": 9.696191764629737e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_both_cv": {
+     "points": 3,
+     "ulp_max": 11100.0,
+     "ulp_p999": 11100.0,
+     "rel_max": 1.3049701243050743e-12,
+     "norm_rel": 1.0693769233638796e-12,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_forward_aic": {
+     "points": 4,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 8.435940064562404e-17,
+     "norm_rel": 5.436112171681458e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_bic": {
+     "points": 4,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 8.128900867304896e-17,
+     "norm_rel": 5.5503536237067797e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_cv": {
+     "points": 4,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.4980545567129743e-16,
+     "norm_rel": 6.976520852955062e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_backward_aic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.3078567475603837e-16,
+     "norm_rel": 8.932626832744007e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_backward_bic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.373788930965754e-16,
+     "norm_rel": 9.696191764629737e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_backward_cv": {
+     "points": 3,
+     "ulp_max": 11100.0,
+     "ulp_p999": 11100.0,
+     "rel_max": 1.3049701243050743e-12,
+     "norm_rel": 1.0693769233638796e-12,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "best_aic": {
+     "points": 6,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.3078567475603837e-16,
+     "norm_rel": 7.267667545428317e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      5
+     ]
+    },
+    "best_bic": {
+     "points": 6,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.373788930965754e-16,
+     "norm_rel": 7.740777811722395e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      5
+     ]
+    },
+    "best_cp": {
+     "points": 6,
+     "ulp_max": 13.0,
+     "ulp_p999": 13.0,
+     "rel_max": 2.2442376316877466e-15,
+     "norm_rel": 1.1441976241415093e-15,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "best_adjr2": {
+     "points": 6,
+     "ulp_max": 5.0,
+     "ulp_p999": 5.0,
+     "rel_max": 8.809188670546162e-16,
+     "norm_rel": 4.1655971960658285e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "best_cv": {
+     "points": 6,
+     "ulp_max": 13586.0,
+     "ulp_p999": 13586.0,
+     "rel_max": 2.9867970413473677e-12,
+     "norm_rel": 1.1382980107674098e-12,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    }
+   },
+   "run": "20261121-083442-c080a9e+"
+  },
+  {
+   "id": "regression/selection/glm_gamma",
+   "area": "regression",
+   "name": "selection/glm_gamma",
+   "points": 28,
+   "regions": {
+    "step_both_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.4903261607209087e-17,
+     "norm_rel": 3.390225277996523e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_both_bic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 4.1585154922975823e-17,
+     "norm_rel": 3.3800554951978703e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_forward_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.4903261607209087e-17,
+     "norm_rel": 3.8088187110879475e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_forward_bic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.490266260507418e-17,
+     "norm_rel": 3.604368203745529e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_backward_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.4903261607209087e-17,
+     "norm_rel": 3.390225277996523e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_backward_bic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 4.1585154922975823e-17,
+     "norm_rel": 3.3800554951978703e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "best_aic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.4903261607209087e-17,
+     "norm_rel": 3.2096686329168415e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "best_bic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.490266260507418e-17,
+     "norm_rel": 3.378337991013018e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    }
+   },
+   "run": "20261121-083442-c080a9e+"
+  },
+  {
+   "id": "regression/selection/glm_logit",
+   "area": "regression",
+   "name": "selection/glm_logit",
+   "points": 29,
+   "regions": {
+    "step_both_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 9.140174177146968e-17,
+     "norm_rel": 5.47122430205066e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_both_bic": {
+     "points": 4,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.0920805854488896e-16,
+     "norm_rel": 6.093269388611744e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1.3597193465022289e-17,
+     "norm_rel": 1.1408262793189961e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_bic": {
+     "points": 2,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 2.0433388011174027e-17,
+     "norm_rel": 1.9286637517771162e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_backward_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 9.140174177146968e-17,
+     "norm_rel": 5.47122430205066e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_backward_bic": {
+     "points": 4,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.0920805854488896e-16,
+     "norm_rel": 6.093269388611744e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "best_aic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 9.140174177146968e-17,
+     "norm_rel": 4.074278826343041e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "best_bic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.0920805854488896e-16,
+     "norm_rel": 5.317831257622495e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    }
+   },
+   "run": "20261121-083442-c080a9e+"
+  },
+  {
+   "id": "regression/selection/glm_poisson",
+   "area": "regression",
+   "name": "selection/glm_poisson",
+   "points": 29,
+   "regions": {
+    "step_both_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.535912606294123e-17,
+     "norm_rel": 4.445564313172367e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_both_bic": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 6.095851135390695e-17,
+     "norm_rel": 3.6418811604858373e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_forward_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.535912606294123e-17,
+     "norm_rel": 4.367015775124303e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_forward_bic": {
+     "points": 2,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.217390640028207e-17,
+     "norm_rel": 3.771620909323358e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_backward_aic": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.535912606294123e-17,
+     "norm_rel": 4.445564313172367e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_backward_bic": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 6.095851135390695e-17,
+     "norm_rel": 3.6418811604858373e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "best_aic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.535912606294123e-17,
+     "norm_rel": 4.1532941252719414e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "best_bic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 6.095851135390695e-17,
+     "norm_rel": 4.020907914117587e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    }
+   },
+   "run": "20261121-083442-c080a9e+"
+  },
+  {
+   "id": "regression/selection/noint",
+   "area": "regression",
+   "name": "selection/noint",
+   "points": 55,
+   "regions": {
+    "step_both_aic": {
+     "points": 4,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.1096569555891148e-16,
+     "norm_rel": 7.636979592919541e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_both_bic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.03854393365628e-16,
+     "norm_rel": 1.2920190503560505e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "step_both_cv": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.3465108637944185e-16,
+     "norm_rel": 1.9091319011876478e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_forward_aic": {
+     "points": 2,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.529053449757574e-16,
+     "norm_rel": 1.0864628226715661e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_bic": {
+     "points": 1,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.03854393365628e-16,
+     "norm_rel": null,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_cv": {
+     "points": 3,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.1087376951431853e-16,
+     "norm_rel": 2.1410267488876157e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_backward_aic": {
+     "points": 4,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.1096569555891148e-16,
+     "norm_rel": 7.636979592919541e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_backward_bic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.03854393365628e-16,
+     "norm_rel": 1.2920190503560505e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "step_backward_cv": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.3465108637944185e-16,
+     "norm_rel": 1.9091319011876478e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "best_aic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.529053449757574e-16,
+     "norm_rel": 9.668123783471999e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "best_bic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.03854393365628e-16,
+     "norm_rel": 1.2920190503560505e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "best_cp": {
+     "points": 5,
+     "ulp_max": 39.0,
+     "ulp_p999": 39.0,
+     "rel_max": 4.672712923926759e-15,
+     "norm_rel": 1.2709192390205892e-15,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "best_adjr2": {
+     "points": 5,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.9953691470385683e-16,
+     "norm_rel": 2.385745801004428e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "best_cv": {
+     "points": 5,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.1087376951431853e-16,
+     "norm_rel": 2.2571391096468174e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    }
+   },
+   "run": "20261121-083442-c080a9e+"
+  },
+  {
+   "id": "regression/selection/ols",
+   "area": "regression",
+   "name": "selection/ols",
+   "points": 74,
+   "regions": {
+    "step_both_aic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.7963521387561061e-16,
+     "norm_rel": 1.0619070097687325e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_both_bic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.4517295924917896e-16,
+     "norm_rel": 1.6767187648447998e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_both_cv": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 9.888109320158229e-17,
+     "norm_rel": 5.594730072651758e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_forward_aic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.43410022760193e-16,
+     "norm_rel": 1.0935739208273388e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_forward_bic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.7085853218075336e-16,
+     "norm_rel": 1.2217040772561986e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_forward_cv": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 2.2198311223618964e-17,
+     "norm_rel": 1.900853142713668e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_backward_aic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.7963521387561061e-16,
+     "norm_rel": 1.0619070097687325e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_backward_bic": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.4517295924917896e-16,
+     "norm_rel": 1.6767187648447998e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_backward_cv": {
+     "points": 5,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 9.888109320158229e-17,
+     "norm_rel": 5.594730072651758e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "best_aic": {
+     "points": 7,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.7963521387561061e-16,
+     "norm_rel": 1.1293969915951892e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "best_bic": {
+     "points": 7,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.4517295924917896e-16,
+     "norm_rel": 1.6179186204041853e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "best_cp": {
+     "points": 7,
+     "ulp_max": 21.0,
+     "ulp_p999": 21.0,
+     "rel_max": 4.492346953376721e-15,
+     "norm_rel": 6.538165828878344e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "best_adjr2": {
+     "points": 7,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 4.175413707453501e-16,
+     "norm_rel": 1.876515530882897e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      4
+     ]
+    },
+    "best_cv": {
+     "points": 7,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 9.243614876852841e-17,
+     "norm_rel": 4.285535609488589e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      3
+     ]
+    }
+   },
+   "run": "20261121-083442-c080a9e+"
+  },
+  {
+   "id": "regression/selection/wls_zero",
+   "area": "regression",
+   "name": "selection/wls_zero",
+   "points": 74,
+   "regions": {
+    "step_both_aic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 9.793190438769585e-17,
+     "norm_rel": 4.934672444629403e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_both_bic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 8.526475029475454e-17,
+     "norm_rel": 6.233972705932993e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_both_cv": {
+     "points": 5,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.4045982597977323e-16,
+     "norm_rel": 1.693982197656668e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_aic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2879432725272845e-16,
+     "norm_rel": 9.892216378633326e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_forward_bic": {
+     "points": 3,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.149371175294298e-16,
+     "norm_rel": 1.0071773646617096e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_forward_cv": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 6.088011961797831e-17,
+     "norm_rel": 3.4833615795754705e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      2
+     ]
+    },
+    "step_backward_aic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 9.793190438769585e-17,
+     "norm_rel": 4.934672444629403e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "step_backward_bic": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 8.526475029475454e-17,
+     "norm_rel": 6.233972705932993e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "step_backward_cv": {
+     "points": 5,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.4045982597977323e-16,
+     "norm_rel": 1.693982197656668e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "best_aic": {
+     "points": 7,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2879432725272845e-16,
+     "norm_rel": 7.648653192536539e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      1
+     ]
+    },
+    "best_bic": {
+     "points": 7,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.149371175294298e-16,
+     "norm_rel": 7.889506706502229e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      0
+     ]
+    },
+    "best_cp": {
+     "points": 7,
+     "ulp_max": 28.0,
+     "ulp_p999": 28.0,
+     "rel_max": 3.671678297516879e-15,
+     "norm_rel": 6.069204516245795e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      3
+     ]
+    },
+    "best_adjr2": {
+     "points": 7,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.6928669640122058e-16,
+     "norm_rel": 9.97109115953937e-17,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      6
+     ]
+    },
+    "best_cv": {
+     "points": 7,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.21499914497424e-16,
+     "norm_rel": 1.8185515421903677e-16,
+     "nonfinite": 0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      5
+     ]
+    }
+   },
+   "run": "20261121-083442-c080a9e+"
   }
  ]
 }

@@ -4,9 +4,10 @@ H19 and H21 in docs/design/htest.md §1.1).
 One class per test, named <Function>Result (TtestIndResult, PearsonrResult), on the common base
 _TestResult. The classes are not exported (H6), except the one class two areas return for the
 same test (H18: Jarque-Bera's, public as sd.regression.JarqueBeraResult). The rules are those
-of the other areas' results (regression G98, G120; optimize's OptimizeResult; API.md §2.2): every
-field is a read-only property, an array field is a read-only array given without a copy (H21),
-and a field the test does not give for this call (wilcoxon's zstatistic outside the normal
+of the other areas' results (regression G98, G113, G120; optimize's OptimizeResult; API.md §2.2):
+every field is a read-only property, an array field is a read-only array given without a copy
+(H21), a list field (a batch's per-lane method names, H48) a new list at each read, and a
+field the test does not give for this call (wilcoxon's zstatistic outside the normal
 approximation) raises AttributeError, so hasattr() tells.
 
 A test with one sample (or one table) gives Python numbers (counts as int, df as float); a batch
@@ -48,14 +49,21 @@ def _own(v, copy=False):
     return v
 
 
+def _fresh(v):
+    """A list field (a batch's per-lane method names, nested in the batch's shape) as a new list
+    at each read (regression's G113): changing it does not change the result."""
+    return [_fresh(e) for e in v] if isinstance(v, list) else v
+
+
 def _field(name):
     def get(self):
         try:
-            return self._values[name]
+            v = self._values[name]
         except KeyError:
             raise AttributeError(
                 f"'{type(self).__name__}' object has no attribute '{name}' (the test does not give it for this call)"
             ) from None
+        return _fresh(v)
 
     get.__name__ = name
     return property(get, doc=f"The test's '{name}' (read-only; an array field is a read-only array).")

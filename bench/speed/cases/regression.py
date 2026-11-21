@@ -2120,6 +2120,209 @@ def _model_tests_cases():
     return out
 
 
+# ---------------------------------------------------------------- variable selection
+
+SEL_SIZES = ((1_000, 10), (100_000, 10), (10_000, 30))
+SEL_SUBSET_SIZES = ((1_000, 10), (100_000, 10), (10_000, 20))
+SEL_GLM_SIZES = ((1_000, 10), (100_000, 10))
+
+
+def _sel_data(n, k, seed):
+    def setup():
+        import numpy as np
+
+        import stardust as sd
+
+        rng = np.random.default_rng(seed)
+        Z = rng.standard_normal((n, k))
+        X = Z + 0.3 * np.roll(Z, 1, axis=1)
+        beta = np.where(np.arange(k) % 3 == 0, 0.0, np.linspace(0.6, 0.05, k))
+        y = X @ beta + 2.0 * rng.standard_normal(n)
+        eta = 0.2 + X @ (beta / 2)
+        yb = (rng.uniform(size=n) < 1 / (1 + np.exp(-eta))).astype(float)
+        labels = np.asarray(
+            sd.take(
+                sd.asarray([i % 5 for i in range(n)], dtype=sd.int64), sd.random.default_rng(1).permutation(n)
+            ).tolist()
+        )
+        return {
+            "X": X,
+            "y": y,
+            "yb": yb,
+            "Xs": sd.asarray(X),
+            "ys": sd.asarray(y),
+            "ybs": sd.asarray(yb),
+            "splits": [(np.flatnonzero(labels != f), np.flatnonzero(labels == f)) for f in range(5)],
+        }
+
+    return setup
+
+
+def _sm_stepwise(y, X, direction, glm=False):
+    """R step's search with statsmodels refits: every candidate of a step fitted (the AIC of
+    statsmodels' results), a move while the AIC falls by more than 1e-7."""
+    import numpy as np
+
+    sm = _sm()
+    k = X.shape[1]
+    model = set(range(k)) if direction == "both" else set()
+    fam = sm.families.Binomial() if glm else None
+
+    def aic(cols):
+        Z = sm.add_constant(X[:, sorted(cols)], has_constant="add") if cols else np.ones((len(y), 1))
+        return (sm.GLM(y, Z, family=fam).fit() if glm else sm.OLS(y, Z).fit()).aic
+
+    cur = aic(model)
+    while True:
+        cands = [(model - {j}) for j in sorted(model)] if direction == "both" else []
+        cands += [(model | {j}) for j in range(k) if j not in model]
+        vals = [aic(c) for c in cands]
+        if not vals or min(vals) >= cur - 1e-7:
+            return sorted(model)
+        i = int(np.argmin(vals))
+        model, cur = cands[i], vals[i]
+
+
+def _sel_r(label, expr, value, packages=(), glm=False):
+    setup = (
+        "dat <- data.frame(y = y, X); nm <- names(dat)[-1]; "
+        'fb <- as.formula(paste("y ~", paste(nm, collapse = " + "))); ' + ("fam <- binomial(); " if glm else "")
+    )
+    data = {"yb" if glm else "y": "y", "X": "X"}
+    return RRef(label, expr, data=data, setup=setup, packages=packages, value=value)
+
+
+def _sel_cases():
+    def sd_call(fn, **kw):
+        def make(d):
+            R = _R()
+            y = d["ybs"] if kw.get("model") == "glm" else d["ys"]
+            if kw.get("criterion") == "cv":
+                return lambda: getattr(R, fn)(y, d["Xs"], rng=_sd_rng(1), **kw)
+            return lambda: getattr(R, fn)(y, d["Xs"], **kw)
+
+        return make
+
+    def sfs(direction):
+        def make(d):
+            from sklearn.feature_selection import SequentialFeatureSelector
+            from sklearn.linear_model import LinearRegression
+
+            tol = 1e-12 if direction == "forward" else -1e-12
+            return lambda: SequentialFeatureSelector(
+                LinearRegression(), direction=direction, tol=tol, scoring="neg_mean_squared_error", cv=d["splits"]
+            ).fit(d["X"], d["y"])
+
+        return make
+
+    terms = "sort(match(attr(terms(.v), 'term.labels'), nm) - 1)"
+    rows = {
+        "stepwise(y, X), both, aic": (
+            sd_call("stepwise"),
+            [Ref("statsmodels refits", lambda d: lambda: _sm_stepwise(d["y"], d["X"], "both"), threads="follow")],
+            [
+                _sel_r("R step", "step(lm(fb, data = dat), trace = 0)", terms),
+                _sel_r("R MASS stepAIC", "MASS::stepAIC(lm(fb, data = dat), trace = 0)", terms, ("MASS",)),
+            ],
+            SEL_SIZES,
+        ),
+        "stepwise(y, X), forward, aic": (
+            sd_call("stepwise", direction="forward"),
+            [Ref("statsmodels refits", lambda d: lambda: _sm_stepwise(d["y"], d["X"], "forward"), threads="follow")],
+            [_sel_r("R step", 'step(lm(y ~ 1, data = dat), scope = fb, direction = "forward", trace = 0)', terms)],
+            SEL_SIZES,
+        ),
+        "stepwise(y, X), both, pvalue": (sd_call("stepwise", criterion="pvalue"), [], [], SEL_SIZES[:2]),
+        "stepwise(y, X), forward, cv": (
+            sd_call("stepwise", direction="forward", criterion="cv"),
+            [Ref("scikit-learn SFS", sfs("forward"), threads="follow")],
+            [],
+            SEL_SIZES,
+        ),
+        "stepwise(y, X), backward, cv": (
+            sd_call("stepwise", direction="backward", criterion="cv"),
+            [Ref("scikit-learn SFS", sfs("backward"), threads="follow")],
+            [],
+            SEL_SIZES[:2],
+        ),
+        "best_subset(y, X), aic": (
+            sd_call("best_subset"),
+            [],
+            [
+                _sel_r(
+                    "R leaps",
+                    "leaps::regsubsets(X, y, nvmax = ncol(X), method = 'exhaustive')",
+                    "summary(.v)$rss",
+                    ("leaps",),
+                )
+            ],  # fmt: skip
+            SEL_SUBSET_SIZES,
+        ),
+        "best_subset(y, X), cv": (sd_call("best_subset", criterion="cv"), [], [], SEL_SUBSET_SIZES[:2]),
+        "stepwise(y, X, model='glm', family='binomial'), both, aic": (
+            sd_call("stepwise", model="glm", family="binomial"),
+            [
+                Ref(
+                    "statsmodels refits",
+                    lambda d: lambda: _sm_stepwise(d["yb"], d["X"], "both", glm=True),
+                    threads="follow",
+                )
+            ],
+            [_sel_r("R step", "step(glm(fb, family = fam, data = dat), trace = 0)", terms, glm=True)],
+            SEL_GLM_SIZES,
+        ),
+        "best_subset(y, X, model='glm', family='binomial'), aic": (
+            sd_call("best_subset", model="glm", family="binomial"),
+            [],
+            [],
+            SEL_GLM_SIZES[:1],
+        ),
+    }
+    out = []
+    for name, (sdf, refs, rrefs, sizes) in rows.items():
+        for i, (n, k) in enumerate(sizes):
+            # the comparators' refits at n = 10^5 take minutes (k candidates per step): R and
+            # the statsmodels loop only up to n = 10^4 there
+            big = n >= 100_000
+            r = tuple(x for x in refs if not (big and x.label == "statsmodels refits")) + tuple(rrefs)
+            out.append(
+                Case(
+                    area="regression",
+                    group="selection",
+                    name=name,
+                    size=_size(n, k),
+                    setup=_sel_data(n, k, 91 + i),
+                    sd=sdf,
+                    refs=r,
+                    note="",
+                    quick=(n, k) == (1_000, 10) and name in ("stepwise(y, X), both, aic", "best_subset(y, X), aic"),
+                )
+            )
+    return out
+
+
+def _sel_check(c: Case) -> Check:
+    """The columns chosen: sd's selected against the statsmodels loop's, scikit-learn's support and
+    R's terms (leaps: the residual sums of squares of each size)."""
+    import numpy as np
+
+    def sd_side(r):
+        if c.name.startswith("best_subset") and "leaps" in "".join(x.label for x in c.refs):
+            return np.asarray(r.values.tolist())  # compared as leaps' rss below
+        return np.asarray(r.selected, dtype=float)
+
+    def ref(label, v):
+        if label == "scikit-learn SFS":
+            return np.flatnonzero(v.support_).astype(float)
+        if label.startswith("R leaps"):
+            return np.asarray(v, dtype=float)
+        return np.asarray(v, dtype=float)  # R's: the terms' positions (0-based)
+
+    if c.name.startswith("best_subset") and any(x.label.startswith("R leaps") for x in c.refs):
+        return Check(skip="leaps reports residual sums of squares, sd the criterion of each size")
+    return Check(sd=sd_side, ref=ref)
+
+
 def _flat(*xs):
     import numpy as np
 
@@ -2200,6 +2403,7 @@ TITLES = {
     "nls": "비선형 최소제곱",
     "model-tests": "모형 비교·검정·진단",
     "model-tests-batched": "모형 비교·검정·진단 일괄",
+    "selection": "변수 선택",
 }
 
 
@@ -2247,6 +2451,8 @@ CONDITIONING_SKIP = "ill-conditioned by design: the libraries settle it differen
 def _check(c: Case) -> Check:
     if c.group.startswith("model-tests"):
         return _mt_check(c)
+    if c.group == "selection":
+        return _sel_check(c)
     if c.name in SKIP:
         return Check(skip=SKIP[c.name])
     if c.group == "conditioning" and ("duplicated" in c.name or c.name.startswith("quantreg")):
@@ -2279,6 +2485,7 @@ def cases() -> list[Case]:
         *_quantreg_cases(),
         *_nls_cases(),
         *_model_tests_cases(),
+        *_sel_cases(),
     ]
     for c in out:
         c.check = _check(c)

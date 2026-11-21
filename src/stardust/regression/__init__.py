@@ -30,6 +30,7 @@ from ._penalized import (
 )
 from ._quantile import QuantRegResult, quantreg
 from ._robust import RLMResult, rlm, siegelslopes, theilslopes
+from ._select import BestSubsetResult, StepwiseResult, best_subset, stepwise
 from ._tests import (
     AnovaResult,
     CompareFTestResult,
@@ -61,6 +62,8 @@ __all__ = [
     "quantreg",
     "nls",
     "anova",
+    "stepwise",
+    "best_subset",
     "OLSResult",
     "WLSResult",
     "GLSResult",
@@ -88,6 +91,8 @@ __all__ = [
     "WhiteTestResult",
     "GoldfeldQuandtResult",
     "ResetTestResult",
+    "StepwiseResult",
+    "BestSubsetResult",
 ]
 
 

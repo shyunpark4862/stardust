@@ -6,10 +6,12 @@ highlights of H0). The recorded files are compared, not the installed libraries,
 do not change with them."""
 
 import importlib.util
+import itertools
 import json
 import math
 import pathlib
 import sys
+from collections import Counter
 from fractions import Fraction
 
 import pytest
@@ -111,6 +113,32 @@ def test_exact_counts_sum_to_their_totals():
         top = n * (n - 1) // 2
         c = T.mahonian(n, top)
         assert sum(c) == math.factorial(n) and c == c[::-1]
+
+
+def test_rank_exact_distributions():
+    """H3's counts (tools/htest_ref.py): the conditional subset sums total C(N, c) and without ties
+    are the Gaussian binomial's; the signed sums total 2^n and are symmetric; a Page row's orders
+    total n!; Friedman's exact null for k = 3, n = 2 against its enumeration by hand."""
+    T = tool()
+    for N, c in ((7, 3), (10, 4)):
+        d = T.subset_sum_counts([2 * r for r in range(1, N + 1)], c)
+        assert sum(d.values()) == math.comb(N, c)
+        u = T.mwu_counts(c, N - c)
+        assert [d.get(2 * (v + c * (c + 1) // 2), 0) for v in range(len(u))] == u
+    scores = [3, 3, 6, 8, 8, 8, 12]  # doubled midranks of 1, 1, 2, 3, 3, 3, 4
+    assert sum(T.subset_sum_counts(scores, 3).values()) == math.comb(7, 3)
+    sc = T.signed_counts(scores)
+    tot = sum(scores)
+    assert sum(sc.values()) == 2**7 and all(sc[v] == sc[tot - v] for v in sc)
+    row = T.page_row_counts((2, 4, 4, 8))
+    assert sum(row.values()) == math.factorial(4)
+    # k = 3, n = 2: the 36 pairs of orders; chi^2_F = (sum R_j^2) / 2 - 24
+    cnt = Counter()
+    for a in itertools.permutations((1, 2, 3)):
+        for b in itertools.permutations((1, 2, 3)):
+            cnt[Fraction(sum((x + y) ** 2 for x, y in zip(a, b)), 2) - 24] += 1
+    for q in sorted(cnt):
+        assert T.friedman_exact_sf(3, 2, q) == Fraction(sum(v for k, v in cnt.items() if k >= q), 36)
 
 
 def test_two_sample_ks_paths_against_the_closed_form():
@@ -218,6 +246,25 @@ SCIPY_KNOWN = {
     ("ks_1samp/n400", "pvalue"): 1.7e-7,
     ("ks_1samp/expon", "pvalue"): 1.9e-6,
     ("cramervonmises/tail", "pvalue"): 0.016,
+    # H3's problems: Ansari-Bradley's exact counts from gscale (AS 93) off by 6.5e-9-2.6e-7 at
+    # N = 45-108; the exact signed-rank tail as 1 - cdf (0 where the truth is 1.7e-18); scipy's
+    # 'exact' with ties or zeros, the distribution without them (H45: here the conditional one);
+    # page_trend_test's 'auto' exact with ties (the same); the inf and the 0, 1 of a zero variance
+    # or of no nonzero difference (NaN here, H11)
+    ("ansari/exact-54", "pvalue"): 2.6e-7,
+    ("ansari/exact-odd", "pvalue"): 6.5e-9,
+    ("ansari/exact-greater", "pvalue"): 6.5e-9,
+    ("ansari/ties-exact", "pvalue"): 0.49,
+    ("mannwhitneyu/ties-exact", "pvalue"): 0.041,
+    ("mannwhitneyu/ties-exact-greater", "pvalue"): 0.041,
+    ("wilcoxon/ties-exact", "pvalue"): 0.041,
+    ("wilcoxon/zeros-exact-pratt", "pvalue"): 1.8,
+    ("wilcoxon/zeros-exact-zsplit", "pvalue"): 0.029,
+    ("wilcoxon/exact-deep", "pvalue"): 1.0,
+    ("page_trend_test/ties", "pvalue"): 3.5,
+    ("brunnermunzel/separated", "statistic"): math.inf,
+    ("wilcoxon/constant-zeros", "statistic"): math.inf,
+    ("wilcoxon/constant-zeros", "pvalue"): math.inf,
 }
 # R's: the same cancellations (and ttest_rel's x - y), its own methods where they differ from scipy's
 # (ks.test is exact only below n = 100 (one sample) or m n = 10^4 (two), its two-sample exact
@@ -286,6 +333,21 @@ R_KNOWN = {
     ("ks_1samp/greater-deep", "pvalue"): 1.8e10,
     ("ks_1samp/approx-deep", "pvalue"): 1.1e97,
     ("ks_1samp/expon", "pvalue"): 0.037,
+    # H3's problems: R's own switches (wilcox.test exact only for n < 50 and, with ties, its
+    # conditional exact where scipy's 'auto' is normal; its zeros ranked as Pratt's; its rank-sum z
+    # with the tie correction ranksums has not; ansari.test exact only below 50 and its own tie
+    # variance), and the 1 or NA of every value tied (NaN here)
+    ("ansari/ties", "pvalue"): 0.17,
+    ("ansari/exact-54", "pvalue"): 0.015,
+    ("ansari/ties-exact", "pvalue"): 0.0043,
+    ("kruskal/constant", "statistic"): math.inf,
+    ("kruskal/constant", "pvalue"): math.inf,
+    ("mannwhitneyu/ties-small-auto", "pvalue"): 0.0087,
+    ("mannwhitneyu/exact-8-300", "pvalue"): 0.02,
+    ("mannwhitneyu/constant", "pvalue"): math.inf,
+    ("ranksums/ties", "pvalue"): 0.0012,
+    ("wilcoxon/zeros-auto-small", "pvalue"): 0.071,
+    ("wilcoxon/constant-zeros", "pvalue"): math.inf,
 }
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
 R_SAME_STATISTIC = {
@@ -299,6 +361,10 @@ R_SAME_STATISTIC = {
     "ks_2samp",
     "mannwhitneyu",
     "shapiro",
+    "kruskal",
+    "friedmanchisquare",
+    "ansari",
+    "mood",
 }
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
 TOL = 1e-12
@@ -384,7 +450,8 @@ def test_confidence_intervals_against_the_references():
 def test_condition_numbers():
     # kappa (the p-value's condition number) is given wherever the p-value is a positive number
     for fam in ("ttest", "f_oneway", "alexandergovern", "bartlett", "levene", "fligner", "power_divergence",
-                "jarque_bera", "dagostino", "shapiro", "anderson", "ks_1samp", "cramervonmises"):  # fmt: skip
+                "jarque_bera", "dagostino", "shapiro", "anderson", "ks_1samp", "cramervonmises", "ranksums",
+                "kruskal", "friedmanchisquare", "brunnermunzel", "mood", "median_test"):  # fmt: skip
         for pid, rec in REFS[fam].items():
             p, k = rec["pvalue"][0], rec["kappa"]
             # (a p-value below the doubles, 0 here, keeps its Arb value's condition number)

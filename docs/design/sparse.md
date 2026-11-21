@@ -1,6 +1,6 @@
 # 희소 영역 설계 (sd.sparse)
 
-> 상태: **설계 초안** (2026-11-20). 큰 결정(§1.1 SP1–SP5)과 SP0의 결정(SP6–SP18)은 사용자가 정했다. 나머지는 안이다. SP0(준비)은 끝나 승인을 기다리고, SP1–SP8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 SP1–SP5)과 SP0·SP1의 결정(SP6–SP34)은 사용자가 정했다. 나머지는 안이다. SP0(준비)은 완료·승인, SP1(형식과 변환)은 완료·승인, SP2–SP8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
 
 `sd.sparse`(희소 배열과 희소 선형대수)의 확정 사항과 내부 구조의 안을 적는다.
 
@@ -36,6 +36,20 @@
 | SP18 직접 풀이 | 첫 판의 직접 풀이는 모두 Accelerate의 LU(AMD 순서, 결정적)다. Cholesky·LDLᵀ(기본 스레드 모드에서 실행마다 비트가 다르다)는 쓰지 않는다(SP4의 "직접 분해(Cholesky, LDLᵀ, QR)"를 바꾼다). 결정적인 대칭 분해를 이 라이브러리가 짜는 것은 나중 후보다(§3.6) (사용자 결정 2026-11-20) |
 | SP19 색인 dtype의 문턱 | int64 색인을 그대로 둔다. 1스레드 SpMV는 1.3배 아래(1.02–1.16배)이고, 10스레드의 2차원 라플라시안 n = 10⁶만 int32보다 1.33–1.39배 느리지만(0.33 대 0.44 ms) 그래도 scipy 1스레드(1.7 ms)보다 4배 빠르다(§7.5) (사용자 결정 2026-11-21) |
 | SP20 SuiteSparse 행렬 | §7.2의 여덟 개(약 14 MB)만 내려받는다: `HB/bcsstk14`, `Boeing/msc10848`, `HB/sherman3`, `Goodwin/goodwin`, `Hamm/memplus`, `GHS_indef/cvxqp3`, `HB/well1850`, `HB/young1c`. 그 밖은 받지 않는다. 파일은 버전 관리 밖(`build/sparse/suitesparse/`)에 두고 저장소에는 받는 도구(`tools/sparse_suitesparse.py`: 주소, 받은 압축 파일의 sha256, `--jobs`)만 둔다(optimize O13의 Fortran 원본과 같다). 그 행렬을 쓰는 테스트는 external 등급이고 파일이 없으면 까닭을 적고 건너뛴다. 거기서 나온 참값·기록은 작으면 `tests/sparse/ref`·`data`에 `_provenance`와 함께 둔다 (사용자 결정 2026-11-21) |
+| SP21 클래스 | 희소 배열은 `sd.ndarray` 필드를 가진 Python 클래스다(frame의 `Series`와 같은 예외, ARCHITECTURE §3). 계산은 네이티브 커널 한 번 호출이다. DOK만 필드가 네이티브 해시 맵이다(§2.1) (사용자 결정 2026-11-21) |
+| SP22 쓰기 금지 색인 | `indices`, `indptr`, `coords`는 쓰기 금지 배열이다(바꾸면 표준 꼴이 깨진다). `data`는 쓸 수 있다(`A.data *= 2`) (사용자 결정 2026-11-21) |
+| SP23 scipy와 주고받기 | scipy의 희소 배열·행렬을 받을 때는 언제나 복사한다. `A.to_scipy()`는 복사 없는 뷰다(색인 뷰는 읽기 전용, `copy=True`면 복사; DOK는 언제나 복사) (사용자 결정 2026-11-21) |
+| SP24 별칭 없음 | `toarray`, `conj`, `@`만 둔다(`todense`, `conjugate`, `dot` 없음). COO에는 `coords`만 있다(`row`, `col` 없음) (사용자 결정 2026-11-21) |
+| SP25 DOK의 메서드 | Python `dict`의 메서드(`keys`, `items`, `get`, `pop`, `update` …)를 두지 않는다. 원소는 `A[i, j]`로, 전체는 `tocoo()`로 읽는다 (사용자 결정 2026-11-21) |
+| SP26 밀집으로 몰래 바뀌지 않음 | `np.asarray(A)`는 `A.toarray()`를 짚는 `TypeError`다(scipy는 0차원 object 배열) (사용자 결정 2026-11-21) |
+| SP27 `copy` | `copy=`는 `sd.ndarray`의 규칙이다: None은 필요할 때만, True는 언제나, False는 복사가 필요하면 `ValueError`. 생성자, `tocoo`·`tocsr`·`tocsc`·`todok`·`asformat`·`reshape`·`to_scipy`의 기본은 None이다(`[scipy와 다름]`: scipy의 `copy=False`는 "복사하지 않을 수 있으면"의 뜻이다) (사용자 결정 2026-11-21) |
+| SP28 데이터 인자의 이름 | scipy의 이름이다(`A`, `b`, `x`; 메시지는 `'A'`) (사용자 결정 2026-11-21) |
+| SP29 변환의 `copy` | SP27을 변환 메서드까지 넓힌다: `tocoo`·`tocsr`·`tocsc`·`todok`·`asformat`·`reshape`·`to_scipy`의 기본은 `copy=None`이다(`[scipy와 다름]`: scipy는 `copy=False`) (사용자 결정 2026-11-21) |
+| SP30 색인의 복사 | 받은 색인 배열(`indices`, `indptr`, `coords`)은 `copy`와 상관없이 언제나 복사하고 검사한다(받은 배열을 나중에 고쳐도 표준 꼴이 깨지지 않는다; §2.5) (사용자 결정 2026-11-21) |
+| SP31 1차원 전치 | 1차원의 `.T`·`.mT`·`matrix_transpose`는 `sd.ndarray`처럼 `ValueError`다. `transpose()`는 자신이다(`[scipy와 다름]`: scipy의 1차원 `.T`는 자신; §3.5) (사용자 결정 2026-11-21) |
+| SP32 `has_canonical_format` | 저장된 원소의 실제 상태(행 우선 정렬, 중복 없음)다. 처음 물을 때 알아내 둔다(`[scipy와 다름]`: scipy는 확인 없는 표시; §2.3) (사용자 결정 2026-11-21) |
+| SP33 1스레드 변환 속도 | nnz 10⁵–10⁶의 1스레드 COO → CSR·CSR → CSC(scipy의 1.1–1.5배, 목표 2배)는 SP8의 고칠 목록에 넣는다(§5, §8) (사용자 결정 2026-11-21) |
+| SP34 다시 재기 | 다른 프로세스가 바빴던 속도 사례(`bench/sparse/speed.md`의 † 줄)는 기계가 한가할 때 `--rerun-busy`로 다시 잰다. 나중 일이다(§7.6) (사용자 결정 2026-11-21) |
 
 ### 1.2 범위 (안)
 마일스톤은 §8이다. "SPn"은 그 마일스톤에서 만든다는 뜻이고 "나중"은 첫 판에 넣지 않는 후보다.
@@ -81,7 +95,7 @@
 - **그래프 알고리즘은 이 영역 밖이다**(SP1). scipy의 `csgraph`(연결 성분, 최단 경로, 너비·깊이 우선 순회, 최소 신장 트리, 최대 흐름, 이분 매칭, `reverse_cuthill_mckee`, `structural_rank`, `laplacian` 등)는 나중의 따로 된 최상위 영역이다(이름은 나중에 정한다, 예: `sd.graph`). 그 영역은 희소 배열(과 밀집 배열)을 입력으로 받는다. 이 영역은 그것을 미리 막지 않도록 희소 배열의 C++ 표현(§2.2)을 다른 영역이 읽을 수 있게 둔다. 분해에 필요한 순서 매기기(AMD, nested dissection)는 Accelerate가 안에서 한다(§3.6).
 
 ### 1.3 공통 원칙 (다른 영역에서 이어받는 것)
-- 데이터는 위치로, 옵션은 키워드로만 받는다. 별칭이 없다(scipy의 `todense`·`toarray`, `conj`·`conjugate`, `dot`·`@` 같은 두 이름은 하나만 둔다; §9 SP1의 4번).
+- 데이터는 위치로, 옵션은 키워드로만 받는다. 별칭이 없다(scipy의 `todense`·`toarray`, `conj`·`conjugate`, `dot`·`@` 같은 두 이름은 하나만 둔다; SP24).
 - **같은 입력이면 sd의 스레드 수와 상관없이 같은 비트다**(API.md §3). 희소 합의 순서는 §2.6이 정한다. Accelerate를 부르는 계산은 BLAS·LAPACK처럼 Accelerate의 스레드 모드가 같을 때 같은 비트이고, 같은 모드 안에서 실행마다 비트가 달라지는 Accelerate의 경로는 쓰지 않는다(§1.4의 잰 값, §3.6).
 - 반올림이 아닌 동작(결과의 형식과 형, dtype 규칙, 저장되는 원소의 규칙, 상태 값의 뜻, 기본값, 멈춤 규칙)은 scipy 1.18.1과 같다(API.md §4의 규칙 2). 다르게 정한 곳은 `[scipy와 다름]`으로 이유와 함께 적는다. 반올림 크기의 결과는 정확도 계약(§4) 안이면 된다.
 - **모든 호출은 정해진 시간 안에 끝난다.** 반복법과 고유값 풀이는 근거 있는 반복 상한을 두고, 상한에 닿으면 마지막 값과 상태를 돌려준다(API.md §2.2). 반복 상한의 이름은 `max_iter`다(optimize O14).
@@ -153,7 +167,7 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
 ### 2.1 형식
 - **CSR, CSC**: 계산의 형식이다. `data`(값), `indices`(줄 안의 색인), `indptr`(줄의 시작, 길이 줄 수 + 1). CSR은 행, CSC는 열이 줄이다.
 - **COO**: 만들기와 주고받기의 형식이다. `data`, `coords`(차원마다 색인 배열의 tuple; scipy의 `row`·`col`은 그 둘의 이름이다). 중복과 정렬되지 않은 원소를 가질 수 있다(§2.3).
-- **DOK**: 하나씩 넣는 만들기용 형식이다. 키 (i, j) → 값의 해시 맵을 C++에 둔다(scipy는 Python `dict`의 하위 클래스다). `A[i, j] = v`가 O(1)이고, 계산할 때는 CSR·CSC로 바꾼다. Python `dict`의 메서드(`keys`, `items`, `get`, `pop`, `update` …)는 두지 않는 안이다(§9 SP1의 5번).
+- **DOK**: 하나씩 넣는 만들기용 형식이다. 키 (i, j) → 값의 해시 맵을 C++에 둔다(`csrc/sparse/dok.cpp`: 열린 주소법, 선형 탐사; scipy는 Python `dict`의 하위 클래스다). `A[i, j] = v`와 `A[i, j]`가 O(1)이고, 계산할 때는 CSR·CSC로 바꾼다. Python `dict`의 메서드는 두지 않는다(SP25). 0을 넣으면 그 키를 지운다(scipy와 같다). 다른 형식에서 바꿀 때는 저장된 0도 남는다(scipy와 같다).
 - **LIL은 두지 않는다**(SP7). scipy의 LIL은 행마다의 Python 리스트이고 행 단위 대입이 쓰임새다. DOK와 COO 꼴의 만들기(`coo_array((data, (row, col)))`), `vstack`이 같은 일을 하고 더 빠르다(§9 SP0의 2번).
 - **BSR, DIA는 첫 판에 넣지 않는다**(SP6; 아래는 그 조사).
   - BSR(블록 CSR): 자유도가 여럿인 유한요소 행렬처럼 작은 밀집 블록이 모인 행렬에서 색인이 적고 SpMV가 레지스터 블록이 된다. Accelerate의 `SparseMatrix`가 `blockSize`를 그대로 받으므로 분해에도 이득이 있을 수 있다. 하지만 scipy의 BSR은 산술·인덱싱 대부분을 CSR로 바꿔서 하고, 블록 크기가 맞는 행렬에서만 이득이다. 나중에 잰 이득과 함께 묻는다.
@@ -163,19 +177,19 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
 - **배치는 없다**(SP13). 희소 선형대수의 함수는 행렬 하나를 받는다. 우변은 (n,)이나 (n, k)이고 k개의 열을 함께 푼다. 밀집 linalg의 `(..., M, N)` 배치와 다르다: 희소 행렬의 묶음은 행렬마다 패턴이 달라 한 배열에 담을 꼴이 없다(블록 대각 `block_diag`로 하나로 만들 수 있다).
 
 ### 2.2 색인과 값의 dtype
-- **값의 dtype**: 배열의 네 dtype(`bool`, `int64`, `float64`, `complex128`)이다(API.md §1). 승격 규칙도 배열과 같다(`bool < int64 < float64 < complex128`). int64·bool은 구조와 개수(인접 행렬, 패턴)와 정수 산술을 위해 둔다. scipy의 다른 dtype(int32, float32, uint8 …)은 받을 때 `TypeError`다(배열의 `asarray`와 같은 규칙; 변환은 명시적으로).
+- **값의 dtype**: 배열의 네 dtype(`bool`, `int64`, `float64`, `complex128`)이다(API.md §1). 승격 규칙도 배열과 같다(`bool < int64 < float64 < complex128`). int64·bool은 구조와 개수(인접 행렬, 패턴)와 정수 산술을 위해 둔다. 받는 값은 `sd.asarray`의 규칙으로 바꾼다(docs/api/array.md §3.3): numpy의 정보 손실 없는 dtype(int8–int32, uint8–uint32, float16·float32, complex64)은 넓히고, uint64·문자열·object는 `TypeError`다. `[scipy와 다름]`: scipy는 float32 등을 그대로 둔다.
 - **선형대수의 dtype**: float64와 complex128로 계산한다. bool·int64는 float64로 바꾼다(sd.linalg와 같다, DESIGN §9.6). complex는 Accelerate LU가 macOS 15.5부터 받으므로 직접 풀이도 complex를 한다(SP9).
 - **색인의 dtype은 언제나 int64다**(SP8). `indices`, `indptr`, `coords`는 int64 `sd.ndarray`다.
   - 이유: 이 라이브러리의 정수 dtype은 int64 하나다(API.md §1). scipy처럼 값에 따라 int32와 int64를 고르면(`get_index_dtype`) 같은 연산의 결과 dtype이 데이터 크기에 따라 달라지고, 사용자에게 보이는 색인 배열의 dtype을 sd가 나타낼 수 없다.
   - 비용: SpMV가 원소마다 읽는 바이트가 12(값 8 + int32 색인 4)에서 16으로 늘어난다. 메모리 대역에 묶인 SpMV는 최대 약 1.33배 느려질 수 있다. SP0에서 같은 커널을 int32·int64로 쟀다: 1스레드 1.02–1.16배, 10스레드의 연속 행렬 하나가 1.33–1.39배이고 int64를 그대로 둔다(SP19, §7.5).
   - Accelerate에 넘길 때는 행 색인을 int32로 복사한다(§1.4). 행·열 수가 2³¹ − 1을 넘으면 Accelerate를 부르는 함수는 `ValueError`다.
-- **C++ 표현**(`csrc/sparse/`의 `format.hpp`, SP1): `Compressed{ kind(CSR|CSC), shape, NDArray data, NDArray indices, NDArray indptr }`, `Coo{ shape, NDArray data, NDArray row, NDArray col, canonical }`. 버퍼는 배열의 `Buffer`이고, Python의 `.data` 등은 같은 버퍼의 뷰다(복사 없음). 나중의 그래프 영역도 이것을 읽는다.
+- **표현**: 배열은 Python 클래스이고 필드가 `sd.ndarray`다(SP21): COO는 `data`와 축마다의 색인 배열(`coords`), CSR·CSC는 `data`, `indices`, `indptr`. 커널(`csrc/sparse/`)은 이 배열들을 연속 메모리의 포인터로 받는다. `format.hpp`가 커널이 함께 쓰는 것(줄(line), major·minor의 말, 중복의 합, 0의 판정, 표준 꼴의 `Compressed{indptr, indices, data}`)을 둔다. 나중의 그래프 영역도 같은 세 배열을 읽는다.
 
 ### 2.3 표준 꼴 (SP10)
 - **CSR·CSC는 언제나 표준 꼴이다**: 줄마다 색인이 오름차순이고 중복이 없다. 모든 생성자와 연산의 결과가 그렇다. `has_canonical_format`, `has_sorted_indices`는 언제나 True라 두지 않고, `sort_indices`, `sorted_indices`, `sum_duplicates`, `check_format`도 CSR·CSC에는 두지 않는다. `[scipy와 다름]`: scipy는 `(data, indices, indptr)`에서 만든 행렬을 검사하지 않고 비표준 꼴로 두었다가 연산마다 필요하면 정리한다.
   - 이유: 합의 순서(§2.6)가 줄의 색인 순서로 정해지므로 표준 꼴이어야 결과의 비트가 "행렬의 값"만으로 정해진다. 이분 탐색 인덱싱, Accelerate 넘기기, 두 행렬의 병합 연산이 모두 정렬을 전제한다. 생성자의 검사는 O(nnz)이고, 정렬되어 있으면 복사도 하지 않는다.
   - `(data, indices, indptr)`로 만들 때: 범위(0 ≤ 색인 < 줄 길이, `indptr` 단조)를 검사하고(틀리면 `ValueError`), 정렬되지 않았거나 중복이 있으면 정렬하고 더한다(`copy=False`면 `ValueError`).
-- **COO는 비표준 꼴을 가질 수 있다**: 만들기의 형식이기 때문이다(scipy와 같다). `sum_duplicates()`는 행 우선(C 순서)으로 정렬하고 중복을 더한다. `has_canonical_format`은 COO에만 있다.
+- **COO는 비표준 꼴을 가질 수 있다**: 만들기의 형식이기 때문이다(scipy와 같다). `sum_duplicates()`는 행 우선(C 순서)으로 정렬하고 중복을 더한다. `has_canonical_format`은 COO에만 있고, 저장된 원소가 실제로 표준 꼴인지를(SP32) 처음 물을 때 한 번 훑어 알아내 둔다(색인 배열은 바뀌지 않는다). `[scipy와 다름]`: scipy의 같은 이름은 확인하지 않고 두는 표시라, `(data, (row, col))`·전치·`copy`·`astype` 뒤에는 정렬되어 있어도 False다. 값만 바꾸는 연산은 결과가 같으므로 차이는 이 속성에만 보인다.
 - **중복은 입력 순서대로 왼쪽부터 차례로 더한다**(COO → CSR·CSC, `sum_duplicates`, 중복이 있는 `(data, indices, indptr)`). 같은 자리의 원소를 입력에 나온 순서대로 놓는 안정 정렬 뒤에 순차 합이다(`[1, 10¹⁶, 1, −10¹⁶]` → 0). scipy의 순서는 하나가 아니다(SP0, `tools/gen_sparse_scipy.py`): `tocsr()`는 줄의 원소가 15개 이하일 때 이 규칙과 같지만(207/207) 더 긴 줄에서는 `csr_sort_indices`의 불안정 정렬 때문에 순서가 바뀌고(17–59개에서 193줄 중 146줄만 같다), COO의 `sum_duplicates()`는 첫 원소에 나머지의 `np.add.reduce`를 더한다(2–15개에서 207줄 중 36줄이 다르다). 그래서 "입력 순서"를 정의로 두고, scipy와는 반올림 크기에서 다를 수 있다(규칙 3). 정렬은 줄 번호로 안정 계수 정렬(고정 조각마다 개수를 세고 조각 순서대로 누적 → 스레드 수와 무관하게 안정), 줄 안은 색인으로 안정 정렬이다.
 
 ### 2.4 저장된 0과 NaN (SP11, SP12)
@@ -190,17 +204,26 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
 - **리덕션의 NaN**: `sum`, `mean`은 저장된 NaN을 전파한다. `max`, `min`은 NaN을 전파하고(배열과 같다), 암시적 0이 하나라도 있으면 0도 후보다(scipy와 같다). `nanmax`, `nanmin`은 NaN을 건너뛴다.
 - **비교**: IEEE대로다(저장된 NaN끼리 `==`는 False, 암시적 0끼리는 True). `A == 0`, `A <= 1`처럼 암시적 0에서 참인 비교는 scipy처럼 True가 많은 희소 bool 배열이다(경고 없음).
 
-### 2.5 Python 클래스와 변환 (안)
-- 희소 배열은 Python 클래스다(frame의 `Series`처럼 "얇은 Python"의 예외, ARCHITECTURE §3). 필드는 `sd.ndarray`이고 계산은 C++ 커널 한 번 호출이다. 바탕 클래스 `sparray`가 공통 메서드를 갖는다.
-- **`indices`, `indptr`, `coords`는 쓰기 금지 배열이다**(안, §9 SP1의 2번). 바꾸면 표준 꼴(§2.3)이 깨지기 때문이다. `data`는 쓸 수 있다(값만 바꾸는 흔한 쓰임; `A.data *= 2`). scipy는 모두 쓸 수 있다(`[scipy와 다름]`).
+### 2.5 Python 클래스와 변환 (SP21–SP30)
+- 희소 배열은 Python 클래스다(SP21; frame의 `Series`처럼 "얇은 Python"의 예외, ARCHITECTURE §3). 필드는 `sd.ndarray`이고 계산은 C++ 커널 한 번 호출이다. 바탕 클래스 `sparray`가 공통 메서드를 갖고 직접 만들지 않는다(`TypeError`). 파일은 §6이다.
+- **`indices`, `indptr`, `coords`는 쓰기 금지 배열이다**(SP22). 바꾸면 표준 꼴(§2.3)이 깨지기 때문이다. `data`는 쓸 수 있다(값만 바꾸는 흔한 쓰임). `A.data *= 2`는 제자리에서 바꾼 배열을 다시 대입하므로, `data`에는 같은 모양의 `sd.ndarray`를 대입할 수 있다(dtype이 바뀌어도 된다, scipy와 같다). `indices` 등에는 대입할 수 없다. scipy는 모두 쓸 수 있다(`[scipy와 다름]`).
+- **생성자의 입력**(`_interop.py`): 다른 희소 배열(형식 변환), scipy의 희소 배열·옛 행렬(모든 형식), 모양 tuple(빈 배열, `dtype=None`은 float64), `(data, (row, col))`·`(data, (i,))`(네 형식 모두; scipy의 DOK는 받지 않는다), CSR·CSC의 `(data, indices, indptr)`, 밀집 배열(`sd.ndarray`, numpy 배열, 중첩 시퀀스). tuple을 가르는 규칙은 scipy와 같다: 정수만이면 모양, 둘째가 배열의 tuple이면 좌표, CSR·CSC에서 원소 셋이 배열이면 압축된 부분이다.
+  - 값은 `sd.asarray`의 규칙이다(§2.2). `dtype=`은 명시적 변환이고, 밀집 입력에서는 0이 아닌 자리를 원래 값으로 고른 뒤에 바꾼다(scipy와 같다: 0.4가 int64의 0이 되어도 저장된 원소로 남는다).
+  - **색인 배열은 언제나 복사하고 검사한다**(SP30; `copy`와 상관없다): 범위(밖이면 `ValueError`, 배열의 메시지 꼴 `index 5 is out of bounds for axis 1 with size 4`), `indptr`의 시작 0·줄어들지 않음·끝 = 저장 수. 받은 배열을 나중에 고쳐도 이 배열의 표준 꼴이 깨지지 않게 하려는 것이다(커널은 색인을 믿고 읽는다). 검사가 어차피 한 번 훑으므로 복사는 그 훑기에 붙어 있다. scipy는 검사도 복사도 하지 않는다(`[scipy와 다름]`; 비용은 §5의 표).
+  - `copy`(SP27)는 값 배열 `data`에 대한 것이다: None이면 그대로 쓸 수 있을 때(dtype이 맞고 연속이고, CSR·CSC로는 이미 표준 꼴일 때) 받은 배열을 그대로 쓴다. 밀집 입력, 시퀀스, scipy 객체, DOK로의 변환, 정렬·중복 더하기가 필요한 입력은 복사가 필요하므로 `copy=False`면 `ValueError`다(`csr_array(): copy=False, but a dense input requires a copy`).
+  - 같은 형식의 희소 배열을 받으면 새 객체이고 배열을 나눈다(`copy=True`면 값을 복사한다). DOK는 해시 맵을 나눈다(scipy의 `dict`와 같다).
+- **형식 변환** `tocoo tocsr tocsc todok asformat`(SP27, SP29): 같은 형식이면 자신, 아니면 새 객체다. 나눌 수 있는 것은 나눈다: CSR → COO는 `data`와 `indices`(열 색인)를 그대로 쓰고 행 색인만 펼친다, 표준 꼴 COO → CSR은 `data`와 열 색인을 그대로 쓴다, `.T`는 같은 세 배열의 다른 형식이다. CSR ↔ CSC와 DOK는 언제나 새 배열이다. 1차원은 CSC가 될 수 없다(`ValueError`).
+  - 결과의 형식은 scipy의 것이다: `reshape`은 모든 형식에서 COO(같은 모양이면 자신), DOK의 `real`·`imag`와 complex의 `conj()`는 CSR, CSR의 전치는 CSC, COO의 `astype`은 dtype을 바꾼 뒤 중복을 더한 표준 꼴이다.
+  - DOK → 다른 형식은 키를 정렬하므로 결과가 넣은 순서와 무관하다(행 우선, `has_canonical_format`은 True). `[scipy와 다름]`: scipy의 DOK는 `dict`라 넣은 순서다.
+  - `nonzero()`의 순서는 scipy와 같다: CSR·CSC·DOK는 행 우선, COO는 저장된 순서(중복도 그대로). `count_nonzero()`는 COO의 중복을 먼저 더하되 배열을 바꾸지 않는다(`[scipy와 다름]`: scipy는 제자리에서 `sum_duplicates()`를 한다).
 - **sd.ndarray ↔ 희소**
-  - `csr_array(x)`(밀집 `sd.ndarray`, 1·2차원): 0이 아닌 원소만 저장한다. NaN은 0이 아니므로 저장된다.
-  - `A.toarray()`: C 순서의 새 `sd.ndarray`다. `todense()`는 두지 않는 안이다(scipy의 배열 꼴에서 둘은 같은 일을 한다; 별칭 없음).
-  - 밀집으로 몰래 바뀌는 것을 막는다: `np.asarray(A)`는 `TypeError`(`__array__`가 `toarray()`를 짚는다)인 안이다(scipy는 0차원 object 배열을 만든다).
-- **numpy**: 생성자는 데이터를 받는 자리라 numpy 배열(밀집 2차원, 또는 `(data, indices, indptr)`·`(data, (row, col))`의 각 배열)을 받는다(API.md §5의 데이터 입력). 받은 것은 복사한다. 연산자의 밀집 피연산자는 `sd.ndarray`만이다: `A @ np_array`는 `TypeError`(배열과 같은 규칙, API.md §5). 
-- **scipy.sparse**
-  - 들여오기: 생성자가 scipy의 희소 배열과 옛 행렬(모든 형식)을 받는다. **언제나 복사한다**(안): scipy 객체는 나중에 제자리에서 바뀔 수 있고(scipy의 `sum_duplicates`, `sort_indices`는 제자리 정렬이다) int32 색인은 어차피 넓혀야 한다. dtype은 §2.2의 규칙이다.
-  - 내보내기: `A.to_scipy()`(이름은 frame의 `to_numpy`와 같은 꼴; §9 SP1의 3번)가 같은 형식의 scipy 배열(`csr_array` 등)을 만든다. 값·색인 배열은 복사하지 않는 numpy 뷰다(배열의 버퍼 프로토콜; 이 초안에서 scipy 1.18.1이 int64 색인을 `(data, indices, indptr)`로 받을 때 복사하지 않는 것을 확인했다). 색인 뷰는 읽기 전용이다. `copy=True`면 복사한다.
+  - `csr_array(x)`(밀집 `sd.ndarray`, 1·2차원): 0이 아닌 원소만 저장한다. NaN은 0이 아니므로 저장되고 -0.0은 0이므로 저장되지 않는다(scipy와 같다).
+  - `A.toarray()`: C 순서의 새 `sd.ndarray`이고 0에 저장된 값을 더한 것이다. 그래서 저장된 -0.0은 밀집에서 +0.0이고, COO의 중복은 저장 순서로 더해진다(scipy와 같다). `todense()`는 없다(SP24).
+  - 밀집으로 몰래 바뀌는 것을 막는다(SP26): `np.asarray(A)`는 `A.toarray()`를 짚는 `TypeError`, `sd.asarray(A)`도 `TypeError`다. `len(A)`, `bool(A)`, `iter(A)`도 `TypeError`다(`[scipy와 다름]`: scipy의 `len`은 `TypeError`이되 DOK는 저장 수, `bool`은 `ValueError`이되 (1, 1)이면 값). 배열과 같은 규칙이다(docs/api/array.md: 배열은 크기와 상관없이 `bool`이 `TypeError`).
+- **numpy**: 생성자는 데이터를 받는 자리라 numpy 배열(밀집 2차원, 또는 `(data, indices, indptr)`·`(data, (row, col))`의 각 배열)을 받는다(API.md §5의 데이터 입력). 연산자의 밀집 피연산자는 `sd.ndarray`만이다: `A @ np_array`는 `TypeError`(배열과 같은 규칙, API.md §5; SP2).
+- **scipy.sparse**(SP23)
+  - 들여오기: 생성자가 scipy의 희소 배열과 옛 행렬(모든 형식; BSR·DIA·LIL은 scipy의 `tocoo()`로)을 받는다. **언제나 복사한다**: scipy 객체는 나중에 제자리에서 바뀔 수 있고(scipy의 `sum_duplicates`, `sort_indices`는 제자리 정렬이다) int32 색인은 어차피 넓혀야 한다. `copy=False`면 `ValueError`다. dtype은 §2.2의 규칙이다.
+  - 내보내기: `A.to_scipy(*, copy=None)`가 같은 형식의 scipy 배열(`csr_array` 등)을 만든다. 값·색인 배열은 복사하지 않는 numpy 뷰다(배열의 버퍼 프로토콜로; 빈 scipy 배열을 만들고 세 배열을 대입해 scipy가 색인을 int32로 줄이지 않게 한다). 색인 뷰는 읽기 전용이라 scipy의 제자리 메서드(`eliminate_zeros` 등)는 `ValueError`다. 값 뷰는 쓸 수 있고 이 배열과 나눈다. `copy=True`면 복사한다. DOK는 언제나 복사한다(`copy=False`면 `ValueError`).
 - **Python 스칼라와 연산자**: `A + c`(c ≠ 0)와 `A ** 0`은 결과가 밀집이 된다. scipy는 `NotImplementedError`다. 이쪽은 `ValueError`(`'adding a nonzero scalar to a sparse array is not supported; use A.toarray() + c'`)인 안이다(`[scipy와 다름]`: 예외 종류만, API.md §2의 목록에 `NotImplementedError`가 없다).
 
 ### 2.6 합의 순서와 결정성
@@ -227,11 +250,17 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
 ## 3. 수치 방법 (안)
 
 ### 3.1 형식 변환과 만들기 (SP1)
-- COO → CSR·CSC: 줄 번호의 안정 계수 정렬(고정 조각, §2.3) → 줄 안의 안정 정렬(짧은 줄은 삽입 정렬, 긴 줄은 기수 정렬) → 중복의 순차 합. 이미 표준 꼴인 COO(`has_canonical_format`)는 정렬 없이 `indptr`만 만든다.
-- CSR ↔ CSC: 전치와 같은 계수 정렬이고 정렬된 입력에서 결과도 바로 정렬된다(안정이라서). `.T`는 복사 없는 뷰다: CSR의 `.T`는 같은 버퍼의 CSC다(scipy와 같다, 이 초안에서 확인).
-- 밀집 → 희소: 0이 아닌 원소를 세는 패스 하나와 채우는 패스 하나, 행 구간으로 병렬.
-- `astype`: 배열의 명시적 변환 규칙(array.md §2.4: float → int는 포화, NaN → 0). 변환 뒤 0이 된 값도 저장된 원소로 남는다(scipy와 같다).
-- DOK: C++ 해시 맵(열림 주소법). CSR로 바꿀 때 키를 정렬한다(결과는 넣은 순서와 무관하다).
+`csrc/sparse/canonical.cpp`가 표준 꼴을 만든다. 입력은 원소 (major, minor, 값)의 목록이고(COO → CSR이면 (행, 열, 값), → CSC면 (열, 행, 값)), 출력은 (major, minor) 순서의 `indptr`·`indices`·`data`, 같은 자리는 입력 순서로 더한 하나다. 길은 둘이고 같은 함수를 계산한다(모든 정렬이 안정적이고 중복의 합이 입력 순서라서, 결과는 입력만으로 정해진다). 그래서 어느 길을 탈지는 속도로만 크기에 따라 고르고, 비트는 길과 스레드 수와 무관하다(테스트는 두 길과 1·2·3·7·10스레드의 바이트를 견준다).
+- **곧은 길**: `indptr`을 계수기로 쓰는 major의 계수 정렬(scipy의 `coo_tocsr`과 같은 꼴), 그 뒤 줄마다 minor로 안정 정렬(32개까지 삽입 정렬, 넘으면 `std::stable_sort`)과 중복의 차례 합. 줄에 놓을 때 입력 위치 대신 값을 함께 옮겨, 나중에 값을 흩어 읽는 패스가 없다.
+- **양동이 길**: major를 2^s개씩 묶은 양동이(64–1024개, nnz와 줄 수로만 정함)로 원소를 안정적으로 흩고(입력의 고정 조각 2^14개마다 양동이별 개수를 세어 조각 순서로 누적), 양동이마다 줄의 계수 정렬과 위의 줄 처리를 한다. 양동이가 캐시 크기라 한 스레드에서도 큰 입력에서 빠르고, 양동이끼리는 스레드풀에서 독립이다. 줄이 아주 많고 원소가 적은 양동이(줄 수 > 4·원소 수 + 1024)는 양동이째 안정 정렬한다.
+- **고르는 크기**(M4 Pro, 줄마다 10개인 무작위 행렬에서 잼): 스레드풀을 쓸 수 있으면 2^16개부터 양동이 길, 한 스레드에서는 정렬·합이 필요한 변환이 2^17개부터, 전치(CSR ↔ CSC: 줄 안이 이미 정렬되어 정렬·합이 없다)가 2^20개부터다. 양동이를 64개보다 적게 두면 10스레드에서 몇 스레드가 늦게 끝나 2^17개 근처가 1스레드와 같았다.
+- 이미 표준 꼴인 COO(`has_canonical_format`)는 정렬 없이 `indptr`만 만들고 값과 minor 색인을 그대로 쓴다.
+- **CSR ↔ CSC**: 위의 전치(scipy의 `csr_tocsc`와 같은 계수 정렬; 안정이라 결과도 정렬되어 있다). `.T`는 복사 없는 뷰다: CSR의 `.T`는 같은 세 배열의 CSC다(scipy와 같다).
+- **사용자의 `(data, indices, indptr)`**: `indptr`과 `indices`를 복사하며 검사하고(줄 구간으로 병렬; 틀린 곳은 스레드 수와 상관없이 첫 자리를 알린다), 줄마다 정렬되어 있고 중복이 없으면 그대로, 아니면 위의 표준 꼴 만들기로 간다.
+- 밀집 → 희소(`csrc/sparse/convert.cpp`): 줄마다 0이 아닌 수를 세는 패스와 채우는 패스, 줄 구간으로 병렬(임의의 strides). 희소 → 밀집: 0으로 채운 C 순서 배열에 줄마다 쓴다. 중복이 있을 수 있는 COO만 저장 순서로 더하므로 한 스레드다.
+- `astype`: 배열의 명시적 변환 규칙(array.md §2.4: float → int는 포화, NaN → 0)으로 `data`를 바꾼다(`sd.astype`과 비트까지 같다). 변환 뒤 0이 된 값도 저장된 원소로 남는다(scipy와 같다).
+- DOK(`csrc/sparse/dok.cpp`): 키 (i, j)와 값의 평평한 배열, 열린 주소법과 선형 탐사, 부하 1/2 이하(지운 칸은 표시하고 다시 지을 때 버린다). 다른 형식으로 바꿀 때 키를 정렬한다.
+- 그 밖(`convert.cpp`): `indptr` 펼치기, 범위·0으로 거르기(`resize`, `eliminate_zeros`, `nonzero`), 0이 아닌 수 세기(줄마다, 색인마다), `reshape`의 좌표(C 순서의 위치를 128비트 정수로 계산해 2^63을 넘는 크기도 된다).
 
 ### 3.2 산술과 원소별 연산 (SP2)
 | 연산 | 결과 | 0을 지우나 (scipy와 같게) |
@@ -263,8 +292,11 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
 - `kron(A, B)`: 결과의 원소 aᵢⱼ·bₖₗ은 곱 하나라 순서 문제가 없다. 결과의 저장 순서는 표준 꼴(§2.3)이다.
 
 ### 3.5 전치, 모양, 그 밖 (SP1)
-- `.T`, `.mT`, `transpose()`, `matrix_transpose(A)`: 2차원이면 같은 일이다(배열과 같은 이름들; `.T`는 뷰). `conj()`, `real`, `imag`, `copy()`, `astype`, `reshape`(COO를 거친다), `resize`, `nonzero()`, `eliminate_zeros()`, `setdiag`, `tocoo`·`tocsr`·`tocsc`·`todok`, `asformat`, `count_nonzero`, `nnz`, `shape`, `ndim`, `size`, `dtype`, `format`.
-- 두지 않는 것: `dot`(`@`와 같다), `conjugate`(`conj`와 같다), `todense`(`toarray`와 같다), `power`의 정수 지수 0, `prune`(표준 꼴이라 할 일이 없다), `getrow`·`getcol`(옛 꼴).
+- `.T`, `.mT`, `transpose()`, `matrix_transpose(A)`: 2차원이면 같은 일이다(배열과 같은 이름들; `.T`는 뷰). 1차원에서 `.T`, `.mT`, `matrix_transpose`는 `sd.ndarray`처럼 `ValueError`이고(SP31)(`.T: the array must have 2 dimensions, got 1`), `transpose()`는 자신이다. `[scipy와 다름]`: scipy의 1차원 `.T`는 자신이다(numpy와 같다). 영역 사이에서 같은 이름이 같은 일을 하도록 sd의 배열을 따른다.
+- `conj()`, `real`, `imag`, `copy()`, `astype`, `reshape`(COO를 거친다, 결과는 COO), `resize`, `nonzero()`, `eliminate_zeros()`(COO·CSR·CSC; scipy처럼 DOK에는 없다), `tocoo`·`tocsr`·`tocsc`·`todok`, `asformat`, `count_nonzero`, `nnz`, `shape`, `ndim`, `size`, `dtype`, `format`. `setdiag`은 SP3이다.
+- 실수 dtype의 `real`은 값 배열을 나누고(scipy와 같다) `conj()`는 복사다. `copy()`는 값만 복사하고 쓰기 금지인 색인 배열은 나눈다(바뀌지 않으므로 보이는 차이가 없다).
+- `resize(shape)`: 제자리에서 바꾸고 None을 돌려준다. 차원 수는 그대로다(`[scipy와 다름]`: scipy의 COO는 1·2차원 사이도 바꾸고(펼친 순서로), DOK는 `NotImplementedError`다; 한 규칙으로 둔다).
+- 두지 않는 것: `dot`(`@`와 같다), `conjugate`(`conj`와 같다), `todense`(`toarray`와 같다), `power`의 정수 지수 0, `prune`(표준 꼴이라 할 일이 없다), `getrow`·`getcol`(옛 꼴), scipy의 `reshape(order=)`·`transpose(axes=, copy=)`·`astype(casting=)`.
 
 ### 3.6 직접 풀이 (SP4)
 - **LU는 Accelerate의 `SparseFactorizationLU`(문턱 부분 피벗)를 AMD 순서로 부른다**(SP18). LU의 기본 순서 MTMetis와 `SparseOrderDefault`는 쓰지 않는다: 실행마다 결과가 다르고 동시 호출에서 프로세스가 죽는다(§1.4). Metis는 동시 호출에서 실행마다 다르다. 3차원 격자에서는 AMD의 채움이 더 많아 Metis보다 1.5–2배 느리다(§5). 순서를 고르는 옵션을 둘지는 §9 SP4의 1번이다.
@@ -391,6 +423,8 @@ SP0에서 잰 scipy 1.18.1의 시간이다(ms, 호출 하나의 가장 좋은 �
 - Accelerate LU/AMD는 scipy `splu`보다 2차원에서 1.2–3.4배(1스레드 모드 1.1–2.5배), 3차원에서 4–18배 빠르다. 설계 초안의 "3배(73 대 225 ms)"는 SP0에서 1.5배(92 대 139 ms)였다(scipy 쪽이 빨랐다). 3차원에서는 AMD의 채움이 Metis보다 많아(n = 2.2×10⁵에서 4.5 대 3.5 GB) 1.5–2배 느리다. 결정성(SP18)의 값이다. Accelerate LU의 풀이 하나는 n = 10⁶에서 34 ms(scipy 64 ms)다.
 - R Matrix 1.7.6(1스레드): `sparseMatrix` 만들기 nnz 10⁶ 13.8 ms, `A %*% x` 1.0 ms, `t(A)` 3.4 ms, `A + A` 31 ms, `colSums` 0.75 ms, `A %*% A` 220 ms.
 
+**SP1에서 잰 것**(표는 `bench/sparse/speed.md`): 변환(COO → CSR, CSR → CSC, CSR → COO, `sum_duplicates`)은 nnz 10⁷에서 1스레드 1.9–80배, 10스레드 10–500배 scipy보다 빠르다. 1스레드의 COO → CSR·CSR → CSC는 10⁵–10⁶에서 1.1–1.4배로 목표(2배)에 못 미친다(같은 계수 정렬이고 int64 색인이라 옮기는 바이트가 많다). SP8에서 고친다(SP33). `(data, indices, indptr)`·`(data, (row, col))`로 만들기는 색인을 검사하고 복사하므로 scipy(검사도 복사도 없음)보다 느리다(10⁷에서 1스레드 8–11 ms, 10스레드 1–1.5 ms; scipy 4 µs·4 ms). `toarray`는 scipy와 같다(0으로 채우는 비용이 대부분이다). `to_scipy`는 뷰라 크기와 상관없이 수십 µs다.
+
 **목표** (같은 기기, 1·10스레드, scipy 대비 배율)
 - SpMV, `A.T @ x`, 축 리덕션: 1스레드에서 scipy와 같거나 빠르게(int64 색인의 대역 비용이 있어 0.8배까지를 받아들이고 넘으면 §2.2의 int32 안을 묻는다), 10스레드에서 nnz ≥ 10⁶이면 4배 이상(메모리 대역의 한계, array.md §10.6의 `f + g` 1.7배보다 SpMV는 무작위 읽기라 더 나뉜다).
 - SpMM: scipy가 k 방향으로 벡터화하지 않아 느리다(10⁷에서 SpMV의 29배). 1스레드에서 3배 이상.
@@ -406,8 +440,8 @@ SP0에서 잰 scipy 1.18.1의 시간이다(ms, 호출 하나의 가장 좋은 �
 
 ## 6. 층과 파일
 - **층**: `sparse/`는 `array/`, `linalg/`(LAPACK 래퍼, 비용 규칙, pairwise 잎), `parallel/`, `accelerate/`, `base/` 위에 있다(ARCHITECTURE §1의 "아래로만"). 다른 영역은 `sparse/`를 모른다. 예외는 §3.10의 판별 하나(`bind/pyutil`의 `is_sparse` 꼴)와 나중의 그래프 영역이다.
-- `src/stardust/sparse/` (하위 패키지 없음, SP3): `__init__.py`(공개 이름), `_base.py`(`sparray`: 공통 메서드, 연산자, 리덕션), `_coo.py`, `_compressed.py`(`csr_array`, `csc_array`), `_dok.py`, `_construct.py`(만들기 함수), `_index.py`(인덱싱과 대입), `_interop.py`(sd.ndarray·numpy·scipy), `_interface.py`(`LinearOperator`, `aslinearoperator`), `_direct.py`(`spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth`), `_iterative.py`(`cg gmres minres bicgstab lsqr lsmr`), `_eigen.py`(`eigsh eigs svds`), `_matfuncs.py`(`expm expm_multiply onenormest norm`), `_result.py`(결과 클래스), `_common.py`(입력 정리와 메시지).
-- `csrc/sparse/`(SP0: `direct.hpp`·`direct.cpp`, 비공개 `_lu_solve`로 래퍼를 시험한다; 나머지는 마일스톤마다): `format.hpp`(§2.2의 표현, 검사), `canonical.cpp`(정렬, 중복 더하기, 계수 정렬), `convert.cpp`(형식 사이, 밀집 사이), `spmv.cpp`(SpMV·SpMM·Aᵀx, §2.6의 순서), `spgemm.cpp`, `binop.cpp`(병합 이항 연산, 비교), `elementwise.cpp`(배열의 원소별 커널을 `data`에), `reduce.cpp`, `index.cpp`, `construct.cpp`, `dok.hpp`·`dok.cpp`(해시 맵), `triangular.cpp`, `direct.cpp`(Accelerate LU, 특이의 판정), `iterative.cpp`, `lanczos.cpp`(IRLM, 이중대각화), `arnoldi.cpp`(IRAM), `matfuncs.cpp`(expm, expm_multiply, onenormest), `parallel.hpp`(nnz 구간 분할, 기준값).
+- `src/stardust/sparse/` (하위 패키지 없음, SP3): `__init__.py`(공개 이름, `issparse`, `matrix_transpose`), `_base.py`(`sparray`: 공통 메서드, 나중에 연산자와 리덕션), `_coo.py`, `_compressed.py`(`csr_array`, `csc_array`), `_dok.py`, `_construct.py`(만들기 함수), `_index.py`(인덱싱과 대입), `_interop.py`(생성자의 입력과 `to_scipy`), `_interface.py`(`LinearOperator`, `aslinearoperator`), `_direct.py`(`spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth`), `_iterative.py`(`cg gmres minres bicgstab lsqr lsmr`), `_eigen.py`(`eigsh eigs svds`), `_matfuncs.py`(`expm expm_multiply onenormest norm`), `_result.py`(결과 클래스), `_common.py`(입력 정리와 메시지).
+- `csrc/sparse/`(SP0: `direct.hpp`·`direct.cpp`, 비공개 `_lu_solve`로 래퍼를 시험한다; SP1: `format.hpp`, `parallel.hpp`, `canonical.cpp`, `convert.cpp`, `dok.cpp`; 나머지는 마일스톤마다): `format.hpp`(§2.2의 표현, 커널이 함께 쓰는 것), `canonical.cpp`(표준 꼴: 정렬, 중복 더하기, 전치, 입력의 검사; §3.1), `convert.cpp`(밀집 사이, 펼치기, 거르기, 세기, `reshape`의 좌표), `spmv.cpp`(SpMV·SpMM·Aᵀx, §2.6의 순서), `spgemm.cpp`, `binop.cpp`(병합 이항 연산, 비교), `elementwise.cpp`(배열의 원소별 커널을 `data`에), `reduce.cpp`, `index.cpp`, `construct.cpp`, `dok.cpp`(해시 맵), `triangular.cpp`, `direct.cpp`(Accelerate LU, 특이의 판정), `iterative.cpp`, `lanczos.cpp`(IRLM, 이중대각화), `arnoldi.cpp`(IRAM), `matfuncs.cpp`(expm, expm_multiply, onenormest), `parallel.hpp`(크기로만 정하는 분할, 기준값 2^15).
 - `csrc/accelerate/sparse.hpp`(SP0): Sparse Solvers 래퍼(ARCHITECTURE §4.4: Accelerate 래퍼는 `accelerate/` 한곳). int64 → int32 행 색인 복사(`Csc::narrow`), 스레드마다 모으는 `reportError` 콜백(`ErrorScope`; status가 0이어도 메시지가 있으면 실패), status → `Error{Singular, Parameter, Failed, Internal}`, LU/AMD·`zeroTolerance = 0` 고정, `SparseCleanup`의 RAII(`Lu<T>`, float64·complex128).
 - `csrc/linalg/lapack.hpp`에 더할 래퍼: `stev`·`steqr`(삼중대각 고유값), `hseqr`·`trevc`(헤센베르크), 필요하면 `bdsqr`(이중대각 SVD).
 - `csrc/bind/sparse_bind.cpp`(`stardust._core.sparse`, SP0), `csrc/bind/module.cpp`에 하위 모듈 하나.
@@ -494,24 +528,25 @@ python-flint 0.9.0(Arb)과 정확한 유리수다. mpmath는 쓰지 않는다. �
 - 비트: int32·int64, 1·10스레드의 결과가 모든 경우에 같고 scipy와도 같다(§7.4). 이 커널의 int64판(nnz 10⁶ 0.74 ms, 10⁷ 8.07 ms)은 scipy(0.645, 7.38 ms)의 0.87–0.91배 빠르기다(목표 0.8배 이상, §5).
 
 ### 7.6 정확도·속도 체계와 골든
-- **정확도** (`bench/accuracy/sparse.py`, 등록함): 지금은 스윕이 없다. 묶음은 그 함수가 공개되는 마일스톤에 들어간다(`spmv`·`sums`는 SP2, `solve`는 SP4, `lstsq`는 SP5, `eig`는 SP6, `norms`·`expm`은 SP7). 판정은 `tests/sparse/refdata.py`의 계약이고 비교 패키지 열은 scipy·R의 기록이다.
-- **속도** (`bench/speed/cases/sparse.py`, 등록함): 사례마다 필요한 sd.sparse 이름을 적어 두고, 그 이름이 공개되면 사례가 된다(지금은 0개). 비교 대상은 scipy와 R Matrix(같은 R 세션), 크기는 §5다. 직접 풀이에 Accelerate를 직접 부른 값(감싸기 비용)을 더할지는 SP4에서 정한다.
-- **골든** (`tests/golden/cases_sparse.py`, 기록 `tests/golden/data/sparse.json`): 지금은 케이스가 없다. 공개 이름마다 그 마일스톤에서 더한다(1·3·10스레드).
+- **정확도** (`bench/accuracy/sparse.py`, 등록함): 지금은 스윕이 없다. SP1의 변환은 정확한 연산이라(§4) 테스트가 비트까지 본다. 묶음은 그 함수가 공개되는 마일스톤에 들어간다(`spmv`·`sums`는 SP2, `solve`는 SP4, `lstsq`는 SP5, `eig`는 SP6, `norms`·`expm`은 SP7). 판정은 `tests/sparse/refdata.py`의 계약이고 비교 패키지 열은 scipy·R의 기록이다.
+- **속도** (`bench/speed/cases/sparse.py`, 등록함): 사례마다 마일스톤과 필요한 sd.sparse 이름을 적어 두고, 그 마일스톤이 `DONE`에 들고 이름이 공개되면 사례가 된다(SP1의 형식 변환과 만들기 12가지, 크기마다 36개; 기준선 `bench/speed/results/sparse.json`, 표 `bench/sparse/speed.md`). 희소 결과는 값·(행 + 1)·(열 + 1)로 가중한 세 합으로 견준다(형식·순서·중복과 무관). 비교 대상은 scipy와 R Matrix(같은 R 세션), 크기는 §5다. 직접 풀이에 Accelerate를 직접 부른 값(감싸기 비용)을 더할지는 SP4에서 정한다.
+- **골든** (`tests/golden/cases_sparse.py`, 기록 `tests/golden/data/sparse.json`): SP1의 812케이스(모든 입력 꼴, 네 형식 사이의 변환, 밀집, 전치, `reshape`·`resize`, `nonzero`·`count_nonzero`, `eliminate_zeros`·`sum_duplicates`, 값의 메서드, DOK 원소, 틀린 호출). 2×10⁵개의 무작위 COO는 3·10스레드에서 양동이 길을 탄다. 1·3·10스레드의 결과가 모두 같다. 공개 이름마다 그 마일스톤에서 더한다.
+- **나중 일**(SP34): SP1의 속도는 다른 에이전트의 일과 함께 재서 † 줄(다른 프로세스가 1코어 넘게 쓴 사례)이 있다. 기계가 한가할 때 `.venv/bin/python -m bench.speed run --rerun-busy build/speed/<SP1 실행>.jsonl --promote`로 다시 잰다.
 
 ---
 
 ## 8. 마일스톤
 | 마일스톤 | 내용 |
 |---|---|
-| SP0 준비 (완료, 승인 대기) | API 문서 초안(`docs/api/sparse.md`: 모든 공개 이름의 시그니처, scipy → sd 이름의 대응표, 마일스톤별 질문), 시험 행렬, 참값 도구(Arb), scipy·R 대조 도구와 데이터, Accelerate 탐침(§7), int32·int64 색인의 SpMV 측정(§2.2), 속도 기준선, 정확도·속도 체계에 넣는 계획 |
-| SP1 형식과 변환 | `coo_array csr_array csc_array dok_array sparray issparse`, 생성자, 표준 꼴(§2.3), 형식 변환, `sd.ndarray`·numpy·scipy와 주고받기(§2.5), `astype copy .T transpose matrix_transpose conj real imag reshape resize nonzero eliminate_zeros sum_duplicates`, repr |
+| SP0 준비 (완료·승인) | API 문서 초안(`docs/api/sparse.md`: 모든 공개 이름의 시그니처, scipy → sd 이름의 대응표, 마일스톤별 질문), 시험 행렬, 참값 도구(Arb), scipy·R 대조 도구와 데이터, Accelerate 탐침(§7), int32·int64 색인의 SpMV 측정(§2.2), 속도 기준선, 정확도·속도 체계에 넣는 계획 |
+| SP1 형식과 변환 (완료·승인 2026-11-21) | `coo_array csr_array csc_array dok_array sparray issparse`, 생성자, 표준 꼴(§2.3), 형식 변환, `sd.ndarray`·numpy·scipy와 주고받기(§2.5), `astype copy .T transpose matrix_transpose conj real imag reshape resize nonzero eliminate_zeros sum_duplicates`, repr |
 | SP2 연산 | 산술과 비교(§3.2), 원소별 함수, `multiply maximum minimum power`, SpMV·SpMM·밀집 @ 희소·SpGEMM, 리덕션(§3.3) |
 | SP3 인덱싱과 만들기 | 인덱싱과 대입, `diagonal setdiag trace`, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find` |
 | SP4 직접 풀이 | `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth`, `LinearOperator aslinearoperator`, `sd.linalg`·배열의 `TypeError`(§3.10) |
 | SP5 반복법 | `cg gmres minres bicgstab lsqr lsmr` |
 | SP6 고유값과 특이값 | `eigsh eigs svds`, linalg 래퍼에 `stev steqr hseqr trevc` |
 | SP7 행렬 함수와 노름 | `expm expm_multiply onenormest norm` |
-| SP8 최적화와 일관성 점검 | 모든 공개 함수를 크기마다 scipy·R과 견주어 고치기, 메시지·시그니처의 영역 간 일관성, 코드 리뷰 |
+| SP8 최적화와 일관성 점검 | 모든 공개 함수를 크기마다 scipy·R과 견주어 고치기(SP1에서 넘어온 것: nnz 10⁵–10⁶의 1스레드 COO → CSR·CSR → CSC, SP33), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 |
 
 진행 원칙은 다른 영역과 같다: 마일스톤마다 시작 전에 §9의 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다. SP1–SP3은 차례로 간다(앞의 것에 기댄다). SP4가 `LinearOperator`를 만들므로 SP5–SP7은 그 뒤이고, 셋끼리는 순서를 바꿀 수 있다(SP7의 `norm(ord=2)`는 SP6의 `svds`를 쓴다). 기존 영역의 결과는 비트까지 같아야 한다(§3.10의 판별은 희소 입력에서만 동작한다).
 
@@ -523,16 +558,7 @@ python-flint 0.9.0(Arb)과 정확한 유리수다. mpmath는 쓰지 않는다. �
 추천을 첫째에 둔다.
 
 - **SP0**: 정했다(SP6–SP20, §1.1).
-- **SP1**
-  1. 클래스: Python 클래스에 `sd.ndarray` 필드(추천, frame의 `Series`와 같은 예외) / nanobind C++ 클래스.
-  2. `indices`·`indptr`·`coords`는 쓰기 금지, `data`는 쓸 수 있다(추천) / 모두 쓸 수 있다(scipy와 같다).
-  3. scipy와 주고받기: 들여올 때 언제나 복사, 내보내기는 `to_scipy(*, copy=None)`의 뷰(추천) / `sd.sparse.asarray(obj, *, copy=None)` 꼴의 함수 하나.
-  4. 별칭: `toarray`·`conj`·`@`만(추천) / scipy처럼 모두.
-  5. COO의 `row`·`col`: 두지 않고 `coords`만(추천, 별칭 없음) / scipy처럼 `coords[0]`·`coords[1]`의 이름으로 둔다(scipy 사용자의 코드가 많이 쓴다).
-  6. DOK의 `dict` 메서드: 두지 않는다(추천) / 둔다.
-  7. `np.asarray(A)`: `toarray()`를 짚는 `TypeError`(추천) / scipy처럼 0차원 object 배열.
-  8. 생성자의 `copy`: 배열의 `copy=None` 규칙(추천) / scipy의 `copy=False`.
-  9. 데이터 인자의 이름: scipy의 `A`, `b`(추천; 메시지 `'A'`) / sd.linalg의 `x`, `a`.
+- **SP1**: 정했다(SP21–SP34, §1.1).
 - **SP2**
   1. 밀집 피연산자로 numpy 배열: `TypeError`(추천, API.md §5) / 받는다.
   2. 원소별 함수: 메서드만, `sd.sin(A)`는 메서드를 짚는 `TypeError`(추천) / `sd.sin(A)`도 받는다(f(0) = 0인 함수만).

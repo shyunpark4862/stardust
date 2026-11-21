@@ -1,6 +1,7 @@
 """sd.htest's accuracy sweeps: one per reference family of the public tests
 (tests/htest/refdata.PUBLIC: tests/htest/ref/<family>.json, tools/htest_ref.py), one region per
-field (statistic, pvalue, df, df_num, df_denom, conf_int), each problem of the family a point.
+field (statistic, pvalue, zstatistic, df, df_num, df_denom, median, conf_int), each problem of the
+family a point.
 
 The contract is tests/htest/refdata.py's, as the tests judge it (docs/design/htest.md §4): the
 statistic to 1e-14 times its condition number in what it transforms (kappa_stat), the p-value
@@ -23,7 +24,10 @@ import numpy as np
 from .common import Custom, compare_libs, region, ulps
 
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
-R_SAME_STATISTIC = ("ttest", "f_oneway", "bartlett", "fligner", "levene", "power_divergence", "ks_1samp", "shapiro")
+R_SAME_STATISTIC = (
+    "ttest", "f_oneway", "bartlett", "fligner", "levene", "power_divergence", "ks_1samp", "shapiro", "mannwhitneyu",
+    "kruskal", "friedmanchisquare", "ansari", "mood",
+)  # fmt: skip
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
 # R's goodness-of-fit packages (tests/htest/data/r_gof.json, H44) in the families they share with
 # sd: goftest's cvm.test is the same test (Csörgő and Faraway's p-value); nortest's ad.test has

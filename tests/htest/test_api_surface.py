@@ -13,12 +13,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "htest.md"
 
-# Documented, not implemented yet (docs/design/htest.md §8): the tests after H2. A milestone moves
+# Documented, not implemented yet (docs/design/htest.md §8): the tests after H3. A milestone moves
 # its names from here to sd.htest.__all__.
 PLANNED = {
-    # H3
-    "mannwhitneyu", "ranksums", "wilcoxon", "kruskal", "friedmanchisquare", "brunnermunzel", "ansari", "mood",
-    "median_test", "page_trend_test",
     # H4
     "ks_2samp", "cramervonmises_2samp", "anderson_ksamp", "epps_singleton_2samp",
     # H5
@@ -37,7 +34,7 @@ PLANNED = {
 }  # fmt: skip
 # Taking tables (the last axes) or summaries, not samples along an axis (H9)
 NO_AXIS = {
-    "ttest_ind_from_stats", "median_test", "page_trend_test", "anderson_ksamp", "somersd", "chi2_contingency",
+    "ttest_ind_from_stats", "page_trend_test", "anderson_ksamp", "somersd", "chi2_contingency",
     "fisher_exact", "barnard_exact", "boschloo_exact", "mcnemar", "cochrans_q", "odds_ratio", "relative_risk",
     "binomtest", "poisson_means_test", "proportions_ztest", "proportions_chisquare", "proportion_confint",
     "test_proportions_2indep", "confint_proportions_2indep", "tukey_hsd", "dunnett", "PermutationMethod",

@@ -3,9 +3,11 @@
 Every public test on fixed data sets (small samples, a large offset, ties, constant samples, a
 sample of one, NaN under the three nan_policy values, empty samples), over its options
 (alternative, equal_var, trim, center and proportiontocut, lambda_ and ddof, dist, method,
-keepdims), batches along an axis and a tuple of axes, long lanes (n = 10^5: the multithreaded
-kernels), scales of 1e+-300, and the wrong calls (their errors are results). A result object
-is stored whole: every field and conf_int(); conf_int(alpha=0.1) as its own case.
+zero_method, correction, use_continuity, distribution, ties, ranked, predicted_ranks, keepdims),
+batches along an axis and a tuple of axes (the rank tests' per-lane methods), long lanes
+(n = 10^5: the multithreaded kernels), the exact distributions (with ties, deep tails, past
+their work cap), scales of 1e+-300, and the wrong calls (their errors are results). A result
+object is stored whole: every field and conf_int(); conf_int(alpha=0.1) as its own case.
 """
 
 import math
@@ -193,3 +195,110 @@ def cases(L):
         lambda: h.cramervonmises(np.linspace(0.01, 0.95, 40) ** 1.2, sd.stats.Uniform(a=0.0, b=1.0)),
     )
     yield "cramervonmises one", lambda: h.cramervonmises([0.3], N)
+
+    # ---- H3: rank tests
+    t1, t2 = d["ties"], np.round(d["b"] * 2.0)
+    zd = np.round(d["a"] * 2.0)  # zeros and ties among the differences
+    for alt in ("two-sided", "less", "greater"):
+        for meth in ("auto", "exact", "asymptotic"):
+            yield f"mannwhitneyu {alt} {meth}", lambda alt=alt, m=meth: h.mannwhitneyu(a, b, alternative=alt, method=m)
+            yield (
+                f"mannwhitneyu ties {alt} {meth}",
+                lambda alt=alt, m=meth: h.mannwhitneyu(t1, t2, alternative=alt, method=m),
+            )
+            yield f"wilcoxon {alt} {meth}", lambda alt=alt, m=meth: h.wilcoxon(a, b[:12], alternative=alt, method=m)
+            yield (
+                f"wilcoxon ties {alt} {meth}",
+                lambda alt=alt, m=meth: h.wilcoxon(t1[:20] + 0.5, alternative=alt, method=m),
+            )
+            yield f"ansari {alt} {meth}", lambda alt=alt, m=meth: h.ansari(a, b, alternative=alt, method=m)
+            yield f"ansari ties {alt} {meth}", lambda alt=alt, m=meth: h.ansari(t1, t2, alternative=alt, method=m)
+            if alt == "two-sided":
+                yield f"page_trend_test {meth}", lambda m=meth: h.page_trend_test(d["cube"][0].T[:8], method=m)
+        yield f"ranksums {alt}", lambda alt=alt: h.ranksums(a, b, alternative=alt)
+        yield f"mood {alt}", lambda alt=alt: h.mood(a, b, alternative=alt)
+        yield f"mood ties {alt}", lambda alt=alt: h.mood(t1, t2, alternative=alt)
+        for dist in ("t", "normal"):
+            yield (
+                f"brunnermunzel {alt} {dist}",
+                lambda alt=alt, dist=dist: h.brunnermunzel(a, b, alternative=alt, distribution=dist),
+            )
+            yield (
+                f"brunnermunzel ties {alt} {dist}",
+                lambda alt=alt, dist=dist: h.brunnermunzel(t1, t2, alternative=alt, distribution=dist),
+            )
+    for zm in ("wilcox", "pratt", "zsplit"):
+        for meth in ("auto", "exact", "asymptotic"):
+            for corr in (False, True):
+                yield (
+                    f"wilcoxon zeros {zm} {meth} correction={corr}",
+                    lambda zm=zm, m=meth, corr=corr: h.wilcoxon(zd, zero_method=zm, method=m, correction=corr),
+                )
+    yield "wilcoxon zeros small auto", lambda: h.wilcoxon(zd[:10])
+    yield "mannwhitneyu no continuity", lambda: h.mannwhitneyu(t1, t2, use_continuity=False)
+    yield "mannwhitneyu exact 8 x 2000", lambda: h.mannwhitneyu(a[:8], d["long_b"][:2000])
+    yield "mannwhitneyu exact deep", lambda: h.mannwhitneyu(a, b + 10.0, method="exact")
+    yield "wilcoxon exact 200", lambda: h.wilcoxon(d["long_a"][:200] + 0.1, method="exact")
+    yield "wilcoxon exact deep", lambda: h.wilcoxon(np.abs(d["long_a"][:70]) + 0.1, method="exact")
+    yield "ansari exact 54", lambda: h.ansari(d["long_a"][:54], d["long_b"][:54] * 1.4)
+    yield "ansari exact odd", lambda: h.ansari(d["long_a"][:20], d["long_b"][:25] * 2.0)
+    for name, gs in (("three", (a, b, c)), ("ties", (t1, t2, np.round(c * 2))), ("constant", (d["const"], d["const"]))):
+        yield f"kruskal {name}", lambda gs=gs: h.kruskal(*gs)
+        yield f"median_test {name}", lambda gs=gs: h.median_test(*gs)
+    yield "friedmanchisquare", lambda: h.friedmanchisquare(a, b[:12], c[:9].tolist() + [0.1, 0.2, 0.3])
+    yield "friedmanchisquare ties", lambda: h.friedmanchisquare(t1, t2[:30], np.round(d["long_a"][:30]))
+    yield "friedmanchisquare constant", lambda: h.friedmanchisquare(d["const"], d["const"], d["const"])
+    for ties in ("below", "above", "ignore"):
+        for corr in (True, False):
+            for lam in (1, "log-likelihood", "freeman-tukey", 0.4):
+                yield (
+                    f"median_test {ties} correction={corr} lambda={lam}",
+                    lambda ties=ties, corr=corr, lam=lam: h.median_test(
+                        t1, t2, ties=ties, correction=corr, lambda_=lam
+                    ),
+                )
+    yield "median_test batch", lambda: h.median_test(d["batch_a"], d["batch_b"], axis=-1)
+    yield "median_test batch keepdims", lambda: h.median_test(d["batch_a"], d["batch_b"], axis=-1, keepdims=True)
+    yield "page_trend_test ties", lambda: h.page_trend_test(np.round(d["cube"][1].T[:6]))
+    yield (
+        "page_trend_test ranked",
+        lambda: h.page_trend_test(np.array([[1.0, 2, 3, 4], [2, 1, 3, 4], [1, 3, 2, 4]]), ranked=True),
+    )
+    yield "page_trend_test predicted", lambda: h.page_trend_test(d["cube"][2].T, predicted_ranks=[4, 3, 2, 1])
+    yield "page_trend_test batch", lambda: h.page_trend_test(d["cube"].transpose(0, 2, 1))
+    yield "page_trend_test 20 x 3", lambda: h.page_trend_test(d["long_a"][:60].reshape(20, 3))
+    yield "page_trend_test large", lambda: h.page_trend_test(d["long_a"][:30000].reshape(1000, 30))
+    for f in ("mannwhitneyu", "ranksums", "brunnermunzel", "ansari", "mood"):
+        yield f"{f} long", lambda f=f: getattr(h, f)(d["long_a"], d["long_b"])
+        yield f"{f} batch", lambda f=f: getattr(h, f)(d["batch_a"], d["batch_b"], axis=-1)
+        yield f"{f} batch keepdims", lambda f=f: getattr(h, f)(d["batch_a"], d["batch_b"], axis=-1, keepdims=True)
+        yield f"{f} empty", lambda f=f: getattr(h, f)([], b)
+        for pol in ("propagate", "omit", "raise"):
+            yield f"{f} nan {pol}", lambda f=f, pol=pol: getattr(h, f)(d["nan"], b, nan_policy=pol)
+    yield "wilcoxon long", lambda: h.wilcoxon(d["long_a"], d["long_b"])
+    yield "wilcoxon batch", lambda: h.wilcoxon(d["batch_a"], axis=-1)
+    yield "wilcoxon batch mixed", lambda: h.wilcoxon(np.stack([a, np.round(a * 2) + 0.5]), axis=-1)
+    yield "kruskal long", lambda: h.kruskal(d["long_a"], d["long_b"], a)
+    yield "kruskal batch", lambda: h.kruskal(d["batch_a"], d["batch_b"], axis=-1)
+    yield "friedmanchisquare long", lambda: h.friedmanchisquare(d["long_a"], d["long_b"], d["long_a"][::-1])
+    yield (
+        "friedmanchisquare axis tuple",
+        lambda: h.friedmanchisquare(d["cube"], d["cube"] * 2.0, -d["cube"], axis=(0, 2)),
+    )
+    yield "median_test long", lambda: h.median_test(d["long_a"], d["long_b"], a)
+    for pol in ("propagate", "omit", "raise"):
+        yield f"wilcoxon nan {pol}", lambda pol=pol: h.wilcoxon(d["nan"], nan_policy=pol)
+        yield f"kruskal nan {pol}", lambda pol=pol: h.kruskal(d["nan"], a, nan_policy=pol)
+        yield f"friedmanchisquare nan {pol}", lambda pol=pol: h.friedmanchisquare(d["nan"], a[:9], c, nan_policy=pol)
+        yield f"median_test nan {pol}", lambda pol=pol: h.median_test(d["nan"], a, nan_policy=pol)
+    yield "wilcoxon all zeros", lambda: h.wilcoxon(np.zeros(6))
+    yield "brunnermunzel separated", lambda: h.brunnermunzel(a, a + 100.0)
+    yield "mannwhitneyu exact cap", lambda: h.mannwhitneyu(a[:8], d["long_a"], method="exact")
+    yield "wilcoxon exact cap", lambda: h.wilcoxon(d["long_a"][:3000], method="exact")
+    yield "page_trend_test exact cap", lambda: h.page_trend_test(d["long_a"][:125].reshape(5, 25), method="exact")
+    yield "page_trend_test nan", lambda: h.page_trend_test(d["nan"][:6].reshape(2, 3))
+    yield "page_trend_test shape", lambda: h.page_trend_test(np.ones((3, 2)))
+    yield "kruskal one sample", lambda: h.kruskal(a)
+    yield "friedmanchisquare two samples", lambda: h.friedmanchisquare(a, a)
+    yield "wilcoxon zero_method", lambda: h.wilcoxon(a, zero_method="drop")
+    yield "mannwhitneyu method", lambda: h.mannwhitneyu(a, b, method="permutation")

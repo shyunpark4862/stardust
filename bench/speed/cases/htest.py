@@ -1,12 +1,14 @@
-"""sd.htest against scipy and R: the public tests (milestones H1, H2; docs/design/htest.md §5) at
-n = 10, 10^3 and 10^6 per sample and a batch of 10^4 lanes of 30 (axis=-1).
+"""sd.htest against scipy and R: the public tests (milestones H1-H3; docs/design/htest.md §5) at
+n = 10, 10^3 and 10^6 per sample and a batch of 10^4 lanes of 30 (axis=-1); page_trend_test on
+tables (m, n) of (12, 8) (exact), (1000, 30) (normal) and a batch 10^3 x (10, 6).
 
 The samples are normal values from fixed seeds (the second shifted by 0.1, the third by -0.05
 with spread 1.2; counts for chisquare and power_divergence, positive values for the exponential
 families), made in the setup as numpy arrays for scipy and R and as sd arrays for sd. scipy runs
 at its defaults (one thread); R (base stats, car's leveneTest) in its one session, without the
 batches (one call per test there) and where its test is the same: t.test, oneway.test,
-bartlett.test, fligner.test, car::leveneTest, chisq.test, shapiro.test (n <= 5000) and ks.test.
+bartlett.test, fligner.test, car::leveneTest, chisq.test, shapiro.test (n <= 5000), ks.test,
+wilcox.test, kruskal.test, friedman.test, ansari.test and mood.test.
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -117,7 +119,23 @@ def _specs():
          "ks.test's exact p-value is 1 - cdf and asymptotic from n = 100", {}),
         ("gof", "cramervonmises", 1, "normal", lambda *a, **k: h.cramervonmises(a[0], N, **k),
          lambda *a, **k: st.cramervonmises(a[0], "norm", **k), None, "", {}),
+        ("rank", "mannwhitneyu", 2, "normal", h.mannwhitneyu, st.mannwhitneyu, f"wilcox.test({R2})", "", {}),
+        ("rank", "ranksums", 2, "normal", h.ranksums, st.ranksums, None, "", {}),
+        ("rank", "wilcoxon", 2, "normal", h.wilcoxon, st.wilcoxon, f"wilcox.test({R2}, paired = TRUE)", WILCOXON, {}),
+        ("rank", "kruskal (3)", 3, "normal", h.kruskal, st.kruskal, "kruskal.test(list(x0, x1, x2))", "", {}),
+        ("rank", "friedmanchisquare (3)", 3, "normal", h.friedmanchisquare, st.friedmanchisquare,
+         "friedman.test(cbind(x0, x1, x2))", "", {}),
+        ("rank", "brunnermunzel", 2, "normal", h.brunnermunzel, st.brunnermunzel, None, "", {}),
+        ("rank", "ansari", 2, "normal", h.ansari, st.ansari, f"ansari.test({R2})", ANSARI, {}),
+        ("rank", "mood", 2, "normal", h.mood, st.mood, f"mood.test({R2})", "", {}),
+        ("rank", "median_test (3)", 3, "normal", h.median_test, st.median_test, None, "", {}),
     ]  # fmt: skip
+
+
+# R's wilcox.test(paired = TRUE) reports V = T+ (scipy's statistic is min(T+, T-)); ansari.test's
+# two-sided exact p-value doubles the tail on the side of the distribution's centre
+WILCOXON = "R's V is T+, scipy's statistic min(T+, T-)"
+ANSARI = "R's two-sided p-value doubles the tail on the side of its centre, scipy's the smaller tail"
 
 
 # fligner's centre: scipy and R round the median of an even group to a double, which breaks the
@@ -126,8 +144,8 @@ FLIGNER = "the median rounded to a double breaks the tie of an even group's midd
 
 
 def _no_batch_in_scipy(name):
-    # scipy's anderson takes no axis (one sample a call)
-    return name.startswith("anderson")
+    # scipy's anderson and median_test take no axis (one sample a call)
+    return name.startswith("anderson") or name.startswith("median_test")
 
 
 def cases() -> list[Case]:
@@ -182,6 +200,55 @@ def cases() -> list[Case]:
                 check=CHECK,
             )
         )
+    out.extend(_page_cases())
+    return out
+
+
+PAGE = (((12, 8), "(12, 8)"), ((1000, 30), "(1000, 30)"))
+
+
+def _page_data(shape, seed=2026):
+    import stardust as sd
+
+    g = np.random.Generator(np.random.PCG64(seed))
+    x = g.normal(size=shape) + np.arange(shape[-1]) * 0.05
+    return {"x0": x, "s0": sd.asarray(x)}
+
+
+def _page_cases():
+    import scipy.stats as st
+
+    import stardust as sd
+
+    out = []
+    for shape, size in PAGE:
+        out.append(
+            Case(
+                area="htest",
+                group="page",
+                name="page_trend_test",
+                size=size,
+                n=shape[0] * shape[1],
+                setup=lambda shape=shape: _page_data(shape),
+                sd=lambda d: lambda: sd.htest.page_trend_test(d["s0"]),
+                refs=(Ref("scipy", lambda d: _quiet(lambda: st.page_trend_test(d["x0"]))),),
+                quick=shape[0] == 12,
+                check=CHECK,
+            )
+        )
+    out.append(
+        Case(
+            area="htest",
+            group="page",
+            name="page_trend_test",
+            size="10^3 x (10, 6)",
+            n=60_000,
+            setup=lambda: _page_data((1000, 10, 6)),
+            sd=lambda d: lambda: sd.htest.page_trend_test(d["s0"]),
+            refs=(),
+            check=CHECK,
+        )
+    )
     return out
 
 
@@ -192,4 +259,7 @@ TITLES = {
     "variances-batched": "분산의 동질성 일괄",
     "gof": "적합도",
     "gof-batched": "적합도 일괄",
+    "rank": "순위",
+    "rank-batched": "순위 일괄",
+    "page": "Page의 추세",
 }

@@ -122,15 +122,16 @@ def stats_sweeps():
 
 
 # --------------------------------------------------------------------------------------------
-# regression: one sweep per problem of tests/regression/ref/{linear,glm,penalized,robust,model_tests}.json,
+# regression: one sweep per problem of tests/regression/ref/{linear,glm,penalized,robust,model_tests,selection}.json,
 # one region per reference field (model_tests: the tests on fitted models, their values from
-# tests/regression/refdata_model_tests.values, as the tests take them). The documented bound (docs/design/regression.md §3.1) is the linear
+# tests/regression/refdata_model_tests.values, as the tests take them; selection: the criteria along
+# stepwise's paths and of best_subset's sizes, from tests/regression/refdata_selection.values). The documented bound (docs/design/regression.md §3.1) is the linear
 # models' coefficient vector to 1e-14 normwise for kappa(X) <= 1e11; the other fields have none
 # (contract None), so only the baseline judges them.
 
 PARAMS_BOUND, PARAMS_KAPPA = 1e-14, 1e11
 
-REG_KINDS = ("linear", "glm", "penalized", "robust", "model_tests")
+REG_KINDS = ("linear", "glm", "penalized", "robust", "model_tests", "selection")
 _BP = {"bp_lm": "lm", "bp_lm_pvalue": "lm_pvalue", "bp_fvalue": "fvalue", "bp_f_pvalue": "f_pvalue"}
 
 
@@ -147,10 +148,17 @@ class RegSweep:
 
 
 def regression_sweeps():
-    from tests.regression import refdata, refdata_glm, refdata_model_tests, refdata_penalized, refdata_robust
+    from tests.regression import (
+        refdata,
+        refdata_glm,
+        refdata_model_tests,
+        refdata_penalized,
+        refdata_robust,
+        refdata_selection,
+    )
 
     loaders = {"linear": refdata, "glm": refdata_glm, "penalized": refdata_penalized, "robust": refdata_robust,
-               "model_tests": refdata_model_tests}  # fmt: skip
+               "model_tests": refdata_model_tests, "selection": refdata_selection}  # fmt: skip
     out = []
     for kind in REG_KINDS:
         for name, p in loaders[kind].load().items():
@@ -222,10 +230,11 @@ def design_kappa(problem) -> float:
 
 
 def measure_regression(sw: RegSweep, compare=False) -> dict:
-    if sw.kind == "model_tests":
-        from tests.regression import refdata_model_tests
+    if sw.kind in ("model_tests", "selection"):
+        from tests.regression import refdata_model_tests, refdata_selection
 
-        vals = refdata_model_tests.values(sw.name.split("/", 1)[1], sw.problem)
+        mod = refdata_model_tests if sw.kind == "model_tests" else refdata_selection
+        vals = mod.values(sw.name.split("/", 1)[1], sw.problem)
         # a field sd computes as another quantity (None) has no region
         ref = {f: v for f, v in sw.problem["ref"].items() if vals.get(f) is not None}
         sw = dataclasses.replace(sw, problem={**sw.problem, "ref": ref})
@@ -272,6 +281,8 @@ def _reg_library(sw, lib):
     """A comparator library's regions for a regression problem (None: it has no such model)."""
     from . import regcompare as RC
 
+    if sw.kind == "selection":  # no comparator selects by these definitions (R's are tests/regression)
+        return None
     with np.errstate(all="ignore"):
         if lib == "statsmodels" and sw.kind == "model_tests":
             vals = RC.sm_model_tests_values(sw)

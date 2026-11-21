@@ -1809,6 +1809,112 @@ def model_tests_glm(y, X, *, family, link, R, small, terms, starts):
     raise ar.NotSettled("model_tests_glm")
 
 
+# ---- variable selection (docs/design/regression.md §3.8, G7b)
+
+
+def _selection_linear(y, X, w, intercept, labels):
+    n = len(y)
+    p = len(X[0])
+    j0 = 1 if intercept else 0
+    D = [([arb(1)] if intercept else []) + [arb(v) for v in r] for r in X]
+    Y = [arb(v) for v in y]
+    W = [arb(v) for v in w] if w is not None else [arb(1)] * n
+    used = [i for i in range(n) if not W[i].is_zero()]
+    nobs = len(used)
+    sumlogw = sum((W[i].log() for i in used), arb(0)) if w is not None else arb(0)
+    ln2pi = (2 * arb.pi()).log()
+    out = {"ssr": [], "llf": [], "aic": [], "bic": [], "cv": [], "fold_train_ssr": [], "fold_mse": []}
+    folds = sorted(set(labels)) if labels is not None else []
+    for mask in range(2**p):
+        cols = ([0] if intercept else []) + [j0 + j for j in range(p) if mask >> j & 1]
+        if not cols:
+            for key in out:  # no model: placeholders the meta marks
+                out[key].extend([arb(0)] * (len(folds) if key.startswith("fold") else 1))
+            continue
+        Dc = _mt_cols(D, cols)
+        _, _, ssr, _ = _mt_ls(Dc, Y, W, used)
+        k = len(cols)
+        llf = -arb(nobs) / 2 * (ln2pi + (ssr / nobs).log() + 1) + sumlogw / 2
+        out["ssr"].append(ssr)
+        out["llf"].append(llf)
+        out["aic"].append(-2 * llf + 2 * k)
+        out["bic"].append(-2 * llf + arb(nobs).log() * k)
+        if labels is None:
+            out["cv"].append(arb(0))
+            continue
+        errs = []
+        for f in folds:
+            train = [i for i in used if labels[i] != f]
+            test = [i for i in range(n) if labels[i] == f and not W[i].is_zero()]
+            _, _, tr_ssr, fit = _mt_ls(Dc, Y, W, train)
+            sse = sum((W[i] * (Y[i] - fit[i]) ** 2 for i in test), arb(0))
+            mse = sse / sum((W[i] for i in test), arb(0))
+            out["fold_train_ssr"].append(tr_ssr)
+            out["fold_mse"].append(mse)
+            errs.append(mse)
+        out["cv"].append(sum(errs, arb(0)) / len(errs))
+    if labels is None:
+        for key in ("cv", "fold_train_ssr", "fold_mse"):
+            del out[key]
+    return out, {"nobs": nobs, "empty_model": not intercept, "folds": len(folds)}
+
+
+def selection_linear(y, X, *, weights=None, intercept=True, labels=None):
+    """References for the variable selection of a small linear problem (X rows without the constant
+    column): for every subset of X's columns (bit j of the index: column j) its residual sum of
+    squares, log-likelihood, AIC and BIC with the result's definitions (statsmodels'; the
+    intercept always in), and with fold labels (one per row) the cross-validation error: the folds'
+    mean of the test rows' weighted mean squared error of the training rows' fit, with each fold's
+    training residual sum of squares and test error (fold_train_ssr, fold_mse: index subset x folds
+    + fold). The subset 0 without the intercept is no model (its entries are 0, meta's
+    empty_model)."""
+    p = ar.START_PREC
+    while p <= ar.MAX_PREC:
+        with ar.precision(p):
+            try:
+                vals, meta = _selection_linear(y, X, weights, intercept, labels)
+            except ar.NotSettled, ValueError, ZeroDivisionError:
+                vals = None
+            if vals is not None and _all_settled(vals):
+                return {k: [ar.to_dd(x) for x in v] for k, v in vals.items()}, meta
+        p *= 2
+    raise ar.NotSettled("selection_linear")
+
+
+def selection_glm(y, X, *, family, link, starts):
+    """References for the variable selection of a small GLM (an intercept; X rows without it): for
+    every subset of X's columns (bit j: column j) its log-likelihood, AIC and BIC (the result's
+    definitions), each fit certified from its double start starts[subset] (glm()'s fit)."""
+    n = len(y)
+    p = len(X[0])
+    out = {"llf": [], "aic": [], "bic": [], "deviance": []}
+    for mask in range(2**p):
+        cols = [j for j in range(p) if mask >> j & 1]
+        Xs = [[r[c] for c in cols] for r in X]
+        prec = 256
+        while True:
+            if prec > ar.MAX_PREC:
+                raise ar.NotSettled("selection_glm")
+            with ar.precision(prec):
+                try:
+                    vals, _ = _mt_glm_at(y, Xs, family, link, starts[mask])
+                    k = len(cols) + 1
+                    v = {
+                        "llf": vals["llf"],
+                        "aic": -2 * vals["llf"] + 2 * k,
+                        "bic": -2 * vals["llf"] + arb(n).log() * k,
+                        "deviance": vals["deviance"],
+                    }
+                except ar.NotSettled, ValueError, ZeroDivisionError:
+                    v = None
+                if v is not None and _all_settled(v):
+                    for key in out:
+                        out[key].append(ar.to_dd(v[key]))
+                    break
+            prec *= 2
+    return out, {"nobs": n}
+
+
 def dd_value(hl):
     """hi + lo as one float (for printing)."""
     return hl[0] + hl[1]

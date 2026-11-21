@@ -70,8 +70,8 @@ def test_batch_is_lane_by_lane(pid):
         one = call(P.Problem(p.id, p.func, tuple(args), kw))
         for f in type(one)._FIELDS:
             got, want = getattr(r, f), getattr(one, f)
-            if isinstance(want, str):
-                assert got == want
+            if isinstance(want, str):  # a batch's methods: the lanes' names (H48)
+                assert got[i] == want
             else:
                 assert bits_equal(np.asarray(got)[i], want), (i, f)
 

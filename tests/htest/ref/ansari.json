@@ -1,0 +1,11 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 8, "dropped": []},
+"ansari/exact": {"digest": "5d437e94b72126be5cb07f9bb50214ae3c0fd5c55ed4e4ab3c6373885240a22a", "statistic": [77.0, 0.0], "pvalue": [0.026762710973237288, 1.0731771606468854e-18], "method": "exact"},
+"ansari/ties": {"digest": "718674e7f75a8c23a7bdc7893022e176ae144ac662f756c516e4cc6725e65d0f", "pvalue": [0.007114978654294996, -2.9052903674571736e-19], "kappa": 8.06854493750756, "statistic": [610.0, 0.0], "method": "asymptotic"},
+"ansari/large": {"digest": "cf31a63de1c5ccdf7172f3383d69a7df0bae80e10973494e52625cf529c87e12", "pvalue": [0.27049974301336227, 7.208395790318668e-18], "kappa": 1.7711596806512346, "statistic": [5809.0, 0.0], "method": "asymptotic"},
+"ansari/exact-54": {"digest": "aa86ac4a22536d8068aa10d4b1f73a458c7e1a95fb3de0969dca5e2eb1937a8e", "statistic": [1602.0, 0.0], "pvalue": [0.1527367620607854, 7.26303549403865e-18], "method": "exact"},
+"ansari/exact-odd": {"digest": "281d36e2dab035d181f01cb3ff3b071e021ca9bc25fc0203b8e96ceabb5b556c", "statistic": [230.0, 0.0], "pvalue": [0.8349615870993692, 4.740642493359789e-17], "method": "exact"},
+"ansari/exact-greater": {"digest": "49a57b954709a941805c7d17ca2943d7e6b281eac15a4313a5eb3a8edd8dcacc", "statistic": [230.0, 0.0], "pvalue": [0.4174807935496846, 2.3703212466798946e-17], "method": "exact"},
+"ansari/ties-exact": {"digest": "931b0087495c9cc804a52dda2fcb93574afb2dc341b5b4d6439b1a9aa434cfb1", "statistic": [165.5, 0.0], "pvalue": [0.02988333160167871, 5.421497798737845e-19], "method": "exact"},
+"ansari/less-asymptotic": {"digest": "0c81b661ff18e2d5fab146c41885fba5958c5de6de9ecf1088eb1c7559984b75", "pvalue": [0.9985991922153746, -3.200321674789027e-17], "kappa": 0.013720310315956503, "statistic": [736.0, 0.0], "method": "asymptotic"}
+}

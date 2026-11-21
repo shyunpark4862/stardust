@@ -1,0 +1,118 @@
+"""dok_array: a dictionary of keys, for building a sparse array one entry at a time
+(docs/api/sparse.md §2, docs/design/sparse.md §2.1).
+
+The entries live in a native hash map (stardust._core.sparse._DokMap): `A[i, j] = v` and `A[i, j]`
+take O(1). There are no dict methods (keys, items, get ...): read the entries with tocoo().
+Setting a zero removes the entry (scipy's dok_array); a conversion keeps the stored zeros of its
+input. Converting to the other formats sorts the keys, so the result does not depend on the order
+the entries went in.
+"""
+
+from .. import _calls
+from .. import _core as _sd
+from . import _common as C
+from ._base import sparray
+from ._common import _core
+
+
+class dok_array(sparray):
+    __slots__ = ("_map",)
+    format = "dok"
+
+    @_calls.method("dok_array")
+    def __init__(self, arg, /, *, shape=None, dtype=None, copy=None):
+        from ._interop import build
+
+        self._take(build("dok", arg, shape, dtype, copy, "dok_array"))
+
+    @classmethod
+    def _new(cls, shape, m):
+        obj = cls.__new__(cls)
+        obj._shape = shape
+        obj._map = m
+        return obj
+
+    @classmethod
+    def _from_coo(cls, shape, major, minor, data):
+        """From canonical COO entries (distinct positions)."""
+        return cls._new(shape, _core._DokMap.from_coo(data.dtype, shape, major, minor, data))
+
+    @classmethod
+    def _empty(cls, shape, dtype):
+        return cls._new(shape, _core._DokMap(dtype, shape))
+
+    def _take(self, other):
+        self._shape, self._map = other._shape, other._map
+
+    def __getitem__(self, key):
+        return self._map.get(key)
+
+    def __setitem__(self, key, value):
+        self._map.set(key, value)
+
+    # ---- attributes ----
+
+    @property
+    def nnz(self):
+        return self._map.nnz
+
+    @property
+    def dtype(self):
+        return self._map.dtype
+
+    @property
+    def real(self):
+        return self._tocsr(None, "real").real  # scipy: a csr_array
+
+    @property
+    def imag(self):
+        return self._tocsr(None, "imag").imag
+
+    def conj(self):
+        if self.dtype == _sd.complex128:
+            return self._tocsr(None, "conj").conj()  # scipy: a csr_array
+        return self._copy()
+
+    # ---- per format ----
+
+    def _parts(self):
+        """(major or None, minor, data): the entries in row-major order (new arrays)."""
+        return self._map.to_coo()
+
+    def _copy(self):
+        return dok_array._new(self._shape, self._map.copy())
+
+    def _transpose(self):
+        return dok_array._new(self._shape[::-1], self._map.transposed())
+
+    def _astype(self, dtype):
+        return dok_array._new(self._shape, self._map.astype(dtype))
+
+    def _tocoo(self, copy, func):
+        from ._coo import coo_array
+
+        C.check_copy_false(copy, func, "converting dok to coo")
+        major, minor, data = self._parts()
+        return coo_array._new(self._shape, (major, minor) if major is not None else (minor,), data, True)
+
+    def _tocsr(self, copy, func):
+        from ._compressed import csr_array
+
+        C.check_copy_false(copy, func, "converting dok to csr")
+        major, minor, data = self._parts()
+        n_major = self._shape[0] if major is not None else 1
+        return csr_array._new(self._shape, *_core._compress(n_major, major, minor, data, share=True))
+
+    def _tocsc(self, copy, func):
+        return self._tocsr(copy, func)._swap(None, func)
+
+    def _toarray(self):
+        major, minor, data = self._parts()
+        return _core._coo_to_dense(self._shape, major, minor, data, distinct=True)
+
+    def _resize(self, shape):
+        self._map.resize(shape)
+        self._shape = shape
+
+    def _count_nonzero(self, axis):
+        return self._tocoo(None, "count_nonzero")._count_nonzero(axis)
