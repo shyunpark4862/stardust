@@ -3,7 +3,7 @@ title: 추론과 진단
 group: 선형 모형
 order: 2
 summary: ols·wls·gls의 결과에서 표준오차, p값, 진단을 구하는 방법을 설명해요. 어디서도 XᵀX나 그 역행렬을 만들지 않고, 공분산과 샌드위치, 지렛대를 모두 QR의 R과 얇은 Q에서 얻어요.
-seeAlso: [least-squares, overview, glm, accuracy-performance]
+seeAlso: [least-squares, tests, diagnostics, overview, glm, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -21,10 +21,12 @@ import Steps from '../../../components/fig/Steps.astro';
 | t, p, 신뢰구간, F의 p | `sd.stats.StudentT`, `sd.stats.F` | 처음 읽을 때 |
 | 지렛대 $h_t$ | 같은 QR의 얇은 Q, $\lVert q_t\rVert^2$ | 처음 읽을 때 커널을 다시 불러요 |
 | 스튜던트화 잔차, Cook 거리 | 지렛대, 잔차, `scale` | 처음 읽을 때 sd 배열 연산 |
-| Durbin–Watson, Jarque–Bera | 백색화한 잔차의 double-double 합 | 처음 읽을 때 커널 `resid_stats` |
+| Durbin–Watson, Jarque–Bera | 백색화한 잔차의 double-double 합, JB의 통계량과 p는 sd.htest의 커널 | 처음 읽을 때 커널 `resid_stats` |
 | Breusch–Pagan | 보조 회귀(같은 커널로 적합 한 번) | 처음 부를 때 |
 
 처음 읽을 때 커널을 다시 부르는 진단은 적합할 때 복사해 둔 y, X, 가중치를 읽어요. 그래서 적합 뒤에 넘긴 배열을 고쳐도 진단은 적합에 쓴 자료로 계산돼요([회귀 영역의 구조](/internals/regression/overview/)).
+
+이 공분산, 지렛대, 얇은 Q 위에 놓인 검정과 진단은 두 글로 나눠 설명해요. 선형 가설(`t_test`, `wald_test`)과 모형 비교(`compare_f_test`, `compare_lr_test`, `anova`)는 [선형 가설과 모형 비교](/internals/regression/tests/)에, VIF, DFFITS, DFBETAS, GLM의 영향력, White·Goldfeld–Quandt·RESET 검정은 [영향력과 설정 검정](/internals/regression/diagnostics/)에 있어요.
 
 자유도는 `df_resid` $= \text{nobs} - \text{rank}$예요. 군집 공분산에서만 t와 F의 분모 자유도가 군집 수 − 1이고, 그 값이 `df_resid_inference`에 있어요. `df_resid`가 0이면 잔차가 늘 0이라 오차의 크기를 추정할 자유도가 없어요. 척도 $\text{SSR}/\text{df\_resid}$가 $0/0$이고, 고전형이든 강건형이든 공분산과 그 뒤의 추론(표준오차, t, p, 구간, F)이 모두 NaN이에요([최소제곱 풀이](/internals/regression/least-squares/)).
 
@@ -468,26 +470,62 @@ $$
 
 Durbin–Watson $d$는 이웃한 잔차의 차이로 1차 자기상관을 봐요(상관이 없으면 2 근처). Jarque–Bera는 잔차의 왜도 $S = \mu_3/\mu_2^{3/2}$와 첨도 $K = \mu_4/\mu_2^2$($\mu_p = \tfrac1n\sum(\tilde e_t - \bar e)^p$)가 정규분포의 0과 3에서 얼마나 벗어났는지를 χ²(2)로 재요.
 
-분자의 합은 커널 `resid_stats`가 적합에 쓰인 행만 순서대로 모아 double-double로 더해요. 이웃한 잔차의 차는 two-sum으로 정확히 구한 뒤 제곱해요. $\mu_p$의 편차 $\tilde e_t - \bar e$도 double-double 평균에서 빼서 구해요.
+커널 `resid_stats`가 적합에 쓰인 행의 백색화한 잔차만 순서대로 모아 두 가지 합을 내요. Durbin–Watson의 분자는 이웃한 잔차의 차를 two-sum으로 정확히 구한 뒤 double-double로 제곱해 더해요.
 
 ```cpp
-            chunks([&](lint c) {
+            // csrc/regression/linear.cpp
+            // Durbin-Watson's sum
+            htest::sum_chunks(m, [&](lint c) {
                 const lint t0 = c * kChunk, t1 = std::min(m, t0 + kChunk);
-                DD s1{0.0, 0.0}, dw{0.0, 0.0};
-                for (lint t = t0; t < t1; ++t) {
-                    s1 = s1 + DD{x[t], 0.0};
-                    if (t > 0) {
-                        double h, l;
-                        two_sum(x[t], -x[t - 1], h, l);
-                        const DD d = dd_of(h, l);
-                        dw = dw + d * d;
-                    }
+                DD dw{0.0, 0.0};
+                for (lint t = std::max<lint>(t0, 1); t < t1; ++t) {
+                    double h, l;
+                    two_sum(x[t], -x[t - 1], h, l);
+                    const DD d = dd_of(h, l);
+                    dw = dw + d * d;
                 }
-                part[c * 8 + 0] = s1.hi, part[c * 8 + 1] = s1.lo, part[c * 8 + 2] = dw.hi, part[c * 8 + 3] = dw.lo;
+                part[c * 8 + 2] = dw.hi, part[c * 8 + 3] = dw.lo;
             });
+            DD dw{0.0, 0.0};
+            for (lint c = 0; c < nc; ++c) dw = dw + DD{part[c * 8 + 2], part[c * 8 + 3]};
+            out[0] = dw.hi;
+            const htest::CentralSums cs = htest::central_sums(x, m, part);
+            out[1] = cs.s2.hi;
+            out[2] = cs.s3.hi;
+            out[3] = cs.s4.hi;
+            out[4] = cs.mean.hi;
 ```
 
-덩어리는 n만으로 정한 4,096행이고 순서대로 더하므로, 비트가 스레드 수와 상관없어요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`t > 0`이면 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 SSR이에요. 진단은 모두 적합의 단위(척도를 바꿔 적합했으면 바꾼 $y$의 잔차)에서 만들어요. 잔차끼리의 비라서 단위가 약분되고, 제곱이 double을 벗어나지 않아요.
+Jarque–Bera의 합은 sd.htest의 정규성 검정과 같은 함수 `htest::central_sums`가 구해요. 먼저 double-double 평균 $\bar e$를 구하고, 행마다 편차 $d = \tilde e_t - \bar e$를 double-double로 만들어 $d^2, d^3, d^4$를 더한 뒤 끝에 한 번 반올림해요. 통계량과 p값도 htest의 `jarque_bera_of`가 내고(`r.jarque_bera()`는 `jb_of_sums`로 이 함수를 불러요), p값은 `ChiSquared(df=2).ccdf`예요.
+
+```cpp
+// csrc/htest/normality.hpp
+inline bool zero_variance(double m2, double mean) {
+    const double e = 0x1p-52 * mean;
+    return m2 <= e * e;
+}
+```
+
+```cpp
+// csrc/htest/normality.hpp
+struct JarqueBera {
+    double stat, p;
+};
+inline JarqueBera jarque_bera_of(double n, double s2, double s3, double s4, double mean) {
+    constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+    const double mu2 = s2 / n;
+    if (zero_variance(mu2, mean)) return {kNaN, kNaN};
+    const double skew = (s3 / n) / (mu2 * std::sqrt(mu2));
+    const double kurt = (s4 / n) / (mu2 * mu2);
+    const double ek = kurt - 3.0;
+    const double jb = n / 6.0 * (skew * skew + ek * ek / 4.0);
+    return {jb, stats::method_of<stats::ChiSquared, stats::method::Ccdf>(jb, 2.0)};
+}
+```
+
+그래서 같은 잔차면 두 영역이 비트까지 같아요. OLS의 `r.jarque_bera()`는 `sd.htest.jarque_bera(r.resid)`와 같고, WLS와 GLS는 `r.wresid`의 쓰인 행을 넘기면 같아요(가중치가 0인 행의 `wresid`는 0이라, 그 행까지 넘기면 표본이 달라져요). 분산 0의 판정은 sd.stats `skew`의 규칙이에요. 중심 2차 모멘트 $\mu_2$가 $(\epsilon\,\bar e)^2$($\epsilon = 2^{-52}$) 이하이면 상수 표본으로 보고 NaN이에요. 절편 없이 적합해 잔차가 반올림 크기로만 퍼진 상수인 경우가 그래요.
+
+덩어리는 n만으로 정한 4,096행(`htest::kSumChunk`)이고 순서대로 더하므로, 비트가 스레드 수와 상관없어요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`std::max<lint>(t0, 1)`부터 돌아서 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 SSR이에요. 진단은 모두 적합의 단위(척도를 바꿔 적합했으면 바꾼 $y$의 잔차)에서 만들어요. 잔차끼리의 비라서 단위가 약분되고, 제곱이 double을 벗어나지 않아요.
 
 이 합들은 적합 안에서 구하지 않고 처음 읽을 때 따로 구해요. 적합 안에서 더하면 진단을 읽지 않는 적합까지 행을 한 번 더 훑는 만큼 느려지기 때문이에요.
 
@@ -516,11 +554,19 @@ $$
 ```python
 >>> r.breusch_pagan()
 BreuschPaganResult(lm=3.162926704447994, lm_pvalue=0.20567390451681203, fvalue=1.5884580070413283, f_pvalue=0.21785365334745044)
->>> r.jarque_bera()
-JarqueBeraResult(statistic=4.900130126253963, pvalue=0.08628797215143992)
+>>> jb = r.jarque_bera()
+>>> jb
+JarqueBeraResult(statistic=4.90013, pvalue=0.086288)
+>>> jb.statistic, jb.pvalue
+(4.900130126253963, 0.08628797215143992)
+>>> h = sd.htest.jarque_bera(r.resid)
+>>> (h.statistic, h.pvalue) == (jb.statistic, jb.pvalue)
+True
 >>> r.durbin_watson
 2.4772685414802473
 ```
+
+`jarque_bera()`의 결과는 sd.htest의 결과 클래스(`sd.regression.JarqueBeraResult`)예요. 필드 `statistic`과 `pvalue`는 읽기 전용이고 `stat, p = r.jarque_bera()`처럼 풀리지만, 튜플은 아니어서 결과끼리 `==`로 견주지 않고 필드로 견줘요. `repr`는 htest의 꼴로 유효숫자 6자리까지 보여 줘요. `breusch_pagan()`의 결과는 네 값의 namedtuple이에요.
 
 같은 자료에서 R의 `lmtest::bptest(m)`은 BP = 3.1629, p = 0.2057, `dwtest(m)`은 DW = 2.477269예요.
 

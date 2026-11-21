@@ -120,6 +120,10 @@ t값, p값, R² 같은 나머지 필드와 그 뜻은 [결과 객체 읽기](/ap
 | 오차끼리 상관이 있고, 그 공분산 행렬을 알아요 | `gls` | [gls](/api/regression/gls/) |
 | 설명변수 하나로 기울기, 절편, 상관계수만 빨리 구하고 싶어요 | `linregress` | [linregress](/api/regression/linregress/) |
 | 잔차가 모형의 가정에 맞는지, 영향이 큰 관측이 있는지 보고 싶어요 | 결과의 진단 필드 | [회귀 진단](/api/regression/diagnostics/) |
+| 분산이 고른지, 빠진 비선형 항이 없는지 검정하고 싶어요 | 결과의 `white_test`, `goldfeld_quandt`, `reset_test` | [모형 꼴의 검정](/api/regression/specification-tests/) |
+| 두 계수가 같은지, 계수 몇 개가 모두 0인지 검정하고 싶어요 | 결과의 `t_test`, `wald_test` | [선형 가설 검정](/api/regression/hypothesis-tests/) |
+| 열 몇 개를 뺀 작은 모형으로 충분한지 보고 싶어요 | 결과의 `compare_f_test`, `compare_lr_test` | [모형 비교](/api/regression/model-comparison/) |
+| 모형 여럿이나 설명변수마다의 몫을 분산분석표로 보고 싶어요 | `anova` | [anova](/api/regression/anova/) |
 | 오차의 분산이 관측마다 다르거나, 시간이나 묶음 안에서 오차가 이어져요 | `ols` 등의 `cov_type` | [표준오차의 종류](/api/regression/covariance/) |
 | 반응이 0 또는 1(합격, 불합격)이에요 | `glm(family='binomial')` | [glm](/api/regression/glm/), [로지스틱 회귀](/api/regression/logistic/) |
 | 반응이 0, 1, 2, …처럼 센 값이거나 양수인 크기예요 | `glm(family='poisson')`, `'gamma'` | [셈 자료와 양수 자료](/api/regression/poisson-gamma/) |
@@ -130,6 +134,7 @@ t값, p값, R² 같은 나머지 필드와 그 뜻은 [결과 객체 읽기](/ap
 | 설명변수 하나에 이상값이 섞여 있어요 | `theilslopes`, `siegelslopes` | [theilslopes](/api/regression/theilslopes/), [siegelslopes](/api/regression/siegelslopes/) |
 | 평균이 아니라 중앙값이나 상위 10% 같은 분위가 궁금해요 | `quantreg` | [quantreg](/api/regression/quantreg/) |
 | 모형이 계수에 대해 직선이 아니에요(지수적 감소, 포화 곡선 등) | `nls` | [nls](/api/regression/nls/) |
+| 설명변수 후보 가운데 어느 것을 쓸지 AIC나 교차검증으로 고르고 싶어요 | `stepwise`, `best_subset` | [stepwise](/api/regression/stepwise/), [best_subset](/api/regression/best-subset/) |
 
 설명변수를 제곱한 열이나 두 변수를 곱한 열을 넣어도 계수에 대해서는 여전히 직선 모형이에요. 그래서 2차 곡선 맞추기는 거듭제곱 열을 만들어 `ols`에 주면 돼요. `nls`는 $a e^{-bx}$처럼 계수가 식 안쪽에 들어가는 모형에 써요.
 
@@ -456,7 +461,7 @@ Traceback (most recent call last):
 ValueError: summary(): takes one regression, not a batch of shape (3,)
 ```
 
-배치를 받는 함수는 `ols`, `wls`, `gls`, `glm`, 정규화 함수, `rlm`, `quantreg`예요. `linregress`, `theilslopes`, `siegelslopes`는 `x`와 `y`가 (…, n)이면 앞 축마다 한 번씩 계산해요. 이때도 `x`와 `y`의 앞 축은 서로 브로드캐스트해서, `x` 하나를 `y` 여럿에 쓸 수 있어요. `nls`는 회귀 하나만 받아요(모형 함수가 사용자의 Python 함수라서예요).
+배치를 받는 함수는 `ols`, `wls`, `gls`, `glm`, 정규화 함수, `rlm`, `quantreg`예요. `linregress`, `theilslopes`, `siegelslopes`는 `x`와 `y`가 (…, n)이면 앞 축마다 한 번씩 계산해요. 이때도 `x`와 `y`의 앞 축은 서로 브로드캐스트해서, `x` 하나를 `y` 여럿에 쓸 수 있어요. `nls`는 회귀 하나만 받아요(모형 함수가 사용자의 Python 함수라서예요). 배치 결과의 검정 메서드(`t_test`, `wald_test`, `compare_f_test`, `compare_lr_test`)는 회귀마다 검정해서 필드가 배치 모양의 배열이에요. 분산분석표 [`anova`](/api/regression/anova/)와 변수 선택(`stepwise`, `best_subset`)은 회귀 하나만 받아요.
 
 ## 결과의 형
 

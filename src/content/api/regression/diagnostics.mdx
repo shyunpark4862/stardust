@@ -9,10 +9,14 @@ signatures:
   - "r.resid_studentized_internal"
   - "r.resid_studentized_external"
   - "r.cooks_distance"
+  - "r.dffits"
+  - "r.dfbetas"
+  - "r.vif"
   - "r.durbin_watson"
+  - "r.wresid"
   - "r.jarque_bera()"
   - "r.breusch_pagan(*, studentize=True)"
-summary: ols·wls·gls 결과(r)에 붙은 진단이에요. 적합을 혼자 좌우하는 점(지렛대, 스튜던트화 잔차, Cook 거리)과 잔차의 자기상관(Durbin–Watson), 정규성(Jarque–Bera), 고르지 않은 분산(Breusch–Pagan)을 봐요.
+summary: ols·wls·gls 결과(r)에 붙은 진단이에요. 적합을 혼자 좌우하는 점(지렛대, 스튜던트화 잔차, Cook 거리, DFFITS, DFBETAS), 서로 닮은 설명변수(VIF), 잔차의 자기상관(Durbin–Watson), 정규성(Jarque–Bera), 고르지 않은 분산(Breusch–Pagan)을 봐요.
 params:
   - name: studentize
     type: bool
@@ -20,11 +24,11 @@ params:
     desc: breusch_pagan()에서 True(기본값)면 오차가 정규분포가 아니어도 되는 Koenker 판(lm = n·R²), False면 정규 오차를 가정한 원래 판(lm = ESS/(2σ̂⁴))이에요.
 returns:
   type: ndarray, float, JarqueBeraResult, BreuschPaganResult
-  desc: "leverage·두 스튜던트화 잔차·cooks_distance는 행마다의 값 (n,), durbin_watson은 수예요. jarque_bera()는 JarqueBeraResult(statistic, pvalue), breusch_pagan()은 BreuschPaganResult(lm, lm_pvalue, fvalue, f_pvalue)예요. 배치면 앞에 배치 모양이 붙어요."
+  desc: "leverage·두 스튜던트화 잔차·cooks_distance·dffits·wresid는 행마다의 값 (n,), dfbetas는 행과 계수마다의 값 (n, k), vif는 계수마다의 값 (k,), durbin_watson은 수예요. jarque_bera()는 JarqueBeraResult(statistic, pvalue), breusch_pagan()은 BreuschPaganResult(lm, lm_pvalue, fvalue, f_pvalue)예요. 배치면 앞에 배치 모양이 붙어요."
 raises:
   - type: TypeError
     desc: breusch_pagan()의 studentize가 True·False가 아닐 때, 키워드가 아닌 위치로 줬을 때.
-seeAlso: [ols, wls, gls, covariance, collinearity, results]
+seeAlso: [ols, wls, gls, specification-tests, covariance, collinearity, glm, results]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -43,12 +47,16 @@ export const hetResid = [[7.115, 3.8819], [7.175, 4.1319], [7.235, 3.8819], [7.1
 |---|---|---|
 | `x`가 다른 점들에서 멀리 떨어진 점 | `leverage` | 크면 직선을 끌어당길 힘이 커요 |
 | 직선에서 유난히 벗어난 점 | `resid_studentized_internal`, `resid_studentized_external` | 절댓값이 2–3을 넘으면 눈여겨봐요 |
-| 빼면 적합이 크게 바뀌는 점 | `cooks_distance` | 크면 그 점이 결과를 좌우해요 |
+| 빼면 적합이 크게 바뀌는 점 | `cooks_distance`, `dffits` | 크면 그 점이 결과를 좌우해요 |
+| 빼면 어느 계수가 얼마나 바뀌는지 | `dfbetas` | 절댓값이 크면 그 계수가 그 점에 기대요 |
+| 설명변수끼리 서로 닮았는지 | `vif` | 10을 넘으면 계수의 표준오차가 크게 부풀어요 |
 | 이웃한 잔차가 닮았는지 | `durbin_watson` | 2에서 멀어지면 자기상관이 있어요 |
 | 잔차가 정규분포 모양인지 | `jarque_bera()` | p값이 작으면 정규분포에서 벗어나요 |
 | 잔차의 분산이 고른지 | `breusch_pagan()` | p값이 작으면 분산이 고르지 않아요 |
 
-모두 [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/)의 결과에 있는 필드와 메서드예요. 따로 부르는 함수가 없고, 처음 읽을 때 계산해 둬요. 계산에 쓰는 `y`, `X`, 가중치는 적합할 때 복사해 둔 것이라, 적합한 뒤에 넘긴 배열을 고쳐도 진단 값은 그대로예요.
+모두 [`ols`](/api/regression/ols/), [`wls`](/api/regression/wls/), [`gls`](/api/regression/gls/)의 결과에 있는 필드와 메서드예요. 따로 부르는 함수가 없고, 처음 읽을 때 계산해 둬요. 계산에 쓰는 `y`, `X`, 가중치는 적합할 때 복사해 둔 것이라, 적합한 뒤에 넘긴 배열을 고쳐도 진단 값은 그대로예요. 진단이 쓰는 잔차는 `wresid`로 꺼낼 수 있어요([아래](#wresid-진단이-쓰는-잔차)).
+
+분산의 모양과 모형의 형태를 따로 묻는 검정(White, Goldfeld–Quandt, RESET)은 [분산과 모형 형태 검정](/api/regression/specification-tests/)에, [`glm`](/api/regression/glm/#영향력-적합을-좌우하는-행)의 지렛대·Cook 거리·DFFITS·DFBETAS는 그 페이지에 있어요.
 
 <Reference />
 
@@ -147,7 +155,121 @@ $p$는 `rank`예요. 흔히 1을 넘거나 `4 / nobs`보다 훨씬 크면 그 �
 [0.201, 0.089, 0.009, 0.004, 0.004, 0.02, 0.026, 0.098, 0.194, 7.051]
 ```
 
-마지막 점의 7.05는 다른 점(0.21 이하)과 비교가 안 돼요. 이런 점을 찾으면 지우기 전에 먼저 왜 그런지(입력 실수인지, 다른 조건에서 잰 값인지, 직선 모형이 그 범위에서 맞지 않는지)를 살펴요. 이상값에 덜 흔들리는 방법이 필요하면 [`rlm`](/api/regression/rlm/)이나 [`theilslopes`](/api/regression/theilslopes/)를 보세요.
+마지막 점의 7.05는 다른 점(0.21 이하)과 비교가 안 돼요.
+
+### `dffits`: 그 점의 적합값이 얼마나 움직이나요
+
+**DFFITS**는 행 $t$를 빼고 다시 맞추면 그 행 자신의 적합값 $\hat y_t$가 얼마나 움직이는지를, 그 적합값의 표준오차로 나눈 값이에요. 외적 스튜던트화 잔차에 지렛대의 몫을 곱해서 구해요.
+
+$$
+\mathrm{DFFITS}_t = t_t\sqrt{\frac{h_t}{1 - h_t}}
+$$
+
+- Cook 거리와 같은 것(잔차의 크기와 지렛대)을 보지만, 부호가 있어서 그 점이 적합을 위로 끄는지 아래로 끄는지 알 수 있어요.
+- 흔히 절댓값이 $2\sqrt{p/n}$($p$는 `rank`, $n$은 `nobs`)을 넘으면 눈여겨봐요. 여기서는 0.89예요.
+
+```python
+>>> [round(v, 2) for v in r.dffits.tolist()]
+[-0.64, -0.41, -0.12, -0.09, 0.08, 0.19, 0.22, 0.45, 0.68, -38.3]
+>>> round(2 * (r.rank / r.nobs) ** 0.5, 2)
+0.89
+```
+
+마지막 점의 −38.3은 기준의 40배가 넘고, 음수라서 그 점이 직선을 아래로 끌어내린다는 뜻이에요. 외적 스튜던트화 잔차처럼, 그 점을 빼면 나머지 아홉 점이 직선에 아주 가까워지는 것이 값을 이렇게 키워요.
+
+### `dfbetas`: 어느 계수가 움직이나요
+
+Cook 거리와 DFFITS는 적합 전체를 하나의 수로 봐요. **DFBETAS**는 계수마다 따로 봐요. 행 $t$를 빼고 다시 맞추면 계수 $j$가 얼마나 바뀌는지를, 그 계수의 표준오차(행 $t$를 뺀 $s_{(t)}$로 잰 것)로 나눈 값이에요.
+
+$$
+\mathrm{DFBETAS}_{tj} = \frac{\hat\beta_j - \hat\beta_{(t)j}}{s_{(t)}\sqrt{[(X^\top X)^{-1}]_{jj}}}
+$$
+
+$\hat\beta_{(t)}$는 행 $t$를 뺀 적합의 계수예요. 모양은 (n, k)이고, 열의 순서는 `params`와 같아요(절편이 `[:, 0]`).
+
+- 양수면 그 행이 계수를 키우고 있다는 뜻이에요. 그 행을 빼면 계수가 줄어요.
+- 흔히 절댓값이 $2/\sqrt{n}$을 넘으면 눈여겨봐요. 여기서는 0.63이에요.
+- 행을 하나씩 빼고 $n$번 다시 맞추지 않아도 한 번에 나와요.
+
+```python
+>>> r.dfbetas.shape
+(10, 2)
+>>> [[round(v, 2) for v in row] for row in r.dfbetas.tolist()]
+[[-0.64, 0.51], [-0.4, 0.3], [-0.12, 0.08], [-0.08, 0.04], [0.06, -0.02], [0.11, 0.0], [0.07, 0.05], [0.04, 0.21], [-0.06, 0.41], [21.35, -35.18]]
+>>> r.params - sd.regression.ols(y[:9], x[:9]).params
+array([ 2.0771111111111114, -0.4793333333333334], dtype=float64)
+```
+
+마지막 행의 기울기 칸 −35.18은 그 점이 기울기를 낮추고 있다는 뜻이에요. 실제로 그 점을 빼면 기울기가 0.48 올라가요($\hat\beta - \hat\beta_{(t)} = -0.48$). 절편 칸 21.35는 반대로 그 점이 절편을 끌어올린다는 뜻이에요.
+
+이런 점을 찾으면 지우기 전에 먼저 왜 그런지(입력 실수인지, 다른 조건에서 잰 값인지, 직선 모형이 그 범위에서 맞지 않는지)를 살펴요. 이상값에 덜 흔들리는 방법이 필요하면 [`rlm`](/api/regression/rlm/)이나 [`theilslopes`](/api/regression/theilslopes/)를 보세요.
+
+<Callout type="note" title="어림 기준은 출발점이에요">
+위의 2–3, $4/n$, $2\sqrt{p/n}$, $2/\sqrt{n}$은 눈여겨볼 행을 고르는 흔한 어림이에요. 넘었다고 틀린 점이라는 뜻은 아니고, 데이터가 많으면 기준을 넘는 행이 자연히 몇 개 나와요. 여러 값이 함께 한 행을 가리킬 때, 그리고 다른 행보다 크게 튈 때 살펴봐요.
+</Callout>
+
+## `vif`: 다중공선성
+
+설명변수 몇 개가 서로 닮으면(**다중공선성**) 데이터는 그 변수들의 효과를 따로 가르기 어려워요. 계수 하나하나의 표준오차가 커지고, 표본이 조금만 달라도 계수가 크게 흔들려요. **분산 팽창 계수**(VIF)는 계수마다 그 정도를 재요.
+
+$$
+\mathrm{VIF}_j = \frac{1}{1 - R_j^2}
+$$
+
+$R_j^2$는 열 $j$를 절편과 나머지 열에 회귀했을 때의 결정계수예요. 열 $j$가 다른 열로 잘 설명될수록 1에 가까워지고, VIF가 커져요.
+
+- 다른 열과 전혀 닮지 않으면(상관이 0) 1이에요. 그보다 작아지지 않아요.
+- $\sqrt{\mathrm{VIF}_j}$는 계수 $j$의 표준오차가 서로 닮지 않은 열일 때보다 몇 배인지예요.
+- 흔히 5나 10을 넘으면 공선성이 크다고 봐요.
+- 모양은 `params`와 같은 (k,)이고, 절편 자리는 NaN이에요. 절편은 설명변수가 아니니까요.
+
+세 번째 열이 앞의 두 열의 합에 작은 잡음을 더한 데이터예요.
+
+```python
+>>> rng = sd.random.default_rng(1)
+>>> N = sd.stats.Normal()
+>>> x1 = N.sample(40, rng=rng)
+>>> x2 = N.sample(40, rng=rng)
+>>> x3 = x1 + x2 + 0.2 * N.sample(40, rng=rng)
+>>> yv = 1.0 + x1 + 0.5 * x2 + 0.5 * x3 + N.sample(40, rng=rng)
+>>> v = sd.regression.ols(yv, sd.stack([x1, x2, x3], axis=1))
+>>> [round(val, 1) for val in v.vif.tolist()]
+[nan, 24.2, 31.0, 60.6]
+>>> v.bse
+array([0.17372006858090733,  0.9245846379712176,  0.9058630779346963,
+        0.8996948428220854], dtype=float64)
+```
+
+세 열 모두 VIF가 10을 훌쩍 넘어요. `x3`의 60.6은 정의대로 `x3`를 `x1`, `x2`에 회귀한 결정계수에서 나와요.
+
+```python
+>>> aux = sd.regression.ols(x3, sd.stack([x1, x2], axis=1))
+>>> round(aux.rsquared, 4), round(1 / (1 - aux.rsquared), 1)
+(0.9835, 60.6)
+```
+
+`x3`를 빼면 남은 두 열은 서로 거의 닮지 않아서 VIF가 1에 가깝고, 표준오차가 0.92에서 0.19로 줄어요.
+
+```python
+>>> v2 = sd.regression.ols(yv, sd.stack([x1, x2], axis=1))
+>>> [round(val, 3) for val in v2.vif.tolist()]
+[nan, 1.015, 1.015]
+>>> v2.bse
+array([ 0.1739380504139388,  0.1940208568855863, 0.16793257379367402], dtype=float64)
+```
+
+VIF가 크다고 모형이 틀린 것은 아니에요. 예측은 그대로 잘 될 수 있고, 닮은 열들의 계수를 함께 보는 검정(여러 계수를 묶은 [Wald 검정](/api/regression/hypothesis-tests/))도 괜찮아요. 문제는 계수 하나하나를 따로 해석할 때예요. 그럴 때는 닮은 열 가운데 하나를 빼거나, 합치거나, [ridge](/api/regression/ridge/)처럼 벌점을 주는 회귀를 써요. 열이 정확히 겹치는 경우와 조건수는 [겹친 열과 완전 적합](/api/regression/collinearity/)에 있어요.
+
+- **겹친 열**: 적합에서 빠진 열은 NaN이고, 남은 열의 VIF는 빠진 열 없이 구한 값이에요.
+- **절편이 없는 모형**: 보조 회귀에는 절편을 넣어요. 그래서 상수 열의 VIF는 NaN이에요.
+- **가중 적합**: [`wls`](/api/regression/wls/)와 [`gls`](/api/regression/gls/)는 모형이 실제로 푸는 가중한(백색화한) 열로 구해요. 가중 평균으로 중심을 잡은 결정계수예요.
+
+```python
+>>> [round(val, 3) for val in sd.regression.ols(yv, sd.stack([x1, x2, x1 + x2], axis=1)).vif.tolist()]
+[nan, 1.015, 1.015, nan]
+>>> [round(val, 1) for val in sd.regression.ols(yv, sd.stack([x1, x2, x3], axis=1), intercept=False).vif.tolist()]
+[24.2, 31.0, 60.6]
+```
 
 ## `durbin_watson`: 잔차의 자기상관
 
@@ -186,7 +308,7 @@ $$
 \mathrm{JB} = \frac{n}{6}\left(S^2 + \frac{(K - 3)^2}{4}\right)
 $$
 
-$S$와 $K$는 잔차의 중심 모멘트을 $n$으로 나눠 만들어요. 오차가 정규분포면 JB는 대략 자유도 2의 카이제곱 분포를 따르고, `pvalue`는 그 위 꼬리예요. p값이 작으면 정규분포에서 벗어난다는 근거예요.
+$S$와 $K$는 잔차의 중심 모멘트를 $n$으로 나눠 만들어요. 오차가 정규분포면 JB는 대략 자유도 2의 카이제곱 분포를 따르고, `pvalue`는 그 위 꼬리예요. p값이 작으면 정규분포에서 벗어난다는 근거예요.
 
 꼬리가 두꺼운 오차(자유도 2의 t 분포)와 정규 오차를 견줘 볼게요.
 
@@ -196,9 +318,33 @@ $S$와 $K$는 잔차의 중심 모멘트을 $n$으로 나눠 만들어요. 오�
 >>> heavy = sd.regression.ols(3.0 + 0.5 * xs + sd.stats.StudentT(df=2).sample(40, rng=rng), xs)
 >>> normal = sd.regression.ols(3.0 + 0.5 * xs + sd.stats.Normal().sample(40, rng=rng), xs)
 >>> heavy.jarque_bera()
-JarqueBeraResult(statistic=15.457512697192062, pvalue=0.00043999097237322466)
+JarqueBeraResult(statistic=15.4575, pvalue=0.000439991)
 >>> normal.jarque_bera()
-JarqueBeraResult(statistic=1.5363440948759364, pvalue=0.4638602082656401)
+JarqueBeraResult(statistic=1.53634, pvalue=0.46386)
+>>> heavy.jarque_bera().pvalue
+0.00043999097237322466
+```
+
+화면에 보이는 값은 유효숫자 여섯 자리로 줄인 것이고, `statistic`과 `pvalue` 필드에는 계산한 값이 그대로 들어 있어요.
+
+### 다른 정규성 검정
+
+Jarque–Bera는 왜도와 첨도만 봐요. Shapiro–Wilk, D'Agostino–Pearson, Anderson–Darling 같은 다른 정규성 검정은 표본 하나를 받는 검정이라 회귀 결과에 메서드로 붙어 있지 않아요. 잔차를 `sd.htest`의 함수에 넘겨요. 이때 넘길 잔차는 `resid`가 아니라 `wresid`예요. 가중 적합과 GLS에서는 진단이 실제로 쓰는 잔차가 `wresid`이기 때문이에요([아래](#wresid-진단이-쓰는-잔차)). `ols`에서는 둘이 같아요.
+
+```python
+>>> sd.htest.shapiro(heavy.wresid)
+ShapiroResult(statistic=0.904683, pvalue=0.00262373)
+>>> sd.htest.shapiro(normal.wresid)
+ShapiroResult(statistic=0.962135, pvalue=0.198039)
+>>> sd.htest.normaltest(heavy.wresid)
+NormaltestResult(statistic=14.2237, pvalue=0.000815399)
+```
+
+`sd.htest.jarque_bera`에 `wresid`를 넘기면 `jarque_bera()`와 비트까지 같은 값이에요. 두 쪽이 같은 계산을 써요. 다른 곳은 완전 적합 하나예요([특수한 경우](#특수한-경우)).
+
+```python
+>>> tuple(heavy.jarque_bera()) == tuple(sd.htest.jarque_bera(heavy.wresid))
+True
 ```
 
 <Callout type="note" title="정규성은 언제 중요할까요">
@@ -248,6 +394,8 @@ BreuschPaganResult(lm=9.073105298386446, lm_pvalue=0.002593962000254338, fvalue=
 
 분산이 고르지 않으면 계수는 그대로 쓸 수 있지만 기본 표준오차가 틀려요. `cov_type='HC3'` 같은 강건 표준오차를 쓰거나([표준오차의 종류](/api/regression/covariance/)), 분산의 모양을 알면 [`wls`](/api/regression/wls/)로 가중치를 줘요.
 
+Breusch–Pagan은 분산이 설명변수의 일차식을 따라 변하는지를 봐요. 분산이 가운데에서 작고 양 끝에서 큰 모양처럼 일차식이 아닌 변화에는 제곱과 곱까지 넣는 `white_test()`가, 정렬한 행의 앞과 뒤를 견주고 싶으면 `goldfeld_quandt()`가 맞아요. 두 검정은 [분산과 모형 형태 검정](/api/regression/specification-tests/)에 있어요.
+
 <Callout type="tip" title="기본값 studentize=True를 쓰는 까닭">
 원래 판은 오차가 정규분포라고 보고 $e_t^2$의 분산을 $2\sigma^4$으로 둬요. 꼬리가 두꺼운 오차에서는 이 값이 너무 작아서, 분산이 고른데도 작은 p값을 내기 쉬워요. 아래는 분산이 고른 t(2) 오차의 예예요. Koenker 판은 p = 0.20, 원래 판은 p = 0.0035예요.
 
@@ -261,24 +409,48 @@ BreuschPaganResult(lm=9.073105298386446, lm_pvalue=0.002593962000254338, fvalue=
 
 ## 결과 클래스
 
-`jarque_bera()`와 `breusch_pagan()`은 이름 붙은 튜플을 돌려줘요. 이름으로도, 번호로도 꺼낼 수 있고 풀어서 받을 수도 있어요.
-
-| 클래스 | 칸 |
+| 클래스 | 필드 |
 |---|---|
 | `JarqueBeraResult` | `statistic`(JB 통계량), `pvalue` |
 | `BreuschPaganResult` | `lm`(LM 통계량), `lm_pvalue`, `fvalue`(보조 회귀의 F), `f_pvalue` |
 
+`JarqueBeraResult`는 `sd.htest.jarque_bera`가 돌려주는 것과 같은 클래스예요. 같은 검정이니 어디서 불러도 같은 꼴의 결과예요. 필드는 읽기만 하고, `(statistic, pvalue)`로 풀어서 받을 수 있어요. 번호로 꺼내기와 `len`도 그 두 값의 차례로 돼요.
+
 ```python
 >>> jb = r.jarque_bera()
 >>> jb
-JarqueBeraResult(statistic=0.4407950781981805, pvalue=0.8021998287680973)
->>> jb.statistic, jb[1]
+JarqueBeraResult(statistic=0.440795, pvalue=0.8022)
+>>> jb.statistic, jb.pvalue
 (0.4407950781981805, 0.8021998287680973)
->>> isinstance(jb, sd.regression.JarqueBeraResult)
-True
+>>> stat, pval = jb
+>>> jb[1] == pval, len(jb)
+(True, 2)
+>>> isinstance(jb, sd.regression.JarqueBeraResult), isinstance(jb, tuple)
+(True, False)
+>>> jb.pvalue = 0.5
+Traceback (most recent call last):
+    ...
+AttributeError: property 'pvalue' of 'JarqueBeraResult' object has no setter
+```
+
+튜플이 아니라서 `==`는 값을 견주지 않고 같은 객체인지만 봐요. 같은 값의 결과 둘도 `==`가 False이고, 튜플과 견줘도 False예요. 해시도 객체마다 달라서, 값이 같은 결과를 집합이나 딕셔너리의 같은 키로 모을 수 없어요. 값으로 견주려면 필드를 꺼내거나 `tuple()`로 바꿔요. 이름 붙은 튜플의 `_fields`, `_asdict()`, `_replace()`도 없어요.
+
+```python
+>>> again = sd.regression.ols(y, x).jarque_bera()
+>>> again == jb, again == (stat, pval)
+(False, False)
+>>> (again.statistic, again.pvalue) == (jb.statistic, jb.pvalue), tuple(again) == tuple(jb)
+(True, True)
+```
+
+`BreuschPaganResult`는 이름 붙은 튜플이에요. 이름으로도, 번호로도 꺼낼 수 있고, 풀어서 받을 수 있고, `==`는 값을 견줘요.
+
+```python
 >>> lm, lm_p, f, f_p = r.breusch_pagan()
 >>> sd.regression.BreuschPaganResult._fields
 ('lm', 'lm_pvalue', 'fvalue', 'f_pvalue')
+>>> r.breusch_pagan() == sd.regression.ols(y, x).breusch_pagan()
+True
 ```
 
 두 메서드는 처음 부를 때 계산해 두고, 다시 부르면 같은 객체를 돌려줘요. `studentize`는 `breusch_pagan(studentize=False)`처럼 키워드로만 주고, True·False만 받아요.
@@ -300,11 +472,11 @@ TypeError: breusch_pagan(): takes 0 positional arguments but 1 was given
 
 진단은 모두 모형이 실제로 푸는 문제에서 구해요.
 
-- [`wls`](/api/regression/wls/): $\sqrt{w_i}$를 곱한 잔차 $\sqrt{w_i}\,e_i$와 $\sqrt{w_i}$를 곱한 열로 구해요. 지렛대, 스튜던트화 잔차, Cook 거리는 R의 가중 `lm`에 쓰는 `hatvalues`, `rstandard`, `rstudent`, `cooks.distance`와 같아요.
+- [`wls`](/api/regression/wls/): $\sqrt{w_i}$를 곱한 잔차 $\sqrt{w_i}\,e_i$와 $\sqrt{w_i}$를 곱한 열로 구해요. 지렛대, 스튜던트화 잔차, Cook 거리, DFFITS, DFBETAS는 R의 가중 `lm`에 쓰는 `hatvalues`, `rstandard`, `rstudent`, `cooks.distance`, `dffits`, `dfbetas`와 같아요.
 - [`gls`](/api/regression/gls/): 상관을 걷어 낸(백색화한) 잔차와 열로 구해요.
 - `breusch_pagan()`의 보조 회귀는 모형에 절편이 있든 없든 상수를 넣어요. 가중 적합이면 상수 열과 함께 $\sqrt{w_i}$ 열과 $\sqrt{w_i}$를 곱한 설명변수를 넣어요.
 
-가중치가 0인 행은 적합에 쓰이지 않으니, 그 행의 `leverage`, 스튜던트화 잔차, `cooks_distance`는 0이에요. `durbin_watson`, `jarque_bera()`, `breusch_pagan()`의 합에서도 빠져서, 그 행을 뺀 적합의 진단과 같아요.
+가중치가 0인 행은 적합에 쓰이지 않으니, 그 행의 `leverage`, 스튜던트화 잔차, `cooks_distance`, `dffits`, `dfbetas`, `wresid`는 0이에요. `vif`, `durbin_watson`, `jarque_bera()`, `breusch_pagan()`의 합에서도 빠져서, 그 행을 뺀 적합의 진단과 같아요.
 
 ```python
 >>> xw = sd.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
@@ -314,18 +486,45 @@ TypeError: breusch_pagan(): takes 0 positional arguments but 1 was given
 >>> float(z.leverage[3]), float(z.cooks_distance[3])
 (0.0, 0.0)
 >>> d = sd.regression.ols(yw[w0 > 0], xw[w0 > 0])
->>> z.durbin_watson == d.durbin_watson, z.jarque_bera() == d.jarque_bera(), z.breusch_pagan() == d.breusch_pagan()
+>>> z.durbin_watson == d.durbin_watson, tuple(z.jarque_bera()) == tuple(d.jarque_bera()), z.breusch_pagan() == d.breusch_pagan()
+(True, True, True)
+>>> z.dffits[3] == 0.0, z.dfbetas[3].tolist() == [0.0, 0.0], z.wresid[3] == 0.0
 (True, True, True)
 ```
 
+### `wresid`: 진단이 쓰는 잔차
+
+`wresid`는 진단이 실제로 쓰는 잔차, 곧 모형이 푸는 문제의 잔차예요. 모양은 `resid`와 같은 (n,)이고 단위도 `y`의 단위예요.
+
+| 모형 | `wresid` |
+|---|---|
+| `ols` | `resid` 그대로 |
+| `wls` | $\sqrt{w_i}\,e_i$ (가중치가 0인 행은 0) |
+| `gls` | 상관을 걷어 낸(백색화한) 잔차 |
+
+가중치가 다른 행의 잔차는 퍼진 정도가 달라서 그대로 모으면 정규성이나 분산을 재기 어려워요. $\sqrt{w_i}$를 곱하면 모든 행의 오차가 같은 분산이 되니, 모형이 맞다면 `wresid`가 고르게 퍼진 잔차예요. `durbin_watson`, `jarque_bera()`, `breusch_pagan()`이 모두 이것으로 계산하고, 다른 검정에 잔차를 넘길 때도 이것을 넘겨요.
+
+```python
+>>> wv = sd.asarray([1.0, 2.0, 1.0, 4.0, 1.0, 2.0, 1.0, 4.0])
+>>> zw = sd.regression.wls(yw, xw, weights=wv)
+>>> zw.wresid.tolist() == (sd.sqrt(wv) * zw.resid).tolist()
+True
+>>> tuple(zw.jarque_bera()) == tuple(sd.htest.jarque_bera(zw.wresid))
+True
+>>> tuple(sd.htest.jarque_bera(zw.resid))
+(1.7074810832631706, 0.4258191549975009)
+```
+
+마지막 값은 가중치를 버린 `resid`로 잰 것이라 `jarque_bera()`(1.156)와 달라요.
+
 ## 특수한 경우
 
-- **완전 적합**(점이 모형 위에 놓일 때. 절편이 있고 반응이 모두 같을 때도 그래요): 잔차를 0으로 나누게 되어 스튜던트화 잔차, Cook 거리, `durbin_watson`, `jarque_bera()`, `breusch_pagan()`이 NaN이에요(0 ÷ 0). `leverage`는 $x$만 보니 정상이에요. 계산한 잔차는 반올림 때문에 1e-16 크기로 남을 때가 많은데, [`ols`](/api/regression/ols/#특수한-경우)의 완전 적합 기준(행마다 그 행의 값 크기에 비례하는 반올림 허용오차) 안이면 진단에서는 잔차를 0으로 봐요. 반올림의 무늬가 가짜 자기상관이나 가짜 이분산으로 읽히지 않게 하려는 거예요. `resid` 필드는 계산한 값 그대로예요.
+- **완전 적합**(점이 모형 위에 놓일 때. 절편이 있고 반응이 모두 같을 때도 그래요): 잔차를 0으로 나누게 되어 스튜던트화 잔차, Cook 거리, `dffits`, `dfbetas`, `durbin_watson`, `jarque_bera()`, `breusch_pagan()`이 NaN이에요(0 ÷ 0). `leverage`와 `vif`는 $x$만 보니 정상이에요. 계산한 잔차는 반올림 때문에 1e-16 크기로 남을 때가 많은데, [`ols`](/api/regression/ols/#특수한-경우)의 완전 적합 기준(행마다 그 행의 값 크기에 비례하는 반올림 허용오차) 안이면 진단에서는 잔차를 0으로 봐요. 반올림의 무늬가 가짜 자기상관이나 가짜 이분산으로 읽히지 않게 하려는 거예요. `resid`와 `wresid` 필드는 계산한 값 그대로예요. 그래서 이때만 `sd.htest.jarque_bera(r.wresid)`가 반올림 크기의 잔차로 잰 값을 내고, `jarque_bera()`의 NaN과 달라요.
 - **잔차 자유도가 0일 때**(`df_resid` = 0): 점이 모두 모형 위에 있어서 완전 적합과 같이 NaN이에요. `leverage`는 모두 1이에요.
 - **빈 입력**(행이 없거나 `'omit'`으로 모두 빠질 때, `wls`의 가중치가 모두 0일 때): 결과 전체처럼 진단도 NaN이에요.
-- **겹친 열**: 그 열을 뺀 적합의 진단과 같아요. Cook 거리는 `rank`로 나눠요.
+- **겹친 열**: 그 열을 뺀 적합의 진단과 같아요. Cook 거리는 `rank`로 나눠요. 빠진 열의 `vif`와 `dfbetas`의 그 열은 NaN이에요.
 - **NaN**(`nan_policy='propagate'`): 모든 진단이 NaN이에요. `'omit'`이면 남은 행에 대해 구해요.
-- **배치**: 행마다의 진단은 (배치, n), 나머지는 배치 모양이고, `jarque_bera()`·`breusch_pagan()`의 칸도 배치 모양의 배열이에요.
+- **배치**: 행마다의 진단은 (배치, n), `dfbetas`는 (배치, n, k), `vif`는 (배치, k), 나머지는 배치 모양이에요. `jarque_bera()`·`breusch_pagan()`의 필드도 배치 모양의 배열이에요.
 
 ```python
 >>> xp = sd.arange(6.0)
@@ -336,12 +535,16 @@ TypeError: breusch_pagan(): takes 0 positional arguments but 1 was given
 array([nan, nan, nan, nan, nan, nan], dtype=float64)
 >>> p.durbin_watson, p.jarque_bera()
 (nan, JarqueBeraResult(statistic=nan, pvalue=nan))
+>>> p.dffits
+array([nan, nan, nan, nan, nan, nan], dtype=float64)
 >>> x10 = sd.arange(10.0)
 >>> third = sd.regression.ols(0.1 + x10 / 3.0, x10)
 >>> max(abs(v) for v in third.resid.tolist()) > 0.0
 True
 >>> third.durbin_watson, third.breusch_pagan().lm_pvalue
 (nan, nan)
+>>> third.jarque_bera(), sd.htest.jarque_bera(third.wresid)
+(JarqueBeraResult(statistic=nan, pvalue=nan), JarqueBeraResult(statistic=1.62637, pvalue=0.443444))
 >>> x3 = sd.asarray([1.0, 2.0, 4.0])
 >>> d0 = sd.regression.ols(sd.asarray([1.0, 3.0, 2.0]), sd.stack([x3, x3 * x3], axis=-1))
 >>> d0.leverage, d0.cooks_distance
@@ -349,23 +552,37 @@ True
 >>> both = sd.regression.ols(y, sd.stack([x, 2.0 * x], axis=-1))
 >>> both.cooks_distance.tolist() == r.cooks_distance.tolist()
 True
+>>> both.dfbetas[9]
+array([21.348912173825504, -35.18347576537431,                nan], dtype=float64)
 >>> Y = sd.stack([yw, yw * yw], axis=0)
 >>> b = sd.regression.ols(Y, xw)
->>> b.leverage.shape, b.durbin_watson
-((2, 8), array([ 3.330198537095088, 2.7391960453453383], dtype=float64))
+>>> b.leverage.shape, b.dfbetas.shape, b.vif.shape, b.durbin_watson
+((2, 8), (2, 8, 2), (2, 2), array([ 3.330198537095088, 2.7391960453453383], dtype=float64))
+>>> b.jarque_bera()
+JarqueBeraResult(batch shape (2,))
 >>> b.jarque_bera().pvalue
 array([0.7339136164895443, 0.5931173006370886], dtype=float64)
+```
+
+배열 필드는 읽기 전용이에요. 고치려면 `.copy()`로 복사해요.
+
+```python
+>>> b.vif[0, 1] = 2.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
 ```
 
 ## 정확도
 
 - 지렛대는 적합에 쓴 분해에서 직접 구해서, 조건수가 커도 $1 - h_t$가 반올림 수준의 절대 정확도로 나와요.
 - `durbin_watson`과 `jarque_bera()`의 합은 보통의 float64 합보다 정밀하게 더해요.
+- `vif`, `dffits`, `dfbetas`는 Arb(구간 산술)로 정의대로(VIF는 보조 회귀로, DFFITS와 DFBETAS는 행을 하나씩 뺀 적합 $n$번으로) 만든 참값과 견줘, 조건이 좋은 문제(OLS, 가중치가 0인 행이 있는 WLS, 절편 없음, 세 수준 요인의 더미)에서 상대오차가 1e-13 안이에요. 설계의 조건수가 1e8쯤이면 VIF가 1.4e-10, DFFITS가 2.6e-9, DFBETAS가 2.3e-8 안이에요. 계수의 표준오차처럼 조건수 × 2.2e-16 꼴로 커져요.
 - 같은 입력이면 스레드 수와 상관없이 같은 비트이고, 배치 결과는 하나씩 부른 결과와 같은 비트예요.
 
-계산 방법은 [추론과 진단](/internals/regression/inference/)에 있어요.
+계산 방법은 [추론과 진단](/internals/regression/inference/)과 [진단의 계산](/internals/regression/diagnostics/)에 있어요.
 
-## statsmodels를 아는 분께
+## statsmodels·R을 아는 분께
 
 statsmodels 0.15.0 기준이에요.
 
@@ -375,13 +592,20 @@ statsmodels 0.15.0 기준이에요.
 | `r.resid_studentized_internal` | `r.get_influence().resid_studentized_internal` |
 | `r.resid_studentized_external` | `r.get_influence().resid_studentized_external` |
 | `r.cooks_distance` | `r.get_influence().cooks_distance[0]` |
+| `r.dffits` | `r.get_influence().dffits[0]` |
+| `r.dfbetas` | `r.get_influence().dfbetas` |
+| `r.vif[j]` | `statsmodels.stats.outliers_influence.variance_inflation_factor(r.model.exog, j)` |
 | `r.durbin_watson` | `statsmodels.stats.stattools.durbin_watson(r.resid)` |
+| `r.wresid` | `r.wresid` |
 | `r.jarque_bera()` | `statsmodels.stats.stattools.jarque_bera(r.resid)[:2]` |
 | `r.breusch_pagan(studentize=s)` | `statsmodels.stats.diagnostic.het_breuschpagan(r.resid, r.model.exog, robust=s)` |
 
 - OLS에서는 위 예의 모든 값이 반올림 차이 안에서 같아요. `het_breuschpagan`의 네 값(lm, lm_pvalue, fvalue, f_pvalue)의 순서도 같아요.
+- `vif`: statsmodels의 `variance_inflation_factor`는 열 하나씩 부르고, 상수 열을 넣은 `exog`에서 절편 자리도 값을 내요. 여기서는 모든 계수를 한 번에 내고 절편 자리는 NaN이에요. 절편이 없는 모형의 값은 statsmodels의 기본(`standardize=True`, 중심화한 VIF)과 같아요. WLS의 `wexog`를 넘기면 statsmodels는 가중 평균으로 중심을 잡지 않아서 다르고, 여기 값은 R car 패키지의 `vif`(가중 `lm`)와 같아요.
+- `dffits`, `dfbetas`: R의 `dffits`, `dfbetas`(가중 `lm` 포함)와 같아요. statsmodels의 `dffits`는 (값, 기준) 두 개의 튜플이고 기준은 $2\sqrt{p/n}$이에요. 여기는 값만 줘요.
+- `r.jarque_bera()`의 결과는 statsmodels처럼 네 값(왜도, 첨도 포함)의 튜플이 아니라 두 필드의 결과 객체예요. statsmodels가 함께 주는 왜도와 첨도는 `sd.stats.skew(r.wresid)`, `sd.stats.kurtosis(r.wresid, fisher=False)`로 구해요.
 - 완전 적합: statsmodels는 반올림으로 남은 잔차로 진단을 그대로 구해요. 위의 `third`($y = 0.1 + x/3$)에서 statsmodels는 `durbin_watson` 0.137(강한 자기상관처럼 보임), `het_breuschpagan`의 p값 0.008(이분산처럼 보임)이고, 스튜던트화 잔차도 0.43, 0.11, −0.44처럼 보통 크기로 나와요. sd는 NaN이에요.
-- statsmodels의 `cooks_distance`는 (거리, p값) 두 배열의 튜플이에요. sd는 거리만 줘요. statsmodels의 `jarque_bera`는 왜도와 첨도까지 네 값을 줘요.
+- statsmodels의 `cooks_distance`는 (거리, p값) 두 배열의 튜플이에요. sd는 거리만 줘요.
 - 겹친 열이 있으면 statsmodels의 Cook 거리는 `rank` 대신 열 수로 나눠요. 위 예에 `2 * x` 열을 더하면 마지막 점의 Cook 거리가 statsmodels는 4.70, sd는 7.05(겹친 열을 뺀 적합과 같은 값)예요.
 - statsmodels의 WLS·GLS 결과에는 `get_influence()`가 없어요. `OLSInfluence`를 WLS 결과에 직접 쓰면 지렛대의 합이 `rank`가 되지 않는 다른 값이 나와요. sd는 R의 가중 `lm`과 같은 값을 줘요.
 - WLS의 `breusch_pagan()`은 `het_breuschpagan(r.wresid, 상수 열과 r.model.wexog)`와 같아요. statsmodels는 상수 열이 없는 `wexog`를 그대로 주면 에러를 내요. `durbin_watson`과 `jarque_bera()`는 statsmodels의 `wresid`로 구한 값과 같아요.

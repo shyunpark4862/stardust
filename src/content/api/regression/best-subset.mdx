@@ -1,0 +1,407 @@
+---
+title: best_subset
+names: [best_subset, BestSubsetResult]
+group: 변수 선택
+order: 2
+signatures:
+  - "sd.regression.best_subset(y, X, /, *, model='ols', criterion='aic', max_size=None, include=None, terms=None, cv=5, rng=None, intercept=True, nan_policy='propagate', **options)"
+summary: 설명변수의 모든 부분집합 가운데 크기마다 가장 좋은 것을 찾고, 그 가운데 기준(AIC, BIC, 교차검증, 선형 모형은 Cp와 수정 결정계수도)이 가장 좋은 크기를 골라요. ols, wls, gls, glm의 모형을 그 함수의 키워드 그대로 받고, 크기마다의 최선과 기준값, 고른 열로 다시 부른 적합을 BestSubsetResult에 담아 돌려줘요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, Series, 또는 한 열짜리 DataFrame
+    kind: positional-only
+    desc: 반응 (n,). 회귀 하나만 받아요(배치는 ValueError).
+  - name: X
+    type: ndarray, 실수의 시퀀스, 또는 DataFrame
+    kind: positional-only
+    desc: 고를 후보 열 (n, p) 또는 (n,). 절편 열은 넣지 않아요. DataFrame이면 컬럼 이름이 계수의 이름이 돼요.
+  - name: model
+    type: str
+    kind: keyword-only
+    desc: "후보를 적합할 함수. 'ols'(기본값), 'wls', 'gls', 'glm' 중 하나예요."
+  - name: criterion
+    type: str
+    kind: keyword-only
+    desc: "크기 사이에서 고를 기준. 'aic'(기본값), 'bic', 'cv'와 선형 모형(ols, wls, gls)만 'cp', 'adjr2'예요. 'adjr2'는 큰 쪽이, 나머지는 작은 쪽이 좋아요."
+  - name: max_size
+    type: int 또는 None
+    kind: keyword-only
+    desc: 찾을 가장 큰 크기(0 이상). 크기는 절편과 include 밖에서 더한 열의 수예요. None(기본값)이면 그 열 전부예요.
+  - name: include
+    type: 열의 목록 또는 None
+    kind: keyword-only
+    desc: 모든 부분집합에 들어 있을 열(위치나 이름). 크기에 세지 않아요.
+  - name: terms
+    type: 항의 목록 또는 None
+    kind: keyword-only
+    desc: 함께 들어가고 함께 빠지는 열의 묶음. 각 항은 열 하나이거나 열의 목록이고, X의 모든 열을 꼭 한 번씩 덮어야 해요. None이면 열 하나가 항 하나예요.
+  - name: cv
+    type: int
+    kind: keyword-only
+    desc: "criterion='cv'의 겹 수. 2 이상, 행 수 이하예요. 기본값은 5예요."
+  - name: rng
+    type: sd.random.Generator 또는 None
+    kind: keyword-only
+    desc: "criterion='cv'에서 겹을 무작위로 나눌 난수 생성기(sd.random.default_rng(seed)). 'cv'에서는 꼭 줘야 하고, 다른 기준에서는 주면 ValueError예요."
+  - name: intercept
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 모든 부분집합에 절편이 있어요. 절편은 크기에 세지 않아요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있으면 찾지 않고 NaN 결과), 'omit'(y와 X의 모든 열, 행마다의 옵션에서 NaN이 있는 행을 처음에 한 번 빼요), 'raise'(ValueError) 중 하나예요."
+  - name: "**options"
+    type: model 함수의 키워드
+    kind: keyword-only
+    desc: "model 함수가 받는 키워드를 그대로 넘겨요. wls의 weights, gls의 sigma, glm의 family는 꼭 줘야 해요. 그 함수에 없는 키워드는 TypeError예요."
+returns:
+  type: BestSubsetResult
+  desc: "selected(고른 열의 X에서의 위치, 오름차순, include 포함), selected_names, fit(고른 열로 model 함수를 부른 결과), criterion, subsets(크기 0, 1, …마다 최선의 include 밖 열의 위치 목록, 그 크기의 모형이 없으면 None), values(크기마다 그 최선의 기준값, 'cv'는 교차검증 오차, 없는 크기는 NaN), skipped(고르지 않은 GLM 부분집합의 SkippedSubset(columns, reason))가 들어 있어요. 읽기 전용이에요."
+raises:
+  - type: TypeError
+    desc: model 함수에 없는 키워드를 줬을 때, 꼭 필요한 키워드(wls의 weights, gls의 sigma, glm의 family)를 빠뜨렸을 때, criterion='cv'에서 rng가 sd.random.Generator가 아닐 때(빠뜨렸을 때 포함), cv·max_size가 int가 아닐 때, 열을 위치(int)나 이름(str)이 아닌 것으로 줬을 때, 위치 인자를 셋 이상 줬을 때, 그 밖에 model 함수가 TypeError를 내는 경우.
+  - type: ValueError
+    desc: model·criterion·nan_policy의 이름이 틀렸을 때, model='glm'에 criterion='cp'·'adjr2'를 줬을 때, max_size가 음수일 때, cv가 2보다 작거나 행 수보다 클 때, 'cv'가 아닌 기준에 rng를 줬을 때, model='gls'에 criterion='cv'를 줬을 때, include 밖의 항이 선형 모형에서 50개, glm에서 15개를 넘을 때, y가 배치일 때, include가 항의 일부만 가리킬 때, terms가 열을 빠뜨리거나 두 번 넣을 때, 없는 열의 위치·이름을 줬을 때, nan_policy='raise'인데 NaN이 있을 때, 그 밖에 model 함수가 입력 검사에서 ValueError를 내는 경우(메시지는 best_subset()의 이름으로 나와요).
+seeAlso: [stepwise, ols, glm, cross-validation, lasso, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const aicBySize = [[0, 168.248], [1, 139.531], [2, 115.267], [3, 114.327], [4, 116.137], [5, 118.131]];
+export const bicBySize = [[0, 169.937], [1, 142.909], [2, 120.334], [3, 121.082], [4, 124.582], [5, 128.264]];
+
+## 무엇을 하나요
+
+[`stepwise`](/api/regression/stepwise/)는 한 번에 열 하나씩만 바꾸므로 빠르지만, 가장 좋은 조합을 지나칠 수 있어요. **최량 부분집합 선택**(best subset selection)은 열의 모든 조합을 견줘요.
+
+1. 크기(더한 열의 수)마다, 그 크기의 모든 부분집합 가운데 적합이 가장 좋은 것을 찾아요. 크기 2라면 열 두 개짜리 조합 가운데 가장 잘 맞는 것이에요.
+2. 크기마다의 최선을 기준(예를 들어 AIC)으로 견줘서 한 크기를 골라요.
+
+같은 크기끼리는 열 수가 같으니 적합이 좋은 쪽이 낫다는 데 이견이 없어요. 열을 하나 더 넣으면 적합은 나빠지는 일이 없으므로, 크기 사이에서는 열이 늘어나는 값을 치르는 기준이 필요해요. 그 기준이 `criterion`이에요.
+
+열 다섯 개 가운데 셋(`x1`, `x2`, `x3`)만 효과가 있고 `x3`의 효과는 작은 자료예요([`stepwise`](/api/regression/stepwise/)의 예와 같아요).
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> X = sd.stats.Normal().sample((40, 5), rng=rng)
+>>> y = 2.0 + 1.2 * X[:, 0] - 0.8 * X[:, 1] + 0.3 * X[:, 2] + sd.stats.Normal().sample(40, rng=rng)
+>>> b = sd.regression.best_subset(y, X)
+>>> b
+BestSubsetResult(criterion='aic', 3 columns selected, sizes 0-5)
+>>> b.selected, b.selected_names
+([0, 1, 2], ['x1', 'x2', 'x3'])
+>>> b.subsets
+[[], [0], [0, 1], [0, 1, 2], [0, 1, 2, 4], [0, 1, 2, 3, 4]]
+>>> [round(v, 2) for v in b.values.tolist()]
+[168.25, 139.53, 115.27, 114.33, 116.14, 118.13]
+```
+
+`subsets[k]`는 크기 k의 최선(열의 위치), `values[k]`는 그 모형의 AIC예요. 크기 3의 `[x1, x2, x3]`이 AIC가 가장 작아서 골랐어요. BIC로 고르면 열 하나의 값이 더 비싸서 크기 2를 골라요.
+
+```python
+>>> bb = sd.regression.best_subset(y, X, criterion='bic')
+>>> bb.selected_names
+['x1', 'x2']
+>>> [round(v, 2) for v in bb.values.tolist()]
+[169.94, 142.91, 120.33, 121.08, 124.58, 128.26]
+```
+
+<Fig caption="크기마다 최선의 부분집합의 AIC와 BIC. 크기가 커지면 적합은 나아지지만 벌점도 커져서, 둘 다 가운데에서 가장 작아요. AIC는 크기 3에서, 열 하나의 벌점이 더 큰 BIC는 크기 2에서 가장 작아요.">
+  <Plot
+    curves={[
+      { points: aicBySize, label: 'AIC' },
+      { points: bicBySize, label: 'BIC', dashed: true },
+    ]}
+    domain={[0, 5]}
+    range={[105, 175]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 3, label: '3' },
+      { v: 4, label: '4' },
+      { v: 5, label: '5' },
+    ]}
+    yTicks={[
+      { v: 120, label: '120' },
+      { v: 140, label: '140' },
+      { v: 160, label: '160' },
+    ]}
+  />
+</Fig>
+
+`fit`은 고른 열로 [`ols`](/api/regression/ols/)를 부른 결과 그대로예요.
+
+```python
+>>> type(b.fit).__name__, b.fit.param_names
+('OLSResult', ['const', 'x1', 'x2', 'x3'])
+>>> b.fit.params.tolist() == sd.regression.ols(y, X[:, [0, 1, 2]]).params.tolist()
+True
+```
+
+<Reference />
+
+## 기준 고르기
+
+| `criterion` | 값 | 좋은 쪽 | 모형 |
+|---|---|---|---|
+| `'aic'`(기본) | $\text{AIC} = -2\log L + 2k$ | 작은 쪽 | 모두 |
+| `'bic'` | $\text{BIC} = -2\log L + k\log n$ | 작은 쪽 | 모두 |
+| `'cp'` | Mallows의 $C_p = \text{SSR}/\hat\sigma^2 - n + 2k$ | 작은 쪽 | 선형(`ols`, `wls`, `gls`) |
+| `'adjr2'` | 수정 결정계수 `rsquared_adj` | 큰 쪽 | 선형 |
+| `'cv'` | k겹 교차검증의 예측 오차 | 작은 쪽 | `ols`, `wls`, `glm` |
+
+$L$은 적합의 우도, $k$는 계수의 수(절편 포함), $n$은 적합에 쓰인 행 수(결과의 `nobs`; GLM은 `freq_weights`의 합)예요.
+
+- **Cp**의 $\hat\sigma^2$는 모든 열을 넣은 모형의 척도(잔차 분산의 추정)예요. 모형이 반응을 제대로 설명하면 Cp는 계수 수 k 근처에 있고, 빠뜨린 효과가 있으면 그보다 훨씬 커요. 모든 열의 모형의 Cp는 정의대로 늘 k예요.
+- **수정 결정계수**는 결정계수에 열 수의 벌점을 준 값이에요. 절편만의 모형은 0이에요.
+
+```python
+>>> cp = sd.regression.best_subset(y, X, criterion='cp')
+>>> cp.selected_names, [round(v, 2) for v in cp.values.tolist()]
+(['x1', 'x2', 'x3'], [114.82, 34.91, 2.77, 2.17, 4.01, 6.0])
+>>> a2 = sd.regression.best_subset(y, X, criterion='adjr2')
+>>> a2.selected_names, [round(v, 4) for v in a2.values.tolist()]
+(['x1', 'x2', 'x3'], [0.0, 0.5238, 0.7464, 0.7578, 0.7521, 0.7448])
+```
+
+선형 모형에서는 같은 크기 안에서 AIC, BIC, Cp, 수정 결정계수가 모두 잔차 제곱합(SSR)만으로 순서가 정해져요. 그래서 크기마다의 최선(`subsets`)은 기준과 상관없이 SSR이 가장 작은 부분집합이고, 기준은 크기를 고르는 데만 영향을 줘요. 기준값이 같은 크기가 둘이면 작은 크기를 골라요. GLM에서는 크기마다 그 기준이 가장 좋은 부분집합이에요.
+
+GLM에는 Cp와 수정 결정계수가 없어요.
+
+```python
+>>> sd.regression.best_subset(y, X, model='glm', family='poisson', criterion='cp')
+Traceback (most recent call last):
+    ...
+ValueError: best_subset(): criterion='cp' is for the linear models (ols, wls, gls), not glm
+```
+
+크기마다의 기준값은 그 열로 `ols`를 부른 `aic`와 마지막 자리에서 다를 수 있어요(반올림 수준). 고른 모형의 `fit`은 그 열로 부른 적합 그대로예요.
+
+```python
+>>> b.values.tolist()[1], sd.regression.ols(y, X[:, [0]]).aic
+(139.53081198976867, 139.53081198976864)
+```
+
+### 교차검증 기준
+
+`criterion='cv'`는 크기마다 예측 오차를 재서 오차가 가장 작은 크기를 골라요. 겹마다 이렇게 해요.
+
+1. 그 겹을 뺀 학습 행에서 크기마다의 최선을 다시 찾아요.
+2. 그 부분집합을 학습 행으로 적합해 떼어 둔 겹의 오차를 재요(선형은 가중 평균 제곱오차, GLM은 평균 편차).
+
+크기의 오차는 겹들의 평균이고, 고른 크기의 부분집합은 모든 행으로 찾은 그 크기의 최선이에요. 겹마다 다시 찾으므로 이 오차는 "그 크기로 고르는 방법"의 예측 오차예요. 모든 행으로 고른 부분집합을 겹에서 재면 고를 때 이미 본 자료로 재는 셈이라 오차가 작게 나와요.
+
+```python
+>>> c = sd.regression.best_subset(y, X, criterion='cv', rng=sd.random.default_rng(1))
+>>> c.selected_names
+['x1', 'x2', 'x3']
+>>> [round(v, 4) for v in c.values.tolist()]
+[3.8158, 2.0347, 1.0896, 1.0522, 1.1964, 1.2085]
+```
+
+겹은 [`lasso_cv`](/api/regression/cross-validation/), [`stepwise`](/api/regression/stepwise/)의 `'cv'`와 같은 방법으로 `rng`가 나눠요. `rng`는 꼭 줘야 하고, `'cv'`가 아닌 기준에 주면 `ValueError`예요. `model='gls'`는 `'cv'`를 받지 않아요.
+
+```python
+>>> sd.regression.best_subset(y, X, criterion='cv')
+Traceback (most recent call last):
+    ...
+TypeError: best_subset(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+```
+
+## 크기, include, 항
+
+크기는 절편과 `include` 밖에서 더한 열의 수예요. `max_size`로 찾을 가장 큰 크기를 줄여요.
+
+```python
+>>> sd.regression.best_subset(y, X, max_size=2).subsets
+[[], [0], [0, 1]]
+```
+
+`include`의 열은 모든 부분집합에 들어 있고 크기에 세지 않아요. `subsets`에는 `include` 밖의 열만 나오고, `selected`에는 `include`도 들어 있어요.
+
+```python
+>>> bi = sd.regression.best_subset(y, X, include=[3])
+>>> bi.subsets
+[[], [0], [0, 1], [0, 1, 2], [0, 1, 2, 4]]
+>>> bi.selected_names
+['x1', 'x2', 'x3', 'x4']
+```
+
+`terms`로 묶은 열은 함께 들어가고 함께 빠져요. 크기는 항 수가 아니라 열 수로 세요. 아래 자료의 지역은 세 범주이고 `east`, `west` 두 더미가 한 항이에요. 그 항이 든 부분집합은 크기가 2씩 늘어요.
+
+```python
+>>> rr = sd.random.default_rng(2)
+>>> size = sd.stats.Normal().sample(45, rng=rr)
+>>> age = sd.stats.Normal().sample(45, rng=rr)
+>>> region = rr.integers(0, 3, shape=45)
+>>> east = sd.where(region == 1, 1.0, 0.0)
+>>> west = sd.where(region == 2, 1.0, 0.0)
+>>> price = 3.0 + size + 0.8 * east - 0.6 * west + sd.stats.Normal().sample(45, rng=rr)
+>>> df = sd.frame.DataFrame({'size': size, 'age': age, 'east': east, 'west': west})
+>>> t = sd.regression.best_subset(price, df, terms=[['size'], ['age'], ['east', 'west']])
+>>> t.subsets
+[[], [0], [0, 1], [0, 2, 3], [0, 1, 2, 3]]
+>>> t.selected_names
+['size', 'east', 'west']
+```
+
+묶지 않으면 크기 2의 최선이 `size`와 `west`이고, AIC도 그 모형을 골라요. `north`와 `east`를 한 범주로 합친 모형이에요. 범주형 변수의 더미는 묶어서 넘기는 편이 해석하기 좋아요.
+
+```python
+>>> sd.regression.best_subset(price, df).selected_names
+['size', 'west']
+```
+
+`intercept=False`이고 `include`도 없으면 크기 0은 모수가 없는 모형이라 `subsets[0]`이 None, `values[0]`이 NaN이에요.
+
+```python
+>>> n0 = sd.regression.best_subset(y, X, intercept=False)
+>>> n0.subsets[0], n0.values.tolist()[0]
+(None, nan)
+```
+
+앞의 열들과 겹쳐서 모형에 아무것도 더하지 않는 열(예를 들어 `x1 + x2`인 열)이 든 부분집합은 후보가 아니에요. 열 하나짜리 항이면 그 열을 뺀 더 작은 부분집합이 같은 적합이니까요. 그래서 모든 열이 겹치지 않고 들어갈 수 없는 큰 크기는 None일 수 있어요.
+
+## 일반화 선형 모형
+
+`model='glm'`이면 모든 부분집합을 [`glm`](/api/regression/glm/)으로 적합하고 크기마다 기준이 가장 좋은 것을 골라요. 기준값은 그 열로 `glm`을 부른 `aic`·`bic`와 비트까지 같아요.
+
+```python
+>>> rg = sd.random.default_rng(0)
+>>> Xg = sd.stats.Normal().sample((80, 4), rng=rg)
+>>> eta = -0.3 + 1.0 * Xg[:, 0] - 0.7 * Xg[:, 2]
+>>> yg = sd.where(rg.random(80) < 1 / (1 + sd.exp(-eta)), 1.0, 0.0)
+>>> g = sd.regression.best_subset(yg, Xg, model='glm', family='binomial')
+>>> g.selected_names, g.subsets
+(['x1', 'x3'], [[], [0], [0, 2], [0, 2, 3], [0, 1, 2, 3]])
+>>> [round(v, 3) for v in g.values.tolist()]
+[112.854, 86.897, 83.15, 84.176, 86.173]
+>>> g.values.tolist()[2] == sd.regression.glm(yg, Xg[:, [0, 2]], family='binomial').aic
+True
+```
+
+분리되거나(`separation=True`) 수렴하지 않은(`converged=False`) 부분집합은 고르지 않고 `skipped`에 `SkippedSubset(columns, reason)`으로 남겨요. `columns`는 그 부분집합의 X에서의 열(`include` 포함), `reason`은 `'separation'` 또는 `'not converged'`예요. `'cv'`에서는 겹의 적합 하나라도 그러면 빠져요. 아래 자료는 `x1`의 부호가 y를 그대로 정해서, `x1`이 든 부분집합은 모두 분리돼요.
+
+```python
+>>> rs = sd.random.default_rng(3)
+>>> Xs = sd.stats.Normal().sample((30, 3), rng=rs)
+>>> ys = sd.where(Xs[:, 0] > 0, 1.0, 0.0)
+>>> sep = sd.regression.best_subset(ys, Xs, model='glm', family='binomial')
+>>> sep.subsets
+[[], [2], [1, 2], None]
+>>> for k in sep.skipped:
+...     print(k)
+SkippedSubset(columns=[0], reason='separation')
+SkippedSubset(columns=[0, 1], reason='separation')
+SkippedSubset(columns=[0, 2], reason='separation')
+SkippedSubset(columns=[0, 1, 2], reason='separation')
+>>> sep.selected_names
+[]
+```
+
+크기 3은 `x1`이 든 하나뿐이라 None이고, 결과는 절편만의 모형이에요. y를 완벽히 가르는 열이 오히려 빠졌으니, `skipped`가 비어 있지 않으면 빠진 부분집합을 꼭 살펴요.
+
+## 열 수와 시간
+
+부분집합의 수는 열 p개에 2ᵖ개라서 열이 늘면 빨리 커져요.
+
+- 선형 모형은 모든 부분집합을 하나씩 적합하지 않아요. 어떤 부분집합 묶음도 이미 찾은 최선보다 나을 수 없다는 것이 보이면 그 묶음을 통째로 건너뛰며 찾아요(leaps and bounds). 효과가 큰 열과 작은 열이 섞인 보통의 자료에서는 대부분을 건너뛰어 빨리 끝나요. 모든 열의 효과가 비슷한 자료에서는 건너뛸 곳이 적어서 시간이 열 수의 지수로 늘어요. `include` 밖의 항은 50개까지 받아요.
+- GLM은 모든 부분집합을 적합해요. `include` 밖의 항은 15개까지 받아요.
+
+```python
+>>> big = sd.stats.Normal().sample((60, 51), rng=sd.random.default_rng(0))
+>>> sd.regression.best_subset(sd.zeros(60), big)
+Traceback (most recent call last):
+    ...
+ValueError: best_subset(): model='ols' takes at most 50 terms outside 'include' (searches by leaps and bounds), not 51
+>>> sd.regression.best_subset(sd.zeros(60), sd.zeros((60, 16)), model='glm', family='gaussian')
+Traceback (most recent call last):
+    ...
+ValueError: best_subset(): model='glm' takes at most 15 terms outside 'include' (fits every subset), not 16
+```
+
+열이 아주 많으면 `include`로 꼭 넣을 열을 정하거나, `max_size`를 줄이거나, [`stepwise`](/api/regression/stepwise/)나 [`lasso_cv`](/api/regression/cross-validation/)를 써요.
+
+<Callout type="warn" title="고른 모형의 p값과 신뢰구간은 명목 수준을 지키지 않아요">
+`fit.pvalues`와 `fit.conf_int()`는 같은 자료로 모형을 고른 뒤의 값이라, 모형을 미리 정해 둔 경우보다 p값이 너무 작고 구간이 너무 좁아요. 모든 조합을 견주는 최량 부분집합 선택은 단계적 선택보다 더 많은 모형을 보므로 이 편향이 더 커질 수 있어요. 다중 검정 보정도 이 편향은 고치지 못해서 `best_subset`에는 보정 옵션이 없어요. 얼마나 어긋나는지는 [`stepwise`의 예](/api/regression/stepwise/)에 있어요.
+</Callout>
+
+## NaN
+
+- `'propagate'`(기본): y나 X(고르지 않을 열까지), 행마다의 옵션에 NaN이 있으면 찾지 않고 모든 열의 모형의 NaN 적합을 `fit`으로 둬요. `subsets`는 모두 None, `values`는 모두 NaN이에요.
+- `'omit'`: NaN이 있는 행을 처음에 한 번 빼요. 모든 부분집합과 `fit`이 같은 행을 써요(고른 열에 NaN이 없더라도 그 행을 뺀 적합이에요).
+- `'raise'`: `ValueError`예요.
+
+```python
+>>> Xn = X.copy()
+>>> Xn[3, 4] = float('nan')
+>>> e = sd.regression.best_subset(y, Xn)
+>>> e.subsets, e.selected_names
+([None, None, None, None, None, None], ['x1', 'x2', 'x3', 'x4', 'x5'])
+>>> m = sd.regression.best_subset(y, Xn, nan_policy='omit')
+>>> m.selected_names, m.fit.nobs
+(['x1', 'x2', 'x3'], 39.0)
+>>> sd.regression.best_subset(y, Xn, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: best_subset(): the input contains NaN (nan_policy='raise')
+```
+
+## 에러
+
+모형의 키워드, 배치, 열 지정의 규칙은 [`stepwise`](/api/regression/stepwise/)와 같아요.
+
+```python
+>>> sd.regression.best_subset(y, X, model='wls')
+Traceback (most recent call last):
+    ...
+TypeError: best_subset(): model='wls' needs the keyword argument 'weights' (an option of wls())
+>>> sd.regression.best_subset(y, X, criterion='pvalue')
+Traceback (most recent call last):
+    ...
+ValueError: best_subset(): 'criterion' must be 'aic', 'bic', 'cv', 'cp' or 'adjr2', not 'pvalue'
+>>> sd.regression.best_subset(y, X, max_size=-1)
+Traceback (most recent call last):
+    ...
+ValueError: best_subset(): 'max_size' must be >= 0
+>>> sd.regression.best_subset(sd.stack([y, y]), X)
+Traceback (most recent call last):
+    ...
+ValueError: best_subset(): takes one regression, not a batch of shape (2,)
+```
+
+결과는 읽기 전용이에요. `subsets`, `selected` 같은 목록 필드는 읽을 때마다 새 목록이고, `values`는 쓰기 금지 배열이에요.
+
+```python
+>>> b.values[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+## 정확도
+
+Arb(구간 산술)로 모든 부분집합의 우도와 기준값을 정의대로 계산한 참값과 견줬어요. 선형 넷(공선이 조금 있는 OLS, 가중치 0이 있는 WLS, 절편 없음, 조건수 약 2.3e5)의 문제에서 기준 다섯, GLM 셋(이항 logit, 포아송 log, 감마 log)의 문제에서 AIC·BIC의 크기마다의 최선과 고른 크기가 참값의 것과 같아요.
+
+- 크기마다의 AIC·BIC는 상대오차 2.5e-16 안이에요(조건수 2.3e5의 문제 포함). GLM은 후보가 `glm` 자체라서 그 적합의 `aic`·`bic`와 비트까지 같아요.
+- 수정 결정계수는 8.9e-16, Cp는 4.7e-15 안이에요.
+- 교차검증 오차는 조건이 좋은 문제에서 3.2e-16 안이고, 조건수 2.3e5의 문제에서 3e-12예요.
+
+어떻게 찾는지는 [구현: 변수 선택](/internals/regression/selection/)에 있어요.
+
+## R·statsmodels·scikit-learn을 아는 분께
+
+- **R leaps `regsubsets`**: 선형 모형의 `best_subset`은 `regsubsets(x, y, method = "exhaustive")`(기본 `nbest = 1`)과 같은 탐색이에요. 크기마다의 부분집합과 `summary()`의 `cp`, `adjr2`가 leaps와 같아요.
+  - `regsubsets`의 `nvmax`는 기본이 8이라 그보다 큰 크기는 찾지 않아요. 여기의 `max_size`는 기본이 모든 열이에요.
+  - `force.in`은 `include`예요. `force.out`은 없으니 그 열은 X에서 빼요.
+  - leaps의 `bic`는 n·log(RSS/RSS₀) + k·log n이라 여기의 BIC와 상수만큼 달라요. 같은 자료의 크기끼리는 차이가 같으므로 고르는 크기도 같아요.
+  - leaps는 크기마다의 최선만 주고 크기를 고르는 것은 사용자에게 맡겨요. 여기는 `criterion`으로 크기까지 골라 `fit`을 돌려줘요.
+  - leaps도 큰 문제에서는 `really.big = TRUE`를 요구하고, 효과가 고른 자료에서 시간이 열 수의 지수로 느는 것도 같아요.
+  - leaps는 lm만 다뤄요. GLM의 최량 부분집합(여기의 `model='glm'`)은 R에서 다른 꾸러미(`bestglm` 등)를 써야 해요.
+  - R `regsubsets`의 `weights`는 가중 최소제곱이라 `model='wls', weights=...`와 같은 뜻이에요.
+- **statsmodels**: 최량 부분집합 함수가 없어서 `itertools.combinations`로 조합마다 `sm.OLS(...).fit()`을 부르는 반복을 직접 써야 해요. 그 반복의 가장 좋은 결과가 여기의 `fit`(`OLSResult`, `GLMResult` 등)에 해당하고, 필드 이름은 statsmodels와 같아요.
+- **scikit-learn**: 최량 부분집합 선택이 없어요. `SequentialFeatureSelector`는 단계적 선택이라 [`stepwise`](/api/regression/stepwise/)의 `criterion='cv'`에 해당해요. 여기의 `'cv'`처럼 겹마다 크기마다의 최선을 다시 찾는 교차검증도 직접 짜야 해요.

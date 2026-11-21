@@ -3,7 +3,7 @@ title: 회귀 영역의 구조
 group: 구조
 order: 1
 summary: sd.regression 전체의 지도예요. 입력 정리와 결과 객체는 Python이, 회귀 하나의 계산은 C++ 커널이 맡고, 모든 모형이 최소제곱을 한 핵심에서 풀어서 겹친 열의 판정이 모형마다 같아요.
-seeAlso: [least-squares, inference, glm, penalized, robust, slopes, quantile, nls, accuracy-performance]
+seeAlso: [least-squares, inference, glm, penalized, robust, slopes, quantile, nls, tests, diagnostics, selection, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -12,7 +12,7 @@ import Layers from '../../../components/fig/Layers.astro';
 
 ## 한눈에 보기
 
-`sd.regression`에는 함수 17개가 있어요.
+`sd.regression`에는 함수 20개가 있고, 검정과 진단은 결과의 메서드와 속성이에요.
 
 | 묶음 | 함수 | 커널 | 파일 |
 |---|---|---|---|
@@ -23,8 +23,11 @@ import Layers from '../../../components/fig/Layers.astro';
 | 기울기 | `theilslopes`, `siegelslopes` | `slopes` | `csrc/regression/slopes.cpp` |
 | 분위 | `quantreg` | `quantreg_fit` | `csrc/regression/quantile.cpp` |
 | 비선형 | `nls` | `lsq_solve`(`stardust._core.optimize`) | `csrc/optimize/lsq.cpp` |
+| 검정과 모형 비교 | `anova`, 결과의 `t_test`, `wald_test`, `compare_f_test`, `compare_lr_test` | `fit`(`thin_q` 방식), `apply`, `glm_fit` | `csrc/regression/linear.cpp`, `glm.cpp` |
+| 진단 | 결과의 `vif`, `dffits`, `dfbetas`, `wresid`, `white_test`, `goldfeld_quandt`, `reset_test`, GLM의 `leverage`, `cooks_distance`, `dffits`, `dfbetas` | `fit`(`hat_only`, `thin_q` 방식) | `csrc/regression/linear.cpp` |
+| 변수 선택 | `stepwise`, `best_subset` | `select_qr`, `select_merge`, `select_eval`, `select_subsets`(GLM 후보는 `glm_fit`) | `csrc/regression/select.cpp` |
 
-nls 말고는 커널이 모두 `stardust._core.regression` 아래에 있고, `csrc/bind/regression_bind.cpp`가 파일마다 하나씩인 `bind_*` 함수를 불러 등록해요. nls는 `sd.optimize`의 [`least_squares`](/api/optimize/least_squares/)와 같은 커널 `stardust._core.optimize.lsq_solve`를 써요([최소제곱의 구현](/internals/optimize/least-squares/)).
+nls 말고는 커널이 모두 `stardust._core.regression` 아래에 있고, `csrc/bind/regression_bind.cpp`가 파일마다 하나씩인 `bind_*` 함수를 불러 등록해요. 검정과 진단은 따로 커널을 두지 않고 선형·GLM의 커널을 다른 방식으로 다시 불러요. `select.cpp`의 `bind_select`는 `bind_linear`가 불러요. nls는 `sd.optimize`의 [`least_squares`](/api/optimize/least_squares/)와 같은 커널 `stardust._core.optimize.lsq_solve`를 써요([최소제곱의 구현](/internals/optimize/least-squares/)).
 
 이 영역의 뼈대는 여섯 가지예요.
 
@@ -87,6 +90,9 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
 | Theil–Sen과 Siegel의 정확한 중앙값 | [쌍 기울기](/internals/regression/slopes/) |
 | Frisch–Newton 내부점법, Barrodale–Roberts 심플렉스, 표준오차 | [분위 회귀](/internals/regression/quantile/) |
 | LM과 TRF, 차분 간격, 가우스–뉴턴 다듬기 | [비선형 최소제곱](/internals/regression/nls/) |
+| 선형 가설 Rβ = q, 내포 모형의 비교와 그 검사, 분산분석표 Type I·III | [검정과 모형 비교](/internals/regression/tests/) |
+| VIF, DFFITS·DFBETAS, GLM의 영향력, White·Goldfeld–Quandt·RESET | [진단 추가](/internals/regression/diagnostics/) |
+| stepwise의 걸음, 삼각 인자 하나에서 구하는 후보의 기준값, leaps and bounds, 교차검증의 겹, GLM 후보 | [변수 선택](/internals/regression/selection/) |
 | 참값, 영역 전체의 정확도 표와 속도 표 | [정확도와 성능](/internals/regression/accuracy-performance/) |
 
 ## 층과 파일
@@ -102,7 +108,10 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
           { name: '_glm.py', note: 'glm과 GLMResult: 분포족·링크 이름, 가중치와 trials, 척도' },
           { name: '_penalized.py', note: 'ridge, lasso, elastic_net, 교차검증, penalized_glm. 결과는 _PenalizedResult(추론 없음)' },
           { name: '_robust.py · _quantile.py · _nls.py', note: 'rlm과 Theil–Sen·Siegel, quantreg, nls(사용자 함수의 호출, 해의 야코비안은 optimize/_diff.py의 Differences)' },
-          { name: '../_results.py', note: 'namedtuple: LinregressResult, JarqueBeraResult, BreuschPaganResult, TheilslopesResult, SiegelslopesResult' },
+          { name: '_tests.py', note: 't_test, wald_test, compare_f_test, compare_lr_test, anova와 그 결과 클래스(htest의 결과 바탕 위). 결과의 메서드가 여기 함수를 불러요' },
+          { name: '_diagnostics.py', note: 'VIF, DFBETAS, White·Goldfeld–Quandt·RESET, GLM의 영향력. 적합의 QR(thin_q 방식)에서 구해요' },
+          { name: '_select.py', note: 'stepwise, best_subset과 StepwiseResult, BestSubsetResult. 선형 후보의 평가(_Linear)와 GLM 후보의 배치 적합(_GLM)' },
+          { name: '../_results.py', note: 'namedtuple: LinregressResult, BreuschPaganResult, TheilslopesResult, SiegelslopesResult' },
         ],
       },
       {
@@ -119,6 +128,7 @@ array([ 0.07054680610666837, 0.018633899812498265,  0.06364688465216445], dtype=
           { name: 'linear.cpp', note: 'lsq::fit_one의 본체, apply(Xβ와 y − Xβ), cond, resid_stats' },
           { name: 'glm.cpp · penalized.cpp · robust.cpp', note: 'IRLS, 좌표 하강과 ridge의 SVD, M·MM 추정' },
           { name: 'quantile.cpp · slopes.cpp', note: '내부점법과 심플렉스, 쌍 기울기의 선택' },
+          { name: 'select.cpp', note: '변수 선택의 삼각 인자(select_qr, select_merge), 후보의 갱신(select_eval), leaps and bounds(select_subsets)' },
         ],
       },
       {
@@ -149,7 +159,12 @@ Python 층의 결과 클래스는 두 갈래예요.
 - 추론이 있는 결과는 `_RegressionResult`를 이어받아요. 계수의 추론(`bse`, `tvalues`, `pvalues`, `conf_int`), 새 X의 설계 검사, 예측 $X_{\text{new}}\beta$와 평균의 구간(`_xbeta`, `_interval`)이 여기 있어서, `predict`와 `predict_interval`은 모든 결과에서 같은 규칙을 따라요. `OLSResult`, `WLSResult`, `GLSResult`는 그 아래 `_LinearResult`(제곱합, R², 정보 기준, F, 진단, `summary`)를 거치고, `GLMResult`, `RLMResult`, `QuantRegResult`, `NLSResult`는 바로 이어받아요.
 - 예측 중심의 결과(`RidgeResult`, `LassoResult`, `ElasticNetResult`, 교차검증의 결과, `PenalizedGLMResult`)는 `_PenalizedResult`를 이어받아요. 표준오차와 p값이 없어요.
 
-`linregress`, `theilslopes`, `siegelslopes`의 결과와 `jarque_bera()`, `breusch_pagan()`의 결과는 scipy·statsmodels처럼 namedtuple이에요.
+모형이 아닌 결과는 따로예요.
+
+- 검정의 결과(`TTestResult`, `WaldTestResult`, `CompareFTestResult`, `CompareLRTestResult`, `AnovaResult`, `WhiteTestResult`, `GoldfeldQuandtResult`, `ResetTestResult`)는 htest의 결과 바탕 위의 읽기 전용 클래스예요. statsmodels가 튜플을 돌려주는 곳(`white_test()`, `goldfeld_quandt()`, `compare_f_test()`, `compare_lr_test()`)만 같은 개수로 풀려요. `jarque_bera()`의 결과는 htest의 `JarqueBeraResult` 그대로예요.
+- 변수 선택의 결과 `StepwiseResult`, `BestSubsetResult`는 고른 열과 모형 함수의 결과(`fit`)를 담은 읽기 전용 클래스이고, 걸음과 건너뛴 후보는 namedtuple(`SelectionStep`, `SkippedFit`, `SkippedSubset`)이에요.
+
+`linregress`, `theilslopes`, `siegelslopes`의 결과와 `breusch_pagan()`의 결과는 scipy·statsmodels처럼 namedtuple이에요.
 
 ## 입력 정리
 
@@ -326,7 +341,7 @@ enum Stat : int {
 
 - 커널이 낸 그대로: `params`, `fittedvalues`, `resid`, `nobs`, `rank`, `ssr`, `centered_tss`, `uncentered_tss`. 선형 모형을 2의 거듭제곱으로 척도를 바꿔 적합했으면, 계수·적합값·잔차는 결과를 만들 때 데이터의 단위로 돌려놓고, 제곱합은 읽을 때 $f_y^2$를 한 번 곱해요(정확한 곱이에요).
 - 처음 읽을 때 sd 배열 연산과 sd.stats로 계산: `scale`, `cov_params()`, `bse`, `tvalues`, `pvalues`, `rsquared`, `rsquared_adj`, `llf`, `aic`, `bic`, `fvalue`, `f_pvalue`. `_cached(name, make)`가 계산한 값을 `_cache`에 남겨요(statsmodels의 `cache_readonly`와 같은 방식). p값은 `sd.stats.StudentT`와 `sd.stats.F`의 `ccdf`, 구간은 `iccdf`예요.
-- 처음 읽을 때 커널을 다시 불러서 계산: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`, `breusch_pagan()`, `condition_number`. 결과는 커널에 준 입력을 `_fitargs`에 보관했다가 그대로 다시 넘겨요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때마다 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로, 필요할 때 따로 불러요([추론과 진단](/internals/regression/inference/)).
+- 처음 읽을 때 커널을 다시 불러서 계산: `leverage`(지렛대), `durbin_watson`, `jarque_bera()`(htest의 커널), `breusch_pagan()`, `condition_number`, `vif`, `dffits`, `dfbetas`. 검정 메서드 가운데 `white_test()`는 `cross_terms`마다 캐시에 남기고, `goldfeld_quandt()`, `reset_test()`는 부를 때마다 계산해요. 결과는 커널에 준 입력을 `_fitargs`에 보관했다가 그대로 다시 넘겨요. 지렛대는 같은 커널의 `hat_only` 방식이 적합과 같은 열 선택과 같은 QR로 얇은 Q를 만들어 구해요. 적합할 때마다 Q를 만들면 모든 적합이 QR 한 번 꼴의 비용을 더 내므로, 필요할 때 따로 불러요([추론과 진단](/internals/regression/inference/)).
 
 ```python
     def _cached(self, name, make):
@@ -341,11 +356,7 @@ enum Stat : int {
 캐시에 남기는 값과 커널이 낸 배열(`_RegressionResult.__init__`이 `raw`의 모든 배열에)은 `_ro`를 거쳐요. `_ro`는 배열을 복사하지 않고 그 자리에서 쓰기 금지로 표시해요. 그 배열로 나중에 만든 뷰도 쓰기 금지예요. 그래서 사용자가 돌려받은 `params`나 `bse`를 고쳐 나중에 계산하는 t, 구간, `predict`가 바뀌는 일이 없고, 복사 비용도 들지 않아요. 부를 때마다 새로 계산하는 메서드(`conf_int()`, `predict()`)의 결과는 캐시를 거치지 않으니 보통 배열이에요.
 
 ```python
-def _ro(v):
-    """v as a result keeps and gives it (API.md §2): an sd.ndarray is made read-only in
-    place (no copy; views made from it later are read-only too), so that changing a returned
-    field cannot change the fields computed from it later; a tuple's arrays too (a cached pair,
-    a result namedtuple). Other values pass."""
+    # src/stardust/regression/_linear.py (_ro)
     if isinstance(v, _sd.ndarray):
         v._set_readonly()
     elif isinstance(v, tuple):

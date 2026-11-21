@@ -4,7 +4,7 @@ title: 결과 객체 읽기
 group: 기본 개념
 order: 2
 summary: 회귀 함수가 돌려주는 결과 객체의 필드를 하나씩 읽는 법을 설명해요. 계수와 표준오차, p값, 결정계수, 예측을 결과에서 어떻게 꺼내고 어떻게 해석할지 알고 싶을 때 봐요.
-seeAlso: [basics, covariance, collinearity, ols, diagnostics]
+seeAlso: [basics, covariance, collinearity, ols, diagnostics, hypothesis-tests]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -178,6 +178,13 @@ p값은 자유도 `df_resid_inference`인 [t 분포](/api/stats/student-t/)의 �
 >>> T = sd.stats.StudentT(df=r.df_resid_inference)
 >>> 2 * T.ccdf(abs(r.tvalues[2])) == r.pvalues[2]
 True
+```
+
+`pvalues`는 "계수가 0인가"만 물어요. "기온의 효과가 3인가", "두 계수가 같은가"처럼 다른 값이나 계수의 조합을 물으려면 [`t_test`](/api/regression/hypothesis-tests/)를 써요. 계수 자리에 곱할 수를 적은 줄과 오른쪽 값 `q`로 가설을 줘요.
+
+```python
+>>> r.t_test([0, 1, 0], q=3.0).pvalue
+0.9926222694587028
 ```
 
 ## 신뢰구간: conf_int
@@ -370,6 +377,8 @@ True
 
 절편만 있는 모형은 검정할 계수가 없어서 둘 다 NaN이에요. 반응이 모두 같아서 TSS가 0일 때도 둘 다 NaN이에요(위의 `rc`). 강건 표준오차(`cov_type`)를 쓰면 `fvalue`는 그 공분산으로 만든 Wald 검정의 F예요([표준오차의 종류](/api/regression/covariance/)).
 
+계수 전부가 아니라 몇 개만 한꺼번에 검정하려면 [`wald_test`](/api/regression/hypothesis-tests/#wald_test-여러-줄을-한꺼번에)를 써요. 절편을 뺀 모든 계수를 주면 `fvalue`와 같은 값이에요.
+
 ## 로그우도와 정보 기준
 
 - `llf`: 오차가 정규분포라고 볼 때 데이터의 **로그우도**의 최댓값이에요. 클수록 모형이 데이터를 잘 설명해요. 선형 모형에서는 $-\tfrac{n}{2}\left(\log 2\pi + \log(\text{ssr}/n) + 1\right)$이에요.
@@ -383,6 +392,13 @@ True
 ```
 
 기온만 쓴 모형 `r1`의 AIC와 BIC가 더 작아요. 강수량은 넣을 값어치가 없다는 판단이에요.
+
+AIC와 BIC는 검정이 아니라서 p값을 주지 않아요. 작은 모형이 큰 모형의 열 일부만 쓴 것이면, 빠진 열이 필요한지를 [모형 비교](/api/regression/model-comparison/)의 F 검정이나 우도비 검정으로 물을 수 있어요. 큰 모형에서 부르고 작은 모형을 넘겨요. 모형 여럿을 한 표로 견주려면 [`anova`](/api/regression/anova/)를 써요.
+
+```python
+>>> r.compare_f_test(r1)
+CompareFTestResult(fvalue=0.00856423, pvalue=0.92695, df_num=1, df_denom=27)
+```
 
 ## 관측 수와 자유도
 
@@ -643,12 +659,16 @@ True
 | `rsquared_adj`, `ess`, `centered_tss`, `uncentered_tss`, `fvalue`, `f_pvalue` | ○ | | | | | |
 | `llf`, `aic`, `bic` | ○ | ○ | | | ○ | |
 | `scale` | ○ | ○ | ○ | | ○ | |
+| `t_test()`, `wald_test()` | ○ | ○ | ○ | ○ | ○ | |
+| `compare_f_test()` | ○ | 척도를 추정할 때 | | | | |
+| `compare_lr_test()` | ○ | ○ | | | | |
 
 - GLM(`GLMResult`)은 잔차가 네 가지(`resid_response`, `resid_pearson`, `resid_deviance`, `resid_working`)라서 `resid`가 없어요. R² 대신 편차(`deviance`, `null_deviance`), 우도비(`llr`), 의사 결정계수 `pseudo_rsquared()`가 있어요. [glm](/api/regression/glm/)을 보세요.
 - RLM(`RLMResult`)의 `scale`은 오차 분산이 아니라 강건한 척도(표준편차의 단위)예요. OLS·GLM·NLS의 `scale`은 분산(제곱의 단위)이라서, 같은 데이터면 RLM의 `scale`은 그 제곱근에 견줄 값이에요. 관측마다의 무게 `weights`가 있어요. [rlm](/api/regression/rlm/)을 보세요.
 - QuantReg(`QuantRegResult`)는 R² 대신 `prsquared`, 목적함수 `objective`가 있어요. [quantreg](/api/regression/quantreg/)을 보세요.
 - NLS(`NLSResult`)의 `param_names`는 모형 함수의 인자 이름이에요. [nls](/api/regression/nls/)를 보세요.
 - 정규화(`RidgeResult`, `LassoResult`, `ElasticNetResult`와 교차검증 결과, `PenalizedGLMResult`)는 예측이 목적이라 표준오차·p값·구간과 `summary()`가 없어요. `resid`, `ssr`, `rsquared`는 선형(`ridge`, `lasso`, `elastic_net`)에만 있고, `penalized_glm`은 `resid_response`와 편차를 줘요. [ridge](/api/regression/ridge/)를 보세요.
+- 검정 메서드는 계수의 일차식을 검정하는 `t_test()`·`wald_test()`([선형 가설 검정](/api/regression/hypothesis-tests/))와 내포 모형 둘을 견주는 `compare_f_test()`·`compare_lr_test()`([모형 비교](/api/regression/model-comparison/))예요. `compare_f_test()`는 GLM에서 척도를 추정할 때(기본값의 정규·감마 등)만 써요. 분산분석표는 메서드가 아니라 함수 [`anova`](/api/regression/anova/)이고 OLS·WLS·GLS·GLM의 결과를 받아요.
 - `linregress`, `theilslopes`, `siegelslopes`의 결과는 이름 붙은 튜플이에요. 필드는 [linregress](/api/regression/linregress/), [theilslopes](/api/regression/theilslopes/), [siegelslopes](/api/regression/siegelslopes/)에 있어요.
 
 ```python
@@ -687,5 +707,6 @@ True
 - 강건 공분산(`cov_type='HC3'` 등)에서 statsmodels의 기본은 p값과 구간을 정규분포로 계산해요(`use_t=False`). 여기서는 늘 t 분포예요. statsmodels의 `fit(cov_type=..., use_t=True)`와 같은 값이에요([표준오차의 종류](/api/regression/covariance/)).
 - `summary()`의 꼴은 statsmodels의 OLS summary와 같지만 날짜와 시각 줄이 없어요.
 - 진단 필드(`leverage`, `cooks_distance` 등)는 statsmodels처럼 `get_influence()`를 거치지 않고 결과에서 바로 읽어요([회귀 진단](/api/regression/diagnostics/)). statsmodels는 모형이 들고 있는 설계 행렬로 나중에 계산해서, 적합 뒤에 그 배열을 고치면 진단 값이 바뀌어요. 여기서는 적합할 때 복사해 둔 값으로 계산해요.
+- statsmodels 결과의 `t_test`, `f_test`, `compare_f_test`, `compare_lr_test`는 같은 이름의 메서드(`f_test`는 `wald_test`)이고, `anova_lm`은 함수 [`anova`](/api/regression/anova/)예요. 가설은 공식 문자열이 아니라 행렬로 줘요([선형 가설 검정](/api/regression/hypothesis-tests/)).
 - 반응이 모두 같으면 statsmodels는 R²와 수정 결정계수에 −inf, F에 음수 같은 반올림의 값을 내요. 여기서는 `rsquared`, `rsquared_adj`, `fvalue`, `f_pvalue`가 NaN이고 `ess`는 0이에요.
 - statsmodels의 `predict`는 pandas `DataFrame`을 받아도 컬럼 이름을 보지 않고 위치로 곱해서, 순서가 다르면 에러 없이 다른 값을 내요. 여기서는 둘 다 `DataFrame`이면 이름과 순서를 확인해요. `X_new`의 inf도 statsmodels는 inf 예측을 내지만 여기서는 `ValueError`예요.

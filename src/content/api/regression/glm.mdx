@@ -81,7 +81,7 @@ params:
     desc: "NaN을 다루는 방법. 'propagate'(기본값, 그 회귀의 모든 값이 NaN), 'omit'(NaN이 있는 행을 빼요), 'raise'(ValueError) 중 하나예요."
 returns:
   type: GLMResult
-  desc: "적합 결과. params, bse, tvalues, pvalues, conf_int(), cov_params(), fittedvalues(μ), linear_predictor(η), 잔차 네 가지, deviance, null_deviance, pearson_chi2, scale, llf, llnull, llr, aic, bic, converged, n_iter, separation 등을 담고, pseudo_rsquared, predict, predict_interval, summary 메서드가 있어요. 회귀 하나의 스칼라는 Python 수, 배치면 배열이에요."
+  desc: "적합 결과. params, bse, tvalues, pvalues, conf_int(), cov_params(), fittedvalues(μ), linear_predictor(η), 잔차 네 가지, deviance, null_deviance, pearson_chi2, scale, llf, llnull, llr, aic, bic, converged, n_iter, separation, 영향력(leverage, cooks_distance, dffits, dfbetas) 등을 담고, pseudo_rsquared, predict, predict_interval, summary 메서드가 있어요. 회귀 하나의 스칼라는 Python 수, 배치면 배열이에요."
 raises:
   - type: TypeError
     desc: family를 주지 않았을 때, 옵션을 위치로 줬을 때, y나 X가 복소수일 때, link가 문자열이 아닐 때, max_iter가 int가 아닐 때, scale·tol이 수가 아닐 때.
@@ -274,7 +274,7 @@ ValueError: glm(): 'y' must be > 0 for the gamma family
 6.0
 ```
 
-그래도 선형 회귀라면 `ols`를 쓰세요. `ols`에는 R², F 검정, 관측의 예측구간(`kind='observation'`), 회귀 진단(지렛대, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan)이 있고, `glm`에는 없어요. `glm`의 gaussian은 `link='log'`처럼 평균은 곱셈으로 변하지만 흩어짐은 고른 자료에 쓸모 있어요.
+그래도 선형 회귀라면 `ols`를 쓰세요. `ols`에는 R², F 검정, 관측의 예측구간(`kind='observation'`), Durbin–Watson, Jarque–Bera, Breusch–Pagan, VIF 같은 진단과 [분산과 모형 형태 검정](/api/regression/specification-tests/)이 있고, `glm`에는 없어요. 지렛대, Cook 거리, DFFITS, DFBETAS는 둘 다 있고 값이 반올림 수준에서 같아요([영향력](#영향력-적합을-좌우하는-행)). `glm`의 gaussian은 `link='log'`처럼 평균은 곱셈으로 변하지만 흩어짐은 고른 자료에 쓸모 있어요.
 
 ## 인자
 
@@ -512,6 +512,7 @@ ValueError: glm(): 'tol' must be a finite number > 0
 | `df_model`, `df_resid` | 모형의 자유도(rank − 절편 수), 잔차의 자유도(nobs − rank). |
 | `rank` | 겹치지 않고 남은 열 수(절편 포함). |
 | `condition_number` | 마지막 가중치로 가중한 설계 $\sqrt{W}X$(절편 열 포함)의 조건수. |
+| `leverage`, `cooks_distance`, `dffits`, `dfbetas` | 행마다의 영향력(아래 [영향력](#영향력-적합을-좌우하는-행)). |
 | `converged`, `n_iter` | 수렴했는지, 반복 횟수. |
 | `separation` | 최대우도 추정값이 없는 분리인지(아래). |
 | `param_names` | 계수 이름. 절편 `'const'`, frame이면 컬럼 이름, 그 밖에는 `'x1'`…`'xk'`. |
@@ -711,6 +712,112 @@ array([[ 1.016614064937593, 1.1904090447001583]], dtype=float64)
 ```
 
 `ols`의 `kind='observation'`처럼 새 관측 하나가 떨어질 범위를 내는 옵션은 `glm`에 없어요. 이 구간은 언제나 평균 $\mu$의 구간이에요.
+
+## 영향력: 적합을 좌우하는 행
+
+몇 개의 행이 적합을 혼자 좌우하지 않는지 보는 값 네 가지가 결과의 필드로 있어요. 뜻은 [`ols`의 회귀 진단](/api/regression/diagnostics/#영향력이-큰-점)과 같고, GLM에 맞게 두 가지를 바꿔요.
+
+- 행마다의 무게: GLM은 행마다 분산이 다르니, 적합한 평균에서 정해지는 행의 무게 $W_i$로 가중한 설계 $\sqrt{W}X$에서 구해요. $W_i$는 그 행이 계수에 주는 정보의 몫이에요(가중치가 있으면 그것도 곱해요).
+- 잔차: Pearson 잔차 $e_i$(`resid_pearson`)를 써요.
+
+| 필드 | 모양 | 뜻 |
+|---|---|---|
+| `leverage` | (n,) | 지렛대 $h_i$: $\sqrt{W}X$의 모자 행렬의 대각 원소. 모두 더하면 `rank`예요. |
+| `cooks_distance` | (n,) | Cook 거리 $\dfrac{e_i^2\, h_i}{\phi\cdot \text{rank}\cdot(1 - h_i)^2}$ ($\phi$는 `scale`) |
+| `dffits` | (n,) | $\dfrac{e_i\sqrt{h_i}}{s_{(i)}(1 - h_i)}$ |
+| `dfbetas` | (n, k) | 행 $i$를 뺄 때 계수 $j$의 변화를 $s_{(i)}\sqrt{[(X^\top W X)^{-1}]_{jj}}$로 나눈 값 |
+
+$s_{(i)}$는 척도를 어떻게 정하는지에 달려요. 척도를 추정하면(gaussian, gamma, `scale='X2'`·`'dev'`) 행 $i$를 뺀 Pearson 척도의 제곱근이고, 고정이면(binomial, poisson, 수로 준 `scale`) $\sqrt{\phi}$예요. `dfbetas`의 "계수의 변화"는 행을 빼고 반복을 다시 돌린 값이 아니라, 마지막 무게를 그대로 두고 한 걸음만 옮긴 근사예요. 척도가 고정이면 그 변화를 `bse`로 나눈 값이에요.
+
+앞의 포아송 예에서 볼게요. 마지막 두 행(x = 8의 22건, x = 9의 9건)이 적합값(13.1, 16.6)에서 크게 벗어나 있어요.
+
+```python
+>>> [round(v, 3) for v in p.leverage.tolist()]
+[0.199, 0.189, 0.173, 0.152, 0.13, 0.114, 0.116, 0.156, 0.268, 0.502]
+>>> round(sum(p.leverage.tolist()), 12), p.rank
+(2.0, 2)
+>>> [round(v, 3) for v in p.cooks_distance.tolist()]
+[0.0, 0.356, 0.14, 0.236, 0.267, 0.131, 0.316, 0.197, 1.535, 3.491]
+>>> [round(v, 2) for v in p.dffits.tolist()]
+[0.02, -0.84, 0.53, -0.69, 0.73, -0.51, 0.8, -0.63, 1.75, -2.64]
+>>> p.dfbetas[9]
+array([ 1.127390439497475, -1.9341036129695472], dtype=float64)
+```
+
+마지막 행의 Cook 거리 3.49가 다른 행보다 훨씬 커요. `x`가 가장 큰 끝이라 지렛대도 0.5로 가장 크고, 9건은 적합값 16.6보다 한참 적어요. `dfbetas`의 기울기 칸 −1.93은 그 행이 기울기를 표준오차의 1.9배쯤 끌어내린다는 뜻이에요. 실제로 그 행을 빼고 다시 맞추면 그 변화는 표준오차의 1.84배예요. 한 걸음 근사라 다시 맞춘 값과 조금 달라요.
+
+```python
+>>> p9 = sd.regression.glm(yp[:9], xp[:9], family='poisson')
+>>> [round(v, 2) for v in ((p.params - p9.params) / p.bse).tolist()]
+[1.14, -1.84]
+```
+
+### 척도와 영향력
+
+척도가 크면 같은 잔차도 덜 이상한 값이에요. 준포아송(`scale='X2'`, 척도 3.29)으로 맞추면 Cook 거리가 척도만큼 작아지고, `dffits`도 행을 뺀 척도로 나누니 작아져요.
+
+```python
+>>> [round(v, 3) for v in q.cooks_distance.tolist()]
+[0.0, 0.108, 0.042, 0.072, 0.081, 0.04, 0.096, 0.06, 0.466, 1.06]
+>>> round(q.dffits[9], 3)
+-1.586
+```
+
+### 지렛대는 적합한 평균에도 달려요
+
+`ols`의 지렛대는 설명변수만 봐요. GLM의 지렛대는 행의 무게 $W_i$가 들어가서, 적합한 평균에도 달려요. 로지스틱 회귀에서는 적합한 확률이 0이나 1에 가까운 행의 무게 $\mu(1-\mu)$가 작아서, `x`가 끝에 있어도 지렛대가 작아요. 위의 합격 자료에서 지렛대가 가장 큰 행은 확률이 0.5 근처인 가운데(3.5–4시간)이고, 끝의 5.5시간은 0.054예요.
+
+```python
+>>> [round(v, 3) for v in r.leverage.tolist()]
+[0.073, 0.084, 0.094, 0.102, 0.106, 0.107, 0.107, 0.104, 0.099, 0.097, 0.1, 0.108, 0.118, 0.126, 0.126, 0.118, 0.107, 0.093, 0.079, 0.054]
+>>> [round(v, 3) for v in r.cooks_distance.tolist()]
+[0.002, 0.003, 0.004, 0.007, 0.011, 0.016, 0.283, 0.022, 0.122, 0.044, 0.058, 0.105, 0.033, 0.27, 0.012, 0.007, 0.005, 0.003, 0.001, 0.0]
+```
+
+Cook 거리가 큰 두 행은 1.75시간에 붙은 학생과 3.5시간에 떨어진 학생이에요. 모형의 예측과 반대로 나온 행이에요.
+
+### 빈도 가중치의 뜻
+
+`freq_weights`가 $f_i$인 행은 같은 관측 $f_i$개를 묶은 것이라, 영향력도 그 $f_i$개를 한꺼번에 뺀 것이에요. 그래서 행을 반복한 자료에서 사본 하나의 값과 달라요. 지렛대는 사본 하나의 $f_i$배이고, Cook 거리는 사본 하나를 뺄 때보다 훨씬 커요.
+
+```python
+>>> fa = sd.regression.glm(yw, xw, family='gamma', link='log', freq_weights=f)
+>>> fb = sd.regression.glm(yr, xr, family='gamma', link='log')
+>>> round(fa.leverage[0], 4), round(fb.leverage[0], 4), round(3 * fb.leverage[0], 4)
+(0.7282, 0.2427, 0.7282)
+>>> round(fa.cooks_distance[0], 3), round(fb.cooks_distance[0], 3)
+(9.025, 0.129)
+```
+
+첫 행(`f` = 3)을 통째로 빼는 영향은 9.0으로 아주 크지만, 반복한 자료의 사본 하나를 빼는 영향은 0.13이에요. 같은 관측 셋 가운데 하나가 빠져도 나머지 둘이 그 자리를 지키기 때문이에요. 어느 쪽이 궁금한지에 따라 자료를 주는 꼴을 골라요.
+
+가중치(`var_weights` × `freq_weights` × `trials`)가 0인 행은 적합에 쓰이지 않으니 네 값이 모두 0이에요.
+
+### 특수한 경우의 영향력
+
+- **정규분포·identity 링크**: `ols`의 `leverage`, `cooks_distance`, `dffits`, `dfbetas`와 반올림 수준에서 같아요.
+- **분리**: 계수가 없으니 네 값 모두 NaN이에요.
+- **완전 적합**: 척도를 추정하는 분포족에서 척도가 0이면 Cook 거리, `dffits`, `dfbetas`가 NaN이에요(0 ÷ 0). `leverage`는 그대로예요. 척도가 고정이고 잔차가 모두 0이면(상수 y의 포아송) 0이에요.
+- **겹친 열**: 그 열을 뺀 적합의 값과 같고, `dfbetas`의 그 열은 NaN이에요.
+- **NaN**(`nan_policy='propagate'`): 네 값 모두 NaN이에요.
+- **배치**: 행마다의 값은 (배치, n), `dfbetas`는 (배치, n, k)예요.
+
+```python
+>>> gx = sd.regression.glm(y, x, family='gaussian')
+>>> ox = sd.regression.ols(y, x)
+>>> max(abs(u - v) for u, v in zip(gx.dffits.tolist(), ox.dffits.tolist())) < 1e-13
+True
+>>> s = sd.regression.glm([0, 0, 0, 0, 0, 1, 1, 1, 1, 1], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0], family='binomial')
+>>> s.leverage[:3], s.cooks_distance[:3]
+(array([nan, nan, nan], dtype=float64), array([nan, nan, nan], dtype=float64))
+>>> pf = sd.regression.glm([1 + 2 * v for v in x], x, family='gaussian')
+>>> round(pf.leverage[0], 4), pf.cooks_distance[:3]
+(0.4167, array([nan, nan, nan], dtype=float64))
+>>> sd.regression.glm([3.0] * 8, x, family='poisson').cooks_distance.tolist()
+[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+```
+
+`dfbetas`는 첫 축이 행, 둘째 축이 계수(절편이 `[:, 0]`)예요. 지렛대, Cook 거리와 함께 영향력을 읽는 법과 어림 기준은 [회귀 진단](/api/regression/diagnostics/#영향력이-큰-점)에 있어요.
 
 ## 특수한 경우
 
@@ -953,6 +1060,7 @@ array([  0.668284190716704, 0.23758513873909173], dtype=float64)
 - 계수는 Arb(구간 산술)로 만든 참값과 견줘, 분포족·링크 12가지와 가중치·시행 수·노출·절편 없음·`scale='dev'`의 문제에서 상대오차(노름)가 1.1e-16 이하예요. 표준오차·편차·Pearson χ²·로그우도·강건 표준오차는 1e-15 안, p값은 2e-13 안이에요.
 - 설계가 나쁜 조건일 때(가중한 설계 $\sqrt{W}X$의 조건수 κ): 정준 링크(로지스틱, 포아송 log)는 κ ≤ 10¹⁰에서 1.3e-15, 10¹²에서 9e-12예요. 정준이 아닌 링크(probit, cloglog, 이항 log, 포아송 identity·sqrt, 감마 log·identity, 정규 log)는 κ ≤ 10⁸에서 3.5e-15, 10¹⁰에서 4e-14예요.
 - 표준오차는 상대오차가 κ × 2.2e-16 정도예요.
+- 영향력(Cook 거리, `dffits`, `dfbetas`)은 Arb(구간 산술)로 만든 참값과 견줘, 이항 logit·probit, 포아송 log, 감마 log의 문제에서 상대오차가 1.2e-13 안이에요.
 - 계수는 `tol`이 아니라 최대우도 추정값 자체에 반올림 수준으로 가까워요(위의 `tol=1e-3` 예).
 - 같은 입력이면 스레드 수와 상관없이 같은 비트이고, 배치는 하나씩 부른 것과 같은 비트예요.
 
@@ -993,6 +1101,7 @@ array([1.76099431, 0.62872085])
 - `get_prediction`: statsmodels는 감마 inverse 링크에서 구간의 아래·위가 뒤바뀌고 정규분포를 써요. 여기는 언제나 아래·위 순서이고 검정 분포(감마는 t)를 써요. statsmodels의 `predict`는 `offset`의 inf를 받아 inf를 내고, 여기는 `ValueError`예요.
 - 상수 y와 완전 적합: statsmodels GLM은 `y`가 상수인 gaussian에서 `ValueError`("The first guess on the deviance function returned a nan")를 내요. 위의 완전 적합 `1 + 2x`에서는 표준오차 1.6e-15, 3.1e-16, 척도 4.1e-30, `llf` 261.2처럼 반올림이 남긴 값을 내고, 의사 R²는 Cox–Snell과 McFadden이 모두 1.0이에요(`llnull` −2.0e31). 여기는 표준오차 0과 `llf` +inf이고, 의사 R²는 1과 NaN이에요. 감마 log 링크의 상수 `y`에도 statsmodels는 같은 `ValueError`예요. `y`가 모두 3인 포아송에서는 `PerfectSeparationWarning`과 함께 기울기 7.6e-17, 그 p 0.9999999999999993을 내요. 여기는 경고 없이 기울기가 정확히 0이고 t 0, p 1이에요. 포아송 identity·sqrt 링크의 `y`가 모두 0일 때도 statsmodels는 같은 `ValueError`이고, 여기는 정확한 해 (0, 0)이에요.
 - 자유도 0과 빈 입력: `df_resid`가 0이면 statsmodels는 척도와 표준오차가 inf이고, 여기는 NaN이에요. 행이 0개인 입력에 statsmodels는 numpy의 `ValueError`("zero-size array to reduction operation maximum which has no identity")를 내고, 여기는 `nobs` 0의 NaN 결과예요.
+- 영향력: `leverage`, `cooks_distance`, `dffits`, `dfbetas`는 R 4.6의 `hatvalues`, `cooks.distance`, `dffits`, `dfbetas`(glm, `influence.measures`의 정의)와 같아요. statsmodels의 `get_influence()`는 기본(`observed=True`)이 관측 정보로 무게를 매겨서, 정준이 아닌 링크(probit, 감마 log 등)에서는 지렛대와 Cook 거리가 달라요. `get_influence(observed=False)`의 `hat_matrix_diag`, `cooks_distance[0]`과 같아요. statsmodels의 `cooks_distance`는 (거리, p값)의 튜플이에요.
 - `bic`: statsmodels 0.15의 `bic`(= `bic_llf`)와 같아요. 편차로 만든 `bic_deviance`는 없어요.
 - 언더플로: R과 statsmodels는 $\mu$를 $[\varepsilon, 1 - \varepsilon]$로 잘라서, $\mu$나 $1 - \mu$가 언더플로하는 행이 있으면 최대우도 추정값에서 그만큼 벗어나요. 여기서는 그 행의 값을 $\eta$에서 바로 구해서 정확한 최대우도 추정값이에요.
 - 분리: statsmodels는 `PerfectSeparationWarning`을 내고 큰 계수를 돌려줘요(위 완전 분리 예에서 계수 (−223.8, 40.7), 표준오차 (1.2e5, 2.3e4), `converged=True`). 여기는 `separation=True`와 NaN 계수예요.

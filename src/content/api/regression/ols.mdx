@@ -457,8 +457,13 @@ Notes:
 | `param_names` | list | 계수 이름(읽기 전용, 읽을 때마다 새 리스트) |
 | `cov_type` | str | 고른 표준오차의 종류(읽기 전용) |
 | `predict(X_new)`, `predict_interval(X_new, ...)` | (m,), (m, 2) | 예측값과 예측 구간 |
-| `leverage`, `resid_studentized_internal`, `resid_studentized_external`, `cooks_distance` | (n,) | 행마다의 진단([회귀 진단](/api/regression/diagnostics/)) |
-| `durbin_watson`, `jarque_bera()`, `breusch_pagan()` | 수, 튜플 | 잔차 전체의 진단 |
+| `leverage`, `resid_studentized_internal`, `resid_studentized_external`, `cooks_distance`, `dffits`, `wresid` | (n,) | 행마다의 진단([회귀 진단](/api/regression/diagnostics/)) |
+| `dfbetas` | (n, k) | 행 하나를 뺄 때 계수마다 움직이는 정도 |
+| `vif` | (k,) | 계수마다의 분산 팽창 계수(절편 자리는 NaN) |
+| `durbin_watson`, `jarque_bera()`, `breusch_pagan()` | 수, 결과 객체 | 잔차 전체의 진단 |
+| `white_test()`, `goldfeld_quandt()`, `reset_test()` | 결과 객체 | 분산과 모형 꼴의 검정([분산과 모형 형태 검정](/api/regression/specification-tests/)) |
+| `t_test(R)`, `wald_test(R)` | 결과 객체 | 계수에 대한 선형 가설의 검정([선형 가설 검정](/api/regression/hypothesis-tests/)) |
+| `compare_f_test(small)`, `compare_lr_test(small)` | 결과 객체 | 작은 모형과의 비교([모형 비교](/api/regression/model-comparison/)) |
 | `summary(alpha=0.05)` | str | 요약표 |
 
 절편이 있으면 설명된 제곱합과 잔차 제곱합을 더한 값이 총제곱합이에요.

@@ -1,0 +1,584 @@
+---
+title: stepwise
+names: [stepwise, StepwiseResult]
+group: 변수 선택
+order: 1
+signatures:
+  - "sd.regression.stepwise(y, X, /, *, model='ols', direction='both', criterion='aic', start=None, include=None, terms=None, alpha_enter=0.05, alpha_remove=0.1, cv=5, rng=None, max_steps=1000, intercept=True, nan_policy='propagate', **options)"
+summary: 설명변수를 하나씩 넣거나 빼면서 기준(AIC, BIC, p값, 교차검증)이 가장 좋아지는 쪽으로 옮겨 가는 단계적 선택이에요. ols, wls, gls, glm의 모형을 그 함수의 키워드 그대로 받고, 고른 열, 걸음마다의 기록, 고른 열로 다시 부른 적합을 StepwiseResult에 담아 돌려줘요.
+params:
+  - name: y
+    type: ndarray, 실수의 시퀀스, Series, 또는 한 열짜리 DataFrame
+    kind: positional-only
+    desc: 반응 (n,). 회귀 하나만 받아요(배치는 ValueError).
+  - name: X
+    type: ndarray, 실수의 시퀀스, 또는 DataFrame
+    kind: positional-only
+    desc: 고를 후보 열 (n, p) 또는 (n,). 절편 열은 넣지 않아요. DataFrame이면 컬럼 이름이 걸음 기록과 계수의 이름이 돼요.
+  - name: model
+    type: str
+    kind: keyword-only
+    desc: "후보를 적합할 함수. 'ols'(기본값), 'wls', 'gls', 'glm' 중 하나예요."
+  - name: direction
+    type: str
+    kind: keyword-only
+    desc: "'both'(기본값, 걸음마다 넣기와 빼기를 함께 견줘요), 'forward'(넣기만), 'backward'(빼기만) 중 하나예요."
+  - name: criterion
+    type: str
+    kind: keyword-only
+    desc: "'aic'(기본값), 'bic', 'pvalue', 'cv' 중 하나예요."
+  - name: start
+    type: 열의 목록 또는 None
+    kind: keyword-only
+    desc: 시작 모형의 열(위치나 이름). None이면 direction이 정해요('both'·'backward'는 모든 열, 'forward'는 절편과 include만). include는 언제나 더해져요.
+  - name: include
+    type: 열의 목록 또는 None
+    kind: keyword-only
+    desc: 언제나 모형에 들어 있을 열(위치나 이름). 넣고 빼는 대상이 아니에요. 열 하나는 목록 없이 줘도 돼요.
+  - name: terms
+    type: 항의 목록 또는 None
+    kind: keyword-only
+    desc: 함께 들어가고 함께 빠지는 열의 묶음. 각 항은 열 하나이거나 열의 목록이고, X의 모든 열을 꼭 한 번씩 덮어야 해요. None이면 열 하나가 항 하나예요.
+  - name: alpha_enter
+    type: float
+    kind: keyword-only
+    desc: "criterion='pvalue'에서 항을 넣는 문턱(0과 1 사이, 기본값 0.05). 넣었을 때의 p값이 이 값 이하인 항만 넣어요. alpha_remove보다 클 수 없어요."
+  - name: alpha_remove
+    type: float
+    kind: keyword-only
+    desc: "criterion='pvalue'에서 항을 빼는 문턱(0과 1 사이, 기본값 0.1). 뺐을 때의 p값이 이 값보다 큰 항을 빼요."
+  - name: cv
+    type: int
+    kind: keyword-only
+    desc: "criterion='cv'의 겹 수. 2 이상, 행 수 이하예요. 기본값은 5예요."
+  - name: rng
+    type: sd.random.Generator 또는 None
+    kind: keyword-only
+    desc: "criterion='cv'에서 겹을 무작위로 나눌 난수 생성기(sd.random.default_rng(seed)). 'cv'에서는 꼭 줘야 하고, 다른 기준에서는 주면 ValueError예요."
+  - name: max_steps
+    type: int
+    kind: keyword-only
+    desc: 옮기는 걸음 수의 상한(0 이상, 기본값 1000). 0이면 시작 모형을 그대로 돌려줘요.
+  - name: intercept
+    type: bool
+    kind: keyword-only
+    desc: True(기본값)면 모든 후보에 절편이 있어요. 절편은 고르는 대상이 아니에요.
+  - name: nan_policy
+    type: str
+    kind: keyword-only
+    desc: "'propagate'(기본값, NaN이 있으면 걸음 없이 NaN 결과), 'omit'(y와 X의 모든 열, 행마다의 옵션에서 NaN이 있는 행을 처음에 한 번 빼요), 'raise'(ValueError) 중 하나예요."
+  - name: "**options"
+    type: model 함수의 키워드
+    kind: keyword-only
+    desc: "model 함수가 받는 키워드를 그대로 넘겨요. wls의 weights, gls의 sigma, glm의 family는 꼭 줘야 하고, link, var_weights, cov_type, rtol, max_iter 같은 것도 받아요. 그 함수에 없는 키워드는 TypeError예요."
+returns:
+  type: StepwiseResult
+  desc: "selected(고른 열의 X에서의 위치, 오름차순, include 포함), selected_names, steps(걸음마다 SelectionStep(action, term, criterion), 시작이 첫째), fit(고른 열로 model 함수를 부른 결과), criterion, direction, skipped(고르지 않은 GLM 후보의 SkippedFit(step, action, term, reason))가 들어 있어요. 읽기 전용이고, 목록 필드는 읽을 때마다 새 목록이에요."
+raises:
+  - type: TypeError
+    desc: model 함수에 없는 키워드를 줬을 때, 꼭 필요한 키워드(wls의 weights, gls의 sigma, glm의 family)를 빠뜨렸을 때, criterion='cv'에서 rng가 sd.random.Generator가 아닐 때(빠뜨렸을 때 포함), cv·max_steps가 int가 아닐 때, alpha_enter·alpha_remove가 수가 아닐 때, 열을 위치(int)나 이름(str)이 아닌 것으로 줬을 때, model·direction·criterion이 문자열이 아닐 때, 위치 인자를 셋 이상 줬을 때, 그 밖에 model 함수가 TypeError를 내는 경우.
+  - type: ValueError
+    desc: model·direction·criterion·nan_policy의 이름이 틀렸을 때, alpha_enter·alpha_remove가 (0, 1) 밖이거나 alpha_enter > alpha_remove일 때, max_steps가 음수일 때, cv가 2보다 작거나 행 수보다 클 때, 'cv'가 아닌 기준에 rng를 줬을 때, model='gls'에 criterion='cv'를 줬을 때, y가 배치일 때, 절편도 열도 없는 시작 모형일 때, include·start가 항의 일부만 가리킬 때, terms가 열을 빠뜨리거나 두 번 넣을 때, 없는 열의 위치·이름을 줬을 때, nan_policy='raise'인데 NaN이 있을 때, 그 밖에 model 함수가 입력 검사에서 ValueError를 내는 경우(메시지는 stepwise()의 이름으로 나와요).
+seeAlso: [best-subset, ols, wls, gls, glm, cross-validation, lasso, results]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 무엇을 하나요
+
+설명변수 후보가 여럿 있는데 모두 반응과 관계가 있는지는 모를 때가 많아요. 관계없는 열까지 모형에 넣으면 계수가 불안정해지고 새 자료에서 예측이 나빠지고, 꼭 필요한 열을 빼면 모형이 반응을 제대로 설명하지 못해요. **변수 선택**은 후보 가운데 어떤 열을 모형에 둘지를 자료로 정하는 일이에요.
+
+**단계적 선택**(stepwise selection)은 그 가운데 가장 흔한 방법이에요. 지금 모형에서 시작해서 한 걸음마다
+
+1. 열 하나를 넣은 모형과 열 하나를 뺀 모형을 모두 적합하고,
+2. 기준(예를 들어 AIC)이 가장 좋아지는 모형으로 옮기고,
+3. 어느 쪽으로 옮겨도 기준이 나아지지 않으면 멈춰요.
+
+모든 열의 조합을 다 견주는 대신 한 번에 한 열씩만 바꾸므로, 열이 많아도 빨리 끝나요. 그 대가로 가장 좋은 조합을 놓칠 수 있어요(모든 조합을 견주는 것은 [`best_subset`](/api/regression/best-subset/)이에요).
+
+열 다섯 개 가운데 셋(`x1`, `x2`, `x3`)만 효과가 있고 `x3`의 효과는 작은 자료에 써 봐요.
+
+```python
+>>> import stardust as sd
+>>> rng = sd.random.default_rng(7)
+>>> X = sd.stats.Normal().sample((40, 5), rng=rng)
+>>> y = 2.0 + 1.2 * X[:, 0] - 0.8 * X[:, 1] + 0.3 * X[:, 2] + sd.stats.Normal().sample(40, rng=rng)
+>>> r = sd.regression.stepwise(y, X)
+>>> r
+StepwiseResult(criterion='aic', 3 columns selected in 2 steps)
+>>> r.selected, r.selected_names
+([0, 1, 2], ['x1', 'x2', 'x3'])
+```
+
+다섯 열의 모형에서 시작해 두 걸음 만에 효과가 없는 `x4`, `x5`를 빼고 멈췄어요. 걸음마다의 기록은 `steps`에 있어요.
+
+```python
+>>> for s in r.steps:
+...     print(s.action, s.term, round(s.criterion, 2))
+start None 118.13
+drop x4 116.14
+drop x5 114.33
+```
+
+`fit`은 고른 열로 [`ols`](/api/regression/ols/)를 부른 결과 그대로라서, 계수와 표준오차, 예측, `summary()`를 바로 쓸 수 있어요.
+
+```python
+>>> type(r.fit).__name__
+'OLSResult'
+>>> r.fit.param_names
+['const', 'x1', 'x2', 'x3']
+>>> [round(v, 3) for v in r.fit.params.tolist()]
+[1.85, 1.179, -0.928, 0.239]
+```
+
+<Reference />
+
+## 기준 고르기
+
+`criterion`은 "어느 모형이 더 좋은가"를 재는 잣대예요. 같은 자료에서도 기준에 따라 고르는 열이 달라질 수 있어요.
+
+| `criterion` | 재는 것 | 옮기는 조건 | 이럴 때 |
+|---|---|---|---|
+| `'aic'`(기본) | $\text{AIC} = -2\log L + 2k$ | AIC가 1e-7보다 크게 줄 때 | 예측이 좋은 모형. 작은 효과도 남기는 편이에요 |
+| `'bic'` | $\text{BIC} = -2\log L + k\log n$ | BIC가 1e-7보다 크게 줄 때 | 더 작은 모형. n이 8 이상이면 열 하나의 벌점이 AIC보다 커요 |
+| `'pvalue'` | 넣거나 뺄 때의 검정 p값 | `alpha_enter`·`alpha_remove`의 문턱 | 전통적인 유의성 기준의 선택 |
+| `'cv'` | k겹 교차검증의 예측 오차 | 오차가 줄 때 | 우도가 아니라 새 자료에서의 예측 오차로 고를 때 |
+
+$L$은 적합의 우도, $k$는 계수의 수(절편 포함), $n$은 적합에 쓰인 행 수(결과의 `nobs`; GLM은 `freq_weights`의 합)예요. AIC·BIC는 후보 적합의 `aic`·`bic`와 같은 양이에요.
+
+앞의 자료에서 기준을 바꿔 봐요. AIC는 작은 효과인 `x3`을 남겼지만, BIC와 p값은 `x3`까지 뺐어요.
+
+```python
+>>> sd.regression.stepwise(y, X, criterion='bic').selected_names
+['x1', 'x2']
+>>> p = sd.regression.stepwise(y, X, criterion='pvalue')
+>>> p.selected_names
+['x1', 'x2']
+>>> for s in p.steps:
+...     print(s.action, s.term, round(s.criterion, 4))
+start None nan
+drop x4 0.9431
+drop x5 0.686
+drop x3 0.1062
+```
+
+### p값 기준
+
+`criterion='pvalue'`의 걸음은 이렇게 정해요.
+
+1. 먼저 뺄 항을 찾아요. 모형의 항마다 뺐을 때의 검정 p값을 재고, 가장 큰 p값이 `alpha_remove`(기본 0.10)보다 크면 그 항을 빼요.
+2. 뺄 항이 없으면 넣을 항을 찾아요. 넣었을 때의 p값이 가장 작은 항을 그 p값이 `alpha_enter`(기본 0.05) 이하일 때 넣어요.
+3. 둘 다 없거나, 옮길 모형이 이미 지나온 모형이면 멈춰요.
+
+검정은 선형 모형(`ols`, `wls`, `gls`)이 두 모형의 부분 F 검정(분모는 큰 모형의 척도)이고, GLM이 우도비 검정 −2(작은 모형의 llf − 큰 모형의 llf) ~ χ²(계수 수의 차)예요. 두 모형을 직접 견주는 [`compare_f_test`, `compare_lr_test`](/api/regression/model-comparison/)와 같은 값이에요. `steps`의 `criterion`은 그 걸음의 p값이고 시작은 NaN이에요. 위에서 `x3`은 뺄 때의 p값이 0.1062라서 0.10보다 커 빠졌어요.
+
+문턱을 바꾸면 결과가 달라져요. `alpha_remove`를 0.15로 올리면 `x3`이 남아요. 넣자마자 다시 빼는 일이 없도록 `alpha_enter`는 `alpha_remove`보다 클 수 없어요.
+
+```python
+>>> sd.regression.stepwise(y, X, criterion='pvalue', alpha_enter=0.1, alpha_remove=0.15).selected_names
+['x1', 'x2', 'x3']
+>>> sd.regression.stepwise(y, X, criterion='pvalue', alpha_enter=0.2)
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'alpha_enter' (0.2) must be <= 'alpha_remove' (0.1)
+```
+
+### 교차검증 기준
+
+`criterion='cv'`는 행을 `cv`개(기본 5)의 겹으로 나누고, 겹 하나씩 떼어 두고 나머지로 적합해 떼어 둔 겹의 예측 오차를 잰 평균으로 견줘요. 오차는 선형 모형이 가중 평균 제곱오차 Σw(y − ŷ)²/Σw이고(가중치가 없으면 w = 1), GLM이 평균 편차예요. 모든 후보가 같은 겹을 쓰고, 오차가 조금이라도 줄면 옮겨요. 시험 행의 가중치가 모두 0인 겹은 평균에서 빠져요.
+
+겹은 무작위로 나누므로 `rng`를 꼭 줘야 해요. 겹을 나누는 방법은 [`lasso_cv`](/api/regression/cross-validation/)와 같아서, 같은 시드면 같은 겹이에요.
+
+```python
+>>> c = sd.regression.stepwise(y, X, criterion='cv', rng=sd.random.default_rng(1))
+>>> c.selected_names
+['x1', 'x2', 'x3']
+>>> for s in c.steps:
+...     print(s.action, s.term, round(s.criterion, 4))
+start None 1.2085
+drop x5 1.1016
+drop x4 1.0522
+>>> sd.regression.stepwise(y, X, criterion='cv')
+Traceback (most recent call last):
+    ...
+TypeError: stepwise(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType
+>>> sd.regression.stepwise(y, X, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'rng' is only used with criterion='cv' (the other criteria draw no folds)
+```
+
+`steps`의 `criterion`은 그 걸음 뒤 모형의 교차검증 오차예요. `model='gls'`는 오차의 상관을 풀려고 행을 서로 섞기 때문에 겹으로 나눌 수 없어서 `'cv'`를 받지 않아요.
+
+```python
+>>> sd.regression.stepwise(y, X, model='gls', sigma=sd.eye(40), criterion='cv', rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): criterion='cv' takes ols, wls or glm: the GLS whitening mixes the rows the folds split
+```
+
+어느 기준이든 모형의 우도와 제곱합으로만 재요. `cov_type`(강건 표준오차)은 기준에 쓰이지 않고 돌려주는 `fit`의 추론에만 쓰여요. 그래서 `cov_type`을 바꿔도 고르는 열은 같아요.
+
+```python
+>>> h = sd.regression.stepwise(y, X, cov_type='HC3')
+>>> h.selected_names, h.fit.cov_type
+(['x1', 'x2', 'x3'], 'HC3')
+```
+
+## 방향과 시작
+
+`direction`은 걸음에서 무엇을 견줄지와 어디서 시작할지를 함께 정해요.
+
+| `direction` | 시작 모형 | 걸음마다 견주는 것 |
+|---|---|---|
+| `'both'`(기본) | 모든 열 | 항 하나를 뺀 모형과 넣은 모형 모두 |
+| `'forward'` | 절편과 `include`만 | 항 하나를 넣은 모형 |
+| `'backward'` | 모든 열 | 항 하나를 뺀 모형 |
+
+```python
+>>> f = sd.regression.stepwise(y, X, direction='forward')
+>>> for s in f.steps:
+...     print(s.action, s.term, round(s.criterion, 2))
+start None 168.25
+add x1 139.53
+add x2 115.27
+add x3 114.33
+```
+
+앞으로 넣은 결과도 같은 세 열이에요. 늘 같지는 않아요. 앞으로는 처음에 혼자서 가장 잘 설명하는 열부터 넣고, 뒤로는 모든 열이 함께 있을 때 가장 쓸모없는 열부터 빼므로, 열끼리 상관이 있으면 서로 다른 곳에서 멈출 수 있어요.
+
+`'both'`는 모든 열의 모형에서 시작하지만, 모든 열의 모형의 계수 수(절편 포함)가 행 수 이상이면(남는 자유도가 없어요) 절편과 `include`만의 모형에서 시작해요. 아래는 8행에 열 9개인 자료예요.
+
+```python
+>>> rw = sd.random.default_rng(3)
+>>> Xw = sd.stats.Normal().sample((8, 9), rng=rw)
+>>> yw = Xw[:, 0] + 0.5 * sd.stats.Normal().sample(8, rng=rw)
+>>> [(s.action, s.term) for s in sd.regression.stepwise(yw, Xw, max_steps=2).steps]
+[('start', None), ('add', 'x1'), ('add', 'x7')]
+```
+
+`start`로 시작 모형을 직접 줄 수 있어요. `'both'`에서는 넣었던 열을 나중에 빼기도 해요. 아래는 `x4`만 든 모형에서 시작해 `x1`, `x2`를 넣고 나서 쓸모가 없어진 `x4`를 빼고, 마지막으로 `x3`을 넣었어요.
+
+```python
+>>> s = sd.regression.stepwise(y, X, start=[3])
+>>> for st in s.steps:
+...     print(st.action, st.term, round(st.criterion, 2))
+start None 169.91
+add x1 141.53
+add x2 117.26
+drop x4 115.27
+add x3 114.33
+```
+
+<Fig column caption="start=[3]에서 시작한 탐색. 걸음마다 AIC가 가장 많이 주는 쪽으로 옮겨요. 넣기와 빼기를 함께 견주므로 앞에서 넣은 x4도 뒤에서 빠질 수 있어요.">
+  <Steps steps={[
+    { label: 'start  {x4}', note: 'AIC 169.91' },
+    { label: 'add x1  {x1, x4}', note: 'AIC 141.53' },
+    { label: 'add x2  {x1, x2, x4}', note: 'AIC 117.26' },
+    { label: 'drop x4  {x1, x2}', note: 'AIC 115.27. x1, x2가 들어오자 x4는 쓸모가 없어졌어요' },
+    { label: 'add x3  {x1, x2, x3}', note: 'AIC 114.33. 어느 쪽으로 옮겨도 더 줄지 않아 멈춰요' },
+  ]} />
+</Fig>
+
+`max_steps`는 옮기는 걸음 수의 상한이에요. 0이면 시작 모형을 그대로 돌려줘요.
+
+```python
+>>> [(s.action, s.term) for s in sd.regression.stepwise(y, X, direction='forward', max_steps=1).steps]
+[('start', None), ('add', 'x1')]
+>>> sd.regression.stepwise(y, X, max_steps=0).selected_names
+['x1', 'x2', 'x3', 'x4', 'x5']
+```
+
+## 걸음 기록 읽기
+
+`steps`는 `SelectionStep(action, term, criterion)`의 목록이고 첫째는 언제나 시작이에요.
+
+- `action`: `'start'`, `'add'`, `'drop'` 중 하나.
+- `term`: 넣거나 뺀 항의 이름. 시작은 None이에요. 여러 열의 항은 열 이름을 `' + '`로 이어요(`'east + west'`).
+- `criterion`: 그 걸음 뒤 모형의 기준값. `'pvalue'`만은 그 걸음의 검정 p값이고, 시작은 NaN이에요.
+
+옮기는 규칙은 이래요.
+
+- AIC·BIC는 가장 좋은 후보가 지금 모형보다 1e-7보다 크게 작을 때만 옮겨요. 반올림 수준의 차이로 옮겨 다니지 않게 하려는 문턱이에요. `'cv'`는 오차가 줄면 옮겨요.
+- 기준값이 같은 후보가 둘 이상이면 X에서 앞에 있는 열의 항을 골라요.
+- 앞의 열들과 겹쳐서 모형에 아무것도 더하지 않는 열(예를 들어 `x1 + x2`인 열)은 기준과 상관없이 먼저 빼요. 뒤에 있는 것부터 빼고, 모형이 같으므로 그 걸음의 기준값은 그대로예요.
+
+```python
+>>> Xa = sd.concat([X, (X[:, 0] + X[:, 1])[:, None]], axis=1)
+>>> for s in sd.regression.stepwise(y, Xa).steps:
+...     print(s.action, s.term, round(s.criterion, 2))
+start None 118.13
+drop x6 118.13
+drop x4 116.14
+drop x5 114.33
+```
+
+## 항과 include
+
+범주형 변수를 더미 열 여러 개로 넣었으면, 그 더미들은 함께 들어가고 함께 빠져야 뜻이 있어요. 더미 하나만 빼면 그 범주가 기준 범주와 합쳐진 모형이 돼요. `terms`로 열을 묶어 항 하나로 다뤄요. 아래 자료의 지역(`region`)은 세 범주이고 `east`, `west`의 두 더미로 들어 있어요(`north`가 기준).
+
+```python
+>>> rr = sd.random.default_rng(2)
+>>> size = sd.stats.Normal().sample(45, rng=rr)
+>>> age = sd.stats.Normal().sample(45, rng=rr)
+>>> region = rr.integers(0, 3, shape=45)
+>>> east = sd.where(region == 1, 1.0, 0.0)
+>>> west = sd.where(region == 2, 1.0, 0.0)
+>>> price = 3.0 + size + 0.8 * east - 0.6 * west + sd.stats.Normal().sample(45, rng=rr)
+>>> df = sd.frame.DataFrame({'size': size, 'age': age, 'east': east, 'west': west})
+>>> [(s.action, s.term) for s in sd.regression.stepwise(price, df).steps]
+[('start', None), ('drop', 'age'), ('drop', 'east')]
+>>> t = sd.regression.stepwise(price, df, terms=[['size'], ['age'], ['east', 'west']])
+>>> [(s.action, s.term) for s in t.steps]
+[('start', None), ('drop', 'age')]
+>>> t.selected_names
+['size', 'east', 'west']
+```
+
+묶지 않으면 `east` 하나만 빠져서 `north`와 `east`가 한 범주로 합쳐진 모형이 돼요. 묶으면 지역 전체가 한 항이에요. 항은 열의 위치로도, DataFrame의 이름으로도 줄 수 있고, `terms`는 X의 모든 열을 꼭 한 번씩 덮어야 해요.
+
+```python
+>>> sd.regression.stepwise(y, X, terms=[[0, 1], [2], [3]])
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'terms' must put every column of 'X' in a term; missing ['x5']
+>>> sd.regression.stepwise(y, X, terms=[[0, 1], [1, 2], [3, 4]])
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): the column 'x2' is in more than one term
+```
+
+`include`는 언제나 모형에 둘 열이에요. 이론상 꼭 필요한 통제 변수처럼 자료와 상관없이 남길 열에 써요. 그 열은 넣고 빼는 대상이 아니라서 `steps`에 나오지 않아요. 항의 일부만 `include`에 주면 에러예요.
+
+```python
+>>> i = sd.regression.stepwise(y, X, include=[4])
+>>> i.selected_names
+['x1', 'x2', 'x3', 'x5']
+>>> [(s.action, s.term) for s in i.steps]
+[('start', None), ('drop', 'x4')]
+>>> sd.regression.stepwise(y, X, terms=[[0, 1], [2], [3, 4]], include=[0])
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'include' names part of the term 'x1 + x2'; give all of it (['x2'] too)
+```
+
+빼 둘 열을 따로 받는 인자는 없어요. 고르지 않을 열은 X에서 빼고 넘겨요. 절편은 언제나 들어 있고 고르는 대상이 아니에요. `intercept=False`면 절편이 없고, 그때는 열이 하나도 없는 모형은 후보가 되지 않아요(모수가 없으니까요).
+
+```python
+>>> sd.regression.stepwise(y, X, intercept=False, direction='forward')
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): the start model has no parameters (intercept=False and no columns); give 'start' or 'include'
+```
+
+## 모형과 그 키워드
+
+`model`은 후보를 적합할 함수예요. `'ols'`(기본), `'wls'`, `'gls'`, `'glm'` 가운데 하나이고, 그 함수가 받는 키워드를 그대로 넘겨요. 후보 하나는 그 함수를 같은 키워드로 후보의 열에 부른 것이에요.
+
+```python
+>>> w = sd.linspace(0.5, 2.0, 40)
+>>> rwls = sd.regression.stepwise(y, X, model='wls', weights=w)
+>>> type(rwls.fit).__name__, rwls.selected_names
+('WLSResult', ['x1', 'x2', 'x3'])
+```
+
+그 함수에 없는 키워드나, 꼭 필요한 키워드(`wls`의 `weights`, `gls`의 `sigma`, `glm`의 `family`)를 빠뜨리면 `TypeError`예요. 메시지에 어느 함수의 키워드인지가 나와요. 모형 함수의 입력 검사도 `stepwise()`의 이름으로 나와요.
+
+```python
+>>> sd.regression.stepwise(y, X, weights=w)
+Traceback (most recent call last):
+    ...
+TypeError: stepwise(): unexpected keyword argument 'weights' (not an option of ols())
+>>> sd.regression.stepwise(y, X, model='wls')
+Traceback (most recent call last):
+    ...
+TypeError: stepwise(): model='wls' needs the keyword argument 'weights' (an option of wls())
+>>> sd.regression.stepwise(y, X, model='wls', weights=-w)
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'weights' must be >= 0
+```
+
+### 일반화 선형 모형
+
+`model='glm'`이면 [`glm`](/api/regression/glm/)의 `family`, `link`, `trials`, `offset` 같은 키워드를 그대로 받아요. 아래는 x1, x3에만 효과가 있는 로지스틱 회귀예요.
+
+```python
+>>> rg = sd.random.default_rng(0)
+>>> Xg = sd.stats.Normal().sample((80, 4), rng=rg)
+>>> eta = -0.3 + 1.0 * Xg[:, 0] - 0.7 * Xg[:, 2]
+>>> yg = sd.where(rg.random(80) < 1 / (1 + sd.exp(-eta)), 1.0, 0.0)
+>>> g = sd.regression.stepwise(yg, Xg, model='glm', family='binomial')
+>>> g.selected_names
+['x1', 'x3']
+>>> for s in g.steps:
+...     print(s.action, s.term, round(s.criterion, 3))
+start None 86.173
+drop x2 84.176
+drop x4 83.15
+>>> g.fit.family, g.fit.link
+('binomial', 'logit')
+```
+
+GLM의 후보는 모두 `glm`으로 처음부터 적합해요. 그래서 걸음의 기준값은 그 열로 `glm`을 부른 `aic`와 비트까지 같아요.
+
+```python
+>>> g.steps[-1].criterion == sd.regression.glm(yg, Xg[:, [0, 2]], family='binomial').aic
+True
+```
+
+### GLM 후보의 분리와 미수렴
+
+로지스틱 회귀에서 어떤 열이 0과 1을 완전히 가르면(분리) 최대우도 추정값이 없어요. 그런 후보(`separation=True`)와 반복이 수렴하지 않은 후보(`converged=False`)는 기준을 잴 수 없으므로 고르지 않고, `skipped`에 `SkippedFit(step, action, term, reason)`으로 남겨요.
+
+- `step`: 그 후보를 견준 때까지 옮긴 걸음 수. 0이면 시작 모형에서 견준 후보예요.
+- `action`, `term`: 그 후보가 지금 모형에서 무엇을 넣거나 뺀 것인지.
+- `reason`: `'separation'` 또는 `'not converged'`.
+
+시작 모형부터 분리되면 시작의 기준값은 NaN이고, 첫 걸음은 기준을 잴 수 있는 후보 가운데 가장 좋은 것으로 옮겨요. 아래 자료는 `x1`의 부호가 y를 그대로 정해요.
+
+```python
+>>> rs = sd.random.default_rng(3)
+>>> Xs = sd.stats.Normal().sample((30, 3), rng=rs)
+>>> ys = sd.where(Xs[:, 0] > 0, 1.0, 0.0)
+>>> sep = sd.regression.stepwise(ys, Xs, model='glm', family='binomial')
+>>> for s in sep.steps:
+...     print(s.action, s.term, round(s.criterion, 2))
+start None nan
+drop x1 46.36
+drop x2 44.44
+drop x3 43.59
+>>> for k in sep.skipped:
+...     print(k)
+SkippedFit(step=0, action='drop', term='x2', reason='separation')
+SkippedFit(step=0, action='drop', term='x3', reason='separation')
+SkippedFit(step=1, action='add', term='x1', reason='separation')
+SkippedFit(step=2, action='add', term='x1', reason='separation')
+SkippedFit(step=3, action='add', term='x1', reason='separation')
+>>> sep.selected_names
+[]
+```
+
+y를 완벽히 가르는 `x1`은 가장 강한 열인데도 그 열이 든 모형은 모두 분리되어 후보가 되지 못했고, 결과는 절편만의 모형이에요. `skipped`가 비어 있지 않으면 고른 모형만 보지 말고 빠진 후보를 살펴요. 분리를 일으키는 열은 따로 다뤄야 해요([`glm`의 분리](/api/regression/glm/)).
+
+## 결과의 `fit`
+
+`fit`은 고른 열(X의 순서)로 model 함수를 같은 키워드로 부른 결과와 비트까지 같아요. 다른 점은 계수 이름뿐이에요. `fit`의 이름은 X에서의 이름이라서, 배열의 다섯째 열은 고른 뒤에도 `'x5'`예요. 같은 열을 배열로 잘라 따로 넘기면 이름은 `'x1'`부터 다시 세요.
+
+```python
+>>> i.fit.param_names
+['const', 'x1', 'x2', 'x3', 'x5']
+>>> o = sd.regression.ols(y, X[:, [0, 1, 2, 4]])
+>>> o.param_names
+['const', 'x1', 'x2', 'x3', 'x4']
+>>> i.fit.params.tolist() == o.params.tolist(), i.fit.bse.tolist() == o.bse.tolist()
+(True, True)
+```
+
+`steps`의 마지막 기준값은 `fit`의 기준과 같은 양이에요(AIC면 `fit.aic`). 선형 모형의 걸음 기준값은 후보마다 적합하지 않고 구하므로 그 열로 부른 적합의 `aic`와 마지막 자리에서 다를 수 있어요(반올림 수준). GLM은 비트까지 같아요.
+
+<Callout type="warn" title="고른 모형의 p값과 신뢰구간은 명목 수준을 지키지 않아요">
+`fit.pvalues`와 `fit.conf_int()`는 모형을 미리 정해 두고 자료를 한 번 본 것처럼 계산한 값이에요. 그런데 고른 열은 같은 자료에서 "효과가 있어 보이는" 열이라서, 우연히 크게 나온 효과일수록 뽑히기 쉬워요. 그래서 고른 모형의 p값은 너무 작고 신뢰구간은 너무 좁아요. 0.05에서 유의하다는 판정이 실제로는 5%보다 훨씬 자주 틀려요.
+
+여러 p값을 함께 보정하는 다중 검정 보정(Bonferroni, Holm 같은 것)도 이 편향은 고치지 못해요. 보정은 정해진 가설 여럿을 함께 검정할 때의 문제를 다루고, 가설 자체를 자료로 고른 문제는 다루지 않으니까요. 그래서 `stepwise`에는 보정 옵션이 없어요.
+
+선택한 모형으로 추론해야 하면 자료를 나눠서 한쪽으로 고르고 다른 쪽으로 적합해 p값을 내거나, 고른 모형을 다음 자료에서 확인할 가설로 다뤄요.
+</Callout>
+
+얼마나 어긋나는지 직접 재 봐요. 반응과 아무 관계도 없는 열 10개(n = 50)에서 앞으로 선택을 200번 되풀이하고, 고른 열의 p값이 0.05보다 작은 비율을 세요.
+
+```python
+>>> rn = sd.random.default_rng(2)
+>>> small, total = 0, 0
+>>> for _ in range(200):
+...     Xn = sd.stats.Normal().sample((50, 10), rng=rn)
+...     yn = sd.stats.Normal().sample(50, rng=rn)
+...     pv = sd.regression.stepwise(yn, Xn, direction='forward').fit.pvalues.tolist()[1:]
+...     small += sum(v < 0.05 for v in pv)
+...     total += len(pv)
+>>> small, total
+(144, 370)
+```
+
+효과가 전혀 없는데도 고른 열 370개 가운데 144개(39%)가 0.05에서 유의하게 나왔어요. 고르지 않고 열 10개를 모두 넣은 모형이라면 이 비율은 5% 근처예요.
+
+## NaN
+
+- `'propagate'`(기본): y나 X(고르지 않을 열까지), 행마다의 옵션(가중치 등)에 NaN이 있으면 걸음 없이 시작 모형의 NaN 적합을 `fit`으로 두고, 시작의 기준값도 NaN이에요.
+- `'omit'`: NaN이 있는 행을 처음에 한 번 빼요. y, X의 모든 열, 행마다의 옵션을 다 봐요. 그래서 모든 후보가 같은 행을 쓰고, `fit`도 고른 열에 NaN이 없더라도 그 행을 뺀 적합이에요.
+- `'raise'`: `ValueError`예요.
+
+```python
+>>> Xn = X.copy()
+>>> Xn[3, 4] = float('nan')
+>>> e = sd.regression.stepwise(y, Xn)
+>>> e.steps
+[SelectionStep(action='start', term=None, criterion=nan)]
+>>> e.fit.nobs
+nan
+>>> m = sd.regression.stepwise(y, Xn, nan_policy='omit')
+>>> m.selected_names, m.fit.nobs
+(['x1', 'x2', 'x3'], 39.0)
+>>> sd.regression.stepwise(y, Xn, nan_policy='raise')
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): the input contains NaN (nan_policy='raise')
+```
+
+`'omit'`에서 고른 `x1`, `x2`, `x3`에는 NaN이 없지만, `x5`의 NaN 때문에 그 행이 빠져 `nobs`가 39예요. 후보마다 쓰는 행이 다르면 AIC를 견줄 수 없어서 이렇게 해요. 그 행까지 쓰고 싶으면 NaN이 있는 열을 X에서 빼고 넘겨요.
+
+## 에러
+
+회귀 하나만 받아요. 배치(`y`가 2차원 이상)는 `ValueError`예요.
+
+```python
+>>> sd.regression.stepwise(sd.stack([y, y]), X)
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): takes one regression, not a batch of shape (2,)
+>>> sd.regression.stepwise(y, X, model='rlm')
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'model' must be 'ols', 'wls', 'gls' or 'glm', not 'rlm'
+>>> sd.regression.stepwise(y, X, criterion='cp')
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'criterion' must be 'aic', 'bic', 'pvalue' or 'cv', not 'cp'
+>>> sd.regression.stepwise(y, X, include=['z'])
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'include' names a column 'z' that 'X' does not have
+>>> sd.regression.stepwise(y, X, criterion='cv', cv=50, rng=sd.random.default_rng(1))
+Traceback (most recent call last):
+    ...
+ValueError: stepwise(): 'cv' must be <= the number of rows (40), not 50
+>>> sd.regression.stepwise(y, X, 'aic')
+Traceback (most recent call last):
+    ...
+TypeError: stepwise(): takes 2 positional arguments but 3 were given
+```
+
+결과는 읽기 전용이에요. `selected`, `steps`, `skipped` 같은 목록 필드는 읽을 때마다 새 목록이라서, 받은 목록을 고쳐도 결과는 그대로예요.
+
+## 정확도
+
+Arb(구간 산술)로 모든 부분집합의 우도와 기준값을 정의대로 계산한 참값과 견줬어요. 선형 넷(공선이 조금 있는 OLS, 가중치 0이 있는 WLS, 절편 없음, 조건수 약 2.3e5)의 문제에서 방향 셋과 기준 넷, GLM 셋(이항 logit, 포아송 log, 감마 log)의 문제에서 방향 셋과 AIC·BIC·p값의 모든 걸음이 참값이 고르는 걸음과 같아요.
+
+- 걸음마다의 AIC·BIC는 상대오차 2.5e-16 안이에요(조건수 2.3e5의 문제 포함). GLM은 후보가 `glm` 자체라서 그 적합의 `aic`·`bic`와 비트까지 같아요.
+- 교차검증 오차는 조건이 좋은 문제에서 3.1e-16 안이고, 조건수 2.3e5의 문제에서 1.3e-12예요.
+
+어떻게 계산하는지는 [구현: 변수 선택](/internals/regression/selection/)에 있어요.
+
+## R·statsmodels·scikit-learn을 아는 분께
+
+- **R `step`** (`MASS::stepAIC`도 같아요): `stepwise(y, X)`는 `step(lm(y ~ .), scope = ~ x1 + x2 + x3 + x4 + x5)`처럼 모든 열에서 시작해 넣기와 빼기를 함께 견주는 탐색이에요. R은 `scope`도 `direction`도 주지 않으면 빼기만 해요. `criterion='bic'`는 `k = log(n)`, `max_steps`는 `steps`(기본 1000)예요. 여러 lm·glm 자료에서 걸음(항과 순서)과 마지막 모형이 R과 같아요.
+  - R은 `extractAIC`(lm은 n·log(RSS/n) + 2·edf)로 재서, 출력되는 AIC가 여기의 `aic`와 상수만큼 달라요. 같은 행의 후보끼리는 차이가 같으므로 고르는 모형도 같아요. 다만 R의 n은 가중치 0인 행까지 세므로, 가중치 0이 있는 WLS에서는 AIC 차이가 n의 비만큼 달라요. 감마 GLM은 여기의 `aic`가 Pearson 척도의 우도(statsmodels와 같아요)이고 R은 편차/n 척도라서 후보 사이의 차이가 다르고, 다른 모형을 고를 수 있어요.
+  - 멈춤: R은 가장 작은 AIC가 지금 모형의 것보다 조금이라도 작으면 옮기고, 여기는 1e-7보다 크게 작을 때만 옮겨요. 줄어든 폭이 (0, 1e-7]이면 R은 옮기고 여기는 멈춰요. 자유도 0인 항을 먼저 빼는 것과 동률은 앞 항이라는 것은 R과 같아요.
+  - R은 주효과와 상호작용의 계층을 지켜요(상호작용이 있으면 주효과를 빼지 않아요). 여기에는 공식이 없으므로 계층을 따지지 않아요. 필요하면 `terms`로 묶거나 `include`로 남겨요.
+  - `criterion='pvalue'`의 선형 모형 p값은 R `add1`·`drop1`의 `test = "F"`와 같아요. GLM은 우도비라서 이항·포아송에서 `test = "Chisq"`와 같고, 척도를 추정하는 정규·감마에서는 R(척도로 나눈 편차)과 달라요. R `step`에는 p값 기준이 없어요. 기본 문턱 0.05·0.10은 SPSS의 단계적 선택과 같아요.
+- **statsmodels**: 변수 선택 함수가 없어서 후보마다 `sm.OLS(...).fit()`을 불러 `aic`를 견주는 반복을 직접 써야 해요. 여기의 `fit`은 그 반복의 마지막 적합에 해당하는 결과(`OLSResult`, `GLMResult` 등)이고, 필드 이름은 statsmodels와 같아요.
+- **scikit-learn `SequentialFeatureSelector`**: `criterion='cv'`에 해당해요. 다른 점이 몇 가지 있어요.
+  - SFS는 첫 걸음을 언제나 옮기고(시작 모형의 점수와 견주지 않아요), `tol`이 없으면 열의 절반을 고를 때까지 가요. 여기는 걸음마다 지금 모형과 견줘서 오차가 줄 때만 옮기고 스스로 멈춰요. SFS에 같은 겹과 `scoring='neg_mean_squared_error'`, 아주 작은 `tol`(뒤로는 음수)을 주면 앞으로·뒤로 모두 같은 열을 골라요. 첫 걸음이 오차를 줄이지 않는 자료에서는 SFS만 옮겨서 달라요.
+  - SFS의 기본 점수는 회귀의 R²이고 겹은 섞지 않는 `KFold`예요. 여기의 오차는 가중 평균 제곱오차(GLM은 평균 편차)이고 겹은 `rng`로 섞어요.
+  - SFS에는 넣기와 빼기를 함께 견주는 방향, 열의 묶음, 늘 남길 열이 없어요.

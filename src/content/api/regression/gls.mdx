@@ -383,7 +383,7 @@ array([  0.5627678509659673, 0.026495605565103927], dtype=float64)
 statsmodels 0.15.0 기준이에요.
 
 - `sm.GLS(y, sm.add_constant(X), sigma=S).fit()`이 `sd.regression.gls(y, X, sigma=S)`예요. 위의 n = 30, $\rho = 0.8$ 예에서 계수, 표준오차, `ssr`, R², `llf`가 반올림 차이 안에서 같아요.
-- 척도도 같아요. statsmodels의 `resid`는 원래 척도, `wresid`가 백색화한 잔차이고, `ssr`과 R²는 백색화한 값이에요. sd에는 `wresid` 필드가 없어요.
+- 척도도 같아요. statsmodels의 `resid`는 원래 척도, `wresid`가 백색화한 잔차이고, `ssr`과 R²는 백색화한 값이에요. sd의 `wresid`도 같은 백색화한 잔차예요.
 - statsmodels의 `sigma`는 스칼라나 1차원(대각) 배열도 받아요. sd는 (n, n) 행렬만 받아요. 대각이면 [`wls`](/api/regression/wls/)를 쓰세요.
 - statsmodels의 GLS 결과에는 `get_influence()`가 없어요. sd는 `leverage`, Cook 거리 같은 진단을 백색화한 문제로 줘요.
 - 배치가 있어요. statsmodels는 회귀 하나씩 불러야 해요.
