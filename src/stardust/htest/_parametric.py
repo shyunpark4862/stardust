@@ -38,45 +38,58 @@ class _TtestBase(_TestResult):
 
 class Ttest1sampResult(_TtestBase):
     __slots__ = ()
+    _TITLE = "One-sample t-test"
+    _CI_LABEL = "mean"
 
 
 class TtestRelResult(_TtestBase):
     __slots__ = ()
+    _TITLE = "Paired t-test"
+    _CI_LABEL = "mean difference"
 
 
 class TtestIndResult(_TtestBase):
     __slots__ = ()
+    _TITLE = "Two-sample t-test"
+    _CI_LABEL = "mean difference"
 
 
 class TtestIndFromStatsResult(_TtestBase):
     __slots__ = ()
+    _TITLE = "Two-sample t-test"
+    _CI_LABEL = "mean difference"
 
 
 class FOnewayResult(_TestResult):
     __slots__ = ()
+    _TITLE = "One-way ANOVA"
     _FIELDS = ("statistic", "pvalue", "df_num", "df_denom")
     _UNPACK = ("statistic", "pvalue")
 
 
 class AlexandergovernResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Alexander-Govern test"
     _FIELDS = ("statistic", "pvalue", "df")
 
 
 class BartlettResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Bartlett test of homogeneity of variances"
     _FIELDS = ("statistic", "pvalue", "df")
     _UNPACK = ("statistic", "pvalue")
 
 
 class LeveneResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Levene test of homogeneity of variances"
     _FIELDS = ("statistic", "pvalue", "df_num", "df_denom")
     _UNPACK = ("statistic", "pvalue")
 
 
 class FlignerResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Fligner-Killeen test of homogeneity of variances"
     _FIELDS = ("statistic", "pvalue", "df")
     _UNPACK = ("statistic", "pvalue")
 
@@ -104,15 +117,24 @@ def _t_interval(est_hi, est_lo, se, df, alt, out):
     return ci
 
 
-def _t_result(cls, s_out, batch, res, alt):
+def _t_result(cls, s_out, batch, res, alt, info):
     stat, p, df, est_hi, est_lo, se = res
     return cls._make(
         batch=batch,
         ci=_t_interval(est_hi, est_lo, se, df, alt, s_out),
+        info=info,
         statistic=s_out(stat),
         pvalue=s_out(p),
         df=s_out(df),
     )
+
+
+def _ind_title(equal_var, trim):
+    """summary()'s title of a two-sample t test (H75): Student's, Welch's, Yuen's trimmed."""
+    kind = "Student" if equal_var else "Welch"
+    if trim:
+        return {"title": f"Two-sample trimmed t-test (Yuen, {kind})", "pairs": [("Trim:", f"{trim:g}")]}
+    return {"title": f"Two-sample t-test ({kind})"}
 
 
 def _per_lane(v, s, name, arg):
@@ -142,7 +164,7 @@ def ttest_1samp(a, popmean, /, *, axis=None, alternative="two-sided", nan_policy
     s = C.Samples(name, [a], ("a",), axis, nan_policy, keepdims=keepdims, scan=False)
     mu = _per_lane(popmean, s, name, "popmean")
     res = _k.ttest(0, s.rows[0], None, mu, True, 0.0, _ALT[alt], s.policy == "omit")
-    return _t_result(Ttest1sampResult, s.out, s.batch, res, alt)
+    return _t_result(Ttest1sampResult, s.out, s.batch, res, alt, s.info(alt))
 
 
 def ttest_rel(a, b, /, *, axis=None, alternative="two-sided", nan_policy="propagate", keepdims=False):
@@ -152,7 +174,7 @@ def ttest_rel(a, b, /, *, axis=None, alternative="two-sided", nan_policy="propag
     alt = C.alternative(alternative, name)
     s = C.Samples(name, [a, b], ("a", "b"), axis, nan_policy, paired=True, keepdims=keepdims, scan=False)
     res = _k.ttest(1, s.rows[0], s.rows[1], None, True, 0.0, _ALT[alt], s.policy == "omit")
-    return _t_result(TtestRelResult, s.out, s.batch, res, alt)
+    return _t_result(TtestRelResult, s.out, s.batch, res, alt, s.info(alt))
 
 
 def ttest_ind(
@@ -181,7 +203,7 @@ def ttest_ind(
         raise TypeError(f"{name}(): 'method' must be None, not {_type_name(method)}")
     s = C.Samples(name, [a, b], ("a", "b"), axis, nan_policy, keepdims=keepdims, scan=False)
     res = _k.ttest(2, s.rows[0], s.rows[1], None, equal_var, tr, _ALT[alt], s.policy == "omit")
-    return _t_result(TtestIndResult, s.out, s.batch, res, alt)
+    return _t_result(TtestIndResult, s.out, s.batch, res, alt, s.info(alt, **_ind_title(equal_var, tr)))
 
 
 def ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2, /, *, equal_var=True, alternative="two-sided"):
@@ -215,7 +237,10 @@ def ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2, /, *, equal_var
         return float(v[0]) if scalar else _sd.reshape(v, batch)
 
     res = _k.ttest_stats(*flat, equal_var, _ALT[alt])
-    return _t_result(TtestIndFromStatsResult, out, batch, res, alt)
+    info = {"alternative": alt, **_ind_title(equal_var, 0.0)}
+    if scalar:
+        info["nobs"] = (float(nobs1), float(nobs2))
+    return _t_result(TtestIndFromStatsResult, out, batch, res, alt, info)
 
 
 # ---- k samples ----------------------------------------------------------------------------
@@ -239,6 +264,14 @@ def _center(center, proportiontocut, name):
     return _CENTERS[center], ptc
 
 
+def _center_pairs(center, ptc):
+    """summary()'s Center (and the trimmed mean's proportion) of levene and fligner (H75)."""
+    out = [("Center:", center)]
+    if center == "trimmed":
+        out.append(("Proportion Cut:", f"{ptc:g}"))
+    return out
+
+
 def f_oneway(*samples, axis=None, equal_var=True, nan_policy="propagate", keepdims=False):
     """The one-way analysis of variance of two or more samples (equal_var=False: Welch's, R's
     oneway.test(var.equal=FALSE)): statistic (F), pvalue, df_num and df_denom. Unpacks as
@@ -247,7 +280,12 @@ def f_oneway(*samples, axis=None, equal_var=True, nan_policy="propagate", keepdi
     C.flag(equal_var, name, "equal_var")
     s, (stat, p, dfn, dfd) = _groups(name, samples, axis, nan_policy, keepdims, _ANOVA if equal_var else _WELCH)
     return FOnewayResult._make(
-        batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df_num=s.out(dfn), df_denom=s.out(dfd)
+        batch=s.batch,
+        info=s.info(title=None if equal_var else "One-way ANOVA (Welch)"),
+        statistic=s.out(stat),
+        pvalue=s.out(p),
+        df_num=s.out(dfn),
+        df_denom=s.out(dfd),
     )
 
 
@@ -256,7 +294,9 @@ def alexandergovern(*samples, axis=None, nan_policy="propagate", keepdims=False)
     and df (chi^2 with k - 1 degrees of freedom, H29). Does not unpack (scipy's result does not)."""
     name = "alexandergovern"
     s, (stat, p, df, _) = _groups(name, samples, axis, nan_policy, keepdims, _AG)
-    return AlexandergovernResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+    return AlexandergovernResult._make(
+        batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p), df=s.out(df)
+    )
 
 
 def bartlett(*samples, axis=None, nan_policy="propagate", keepdims=False):
@@ -264,7 +304,7 @@ def bartlett(*samples, axis=None, nan_policy="propagate", keepdims=False):
     Unpacks as (statistic, pvalue)."""
     name = "bartlett"
     s, (stat, p, df, _) = _groups(name, samples, axis, nan_policy, keepdims, _BARTLETT)
-    return BartlettResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+    return BartlettResult._make(batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
 
 
 def levene(*samples, axis=None, center="median", proportiontocut=0.05, nan_policy="propagate", keepdims=False):
@@ -275,7 +315,12 @@ def levene(*samples, axis=None, center="median", proportiontocut=0.05, nan_polic
     c, ptc = _center(center, proportiontocut, name)
     s, (stat, p, dfn, dfd) = _groups(name, samples, axis, nan_policy, keepdims, _LEVENE, c, ptc)
     return LeveneResult._make(
-        batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df_num=s.out(dfn), df_denom=s.out(dfd)
+        batch=s.batch,
+        info=s.info(pairs=_center_pairs(center, proportiontocut)),
+        statistic=s.out(stat),
+        pvalue=s.out(p),
+        df_num=s.out(dfn),
+        df_denom=s.out(dfd),
     )
 
 
@@ -285,7 +330,13 @@ def fligner(*samples, axis=None, center="median", proportiontocut=0.05, nan_poli
     name = "fligner"
     c, ptc = _center(center, proportiontocut, name)
     s, (stat, p, df, _) = _groups(name, samples, axis, nan_policy, keepdims, _FLIGNER, c, ptc)
-    return FlignerResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+    return FlignerResult._make(
+        batch=s.batch,
+        info=s.info(pairs=_center_pairs(center, proportiontocut)),
+        statistic=s.out(stat),
+        pvalue=s.out(p),
+        df=s.out(df),
+    )
 
 
 # a wrong call shape in the library's form, "ttest_ind(): unexpected keyword argument

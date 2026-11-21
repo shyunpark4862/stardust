@@ -124,20 +124,16 @@ def test_zero_weights_are_empty():
     assert np.all(np.isnan(a(rb.params)[1])) and math.isnan(a(rb.df_model)[1])
 
 
-def test_linregress_and_slopes_too_few_points():
+def test_slopes_too_few_points():
     """D-20: fewer than two points give G96's NaN result (scipy 1.18.1's NaN), not an error;
     a batch too."""
     for f in (
-        lambda: R.linregress([1.0], [2.0]),
-        lambda: R.linregress([], []),
         lambda: R.theilslopes([1.0]),
         lambda: R.siegelslopes([1.0, np.nan], nan_policy="omit"),
     ):
         assert all(math.isnan(v) for v in f())
     b = R.theilslopes(np.ones((3, 1)))
     assert all(v.shape == (3,) and bool(sd.all(sd.isnan(v))) for v in b)
-    b = R.linregress(np.ones((2, 1)), np.ones((2, 1)))
-    assert all(v.shape == (2,) and bool(sd.all(sd.isnan(v))) for v in b)
 
 
 # ---- G98, G99: read-only configuration, conf_int's keyword
@@ -230,7 +226,6 @@ def test_one_column_dataframe_y():
         lambda y: R.lasso(y, X, alpha=0.1),
     ):
         assert a(fit(dfy).params).tolist() == a(fit(Y).params).tolist()
-    assert R.linregress(X[:, 0], dfy) == R.linregress(X[:, 0], Y)
     with pytest.raises(
         ValueError,
         match=r"^ols\(\): 'X' must have 1 row like 'y', not 60 \('y' of shape \(60, 1\) "
@@ -317,7 +312,6 @@ def test_perfect_fit_t_and_p_are_nan():
         assert np.all(np.isnan(a(r.tvalues))) and np.all(np.isnan(a(r.pvalues)))
         ci = a(r.conf_int())
         assert np.array_equal(ci[:, 0], a(r.params)) and np.array_equal(ci[:, 1], a(r.params))
-    assert math.isnan(R.linregress(x, -3 * x).pvalue)
     # a constant y (G92, G94): the intercept's t too
     for r in (R.ols(np.full(10, 2.0), x), R.glm(np.full(10, 2.0), x, family="gaussian")):
         assert np.all(np.isnan(a(r.tvalues)))
@@ -410,7 +404,7 @@ def test_result_arrays_are_read_only():
     p = o.params.copy()  # a copy is writable
     p[0] = 100.0
     assert a(o.bse).tolist() == before and o.predict(X[:2]).tolist() == o.fittedvalues[:2].tolist()
-    b = R.linregress(np.stack([X[:, 0], X[:, 1]]), y)
+    b = R.theilslopes(np.stack([y, -y]))
     with pytest.raises(ValueError, match="read-only"):
         b.slope[0] = 1.0
 
@@ -419,8 +413,8 @@ def test_result_arrays_are_read_only():
 
 
 def test_asarray_value_errors_keep_their_words():
-    with pytest.raises(ValueError, match=r"^linregress\(\): inhomogeneous nested sequence"):
-        R.linregress([[1.0, 2.0], [3.0]], [1.0, 2.0])
+    with pytest.raises(ValueError, match=r"^theilslopes\(\): inhomogeneous nested sequence"):
+        R.theilslopes([[1.0, 2.0], [3.0]])
     with pytest.raises(ValueError, match=r"^ols\(\): 0-dimensional arrays are not supported"):
         R.ols(np.array(2.0), [1.0])
     with pytest.raises(TypeError, match=r"^ols\(\): 'y' must be an sd.ndarray, a sequence of numbers"):
@@ -459,7 +453,7 @@ def test_function_call_shape_messages():
         (lambda: R.rlm(y), r"^rlm\(\): missing 1 required positional argument: 'X'$"),
         (lambda: R.quantreg(y, X, qq=0.5), r"^quantreg\(\): unexpected keyword argument 'qq'"),
         (lambda: R.theilslopes(y, X, 0.9), r"^theilslopes\(\): takes from 1 to 2 positional arguments but 3"),
-        (lambda: R.linregress(x=X, y=y), r"^linregress\(\): got some positional-only arguments"),
+        (lambda: R.theilslopes(y=y), r"^theilslopes\(\): got some positional-only arguments"),
     ]
     for f, msg in cases:
         with pytest.raises(TypeError, match=msg):

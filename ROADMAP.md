@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3–SP8 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4–SP8 시작 전), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(설계 초안, C0–C8 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -315,7 +315,7 @@
 | 마일스톤 | 상태 |
 |---|---|
 | G0 준비: 대조 패키지, Arb 참값 도구, NIST StRD | 완료·승인 (2026-11-18) |
-| G1 선형: `ols wls gls linregress`, 추론·예측, 강건 표준오차, 진단, summary | 완료·승인 (2026-11-18) |
+| G1 선형: `ols wls gls linregress`(`linregress`는 2026-11-21에 뺐다, G188), 추론·예측, 강건 표준오차, 진단, summary | 완료·승인 (2026-11-18) |
 | G2 GLM: 정규·이항·포아송·감마, IRLS + 뉴턴, 분리 증명서, 강건 공분산 | 완료·승인 (2026-11-18) |
 | G3 정규화: `ridge lasso elastic_net`, 경로, 교차검증, `penalized_glm` | 완료·승인 (2026-11-18) |
 | G4 강건: `rlm`(M·MM), `theilslopes`, `siegelslopes` | 완료·승인 (2026-11-18) |
@@ -334,7 +334,7 @@
 
 
 ### G1. 선형
-- `ols wls gls linregress`, 추론(표준오차·t·p·구간·F·우도), 예측과 예측 구간, 강건 표준오차(HC0–HC3, HAC, 군집), 랭크 부족, 진단(지렛대, 스튜던트화 잔차, Cook 거리, Breusch–Pagan, Jarque–Bera), `summary`, 배치
+- `ols wls gls linregress`(`linregress`와 `LinregressResult`는 2026-11-21에 뺐다: `ols(y, x)`와 `htest.pearsonr`과 같은 값이고 자기만의 옵션이 없다, docs/design/regression.md G188), 추론(표준오차·t·p·구간·F·우도), 예측과 예측 구간, 강건 표준오차(HC0–HC3, HAC, 군집), 랭크 부족, 진단(지렛대, 스튜던트화 잔차, Cook 거리, Breusch–Pagan, Jarque–Bera), `summary`, 배치
 - G1a(선형 모형과 추론)와 G1b(HAC·군집, 진단, summary)로 나눠 진행했다.
 - 결정(사용자, 2026-11-18): docs/design/regression.md §1.1 G9–G30 (R식 랭크 부족, statsmodels의 필드 이름, 앞 축 배치, 필요할 때까지 최대 3번의 반복 개선, 완전 적합의 극한값, 강건 공분산도 t·F, inf는 ValueError, HAC의 지연 수, 일원 군집과 Stata의 보정).
 - 결과: csrc/regression/(linear.cpp, lsq.hpp), csrc/bind/regression_bind.cpp, src/stardust/regression/_linear.py, src/stardust/_results.py; docs/api/regression.md §1–§2, docs/design/regression.md §2·§3.1–§3.3; 측정(커밋 4151d2a) bench/regression/g1/(speed.md, refine.log), bench/regression/g1b/speed.md; 테스트 tests/regression/test_linear.py, test_reference_tool.py.
@@ -464,7 +464,7 @@
 
 # 가설검정 영역 (sd.htest)
 
-> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인** (2026-11-21). H5–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
+> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인** (2026-11-21). H6–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -483,7 +483,7 @@
 | H2 적합도 1: `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp cramervonmises` | 완료·승인 (2026-11-20) |
 | H3 순위 검정: `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test` | 완료·승인 (2026-11-21) |
 | H4 적합도 2: `ks_2samp cramervonmises_2samp anderson_ksamp epps_singleton_2samp` | 완료·승인 (2026-11-21) |
-| H5 상관: `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi` | 시작 전 |
+| H5 상관: `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi` | 완료·승인 (2026-11-21) |
 | H6 분할표: `chi2_contingency fisher_exact barnard_exact boschloo_exact mcnemar cochrans_q` | 시작 전 |
 | H7 비율과 이항: `binomtest quantile_test poisson_means_test proportions_ztest proportions_chisquare proportion_confint test_proportions_2indep confint_proportions_2indep` | 시작 전 |
 | H8 다중 비교와 보정: `tukey_hsd dunnett multipletests false_discovery_control combine_pvalues` | 시작 전 |
@@ -497,7 +497,7 @@
 - 결정(사용자, 2026-11-20): docs/design/htest.md §1.1 H6–H15, 영역 사이의 결정 H16–H21.
 - 결과: docs/api/htest.md(계획한 공개 이름 72개의 시그니처, 결과 필드와 풀기, 에러, scipy·statsmodels → sd 이름의 대응표, 마일스톤별 질문 §12), src/stardust/htest/(`__init__.py` — `sd.htest`, 공개 이름은 아직 없다; `_result.py`의 `_TestResult`와 `conf_int`; `_common.py`의 `Samples`·`Tables`와 옵션 검사), tests/htest/(`problems.py` 문제 281개, test_api_surface.py, test_result.py, test_common.py, test_reference_data.py; 63개), tools/htest_ref.py(Arb·정확한 유리수, 17묶음 138문제 → tests/htest/ref/), tools/gen_htest_scipy.py(→ tests/htest/data/scipy_h1–h8.json, statsmodels.json), tools/gen_htest_r.py(base R 145문제 → tests/htest/data/r.json), bench/htest/h0/(speed.py, speed.md, speed.json: scipy·statsmodels 41검정 × n = 10, 10³, 10⁶, 배치 10⁴ × 30), docs/design/htest.md §2.2·§7(정확도·속도 체계에 넣는 파일 목록).
 - 찾은 것: scipy·R이 참값에서 크게 벗어나는 곳은 상쇄다: Bartlett의 거의 같은 분산(scipy 53배, R은 음수의 통계량), G 검정의 O ≈ E(scipy 1e-7), |r| ≈ 1의 Pearson p값(scipy 5e-7–0.11, R 2e-7–0.09), 큰 오프셋의 t(scipy·R 1e-8–3e-7; R은 짝 t 1e-6, F 2e-8). R은 깊은 꼬리에서 p = 0을 낸다(한 표본 KS 정확 n = 80의 참 1.7e-21, wilcox.test 정규 근사의 참 6.1e-51). 그 밖의 scipy 값은 참값과 1e-12 안이고, 정수 통계량의 정확 분포는 3e-16 안이다. scipy의 2 × 2 `fisher_exact`는 양쪽 규칙의 허용오차가 1e-14다(설계 초안의 1e-7은 `binomtest`와 R의 것). scipy `wilcoxon`의 `zstatistic`은 `method='asymptotic'`을 준 때만 있다. 작은 표본에서 scipy 호출 하나의 고정 비용은 0.06–0.25 ms, 배치에서 줄마다 Python 고리인 `kendalltau`는 10⁴ × 30에 950 ms다.
-- sd.regression과 겹치는 곳(`jarque_bera`와 `r.jarque_bera()`, `f_oneway`와 분산분석표·더미 OLS, `pearsonr`과 `linregress`, `multipletests`와 단계적 선택): H16–H21로 정했고 docs/design/htest.md §1.4, docs/api/htest.md §13에 적었다(Jarque–Bera의 커널과 클래스는 H2에서 옮긴다; `anova`와 `f_oneway`는 계약 안에서 같고 비트는 아니다).
+- sd.regression과 겹치는 곳(`jarque_bera`와 `r.jarque_bera()`, `f_oneway`와 분산분석표·더미 OLS, `pearsonr`과 `linregress`(뒤에 `linregress`를 뺐다, G188), `multipletests`와 단계적 선택): H16–H21로 정했고 docs/design/htest.md §1.4, docs/api/htest.md §13에 적었다(Jarque–Bera의 커널과 클래스는 H2에서 옮긴다; `anova`와 `f_oneway`는 계약 안에서 같고 비트는 아니다).
 
 ### H1. 평균과 분산
 - t 검정 넷(Student, Welch, Yuen의 절삭), 일원 분산분석(Welch 포함), Alexander–Govern, 분산의 동질성(Bartlett, Levene, Fligner–Killeen). 신뢰구간은 `conf_int(alpha=0.05)`.
@@ -526,6 +526,9 @@
 
 ### H5. 상관
 - Pearson(1 − r²을 상쇄 없이), Spearman(두 꼴), 점 이연 상관, Kendall τ-b·τ-c(정확·정규), 가중 τ, Somers' D, Chatterjee ξ.
+- 결정(사용자, 2026-11-21): `spearmanr`와 `spearmanrho`를 둘 다, Spearman의 정확 분포는 넣지 않는다, `weightedtau`는 넣고 `pvalue`는 NaN, 별칭 `correlation`은 없다, `pearsonr`의 r은 htest의 정확한 커널이고 `sd.corrcoef`와 비트까지 맞추지 않는다 (docs/design/htest.md §1.1 H62–H66).
+- 결과: src/stardust/htest/_correlation.py(여덟 함수와 결과 클래스), csrc/htest/(correlation.cpp: 검정과 Pearson 커널; kendall.hpp: 역순 쌍의 정확 분포, 128비트 정수와 양수의 블록 합), tests/htest/test_correlation.py, 참값 6묶음 68문제(새 묶음 `weightedtau`·`somersd`·`chatterjeexi`), 문제 49개 더(526개), R `cor.test` 대조, 골든과 측정 사례. 결과를 보고(사용자, 2026-11-21): `linregress`가 htest의 Pearson 커널을 부르게 했다가 같은 날 `linregress` 자체를 뺐다(regression G188; H67을 바꿨다), 동점이 있는 Kendall `'exact'`는 `ValueError`, 표준오차 0의 `somersd` p값은 NaN, `weightedtau`의 NaN은 NaN, `chatterjeexi`의 x 동점은 위치로, `somersd`의 표는 10⁷칸까지, `spearmanr`의 기본 `axis=None` (H67–H73).
+- 찾은 것: 모든 참값이 계약 안이다(최대 0.038). scipy의 `pearsonr` p값은 r ≈ 1에서 0.11(eps 10⁻⁷)–1(eps 10⁻⁹: p = 0, 참 1.2e-74), R `cor.test`는 5.6e10배 틀린다. R의 Kendall 정확 p값은 n > 33에서 1 − cdf라 깊은 꼬리가 6.8e-14(참 2.4e-82)·음수다. scipy의 `weightedtau`는 동점에서 1e-14 (docs/design/htest.md §7).
 
 ### H6. 분할표
 - 카이제곱 독립성 검정(Yates, Cressie–Read), Fisher 정확 검정(2 × 2와 r × c), Barnard·Boschloo(장애 모수의 참 상한), McNemar, Cochran Q.
@@ -545,7 +548,7 @@
 
 # 희소 영역 (sd.sparse)
 
-> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2는 완료·승인, SP3–SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
+> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2는 완료·승인, SP3은 완료·승인(2026-11-21), SP4–SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -562,7 +565,7 @@
 | SP0 준비: API 문서, 시험 행렬, 참값(Arb)·scipy·R 대조 도구, Accelerate 탐침, 색인 dtype의 측정, 기준선 | 완료·승인 (2026-11-20) |
 | SP1 형식과 변환: `coo_array csr_array csc_array dok_array`, 표준 꼴, `sd.ndarray`·numpy·scipy와 주고받기 | 완료·승인 (2026-11-21) |
 | SP2 연산: 산술·비교·원소별 함수, SpMV·SpMM·SpGEMM, 리덕션 | 완료·승인 (2026-11-21) |
-| SP3 인덱싱과 만들기: 인덱싱과 대입, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find` | 시작 전 |
+| SP3 인덱싱과 만들기: 인덱싱과 대입, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find` | 완료·승인 (2026-11-21) |
 | SP4 직접 풀이: `spsolve splu factorized inv spsolve_triangular`, `LinearOperator`, `sd.linalg`의 `TypeError` | 시작 전 |
 | SP5 반복법: `cg gmres minres bicgstab lsqr lsmr` | 시작 전 |
 | SP6 고유값과 특이값: `eigsh eigs svds` | 시작 전 |
@@ -592,7 +595,11 @@
 - 찾은 것: scipy의 희소 × 희소는 한쪽의 NaN·inf를 `a * 0` = NaN으로 저장하고(이쪽은 강한 0), `<=`·`>=`는 NaN에서 참이며, `argmax`는 NaN이 있어도 첫 암시적 0을 돌려준다. scipy의 축 합은 자기 줄을 따르는 쪽(CSR의 `axis=1`)만 `np.add.reduceat`(pairwise)라 이쪽과 끝자리가 다르다. scipy의 복소 SpMV는 numpy의 복소 곱 뒤 성분별 덧셈과 비트까지 같다. 1스레드 SpMV 0.89배, SpMM 1.6배, 이항 연산 1.1–1.2배, 흩뿌리기 1.0배, SpGEMM 0.67배(행 정렬 때문; 정렬까지 한 scipy보다 2.4배 빠르다), 10스레드는 흩뿌리기 말고 4–8배다(docs/design/sparse.md §5). 흩뿌리기의 병렬과 SpMM의 목표(3배)는 SP8로 넘긴다.
 
 ### SP3. 인덱싱과 만들기
-- 정수·슬라이스·배열·마스크 인덱싱과 대입, 대각, 만들기 함수(`random_array`는 `rng`를 꼭 받는다).
+- 정수·슬라이스·배열·마스크 인덱싱과 대입(키는 배열의 규칙과 메시지), 대각, 만들기 함수.
+- 결정(사용자, 2026-11-21): docs/design/sparse.md §1.1 SP48–SP52(만들기 함수는 scipy의 배열 꼴 이름 `eye_array diags_array random_array block_array`, `random_array`는 `rng`를 꼭 받는다, CSR·CSC의 새 자리 대입은 받고 O(nnz), `format=None`은 scipy의 규칙이되 DIA·BSR 자리는 CSR, 정수 대각의 `diags_array`는 int64).
+- 결과: 인덱싱(`A[key]`: 결과의 차원 수가 A와 같으면 A의 형식, 다르면 COO; `toarray()`가 밀집 인덱싱과 비트까지 같다)과 대입(형식마다 scipy의 저장 규칙, 같은 자리는 마지막 값), `trace diagonal setdiag`, 공개 이름 `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find`(docs/api/sparse.md §4), src/stardust/sparse/(`_index.py`, `_construct.py`), csrc/sparse/(`index.cpp`: 축의 고르기 표, 바깥 고르기·원소 고르기·대입·대각, `construct.cpp`: kron·쌓기·삼각; `dok.cpp`에 `set_many`), 테스트 tests/sparse/(test_indexing.py, test_construct.py; scipy 1.18.1과 실시간 대조), 골든 1,069케이스를 더함(모두 6,508, 1·3·10스레드 같음), 속도 사례 SP3의 11가지 × 크기(smoke만; 기준선으로 올리지 않았다). 정확도 스윕은 없다(반올림이 없는 연산).
+- 찾은 것: scipy 1.18.1의 CSR·CSC는 원소 고르기와 2차원 마스크에 밀집 배열을 돌려주고(COO·DOK는 COO), DOK는 경로마다 저장된 0을 빼거나 두며, COO의 같은 자리 대입은 첫 값을 남긴다. scipy의 버그 둘: `kron`은 한쪽이 아무것도 저장하지 않으면 dtype을 잃고 float64를 돌려주고, CSR의 `A[bool 행 마스크, ::2]`는 `ValueError`(reshape)다. 속도(nnz 10⁶, smoke): 행 고르기 1.6–3.3배, 열 slice 1.2배(10스레드 6배), `kron` 6.5배(10스레드 27배), `tril`·`hstack` 1.5배이고, `vstack`(0.57배, int64 색인의 대역), 정렬되지 않은 열 고르기(0.64배), `random_array`(0.21배, `sd.random`의 비복원 `choice`)는 SP8의 고칠 목록이다(docs/design/sparse.md §5).
+- SP3 뒤의 결정(사용자, 2026-11-21): docs/design/sparse.md §1.1 SP53–SP58(대입한 0의 저장은 형식마다 scipy의 규칙, CSR·CSC의 원소 고르기는 COO, bool·int64의 `trace`는 int64, bool `kron`은 int64, `diags_array`의 대각은 `sd.ndarray`나 수, `random_array`는 `data_sampler(n)`과 그 dtype; 모두 구현한 그대로).
 
 ### SP4. 직접 풀이
 - Accelerate LU(AMD 순서)로 `spsolve`·`splu`·`factorized`·`inv`, 이 라이브러리의 삼각 풀이, 특이의 판정(`LinAlgError`), `LinearOperator`, `sd.linalg`가 희소 입력에 쓸 함수를 짚는 `TypeError`.
@@ -608,3 +615,63 @@
 
 ### SP8. 최적화와 일관성 점검
 - 모든 공개 함수를 크기마다 scipy·R과 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 점검하고, 코드 리뷰를 한다.
+
+---
+
+# 수치 미적분 영역 (sd.integrate, sd.differentiate)
+
+> 상태: **설계 초안** (2026-11-21). C0–C8은 모두 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
+>
+> **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
+
+## 진행 원칙
+- 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것(docs/design/integrate.md §9)을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. 해설과 안내서는 쓰지 않는다.
+- 큰 결정(사용자, 2026-11-21): 최상위 모듈 둘 `sd.integrate`·`sd.differentiate`(scipy의 이름 그대로, 설계 문서와 마일스톤은 하나); 첫 판은 적분 15개와 미분 3개, 상미분방정식은 나중의 묶음(옛 `ode`·`complex_ode`, `lebedev_rule`, `qmc_quad`는 넣지 않음); optimize의 고정 간격 차분 커널(`csrc/optimize/diff.hpp`)을 differentiate로 옮기고 optimize가 부른다(`approx_fprime`·`check_grad`는 optimize에 그대로, 비트·골든 불변); `derivative`·`tanhsinh`·`nsum`은 optimize 배치의 규칙(`converged`·`n_iter`·`nfev`, 이 무리만 `args`, scipy의 status, 함께 쓰는 C++ 반복 고리); scipy와 같은 걸음과 호출점의 비트 동일을 목표로 하고 Arb `acb.integral`로 결과와 오차 추정의 정직함을 확인; 시험 문제는 QUADPACK 책·scipy의 시험·Arb 참값의 어려운 적분(QUADPACK 원본을 받을지는 C0 전에 묻는다); 다른 영역의 전용 구적은 그대로 (docs/design/integrate.md §1.1 C1–C7).
+- C0 전의 결정(사용자, 2026-11-21): 측정 영역 둘 `integrate`·`differentiate`; 결과 클래스 `IntegrateResult`·`DifferentiateResult`(`OptimizeResult`의 규칙); `quad` 계열은 결과 객체이고 `(integral, error)`로 풀린다(`full_output` 없음); 허용오차는 어디서나 `atol`·`rtol`; 상한은 `max_iter`·`max_level`·`min_level`·`max_terms`·`max_p1`(`limit`·`limlst`는 그대로); 값 필드는 어디서나 `integral`·`error`·`nfev`; `callback`·`kwargs`·`preserve_shape` 없음과 O38·O48의 확인; 차분 커널과 함께 nls의 `Differences`도 옮긴다; 반복 고리는 csrc 아래 새 바닥 `elementwise/`; QUADPACK Fortran 원본은 받아 gfortran으로 견주되 받기 전에 파일 목록과 크기를 묻는다(docs/design/integrate.md §1.1 C8–C17, 목록은 §7.6).
+- 비교 대상은 scipy 1.18.1의 `scipy.integrate`·`scipy.differentiate`와 QUADPACK이고, 정확도 체계(`bench/accuracy`)와 속도 체계(`bench/speed`)에서 견준다. 참값은 Arb다.
+- 설계 초안에서 찾은 것(docs/design/integrate.md §7.4): `quad`는 좁은 봉우리를 처음 규칙이 놓치면 틀린 값을 경고 없이 수렴으로 알린다(QUADPACK 책의 봉우리 α = 19·20). `tanhsinh`은 수렴한 46경우 가운데 여섯에서 오차 추정이 실제 오차보다 작다(최소 0.015배). Arb의 `acb.integral`은 끝점에서 유계가 아닌 피적분함수에 NaN을 돌려줘 참값은 닫힌 꼴·적분·치환의 세 방법이다. tanh-sinh 표는 libm과 c·c로 scipy와 16,386값이 비트까지 같다. scipy `derivative`의 order 8 가중치는 정확한 값과 상대 2.7×10⁻¹⁴까지 다르고, `roots_legendre`의 가중치는 n = 100에서 83,682 ULP까지 다르다.
+- 기존 영역의 결과는 비트까지 같아야 한다(차분 커널과 반복 고리를 옮겨도 optimize·regression의 골든이 그대로).
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| C0 준비: API 문서, 결과 객체의 바탕, 시험 모음, Arb 참값 도구, scipy 기록과 호출 순서, QUADPACK 원본 대조(받기 전에 묻는다), 측정·골든 등록, 기준선 | 시작 전 |
+| C1 함께 쓰는 부품: 차분 간격 커널과 `Differences` 옮기기(C3, C15), 반복 고리를 `elementwise/`로 끌어내기(C4, C16); 공개 함수 없음 | 시작 전 |
+| C2 미분: `derivative jacobian hessian` | 시작 전 |
+| C3 표본과 고정 규칙: `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` | 시작 전 |
+| C4 QUADPACK 1: `quad`(QAGS, QAGI, QAGP), `dblquad tplquad nquad` | 시작 전 |
+| C5 QUADPACK 2: `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC) | 시작 전 |
+| C6 배치 적분: `tanhsinh nsum` | 시작 전 |
+| C7 벡터 값과 다차원: `quad_vec cubature` | 시작 전 |
+| C8 최적화와 일관성 점검 | 시작 전 |
+
+## 마일스톤
+
+### C0. 준비
+- 결정(사용자, 2026-11-21): docs/design/integrate.md §1.1 C8–C17(C0 전에 정할 것을 모두 정했다).
+- API 초안의 확정(C11–C13의 이름), 결과 객체 `IntegrateResult`·`DifferentiateResult`의 바탕(`OptimizeResult`에서 끌어내되 동작 불변), 시험 모음(QUADPACK 책의 무리, scipy 시험의 f1–f15 등, 어려운 적분, 미분의 초등 함수·MGH), Arb 참값 도구(닫힌 꼴, `acb.integral`, 치환), scipy 1.18.1의 결과와 호출 순서의 기록, QUADPACK 원본 21개 파일(docs/design/integrate.md §7.6)을 크기와 함께 물은 뒤 `build/comparators/quadpack/`에 받아 gfortran으로 돌린 결과(원본은 저장소에 넣지 않는다), `bench/areas.py`·골든·측정의 등록, scipy 기준선.
+
+### C1. 함께 쓰는 부품
+- `csrc/optimize/diff.hpp`를 differentiate의 C++로, `src/stardust/optimize/_diff.py`의 `Differences`를 differentiate의 Python 내부로 옮기고 optimize·regression이 그것을 부른다. 반복 고리는 csrc 아래 새 바닥 `elementwise/`로 간다. `csrc/optimize/batch.cpp`의 반복 고리(원소 패스의 병렬, `args` 모으기, 호출, 진행 목록)를 끌어내 원소마다 여러 점의 호출로 넓힌다. optimize·regression의 테스트·골든·배치 속도가 그대로인지 확인한다.
+
+### C2. 미분
+- scipy `derivative`의 중첩 스텐실과 간격 줄이기, `jacobian`(변수마다 함께), `hessian`(`jacobian`의 `jacobian`). 호출점은 scipy와 같게, 가중치의 정확도는 C2 전에 묻는다.
+
+### C3. 표본과 고정 규칙
+- 표본 규칙(sd의 합 규칙), `fixed_quad`(Gauss–Legendre의 점과 가중치), `newton_cotes`.
+
+### C4. QUADPACK 1
+- QAGS·QAGI·QAGP(QK21·QK15·QK15I, ε-알고리즘), scipy의 status와 글, 겹친 적분. 결정의 자리의 FMA는 scipy의 호출 순서와 견주어 찾는다.
+
+### C5. QUADPACK 2
+- QAWO·QAWF(체비쇼프 모멘트, Clenshaw–Curtis), QAWS·QAWC(수정 Clenshaw–Curtis).
+
+### C6. 배치 적분
+- `tanhsinh`(scipy의 표·합·오차 추정, 무한 구간의 치환), `nsum`(직접 합과 적분 경계).
+
+### C7. 벡터 값과 다차원
+- `quad_vec`(적응 Gauss–Kronrod, 노름), `cubature`(gk21·gk15의 곱, Genz–Malik, 무한 축의 치환; C++의 힙).
+
+### C8. 최적화와 일관성 점검
+- 모든 공개 함수를 크기마다 scipy와 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 점검하고, 코드 리뷰를 한다.
+- 그 뒤의 상미분방정식 묶음(`solve_ivp`, `odeint`, `solve_bvp`와 풀이 클래스)은 큰 결정을 그때 묻는다.

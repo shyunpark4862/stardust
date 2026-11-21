@@ -19,7 +19,6 @@ RESULTS = {
     "WLSResult",
     "GLSResult",
     "GLMResult",
-    "LinregressResult",
     "JarqueBeraResult",
     "BreuschPaganResult",
     "RidgeResult",

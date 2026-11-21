@@ -1,6 +1,7 @@
 // The hypothesis tests' area: the submodule stardust._core.htest (docs/design/htest.md §6).
 #include "bind/htest_bind.hpp"
 
+#include "htest/correlation.hpp"
 #include "htest/gof.hpp"
 #include "htest/gof2.hpp"
 #include "htest/parametric.hpp"
@@ -16,6 +17,7 @@ void bind_htest(nb::module_& core) {
     htest::bind_gof(m);
     htest::bind_rank(m);
     htest::bind_gof2(m);
+    htest::bind_correlation(m);
 }
 
 }  // namespace sd

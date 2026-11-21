@@ -7,17 +7,45 @@ spmatrix classes), and scipy.sparse.linalg's functions will sit here directly (n
 sd.sparse.linalg); inputs and options follow this library's rules (decisions SP1-SP34 in
 docs/design/sparse.md §1.1).
 
-The public names come milestone by milestone (docs/design/sparse.md §8): the formats and their
-conversions so far. The native core is stardust._core.sparse.
+The public names come milestone by milestone (docs/design/sparse.md §8): the formats, their
+conversions and operations, indexing and the builders so far. The native core is stardust._core.sparse.
 """
 
+from .. import _calls
 from .. import _core as _sd_core
 from ._base import sparray
 from ._compressed import csc_array, csr_array
+from ._construct import (
+    block_array,
+    block_diag,
+    diags_array,
+    eye_array,
+    find,
+    hstack,
+    kron,
+    kronsum,
+    random_array,
+    tril,
+    triu,
+    vstack,
+)
 from ._coo import coo_array
 from ._dok import dok_array
 
 _core = _sd_core.sparse
+
+eye_array = _calls.function(eye_array)
+diags_array = _calls.function(diags_array)
+random_array = _calls.function(random_array)
+kron = _calls.function(kron)
+kronsum = _calls.function(kronsum)
+hstack = _calls.function(hstack)
+vstack = _calls.function(vstack)
+block_array = _calls.function(block_array)
+block_diag = _calls.function(block_diag)
+tril = _calls.function(tril)
+triu = _calls.function(triu)
+find = _calls.function(find)
 
 
 def issparse(x, /):
@@ -34,4 +62,8 @@ def matrix_transpose(A, /):
     return A._transpose()
 
 
-__all__ = ["sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose"]
+__all__ = [
+    "sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose",
+    "eye_array", "diags_array", "random_array", "kron", "kronsum", "hstack", "vstack", "block_array", "block_diag",
+    "tril", "triu", "find",
+]  # fmt: skip

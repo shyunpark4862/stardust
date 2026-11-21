@@ -14,6 +14,7 @@ import sys
 from collections import Counter
 from fractions import Fraction
 
+import numpy as np
 import pytest
 
 from . import problems as P
@@ -49,6 +50,8 @@ def rel(v, ref):
     """|v - ref| / |ref| (NaN against NaN is 0; anything else against NaN is inf)."""
     if isinstance(v, list):
         v = v[0]
+    if v is None and ref == ref:  # (R's NA against a number; against NaN it stays a difference)
+        v = math.nan
     if ref != ref:
         return 0.0 if v != v else math.inf
     if v != v:
@@ -365,6 +368,13 @@ SCIPY_KNOWN = {
     ("epps_singleton_2samp/tail", "pvalue"): 4.2e-12,
     ("epps_singleton_2samp/offset", "statistic"): 9.6e-10,
     ("epps_singleton_2samp/offset", "pvalue"): 4.5e-9,
+    # H5's problems: Pearson's 1 - r^2 from a rounded r (0 where the truth is 1.2e-74 at
+    # r = 1 - 1e-18; the near -1 r and the deep tail of n = 400 too), and the normal tail of
+    # chatterjeexi's xi / sd (its variance's sums in doubles)
+    ("pearsonr/near-1-eps9", "pvalue"): 1.0,
+    ("pearsonr/near-minus-1", "pvalue"): 3.3e-3,
+    ("pearsonr/deep-tail", "pvalue"): 1.2e-12,
+    ("chatterjeexi/large", "pvalue"): 1.6e-12,
 }
 # R's: the same cancellations (and ttest_rel's x - y), its own methods where they differ from scipy's
 # (ks.test is exact only below n = 100 (one sample), wilcox.test is exact up to n = 50 and conditional with
@@ -391,9 +401,6 @@ R_KNOWN = {
     ("ks_1samp/approx", "pvalue"): 0.018,
     ("mannwhitneyu/ties", "pvalue"): 7.1e-3,
     ("mannwhitneyu/no-continuity", "pvalue"): 2.4e-3,
-    ("spearmanrho/small", "pvalue"): 1.5,
-    ("spearmanrho/large", "pvalue"): 1.1e-4,
-    ("spearmanr/small", "pvalue"): 1.5,
     ("wilcoxon/zeros-wilcox", "pvalue"): 0.16,
     ("wilcoxon/tail", "pvalue"): 1.0,
     # H1's problems (as scipy's above; fligner.test's centre is rounded as scipy's)
@@ -452,6 +459,23 @@ R_KNOWN = {
     ("ks_2samp/asymp-less", "pvalue"): 0.0031,
     ("ks_2samp/asymp-small", "pvalue"): 0.25,
     ("ks_2samp/asymp-auto", "pvalue"): 0.032,
+    # H5's problems: cor.test's Pearson p-value from its t of a rounded r near |r| = 1 (and of
+    # offset data, its r rounded in the centring); its exact Kendall p-value (ckendall's counts in
+    # doubles: 2.1e-9 at n = 33) as 1 - cdf in the deep tail (6.8e-14 where the truth is 2.4e-82,
+    # and -4.1e-14 at n = 100). Spearman is called with exact = FALSE (the t approximation, H63);
+    # its default (AS 89's exact distribution) is recorded beside it (test_correlation.py).
+    ("pearsonr/near-1-eps9", "pvalue"): 5.6e10,
+    ("pearsonr/near-minus-1", "pvalue"): 5.5e-3,
+    ("pearsonr/deep-tail", "pvalue"): 1.2e-12,
+    ("pearsonr/offset-both", "pvalue"): 2.3e-7,
+    ("kendalltau/exact-33", "pvalue"): 2.1e-9,
+    ("kendalltau/exact-none-discordant", "pvalue"): 2.8e68,
+    ("kendalltau/exact-one-discordant", "pvalue"): 1.9e142,
+    ("kendalltau/exact-forced-200", "pvalue"): math.inf,  # NA (n = 200)
+    ("pearsonr/scale-huge", "pvalue"): math.inf,  # NA: its squares of 1e200 overflow
+    ("pearsonr/constant", "pvalue"): math.inf,  # NA, NaN here (as the others' constant samples)
+    ("spearmanrho/constant", "pvalue"): math.inf,
+    ("kendalltau/constant", "pvalue"): math.inf,
 }
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
 R_SAME_STATISTIC = {
@@ -641,3 +665,47 @@ def test_r_levene_degrees_of_freedom():
             assert r["parameter"] == [rec["df_num"][0], rec["df_denom"][0]], pid
             seen += 1
     assert seen == len(REFS["levene"])
+
+
+# ---- the tool's H5 definitions against independent forms ----------------------------------
+
+
+def test_mahonian_numbers():
+    T = tool()
+    for n in range(1, 8):
+        # every permutation's inversions counted directly
+        want = Counter(sum(1 for i in range(n) for j in range(i + 1, n) if p[i] > p[j])
+                       for p in itertools.permutations(range(n)))  # fmt: skip
+        top = n * (n - 1) // 2
+        got = T.mahonian(n, top)
+        assert got == [want[k] for k in range(top + 1)]
+        assert sum(got) == math.factorial(n) and got == got[::-1]
+
+
+def test_weighted_tau_definitions():
+    T = tool()
+    x = [Fraction(v) for v in P.normal(7201, 12)]
+    y = [Fraction(v) for v in P.rounded(7202, 12)]
+    # equal weights: the additive weighted tau is Kendall's tau-b
+    num, den = T._wtau_parts(x, y, [Fraction(1)] * 12, True)
+    k = T.kendalltau(P.Problem("kendalltau/w", "kendalltau", (np.asarray(x, float), np.asarray(y, float)),
+                               {"method": "asymptotic"}))  # fmt: skip
+    from flint import arb
+
+    tb = k["statistic"]()
+    assert abs(float((arb(num) / arb(den).sqrt() - tb).mid())) < 1e-15  # (53-bit arbs)
+    # the lexicographic rank: the largest (x, y) first, equal pairs by position
+    assert T._lex_rank([Fraction(1), Fraction(3), Fraction(3), Fraction(2)], [Fraction(0)] * 4) == [3, 1, 0, 2]
+
+
+def test_somers_d_and_xi_definitions():
+    T = tool()
+    # a 2 x 2 table: D(Y|X) = (ad - bc) / ((a + b)(c + d)), the difference of two proportions
+    t = np.array([[7.0, 3.0], [2.0, 8.0]])
+    d = T.somersd(P.Problem("somersd/t", "somersd", (t,), {}))["statistic"]
+    assert d == Fraction(7 * 8 - 3 * 2, 10 * 10)
+    # y a strictly increasing function of x: xi = 1 - 3 (n - 1) / (n^2 - 1) = (n - 2)/(n + 1)
+    x = P.normal(7203, 15)
+    for cont in (True, False):
+        r = T.chatterjeexi(P.Problem("chatterjeexi/t", "chatterjeexi", (x, np.exp(x)), {"y_continuous": cont}))
+        assert r["statistic"] == Fraction(13, 16)

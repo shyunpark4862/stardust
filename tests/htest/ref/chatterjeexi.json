@@ -1,0 +1,9 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 6, "dropped": []},
+"chatterjeexi/small": {"digest": "9c3da69b5b4910c9328761360543d81b03eea855c6ee9170395d4717de52c731", "statistic": [0.06766917293233082, 3.756393692340755e-18], "pvalue": [0.31710214672809883, 1.971203184067046e-18], "kappa": 0.5345505343684238},
+"chatterjeexi/large": {"digest": "10578606a7d3f2efabac31d3f610b128f8943aedb4720865fe4970ac5650cf66", "statistic": [0.8430513722054889, -4.727170911853624e-17], "pvalue": [1.6283295229194065e-195, 4.87529088586744e-212], "kappa": 889.4012902308884},
+"chatterjeexi/continuous": {"digest": "e7cda453eecb440d09bd44b75a28f7442a34199db3a3d57ade92a4cf3c4adc03", "statistic": [0.551594746716698, -1.1664632153660182e-17], "pvalue": [1.734529400692317e-08, -6.781163646664401e-26], "kappa": 31.36872190640122},
+"chatterjeexi/ties-y": {"digest": "f0f5b518cc2f4b07a416f783eee140569d6392410a08276a5c32d132a82b83c1", "statistic": [0.03405811044833558, -1.3271619281284944e-18], "pvalue": [0.37117326995504507, 1.544295973374702e-17], "kappa": 0.3347554637997371},
+"chatterjeexi/tail": {"digest": "72264f860a027b79917b083707a78c8c5299d5af90dcada0edb4654e7d0db9a7", "statistic": [0.9571328570317448, 2.0132267871734747e-17], "pvalue": [9.823557524996044e-152, 4.874367560099964e-168], "kappa": 688.0402369039675},
+"chatterjeexi/constant-y": {"digest": "b45fd0fd8959f4f02f9ac1b782cb62fcdd6d7775c32d29e502d3db6aca064eb9", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0]}
+}

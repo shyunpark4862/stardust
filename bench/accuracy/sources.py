@@ -125,7 +125,9 @@ def stats_sweeps():
 # regression: one sweep per problem of tests/regression/ref/{linear,glm,penalized,robust,model_tests,selection}.json,
 # one region per reference field (model_tests: the tests on fitted models, their values from
 # tests/regression/refdata_model_tests.values, as the tests take them; selection: the criteria along
-# stepwise's paths and of best_subset's sizes, from tests/regression/refdata_selection.values). The documented bound (docs/design/regression.md §3.1) is the linear
+# stepwise's paths and of best_subset's sizes, from tests/regression/refdata_selection.values; their
+# comparators are regcompare's r_model_tests_values, sm_model_tests_values, r_selection_values and
+# sm_selection_values). The documented bound (docs/design/regression.md §3.1) is the linear
 # models' coefficient vector to 1e-14 normwise for kappa(X) <= 1e11; the other fields have none
 # (contract None), so only the baseline judges them.
 
@@ -281,9 +283,12 @@ def _reg_library(sw, lib):
     """A comparator library's regions for a regression problem (None: it has no such model)."""
     from . import regcompare as RC
 
-    if sw.kind == "selection":  # no comparator selects by these definitions (R's are tests/regression)
+    if sw.kind == "selection" and lib == "scikit-learn":  # its selectors score another way
         return None
     with np.errstate(all="ignore"):
+        if lib == "statsmodels" and sw.kind == "selection":
+            vals = RC.sm_selection_values(sw)
+            return _reg_regions(sw, vals.get, comparator=True) if vals else None
         if lib == "statsmodels" and sw.kind == "model_tests":
             vals = RC.sm_model_tests_values(sw)
             return _reg_regions(sw, vals.get, comparator=True) if vals else None

@@ -11,12 +11,13 @@ The contract, per field, in units of its bound (1 or less is within it):
   - statistic: relative error / (1e-14 max(1, kappa_stat)), kappa_stat the statistic's condition
     number in the quantity it transforms (D'Agostino's moments, Anderson-Darling's cancelling
     sum; 1 elsewhere);
-  - pvalue: relative error / (1e-14 max(1, kappa) max(1, kappa_stat)); the Cramér-von Mises
+  - pvalue: relative error / (1e-14 max(1, kappa) max(1, kappa_stat)) (Pearson's and Spearman's
+    kappa is the condition number in q = 1 - r^2, which sd forms without cancellation); the Cramér-von Mises
     p-values (1 - cdf of Csörgő and Faraway's approximation, one sample; 1 - V of the limit,
     the two-sample asymptotic one) also pass within 1e-15 absolute (H41);
   - zstatistic (the normal approximation's z of the rank tests), df, df_num, df_denom, median
     (median_test's grand median): relative error / 1e-14;
-  - conf_int (the t tests' 95% interval): each end's error / (1e-14 times the larger of the end
+  - conf_int (the t tests' and pearsonr's 95% interval): each end's error / (1e-14 times the larger of the end
     and the estimate's and half width's sizes: the ends subtract them).
 """
 
@@ -45,7 +46,8 @@ H3 = (
     "page_trend_test",
 )
 H4 = ("ks_2samp", "cramervonmises_2samp", "anderson_ksamp", "epps_singleton_2samp")
-PUBLIC = H1 + H2 + H3 + H4  # the families of the public functions (the accuracy measurement's sweeps)
+H5 = ("pearsonr", "spearmanrho", "kendalltau", "weightedtau", "somersd", "chatterjeexi")
+PUBLIC = H1 + H2 + H3 + H4 + H5  # the families of the public functions (the accuracy measurement's sweeps)
 
 
 def load(fam) -> dict:

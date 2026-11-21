@@ -18,6 +18,7 @@ import operator
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import random as _random
 from .. import special as _special
 from . import _glm as _glm_mod
@@ -242,6 +243,14 @@ class _PenalizedResult:
 
         return self._cached("fitted_resid", make)
 
+    @_calls.method("summary")
+    def summary(self):
+        """The fit as a text table (G192): the penalty and the fit's statistics, then the
+        coefficients alone (no standard errors or tests: the penalized fits have no inference).
+        A path or a batch: one row per alpha and regression of the statistics, then of the
+        coefficients."""
+        return _penalized_summary(self)
+
     def __repr__(self):
         name = type(self).__name__
         # the leading axes, named: the batch's, then the path's (quantreg's form)
@@ -251,6 +260,81 @@ class _PenalizedResult:
         if parts:
             return f"{name}({' and '.join(parts)}, {self._P.shape[-1]} parameters)"
         return f"{name}(alpha={self.alpha:g}, nobs={self.nobs:g}, df_model={self.df_model:.6g}, params={self.params})"
+
+
+_MODEL_NAMES = {
+    "RidgeResult": "Ridge",
+    "LassoResult": "Lasso",
+    "ElasticNetResult": "Elastic Net",
+    "RidgeCVResult": "Ridge CV",
+    "LassoCVResult": "Lasso CV",
+    "ElasticNetCVResult": "Elastic Net CV",
+    "PenalizedGLMResult": "Penalized GLM",
+}
+
+
+def _penalized_summary(r):
+    name = _MODEL_NAMES[type(r).__name__]
+    title = f"{name} Regression Results"
+    glm = isinstance(r, PenalizedGLMResult)
+    iterative = isinstance(r, _Iterative)
+    left = [("Model:", name)]
+    if glm:
+        left.append(("Model Family:", r.family.capitalize()))
+    if not r._path:
+        left.append(("Alpha:", f"{float(r.alpha):g}"))
+    if name.startswith(("Elastic", "Penalized")):
+        left.append(("L1 Ratio:", f"{r.l1_ratio:g}"))
+    left.append(("Standardize:", str(r.standardize)))
+    fit_name = "deviance_ratio" if glm else "rsquared"
+    shape = tuple(r._P.shape[:-1]) if r._path else tuple(r._batch)
+    if shape:  # a batch, a path, or both: one row per regression and alpha
+        n = _S.lanes(shape)
+        right = [("Batch shape:", _S.shape_text(tuple(r._batch)))] if r._batch else []
+        if r._path:
+            alphas = r.alpha.tolist()
+            right.append(("No. Alphas:", str(len(alphas))))
+            alpha_of = lambda i: alphas[i % len(alphas)]  # noqa: E731
+        else:
+            alpha_of = None
+        cols = [] if alpha_of is None else [("alpha", alpha_of, lambda v: f"{v:g}")]
+        cols += [
+            ("nobs", _S.flat(r.nobs, n), _S.count),
+            ("df_model", _S.flat(r.df_model, n), _S.forg),
+            (fit_name, _S.flat(getattr(r, fit_name), n), _S.forg),
+        ]
+        if iterative:
+            cols.append(("converged", _S.flat(r.converged, n), _S.flag))
+        t1 = _S.Table([c[0] for c in cols], _S.lane_rows(shape, [(g, f) for _, g, f in cols]))
+        names = [str(v) for v in r.param_names]
+        P = _sd.reshape(r.params, (n, len(names)))
+        rows = []
+        for i in _S.shown(n):
+            rows.append(None if i is None else (_S.lane_label(i, shape), [_S.forg(v, 4) for v in P[i].tolist()]))
+        t2 = _S.Table(names, rows, stub_head="params")
+        return _S.render(title, header=(left, right), tables=[t1, t2])
+    right = [("No. Observations:", _S.count(r.nobs)), ("Df Model:", f"{r.df_model:#.4g}")]
+    if glm:
+        right.append(("Deviance:", f"{r.deviance:#8.5g}".strip()))
+        right.append(("Deviance Ratio:", f"{r.deviance_ratio:#.3f}"))
+    else:
+        right.append(("R-squared:", f"{r.rsquared:#.3f}"))
+    if iterative:
+        right.append(("Converged:", str(r.converged)))
+        right.append(("No. Iterations:", str(r.n_iter)))
+    if isinstance(r, _CV):
+        right.append(("Alpha (min CV):", f"{r.alpha_min:g}"))
+        right.append(("Alpha (1 SE):", f"{r.alpha_1se:g}"))
+    names = [str(v) for v in r.param_names]
+    rows = [(nm, [_S.forg(v, 4)]) for nm, v in zip(names, r.params.tolist())]
+    notes = ["The coefficients alone: the penalized fit has no standard errors or tests."]
+    if glm and r.separation:
+        notes.append(
+            "Separation at alpha = 0: the maximum likelihood estimate does not exist; the coefficients are NaN."
+        )
+    if iterative and not r.converged:
+        notes.append(f"The coordinate descent did not converge in {r.n_iter} iterations.")
+    return _S.render(title, header=(left, right), tables=[_S.Table(["coef"], rows)], notes=notes)
 
 
 class _LinearPenalized(_PenalizedResult):

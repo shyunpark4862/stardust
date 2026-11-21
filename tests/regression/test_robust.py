@@ -142,9 +142,8 @@ def test_summary():
     assert "x3" in txt and "const" in txt
     mm = R.rlm(*leverage(), method="MM", rng=sd.random.default_rng(1)).summary()
     assert "avar1" in mm and "MM" in mm
-    assert "summary(): takes one regression" in _err(
-        lambda: R.rlm(sd.asarray(np.ones((2, 30))), sd.asarray(np.arange(30.0))).summary()
-    )
+    batch = R.rlm(sd.asarray(np.ones((2, 30))), sd.asarray(np.arange(30.0))).summary()  # G193
+    assert "Batch shape:                      (2,)" in batch and "params" in batch
     assert repr(r).startswith("RLMResult(method='M', norm='bisquare'")
 
 

@@ -1,4 +1,4 @@
-"""G1a: ols, wls, gls, linregress (docs/api/regression.md §2, docs/design/regression.md §2-§3).
+"""G1a: ols, wls, gls (docs/api/regression.md §2, docs/design/regression.md §2-§3).
 
 Accuracy against Arb (tests/regression/ref/linear.json, tests/regression/refdata.py), then
 statsmodels and scipy, rank deficiency, NaN policies, batches, frame inputs and errors."""
@@ -256,77 +256,6 @@ def test_gls_errors():
     keep = np.arange(10) != 2
     ref = R.gls(y[keep], X[keep], sigma=np.eye(9))
     np.testing.assert_array_equal(a(o.params), a(ref.params))
-
-
-def test_linregress_against_scipy():
-    st = pytest.importorskip("scipy.stats")
-    rng = np.random.default_rng(10)
-    x = rng.standard_normal(25)
-    y = 2 * x + 1 + rng.standard_normal(25)
-    got, want = R.linregress(x, y), st.linregress(x, y)
-    assert type(got).__name__ == "LinregressResult"
-    assert got._fields == ("slope", "intercept", "rvalue", "pvalue", "stderr", "intercept_stderr")
-    want = [want.slope, want.intercept, want.rvalue, want.pvalue, want.stderr, want.intercept_stderr]
-    for g, w in zip(got, want):
-        assert isinstance(g, float) and g == pytest.approx(float(w), rel=1e-12)
-
-
-def test_linregress_degenerate_like_scipy():
-    st = pytest.importorskip("scipy.stats")
-    import warnings
-
-    cases = [([1.0, 1, 1], [1.0, 2, 3]), ([1.0, 2, 3], [5.0, 5, 5]), ([1.0, 2, 3, 4], [2.0, 4, 6, np.nan])]
-    for x, y in cases:
-        got = R.linregress(x, y)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            want = st.linregress(x, y)
-        want = [want.slope, want.intercept, want.rvalue, want.pvalue, want.stderr, want.intercept_stderr]
-        for f, g, w in zip(got._fields, got, want):
-            assert (math.isnan(g) and math.isnan(w)) or g == pytest.approx(float(w), rel=1e-14, abs=1e-15), (x, y, f)
-    # an exact line: scipy's p-value comes from its 1e-20 guard (9e-11); here a perfect fit has
-    # no p (D-3: NaN, as nls's G109)
-    got = R.linregress([1.0, 2, 3], [2.0, 4, 6])
-    assert got.slope == 2.0 and got.rvalue == 1.0 and got.stderr == 0.0 and math.isnan(got.pvalue)
-    # two points: no degree of freedom left, the inference is 0/0 (G95; scipy 1.18.1 gives NaN
-    # too); fewer than two points is an error (G96; scipy warns and gives NaN)
-    got = R.linregress([1.0, 2], [3.0, 5])
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        sp = st.linregress([1.0, 2], [3.0, 5])
-    assert all(math.isnan(v) for v in (sp.pvalue, sp.stderr, sp.intercept_stderr))
-    assert got.slope == 2.0 and got.intercept == 1.0 and got.rvalue == 1.0
-    assert all(math.isnan(v) for v in (got.pvalue, got.stderr, got.intercept_stderr))
-    # fewer than two points: every field NaN (G96's empty input; scipy 1.18.1 too, with a warning)
-    for x, y in (([1.0], [2.0]), ([], [])):
-        got = R.linregress(x, y)
-        assert all(math.isnan(v) for v in got)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            sp = st.linregress(x, y) if x else None
-        assert sp is None or all(math.isnan(v) for v in sp)
-
-
-def test_linregress_batch():
-    rng = np.random.default_rng(11)
-    x = rng.standard_normal((4, 20))
-    y = 3 * x + rng.standard_normal((4, 20))
-    got = R.linregress(x, y)
-    for i in range(4):
-        one = R.linregress(x[i], y[i])
-        for f in got._fields:
-            assert float(getattr(got, f)[i]) == getattr(one, f)
-    # one-sided batches broadcast (§1), the constant rows' NaN rule included: 1-D x with
-    # (3, n) y, and (3, n) x with 1-D y (both used to raise TypeError from broadcast_to)
-    y3 = np.vstack([y[0], y[1], np.full(20, 3.0)])
-    x3 = np.vstack([x[0], np.full(20, 2.0), x[2]])
-    for xb, yb, pair in ((x[0], y3, lambda i: (x[0], y3[i])), (x3, y[0], lambda i: (x3[i], y[0]))):
-        got = R.linregress(xb, yb)
-        for i in range(3):
-            one = R.linregress(*pair(i))
-            for f in got._fields:
-                g, w = float(getattr(got, f)[i]), getattr(one, f)
-                assert g == w or (math.isnan(g) and math.isnan(w)), (f, i)
 
 
 # ---- rank deficiency (G9, G21)
@@ -601,8 +530,6 @@ def test_errors():
         r.predict_interval(X, kind="x")
     with pytest.raises(ValueError, match=r"^conf_int\(\): 'alpha' must be between 0 and 1 \(exclusive\)$"):
         r.conf_int(alpha=1.5)
-    with pytest.raises(ValueError, match=r"^linregress\(\): 'x' must have 10 values like 'y', not 9$"):
-        R.linregress(X[:9, 0], y)
 
 
 def test_contract_edge_kappa_1e11():
@@ -631,21 +558,6 @@ def test_constant_y_is_zero_over_zero():
         assert abs(float(r.params[1])) < 1e-15
     rb = R.ols(np.vstack([np.ones(6), x * 2 + np.r_[0.1, 0, 0, 0.2, 0, 0]]), x)
     assert math.isnan(float(rb.rsquared[0])) and float(rb.ess[0]) == 0.0 and float(rb.rsquared[1]) > 0.9
-    # linregress: the exact line, slope +0 and the constant (scipy)
-    lr = R.linregress([1.0, 2, 3, 4, 5], [3.0] * 5)
-    assert lr.slope == 0.0 and math.copysign(1.0, lr.slope) == 1.0 and lr.intercept == 3.0
-    lb = R.linregress([1.0, 2, 3], np.array([[0.1] * 3, [1.0, 2, 4]]))
-    assert float(lb.slope[0]) == 0.0 and float(lb.intercept[0]) == 0.1 and float(lb.slope[1]) == 1.5
-
-
-def test_linregress_messages():
-    assert all(math.isnan(v) for v in R.linregress([], []))  # no points: NaN, not an error (D-20)
-    with pytest.raises(ValueError, match=r"^linregress\(\): inhomogeneous nested sequence"):
-        R.linregress([[1.0, 2.0], [3.0]], [1.0, 2.0])  # asarray's words, not a type error (CX-11)
-    with pytest.raises(ValueError, match=r"^linregress\(\): 'x' contains infinity$"):
-        R.linregress([1.0, math.inf, 3], [1.0, 2, 3])
-    with pytest.raises(ValueError, match=r"^linregress\(\): 'y' contains infinity$"):
-        R.linregress([1.0, 2, 3], [1.0, -math.inf, 3])
 
 
 def test_exact_zero_coefficients_are_positive():
@@ -750,10 +662,6 @@ def test_constant_y_exact_solution():
     assert a(gb.params).tolist() == [[0.1, 0.0, 0.0], [0.2, 0.0, 0.0]]
     assert not a(R.ols([3.0] * 8, x, intercept=False).params).tolist() == [0.0]
     with pytest.raises(
-        ValueError, match=r"^linregress\(\): the batch shapes of 'x' \(2,\), 'y' \(3,\) do not broadcast$"
-    ):
-        R.linregress(np.ones((2, 5)), np.ones((3, 5)))
-    with pytest.raises(
         ValueError, match=r"^theilslopes\(\): the batch shapes of 'y' \(3,\), 'x' \(2,\) do not broadcast$"
     ):
         R.theilslopes(np.ones((3, 5)), np.ones((2, 5)))
@@ -785,40 +693,6 @@ def test_perfect_fit_by_tolerance():
     # a fit that is not perfect stays as it was
     y2 = y + 1e-9 * np.sin(x)
     assert R.ols(y2, Xs).ssr > 0
-
-
-# ---- G102: linregress' nan_policy
-
-
-def test_linregress_nan_policy():
-    x = np.arange(10.0)
-    y = 2 * x + np.sin(x)
-    yn = y.copy()
-    yn[3] = np.nan
-    got = R.linregress(x, yn, nan_policy="omit")
-    want = R.linregress(np.delete(x, 3), np.delete(y, 3))
-    assert tuple(got) == tuple(want)
-    assert all(math.isnan(v) for v in R.linregress(x, yn))
-    with pytest.raises(ValueError, match=r"^linregress\(\): the input contains NaN \(nan_policy='raise'\)$"):
-        R.linregress(x, yn, nan_policy="raise")
-    with pytest.raises(ValueError, match=r"nan_policy='omit' takes one regression, not a batch"):
-        R.linregress(np.vstack([x, x]), np.vstack([yn, y]), nan_policy="omit")
-    with pytest.raises(ValueError, match=r"'nan_policy' must be 'propagate', 'omit' or 'raise', not 'x'"):
-        R.linregress(x, y, nan_policy="x")
-    # a constant y does not hide the NaN of x (propagate): all NaN, not the slope 0
-    xn = x.copy()
-    xn[2] = np.nan
-    assert all(math.isnan(v) for v in R.linregress(xn, np.full(10, 3.0)))
-    b = R.linregress(np.vstack([xn, x]), np.full((2, 10), 3.0))
-    assert math.isnan(float(b.slope[0])) and float(b.slope[1]) == 0.0
-    # the intercept of a constant -0.0 is +0.0 (G84)
-    r = R.linregress(x, np.full(10, -0.0))
-    assert math.copysign(1.0, r.intercept) == 1.0 and math.copysign(1.0, r.slope) == 1.0
-    # inf is an error also next to a NaN under 'omit'
-    yi = yn.copy()
-    yi[4] = np.inf
-    with pytest.raises(ValueError, match=r"'y' contains infinity"):
-        R.linregress(x, yi, nan_policy="omit")
 
 
 # ---- predictions, scales, messages
@@ -875,8 +749,6 @@ def test_extreme_scales_are_equivariant(sy, sx):
     )
     S = np.eye(8) + 0.3 * np.eye(8, k=1) + 0.3 * np.eye(8, k=-1)
     np.testing.assert_allclose(a(R.gls(y * sy, Xs * sx, sigma=S).tvalues), a(R.gls(y, Xs, sigma=S).tvalues), rtol=1e-11)
-    lr, lb = R.linregress(x * sx, y * sy), R.linregress(x, y)
-    assert lr.pvalue == pytest.approx(lb.pvalue, rel=1e-11) and lr.rvalue == pytest.approx(lb.rvalue, rel=1e-13)
 
 
 def test_linear_input_messages():
@@ -925,15 +797,11 @@ def test_extreme_scale_t_in_fitted_units():
     r = R.ols(s * 1e300, h * 1e-300)  # the slope's 1e600 overflows
     np.testing.assert_allclose(a(r.tvalues), a(b.tvalues), rtol=1e-13)
     np.testing.assert_allclose(a(r.pvalues), a(b.pvalues), rtol=1e-12)
-    lr, lb = R.linregress(h * 1e-300, s * 1e300), R.linregress(h, s)
-    assert lr.pvalue == pytest.approx(lb.pvalue, rel=1e-12) and lr.rvalue == pytest.approx(lb.rvalue, rel=1e-14)
     x = np.arange(8.0)
     y = np.array([1.0, 2.9, 5.2, 6.8, 9.1, 11.2, 12.8, 15.1]) + 3 * np.sin(x)
     b = R.ols(y, x)
     r = R.ols(y * 1e-165, x * 1e160)  # the slope's 1e-325 underflows
     np.testing.assert_allclose(a(r.tvalues), a(b.tvalues), rtol=1e-13)
-    lr, lb = R.linregress(x * 1e160, y * 1e-165), R.linregress(x, y)
-    assert lr.rvalue == pytest.approx(lb.rvalue, rel=1e-14) and lr.pvalue == pytest.approx(lb.pvalue, rel=1e-12)
 
 
 def test_conf_int_ends_overflow_with_their_signs():
@@ -980,8 +848,6 @@ def test_offset_column_is_not_a_perfect_fit():
     assert np.all(a(r.pvalues) > 0)
     g = R.glm(y, x, family="gaussian")
     assert g.scale == pytest.approx(r.scale, rel=1e-10) and np.all(a(g.bse) > 0)
-    lr = R.linregress(x, y)
-    assert lr.rvalue < 1.0 and lr.stderr > 0
     h = R.ols(y, x, cov_type="HC1")
     assert np.all(a(h.bse) > 0)
     # rlm iterates (no zero scale) and its slope is the centered fit's

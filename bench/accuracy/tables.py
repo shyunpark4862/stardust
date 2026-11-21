@@ -67,7 +67,12 @@ INTRO = {
         "(영역 열). 문서에 적힌 수치 계약은 선형 모형(ols·wls)의 계수 벡터다(docs/design/regression.md §3.1): "
         "설계 행렬의 κ₂ ≤ 1e11이면 노름 상대오차 ≤ 1e-14이고, params 줄의 계약 대비가 그것이다(κ₂는 상수 열과 "
         "가중치의 제곱근을 곱한 설계 행렬의 특잇값으로 잰다). 다른 필드는 수치 계약이 없어 계약 대비가 없고, "
-        "기준선보다 나빠지면 compare가 짚는다."
+        "기준선보다 나빠지면 compare가 짚는다. 비교 패키지는 statsmodels, scikit-learn(ElasticNet), R(lm·glm, MASS의 "
+        "rlm, robustbase의 lmrob, glmnet)이다. 적합한 모형의 검정(model_tests)은 statsmodels의 같은 이름 함수와 R의 "
+        "car(linearHypothesis·Anova·vif)·lmtest(lrtest·gqtest·resettest, White 식의 bptest), anova·drop1, "
+        "영향 측도(hatvalues·cooks.distance·dffits·dfbetas)이고, 변수 선택(selection)은 참값의 stepwise 경로와 크기별 "
+        "부분집합을 statsmodels로 다시 적합한 AIC·BIC와 leaps의 regsubsets가 낸 Cp·수정 R²다(R step의 AIC는 상수가 "
+        "달라 넣지 않는다). 가중치가 0인 관측은 선택 비교에서 뺀다."
     ),
     "optimize": (
         "반복 방법의 결과는 멈춤 판정을 만족한 점이라, 계약은 결과만으로 확인되는 판정이다(docs/design/optimize.md §4). "

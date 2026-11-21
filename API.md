@@ -13,11 +13,11 @@
 | 데이터프레임 | `sd.frame` | [docs/api/frame.md](docs/api/frame.md) |
 | 특수함수 | `sd.special` | [docs/api/special.md](docs/api/special.md) (로지스틱·정보, 오차함수, 감마·베타·제타, 불완전 감마·베타, 리덕션·지수적분·타원, Bessel·Airy, 초기하·Lambert W, 복소수 판) |
 | 통계 | `sd.stats` | [docs/api/stats.md](docs/api/stats.md) (단변량·다변량·행렬 분포, 기술통계) |
-| 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (`ols wls gls linregress glm ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm rlm theilslopes siegelslopes quantreg nls anova stepwise best_subset`) |
+| 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (`ols wls gls glm ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm rlm theilslopes siegelslopes quantreg nls anova stepwise best_subset`) |
 | 난수 | `sd.random` | [docs/api/random.md](docs/api/random.md) (Philox4×64-10, `default_rng`, `random`·`integers`·`choice`·`permutation`·`spawn`·`state`) |
 | 최적화 | `sd.optimize` | [docs/api/optimize.md](docs/api/optimize.md) (`approx_fprime check_grad least_squares lsq_linear nnls root_scalar minimize_scalar find_root bracket_root find_minimum bracket_minimum minimize root`, 결과 객체 `OptimizeResult`) |
-| 가설검정 | `sd.htest` | [docs/api/htest.md](docs/api/htest.md) (초안: H1의 t 검정·분산분석·분산의 동질성, H2의 적합도 검정, H3의 순위 검정, H4의 표본끼리의 적합도 검정이 공개. scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정, 검정마다의 결과 객체) |
-| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환(SP1)과 연산·곱·리덕션(SP2)이다. 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
+| 가설검정 | `sd.htest` | [docs/api/htest.md](docs/api/htest.md) (초안: H1의 t 검정·분산분석·분산의 동질성, H2의 적합도 검정, H3의 순위 검정, H4의 표본끼리의 적합도 검정, H5의 상관 검정이 공개. scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정, 검정마다의 결과 객체) |
+| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환(SP1), 연산·곱·리덕션(SP2), 인덱싱과 만들기(SP3)다. 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
 
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md), 진행 상황은 [ROADMAP.md](ROADMAP.md)에 있다.
 
@@ -110,6 +110,15 @@ bool  int64  float64  complex128  string
   - 예외는 선형대수의 분해다: 수렴하지 못하면 `LinAlgError`다(§2).
   - 이유: 상태 필드가 있으면 사용자가 실패를 확인할 수 있고, 마지막 값은 무엇이 잘못됐는지 보는 데 쓴다. 원소별 함수는 실패를 알릴 자리가 값밖에 없고, 경고를 내지 않으므로(§2) NaN이 그 표시다. 원소 하나 때문에 배치 전체를 잃지 않는다.
 - **정할 수 없는 값은 NaN이다.** 예: 잔차가 정확히 0인 회귀의 t값과 p값(분모인 표준오차가 0이다). ±inf와 0을 내면 반올림 크기의 계수까지 "매우 유의"로 보인다.
+
+
+### §2.3 결과의 `summary()`와 `repr`
+- **회귀·가설검정·최적화의 결과 객체는 모두 `summary()`가 있고 글(`str`)을 돌려준다.** 모양은 하나다: 회귀 모형의 statsmodels 꼴 상자(78칸 가운데의 제목, `=` 줄, 38칸씩 두 열의 "이름: 값" 머리, `-` 줄 아래의 표, 맺는 `=` 줄, 필요하면 `Notes:`). 그리는 곳도 하나(`stardust/_summary.py`)다. 희소 배열, 분포, frame은 대상이 아니다.
+  - 머리의 수는 statsmodels의 꼴이다: 통계량 `#.4g`, p값 `#.3g`, 자유도는 정수면 정수. 표의 수는 statsmodels의 forg(소수 3자리, 계수는 4자리; [1e-4, 1e4) 밖은 유효숫자)이고 표의 p값은 소수 3자리다. 표가 78칸보다 넓으면 줄만 넓어지고 제목과 머리는 78칸 그대로다.
+  - 구간이 있는 결과(`conf_int(alpha=)`가 있는 결과)만 `summary(*, alpha=0.05)`이고 `alpha`의 검사와 메시지는 `conf_int`와 같다(regression G99, htest H16). 다른 결과의 `summary()`는 인자가 없다.
+  - 배치(여러 문제를 한 번에 푼 결과)는 줄마다 한 문제(레인)인 표다. 줄의 이름은 그 레인의 첨자(`[0]`, `[1, 2]`)다. 20줄을 넘는 표는 앞뒤 5줄씩만 두고 가운데에 `...` 줄을 둔다. 긴 x(최적화)도 같다.
+  - 이유: 영역마다 다른 꼴이면 사용자가 꼴마다 읽는 법을 배워야 한다. 회귀 상자는 statsmodels 사용자에게 익숙하고, 머리와 표의 두 부분으로 어떤 결과든 담긴다.
+- **`repr`는 한 줄 `Name(field=value, …)`이고 주된 필드를 보인다.** 배치는 `Name(batch shape (4,))`다. 검정의 결과(htest와 회귀의 검정)는 수를 유효숫자 6자리로, 짧은 1차원 배열(6개까지)을 `[v, v]`로, 다른 배열을 `<array of shape (m, k)>`로 적는다. 여러 줄의 표는 `summary()`의 몫이다.
 
 ## §3. 스레드와 결정성
 ```

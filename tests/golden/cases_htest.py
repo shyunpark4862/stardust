@@ -361,3 +361,171 @@ def cases(L):
         yield f"{f} empty", lambda f=f: getattr(h, f)([], b)
         for pol in ("propagate", "omit", "raise"):
             yield f"{f} nan {pol}", lambda f=f, pol=pol: getattr(h, f)(d["nan"], b, nan_policy=pol)
+
+    # ---- H5: correlation
+    r5 = L.rng(405)
+    u = r5.normal(0.0, 1.0, 25)
+    v = 0.4 * u + r5.normal(0.0, 1.0, 25)
+    ut, vt = np.round(u * 2.0), np.round(v * 2.0)
+    near = u + 1e-8 * r5.normal(0.0, 1.0, 25)
+    bu, bv = r5.normal(0.0, 1.0, (4, 18)), r5.normal(0.0, 1.0, (4, 18))
+    la, lb = d["long_a"], d["long_a"] * 0.01 + d["long_b"]
+    for alt in ("two-sided", "less", "greater"):
+        yield f"pearsonr {alt}", lambda alt=alt: h.pearsonr(u, v, alternative=alt)
+        yield f"pearsonr near 1 {alt}", lambda alt=alt: h.pearsonr(u, near, alternative=alt)
+        yield f"spearmanrho {alt}", lambda alt=alt: h.spearmanrho(u, v, alternative=alt)
+        yield f"spearmanrho ties {alt}", lambda alt=alt: h.spearmanrho(ut, vt, alternative=alt)
+        yield f"spearmanr {alt}", lambda alt=alt: h.spearmanr(np.stack([u, v, ut], axis=1), axis=0, alternative=alt)
+        for var in ("b", "c"):
+            for meth in ("auto", "exact", "asymptotic"):
+                yield (
+                    f"kendalltau {var} {meth} {alt}",
+                    lambda alt=alt, var=var, m=meth: h.kendalltau(u, v, variant=var, method=m, alternative=alt),
+                )
+            yield (
+                f"kendalltau ties {var} {alt}",
+                lambda alt=alt, var=var: h.kendalltau(ut, vt, variant=var, alternative=alt),
+            )
+        yield f"somersd {alt}", lambda alt=alt: h.somersd(ut, vt, alternative=alt)
+    yield "pearsonr conf_int alpha=0.1", lambda: h.pearsonr(u, v).conf_int(alpha=0.1)
+    yield "pearsonr offset", lambda: h.pearsonr(d["off_a"], d["off_a"] * 0.5 + d["off_b"][:40])
+    yield "pearsonr scales", lambda: h.pearsonr(u * 1e300, v * 1e-300)
+    yield "pearsonr exact line", lambda: h.pearsonr(u, 2.0 * u)
+    yield "pearsonr two", lambda: h.pearsonr([1.0, 2.0], [3.0, 1.0])
+    yield "pearsonr three", lambda: h.pearsonr([1.0, 2.0, 4.0], [0.3, 0.1, 0.9])
+    yield "pearsonr constant", lambda: h.pearsonr(d["const"], u[:8])
+    yield "pearsonr inf", lambda: h.pearsonr([1.0, INF, 3.0], [1.0, 2.0, 3.0])
+    yield "pearsonr long", lambda: h.pearsonr(la, lb)
+    yield "pearsonr batch", lambda: h.pearsonr(bu, bv, axis=-1)
+    yield "pearsonr batch keepdims", lambda: h.pearsonr(bu, bv, axis=-1, keepdims=True)
+    yield "pearsonr cube axis", lambda: h.pearsonr(d["cube"], d["cube"][:, ::-1], axis=1)
+    yield "pearsonr method", lambda: h.pearsonr(u, v, method="permutation")
+    yield "pointbiserialr", lambda: h.pointbiserialr(u > 0, v)
+    yield "pointbiserialr batch", lambda: h.pointbiserialr(bu > 0, bv, axis=-1)
+    yield "spearmanrho long", lambda: h.spearmanrho(la, lb)
+    yield "spearmanrho long ties", lambda: h.spearmanrho(np.round(la, 1), np.round(lb, 1))
+    yield "spearmanrho inf", lambda: h.spearmanrho([1.0, INF, 3.0, -INF], [1.0, 2.0, 3.0, 0.0])
+    yield "spearmanrho batch", lambda: h.spearmanrho(bu, bv, axis=-1)
+    yield "spearmanr two", lambda: h.spearmanr(u, v)
+    yield "spearmanr rows", lambda: h.spearmanr(np.stack([u, v, ut]), axis=1)
+    yield "spearmanr b", lambda: h.spearmanr(np.stack([u, v], axis=1), np.stack([ut, vt], axis=1), axis=0)
+    un = u.copy()
+    un[3] = NAN
+    for pol in ("propagate", "omit", "raise"):
+        yield f"spearmanr nan {pol}", lambda pol=pol: h.spearmanr(np.stack([un, v, ut], axis=1), axis=0,
+                                                                  nan_policy=pol)  # fmt: skip
+    yield "spearmanr one variable", lambda: h.spearmanr(u)
+    yield "spearmanr axis", lambda: h.spearmanr(np.stack([u, v]), axis=2)
+    yield "kendalltau exact 60 concordant", lambda: h.kendalltau(np.arange(60.0), np.arange(60.0) * 3.0)
+    yield "kendalltau exact forced 150", lambda: h.kendalltau(la[:150], lb[:150], method="exact")
+    yield "kendalltau exact cap", lambda: h.kendalltau(la[:3000], lb[:3000], method="exact")
+    yield "kendalltau exact ties", lambda: h.kendalltau(ut, vt, method="exact")
+    yield "kendalltau long", lambda: h.kendalltau(la, lb)
+    yield "kendalltau batch", lambda: h.kendalltau(bu, bv, axis=-1)
+    yield "kendalltau variant", lambda: h.kendalltau(u, v, variant="a")
+    for add in (True, False):
+        for rank in (True, None, False):
+            yield (
+                f"weightedtau additive={add} rank={rank}",
+                lambda a=add, r=rank: h.weightedtau(u, v, rank=r, additive=a),
+            )
+        yield f"weightedtau ties additive={add}", lambda a=add: h.weightedtau(ut, vt, additive=a)
+    yield "weightedtau rank array", lambda: h.weightedtau(u, v, rank=np.round(np.abs(v) * 4))
+    yield "weightedtau weigher", lambda: h.weightedtau(u, v, weigher=lambda r: 1.0 / (r + 1.0) ** 2)
+    yield "weightedtau long", lambda: h.weightedtau(la[:20000], lb[:20000])
+    yield "weightedtau batch", lambda: h.weightedtau(bu, bv, axis=-1)
+    yield "weightedtau weigher type", lambda: h.weightedtau(u, v, weigher=2.0)
+    yield "somersd table", lambda: h.somersd([[8.0, 3, 1], [2, 9, 4], [0, 3, 7]])
+    yield "somersd one row", lambda: h.somersd([[8.0, 3, 1]])
+    yield "somersd balanced diagonal", lambda: h.somersd([[5.0, 0.0], [0.0, 5.0]])
+    yield "somersd counts", lambda: h.somersd([[1.0, 2.5], [3.0, 1.0]])
+    yield "somersd cap", lambda: h.somersd(la[:20000], lb[:20000])
+    for cont in (True, False):
+        yield f"chatterjeexi y_continuous={cont}", lambda c=cont: h.chatterjeexi(u, v, y_continuous=c)
+        yield f"chatterjeexi ties y_continuous={cont}", lambda c=cont: h.chatterjeexi(ut, vt, y_continuous=c)
+    yield "chatterjeexi long", lambda: h.chatterjeexi(la, np.sin(la) + lb)
+    yield "chatterjeexi constant y", lambda: h.chatterjeexi(u, np.full(25, 1.0))
+    yield "chatterjeexi batch", lambda: h.chatterjeexi(bu, bv, axis=-1)
+    yield "chatterjeexi method", lambda: h.chatterjeexi(u, v, method="permutation")
+    for f in ("pearsonr", "spearmanrho", "pointbiserialr", "kendalltau", "weightedtau", "chatterjeexi"):
+        yield f"{f} empty", lambda f=f: getattr(h, f)([], [])
+        yield f"{f} lengths", lambda f=f: getattr(h, f)(u, v[:20])
+        for pol in ("propagate", "omit", "raise"):
+            yield f"{f} nan {pol}", lambda f=f, pol=pol: getattr(h, f)(d["nan"], u[:9], nan_policy=pol)
+    yield from summaries(L)
+
+
+def summaries(L):
+    """summary() of every test once (H74-H76; the result cases store it too, as a method without
+    arguments): small samples, a one-sided interval, a batch, a long batch (cut), keepdims, the
+    alpha check and the reprs of array fields."""
+    sd, h = L.sd, L.sd.htest
+    d = data(L)
+    a, b, c = d["a"], d["b"], d["c"]
+    N = sd.stats.Normal()
+    r = L.rng(409)
+    u, v = r.normal(0.0, 1.0, 25), r.normal(0.0, 1.0, 25)
+    calls = {
+        "ttest_1samp": lambda: h.ttest_1samp(a, 0.1),
+        "ttest_rel": lambda: h.ttest_rel(a, b[:12]),
+        "ttest_ind": lambda: h.ttest_ind(a, b),
+        "ttest_ind welch less": lambda: h.ttest_ind(a, b, equal_var=False, alternative="less"),
+        "ttest_ind trim": lambda: h.ttest_ind(a, b, trim=0.2, alternative="greater"),
+        "ttest_ind_from_stats": lambda: h.ttest_ind_from_stats(0.2, 1.0, 12, -0.1, 1.4, 15),
+        "f_oneway": lambda: h.f_oneway(a, b, c),
+        "f_oneway welch": lambda: h.f_oneway(a, b, c, equal_var=False),
+        "alexandergovern": lambda: h.alexandergovern(a, b, c),
+        "bartlett": lambda: h.bartlett(a, b, c),
+        "levene": lambda: h.levene(a, b, c, center="trimmed"),
+        "fligner": lambda: h.fligner(a, b, c),
+        "chisquare": lambda: h.chisquare(d["counts"], ddof=1),
+        "power_divergence": lambda: h.power_divergence(d["counts"], lambda_="log-likelihood"),
+        "skewtest": lambda: h.skewtest(b),
+        "kurtosistest": lambda: h.kurtosistest(b, alternative="greater"),
+        "normaltest": lambda: h.normaltest(b),
+        "jarque_bera": lambda: h.jarque_bera(b),
+        "shapiro": lambda: h.shapiro(b),
+        "anderson": lambda: h.anderson(d["expo"], dist=sd.stats.Exponential),
+        "ks_1samp": lambda: h.ks_1samp(b, N),
+        "cramervonmises": lambda: h.cramervonmises(b, N),
+        "mannwhitneyu": lambda: h.mannwhitneyu(a, b),
+        "ranksums": lambda: h.ranksums(a, b),
+        "wilcoxon": lambda: h.wilcoxon(a, b[:12]),
+        "kruskal": lambda: h.kruskal(a, b, c),
+        "kruskal five samples": lambda: h.kruskal(a, b, c, a[:5], b[:7]),
+        "friedmanchisquare": lambda: h.friedmanchisquare(a[:9], b[:9], c),
+        "brunnermunzel": lambda: h.brunnermunzel(a, b),
+        "ansari": lambda: h.ansari(a, b),
+        "mood": lambda: h.mood(a, b),
+        "median_test": lambda: h.median_test(a, b, c),
+        "page_trend_test": lambda: h.page_trend_test(r.normal(0.0, 1.0, (6, 4))),
+        "ks_2samp": lambda: h.ks_2samp(a, b),
+        "cramervonmises_2samp": lambda: h.cramervonmises_2samp(a, b),
+        "anderson_ksamp": lambda: h.anderson_ksamp([a, b, c]),
+        "epps_singleton_2samp": lambda: h.epps_singleton_2samp(a, b),
+        "pearsonr": lambda: h.pearsonr(u, v),
+        "pearsonr greater": lambda: h.pearsonr(u, v, alternative="greater"),
+        "spearmanrho": lambda: h.spearmanrho(u, v),
+        "spearmanr matrix": lambda: h.spearmanr(np.c_[u, v, u + v], axis=0),
+        "pointbiserialr": lambda: h.pointbiserialr((u > 0).astype(np.float64), v),
+        "kendalltau": lambda: h.kendalltau(u, v, variant="c"),
+        "weightedtau": lambda: h.weightedtau(u, v),
+        "somersd": lambda: h.somersd([[8.0, 3, 1], [2, 9, 4], [0, 3, 7]]),
+        "chatterjeexi": lambda: h.chatterjeexi(u, v),
+        "ttest_ind batch": lambda: h.ttest_ind(d["batch_a"], d["batch_b"], axis=-1),
+        "ttest_1samp long batch": lambda: h.ttest_1samp(r.normal(0.0, 1.0, (30, 8)), 0.0, axis=-1),
+        "mannwhitneyu batch methods": lambda: h.mannwhitneyu(d["cube"], d["cube"][::-1] + 0.3, axis=1),
+        "ks_2samp batch": lambda: h.ks_2samp(d["batch_a"], d["batch_b"], axis=-1),
+        "median_test batch": lambda: h.median_test(d["batch_a"], d["batch_b"], axis=-1),
+        "ttest_1samp keepdims": lambda: h.ttest_1samp(a, 0.1, keepdims=True),
+        "ttest_1samp omit": lambda: h.ttest_1samp(d["nan"], 0.0, nan_policy="omit"),
+    }
+    for name, call in calls.items():
+        yield f"summary {name}", lambda call=call: call().summary()
+    yield "summary ttest_ind alpha=0.1", lambda: h.ttest_ind(a, b).summary(alpha=0.1)
+    yield "err summary alpha", lambda: h.ttest_ind(a, b).summary(alpha=1.0)
+    yield "err summary alpha type", lambda: h.pearsonr(u, v).summary(alpha="0.05")
+    yield "err summary alpha without interval", lambda: h.kruskal(a, b).summary(alpha=0.05)
+    yield "repr median_test", lambda: repr(h.median_test(a, b, c))
+    yield "repr somersd", lambda: repr(h.somersd([[8.0, 3, 1], [2, 9, 4], [0, 3, 7]]))
+    yield "repr ttest_1samp keepdims", lambda: repr(h.ttest_1samp(a, 0.1, keepdims=True))

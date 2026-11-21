@@ -24,7 +24,6 @@ EXCLUDED = {
     "WLSResult": "a result class: the cases of the function that returns it store it whole",
     "GLSResult": "a result class: the cases of the function that returns it store it whole",
     "GLMResult": "a result class: the cases of the function that returns it store it whole",
-    "LinregressResult": "a result class: the cases of the function that returns it store it whole",
     "JarqueBeraResult": "a result class: the cases of the function that returns it store it whole",
     "BreuschPaganResult": "a result class: the cases of the function that returns it store it whole",
     "RidgeResult": "a result class: the cases of the function that returns it store it whole",
@@ -110,6 +109,7 @@ def cases(L):
     yield from nls(L)
     yield from model_tests(L)
     yield from selection(L)
+    yield from summaries(L)
 
 
 def fit_and_predict(L, res, Xnew):
@@ -189,18 +189,6 @@ def linear(L):
     yield "err result setattr", lambda: setattr(R.ols(y(), X()), "cov_type", "HC0")
     yield "ols breusch_pagan studentize False", lambda: R.ols(y(), X()).breusch_pagan(studentize=False)
     yield "ols param_names copy", lambda: (lambda r: (r.param_names.append("z"), r.param_names)[1])(R.ols(y(), X()))
-    # linregress
-    x1, y1 = (lambda: a(D["x1"])), (lambda: a(D["y1"]))
-    yield "linregress", lambda: R.linregress(x1(), y1())
-    yield (
-        "linregress nan omit",
-        lambda: R.linregress(a(np.where(np.arange(30) == 3, NAN, D["x1"])), y1(), nan_policy="omit"),
-    )
-    yield "linregress const x", lambda: R.linregress(sd.full((30,), 2.0), y1())
-    yield "linregress two points", lambda: R.linregress(sd.asarray([1.0, 2.0]), sd.asarray([3.0, 5.0]))
-    yield "linregress one point", lambda: R.linregress(sd.asarray([1.0]), sd.asarray([3.0]))
-    yield "linregress large", lambda: R.linregress(a(D["XL"][:, 0]), a(D["yL"]))
-    yield "err linregress lengths", lambda: R.linregress(x1(), a(D["y1"][:29]))
 
 
 def _with_y(R, fn, y, X, D, a, **kw):
@@ -729,3 +717,68 @@ def selection(L):
         lambda: R.best_subset(a(yb), a(np.zeros((n, 16))), model="glm", family="binomial"),
     )
     yield "err best_subset terms", lambda: R.best_subset(y(), X(), terms=[[0, 1]])
+
+
+def summaries(L):
+    """summary() of every public result class once (G189-G193), on small inputs: the models
+    (one regression and a batch), the penalized fits (one alpha, a path, a batch), the slopes,
+    the tests on fitted models, anova's tables and the selections; the alpha check."""
+    sd = L.sd
+    R = sd.regression
+    a = L.arr
+    D = data(L)
+    X, y, yb = (lambda: a(D["X"])), (lambda: a(D["y"])), (lambda: a(D["yb"]))
+    ols = lambda **kw: R.ols(y(), X(), **kw)  # noqa: E731
+    small = lambda: R.ols(y(), a(D["X"][:, :1]))  # noqa: E731
+    R2 = [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, -1.0]]
+    yield "summary ols", lambda: ols().summary()
+    yield "summary ols alpha=0.1", lambda: ols().summary(alpha=0.1)
+    yield "summary ols batch", lambda: R.ols(yb(), X()).summary()
+    yield "summary wls", lambda: R.wls(y(), X(), weights=a(D["w"])).summary()
+    yield "summary gls", lambda: R.gls(y(), X(), sigma=a(D["sigma"])).summary()
+    yield "summary glm", lambda: R.glm(a(D["ybin"]), X(), family="binomial").summary()
+    yield "summary glm batch", lambda: R.glm(yb(), X(), family="gaussian").summary()
+    yield "summary rlm", lambda: R.rlm(a(D["yt"]), X()).summary()
+    yield "summary rlm batch", lambda: R.rlm(yb(), X()).summary()
+    yield "summary quantreg", lambda: R.quantreg(y(), X(), q=0.3).summary()
+    yield "summary quantreg quantiles", lambda: R.quantreg(y(), X(), q=a(np.array([0.25, 0.5, 0.75]))).summary()
+    yield "summary quantreg batch quantiles", lambda: R.quantreg(yb(), X(), q=a(np.array([0.25, 0.75]))).summary()
+    yd = 2.0 * np.exp(-0.3 * D["x1"]) + 0.5 + 0.01 * D["y1"]
+    yield "summary nls", lambda: R.nls(decay(sd), a(D["x1"]), a(yd), p0=[1.0, 0.1, 0.0]).summary()
+    yield "summary ridge", lambda: R.ridge(y(), X(), alpha=0.5).summary()
+    yield "summary ridge path", lambda: R.ridge(y(), X(), alpha=a(np.array([2.0, 0.5, 0.1]))).summary()
+    yield "summary lasso", lambda: R.lasso(y(), X(), alpha=0.05).summary()
+    yield "summary lasso batch", lambda: R.lasso(yb(), X(), alpha=0.05).summary()
+    yield "summary elastic_net path batch", lambda: R.elastic_net(yb(), X(), alpha=a(np.array([0.5, 0.05]))).summary()
+    yield "summary ridge_cv", lambda: R.ridge_cv(y(), X()).summary()
+    yield "summary lasso_cv", lambda: R.lasso_cv(y(), X(), rng=sd.random.default_rng(3)).summary()
+    yield "summary elastic_net_cv", lambda: R.elastic_net_cv(y(), X(), rng=sd.random.default_rng(3)).summary()
+    yield "summary penalized_glm", lambda: R.penalized_glm(a(D["ybin"]), X(), family="binomial", alpha=0.02).summary()
+    yield "summary theilslopes", lambda: R.theilslopes(a(D["y1"]), a(D["x1"])).summary()
+    yield "summary theilslopes alpha=0.9 batch", lambda: R.theilslopes(yb()[:, :30], a(D["x1"]), alpha=0.9).summary()
+    yield "summary siegelslopes", lambda: R.siegelslopes(a(D["y1"]), a(D["x1"])).summary()
+    yield "summary t_test", lambda: ols().t_test(a(R2)).summary()
+    yield "summary t_test one row alpha=0.1", lambda: ols().t_test(a(R2[0])).summary(alpha=0.1)
+    yield "summary t_test glm", lambda: R.glm(a(D["ybin"]), X(), family="binomial").t_test(a(R2)).summary()
+    yield "summary t_test batch", lambda: R.ols(yb(), X()).t_test(a(R2)).summary()
+    yield "summary wald_test", lambda: ols().wald_test(a(R2)).summary()
+    yield "summary wald_test chi2", lambda: R.glm(a(D["ypois"]), X(), family="poisson").wald_test(a(R2)).summary()
+    yield "summary compare_f_test", lambda: ols().compare_f_test(small()).summary()
+    yield "summary compare_lr_test", lambda: ols().compare_lr_test(small()).summary()
+    yield "summary white_test", lambda: ols().white_test().summary()
+    yield "summary goldfeld_quandt", lambda: ols().goldfeld_quandt(alternative="two-sided").summary()
+    yield "summary reset_test", lambda: ols().reset_test().summary()
+    yield "summary breusch_pagan", lambda: ols().breusch_pagan().summary()
+    yield "summary breusch_pagan batch", lambda: R.ols(yb(), X()).breusch_pagan(studentize=False).summary()
+    yield "summary jarque_bera", lambda: ols().jarque_bera().summary()
+    yield "summary anova typ=1", lambda: R.anova(ols()).summary()
+    yield "summary anova typ=3", lambda: R.anova(ols(), typ=3).summary()
+    yield "summary anova models", lambda: R.anova(small(), ols()).summary()
+    yield "summary anova glm Chisq", lambda: R.anova(R.glm(a(D["ybin"]), X(), family="binomial")).summary()
+    yield "summary stepwise", lambda: R.stepwise(y(), X()).summary()
+    yield "summary stepwise pvalue", lambda: R.stepwise(y(), X(), criterion="pvalue").summary()
+    yield "summary best_subset", lambda: R.best_subset(y(), X()).summary()
+    yield "err summary alpha", lambda: ols().summary(alpha=1.5)
+    yield "err summary t_test alpha", lambda: ols().t_test(a(R2)).summary(alpha=0.0)
+    yield "err summary anova alpha", lambda: R.anova(ols()).summary(alpha=0.1)
+    yield "repr t_test", lambda: repr(ols().t_test(a(R2)))

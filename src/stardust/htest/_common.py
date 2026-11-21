@@ -175,6 +175,7 @@ class Samples:
         self.paired = paired
         self.policy = policy
         self.nan = None
+        self.scanned = scan or policy == "raise"
         if not scan and policy != "raise":
             return
         has = None
@@ -200,6 +201,26 @@ class Samples:
                 keep = k if keep is None else (keep & k)
             return [x[keep] for x in xs]
         return [x[~_sd.isnan(x)] for x in xs]
+
+    def sizes(self):
+        """The sample sizes summary() shows (H75): an int for one sample (or the pairs of paired
+        samples), a tuple for several; None where nan_policy='omit' may have dropped values the
+        call did not count."""
+        if self.policy == "omit" and (not self.scanned or self.nan is not None):
+            return None
+        if len(self.n) == 1 or self.paired:
+            return self.n[0]
+        return tuple(self.n)
+
+    def info(self, alternative=None, **extra):
+        """What summary() shows of the call that is not a field (H75): the alternative, the
+        sample sizes where known, and extra keys (title, pairs, notes) that are not None."""
+        d = {} if alternative is None else {"alternative": alternative}
+        n = self.sizes()
+        if n is not None:
+            d["nobs"] = n
+        d.update((k, v) for k, v in extra.items() if v is not None)
+        return d
 
     def propagates(self, i):
         """Lane i's results are NaN by nan_policy='propagate'."""

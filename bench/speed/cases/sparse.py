@@ -2,8 +2,8 @@
 
 The plan of the area's cases, milestone by milestone: every case below names its milestone and
 the sd.sparse names it needs, and cases() keeps a case once its milestone is in DONE and the
-names are public (SP1 brings the formats and conversions, SP2 the products and reductions, and
-so on; the operators of SP2 need no new name, hence the milestone). The
+names are public (SP1 brings the formats and conversions, SP2 the products and reductions, SP3
+indexing and the builders, and so on; the operators of SP2 need no new name, hence the milestone). The
 comparators are the ones the accuracy measurement will use: scipy.sparse and scipy.sparse.linalg
 at their defaults (one thread), R's Matrix in its one session.
 
@@ -99,6 +99,12 @@ def _sd(x):
     return sd.asarray(x)
 
 
+def _picks(d, part):
+    """n / part random row (or column) indices, repeats possible (fixed seed)."""
+    g = np.random.Generator(np.random.PCG64(d["n"] + part))
+    return g.integers(0, d["n"], d["n"] // part)
+
+
 def _sd_coo(d, key="a"):
     import stardust as sd
 
@@ -146,6 +152,14 @@ def _densified(label, x):
 SP2_CHECK = Check(sd=_summary, ref=_densified, rtol=1e-9)
 
 
+def _size(x):
+    return np.array([float(x.shape[0]), float(x.shape[1]), float(x.nnz)])
+
+
+# Random results of different generators: the shape and the number of stored entries.
+SIZE_CHECK = Check(sd=_size, ref=lambda label, x: _size(x), rtol=0.0)
+
+
 def _summed(A):
     B = A.copy()
     B.sum_duplicates()
@@ -167,6 +181,7 @@ class Spec:
     r_differs: str = ""  # the R expression computes something else by design: why
     r_data: tuple = ()  # more (case data key, R variable) pairs the R expression reads
     r_sparse: bool = False  # the R result is a sparse matrix: compared by the three sums (R_SUMMARY)
+    check: object = None  # the smoke check, when not the milestone's
 
 
 def _quiet(f):
@@ -263,7 +278,28 @@ ARRAY_SPECS = (
          lambda d: (lambda A: lambda: __import__("stardust").sparse.kron(__import__("stardust").sparse.eye_array(10), A))(_sd_csr(d)),
          lambda d: lambda: __import__("scipy.sparse", fromlist=["kron"]).kron(
              __import__("scipy.sparse", fromlist=["eye_array"]).eye_array(10), d["a"], format="csr"),
-         r="kronecker(Diagonal(10), A)", limit=10**6),
+         r='kronecker(as(Diagonal(10), "CsparseMatrix"), A)', limit=10**6, r_sparse=True),
+    Spec("SP3", "indexing", "A[random rows 1/10]", ("csr_array",),
+         lambda d: (lambda A, k: lambda: A[k])(_sd_csr(d), _sd(_picks(d, 10))), lambda d: lambda: d["a"][_picks(d, 10)]),
+    Spec("SP3", "indexing", "A[:, random cols 1/10]", ("csr_array",),
+         lambda d: (lambda A, k: lambda: A[:, k])(_sd_csr(d), _sd(_picks(d, 10))),
+         lambda d: lambda: d["a"][:, _picks(d, 10)]),
+    Spec("SP3", "indexing", "A[::-1, ::2]", ("csr_array",), lambda d: (lambda A: lambda: A[::-1, ::2])(_sd_csr(d)),
+         lambda d: lambda: d["a"][::-1, ::2]),
+    Spec("SP3", "indexing", "diagonal()", ("csr_array",), lambda d: (lambda A: lambda: A.diagonal())(_sd_csr(d)),
+         lambda d: lambda: d["a"].diagonal()),
+    Spec("SP3", "construct", "hstack", ("csr_array", "hstack"),
+         lambda d: (lambda A, B: lambda: __import__("stardust").sparse.hstack([A, B]))(_sd_csr(d), _sd_csr(d, "b")),
+         lambda d: lambda: __import__("scipy.sparse", fromlist=["hstack"]).hstack([d["a"], d["b"]])),
+    Spec("SP3", "construct", "tril(A)", ("csr_array", "tril"),
+         lambda d: (lambda A: lambda: __import__("stardust").sparse.tril(A))(_sd_csr(d)),
+         lambda d: lambda: __import__("scipy.sparse", fromlist=["tril"]).tril(d["a"]), r="tril(A)", r_sparse=True),
+    Spec("SP3", "construct", "random_array (density 10/n)", ("random_array",),
+         lambda d: lambda: __import__("stardust").sparse.random_array(
+             (d["n"], d["n"]), density=10 / d["n"], rng=__import__("stardust").random.default_rng(1)),
+         lambda d: lambda: __import__("scipy.sparse", fromlist=["random_array"]).random_array(
+             (d["n"], d["n"]), density=10 / d["n"], rng=1),
+         note="난수 생성기가 달라 값은 다르다(검사는 모양과 저장 수만)", check="size"),
     Spec("SP7", "norms", "norm(A, 1)", ("csr_array", "norm"),
          lambda d: (lambda A: lambda: __import__("stardust").sparse.norm(A, 1))(_sd_csr(d)),
          lambda d: lambda: __import__("scipy.sparse.linalg", fromlist=["norm"]).norm(d["a"], 1), r='norm(A, "1")'),
@@ -330,7 +366,7 @@ def _grid_r(setup):
 
 
 # The milestones whose cases run.
-DONE = ("SP1", "SP2")
+DONE = ("SP1", "SP2", "SP3")
 
 
 def _public(spec) -> bool:
@@ -361,6 +397,8 @@ def cases() -> list[Case]:
                     )
                 )
             check = SPARSE_CHECK if s.milestone == "SP1" else SP2_CHECK
+            if s.check == "size":
+                check = SIZE_CHECK
             out.append(Case(area="sparse", group=s.group, name=s.name, size=size, n=nnz, setup=_array_setup(nnz),
                             sd=s.sd, refs=tuple(refs), quick=s.quick and nnz == 10**6, note=s.note, check=check))  # fmt: skip
     for s in SOLVER_SPECS:

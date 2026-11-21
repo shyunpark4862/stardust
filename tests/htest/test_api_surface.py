@@ -16,8 +16,6 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "htest.md"
 # Documented, not implemented yet (docs/design/htest.md §8): the tests after H4. A milestone moves
 # its names from here to sd.htest.__all__.
 PLANNED = {
-    # H5
-    "pearsonr", "spearmanrho", "spearmanr", "pointbiserialr", "kendalltau", "weightedtau", "somersd", "chatterjeexi",
     # H6
     "chi2_contingency", "fisher_exact", "barnard_exact", "boschloo_exact", "mcnemar", "cochrans_q", "odds_ratio",
     "relative_risk",

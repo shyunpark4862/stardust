@@ -607,8 +607,8 @@ def test_errors():
         r.predict(np.ones((3, 3)))
     with pytest.raises(ValueError, match=r"'which' must be 'mean' or 'linear'"):
         r.predict(X, which="x")
-    with pytest.raises(ValueError, match="summary"):
-        R.glm(np.stack([y, y]), X, family="binomial").summary()
+    # a batch's summary is one row per regression (G193)
+    assert "[1]" in R.glm(np.stack([y, y]), X, family="binomial").summary()
 
 
 def test_summary_layout():

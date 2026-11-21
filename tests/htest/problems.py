@@ -531,6 +531,81 @@ def _h5():
     add(m, "somersd", "ties", rounded(216, 25), rounded(217, 25))
     add(m, "chatterjeexi", "small", normal(218, 20), normal(219, 20))
     add(m, "chatterjeexi", "large", normal(220, 500), np.sin(normal(220, 500)) + 0.1 * normal(221, 500))
+    _h5_more(m)
+
+
+def _h5_more(m):
+    """Added with H5: Pearson's p-value near |r| = 1 past H0's eps (1 - r^2 below 1e-18), the
+    deep tail, negative r and the one-sided forms, offsets and extreme scales, exact lines, r = 0,
+    the smallest n and the degenerate inputs; Spearman's ties, one-sided, infinities and a deep
+    tail; Kendall's exact distribution at scipy's 'auto' threshold (n = 33), past it (forced, the
+    double-double path), its deep tails (one discordant pair, none) and the asymptotic forms;
+    weightedtau's rank options, multiplicative weights and ties; somersd from samples and from a
+    table; chatterjeexi with continuous and tied y; batches."""
+    x = normal(190, 10)
+    add(m, "pearsonr", "near-1-eps9", x, x + 1e-9 * normal(194, 10), tags=("tail",))
+    add(m, "pearsonr", "near-minus-1", x, -2.0 * x + 1e-6 * normal(5001, 10), alternative="less", tags=("tail",))
+    add(m, "pearsonr", "negative-greater", x, -0.4 * x + normal(5002, 10), alternative="greater")
+    add(m, "pearsonr", "small-less", x, 0.5 * x + normal(191, 10), alternative="less")
+    xd = normal(5003, 400)
+    add(m, "pearsonr", "deep-tail", xd, xd + 0.3 * normal(5004, 400), tags=("tail",))
+    add(m, "pearsonr", "offset-both", x + 1e9, 3.0 * x + normal(5005, 10) - 2e9, tags=("offset",))
+    add(m, "pearsonr", "scale-huge", x * 1e200, (0.5 * x + normal(191, 10)) * 1e-200)
+    add(m, "pearsonr", "three", np.array([1.0, 2.0, 4.0]), np.array([0.3, 0.1, 0.9]), tags=("small",))
+    add(m, "pearsonr", "two", np.array([1.0, 2.0]), np.array([5.0, 3.0]), tags=("small", "degenerate"))
+    add(m, "pearsonr", "zero-r", np.array([-2.0, -1, 0, 1, 2]), np.array([4.0, 1, 0, 1, 4]))
+    add(m, "pearsonr", "exact-line", x, 2.0 * x, tags=("degenerate",))
+    add(m, "pearsonr", "constant", np.full(6, 3.0), normal(5006, 6), tags=("degenerate",))
+    add(m, "pointbiserialr", "large", ints(5007, 800, 2), normal(5008, 800) + 0.2 * ints(5007, 800, 2))
+    add(m, "spearmanrho", "ties-greater", rounded(199, 30), rounded(200, 30), alternative="greater", tags=("ties",))
+    add(m, "spearmanrho", "less", x, -(x**3) + normal(198, 10), alternative="less")
+    xi = normal(5009, 25)
+    add(m, "spearmanrho", "infinite", np.r_[xi, np.inf, -np.inf], np.r_[xi + normal(5010, 25), 9.0, -9.0])
+    xs = normal(5011, 600)
+    add(m, "spearmanrho", "deep-tail", xs, xs + 0.2 * normal(5012, 600), tags=("tail",))
+    add(m, "spearmanrho", "constant", np.full(5, 1.0), normal(5013, 5), tags=("degenerate",))
+    add(m, "spearmanrho", "batch", normal(5014, (4, 15)), normal(5015, (4, 15)), axis=-1, tags=("batch",))
+    add(m, "spearmanr", "ties", rounded(199, 30), rounded(200, 30), tags=("ties",))
+    xk = normal(5016, 33)
+    add(m, "kendalltau", "exact-33", xk, xk + 1.5 * normal(5017, 33), tags=("exact",))
+    add(m, "kendalltau", "auto-34", normal(5018, 34), normal(5019, 34))
+    add(m, "kendalltau", "exact-forced-34", normal(5018, 34), normal(5019, 34), method="exact", tags=("exact",))
+    xk2 = normal(5020, 200)
+    add(m, "kendalltau", "exact-forced-200", xk2, xk2 + 2.0 * normal(5021, 200), method="exact", alternative="greater",
+        tags=("exact",))  # fmt: skip
+    add(m, "kendalltau", "exact-greater", x, x + normal(205, 10), alternative="greater", tags=("exact",))
+    ordered = np.sort(normal(5022, 60))
+    add(m, "kendalltau", "exact-none-discordant", ordered, ordered * 2.0 + 1.0, tags=("exact", "tail"))
+    swap = np.arange(100.0)
+    swap[[40, 41]] = swap[[41, 40]]
+    add(m, "kendalltau", "exact-one-discordant", np.arange(100.0), swap, tags=("exact", "tail"))
+    add(m, "kendalltau", "asymptotic-small", x, x + normal(205, 10), method="asymptotic")
+    add(m, "kendalltau", "ties-less", rounded(208, 40), rounded(209, 40), alternative="less", tags=("ties",))
+    add(m, "kendalltau", "variant-c-greater", rounded(5023, 50, step=2.0), rounded(5024, 50), variant="c",
+        alternative="greater")  # fmt: skip
+    xt = normal(5025, 500)
+    add(m, "kendalltau", "tail", xt, xt + 0.5 * normal(5026, 500), tags=("tail",))
+    add(m, "kendalltau", "constant", np.full(7, 2.0), normal(5027, 7), tags=("degenerate",))
+    w1, w2 = normal(5028, 40), normal(5029, 40)
+    add(m, "weightedtau", "ties", rounded(5030, 40), rounded(5031, 40), tags=("ties",))
+    add(m, "weightedtau", "rank-none", w1, w1 + normal(5029, 40), rank=None)
+    add(m, "weightedtau", "rank-false", w1, w1 + w2, rank=False)
+    add(m, "weightedtau", "multiplicative", w1, w1 + w2, additive=False)
+    add(m, "weightedtau", "rank-array", w1, w1 + w2, rank=ints(5032, 40, 15))
+    add(m, "weightedtau", "large", normal(5033, 1000), normal(5034, 1000), tags=("large",))
+    add(m, "weightedtau", "constant", np.full(6, 1.0), normal(5035, 6), tags=("degenerate",))
+    add(m, "weightedtau", "batch", normal(5036, (3, 20)), normal(5037, (3, 20)), axis=-1, tags=("batch",))
+    add(m, "somersd", "greater", rounded(216, 25), rounded(217, 25), alternative="greater", tags=("ties",))
+    add(m, "somersd", "continuous", normal(5038, 30), normal(5039, 30))
+    add(m, "somersd", "table", np.array([[8.0, 3, 1], [2, 9, 4], [0, 3, 7]]))
+    add(m, "somersd", "table-less", np.array([[1.0, 4, 9], [3, 5, 2], [7, 2, 0], [6, 1, 1]]), alternative="less")
+    xc = normal(5040, 40)
+    add(m, "chatterjeexi", "continuous", xc, xc**2 + normal(5041, 40), y_continuous=True)
+    add(m, "chatterjeexi", "ties-y", xc, rounded(5042, 40), tags=("ties",))
+    xx = normal(5043, 300)
+    add(m, "chatterjeexi", "tail", xx, np.sin(2.0 * xx) + 0.01 * normal(5044, 300), tags=("tail",))
+    add(m, "chatterjeexi", "constant-y", xc, np.full(40, 2.0), tags=("degenerate",))
+    add(m, "chatterjeexi", "batch", normal(5045, (3, 30)), normal(5046, (3, 30)), axis=-1, tags=("batch",))
 
 
 # ---- H6: contingency tables ---------------------------------------------------------------

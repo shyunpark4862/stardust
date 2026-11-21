@@ -7,30 +7,29 @@ checks and converts the inputs, computes quantreg's bandwidths and builds the re
 """
 
 import math
-import textwrap
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import special as _special
 from ._glm import _check_int, _check_positive
 from ._linear import (
-    _WIDTH,
+    _aliased_note,
+    _batch_summary,
     _check_alpha,
     _check_bool,
     _check_choice,
     _check_policy,
     _check_pred_batch,
     _check_rtol,
+    _coef_table,
     _count,
     _div,
-    _forg,
     _frame_columns,
     _names,
     _new_design,
     _number_or_1d,
-    _pairs,
     _prepare,
-    _quantile_label,
     _RegressionResult,
     _ro,
     _y_units,
@@ -167,10 +166,11 @@ class QuantRegResult(_RegressionResult):
 
     def summary(self, *, alpha=0.05):
         """A text table like statsmodels' QuantReg summary: the fit, then the coefficients with
-        their standard errors, t, p and 1 - alpha intervals. One regression and one quantile only."""
+        their standard errors, t, p and 1 - alpha intervals; a batch or several quantiles as ols's
+        batch (G193), one row per regression and quantile."""
         alpha = _check_alpha(alpha, "summary")
         if self._batch:
-            raise ValueError(f"summary(): takes one regression at one quantile, not {self._shape_text()}")
+            return _batch(self)
         return _summary(self, alpha)
 
     def _shape_text(self):
@@ -192,8 +192,6 @@ class QuantRegResult(_RegressionResult):
 
 
 def _summary(r, alpha):
-    stars = "=" * _WIDTH
-    lines = ["QuantReg Regression Results".center(_WIDTH).rstrip(), stars]
     left = [
         ("Model:", "QuantReg"),
         ("Method:", "Frisch-Newton"),
@@ -208,30 +206,8 @@ def _summary(r, alpha):
         ("Df Residuals:", _count(r.df_resid)),
         ("Df Model:", _count(r.df_model)),
     ]
-    lines += _pairs(left, right)
-    lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha=alpha)
-    params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
-    wname = max([len(v) for v in names] + [9]) + 1
-    cols = ["coef", "std err", "t", "P>|t|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
-    head = " " * wname + "".join(c.rjust(11) for c in cols)
-    width = max(_WIDTH, len(head))
-    lines[1] = "=" * width
-    lines[-1] = "=" * width
-    lines.append(head)
-    lines.append("-" * width)
-    for j, nm in enumerate(names):
-        vals = [
-            _forg(float(params[j]), 4),
-            _forg(float(bse[j])),
-            _forg(float(tv[j])),
-            f"{float(pv[j]):#.3f}",
-            _forg(float(ci[j, 0])),
-            _forg(float(ci[j, 1])),
-        ]
-        lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
-    lines.append("=" * width)
+    table = _coef_table(r, alpha)
     notes = [_COV_NOTES[r.cov_type] + " t uses df_resid degrees of freedom."]
     if not r._isnan():
         if r.nonunique:
@@ -239,16 +215,30 @@ def _summary(r, alpha):
                 "The solution is not unique: params is the lexicographically smallest minimizer "
                 f"(objective {r.objective:.6g})."
             )
-        aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
-        if aliased:
-            notes.append("Aliased (linearly dependent on earlier columns), not estimated: " + ", ".join(aliased) + ".")
+        notes += _aliased_note(r, names)
         if not r.converged:
             notes.append("The simplex did not reach a certified optimum.")
-    lines.append("")
-    lines.append("Notes:")
-    for i, t in enumerate(notes):
-        lines += textwrap.wrap(f"[{i + 1}] {t}", width, subsequent_indent="    ")
-    return "\n".join(lines)
+    return _S.render("QuantReg Regression Results", header=(left, right), tables=[table], notes=notes)
+
+
+def _batch(r):
+    """A batch of regressions, or several quantiles (the last lane axis), or both (G193)."""
+    left = [
+        ("Model:", "QuantReg"),
+        ("Method:", "Frisch-Newton"),
+        ("Covariance Type:", r.cov_type),
+        ("Bandwidth rule:", r._bw_rule),
+    ]
+    stats = [("nobs", _S.count), ("prsquared", _S.forg), ("converged", _S.flag)]
+    right = []
+    batch = tuple(r._batch[:-1]) if r._qaxis else tuple(r._batch)
+    if batch:
+        right.append(("Batch shape:", _S.shape_text(batch)))
+    if r._qaxis:
+        qs = r.q.tolist()
+        right.append(("No. Quantiles:", str(len(qs))))
+        stats.insert(0, ("q", lambda v: f"{v:g}", lambda i: qs[i % len(qs)]))
+    return _batch_summary(r, "QuantReg Regression Results", left, stats, right)
 
 
 # ---- the fit

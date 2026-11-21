@@ -24,6 +24,7 @@ import operator
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import frame as _frame
 from .. import random as _random
 from ..linalg import LinAlgError as _LinAlgError
@@ -131,6 +132,27 @@ class StepwiseResult:
         """The GLM candidates not chosen because they separate or do not converge (SkippedFit)."""
         return list(self._skipped)
 
+    @_calls.method("summary")
+    def summary(self):
+        """The search as a text table (G192): the model, criterion and direction, then one row
+        per step (its action, the criterion after it and the term moved); the selected columns
+        and the skipped candidates in the notes."""
+        moves = sum(1 for s in self._steps if s.action != "start")
+        left = [("Model:", _model_name(self._fit)), ("Direction:", self._direction)]
+        right = [("Criterion:", self._criterion), ("No. Steps:", str(moves)), ("No. Selected:", str(len(self._names)))]
+        rows = []
+        for i in _S.shown(len(self._steps)):
+            if i is None:
+                rows.append(None)
+                continue
+            st = self._steps[i]
+            rows.append((str(i), [st.action, _value(st.criterion), "" if st.term is None else st.term]))
+        table = _S.Table(["action", self._criterion, "term"], rows, left=(2,))
+        notes = [_selected_note(self._names)]
+        if self._skipped:
+            notes.append(f"Candidates left out (separation or not converged): {len(self._skipped)}; see skipped.")
+        return _S.render("Stepwise Selection Results", header=(left, right), tables=[table], notes=notes)
+
     def __repr__(self):
         moves = sum(1 for s in self._steps if s.action != "start")
         return (
@@ -145,9 +167,11 @@ class BestSubsetResult:
     no subset has), values (the criterion of each size's best: the cross-validation error for
     'cv') and skipped (the GLM subsets left out)."""
 
-    __slots__ = ("_selected", "_names", "_fit", "_criterion", "_subsets", "_values", "_skipped")
+    __slots__ = ("_selected", "_names", "_fit", "_criterion", "_subsets", "_values", "_skipped", "_xnames", "_pick")
 
-    def __init__(self, selected, names, fit, criterion, subsets, values, skipped):
+    def __init__(self, selected, names, fit, criterion, subsets, values, skipped, xnames=None, pick=None):
+        self._xnames = None if xnames is None else list(xnames)  # X's column names (summary())
+        self._pick = pick  # the chosen size, None when no size has a value
         self._selected = list(selected)
         self._names = list(names)
         self._fit = fit
@@ -190,11 +214,49 @@ class BestSubsetResult:
         """The GLM subsets not chosen because they separate or do not converge (SkippedSubset)."""
         return list(self._skipped)
 
+    @_calls.method("summary")
+    def summary(self):
+        """The search as a text table (G192): the model and criterion, then one row per size (the
+        best subset's criterion and its columns beyond `include`), the chosen size marked '*'."""
+        left = [("Model:", _model_name(self._fit)), ("Criterion:", self._criterion)]
+        right = [
+            ("Chosen Size:", "none" if self._pick is None else str(self._pick)),
+            ("No. Selected:", str(len(self._names))),
+        ]
+        vals = self._values.tolist()
+        rows = []
+        for i in _S.shown(len(self._subsets)):
+            if i is None:
+                rows.append(None)
+                continue
+            sub = self._subsets[i]
+            names = "" if sub is None else ", ".join(self._xnames[c] if self._xnames else str(c) for c in sub)
+            stub = f"{i} *" if i == self._pick else str(i)
+            rows.append((stub, [_value(vals[i]), names]))
+        table = _S.Table([self._criterion, "columns"], rows, left=(1,), stub_head="size")
+        notes = [_selected_note(self._names)]
+        if self._skipped:
+            notes.append(f"Subsets left out (separation or not converged): {len(self._skipped)}; see skipped.")
+        return _S.render("Best Subset Selection Results", header=(left, right), tables=[table], notes=notes)
+
     def __repr__(self):
         return (
             f"BestSubsetResult(criterion={self._criterion!r}, {len(self._selected)} column"
             f"{'' if len(self._selected) == 1 else 's'} selected, sizes 0-{len(self._subsets) - 1})"
         )
+
+
+def _model_name(fit):
+    return type(fit).__name__.removesuffix("Result")
+
+
+def _value(v):
+    """A criterion value in the tables: forg with 4 decimals, blank where it does not apply (NaN)."""
+    return "" if math.isnan(v) else _S.forg(v, 4)
+
+
+def _selected_note(names):
+    return "Selected: " + (", ".join(names) if names else "(none)") + "."
 
 
 # ---- arguments
@@ -977,10 +1039,11 @@ def best_subset(
     max_size = nfree if max_size is None else min(max_size, nfree)
     base = set(inc)
 
-    def result(chosen, subsets, values, skipped, fit=None):
+    def result(chosen, subsets, values, skipped, fit=None, pick=None):
         xc = _x_columns(terms_l, chosen)
         fit = call(xc) if fit is None else fit
-        return BestSubsetResult(xc, [cols.names[c] for c in xc], fit, criterion, subsets, values, skipped)
+        names = [cols.names[c] for c in xc]
+        return BestSubsetResult(xc, names, fit, criterion, subsets, values, skipped, cols.names, pick)
 
     if full._isnan():  # (G175): no search, the full model's NaN fit
         return result(set(range(len(terms_l))), [None] * (max_size + 1), _sd.full((max_size + 1,), math.nan), [], full)
@@ -1001,7 +1064,7 @@ def best_subset(
     if not intercept and not chosen:
         chosen = set(range(len(terms_l)))
     subsets = [None if s is None else _x_columns(terms_l, s) for s in sets]
-    return result(chosen, subsets, _sd.asarray(values), skipped)
+    return result(chosen, subsets, _sd.asarray(values), skipped, pick=pick)
 
 
 def _linear_values(ev, criterion, rss, ranks, full_stat):

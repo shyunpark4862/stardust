@@ -22,9 +22,6 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "sparse.md"
 # Documented, not implemented yet (docs/design/sparse.md §8). A milestone moves its names from
 # here to sd.sparse.__all__.
 PLANNED = {
-    # SP3
-    "eye_array", "diags_array", "random_array", "kron", "kronsum", "hstack", "vstack", "block_array", "block_diag",
-    "tril", "triu", "find",
     # SP4
     "spsolve", "splu", "factorized", "inv", "spsolve_triangular", "is_sptriangular", "spbandwidth", "LinearOperator",
     "aslinearoperator",
@@ -156,11 +153,11 @@ def test_formats_have_no_dia_default():
 
 
 def members(cls):
-    """{name: signature text or None} the document's §2 and §3 (the public milestones SP1 and
-    SP2) give class `cls`: its own lines and, for a format, the sparray lines. The methods of §4
-    on come with their milestones."""
+    """{name: signature text or None} the document's §2 to §4 (the public milestones SP1 to SP3)
+    give class `cls`: its own lines and, for a format, the sparray lines. The methods of §5 on
+    come with their milestones."""
     owners = {cls, "sparray"} if cls in FORMATS else {cls}
-    public = API.read_text().split("\n## §4.")[0]
+    public = API.read_text().split("\n## §5.")[0]
     return {name: sig for c, name, sig in entries(public) if c in owners}
 
 
@@ -182,7 +179,9 @@ def test_exported_classes_have_the_documented_members(cls):
 
 def test_module_is_wired():
     assert set(sd.sparse.__all__) == {
-        "sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose"
+        "sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose",
+        "eye_array", "diags_array", "random_array", "kron", "kronsum", "hstack", "vstack", "block_array",
+        "block_diag", "tril", "triu", "find",
     }  # fmt: skip
     assert not hasattr(sd.sparse, "linalg")
     assert callable(sd.sparse._core._lu_solve)

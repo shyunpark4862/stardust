@@ -17,6 +17,7 @@ import operator
 
 from .. import _core as _sd
 from . import _common as C
+from . import _index as I
 from . import _ops as O
 from . import _reduce as R
 from ._common import _core
@@ -218,6 +219,28 @@ class sparray:
             if nd == 1:
                 axis = None
         return self._count_nonzero(axis)
+
+    # ---- indexing (docs/api/sparse.md §4.1; the rules in _index.py) ----
+
+    def __getitem__(self, key):
+        return I.getitem(self, key)
+
+    def __setitem__(self, key, value):
+        I.setitem(self, key, value)
+
+    def diagonal(self, *, k=0):
+        """The k-th diagonal (elements A[i, i + k]) as a dense 1-D sd.ndarray: the values of
+        A.toarray() there."""
+        return I.diagonal(self, k)
+
+    def trace(self, *, k=0):
+        """The sum of the k-th diagonal (a Python scalar): sd.sum of diagonal(k=k)."""
+        return I.trace(self, k)
+
+    def setdiag(self, values, /, *, k=0):
+        """Sets the k-th diagonal in place: a number for all of it, or a 1-D array for its first
+        len(values) elements (longer values are cut)."""
+        I.setdiag(self, values, k)
 
     # ---- operators (docs/api/sparse.md §3.1; the rules in _ops.py) ----
 

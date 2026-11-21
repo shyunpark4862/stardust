@@ -1,4 +1,4 @@
-"""Linear models: ols, wls, gls, linregress (docs/api/regression.md §2, docs/design/regression.md §2-§3).
+"""Linear models: ols, wls, gls (docs/api/regression.md §2, docs/design/regression.md §2-§3).
 
 The fit itself is the native kernel stardust._core.regression.fit (QR, aliased columns,
 refinement on the augmented system, sums of squares in double-double, covariances). This
@@ -11,10 +11,10 @@ scalar of one regression; a batch of regressions puts the batch shape in front.
 import math
 import numbers
 import operator
-import textwrap
 
 from .. import _calls, _results
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import frame as _frame
 from .. import linalg as _linalg
 from ..htest._gof import JarqueBeraResult, _jb_of_sums
@@ -1071,7 +1071,8 @@ class _LinearResult(_RegressionResult):
         def make():
             sums = (self._resid_stat(i) for i in (1, 2, 3, 4))
             jb, p = _jb_of_sums(self.nobs, *sums)
-            return JarqueBeraResult._make(batch=self._batch, statistic=jb, pvalue=p)
+            info = {} if self._batch else {"nobs": self.nobs}  # summary() (G191)
+            return JarqueBeraResult._make(batch=self._batch, info=info, statistic=jb, pvalue=p)
 
         return self._cached("jarque_bera", make)
 
@@ -1117,7 +1118,11 @@ class _LinearResult(_RegressionResult):
             elif not df > 0:
                 df = math.nan
             p = self._scalar(_ChiSquared(df=_arg(df)).ccdf(_arg(lm)))
-            return _results.BreuschPaganResult(lm, p, a.fvalue, a.f_pvalue)
+            r = _results.BreuschPaganResult(lm, p, a.fvalue, a.f_pvalue)
+            r._info = {"pairs": [("Studentized:", str(studentize))]}  # summary() (G191)
+            if not self._batch:
+                r._info["nobs"] = self.nobs
+            return r
 
         return self._cached(("breusch_pagan", studentize), make)
 
@@ -1195,10 +1200,11 @@ class _LinearResult(_RegressionResult):
     def summary(self, *, alpha=0.05):
         """A text table like statsmodels' OLS summary: the fit, the coefficients with their
         standard errors, t, p and 1 - alpha intervals, Durbin-Watson, Jarque-Bera and the
-        condition number. One regression only."""
+        condition number. A batch: a table of the fit statistics and one of the coefficients,
+        one row per regression (G193)."""
         alpha = _check_alpha(alpha, "summary")
         if self._batch:
-            raise ValueError(f"summary(): takes one regression, not a batch of shape {tuple(self._batch)}")
+            return _batch(self)
         return _summary(self, alpha)
 
     def __repr__(self):
@@ -1264,9 +1270,13 @@ def _sqrt(x):
     return math.sqrt(x) if x >= 0 else math.nan
 
 
-# ---- summary (G13): statsmodels' layout and number formats
+# ---- summary (G13): statsmodels' layout and number formats, drawn by stardust._summary (G189)
 
-_WIDTH = 78
+_WIDTH = _S.WIDTH
+_forg = _S.forg
+_count = _S.count
+_pairs = _S.pairs
+_quantile_label = _S.quantile_label
 _COV_NOTES = {
     "nonrobust": "Standard errors assume that the covariance matrix of the errors is correctly specified.",
     "HC0": "Standard errors are heteroscedasticity robust (HC0).",
@@ -1276,42 +1286,67 @@ _COV_NOTES = {
 }
 
 
-def _forg(x, prec=3):
-    """statsmodels' forg: fixed with prec decimals, or prec significant digits outside [1e-4, 1e4)."""
-    if math.isfinite(x) and (abs(x) >= 1e4 or abs(x) < 1e-4) and x != 0:
-        return f"{x:.{prec}g}"
-    return f"{x:.{prec}f}"
-
-
-def _count(v):
-    return "nan" if math.isnan(v) else str(int(v))
-
-
-def _pairs(left, right):
-    """Two columns of (label, value) cells, each 38 wide, values right-aligned."""
-    half = (_WIDTH - 2) // 2
+def _coef_table(r, alpha, stat="t"):
+    """The coefficient table of a model's summary: coef, std err, t (or z), P>|t| and the
+    1 - alpha interval per parameter."""
+    names = [str(v) for v in r.param_names]
+    ci = r.conf_int(alpha=alpha)
+    params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
     rows = []
-    for i in range(max(len(left), len(right))):
-        cells = []
-        for side in (left, right):
-            if i < len(side):
-                label, value = side[i]
-                cells.append(label + value.rjust(half - len(label)))
-            else:
-                cells.append(" " * half)
-        rows.append((cells[0] + "  " + cells[1]).rstrip())
-    return rows
+    for j, nm in enumerate(names):
+        cells = [
+            _S.forg(params[j], 4),
+            _S.forg(bse[j]),
+            _S.forg(tv[j]),
+            _S.pvalue(pv[j]),
+            _S.forg(ci[j, 0]),
+            _S.forg(ci[j, 1]),
+        ]
+        rows.append((nm, cells))
+    return _S.Table(["coef", "std err", stat, f"P>|{stat}|"] + _S.interval_columns(alpha), rows)
 
 
-def _quantile_label(q):
-    """0.025, 0.975, 0.05, 0.95 ...: the interval's quantiles as statsmodels prints them."""
-    return f"{q:.3f}" if abs(q * 1000 - round(q * 1000)) < 1e-9 else f"{q:g}"
+def _aliased_note(r, names, what="linearly dependent on earlier columns", tail="not estimated"):
+    aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
+    if aliased:
+        return [f"Aliased ({what}), {tail}: " + ", ".join(aliased) + "."]
+    return []
+
+
+def _batch_summary(r, title, left, stats, right=None):
+    """The summary of a batch of regressions (G193): the fit's common description, then a
+    table of the per-regression statistics `stats` ((field name, formatter) or (name,
+    formatter, value of lane i)) and one of the coefficients, one row per regression (a long
+    batch cut to its first and last rows)."""
+    shape = tuple(r._batch)
+    n = _S.lanes(shape)
+    if right is None:
+        right = [("Batch shape:", _S.shape_text(shape))]
+    right = right + [("Df Model:", _S.count(_first(r.df_model)))]
+    cols = [(st[2] if len(st) > 2 else _S.flat(getattr(r, st[0]), n), st[1]) for st in stats]
+    t1 = _S.Table([st[0] for st in stats], _S.lane_rows(shape, cols))
+    names = [str(v) for v in r.param_names]
+    P = _sd.reshape(r.params, (n, len(names)))
+    rows = []
+    for i in _S.shown(n):
+        if i is None:
+            rows.append(None)
+            continue
+        row = P[i].tolist()
+        rows.append((_S.lane_label(i, shape), [_S.forg(v, 4) for v in row]))
+    t2 = _S.Table(names, rows, stub_head="params")
+    return _S.render(title, header=(left, right), tables=[t1, t2])
+
+
+def _first(v):
+    """A field the regressions of a batch share (df_model): its first value."""
+    if isinstance(v, _sd.ndarray):
+        return _sd.reshape(v, (v.size,))[0] if v.size else math.nan
+    return v
 
 
 def _summary(r, alpha=0.05):
     name = type(r).__name__[:3]
-    stars = "=" * _WIDTH
-    lines = [f"{name} Regression Results".center(_WIDTH).rstrip(), stars]
     left = [
         ("Model:", name),
         ("Method:", "Least Squares"),
@@ -1329,44 +1364,12 @@ def _summary(r, alpha=0.05):
         ("AIC:", f"{r.aic:#.4g}"),
         ("BIC:", f"{r.bic:#.4g}"),
     ]
-    lines += _pairs(left, right)
-    lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha=alpha)
-    params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
-    stat = "t"
-    wname = max([len(v) for v in names] + [9]) + 1
-    cols = [
-        "coef",
-        "std err",
-        stat,
-        f"P>|{stat}|",
-        "[" + _quantile_label(alpha / 2),
-        _quantile_label(1 - alpha / 2) + "]",
-    ]
-    head = " " * wname + "".join(c.rjust(11) for c in cols)
-    width = max(_WIDTH, len(head))
-    lines[1] = "=" * width
-    lines[-1] = "=" * width
-    lines.append(head)
-    lines.append("-" * width)
-    for j, nm in enumerate(names):
-        vals = [
-            _forg(float(params[j]), 4),
-            _forg(float(bse[j])),
-            _forg(float(tv[j])),
-            f"{float(pv[j]):#.3f}",
-            _forg(float(ci[j, 0])),
-            _forg(float(ci[j, 1])),
-        ]
-        lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
-    lines.append("=" * width)
     jb = r.jarque_bera()
-    lines += _pairs(
+    footer = (
         [("Durbin-Watson:", f"{r.durbin_watson:#.3f}"), ("Prob(JB):", f"{jb.pvalue:#.3g}")],
         [("Jarque-Bera (JB):", f"{jb.statistic:#.3f}"), ("Cond. No.", f"{r.condition_number:#.3g}")],
     )
-    lines.append("=" * width)
     notes = []
     ct = r.cov_type
     if ct == "HAC":
@@ -1382,14 +1385,28 @@ def _summary(r, alpha=0.05):
         )
     else:
         notes.append(_COV_NOTES[ct])
-    aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k] if not r._isnan() else []
-    if aliased:
-        notes.append("Aliased (linearly dependent on earlier columns), not estimated: " + ", ".join(aliased) + ".")
-    lines.append("")
-    lines.append("Notes:")
-    for i, t in enumerate(notes):
-        lines += textwrap.wrap(f"[{i + 1}] {t}", width, subsequent_indent="    ")
-    return "\n".join(lines)
+    if not r._isnan():
+        notes += _aliased_note(r, names)
+    return _S.render(
+        f"{name} Regression Results",
+        header=(left, right),
+        tables=[_coef_table(r, alpha)],
+        footer=footer,
+        notes=notes,
+    )
+
+
+def _batch(r):
+    name = type(r).__name__[:3]
+    left = [("Model:", name), ("Method:", "Least Squares"), ("Covariance Type:", r.cov_type)]
+    stats = [
+        ("nobs", _S.count),
+        ("rsquared", _S.forg),
+        ("fvalue", _S.forg),
+        ("f_pvalue", _S.pvalue),
+        ("llf", _S.forg),
+    ]
+    return _batch_summary(r, f"{name} Regression Results", left, stats)
 
 
 def _arg(v):
@@ -1885,102 +1902,3 @@ def gls(
         logdet = float(logdet)
     res._extra["logdet"] = logdet
     return res
-
-
-def _constant(v, batch):
-    """Whether each regression's values in v (..., n) are all equal, broadcast to the batch
-    shape: a 1-D v (the other argument carries the batch) gives one answer for all."""
-    if v.ndim == 1:
-        return _sd.full(batch, float(_sd.max(v)) == float(_sd.min(v)))
-    return _sd.broadcast_to(_sd.max(v, axis=-1) == _sd.min(v, axis=-1), batch)
-
-
-@_calls.function
-def linregress(x, y, /, *, nan_policy="propagate"):
-    """scipy.stats.linregress: the least squares line y = intercept + slope x, with the
-    correlation, the two-sided p-value of slope = 0 (Student t, n - 2 degrees of freedom) and
-    the two standard errors. A batch takes x and y (..., n). nan_policy: theilslopes' rules
-    (G102)."""
-    func = "linregress"
-    _check_policy(nan_policy, func)
-    xa, _ = _as_real(x, func, "x")
-    ya = _read_y(y, func)
-    if xa.ndim == 0 or ya.ndim == 0:
-        raise ValueError(f"{func}(): 'x' and 'y' must have at least 1 dimension")
-    if xa.shape[-1] != ya.shape[-1]:
-        raise ValueError(_rows_message(func, "x", ya.shape[-1], xa.shape[-1], ya.shape, "values"))
-    _check_batches(func, [("x", xa.shape[:-1]), ("y", ya.shape[:-1])])
-    _check_rows(func, [("x", xa), ("y", ya)])
-    batch = xa.ndim > 1 or ya.ndim > 1
-    if nan_policy == "raise":
-        if _has_nan(xa, ya):
-            raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
-    elif nan_policy == "omit":
-        if batch:
-            raise ValueError(
-                f"{func}(): nan_policy='omit' takes one regression, not a batch "
-                "(the regressions would keep different points)"
-            )
-        bad = _sd.logical_or(_sd.isnan(xa), _sd.isnan(ya))
-        if bool(_sd.any(bad)):
-            keep = _sd.logical_not(bad)
-            xa, ya = xa[keep], ya[keep]
-    if ya.shape[-1] < 2:
-        # fewer than 2 points: no line; every field NaN (G96's empty-input rule; scipy 1.18.1
-        # gives NaN with a warning)
-        if not batch:
-            return _results.LinregressResult(*([math.nan] * 6))
-        shape = _check_batches(func, [("x", xa.shape[:-1]), ("y", ya.shape[:-1])])
-        return _results.LinregressResult(*(_ro(_sd.full(shape, math.nan)) for _ in range(6)))
-    X = _sd.expand_dims(xa, axis=-1)
-    # only an exactly constant x is degenerate here (scipy): rtol 0
-    raw, extra, _, _ = _fit_kernel(func, ya, X, None, None, True, 0.0, 0, None, 0, -1)
-    _unscale(raw, extra)
-    r = OLSResult(
-        raw, param_names=["const", "x1"], intercept=True, cov_type="nonrobust", batch=_batch_shape(raw), extra=extra
-    )
-    nan = math.nan
-    if not r._batch:
-        b0, b1 = float(r.params[0]), float(r.params[1])
-        se0, se1 = float(r.bse[0]), float(r.bse[1])
-        rsq = r.rsquared
-        t1 = float(r.tvalues[1])
-        # the slope's sign from the fitted units' t (the slope itself may underflow to 0)
-        sgn = t1 if math.isfinite(t1) and t1 != 0 else b1
-        rvalue = min(1.0, max(-1.0, math.copysign(math.sqrt(rsq), sgn))) if rsq >= 0 else nan
-        pvalue = 2.0 * _StudentT(df=r.df_resid).ccdf(abs(t1))
-        # scipy's degenerate cases: x or y constant gives r = NaN, and with it p and both
-        # standard errors; a constant x gives no line at all. A NaN regression stays NaN.
-        if not r._isnan():
-            xconst = float(_sd.max(xa)) == float(_sd.min(xa))
-            yconst = float(_sd.max(ya)) == float(_sd.min(ya))
-            if yconst and not xconst:
-                # the exact line (scipy's): slope +0 and the constant, not the solve's rounding
-                b1, b0 = 0.0, float(ya[0])
-            if xconst:
-                b0 = b1 = nan
-            if xconst or yconst:
-                rvalue = pvalue = se0 = se1 = nan
-        return _results.LinregressResult(b1 + 0.0, b0 + 0.0, rvalue, pvalue, se1, se0)
-    b0, b1 = r.params[..., 0], r.params[..., 1]
-    se0, se1 = r.bse[..., 0], r.bse[..., 1]
-    t1 = r.tvalues[..., 1]
-    sgn = _sd.where(_sd.logical_and(_sd.isfinite(t1), t1 != 0.0), t1, b1)
-    rvalue = _sd.clip(_sd.copysign(_sd.sqrt(r.rsquared), sgn), min=-1.0, max=1.0)
-    pvalue = 2.0 * _StudentT(df=r.df_resid).ccdf(_sd.abs(t1))
-    ok = _sd.logical_not(r._isnan())
-    xconst = _sd.logical_and(_constant(xa, r._batch), ok)
-    yconst = _sd.logical_and(_constant(ya, r._batch), ok)
-    degen = _sd.logical_or(xconst, yconst)
-    # a constant y: the exact line, slope +0 and the constant (scipy's)
-    b1 = _sd.where(yconst, 0.0, b1)
-    y0 = _sd.full(r._batch, float(ya[0])) if ya.ndim == 1 else _sd.broadcast_to(ya[..., 0], r._batch)
-    b0 = _sd.where(yconst, y0, b0)
-    return _results.LinregressResult(
-        _ro(_sd.where(xconst, nan, b1) + 0.0),
-        _ro(_sd.where(xconst, nan, b0) + 0.0),
-        _ro(_sd.where(degen, nan, rvalue)),
-        _ro(_sd.where(degen, nan, pvalue)),
-        _ro(_sd.where(degen, nan, se1)),
-        _ro(_sd.where(degen, nan, se0)),
-    )

@@ -5,7 +5,7 @@ compare with R on machines without R (as tools/gen_regression_r.py does for sd.r
 R's base `stats` package (decision H15), and the `car` package's leveneTest for levene (decision
 H33; car is the regression area's comparison package, installed for G7a): t.test,
 oneway.test, bartlett.test, fligner.test, chisq.test, shapiro.test, ks.test, wilcox.test,
-kruskal.test, friedman.test, ansari.test, mood.test, cor.test, fisher.test, mcnemar.test,
+kruskal.test, friedman.test, ansari.test, mood.test, cor.test (pearson, kendall, spearman), fisher.test, mcnemar.test,
 binom.test, prop.test, TukeyHSD, p.adjust, pchisq, car::leveneTest. A problem is run where R has
 the same test with the same options; the others (Yuen's trim, alexandergovern, the Cressie-Read family,
 cramervonmises, anderson, brunnermunzel, median_test, page_trend_test, epps_singleton, batches,
@@ -15,7 +15,9 @@ exact; wilcox.test's exact switch at n < 50 and its zeros ranked as Pratt's, fis
 conditional MLE odds ratio, prop.test's one-sample variance), the record keeps R's own value; the
 comparison says which differ. wilcox.test's exact p-values with ties are conditional on the
 midranks, as sd's method='exact' (H45): the H3 problems with ties and method='exact' compare
-the two.
+the two. cor.test's Kendall is called with exact as scipy's (and sd's) method (R's own default is
+exact below n = 50), its Spearman with exact = FALSE (the t approximation, sd's and scipy's: H63)
+and its default (AS 89's exact distribution) recorded beside it as p.value.default.
 
 Each record: the R call (its data vectors shown as c(...)), the inputs' digest, and R's htest fields: statistic,
 parameter (df), p.value, conf.int, estimate; for TukeyHSD the matrix of diff, lwr, upr, p adj;
@@ -74,9 +76,17 @@ run <- function(id, expr) {
 ALT = {"two-sided": "two.sided", "less": "less", "greater": "greater"}
 
 
+def _r_num(v):
+    if v != v:
+        return "NaN"
+    if np.isinf(v):
+        return "Inf" if v > 0 else "-Inf"
+    return f"{v:.17g}"
+
+
 def vec(a):
     a = np.ravel(np.asarray(a, dtype=np.float64))
-    return "c(" + ", ".join(f"{v:.17g}" for v in a) + ")"
+    return "c(" + ", ".join(_r_num(v) for v in a) + ")"
 
 
 def mat(a):
@@ -171,10 +181,24 @@ def r_call(p):
         return f"mood.test({vec(a[0])}, {vec(a[1])}, alternative = '{alt(p)}')"
     if f in ("pearsonr", "pointbiserialr"):
         return f"cor.test({vec(a[0])}, {vec(a[1])}, method = 'pearson', alternative = '{alt(p)}')"
-    if f in ("spearmanrho", "spearmanr"):
-        return f"cor.test({vec(a[0])}, {vec(a[1])}, method = 'spearman', alternative = '{alt(p)}')"
+    if f in ("spearmanrho", "spearmanr") and np.ndim(a[0]) == 1:
+        # exact = FALSE: the t approximation, scipy's and sd's (H63: no exact distribution); R's
+        # default (AS 89's exact distribution for n < 1290 without ties) as p.value.default
+        xy = f"{vec(a[0])}, {vec(a[1])}, method = 'spearman', alternative = '{alt(p)}'"
+        return (
+            f"local({{h <- cor.test({xy}, exact = FALSE); d <- cor.test({xy}); "
+            "list(statistic = h$statistic, p.value = h$p.value, estimate = h$estimate, p.value.default = d$p.value)})"
+        )
     if f == "kendalltau" and kw.get("variant", "b") == "b":
-        e = exact(kw.get("method", "auto"))
+        # exact where scipy's (and sd's) method is: R's own default is exact up to n = 49
+        m = kw.get("method", "auto")
+        if m == "auto":
+            x, y = np.asarray(a[0]), np.asarray(a[1])
+            ties = len(np.unique(x)) < x.size or len(np.unique(y)) < y.size
+            dis = int(np.sum(np.triu(np.sign(x[:, None] - x[None, :]) * np.sign(y[:, None] - y[None, :]) < 0, 1)))
+            tot = x.size * (x.size - 1) // 2
+            m = "exact" if not ties and (x.size <= 33 or min(dis, tot - dis) <= 1) else "asymptotic"
+        e = exact(m)
         return f"cor.test({vec(a[0])}, {vec(a[1])}, method = 'kendall', alternative = '{alt(p)}', exact = {e})"
     if f == "chi2_contingency" and "lambda_" not in kw:
         c = "TRUE" if kw.get("correction", True) else "FALSE"

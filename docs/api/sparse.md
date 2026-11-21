@@ -1,8 +1,8 @@
 # sd.sparse API
 
-> 상태: **초안** (SP2, 2026-11-21). 공개된 것은 §2의 형식과 변환(SP1: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성)과 §3의 연산(SP2: 연산자, 원소별 메서드, 곱, 리덕션)이다. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
+> 상태: **초안** (SP3, 2026-11-21). 공개된 것은 §2의 형식과 변환(SP1: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성), §3의 연산(SP2: 연산자, 원소별 메서드, 곱, 리덕션), §4의 인덱싱과 만들기(SP3: 인덱싱과 대입, `trace diagonal setdiag`, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find`)다. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
 
-- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP47), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP58), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/sparse/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name`), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -205,8 +205,14 @@ sparray.argmin(*, axis=None, keepdims=False, explicit=False)
 ## §4. 인덱싱과 만들기 (SP3)
 
 ### §4.1 인덱싱과 대입
-- `A[i, j]`는 Python 스칼라, `A[i]`는 1차원 희소(scipy와 같다), 슬라이스·정수 배열·bool 마스크와 그 조합은 희소다. 범위 밖은 `IndexError`다(API.md §2).
-- 대입 `A[idx] = v`: DOK는 O(1), CSR·CSC는 이미 저장된 자리면 값만 바꾸고 새 자리면 패턴을 다시 만든다(O(nnz); 경고 없음; SP3에서 정한다). 같은 자리가 여러 번 나오면 마지막 값이다(배열의 scatter와 같다).
+- **키는 배열의 규칙이다**(docs/api/array.md §5): int(numpy 정수 포함, bool 제외; 음수는 끝에서), slice(음수 step 포함), `...`, None, 정수 배열과 bool 마스크(`sd.ndarray`, 중첩 리스트·튜플, numpy 배열 같은 버퍼; 반복과 아무 순서), 그 조합. 범위 밖(`index 5 is out of bounds for axis 1 with size 4`), 틀린 객체, 축보다 많은 인덱스, 브로드캐스트되지 않는 배열, 맞지 않는 마스크, 떨어진 고급 인덱스(`A[[0, 1], None, [0, 1]]`)는 배열과 같은 종류와 메시지의 예외다. 희소 배열은 인덱스가 아니다(`IndexError`). 결과가 3차원 이상인 키(`A[None, :]`, 2차원 정수 배열 하나)는 `IndexError`다(`this index gives a result of 3 dimensions; a sparse array has 1 or 2`).
+- **결과**: 모든 축이 int면 Python 스칼라다(저장된 값, 없으면 그 dtype의 0; COO의 중복은 저장 순서로 더한 값). 아니면 희소 배열이고 `A[key].toarray()`는 `A.toarray()[key]`와 비트까지 같다. 결과의 차원 수가 A와 같으면 A의 형식이고(CSR의 `A[rows]`, `A[:, cols]`, `A[1:3, ::2]`는 CSR, DOK는 DOK), 다르면 COO다(2차원의 `A[i]`·`A[:, j]`, 원소 고르기, 1차원의 None; scipy와 같다). `[scipy와 다름]`(SP54): scipy의 CSR·CSC는 원소 고르기 `A[rows, cols]`와 2차원 마스크에 밀집 numpy 배열(2차원 결과는 밀집 값에서 다시 만든 배열)을 돌려준다.
+- 두 축에 배열이 있으면 원소 고르기(정수와 배열도 함께 브로드캐스트; 배열의 규칙), 아니면 축마다 고른 것의 곱이다. 고른 자리의 저장된 원소가 결과에 저장된다(저장된 0도). COO는 중복과 저장 순서를 그대로 가져간다(scipy와 같다). `[scipy와 다름]`: scipy의 DOK는 대부분의 경로에서 저장된 0을 뺀다.
+- **대입** `A[key] = value`: 고른 영역의 모양에 배열의 대입 규칙으로 맞춘다(docs/api/array.md §5.3). 원소 하나의 자리에는 Python 스칼라만(`only a bool, int, float or complex can be assigned to a single element, not list`; `[scipy와 다름]`: scipy는 `[3]`도 받는다), 그 밖은 영역의 모양으로 엄격하게 브로드캐스트되는 값(`sd.ndarray`, 시퀀스, 버퍼; `cannot broadcast a value of shape (1, 4) to the indexed shape (4,)`)이나 희소 배열이다. 값은 A의 dtype으로 배열의 규칙대로 바뀐다(암묵적 하향 변환은 `TypeError`; `[scipy와 다름]`: scipy는 2.5를 int64에 2로 넣는다). 같은 자리가 여러 번이면 마지막 값이다(배열과 같다; `[scipy와 다름]`: scipy의 COO는 첫 값). 대입의 결과는 `A.toarray()`에 같은 대입을 한 것과 같다.
+- **저장되는 것은 형식마다 scipy의 규칙이다**(SP53):
+  - CSR·CSC: 이미 저장된 자리는 값 배열 `data`를 제자리에서 바꾼다(그 값 배열을 나누는 다른 배열·`.T`·`to_scipy()` 뷰에도 보인다; scipy와 같다). 새 자리가 있으면 배열을 다시 만든다(O(nnz), 경고 없음; SP50). 대입한 0도 저장된다(scipy와 같다). 희소 값이면 영역 안에 저장된 자리를 0으로 바꾸고 값의 저장된 원소를 넣는다.
+  - DOK: 0(-0.0 포함)을 넣으면 그 키를 지운다(희소 값은 그 밀집 값으로).
+  - COO: 영역의 원소(중복 포함)를 지우고 0이 아닌 새 값을 행 우선으로 뒤에 붙인다(원소 하나의 대입과 희소 값의 저장된 원소는 0이어도 붙인다).
 
 ```
 sparray.trace(*, k=0)
@@ -225,12 +231,19 @@ tril(A, /, *, k=0, format=None)
 triu(A, /, *, k=0, format=None)
 find(A, /)
 ```
-- `eye_array`: 인자 이름과 기본값은 `sd.eye`의 것이다(`n_rows`, `n_cols`, `dtype=None`은 float64). scipy의 기본 형식 DIA 대신 CSR이다(SP6).
-- `diags_array`: `format=None`이면 CSR(scipy는 DIA)이다. 정수 대각의 dtype은 int64다(scipy 1.18.1은 float64와 `FutureWarning`; SP3에서 정한다).
-- `random_array`: `rng`에 `sd.random.Generator`를 꼭 받는다. 없으면 `random_array(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType`(`TypeError`; optimize O31과 같다). 자리는 비복원 추출로 정확히 round(density·m·n)개, 값은 `data_sampler(size)` 또는 [0, 1) 균등이다. 같은 `rng` 상태면 스레드 수와 상관없이 같은 비트다. scipy와 같은 값은 아니다(난수 생성기가 다르다).
-- `kron`, `kronsum`, `hstack`, `vstack`, `block_array`, `block_diag`, `tril`, `triu`: `format=None`의 결과 형식은 scipy의 규칙이되 DIA·BSR이 나올 자리는 CSR이다(scipy는 `kron`이 BSR, `block_array`·`block_diag`·`tril`·`triu`가 COO; 어느 형식이든 값은 같다; SP3에서 정한다).
-- `trace(k=)`: scipy의 `offset=`이 아니라 sd.linalg `trace`의 이름 `k`다(DESIGN.md §1.4; `[scipy와 다름]`). `diagonal(k=)`는 밀집 1차원 `sd.ndarray`다.
-- `find(A)`: `(row, col, data)`의 세 밀집 `sd.ndarray`(표준 꼴의 행 우선 순서, 저장된 0은 뺀다; scipy와 같다).
+- `diagonal(k=)`: k번째 대각(원소 `A[i, i + k]`)의 밀집 1차원 `sd.ndarray`이고 `sd.linalg.diagonal(A.toarray(), k=k)`와 비트까지 같다(대각이 밖이면 길이 0). `trace(k=)`는 그 대각의 `sd.sum`인 Python 스칼라다(bool·int64는 int64, SP55; float64는 `sd.linalg.trace(A.toarray(), k=k)`와 비트까지 같다). 인자 이름은 scipy의 `offset=`이 아니라 sd.linalg의 `k`다(DESIGN.md §1.4; `[scipy와 다름]`). 2차원만이다(1차원은 `ValueError`).
+- `setdiag(values, k=)`: 제자리에서 대각을 바꾸고 None을 돌려준다. values가 수면 대각 전체, 1차원이면 앞의 `len(values)`개다(길면 자른다; scipy와 같다). 저장 규칙은 대입과 같다(CSR·CSC·COO는 0도 저장, DOK는 지움). k가 모양 밖이면 `ValueError`(`setdiag(): k 3 exceeds the array's dimensions (3, 3)`)다.
+- **데이터 인자**(`A`, `B`, 블록)는 희소 배열이나 밀집 `sd.ndarray`다(밀집은 0이 아닌 값만 저장한다). 리스트와 numpy 배열은 `TypeError`다(배열의 함수와 같다, API.md §5; `kron(): 'B' must be a sparse array or an sd.ndarray, not list`).
+- **`format=None`의 결과 형식**(SP51): scipy의 규칙이되 DIA·BSR이 나올 자리는 CSR이다. `eye_array`·`diags_array`·`kron`은 CSR(scipy는 DIA·BSR), `kronsum`은 CSR, `hstack`·`vstack`·`block_array`는 블록이 모두 CSR이면 CSR, 모두 CSC면 CSC, 아니면 COO, `block_diag`·`tril`·`triu`·`random_array`는 COO다(어느 형식이든 값은 같다). `format=`은 `'coo'`, `'csr'`, `'csc'`, `'dok'`이다.
+- **dtype**: `dtype=None`은 입력들의 배열 승격이고 `dtype=`은 명시적 변환이다. `kron`의 값은 배열의 곱(`sd.multiply`)이라 bool × bool은 int64다(SP56; `[scipy와 다름]`: scipy는 bool). 모든 값이 입력의 값이거나 곱 하나라 `toarray()`가 밀집 결과(`sd.eye`, `sd.tril`, `sd.triu`)와 비트까지 같다(`sd.linalg.kron`과는 0의 부호만 다를 수 있다: 저장하지 않은 자리는 +0.0).
+- `eye_array`: 인자 이름과 기본값은 `sd.eye`의 것이다(`n_rows`, `n_cols`, `dtype=None`은 float64). 대각이 밖이면(`eye_array(2, 3, k=5)`) 빈 배열이다(`sd.eye`와 같다; `[scipy와 다름]`: scipy는 `ValueError`). scipy의 기본 형식 DIA 대신 CSR이다(SP6, SP48).
+- `diags_array`: offsets가 int면 `diagonals`는 대각 하나(`sd.ndarray`나 수), offsets가 리스트면 같은 길이의 리스트(각각 `sd.ndarray`나 수; SP57)다. 길이 1인 대각은 그 대각 전체를 채우고, 더 긴 것은 자르고(scipy와 같다), 짧으면 `ValueError`다. 같은 offset이 두 번이거나 모양 밖이면 `ValueError`다. `shape`가 없으면 `len(diagonals[0]) + |offsets[0]|`의 정사각이다. 0은 저장하지 않는다(scipy와 같다). 정수 대각의 dtype은 int64다(SP52; `[scipy와 다름]`: scipy 1.18.1의 기본은 float64와 `FutureWarning`).
+- `random_array`: `rng`에 `sd.random.Generator`를 꼭 받는다(SP49). 없으면 `random_array(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType`(`TypeError`; optimize O31과 같다). 자리는 비복원 추출로 정확히 round(density·m·n)개(C 순서의 위치를 뽑은 순서대로), 값은 `data_sampler(n)`(위치 인자 하나) 또는 dtype마다 [0, 1) 균등(float64), 전체 범위의 정수(int64), 실수부·허수부가 [0, 1) 균등(complex128), 균등의 0이 아닌 것(bool)이다. `density`는 [0, 1] 안이어야 한다(`ValueError`). 같은 `rng` 상태면 스레드 수와 상관없이 같은 비트다. scipy와 같은 값은 아니다(난수 생성기가 다르다). `[scipy와 다름]`(SP58): scipy는 `data_sampler(size=n)`으로 부르고 `dtype=None`이면 그 결과를 float64로 바꾼다.
+- `kron`: 블록 a_ij·B의 배열이다. 1차원은 한 행이고 둘 다 1차원이면 1차원 결과다(scipy와 같다). 저장된 0과 곱해서 0이 된 값도 저장된다(scipy의 `format='csr'`과 같다).
+- `kronsum(A, B)`: `kron(I_n, A) + kron(B, I_m)`이다(정사각만; 희소끼리의 `+`라 만든 0은 지운다; scipy와 같다).
+- `hstack`, `vstack`, `block_array`, `block_diag`: 블록은 희소 배열, 밀집 `sd.ndarray`, None(빈 블록; `block_diag`에는 없다)이고, 1차원 블록은 한 행이다(scipy와 같다). 행·열의 크기가 맞지 않으면 `ValueError`(`vstack(): blocks[:,0] has incompatible column dimensions: blocks[1,0].shape[1] is 3, expected 4`)다. `block_array`의 `blocks`는 블록 행의 리스트다. `block_diag`의 밀집 블록도 0이 아닌 값만이다(`[scipy와 다름]`: scipy는 밀집 블록의 모든 자리를 저장한다).
+- `tril`, `triu`: col ≤ row + k(col ≥ row + k)인 원소를 A의 COO 순서 그대로(중복도) 남긴다(scipy와 같다). 인자 이름은 `sd.tril`·`sd.triu`와 같다. 2차원만이다.
+- `find(A)`: `(row, col, data)`의 쓸 수 있는 새 밀집 `sd.ndarray` 셋이다(중복을 더한 표준 꼴의 행 우선 순서, 저장된 0은 뺀다; scipy와 같다). 2차원만이다.
 
 ## §5. 직접 풀이와 `LinearOperator` (SP4)
 ```
@@ -313,9 +326,9 @@ norm(x, /, *, ord=None, axis=None)
 | `lil_array` | 없음(DOK, COO 꼴의 만들기, `vstack`) | SP7 |
 | `bsr_array`, `dia_array` | 없음, 나중 후보 | SP6 |
 | `coo_matrix` 등 `*_matrix`, `spmatrix`, `isspmatrix*` | 없음 | SP2 |
-| `eye_array`, `diags_array`, `random_array`, `block_array` | 같은 이름(기본 형식 CSR) | SP3 |
+| `eye_array`, `diags_array`, `random_array`, `block_array` | 같은 이름(기본 형식 CSR; `random_array`는 `rng` 필수) | SP48, SP49, SP51 |
 | `eye`, `identity`, `diags`, `spdiags`, `random`, `rand`, `bmat` | 없음(옛 `spmatrix`를 돌려주는 함수) | SP2 |
-| `kron`, `kronsum`, `hstack`, `vstack`, `block_diag`, `tril`, `triu`, `find` | 같은 이름 | SP3 |
+| `kron`, `kronsum`, `hstack`, `vstack`, `block_diag`, `tril`, `triu`, `find` | 같은 이름(`kron`의 기본 형식 CSR) | SP3, SP51 |
 | `matrix_transpose` | 같은 이름 | SP1 |
 | `expand_dims`, `swapaxes`, `permute_dims` | 없음(2차원까지라 쓸 일이 없다) | SP13 |
 | `save_npz`, `load_npz` | 나중 후보 | — |
@@ -358,12 +371,7 @@ docs/design/sparse.md §9와 같은 목록이다. 결정이 나면 이 문서와
 - **SP0**: 정했다(SP6–SP20, docs/design/sparse.md §1.1).
 - **SP1**: 정했다(SP21–SP34, docs/design/sparse.md §1.1).
 - **SP2**: 정했다(SP35–SP47, docs/design/sparse.md §1.1).
-- **SP3**
-  1. 만들기 함수의 이름: `eye_array`·`diags_array`·`random_array`·`block_array`(추천) / 짧은 이름.
-  2. `random_array`의 `rng`: 꼭 받는다(추천) / 없으면 고정 시드.
-  3. CSR·CSC의 새 자리 대입: 허용하고 O(nnz)(추천) / `ValueError`로 막고 DOK를 짚는다.
-  4. `format=None`의 결과 형식: scipy의 규칙에서 DIA·BSR만 CSR로(추천; `kron`은 CSR, `block_array`·`tril`은 COO) / 모든 만들기 함수가 CSR.
-  5. 정수 대각의 `diags_array`: int64(추천, 배열의 dtype 규칙) / scipy처럼 float64.
+- **SP3**: 정했다(SP48–SP52, docs/design/sparse.md §1.1). SP3 뒤에 정했다(SP53–SP58).
 - **SP4**
   1. LU의 순서: AMD 고정(추천; Metis는 동시 호출에서 비트가 다르고 MTMetis는 동시 호출에서 프로세스가 죽는다) / `ordering=` 옵션.
   2. `splu`의 결과: 내보내지 않는 `SparseLU`(`solve`, `shape`; `L`·`U` 없음)(추천) / 이 라이브러리의 LU(나중 후보)를 기다린다.

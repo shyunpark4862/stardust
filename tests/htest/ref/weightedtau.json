@@ -1,0 +1,11 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 8, "dropped": []},
+"weightedtau/small": {"digest": "d883daeca9d6a93fcb967fa509a9ba4defb7e13f6d6d085df30f264d14ea07d0", "statistic": [0.34767161679915565, -1.1473492362514845e-17], "pvalue": [NaN, 0.0]},
+"weightedtau/ties": {"digest": "183003529443fbd4810113cd0a460b38ece83443c4fa802db35af0f2eeaaba31", "statistic": [0.013365742468529286, -3.7750008620853627e-19], "pvalue": [NaN, 0.0]},
+"weightedtau/rank-none": {"digest": "1317882da744162e5636c40c62325900ddbb4d2b374702ad2cfccb2633c04ff9", "statistic": [0.7077327247984129, -1.2529897529792876e-17], "pvalue": [NaN, 0.0]},
+"weightedtau/rank-false": {"digest": "b3402c6b8ba4ee85d55b037c5ff440a7eb5eff35c5c5fb5809f973885be017c2", "statistic": [0.6349225564026489, 4.3663534173030594e-17], "pvalue": [NaN, 0.0]},
+"weightedtau/multiplicative": {"digest": "f86bd066b90623d4a04faede06da6f08a1987dfd6cdfd859b6eb12c409038cae", "statistic": [0.6634267508279811, 3.193639236381424e-17], "pvalue": [NaN, 0.0]},
+"weightedtau/rank-array": {"digest": "71eecab703f7c56b785643ebeb582e83b0c4926079740f90a8c6207eac169d7a", "statistic": [0.6214651975152325, 1.3289397655631522e-17], "pvalue": [NaN, 0.0]},
+"weightedtau/large": {"digest": "4ed61d378d2a9e434784f56dfdc1462ac51721fcf0454433f9a506696b2d71b9", "statistic": [0.03627331766259901, 1.4778868466972807e-18], "pvalue": [NaN, 0.0]},
+"weightedtau/constant": {"digest": "bdb00a361cddb958672ad6e56c335b8140e15556ba3c014d30bc68c1d74834db", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0]}
+}

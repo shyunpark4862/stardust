@@ -19,7 +19,9 @@ import math
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import linalg as _linalg
+from ..htest import _common as _hc
 from ..htest._result import _TestResult
 from ..stats import ChiSquared as _ChiSquared
 from ..stats import F as _F
@@ -49,6 +51,14 @@ class TTestResult(_TestResult):
     __slots__ = ()
     _FIELDS = ("effect", "sd", "tvalue", "pvalue", "df")
     _CI = True
+    _TITLE = "Test for Constraints"
+
+    @_calls.method("summary")
+    def summary(self, *, alpha=0.05):
+        """statsmodels' t_test summary (G191): one row per row of R (c0, c1, ...) with the
+        estimate, its standard error, t (z for a normal reference), the p-value and the
+        1 - alpha interval; a batch one row per regression and row of R."""
+        return _t_summary(self, _hc.alpha(alpha, "summary"))
 
 
 class WaldTestResult(_TestResult):
@@ -56,6 +66,7 @@ class WaldTestResult(_TestResult):
     W / df_num against F(df_num, df_denom)) or 'chi2' (statistic W against chi-square with df)."""
 
     __slots__ = ()
+    _TITLE = "Wald test"
     _FIELDS = ("statistic", "pvalue", "distribution", "df_num", "df_denom", "df")
 
 
@@ -63,6 +74,7 @@ class CompareFTestResult(_TestResult):
     """The result of compare_f_test(): unpacks as statsmodels' (fvalue, pvalue, df_diff)."""
 
     __slots__ = ()
+    _TITLE = "F test of nested models"
     _FIELDS = ("fvalue", "pvalue", "df_num", "df_denom")
     _UNPACK = ("fvalue", "pvalue", "df_num")
 
@@ -72,6 +84,7 @@ class CompareLRTestResult(_TestResult):
     df_diff), the degrees of freedom named df (G134); unpacks to the three."""
 
     __slots__ = ()
+    _TITLE = "Likelihood ratio test of nested models"
     _FIELDS = ("statistic", "pvalue", "df")
     _UNPACK = ("statistic", "pvalue", "df")
 
@@ -81,6 +94,7 @@ class WhiteTestResult(_TestResult):
     f_pvalue); df is the chi-square's, df_num and df_denom the F's."""
 
     __slots__ = ()
+    _TITLE = "White test for heteroscedasticity"
     _FIELDS = ("lm", "lm_pvalue", "fvalue", "f_pvalue", "df", "df_num", "df_denom")
     _UNPACK = ("lm", "lm_pvalue", "fvalue", "f_pvalue")
 
@@ -90,6 +104,7 @@ class GoldfeldQuandtResult(_TestResult):
     pvalue, and the alternative where statsmodels gives its ordering)."""
 
     __slots__ = ()
+    _TITLE = "Goldfeld-Quandt test"
     _FIELDS = ("fvalue", "pvalue", "alternative", "df_num", "df_denom")
     _UNPACK = ("fvalue", "pvalue", "alternative")
 
@@ -99,7 +114,49 @@ class ResetTestResult(_TestResult):
     statsmodels' linear_reset)."""
 
     __slots__ = ()
+    _TITLE = "Ramsey RESET test"
     _FIELDS = ("fvalue", "pvalue", "df_num", "df_denom")
+
+
+def _t_summary(r, alpha):
+    v = r._values
+    batch = r._batch
+    n = _S.lanes(batch) if batch else 1
+    eff = v["effect"]
+    one = not isinstance(eff, _sd.ndarray) or eff.ndim == len(batch)  # R was one row
+    m = 1 if one else eff.shape[-1]
+    lo, hi = r._ci(alpha)
+    fields = [eff, v["sd"], v["tvalue"], v["pvalue"], lo, hi]
+    flat = [_sd.reshape(f, (n, m)).tolist() if isinstance(f, _sd.ndarray) else [[float(f)]] for f in fields]
+    df = v["df"]
+    dfs = _sd.reshape(df, (df.size,)).tolist() if isinstance(df, _sd.ndarray) else [float(df)]
+    stat = "z" if all(math.isinf(d) for d in dfs) else "t"
+    fmts = (lambda x: _S.forg(x, 4), _S.forg, _S.forg, _S.pvalue, _S.forg, _S.forg)
+    rows = []
+    for i in _S.shown(n * m):
+        if i is None:
+            rows.append(None)
+            continue
+        lane, j = divmod(i, m)
+        stub = f"c{j}" if not batch else f"{_S.lane_label(lane, batch)} c{j}"
+        rows.append((stub, [fmt(f[lane][j]) for f, fmt in zip(flat, fmts)]))
+    table = _S.Table(["coef", "std err", stat, f"P>|{stat}|"] + _S.interval_columns(alpha), rows)
+    left = [("Df:", _S.df(dfs[0]))] if len(set(dfs)) == 1 else []
+    right = [("No. Constraints:", str(m))]
+    if batch:
+        right.insert(0, ("Batch shape:", _S.shape_text(batch)))
+    if "nobs" in r._info:
+        right.append(("No. Observations:", _S.sizes(r._info["nobs"])))
+    return _S.render(r._TITLE, header=(left, right), tables=[table])
+
+
+def _model_info(r, **extra):
+    """summary()'s description of the model a test is on (G191): its number of observations
+    (one regression) and extra keys."""
+    d = dict(extra)
+    if not r._batch:
+        d["nobs"] = r.nobs
+    return d
 
 
 # ---- the hypothesis
@@ -278,7 +335,9 @@ def t_test(r, R, q):
         q = dist.iccdf(alpha / 2)
         return pick(_scale2(e - q * sdv, c)), pick(_scale2(e + q * sdv, c))
 
-    return TTestResult._make(batch=lead, ci=ci, effect=pick(effect), sd=pick(sd), tvalue=pick(t), pvalue=pick(p), df=df)
+    return TTestResult._make(
+        batch=lead, ci=ci, info=_model_info(r), effect=pick(effect), sd=pick(sd), tvalue=pick(t), pvalue=pick(p), df=df
+    )
 
 
 def _wald_statistic(r, R2, q):
@@ -366,12 +425,18 @@ def wald_test(r, R, q):
     if _chi2_model(r):
         p = _ChiSquared(df=float(m) if m else math.nan).ccdf(_arg(W))
         return WaldTestResult._make(
-            batch=lead, statistic=W, pvalue=r._scalar(p) if not lead else p, distribution="chi2", df=float(m)
+            batch=lead,
+            info=_model_info(r),
+            statistic=W,
+            pvalue=r._scalar(p) if not lead else p,
+            distribution="chi2",
+            df=float(m),
         )
     Fv = W / m if m else W
     p = _F(dfn=float(m) if m else math.nan, dfd=_arg(df_inf)).ccdf(_arg(Fv))
     return WaldTestResult._make(
         batch=lead,
+        info=_model_info(r),
         statistic=Fv,
         pvalue=r._scalar(p) if not lead else p,
         distribution="F",
@@ -574,7 +639,12 @@ def compare_f_test(big, small):
     Fv = _nan_mask(Fv, big._perfect())
     p = _F(dfn=_arg(_pos(dfn)), dfd=_arg(dfd)).ccdf(_arg(Fv))
     return CompareFTestResult._make(
-        batch=tuple(big._batch), fvalue=Fv, pvalue=big._scalar(p) if not big._batch else p, df_num=dfn, df_denom=dfd
+        batch=tuple(big._batch),
+        info=_model_info(big),
+        fvalue=Fv,
+        pvalue=big._scalar(p) if not big._batch else p,
+        df_num=dfn,
+        df_denom=dfd,
     )
 
 
@@ -608,7 +678,11 @@ def compare_lr_test(big, small):
     lr = _nan_mask(lr, big._perfect())
     p = _ChiSquared(df=_arg(_pos(df))).ccdf(_arg(lr))
     return CompareLRTestResult._make(
-        batch=tuple(big._batch), statistic=lr, pvalue=big._scalar(p) if not big._batch else p, df=df
+        batch=tuple(big._batch),
+        info=_model_info(big),
+        statistic=lr,
+        pvalue=big._scalar(p) if not big._batch else p,
+        df=df,
     )
 
 
@@ -635,13 +709,14 @@ class AnovaResult:
     terms (the names, 'Residual' last), df, sum_sq, mean_sq, statistic, pvalue. test is 'F' or
     'Chisq', typ None (models), 1 or 3. A field the table does not have raises AttributeError."""
 
-    __slots__ = ("_values", "_kind")
+    __slots__ = ("_values", "_kind", "_info")
     _MODEL_FIELDS = ("df_resid", "ssr", "df_diff", "ss_diff", "statistic", "pvalue")
     _TERM_FIELDS = ("terms", "df", "sum_sq", "mean_sq", "statistic", "pvalue")
 
-    def __init__(self, kind, values):
+    def __init__(self, kind, values, info=None):
         self._kind = kind
         self._values = {k: _ro(v) for k, v in values.items()}
+        self._info = info or {}  # summary()'s model, nobs and df_resid (G190)
 
     def _get(self, name):
         try:
@@ -652,35 +727,47 @@ class AnovaResult:
             ) from None
 
     def summary(self):
-        """The table as text (R's print of anova)."""
-        typ = self._values["typ"]
-        test = self._values["test"]
+        """The table in the regression box (G190): the model, the type (or the number of models),
+        the test, the observations and residual degrees of freedom, then R's columns (df sum_sq
+        mean_sq F Pr(>F) for one model's terms; df_resid ssr df_diff ss_diff F Pr(>F) for
+        models; Chisq and Pr(>Chi) for a chi-square test). A cell that does not apply (the first
+        model's comparison, the residual row's test) is blank, as R prints it."""
+        v, info = self._values, self._info
+        typ, test = v["typ"], v["test"]
         stat = "F" if test == "F" else "Chisq"
         pname = "Pr(>F)" if test == "F" else "Pr(>Chi)"
         if self._kind == "models":
             title = "Analysis of Variance Table (models)"
-            head = ["", "df_resid", "ssr", "df_diff", "ss_diff", stat, pname]
-            n = len(self._values["df_resid"].tolist())
+            n = len(v["df_resid"].tolist())
             names = [str(i + 1) for i in range(n)]
-            cols = [self._values[c].tolist() for c in self._MODEL_FIELDS]
+            heads = ["df_resid", "ssr", "df_diff", "ss_diff", stat, pname]
+            fields = self._MODEL_FIELDS
+            left = [("Model:", info.get("model", "")), ("No. Models:", str(n)), ("Test:", test)]
         else:
             title = f"Analysis of Variance Table (Type {'I' if typ == 1 else 'III'})"
-            head = ["", "df", "sum_sq", "mean_sq", stat, pname]
-            names = list(self._values["terms"])
-            cols = [self._values[c].tolist() for c in self._TERM_FIELDS[1:]]
+            names = list(v["terms"])
+            heads = ["df", "sum_sq", "mean_sq", stat, pname]
+            fields = self._TERM_FIELDS[1:]
+            left = [("Model:", info.get("model", "")), ("Type:", "I" if typ == 1 else "III"), ("Test:", test)]
+        right = [("No. Observations:", _S.count(info["nobs"]))] if "nobs" in info else []
+        if "df_resid" in info:
+            right.append(("Df Residuals:", _S.count(info["df_resid"])))
+        fmts = {
+            "df": _S.df,
+            "df_resid": _S.df,
+            "df_diff": _S.df,
+            "statistic": _S.forg,
+            "pvalue": _S.pvalue,
+        }
+        cols = [v[c].tolist() for c in fields]
         rows = []
         for i, nm in enumerate(names):
-            cells = [nm]
-            for c in cols:
-                v = c[i]
-                cells.append("" if (isinstance(v, float) and math.isnan(v)) else f"{v:.6g}")
-            rows.append(cells)
-        widths = [max(len(head[j]), *(len(r[j]) for r in rows)) for j in range(len(head))]
-        lines = [title, ""]
-        lines.append(head[0].ljust(widths[0]) + "".join("  " + h.rjust(w) for h, w in zip(head[1:], widths[1:])))
-        for r in rows:
-            lines.append(r[0].ljust(widths[0]) + "".join("  " + c.rjust(w) for c, w in zip(r[1:], widths[1:])))
-        return "\n".join(lines)
+            cells = []
+            for c, vals in zip(fields, cols):
+                x = vals[i]
+                cells.append("" if math.isnan(x) else fmts.get(c, lambda t: _S.forg(t, 4))(x))
+            rows.append((nm, cells))
+        return _S.render(title, header=(left, right), tables=[_S.Table(heads, rows)])
 
     def __repr__(self):
         if self._kind == "models":
@@ -817,7 +904,8 @@ def _anova_models(func, models, test):
         "test": test,
         "typ": None,
     }
-    return AnovaResult("models", vals)
+    info = {"model": type(big).__name__.removesuffix("Result"), "nobs": big.nobs, "df_resid": big.df_resid}
+    return AnovaResult("models", vals, info)
 
 
 def _parse_terms(func, r, terms):
@@ -931,7 +1019,8 @@ def _anova_terms(func, r, typ, terms, test):
         "test": test,
         "typ": typ,
     }
-    return AnovaResult("terms", vals)
+    info = {"model": type(r).__name__.removesuffix("Result"), "nobs": r.nobs, "df_resid": df_res}
+    return AnovaResult("terms", vals, info)
 
 
 def _term_test(test, ss, df_t, scale, df_res, perfect):

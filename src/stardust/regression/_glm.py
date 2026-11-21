@@ -11,10 +11,10 @@ whose inference fields come from the kernel's output and sd.stats' distributions
 import math
 import numbers
 import operator
-import textwrap
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import special as _special
 from ..optimize._common import _values_text
 from ..stats import ChiSquared as _ChiSquared
@@ -23,10 +23,11 @@ from ..stats import StudentT as _StudentT
 from ._linear import (
     _COV_NOTES,
     _COV_TYPES,
-    _WIDTH,
+    _aliased_note,
     _arg,
     _as_real,
     _as_real_owned,
+    _batch_summary,
     _check_alpha,
     _check_batches,
     _check_bool,
@@ -36,18 +37,16 @@ from ._linear import (
     _check_policy,
     _check_rows,
     _check_rtol,
+    _coef_table,
     _count,
     _div,
     _expand,
-    _forg,
     _frame_columns,
     _groups,
     _has_nan,
     _log,
     _names,
-    _pairs,
     _pow2,
-    _quantile_label,
     _read_y_owned,
     _RegressionResult,
     _rows_message,
@@ -447,10 +446,10 @@ class GLMResult(_RegressionResult):
     # -- summary
     def summary(self, *, alpha=0.05):
         """A text table like statsmodels' GLM summary: the fit, then the coefficients with their
-        standard errors, z (or t), p and 1 - alpha intervals. One regression only."""
+        standard errors, z (or t), p and 1 - alpha intervals; a batch as ols's (G193)."""
         alpha = _check_alpha(alpha, "summary")
         if self._batch:
-            raise ValueError(f"summary(): takes one regression, not a batch of shape {tuple(self._batch)}")
+            return _batch(self)
         return _summary(self, alpha)
 
     def __repr__(self):
@@ -464,8 +463,6 @@ class GLMResult(_RegressionResult):
 
 
 def _summary(r, alpha):
-    stars = "=" * _WIDTH
-    lines = ["Generalized Linear Model Regression Results".center(_WIDTH).rstrip(), stars]
     nan = r._isnan()
     prsq = r.pseudo_rsquared()  # Cox-Snell: 1 - exp((llnull - llf) 2/n)
     left = [
@@ -486,38 +483,8 @@ def _summary(r, alpha):
         ("Pearson chi2:", f"{r.pearson_chi2:#6.3g}".strip()),
         ("Pseudo R-squ. (CS):", f"{prsq:#6.4g}".strip()),
     ]
-    lines += _pairs(left, right)
-    lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha=alpha)
-    params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
-    stat = "z" if r._normal() else "t"
-    wname = max([len(v) for v in names] + [9]) + 1
-    cols = [
-        "coef",
-        "std err",
-        stat,
-        f"P>|{stat}|",
-        "[" + _quantile_label(alpha / 2),
-        _quantile_label(1 - alpha / 2) + "]",
-    ]
-    head = " " * wname + "".join(c.rjust(11) for c in cols)
-    width = max(_WIDTH, len(head))
-    lines[1] = "=" * width
-    lines[-1] = "=" * width
-    lines.append(head)
-    lines.append("-" * width)
-    for j, nm in enumerate(names):
-        vals = [
-            _forg(float(params[j]), 4),
-            _forg(float(bse[j])),
-            _forg(float(tv[j])),
-            f"{float(pv[j]):#.3f}",
-            _forg(float(ci[j, 0])),
-            _forg(float(ci[j, 1])),
-        ]
-        lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
-    lines.append("=" * width)
+    table = _coef_table(r, alpha, "z" if r._normal() else "t")
     notes = []
     ct = r.cov_type
     if ct == "HAC":
@@ -539,9 +506,7 @@ def _summary(r, alpha):
     else:
         notes.append(_COV_NOTES[ct])
     if not nan:
-        aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
-        if aliased:
-            notes.append("Aliased (linearly dependent on earlier columns), not estimated: " + ", ".join(aliased) + ".")
+        notes += _aliased_note(r, names)
         if r.separation:
             notes.append(
                 "Separation: the maximum likelihood estimate does not exist (some fitted values are at the "
@@ -549,11 +514,25 @@ def _summary(r, alpha):
             )
         if not r.converged:
             notes.append(f"The IRLS did not converge in {r.n_iter} iterations.")
-    lines.append("")
-    lines.append("Notes:")
-    for i, t in enumerate(notes):
-        lines += textwrap.wrap(f"[{i + 1}] {t}", width, subsequent_indent="    ")
-    return "\n".join(lines)
+    return _S.render("Generalized Linear Model Regression Results", header=(left, right), tables=[table], notes=notes)
+
+
+def _batch(r):
+    left = [
+        ("Model:", "GLM"),
+        ("Model Family:", _FAMILY_NAME[r.family]),
+        ("Link Function:", _LINK_NAME[r.link]),
+        ("Method:", "IRLS"),
+        ("Covariance Type:", r.cov_type),
+    ]
+    stats = [
+        ("nobs", _S.count),
+        ("deviance", _S.forg),
+        ("llf", _S.forg),
+        ("n_iter", str),
+        ("converged", _S.flag),
+    ]
+    return _batch_summary(r, "Generalized Linear Model Regression Results", left, stats)
 
 
 # ---- the fit

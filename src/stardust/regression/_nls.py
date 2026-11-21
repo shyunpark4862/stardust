@@ -14,31 +14,29 @@ solution.
 import inspect
 import math
 import numbers
-import textwrap
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import frame as _frame
 from .. import linalg as _linalg
 from ..optimize._common import _show_x, _values_text
 from ..optimize._diff import Differences as _Differences
 from ._glm import _check_int
 from ._linear import (
-    _WIDTH,
+    _aliased_note,
     _as_real,
     _check_alpha,
     _check_choice,
     _check_policy,
     _check_rows,
     _check_rtol,
+    _coef_table,
     _count,
     _div,
     _div0,
-    _forg,
     _frame_columns,
     _log,
-    _pairs,
-    _quantile_label,
     _read_y,
     _real,
     _RegressionResult,
@@ -306,8 +304,6 @@ class NLSResult(_RegressionResult):
 
 
 def _summary(r, alpha):
-    stars = "=" * _WIDTH
-    lines = ["Nonlinear Least Squares Results".center(_WIDTH).rstrip(), stars]
     method = "Levenberg-Marquardt" if r.method == "lm" else "Trust Region Reflective"
     left = [
         ("Model:", "NLS"),
@@ -323,30 +319,8 @@ def _summary(r, alpha):
         ("No. Iterations:", str(r.n_iter)),
         ("Function Evals:", str(r.nfev)),
     ]
-    lines += _pairs(left, right)
-    lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha=alpha)
-    params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
-    wname = max([len(v) for v in names] + [9]) + 1
-    cols = ["coef", "std err", "t", "P>|t|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
-    head = " " * wname + "".join(c.rjust(11) for c in cols)
-    width = max(_WIDTH, len(head))
-    lines[1] = "=" * width
-    lines[-1] = "=" * width
-    lines.append(head)
-    lines.append("-" * width)
-    for j, nm in enumerate(names):
-        vals = [
-            _forg(float(params[j]), 4),
-            _forg(float(bse[j])),
-            _forg(float(tv[j])),
-            f"{float(pv[j]):#.3f}",
-            _forg(float(ci[j, 0])),
-            _forg(float(ci[j, 1])),
-        ]
-        lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
-    lines.append("=" * width)
+    table = _coef_table(r, alpha)
     jac = "the user's jac" if r._jac_kind == "jac" else "5-point differences"
     notes = [
         f"Standard errors are sigma^2 (J^T W J)^-1 with J from {jac} at the solution; t uses df_resid "
@@ -356,20 +330,10 @@ def _summary(r, alpha):
         notes.append(_STATUS_TEXT.get(r._count_stat(_S_STATUS), "").capitalize() + ".")
         if r._count_stat(_S_STATUS) > 0 and not math.isfinite(r.ssr):
             notes.append("The sum of squares overflows there: not converged.")
-        aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
-        if aliased:
-            notes.append(
-                "Aliased (the Jacobian's column is linearly dependent on earlier ones), no inference: "
-                + ", ".join(aliased)
-                + "."
-            )
+        notes += _aliased_note(r, names, "the Jacobian's column is linearly dependent on earlier ones", "no inference")
         if r._active:
             notes.append("At a bound: " + ", ".join(names[j] for j in r._active) + ".")
-    lines.append("")
-    lines.append("Notes:")
-    for i, t in enumerate(notes):
-        lines += textwrap.wrap(f"[{i + 1}] {t}", width, subsequent_indent="    ")
-    return "\n".join(lines)
+    return _S.render("Nonlinear Least Squares Results", header=(left, right), tables=[table], notes=notes)
 
 
 # ---- inputs

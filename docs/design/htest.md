@@ -1,6 +1,6 @@
 # 가설검정 영역 설계 (sd.htest)
 
-> 상태: **H0–H4 완료·승인** (2026-11-21). 큰 결정(§1.1 H1–H61)은 사용자가 정했다. H0(준비), H1(평균과 분산), H2(적합도 1), H3(순위 검정), H4(적합도 2)의 결과는 §3.2–§3.5, §4, §7, §8에 있다. H5–H10은 시작 전이고, 나머지는 안이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **H0–H5 완료·승인** (2026-11-21). 큰 결정(§1.1 H1–H76)은 사용자가 정했다. H0(준비), H1(평균과 분산), H2(적합도 1), H3(순위 검정), H4(적합도 2), H5(상관)의 결과는 §3.2–§3.6, §4, §7, §8에 있다. H6–H10은 시작 전이고, 나머지는 안이다. 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -79,6 +79,21 @@
 | H59 `epps_singleton_2samp`의 `df` | 결과에 자유도 `df`(공분산의 의사역행렬의 계수, numpy `matrix_rank`의 규칙; 보통 2·len(t))를 둔다. H29·H43·H51의 꼴로 튜플에 들지 않는다(scipy의 결과에는 없다) (사용자 결정 2026-11-21) |
 | H60 두 표본 Cramér–von Mises 점근의 꼬리 | p값은 극한 분포의 1 − cdf라 절대 오차 약 1e-16을 그대로 둔다(H41과 같다) (사용자 결정 2026-11-21) |
 | H61 `anderson_ksamp`의 `samples` | 표본의 리스트나 튜플만 받는다(scipy가 받는 2차원 배열의 행은 받지 않는다) (사용자 결정 2026-11-21) |
+| H62 Spearman의 두 꼴 | `spearmanr`(열들의 상관 행렬 꼴, scipy의 옛 꼴)와 `spearmanrho`(scipy 1.18의 새 꼴: 브로드캐스트, 배치)를 둘 다 둔다. 두 꼴의 동작이 다르다 (사용자 결정 2026-11-21) |
+| H63 Spearman의 정확 분포 | 넣지 않는다. p값은 scipy처럼 순위의 Pearson 꼴(t 근사)이다. scipy에는 정확 분포가 없고, R `cor.test`의 AS 89는 더하지 않는다 (사용자 결정 2026-11-21) |
+| H64 `weightedtau` | 넣는다. `pvalue`는 scipy처럼 언제나 NaN이다 (사용자 결정 2026-11-21) |
+| H65 `correlation` 별칭 | 결과에 `correlation`을 두지 않는다(별칭 없음의 규칙, §1.3) (사용자 결정 2026-11-21) |
+| H66 `pearsonr`과 `sd.corrcoef` | `pearsonr`의 r은 htest의 정확한 커널로 계산하고 `sd.corrcoef`(array 영역, numpy 꼴)와 비트까지 맞추지 않는다. 둘 다 자기 계약 안이고 끝자리가 다를 수 있다. 그 차이는 docs/api/htest.md §6에 적는다. `linregress`와의 공유(§1.4)는 이것과 따로다 (사용자 결정 2026-11-21) |
+| H67 `linregress`의 커널 (regression G188이 바꿨다) | ~~`sd.regression.linregress`가 htest의 Pearson 커널을 불러 `pearsonr`과 비트까지 같게 한다~~ — 같은 날 `linregress`를 라이브러리에서 뺐다(regression G188: `ols(y, x)`와 `pearsonr(x, y)`가 같은 값을 내고 자기만의 옵션이 없다). 그래서 함께 쓰는 곳이 없고 상관의 r·p는 `pearsonr`만의 길이다(커널 `stardust._core.htest.pearson`은 htest의 것 그대로) (사용자 결정 2026-11-21) |
+| H68 동점이 있는 Kendall의 `'exact'` | `kendalltau(method='exact')`는 동점이 있으면 scipy처럼 `ValueError`다. 조건부 정확 분포(H45의 꼴)는 두지 않는다: x와 y 모두에 동점이 있으면 그 조건부 개수가 일반적으로 다루기 어렵다(순열마다 두 동점 구조의 일치·불일치를 세야 하고 역순 쌍의 점화식 같은 분해가 없다) (사용자 결정 2026-11-21) |
+| H69 표준오차 0의 `somersd` | 점근 표준오차가 0(S = 0)이면 p값은 NaN이다(H24; scipy는 Z = inf, p = 0) (사용자 결정 2026-11-21) |
+| H70 `weightedtau`의 NaN | `nan_policy='propagate'`면 NaN이다(scipy는 NaN을 가장 큰 순위로 바꿔 값을 낸다) (사용자 결정 2026-11-21) |
+| H71 `chatterjeexi`의 x의 동점 | 위치로 가른다(결정적; scipy는 정렬이 임의로 가른다) (사용자 결정 2026-11-21) |
+| H72 `somersd`의 표 상한 | 두 표본에서 만든 교차표가 10⁷칸을 넘으면 `ValueError`다(표가 결과의 필드라 메모리가 정해져야 한다) (사용자 결정 2026-11-21) |
+| H73 `spearmanr`의 `axis` | 기본값은 None이다(H9; 펼친 하나가 변수, 열마다는 `axis=0`; scipy는 0) (사용자 결정 2026-11-21) |
+| H74 `summary()` (전체; regression G189) | 모든 결과가 `summary()`를 가지고 회귀 모형 상자의 꼴인 글을 돌려준다(API.md §2.3, `src/stardust/_summary.py`). 앞의 "`summary()`는 두지 않는다"(§2.2)를 바꾼다. 제목은 검정의 이름(scipy·R·statsmodels의 이름, 문장 꼴; 갈래는 괄호: `Two-sample t-test (Welch)`), 머리 왼쪽은 필드의 수(`Statistic:`, `P-value:`, `Df:`·`Df Num:`·`Df Denom:`, 그 밖의 수 필드), 오른쪽은 호출의 설명(`Alternative:`, `Method:`, `No. Observations:`, 옵션)이다. 구간이 있는 결과(H16)만 `summary(*, alpha=0.05)`이고 구간은 한 줄의 표(한쪽 검정은 `[0.000 0.950]`·`[0.050 1.000]`), 다른 결과는 `summary()`다 (사용자 결정 2026-11-21) |
+| H75 `summary()`가 보이는 것 (전체) | 필드가 아닌 것(대립가설, 표본 크기, 옵션, 갈래의 제목)은 검정이 결과에 넘기는 정보(`_make(info=...)`)이고 필드나 별칭이 되지 않는다(§1.3). 표본 크기는 셀 수 있을 때만 적는다: `nan_policy='omit'`에서 NaN을 뺀 수는 자료를 한 번 더 읽어야 해서 세지 않고 적지 않는다(빈도의 검정은 `No. Categories:`). 표본이 다섯 이상이면 합과 `No. Samples:`다. 검정 하나의 배열 필드(`table`)는 표로 보인다(행·열 20을 넘으면 앞뒤 5개) (사용자 결정 2026-11-21) |
+| H76 배치와 `repr` (전체) | 배치의 `summary()`는 레인마다 한 줄인 표(레인마다의 필드와 구간; 레인마다 다른 `method`는 열, 모두 같으면 머리)이고 20줄을 넘으면 앞뒤 5줄과 `...` 줄이다. 레인마다의 배열(배치의 `table`)은 보이지 않는다. `repr`는 한 줄이고 배열 필드를 버리지 않는다: 짧은 1차원(6개까지)은 `[v, v]`, 그 밖은 `<array of shape (…)>` (사용자 결정 2026-11-21) |
 
 ### 1.2 범위 (안)
 목록은 scipy 1.18.1 `scipy.stats` 모듈 문서의 "Hypothesis Tests and related functions" 절과 공개 이름 전체(`dir(scipy.stats)`)를 대조해 만들었다. "출처"의 sm은 statsmodels 0.15.0이다. 마일스톤은 §8이다. "재표본(H9)"은 그 검정의 `method=`에 재표본 객체를 받는 것을 H9에서 더한다는 뜻이다.
@@ -130,15 +145,15 @@
 | `anderson_ksamp(samples, /, *, variant, method)` | scipy | Scholz–Stephens 표의 보간. 재표본(H9). 1.17부터의 `variant` 꼴만(옛 `midrank`, `critical_values` 없음), 기본 `'midrank'`, 둘로 풀린다(H57) |
 | `epps_singleton_2samp(x, y, /, *, t, ...)` | scipy | 특성함수의 카이제곱(공분산의 의사역행렬의 계수; 보통 2·len(t) = 4). `df`(H59) |
 
-**상관 (마일스톤 H5)**
+**상관 (마일스톤 H5, 구현)**
 | 함수 | 출처 | p값과 결과(안) |
 |---|---|---|
 | `pearsonr(x, y, /, *, alternative, method, ...)` | scipy | 베타 분포(정확한 정규 이론), `conf_int()`(Fisher z). 재표본(H9) |
 | `spearmanrho(x, y, /, *, alternative, method, ...)` | scipy | t 근사. 1.18의 새 꼴(브로드캐스트). 재표본(H9) |
-| `spearmanr(a, b=None, /, *, ...)` | scipy | 열들의 상관 행렬 꼴(§9 H5: 둘지) |
+| `spearmanr(a, b=None, /, *, ...)` | scipy | 열들의 상관 행렬 꼴(H62) |
 | `pointbiserialr(x, y, /, *, ...)` | scipy | `pearsonr`과 같다 |
 | `kendalltau(x, y, /, *, method, variant, alternative, ...)` | scipy | 정확(동점 없음: 역순 쌍의 분포), 정규 근사(동점 분산). τ-b, τ-c |
-| `weightedtau(x, y, /, *, rank, weigher, additive, ...)` | scipy | 통계량만(scipy의 `pvalue`는 언제나 NaN; §9 H5) |
+| `weightedtau(x, y, /, *, rank, weigher, additive, ...)` | scipy | 통계량만(`pvalue`는 언제나 NaN; H64) |
 | `somersd(x, y=None, /, *, alternative)` | scipy | 점근 표준오차의 정규 근사(`table` 필드) |
 | `chatterjeexi(x, y, /, *, y_continuous, method, ...)` | scipy | 정규 근사. 재표본(H9) |
 
@@ -186,7 +201,7 @@
 | `goodness_of_fit(dist, data, /, *, ...)` | scipy | 모수를 맞춘 몬테카를로 적합도(§9 H9: 분포 맞추기가 필요하다) |
 
 **빼는 것**
-- `sd.regression`에 이미 있다: `linregress`(G18), `theilslopes`, `siegelslopes`(G56). OLS 결과의 `jarque_bera()`·`breusch_pagan()` 진단도 regression에 있다. `htest.jarque_bera`와 같은 커널을 쓴다(값이 같아야 한다).
+- `sd.regression`에 이미 있다: `theilslopes`, `siegelslopes`(G56; scipy의 `linregress`는 regression G188로 뺐다: 기울기·절편·표준오차·p는 `ols(y, x)`, r은 `pearsonr`). OLS 결과의 `jarque_bera()`·`breusch_pagan()` 진단도 regression에 있다. `htest.jarque_bera`와 같은 커널을 쓴다(값이 같아야 한다).
 - 기술통계(sd.stats §4)와 검정이 아닌 것: `describe skew kurtosis moment zscore rankdata sem iqr mode entropy differential_entropy`, 평균의 변형·절삭 통계(`gmean`, `trim_mean`, `tvar` …), `kstat`, `lmoment`, `variation`, `quantile`, `expectile`, `estimated_cdf`, `binned_statistic*`, 원형 통계, 변환(`boxcox`, `yeojohnson`, `obrientransform`, `sigmaclip`, `trimboth`, `zmap` …), 거리(`wasserstein_distance`, `energy_distance`), `fit`, `ecdf`, `sobol_indices`, 그림 검정(`probplot`, `ppcc_*`), `bayes_mvs`, `mvsdist`, `scipy.stats.contingency`의 `association`·`crosstab`·`expected_freq`·`margins`, `tiecorrect`(검정 안의 보조), `scipy.stats.mstats`(마스크 배열 판).
 - 생존 분석: `logrank`(scipy의 `CensoredData`가 없다).
 - 검정력: scipy `power`(모의실험), statsmodels의 `power_proportions_2indep`, `samplesize_*`, `proportion_effectsize` — 나중 후보(H5).
@@ -211,7 +226,7 @@
   - 예외 하나: 완전 적합(G95, G117)에서 regression은 잔차를 정확히 0으로 보아 NaN을 내고, `htest.jarque_bera(r.resid)`는 반올림 크기의 잔차로 값을 낸다.
   - WLS·GLS: `r.jarque_bera()`는 백색화한 잔차(쓰인 행의 √w·`resid`, GLS는 L⁻¹`resid`; 가중치 0인 행은 빠진다)의 값이다. `resid`는 원래 척도라 지금은 htest에 그대로 넘길 수 없다. regression이 `wresid`(statsmodels의 이름)를 두면 그 쓰인 행을 넘겨 같은 비트가 된다(regression §8의 질문).
   - 일원 분산분석: 집단 더미의 OLS로 만든 `anova` 표(항 하나)와 `htest.f_oneway`는 같은 F·p이지만 비트까지 같지는 않다: `anova`는 설계 행렬만 받아 집단 레이블이 없으므로 적합의 QR에서 계산하고, `f_oneway`는 집단 제곱합에서 계산한다. 통계량은 두 쪽의 정확도 계약 안에서 같고 p값은 같은 `F(df_num, df_denom).ccdf` 호출이다. 주인은 htest(`f_oneway`)다. 두 집단의 `ttest_ind`과 더미 계수의 t도 계약 안에서 같다.
-  - Pearson: `pearsonr(x, y)`의 r·p와 `linregress(x, y)`의 `rvalue`·`pvalue`는 같은 검정이다. 1 − r²의 커널은 H17에 따라 H5에서 htest에 두고 `linregress`가 부른다(그때 regression의 골든이 바뀌는 경우가 있으면 따로 묻는다).
+  - Pearson: 1 − r²의 커널(`stardust._core.htest.pearson`, §3.6)은 htest의 것이고 `pearsonr`·`pointbiserialr`·`spearmanrho`·`spearmanr`가 쓴다. regression에서 함께 쓰려던 `linregress`는 뺐다(regression G188, H67). 단순회귀의 기울기 = 0의 t 검정은 `ols(y, x).pvalues[1]`이고 `pearsonr(x, y).pvalue`와 같은 검정이다(두 영역의 계약 안에서 같고 비트는 같지 않다: `ols`는 QR 적합의 t, `pearsonr`은 1 − r²의 베타 분포).
   - p값의 꼬리: 두 영역 모두 sd.stats 분포의 `ccdf`·`logccdf`를 부른다(같은 인자면 같은 비트).
   - 신뢰구간: 두 영역 모두 `conf_int(*, alpha=0.05)`이고 같은 검사와 메시지(`'alpha' must be between 0 and 1 (exclusive)`)다(H16, G99).
   - 다중 검정 보정: `multipletests`(H8 마일스톤)는 계수 여럿의 `r.pvalues`와 단계적 변수 선택의 p값을 보정하는 짝이다(`multipletests(r.pvalues, axis=-1)`, 배치 (…, k)). 다만 선택 뒤의 p값은 같은 자료로 고르고 검정했기 때문에 명목 수준을 지키지 않고, 보정도 선택의 편향을 고치지 못한다(regression 설계자의 주의; 두 영역의 문서에 함께 적는다). 분산분석 뒤의 쌍 비교는 `tukey_hsd`·`dunnett`(H8)다.
@@ -241,7 +256,7 @@
 - 스칼라 검정의 필드는 Python `float`(개수는 `int`), 배치는 배치 모양의 sd 배열이다(기술통계와 같다). `df`(와 `df_num`·`df_denom`)는 Welch처럼 정수가 아닐 수 있어 언제나 float다(H22).
 - **신뢰구간**(H16): regression의 꼴인 메서드 `conf_int(*, alpha=0.05)`이고(G99) 아래·위 끝의 (…, 2) float64 배열을 돌려준다(검정 하나면 (2,); 부를 때마다 새 배열이라 쓸 수 있다, G120). `binomtest`는 scipy `proportion_ci`의 `method`를 받아 `conf_int(*, alpha=0.05, method='exact')`, `odds_ratio`는 `alternative`도 받는다. 신뢰수준을 호출에서 받는 함수(`proportion_confint`, `confint_proportions_2indep`)의 인자도 `alpha=0.05`이고(statsmodels와 같은 이름), `bootstrap`은 호출의 `confidence_level` 대신 결과의 `conf_int(alpha=)`다. 검사와 메시지는 regression의 것과 같다(`conf_int(): 'alpha' must be between 0 and 1 (exclusive)`).
 - **튜플 풀기**(H7): scipy의 결과가 풀리는 곳(`stat, p = ttest_ind(...)`; `chi2_contingency`·`median_test`는 넷)은 같은 개수와 순서로 풀리고 `r[0]`, `len(r)`도 그 튜플의 것이다. scipy가 풀지 않는 결과(`binomtest`, `cramervonmises`, `somersd`, 재표본 결과 등)는 풀리지 않는다. statsmodels가 튜플을 돌려주는 함수(`proportions_ztest`, `proportion_confint`, `multipletests` 등)는 결과 객체로 바꾸되 같은 순서로 풀리게 하는 안이다(§9 H7·H8).
-- `repr`는 한 줄 요약이다(`TtestIndResult(statistic=2.13, pvalue=0.0412, df=27)`, 배치는 `TtestIndResult(batch shape (10,))`). `summary()`는 두지 않는다.
+- `repr`는 한 줄 요약이다(`TtestIndResult(statistic=2.13, pvalue=0.0412, df=27)`, 배치는 `TtestIndResult(batch shape (10,))`; 배열 필드는 H76). `summary()`는 회귀 상자의 꼴이다(H74–H76; 처음에는 두지 않기로 했던 것을 H74가 바꿨다).
 - 공통 입력 층은 `src/stardust/htest/_common.py`다(H0): 데이터는 sd.stats 기술통계의 변환 함수를 그대로 쓰고(같은 메시지), `Samples`가 `axis`·배치·`keepdims`·`nan_policy`(짝지은 표본은 쌍을 뺀다)를, `Tables`가 표의 배치와 개수 검사를 맡는다. 옵션 검사(`alternative`, `method`와 `resolved`, `check_exact_work`, `rng`, `alpha`, int·실수 인자)는 다른 영역과 같은 메시지 꼴이다.
 
 ---
@@ -345,12 +360,18 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 - **`epps_singleton_2samp`**: scipy의 정의다. σ는 합친 표본의 IQR/2(numpy의 선형 백분위수를 double-double로), 점은 t/σ, g(x) = (cos(t_k x/σ), sin(t_k x/σ))(인자는 double-double이고 cos(hi) − sin(hi)·lo로 고친다), 표본마다 g의 평균과 편향 공분산(double-double), est = (N/n_x)cov_x + (N/n_y)cov_y, 두 평균의 차 d, W = N dᵀest⁺d다. est⁺는 numpy `pinv`의 규칙(가장 큰 특이값의 1e-15 이하를 뺀다; 대칭이라 Jacobi 고윳값으로)이고, 모두 남으면 est⁺d를 double-double의 가우스 소거로 푼다. 자유도는 numpy `matrix_rank(pinv(est))`의 규칙(보통 2·len(t))이고 결과의 `df`다(H59; 튜플에 들지 않는다). max(n_x, n_y) < 25면 Epps–Singleton의 작은 표본 보정 1/(1 + N^(−0.45) + 10.1(n_x^(−1.7) + n_y^(−1.7)))을 곱하고, p값은 그 자유도의 `ChiSquared.ccdf`다. 표본이 5 미만, 유한하지 않은 값, IQR = 0은 NaN이다(H11). scipy는 오프셋 10⁸의 데이터에서 cos의 인자를 반올림해 통계량이 9.6e-10 틀린다.
 - **줄의 방법**(H48, H53): `ks_2samp`·`cramervonmises_2samp`는 줄마다 그 크기로 방법을 고르고 `method`는 줄의 이름의 중첩 리스트다. propagate로 NaN이 된 줄은 그 줄의 나머지 값으로 고른다.
 
-### 3.6 상관 (H5)
-- **`pearsonr`**: r 자체보다 1 − r²(와 1 ∓ r)이 p값을 정한다: p = I_{1−r²}((n − 2)/2, 1/2)(t = r√((n − 2)/(1 − r²))의 꼬리). scipy는 r을 만든 뒤 1 − r²을 계산해 r ≈ 1에서 p값이 크게 틀린다. 이 초안에서 잰 값(n = 10, y = x + ε·잡음, 정확한 유리수로 r을 구해 참 p와 비교): ε = 10⁻⁴에서 상대 3.1e-6, 10⁻⁶에서 0.015, 10⁻⁷에서 4.4(참 p 3.2e-62, scipy 1.7e-61). 1 − r²은 중심화한 y를 중심화한 x에 사영한 잔차 e = y_c − (x_c·y_c/x_c·x_c)x_c로 ‖e‖²/‖y_c‖²를 double-double로 계산한다(회귀의 R²와 같은 방법; regression §3.1). 신뢰구간은 Fisher z = artanh r을 atanh(r) = ½log1p(2r/(1 − r))로, 1 − r도 같은 잔차에서 얻는다.
-- **`spearmanrho`·`spearmanr`**: 순위의 Pearson 상관과 t 근사(scipy 그대로; scipy에는 정확 분포가 없다. R의 `cor.test(method='spearman')`은 AS 89의 정확 분포를 쓴다: 넣을지는 §9 H5).
-- **`kendalltau`**: 순 쌍·역순 쌍은 병합 정렬로 O(n log n)이다(scipy도 그렇다). 정확 분포는 역순 쌍의 수(Mahonian 수)의 분포를 g_n(k) = (1/n)Σ_{j<n} g_{n−1}(k − j)로 쌓는다(미끄러지는 창의 합; 양수의 평균). scipy는 "n이 크면 정밀도를 잃을 수 있다"고 적는다. τ-c와 동점 분산은 scipy의 식. scipy의 배치는 줄마다 Python 고리라 느리다(이 초안에서 10⁴ 줄 × 30에 0.98 s).
-- **`weightedtau`**: 쌍곡선 가중치와 Vigna의 O(n log n) 알고리즘(scipy와 같다). p값은 scipy가 정의하지 않는다(언제나 NaN).
-- **`somersd`**: 분할표에서 일치·불일치 쌍과 점근 표준오차(ASE). **`chatterjeexi`**: 순위와 Chatterjee의 점근 분산(`y_continuous`).
+### 3.6 상관 (H5, 구현)
+코드는 `src/stardust/htest/_correlation.py`(인자 검사, 짝지은 표본의 배치, 결과)와 `csrc/htest/`(`correlation.cpp`의 검정, `kendall.hpp`의 Kendall 정확 분포)다. 검정 하나는 C++ 호출 하나다(`stardust._core.htest`의 `pearson`, `corr_matrix`, `kendall`, `weightedtau`, `crosstab`, `somersd`, `chatterjee`).
+- **`pearsonr`**: r 자체보다 1 − r²(와 1 ∓ r)이 p값을 정한다: 양쪽 p = I_q((n − 2)/2, 1/2), q = 1 − r²(t = r√((n − 2)/q)의 꼬리; scipy의 r의 베타 분포). scipy는 r을 만든 뒤 1 − r²을 계산해 r ≈ 1에서 p값이 크게 틀린다(§7). 계산: 줄마다 x와 y를 따로 2^−e 단위로 옮기고(e는 가장 큰 크기의 지수; 정확한 곱이라 1e±300도 넘치지 않는다), 평균과 중심화한 값, Sxx·Syy·Sxy를 double-double로 둔다. r = Sxy/√(Sxx·Syy)(double-double, [−1, 1]로 자른다). q는 r² < 1/2이면 double-double r에서 1 − r², 그 위는 중심화한 y를 중심화한 x에 사영한 잔차 e = y_c − (Sxy/Sxx)x_c로 ‖e‖²/Syy다(회귀의 R²와 같은 방법; regression §3.1). 잔차 꼴의 상대오차는 약 2⁻¹⁰⁵/√q라 1 − r² = 1e-18(r = 1 − 5e-19)에서도 자릿수를 지킨다. p값은 sd.special의 불완전 베타(TOMS 708의 double-double, `ibeta_detail::ibeta`)에 q와 1 − q를 둘 다 넘겨 1 − q를 다시 반올림하지 않는다. 한쪽 p값은 그 반(관측 쪽) 또는 ½ + ½(1 − I)다. 신뢰구간은 Fisher z = atanh r을 ½log((1 + |r|)/(1 − |r|))로, 1 − |r| = q/(1 + |r|)로 얻고(double-double log), 끝은 scipy의 꼴 tanh(z ∓ q_α/√(n − 3))(q_α는 정규 분위수 `normal_iccdf(alpha/2)`; 한쪽은 다른 끝이 ∓1, n ≤ 3이면 (−1, 1))이다.
+  - 퇴화한 입력: 표본 하나의 분산이 0(H20: m2 ≤ (ε·평균)²; scipy는 정확히 같은 값만 상수로 보고 거의 상수이면 경고와 함께 값을 낸다), 쌍이 2개 미만(scipy는 `ValueError`), inf(r이 정해지지 않는다)는 NaN이다. n = 2는 scipy의 약속대로 r = ±1, p = 1이다. 정확히 한 직선 위(y = 2x)는 q = 0이라 |r| = 1, p = 0이다.
+  - `pointbiserialr`은 `pearsonr`의 통계량과 양쪽 p값이다(scipy와 같이 구간이 없다).
+  - `sd.corrcoef`(array 영역, numpy 꼴)와는 계약 안에서 같고 끝자리가 다를 수 있다(H66).
+- **`spearmanrho`·`spearmanr`**(H62, H63): 짝을 맞춘 뒤(`'omit'`이면 NaN이 든 쌍을 빼고) 줄마다 정확한 중간 순위(두 배의 정수 2b + t + 1; `moments.hpp`의 `sort_keys`, 긴 줄은 스레드풀)를 매기고 위의 Pearson 커널을 부른다. 정확 분포는 없다(H63; R `cor.test`의 기본은 AS 89의 정확 분포라 작은 표본에서 다르다, §7). ±inf는 순서대로 순위를 받는다. `spearmanr`는 scipy의 옛 꼴이다: `a`(와 `b`)의 변수(`axis=0`이면 열, `1`이면 행, None(기본, H73)이면 펼친 하나)마다 순위를 한 번 매기고 모든 쌍을 `spearmanrho`와 같은 줄 계산으로 한다(그래서 (i, j) 원소는 `spearmanrho(변수 i, 변수 j)`와 같은 비트이고 대칭으로 채운다). 대각은 1과 0이다. 변수가 둘이면 수, 셋 이상이면 (k, k) 배열이다. `'propagate'`면 NaN이 든 변수의 행과 열이 NaN, `'omit'`이면 쌍마다 NaN이 든 관측을 뺀다(scipy의 mstats와 같은 쌍별 삭제).
+- **`kendalltau`**: 줄마다 x와 y를 조밀한 정수 부호(0, 1, …)로 바꾸고(`sort_keys`) (x, y) 순으로 정렬한 y의 역순 쌍(병합 정렬, O(n log n))이 불일치 쌍이다. 동점의 합(Σt(t − 1)/2, Σt(t − 1)(t − 2), Σt(t − 1)(2t + 5))과 결합 동점은 정확한 정수(128비트)다. τ-b = (con − dis)/√((tot − xtie)(tot − ytie))와 τ-c = 2(con − dis)·m/(n²(m − 1))는 정수의 몫을 double-double로 한 번 반올림한다(scipy는 √를 둘로 나눠 반올림한다). `'auto'`는 scipy 그대로(동점이 없고 n ≤ 33이거나 min(dis, tot − dis) ≤ 1이면 정확; H46). 정규 근사는 scipy의 동점 분산(정수에서 double-double)이다. n = 2의 근사 분산에서 scipy의 0/0(x0·y0/(9m(n − 2)))은 그 항이 없는 값이다.
+  - 정확 분포(`kendall.hpp`): 역순 쌍의 수(Mahonian 수)의 아래 꼬리 P(K ≤ c)다(대칭이라 언제나 가까운 꼬리, c = min(con, tot − con)). n! < 2¹²⁷(n ≤ 33, `'auto'`의 범위)이면 128비트 정수의 창 합(정확한 뺄셈)이다. 그 위는 확률 g_j(k) = (1/j)Σ_{i<j} g_{j−1}(k − i)를 double-double로 쌓되, 창 [k − j + 1, k]를 길이 j의 블록 하나의 꼬리와 다음 블록의 머리로 나눠 더한다(창은 블록 둘에 걸친다): 뺄셈이 없고 단계마다 양수의 덧셈이라 상대오차가 단계 수 × 2⁻¹⁰⁵쯤이다(설계 초안의 미끄러지는 창의 합은 뺄셈이 있어 오른쪽 꼬리가 자릿수를 잃는다). 가장 큰 항이 2⁻⁶⁰⁰ 아래로 내려가면 2⁶⁰⁰을 곱해 두고 끝에 돌려놓아, double 범위 밑의 꼬리(1/200! = 1.3e-375)도 서브노멀이나 0으로 바르게 나온다. 양쪽·한쪽 p값은 scipy `_kendall_p_exact`의 규칙이다. 작업량은 n(c + 1)이고 상한은 10⁹번과 동시에 드는 항 10⁷개다(H13; n = 1500쯤까지). 넘으면 `'exact'`는 `ValueError`, `'auto'`는 정규 근사다. 동점이 있는 `'exact'`는 scipy처럼 `ValueError`다(H68: x와 y 모두의 동점에 조건부인 개수는 일반적으로 다루기 어렵다).
+- **`weightedtau`**(H64): Vigna의 O(n log n) 알고리즘(scipy `_weightedrankedtau`와 같은 순서: (x, y)와 위치로 안정 정렬, 결합 동점·x 동점의 가중합, y의 병합 정렬이 센 교환의 가중합, y 동점)이다. scipy는 합을 double로 하고 병합의 잔여 가중치에서 빼기를 되풀이해 작은 가중치를 잃는다(동점 문제에서 1e-14); 여기서는 모든 합이 double-double이고 쌍곡선 가중치 1/(r + 1)도 double-double이다. `rank`: True(두 사전식 순위 (x, y)·(y, x)의 τ의 평균), None((x, y)), False(위치), 배열(scipy `_toint64`처럼 그 값의 순서만: 조밀한 부호 0, 1, …). `weigher`는 순위 0..n − 1에서 Python으로 한 번씩 불러 표로 넘긴다. `pvalue`는 언제나 NaN이다. NaN은 `nan_policy`를 따른다(H70: `'propagate'`면 NaN; scipy는 NaN을 모든 수보다 큰 값으로 순위 매긴다: `[scipy와 다름]`).
+- **`somersd`**: 두 순위(1차원 x, y; NaN은 `ValueError`)에서 교차표(x의 서로 다른 값이 행, y의 값이 열, 오름차순)를 만들거나 2차원 `x`를 표로 받는다. 표의 2차원 누적합에서 칸마다 A_ij(왼쪽 위와 오른쪽 아래)와 D_ij(왼쪽 아래와 오른쪽 위)를 O(rc)로 얻어 P = Σa·A, Q = Σa·D, T = Σa(A − D)²을 정확한 정수(128비트)로 더한다(scipy의 pythran은 칸마다 블록을 다시 더해 O((rc)²)이다). D(Y|X) = (P − Q)/(N² − Σ행합²), S·N = T·N − (P − Q)²(정확; N ≥ 10⁹면 double-double), Z = (P − Q)√N/(2√(SN))의 정규 p값(scipy의 ASE)이다. 행이나 열이 하나뿐이면 NaN이고, S = 0(예: 대각이 같은 2 × 2 표)이면 p값이 NaN이다(H69; scipy는 Z = inf, p = 0). 두 표본에서 만든 표의 칸이 10⁷개를 넘으면 `ValueError`다(H72; 표가 결과의 필드다).
+- **`chatterjeexi`**: x의 순서로 쌍을 늘어놓고(x의 동점은 위치로 가른다(H71); scipy는 `argsort`가 임의로 가른다), r_i = #{y_j ≤ y_(i)}, l_i = #{y_j ≥ y_(i)}(정렬과 이분 탐색)에서 ξ = 1 − nΣ|r_(i+1) − r_i|/(2Σl(n − l))(y가 연속이면 1 − 3Σ/(n² − 1))를 정확한 유리수로 한 번 반올림한다. 귀무 분산은 scipy `_xi_std`의 식을 정수로 모은 τ² = (An² − 2Bn + C²)/D²(A = Σ(2n − 2i + 1)u_i², B = Σ(v_i + (n − i)u_i)², C = Σ(2n − 2i + 1)u_i, D = Σl(n − l), u는 정렬한 r, v는 그 누적합; double-double)이고 p = P(Z ≥ ξ√n·D/√(An² − 2Bn + C²))다(연속이면 ξ√(5n/2)). y가 상수이거나 쌍이 2개 미만이면 NaN이다.
 
 ### 3.7 분할표 (H6)
 - **`chi2_contingency`**: 기댓값 E = 행합·열합/N은 정확한 정수 곱에서 한 번 나눈다. 자유도 1이면 Yates의 보정(scipy: |O − E|를 min(0.5, |O − E|)만큼 줄인다). `lambda_`는 §3.3의 Cressie–Read다.
@@ -402,6 +423,7 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 - **H2의 계약을 정한 것**: D'Agostino의 통계량은 변환이 받는 적률에 대한 조건수 κ_stat(`kurtosistest`의 Z가 0을 지나는 곳에서 크다)를 곱한 1e-14, Anderson–Darling의 통계량은 합의 조건수 κ_stat을 곱한 1e-14, p값은 거기에 max(1, κ_p)를 더 곱한다. Cramér–von Mises의 p값은 Csörgő–Faraway 근사식의 1 − cdf라 상대 1e-14 또는 절대 1e-15다(느슨한 영역).
 - **H3에서 잰 것**(tests/htest/test_rank.py가 지킨다): 87문제(Mann–Whitney 15, 순위 합 4, Wilcoxon 20, Kruskal–Wallis 6, Friedman 5, Brunner–Munzel 7, Ansari–Bradley 8, Mood 5, 중앙값 8, Page 9) 모두 계약 안이다. 순위에서 나오는 통계량(U, T⁺, AB, L, 중앙값 검정의 표)은 정확하고, 정확 분포의 p값은 정수(나 double-double) 개수의 몫이라 상대 1e-16 안이다(깊은 꼬리 2⁻²⁰⁰, 2/C(60, 30)까지). 계약 대비의 최대는 Kruskal–Wallis의 p값 0.028(N = 1100), 중앙값 검정 0.016, Mood 0.014, Ansari–Bradley·Friedman 0.013, 그 밖은 0.01 아래다. `zstatistic`·`df`·`median`은 상대 1e-16 안이다. 보장 영역은 유한한 데이터 전부이고 ±inf는 순서대로 순위를 받는다. 정확 분포는 상한(H13) 안의 모든 크기다.
 - **H4에서 잰 것**(tests/htest/test_goodness_of_fit_samples.py가 지킨다): 58문제(Kolmogorov–Smirnov 25, Cramér–von Mises 13, Anderson–Darling 13, Epps–Singleton 7) 모두 계약 안이다. 정수 꼴의 통계량(D = h/L, T, A2kN의 몫)은 상대 8.5e-17 안(한 번의 반올림)이고, 정확 분포의 p값은 확률의 양수 합이라 상대 1e-16 안이다(깊은 꼬리 2.9e-133, 동점의 조건부 분포, 997 × 1000, 2000 × 1500의 동점). 계약 대비의 최대는 Epps–Singleton 0.078(통계량 7.8e-16; p값은 κ_p를 곱해 2.2e-14), 점근 Kolmogorov–Smirnov 0.0067, Cramér–von Mises의 점근 p값 1(꼬리의 절대 2.2e-16, H41의 규칙; 그 밖은 0.3 아래), Anderson–Darling 0.0069다.
+- **H5에서 잰 것**(tests/htest/test_correlation.py가 지킨다): 68문제(Pearson 21(점 이연 2와 Fisher z 구간 19), Spearman 10, Kendall 18, 가중 τ 8, Somers' D 5, Chatterjee ξ 6) 모두 계약 안이다. 계약 대비의 최대는 Pearson의 p값 0.038(n = 3), Fisher z 구간 0.025, Somers' D의 p값 0.023, 그 밖은 0.01 아래다. 통계량은 정확한 유리수(또는 그 제곱근)를 한 번 반올림한 값이라 상대 1.1e-16 안이고, Pearson·Spearman의 p값은 q = 1 − r²에 대한 조건수 κ_p로 재서 1 − r² = 1e-18의 깊은 상관(r = 1 − 5e-19)과 10⁻²²⁰의 꼬리까지 6.7e-16 안, Kendall의 p값은 계약 대비 0.0088 안이다(정확 분포는 정수 개수와 double-double 확률이고 깊은 꼬리 2/60!·200/100!까지; 상대오차가 가장 큰 2.0e-14는 정규 근사의 꼬리로 κ_p가 크다). 보장 영역은 유한한 데이터 전부(배율 1e±300 포함)다.
 - **H2의 느슨한 영역**: 한 표본 Kolmogorov–Smirnov의 양쪽 정확 분포에서 Durbin 행렬의 상한(곱셈 4·10⁷번)을 넘는 큰 n(약 1000 위)의 n·d² < 6.5: Pelz–Good(n·d² < 3)이나 두 꼬리를 빠뜨린 2·Smirnov(3 ≤ n·d² < 6.5)다. Arb와 견주면 n = 3000에서 Pelz–Good이 상대 8e-9–5e-7(n·d² = 0.3–4.5), 2·Smirnov가 1.4e-8(3)–2e-16(6)이고 n이 커질수록 작아진다(scipy는 n > 140부터 같은 근사이고 n = 141에서 4.4e-6). Cramér–von Mises의 p값의 절대 1e-16.
 
 ---
@@ -417,10 +439,10 @@ scipy가 정확하지 않거나 느린 곳과 그것을 넘는 방법을 묶음�
 ---
 
 ## 6. 층과 파일 (안)
-- `src/stardust/htest/`: `__init__.py`(공개 이름), `_common.py`(입력 정리: 데이터 변환, `axis`·배치·`keepdims`, `nan_policy`, `alternative`, `rng`, 메시지; `Samples(scan=False)`는 NaN을 C++ 커널에 맡긴다), `_parametric.py`(H1, 구현), `_gof.py`(H2·H4, 구현), `_rank.py`(H3), `_correlation.py`(H5), `_contingency.py`(H6), `_proportion.py`(H7), `_multitest.py`(H8), `_resampling.py`(H9). 결과 클래스는 `_result.py`(공통 바탕 `_TestResult`; §2.2)에 둔다.
-- `csrc/htest/`: `moments.hpp`(H1, 구현: 줄 행렬의 double-double 적률, 고정 덩어리의 스레드풀 분할, 단위, 분산 0의 판정, double-double 키의 정렬), `parametric.cpp`·`parametric.hpp`(H1, 구현: t 검정, 분산분석, 분산의 동질성), `lanes.hpp`(H2, 구현: 줄의 인자와 결과, 줄의 병렬), `gof.cpp`·`gof.hpp`(H2, 구현: 적합도 1의 검정), `normality.hpp`(H2, 구현: 중심 적률 합과 Jarque–Bera; regression도 부른다), `ks.hpp`(H2, 구현: Smirnov, Kolmogorov, 한 표본 양쪽 분포), `cvm.hpp`(H2, 구현: Csörgő–Faraway), `divergence.hpp`(H3, 구현: Cressie–Read의 항; `power_divergence`와 `median_test`, H6의 `chi2_contingency`), `rank.cpp`·`rank.hpp`(H3, 구현: 순위 검정; 중간 순위는 `moments.hpp`의 `sort_keys` 위의 꼬리표 정렬), `rank_exact.hpp`(H3, 구현: Mann–Whitney·Ansari–Bradley의 가우스 이항계수, 부호 순위, 조건부 분포의 동적 계획, Page의 행 분포), `gof2.cpp`·`gof2.hpp`(H4, 구현: 적합도 2의 검정), `ks2.hpp`(H4, 구현: 두 표본 Kolmogorov–Smirnov의 블록 동적 계획과 Hodges의 닫힌 꼴), `cvm2.hpp`(H4, 구현: 두 표본 Cramér–von Mises의 창 동적 계획), 앞으로의 정확 분포(`kendall.hpp`, `fexact.hpp`(r × c 망 알고리즘), `nuisance.hpp`(Barnard·Boschloo의 Bernstein 분할); H3·H4처럼 `csrc/htest/` 바로 아래), `studentized_range.hpp`, `multitest.hpp`, `resample.hpp`(순열·부트스트랩 표본의 스트림). 바인딩은 `csrc/bind/htest_bind.cpp`(`stardust._core.htest`; H1부터).
+- `src/stardust/htest/`: `__init__.py`(공개 이름), `_common.py`(입력 정리: 데이터 변환, `axis`·배치·`keepdims`, `nan_policy`, `alternative`, `rng`, 메시지; `Samples(scan=False)`는 NaN을 C++ 커널에 맡긴다), `_parametric.py`(H1, 구현), `_gof.py`(H2·H4, 구현), `_rank.py`(H3, 구현), `_correlation.py`(H5, 구현), `_contingency.py`(H6), `_proportion.py`(H7), `_multitest.py`(H8), `_resampling.py`(H9). 결과 클래스는 `_result.py`(공통 바탕 `_TestResult`; §2.2)에 둔다.
+- `csrc/htest/`: `moments.hpp`(H1, 구현: 줄 행렬의 double-double 적률, 고정 덩어리의 스레드풀 분할, 단위, 분산 0의 판정, double-double 키의 정렬), `parametric.cpp`·`parametric.hpp`(H1, 구현: t 검정, 분산분석, 분산의 동질성), `lanes.hpp`(H2, 구현: 줄의 인자와 결과, 줄의 병렬), `gof.cpp`·`gof.hpp`(H2, 구현: 적합도 1의 검정), `normality.hpp`(H2, 구현: 중심 적률 합과 Jarque–Bera; regression도 부른다), `ks.hpp`(H2, 구현: Smirnov, Kolmogorov, 한 표본 양쪽 분포), `cvm.hpp`(H2, 구현: Csörgő–Faraway), `divergence.hpp`(H3, 구현: Cressie–Read의 항; `power_divergence`와 `median_test`, H6의 `chi2_contingency`), `rank.cpp`·`rank.hpp`(H3, 구현: 순위 검정; 중간 순위는 `moments.hpp`의 `sort_keys` 위의 꼬리표 정렬), `rank_exact.hpp`(H3, 구현: Mann–Whitney·Ansari–Bradley의 가우스 이항계수, 부호 순위, 조건부 분포의 동적 계획, Page의 행 분포), `gof2.cpp`·`gof2.hpp`(H4, 구현: 적합도 2의 검정), `ks2.hpp`(H4, 구현: 두 표본 Kolmogorov–Smirnov의 블록 동적 계획과 Hodges의 닫힌 꼴), `cvm2.hpp`(H4, 구현: 두 표본 Cramér–von Mises의 창 동적 계획), `correlation.cpp`·`correlation.hpp`(H5, 구현: 상관 검정; `pearson`은 regression이 부를 1 − r² 커널), `kendall.hpp`(H5, 구현: 역순 쌍의 정확 분포, 128비트 정수와 양수의 블록 합), 앞으로의 정확 분포(`fexact.hpp`(r × c 망 알고리즘), `nuisance.hpp`(Barnard·Boschloo의 Bernstein 분할); H3·H4처럼 `csrc/htest/` 바로 아래), `studentized_range.hpp`, `multitest.hpp`, `resample.hpp`(순열·부트스트랩 표본의 스트림). 바인딩은 `csrc/bind/htest_bind.cpp`(`stardust._core.htest`; H1부터).
 - 분포 함수는 `csrc/stats/`의 것을 C++에서 바로 부른다(Python을 거치지 않는다). 새 귀무분포(Kolmogorov–Smirnov, 스튜던트화 범위, Fisher의 비중심 초기하)는 처음에 `csrc/htest/` 안에 두고, sd.stats·sd.special에 공개하지 않는다(H14).
-- `tests/htest/`(주제마다 `test_<주제>.py`: `test_parametric.py`, `test_goodness_of_fit.py`, `test_rank.py`, `test_goodness_of_fit_samples.py`; `test_api_surface.py`가 docs/api/htest.md를 읽는다), 문제 모음 `tests/htest/problems.py`, 참값과 계약 `tests/htest/refdata.py`(테스트와 정확도 측정이 같이 쓴다), 참값 `tests/htest/ref/`, 대조 데이터 `tests/htest/data/`, 도구 `tools/htest_ref.py`(Arb와 정확한 유리수를 한 도구에)·`tools/gen_htest_scipy.py`·`tools/gen_htest_r.py`, 측정 `bench/speed/cases/htest.py`·`bench/accuracy/htest.py`, 골든 `tests/golden/cases_htest.py`(§7).
+- `tests/htest/`(주제마다 `test_<주제>.py`: `test_parametric.py`, `test_goodness_of_fit.py`, `test_rank.py`, `test_goodness_of_fit_samples.py`, `test_correlation.py`; `test_api_surface.py`가 docs/api/htest.md를 읽는다), 문제 모음 `tests/htest/problems.py`, 참값과 계약 `tests/htest/refdata.py`(테스트와 정확도 측정이 같이 쓴다), 참값 `tests/htest/ref/`, 대조 데이터 `tests/htest/data/`, 도구 `tools/htest_ref.py`(Arb와 정확한 유리수를 한 도구에)·`tools/gen_htest_scipy.py`·`tools/gen_htest_r.py`, 측정 `bench/speed/cases/htest.py`·`bench/accuracy/htest.py`, 골든 `tests/golden/cases_htest.py`(§7).
 
 ---
 
@@ -554,6 +576,29 @@ H0에서 만들고 H1·H2에서 더했다(2026-11-20). 문제 모음은 `tests/h
   - 그 밖에 scipy는 1e-12 안이지만 계약보다 큰 곳이 있다: 정확 KS 한쪽의 경로 수 셈(7.1e-14, 1.4e-13), Cramér–von Mises의 T(2000 × 3000에서 8.5e-14), 오프셋의 Anderson–Darling(1.3e-14).
   - scipy 1.18.1의 `anderson_ksamp`는 `variant`를 주지 않으면 경고하고 옛 꼴(`critical_values`)을 내며, `variant`를 주면 문서와 달리 둘로 풀린다(H57은 그 실제 동작을 따른다). 빈 표본·서로 다른 값 하나는 `ValueError`다(여기는 NaN).
 - **H4 속도**: 측정 사례는 `bench/speed/cases/htest.py`의 "표본끼리의 적합도"(네 함수 × n = 10, 10³, 10⁶과 배치 10⁴ × 30; `anderson_ksamp`은 배치가 없다; R은 `ks.test`)이고 `--smoke`로 모두 돌고 값이 맞는 것만 확인했다(다른 세션이 기계를 쓰던 때라 기준선으로 올리지 않았다; 조용한 때 잰다). 손으로 잰 대략의 값(1스레드 기본, 바쁜 기계): n = 10에서 scipy의 6–190배(`cramervonmises_2samp`의 정확 분포 0.011 ms 대 2.1 ms), 10³에서 2–9배, 10⁶에서 1.1–3.2배(`epps_singleton_2samp`은 cos·sin과 double-double 공분산이 원소마다라 1.1배).
+- **H5에서 더한 것** (2026-11-21):
+  - 문제 49개(H5는 73개, 모두 526개): Pearson의 r ≈ 1(1 − r² ≈ 1e-18, eps 10⁻⁹)·r ≈ −1·음의 r의 한쪽·깊은 꼬리(n = 400, p = 8.7e-221)·두 표본의 오프셋(10⁹)·배율 1e±200·n = 3, 2·r = 0·정확한 직선·상수; 점 이연 n = 800; Spearman의 동점 한쪽·음의 상관·±inf·깊은 꼬리·상수·배치; Kendall의 `'auto'` 문턱(n = 33 정확, 34 근사), 강제 정확(34, 200: double-double 길), 불일치 쌍 0개(n = 60)·1개(n = 100)의 깊은 꼬리, 강제 근사, 동점 한쪽, τ-c 한쪽, 꼬리(n = 500), 상수; 가중 τ의 동점·`rank=None`·`False`·배열·곱 가중·n = 1000·상수·배치; Somers' D의 한쪽·연속 표본·표 둘; Chatterjee ξ의 연속 y·y의 동점·꼬리(p = 1.6e-195 꼴)·상수 y·배치. scipy·R 대조 데이터는 그 문제들만 더해졌다(R은 아래).
+  - 참값(6묶음 68문제, 4프로세스로 2초): `pearsonr`(r²과 1 − r²은 정확한 유리수, p값은 I_q의 Arb, `kappa`는 q에 대한 조건수(sd가 q를 상쇄 없이 만들기 때문), Fisher z 구간은 alpha = 0.05(그 double)의 정규 분위수; H0의 참값에서 구간의 이름을 `conf_int`로, 수준을 `ALPHA`로 바꿨다), `spearmanrho`(정확한 중간 순위, ±inf 포함), `kendalltau`(쌍을 하나씩 센 정확한 개수, Mahonian 수의 정수 꼬리, 정규 근사의 `kappa`; 상수 표본은 NaN), 새 묶음 `weightedtau`(모든 쌍의 정의식 Σw_ij·sgn·sgn/√(ΣΣ)를 공통 분모로 옮긴 정수로; 순위는 scipy의 사전식·위치·조밀한 부호), `somersd`(관측마다 일치 − 불일치를 센 정수에서 P − Q, T, S; Z의 정규 p값은 Arb), `chatterjeexi`(ξ와 scipy `_xi_std`의 an·bn·cn·dn을 정확한 유리수로, p값은 Arb). 도구의 검사(`test_reference_data.py`): n ≤ 7의 Mahonian 수를 모든 순열의 역순 쌍으로, 같은 가중치의 가중 τ = τ-b, 2 × 2 표의 D = 비율의 차, y = exp(x)의 ξ = (n − 2)/(n + 1).
+  - R 대조(tools/gen_htest_r.py → `data/r.json`, 47문제): `cor.test`의 pearson, kendall(`exact`는 scipy·sd가 정확을 쓰는 곳만 TRUE; R의 기본은 n < 50에서 정확), spearman(`exact = FALSE`의 t 근사가 sd·scipy와 같은 정의이고, R의 기본(AS 89의 정확 분포)은 `p.value.default`로 곁에 적는다). R 쪽으로 보낼 때 ±inf를 `Inf`로 쓰게 고쳤다(전에는 `inf`라 R이 읽지 못했다).
+  - scipy·R이 참값에서 10⁻¹²보다 벗어나는 H5의 곳(상대오차; sd는 모두 계약 안이다; `test_reference_data.py`가 지킨다):
+
+  | 문제 | 참값 | scipy | R |
+  |---|---|---|---|
+  | `pearsonr` y = x + 10⁻⁴·10⁻⁶·10⁻⁷·10⁻⁹·잡음(n = 10)의 p | 1.19e-34 … 1.19e-74 | 5.4e-7, 8.3e-3, 0.11, 1(p = 0) | 2.4e-7, 1.4e-3, 0.088, 5.6e10 |
+  | `pearsonr` r ≈ −1(`'less'`) | | 3.3e-3 | 5.5e-3 |
+  | `pearsonr` 깊은 꼬리(n = 400) | 8.70e-221 | 1.2e-12 | 1.2e-12 |
+  | `pearsonr` 오프셋 10⁸·10⁹의 r·p·구간 | | 맞음 | r 6.1e-10·2.2e-9, p 9.3e-8·2.3e-7, 구간 끝 2.7e-9·9.6e-9 |
+  | `pearsonr` 배율 1e±200 | | 맞음 | NA(제곱이 넘친다) |
+  | `kendalltau` 정확, n = 33 | 4.75e-7 | 맞음 | 2.1e-9(`ckendall`의 double 개수) |
+  | `kendalltau` 정확, 불일치 0개(n = 60)·1개(n = 100) | 2.40e-82, 2.14e-156 | 맞음 | 6.8e-14, −4.1e-14(1 − cdf) |
+  | `kendalltau` 강제 정확 n = 200 | 3.83e-9 | 맞음 | NA |
+  | `chatterjeexi` 꼬리(n = 500) | 1.63e-195 | 1.6e-12 | (없음) |
+  | `weightedtau` 동점(n = 40)의 통계량 | | 1.0e-14(double 합의 잔여 가중치) | (없음) |
+  | `spearmanrho` R의 기본(AS 89 정확)과 t 근사 | t 근사(H63) | 맞음 | 1.5(n = 10), 1.6, 1.7, 1.1e-4(n = 1000) |
+  | 상수 표본(`pearsonr`, `spearmanrho`, `kendalltau`) | NaN(H11, H20) | NaN과 경고 | NA |
+
+  - scipy의 `pearsonr`은 r ≈ 1에서 1 − r²을 반올림한 r에서 만들어 eps = 10⁻⁹(1 − r² ≈ 1e-18)에서 p = 0이다(참 1.2e-74). R `cor.test`는 같은 t에서 5.6e10배 틀린다. scipy·R의 Kendall 정확 p값은 n ≤ 33에서 맞지만 R은 그 위(n < 50의 기본)에서 1 − cdf라 깊은 꼬리가 0 근처의 반올림(음수도)이다. `cor.test`(n = 2)는 에러다.
+- **H5 속도**: 측정 사례는 `bench/speed/cases/htest.py`의 "상관"(여덟 함수 × n = 10, 10³, 10⁶과 배치 10⁴ × 30; `spearmanr`·`somersd`는 배치가 없고 `somersd`는 반올림한 값; R은 `cor.test`의 pearson·spearman(`exact = FALSE`)·kendall(n ≤ 10³: R의 Kendall 통계량은 O(n²))이고 `--smoke`로 모두 돌고 값이 맞는 것만 확인했다(다른 세션이 기계를 쓰던 때라 기준선으로 올리지 않았다; 조용한 때 잰다). 손으로 잰 대략의 값(1스레드, 바쁜 기계): n = 10에서 scipy의 4–28배(호출 하나 3–8 µs, scipy 15–190 µs), 10³에서 1.8–7배, 10⁶에서 `weightedtau` 4.2배, `somersd` 3.2배, `chatterjeexi` 1.7배, `spearmanrho` 1.1배, `kendalltau` 0.88배, `pearsonr` 0.25배(9.7 ms 대 2.4 ms: 줄 하나가 한 스레드의 double-double 세 번 훑기다). 긴 줄 하나의 Pearson·Kendall을 블록으로 나눠 스레드풀에서 하는 것은 H10의 후보다.
 - **아직 계획인 것**: 장애 모수의 상한(Barnard·Boschloo, H6)은 Arb 구간 산술의 분할로 엄밀한 sup을 구한다(§3.7). 정의한 근사(AS R94, D'Agostino, Hill, 보간 표)는 같은 정의식을 Arb로 계산한다(상수는 scipy·R 소스의 십진 상수 그대로). 근사의 품질(점근·근사 p값의 실제 1종 오류율)은 정확 분포(작은 n)와 몬테카를로(큰 n, sd.random)로 재서 표로 둔다(계약이 아니다, §4). 공개 함수마다 `tools/golden.py`에 고정 입력의 결과를 더한다(API.md §4 규칙 1).
 
 ---
@@ -566,7 +611,7 @@ H0에서 만들고 H1·H2에서 더했다(2026-11-20). 문제 모음은 `tests/h
 | H2 적합도 1 (완료·승인 2026-11-21) | `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp cramervonmises`(`kstest`는 없다, H34). 결정 H34–H44, 방법 §3.3, 정확도 §4, 참값·비교·속도 §7 |
 | H3 순위 검정 (완료·승인 2026-11-21) | `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test`. 결정 H45–H54, 방법 §3.4, 정확도 §4, 참값·비교·속도 §7 |
 | H4 적합도 2 (완료·승인 2026-11-21) | `ks_2samp cramervonmises_2samp anderson_ksamp epps_singleton_2samp`. 결정 H55–H61, 방법 §3.5, 정확도 §4, 참값·비교·속도 §7 |
-| H5 상관 | `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi` |
+| H5 상관 (완료·승인 2026-11-21) | `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi`. 결정 H62–H73, 방법 §3.6, 정확도 §4, 참값·비교·속도 §7. `linregress`는 regression G188로 빠져 Pearson 커널을 함께 쓰는 곳이 없다(H67) |
 | H6 분할표 | `chi2_contingency fisher_exact`(2 × 2, r × c) `barnard_exact boschloo_exact mcnemar cochrans_q`(와 §9 H6의 `odds_ratio relative_risk`) |
 | H7 비율과 이항 | `binomtest quantile_test poisson_means_test proportions_ztest proportions_chisquare proportion_confint test_proportions_2indep confint_proportions_2indep` |
 | H8 다중 비교와 보정 | `tukey_hsd dunnett multipletests false_discovery_control combine_pvalues` |
@@ -586,7 +631,7 @@ H0에서 만들고 H1·H2에서 더했다(2026-11-20). 문제 모음은 `tests/h
 - **H2**: 모두 정했다(§1.1 H34–H44).
 - **H3**: 모두 정했다(§1.1 H45–H54).
 - **H4**: 모두 정했다(§1.1 H55–H61).
-- **H5**: `spearmanr`(열들의 상관 행렬 꼴)과 `spearmanrho`(1.18의 새 꼴): 둘 다(추천: scipy에 둘 다 있고 동작이 다르다) / `spearmanrho`만 / `spearmanr`만. Spearman의 정확 분포(R의 AS 89): 넣지 않는다(추천, scipy에 없다) / `method='exact'`로 더한다. `weightedtau`: 넣되 `pvalue`는 NaN(scipy 그대로; 추천) / 결과에 `pvalue` 필드를 두지 않는다 / 뺀다. 결과의 `correlation` 별칭: 두지 않는다(추천).
+- **H5**: 모두 정했다(§1.1 H62–H66). 결과를 보고하며 물은 것도 정했다(H67–H73).
 - **H6**: r × c `fisher_exact`의 기본: 정확한 망 알고리즘(R `fisher.test`; 추천, `[scipy와 다름]`: scipy는 시드 없는 몬테카를로) / `method`를 꼭 주게(`MonteCarloMethod(rng=...)`). `barnard_exact`·`boschloo_exact`의 `n`: 받되 분할의 처음 격자 크기로만 쓴다(결과는 `n`과 상관없이 참 상한; 추천) / scipy처럼 정확도를 정하는 인자로. `odds_ratio`·`relative_risk`(scipy.stats.contingency, 신뢰구간이 있는 추정): 넣는다(추천: H7의 비·오즈비 구간과 한 묶음이고 조건부 오즈비는 Fisher 검정과 같은 분포) / 뺀다. 소수의 개수(가중 표): scipy처럼 받는 곳은 받는다(`chi2_contingency`, 추천) / 정수만. `mcnemar`의 기본 `exact=True`(statsmodels 그대로; 추천) / R `mcnemar.test`처럼 카이제곱. `chi2_contingency`의 `df`는 float(추천: H10의 다른 `df`와 같은 형) / scipy처럼 int.
 - **H7** (statsmodels 이름의 질문): 
   1. (H16으로 정했다: `proportion_confint`·`confint_proportions_2indep`의 신뢰수준은 `alpha=0.05`.)

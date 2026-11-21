@@ -13,7 +13,7 @@ Every function of sd.optimize.__all__ on the test problems of tests/optimize:
   - root_scalar, find_root and bracket_root on the 204 scalar root cases, minimize_scalar,
     find_minimum and bracket_minimum on the 57 scalar minimization cases, both also batched;
   - lsq_linear and nnls on the dense problems of functions.py and larger random ones.
-A result is stored whole (every public field).
+A result is stored whole (every public field); summary() has cases of its own (O119).
 """
 
 import math
@@ -30,7 +30,7 @@ def encode(x, L, enc):
     if type(x) is not L.sd.optimize.OptimizeResult:
         return None
     attrs, absent = {}, []
-    for name in sorted(n for n in dir(x) if not n.startswith("_")):
+    for name in sorted(n for n in dir(x) if not n.startswith("_") and n != "summary"):  # fields, not the method
         try:
             attrs[name] = enc(getattr(x, name))
         except AttributeError:
@@ -124,6 +124,7 @@ def cases(L):
     yield "err OptimizeResult positional", lambda: O.OptimizeResult(1)
     yield "OptimizeResult absent field", lambda: O.root_scalar(lambda x: x - 1.0, bracket=(0.0, 3.0)).hess_inv
     yield from more_cases(L)
+    yield from summaries(L)
 
 
 # ---------------------------------------------------------------- minimize, root, scalar, elementwise, linear
@@ -503,3 +504,41 @@ def linear_cases(L, sd, O):
     yield "err nnls shapes", lambda: O.nnls(A, b[:-1])
     yield "err nnls max_iter", lambda: O.nnls(A, b, max_iter=-1)
     yield "err nnls A 3d", lambda: O.nnls([[[1.0]]], [1.0])
+
+
+def summaries(L):
+    """summary() (O119) of each kind of result once: minimize (a long x, cut), least squares
+    (cost, optimality), the linear least squares, a system's root (x with f(x)), the scalar
+    functions (x a number) and the batched ones (one row per element, the brackets' ends)."""
+    sd = L.sd
+    O = sd.optimize
+    quad = lambda x: float(sd.sum((x - 1.0) ** 2))  # noqa: E731
+    rosen = lambda x: float(sd.sum(100.0 * (x[1:] - x[:-1] ** 2) ** 2 + (1.0 - x[:-1]) ** 2))  # noqa: E731
+    c = sd.asarray([1.0, 2.0, 3.0])
+    calls = {
+        "minimize bfgs": lambda: O.minimize(rosen, sd.asarray([1.3, 0.7, 0.8, 1.9, 1.2]), method="bfgs"),
+        "minimize nelder-mead long x": lambda: O.minimize(quad, sd.zeros((25,)), method="nelder-mead"),
+        "minimize l-bfgs-b": lambda: O.minimize(rosen, sd.asarray([-1.2, 1.0]), method="l-bfgs-b"),
+        "least_squares": lambda: O.least_squares(
+            lambda x: sd.asarray([x[0] - 1.0, 10.0 * (x[1] - x[0] ** 2)]), sd.asarray([2.0, 2.0])
+        ),
+        "lsq_linear": lambda: O.lsq_linear(
+            sd.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 7.0]]), sd.asarray([1.0, 2.0, 2.0])
+        ),
+        "nnls": lambda: O.nnls(sd.asarray([[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]), sd.asarray([2.0, 1.0, -1.0])),
+        "root": lambda: O.root(
+            lambda x: sd.asarray([x[0] + 0.5 * (x[0] - x[1]) ** 3 - 1.0, 0.5 * (x[1] - x[0]) ** 3 + x[1]]),
+            sd.asarray([0.0, 0.0]),
+        ),
+        "root_scalar": lambda: O.root_scalar(lambda x: x**3 - 2.0, bracket=(0.0, 2.0)),
+        "minimize_scalar": lambda: O.minimize_scalar(lambda x: (x - 0.7) ** 2),
+        "find_root batch": lambda: O.find_root(lambda x, c: x * x - c, (sd.zeros((3,)), sd.full((3,), 5.0)), args=(c,)),
+        "bracket_root batch": lambda: O.bracket_root(lambda x, c: x * x - c, sd.full((3,), 0.5), args=(c,)),
+        "find_minimum batch": lambda: O.find_minimum(
+            lambda x, c: (x - c) ** 2, (sd.zeros((3,)), sd.full((3,), 2.0), sd.full((3,), 5.0)), args=(c,)
+        ),
+        "bracket_minimum batch": lambda: O.bracket_minimum(lambda x, c: (x - c) ** 2, sd.zeros((3,)), args=(c,)),
+        "OptimizeResult made": lambda: O.OptimizeResult(x=sd.asarray([1.0]), converged=True, nfev=3),
+    }
+    for name, call in calls.items():
+        yield f"summary {name}", lambda call=call: call().summary()

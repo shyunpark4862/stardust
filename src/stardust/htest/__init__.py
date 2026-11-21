@@ -9,10 +9,20 @@ in docs/design/htest.md §1.1).
 
 The module holds the result objects (_result.py) and the input layer (_common.py) the tests
 share; the tests come milestone by milestone (docs/design/htest.md §8): H1's means and variances
-(_parametric.py), H2's goodness of fit (_gof.py), H3's rank tests (_rank.py) and H4's goodness of
-fit between samples (_gof.py) so far.
+(_parametric.py), H2's goodness of fit (_gof.py), H3's rank tests (_rank.py), H4's goodness of
+fit between samples (_gof.py) and H5's correlation (_correlation.py) so far.
 """
 
+from ._correlation import (
+    chatterjeexi,
+    kendalltau,
+    pearsonr,
+    pointbiserialr,
+    somersd,
+    spearmanr,
+    spearmanrho,
+    weightedtau,
+)
 from ._gof import (
     anderson,
     anderson_ksamp,
@@ -87,4 +97,12 @@ __all__ = [
     "cramervonmises_2samp",
     "anderson_ksamp",
     "epps_singleton_2samp",
+    "pearsonr",
+    "spearmanrho",
+    "spearmanr",
+    "pointbiserialr",
+    "kendalltau",
+    "weightedtau",
+    "somersd",
+    "chatterjeexi",
 ]

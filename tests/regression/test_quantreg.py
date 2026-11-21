@@ -503,14 +503,15 @@ def test_result_fields_and_summary():
     assert value_equal(r.predict(X), r.fittedvalues)
     s = r.summary()
     assert "QuantReg Regression Results" in s and "income" in s and "Pseudo R-squared" in s
-    with pytest.raises(ValueError, match=r"^summary\(\): takes one regression at one quantile, not 2 quantiles$"):
-        R.quantreg(y, X, q=[0.2, 0.4]).summary()
+    sq = R.quantreg(y, X, q=[0.2, 0.4]).summary()  # one row per quantile (G193)
+    assert "No. Quantiles:" in sq and any(line.split()[:2] == ["[1]", "0.4"] for line in sq.splitlines())
     rq = R.quantreg(y, X, q=sd.asarray([0.2, 0.4]))
     assert rq.objective.shape == (2,) and rq.predict(X[:3]).shape == (2, 3) and rq.conf_int().shape == (2, 2, 2)
     assert "QuantRegResult(q=0.25" in repr(r) and repr(rq) == "QuantRegResult(2 quantiles, 2 parameters)"
     rb = R.quantreg(np.vstack([y, y]), X, q=[0.2, 0.4])
     assert repr(rb) == "QuantRegResult(batch shape (2,) and 2 quantiles, 2 parameters)"
-    assert "not batch shape (2,) and 2 quantiles" in pytest.raises(ValueError, rb.summary).value.args[0]
+    sb = rb.summary()
+    assert "Batch shape:                      (2,)" in sb and "[1, 1]" in sb
     assert repr(R.quantreg(np.vstack([y, y]), X)) == "QuantRegResult(batch shape (2,), 2 parameters)"
 
 

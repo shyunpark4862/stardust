@@ -59,64 +59,78 @@ class _Pair(_TestResult):
 
 class ChisquareResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Chi-squared goodness-of-fit test"
     _FIELDS = ("statistic", "pvalue", "df")
     _UNPACK = ("statistic", "pvalue")
 
 
 class PowerDivergenceResult(ChisquareResult):
     __slots__ = ()
+    _TITLE = "Power divergence goodness-of-fit test"
 
 
 class SkewtestResult(_Pair):
     __slots__ = ()
+    _TITLE = "D'Agostino skewness test"
 
 
 class KurtosistestResult(_Pair):
     __slots__ = ()
+    _TITLE = "Anscombe-Glynn kurtosis test"
 
 
 class NormaltestResult(_Pair):
     __slots__ = ()
+    _TITLE = "D'Agostino-Pearson normality test"
 
 
 class JarqueBeraResult(_Pair):
     __slots__ = ()
+    _TITLE = "Jarque-Bera test"
 
 
 class ShapiroResult(_Pair):
     __slots__ = ()
+    _TITLE = "Shapiro-Wilk normality test"
 
 
 class AndersonResult(_Pair):
     __slots__ = ()
+    _TITLE = "Anderson-Darling test"
 
 
 class Ks1sampResult(_TestResult):
     __slots__ = ()
+    _TITLE = "One-sample Kolmogorov-Smirnov test"
     _FIELDS = ("statistic", "pvalue", "statistic_location", "statistic_sign", "method")
     _UNPACK = ("statistic", "pvalue")
 
 
 class CramervonmisesResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Cramer-von Mises test"
     _FIELDS = ("statistic", "pvalue")
 
 
 class Ks2sampResult(Ks1sampResult):
     __slots__ = ()
+    _TITLE = "Two-sample Kolmogorov-Smirnov test"
 
 
 class Cramervonmises2sampResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Two-sample Cramer-von Mises test"
     _FIELDS = ("statistic", "pvalue", "method")
 
 
 class AndersonKsampResult(_Pair):
     __slots__ = ()
+    _TITLE = "k-sample Anderson-Darling test"
 
 
 class EppsSingleton2sampResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Epps-Singleton two-sample test"
     _FIELDS = ("statistic", "pvalue", "df")
     _UNPACK = ("statistic", "pvalue")
 
@@ -135,7 +149,7 @@ def _lambda(v, name):
     return C.real(v, name, "lambda_")
 
 
-def _divergence(name, cls, f_obs, f_exp, axis, ddof, lam, sum_check, nan_policy, keepdims):
+def _divergence(name, cls, f_obs, f_exp, axis, ddof, lam, sum_check, nan_policy, keepdims, lam_name=None):
     ddof = C.integer(ddof, name, "ddof")
     C.flag(sum_check, name, "sum_check")
     if f_exp is None:
@@ -159,7 +173,12 @@ def _divergence(name, cls, f_obs, f_exp, axis, ddof, lam, sum_check, nan_policy,
                 f"{name}(): the sums of 'f_obs' and 'f_exp' must agree to a relative tolerance of {_RTOL:.3g} "
                 f"in each sample, not {worst:.3g} (sum_check)"
             )
-    return cls._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+    pairs = [("No. Categories:", str(s.n[0]))]  # the frequencies are the sample: no observation count
+    if lam_name is not None:
+        pairs.append(("Lambda:", lam_name))
+    if ddof:
+        pairs.append(("Ddof:", str(ddof)))
+    return cls._make(batch=s.batch, info={"pairs": pairs}, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
 
 
 def chisquare(f_obs, f_exp=None, /, *, axis=None, ddof=0, sum_check=True, nan_policy="propagate", keepdims=False):
@@ -179,7 +198,8 @@ def power_divergence(f_obs, f_exp=None, /, *, axis=None, ddof=0, lambda_=None, n
     f_obs and f_exp must agree as chisquare's sum_check (scipy's power_divergence always checks)."""
     name = "power_divergence"
     lam = _lambda(lambda_, name)
-    return _divergence(name, PowerDivergenceResult, f_obs, f_exp, axis, ddof, lam, True, nan_policy, keepdims)
+    lam_name = lambda_ if isinstance(lambda_, str) else ("pearson" if lambda_ is None else f"{lam:g}")
+    return _divergence(name, PowerDivergenceResult, f_obs, f_exp, axis, ddof, lam, True, nan_policy, keepdims, lam_name)
 
 
 # ---- the moment tests ---------------------------------------------------------------------
@@ -193,7 +213,7 @@ def _dagostino(kind, cls, name, a, axis, alternative, nan_policy, keepdims):
     alt = C.alternative(alternative, name)
     s = _one(name, a, "a", axis, nan_policy, keepdims)
     stat, p = _k.dagostino(kind, s.rows[0], _ALT[alt], s.policy == "omit")
-    return cls._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    return cls._make(batch=s.batch, info=s.info(alt), statistic=s.out(stat), pvalue=s.out(p))
 
 
 def skewtest(a, /, *, axis=None, alternative="two-sided", nan_policy="propagate", keepdims=False):
@@ -214,7 +234,7 @@ def normaltest(a, /, *, axis=None, nan_policy="propagate", keepdims=False):
     name = "normaltest"
     s = _one(name, a, "a", axis, nan_policy, keepdims)
     stat, p = _k.dagostino(2, s.rows[0], 0, s.policy == "omit")
-    return NormaltestResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    return NormaltestResult._make(batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p))
 
 
 def jarque_bera(x, /, *, axis=None, nan_policy="propagate", keepdims=False):
@@ -225,7 +245,7 @@ def jarque_bera(x, /, *, axis=None, nan_policy="propagate", keepdims=False):
     name = "jarque_bera"
     s = _one(name, x, "x", axis, nan_policy, keepdims)
     stat, p = _k.jarque_bera(s.rows[0], s.policy == "omit")
-    return JarqueBeraResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    return JarqueBeraResult._make(batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p))
 
 
 def _jb_of_sums(n, s2, s3, s4, mean):
@@ -251,7 +271,7 @@ def shapiro(x, /, *, axis=None, nan_policy="propagate", keepdims=False):
     name = "shapiro"
     s = _one(name, x, "x", axis, nan_policy, keepdims)
     stat, p = _k.shapiro(s.rows[0], s.policy == "omit")
-    return ShapiroResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    return ShapiroResult._make(batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p))
 
 
 _ANDERSON = None
@@ -293,7 +313,10 @@ def anderson(x, /, *, axis=None, dist=None, method="interpolate", nan_policy="pr
         raise ValueError(f"{name}(): 'method' must be 'interpolate', not {method!r}")
     s = _one(name, x, "x", axis, nan_policy, keepdims)
     stat, p = _k.anderson(s.rows[0], code, s.policy == "omit")
-    return AndersonResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    dist_name = ("Normal", "Exponential", "Logistic", "Gumbel")[code]
+    return AndersonResult._make(
+        batch=s.batch, info=s.info(pairs=[("Distribution:", dist_name)]), statistic=s.out(stat), pvalue=s.out(p)
+    )
 
 
 # ---- the empirical distribution function tests -------------------------------------------
@@ -366,6 +389,7 @@ def ks_1samp(x, cdf, /, *, axis=None, alternative="two-sided", method="auto", na
         used = _nest([used] * math.prod(shape), shape)
     return Ks1sampResult._make(
         batch=s.batch,
+        info=s.info(alt),
         statistic=s.out(stat),
         pvalue=s.out(p),
         statistic_location=s.out(loc),
@@ -382,7 +406,7 @@ def cramervonmises(rvs, cdf, /, *, axis=None, nan_policy="propagate", keepdims=F
     name = "cramervonmises"
     s, xs, fs = _sorted_with_cdf(name, rvs, "rvs", cdf, axis, nan_policy, keepdims)
     stat, p = _k.cvm(xs, fs, s.policy == "omit")
-    return CramervonmisesResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    return CramervonmisesResult._make(batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p))
 
 
 # ---- between samples (H4) ----------------------------------------------------------------
@@ -427,6 +451,7 @@ def ks_2samp(data1, data2, /, *, axis=None, alternative="two-sided", method="aut
     sign = int(sign) if isinstance(sign, float) else sign.astype(_sd.int64)
     return Ks2sampResult._make(
         batch=s.batch,
+        info=s.info(alt),
         statistic=s.out(stat),
         pvalue=s.out(p),
         statistic_location=s.out(loc),
@@ -450,7 +475,11 @@ def cramervonmises_2samp(x, y, /, *, axis=None, method="auto", nan_policy="propa
     )
     _check_work(work, meth, name, "method='asymptotic'")
     return Cramervonmises2sampResult._make(
-        batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), method=_methods(codes, s, ("exact", "asymptotic"))
+        batch=s.batch,
+        info=s.info(),
+        statistic=s.out(stat),
+        pvalue=s.out(p),
+        method=_methods(codes, s, ("exact", "asymptotic")),
     )
 
 
@@ -475,7 +504,8 @@ def anderson_ksamp(samples, /, *, variant="midrank", method=None):
         a = _as_array(x, name, f"samples[{i}]")
         rows.append(_sd.reshape(a, (1, a.size)))
     stat, p = _k.ad_ksamp(rows, _VARIANTS[v])
-    return AndersonKsampResult._make(statistic=float(stat[0]), pvalue=float(p[0]))
+    info = {"nobs": tuple(r.shape[1] for r in rows), "pairs": [("Variant:", v)]}
+    return AndersonKsampResult._make(info=info, statistic=float(stat[0]), pvalue=float(p[0]))
 
 
 def _epps_t(t, name):
@@ -506,7 +536,9 @@ def epps_singleton_2samp(x, y, /, *, axis=None, t=(0.4, 0.8), nan_policy="propag
     ts = _epps_t(t, name)
     s = C.Samples(name, [x, y], ("x", "y"), axis, nan_policy, keepdims=keepdims, scan=False)
     stat, p, df = _k.epps(s.rows[0], s.rows[1], ts, s.policy == "omit")
-    return EppsSingleton2sampResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+    return EppsSingleton2sampResult._make(
+        batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p), df=s.out(df)
+    )
 
 
 # a wrong call shape in the library's form (API.md §2.1)

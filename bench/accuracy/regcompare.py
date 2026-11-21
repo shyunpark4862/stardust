@@ -7,7 +7,11 @@ penalized objective (1/(2n) RSS + alpha (l1_ratio |b|_1 + (1 - l1_ratio)/2 |b|^2
 Gaussian problems without standardization. R: lm and glm (stats), rlm (MASS) for the M problems,
 lmrob (robustbase) for MM, glmnet for the penalized ones (its objective is the same, with
 standardize). The tests on fitted models: statsmodels' functions of the same names
-(sm_model_tests_values). A library without the model, or without a field's quantity, is left out ("—").
+(sm_model_tests_values) and R's lm / glm with car and lmtest (r_model_tests_values, the calls of
+tools/gen_model_tests_r.py). Variable selection: statsmodels refitting each subset along the
+reference's stepwise paths (sm_selection_values) and leaps' regsubsets for best_subset's Cp and
+adjusted R^2 (r_selection_values). A library without the model, or without a field's quantity, is
+left out ("—").
 """
 
 from __future__ import annotations
@@ -165,12 +169,12 @@ def sklearn_values(sw) -> dict | None:
 
 
 def r_values(sw) -> dict | None:
-    """{field: values} from R, for the fields R reports the same way. The tests on fitted
-    models have none here: R's (lmtest, car) are compared in tests/regression/test_model_tests_against_r.py
-    on its own problems."""
+    """{field: values} from R, for the fields R reports the same way."""
     p, kind = sw.problem, sw.kind
     if kind == "model_tests":
-        return None
+        return r_model_tests_values(sw)
+    if kind == "selection":
+        return r_selection_values(sw)
     y, X = np.asarray(p["y"], dtype=float), np.asarray(p["X"], dtype=float)
     n, k = X.shape
     icpt = "" if p["intercept"] else " - 1"
@@ -322,4 +326,224 @@ def sm_model_tests_values(sw) -> dict:
                                                         drop=drop or None, alternative="increasing",
                                                         result_object=False)[:2])  # fmt: skip
         put(("reset_F", "reset_p"), lambda: (lambda r: (r.fvalue, r.pvalue))(linear_reset(s, power=3, use_f=True)))
+    return out
+
+
+def _rmat(name, A):
+    return f"{name} <- matrix({name}, nrow = {len(A)}, byrow = TRUE); "
+
+
+def _rcols(cols):
+    return "c(" + ", ".join(str(c + 1) for c in cols) + ")"
+
+
+def r_model_tests_values(sw) -> dict | None:
+    """R's values of the model_tests fields, by tools/gen_model_tests_r.py's calls (as
+    tests/regression/test_model_tests_against_r.py pairs them with sd's): for lm, the t from
+    vcov (R arithmetic), car::linearHypothesis, anova(small, big), lmtest::lrtest, anova (Type I)
+    and drop1(test = "F") (Type III) of the terms as matrix terms, car::vif (with an intercept),
+    dffits and dfbetas (cases of weight 0, which lm.influence leaves out, are NaN), and with unit
+    weights gqtest, resettest(type = "fitted") and bptest with White's auxiliary formula (its LM
+    and p only: bptest has no F). For glm: the t from vcov (z for a fixed dispersion),
+    car::linearHypothesis (F for the gamma), lmtest::lrtest (not for the gamma: R's logLik takes
+    the deviance / n scale), anova(small, big, test = "F") (gamma), anova (Type I),
+    car::Anova(type = 3, test.statistic = "Wald"), hatvalues, cooks.distance, dffits, dfbetas;
+    each glm is refit (epsilon = 1e-14) from its last coefficients until they stop changing: R's
+    IRLS stops on the deviance's relative change, with the coefficients near sqrt(epsilon) of the
+    root, and Fisher scoring (probit, the gamma's log) gains little per fit. A call R refuses
+    gives NaN for its fields; so do all fields where R drops a column it finds collinear (lm's
+    tolerance 1e-7, R's default kept as for the fits): its tests are of another model."""
+    p = sw.problem
+    y, X = np.asarray(p["y"], dtype=float), np.asarray(p["X"], dtype=float)
+    Rm = np.asarray(p["R"], dtype=float)
+    n, k = X.shape
+    icpt = p.get("intercept", True)
+    m = k + (1 if icpt else 0)
+    terms = p["terms"]
+    nt, r = len(terms), len(Rm)
+    nm = [f"x{j + 1}" for j in range(k)]
+    zero = "" if icpt else "0 + "
+    data = {"y": y, "X": X.ravel(), "Rm": Rm.ravel()}
+    pre = (_rmat("X", X) + _rmat("Rm", Rm) + "suppressMessages({library(car); library(lmtest)}); "
+           "d <- data.frame(y = y); "
+           + "".join(f"d${c} <- X[, {j + 1}]; " for j, c in enumerate(nm))
+           + "".join(f"T{i} <- X[, {_rcols(t)}, drop = FALSE]; " for i, t in enumerate(terms))
+           + ".tc <- function(e, len) { if (.aliased) return(rep(NaN, len)); "
+           "v <- tryCatch(suppressWarnings(as.numeric(e)), error = function(err) NULL); "
+           "if (length(v) != len) rep(NaN, len) else v }; ")  # fmt: skip
+    fb = f"y ~ {zero}" + " + ".join(nm)
+    fs = f"y ~ {zero}" + " + ".join(nm[: p["small"]])
+    ft = f"y ~ {zero}" + " + ".join(f"T{i}" for i in range(nt))
+    items = []  # (field, size, R expression): each evaluated alone, NaN where R refuses it
+
+    def add(fields, sizes, expr):
+        items.append((fields, sizes, expr))
+
+    if p["kind"] == "glm":
+        fam = {"binomial": "binomial", "poisson": "poisson", "gamma": "Gamma"}[p["family"]]
+        fixed = p["family"] in ("binomial", "poisson")
+        ctl = "control = glm.control(epsilon = 1e-14, maxit = 1000)"
+
+        g = f'glm(f, family = {fam}(link = "{p["link"]}"), data = d, {ctl}'
+        fits = (f".fit <- function(f) {{ m <- {g}); for (i in 1:100) {{ b0 <- coef(m); m <- {g}, start = b0); "
+                "if (max(abs(coef(m) - b0)) <= 4 * .Machine$double.eps * max(1, abs(b0))) break }; m }; "
+                f"big <- .fit({fb}); small <- .fit({fs}); bt <- .fit({ft}); .aliased <- anyNA(coef(big)); ")  # fmt: skip
+        tvals = "{ est <- drop(Rm %*% coef(big)); se <- sqrt(diag(Rm %*% vcov(big) %*% t(Rm))); tv <- est / se; " + (
+            "c(tv, 2 * pnorm(-abs(tv))) }" if fixed else "c(tv, 2 * pt(-abs(tv), df.residual(big))) }"
+        )
+        add(("t_tvalue", "t_pvalue"), (r, r), tvals)
+        if fixed:
+            add(
+                ("wald_stat", "wald_p"),
+                (1, 1),
+                "{ lh <- linearHypothesis(big, Rm); c(lh$Chisq[2], lh[2, 'Pr(>Chisq)']) }",
+            )
+            add(
+                ("compare_lr", "compare_lr_p"),
+                (1, 1),
+                "{ lr <- lrtest(small, big); c(lr$Chisq[2], lr[2, 'Pr(>Chisq)']) }",
+            )
+        else:
+            add(("wald_stat", "wald_p"), (1, 1),
+                "{ lh <- linearHypothesis(big, Rm, test = 'F'); c(lh$F[2], lh[2, 'Pr(>F)']) }")  # fmt: skip
+            add(
+                ("compare_F", "compare_F_p"),
+                (1, 1),
+                "{ a2 <- anova(small, big, test = 'F'); c(a2$F[2], a2[2, 'Pr(>F)']) }",
+            )
+        add(("anova1_dev", "anova1_p"), (nt, nt),
+            f"{{ a1 <- anova(bt, test = '{'Chisq' if fixed else 'F'}'); c(a1$Deviance[-1], a1[-1, ncol(a1)]) }}")  # fmt: skip
+        add(("anova3_wald",), (nt,), "Anova(bt, type = 3, test.statistic = 'Wald')$Chisq[-1]")
+        add(("hat",), (n,), "hatvalues(big)")
+        add(("cooks",), (n,), "cooks.distance(big)")
+        add(("dffits",), (n,), "dffits(big)")
+        add(("dfbetas",), (n * m,), "t(dfbetas(big))")
+    else:
+        w = np.ones(n) if p["weights"] is None else np.asarray(p["weights"], dtype=float)
+        data["w"], data["q"] = w, np.asarray(p["q"], dtype=float)
+        fits = (f"d$w <- w; big <- lm({fb}, data = d, weights = w); small <- lm({fs}, data = d, weights = w); "
+                f"bt <- lm({ft}, weights = w); keep <- w > 0; .aliased <- anyNA(coef(big)); "
+                f"full <- function(v, each = 1) {{ if (length(v) == {n} * each) return(v); "
+                f"o <- matrix(NaN, each, {n}); o[, keep] <- matrix(v, nrow = each); as.numeric(o) }}; ")  # fmt: skip
+        add(("t_effect", "t_sd", "t_tvalue", "t_pvalue"), (r, r, r, r),
+            "{ est <- drop(Rm %*% coef(big)); se <- sqrt(diag(Rm %*% vcov(big) %*% t(Rm))); tv <- (est - q) / se; "
+            "c(est, se, tv, 2 * pt(abs(tv), df.residual(big), lower.tail = FALSE)) }")  # fmt: skip
+        add(("wald_F", "wald_p"), (1, 1), "{ lh <- linearHypothesis(big, Rm, q); c(lh$F[2], lh[2, 'Pr(>F)']) }")
+        add(("compare_F", "compare_F_p"), (1, 1), "{ a2 <- anova(small, big); c(a2$F[2], a2[2, 'Pr(>F)']) }")
+        add(("compare_lr", "compare_lr_p"), (1, 1), "{ lr <- lrtest(small, big); c(lr$Chisq[2], lr[2, 'Pr(>Chisq)']) }")
+        add(("anova1_ss", "anova1_F", "anova1_p"), (nt, nt, nt),
+            f"{{ a1 <- anova(bt); c(a1[['Sum Sq']][1:{nt}], a1[['F value']][1:{nt}], a1[['Pr(>F)']][1:{nt}]) }}")  # fmt: skip
+        add(("anova3_ss", "anova3_F", "anova3_p"), (nt, nt, nt),
+            "{ d1 <- drop1(bt, test = 'F'); c(d1[['Sum of Sq']][-1], d1[['F value']][-1], d1[['Pr(>F)']][-1]) }")  # fmt: skip
+        if icpt:  # car's vif without an intercept is another quantity (it warns so)
+            add(("vif",), (k,), "vif(big)")
+        add(("dffits",), (n,), "full(dffits(big))")
+        add(("dfbetas",), (n * m,), f"full(as.numeric(t(dfbetas(big))), {m})")
+        if np.all(w == 1):  # lmtest's gqtest, resettest and bptest take no weights
+            n1, drop, by = p["gq"]
+            n1 = n // 2 if n1 is None else n1
+            point = n1 + (drop + 1) // 2  # gqtest's point and fraction: the first n1 rows, then drop rows left out
+            order = "" if by is None else f", order.by = X[, {by + 1}]"
+            fits += (f"bu <- lm({fb}, data = d); Z <- X; aux <- list(Z); "
+                     "for (i in seq_len(ncol(Z))) aux[[length(aux) + 1]] <- Z[, i] * Z[, i:ncol(Z), drop = FALSE]; "
+                     "A <- do.call(cbind, aux); A0 <- cbind(Z, Z^2); ")  # fmt: skip
+            add(("gq_F", "gq_p"), (1, 1),
+                f"{{ g <- gqtest(bu, point = {point}, fraction = {drop}{order}, alternative = 'greater'); "
+                "c(g$statistic, g$p.value) }")  # fmt: skip
+            add(("reset_F", "reset_p"), (1, 1),
+                "{ g <- resettest(bu, power = 2:3, type = 'fitted'); c(g$statistic, g$p.value) }")  # fmt: skip
+            add(("white_lm", "white_lm_p"), (1, 1),
+                "{ g <- bptest(bu, varformula = ~ A, data = data.frame(A = I(A))); c(g$statistic, g$p.value) }")  # fmt: skip
+            add(("white_nocross_lm", "white_nocross_lm_p"), (1, 1),
+                "{ g <- bptest(bu, varformula = ~ A0, data = data.frame(A0 = I(A0))); c(g$statistic, g$p.value) }")  # fmt: skip
+    names = [(f, z) for fields, sizes, _ in items for f, z in zip(fields, sizes)]
+    expr = pre + fits + "c(" + ", ".join(f".tc({e}, {sum(z)})" for _, z, e in items) + ")"
+    vals = _r_split(expr, data, names)
+    return {f: v for f, v in vals.items() if f in p["ref"]}
+
+
+# ------------------------------------------------------------------------------ variable selection
+
+
+def _positive_rows(p):
+    """y, X of the rows with a positive weight (sd's weighted fits leave the others out), and those weights."""
+    y, X = np.asarray(p["y"], dtype=float), np.asarray(p["X"], dtype=float)
+    w = np.ones(len(y)) if p.get("weights") is None else np.asarray(p["weights"], dtype=float)
+    keep = w > 0
+    return y[keep], X[keep], w[keep]
+
+
+def r_selection_values(sw) -> dict | None:
+    """leaps' regsubsets (exhaustive) on a linear problem: summary's cp and adjr2 per size, the
+    quantities of best_subset's 'cp' and 'adjr2' (each size's best subset by RSS); leaps has no
+    size 0 (the intercept alone): NaN there. GLMs: none (leaps fits linear models)."""
+    p = sw.problem
+    if p["kind"] == "glm":
+        return None
+    y, X, w = _positive_rows(p)
+    n, k = X.shape
+    expr = (_rmat("X", X) + "suppressMessages(library(leaps)); "
+            f"r <- regsubsets(X, y, weights = w, nvmax = {k}, intercept = {'TRUE' if p['intercept'] else 'FALSE'}, "
+            "method = 'exhaustive'); s <- summary(r); c(s$cp, s$adjr2)")  # fmt: skip
+    v = rsession.evaluate_named(expr, {"y": y, "X": X.ravel(), "w": w})
+    out = {}
+    for i, f in enumerate(("best_cp", "best_adjr2")):
+        if f not in p["ref"]:
+            continue
+        vals = v[i * k : (i + 1) * k]
+        if len(p["ref"][f]) == k + 1:
+            vals = np.r_[np.nan, vals]
+        if len(vals) == len(p["ref"][f]):
+            out[f] = vals
+    return out
+
+
+def sm_selection_values(sw) -> dict:
+    """statsmodels' AIC and BIC (GLM: bic_llf) of every model along the reference's stepwise
+    paths (the moves of tests/regression/ref/selection.json from the full model, or for forward
+    from no column, or the first without an intercept, as refdata_selection.stepwise starts),
+    each subset refit on the rows of positive weight; best_subset's aic and bic for each size's
+    reference subset. Cross-validation has no comparator (the folds and the score are sd's)."""
+    import statsmodels.api as sm
+
+    p = sw.problem
+    y, X, w = _positive_rows(p)
+    k = X.shape[1]
+    glm = p["kind"] == "glm"
+    icpt = p.get("intercept", True)
+
+    def crit(cols, which):
+        Z = X[:, sorted(cols)]
+        if icpt:
+            Z = sm.add_constant(Z, has_constant="add") if Z.size else np.ones((len(y), 1))
+        if Z.shape[1] == 0:
+            return np.nan
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if glm:
+                r = sm.GLM(y, Z, family=_sm_family(p["family"], p["link"])).fit(tol=1e-14, maxiter=1000)
+                return float(r.aic if which == "aic" else r.bic_llf)
+            r = sm.WLS(y, Z, weights=w).fit()
+            return float(r.aic if which == "aic" else r.bic)
+
+    out = {}
+    for field, ref in p["ref"].items():
+        kind, rest = field.split("_", 1)
+        if kind == "step":
+            direction, which = rest.split("_")
+            if which not in ("aic", "bic"):
+                continue
+            cols = set(range(k)) if direction != "forward" else (set() if icpt else {0})
+            vals = [crit(cols, which)]
+            for action, j in p["runs"][f"{direction}/{which}"]["moves"]:
+                cols = cols | {j} if action == "add" else cols - {j}
+                vals.append(crit(cols, which))
+        elif rest in ("aic", "bic"):
+            sets = [s for s in p["best"][rest]["sets"] if s is not None]  # a size without a subset (no intercept, 0)
+            vals = [crit({j for j in range(k) if s >> j & 1}, rest) for s in sets]
+            vals = [v for v in vals if not np.isnan(v)]
+        else:
+            continue
+        if len(vals) == len(ref):
+            out[field] = np.asarray(vals, dtype=float)
     return out

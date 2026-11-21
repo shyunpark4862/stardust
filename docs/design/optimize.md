@@ -136,6 +136,7 @@
 | O116 `bracket_root`의 구간 (사이트 리뷰, R154) | 결과의 구간은 언제나 xl ≤ xr이고, status 0이면 근을 낀다(f(xl)과 f(xr)의 부호가 다르거나 한쪽이 정확히 0). 두 쪽이 같은 반복에서 부호 바뀜을 찾고 너비가 같으면 왼쪽의 구간을 쓴다. scipy는 그때 오른쪽의 왼 끝과 왼쪽의 오른 끝을 섞어 뒤집힌, 근을 끼지 않을 수 있는 구간을 status 0으로 돌려준다(`x**3 - 2*x - 1`, xl0 = 0에서 (1, 0), f (−2, −1)). 처음 구간이 맞지 않으면(status −5) 처음 두 점을 정렬해 돌려준다. O105처럼 scipy를 벗어나는 고침이다(호출점과 셈은 그대로) (사용자 결정 2026-11-20) |
 | O117 'bvls'의 x (사이트 리뷰, R160) | 돌려주는 x는 경계 안이다: 경계에 묶인 변수(on_bound ±1)는 정확히 그 경계 값, 반올림만큼 넘은 다른 값은 경계로 자르고, x가 바뀌었으면 잔차·기울기·cost·KKT 최적성을 그 x에서 다시 계산한다. 걸음 x + α(z − x)로 경계에 닿은 변수는 반올림으로 경계를 조금 넘을 수 있다(scipy는 그 값 그대로 묶어 둔다; 무작위 300문제 가운데 84문제). 반복과 status는 scipy 그대로다. 'trf'(안쪽 점)와 `nnls`는 같은 무작위 문제에서 경계를 넘지 않았다 (사용자 결정 2026-11-20) |
 | O118 쌍의 시퀀스인 `bounds` (사이트 리뷰, R165) | O51은 그대로 두고, scipy의 다른 꼴인 변수마다의 (low, high) 쌍의 시퀀스를 짚는다: 항목이 둘이 아니고 모두 쌍이면 `'bounds' must be a pair (lower, upper), not a sequence of (low, high) pairs`. 항목이 둘이면 (lower, upper)와 구별할 수 없어 그렇게 읽는다(문서에 적는다). `minimize`, `least_squares`, `lsq_linear`가 같은 검사를 쓴다 (사용자 결정 2026-11-20) |
+| O119 `summary()` (전체; regression G189) | `OptimizeResult`가 `summary()`를 가지고 회귀 모형 상자의 꼴인 글을 돌려준다(API.md §2.3). 앞의 "`summary()`는 두지 않는다"(§2.2)를 바꾼다. 제목은 `Optimization Results`, 머리는 `Method`·`Converged`·`Status`와 `Function value`(최소제곱은 `Cost`·`Optimality`), 셈(`n_iter nfev njev nhev` 가운데 있는 것), 그 아래 줄의 `Message`다. 표는 x의 원소마다 한 줄(20을 넘으면 앞뒤 5줄과 `...`; `root`는 f(x) 열 `fun`; 스칼라 x는 한 줄)이고, 배치 스칼라 함수는 원소마다 한 줄(`x fun converged status n_iter nfev`, 구간 함수는 `bracket[j]`)이다. 추론이 없어 `alpha`는 받지 않는다. 골든은 필드만 적고(`summary`는 메서드) summary는 케이스를 따로 둔다 (사용자 결정 2026-11-21) |
 
 ### 1.2 범위 (안)
 | 덩어리 | 공개 함수 | 방법 |
@@ -174,7 +175,7 @@
 - 이름은 regression의 결과와 같은 규칙이다(O4). scipy의 `success`·`nit`를 별칭으로 두지 않는다(별칭 없음).
 - 배치 스칼라 결과는 필드마다 입력의 배치 모양이다(`x` (...), `converged` (...) bool, `nfev` (...) int64).
 - 결과는 읽기 전용이고 배열 필드는 읽기 전용 배열이다: 읽을 때마다 같은 배열이고 복사하지 않는다(O103, 모든 영역의 결과와 같은 규칙; regression G98). 풀이 함수는 커널이 막 만든 배열을 그대로 넘기고(`OptimizeResult._make`), 공개 생성자는 받은 배열을 한 번 복사한다.
-- `repr`는 짧은 요약이다. `summary()`는 두지 않는다(추론이 없다).
+- `repr`는 짧은 요약이다. `summary()`는 회귀 상자의 꼴인 글이다(O119; 처음에는 추론이 없어 두지 않았다).
 
 ---
 
@@ -285,6 +286,7 @@
 - `csrc/optimize/`: `scalar.hpp`·`scalar.cpp`(스칼라 근·최솟값), `batch.cpp`(배치 스칼라), `diff.hpp`, `lsq.cpp`(nls에서 옮긴 lmder·trf; root의 lm), `minimize.hpp`, `objective.hpp`(scipy `ScalarFunction`의 기억과 차분), `wolfe.hpp`(scipy Python 판의 `DCSRCH`와 wolfe2: BFGS와 Newton-CG의 선 탐색), `hessian.hpp`(헤시안의 기억과 차분 연산자), `nelder_mead.cpp`, `bfgs.cpp`, `lbfgsb.cpp`(C 판의 `dcsrch`), `newton_cg.cpp`, `trust.cpp`(trust-ncg·trust-exact), `root.hpp`·`hybrd.cpp`(root의 hybr), `linear.hpp`·`linear.cpp`(lsq_linear, nnls); 바인딩 `csrc/bind/optimize_bind.cpp`
 - `regression.nls`는 `csrc/optimize/lsq.cpp`와 `_diff.py`를 쓴다. 회귀 쪽에 최소제곱 풀이를 따로 두지 않는다(같은 문제에 두 구현이 있으면 결과가 갈린다).
 - `tests/optimize/`, `bench/optimize/`
+- 수치 미적분 영역의 계획(메모; docs/design/integrate.md §1.1 C3·C4, §6.1, §6.2): `csrc/optimize/diff.hpp`(scipy `approx_derivative`의 간격 규칙)를 differentiate 영역의 C++로 옮기고 `lsq.cpp`·`objective.hpp`·`hessian.hpp`·`scalar.cpp`가 그것을 부른다. `approx_fprime`·`check_grad`는 이 모듈에 그대로 있고 값과 골든은 바뀌지 않는다. `batch.cpp`의 반복 고리(`for_elements`, `gather`, `Call`, `Progress`, `advance`)는 `sd.differentiate.derivative`, `sd.integrate.tanhsinh`·`nsum`과 함께 쓰는 자리로 끌어낸다. 그 셋은 배치 넷의 규칙(O4의 이름, O17의 status, O36–O39, O48)을 쓴다. 옮기기는 그 영역의 마일스톤 C1에서 한다.
 
 ---
 

@@ -415,8 +415,8 @@ def test_batch_equals_loop(cov_type):
                 assert float(got[i]) == want or (math.isnan(want) and math.isnan(float(got[i])))
             for got, want in zip(res.breusch_pagan(), one.breusch_pagan()):
                 assert float(got[i]) == want or (math.isnan(want) and math.isnan(float(got[i])))
-    with pytest.raises(ValueError, match=r"^summary\(\): takes one regression, not a batch of shape \(6,\)$"):
-        res.summary()
+    text = res.summary()  # one row per regression (G193)
+    assert "Batch shape:                      (6,)" in text and "[5]" in text
 
 
 def test_threads_bit_identical():

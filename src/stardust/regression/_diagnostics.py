@@ -19,7 +19,7 @@ from ..stats import ChiSquared as _ChiSquared
 from ..stats import F as _F
 from ..stats import Normal as _Normal
 from ._linear import _REFINE_STEPS, _arg, _as_real, _check_bool, _check_choice, _div, _expand, _type_name
-from ._tests import GoldfeldQuandtResult, ResetTestResult, WhiteTestResult, _unit_triangle
+from ._tests import GoldfeldQuandtResult, ResetTestResult, WhiteTestResult, _model_info, _unit_triangle
 
 _k = _sd.regression
 
@@ -157,6 +157,7 @@ def white_test(r, cross_terms):
     pv = r._scalar(_ChiSquared(df=_arg(dfp)).ccdf(_arg(lm)))
     return WhiteTestResult._make(
         batch=tuple(r._batch),
+        info=_model_info(r, pairs=[("Cross Terms:", str(cross_terms))]),
         lm=lm,
         lm_pvalue=pv,
         fvalue=a.fvalue,
@@ -257,7 +258,13 @@ def goldfeld_quandt(r, split, drop, order_by, alternative):
         p = 2.0 * (_sd.minimum(lo, hi) if isinstance(lo, _sd.ndarray) else min(lo, hi))
     p = r._scalar(p) if not r._batch else p
     return GoldfeldQuandtResult._make(
-        batch=tuple(r._batch), fvalue=Fv, pvalue=p, alternative=alternative, df_num=df2, df_denom=df1
+        batch=tuple(r._batch),
+        info=_model_info(r),
+        fvalue=Fv,
+        pvalue=p,
+        alternative=alternative,
+        df_num=df2,
+        df_denom=df1,
     )
 
 
@@ -401,7 +408,14 @@ def reset_test(r, power, kind):
         Fv = _wald_subset(ext, k0, added) / m
     p = _F(dfn=_arg(_posdf(m)), dfd=_arg(dfd)).ccdf(_arg(Fv))
     p = r._scalar(p) if not r._batch else p
-    return ResetTestResult._make(batch=tuple(r._batch), fvalue=Fv, pvalue=p, df_num=m, df_denom=dfd)
+    return ResetTestResult._make(
+        batch=tuple(r._batch),
+        info=_model_info(r, pairs=[("Power:", ", ".join(str(v) for v in pw)), ("Kind:", kind)]),
+        fvalue=Fv,
+        pvalue=p,
+        df_num=m,
+        df_denom=dfd,
+    )
 
 
 def _nan_where_any(Fv, m, ext):

@@ -33,7 +33,24 @@ OptimizeResult
 - 모든 함수가 이 클래스 하나를 돌려준다(`nnls`도 그렇다, O77, O112). 방법이 주는 필드만 있고, 없는 필드를 읽으면 `AttributeError`(`'OptimizeResult' object has no attribute 'hess_inv' (its method does not give it)`)다. 그래서 `hasattr(r, 'hess_inv')`로 알 수 있다.
 - 필드는 읽기 전용이다(regression G98; 대입하면 `property 'x' of 'OptimizeResult' object has no setter`). 배열 필드는 읽기 전용 배열이고 읽을 때마다 같은 배열이다(O103, API.md §2: 복사하지 않는다; 원소에 쓰면 `ValueError: assignment destination is read-only`, 고치려면 `.copy()`). `OptimizeResult(...)`를 직접 만들면 받은 배열을 한 번 복사해 둔다.
 - 이름은 다른 영역의 결과와 같은 규칙이다(O4): scipy의 `success`는 `converged`, `nit`는 `n_iter`다. 별칭은 없다.
-- `repr`는 한 줄 요약이다: `OptimizeResult(method='bfgs', converged=True, fun=1.2e-17, n_iter=34, nfev=41, x=[1.0 1.0])`. 최소제곱은 `fun` 대신 `cost`를 보인다. 배치는 `OptimizeResult(batch shape (1000,), 998 of 1000 converged)`다. `summary()`는 없다(추론이 없다).
+- `repr`는 한 줄 요약이다: `OptimizeResult(method='bfgs', converged=True, fun=1.2e-17, n_iter=34, nfev=41, x=[1.0 1.0])`. 최소제곱은 `fun` 대신 `cost`를 보인다. 배치는 `OptimizeResult(batch shape (1000,), 998 of 1000 converged)`다.
+- **`summary()`**(O119, 인자 없음): 회귀 상자의 꼴인 글(`str`)이다(API.md §2.3). 제목은 `Optimization Results`, 머리의 왼쪽은 `Method:`·`Converged:`·`Status:`, 오른쪽은 `Function value:`(최소제곱은 `Cost:`와 `Optimality:`)와 셈(`No. Iterations:`, `Function Evals:`, `Jacobian Evals:`, `Hessian Evals:`; 있는 것만)이고, 그 아래 한 줄에 `Message:`다. 표는 x의 원소마다 한 줄(`x[0]`, …; 20을 넘으면 앞뒤 5줄과 `...`)이고, 연립방정식(`root`)은 그 점의 f(x) 열 `fun`이 붙는다. 스칼라 x는 한 줄 `x`다. 배치 스칼라 함수(`find_root` 등)는 원소마다 한 줄(`x fun converged status n_iter nfev`, 구간을 찾는 함수는 `bracket[0]`, `bracket[1]`, …)이고 머리에 `Converged: 998 of 1000`이다. 추론이 없어 `alpha`는 받지 않는다.
+
+  ```text
+                               Optimization Results
+  ==============================================================================
+  Method:                           bfgs  Function value:            2.69158e-11
+  Converged:                        True  No. Iterations:                     31
+  Status:                              0  Function Evals:                    114
+                                          Jacobian Evals:                     38
+  Message:                                 Optimization terminated successfully.
+  ==============================================================================
+                      x
+  ------------------------------------------------------------------------------
+  x[0]           1.0000
+  x[1]           1.0000
+  ==============================================================================
+  ```
 - scipy의 `OptimizeResult`처럼 dict로 쓰는 것(`r['x']`, `r.keys()`)은 없다.
 
 | 필드 | 뜻 | 주는 함수 |

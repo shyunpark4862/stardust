@@ -2188,6 +2188,8 @@ def kendalltau(p):
     ytie = sum(t * (t - 1) // 2 for t in sy)
     cmd = con - dis
     alt = p.kwargs.get("alternative", "two-sided")
+    if n < 2 or xtie == tot or ytie == tot:  # a constant sample: NaN (scipy's); ties: asymptotic
+        return {"statistic": NAN, "pvalue": NAN, "method": "asymptotic" if xtie or ytie else "exact"}
     if p.kwargs.get("variant", "b") == "b":
         tau2 = Fraction(cmd * cmd, (tot - xtie) * (tot - ytie))
         stat = (lambda: sign(cmd) * A(tau2).sqrt()) if cmd else Fraction(0)
@@ -2213,44 +2215,72 @@ def kendalltau(p):
     x1 = sum(t * (t - 1) * (2 * t + 5) for t in sx)
     y1 = sum(t * (t - 1) * (2 * t + 5) for t in sy)
     m = Fraction(n * (n - 1))
-    var = (m * (2 * n + 5) - x1 - y1) / 18 + (2 * xtie * ytie) / m + x0 * y0 / (9 * m * (n - 2))
-    return {"statistic": stat, "pvalue": lambda: norm_p(A(cmd) / A(var).sqrt(), alt), "method": "asymptotic"}
+    var = (m * (2 * n + 5) - x1 - y1) / 18 + (2 * xtie * ytie) / m
+    if n > 2:
+        var += x0 * y0 / (9 * m * (n - 2))
+    return {
+        "statistic": stat,
+        "pvalue": lambda: norm_p(A(cmd) / A(var).sqrt(), alt),
+        "method": "asymptotic",
+        "kappa": kappa(lambda zz: norm_p(zz, alt), lambda: A(cmd) / A(var).sqrt()) if cmd else NAN,
+    }
 
 
 def _r2(x, y):
-    """(r^2, the sign of r): exact."""
+    """(r^2, the sign of r): exact; None for a constant sample."""
     n = len(x)
     mx, my = sum(x) / n, sum(y) / n
     sxy = sum((a - mx) * (b - my) for a, b in zip(x, y))
     sxx = sum((a - mx) ** 2 for a in x)
     syy = sum((b - my) ** 2 for b in y)
+    if sxx == 0 or syy == 0:
+        return None, 0
     return sxy * sxy / (sxx * syy), sign(sxy)
 
 
 def _corr_result(r2, s, n, alt, ci=False):
+    """Pearson's r = s sqrt(r2) and scipy's p-value of it (the beta distribution of r: two-sided
+    I_q((n - 2)/2, 1/2), q = 1 - r^2 exact), kappa the p-value's condition number in q (sd forms q
+    without cancellation, H5), and the Fisher z interval at alpha = 0.05 (scipy's, n <= 3: (-1, 1)).
+    n < 2 or a constant sample: NaN; n = 2: r = +-1 and p = 1 (scipy's)."""
+    if r2 is None or n < 2:
+        out = {"statistic": NAN, "pvalue": NAN}
+        if ci:
+            out["conf_int"] = [NAN, NAN]
+        return out
     nu = Fraction(n - 2)
-    one_minus = 1 - r2
+    q = 1 - r2
 
-    def pv():
-        two = beta_reg(one_minus, nu / 2, Fraction(1, 2))
+    def pq(qq):
+        two = beta_reg(qq, nu / 2, Fraction(1, 2))
         if alt == "two-sided":
             return two
         upper = s > 0 if alt == "greater" else s < 0
         return two / 2 if upper else 1 - two / 2
 
-    out = {"statistic": (lambda: s * A(r2).sqrt()) if s else Fraction(0), "pvalue": pv}
-    if ci and n > 3:
-        level = Fraction(0.95)
-
-        def z():
-            r = s * A(r2).sqrt()
-            return ((1 + r) / (1 - r)).log() / 2
-
-        h = (lambda: -norm_isf(Fraction(1, 2) + level / 2)) if alt == "two-sided" else (lambda: -norm_isf(level))
+    if n == 2:
+        out = {"statistic": Fraction(s), "pvalue": Fraction(1)}
+    else:
+        out = {"statistic": (lambda: s * A(r2).sqrt()) if s else Fraction(0), "pvalue": lambda: pq(q)}
+        out["kappa"] = kappa(pq, q) if 0 < q < 1 else NAN
+    if ci:
+        if n <= 3:
+            out["conf_int"] = [Fraction(-1), Fraction(1)]
+            return out
+        h = (lambda: norm_isf(ALPHA / 2)) if alt == "two-sided" else (lambda: norm_isf(ALPHA))
         se = Fraction(1, n - 3)
-        lo = (lambda: (z() - h() * A(se).sqrt()).tanh()) if alt != "less" else Fraction(-1)
-        hi = (lambda: (z() + h() * A(se).sqrt()).tanh()) if alt != "greater" else Fraction(1)
-        out["confidence_interval"] = [lo, hi]
+        if q == 0:
+            end = Fraction(s)  # z = +-inf: tanh gives the end itself
+            lo, hi = (end if alt != "less" else Fraction(-1)), (end if alt != "greater" else Fraction(1))
+        else:
+
+            def z():
+                r = s * A(r2).sqrt()
+                return ((1 + r) / (1 - r)).log() / 2
+
+            lo = (lambda: (z() - h() * A(se).sqrt()).tanh()) if alt != "less" else Fraction(-1)
+            hi = (lambda: (z() + h() * A(se).sqrt()).tanh()) if alt != "greater" else Fraction(1)
+        out["conf_int"] = [lo, hi]
     return out
 
 
@@ -2265,10 +2295,163 @@ def pearsonr(p):
 
 @family("spearmanrho", ("spearmanrho", "spearmanr"))
 def spearmanrho(p):
-    """Spearman's rho: Pearson's r of the exact midranks and the t approximation (n - 2)."""
-    x, y = fvec(p.args[0]), fvec(p.args[1])
+    """Spearman's rho: Pearson's r of the exact midranks and the t approximation (n - 2); +-inf
+    take their places in the order."""
+    x, y = ([Fraction(v) if math.isfinite(v) else v for v in a] for a in p.args[:2])
     r2, s = _r2(midranks(x)[0], midranks(y)[0])
     return _corr_result(r2, s, len(x), p.kwargs.get("alternative", "two-sided"))
+
+
+def _weights_of_ranks(rank):
+    """The hyperbolic weigher (scipy's default): 1/(r + 1) of each element's rank."""
+    return [Fraction(1, r + 1) for r in rank]
+
+
+def _lex_rank(a, b):
+    """The decreasing lexicographic rank by (a, b) (the largest gets 0; equal pairs by position,
+    scipy's stable lexsort)."""
+    n = len(a)
+    order = sorted(range(n), key=lambda i: (a[i], b[i], i))
+    rank = [0] * n
+    for k in range(n):
+        rank[order[n - 1 - k]] = k
+    return rank
+
+
+def _wtau_parts(x, y, w, additive):
+    """Vigna's weighted tau by its definition, every pair: (sum w_ij sgn dx sgn dy, the product of
+    the two sums of w_ij over the pairs not tied in x and in y), w_ij = w_i + w_j (additive) or
+    w_i w_j; None where one of the sums is 0 (a constant sample)."""
+    n = len(x)
+    # (the weights scaled to integers by their common denominator: the ratio does not change)
+    L = math.lcm(*[f.denominator for f in w]) if w else 1
+    w = [int(f * L) for f in w]
+    num = dx = dy = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            wij = w[i] + w[j] if additive else w[i] * w[j]
+            sx, sy = sign(x[i] - x[j]), sign(y[i] - y[j])
+            num += wij * sx * sy
+            if sx:
+                dx += wij
+            if sy:
+                dy += wij
+    return None if dx == 0 or dy == 0 else (num, dx * dy)
+
+
+@family("weightedtau", ("weightedtau",), seconds=600)
+def weightedtau(p):
+    """The weighted tau by its pairwise definition with exact rational weights (scipy's options:
+    rank True, None, False or an array taken by its order; the hyperbolic weigher; additive)."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    n = len(x)
+    rank = p.kwargs.get("rank", True)
+    add = p.kwargs.get("additive", True)
+    if isinstance(rank, np.ndarray):
+        levels = sorted(set(rank.tolist()))
+        ranks = [levels.index(v) for v in rank.tolist()]
+        parts = [_wtau_parts(x, y, _weights_of_ranks(ranks), add)]
+    elif rank is False:
+        parts = [_wtau_parts(x, y, _weights_of_ranks(range(n)), add)]
+    else:
+        parts = [_wtau_parts(x, y, _weights_of_ranks(_lex_rank(x, y)), add)]
+        if rank is True:
+            parts.append(_wtau_parts(y, x, _weights_of_ranks(_lex_rank(y, x)), add))
+    if n == 0 or any(q is None for q in parts):
+        return {"statistic": NAN, "pvalue": NAN}
+
+    def tau():
+        ts = [A(num) / A(den).sqrt() for num, den in parts]
+        return sum(ts) / len(ts)
+
+    return {"statistic": tau, "pvalue": NAN}
+
+
+@family("somersd", ("somersd",))
+def somersd(p):
+    """Somers' D(Y|X) with every pair counted: P - Q (twice the concordant minus discordant
+    pairs), the row sums, T = sum over the observations of (concordant - discordant with it)^2,
+    exact; the p-value of Z = (P - Q) / sqrt(4 S), S = T - (P - Q)^2 / N, in Arb (scipy's)."""
+    a = p.args[0]
+    if np.ndim(a) == 2:
+        t = np.asarray(a, dtype=np.int64)
+        xs, ys = [], []
+        for i in range(t.shape[0]):
+            for j in range(t.shape[1]):
+                xs += [Fraction(i)] * int(t[i, j])
+                ys += [Fraction(j)] * int(t[i, j])
+        table = t.tolist()
+    else:
+        xs, ys = fvec(a), fvec(p.args[1])
+        ux, uy = sorted(set(xs)), sorted(set(ys))
+        table = [[0] * len(uy) for _ in ux]
+        for u, v in zip(xs, ys):
+            table[ux.index(u)][uy.index(v)] += 1
+    N = len(xs)
+    if len(table) <= 1 or len(table[0]) <= 1:
+        return {"statistic": NAN, "pvalue": NAN, "table": table}
+    c = [0] * N
+    for k in range(N):
+        for m in range(N):
+            c[k] += sign(xs[m] - xs[k]) * sign(ys[m] - ys[k])
+    pq = sum(c)
+    rows2 = sum(sum(r) ** 2 for r in table)
+    d = Fraction(pq, N * N - rows2)
+    S = Fraction(sum(v * v for v in c)) - Fraction(pq * pq, N)
+    alt = p.kwargs.get("alternative", "two-sided")
+    out = {"statistic": d, "table": table}
+    if S <= 0:
+        out["pvalue"] = NAN
+        return out
+
+    def z():
+        return A(pq) / (4 * A(S)).sqrt()
+
+    out["pvalue"] = lambda: norm_p(z(), alt)
+    out["kappa"] = kappa(lambda zz: norm_p(zz, alt), z) if pq else NAN
+    return out
+
+
+@family("chatterjeexi", ("chatterjeexi",))
+def chatterjeexi(p):
+    """Chatterjee's xi (exact; x's ties broken by position, as sd) and the normal p-value
+    P(Z >= xi / sd), the null variance by scipy's _xi_std in exact rationals (Theorem 2.1's 2/5 for
+    a continuous y)."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    n = len(x)
+    cont = p.kwargs.get("y_continuous", False)
+    order = sorted(range(n), key=lambda i: (x[i], i))
+    ys = [y[i] for i in order]
+    r = [sum(1 for v in ys if v <= t) for t in ys]
+    l = [sum(1 for v in ys if v >= t) for t in ys]  # noqa: E741
+    num = sum(abs(r[i + 1] - r[i]) for i in range(n - 1))
+    if cont:
+        xi = 1 - Fraction(3 * num, n * n - 1)
+        var = Fraction(2, 5) / n
+    else:
+        den = 2 * sum((n - v) * v for v in l)
+        if den == 0:
+            return {"statistic": NAN, "pvalue": NAN}
+        xi = 1 - Fraction(n * num, den)
+        u = sorted(r)
+        v, acc = [], 0
+        for e in u:
+            acc += e
+            v.append(acc)
+        an = Fraction(sum((2 * n - 2 * i + 1) * u[i - 1] ** 2 for i in range(1, n + 1)), n**4)
+        bn = Fraction(sum((v[i - 1] + (n - i) * u[i - 1]) ** 2 for i in range(1, n + 1)), n**5)
+        cn = Fraction(sum((2 * n - 2 * i + 1) * u[i - 1] for i in range(1, n + 1)), n**3)
+        dn = Fraction(sum(e * (n - e) for e in l), n**3)
+        var = (an - 2 * bn + cn**2) / dn**2 / n
+
+    def z():
+        return A(xi) / A(var).sqrt()
+
+    return {
+        "statistic": xi,
+        "pvalue": lambda: norm_sf(z()),
+        "kappa": kappa(lambda zz: norm_sf(zz), z) if xi else NAN,
+    }
 
 
 def _hyper_pmf(x, r1, c1, N):

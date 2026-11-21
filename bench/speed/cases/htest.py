@@ -1,4 +1,4 @@
-"""sd.htest against scipy and R: the public tests (milestones H1-H4; docs/design/htest.md §5) at
+"""sd.htest against scipy and R: the public tests (milestones H1-H5; docs/design/htest.md §5) at
 n = 10, 10^3 and 10^6 per sample and a batch of 10^4 lanes of 30 (axis=-1); page_trend_test on
 tables (m, n) of (12, 8) (exact), (1000, 30) (normal) and a batch 10^3 x (10, 6).
 
@@ -8,8 +8,10 @@ families), made in the setup as numpy arrays for scipy and R and as sd arrays fo
 at its defaults (one thread); R (base stats, car's leveneTest) in its one session, without the
 batches (one call per test there) and where its test is the same: t.test, oneway.test,
 bartlett.test, fligner.test, car::leveneTest, chisq.test, shapiro.test (n <= 5000), ks.test,
-wilcox.test, kruskal.test, friedman.test, ansari.test, mood.test and ks.test (two samples).
-anderson_ksamp (a list of samples, no axis) has no batch.
+wilcox.test, kruskal.test, friedman.test, ansari.test, mood.test, ks.test (two samples) and
+cor.test (pearson, spearman with exact = FALSE, kendall up to n = 10^3). anderson_ksamp (a list
+of samples, no axis), spearmanr (its axis is the variables') and somersd (no axis) have no batch;
+somersd takes rounded values (a table of some 30 x 30 distinct values).
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -53,6 +55,8 @@ def _data(kind, k, n, batch=False, seed=2026):
         m, s = LOCS[i]
         if kind == "counts":
             x = np.floor(g.uniform(20, 40, shape))
+        elif kind == "ints":
+            x = np.round(g.normal(m, s, shape) * 3.0)
         elif kind == "positive":
             x = g.exponential(1.0 + 0.1 * i, shape)
         else:
@@ -137,7 +141,22 @@ def _specs():
          lambda *a, **k: st.anderson_ksamp(list(a), variant="midrank", **k), None, "", {}),
         ("samples", "epps_singleton_2samp", 2, "normal", h.epps_singleton_2samp, st.epps_singleton_2samp, None, "",
          {}),
+        ("corr", "pearsonr", 2, "normal", h.pearsonr, st.pearsonr, f"cor.test({R2})", "", {}),
+        ("corr", "spearmanrho", 2, "normal", h.spearmanrho, st.spearmanrho,
+         f"cor.test({R2}, method = 'spearman', exact = FALSE)", "", {}),
+        ("corr", "spearmanr", 2, "normal", h.spearmanr, st.spearmanr, None, "", {}),
+        ("corr", "pointbiserialr", 2, "normal", h.pointbiserialr, st.pointbiserialr, None, "", {}),
+        ("corr", "kendalltau", 2, "normal", h.kendalltau, st.kendalltau, f"cor.test({R2}, method = 'kendall')",
+         KENDALL, {}),
+        ("corr", "weightedtau", 2, "normal", h.weightedtau, st.weightedtau, None, "", {}),
+        ("corr", "somersd", 2, "ints", h.somersd, st.somersd, None, "", {}),
+        ("corr", "chatterjeexi", 2, "normal", h.chatterjeexi, st.chatterjeexi, None, "", {}),
     ]  # fmt: skip
+
+
+# cor.test's Kendall statistic counts the pairs one by one (O(n^2): no 10^6 case), and its exact
+# p-value (n < 50, scipy's and sd's up to 33) is 1 - cdf
+KENDALL = "cor.test's Kendall is O(n^2) and exact below n = 50 (1 - cdf)"
 
 
 # R's wilcox.test(paired = TRUE) reports V = T+ (scipy's statistic is min(T+, T-)); ansari.test's
@@ -162,8 +181,9 @@ def _no_batch_in_scipy(name):
 
 
 def _no_batch(name):
-    # anderson_ksamp takes a list of samples, no axis (scipy's and sd's)
-    return name.startswith("anderson_ksamp")
+    # anderson_ksamp takes a list of samples, no axis (scipy's and sd's); spearmanr's axis is that
+    # of its variables and somersd has none
+    return name.startswith("anderson_ksamp") or name in ("spearmanr", "somersd")
 
 
 def cases() -> list[Case]:
@@ -177,7 +197,7 @@ def cases() -> list[Case]:
                     differs=FLIGNER if rdiff == FLIGNER else "",
                 )
             ]
-            if rexpr and not (name == "shapiro" and n > 5000):
+            if rexpr and not (name == "shapiro" and n > 5000) and not (name == "kendalltau" and n > 1000):
                 data = {f"x{i}": f"x{i}" for i in range(k)}
                 pk = ("car",) if "car::" in rexpr else ()
                 refs.append(RRef("R", rexpr, data=data, packages=pk, differs=rdiff, value=R_PAIR if "car::" not in rexpr
@@ -284,4 +304,6 @@ TITLES = {
     "page": "Page의 추세",
     "samples": "표본끼리의 적합도",
     "samples-batched": "표본끼리의 적합도 일괄",
+    "corr": "상관",
+    "corr-batched": "상관 일괄",
 }

@@ -10,17 +10,18 @@ user's Generator and builds the results.
 
 import math
 import numbers
-import textwrap
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import random as _random
 from .. import special as _special
 from .._results import SiegelslopesResult, TheilslopesResult
 from ._glm import _broadcast_shape, _check_int, _check_positive
 from ._linear import (
-    _WIDTH,
+    _aliased_note,
     _as_real,
+    _batch_summary,
     _check_alpha,
     _check_batches,
     _check_bool,
@@ -28,15 +29,13 @@ from ._linear import (
     _check_policy,
     _check_rows,
     _check_rtol,
+    _coef_table,
     _count,
     _expand,
-    _forg,
     _frame_columns,
     _has_nan,
     _names,
-    _pairs,
     _prepare,
-    _quantile_label,
     _read_y,
     _RegressionResult,
     _ro,
@@ -160,10 +159,10 @@ class RLMResult(_RegressionResult):
 
     def summary(self, *, alpha=0.05):
         """A text table like statsmodels' RLM summary: the fit, then the coefficients with their
-        standard errors, t, p and 1 - alpha intervals. One regression only."""
+        standard errors, t, p and 1 - alpha intervals; a batch as ols's (G193)."""
         alpha = _check_alpha(alpha, "summary")
         if self._batch:
-            raise ValueError(f"summary(): takes one regression, not a batch of shape {tuple(self._batch)}")
+            return _batch(self)
         return _summary(self, alpha)
 
     def __repr__(self):
@@ -177,8 +176,6 @@ class RLMResult(_RegressionResult):
 
 
 def _summary(r, alpha):
-    stars = "=" * _WIDTH
-    lines = ["Robust linear Model Regression Results".center(_WIDTH).rstrip(), stars]
     left = [
         ("Model:", "RLM"),
         ("Method:", "IRLS" if r.method == "M" else "MM"),
@@ -193,30 +190,8 @@ def _summary(r, alpha):
         ("Df Model:", _count(r.df_model)),
         ("Scale:", f"{r.scale:#8.5g}".strip()),
     ]
-    lines += _pairs(left, right)
-    lines.append(stars)
     names = [str(v) for v in r.param_names]
-    ci = r.conf_int(alpha=alpha)
-    params, bse, tv, pv = (r.params, r.bse, r.tvalues, r.pvalues)
-    wname = max([len(v) for v in names] + [9]) + 1
-    cols = ["coef", "std err", "t", "P>|t|", "[" + _quantile_label(alpha / 2), _quantile_label(1 - alpha / 2) + "]"]
-    head = " " * wname + "".join(c.rjust(11) for c in cols)
-    width = max(_WIDTH, len(head))
-    lines[1] = "=" * width
-    lines[-1] = "=" * width
-    lines.append(head)
-    lines.append("-" * width)
-    for j, nm in enumerate(names):
-        vals = [
-            _forg(float(params[j]), 4),
-            _forg(float(bse[j])),
-            _forg(float(tv[j])),
-            f"{float(pv[j]):#.3f}",
-            _forg(float(ci[j, 0])),
-            _forg(float(ci[j, 1])),
-        ]
-        lines.append(nm.ljust(wname) + "".join(v.rjust(11) for v in vals))
-    lines.append("=" * width)
+    table = _coef_table(r, alpha)
     notes = []
     if r.method == "M":
         notes.append("Standard errors are Huber's H1 (statsmodels' default); t uses df_resid degrees of freedom.")
@@ -226,16 +201,22 @@ def _summary(r, alpha):
             "the S scale; standard errors are robustbase's .vcov.avar1; t uses df_resid degrees of freedom."
         )
     if not r._isnan():
-        aliased = [nm for nm, k in zip(names, r._raw[5].tolist()) if not k]
-        if aliased:
-            notes.append("Aliased (linearly dependent on earlier columns), not estimated: " + ", ".join(aliased) + ".")
+        notes += _aliased_note(r, names)
         if not r.converged:
             notes.append(f"The IRLS did not converge in {r.n_iter} iterations.")
-    lines.append("")
-    lines.append("Notes:")
-    for i, t in enumerate(notes):
-        lines += textwrap.wrap(f"[{i + 1}] {t}", width, subsequent_indent="    ")
-    return "\n".join(lines)
+    return _S.render("Robust linear Model Regression Results", header=(left, right), tables=[table], notes=notes)
+
+
+def _batch(r):
+    left = [
+        ("Model:", "RLM"),
+        ("Method:", "IRLS" if r.method == "M" else "MM"),
+        ("Norm:", _NORM_NAME[r.norm]),
+        ("Scale Est.:", r._scale_est),
+        ("Covariance Type:", r.cov_type),
+    ]
+    stats = [("nobs", _S.count), ("scale", _S.forg), ("n_iter", str), ("converged", _S.flag)]
+    return _batch_summary(r, "Robust linear Model Regression Results", left, stats)
 
 
 # ---- the fit
@@ -409,22 +390,35 @@ def _slopes_input(func, y, x, nan_policy):
     return yy, xx, batch
 
 
-def _out(v, batch, cls):
+def _out(v, batch, cls, info):
     if batch:
-        return cls(*(_ro(v[..., i]) for i in range(v.shape[-1])))
-    return cls(*(float(a) for a in v.tolist()))
+        r = cls(*(_ro(v[..., i]) for i in range(v.shape[-1])))
+    else:
+        r = cls(*(float(a) for a in v.tolist()))
+    r._info = info  # what summary() shows beyond the fields (G192)
+    return r
 
 
-def _too_few(yy, xx, batch, cls):
+def _slopes_info(yy, method, alpha=None):
+    d = {"method": method, "nobs": yy.shape[-1]}
+    if alpha is not None:
+        d["alpha"] = alpha
+    return d
+
+
+def _too_few(yy, xx, batch, cls, info):
     """Fewer than 2 points: no slope; every field NaN (G96's empty-input rule; scipy 1.18.1
     gives NaN with a warning), or None when there are enough."""
     if yy.shape[-1] >= 2:
         return None
     nf = len(cls._fields)
     if not batch:
-        return cls(*([math.nan] * nf))
-    shape = _broadcast_shape("", tuple(yy.shape[:-1]), tuple(xx.shape[:-1]))
-    return cls(*(_ro(_sd.full(shape, math.nan)) for _ in range(nf)))
+        r = cls(*([math.nan] * nf))
+    else:
+        shape = _broadcast_shape("", tuple(yy.shape[:-1]), tuple(xx.shape[:-1]))
+        r = cls(*(_ro(_sd.full(shape, math.nan)) for _ in range(nf)))
+    r._info = info
+    return r
 
 
 @_calls.function
@@ -439,14 +433,15 @@ def theilslopes(y, x=None, /, *, alpha=0.05, method="separate", nan_policy="prop
     a = _check_alpha(alpha, func)
     _check_policy(nan_policy, func)
     yy, xx, batch = _slopes_input(func, y, x, nan_policy)
-    few = _too_few(yy, xx, batch, TheilslopesResult)
+    level = 1.0 - a if a > 0.5 else a
+    info = _slopes_info(yy, method, level)
+    few = _too_few(yy, xx, batch, TheilslopesResult, info)
     if few is not None:
         return few
-    if a > 0.5:
-        a = 1.0 - a
+    a = level
     z = float(_special.ndtri(a / 2.0))
     v = _k.slopes(func, yy, xx, 0, method == "joint", z)
-    return _out(v, batch, TheilslopesResult)
+    return _out(v, batch, TheilslopesResult, info)
 
 
 @_calls.function
@@ -459,11 +454,12 @@ def siegelslopes(y, x=None, /, *, method="hierarchical", nan_policy="propagate")
     _check_choice(method, func, "method", ("hierarchical", "separate"))
     _check_policy(nan_policy, func)
     yy, xx, batch = _slopes_input(func, y, x, nan_policy)
-    few = _too_few(yy, xx, batch, SiegelslopesResult)
+    info = _slopes_info(yy, method)
+    few = _too_few(yy, xx, batch, SiegelslopesResult, info)
     if few is not None:
         return few
     v = _k.slopes(func, yy, xx, 1, method == "separate", 0.0)
-    return _out(v, batch, SiegelslopesResult)
+    return _out(v, batch, SiegelslopesResult, info)
 
 
 # the methods' call-shape errors in the library's form (R89)

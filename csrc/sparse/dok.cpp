@@ -16,6 +16,10 @@
 //   m.resize(shape)             drops the keys outside the new shape, in place
 //   m.to_coo()                  (major or None, minor, data) in row-major order (new arrays;
 //                               indices read-only)
+//   m.set_many(major, minor, values)
+//                               sets each (major[k], minor[k]) in turn (a repeat takes its last
+//                               value): values of the map's dtype, a zero erases the key; major
+//                               None for 1-D
 //   _DokMap.from_coo(dtype, shape, major, minor, data)
 //                               a map holding the given entries (distinct positions), stored
 //                               zeros included
@@ -106,6 +110,18 @@ public:
                 return;
             }
             std::memcpy(slot_for(i, j), &v, sizeof(T));
+        });
+    }
+
+    void set_many(const int64_t* major, const int64_t* minor, const NDArray& values) {
+        const int64_t n = values.shape[0];
+        visit_dtype(dtype_, [&]<class T>(std::type_identity<T>) {
+            const T* v = typed<T>(values);
+            for (int64_t k = 0; k < n; ++k) {
+                const int64_t i = major ? major[k] : minor[k], j = major ? minor[k] : 0;
+                if (!is_nonzero(v[k])) erase(i, j);
+                else std::memcpy(slot_for(i, j), &v[k], sizeof(T));
+            }
         });
     }
 
@@ -331,6 +347,22 @@ void bind_dok(nb::module_& m) {
                 for (int64_t v : d.shape()) l.append(v);
                 return nb::tuple(l);
             }
+        )
+        .def(
+            "set_many",
+            [](DokMap& d, nb::handle major_h, nb::handle minor_h, nb::handle values_h) {
+                const NDArray& minor = vector_arg(minor_h, "_DokMap.set_many", DType::Int64);
+                const NDArray& values = vector_arg(values_h, "_DokMap.set_many", d.dtype());
+                if (values.shape[0] != minor.shape[0]) throw nb::value_error("_DokMap.set_many(): lengths differ");
+                const int64_t* major = nullptr;
+                if (!major_h.is_none()) {
+                    const NDArray& ma = vector_arg(major_h, "_DokMap.set_many", DType::Int64);
+                    if (ma.shape[0] != minor.shape[0]) throw nb::value_error("_DokMap.set_many(): lengths differ");
+                    major = i64(ma);
+                }
+                d.set_many(major, i64(minor), values);
+            },
+            nb::arg("major").none(), nb::arg("minor"), nb::arg("values")
         )
         .def("copy", &DokMap::copy)
         .def("transposed", &DokMap::transposed)

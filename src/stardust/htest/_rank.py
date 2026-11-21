@@ -40,52 +40,62 @@ _EXACT_CAP = 1e9  # operations of method='exact' (H13; htest/rank.cpp also caps 
 
 class MannwhitneyuResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Mann-Whitney U test"
     _FIELDS = ("statistic", "pvalue", "zstatistic", "method")
     _UNPACK = ("statistic", "pvalue")
 
 
 class RanksumsResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Wilcoxon rank-sum test"
     _FIELDS = ("statistic", "pvalue")
     _UNPACK = ("statistic", "pvalue")
 
 
 class WilcoxonResult(MannwhitneyuResult):
     __slots__ = ()
+    _TITLE = "Wilcoxon signed-rank test"
 
 
 class KruskalResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Kruskal-Wallis rank sum test"
     _FIELDS = ("statistic", "pvalue", "df")
     _UNPACK = ("statistic", "pvalue")
 
 
 class FriedmanchisquareResult(KruskalResult):
     __slots__ = ()
+    _TITLE = "Friedman rank sum test"
 
 
 class BrunnermunzelResult(KruskalResult):
     __slots__ = ()
+    _TITLE = "Brunner-Munzel test"
 
 
 class AnsariResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Ansari-Bradley test"
     _FIELDS = ("statistic", "pvalue", "method")
     _UNPACK = ("statistic", "pvalue")
 
 
 class MoodResult(RanksumsResult):
     __slots__ = ()
+    _TITLE = "Mood two-sample test of scale"
 
 
 class MedianTestResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Mood's median test"
     _FIELDS = ("statistic", "pvalue", "median", "table", "df")
     _UNPACK = ("statistic", "pvalue", "median", "table")
 
 
 class PageTrendTestResult(_TestResult):
     __slots__ = ()
+    _TITLE = "Page's trend test"
     _FIELDS = ("statistic", "pvalue", "method")
 
 
@@ -114,13 +124,13 @@ def _two(name, x, y, axis, nan_policy, keepdims):
     return C.Samples(name, [x, y], ("x", "y"), axis, nan_policy, keepdims=keepdims, scan=False)
 
 
-def _with_z(cls, s, stat, p, z, codes, method_out):
+def _with_z(cls, s, stat, p, z, codes, method_out, info):
     """The result with zstatistic wherever a lane used the normal approximation (H47; NaN in a
     batch's exact lanes)."""
     fields = {"statistic": s.out(stat), "pvalue": s.out(p), "method": method_out}
     if codes.size and bool(_sd.any(codes == 1.0)):
         fields["zstatistic"] = s.out(z)
-    return cls._make(batch=s.batch, **fields)
+    return cls._make(batch=s.batch, info=info, **fields)
 
 
 def _one(s):
@@ -146,7 +156,7 @@ def mannwhitneyu(
     s = _two(name, x, y, axis, nan_policy, keepdims)
     stat, p, z, codes, work = _k.mwu(s.rows[0], s.rows[1], cont, _ALT[alt], _REQ[meth], _EXACT_CAP, s.policy == "omit")
     _check_work(work, meth, name)
-    return _with_z(MannwhitneyuResult, s, stat, p, z, codes, _methods(codes, _shape(s), _one(s)))
+    return _with_z(MannwhitneyuResult, s, stat, p, z, codes, _methods(codes, _shape(s), _one(s)), s.info(alt))
 
 
 def ranksums(x, y, /, *, axis=None, alternative="two-sided", nan_policy="propagate", keepdims=False):
@@ -158,7 +168,7 @@ def ranksums(x, y, /, *, axis=None, alternative="two-sided", nan_policy="propaga
     alt = C.alternative(alternative, name)
     s = _two(name, x, y, axis, nan_policy, keepdims)
     stat, p = _k.ranksums(s.rows[0], s.rows[1], _ALT[alt], s.policy == "omit")
-    return RanksumsResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    return RanksumsResult._make(batch=s.batch, info=s.info(alt), statistic=s.out(stat), pvalue=s.out(p))
 
 
 def wilcoxon(
@@ -187,7 +197,8 @@ def wilcoxon(
         s.rows[0], yrows, _ZERO[zm], corr, _ALT[alt], _REQ[meth], _EXACT_CAP, s.policy == "omit"
     )
     _check_work(work, meth, name)
-    return _with_z(WilcoxonResult, s, stat, p, z, codes, _methods(codes, _shape(s), _one(s)))
+    info = s.info(alt, pairs=[("Zero Method:", zm)])
+    return _with_z(WilcoxonResult, s, stat, p, z, codes, _methods(codes, _shape(s), _one(s)), info)
 
 
 def brunnermunzel(
@@ -205,7 +216,8 @@ def brunnermunzel(
     fields = {"statistic": s.out(stat), "pvalue": s.out(p)}
     if dist == "t":
         fields["df"] = s.out(df)
-    return BrunnermunzelResult._make(batch=s.batch, **fields)
+    info = s.info(alt, pairs=[("Distribution:", dist)])
+    return BrunnermunzelResult._make(batch=s.batch, info=info, **fields)
 
 
 def ansari(x, y, /, *, axis=None, alternative="two-sided", method="auto", nan_policy="propagate", keepdims=False):
@@ -221,7 +233,7 @@ def ansari(x, y, /, *, axis=None, alternative="two-sided", method="auto", nan_po
     stat, p, codes, work = _k.ansari(s.rows[0], s.rows[1], _ALT[alt], _REQ[meth], _EXACT_CAP, s.policy == "omit")
     _check_work(work, meth, name)
     m = _methods(codes, _shape(s), _one(s))
-    return AnsariResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), method=m)
+    return AnsariResult._make(batch=s.batch, info=s.info(alt), statistic=s.out(stat), pvalue=s.out(p), method=m)
 
 
 def mood(x, y, /, *, axis=None, alternative="two-sided", nan_policy="propagate", keepdims=False):
@@ -232,7 +244,7 @@ def mood(x, y, /, *, axis=None, alternative="two-sided", nan_policy="propagate",
     alt = C.alternative(alternative, name)
     s = _two(name, x, y, axis, nan_policy, keepdims)
     stat, p = _k.mood(s.rows[0], s.rows[1], _ALT[alt], s.policy == "omit")
-    return MoodResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
+    return MoodResult._make(batch=s.batch, info=s.info(alt), statistic=s.out(stat), pvalue=s.out(p))
 
 
 # ---- k samples ----------------------------------------------------------------------------
@@ -253,7 +265,7 @@ def kruskal(*samples, axis=None, nan_policy="propagate", keepdims=False):
     name = "kruskal"
     s = _ksamples(name, samples, 2, axis, nan_policy, keepdims)
     stat, p, df = _k.kruskal(s.rows, s.policy == "omit")
-    return KruskalResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+    return KruskalResult._make(batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
 
 
 def friedmanchisquare(*samples, axis=None, nan_policy="propagate", keepdims=False):
@@ -264,7 +276,9 @@ def friedmanchisquare(*samples, axis=None, nan_policy="propagate", keepdims=Fals
     name = "friedmanchisquare"
     s = _ksamples(name, samples, 3, axis, nan_policy, keepdims, paired=True)
     stat, p, df = _k.friedman(s.rows, s.policy == "omit")
-    return FriedmanchisquareResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+    return FriedmanchisquareResult._make(
+        batch=s.batch, info=s.info(), statistic=s.out(stat), pvalue=s.out(p), df=s.out(df)
+    )
 
 
 def median_test(*samples, axis=None, ties="below", correction=True, lambda_=1, nan_policy="propagate", keepdims=False):
@@ -284,7 +298,13 @@ def median_test(*samples, axis=None, ties="below", correction=True, lambda_=1, n
     k = len(samples)
     tab = _sd.reshape(table, _shape(s) + (2, k)).astype(_sd.int64)
     return MedianTestResult._make(
-        batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), median=s.out(med), table=tab, df=s.out(df)
+        batch=s.batch,
+        info=s.info(pairs=[("Ties:", t)]),
+        statistic=s.out(stat),
+        pvalue=s.out(p),
+        median=s.out(med),
+        table=tab,
+        df=s.out(df),
     )
 
 
@@ -336,8 +356,9 @@ def page_trend_test(data, /, *, ranked=False, predicted_ranks=None, method="auto
     def out(v):
         return float(v[0]) if not batch else _sd.reshape(v, batch)
 
+    info = {"pairs": [("No. Blocks:", str(m)), ("No. Treatments:", str(n))]}
     return PageTrendTestResult._make(
-        batch=batch, statistic=out(L), pvalue=out(p), method=_methods(codes, batch, not batch)
+        batch=batch, info=info, statistic=out(L), pvalue=out(p), method=_methods(codes, batch, not batch)
     )
 
 

@@ -7,6 +7,8 @@ Field names follow the Array API where it has the function
 
 from collections import namedtuple
 
+from . import _calls
+
 # array: unique_* (built by csrc/array/ops/sort.cpp, which looks them up by name)
 UniqueAllResult = namedtuple("UniqueAllResult", ["values", "indices", "inverse_indices", "counts"])
 UniqueCountsResult = namedtuple("UniqueCountsResult", ["values", "counts"])
@@ -34,16 +36,42 @@ LDLResult = namedtuple("LDLResult", ["L", "D", "perm"])
 # special: airy (built by csrc/bind/special_bind.cpp, which looks it up by name)
 AiryResult = namedtuple("AiryResult", ["ai", "aip", "bi", "bip"])
 
-# regression: linregress (scipy.stats' fields and order, docs/api/regression.md §2)
-LinregressResult = namedtuple(
-    "LinregressResult", ["slope", "intercept", "rvalue", "pvalue", "stderr", "intercept_stderr"]
-)
 # regression: the linear models' diagnostics (docs/api/regression.md §2; statsmodels' het_breuschpagan
-# fields and order). Jarque-Bera's result is sd.htest's class (G165, htest H18, H39).
-BreuschPaganResult = namedtuple("BreuschPaganResult", ["lm", "lm_pvalue", "fvalue", "f_pvalue"])
+# fields and order). Jarque-Bera's result is sd.htest's class (G165, htest H18, H39). The three
+# tuples below have summary() (G191, G192): what it shows beyond the fields is in _info, set by
+# the function that makes the tuple (no slots, so the tuple has a __dict__ for it).
+
+
+class BreuschPaganResult(namedtuple("BreuschPaganResult", ["lm", "lm_pvalue", "fvalue", "f_pvalue"])):
+    @_calls.method("summary")
+    def summary(self):
+        """The test as a text table (G191): LM and F statistics with their p-values."""
+        from . import _summary
+
+        info = getattr(self, "_info", {})
+        batch = tuple(self.lm.shape) if hasattr(self.lm, "shape") else ()
+        title = info.get("title", "Breusch-Pagan test for heteroscedasticity")
+        return _summary.test_box(title, list(zip(self._fields, self)), batch, info)
+
+
 # regression: theilslopes, siegelslopes (scipy.stats' fields and order, docs/api/regression.md §5)
-TheilslopesResult = namedtuple("TheilslopesResult", ["slope", "intercept", "low_slope", "high_slope"])
-SiegelslopesResult = namedtuple("SiegelslopesResult", ["slope", "intercept"])
+class TheilslopesResult(namedtuple("TheilslopesResult", ["slope", "intercept", "low_slope", "high_slope"])):
+    @_calls.method("summary")
+    def summary(self):
+        """The estimate as a text table (G192): slope and intercept, the slope's interval."""
+        from . import _summary
+
+        return _summary.slopes_box(self, "Theil-Sen Regression Results")
+
+
+class SiegelslopesResult(namedtuple("SiegelslopesResult", ["slope", "intercept"])):
+    @_calls.method("summary")
+    def summary(self):
+        """The estimate as a text table (G192): slope and intercept."""
+        from . import _summary
+
+        return _summary.slopes_box(self, "Siegel Repeated Medians Regression Results")
+
 
 # The order the C++ core expects in _core.linalg._setup (csrc/linalg/pyrefs.hpp, enum Result).
 LINALG = (

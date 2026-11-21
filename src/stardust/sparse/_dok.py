@@ -11,6 +11,7 @@ the entries went in.
 from .. import _calls
 from .. import _core as _sd
 from . import _common as C
+from . import _index as I
 from ._base import sparray
 from ._common import _core
 
@@ -45,10 +46,15 @@ class dok_array(sparray):
         self._shape, self._map = other._shape, other._map
 
     def __getitem__(self, key):
-        return self._map.get(key)
+        if _element_key(key, len(self._shape)):
+            return self._map.get(key)  # O(1)
+        return I.getitem(self, key)
 
     def __setitem__(self, key, value):
-        self._map.set(key, value)
+        if _element_key(key, len(self._shape)):
+            self._map.set(key, value)  # O(1)
+            return
+        I.setitem(self, key, value)
 
     # ---- attributes ----
 
@@ -116,3 +122,10 @@ class dok_array(sparray):
 
     def _count_nonzero(self, axis):
         return self._tocoo(None, "count_nonzero")._count_nonzero(axis)
+
+
+def _element_key(key, nd):
+    """Whether key names one element: an int per axis (not a bool)."""
+    if nd == 1:
+        return C.is_int(key)
+    return type(key) is tuple and len(key) == 2 and C.is_int(key[0]) and C.is_int(key[1])

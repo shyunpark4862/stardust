@@ -27,11 +27,21 @@ A subclass lists its fields and the rest is built here:
 
 and the test returns TtestIndResult._make(statistic=..., pvalue=..., df=..., ci=fn), fn(alpha)
 giving the 1 - alpha interval's (low, high).
+
+summary() (H74-H76) is the regression box (stardust._summary): the test's name as the title
+(_TITLE, or the call's variant in info['title']), a header of the scalar fields (statistic,
+p-value, degrees of freedom; left) and of what describes the call (alternative, method, the
+sample sizes, the batch shape; right), then the interval (_CI: one row, _CI_LABEL) and the
+array fields of one test (a contingency table) as tables; a batch gives one row per lane of
+its per-lane fields and the interval. summary(*, alpha=0.05) where the class has conf_int(),
+summary() elsewhere. The tests pass what is not a field as _make(info={...}): 'title',
+'alternative', 'nobs' (a size, or the sizes of the samples), 'pairs' (more (label, value)
+cells for the right column) and 'notes'.
 """
 
-import math
-
+from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from . import _common
 
 
@@ -92,13 +102,29 @@ def conf_int(self, *, alpha=0.05):
     return _sd.asarray([float(low), float(high)])
 
 
+@_calls.method("summary")
+def summary_ci(self, *, alpha=0.05):
+    """The test as a text table (H74): the header, the 1 - alpha interval, the array fields;
+    a batch one row per lane (H76). alpha as conf_int's."""
+    return _summary(self, _common.alpha(alpha, "summary"))
+
+
+@_calls.method("summary")
+def summary_plain(self):
+    """The test as a text table (H74): the header and the array fields; a batch one row per
+    lane (H76)."""
+    return _summary(self, None)
+
+
 class _TestResult:
     """The base of every sd.htest result class (docs/api/htest.md §1.5)."""
 
-    __slots__ = ("_values", "_batch", "_ci")
+    __slots__ = ("_values", "_batch", "_ci", "_info")
     _FIELDS = ("statistic", "pvalue")  # every field, in the order repr and the documents list them
     _UNPACK = ()  # the fields a tuple unpacking gives, scipy's order (H7); () does not unpack
     _CI = False  # has conf_int() (H16)
+    _TITLE = None  # summary()'s title: the test's name (scipy's, R's or statsmodels')
+    _CI_LABEL = "interval"  # the stub of the interval's row in summary()
 
     def __init_subclass__(cls, **kw):
         super().__init_subclass__(**kw)
@@ -112,17 +138,22 @@ class _TestResult:
             cls.__iter__, cls.__len__, cls.__getitem__ = _iter, _len, _getitem
         if cls._CI:
             cls.conf_int = conf_int
+        if "summary" not in cls.__dict__:
+            cls.summary = summary_ci if cls._CI else summary_plain
 
     def __init__(self, *, batch=(), ci=None, **fields):
         """The caller's arrays are copied once (the result owns its fields)."""
         self._set(batch, ci, fields, True)
+        self._info = {}
 
     @classmethod
-    def _make(cls, *, batch=(), ci=None, **fields):
+    def _make(cls, *, batch=(), ci=None, info=None, **fields):
         """The tests' constructor: their arrays are new and held by nobody else, so the result
-        takes them without a copy. ci(c) gives the interval's (low, high) at level c."""
+        takes them without a copy. ci(c) gives the interval's (low, high) at level c; info what
+        summary() shows that is not a field (the module's docstring)."""
         r = cls.__new__(cls)
         r._set(batch, ci, fields, False)
+        r._info = info or {}
         return r
 
     def _set(self, batch, ci, fields, copy):
@@ -144,13 +175,23 @@ class _TestResult:
         for k in self._FIELDS:
             if k not in self._values:
                 continue
-            v = self._values[k]
-            if isinstance(v, bool) or isinstance(v, int) or isinstance(v, str):
-                parts.append(f"{k}={v!r}")
-            elif isinstance(v, float):
-                parts.append(f"{k}={_num(v)}")
+            text = _S.compact(self._values[k])  # a short array as [v, ...], a long one as its shape
+            if text is not None:
+                parts.append(f"{k}={text}")
         return f"{name}(" + ", ".join(parts) + ")"
 
 
-def _num(v):
-    return f"{v:.6g}" if math.isfinite(v) else repr(v)
+# ---- summary() (H74-H76)
+
+
+def _summary(r, alpha):
+    """The box of a test (stardust._summary.test_box): the fields in _FIELDS order, the
+    interval where the class has one."""
+    info = r._info or {}
+    interval = None
+    if r._CI and alpha is not None:
+        lo, hi = r._ci(alpha)
+        interval = (lo, hi, alpha, r._CI_LABEL)
+    fields = [(k, r._values[k]) for k in r._FIELDS if k in r._values]
+    title = info.get("title") or r._TITLE or type(r).__name__
+    return _S.test_box(title, fields, r._batch, info, interval)

@@ -12,6 +12,11 @@ entries with repeats, which take the multithreaded bucket path of the conversion
 entries, past the summation piece L = 4096). Their shapes keep a dense result small (3*10^6
 values at most), so a worker stays under 1 GB.
 
+Indexing and building (milestone SP3): every kind of key (ints, slices with steps, integer arrays
+with repeats, masks, None, ...) read from the same matrices in every format, assignments of
+scalars, dense and sparse values (on copies), diagonal / trace / setdiag, the builders and their
+wrong calls; the big and long matrices take the threaded selections at 3 and 10 threads.
+
 The operations (milestone SP2): every operator between two sparse arrays, with a scalar and with a
 dense array (and the broadcast rows and columns), the element-wise functions, multiply / maximum /
 minimum / power, the products (SpMV, SpMM, dense @ sparse, SpGEMM, the 1-D forms) and the
@@ -239,6 +244,7 @@ def cases(L):
     yield "error sparray", lambda: S.sparray()
 
     yield from cases_sp2(L, mats, fmts)
+    yield from cases_sp3(L, mats, fmts)
 
 
 def partner(A, S):
@@ -389,3 +395,139 @@ def _wrong_calls(L, mats):
     yield "error argmax explicit", lambda: S.csr_array((2, 3)).argmax(explicit=True)
     yield "error axis", lambda: A.sum(axis=2)
     yield "error keepdims", lambda: A.max(keepdims=None)
+
+
+def cases_sp3(L, mats, fmts):
+    """Indexing, assignment, the diagonal and the builders (SP3)."""
+    sd, S = L.sd, L.sd.sparse
+    r = L.rng(603)
+    a = L.arr
+
+    def keys(shape):
+        if len(shape) == 1:
+            (n,) = shape
+            return [("int", 1), ("neg", -1), ("slice", slice(1, None, 2)), ("rev", slice(None, None, -1)),
+                    ("array", a(r.integers(-n, n, 9))), ("mask", a(r.random(n) < 0.4)),
+                    ("none", (None, slice(None)))]  # fmt: skip
+        m, n = shape
+        out = [("all", slice(None)), ("empty list", [])]
+        if m == 0 or n == 0:
+            return out + [("cols", (slice(None), slice(0, 0)))]
+        k = min(m, 2500)
+        out += [
+            ("int", 0), ("neg row", -1), ("element", (m // 2, n // 3)), ("neg element", (-1, -1)),
+            ("row slice", slice(m // 4, None, 2)), ("col slice", (slice(None), slice(n // 5, n // 2))),
+            ("strided", (slice(None, None, -3), slice(1, None, 2))), ("column", (slice(None), n - 1)),
+            ("rows", a(r.integers(-m, m, k))), ("cols", (slice(None), a(r.integers(0, n, min(n, 3000))))),
+            ("sorted cols", (slice(None), a(np.sort(r.integers(0, n, min(n, 3000)))))),
+            ("row mask", a(r.random(m) < 0.3)), ("pick", (a(r.integers(0, m, 500)), a(r.integers(0, n, 500)))),
+            ("outer", (a(r.integers(0, m, (7, 1))), a(r.integers(0, n, 9)))), ("int and array", (1, a([n - 1, 0, 0]))),
+            ("none", (None, 0)), ("ellipsis", (Ellipsis, 0)),
+        ]  # fmt: skip
+        if m * n <= 10**6:
+            out.append(("mask 2-D", a(r.random((m, n)) < 0.2)))
+        return out
+
+    def assigned(mk, f, key, value):
+        A = mk().asformat(f).copy()
+        A[key] = value
+        return A
+
+    def with_diag(mk, f, values, k):
+        A = mk().asformat(f).copy()
+        A.setdiag(values, k=k)
+        return A
+
+    for name in ("dense", "repeats", "ints", "bools", "complex", "big", "long", "1d", "empty"):
+        mk = mats[name]
+        for f in fmts:
+            if f == "csc" and name == "1d":
+                continue
+            A = mk().asformat(f)
+            key0 = f"{name} {f}"
+            for kn, key in keys(A.shape):
+                yield f"{key0} [{kn}]", lambda A=A, key=key: A[key]
+            if A.ndim != 2 or 0 in A.shape:
+                continue
+            m, n = A.shape
+            dt = A.dtype
+            one = True if dt == sd.bool else (1 if dt == sd.int64 else 1.5)
+            zero = False if dt == sd.bool else 0
+            row = a(np.ones(n, dtype=np.dtype(str(dt))))
+            for an, key, value in (
+                ("element", (m // 2, 0), one), ("zero element", (0, n - 1), zero), ("row", (0, slice(None)), row),
+                ("zero row", (m - 1, slice(None)), zero), ("pick", (a([0, 0, m - 1]), a([1 % n, 1 % n, 0])), one),
+                ("block", (slice(0, 2), slice(0, 2)), S.csr_array(a(np.array([[0, 1], [0, 0]]))).astype(dt)),
+            ):  # fmt: skip
+                yield f"{key0} [{an}] =", lambda mk=mk, f=f, key=key, value=value: assigned(mk, f, key, value)
+            for k in (0, 1, -2):
+                yield f"{key0} diagonal k={k}", lambda A=A, k=k: A.diagonal(k=k)
+                yield f"{key0} trace k={k}", lambda A=A, k=k: A.trace(k=k)
+                yield f"{key0} setdiag k={k}", lambda mk=mk, f=f, k=k, one=one: with_diag(mk, f, one, k)
+
+    # ---- the builders
+    small = mats["dense"]().tocsr()
+    ints = mats["ints"]().tocsr()
+    cplx = mats["complex"]()
+    big = mats["big"]()
+    for fmt in (None, "coo", "csr", "csc", "dok"):
+        yield f"eye_array 4 5 k=1 {fmt}", lambda fmt=fmt: S.eye_array(4, 5, k=1, format=fmt)
+        yield f"kron {fmt}", lambda fmt=fmt: S.kron(small, cplx, format=fmt)
+        yield f"vstack {fmt}", lambda fmt=fmt: S.vstack([small, small.tocoo()], format=fmt)
+        yield f"tril {fmt}", lambda fmt=fmt: S.tril(small, k=-1, format=fmt)
+    yield "eye_array int64 k=-2", lambda: S.eye_array(5, dtype="int64", k=-2)
+    yield "eye_array bool", lambda: S.eye_array(3, dtype=sd.bool)
+    yield (
+        "diags_array",
+        lambda: S.diags_array([a(np.array([1.0, 0, 2])), 5.0, a(np.array([3, 4]))], offsets=[0, 1, -2], shape=(3, 3)),
+    )
+    yield "diags_array int", lambda: S.diags_array(a(np.array([1, 2, 3])), offsets=1)
+    yield "random_array", lambda: S.random_array((40, 30), density=0.2, rng=sd.random.default_rng(7))
+    yield (
+        "random_array complex csr",
+        lambda: S.random_array((40, 30), density=0.1, dtype="complex128", rng=sd.random.default_rng(8), format="csr"),
+    )
+    yield (
+        "random_array int 1-D",
+        lambda: S.random_array((50,), density=0.3, dtype="int64", rng=sd.random.default_rng(9)),
+    )
+    yield "kron ints bools", lambda: S.kron(ints, mats["bools"]())
+    yield "kron big", lambda: S.kron(S.eye_array(3), big)
+    yield "kron 1-D", lambda: S.kron(mats["1d"](), mats["1d"]().tocsr())
+    yield "kronsum", lambda: S.kronsum(small, ints[:3, :3])
+    yield "hstack csr", lambda: S.hstack([small, small, small[:, :1]])
+    yield "hstack csc", lambda: S.hstack([small.tocsc(), small.tocsc()[:, 1:3]])
+    yield "hstack big", lambda: S.hstack([big.tocsr(), big.tocsr()])
+    yield "vstack big csc", lambda: S.vstack([big.tocsc(), big.tocsc()])
+    yield "hstack 1-D", lambda: S.hstack([mats["1d"](), mats["1d"]().tocsr()])
+    yield "block_array", lambda: S.block_array([[small, None], [None, cplx]])
+    yield "block_array dense", lambda: S.block_array([[small, a(np.eye(4))]], dtype="complex128")
+    yield "block_diag", lambda: S.block_diag([small, ints, cplx.todok()])
+    yield "triu repeats", lambda: S.triu(mats["repeats"](), k=1)
+    yield "tril big", lambda: S.tril(big)
+    yield "find", lambda: S.find(mats["repeats"]())
+    yield "find big", lambda: S.find(big.tocsc())
+
+    # ---- wrong calls
+    A = small
+    yield "error getitem out of bounds", lambda: A[7]
+    yield "error index float", lambda: A[1.5]
+    yield "error index 3-D", lambda: A[None, :]
+    yield "error index separated", lambda: A[[0, 1], None, [0, 1]]
+    yield "error index broadcast", lambda: A[[0, 1], [0, 1, 2]]
+    yield "error index mask", lambda: A[a(np.array([True, False]))]
+    yield "error setitem downcast", lambda: ints.copy().__setitem__((0, 0), 1.5)
+    yield "error setitem broadcast", lambda: A.copy().__setitem__((0, slice(None)), a(np.ones((1, 4))))
+    yield "error setitem sequence", lambda: A.copy().__setitem__((0, 0), [1.0])
+    yield "error setdiag k", lambda: A.copy().setdiag(1.0, k=9)
+    yield "error diagonal 1-D", lambda: mats["1d"]().diagonal()
+    yield "error random_array rng", lambda: S.random_array((3, 3))
+    yield "error random_array density", lambda: S.random_array((3, 3), density=2, rng=sd.random.default_rng(0))
+    yield "error diags_array offsets", lambda: S.diags_array([a(np.ones(2)), a(np.ones(2))], offsets=[1, 1])
+    yield "error diags_array length", lambda: S.diags_array([a(np.ones(2))], offsets=[0], shape=(4, 4))
+    yield "error kron list", lambda: S.kron(A, [[1.0]])
+    yield "error kronsum square", lambda: S.kronsum(S.csr_array((2, 3)), A)
+    yield "error vstack dims", lambda: S.vstack([A, S.csr_array((2, 3))])
+    yield "error block_array none", lambda: S.block_array([[None]])
+    yield "error tril 1-D", lambda: S.tril(mats["1d"]())
+    yield "error eye_array format", lambda: S.eye_array(3, format="dia")

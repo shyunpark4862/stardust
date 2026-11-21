@@ -67,10 +67,10 @@ def test_zero_removes_the_entry():
         ((2, 0), 1.0, IndexError, "index 2 is out of bounds for axis 0 with size 2"),
         ((0, -4), 1.0, IndexError, "index -4 is out of bounds for axis 1 with size 3"),
         ((0, 2**70), 1.0, IndexError, "is out of bounds for axis 1 with size 3"),
-        ((0.0, 1), 1.0, IndexError, "a dok_array element is indexed by one int per axis, not float"),
-        ((True, 1), 1.0, IndexError, "a dok_array element is indexed by one int per axis, not bool"),
-        ((0, 1, 2), 1.0, IndexError, "a 2-D dok_array element is indexed by 2 ints, got 3"),
-        (0, 1.0, IndexError, "a 2-D dok_array element is indexed by 2 ints, not int"),
+        # other keys are the general indexing of SP3, with the array's messages
+        ((0.0, 1), 1.0, IndexError, "only integers, slices (`:`), ellipsis (`...`), newaxis (`None`) and integer"),
+        ((True, 1), 1.0, IndexError, "a bool is not a valid index; use an int, or a boolean array"),
+        ((0, 1, 2), 1.0, IndexError, "too many indices for array: array is 2-dimensional, but 3 were indexed"),
         ((0, 1), 1j, TypeError, "cannot implicitly convert complex128 to float64"),
         ((0, 1), "a", TypeError, "only a bool, int, float or complex can be assigned to a single element, not str"),
         ((0, 1), [1.0], TypeError, "only a bool, int, float or complex can be assigned to a single element, not list"),
@@ -100,7 +100,7 @@ def test_one_dimensional():
     assert A[3] == 2.0 and A[4] == 4.0 and A.nnz == 3
     assert bits_equal(npy(A.toarray()), np.array([1.0, 0, 0, 2, 4]))
     assert bits_equal(npy(A.tocsr().indices), np.array([0, 3, 4]))
-    with pytest.raises(IndexError, match="a 1-D dok_array element is indexed by 1 int, got 2"):
+    with pytest.raises(IndexError, match="too many indices for array: array is 1-dimensional, but 2 were indexed"):
         A[0, 0] = 1.0
 
 

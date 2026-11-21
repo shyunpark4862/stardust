@@ -1,8 +1,10 @@
 """sd.regression against statsmodels, scikit-learn, scipy and R: ols (with HAC, cluster,
 diagnostics and summary), glm, the penalized fits, rlm (M and MM), Theil-Sen, Siegel,
 quantreg and nls, over several functions, options, shapes and input conditions, and the
-tests on fitted models (t and Wald tests, nested comparisons, anova, VIF, DFFITS, DFBETAS,
-White, Goldfeld-Quandt, RESET; the test alone is timed, on fits made beforehand). Only the
+tests on fitted models (t and Wald tests, nested comparisons, anova with single columns or grouped
+terms, VIF, DFFITS, DFBETAS, White, Goldfeld-Quandt, RESET, for ols and also the GLM's tests and
+influence, the tests of wls, gls, rlm and quantreg, the HC3 covariance and the tests' options; the
+test alone is timed, on fits made beforehand) and the variable selection (stepwise, best_subset). Only the
 times are measured here: iteration counts, coefficient differences and objective excesses
 are the accuracy measurement's.
 
@@ -153,7 +155,7 @@ def _sk_tol(cls, **kw):
     return _sk_fn(cls)(**kw)
 
 
-# ---------------------------------------------------------------- ols, wls, gls, linregress
+# ---------------------------------------------------------------- ols, wls, gls
 
 OLS_SIZES = ((1_000, 10), (100_000, 10), (1_000_000, 50), (10_000, 1_000))
 OLS_BATCH = (10_000, 50, 3)
@@ -379,53 +381,6 @@ def _wls_gls_cases():
                 Ref("statsmodels", lambda d: lambda: _sm().GLS(d["y"], d["Xc"], sigma=d["S"]).fit(), threads="follow"),
             ),
             note="S는 AR(1) 상관 0.5^|i−j|의 n × n 행렬",
-        )
-    )
-    return out
-
-
-def _slr_data(n, batch=None, seed=0):
-    def setup():
-        import numpy as np
-
-        import stardust as sd
-
-        rng = np.random.default_rng(seed)
-        shape = (n,) if batch is None else (batch, n)
-        x = rng.standard_normal(shape)
-        y = 2.0 * x + 1.0 + rng.standard_normal(shape)
-        return {"x": x, "y": y, "xs": sd.asarray(x), "ys": sd.asarray(y)}
-
-    return setup
-
-
-def _linregress_cases():
-    out = []
-    for n in (200, 1_000, 1_000_000):
-        out.append(
-            Case(
-                area="regression",
-                group="simple",
-                name="linregress(x, y)",
-                size=count(n),
-                n=n,
-                setup=_slr_data(n),
-                sd=lambda d: lambda f=_R().linregress: f(d["xs"], d["ys"]),
-                refs=(Ref("scipy", lambda d: lambda f=_scipy_stats("linregress"): f(d["x"], d["y"])),),
-            )
-        )
-    B, n = 1_000, 1_000
-    out.append(
-        Case(
-            area="regression",
-            group="simple",
-            name="linregress(x, y), batched",
-            size=f"{count(B)} x ({n},)",
-            n=B * n,
-            setup=_slr_data(n, batch=B),
-            sd=lambda d: lambda f=_R().linregress: f(d["xs"], d["ys"]),
-            refs=(Ref("scipy", lambda d: lambda f=_scipy_stats("linregress"): f(d["x"], d["y"], axis=-1)),),
-            note="scipy는 axis=-1",
         )
     )
     return out
@@ -1842,7 +1797,13 @@ def _nls_cases():
 # case's thread count; statsmodels' and R's the same way), and the fields a test caches are
 # cleared before each call (_fresh), so every timed call computes its test.
 
-MT_SIZES = ((10_000, 10), (100_000, 10))
+MT_SIZES = ((200, 6), (10_000, 10), (100_000, 10))
+# many columns: the tests whose work grows with k (VIF's k auxiliary fits, DFBETAS' n x k, White's
+# k(k + 3)/2 auxiliary columns)
+MT_WIDE = {
+    (10_000, 50): ("ols(y, X).vif", "ols(y, X).dfbetas", "ols(y, X).dffits", "anova(ols(y, X), typ=3)"),
+    (10_000, 30): ("ols(y, X).white_test()",),
+}
 MT_BATCH = (10_000, 50, 3)
 # what a test caches on its result (the fit's own fields stay)
 _MT_CACHED = ("vif", "dfbetas", "dffits", "thin_q", "influence", "leverage", "wresid_public")
@@ -1866,16 +1827,22 @@ def _mt_data(n, k, seed):
         X = rng.standard_normal((n, k))
         y = X @ np.linspace(1.0, -1.0, k) + rng.standard_normal(n) * (1.0 + np.abs(X[:, 0]))
         yb = (rng.uniform(size=n) < 1 / (1 + np.exp(-(X[:, 0] - X[:, 1])))).astype(float)
+        yg = rng.gamma(2.0, np.exp(0.3 * X[:, 0] - 0.2 * X[:, 1]) / 2.0)  # a gamma response, log link
+        w = rng.uniform(0.5, 2.0, n)
         Rm = np.zeros((2, k + 1))
         Rm[0, 1] = Rm[1, 2] = 1.0
         return {
             "X": X,
             "y": y,
             "yb": yb,
+            "yg": yg,
+            "w": w,
             "Xc": _sm().add_constant(X),
             "Xs": sd.asarray(X),
             "ys": sd.asarray(y),
             "ybs": sd.asarray(yb),
+            "ygs": sd.asarray(yg),
+            "ws": sd.asarray(w),
             "Rm": Rm,
             "Rms": sd.asarray(Rm),
         }
@@ -1938,33 +1905,38 @@ _MT_RSETUP = (
     'big <- lm(as.formula(paste("y ~", paste(nm, collapse = " + "))), data = dat); '
     'small <- lm(as.formula(paste("y ~", nm[1])), data = dat); '
     'mid <- lm(as.formula(paste("y ~", paste(nm[1:5], collapse = " + "))), data = dat); '
-    "Rm <- cbind(0, diag(ncol(X)))[1:2, ]"
+    "Rm <- cbind(0, diag(ncol(X)))[1:2, ]; "
+    'wf <- as.formula(paste("~ (", paste(nm, collapse = " + "), ")^2 +", paste0("I(", nm, "^2)", collapse = " + "))); '
+    'wf1 <- as.formula(paste("~", paste(nm, collapse = " + "), "+", paste0("I(", nm, "^2)", collapse = " + ")))'
 )
 
 
-def _mt_r(label, expr, value, packages=()):
-    return RRef(label, expr, data={"y": "y", "X": "X"}, setup=_MT_RSETUP, packages=packages, value=value)
+# a contrast's t (z) from R's vcov, the accuracy measurement's R for t_test (tools/gen_model_tests_r.py)
+_R_T = "V <- vcov(big); e <- drop(Rm %*% coef(big)); se <- sqrt(diag(Rm %*% V %*% t(Rm))); "
+
+
+def _mt_r(label, expr, value, packages=(), setup=""):
+    return RRef(label, expr, data={"y": "y", "X": "X"}, setup=_MT_RSETUP + setup, packages=packages, value=value)
+
+
+# three terms of adjacent columns (np.array_split's sizes; R's cut(seq_len(k), 3) gives the same for k <= 10)
+_MT_TERMS_R = (
+    "; g <- split(seq_len(ncol(X)), cut(seq_len(ncol(X)), 3, labels = FALSE)); "
+    "T1 <- X[, g[[1]], drop = FALSE]; T2 <- X[, g[[2]], drop = FALSE]; T3 <- X[, g[[3]], drop = FALSE]; "
+    "bigt <- lm(y ~ T1 + T2 + T3)"
+)
+
+
+def _mt_terms(d):
+    import numpy as np
+
+    return [list(map(int, g)) for g in np.array_split(np.arange(d["X"].shape[1]), 3)]
 
 
 def _mt_vif(d):
     from statsmodels.stats.outliers_influence import variance_inflation_factor
 
     return [variance_inflation_factor(d["Xc"], j) for j in range(1, d["Xc"].shape[1])]
-
-
-def _mt_glm_sd(d):
-    g = _R().glm(d["ybs"], d["Xs"], family="binomial")
-
-    def f():
-        return _fresh(g).dfbetas
-
-    return f
-
-
-def _mt_glm_sm(d):
-    sm = _sm()
-    g = sm.GLM(d["yb"], d["Xc"], family=sm.families.Binomial()).fit()
-    return lambda: g.get_influence(observed=False).dfbetas
 
 
 def _sm_diag(name):
@@ -1982,8 +1954,8 @@ def _model_tests_cases():
         "ols(y, X).t_test(R), 2 rows": (
             _sd_test(lambda r, d: r.t_test(d["Rms"])),
             _sm_test(lambda s, d: s.t_test(d["Rm"])),
-            None,
-            "",
+            _mt_r("R", _R_T + "c(e / se, 2 * pt(-abs(e / se), df.residual(big)))", ""),
+            "R은 vcov(big)로 대비의 t(정확도 측정의 R과 같은 식)",
         ),
         "ols(y, X).wald_test(R), 2 rows": (
             _sd_test(lambda r, d: r.wald_test(d["Rms"])),
@@ -2015,6 +1987,18 @@ def _model_tests_cases():
             _mt_r("R drop1", 'drop1(big, test = "F")', 'c(.v$F[-1], NA, .v[["Pr(>F)"]][-1], NA)'),
             "",
         ),
+        "anova(ols(y, X), terms=3 terms)": (
+            _sd_test(lambda r, d: anova(r, terms=_mt_terms(d))),
+            None,
+            _mt_r("R", "anova(bigt)", 'c(.v$F, .v[["Pr(>F)"]])', setup=_MT_TERMS_R),
+            "이웃한 열을 셋으로 묶은 항(Type I)",
+        ),
+        "anova(ols(y, X), typ=3, terms=3 terms)": (
+            _sd_test(lambda r, d: anova(r, typ=3, terms=_mt_terms(d))),
+            None,
+            _mt_r("R drop1", 'drop1(bigt, test = "F")', 'c(.v$F[-1], NA, .v[["Pr(>F)"]][-1], NA)', setup=_MT_TERMS_R),
+            "같은 세 항의 Type III",
+        ),
         "anova(small, mid, big)": (
             _sd_test(lambda r, d, s, m: anova(s, m, r), (1, 5)),
             None,
@@ -2042,8 +2026,8 @@ def _model_tests_cases():
         "ols(y, X).white_test()": (
             _sd_test(lambda r, d: r.white_test(), fresh=True),
             _sm_test(lambda s, d: _sm_diag("het_white")(s.resid, d["Xc"])),
-            None,
-            "",
+            _mt_r("R lmtest", "bptest(big, wf, data = dat)", "c(.v$statistic, .v$p.value, NA, NA)", ("lmtest",)),
+            "R은 lmtest의 bptest에 White의 보조 식(수준, 제곱, 서로의 곱)",
         ),
         "ols(y, X).goldfeld_quandt()": (
             _sd_test(lambda r, d: r.goldfeld_quandt()),
@@ -2057,12 +2041,13 @@ def _model_tests_cases():
             _mt_r("R lmtest", "resettest(big)", "c(.v$statistic, .v$p.value)", ("lmtest",)),
             "",
         ),
-        "glm(y, X, family='binomial').dfbetas": (_mt_glm_sd, _mt_glm_sm, None, ""),
     }
     out = []
-    for i, (n, k) in enumerate(MT_SIZES):
+    sizes = [(n, k, tuple(rows)) for n, k in MT_SIZES] + [(n, k, names) for (n, k), names in MT_WIDE.items()]
+    for i, (n, k, names) in enumerate(sizes):
         setup = _mt_data(n, k, 71 + i)
-        for name, (sdf, smf, rref, note) in rows.items():
+        for name in names:
+            sdf, smf, rref, note = rows[name]
             refs = []
             if smf is not None:
                 refs.append(Ref("statsmodels", smf, threads="follow"))
@@ -2081,6 +2066,7 @@ def _model_tests_cases():
                     quick=(n, k) == (10_000, 10) and name in ("ols(y, X).wald_test(R), 2 rows", "ols(y, X).dfbetas"),
                 )
             )
+    out += _mt_glm_cases() + _mt_model_cases()
     B, n, k = MT_BATCH
     size = f"{count(B)} x ({n}, {k})"
     batch = {
@@ -2120,10 +2106,397 @@ def _model_tests_cases():
     return out
 
 
+# The GLM's tests and influence (binomial logit; the deviance F on a gamma with a log link, whose
+# scale is estimated), and the tests of the other models, the robust covariance and the options.
+MT_GLM_SIZES = ((10_000, 10), (100_000, 10))
+_MT_GLM_FAMILY = {"binomial": ("yb", "binomial()"), "gamma": ("yg", 'Gamma(link = "log")')}
+
+
+def _mt_glm_rsetup(family):
+    _, fam = _MT_GLM_FAMILY[family]
+    ctl = "control = glm.control(epsilon = 1e-12, maxit = 100)"
+    return (
+        "dat <- data.frame(y = y, X); nm <- names(dat)[-1]; "
+        'fb <- as.formula(paste("y ~", paste(nm, collapse = " + "))); '
+        f"big <- glm(fb, family = {fam}, data = dat, {ctl}); "
+        f'small <- glm(as.formula(paste("y ~", nm[1])), family = {fam}, data = dat, {ctl}); '
+        "Rm <- cbind(0, diag(ncol(X)))[1:2, ]"
+    )
+
+
+def _mt_glm_r(family, label, expr, value, packages=()):
+    key, _ = _MT_GLM_FAMILY[family]
+    return RRef(label, expr, data={key: "y", "X": "X"}, setup=_mt_glm_rsetup(family), packages=packages, value=value)
+
+
+def _mt_glm_fit(d, family, cols=None):
+    key, _ = _MT_GLM_FAMILY[family]
+    X = d["Xs"] if cols is None else d["Xs"][:, :cols]
+    kw = {"family": "gamma", "link": "log"} if family == "gamma" else {"family": "binomial"}
+    return _R().glm(d[key + "s"], X, **kw)
+
+
+def _mt_glm_sm_fit(d, family, cols=None):
+    sm = _sm()
+    key, _ = _MT_GLM_FAMILY[family]
+    fam = sm.families.Gamma(link=sm.families.links.Log()) if family == "gamma" else sm.families.Binomial()
+    X = d["Xc"] if cols is None else d["Xc"][:, : cols + 1]
+    return sm.GLM(d[key], X, family=fam).fit()
+
+
+def _mt_glm_cases():
+    def sd_glm(call, family="binomial", small=False, fresh=False):
+        def make(d):
+            g = _mt_glm_fit(d, family)
+            s = _mt_glm_fit(d, family, 1) if small else None
+            if fresh:
+                return lambda: call(_fresh(g), d, s)
+            return lambda: call(g, d, s)
+
+        return make
+
+    def sm_glm(call, family="binomial"):
+        def make(d):
+            g = _mt_glm_sm_fit(d, family)
+            return lambda: call(g, d)
+
+        return make
+
+    def anova(*fits, **kw):
+        return _R().anova(*fits, **kw)
+
+    flat2 = lambda a, b: lambda r: _flat(getattr(r, a), getattr(r, b))  # noqa: E731
+    term_table = lambda r: _flat(r.statistic, r.pvalue)  # noqa: E731
+    # name: (sd, statsmodels or None, R or None, note, sd's values for the check, statsmodels' values)
+    rows = {
+        "glm(y, X, family='binomial').t_test(R), 2 rows": (
+            sd_glm(lambda g, d, s: g.t_test(d["Rms"])),
+            sm_glm(lambda g, d: g.t_test(d["Rm"])),
+            _mt_glm_r("binomial", "R", _R_T + "c(e / se, 2 * pnorm(-abs(e / se)))", ""),
+            "척도가 고정이라 z; R은 vcov(big)로 대비의 z",
+            flat2("tvalue", "pvalue"),
+            lambda v: _flat(v.tvalue, v.pvalue),
+        ),
+        "glm(y, X, family='binomial').wald_test(R), 2 rows": (
+            sd_glm(lambda g, d, s: g.wald_test(d["Rms"])),
+            sm_glm(lambda g, d: g.wald_test(d["Rm"], scalar=True)),
+            _mt_glm_r(
+                "binomial", "R car", "linearHypothesis(big, Rm)", 'c(.v$Chisq[2], .v[["Pr(>Chisq)"]][2])', ("car",)
+            ),
+            "척도가 고정이라 χ²",
+            flat2("statistic", "pvalue"),
+            lambda v: _flat(v.statistic, v.pvalue),
+        ),  # fmt: skip
+        "glm(y, X, family='binomial').compare_lr_test(small)": (
+            sd_glm(lambda g, d, s: g.compare_lr_test(s), small=True),
+            None,
+            _mt_glm_r("binomial", "R", 'anova(small, big, test = "Chisq")', 'c(.v$Deviance[2], .v[["Pr(>Chi)"]][2])'),
+            "작은 모형은 첫 열 하나",
+            flat2("statistic", "pvalue"),
+            None,
+        ),
+        "anova(glm(y, X, family='binomial'))": (
+            sd_glm(lambda g, d, s: anova(g)),
+            None,
+            _mt_glm_r(
+                "binomial", "R", 'anova(big, test = "Chisq")', 'c(.v$Deviance[-1], NA, .v[["Pr(>Chi)"]][-1], NA)'
+            ),
+            "Type I: 항을 하나씩 더한 모형을 다시 적합한다(열마다 항 하나)",
+            term_table,
+            None,
+        ),  # fmt: skip
+        "anova(glm(y, X, family='binomial'), typ=3)": (
+            sd_glm(lambda g, d, s: anova(g, typ=3)),
+            None,
+            _mt_glm_r(
+                "binomial",
+                "R car",
+                'Anova(big, type = 3, test.statistic = "Wald")',
+                'c(.v$Chisq[-1], NA, .v[["Pr(>Chisq)"]][-1], NA)',
+                ("car",),
+            ),
+            "Wald 검정",
+            term_table,
+            None,
+        ),  # fmt: skip
+        "glm(y, X, family='binomial').leverage": (
+            sd_glm(lambda g, d, s: g.leverage, fresh=True),
+            sm_glm(lambda g, d: g.get_influence(observed=False).hat_matrix_diag),
+            _mt_glm_r("binomial", "R", "hatvalues(big)", "as.numeric(.v)"),
+            "",
+            _flat,
+            _flat,
+        ),
+        "glm(y, X, family='binomial').cooks_distance": (
+            sd_glm(lambda g, d, s: g.cooks_distance, fresh=True),
+            sm_glm(lambda g, d: g.get_influence(observed=False).cooks_distance[0]),
+            _mt_glm_r("binomial", "R", "cooks.distance(big)", "as.numeric(.v)"),
+            "",
+            _flat,
+            _flat,
+        ),
+        "glm(y, X, family='binomial').dffits": (
+            sd_glm(lambda g, d, s: g.dffits, fresh=True),
+            None,
+            _mt_glm_r("binomial", "R", "dffits(big)", "as.numeric(.v)"),
+            "",
+            _flat,
+            None,
+        ),
+        "glm(y, X, family='binomial').dfbetas": (
+            sd_glm(lambda g, d, s: g.dfbetas, fresh=True),
+            sm_glm(lambda g, d: g.get_influence(observed=False).dfbetas),
+            _mt_glm_r("binomial", "R", "dfbetas(big)", "as.numeric(t(.v))"),
+            "",
+            _flat,
+            _flat,
+        ),
+        "glm(y, X, family='gamma', link='log').compare_f_test(small)": (
+            sd_glm(lambda g, d, s: g.compare_f_test(s), family="gamma", small=True),
+            None,
+            _mt_glm_r("gamma", "R", 'anova(small, big, test = "F")', 'c(.v$F[2], .v[["Pr(>F)"]][2])'),
+            "척도를 추정하는 GLM의 편차 F, 작은 모형은 첫 열 하나",
+            flat2("fvalue", "pvalue"),
+            None,
+        ),
+        "anova(glm(y, X, family='gamma', link='log'))": (
+            sd_glm(lambda g, d, s: anova(g), family="gamma"),
+            None,
+            _mt_glm_r("gamma", "R", 'anova(big, test = "F")', 'c(.v$F[-1], NA, .v[["Pr(>F)"]][-1], NA)'),
+            "Type I의 편차 F",
+            term_table,
+            None,
+        ),
+    }
+    out = []
+    for i, (n, k) in enumerate(MT_GLM_SIZES):
+        setup = _mt_data(n, k, 81 + i)
+        for name, (sdf, smf, rref, note, sd_vals, sm_vals) in rows.items():
+            refs = []
+            if smf is not None:
+                refs.append(Ref("statsmodels", smf, threads="follow"))
+            if rref is not None:
+                refs.append(rref)
+            c = Case(
+                area="regression",
+                group="model-tests-glm",
+                name=name,
+                size=_size(n, k),
+                setup=setup,
+                sd=sdf,
+                refs=tuple(refs),
+                note=note,
+                quick=(n, k) == (10_000, 10) and name == "anova(glm(y, X, family='binomial'))",
+            )
+            _MT_CHECKS[(c.group, name)] = Check(
+                sd=sd_vals, ref=lambda label, v, f=sm_vals: _flat(v) if label.startswith("R") else f(v), rtol=1e-5
+            )
+            out.append(c)
+    return out
+
+
+def _with_const(x):
+    import numpy as np
+
+    return np.column_stack([np.ones(len(x)), x])
+
+
+def _mt_model_cases():
+    """The tests of the other models (wls, gls, rlm, quantreg), the robust covariance (HC3) and
+    the options (White without the cross terms, RESET of the regressors, Goldfeld-Quandt ordered
+    by a column), at (10^4, 10) (GLS at (2000, 10): its n x n sigma)."""
+    sm = _sm
+
+    def fit_sd(model, **kw):
+        def make(call, fresh=False):
+            def factory(d):
+                R = _R()
+                if model == "ols":
+                    r = R.ols(d["ys"], d["Xs"], **kw)
+                elif model == "wls":
+                    r = R.wls(d["ys"], d["Xs"], weights=d["ws"])
+                elif model == "gls":
+                    r = R.gls(d["ys"], d["Xs"], sigma=d["Ss"])
+                elif model == "rlm":
+                    r = R.rlm(d["ys"], d["Xs"])
+                else:
+                    r = R.quantreg(d["ys"], d["Xs"], q=0.5, cov_type="ker")
+                if fresh:
+                    return lambda: call(_fresh(r), d)
+                return lambda: call(r, d)
+
+            return factory
+
+        return make
+
+    def fit_sm(model, **kw):
+        def make(call):
+            def factory(d):
+                m = sm()
+                if model == "ols":
+                    r = m.OLS(d["y"], d["Xc"]).fit(**kw)
+                elif model == "wls":
+                    r = m.WLS(d["y"], d["Xc"], weights=d["w"]).fit()
+                elif model == "gls":
+                    r = m.GLS(d["y"], d["Xc"], sigma=d["S"]).fit()
+                elif model == "rlm":
+                    r = m.RLM(d["y"], d["Xc"], M=m.robust.norms.HuberT()).fit()
+                else:
+                    r = m.QuantReg(d["y"], d["Xc"]).fit(q=0.5)
+                return lambda: call(r, d)
+
+            return factory
+
+        return make
+
+    def anova(*fits, **kw):
+        return _R().anova(*fits, **kw)
+
+    def gls_setup():
+        d = _gls_data(2_000, 10)()
+        import numpy as np
+
+        import stardust as sd
+
+        Rm = np.zeros((2, 11))
+        Rm[0, 1] = Rm[1, 2] = 1.0
+        d.update(Rm=Rm, Rms=sd.asarray(Rm))
+        return d
+
+    t_vals = (lambda r: _flat(r.tvalue, r.pvalue), lambda v: _flat(v.tvalue, v.pvalue))
+    f_vals = (lambda r: _flat(r.statistic, r.pvalue), lambda v: _flat(v.fvalue, v.pvalue))
+    rw = (lambda r: _flat(*tuple(r)), lambda v: _flat(*v))
+    reset = (lambda r: _flat(r.fvalue, r.pvalue), lambda v: _flat(v.fvalue, v.pvalue))
+    gq = (lambda r: _flat(r.fvalue, r.pvalue), lambda v: _flat(v[0], v[1]))
+    hc3 = 'white.adjust = "hc3"'
+    vc3 = 'vcov = function(m) sandwich::vcovHC(m, type = "HC3")'
+    # name: (sd, statsmodels or None, R or None, note, (sd values, statsmodels values), rtol)
+    rows = {
+        "wls(y, X, weights=w).t_test(R), 2 rows": (
+            fit_sd("wls")(lambda r, d: r.t_test(d["Rms"])),
+            fit_sm("wls")(lambda s, d: s.t_test(d["Rm"])),
+            None, "", t_vals, 1e-6,
+        ),
+        "wls(y, X, weights=w).wald_test(R), 2 rows": (
+            fit_sd("wls")(lambda r, d: r.wald_test(d["Rms"])),
+            fit_sm("wls")(lambda s, d: s.f_test(d["Rm"])),
+            RRef("R car", "linearHypothesis(big, Rm)", data={"y": "y", "X": "X", "w": "w"},
+                 setup=_MT_RSETUP.replace("data = dat);", "data = dat, weights = w);", 1),
+                 packages=("car",), value='c(.v$F[2], .v[["Pr(>F)"]][2])'),
+            "", f_vals, 1e-6,
+        ),
+        "wls(y, X, weights=w).white_test()": (
+            fit_sd("wls")(lambda r, d: r.white_test(), fresh=True),
+            fit_sm("wls")(lambda s, d: _sm_diag("het_white")(s.wresid, _with_const(s.model.wexog))),
+            None, "statsmodels는 백색화한 잔차와 설계(wresid, 상수 열을 붙인 wexog)", rw, 1e-6,
+        ),
+        "wls(y, X, weights=w).vif": (fit_sd("wls")(lambda r, d: r.vif, fresh=True), None, None, "가중 중심화", None, 0),
+        "wls(y, X, weights=w).reset_test()": (
+            fit_sd("wls")(lambda r, d: r.reset_test()),
+            None, None, "가중 확장 적합(R의 resettest·statsmodels의 linear_reset은 가중치를 버린다)", None, 0,
+        ),
+        "gls(y, X, sigma=S).t_test(R), 2 rows": (
+            fit_sd("gls")(lambda r, d: r.t_test(d["Rms"])),
+            fit_sm("gls")(lambda s, d: s.t_test(d["Rm"])),
+            None, "S는 AR(1) 상관 0.5^|i−j|의 n × n 행렬", t_vals, 1e-6,
+        ),
+        "gls(y, X, sigma=S).wald_test(R), 2 rows": (
+            fit_sd("gls")(lambda r, d: r.wald_test(d["Rms"])),
+            fit_sm("gls")(lambda s, d: s.f_test(d["Rm"])),
+            None, "", f_vals, 1e-6,
+        ),
+        "rlm(y, X).t_test(R), 2 rows": (
+            fit_sd("rlm")(lambda r, d: r.t_test(d["Rms"])),
+            fit_sm("rlm")(lambda s, d: s.t_test(d["Rm"])),
+            None, "Huber M", t_vals, 1e-4,
+        ),
+        "rlm(y, X).wald_test(R), 2 rows": (
+            fit_sd("rlm")(lambda r, d: r.wald_test(d["Rms"])),
+            fit_sm("rlm")(lambda s, d: s.f_test(d["Rm"])),
+            None, "", f_vals, 1e-4,
+        ),
+        "quantreg(y, X, q=0.5, cov_type='ker').t_test(R), 2 rows": (
+            fit_sd("quantreg")(lambda r, d: r.t_test(d["Rms"])),
+            None,
+            RRef("R quantreg",
+                 "s <- summary(f, se = 'ker', covariance = TRUE); e <- drop(Rm %*% coef(f)); "
+                 "se <- sqrt(diag(Rm %*% s$cov %*% t(Rm))); c(e / se, 2 * pt(-abs(e / se), s$rdf))",
+                 data={"y": "y", "X": "X"}, packages=("quantreg",),
+                 setup="f <- rq(y ~ X, tau = 0.5); Rm <- cbind(0, diag(ncol(X)))[1:2, ]"),
+            "R은 summary.rq(se = 'ker')의 공분산으로 같은 대비(statsmodels QuantReg의 공분산은 다른 추정)",
+            (lambda r: _flat(r.tvalue, r.pvalue), None), 1e-6,
+        ),
+        "ols(y, X, cov_type='HC3').wald_test(R), 2 rows": (
+            fit_sd("ols", cov_type="HC3")(lambda r, d: r.wald_test(d["Rms"])),
+            fit_sm("ols", cov_type="HC3")(lambda s, d: s.f_test(d["Rm"])),
+            _mt_r("R car", f"linearHypothesis(big, Rm, {hc3})", 'c(.v$F[2], .v[["Pr(>F)"]][2])', ("car",)),
+            "", f_vals, 1e-6,
+        ),
+        "anova(ols(y, X, cov_type='HC3'), typ=3)": (
+            fit_sd("ols", cov_type="HC3")(lambda r, d: anova(r, typ=3)),
+            None,
+            _mt_r("R car", f"Anova(big, type = 3, {hc3})", 'c(.v$F[-1], .v[["Pr(>F)"]][-1])', ("car",)),
+            "그 공분산의 Wald F", (lambda r: _flat(r.statistic, r.pvalue), None), 1e-6,
+        ),
+        "ols(y, X, cov_type='HC3').reset_test()": (
+            fit_sd("ols", cov_type="HC3")(lambda r, d: r.reset_test()),
+            fit_sm("ols")(lambda s, d: _sm_diag("linear_reset")(s, power=3, use_f=True, cov_type="HC3")),
+            _mt_r("R lmtest", f"resettest(big, {vc3})", "c(.v$statistic, .v$p.value)", ("lmtest", "sandwich")),
+            "확장 모형의 HC3 Wald F", reset, 1e-6,
+        ),
+        "ols(y, X).white_test(cross_terms=False)": (
+            fit_sd("ols")(lambda r, d: r.white_test(cross_terms=False), fresh=True),
+            None,
+            _mt_r("R lmtest", "bptest(big, wf1, data = dat)", "c(.v$statistic, .v$p.value, NA, NA)", ("lmtest",)),
+            "수준과 제곱(statsmodels에는 같은 것이 없다)", (lambda r: _flat(*tuple(r)), None), 1e-6,
+        ),
+        "ols(y, X).reset_test(kind='regressor')": (
+            fit_sd("ols")(lambda r, d: r.reset_test(kind="regressor")),
+            fit_sm("ols")(lambda s, d: _sm_diag("linear_reset")(s, power=3, test_type="exog", use_f=True)),
+            _mt_r("R lmtest", 'resettest(big, type = "regressor")', "c(.v$statistic, .v$p.value)", ("lmtest",)),
+            "", reset, 1e-6,
+        ),
+        "ols(y, X).goldfeld_quandt(order_by=0)": (
+            fit_sd("ols")(lambda r, d: r.goldfeld_quandt(order_by=0)),
+            lambda d: lambda f=_sm_diag("het_goldfeldquandt"): f(d["y"], d["Xc"], idx=1, result_object=False),
+            _mt_r("R lmtest", "gqtest(big, order.by = ~ X1, data = dat)", "c(.v$statistic, .v$p.value)", ("lmtest",)),
+            "첫 열의 순서로 나눈다", gq, 1e-6,
+        ),
+    }  # fmt: skip
+    out = []
+    plain = _mt_data(10_000, 10, 85)
+    for name, (sdf, smf, rref, note, vals, rtol) in rows.items():
+        gls = name.startswith("gls")
+        refs = ([Ref("statsmodels", smf, threads="follow")] if smf is not None else []) + ([rref] if rref else [])
+        c = Case(
+            area="regression",
+            group="model-tests-models",
+            name=name,
+            size=_size(2_000, 10) if gls else _size(10_000, 10),
+            setup=gls_setup if gls else plain,
+            sd=sdf,
+            refs=tuple(refs),
+            note=note,
+        )
+        if vals is None:
+            _MT_CHECKS[(c.group, name)] = Check(skip="no comparator computes the same value")
+        else:
+            sd_vals, sm_vals = vals
+            _MT_CHECKS[(c.group, name)] = Check(
+                sd=sd_vals, ref=lambda label, v, f=sm_vals: _flat(v) if label.startswith("R") else f(v), rtol=rtol
+            )
+        out.append(c)
+    return out
+
+
+# (group, name) -> the results check of the cases above (their values differ by model)
+_MT_CHECKS: dict = {}
+
+
 # ---------------------------------------------------------------- variable selection
 
 SEL_SIZES = ((1_000, 10), (100_000, 10), (10_000, 30))
-SEL_SUBSET_SIZES = ((1_000, 10), (100_000, 10), (10_000, 20))
+SEL_SUBSET_SIZES = ((1_000, 10), (100_000, 10), (10_000, 20), (10_000, 30))
 SEL_GLM_SIZES = ((1_000, 10), (100_000, 10))
 
 
@@ -2145,37 +2518,47 @@ def _sel_data(n, k, seed):
                 sd.asarray([i % 5 for i in range(n)], dtype=sd.int64), sd.random.default_rng(1).permutation(n)
             ).tolist()
         )
+        w = rng.uniform(0.5, 2.0, n)
         return {
             "X": X,
             "y": y,
             "yb": yb,
+            "w": w,
             "Xs": sd.asarray(X),
             "ys": sd.asarray(y),
             "ybs": sd.asarray(yb),
+            "ws": sd.asarray(w),
             "splits": [(np.flatnonzero(labels != f), np.flatnonzero(labels == f)) for f in range(5)],
         }
 
     return setup
 
 
-def _sm_stepwise(y, X, direction, glm=False):
-    """R step's search with statsmodels refits: every candidate of a step fitted (the AIC of
-    statsmodels' results), a move while the AIC falls by more than 1e-7."""
+def _sm_stepwise(y, X, direction, glm=False, crit="aic", include=(), w=None):
+    """R step's search with statsmodels refits: every candidate of a step fitted (the AIC or BIC
+    of statsmodels' results), a move while the criterion falls by more than 1e-7; `include`
+    stays in, w: WLS weights."""
     import numpy as np
 
     sm = _sm()
     k = X.shape[1]
-    model = set(range(k)) if direction == "both" else set()
+    keep = set(include)
+    model = set(range(k)) if direction in ("both", "backward") else set(keep)
     fam = sm.families.Binomial() if glm else None
 
     def aic(cols):
         Z = sm.add_constant(X[:, sorted(cols)], has_constant="add") if cols else np.ones((len(y), 1))
-        return (sm.GLM(y, Z, family=fam).fit() if glm else sm.OLS(y, Z).fit()).aic
+        if glm:
+            r = sm.GLM(y, Z, family=fam).fit()
+        else:
+            r = sm.WLS(y, Z, weights=w).fit() if w is not None else sm.OLS(y, Z).fit()
+        return getattr(r, crit)
 
     cur = aic(model)
     while True:
-        cands = [(model - {j}) for j in sorted(model)] if direction == "both" else []
-        cands += [(model | {j}) for j in range(k) if j not in model]
+        cands = [(model - {j}) for j in sorted(model - keep)] if direction in ("both", "backward") else []
+        if direction != "backward":
+            cands += [(model | {j}) for j in range(k) if j not in model]
         vals = [aic(c) for c in cands]
         if not vals or min(vals) >= cur - 1e-7:
             return sorted(model)
@@ -2183,12 +2566,14 @@ def _sm_stepwise(y, X, direction, glm=False):
         model, cur = cands[i], vals[i]
 
 
-def _sel_r(label, expr, value, packages=(), glm=False):
+def _sel_r(label, expr, value, packages=(), glm=False, weights=False):
     setup = (
         "dat <- data.frame(y = y, X); nm <- names(dat)[-1]; "
         'fb <- as.formula(paste("y ~", paste(nm, collapse = " + "))); ' + ("fam <- binomial(); " if glm else "")
     )
     data = {"yb" if glm else "y": "y", "X": "X"}
+    if weights:
+        data["w"] = "w"
     return RRef(label, expr, data=data, setup=setup, packages=packages, value=value)
 
 
@@ -2197,9 +2582,10 @@ def _sel_cases():
         def make(d):
             R = _R()
             y = d["ybs"] if kw.get("model") == "glm" else d["ys"]
+            extra = {"weights": d["ws"]} if kw.get("model") == "wls" else {}
             if kw.get("criterion") == "cv":
-                return lambda: getattr(R, fn)(y, d["Xs"], rng=_sd_rng(1), **kw)
-            return lambda: getattr(R, fn)(y, d["Xs"], **kw)
+                return lambda: getattr(R, fn)(y, d["Xs"], rng=_sd_rng(1), **kw, **extra)
+            return lambda: getattr(R, fn)(y, d["Xs"], **kw, **extra)
 
         return make
 
@@ -2232,6 +2618,48 @@ def _sel_cases():
             [_sel_r("R step", 'step(lm(y ~ 1, data = dat), scope = fb, direction = "forward", trace = 0)', terms)],
             SEL_SIZES,
         ),
+        "stepwise(y, X), both, bic": (
+            sd_call("stepwise", criterion="bic"),
+            [
+                Ref(
+                    "statsmodels refits",
+                    lambda d: lambda: _sm_stepwise(d["y"], d["X"], "both", crit="bic"),
+                    threads="follow",
+                )
+            ],
+            [_sel_r("R step", "step(lm(fb, data = dat), k = log(nrow(dat)), trace = 0)", terms)],
+            SEL_SIZES[:2],
+        ),
+        "stepwise(y, X), backward, aic": (
+            sd_call("stepwise", direction="backward"),
+            [Ref("statsmodels refits", lambda d: lambda: _sm_stepwise(d["y"], d["X"], "backward"), threads="follow")],
+            [_sel_r("R step", 'step(lm(fb, data = dat), direction = "backward", trace = 0)', terms)],
+            SEL_SIZES[:2],
+        ),
+        "stepwise(y, X, include=[0]), both, aic": (
+            sd_call("stepwise", include=[0]),
+            [
+                Ref(
+                    "statsmodels refits",
+                    lambda d: lambda: _sm_stepwise(d["y"], d["X"], "both", include=(0,)),
+                    threads="follow",
+                )
+            ],
+            [_sel_r("R step", "step(lm(fb, data = dat), scope = list(lower = ~ X1, upper = fb), trace = 0)", terms)],
+            SEL_SIZES[:1],
+        ),
+        "stepwise(y, X, model='wls', weights=w), both, aic": (
+            sd_call("stepwise", model="wls"),
+            [
+                Ref(
+                    "statsmodels refits",
+                    lambda d: lambda: _sm_stepwise(d["y"], d["X"], "both", w=d["w"]),
+                    threads="follow",
+                )
+            ],
+            [_sel_r("R step", "step(lm(fb, data = dat, weights = w), trace = 0)", terms, weights=True)],
+            SEL_SIZES[:2],
+        ),
         "stepwise(y, X), both, pvalue": (sd_call("stepwise", criterion="pvalue"), [], [], SEL_SIZES[:2]),
         "stepwise(y, X), forward, cv": (
             sd_call("stepwise", direction="forward", criterion="cv"),
@@ -2258,6 +2686,20 @@ def _sel_cases():
             ],  # fmt: skip
             SEL_SUBSET_SIZES,
         ),
+        "best_subset(y, X), cp": (
+            sd_call("best_subset", criterion="cp"),
+            [],
+            [
+                _sel_r(
+                    "R leaps",
+                    "leaps::regsubsets(X, y, nvmax = ncol(X), method = 'exhaustive')",
+                    "summary(.v)$cp",
+                    ("leaps",),
+                )
+            ],
+            SEL_SUBSET_SIZES[:2],
+        ),
+        "best_subset(y, X), adjr2": (sd_call("best_subset", criterion="adjr2"), [], [], SEL_SUBSET_SIZES[:1]),
         "best_subset(y, X), cv": (sd_call("best_subset", criterion="cv"), [], [], SEL_SUBSET_SIZES[:2]),
         "stepwise(y, X, model='glm', family='binomial'), both, aic": (
             sd_call("stepwise", model="glm", family="binomial"),
@@ -2270,6 +2712,12 @@ def _sel_cases():
             ],
             [_sel_r("R step", "step(glm(fb, family = fam, data = dat), trace = 0)", terms, glm=True)],
             SEL_GLM_SIZES,
+        ),
+        "stepwise(y, X, model='glm', family='binomial'), forward, cv": (
+            sd_call("stepwise", model="glm", family="binomial", direction="forward", criterion="cv"),
+            [],
+            [],
+            SEL_GLM_SIZES[:1],
         ),
         "best_subset(y, X, model='glm', family='binomial'), aic": (
             sd_call("best_subset", model="glm", family="binomial"),
@@ -2386,7 +2834,6 @@ TITLES = {
     "ols-batched": "최소제곱 일괄",
     "wls-gls": "가중·일반화 최소제곱",
     "ols-cov-diagnostics": "최소제곱 공분산·진단",
-    "simple": "단순 회귀",
     "glm": "일반화 선형 모형",
     "glm-batched": "일반화 선형 모형 일괄",
     "glm-families": "일반화 선형 모형 분포족·링크",
@@ -2403,6 +2850,8 @@ TITLES = {
     "nls": "비선형 최소제곱",
     "model-tests": "모형 비교·검정·진단",
     "model-tests-batched": "모형 비교·검정·진단 일괄",
+    "model-tests-glm": "모형 비교·검정·진단 (GLM)",
+    "model-tests-models": "검정 (다른 모형, 강건 공분산, 옵션)",
     "selection": "변수 선택",
 }
 
@@ -2449,6 +2898,8 @@ CONDITIONING_SKIP = "ill-conditioned by design: the libraries settle it differen
 
 
 def _check(c: Case) -> Check:
+    if (c.group, c.name) in _MT_CHECKS:
+        return _MT_CHECKS[(c.group, c.name)]
     if c.group.startswith("model-tests"):
         return _mt_check(c)
     if c.group == "selection":
@@ -2460,8 +2911,6 @@ def _check(c: Case) -> Check:
     if c.name == "ols(y, X) + diagnostics":  # leverage, studentized residuals, Cook's distance, DW
         return Check(sd=lambda r: [_np(r[0]), _np(r[1]), _np(r[2]), _np(r[3])],
                      ref=lambda lab, v: [_np(v[0]), _np(v[1]), _np(v[2][0]), _np(v[3])])  # fmt: skip
-    if c.name.startswith("linregress"):  # scipy's result has five fields, sd's six
-        return Check(sd=lambda r: [_np(x) for x in tuple(r)[:5]], ref=lambda lab, v: [_np(x) for x in tuple(v)[:5]])
     if c.name == "lasso(y, X, alpha=100-point grid)":  # lasso_path: (alphas, coefs (p, n_alphas), gaps)
         return Check(sd=lambda r: _np(r.params)[:, 1:], ref=lambda lab, v: _np(v[1]).T)
     if c.group in ("glm", "glm-families"):  # (params, bse, pvalues, ...) on both sides
@@ -2476,7 +2925,6 @@ def cases() -> list[Case]:
         *_ols_cases(),
         *_wls_gls_cases(),
         *_inference_cases(),
-        *_linregress_cases(),
         *_glm_cases(),
         *_fam_cases(),
         *_cond_cases(),

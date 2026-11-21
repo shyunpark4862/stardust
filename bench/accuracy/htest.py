@@ -30,6 +30,8 @@ R_SAME_STATISTIC = (
     "kruskal", "friedmanchisquare", "ansari", "mood",
 )  # fmt: skip
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
+# cor.test's statistic is its t, S or T: the correlation itself is its estimate
+R_ESTIMATE = ("pearsonr", "spearmanrho", "kendalltau")
 # R's goodness-of-fit packages (tests/htest/data/r_gof.json, H44) in the families they share with
 # sd: goftest's cvm.test is the same test (Csörgő and Faraway's p-value); nortest's ad.test has
 # Anderson-Darling's statistic for the normal family, its p-value from Stephens' formula, not the
@@ -96,9 +98,10 @@ def _lib_regions(fam, lib):
             res = {R_FIELD[f]: g.get(f"{R_GOF[fam]}.{R_FIELD[f]}") for f in R_GOF_FIELDS[fam]}
         for field in ("statistic", "pvalue"):
             if lib == "R":
-                if field == "statistic" and fam not in R_SAME_STATISTIC and fam not in R_GOF:
+                key = "estimate" if field == "statistic" and fam in R_ESTIMATE else R_FIELD[field]
+                if key == "statistic" and fam not in R_SAME_STATISTIC and fam not in R_GOF:
                     continue
-                v = res.get(R_FIELD[field])
+                v = res.get(key)
                 v = v[0] if isinstance(v, list) and len(v) == 1 else None
             else:
                 v = res.get(field)
