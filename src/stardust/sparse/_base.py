@@ -8,7 +8,8 @@ CSC are always canonical, and changing an index would break that (docs/design/sp
 Each format implements the conversions (_tocoo, _tocsr, _tocsc, _todok with the copy rule of
 the array area: None copies only when it must, True always, False never), _transpose, _copy,
 _with_data, _resize and the counts; the methods here put the checks and the shared rules
-around them.
+around them. The operators, the element-wise functions and the products are in _ops.py, the
+reductions in _reduce.py (milestone SP2).
 """
 
 import math
@@ -16,6 +17,8 @@ import operator
 
 from .. import _core as _sd
 from . import _common as C
+from . import _ops as O
+from . import _reduce as R
 from ._common import _core
 
 
@@ -215,6 +218,236 @@ class sparray:
             if nd == 1:
                 axis = None
         return self._count_nonzero(axis)
+
+    # ---- operators (docs/api/sparse.md §3.1; the rules in _ops.py) ----
+
+    __hash__ = None  # arrays are mutable containers
+
+    def _add_sub(self, other, op, reflected):
+        if O.is_sparse(other):
+            return O.sparse_sparse(self, other, op)
+        if O.is_number(other):
+            if other != 0 or other != other:
+                raise ValueError(_nonzero_scalar_message(op, reflected))
+            f = getattr(_sd, op)
+            return O.with_values(self, (lambda v: f(other, v)) if reflected else (lambda v: f(v, other)), dedupe=False)
+        if isinstance(other, _sd.ndarray):
+            return O.dense_result(self, other, getattr(_sd, op), reflected)
+        return NotImplemented
+
+    def __add__(self, other):
+        return self._add_sub(other, "add", False)
+
+    def __radd__(self, other):
+        return self._add_sub(other, "add", True)
+
+    def __sub__(self, other):
+        return self._add_sub(other, "subtract", False)
+
+    def __rsub__(self, other):
+        return self._add_sub(other, "subtract", True)
+
+    def _mul(self, other, reflected, func=None):
+        if O.is_number(other):
+            f = (lambda v: _sd.multiply(other, v)) if reflected else (lambda v: _sd.multiply(v, other))
+            return O.with_values(self, f, dedupe=False)
+        if isinstance(other, _sd.ndarray):
+            return O.dense_pattern_op(self, other, _sd.multiply, reflected, func)
+        if O.is_sparse(other):
+            return (
+                O.sparse_sparse(other, self, "multiply", func)
+                if reflected
+                else O.sparse_sparse(self, other, "multiply", func)
+            )
+        return NotImplemented
+
+    def __mul__(self, other):
+        return self._mul(other, False)
+
+    def __rmul__(self, other):
+        return self._mul(other, True)
+
+    def __truediv__(self, other):
+        if O.is_number(other):
+            return O.with_values(self, lambda v: _sd.divide(v, other), dedupe=False)
+        if isinstance(other, _sd.ndarray):
+            return O.dense_pattern_op(self, other, _sd.divide)
+        if O.is_sparse(other):  # dense: 0 / 0 is NaN where neither stores a value
+            O.check_same_shape(self, other)
+            return self.toarray() / other.toarray()
+        return NotImplemented
+
+    def __pow__(self, other):
+        if not O.is_number(other):
+            return NotImplemented
+        return self._power(other, None)
+
+    def __matmul__(self, other):
+        if isinstance(other, _sd.ndarray):
+            return O.matmul_dense(self, other)
+        if O.is_sparse(other):
+            return O.matmul_sparse(self, other)
+        return NotImplemented
+
+    def __rmatmul__(self, other):
+        if isinstance(other, _sd.ndarray):
+            return O.rmatmul_dense(self, other)
+        return NotImplemented
+
+    def _compare(self, other, op):
+        if O.is_sparse(other):
+            return O.sparse_sparse(self, other, op)
+        if O.is_number(other):
+            return O.scalar_compare(self, other, op)
+        if isinstance(other, _sd.ndarray):
+            return O.dense_result(self, other, O._OPERATORS[op])
+        return NotImplemented
+
+    def __eq__(self, other):
+        r = self._compare(other, "equal")
+        return _equality(self, other, r, "==") if r is NotImplemented else r
+
+    def __ne__(self, other):
+        r = self._compare(other, "not_equal")
+        return _equality(self, other, r, "!=") if r is NotImplemented else r
+
+    def __lt__(self, other):
+        return self._compare(other, "less")
+
+    def __le__(self, other):
+        return self._compare(other, "less_equal")
+
+    def __gt__(self, other):
+        return self._compare(other, "greater")
+
+    def __ge__(self, other):
+        return self._compare(other, "greater_equal")
+
+    def __neg__(self):
+        return O.with_values(self, _sd.negative, dedupe=False)
+
+    def __abs__(self):
+        return O.with_values(self, _sd.abs, dedupe=True, dok_csr=True)
+
+    # ---- element-wise methods (docs/api/sparse.md §3.2) ----
+
+    def multiply(self, other, /):
+        """Element-wise product with a sparse array, a dense sd.ndarray (broadcast to this shape) or
+        a number: a sparse array (the format of this one for a dense or a number)."""
+        r = self._mul(other, False, "multiply")
+        if r is NotImplemented:
+            raise TypeError(_operand_message("multiply", other))
+        return r
+
+    def maximum(self, other, /):
+        """Element-wise maximum with a sparse array, a dense sd.ndarray or a number."""
+        return self._extreme(other, "maximum")
+
+    def minimum(self, other, /):
+        """Element-wise minimum with a sparse array, a dense sd.ndarray or a number."""
+        return self._extreme(other, "minimum")
+
+    def _extreme(self, other, op):
+        if O.is_sparse(other):
+            return O.sparse_sparse(self, other, op, op)
+        if O.is_number(other):
+            return O.scalar_extreme(self, other, op, op)
+        if isinstance(other, _sd.ndarray):
+            return O.dense_result(self, other, getattr(_sd, op), func=op)
+        raise TypeError(_operand_message(op, other))
+
+    def power(self, n, /):
+        """Element-wise power x ** n of the stored values, n > 0 (the implicit zeros stay 0)."""
+        return self._power(n, "power")
+
+    def _power(self, n, func):
+        head = f"{func}(): " if func else ""
+        if not O.is_number(n) or isinstance(n, complex) or type(n).__name__.startswith("complex"):
+            raise TypeError(f"{head}'n' must be a real number, not {C.type_name(n)}")
+        if n == 0:
+            raise ValueError(
+                f"{head}the power 0 is not supported: the result would not be sparse (0 ** 0 is 1); "
+                "use A.toarray() ** 0"
+            )
+        if not n > 0:
+            raise ValueError(f"{head}'n' must be positive: 0 ** {n} is not 0, the result would not be sparse")
+        return O.with_values(self, lambda v: _sd.pow(v, n), dedupe=True, dok_csr=True)
+
+    # ---- reductions (docs/api/sparse.md §3.3) ----
+
+    def sum(self, *, axis=None, dtype=None, keepdims=False):
+        """The sum of all values (a Python scalar) or along an axis (a dense sd.ndarray)."""
+        return R.sum_(self, axis, dtype, keepdims)
+
+    def mean(self, *, axis=None, keepdims=False):
+        """The mean over all elements, implicit zeros included (a Python scalar), or along an axis."""
+        return R.mean(self, axis, keepdims)
+
+    def max(self, *, axis=None, keepdims=False, explicit=False):
+        """The largest value, the implicit zeros included unless explicit (NaN propagates)."""
+        return R.minmax(self, "max", axis, keepdims, explicit)
+
+    def min(self, *, axis=None, keepdims=False, explicit=False):
+        """The smallest value, the implicit zeros included unless explicit (NaN propagates)."""
+        return R.minmax(self, "min", axis, keepdims, explicit)
+
+    def nanmax(self, *, axis=None, keepdims=False, explicit=False):
+        """The largest value, NaN skipped."""
+        return R.minmax(self, "nanmax", axis, keepdims, explicit)
+
+    def nanmin(self, *, axis=None, keepdims=False, explicit=False):
+        """The smallest value, NaN skipped."""
+        return R.minmax(self, "nanmin", axis, keepdims, explicit)
+
+    def argmax(self, *, axis=None, keepdims=False, explicit=False):
+        """The position of the largest value (flat C order for axis=None): the first of ties, the
+        first NaN if any."""
+        return R.argminmax(self, "argmax", axis, keepdims, explicit)
+
+    def argmin(self, *, axis=None, keepdims=False, explicit=False):
+        """The position of the smallest value (flat C order for axis=None): the first of ties, the
+        first NaN if any."""
+        return R.argminmax(self, "argmin", axis, keepdims, explicit)
+
+
+def _make_function(name):
+    def method(self):
+        return O.function(self, name)
+
+    method.__name__ = method.__qualname__ = name
+    method.__doc__ = (
+        f"Element-wise {name} of the stored values, bit for bit the array's function on them (f(0) = 0, so "
+        "the implicit zeros stay 0); a COO array's repeated positions are summed first."
+    )
+    return method
+
+
+for _name in (*O.FUNCTIONS, "deg2rad", "rad2deg"):
+    setattr(sparray, _name, _make_function(_name))
+del _name
+
+
+def _nonzero_scalar_message(op, reflected):
+    if op == "add":
+        return "adding a nonzero scalar to a sparse array is not supported; use A.toarray() + c"
+    if reflected:
+        return "subtracting a sparse array from a nonzero scalar is not supported; use c - A.toarray()"
+    return "subtracting a nonzero scalar from a sparse array is not supported; use A.toarray() - c"
+
+
+def _operand_message(func, other):
+    return f"{func}(): 'other' must be a sparse array, an sd.ndarray or a number, not {C.type_name(other)}"
+
+
+def _equality(self, other, refused, symbol):
+    """== and != of an operand we do not take: the other side's reflected comparison, else a
+    TypeError (Python's fallback to identity would quietly give False; the array's rule)."""
+    reflected = getattr(type(other), "__eq__" if symbol == "==" else "__ne__", None)
+    if reflected is not None:
+        r = reflected(other, self)
+        if r is not NotImplemented:
+            return r
+    raise TypeError(f"'{symbol}' not supported between instances of '{type(self).__name__}' and '{C.type_name(other)}'")
 
 
 def _contiguous(x):

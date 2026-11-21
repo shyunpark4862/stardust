@@ -1,0 +1,10 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 7, "dropped": []},
+"epps_singleton_2samp/default": {"digest": "05623a7dca8df9742c2ddc544ac1fbf057dd5e626076ae4b03fcd1ab2c882a95", "statistic": [6.43543555605996, 1.4394661911528541e-16], "pvalue": [0.16890419687967895, 2.8096235959725255e-18], "df": [4.0, 0.0], "kappa": 2.454812826259376},
+"epps_singleton_2samp/small": {"digest": "492408cb197665dc36ee036519e492627642a5bd5c590120b4152adb46bc1ef6", "statistic": [1.227346339365575, -1.79077327054249e-17], "pvalue": [0.8735760257332474, -1.1660249737750749e-17], "df": [4.0, 0.0], "kappa": 0.23337734447338523},
+"epps_singleton_2samp/large": {"digest": "bae2154634185bec8d6e7f42aa104ce473579653d871e2cba7d131ceafac7ae4", "statistic": [6.839619887532005, 1.5204196887853615e-16], "pvalue": [0.14461022669176626, 9.41705904072107e-18], "df": [4.0, 0.0], "kappa": 2.6460640163897513},
+"epps_singleton_2samp/three-t": {"digest": "23e3c699f668000e88284f7e8b4f92d9ab12200cdf4b8e16554a21da1d5ebf0b", "statistic": [10.50824117262412, 7.078625533218901e-16], "pvalue": [0.10481674279804501, 1.1403130233288235e-18], "df": [6.0, 0.0], "kappa": 3.61579562198488},
+"epps_singleton_2samp/tail": {"digest": "29667e5f2de8706962eadba7c59a863d05b6a9b6ff32c83f622a588ffce6ffe0", "statistic": [1209.5763557060131, -4.385889997320313e-14], "pvalue": [1.3370647267986749e-260, -7.945202122072806e-277], "df": [4.0, 0.0], "kappa": 603.7898285950259},
+"epps_singleton_2samp/offset": {"digest": "82083f92d23446be19c194965bd4918c384d795b24f917cc5ee0ef832ac86d70", "statistic": [11.1542823298004, 1.0249159608399978e-16], "pvalue": [0.02488373287010234, 1.5881168688833153e-18], "df": [4.0, 0.0], "kappa": 4.729182906886313},
+"epps_singleton_2samp/four": {"digest": "b45ee6ceddc3c8a21f80cd61fcef278201042082efb01b3f248cb8de74facff0", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0], "df": [NaN, 0.0], "kappa": NaN}
+}

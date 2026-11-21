@@ -7,7 +7,17 @@ count_nonzero, eliminate_zeros and sum_duplicates, astype, conj, real and imag, 
 access, and the wrong calls (their errors are results). The matrices come from fixed literals and
 L.rng(seed): small ones with repeats, stored zeros, NaN and -0.0, and random ones of 2*10^5
 entries with repeats, which take the multithreaded bucket path of the conversions
-(csrc/sparse/canonical.cpp) at 3 and 10 threads and the direct path at 1 for the smaller sizes.
+(csrc/sparse/canonical.cpp) at 3 and 10 threads and the direct path at 1 for the smaller sizes:
+"big" (2000 x 1500, about 7% of the positions stored) and "long" (30 x 10^5, rows of about 6,700
+entries, past the summation piece L = 4096). Their shapes keep a dense result small (3*10^6
+values at most), so a worker stays under 1 GB.
+
+The operations (milestone SP2): every operator between two sparse arrays, with a scalar and with a
+dense array (and the broadcast rows and columns), the element-wise functions, multiply / maximum /
+minimum / power, the products (SpMV, SpMM, dense @ sparse, SpGEMM, the 1-D forms) and the
+reductions with axis, keepdims, dtype and explicit, on the same matrices in every format; the big
+and long matrices take the threaded line ranges at 3 and 10 threads (the scatter runs on one
+thread on every count) and the long rows' pieces of L.
 
 A sparse array is stored whole: its class, shape, dtype and arrays (COO: coords, data and
 has_canonical_format; CSR and CSC: indptr, indices and data; DOK: its entries in row-major order).
@@ -65,11 +75,11 @@ def data(L):
         "bools_v": np.array([True, True, False, True, False]),
         "small_r": np.array([1, 1, 0, 2, 0]),
         "small_c": np.array([0, 0, 2, 1, 2]),
-        "big_r": r.integers(0, 20000, n),
-        "big_c": r.integers(0, 15000, n),
+        "big_r": r.integers(0, 2000, n),
+        "big_c": r.integers(0, 1500, n),
         "big_v": r.standard_normal(n) * 10.0 ** r.integers(-12, 13, n),
         "long_r": r.integers(0, 30, n),
-        "long_c": r.integers(0, 10**6, n),
+        "long_c": r.integers(0, 10**5, n),
         "long_v": r.standard_normal(n),
         "parts_v": np.array([1.0, 2, 3, 4, 5, 6]),
         "parts_i": np.array([2, 0, 2, 1, 0, 3]),
@@ -92,8 +102,8 @@ def cases(L):
         "ints": lambda: coo_of(d["ints_v"], d["small_r"], d["small_c"]),
         "bools": lambda: coo_of(d["bools_v"], d["small_r"], d["small_c"]),
         "complex": lambda: S.coo_array(a(d["cplx"])),
-        "big": lambda: coo_of(d["big_v"], d["big_r"], d["big_c"], (20000, 15000)),
-        "long": lambda: coo_of(d["long_v"], d["long_r"], d["long_c"], (30, 10**6)),
+        "big": lambda: coo_of(d["big_v"], d["big_r"], d["big_c"], (2000, 1500)),
+        "long": lambda: coo_of(d["long_v"], d["long_r"], d["long_c"], (30, 10**5)),
         "1d": lambda: S.coo_array(a(d["dense1"])),
         "empty": lambda: S.coo_array((3, 0)),
     }
@@ -227,3 +237,155 @@ def cases(L):
     yield "error asformat", lambda: mats["dense"]().asformat("bsr")
     yield "error astype complex to float", lambda: mats["complex"]().astype(sd.float64)
     yield "error sparray", lambda: S.sparray()
+
+    yield from cases_sp2(L, mats, fmts)
+
+
+def partner(A, S):
+    """A second array of A's shape and format with another pattern: A's entries with the values and
+    the last index reversed."""
+    c = A.tocoo()
+    coords = tuple(c.coords[:-1]) + (c.coords[-1][::-1].copy(),)
+    return S.coo_array((c.data[::-1].copy(), coords), shape=A.shape).asformat(A.format)
+
+
+def cases_sp2(L, mats, fmts):
+    import operator
+
+    S = L.sd.sparse
+    r = L.rng(602)
+    binary = {"+": operator.add, "-": operator.sub, "*": operator.mul, "==": operator.eq, "!=": operator.ne,
+              "<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge}  # fmt: skip
+    names = ("sin", "tan", "asin", "atan", "sinh", "tanh", "asinh", "atanh", "sqrt", "expm1", "log1p",
+             "deg2rad", "rad2deg", "floor", "ceil", "trunc", "round", "sign")  # fmt: skip
+
+    def dense_like(A, shape=None, cplx=False):
+        shape = A.shape if shape is None else shape
+        x = r.standard_normal(shape) if shape else r.standard_normal(())
+        if cplx:
+            x = x + 1j * r.standard_normal(shape)
+        return L.arr(np.asarray(x))
+
+    # the big and long matrices take only what stays sparse: no dense operand or result, no comparison
+    # true between two implicit zeros (their dense cases are SP1's toarray)
+    for name in ("dense", "repeats", "ints", "bools", "complex", "big", "long", "1d", "empty"):
+        mk = mats[name]
+        large = name in ("big", "long")
+        for f in fmts:
+            if f == "csc" and name == "1d":
+                continue
+            A = mk().asformat(f)
+            B = partner(A, S)
+            key = f"{name} {f}"
+            for sym, op in binary.items():
+                if large and sym in ("==", "<=", ">="):
+                    continue
+                yield f"{key} {sym} {f}", lambda op=op, A=A, B=B: op(A, B)
+                if f != "csr":
+                    yield f"{key} {sym} csr", lambda op=op, A=A, B=B: op(A, B.tocsr())
+            for fn in ("maximum", "minimum"):
+                yield f"{key} {fn} sparse", lambda fn=fn, A=A, B=B: getattr(A, fn)(B)
+                for c in (-1.5, 0, 2):
+                    if large and (c > 0) == (fn == "maximum") and c != 0:
+                        continue
+                    yield f"{key} {fn} {c}", lambda fn=fn, A=A, c=c: getattr(A, fn)(c)
+            if not large:
+                yield f"{key} / sparse", lambda A=A, B=B: A / B
+            for c in (2.5, 0, -1, float("nan"), 1j):
+                yield f"{key} * {c}", lambda A=A, c=c: A * c
+                yield f"{c} * {key}", lambda A=A, c=c: c * A
+                yield f"{key} / {c}", lambda A=A, c=c: A / c
+            every = tuple((sym, c) for c in (0, 1, -0.5, float("nan")) for sym in ("==", "!=", "<", ">="))
+            compares = (("!=", 0), ("<", 0), (">=", 1), ("==", -0.5)) if large else every
+            for sym, c in compares:
+                yield f"{key} {sym} {c}", lambda op=binary[sym], A=A, c=c: op(A, c)
+            yield f"{key} + 0", lambda A=A: A + 0
+            yield f"0 - {key}", lambda A=A: 0 - A
+            yield f"{key} neg", lambda A=A: -A
+            yield f"{key} abs", lambda A=A: abs(A)
+            yield f"{key} ** 2", lambda A=A: A**2
+            yield f"{key} power 0.5", lambda A=A: A.power(0.5)
+            if name in ("dense", "complex", "1d", "big"):
+                for fn in names:
+                    yield f"{key} {fn}", lambda fn=fn, A=A: getattr(A, fn)()
+            if A.ndim == 2:
+                row = dense_like(A, (A.shape[1],))
+                col = dense_like(A, (A.shape[0], 1))
+                yield f"{key} * row", lambda A=A, row=row: A * row
+                yield f"{key} * column", lambda A=A, col=col: A * col
+            if large:
+                yield from _products_and_reductions(L, A, B, key, name, dense_like)
+                continue
+            D = dense_like(A, cplx=name == "complex")
+            yield f"{key} * dense", lambda A=A, D=D: A * D
+            yield f"dense * {key}", lambda A=A, D=D: D * A
+            yield f"{key} multiply dense", lambda A=A, D=D: A.multiply(D)
+            yield f"{key} / dense", lambda A=A, D=D: A / D
+            yield f"{key} + dense", lambda A=A, D=D: A + D
+            yield f"dense - {key}", lambda A=A, D=D: D - A
+            yield f"{key} < dense", lambda A=A, D=D: A < D
+            yield f"{key} maximum dense", lambda A=A, D=D: A.maximum(D)
+            yield from _products_and_reductions(L, A, B, key, name, dense_like)
+
+    yield from _wrong_calls(L, mats)
+
+
+def _products_and_reductions(L, A, B, key, name, dense_like):
+    """The products and the reductions of A (B: a partner of A's shape and format)."""
+    sd, S = L.sd, L.sd.sparse
+    # products
+    x = dense_like(A, (A.shape[-1],), cplx=name == "complex")
+    yield f"{key} @ x", lambda A=A, x=x: A @ x
+    w = dense_like(A, (A.shape[0],))
+    yield f"w @ {key}", lambda A=A, w=w: w @ A
+    if name not in ("big", "long"):
+        X = dense_like(A, (A.shape[-1], 7))
+        yield f"{key} @ X", lambda A=A, X=X: A @ X
+        W = dense_like(A, (5, A.shape[0]))
+        yield f"W @ {key}", lambda A=A, W=W: W @ A
+    if A.ndim == 2:
+        yield f"{key} @ {key}.T", lambda A=A: A @ A.T
+        if name != "long":  # A^T B of the long matrix has ~10^9 products
+            yield f"{key}.T @ csr", lambda A=A, B=B: A.T @ B.tocsr()
+        v = S.csr_array(dense_like(A, (A.shape[1],)))
+        yield f"{key} @ sparse vector", lambda A=A, v=v: A @ v
+    else:
+        yield f"{key} @ {key}", lambda A=A: A @ A
+    # reductions
+    for fn in ("sum", "mean", "max", "min", "nanmax", "nanmin", "argmax", "argmin"):
+        yield f"{key} {fn}", lambda fn=fn, A=A: getattr(A, fn)()
+        for ax in range(A.ndim):
+            yield f"{key} {fn} axis={ax}", lambda fn=fn, A=A, ax=ax: getattr(A, fn)(axis=ax)
+            yield (
+                f"{key} {fn} axis={ax} keepdims",
+                lambda fn=fn, A=A, ax=ax: getattr(A, fn)(axis=ax, keepdims=True),
+            )
+        if fn not in ("sum", "mean"):
+            yield f"{key} {fn} explicit", lambda fn=fn, A=A: getattr(A, fn)(explicit=True)
+            yield f"{key} {fn} axis=-1 explicit", lambda fn=fn, A=A: getattr(A, fn)(axis=-1, explicit=True)
+    yield f"{key} sum dtype float64", lambda A=A: A.sum(dtype=sd.float64)
+    yield f"{key} sum axis=0 dtype complex128", lambda A=A: A.sum(axis=0, dtype="complex128")
+
+
+def _wrong_calls(L, mats):
+    sd, S = L.sd, L.sd.sparse
+    A = mats["dense"]().tocsr()
+    yield "error + nonzero scalar", lambda: A + 1
+    yield "error - nonzero scalar", lambda: 1 - A
+    yield "error ** 0", lambda: A**0
+    yield "error power -1", lambda: A.power(-1)
+    yield "error shapes", lambda: A + S.csr_array((2, 2))
+    yield "error matmul shapes", lambda: A @ L.arr(np.ones(3))
+    yield "error matmul scalar", lambda: A @ 2
+    yield "error numpy operand", lambda: A * np.ones((4, 4))
+    yield "error numpy ==", lambda: A == np.ones((4, 4))
+    yield "error multiply list", lambda: A.multiply([1, 2])
+    yield "error dense broadcast", lambda: S.csr_array(L.arr(np.ones((1, 4)))) * L.arr(np.ones((3, 4)))
+    yield "error sd.sin", lambda: sd.sin(A)
+    yield "error sd.add", lambda: sd.add(A, A)
+    yield "error complex max", lambda: mats["complex"]().max()
+    yield "error complex <", lambda: mats["complex"]() < 1
+    yield "error empty max", lambda: mats["empty"]().max()
+    yield "error argmax explicit", lambda: S.csr_array((2, 3)).argmax(explicit=True)
+    yield "error axis", lambda: A.sum(axis=2)
+    yield "error keepdims", lambda: A.max(keepdims=None)

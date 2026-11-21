@@ -412,6 +412,39 @@ nb::object run_nary(
 
 namespace {
 
+// ---- a sparse array as an operand (docs/api/sparse.md §3.2, decision SP36) ----
+// sd.sparse's arrays are not operands of the array's functions. When one is
+// the cause of the TypeError, the message says what to use instead: its
+// method or operator (the element-wise functions with f(0) = 0 are methods),
+// else the dense array. Only the error path looks; other calls are unchanged.
+
+bool is_sparse_array(nb::handle o) {
+    nb::object mod = nb::getattr(nb::handle(reinterpret_cast<PyObject*>(Py_TYPE(o.ptr()))), "__module__", nb::none());
+    return nb::isinstance<nb::str>(mod) && std::string(nb::str(mod).c_str()).rfind("stardust.sparse", 0) == 0;
+}
+
+std::string sparse_hint(const std::string& f) {
+    static const std::pair<const char*, const char*> table[] = {
+        {"sin", "A.sin()"},          {"tan", "A.tan()"},          {"asin", "A.asin()"},   {"atan", "A.atan()"},
+        {"sinh", "A.sinh()"},        {"tanh", "A.tanh()"},        {"asinh", "A.asinh()"}, {"atanh", "A.atanh()"},
+        {"sqrt", "A.sqrt()"},        {"expm1", "A.expm1()"},      {"log1p", "A.log1p()"}, {"floor", "A.floor()"},
+        {"ceil", "A.ceil()"},        {"trunc", "A.trunc()"},      {"round", "A.round()"}, {"sign", "A.sign()"},
+        {"conj", "A.conj()"},        {"negative", "-A"},          {"abs", "abs(A)"},      {"add", "A + B"},
+        {"subtract", "A - B"},       {"multiply", "A * B"},       {"divide", "A / B"},    {"pow", "A ** p"},
+        {"maximum", "A.maximum(B)"}, {"minimum", "A.minimum(B)"}, {"equal", "A == B"},    {"not_equal", "A != B"},
+        {"less", "A < B"},           {"less_equal", "A <= B"},    {"greater", "A > B"},   {"greater_equal", "A >= B"},
+    };
+    for (const auto& [name, hint] : table)
+        if (f == name) return std::string("; for a sparse array use ") + hint;
+    return "; a sparse array has no " + f + ": use " + f + "(A.toarray())";
+}
+
+[[noreturn]] void refuse_sparse(nb::handle o, const char* what, const char* func) {
+    throw nb::type_error((std::string("'") + what + "' must be an sd.ndarray or a bool, int, float or complex, not " +
+                          py_type_name(o) + sparse_hint(func))
+                             .c_str());
+}
+
 // The signatures help() and inspect show, with the argument names of
 // docs/api/array.md (unnamed nb::arg()s stay positional-only); one string
 // per function, kept for the module's lifetime.
@@ -421,7 +454,16 @@ void def_unary(nb::module_& m) {
     m.def(
         Op::name,
         named(
-            Op::name, +[](nb::handle x, nb::handle out) { return unary<Op>(x, out); }
+            Op::name,
+            +[](nb::handle x, nb::handle out) {
+                try {
+                    return unary<Op>(x, out);
+                } catch (const nb::builtin_exception& e) {
+                    if (e.type() == nb::exception_type::type_error && is_sparse_array(x))
+                        refuse_sparse(x, "x", Op::name);
+                    throw;
+                }
+            }
         ),
         nb::sig(sig.c_str()), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
     );
@@ -433,7 +475,18 @@ void def_binary(nb::module_& m) {
     m.def(
         Op::name,
         named(
-            Op::name, +[](nb::handle a, nb::handle b, nb::handle out) { return binary<Op>(a, b, out); }
+            Op::name,
+            +[](nb::handle a, nb::handle b, nb::handle out) {
+                try {
+                    return binary<Op>(a, b, out);
+                } catch (const nb::builtin_exception& e) {
+                    if (e.type() == nb::exception_type::type_error && is_sparse_array(a))
+                        refuse_sparse(a, "x1", Op::name);
+                    if (e.type() == nb::exception_type::type_error && is_sparse_array(b))
+                        refuse_sparse(b, "x2", Op::name);
+                    throw;
+                }
+            }
         ),
         nb::sig(sig.c_str()), nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()
     );

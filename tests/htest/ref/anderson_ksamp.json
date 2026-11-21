@@ -1,0 +1,16 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 13, "dropped": []},
+"anderson_ksamp/midrank": {"digest": "338ef5a4630673b843fc5c8ec87aca4cee5ee4b771ae3fe37f911efcc3dcecb6", "statistic": [7.12790747519658, -2.2715865662801248e-17], "pvalue": [0.001, 0.0], "kappa": 0.0},
+"anderson_ksamp/right": {"digest": "c9a25aad56bca06e62938ff9c712cd7a1d235b63ea085317ba151250d61fc968", "statistic": [7.07781396330451, -4.361545929724935e-17], "pvalue": [0.001, 0.0], "kappa": 0.0},
+"anderson_ksamp/continuous": {"digest": "2c12e7a2098dd5eb4ebd4cb3cc0d59c16fc1105568462df6af9b6e786e667e7b", "statistic": [7.07781396330451, -4.361545929724935e-17], "pvalue": [0.001, 0.0], "kappa": 0.0},
+"anderson_ksamp/three": {"digest": "27b61e953adff1a87e0ced8e4421aaf81556a7e1e388f1282bb11659cce11843", "statistic": [5.754215331845146, -2.777490702382492e-16], "pvalue": [0.001, 0.0], "kappa": 0.0},
+"anderson_ksamp/ties-midrank": {"digest": "d105419dc767efb62edbb71167b924acaba2b479e025bdb3120f7a13d8f65fe8", "statistic": [-0.47051141745052577, -6.7196548100182386e-18], "pvalue": [0.25, 0.0], "kappa": 0.0},
+"anderson_ksamp/ties-right": {"digest": "63fbed6cddd8b4ff0a23a056fcd7e0cdd259c398ede0577bf1b636033b50fef5", "statistic": [-0.6055931136534068, -4.174230549331306e-17], "pvalue": [0.25, 0.0], "kappa": 0.0},
+"anderson_ksamp/ties-continuous": {"digest": "ecb38ad7fc267654da82764d48f30ca083884ddbad3602697101edf98102bcee", "statistic": [0.4763607643539651, 1.9423451721048322e-17], "pvalue": [0.24414614415486388, -7.476563656360691e-18], "kappa": 0.5175248505618566},
+"anderson_ksamp/small": {"digest": "5daf04e210bf2a76ec44731c14babc16ce60b748b3e99ace1875fe685ac5fdfb", "statistic": [0.0887149484523468, 7.402340342696178e-19], "pvalue": [0.25, 0.0], "kappa": 0.0},
+"anderson_ksamp/capped-high": {"digest": "840effe715a3b285ce6ec73a1024ef6c6ebc47990972ee983f07094b9723f33e", "statistic": [39.85377510076843, -1.6632011579763423e-15], "pvalue": [0.001, 0.0], "kappa": 0.0},
+"anderson_ksamp/capped-low": {"digest": "07ef344cf234ecb9573b146b573ff12b69e810f2db8e64f1d51991ffe3c9b577", "statistic": [-1.2723922548618751, -4.5319678695699035e-17], "pvalue": [0.25, 0.0], "kappa": 0.0},
+"anderson_ksamp/four-large": {"digest": "8b3c3c69f3c8b6a60787dc4257d6838740df4ccf5ed32ae794e676f34dcfaf69", "statistic": [3.1172847943795903, -5.348558073868534e-17], "pvalue": [0.011847342827311263, 5.927753776565382e-19], "kappa": 3.7635864564492643},
+"anderson_ksamp/offset": {"digest": "0e9c509b9ef67c81d5e2b046190f1b65c234390c0ee13fe6e2ae65d5f3a9e37c", "statistic": [0.003978843261829021, -1.4596169810327889e-19], "pvalue": [0.25, 0.0], "kappa": 0.0},
+"anderson_ksamp/constant": {"digest": "60e99e3bb6d85e39420ab88bd5c081b61560178e41c60e41da0691d4a28a4e81", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0], "kappa": NaN}
+}

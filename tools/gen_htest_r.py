@@ -10,7 +10,8 @@ binom.test, prop.test, TukeyHSD, p.adjust, pchisq, car::leveneTest. A problem is
 the same test with the same options; the others (Yuen's trim, alexandergovern, the Cressie-Read family,
 cramervonmises, anderson, brunnermunzel, median_test, page_trend_test, epps_singleton, batches,
 ...) are left out. Where R's definition differs from scipy's (ks.test's exact distribution with
-ties, wilcox.test's exact switch at n < 50 and its zeros ranked as Pratt's, fisher.test's
+ties, which is sd's: H55, so ks.test is called with exact = TRUE wherever sd's ks_2samp is
+exact; wilcox.test's exact switch at n < 50 and its zeros ranked as Pratt's, fisher.test's
 conditional MLE odds ratio, prop.test's one-sample variance), the record keeps R's own value; the
 comparison says which differ. wilcox.test's exact p-values with ties are conditional on the
 midranks, as sd's method='exact' (H45): the H3 problems with ties and method='exact' compare
@@ -136,7 +137,12 @@ def r_call(p):
         cdf = {"norm": "pnorm", "uniform": "punif", "expon": "pexp"}[a[1]]
         return f"ks.test({vec(a[0])}, '{cdf}', alternative = '{alt(p)}', exact = {exact(kw.get('method', 'auto'))})"
     if f == "ks_2samp":
-        e = exact(kw.get("method", "auto"))
+        # exact wherever sd's method is (H55: R's psmirnov with ties is the conditional distribution
+        # sd's 'exact' is); ks.test's own default would be exact only for n1 n2 < 10^4
+        m = kw.get("method", "auto")
+        if np.size(a[0]) == 0 or np.size(a[1]) == 0:
+            return None
+        e = "TRUE" if m == "exact" or (m == "auto" and max(np.size(a[0]), np.size(a[1])) <= 10000) else "FALSE"
         return f"ks.test({vec(a[0])}, {vec(a[1])}, alternative = '{alt(p)}', exact = {e})"
     if f == "mannwhitneyu":
         c = "TRUE" if kw.get("use_continuity", True) else "FALSE"

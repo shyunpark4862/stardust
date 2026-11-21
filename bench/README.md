@@ -10,7 +10,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 여덟(array, linalg, special, stats, regression, optimize, htest, sparse)을 다룬다(sparse는 공개 함수가 생기면 스윕이 생긴다). |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 여덟(array, linalg, special, stats, regression, optimize, htest, sparse)을 다룬다(sparse는 공개 함수가 생기는 마일스톤마다 스윕이 생긴다: 지금은 `spmv`와 `sums`). |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -198,7 +198,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 | stats(다변량·행렬 분포, 다변량 cdf) | `tests/stats/ref/mv` | `tools/stats_ref.py` (`tools/mvref.py`, `tools/mvcdfref.py`를 부른다) |
 | regression | `tests/regression/ref/<종류>.json` | `tools/regression_ref.py` (식은 `tools/regref.py`) |
 | htest | `tests/htest/ref/<묶음>.json`(다른 라이브러리의 기록은 `tests/htest/data`) | `tools/htest_ref.py` (기록은 `tools/gen_htest_scipy.py`, `tools/gen_htest_r.py`) |
-| sparse | `tests/sparse/ref/<묶음>.npz`(다른 라이브러리의 기록은 `tests/sparse/data`; 공개 함수가 생기면 스윕이 된다) | `tools/sparse_ref.py` (기록은 `tools/gen_sparse_scipy.py`, `tools/gen_sparse_r.py`) |
+| sparse | `tests/sparse/ref/<묶음>.npz`(다른 라이브러리의 기록은 `tests/sparse/data`; 공개 함수가 생기면 스윕이 된다: SP2의 `spmv`, `sums`) | `tools/sparse_ref.py` (기록은 `tools/gen_sparse_scipy.py`, `tools/gen_sparse_r.py`) |
 | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
 | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |
 | optimize | `tests/optimize/ref`(`scalar_roots.json`, `scalar_minima.json`, `derivatives.npz`), NIST StRD 인증값 | `tools/optimize_ref.py` |
@@ -219,7 +219,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
   - linalg: 잔차/(n·eps·척도) ≤ 10.
   - regression: 선형 모형(ols·wls)의 계수 벡터가 설계 행렬의 κ₂ ≤ 1e11에서 노름 상대오차 1e-14 안이다. 그 밖의 필드는 수치 계약이 없어 기준선과의 비교만 한다.
   - optimize: 결과로 확인되는 멈춤 판정(구간법의 xtol + rtol·|x*|, 기울기 판정의 gtol). 그 밖의 측정(xtol = 0의 ULP, 최적값까지의 거리 등)은 기준선과의 비교만 한다.
-  - htest: `tests/htest/refdata.py`의 척도. 통계량은 상대 1e-14·max(1, κ_stat)(D'Agostino 변환의 0 근처, Anderson–Darling의 상쇄하는 합), p값은 1e-14·max(1, κ_p)·max(1, κ_stat), Cramér–von Mises의 p값(근사식의 1 − cdf)은 절대 1e-15도 받는다, 순위 검정의 `zstatistic`·자유도·중앙값 검정의 중앙값은 1e-14, t 검정의 신뢰구간 끝은 추정값·반폭의 크기에 대한 1e-14(docs/design/htest.md §4).
+  - htest: `tests/htest/refdata.py`의 척도. 통계량은 상대 1e-14·max(1, κ_stat)(D'Agostino 변환의 0 근처, Anderson–Darling의 상쇄하는 합), p값은 1e-14·max(1, κ_p)·max(1, κ_stat), Cramér–von Mises의 p값(한 표본은 근사식의, 두 표본의 점근은 극한 분포의 1 − cdf)은 절대 1e-15도 받는다, 순위 검정의 `zstatistic`·자유도·중앙값 검정의 중앙값은 1e-14, t 검정의 신뢰구간 끝은 추정값·반폭의 크기에 대한 1e-14(docs/design/htest.md §4).
 
 **비교 대상**(`--compare`): scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS·robustbase·glmnet·Matrix·mvtnorm), Boost.Math 단독(`bench/accuracy/boost_comparator.cpp`).
 

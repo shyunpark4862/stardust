@@ -2,6 +2,7 @@
 #include "bind/htest_bind.hpp"
 
 #include "htest/gof.hpp"
+#include "htest/gof2.hpp"
 #include "htest/parametric.hpp"
 #include "htest/rank.hpp"
 
@@ -14,6 +15,7 @@ void bind_htest(nb::module_& core) {
     htest::bind_parametric(m);
     htest::bind_gof(m);
     htest::bind_rank(m);
+    htest::bind_gof2(m);
 }
 
 }  // namespace sd

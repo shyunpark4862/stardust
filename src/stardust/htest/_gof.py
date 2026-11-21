@@ -1,5 +1,6 @@
 """The tests of goodness of fit to a given distribution (milestone H2; docs/api/htest.md §3,
-docs/design/htest.md §3.3).
+docs/design/htest.md §3.3) and between samples (milestone H4; docs/api/htest.md §5,
+docs/design/htest.md §3.5).
 
 chisquare and power_divergence (the Cressie-Read family), D'Agostino's skewtest, kurtosistest
 and normaltest, jarque_bera, shapiro (Royston's AS R94), anderson, ks_1samp and cramervonmises:
@@ -12,6 +13,12 @@ The checks and the arrangement of the samples are here; the computation is one n
 cramervonmises call the given cdf once, on the sorted samples, here: an sd.stats distribution
 object (its cdf) or a callable cdf(x); scipy's distribution names ('norm') and args=() are not
 taken (H35). Degenerate lanes give NaN without warnings (H11).
+
+ks_2samp, cramervonmises_2samp, anderson_ksamp and epps_singleton_2samp (H4) are one native call
+each too (htest/gof2.cpp). Their exact distributions are counted over the arrangements of the
+pooled sample with ties conditional on the observed ties (H55); cramervonmises_2samp's exact
+method is a dynamic programme that reaches far past scipy's sizes (H56), and anderson_ksamp's
+default variant is 'midrank' and its result unpacks into two (H57).
 
 Jarque-Bera's kernel is shared with sd.regression (H17): r.jarque_bera() takes its statistic from
 _jb_of_sums on the sums of its whitened residuals, the same function this module's jarque_bera
@@ -93,6 +100,25 @@ class Ks1sampResult(_TestResult):
 class CramervonmisesResult(_TestResult):
     __slots__ = ()
     _FIELDS = ("statistic", "pvalue")
+
+
+class Ks2sampResult(Ks1sampResult):
+    __slots__ = ()
+
+
+class Cramervonmises2sampResult(_TestResult):
+    __slots__ = ()
+    _FIELDS = ("statistic", "pvalue", "method")
+
+
+class AndersonKsampResult(_Pair):
+    __slots__ = ()
+
+
+class EppsSingleton2sampResult(_TestResult):
+    __slots__ = ()
+    _FIELDS = ("statistic", "pvalue", "df")
+    _UNPACK = ("statistic", "pvalue")
 
 
 # ---- chisquare and power_divergence -------------------------------------------------------
@@ -359,6 +385,130 @@ def cramervonmises(rvs, cdf, /, *, axis=None, nan_policy="propagate", keepdims=F
     return CramervonmisesResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p))
 
 
+# ---- between samples (H4) ----------------------------------------------------------------
+
+_REQ = {"auto": 0, "exact": 1}
+_EXACT_CAP = 1e9  # operations of method='exact' (H13, the rank tests' cap; htest/gof2.cpp also caps the entries held)
+_VARIANTS = {"midrank": 0, "right": 1, "continuous": 2}
+
+
+def _methods(codes, s, used):
+    """The lanes' methods (H12, H48): a name for one test, else nested lists of the batch's shape."""
+    names = [used[int(v)] for v in codes.tolist()]
+    shape = s.keep_shape if s.keepdims else s.batch
+    return names[0] if not shape and not s.keepdims else _nest(names, shape)
+
+
+def _check_work(work, method, name, instead):
+    if method == "exact" and work.size:
+        w = float(_sd.max(work))
+        if w > 0.0:
+            C.check_exact_work(w, _EXACT_CAP, name, instead=instead)
+
+
+def ks_2samp(data1, data2, /, *, axis=None, alternative="two-sided", method="auto", nan_policy="propagate",
+             keepdims=False):  # fmt: skip
+    """The two-sample Kolmogorov-Smirnov test: statistic D (D+ = max(F1 - F2) for 'greater', D- for
+    'less'; an exact multiple of 1/lcm(n1, n2)), pvalue, statistic_location (the value where D is
+    reached), statistic_sign (+1 for D+, -1 for D-) and method: 'auto' (exact up to
+    max(n1, n2) = 10000, scipy's rule), 'exact' (the lattice paths' distribution; with ties
+    conditional on them, as R's psmirnov: H55) or 'asymp' (scipy's: the one-sample kstwo at
+    round(n1 n2 / (n1 + n2)) two-sided, Hodges' formula one-sided). A batch's method is the lanes'
+    names in nested lists of its shape (H48). Unpacks as (statistic, pvalue)."""
+    name = "ks_2samp"
+    alt = C.alternative(alternative, name)
+    meth = C.method(method, name, ("exact", "asymp"))
+    s = C.Samples(name, [data1, data2], ("data1", "data2"), axis, nan_policy, keepdims=keepdims, scan=False)
+    stat, p, loc, sign, codes, work = _k.ks2(
+        s.rows[0], s.rows[1], _ALT[alt], {"auto": 0, "exact": 1, "asymp": 2}[meth], _EXACT_CAP, s.policy == "omit"
+    )
+    _check_work(work, meth, name, "method='asymp'")
+    sign = s.out(sign)
+    sign = int(sign) if isinstance(sign, float) else sign.astype(_sd.int64)
+    return Ks2sampResult._make(
+        batch=s.batch,
+        statistic=s.out(stat),
+        pvalue=s.out(p),
+        statistic_location=s.out(loc),
+        statistic_sign=sign,
+        method=_methods(codes, s, ("exact", "asymp")),
+    )
+
+
+def cramervonmises_2samp(x, y, /, *, axis=None, method="auto", nan_policy="propagate", keepdims=False):
+    """The two-sample Cramér-von Mises test: statistic T = U/(nx ny N) - (4 nx ny - 1)/(6N) (U from the
+    midranks; Anderson 1962), pvalue and method: 'auto' (exact up to max(nx, ny) = 20, scipy's
+    rule), 'exact' (the distribution of U over the arrangements by a dynamic programme, for sizes
+    far past scipy's: H56; with ties conditional on them) or 'asymptotic' (scipy's: Anderson's
+    normalized statistic in the one-sample limit). A sample of fewer than 2 values gives NaN. Does
+    not unpack (scipy's result does not)."""
+    name = "cramervonmises_2samp"
+    meth = C.method(method, name, ("exact", "asymptotic"))
+    s = C.Samples(name, [x, y], ("x", "y"), axis, nan_policy, keepdims=keepdims, scan=False)
+    stat, p, codes, work = _k.cvm2(
+        s.rows[0], s.rows[1], {"auto": 0, "exact": 1, "asymptotic": 2}[meth], _EXACT_CAP, s.policy == "omit"
+    )
+    _check_work(work, meth, name, "method='asymptotic'")
+    return Cramervonmises2sampResult._make(
+        batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), method=_methods(codes, s, ("exact", "asymptotic"))
+    )
+
+
+def anderson_ksamp(samples, /, *, variant="midrank", method=None):
+    """The k-sample Anderson-Darling test of Scholz and Stephens (1987): samples a list or tuple of at
+    least two samples (each flattened). statistic, the standardized (A2kN - (k - 1)) / sigma_N of
+    the variant ('midrank': their A2akN for ties, the default; 'right'; 'continuous'), and pvalue
+    interpolated in their table as scipy's (0.25 above, 0.001 below the table's range). An empty
+    sample, a NaN, fewer than 4 values or a single distinct value give NaN. method=None only
+    (PermutationMethod comes with H9). Unpacks as (statistic, pvalue) (H57: scipy 1.18.1's
+    behaviour)."""
+    name = "anderson_ksamp"
+    v = C.choice(variant, name, "variant", tuple(_VARIANTS))
+    if method is not None:
+        raise TypeError(f"{name}(): 'method' must be None, not {_type_name(method)}")
+    if not isinstance(samples, (list, tuple)):
+        raise TypeError(f"{name}(): 'samples' must be a list or tuple of samples, not {_type_name(samples)}")
+    if len(samples) < 2:
+        raise TypeError(f"{name}(): at least two samples are required, not {len(samples)}")
+    rows = []
+    for i, x in enumerate(samples):
+        a = _as_array(x, name, f"samples[{i}]")
+        rows.append(_sd.reshape(a, (1, a.size)))
+    stat, p = _k.ad_ksamp(rows, _VARIANTS[v])
+    return AndersonKsampResult._make(statistic=float(stat[0]), pvalue=float(p[0]))
+
+
+def _epps_t(t, name):
+    msg = f"{name}(): 't' must hold positive finite numbers"
+    if _scalar_value(t) is not None and not isinstance(t, bool):
+        vals = [C.real(t, name, "t")]
+    else:
+        a = _as_array(t, name, "t")
+        if a.ndim != 1 or a.size == 0:
+            raise ValueError(
+                f"{name}(): 't' must be a number or a 1-D sequence of numbers, not of shape {tuple(a.shape)}"
+            )
+        vals = a.tolist()
+    if not all(math.isfinite(v) and v > 0.0 for v in vals):
+        raise ValueError(msg)
+    return _sd.asarray([float(v) for v in vals])
+
+
+def epps_singleton_2samp(x, y, /, *, axis=None, t=(0.4, 0.8), nan_policy="propagate", keepdims=False):
+    """The Epps-Singleton test that two samples come from the same distribution, through their empirical
+    characteristic functions at the points t / sigma (sigma half the pooled interquartile range):
+    statistic W (with Epps and Singleton's small-sample correction below 25 values) and pvalue (chi^2
+    with the rank of the covariance's pseudo-inverse as degrees of freedom, 2 len(t) when it has full
+    rank) and df, those degrees of freedom (H59; not in the tuple). A sample of fewer than 5 values,
+    a value that is not finite or an interquartile range of 0 give NaN. Unpacks as (statistic,
+    pvalue)."""
+    name = "epps_singleton_2samp"
+    ts = _epps_t(t, name)
+    s = C.Samples(name, [x, y], ("x", "y"), axis, nan_policy, keepdims=keepdims, scan=False)
+    stat, p, df = _k.epps(s.rows[0], s.rows[1], ts, s.policy == "omit")
+    return EppsSingleton2sampResult._make(batch=s.batch, statistic=s.out(stat), pvalue=s.out(p), df=s.out(df))
+
+
 # a wrong call shape in the library's form (API.md §2.1)
 chisquare = _calls.function(chisquare)
 power_divergence = _calls.function(power_divergence)
@@ -370,3 +520,7 @@ shapiro = _calls.function(shapiro)
 anderson = _calls.function(anderson)
 ks_1samp = _calls.function(ks_1samp)
 cramervonmises = _calls.function(cramervonmises)
+ks_2samp = _calls.function(ks_2samp)
+cramervonmises_2samp = _calls.function(cramervonmises_2samp)
+anderson_ksamp = _calls.function(anderson_ksamp)
+epps_singleton_2samp = _calls.function(epps_singleton_2samp)

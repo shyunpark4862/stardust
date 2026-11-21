@@ -133,6 +133,19 @@ SPARSE_CHECK = Check(sd=_summary, ref=lambda label, x: x if label == "R" else _s
 R_SUMMARY = "{ s <- summary(.v); c(sum(s$x), sum(s$x * s$i), sum(s$x * s$j)) }"
 
 
+def _densified(label, x):
+    """A comparator's result for the SP2 smoke check: a sparse result as the same three sums as sd's
+    (_summary), except where sd gives a dense array for a sparse one (scipy's max(axis=) is COO)."""
+    import scipy.sparse as sp
+
+    if sp.issparse(x) and x.ndim == 1:
+        return x.toarray()
+    return x if label == "R" else _summary(x)
+
+
+SP2_CHECK = Check(sd=_summary, ref=_densified, rtol=1e-9)
+
+
 def _summed(A):
     B = A.copy()
     B.sum_duplicates()
@@ -153,6 +166,7 @@ class Spec:
     note: str = ""
     r_differs: str = ""  # the R expression computes something else by design: why
     r_data: tuple = ()  # more (case data key, R variable) pairs the R expression reads
+    r_sparse: bool = False  # the R result is a sparse matrix: compared by the three sums (R_SUMMARY)
 
 
 def _quiet(f):
@@ -204,9 +218,10 @@ ARRAY_SPECS = (
     Spec("SP2", "products", "A.T @ x", ("csr_array",), lambda d: (lambda A, x: lambda: A.T @ x)(_sd_csr(d), _sd(d["x"])),
          lambda d: lambda: d["a"].T @ d["x"], r="crossprod(A, x)"),
     Spec("SP2", "products", "A @ B", ("csr_array",), lambda d: (lambda A, B: lambda: A @ B)(_sd_csr(d), _sd_csr(d, "b")),
-         lambda d: lambda: d["a"] @ d["b"], r="A %*% A", limit=10**6),
+         lambda d: lambda: d["a"] @ d["b"], r="A %*% A", limit=10**6, r_sparse=True,
+         r_differs="A %*% A: the session holds one matrix"),
     Spec("SP2", "arithmetic", "A + B", ("csr_array",), lambda d: (lambda A, B: lambda: A + B)(_sd_csr(d), _sd_csr(d, "b")),
-         lambda d: lambda: d["a"] + d["b"], r="A + A"),
+         lambda d: lambda: d["a"] + d["b"], r="A + A", r_sparse=True, r_differs="A + A: the session holds one matrix"),
     Spec("SP2", "arithmetic", "A * B", ("csr_array",), lambda d: (lambda A, B: lambda: A * B)(_sd_csr(d), _sd_csr(d, "b")),
          lambda d: lambda: d["a"] * d["b"]),
     Spec("SP2", "arithmetic", "A * 2.0", ("csr_array",), lambda d: (lambda A: lambda: A * 2.0)(_sd_csr(d)),
@@ -219,6 +234,24 @@ ARRAY_SPECS = (
          lambda d: lambda: d["a"].sum(), r="sum(A)"),
     Spec("SP2", "reductions", "max(axis=1)", ("csr_array",), lambda d: (lambda A: lambda: A.max(axis=1))(_sd_csr(d)),
          lambda d: lambda: d["a"].max(axis=1), note="scipy는 COO 희소를 돌려준다"),
+    Spec("SP2", "products", "x @ A", ("csr_array",), lambda d: (lambda A, x: lambda: x @ A)(_sd_csr(d), _sd(d["x"])),
+         lambda d: lambda: d["x"] @ d["a"], note="CSR의 열 방향: 1스레드는 흩뿌리기, 여러 스레드는 전치 뒤 모으기"),
+    Spec("SP2", "products", "CSC @ x", ("csr_array",),
+         lambda d: (lambda A, x: lambda: A @ x)(_sd_csr(d).tocsc(), _sd(d["x"])), lambda d: lambda: d["csc"] @ d["x"]),
+    Spec("SP2", "arithmetic", "A != B", ("csr_array",),
+         lambda d: (lambda A, B: lambda: A != B)(_sd_csr(d), _sd_csr(d, "b")), lambda d: lambda: d["a"] != d["b"],
+         note="==는 두 암시적 0 사이가 참이라 결과가 밀집에 가깝다(scipy도 같다): 재지 않는다"),
+    Spec("SP2", "arithmetic", "A.multiply(X dense)", ("csr_array",),
+         lambda d: (lambda A, X: lambda: A.multiply(X))(_sd_csr(d), _sd(d["a"].toarray())),
+         lambda d: (lambda X: lambda: d["a"].multiply(X))(d["a"].toarray()), limit=10**5,
+         note="sd는 A의 형식(CSR), scipy는 COO"),
+    Spec("SP2", "elementwise", "A.sin()", ("csr_array",), lambda d: (lambda A: lambda: A.sin())(_sd_csr(d)),
+         lambda d: lambda: d["a"].sin()),
+    Spec("SP2", "reductions", "mean(axis=0)", ("csr_array",), lambda d: (lambda A: lambda: A.mean(axis=0))(_sd_csr(d)),
+         lambda d: lambda: d["a"].mean(axis=0), r="colMeans(A)"),
+    Spec("SP2", "reductions", "argmax(axis=0)", ("csr_array",),
+         lambda d: (lambda A: lambda: A.argmax(axis=0))(_sd_csr(d)), lambda d: lambda: d["a"].argmax(axis=0),
+         limit=10**6, note="scipy는 줄마다 Python 반복"),
     Spec("SP3", "indexing", "A[rows 1/10]", ("csr_array",),
          lambda d: (lambda A, k: lambda: A[:k])(_sd_csr(d), d["n"] // 10), lambda d: lambda: d["a"][: d["n"] // 10]),
     Spec("SP3", "indexing", "A[:, cols 1/10]", ("csr_array",),
@@ -297,7 +330,7 @@ def _grid_r(setup):
 
 
 # The milestones whose cases run.
-DONE = ("SP1",)
+DONE = ("SP1", "SP2")
 
 
 def _public(spec) -> bool:
@@ -324,10 +357,10 @@ def cases() -> list[Case]:
                         setup=R_SETUP,
                         packages=("Matrix",),
                         differs=s.r_differs,
-                        value=R_SUMMARY if s.milestone == "SP1" else "",
+                        value=R_SUMMARY if s.milestone == "SP1" or s.r_sparse else "",
                     )
                 )
-            check = SPARSE_CHECK if s.milestone == "SP1" else Check()
+            check = SPARSE_CHECK if s.milestone == "SP1" else SP2_CHECK
             out.append(Case(area="sparse", group=s.group, name=s.name, size=size, n=nnz, setup=_array_setup(nnz),
                             sd=s.sd, refs=tuple(refs), quick=s.quick and nnz == 10**6, note=s.note, check=check))  # fmt: skip
     for s in SOLVER_SPECS:
@@ -348,6 +381,7 @@ TITLES = {
     "products": "곱 (SpMV, SpMM, SpGEMM)",
     "arithmetic": "산술",
     "reductions": "리덕션",
+    "elementwise": "원소별 함수",
     "indexing": "인덱싱",
     "construct": "만들기",
     "norms": "노름",

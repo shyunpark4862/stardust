@@ -14,6 +14,10 @@ void bind_sparse(nb::module_& core) {
     sparse::bind_canonical(m);
     sparse::bind_convert(m);
     sparse::bind_dok(m);
+    sparse::bind_spmv(m);
+    sparse::bind_binop(m);
+    sparse::bind_spgemm(m);
+    sparse::bind_reduce(m);
 }
 
 }  // namespace sd

@@ -1,8 +1,8 @@
 # sd.sparse API
 
-> 상태: **초안** (SP1, 2026-11-21). 공개된 이름은 §2의 형식과 변환(SP1)이다: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
+> 상태: **초안** (SP2, 2026-11-21). 공개된 것은 §2의 형식과 변환(SP1: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성)과 §3의 연산(SP2: 연산자, 원소별 메서드, 곱, 리덕션)이다. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
 
-- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP34), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP47), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/sparse/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name`), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -26,7 +26,7 @@
 - **CSR·CSC는 언제나 표준 꼴이다**(SP10): 줄마다 색인이 오름차순이고 중복이 없다. 모든 생성자와 연산의 결과가 그렇다. 그래서 CSR·CSC에는 `has_canonical_format`, `has_sorted_indices`, `sort_indices`, `sorted_indices`, `sum_duplicates`, `check_format`, `prune`이 없다(`[scipy와 다름]`). `(data, indices, indptr)`로 만들 때 범위를 검사하고(틀리면 `ValueError`), 정렬되지 않았거나 중복이 있으면 정렬하고 더한다(`copy=False`면 `ValueError`).
 - **COO는 비표준 꼴을 가질 수 있다**(scipy와 같다). `has_canonical_format`과 `sum_duplicates()`는 COO에만 있다. `has_canonical_format`은 저장된 원소가 실제로 행 우선 정렬이고 중복이 없는지다(SP32; 처음 물을 때 알아내 둔다; `[scipy와 다름]`: scipy는 `(data, (row, col))`·전치·`astype` 뒤에 확인 없이 False로 둔다).
 - **중복은 입력 순서대로 왼쪽부터 차례로 더한다**: `[1, 1e16, 1, -1e16]`(같은 자리)은 0이다. scipy의 `tocsr()`는 줄의 원소가 15개 이하일 때 이 규칙과 같고, 더 긴 줄과 COO의 `sum_duplicates()`(첫 원소 + 나머지의 `np.add.reduce`)는 순서가 다르다(반올림 크기의 차이, docs/design/sparse.md §2.3).
-- **연산이 만든 0을 지우는지는 연산마다 scipy의 규칙이다**(SP11): 희소끼리의 `+`, `-`, `*`, 비교와 희소 × 희소 곱은 결과의 정확한 0을 지우고, 스칼라 곱(`A * 0`), `-A`, 원소별 함수는 패턴을 그대로 둔다. 표는 §3.1이다.
+- **연산이 만든 0을 지우는지는 연산마다 scipy의 규칙이다**(SP11): 희소끼리의 `+`, `-`, `*`, 비교와 희소 × 희소 곱은 결과의 정확한 0을 지우고, 스칼라 곱(`A * 0`), `-A`, 원소별 함수는 패턴을 그대로 둔다. 표는 §3.1이다. 희소 × 희소는 두 쪽이 다 저장한 자리만 곱한다(아래의 강한 0).
 - **암시적 0은 강한 0이다**(SP12): 저장되지 않은 원소는 산술에 들지 않는다. `A * nan`, `A * inf`는 저장된 원소만 NaN·inf가 되고, `A @ x`에서 x의 NaN은 그 열에 저장된 원소가 있는 행에만 퍼진다.
   - `A / c`는 저장된 원소만 나눈다. **c = 0이면 예외 없이 저장된 원소가 ±inf·NaN이 되고 암시적 0은 0이다**(`[scipy와 다름]`: scipy는 `ZeroDivisionError`; 배열의 원소별 연산은 값 때문에 실패하지 않는다, API.md §2).
   - 결과가 밀집인 연산(희소 ÷ 희소, 희소 ± 밀집)은 IEEE대로다(0/0은 NaN).
@@ -46,7 +46,7 @@
 - Accelerate는 행·열 수와 행 색인을 32비트로 받는다. 행이나 열이 2³¹ − 1을 넘는 행렬을 직접 풀이에 주면 `ValueError`다.
 
 ### §1.7 scipy와 다른 점 (모든 함수에 걸친 것)
-- 배열 꼴만(SP2), 평평한 이름공간(SP3), BSR·DIA·LIL 없음과 `format=None`의 CSR(SP6, SP7), int64 색인(SP8), dtype 넷(SP9), 언제나 표준 꼴인 CSR·CSC(SP10), 예외 없는 `A / 0`(SP12), 경고 없음, `max_iter`, 데이터는 위치·옵션은 키워드, 별칭 없음, `rng` 필수(`random_array`)와 정해진 시작 벡터(`eigsh` 등).
+- 배열 꼴만(SP2), 평평한 이름공간(SP3), BSR·DIA·LIL 없음과 `format=None`의 CSR(SP6, SP7), int64 색인(SP8), dtype 넷(SP9), 언제나 표준 꼴인 CSR·CSC(SP10), 예외 없는 `A / 0`(SP12), 강한 0의 희소 × 희소, IEEE대로의 비교, numpy 배열은 피연산자가 아님(SP35), 원소별 함수는 메서드만(SP36), 축 리덕션은 밀집(SP37), `A * 밀집`은 A의 형식(SP38), `A + c`·`A ** 0`은 `ValueError`(SP39), 리덕션의 `keepdims`(SP40), 경고 없음, `max_iter`, 데이터는 위치·옵션은 키워드, 별칭 없음, `rng` 필수(`random_array`)와 정해진 시작 벡터(`eigsh` 등).
 - 직접 풀이의 바탕이 SuperLU가 아니라 Accelerate LU(문턱 부분 피벗 ≤ 0.5, AMD 순서, 척도 조정)다. 해의 끝자리와 역오차의 크기가 scipy와 다를 수 있고, `splu`의 결과에서 `L`·`U`·`perm_r`·`perm_c`를 꺼낼 수 없다(SP4에서 정한다).
 
 ## §2. 희소 배열 (SP1)
@@ -135,18 +135,23 @@ coo_array.sum_duplicates()
 ### §3.1 연산자
 | 연산 | 결과 | 0을 지우나 (scipy와 같게) |
 |---|---|---|
-| 희소 `+`·`-` 희소, 희소 `*` 희소(원소별), 비교(`==` `!=` `<` `<=` `>` `>=`) | 희소 (CSR; 둘 다 CSC면 CSC) | 지운다 |
-| 희소 `*`·`/` 스칼라, `-A`, `abs(A)`, 원소별 함수(§3.2) | 희소, 같은 패턴 | 지우지 않는다 |
-| 희소 `*` 밀집, `A.multiply(dense)` | 희소 (A의 형식; scipy는 COO; SP2에서 정한다) | 지우지 않는다 |
-| 희소 `+`·`-` 밀집, 희소 `/` 희소 | 밀집 `sd.ndarray` | — |
+| 희소 `+`·`-` 희소, 희소 `*` 희소(원소별), 비교(`==` `!=` `<` `<=` `>` `>=`), `maximum`·`minimum` | 희소 (CSR; 왼쪽이 CSC면 CSC) | 지운다 |
+| 희소 `*`·`/` 스칼라, `-A`, `abs(A)`, 원소별 함수(§3.2), `A ** p`(p > 0) | 희소, 같은 패턴 | 지우지 않는다 |
+| 희소 `*`·`/` 밀집, `A.multiply(dense)` | 희소, A의 형식(SP38; scipy는 COO) | 지우지 않는다 |
+| 희소 비교·`maximum`·`minimum` 스칼라 | 희소 (CSR; A가 CSC면 CSC) | 지운다 |
+| 희소 `+`·`-` 밀집, 희소 비교·`maximum`·`minimum` 밀집, 희소 `/` 희소 | 밀집 `sd.ndarray` | — |
 | 희소 `@` 밀집, 밀집 `@` 희소 | 밀집 `sd.ndarray` (1차원 @ 1차원은 Python 스칼라) | — |
-| 희소 `@` 희소 | 희소 | 지운다 |
-| `A + c`(c ≠ 0), `A ** 0` | `ValueError` (`adding a nonzero scalar to a sparse array is not supported; use A.toarray() + c`) | — |
-| `A ** p`(p > 0) | 희소, 원소별 거듭제곱 | 지우지 않는다 |
+| 희소 `@` 희소 | 희소 (CSR; 왼쪽이 CSC면 CSC; 1차원 결과는 COO, scipy와 같다; 1차원 @ 1차원은 Python 스칼라) | 지운다 |
+| `A + c`(c ≠ 0), `A - c`, `c - A`, `A ** 0` | `ValueError` (SP39; `adding a nonzero scalar to a sparse array is not supported; use A.toarray() + c`) | — |
 
-- 결과 dtype은 배열의 승격 규칙이다. 정수 산술은 wrap한다(scipy·numpy와 같다). bool끼리의 `+`는 int64다(배열과 같다).
-- 밀집 피연산자는 `sd.ndarray`와 Python 스칼라다. numpy 배열은 `TypeError`다(API.md §5의 연산자 규칙; SP2에서 정한다).
-- 비교에서 암시적 0끼리 참인 비교(`A == 0`, `A <= 1`)는 True가 많은 희소 bool 배열이다(scipy와 같다, 경고 없음).
+- **값**: 저장된 값마다 배열의 같은 연산이라, 그 자리의 밀집 연산과 비트까지 같다. 결과 dtype은 배열의 승격 규칙이다(bool + bool과 bool @ bool은 int64, `-A`의 bool은 int64; scipy와 다르다). 정수 산술은 wrap한다(scipy·numpy와 같다).
+- **희소끼리**: 모양이 같아야 한다(`shapes could not be broadcast together: (2, 3) (3, 2)`, `ValueError`; 브로드캐스트는 없다). 한쪽에만 저장된 자리는 다른 쪽의 암시적 0과의 연산이다. 단 `*`는 **두 쪽이 다 저장한 자리만**이다(강한 0, SP12: `nan * 암시적 0`은 0; `[scipy와 다름]`: scipy는 한쪽의 NaN·inf를 `a * 0` = NaN으로 저장한다). 결과의 형식은 scipy의 규칙이다: 왼쪽이 CSC면 CSC, 아니면 CSR(SP42; `[scipy와 다름]`: scipy의 `dok + 희소`는 DOK).
+- **비교**는 IEEE대로다(NaN과의 비교는 `!=`만 참; `[scipy와 다름]`: scipy의 `<=`·`>=`는 `>`·`<`의 부정이라 NaN에서 참). 두 암시적 0 사이가 참인 비교(`A == B`, `A <= 1`, `A == 0`)는 나머지 모든 자리에 True를 저장한다(scipy와 같다, 경고 없음; 결과가 밀집에 가까우므로 큰 배열에서는 `!=`·`<`를 쓴다). 결과는 bool이고 True만 저장한다.
+- **스칼라**는 Python의 bool·int·float·complex와 numpy의 스칼라다. `A * c`, `c * A`, `A / c`는 저장된 값에만 하고 패턴과 형식(DOK 포함; COO의 중복도)을 지킨다: `A * 0`은 패턴이 남고, `A / 0`은 저장된 값만 ±inf·NaN이다(SP12; `[scipy와 다름]`: scipy는 `ZeroDivisionError`이고 `A / c`를 `A * (1/c)`로 한다). `A + 0`, `A - 0`, `0 - A`는 같은 패턴의 새 배열이다. 스칼라와의 비교·`maximum`·`minimum`은 op(0, c)가 0이면 만든 0을 지우고, 아니면 모든 자리가 결과에 든다(`A.maximum(2)`는 `A.toarray()`의 maximum을 A의 형식으로 담는다; SP47, scipy와 같다, 경고 없음).
+- **밀집 피연산자**는 `sd.ndarray`다(SP35). A의 모양으로 브로드캐스트되어야 한다(SP41)(행 `(n,)`·`(1, n)`, 열 `(m, 1)`, `(1, 1)`; 결과가 A보다 커지는 꼴은 `ValueError`). `A * D`, `D * A`, `A / D`는 저장된 자리의 D만 읽는다(암시적 0은 D가 NaN이어도 0, scipy와 같다). `A ± D`, 비교, `maximum`·`minimum`은 `A.toarray()`와의 배열 연산이다. `D / A`와 `c / A`는 `TypeError`다(scipy도 받지 않는다).
+- **numpy 배열·리스트는 피연산자가 아니다**(SP35, API.md §5): 연산자는 `TypeError`(Python의 `unsupported operand type(s)`)이고 `==`·`!=`도 Python의 조용한 False가 아니라 `TypeError`다. `A @ 2`도 `TypeError`다(배열과 같다; scipy는 `ValueError`).
+- **`@`**: 피연산자의 dtype은 배열의 `matmul` 규칙으로 승격한다. 모양이 맞지 않으면 배열의 메시지다(`the last axis of 'x1' (3) must match the second-to-last axis of 'x2' (2)`). 합의 순서는 §1.5다: SpMV·SpMM·`x @ A`(줄이 4096개 이하면)와 SpGEMM은 scipy와 비트까지 같다. SpGEMM의 결과는 언제나 표준 꼴이다(scipy의 결과는 줄이 정렬되지 않았다).
+- 제자리 연산자(`A *= 2` 등)는 두지 않는다(SP43): Python이 `A = A * 2`로 새 배열을 만든다(`[scipy와 다름]`: scipy는 값 배열을 제자리에서 바꾼다; 제자리는 `A.data *= 2`).
 
 ### §3.2 원소별 함수와 이항 메서드
 ```
@@ -156,12 +161,12 @@ sparray.minimum(other, /)
 sparray.power(n, /)
 sparray.sin()
 sparray.tan()
-sparray.arcsin()
-sparray.arctan()
+sparray.asin()
+sparray.atan()
 sparray.sinh()
 sparray.tanh()
-sparray.arcsinh()
-sparray.arctanh()
+sparray.asinh()
+sparray.atanh()
 sparray.sqrt()
 sparray.expm1()
 sparray.log1p()
@@ -170,12 +175,14 @@ sparray.rad2deg()
 sparray.floor()
 sparray.ceil()
 sparray.trunc()
-sparray.rint()
+sparray.round()
 sparray.sign()
 ```
-- 원소별 함수는 f(0) = 0인 것만이다(scipy의 메서드 목록). 값은 배열의 같은 함수를 `data`에 쓴 것과 비트까지 같다(`A.sin().data`와 `sd.sin(A.data)`). `sd.sin(A)`는 메서드를 짚는 `TypeError`다(SP2에서 정한다).
-- `power(n)`: n > 0인 원소별 거듭제곱. scipy의 `dtype=`은 없다(`astype`으로).
-- `maximum`, `minimum`: 희소 또는 스칼라와의 원소별 최대·최소. 결과의 0을 지운다(scipy와 같다).
+- **메서드로만 둔다**(SP36). f(0) = 0인 것만이다(scipy의 메서드 목록의 함수). 이름은 배열의 것이다(SP46): `asin`·`atan`·`asinh`·`atanh`·`round`(`[scipy와 다름]`: scipy는 `arcsin`·`arctan`·`arcsinh`·`arctanh`·`rint`; 별칭은 없다, SP24). 값은 같은 이름의 배열 함수를 저장된 값에 쓴 것과 비트까지 같다(`A.sin().data`와 `sd.sin(A.data)`). 배열에 없는 `deg2rad`·`rad2deg`는 numpy의 식 x·(π/180), x·(180/π)다(complex는 `TypeError`). dtype과 정의역 밖의 값(sqrt(−1) = NaN)은 배열의 규칙이다.
+- `sd.sin(A)` 등 배열의 원소별 함수에 희소 배열을 주면 메서드나 연산자를 짚는 `TypeError`다: `sin(): 'x' must be an sd.ndarray or a bool, int, float or complex, not csr_array; for a sparse array use A.sin()`, `add(): ...; for a sparse array use A + B`, 메서드가 없는 함수는 `cos(): ...; a sparse array has no cos: use cos(A.toarray())`.
+- 결과의 형식은 scipy의 것이다: CSR·CSC·COO는 같은 형식이고 COO는 중복을 먼저 더한 표준 꼴(scipy는 A를 제자리에서 정리하고, 이쪽은 A를 바꾸지 않는다), DOK는 CSR이다(scipy의 `abs`·`power`와 같다). `abs(A)`, `power`, `**`도 같다.
+- `power(n)`: n은 실수이고 n > 0이다. n = 0은 `ValueError`(SP39), n < 0과 NaN도 `ValueError`(SP44; 0 ** n이 0이 아니다), complex는 `TypeError`다. scipy의 `dtype=`은 없다(`astype`으로).
+- `multiply`, `maximum`, `minimum`: 희소 배열, 밀집 `sd.ndarray`, 수를 받는다(§3.1의 규칙). 그 밖은 `multiply(): 'other' must be a sparse array, an sd.ndarray or a number, not list`(`TypeError`)다.
 
 ### §3.3 리덕션
 ```
@@ -187,14 +194,13 @@ sparray.nanmax(*, axis=None, keepdims=False, explicit=False)
 sparray.nanmin(*, axis=None, keepdims=False, explicit=False)
 sparray.argmax(*, axis=None, keepdims=False, explicit=False)
 sparray.argmin(*, axis=None, keepdims=False, explicit=False)
-sparray.trace(*, k=0)
-sparray.diagonal(*, k=0)
 ```
-- `axis`가 None이면 Python 스칼라, 있으면 **언제나 밀집 `sd.ndarray`**다(`[scipy와 다름]`: scipy의 `max(axis=)`·`min(axis=)`은 COO 희소; SP2에서 정한다). `keepdims`는 배열과 같은 뜻이다(scipy에는 없다). scipy의 `out=`은 없다.
-- 합의 순서는 §1.5다. bool의 `sum`은 int64다. 빈 배열의 `sum`은 0, `max`는 `ValueError`다(배열·scipy와 같다).
-- `max`·`min`은 NaN을 전파하고(배열과 같다), 암시적 0이 하나라도 있으면 0도 후보다. `explicit=True`면 저장된 원소만 본다(scipy와 같다). `nanmax`·`nanmin`은 NaN을 건너뛴다.
-- `argmax`·`argmin`: 암시적 0도 자리로 센다. 동점이면 C 순서의 첫 자리, NaN이면 첫 NaN의 자리다. 2차원에서 `axis=None`이면 펼친 C 순서의 자리다.
-- `trace(k=)`: scipy의 `offset=`이 아니라 sd.linalg `trace`의 이름 `k`다(DESIGN.md §1.4; `[scipy와 다름]`). `diagonal(k=)`는 밀집 1차원 `sd.ndarray`다.
+- `axis`가 None이면 Python 스칼라, 있으면 **언제나 밀집 `sd.ndarray`**다(SP37; `[scipy와 다름]`: scipy의 `max(axis=)`·`min(axis=)`은 COO 희소). 1차원의 `axis=0`은 전체 리덕션이라 스칼라다(배열과 같다). `axis`는 int(음수 포함)나 None이다(SP45). `keepdims`는 배열과 같은 뜻이다(SP40; scipy에는 없다). scipy의 `out=`은 없다.
+- 합의 순서는 §1.5다. 축 합은 scipy의 `ones @ A`·`A @ ones`와 비트까지 같다(scipy가 자기 줄을 따라 더하는 CSR의 `axis=1`, CSC의 `axis=0`은 `np.add.reduceat`이라 줄이 8개 이상이면 끝자리가 다를 수 있다). 전체 합은 C 순서의 pairwise 합이다(CSR이면 `sd.sum(A.data)`). COO의 중복은 먼저 더하므로 형식과 상관없이 같은 비트다.
+- bool·int64의 합은 int64(wrap), `mean`은 정확한 합을 한 번 반올림해 한 번 나눈 float64다(배열과 같다). float·complex의 `mean`은 합 ÷ 원소 수다(`[scipy와 다름]`: scipy는 값마다 1/원소 수를 곱해 더한다). `sum(dtype=)`은 배열의 `sum`의 규칙이다. 빈 배열의 `sum`은 0, `mean`은 NaN(배열과 같다; scipy는 `ZeroDivisionError`), `max`·`argmax` 등은 `ValueError`(`max(): undefined for an empty array (or along an empty axis)`)다.
+- `max`·`min`은 NaN을 전파하고(배열과 같다), 암시적 0이 하나라도 있으면 0도 후보다. `explicit=True`면 저장된 값만 본다(SP40, scipy와 같다; 빈 줄은 0). `nanmax`·`nanmin`은 NaN을 건너뛴다. complex는 배열처럼 `TypeError`다.
+- `argmax`·`argmin`: 암시적 0도 자리로 센다. 동점이면 C 순서의 첫 자리, NaN이면 첫 NaN의 자리다(배열과 같다; `[scipy와 다름]`: scipy는 NaN이 있어도 첫 암시적 0의 자리). 2차원에서 `axis=None`이면 펼친 C 순서의 자리다. `explicit=True`면 저장된 값 중에서이고(빈 줄은 0), 아무것도 저장되지 않은 배열의 `axis=None`은 `ValueError`다(scipy와 같다).
+- `trace`, `diagonal`은 SP3이다(§4.1).
 
 ## §4. 인덱싱과 만들기 (SP3)
 
@@ -203,6 +209,8 @@ sparray.diagonal(*, k=0)
 - 대입 `A[idx] = v`: DOK는 O(1), CSR·CSC는 이미 저장된 자리면 값만 바꾸고 새 자리면 패턴을 다시 만든다(O(nnz); 경고 없음; SP3에서 정한다). 같은 자리가 여러 번 나오면 마지막 값이다(배열의 scatter와 같다).
 
 ```
+sparray.trace(*, k=0)
+sparray.diagonal(*, k=0)
 sparray.setdiag(values, /, *, k=0)
 eye_array(n_rows, n_cols=None, /, *, k=0, dtype=None, format=None)
 diags_array(diagonals, /, *, offsets=0, shape=None, format=None, dtype=None)
@@ -221,6 +229,7 @@ find(A, /)
 - `diags_array`: `format=None`이면 CSR(scipy는 DIA)이다. 정수 대각의 dtype은 int64다(scipy 1.18.1은 float64와 `FutureWarning`; SP3에서 정한다).
 - `random_array`: `rng`에 `sd.random.Generator`를 꼭 받는다. 없으면 `random_array(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType`(`TypeError`; optimize O31과 같다). 자리는 비복원 추출로 정확히 round(density·m·n)개, 값은 `data_sampler(size)` 또는 [0, 1) 균등이다. 같은 `rng` 상태면 스레드 수와 상관없이 같은 비트다. scipy와 같은 값은 아니다(난수 생성기가 다르다).
 - `kron`, `kronsum`, `hstack`, `vstack`, `block_array`, `block_diag`, `tril`, `triu`: `format=None`의 결과 형식은 scipy의 규칙이되 DIA·BSR이 나올 자리는 CSR이다(scipy는 `kron`이 BSR, `block_array`·`block_diag`·`tril`·`triu`가 COO; 어느 형식이든 값은 같다; SP3에서 정한다).
+- `trace(k=)`: scipy의 `offset=`이 아니라 sd.linalg `trace`의 이름 `k`다(DESIGN.md §1.4; `[scipy와 다름]`). `diagonal(k=)`는 밀집 1차원 `sd.ndarray`다.
 - `find(A)`: `(row, col, data)`의 세 밀집 `sd.ndarray`(표준 꼴의 행 우선 순서, 저장된 0은 뺀다; scipy와 같다).
 
 ## §5. 직접 풀이와 `LinearOperator` (SP4)
@@ -318,7 +327,13 @@ norm(x, /, *, ord=None, axis=None)
 | 메서드 `sort_indices`, `sorted_indices`, `has_sorted_indices`, `check_format`, `prune`(CSR·CSC) | 없음(언제나 표준 꼴) | SP10 |
 | 메서드 `tobsr`, `todia`, `tolil` | 없음 | SP6, SP7 |
 | `trace(offset=)` | `trace(k=)` | DESIGN.md §1.4 |
-| `sum(axis=, dtype=, out=)` 등의 `out=` | 없음; `keepdims=`를 더한다 | §3.3 |
+| `sum(axis=, dtype=, out=)` 등의 `out=` | 없음; `keepdims=`를 더한다 | §3.3, SP40 |
+| `max(axis=)`·`min(axis=)`·`nanmax`·`nanmin`(COO 희소) | 밀집 `sd.ndarray` | SP37 |
+| `A.multiply(dense)`(COO) | A의 형식 | SP38 |
+| `np.sin(A)` 꼴의 ufunc | 없음; `A.sin()` 등 메서드 | SP36 |
+| 메서드 `arcsin`, `arctan`, `arcsinh`, `arctanh`, `rint` | `asin`, `atan`, `asinh`, `atanh`, `round`(배열의 이름; 별칭 없음) | SP46 |
+| `power(n, dtype=)` | `power(n)` | §3.2 |
+| `__round__`(`round(A)`), 제자리 `*=`·`/=` | 없음(`A.round()`, `A.data *= c`) | §3.1, SP43 |
 
 ### §9.2 scipy.sparse.linalg
 | scipy.sparse.linalg | sd.sparse | 마일스톤·결정 |
@@ -342,13 +357,7 @@ docs/design/sparse.md §9와 같은 목록이다. 결정이 나면 이 문서와
 
 - **SP0**: 정했다(SP6–SP20, docs/design/sparse.md §1.1).
 - **SP1**: 정했다(SP21–SP34, docs/design/sparse.md §1.1).
-- **SP2**
-  1. 밀집 피연산자로 numpy 배열: `TypeError`(추천, API.md §5) / 받는다.
-  2. 원소별 함수: 메서드만, `sd.sin(A)`는 메서드를 짚는 `TypeError`(추천) / `sd.sin(A)`도 받는다(f(0) = 0인 함수만).
-  3. 축 리덕션의 결과: 언제나 밀집 `sd.ndarray`(추천) / scipy 그대로(`max(axis=)`는 COO).
-  4. `A * 밀집`의 형식: A의 형식(추천) / scipy처럼 COO.
-  5. `A + c`(c ≠ 0)·`A ** 0`: `ValueError`(추천) / 밀집 결과.
-  6. 리덕션의 `keepdims`: 둔다(추천, 배열과 같다) / scipy처럼 없다. `explicit=`: scipy처럼 둔다(추천).
+- **SP2**: 정했다(SP35–SP47, docs/design/sparse.md §1.1).
 - **SP3**
   1. 만들기 함수의 이름: `eye_array`·`diags_array`·`random_array`·`block_array`(추천) / 짧은 이름.
   2. `random_array`의 `rng`: 꼭 받는다(추천) / 없으면 고정 시드.

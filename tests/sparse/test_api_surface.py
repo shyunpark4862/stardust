@@ -156,12 +156,12 @@ def test_formats_have_no_dia_default():
 
 
 def members(cls):
-    """{name: signature text or None} the document's §2 (the public milestone SP1) gives class
-    `cls`: its own lines and, for a format, the sparray lines. The methods of §3 on come with
-    their milestones."""
+    """{name: signature text or None} the document's §2 and §3 (the public milestones SP1 and
+    SP2) give class `cls`: its own lines and, for a format, the sparray lines. The methods of §4
+    on come with their milestones."""
     owners = {cls, "sparray"} if cls in FORMATS else {cls}
-    sp1 = API.read_text().split("\n## §3.")[0]
-    return {name: sig for c, name, sig in entries(sp1) if c in owners}
+    public = API.read_text().split("\n## §4.")[0]
+    return {name: sig for c, name, sig in entries(public) if c in owners}
 
 
 @pytest.mark.parametrize("cls", FORMATS)

@@ -1,0 +1,63 @@
+// The arithmetic of the sparse products and sums (docs/design/sparse.md §2.6): one term at a time,
+// and how the partial sums of a long line are put together.
+//
+// A sum over one output element takes its terms in ascending index order and adds them one by one
+// from zero. A product term is fma(a, x, acc) for float64 (scipy's csr_matvec, which clang
+// contracts to an fma), the wrapping integer product and sum for int64, and acc + a*x with numpy's
+// complex product (ops::cmul) for complex128 (measured: scipy's complex csr_matvec is that, bit
+// for bit). The sparse value is always the left factor, whatever the format, so the bits do not
+// depend on the storage. A line of more than kLine terms is cut into pieces of kLine terms, each
+// summed in order, and the piece sums are added along base/pairwise.hpp's tree, which depends on
+// the number of pieces only.
+#pragma once
+
+#include "array/kernels/scalar_ops.hpp"
+#include "base/dtype.hpp"
+#include "base/pairwise.hpp"
+
+#include <cmath>
+#include <cstdint>
+#include <type_traits>
+
+namespace sd::sparse {
+
+// L of docs/design/sparse.md §2.6.
+inline constexpr std::int64_t kLine = 4096;
+
+template <class T>
+inline T madd(T a, T x, T acc) {
+    if constexpr (std::is_same_v<T, double>) return std::fma(a, x, acc);
+    else if constexpr (std::is_same_v<T, std::int64_t>) return ops::wrap_add(acc, ops::wrap_mul(a, x));
+    else {
+        const complex128 p = ops::cmul(a, x);
+        return {acc.real() + p.real(), acc.imag() + p.imag()};
+    }
+}
+
+template <class T>
+inline T plus(T acc, T a) {
+    if constexpr (std::is_same_v<T, std::int64_t>) return ops::wrap_add(acc, a);
+    else if constexpr (std::is_same_v<T, complex128>) return {acc.real() + a.real(), acc.imag() + a.imag()};
+    else return acc + a;
+}
+
+// The sum of the piece sums parts[0], parts[s], parts[2 s], ... (n of them) along the pairwise tree
+// (integers: in order; their sum does not depend on the order).
+template <class T>
+T tree_sum(const T* parts, std::int64_t n, std::int64_t s = 1) {
+    if constexpr (std::is_same_v<T, double>) {
+        return pairwise::tree(0, n, [&](std::int64_t b, std::int64_t m) {
+            return pairwise::leaf(m, [&](std::int64_t i) { return parts[(b + i) * s]; });
+        });
+    } else if constexpr (std::is_same_v<T, complex128>) {
+        return pairwise::tree_complex(0, n, [&](std::int64_t b, std::int64_t m) {
+            return pairwise::leaf_complex(m, [&](std::int64_t i) { return parts[(b + i) * s]; });
+        });
+    } else {
+        T acc{};
+        for (std::int64_t i = 0; i < n; ++i) acc = plus(acc, parts[i * s]);
+        return acc;
+    }
+}
+
+}  // namespace sd::sparse

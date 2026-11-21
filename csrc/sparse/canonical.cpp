@@ -405,6 +405,8 @@ void transpose_serial(
 
 NDArray expand_rows(const NDArray& indptr, int64_t n_major, int64_t nnz);
 
+}  // namespace
+
 Compressed transpose(
     int64_t n_major, int64_t n_minor, const NDArray& indptr, const NDArray& indices, const NDArray& data
 ) {
@@ -427,6 +429,8 @@ Compressed transpose(
     });
     return out;
 }
+
+namespace {
 
 NDArray expand_rows(const NDArray& indptr, int64_t n_major, int64_t nnz) {
     NDArray rows = new_index(nnz);

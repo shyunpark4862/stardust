@@ -12,7 +12,8 @@ The contract, per field, in units of its bound (1 or less is within it):
     number in the quantity it transforms (D'Agostino's moments, Anderson-Darling's cancelling
     sum; 1 elsewhere);
   - pvalue: relative error / (1e-14 max(1, kappa) max(1, kappa_stat)); the Cramér-von Mises
-    p-value (1 - cdf of Csörgő and Faraway's approximation) also passes within 1e-15 absolute;
+    p-values (1 - cdf of Csörgő and Faraway's approximation, one sample; 1 - V of the limit,
+    the two-sample asymptotic one) also pass within 1e-15 absolute (H41);
   - zstatistic (the normal approximation's z of the rank tests), df, df_num, df_denom, median
     (median_test's grand median): relative error / 1e-14;
   - conf_int (the t tests' 95% interval): each end's error / (1e-14 times the larger of the end
@@ -43,7 +44,8 @@ H3 = (
     "median_test",
     "page_trend_test",
 )
-PUBLIC = H1 + H2 + H3  # the families of the public functions (the accuracy measurement's sweeps)
+H4 = ("ks_2samp", "cramervonmises_2samp", "anderson_ksamp", "epps_singleton_2samp")
+PUBLIC = H1 + H2 + H3 + H4  # the families of the public functions (the accuracy measurement's sweeps)
 
 
 def load(fam) -> dict:
@@ -117,7 +119,11 @@ def contract(fam, rec, field, value):
         return e / (BOUND * ks)
     if field == "pvalue":
         c = e / (BOUND * factor(rec, "kappa") * ks)
-        if fam == "cramervonmises" and rec[field][0] == rec[field][0] and abs(value - rec[field][0]) <= CVM_ABS:
+        if (
+            fam in ("cramervonmises", "cramervonmises_2samp")
+            and rec[field][0] == rec[field][0]
+            and abs(value - rec[field][0]) <= CVM_ABS
+        ):
             c = min(c, 1.0)
         return c
     return e / BOUND

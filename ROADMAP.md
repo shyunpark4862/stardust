@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2–SP8 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3–SP8 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -464,7 +464,7 @@
 
 # 가설검정 영역 (sd.htest)
 
-> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인** (2026-11-21). H4–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
+> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인** (2026-11-21). H5–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -482,7 +482,7 @@
 | H1 평균과 분산: `ttest_1samp ttest_rel ttest_ind ttest_ind_from_stats f_oneway alexandergovern bartlett levene fligner` | 완료·승인 (2026-11-20) |
 | H2 적합도 1: `chisquare power_divergence skewtest kurtosistest normaltest jarque_bera shapiro anderson ks_1samp cramervonmises` | 완료·승인 (2026-11-20) |
 | H3 순위 검정: `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test` | 완료·승인 (2026-11-21) |
-| H4 적합도 2: `ks_2samp cramervonmises_2samp anderson_ksamp epps_singleton_2samp` | 시작 전 |
+| H4 적합도 2: `ks_2samp cramervonmises_2samp anderson_ksamp epps_singleton_2samp` | 완료·승인 (2026-11-21) |
 | H5 상관: `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi` | 시작 전 |
 | H6 분할표: `chi2_contingency fisher_exact barnard_exact boschloo_exact mcnemar cochrans_q` | 시작 전 |
 | H7 비율과 이항: `binomtest quantile_test poisson_means_test proportions_ztest proportions_chisquare proportion_confint test_proportions_2indep confint_proportions_2indep` | 시작 전 |
@@ -520,6 +520,9 @@
 
 ### H4. 적합도 2: 표본끼리
 - Kolmogorov–Smirnov 두 표본(격자 경로의 정확 분포), Cramér–von Mises 두 표본(정확·점근), Anderson–Darling k 표본, Epps–Singleton.
+- 결정(사용자, 2026-11-21): `ks_2samp`의 동점이 있는 `'exact'`는 관측한 동점의 조건부 정확 분포(R `psmirnov`와 같다), `cramervonmises_2samp`의 `'exact'`는 큰 n까지의 동적 계획(`'auto'` 문턱 20은 그대로), `anderson_ksamp`의 기본 `variant='midrank'`과 둘로 풀리는 결과 (docs/design/htest.md §1.1 H55–H57). 결과를 보고(사용자, 2026-11-21): `cramervonmises_2samp`의 동점도 조건부, `epps_singleton_2samp`에 `df`, 점근 Cramér–von Mises 꼬리는 H41 그대로, `anderson_ksamp`의 `samples`는 리스트·튜플만 (H58–H61).
+- 결과: src/stardust/htest/_gof.py(네 함수와 결과 클래스), csrc/htest/(gof2.cpp: 검정; ks2.hpp: 두 표본 KS의 블록 동적 계획(확률의 양수 합, 동점의 조건부)과 Hodges의 닫힌 꼴; cvm2.hpp: 두 표본 Cramér–von Mises의 창 동적 계획), tests/htest/test_goodness_of_fit_samples.py, 참값 4묶음 58문제(라벨 배치의 정수 셈, Arb의 점근·표·특성함수), 문제 48개 더(477개), R `ks.test(exact = TRUE)` 대조, 골든과 측정 사례.
+- 찾은 것: 모든 참값이 계약 안이다(최대 0.078; 점근 Cramér–von Mises 꼬리는 H41의 절대 규칙). 동점이 있는 KS의 조건부 분포는 R과 1.1e-15 안이고 scipy와는 0.22–8.5 다르다. scipy의 점근 KS는 n > 140의 Pelz–Good으로 3e-7, 점근 Cramér–von Mises 꼬리는 1e-7에서 멈춘 급수, 오프셋의 Epps–Singleton은 1e-9 틀린다. Cramér–von Mises의 정확 분포는 표본마다 약 100개까지(scipy 20) (docs/design/htest.md §7).
 
 ### H5. 상관
 - Pearson(1 − r²을 상쇄 없이), Spearman(두 꼴), 점 이연 상관, Kendall τ-b·τ-c(정확·정규), 가중 τ, Somers' D, Chatterjee ξ.
@@ -542,7 +545,7 @@
 
 # 희소 영역 (sd.sparse)
 
-> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2–SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
+> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2는 완료·승인, SP3–SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -558,7 +561,7 @@
 |---|---|
 | SP0 준비: API 문서, 시험 행렬, 참값(Arb)·scipy·R 대조 도구, Accelerate 탐침, 색인 dtype의 측정, 기준선 | 완료·승인 (2026-11-20) |
 | SP1 형식과 변환: `coo_array csr_array csc_array dok_array`, 표준 꼴, `sd.ndarray`·numpy·scipy와 주고받기 | 완료·승인 (2026-11-21) |
-| SP2 연산: 산술·비교·원소별 함수, SpMV·SpMM·SpGEMM, 리덕션 | 시작 전 |
+| SP2 연산: 산술·비교·원소별 함수, SpMV·SpMM·SpGEMM, 리덕션 | 완료·승인 (2026-11-21) |
 | SP3 인덱싱과 만들기: 인덱싱과 대입, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find` | 시작 전 |
 | SP4 직접 풀이: `spsolve splu factorized inv spsolve_triangular`, `LinearOperator`, `sd.linalg`의 `TypeError` | 시작 전 |
 | SP5 반복법: `cg gmres minres bicgstab lsqr lsmr` | 시작 전 |
@@ -584,6 +587,9 @@
 
 ### SP2. 연산
 - 산술과 비교(연산마다 scipy의 0 지우기 규칙, 암시적 0은 강한 0), 원소별 함수, SpMV·SpMM·밀집 @ 희소·SpGEMM(줄 합은 색인 오름차순의 FMA 순차 합: SpMV가 scipy와 비트까지 같다), 리덕션.
+- 결정(사용자, 2026-11-21): docs/design/sparse.md §1.1 SP35–SP47(numpy 배열은 피연산자가 아님, 원소별 함수는 메서드만이고 `sd.sin(A)`는 메서드를 짚는 `TypeError`, 축 리덕션은 언제나 밀집, `A * 밀집`은 A의 형식, `A + c`·`A ** 0`은 `ValueError`, 리덕션의 `keepdims`와 `explicit=`; SP2 뒤에: 결과가 A의 모양인 브로드캐스트만, 왼쪽이 CSC면 CSC, 제자리 연산자 없음, 음수·NaN 지수는 `ValueError`, `axis`는 int나 None, 원소별 메서드는 배열의 이름(`asin atan asinh atanh round`), 양수와의 `maximum`은 scipy처럼).
+- 결과: 연산자(`+ - * / ** @`, 비교, `-A`, `abs`), 메서드 `multiply maximum minimum power`와 f(0) = 0인 원소별 함수 18개, 리덕션 `sum mean max min nanmax nanmin argmax argmin`(docs/api/sparse.md §3; `trace`·`diagonal`은 §8대로 SP3), src/stardust/sparse/(`_ops.py`, `_reduce.py`, `_base.py`의 입구), csrc/sparse/(`arith.hpp`: 항 하나와 긴 줄의 조각 합, `spmv.cpp`: SpMV·SpMM·흩뿌리기·축 합과 평균, `binop.cpp`: 병합 이항 연산·비교·밀집 값 읽기, `spgemm.cpp`, `reduce.cpp`), 배열 영역의 `csrc/array/ops/ufunc.cpp`에 희소 배열을 짚는 메시지(실패한 호출에서만), 테스트 tests/sparse/(test_arithmetic.py, test_elementwise.py, test_products.py, test_reductions.py), 정확도 스윕 `spmv`·`sums`(계약 안, 가장 큰 것 0.83), 골든 4,627케이스를 더함(1·3·10스레드 같음), 속도 사례 SP2의 15가지 × 크기(smoke만; 기계가 바빠 기준선으로 올리지 않았다).
+- 찾은 것: scipy의 희소 × 희소는 한쪽의 NaN·inf를 `a * 0` = NaN으로 저장하고(이쪽은 강한 0), `<=`·`>=`는 NaN에서 참이며, `argmax`는 NaN이 있어도 첫 암시적 0을 돌려준다. scipy의 축 합은 자기 줄을 따르는 쪽(CSR의 `axis=1`)만 `np.add.reduceat`(pairwise)라 이쪽과 끝자리가 다르다. scipy의 복소 SpMV는 numpy의 복소 곱 뒤 성분별 덧셈과 비트까지 같다. 1스레드 SpMV 0.89배, SpMM 1.6배, 이항 연산 1.1–1.2배, 흩뿌리기 1.0배, SpGEMM 0.67배(행 정렬 때문; 정렬까지 한 scipy보다 2.4배 빠르다), 10스레드는 흩뿌리기 말고 4–8배다(docs/design/sparse.md §5). 흩뿌리기의 병렬과 SpMM의 목표(3배)는 SP8로 넘긴다.
 
 ### SP3. 인덱싱과 만들기
 - 정수·슬라이스·배열·마스크 인덱싱과 대입, 대각, 만들기 함수(`random_array`는 `rng`를 꼭 받는다).

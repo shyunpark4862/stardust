@@ -434,6 +434,72 @@ def _h4():
         add(m, "anderson_ksamp", v, s2, variant=v)
     add(m, "anderson_ksamp", "three", [normal(178, 20), normal(179, 25, 0.3), rounded(180, 30)], variant="midrank")
     add(m, "epps_singleton_2samp", "default", normal(181, 30), normal(182, 40, 0.4, 1.5))
+    # added with H4: ties (the exact distributions conditional on them, H55), the 'auto'
+    # thresholds, equal sizes (Hodges' closed form), deep exact tails, the asymptotic forms, sizes
+    # past scipy's exact Cramér-von Mises, offsets, degenerate input and batches
+    ex, ey = np.array([1.0, 2, 2, 3, 3, 3]), np.array([2.0, 3, 4, 4, 5])
+    add(m, "ks_2samp", "ties-small", ex, ey, tags=("ties", "small", "exact"))
+    add(m, "ks_2samp", "ties-small-greater", ex, ey, alternative="greater", tags=("ties", "small", "exact"))
+    add(m, "ks_2samp", "ties-small-less", ey, ex, alternative="less", tags=("ties", "small", "exact"))
+    add(m, "ks_2samp", "ties-greater", rounded(4001, 40), rounded(4002, 50, loc=1), alternative="greater",
+        tags=("ties",))  # fmt: skip
+    add(m, "ks_2samp", "ties-few-values", ints(4003, 300, 4), ints(4004, 250, 5), tags=("ties", "large"))
+    add(m, "ks_2samp", "ties-large", rounded(4005, 2000, step=0.1), rounded(4006, 1500, step=0.1, loc=0.05),
+        tags=("ties", "large"))  # fmt: skip
+    add(m, "ks_2samp", "equal-50", normal(4007, 50), normal(4008, 50, 0.5), tags=("exact",))
+    add(m, "ks_2samp", "equal-50-greater", normal(4007, 50), normal(4008, 50, 0.5), alternative="greater")
+    add(m, "ks_2samp", "coprime-997-1000", normal(4009, 997), normal(4010, 1000, 0.1), tags=("large", "exact"))
+    add(m, "ks_2samp", "auto-large", normal(4011, 2000), normal(4012, 1500, 0.08), tags=("large", "exact"))
+    add(m, "ks_2samp", "separated", normal(4013, 200), normal(4014, 250, 20.0), tags=("tail", "exact"))
+    add(m, "ks_2samp", "separated-greater", normal(4013, 200), normal(4014, 250, 20.0), alternative="greater",
+        tags=("tail", "exact"))  # fmt: skip
+    add(m, "ks_2samp", "asymp-less", normal(168, 3000), normal(169, 2500, 0.05), method="asymp",
+        alternative="less", tags=("large",))  # fmt: skip
+    add(m, "ks_2samp", "asymp-small", normal(4015, 20), normal(4016, 30, 0.6), method="asymp")
+    add(m, "ks_2samp", "asymp-auto", normal(4017, 12000), normal(4018, 1100, 0.1), tags=("large",))
+    add(m, "ks_2samp", "offset", normal(4019, 60, 1e8), normal(4020, 70, 1e8 + 0.4), tags=("offset",))
+    add(m, "ks_2samp", "constant", np.full(5, 2.0), np.full(4, 2.0), tags=("degenerate",))
+    add(m, "ks_2samp", "empty", np.zeros(0), normal(4021, 5), tags=("degenerate",))
+    add(m, "ks_2samp", "batch-ties", rounded(4022, (3, 20)), rounded(4023, (3, 25), loc=0.5), axis=-1,
+        tags=("batch", "ties"))  # fmt: skip
+    add(m, "cramervonmises_2samp", "exact-20", normal(4024, 20), normal(4025, 20, 0.6), tags=("exact",))
+    add(m, "cramervonmises_2samp", "auto-21", normal(4026, 21), normal(4027, 15, 0.5))
+    add(m, "cramervonmises_2samp", "exact-forced", normal(4028, 30), normal(4029, 26, 0.4), method="exact",
+        tags=("exact",))  # fmt: skip
+    add(m, "cramervonmises_2samp", "exact-forced-coprime", normal(4030, 23), normal(4031, 19, 0.7),
+        method="exact", tags=("exact",))  # fmt: skip
+    add(m, "cramervonmises_2samp", "ties-exact", rounded(4032, 12), rounded(4033, 15, loc=1.0), method="exact",
+        tags=("ties", "exact"))  # fmt: skip
+    add(m, "cramervonmises_2samp", "ties-auto", ints(4034, 9, 4), ints(4035, 11, 5), tags=("ties", "small"))
+    add(m, "cramervonmises_2samp", "separated", normal(4036, 10), normal(4037, 12, 30.0), tags=("tail", "exact"))
+    add(m, "cramervonmises_2samp", "tail", normal(4038, 300), normal(4039, 300, 1.0), tags=("tail",))
+    add(m, "cramervonmises_2samp", "large", normal(4040, 2000), normal(4041, 3000, 0.05), tags=("large",))
+    add(m, "cramervonmises_2samp", "asymptotic-small", normal(172, 8), normal(173, 10, 0.7), method="asymptotic")
+    add(m, "cramervonmises_2samp", "one", np.array([0.5]), normal(4042, 6), tags=("degenerate",))
+    add(m, "cramervonmises_2samp", "batch", normal(4043, (3, 12)), normal(4044, (3, 9), 0.5), axis=-1,
+        tags=("batch",))  # fmt: skip
+    t3 = [rounded(4045, 25), rounded(4046, 30, loc=0.5), rounded(4047, 20, loc=-0.5)]
+    for v in ("midrank", "right", "continuous"):
+        add(m, "anderson_ksamp", f"ties-{v}", t3, variant=v, tags=("ties",))
+    add(m, "anderson_ksamp", "small", [normal(4048, 5), normal(4049, 5, 0.8)], variant="midrank", tags=("small",))
+    add(m, "anderson_ksamp", "capped-high", [normal(4050, 40), normal(4051, 40, 3.0)], variant="midrank",
+        tags=("tail",))  # fmt: skip
+    add(m, "anderson_ksamp", "capped-low", [normal(4052, 40), normal(4052, 40) + 1e-9], variant="midrank")
+    add(m, "anderson_ksamp", "four-large", [normal(4053 + i, 1000 + 250 * i, 0.02 * i) for i in range(4)],
+        variant="midrank", tags=("large",))  # fmt: skip
+    add(m, "anderson_ksamp", "offset", [normal(4057, 30, 1e8), normal(4058, 35, 1e8 + 0.6)], variant="midrank",
+        tags=("offset",))  # fmt: skip
+    add(m, "anderson_ksamp", "constant", [np.full(5, 1.0), np.full(6, 1.0)], variant="midrank",
+        tags=("degenerate",))  # fmt: skip
+    add(m, "epps_singleton_2samp", "small", normal(4059, 8), normal(4060, 10, 0.9), tags=("small",))
+    add(m, "epps_singleton_2samp", "large", normal(4061, 600), normal(4062, 700, 0.1, 1.1), tags=("large",))
+    add(m, "epps_singleton_2samp", "three-t", normal(4063, 40), normal(4064, 45, 0.3), t=(0.2, 0.5, 1.0))
+    add(m, "epps_singleton_2samp", "tail", normal(4065, 200), normal(4066, 200, 2.0, 0.5), tags=("tail",))
+    add(m, "epps_singleton_2samp", "offset", normal(4067, 40, 1e8), normal(4068, 45, 1e8 + 0.5), tags=("offset",))
+    add(m, "epps_singleton_2samp", "four", normal(4069, 4), normal(4070, 30), tags=("degenerate",))
+    add(m, "epps_singleton_2samp", "rank-deficient", ints(4071, 30, 2), ints(4072, 30, 2), tags=("degenerate",))
+    add(m, "epps_singleton_2samp", "batch", normal(4073, (3, 20)), normal(4074, (3, 25), 0.5), axis=-1,
+        tags=("batch",))  # fmt: skip
 
 
 # ---- H5: correlation ----------------------------------------------------------------------

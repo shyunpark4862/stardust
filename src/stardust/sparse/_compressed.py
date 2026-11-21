@@ -11,24 +11,36 @@ from . import _common as C
 from ._base import sparray
 from ._common import _core
 
+_LINE = 4096  # L of docs/design/sparse.md §2.6 (csrc/sparse/arith.hpp kLine)
+
 
 class _compressed(sparray):
-    __slots__ = ("_indptr", "_indices", "_data")
+    __slots__ = ("_indptr", "_indices", "_data", "_long")
     _by_rows = True
 
     @classmethod
-    def _new(cls, shape, indptr, indices, data):
+    def _new(cls, shape, indptr, indices, data, long=None):
         obj = cls.__new__(cls)
         obj._shape = shape
         obj._indptr = indptr
         obj._indices = indices
         obj._data = data
+        obj._long = long
         return obj
 
     def _take(self, other):
-        self._shape, self._indptr, self._indices, self._data = (
-            other._shape, other._indptr, other._indices, other._data
+        self._shape, self._indptr, self._indices, self._data, self._long = (
+            other._shape, other._indptr, other._indices, other._data, other._long
         )  # fmt: skip
+
+    def _long_across(self):
+        """Whether some position (an index of the other axis) holds more than L = 4096 entries: a
+        sum scattered along it is then cut into pieces (docs/design/sparse.md §2.6), and the
+        scatter must count. Found once and kept (the index arrays never change)."""
+        if self._long is None:
+            lines, positions = self._lines()
+            self._long = lines > _LINE and _core._minor_over(self._indices, positions, _LINE)
+        return self._long
 
     # ---- attributes ----
 
@@ -68,14 +80,14 @@ class _compressed(sparray):
     # ---- per format ----
 
     def _with_data(self, data, share=False):
-        return type(self)._new(self._shape, self._indptr, self._indices, data)
+        return type(self)._new(self._shape, self._indptr, self._indices, data, self._long)
 
     def _copy(self):
-        return type(self)._new(self._shape, self._indptr, self._indices, self._data.copy())
+        return type(self)._new(self._shape, self._indptr, self._indices, self._data.copy(), self._long)
 
     def _transpose(self):
         other = csc_array if self._by_rows else csr_array
-        return other._new(self._shape[::-1], self._indptr, self._indices, self._data)
+        return other._new(self._shape[::-1], self._indptr, self._indices, self._data, self._long)
 
     def _coo_parts(self, copy):
         """(coords, data, canonical) of tocoo(): the major index of every entry expanded."""
@@ -124,6 +136,7 @@ class _compressed(sparray):
         )
         if kept is not None:
             self._indptr, self._indices, self._data = kept
+            self._long = None
         self._shape = shape
 
     def _count_nonzero(self, axis):
@@ -145,6 +158,7 @@ class _compressed(sparray):
         )
         if kept is not None:
             self._indptr, self._indices, self._data = kept
+            self._long = None
 
 
 class csr_array(_compressed):

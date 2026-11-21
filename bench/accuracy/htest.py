@@ -25,7 +25,8 @@ from .common import Custom, compare_libs, region, ulps
 
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
 R_SAME_STATISTIC = (
-    "ttest", "f_oneway", "bartlett", "fligner", "levene", "power_divergence", "ks_1samp", "shapiro", "mannwhitneyu",
+    "ttest", "f_oneway", "bartlett", "fligner", "levene", "power_divergence", "ks_1samp", "ks_2samp", "shapiro",
+    "mannwhitneyu",
     "kruskal", "friedmanchisquare", "ansari", "mood",
 )  # fmt: skip
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}

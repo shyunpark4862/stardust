@@ -1,8 +1,8 @@
 # sd.htest API
 
-> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
+> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3·H4 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4), H4의 네 함수(§5)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
 
-- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H54), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H61), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/htest/test_api_surface.py`가 읽는다. 블록의 이름이 계획한 공개 이름 전부이고, 공개된 함수는 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -33,7 +33,7 @@
 ### §1.4 옵션
 - **`alternative`**: `'two-sided'`, `'less'`, `'greater'`만이다. 메시지는 `mannwhitneyu(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'larger'`다.
 - **`method`와 `'auto'`**(H12, H46): scipy가 `method='auto'`를 두는 검정(`ks_1samp ks_2samp mannwhitneyu wilcoxon ansari kendalltau cramervonmises_2samp page_trend_test`)은 scipy와 같은 문턱으로 방법을 고르고, 결과의 `method` 필드에 실제로 쓴 방법(`'exact'`, `'asymptotic'`, `'approx'` 등 그 검정의 이름)을 적는다. scipy는 `page_trend_test`만 적는다. 배치에서는 줄마다 고르고(scipy는 동점 같은 조건을 배치 전체에서 본다), `method`는 줄마다의 이름을 배치 모양으로 중첩한 리스트다(H48: `[['exact', 'asymptotic'], ...]`; sd 배열에 문자열 형이 없다). 리스트는 읽을 때마다 새 리스트다(G113). `nan_policy='propagate'`로 NaN이 된 줄의 `method`는 그 줄의 나머지 값으로 고른 방법이다(H53).
-- **정확한 방법의 상한**(H13): `method='exact'`를 고른 호출의 작업량이 그 검정의 문서화한 상한을 넘으면 `ValueError`다. 메시지는 다른 길을 알려 준다: `ks_2samp(): method='exact' needs about 4.1e+12 operations for this input, more than its cap of 1e+10; use method='asymptotic'`(재표본이 있는 검정은 `or a PermutationMethod`). `'auto'`는 상한 안에서만 정확을 고른다. 그래서 모든 호출이 정해진 시간 안에 끝난다. 상한의 값은 검정마다 그 마일스톤에서 정한다(순위 검정은 §4).
+- **정확한 방법의 상한**(H13): `method='exact'`를 고른 호출의 작업량이 그 검정의 문서화한 상한을 넘으면 `ValueError`다. 메시지는 다른 길을 알려 준다: `ks_2samp(): method='exact' needs about 4.1e+12 operations for this input, more than its cap of 1e+09; use method='asymp'`(재표본이 있는 검정은 `or a PermutationMethod`). `'auto'`는 상한 안에서만 정확을 고른다. 그래서 모든 호출이 정해진 시간 안에 끝난다. 상한의 값은 검정마다 그 마일스톤에서 정한다(순위 검정은 §4).
 - **`rng`**: 무작위를 쓰는 계산(재표본, 몬테카를로 p값)은 `rng=`에 `sd.random.Generator`를 꼭 받는다. 없거나 다른 것이면 `permutation_test(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), not NoneType`(`TypeError`; optimize의 O31과 같다). 시드 없이 무작위로 도는 기본값은 없다(sd.random의 R3). 같은 `rng` 상태와 같은 입력이면 스레드 수와 상관없이 같은 비트다.
 - 문자열 옵션은 정확한 이름만 받는다(대소문자를 바꾸지 않는다). 수 옵션은 int와 float(numpy 정수도 int)다.
 
@@ -53,6 +53,7 @@
 - `axis`의 기본값 None(scipy는 대개 0), 데이터는 위치로만, 옵션은 키워드로만, 별칭 없음, `random_state` 없음과 `rng` 필수, 결과 클래스의 이름(`TtestIndResult`; scipy는 `TtestResult`·`SignificanceResult`를 나눠 쓴다), `dof` → `df`, 모든 `'auto'` 결과의 `method` 필드, 퇴화한 입력의 NaN과 경고 없음, `method='exact'`의 상한. 값의 차이는 반올림 크기이고 정확도 계약 안이다(API.md §4 규칙 3, docs/design/htest.md §4).
 - 신뢰구간은 regression의 `conf_int(*, alpha=0.05)`이고 scipy의 `confidence_interval(confidence_level=0.95)`가 아니다(H16, `[scipy와 다름]`: 영역 사이의 통일이 먼저다). 돌려주는 것도 `ConfidenceInterval(low, high)`가 아니라 (…, 2) 배열이다. 대응은 §11의 표다.
 - H3에서 scipy와 다른 것(§4): 동점이 있을 때의 `'exact'`(H45), 정규 근사의 `zstatistic`(H47), 줄마다의 `method`(H48), `median_test`의 `axis`(H49)와 정확한 중앙값, `kruskal`·`friedmanchisquare`·`brunnermunzel`의 `df`, 퇴화한 입력의 NaN, `wilcoxon`의 정확한 차.
+- H4에서 scipy와 다른 것(§5): 동점이 있는 `ks_2samp`의 `'exact'`(H55)와 `cramervonmises_2samp`의 `'exact'`(조건부 분포, H58), `epps_singleton_2samp`의 `df`(H59), `cramervonmises_2samp`의 `'exact'`가 큰 표본까지(H56), `anderson_ksamp`의 기본 `variant='midrank'`(H57), `ks_2samp`·`cramervonmises_2samp`의 `method` 필드, 퇴화한 입력의 NaN(scipy는 `ValueError`), `ks_2samp`의 정확 계산이 넘치지 않는 것(scipy는 큰 표본에서 경고와 함께 점근으로).
 - H1에서 scipy와 다른 것(§2): `df`는 언제나 float(H22), `ttest_ind_from_stats`의 `df`·`conf_int()`(H23), `f_oneway`의 `df_num`·`df_denom`(H27), `levene`의 `df_num`·`df_denom`과 `bartlett`·`fligner`·`alexandergovern`의 `df`(H29), 표준오차 0과 상수 집단의 NaN(H24, H11), Welch의 nᵢ < 2에서 `df` NaN, `alexandergovern`의 n < 2에서 에러 대신 NaN, 표본이 둘 미만인 `bartlett`·`levene`·`fligner`의 `TypeError`, `ttest_ind`의 `method`는 None만(H9까지).
 
 ## §2. 모수: 평균과 분산 (H1)
@@ -146,10 +147,13 @@ cramervonmises_2samp(x, y, /, *, axis=None, method='auto', nan_policy='propagate
 anderson_ksamp(samples, /, *, variant='midrank', method=None)
 epps_singleton_2samp(x, y, /, *, axis=None, t=(0.4, 0.8), nan_policy='propagate', keepdims=False)
 ```
-- `ks_2samp`: 결과 `statistic pvalue statistic_location statistic_sign method`, 둘로 풀린다. `method`는 `'auto'`, `'exact'`, `'asymp'`이다.
-- `cramervonmises_2samp`: 결과 `statistic pvalue method`, 풀리지 않는다. `method`는 `'auto'`, `'exact'`, `'asymptotic'`이다.
-- `anderson_ksamp`: scipy 1.17부터의 `variant` 꼴만(`'midrank'`, `'right'`, `'continuous'`)이다. 옛 `midrank`와 `critical_values`는 없다. scipy 1.18.1은 `variant`를 주지 않으면 경고하고 옛 꼴을 낸다. 여기서는 기본값이 `'midrank'`다(`[scipy와 다름]`; H4에서 정한다). 결과 `statistic pvalue`. scipy 문서는 `variant`를 주면 풀리지 않는다고 적지만 1.18.1의 결과는 둘로 풀린다(어느 쪽을 따를지 H4에서 정한다). `method=None`은 표의 보간, `PermutationMethod`는 H9다.
-- `epps_singleton_2samp`: 결과 `statistic pvalue`, 둘로 풀린다.
+- **결과**: 모두 `statistic pvalue`이고 `cramervonmises_2samp` 말고는 둘로 풀린다(scipy와 같다; `anderson_ksamp`은 H57). 다른 필드: `ks_2samp`의 `statistic_location`·`statistic_sign`(scipy와 같다; 검정 하나면 int, 배치면 int64 배열, NaN인 줄은 0)과 `method`, `cramervonmises_2samp`의 `method`(H12; 배치면 줄마다의 중첩 리스트, H48), `epps_singleton_2samp`의 `df`(H59).
+- `ks_2samp`: D는 두 경험 분포 함수의 차의 최댓값(`'greater'`는 D⁺ = max(F₁ − F₂), `'less'`는 D⁻)이고 1/lcm(n₁, n₂)의 정확한 배수를 한 번 반올림한 값이다. `statistic_location`은 D에 처음 닿는 값, `statistic_sign`은 D⁺면 +1, D⁻면 −1이다(양쪽은 D⁻ > D⁺일 때만 −1). `method`는 `'auto'`, `'exact'`, `'asymp'`다. `'auto'`는 max(n₁, n₂) ≤ 10000이면 정확이다(scipy의 `MAX_AUTO_N`; scipy는 정확 계산이 double을 넘치면 경고와 함께 점근으로 넘어가지만 여기서는 확률로 세어 넘치지 않으므로 언제나 정확이다). 점근은 scipy의 것(양쪽은 한 표본 `kstwo`를 n = round(n₁n₂/(n₁ + n₂))에서, 한쪽은 Hodges의 식)이다. 정확한 방법의 상한은 작업 10⁹번이고(H13; `'auto'`의 범위 안은 언제나 상한 안이다), 넘으면 `ks_2samp(): method='exact' needs about … more than its cap of 1e+09; use method='asymp'`(`ValueError`)다. 빈 표본은 NaN이다(scipy는 `ValueError`).
+- **동점이 있을 때의 `'exact'`**(H55, `[scipy와 다름]`): 관측한 동점의 조건부 정확 분포다(라벨의 모든 배치를 같은 확률로 세고, 경험 분포 함수는 같은 값의 묶음 끝에서만 본다). R 4.3부터의 `ks.test(exact = TRUE)`(`psmirnov`)와 같은 분포다. scipy 1.18.1의 `'exact'`는 동점을 무시한 분포라 값이 다르다: x = [1, 2, 2, 3, 3, 3], y = [2, 3, 4, 4, 5]에서 sd와 R은 0.108225(= 25/231), scipy는 0.238이다. 동점이 없으면 같은 분포다. `'auto'`가 정확을 고르면 동점이 있어도 이 조건부 분포다.
+- `cramervonmises_2samp`: T = U/(kN) − (4k − 1)/(6N)(k = n_xn_y, N = n_x + n_y, U는 중간 순위의 Anderson 식 10)이고 정확한 유리수를 한 번 반올림한 값이다. `method`는 `'auto'`(max(n_x, n_y) ≤ 20이면 정확, scipy의 문턱; H56), `'exact'`, `'asymptotic'`이다. `'exact'`는 동적 계획이라 scipy의 문턱을 넘어 표본마다 약 100개까지 쓸 수 있다(H56, `[scipy와 다름]`: scipy의 `'exact'`는 모든 부분합을 나열해 40 × 35에 몇 초다). 상한은 합친 목록 항목 10⁹개와 동시에 드는 항목 10⁷개이고, 넘으면 `method='asymptotic'`을 알려 주는 `ValueError`다. 동점이 있으면 `'exact'`는 관측한 동점의 조건부 정확 분포다(H58, `[scipy와 다름]`: scipy는 동점이 없는 분포에 중간 순위의 U를 넣는다). 점근 p값은 scipy의 것(극한 분포의 1 − cdf, 0 아래는 0)이라 절대 오차가 약 1e-16이다(H60, H41과 같다). 표본 하나가 2 미만이면 NaN이다.
+- `anderson_ksamp`: `samples`는 표본(각각 펼친다) 둘 이상의 리스트나 튜플이다(H61; scipy가 받는 2차원 배열은 받지 않는다. 아니면 `anderson_ksamp(): 'samples' must be a list or tuple of samples, not numpy.ndarray`, 하나면 `anderson_ksamp(): at least two samples are required, not 1`, 둘 다 `TypeError`; H30의 꼴). scipy 1.17부터의 `variant` 꼴만(`'midrank'`(동점을 다루는 Scholz–Stephens의 A2akN), `'right'`, `'continuous'`)이고 옛 `midrank`와 `critical_values`는 없다. 기본값은 `'midrank'`다(H57, `[scipy와 다름]`: scipy 1.18.1은 `variant`를 주지 않으면 경고하고 옛 꼴을 낸다). 결과 `statistic pvalue`는 둘로 풀린다(H57: scipy 1.18.1의 실제 동작; scipy의 문서는 풀리지 않는다고 적는다). `statistic`은 표준화한 (A2kN − (k − 1))/σ_N, `pvalue`는 Scholz–Stephens 표의 보간(scipy와 같다: 표의 범위 위는 0.25, 아래는 0.001에서 자른다; scipy는 그때 경고한다)이다. `axis`·`nan_policy`·배치는 없고(scipy와 같다) NaN이 있으면 결과가 NaN이다. 빈 표본, 서로 다른 값이 하나뿐, 모두 4개 미만은 NaN이다(scipy는 `ValueError`). `method=None`만 받고(아니면 `anderson_ksamp(): 'method' must be None, not str`, `TypeError`) `PermutationMethod`는 H9에서 더한다.
+- `epps_singleton_2samp`: scipy의 정의(합친 표본의 IQR/2로 나눈 점 t에서의 경험 특성함수, 편향 공분산의 의사역행렬)이고 표본이 25 미만이면 작은 표본 보정을 곱한다. p값의 자유도는 scipy처럼 공분산의 의사역행렬의 계수(보통 2·len(t))이고 결과의 `df`(float)다(H59, `[scipy와 다름]`: scipy의 결과에는 없다; H29·H43·H51의 꼴로 튜플에 들지 않는다). `t`는 양의 유한한 수 하나나 그 1차원 시퀀스다(아니면 `epps_singleton_2samp(): 't' must hold positive finite numbers`, `ValueError`). 표본 하나가 5 미만, 유한하지 않은 값, IQR이 0이면 NaN이다(H11; scipy는 경고).
+- scipy·R과의 값의 차이(docs/design/htest.md §7): scipy의 점근 `ks_2samp`은 n > 140의 `kstwo`(Pelz–Good)라 3e-7쯤, 점근 `cramervonmises_2samp`의 꼬리는 급수를 1e-7에서 멈춰 그만큼, 오프셋 10⁸의 `epps_singleton_2samp`은 1e-9 틀린다. R의 `ks.test`는 정확 분포가 sd와 1e-15 안이고 깊은 꼬리에서 0이다.
 
 ## §6. 상관 (H5)
 ```
@@ -281,6 +285,11 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 | `kruskal`·`friedmanchisquare`·`brunnermunzel`의 결과 `statistic pvalue` | `statistic pvalue df` | H51 |
 | `median_test`(`axis` 없음) | `axis`, `keepdims`, 배치, 결과의 `df` | H49 |
 | 배치의 `method`(`page_trend_test`: 배치가 없다) | 줄마다의 이름의 중첩 리스트 | H48 |
+| `ks_2samp(method='exact')`의 동점(동점이 없는 분포) | 관측한 동점의 조건부 정확 분포(R `psmirnov`) | H55 |
+| `cramervonmises_2samp(method='exact')`(작은 표본의 나열) | 동적 계획, 큰 표본까지(`'auto'` 문턱 20은 그대로) | H56 |
+| `anderson_ksamp(samples)`(`variant`가 없으면 경고와 옛 꼴) | 기본 `variant='midrank'`, `statistic pvalue`가 둘로 풀린다 | H57 |
+| `ks_2samp`·`cramervonmises_2samp`의 결과(`method` 없음) | `method` 필드 | H12 |
+| `epps_singleton_2samp`의 결과 `statistic pvalue` | `statistic pvalue df` | H59 |
 
 ## §12. 마일스톤별 남은 질문 (추천을 첫째에)
 docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 그 문서를 함께 고친다.
@@ -288,7 +297,7 @@ docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 
 - **H1**: 정했다(H22–H33, docs/design/htest.md §1.1).
 - **H2**: 정했다(H34–H44, docs/design/htest.md §1.1).
 - **H3**: 정했다(H45–H54, docs/design/htest.md §1.1).
-- **H4**: `ks_2samp`의 동점: scipy의 정확 분포(추천, H4 전에 R `psmirnov`와 다시 대조) / R처럼 조건부. `cramervonmises_2samp`의 `'exact'`를 동적 계획으로 크게(추천). `anderson_ksamp`의 기본 `variant='midrank'`(추천)와 풀기: scipy 1.18.1의 실제 동작(둘로 풀린다; 추천) / scipy 문서(풀리지 않는다).
+- **H4**: 정했다(H55–H61, docs/design/htest.md §1.1).
 - **H5**: `spearmanr`와 `spearmanrho` 둘 다(추천). Spearman 정확 분포는 넣지 않는다(추천). `weightedtau`는 `pvalue` NaN 그대로(추천).
 - **H6**: r × c `fisher_exact`의 기본은 정확한 망 알고리즘과 상한(추천). `barnard_exact`·`boschloo_exact`의 `n`은 처음 격자 크기로만(추천). `odds_ratio`·`relative_risk`를 넣는다(추천). `chi2_contingency`는 소수의 개수도 받는다(추천). `mcnemar`의 기본 `exact=True`(statsmodels 그대로; 추천). `chi2_contingency`의 `df`는 float(추천, H10과 `ttest`의 `df`와 같은 형) / int.
 - **H7**: 방법 이름은 scipy에 있는 것은 scipy의 이름(`'exact'`, `'wilson'`, `'wilsoncc'`)과 statsmodels에만 있는 것(추천) / statsmodels 그대로(`'beta'`). 기본값은 statsmodels의 `'normal'`(추천). `prop_var`는 None 또는 실수(추천). `proportions_chisquare`는 `(statistic, pvalue, (table, expected_freq))`의 셋으로 풀린다(statsmodels 그대로; 추천) / 넷의 필드만. `proportion_confint`·`confint_proportions_2indep`은 `conf_int()`과 같은 (…, 2) 배열(추천; H16) / statsmodels처럼 (low, upp) 튜플. 기본 방법은 statsmodels 0.15.0의 것으로 고정(추천). `proportions_chisquare`에 Yates 보정은 없다(추천).

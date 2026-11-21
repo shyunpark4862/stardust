@@ -13,11 +13,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "htest.md"
 
-# Documented, not implemented yet (docs/design/htest.md §8): the tests after H3. A milestone moves
+# Documented, not implemented yet (docs/design/htest.md §8): the tests after H4. A milestone moves
 # its names from here to sd.htest.__all__.
 PLANNED = {
-    # H4
-    "ks_2samp", "cramervonmises_2samp", "anderson_ksamp", "epps_singleton_2samp",
     # H5
     "pearsonr", "spearmanrho", "spearmanr", "pointbiserialr", "kendalltau", "weightedtau", "somersd", "chatterjeexi",
     # H6

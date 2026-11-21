@@ -27,6 +27,10 @@ namespace sd::sparse {
 void bind_canonical(nanobind::module_& m);
 void bind_convert(nanobind::module_& m);
 void bind_dok(nanobind::module_& m);
+void bind_spmv(nanobind::module_& m);
+void bind_binop(nanobind::module_& m);
+void bind_spgemm(nanobind::module_& m);
+void bind_reduce(nanobind::module_& m);
 
 // ---- element helpers ----
 
@@ -95,6 +99,12 @@ Compressed compress(
     const NDArray& data,
     std::int64_t nnz,
     bool presorted
+);
+
+// The canonical compressed arrays of the transpose of canonical compressed arrays (CSR -> CSC and
+// back): new arrays. The GIL is held on entry.
+Compressed transpose(
+    std::int64_t n_major, std::int64_t n_minor, const NDArray& indptr, const NDArray& indices, const NDArray& data
 );
 
 // The major index of every entry of canonical compressed arrays (indptr of n_major + 1).

@@ -44,6 +44,7 @@ a zero-argument function giving an arb at the current precision (settled by rigo
 the same way (FAMILIES).
 """
 
+import bisect
 import json
 import math
 import multiprocessing
@@ -1797,29 +1798,360 @@ def ks2_paths(n1, n2, a, b, h, kind):
     return math.comb(n1 + n2, n1) - row[n2]
 
 
-@family("ks_2samp", ("ks_2samp",), lambda p: p.kwargs.get("method", "auto") != "asymp", seconds=600)
-def ks_2samp(p):
-    """Two-sample Kolmogorov-Smirnov, exact: D = h / lcm(n1, n2) from the ECDFs at the distinct
-    values (ties as scipy computes them), the p-value the share of lattice paths whose gap reaches
-    h (the distribution without ties, as scipy's exact method)."""
-    x, y = sorted(fvec(p.args[0])), sorted(fvec(p.args[1]))
+def pooled_blocks(x, y):
+    """The distinct values of the pooled rationals in order, each with (count in x, count in y)."""
+    cnt = {}
+    for v in x:
+        cnt.setdefault(v, [0, 0])[0] += 1
+    for v in y:
+        cnt.setdefault(v, [0, 0])[1] += 1
+    return [(v, cnt[v][0], cnt[v][1]) for v in sorted(cnt)]
+
+
+def ks2_tail_count(n1, n2, blocks, h, kind):
+    """The number of arrangements of the labels (n1 x's, n2 y's) over the pooled positions, with
+    the blocks of tied values as observed (each block takes k of x's values in C(t, k) ways), on
+    which the gap g = i a - j b at some block's end reaches h ('greater'), -h ('less') or either
+    ('two-sided'): a count over the blocks in exact integers, a state that reaches the boundary
+    counted once with all its completions (C(positions left, x's left)). Without ties (blocks of
+    one) it is ks2_paths'."""
+    L = math.lcm(n1, n2)
+    a, b = L // n1, L // n2
+    N = n1 + n2
+
+    def out(g):
+        if kind == "greater":
+            return g >= h
+        if kind == "less":
+            return -g >= h
+        return abs(g) >= h
+
+    states, p, absorbed = {0: 1}, 0, 0
+    for t in blocks:
+        new = {}
+        for i, cnt in states.items():
+            j = p - i
+            for k in range(max(0, t - (n2 - j)), min(t, n1 - i) + 1):
+                i2 = i + k
+                c = cnt * math.comb(t, k)
+                if out(i2 * a - (p + t - i2) * b):
+                    absorbed += c * math.comb(N - p - t, n1 - i2)
+                else:
+                    new[i2] = new.get(i2, 0) + c
+        states, p = new, p + t
+    return absorbed
+
+
+def _ks2_stat(x, y, alt):
+    """(h, L, location, sign) of scipy's two-sample statistic: the gaps at the distinct values,
+    the first value of the extreme, D- when it is larger than D+ (two-sided)."""
     n1, n2 = len(x), len(y)
     L = math.lcm(n1, n2)
     a, b = L // n1, L // n2
-    alt = p.kwargs.get("alternative", "two-sided")
-    gp = gm = 0
     i = j = 0
-    for v in sorted(set(x + y)):
-        while i < n1 and x[i] <= v:
-            i += 1
-        while j < n2 and y[j] <= v:
-            j += 1
-        gp, gm = max(gp, i * a - j * b), max(gm, j * b - i * a)
-    h = gp if alt == "greater" else gm if alt == "less" else max(gp, gm)
-    if h == 0:
-        return {"statistic": Fraction(0), "pvalue": Fraction(1), "method": "exact"}
-    pv = Fraction(ks2_paths(n1, n2, a, b, h, alt), math.comb(n1 + n2, n1))
-    return {"statistic": Fraction(h, L), "pvalue": pv, "method": "exact"}
+    gmax = gmin = None
+    for v, cx, cy in pooled_blocks(x, y):
+        i, j = i + cx, j + cy
+        g = i * a - j * b
+        if gmax is None or g > gmax[0]:
+            gmax = (g, v)
+        if gmin is None or g < gmin[0]:
+            gmin = (g, v)
+    if alt == "greater" or (alt == "two-sided" and not -gmin[0] > gmax[0]):
+        return gmax[0], L, gmax[1], 1
+    return -gmin[0], L, gmin[1], -1
+
+
+@family("ks_2samp", ("ks_2samp",), seconds=900)
+def ks_2samp(p):
+    """Two-sample Kolmogorov-Smirnov: D = h / lcm(n1, n2) from the ECDFs at the distinct values
+    (as scipy computes it), its location and sign. method 'auto' (exact up to max(n1, n2) = 10000)
+    and 'exact': the share of the label arrangements whose gap reaches h, with ties conditional on
+    the observed blocks (H55: R's psmirnov, not scipy's distribution without ties); 'asymp':
+    scipy's, the one-sample exact distribution at round(n1 n2 / (n1 + n2)) two-sided (the
+    Marsaglia-Tsang-Wang matrix in Arb) and Hodges' formula one-sided. Empty samples are NaN."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    n1, n2 = len(x), len(y)
+    alt = p.kwargs.get("alternative", "two-sided")
+    method = p.kwargs.get("method", "auto")
+    used = "exact" if method == "exact" or (method == "auto" and max(n1, n2) <= 10000) else "asymp"
+    if n1 == 0 or n2 == 0:
+        return {"statistic": NAN, "pvalue": NAN, "method": used}
+    h, L, loc, sgn = _ks2_stat(x, y, alt)
+    out = {"statistic": Fraction(h, L), "statistic_location": loc, "statistic_sign": sgn, "method": used}
+    if used == "exact":
+        blocks = [cx + cy for _, cx, cy in pooled_blocks(x, y)]
+        out["pvalue"] = (
+            Fraction(1) if h == 0 else Fraction(ks2_tail_count(n1, n2, blocks, h, alt), math.comb(n1 + n2, n1))
+        )
+        return out
+    m, n = max(n1, n2), min(n1, n2)
+    en_double = float(m) * float(n) / (float(m) + float(n))
+    nr = int(np.round(en_double))
+    en = Fraction(m * n, m + n)
+
+    def pfun(d):
+        if alt == "two-sided":
+            if d > arb(0.5):
+                return 2 * smirnov_sf(nr, d)
+            return 1 - kolmogorov_cdf_exact(nr, d)
+        z = A(en).sqrt() * d
+        v = (-2 * z * z - 2 * z * (m + 2 * n) / A(m * n * (m + n)).sqrt() / 3).exp()
+        return v if v < 1 else arb(1)
+
+    out["pvalue"] = lambda: pfun(A(Fraction(h, L)))
+    out["kappa"] = kappa(pfun, Fraction(h, L))
+    return out
+
+
+def cvm2_u4(x, y):
+    """4U of the two-sample Cramér-von Mises statistic from the exact midranks: nx sum (2r - 2i)^2 +
+    ny sum (2s - 2j)^2, an integer; and the blocks' sizes."""
+    nx, ny = len(x), len(y)
+    u4, i, j, pos, blocks = 0, 0, 0, 0, []
+    for _, cx, cy in pooled_blocks(x, y):
+        t = cx + cy
+        twoR = 2 * pos + t + 1
+        u4 += nx * sum((twoR - 2 * (i + m)) ** 2 for m in range(1, cx + 1))
+        u4 += ny * sum((twoR - 2 * (j + m)) ** 2 for m in range(1, cy + 1))
+        i, j, pos = i + cx, j + cy, pos + t
+        blocks.append((t, cx))
+    return u4, blocks
+
+
+def cvm2_tail_count(nx, ny, blocks, u4):
+    """The number of label arrangements (blocks of ties as observed, C(t, k) ways for k x's in a
+    block) whose 4U is at least u4: exact integers over the blocks, the partial sums of a state
+    kept in a dictionary; a partial sum that reaches u4 is counted with all its completions at
+    once (the increments are never negative)."""
+    N = nx + ny
+    states = {0: {0: 1}}
+    pos, absorbed = 0, 0
+    for t, _ in blocks:
+        twoR = 2 * pos + t + 1
+        new = {}
+        for i, sums in states.items():
+            j = pos - i
+            for k in range(max(0, t - (ny - j)), min(t, nx - i) + 1):
+                inc = nx * sum((twoR - 2 * (i + m)) ** 2 for m in range(1, k + 1))
+                inc += ny * sum((twoR - 2 * (j + m)) ** 2 for m in range(1, t - k + 1))
+                mult = math.comb(t, k)
+                rest = math.comb(N - pos - t, nx - i - k)
+                tgt = new.setdefault(i + k, {})
+                for v, c in sums.items():
+                    w = v + inc
+                    if w >= u4:
+                        absorbed += c * mult * rest
+                    else:
+                        tgt[w] = tgt.get(w, 0) + c * mult
+        states, pos = new, pos + t
+    return absorbed
+
+
+@family("cramervonmises_2samp", ("cramervonmises_2samp",), seconds=1800)
+def cramervonmises_2samp(p):
+    """The two-sample Cramér-von Mises T = U/(k N) - (4k - 1)/(6N) from exact midranks (exact).
+    method 'auto' (exact up to max(nx, ny) = 20) and 'exact': the share of the label arrangements
+    with U at least the observed (ties conditional on the observed blocks, as the rank tests'
+    H45); 'asymptotic': scipy's tn = 1/6 + (T - E T)/sqrt(45 Var T) (Anderson 1962) and
+    max(0, 1 - V(tn)) with Csörgő and Faraway's V in Arb (1 for tn < 0.003). n < 2 is NaN."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    nx, ny = len(x), len(y)
+    method = p.kwargs.get("method", "auto")
+    used = "exact" if method == "exact" or (method == "auto" and max(nx, ny) <= 20) else "asymptotic"
+    if nx < 2 or ny < 2:
+        return {"statistic": NAN, "pvalue": NAN, "method": used}
+    u4, blocks = cvm2_u4(x, y)
+    k, N = nx * ny, nx + ny
+    T = Fraction(6 * u4 - 4 * k * (4 * k - 1), 24 * k * N)
+    out = {"statistic": T, "method": used}
+    if used == "exact":
+        out["pvalue"] = Fraction(cvm2_tail_count(nx, ny, blocks, u4), math.comb(N, nx))
+        return out
+    et = Fraction(N + 1, 6 * N)
+    vt = Fraction((N + 1) * (4 * k * N - 3 * (nx * nx + ny * ny) - 2 * k), 45 * N * N * 4 * k)
+
+    def pfun(t):
+        tn = A(Fraction(1, 6)) + (t - A(et)) / (45 * A(vt)).sqrt()
+        if tn < A(Fraction(3, 1000)):
+            return arb(1)
+        if not tn > A(Fraction(3, 1000)):
+            raise NotSettled("tn at 0.003")
+        v = 1 - cvm_cdf_inf(tn)
+        if v < 0:
+            return arb(0)
+        return v
+
+    out["pvalue"] = lambda: pfun(A(T))
+    out["kappa"] = kappa(pfun, T)
+    return out
+
+
+AD_B0 = (0.675, 1.281, 1.645, 1.96, 2.326, 2.573, 3.085)
+AD_B1 = (-0.245, 0.25, 0.678, 1.149, 1.822, 2.364, 3.615)
+AD_B2 = (-0.105, -0.305, -0.362, -0.391, -0.396, -0.345, -0.154)
+AD_SIG = (0.25, 0.1, 0.05, 0.025, 0.01, 0.005, 0.001)
+
+
+def ad_ksamp_a2kn(samples, variant):
+    """Scholz and Stephens' A2kN (eq. 7 'midrank', 6 'right', 3 'continuous') of rationals, exact."""
+    Z = sorted(v for s in samples for v in s)
+    N = len(Z)
+    zs, ls = [], []
+    for v in Z:
+        if zs and zs[-1] == v:
+            ls[-1] += 1
+        else:
+            zs.append(v)
+            ls.append(1)
+    tot = Fraction(0)
+    for s in samples:
+        s = sorted(s)
+        n = len(s)
+        acc = Fraction(0)
+        if variant == "continuous":
+            for jj in range(1, N):
+                M = bisect.bisect_right(s, Z[jj - 1])
+                acc += Fraction((N * M - jj * n) ** 2, jj * (N - jj))
+            tot += acc / n
+            continue
+        left = 0
+        for jj, (z, lj) in enumerate(zip(zs, ls)):
+            le = bisect.bisect_right(s, z)
+            lt = bisect.bisect_left(s, z)
+            if variant == "midrank":
+                M = Fraction(le + lt, 2)
+                B = left + Fraction(lj, 2)
+                acc += Fraction(lj, N) * (N * M - B * n) ** 2 / (B * (N - B) - Fraction(N * lj, 4))
+            elif jj + 1 < len(zs):
+                B = left + lj
+                acc += Fraction(lj, N) * Fraction((N * le - B * n) ** 2, B * (N - B))
+            left += lj
+        tot += acc / n
+    if variant == "midrank":
+        tot *= Fraction(N - 1, N)
+    if variant == "continuous":
+        tot /= N
+    return tot, N, len(zs)
+
+
+def _ad_crit(k):
+    """scipy's critical values b0 + b1/sqrt(m) + b2/m in doubles (numpy's operations), exact."""
+    m = k - 1
+    sm = math.sqrt(m)
+    return [Fraction(b0 + b1 / sm + b2 / m) for b0, b1, b2 in zip(AD_B0, AD_B1, AD_B2)]
+
+
+def ad_ksamp_p(a2, k):
+    """scipy's p-value of the standardized statistic (an arb): 0.25 below the smallest critical
+    value, 0.001 above the largest, else exp of np.polyfit's least-squares quadratic of log(level)
+    on the critical values (the normal equations solved exactly with the doubles numpy forms)."""
+    crit = _ad_crit(k)
+    lo, hi = min(crit), max(crit)
+    if a2 < A(lo):
+        return A(Fraction(0.25))
+    if a2 > A(hi):
+        return A(Fraction(0.001))
+    if not (a2 > A(lo) and a2 < A(hi)):
+        raise NotSettled("the statistic on the table's end")
+    S = [sum(c**e for c in crit) for e in range(5)]
+    Y = [sum(A(c**e) * A(Fraction(sg)).log() for c, sg in zip(crit, AD_SIG)) for e in range(3)]
+    M = arb_mat([[A(S[i + j]) for j in range(3)] for i in range(3)])
+    coef = M.solve(arb_mat([[Y[0]], [Y[1]], [Y[2]]]))
+    return (coef[0, 0] + coef[1, 0] * a2 + coef[2, 0] * a2 * a2).exp()
+
+
+@family("anderson_ksamp", ("anderson_ksamp",), seconds=1800)
+def anderson_ksamp(p):
+    """The k-sample Anderson-Darling statistic: A2kN exact, sigma_N^2 from H (exact), h and g
+    (Arb sums), A2 = (A2kN - (k - 1)) / sigma_N; the p-value scipy's table interpolation
+    (ad_ksamp_p). An empty sample, a single distinct value or N < 4 is NaN."""
+    samples = [fvec(s) for s in p.args[0]]
+    variant = p.kwargs.get("variant", "midrank")
+    k = len(samples)
+    pooled = [v for s in samples for v in s]
+    if any(len(s) == 0 for s in samples) or len(set(pooled)) < 2 or len(pooled) < 4:
+        return _nan_fields()
+    a2kn, N, _ = ad_ksamp_a2kn(samples, variant)
+    H = sum(Fraction(1, len(s)) for s in samples)
+
+    def stat():
+        h = sum((arb(1) / i for i in range(1, N)), arb(0))
+        suffix, run = {}, arb(0)
+        for j in range(N - 1, 0, -1):
+            run += arb(1) / j
+            suffix[j] = run
+        g = sum((suffix[i + 1] / (N - i) for i in range(1, N - 1)), arb(0))
+        Ha = A(H)
+        a = (4 * g - 6) * (k - 1) + (10 - 6 * g) * Ha
+        b = (2 * g - 4) * k**2 + 8 * h * k + (2 * g - 14 * h - 4) * Ha - 8 * h + 4 * g - 6
+        c = (6 * h + 2 * g - 2) * k**2 + (4 * h - 4 * g + 6) * k + (2 * h - 6) * Ha + 4 * h
+        d = (2 * h + 6) * k**2 - 4 * h * k
+        sig2 = (a * N**3 + b * N**2 + c * N + d) / ((N - 1) * (N - 2) * (N - 3))
+        return (A(a2kn) - (k - 1)) / sig2.sqrt()
+
+    return {
+        "statistic": stat,
+        "pvalue": lambda: ad_ksamp_p(stat(), k),
+        "kappa": kappa(lambda s: ad_ksamp_p(s, k), stat),
+    }
+
+
+def _percentile_linear(zs, q):
+    """numpy's linear percentile (q a Fraction in [0, 1]) of sorted rationals, exact."""
+    idx = q * (len(zs) - 1)
+    lo = math.floor(idx)
+    frac = idx - lo
+    if frac == 0:
+        return zs[lo]
+    return zs[lo] + frac * (zs[lo + 1] - zs[lo])
+
+
+@family("epps_singleton_2samp", ("epps_singleton_2samp",), lambda p: "rank-deficient" not in p.id, seconds=1800)
+def epps_singleton_2samp(p):
+    """The Epps-Singleton W: sigma = iqr/2 of the pooled sample (numpy's linear percentiles, exact),
+    g = (cos(t x / sigma), sin(t x / sigma)) in Arb, the biased covariances and their combination
+    est = (N/nx) cov_x + (N/ny) cov_y, W = N d' est^-1 d (full rank: the problems here), times
+    the small-sample correction below 25 values; chi^2 (2 len(t)), df = 2 len(t) (H59). n < 5 is NaN."""
+    x, y = fvec(p.args[0]), fvec(p.args[1])
+    nx, ny = len(x), len(y)
+    t = [fr(v) for v in np.ravel(np.asarray(p.kwargs.get("t", (0.4, 0.8)), dtype=np.float64))]
+    if nx < 5 or ny < 5:
+        return _nan_fields(df=NAN)
+    zs = sorted(x + y)
+    sigma = (_percentile_linear(zs, Fraction(3, 4)) - _percentile_linear(zs, Fraction(1, 4))) / 2
+    N = nx + ny
+    T = len(t)
+
+    def moments(vals):
+        g = []
+        for v in vals:
+            args = [A(tk / sigma * v) for tk in t]
+            g.append([a.cos() for a in args] + [a.sin() for a in args])
+        n = len(vals)
+        mean = [sum((row[i] for row in g), arb(0)) / n for i in range(2 * T)]
+        cov = [[sum(((row[i] - mean[i]) * (row[j] - mean[j]) for row in g), arb(0)) / n for j in range(2 * T)]
+               for i in range(2 * T)]  # fmt: skip
+        return mean, cov
+
+    def stat():
+        mx, cx = moments(x)
+        my, cy = moments(y)
+        est = arb_mat([[A(Fraction(N, nx)) * cx[i][j] + A(Fraction(N, ny)) * cy[i][j] for j in range(2 * T)]
+                       for i in range(2 * T)])  # fmt: skip
+        d = arb_mat([[mx[i] - my[i]] for i in range(2 * T)])
+        sol = est.solve(d)
+        w = N * sum((d[i, 0] * sol[i, 0] for i in range(2 * T)), arb(0))
+        if max(nx, ny) < 25:
+            w = w / (1 + A(N) ** A(fr(-0.45)) + A(fr(10.1)) * (A(nx) ** A(fr(-1.7)) + A(ny) ** A(fr(-1.7))))
+        return w
+
+    return {
+        "statistic": stat,
+        "pvalue": lambda: chi2_p_arb(stat(), arb(2 * T)),
+        "df": Fraction(2 * T),
+        "kappa": kappa(lambda w: chi2_p_arb(w, arb(2 * T)), stat),
+    }
 
 
 def mahonian(n, top):

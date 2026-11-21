@@ -1,4 +1,4 @@
-"""sd.htest against scipy and R: the public tests (milestones H1-H3; docs/design/htest.md §5) at
+"""sd.htest against scipy and R: the public tests (milestones H1-H4; docs/design/htest.md §5) at
 n = 10, 10^3 and 10^6 per sample and a batch of 10^4 lanes of 30 (axis=-1); page_trend_test on
 tables (m, n) of (12, 8) (exact), (1000, 30) (normal) and a batch 10^3 x (10, 6).
 
@@ -8,7 +8,8 @@ families), made in the setup as numpy arrays for scipy and R and as sd arrays fo
 at its defaults (one thread); R (base stats, car's leveneTest) in its one session, without the
 batches (one call per test there) and where its test is the same: t.test, oneway.test,
 bartlett.test, fligner.test, car::leveneTest, chisq.test, shapiro.test (n <= 5000), ks.test,
-wilcox.test, kruskal.test, friedman.test, ansari.test and mood.test.
+wilcox.test, kruskal.test, friedman.test, ansari.test, mood.test and ks.test (two samples).
+anderson_ksamp (a list of samples, no axis) has no batch.
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -129,6 +130,13 @@ def _specs():
         ("rank", "ansari", 2, "normal", h.ansari, st.ansari, f"ansari.test({R2})", ANSARI, {}),
         ("rank", "mood", 2, "normal", h.mood, st.mood, f"mood.test({R2})", "", {}),
         ("rank", "median_test (3)", 3, "normal", h.median_test, st.median_test, None, "", {}),
+        ("samples", "ks_2samp", 2, "normal", h.ks_2samp, st.ks_2samp, f"ks.test({R2})", KS2, {}),
+        ("samples", "cramervonmises_2samp", 2, "normal", h.cramervonmises_2samp, st.cramervonmises_2samp, None, "",
+         {}),
+        ("samples", "anderson_ksamp (3)", 3, "normal", lambda *a, **k: h.anderson_ksamp(list(a), **k),
+         lambda *a, **k: st.anderson_ksamp(list(a), variant="midrank", **k), None, "", {}),
+        ("samples", "epps_singleton_2samp", 2, "normal", h.epps_singleton_2samp, st.epps_singleton_2samp, None, "",
+         {}),
     ]  # fmt: skip
 
 
@@ -136,6 +144,11 @@ def _specs():
 # two-sided exact p-value doubles the tail on the side of the distribution's centre
 WILCOXON = "R's V is T+, scipy's statistic min(T+, T-)"
 ANSARI = "R's two-sided p-value doubles the tail on the side of its centre, scipy's the smaller tail"
+
+
+# ks.test is exact (its psmirnov) only for n1 n2 < 10^4 by default and asymptotic (Kolmogorov's
+# limit) above, where scipy's 'auto' is exact up to max(n1, n2) = 10^4 and then kstwo at round(n)
+KS2 = "ks.test is exact only for n1 n2 < 10^4 and its asymptotic p-value is Kolmogorov's limit"
 
 
 # fligner's centre: scipy and R round the median of an even group to a double, which breaks the
@@ -146,6 +159,11 @@ FLIGNER = "the median rounded to a double breaks the tie of an even group's midd
 def _no_batch_in_scipy(name):
     # scipy's anderson and median_test take no axis (one sample a call)
     return name.startswith("anderson") or name.startswith("median_test")
+
+
+def _no_batch(name):
+    # anderson_ksamp takes a list of samples, no axis (scipy's and sd's)
+    return name.startswith("anderson_ksamp")
 
 
 def cases() -> list[Case]:
@@ -178,6 +196,8 @@ def cases() -> list[Case]:
                     check=CHECK,
                 )
             )
+        if _no_batch(name):
+            continue
         refs = ()
         if not _no_batch_in_scipy(name):
             refs = (
@@ -262,4 +282,6 @@ TITLES = {
     "rank": "순위",
     "rank-batched": "순위 일괄",
     "page": "Page의 추세",
+    "samples": "표본끼리의 적합도",
+    "samples-batched": "표본끼리의 적합도 일괄",
 }

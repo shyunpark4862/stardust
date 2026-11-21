@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 namespace sd::sparse {
 
@@ -51,6 +52,31 @@ void for_tasks(std::int64_t ntasks, std::int64_t work, F&& fn) {
     } else {
         parallel::parallel_for(ntasks, fn);
     }
+}
+
+// Task boundaries over the lines of compressed arrays: line ranges [b[t], b[t + 1]) of about
+// `unit` units each, where a line costs its entries plus one. Decided by indptr alone (never the
+// thread count), so the tasks are the same on every run.
+inline std::vector<std::int64_t> line_bounds(const std::int64_t* ip, std::int64_t n_lines, std::int64_t unit) {
+    std::vector<std::int64_t> b{0};
+    if (n_lines <= 0) {
+        b.push_back(0);
+        return b;
+    }
+    unit = std::max<std::int64_t>(unit, 1);
+    const std::int64_t total = ip[n_lines] - ip[0] + n_lines;
+    for (std::int64_t target = unit; target < total; target += unit) {
+        // the first line r with ip[r] + r >= target (cost of the lines before r)
+        std::int64_t lo = b.back(), hi = n_lines;
+        while (lo < hi) {
+            const std::int64_t mid = lo + (hi - lo) / 2;
+            if (ip[mid] - ip[0] + mid < target) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo > b.back() && lo < n_lines) b.push_back(lo);
+    }
+    b.push_back(n_lines);
+    return b;
 }
 
 }  // namespace sd::sparse

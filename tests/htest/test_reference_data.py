@@ -151,6 +151,83 @@ def test_two_sample_ks_paths_against_the_closed_form():
             assert T.ks2_paths(n, n, 1, 1, h, "greater") == math.comb(2 * n, n - h), (n, h)
 
 
+def _labelings(n1, n2):
+    """Every assignment of n1 x's among n1 + n2 positions (the label arrangements, equally likely)."""
+    return itertools.combinations(range(n1 + n2), n1)
+
+
+def test_two_sample_tail_counts_against_enumeration():
+    # the block counts (ties conditional on the observed blocks, H55) against every arrangement of
+    # the labels over the pooled sorted values: the KS gap's tail and the Cramér-von Mises 4U's
+    T = tool()
+    cases = [
+        ([1, 2, 2, 3, 3, 3], [2, 3, 4, 4, 5]),
+        ([0, 0, 1, 1, 2], [1, 1, 2, 3]),
+        ([0.5, 1.5, 2.5, 3.5], [1.0, 2.0, 3.0, 4.0, 5.0]),
+        ([1, 1, 1, 2], [1, 2, 2, 2, 3, 3]),
+    ]
+    for xs, ys in cases:
+        x, y = [Fraction(v) for v in xs], [Fraction(v) for v in ys]
+        n1, n2 = len(x), len(y)
+        pooled = sorted(x + y)
+        blocks = [cx + cy for _, cx, cy in T.pooled_blocks(x, y)]
+        u4_obs, cblocks = T.cvm2_u4(x, y)
+        h_obs = {alt: T._ks2_stat(x, y, alt)[0] for alt in ("two-sided", "greater", "less")}
+        ks_count = Counter()
+        cvm_count = 0
+        for pos in _labelings(n1, n2):
+            xx = [pooled[i] for i in pos]
+            yy = [pooled[i] for i in range(n1 + n2) if i not in pos]
+            for alt, h in h_obs.items():
+                ks_count[alt] += T._ks2_stat(xx, yy, alt)[0] >= h
+            cvm_count += T.cvm2_u4(xx, yy)[0] >= u4_obs
+        for alt, h in h_obs.items():
+            assert T.ks2_tail_count(n1, n2, blocks, h, alt) == ks_count[alt], (xs, ys, alt)
+        assert T.cvm2_tail_count(n1, n2, cblocks, u4_obs) == cvm_count, (xs, ys)
+    # without ties the block count is the lattice-path count
+    for n1, n2 in ((7, 5), (9, 12), (10, 10)):
+        L = math.lcm(n1, n2)
+        for h in range(1, L + 1, max(1, L // 9)):
+            for alt in ("two-sided", "greater", "less"):
+                got = T.ks2_tail_count(n1, n2, [1] * (n1 + n2), h, alt)
+                if alt == "less":  # the reflection of 'greater' (the samples' roles swapped)
+                    assert got == T.ks2_paths(n2, n1, L // n2, L // n1, h, "greater"), (n1, n2, h)
+                else:
+                    assert got == T.ks2_paths(n1, n2, L // n1, L // n2, h, alt), (n1, n2, h, alt)
+
+
+def test_two_sample_cvm_against_scipys_exact_count():
+    # without ties the count is scipy's _pval_cvm_2samp_exact (Xiao, Gordon and Yakovlev's
+    # frequency table), at every attained value of U for small sizes
+    from scipy.stats import _hypotests as H
+
+    T = tool()
+    for nx, ny in ((3, 4), (5, 5), (6, 4)):
+        N = nx + ny
+        seen = set()
+        for pos in _labelings(nx, ny):
+            xx = [Fraction(i) for i in pos]
+            yy = [Fraction(i) for i in range(N) if i not in pos]
+            u4 = T.cvm2_u4(xx, yy)[0]
+            if u4 in seen:
+                continue
+            seen.add(u4)
+            mine = Fraction(T.cvm2_tail_count(nx, ny, [(1, 0)] * N, u4), math.comb(N, nx))
+            assert float(mine) == pytest.approx(float(H._pval_cvm_2samp_exact(u4 // 4, nx, ny)), rel=1e-15), (
+                nx,
+                ny,
+                u4,
+            )
+
+
+def test_anderson_ksamp_variants_without_ties():
+    # without ties Scholz and Stephens' 'right' (eq. 6) and 'continuous' (eq. 3) are the same A2kN
+    T = tool()
+    s = [[Fraction(v) for v in P.normal(7101, 9)], [Fraction(v) for v in P.normal(7102, 11, 0.4)]]
+    assert T.ad_ksamp_a2kn(s, "right")[0] == T.ad_ksamp_a2kn(s, "continuous")[0]
+    assert T.ad_ksamp_a2kn(s, "midrank")[0] != T.ad_ksamp_a2kn(s, "right")[0]
+
+
 def test_one_sample_ks_small_n():
     from flint import arb
 
@@ -265,10 +342,32 @@ SCIPY_KNOWN = {
     ("brunnermunzel/separated", "statistic"): math.inf,
     ("wilcoxon/constant-zeros", "statistic"): math.inf,
     ("wilcoxon/constant-zeros", "pvalue"): math.inf,
+    # H4's problems: the two-sample exact distributions with ties, scipy's without them (H55: here
+    # conditional on the ties, as R's psmirnov; the Cramér-von Mises one the same, §9 of the design);
+    # the asymptotic two-sided Kolmogorov-Smirnov p-value through kstwo at round(n1 n2 / N) > 140
+    # (Pelz-Good); the asymptotic Cramér-von Mises tail from the series cut at 1e-7; the
+    # Epps-Singleton characteristic functions of offset data and of t = 0.2 (cos of a rounded
+    # argument, its covariance's inverse)
+    ("ks_2samp/ties", "pvalue"): 1.4,
+    ("ks_2samp/ties-small", "pvalue"): 1.2,
+    ("ks_2samp/ties-small-greater", "pvalue"): 0.28,
+    ("ks_2samp/ties-small-less", "pvalue"): 0.28,
+    ("ks_2samp/ties-greater", "pvalue"): 0.35,
+    ("ks_2samp/ties-few-values", "pvalue"): 8.5,
+    ("ks_2samp/ties-large", "pvalue"): 0.22,
+    ("ks_2samp/asymp", "pvalue"): 4.8e-8,
+    ("ks_2samp/asymp-auto", "pvalue"): 3e-7,
+    ("cramervonmises_2samp/ties-exact", "pvalue"): 0.012,
+    ("cramervonmises_2samp/ties-auto", "pvalue"): 0.074,
+    ("cramervonmises_2samp/tail", "pvalue"): 6.1e13,
+    ("epps_singleton_2samp/three-t", "statistic"): 3.8e-12,
+    ("epps_singleton_2samp/three-t", "pvalue"): 1.4e-11,
+    ("epps_singleton_2samp/tail", "pvalue"): 4.2e-12,
+    ("epps_singleton_2samp/offset", "statistic"): 9.6e-10,
+    ("epps_singleton_2samp/offset", "pvalue"): 4.5e-9,
 }
 # R's: the same cancellations (and ttest_rel's x - y), its own methods where they differ from scipy's
-# (ks.test is exact only below n = 100 (one sample) or m n = 10^4 (two), its two-sample exact
-# distribution is conditional on the ties, wilcox.test is exact up to n = 50 and conditional with
+# (ks.test is exact only below n = 100 (one sample), wilcox.test is exact up to n = 50 and conditional with
 # ties, cor.test's Spearman p-value is AS 89's exact distribution), and two p-values of 0 in
 # the deep tail (true 1.7e-21 and 6.1e-51).
 R_KNOWN = {
@@ -290,11 +389,6 @@ R_KNOWN = {
     ("ks_1samp/tail", "pvalue"): 1.0,
     ("ks_1samp/asymp", "pvalue"): 9.4e-8,
     ("ks_1samp/approx", "pvalue"): 0.018,
-    ("ks_2samp/exact-100-120", "pvalue"): 0.22,
-    ("ks_2samp/exact-less", "pvalue"): 0.012,
-    ("ks_2samp/exact-greater", "pvalue"): 0.22,
-    ("ks_2samp/ties", "pvalue"): 0.58,
-    ("ks_2samp/tail", "pvalue"): 137,
     ("mannwhitneyu/ties", "pvalue"): 7.1e-3,
     ("mannwhitneyu/no-continuity", "pvalue"): 2.4e-3,
     ("spearmanrho/small", "pvalue"): 1.5,
@@ -348,6 +442,16 @@ R_KNOWN = {
     ("ranksums/ties", "pvalue"): 0.0012,
     ("wilcoxon/zeros-auto-small", "pvalue"): 0.071,
     ("wilcoxon/constant-zeros", "pvalue"): math.inf,
+    # H4's problems: ks.test runs exact = TRUE wherever sd's ks_2samp is exact (the conditional
+    # distribution with ties, the same as sd's: 1e-15); its exact tail is 1 - cdf (0 where the
+    # truth is 1e-133), and its asymptotic p-values are Kolmogorov's limit and exp(-2 n D^2), not
+    # scipy's kstwo at round(n) and Hodges' formula
+    ("ks_2samp/separated", "pvalue"): 1.0,
+    ("ks_2samp/separated-greater", "pvalue"): 1.0,
+    ("ks_2samp/asymp", "pvalue"): 0.02,
+    ("ks_2samp/asymp-less", "pvalue"): 0.0031,
+    ("ks_2samp/asymp-small", "pvalue"): 0.25,
+    ("ks_2samp/asymp-auto", "pvalue"): 0.032,
 }
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
 R_SAME_STATISTIC = {
@@ -451,7 +555,8 @@ def test_condition_numbers():
     # kappa (the p-value's condition number) is given wherever the p-value is a positive number
     for fam in ("ttest", "f_oneway", "alexandergovern", "bartlett", "levene", "fligner", "power_divergence",
                 "jarque_bera", "dagostino", "shapiro", "anderson", "ks_1samp", "cramervonmises", "ranksums",
-                "kruskal", "friedmanchisquare", "brunnermunzel", "mood", "median_test"):  # fmt: skip
+                "kruskal", "friedmanchisquare", "brunnermunzel", "mood", "median_test", "anderson_ksamp",
+                "epps_singleton_2samp"):  # fmt: skip
         for pid, rec in REFS[fam].items():
             p, k = rec["pvalue"][0], rec["kappa"]
             # (a p-value below the doubles, 0 here, keeps its Arb value's condition number)

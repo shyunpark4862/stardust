@@ -2,7 +2,7 @@
 
 Every public test on fixed data sets (small samples, a large offset, ties, constant samples, a
 sample of one, NaN under the three nan_policy values, empty samples), over its options
-(alternative, equal_var, trim, center and proportiontocut, lambda_ and ddof, dist, method,
+(alternative, equal_var, trim, center and proportiontocut, lambda_ and ddof, dist, method, variant, t,
 zero_method, correction, use_continuity, distribution, ties, ranked, predicted_ranks, keepdims),
 batches along an axis and a tuple of axes (the rank tests' per-lane methods), long lanes
 (n = 10^5: the multithreaded kernels), the exact distributions (with ties, deep tails, past
@@ -302,3 +302,62 @@ def cases(L):
     yield "friedmanchisquare two samples", lambda: h.friedmanchisquare(a, a)
     yield "wilcoxon zero_method", lambda: h.wilcoxon(a, zero_method="drop")
     yield "mannwhitneyu method", lambda: h.mannwhitneyu(a, b, method="permutation")
+
+    # ---- H4: goodness of fit between samples
+    t3 = np.round(c * 2)  # ties
+    for alt in ("two-sided", "less", "greater"):
+        for meth in ("auto", "exact", "asymp"):
+            yield f"ks_2samp {alt} {meth}", lambda alt=alt, m=meth: h.ks_2samp(a, b, alternative=alt, method=m)
+            yield f"ks_2samp ties {alt} {meth}", lambda alt=alt, m=meth: h.ks_2samp(t1, t2, alternative=alt, method=m)
+        yield f"ks_2samp equal sizes {alt}", lambda alt=alt: h.ks_2samp(a, b[:12] + 0.5, alternative=alt)
+        yield (
+            f"ks_2samp long {alt}",
+            lambda alt=alt: h.ks_2samp(d["long_a"][:9000], d["long_b"][:7000], alternative=alt),
+        )
+    yield "ks_2samp separated", lambda: h.ks_2samp(a, b + 100.0)
+    yield "ks_2samp asymp long", lambda: h.ks_2samp(d["long_a"], d["long_b"])
+    yield "ks_2samp ties long", lambda: h.ks_2samp(np.round(d["long_a"][:4000], 1), np.round(d["long_b"][:3000], 1))
+    yield "ks_2samp offset", lambda: h.ks_2samp(d["off_a"], d["off_b"])
+    yield "ks_2samp constant", lambda: h.ks_2samp(d["const"], d["const"][:5])
+    yield "ks_2samp batch", lambda: h.ks_2samp(d["batch_a"], d["batch_b"], axis=-1)
+    yield "ks_2samp batch keepdims", lambda: h.ks_2samp(d["batch_a"], d["batch_b"], axis=-1, keepdims=True)
+    yield "ks_2samp exact cap", lambda: h.ks_2samp(d["long_a"][:40000], d["long_b"][:39999], method="exact",
+                                                     alternative="greater")  # fmt: skip
+    for meth in ("auto", "exact", "asymptotic"):
+        yield f"cramervonmises_2samp {meth}", lambda m=meth: h.cramervonmises_2samp(a, b, method=m)
+        yield f"cramervonmises_2samp ties {meth}", lambda m=meth: h.cramervonmises_2samp(t1[:15], t3, method=m)
+    yield "cramervonmises_2samp exact 60 x 50", lambda: h.cramervonmises_2samp(d["long_a"][:60], d["long_b"][:50],
+                                                                               method="exact")  # fmt: skip
+    yield "cramervonmises_2samp exact separated", lambda: h.cramervonmises_2samp(a, c + 50.0)
+    yield "cramervonmises_2samp long", lambda: h.cramervonmises_2samp(d["long_a"], d["long_b"])
+    yield "cramervonmises_2samp batch", lambda: h.cramervonmises_2samp(d["batch_a"], d["batch_b"], axis=-1)
+    yield "cramervonmises_2samp exact cap", lambda: h.cramervonmises_2samp(d["long_a"][:3000], d["long_b"][:2999],
+                                                                           method="exact")  # fmt: skip
+    yield "cramervonmises_2samp one", lambda: h.cramervonmises_2samp([0.3], b)
+    for v in ("midrank", "right", "continuous"):
+        yield f"anderson_ksamp {v}", lambda v=v: h.anderson_ksamp([a, b, c], variant=v)
+        yield f"anderson_ksamp ties {v}", lambda v=v: h.anderson_ksamp([t1, t2, t3], variant=v)
+    yield "anderson_ksamp default", lambda: h.anderson_ksamp((a, b))
+    yield "anderson_ksamp capped", lambda: h.anderson_ksamp([a, b + 10.0])
+    yield "anderson_ksamp long", lambda: h.anderson_ksamp([d["long_a"], d["long_b"]])
+    yield "anderson_ksamp offset", lambda: h.anderson_ksamp([d["off_a"], d["off_b"]])
+    yield "anderson_ksamp constant", lambda: h.anderson_ksamp([d["const"], d["const"]])
+    yield "anderson_ksamp one sample", lambda: h.anderson_ksamp([a])
+    yield "anderson_ksamp array", lambda: h.anderson_ksamp(np.stack([a, a]))
+    yield "anderson_ksamp variant", lambda: h.anderson_ksamp([a, b], variant="mid")
+    for t in ((0.4, 0.8), (0.2, 0.5, 1.0), 0.7):
+        yield f"epps_singleton_2samp t={t}", lambda t=t: h.epps_singleton_2samp(a, b, t=t)
+    yield "epps_singleton_2samp ties", lambda: h.epps_singleton_2samp(t1, t2)
+    yield "epps_singleton_2samp long", lambda: h.epps_singleton_2samp(d["long_a"], d["long_b"])
+    yield "epps_singleton_2samp offset", lambda: h.epps_singleton_2samp(d["off_a"], d["off_b"])
+    yield "epps_singleton_2samp batch", lambda: h.epps_singleton_2samp(d["batch_a"], d["batch_b"], axis=-1)
+    yield "epps_singleton_2samp four", lambda: h.epps_singleton_2samp(a[:4], b)
+    yield "epps_singleton_2samp t", lambda: h.epps_singleton_2samp(a, b, t=(0.4, 0.0))
+    yield (
+        "epps_singleton_2samp rank-deficient",
+        lambda: h.epps_singleton_2samp(np.round(np.abs(a)) % 2, np.round(np.abs(b)) % 2),
+    )
+    for f in ("ks_2samp", "cramervonmises_2samp", "epps_singleton_2samp"):
+        yield f"{f} empty", lambda f=f: getattr(h, f)([], b)
+        for pol in ("propagate", "omit", "raise"):
+            yield f"{f} nan {pol}", lambda f=f, pol=pol: getattr(h, f)(d["nan"], b, nan_policy=pol)

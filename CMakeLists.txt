@@ -74,11 +74,16 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/regression/slopes.cpp
   csrc/htest/parametric.cpp
   csrc/htest/gof.cpp
+  csrc/htest/gof2.cpp
   csrc/htest/rank.cpp
   csrc/sparse/direct.cpp
   csrc/sparse/canonical.cpp
   csrc/sparse/convert.cpp
   csrc/sparse/dok.cpp
+  csrc/sparse/spmv.cpp
+  csrc/sparse/binop.cpp
+  csrc/sparse/spgemm.cpp
+  csrc/sparse/reduce.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
