@@ -274,6 +274,8 @@ def test_newton_cotes_errors():
         assert str(e.value) == text
 
     err(ValueError, "newton_cotes(): 'rn' must be >= 1 (the number of intervals)", lambda: I.newton_cotes(0))
+    for bad in (math.nan, math.inf):  # docs/api/integrate.md §7: finite positions
+        err(ValueError, "newton_cotes(): the sample positions must be finite", lambda: I.newton_cotes([0.0, bad, 2.0]))
     err(
         TypeError,
         "newton_cotes(): 'rn' must be an int or a sequence of numbers, not float",
@@ -301,3 +303,30 @@ def test_newton_cotes_remembered_rules_are_copies():
     an2, B2 = I.newton_cotes(6)
     assert an2[0] != 99.0 and B2 == B
     assert an2.tolist() == I.newton_cotes([0, 1, 2, 3, 4, 5, 6])[0].tolist()
+
+
+def test_nodes_past_the_table_do_not_depend_on_the_thread_count():
+    """docs/api/integrate.md §1.4: the same bits at any thread count. The first computation of
+    nodes past the Arb table (n > 100, C54) splits its Newton steps over threads (C109)."""
+    old = sd.get_num_threads()
+    got = {}
+    try:
+        for t in (1, 3, 10):
+            sd.set_num_threads(t)
+            _gauss._cache.pop(1000, None)
+            x, w = _gauss.legendre(1000)
+            v = I.fixed_quad(lambda x: sd.cos(3.0 * x), 0.0, 2.0, n=1000)
+            got[t] = (np.asarray(x.tolist()).view(np.int64).tolist(), np.asarray(w.tolist()).view(np.int64).tolist(), v)
+    finally:
+        sd.set_num_threads(old)
+    assert got[1] == got[3] == got[10]
+
+
+def test_equal_ends_call_f_once_and_the_upper_limits_are_accepted():
+    """docs/api/integrate.md §7: a == b is 0 with f still called once (scipy's); n = 10^4 and
+    rn = 256 (257 positions) are the largest accepted (C109, C110)."""
+    calls = []
+    assert I.fixed_quad(lambda x: (calls.append(x.shape), x)[1], 2.0, 2.0) == 0.0 and calls == [(5,)]
+    assert abs(I.fixed_quad(sd.cos, 0.0, 1.0, n=10000) - math.sin(1.0)) <= 1e-15
+    an, B = I.newton_cotes(256)
+    assert an.shape == (257,) and I.newton_cotes(list(range(257)))[0].tolist() == an.tolist() and B < 0

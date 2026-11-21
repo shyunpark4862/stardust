@@ -80,12 +80,13 @@ def test_scipy_points_and_counts(kind):
     assert (entries, same) == ((7456, 7289) if kind == "jacobian" else (1748, 1517))
 
 
-@pytest.mark.parametrize("kind", ["jacobian", "hessian"])
+@pytest.mark.parametrize("kind", ["jacobian", "hessian", "gradient"])
 def test_arb_contract(kind):
     """Normwise: a converged entry's error is below rtol times the largest entry of the exact
     matrix on the whole collection (the worst is 0.0037 rtol for the Jacobians, mgh11, and 0.11
-    for the Hessians, mgh04: Brown's badly scaled function). Entrywise the relative test fails at
-    near-zero entries (an absolute error of rtol |J| is noise there), so it is not the contract."""
+    for the Hessians, mgh04: Brown's badly scaled function; the gradients of sum F_i^2, jacobian's
+    scalar f, 0.0031 at mgh35 n = 8). Entrywise the relative test fails at near-zero entries (an
+    absolute error of rtol |J| is noise there), so it is not the contract."""
     ref = refdata.mgh()
     worst, converged = 0.0, 0
     for cid, v in ref.items():
@@ -94,15 +95,15 @@ def test_arb_contract(kind):
         c = next(c for c in P.mgh_cases() if c.id == cid)
         x0 = np.array([float(t) for t in c.x0()])
         fn = P.mgh_F_np(c) if kind == "jacobian" else P.mgh_f_np(c)
-        r = (D.jacobian if kind == "jacobian" else D.hessian)(lambda x, fn=fn: sd.asarray(fn(np.asarray(x))), x0)
-        got = np.asarray(r.df if kind == "jacobian" else r.ddf)
+        r = (D.hessian if kind == "hessian" else D.jacobian)(lambda x, fn=fn: sd.asarray(fn(np.asarray(x))), x0)
+        got = np.asarray(r.ddf if kind == "hessian" else r.df)
         hi, lo = v[kind]
         ok = np.asarray(r.status) == 0
         converged += int(ok.sum())
         err = np.abs((got - hi) - lo)[ok]
-        worst = max(worst, float(err.max(initial=0.0) / (RTOL * np.abs(hi).max())))
-    assert worst < (0.01 if kind == "jacobian" else 0.2)
-    assert converged == (7389 if kind == "jacobian" else 1612)
+        worst = max(worst, float(err.max(initial=0.0) / (RTOL * max(np.abs(hi).max(), 1e-300))))
+    assert worst < (0.2 if kind == "hessian" else 0.01)
+    assert converged == {"jacobian": 7389, "hessian": 1612, "gradient": 342}[kind]
 
 
 def rosen(x):
@@ -194,6 +195,24 @@ def test_errors():
         D.hessian(lambda x: x, [1.0, 2.0])
     with pytest.raises(TypeError, match=r"jacobian\(\): 'f' must return real values, not a bool array"):
         D.jacobian(lambda x: x > 0, [1.0, 2.0])
+    # docs/api/differentiate.md §1.2: complex values and strings are TypeError, for both functions
+    for fn in (D.jacobian, D.hessian):
+        name = fn.__name__
+        with pytest.raises(TypeError, match=rf"{name}\(\): 'f' must return real values, not a complex128 array"):
+            fn(lambda x: x[0] * 1j, [1.0, 2.0])
+        with pytest.raises(
+            TypeError, match=rf"{name}\(\): 'f' must return an sd.ndarray or a sequence of numbers, not str"
+        ):
+            fn(lambda x: "a", [1.0, 2.0])
+    # hessian's own checks (§3: the options are jacobian's)
+    with pytest.raises(ValueError, match=r"hessian\(\): 'x' must be 1-dimensional, not a scalar"):
+        D.hessian(rosen, 1.0)
+    with pytest.raises(ValueError, match=r"hessian\(\): 'x' must be 1-dimensional, not shape \(1, 2\)"):
+        D.hessian(rosen, [[1.0, 2.0]])
+    with pytest.raises(ValueError, match=r"hessian\(\): 'initial_step' must have 2 values like 'x', not 3"):
+        D.hessian(rosen, [1.0, 2.0], initial_step=[0.5, 0.5, 0.5])
+    with pytest.raises(ValueError, match=r"hessian\(\): 'max_iter' must be >= 1"):
+        D.hessian(rosen, [1.0, 2.0], max_iter=0)
 
     def boom(x):
         raise KeyError("mine")
@@ -210,3 +229,55 @@ def test_summary():
     j = D.jacobian(rosen, [1.2, 0.8, 1.1]).summary()
     head = [line for line in j.splitlines() if "df" in line.split()][0].split()
     assert head == ["df", "error", "converged", "status", "n_iter", "nfev"]
+
+
+def test_non_finite_points():
+    """docs/api/differentiate.md §3: a non-finite variable is accepted and the entries it enters
+    end with status -3 (scipy's); the others are untouched."""
+
+    def f(x):
+        return sd.stack([x[0] ** 2, x[0] * x[1]])
+
+    j = D.jacobian(f, [1.0, math.inf])
+    assert (
+        j.status.tolist() == [[0, -3], [-3, -3]] and j.df.tolist()[0][0] == D.jacobian(f, [1.0, 2.0]).df.tolist()[0][0]
+    )
+    h = D.hessian(lambda x: x[0] ** 2 * x[1] + sd.sin(x[1]), [1.0, math.nan])
+    assert h.status.tolist() == [[-3, -3], [-3, -3]] and all(math.isnan(v) for row in h.ddf.tolist() for v in row)
+
+
+def test_hessian_options():
+    """max_iter, order and step_factor reach the inner jacobian (§3)."""
+    f = lambda x: x[0] ** 2 * x[1] + sd.sin(x[1])  # noqa: E731
+    assert D.hessian(f, [1.0, 2.0], max_iter=1).status.tolist() == [[-2, -2], [-2, -2]]
+    for kw in ({"order": 4}, {"step_factor": 3.0}, {"initial_step": [0.25, 0.5]}):
+        r = D.hessian(f, [1.0, 2.0], **kw)
+        assert r.converged.tolist() == [[True, True], [True, True]], kw
+        assert abs(r.ddf.tolist()[0][1] - 2.0) <= 1e-8 and abs(r.ddf.tolist()[1][1] + math.sin(2.0)) <= 1e-8
+
+
+def test_bits_do_not_depend_on_the_thread_count():
+    """docs/api/differentiate.md §1.4: the same bits at any thread count (jacobian's entries pass
+    the elementwise loop; 200 variables x 8 points pass its threshold of 2^15 points per pass
+    with the 200 outputs)."""
+    rng = np.random.default_rng(3)
+    x0 = rng.uniform(0.5, 1.5, 200)
+
+    def f(x):
+        return sd.sin(x) * sd.exp(0.1 * x)  # (200, N): the diagonal Jacobian of a vector function
+
+    def run():
+        j = D.jacobian(f, x0)
+        h = D.hessian(lambda x: sd.sum(sd.cos(x[:6]) * x[:6], axis=0), x0[:6])
+        return (np.asarray(j.df.tolist()).view(np.int64).tolist(), j.nfev.tolist(),
+                np.asarray(h.ddf.tolist()).view(np.int64).tolist(), h.nfev.tolist())  # fmt: skip
+
+    old = sd.get_num_threads()
+    try:
+        got = {}
+        for t in (1, 3, 10):
+            sd.set_num_threads(t)
+            got[t] = run()
+    finally:
+        sd.set_num_threads(old)
+    assert got[1] == got[3] == got[10]

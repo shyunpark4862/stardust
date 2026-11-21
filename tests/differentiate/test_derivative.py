@@ -36,20 +36,27 @@ class Recorder:
 
 
 def _scipy_shapes(rec):
-    """scipy's call shapes, one entry per call ((): sd's first call is 1-D, O48)."""
+    """scipy's call shapes, one entry per call as sd makes them: sd's first call is 1-D (O48), the
+    batch's elements in C order ((): (1,); a 3 x 3 batch: (9,)); the same points in the same order."""
     out = []
-    for shape, times in rec["shapes"]:
-        out += [tuple(shape) or (1,)] * times
+    for k, (shape, times) in enumerate(rec["shapes"]):
+        first = (int(np.prod(shape)),) if k == 0 else tuple(shape)
+        out += [first] + [tuple(shape)] * (times - 1)
     return out
 
 
 def _runs():
+    """(key, f(x, *args) on numpy, x, options, args) of every scipy record."""
     for f in P.ELEMENTARY:
         for x in f.points:
-            yield f"{f.name}/{x!r}", f, x, {}
-        yield f"batch/{f.name}", f, np.array(f.points), {}
+            yield f"{f.name}/{x!r}", f.f_np, x, {}, ()
+        yield f"batch/{f.name}", f.f_np, np.array(f.points), {}, ()
     for e in P.EDGES:
-        yield f"edge/{e.id}", P.BY_NAME[e.function], e.x, e.options
+        yield f"edge/{e.id}", P.BY_NAME[e.function].f_np, e.x, e.options, ()
+    for f in P.ELEMENTARY:
+        yield f"nd/{f.name}", f.f_np, np.array(f.points).reshape(P.ND_SHAPE), {}, ()
+    for aid, g, x, args in P.ARGS:
+        yield aid, g, x, {}, args
 
 
 RUNS = list(_runs())
@@ -65,10 +72,10 @@ def test_scipy_points_counts_and_statuses():
     assert data.pop("scipy") == "1.18.1"
     assert {k for k, *_ in RUNS} == set(data)
     same_df = 0
-    for key, f, x, opts in RUNS:
-        rec = Recorder(lambda a, f=f: f.f_np(a))
+    for key, f, x, opts, args in RUNS:
+        rec = Recorder(f)
         with np.errstate(all="ignore"):
-            r = D.derivative(rec, x, **opts)
+            r = D.derivative(rec, x, args=tuple(sd.asarray(a) for a in args), **opts)
         want = data[key]
         if key in SD_CONVERGES:
             assert r.status == 0 and r.n_iter == 2 and r.nfev == 11 and want["status"] == -2
@@ -96,14 +103,14 @@ def test_arb_contract():
     -0.5)."""
     ref = refdata.derivatives()
     worst, converged = 0.0, 0
-    for key, f, x, opts in RUNS:
-        if key.startswith("batch/"):
-            continue
+    points = [(f"{f.name}/{x!r}", f, x, {}) for f in P.ELEMENTARY for x in f.points]
+    points += [(f"edge/{e.id}", P.BY_NAME[e.function], e.x, e.options) for e in P.EDGES]
+    for key, f, x, opts in points:
         with np.errstate(all="ignore"):
             r = D.derivative(lambda a, f=f: sd.asarray(f.f_np(np.asarray(a))), x, **opts)
         if r.status != 0:
             assert key in {"edge/log/1e-3/default", "edge/log/1e-3/right", "edge/sqrt/1e-6/default",
-                           "edge/exp/1/order-2"}, key  # fmt: skip
+                           "edge/exp/1/order-2", "edge/exp/1/factor-0.5"}, key  # fmt: skip
             continue
         converged += 1
         hi, lo = ref[f"{f.name}/{float(x)!r}"]["df"]
@@ -111,7 +118,7 @@ def test_arb_contract():
         assert err <= opts.get("atol", TINY) + opts.get("rtol", RTOL) * abs(r.df), key
         if hi:
             worst = max(worst, err / abs(hi))
-    assert converged == 109
+    assert converged == 111
     assert worst < 1e-10
 
 
@@ -247,8 +254,10 @@ def test_argument_errors():
         D.derivative(sd.exp, 1.0, preserve_shape=True)
     with pytest.raises(ValueError, match=r"derivative\(\): 'step_factor' must be a finite number > 0 other than 1"):
         D.derivative(sd.exp, 1.0, step_factor=1.0)
-    for bad in (0.0, -2.0, math.inf, math.nan):
-        with pytest.raises(ValueError, match="'step_factor'"):
+    for bad in (0.0, -2.0, math.inf, math.nan):  # docs/api/differentiate.md §2, C31: one message for all
+        with pytest.raises(
+            ValueError, match=r"^derivative\(\): 'step_factor' must be a finite number > 0 other than 1$"
+        ):
             D.derivative(sd.exp, 1.0, step_factor=bad)
     with pytest.raises(ValueError, match=r"derivative\(\): 'order' must be >= 1"):
         D.derivative(sd.exp, 1.0, order=0)
@@ -279,6 +288,8 @@ def test_value_errors():
         D.derivative(lambda x: x > 0, 1.0)
     with pytest.raises(TypeError, match=r"'f' must return an sd.ndarray or a sequence of numbers, not str"):
         D.derivative(lambda x: "a", 1.0)
+    with pytest.raises(TypeError, match=r"derivative\(\): 'f' must return real values, not a complex128 array"):
+        D.derivative(lambda x: x * 1j, 1.0)
 
     def boom(x):
         raise KeyError("mine")
@@ -304,3 +315,18 @@ def test_summary():
     assert head == ["x", "df", "error", "converged", "status", "n_iter", "nfev"]
     with pytest.raises(TypeError, match=r"summary\(\): takes 0 positional arguments but 1 was given"):
         D.derivative(sd.exp, 1.0).summary(1)
+
+
+def test_nan_point_and_order_one():
+    """docs/api/differentiate.md §1.4, §2: a NaN x ends with status -3 (df NaN) after the first
+    iteration; order 1 is the next even order, 2 (the same points and value)."""
+    r = D.derivative(sd.exp, [math.nan, 1.0])
+    assert r.status.tolist() == [-3, 0] and math.isnan(r.df.tolist()[0])
+    one, two = D.derivative(sd.exp, 1.0, order=1), D.derivative(sd.exp, 1.0, order=2)
+    assert (one.df, one.error, one.nfev, one.n_iter, one.status) == (
+        two.df,
+        two.error,
+        two.nfev,
+        two.n_iter,
+        two.status,
+    )

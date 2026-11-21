@@ -28,7 +28,7 @@ def versions() -> dict:
             out[lib] = None
     out["R"] = rsession.version()
     if out["R"]:
-        for pkg in ("mvtnorm", "reticulate", "minpack.lm", "car", "lmtest", "leaps", "irlba"):
+        for pkg in ("mvtnorm", "reticulate", "minpack.lm", "car", "lmtest", "leaps", "irlba", "numDeriv"):
             out[f"R {pkg}"] = _r_package_version(pkg)
     from . import boost
 

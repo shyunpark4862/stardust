@@ -59,6 +59,23 @@ def weights(keep_provenance=False):
     return _json(REF / "weights.json", keep_provenance)
 
 
+def sample_variants(keep_provenance=False):
+    """ref/sample_variants.json: per variant of problems.sample_variants(), "lanes" (and "imag")
+    the exact value or running values of each lane along "axis", as [hi, lo] pairs."""
+    return _json(REF / "sample_variants.json", keep_provenance)
+
+
+def boxes(keep_provenance=False):
+    """ref/boxes.json: per box of problems.CUBATURE_BOXES, {"value": [hi, lo]} (closed forms)."""
+    return _json(REF / "boxes.json", keep_provenance)
+
+
+def newton_cotes(keep_provenance=False):
+    """ref/newton_cotes.json: per rn of problems.NEWTON_COTES (its str; positions as a list of
+    float reprs), {"an": [[hi, lo], ...], "B": [hi, lo]}, exact rationals rounded (C53)."""
+    return _json(REF / "newton_cotes.json", keep_provenance)
+
+
 def value(entry):
     """The reference as a float (hi; lo is below its rounding)."""
     return float(entry["value"][0])

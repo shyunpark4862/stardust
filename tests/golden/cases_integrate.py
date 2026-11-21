@@ -183,6 +183,9 @@ def fixed_cases(L):
     yield "err newton_cotes float", lambda: I.newton_cotes(3.0)
     yield "err newton_cotes ends", lambda: I.newton_cotes([0.0, 1.0, 3.0])
     yield "err newton_cotes equal", lambda: I.newton_cotes(3, equal=1)
+    yield "err newton_cotes nan position", lambda: I.newton_cotes([0.0, math.nan, 2.0])
+    yield "newton_cotes 64", lambda: I.newton_cotes(64)
+    yield "newton_cotes positions 6", lambda: I.newton_cotes([0.0, 0.1, 0.2, 3.0, 4.5, 5.0])
 
 
 def quad_cases(L):
@@ -212,6 +215,15 @@ def quad_cases(L):
     yield "quad points array", lambda: I.quad(lambda x: abs(x - 0.3), 0.0, 1.0, points=sd.asarray([0.3, 0.6]))
     yield "quad nan", lambda: I.quad(lambda x: math.nan if x > 0.5 else 1.0, 0.0, 1.0)
     yield "quad inf", lambda: I.quad(lambda x: math.inf if x > 0.9 else x, 0.0, 1.0)
+    # status 3 on each of QAGS, QAGI, QAGP and status 4 (docs/api/integrate.md §2)
+    inv = lambda x: 1.0 / x if x else math.inf  # noqa: E731
+    yield "quad status 3 QAGS", lambda: I.quad(inv, 0.0, 1.0, limit=10000)
+    yield "quad status 3 QAGI", lambda: I.quad(inv, 0.0, math.inf, limit=10000)
+    yield (
+        "quad status 3 QAGP",
+        lambda: I.quad(lambda x: 1.0 / abs(x) if x else math.inf, -1.0, 1.0, limit=10000, points=[0.0]),
+    )
+    yield "quad status 4", lambda: I.quad(lambda x: x**-0.999 / (1.0 + x) if x else math.inf, 0.0, math.inf)
     yield "quad int limits", lambda: I.quad(math.exp, 0, 1)
     yield "quad 0-d value", lambda: I.quad(lambda x: sd.asarray(x * x), 0.0, 1.0)
     yield "quad complex", lambda: I.quad(lambda x: complex(math.cos(3 * x), math.sqrt(x)), 0.0, 2.0, complex_func=True)
@@ -400,6 +412,10 @@ def elementwise_cases(L):
     yield "nsum log both sides", lambda: I.nsum(lambda k: -k * k, -inf, inf, log=True)
     yield "nsum max_terms", lambda: I.nsum(lambda k: 1 / k**1.01, 1.0, inf, max_terms=100)
     yield "nsum divergent", lambda: I.nsum(lambda k: 1 / k, 1.0, inf)
+    yield "nsum positions overflow", lambda: I.nsum(lambda k: 1 / (k * k), [1.0, 1.0], [inf, inf], step=[1e306, 1.0])
+    yield "nsum empty", lambda: I.nsum(lambda k: 1 / (k * k), [], 1.0)
+    yield "err tanhsinh bool end", lambda: I.tanhsinh(sd.exp, True, 1.0)
+    yield "err nsum log rtol", lambda: I.nsum(lambda k: -2 * sd.log(k), 1.0, inf, log=True, rtol=math.nan)
     yield (
         "nsum invalid",
         lambda: I.nsum(lambda k: 1 / (k * k), [1.0, 10.0, math.nan], [10.0, 1.0, 5.0], step=[-1.0, 1.0, 1.0]),
@@ -462,6 +478,11 @@ def adaptive_cases(L):
     yield "err quad_vec complex", lambda: I.quad_vec(lambda x: 1j, 0.0, 1.0)
     yield "err quad_vec empty value", lambda: I.quad_vec(lambda x: [], 0.0, 1.0)
     yield "err quad_vec norm", lambda: I.quad_vec(three, 0.0, 1.0, norm="fro")
+    cache = L.np.linspace(0.0, 1.0, 50000)  # 8 x 50000-byte values: past scipy's 100e6-byte cache (C98)
+    yield (
+        "quad_vec past the cache",
+        lambda: I.quad_vec(lambda x: L.np.sqrt(L.np.abs(x - cache)), 0.0, 1.0, rtol=1e-6, limit=400),
+    )
     yield "err quad_vec quadrature", lambda: I.quad_vec(three, 0.0, 1.0, quadrature="gk31")
     yield "err quad_vec limit", lambda: I.quad_vec(three, 0.0, 1.0, limit=0)
     yield "err quad_vec nan limit", lambda: I.quad_vec(three, 0.0, math.nan)
@@ -502,6 +523,7 @@ def adaptive_cases(L):
     yield "err cubature max_subdivisions", lambda: I.cubature(gauss, [0.0], [1.0], max_subdivisions=0)
     yield "err cubature same infinity", lambda: I.cubature(gauss, [inf], [inf])
     yield "err cubature point length", lambda: I.cubature(gauss, [0.0], [1.0], points=[[0.5, 0.5]])
+    yield "err cubature nan point", lambda: I.cubature(gauss, [0.0, 0.0], [1.0, 1.0], points=[[0.5, math.nan]])
     yield "err cubature value", lambda: I.cubature(lambda X: 1.0, [0.0], [1.0])
     yield "err cubature value shape", lambda: I.cubature(lambda X: X[:3, 0], [0.0], [1.0])
     yield "err cubature args", lambda: I.cubature(gauss, [0.0], [1.0], args=())

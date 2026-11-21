@@ -144,7 +144,14 @@ EDGES = (
     Edge("exp/1/order-12", "exp", 1.0, {"order": 12}, "a high order"),
     Edge("exp/1/factor-1.5", "exp", 1.0, {"step_factor": 1.5}, "a smaller step factor"),
     Edge("exp/1/left", "exp", 1.0, {"step_direction": -1}, "the one-sided stencil to the left"),
+    Edge("exp/1/factor-3", "exp", 1.0, {"step_factor": 3.0}, "a step factor above 2"),
+    Edge("exp/1/factor-0.5", "exp", 1.0, {"step_factor": 0.5}, "a step factor below 1: the steps grow (status -1)"),
+    Edge("exp/1/rtol", "exp", 1.0, {"rtol": 1e-12}, "a tighter relative tolerance"),
 )
+# scipy records past the one-point calls (calculus review): a 2-D batch of each function's nine
+# points (3 x 3) and a parametric function with args broadcast against x
+ND_SHAPE = (3, 3)
+ARGS = (("args/exp-scaled", lambda x, c: np.exp(c * x), 1.0, (np.array([0.5, 1.0, 2.0, -1.0]),)),)
 EDGES_BY_ID = {e.id: e for e in EDGES}
 
 

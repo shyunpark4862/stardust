@@ -506,3 +506,41 @@ def test_argument_errors():
         I.nsum(sd.exp, 0.0, 1.0, max_terms=1e3)
     with pytest.raises(TypeError, match=r"nsum\(\): 'step' must be a real number or an array, not bool"):
         I.nsum(sd.exp, 0.0, 1.0, step=True)
+    # docs/api/integrate.md §6: bool ends are TypeError, a NaN log tolerance ValueError
+    with pytest.raises(TypeError, match=r"tanhsinh\(\): 'a' must be a real number or an array, not bool"):
+        I.tanhsinh(sd.exp, True, 1.0)
+    with pytest.raises(TypeError, match=r"nsum\(\): 'b' must be a real number or an array, not bool"):
+        I.nsum(lambda k: 1 / (k * k), 1.0, True)
+    for fn, kw in ((I.tanhsinh, "atol"), (I.tanhsinh, "rtol"), (I.nsum, "atol"), (I.nsum, "rtol")):
+        name = fn.__name__
+        with pytest.raises(ValueError, match=rf"{name}\(\): with log=True, '{kw}' must be a real number below inf"):
+            fn(lambda x: -x, 1.0, 2.0, log=True, **{kw: math.nan})
+
+
+def test_empty_batch_does_not_call_f():
+    """docs/api/integrate.md §6: an empty batch never calls f (scipy calls it with an empty array)."""
+    calls = []
+
+    def f(x):
+        calls.append(x.shape)
+        return sd.exp(x)
+
+    assert I.tanhsinh(f, [], 1.0).integral.shape == (0,)
+    assert I.nsum(f, [], 1.0).sum.shape == (0,)
+    assert calls == []
+
+
+def test_nsum_term_positions_that_overflow():
+    """docs/api/integrate.md §6: an element whose term positions a + n step overflow to inf has
+    its direct sum emptied (scipy raises); the call ends, the others are untouched."""
+    r = I.nsum(lambda k: 1 / (k * k), [1.0, 1.0], [INF, INF], step=[1e306, 1.0])
+    assert r.status.tolist()[1] == 0 and r.sum.tolist()[1] == I.nsum(lambda k: 1 / (k * k), 1.0, INF).sum
+    assert math.isfinite(r.sum.tolist()[0]) and r.status.tolist()[0] in (0, -2)
+
+
+def test_the_upper_limits_are_accepted():
+    """docs/api/integrate.md §6: max_level 16 and max_terms 2^24 are the largest accepted (C88, C89)."""
+    r = I.tanhsinh(sd.exp, 0.0, 1.0, max_level=16, min_level=16)
+    assert r.converged and abs(r.integral - (math.e - 1)) <= 1e-15 and r.max_level == 16
+    s = I.nsum(lambda k: 1 / (k * k), 1.0, 2.0**24, max_terms=2**24)
+    assert s.converged and s.nfev == 2**24 + 1  # the first call at a, then the 2^24 terms directly

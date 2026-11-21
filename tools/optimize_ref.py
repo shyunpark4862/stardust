@@ -1,6 +1,6 @@
 """The Arb references of sd.optimize (docs/design/optimize.md §7), in tests/optimize/ref/:
 
-    .venv/bin/python tools/optimize_ref.py                  # all three
+    .venv/bin/python tools/optimize_ref.py                  # all four
     .venv/bin/python tools/optimize_ref.py roots minima     # only these
 
   roots        scalar_roots.json: for each scalar root case of tests/optimize/functions.py, the
@@ -18,6 +18,10 @@
                analytic formulas (tests/optimize/mgh.py) evaluated in Arb on the double x0
                (tests/optimize/ad.py's ARB), settled to 2^-110 of the largest entry (approx_fprime's
                error is measured normwise), as hi + lo
+  fprime_small fprime_small.json: for each function of functions.FPRIME_SMALL (approx_fprime's
+               step rule near 0, C112), its closed-form derivative at each double of
+               functions.FPRIME_POINTS in Arb, settled to 2^-110, as [hi, lo] ("df"; null where the
+               point is outside the function's domain)
 
 A root: the sign of f at a double x is decided by evaluating the case's code in Arb balls (x is
 exact) at rising precision until the ball excludes 0. Bisection runs over the doubles themselves
@@ -305,7 +309,25 @@ def derivatives():
     print(f"{len(cases)} cases -> {(OUT / 'derivatives.npz').relative_to(ROOT)}")
 
 
-PARTS = {"roots": roots, "minima": minima, "derivatives": derivatives}
+def fprime_small():
+    from tests.optimize import ad, functions
+
+    doc = {"_provenance": _provenance(110), "x": list(functions.FPRIME_POINTS)}
+    for name, _f, df in functions.FPRIME_SMALL:
+        out = []
+        for x in functions.FPRIME_POINTS:
+            try:
+                hi, lo = _settled_vec(lambda x=x: [df(arb(x), ad.ARB)])
+                out.append([float(hi[0]), float(lo[0])])
+            except NotSettled, ValueError, ZeroDivisionError:
+                out.append(None)
+        doc[name] = {"df": out}
+    (OUT / "fprime_small.json").write_text(json.dumps(doc, indent=1) + "\n")
+    print(f"{len(functions.FPRIME_SMALL)} functions x {len(functions.FPRIME_POINTS)} points -> "
+          f"{(OUT / 'fprime_small.json').relative_to(ROOT)}")  # fmt: skip
+
+
+PARTS = {"roots": roots, "minima": minima, "derivatives": derivatives, "fprime_small": fprime_small}
 
 
 def main(argv=None):

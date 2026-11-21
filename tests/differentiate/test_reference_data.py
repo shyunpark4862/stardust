@@ -31,6 +31,7 @@ def test_records_cover_the_collection():
     assert d.pop("scipy") == SCIPY_VERSION
     want = {f"{f.name}/{x!r}" for f in P.ELEMENTARY for x in f.points} | {f"batch/{f.name}" for f in P.ELEMENTARY}
     want |= {f"edge/{e.id}" for e in P.EDGES}
+    want |= {f"nd/{f.name}" for f in P.ELEMENTARY} | {a[0] for a in P.ARGS}
     assert set(d) == want
     j = refdata.data("scipy_jacobian.json")
     h = refdata.data("scipy_hessian.json")

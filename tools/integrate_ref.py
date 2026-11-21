@@ -1,6 +1,6 @@
 """The Arb references of sd.integrate (docs/design/integrate.md §7.2), in tests/integrate/ref/:
 
-    .venv/bin/python tools/integrate_ref.py                    # all seven
+    .venv/bin/python tools/integrate_ref.py                    # all ten
     .venv/bin/python tools/integrate_ref.py integrals series   # only these
 
   integrals   integrals.json: per one-dimensional integral of tests/integrate/problems.py
@@ -18,6 +18,16 @@
               double (tools/gen_gauss_legendre.py, which writes the table of n <= 100)
   weights     weights.json: per weighted integral of tests/integrate/weights.py (SWEEP: quad's
               QAWO, QAWF, QAWS, QAWC families, C5), its exact integral like integrals'
+  sample_variants  sample_variants.json: per variant of problems.sample_variants() (an axis other
+              than the last, complex y, `initial`), its rule's formula exactly in rationals lane
+              by lane along the axis ("lanes": per lane the value, or the running values with the
+              initial first; "imag" likewise for complex y)
+  boxes       boxes.json: per box of problems.CUBATURE_BOXES (cubature's 4-D and 5-D boxes and its
+              boxes with break points), its exact integral (closed form)
+  newton_cotes  newton_cotes.json: per rn of problems.NEWTON_COTES (int N and sample positions),
+              the closed Newton-Cotes weights an and error coefficient B as exact rationals (the
+              moment equations solved by Gaussian elimination; B from the next moment, scipy's
+              order), each rounded to the double-double [hi, lo] (C53)
 
 A reference is an Arb ball settled to 2^-110 of its value (tools/arbref.py) and is stored as the
 double-double [hi, lo]. It comes from up to three methods, and every method a problem allows is
@@ -392,6 +402,93 @@ def gauss():
     _write("gauss.json", rows, len(rows))
 
 
+def sample_variants():
+    from fractions import Fraction
+
+    import numpy as np
+
+    from tests.integrate import problems as P
+
+    rows = []
+    for vid, rule, y, x, dx, axis, initial in P.sample_variants():
+        lanes = np.moveaxis(y, axis, -1)
+        lanes = lanes.reshape(-1, lanes.shape[-1])
+        xs = None if x is None else [_q(v) for v in x.tolist()]
+        parts = {"lanes": lanes.real}
+        if np.iscomplexobj(y):
+            parts["imag"] = lanes.imag
+        entry = {"rule": rule, "axis": axis, "method": "exact rationals",
+                 "digest": samples_digest(vid, y, x, dx) + f"/{axis}/{initial}"}  # fmt: skip
+        for key, part in parts.items():
+            vals = []
+            for lane in part:
+                q = [_q(v) for v in lane.tolist()]
+                if rule.startswith("cumulative"):
+                    terms = exact_trapezoid_terms(q, xs, _q(dx)) if rule == "cumulative_trapezoid" else (
+                        exact_simpson_pieces(q, xs, _q(dx)))  # fmt: skip
+                    c = Fraction(0) if initial is None or key == "imag" else _q(initial)
+                    s, run = c, [] if initial is None else [_dd(c)]
+                    for t in terms:
+                        s += t
+                        run.append(_dd(s))
+                    vals.append(run)
+                else:
+                    vals.append(exact_rules(q, xs, _q(dx))[rule])
+            entry[key] = vals
+        rows.append((vid, entry))
+    _write("sample_variants.json", rows, len(rows), extra="exact rationals (fractions.Fraction) for the sample rules")
+
+
+def boxes():
+    from tests.integrate import problems as P
+
+    rows = []
+    for bx in P.CUBATURE_BOXES:
+        hi, lo = to_dd(_settle(bx.exact))
+        rows.append((bx.id, {"value": [hi, lo], "method": "closed form",
+                             "digest": digest(bx.id, bx.a, bx.b, bx.points, bx.source)}))  # fmt: skip
+    _write("boxes.json", rows, len(rows))
+
+
+def _nc_exact(pos, n, equal):
+    """(an, B) as Fractions for the positions pos (Fractions, 0 ... n) of rn (C53)."""
+    import math
+    from fractions import Fraction
+
+    m = len(pos)
+    A = [[r**k for r in pos] + [Fraction(n) ** (k + 1) / (k + 1)] for k in range(m)]
+    for c in range(m):
+        piv = next(r for r in range(c, m) if A[r][c] != 0)
+        A[c], A[piv] = A[piv], A[c]
+        for r in range(m):
+            if r != c and A[r][c] != 0:
+                f = A[r][c] / A[c][c]
+                A[r] = [a - f * b for a, b in zip(A[r], A[c])]
+    an = [A[i][m] / A[i][i] for i in range(m)]
+    p = n + 2 if n % 2 == 0 and equal else n + 1
+    B = (Fraction(n) ** (p + 1) / (p + 1) - sum(a * r**p for a, r in zip(an, pos))) / math.factorial(p)
+    return an, B
+
+
+def newton_cotes():
+    from fractions import Fraction
+
+    from tests.integrate import problems as P
+
+    rows = []
+    for rn in P.NEWTON_COTES:
+        if isinstance(rn, int):
+            pos, n, equal = [Fraction(i) for i in range(rn + 1)], rn, True
+        else:
+            pos, n = [Fraction(v) for v in rn], len(rn) - 1
+            equal = all(b - a == 1 for a, b in zip(pos, pos[1:]))
+        an, B = _nc_exact(pos, n, equal)
+        key = str(rn) if isinstance(rn, int) else "[" + ", ".join(repr(float(v)) for v in rn) + "]"
+        rows.append((key, {"an": [_dd(a) for a in an], "B": _dd(B), "method": "exact rationals",
+                           "digest": digest("newton_cotes", key)}))  # fmt: skip
+    _write("newton_cotes.json", rows, len(rows))
+
+
 PARTS = {
     "integrals": integrals,
     "series": series,
@@ -400,6 +497,9 @@ PARTS = {
     "samples": samples,
     "gauss": gauss,
     "weights": weights,
+    "newton_cotes": newton_cotes,
+    "boxes": boxes,
+    "sample_variants": sample_variants,
 }
 
 

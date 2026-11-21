@@ -95,6 +95,10 @@ def derivative_cases(L):
     yield "derivative step_factor 0.5", lambda: D.derivative(sd.exp, 1.0, step_factor=0.5)
     yield "derivative empty", lambda: D.derivative(sd.exp, [])
     yield "derivative nan value", lambda: D.derivative(lambda x: sd.where(x == 1.0, math.nan, sd.exp(x)), 1.0)
+    yield "derivative non-finite x", lambda: D.derivative(sd.exp, [math.nan, math.inf, 1.0])
+    yield "derivative order 1", lambda: D.derivative(sd.exp, 1.0, order=1)
+    yield "err derivative complex value", lambda: D.derivative(lambda x: x * 1j, 1.0)
+    yield "err derivative step_factor inf", lambda: D.derivative(sd.exp, 1.0, step_factor=math.inf)
     yield "derivative summary", lambda: D.derivative(sd.exp, 1.0).summary()
     yield "derivative summary batch", lambda: D.derivative(sd.exp, [1.0, 2.0, 30.0]).summary()
     yield "err derivative tolerances", lambda: D.derivative(sd.exp, 1.0, tolerances={"atol": 1.0})
@@ -129,6 +133,16 @@ def multivariate_cases(L):
     yield "hessian steps", lambda: D.hessian(lambda x: sd.log(x[0]) * x[1], [1e-3, 2.0], initial_step=[1e-4, 0.5])
     yield "hessian rtol 0", lambda: D.hessian(lambda x: x[0] ** 2 * x[1], [1.0, 2.0], rtol=0.0, atol=1e-6)
     yield "hessian summary", lambda: D.hessian(rosen, [1.2, 0.8, 1.1]).summary()
+    G = lambda x: sd.stack([x[0] ** 2, x[0] * x[1]])  # noqa: E731
+    yield "jacobian non-finite x", lambda: D.jacobian(G, [1.0, math.inf])
+    yield "hessian non-finite x", lambda: D.hessian(lambda x: x[0] ** 2 * x[1] + sd.sin(x[1]), [1.0, math.nan])
+    yield (
+        "hessian options",
+        lambda: D.hessian(lambda x: x[0] ** 2 * x[1] + sd.sin(x[1]), [1.0, 2.0], max_iter=1, order=4),
+    )
+    yield "err jacobian complex value", lambda: D.jacobian(lambda x: x * 1j, [1.0, 2.0])
+    yield "err hessian steps", lambda: D.hessian(rosen, [1.0, 2.0], initial_step=[0.5, 0.5, 0.5])
+    yield "err hessian x scalar", lambda: D.hessian(rosen, 1.0)
     yield "err jacobian x scalar", lambda: D.jacobian(rosen, 1.0)
     yield "err jacobian x 2d", lambda: D.jacobian(rosen, [[1.0, 2.0]])
     yield "err jacobian empty", lambda: D.jacobian(rosen, [])

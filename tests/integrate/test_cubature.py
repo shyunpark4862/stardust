@@ -266,6 +266,8 @@ def test_result_fields():
         (lambda: I.cubature(lambda X: X[:, 0], [0.0], [math.nan]), ValueError, "must not be NaN"),
         (lambda: I.cubature(lambda X: X[:, 0], [0.0], [1.0], points=[[0.5, 1.0]]), ValueError, "ndim = 1 values"),
         (lambda: I.cubature(lambda X: X[:, 0], [0.0], [1.0], points=0.5), TypeError, "'points' must be a sequence"),
+        (lambda: I.cubature(lambda X: X[:, 0], [0.0, 0.0], [1.0, 1.0], points=[[0.5, math.nan]]), ValueError,
+         "the values of 'points' must not be NaN"),
         (lambda: I.cubature(lambda X: X[:, 0], [0.0], [1.0], rtol=-1.0), ValueError, "'rtol' must be a finite"),
         (lambda: I.cubature(lambda X: 1.0, [0.0], [1.0]), ValueError,
          "'f' must return shape (21,) or (21, ...) for its argument of shape (21, 1), not a scalar"),
@@ -287,3 +289,52 @@ def test_errors(call, err, msg):
 def test_user_errors_pass_through():
     with pytest.raises(ZeroDivisionError):
         I.cubature(lambda X: 1 / 0, [0.0], [1.0])
+
+
+def test_bits_do_not_depend_on_the_thread_count():
+    """docs/api/integrate.md §1.4 for cubature (its sums over points are sd's) and the quad family."""
+
+    def f(X):
+        return sd.exp(-(X[:, 0] ** 2) - 0.5 * X[:, 1] * X[:, 2]) * sd.cos(X[:, 0] + X[:, 1])
+
+    def runs():
+        out = []
+        for rule in ("gk21", "gk15", "genz-malik"):
+            r = I.cubature(f, [0.0, -1.0, 0.0], [1.0, 1.0, 2.0], rule=rule, rtol=1e-10)
+            out.append((r.integral, r.error, r.nfev, r.n_regions))
+        r = I.cubature(lambda X: sd.stack([X[:, 0], X[:, 1] ** 2], axis=1), [0.0, 0.0], [INF, 1.0])
+        out.append((tuple(np.asarray(r.integral.tolist()).view(np.int64).tolist()), r.nfev))
+        q = I.nquad(lambda z, y, x: math.exp(-x * y * z), [(0.0, 1.0), lambda x: (0.0, x), (0.0, 2.0)])
+        out.append((q.integral, q.error, q.nfev))
+        return out
+
+    old = sd.get_num_threads()
+    try:
+        got = {}
+        for t in (1, 3, 10):
+            sd.set_num_threads(t)
+            got[t] = runs()
+    finally:
+        sd.set_num_threads(old)
+    assert got[1] == got[3] == got[10]
+
+
+@pytest.mark.parametrize("bid", sorted(P.BOXES_BY_ID))
+def test_boxes_match_live_scipy(bid):
+    """problems.CUBATURE_BOXES (4-D and 5-D genz-malik, break points in 2-D and 3-D) bit for bit
+    against scipy 1.18.1 (their Arb contract is in test_arb_contract through adaptive.cubature_runs)."""
+    import warnings
+
+    from scipy import integrate
+
+    live_scipy()
+    bx = P.BOXES_BY_ID[bid]
+    kw = {"points": [list(t) for t in bx.points]} if bx.points else {}
+    for rule in ("gk21", "gk15", "genz-malik"):
+        if rule != "genz-malik" and len(bx.a) > 3:
+            continue
+        r = I.cubature(lambda X: sd.asarray(bx.func(np.asarray(X.tolist()))), list(bx.a), list(bx.b), rule=rule, **kw)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            s = integrate.cubature(bx.func, np.asarray(bx.a), np.asarray(bx.b), rule=rule, **kw)
+        assert (r.integral, r.error, r.subdivisions) == (float(s.estimate), float(s.error), s.subdivisions), rule

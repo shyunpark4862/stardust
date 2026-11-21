@@ -239,6 +239,14 @@ def cubature_runs(cub):
 
             v, e, s = cub(f, [b[0] for b in m.box], [b[1] for b in m.box], rule=rule)
             out.append((f"multiple {rule}", m.id, v[0], e[0], s, mref[m.id]["value"]))
+    bref = refdata.boxes()
+    for bx in P.CUBATURE_BOXES:  # 4-D and 5-D boxes, break points in 2-D and 3-D
+        for rule in ("gk21", "gk15", "genz-malik"):
+            if rule != "genz-malik" and len(bx.a) > 3:  # 21^5 points a region: genz-malik's dimensions
+                continue
+            kw = {"points": [list(t) for t in bx.points]} if bx.points else {}
+            v, e, s = cub(bx.func, list(bx.a), list(bx.b), rule=rule, **kw)
+            out.append((f"boxes {rule}", bx.id, v[0], e[0], s, bref[bx.id]["value"]))
     return out
 
 

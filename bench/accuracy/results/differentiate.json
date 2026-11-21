@@ -2,42 +2,57 @@
  "schema": 1,
  "area": "differentiate",
  "runs": {
-  "20261121-234631-ee069cd+": {
-   "commit": "ee069cd",
+  "20261122-060114-d0366c1+": {
+   "commit": "d0366c1",
    "dirty": true,
    "changed": [
-    "ARCHITECTURE.md",
-    "CMakeLists.txt",
-    "ROADMAP.md",
+    "bench/accuracy/compare.py",
     "bench/accuracy/differentiate.py",
+    "bench/accuracy/integrate.py",
+    "bench/accuracy/optimize.py",
     "bench/speed/cases/differentiate.py",
-    "csrc/bind/htest_bind.cpp",
-    "csrc/bind/module.cpp",
-    "csrc/bind/sparse_bind.cpp",
-    "csrc/linalg/lapack.hpp",
-    "csrc/sparse/format.hpp",
-    "csrc/sparse/iterative.cpp",
-    "docs/api/differentiate.md",
-    "docs/design/integrate.md",
-    "src/stardust/differentiate/__init__.py",
-    "src/stardust/differentiate/_result.py",
-    "src/stardust/htest/__init__.py",
-    "tests/differentiate/test_api_surface.py",
-    "tests/differentiate/test_result.py",
+    "bench/speed/cases/integrate.py",
+    "tests/differentiate/data/scipy_derivative.json",
+    "tests/differentiate/problems.py",
+    "tests/differentiate/ref/mgh.npz",
+    "tests/differentiate/refdata.py",
+    "tests/differentiate/test_derivative.py",
+    "tests/differentiate/test_jacobian.py",
+    "tests/differentiate/test_reference_data.py",
     "tests/golden/cases_differentiate.py",
+    "tests/golden/cases_integrate.py",
+    "tests/golden/cases_optimize.py",
     "tests/golden/data/differentiate.json",
-    "tests/htest/problems.py"
+    "tests/golden/data/integrate.json",
+    "tests/golden/data/optimize.json",
+    "tests/integrate/adaptive.py",
+    "tests/integrate/problems.py",
+    "tests/integrate/refdata.py",
+    "tests/integrate/test_cubature.py",
+    "tests/integrate/test_fixed.py",
+    "tests/integrate/test_quadpack.py",
+    "tests/integrate/test_quadpack_weights.py",
+    "tests/integrate/test_samples.py",
+    "tests/integrate/test_tanhsinh.py",
+    "tests/optimize/functions.py",
+    "tests/optimize/refdata.py",
+    "tests/optimize/test_diff.py",
+    "tools/differentiate_ref.py",
+    "tools/gen_differentiate_scipy.py",
+    "tools/gen_integrate_scipy.py",
+    "tools/integrate_ref.py",
+    "tools/optimize_ref.py"
    ],
-   "date": "2026-11-21T23:46:31",
+   "date": "2026-11-22T06:01:14",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
-    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
     "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
     "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
     "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
     "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
-    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
    },
    "comparators": {
     "scipy": "1.18.1",
@@ -48,6 +63,11 @@
     "R mvtnorm": "1.4.2",
     "R reticulate": "1.47.0",
     "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
     "Boost": "boostorg/math 75cb4c4 2026-11-18",
     "Boost in sd.special": "4682f44"
    }
@@ -58,38 +78,96 @@
    "id": "differentiate/derivative",
    "area": "differentiate",
    "name": "derivative",
-   "points": 109,
+   "points": 111,
    "regions": {
     "elementary": {
-     "points": 109,
+     "points": 111,
      "rel_max": 6.218084870341207e-11,
-     "contract": 0.004172886118782383,
+     "contract": 0.004790949797213426,
      "bound": 1.0,
      "worst": [
-      "tanh/-0.5"
+      "edge/exp/1/rtol"
      ],
-     "unconverged": 4,
+     "unconverged": 5,
      "error_below_true": 5
     }
    },
    "comparators": {
     "scipy": {
      "elementary": {
-      "points": 108,
+      "points": 110,
       "rel_max": 6.217943701007495e-11,
       "contract": 0.0041727913816462245,
       "bound": 1.0,
       "worst": [
        "tanh/-0.5"
       ],
-      "unconverged": 5,
+      "unconverged": 6,
       "error_below_true": 15
+     }
+    },
+    "R": {
+     "elementary": {
+      "points": 99,
+      "rel_max": 6.774617918709755e-11,
+      "contract": 0.004546369125894559,
+      "bound": 1.0,
+      "worst": [
+       "tanh/-3.0"
+      ]
      }
     }
    },
    "comparator_seconds": 300,
-   "run": "20261121-234631-ee069cd+",
-   "comparators_run": "20261121-234631-ee069cd+"
+   "run": "20261122-060114-d0366c1+",
+   "comparators_run": "20261122-060114-d0366c1+"
+  },
+  {
+   "id": "differentiate/gradient",
+   "area": "differentiate",
+   "name": "gradient",
+   "points": 47,
+   "regions": {
+    "mgh": {
+     "points": 47,
+     "contract": 0.0031330924453004502,
+     "bound": 1.0,
+     "worst": [
+      "mgh35-n8-m8-x1"
+     ],
+     "entries": 342,
+     "unconverged": 1,
+     "error_below_true": 146
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 47,
+      "contract": 0.0031328320817430324,
+      "bound": 1.0,
+      "worst": [
+       "mgh35-n8-m8-x1"
+      ],
+      "entries": 343,
+      "unconverged": 0,
+      "error_below_true": 182
+     }
+    },
+    "R": {
+     "mgh": {
+      "points": 47,
+      "contract": 393.3171358046875,
+      "bound": 1.0,
+      "worst": [
+       "mgh04-n2-m3-x1"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 300,
+   "run": "20261122-060114-d0366c1+",
+   "comparators_run": "20261122-060114-d0366c1+"
   },
   {
    "id": "differentiate/hessian",
@@ -122,11 +200,21 @@
       "unconverged": 206,
       "error_below_true": 488
      }
+    },
+    "R": {
+     "mgh": {
+      "points": 42,
+      "contract": 17412348.83950615,
+      "bound": 1.0,
+      "worst": [
+       "mgh04-n2-m3-x1"
+      ]
+     }
     }
    },
    "comparator_seconds": 300,
-   "run": "20261121-234631-ee069cd+",
-   "comparators_run": "20261121-234631-ee069cd+"
+   "run": "20261122-060114-d0366c1+",
+   "comparators_run": "20261122-060114-d0366c1+"
   },
   {
    "id": "differentiate/jacobian",
@@ -159,11 +247,21 @@
       "unconverged": 99,
       "error_below_true": 2829
      }
+    },
+    "R": {
+     "mgh": {
+      "points": 47,
+      "contract": 109.39792768657207,
+      "bound": 1.0,
+      "worst": [
+       "mgh04-n2-m3-x1"
+      ]
+     }
     }
    },
    "comparator_seconds": 300,
-   "run": "20261121-234631-ee069cd+",
-   "comparators_run": "20261121-234631-ee069cd+"
+   "run": "20261122-060114-d0366c1+",
+   "comparators_run": "20261122-060114-d0366c1+"
   }
  ]
 }

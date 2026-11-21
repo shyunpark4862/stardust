@@ -10,7 +10,7 @@
               (problems.mgh_cases()), at x0, the Jacobian of the residuals F (from the problems'
               analytic Jacobians evaluated in Arb, as tools/optimize_ref.py's derivatives.npz) and,
               for n <= 10, the Hessian of f = sum F_i^2 (second-order forward-mode jets over Arb,
-              tests/differentiate/jets.py)
+              tests/differentiate/jets.py), and the gradient 2 J^T F of f (jacobian's scalar f) in Arb
 
 Every value is settled to 2^-110 relative (tools/arbref.py; a vector or matrix to 2^-110 of its
 largest entry, as the measurements are normwise). The JSON file carries "_provenance"
@@ -85,7 +85,7 @@ def mgh():
     from tests.optimize import ad
 
     cases = P.mgh_cases()
-    x0s, js, hs, hidx = [], [], [], []
+    x0s, js, gs, hs, hidx = [], [], [], [], []
     for i, c in enumerate(cases):
         x0 = [float(v) for v in c.x0()]
 
@@ -95,6 +95,13 @@ def mgh():
 
         jh, jl = _settled_vec(jac)
         js.append((jh.reshape(c.m, c.n), jl.reshape(c.m, c.n)))
+
+        def grad(c=c, x0=x0):  # of f = sum F_i^2: 2 J^T F (jacobian's scalar f, its gradient)
+            x = [arb(v) for v in x0]
+            J, F = c.jac(x, M=ad.ARB), c.fun(x, M=ad.ARB)
+            return [2 * sum((arb(J[k][j]) * arb(F[k]) for k in range(c.m)), arb(0)) for j in range(c.n)]
+
+        gs.append(_settled_vec(grad))
         x0s.append(np.array(x0))
         if c.n <= P.HESSIAN_MAX_N:
 
@@ -117,6 +124,8 @@ def mgh():
                          "lo": [j[1] for j in js]},
             "hessian": {"over": "point", "index": np.array(hidx, dtype=np.int64), "hi": [h[0] for h in hs],
                         "lo": [h[1] for h in hs]},
+            "gradient": {"over": "point", "index": np.arange(len(cases)), "hi": [g[0] for g in gs],
+                         "lo": [g[1] for g in gs]},
         },
     )  # fmt: skip
     print(f"{len(cases)} cases ({len(hidx)} with the Hessian) -> {(OUT / 'mgh.npz').relative_to(ROOT)}")

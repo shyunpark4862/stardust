@@ -984,3 +984,87 @@ def samples():
     g = np.linspace(0.0, 2.0, 9)
     out["samples/2d/rows"] = (np.vstack([np.sin(g), np.cos(g), g * g]), g, 1.0)
     return out
+
+
+# ---- newton_cotes (C53): int N (equally spaced, scipy's table to N = 14, then exact rationals)
+# and sample positions (0 ... N, distinct), against ref/newton_cotes.json
+NEWTON_COTES = (
+    *range(1, 31),
+    40,
+    64,
+    (0.0, 0.5, 2.0),
+    (0.0, 1.0, 1.5, 3.0),
+    (0.0, 0.25, 2.0, 3.0, 4.0),
+    (0.0, 2.5, 3.0, 4.0, 4.5, 5.0),
+    (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0),
+    (0.0, 0.1, 0.2, 3.0, 4.5, 5.0),
+)
+
+
+# ---- cubature's boxes past MULTI (calculus review): more dimensions for genz-malik (4-D, 5-D) and
+# break points in 2-D and 3-D; func(X) on (n, ndim) numpy points, exact() the closed form (an arb)
+# at the doubles of the constants
+
+
+@dataclasses.dataclass(frozen=True)
+class Box:
+    id: str
+    func: Callable
+    a: tuple
+    b: tuple
+    exact: Callable
+    points: tuple = ()
+    source: str = ""
+
+
+def _gauss_box_exact(n):
+    return (_pi().sqrt() / 2 * _arb(1).erf()) ** n
+
+
+def _abs_moment(c):
+    """the integral of |t - c| over [0, 1], c the double in the code"""
+    c = _arb(c)
+    return (c * c + (1 - c) * (1 - c)) / 2
+
+
+CUBATURE_BOXES = (
+    Box("box/gauss-4d", lambda X: np.exp(-np.sum(X * X, axis=1)), (0.0,) * 4, (1.0,) * 4,
+        exact=lambda: _gauss_box_exact(4), source="exp(-|x|^2) on [0, 1]^4"),
+    Box("box/exp-5d", lambda X: np.exp(-np.sum(X, axis=1)), (0.0,) * 5, (1.0,) * 5,
+        exact=lambda: (1 - (-_arb(1)).exp()) ** 5, source="exp(-sum x) on [0, 1]^5 = (1 - 1/e)^5"),
+    Box("box/cos-3d", lambda X: np.cos(X[:, 0]) * np.cos(2.0 * X[:, 1]) * np.cos(3.0 * X[:, 2]), (0.0,) * 3,
+        (1.0,) * 3, exact=lambda: _arb(1).sin() * _arb(2).sin() / 2 * _arb(3).sin() / 3,
+        source="cos x cos 2y cos 3z on [0, 1]^3 (Genz's oscillatory family, separable)"),
+    Box("box/kink-2d", lambda X: np.abs(X[:, 0] - 0.3) * np.abs(X[:, 1] - 0.6), (0.0, 0.0), (1.0, 1.0),
+        exact=lambda: _abs_moment(0.3) * _abs_moment(0.6), points=((0.3, 0.6),),
+        source="|x - 0.3| |y - 0.6| on [0, 1]^2, the kink as a point"),
+    Box("box/kink-3d", lambda X: np.abs(X[:, 0] - 0.25) + np.abs(X[:, 1] - 0.5) + np.abs(X[:, 2] - 0.75),
+        (0.0,) * 3, (1.0,) * 3, exact=lambda: _abs_moment(0.25) + _abs_moment(0.5) + _abs_moment(0.75),
+        points=((0.25, 0.5, 0.75),), source="|x - 1/4| + |y - 1/2| + |z - 3/4| on [0, 1]^3, the kink as a point"),
+    Box("box/kink-2d-two-points", lambda X: np.abs(X[:, 0] - 0.3) * np.abs(X[:, 1] - 0.6) + np.abs(X[:, 0] - 0.8),
+        (0.0, 0.0), (1.0, 1.0), exact=lambda: _abs_moment(0.3) * _abs_moment(0.6) + _abs_moment(0.8),
+        points=((0.3, 0.6), (0.8, 0.5)), source="two kinks, two points"),
+)  # fmt: skip
+BOXES_BY_ID = {b.id: b for b in CUBATURE_BOXES}
+
+
+# ---- the sample rules' other inputs (calculus review): an axis other than the last, complex y
+# (real coefficients on the real and imaginary parts, C48) and `initial`; one rule each, against
+# ref/sample_variants.json (each rule's formula exactly in rationals, lane by lane along `axis`)
+def sample_variants():
+    """[(id, rule, y, x or None, dx, axis, initial or None)]."""
+    g9 = np.linspace(0.0, 2.0, 9)
+    cols = np.vstack([np.sin(g9), np.cos(g9), g9 * g9, np.exp(-g9), g9]).T  # (9, 5): lanes down axis 0
+    xs = (np.arange(10, dtype=np.float64) / 9) ** 2
+    z = np.exp(1j * np.linspace(0.0, 3.0, 17))
+    out = []
+    for rule in ("trapezoid", "simpson", "romb", "cumulative_trapezoid", "cumulative_simpson"):
+        out.append((f"variants/axis0/{rule}", rule, cols, None, 0.25, 0, None))
+        out.append((f"variants/complex/{rule}", rule, z, None, 3.0 / 16, -1, None))
+    for rule in ("trapezoid", "simpson", "cumulative_trapezoid", "cumulative_simpson"):
+        out.append((f"variants/axis0-x/{rule}", rule, cols, g9, 1.0, 0, None))
+        out.append((f"variants/complex-x/{rule}", rule, np.exp(1j * xs), xs, 1.0, -1, None))
+    out.append(("variants/initial/cumulative_trapezoid", "cumulative_trapezoid", np.exp(xs), xs, 1.0, -1, 0))
+    out.append(("variants/initial/cumulative_simpson", "cumulative_simpson", np.exp(xs), xs, 1.0, -1, 1.5))
+    out.append(("variants/initial-axis0/cumulative_simpson", "cumulative_simpson", cols, None, 0.25, 0, -0.75))
+    return out

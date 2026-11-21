@@ -24,6 +24,9 @@ problems of tests/integrate/problems.py. Writes tests/integrate/data/:
                         fixed_quad (n = 5, 20, 100) on the finite smooth integrals; newton_cotes(N)
                         for N = 1 ... 14
   scipy_calls.npz       quad's points in call order, one float64 array per integral ("quad/<id>")
+  scipy_weights.json    quad on the weighted sweep of tests/integrate/weights.py (SWEEP: QAWO, QAWF,
+                        QAWS with every alg weight, QAWC) like scipy_quad.json's records, its points
+                        as their sha256 in call order ("points_sha256")
 
 The calls of a function that passes arrays (tanhsinh, nsum, dblquad, ...) are recorded as their
 shapes in order and the sha256 of every point's float64 bytes in call order (C order within a
@@ -32,7 +35,8 @@ number of calls and of points: a test compares its own call order's digest witho
 (tanhsinh calls up to 16,387 points per integral). Floats are written with repr (NaN and inf as
 JSON's NaN/Infinity, which Python reads back); arrays as lists.
 
-Run: .venv/bin/python tools/gen_integrate_scipy.py
+Run: .venv/bin/python tools/gen_integrate_scipy.py            # every file
+     .venv/bin/python tools/gen_integrate_scipy.py weights    # scipy_weights.json only
 """
 
 from __future__ import annotations
@@ -371,6 +375,17 @@ def write(name, rows):
     print(f"{len(rows)} records -> {(DATA / name).relative_to(ROOT)}")
 
 
+def weights_runs():
+    from tests.integrate import weights as W
+
+    rows = []
+    for p in W.SWEEP:
+        res, pts = quad_run(p)
+        res["points_sha256"] = hashlib.sha256(np.ascontiguousarray(pts).tobytes()).hexdigest()
+        rows.append((p.id, res))
+    write("scipy_weights.json", rows)
+
+
 def main():
     import scipy
 
@@ -378,6 +393,12 @@ def main():
 
     assert scipy.__version__ == SCIPY, scipy.__version__
     DATA.mkdir(parents=True, exist_ok=True)
+    only = sys.argv[1:]
+    if only and only != ["weights"]:
+        raise SystemExit(f"gen_integrate_scipy.py: unknown part {only[0]!r} (weights, or nothing for every file)")
+    if only:
+        return weights_runs()
+    weights_runs()
     rows, arrays = [], {}
     for p in P.INTEGRALS:
         res, pts = quad_run(p)

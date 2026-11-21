@@ -292,3 +292,27 @@ def test_qawf_result_and_messages():
     # reversed limits change the sign only
     a, b = I.quad(f, 0.0, math.inf, weight="sin", wvar=2.0), I.quad(f, math.inf, 0.0, weight="sin", wvar=2.0)
     assert b.integral == -a.integral and b.error == a.error and b.cycle_integrals.tolist() == a.cycle_integrals.tolist()
+
+
+@pytest.mark.parametrize("pid", sorted(W.BY_ID))
+def test_sweep_matches_the_scipy_records(pid):
+    """Every weighted integral of the sweep against scipy 1.18.1's record (tests/integrate/data/
+    scipy_weights.json, tools/gen_integrate_scipy.py weights): the same points in call order,
+    integral, error, nfev, status, message and intervals (QAWF: cycles), every alg weight among them."""
+    import hashlib
+
+    rec = refdata.data("scipy_weights.json")[pid]
+    p = W.BY_ID[pid]
+    kw = {"weight": p.weight, "wvar": p.wvar}
+    r, pts = _sd(p.f, p.a, p.b, **kw)
+    if pid in ZERO_FREQUENCY:  # C78: scipy integrates from 0 whatever a is; sd is QAGI on [a, inf)
+        assert _bits(r.integral) != _bits(rec["integral"])
+        return
+    assert hashlib.sha256(np.ascontiguousarray(pts).tobytes()).hexdigest() == rec["points_sha256"]
+    assert _bits(r.integral) == _bits(rec["integral"]) and _bits(r.error) == _bits(rec["error"])
+    assert r.nfev == rec["nfev"] and r.status == rec["status"] and (r.message if r.status else None) == rec["message"]
+    info = rec["info"]
+    if "lst" in info:  # QAWF: its cycles
+        assert r.n_cycles == info["lst"]
+    elif "last" in info:
+        assert r.n_intervals == max(int(info["last"]), 1)

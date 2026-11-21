@@ -36,6 +36,11 @@ def minima():
     return _json("scalar_minima.json")
 
 
+def fprime_small():
+    """{"x": the points, function name: {"df": [[hi, lo] or None per point]}} (functions.FPRIME_SMALL)."""
+    return _json("fprime_small.json")
+
+
 def derivatives():
     """[(case id, x0, (gradient hi, lo), (Jacobian hi, lo))] per MGH case."""
     r = reffile.read(REF / "derivatives.npz")

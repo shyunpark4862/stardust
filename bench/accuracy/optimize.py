@@ -630,10 +630,36 @@ def _approx_fprime(lib="sd"):
             got = np.asarray(_opt(lib).approx_fprime(np.asarray(x0, dtype=float), fn), dtype=float)
             out.append(float(np.abs((got - hi) - lo).max() / max(np.abs(hi).max(), 1e-300)))  # as test_diff.rel
         where.append(c.id)
-    return {
+    out = {
         "gradient": region(where, norm_inf_rel=np.array(rg)),
         "jacobian": region(where, norm_inf_rel=np.array(rj)),
     }
+    out["small |x|"] = _fprime_small(lib)
+    return out
+
+
+def _fprime_small(lib):
+    """approx_fprime at the band near 0 where the first step's column is at rounding level (C112,
+    docs/design/integrate.md): the ten functions of tests/optimize/functions.FPRIME_SMALL at
+    +-10^(-14 ... 0), against the Arb derivatives of tests/optimize/ref/fprime_small.json: the
+    relative and absolute error of the derivative, recorded."""
+    from tests.optimize import functions, refdata
+
+    ref = refdata.fprime_small()
+    where, rel, err = [], [], []
+    for name, f, _ in functions.FPRIME_SMALL:
+        for x, r in zip(ref["x"], ref[name]["df"]):
+            if r is None:
+                continue
+            fn = lambda v, f=f: f(float(v[0]))  # noqa: E731
+            with np.errstate(all="ignore"):
+                got = float(np.asarray(_opt(lib).approx_fprime(np.array([x]), fn), dtype=float).ravel()[0])
+            hi, lo = r
+            d = abs((got - hi) - lo)
+            where.append(f"{name} x={x:.3g}")
+            err.append(d)
+            rel.append(d / abs(hi) if hi else d)
+    return region(where, rel=np.array(rel), abs_err=np.array(err))
 
 
 def sweeps():

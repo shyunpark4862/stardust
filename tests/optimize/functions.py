@@ -787,3 +787,21 @@ def _lsq_problems():
 
 
 LSQ_LINEAR = _lsq_problems()
+
+
+# ---- approx_fprime near 0 (C112, docs/design/integrate.md): ten elementary functions whose
+# value is much larger than their derivative near 0 (the band where the first step's column is at
+# rounding level), each with its closed-form derivative; at FPRIME_POINTS, +-10^(-14 + 14 k/15)
+FPRIME_SMALL = (
+    ("exp", lambda x, M=FLOAT: M.exp(x), lambda x, M=FLOAT: M.exp(x)),
+    ("cos", lambda x, M=FLOAT: M.cos(x), lambda x, M=FLOAT: -M.sin(x)),
+    ("sin", lambda x, M=FLOAT: M.sin(x), lambda x, M=FLOAT: M.cos(x)),
+    ("atan", lambda x, M=FLOAT: M.atan(x), lambda x, M=FLOAT: 1 / (1 + x * x)),
+    ("sqrt1p", lambda x, M=FLOAT: M.sqrt(1 + x), lambda x, M=FLOAT: 1 / (2 * M.sqrt(1 + x))),
+    ("log1p", lambda x, M=FLOAT: M.log(1 + x), lambda x, M=FLOAT: 1 / (1 + x)),
+    ("inv1p", lambda x, M=FLOAT: 1 / (1 + x), lambda x, M=FLOAT: -1 / ((1 + x) * (1 + x))),
+    ("gauss", lambda x, M=FLOAT: M.exp(-x * x), lambda x, M=FLOAT: -2 * x * M.exp(-x * x)),
+    ("xexp", lambda x, M=FLOAT: x * M.exp(x), lambda x, M=FLOAT: (1 + x) * M.exp(x)),
+    ("cos_plus_x", lambda x, M=FLOAT: M.cos(x) + x, lambda x, M=FLOAT: 1 - M.sin(x)),
+)
+FPRIME_POINTS = tuple(s * 10.0 ** (-14 + 14 * k / 15) for s in (1.0, -1.0) for k in range(16))

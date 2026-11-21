@@ -7,6 +7,9 @@ Since milestone C3:
               the error within c eps S, S the terms' size (sum |d_i| (|y_i| + |y_i+1|)), c =
               ceil(log2 n) + 10 for a sum (the pairwise tree), k + 10 for the k-th running value
               (a scan); bound 1. The relative error is recorded per rule.
+              Region "variants" (calculus review): the rules on an axis other than the last, on
+              complex y and with `initial` (problems.sample_variants, ref/sample_variants.json), the
+              same bound part by part.
   fixed_quad  n-point Gauss-Legendre (n = 5, 20, 100) on the collection's finite smooth integrals
               without a weight, against the Arb integral (ref/integrals.json): recorded only (the
               rule's own error, not a contract). Its nodes and weights are correctly rounded
@@ -45,7 +48,9 @@ scipy.integrate's tanhsinh and nsum are the comparator (the same steps: equal to
 tests/integrate/test_tanhsinh.py).
 
 Since milestone C7:
-  quad_vec    quad_vec on the collection's integrals without a weight (Python floats, quad's break
+  quad_vec    (regions "collection, gk15" and "collection, trapezoid", added in the calculus review:
+              the collection with the rule given, the relative error recorded)
+              quad_vec on the collection's integrals without a weight (Python floats, quad's break
               points), the three book families as one vector-valued integrand each (norms '2' and
               'max') and problems.VECTOR (tests/integrate/adaptive.quad_vec_runs), against the Arb
               integrals: the relative error (of the run's norm), and the contract of a converged run:
@@ -59,6 +64,28 @@ Since milestone C7:
 scipy.integrate's quad_vec and cubature are the comparator (the same steps: equal to the bit,
 tests/integrate/test_quad_vec.py, test_cubature.py; cubature but on (-inf, b], where scipy's
 transform integrates over [-b, inf)).
+
+Added in the calculus review (2026-11-22):
+  quad, region "complex": quad(complex_func=True) on pairs of the collection's integrals over the
+              same range (the first the real part, the second the imaginary part), against the two
+              Arb integrals: the relative error |value - ref| / |ref| and the contract of a
+              converged run part by part (each part's true error within its estimate).
+  multiple, region "nquad": nquad on problems.MULTI written as range functions (dblquad's
+              g(x), h(x) and tplquad's q(x, y), r(x, y) as nquad's ranges), the same contract.
+  tanhsinh and nsum, regions "log": log=True on the integrals and series whose integrand is
+              positive at 2001 points of the range (and whose reference is positive): the error
+              of the log of the value |value - log(ref)| (the relative error of the value), recorded.
+  newton_cotes  newton_cotes(rn) on problems.NEWTON_COTES (int N and sample positions) against the
+              exact rationals of ref/newton_cotes.json: the ULP distance and relative error of the
+              weights an and of B, recorded (C53: N <= 14 equal to scipy's table, else correctly
+              rounded rationals, where scipy's Vandermonde solve is far off).
+
+R (stats::integrate, its C translation of QUADPACK's dqags and dqagi) is a second comparator of
+quad on the integrals without break points (R's integrate has no QAGP), at quad's defaults:
+rel.tol = abs.tol = 1.49e-8, subdivisions = 50, stop.on.error = FALSE; it calls the same Python
+integrand through reticulate (vectorized: the problem's f_np), so the function values are the same
+doubles. bench/speed times the same call. R's message "OK" is a converged run; a call R refuses
+(a non-finite function value) is left out and counted.
 """
 
 from __future__ import annotations
@@ -116,6 +143,17 @@ def _samples(lib="sd"):
             rel.append(float(np.max(err / np.maximum(np.abs(r[..., 0]), 1e-300))))
             contract.append(float(np.max(err / bound)))
         out[rule] = region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0)
+    # an axis other than the last, complex y and `initial` (problems.sample_variants, the same bound)
+    from tests.integrate.test_samples import variant_errors
+
+    vref = refdata.sample_variants()
+    where, rel, contract = [], [], []
+    for vid, rule, y, x, dx, axis, initial in P.sample_variants():
+        c, r = variant_errors(rule, y, x, dx, axis, initial, vref[vid], lib=I, wrap=wrap)
+        where.append(vid)
+        rel.append(r)
+        contract.append(c)
+    out["variants"] = region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0)
     return out
 
 
@@ -167,7 +205,33 @@ def _quad_lib(lib):
             return r[0], r[1], 0 if len(r) == 3 else 1
 
         return q
+    if lib == "R":
+        from . import rsession
+
+        def q(f, a, b, pid=None, **kw):
+            if kw.get("points"):  # R's integrate has no break points
+                return None
+            expr = _r_prelude() + (
+                f'p <- .sdi$P$BY_ID[["{pid}"]]; f <- function(x) as.numeric(p$f_np(x)); '
+                "r <- tryCatch(integrate(f, B[1], B[2], rel.tol = 1.49e-8, abs.tol = 1.49e-8, subdivisions = 50L, "
+                "stop.on.error = FALSE), error = function(e) NULL); "
+                "if (is.null(r)) c(NaN, NaN, -1) else c(r$value, r$abs.error, if (r$message == 'OK') 0 else 1)"
+            )
+            v = rsession.evaluate_named(expr, {"B": np.array([a, b], dtype=float)})
+            return float(v[0]), float(v[1]), int(v[2])
+
+        return q
     return None
+
+
+def _r_prelude():
+    """bench/accuracy/optimize.py's R prelude (reticulate on this Python) and the integrate problems."""
+    from .optimize import _r_prelude as base
+
+    return base() + (
+        'if (!exists(".sdi", envir = globalenv())) assign(".sdi", '
+        'list(P = import("tests.integrate.problems")), envir = globalenv()); '
+    )
 
 
 def _quad(lib="sd"):
@@ -181,12 +245,19 @@ def _quad(lib="sd"):
     ref = refdata.integrals()
     out = {}
     for coll in ("book", "quadpack", "scipy", "hard"):
-        where, rel, contract, short, conv = [], [], [], 0, 0
+        where, rel, contract, short, conv, refused = [], [], [], 0, 0, 0
         for p in P.INTEGRALS:
             if p.weight is not None or p.collection != coll:
                 continue
             kw = {"points": list(p.points)} if p.points else {}
+            if lib == "R":
+                if p.points:
+                    continue
+                kw = {"pid": p.id}
             v, e, status = q(p.f, p.a, p.b, **kw)
+            if status < 0:  # R refused the integrand (a non-finite value)
+                refused += 1
+                continue
             hi, lo = ref[p.id]["value"]
             err = abs((v - hi) - lo)
             where.append(p.id)
@@ -201,8 +272,69 @@ def _quad(lib="sd"):
             else:
                 contract.append(0.0)
         out[coll] = region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0, converged=np.array([conv]),
-                           short=np.array([short]))  # fmt: skip
+                           short=np.array([short]), excluded=refused or None)  # fmt: skip
+    if lib != "R":  # R's integrate takes real integrands only
+        out["complex"] = _quad_complex(lib, ref)
     return out
+
+
+def _complex_pairs():
+    """Pairs (p, q) of the collection's unweighted integrals without break points over the same
+    finite range, neither in QUAD_SHORT: p's integrand the real part, q's the imaginary part."""
+    from tests.integrate import problems as P
+    from tests.integrate.test_reference_data import QUAD_SHORT
+
+    by_range = {}
+    for p in P.INTEGRALS:
+        if p.weight is None and not p.points and p.id not in QUAD_SHORT and math.isfinite(p.a) and math.isfinite(p.b):
+            by_range.setdefault((p.a, p.b), []).append(p)
+    out = []
+    for ps in by_range.values():
+        out += [(ps[i], ps[i + 1]) for i in range(0, len(ps) - 1, 2)]
+    return out
+
+
+def _quad_complex(lib, ref):
+    where, rel, contract, conv = [], [], [], 0
+    for p, q in _complex_pairs():
+        f = lambda x, p=p, q=q: complex(p.f(x), q.f(x))  # noqa: E731
+        if lib == "sd":
+            import stardust as sd
+
+            r = sd.integrate.quad(f, p.a, p.b, complex_func=True)
+            v, e, ok = r.integral, r.error, r.converged
+        else:
+            import warnings
+
+            from scipy import integrate
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                res = integrate.quad(f, p.a, p.b, complex_func=True, full_output=1)
+            v, e = res[0], res[1]
+            ok = all(len(res[2][k]) == 1 for k in ("real", "imag"))  # infodict only: no message
+        (rh, rl), (ih, il) = ref[p.id]["value"], ref[q.id]["value"]
+        er, ei = abs((v.real - rh) - rl), abs((v.imag - ih) - il)
+        where.append(f"{p.id} + i {q.id}")
+        rel.append(math.hypot(er, ei) / math.hypot(rh, ih))
+        part = [x / y if y > 0 else (0.0 if x == 0 else math.inf) for x, y in ((er, e.real), (ei, e.imag))]
+        contract.append(max(part) if ok else 0.0)
+        conv += bool(ok)
+    return region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0, converged=np.array([conv]))
+
+
+def _nquad_ranges(m):
+    """problems.MULTI's limits as nquad's ranges (innermost first; a range function takes the
+    outer variables nearest first: tplquad's q(x, y) is nquad's range(y, x))."""
+
+    def lim(g, *outer):
+        return g(*outer) if callable(g) else g
+
+    if m.kind == "dblquad":
+        g, h = m.limits
+        return [lambda x: (lim(g, x), lim(h, x)), (m.a, m.b)]
+    g, h, q, r = m.limits
+    return [lambda y, x: (lim(q, x, y), lim(r, x, y)), lambda x: (lim(g, x), lim(h, x)), (m.a, m.b)]
 
 
 def _multiple(lib="sd"):
@@ -210,24 +342,45 @@ def _multiple(lib="sd"):
         import stardust as sd
 
         I = sd.integrate  # noqa: E741
+
+        def nested(m, f):
+            return tuple(getattr(I, m.kind)(f, m.a, m.b, *m.limits))[:2]
+
+        def nq(m, f):
+            return tuple(I.nquad(f, _nquad_ranges(m)))[:2]
     elif lib == "scipy":
-        import scipy.integrate as I  # noqa: N812
+        import warnings
+
+        from scipy import integrate
+
+        def nested(m, f):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                return tuple(getattr(integrate, m.kind)(f, m.a, m.b, *m.limits))[:2]
+
+        def nq(m, f):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                return tuple(integrate.nquad(f, _nquad_ranges(m)))[:2]
     else:
         return None
     from tests.integrate import problems as P
     from tests.integrate import refdata
 
     ref = refdata.multiple()
-    where, rel, contract = [], [], []
-    for m in P.MULTI:
-        f = (lambda m: lambda *xs: float(m.func(*xs)))(m)
-        v, e = tuple(getattr(I, m.kind)(f, m.a, m.b, *m.limits))[:2]
-        hi, lo = ref[m.id]["value"]
-        err = abs((v - hi) - lo)
-        where.append(m.id)
-        rel.append(err / abs(hi))
-        contract.append(err / e if e > 0 else (0.0 if err == 0 else math.inf))
-    return {"dblquad, tplquad": region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0)}
+    out = {}
+    for name, call in (("dblquad, tplquad", nested), ("nquad", nq)):
+        where, rel, contract = [], [], []
+        for m in P.MULTI:
+            f = (lambda m: lambda *xs: float(m.func(*xs)))(m)
+            v, e = call(m, f)
+            hi, lo = ref[m.id]["value"]
+            err = abs((v - hi) - lo)
+            where.append(m.id)
+            rel.append(err / abs(hi))
+            contract.append(err / e if e > 0 else (0.0 if err == 0 else math.inf))
+        out[name] = region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0)
+    return out
 
 
 def _elementwise_lib(lib):
@@ -243,12 +396,12 @@ def _elementwise_lib(lib):
 
             return f
 
-        def t(g, a, b):
-            r = sd.integrate.tanhsinh(wrap(g), a, b)
+        def t(g, a, b, log=False):
+            r = sd.integrate.tanhsinh(wrap(g), a, b, log=log)
             return r.integral, r.error, r.status
 
-        def n(g, a, b, step):
-            r = sd.integrate.nsum(wrap(g), a, b, step=step)
+        def n(g, a, b, step, log=False):
+            r = sd.integrate.nsum(wrap(g), a, b, step=step, log=log)
             return r.sum, r.error, r.status
 
         return t, n
@@ -262,13 +415,13 @@ def _elementwise_lib(lib):
                 warnings.simplefilter("ignore")
                 return call()
 
-        def t(g, a, b):
-            r = quiet(lambda: integrate.tanhsinh(g, a, b))
-            return float(r.integral), float(r.error), int(r.status)
+        def t(g, a, b, log=False):
+            r = quiet(lambda: integrate.tanhsinh(g, a, b, log=log))
+            return float(np.real(r.integral)), float(np.real(r.error)), int(r.status)
 
-        def n(g, a, b, step):
-            r = quiet(lambda: integrate.nsum(g, a, b, step=step))
-            return float(r.sum), float(r.error), int(r.status)
+        def n(g, a, b, step, log=False):
+            r = quiet(lambda: integrate.nsum(g, a, b, step=step, log=log))
+            return float(np.real(r.sum)), float(np.real(r.error)), int(r.status)
 
         return t, n
     return None
@@ -308,7 +461,46 @@ def _tanhsinh(lib="sd"):
         ps = [p for p in P.INTEGRALS if p.tanhsinh and p.collection == coll]
         runs = [(p.id, *fns[0](p.f_np, p.a, p.b), ref[p.id]["value"]) for p in ps]
         out[coll] = _contract_region([p.id for p in ps], runs, TANHSINH_SHORT)
+    ps = [p for p in P.INTEGRALS if p.tanhsinh and _positive(p.f_np, p.a, p.b) and ref[p.id]["value"][0] > 0]
+    runs = [(p.id, *fns[0](_log_of(p.f_np), p.a, p.b, log=True), ref[p.id]["value"]) for p in ps]
+    out["log"] = _log_region(runs)
     return out
+
+
+def _positive(g, a, b):
+    """g > 0 at 2001 points of [a, b] (an infinite end mapped by x = t / (1 - t^2) or 1/t - 1)."""
+    t = np.linspace(0.0, 1.0, 2003)[1:-1]
+    if math.isfinite(a) and math.isfinite(b):
+        x = a + (b - a) * t
+    elif math.isfinite(a):
+        x = a + 1.0 / t - 1.0
+    elif math.isfinite(b):
+        x = b - (1.0 / t - 1.0)
+    else:
+        s = 2.0 * t - 1.0
+        x = s / (1.0 - s * s)
+    with np.errstate(all="ignore"):
+        v = np.asarray(g(x), dtype=float)
+    return bool(np.all(v > 0))
+
+
+def _log_of(g):
+    def lg(x):
+        with np.errstate(all="ignore"):
+            return np.log(np.asarray(g(np.asarray(x)), dtype=float))
+
+    return lg
+
+
+def _log_region(runs):
+    """log=True runs (id, log value, log error, status, [hi, lo] of the value): |value - log ref|
+    (the relative error of exp(value)), recorded; "converged" counts."""
+    where, err, conv = [], [], 0
+    for pid, v, e, status, (hi, lo) in runs:
+        where.append(pid)
+        err.append(abs(v - (math.log(hi) + math.log1p(lo / hi))))
+        conv += status == 0
+    return region(where, abs_err=np.array(err), converged=np.array([conv]))
 
 
 def _nsum(lib="sd"):
@@ -320,7 +512,51 @@ def _nsum(lib="sd"):
 
     ref = refdata.series()
     runs = [(s.id, *fns[1](s.f_np, s.a, s.b, s.step), ref[s.id]["value"]) for s in P.SERIES]
-    return {"series": _contract_region([s.id for s in P.SERIES], runs, set())}
+    out = {"series": _contract_region([s.id for s in P.SERIES], runs, set())}
+    pos = [s for s in P.SERIES if ref[s.id]["value"][0] > 0]
+    runs = [(s.id, *fns[1](_log_of(s.f_np), s.a, s.b, s.step, log=True), ref[s.id]["value"]) for s in pos]
+    out["log"] = _log_region(runs)
+    return out
+
+
+def _newton_cotes(lib="sd"):
+    if lib == "sd":
+        import stardust as sd
+
+        def nc(rn):
+            an, B = sd.integrate.newton_cotes(rn if isinstance(rn, int) else list(rn))
+            return np.asarray(an.tolist()), float(B)
+    elif lib == "scipy":
+        from scipy import integrate
+
+        def nc(rn):
+            an, B = integrate.newton_cotes(rn if isinstance(rn, int) else np.asarray(rn))
+            return np.asarray(an, dtype=float), float(B)
+    else:
+        return None
+    from tests.integrate import problems as P
+    from tests.integrate import refdata
+
+    from .common import ulps
+
+    ref = refdata.newton_cotes()
+    out = {}
+    for name, sel in (("an", lambda r: r["an"]), ("B", lambda r: [r["B"]])):
+        where, u, rel = [], [], []
+        for rn in P.NEWTON_COTES:
+            key = str(rn) if isinstance(rn, int) else "[" + ", ".join(repr(float(v)) for v in rn) + "]"
+            an, B = nc(rn)
+            got = an if name == "an" else np.array([B])
+            pairs = sel(ref[key])
+            hi = np.array([h for h, _ in pairs])
+            lo = np.array([lw for _, lw in pairs])
+            with np.errstate(all="ignore"):
+                d = np.abs((got - hi) - lo)
+                rel += np.where(hi != 0, d / np.abs(hi), d).tolist()
+            u += np.asarray(ulps(got, hi), dtype=float).tolist()
+            where += [f"{key}[{i}]" for i in range(got.size)]
+        out[name] = region(where, ulp=np.array(u), rel=np.array(rel))
+    return out
 
 
 def _quad_weights(lib="sd"):
@@ -425,8 +661,25 @@ def _quad_vec(lib="sd"):
     if fns is None:
         return None
     from tests.integrate import adaptive as A
+    from tests.integrate import problems as P
+    from tests.integrate import refdata
 
-    return _adaptive_region(A.quad_vec_runs(fns[0]), A.quad_vec_contract)
+    out = _adaptive_region(A.quad_vec_runs(fns[0]), A.quad_vec_contract)
+    ref = refdata.integrals()
+    for rule in ("gk15", "trapezoid"):  # the other rules on the collection, recorded (C107's contract is gk21's)
+        where, rel, conv = [], [], 0
+        for p in P.INTEGRALS:
+            if p.weight is not None:
+                continue
+            kw = {"points": list(p.points)} if p.points else {}
+            v, e, status = fns[0](A._nan_safe(p), p.a, p.b, quadrature=rule, **kw)
+            hi, lo = ref[p.id]["value"]
+            err = abs((v - hi) - lo)
+            where.append(p.id)
+            rel.append(err / abs(hi) if hi else err)
+            conv += status == 0
+        out[f"collection, {rule}"] = region(where, rel=np.array(rel), converged=np.array([conv]))
+    return out
 
 
 def _cubature(lib="sd"):
@@ -440,5 +693,11 @@ def _cubature(lib="sd"):
 
 def sweeps():
     specs = [("samples", _samples), ("fixed_quad", _fixed_quad), ("quad", _quad), ("multiple", _multiple),
-             ("quad_weights", _quad_weights), ("tanhsinh", _tanhsinh), ("nsum", _nsum), ("quad_vec", _quad_vec), ("cubature", _cubature)]  # fmt: skip
-    return [Custom("integrate", name, fn, compare_libs(fn, ("scipy",), seconds=120)) for name, fn in specs]
+             ("quad_weights", _quad_weights), ("tanhsinh", _tanhsinh), ("nsum", _nsum), ("quad_vec", _quad_vec), ("cubature", _cubature),
+             ("newton_cotes", _newton_cotes)]  # fmt: skip
+
+    def only_scipy(fn):  # R compares quad alone
+        return lambda lib="sd", fn=fn: None if lib == "R" else fn(lib)
+
+    specs = [(name, fn if name == "quad" else only_scipy(fn)) for name, fn in specs]
+    return [Custom("integrate", name, fn, compare_libs(fn, ("scipy", "R"), seconds=120)) for name, fn in specs]

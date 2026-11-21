@@ -30869,6 +30869,12 @@ true
 "msg": "approx_fprime(): 'epsilon' must be finite and > 0"
 }
 },
+"err approx_fprime not finite near": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "approx_fprime(): 'f' is not finite near the point (the differences of variable 0)"
+}
+},
 "err bracket_root factor": {
 "r": {
 "error": "builtins.ValueError",

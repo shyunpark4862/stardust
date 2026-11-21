@@ -8,6 +8,8 @@ defaults on the problems of tests/differentiate/problems.py. Writes tests/differ
                          option names, given to scipy as tolerances and maxiter):
                          df, error, converged (scipy's success), status, n_iter (scipy's nit),
                          nfev, x, and the calls
+                         and (calculus review) the nine points as a 3 x 3 batch ("nd/<name>")
+                         and problems.ARGS with their args ("args/<id>")
   scipy_jacobian.json    jacobian of the residuals F of each MGH case with factor 1 at x0: df
                          (m x n), error, converged, status, n_iter, nfev (per entry), the calls
   scipy_hessian.json     hessian of f = sum F_i^2 of the MGH cases with n <= 10 at x0: ddf, error,
@@ -18,7 +20,8 @@ encoded), the number of calls and of points, and the sha256 of every point's flo
 call order. Floats are written with repr (NaN and inf as JSON's NaN/Infinity). Up to three
 processes (maxtasksperchild=4) share the MGH cases.
 
-Run: .venv/bin/python tools/gen_differentiate_scipy.py
+Run: .venv/bin/python tools/gen_differentiate_scipy.py               # every file
+     .venv/bin/python tools/gen_differentiate_scipy.py derivative    # scipy_derivative.json only
 """
 
 from __future__ import annotations
@@ -50,15 +53,16 @@ def _result(r, value="df"):
     return out
 
 
-def derivative_run(fn, x, options):
+def derivative_run(fn, x, options, args=()):
     from gen_integrate_scipy import Calls
     from scipy import differentiate
 
     calls = Calls()
+    g = fn.f_np if hasattr(fn, "f_np") else fn
 
-    def f(t):
+    def f(t, *a):
         calls.add(t)
-        return fn.f_np(t)
+        return g(t, *a)
 
     opts = dict(options)  # sd's names (atol, rtol, max_iter) as scipy's (tolerances, maxiter)
     tol = {k: opts.pop(k) for k in ("atol", "rtol") if k in opts}
@@ -68,7 +72,7 @@ def derivative_run(fn, x, options):
         opts["maxiter"] = opts.pop("max_iter")
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        r = differentiate.derivative(f, x, **opts)
+        r = differentiate.derivative(f, x, args=args, **opts)
     return {**_result(r), "calls": calls.record()}
 
 
@@ -138,7 +142,13 @@ def main():
         rows.append((f"batch/{fn.name}", derivative_run(fn, np.array(fn.points), {})))
     for e in P.EDGES:
         rows.append((f"edge/{e.id}", derivative_run(P.BY_NAME[e.function], e.x, e.options)))
+    for fn in P.ELEMENTARY:
+        rows.append((f"nd/{fn.name}", derivative_run(fn, np.array(fn.points).reshape(P.ND_SHAPE), {})))
+    for aid, g, x, args in P.ARGS:
+        rows.append((aid, derivative_run(g, x, {}, args=args)))
     write("scipy_derivative.json", rows)
+    if sys.argv[1:] == ["derivative"]:
+        return
     cases = P.mgh_cases()
     with mp.get_context("spawn").Pool(3, maxtasksperchild=4) as pool:
         write("scipy_jacobian.json", pool.map(_jacobian_task, range(len(cases))))

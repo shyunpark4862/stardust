@@ -128,7 +128,17 @@ LIVE = [
     ("zero", lambda x: 0.0, -1.0, 1.0, {}),
     ("step", lambda x: 1.0 if x <= 0 else 0.0, -1.0, 100.0, {}),
     ("many points", lambda x: math.floor(8 * x), 0.0, 1.0, {"points": [k / 8 for k in range(1, 8)], "limit": 8}),
+    # every status of the QAGS, QAGI and QAGP paths (docs/api/integrate.md §2; QAWO's 3 is in
+    # test_quadpack_weights.py): 1/x's divergence runs out of room (3) once limit is large
+    ("bad QAGS", lambda x: 1.0 / x if x else math.inf, 0.0, 1.0, {"limit": 10000}),
+    ("bad QAGI", lambda x: 1.0 / x if x else math.inf, 0.0, math.inf, {"limit": 10000}),
+    ("bad QAGP", lambda x: 1.0 / abs(x) if x else math.inf, -1.0, 1.0, {"limit": 10000, "points": [0.0]}),
+    ("no extrapolation", lambda x: x**-0.999 / (1.0 + x) if x else math.inf, 0.0, math.inf, {}),
+    ("divergent", lambda x: x**-1.01 if x else math.inf, 0.0, 1.0, {}),
 ]
+# the status each case ends with (the ones the records do not reach)
+LIVE_STATUS = {"limit 3": 1, "nan": 2, "bad QAGS": 3, "bad QAGI": 3, "bad QAGP": 3, "no extrapolation": 4,
+               "divergent": 5}  # fmt: skip
 
 
 @pytest.mark.parametrize("case", LIVE, ids=lambda c: c[0])
@@ -146,6 +156,8 @@ def test_quad_matches_live_scipy(case):
         assert not r.converged and r.message == sp[3]
     else:
         assert r.converged
+    if case[0] in LIVE_STATUS:
+        assert r.status == LIVE_STATUS[case[0]], r.message
 
 
 def test_complex_func_matches_scipy():
@@ -489,3 +501,10 @@ def test_range_checks_follow_the_empty_range():
     assert I.quad(math.exp, math.inf, math.inf, weight="alg", wvar=(0, 0)).nfev == 0
     with pytest.raises(ValueError, match="'wvar' must be finite"):
         I.quad(math.exp, 1.0, 1.0, weight="cauchy", wvar=math.nan)
+
+
+def test_dblquad_calls_gfun_then_hfun():
+    """docs/api/integrate.md §3: at every outer point gfun, then hfun (scipy's order)."""
+    order = []
+    I.dblquad(lambda y, x: x * y, 0.0, 1.0, lambda x: (order.append("g"), 0.0)[1], lambda x: (order.append("h"), x)[1])
+    assert order and order[::2] == ["g"] * (len(order) // 2) and order[1::2] == ["h"] * (len(order) // 2)

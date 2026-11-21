@@ -2621,6 +2621,31 @@ false
 "obj": "stardust.differentiate._result.DifferentiateResult"
 }
 },
+"derivative edge exp/1/factor-0.5": {
+"r": {
+"attrs": {
+"converged": false,
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"f": "-0x1.f9d85052ad352p+7"
+},
+"error": {
+"f": "0x1.ff24cd72d096cp+7"
+},
+"n_iter": 3,
+"nfev": 13,
+"status": -1,
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                       False  Derivative:                   -252.922\nStatus:                             -1  Error estimate:                  255.6\nPoint:                         1.00000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
+"x": {
+"f": "0x1.0000000000000p+0"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
 "derivative edge exp/1/factor-1.5": {
 "r": {
 "attrs": {
@@ -2639,6 +2664,31 @@ false
 "nfev": 11,
 "status": 0,
 "summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              2.176e-10\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"x": {
+"f": "0x1.0000000000000p+0"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"derivative edge exp/1/factor-3": {
+"r": {
+"attrs": {
+"converged": true,
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"f": "0x1.5bf0a8b14579ap+1"
+},
+"error": {
+"f": "0x1.3200000000000p-44"
+},
+"n_iter": 2,
+"nfev": 11,
+"status": 0,
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              6.795e-14\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -2714,6 +2764,31 @@ false
 "nfev": 21,
 "status": -2,
 "summary()": "                           Differentiation Results\n==============================================================================\nConverged:                       False  Derivative:                    2.71828\nStatus:                             -2  Error estimate:              1.296e-06\nPoint:                         1.00000  No. Iterations:                     10\n                                        Function Evals:                     21\n==============================================================================",
+"x": {
+"f": "0x1.0000000000000p+0"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"derivative edge exp/1/rtol": {
+"r": {
+"attrs": {
+"converged": true,
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"f": "0x1.5bf0a8b14577ap+1"
+},
+"error": {
+"f": "0x1.5c00000000000p-45"
+},
+"n_iter": 3,
+"nfev": 13,
+"status": 0,
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              3.864e-14\nPoint:                         1.00000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -4177,6 +4252,141 @@ true
 "nfev": 9,
 "status": -3,
 "summary()": "                           Differentiation Results\n==============================================================================\nConverged:                       False  Derivative:                        nan\nStatus:                             -3  Error estimate:                    nan\nPoint:                         1.00000  No. Iterations:                      1\n                                        Function Evals:                      9\n==============================================================================",
+"x": {
+"f": "0x1.0000000000000p+0"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"derivative non-finite x": {
+"r": {
+"attrs": {
+"converged": {
+"nd": "bool",
+"shape": [
+3
+],
+"strides": [
+1
+],
+"v": [
+false,
+false,
+true
+]
+},
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan",
+"0x1.5bf0a8b145723p+1"
+]
+},
+"error": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan",
+"0x1.f5d0000000000p-38"
+]
+},
+"n_iter": {
+"nd": "int64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+1,
+1,
+2
+]
+},
+"nfev": {
+"nd": "int64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+9,
+9,
+11
+]
+},
+"status": {
+"nd": "int64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+-3,
+-3,
+0
+]
+},
+"summary()": "                           Differentiation Results\n=======================================================================================\nBatch shape:                      (3,)  Converged:                      1 of 3\n=======================================================================================\n                    x         df      error  converged     status     n_iter       nfev\n---------------------------------------------------------------------------------------\n[0]               nan        nan        nan      False         -3          1          9\n[1]               inf        nan        nan      False         -3          1          9\n[2]            1.0000   2.718282   7.13e-12       True          0          2         11\n=======================================================================================",
+"x": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"inf",
+"0x1.0000000000000p+0"
+]
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"derivative order 1": {
+"r": {
+"attrs": {
+"converged": false,
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"f": "0x1.5bf0ac511ca00p+1"
+},
+"error": {
+"f": "0x1.5bf0ac0000000p-20"
+},
+"n_iter": 10,
+"nfev": 21,
+"status": -2,
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                       False  Derivative:                    2.71828\nStatus:                             -2  Error estimate:              1.296e-06\nPoint:                         1.00000  No. Iterations:                     10\n                                        Function Evals:                     21\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -6372,6 +6582,12 @@ true
 "msg": "derivative(): the inputs must broadcast together, not shapes (2,), (3,), ()"
 }
 },
+"err derivative complex value": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "derivative(): 'f' must return real values, not a complex128 array"
+}
+},
 "err derivative max_iter": {
 "r": {
 "error": "builtins.ValueError",
@@ -6408,6 +6624,12 @@ true
 "msg": "derivative(): 'step_factor' must be a finite number > 0 other than 1"
 }
 },
+"err derivative step_factor inf": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "derivative(): 'step_factor' must be a finite number > 0 other than 1"
+}
+},
 "err derivative tolerances": {
 "r": {
 "error": "builtins.TypeError",
@@ -6432,10 +6654,28 @@ true
 "msg": "hessian(): unexpected keyword argument 'step_direction'"
 }
 },
+"err hessian steps": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "hessian(): 'initial_step' must have 2 values like 'x', not 3"
+}
+},
+"err hessian x scalar": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "hessian(): 'x' must be 1-dimensional, not a scalar"
+}
+},
 "err jacobian args": {
 "r": {
 "error": "builtins.TypeError",
 "msg": "jacobian(): unexpected keyword argument 'args'"
+}
+},
+"err jacobian complex value": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "jacobian(): 'f' must return real values, not a complex128 array"
 }
 },
 "err jacobian empty": {
@@ -18776,6 +19016,216 @@ true
 ]
 },
 "summary()": "                           Differentiation Results\n==============================================================================\nBatch shape:                    (9, 9)  Converged:                    81 of 81\n==============================================================================\n                  ddf      error  converged     status       nfev\n------------------------------------------------------------------------------\n[0, 0]      31.128877   8.66e-09       True          0        459\n[0, 1]     -15.674994   2.58e-09       True          0        383\n[0, 2]      -8.000908   2.61e-09       True          0        379\n[0, 3]       6.818060   2.59e-09       True          0        385\n[0, 4]      -0.002523   1.18e-11       True          0        435\n...               ...        ...        ...        ...        ...\n[8, 4]      -0.002523   1.11e-11       True          0        435\n[8, 5]       6.818060   2.59e-09       True          0        385\n[8, 6]      -8.000908   2.59e-09       True          0        379\n[8, 7]     -15.674994   2.59e-09       True          0        383\n[8, 8]      31.128877   8.67e-09       True          0        459\n==============================================================================",
+"x": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'x' (the function does not give it)"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"hessian non-finite x": {
+"r": {
+"attrs": {
+"converged": {
+"nd": "bool",
+"shape": [
+2,
+2
+],
+"strides": [
+2,
+1
+],
+"v": [
+false,
+false,
+false,
+false
+]
+},
+"ddf": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'df' (the function does not give it)"
+},
+"error": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"n_iter": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'n_iter' (the function does not give it)"
+},
+"nfev": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+81,
+81,
+81,
+81
+]
+},
+"status": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+-3,
+-3,
+-3,
+-3
+]
+},
+"summary()": "                           Differentiation Results\n==============================================================================\nBatch shape:                    (2, 2)  Converged:                      0 of 4\n==============================================================================\n                  ddf      error  converged     status       nfev\n------------------------------------------------------------------------------\n[0, 0]            nan        nan      False         -3         81\n[0, 1]            nan        nan      False         -3         81\n[1, 0]            nan        nan      False         -3         81\n[1, 1]            nan        nan      False         -3         81\n==============================================================================",
+"x": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'x' (the function does not give it)"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"hessian options": {
+"r": {
+"attrs": {
+"converged": {
+"nd": "bool",
+"shape": [
+2,
+2
+],
+"strides": [
+2,
+1
+],
+"v": [
+false,
+false,
+false,
+false
+]
+},
+"ddf": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.0000000000005p+2",
+"0x1.ffffffffffffap+0",
+"0x1.ffffffffffffcp+0",
+"-0x1.d170a08704934p-1"
+]
+},
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'df' (the function does not give it)"
+},
+"error": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"n_iter": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'n_iter' (the function does not give it)"
+},
+"nfev": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+25,
+25,
+25,
+25
+]
+},
+"status": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+-2,
+-2,
+-2,
+-2
+]
+},
+"summary()": "                           Differentiation Results\n==============================================================================\nBatch shape:                    (2, 2)  Converged:                      0 of 4\n==============================================================================\n                  ddf      error  converged     status       nfev\n------------------------------------------------------------------------------\n[0, 0]       4.000000        nan      False         -2         25\n[0, 1]       2.000000        nan      False         -2         25\n[1, 0]       2.000000        nan      False         -2         25\n[1, 1]      -0.909062        nan      False         -2         25\n==============================================================================",
 "x": {
 "error": "builtins.AttributeError",
 "msg": "'DifferentiateResult' object has no attribute 'x' (the function does not give it)"
@@ -59585,6 +60035,124 @@ true
 ]
 },
 "summary()": "                           Differentiation Results\n==============================================================================\nBatch shape:                    (2, 2)  Converged:                      3 of 4\n==============================================================================\n                   df      error  converged     status     n_iter       nfev\n------------------------------------------------------------------------------\n[0, 0]            nan        nan      False         -3          1          9\n[0, 1]       0.000000      0.000       True          0          2         11\n[1, 0]       2.718282      0.000       True          0          2         11\n[1, 1]       0.002718   7.13e-15       True          0          2         11\n==============================================================================",
+"x": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'x' (the function does not give it)"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"jacobian non-finite x": {
+"r": {
+"attrs": {
+"converged": {
+"nd": "bool",
+"shape": [
+2,
+2
+],
+"strides": [
+2,
+1
+],
+"v": [
+true,
+false,
+false,
+false
+]
+},
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.0000000000000p+1",
+"nan",
+"nan",
+"nan"
+]
+},
+"error": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"nan",
+"nan",
+"nan"
+]
+},
+"n_iter": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+2,
+1,
+1,
+1
+]
+},
+"nfev": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+11,
+9,
+9,
+9
+]
+},
+"status": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+0,
+-3,
+-3,
+-3
+]
+},
+"summary()": "                           Differentiation Results\n==============================================================================\nBatch shape:                    (2, 2)  Converged:                      1 of 4\n==============================================================================\n                   df      error  converged     status     n_iter       nfev\n------------------------------------------------------------------------------\n[0, 0]       2.000000      0.000       True          0          2         11\n[0, 1]            nan        nan      False         -3          1          9\n[1, 0]            nan        nan      False         -3          1          9\n[1, 1]            nan        nan      False         -3          1          9\n==============================================================================",
 "x": {
 "error": "builtins.AttributeError",
 "msg": "'DifferentiateResult' object has no attribute 'x' (the function does not give it)"

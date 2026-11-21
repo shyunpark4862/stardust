@@ -253,6 +253,18 @@ def test_empty_values():
         sd.optimize.approx_fprime([1.0, 2.0], lambda x: [])
 
 
+def test_not_finite_on_either_side():
+    """docs/api/optimize.md §2: f finite at the point but on neither side of it: ValueError."""
+    f = lambda x: 0.0 if float(x[1]) == 2.0 else math.nan  # noqa: E731
+    with pytest.raises(
+        ValueError,
+        match=r"^approx_fprime\(\): 'f' is not finite near the point \(the differences of variable 0\)$",
+    ):
+        sd.optimize.approx_fprime([1.0, 2.0], lambda x: 0.0 if float(x[0]) == 1.0 else math.nan)
+    with pytest.raises(ValueError, match=r"the differences of variable 1\)$"):
+        sd.optimize.approx_fprime([1.0, 2.0], f)
+
+
 def test_check_grad_takes_minimizes_gradient_forms():
     # API-9: grad is checked as minimize's jac (a number when n = 1, a bool array is an error)
     assert sd.optimize.check_grad(lambda x: float(x[0]) ** 2, lambda x: 2 * float(x[0]), [1.0]) < 1e-9

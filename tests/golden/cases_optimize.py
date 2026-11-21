@@ -120,6 +120,10 @@ def cases(L):
         lambda: O.approx_fprime([1.0, 2.0], lambda x: x[0] * x[1], epsilon=sd.asarray([1e-4, 1e-6])),
     )
     yield "err approx_fprime epsilon", lambda: O.approx_fprime([1.0], lambda x: x[0], epsilon=-1.0)
+    yield (
+        "err approx_fprime not finite near",
+        lambda: O.approx_fprime([1.0], lambda x: 0.0 if float(x[0]) == 1.0 else math.nan),
+    )
     yield "err check_grad direction", lambda: O.check_grad(lambda x: x[0], lambda x: x, [1.0], direction="x")
     yield "err check_grad rng", lambda: O.check_grad(lambda x: x[0], lambda x: x, [1.0], direction="random")
     yield "OptimizeResult fields", lambda: O.OptimizeResult(x=sd.asarray([1.0]), converged=True, nfev=3)

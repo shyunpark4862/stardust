@@ -1,0 +1,9 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0", "target_bits": 110, "tool": "tools/integrate_ref.py", "n_requested": 6, "dropped": []},
+"box/gauss-4d": {"value": [0.31108091882287664, 3.4652374880629784e-18], "method": "closed form", "digest": "51f3f7a47ccc0889dd16ec185de399ab5295ba008e0c8c42fd9cad61df1e9b22"},
+"box/exp-5d": {"value": [0.10092519027486131, 3.317974469491316e-18], "method": "closed form", "digest": "684a29286d3e7ee14db58a48ac722321fc63594856a62580b11fb673b85b6539"},
+"box/cos-3d": {"value": [0.017996267904861637, 1.3743149617604446e-18], "method": "closed form", "digest": "11769899d422b5e511da2951e71c0680eacad756412a222f0901b664d0b262a7"},
+"box/kink-2d": {"value": [0.0754, 5.062616992290714e-18], "method": "closed form", "digest": "679841f63c6f16939e93ef7acf2f065cfb23534f337dc12618ae5c71949682d4"},
+"box/kink-3d": {"value": [0.875, 0.0], "method": "closed form", "digest": "a218fb206eb9c788e9b4c2bfc68df0ff41029bc3d799bdbcaae8e584e2da7fcf"},
+"box/kink-2d-two-points": {"value": [0.41540000000000005, -2.0472512574087884e-17], "method": "closed form", "digest": "7c08867f314da5e9875ad834736b4ebca4c7c00ea9cbf8698105dcbcfee1df2a"}
+}

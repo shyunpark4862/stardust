@@ -274,3 +274,52 @@ def test_errors():
     err(TypeError, "romb(): unexpected keyword argument 'show'", lambda: I.romb([1.0, 2.0], show=True))
     err(TypeError, "trapezoid(): takes from 1 to 2 positional arguments but 3 were given",
         lambda: I.trapezoid([1.0, 2.0], None, 1.0))  # fmt: skip
+
+
+def test_cumulative_simpson_does_not_catch_nan_positions():
+    """docs/api/integrate.md §8 (C50): x must increase, but a NaN in x is not caught (scipy's):
+    it spreads into the running values."""
+    v = I.cumulative_simpson([1.0, 2.0, 3.0, 4.0], x=[0.0, math.nan, 2.0, 3.0])
+    assert all(math.isnan(t) for t in v.tolist())
+
+
+def variant_errors(rule, y, x, dx, axis, initial, entry, lib=I, wrap=sd.asarray):
+    """(the largest error over c eps S, the largest relative error) of one sample variant against
+    its exact lanes, the real and imaginary parts each with their own S (test_exact_contract's bound)."""
+    kw = {"x": wrap(x)} if x is not None else {"dx": dx}
+    if initial is not None:
+        kw["initial"] = initial
+    got = _np(getattr(lib, rule)(wrap(y), axis=axis, **kw))
+    lanes = np.moveaxis(got, axis, -1) if rule in CUMULATIVE else got
+    lanes = lanes.reshape(-1, lanes.shape[-1]) if rule in CUMULATIVE else lanes.reshape(-1, 1)
+    ys = np.moveaxis(y, axis, -1).reshape(-1, y.shape[axis])
+    worst = rel = 0.0
+    for key, part, ypart in (("lanes", np.real, np.real), ("imag", np.imag, np.imag)):
+        if key not in entry:
+            continue
+        r = np.asarray(entry[key], dtype=float).reshape(lanes.shape + (2,))
+        g = part(lanes).astype(float)
+        err = np.abs((g - r[..., 0]) - r[..., 1])
+        scale = np.maximum(_scale(ypart(ys), x, dx), 1e-300)
+        if rule in CUMULATIVE:
+            k = np.arange(1, scale.shape[-1] + 1)
+            bound = (k + 10) * EPS * scale
+            if initial is not None:  # the initial first, then each running value (one more rounding)
+                bound = np.concatenate([np.full((bound.shape[0], 1), EPS), bound + EPS * abs(initial)], axis=1)
+        else:
+            bound = (math.ceil(math.log2(max(ys.shape[-1], 2))) + 10) * EPS * scale[..., -1:]
+        worst = max(worst, float(np.max(err / np.maximum(bound, 1e-300))))
+        rel = max(rel, float(np.max(err / np.maximum(np.abs(r[..., 0]), 1e-300))))
+    return worst, rel
+
+
+def test_variants_exact_contract():
+    """docs/api/integrate.md §8: an axis other than the last, complex y (C48: the real coefficients
+    on each part) and `initial` are within the rules' bound of their exact values
+    (ref/sample_variants.json, tools/integrate_ref.py sample_variants)."""
+    ref = refdata.sample_variants()
+    variants = P.sample_variants()
+    assert set(ref) == {v[0] for v in variants}
+    for vid, rule, y, x, dx, axis, initial in variants:
+        worst, _ = variant_errors(rule, y, x, dx, axis, initial, ref[vid])
+        assert worst <= 1, (vid, worst)
