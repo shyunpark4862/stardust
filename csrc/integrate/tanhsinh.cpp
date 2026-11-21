@@ -271,7 +271,8 @@ enum Form { kPlain, kNegated, kBoth };
 // logsumexp(f(x), f(-x)) (+ log 0.5 at 0): scipy's nsum on both sides.
 class Eval {
 public:
-    Eval(Call& F, Form form, bool log, const std::int64_t* elems) : F_(F), form_(form), log_(log), elems_(elems) {}
+    Eval(CallPoints& F, Form form, bool log, const std::int64_t* elems)
+        : F_(F), form_(form), log_(log), elems_(elems) {}
 
     void start(std::size_t k) { begin(k, 1, false); }
     void start(std::size_t k, std::size_t p) { begin(k, p, true); }
@@ -334,7 +335,7 @@ private:
     }
     double raw(std::size_t q) const { return rows_ ? F_.value(q / p_, q % p_) : F_.value(q); }
 
-    Call& F_;
+    CallPoints& F_;
     Form form_;
     bool log_;
     const std::int64_t* elems_;
@@ -471,7 +472,7 @@ TsOut tanhsinh_run(Eval& ev, const vec& a_in, const vec& b_in, const Options& o)
             return q < np ? -e.alpha * X[q] + e.b : e.alpha * X[q - np] + e.a;
         };
         ev.start(k, p);
-        for_elements(k, [&](std::size_t r0, std::size_t r1) {
+        for_weighted(k, p, [&](std::size_t r0, std::size_t r1) {
             for (std::size_t r = r0; r < r1; ++r) {
                 const E& e = el[static_cast<std::size_t>(P.active[r])];
                 for (std::size_t q = 0; q < p; ++q) {
@@ -488,7 +489,7 @@ TsOut tanhsinh_run(Eval& ev, const vec& a_in, const vec& b_in, const Options& o)
         nit += 1;
         const std::size_t nx1 = T.idx[static_cast<std::size_t>(lev)];  // levels below lev (Snm1)
         const std::size_t nx2 = lev >= 1 ? T.idx[static_cast<std::size_t>(lev) - 1] : 0;
-        advance(P, on, [&](std::size_t r) {
+        advance_weighted(P, on, p, [&](std::size_t r) {
             const auto i = static_cast<std::size_t>(P.active[r]);
             E& e = el[i];
             thread_local vec fw, wv, tmp;
@@ -648,7 +649,7 @@ Sum direct(Eval& ev, const vec& a, const vec& b, const vec& step, bool inclusive
     vec thr(k);
     for (std::size_t r = 0; r < k; ++r) thr[r] = b[r] + (inclusive ? 1 * step[r] / 2 : 0 * step[r] / 2);
     ev.start(k, m);
-    for_elements(k, [&](std::size_t r0, std::size_t r1) {
+    for_weighted(k, m, [&](std::size_t r0, std::size_t r1) {
         for (std::size_t r = r0; r < r1; ++r)
             for (std::size_t j = 0; j < m; ++j) {
                 const double x = a[r] + static_cast<double>(j) * step[r];
@@ -659,7 +660,7 @@ Sum direct(Eval& ev, const vec& a, const vec& b, const vec& step, bool inclusive
     for (std::size_t r = 0; r < k; ++r) rows[r] = static_cast<std::int64_t>(r);
     ev.run(rows.data());
     Sum o{vec(k), vec(k), ivec(k, 0), ivec(k, 0)};
-    for_elements(k, [&](std::size_t r0, std::size_t r1) {
+    for_weighted(k, m, [&](std::size_t r0, std::size_t r1) {
         vec fs(m), t(m);
         for (std::size_t r = r0; r < r1; ++r) {
             std::int64_t cnt = 0;
@@ -805,7 +806,7 @@ nb::object tanhsinh_solve(
     const char* fn = func.c_str();
     return call_named(fn, [&]() -> nb::object {
         const vec av = read(a), bv = read(b);
-        Call F(f, check, args, av.size());
+        CallPoints F(f, check, args, av.size());
         Eval ev(F, kPlain, log, nullptr);
         const TsOut o = tanhsinh_run(ev, av, bv, options(log, max_level, min_level, atol, rtol));
         return nb::make_tuple(out(o.integral), out(o.error), out(o.status), out(o.nfev), out(o.level));
@@ -831,7 +832,7 @@ nb::object nsum_solve(
         const vec av = read(a), b0 = read(b), sv = read(step), ns = read(n_steps);
         const std::size_t n = av.size();
         const double zero = log ? -kInf : 0.0;
-        Call F(f, check, args, n);
+        CallPoints F(f, check, args, n);
         vec fa;
         F.all(av, fa);  // scipy's first evaluation (eim._initialize): f(a) at every element
         Sum o{vec(n), vec(n), ivec(n, 0), ivec(n, 1)};

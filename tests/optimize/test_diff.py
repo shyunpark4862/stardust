@@ -237,7 +237,9 @@ def test_small_nonzero_x():
     # the start 2^-8 |x_j| is at rounding level when |x_j| is far below the function's scale: the
     # step grows until the truncation error shows, then the usual search
     f = lambda x: math.sin(float(x[0]) + 1.0)  # noqa: E731
-    for x0 in (1e-300, 1e-20, 1e-12, 1e-8, 0.0):
+    # ... and so it does where the start's rounding level is above 2^-36 of the column (C112: 4.3e-9
+    # at 1e-5 before, the search only going down from the start)
+    for x0 in (1e-300, 1e-20, 1e-12, 1e-8, 3e-6, 1e-5, -1e-5, 1e-4, 1e-3, 0.0):
         d = float(sd.optimize.approx_fprime([x0], f)[0])
         assert abs(d - math.cos(1.0 + x0)) <= 1e-11, x0
     # a variable at its own small scale keeps its steps

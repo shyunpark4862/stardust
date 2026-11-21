@@ -113,6 +113,8 @@ def cases(L):
             lambda c=c, f=f, g=g: O.check_grad(f, g, c.x0(), direction="random", rng=sd.random.default_rng(3)),
         )
     yield "approx_fprime scalar x", lambda: O.approx_fprime(1.5, lambda x: x * x)
+    for x0 in (3e-6, 1e-5, 1e-4):  # the start above 2^-36 of the column grows (C112)
+        yield f"approx_fprime exp x0={x0:g}", lambda x0=x0: O.approx_fprime([x0], lambda x: sd.exp(x))
     yield (
         "approx_fprime epsilon array",
         lambda: O.approx_fprime([1.0, 2.0], lambda x: x[0] * x[1], epsilon=sd.asarray([1e-4, 1e-6])),

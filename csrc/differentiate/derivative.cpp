@@ -233,7 +233,7 @@ nb::object derivative_solve(
         const vec xs = read(x), hs = read(initial_step), ds = read(step_direction);
         const Stencil S(static_cast<std::size_t>(terms), factor, read(wc), read(wr));
         const std::size_t n = xs.size(), w = S.width();
-        Call F(f, check, args, n);
+        CallPoints F(f, check, args, n);
         vec fx;
         F.all(xs, fx);  // scipy's first evaluation (eim._initialize): every element at x
         struct E {  // one element's state, together in memory
@@ -254,7 +254,7 @@ nb::object derivative_solve(
             const bool first = nit == 0;
             const std::size_t k = P.active.size(), p = S.points(first);
             F.start(k, p);
-            for_elements(k, [&](std::size_t r0, std::size_t r1) {
+            for_weighted(k, p, [&](std::size_t r0, std::size_t r1) {
                 vec pts(p);
                 for (std::size_t r = r0; r < r1; ++r) {
                     const E& e = el[static_cast<std::size_t>(P.active[r])];
@@ -265,7 +265,7 @@ nb::object derivative_solve(
             F.run(P.active.data());
             nfev += static_cast<std::int64_t>(p);
             nit += 1;
-            advance(P, on, [&](std::size_t r) {
+            advance_weighted(P, on, p, [&](std::size_t r) {
                 const auto i = static_cast<std::size_t>(P.active[r]);
                 E& e = el[i];
                 const int st = update(

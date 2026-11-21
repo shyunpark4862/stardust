@@ -56,6 +56,14 @@ def _peak5(x):
     return 4.0**-5 / ((x - math.pi / 4) * (x - math.pi / 4) + 16.0**-5)
 
 
+def _cgauss(x):
+    return complex(math.exp(-x * x), math.sin(x))
+
+
+def _gauss3(z, y, x):
+    return math.exp(-(x * x + y * y + z * z))
+
+
 def _log0(x):
     return math.log(x) if x > 0 else 0.0
 
@@ -73,10 +81,21 @@ def _quad_specs():
              lambda d: lambda: si.quad(_gauss, -math.inf, math.inf), note="270 calls"),
         Spec("C4", "quad", "quad peak a=5", ("quad",), lambda d: lambda: I.quad(_peak5, 0.0, 1.0),
              lambda d: lambda: si.quad(_peak5, 0.0, 1.0), note="525 calls, 13 intervals"),
+        Spec("C4", "quad", "quad points=[0.3]", ("quad",), lambda d: lambda: I.quad(_gauss, 0.0, 1.0, points=[0.3]),
+             lambda d: lambda: si.quad(_gauss, 0.0, 1.0, points=[0.3]), note="QAGP, 호출 42번"),
+        Spec("C4", "quad", "quad complex_func", ("quad",),
+             lambda d: lambda: I.quad(_cgauss, 0.0, 1.0, complex_func=True),
+             lambda d: lambda: si.quad(_cgauss, 0.0, 1.0, complex_func=True), note="호출 42번"),
         Spec("C4", "quad", "dblquad exp(-x^2-y^2) unit square", ("dblquad",),
              lambda d: lambda: I.dblquad(lambda y, x: math.exp(-(x * x + y * y)), 0.0, 1.0, 0.0, 1.0),
              lambda d: lambda: si.dblquad(lambda y, x: math.exp(-(x * x + y * y)), 0.0, 1.0, 0.0, 1.0),
              note="441 calls"),
+        Spec("C4", "quad", "tplquad exp(-x^2-y^2-z^2) unit cube", ("tplquad",),
+             lambda d: lambda: I.tplquad(_gauss3, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0),
+             lambda d: lambda: si.tplquad(_gauss3, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0), note="호출 9,261번"),
+        Spec("C4", "quad", "nquad exp(-x^2-y^2-z^2) unit cube", ("nquad",),
+             lambda d: lambda: I.nquad(_gauss3, [(0.0, 1.0)] * 3),
+             lambda d: lambda: si.nquad(_gauss3, [(0.0, 1.0)] * 3), note="호출 9,261번"),
         Spec("C5", "quad", "quad weight=cos half line", ("quad",),
              lambda d: lambda: I.quad(lambda x: math.exp(-x), 0.0, math.inf, weight="cos", wvar=3.0),
              lambda d: lambda: si.quad(lambda x: math.exp(-x), 0.0, math.inf, weight="cos", wvar=3.0),
@@ -103,6 +122,20 @@ def _batch_setup(n):
     return setup
 
 
+def _power(k, p):
+    return 1.0 / k**p
+
+
+def _power_setup(n):
+    def setup():
+        import stardust as sd
+
+        p = np.linspace(1.5, 4.0, n)
+        return {"p": p, "sp": sd.asarray(p)}
+
+    return setup
+
+
 def _batch_specs():
     import scipy.integrate as si
 
@@ -114,6 +147,10 @@ def _batch_specs():
         out.append(Spec("C6", "batch", "tanhsinh exp", ("tanhsinh",), lambda d: lambda: I.tanhsinh(sd.exp, 0.0, d["sb"]),
                         lambda d: _quiet(lambda: si.tanhsinh(np.exp, 0.0, d["b"])), setup=_batch_setup(n), size=size,
                         n=n, quick=n == 1000))  # fmt: skip
+    for n, size in BATCH_SIZES[:2]:
+        out.append(Spec("C6", "batch", "nsum 1/k^p", ("nsum",), lambda d: lambda: I.nsum(_power, 1.0, math.inf, args=(d["sp"],)),
+                        lambda d: _quiet(lambda: si.nsum(_power, 1.0, np.inf, args=(d["p"],))), setup=_power_setup(n),
+                        size=size, n=n, note="p는 [1.5, 4]의 고른 점"))  # fmt: skip
     out.append(Spec("C6", "batch", "nsum 1/k^2", ("nsum",), lambda d: lambda: I.nsum(lambda k: 1 / (k * k), 1.0, math.inf),
                     lambda d: _quiet(lambda: si.nsum(lambda k: 1 / (k * k), 1.0, np.inf)), note="10 calls, 8561 terms"))  # fmt: skip
     return out
@@ -182,6 +219,17 @@ def _samples_setup(n):
     return setup
 
 
+def _romb_setup(n):
+    def setup():
+        import stardust as sd
+
+        x = np.linspace(0.0, 1.0, n)
+        y = np.exp(x)
+        return {"y": y, "sy": sd.asarray(y), "dx": float(x[1] - x[0])}
+
+    return setup
+
+
 def _sample_specs():
     import scipy.integrate as si
 
@@ -194,8 +242,17 @@ def _sample_specs():
             out.append(Spec("C3", "samples", name, (name,), lambda d, name=name: lambda: getattr(I, name)(d["sy"], d["sx"]),
                             lambda d, name=name: lambda: getattr(si, name)(d["y"], x=d["x"]), setup=_samples_setup(n),
                             size=size, n=n + 1, quick=n == 10**6 and name == "trapezoid"))  # fmt: skip
-    out.append(Spec("C3", "samples", "fixed_quad n=5", ("fixed_quad",), lambda d: lambda: I.fixed_quad(sd.exp, 0.0, 1.0),
-                    lambda d: lambda: si.fixed_quad(np.exp, 0.0, 1.0)[0]))  # fmt: skip
+    for k in (10, 20):
+        n = 2**k + 1
+        out.append(Spec("C3", "samples", "romb", ("romb",), lambda d: lambda: I.romb(d["sy"], dx=d["dx"]),
+                        lambda d: lambda: si.romb(d["y"], dx=d["dx"]), setup=_romb_setup(n), size=f"{n} points", n=n))  # fmt: skip
+    for n in (5, 200):
+        out.append(Spec("C3", "samples", f"fixed_quad n={n}", ("fixed_quad",),
+                        lambda d, n=n: lambda: I.fixed_quad(sd.exp, 0.0, 1.0, n=n),
+                        lambda d, n=n: lambda: si.fixed_quad(np.exp, 0.0, 1.0, n=n)[0]))  # fmt: skip
+    for n in (8, 20):
+        out.append(Spec("C3", "samples", f"newton_cotes {n}", ("newton_cotes",), lambda d, n=n: lambda: I.newton_cotes(n),
+                        lambda d, n=n: lambda: si.newton_cotes(n), note="sd는 가중치를 기억한다"))  # fmt: skip
     return out
 
 
@@ -242,6 +299,8 @@ def cases() -> list[Case]:
             check = Check(sd=_value, ref=lambda label, r: _value(r))
         elif s.group == "vector":
             check = Check(sd=_vector_value, ref=lambda label, r: _vector_value(r))
+        elif s.name.startswith("newton_cotes"):
+            check = Check(sd=lambda r: (np.asarray(r[0].tolist()), r[1]), ref=lambda label, r: (np.asarray(r[0]), r[1]))
         else:
             check = Check()
         out.append(Case(area="integrate", group=s.group, name=s.name, size=s.size, n=s.n, setup=s.setup, sd=s.sd,
@@ -251,7 +310,7 @@ def cases() -> list[Case]:
 
 TITLES = {
     "samples": "표본 규칙과 고정 규칙",
-    "quad": "QUADPACK (quad, dblquad)",
+    "quad": "QUADPACK (quad, dblquad, tplquad, nquad)",
     "batch": "배치 tanh-sinh와 급수",
     "vector": "벡터 값과 다차원",
 }

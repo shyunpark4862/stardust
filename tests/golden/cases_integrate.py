@@ -170,6 +170,8 @@ def fixed_cases(L):
     yield "fixed_quad list", lambda: I.fixed_quad(lambda x: [float(t) ** 2 for t in x.tolist()], 0.0, 1.0, n=3)
     yield "err fixed_quad infinite", lambda: I.fixed_quad(sd.exp, 0.0, math.inf)
     yield "err fixed_quad n", lambda: I.fixed_quad(sd.exp, 0.0, 1.0, n=0)
+    yield "err fixed_quad n too large", lambda: I.fixed_quad(sd.exp, 0.0, 1.0, n=10001)  # C109
+    yield "err newton_cotes rn too large", lambda: I.newton_cotes(257)  # C110
     yield "err fixed_quad scalar value", lambda: I.fixed_quad(lambda x: 1.0, 0.0, 1.0)
     yield "err fixed_quad shape", lambda: I.fixed_quad(lambda x: x[1:], 0.0, 1.0)
     yield "err fixed_quad args", lambda: I.fixed_quad(sd.exp, 0.0, 1.0, args=())

@@ -21,6 +21,12 @@ from ._samples import WEIGHTED, as_data
 
 _k = _sd.integrate
 
+# The largest point counts (C109, C110): every call ends in a bounded time (docs/design/integrate.md
+# §1.3). fixed_quad's nodes past the table cost n^2 the first time (10^4 points: 0.9 s on 10
+# threads, 6.4 s on one); newton_cotes's exact rationals about N^3 (N = 256: 0.3 s).
+N_MAX = 10_000
+RN_MAX = 256
+
 
 def _limit(v, func, arg):
     x = _real(v, func, arg)
@@ -75,6 +81,8 @@ def fixed_quad(func, a, b, /, *, n=5):
     a = _limit(a, name, "a")
     b = _limit(b, name, "b")
     n = _check_int(n, name, "n", 1)
+    if n > N_MAX:
+        raise ValueError(f"{name}(): 'n' must be at most {N_MAX}")
     x, w = _gauss.legendre(n)
     y = (b - a) * (x + 1) / 2.0 + a
     v = _values(func(y), n, name)
@@ -93,6 +101,8 @@ def _positions(rn, equal, func):
         n = operator.index(rn)
         if n < 1:
             raise ValueError(f"{func}(): 'rn' must be >= 1 (the number of intervals)")
+        if n > RN_MAX:
+            raise ValueError(f"{func}(): 'rn' must be at most {RN_MAX} (the number of intervals)")
         return n, [Fraction(i) for i in range(n + 1)], True
     if isinstance(rn, bool) or type(rn).__name__ == "bool":
         raise TypeError(f"{func}(): 'rn' must be an int or a sequence of numbers, not {_type_name(rn)}")
@@ -104,6 +114,8 @@ def _positions(rn, equal, func):
     n = r.shape[0] - 1
     if n < 1:
         raise ValueError(f"{func}(): 'rn' must hold at least 2 positions")
+    if n > RN_MAX:
+        raise ValueError(f"{func}(): 'rn' must hold at most {RN_MAX + 1} positions")
     if equal:  # scipy: only the length counts
         return n, [Fraction(i) for i in range(n + 1)], True
     vals = r.tolist()
@@ -156,6 +168,13 @@ def _newton_cotes_exact(n, pos, equally):
     return tuple(float(v) for v in a), float(b)
 
 
+# The rules of an int N (the common call), as (an, B) with an the array to copy: a call checks
+# nothing more than the int and copies (C108), where the general path builds N + 1 Fractions and
+# hashes them for _newton_cotes_exact's cache.
+_INT_RULES = {}
+_INT_RULES_MAX = 64
+
+
 def newton_cotes(rn, /, *, equal=False):
     """The closed Newton-Cotes weights an and error coefficient B of rn (an int N, or the relative
     positions of N + 1 samples from 0 to N), each the exact value rounded once
@@ -163,6 +182,13 @@ def newton_cotes(rn, /, *, equal=False):
     func = "newton_cotes"
     if equal is not True and equal is not False:
         raise TypeError(f"{func}(): 'equal' must be True or False, not {_type_name(equal)}")
+    if type(rn) is int:
+        got = _INT_RULES.get(rn)
+        if got is not None:
+            return got[0].copy(), got[1]
     n, pos, equally = _positions(rn, equal, func)
     a, b = _newton_cotes_exact(n, tuple(pos), equally)
-    return _sd.asarray(list(a)), b
+    an = _sd.asarray(list(a))
+    if type(rn) is int and len(_INT_RULES) < _INT_RULES_MAX:
+        _INT_RULES[rn] = (an.copy(), b)
+    return an, b

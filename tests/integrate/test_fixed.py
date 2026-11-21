@@ -216,6 +216,8 @@ def test_fixed_quad_errors():
     err(TypeError, "fixed_quad(): 'func' must return real values, not a complex128 array",
         lambda: I.fixed_quad(lambda x: x * 1j, 0.0, 1.0))  # fmt: skip
     err(TypeError, "fixed_quad(): unexpected keyword argument 'args'", lambda: I.fixed_quad(sd.exp, 0.0, 1.0, args=()))
+    # C109: the nodes past the table cost n^2 the first time; 10^4 is the most
+    err(ValueError, "fixed_quad(): 'n' must be at most 10000", lambda: I.fixed_quad(sd.exp, 0.0, 1.0, n=10001))
 
 
 # ---- newton_cotes
@@ -287,3 +289,15 @@ def test_newton_cotes_errors():
     err(ValueError, "newton_cotes(): the sample positions must be distinct", lambda: I.newton_cotes([0, 1, 1, 3]))
     err(ValueError, "newton_cotes(): 'rn' must hold at least 2 positions", lambda: I.newton_cotes([0]))
     err(TypeError, "newton_cotes(): 'equal' must be True or False, not int", lambda: I.newton_cotes(3, equal=1))
+    # C110: the exact rationals cost about N^3
+    err(ValueError, "newton_cotes(): 'rn' must be at most 256 (the number of intervals)", lambda: I.newton_cotes(257))
+    err(ValueError, "newton_cotes(): 'rn' must hold at most 257 positions", lambda: I.newton_cotes(list(range(258))))
+
+
+def test_newton_cotes_remembered_rules_are_copies():
+    # C108: an int N takes the remembered rule; each call gives its own writable array
+    an, B = I.newton_cotes(6)
+    an[0] = 99.0
+    an2, B2 = I.newton_cotes(6)
+    assert an2[0] != 99.0 and B2 == B
+    assert an2.tolist() == I.newton_cotes([0, 1, 2, 3, 4, 5, 6])[0].tolist()

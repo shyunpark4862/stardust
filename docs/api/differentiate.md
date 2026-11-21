@@ -1,6 +1,6 @@
 # sd.differentiate API
 
-> 상태: **확정** (C0, 2026-11-21). 세 함수는 마일스톤 C2에서 공개되었다(완료 2026-11-21, 승인 대기). 아래 시그니처는 scipy 1.18.1 `scipy.differentiate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스 `DifferentiateResult`, `atol`·`rtol`, `max_iter`, `nfev`, C4에서 따라 나오는 것)을 입힌 것이고, C2의 결정은 docs/design/integrate.md §1.1 C26–C38이다.
+> 상태: **확정** (C0, 2026-11-21). 세 함수는 마일스톤 C2에서 공개되었다(완료·승인(위임) 2026-11-21). 아래 시그니처는 scipy 1.18.1 `scipy.differentiate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스 `DifferentiateResult`, `atol`·`rtol`, `max_iter`, `nfev`, C4에서 따라 나오는 것)을 입힌 것이고, C2의 결정은 docs/design/integrate.md §1.1 C26–C38이다.
 
 - 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C38, 방법은 §3.8, scipy와 견준 것은 §7.8)다. 이 모듈은 설계 문서를 `sd.integrate`와 함께 쓴다(C1). 적분은 [docs/api/integrate.md](integrate.md), 공통 규칙은 [API.md](../../API.md)다.
 - `sd.optimize`의 `approx_fprime`·`check_grad`(고정 간격 차분)는 scipy처럼 `sd.optimize`에 있다. 그 간격의 커널(C++ `csrc/differentiate/steps.hpp`)과 nls의 5점 차분 `Differences`(Python `stardust.differentiate._differences`)는 이 영역의 내부다(C3, C15; C1에서 옮겼고 값은 그대로다). 공개 이름은 아니다.
@@ -45,7 +45,7 @@ DifferentiateResult
 ### §1.4 멈춤, 상한, 경고
 - 모든 호출은 `max_iter`번 안에 끝난다. 상한에 닿은 원소는 마지막 추정과 status −2다.
 - 원소마다의 판정은 scipy의 순서다: error < atol + rtol·|df|이면 0, 아니고 x나 df가 유한하지 않으면 −3(df는 NaN), 아니고 오차 추정이 직전 반복의 10배를 넘으면 −1(반올림이 이기기 시작했다; 그때의 df와 error를 돌려준다). −1은 셋째 반복부터다(오차 추정은 둘째 반복에 처음 생기고, 비교할 직전 오차는 셋째에 생긴다).
-- 경고를 내지 않는다. 같은 입력이면 스레드 수·배치의 크기와 상관없이 원소마다 같은 비트다(원소를 배치에 넣어도 혼자 부른 것과 같다; scipy는 BLAS의 합 때문에 끝자리가 다르다). 진행 중인 원소가 2¹⁵개 이상이면 원소를 지나가는 패스를 스레드에 나누고 GIL을 놓는다(optimize의 배치와 같다).
+- 경고를 내지 않는다. 같은 입력이면 스레드 수·배치의 크기와 상관없이 원소마다 같은 비트다(원소를 배치에 넣어도 혼자 부른 것과 같다; scipy는 BLAS의 합 때문에 끝자리가 다르다). 원소를 지나가는 패스의 일(진행 중인 원소 수 × 원소마다의 점 수: 첫 반복 `order`점, 다음부터 2점)이 2¹⁵점 이상이면 그 패스를 스레드에 나누고 GIL을 놓는다(docs/design/integrate.md C111; optimize의 배치는 원소마다 점 하나라 같은 기준이다).
 - 도함수가 0인 점에서는 기본 `atol`(가장 작은 정규수)이 사실상 절대 판정을 하지 않으므로 오차가 반올림 수준이어도 status −2가 될 수 있다(scipy와 같다: sin(x₀)의 x₁에 대한 편미분처럼 함수가 그 변수에 기대지 않는 항목). 그런 점에는 `atol`을 준다. x³의 0은 sd에서 둘째 반복에 수렴한다(정확한 가중치와 짝의 합이라 추정이 매번 같다; scipy는 −2: `[scipy와 다름]`, docs/design/integrate.md §3.8).
 
 ## §2. 도함수 `derivative` (C2)

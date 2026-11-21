@@ -401,6 +401,30 @@ def test_threads_and_large_batches():
     assert bool(np.all(np.asarray(r.converged))) and np.max(np.abs(np.asarray(r.integral) - want) / want) < 2e-8
 
 
+def test_threads_by_points():
+    # C111: the passes split by points, not elements: 600 elements of 66 points and a direct sum of
+    # 3 elements x 2^15 terms run on the threads (below the 2^15 elements of the element rule); each
+    # element's bits are its own, whatever the threads and the batch
+    c = sd.linspace(0.5, 3.0, 600)
+    p = sd.asarray([2.0, 3.0, 4.0])
+    got = []
+    for t in (1, 3, 10):
+        sd.set_num_threads(t)
+        try:
+            r = I.tanhsinh(lambda x, c: sd.exp(-c * x * x), 0.0, 2.0, args=(c,))
+            s = I.nsum(lambda k, p: 1 / k**p, 1.0, 2.0**15, args=(p,))
+        finally:
+            sd.set_num_threads(10)
+        got.append([np.asarray(getattr(r, k)).tobytes() for k in ("integral", "error", "status", "nfev", "max_level")]
+                   + [np.asarray(getattr(s, k)).tobytes() for k in ("sum", "error", "status", "nfev")])  # fmt: skip
+    assert got[0] == got[1] == got[2]
+    for i in (0, 299, 599):
+        one = I.tanhsinh(lambda x, c: sd.exp(-c * x * x), 0.0, 2.0, args=(float(c[i]),))
+        assert (one.integral, one.error, one.nfev) == (float(r.integral[i]), float(r.error[i]), int(r.nfev[i]))
+    one = I.nsum(lambda k: 1 / k**3.0, 1.0, 2.0**15)
+    assert (one.sum, one.error) == (float(s.sum[1]), float(s.error[1]))
+
+
 def test_optimistic_error_estimates():
     # docs/design/integrate.md §7.12: e^(-c x^2) on [0, 2] for 40,001 c in [0.5, 3]: every run
     # converges, as scipy's (the same points and values), and 1,093 of them below the true error

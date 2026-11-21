@@ -1,6 +1,6 @@
 # sd.integrate API
 
-> 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `IntegrateResult`와 C3의 일곱 함수(`trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes`, 2026-11-22; §7, §8), C4의 넷(`quad dblquad tplquad nquad`, 2026-11-22; §2, §3; `quad`의 `weight`는 C5, 2026-11-22), C6의 둘(`tanhsinh nsum`, 2026-11-22; §6), C7의 둘(`quad_vec cubature`, 2026-11-22; §4, §5)이다. 첫 판의 15개가 모두 공개되었다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
+> 상태: **확정** (C0, 2026-11-21; 승인(위임)). 공개된 이름은 결과 클래스 `IntegrateResult`와 C3의 일곱 함수(`trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes`, 2026-11-22; §7, §8), C4의 넷(`quad dblquad tplquad nquad`, 2026-11-22; §2, §3; `quad`의 `weight`는 C5, 2026-11-22), C6의 둘(`tanhsinh nsum`, 2026-11-22; §6), C7의 둘(`quad_vec cubature`, 2026-11-22; §4, §5)이다. 첫 판의 15개가 모두 공개되었다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
 
 - 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C107), 미분은 [docs/api/differentiate.md](differentiate.md), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록에는 공개 이름과 시그니처만 둔다(나중의 `test_api_surface.py`가 읽는다).
@@ -63,7 +63,7 @@ IntegrateResult
 
 ### §1.6 스레드와 GIL
 - 사용자 함수가 Python이라 GIL을 쥔 채 부른다. `quad` 계열은 호출 사이의 일이 작아 GIL을 놓지 않는다.
-- 원소별 무리는 진행 중인 원소가 2¹⁵개 이상이면 원소를 지나가는 패스를 스레드에 나누고 GIL을 놓는다(optimize의 배치와 같다). 표본 규칙은 배열 리덕션의 기준이다(API.md §3).
+- 원소별 무리는 원소를 지나가는 패스의 일(진행 중인 원소 수 × 원소마다의 점 수)이 2¹⁵점 이상이면 그 패스를 스레드에 나누고 GIL을 놓는다(C111: optimize의 배치는 원소마다 점 하나라 같은 기준이다). 표본 규칙은 배열 리덕션의 기준이다(API.md §3).
 
 ## §2. 적응 구적 `quad` (C4, C5)
 ```
@@ -147,11 +147,11 @@ fixed_quad(func, a, b, /, *, n=5)
 newton_cotes(rn, /, *, equal=False)
 ```
 - **`fixed_quad`**: n점 Gauss–Legendre로 ∫ₐᵇ func. func는 점 (b − a)·(x + 1)/2.0 + a(scipy의 식)의 (n,) 배열을 한 번 받아 (n,) 또는 (…, n)을 돌려준다(§1.2). 돌려주는 것은 값 하나(Python float)이고, f가 (…, n)을 돌려주면 (…) 배열이다(scipy의 `(val, None)` 튜플이 아니다, `[scipy와 다름]`; docs/design/integrate.md §1.1 C43, C52).
-  - a, b는 유한한 실수다. inf와 NaN은 `ValueError`다(`fixed_quad(): 'b' must be finite (Gaussian quadrature needs a finite interval)`; scipy는 NaN에 NaN을 돌려준다, `[scipy와 다름]`). a > b면 값의 부호가 바뀌고 a == b면 0이다(f는 그래도 한 번 부른다, scipy와 같다). `n`은 1 이상의 int다. scipy의 `args`는 없다(§1.1).
-  - 점과 가중치는 올바로 반올림한 double이다(C42): n ≤ 100은 Arb로 만든 표, 그 위는 실행 중의 정확한 계산(C54; 처음 한 번의 비용은 n²에 비례한다: 1,000점 9 ms, 10⁴점 0.7초. 최근 8개의 n을 기억한다). 기본 n = 5의 점은 scipy와 같고 가중치는 끝자리가 다르다. n = 20부터는 scipy `roots_legendre`의 점과도 끝자리가 다르다(docs/design/integrate.md §7.9).
+  - a, b는 유한한 실수다. inf와 NaN은 `ValueError`다(`fixed_quad(): 'b' must be finite (Gaussian quadrature needs a finite interval)`; scipy는 NaN에 NaN을 돌려준다, `[scipy와 다름]`). a > b면 값의 부호가 바뀌고 a == b면 0이다(f는 그래도 한 번 부른다, scipy와 같다). `n`은 1 이상 10⁴ 이하의 int다(`fixed_quad(): 'n' must be at most 10000`; scipy는 상한이 없다, `[scipy와 다름]`, C109: 표 밖의 점은 처음 한 번 n²에 비례하는 비용이라 상한이 시간의 상한이다). scipy의 `args`는 없다(§1.1).
+  - 점과 가중치는 올바로 반올림한 double이다(C42): n ≤ 100은 Arb로 만든 표, 그 위는 실행 중의 정확한 계산(C54; 처음 한 번의 비용은 n²에 비례한다: 1,000점 9 ms, 10⁴점 0.9초(1스레드 6.4초). 최근 8개의 n을 기억한다). 기본 n = 5의 점은 scipy와 같고 가중치는 끝자리가 다르다. n = 20부터는 scipy `roots_legendre`의 점과도 끝자리가 다르다(docs/design/integrate.md §7.9).
   - 합 Σwᵢfᵢ는 sd의 합 규칙이다(§8과 같다).
-- **`newton_cotes`**: `rn`이 int N(1 이상)이면 같은 간격 N + 1점, 길이 N + 1(2 이상)의 실수 시퀀스(데이터 함수의 입력)면 그 상대 위치(0에서 시작해 N에서 끝나고 서로 다른 유한한 값)의 닫힌 Newton–Cotes 가중치 `an`(float64 `sd.ndarray`)과 오차 계수 `B`(float)의 튜플 `(an, B)`다(scipy와 같다). ∫_{x₀}^{x_N} f = Δx·Σaᵢfᵢ + B·Δx^{p+1}·f⁽ᵖ⁾(ξ)이고 p는 같은 간격의 짝수 N이면 N + 2, 아니면 N + 1이다(scipy의 차수).
-  - `an`과 `B`는 정확한 유리수를 한 번 반올림한 값이다(C53). 같은 간격 N ≤ 14는 scipy의 표와 비트로 같고, 그 밖(N ≥ 15나 위치를 준 경우)은 scipy의 Vandermonde 풀이보다 정확하다(scipy의 `B`는 N = 20에서 9%, N = 30에서 10⁶배 틀린다; docs/design/integrate.md §7.9). 같은 입력은 기억한다(첫 계산은 N = 8 0.2 ms).
+- **`newton_cotes`**: `rn`이 int N(1 이상 256 이하)이면 같은 간격 N + 1점, 길이 N + 1(2 이상 257 이하)의 실수 시퀀스(데이터 함수의 입력)면 그 상대 위치(0에서 시작해 N에서 끝나고 서로 다른 유한한 값)의 닫힌 Newton–Cotes 가중치 `an`(float64 `sd.ndarray`)과 오차 계수 `B`(float)의 튜플 `(an, B)`다(scipy와 같다). ∫_{x₀}^{x_N} f = Δx·Σaᵢfᵢ + B·Δx^{p+1}·f⁽ᵖ⁾(ξ)이고 p는 같은 간격의 짝수 N이면 N + 2, 아니면 N + 1이다(scipy의 차수).
+  - `an`과 `B`는 정확한 유리수를 한 번 반올림한 값이다(C53). 같은 간격 N ≤ 14는 scipy의 표와 비트로 같고, 그 밖(N ≥ 15나 위치를 준 경우)은 scipy의 Vandermonde 풀이보다 정확하다(scipy의 `B`는 N = 20에서 9%, N = 30에서 10⁶배 틀린다; docs/design/integrate.md §7.9). 같은 입력은 기억한다(첫 계산은 N = 8 0.2 ms, N = 256 0.3초; int N의 두 번째부터는 기억한 가중치의 사본이라 0.2 µs, C108). N의 상한 256은 정확한 유리수의 비용(N³에 비례)이 시간의 상한이 되게 한다(C110; scipy는 상한이 없고 N ≥ 15에서는 Vandermonde 풀이라 N = 30의 `B`가 10⁶배 틀린다, `[scipy와 다름]`).
   - `equal=True`면 위치를 보지 않고 길이만 쓴다(scipy와 같다). `equal`은 bool만 받는다(scipy는 int 0·1). 위치의 검사(0에서 시작, N에서 끝남)는 언제나 한다(scipy는 같은 간격 N ≤ 14면 하지 않는다, `[scipy와 다름]`).
 
 ## §8. 표본의 규칙 (C3)
@@ -187,8 +187,8 @@ cumulative_simpson(y, /, x=None, *, dx=1.0, axis=-1, initial=None)
 | `cubature(..., rule, rtol, atol, max_subdivisions, args, workers, points)` | `cubature(f, a, b, /, *, rule, rtol, atol, max_subdivisions, points)` | `[scipy와 다름]` `args`·`workers`·규칙 객체·`'gauss-kronrod'` 없음, `estimate`→`integral`, 정수 status(0, 1, 3), `regions`는 배열 필드, (−∞, b]의 치환, `max_subdivisions`는 1 이상의 int |
 | `tanhsinh(f, a, b, *, args, kwargs, log, maxlevel, minlevel, atol, rtol, preserve_shape, callback)` | `tanhsinh(f, a, b, /, *, args, log, max_level, min_level, atol, rtol)` | `[scipy와 다름]` `kwargs`·`preserve_shape`·`callback` 없음, `success`→`converged`, `maxlevel`→`max_level` |
 | `nsum(f, a, b, *, step, args, kwargs, log, maxterms, tolerances)` | `nsum(f, a, b, /, *, step, args, log, max_terms, atol, rtol)` | `[scipy와 다름]` `kwargs` 없음, `tolerances`→`atol`·`rtol`, `maxterms`→`max_terms` |
-| `fixed_quad(func, a, b, args, n)` | `fixed_quad(func, a, b, /, *, n)` | `[scipy와 다름]` `args` 없음, 값 하나(또는 배열)를 돌려준다, NaN 끝은 `ValueError` |
-| `newton_cotes(rn, equal=0)` | `newton_cotes(rn, /, *, equal=False)` | `[scipy와 다름]` `equal`은 bool, 정확한 값의 반올림(N ≥ 15·위치를 준 경우 scipy와 다름), 위치의 검사는 언제나 |
+| `fixed_quad(func, a, b, args, n)` | `fixed_quad(func, a, b, /, *, n)` | `[scipy와 다름]` `args` 없음, 값 하나(또는 배열)를 돌려준다, NaN 끝은 `ValueError`, `n` ≤ 10⁴ |
+| `newton_cotes(rn, equal=0)` | `newton_cotes(rn, /, *, equal=False)` | `[scipy와 다름]` `equal`은 bool, 정확한 값의 반올림(N ≥ 15·위치를 준 경우 scipy와 다름), 위치의 검사는 언제나, N ≤ 256 |
 | `trapezoid(y, x, dx, axis)`, `cumulative_trapezoid(y, x, dx, axis, initial)` | `trapezoid(y, /, x=None, *, dx, axis)` 등 | `[scipy와 다름]` `dx`가 키워드뿐, `x`와 함께 준 `dx`는 `ValueError` |
 | `simpson(y, *, x, dx, axis)`, `cumulative_simpson(y, *, x, dx, axis, initial)` | `simpson(y, /, x=None, *, dx, axis)` 등 | `[scipy와 다름]` `x`를 위치로도(C40), `simpson`의 점 0개는 0 |
 | `romb(y, dx, axis, show)` | `romb(y, /, *, dx, axis)` | `[scipy와 다름]` `show` 없음, `dx`가 키워드뿐 |
@@ -196,4 +196,4 @@ cumulative_simpson(y, /, x=None, *, dx=1.0, axis=-1, initial=None)
 | `ode`, `complex_ode`, `lebedev_rule`, `qmc_quad`, `IntegrationWarning`, `ODEintWarning` | 없음 | docs/design/integrate.md §1.2 |
 
 ## §10. 마일스톤별 남은 질문
-C0 전의 것은 정했다(docs/design/integrate.md §1.1 C8–C17). C2(C26–C38), C3(C39–C54), C4(C55–C70), C5(C71–C83), C6(C84–C93), C7(C94–C107)도 정했다. 남은 것은 docs/design/integrate.md §9에 모았다(C8).
+C0 전의 것은 정했다(docs/design/integrate.md §1.1 C8–C17). C2(C26–C38), C3(C39–C54), C4(C55–C70), C5(C71–C83), C6(C84–C93), C7(C94–C107), C8(C108–C116)도 정했다. 첫 판의 마일스톤에 남은 질문은 없다(docs/design/integrate.md §9).

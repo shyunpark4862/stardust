@@ -1,6 +1,6 @@
 # 수치 미적분 영역 설계 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2는 완료·승인(위임, 2026-11-21)이다(결정 C26–C38은 추천안, 사용자 위임). C3은 완료·승인(위임, 2026-11-22)이다(결정 C39–C54는 추천안, 사용자 위임). C4는 완료·승인(위임, 2026-11-22)이다(결정 C55–C70은 추천안, 사용자 위임). C5는 완료·승인(위임, 2026-11-22)이다(결정 C71–C83은 추천안, 사용자 위임). C6은 완료·승인(위임, 2026-11-22)이다(결정 C84–C93은 추천안, 사용자 위임). C7은 완료·승인(위임, 2026-11-22)이다(결정 C94–C107은 추천안, 사용자 위임). C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2는 완료·승인(위임, 2026-11-21)이다(결정 C26–C38은 추천안, 사용자 위임). C3은 완료·승인(위임, 2026-11-22)이다(결정 C39–C54는 추천안, 사용자 위임). C4는 완료·승인(위임, 2026-11-22)이다(결정 C55–C70은 추천안, 사용자 위임). C5는 완료·승인(위임, 2026-11-22)이다(결정 C71–C83은 추천안, 사용자 위임). C6은 완료·승인(위임, 2026-11-22)이다(결정 C84–C93은 추천안, 사용자 위임). C7은 완료·승인(위임, 2026-11-22)이다(결정 C94–C107은 추천안, 사용자 위임). C8은 완료·승인(위임, 2026-11-22)이다(결정 C108–C116은 추천안, 사용자 위임). 첫 판의 마일스톤은 모두 끝났다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -72,7 +72,7 @@
 | C51 표본 규칙의 합 (C3) | 줄(축을 따라간 한 줄)마다 항을 sd의 pairwise 합(누산기 16개, 512개 단위; `sd.sum`이 연속 축에서 하는 것)으로 첨자 순서대로 더하고, 누적은 `cumulative_sum`의 스캔이다. 그래서 줄의 값은 그 줄의 수에만 달려 있다: 축, 메모리 배치, 스레드 수와 상관없다(`sd.sum`의 바깥 축 리덕션은 차례대로 더한다) (추천안, 사용자 위임 2026-11-21) |
 | C52 `fixed_quad`의 함수 (C3) | f는 (n,) float64 `sd.ndarray`를 한 번 받고 (n,) 또는 (…, n)을 돌려준다(scipy의 벡터 값; 결과는 (…) 배열). 값은 실수다(복소수·bool은 `TypeError`, §1.2). a, b는 유한한 실수다(NaN도 `ValueError`; scipy는 inf만 막고 NaN은 NaN을 낸다). 점은 scipy의 식 (b − a)·(x + 1)/2.0 + a, 합은 C51이다 (추천안, 사용자 위임 2026-11-21) |
 | C53 `newton_cotes` (C3) | 모든 입력에서 가중치와 오차 계수를 정확한 유리수로 계산해 한 번 반올림한다(라그랑주 기저의 정확한 적분; scipy는 같은 간격 N ≤ 14만 정확한 표이고 그 밖은 Vandermonde 역행렬). N ≤ 14의 같은 간격은 scipy와 비트로 같고 그 밖은 다를 수 있다(C5의 예외, §7.9). `rn`은 1 이상의 int 또는 2개 이상의 유한하고 서로 다른 위치(0에서 시작해 N에서 끝남, 언제나 검사; scipy는 표 밖에서만 본다), `equal=True`면 길이만 본다(scipy와 같다). 같은 입력은 기억한다 (추천안, 사용자 위임 2026-11-21) |
-| C54 표 밖의 Gauss–Legendre (C3) | n > 100: C++가 점마다 double Newton 뒤 double-double Newton 두 번과 가중치를 double-double(약 106비트)로 계산하고(점마다 따로, 스레드와 상관없음), Python이 반올림한다. double-double의 오차 한계(점 n²·2⁻⁵⁷ ulp, 가중치 n²·2⁻¹⁰⁰ 상대; n = 101–3000에서 Arb와 견준 실제 오차의 2¹⁰배 이상) 안에 반올림 경계가 있으면 정수의 정확한 산술로 정한다(점: 두 반올림 경계에서 P_n의 부호, 가중치: 근을 감싼 구간과 립시츠 한계). n에 상한은 없고 비용은 O(n²)이다(10⁴점 0.7초); 최근 8개의 n을 기억한다 (추천안, 사용자 위임 2026-11-21) |
+| C54 표 밖의 Gauss–Legendre (C3) | n > 100: C++가 점마다 double Newton 뒤 double-double Newton 두 번과 가중치를 double-double(약 106비트)로 계산하고(점마다 따로, 스레드와 상관없음), Python이 반올림한다. double-double의 오차 한계(점 n²·2⁻⁵⁷ ulp, 가중치 n²·2⁻¹⁰⁰ 상대; n = 101–3000에서 Arb와 견준 실제 오차의 2¹⁰배 이상) 안에 반올림 경계가 있으면 정수의 정확한 산술로 정한다(점: 두 반올림 경계에서 P_n의 부호, 가중치: 근을 감싼 구간과 립시츠 한계). 비용은 O(n²)이다(10⁴점 0.7초; C8부터 n ≤ 10⁴, C109); 최근 8개의 n을 기억한다 (추천안, 사용자 위임 2026-11-21) |
 | C55 구간 정보 (C4) | `quad`(가중치 없는 길)의 결과에 필드 넷을 둔다: `intervals`((last, 2), 구간의 끝), `interval_integrals`, `interval_errors`(구간마다의 값과 오차 추정), `n_intervals`(scipy `last`). 순서는 QUADPACK의 `iord`다: 오차 추정이 큰 것부터 QUADPACK이 순위를 매긴 kmax개(`last` ≤ `limit`/2 + 2면 모두, 아니면 `limit` + 1 − `last`개; scipy 문서의 kmax), 그 뒤 나머지(더 나누지 않을 작은 것들)를 오차 추정의 내림차순(같으면 만든 순서)으로 둔다. QAGI의 구간은 scipy처럼 바꾼 변수 t ∈ (0, 1]의 것이다. 세 배열은 C++가 만든 읽기 전용 배열이다. 겹친 적분(`dblquad tplquad nquad`)은 scipy `nquad`처럼 두지 않는다. 까닭: scipy `infodict`의 값을 필드로(C10), 순서는 QUADPACK의 것 (추천안, 사용자 위임 2026-11-21) |
 | C56 복소수 피적분함수 (C4) | `quad(complex_func=True)`만 받는다: scipy처럼 실수부의 `quad`를 마친 뒤 허수부의 `quad`를 한다(f를 점마다 두 번, 같은 점들을 두 번 부른다). 다른 함수와 `complex_func=False`의 값은 실수만이다(복소수는 `TypeError`). 실수 값도 받는다(허수부 0). 까닭: scipy의 범위 그대로이고 실수 QUADPACK의 비트를 그대로 쓴다 (추천안, 사용자 위임 2026-11-21) |
 | C57 복소수 결과의 필드 (C4) | `integral`과 `error`는 complex(scipy의 re + 1j·im, 오차도), `converged`는 둘 다, `status`·`message`는 실수부의 것이 0이 아니면 그것, 아니면 허수부의 것, `nfev`는 합이다. 두 실수 `quad`의 결과는 새 필드 `real`·`imag`(`IntegrateResult`, 구간 정보와 함께; scipy `full_output`의 `{"real": …, "imag": …}`)이고 맨 위에는 구간 필드가 없다. `repr`·`summary()`는 복소수를 (re+imj)로 적는다. 까닭: 풀기(C10)가 scipy의 `(integral, error)`와 같고, 부분의 정보는 잃지 않는다 (추천안, 사용자 위임 2026-11-21) |
@@ -111,7 +111,7 @@
 | C90 허용오차 (C6) | log=False면 유한한 0 이상의 수(다른 영역의 규칙), log=True면 inf보다 작은 실수다(−inf는 허용오차 0의 log; NaN은 `ValueError`, scipy `tanhsinh`은 NaN을 받는다). 기본값은 scipy의 것: `tanhsinh` atol 0·rtol ε^0.75, `nsum` atol 0·rtol √ε, log면 그 log (추천안, 사용자 위임 2026-11-21) |
 | C91 첫 호출과 갈래 (C6) | 첫 호출은 scipy의 `eim._initialize`처럼 모든 원소에서 한 번, (k,)다(O48): `tanhsinh`은 구간의 가운데(무한한 끝은 b − 1·a + 1, 양쪽 무한은 0), `nsum`은 a(틀린 원소에서도). `tanhsinh`에서 그 값이 NaN이면 원소가 −3으로 멈춘다(scipy와 같다). 빈 배치는 f를 부르지 않는다(optimize의 배치와 같다; scipy는 빈 배열로 부른다). `nsum`은 scipy처럼 갈래마다 따로 부르고(그 갈래의 원소만, `args`도) 순서는 직접 합, 오른쪽, 왼쪽(f(−x)), 양쪽(f(x)·f(−x) 두 번)이다 (추천안, 사용자 위임 2026-11-21) |
 | C92 `nsum`의 두 예외 (C6) | (1) log의 오차는 네 항의 복소 logsumexp인데 numpy는 그 합(축 0)을 원소 하나면 pairwise((e₀ + e₁) + (e₂ + e₃)), 여럿이면 차례대로 더한다. 원소의 비트가 배치와 상관없도록(§1.3) 원소 하나의 꼴을 쓴다: 원소 여럿으로 부른 scipy와는 이 오차의 끝자리가 다를 수 있다. (2) 항의 위치 a + n·step가 넘쳐 직접 합의 항 수가 유한하지 않으면 scipy는 에러(`int(inf)`)를 내지만 sd는 그 원소의 직접 합을 비운다(다른 원소는 그대로). 까닭: 원소의 비트는 배치와 상관없고 원소의 문제는 그 원소의 결과다 (추천안, 사용자 위임 2026-11-21) |
-| C93 결과와 검사 (C6) | `tanhsinh`의 필드는 `integral error converged status nfev max_level`, `nsum`은 `sum error converged status nfev`이고 풀리지 않는다(C21). `max_level`은 scipy처럼 `min_level` + 반복 수 − 1(첫 호출 뒤 멈추면 −1)이다. `summary()`·`repr`는 C69의 배치 꼴이다. f의 값 검사와 글은 `derivative`의 것을 함께 쓴다(C35의 꼴: `tanhsinh(): 'f' must return shape (1, 66) like its argument, not (66,)`). 원소 패스는 2¹⁵개부터 스레드에 나눈다(§2.2) (추천안, 사용자 위임 2026-11-21) |
+| C93 결과와 검사 (C6) | `tanhsinh`의 필드는 `integral error converged status nfev max_level`, `nsum`은 `sum error converged status nfev`이고 풀리지 않는다(C21). `max_level`은 scipy처럼 `min_level` + 반복 수 − 1(첫 호출 뒤 멈추면 −1)이다. `summary()`·`repr`는 C69의 배치 꼴이다. f의 값 검사와 글은 `derivative`의 것을 함께 쓴다(C35의 꼴: `tanhsinh(): 'f' must return shape (1, 66) like its argument, not (66,)`). 원소 패스는 2¹⁵개부터 스레드에 나눈다(§2.2; C8부터 원소 × 점 2¹⁵개, C111) (추천안, 사용자 위임 2026-11-21) |
 | C94 `cubature`의 status (C7) | scipy의 문자열 `'converged'`·`'not_converged'` 대신 다른 결과처럼 `converged`(bool)와 정수 `status`다: 0 수렴, 1 `max_subdivisions`에 닿음(`[scipy와 다름]`). 유한하지 않은 값의 3은 C103이다. `message`는 `quad_vec`의 같은 번호의 글(`Target precision reached.`, `Target precision not reached.`, `Non-finite values encountered.`)이다. 까닭: 영역 간 일관성(O4, O17), 같은 알고리즘 무리인 `quad_vec`과 같은 번호·같은 글 (추천안, 사용자 위임 2026-11-21) |
 | C95 영역·구간의 필드 (C7) | `cubature`의 영역은 C55의 꼴인 읽기 전용 배열 넷이다: `regions`((n, 2, ndim): `[k, 0]`이 a, `[k, 1]`이 b), `region_integrals`·`region_errors`((n,) 또는 (n, …), 값의 모양), `n_regions`. `quad_vec`도 C55의 이름 그대로 `intervals`((n, 2)), `interval_integrals`((n,) 또는 (n, …)), `interval_errors`((n,)), `n_intervals`다(scipy `full_output`의 `intervals integrals errors`). 순서는 scipy의 힙이 꺼내는 차례(오차 추정·최대 오차가 큰 것부터, 같으면 힙의 비교 그대로)이고 무한 구간·무한 축은 바꾼 변수의 것이다. 값은 `integral`에 더해지는 몫이다(치환의 부호, 뒤집은 축의 부호를 곱한다; scipy의 목록은 곱하기 전의 값). scipy `CubatureResult`의 `atol`·`rtol`은 두지 않는다(입력을 되돌려 주지 않는다). 까닭: scipy의 목록·`infodict`를 필드로(C10, C55), 순서는 C55의 "큰 것부터" (추천안, 사용자 위임 2026-11-21) |
 | C96 넣지 않는 것 (C7) | `cubature`의 규칙 객체(scipy `rule=`에 `_rules.Rule`)와 `workers`, `quad_vec`의 `cache_size`·`workers`·`full_output`, 둘의 `args`는 없다. 규칙은 이름 셋(`'gk21' 'gk15' 'genz-malik'`)뿐이고 별칭 `'gauss-kronrod'`는 `ValueError`(글에 `'gk21'`을 알린다)다 (추천안, 사용자 위임 2026-11-21) |
@@ -126,6 +126,15 @@
 | C105 `cubature`의 인자 (C7) | `a`, `b`는 길이가 같은 비지 않은 1차원 실수 시퀀스다(scipy는 수 하나를 브로드캐스트한다, `[scipy와 다름]`). NaN은 `ValueError`, 같은 무한(a_i = b_i = ±inf)도 `ValueError`(scipy는 그 축의 f를 inf에서 불러 0이나 NaN을 낸다). `rtol`·`atol`은 유한한 0 이상의 수, `max_subdivisions`는 1 이상의 int(scipy의 None(상한 없음)은 §1.3의 "정해진 시간"에 어긋나고, 0은 그래도 한 번 나누어 뜻이 틀린다), `genz-malik`은 ndim ≥ 2(scipy와 같다), `points`는 점마다 ndim개의 실수(NaN `ValueError`)다. f의 값은 (n,) 또는 (n, …)이고 뒤 모양이 호출마다 같아야 한다(빈 값은 `ValueError`). `nfev`는 f에 넘긴 점의 수다. 점이 모든 영역을 폭 0의 조각으로 가르면 f를 부르지 않고 0(Python 수)이다(scipy와 같다) (추천안, 사용자 위임 2026-11-21) |
 | C106 `summary()`와 `repr` (C7) | C69의 상자에 더한다: 배열 값은 머리에 `Integral: shape (3,)`(`cubature`는 `Error estimate`도)을 적고 원소마다 한 줄의 표(열 `integral`, `cubature`는 `error`도, 줄 이름은 원소의 첨자)를 둔다. `quad_vec`의 구간 표는 배열 값이면 `integral` 열을 뺀다. `cubature`의 영역 표는 열 `a b integral error`(모서리는 (x, y, …), 배열 값이면 `a b max error`)이고 머리에 `Subdivisions:`·`Regions:`가 있다. `repr`는 바탕의 한 줄 꼴이다(짧은 배열은 `[v, v]`) (추천안, 사용자 위임 2026-11-21) |
 | C107 Arb 계약 (C7) | 수렴한 결과의 참 오차는 오차 추정 + 8ε\|I\| 안이다(`quad_vec`은 그 노름으로, `cubature`는 원소마다; `cubature`의 \|K − G\| 추정에는 반올림 하한이 없다, C83과 같은 꼴). 넘는 것은 scipy도 같은 비트인 짧은 목록이다(`tests/integrate/adaptive.py`의 `QUAD_VEC_SHORT` 5개, `CUBATURE_SHORT` 규칙·무리마다 3–8개: 끝점 특이점 x^−0.9…−0.7, 좁은 봉우리, f10·f12). 계약 대비 최대는 0.95·0.96이다(§7.13) (추천안, 사용자 위임 2026-11-21) |
+| C108 `newton_cotes`의 int 기억 (C8) | int N의 두 번째 호출부터는 기억한 `(an, B)`(64개까지)의 사본을 돌려준다. 전에는 부를 때마다 위치 N + 1개를 `Fraction`으로 만들고 그 튜플로 `lru_cache`를 찾아 N = 8에 3.8 µs(scipy 1.3 µs)였고, 지금 0.25 µs다. 값은 같은 반올림 값의 복사이고 `an`은 늘 새 배열이라 고쳐도 다음 호출은 그대로다. 까닭: 같은 입력의 빠른 길(C70과 같은 꼴) (추천안, 사용자 위임 2026-11-22) |
+| C109 Gauss–Legendre의 상한 (C8) | `fixed_quad`의 `n`은 10⁴ 이하의 int다(`fixed_quad(): 'n' must be at most 10000`, `[scipy와 다름]`). 표 밖(n > 100)의 처음 계산은 점마다 세 항 점화식의 double-double Newton(C54)이라 n²에 비례한다: 1스레드·10스레드로 1,000점 0.07·0.008초, 3,000점 0.59·0.077초, 10⁴점 6.4·0.88초, 2×10⁴점은 10스레드 3.3초였다(10⁶점은 사실상 끝나지 않는다, §1.3의 "정해진 시간"). P_n을 점근 전개로 O(1)에 계산하는 알고리즘(Hale–Townsend, Bogaert)은 double-double 정확도의 전개와 오차 한계를 새로 세워야 해서 두지 않았다. 상수배의 개선(점화식의 나눗셈을 역수 표의 곱으로, 수렴한 double Newton 뒤의 double-double Newton을 한 번으로)은 C54의 오차 한계를 Arb로 다시 재야 하므로 나중의 최적화 세션에 남긴다(§7.14). scipy `roots_legendre`도 모든 n에서 Golub–Welsch(O(n²))다. 까닭: 고정 규칙에서 수천 점을 넘는 점은 쓸 일이 거의 없고(적응 구적이 맞다) 상한이 시간의 상한이다 (추천안, 사용자 위임 2026-11-22) |
+| C110 `newton_cotes`의 상한 (C8) | N은 256 이하다(int N, 위치는 257개까지; `newton_cotes(): 'rn' must be at most 256 (the number of intervals)`, `[scipy와 다름]`). 정확한 유리수의 첫 계산이 N³ 꼴이다: N = 50 6 ms, 100 25 ms, 200 0.13초, 400 0.91초. scipy는 N ≥ 15에서 Vandermonde 역행렬이라 N = 30의 `B`가 10⁶배 틀린다(§7.9). 까닭: C109와 같다 (추천안, 사용자 위임 2026-11-22) |
+| C111 원소별 무리의 병렬 기준 (C8) | `derivative`, `tanhsinh`, `nsum`의 원소 패스(점 쓰기, 갱신과 판정, `nsum`의 직접 합)는 일(진행 중인 원소 수 × 원소마다의 점 수)이 2¹⁵점 이상이면 스레드에 나눈다(`csrc/elementwise/loop.hpp`의 `for_weighted`·`advance_weighted`: 조각은 2¹³점쯤이고 한 원소 이상, 조각이 17개 이상이라 자는 일꾼도 깨어난다; htest H141). 전에는 원소 2¹⁵개가 기준이라 원소 10³–10⁴개 × 66점이나 10개 × 2¹⁷항의 직접 합이 한 스레드였다. 또 이 무리의 호출(`CallPoints`)은 점의 사본을 두지 않는다(다시 읽는 것은 optimize의 배치뿐이다; 10⁵ × 66점의 첫 호출에서 53 MB를 0으로 채우는 일이 없어진다). optimize의 `for_elements`·`advance`·`Call`은 그대로다(C22). 원소마다의 산술과 남은 원소의 순서가 같아 비트가 그대로다(A/B의 모든 결과 해시, 골든, 1·3·10스레드). 잰 것은 §7.14 (추천안, 사용자 위임 2026-11-22) |
+| C112 `approx_fprime`의 간격 키우기 (C8) | 정확한 차분(`Differences`, C15)은 처음 간격 2⁻⁸\|x_j\|의 열의 반올림 한계가 열 크기의 2⁻³⁶(1.5×10⁻¹¹)을 넘으면 간격을 키워 다시 찾는다(O104의 키우기 고리 그대로; 전에는 √ε = 2⁻²⁶을 넘을 때만). 그 사이의 시작은 아래로만 찾아 처음 간격의 반올림이 그대로 오차였다: exp의 x = 3×10⁻⁶·10⁻⁵·10⁻⁴에서 상대 1.5×10⁻⁸·5.1×10⁻⁹·2.6×10⁻¹⁰(문서의 "약 10⁻¹¹–10⁻¹³" 밖, §6.1). 지금 7.4×10⁻¹⁴·1.6×10⁻¹³·9.3×10⁻¹⁴다. 초등 함수 10개 × 32점(10⁻¹⁴–1)의 탐침에서 바뀐 47경우는 모두 절대오차가 줄었고(최대 10⁵배) 늘어난 것은 없다. 도함수가 1 근처인 함수의 최대 상대오차는 1.6×10⁻⁸ → 2.5×10⁻¹¹(x = ±3×10⁻³)이다. 호출 수는 그 x에서 13 → 25–57번이다(MGH 47경우의 x0와 초등 함수 11개 × 9점의 수는 그대로). 키운 간격이 반올림 수준을 벗어나지 못하면 전과 같은 찾기로 돌아간다. 골든은 regression의 둘이 바뀌어 그 둘만 다시 기록했다: `nls ENSO/start2/bounded/diff`(bse가 해석적 야코비안으로 푼 결과와 상대 3.0×10⁻¹² → 3.7×10⁻¹³)와 `nls MGH17/start1/bounded/diff`(조건수 2.6×10¹³의 실패한 적합: b5 열의 간격이 2⁻¹² → 2⁻¹³, 그 열의 오차 2.0×10⁻¹⁰ → 2.9×10⁻¹⁰, bse가 상대 5×10⁻⁶ 바뀐다). optimize와 다른 영역의 골든은 그대로이고, exp의 3×10⁻⁶·10⁻⁵·10⁻⁴ 셋을 optimize 골든에 더했다. 까닭: 문서가 약속한 정확도를 지킨다(API.md §4의 넷째 규칙: 고침이 필요할 때 비트를 깬다) (추천안, 사용자 위임 2026-11-22) |
+| C113 C8의 측정 (C8) | H139처럼 모든 공개 함수를 `bench/speed`의 사례로 크기마다 scipy와 견준다. 없던 사례를 더했다: `romb` 2¹⁰ + 1·2²⁰ + 1점, `fixed_quad` n = 200, `newton_cotes` 8·20, `quad`의 `points`·`complex_func`, `tplquad`·`nquad`, `nsum`의 배치 10·10³, `derivative`의 한쪽 스텐실, `jacobian` n = 10·30과 벡터 값, `hessian` n = 10(integrate 40, differentiate 10사례). 기계가 바빠(부하 2.7–3.9) 1라운드로 재고 기준선에 올리지 않았다: `bench/integrate/speed.md`·`bench/differentiate/speed.md`는 고친 뒤의 실행 파일에서 만든 표(`bench.speed table --from`)이고, 고친 것은 고치기 전 빌드(796c7f6의 C++)와 새 빌드를 번갈아 띄운 프로세스에서 1·10스레드로 재고 결과의 해시를 견주었다(A/B). 조용한 기계의 전체 재측정과 깊은 최적화는 나중의 세션이 한다 (추천안, 사용자 위임 2026-11-22) |
+| C114 남긴 것 (C8) | 비트나 계약을 바꿔야 하거나 이득이 작아 고치지 않은 것(§7.14): 함숫값 21개의 `quad`(scipy의 0.95배; 결과의 구간 배열 셋과 인자 검사, C70), QAWS의 가장 작은 경우(0.96–0.98배), `nsum` 배치의 1스레드(0.93배: 시간의 대부분이 사용자 함수의 sd `**`이고 그 1스레드가 numpy보다 약 10% 느리다, 배열 영역), `tanhsinh` 10⁵원소의 첫 호출(새 (k, 66) 배열의 페이지 폴트), Gauss–Legendre 처음 계산의 상수배(C109), `newton_cotes`의 첫 계산(C110) (추천안, 사용자 위임 2026-11-22) |
+| C115 일관성 점검 (C8) | 영역의 모든 공개 함수와 optimize의 배치 넷·`approx_fprime`을 같은 틀로 불러 견주었다(없는 키워드, 틀린 `atol`·`rtol`·`max_iter`·`limit`·`args`·`axis`·`log`·`order`·`step_factor`·문자열 옵션, 부를 수 없는 f, NaN·문자열·bool 끝, 브로드캐스트되지 않는 `args`, `Series` 입력, 결과의 `repr`·`summary()`와 그 인자, 필드와 배열에 쓰기). 모두 `이름(): ` 꼴이고 같은 실수는 같은 문장이며, 상한은 `'max_level' must be at most 16`의 꼴이다(C109·C110의 글도). 영역 안에서 고칠 것은 없었다. 다른 영역과 다른 것과 다른 영역에서 본 것은 §7.14에 적는다 (추천안, 사용자 위임 2026-11-22) |
+| C116 코드 리뷰 (C8) | C8에서는 전체 코드 리뷰를 하지 않는다. 다음의 리뷰 세션이 영역 전체를 본다(H149와 같다) (추천안, 사용자 위임 2026-11-22) |
 
 - C5와 D-33(API.md §4, docs/design/optimize.md §3.7): 호출점의 비트 동일은 지금 맞추는 목표이고 약속이 아니다. 지키는 것은 다른 영역과 같다(스레드 수와 상관없는 비트, 자기 골든, Arb 계약). 반올림이 아닌 동작(멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서)은 scipy 그대로다. 호출점이 같다는 것은 사용자 함수를 부르는 점의 순서와 비트, 호출 수가 같다는 뜻이다.
 
@@ -197,7 +206,7 @@ scipy 1.18.1의 `dir(scipy.integrate)`와 `dir(scipy.differentiate)`에서 뽑�
 - `args`(O39): 값마다 배치 모양으로 브로드캐스트하고, 호출마다 남은 원소로 줄여 넘긴다. `kwargs`(scipy 1.18의 이 셋에는 있다), `callback`, `preserve_shape`는 없다(C14).
 - 허용오차는 scipy의 `tolerances` dict 대신 키워드다(O36): `derivative(atol=, rtol=)`, `nsum(atol=, rtol=)`. `tanhsinh`은 scipy도 키워드다.
 - 배치 결과의 `n_iter`·`nfev`는 그 원소가 멈출 때까지의 수다. `tanhsinh`은 scipy처럼 `n_iter` 대신 마지막 수준 `max_level`을 준다(scipy `maxlevel`; C12).
-- 진행 중인 원소가 2¹⁵개 이상이면 원소를 지나가는 패스를 스레드에 나누고 GIL을 놓는다(optimize §3.3.1과 같은 기준과 조각).
+- 원소를 지나가는 패스의 일(진행 중인 원소 수 × 원소마다의 점 수)이 2¹⁵점 이상이면 그 패스를 스레드에 나누고 GIL을 놓는다(C111; optimize §3.3.1의 기준은 원소마다 점 하나인 경우다).
 
 ### 2.3 사용자 함수와 호출
 - 사용자 함수는 Python 호출 가능한 객체다. 반복은 C++가 돌고 함숫값은 콜백으로 받는다(optimize와 같다). 콜백을 부르는 동안 GIL을 쥔다.
@@ -335,7 +344,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - 확인: 식과 계산 순서가 같아 골든이 모든 영역에서 1·3·10스레드로 그대로다(optimize 3,876, regression 902케이스). optimize·regression·integrate·differentiate의 테스트(scipy와 비트까지 같은 걸음, O9)가 모두 지난다. `tests/differentiate/test_differences.py`가 커널이 하나인지와 R175·R176의 것(아래)을 본다.
 - R175(C25): `_ROUNDING_TOL = 2⁻²⁶`과 `_forward`의 간격을 √u라 부른 주석은 틀렸다. 같은 파일의 u = 2⁻⁵³이라 √u = 2^−26.5이고, 2⁻²⁶은 √ε(ε = 2⁻⁵² = 2u)다. 주석만 고쳤다(값은 그대로; docs/design/optimize.md의 O104 설명은 처음부터 √ε이다).
 - R176(C25): 잰 호출 수(f(x₀) 한 번을 넣어; exp): x = 0은 17, 10⁻³⁰⁰·10⁻¹⁰⁰·10⁻³⁰은 25, 10⁻¹²·10⁻⁸·10⁻⁶은 61, 10⁻⁵–10⁻²는 13, 1은 17번이다. 10⁻¹²에서 처음 간격 2⁻⁴⁷의 열은 반올림 한계가 열 크기의 0.023(√ε의 2²¹배)이라 간격을 2⁻²⁶으로 한 번에 키우고, 거기서 절단 오차가 반올림을 넘는 2⁻⁸ 근처까지 4배씩 아홉 번(호출 36번) 더 오른다. 0 근처에서 값이 작은 함수(sin, atan, tanh, log1p)는 열이 반올림 수준이 아니라 9–25번이다. 2의 거듭제곱을 더 크게 뛰거나 이분으로 찾으면 고른 간격이 달라져 값과 nls의 골든이 바뀌므로 고치지 않았다. 함수값이 기울기보다 훨씬 큰 x ≈ 0이 드문 경우이고 상한이 있다(간격 키우기는 2⁻⁷에서 멈춘다).
-  - 같이 본 것: 처음 간격이 반올림 한계 √ε 바로 아래인 x(exp의 10⁻⁵·10⁻⁴는 13번)는 간격을 키우지 않고 아래로만 찾아 상대오차가 5.1×10⁻⁹·2.6×10⁻¹⁰이다(10⁻¹²·10⁻⁶은 키워서 2×10⁻¹³, 10⁻²는 5.5×10⁻¹²; sin(x + 1)의 10⁻⁵는 4.3×10⁻⁹). cos의 10⁻⁹(기울기 −10⁻⁹)는 절대오차 10⁻⁹다. 문서(docs/api/optimize.md §2)의 "10⁻¹²·10⁻³⁰⁰에서도 0과 같은 정확도"는 그 점에서는 맞지만 그 사이의 10⁻⁵ 근처는 덮지 않는다. 바꾸면 골든이 바뀌므로 C1에서는 재기만 했다(따로 알린다).
+  - 같이 본 것: 처음 간격이 반올림 한계 √ε 바로 아래인 x(exp의 10⁻⁵·10⁻⁴는 13번)는 간격을 키우지 않고 아래로만 찾아 상대오차가 5.1×10⁻⁹·2.6×10⁻¹⁰이다(10⁻¹²·10⁻⁶은 키워서 2×10⁻¹³, 10⁻²는 5.5×10⁻¹²; sin(x + 1)의 10⁻⁵는 4.3×10⁻⁹). cos의 10⁻⁹(기울기 −10⁻⁹)는 절대오차 10⁻⁹다. 문서(docs/api/optimize.md §2)의 "10⁻¹²·10⁻³⁰⁰에서도 0과 같은 정확도"는 그 점에서는 맞지만 그 사이의 10⁻⁵ 근처는 덮지 않는다. 바꾸면 골든이 바뀌므로 C1에서는 재기만 했다(따로 알린다). C8에서 고쳤다(C112: 반올림 한계가 2⁻³⁶을 넘는 시작도 간격을 키운다).
 - ARCHITECTURE.md §1의 그림에 optimize/ ──▶ differentiate/를 더했다(differentiate/는 아무것도 include하지 않는 헤더 하나다).
 
 ### 6.2 함께 쓰는 반복 고리 (C4, C16; C1에서 했다)
@@ -656,6 +665,49 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 
 - 호출 사이의 일(힙, 규칙의 합, 구간 기억)이 C++라 함숫값이 작은 경우 4.5–10배 빠르다. 1,000원소의 `quad_vec`은 사용자 함수(`sd.cos`)와 값의 읽기가 시간의 대부분이라 1.8배다.
 
+### 7.14 C8에서 잰 것 (scipy 1.18.1, 2026-11-22)
+테스트가 아래의 고침을 확인한다(`tests/integrate/test_tanhsinh.py`·`tests/differentiate/test_derivative.py`의 `test_threads_by_points`, `tests/integrate/test_fixed.py`, `tests/differentiate/test_differences.py`, `tests/optimize/test_diff.py`).
+
+**측정** (C113; 기계가 바빴다: 부하 2.7–3.9, 다른 세션들; 1라운드, 기준선에 올리지 않음): 고치기 전 `build/speed/20261122-045253-c8-before.jsonl`, 뒤 `build/speed/20261122-051631-c8-after.jsonl`(표는 `bench/integrate/speed.md`, `bench/differentiate/speed.md`). scipy ÷ sd의 묶음별 중앙값(1스레드 / 10스레드):
+
+| 묶음 | 전 | 뒤 | sd가 느린 줄(뒤) |
+|---|---|---|---|
+| 표본 규칙과 고정 규칙(14) | 2.64 / 5.67 | 2.82 / 7.98 | 0 / 0 (전에는 `newton_cotes` 8의 0.35배) |
+| QUADPACK(12) | 1.18 / 1.16 | 1.18 / 1.18 | 2 / 2 (함숫값 21개의 `quad` 0.95–0.96배, QAWS 0.96–0.98배) |
+| 배치 tanh-sinh와 급수(6) | 2.20 / 3.83 | 2.28 / 10.7 | 1 / 0 (`nsum` 배치 10³의 1스레드 0.93배) |
+| 벡터 값과 다차원(8) | 7.13 / 7.22 | 7.24 / 7.45 | 0 / 0 |
+| 배치 도함수(4) | 7.69 / 9.55 | 8.50 / 12.1 | 0 / 0 |
+| 야코비안과 헤시안(6) | 15.9 / 15.8 | 16.1 / 16.0 | 0 / 0 |
+
+**A/B** (C111; 고치기 전 빌드의 사본과 새 빌드를 번갈아 띄운 프로세스 셋씩, 가운데값, ms; 모든 결과(값, 오차, `nfev`, status, 수준·반복)의 해시가 두 빌드와 1·10스레드에서 같다):
+
+| 사례 | 1스레드 전 → 뒤 | 10스레드 전 → 뒤 | scipy |
+|---|---|---|---|
+| `tanhsinh` exp 원소 10³ | 0.385 → 0.362 | 0.371 → 0.134 | 1.05 |
+| `tanhsinh` 원소 10⁴ | 3.96 → 3.77 | 3.39 → 0.580 | |
+| `tanhsinh` 원소 10⁵ | 40.8 → 39.6 | 15.8 → 5.38 | 76.4 |
+| `tanhsinh` log, 원소 10⁴ | 18.8 → 18.4 | 18.7 → 2.33 | |
+| `tanhsinh` 실수 전체, 원소 10⁴ | 27.8 → 26.8 | 22.9 → 3.79 | |
+| `nsum` 1/k^p 배치 10 / 10³ | 4.84 → 4.76 / 518 → 500 | 1.72 → 0.84 / 200 → 64.8 | 5.68 / 460 |
+| `nsum` 직접 합 원소 10³ | 3.40 → 2.91 | 3.28 → 0.546 | |
+| `derivative` exp 원소 10⁴ / 10⁵ | 0.375 → 0.351 / 3.97 → 3.75 | 0.355 → 0.265 / 1.51 → 1.07 | — / 17.1 |
+| `derivative` 한쪽, 원소 10⁵ | 3.47 → 3.03 | 1.47 → 1.00 | |
+
+- 1스레드가 3–15% 빨라진 것은 점의 사본이 없어서이고(C111), 10스레드는 원소 10³–10⁴개에서 3–8배다. 원소 10개의 `tanhsinh`(12–13 µs)는 같은 빌드끼리의 잡음(±9%) 안이다. `jacobian`·`hessian`은 원소별 고리를 쓰지 않아 그대로다. `newton_cotes` 8·20(기억한 뒤)은 3.8·7.9 µs → 0.25 µs(scipy 1.36·21.8 µs; C108).
+- tanhsinh 10⁵원소의 호출 사이(10스레드): 첫 호출 전 6.5 → 1.0 ms(점의 사본과 0 채우기가 없어지고 점 쓰기가 병렬), 수준 사이 4.4 → 2.4 ms, 마지막 갱신(남은 19,585원소 × 64점; 전에는 원소 2¹⁵개 아래라 한 스레드) 4.0 → 0.8 ms.
+
+**남긴 것** (C114; 나중의 최적화 세션에 넘긴다)
+- 함숫값 21개의 `quad`(2.07 µs, scipy 1.99 µs): 네이티브 호출이 1.47 µs(그 가운데 Python 콜백 21번이 약 0.87 µs), 결과 0.29 µs, 인자 검사 약 0.27 µs다. 남은 차이는 구간 배열 셋(C55)을 만드는 일이라 결과의 필드를 늦게 만드는 길(`_Lazy`)이 후보다. QAWS의 가장 작은 경우(4.5 µs, scipy 4.4 µs)도 같다.
+- `nsum` 배치 10³의 1스레드(493 ms, scipy 460 ms): 사용자 함수 1/k^p의 (1000, 131072) 배열이 0.34초(numpy 0.27초)이고, 나머지는 sd 0.13초·scipy 0.17초다. sd의 `**`가 1스레드에서 numpy보다 약 10% 느린 것(배열 영역)이다.
+- `tanhsinh` 10⁵원소의 1스레드 첫 호출 5.2 ms: 새 (10⁵, 66) 배열의 페이지 폴트와 원소 상태의 준비다.
+- Gauss–Legendre 처음 계산의 상수배(C109)와 `newton_cotes`의 첫 계산(C110).
+
+**일관성** (C115)
+- 영역 안: 모든 공개 함수의 에러가 `이름(): ` 꼴이다. 같은 실수는 같은 문장이다: 없는 키워드, `'atol' must be a finite number >= 0`(NaN·음수), `'atol' must be an int or a float, not str`, `'max_iter' must be >= 1`·`must be an int, not float`, `'args' must be a tuple, not int`, `'log' must be True or False, not int`, 부를 수 없는 f(`'f' must be callable, not float`; `quad` 계열과 `fixed_quad`는 scipy의 이름 `'func'`), `axis`(`axis 2 is out of bounds for an array of dimension 1`, 표본 규칙의 `'axis' must be an int`는 정수 하나만 받는 뜻이다: sd.stats의 튜플 축과 다르다), 상한(`'max_level' must be at most 16`, `'max_terms' must be at most 16777216 (2**24)`, C109·C110). 결과는 모두 필드와 배열 필드가 쓰기 금지이고, `summary()`는 인자가 없으며(`summary(): unexpected keyword argument 'alpha'`, `summary(): takes 0 positional arguments but 1 was given`), `repr`는 한 줄이다(API.md §2.3; 자유도가 없어 G195는 해당이 없다). 원소별 무리의 입력(`tanhsinh`·`nsum`의 끝, `derivative`의 x)과 optimize 배치의 `init`은 같은 함수(`_inputs`)라 같은 글이다.
+- 다른 영역과 뜻이 달라 그대로 둔 것: `derivative`·`jacobian`·`hessian`의 `max_iter`는 1 이상이고 optimize 배치 넷은 0을 받는다(둘 다 scipy의 범위: 차분은 첫 반복이 처음 추정이다). `quad` 계열의 `atol`·`rtol`은 수 기본값이라 None을 받지 않고 원소별 무리는 None이 기본값이다(scipy의 시그니처). 원소별 무리(optimize의 배치도)는 frame의 `Series`를 받지 않고 `approx_fprime`의 `xk`와 optimize의 `x0`·표본 규칙의 `y`·`cubature`의 끝은 받는다(API.md §5의 데이터 입력과 원소별 함수의 구분).
+- 다른 영역에서 본 것(고치지 않고 적는다): (a) optimize의 원소별 입력 검사(`_inputs`)는 같은 인자의 틀린 형에 두 문장을 쓴다: 문자열은 `'init' must be an sd.ndarray or a sequence of numbers, not str`, bool은 `'init' must be a real number or an array, not bool`. (b) `OptimizeResult`의 `repr`는 필드를 이름 순으로 적고(`converged=True, fun=0, n_iter=1, nfev=3, x=0.5`; O120) `IntegrateResult`·`DifferentiateResult`는 값부터 적는다(API.md §2.3의 예). (c) sd의 `**`(배열 영역)는 큰 배열의 1스레드에서 numpy보다 약 10% 느리다(위의 `nsum`).
+- `approx_fprime`(optimize의 공개 이름, 이 영역의 커널): C112로 고쳤다.
+
 ---
 
 ## 8. 마일스톤 (안)
@@ -669,7 +721,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 | C5 QUADPACK 2 (완료·승인(위임) 2026-11-22) | `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC). QAWS 로그 가중치 예제의 scipy·Fortran 4×10⁻⁹ 차이(§7.6)의 까닭을 찾는다(C75). QAWO·QAWF의 Fortran 대조는 LINPACK 원본 `dgtsl`로 돈 것이다(C18) (C71–C83; §3.1, §7.11) |
 | C6 배치 적분 (완료·승인(위임) 2026-11-22) | `tanhsinh`, `nsum`(C84–C93; §3.5, §3.6, §7.12) |
 | C7 벡터 값과 다차원 (완료·승인(위임) 2026-11-22) | `quad_vec`, `cubature`(C94–C107; §3.3, §3.4, §7.13) |
-| C8 최적화와 일관성 점검 | 모든 공개 함수를 크기마다 scipy와 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 보고, 코드 리뷰를 한다 |
+| C8 최적화와 일관성 점검 (완료·승인(위임) 2026-11-22) | 모든 공개 함수를 크기마다 scipy와 견주어 느린 곳을 고치고(C111, C108), 남은 질문(Gauss–Legendre의 상한 C109, `approx_fprime`의 간격 C112)을 닫고, 메시지·시그니처의 영역 간 일관성을 본다(C115). 코드 리뷰는 리뷰 세션이 한다(C116). 결정 C108–C116, 결과 §7.14 |
 
 - 순서의 까닭: C1의 고리를 처음 쓰는 C2가 고리의 넓힘(원소마다 여러 점)을 바로 시험한다. C3은 다른 것에 기대지 않는다. C6의 `nsum`은 C6의 `tanhsinh`을, C7의 무한 축 치환은 C4·C6과 같은 식을 쓴다.
 - **나중의 ODE 묶음**(C2, 이름은 그때): `solve_ivp`(RK23, RK45, DOP853, Radau, BDF, LSODA; 조밀 출력, 사건), `odeint`(LSODA), `solve_bvp`. 원소별 무리가 아니라 상태가 있는 풀이라 이 묶음의 고리를 쓰지 않는다. 큰 결정은 그때 묻는다.
@@ -688,4 +740,4 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **C5**: 정했다(C71–C83, 추천안, 사용자 위임 2026-11-21). 물었던 하나는 (a)다: `wopts`를 두지 않는다(C71). 구현하며 생긴 열둘(C72–C83: 결과의 필드, 인자, QAWF의 허용오차, `dqc25s`의 오타, `dgtsl`의 꼴, 모멘트 행, QAWF의 ω = 0, `dqawoe`의 작은 구간, QAWO의 구간 하나, FMA의 자리, 큰 ω, Arb 계약)도 추천안으로 정했다.
 - **C6**: 정했다(C84–C93, 추천안, 사용자 위임 2026-11-21). 물었던 셋: tanh-sinh 표는 (a) scipy의 libm 식(C84), `log=True`는 C4의 답대로 실수만(C85), 끝점은 (a) 부르고 버린다(C86). 구현하며 생긴 일곱(C87–C93: numpy의 합과 logsumexp, 수준과 `max_terms`의 상한, log의 허용오차, 첫 호출과 갈래, `nsum`의 두 예외, 결과와 검사)도 추천안으로 정했다.
 - **C7**: 정했다(C94–C107, 추천안, 사용자 위임 2026-11-21). 물었던 셋: `cubature`는 (a) `converged`와 정수 `status`(C94; 유한하지 않은 값의 3은 구현하며 더했다, C103), `regions`는 C55의 꼴인 배열 필드(C95), 규칙 객체·`workers`는 없음(C96). 구현하며 생긴 열하나(C97–C107: numpy·Python의 산술, scipy의 구간 기억, 낮은 Gauss 규칙, 배치와 합, (−∞, b]의 치환, 무한 축의 `points`, 유한하지 않은 값, 두 함수의 인자, `summary()`, Arb 계약)도 추천안으로 정했다.
-- **C8**: 정할 것은 그때.
+- **C8**: 정했다(C108–C116, 추천안, 사용자 위임 2026-11-21). 맡긴 범위(속도, C0–C7에서 남긴 것, 일관성, 코드 리뷰는 남김)를 추천안대로 했다. 구현하며 정한 것: `newton_cotes`의 int 기억(C108), 두 상한(C109, C110), 점 수로 나누는 병렬(C111), `approx_fprime`의 간격(C112), 측정·남긴 것·일관성·리뷰(C113–C116).

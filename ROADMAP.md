@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임))이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -664,7 +664,7 @@
 
 # 수치 미적분 영역 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4는 완료·승인(위임, 2026-11-22), C5는 완료·승인(위임, 2026-11-22), C6은 완료·승인(위임, 2026-11-22), C7은 완료·승인(위임, 2026-11-22), C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
+> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4는 완료·승인(위임, 2026-11-22), C5는 완료·승인(위임, 2026-11-22), C6은 완료·승인(위임, 2026-11-22), C7은 완료·승인(위임, 2026-11-22), C8은 완료·승인(위임, 2026-11-22)이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -687,7 +687,7 @@
 | C5 QUADPACK 2: `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC) | 완료·승인(위임) (2026-11-22) |
 | C6 배치 적분: `tanhsinh nsum` | 완료·승인(위임) (2026-11-22) |
 | C7 벡터 값과 다차원: `quad_vec cubature` | 완료·승인(위임) (2026-11-22) |
-| C8 최적화와 일관성 점검 | 시작 전 |
+| C8 최적화와 일관성 점검: 모든 공개 함수의 속도, 남은 질문(Gauss–Legendre의 상한, `approx_fprime`의 간격), 영역 간 일관성 | 완료·승인(위임) (2026-11-22) |
 
 ## 마일스톤
 
@@ -742,4 +742,8 @@
 
 ### C8. 최적화와 일관성 점검
 - 모든 공개 함수를 크기마다 scipy와 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 점검하고, 코드 리뷰를 한다.
+- 결정(추천안, 사용자 위임 2026-11-22): docs/design/integrate.md §1.1 C108–C116(`newton_cotes`의 int 기억; `fixed_quad`의 n ≤ 10⁴와 `newton_cotes`의 N ≤ 256(처음 계산이 n²·N³에 비례: 시간의 상한); 원소별 무리의 병렬 기준을 원소 × 점 2¹⁵개로, 점의 사본 없는 호출; `approx_fprime`의 정확한 차분은 처음 열의 반올림 한계가 2⁻³⁶을 넘으면 간격을 키운다; 측정은 1라운드·기준선에 올리지 않음; 남긴 것; 일관성 점검; 코드 리뷰는 리뷰 세션).
+- 결과: csrc/elementwise/loop.hpp(`for_weighted`·`advance_weighted`, `CallT<Keep>`과 `CallPoints`; optimize의 `for_elements`·`advance`·`Call`은 그대로), csrc/integrate/tanhsinh.cpp·csrc/differentiate/derivative.cpp(그것을 쓴다), src/stardust/integrate/_rules.py(`newton_cotes`의 int 기억, 두 상한), src/stardust/differentiate/_differences.py(`_GROW_TOL`), 속도 사례 34 → 50(bench/speed/cases/integrate.py·differentiate.py), 표 bench/integrate/speed.md·bench/differentiate/speed.md(실행 파일에서; 기준선 없음), 테스트(점 수로 나누는 병렬의 1·3·10스레드와 원소 혼자, 상한, 기억한 규칙의 사본, exp의 3×10⁻⁶–10⁻⁴), 골든 5케이스 더함, regression 골든 둘 다시 기록(`nls ENSO/start2/bounded/diff`, `nls MGH17/start1/bounded/diff`; C112).
+- 확인: 골든은 모든 영역이 1·3·10스레드에서 그대로다(바꾼 둘과 새 다섯 빼고). A/B의 모든 결과 해시가 두 빌드와 1·10스레드에서 같다. `tools/test.py integrate differentiate optimize regression`과 tests/bench가 지난다.
+- 찾은 것(docs/design/integrate.md §7.14): 원소별 무리의 10스레드가 원소 10³–10⁴개에서 3–8배 빨라졌다(`tanhsinh` 10³원소 0.37 → 0.13 ms, 10⁵ 15.8 → 5.4 ms; `nsum` 배치 10³ 200 → 65 ms). `approx_fprime`은 x = 3×10⁻⁶–10⁻³에서 상대 1.5×10⁻⁸까지 틀렸다(지금 2.5×10⁻¹¹ 이하). 남은 sd가 느린 줄은 함숫값 21개의 `quad`(0.95배)·QAWS의 가장 작은 경우(0.96배)·`nsum` 배치의 1스레드(0.93배: 사용자 함수의 sd `**`)다. 일관성에서 영역 안에 고칠 것은 없었고, 다른 영역에서 본 셋(optimize의 원소별 입력 글 둘, `OptimizeResult`의 `repr` 순서, sd `**`의 1스레드)을 적었다. 코드 리뷰는 리뷰 세션에 남겼다(C116).
 - 그 뒤의 상미분방정식 묶음(`solve_ivp`, `odeint`, `solve_bvp`와 풀이 클래스)은 큰 결정을 그때 묻는다.

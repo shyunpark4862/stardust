@@ -30,6 +30,11 @@ _U = 2.0**-53  # the unit roundoff: rounding a value moves it by at most u |f|
 # epsilon) has lost half its digits to rounding: its step is too small for the variable's scale
 # (the start 2^-8 |x_j| with x_j near 0)
 _ROUNDING_TOL = 2.0**-26
+# a start whose rounding level is above 2^-36 (about 1.5e-11) of its column already loses more
+# than the differences' aim (about 1e-11 - 1e-13 relative), and a search that only goes down
+# from it cannot do better: the step grows first as from rounding level (C112; exp at x = 1e-5
+# gave 5e-9 before)
+_GROW_TOL = 2.0**-36
 # the largest start of that search: x_j = 0's (2^-8 of a variable of size 1)
 _FD_CAP = math.ldexp(1.0, math.frexp(1.0)[1] + _FD_START)
 
@@ -118,7 +123,10 @@ class Differences:
         base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
         e0 = base + _FD_START
         col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
-        if col0 is None or math.ldexp(1.0, e0) >= _FD_CAP or self._rounding(col0, j) <= _ROUNDING_TOL:
+        if col0 is None or math.ldexp(1.0, e0) >= _FD_CAP:
+            return self._descend(x, j, g0, e0, (col0, self.fits))
+        r0 = self._rounding(col0, j)
+        if r0 <= _GROW_TOL:
             return self._descend(x, j, g0, e0, (col0, self.fits))
         fits0 = self.fits
         e = self._grow(x, j, g0, e0, col0)
@@ -126,7 +134,10 @@ class Differences:
             best, hbest = self._descend(x, j, g0, e)
             if best is not None:
                 return best, hbest
-        best, hbest = self._descend(x, j, g0, e0, strict=False)
+        if r0 <= _ROUNDING_TOL:  # not at rounding level: the plain search from the start
+            best, hbest = self._descend(x, j, g0, e0)
+        else:
+            best, hbest = self._descend(x, j, g0, e0, strict=False)
         self.fits = self.fits or fits0
         return best, hbest
 

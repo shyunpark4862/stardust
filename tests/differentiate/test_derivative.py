@@ -147,6 +147,24 @@ def test_threads_and_large_batches():
     assert np.max(np.abs(np.asarray(r.df) - want)) < 1e-9
 
 
+def test_threads_by_points():
+    # C111: 5,000 elements of 8 points run on the threads (the passes split by points); the bits are
+    # those of 1 thread and of each element alone
+    x = sd.linspace(-3.0, 3.0, 5000)
+    got = []
+    for t in (1, 3, 10):
+        sd.set_num_threads(t)
+        try:
+            r = D.derivative(sd.sin, x)
+        finally:
+            sd.set_num_threads(10)
+        got.append([np.asarray(getattr(r, k)).tobytes() for k in ("df", "error", "status", "n_iter", "nfev")])
+    assert got[0] == got[1] == got[2]
+    for i in (0, 2500, 4999):
+        one = D.derivative(sd.sin, float(x[i]))
+        assert (one.df, one.error, one.n_iter) == (float(r.df[i]), float(r.error[i]), int(r.n_iter[i]))
+
+
 def test_call_form():
     # C26, O38, O48: the first call (k,) on every element, then (k, p) of the elements in
     # progress with the args as (k, 1); p = order points, then 2

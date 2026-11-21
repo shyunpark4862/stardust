@@ -62,6 +62,54 @@
 ]
 }
 },
+"approx_fprime exp x0=0.0001": {
+"r": {
+"nd": "float64",
+"shape": [
+1,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.00068dce346abp+0"
+]
+}
+},
+"approx_fprime exp x0=1e-05": {
+"r": {
+"nd": "float64",
+"shape": [
+1,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.0000a7c5e3155p+0"
+]
+}
+},
+"approx_fprime exp x0=3e-06": {
+"r": {
+"nd": "float64",
+"shape": [
+1,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.00003254ebc00p+0"
+]
+}
+},
 "approx_fprime mgh01-n2-m2-x1 F": {
 "r": {
 "nd": "float64",

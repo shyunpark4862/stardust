@@ -120,6 +120,32 @@ void for_elements(std::size_t k, Fn&& fn) {
     }
 }
 
+// The weighted form of for_elements for the calculus functions, whose elements carry many points
+// each (tanhsinh 64 - 2^19, nsum's direct sums up to 2^24, derivative 2 - order): fn(r0, r1) over
+// [0, k) split over the threads when the work, k elements of about w points each, reaches kParallel
+// points, in pieces of about kTask points (at least one element) and at least kWoken pieces, so
+// that a pool's sleeping workers join (csrc/parallel/pool.cpp wakes them for more than 16 tasks;
+// htest H141's for_pieces_woken). Which thread runs a piece never changes an element's arithmetic.
+// for_elements itself (the optimize functions, one point per element) is unchanged (C22).
+constexpr std::size_t kWoken = 17;
+
+template <class Fn>
+void for_weighted(std::size_t k, std::size_t w, Fn&& fn) {
+    const std::size_t work = k * std::max<std::size_t>(w, 1);
+    if (work >= kParallel && k > 1 && parallel::available()) {
+        std::size_t per = std::max<std::size_t>(kTask / std::max<std::size_t>(w, 1), 1);  // elements a piece
+        per = std::min(per, std::max<std::size_t>(k / kWoken, 1));
+        const auto tasks = static_cast<std::int64_t>((k + per - 1) / per);
+        parallel::parallel_for(tasks, [&](std::int64_t t) {
+            const std::size_t r0 = static_cast<std::size_t>(t) * per;
+            fn(r0, std::min(k, r0 + per));
+        });
+    } else {
+        parallel::Unlocked u(work >= kParallel);
+        fn(std::size_t{0}, k);
+    }
+}
+
 // dst[q] = src[e(q)] for q < k (items of isz bytes; src's stride st), e(q) = idx[q] mod n (idx[q]
 // < 2 n; q when idx is null). The values are copied as they are, so any split gives the same.
 inline void gather(
@@ -151,7 +177,8 @@ inline void gather(
     });
 }
 
-// One call of the user's function on the points of k elements. start(k) prepares one point per
+// One call of the user's function on the points of k elements (Keep: the points are kept for x();
+// the calculus functions, which never read them back, use CallPoints = CallT<false>). start(k) prepares one point per
 // element (a new float64 sd.ndarray (k,), each arg (k,)), start(k, p) p points per element ((k, p)
 // in C order, each arg (k, 1)). put writes a point (into the array and a copy kept here: the
 // function may change its argument), run(idx) calls f(x, *args) with each of the user's args
@@ -159,9 +186,10 @@ inline void gather(
 // null) into a new array, and value reads f's values. A returned value that is not a float64
 // sd.ndarray of the argument's shape goes through check(value, k) for (k,) and
 // check(value, (k, p)) for (k, p), which returns one or raises.
-class Call {
+template <bool Keep>
+class CallT {
 public:
-    Call(nb::handle f, nb::handle check, nb::handle args, std::size_t n)
+    CallT(nb::handle f, nb::handle check, nb::handle args, std::size_t n)
         : f_(f), check_(check), n_(static_cast<std::int64_t>(n)) {
         for (nb::handle a : nb::borrow<nb::tuple>(args)) args_.push_back(&as_ndarray(a));
     }
@@ -170,7 +198,7 @@ public:
         k_ = static_cast<std::int64_t>(k);
         p_ = 1;
         rows_ = false;
-        x_.resize(k);
+        if constexpr (Keep) x_.resize(k);
         const std::int64_t shape[1] = {k_};
         NDArray a = new_array(DType::Float64, shape);
         buf_ = reinterpret_cast<double*>(a.data);
@@ -180,19 +208,27 @@ public:
         k_ = static_cast<std::int64_t>(k);
         p_ = static_cast<std::int64_t>(p);
         rows_ = true;
-        x_.resize(k * p);
+        if constexpr (Keep) x_.resize(k * p);
         const std::int64_t shape[2] = {k_, p_};
         NDArray a = new_array(DType::Float64, shape);
         buf_ = reinterpret_cast<double*>(a.data);
         arr_ = wrap(std::move(a));
     }
     void put(std::size_t r, double x) {
-        x_[r] = x;
+        if constexpr (Keep) x_[r] = x;
         buf_[r] = x;
     }
     void put(std::size_t r, std::size_t j, double x) { put(r * static_cast<std::size_t>(p_) + j, x); }
-    double x(std::size_t r) const { return x_[r]; }
-    double x(std::size_t r, std::size_t j) const { return x_[r * static_cast<std::size_t>(p_) + j]; }
+    double x(std::size_t r) const
+        requires Keep
+    {
+        return x_[r];
+    }
+    double x(std::size_t r, std::size_t j) const
+        requires Keep
+    {
+        return x_[r * static_cast<std::size_t>(p_) + j];
+    }
 
     void run(const std::int64_t* idx) {
         if (k_ == 0) return;
@@ -261,6 +297,9 @@ private:
     bool rows_ = false;
 };
 
+using Call = CallT<true>;
+using CallPoints = CallT<false>;
+
 // The elements in progress (in order) and the bookkeeping of the ones that stopped.
 struct Progress {
     std::vector<std::int64_t> active;
@@ -303,6 +342,26 @@ void advance(Progress& P, std::vector<std::uint32_t>& on, Fn&& goes_on) {
             if (on[r]) P.active[w++] = P.active[r];
     } else {
         parallel::Unlocked u(k >= kParallel);
+        for (std::size_t r = 0; r < k; ++r)
+            if (goes_on(r)) P.active[w++] = P.active[r];
+    }
+    P.active.resize(w);
+}
+
+// advance with the work weighted as for_weighted (w points an element).
+template <class Fn>
+void advance_weighted(Progress& P, std::vector<std::uint32_t>& on, std::size_t wt, Fn&& goes_on) {
+    const std::size_t k = P.active.size();
+    std::size_t w = 0;
+    if (k * std::max<std::size_t>(wt, 1) >= kParallel && k > 1 && parallel::available()) {
+        on.resize(k);
+        for_weighted(k, wt, [&](std::size_t r0, std::size_t r1) {
+            for (std::size_t r = r0; r < r1; ++r) on[r] = goes_on(r);
+        });
+        for (std::size_t r = 0; r < k; ++r)
+            if (on[r]) P.active[w++] = P.active[r];
+    } else {
+        parallel::Unlocked u(k * std::max<std::size_t>(wt, 1) >= kParallel);
         for (std::size_t r = 0; r < k; ++r)
             if (goes_on(r)) P.active[w++] = P.active[r];
     }

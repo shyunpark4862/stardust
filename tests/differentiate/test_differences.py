@@ -40,15 +40,18 @@ def _count(f, x0):
 
 @pytest.mark.parametrize(
     ("x0", "calls"),
-    [(0.0, 17), (1e-300, 25), (1e-30, 25), (1e-12, 61), (1e-8, 61), (1e-4, 13), (1e-2, 13), (1.0, 17)],
-)
+    [(0.0, 17), (1e-300, 25), (1e-30, 25), (1e-12, 61), (1e-8, 61), (3e-6, 57), (1e-5, 53), (1e-4, 49), (1e-2, 13),
+     (1.0, 17)],
+)  # fmt: skip
 def test_exp_near_zero_counts(x0, calls):
     # f(x0) once, then 8 for the first two steps and 4 per further step; near 0 (not 0) the start is
-    # at rounding level and the step grows by factors of 4 until the truncation error shows
+    # at rounding level, or above 2^-36 of the column (C112), and the step grows by factors of 4
+    # until the truncation error shows
     d, n = _count(math.exp, x0)
     assert n == calls
-    # 2.6e-10 at 1e-4, where the start is not at rounding level and the search only goes down
-    assert abs(d - math.exp(x0)) <= 1e-9
+    # before C112 the start 2^-8 |x0| was kept when its rounding level was below sqrt(eps): 1.5e-8
+    # at 3e-6, 5.1e-9 at 1e-5, 2.6e-10 at 1e-4 (the search only goes down)
+    assert abs(d - math.exp(x0)) <= 1e-11 * math.exp(x0)
 
 
 @pytest.mark.parametrize("f", [math.sin, math.atan, math.tanh, math.log1p])

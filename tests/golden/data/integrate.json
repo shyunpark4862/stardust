@@ -10631,6 +10631,12 @@ true
 "msg": "fixed_quad(): 'n' must be >= 1"
 }
 },
+"err fixed_quad n too large": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fixed_quad(): 'n' must be at most 10000"
+}
+},
 "err fixed_quad scalar value": {
 "r": {
 "error": "builtins.ValueError",
@@ -10665,6 +10671,12 @@ true
 "r": {
 "error": "builtins.TypeError",
 "msg": "newton_cotes(): 'rn' must be an int or a sequence of numbers, not float"
+}
+},
+"err newton_cotes rn too large": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "newton_cotes(): 'rn' must be at most 256 (the number of intervals)"
 }
 },
 "err nquad empty": {
