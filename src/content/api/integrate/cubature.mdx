@@ -1,0 +1,254 @@
+---
+kind: function
+title: cubature
+names: [cubature]
+group: 벡터와 다차원
+order: 2
+signatures:
+  - "sd.integrate.cubature(f, a, b, /, *, rule='gk21', rtol=1e-08, atol=0.0, max_subdivisions=10000, points=None)"
+summary: 여러 변수의 함수를 상자 모양의 영역 위에서 적응 구적으로 적분해요. 함수를 점 하나씩이 아니라 점들의 배열로 한 번에 부르고, 오차가 가장 큰 영역을 축마다 반으로 나눠 가요. 값이 배열이어도 돼요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "피적분 함수 f(x). x는 점 n개의 좌표가 든 float64 sd.ndarray (n, ndim)이고, 점마다의 값 (n,) 또는 (n, …)의 실수 배열(sd.ndarray, numpy 배열, 시퀀스)을 돌려줘요. 뒤 모양은 호출마다 같아야 해요."
+  - name: a
+    type: 실수의 시퀀스
+    kind: positional-only
+    desc: "상자의 아래 끝 (ndim,). 리스트, sd.ndarray, numpy 배열이고 ±inf를 받아요."
+  - name: b
+    type: 실수의 시퀀스
+    kind: positional-only
+    desc: "상자의 위 끝 (ndim,). a와 길이가 같아야 해요. a_i > b_i인 축은 부호가 바뀌어요."
+  - name: rule
+    type: str
+    kind: keyword-only
+    desc: "영역마다의 규칙. 'gk21'(기본값), 'gk15'(1차원 Gauss–Kronrod 규칙의 곱), 'genz-malik'(ndim ≥ 2)."
+  - name: rtol
+    type: float
+    kind: keyword-only
+    desc: "상대 허용오차. 유한한 0 이상의 수예요. 기본값 1e-8."
+  - name: atol
+    type: float
+    kind: keyword-only
+    desc: "절대 허용오차. 유한한 0 이상의 수예요. 모든 성분에서 error ≤ atol + rtol·|integral|이면 멈춰요. 기본값 0."
+  - name: max_subdivisions
+    type: int
+    kind: keyword-only
+    desc: "영역을 나누는 횟수의 상한. 1 이상이에요. 기본값 10000."
+  - name: points
+    type: 점의 시퀀스 또는 None
+    kind: keyword-only
+    desc: "피할 점들. 점마다 ndim개의 실수예요. 처음에 그 점이 영역의 모서리에 오게 나눠서, 규칙이 그 점에서 함수를 부르지 않아요. 특이점의 자리를 알 때 줘요."
+returns:
+  type: IntegrateResult
+  desc: "integral, error, converged, status, message, nfev, subdivisions와 영역 정보 regions, region_integrals, region_errors, n_regions. 값이 (n,)이면 integral·error는 Python 수, (n, …)이면 뒤 모양의 배열이에요. 둘로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, a·b가 수의 시퀀스가 아닐 때(수 하나 포함), rule이 문자열이 아닐 때, rtol·atol이 실수가 아닐 때, max_subdivisions가 int가 아닐 때, points가 점의 시퀀스가 아닐 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: a·b가 비었거나 길이가 다를 때, NaN이 있을 때, 한 축의 두 끝이 같은 무한일 때, rule 이름이 틀렸을 때(scipy의 'gauss-kronrod' 포함), ndim = 1에 'genz-malik'을 줬을 때, rtol·atol이 음수이거나 유한하지 않을 때, max_subdivisions가 1보다 작을 때, points의 점이 ndim개가 아닐 때, f가 돌려준 모양이 틀렸을 때.
+seeAlso: [quad_vec, nquad, dblquad, quad, results, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+$\int_0^1\!\int_0^1 e^{-x^2 - y^2}\,dx\,dy$ 같은 다차원 적분은 [`dblquad`](/api/integrate/dblquad/)·[`nquad`](/api/integrate/nquad/)처럼 1차원 적분을 겹쳐서도 풀 수 있지만, 그러면 안쪽 적분을 바깥 점마다 따로 풀어서 함수를 점 하나씩 아주 많이 불러요. `cubature`는 상자 전체를 다차원 규칙으로 직접 다뤄요.
+
+1. 상자에 규칙을 적용해 값과 오차를 어림해요. 규칙의 점들은 한 번의 호출로 넘겨요.
+2. 오차가 가장 큰 영역을 축마다 반으로 나눠 $2^{\text{ndim}}$개의 작은 상자로 바꾸고, 그 상자들에 다시 규칙을 적용해요.
+3. 모든 성분의 오차가 허용오차 안에 들 때까지 되풀이해요.
+
+함수가 점들의 배열을 받아 배열 연산으로 계산하므로, 호출 한 번에 수백, 수천 개의 점을 처리해요.
+
+## 기본 사용
+
+`f`는 (n, ndim) 배열을 받아요. 행 하나가 점 하나이고, 열 `x[:, 0]`, `x[:, 1]`이 변수예요. 점마다의 값 (n,)을 돌려줘요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> f = lambda x: sd.exp(-x[:, 0]**2 - x[:, 1]**2)
+>>> r = sd.integrate.cubature(f, [0, 0], [1, 1])
+>>> r
+IntegrateResult(integral=0.557746, error=5.55112e-17, converged=True, nfev=982)
+>>> r.integral - (math.sqrt(math.pi) / 2 * math.erf(1))**2
+1.1102230246251565e-16
+```
+
+결과는 [`IntegrateResult`](/api/integrate/results/)예요. `quad` 계열과 달리 둘로 풀리지 않으니 이름으로 읽어요. `subdivisions`(나눈 횟수)와 `n_regions`(마지막 영역 수)도 있어요. 이 매끄러운 함수는 처음 상자 하나에서 끝났어요.
+
+```python
+>>> r.subdivisions, r.n_regions
+(0, 1)
+```
+
+### f가 받는 것
+
+`f`는 영역마다 두 번 불려요. 한 번은 규칙의 점, 한 번은 오차를 어림할 두 규칙(높은 규칙과 낮은 규칙)의 점이에요.
+
+```python
+>>> shapes = []
+>>> def g(x):
+...     shapes.append(x.shape)
+...     return sd.exp(-x[:, 0]**2 - x[:, 1]**2)
+>>> r = sd.integrate.cubature(g, [0, 0], [1, 1])
+>>> shapes
+[(441, 2), (541, 2)]
+```
+
+'gk21'의 2차원 규칙은 $21^2 = 441$점이고, 오차용 호출은 21점 규칙과 10점 규칙의 곱 $441 + 100$점이에요. `nfev`는 그 합 982예요.
+
+`f`는 수 하나가 아니라 점마다의 값을 돌려줘야 해요. 상수 함수도 그래요.
+
+```python
+>>> sd.integrate.cubature(lambda x: 1.0, [0, 0], [1, 1])
+Traceback (most recent call last):
+    ...
+ValueError: cubature(): 'f' must return shape (441,) or (441, ...) for its argument of shape (441, 2), not a scalar
+>>> sd.integrate.cubature(lambda x: sd.ones_like(x[:, 0]), [0, 0], [1, 2]).integral
+2.0
+```
+
+### 배열 값
+
+`f`가 (n, …)을 돌려주면 뒤 모양의 적분을 한꺼번에 구해요. 넓이, 무게중심의 분자, 곱의 적분을 같은 점으로 계산해 봐요.
+
+```python
+>>> h = lambda x: sd.stack([sd.ones_like(x[:, 0]), x[:, 0], x[:, 0] * x[:, 1]], axis=1)
+>>> r = sd.integrate.cubature(h, [0, 0], [1, 2])
+>>> r.integral
+array([1.9999999999999993, 1.0000000000000013, 1.0000000000000013], dtype=float64)
+>>> r.error
+array([1.3483138217029733e-15,  8.912141857830846e-16, 1.2238474123016374e-15], dtype=float64)
+```
+
+[`quad_vec`](/api/integrate/quad_vec/)와 달리 `error`도 성분마다 있고, 멈춤 판정도 성분마다 error ≤ atol + rtol·|integral|이에요. 그래서 작은 성분이 큰 성분에 묻히지 않아요(대신 0에 가까운 성분은 `atol`이 없으면 끝까지 나눌 수 있어요). `summary()`로 성분과 영역을 표로 봐요.
+
+```python
+>>> print(r.summary())
+                             Integration Results
+==============================================================================
+Converged:                        True  Integral:                   shape (3,)
+Status:                              0  Error estimate:             shape (3,)
+                                        Function Evals:                    982
+                                        Subdivisions:                        0
+                                        Regions:                             1
+Message:                                             Target precision reached.
+==============================================================================
+             integral      error
+------------------------------------------------------------------------------
+[0]          2.000000   1.35e-15
+[1]          1.000000   8.91e-16
+[2]          1.000000   1.22e-15
+==============================================================================
+            a           b           max error
+------------------------------------------------------------------------------
+[0]         (0, 0)      (1, 2)       1.35e-15
+==============================================================================
+```
+
+## 규칙 고르기
+
+| rule | 영역마다의 점 | 차수 | 알맞은 곳 |
+|---|---|---|---|
+| `'gk21'` | $21^{\text{ndim}}$ | 곱 규칙 | 2–3차원, 높은 정확도 |
+| `'gk15'` | $15^{\text{ndim}}$ | 곱 규칙 | 2–5차원, 'gk21'보다 가벼움 |
+| `'genz-malik'` | $2^{\text{ndim}} + 2\,\text{ndim}^2 + 2\,\text{ndim} + 1$ | 7 (오차용 5) | 4차원 이상, 보통의 정확도 |
+
+Gauss–Kronrod 곱 규칙은 매끄러운 함수에서 아주 정확해서 처음 상자 하나로 끝나는 일이 많아요. 하지만 점의 수가 차원에 대해 지수적으로 늘어요. 'gk15'로 5차원이면 영역 하나에 $15^5 = 759{,}375$점이고, 6차원이면 천만 점이 넘어 호출 한 번의 배열이 수백 MB가 돼요. Genz–Malik 규칙은 6차원에서도 영역마다 149점이라, 차원이 높으면 영역을 많이 나누더라도 점이 훨씬 적게 들어요.
+
+```python
+>>> g = lambda x: sd.exp(-sd.sum(x**2, axis=1))
+>>> r = sd.integrate.cubature(g, [0] * 5, [1] * 5, rule='gk15', rtol=1e-6)
+>>> r.nfev, r.subdivisions
+(1535557, 0)
+>>> r = sd.integrate.cubature(g, [0] * 5, [1] * 5, rule='genz-malik', rtol=1e-6)
+>>> r.nfev, r.subdivisions
+(189943, 24)
+>>> r = sd.integrate.cubature(g, [0] * 6, [1] * 6, rule='genz-malik', rtol=1e-6)
+>>> r.integral - (math.sqrt(math.pi) / 2 * math.erf(1))**6
+4.59088211890446e-10
+```
+
+반대로 2–3차원에서 높은 정확도가 필요하면 곱 규칙이 대개 더 적은 점으로 끝나요.
+
+```python
+>>> for rule in ('gk21', 'gk15', 'genz-malik'):
+...     print(rule, sd.integrate.cubature(g, [0] * 3, [1] * 3, rule=rule).nfev)
+gk21 19522
+gk15 7093
+genz-malik 39403
+```
+
+Genz–Malik 규칙은 2차원부터 정의돼요. 1차원이면 `ValueError`이고, 1차원 적분은 [`quad`](/api/integrate/quad/)나 [`quad_vec`](/api/integrate/quad_vec/)가 알맞아요.
+
+## 어려운 피적분 함수
+
+**특이점**: 규칙의 점이 특이점에 떨어지면 inf가 나와 멈춰요. $1/\sqrt{x^2 + y^2}$의 $[-1, 1]^2$은 원점이 'gk21'의 가운데 점이라 status 3이에요.
+
+```python
+>>> s = lambda x: 1 / sd.sqrt(x[:, 0]**2 + x[:, 1]**2)
+>>> r = sd.integrate.cubature(s, [-1, -1], [1, 1])
+>>> r.status, r.message
+(3, 'Non-finite values encountered.')
+```
+
+특이점의 자리를 `points`로 주면 처음에 그 점이 영역의 모서리에 오게 나눠요. 규칙의 점은 영역의 안쪽에만 있으니 특이점에서 함수를 부르지 않고, 적응 분할이 그 모서리 쪽으로 영역을 줄여 가요.
+
+```python
+>>> r = sd.integrate.cubature(s, [-1, -1], [1, 1], points=[[0, 0]])
+>>> r.converged, r.integral - 8 * math.asinh(1)
+(True, -7.704803017816175e-09)
+```
+
+**불연속**: 경계가 축과 나란하지 않은 불연속(원판의 지시 함수 같은 것)은 경계를 따라 영역을 끝없이 나눠야 해서 느려요. 상한에 닿으면 status 1이에요. 가능하면 변수를 바꿔(원판이면 극좌표) 불연속을 상자의 경계로 옮겨요.
+
+```python
+>>> disk = lambda x: sd.where(x[:, 0]**2 + x[:, 1]**2 < 1, 1.0, 0.0)
+>>> r = sd.integrate.cubature(disk, [-1, -1], [1, 1], max_subdivisions=200)
+>>> r.converged, r.status, r.integral - math.pi
+(False, 1, 3.4968283458169935e-05)
+```
+
+**무한한 축**: 끝에 ±inf를 주면 그 축의 변수를 바꿔 유한한 축으로 만들어요. 무한한 축이 있으면 처음에 원점에서 영역을 나눠요.
+
+```python
+>>> r = sd.integrate.cubature(f, [-math.inf, -math.inf], [math.inf, math.inf])
+>>> r.converged, r.integral - math.pi
+(True, 8.881784197001252e-16)
+```
+
+한 축의 두 끝이 같은 무한(`a_i = b_i = inf`)이면 `ValueError`예요. `a_i > b_i`인 축은 끝을 바꿔 계산하고 부호를 바꿔요.
+
+## 멈춤과 status
+
+| status | message | 뜻 |
+|---|---|---|
+| 0 | `Target precision reached.` | 모든 성분이 error ≤ atol + rtol·\|integral\|예요. |
+| 1 | `Target precision not reached.` | 나눈 횟수가 `max_subdivisions`에 닿았어요. |
+| 3 | `Non-finite values encountered.` | 값이나 오차가 유한하지 않아요. |
+
+`converged`는 `status == 0`이에요. 예외나 경고 대신 이 값들로 알려요. 오차 추정은 두 규칙의 차이로 만든 어림이라 엄밀한 상계가 아니에요. 첫 상자의 규칙이 좁은 봉우리를 놓치면 틀린 값을 수렴으로 알릴 수 있어요. 봉우리의 자리를 알면 `points`로 그 근처를 나눠 둬요.
+
+## 영역 정보
+
+`regions`는 (n, 2, ndim)의 영역 모서리(`regions[k, 0]`이 아래 끝, `regions[k, 1]`이 위 끝), `region_integrals`·`region_errors`는 영역마다의 값과 오차((n,) 또는 (n, …))예요. 최대 오차가 큰 것부터이고, 무한한 축이면 바꾼 변수의 영역이에요. `region_integrals`는 영역마다 `integral`에 더해지는 몫(뒤집은 축의 부호를 곱한 값)이에요.
+
+## 언제 cubature를 쓰나요
+
+- 영역이 상자이고(무한한 축 포함), 피적분 함수를 배열 연산으로 쓸 수 있을 때. 2차원 이상에서 겹친 `quad`보다 대개 훨씬 빨라요.
+- 안쪽 적분의 끝이 바깥 변수에 달린 영역(삼각형, 원판 위 같은 것)은 [`dblquad`](/api/integrate/dblquad/)·[`nquad`](/api/integrate/nquad/)가 직접 받아요. `cubature`로 풀려면 변수를 바꿔 상자로 만들어요.
+- 피적분 함수가 점 하나씩만 계산되는 Python 코드라면 [`nquad`](/api/integrate/nquad/)가 더 편할 수 있어요.
+
+같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+- scipy 1.18.1의 `scipy.integrate.cubature`와 같은 알고리즘과 규칙이고, 지금은 같은 점에서 `f`를 불러 같은 값, 오차, 나눈 횟수, 영역을 내요(비트까지 같지만 약속은 아니에요). 아래의 다른 점 빼고요.
+- 결과의 `estimate`는 `integral`, status는 문자열 대신 정수(0, 1, 3)와 `converged`예요. `regions`는 배열 필드예요.
+- `args`, `workers`, 규칙 객체, 별칭 `'gauss-kronrod'`(`'gk21'`)는 없어요. `max_subdivisions`는 1 이상의 int예요(scipy는 None과 0도 받아요).
+- `a`, `b`는 길이가 같은 시퀀스여야 해요(scipy는 수 하나를 늘려 맞춰요).
+- $(-\infty, b]$ 축은 문서에 적힌 치환 그대로예요(scipy의 코드는 이 축을 $[-b, \infty)$로 계산해 $\int_{-\infty}^0 e^x$에 inf를 내요).
+- 멈춘 값이나 오차가 유한하지 않으면 status 3이에요(scipy는 NaN에서 `'converged'`라고 알려요). 무한한 축이 있을 때의 `points`도 그 축의 치환으로 옮겨 받아요.

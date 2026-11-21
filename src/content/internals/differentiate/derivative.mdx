@@ -1,0 +1,462 @@
+---
+title: derivative의 알고리즘
+group: 알고리즘
+order: 1
+summary: derivative가 쓰는 고차 차분 공식과 그 가중치를 정확히 계산하는 방법, 그 공식이 Richardson 외삽과 같은 식인 까닭, 간격을 줄이며 점을 다시 쓰는 스텐실, 짝으로 더하는 합, 오차 어림과 멈춤, 한쪽 차분을 코드와 함께 설명해요. 끝에서 approx_fprime의 5점 차분과 간격 키우기를 견줘요.
+seeAlso: [overview, jacobian-hessian, accuracy-performance]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const errOrder2 = [[1,-1.375],[2,-1.981],[3,-2.584],[4,-3.186],[5,-3.788],[6,-4.391],[7,-4.993],[8,-5.595],[9,-6.197],[10,-6.799]];
+export const errOrder4 = [[1,-3.882],[2,-5.089],[3,-6.293],[4,-7.498],[5,-8.702],[6,-9.906],[7,-11.11],[8,-12.309],[9,-13.608],[10,-14.508]];
+export const errOrder8 = [[1,-11.579],[2,-13.942],[3,-14.556],[4,-14.295],[5,-15.185],[6,-14.185],[7,-13.221]];
+
+## 한눈에 보기
+
+`derivative(f, x)`는 원소마다 이렇게 계산해요. 간격 $h$에서 $2n$차 차분 공식으로 $f'(x)$를 어림하고(`order`가 $2n$, 기본 8), 간격을 `step_factor` $c$(기본 2)로 나눠 다시 어림해요. 이웃한 두 어림의 차가 오차 추정 `error`이고, 그것이 `atol + rtol·|df|`보다 작아지면 멈춰요. 방법과 부르는 점은 scipy의 `scipy.differentiate.derivative` 그대로예요.
+
+| 단계 | 하는 일 | 코드 |
+|---|---|---|
+| 가중치 | 스텐실의 마디에서 $f'(0)$를 내는 가중치를 정확히 계산해 한 번 반올림 | `_weights.py`의 `weights` |
+| 점 | 반복 t의 간격 $h_t = h_0/c^t$, 중앙 스텐실 $x \pm h_t/c^k$ ($k < n$) | `derivative.cpp`의 `points` |
+| 합 | 마디 $\pm t$의 짝마다 $w\,(f(x - ht) - f(x + ht))$를 더해 $h$로 나눔 | `central`, `dot` |
+| 멈춤 | 수렴 0, 유한하지 않음 −3, 오차 추정이 10배 넘게 커짐 −1, `max_iter` −2 | `update` |
+
+이 글에서 $u = 2^{-53}$은 단위 반올림, $\varepsilon = 2^{-52}$은 기계 엡실론이에요.
+
+## 차분 공식: 마디와 가중치
+
+점 $x + h t_i$($t_i$는 스텐실의 마디)에서의 함숫값으로 $f'(x)$를 어림하는 식을 찾아요. $p(s)$를 마디 $t_0, \dots, t_{2n}$에서 $f(x + hs)$와 같은 값을 갖는 $2n$차 다항식이라 하면 $f'(x) \approx p'(0)/h$이고, $p$를 Lagrange 기저 $L_i$로 쓰면
+
+$$
+f'(x) \approx \frac{1}{h}\sum_{i} L_i'(0)\, f(x + h t_i)
+$$
+
+이에요. 가중치 $w_i = L_i'(0)$은 마디에만 달려 있고, $0$이 마디의 하나이면
+
+$$
+w_i = \frac{\prod_{j \ne i,\ t_j \ne 0} (-t_j)}{\prod_{j \ne i} (t_i - t_j)} \quad (t_i \ne 0), \qquad
+w_i = -\sum_{j \ne i} \frac{1}{t_j} \quad (t_i = 0)
+$$
+
+예요. 이 식은 차수 $2n$ 이하의 다항식에 정확하므로, 매끄러운 $f$에서 오차가 $h^{2n}$에 비례해요. scipy는 같은 가중치를 Vandermonde 계 $\sum_i w_i t_i^j = [j = 1]$($j = 0, \dots, 2n$)을 풀어 얻어요. 정확한 산술에서는 둘이 같은 해예요.
+
+중앙 스텐실의 마디는 $\pm 1, \pm 1/c, \dots, \pm 1/c^{n-1}$과 $0$이에요. 마디가 0을 중심으로 대칭이라 가운데 가중치는 0이고 나머지는 정확히 반대칭($w(-t) = -w(t)$)이에요. 기본값 $n = 4$, $c = 2$이면 정확한 가중치는 이래요.
+
+```python
+>>> from fractions import Fraction
+>>> from stardust.differentiate import _weights
+>>> c = Fraction(2)
+>>> nodes = [-(c ** -(k - 1)) for k in range(4, 0, -1)] + [Fraction(0)] + [c ** -(k - 1) for k in range(1, 5)]
+>>> [str(t) for t in nodes]
+['-1/8', '-1/4', '-1/2', '-1', '0', '1', '1/2', '1/4', '1/8']
+>>> [str(w) for w in _weights._lagrange(nodes, Fraction(0), Fraction(1))]
+['-16384/2835', '128/135', '-4/135', '1/5670', '0', '-1/5670', '4/135', '-128/135', '16384/2835']
+```
+
+$x$에 가장 가까운 마디 $\pm 1/8$의 가중치가 가장 크고, 가장 먼 $\pm 1$은 $1/5670$이라 거의 기여하지 않아요.
+
+## Richardson 외삽과 같은 식
+
+이 공식은 중앙 차분의 Richardson 외삽과 정확한 산술에서 같은 식이에요. 중앙 차분 $D(s) = \dfrac{f(x + s) - f(x - s)}{2s}$의 Taylor 전개에는 $s$의 짝수 거듭제곱만 있어요.
+
+$$
+D(s) = f'(x) + a_2 s^2 + a_4 s^4 + \cdots + a_{2n-2}\, s^{2n-2} + O(s^{2n})
+$$
+
+간격 $s_k = h/c^k$($k = 0, \dots, n - 1$)의 $D(s_k)$ $n$개를 계수 $\alpha_k$로 섞되 $\sum_k \alpha_k = 1$이고 $\sum_k \alpha_k s_k^{2j} = 0$($j = 1, \dots, n - 1$)이면 $s^2, \dots, s^{2n-2}$의 항이 모두 지워져 오차가 $h^{2n}$이 돼요. 이것이 Richardson 외삽이에요. 섞은 결과는 $f(x \pm h/c^k)$의 일차 결합이고, 차수 $2n$ 이하의 다항식에 정확해요. 같은 $2n + 1$개 마디에서 그런 일차 결합은 하나뿐이므로(Vandermonde 행렬이 가역이니까요) 앞 절의 Lagrange 가중치와 같아요. 마디 $+s_k$의 가중치가 $\alpha_k/(2 s_k)$예요.
+
+```python
+>>> s = [c ** -k for k in range(4)]
+>>> A = [[sk ** (2 * j) for sk in s] for j in range(4)]   # sum_k alpha_k s_k^(2j) = [j = 0]
+>>> b = [Fraction(1), Fraction(0), Fraction(0), Fraction(0)]
+>>> for i in range(4):
+...     for r in range(4):
+...         if r != i:
+...             m = A[r][i] / A[i][i]
+...             A[r] = [x - m * y for x, y in zip(A[r], A[i])]
+...             b[r] -= m * b[i]
+>>> alpha = [b[i] / A[i][i] for i in range(4)]
+>>> [str(a) for a in alpha]
+['-1/2835', '4/135', '-64/135', '4096/2835']
+>>> [str(a / (2 * sk)) for a, sk in zip(alpha, s)]
+['-1/5670', '4/135', '-128/135', '16384/2835']
+```
+
+마지막 줄이 위의 가중치에서 마디 $1, 1/2, 1/4, 1/8$의 것과 같아요. 그래서 반복 t의 어림은 간격 $h_t, h_t/c, \dots, h_t/c^{n-1}$의 중앙 차분 $n$개를 외삽한 값이고, 반복이 나아갈 때마다 가장 큰 간격 하나가 빠지고 더 작은 간격 하나가 들어와요. Richardson 표로 말하면 깊이 $n$으로 고정한 대각선을 따라 내려가는 셈이에요. 다만 표를 만들지 않고 가중합 하나로 계산해요(scipy와 같아요).
+
+한쪽 스텐실도 같은 짜임이에요. 앞쪽 차분 $(f(x + s) - f(x))/s$의 전개에는 $s$의 모든 거듭제곱이 있으니, 간격 $h/d^k$($k = 0, \dots, 2n - 1$)의 앞쪽 차분 $2n$개로 $s^1, \dots, s^{2n-1}$을 지우면 마디 $0, 1, 1/d, \dots, 1/d^{2n-1}$의 $2n$차 공식이 돼요. 한쪽 스텐실은 반복마다 마디 두 개가 바뀌므로 $d = \sqrt c$로 잡아야 반복 하나에 간격이 중앙처럼 $c$배 줄어요.
+
+## 가중치를 정확하게
+
+scipy는 Vandermonde 계를 `np.linalg.solve`(LAPACK)로 풀어서 가중치를 여러 번 반올림해요. `order=8`, `step_factor=2`에서 중앙 가중치 9개 가운데 8개가 정확한 값과 다르고 상대 $2.7 \times 10^{-14}$까지 차이 나요. 한쪽 가중치는 9개 모두 다르고 $1.1 \times 10^{-10}$까지예요. 여기서는 모든 가중치를 정확한 값에서 가장 가까운 double로 한 번만 반올림해요.
+
+```python
+# src/stardust/differentiate/_weights.py
+@functools.lru_cache(maxsize=64)
+def weights(n, c):
+    """(central, one_sided): two tuples of 2n + 1 doubles for n terms and the step factor c (a
+    finite double > 0, not 1), in the order of scipy's stencils (above)."""
+    cf = Fraction(c)
+    central = [-(cf ** -(k - 1)) for k in range(n, 0, -1)] + [Fraction(0)] + [cf ** -(k - 1) for k in range(1, n + 1)]
+    wc = tuple(_round(w) for w in _lagrange(central, Fraction(0), Fraction(1)))
+    root = _rational_sqrt(cf)
+    if root is not None:
+        side = [Fraction(0)] + [root**-k for k in range(2 * n)]
+        wr = tuple(_round(w) for w in _lagrange(side, Fraction(0), Fraction(1)))
+    else:
+        zero, one = _Quad(Fraction(0), Fraction(0), cf), _Quad(Fraction(1), Fraction(0), cf)
+
+        def inv_root_power(k):  # d^-k = c^(-k/2): rational for even k, sqrt(c) c^(-(k+1)/2) for odd
+            if k % 2 == 0:
+                return _Quad(cf ** -(k // 2), Fraction(0), cf)
+            return _Quad(Fraction(0), cf ** -((k + 1) // 2), cf)
+
+        side = [zero] + [inv_root_power(k) for k in range(2 * n)]
+        wr = tuple(w.rounded() for w in _lagrange(side, zero, one))
+    return wc, wr
+```
+
+`step_factor`는 double이라 그 자체가 정확한 유리수이고(`Fraction(c)`), 중앙 마디 $\pm 1/c^k$도 유리수예요. 그래서 중앙 가중치는 `Fraction`의 유리수 계산으로 정확히 나오고, Python의 정수 나눗셈 `float(Fraction)`이 올바로 반올림해요. 가운데 가중치는 정확히 0이고 나머지는 정확히 반대칭이에요.
+
+```python
+>>> wc, wr = _weights.weights(4, 2.0)
+>>> wc[4] == 0.0, all(wc[i] == -wc[8 - i] for i in range(9))
+(True, True)
+```
+
+한쪽 마디 $1/d^k = c^{-k/2}$는 $k$가 홀수면 무리수예요($c$가 유리수의 제곱이 아니면). 그래서 한쪽 가중치는 체 $\mathbb{Q}(\sqrt c)$에서 계산해요. 이 체의 원소는 유리수 $a, b$로 $a + b\sqrt c$이고, 덧셈과 곱셈은 $a, b$의 유리수 계산이고 나눗셈은 켤레 $a - b\sqrt c$를 곱해 $a^2 - b^2 c$(0이 아닌 유리수)로 나누면 돼요. `_Quad`가 그 수이고, `_lagrange`는 같은 코드로 `Fraction`과 `_Quad` 모두를 계산해요.
+
+끝에 $a + b\sqrt c$를 double로 반올림할 때는 $\sqrt c$를 정수로 감싸요. $c = p/q$이면 $\sqrt c = \sqrt{pq}/q$이고, $S = \lfloor \sqrt{pq}\, 2^K \rfloor$(`math.isqrt`)로 $S/(q2^K) \le \sqrt c < (S + 1)/(q2^K)$예요. 두 끝에서의 $a + b\sqrt c$를 반올림해 같으면 그 사이의 참값도 같은 double로 반올림돼요(무리수는 두 double의 한가운데에 있을 수 없어 동점이 없어요). 다르면 $K$를 두 배로 해 다시 감싸요.
+
+```python
+    # src/stardust/differentiate/_weights.py
+    def rounded(self):
+        """The nearest double to a + b sqrt(c)."""
+        if self.b == 0:
+            return _round(self.a)
+        # sqrt(c) = sqrt(p q) / q for c = p / q; S <= sqrt(p q) 2^K < S + 1
+        p, q = self.c.numerator, self.c.denominator
+        k = 64
+        while True:
+            s = math.isqrt((p * q) << (2 * k))
+            lo = self.a + self.b * Fraction(s, q << k)
+            hi = self.a + self.b * Fraction(s + 1, q << k)
+            r0, r1 = _round(lo), _round(hi)
+            if r0 == r1:  # the value lies between them, so it rounds alike (an irrational is no tie)
+                return r0
+            k *= 2
+```
+
+가중치가 점을 바꾸지는 않으므로 부르는 점은 scipy와 같아요. 값 `df`는 가중치와 합의 순서(다음 절)가 달라 scipy와 끝자리가 다를 수 있어요. 시험은 (n, c) 열한 가지의 모든 가중치를 Arb(구간 산술)로 400비트에서 푼 Vandermonde 계의 공과 견줘, 그 공에 가장 가까운 double인지 봐요.
+
+## 스텐실을 따라 줄이기
+
+### 점
+
+스텐실의 상수는 원소마다 같아서 한 번 계산해 둬요. $c^k$와 $d^k$는 scipy가 numpy의 `c ** arange(n)`로 계산하는 값과 같도록 `std::pow`로, $d = c^{0.5}$와 $c^{n-1}$도 scipy의 Python 식과 같은 `pow`로 계산해요.
+
+```cpp
+// csrc/differentiate/derivative.cpp
+struct Stencil {
+    std::size_t n;
+    double c, d, cn;
+    vec pc, pd, wc, wr;
+
+    Stencil(std::size_t terms, double factor, vec central, vec one_sided)
+        : n(terms),
+          c(factor),
+          d(std::pow(factor, 0.5)),
+          cn(std::pow(factor, static_cast<double>(terms - 1))),
+          pc(terms),
+          pd(2 * terms),
+          wc(std::move(central)),
+          wr(std::move(one_sided)) {
+        for (std::size_t k = 0; k < n; ++k) pc[k] = std::pow(c, static_cast<double>(k));
+        for (std::size_t k = 0; k < 2 * n; ++k) pd[k] = std::pow(d, static_cast<double>(k));
+    }
+    std::size_t width() const { return 2 * n + 1; }
+    std::size_t points(bool first) const { return first ? 2 * n : 2; }
+};
+```
+
+첫 반복은 스텐실의 $2n$점을 모두 부르고($x$ 자신의 값은 첫 호출에서 이미 있어요), 그 뒤 반복은 두 점만 불러요. 간격이 $h$에서 $h/c$로 줄면 마디 $\pm h/c, \dots, \pm h/c^{n-1}$은 앞 반복의 $\pm h/c, \dots$와 같은 점이라 다시 부르지 않아요. 가장 바깥의 $x \pm h$가 빠지고 가장 안쪽의 $x \pm h/c^n$이 들어와요.
+
+```cpp
+// csrc/differentiate/derivative.cpp
+inline void points(const Stencil& S, int side, double x, double h, bool first, double* out) {
+    const std::size_t n = S.n;
+    if (side == kNone) {
+        for (std::size_t q = 0, p = S.points(first); q < p; ++q) out[q] = kNaN;
+        return;
+    }
+    if (side == kCentral) {
+        if (first) {
+            for (std::size_t q = 0; q < n; ++q) {
+                out[q] = x + -(h / S.pc[n - 1 - q]);
+                out[n + q] = x + h / S.pc[q];
+            }
+        } else {
+            out[0] = x + -h / S.cn;
+            out[1] = x + h / S.cn;
+        }
+        return;
+    }
+    const bool right = side == kRight;
+    if (first) {
+        for (std::size_t q = 0; q < 2 * n; ++q) {
+            const double hr = h / S.pd[q];
+            out[q] = right ? x + hr : x - hr;
+        }
+    } else {
+        const double h0 = h / S.cn, h1 = h / S.d / S.cn;
+        out[0] = right ? x + h0 : x - h0;
+        out[1] = right ? x + h1 : x - h1;
+    }
+}
+```
+
+`x + -(h / c^k)`처럼 식의 모양까지 scipy의 numpy 식과 같아서 점이 비트까지 같아요. 둘째 반복의 `h`는 이미 $c$로 나눈 간격이라, `h / S.cn`이 $h_0/c^n$이에요. $x = 1$, 기본값($h_0 = 0.5$, $c = 2$, $n = 4$)에서 보면 이래요.
+
+```python
+>>> calls = []
+>>> def f(x):
+...     calls.append(x.tolist())
+...     return sd.exp(x)
+>>> r = sd.differentiate.derivative(f, 1.0, max_iter=3)
+>>> for c_ in calls:
+...     print(c_)
+[1.0]
+[[0.9375, 0.875, 0.75, 0.5, 1.5, 1.25, 1.125, 1.0625]]
+[[0.96875, 1.03125]]
+```
+
+첫 반복의 8점은 $1 \mp 0.5/8, \mp 0.5/4, \mp 0.5/2, \mp 0.5$이고, 둘째 반복은 $1 \mp 0.25/8$ 두 점이에요. 둘째 반복에 수렴해서 셋째는 부르지 않았어요.
+
+### 값을 밀어 넣기
+
+원소의 함숫값 $2n + 1$개는 scipy의 `fc`와 같은 순서로 둬요. 왼쪽 마디 $n$개(가장 안쪽부터 바깥으로), $f(x)$, 오른쪽 마디 $n$개(가장 바깥부터 안으로)예요. 그 순서가 가중치 `wc`의 순서와 같아요. 둘째 반복부터는 왼쪽 값들을 한 칸 밀어 가장 바깥 값을 버리고 첫 칸에 새 가장 안쪽 값을 넣고, 오른쪽도 거울로 해요.
+
+```cpp
+    // csrc/differentiate/derivative.cpp
+    } else {
+        if (first) {
+            for (std::size_t q = 0; q < n; ++q) {
+                v[q] = val(q);
+                v[n + 1 + q] = val(n + q);
+            }
+        } else {
+            for (std::size_t q = n - 1; q > 0; --q) v[q] = v[q - 1];
+            v[0] = val(0);
+            for (std::size_t q = n + 1; q < 2 * n; ++q) v[q] = v[q + 1];
+            v[2 * n] = val(1);
+        }
+        s = central(S, v);
+        // The centre's weight is 0: in the first iteration f(x) enters as 0 f(x), NaN when f(x) is
+        // not finite (scipy's fc @ wc); after it scipy's centre slot holds an earlier point's
+        // value, which was finite or the element stopped with -3.
+        if (first) s += 0.0 * v[n];
+    }
+```
+
+가운데 가중치는 0이지만 첫 반복에서는 `0.0 * f(x)`를 더해요. $f(x)$가 NaN이나 inf이면 합이 NaN이 되어 그 원소가 −3으로 멈추게 하는 scipy의 `fc @ wc`와 같은 결과를 내려는 것이에요.
+
+## 짝으로 더하기
+
+가중치가 정확히 반대칭이라 중앙 스텐실의 합은 마디의 짝마다 $w\,(f(x - ht) - f(x + ht))$로 쓸 수 있어요. 바깥 짝부터 더해요.
+
+```cpp
+// csrc/differentiate/derivative.cpp
+inline double central(const Stencil& S, const double* v) {
+    const std::size_t n = S.n;
+    double s = S.wc[n - 1] * (v[n - 1] - v[n + 1]);
+    for (std::size_t q = n - 1; q-- > 0;) s += S.wc[q] * (v[q] - v[2 * n - q]);
+    return s;
+}
+```
+
+정확한 산술에서는 scipy의 $\sum_i w_i f_i$와 같은 값이지만 반올림은 달라요. 차례대로 더하면 $w_i f_i$ 하나하나가 $f(x)$ 크기의 큰 수이고 그 합은 $f'(x)h$ 크기로 상쇄돼요. 곱마다 $u\lvert w_i f(x)\rvert$의 반올림이 남으니 $f(x)$가 $f'(x)h$보다 훨씬 크면 그 반올림이 결과의 큰 몫이 돼요. 짝으로 묶으면 $f(x - ht)$와 $f(x + ht)$는 서로 가까운 값이라(두 배 안이면) 그 차가 Sterbenz 보조정리로 정확해요. 반올림은 작은 차에 가중치를 곱하는 데서만 생겨요.
+
+$\log$의 $x = 10^4$에서 보면 $f(x) \approx 9.2$이고 $f'(x)h \approx 2.5 \times 10^{-5}$예요. 수렴한 둘째 반복($h = 0.25$)의 값으로 두 합을 계산하면 이래요.
+
+```python
+>>> x, h = 1e4, 0.25
+>>> t = [-1/8, -1/4, -1/2, -1, 0, 1, 1/2, 1/4, 1/8]
+>>> v = sd.log(sd.asarray([x + s_ * h for s_ in t])).tolist()
+>>> plain = 0.0
+>>> for w, fv in zip(wc, v):
+...     plain += w * fv
+>>> pair = 0.0
+>>> for q in (3, 2, 1, 0):
+...     pair += wc[q] * (v[q] - v[8 - q])
+>>> print(f'{abs(plain / h - 1e-4) / 1e-4:.1e}  {abs(pair / h - 1e-4) / 1e-4:.1e}')
+3.2e-10  3.3e-11
+>>> sd.differentiate.derivative(sd.log, x).df == pair / h
+True
+```
+
+차례대로의 합은 상대오차 $3.2 \times 10^{-10}$, 짝의 합은 $3.3 \times 10^{-11}$이에요. 시험 모음 전체의 가장 큰 상대오차도 차례대로의 합이면 이 점의 $3.2 \times 10^{-10}$이고, 짝의 합이면 다른 점의 $6.2 \times 10^{-11}$이에요. 한쪽 스텐실은 짝이 없으므로 스텐실의 순서대로 곱하고 더해요(`dot`). 어느 쪽이든 원소마다 정해진 순서라, 원소의 결과는 배치의 크기와 스레드 수에 기대지 않아요.
+
+## 오차 어림과 멈춤
+
+### 갱신과 판정
+
+추정을 갱신한 뒤의 판정은 scipy의 순서 그대로예요.
+
+```cpp
+    // csrc/differentiate/derivative.cpp
+    double df = s / h;
+    if (side == kLeft) df = -df;
+    if (side == kNone) df = kNaN;
+    const double last = e.err;
+    e.err = std::abs(df - e.df);
+    e.df = df;
+    if (e.err < atol + rtol * std::abs(df)) return sConverged;
+    if (!(std::isfinite(x) && std::isfinite(df))) {
+        e.df = kNaN;
+        return sValueErr;
+    }
+    if (e.err > last * 10) return sErrorIncrease;
+    return sInProgress;
+```
+
+- **수렴(0)**: 오차 추정 $\lvert df_t - df_{t-1}\rvert$이 `atol + rtol·|df|`보다 작아요. 첫 반복은 앞 추정이 NaN이라 오차도 NaN이고 이 판정을 지나지 못해요. 그래서 수렴은 빨라야 둘째 반복이에요.
+- **유한하지 않음(−3)**: x나 df가 NaN·inf예요. 점이 정의역 밖이라 f가 NaN을 돌려준 경우가 대부분이에요. df는 NaN으로 둬요.
+- **오차 증가(−1)**: 오차 추정이 직전의 10배를 넘었어요. 간격이 너무 작아져 반올림이 절단 오차를 이기기 시작한 신호예요. 그때의 df와 오차를 돌려줘요. 비교할 직전 오차는 둘째 반복에 처음 생기므로 −1은 셋째 반복부터예요(NaN과의 비교는 거짓이에요).
+- **상한(−2)**: `max_iter`번 반복해도 멈추지 않으면 고리가 −2로 멈춰요.
+
+### 오차 추정이 뜻하는 것
+
+$e^x$의 $x = 1$에서 `atol`과 `rtol`을 0으로 두고(그래서 수렴하지 않고) `max_iter`를 늘려 가며 보면 추정이 어떻게 나아가는지 보여요. 원소의 계산은 결정적이라 `max_iter=k`의 결과가 k번째 반복의 추정이에요.
+
+```python
+>>> import math
+>>> for k in range(1, 8):
+...     r = sd.differentiate.derivative(sd.exp, 1.0, atol=0.0, rtol=0.0, max_iter=k)
+...     print(k, f'{r.error:.2e}', f'{abs(r.df - math.e) / math.e:.1e}', r.status)
+1 nan 2.6e-12 -2
+2 7.13e-12 1.1e-14 -2
+3 3.86e-14 2.8e-15 -2
+4 6.22e-15 5.1e-15 -2
+5 1.55e-14 6.5e-16 -2
+6 1.60e-14 6.5e-15 -2
+7 1.81e-13 6.0e-14 -1
+```
+
+<Fig caption="eˣ의 x = 1에서 반복마다 추정의 상대오차(log₁₀, atol = rtol = 0). 절단 오차가 앞서는 동안 반복 하나에 c^(2n)배 줄어요. order 2는 4배, order 4는 16배, order 8은 256배라 직선의 기울기가 다르고, order 8은 셋째 반복에 반올림 수준(10⁻¹⁴ 아래)에 닿아 그 뒤로는 들쭉날쭉해요.">
+  <Plot
+    curves={[
+      { points: errOrder2, label: 'order 2' },
+      { points: errOrder4, label: 'order 4' },
+      { points: errOrder8, label: 'order 8' },
+    ]}
+    domain={[1, 10]}
+    range={[-16, 0]}
+    xTicks={[
+      { v: 1, label: '1' },
+      { v: 3, label: '3' },
+      { v: 5, label: '5' },
+      { v: 7, label: '7' },
+      { v: 9, label: '9' },
+    ]}
+    yTicks={[
+      { v: -15, label: '10⁻¹⁵' },
+      { v: -12, label: '10⁻¹²' },
+      { v: -9, label: '10⁻⁹' },
+      { v: -6, label: '10⁻⁶' },
+      { v: -3, label: '10⁻³' },
+    ]}
+  />
+</Fig>
+
+절단 오차가 앞서는 동안 반복 t의 오차는 $E_t \approx C h_t^{2n}$이고 $E_{t-1} = c^{2n} E_t$예요. 오차 추정은 $\lvert df_t - df_{t-1}\rvert \approx E_{t-1} - E_t = (c^{2n} - 1)E_t$라, 지금 추정의 오차보다 $c^{2n} - 1$배(order 8이면 255배) 커요. 실제로는 앞 추정의 오차에 가까운 값이에요. 위 표의 둘째 반복도 오차 추정 $7.1 \times 10^{-12}$에 참 오차 $1.1 \times 10^{-14}$(상대)예요. 그래서 기본 `rtol` $\sqrt\varepsilon$로 멈춘 결과는 대개 `rtol`보다 몇 자리 정확해요. 반대로 반올림이 앞서기 시작하면 이웃한 추정의 차는 반올림의 흔들림일 뿐이라, 참 오차가 추정보다 클 수 있어요. 오차 추정은 엄밀한 상계가 아니에요.
+
+일곱째 반복은 오차 추정이 $1.6 \times 10^{-14}$에서 $1.8 \times 10^{-13}$으로 10배 넘게 커져 −1로 멈췄고, 돌려준 df는 그 반복의 것이라 다섯째 반복보다 덜 정확해요. scipy와 같은 동작이에요. 기본 허용오차에서는 보통 둘째나 셋째 반복에 수렴해서 이 갈래까지 가지 않아요.
+
+### 도함수가 0인 점
+
+수렴 판정의 `rtol·|df|`는 df가 0에 가까우면 아무것도 허락하지 않고, 기본 `atol`은 가장 작은 정규수라 사실상 0이에요. 그래서 도함수가 0인 점에서는 오차 추정이 반올림 수준이어도 정확히 0이 되지 않는 한 수렴하지 못하고 −2가 돼요. 그런 점에는 `atol`을 줘요.
+
+$x^3$의 0은 경계의 예예요. 마디와 간격이 2의 거듭제곱이라 짝마다의 차 $-2(ht)^3$이 정확하고, 반올림한 가중치를 곱한 네 항의 정확한 합은 $10^{-19}$ 크기의 0이 아닌 수인데, 바깥 짝부터 더한 double의 합은 정확히 0으로 떨어져요. 간격이 바뀌어도 모든 항이 같은 2의 거듭제곱배라 매 반복 df가 0이고, 둘째 반복의 오차 추정이 0이라 수렴해요.
+
+```python
+>>> sd.differentiate.derivative(lambda x: x**3, 0.0)
+DifferentiateResult(df=0, error=0, converged=True, n_iter=2, nfev=11)
+```
+
+짝을 안쪽부터 더하거나 scipy의 가중치와 합이면 $10^{-14}$쯤의 흔들림이 남아 −2예요. 반올림이 가르는 경우라, 도함수가 0일 수 있는 점에는 `atol`을 주는 것이 안전해요.
+
+## 한쪽 차분
+
+`step_direction`이 양수면 오른쪽, 음수면 왼쪽만 써요. 마디는 $0, 1, 1/d, \dots, 1/d^{2n-1}$($d = \sqrt c$)이고 왼쪽은 $-h$로 같은 마디를 써서 df의 부호만 바꿔요. 함숫값 순서는 scipy의 `fo`처럼 $[f(x), f$의 $2n$개 마디(바깥부터 안으로)$]$이고, 둘째 반복부터 바깥 두 값이 빠지고 안쪽 두 값이 끝에 들어와요.
+
+한쪽 공식은 가중치가 크고 부호가 번갈아요. 기본값에서 가중치의 절댓값 합이 중앙은 13.5, 한쪽은 979예요. 함숫값의 반올림이 그만큼 커져 결과에 들어가니, 한쪽 차분은 정의역의 끝처럼 중앙 차분을 쓸 수 없을 때만 써요.
+
+```python
+>>> sum(abs(w) for w in wc), sum(abs(w) for w in wr)
+(13.514285714285716, 979.0406746854667)
+>>> sd.differentiate.derivative(sd.log, 1e-3)
+DifferentiateResult(df=nan, error=nan, converged=False, n_iter=1, nfev=9)
+>>> sd.differentiate.derivative(sd.log, 1e-3, step_direction=1, initial_step=1e-4)
+DifferentiateResult(df=1000, error=2.27374e-09, converged=True, n_iter=2, nfev=11)
+```
+
+기본 간격 0.5는 절대 간격이라, $\log$의 $x = 10^{-3}$에서 중앙 스텐실의 왼쪽 점이 음수가 되어 NaN이고 첫 반복 뒤 −3이에요. 오른쪽 한쪽 차분과 $x$의 척도에 맞춘 `initial_step`을 주면 수렴해요. 간격의 부호를 정하는 것은 numpy의 `sign`과 같은 `npsign`이고, `step_direction`이 NaN이면 그 원소의 점이 모두 NaN이라 첫 반복 뒤 −3이에요. `initial_step`이 0 이하인 원소도 간격이 NaN이라 같아요.
+
+## approx_fprime의 차분과 견주면
+
+`sd.optimize.approx_fprime`과 `check_grad`의 기본, `sd.regression.nls`의 해에서의 야코비안은 이 영역의 다른 차분 `Differences`(`_differences.py`)로 계산해요. 같은 도함수를 어림하지만 짜임이 달라요.
+
+| | `derivative` | `Differences` |
+|---|---|---|
+| 공식 | 중앙 $2n$차(기본 8차), 마디 $\pm 1/c^k$ | 중앙 5점(4차), 못 쓰면 한쪽 5점 |
+| 간격 | 절대 간격 `initial_step`에서 반복마다 $c$로 나눔 | 변수마다 $2^{-8}\lvert x_j\rvert$의 2의 거듭제곱에서 4배씩 줄이며 한 번 골라 다시 씀 |
+| 멈춤 | 오차 추정 < `atol + rtol·\|df\|` | 이웃한 두 추정의 차가 8배 넘게 줄지 않으면 |
+| 결과 | 추정과 오차 추정, status | 야코비안(열마다 반올림 수준) |
+| 호출 | 반복마다 모든 원소의 점을 한 번에 | 점마다 한 번(벡터 함수) |
+| 경계 | 없음(한쪽 차분은 사용자가 고름) | `lb`, `ub` 안에서만 부르고, 넘으면 한쪽 스텐실 |
+
+`Differences`의 간격은 $\lvert x_j\rvert$에 비례하는 2의 거듭제곱이라 $x_j \pm kh$가 반올림 없이 정확하고, 몫에 들어가는 반올림은 함숫값의 것뿐이에요. 그런데 $x_j$가 함수가 변하는 척도보다 훨씬 작으면(예를 들어 $e^x$의 $x = 10^{-5}$) 처음 간격 $2^{-8}\lvert x_j\rvert$부터 함숫값의 차가 반올림에 가까워요. 간격을 줄이기만 하는 찾기는 반올림을 줄일 수 없으니, 처음 열의 반올림 수준이 열 크기의 $2^{-36}$($1.5 \times 10^{-11}$)을 넘으면 먼저 간격을 키워요. $2^{-36}$은 5점 차분이 내려는 정확도($10^{-11}$–$10^{-13}$)보다 반올림이 이미 큰 경계예요. 키운 간격이 반올림 수준을 벗어나지 못하면(참값이 0인 열처럼) 처음 간격에서 보통의 찾기를 해요.
+
+```python
+>>> from stardust.differentiate._differences import Differences
+>>> g = lambda th: sd.asarray([math.exp(th[0])])
+>>> for x0 in (1.0, 1e-2, 1e-4, 1e-5, 1e-12):
+...     D = Differences(g, 1, [-math.inf], [math.inf])
+...     g0 = g([x0])
+...     col = D.column([x0], 0, math.ldexp(1.0, math.frexp(x0)[1] - 8), g0)
+...     r0 = D._rounding(col, 0)
+...     J, _ = D.jacobian([x0], g0)
+...     rel = abs(float(J[0, 0]) - math.exp(x0)) / math.exp(x0)
+...     print(x0, f'2^{math.log2(r0):.1f}', f'h=2^{math.log2(D.steps[0]):.0f}', f'{rel:.1e}')
+1.0 2^-45.4 h=2^-11 2.0e-13
+0.01 2^-38.4 h=2^-16 5.5e-12
+0.0001 2^-31.4 h=2^-11 9.3e-14
+1e-05 2^-28.4 h=2^-12 4.6e-13
+1e-12 2^-5.4 h=2^-12 6.1e-14
+```
+
+둘째 열이 처음 간격에서의 반올림 수준 대 열 크기예요. $x = 1$과 $10^{-2}$는 $2^{-36}$ 아래라 아래로만 찾아요. $10^{-4}$, $10^{-5}$, $10^{-12}$는 그 위라 간격을 $2^{-11}$–$2^{-12}$까지 키운 뒤 찾고, 상대오차가 $10^{-13}$ 근처예요. 키우는 만큼 함수를 더 불러요. $x = 10^{-5}$에서 `approx_fprime`은 f를 53번, $x = 10^{-2}$에서는 13번 불러요.
+
+```python
+>>> def calls(x0):
+...     n = [0]
+...     def f(v):
+...         n[0] += 1
+...         return math.exp(float(v[0]))
+...     sd.optimize.approx_fprime([x0], f)
+...     return n[0]
+>>> [calls(x0) for x0 in (0.0, 1e-2, 1e-5, 1e-12)]
+[17, 13, 53, 61]
+```
+
+간격을 고르는 찾기와 키우는 고리의 코드, 반올림 수준을 재는 식, 셈은 [수치 미분](/internals/optimize/derivatives/)에 있어요.
+
+## 참고 문헌
+
+1. L. F. Richardson, "The deferred approach to the limit", *Philosophical Transactions of the Royal Society A* 226, 299–361, 1927. doi:10.1098/rsta.1927.0008
+2. B. Fornberg, "Generation of finite difference formulas on arbitrarily spaced grids", *Mathematics of Computation* 51(184), 699–706, 1988. doi:10.1090/S0025-5718-1988-0935077-0
+3. P. H. Sterbenz, *Floating-Point Computation*, Prentice-Hall, 1974. (가까운 두 수의 차가 정확하다는 보조정리)
+4. scipy 1.18.1, `scipy/differentiate/_differentiate.py`. (`derivative`, `_derivative_weights`, 공통 고리 `_lib/_elementwise_iterative_method.py`)

@@ -1,0 +1,127 @@
+---
+kind: function
+title: tplquad
+names: [tplquad]
+group: 겹친 적분
+order: 2
+signatures:
+  - "sd.integrate.tplquad(func, a, b, gfun, hfun, qfun, rfun, /, *, atol=1.49e-08, rtol=1.49e-08)"
+summary: 3차원 적분 ∫ₐᵇ ∫_{g(x)}^{h(x)} ∫_{q(x, y)}^{r(x, y)} f(z, y, x) dz dy dx를 quad 세 겹으로 계산해요. 안쪽 끝이 바깥 변수의 함수여도 돼서 구, 사면체처럼 상자가 아닌 영역을 다뤄요. 결과는 (integral, error)로 풀려요.
+params:
+  - name: func
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "피적분 함수 f(z, y, x). 가장 안쪽 변수 z가 먼저예요. 세 Python float를 받아 실수 하나를 돌려줘요."
+  - name: a, b
+    type: float
+    kind: positional-only
+    desc: "바깥 변수 x의 끝. ±inf를 받고 NaN은 받지 않아요."
+  - name: gfun, hfun
+    type: float 또는 호출 가능한 객체
+    kind: positional-only
+    desc: "가운데 변수 y의 아래·위 끝. 수이거나 x를 받는 함수예요."
+  - name: qfun, rfun
+    type: float 또는 호출 가능한 객체
+    kind: positional-only
+    desc: "안쪽 변수 z의 아래·위 끝. 수이거나 (x, y)를 받는 함수예요(인자 차례가 x, y예요). 끝 함수가 돌려준 NaN은 ValueError예요."
+  - name: atol, rtol
+    type: float
+    kind: keyword-only
+    desc: "모든 층의 quad에 쓰는 절대·상대 허용오차(기본 1.49e-8). 규칙은 quad와 같아요."
+returns:
+  type: IntegrateResult
+  desc: "integral, error(모든 quad의 오차 어림 가운데 가장 큰 것), converged, status, message, nfev(f를 부른 수). 구간 정보는 없어요. (integral, error)로 풀려요."
+raises:
+  - type: TypeError
+    desc: func가 호출 가능하지 않을 때, 끝이나 끝 함수가 돌려준 값이 실수가 아닐 때, 허용오차가 수가 아닐 때, 모르는 키워드를 줬을 때, func가 bool이나 복소수를 돌려줄 때. 사용자 함수 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: a·b가 NaN이거나 끝 함수가 NaN을 돌려줄 때, 허용오차가 범위 밖일 때, func가 길이 있는 배열을 돌려줄 때.
+seeAlso: [dblquad, nquad, quad, cubature, basics, results]
+---
+
+## 무엇을 하나요
+
+`tplquad`는 영역 위의 3차원 적분을 계산해요. 바깥 변수 x는 a에서 b까지, 가운데 변수 y는 $g(x)$에서 $h(x)$까지, 안쪽 변수 z는 $q(x, y)$에서 $r(x, y)$까지예요.
+
+$$\int_a^b \int_{g(x)}^{h(x)} \int_{q(x, y)}^{r(x, y)} f(z, y, x)\,dz\,dy\,dx$$
+
+[`dblquad`](/api/integrate/dblquad/)에 한 겹을 더한 것이에요. 바깥 `quad`가 x를, 가운데 `quad`가 y를 정할 때마다 안쪽 `quad`가 z의 적분을 해요.
+
+<Reference />
+
+## 기본 사용
+
+단위 구의 $x, y, z \ge 0$인 부분(부피 π/6)이에요. 가운데 끝은 $\sqrt{1 - x^2}$, 안쪽 끝은 $\sqrt{1 - x^2 - y^2}$이에요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> r = sd.integrate.tplquad(lambda z, y, x: 1.0, 0, 1,
+...                          0, lambda x: math.sqrt(1 - x * x),
+...                          0, lambda x, y: math.sqrt(max(0.0, 1 - x * x - y * y)))
+>>> r
+IntegrateResult(integral=0.523599, error=8.83379e-11, converged=True, nfev=101871)
+>>> r.integral - math.pi / 6
+1.1102230246251565e-16
+```
+
+반올림으로 $1 - x^2 - y^2$이 아주 작은 음수가 되면 `math.sqrt`가 에러를 내니 `max(0.0, …)`로 막았어요. 끝이 모두 수이면 상자예요.
+
+```python
+>>> sd.integrate.tplquad(lambda z, y, x: x * y * z, 0, 1, 0, 1, 0, 1)
+IntegrateResult(integral=0.125, error=5.52703e-15, converged=True, nfev=9261)
+```
+
+$9261 = 21^3$이에요. 세 층이 모두 21점 규칙 한 번에 끝났어요.
+
+## 인자
+
+### func의 변수 차례
+
+`func`는 `func(z, y, x)`로 불려요. 가장 안쪽 변수가 먼저예요. 끝 함수는 반대로 바깥 변수부터 받아요. `gfun(x)`, `hfun(x)`, `qfun(x, y)`, `rfun(x, y)`예요. 사면체 $x + y + z \le 1$($x, y, z \ge 0$) 위의 $x + y + z$를 적분하면 1/8이에요.
+
+```python
+>>> sd.integrate.tplquad(lambda z, y, x: x + y + z, 0, 1,
+...                      0, lambda x: 1 - x,
+...                      0, lambda x, y: 1 - x - y)
+IntegrateResult(integral=0.125, error=5.55101e-15, converged=True, nfev=9261)
+```
+
+### 끝과 atol, rtol
+
+끝과 끝 함수가 돌려주는 값은 실수이고 ±inf를 받아요. NaN은 `ValueError`이고 메시지에 그 함수의 이름이 나와요.
+
+```python
+>>> sd.integrate.tplquad(lambda z, y, x: 1.0, 0, 1, 0, 1, 0, lambda x, y: math.nan)
+Traceback (most recent call last):
+    ...
+ValueError: tplquad(): 'rfun' returned NaN
+```
+
+`atol`·`rtol`은 세 층의 `quad`가 모두 같이 써요. 층마다 다른 옵션이 필요하면 [`nquad`](/api/integrate/nquad/)를 써요.
+
+## 결과 읽기
+
+필드와 뜻은 `dblquad`와 같아요. `error`는 모든 `quad`의 오차 어림 가운데 가장 큰 것이고, `nfev`는 f를 부른 수, 구간 정보는 없어요. `status`와 `message`는 끝나는 차례로 처음 수렴하지 못한 `quad`의 것이에요. 자세한 것은 [결과 객체 읽기](/api/integrate/results/)에 있어요.
+
+## 언제 쓰나요
+
+f를 부르는 수가 세 층의 점 수의 곱이라 쉬운 함수도 9,261번이고, 위의 구는 10만 번이에요. f가 Python이라 그만큼 시간이 들어요.
+
+- 영역이 상자이고 f를 배열로 계산할 수 있으면 [`cubature`](/api/integrate/cubature/)가 대개 훨씬 빨라요.
+- 영역이 상자가 아니면 `tplquad`예요. 영역을 상자로 바꾸는 변수 치환(구면 좌표 등)을 할 수 있으면 그 뒤에 `cubature`를 쓰는 길도 있어요.
+- 4차원 이상이나 층마다의 옵션은 [`nquad`](/api/integrate/nquad/)예요.
+
+## 정확도와 비용
+
+- **정확도**: 층마다 `quad`의 정확도예요. 시험 문제의 겹친 적분을 Arb(구간 산술)로 만든 참값과 견주면 상대오차가 $5 \times 10^{-15}$ 안이고, 참 오차는 오차 어림의 1% 안이에요.
+- **비용**: 겹침은 모두 C++ 안에서 돌고 f와 끝 함수만 Python으로 불러요. 시간은 거의 `nfev` × f 한 번의 시간이에요.
+- **스레드**: f가 Python이라 GIL을 쥔 채 돌아요. 결과는 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+`scipy.integrate.tplquad`와 같은 겹침, 같은 순서예요. 지금은 f와 끝 함수를 부르는 점과 차례, 적분값, 오차, `nfev`가 scipy 1.18.1과 비트까지 같아요(약속은 아니에요).
+
+- `epsabs`·`epsrel`은 `atol`·`rtol`이에요. `args`는 없어요(클로저로 넘겨요).
+- 튜플 `(y, abserr)` 대신 둘로 풀리는 결과 객체예요. 경고 대신 `converged`·`status`·`message`예요.
+- 끝 함수가 돌려준 NaN은 `ValueError`예요.

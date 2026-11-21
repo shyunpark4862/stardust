@@ -1,0 +1,202 @@
+---
+title: Gauss–Kronrod 규칙과 오차 어림
+group: QUADPACK
+order: 1
+summary: QUADPACK의 바탕인 21점·15점 Gauss–Kronrod 규칙이 Gauss 규칙에 점을 더해 값과 오차 어림을 한 번에 얻는 방식, |K − G|를 조이는 QUADPACK의 경험식과 반올림 하한, 무한 구간의 15점 규칙, 그리고 scipy와 비트까지 같게 하는 FMA의 자리를 설명해요.
+seeAlso: [adaptive-extrapolation, weight-routines, overview, quad-vec]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+가중치 없는 `quad`(QAGS, QAGI, QAGP)는 구간 하나에 규칙 하나를 써서 두 수를 얻어요. 그 구간의 적분 어림과 그 어림의 오차 어림이에요. 적응 분할([다음 쪽](/internals/integrate/adaptive-extrapolation/))은 이 두 수만 보고 어느 구간을 나눌지, 언제 멈출지 정해요. 그래서 규칙의 값보다 오차 어림이 결과를 더 크게 좌우해요.
+
+| 루틴 | 규칙 | 점 | 정확한 다항식의 차수 | 쓰는 곳 |
+|---|---|---|---|---|
+| `dqk21` | Gauss 10점 + Kronrod 21점 | 21 | G 19, K 31 | QAGS, QAGP |
+| `dqk15i` | Gauss 7점 + Kronrod 15점, (0, 1]로 바꾼 무한 구간 | 15(실수 전체는 30) | G 13, K 23 | QAGI |
+| `dqk15w` | Gauss 7점 + Kronrod 15점, 가중 함수를 곱한 값 | 15 | G 13, K 23 | QAWO, QAWS, QAWC의 일부 구간 |
+
+## Gauss 규칙에 점을 더하기
+
+n점 Gauss–Legendre 규칙은 [−1, 1]에서
+
+$$
+\int_{-1}^{1} f(t)\,dt \approx \sum_{i=1}^{n} w_i f(t_i)
+$$
+
+이고 마디 $t_i$는 Legendre 다항식 $P_n$의 근이에요. 마디와 가중치 2n개를 모두 자유롭게 고르므로 2n − 1차까지의 다항식을 정확히 적분해요. 구간 [a, b]에서는 가운데 c = (a + b)/2, 반 길이 h = (b − a)/2로 $\int_a^b f \approx h\sum w_i f(c + h t_i)$예요.
+
+값만이면 Gauss 규칙으로 충분하지만 오차를 어림하려면 다른 규칙이 하나 더 있어야 해요. Gauss 규칙끼리는 마디를 거의 함께 쓰지 않아서(둘 다 홀수 점이면 가운데 하나뿐), 10점 규칙에 21점 Gauss 규칙을 더하면 함숫값 31개가 들어요. Kronrod(1964)는 n점 Gauss 마디를 그대로 두고 n + 1개 마디를 더한 2n + 1점 규칙을 만들었어요. 더한 마디는 Stieltjes 다항식 $E_{n+1}$의 근이고 Gauss 마디와 엇갈려 놓여요. 마디 n + 1개와 가중치 2n + 1개, 모두 3n + 2개를 고르므로 3n + 1차까지 정확하고, n이 홀수면 대칭 덕분에 3n + 2차까지 정확해요. n = 10이면 31차, n = 7이면 23차예요.
+
+그래서 함숫값 21개로 두 규칙을 얻어요. 21점 모두를 쓰는 K21이 적분값이고, 그 가운데 Gauss 마디 10개만 쓰는 G10은 오차 어림의 짝이에요.
+
+```python
+>>> import math
+>>> r = sd.integrate.quad(lambda x: x**30, -1, 1, limit=1)
+>>> r.integral - 2 / 31
+2.7755575615628914e-17
+>>> r.error
+0.049502438714313736
+```
+
+`limit=1`이면 첫 규칙 한 번으로 끝나요. x³⁰은 K21이 정확히 적분하는 차수라 값은 반올림 수준으로 맞는데, G10은 19차까지만 정확해서 |K21 − G10|이 커요. 오차 어림은 G10의 오차를 재는 셈이라 K21의 실제 오차보다 훨씬 커요. QUADPACK은 이 비관적인 어림을 아래의 경험식으로 조여요.
+
+## 21점 규칙 한 번
+
+`qk21`은 원본 `dqk21`의 문장을 같은 차례로 따라가요. 마디와 가중치는 대칭이라 음이 아닌 반쪽만 두고, 상수는 QUADPACK의 10진 리터럴 그대로예요.
+
+```cpp
+// csrc/integrate/quadpack.hpp
+template <class F>
+void qk21(F& f, double a, double b, double& result, double& abserr, double& resabs, double& resasc) {
+    double fv1[10], fv2[10];
+    const double centr = 0.5 * (a + b);
+    const double hlgth = 0.5 * (b - a);
+    const double dhlgth = std::abs(hlgth);
+    double resg = 0.0;
+    const double fc = f(centr);
+    double resk = kWgk21[10] * fc;
+    resabs = std::abs(resk);
+    for (int j = 1; j <= 5; ++j) {  // the Gauss points
+        const int jtw = 2 * j - 1;  // the original's jtw = 2j, 0-based
+        const double absc = hlgth * kXgk21[jtw];
+        const double fval1 = f(centr - absc);
+        const double fval2 = f(centr + absc);
+        fv1[jtw] = fval1;
+        fv2[jtw] = fval2;
+        const double fsum = fval1 + fval2;
+        resg = std::fma(kWg10[j - 1], fsum, resg);
+        resk = std::fma(kWgk21[jtw], fsum, resk);
+        resabs = std::fma(kWgk21[jtw], std::abs(fval1) + std::abs(fval2), resabs);
+    }
+```
+
+부르는 순서는 가운데, 그다음 Gauss 마디의 쌍 c − h·t, c + h·t(바깥 마디부터), 마지막으로 Kronrod만의 마디의 쌍이에요. G10에는 가운데 마디가 없으므로 가운데 값은 K21에만 들어가요. 고리 하나가 네 합을 함께 쌓아요.
+
+| 합 | 뜻 |
+|---|---|
+| `resk` | K21의 가중 합. h를 곱하면 적분 어림 |
+| `resg` | G10의 가중 합 |
+| `resabs` | \|f\|의 K21 합. h를 곱하면 ∫\|f\|의 어림 |
+| `resasc` | \|f − 평균\|의 K21 합. h를 곱하면 ∫\|f − I/(b − a)\|의 어림 |
+
+`resasc`는 함숫값을 모두 모은 뒤에 따로 쌓아요. 평균은 `reskh = resk * 0.5`예요. 가중치의 합이 2라서 [−1, 1]의 K21 합의 반이 평균값이에요. 이 값은 구간 안에서 f가 얼마나 흔들리는지의 척도예요.
+
+```python
+>>> pts = []
+>>> def f(x):
+...     pts.append(x)
+...     return math.exp(x)
+>>> r = sd.integrate.quad(f, 0, 1)
+>>> pts[:5]
+[0.5, 0.013046735741414128, 0.9869532642585859, 0.06746831665550773, 0.9325316833444923]
+```
+
+첫 점이 가운데 0.5, 다음 둘이 가장 바깥 Gauss 마디 t = 0.97390…의 쌍 0.5 ∓ 0.5·t, 그다음 쌍이 t = 0.86506…이에요.
+
+## 오차 어림
+
+규칙 하나의 오차 어림은 `kronrod_error`가 정해요.
+
+```cpp
+// csrc/integrate/quadpack.hpp
+inline double kronrod_error(double abserr, double resabs, double resasc) {
+    if (resasc != 0.0 && abserr != 0.0) abserr = resasc * std::min(1.0, std::pow(200.0 * abserr / resasc, 1.5));
+    if (resabs > kUflow / (50.0 * kEpmach)) abserr = std::max((kEpmach * 50.0) * resabs, abserr);
+    return abserr;
+}
+```
+
+들어오는 `abserr`는 $E_0 = |K - G|\,h$예요. 식으로 쓰면
+
+$$
+E = \max\!\left(R \cdot \min\!\left(1,\ \left(\frac{200\,E_0}{R}\right)^{3/2}\right),\ 50\,\varepsilon\,A\right)
+$$
+
+이고 R은 `resasc`, A는 `resabs`, ε = 2⁻⁵²예요. 세 부분은 저마다 뜻이 있어요.
+
+- **척도.** $E_0/R$는 f의 흔들림에 대한 G10 오차의 비율이에요. 비율로 재므로 f를 상수배해도 판정이 같아요.
+- **조이기.** G10이 상대 r만큼 맞으면 K21은 그보다 훨씬 잘 맞는다는 것이 QUADPACK을 만든 이들의 실험에서 나온 관찰이에요. 3/2제곱은 그 경험식이에요. $E/E_0 = 200^{3/2}\, r^{1/2}$이므로 r이 $200^{-3} \approx 1.25 \times 10^{-7}$보다 클 때는 어림이 $E_0$보다 더 크고(안전 쪽), 그보다 작을 때만 $E_0$보다 작아져요. min(1, ·)은 어림이 흔들림 R을 넘지 않게 막아요.
+- **반올림 하한.** 함숫값의 반올림 때문에 규칙의 값은 대략 ε·∫|f|보다 정확할 수 없어요. 그래서 어림은 50ε·A보다 작아지지 않아요. A가 아래넘침에 가까울 만큼 작으면 하한을 두지 않아요.
+
+매끄러운 함수에서는 하한이 어림을 정해요.
+
+```python
+>>> r = sd.integrate.quad(math.exp, 0, 1)
+>>> r.error / (50 * 2**-52 * r.integral)
+1.0
+>>> r.integral - (math.e - 1)
+2.220446049250313e-16
+```
+
+exp는 [0, 1]에서 양수라 A가 적분값과 같고, 어림이 정확히 50ε·A예요. 실제 오차는 그 1/50이에요.
+
+min(1, ·)에 걸려 어림이 R과 같아지는 경우는 규칙이 구간을 전혀 풀어내지 못했다는 표시예요. 적응 분할은 `abserr == resasc`를 보고 그 구간의 결과를 믿을 만하지 않은 것으로 다뤄요. 반올림의 판정을 셀 때 그런 구간을 빼고, QAGP는 그런 처음 구간의 오차를 전체 오차로 바꿔 먼저 나누게 해요.
+
+## 놓친 봉우리
+
+오차 어림은 함숫값 21개가 본 것만 알아요. 좁은 봉우리가 마디 사이에 숨으면 K21과 G10이 둘 다 봉우리를 못 보고 같은 작은 값을 내요. QUADPACK 책의 시험 적분 $\int_0^1 4^{-\alpha}/((x - \pi/4)^2 + 16^{-\alpha})\,dx$는 α = 19에서 참값이 거의 π인데, 봉우리의 반폭이 $4^{-19} \approx 3.6 \times 10^{-12}$이에요.
+
+```python
+>>> al = 19
+>>> peak = lambda x: 4**-al / ((x - math.pi / 4) ** 2 + 16**-al)
+>>> pts = []
+>>> def g(x):
+...     pts.append(x)
+...     return peak(x)
+>>> sd.integrate.quad(g, 0, 1)
+IntegrateResult(integral=3.45329e-09, error=5.19458e-09, converged=True, nfev=105)
+>>> min(abs(x - math.pi / 4) for x in pts)
+0.0018204213479595666
+```
+
+부른 점 105개 가운데 봉우리에 가장 가까운 것이 1.8×10⁻³ 떨어져 있어서, 모든 함숫값이 10⁻⁶ 아래예요. 오차 어림 5.2×10⁻⁹가 기본 `atol` 1.49×10⁻⁸보다 작으므로 수렴으로 멈춰요. 이 결과는 scipy도 같고, 오차 어림이 엄밀한 상계가 아닌 까닭을 보여 주는 대표적인 경우예요.
+
+## 무한 구간의 15점 규칙
+
+QAGI는 무한 구간을 (0, 1]로 바꿔요. [a, ∞)는 x = a + (1 − t)/t, dx = −dt/t²라서
+
+$$
+\int_a^{\infty} f(x)\,dx = \int_0^1 f\!\left(a + \frac{1 - t}{t}\right)\frac{dt}{t^2}
+$$
+
+이고, (−∞, b]는 x = b − (1 − t)/t, 실수 전체는 0을 기준으로 f(x) + f(−x)를 같은 식으로 바꿔요. `dqk15i`는 바꾼 피적분 함수에 15점 규칙을 써요.
+
+```cpp
+    // csrc/integrate/quadpack.hpp
+    const double dinf = static_cast<double>(std::min(1, inf));
+    const double centr = 0.5 * (a + b);
+    const double hlgth = 0.5 * (b - a);
+    const double tabsc1 = boun + dinf * (1.0 - centr) / centr;
+    double fval1 = f(tabsc1);
+    if (inf == 2) fval1 = fval1 + f(-tabsc1);
+    const double fc = (fval1 / centr) / centr;
+```
+
+`dinf`는 [a, ∞)와 실수 전체에서 1, (−∞, b]에서 −1이에요. 1/t²는 원본의 식 그대로 (f/t)/t로 계산해요. Gauss 7점 가중치의 표 `kWg15i`는 Kronrod 표와 같은 자리에 두고 Kronrod만의 자리는 0으로 채워서, 같은 고리가 두 합을 함께 쌓아요. 실수 전체는 점마다 f를 두 번 부르므로 호출 수가 두 배예요. t는 (0, 1] 안의 마디에서만 계산하므로 t = 0(x = ∞)은 부르지 않아요.
+
+결과의 구간은 바꾼 변수 t의 것이에요.
+
+```python
+>>> r = sd.integrate.quad(lambda x: math.exp(-x * x), -math.inf, math.inf)
+>>> r.nfev, r.n_intervals
+(270, 5)
+>>> print(r.intervals[:2])
+[[  0.5   1.0]
+ [0.125  0.25]]
+```
+
+QAGI의 호출 수는 15 + 30(구간 수 − 1)이고 실수 전체면 그 두 배라 5구간에 270번이에요.
+
+## FMA의 자리
+
+scipy 1.18.1의 QUADPACK은 Fortran 원본의 C 판이고, clang의 기본값 `-ffp-contract=on`으로 빌드돼요. 이 설정은 한 식 안에서 곱과 합이 만나면 FMA(곱과 합을 한 번만 반올림)로 합쳐요. stardust는 축약을 끄고 빌드하므로, 같은 비트를 내려면 합쳐지는 자리를 코드에 `std::fma`로 적어야 해요.
+
+원본을 문장마다 따르면 한 식 안에서 곱과 합이 만나는 곳은 Kronrod 규칙의 네 누적 `resg`, `resk`, `resabs`, `resasc`(s = s + w·v)뿐이에요. 점의 계산은 원본에서 `absc = hlgth*xgk(j)`와 `f(centr-absc)`의 두 문장이라 합쳐지지 않아요. 가운데 0.5(a + b), QAGI의 boun + dinf·(1 − t)/t(나눗셈이 마지막), 구동 루틴과 ε-알고리즘에는 합쳐질 곳이 없어요. 그래서 위의 `qk21`처럼 네 누적만 `std::fma(w, v, s)`예요.
+
+네 자리 모두 결과에 닿아요. `resk`는 적분값, `resg`는 |K − G|, `resabs`는 반올림 하한, `resasc`는 경험식의 척도예요. 하나라도 곱과 합을 따로 반올림하면 끝자리가 달라지고, 그 차이가 멈춤 판정이나 다음에 나눌 구간을 바꿀 수 있어요. 축약 없이 계산하면 가중치 없는 시험 106개 가운데 점, 값, 오차, 구간이 모두 scipy와 같은 것이 9개뿐이고, 네 자리를 FMA로 적으면 106개 모두 같아요. 경험식의 `**1.5`도 원본처럼 libm의 `pow`로 계산해요.
+
+<Callout title="quad_vec은 FMA를 쓰지 않아요">
+`quad_vec`도 같은 21점·15점 마디와 같은 꼴의 오차 어림을 쓰지만, scipy 쪽이 Python 코드라 곱과 합이 따로 반올림돼요. 그래서 stardust의 `quad_vec`은 FMA를 쓰지 않고 numpy의 산술을 그대로 따라요([quad_vec의 적응 구적](/internals/integrate/quad-vec/)).
+</Callout>

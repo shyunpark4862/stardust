@@ -43,7 +43,7 @@ import Tree from '../../../components/fig/Tree.astro';
   ]} />
 </Fig>
 
-열 영역에 등록된 사례는 2,614개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
+열두 영역에 등록된 사례는 2,952개예요. 영역별로는 이래요(`python -m bench.speed list`로 센 값이에요).
 
 | 영역 | 사례 | 묶음 | 빠른 묶음 | 비용표 사례 | 비교 대상 |
 |---|---:|---:|---:|---:|---|
@@ -55,9 +55,13 @@ import Tree from '../../../components/fig/Tree.astro';
 | regression | 279 | 23 | 18 | 0 | statsmodels, scikit-learn, scipy, R |
 | random | 18 | 2 | 4 | 0 | numpy(PCG64, Philox) |
 | optimize | 113 | 7 | 7 | 0 | scipy, R |
-| htest | 265 | 20 | 71 | 0 | scipy, statsmodels, R |
-| sparse | 238 | 12 | 7 | 0 | scipy, R |
-| 합계 | 2,614 | 131 | 203 | 460 | |
+| htest | 338 | 20 | 73 | 0 | scipy, statsmodels, R |
+| sparse | 453 | 13 | 7 | 0 | scipy, R |
+| integrate | 40 | 4 | 3 | 0 | scipy |
+| differentiate | 10 | 2 | 1 | 0 | scipy |
+| 합계 | 2,952 | 138 | 209 | 460 | |
+
+sparse의 453개 가운데 22개는 SuiteSparse 모음의 실제 행렬 일곱을 쓰는 사례(묶음 `real`)예요. 행렬은 저장소에 넣지 않으므로, 행렬을 받아 둔 기계(`build/sparse/suitesparse/`)에서만 등록돼요.
 
 비교 대상은 [정확도 측정](/internals/core/accuracy/)이 쓰는 것과 같아요. 영역마다 같은 일을 하는 비교 대상이 정확도 측정에 있으면 속도 사례에도 둬요. special과 stats의 R 식과 Boost 함수 이름은 정확도 측정의 표(`bench/accuracy/compare.py`)를 그대로 가져다 써서, 한쪽에 함수를 더하면 다른 쪽에도 따라와요. 한 번에 스칼라 하나를 넣는 사례에는 R과 Boost를 두지 않아요. 그 비용은 배열 사례에서 봐요.
 
@@ -197,7 +201,7 @@ stardust와 비교 대상이 각각 몇 스레드로 도는지 정해 두지 않
 
 사례의 `threads`가 sd를 잴 스레드 수들이에요. 기본은 `(1, 10)`이고, 10은 이 기계의 성능 코어 수이자 sd의 기본 스레드 수예요. 측정 프로세스는 `harness.sd_threads(n)` 안에서 `sd.set_num_threads(n)`을 부르고, 측정이 끝나면 원래 값으로 되돌려요.
 
-1,989개 중 1,550개는 1·10스레드를 모두 재고, 437개는 1스레드만, 2개는 10스레드만 재요. 1스레드만 재는 사례는 나눌 일이 없는 호출이에요. 3×3 행렬 하나, 원소 $10^3$개, 스칼라 하나, 뷰 만들기처럼 병렬 경로가 없거나 병렬 기준값 아래인 경우예요. 그중 몇 개는 일부러 10스레드로도 재요. 기준값 아래에서 풀을 쓰는 실수를 잡으려는 줄이에요.
+2,952개 중 2,502개는 1·10스레드를 모두 재고, 448개는 1스레드만, 2개는 10스레드만 재요. 1스레드만 재는 사례는 나눌 일이 없는 호출이에요. 3×3 행렬 하나, 원소 $10^3$개, 스칼라 하나, 뷰 만들기처럼 병렬 경로가 없거나 병렬 기준값 아래인 경우예요. 그중 몇 개는 일부러 10스레드로도 재요. 기준값 아래에서 풀을 쓰는 실수를 잡으려는 줄이에요.
 
 ### 비교 대상의 스레드: `fixed`와 `follow`
 
@@ -208,7 +212,7 @@ Python 비교 대상(`Ref`)은 두 방식 중 하나로 재요.
 | `"fixed"` (기본) | 원소별 계산, 리덕션, 정렬, 데이터프레임, 특수함수와 분포 함수처럼 BLAS를 거의 쓰지 않는 비교 | 라운드마다 한 번, 그 라이브러리의 기본 스레드로 재요. numpy·scipy의 원소별 계산과 pandas는 1스레드예요 |
 | `"follow"` | BLAS·LAPACK이 일의 대부분인 비교. array의 `matmul`·`cov`·`corrcoef`·`tensordot`, linalg 전체, regression, optimize | sd의 스레드 수마다, 비교 대상의 BLAS·OpenMP 스레드를 같은 수로 묶어 재요 |
 
-`fixed`는 사용자가 그 라이브러리를 그대로 쓸 때의 시간이에요. numpy의 `sin`은 설정을 바꿔도 1스레드로 도니, sd의 1스레드와 10스레드를 모두 numpy 하나와 견줘요. `follow`는 같은 스레드 수에서 누가 빠른지를 봐요. BLAS가 일의 대부분이면, 비교 대상의 BLAS 스레드를 sd와 같게 두어야 스레드 수마다 견줄 수 있어요. 그래서 sd의 1스레드 줄은 1스레드 BLAS와, 10스레드 줄은 10스레드 BLAS와 만나요. linalg는 337개 모두, regression은 279개 중 163개, optimize는 113개 중 86개, array는 10개가 `follow` 비교 대상을 가져요. htest와 sparse의 비교 대상은 모두 `fixed`예요. R은 어느 쪽이든 늘 1스레드로 돌아요([R과 비교하기](#r과-비교하기)).
+`fixed`는 사용자가 그 라이브러리를 그대로 쓸 때의 시간이에요. numpy의 `sin`은 설정을 바꿔도 1스레드로 도니, sd의 1스레드와 10스레드를 모두 numpy 하나와 견줘요. `follow`는 같은 스레드 수에서 누가 빠른지를 봐요. BLAS가 일의 대부분이면, 비교 대상의 BLAS 스레드를 sd와 같게 두어야 스레드 수마다 견줄 수 있어요. 그래서 sd의 1스레드 줄은 1스레드 BLAS와, 10스레드 줄은 10스레드 BLAS와 만나요. linalg는 337개 모두, regression은 279개 중 163개, optimize는 113개 중 86개, array는 10개가 `follow` 비교 대상을 가져요. htest, sparse, integrate, differentiate의 비교 대상은 모두 `fixed`예요. R은 어느 쪽이든 늘 1스레드로 돌아요([R과 비교하기](#r과-비교하기)).
 
 ### BLAS 스레드는 측정 프로세스마다 묶어요
 
@@ -314,7 +318,7 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
 .venv/bin/python -m bench.speed list stats --quick
 ```
 
-**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 203개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
+**빠른 묶음**(`quick=True`)은 영역마다 대표 사례를 골라 둔 것이에요. 합쳐서 209개이고, 영역마다 1–3분 안에 돌아요. 짧은 시간에 여러 영역을 훑어볼 때 써요. **비용표 사례**(`cost`가 있는 사례)는 460개로, special 98개와 stats 362개예요([비용표](#비용표)).
 
 ### 공정하게 맞추기
 
@@ -341,7 +345,7 @@ sd의 1스레드 줄은 `VECLIB_MAXIMUM_THREADS=1`인 프로세스에서 재요.
 
 ## R과 비교하기
 
-R 비교 대상은 array 46개, linalg 60개, special 85개, stats 290개, regression 138개, optimize 29개, htest 87개, sparse 66개예요. base R 함수가 대부분이고, 다변량 정규·t 누적분포의 `mvtnorm`, 분위 회귀의 `quantreg`, 강건 회귀의 `robustbase`, 모형 검정의 `lmtest`, `car`, `sandwich`, 변수 선택의 `MASS`와 `leaps`, 띠 행렬과 희소 행렬의 `Matrix`, 비선형 최소제곱의 `minpack.lm` 꾸러미를 써요. htest의 R은 base `stats`의 검정과 `car`의 `leveneTest`예요. optimize의 R은 목적 함수, 잔차, 기울기를 R로 다시 써서 불러요. R의 반복 상한과 허용오차는 sd·scipy 호출과 같은 멈춤 일이 되도록 Python 쪽 값에 맞추고, R의 알고리즘이 다른 곳은 사례의 비고에 적어요.
+R 비교 대상은 array 46개, linalg 60개, special 85개, stats 290개, regression 138개, optimize 29개, htest 149개, sparse 142개예요. integrate와 differentiate는 scipy만 견줘요. base R 함수가 대부분이고, 다변량 정규·t 누적분포의 `mvtnorm`, 분위 회귀의 `quantreg`, 강건 회귀의 `robustbase`, 모형 검정의 `lmtest`, `car`, `sandwich`, 변수 선택의 `MASS`와 `leaps`, 띠 행렬과 희소 행렬의 `Matrix`, 비선형 최소제곱의 `minpack.lm` 꾸러미를 써요. htest의 R은 base `stats`의 검정과 `car`의 `leveneTest`, `nortest`의 `ad.test`, `goftest`의 `cvm.test`, `multcomp`의 다중 비교예요. sparse의 R은 `Matrix`와 고유값·특이값의 `RSpectra`, `irlba`예요. optimize의 R은 목적 함수, 잔차, 기울기를 R로 다시 써서 불러요. R의 반복 상한과 허용오차는 sd·scipy 호출과 같은 멈춤 일이 되도록 Python 쪽 값에 맞추고, R의 알고리즘이 다른 곳은 사례의 비고에 적어요.
 
 R을 사례마다 따로 띄우면 시작 비용과 꾸러미 불러오기가 매번 들어요. 그래서 실행 하나가 R 프로세스(`R --vanilla`) 하나를 띄워 끝까지 써요(`rsession.py`). R 프로세스는 표준 입력으로 요청을 받아요.
 
@@ -622,7 +626,7 @@ constexpr double find(std::string_view dist, std::string_view method, bool memo 
 - **1스레드 줄은 BLAS도 1스레드예요.** BLAS를 부르는 사례에서 sd의 1스레드 줄은 Accelerate까지 1스레드로 묶은 시간이에요.
 - **†와 \*를 놓치지 않아요.** †는 기계가 바쁠 때 잰 줄이고, \*는 입력의 일부로 재서 늘린 값이에요.
 
-재서 나온 시간은 영역마다 `bench/<영역>/speed.md` 표에 모여요. 영역마다 어디서 왜 빠르거나 느린지, 무엇과 견주는지는 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/), [최적화 정확도와 성능](/internals/optimize/accuracy-performance/), [가설검정 정확도와 성능](/internals/htest/accuracy-performance/), [희소 행렬 정확도와 성능](/internals/sparse/accuracy-performance/)에서 다뤄요.
+재서 나온 시간은 영역마다 `bench/<영역>/speed.md` 표에 모여요. 영역마다 어디서 왜 빠르거나 느린지, 무엇과 견주는지는 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/), [최적화 정확도와 성능](/internals/optimize/accuracy-performance/), [가설검정 정확도와 성능](/internals/htest/accuracy-performance/), [적분 정확도와 성능](/internals/integrate/accuracy-performance/), [미분 정확도와 성능](/internals/differentiate/accuracy-performance/), [희소 행렬 정확도와 성능](/internals/sparse/accuracy-performance/)에서 다뤄요.
 
 ## 명령 모음
 

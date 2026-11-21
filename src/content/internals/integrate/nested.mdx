@@ -1,0 +1,190 @@
+---
+title: 겹친 적분
+group: 겹친 적분과 벡터 값
+order: 1
+summary: dblquad·tplquad·nquad가 quad를 변수마다 겹쳐 부르는 짜임을 설명해요. 모든 층을 C++의 재귀 하나가 돌리는 방식, 범위·옵션 함수를 부르는 때와 인자, 층마다의 작업 배열, 오차 어림이 모든 quad의 최댓값인 까닭과 그 한계, nfev와 status를 정하는 규칙을 다뤄요.
+seeAlso: [overview, adaptive-extrapolation, quad-vec]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+겹친 적분은 다차원 규칙을 쓰지 않고 1차원 `quad`를 변수마다 겹쳐요. 변수를 안쪽부터 $x_0, x_1, \dots, x_{n-1}$이라 하면
+
+$$
+F_0(x_1, \dots) = \int_{a_0(x_1, \dots)}^{b_0(x_1, \dots)} f(x_0, x_1, \dots)\,dx_0,\qquad
+F_i(x_{i+1}, \dots) = \int_{a_i(\dots)}^{b_i(\dots)} F_{i-1}(x_i, x_{i+1}, \dots)\,dx_i
+$$
+
+이고 적분값은 가장 바깥의 $F_{n-1}$이에요. 바깥 `quad`의 피적분 함수 값 하나가 안쪽 `quad` 한 번이에요. 그래서 매끄러운 함수라도 함숫값이 층마다 곱해져요. 단위 정사각형이면 21 × 21 = 441번, 단위 정육면체면 21³ = 9,261번이 가장 적은 수예요.
+
+```python
+>>> import math
+>>> sd.integrate.dblquad(lambda y, x: math.exp(-(x * x + y * y)), 0, 1, 0, 1)
+IntegrateResult(integral=0.557746, error=8.29137e-15, converged=True, nfev=441)
+>>> (math.sqrt(math.pi) / 2 * math.erf(1)) ** 2
+0.5577462853510334
+```
+
+이 짜임은 scipy의 `nquad`(`_NQuad`)와 같아요. 층을 도는 차례, 범위 함수와 옵션 함수를 부르는 때와 인자, f를 부르는 점의 순서가 모두 같아서, 지금은 부르는 점의 비트와 값, 오차, `nfev`가 scipy와 비트까지 같아요(약속은 아니에요). 다른 것은 겹침이 어디서 도는가예요. scipy는 Python 함수가 `quad`를 부르고 그 피적분 함수가 다시 Python에서 `quad`를 부르는데, stardust는 모든 층이 C++의 재귀 하나 안에서 돌아요. 안쪽 `quad`마다 Python 층의 인자 검사와 결과 객체를 거치지 않고, Python으로 나오는 것은 사용자의 함수를 부를 때뿐이에요.
+
+<Fig column caption="nquad 한 번의 흐름. 층마다 같은 quad 커널이고, 가장 안쪽만 사용자의 f를 불러요.">
+  <Steps steps={[
+    { label: 'nquad()', note: 'ranges와 opts를 층마다 (범위, 옵션)으로 만듦. 함수가 아닌 범위·옵션은 여기서 한 번 검사', where: '_quadpack.py' },
+    { label: 'nquad_solve', note: '층의 목록을 C++ 구조체로 읽고 가장 바깥 층 integrate(n − 1)을 부름', where: 'quadpack.cpp' },
+    { label: 'integrate(i)', note: '범위·옵션 함수가 있으면 바깥 변수로 불러 검사. 그 층의 quad를 돌림', where: 'NQuad', depth: 1 },
+    { label: 'quad의 피적분 함수', note: 'xs[i] = x로 두고 integrate(i − 1)을 부름', where: 'NQuad', depth: 2 },
+    { label: 'innermost()', note: '가장 안쪽 층: f(x₀, x₁, …)를 Python float들로 부름', where: 'NQuad', depth: 3 },
+    { label: '오차·nfev·status', note: 'quad가 끝날 때마다 오차의 최댓값, 가장 안쪽 nfev의 합, 처음 실패한 status를 갱신', where: 'NQuad', depth: 1 },
+  ]} />
+</Fig>
+
+## 재귀 하나: NQuad::integrate
+
+`NQuad`는 층의 목록(0이 가장 안쪽), 변수의 값 `xs`(안쪽부터), 층마다의 QUADPACK 작업 배열을 들어요. `integrate(i)`가 층 i의 적분 하나예요.
+
+```cpp
+    // csrc/integrate/quadpack.cpp
+    double integrate(int i) {
+        Level& L = levels[static_cast<std::size_t>(i)];
+        double lo = L.lo, hi = L.hi;
+        if (L.range_fn) {
+            nb::tuple args = outer(i);
+            nb::object r = nb::steal(PyObject_Call(L.range.ptr(), args.ptr(), nullptr));
+            if (!r.is_valid()) throw nb::python_error();
+            nb::tuple p = nb::borrow<nb::tuple>(range_check(i, r));
+            lo = nb::cast<double>(p[0]);
+            hi = nb::cast<double>(p[1]);
+        }
+        Opts o;
+        const Opts* op = &L.fixed;
+        if (L.opts_fn) {
+            nb::tuple args = outer(i);
+            nb::object r = nb::steal(PyObject_Call(L.opts.ptr(), args.ptr(), nullptr));
+            if (!r.is_valid()) throw nb::python_error();
+            o = read_opts(opts_check(i, r));
+            op = &o;
+        }
+        qp::Work& w = works[static_cast<std::size_t>(i)];
+        qp::Cycles& c = cycles[static_cast<std::size_t>(i)];
+        int limit = 0;
+        bool qawf = false;
+        double v;
+        if (i == 0) {
+            auto f = [&](double x) {
+                xs[0] = x;
+                return innermost();
+            };
+            v = quad(f, lo, hi, *op, w, limit, c, qawf);
+            nfev += qawf ? c.neval : w.neval;
+        } else {
+            auto f = [&, i](double x) {
+                xs[static_cast<std::size_t>(i)] = x;
+                return integrate(i - 1);
+            };
+            v = quad(f, lo, hi, *op, w, limit, c, qawf);
+        }
+```
+
+몇 가지를 짚어 볼게요.
+
+- **같은 `quad`.** 층 i의 피적분 함수는 람다이고, `quad`는 [구조](/internals/integrate/overview/)에서 본 `quad_solve`의 그 함수예요. QUADPACK 루틴이 피적분 함수를 템플릿 인자로 받으므로, 람다 안의 `integrate(i - 1)`이 안쪽 적분 하나를 통째로 돌려도 바깥 루틴에게는 함숫값 하나예요. 층마다 `weight`가 있으면 가중 함수 루틴도 같은 방식으로 겹쳐요.
+- **범위와 옵션은 바깥 점마다.** 범위 함수는 `integrate(i)`가 시작할 때마다, 곧 바깥 층의 점마다 한 번 불려요. 인자 `outer(i)`는 바깥 변수 $x_{i+1}, x_{i+2}, \dots$을 가까운 것부터 담은 튜플이에요(scipy의 `*args`). 돌려받은 범위와 옵션은 Python의 `range_check`·`opts_check`가 `nquad`의 규칙으로 검사해요. 함수가 아닌 범위와 옵션은 `nquad()`에서 한 번만 검사해요.
+- **층마다의 작업 배열.** `works[i]`는 층 i가 계속 다시 써요. 층 i의 `quad`가 도는 동안 안쪽 층 i − 1의 `quad`는 수없이 시작하고 끝나지만, 시작할 때마다 자기 배열을 비우고 쓰므로 바깥 층의 상태를 건드리지 않아요. 메모리는 층 수 × 구간 수예요.
+- **사용자 함수의 예외.** 범위 함수나 f가 낸 에러는 C++ 예외로 모든 층을 거슬러 나가요. QUADPACK 루틴은 지역 변수와 `Work`만 쓰므로 되감기면 그만이에요.
+
+부르는 차례를 들여다보면 겹침이 보여요.
+
+```python
+>>> calls = []
+>>> def f(y, x):
+...     calls.append((y, x))
+...     return x * y
+>>> sd.integrate.dblquad(f, 0, 1, lambda x: 0.0, lambda x: x)
+IntegrateResult(integral=0.125, error=5.51503e-15, converged=True, nfev=441)
+>>> calls[:3]
+[(0.25, 0.5), (0.006523367870707064, 0.5), (0.49347663212929294, 0.5)]
+```
+
+바깥 `quad`의 첫 점은 x = 0.5(21점 규칙의 가운데)이고, 그 점에서 안쪽 범위 [0, 0.5]의 21점 규칙이 가운데 0.25부터 돌아요. 범위 함수는 바깥 점마다 한 번이에요.
+
+```python
+>>> seen = []
+>>> def rng(x):
+...     seen.append(x)
+...     return (0.0, x)
+>>> sd.integrate.nquad(lambda y, x: x * y, [rng, (0, 1)])
+IntegrateResult(integral=0.125, error=5.51503e-15, converged=True, nfev=441)
+>>> len(seen), seen[:3]
+(21, [0.5, 0.013046735741414128, 0.9869532642585859])
+```
+
+## dblquad와 tplquad
+
+두 함수는 `nquad`의 층 목록을 만들어 같은 `nquad_solve`를 불러요. `dblquad(func, a, b, gfun, hfun)`은 층 둘, `[(안쪽 범위, 옵션), ((a, b), 옵션)]`이에요. 안쪽 범위는 `gfun`·`hfun`이 둘 다 수면 수의 쌍이라 함수를 부르지 않고, 하나라도 함수면 바깥 점마다 `gfun(x)` 다음 `hfun(x)`를 불러요(scipy의 `temp_ranges`와 같은 차례).
+
+`tplquad`에는 인자 순서가 하나 끼어 있어요. 범위 함수는 바깥 변수를 가까운 것부터 받으므로 가장 안쪽 층의 범위 함수는 (y, x)를 받는데, scipy의 `tplquad`는 `qfun(x, y)`·`rfun(x, y)`로 부르기로 정해 두었어요. 그래서 사이에 순서를 바꾸는 함수를 둬요.
+
+```python
+        # src/stardust/integrate/_quadpack.py
+        def r0(y, x):  # scipy's ranges0: qfun(x, y), then rfun(x, y)
+            return (q(x, y) if callable(q) else q, r(x, y) if callable(r) else r)
+```
+
+두 함수 모두 모든 층에 같은 `atol`·`rtol`과 `limit` 50을 써요. 층마다 다른 옵션은 `nquad`의 `opts`로 줘요.
+
+```python
+>>> sd.integrate.tplquad(lambda z, y, x: 1.0, 0, 1, 0, lambda x: 1 - x, 0, lambda x, y: 1 - x - y)
+IntegrateResult(integral=0.166667, error=1.10541e-14, converged=True, nfev=9261)
+```
+
+## 오차, nfev, status
+
+`quad` 하나가 끝날 때마다 `integrate`의 끝에서 셋을 갱신해요.
+
+```cpp
+        // csrc/integrate/quadpack.cpp
+        const double err = qawf ? c.abserr : w.abserr;
+        const int ier = qawf ? c.ier : w.ier;
+        if (err > abserr) abserr = err;  // Python's max(self.abserr, abserr)
+        if (ier != 0 && bad_ier == 0) {
+            bad_ier = ier;
+            bad_limit = limit;
+            bad_qawf = qawf;
+        }
+        return v;
+```
+
+- **`error`**는 모든 층의 모든 `quad`, 곧 바깥 점마다 돈 안쪽 `quad`까지 모두가 낸 오차 어림의 최댓값이에요. scipy의 `_NQuad`가 `self.abserr = max(self.abserr, abserr)`로 하는 것과 같아요. NaN은 비교가 거짓이라 건너뛰어요(scipy의 Python `max`도 그래요).
+- **`nfev`**는 가장 안쪽 `quad`들의 호출 수의 합, 곧 f를 부른 수예요.
+- **`status`·`message`**는 끝나는 차례로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이에요. scipy는 그런 `quad`마다 경고를 내는데, 그 첫 경고에 해당해요. 안쪽의 실패가 바깥 실패의 까닭인 경우가 많아서 처음의 것을 남겨요. `converged`는 모든 `quad`가 수렴했을 때만 참이에요.
+
+최댓값은 엄밀한 상계가 아니에요. 바깥 `quad`는 안쪽 적분이 낸 값을 정확한 함숫값처럼 받아 쓰고, 안쪽의 오차를 바깥의 오차 어림에 더하지 않아요. 바깥 규칙의 오차 어림과 안쪽 오차 어림 가운데 큰 쪽을 보고하는 셈이에요. 안쪽 적분의 오차가 바깥 점마다 같은 쪽으로 쏠리면 참 오차는 대략 (바깥 구간의 길이) × (안쪽 오차) + (바깥 오차)까지 갈 수 있어요.
+
+손으로 겹친 계산과 견주면 이 규칙이 보여요.
+
+```python
+>>> g = lambda y, x: math.sqrt(abs(x - y))
+>>> sd.integrate.dblquad(g, 0, 1, 0, 1)
+IntegrateResult(integral=0.533333, error=1.46968e-08, converged=True, nfev=158865)
+>>> inner_errors = []
+>>> def inner(x):
+...     q = sd.integrate.quad(lambda y: g(y, x), 0, 1)
+...     inner_errors.append(q.error)
+...     return q.integral
+>>> outer = sd.integrate.quad(inner, 0, 1)
+>>> outer.error, max(inner_errors)
+(1.2890268879738171e-08, 1.4696831224739624e-08)
+```
+
+$\sqrt{|x - y|}$의 단위 정사각형은 대각선에 꺾임이 있어서 안쪽 적분마다 여러 번 나눠요. `dblquad`의 `error`는 바깥 `quad`의 1.29×10⁻⁸이 아니라 231번의 안쪽 `quad` 가운데 가장 큰 1.47×10⁻⁸이에요.
+
+<Callout title="결과에 구간 정보가 없어요">
+겹친 적분의 결과는 `integral error converged status message nfev`뿐이에요. 바깥 점마다 안쪽 구간들이 따로 있어서 한 벌의 구간으로 나타낼 수 없고, scipy의 `nquad`도 구간 정보를 주지 않아요.
+</Callout>
+
+## 비용
+
+함숫값의 수가 층마다 곱해지므로 겹친 적분은 차원이 늘면 빠르게 비싸져요. 매끄러운 함수의 가장 적은 수가 차원 d에 대해 21^d이고, 어느 층에서든 구간을 나누면 그 층 아래 전체가 그만큼 다시 돌아요. 피적분 함수가 상자 위에서 매끄러우면, 영역을 통째로 나누는 [`cubature`](/api/integrate/cubature/)를 견줘 볼 만해요. 그 Genz–Malik 규칙은 한 영역에 점 $2^d + 2d^2 + 2d + 1$개라 차원에 따라 덜 가파르게 늘어요. 범위가 바깥 변수에 달려 있거나 층마다 가중 함수가 필요하면 겹친 적분이 맞아요.

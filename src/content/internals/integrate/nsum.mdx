@@ -1,0 +1,199 @@
+---
+title: 급수의 합
+group: tanh-sinh와 급수
+order: 2
+summary: nsum이 항이 적으면 한 번의 호출로 직접 더하고, 많으면 적분 판정의 경계와 Euler–Maclaurin 공식의 첫 두 항으로 꼬리를 tanh-sinh 적분으로 바꾸는 방법을 설명해요. 꼬리를 시작할 항을 고르는 규칙, 네 갈래, 오차 어림의 뜻을 다뤄요.
+seeAlso: [overview, tanhsinh, accuracy-performance]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Steps from '../../../components/fig/Steps.astro';
+
+## 한눈에 보기
+
+[`nsum`](/api/integrate/nsum/)은 $\sum_k f(a + k\cdot\text{step})$($a \le a + k\cdot\text{step} \le b$, $b$는 무한이어도 돼요)을 원소마다 따로 계산해요. f는 매끄럽고 양이며 단봉이어야 해요. 방법은 둘이에요.
+
+1. 항 수 $\lfloor (b - a)/\text{step}\rfloor + 1$이 `max_terms`(기본 $2^{20}$) 이하이면 모든 항을 한 번에 불러 더해요.
+2. 그보다 많으면 앞쪽 항은 직접 더하고, 나머지 꼬리는 적분으로 바꿔 [tanh-sinh](/internals/integrate/tanhsinh/)로 계산해요.
+
+걸음은 scipy 1.18.1의 `nsum`과 같고 코드는 `csrc/integrate/tanhsinh.cpp`의 `nsum_solve`, `direct`, `bound`예요. 적분은 같은 파일의 tanh-sinh 고리(`tanhsinh_run`)를 그대로 불러요.
+
+## 네 갈래
+
+첫 호출에서 모든 원소의 $f(a)$를 한 번 불러요(scipy 고리의 시작과 같은 호출이에요). 그다음 원소마다 갈래를 정해요.
+
+```cpp
+        // csrc/integrate/tanhsinh.cpp
+        for (std::size_t i = 0; i < n; ++i) {
+            const double ai = av[i], si = sv[i];
+            const bool valid = b0[i] >= ai && std::isfinite(si) && si > 0;
+            const double nterms = std::floor((b0[i] - ai) / si);
+            const double bi = std::isfinite(nterms) ? ai + nterms * si : b0[i];
+            if (!valid) {  // -1; b < a is the empty sum
+                const bool empty = bi < ai;
+                o.S[i] = o.E[i] = empty ? zero : kNaN;
+                o.status[i] = empty ? 0 : sSignErr;
+            } else if (nterms + 1 <= static_cast<double>(max_terms)) {
+                g1.add(i, ai, bi, si);
+            } else if (std::isfinite(ai)) {
+                g2.add(i, ai, bi, si);
+            } else if (std::isfinite(bi)) {
+                g3.add(i, -bi, -ai, si);
+            } else {
+                g4.add(i, 0.0, bi, si);
+            }
+        }
+```
+
+| 갈래 | 조건 | 계산 |
+|---|---|---|
+| 틀린 입력 | `step` ≤ 0이거나 유한하지 않음, NaN | status −1 (b < a는 빈 합 0, status 0) |
+| 직접 합 | 항 수 ≤ `max_terms` | 한 번의 호출로 모든 항 |
+| 오른쪽 | a 유한, 항이 많음 | 적분 판정 |
+| 왼쪽 | a = −∞, b 유한 | $f(-x)$의 $[-b, \infty)$ 합 |
+| 양쪽 | a = −∞, b = ∞ | $f(x) + f(-x)$의 $[0, \infty)$ 합, $x = 0$은 반 |
+
+$b$가 유한하면 마지막 항의 위치 $a + \lfloor (b - a)/\text{step}\rfloor\cdot\text{step}$으로 $b$를 다시 둬요. 갈래마다 그 갈래의 원소만(그 원소의 `args`와 함께) 따로 부르고, 차례는 scipy와 같은 직접 합, 오른쪽, 왼쪽, 양쪽이에요. 양쪽 갈래는 호출마다 f를 두 번($x$와 $-x$) 불러 더해요.
+
+## 직접 합
+
+직접 합은 갈래의 모든 원소를 (k, m) 한 번의 호출로 불러요. m은 가장 많은 원소의 항 수이고, 항이 모자란 원소의 칸은 NaN으로 채워 넘겨요. 돌아온 값에서 그 칸은 버리고, 줄마다 numpy의 pairwise 합으로 더해요. 오차 어림은 $\varepsilon\lvert S\rvert$예요. 항의 값이 정확하다고 보면 남는 것은 합의 반올림뿐이라서예요.
+
+```python
+>>> import math
+>>> shapes = []
+>>> def f(k, p):
+...     shapes.append(tuple(k.shape))
+...     return 1 / k**p
+>>> r = sd.integrate.nsum(f, sd.asarray([1.0, 1.0]), sd.asarray([100.0, math.inf]), args=(2.0,))
+>>> r.sum.tolist()
+[1.6349839001848931, 1.6449340668479238]
+>>> shapes
+[(2,), (1, 100), (1,), (1, 66), (1, 21), (1, 21), (1, 8192), (1,), (1, 66), (1, 64), (1, 128)]
+```
+
+첫째 원소($\sum_{k=1}^{100} 1/k^2$)는 직접 합 (1, 100) 한 번이고, 둘째 원소($\sum_{k=1}^{\infty}$)의 호출이 그 뒤를 이어요. 그 차례를 아래에서 풀어요.
+
+## 꼬리를 적분으로
+
+### 적분 판정과 Euler–Maclaurin
+
+$f$가 $[c, \infty)$에서 줄어드는 양의 함수이면 적분 판정의 두 경계가 있어요.
+
+$$
+\int_c^\infty f(x)\,dx \;\le\; \sum_{k \ge 0} f(c + k) \;\le\; f(c) + \int_c^\infty f(x)\,dx
+$$
+
+가운데를 고르면 오차는 많아야 $f(c)/2$예요. 이 가운데 값은 Euler–Maclaurin 공식
+
+$$
+\sum_{k \ge 0} f(c + k) = \int_c^\infty f(x)\,dx + \frac{f(c)}{2} - \sum_{j \ge 1} \frac{B_{2j}}{(2j)!}\, f^{(2j-1)}(c)
+$$
+
+의 처음 두 항과 같아요($B_{2j}$는 베르누이 수). 도함수의 항은 계산하지 않고, 버린 그 항들의 크기를 $f(c)/2$의 경계로 덮어요. 간격이 step이면 적분을 step으로 나누고, $b$가 유한하면 끝에도 같은 반을 붙여요. 원소 하나의 결과는
+
+$$
+S = \sum_{a \le x_k < c} f(x_k) + \frac{1}{\text{step}}\int_c^b f(x)\,dx + \frac{f(c)}{2} + \frac{f(b)}{2}, \qquad
+E = \varepsilon\lvert S_{\text{직접}}\rvert + \frac{e_{\text{적분}}}{\text{step}} + \frac{f(c)}{2} - \frac{f(b)}{2}
+$$
+
+이에요($b = \infty$면 $f(b)$의 항은 0).
+
+```cpp
+            // csrc/integrate/tanhsinh.cpp
+            out.S[r] = left.S[r] + right.integral[r] / step[r] + fk[r] / 2 + fb[r] / 2;
+            out.E[r] = left.E[r] + right.error[r] / step[r] + fk[r] / 2 - fb[r] / 2;
+```
+
+### 꼬리를 시작할 항
+
+$c$가 앞이면 직접 더하는 항이 적지만 $f(c)/2$의 오차가 커요. 그래서 오차가 허용오차 안에 들어오는 가장 앞의 $c$를 찾아요.
+
+1. 하한 $S_l = \int_a^\infty f$를 tanh-sinh로 구해요. 줄어드는 $f$에서는 합의 하한이에요.
+2. 후보 $c = a + 2^j\cdot\text{step}$($j = 0, 1, \dots, \lfloor\log_2 \text{max\_terms}\rfloor - 1$)과 $a + \text{max\_terms}\cdot\text{step}$에서 $f(c)$와 다음 항 $f(c + \text{step})$을 두 번의 호출로 한꺼번에 불러요.
+3. $f(c) \le \text{atol} + \text{rtol}\cdot S_l$이고 $f(c + \text{step}) \le f(c)$(아직 줄고 있음)인 첫 후보가 $c$예요.
+4. $c$ 앞의 항을 직접 더하고, $\int_c^b f$를 tanh-sinh로 구하고, $b$가 유한하면 $f(b)$를 불러요.
+
+```cpp
+    // csrc/integrate/tanhsinh.cpp
+    for (std::size_t r = 0; r < k; ++r) {
+        std::size_t cnt = 0;
+        for (std::size_t j = 0; j < L; ++j) {
+            const double f0 = fks[r * L + j], f1 = ev.value(r, j);
+            cnt += (f0 > tol[r]) || (f1 > f0);
+        }
+        const std::size_t nt = std::min(cnt, L - 1);
+        short_[r] = cnt == L;
+        kk[r] = a[r] + n_steps[nt] * step[r];
+        fk[r] = fks[r * L + nt];
+    }
+```
+
+후보를 차례로 보며 멈추지 않고 실패한 후보의 수를 세어 그 자리를 써요. 단봉인 f에서는 실패가 앞쪽에 몰려 있으니 같은 답이에요. 모든 후보가 실패하면 마지막 후보($a + \text{max\_terms}\cdot\text{step}$)를 쓰고, 적분이 수렴해도 status −4로 알려요. 부분합의 마지막 항이 허용오차보다 커서 오차 어림이 허용오차를 넘는다는 뜻이에요.
+
+### 예: ζ(2)
+
+$\sum_{k=1}^\infty 1/k^2$의 호출을 풀면 이래요. 기본 rtol은 $\sqrt\varepsilon = 2^{-26}$이에요.
+
+<Fig column caption="nsum(lambda k: 1/k**2, 1, inf)의 호출 열 번. 점의 수를 모두 더하면 nfev 8,561이에요.">
+  <Steps steps={[
+    { label: 'f(a) (1,)', note: '모든 원소의 첫 호출', where: '1점' },
+    { label: 'tanhsinh: (1,), (1, 66)', note: '하한 S_l = ∫₁^∞ x⁻² dx = 1. 수준 2에서 수렴', where: '67점' },
+    { label: 'f(c), f(c + 1) (1, 21) 두 번', note: '후보 1 + 2⁰, …, 1 + 2¹⁹과 1 + 2²⁰. f(c) ≤ √ε·S_l인 첫 후보는 c = 1 + 2¹³ = 8,193', where: '42점' },
+    { label: '직접 합 (1, 8192)', note: 'k = 1, …, 8,192', where: '8,192점' },
+    { label: 'tanhsinh: (1,), (1, 66), (1, 64), (1, 128)', note: '꼬리 ∫ x⁻² dx (8,193에서 ∞까지). 수준 4에서 수렴', where: '259점' },
+  ]} />
+</Fig>
+
+```python
+>>> r = sd.integrate.nsum(lambda k: 1 / (k*k), 1, math.inf)
+>>> r.sum, abs(r.sum - math.pi**2 / 6), r.error, 0.5 / 8193**2
+(1.6449340668479238, 3.0264679651281767e-13, 7.448762306416137e-09, 7.448761940532988e-09)
+```
+
+오차 어림의 거의 전부가 $f(c)/2$예요. 참 오차는 그보다 네 자리 작아요. Euler–Maclaurin의 다음 항 $-f'(c)/12 = 1/(6c^3)$은 $3 \times 10^{-13}$이고 참 오차가 바로 그 크기예요. 경계 $f(c)/2$는 f가 줄어든다는 것만 쓰는 넉넉한 경계이고, 실제 오차는 도함수의 항이 정해요.
+
+배치에서는 원소마다 다른 $c$를 고르니 직접 합의 길이가 달라요. 한 호출의 열 수는 가장 긴 원소의 항 수이고 나머지 칸은 NaN이에요.
+
+```python
+>>> shapes.clear()
+>>> r = sd.integrate.nsum(f, 1, math.inf, args=(sd.asarray([2.0, 3.0, 1.5]),))
+>>> r.nfev.tolist()
+[8561, 881, 131441]
+>>> shapes[5]
+(3, 131072)
+```
+
+$1/k^{1.5}$은 꼬리가 느리게 줄어 $c = 1 + 2^{17}$까지 가요. $1/k^3$은 $c = 1 + 2^{9}$에서 시작해요.
+
+### 꼬리가 넘치는 경우
+
+```python
+>>> r = sd.integrate.nsum(lambda k: 1 / k**1.1, 1, math.inf, max_terms=10)
+>>> r.status, r.sum, r.error
+(-4, 10.58385294178994, 0.03576333938311314)
+```
+
+직접 더할 수 있는 항이 10개뿐이라 $c = 11$이고, $f(11)/2 \approx 0.036$이 허용오차보다 커요. 값 자체는 $\zeta(1.1) \approx 10.584$에 가깝지만 경계가 그것을 보장하지 못해요.
+
+## 양쪽 무한
+
+양쪽 무한은 $x = 0$을 기준으로 접어 $g(x) = f(x) + f(-x)$의 $[0, \infty)$ 합으로 계산해요. $x = 0$의 항은 두 번 더해지니 반으로 둬요. f를 호출마다 두 번 부르고, `nfev`도 두 번씩 세요. log로 계산할 때는 합 대신 $\operatorname{logsumexp}(f(x), f(-x))$에 $x = 0$이면 $\log\tfrac12$을 더해요.
+
+```python
+>>> r = sd.integrate.nsum(lambda k: sd.exp(-k*k), -math.inf, math.inf)
+>>> r.sum, sum(math.exp(-k*k) for k in range(-40, 41))
+(1.772637204826652, 1.772637204826652)
+```
+
+## log로 더하기
+
+`log=True`면 f는 $\log f$를 돌려주고, 직접 합과 끝의 반, 적분의 몫이 모두 logsumexp로 합쳐져요. 허용오차도 log이고 판정의 $\text{atol} + \text{rtol}\cdot S_l$은 $\operatorname{logsumexp}(\log\text{atol}, \log\text{rtol} + \log S_l)$이에요. 오차의 $-f(b)/2$는 허수부 $\pi$를 붙인 복소 logsumexp로 빼요(tanh-sinh의 $d_1$과 같은 방법).
+
+## scipy와 같은 점
+
+갈래의 차례, 호출의 모양과 점, 후보의 판정, 직접 합의 NaN 칸, 합의 순서(numpy의 pairwise)가 scipy와 같아서, 시험 모음의 급수 아홉과 기록 밖의 29경우(log 여섯, 양쪽·왼쪽, 틀린 `step`, b < a, NaN, `max_terms` 0·1·1,000, −4, 발산, 네 갈래가 섞인 배치 등)에서 지금은 scipy와 비트까지 같아요(약속은 아니에요). 다른 곳은 셋이에요.
+
+- log의 오차는 네 항의 복소 logsumexp인데, scipy(numpy)는 그 합을 배치가 원소 하나일 때 쌍으로((e₀ + e₁) + (e₂ + e₃)), 여럿일 때 차례로 더해요. sd는 원소의 결과가 배치와 상관없도록 늘 원소 하나의 꼴로 더해서, 여러 원소로 부른 scipy와는 이 오차의 끝자리가 다를 수 있어요.
+
+- 항의 위치 $a + n\cdot\text{step}$이 넘쳐 직접 합의 항 수가 유한하지 않으면 scipy는 에러를 내지만, sd는 그 원소의 직접 합을 비우고 다른 원소는 그대로 계산해요.
+- log이고 $a = b = -\infty$인 원소는 scipy가 0에서 $-\infty$로의 적분을 거쳐 복소수를 내지만, sd는 그 적분을 NaN으로 두어 status −2예요.

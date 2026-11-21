@@ -51,6 +51,8 @@ NAMESPACES = {
     "optimize": sd.optimize,
     "sparse": sd.sparse,
     "htest": sd.htest,
+    "integrate": sd.integrate,
+    "differentiate": sd.differentiate,
 }
 
 

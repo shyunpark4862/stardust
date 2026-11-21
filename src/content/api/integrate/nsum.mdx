@@ -1,0 +1,225 @@
+---
+kind: function
+title: nsum
+names: [nsum]
+group: tanh-sinh와 급수
+order: 2
+signatures:
+  - "sd.integrate.nsum(f, a, b, /, *, step=1, args=(), log=False, max_terms=1048576, atol=None, rtol=None)"
+summary: 급수 Σ f(a + k·step)를 원소마다 따로 계산해요. 항이 적으면 직접 더하고, 많거나 끝이 무한이면 앞쪽 항을 더한 뒤 나머지를 적분으로 어림해요. 매끄럽고 양이며 봉우리가 하나인 항에 써요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "원소별 항의 함수 f(x, *args). x는 float64 sd.ndarray이고(첫 호출은 (k,), 그다음은 (k, p)), 같은 모양의 실수 배열을 돌려줘요. 정수가 아닌 x에서도 불리므로 실수 전체에서 정의된 매끄러운 함수여야 해요."
+  - name: a
+    type: float 또는 실수의 배열
+    kind: positional-only
+    desc: "첫 항의 위치. -inf를 받아요. b, step, args와 브로드캐스트해요."
+  - name: b
+    type: float 또는 실수의 배열
+    kind: positional-only
+    desc: "마지막 항의 위치(이 값 이하의 a + k·step까지 더해요). inf를 받아요. b < a면 합은 0이에요."
+  - name: step
+    type: float 또는 실수의 배열
+    kind: keyword-only
+    desc: "항 사이의 간격. 유한한 양수여야 하고, 아니면 그 원소는 status −1이에요. 기본값 1."
+  - name: args
+    type: tuple
+    kind: keyword-only
+    desc: "f에 더 넘길 인자들. 수나 배열이고 a, b, step과 브로드캐스트해요. f는 원소마다 맞춘 (k, 1) 모양으로 받아요. 기본값 ()."
+  - name: log
+    type: bool
+    kind: keyword-only
+    desc: "True면 f가 항의 로그를 돌려주고, sum·error·atol·rtol도 로그예요. 기본값 False."
+  - name: max_terms
+    type: int
+    kind: keyword-only
+    desc: "직접 더하는 항 수의 상한. 0 이상 2²⁴ 이하예요. 항 수가 이보다 많으면 적분으로 나머지를 어림해요. 기본값 2²⁰ = 1048576."
+  - name: atol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "절대 허용오차. 유한한 0 이상의 수이고, None(기본값)이면 0(log=True면 -inf)이에요."
+  - name: rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "상대 허용오차. 유한한 0 이상의 수이고, None(기본값)이면 √ε ≈ 1.5e-8(log=True면 0.5·log ε)이에요."
+returns:
+  type: IntegrateResult
+  desc: "sum, error, converged, status, nfev 필드. 필드는 a, b, step, args를 브로드캐스트한 모양이고, 입력이 모두 수면 Python 수예요. 둘로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, a·b·step·args가 실수나 실수 배열이 아닐 때(bool, 복소수 포함), log가 bool이 아닐 때, max_terms가 int가 아닐 때, f가 실수가 아닌 값을 돌려줄 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: a, b, step, args가 브로드캐스트되지 않을 때, max_terms가 음수이거나 2²⁴보다 클 때, atol·rtol이 음수이거나 유한하지 않을 때(log=True면 NaN이나 +inf일 때), f가 돌려준 모양이 틀렸을 때.
+seeAlso: [tanhsinh, quad, results, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+$\sum_{k=1}^\infty 1/k^2 = \pi^2/6$처럼 끝없이 이어지는 급수를 컴퓨터로 더하려면 어디선가 멈춰야 해요. 그런데 이 급수는 천천히 수렴해서 백만 항을 더해도 $10^{-6}$만큼 모자라요. `nsum`은 앞쪽 항을 직접 더하고, 남은 꼬리는 적분으로 어림해요.
+
+적분 판정법에서 감소하는 양의 함수 $f$의 꼬리는 적분과 가까워요.
+
+$$
+\sum_{k=c}^{\infty} f(k) \approx \int_c^\infty f(x)\,dx + \frac{f(c)}{2}
+$$
+
+그래서 항이 허용오차보다 작아지는 위치 $c$를 찾은 뒤, $c$ 앞의 항은 직접 더하고 $c$부터의 꼬리는 [`tanhsinh`](/api/integrate/tanhsinh/)로 적분해 더해요. 남는 오차는 대략 $f(c)/2$와 적분의 오차예요. 항 수가 유한하고 `max_terms` 이하면 그냥 모두 더해요.
+
+## 기본 사용
+
+결과는 [`IntegrateResult`](/api/integrate/results/)이고 값은 `sum` 필드예요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> r = sd.integrate.nsum(lambda k: 1 / k**2, 1, math.inf)
+>>> r
+IntegrateResult(sum=1.64493, error=7.44876e-09, converged=True, nfev=8561)
+>>> r.sum - math.pi**2 / 6
+-3.0264679651281767e-13
+```
+
+8,561번의 함숫값으로 $3 \times 10^{-13}$까지 맞았어요. `error`는 $7 \times 10^{-9}$라 실제 오차보다 훨씬 커요. 꼬리를 자르는 위치 $c$를 항이 허용오차(기본은 합의 $\sqrt{\varepsilon}$배)보다 작아지는 곳으로 고르고, 그 항의 반 $f(c)/2$를 오차로 잡기 때문이에요. 필드는 `sum`, `error`, `converged`, `status`, `nfev`예요. `integral`은 없어요.
+
+항 수가 유한하고 적으면 모두 직접 더해요.
+
+```python
+>>> r = sd.integrate.nsum(lambda k: 1 / k**2, 1, 10)
+>>> r.sum, sum(1 / k**2 for k in range(1, 11)), r.nfev
+(1.5497677311665408, 1.5497677311665408, 11)
+```
+
+항 수가 `max_terms`(기본 $2^{20}$)보다 많으면 끝이 유한해도 꼬리를 적분으로 어림해요. 천만 항의 합도 9천 번쯤의 함숫값으로 끝나요.
+
+```python
+>>> r = sd.integrate.nsum(lambda k: 1 / k**2, 1, 10**7)
+>>> r.converged, r.nfev
+(True, 9010)
+```
+
+### 위치와 간격
+
+항의 위치는 $a, a + \text{step}, a + 2\,\text{step}, \ldots$이고 $b$를 넘지 않는 데까지 더해요. `step`은 정수가 아니어도 돼요. $\sum_{k \ge 1} 1/(k/2)^2 = 4\pi^2/6$이에요.
+
+```python
+>>> r = sd.integrate.nsum(lambda x: 1 / x**2, 0.5, math.inf, step=0.5)
+>>> r.sum, 4 * math.pi**2 / 6
+(6.579736267392756, 6.579736267392906)
+```
+
+$a = -\infty$면 왼쪽으로, 양쪽이 무한이면 양쪽으로 더해요.
+
+```python
+>>> sd.integrate.nsum(lambda k: sd.exp(k), -math.inf, 0).sum, math.e / (math.e - 1)
+(1.5819767068693253, 1.5819767068693265)
+>>> sd.integrate.nsum(lambda k: sd.exp(-k**2), -math.inf, math.inf).sum
+1.772637204826652
+```
+
+`b < a`면 더할 항이 없어 0이에요.
+
+## 항의 함수가 지켜야 할 것
+
+꼬리를 적분으로 어림하려면 정수가 아닌 위치에서도 $f$를 불러야 해요. 그래서 `f`는
+
+- 실수 전체에서 정의된 매끄러운 함수이고,
+- 값이 양수이고,
+- 봉우리가 하나(그 뒤로는 줄어들기만)여야 해요.
+
+이 조건이 깨지면 결과를 믿을 수 없어요. 부호가 바뀌는 교대급수 $\sum (-1)^k/k = -\log 2$는 $(-1)^x$가 정수가 아닌 $x$에서 뜻이 없어서 엉뚱한 값이 나와요.
+
+```python
+>>> r = sd.integrate.nsum(lambda k: (-1.0)**k / k, 1, math.inf)
+>>> r.converged
+False
+```
+
+교대급수는 짝을 지어 양의 급수로 바꿔 더해요. $\sum_{k\ge1} \bigl(1/(2k) - 1/(2k-1)\bigr) = -\sum_{k \ge 1} 1/(2k(2k-1))$이에요.
+
+```python
+>>> -sd.integrate.nsum(lambda k: 1 / (2 * k * (2 * k - 1)), 1, math.inf).sum, -math.log(2)
+(-0.6931471805598696, -0.6931471805599453)
+```
+
+`f`의 다른 규칙(원소별, 배열을 받음, 예외 대신 inf·NaN)은 [`tanhsinh`](/api/integrate/tanhsinh/#피적분-함수의-규칙)와 같아요.
+
+## 여러 급수를 한 번에
+
+`a`, `b`, `step`, `args`에 배열을 주면 원소마다 따로 더해요. 제타 함수 $\zeta(s) = \sum k^{-s}$를 네 개의 $s$로 계산해 봐요.
+
+```python
+>>> s = sd.asarray([2.0, 3.0, 4.0, 1.5])
+>>> r = sd.integrate.nsum(lambda k, s: k**-s, 1, math.inf, args=(s,))
+>>> r
+IntegrateResult(batch shape (4,), 4 of 4 converged)
+>>> r.sum
+array([1.6449340668479238,  1.202056903155985, 1.0823232337018078,
+        2.612375348685468], dtype=float64)
+>>> sd.special.zeta(s)
+array([1.6449340668482264, 1.2020569031595942, 1.0823232337111381,
+        2.612375348685488], dtype=float64)
+```
+
+필드는 배치 모양의 배열이에요. 원소마다의 표는 `summary()`로 볼 수 있어요([결과 읽기](/api/integrate/results/)). `f`가 받는 모양은 [`tanhsinh`](/api/integrate/tanhsinh/#f가-받는-모양)와 같은 규칙이에요. 직접 더하는 항, 오른쪽 꼬리, 왼쪽 꼬리를 갈래마다 따로 불러요.
+
+## 멈춤과 status
+
+| status | 뜻 |
+|---|---|
+| 0 | 수렴했어요. |
+| −1 | `a`, `b`, `step`이 틀렸어요(step ≤ 0, NaN 등). |
+| −2 | 꼬리의 적분이 수준 상한에 닿았어요. 급수가 발산하거나 아주 느리게 수렴할 수 있어요. |
+| −3 | 값이 유한하지 않아요. |
+| −4 | 직접 더한 부분합의 마지막 항이 아직 허용오차보다 커요. `max_terms`를 늘리거나 나눠 더해요. |
+
+발산하는 조화급수는 −2예요. 수렴하지만 아주 느린 급수도 그럴 수 있어요. $\sum 1/k^{1.01} = \zeta(1.01) \approx 100.58$은 판정을 통과하지 못하고 틀린 값을 돌려줘요.
+
+```python
+>>> r = sd.integrate.nsum(lambda k: 1 / k, 1, math.inf)
+>>> r.converged, r.status
+(False, -2)
+>>> r = sd.integrate.nsum(lambda k: 1 / k**1.01, 1, math.inf)
+>>> r.sum, r.status
+(97.72333109455653, -2)
+```
+
+`step`이 양수가 아니면 예외 대신 그 원소의 status가 −1이에요.
+
+```python
+>>> r = sd.integrate.nsum(lambda k: 1 / k**2, 1, math.inf, step=-1)
+>>> r.sum, r.status
+(nan, -1)
+```
+
+<Callout type="note" title="오차 추정의 뜻">
+`error`는 모든 항이 음이 아니고 `f`가 정확하다는 가정에서 만든 어림이에요. 엄밀한 상계가 아니고, 위의 조건을 지키지 않는 `f`에서는 뜻이 없어요.
+</Callout>
+
+## log=True
+
+항이 float64의 범위를 넘으면 로그로 계산해요. `f`는 항의 로그를 돌려주고, `sum`과 `error`도 로그예요.
+
+```python
+>>> r = sd.integrate.nsum(lambda k: -2 * sd.log(k), 1, math.inf, log=True)
+>>> r.sum, math.log(math.pi**2 / 6)
+(0.49770030247056113, 0.4977003024707453)
+```
+
+`atol`·`rtol`도 로그로 줘요(기본 atol은 −inf, rtol은 $0.5 \log \varepsilon$).
+
+## 옵션
+
+- `atol`(기본 0)·`rtol`(기본 $\sqrt{\varepsilon} \approx 1.5 \times 10^{-8}$): 꼬리를 자르는 위치와 적분의 멈춤에 쓰는 허용오차예요.
+- `max_terms`(기본 $2^{20}$, 0 이상 $2^{24}$ 이하): 직접 더하는 항 수의 상한이에요. 항 수가 이 이하면 모두 직접 더해요(한 번의 호출에 그 항들을 모두 넘겨요). 크게 하면 정확해지지만 호출 한 번이 커져요.
+
+같은 입력이면 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+- scipy 1.18.1의 `scipy.integrate.nsum`과 같은 갈래, 호출 순서, 꼬리 어림이고, 지금은 같은 점에서 `f`를 불러 같은 값을 내요(비트까지 같지만 약속은 아니에요).
+- `maxterms`는 `max_terms`(int만, $2^{24}$ 이하), `tolerances`의 두 키는 `atol`·`rtol` 인자, `success`는 `converged`예요. `kwargs`는 없어요.
+- `log=True`이고 `a = b = -inf`인 원소는 NaN이고 status −2예요(scipy는 복소수를 내요). `log=True`의 배치 오차는 원소 여럿으로 부른 scipy와 끝자리가 다를 수 있어요.
+- 항의 위치가 넘쳐 무한이 되는 원소는 그 직접 합을 비워요(scipy는 에러예요).

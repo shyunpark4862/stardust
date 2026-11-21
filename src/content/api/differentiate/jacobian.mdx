@@ -1,0 +1,235 @@
+---
+kind: function
+title: jacobian
+names: [jacobian]
+group: 야코비안과 헤시안
+order: 1
+signatures:
+  - "sd.differentiate.jacobian(f, x, /, *, atol=None, rtol=None, max_iter=10, order=8, initial_step=0.5, step_factor=2.0, step_direction=0)"
+summary: 여러 변수의 함수 f의 야코비안을 구해요. 스칼라 함수면 기울기예요. 항목마다 derivative의 방법으로 따로 멈추고, 항목마다의 오차 추정과 수렴 여부를 함께 돌려줘요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "벡터화된 함수 f(x). x는 열 하나가 점 하나인 float64 sd.ndarray (m, N)이고, 출력이 k개면 (k, N), 스칼라 함수면 (N,)을 돌려줘요(sd.ndarray, numpy 배열, 행의 리스트). 첫 호출이 정한 꼴을 다음 호출에서도 지켜야 해요."
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 numpy 배열
+    kind: positional-only
+    desc: 미분할 점 (m,). 1차원이고 비어 있지 않아야 해요. 유한하지 않은 값이 있으면 그 변수가 든 항목이 status −3이에요.
+  - name: atol, rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "항목마다 error < atol + rtol·|df|이면 멈춰요. None이면 atol은 가장 작은 정규수(2.2e-308), rtol은 √ε(1.5e-8)예요."
+  - name: max_iter
+    type: int
+    kind: keyword-only
+    desc: "공식을 계산하는 횟수의 상한(1 이상). 기본값 10."
+  - name: order
+    type: int
+    kind: keyword-only
+    desc: "차분 공식의 차수(1 이상, 홀수는 다음 짝수). 기본값 8."
+  - name: initial_step
+    type: 실수 또는 실수 m개
+    kind: keyword-only
+    desc: "처음의 절대 간격. 수 하나면 모든 변수에, m개면 변수마다 써요. 기본값 0.5."
+  - name: step_factor
+    type: float
+    kind: keyword-only
+    desc: "반복마다 간격을 나누는 수. 기본값 2.0. 유한하고 0보다 크고 1이 아니어야 해요."
+  - name: step_direction
+    type: 실수 또는 실수 m개
+    kind: keyword-only
+    desc: "변수마다 0(기본값)이면 중앙 공식, 양수면 그 변수를 늘리는 쪽만, 음수면 줄이는 쪽만 써요."
+returns:
+  type: DifferentiateResult
+  desc: "df, error, converged, status, n_iter, nfev가 든 결과 객체예요. 필드마다 (k, m)(스칼라 f는 (m,))의 sd.ndarray이고, 항목 (i, j)가 ∂f_i/∂x_j의 것이에요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, x가 수의 시퀀스가 아닐 때, 옵션의 형이 틀릴 때, f가 수의 배열이 아닌 것이나 bool·복소수 값을 돌려줄 때, args 같은 모르는 키워드를 줬을 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: x가 1차원이 아니거나 비었을 때, initial_step·step_direction의 개수가 m이 아닐 때, f가 (N,)이나 (k, N)이 아닌 모양을 돌려주거나 첫 호출과 다른 꼴을 돌려줄 때, 옵션의 값이 범위 밖일 때(derivative와 같아요).
+seeAlso: [basics, derivative, hessian]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+함수 $f: \mathbb{R}^m \to \mathbb{R}^k$의 **야코비안**은 편도함수 $\partial f_i / \partial x_j$를 $i$행 $j$열에 모은 $(k, m)$ 행렬이에요. 점 $x$ 둘레에서 $f$를 가장 잘 근사하는 선형 함수의 행렬이에요. $f$가 스칼라 함수면 같은 것이 길이 $m$의 **기울기**예요.
+
+`jacobian(f, x)`는 변수 $j$마다 그 변수만 움직인 점들에서 `f`를 부르고, 항목 $(i, j)$마다 [`derivative`](/api/differentiate/derivative/)와 같은 차분 공식을 간격을 줄이며 되풀이해요. 항목마다 따로 판정해서, 결과의 필드가 모두 야코비안과 같은 모양이에요. 모든 항목이 멈출 때까지 반복마다 모든 변수의 점을 한 번에 불러요.
+
+## 기본 사용
+
+극좌표 $(r, \theta)$를 직교좌표 $(r\cos\theta, r\sin\theta)$로 바꾸는 함수의 야코비안은 $\begin{pmatrix}\cos\theta & -r\sin\theta \\ \sin\theta & r\cos\theta\end{pmatrix}$이고 행렬식이 $r$이에요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> polar = lambda x: [x[0] * sd.cos(x[1]), x[0] * sd.sin(x[1])]
+>>> r = sd.differentiate.jacobian(polar, [2.0, math.pi / 6])
+>>> r
+DifferentiateResult(batch shape (2, 2), 4 of 4 converged)
+>>> r.df
+array([[ 0.8660254037844427, -0.9999999999999925],
+       [                0.5,  1.7320508075688554]], dtype=float64)
+>>> float(sd.linalg.det(r.df))
+1.9999999999999842
+```
+
+`error`, `status`, `n_iter`, `nfev`도 항목마다 있어요.
+
+```python
+>>> r.error
+array([[  5.88418203051333e-15, 2.6117996654306808e-12],
+       [                   0.0,  4.517719531804687e-12]], dtype=float64)
+>>> r.nfev
+array([[11, 11],
+       [11, 11]], dtype=int64)
+```
+
+스칼라 함수면 결과는 기울기 $(m,)$이에요. 값 하나를 리스트로 돌려주면 $(1, m)$이에요.
+
+```python
+>>> sd.differentiate.jacobian(lambda x: x[0]**2 + x[1]**2, [1.0, 2.0]).df
+array([2.0, 4.0], dtype=float64)
+>>> sd.differentiate.jacobian(lambda x: [x[0]**2 + x[1]**2], [1.0, 2.0]).df
+array([[2.0, 4.0]], dtype=float64)
+```
+
+## 벡터화된 f 쓰기
+
+`f`는 점 하나가 아니라 점 여러 개를 한 번에 받아요. 변수가 $m$개면 `x`는 $(m, N)$이고 열 하나가 점 하나예요. 그래서 `x[0]`, `x[1]`은 각 변수의 $N$개 값이고, 원소별 연산으로 쓰면 $N$개의 점을 한 번에 계산해요. 돌려주는 것은 출력마다 한 행인 $(k, N)$(행의 리스트도 돼요)이나, 스칼라 함수면 $(N,)$이에요.
+
+```python
+>>> seen = []
+>>> def g(x):
+...     seen.append(x.shape)
+...     return polar(x)
+>>> _ = sd.differentiate.jacobian(g, [2.0, math.pi / 6])
+>>> seen
+[(2, 2), (2, 16), (2, 4)]
+```
+
+첫 호출은 열이 모두 $x$인 $(m, m)$이에요. 다음부터는 변수마다 그 변수만 바꾼 점 $p$개를 쌓은 $(m, m \cdot p)$이고, 열 $j \cdot p + q$가 변수 $j$의 $q$번째 점이에요. 첫 반복은 $p$가 `order`(기본 8), 그다음은 2예요.
+
+변수 여럿을 다루는 식은 축을 맞춰 써요. 합은 `axis=0`(변수 축)으로 해요. 아래는 변수 4개의 Rosenbrock 함수의 기울기예요.
+
+```python
+>>> def rosen(x):
+...     return sd.sum(100 * (x[1:] - x[:-1]**2)**2 + (1 - x[:-1])**2, axis=0)
+>>> sd.differentiate.jacobian(rosen, [-1.2, 1.0, -1.2, 1.0]).df
+array([-215.6000000000004,   792.000000000002, -655.6000000000028,
+       -88.00000000000001], dtype=float64)
+```
+
+<Callout type="warn" title="점 하나를 받는 함수는 그대로 쓸 수 없어요">
+`math.sin(x[0])`처럼 수 하나만 받는 함수나, 축을 지정하지 않은 `sd.sum(x)`는 벡터화되지 않아요. 앞의 것은 에러가 나고, 뒤의 것은 모든 점을 섞어 틀린 값을 내거나 모양 에러가 나요. 점 하나를 받는 함수가 이미 있으면 [`sd.optimize.approx_fprime`](/api/optimize/approx_fprime/)을 쓰는 편이 간단해요.
+
+```python
+>>> sd.differentiate.jacobian(lambda x: [math.sin(x[0]), x[1]], [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+TypeError: an array cannot be converted to float
+```
+</Callout>
+
+모양이 맞지 않으면 받은 `x`의 모양과 함께 알려 줘요.
+
+```python
+>>> sd.differentiate.jacobian(lambda x: sd.ones((3, 3)), [1.0, 2.0])
+Traceback (most recent call last):
+    ...
+ValueError: jacobian(): 'f' must return shape (2,) or (k, 2) for its argument of shape (2, 2), not (3, 3)
+```
+
+## 항목마다 멈춰요
+
+항목마다 따로 판정하므로 어떤 항목은 수렴하고 어떤 항목은 수렴하지 못할 수 있어요. 모든 항목이 멈출 때까지 모든 변수의 점을 계속 부르고, 먼저 멈춘 항목의 결과는 멈춘 때의 것이에요.
+
+참값이 0인 항목은 [기본 개념](/api/differentiate/basics/#도함수가-0-근처일-때는-atol)에서 본 것처럼 상대 판정을 맞추기 어려워요. 아래에서 $e^{x_0} - x_0$의 $x_0 = 0$에서의 편미분은 0인데, 반올림이 남아 status −1로 멈췄어요. 이 한 항목 때문에 열 번까지 계산했어요.
+
+```python
+>>> g = lambda x: [sd.exp(x[0]) - x[0], x[0] * x[1]]
+>>> r = sd.differentiate.jacobian(g, [0.0, 3.0])
+>>> print(r.summary())
+                           Differentiation Results
+==============================================================================
+Batch shape:                    (2, 2)  Converged:                      3 of 4
+==============================================================================
+                    df      error  converged     status     n_iter       nfev
+------------------------------------------------------------------------------
+[0, 0]     5.05395e-13   6.54e-13      False         -1         10         27
+[0, 1]        0.000000      0.000       True          0          2         11
+[1, 0]        3.000000      0.000       True          0          2         11
+[1, 1]        0.000000      0.000       True          0          2         11
+==============================================================================
+>>> r2 = sd.differentiate.jacobian(g, [0.0, 3.0], atol=1e-12)
+>>> r2.status
+array([[0, 0],
+       [0, 0]], dtype=int64)
+```
+
+야코비안의 항목들은 크기가 다를 수 있어요. 그 가운데 0 근처의 항목이 의미 없는 크기를 `atol`로 정해 주면 모두 수렴해요. 야코비안 전체의 크기에 맞춰 정하면 돼요. 예를 들어 $\max\lvert J\rvert$의 $10^{-12}$배쯤이에요.
+
+`x`에 유한하지 않은 값이 있으면 그 변수가 든 항목이 status −3이에요. 그 변수가 모든 점에 들어가므로 보통은 모든 항목이에요.
+
+## 변수마다 간격: initial_step과 step_direction
+
+`initial_step`과 `step_direction`은 수 하나(모든 변수)나 변수마다 $m$개로 줘요. 변수의 척도가 다르거나 한 변수에만 정의역의 끝이 있을 때 써요. 아래 $f(x) = \sqrt{x_0}\,x_1$은 $x_0 \ge 0$에서만 정의돼요. $x_0 = 10^{-3}$에서는 기본 간격 0.5의 중앙 공식이 정의역 밖을 불러 첫 열이 −3이에요.
+
+```python
+>>> f = lambda x: [sd.sqrt(x[0]) * x[1]]
+>>> sd.differentiate.jacobian(f, [1e-3, 2.0]).status
+array([[-3,  0]], dtype=int64)
+>>> r = sd.differentiate.jacobian(f, [1e-3, 2.0], initial_step=[1e-4, 0.5])
+>>> r.status, r.df
+(array([[0, 0]], dtype=int64), array([[   31.62277660168244, 0.031622776601683916]], dtype=float64))
+>>> 2 / (2 * math.sqrt(1e-3)), math.sqrt(1e-3)
+(31.622776601683796, 0.03162277660168379)
+>>> sd.differentiate.jacobian(f, [1e-3, 2.0], step_direction=[1, 0], initial_step=[1e-4, 0.5]).df
+array([[  31.622776601700764, 0.031622776601683916]], dtype=float64)
+```
+
+개수가 틀리면 에러예요.
+
+```python
+>>> sd.differentiate.jacobian(f, [1e-3, 2.0], initial_step=[1e-4, 0.5, 0.5])
+Traceback (most recent call last):
+    ...
+ValueError: jacobian(): 'initial_step' must have 2 values like 'x', not 3
+```
+
+## 셈과 비용
+
+`nfev`는 항목마다 그 항목이 멈출 때까지 쓴 점의 수예요. 열 하나의 몫이라 `derivative`와 같은 셈($\text{order} + 1 + 2(\text{n\_iter} - 1)$)이에요. 사용자 함수를 부르는 횟수는 가장 늦게 멈춘 항목의 `n_iter` + 1이고, 한 번에 $m$개(첫 호출)나 $m \cdot p$개의 점을 받아요.
+
+```python
+>>> points = [0]
+>>> def h(x):
+...     points[0] += x.shape[1]
+...     return polar(x)
+>>> _ = sd.differentiate.jacobian(h, [2.0, math.pi / 6])
+>>> points[0]
+22
+```
+
+변수 2개에 점 22개예요(첫 호출 2, 다음 16, 그다음 4). 사용자 함수를 세 번만 불렀으니, `f`가 원소별 연산으로 쓰여 있으면 점의 수가 늘어도 호출의 부담은 그대로예요.
+
+## approx_fprime과 견주기
+
+| | `jacobian` | [`sd.optimize.approx_fprime`](/api/optimize/approx_fprime/) |
+|---|---|---|
+| 사용자 함수 | 열마다 점 하나인 $(m, N)$을 받는 벡터화된 함수 | 점 하나 $(n,)$을 받는 함수 |
+| 방법 | 8차 공식, 간격을 줄이며 되풀이 | 변수마다 간격을 고른 5점 공식 |
+| 오차 추정과 수렴 | 항목마다 있어요 | 없어요 |
+| 간격 | 절대 간격 `initial_step`(기본 0.5) | $x_j$의 크기에 비례해 골라요 |
+| 정의역 밖 | 그 항목이 status −3 | 한쪽 공식으로 바꿔요 |
+
+`approx_fprime`은 간격을 점의 크기에 맞춰 스스로 골라서, 척도를 모르는 함수를 그냥 미분할 때 편해요. `jacobian`은 오차 추정과 항목마다의 수렴 여부를 알려 주고, 사용자 함수를 몇 번만 불러요.
+
+## scipy를 아는 분께
+
+- 이름과 인자는 `scipy.differentiate.jacobian`의 것이고 계산하는 점도 같아요. 결과는 `success` 대신 `converged`, `nit` 대신 `n_iter`이고, `tolerances` 대신 `atol`·`rtol`, `maxiter` 대신 `max_iter`예요.
+- `f`는 2차원 $(m, N)$을 받아요. scipy는 `x`의 모양 뒤에 축을 더 붙인 배열을 받지만, 여기서는 `x`가 1차원만이라 늘 2차원이에요. 넘기는 열의 순서는 scipy와 같아요.
+- 결과에 `x` 필드가 없고 `args`도 없어요(둘 다 scipy와 같아요).
+- 가중치와 합의 순서가 달라서 판정의 경계에 있는 항목은 scipy와 다른 반복에 멈출 수 있어요. 시험한 Moré–Garbow–Hillstrom 문제 47경우에서 항목 7,456개 가운데 7,289개가 status와 셈까지 같았고, 둘 다 수렴한 값의 차이는 $\max\lvert J\rvert$의 $9.1 \times 10^{-14}$배 이하였어요.

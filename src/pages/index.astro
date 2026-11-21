@@ -272,12 +272,7 @@ beta = sd.linalg.lstsq(X, y).solution
   .areas > div {
     display: grid;
   }
-  /* Ten cards on a three-column grid: the first and the last take two
-     columns, so every row is full (2+1, 1+1+1, 1+1+1, 1+2). */
-  .areas__cell--array,
-  .areas__cell--random {
-    grid-column: span 2;
-  }
+  /* Twelve cards fill four rows of the three-column grid, none wide. */
 
   /* ---- Layer stack ---- */
   .stack {
@@ -459,20 +454,11 @@ beta = sd.linalg.lstsq(X, y).solution
     .fact:nth-child(n + 3) {
       border-top: 1px solid var(--line);
     }
-    /* Two columns: ten cards fill five rows, none wide. */
-    .areas__cell--array,
-    .areas__cell--random {
-      grid-column: auto;
-    }
   }
   @media (max-width: 640px) {
     .strengths,
     .areas {
       grid-template-columns: minmax(0, 1fr);
-    }
-    .areas__cell--array,
-    .areas__cell--random {
-      grid-column: auto;
     }
     .strength__title {
       margin-top: var(--space-4);

@@ -2,7 +2,7 @@
 title: 정확도 측정
 group: 검증과 측정
 order: 2
-summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화, 가설검정의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
+summary: 배열, 선형대수, 특수함수, 통계(다변량·행렬 분포 포함), 회귀, 최적화, 가설검정, 적분, 미분의 결과를 미리 만든 참값의 모든 점에 대고 재는 체계예요. 오차를 계약의 단위로 바꿔 1 이하인지 보고, 기준선보다 나빠진 칸을 하나도 빠짐없이 찾아요.
 seeAlso: [testing, benchmarks]
 ---
 import AccuracySummary from '../../../components/fig/AccuracySummary.astro';
@@ -23,21 +23,24 @@ stardust는 함수마다 정확도를 약속해요. 비트로 약속하는 것�
 | `sd.optimize` | 결과만 보고 확인되는 멈춤 판정(구간법의 허용오차, 기울기 판정의 `gtol`) |
 | `sd.htest` | 통계량은 상대오차 $10^{-14}\max(1, \kappa_\text{stat})$, p값은 거기에 $\max(1, \kappa_p)$를 더 곱한 것, 자유도와 신뢰구간의 끝은 $10^{-14}$($\kappa$는 조건수) |
 | `sd.sparse` | 합과 곱의 합은 같은 순서의 반올림 한계 $\gamma_m \sum_j \lvert a_{ij} x_j\rvert$, 직접 풀이는 정규화한 역오차 $4\varepsilon$, 고유값과 특이값은 $1000\,\varepsilon \lVert A\rVert_2$, `expm`은 $10\,\varepsilon\max(1, \lVert sA\rVert_1)$에 결과의 크기를 곱한 것 |
+| `sd.integrate`의 적응 방법 | 수렴했다고 알린 결과의 참 오차가 돌려준 오차 추정 안(`quad_vec`, `cubature`, 가중 함수가 있는 `quad`는 추정에 $8\varepsilon\lvert I\rvert$을 더해요). scipy의 같은 방법도 짧게 어림하는 정해진 몇 경우는 따로 세요 |
+| `sd.integrate`의 표본 규칙 | 같은 double 입력에서 규칙의 식을 정확히 계산한 값과의 차이가 $c\,\varepsilon S$ 이하($S$는 항의 크기, $c$는 합이면 $\lceil \log_2 n\rceil + 10$, 누적의 $k$번째 값이면 $k + 10$) |
+| `sd.differentiate` | 수렴한 도함수의 참 오차가 $\text{atol} + \text{rtol}\,\lvert df\rvert$ 이하. 야코비안과 헤시안은 수렴한 항목의 오차가 rtol과 참 행렬의 가장 큰 항목의 곱 이하 |
 
 이 약속을 지키는지, 그리고 얼마나 여유 있게 지키는지를 재는 도구가 `bench/accuracy/`이고, 저장소 맨 위에서 `python -m bench.accuracy`로 불러요.
 
 | 단계 | 하는 일 | 어디에 |
 |---|---|---|
 | 참값 | Arb(구간 산술)나 정확한 산술로 계산해 파일로 저장해요. 측정할 때는 Arb를 부르지 않아요 | `tests/<영역>/ref/` |
-| 측정 | 참값 파일의 모든 점에서 stardust를 불러 오차를 여러 척도로 재요 | `bench/accuracy/sources.py`와 영역별 `array.py`, `linalg.py`, `multivariate.py`, `optimize.py`, `htest.py`, `sparse.py` |
+| 측정 | 참값 파일의 모든 점에서 stardust를 불러 오차를 여러 척도로 재요 | `bench/accuracy/sources.py`와 영역별 `array.py`, `linalg.py`, `multivariate.py`, `optimize.py`, `htest.py`, `sparse.py`, `integrate.py`, `differentiate.py` |
 | 기준선 | 영역마다 잰 값을 저장소에 넣어 두고, 새 측정과 비교해요 | `bench/accuracy/results/<영역>.json` |
 | 표 | 기준선에서 영역마다 표를 만들어요 | `bench/<영역>/accuracy.md`(stats의 다변량·행렬 분포 묶음은 `bench/stats/accuracy_multivariate.md`) |
 
-열 영역 가운데 기준선이 있는 영역은 일곱이에요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정과 변수 선택, `sd.optimize`의 근 찾기와 최소화, `sd.htest`의 검정 묶음 53개예요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요.
+열두 영역 가운데 기준선이 있는 영역은 아홉이에요. 배열의 원소별 함수와 리덕션, 선형대수의 분해와 풀이, `sd.special`의 참값 파일 전부, `sd.stats`의 단변량 분포 31개와 다변량·행렬 분포 묶음, `sd.regression`의 선형·일반화 선형·정규화·강건 회귀와 적합한 모형의 검정과 변수 선택, `sd.optimize`의 근 찾기와 최소화, `sd.htest`의 검정 묶음 53개, `sd.integrate`의 함수 묶음 9개, `sd.differentiate`의 세 함수예요. 다변량·행렬 분포는 따로 영역이 아니라 stats 안의 묶음이고, 스윕 이름이 `mv/`로 시작해요. 데이터프레임과 난수, 비선형·분위 회귀는 참값 파일이 없어서 이 측정에 들어 있지 않고, 그 정확도는 각 영역의 테스트가 확인해요.
 
 `sd.sparse`는 참값 파일(`tests/sparse/ref/`)과 스윕 일곱(`spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`, `bench/accuracy/sparse.py`)이 있고 `run sparse`로 잴 수 있지만, 저장소에 기준선(`bench/accuracy/results/sparse.json`)과 표가 없어요. 그래서 아래 요약 표에 줄이 없고, 계약은 테스트(`tests/sparse/refdata.py`의 판정을 쓰는 `tests/sparse/test_reference_data.py`)가 확인해요.
 
-<AccuracySummary caption="영역별 요약. 스윕은 참값 파일의 메서드 하나(회귀는 문제 하나, 최적화는 방법 하나)이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 수치 계약이 있는 줄 가운데 계약 대비가 1 이하인 줄의 수예요. 들여 쓴 줄은 sd.stats 안의 다변량·행렬 분포 묶음이에요." />
+<AccuracySummary caption="영역별 요약. 스윕은 참값 파일의 메서드 하나(회귀는 문제 하나, 최적화는 방법 하나, 적분은 함수 묶음 하나, 미분은 함수 하나)이고, 줄은 (함수, 영역) 한 칸이에요. 계약 안은 수치 계약이 있는 줄 가운데 계약 대비가 1 이하인 줄의 수예요. 들여 쓴 줄은 sd.stats 안의 다변량·행렬 분포 묶음이에요." />
 
 ## 테스트와 따로 재는 이유
 
@@ -127,7 +130,7 @@ def _ndtri_inputs(rng):
 | `method/<m>/dropped` | 생성기가 정밀도와 반복 상한 안에서 정하지 못해 버린 점 |
 | `arb`, `target_bits`, `tool`, `n_requested` | 출처. 계산한 python-flint 판, 참값이 맞는 비트 수, 만든 도구(`tools/<영역>_ref.py`), 요청한 점 수 |
 
-JSON으로 저장하는 참값(회귀, 최적화, 가설검정)도 `_provenance`에 같은 출처를 적어요. 참값 폴더는 영역마다 60 MiB를 넘지 않아야 하고, 가장 큰 stats가 35.5 MiB예요.
+JSON으로 저장하는 참값(회귀, 최적화, 가설검정, 적분, 미분의 도함수)도 `_provenance`에 같은 출처를 적어요. 참값 폴더는 영역마다 60 MiB를 넘지 않아야 하고, 가장 큰 stats가 35.5 MiB예요.
 
 ### 회귀의 참값
 
@@ -148,6 +151,8 @@ JSON으로 저장하는 참값(회귀, 최적화, 가설검정)도 `_provenance`
 
 - **가설검정**(`tools/htest_ref.py`, `tests/htest/ref/`). 문제 모음(`tests/htest/problems.py`)의 입력 double을 정확한 유리수로 읽어요. 평균, 제곱합, 순위, 세기, $t^2$, $F$, $U$, Kendall의 역순 쌍, KS의 격자 간격, $\chi^2$처럼 데이터의 유리함수인 통계량은 `Fraction`으로 정확히 계산해 한 번 반올림해요. 정확한 귀무분포(Mann–Whitney의 가우스 이항계수, 부호 순위의 부분합, Kendall의 Mahonian 수, 두 표본 KS의 격자 경로, Fisher 검정의 표 나열, 이항 분포)는 정수로 세요. 그 밖의 p값(불완전 베타·감마, erfc, 한 표본 KS 분포, Kolmogorov 급수)은 Arb의 공으로 $2^{-110}$까지 정해요. D'Agostino 변환이나 보간 표처럼 검정이 근사로 정의된 곳은 그 근사식의 값이 참값이에요. 문제마다 p값의 조건수 `kappa`도 함께 적어 계약의 배율로 써요.
 - **희소 행렬**(`tools/sparse_ref.py`, `tests/sparse/ref/`). 시험 행렬(`tests/sparse/matrices.py`)의 표준 꼴을 정확한 유리수로 읽어요. 곱과 합은 정확한 합을 한 번 반올림하고, 노름·고유값·특이값·`expm`은 Arb로 구해요. 연립방정식의 해는 Rump식으로 검증해요. double로 구한 역행렬 $R$로 $\lVert I - RA\rVert_\infty$의 상한 $\alpha$를 반올림 오차까지 넣어 잡아 $\lVert A^{-1}\rVert_\infty$의 상한을 얻고, 잔차를 정확히 계산하며 해를 다듬어 오차 한계가 $2^{-110}\lVert x\rVert_\infty$ 아래로 내려갈 때 멈춰요. 이 증명이 서지 않는 점($\alpha \ge 1$, 12번 안에 수렴하지 않음)은 버리고 적어 둬요.
+- **적분**(`tools/integrate_ref.py`, `tests/integrate/ref/`). 시험 적분(QUADPACK 문헌의 세 무리, 루틴마다의 예제, scipy 시험의 적분, 끝점 특이점·진동·무한 구간이 있는 어려운 적분)과 가중 함수의 적분, 급수, 겹친 적분, 벡터 값을 Arb로 구해요. 방법은 셋이에요. 닫힌 꼴이 있으면 Arb의 함수로 계산하고, 피적분 함수가 구간에서 해석적이고 유계이면 Arb의 엄밀한 구적 `acb.integral`을 써요. 끝점에서 유계가 아니면($x^{-1/2}$, $x^{-0.9}$처럼) `acb.integral`이 무한한 공을 돌려주므로, 치환($x = t^k$, $x = u^2$, $x = e^{-u}$)으로 특이점을 없앤 뒤 적분하고 무한 구간의 꼬리는 엄밀한 상한과 함께 잘라요. 쓸 수 있는 방법을 모두 계산해 공이 겹치지 않으면 도구가 멈춰요. 문제의 상수와 끝(π/4, π, 중단점)은 코드에 적힌 double 그대로라서, 참값은 사용자가 실제로 넣는 문제의 정확한 적분이에요. 상한 `math.pi / 2`는 π/2보다 $6.1 \times 10^{-17}$ 작아서, 그 적분의 참값은 닫힌 꼴과 조금 달라요. 표본 규칙의 참값은 식이 유리 연산뿐이라 같은 double 입력에서 `Fraction`으로 정확히 계산하고, Gauss–Legendre의 마디와 가중치는 Arb의 Legendre 다항식 근(`arb.legendre_p_root`)을 $2^{-110}$까지 정해 반올림해요.
+- **미분**(`tools/differentiate_ref.py`, `tests/differentiate/ref/`). 해석적 도함수를 Arb로 계산해요. 헤시안은 Arb 위에서 2계까지 전진하는 자동 미분(`tests/differentiate/jets.py`)으로 구하고, 야코비안은 최적화의 해석적 도함수 참값과 같은 값이에요.
 
 다변량·행렬 분포의 참값(`tests/stats/ref/mv/`)은 같은 생성기 `tools/stats_ref.py`가 만들어요. 밀도와 엔트로피는 주어진 행렬 그대로 Arb의 LU로, 누적분포는 Plackett 항등식과 척도 혼합으로 $2^{-64}$까지 구해요. 한 요인 구조 t 분포(`factor_t`)는 $d \le 3$을 Arb로 재고, $d > 3$만 scipy의 적응 구적(약 $10^{-11}$)으로 만들어 그 영역은 준몬테카를로의 허용오차 `atol`에 대고만 재요.
 
@@ -223,7 +228,7 @@ $2^{-52}$ 단위라 계약의 $10^{-14}$이 약 45예요. 이 척도를 쓰는 �
 
 ### 영역마다 더하는 척도
 
-배열, 선형대수, 최적화, 다변량 누적분포에는 그 영역의 계약이나 성질에 맞는 척도가 더 있어요.
+배열, 선형대수, 최적화, 다변량 누적분포, 적분, 미분에는 그 영역의 계약이나 성질에 맞는 척도가 더 있어요.
 
 | 척도 | 뜻 | 쓰는 곳 |
 |---|---|---|
@@ -234,6 +239,8 @@ $2^{-52}$ 단위라 계약의 $10^{-14}$이 약 45예요. 이 척도를 쓰는 �
 | 기울기, $(f - f^*)/\max(1, f^*)$, 거리 / 허용오차, $\lVert F\rVert_\infty$, KKT 잔차 | 결과에서의 정확한 기울기, 알려진 최솟값보다 높은 정도, 가장 가까운 Arb 극소점까지의 거리, 방정식계의 잔차, 제약 최소제곱의 최적 조건 | 최적화 |
 | 수렴 못 함, 판정 밖 | 수렴하지 못한 실행의 수, 문제 목록의 판정에 닿지 못한 실행의 수 | 최적화 |
 | 최대 절대오차, 오차 / 추정 | 아주 작은 확률의 절대오차, 실제 오차를 stardust가 돌려준 오차 추정으로 나눈 값 | 다변량 누적분포 |
+| 수렴, 짧은 추정 | 수렴했다고 알린 실행의 수, 참 오차가 오차 추정을 넘은 실행(scipy도 짧은 정해진 경우)의 수 | 적분 |
+| 수렴 못 함, 추정보다 큰 오차, 항목 | 수렴하지 못한 실행(야코비안과 헤시안은 항목)의 수, 수렴한 결과 가운데 참 오차가 오차 추정보다 큰 것의 수, 잰 항목의 수 | 미분 |
 
 ### 계약 대비
 
@@ -255,6 +262,8 @@ $$
 - **회귀**: 선형 모형(OLS·WLS)의 계수 벡터에서, 설계 행렬의 $\kappa_2 \le 10^{11}$인 문제만. 노름 상대오차, $B = 10^{-14}$.
 - **가설검정**: 필드마다 `tests/htest/refdata.py`의 척도로, $B = 10^{-14}$예요. 통계량은 상대오차를 $\max(1, \kappa_\text{stat})$로, p값은 $\max(1, \kappa_p)\max(1, \kappa_\text{stat})$로 나눠요. $\kappa_\text{stat}$은 D'Agostino 변환이 받는 적률이나 Anderson–Darling의 상쇄하는 합에 대한 통계량의 조건수이고 다른 검정에서는 1, $\kappa_p$는 통계량에 대한 p값의 조건수예요. 신뢰구간의 끝은 빼는 꼴(t 검정의 추정값 ± 반폭, 비율의 정규 근사)이면 구간의 크기에, 그렇지 않으면 끝 자신에 대고 재요. Cramér–von Mises의 p값은 근사식이 정의하는 값에 절대 $10^{-15}$ 안이어도 계약 안으로 치고, 그런 점의 계약 대비는 1로 적어요.
 - **최적화**: 구간법의 기본 허용오차에서는 Arb 근까지의 거리를 $\text{xtol} + \text{rtol}\cdot\lvert x^*\rvert$로 나눈 값, 기울기로 멈추는 `minimize`는 수렴했다고 한 점에서 정확한 기울기의 노름을 `gtol`로 나눈 값이에요.
+- **적분**: 적응 방법은 수렴한 실행의 $\lvert \text{값} - \text{참값}\rvert / \text{오차 추정}$이고, `quad_vec`, `cubature`, 가중 함수가 있는 `quad`는 분모에 $8\varepsilon\lvert\text{참값}\rvert$을 더해요. Clenshaw–Curtis와 $\lvert K - G\rvert$ 꼴의 오차 추정에는 반올림의 바닥이 없어서, 다항식에서는 추정이 0이 되기도 하기 때문이에요. $B = 1$이에요. scipy의 같은 방법도 추정이 짧은 정해진 경우(`quad`의 셋, `tanhsinh`의 여덟 등)는 계약에서 빼고 따로 세요. 표본 규칙은 $\lvert \text{값} - \text{참값}\rvert / (c\,\varepsilon S)$, $B = 1$이에요.
+- **미분**: `derivative`는 수렴한 결과의 $\lvert df - f'\rvert / (\text{atol} + \text{rtol}\,\lvert df\rvert)$, `jacobian`과 `hessian`은 수렴한 항목의 가장 큰 오차를 rtol과 가장 큰 참 항목의 곱으로 나눈 값이에요. $B = 1$이에요. 항목마다 상대 판정을 하지 않는 것은 0에 가까운 항목에서 그 판정이 뜻이 없기 때문이에요.
 
 special의 판정 함수 몸통은 짧아요(`tests/special/test_reference.py`의 `contract_error`).
 
@@ -266,7 +275,7 @@ special의 판정 함수 몸통은 짧아요(`tests/special/test_reference.py`�
     return np.where(sub, absolute, rel)
 ```
 
-수치 계약이 없는 값(배열의 리덕션, 선형대수의 해와 고유값, 회귀의 계수 밖 필드, 최적화의 대부분)은 계약 대비가 비어 있어요. 이런 값은 기준선과의 비교만으로 지켜봐요.
+수치 계약이 없는 값(배열의 리덕션, 선형대수의 해와 고유값, 회귀의 계수 밖 필드, 최적화의 대부분, 규칙 자신의 이산화 오차인 `fixed_quad`)은 계약 대비가 비어 있어요. 이런 값은 기준선과의 비교만으로 지켜봐요.
 
 ### 보장 영역과 그 밖
 
@@ -280,7 +289,7 @@ special의 판정 함수 몸통은 짧아요(`tests/special/test_reference.py`�
 
 stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위로 좁힌 거예요. 예를 들어 감마 분포는 모양 $a \le 10^6$, 베타 분포는 $a, b \le 10^5$, 비중심 분포는 special의 비중심 함수가 잰 범위와 확률 $10^{-300}$ 이상이에요(`tools/stats_ref.py`의 `PARAM_RANGE`, `NC_RANGE`). 범위 밖의 점도 파일에 남아서 느슨 영역으로 재요.
 
-다른 영역의 영역 열은 그 영역에 맞게 나눠요. 배열은 입력의 종류와 모양(`normal`, `subnormal`, `uniform 100000` 등), 선형대수는 행렬의 조건수(`kappa=1`부터 `kappa=1e+12`), 최적화는 문제 묶음이나 판정(`default`, `xtol=0`, `mgh`, `gradient stop` 등), 다변량 누적분포는 위의 한계별 영역(`guaranteed`, `loose`, `tiny`, `exact d<=3`, `atol=…`)이에요.
+다른 영역의 영역 열은 그 영역에 맞게 나눠요. 배열은 입력의 종류와 모양(`normal`, `subnormal`, `uniform 100000` 등), 선형대수는 행렬의 조건수(`kappa=1`부터 `kappa=1e+12`), 최적화는 문제 묶음이나 판정(`default`, `xtol=0`, `mgh`, `gradient stop` 등), 다변량 누적분포는 위의 한계별 영역(`guaranteed`, `loose`, `tiny`, `exact d<=3`, `atol=…`), 적분은 문제 모음이나 규칙(`book`, `scipy`, `hard`, `qawo`, `gk21`, `trapezoid` 등), 미분은 문제 모음(`elementary`, `mgh`)이에요.
 
 ## 측정의 흐름
 
@@ -328,6 +337,8 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 | `abs_max`, `rel_cond_max`, `est_ratio_max` | 최대 절대오차, 상대오차 / ($u$·조건수), 오차 / 추정 |
 | `backward_max`, `orth_max` | 잔차 / ($n\varepsilon$·척도), 직교성 / ($n\varepsilon$) |
 | `grad_max`, `excess_max`, `tol_ratio_max`, `fnorm_max`, `kkt_max`, `unconverged`, `off_target` | 최적화의 척도 |
+| `converged_max`, `short_max` | 적분의 수렴한 실행과 짧은 추정의 수 |
+| `entries`, `error_below_true` | 미분의 잰 항목 수와, 오차 추정이 참 오차보다 작은 결과의 수(`unconverged`도 써요) |
 | `contract`, `bound` | 계약 대비와 그 한계(수치 계약이 없으면 비어 있음) |
 | `worst` | 계약 대비(없으면 상대오차)가 가장 큰 점의 입력 |
 
@@ -429,6 +440,24 @@ stats의 보장 영역은 입력 집합의 영역을 다시 매개변수 범위�
 <AccuracySummary area="htest" names={['ttest', 'shapiro', 'mannwhitneyu', 'kendalltau', 'fisher_exact', 'cramervonmises', 'dunnett']} caption="가설검정 일부. 묶음 하나가 스윕 하나이고, 필드 하나가 한 줄이에요. p값의 계약에는 통계량에 대한 p값의 조건수가 들어가서, 꼬리의 p값은 최대 ULP가 커도 계약 대비가 작아요." />
 
 검정별 참값과 비교 대상, 원인 분석은 [가설검정의 정확도와 성능](/internals/htest/accuracy-performance/)에 있어요.
+
+### 적분
+
+`sd.integrate`는 함수 묶음마다 스윕 하나, 모두 9개를 재요. 영역은 문제 모음(QUADPACK 문헌의 무리 `book`, 루틴 예제 `quadpack`, scipy 시험의 적분 `scipy`, 어려운 적분 `hard`)이나 가중 함수, 규칙이고, 점은 적분 하나예요. 적응 방법의 오차 추정은 엄밀한 상한이 아니라 경험적인 어림이에요. 그래서 계약은 "수렴했다고 알리면 참 오차가 추정 안"이라는 멈춤 판정의 뜻을 시험 모음에서 지키는지 재는 거예요. 수치 계약이 있는 30줄이 모두 계약 안이고, 가장 큰 계약 대비는 `cubature`의 gk15 규칙(0.96)과 `quad_vec`(0.95)이에요. 표본 규칙은 식을 정확히 계산한 값에 대고 재서 0.05 아래예요. 최대 상대오차는 수렴하지 못했다고 알린 실행까지 모두 센 값이라 1을 넘거나 inf인 줄도 있어요. `fixed_quad`는 정해진 점 수의 규칙이 내는 이산화 오차라서 기록만 해요. 마디와 가중치가 올바르게 반올림되었는지는 테스트가 봐요.
+
+scipy 1.18.1은 대부분의 줄에서 stardust와 같은 값을 내요. 같은 점에서 같은 순서로 함수를 부르기 때문이에요. QAWF(반무한 구간의 진동 가중 함수)의 scipy 열만 계약을 넘는데, 진동수 $\omega = 0$이고 아래 끝이 1인 경우 하나 때문이에요. scipy는 아래 끝과 상관없이 $[0, \infty)$를 적분하고, stardust는 $[a, \infty)$를 적분해요.
+
+<AccuracySummary area="integrate" names={['quad', 'quad_weights', 'tanhsinh', 'quad_vec', 'cubature', 'samples']} caption="적분 일부. 적응 방법의 계약 대비는 수렴한 실행의 참 오차를 오차 추정으로 나눈 값의 최댓값이에요. 표본 규칙은 같은 double에서 식을 정확히 계산한 값에 대고 재요." />
+
+구현은 [적분의 구조](/internals/integrate/overview/)에서 이어져요.
+
+### 미분
+
+`sd.differentiate`는 함수마다 스윕 하나, 모두 3개를 재요. `derivative`는 초등 함수 11개의 점과 정의역 끝 근처의 경우 109개, `jacobian`은 MGH 문제 47개(항목 7,389개), `hessian`은 42개(항목 1,612개)예요. 세 줄 모두 계약 안이고, 가장 큰 계약 대비는 `hessian`의 0.11이에요. 수렴하지 못한 실행의 수와, 수렴했지만 참 오차가 오차 추정보다 큰 결과의 수도 함께 적어요. 오차 추정은 두 반복의 차이라서 엄밀한 상한이 아니에요.
+
+<AccuracySummary area="differentiate" caption="미분 전체. 야코비안과 헤시안은 항목 하나하나가 아니라 가장 큰 참 항목에 대고 노름으로 재요." />
+
+구현은 [미분의 구조](/internals/differentiate/overview/)에서 이어져요.
 
 <Callout title="숫자를 읽는 순서">
 계약 대비부터 봐요. 1 이하면 약속 안이고, 그 값이 한계까지 남은 여유예요. 다음으로 역함수와 진동 함수는 ULP / 배율을, 0을 지나는 값은 mixed를 봐요. 최대 ULP는 그다음이고, 0 근처를 건너는 칸에서는 아주 크게 나올 수 있어요. 마지막으로 최대와 99.9%의 차이로 나쁜 점이 드문 끝점인지 영역 전체인지 가려요.

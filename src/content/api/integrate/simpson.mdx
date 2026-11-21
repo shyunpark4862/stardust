@@ -1,0 +1,170 @@
+---
+kind: function
+title: simpson
+names: [simpson]
+group: 표본의 규칙
+order: 2
+signatures:
+  - "sd.integrate.simpson(y, /, x=None, *, dx=1.0, axis=-1)"
+summary: 표본을 셋씩 이차식으로 이어 적분해요(합성 Simpson 규칙). 매끄러운 함수의 표본이면 같은 점으로 사다리꼴보다 훨씬 정확하고, 점이 짝수 개여도 마지막 구간을 보정해 받아요.
+params:
+  - name: y
+    type: ndarray, 수의 시퀀스, numpy 배열, 또는 frame의 Series
+    kind: positional-only
+    desc: "적분할 표본. 1차원 이상이어야 해요. bool·정수는 float64로 바꾸고, 복소수는 complex128로 계산해요. 결측값은 NaN이에요."
+  - name: x
+    type: ndarray, 실수의 시퀀스, numpy 배열, Series, 또는 None
+    kind: positional-or-keyword
+    desc: "표본의 위치. axis를 따라 y와 길이가 같은 1차원이거나, y와 차원 수가 같고 y의 모양으로 브로드캐스트되는 배열이에요. None(기본값)이면 간격 dx예요."
+  - name: dx
+    type: float 또는 ndarray
+    kind: keyword-only
+    desc: "x가 없을 때의 간격. 수 하나이거나, y의 모양에서 axis만 1인 배열(줄마다의 간격)이에요. 기본값 1.0. x와 함께 1.0이 아닌 값을 주면 ValueError예요."
+  - name: axis
+    type: int
+    kind: keyword-only
+    desc: "적분할 축. 기본값 -1(마지막 축)이에요."
+returns:
+  type: float, complex, 또는 ndarray
+  desc: "axis를 뺀 모양의 적분값. y가 1차원이면 Python 수(float 또는 complex)예요."
+raises:
+  - type: TypeError
+    desc: y·x가 배열로 바꿀 수 없는 값(문자열, None)이거나 문자열 배열일 때, x가 복소수일 때, dx가 수나 배열이 아니거나 복소수일 때, axis가 int가 아닐 때.
+  - type: ValueError
+    desc: y나 x가 스칼라일 때, 시퀀스의 길이가 들쭉날쭉할 때, x의 길이나 차원 수가 y와 맞지 않거나 y의 모양으로 브로드캐스트되지 않을 때, dx 배열의 모양이 틀렸을 때, x와 함께 dx를 줬을 때, axis가 범위 밖일 때.
+seeAlso: [trapezoid, cumulative_simpson, romb, newton_cotes, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+[`trapezoid`](/api/integrate/trapezoid/)는 이웃한 두 표본을 직선으로 이어요. `simpson`은 이웃한 세 표본을 지나는 포물선(이차식)으로 이어요. 곡선을 직선보다 포물선이 훨씬 잘 따라가므로, 매끄러운 함수의 표본이면 같은 점으로 훨씬 정확한 값이 나와요.
+
+같은 간격 $h$의 세 점 $y_0, y_1, y_2$를 지나는 포물선의 넓이는
+
+$$
+\int_{x_0}^{x_2} \approx \frac{h}{3}\,(y_0 + 4y_1 + y_2)
+$$
+
+이고, 점이 $2m + 1$개면 이 조각 $m$개를 더해요. 간격이 고르지 않으면 세 점마다 그 간격으로 만든 포물선의 넓이를 써요.
+
+## 기본 사용
+
+사용법은 `trapezoid`와 같아요. 위치 `x`를 주거나, 같은 간격이면 `dx`만 줘요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> x = sd.linspace(0, math.pi, 9)
+>>> sd.integrate.simpson(sd.sin(x), x)
+2.0002691699483877
+>>> sd.integrate.trapezoid(sd.sin(x), x)
+1.9742316019455506
+```
+
+참값은 2예요. 아홉 점으로 사다리꼴은 $2.6 \times 10^{-2}$, Simpson은 $2.7 \times 10^{-4}$ 틀려요.
+
+### 정확도: 간격을 반으로 줄이면 오차는 16분의 1
+
+Simpson 규칙은 같은 간격이면 삼차식까지 정확해요. 그래서 매끄러운 함수에서 오차는 $h^4$에 비례하고, 간격을 반으로 줄이면 오차가 16분의 1이 돼요.
+
+```python
+>>> for n in (5, 9, 17, 33):
+...     x = sd.linspace(0, math.pi, n)
+...     print(n, sd.integrate.simpson(sd.sin(x), x) - 2)
+5 0.004559754984421183
+9 0.00026916994838765973
+17 1.6591047935499148e-05
+33 1.0333694131503535e-06
+```
+
+같은 간격의 삼차식은 반올림 오차 말고는 정확해요.
+
+```python
+>>> x = sd.linspace(0, 2, 5)
+>>> sd.integrate.simpson(x**3, x)
+4.0
+```
+
+간격이 고르지 않으면 이차식까지만 정확해요. 세 점의 포물선이 이차식을 그대로 따라가기 때문이에요.
+
+```python
+>>> x = sd.asarray([0.0, 0.3, 1.0, 1.2, 2.0])
+>>> sd.integrate.simpson(x**2, x)
+2.6666666666666665
+>>> sd.integrate.simpson(x**3, x)
+4.083333333333333
+```
+
+## 점이 짝수 개일 때
+
+점이 짝수 개면 구간이 홀수 개라 셋씩 묶고 나면 마지막 구간 하나가 남아요. `simpson`은 앞의 구간들을 Simpson 규칙으로 적분하고, 마지막 구간은 마지막 세 점을 지나는 포물선의 그 구간 넓이(Cartwright의 보정)로 더해요. 그래서 짝수 개의 점도 이차식까지 정확해요.
+
+```python
+>>> x = sd.asarray([0.0, 0.3, 1.0, 1.2])
+>>> sd.integrate.simpson(x**2, x)
+0.5759999999999998
+>>> 1.2**3 / 3
+0.576
+```
+
+다만 같은 간격이어도 삼차식은 정확하지 않아서, 점이 하나 많은 홀수 개보다 조금 덜 정확해요. 점의 수를 고를 수 있다면 홀수 개로 재요.
+
+```python
+>>> x = sd.linspace(0, 2, 6)
+>>> sd.integrate.simpson(x**3, x)
+4.0064
+>>> for n in (8, 9):
+...     x = sd.linspace(0, math.pi, n)
+...     print(n, sd.integrate.simpson(sd.sin(x), x) - 2)
+8 0.001985105285278177
+9 0.00026916994838765973
+```
+
+점이 둘이면 포물선을 만들 수 없어 사다리꼴과 같고, 하나 이하면 0이에요.
+
+```python
+>>> sd.integrate.simpson([1.0, 3.0])
+2.0
+>>> sd.integrate.simpson([2.0])
+0.0
+```
+
+<Callout type="warn" title="매끄럽지 않은 표본">
+Simpson 규칙이 정확한 것은 표본 사이에서 함수가 이차식에 가깝기 때문이에요. 꺾이거나 끊긴 곳이 있는 데이터, 잡음이 많은 측정값에서는 포물선이 오히려 출렁여서 사다리꼴보다 나을 것이 없어요. 그런 데이터라면 [`trapezoid`](/api/integrate/trapezoid/)가 더 정직해요.
+</Callout>
+
+## 같은 위치가 겹칠 때
+
+`x`에 같은 위치가 두 번 나오면 그 간격은 0이에요. 포물선의 식에는 간격으로 나누는 몫이 있는데, 분모가 0인 몫은 0으로 둬요. 그래서 NaN이나 inf 없이 값이 나와요. 다만 그 값은 겹친 점을 하나 뺀 적분과 같지 않아요.
+
+```python
+>>> sd.integrate.simpson([1, 2, 3], [0, 0, 1])
+1.3333333333333333
+>>> sd.integrate.simpson([2, 3], [0, 1])
+2.5
+```
+
+같은 위치의 표본은 미리 하나로 합쳐(평균 등) 넣는 편이 좋아요.
+
+## 여러 줄을 한 번에
+
+`axis`, 2차원 `x`, 줄마다의 `dx` 배열은 [`trapezoid`](/api/integrate/trapezoid/#여러-줄을-한-번에-axis)와 같아요.
+
+```python
+>>> y = sd.asarray([[1.0, 2.0, 3.0, 4.0], [1.0, 4.0, 9.0, 16.0]])
+>>> sd.integrate.simpson(y)
+array([ 7.5, 21.0], dtype=float64)
+>>> sd.integrate.simpson(y, dx=[[1.0], [0.5]])
+array([ 7.5, 10.5], dtype=float64)
+```
+
+받는 데이터(`Series`, 복소수, NaN)와 합의 순서도 `trapezoid`와 같아요. 줄마다 항을 pairwise 합으로 더하므로 같은 입력이면 축, 메모리 배치, 스레드 수와 상관없이 같은 비트예요.
+
+## scipy를 아는 분께
+
+- scipy 1.11부터의 `scipy.integrate.simpson`과 같은 규칙과 식이에요(짝수 개의 점은 Cartwright의 보정). 그 전의 `even=` 인자는 없어요. 항을 더하는 순서가 달라 끝자리가 다를 수 있어요.
+- `x`를 두 번째 위치 인자로도 받아요. `dx`는 키워드로만 받고, `x`와 함께 주면 `ValueError`예요(scipy는 `dx`를 무시해요).
+- 점이 0개면 0이에요. scipy는 `IndexError`를 내요.
+- `dx`에 줄마다의 배열을 줄 수 있어요.
+- scipy의 옛 이름 `simps`는 없어요.

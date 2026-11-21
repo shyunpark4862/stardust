@@ -67,6 +67,8 @@ export const areas = [
   { key: 'htest', name: '가설검정', ns: 'sd.htest', desc: 't 검정과 분산분석, 적합도, 순위, 상관, 분할표, 비율, 다중 비교, 재표본', status: 'done' },
   { key: 'regression', name: '회귀분석', ns: 'sd.regression', desc: '선형 모형, GLM, 정규화, 강건·분위 회귀, 비선형 최소제곱', status: 'done' },
   { key: 'optimize', name: '최적화', ns: 'sd.optimize', desc: '스칼라 근과 최솟값, 다변수 최소화, 최소제곱, 방정식계, 수치 미분', status: 'done' },
+  { key: 'integrate', name: '적분', ns: 'sd.integrate', desc: 'QUADPACK 적응 구적, 겹친 적분, tanh-sinh, 다차원 cubature, 고정·표본 규칙', status: 'done' },
+  { key: 'differentiate', name: '미분', ns: 'sd.differentiate', desc: '도함수, 야코비안, 헤시안의 수치 미분', status: 'done' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기, 스레드 수와 무관한 결정성', status: 'done' },
 ] as const;
 
@@ -82,5 +84,7 @@ export const internalsAreas = [
   { key: 'htest', name: '가설검정', ns: 'sd.htest', desc: '검정의 공통 구조, 정확한 분포와 근사, 순위와 동점, 분할표의 정확 검정, 다중 비교, 재표본, 정확도와 성능' },
   { key: 'regression', name: '회귀분석', ns: 'sd.regression', desc: '최소제곱과 반복 개선, 추론과 진단, IRLS와 분리 판정, 좌표 하강과 KKT 연마, 강건·분위 회귀, 비선형 최소제곱, 정확도와 성능' },
   { key: 'optimize', name: '최적화', ns: 'sd.optimize', desc: '사용자 함수의 경계와 수치 미분, 구간법과 Chandrupatla, Nelder–Mead·BFGS·L-BFGS-B·신뢰 영역, Levenberg–Marquardt와 TRF, Powell 혼성법, 정확도와 성능' },
+  { key: 'integrate', name: '적분', ns: 'sd.integrate', desc: 'QUADPACK의 Gauss–Kronrod와 외삽, 겹친 적분, 원소별 tanh-sinh와 급수, 벡터 값과 다차원 적분, 고정·표본 규칙, 정확도와 성능' },
+  { key: 'differentiate', name: '미분', ns: 'sd.differentiate', desc: '유한 차분과 Richardson 외삽, 간격 고르기, 야코비안과 헤시안, 정확도와 성능' },
   { key: 'random', name: '난수', ns: 'sd.random', desc: '계수기형 생성기 Philox, 시드와 spawn, 정수·순열·가중치 추출의 알고리즘, 성능과 검증' },
 ] as const;

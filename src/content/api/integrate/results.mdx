@@ -1,0 +1,391 @@
+---
+kind: concept
+title: 결과 객체 읽기
+names: [IntegrateResult]
+group: 기본 개념
+order: 2
+summary: sd.integrate의 적응 함수가 돌려주는 IntegrateResult를 읽는 법을 설명해요. 적분값과 오차의 어림, 멈춘 이유(converged, status, message), nfev, 함수마다 있는 필드(구간, 주기, 영역, 수준, 복소수의 두 부분), 둘로 풀기, 배치의 결과, 한 줄 repr와 표로 보는 summary(), 읽기 전용 규칙을 다뤄요.
+seeAlso: [basics, quad, nquad, quad_vec, cubature, tanhsinh, nsum]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 한눈에 보기
+
+`sd.integrate`의 적응 함수(`quad`, `dblquad`, `tplquad`, `nquad`, `quad_vec`, `cubature`, `tanhsinh`, `nsum`)는 모두 같은 클래스 `IntegrateResult`의 객체를 돌려줘요. 함수가 계산한 것만 필드로 들어 있어서, 함수에 따라 있는 필드가 달라요. 반복하지 않는 `fixed_quad`, `newton_cotes`와 표본 규칙은 결과 객체가 아니라 값(수나 배열)을 돌려줘요.
+
+$x^{-1/2}$의 [0, 1]로 볼게요. 참값은 2예요.
+
+```python
+>>> import math
+>>> import stardust as sd
+>>> r = sd.integrate.quad(lambda x: 1 / math.sqrt(x), 0, 1)
+>>> r
+IntegrateResult(integral=2, error=3.77476e-15, converged=True, nfev=231)
+>>> r.integral, r.error
+(1.9999999999999993, 3.774758283725532e-15)
+```
+
+화면의 한 줄은 수를 유효숫자 6자리로 줄인 요약이에요. 끝자리까지의 값은 필드로 읽어요. 이 결과에 든 필드를 모두 보려면 `hasattr`로 골라요.
+
+```python
+>>> [k for k in dir(r) if not k.startswith('_') and hasattr(r, k)]
+['converged', 'error', 'integral', 'interval_errors', 'interval_integrals', 'intervals', 'message', 'n_intervals', 'nfev', 'status', 'summary']
+```
+
+`summary`는 필드가 아니라 결과를 표로 그리는 메서드예요([summary()](#summary-표로-보기)). 거의 모든 결과에 있는 필드는 이래요.
+
+| 필드 | 뜻 | 형(배치가 아닐 때) |
+|---|---|---|
+| `integral` | 적분값. `nsum`은 대신 `sum` | `float`. 값이 배열인 `quad_vec`·`cubature`는 `sd.ndarray`, `complex_func=True`는 `complex` |
+| `error` | 절대오차의 어림(엄밀한 상한이 아니에요) | `integral`과 같은 꼴(`quad_vec`은 노름 하나라 `float`) |
+| `converged` | 멈춤 판정을 통과했는지 | `bool` |
+| `status` | 멈춘 이유의 번호 | `int` |
+| `message` | 멈춘 이유의 글(`quad` 무리, `quad_vec`, `cubature`) | `str` |
+| `nfev` | 사용자 함수의 값을 계산한 점의 수 | `int` |
+
+## 함수마다 있는 필드
+
+`integral`(또는 `sum`), `error`, `converged`, `status`, `nfev`는 모든 결과에 있어요. 나머지는 이 표와 같아요(✓는 있음).
+
+| 함수 | `message` | 구간 | 그 밖의 필드 |
+|---|:-:|:-:|---|
+| `quad`(가중 함수 없음, `'alg…'`, `'cauchy'`, 유한 구간의 `'cos'`·`'sin'`) | ✓ | ✓ | |
+| `quad`(`'cos'`·`'sin'`, 무한 구간) | ✓ | | `cycle_integrals`, `cycle_errors`, `cycle_status`, `n_cycles` |
+| `quad(complex_func=True)` | ✓ | | `real`, `imag` |
+| `dblquad`, `tplquad`, `nquad` | ✓ | | |
+| `quad_vec` | ✓ | ✓ | |
+| `cubature` | ✓ | | `subdivisions`, `regions`, `region_integrals`, `region_errors`, `n_regions` |
+| `tanhsinh` | | | `max_level` |
+| `nsum` | | | `sum`(`integral` 대신) |
+
+구간은 필드 넷 `intervals`, `interval_integrals`, `interval_errors`, `n_intervals`예요. 표에서 헷갈리기 쉬운 곳이 있어요.
+
+- 겹친 적분(`dblquad`, `tplquad`, `nquad`)에는 구간 정보가 없어요. 안쪽 `quad`가 바깥 점마다 하나씩 있어서, 한 벌의 구간으로 나타낼 수 없기 때문이에요.
+- `quad(complex_func=True)`는 실수부와 허수부를 따로 적분한 두 결과를 `real`, `imag`로 줘요. 구간은 그 안에 있어요.
+- 원소별 무리(`tanhsinh`, `nsum`)에는 `message`가 없어요. 원소마다 다른 이유로 멈출 수 있어서, 번호 `status`만 원소마다 줘요.
+
+### 없는 필드를 읽으면
+
+함수가 주지 않는 필드를 읽으면 `AttributeError`예요. `None`을 돌려주지 않으니, 있는지 모를 때는 `hasattr`로 물어요.
+
+```python
+>>> r.max_level
+Traceback (most recent call last):
+    ...
+AttributeError: 'IntegrateResult' object has no attribute 'max_level' (the function does not give it)
+>>> hasattr(r, 'intervals'), hasattr(r, 'regions')
+(True, False)
+```
+
+## 적분값과 오차: integral, error
+
+`integral`은 멈춤 판정을 통과한(또는 상한에 닿은) 마지막 적분값이에요. `error`는 그 값의 **절대오차의 어림**이에요. 어림은 대개 실제 오차보다 크지만 엄밀한 상한은 아니라서, 실제 오차가 더 클 수 있어요([오차의 어림은 보장이 아니에요](/api/integrate/basics/#오차의-어림은-보장이-아니에요)). 위의 $x^{-1/2}$은 참 오차가 $6.7 \times 10^{-16}$, 어림이 $3.8 \times 10^{-15}$이에요.
+
+`error`가 무엇의 어림인지는 함수마다 조금 달라요.
+
+| 함수 | `error` |
+|---|---|
+| `quad` | QUADPACK의 어림. 외삽으로 끝났으면 외삽의 오차 어림 |
+| `dblquad`, `tplquad`, `nquad` | 모든 층의 모든 `quad`가 낸 어림 가운데 가장 큰 것. 안쪽 적분의 오차를 바깥에 더하지 않아요 |
+| `quad_vec` | 원소마다의 오차를 `norm`(기본 `'2'`)으로 잰 수 하나 |
+| `cubature` | 원소마다의 어림(값과 같은 모양) |
+| `tanhsinh`, `nsum` | 원소마다의 어림. `tanhsinh`이 수준 2를 마치기 전에 멈추면 NaN |
+
+`log=True`로 부른 `tanhsinh`과 `nsum`은 `integral`(또는 `sum`)과 `error`가 모두 로그예요.
+
+### 복소수 적분: real과 imag
+
+`quad(complex_func=True)`는 실수부의 `quad`를 마친 뒤 허수부의 `quad`를 해요. `integral`과 `error`는 `complex`이고, 두 부분의 결과가 `real`과 `imag`에 있어요. $\int_0^\pi e^{ix}\,dx = 2i$예요.
+
+```python
+>>> import cmath
+>>> z = sd.integrate.quad(lambda x: cmath.exp(1j * x), 0, math.pi, complex_func=True)
+>>> z
+IntegrateResult(integral=(4.92255e-17+2j), error=(2.21022e-14+2.22045e-14j), converged=True, nfev=42)
+>>> z.real
+IntegrateResult(integral=4.92255e-17, error=2.21022e-14, converged=True, nfev=21)
+>>> z.imag.n_intervals, z.nfev == z.real.nfev + z.imag.nfev
+(1, True)
+```
+
+`converged`는 두 부분이 모두 수렴했을 때이고, `status`와 `message`는 실수부의 것이 0이 아니면 그것, 아니면 허수부의 것이에요.
+
+## 멈춘 이유: converged, status, message
+
+`converged`는 멈춤 판정을 통과했는지예요. 어느 함수든 `converged`는 `status`가 0일 때 참이에요. `converged=True`는 "오차의 어림이 허용오차 안"이라는 뜻이지 참 오차가 그 안이라는 보장은 아니고, `False`여도 마지막 값은 들어 있어요. 그 값을 쓸지는 `error`와 `message`를 보고 정해요.
+
+`status`의 번호와 뜻은 함수 무리마다 scipy의 것이에요.
+
+| 함수 | `status` |
+|---|---|
+| `quad`, `dblquad`, `tplquad`, `nquad` | 0 수렴, 1 구간 수의 상한 `limit`, 2 반올림 오차로 허용오차에 닿을 수 없음, 3 피적분 함수가 몹시 나쁜 점이 있음, 4 외삽 표가 수렴하지 않음, 5 발산하거나 아주 느리게 수렴, 7 비정상 끝. 무한 구간의 `'cos'`·`'sin'`은 1이 주기 수의 상한 `limlst`이고 4·7도 주기의 뜻이에요 |
+| `quad_vec`, `cubature` | 0 수렴, 1 상한(`limit`, `max_subdivisions`), 2 반올림 오차(`quad_vec`), 3 유한하지 않은 값 |
+| `tanhsinh` | 0 수렴, −2 수준의 상한 `max_level`, −3 유한하지 않은 적분값 |
+| `nsum` | 0 수렴, −1 틀린 `a`·`b`·`step`, −2 적분의 수준 상한(발산할 수 있어요), −3 유한하지 않은 값, −4 직접 더한 부분합의 마지막 항이 허용오차보다 큼 |
+
+`quad`의 `status` 6(입력이 틀림)은 결과로 나오지 않아요. 그런 입력은 호출할 때 `ValueError`예요. 겹친 적분의 `status`와 `message`는 끝나는 차례로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이에요.
+
+`message`는 scipy의 글 그대로라 줄바꿈 `"\n  "`이 들어 있어요. `print`로 보면 읽기 쉬워요. `quad` 무리의 0은 QUADPACK 문서의 글이에요.
+
+```python
+>>> print(r.message)
+Normal and reliable termination of the routine. It is assumed that the requested accuracy has been achieved.
+>>> d = sd.integrate.quad(lambda x: 1 / x, 0, 1)
+>>> d.converged, d.status
+(False, 1)
+>>> d.integral, d.error
+(41.67684067538801, 9.350560373140512)
+```
+
+$1/x$의 [0, 1]은 발산해요. `quad`는 구간 50개를 다 쓰고 멈췄고, 마지막 값 41.7과 큰 어림 9.4가 무엇이 잘못됐는지 알려 줘요.
+
+## 셈: nfev
+
+`nfev`는 사용자 함수의 값을 계산한 **점**의 수예요. 함수를 부른 횟수와 같지 않을 수 있어요.
+
+| 함수 | `nfev` |
+|---|---|
+| `quad`, `quad_vec` | 함수를 부른 수(점 하나에 한 번). `complex_func=True`는 두 부분의 합 |
+| `dblquad`, `tplquad`, `nquad` | 가장 안쪽 f를 부른 수. 범위 함수(`gfun` 등)의 호출은 세지 않아요 |
+| `cubature` | f에 넘긴 점의 수(한 번에 여러 점을 넘겨요) |
+| `tanhsinh`, `nsum` | 원소마다 그 원소가 멈출 때까지 계산한 점의 수 |
+
+```python
+>>> calls = []
+>>> def f(p):
+...     calls.append(p.shape[0])
+...     return p[:, 0] * p[:, 1]
+>>> c = sd.integrate.cubature(f, [0.0, 0.0], [1.0, 1.0])
+>>> calls, c.nfev
+([441, 541], 982)
+```
+
+`cubature`는 f를 두 번 불렀어요. 규칙의 점 441개로 한 번, 오차를 어림하는 두 규칙의 점으로 한 번이에요. `nfev`는 그 점 수의 합이에요.
+
+## quad와 quad_vec의 구간
+
+`quad`와 `quad_vec`은 쓴 구간을 필드 넷으로 돌려줘요.
+
+| 필드 | 뜻 | 모양 |
+|---|---|---|
+| `intervals` | 구간의 두 끝 | (n, 2) |
+| `interval_integrals` | 구간마다의 적분값 | (n,), 값이 배열인 `quad_vec`은 (n, …) |
+| `interval_errors` | 구간마다의 오차 어림 | (n,) |
+| `n_intervals` | 구간 수 n | `int` |
+
+구간은 오차의 어림이 큰 것부터 있어요. 맨 앞이 다음에 나눌 구간, 곧 가장 어려운 곳이에요.
+
+```python
+>>> r.n_intervals
+6
+>>> r.intervals[0], r.interval_errors[0]
+(array([    0.0, 0.03125], dtype=float64), 0.1684128177071501)
+>>> sum(r.interval_integrals.tolist())
+1.994259303194289
+```
+
+구간 값의 합이 1.994로 `integral`의 2와 달라요. 0에 닿은 구간을 아무리 나눠도 어림이 줄지 않자 `quad`가 나누기의 흐름을 외삽해서 끝냈기 때문이에요. 외삽으로 끝나면 `integral`은 외삽한 값이고, 구간 값의 합은 그 전의 값이에요. 외삽 없이 수렴했으면 둘이 같아요.
+
+- 무한 구간은 바꾼 변수 $t \in (0, 1]$의 구간이에요. $[a, \infty)$는 $x = a + (1 - t)/t$예요. 그래서 $[0, \infty)$의 `intervals`도 0과 1 사이의 수예요.
+- `quad_vec`의 `interval_integrals`는 `integral`에 더해지는 몫이에요(무한 구간이면 치환의 부호를 곱한 값).
+- `quad`의 가중 함수 `'alg…'`, `'cauchy'`, 유한 구간의 `'cos'`·`'sin'`도 같은 구간 필드예요.
+
+### 무한 구간의 cos·sin: 주기
+
+$[a, \infty)$에서 `weight='cos'`나 `'sin'`은 구간을 나누지 않고 진동의 주기마다 적분한 뒤 그 합을 외삽해요. 그래서 구간 대신 주기의 필드 넷이에요.
+
+| 필드 | 뜻 |
+|---|---|
+| `cycle_integrals`, `cycle_errors` | 주기마다의 적분값과 오차 어림 (n,) |
+| `cycle_status` | 주기마다의 `status`(int64) (n,) |
+| `n_cycles` | 주기 수 n |
+
+```python
+>>> w = sd.integrate.quad(lambda x: math.exp(-x), 0, math.inf, weight='cos', wvar=3.0)
+>>> w
+IntegrateResult(integral=0.1, error=5.60967e-10, converged=True, nfev=175)
+>>> w.n_cycles, w.cycle_status
+(5, array([0, 0, 0, 0, 0], dtype=int64))
+>>> w.cycle_integrals
+array([    0.10006553226433275,  -6.557520910945484e-05,
+         4.297291937037462e-08, -2.8161127113302147e-11,
+        1.8454624258975705e-14], dtype=float64)
+```
+
+주기는 만든 차례예요. $\int_0^\infty e^{-x}\cos 3x\,dx = 1/10$이에요.
+
+## cubature의 영역
+
+`cubature`는 구간 대신 상자 모양의 영역이에요.
+
+| 필드 | 뜻 | 모양 |
+|---|---|---|
+| `regions` | 영역의 두 모서리. `regions[k, 0]`이 a, `regions[k, 1]`이 b | (n, 2, ndim) |
+| `region_integrals` | 영역마다의 적분값 | (n,) 또는 (n, …) |
+| `region_errors` | 영역마다의 오차 어림 | `region_integrals`와 같아요 |
+| `n_regions` | 영역 수 n | `int` |
+| `subdivisions` | 영역을 나눈 수 | `int` |
+
+영역은 최대 오차가 큰 것부터예요. 무한 축이 있으면 그 축은 바꾼 변수의 좌표예요.
+
+```python
+>>> c.n_regions, c.subdivisions
+(1, 0)
+>>> c.regions
+array([[[0.0, 0.0],
+        [1.0, 1.0]]], dtype=float64)
+```
+
+$xy$는 처음 영역에서 판정을 통과해 한 번도 나누지 않았어요.
+
+## tanhsinh의 max_level
+
+`tanhsinh`은 반복할 때마다 간격을 반으로 줄인 **수준**을 하나씩 올려요. `max_level`은 원소마다 마지막으로 계산한 수준이에요. 같은 이름의 인자 `max_level`(상한, 기본 10)에 닿으면 `status`가 −2예요.
+
+```python
+>>> t = sd.integrate.tanhsinh(lambda x: sd.exp(x), 0, 1)
+>>> t.max_level, t.nfev
+(2, 67)
+>>> t2 = sd.integrate.tanhsinh(lambda x: sd.exp(x), 0, 1, max_level=1)
+>>> t2.converged, t2.status, t2.error
+(False, -2, nan)
+```
+
+수준 2를 마치기 전에 멈추면 어림을 만들 수 없어서 `error`가 NaN이에요.
+
+## 배치의 결과
+
+`tanhsinh`과 `nsum`은 끝과 `args`를 브로드캐스트한 배치의 원소마다 적분이나 합 하나를 계산해요. 결과의 필드는 그 모양의 배열이에요. 형은 `integral`·`sum`·`error`가 float64, `converged`가 bool, `status`·`nfev`·`max_level`이 int64예요.
+
+```python
+>>> p = sd.asarray([2.0, 3.0, 4.0])
+>>> s = sd.integrate.nsum(lambda k, p: 1 / k**p, 1, math.inf, args=(p,))
+>>> s
+IntegrateResult(batch shape (3,), 3 of 3 converged)
+>>> s.sum
+array([1.6449340668479238,  1.202056903155985, 1.0823232337018078], dtype=float64)
+>>> s.status
+array([0, 0, 0], dtype=int64)
+```
+
+$\zeta(2) = 1.6449…$, $\zeta(3) = 1.2020…$, $\zeta(4) = 1.0823…$이에요. 입력이 모두 수이면 배치가 아니고 필드가 Python 수예요.
+
+```python
+>>> type(t.integral), type(t.status), type(t.converged)
+(<class 'float'>, <class 'int'>, <class 'bool'>)
+```
+
+## 둘로 풀기
+
+`quad`, `dblquad`, `tplquad`, `nquad`, `quad_vec`의 결과는 scipy의 튜플 `(y, abserr)`처럼 `(integral, error)` 둘로 풀려요. `r[0]`, `r[1]`, `len(r)`도 돼요. 다른 필드는 이름으로 읽어요.
+
+```python
+>>> value, err = r
+>>> value, err
+(1.9999999999999993, 3.774758283725532e-15)
+>>> r[0] == r.integral, len(r)
+(True, 2)
+```
+
+`tanhsinh`, `nsum`, `cubature`의 결과는 풀리지 않아요. 원소별 무리는 scipy도 튜플이 아닌 결과 객체를 주고, `cubature`의 결과에는 값과 오차 말고도 꼭 읽어야 할 필드가 많아서예요.
+
+```python
+>>> value, err = t
+Traceback (most recent call last):
+    ...
+TypeError: this IntegrateResult does not unpack (only the quad family's results do): read its fields by name
+>>> bool(t)
+True
+```
+
+`bool(r)`은 풀리든 아니든 언제나 참이에요. 수렴했는지는 `converged`로 물어요.
+
+## 읽기 전용이에요
+
+필드는 바꿀 수 없어요. 배열 필드도 읽기 전용이라 원소에 쓰면 `ValueError`예요. 결과가 가진 메모리를 그대로 보여 주므로 읽을 때 복사하지 않아요. 고쳐 쓰려면 `.copy()`로 복사해요.
+
+```python
+>>> r.intervals[0, 0] = 1.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> r.integral = 3.0
+Traceback (most recent call last):
+    ...
+AttributeError: property 'integral' of 'IntegrateResult' object has no setter
+>>> iv = r.intervals.copy()
+>>> iv[0, 0] = 1.0
+```
+
+### 직접 만들기
+
+`IntegrateResult(...)`로 결과를 직접 만들 수도 있어요. 필드는 키워드로만 주고, 모르는 이름은 `TypeError`예요. 직접 만든 결과는 풀리지 않아요.
+
+```python
+>>> sd.integrate.IntegrateResult(integral=1.0, error=0.5, converged=True)
+IntegrateResult(integral=1, error=0.5, converged=True)
+>>> sd.integrate.IntegrateResult(estimate=1.0)
+Traceback (most recent call last):
+    ...
+TypeError: IntegrateResult(): unexpected keyword argument 'estimate'
+```
+
+## repr: 한 줄 요약
+
+`repr`(그리고 `print`)는 한 줄 요약이에요. `integral`(또는 `sum`), `error`, `converged`, `nfev`를 있는 것만 보여 줘요. 수는 유효숫자 6자리로 적어서 1.9999999999999993은 `2`로 보여요. 값이 배열이면 원소가 6개까지는 `[0.5, 0.333333]`처럼, 더 길면 `<array of shape (8,)>`처럼 모양만 적어요. 복소수는 `(re+imj)`예요. 배치는 모양과 수렴한 원소의 수만 보여 줘요. 회귀·검정·최적화 결과의 `repr`와 같은 꼴이에요.
+
+```python
+>>> sd.integrate.quad_vec(lambda x: [x, x * x], 0, 1)
+IntegrateResult(integral=[0.5, 0.333333], error=2.0146e-14, converged=True, nfev=63)
+>>> sd.integrate.quad_vec(lambda x: [x**k for k in range(8)], 0, 1)
+IntegrateResult(integral=<array of shape (8,)>, error=4.28423e-14, converged=True, nfev=63)
+```
+
+## summary(): 표로 보기
+
+`summary()`는 결과를 상자 모양의 표로 그린 글(`str`)이에요. 회귀 모형과 검정, 최적화 결과의 `summary()`와 같은 꼴이라, 한 번 익히면 어느 결과든 같은 방식으로 읽어요. 인자는 없어요.
+
+```python
+>>> print(r.summary())
+                             Integration Results
+==============================================================================
+Converged:                        True  Integral:                      2.00000
+Status:                              0  Error estimate:              3.775e-15
+                                        Function Evals:                    231
+                                        Intervals:                           6
+Message: Normal and reliable termination of the routine. It is assumed that
+    the requested accuracy has been achieved.
+==============================================================================
+                    a          b   integral      error
+------------------------------------------------------------------------------
+[0]          0.000000   0.031250   0.347813      0.168
+[1]          0.500000   1.000000   0.585786    6.5e-15
+[2]          0.250000   0.500000   0.414214    4.6e-15
+[3]          0.125000   0.250000   0.292893   3.25e-15
+[4]          0.062500   0.125000   0.207107    2.3e-15
+[5]          0.031250   0.062500   0.146447   1.63e-15
+==============================================================================
+```
+
+- **머리**: 왼쪽 열은 `converged`와 `status`, 오른쪽 열은 적분값(`Integral:`, `nsum`은 `Sum:`, 유효숫자 6자리)과 오차의 어림(`Error estimate:`, 4자리), 그리고 셈(`Function Evals:`)과 있으면 `Intervals:`, `Cycles:`, `Max Level:`, `Subdivisions:`, `Regions:`예요. 그 아래 `Message:`는 글의 줄바꿈을 한 칸으로 줄여 적어요.
+- **구간 표**: `quad`와 `quad_vec`은 구간마다 한 줄(열 `a b integral error`)이고 오차의 어림이 큰 것부터예요. `quad_vec`의 값이 배열이면 `integral` 열이 없어요(값은 필드로 읽어요). 20개를 넘으면 앞의 5줄과 뒤의 5줄만 두고 가운데에 `...` 줄을 둬요.
+- **그 밖의 표**: 무한 구간의 cos·sin은 주기 표(열 `integral error status`), `cubature`는 영역 표(열 `a b integral error`, 값이 배열이면 `a b max error`), 복소수 결과는 `real`·`imag` 두 줄의 표예요. 값이 배열이면(`quad_vec`, `cubature`) 머리의 `Integral:`에 `shape (2,)`처럼 모양을 적고, 원소마다 한 줄의 표(열 `integral`, `cubature`는 `error`도)를 더해요.
+- **배치**: `tanhsinh`과 `nsum`은 원소마다 한 줄인 표예요. 줄 이름은 원소의 첨자(`[0]`, 2차원 배치면 `[1, 2]`)이고 열은 `integral`(또는 `sum`), `error`, `converged`, `status`, `nfev`, `max_level`이에요. 머리에는 배치 모양과 수렴한 원소의 수가 있어요.
+
+표의 수는 읽기 좋게 줄인 값이에요. 끝자리까지의 값은 필드로 읽어요.
+
+## scipy를 아는 분께
+
+- **튜플 대신 결과 객체**: scipy의 `quad`, `dblquad`, `tplquad`, `nquad`, `quad_vec`은 튜플 `(y, abserr)`(`full_output`이면 `infodict`까지)를 줘요. 여기서는 결과 객체가 둘로 풀려서 `y, abserr = quad(...)`의 코드가 그대로 돼요. `full_output`은 없고 `infodict`의 값은 늘 필드예요.
+- **이름**: `neval`은 `nfev`, `last`는 `n_intervals`, `alist`·`blist`는 `intervals`의 두 열, `rlist`·`elist`는 `interval_integrals`·`interval_errors`예요. scipy의 배열은 `iord`의 차례로 다시 읽어야 하지만, 여기서는 이미 오차의 어림이 큰 차례예요. 무한 구간의 cos·sin의 `lst`, `rslst`, `erlst`, `ierlst`는 `n_cycles`, `cycle_integrals`, `cycle_errors`, `cycle_status`예요. `complex_func=True`의 `{'real': …, 'imag': …}`는 `real`·`imag` 필드예요.
+- **원소별 무리**: `success`는 `converged`, `maxlevel`은 `max_level`이에요. 결과는 dict가 아니라서 `r['integral']`이 없어요.
+- **`cubature`**: `estimate`는 `integral`, 문자열 `status`(`'converged'`, `'not_converged'`)는 번호(0, 1, 3)예요. `regions`는 영역 객체의 목록이 아니라 배열 필드 `regions`, `region_integrals`, `region_errors`예요. `atol`·`rtol`은 결과에 두지 않아요.
+- **`message`**: scipy는 `quad`가 수렴하면 글이 없지만, 여기서는 QUADPACK 문서의 글이 늘 있어요.
+- **출력**: scipy의 결과에는 `summary()`가 없어요. 여기서는 `repr`가 한 줄 요약이고 표는 `summary()`예요.
+
+```python
+>>> import scipy.integrate as si
+>>> y, abserr, info = si.quad(lambda x: 1 / math.sqrt(x), 0, 1, full_output=1)
+>>> info['neval'] == r.nfev, info['last'] == r.n_intervals
+(True, True)
+```

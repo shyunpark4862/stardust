@@ -216,6 +216,16 @@
   --area-soft: #fbeefb;
   --area-line: #efc4ee;
 }
+[data-area='integrate'] {
+  --area: #7d4b20;
+  --area-soft: #f8f0e7;
+  --area-line: #e6cfb6;
+}
+[data-area='differentiate'] {
+  --area: #2e5e8a;
+  --area-soft: #ecf2f8;
+  --area-line: #c3d5e8;
+}
 [data-area='random'] {
   --area: #0c6f8c;
   --area-soft: #e7f5f9;

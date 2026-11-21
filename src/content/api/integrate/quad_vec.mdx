@@ -1,0 +1,245 @@
+---
+kind: function
+title: quad_vec
+names: [quad_vec]
+group: 벡터와 다차원
+order: 1
+signatures:
+  - "sd.integrate.quad_vec(f, a, b, /, *, atol=1e-200, rtol=1e-08, norm='2', limit=10000, points=None, quadrature=None)"
+summary: 값이 배열인 함수의 적분을 적응 구적으로 한 번에 계산해요. 모든 성분이 같은 점과 같은 구간 나누기를 함께 쓰므로, 매개변수만 다른 적분 여러 개를 quad로 하나씩 푸는 것보다 함숫값이 훨씬 적게 들어요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "피적분 함수 f(x). x는 Python float 하나이고, 실수 하나 또는 실수 배열(sd.ndarray, numpy 배열, 시퀀스)을 돌려줘요. 첫 값이 모양을 정하고, 모든 점에서 같은 모양이어야 해요."
+  - name: a
+    type: float
+    kind: positional-only
+    desc: "아래 끝. ±inf를 받아요."
+  - name: b
+    type: float
+    kind: positional-only
+    desc: "위 끝. ±inf를 받아요."
+  - name: atol
+    type: float
+    kind: keyword-only
+    desc: "절대 허용오차. 유한한 0 이상의 수예요. 기본값 1e-200."
+  - name: rtol
+    type: float
+    kind: keyword-only
+    desc: "상대 허용오차. 유한한 0 이상의 수예요. 오차가 max(atol, rtol·‖integral‖)/8 아래면 멈춰요. 기본값 1e-8."
+  - name: norm
+    type: str
+    kind: keyword-only
+    desc: "오차와 적분값의 크기를 재는 노름. '2'(기본값, 2-노름)나 'max'(가장 큰 성분)예요. 값이 수면 둘 다 절댓값이에요."
+  - name: limit
+    type: int
+    kind: keyword-only
+    desc: "구간 수의 상한. 1 이상이에요. 한 번에 여러 구간을 나누므로 끝의 구간 수는 이보다 조금 많을 수 있어요. 기본값 10000."
+  - name: points
+    type: 실수의 시퀀스 또는 None
+    kind: keyword-only
+    desc: "처음부터 나눠 둘 점들. (a, b) 안의 것만 써요. 꺾임, 불연속, 봉우리의 자리를 알 때 줘요."
+  - name: quadrature
+    type: str 또는 None
+    kind: keyword-only
+    desc: "구간마다의 규칙. 'gk21', 'gk15'(Gauss–Kronrod), 'trapezoid'. None(기본값)이면 유한 구간 'gk21', 무한 구간 'gk15'예요."
+returns:
+  type: IntegrateResult
+  desc: "integral, error, converged, status, message, nfev와 구간 정보 intervals, interval_integrals, interval_errors, n_intervals. integral, error = 결과처럼 둘로 풀려요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, a·b·atol·rtol이 실수가 아닐 때, limit이 int가 아닐 때, f가 실수가 아닌 값(문자열, None, bool, 복소수)을 돌려줄 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: a·b가 NaN일 때, atol·rtol이 음수이거나 유한하지 않을 때, limit이 1보다 작을 때, norm·quadrature가 정해진 이름이 아닐 때, points에 NaN이 있을 때, f가 빈 배열을 돌려주거나 점마다 다른 모양을 돌려줄 때.
+seeAlso: [quad, cubature, tanhsinh, results, basics]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+$\int_0^\infty e^{-tx}\cos x\,dx$를 $t$ 열 개에 대해 구한다고 해 봐요. [`quad`](/api/integrate/quad/)를 열 번 부르면 적분마다 따로 구간을 나누고 따로 함수를 불러요. 그런데 피적분 함수들이 비슷하게 생겼다면 같은 점에서 같이 계산해도 돼요.
+
+`quad_vec`는 값이 배열인 함수 $f: \mathbb{R} \to \mathbb{R}^m$를 받아 모든 성분을 함께 적분해요. 구간마다 Gauss–Kronrod 규칙으로 값과 오차를 어림하고, 전체 오차를 노름으로 잰 뒤, 오차가 큰 구간을 반으로 나누기를 되풀이해요(한 번에 여러 구간을 나눠요). 모든 성분이 같은 점, 같은 구간을 쓰므로 함수 호출 한 번이 $m$개의 값을 내요.
+
+## 기본 사용
+
+`f`는 Python float 하나를 받아 리스트나 배열을 돌려줘요. $\int_0^1 x^k\,dx = 1/(k + 1)$을 $k = 0, \ldots, 4$에 대해 한 번에 구해 봐요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> r = sd.integrate.quad_vec(lambda x: [x**k for k in range(5)], 0, 1)
+>>> r
+IntegrateResult(integral=[1, 0.5, 0.333333, 0.25, 0.2], error=4.16558e-14, converged=True, nfev=63)
+>>> r.integral
+array([ 1.0000000000000002,  0.4999999999999999, 0.33333333333333337,
+       0.25000000000000006, 0.19999999999999998], dtype=float64)
+```
+
+결과는 [`IntegrateResult`](/api/integrate/results/)이고 `quad`처럼 둘로 풀려요. `integral`은 `f`가 돌려준 모양의 읽기 전용 배열이고, `error`는 성분 전체의 오차를 노름으로 잰 수 하나예요.
+
+```python
+>>> integral, error = sd.integrate.quad_vec(lambda x: [x**k for k in range(5)], 0, 1)
+>>> error
+4.1655785520092414e-14
+```
+
+`f`가 수 하나를 돌려주면 `quad`와 같은 적분이고 `integral`도 수예요.
+
+```python
+>>> sd.integrate.quad_vec(lambda x: math.sin(x), 0, math.pi)
+IntegrateResult(integral=2, error=6.66134e-14, converged=True, nfev=63)
+```
+
+`f`는 점 하나마다 Python float로 불리므로 `math` 함수를 그대로 써도 돼요. 2차원 이상의 배열도 돌려줄 수 있어요. 모든 점에서 같은 모양이어야 하고, 첫 값이 모양을 정해요.
+
+```python
+>>> sd.integrate.quad_vec(lambda x: [[x, x * x], [1.0, 2.0]], 0, 1).integral
+array([[ 0.4999999999999999, 0.33333333333333337],
+       [ 1.0000000000000002,  2.0000000000000004]], dtype=float64)
+>>> sd.integrate.quad_vec(lambda x: [1, 2] if x < 0.5 else [1, 2, 3], 0, 1)
+Traceback (most recent call last):
+    ...
+ValueError: quad_vec(): 'f' must return the same shape at every point, not (3,) and then (2,)
+```
+
+## 매개변수 묶음: quad를 여러 번 부르는 대신
+
+처음의 예예요. $\int_0^\infty e^{-tx}\cos x\,dx = t/(t^2 + 1)$이에요. `ts`를 배열로 두고 `f`가 배열을 돌려주게 쓰면 돼요.
+
+```python
+>>> ts = sd.linspace(0.5, 5, 10)
+>>> r = sd.integrate.quad_vec(lambda x: sd.exp(-ts * x) * math.cos(x), 0, math.inf)
+>>> r.converged, r.nfev
+(True, 405)
+>>> float(sd.max(sd.abs(r.integral - ts / (ts**2 + 1))))
+1.27675647831893e-15
+>>> sum(sd.integrate.quad(lambda x: math.exp(-t * x) * math.cos(x), 0, math.inf).nfev for t in ts.tolist())
+1350
+```
+
+열 적분을 405번의 호출로 풀었어요. `quad`를 열 번 부르면 1,350번이에요. 성분이 많을수록 차이가 커지고, 한 번의 호출에서 성분들을 배열 연산으로 계산하므로 Python 호출의 부담도 줄어요.
+
+## 노름과 성분의 크기
+
+멈춤 판정은 성분 하나하나가 아니라 **전체**를 노름으로 잰 것이에요.
+
+$$
+\lVert \text{오차} \rVert \le \max(\text{atol},\ \text{rtol}\cdot\lVert I \rVert)/8
+$$
+
+그래서 크기가 아주 다른 성분을 섞으면 작은 성분은 큰 성분의 기준으로만 정확해요. 아래는 크기 1인 성분과 크기 $10^{-10}$인 빠른 진동 성분을 함께 적분한 거예요.
+
+```python
+>>> f = lambda x: [math.exp(-x), 1e-10 * math.sin(50 * x)]
+>>> r = sd.integrate.quad_vec(f, 0, 10)
+>>> r.converged, r.nfev
+(True, 63)
+>>> exact = 1e-10 * (1 - math.cos(500)) / 50
+>>> (r.integral[1] - exact) / exact
+-0.3087417510221117
+```
+
+수렴이라고 알렸지만 둘째 성분은 31%나 틀렸어요. 둘째 성분의 오차가 $10^{-11}$쯤이라 첫째 성분의 기준에서는 무시할 만해서, 진동을 따라갈 만큼 나누지 않고 끝났어요. `norm='max'`도 가장 큰 성분의 기준이라 마찬가지예요. 성분마다 비슷한 상대 정확도가 필요하면 크기를 맞춰(여기서는 $10^{10}$을 곱해) 적분하고 나중에 되돌리거나, 성분을 따로 적분해요.
+
+```python
+>>> r = sd.integrate.quad_vec(lambda x: [math.exp(-x), math.sin(50 * x)], 0, 10)
+>>> r.nfev, (r.integral[1] * 1e-10 - exact) / exact
+(2625, 4.373754577426453e-14)
+```
+
+## 어려운 피적분 함수
+
+**꺾임과 불연속**: 자리를 알면 `points`로 줘요. 처음부터 그 점에서 나누므로 적응 분할이 그 자리를 찾느라 쓰는 함숫값이 줄어요.
+
+```python
+>>> f = lambda x: [abs(x - 0.3), abs(x - 0.7)]
+>>> r = sd.integrate.quad_vec(f, 0, 1)
+>>> r.nfev, r.n_intervals
+(1239, 30)
+>>> r = sd.integrate.quad_vec(f, 0, 1, points=[0.3, 0.7])
+>>> r.nfev, r.n_intervals, r.error
+(105, 4, 1.202258787603315e-14)
+```
+
+**끝점 특이점**: 적응 분할로 다뤄지지만 구간이 많이 들어요. Gauss–Kronrod의 점은 끝점을 부르지 않아요.
+
+```python
+>>> r = sd.integrate.quad_vec(lambda x: x**-0.5, 0, 1)
+>>> r.integral - 2, r.n_intervals
+(-6.048805900604748e-11, 59)
+```
+
+**무한 구간**: 끝에 ±inf를 주면 변수를 바꿔 (0, 1] 또는 [−1, 1]의 적분으로 만들어요. 기본 규칙은 'gk15'예요.
+
+```python
+>>> r = sd.integrate.quad_vec(lambda x: math.exp(-x * x), -math.inf, math.inf)
+>>> r.integral - math.sqrt(math.pi), r.nfev
+(2.220446049250313e-16, 330)
+```
+
+**끝이 거꾸로**: $a > b$면 부호가 바뀐 값이에요.
+
+## 멈춤과 status
+
+| status | message | 뜻 |
+|---|---|---|
+| 0 | `Target precision reached.` | 수렴했어요. |
+| 1 | `Target precision not reached.` | 구간 수가 `limit`에 닿았어요. |
+| 2 | `Target precision could not be reached due to rounding error.` | 오차가 반올림 오차보다 작아질 수 없어요. |
+| 3 | `Non-finite values encountered.` | 오차가 유한하지 않아요(함숫값의 inf·NaN). |
+
+`converged`는 `status == 0`이에요. 상한에 닿아도 예외나 경고가 아니라 마지막 값과 `converged=False`예요.
+
+```python
+>>> r = sd.integrate.quad_vec(lambda x: x**-0.5, 0, 1, limit=20)
+>>> r.converged, r.status, r.message
+(False, 1, 'Target precision not reached.')
+```
+
+오차 추정은 경험적이에요. 좁은 봉우리를 처음 규칙이 놓치거나, 위의 예처럼 작은 성분이 덜 나눠지면 수렴이라고 알려도 틀릴 수 있어요.
+
+## 구간 정보
+
+결과에는 마지막 구간 나누기가 들어 있어요. `intervals`는 (n, 2)의 구간 끝, `interval_integrals`는 구간마다의 값((n,), 배열 값이면 (n, …)), `interval_errors`는 구간마다의 오차 (n,)이고, 오차가 큰 것부터예요. 무한 구간이면 바꾼 변수의 구간이에요. `summary()`가 이것을 표로 보여 줘요.
+
+```python
+>>> r = sd.integrate.quad_vec(lambda x: math.sin(x), 0, math.pi)
+>>> print(r.summary())
+                             Integration Results
+==============================================================================
+Converged:                        True  Integral:                      2.00000
+Status:                              0  Error estimate:              6.661e-14
+                                        Function Evals:                     63
+                                        Intervals:                           2
+Message:                                             Target precision reached.
+==============================================================================
+                    a          b   integral      error
+------------------------------------------------------------------------------
+[0]          1.570796   3.141593   1.000000   1.11e-14
+[1]          0.000000   1.570796   1.000000   1.11e-14
+==============================================================================
+```
+
+처음 구간 하나에서는 멈추지 않고 언제나 한 번은 나눠요. 그래서 매끄러운 함수도 21점의 세 배인 63번을 불러요.
+
+## 옵션
+
+- `atol`(기본 $10^{-200}$)·`rtol`(기본 $10^{-8}$): 위의 판정의 허용오차예요. 기본 `atol`은 사실상 0이라 상대 판정만 쓰는 셈이에요. 적분값이 0에 가까우면 `atol`을 줘요.
+- `norm`: `'2'`(기본)나 `'max'`.
+- `limit`(기본 $10^4$): 구간 수의 상한이에요.
+- `quadrature`: `'gk21'`(유한 구간 기본), `'gk15'`(무한 구간 기본), `'trapezoid'`. 사다리꼴은 매끄럽지 않은 함수에서 쓸 수 있지만 대개 훨씬 많은 구간이 들어요.
+
+## 언제 quad_vec를 쓰나요
+
+- 변수는 하나인데 값이 여러 개일 때(매개변수 묶음, 벡터·행렬 값 함수). 성분들의 모양이 비슷할수록 이득이 커요.
+- 변수가 여럿인 적분(다차원)은 [`cubature`](/api/integrate/cubature/)예요.
+- 성분마다 따로 정확해야 하거나 성분의 모양이 아주 다르면 [`quad`](/api/integrate/quad/)를 성분마다 부르거나, 매개변수 묶음이 원소별 배열 연산으로 써지면 [`tanhsinh`](/api/integrate/tanhsinh/)의 배치를 써요(원소마다 따로 멈춰요).
+
+## scipy를 아는 분께
+
+- scipy 1.18.1의 `scipy.integrate.quad_vec`와 같은 알고리즘이고, 지금은 같은 점에서 `f`를 불러 같은 값, 오차, `nfev`, status, 구간을 내요(비트까지 같지만 약속은 아니에요).
+- 결과는 튜플 대신 둘로 풀리는 [`IntegrateResult`](/api/integrate/results/)예요. `epsabs`·`epsrel`은 `atol`·`rtol`, `full_output`의 `infodict` 값은 필드(`nfev`는 `neval`, `intervals` 등)예요.
+- `args`, `cache_size`, `workers`, `full_output`은 없어요. 노름은 `'2'`와 `'max'`만 받아요.
+- float32 배열 값도 float64로 계산해요(scipy는 float32로 계산해요).

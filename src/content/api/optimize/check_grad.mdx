@@ -216,6 +216,21 @@ TypeError: check_grad(): 'rng' must be an sd.random.Generator (sd.random.default
 
 `check_grad`는 함수(`func`, `grad`)가 먼저, 점 `x0`가 마지막이에요. 점이 먼저인 `approx_fprime`과 순서가 달라요(둘 다 scipy의 순서예요).
 
+## 헤시안 확인하기
+
+`check_grad`는 기울기만 확인해요. `minimize`의 Newton 계열에 줄 헤시안 `hess`를 직접 썼다면 [`sd.differentiate.hessian`](/api/differentiate/hessian/)과 견줘요. `hessian`의 사용자 함수는 열 하나가 점 하나인 $(2, N)$ 배열을 받는데, 위의 `rosen`은 `x[0]`, `x[1]`의 원소별 연산이라 그대로 쓸 수 있어요. 항목마다 수렴했는지도 함께 확인해요.
+
+```python
+>>> hess = lambda x: [[1200 * x[0]**2 - 400 * x[1] + 2, -400 * x[0]], [-400 * x[0], 200.0]]
+>>> h = sd.differentiate.hessian(rosen, [-1.2, 1.0])
+>>> bool(sd.all(h.converged))
+True
+>>> float(sd.linalg.matrix_norm(h.ddf - sd.asarray(hess([-1.2, 1.0]))))
+5.921818498423729e-12
+```
+
+맞게 쓴 헤시안이면 차이가 헤시안의 크기(여기서 1,400쯤)보다 훨씬 작아요. 야코비안을 확인할 때는 [`sd.differentiate.jacobian`](/api/differentiate/jacobian/)이나 `approx_fprime`과 견줘요.
+
 ## scipy를 아는 분께
 
 - **기본 차분이 달라요.** scipy는 간격 $\sqrt{\varepsilon} = 2^{-26}$($\varepsilon = 2^{-52}$, 기계 엡실론)의 앞쪽 차분이고, 여기서는 간격을 고르는 5점 차분이에요. 그래서 맞는 기울기에 대한 결과가 scipy보다 훨씬 작아요(위의 예에서 $1.8 \times 10^{-12}$ 대 $9.7 \times 10^{-6}$). `epsilon=2**-26`을 주면 scipy와 같은 계산이고, 지금은 값도 비트까지 같아요(약속은 아니에요).

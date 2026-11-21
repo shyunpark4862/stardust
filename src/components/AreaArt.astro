@@ -34,6 +34,19 @@ const sparseCells = Array.from({ length: 5 }, (_, r) =>
   .map(([r, c]) => [r, c, Math.abs(c - 2 * r - 0.5) < 1.6 ? 0.75 : 0.35] as const);
 // A heavy-tailed null density for the test card.
 const tdist = pts((x) => 56 - 44 / (1 + ((x - 72) / 16) ** 2) ** 1.5, 16, 150);
+// A smooth curve with the trapezoid panels of a quadrature rule under it.
+const waveF = (x: number) => 34 - 14 * Math.sin((x - 16) / 22) - 5 * Math.cos((x - 16) / 9);
+const wave = pts(waveF, 16, 156);
+const quadPanels = Array.from({ length: 7 }, (_, i) => {
+  const x0 = 16 + i * 20;
+  return [x0, x0 + 20, waveF(x0), waveF(x0 + 20)] as const;
+});
+// A curve, the point where it is differentiated, its tangent and the step samples.
+const slopeF = (x: number) => 52 - 0.0018 * (x - 16) ** 2 - 6 * Math.sin((x - 16) / 18);
+const slope = pts(slopeF, 16, 156);
+const tanAt = 112;
+const tanY = slopeF(tanAt);
+const tanK = (slopeF(tanAt + 0.01) - slopeF(tanAt - 0.01)) / 0.02;
 const r2 = rand(3);
 const scatter = Array.from({ length: 16 }, (_, i) => {
   const x = 20 + i * 8 + r2() * 4;
@@ -143,6 +156,29 @@ const scatter = Array.from({ length: 16 }, (_, i) => {
           <circle cx={x} cy={y} r="2.4" fill="var(--area)" opacity="0.55" />
         ))}
         <circle cx="104" cy="34" r="3.6" fill="var(--area)" />
+      </g>
+    )
+  }
+  {
+    area === 'integrate' && (
+      <g>
+        {quadPanels.map(([x0, x1, y0, y1]) => (
+          <path d={`M${x0} 56L${x0} ${y0.toFixed(1)}L${x1} ${y1.toFixed(1)}L${x1} 56Z`} fill="var(--area)" opacity="0.18" stroke="var(--area)" stroke-width="0.8" stroke-opacity="0.45" />
+        ))}
+        <path d={path(wave)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d="M16 56H156" stroke="var(--line-strong)" stroke-width="1" />
+      </g>
+    )
+  }
+  {
+    area === 'differentiate' && (
+      <g>
+        <path d={path(slope)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d={`M${tanAt - 30} ${(tanY - 30 * tanK).toFixed(1)}L${tanAt + 30} ${(tanY + 30 * tanK).toFixed(1)}`} stroke="var(--area)" stroke-width="1.4" stroke-dasharray="4 3" opacity="0.7" />
+        {[-12, -6, 6, 12].map((h) => (
+          <circle cx={tanAt + h} cy={slopeF(tanAt + h)} r="1.8" fill="var(--area)" opacity="0.45" />
+        ))}
+        <circle cx={tanAt} cy={tanY} r="3.4" fill="var(--area)" />
       </g>
     )
   }

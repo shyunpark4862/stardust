@@ -14,14 +14,14 @@ import Plot from '../../../components/fig/Plot.astro';
 
 ## 한눈에 보기
 
-stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `pool.cpp`, 합쳐서 약 400줄이에요. 배열(`sd`), 선형대수(`sd.linalg`), 데이터프레임(`sd.frame`), 특수함수(`sd.special`), 통계(`sd.stats`), 난수(`sd.random`), 회귀(`sd.regression`), 최적화(`sd.optimize`), 가설검정(`sd.htest`), 희소 행렬(`sd.sparse`)이 모두 이 풀 위에서 돌아요. 특수함수와 통계의 원소별 함수는 배열의 이터레이터로, 난수와 통계의 표본·기술통계·다변량 커널은 배열의 조각 실행기(`for_pieces`)나 `parallel_for`로, 회귀는 linalg의 배치 드라이버(`run_batch`)와 회귀 하나 안의 행 합으로, 최적화는 배치 스칼라의 원소 패스와 lmder의 열 피벗 QR을, 가설검정은 배치의 줄을 배열의 조각 실행기로, 희소 행렬은 압축 배열의 줄 구간을 `parallel_for`로 풀에 일을 보내요.
+stardust에는 스레드풀이 하나 있어요. `csrc/parallel/pool.hpp`와 `pool.cpp`, 합쳐서 약 400줄이에요. 배열(`sd`), 선형대수(`sd.linalg`), 데이터프레임(`sd.frame`), 특수함수(`sd.special`), 통계(`sd.stats`), 난수(`sd.random`), 회귀(`sd.regression`), 최적화(`sd.optimize`), 가설검정(`sd.htest`), 희소 행렬(`sd.sparse`), 적분(`sd.integrate`), 미분(`sd.differentiate`)이 모두 이 풀 위에서 돌아요. 특수함수와 통계의 원소별 함수는 배열의 이터레이터로, 난수와 통계의 표본·기술통계·다변량 커널은 배열의 조각 실행기(`for_pieces`)나 `parallel_for`로, 회귀는 linalg의 배치 드라이버(`run_batch`)와 회귀 하나 안의 행 합으로, 최적화는 배치 스칼라의 원소 패스와 lmder의 열 피벗 QR을, 가설검정은 배치의 줄을 배열의 조각 실행기로, 희소 행렬은 압축 배열의 줄 구간을 `parallel_for`로, 적분은 표본 규칙의 줄과 Gauss–Legendre 마디, 원소별 반복(`tanhsinh`, `nsum`)의 원소 패스를, 미분은 원소별 반복의 원소 패스를 풀에 보내요.
 
 이 페이지의 내용은 세 층으로 나뉘어요.
 
 | 층 | 하는 일 | 어디에 |
 |---|---|---|
 | 풀 | 태스크 번호 `0 … ntasks-1`을 여러 스레드에 나눠 돌리기만 해요 | `parallel/pool.*` |
-| 영역의 정책 | **언제** 나눌지(기준값), **얼마나 잘게** 나눌지(태스크 크기)를 정해요 | `array/parallel_limits.hpp`, `array/iter.cpp`, `frame/parallel.hpp`, `linalg/cost.hpp`, `special/cost.hpp`, `stats/engine.hpp`, `regression/*.cpp`, `elementwise/loop.hpp`, `optimize/lsq.cpp`, `htest/lanes.hpp`, `sparse/parallel.hpp` |
+| 영역의 정책 | **언제** 나눌지(기준값), **얼마나 잘게** 나눌지(태스크 크기)를 정해요 | `array/parallel_limits.hpp`, `array/iter.cpp`, `frame/parallel.hpp`, `linalg/cost.hpp`, `special/cost.hpp`, `stats/engine.hpp`, `regression/*.cpp`, `elementwise/loop.hpp`, `optimize/lsq.cpp`, `htest/lanes.hpp`, `sparse/parallel.hpp`, `integrate/samples.cpp`, `integrate/gauss.cpp` |
 | 알고리즘 | **어디서** 자르고 부분 결과를 **어떤 순서로** 합칠지 정해요 | 각 연산의 코드 |
 
 핵심 아이디어는 네 가지예요.
@@ -377,6 +377,7 @@ private:
 | linalg | 호출 하나의 추정 계산 시간이 10µs(`kParallelMinNs`) 이상. 행렬 하나여도 같아요 |
 | frame | 2¹⁷ = 131,072행 |
 | htest, sparse | 배열과 같은 2¹⁵개 분량. htest는 줄 수에 줄 하나의 비용을 곱해 세고, sparse는 저장된 원소와 출력 크기로 세요(`sparse/parallel.hpp`의 `kParallelThreshold`) |
+| integrate, differentiate | 배열과 같은 2¹⁵개 분량. 표본 규칙은 줄 수 × 길이, Gauss–Legendre 마디는 점화식 걸음 수, 원소별 반복은 남은 원소 수 × 원소마다의 점 수로 세요(`elementwise/loop.hpp`의 `kParallel`) |
 
 놓는 곳은 두 가지예요.
 
@@ -388,7 +389,7 @@ private:
 기준값과 상관없이 GIL을 놓거나 쥐는 곳도 있어요.
 
 - **언제나 놓아요**: `cov`, `corrcoef`의 행렬 곱(BLAS), stats의 여러 기술통계와 다변량 분포, 분포의 `sample`, random의 `permutation`과 비복원 추출(`fisher_yates`). `matmul`의 float64·complex128 BLAS 경로는 곱셈-덧셈이 $2^{15}$개(`kBlasTaskWork`) 이상이면 놓아요. BLAS 호출은 우리 풀이 아니라 Accelerate가 스레드를 정하므로 `sd.set_num_threads(1)`이어도 여러 코어를 쓸 수 있어요. 희소 행렬의 Accelerate LU 분해와 풀이도 언제나 GIL을 놓고 불러요(`sparse/direct.cpp`). 그래서 여러 Python 스레드가 동시에 분해할 수 있어요.
-- **사용자 함수를 부르는 동안 쥐어요**: `sd.optimize`의 반복과 `sd.regression.nls`의 반복은 사용자의 Python 함수를 부르므로 GIL을 쥔 채 돌아요. 그 사이의 계산 가운데 linalg의 10µs 규칙(추정 2×10⁵ 플롭)을 넘는 것(BFGS의 H 갱신, L-BFGS-B의 방향 계산, Nelder–Mead의 무게중심, trust-exact의 Cholesky, 야코비안의 QR, `lsq_linear`과 `nnls`의 풀이)과 2¹⁵개 이상인 배치 스칼라의 원소 패스만 GIL을 놓아요. 희소 반복법과 고유값 풀이도 연산자가 Python 함수(`LinearOperator`)이면 풀이 내내 GIL을 쥐고, 희소 행렬이면 한 걸음의 일이 기준값 이상일 때 풀이 전체에서 놓아요. 가설검정의 재표본에서 사용자의 `statistic`은 Python 층이 부르므로 그동안 GIL을 쥐어요.
+- **사용자 함수를 부르는 동안 쥐어요**: `sd.optimize`의 반복과 `sd.regression.nls`의 반복은 사용자의 Python 함수를 부르므로 GIL을 쥔 채 돌아요. 그 사이의 계산 가운데 linalg의 10µs 규칙(추정 2×10⁵ 플롭)을 넘는 것(BFGS의 H 갱신, L-BFGS-B의 방향 계산, Nelder–Mead의 무게중심, trust-exact의 Cholesky, 야코비안의 QR, `lsq_linear`과 `nnls`의 풀이)과 2¹⁵개 이상인 배치 스칼라의 원소 패스만 GIL을 놓아요. 희소 반복법과 고유값 풀이도 연산자가 Python 함수(`LinearOperator`)이면 풀이 내내 GIL을 쥐고, 희소 행렬이면 한 걸음의 일이 기준값 이상일 때 풀이 전체에서 놓아요. 가설검정의 재표본에서 사용자의 `statistic`은 Python 층이 부르므로 그동안 GIL을 쥐어요. 적분과 미분도 같아요. `quad` 계열, `quad_vec`, `cubature`는 사용자 함수를 부르는 반복이라 내내 쥐고, 원소별 반복(`derivative`, `tanhsinh`, `nsum`)과 `jacobian`·`hessian`은 사용자 함수를 부르는 동안 쥐고 그 사이의 원소 패스만 기준값 이상일 때 놓아요.
 - **기준값 이상이어도 쥐어요**: Python 객체를 읽거나 만드는 변환(리스트를 받는 `asarray`, `tolist`), 인덱스 배열 하나로 하는 대입 `x[idx] = v`(같은 인덱스의 마지막 쓰기가 남아야 해서 한 스레드에서 순서대로 써요), `unique_all`·`unique_counts`·`unique_inverse`에서 정렬 뒤에 묶음을 세는 부분, 메모리를 받기만 하는 `zeros`와 `eye`.
 
 비용은 기준값 이상인 호출마다 GIL을 한 번 놓았다 다시 잡는 것으로, 호출당 0.1µs 안팎이에요. 1스레드의 `sum`·`max`·`x + x`를 기준값 바로 위(32,768–65,536 원소, 2–7µs짜리 호출)에서 GIL을 쥐는 빌드와 번갈아 20번씩 잰 최솟값으로 비교하면 −1.4%~+3.2%였어요. 열세 연산, 여섯 크기(100~100만 원소), 1·10스레드의 156가지 경우를 12번씩 번갈아 쟀을 때 기하평균은 +0.5%(최솟값 기준)였어요. 다른 Python 스레드가 Python 코드를 돌리고 있으면, 계산을 마친 호출은 GIL을 돌려받을 때까지 기다려요(최대 `sys.getswitchinterval()`, 기본 5ms).
@@ -463,6 +464,8 @@ macOS는 코어를 성능 등급별로 알려 줘요. `hw.perflevel0`이 가장 
 | optimize | `kParallel`, `kTask` (`elementwise/loop.hpp`, 원소마다 따로 푸는 반복의 공용 고리), `kQrfacParallel` (`optimize/lsq.cpp`) | 배치 스칼라는 아직 끝나지 않은 원소 2¹⁵개부터 2¹³개씩, lmder의 QR은 한 단계 4×10⁵ 플롭부터 열 8개 이상씩 나눠요 |
 | htest | 배열의 `kParallelThreshold`, `kParallelTask` (`htest/lanes.hpp`의 `each_lane`) | 줄 하나의 비용을 원소 수로 어림해 배열의 기준값과 태스크 크기를 써요. 조각이 2–16개뿐이고 조각마다 2¹⁵개 분량 이상이면 잠든 워커도 깨워요(`for_pieces_woken`). 긴 표본 하나의 합은 2¹⁶개부터 4096개씩의 고정 덩어리로 나눠요 |
 | sparse | `kParallelThreshold`, `kChunk` (`sparse/parallel.hpp`) | 일 2¹⁵개 분량부터, 압축 배열의 줄을 `indptr`만으로 저장된 원소 약 2¹⁴개씩의 구간으로 잘라요(`line_bounds`) |
+| integrate | 배열의 `kParallelThreshold`, `kParallelTask` (`integrate/samples.cpp`, `integrate/gauss.cpp`), 공용 고리의 `kParallel`, `kTask` (`elementwise/loop.hpp`의 `for_weighted`) | 표본 규칙은 줄 수 × 길이가 2¹⁵개부터 줄을 나누고, 긴 줄 하나는 pairwise 합의 같은 트리를 부분 트리로 나눠요. Gauss–Legendre 마디(n > 100)는 걸음 2¹⁵개부터 마디마다 나눠요. `tanhsinh`과 `nsum`은 남은 원소 수 × 원소마다의 점 수가 2¹⁵개부터 약 2¹³점씩, 조각 17개 이상으로 나눠 잠든 워커도 깨워요 |
+| differentiate | 공용 고리의 `kParallel`, `kTask` (`elementwise/loop.hpp`) | `derivative`는 `tanhsinh`과 같은 `for_weighted`, `jacobian`과 `hessian`은 남은 항목 2¹⁵개부터 항목의 갱신을 2¹³개씩 나눠요 |
 
 이름은 같고 값이 다른 상수가 배열은 `sd` 이름공간에, frame은 `sd::frame`에 있어서 각 영역의 코드가 자기 값을 찾아요. 아래는 배열의 정책이에요.
 

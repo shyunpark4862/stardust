@@ -1,0 +1,204 @@
+---
+kind: function
+title: hessian
+names: [hessian]
+group: 야코비안과 헤시안
+order: 2
+signatures:
+  - "sd.differentiate.hessian(f, x, /, *, atol=None, rtol=None, max_iter=10, order=8, initial_step=0.5, step_factor=2.0)"
+summary: 스칼라 함수 f의 헤시안(이계 편도함수의 행렬)을 구해요. 기울기를 jacobian으로 계산하는 함수를 다시 jacobian으로 미분하고, 항목마다의 오차 추정과 수렴 여부를 함께 돌려줘요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "벡터화된 스칼라 함수 f(x). x는 열 하나가 점 하나인 float64 sd.ndarray (m, N)이고, 점마다의 값 (N,)을 돌려줘요."
+  - name: x
+    type: ndarray, 실수의 시퀀스, 또는 numpy 배열
+    kind: positional-only
+    desc: 미분할 점 (m,). 1차원이고 비어 있지 않아야 해요. 유한하지 않은 값이 있으면 그 변수가 든 항목이 status −3이에요.
+  - name: atol, rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "항목마다 error < atol + rtol·|ddf|이면 멈춰요. None이면 atol은 가장 작은 정규수(2.2e-308), rtol은 √ε(1.5e-8)예요. 안쪽 기울기는 rtol/100으로 계산하므로 rtol은 0이거나 100ε(2.2e-14) 이상이어야 해요."
+  - name: max_iter
+    type: int
+    kind: keyword-only
+    desc: "공식을 계산하는 횟수의 상한(1 이상). 바깥과 안쪽 미분 모두에 써요. 기본값 10."
+  - name: order
+    type: int
+    kind: keyword-only
+    desc: "차분 공식의 차수(1 이상, 홀수는 다음 짝수). 기본값 8."
+  - name: initial_step
+    type: 실수 또는 실수 m개
+    kind: keyword-only
+    desc: "처음의 절대 간격. 수 하나면 모든 변수에, m개면 변수마다 써요(바깥과 안쪽 미분 모두). 기본값 0.5."
+  - name: step_factor
+    type: float
+    kind: keyword-only
+    desc: "반복마다 간격을 나누는 수. 기본값 2.0. 유한하고 0보다 크고 1이 아니어야 해요."
+returns:
+  type: DifferentiateResult
+  desc: "ddf, error, converged, status, nfev가 든 결과 객체예요. 필드마다 (m, m)의 sd.ndarray이고, 항목 (i, j)가 ∂²f/∂x_i∂x_j의 것이에요. n_iter와 x는 없어요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, x가 수의 시퀀스가 아닐 때, 옵션의 형이 틀릴 때, f가 수의 배열이 아닌 것이나 bool·복소수 값을 돌려줄 때, step_direction·args 같은 모르는 키워드를 줬을 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: x가 1차원이 아니거나 비었을 때, initial_step의 개수가 m이 아닐 때, f가 (N,)이 아닌 모양을 돌려줄 때, 0 < rtol < 100ε일 때, 옵션의 값이 범위 밖일 때(derivative와 같아요).
+seeAlso: [basics, jacobian, derivative]
+---
+import Callout from '../../../components/Callout.astro';
+
+## 무엇을 하나요
+
+스칼라 함수 $f: \mathbb{R}^m \to \mathbb{R}$의 **헤시안**은 이계 편도함수 $\partial^2 f / \partial x_i \partial x_j$를 모은 $(m, m)$ 행렬이에요. 점 둘레에서 함수가 어느 방향으로 얼마나 휘는지(곡률)를 나타내요. 극소점에서는 헤시안이 양정치이고, 최대가능도 추정에서는 음의 로그가능도의 헤시안의 역행렬이 추정량의 공분산을 어림해요.
+
+`hessian(f, x)`는 기울기의 야코비안이에요. 바깥의 [`jacobian`](/api/differentiate/jacobian/)이 부르는 함수가 "그 점들에서의 기울기"이고, 그 기울기를 안쪽 `jacobian`이 같은 방법으로 계산해요. 안쪽 기울기는 바깥보다 100배 엄한 허용오차(`rtol/100`)로 계산해서, 기울기의 오차가 헤시안의 차분에 섞이지 않게 해요.
+
+## 기본 사용
+
+Rosenbrock 함수 $f(x) = 100(x_1 - x_0^2)^2 + (1 - x_0)^2$의 헤시안은 $\begin{pmatrix} 1200x_0^2 - 400x_1 + 2 & -400x_0 \\ -400x_0 & 200\end{pmatrix}$이고, $(-1.2, 1)$에서 $\begin{pmatrix}1330 & 480 \\ 480 & 200\end{pmatrix}$이에요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> rosen = lambda x: 100 * (x[1] - x[0]**2)**2 + (1 - x[0])**2
+>>> h = sd.differentiate.hessian(rosen, [-1.2, 1.0])
+>>> h
+DifferentiateResult(batch shape (2, 2), 4 of 4 converged)
+>>> h.ddf
+array([[1329.9999999999945,  480.0000000000015],
+       [480.00000000000176,              200.0]], dtype=float64)
+>>> h.status
+array([[0, 0],
+       [0, 0]], dtype=int64)
+```
+
+결과의 값은 `df`가 아니라 `ddf`예요. `error`, `converged`, `status`, `nfev`가 항목마다 있고, `n_iter`는 없어요.
+
+## f의 약속
+
+`f`는 [`jacobian`](/api/differentiate/jacobian/#벡터화된-f-쓰기)처럼 열 하나가 점 하나인 $(m, N)$을 받는 벡터화된 함수예요. 스칼라 함수라서 늘 점마다의 값 $(N,)$을 돌려줘요. 값 하나라도 리스트로 감싸면 $(1, N)$이 되어 에러예요.
+
+```python
+>>> sd.differentiate.hessian(lambda x: [x[0]**2], [1.0])
+Traceback (most recent call last):
+    ...
+ValueError: hessian(): 'f' must return shape (1,) for its argument of shape (1, 1), not (1, 1)
+```
+
+데이터가 든 식은 데이터를 다른 축에 두고 브로드캐스트해요. 아래는 정규분포의 음의 로그가능도 $n\log\sigma + \sum_i (d_i - \mu)^2 / (2\sigma^2)$이에요. 데이터 `d`를 $(5, 1)$ 열로 두면 `d - mu`가 $(5, N)$이고, `axis=0`으로 더해 점마다의 값 $(N,)$이 돼요.
+
+```python
+>>> data = sd.asarray([2.1, 1.9, 3.2, 2.8, 2.5])
+>>> d = sd.reshape(data, (5, 1))
+>>> def nll(x):
+...     mu, s = x[0], x[1]
+...     return 5 * sd.log(s) + sd.sum((d - mu)**2, axis=0) / (2 * s**2)
+>>> mu = float(sd.mean(data))
+>>> s = math.sqrt(float(sd.mean((data - mu)**2)))
+>>> mu, s
+(2.5, 0.469041575982343)
+```
+
+최대가능도 추정 $(\hat\mu, \hat\sigma)$에서의 헤시안을 구해 볼게요. 그런데 기본 간격 0.5로는 $\sigma - 0.5 < 0$에서 $\log\sigma$가 NaN이라 $\sigma$가 든 항목이 status −3이에요.
+
+```python
+>>> sd.differentiate.hessian(nll, [mu, s]).status
+array([[ 0, -3],
+       [-3, -3]], dtype=int64)
+```
+
+변수마다 간격을 줘서 $\sigma$의 간격을 줄여요. 그러면 이번에는 참값이 0인 엇갈린 항목이 반올림 때문에 상대 판정을 맞추지 못해 status −1이에요. 헤시안의 크기에 맞는 `atol`을 주면 모두 수렴해요.
+
+```python
+>>> sd.differentiate.hessian(nll, [mu, s], initial_step=[0.5, 0.1]).status
+array([[ 0, -1],
+       [-1,  0]], dtype=int64)
+>>> h = sd.differentiate.hessian(nll, [mu, s], initial_step=[0.5, 0.1], atol=1e-6)
+>>> h.status
+array([[0, 0],
+       [0, 0]], dtype=int64)
+>>> h.ddf
+array([[     22.727272727272975,  -1.946719079475819e-13],
+       [-1.9474134239350895e-13,      45.454545444348895]], dtype=float64)
+```
+
+참 헤시안은 $\mathrm{diag}(n/\hat\sigma^2, 2n/\hat\sigma^2) = \mathrm{diag}(22.73, 45.45)$예요. 역행렬의 대각선의 제곱근이 표준오차 $\hat\sigma/\sqrt n$, $\hat\sigma/\sqrt{2n}$이에요.
+
+```python
+>>> cov = sd.linalg.inv(h.ddf)
+>>> math.sqrt(float(cov[0, 0])), math.sqrt(float(cov[1, 1]))
+(0.20976176963402915, 0.14832396975854958)
+>>> s / math.sqrt(5), s / math.sqrt(10)
+(0.20976176963403032, 0.14832396974191325)
+```
+
+## 대칭과 정확도
+
+참 헤시안은 대칭이지만, 결과는 항목 $(i, j)$와 $(j, i)$를 따로 계산해서 끝자리가 조금 달라요. 대칭이어야 하는 계산(분해, 역행렬)에 넘기기 전에 $(H + H^\mathsf{T})/2$로 맞춰 쓰면 좋아요.
+
+```python
+>>> f = lambda x: sd.exp(x[0]) * sd.sin(x[1])
+>>> H = sd.differentiate.hessian(f, [0.5, 1.0]).ddf
+>>> float(H[0, 1] - H[1, 0])
+-2.7755575615628914e-15
+>>> (H + H.T) / 2
+array([[ 1.3873511113296644,  0.8908079042931603],
+       [ 0.8908079042931603, -1.3873511113296086]], dtype=float64)
+```
+
+이계 도함수의 차분은 일계보다 반올림에 약해요. 기울기의 오차를 다시 간격으로 나누기 때문이에요. 그래서 기본 설정의 결과는 대개 상대 $10^{-10}$–$10^{-13}$이고 [`jacobian`](/api/differentiate/jacobian/)보다 덜 정확해요. 시험한 Moré–Garbow–Hillstrom 문제 42경우에서, Arb(구간 산술)로 만든 참값과 견준 수렴한 항목의 오차는 `rtol`$\cdot\max\lvert H\rvert$의 0.11배 이하였어요.
+
+### rtol의 범위
+
+안쪽 기울기는 `rtol/100`으로 계산해요. 그래서 `rtol`이 $100\varepsilon \approx 2.2 \times 10^{-14}$($\varepsilon = 2^{-52}$)보다 작으면 안쪽 허용오차가 기계 엡실론 아래가 되어 의미가 없어요. 이때는 에러예요. `rtol=0`은 받고, `atol`만으로 판정해요.
+
+```python
+>>> sd.differentiate.hessian(rosen, [-1.2, 1.0], rtol=1e-15)
+Traceback (most recent call last):
+    ...
+ValueError: hessian(): 'rtol' must be 0 or >= 2.220446049250313e-14 (100 times the machine epsilon: the inner jacobian's is rtol / 100), not 1e-15
+>>> sd.differentiate.hessian(rosen, [-1.2, 1.0], rtol=0)
+DifferentiateResult(batch shape (2, 2), 0 of 4 converged)
+```
+
+`rtol=0`과 기본 `atol`(가장 작은 정규수)이면 사실상 판정을 통과할 수 없어서 모든 항목이 수렴하지 못해요. `rtol=0`을 쓸 때는 의미 있는 `atol`을 함께 줘요.
+
+## 셈과 비용
+
+헤시안은 바깥 미분의 점마다 안쪽에서 기울기 전체를 계산하므로 함수를 많이 불러요. `nfev`는 항목 $(i, j)$마다, 그 항목이 멈출 때까지 바깥 호출에서 안쪽 항목 $i$의 변수 $j$ 열이 쓴 점의 수를 더한 것이에요. 사용자 함수를 부르는 횟수는 그보다 훨씬 적어요. 한 번에 많은 점을 받기 때문이에요.
+
+```python
+>>> h = sd.differentiate.hessian(rosen, [-1.2, 1.0])
+>>> h.nfev
+array([[121, 121],
+       [121, 121]], dtype=int64)
+>>> calls, points = [0], [0]
+>>> def counted(x):
+...     calls[0] += 1
+...     points[0] += x.shape[1]
+...     return rosen(x)
+>>> _ = sd.differentiate.hessian(counted, [-1.2, 1.0])
+>>> calls[0], points[0]
+(9, 484)
+```
+
+변수 2개에 점 484개를 아홉 번의 호출로 계산했어요. 점의 수는 대략 변수 수의 제곱에 비례해요. `f`가 원소별 연산으로 쓰여 있으면 점이 많아도 호출 하나가 빠르게 끝나요.
+
+## 쓸 수 없는 옵션
+
+`step_direction`은 없어요. 안쪽과 바깥 미분 모두 늘 중앙 공식이에요. 정의역의 끝 가까이에서는 `initial_step`을 줄여요. `args`도 없어요. 상수는 `lambda`나 클로저로 묶어요.
+
+```python
+>>> sd.differentiate.hessian(rosen, [-1.2, 1.0], step_direction=1)
+Traceback (most recent call last):
+    ...
+TypeError: hessian(): unexpected keyword argument 'step_direction'
+```
+
+## scipy를 아는 분께
+
+- 이름과 인자는 `scipy.differentiate.hessian`의 것이고, 안쪽 `jacobian`을 `rtol/100`으로 부르는 방법과 `nfev`의 셈도 scipy와 같아요. `tolerances` 대신 `atol`·`rtol`, `maxiter` 대신 `max_iter`, `success` 대신 `converged`예요. scipy처럼 `n_iter`와 `x` 필드는 없어요.
+- $0 < \texttt{rtol} < 100\varepsilon$이면 `ValueError`예요. scipy는 경고하고 $100\varepsilon$으로 올려요.
+- `initial_step`을 변수마다 줄 수 있고, 바깥과 안쪽 미분 모두에서 변수 $j$에 $j$번째 값을 써요. scipy는 배열을 주면 에러예요.
+- `f`는 2차원 $(m, N)$을 받아요. 가중치와 합의 순서가 달라서 판정의 경계에 있는 항목은 scipy와 다른 반복에 멈출 수 있어요. 시험한 42경우에서 항목 1,748개 가운데 1,517개가 status와 셈까지 같았고, 둘 다 수렴한 값의 차이는 $\max\lvert H\rvert$의 $4.7 \times 10^{-12}$배 이하였어요.

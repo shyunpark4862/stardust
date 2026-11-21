@@ -1,0 +1,298 @@
+---
+kind: function
+title: tanhsinh
+names: [tanhsinh]
+group: tanh-sinh와 급수
+order: 1
+signatures:
+  - "sd.integrate.tanhsinh(f, a, b, /, *, args=(), log=False, max_level=None, min_level=2, atol=None, rtol=None)"
+summary: tanh-sinh 구적으로 적분을 원소마다 따로 계산해요. 점이 양 끝에 아주 촘촘히 모여서 끝점의 특이점(1/√x, log x)도 잘 다루고, 끝과 args를 배열로 주면 적분 여러 개를 한 번에 풀어요.
+params:
+  - name: f
+    type: 호출 가능한 객체
+    kind: positional-only
+    desc: "원소별 피적분 함수 f(x, *args). x는 float64 sd.ndarray이고(첫 호출은 (k,), 그다음은 (k, p)), 같은 모양의 실수 배열을 돌려줘요. 특이점에서는 예외 대신 inf나 NaN을 돌려줘야 해요."
+  - name: a
+    type: float 또는 실수의 배열
+    kind: positional-only
+    desc: "적분의 아래 끝. ±inf를 받아요. b, args와 브로드캐스트해요."
+  - name: b
+    type: float 또는 실수의 배열
+    kind: positional-only
+    desc: "적분의 위 끝. ±inf를 받아요. b < a면 끝을 바꿔 계산하고 부호를 바꿔요."
+  - name: args
+    type: tuple
+    kind: keyword-only
+    desc: "f에 더 넘길 인자들. 수나 배열이고 a, b와 브로드캐스트해요. f는 원소마다 맞춘 (k, 1) 모양으로 받아요. 기본값 ()."
+  - name: log
+    type: bool
+    kind: keyword-only
+    desc: "True면 f가 피적분 함수의 로그를 돌려주고, integral·error·atol·rtol도 로그예요. 아주 크거나 작은 값의 적분에 써요. 기본값 False."
+  - name: max_level
+    type: int 또는 None
+    kind: keyword-only
+    desc: "수준(간격을 반으로 줄인 횟수)의 상한. 0 이상 16 이하예요. None(기본값)이면 10이에요."
+  - name: min_level
+    type: int
+    kind: keyword-only
+    desc: "첫 호출에 한꺼번에 넣는 수준. 0 이상이고 max_level보다 크면 max_level이에요. 기본값 2."
+  - name: atol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "절대 허용오차. error < atol이면 멈춰요. 유한한 0 이상의 수이고, None(기본값)이면 0(log=True면 -inf)이에요."
+  - name: rtol
+    type: float 또는 None
+    kind: keyword-only
+    desc: "상대 허용오차. error < rtol·|integral|이면 멈춰요. 유한한 0 이상의 수이고, None(기본값)이면 ε^0.75 ≈ 1.8e-12(log=True면 0.75·log ε)이에요."
+returns:
+  type: IntegrateResult
+  desc: "integral, error, converged, status, nfev, max_level 필드. 필드는 a, b, args를 브로드캐스트한 모양이고, 입력이 모두 수면 Python 수예요. 둘로 풀리지 않아요."
+raises:
+  - type: TypeError
+    desc: f가 호출 가능하지 않을 때, a·b·args가 실수나 실수 배열이 아닐 때(bool, 복소수 포함), log가 bool이 아닐 때, max_level·min_level이 int가 아닐 때, f가 실수가 아닌 값을 돌려줄 때. f 안에서 난 에러도 그대로 나와요.
+  - type: ValueError
+    desc: a, b, args가 브로드캐스트되지 않을 때, max_level이 16보다 크거나 수준이 음수일 때, atol·rtol이 음수이거나 유한하지 않을 때(log=True면 NaN이나 +inf일 때), log=True인데 b < a인 원소가 있을 때, f가 돌려준 모양이 틀렸을 때.
+seeAlso: [quad, nsum, fixed_quad, results, basics]
+---
+import Callout from '../../../components/Callout.astro';
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+## 무엇을 하나요
+
+$\int_0^1 dx/\sqrt{x} = 2$처럼 끝점에서 피적분 함수가 무한으로 가는 적분은 같은 간격의 규칙으로 잘 풀리지 않아요. 끝점 근처의 아주 작은 구간이 넓이의 큰 몫을 차지하기 때문이에요.
+
+tanh-sinh 구적은 변수를 바꿔 이 문제를 풀어요. $[-1, 1]$의 적분을
+
+$$
+x = \tanh\!\left(\tfrac{\pi}{2}\sinh t\right), \qquad
+\int_{-1}^{1} f(x)\,dx = \int_{-\infty}^{\infty} f(x(t))\, \frac{\tfrac{\pi}{2}\cosh t}{\cosh^2\!\left(\tfrac{\pi}{2}\sinh t\right)}\,dt
+$$
+
+로 바꾸면, 새 피적분 함수는 $t$가 커질 때 이중 지수적으로(지수의 지수로) 0에 가까워져요. 끝점의 특이점이 거듭제곱이나 로그 정도라면 그 빠른 감쇠가 특이점을 눌러 버려요. 그다음 $t$를 같은 간격 $h$로 재고 더하면(사다리꼴 규칙), 이렇게 빨리 줄어드는 매끄러운 함수에서는 사다리꼴이 아주 정확해요. $x$ 쪽에서 보면 점들이 양 끝에 극단적으로 촘촘히 모여요.
+
+<Fig caption="t를 x로 옮기는 변환 x(t)와 가중치 w(t). t가 ±3에 이르기 전에 x는 ±1에 바짝 붙고 가중치는 거의 0이 돼요. 같은 간격의 t가 x 쪽에서는 끝으로 갈수록 이중 지수적으로 촘촘해져요.">
+  <Plot
+    curves={[
+      { f: (t) => Math.tanh((Math.PI / 2) * Math.sinh(t)), label: 'x(t)' },
+      { f: (t) => ((Math.PI / 2) * Math.cosh(t)) / Math.cosh((Math.PI / 2) * Math.sinh(t)) ** 2, label: 'w(t)', dashed: true },
+    ]}
+    domain={[-3, 3]}
+    range={[-1.1, 1.7]}
+    xTicks={[
+      { v: -3, label: '-3' },
+      { v: 0, label: '0' },
+      { v: 3, label: '3' },
+    ]}
+    yTicks={[
+      { v: -1, label: '-1' },
+      { v: 1, label: '1' },
+      { v: 1.5708, label: 'π/2' },
+    ]}
+  />
+</Fig>
+
+`tanhsinh`은 간격 $h$를 수준마다 반으로 줄여 가며(이전 수준의 점은 그대로 쓰고 새 점만 더해요) 두 수준의 값이 허용오차 안에서 맞을 때 멈춰요. 무한 구간은 먼저 유한 구간으로 바꿔요.
+
+## 기본 사용
+
+결과는 [`IntegrateResult`](/api/integrate/results/)예요.
+
+```python
+>>> import stardust as sd
+>>> import math
+>>> r = sd.integrate.tanhsinh(lambda x: 1 / sd.sqrt(x), 0, 1)
+>>> r
+IntegrateResult(integral=2, error=1.19127e-13, converged=True, nfev=67)
+>>> r.integral, r.error, r.status, r.max_level
+(1.9999999999999998, 1.1912699821088589e-13, 0, 2)
+```
+
+67번의 함숫값으로 반올림 오차 수준까지 맞았어요. 필드는 `integral`(적분값), `error`(오차의 어림), `converged`(멈춤 판정을 통과했는지), `status`, `nfev`(함숫값을 계산한 점의 수), `max_level`(마지막 수준)이에요. `quad`의 결과와 달리 `integral, error = r`처럼 둘로 풀리지 않으니 이름으로 읽어요.
+
+끝점의 로그 특이점이나 더 센 거듭제곱 특이점도 같은 점 수로 풀려요.
+
+```python
+>>> sd.integrate.tanhsinh(lambda x: sd.log(x), 0, 1).integral
+-1.0
+>>> sd.integrate.tanhsinh(lambda x: x**-0.9, 0, 1).integral - 10
+3.552713678800501e-15
+>>> sd.integrate.tanhsinh(lambda x: sd.log(x)**2 / sd.sqrt(x), 0, 1).integral - 16
+-1.7763568394002505e-15
+```
+
+$x^{-0.9}$는 0 근처에 넓이가 아주 많이 몰린 함수라 [`quad`](/api/integrate/quad/)도 힘들어하는 적분이에요.
+
+### 무한 구간
+
+끝은 ±inf여도 돼요.
+
+```python
+>>> r = sd.integrate.tanhsinh(lambda x: sd.exp(-x**2), -math.inf, math.inf)
+>>> r.integral - math.sqrt(math.pi), r.nfev
+(0.0, 515)
+>>> sd.integrate.tanhsinh(lambda x: 1 / (1 + x**2), 0, math.inf).integral - math.pi / 2
+7.105427357601002e-15
+```
+
+## 피적분 함수의 규칙
+
+`f`는 점 하나가 아니라 배열로 불려요. 원소마다 따로 계산하는 함수(`f(x)[i]`가 `f(x[i])`)여야 하고, `sd.exp`, `sd.sqrt`, 사칙연산처럼 배열을 받는 연산으로 써요. `math.sqrt`처럼 수 하나만 받는 함수는 에러가 나요.
+
+```python
+>>> sd.integrate.tanhsinh(lambda x: math.sqrt(x), 0, 1)
+Traceback (most recent call last):
+    ...
+TypeError: an array cannot be converted to float
+```
+
+끝점 바로 옆의 점은 반올림으로 끝점 자체가 될 수 있어요. 그래서 `f`는 끝점에서도 불릴 수 있고, 그 값은 버려요. 특이점에서는 예외를 내지 말고 inf나 NaN을 돌려줘야 해요. `f`가 받는 것은 배열이라 배열의 연산은 그렇게 해요(0으로 나누면 inf). 원소를 Python 수로 꺼내 계산하면 0으로 나누는 예외가 날 수 있으니 배열 연산으로 써요.
+
+## 여러 적분을 한 번에
+
+`a`, `b`, `args`에 배열을 주면 브로드캐스트한 모양의 원소마다 적분을 따로 계산해요. $\int_0^1 x^p\,dx$를 네 개의 $p$로 풀어 봐요.
+
+```python
+>>> p = sd.asarray([0.5, 1.0, 2.0, 3.0])
+>>> r = sd.integrate.tanhsinh(lambda x, p: x**p, 0, 1, args=(p,))
+>>> r
+IntegrateResult(batch shape (4,), 4 of 4 converged)
+>>> r.integral
+array([ 0.6666666666666666, 0.49999999999999994, 0.33333333333333337,
+                      0.25], dtype=float64)
+>>> r.nfev, r.max_level
+(array([ 67,  67, 131, 131], dtype=int64), array([2, 2, 3, 3], dtype=int64))
+```
+
+필드는 모두 배치 모양 (4,)의 배열이에요. 원소마다 따로 멈추므로 $p = 0.5, 1$은 수준 2에서, $p = 2, 3$은 수준 3에서 끝났어요. 원소마다의 값을 표로 보려면 `summary()`를 써요.
+
+```python
+>>> print(r.summary())
+                             Integration Results
+==============================================================================
+Batch shape:                      (4,)  Converged:                      4 of 4
+==============================================================================
+             integral      error  converged     status       nfev  max_level
+------------------------------------------------------------------------------
+[0]          0.666667   1.19e-13       True          0         67          2
+[1]          0.500000   1.19e-13       True          0         67          2
+[2]          0.333333   4.44e-16       True          0        131          3
+[3]          0.250000   6.11e-16       True          0        131          3
+==============================================================================
+```
+
+### f가 받는 모양
+
+`f`는 아직 끝나지 않은 원소들의 점을 모아 한 번에 받아요. 첫 호출은 원소마다 구간의 가운데 점 하나인 (k,)이고, 그다음은 원소마다 점 p개인 (k, p)예요. 끝난 원소는 빠지므로 k가 점점 줄어요. `args`는 그 원소들에 맞춘 (k, 1) 모양으로 넘어와서 (k, p)의 `x`와 바로 브로드캐스트돼요.
+
+```python
+>>> calls = []
+>>> def f(x, c):
+...     calls.append((x.shape, c.shape))
+...     return sd.exp(-c * x**2)
+>>> c = sd.asarray([0.5, 1.0, 2.0])
+>>> r = sd.integrate.tanhsinh(f, 0, sd.asarray([[1.0], [2.0]]), args=(c,))
+>>> r
+IntegrateResult(batch shape (2, 3), 6 of 6 converged)
+>>> calls
+[((6,), (6,)), ((6, 66), (6, 1)), ((4, 64), (4, 1))]
+```
+
+끝 (2, 1)과 `c` (3,)가 브로드캐스트되어 적분 6개가 됐어요. 함수 호출은 세 번뿐이에요. 사용자 함수가 원소별 배열 연산이면, 적분 수가 많아져도 호출 수가 늘지 않아 하나씩 부르는 것보다 훨씬 빨라요. 빈 배치는 `f`를 부르지 않아요.
+
+## 멈춤과 status
+
+| status | 뜻 |
+|---|---|
+| 0 | 수렴했어요(error < atol 또는 error < rtol·\|integral\|). |
+| −2 | `max_level`에 닿았어요. 마지막 값을 돌려줘요. |
+| −3 | 적분값이 유한하지 않거나, 끝이 NaN이거나, 가운데의 값이 NaN이에요. |
+
+상한에 닿아도 예외가 아니에요. 마지막 값과 `converged=False`를 돌려주니 `converged`를 확인해요. 발산하는 적분 $\int_0^1 dx/x$는 수준 10까지 가서 아무 값이나 돌려줘요.
+
+```python
+>>> r = sd.integrate.tanhsinh(lambda x: 1 / x, 0, 1)
+>>> r.converged, r.status, r.max_level
+(False, -2, 10)
+```
+
+오차 추정은 이전 두 수준과의 차이로 만든 어림이에요. 엄밀한 상계가 아니라서, 수렴이라고 알려도 참 오차가 추정보다 클 수 있어요(넓은 봉우리, 빠른 진동에서 그래요). 수준 2를 마치기 전에 멈추면(`max_level` 0이나 1) 어림할 수준이 모자라 `error`가 NaN이에요.
+
+```python
+>>> r = sd.integrate.tanhsinh(lambda x: x, 0, 1, max_level=1)
+>>> r.error, r.status
+(nan, -2)
+```
+
+`a == b`면 0이에요(`max_level` −1, `nfev` 1).
+
+## 구간 안의 특이점과 꺾임
+
+tanh-sinh가 잘하는 것은 **끝점**의 특이점이에요. 구간 안쪽의 꺾임, 불연속, 특이점은 그 자리에 점이 모이지 않아 느리게 수렴하거나 수렴하지 못해요. $|x - 0.3|$을 $[0, 1]$에서 적분하면 수준 10까지 가고도 판정을 통과하지 못해요.
+
+```python
+>>> r = sd.integrate.tanhsinh(lambda x: abs(x - 0.3), 0, 1)
+>>> r.converged, r.nfev
+(False, 16387)
+```
+
+어려운 곳의 자리를 알면 거기서 구간을 나눠요. 나눈 조각을 배치로 주면 한 번에 풀려요.
+
+```python
+>>> r = sd.integrate.tanhsinh(lambda x: abs(x - 0.3), sd.asarray([0.0, 0.3]), sd.asarray([0.3, 1.0]))
+>>> r.integral, r.nfev
+(array([0.045, 0.245], dtype=float64), array([67, 67], dtype=int64))
+>>> float(sd.sum(r.integral))
+0.29
+```
+
+천천히 줄어드는 진동(예: $\int_0^\infty \sin x / x\,dx$)도 잘 맞지 않아요. 그런 적분은 [`quad`](/api/integrate/quad/)의 `weight='sin'`을 써요.
+
+## log=True: 아주 크거나 작은 적분
+
+값이 float64의 범위를 벗어나는 적분은 로그로 계산해요. `f`는 피적분 함수의 로그를 돌려주고, `integral`과 `error`도 로그예요. $\int e^{-1000 - x^2/2}\,dx = e^{-1000}\sqrt{2\pi}$는 그냥 계산하면 피적분 함수가 모두 0으로 아래넘침하지만, 로그로는 문제없어요.
+
+```python
+>>> sd.integrate.tanhsinh(lambda x: sd.exp(-1000 - x**2 / 2), -math.inf, math.inf).integral
+0.0
+>>> r = sd.integrate.tanhsinh(lambda x: -1000 - x**2 / 2, -math.inf, math.inf, log=True)
+>>> r.integral
+-999.0810614667953
+>>> -1000 + math.log(math.sqrt(2 * math.pi))
+-999.0810614667953
+```
+
+`log=True`면 피적분 함수가 음이 아니어야 해요(로그가 실수여야 하니까요). 끝이 거꾸로인 원소(b < a)가 있으면 적분이 음수라 `ValueError`예요. `atol`·`rtol`도 로그로 줘요(기본 atol은 −inf, rtol은 $0.75 \log \varepsilon$).
+
+## 옵션
+
+- `atol`(기본 0)·`rtol`(기본 $\varepsilon^{0.75} \approx 1.8 \times 10^{-12}$): error < atol 또는 error < rtol·|integral|이면 멈춰요. 둘 중 하나만 만족하면 돼요.
+- `max_level`(기본 10, 0 이상 16 이하): 수준의 상한이에요. 수준 0은 18점, 수준 $k \ge 1$은 $8 \cdot 2^k$점을 더해요. 수준 10까지 가면 원소마다 16,387점이에요.
+- `min_level`(기본 2): 첫 호출에 수준 0부터 이 수준까지의 점을 한꺼번에 넣어요. 호출 수를 줄이는 옵션이고, 그보다 일찍 수렴할 함수에서는 점을 더 쓰게 돼요.
+
+```python
+>>> for m in (0, 2, 5):
+...     calls = []
+...     r = sd.integrate.tanhsinh(lambda x: calls.append(x.shape) or sd.exp(x), 0, 1, min_level=m)
+...     print(m, r.nfev, calls)
+0 67 [(1,), (1, 18), (1, 16), (1, 32)]
+2 67 [(1,), (1, 66)]
+5 515 [(1,), (1, 514)]
+```
+
+## 언제 tanhsinh를 쓰나요
+
+- 끝점에 특이점이 있는 적분, 무한 구간의 매끄러운 적분에 강해요.
+- 같은 꼴의 적분을 매개변수만 바꿔 많이 풀 때(배치) 호출 수가 늘지 않아 빨라요.
+- 구간 안쪽의 꺾임·특이점, 느린 진동, 가중 함수가 필요한 적분은 [`quad`](/api/integrate/quad/)가 알맞아요. `quad`는 점 하나씩 부르는 적응 분할이라 어려운 곳을 스스로 찾아 나눠요.
+- 함숫값이 하나가 아니라 배열(벡터 값)이면 [`quad_vec`](/api/integrate/quad_vec/)를 써요.
+
+같은 입력이면 스레드 수와 상관없이 같은 비트예요. 진행 중인 일이 크면(원소 수 × 원소마다의 점 수가 $2^{15}$ 이상) 원소들을 스레드에 나눠 계산해요. 사용자 함수는 GIL을 쥔 채 불러요.
+
+## scipy를 아는 분께
+
+- scipy 1.18.1의 `scipy.integrate.tanhsinh`와 같은 변환, 점, 오차 추정, 멈춤 판정이고, 지금은 같은 점에서 `f`를 불러 같은 값, `nfev`, `status`, `max_level`을 내요(비트까지 같지만 약속은 아니에요).
+- `maxlevel`은 `max_level`, `minlevel`은 `min_level`, `success`는 `converged`예요. `max_level`은 16 이하예요.
+- `kwargs`, `preserve_shape`, `callback`은 없어요. 결과는 [`IntegrateResult`](/api/integrate/results/)이고 dict처럼 쓰지 않아요.
+- `log=True`에서 b < a면 `ValueError`예요(scipy는 log I + πi의 복소수를 돌려줘요). `log=True`의 `atol`·`rtol`에 NaN은 `ValueError`예요.
+- 빈 배치는 `f`를 부르지 않아요(scipy는 빈 배열로 한 번 불러요).

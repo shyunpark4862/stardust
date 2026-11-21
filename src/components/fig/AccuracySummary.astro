@@ -11,7 +11,7 @@
  * the library's tables (bench/accuracy/tables.py) that some shown row has; the
  * count of NaN/inf points only when nonzero.
  *
- *   area     'array' | 'linalg' | 'special' | 'stats' | 'regression' | 'optimize' | 'htest'
+ *   area     'array' | 'linalg' | 'special' | 'stats' | 'regression' | 'optimize' | 'htest' | 'integrate' | 'differentiate'
  *   names    only these sweeps (array, linalg, special: function; stats:
  *            distribution_method, or mv/Class.method and mv/cdf.kind for the
  *            multivariate group; regression: kind/problem; optimize: method)
@@ -55,6 +55,8 @@ const AREA_NAMES: Record<string, string> = {
   regression: 'sd.regression',
   optimize: 'sd.optimize',
   htest: 'sd.htest',
+  integrate: 'sd.integrate',
+  differentiate: 'sd.differentiate',
 };
 const GROUP_NAMES: Record<string, string> = {
   'stats/mv': '다변량·행렬 분포 묶음',
