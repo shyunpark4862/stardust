@@ -266,8 +266,124 @@ def cases(L):
     yield C("kron/large", LA.kron, vals(80, (30, 40), "float64"), vals(81, (20, 15), "float64"))
     yield C("kron/empty", LA.kron, np.zeros((0, 3)), np.ones((2, 2)))
     yield C("kron/nan", LA.kron, with_nan(np.ones((2, 2)), (0, 1)), np.ones((2, 2)))
-    yield C("kron/err ndim 1", LA.kron, np.ones(3), np.ones((2, 2)))
+    for dt in DTYPES:
+        yield C(f"kron/1d 1d {dt}", LA.kron, vals(82, (3,), dt), vals(83, (4,), dt))
+    yield C("kron/1d 2d", LA.kron, vals(82, (3,), "float64"), vals(84, (2, 2), "complex128"))
+    yield C("kron/2d 1d", LA.kron, vals(84, (2, 2), "float64"), vals(82, (3,), "int64"))
+    yield C("kron/1d batch", LA.kron, vals(82, (3,), "float64"), vals(85, (4, 2, 2), "float64"))
+    yield C(
+        "kron/1d strided",
+        LA.kron,
+        vlay(vals(82, (5,), "float64"), "strided"),
+        vlay(vals(83, (4,), "float64"), "reversed"),
+    )
+    yield C("kron/1d empty", LA.kron, np.zeros(0), np.ones(3))
     yield C("kron/err numpy arg", LA.kron, Raw(np.ones((2, 2))), np.ones((2, 2)))
+
+    # kronsum
+    for dt in DTYPES:
+        yield C(f"kronsum/{dt}", LA.kronsum, vals(200, (3, 3), dt), vals(201, (4, 4), dt))
+    yield C("kronsum/mixed int complex", LA.kronsum, vals(202, (2, 2), "int64"), vals(203, (3, 3), "complex128"))
+    yield C("kronsum/mixed complex bool", LA.kronsum, vals(202, (2, 2), "complex128"), vals(203, (3, 3), "bool"))
+    yield C("kronsum/batch broadcast", LA.kronsum, vals(204, (3, 2, 2), "float64"), vals(205, (3, 3), "float64"))
+    yield C(
+        "kronsum/batch broadcast 4d", LA.kronsum, vals(206, (2, 1, 2, 2), "float64"), vals(207, (4, 3, 3), "float64")
+    )
+    for lo in ("F", "strided", "reversed", "bcast"):
+        yield C(
+            f"kronsum/layout {lo}",
+            LA.kronsum,
+            lay(vals(208, (2, 3, 3), "complex128"), lo),
+            lay(vals(209, (2, 2, 2), "float64"), lo),
+        )
+    yield C("kronsum/large", LA.kronsum, vals(210, (30, 30), "float64"), vals(211, (20, 20), "float64"))
+    yield C("kronsum/large batch", LA.kronsum, vals(212, (500, 3, 3), "float64"), vals(213, (500, 4, 4), "float64"))
+    yield C("kronsum/1x1", LA.kronsum, np.full((1, 1), 2.5), np.full((1, 1), -1.0))
+    yield C("kronsum/empty", LA.kronsum, np.zeros((0, 0)), np.ones((3, 3)))
+    yield C("kronsum/empty batch", LA.kronsum, np.zeros((0, 2, 2)), np.ones((3, 3)))
+    yield C(
+        "kronsum/nan inf stay", LA.kronsum, with_nan(np.ones((2, 2)), (0, 1), np.inf), with_nan(np.ones((2, 2)), (1, 1))
+    )
+    yield C(
+        "kronsum/signed zeros",
+        LA.kronsum,
+        np.array([[-0.0, -0.0], [1.0, -0.0]]),
+        np.array([[-0.0, 0.0], [-0.0, -0.0]]),
+    )
+    yield C("kronsum/err not square x1", LA.kronsum, np.ones((2, 3)), np.ones((2, 2)))
+    yield C("kronsum/err not square x2", LA.kronsum, np.ones((2, 2)), np.ones((3, 2)))
+    yield C("kronsum/err ndim 1", LA.kronsum, np.ones(3), np.ones((2, 2)))
+    yield C("kronsum/err batch mismatch", LA.kronsum, np.ones((2, 2, 2)), np.ones((3, 2, 2)))
+    yield C("kronsum/err numpy arg", LA.kronsum, Raw(np.ones((2, 2))), np.ones((2, 2)))
+    yield C("kronsum/err list arg 2", LA.kronsum, np.ones((2, 2)), Raw([[1.0]]))
+
+    # block_diag
+    def BD(name, *blocks, raw=None):
+        arrs = [conv(b) for b in blocks]
+        return name, (lambda: LA.block_diag(arrs if raw is None else raw(arrs)))
+
+    for dt in DTYPES:
+        yield BD(f"block_diag/{dt}", vals(220, (2, 3), dt), vals(221, (3, 1), dt), vals(222, (1, 2), dt))
+    yield BD("block_diag/mixed bool int", vals(223, (2, 2), "bool"), vals(224, (2, 2), "int64"))
+    yield BD("block_diag/mixed bool complex", vals(223, (2, 2), "bool"), vals(225, (1, 3), "complex128"))
+    yield BD("block_diag/mixed int float", vals(224, (2, 2), "int64"), vals(226, (3, 2), "float64"))
+    yield BD("block_diag/one block", vals(227, (3, 4), "float64"))
+    yield BD("block_diag/1d blocks", vals(228, (3,), "float64"), vals(229, (2, 2), "float64"), vals(230, (1,), "int64"))
+    yield BD("block_diag/empty blocks", np.zeros((0, 3)), vals(231, (2, 2), "float64"), np.zeros((2, 0)), np.zeros(0))
+    yield BD("block_diag/all empty", np.zeros((0, 0)))
+    yield BD(
+        "block_diag/batch broadcast",
+        vals(232, (3, 2, 2), "float64"),
+        vals(233, (1, 1), "float64"),
+        vals(234, (2,), "float64"),
+    )
+    yield BD("block_diag/batch broadcast 4d", vals(235, (2, 1, 2, 2), "complex128"), vals(236, (4, 1, 3), "float64"))
+    yield BD("block_diag/empty batch", np.zeros((0, 2, 2)), vals(237, (3, 3), "float64"))
+    for lo in LAYOUTS:
+        yield BD(
+            f"block_diag/layout {lo}", lay(vals(238, (2, 3, 4), "float64"), lo), lay(vals(239, (2, 2, 2), "int64"), lo)
+        )
+    yield BD("block_diag/nan -0.0 kept", with_nan(np.full((2, 2), -0.0), (0, 1)), np.full((1, 1), np.inf))
+    yield BD("block_diag/large", vals(240, (300, 200), "float64"), vals(241, (200, 300), "float64"))
+    yield BD("block_diag/many small", *[vals(242 + i, (2, 2), "float64") for i in range(40)])
+    yield BD("block_diag/large batch", vals(290, (2000, 3, 3), "float64"), vals(291, (2000, 2, 2), "float64"))
+    yield BD("block_diag/tuple", vals(220, (2, 3), "float64"), vals(221, (3, 1), "float64"), raw=tuple)
+    yield C("block_diag/err empty list", LA.block_diag, Raw([]))
+    yield C("block_diag/err not a list", LA.block_diag, np.ones((2, 2)))
+    yield C("block_diag/err varargs", LA.block_diag, np.ones((2, 2)), np.ones((2, 2)))
+    yield BD("block_diag/err numpy member", np.ones((2, 2)), Raw(np.ones((2, 2))))
+    yield BD("block_diag/err list member", np.ones((2, 2)), Raw([[1.0]]))
+    yield BD("block_diag/err batch mismatch", np.ones((2, 2, 2)), np.ones((3, 1, 1)))
+
+    # bandwidth
+    for dt in DTYPES:
+        yield C(f"bandwidth/{dt}", LA.bandwidth, vals(250, (5, 5), dt))
+        yield C(f"bandwidth/{dt} banded", LA.bandwidth, np.triu(np.tril(vals(251, (6, 6), dt), 2), -1))
+    band = np.triu(np.tril(vals(252, (7, 5), "float64"), 1), -3)
+    for lo in LAYOUTS:
+        yield C(f"bandwidth/layout {lo}", LA.bandwidth, lay(np.stack([band, band[::-1].copy()]), lo))
+    yield C("bandwidth/lower triangular", LA.bandwidth, np.tril(vals(253, (6, 6), "float64")))
+    yield C("bandwidth/upper triangular", LA.bandwidth, np.triu(vals(253, (6, 6), "float64")))
+    yield C("bandwidth/diagonal", LA.bandwidth, np.diag(vals(254, (5,), "float64")))
+    yield C("bandwidth/zeros", LA.bandwidth, np.zeros((4, 6)))
+    yield C("bandwidth/wide", LA.bandwidth, np.triu(np.tril(vals(255, (3, 8), "float64"), 6), -1))
+    yield C("bandwidth/tall", LA.bandwidth, np.triu(np.tril(vals(255, (8, 3), "float64"), 0), -6))
+    yield C("bandwidth/corners only", LA.bandwidth, np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]))
+    yield C("bandwidth/nan counts", LA.bandwidth, with_nan(np.eye(4), (3, 0)))
+    yield C("bandwidth/-0.0 does not", LA.bandwidth, np.where(np.eye(4) > 0, 1.0, -0.0))
+    yield C("bandwidth/complex imag only", LA.bandwidth, np.eye(3) + np.array([[0, 0, 1j], [0, 0, 0], [0, 0, 0]]))
+    bb = np.zeros((3, 4, 5, 5))
+    for i in range(3):
+        for j in range(4):
+            bb[i, j] += np.diag(np.ones(5 - (i + j) % 4), -((i + j) % 4)) + np.diag(np.ones(5 - j), j)
+    yield C("bandwidth/batch", LA.bandwidth, bb)
+    yield C("bandwidth/batch 2000", LA.bandwidth, np.triu(np.tril(vals(256, (2000, 4, 4), "float64"), 1), -2))
+    yield C("bandwidth/large dense", LA.bandwidth, vals(257, (600, 600), "float64"))
+    yield C("bandwidth/large banded", LA.bandwidth, np.triu(np.tril(vals(258, (600, 600), "float64"), 3), -5))
+    yield C("bandwidth/empty", LA.bandwidth, np.zeros((0, 3)))
+    yield C("bandwidth/empty batch", LA.bandwidth, np.zeros((0, 3, 3)))
+    yield C("bandwidth/err ndim 1", LA.bandwidth, np.ones(3))
+    yield C("bandwidth/err numpy arg", LA.bandwidth, Raw(np.eye(3)))
 
     # cross
     for dt in DTYPES:
@@ -854,6 +970,39 @@ def cases(L):
     yield C("lu_solve/err l u shapes", LA.lu_solve, lmat, umat[:3, :3], perm, np.ones(4))
     yield C("lu_solve/empty", LA.lu_solve, np.zeros((0, 0)), np.zeros((0, 0)), np.zeros(0, dtype=np.int64), np.zeros(0))
     yield C("lu_solve/err numpy perm", LA.lu_solve, lmat, umat, Raw(perm), np.ones(4))
+
+    def lu_then_solve_t(a, b, trans):
+        a, b = L.arr(a), L.arr(b)
+        return lambda: LA.lu_solve(*LA.lu(a), b, trans=trans)
+
+    for dt in DTYPES:
+        for t in ("N", "T", "H"):
+            yield f"lu_solve/trans {t} {dt}", lu_then_solve_t(wc(300, (4, 4), dt), vals(301, (4, 2), dt), t)
+    yield "lu_solve/trans T vec", lu_then_solve_t(wc(300, (4, 4), "float64"), vals(301, (4,), "float64"), "T")
+    yield "lu_solve/trans H complex b", lu_then_solve_t(wc(300, (4, 4), "float64"), vals(301, (4,), "complex128"), "H")
+    yield (
+        "lu_solve/trans T batch",
+        lu_then_solve_t(wc(302, (1000, 3, 3), "float64"), vals(303, (1000, 3, 2), "float64"), "T"),
+    )
+    yield (
+        "lu_solve/trans H large complex",
+        lu_then_solve_t(vals(308, (300, 300), "complex128"), vals(309, (300, 2), "complex128"), "H"),
+    )
+    yield C("lu_solve/trans T explicit", LA.lu_solve, lmat, umat, perm, vals(313, (4, 2), "float64"), trans="T")
+    yield C(
+        "lu_solve/trans T empty",
+        LA.lu_solve,
+        np.zeros((0, 0)),
+        np.zeros((0, 0)),
+        np.zeros(0, dtype=np.int64),
+        np.zeros(0),
+        trans="T",
+    )
+    yield C("lu_solve/err trans T zero u diagonal", LA.lu_solve, lmat, uz, perm, np.ones(4), trans="T")
+    yield C("lu_solve/err trans value", LA.lu_solve, lmat, umat, perm, np.ones(4), trans="C")
+    yield C("lu_solve/err trans lowercase", LA.lu_solve, lmat, umat, perm, np.ones(4), trans="t")
+    yield C("lu_solve/err trans int", LA.lu_solve, lmat, umat, perm, np.ones(4), trans=Raw(1))
+    yield C("lu_solve/err trans None", LA.lu_solve, lmat, umat, perm, np.ones(4), trans=Raw(None))
 
     # lstsq
     for dt in DTYPES:

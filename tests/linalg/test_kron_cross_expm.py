@@ -69,8 +69,8 @@ def test_kron_rules():
     x, y = rng.standard_normal((5, 1, 2, 2)), rng.standard_normal((3, 3, 3))
     assert npy(sd.linalg.kron(as_sd(x), as_sd(y))).shape == (5, 3, 6, 6)
     assert npy(sd.linalg.kron(as_sd(np.eye(2, dtype=np.int64)), as_sd(np.ones((2, 2), np.bool_)))).dtype == np.float64
-    with pytest.raises(ValueError):
-        sd.linalg.kron(as_sd(np.ones(3)), as_sd(np.ones((2, 2))))  # 1-D: not a matrix
+    # 1-D: one row (test_sparse_counterparts.py has the rest)
+    assert npy(sd.linalg.kron(as_sd(np.ones(3)), as_sd(np.ones((2, 2))))).shape == (2, 6)
     with pytest.raises(ValueError):
         sd.linalg.kron(as_sd(np.ones((2, 2, 2))), as_sd(np.ones((3, 2, 2))))  # batches do not broadcast
     with pytest.raises(TypeError):

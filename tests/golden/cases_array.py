@@ -91,6 +91,8 @@ UNARY = [
     "conj",
     "reciprocal",
     "signbit",
+    "deg2rad",
+    "rad2deg",
 ]
 BINARY = [
     "add",
@@ -256,6 +258,7 @@ def cases(L):
         dtype_functions,
         creation_more,
         shapes_more,
+        diag_block,
         quantiles,
         covariance,
         counting,
@@ -1076,6 +1079,84 @@ def _iter_write(x):
     for row in y:
         row[0] = 99.0
     return y
+
+
+# ---------------------------------------------------------------- diag, block
+
+
+def diag_block(c):
+    A, np = c.A, c.np
+    # diag: construction only
+    for k in KINDS:
+        x = c.S(k, (5,), 60)
+        yield f"diag {k}", (lambda x=x: A.diag(x))
+        for off in (2, -3):
+            yield f"diag {k} k={off}", (lambda x=x, off=off: A.diag(x, k=off))
+    yield "diag special", lambda: A.diag(c.S("n", (40,), 61), k=-1)
+    yield "diag strided", lambda: A.diag(c.S("f", (11,), 62)[::-2], k=1)
+    yield "diag empty", lambda: A.diag(c.S("f", (0,), 62))
+    yield "diag empty k=3", lambda: A.diag(c.S("i", (0,), 62), k=3)
+    yield "diag 1elem k=-1", lambda: A.diag(c.lit([2.5]), k=-1)
+    yield "diag large", lambda: A.diag(c.S("f", (2000,), 63))
+    yield "diag large k=500", lambda: A.diag(c.S("c", (600,), 63), k=500)
+    yield "diag bcast view", lambda: A.diag(A.broadcast_to(c.S("f", (1,), 64), (4,)))
+    yield "diag 2d err", lambda: A.diag(c.S("f", (3, 3), 65))
+    yield "diag 3d err", lambda: A.diag(c.S("f", (2, 2, 2), 65))
+    yield "diag list err", lambda: A.diag([1.0, 2.0])
+    yield "diag numpy err", lambda: A.diag(np.ones(3))
+    yield "diag scalar err", lambda: A.diag(2.0)
+    yield "diag k float err", lambda: A.diag(c.S("f", (3,), 66), k=1.0)
+    yield "diag k bool err", lambda: A.diag(c.S("f", (3,), 66), k=True)
+    yield "diag k None err", lambda: A.diag(c.S("f", (3,), 66), k=None)
+    yield "diag k int min err", lambda: A.diag(c.S("f", (3,), 66), k=INT_MIN)
+    yield "diag k overflow err", lambda: A.diag(c.S("f", (3,), 66), k=2**63)
+    yield "diag k too big err", lambda: A.diag(c.S("f", (3,), 66), k=INT_MAX)
+    yield "diag k positional err", lambda: A.diag(c.S("f", (3,), 66), 1)
+    yield "diag sparse err", lambda: A.diag(A.sparse.csr_array(c.S("f", (3, 3), 65)))
+    # block: numpy's nested lists
+    p, q = c.S("f", (2, 3), 70), c.S("f", (2, 1), 71)
+    r, t = c.S("f", (1, 3), 72), c.S("f", (1, 1), 73)
+    yield "block 2x2", lambda: A.block([[p, q], [r, t]])
+    for ka in KINDS:
+        for kb in KINDS:
+            a, b = c.S(ka, (2, 2), 74), c.S(kb, (2, 3), 75)
+            yield f"block {ka}{kb}", (lambda a=a, b=b: A.block([a, b]))
+    yield "block 1d", lambda: A.block([c.lit([1, 2]), c.lit([3.5])])
+    yield "block 1d rows", lambda: A.block([[c.lit([1, 2, 3])], [c.lit([4.0, 5.0, 6.0])]])
+    row1, row2 = [c.lit([1.0, 2.0]), c.lit([3.0])], [c.S("f", (2, 2), 76), c.S("f", (2, 1), 77)]
+    yield "block 1d and 2d", lambda: A.block([row1, row2])
+    yield "block 3d depth 2", lambda: A.block([[c.S("f", (2, 2, 3), 78), c.S("i", (2, 2, 1), 79)]])
+    yield "block 2d depth 3", lambda: A.block([[[p], [r]], [[p], [r]]])
+    yield "block single array", lambda: A.block(p)
+    yield "block single list", lambda: A.block([p])
+    yield "block tuple", lambda: A.block(((p, q), (r, t)))
+    yield "block layouts", lambda: A.block([[c.S("f", (3, 2), 90).T, q[::-1]], [r[:, ::-1], t]])
+    yield "block F-order", lambda: A.block([c.S("f", (30, 40), 80).T, c.S("f", (40, 10), 81)])
+    yield "block bcast view", lambda: A.block([A.broadcast_to(c.S("f", (3,), 82), (2, 3)), q])
+    yield "block special", lambda: A.block([[c.S("n", (3, 4), 83)], [c.S("n", (2, 4), 84)]])
+    e20, e00, e01 = c.S("f", (2, 0), 85), c.S("f", (0, 0), 85), c.S("f", (0, 1), 85)
+    yield "block empty parts", lambda: A.block([[e20, q], [e00, e01]])
+    big = [[c.S("f", (300, 200), 86), c.S("i", (300, 100), 87)], [c.S("f", (100, 300), 88)]]
+    yield "block large", lambda: A.block(big)
+    yield "block empty list err", lambda: A.block([])
+    yield "block nested empty err", lambda: A.block([[p], []])
+    yield "block uneven depth err", lambda: A.block([[p, q], r])
+    yield "block uneven depth deep err", lambda: A.block([[[p]], [q]])
+    yield "block shape mismatch err", lambda: A.block([[p, c.S("f", (3, 1), 89)]])
+    yield "block row mismatch err", lambda: A.block([[p], [c.S("f", (1, 2), 89)]])
+    yield "block scalar leaf err", lambda: A.block([p, 1.0])
+    yield "block numpy leaf err", lambda: A.block([p, np.ones((2, 1))])
+    yield "block sparse leaf err", lambda: A.block([p, A.sparse.csr_array(q)])
+    yield "block not a list err", lambda: A.block(3)
+    yield "block numpy arg err", lambda: A.block(np.ones((2, 2)))
+    yield "block too many dims err", lambda: A.block(_nest(p, 33))
+    yield "block 32 dims", lambda: A.block(_nest(c.lit([1.0]), 32))
+
+
+def _nest(x, depth):
+    for _ in range(depth):
+        x = [x]
+    return x
 
 
 # ---------------------------------------------------------------- elementwise

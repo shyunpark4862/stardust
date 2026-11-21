@@ -30,6 +30,7 @@ BCa interval of the mean, monte_carlo_test, bws_test ((8, 7), every permutation)
 the statistic compared), mannwhitneyu's PermutationMethod ((8, 7), compared) and ttest_ind's
 MonteCarloMethod, against scipy at the same numbers of resamples (other random streams: the random
 p-values are not compared).
+ttest_ind_from_stats and relative_risk (H10) on fixed summary values against scipy.
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -259,11 +260,38 @@ def cases() -> list[Case]:
             )
         )
     out.extend(_page_cases())
+    out.extend(_summary_cases())
     out.extend(_table_cases())
     out.extend(_proportion_cases())
     out.extend(_multicomp_cases())
     out.extend(_resampling_cases())
     return out
+
+
+# ---- the tests from summary values (H1's ttest_ind_from_stats, H6's relative_risk; H10) ---------
+
+
+def _summary_cases():
+    import scipy.stats as st
+    from scipy.stats import contingency as ctg
+
+    import stardust as sd
+
+    h = sd.htest
+    rr = Check(sd=lambda r: np.asarray([r.relative_risk]), ref=lambda _, r: np.asarray([r.relative_risk]))
+    return [
+        Case(area="htest", group="means", name="ttest_ind_from_stats", size="1", n=1, setup=dict,
+             sd=lambda d: lambda: h.ttest_ind_from_stats(0.1, 1.2, 30, -0.2, 0.9, 40),
+             refs=(Ref("scipy", lambda d: _quiet(lambda: st.ttest_ind_from_stats(0.1, 1.2, 30, -0.2, 0.9, 40))),),
+             check=CHECK),
+        Case(area="htest", group="tables", name="relative_risk conf_int", size="n=200", n=200, setup=dict,
+             sd=lambda d: lambda: h.relative_risk(30, 100, 20, 100).conf_int(),
+             refs=(Ref("scipy", lambda d: _quiet(lambda: ctg.relative_risk(30, 100, 20, 100).confidence_interval())),),
+             check=Check(skip="the interval, not a statistic")),
+        Case(area="htest", group="tables", name="relative_risk", size="n=200", n=200, setup=dict,
+             sd=lambda d: lambda: h.relative_risk(30, 100, 20, 100),
+             refs=(Ref("scipy", lambda d: _quiet(lambda: ctg.relative_risk(30, 100, 20, 100))),), check=rr),
+    ]  # fmt: skip
 
 
 # ---- the contingency tables (H6) ----------------------------------------------------------

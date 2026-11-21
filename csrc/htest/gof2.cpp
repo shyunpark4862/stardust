@@ -347,22 +347,24 @@ double ad_ksamp_p(double A2, std::int64_t k) {
     return std::exp(e.hi) * (1.0 + e.lo);
 }
 
-nb::tuple ad_ksamp(nb::list samples, int variant) {
+// One lane r of the samples' rows: (statistic, p-value) into o[0], o[1].
+void ad_lane(const std::vector<Rows>& rows, std::int64_t r, int variant, double* o0, double* o1) {
     std::vector<std::vector<double>> s;
     bool nan = false;
-    for (nb::handle h : samples) {
-        const Rows a(rows_arg(h));
+    for (const Rows& a : rows) {
         s.emplace_back();
-        nan = values(a, 0, s.back()) || nan;
+        nan = values(a, r, s.back()) || nan;
         std::sort(s.back().begin(), s.back().end());
     }
     const auto k = static_cast<std::int64_t>(s.size());
-    Outs out(2, 1);
-    out.p[0][0] = out.p[1][0] = kNaN;
+    struct {
+        double* p[2];
+    } out{{o0, o1}};
+    *o0 = *o1 = kNaN;
     std::int64_t N = 0;
     bool empty = false;
     for (const auto& v : s) N += static_cast<std::int64_t>(v.size()), empty = empty || v.empty();
-    if (nan || empty || N < 4) return out.tuple();
+    if (nan || empty || N < 4) return;
     std::vector<double> Z;
     Z.reserve(static_cast<std::size_t>(N));
     for (const auto& v : s) Z.insert(Z.end(), v.begin(), v.end());
@@ -375,7 +377,7 @@ nb::tuple ad_ksamp(nb::list samples, int variant) {
         else zs.push_back(z), l.push_back(1);
     }
     const auto J = static_cast<std::int64_t>(zs.size());
-    if (J < 2) return out.tuple();
+    if (J < 2) return;
     const double Nd = static_cast<double>(N);
     Acc tot;
     for (std::int64_t i = 0; i < k; ++i) {
@@ -449,8 +451,18 @@ nb::tuple ad_ksamp(nb::list samples, int variant) {
     const DD den = dd::two_prod(Nd - 1.0, Nd - 2.0) * (Nd - 3.0);
     const DD sig2 = num / den;
     const DD A2 = (A2kN - (kd - 1.0)) / sqrt_dd(sig2);
-    out.p[0][0] = to_double(A2);
-    out.p[1][0] = ad_ksamp_p(out.p[0][0], k);
+    *out.p[0] = to_double(A2);
+    *out.p[1] = ad_ksamp_p(*out.p[0], k);
+}
+
+// samples: k (lanes, n_i) arrays (lanes equal: one test per lane; anderson_ksamp's resamples).
+nb::tuple ad_ksamp(nb::list samples, int variant) {
+    std::vector<Rows> rows;
+    std::int64_t n = 0;
+    for (nb::handle h : samples) rows.emplace_back(rows_arg(h)), n += rows.back().n;
+    const std::int64_t lanes = rows.empty() ? 0 : rows.front().lanes;
+    Outs out(2, lanes);
+    each_lane(lanes, 32 * n + 256, [&](std::int64_t r) { ad_lane(rows, r, variant, out.p[0] + r, out.p[1] + r); });
     return out.tuple();
 }
 

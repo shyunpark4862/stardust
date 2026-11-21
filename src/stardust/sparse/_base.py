@@ -205,9 +205,13 @@ class sparray:
     def _nonzero_coo(self):
         return self._convert("coo", None, "nonzero")
 
-    def count_nonzero(self, *, axis=None):
+    def count_nonzero(self, *, axis=None, keepdims=False):
         """How many values are nonzero (duplicates of a COO array summed first): a Python int, or
-        per index of the other axis an int64 sd.ndarray."""
+        per index of the other axis an int64 sd.ndarray; keepdims as sd.count_nonzero's (and the
+        other reductions', SP114): the reduced axis kept with length 1 (all of them for axis=None,
+        a dense int64 array)."""
+        if keepdims is not True and keepdims is not False:
+            raise TypeError(f"count_nonzero(): 'keepdims' must be True or False, not {C.type_name(keepdims)}")
         nd = len(self._shape)
         if axis is not None:
             if not C.is_int(axis):
@@ -218,7 +222,14 @@ class sparray:
             axis = a % nd
             if nd == 1:
                 axis = None
-        return self._count_nonzero(axis)
+        r = self._count_nonzero(axis)
+        if not keepdims:
+            return r
+        if axis is None:
+            return _sd.full((1,) * nd, r, dtype=_sd.int64)
+        shape = list(self._shape)
+        shape[axis] = 1
+        return r.reshape(tuple(shape))
 
     # ---- indexing (docs/api/sparse.md §4.1; the rules in _index.py) ----
 
@@ -445,7 +456,7 @@ def _make_function(name):
     return method
 
 
-for _name in (*O.FUNCTIONS, "deg2rad", "rad2deg"):
+for _name in O.FUNCTIONS:
     setattr(sparray, _name, _make_function(_name))
 del _name
 

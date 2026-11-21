@@ -530,6 +530,12 @@ def cases_sp3(L, mats, fmts):
     yield "kron big", lambda: S.kron(S.eye_array(3), big)
     yield "kron 1-D", lambda: S.kron(mats["1d"](), mats["1d"]().tocsr())
     yield "kronsum", lambda: S.kronsum(small, ints[:3, :3])
+    # SP111: placed values, complex inf and -0.0 parts kept (as sd.linalg.kronsum)
+    special = np.array([[complex(0, np.inf), complex(1, -0.0)], [0, complex(-np.inf, 2)]])
+    yield (
+        "kronsum complex special",
+        lambda: S.kronsum(S.csr_array(a(special)), S.csr_array(a(np.array([[1j, 0], [2, -0.0]])))),
+    )
     yield "hstack csr", lambda: S.hstack([small, small, small[:, :1]])
     yield "hstack csc", lambda: S.hstack([small.tocsc(), small.tocsc()[:, 1:3]])
     yield "hstack big", lambda: S.hstack([big.tocsr(), big.tocsr()])

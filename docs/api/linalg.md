@@ -100,7 +100,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 ### §1.5 결과 dtype
 - **결과 dtype은 입력의 dtype만으로 정해진다.** 값에 따라 바뀌지 않는다.
 - **계산 dtype**: 배열 인자 중 하나라도 complex128이면 complex128, 아니면 float64다.
-  - bool과 int64 입력은 float64로 바꿔서 계산한다. 계산만 하는 함수(`vecdot`, `outer`, `kron`, `cross`, `matrix_power`, `trace`)도 같다.
+  - bool과 int64 입력은 float64로 바꿔서 계산한다. 계산만 하는 함수(`vecdot`, `outer`, `kron`, `kronsum`, `cross`, `matrix_power`, `trace`)도 같다.
     - **그래서 int 입력의 결과도 float64다.** 배열 영역과 다른 점이다: `sd.matmul`, `sd.sum`은 int64를 유지한다. 예: `trace(int64 행렬)`은 `float`, `sd.sum(diagonal(int64 행렬), axis=-1)`은 `int`다.
     - 이유: LAPACK과 BLAS는 float에서만 돈다. int 결과가 필요하면 배열 영역의 함수(`sd.matmul`, `sd.sum`)를 쓰거나 `trace(dtype=sd.int64)`를 준다 (DESIGN §9.6).
   - 예: `det(int64 행렬)`은 `float`, 실수 `a`와 complex `b`의 `solve`는 complex128이다.
@@ -116,10 +116,12 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 | `slogdet`의 `sign` / `logabsdet` | float64 / float64 | complex128 / float64 |
 | `matrix_rank`, `lstsq`의 `rank` | int64 | int64 |
 | `perm` (`lu`, `qr_pivoted`, `ldl`) | int64 | int64 |
+| `bandwidth`의 `lower`, `upper` | int64 | int64 |
 
-- **예외 둘**
-  - `diagonal`은 원소를 꺼내기만 한다. 입력 dtype을 그대로 유지한다. bool은 bool, int64는 int64다.
+- **예외 셋**
+  - `diagonal`과 `block_diag`는 원소를 옮기기만 한다. 입력 dtype(`block_diag`는 그 승격)을 그대로 유지한다. bool은 bool, int64는 int64다.
   - `trace(dtype=)`을 주면 그 dtype이다 (§2).
+  - `bandwidth`는 입력 dtype과 상관없이 정수다 (§6).
 
 ### §1.6 결과의 형태
 - **결과가 0차원이면 Python 스칼라다** (array.md §1.2).
@@ -144,15 +146,16 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
 | `SchurResult` | `T`, `Z` | `schur` |
 | `HessenbergResult` | `H`, `Q` | `hessenberg` |
 | `SVDResult` | `U`, `S`, `Vh` | `svd` |
+| `BandwidthResult` | `lower`, `upper` | `bandwidth` |
 
-  - 필드 이름: Array API에 있는 함수는 Array API의 이름이다 (`slogdet`, `eigh`, `svd`, `qr`, `eig`). 나머지는 행렬을 대문자 한 글자로 쓴다.
+  - 필드 이름: Array API에 있는 함수는 Array API의 이름이다 (`slogdet`, `eigh`, `svd`, `qr`, `eig`). 나머지는 행렬을 대문자 한 글자로 쓴다(`bandwidth`는 정수 둘이라 scipy의 이름 `lower`, `upper`다).
   - **순열**은 순열 행렬이 아니라 int64 인덱스 벡터 `perm`이다. 언제나 마지막 필드다.
   - 결과 타입은 `sd.linalg`의 공개 이름이 아니다. 필드 이름이나 위치로 꺼낸다.
 
 ### §1.7 결과의 메모리 레이아웃
 - **행렬 결과는 행렬마다 F 순서(열 우선)다.** 배치 축은 그 바깥에 C 순서로 놓인다.
   - 예: `inv`의 `(2, 3, 3)` float64 결과의 strides는 `(72, 8, 24)`다.
-  - 대상: 마지막 두 축이 행렬인 모든 결과. 해 `(..., N, K)`, 역행렬, 분해의 행렬, `outer`, `kron`, `matrix_power`, `expm`, `solve_sylvester`
+  - 대상: 마지막 두 축이 행렬인 모든 결과. 해 `(..., N, K)`, 역행렬, 분해의 행렬, `outer`, `kron`, `kronsum`, `block_diag`, `matrix_power`, `expm`, `solve_sylvester`
   - 결과 순서는 영역마다 정한다 (array.md §1.9). 배열 영역이 새로 만드는 배열은 C 순서이고, linalg의 행렬 결과는 F 순서다. 값은 같고 strides만 다르다.
 - **벡터 결과는 연속이다.** 배치 축은 그 바깥에 C 순서로 놓인다.
   - 대상: 해 `(..., N)`, 고유값, 특이값, `perm`, `diagonal`, `det` 등의 배치 결과
@@ -226,7 +229,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
   - **읽는 원소만 검사한다.** 읽지 않는 삼각(§1.4)과 띠 저장 형식의 모서리(§6)는 검사하지 않는다.
   - 검사는 호출 단위다. 같은 함수라도 LAPACK을 부르는 경로만 검사한다.
 - **검사하는 것**: `det`, `slogdet`, `matrix_rank`, `cond`, `matrix_norm`(`ord`가 `2`, `-2`, `'nuc'`), `matrix_power`(`n < 0`), 선형 시스템(§4), 분해(§5), 특수 구조(§6), `expm`
-- **검사하지 않고 NaN/inf를 그대로 전파하는 것**: `vecdot`, `outer`, `trace`, `diagonal`, `vector_norm`, `matrix_norm`(`'fro'`, `1`, `-1`, `inf`, `-inf`), `matrix_power`(`n >= 0`), `kron`, `cross`
+- **검사하지 않고 NaN/inf를 그대로 전파하는 것**: `vecdot`, `outer`, `trace`, `diagonal`, `vector_norm`, `matrix_norm`(`'fro'`, `1`, `-1`, `inf`, `-inf`), `matrix_power`(`n >= 0`), `kron`, `kronsum`, `block_diag`, `bandwidth`(NaN은 0이 아닌 원소다), `cross`
 - 원소별 결과가 넘치면 inf다. 경고나 에러는 없다. 예: `expm(asarray([[1000.0]]))`는 `[[inf]]`다.
 
 ### §1.10 빈 행렬
@@ -264,6 +267,8 @@ trace(x, /, *, k=0, dtype=None)
 diagonal(x, /, *, k=0)                 # 복사본. 입력 dtype을 유지한다
 matrix_power(x, n, /)
 kron(x1, x2, /)                        # (..., M, N), (..., P, Q) -> (..., M*P, N*Q)
+kronsum(x1, x2, /)                     # (..., M, M), (..., N, N) -> (..., M*N, M*N)
+block_diag(arrays, /)                  # 블록 대각 행렬. 입력 dtype의 승격을 유지한다
 cross(x1, x2, /, *, axis=-1)           # 축 길이 3
 ```
 - **`vecdot`**
@@ -290,8 +295,20 @@ cross(x1, x2, /, *, axis=-1)           # 축 길이 3
     - `matrix_power(x, -1)`은 `inv(x)`와 비트까지 같다.
 - **`kron`**
   - 마지막 두 축(행렬)끼리의 크로네커 곱이다. 배치 축은 다른 행렬 함수처럼 브로드캐스트한다.
-  - 입력은 둘 다 2차원 이상이어야 한다. 벡터의 크로네커 곱은 `(1, N)`으로 reshape해서 넣는다.
-  - 2차원 입력에서는 `np.kron`과 비트까지 같다. 3차원 이상에서는 다르다: `np.kron`은 배치 축까지 곱한다.
+  - 1차원 입력 `(N,)`은 한 행 `(1, N)`이고 배치 축이 없다. 둘 다 1차원이면 결과도 1차원 `(N·Q,)`다(np.kron, `sd.sparse.kron`과 같다). 하나만 1차원이면 결과는 행렬이다.
+  - 1·2차원 입력에서는 `np.kron`과 비트까지 같다. 3차원 이상에서는 다르다: `np.kron`은 배치 축까지 곱한다.
+- **`kronsum`**
+  - 크로네커 합 `kron(I_N, x1) + kron(x2, I_M)`이다(`scipy.sparse.kronsum`의 뜻). `x1`은 `(..., M, M)`, `x2`는 `(..., N, N)`이고 정사각이어야 한다(`ValueError`). 배치 축은 브로드캐스트한다.
+  - 결과는 M×M 블록의 N×N 격자다. 대각 블록 (i, i)는 `x1`, 블록 (i, j)의 대각은 `x2[i, j]`다. 그래서 원소마다 `x1`의 값, `x2`의 값, 또는 주대각의 합 `x1[p, p] + x2[i, i]` 하나다(덧셈 한 번, 올바르게 반올림한다). 나머지는 +0이다.
+  - 단위 행렬과 곱하지 않는다. 그래서 NaN과 inf는 제자리에만 있다(밀집 `kron(I, x1)`은 inf × 0으로 NaN을 낸다).
+  - 계산 dtype은 §1.5다(bool과 int64는 float64).
+  - float64·complex128 입력에서 `sd.sparse.kronsum(x1, x2).toarray()`와 비트까지 같다(bool·int64는 희소가 int64를 유지한다). 다를 수 있는 것은 0의 부호뿐이다(희소는 0을 저장하지 않는다; 희소도 단위 행렬과 곱하지 않고 값을 놓는다, sparse SP111).
+- **`block_diag`**
+  - `arrays`는 `sd.ndarray`의 `list` 또는 `tuple`이다(`concat`, `sd.sparse.block_diag`와 같은 꼴). 빈 목록은 `ValueError`다. **[scipy와 다름]** `scipy.linalg.block_diag(*arrs)`는 가변 인자다. 같은 일을 하는 `sd.sparse.block_diag(mats)`, 배열을 잇는 `concat`, `stack`, `block`이 모두 목록 하나를 받으므로 이쪽도 그렇다.
+  - 블록 `(..., Mᵢ, Nᵢ)`를 대각에 차례로 놓은 `(..., ΣMᵢ, ΣNᵢ)`다. 나머지는 0(`False`)이다. 1차원 블록 `(N,)`은 한 행 `(1, N)`이다(scipy와 같다). 빈 블록(`(0, 3)` 등)도 자리를 차지한다.
+  - 배치 축은 모든 블록 사이에서 브로드캐스트한다(scipy 1.18과 같다).
+  - 값을 옮기기만 한다. 결과 dtype은 입력들의 승격(array.md §1.4)이고, bool은 bool, int64는 int64다(`diagonal`과 같은 예외, §1.5). 값은 그대로 복사한다.
+  - `sd.sparse.block_diag(arrays).toarray()`와 비트까지 같다(0의 부호만 다를 수 있다).
 - **`cross`**
   - 길이 3 벡터의 외적이다. 켤레를 취하지 않는다.
   - `axis`는 `int`만 받는다. 브로드캐스트한 shape 기준이고, 그 축 자체는 브로드캐스트하지 않는다.
@@ -364,7 +381,7 @@ matrix_rank(x, /, *, rtol=None)
 solve(a, b, /)
 solve_triangular(a, b, /, *, upper, unit_diagonal=False)
 cholesky_solve(l, b, /, *, upper=False)    # l은 cholesky의 결과
-lu_solve(l, u, perm, b, /)                 # l, u, perm은 lu의 결과
+lu_solve(l, u, perm, b, /, *, trans='N')   # l, u, perm은 lu의 결과
 lstsq(a, b, /, *, rtol=None)               # -> LstsqResult(solution, rank, singular_values)
 inv(x, /)
 pinv(x, /, *, rtol=None)
@@ -380,6 +397,7 @@ pinv(x, /, *, rtol=None)
   - 고른 삼각만 읽는다. 대각에 정확한 0이 있으면 `LinAlgError`다.
 - **`lu_solve`**
   - `a[..., perm, :] = l @ u`인 `a`에 대해 `a x = b`를 푼다.
+  - `trans`는 `'N'`(`a x = b`), `'T'`(`aᵀ x = b`), `'H'`(`aᴴ x = b`; 실수면 `'T'`와 같다)다(`sd.sparse.splu(A).solve(b, trans=)`와 같은 이름과 값). 다른 문자열은 `ValueError`, 문자열이 아니면 `TypeError`다: `lu_solve(): 'trans' must be 'N', 'T' or 'H', not 'X'`. `'T'`·`'H'`는 `uᵀ y = b`, `lᵀ z = y`를 풀고 `x[perm] = z`로 놓는다(LAPACK `getrs`의 전치 풀이와 같은 순서). **[scipy와 다름]** `scipy.linalg.lu_solve`의 `trans`는 정수 0·1·2다. 이쪽은 희소의 `SparseLU.solve`와 같은 문자다.
   - `l`의 대각은 읽지 않고 1로 본다. `u`의 대각에 정확한 0이 있으면 `LinAlgError`다.
   - `perm`은 int64 배열 `(..., N)`이어야 한다(`TypeError`). 배치 원소마다 `0..N-1`의 순열이어야 한다(`ValueError`).
   - 네 인자의 배치 축을 브로드캐스트한다.
@@ -489,6 +507,7 @@ svdvals(x, /)
 solve_tridiagonal(dl, d, du, b, /)     # dl, du: (..., N-1), d: (..., N)
 solve_banded(ab, b, /, *, lower_bandwidth, upper_bandwidth)
 solve_sylvester(a, b, c, /)            # a x + x b = c
+bandwidth(x, /)                        # -> BandwidthResult(lower, upper)
 ```
 - **`solve_tridiagonal`**
   - `dl`은 부대각, `d`는 대각, `du`는 초대각이다. `dl`, `du`의 길이는 `d`보다 하나 짧아야 한다(`ValueError`).
@@ -509,6 +528,13 @@ solve_sylvester(a, b, c, /)            # a x + x b = c
   - `a`와 `-b`가 공통(또는 eps 수준으로 가까운) 고유값을 가지면 해가 하나로 정해지지 않으므로 `LinAlgError`다.
     - 정확한 0이 아니라 LAPACK의 근접 판정이다. 문턱은 `eps · max(‖a‖, ‖b‖)` 수준이다.
   - 에러를 고르는 순서는 `a` → `a`의 Schur 분해 → `b` → `b`의 Schur 분해 → `c` → 공통 고유값이다.
+- **`bandwidth`**
+  - 행렬의 아래·위 대역폭이다(`scipy.linalg.bandwidth`). `lower`는 0이 아닌 원소 `x[i, j]`(i > j)의 i − j 가운데 가장 큰 것, `upper`는 j > i인 원소의 j − i 가운데 가장 큰 것이고, 없으면 0이다. 정사각이 아니어도 된다.
+  - 0이 아닌 것은 `!= 0`이다. NaN은 0이 아니고 -0.0은 0이다. complex는 실수부나 허수부가 0이 아니면 0이 아니다.
+  - 결과는 `BandwidthResult(lower, upper)`이고 tuple로 풀 수 있다. 2차원이면 두 필드가 Python `int`, 배치 `(..., M, N)`이면 배치 shape의 int64 배열(쓰기 금지, API.md §2.2)이다(scipy와 같다: 슬라이스마다 하나).
+  - 삼각 판정은 이것으로 한다: `upper == 0`이면 아래 삼각, `lower == 0`이면 위 삼각이다(`sd.sparse.is_sptriangular`의 짝). `solve_banded`의 `lower_bandwidth`, `upper_bandwidth`에 그대로 쓸 수 있다.
+  - 띠를 넓힐 수 있는 원소만 읽는다. 행렬이 띠 모양이면 원소 대부분을 읽지 않는다.
+  - `sd.sparse.spbandwidth(A)`와 같은 값이다(A가 이 행렬에서 만든 희소 배열일 때: 희소는 0을 저장하지 않는다).
 
 ---
 

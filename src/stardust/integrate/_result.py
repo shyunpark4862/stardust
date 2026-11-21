@@ -11,8 +11,17 @@ The quad family's results (quad, dblquad, tplquad, nquad, quad_vec) unpack into 
 error) like scipy's (y, abserr) tuples (C10, htest H7): a, b = r, r[0], r[1] and len(r) == 2.
 The function marks that when it makes the result (_make(unpack=True)); the other results
 (tanhsinh, nsum, cubature) do not unpack and are read by name.
+
+summary() is the shared box (API.md §2.3, C20): the value, its error estimate, convergence,
+status and counts in the header, the message, and quad's intervals as a table (largest error
+first); a batch (tanhsinh, nsum) one row per element. A complex quad (complex_func=True) gives its
+two real quads as the fields real and imag (C57).
 """
 
+import math
+
+from .. import _calls, _core
+from .. import _summary as _S
 from .._results import _FieldResult
 
 # The field names, in the order repr and docs/api/integrate.md §1.3 list them.
@@ -30,6 +39,8 @@ FIELDS = (
     "interval_errors",
     "n_intervals",
     "subdivisions",
+    "real",
+    "imag",
 )
 _REPR = ("integral", "sum", "error", "converged", "nfev")
 _PAIR = ("integral", "error")
@@ -54,6 +65,16 @@ class IntegrateResult(_FieldResult):
         r._unpack = bool(unpack) and all(k in r._fields for k in _PAIR)
         return r
 
+    @classmethod
+    def _quad(cls, fields):
+        """The quad family's fast constructor: fields a dict of the function's own values in the
+        order of FIELDS (Python numbers, strings, results and _Lazy arrays), a result that unpacks."""
+        r = cls.__new__(cls)
+        r._fields = fields
+        r._batch = ()
+        r._unpack = True
+        return r
+
     def _pair(self):
         if not self._unpack:
             raise TypeError(
@@ -73,5 +94,89 @@ class IntegrateResult(_FieldResult):
     def __bool__(self):  # a result is a value, true whether it unpacks or not (len() may raise)
         return True
 
+    @_calls.method("summary")
+    def summary(self):
+        """The result as a text table (C20): the value, its error estimate, convergence, status and
+        counts, the message, quad's intervals; a batch one row per element."""
+        return _summary(self)
+
     def __repr__(self):
+        if not self._batch and any(isinstance(self._fields.get(k), complex) for k in _REPR):
+            parts = [f"{k}={_complex_text(v, 6)}" if isinstance(v, complex) else f"{k}={_S.compact(v)}"
+                     for k in _REPR if k in self._fields for v in (self._fields[k],)]  # fmt: skip
+            return f"{type(self).__name__}(" + ", ".join(parts) + ")"
         return self._fields_repr(_REPR)
+
+
+def _complex_text(v, digits):
+    """A complex value as (re+imj) with `digits` significant digits in each part."""
+
+    def part(x):
+        return f"{x:.{digits}g}" if math.isfinite(x) else repr(x)
+
+    im = part(v.imag)
+    return f"({part(v.real)}{'' if im.startswith('-') else '+'}{im}j)"
+
+
+def _value_text(v, spec):
+    if isinstance(v, complex):
+        return _complex_text(v, 6 if spec == "#.6g" else 4)
+    return f"{float(v):{spec}}"
+
+
+_TITLE = "Integration Results"
+# the columns of a batch's table: field, formatter
+_COLUMNS = (
+    ("integral", lambda v: _S.forg(v, 6)),
+    ("sum", lambda v: _S.forg(v, 6)),
+    ("error", _S.forg),
+    ("converged", _S.flag),
+    ("status", str),
+    ("nfev", str),
+    ("max_level", str),
+)
+_COUNTS = (("nfev", "Function Evals:"), ("n_intervals", "Intervals:"), ("max_level", "Max Level:"),
+           ("subdivisions", "Subdivisions:"))  # fmt: skip
+
+
+def _summary(r):
+    f = r._fields
+    left, right = [], []
+    if r._batch:
+        n = _S.lanes(r._batch)
+        left.append(("Batch shape:", _S.shape_text(r._batch)))
+        if "converged" in f:
+            conv = f["converged"]
+            done = int(_core.count_nonzero(conv)) if isinstance(conv, _core.ndarray) else int(bool(conv)) * n
+            right.append(("Converged:", f"{done} of {n}"))
+        cols = [(k, _S.flat(f[k], n), fmt) for k, fmt in _COLUMNS if k in f]
+        table = _S.Table([c[0] for c in cols], _S.lane_rows(r._batch, [(g, fm) for _, g, fm in cols]))
+        return _S.render(_TITLE, header=(left, right), tables=[table])
+    for k, label in (("converged", "Converged:"), ("status", "Status:")):
+        if k in f:
+            left.append((label, str(f[k])))
+    for k, label in (("integral", "Integral:"), ("sum", "Sum:")):
+        if k in f:
+            right.append((label, _value_text(f[k], "#.6g")))
+    if "error" in f:
+        right.append(("Error estimate:", _value_text(f["error"], "#.4g")))
+    for k, label in _COUNTS:
+        if k in f:
+            right.append((label, str(f[k])))
+    wide = [("Message:", " ".join(str(f["message"]).split()))] if "message" in f else []
+    tables = []
+    if "intervals" in f and f["n_intervals"]:
+        iv, vi, ve = r.intervals, r.interval_integrals, r.interval_errors
+        rows = []
+        for i in _S.shown(int(f["n_intervals"])):
+            if i is None:
+                rows.append(None)
+                continue
+            rows.append((f"[{i}]", [_S.forg(iv[i, 0], 6), _S.forg(iv[i, 1], 6), _S.forg(vi[i], 6), _S.forg(ve[i])]))
+        tables.append(_S.Table(["a", "b", "integral", "error"], rows))
+    parts = [(k, f[k]) for k in ("real", "imag") if k in f]  # a complex quad's two real quads
+    if parts:
+        rows = [(k, [_S.forg(p.integral, 6), _S.forg(p.error), str(p.status), str(p.nfev), str(p.n_intervals)])
+                for k, p in parts]  # fmt: skip
+        tables.append(_S.Table(["integral", "error", "status", "nfev", "intervals"], rows))
+    return _S.render(_TITLE, header=(left, right), wide_rows=wide, tables=tables)

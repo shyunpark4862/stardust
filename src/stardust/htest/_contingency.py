@@ -16,7 +16,6 @@ mcnemar is exact by default (H81, statsmodels').
 """
 
 import math
-from fractions import Fraction
 
 from .. import _calls
 from .. import _core as _sd
@@ -79,6 +78,7 @@ class OddsRatioResult(_TestResult):
     _FIELDS = ("statistic",)
     _CI = True
 
+    @_calls.method("conf_int")
     def conf_int(self, *, alpha=0.05, alternative="two-sided"):
         """The 1 - alpha confidence interval of the odds ratio (scipy's confidence_interval with
         alpha for 1 - confidence_level, H16): the exact (conditional) or Woolf's (sample)
@@ -325,7 +325,7 @@ def relative_risk(exposed_cases, exposed_total, control_cases, control_total, /)
     elif c == 0:
         rr = math.inf
     else:
-        rr = float(Fraction(a * n2, n1 * c))
+        rr = (a * n2) / (n1 * c)  # (the exact ratio rounded once: int / int is correctly rounded)
 
     def ci(alpha):
         if a == 0 and c == 0:
@@ -335,7 +335,8 @@ def relative_risk(exposed_cases, exposed_total, control_cases, control_total, /)
         if c == 0:
             return math.nan, math.inf
         z = float(_st.normal_iccdf(0.0, 1.0, alpha / 2.0))
-        se = math.sqrt(float(Fraction(n1 - a, a * n1) + Fraction(n2 - c, c * n2)))
+        # 1/a - 1/n1 + 1/c - 1/n2: the exact sum rounded once (int / int is correctly rounded)
+        se = math.sqrt(((n1 - a) * c * n2 + (n2 - c) * a * n1) / (a * n1 * c * n2))
         return rr * math.exp(-z * se), rr * math.exp(z * se)
 
     return RelativeRiskResult._make(

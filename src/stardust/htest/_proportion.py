@@ -80,6 +80,7 @@ class BinomtestResult(_TestResult):
     _FIELDS = ("k", "n", "alternative", "statistic", "pvalue")
     _CI = True
 
+    @_calls.method("conf_int")
     def conf_int(self, *, alpha=0.05, method="exact"):
         """The 1 - alpha confidence interval of the proportion (scipy's proportion_ci with alpha for
         1 - confidence_level, H16): method 'exact' (Clopper-Pearson), 'wilson' or 'wilsoncc'

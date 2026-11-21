@@ -31,12 +31,15 @@
 #include "sparse/format.hpp"
 #include "sparse/parallel.hpp"
 
+#include <arm_neon.h>
+
 #include <nanobind/stl/string.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -87,6 +90,44 @@ int64_t emit_line(Pair<T>* p, int64_t n, bool distinct, int64_t* out_idx, T* out
             out_val[i] = p[i].v;
         }
         return n;
+    }
+    if (n <= 16) {
+        // Rank sort of keys minor * 16 + position (distinct, so the order is stable): no
+        // data-dependent branch, about half the time of the insertion sort on random lines.
+        uint64_t any = 0;
+        for (int64_t i = 0; i < n; ++i) any |= static_cast<uint64_t>(p[i].minor);
+        if ((any >> 59) == 0) {
+            alignas(16) uint64_t key[16], sorted[16];
+            for (int64_t i = 0; i < 16; ++i)
+                key[i] = i < n ? (static_cast<uint64_t>(p[i].minor) << 4) | static_cast<uint64_t>(i) : ~uint64_t(0);
+            for (int64_t i = 0; i < n; ++i) {
+                const uint64x2_t ki = vdupq_n_u64(key[i]);
+                uint64x2_t a0 = vcltq_u64(vld1q_u64(key), ki), a1 = vcltq_u64(vld1q_u64(key + 2), ki);
+                uint64x2_t a2 = vcltq_u64(vld1q_u64(key + 4), ki), a3 = vcltq_u64(vld1q_u64(key + 6), ki);
+                if (n > 8) {
+                    a0 = vaddq_u64(a0, vcltq_u64(vld1q_u64(key + 8), ki));
+                    a1 = vaddq_u64(a1, vcltq_u64(vld1q_u64(key + 10), ki));
+                    a2 = vaddq_u64(a2, vcltq_u64(vld1q_u64(key + 12), ki));
+                    a3 = vaddq_u64(a3, vcltq_u64(vld1q_u64(key + 14), ki));
+                }
+                const uint64x2_t a = vaddq_u64(vaddq_u64(a0, a1), vaddq_u64(a2, a3));
+                // each true lane is all ones (-1): the rank is minus the lane sum
+                sorted[-static_cast<int64_t>(vgetq_lane_u64(a, 0) + vgetq_lane_u64(a, 1))] = key[i];
+            }
+            int64_t w = 0;
+            for (int64_t i = 0; i < n;) {
+                const int64_t m = static_cast<int64_t>(sorted[i] >> 4);
+                T acc = p[sorted[i] & 15].v;
+                int64_t j = i + 1;
+                for (; j < n && static_cast<int64_t>(sorted[j] >> 4) == m; ++j)
+                    acc = add_value(acc, p[sorted[j] & 15].v);
+                out_idx[w] = m;
+                out_val[w] = acc;
+                ++w;
+                i = j;
+            }
+            return w;
+        }
     }
     if (n <= 32) {
         for (int64_t i = 1; i < n; ++i) {
@@ -149,6 +190,78 @@ int64_t compress_direct(
         const int64_t s = indptr[r], e = indptr[r + 1];
         indptr[r] = w;
         w += emit_line(tmp.data() + s, e - s, false, out_idx + w, out_val + w);
+    }
+    indptr[n_major] = w;
+    return w;
+}
+
+// The LSD path (one thread): a stable counting sort of the entries by minor, then a stable
+// counting sort by major straight into the output lines. Both are stable, so a line ends up in
+// minor order with equal minors in input order, and an entry equal to the line's last is added to
+// it as it arrives (left to right); the lines are closed up when duplicates left gaps. No
+// comparison sort: sorting random lines of ten entries cost about 5 ns an entry, this path about
+// 2 in all (M4 Pro, 2026-11-22). Needs n_minor counters: returns -1 (nothing written) when the
+// largest minor index is too large for that, and the caller takes another path.
+template <class T>
+int64_t compress_lsd(
+    int64_t n_major,
+    const int64_t* major,
+    const int64_t* minor,
+    const T* val,
+    int64_t nnz,
+    int64_t* indptr,
+    int64_t* out_idx,
+    T* out_val
+) {
+    int64_t n_minor = 0;
+    for (int64_t k = 0; k < nnz; ++k) n_minor = std::max(n_minor, minor[k] + 1);
+    if (n_minor > 2 * nnz + 65536) return -1;
+    struct Line {
+        int64_t pos, last;  // next free slot, minor of the last entry written (-1: none yet)
+    };
+    std::unique_ptr<int64_t[]> cmin(new int64_t[static_cast<std::size_t>(n_minor + 1)]());
+    std::unique_ptr<Line[]> line(new Line[static_cast<std::size_t>(n_major + 1)]);
+    for (int64_t r = 0; r <= n_major; ++r) line[r] = {0, -1};
+    for (int64_t k = 0; k < nnz; ++k) ++cmin[minor[k] + 1];
+    if (major)
+        for (int64_t k = 0; k < nnz; ++k) ++line[major[k] + 1].pos;
+    else line[1].pos = nnz;
+    for (int64_t c = 0; c < n_minor; ++c) cmin[c + 1] += cmin[c];
+    for (int64_t r = 0; r < n_major; ++r) line[r + 1].pos += line[r].pos;
+    for (int64_t r = 0; r <= n_major; ++r) indptr[r] = line[r].pos;
+    struct MajorValue {
+        int64_t major;
+        T v;
+    };
+    std::unique_ptr<MajorValue[]> tmp(new MajorValue[static_cast<std::size_t>(nnz)]);
+    for (int64_t k = 0; k < nnz; ++k) tmp[cmin[minor[k]]++] = {major ? major[k] : 0, val[k]};
+    // cmin[m] is now the end of minor m's entries
+    bool dups = false;
+    for (int64_t m = 0, p = 0; m < n_minor; ++m) {
+        for (const int64_t e = cmin[m]; p < e; ++p) {
+            Line& d = line[tmp[p].major];
+            if (d.last == m) {
+                out_val[d.pos - 1] = add_value(out_val[d.pos - 1], tmp[p].v);
+                dups = true;
+                continue;
+            }
+            d.last = m;
+            out_idx[d.pos] = m;
+            out_val[d.pos] = tmp[p].v;
+            ++d.pos;
+        }
+    }
+    if (!dups) return nnz;
+    int64_t w = 0;
+    for (int64_t r = 0; r < n_major; ++r) {
+        const int64_t s = indptr[r], e = line[r].pos;
+        indptr[r] = w;
+        if (w != s)
+            for (int64_t k = s; k < e; ++k) {
+                out_idx[w + k - s] = out_idx[k];
+                out_val[w + k - s] = out_val[k];
+            }
+        w += e - s;
     }
     indptr[n_major] = w;
     return w;
@@ -280,12 +393,13 @@ int64_t compress_buckets(
     return ustart[nb_];
 }
 
-// Which path: the two give the same arrays, so the choice is speed alone, by size. The bucket
+// Which path: they all give the same arrays, so the choice is speed alone, by size. The bucket
 // path pays for its extra pass with cache-sized pieces and the pool. Measured on random matrices
-// with 10 entries a line (M4 Pro, 2026-11-21): on one thread it wins from 2^17 entries when lines
-// are sorted and summed and from 2^20 for a transpose; with the pool free, from 2^16.
+// with 10 entries a line (M4 Pro, 2026-11-21): with the pool free it wins from 2^16 entries; on one
+// thread, for a transpose from 2^20, and when lines are sorted and summed from 2^21 against the LSD
+// path (2026-11-22; before that path, from 2^17 against the direct one).
 bool use_buckets(int64_t nnz, bool presorted) {
-    if (nnz >= (presorted ? int64_t(1) << 20 : int64_t(1) << 17)) return true;
+    if (nnz >= (presorted ? int64_t(1) << 20 : int64_t(1) << 21)) return true;
     return nnz >= (int64_t(1) << 16) && parallel::available();
 }
 
@@ -332,15 +446,30 @@ Compressed compress(
                 n_major, major, minor, val, nnz, presorted, i64(out.indptr), i64(out.indices), typed<T>(out.data), seg
             );
         } else {
-            total = compress_direct<T>(
-                n_major, major, minor, val, nnz, presorted, i64(out.indptr), i64(out.indices), typed<T>(out.data)
-            );
+            total = presorted
+                        ? -1
+                        : compress_lsd<T>(
+                              n_major, major, minor, val, nnz, i64(out.indptr), i64(out.indices), typed<T>(out.data)
+                          );
+            if (total < 0)
+                total = compress_direct<T>(
+                    n_major, major, minor, val, nnz, presorted, i64(out.indptr), i64(out.indices), typed<T>(out.data)
+                );
             seg.src = {0};
             seg.len = {total};
             seg.dst = {0};
         }
     });
-    if (total < nnz) shrink(out, total, seg);
+    if (total < nnz) {
+        // The distinct entries already sit at [0, total) when there is one segment: keep the
+        // arrays and shorten them (a few duplicates), or copy when much of them would be unused.
+        if (seg.len.size() == 1 && total * 8 >= nnz * 7) {
+            out.indices.shape[0] = total;
+            out.data.shape[0] = total;
+        } else {
+            shrink(out, total, seg);
+        }
+    }
     return out;
 }
 
@@ -403,6 +532,57 @@ void transpose_serial(
     op[0] = 0;
 }
 
+// The transpose on one thread for larger inputs: entries go by blocks of 2^shift columns to a
+// buffer (key = row * 2^shift + column within the block, and the value; in row order, so stable),
+// then each block -- cache-sized -- counts its columns and places its entries. The plain scatter
+// writes to n_minor places at random; this writes in order but twice. Measured (M4 Pro,
+// 2026-11-22, random matrices with 10 entries a row): 1.2 times the plain scatter at nnz 10^6 and
+// 3.5 times at 10^7. Returns false (nothing written) when the key does not fit 64 bits.
+template <class T>
+bool transpose_blocks(
+    int64_t n_major, int64_t n_minor, const int64_t* ip, const int64_t* ix, const T* v, int64_t* op, int64_t* ox, T* ov
+) {
+    const int64_t nnz = ip[n_major];
+    // about 2048 entries a block
+    int shift = 0;
+    const double per_column = static_cast<double>(nnz) / static_cast<double>(n_minor);
+    while (shift < 16 && static_cast<double>(int64_t(2) << shift) * per_column <= 2048.0) ++shift;
+    if (n_major > (int64_t(1) << (63 - shift))) return false;
+    const int64_t width = int64_t(1) << shift, mask = width - 1;
+    const int64_t nb = ((n_minor - 1) >> shift) + 1;
+    std::unique_ptr<int64_t[]> next(new int64_t[static_cast<std::size_t>(nb + 1)]());
+    for (int64_t k = 0; k < nnz; ++k) ++next[(ix[k] >> shift) + 1];
+    for (int64_t b = 0; b < nb; ++b) next[b + 1] += next[b];
+    std::vector<int64_t> start(next.get(), next.get() + nb + 1);
+    struct KeyValue {
+        uint64_t key;
+        T v;
+    };
+    std::unique_ptr<KeyValue[]> tmp(new KeyValue[static_cast<std::size_t>(nnz)]);
+    for (int64_t r = 0; r < n_major; ++r) {
+        const uint64_t rk = static_cast<uint64_t>(r) << shift;
+        for (int64_t k = ip[r]; k < ip[r + 1]; ++k)
+            tmp[next[ix[k] >> shift]++] = {rk | static_cast<uint64_t>(ix[k] & mask), v[k]};
+    }
+    std::unique_ptr<int64_t[]> cnt(new int64_t[static_cast<std::size_t>(width + 1)]);
+    for (int64_t b = 0; b < nb; ++b) {
+        const int64_t s = start[b], e = start[b + 1];
+        const int64_t c0 = b << shift, w = std::min(width, n_minor - c0);
+        std::fill(cnt.get(), cnt.get() + w + 1, 0);
+        for (int64_t q = s; q < e; ++q) ++cnt[(tmp[q].key & mask) + 1];
+        cnt[0] = s;
+        for (int64_t j = 0; j < w; ++j) cnt[j + 1] += cnt[j];
+        std::copy(cnt.get(), cnt.get() + w, op + c0);
+        for (int64_t q = s; q < e; ++q) {
+            const int64_t p = cnt[tmp[q].key & mask]++;
+            ox[p] = static_cast<int64_t>(tmp[q].key >> shift);
+            ov[p] = tmp[q].v;
+        }
+    }
+    op[n_minor] = nnz;
+    return true;
+}
+
 NDArray expand_rows(const NDArray& indptr, int64_t n_major, int64_t nnz);
 
 }  // namespace
@@ -411,7 +591,9 @@ Compressed transpose(
     int64_t n_major, int64_t n_minor, const NDArray& indptr, const NDArray& indices, const NDArray& data
 ) {
     const int64_t nnz = indices.shape[0];
-    if (use_buckets(nnz, true)) {
+    // one thread from 2^15 entries: the blocked transpose (below that the plain scatter fits the cache)
+    const bool blocks = nnz >= kParallelThreshold && n_minor > 0 && !parallel::available();
+    if (!blocks && use_buckets(nnz, true)) {
         const NDArray rows = expand_rows(indptr, n_major, nnz);
         return compress(n_minor, i64(indices), i64(rows), data, nnz, true);
     }
@@ -422,6 +604,11 @@ Compressed transpose(
     out.data = new_array(data.dtype, shape);
     visit_dtype(data.dtype, [&]<class T>(std::type_identity<T>) {
         const parallel::Unlocked unlocked(nnz + n_minor >= kParallelThreshold);
+        if (blocks && transpose_blocks<T>(
+                          n_major, n_minor, i64(indptr), i64(indices), typed<T>(data), i64(out.indptr),
+                          i64(out.indices), typed<T>(out.data)
+                      ))
+            return;
         transpose_serial<T>(
             n_major, n_minor, i64(indptr), i64(indices), typed<T>(data), i64(out.indptr), i64(out.indices),
             typed<T>(out.data)

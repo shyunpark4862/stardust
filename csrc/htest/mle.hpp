@@ -21,6 +21,7 @@
 // (data outside the support, a constant sample, no interior maximum) is false (NaN parameters).
 #pragma once
 
+#include "htest/dist_array.hpp"
 #include "htest/moments.hpp"
 #include "stats/dist/beta.hpp"
 #include "stats/dist/exponential.hpp"
@@ -469,6 +470,23 @@ inline double fn(int f, const double* th, double v) {
     }
 }
 
+// fn<M>(f, th, x[i]) for i in [0, n) into out (method_array: the same bits)
+template <class M>
+inline void fn_array(int f, const double* th, const double* x, i64 n, double* out) {
+    switch (f) {
+        case kNormal: return method_array<stats::Normal, M>(x, n, out, th[0], th[1]);
+        case kExponential: return method_array<stats::Exponential, M>(x, n, out, th[0]);
+        case kLogistic: return method_array<stats::Logistic, M>(x, n, out, th[0], th[1]);
+        case kGumbel: return method_array<stats::Gumbel, M>(x, n, out, th[0], th[1]);
+        case kWeibull: return method_array<stats::Weibull, M>(x, n, out, th[0], th[1]);
+        case kLogNormal: return method_array<stats::LogNormal, M>(x, n, out, th[0], th[1]);
+        case kLaplace: return method_array<stats::Laplace, M>(x, n, out, th[0], th[1]);
+        case kRayleigh: return method_array<stats::Rayleigh, M>(x, n, out, th[0]);
+        default:
+            for (i64 i = 0; i < n; ++i) out[i] = fn<M>(f, th, x[i]);  // (kWeibull3: the shift)
+    }
+}
+
 // the medians of the uniform order statistics, Beta(i, n + 1 - i) (Filliben's, scipy's exact ones)
 inline std::vector<double> beta_medians(i64 n) {
     std::vector<double> m(static_cast<std::size_t>(n));
@@ -486,36 +504,38 @@ inline double statistic(
     const auto n = static_cast<i64>(x.size());
     const double N = static_cast<double>(n);
     if (stat == 0) {
+        std::vector<double> L(static_cast<std::size_t>(n)), U(static_cast<std::size_t>(n));
+        fn_array<sm::Logcdf>(f, th, x.data(), n, L.data());
+        fn_array<sm::Logccdf>(f, th, x.data(), n, U.data());
         Acc s;
         for (i64 i = 0; i < n; ++i) {
             const double c = (2.0 * static_cast<double>(i + 1) - 1.0) / N;
-            s.add(
-                c * (fn<sm::Logcdf>(f, th, x[static_cast<std::size_t>(i)]) +
-                     fn<sm::Logccdf>(f, th, x[static_cast<std::size_t>(n - 1 - i)]))
-            );
+            s.add(c * (L[static_cast<std::size_t>(i)] + U[static_cast<std::size_t>(n - 1 - i)]));
         }
         return -N - to_double(s.value());
     }
-    if (stat == 1) {
-        double d = 0.0;
-        for (i64 i = 0; i < n; ++i) {
-            const double F = fn<sm::Cdf>(f, th, x[static_cast<std::size_t>(i)]);
-            if (F != F) return F;
-            d = std::max(d, std::max(static_cast<double>(i + 1) / N - F, F - static_cast<double>(i) / N));
+    if (stat == 1 || stat == 2) {
+        std::vector<double> F(static_cast<std::size_t>(n));
+        fn_array<sm::Cdf>(f, th, x.data(), n, F.data());
+        if (stat == 1) {
+            double d = 0.0;
+            for (i64 i = 0; i < n; ++i) {
+                const double Fi = F[static_cast<std::size_t>(i)];
+                if (Fi != Fi) return Fi;
+                d = std::max(d, std::max(static_cast<double>(i + 1) / N - Fi, Fi - static_cast<double>(i) / N));
+            }
+            return d;
         }
-        return d;
-    }
-    if (stat == 2) {
         Acc s;
         for (i64 i = 0; i < n; ++i) {
             const double u = (2.0 * static_cast<double>(i + 1) - 1.0) / (2.0 * N);
-            const double d = u - fn<sm::Cdf>(f, th, x[static_cast<std::size_t>(i)]);
+            const double d = u - F[static_cast<std::size_t>(i)];
             s.add(dd::two_prod(d, d));
         }
         return 1.0 / (12.0 * N) + to_double(s.value());
     }
     std::vector<double> M(static_cast<std::size_t>(n));
-    for (i64 i = 0; i < n; ++i) M[static_cast<std::size_t>(i)] = fn<sm::Icdf>(f, th, med[static_cast<std::size_t>(i)]);
+    fn_array<sm::Icdf>(f, th, med.data(), n, M.data());
     const Moments mx = moments_of(x.data(), nullptr, n), mm = moments_of(M.data(), nullptr, n);
     Acc sxy;
     for (i64 i = 0; i < n; ++i) {

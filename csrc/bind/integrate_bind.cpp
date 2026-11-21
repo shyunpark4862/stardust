@@ -12,6 +12,7 @@ void bind_integrate(nb::module_& core) {
     nb::module_ m = core.def_submodule("integrate", "stardust integrate native core");
     integrate::bind_samples(m);
     integrate::bind_gauss(m);
+    integrate::bind_quadpack(m);
 }
 
 }  // namespace sd

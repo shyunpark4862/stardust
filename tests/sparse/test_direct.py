@@ -529,5 +529,18 @@ def test_patterns_count_stored_zeros_and_empty():
     assert S.spbandwidth(S.csr_array((0, 0))) == (0, 0) and S.is_sptriangular(S.csr_array((3, 3))) == (True, True)
     with pytest.raises(ValueError, match=r"^spbandwidth\(\): 'A' must have 2 dimensions, got 1$"):
         S.spbandwidth(S.csr_array(sd.ones(3)))
-    with pytest.raises(TypeError, match=r"^is_sptriangular\(\): 'A' must be a sparse array, not ndarray$"):
+    msg = r"must be a sparse array, not ndarray; for a dense array use sd\.linalg\.bandwidth$"
+    with pytest.raises(TypeError, match=r"^is_sptriangular\(\): 'A' " + msg):
         S.is_sptriangular(sd.eye(2))
+    with pytest.raises(TypeError, match=r"^spbandwidth\(\): 'A' " + msg):
+        S.spbandwidth(sd.eye(2))
+
+
+def test_spbandwidth_is_the_dense_bandwidth():
+    # the same result as sd.linalg.bandwidth (BandwidthResult(lower, upper), a tuple as scipy's)
+    for D in (np.triu(np.ones((4, 6)), 2), np.tril(np.ones((5, 3)), -1), np.eye(3), np.zeros((2, 2))):
+        A = S.csr_array(sd.asarray(D))
+        for X in (A, A.tocsc(), A.tocoo()):
+            r = S.spbandwidth(X)
+            assert type(r) is type(sd.linalg.bandwidth(sd.asarray(D))) and r == sd.linalg.bandwidth(sd.asarray(D))
+            assert (r.lower, r.upper) == tuple(r)

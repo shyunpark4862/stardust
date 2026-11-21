@@ -35,6 +35,7 @@
 #include "htest/lanes.hpp"
 #include "htest/moments.hpp"
 #include "htest/rank_exact.hpp"
+#include "htest/vdd.hpp"
 #include "special/ops/incbeta.hpp"
 #include "stats/dist/normal.hpp"
 #include "stats/engine.hpp"
@@ -86,6 +87,7 @@ DD clip_unit(DD r) {
 bool lane_pairs(const Rows& a, const Rows& b, std::int64_t r, std::vector<double>& x, std::vector<double>& y) {
     x.clear();
     y.clear();
+    x.reserve(static_cast<std::size_t>(a.n)), y.reserve(static_cast<std::size_t>(a.n));
     bool nan = false;
     for (std::int64_t j = 0; j < a.n; ++j) {
         const double u = a.at(r, j), v = b.at(r, j);
@@ -131,35 +133,161 @@ bool constant(DD ss, DD mean, std::int64_t n) {
     return m2 <= e * e;
 }
 
+// The pairs' sums in htest's fixed blocks of kBlock (htest/moments.hpp; one block holds the whole
+// of a sample up to kBlock): body(j0, j1, sums) fills the block's Acc4s, combined in block order,
+// so a long lane alone runs on the pool with the same bits on any thread count.
+template <int K, class Body>
+void block_sums(std::int64_t n, Acc (&tot)[K], Body&& body) {
+    const std::int64_t nb = blocks_of(n);
+    std::vector<Acc> part(static_cast<std::size_t>(nb * K));
+    each_block(1, n, [&](std::int64_t b, std::int64_t, std::int64_t j0, std::int64_t j1) {
+        Acc4 a[K];
+        body(j0, j1, a);
+        for (int q = 0; q < K; ++q) part[static_cast<std::size_t>(b * K + q)] = a[q].total();
+    });
+    for (int q = 0; q < K; ++q) {
+        tot[q] = part[static_cast<std::size_t>(q)];
+        for (std::int64_t b = 1; b < nb; ++b) tot[q].add(part[static_cast<std::size_t>(b * K + q)]);
+    }
+}
+
+// The passes' elements in NEON, two elements to a register (chains 0, 1 and 2, 3 of the Acc4s,
+// as htest/moments.hpp's blocks; htest/vdd.hpp's operations, the scalar ones lane by lane), so the
+// same bits. Each runs [j0, j) for the largest j <= j1 with j - j0 a multiple of 4 and returns j
+// (j0 is a multiple of 4: blocks start at multiples of kBlock).
+
+// an Acc4 as two register pairs (chains 0, 1 and 2, 3)
+struct Chains {
+    vdd::V h01, l01, h23, l23;
+    explicit Chains(const Acc4& a)
+        : h01{a.c[0].hi, a.c[1].hi}, l01{a.c[0].lo, a.c[1].lo}, h23{a.c[2].hi, a.c[3].hi}, l23{a.c[2].lo, a.c[3].lo} {}
+    void put(Acc4& a) const {
+        a.c[0] = {vgetq_lane_f64(h01, 0), vgetq_lane_f64(l01, 0)},
+        a.c[1] = {vgetq_lane_f64(h01, 1), vgetq_lane_f64(l01, 1)};
+        a.c[2] = {vgetq_lane_f64(h23, 0), vgetq_lane_f64(l23, 0)},
+        a.c[3] = {vgetq_lane_f64(h23, 1), vgetq_lane_f64(l23, 1)};
+    }
+    void add(int half, vdd::D2 v) { half ? vdd::acc(h23, l23, v.hi, v.lo) : vdd::acc(h01, l01, v.hi, v.lo); }
+};
+
+// sums of x fx and y fy
+std::int64_t sums_neon(
+    const double* x, const double* y, double fx, double fy, std::int64_t j0, std::int64_t j1, Acc4* a
+) {
+    using namespace vdd;
+    Chains cx(a[0]), cy(a[1]);
+    const V vx = vdupq_n_f64(fx), vy = vdupq_n_f64(fy), z = vdupq_n_f64(0.0);
+    std::int64_t j = j0;
+    for (; j + 4 <= j1; j += 4)
+        for (int h = 0; h < 2; ++h) {
+            cx.add(h, {vmulq_f64(vld1q_f64(x + j + 2 * h), vx), z});
+            cy.add(h, {vmulq_f64(vld1q_f64(y + j + 2 * h), vy), z});
+        }
+    cx.put(a[0]), cy.put(a[1]);
+    return j;
+}
+
+// the centred value two_sum(v f, -m.hi) + (-m.lo)
+inline vdd::D2 centred(const double* v, std::int64_t j, vdd::V f, vdd::V nmh, vdd::V nml) {
+    return vdd::add(vdd::two_sum(vmulq_f64(vld1q_f64(v + j), f), nmh), nml);
+}
+
+// Sxx, Syy, Sxy
+std::int64_t products_neon(
+    const double* x, const double* y, double fx, double fy, DD mx, DD my, std::int64_t j0, std::int64_t j1, Acc4* a
+) {
+    using namespace vdd;
+    Chains c0(a[0]), c1(a[1]), c2(a[2]);
+    const V vx = vdupq_n_f64(fx), vy = vdupq_n_f64(fy);
+    const V nxh = vdupq_n_f64(-mx.hi), nxl = vdupq_n_f64(-mx.lo), nyh = vdupq_n_f64(-my.hi), nyl = vdupq_n_f64(-my.lo);
+    std::int64_t j = j0;
+    for (; j + 4 <= j1; j += 4)
+        for (int h = 0; h < 2; ++h) {
+            const D2 u = centred(x, j + 2 * h, vx, nxh, nxl), v = centred(y, j + 2 * h, vy, nyh, nyl);
+            c0.add(h, mul(u, u));
+            c1.add(h, mul(v, v));
+            c2.add(h, mul(u, v));
+        }
+    c0.put(a[0]), c1.put(a[1]), c2.put(a[2]);
+    return j;
+}
+
+// sum (y_c - b x_c)^2
+std::int64_t residuals_neon(
+    const double* x,
+    const double* y,
+    double fx,
+    double fy,
+    DD mx,
+    DD my,
+    DD b,
+    std::int64_t j0,
+    std::int64_t j1,
+    Acc4* a
+) {
+    using namespace vdd;
+    Chains c0(a[0]);
+    const V vx = vdupq_n_f64(fx), vy = vdupq_n_f64(fy);
+    const V nxh = vdupq_n_f64(-mx.hi), nxl = vdupq_n_f64(-mx.lo), nyh = vdupq_n_f64(-my.hi), nyl = vdupq_n_f64(-my.lo);
+    const D2 bv{vdupq_n_f64(b.hi), vdupq_n_f64(b.lo)};
+    std::int64_t j = j0;
+    for (; j + 4 <= j1; j += 4)
+        for (int h = 0; h < 2; ++h) {
+            const D2 u = centred(x, j + 2 * h, vx, nxh, nxl), v = centred(y, j + 2 * h, vy, nyh, nyl);
+            const D2 e = add(v, neg(mul(bv, u)));  // yc - b xc
+            c0.add(h, mul(e, e));
+        }
+    c0.put(a[0]);
+    return j;
+}
+
 RQ corr_rq(const double* x, const double* y, std::int64_t n) {
     RQ o;
     if (n < 2) return o;
+    const std::int64_t nb = blocks_of(n);
+    std::vector<double> pmx(static_cast<std::size_t>(nb)), pmy(static_cast<std::size_t>(nb));
+    std::vector<char> bad(static_cast<std::size_t>(nb), 0);
+    each_block(1, n, [&](std::int64_t b, std::int64_t, std::int64_t j0, std::int64_t j1) {
+        double mx = 0.0, my = 0.0;
+        for (std::int64_t j = j0; j < j1; ++j) {
+            if (!std::isfinite(x[j]) || !std::isfinite(y[j])) {
+                bad[static_cast<std::size_t>(b)] = 1;
+                return;
+            }
+            mx = std::max(mx, std::fabs(x[j]));
+            my = std::max(my, std::fabs(y[j]));
+        }
+        pmx[static_cast<std::size_t>(b)] = mx, pmy[static_cast<std::size_t>(b)] = my;
+    });
     double mx = 0.0, my = 0.0;
-    for (std::int64_t j = 0; j < n; ++j) {
-        if (!std::isfinite(x[j]) || !std::isfinite(y[j])) return o;
-        mx = std::max(mx, std::fabs(x[j]));
-        my = std::max(my, std::fabs(y[j]));
+    for (std::int64_t b = 0; b < nb; ++b) {
+        if (bad[static_cast<std::size_t>(b)]) return o;
+        mx = std::max(mx, pmx[static_cast<std::size_t>(b)]), my = std::max(my, pmy[static_cast<std::size_t>(b)]);
     }
     if (!(mx > 0.0) || !(my > 0.0)) return o;  // a sample of zeros: constant
     const double fx = std::ldexp(1.0, -std::ilogb(mx)), fy = std::ldexp(1.0, -std::ilogb(my));
-    Acc4 sx, sy;
-    for (std::int64_t j = 0; j < n; ++j) {
-        sx.add(j, x[j] * fx, 0.0);
-        sy.add(j, y[j] * fy, 0.0);
-    }
-    const DD mxd = sx.total().value() / static_cast<double>(n), myd = sy.total().value() / static_cast<double>(n);
-    std::vector<DD> xc(static_cast<std::size_t>(n)), yc(static_cast<std::size_t>(n));
-    Acc4 sxx, syy, sxy;
-    for (std::int64_t j = 0; j < n; ++j) {
-        const DD a = dd::two_sum(x[j] * fx, -mxd.hi) + (-mxd.lo), b = dd::two_sum(y[j] * fy, -myd.hi) + (-myd.lo);
-        xc[static_cast<std::size_t>(j)] = a;
-        yc[static_cast<std::size_t>(j)] = b;
-        const DD aa = a * a, bb = b * b, ab = a * b;
-        sxx.add(j, aa.hi, aa.lo);
-        syy.add(j, bb.hi, bb.lo);
-        sxy.add(j, ab.hi, ab.lo);
-    }
-    const DD Sxx = sxx.total().value(), Syy = syy.total().value(), Sxy = sxy.total().value();
+    Acc s1[2];
+    block_sums<2>(n, s1, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
+        for4(sums_neon(x, y, fx, fy, j0, j1, a), j1, [&](std::int64_t j, auto k) {
+            a[0].c[k].add(x[j] * fx, 0.0);
+            a[1].c[k].add(y[j] * fy, 0.0);
+        });
+    });
+    const DD mxd = s1[0].value() / static_cast<double>(n), myd = s1[1].value() / static_cast<double>(n);
+    // the centred values (formed again in the residual pass rather than kept: the same bits)
+    auto xc = [&](std::int64_t j) { return dd::two_sum(x[j] * fx, -mxd.hi) + (-mxd.lo); };
+    auto yc = [&](std::int64_t j) { return dd::two_sum(y[j] * fy, -myd.hi) + (-myd.lo); };
+    Acc s2[3];
+    block_sums<3>(n, s2, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
+        for4(products_neon(x, y, fx, fy, mxd, myd, j0, j1, a), j1, [&](std::int64_t j, auto k) {
+            const DD u = xc(j), v = yc(j);
+            const DD uu = u * u, vv = v * v, uv = u * v;
+            a[0].c[k].add(uu.hi, uu.lo);
+            a[1].c[k].add(vv.hi, vv.lo);
+            a[2].c[k].add(uv.hi, uv.lo);
+        });
+    });
+    const DD Sxx = s2[0].value(), Syy = s2[1].value(), Sxy = s2[2].value();
     if (!(Sxx.hi > 0.0) || !(Syy.hi > 0.0) || constant(Sxx, mxd, n) || constant(Syy, myd, n)) return o;
     o.r = clip_unit(Sxy / sqrt_dd(Sxx * Syy));
     const DD w = o.r * o.r;
@@ -168,13 +296,15 @@ RQ corr_rq(const double* x, const double* y, std::int64_t n) {
         o.q = DD{1.0, 0.0} - w;
     } else {
         const DD b = Sxy / Sxx;
-        Acc4 se;
-        for (std::int64_t j = 0; j < n; ++j) {
-            const DD e = yc[static_cast<std::size_t>(j)] - b * xc[static_cast<std::size_t>(j)];
-            const DD e2 = e * e;
-            se.add(j, e2.hi, e2.lo);
-        }
-        o.q = se.total().value() / Syy;
+        Acc s3[1];
+        block_sums<1>(n, s3, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
+            for4(residuals_neon(x, y, fx, fy, mxd, myd, b, j0, j1, a), j1, [&](std::int64_t j, auto k) {
+                const DD e = yc(j) - b * xc(j);
+                const DD e2 = e * e;
+                a[0].c[k].add(e2.hi, e2.lo);
+            });
+        });
+        o.q = s3[0].value() / Syy;
         if (o.q.hi > 0.5) o.q = DD{1.0, 0.0} - w;  // (rounding past the branch's side: take 1 - r^2)
         if (o.q.hi < 0.0) o.q = DD{0.0, 0.0};
         o.w = DD{1.0, 0.0} - o.q;
@@ -224,6 +354,7 @@ Pearson pearson_of(const double* x, const double* y, std::int64_t n, int alt) {
     if (!c.ok) return o;
     o.r = to_double(c.r);
     if (n == 2) o.r = o.r > 0.0 ? 1.0 : -1.0;
+    if (alt < 0) return o;  // the statistic alone (a resample's)
     o.p = corr_p(c, n, alt);
     o.z = fisher_z(c);
     return o;
@@ -232,8 +363,20 @@ Pearson pearson_of(const double* x, const double* y, std::int64_t n, int alt) {
 nb::tuple pearson(nb::handle x, nb::handle y, int alt, bool omit, bool ranks) {
     const Rows a(rows_arg(x)), b(rows_arg(y));
     Outs out(4, a.lanes);
+    const bool rows = a.s1 == static_cast<std::int64_t>(sizeof(double)) && b.s1 == a.s1;
     each_lane(a.lanes, (ranks ? 40 : 12) * a.n, [&](std::int64_t r) {
         std::vector<double> u, v, ru, rv;
+        if (rows && !ranks) {  // contiguous rows without a NaN: read in place (the same values)
+            const auto* x = reinterpret_cast<const double*>(a.data + r * a.s0);
+            const auto* y = reinterpret_cast<const double*>(b.data + r * b.s0);
+            bool any = false;
+            for (std::int64_t j = 0; j < a.n; ++j) any |= (x[j] != x[j]) | (y[j] != y[j]);
+            if (!any) {
+                const Pearson o = pearson_of(x, y, a.n, alt);
+                out.p[0][r] = o.r, out.p[1][r] = o.p, out.p[2][r] = o.z, out.p[3][r] = o.n;
+                return;
+            }
+        }
         const bool nan = lane_pairs(a, b, r, u, v);
         Pearson o;
         if (!(nan && !omit)) {

@@ -8,10 +8,12 @@ other areas' field names (integral, error, converged, nfev).
 
 The public functions come milestone by milestone (docs/design/integrate.md §8): C3 brought the
 sample rules (trapezoid, simpson, romb, cumulative_trapezoid, cumulative_simpson) and the fixed
-rules (fixed_quad, newton_cotes).
+rules (fixed_quad, newton_cotes), C4 QUADPACK's quad (without a weight) and the multiple
+integrals (dblquad, tplquad, nquad).
 """
 
 from .. import _calls
+from ._quadpack import dblquad, nquad, quad, tplquad
 from ._result import IntegrateResult
 from ._rules import fixed_quad, newton_cotes
 from ._samples import cumulative_simpson, cumulative_trapezoid, romb, simpson, trapezoid
@@ -25,15 +27,23 @@ cumulative_trapezoid = _calls.function(cumulative_trapezoid)
 cumulative_simpson = _calls.function(cumulative_simpson)
 fixed_quad = _calls.function(fixed_quad)
 newton_cotes = _calls.function(newton_cotes)
+quad = _calls.function(quad)
+dblquad = _calls.function(dblquad)
+tplquad = _calls.function(tplquad)
+nquad = _calls.function(nquad)
 del _calls
 
 __all__ = [
     "IntegrateResult",
     "cumulative_simpson",
     "cumulative_trapezoid",
+    "dblquad",
     "fixed_quad",
     "newton_cotes",
+    "nquad",
+    "quad",
     "romb",
     "simpson",
+    "tplquad",
     "trapezoid",
 ]

@@ -538,7 +538,9 @@ def test_results_unpack_like_scipy():
     with pytest.raises(AttributeError):
         r.eigenvalues = None
     assert repr(r).startswith("EigshResult(converged=True, status=0, n_iter=")
-    assert "eigenvalues=<array of shape (3,)>" in repr(r)
+    # a short real array written out, as every result's repr (API.md §2.3, SP113); complex by shape
+    assert repr(r).endswith(", eigenvalues=[" + ", ".join(f"{e:.6g}" for e in r.eigenvalues.tolist()) + "])")
+    assert "eigenvalues=<array of shape (2,)>" in repr(S.eigs(_sd(_UNSYM), k=2))
     text = r.summary()
     assert "Lanczos Eigenvalue Results" in text and "the 3 wanted eigenvalues converged" in text
     assert "Arnoldi Eigenvalue Results" in S.eigs(_sd(_UNSYM), k=2).summary()

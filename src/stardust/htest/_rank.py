@@ -175,7 +175,7 @@ def mannwhitneyu(
     cont = C.flag(use_continuity, name, "use_continuity")
     alt = C.alternative(alternative, name)
     perm = _is_permutation(method, name)
-    meth = "asymptotic" if perm else C.method(method, name, ("asymptotic", "exact"))
+    meth = "asymptotic" if perm else C.method(method, name, ("exact", "asymptotic"))
     s = _two(name, x, y, axis, nan_policy, keepdims)
     stat, p, z, codes, work = _k.mwu(s.rows[0], s.rows[1], cont, _ALT[alt], _REQ[meth], _EXACT_CAP, s.policy == "omit")
     if perm:  # H9: U under the permutations of the pooled samples (scipy's)

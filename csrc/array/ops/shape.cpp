@@ -358,6 +358,128 @@ nb::object stack(nb::handle arrays_obj, nb::handle axis_obj) {
     return wrap(std::move(out));
 }
 
+// ------------------------------------------------------------------ block
+
+// numpy's block (docs/api/array.md §4.5): a nested list of arrays, its depth d the same at
+// every leaf; each array gets leading axes of length 1 up to ndim = max(d, the arrays'
+// ndim), and the lists are joined innermost first, the innermost along the last axis and
+// each outer one along the axis before. One result array; every block is copied into its
+// place once (no intermediate concat).
+struct BlockNode {
+    const NDArray* leaf = nullptr;
+    std::vector<BlockNode> kids;
+    std::string path;                 // "arrays[0][1]", for messages
+    std::vector<std::int64_t> shape;  // of the joined block, `ndim` axes
+};
+
+bool is_seq(nb::handle o) { return PyList_Check(o.ptr()) || PyTuple_Check(o.ptr()); }
+
+void block_collect(nb::handle o, BlockNode& node, int depth, int& leaf_depth, std::string& first) {
+    if (is_seq(o)) {
+        if (PySequence_Size(o.ptr()) == 0)
+            throw nb::value_error(("'" + node.path + "' must not be an empty list").c_str());
+        std::int64_t i = 0;
+        for (nb::handle h : o) {
+            BlockNode kid;
+            kid.path = node.path + "[" + std::to_string(i++) + "]";
+            node.kids.push_back(std::move(kid));
+            block_collect(h, node.kids.back(), depth + 1, leaf_depth, first);  // kids grows: no pointers kept
+        }
+        return;
+    }
+    if (!is_ndarray(o)) {
+        const std::string msg = "'" + node.path + "' must be an sd.ndarray or a list of them, not " + py_type_name(o);
+        if (is_sparse_array(o)) throw SparseOperand(msg);
+        throw nb::type_error(msg.c_str());
+    }
+    node.leaf = &as_ndarray(o);
+    if (leaf_depth < 0) {
+        leaf_depth = depth;
+        first = node.path;
+    } else if (depth != leaf_depth) {
+        throw nb::value_error(("the lists are nested unevenly: '" + first + "' is at depth " +
+                               std::to_string(leaf_depth) + " but '" + node.path + "' at depth " +
+                               std::to_string(depth))
+                                  .c_str());
+    }
+}
+
+// The node's shape (ndim axes); a list at `depth` joins its blocks along axis ndim - d + depth.
+void block_shapes(BlockNode& node, int depth, int ndim, int d) {
+    if (node.leaf) {
+        node.shape.assign(static_cast<std::size_t>(ndim), 1);
+        const int lead = ndim - node.leaf->ndim;
+        for (int a = 0; a < node.leaf->ndim; ++a) node.shape[lead + a] = node.leaf->shape[a];
+        return;
+    }
+    const int axis = ndim - d + depth;
+    for (BlockNode& kid : node.kids) block_shapes(kid, depth + 1, ndim, d);
+    const BlockNode& head = node.kids[0];
+    node.shape = head.shape;
+    for (std::size_t j = 1; j < node.kids.size(); ++j) {
+        const BlockNode& kid = node.kids[j];
+        for (int a = 0; a < ndim; ++a)
+            if (a != axis && kid.shape[a] != head.shape[a])
+                throw nb::value_error(("the blocks of '" + node.path + "' must have the same shape except along axis " +
+                                       std::to_string(axis) + "; got " + shape_str(head.shape) + " at '" + head.path +
+                                       "' and " + shape_str(kid.shape) + " at '" + kid.path + "'")
+                                          .c_str());
+        if (__builtin_add_overflow(node.shape[axis], kid.shape[axis], &node.shape[axis]))
+            throw nb::value_error("array is too big");
+    }
+}
+
+void block_place(const BlockNode& node, int depth, int ndim, int d, NDArray& out, std::vector<std::int64_t>& at) {
+    if (node.leaf) {
+        NDArray dst = out;
+        for (int a = 0; a < ndim; ++a) {
+            dst.data += at[a] * out.strides[a];
+            dst.shape[a] = node.shape[a];
+        }
+        dst.update_flags();
+        assign(dst, *node.leaf);  // the leaf broadcasts over its leading axes of length 1
+        return;
+    }
+    const int axis = ndim - d + depth;
+    const std::int64_t start = at[axis];
+    for (const BlockNode& kid : node.kids) {
+        block_place(kid, depth + 1, ndim, d, out, at);
+        at[axis] += kid.shape[axis];
+    }
+    at[axis] = start;
+}
+
+nb::object block(nb::handle arrays_obj) {
+    if (!is_seq(arrays_obj) && !is_ndarray(arrays_obj)) {
+        const std::string msg =
+            "'arrays' must be an sd.ndarray or a nested list of them, not " + py_type_name(arrays_obj);
+        if (is_sparse_array(arrays_obj)) throw SparseOperand(msg);
+        throw nb::type_error(msg.c_str());
+    }
+    BlockNode root;
+    root.path = "arrays";
+    int d = -1;
+    std::string first;
+    block_collect(arrays_obj, root, 0, d, first);
+    int ndim = d;
+    DType dtype = DType::Bool;
+    auto scan = [&](auto&& self, const BlockNode& n) -> void {
+        if (n.leaf) {
+            ndim = std::max(ndim, n.leaf->ndim);
+            dtype = promote(dtype, n.leaf->dtype);
+        }
+        for (const BlockNode& k : n.kids) self(self, k);
+    };
+    scan(scan, root);
+    if (ndim > kMaxNdim)
+        throw nb::value_error(("arrays may have at most " + std::to_string(kMaxNdim) + " dimensions").c_str());
+    block_shapes(root, 0, ndim, d);
+    NDArray out = new_array(dtype, root.shape);
+    std::vector<std::int64_t> at(static_cast<std::size_t>(ndim), 0);
+    block_place(root, 0, ndim, d, out, at);
+    return wrap(std::move(out));
+}
+
 // --------------------------------------------------------------- real / imag
 
 // The out= tail shared by elementwise functions: no out -> the result itself;
@@ -513,6 +635,7 @@ void bind_shape(nb::module_& m) {
         "concat", named("concat", &concat), nb::sig("def concat(arrays, /, *, axis=0)"), arg().none(), nb::kw_only(),
         arg("axis").none() = 0
     );
+    m.def("block", named("block", &block), nb::sig("def block(arrays, /)"), arg().none());
     m.def(
         "stack", named("stack", &stack), nb::sig("def stack(arrays, /, *, axis=0)"), arg().none(), nb::kw_only(),
         arg("axis").none() = 0

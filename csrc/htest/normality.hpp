@@ -10,6 +10,7 @@
 // the bits do not depend on the thread count.
 #pragma once
 
+#include "htest/vdd.hpp"
 #include "parallel/pool.hpp"
 #include "special/dd.hpp"
 #include "stats/dist/gamma.hpp"
@@ -33,7 +34,7 @@ struct CentralSums {
 inline constexpr std::int64_t kSumChunk = 4096;
 
 // body(c) for the chunks c of m values: in parallel for 2 chunks or more and m >= 2^16
-// (parallel_for runs a nested call serially).
+// (parallel_for runs a nested call serially; sd.regression's resid_stats uses it too).
 template <class Body>
 void sum_chunks(std::int64_t m, Body&& body) {
     const std::int64_t nc = (m + kSumChunk - 1) / kSumChunk;
@@ -44,7 +45,26 @@ void sum_chunks(std::int64_t m, Body&& body) {
     }
 }
 
+// body(c) for the pairs of chunks (2c, 2c + 1) of m values: in parallel for 2 chunks or more and
+// m >= 2^16 (parallel_for runs a nested call serially). A pair is ~0.1 ms, worth waking the
+// sleeping workers, which the pool does only for a job of more than 16 tasks (htest/lanes.hpp
+// for_pieces_woken): fewer pairs are padded with empty tasks.
+template <class Body>
+void sum_chunk_pairs(std::int64_t m, Body&& body) {
+    const std::int64_t nc = (m + kSumChunk - 1) / kSumChunk, np = (nc + 1) / 2;
+    if (nc >= 2 && m >= (1 << 16)) {
+        parallel::parallel_for(std::max<std::int64_t>(np, 17), [&](std::int64_t c) {
+            if (c < np) body(c);
+        });
+    } else {
+        for (std::int64_t c = 0; c < np; ++c) body(c);
+    }
+}
+
 // The central sums of x[0..m). part: scratch of 8 doubles per chunk (8 * ceil(m / kSumChunk)).
+// Each chunk's sums are one chain of double-double additions in order; two full chunks run side
+// by side in the two lanes of NEON registers (htest/vdd.hpp: the same operations lane by lane, so
+// each chunk's bits are the scalar chain's).
 inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
     using special::dd::DD;
     using special::dd::operator+;
@@ -58,14 +78,35 @@ inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
         for (std::int64_t c = 0; c < nc; ++c) acc = acc + DD{part[c * 8 + 2 * q], part[c * 8 + 2 * q + 1]};
         return acc;
     };
-    sum_chunks(m, [&](std::int64_t c) {
+    auto full = [&](std::int64_t c) { return c < nc && (c + 1) * kSumChunk <= m; };
+    // element t of chunks c and c + 1
+    auto pair_at = [&](std::int64_t c, std::int64_t t) {
+        return float64x2_t{x[c * kSumChunk + t], x[(c + 1) * kSumChunk + t]};
+    };
+    auto put = [&](std::int64_t c, int q, vdd::D2 v) {
+        part[c * 8 + 2 * q] = vgetq_lane_f64(v.hi, 0), part[c * 8 + 2 * q + 1] = vgetq_lane_f64(v.lo, 0);
+        part[(c + 1) * 8 + 2 * q] = vgetq_lane_f64(v.hi, 1), part[(c + 1) * 8 + 2 * q + 1] = vgetq_lane_f64(v.lo, 1);
+    };
+    const float64x2_t zero = vdupq_n_f64(0.0);
+    auto sum1 = [&](std::int64_t c) {
         const std::int64_t t0 = c * kSumChunk, t1 = std::min(m, t0 + kSumChunk);
         DD s1{0.0, 0.0};
         for (std::int64_t t = t0; t < t1; ++t) s1 = s1 + DD{x[t], 0.0};
         part[c * 8 + 0] = s1.hi, part[c * 8 + 1] = s1.lo;
+    };
+    sum_chunk_pairs(m, [&](std::int64_t p) {
+        const std::int64_t c = 2 * p;
+        if (full(c) && full(c + 1)) {
+            vdd::D2 s1{zero, zero};
+            for (std::int64_t t = 0; t < kSumChunk; ++t) s1 = vdd::add(s1, vdd::D2{pair_at(c, t), zero});
+            put(c, 0, s1);
+            return;
+        }
+        sum1(c);
+        if (c + 1 < nc) sum1(c + 1);
     });
     const DD mean = special::dd::operator/(total(0), DD{static_cast<double>(m), 0.0});
-    sum_chunks(m, [&](std::int64_t c) {
+    auto sums234 = [&](std::int64_t c) {
         const std::int64_t t0 = c * kSumChunk, t1 = std::min(m, t0 + kSumChunk);
         DD a2{0.0, 0.0}, a3{0.0, 0.0}, a4{0.0, 0.0};
         for (std::int64_t t = t0; t < t1; ++t) {
@@ -77,6 +118,24 @@ inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
         }
         part[c * 8 + 0] = a2.hi, part[c * 8 + 1] = a2.lo, part[c * 8 + 2] = a3.hi, part[c * 8 + 3] = a3.lo;
         part[c * 8 + 4] = a4.hi, part[c * 8 + 5] = a4.lo;
+    };
+    const vdd::D2 nmean{vdupq_n_f64(-mean.hi), vdupq_n_f64(-mean.lo)};
+    sum_chunk_pairs(m, [&](std::int64_t p) {
+        const std::int64_t c = 2 * p;
+        if (full(c) && full(c + 1)) {
+            vdd::D2 a2{zero, zero}, a3{zero, zero}, a4{zero, zero};
+            for (std::int64_t t = 0; t < kSumChunk; ++t) {
+                const vdd::D2 d = vdd::add(vdd::D2{pair_at(c, t), zero}, nmean);
+                const vdd::D2 d2 = vdd::mul(d, d);
+                a2 = vdd::add(a2, d2);
+                a3 = vdd::add(a3, vdd::mul(d2, d));
+                a4 = vdd::add(a4, vdd::mul(d2, d2));
+            }
+            put(c, 0, a2), put(c, 1, a3), put(c, 2, a4);
+            return;
+        }
+        sums234(c);
+        if (c + 1 < nc) sums234(c + 1);
     });
     out.mean = mean;
     out.s2 = total(0);

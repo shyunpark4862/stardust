@@ -2,40 +2,60 @@
  "schema": 1,
  "area": "integrate",
  "runs": {
-  "20261122-011646-0d9b16e+": {
-   "commit": "0d9b16e",
+  "20261122-021425-cda05f3+": {
+   "commit": "cda05f3",
    "dirty": true,
    "changed": [
+    "API.md",
     "CMakeLists.txt",
     "bench/accuracy/integrate.py",
-    "bench/accuracy/sparse.py",
-    "bench/speed/cases/sparse.py",
-    "csrc/bind/htest_bind.cpp",
-    "csrc/bind/module.cpp",
+    "bench/speed/cases/array.py",
+    "bench/speed/cases/linalg.py",
+    "csrc/array/kernels/scalar_ops.hpp",
+    "csrc/array/ops/creation.cpp",
+    "csrc/array/ops/shape.cpp",
+    "csrc/array/ops/ufunc.cpp",
+    "csrc/bind/integrate_bind.cpp",
+    "csrc/bind/pyutil.cpp",
+    "csrc/htest/correlation.cpp",
     "csrc/htest/gof.cpp",
-    "src/stardust/htest/__init__.py",
-    "src/stardust/htest/_result.py",
+    "csrc/htest/lanes.hpp",
+    "csrc/htest/moments.hpp",
+    "csrc/htest/normality.hpp",
+    "csrc/htest/parametric.cpp",
+    "csrc/htest/proportion.cpp",
+    "csrc/integrate/integrate.hpp",
+    "csrc/linalg/input.cpp",
+    "csrc/linalg/ops/basic.cpp",
+    "csrc/linalg/ops/factor.cpp",
+    "csrc/linalg/pyrefs.hpp",
+    "csrc/sparse/canonical.cpp",
+    "csrc/sparse/spmv.cpp",
+    "docs/api/array.md",
+    "docs/api/linalg.md",
+    "docs/design/array.md",
+    "docs/design/linalg.md",
+    "src/stardust/__init__.py",
+    "src/stardust/_results.py",
     "src/stardust/integrate/__init__.py",
-    "src/stardust/sparse/__init__.py",
-    "src/stardust/sparse/_direct.py",
+    "src/stardust/integrate/_result.py",
+    "src/stardust/linalg/__init__.py",
+    "src/stardust/sparse/_compressed.py",
+    "tests/array/refdata.py",
+    "tests/golden/cases_array.py",
     "tests/golden/cases_integrate.py",
-    "tests/golden/cases_sparse.py",
+    "tests/golden/cases_linalg.py",
     "tests/golden/data/integrate.json",
-    "tests/golden/data/sparse.json",
-    "tests/integrate/refdata.py",
     "tests/integrate/test_api_surface.py",
-    "tests/integrate/test_result.py",
-    "tests/sparse/refdata.py",
-    "tests/sparse/test_api_surface.py",
-    "tests/sparse/test_reference_data.py",
-    "tools/integrate_ref.py",
-    "tools/sparse_ref.py"
+    "tests/linalg/test_kron_cross_expm.py",
+    "tests/linalg/test_results.py",
+    "tools/array_ref.py"
    ],
-   "date": "2026-11-22T01:16:46",
+   "date": "2026-11-22T02:14:25",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
-    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
     "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
     "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
     "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
@@ -123,8 +143,144 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-011646-0d9b16e+",
-   "comparators_run": "20261122-011646-0d9b16e+"
+   "run": "20261122-021425-cda05f3+",
+   "comparators_run": "20261122-021425-cda05f3+"
+  },
+  {
+   "id": "integrate/multiple",
+   "area": "integrate",
+   "name": "multiple",
+   "points": 7,
+   "regions": {
+    "dblquad, tplquad": {
+     "points": 7,
+     "rel_max": 5.127869208666821e-15,
+     "contract": 0.006678444375756525,
+     "bound": 1.0,
+     "worst": [
+      "multi/dbl-args"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "dblquad, tplquad": {
+      "points": 7,
+      "rel_max": 5.127869208666821e-15,
+      "contract": 0.006678444375756525,
+      "bound": 1.0,
+      "worst": [
+       "multi/dbl-args"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120,
+   "run": "20261122-021425-cda05f3+",
+   "comparators_run": "20261122-021425-cda05f3+"
+  },
+  {
+   "id": "integrate/quad",
+   "area": "integrate",
+   "name": "quad",
+   "points": 106,
+   "regions": {
+    "book": {
+     "points": 62,
+     "rel_max": 1.9764361650259676,
+     "converged_max": 51.0,
+     "short_max": 2.0,
+     "contract": 0.7000000000000005,
+     "bound": 1.0,
+     "worst": [
+      "book/xlog/+1.0"
+     ]
+    },
+    "quadpack": {
+     "points": 3,
+     "rel_max": 8.994737519062465e-14,
+     "converged_max": 3.0,
+     "short_max": 0.0,
+     "contract": 0.0741444866920152,
+     "bound": 1.0,
+     "worst": [
+      "quadpack/qags"
+     ]
+    },
+    "scipy": {
+     "points": 28,
+     "rel_max": 0.4310371912159628,
+     "converged_max": 27.0,
+     "short_max": 1.0,
+     "contract": 0.38759823884594674,
+     "bound": 1.0,
+     "worst": [
+      "scipy/tanhsinh/f9"
+     ]
+    },
+    "hard": {
+     "points": 13,
+     "rel_max": 1.3036057514308994e-13,
+     "converged_max": 13.0,
+     "short_max": 0.0,
+     "contract": 0.23523631713663093,
+     "bound": 1.0,
+     "worst": [
+      "hard/interior/+0.50"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "book": {
+      "points": 62,
+      "rel_max": 1.9764361650259676,
+      "converged_max": 51.0,
+      "short_max": 2.0,
+      "contract": 0.7000000000000005,
+      "bound": 1.0,
+      "worst": [
+       "book/xlog/+1.0"
+      ]
+     },
+     "quadpack": {
+      "points": 3,
+      "rel_max": 8.994737519062465e-14,
+      "converged_max": 3.0,
+      "short_max": 0.0,
+      "contract": 0.0741444866920152,
+      "bound": 1.0,
+      "worst": [
+       "quadpack/qags"
+      ]
+     },
+     "scipy": {
+      "points": 28,
+      "rel_max": 0.4310371912159628,
+      "converged_max": 27.0,
+      "short_max": 1.0,
+      "contract": 0.38759823884594674,
+      "bound": 1.0,
+      "worst": [
+       "scipy/tanhsinh/f9"
+      ]
+     },
+     "hard": {
+      "points": 13,
+      "rel_max": 1.3036057514308994e-13,
+      "converged_max": 13.0,
+      "short_max": 0.0,
+      "contract": 0.23523631713663093,
+      "bound": 1.0,
+      "worst": [
+       "hard/interior/+0.50"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120,
+   "run": "20261122-021425-cda05f3+",
+   "comparators_run": "20261122-021425-cda05f3+"
   },
   {
    "id": "integrate/samples",
@@ -228,8 +384,8 @@
     }
    },
    "comparator_seconds": 120,
-   "run": "20261122-011646-0d9b16e+",
-   "comparators_run": "20261122-011646-0d9b16e+"
+   "run": "20261122-021425-cda05f3+",
+   "comparators_run": "20261122-021425-cda05f3+"
   }
  ]
 }

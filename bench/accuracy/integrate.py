@@ -11,11 +11,22 @@ Since milestone C3:
               without a weight, against the Arb integral (ref/integrals.json): recorded only (the
               rule's own error, not a contract). Its nodes and weights are correctly rounded
               (tests/integrate/test_fixed.py) and its sum is within the pairwise bound.
+Since milestone C4:
+  quad        quad (QAGS, QAGI, QAGP) on the collection's integrals without a weight, one region
+              per collection (book, quadpack, scipy, hard), against the Arb integral: the relative
+              error of every run, and the contract of a converged run: the true error within the
+              error estimate (|value - ref| / error <= 1), but for the three runs where scipy's
+              QUADPACK misses too (tests/integrate/test_reference_data.QUAD_SHORT: the narrow peak
+              a = 19, 20 that the first rule does not see, f10's extrapolation to the exact pi/2),
+              which are recorded as "short" and left out of the contract; "converged" counts.
+  multiple    dblquad and tplquad on problems.MULTI against the Arb integral (relative error;
+              the contract as quad's, with the error nquad gives: the largest of every quad's).
 scipy.integrate 1.18.1 is the comparator: the same formulas (its sums in numpy's order) and its
-roots_legendre.
+roots_legendre; its QUADPACK for quad (the same steps: equal to the bit, tests/integrate/
+test_quadpack.py).
 
-The quad family (C4, C5), tanhsinh and nsum (C6), quad_vec and cubature (C7) join with their
-milestones, measuring the relative error and the honesty of the error estimate.
+tanhsinh and nsum (C6), quad_vec and cubature (C7) join with their milestones, measuring the
+relative error and the honesty of the error estimate.
 """
 
 from __future__ import annotations
@@ -103,6 +114,90 @@ def _fixed_quad(lib="sd"):
     return out
 
 
+def _quad_lib(lib):
+    if lib == "sd":
+        import stardust as sd
+
+        def q(f, a, b, **kw):
+            r = sd.integrate.quad(f, a, b, **kw)
+            return r.integral, r.error, r.status
+
+        return q
+    if lib == "scipy":
+        import warnings
+
+        from scipy import integrate
+
+        def q(f, a, b, **kw):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                r = integrate.quad(f, a, b, full_output=1, **kw)
+            return r[0], r[1], 0 if len(r) == 3 else 1
+
+        return q
+    return None
+
+
+def _quad(lib="sd"):
+    q = _quad_lib(lib)
+    if q is None:
+        return None
+    from tests.integrate import problems as P
+    from tests.integrate import refdata
+    from tests.integrate.test_reference_data import QUAD_SHORT
+
+    ref = refdata.integrals()
+    out = {}
+    for coll in ("book", "quadpack", "scipy", "hard"):
+        where, rel, contract, short, conv = [], [], [], 0, 0
+        for p in P.INTEGRALS:
+            if p.weight is not None or p.collection != coll:
+                continue
+            kw = {"points": list(p.points)} if p.points else {}
+            v, e, status = q(p.f, p.a, p.b, **kw)
+            hi, lo = ref[p.id]["value"]
+            err = abs((v - hi) - lo)
+            where.append(p.id)
+            rel.append(err / abs(hi) if hi else err)
+            if status == 0:
+                conv += 1
+                if p.id in QUAD_SHORT:
+                    short += 1
+                    contract.append(0.0)
+                else:
+                    contract.append(err / e if e > 0 else (0.0 if err == 0 else math.inf))
+            else:
+                contract.append(0.0)
+        out[coll] = region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0, converged=np.array([conv]),
+                           short=np.array([short]))  # fmt: skip
+    return out
+
+
+def _multiple(lib="sd"):
+    if lib == "sd":
+        import stardust as sd
+
+        I = sd.integrate  # noqa: E741
+    elif lib == "scipy":
+        import scipy.integrate as I  # noqa: N812
+    else:
+        return None
+    from tests.integrate import problems as P
+    from tests.integrate import refdata
+
+    ref = refdata.multiple()
+    where, rel, contract = [], [], []
+    for m in P.MULTI:
+        f = (lambda m: lambda *xs: float(m.func(*xs)))(m)
+        v, e = tuple(getattr(I, m.kind)(f, m.a, m.b, *m.limits))[:2]
+        hi, lo = ref[m.id]["value"]
+        err = abs((v - hi) - lo)
+        where.append(m.id)
+        rel.append(err / abs(hi))
+        contract.append(err / e if e > 0 else (0.0 if err == 0 else math.inf))
+    return {"dblquad, tplquad": region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0)}
+
+
 def sweeps():
-    specs = [("samples", _samples), ("fixed_quad", _fixed_quad)]
+    specs = [("samples", _samples), ("fixed_quad", _fixed_quad), ("quad", _quad), ("multiple", _multiple)]
     return [Custom("integrate", name, fn, compare_libs(fn, ("scipy",), seconds=120)) for name, fn in specs]

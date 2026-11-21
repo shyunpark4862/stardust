@@ -8,7 +8,10 @@
 // thread count (API.md §3).
 #pragma once
 
+#include <arm_neon.h>
+
 #include "array/kernels/scalar_ops.hpp"
+#include "base/pairwise.hpp"
 #include "bind/pyutil.hpp"
 #include "linalg/ops/vnorm.hpp"
 #include "linalg/pairwise.hpp"
@@ -171,6 +174,161 @@ void aypx(T a, T* y, const T* x, int64_t n) {
 template <class T>
 void scal(T a, T* x, int64_t n) {
     each(n, [&](int64_t i) { x[i] = mul(a, x[i]); });
+}
+
+// ---- several vectors in one pass (the same bits as the one-vector operations above) ----
+
+// The leaves of dot()'s pairwise tree over n terms (pairwise::tree: runs of at most kBlock doubles,
+// kBlock / 2 complex), left to right; the leaf sums combined along the same tree give dot()'s sum
+// exactly (pairwise::combine), whichever task computed each leaf.
+inline const pairwise::Leaves& dot_leaves(int64_t n, bool complex) {
+    thread_local pairwise::Leaves cache[2];
+    thread_local int64_t cached[2] = {-1, -1};
+    const int c = complex ? 1 : 0;
+    if (cached[c] != n) {
+        cache[c] = pairwise::plan(n, complex ? pairwise::kBlock / 2 : pairwise::kBlock, complex);
+        cached[c] = n;
+    }
+    return cache[c];
+}
+
+template <class T>
+inline T dot_leaf(const T* a, const T* b, int64_t m) {
+    if constexpr (kComplex<T>) return linalg::detail::fma_cdot_leaf(a, b, m);
+    else return linalg::detail::fma_dot_leaf(a, b, m);
+}
+
+// fma_dot_leaf of two vectors against one b at once (b's loads shared): each result has the very
+// arithmetic of fma_dot_leaf (the same lanes, the same lane tree, the same tail).
+inline void dot_leaf2(const double* a0, const double* a1, const double* b, int64_t n, double& r0, double& r1) {
+    int64_t i = 0;
+    r0 = 0.;
+    r1 = 0.;
+    if (n >= 16) {
+        float64x2_t c[8], d[8];
+        for (int j = 0; j < 8; ++j) {
+            const float64x2_t bv = vld1q_f64(b + 2 * j);
+            c[j] = vmulq_f64(vld1q_f64(a0 + 2 * j), bv);
+            d[j] = vmulq_f64(vld1q_f64(a1 + 2 * j), bv);
+        }
+        for (i = 16; i + 16 <= n; i += 16)
+            for (int j = 0; j < 8; ++j) {
+                const float64x2_t bv = vld1q_f64(b + i + 2 * j);
+                c[j] = vfmaq_f64(c[j], vld1q_f64(a0 + i + 2 * j), bv);
+                d[j] = vfmaq_f64(d[j], vld1q_f64(a1 + i + 2 * j), bv);
+            }
+        const float64x2_t s = vaddq_f64(
+            vaddq_f64(vaddq_f64(c[0], c[1]), vaddq_f64(c[2], c[3])),
+            vaddq_f64(vaddq_f64(c[4], c[5]), vaddq_f64(c[6], c[7]))
+        );
+        const float64x2_t t = vaddq_f64(
+            vaddq_f64(vaddq_f64(d[0], d[1]), vaddq_f64(d[2], d[3])),
+            vaddq_f64(vaddq_f64(d[4], d[5]), vaddq_f64(d[6], d[7]))
+        );
+        r0 = vgetq_lane_f64(s, 0) + vgetq_lane_f64(s, 1);
+        r1 = vgetq_lane_f64(t, 0) + vgetq_lane_f64(t, 1);
+    }
+    for (; i < n; ++i) {
+        r0 = std::fma(a0[i], b[i], r0);
+        r1 = std::fma(a1[i], b[i], r1);
+    }
+}
+
+// dot()'s 0 + tree, from the leaf sums parts[0, nl) of n terms
+template <class T>
+T dot_of_leaves(int64_t n, const T* parts, int64_t nl) {
+    const std::vector<T> v(parts, parts + nl);
+    const T s = pairwise::combine(n, kComplex<T> ? pairwise::kBlock / 2 : pairwise::kBlock, v);
+    if constexpr (kComplex<T>) return {0. + s.real(), 0. + s.imag()};
+    else return 0. + s;
+}
+
+// y[l] = dot(V[:, l], x) for l < j (V's columns of n entries one after another): leaf by leaf over
+// all the columns, so x's leaf is read once from cache, two real columns per sweep; tasks of whole
+// leaves cut by n and j alone. Bit for bit j calls of dot() (SP8: the Lanczos and Arnoldi steps).
+template <class T>
+void dots(const T* V, int64_t n, int64_t j, const T* x, T* y) {
+    if (j <= 0) return;
+    if (j == 1 || n == 0) {
+        for (int64_t l = 0; l < j; ++l) y[l] = dot(V + l * n, x, n);
+        return;
+    }
+    const pairwise::Leaves& lv = dot_leaves(n, kComplex<T>);
+    const int64_t nl = static_cast<int64_t>(lv.size());
+    std::vector<T> parts(static_cast<std::size_t>(nl * j));
+    const int64_t per = std::max<int64_t>(1, kChunk / (j * pairwise::kBlock));  // leaves a task
+    const int64_t nt = (nl + per - 1) / per;
+    for_tasks(nt, n * j, [&](int64_t t) {
+        for (int64_t q = t * per; q < std::min(nl, (t + 1) * per); ++q) {
+            const int64_t b0 = lv[static_cast<std::size_t>(q)].first, m = lv[static_cast<std::size_t>(q)].second;
+            int64_t l = 0;
+            if constexpr (!kComplex<T>)
+                for (; l + 2 <= j; l += 2)
+                    dot_leaf2(
+                        V + l * n + b0, V + (l + 1) * n + b0, x + b0, m, parts[l * nl + q], parts[(l + 1) * nl + q]
+                    );
+            for (; l < j; ++l) parts[l * nl + q] = dot_leaf(V + l * n + b0, x + b0, m);
+        }
+    });
+    for (int64_t l = 0; l < j; ++l) y[l] = dot_of_leaves(n, parts.data() + l * nl, nl);
+}
+
+// y += a x, then dot(z, y) (z null: no dot, returns 0): one pass over y, the update and the dot's
+// leaves together. The same bits as axpy() then dot() (SP8: the Gram-Schmidt steps of gmres).
+template <class T>
+T axpy_dot(T a, const T* x, T* y, const T* z, int64_t n) {
+    const pairwise::Leaves& lv = dot_leaves(n, kComplex<T>);
+    const int64_t nl = static_cast<int64_t>(lv.size());
+    std::vector<T> parts(static_cast<std::size_t>(nl));
+    const int64_t per = std::max<int64_t>(1, kChunk / pairwise::kBlock);
+    const int64_t nt = (nl + per - 1) / per;
+    for_tasks(nt, n, [&](int64_t t) {
+        for (int64_t q = t * per; q < std::min(nl, (t + 1) * per); ++q) {
+            const int64_t b0 = lv[static_cast<std::size_t>(q)].first, m = lv[static_cast<std::size_t>(q)].second;
+            for (int64_t i = b0; i < b0 + m; ++i) {
+                if constexpr (kComplex<T>) y[i] = add(y[i], ops::cmul(a, x[i]));
+                else y[i] = std::fma(a, x[i], y[i]);
+            }
+            if (z) parts[q] = dot_leaf(z + b0, y + b0, m);
+        }
+    });
+    return z ? dot_of_leaves(n, parts.data(), nl) : T{};
+}
+
+// y = (zero ? 0 : y) + sum_l coef[l] V[:, l], each element's terms in column order (blocks of rows
+// that keep y's block in L1 across the columns, four columns a pass); tasks of rows cut by n and j
+// alone, small enough that a basis of n = 10^4 shares out (SP8).
+template <class T>
+void gaxpy(const T* V, int64_t n, int64_t j, const T* coef, T* y, bool zero) {
+    auto madd4 = [](T c, T v, T acc) {
+        if constexpr (kComplex<T>) return add(acc, ops::cmul(c, v));
+        else return std::fma(c, v, acc);
+    };
+    const int64_t rows = std::max<int64_t>(256, (kChunk / std::max<int64_t>(j, 1)) & ~int64_t(255));
+    for_chunks(
+        n,
+        [&](int64_t, int64_t lo, int64_t hi) {
+            constexpr int64_t kRows = 256;
+            for (int64_t b0 = lo; b0 < hi; b0 += kRows) {
+                const int64_t b1 = std::min(hi, b0 + kRows);
+                if (zero)
+                    for (int64_t i = b0; i < b1; ++i) y[i] = T{};
+                int64_t l = 0;
+                for (; l + 4 <= j; l += 4) {
+                    const T c0 = coef[l], c1 = coef[l + 1], c2 = coef[l + 2], c3 = coef[l + 3];
+                    const T *v0 = V + l * n, *v1 = v0 + n, *v2 = v1 + n, *v3 = v2 + n;
+                    for (int64_t i = b0; i < b1; ++i)
+                        y[i] = madd4(c3, v3[i], madd4(c2, v2[i], madd4(c1, v1[i], madd4(c0, v0[i], y[i]))));
+                }
+                for (; l < j; ++l) {
+                    const T c = coef[l];
+                    const T* v = V + l * n;
+                    for (int64_t i = b0; i < b1; ++i) y[i] = madd4(c, v[i], y[i]);
+                }
+            }
+        },
+        rows, n * std::max<int64_t>(j, 1)
+    );
 }
 
 // ---- operators ----

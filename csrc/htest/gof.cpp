@@ -116,27 +116,52 @@ PdLane pd_lane(const Rows& o, const Rows* e, std::int64_t r, double lam, double 
     }
     Acc pos, lin, raw;
     const double aa = lam + 1.0;
-    for (std::int64_t i = 0; i < k; ++i) {
+    // cell i's terms: into raw (scipy's term), pos alone (Pearson's), or pos and lin
+    struct Term {
+        DD a, d;
+        int kind;
+    };
+    auto term = [&](std::int64_t i) -> Term {
         const double x = ov[static_cast<std::size_t>(i)];
         const DD E = e ? DD{ev[static_cast<std::size_t>(i)], 0.0} : emean;
-        if (!(E.hi > 0.0) || x < 0.0 || !std::isfinite(E.hi) || !std::isfinite(x)) {
-            raw.add(scipy_term(lam, x, E.hi));
-            continue;
-        }
+        if (!(E.hi > 0.0) || x < 0.0 || !std::isfinite(E.hi) || !std::isfinite(x))
+            return {DD{scipy_term(lam, x, E.hi), 0.0}, DD{0.0, 0.0}, 0};
         const DD d = dd::two_sum(x, -E.hi) - E.lo;  // O - E
-        if (lam == 1.0) {
-            pos.add((d * d) / E.hi);
-            continue;
-        }
+        if (lam == 1.0) return {(d * d) / E.hi, d, 1};
         const double t = (d.hi + d.lo) / E.hi;
-        if (lam == 0.0) {
-            pos.add(2.0 * E.hi * g1(t));
-        } else if (lam == -1.0) {
-            pos.add(2.0 * E.hi * ga(0.0, t));
-        } else {
-            pos.add(2.0 * E.hi * ga(aa, t));
+        const double g = lam == 0.0 ? g1(t) : (lam == -1.0 ? ga(0.0, t) : ga(aa, t));
+        return {DD{2.0 * E.hi * g, 0.0}, d, 2};
+    };
+    auto add = [&](const Term& t) {
+        if (t.kind == 0) raw.add(t.a.hi);
+        else if (t.kind == 1) pos.add(t.a);
+        else pos.add(t.a.hi), lin.add(t.d);
+    };
+    // the terms on the pool for a long lane alone, added in order (the same bits)
+    const std::int64_t cost = lam == 1.0 ? 8 : 48;
+    if (k * cost < kParallelThreshold || k < 2 * kTask || !parallel::available()) {
+        for (std::int64_t i = 0; i < k; ++i) {  // (term and add in one, as written out)
+            const double x = ov[static_cast<std::size_t>(i)];
+            const DD E = e ? DD{ev[static_cast<std::size_t>(i)], 0.0} : emean;
+            if (!(E.hi > 0.0) || x < 0.0 || !std::isfinite(E.hi) || !std::isfinite(x)) {
+                raw.add(scipy_term(lam, x, E.hi));
+                continue;
+            }
+            const DD d = dd::two_sum(x, -E.hi) - E.lo;  // O - E
+            if (lam == 1.0) {
+                pos.add((d * d) / E.hi);
+                continue;
+            }
+            const double t = (d.hi + d.lo) / E.hi;
+            pos.add(2.0 * E.hi * (lam == 0.0 ? g1(t) : (lam == -1.0 ? ga(0.0, t) : ga(aa, t))));
+            lin.add(d);
         }
-        lin.add(d);
+    } else {
+        std::vector<Term> ts(static_cast<std::size_t>(k));
+        for_pieces(k, kTask, k * cost, [&](std::int64_t, std::int64_t b, std::int64_t f) {
+            for (std::int64_t i = b; i < f; ++i) ts[static_cast<std::size_t>(i)] = term(i);
+        });
+        for (const Term& t : ts) add(t);
     }
     const double coef = lam == -1.0 ? -2.0 : (lam == 1.0 ? 0.0 : 2.0 / aa);
     Acc tot = pos;
@@ -296,7 +321,7 @@ SwLane shapiro_lane(std::vector<double>& x) {
     SwLane o;
     const auto n = static_cast<std::int64_t>(x.size());
     if (n < 3) return o;
-    std::sort(x.begin(), x.end());
+    sort_values(x);
     const Moments mo = moments_of(x.data(), nullptr, n);
     if (mo.constant() || !std::isfinite(mo.ss.hi)) return o;
     const double nn = static_cast<double>(n);
@@ -502,21 +527,18 @@ AdLane anderson_lane(std::vector<double>& x, int dist) {
     AdLane o;
     const auto n = static_cast<std::int64_t>(x.size());
     if (n < 2) return o;
-    std::sort(x.begin(), x.end());
+    sort_values(x);
     const Moments mo = moments_of(x.data(), nullptr, n);
     if (mo.constant() || !std::isfinite(mo.ss.hi)) return o;
     const double N = static_cast<double>(n);
     if (dist == kWeibullD) {  // the three-parameter Weibull (H40): mle.hpp's profile likelihood
         double th[3];
         if (!mle::weibull3_fit(x, th[0], th[1], th[2])) return o;
-        Acc s;
-        for (std::int64_t i = 0; i < n; ++i) {
+        const Acc s = ordered_sum(n, 64, [&](std::int64_t i) {
             const double c = (2.0 * static_cast<double>(i + 1) - 1.0) / N;
-            s.add(
-                c * (mle::fn<m::Logcdf>(mle::kWeibull3, th, x[static_cast<std::size_t>(i)]) +
-                     mle::fn<m::Logccdf>(mle::kWeibull3, th, x[static_cast<std::size_t>(n - 1 - i)]))
-            );
-        }
+            return c * (mle::fn<m::Logcdf>(mle::kWeibull3, th, x[static_cast<std::size_t>(i)]) +
+                        mle::fn<m::Logccdf>(mle::kWeibull3, th, x[static_cast<std::size_t>(n - 1 - i)]));
+        });
         o.a2 = -N - to_double(s.value());
         o.p = anderson_weibull_p(o.a2, th[0]);
         return o;
@@ -552,26 +574,35 @@ AdLane anderson_lane(std::vector<double>& x, int dist) {
                 w[static_cast<std::size_t>(i)] = (z[static_cast<std::size_t>(i)] - loc) / scale;
         }
     }
-    auto logcdf = [&](double v) {
+    // the standard distribution's logcdf and logccdf of every w, by its chunk kernel (mle.hpp
+    // method_array: method_of's bits), on the pool for a long sample
+    std::vector<double> L(static_cast<std::size_t>(n)), U(static_cast<std::size_t>(n));
+    for_pieces(n, kTask, n * 32, [&](std::int64_t, std::int64_t b, std::int64_t e) {
+        const double* wb = w.data() + b;
+        double *lb = L.data() + b, *ub = U.data() + b;
+        const std::int64_t len = e - b;
         switch (dist) {
-            case kNormalD: return stats::method_of<stats::Normal, m::Logcdf>(v, 0.0, 1.0);
-            case kExponentialD: return stats::method_of<stats::Exponential, m::Logcdf>(v, 1.0);
-            case kLogisticD: return stats::method_of<stats::Logistic, m::Logcdf>(v, 0.0, 1.0);
-            default: return stats::method_of<stats::Gumbel, m::Logcdf>(v, 0.0, 1.0);
+            case kNormalD:
+                method_array<stats::Normal, m::Logcdf>(wb, len, lb, 0.0, 1.0);
+                method_array<stats::Normal, m::Logccdf>(wb, len, ub, 0.0, 1.0);
+                break;
+            case kExponentialD:
+                method_array<stats::Exponential, m::Logcdf>(wb, len, lb, 1.0);
+                method_array<stats::Exponential, m::Logccdf>(wb, len, ub, 1.0);
+                break;
+            case kLogisticD:
+                method_array<stats::Logistic, m::Logcdf>(wb, len, lb, 0.0, 1.0);
+                method_array<stats::Logistic, m::Logccdf>(wb, len, ub, 0.0, 1.0);
+                break;
+            default:
+                method_array<stats::Gumbel, m::Logcdf>(wb, len, lb, 0.0, 1.0);
+                method_array<stats::Gumbel, m::Logccdf>(wb, len, ub, 0.0, 1.0);
         }
-    };
-    auto logsf = [&](double v) {
-        switch (dist) {
-            case kNormalD: return stats::method_of<stats::Normal, m::Logccdf>(v, 0.0, 1.0);
-            case kExponentialD: return stats::method_of<stats::Exponential, m::Logccdf>(v, 1.0);
-            case kLogisticD: return stats::method_of<stats::Logistic, m::Logccdf>(v, 0.0, 1.0);
-            default: return stats::method_of<stats::Gumbel, m::Logccdf>(v, 0.0, 1.0);
-        }
-    };
+    });
     Acc s;
     for (std::int64_t i = 0; i < n; ++i) {
         const double c = (2.0 * static_cast<double>(i + 1) - 1.0) / N;
-        s.add(c * (logcdf(w[static_cast<std::size_t>(i)]) + logsf(w[static_cast<std::size_t>(n - 1 - i)])));
+        s.add(c * (L[static_cast<std::size_t>(i)] + U[static_cast<std::size_t>(n - 1 - i)]));
     }
     o.a2 = -N - to_double(s.value());
     o.p = anderson_p(dist, o.a2, N);

@@ -90,37 +90,13 @@ void vcopy(const T* x, T* y, int64_t n) {
 // y[l] = V[:, l]^H x for l < j (dgemv 'T', zgemv 'C')
 template <class T>
 void gemv_t(const T* V, int64_t n, int64_t j, const T* x, T* y) {
-    for (int64_t l = 0; l < j; ++l) y[l] = dot(V + l * n, x, n);
+    dots(V, n, j, x, y);
 }
 
 // y = (zero ? 0 : y) + sum_l coef[l] V[:, l], every element's terms in column order
 template <class T>
 void gemv_n(const T* V, int64_t n, int64_t j, const T* coef, T* y, bool zero) {
-    for_chunks(
-        n,
-        [&](int64_t, int64_t lo, int64_t hi) {
-            // blocks of rows short enough that y's block stays in registers and L1 across columns
-            constexpr int64_t kRows = 256;
-            for (int64_t b0 = lo; b0 < hi; b0 += kRows) {
-                const int64_t b1 = std::min(hi, b0 + kRows);
-                if (zero)
-                    for (int64_t i = b0; i < b1; ++i) y[i] = T{};
-                int64_t l = 0;
-                for (; l + 4 <= j; l += 4) {  // four columns per pass over y (each element's order kept)
-                    const T c0 = coef[l], c1 = coef[l + 1], c2 = coef[l + 2], c3 = coef[l + 3];
-                    const T *v0 = V + l * n, *v1 = v0 + n, *v2 = v1 + n, *v3 = v2 + n;
-                    for (int64_t i = b0; i < b1; ++i)
-                        y[i] = madd_(c3, v3[i], madd_(c2, v2[i], madd_(c1, v1[i], madd_(c0, v0[i], y[i]))));
-                }
-                for (; l < j; ++l) {
-                    const T c = coef[l];
-                    const T* v = V + l * n;
-                    for (int64_t i = b0; i < b1; ++i) y[i] = madd_(c, v[i], y[i]);
-                }
-            }
-        },
-        kChunk, n * std::max<int64_t>(j, 1)
-    );
+    gaxpy(V, n, j, coef, y, zero);
 }
 
 // y -= V[:, 0:j] h

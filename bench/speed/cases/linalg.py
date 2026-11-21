@@ -276,6 +276,31 @@ def _kron_batch(a, k3):
     return lambda: (a[..., :, None, :, None] * k3[:, None, :]).reshape(*batch, 3 * m, 3 * n)
 
 
+def _kronsum_np(a, k3):
+    """kron(I_3, a) + kron(k3, I_m) by assignment: a on the diagonal blocks, k3[i, j] on the
+    diagonal of block (i, j) (np.kron with the identity would also multiply by its zeros)."""
+    import numpy as np
+
+    batch, m = a.shape[:-2], a.shape[-1]
+    idx = np.arange(m)
+
+    def run():
+        out = np.zeros((*batch, 3 * m, 3 * m))
+        for i in range(3):
+            out[..., i * m : (i + 1) * m, i * m : (i + 1) * m] = a
+            for j in range(3):
+                out[..., i * m + idx, j * m + idx] += k3[i, j]
+        return out
+
+    return run
+
+
+def _block_diag_sd(a, c):
+    import stardust as sd
+
+    return functools.partial(sd.linalg.block_diag, [a, c])
+
+
 def matrix_rows(shape):
     """(name, sd call, (lib, ref call), note) at one square shape. ROW_SHAPES limits a row
     to some shapes."""
@@ -329,6 +354,12 @@ def matrix_rows(shape):
         ("lu(a)", S("lu", "A"), P("lu", "a", p_indices=True), ""),
         ("lu_solve(l, u, perm, b)", S("lu_solve", "LU_L", "LU_U", "LU_P", "B"), P("lu_solve", "lu_f", "b"), ""),
         (
+            "lu_solve(l, u, perm, b, trans='T')",
+            S("lu_solve", "LU_L", "LU_U", "LU_P", "B", trans="T"),
+            P("lu_solve", "lu_f", "b", trans=1),
+            "aᵀ x = b",
+        ),
+        (
             "lu_solve(l, u, perm, b16)",
             S("lu_solve", "LU_L", "LU_U", "LU_P", "B16"),
             P("lu_solve", "lu_f", "b16"),
@@ -377,6 +408,15 @@ def matrix_rows(shape):
             N("kron", "a", "k3") if single else ("numpy", Expr("a k3", _kron_batch)),
             "k는 3×3" if single else "k는 3×3, numpy는 브로드캐스트 곱을 reshape",
         ),
+        (
+            "kronsum(a, k)",
+            S("kronsum", "A", "K3"),
+            ("numpy", Expr("a k3", _kronsum_np)),
+            "k는 3×3, numpy는 블록과 대각에 대입",
+        ),
+        ("block_diag(a, c)", Expr("A C", _block_diag_sd), P("block_diag", "a", "c"), ""),
+        ("bandwidth(a)", S("bandwidth", "A"), P("bandwidth", "a"), "꽉 찬 행렬"),
+        ("bandwidth(t)", S("bandwidth", "T"), P("bandwidth", "t"), "위 삼각 행렬"),
         ("cross(v, w)", S("cross", "V3", "W3"), N("cross", "v3", "w3"), "행마다 앞 세 원소"),
         ("expm(a)", S("expm", "A"), P("expm", "a"), ""),
         ("expm(t)", S("expm", "UT"), P("expm", "ut"), "위 삼각 행렬"),
@@ -448,6 +488,7 @@ ROW_SHAPES = {
     "eigvals(a)": _BASE_SHAPES - {(1000, 1000)},
     "schur(a)": _BASE_SHAPES - {(1000, 1000)},
     "solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)": {(100, 32, 32)},
+    "kronsum(a, k)": _BASE_SHAPES - {(1000, 1000)},  # a 3000² result for a 1000² input
 }
 COMPLEX_ROWS = {"solve(a, b)", "inv(a)", "cholesky(spd)", "qr(a)", "eigh(h)", "svd(a)", "eig(a)", "expm(a)"}
 

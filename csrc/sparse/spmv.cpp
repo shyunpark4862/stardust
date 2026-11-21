@@ -24,10 +24,9 @@
 //       once (NaN for count 0).
 //
 // Every output element is one sum in ascending index order (sparse/arith.hpp), computed by one
-// task: gather splits the lines into fixed ranges of about 2^14 entries; scatter runs in line order
-// on the calling thread (a transpose first and a gather on the pool cost more than they saved at
-// nnz 10^5-10^7 on 10 threads: a parallel scatter is left to SP8). So the bits never depend on the
-// thread count.
+// task: gather splits the lines into fixed ranges of about 2^14 entries; scatter runs in line order,
+// on the calling thread or (SP8) on the pool by blocks of outputs, each block taking its terms in
+// line order (scatter_blocks). So the bits never depend on the thread count.
 #include "base/int_sum.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
@@ -38,6 +37,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -146,6 +146,137 @@ void scatter_serial(
     }
 }
 
+// The same scatter on the pool, with the same terms in the same order for every output: blocks of
+// 2^shift outputs (cache-sized), and tasks over the lines (fixed ranges of about 2^14 entries, cut
+// by indptr alone). Each task sorts its entries by output block (counting, stable) into items --
+// make(p, line) gives an entry's item: its output j and what its term needs, so the second pass
+// reads them in order --, then each block applies its items (apply(item, yrow)) in task order, that
+// is line order, exactly as scatter_serial does for those outputs, long outputs cut the same way.
+// So the result is the serial one, bit for bit, for any thread count. Returns false (nothing done)
+// when there are too few blocks to share.
+template <class T, class Make, class Apply>
+bool scatter_blocks(
+    int64_t n_lines,
+    int64_t n_out,
+    const int64_t* ip,
+    const int64_t* ix,
+    int64_t k,
+    T* y,
+    int64_t ys,
+    int64_t yc,
+    bool track,
+    const Make& make,
+    const Apply& apply
+) {
+    using Item = decltype(make(int64_t(0), int64_t(0)));
+    int shift = 6;
+    while (shift < 12 && (int64_t(2) << shift) * k <= 4096) ++shift;  // a block holds <= 4096 values
+    if (n_out <= 0) return false;
+    const int64_t nb = ((n_out - 1) >> shift) + 1;
+    if (nb < 4) return false;
+    const int64_t width = int64_t(1) << shift;
+    const std::vector<int64_t> bounds = line_bounds(ip, n_lines, kChunk);
+    const int64_t nt = static_cast<int64_t>(bounds.size()) - 1;
+    const int64_t nnz = ip[n_lines] - ip[0];
+    const parallel::Unlocked unlocked(true);
+    std::unique_ptr<int64_t[]> off(new int64_t[static_cast<std::size_t>(nt * nb)]());
+    parallel::parallel_for(nt, [&](int64_t t) {
+        int64_t* c = off.get() + t * nb;
+        for (int64_t p = ip[bounds[t]]; p < ip[bounds[t + 1]]; ++p) ++c[ix[p] >> shift];
+    });
+    std::vector<int64_t> start(static_cast<std::size_t>(nb + 1));
+    int64_t run = 0;
+    for (int64_t b = 0; b < nb; ++b) {
+        start[b] = run;
+        for (int64_t t = 0; t < nt; ++t) {
+            const int64_t c = off[t * nb + b];
+            off[t * nb + b] = run;
+            run += c;
+        }
+    }
+    start[nb] = run;
+    std::unique_ptr<Item[]> items(new Item[static_cast<std::size_t>(std::max<int64_t>(nnz, 1))]);
+    parallel::parallel_for(nt, [&](int64_t t) {
+        int64_t* o = off.get() + t * nb;
+        for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r)
+            for (int64_t p = ip[r]; p < ip[r + 1]; ++p) items[o[ix[p] >> shift]++] = make(p, r);
+    });
+    constexpr bool floating = std::is_same_v<T, double> || std::is_same_v<T, complex128>;
+    const bool count = floating && nnz > kLine && track;
+    parallel::parallel_for(nb, [&](int64_t b) {
+        const int64_t j0 = b << shift, j1 = std::min(n_out, j0 + width);
+        for (int64_t j = j0; j < j1; ++j)
+            for (int64_t c = 0; c < k; ++c) y[j * ys + c * yc] = T{};
+        const Item* it = items.get();
+        if (!count) {
+            for (int64_t q = start[b]; q < start[b + 1]; ++q) apply(it[q], y + it[q].j * ys);
+            return;
+        }
+        std::vector<std::uint16_t> cnt(static_cast<std::size_t>(j1 - j0), 0);
+        std::unordered_map<int64_t, std::vector<T>> pieces;
+        for (int64_t q = start[b]; q < start[b + 1]; ++q) {
+            const int64_t j = it[q].j;
+            T* yr = y + j * ys;
+            apply(it[q], yr);
+            if (++cnt[static_cast<std::size_t>(j - j0)] == kLine) {
+                std::vector<T>& v = pieces[j];
+                for (int64_t c = 0; c < k; ++c) {
+                    v.push_back(yr[c * yc]);
+                    yr[c * yc] = T{};
+                }
+                cnt[static_cast<std::size_t>(j - j0)] = 0;
+            }
+        }
+        for (auto& [j, v] : pieces) {
+            T* yr = y + j * ys;
+            if (cnt[static_cast<std::size_t>(j - j0)])
+                for (int64_t c = 0; c < k; ++c) v.push_back(yr[c * yc]);
+            const int64_t nch = static_cast<int64_t>(v.size()) / k;
+            for (int64_t c = 0; c < k; ++c) yr[c * yc] = tree_sum(v.data() + c, nch, k);
+        }
+    });
+    return true;
+}
+
+// The scatter: on the pool from 2^16 units of work (entries times columns), else in line order on
+// the calling thread (step(p, line, yrow)). Same bits either way.
+template <class T, class Step, class Make, class Apply>
+void scatter_any(
+    int64_t n_lines,
+    int64_t n_out,
+    const int64_t* ip,
+    const int64_t* ix,
+    int64_t k,
+    T* y,
+    int64_t ys,
+    int64_t yc,
+    bool track,
+    const Step& step,
+    const Make& make,
+    const Apply& apply
+) {
+    const int64_t nnz = ip[n_lines] - ip[0];
+    if ((nnz + n_out) * k >= 2 * kParallelThreshold && parallel::available() &&
+        scatter_blocks<T>(n_lines, n_out, ip, ix, k, y, ys, yc, track, make, apply))
+        return;
+    scatter_serial<T>(n_lines, n_out, ip, ix, k, y, ys, yc, track, step);
+}
+
+// Items of scatter_blocks: an output, and the two factors of its term (a product) or the term.
+template <class T>
+struct ProductItem {
+    int64_t j;
+    T a, x;
+};
+template <class T>
+struct TermItem {
+    int64_t j;
+    T a;
+};
+struct EntryItem {
+    int64_t j, p, line;
+};
+
 // ---- _spmv ----
 
 int64_t elements(int64_t stride_bytes, int64_t item) {
@@ -185,6 +316,7 @@ nb::object spmv_typed(
     const int64_t os_r = transpose_out ? 1 : k, os_c = transpose_out ? rows : 1;
     const T* xp = reinterpret_cast<const T*>(x.data);
     auto run_gather = [&](int64_t lines, const int64_t* lp, const int64_t* li, const T* lv) {
+        const int64_t pend = lp[lines];
         if (k == 1) {
             over_lines<T>(lines, lp, 1, [&](int64_t lo, int64_t hi, std::vector<T>& parts) {
                 auto step = [lv, li, xp, xr](int64_t p, T acc) { return madd(lv[p], xp[li[p] * xr], acc); };
@@ -198,7 +330,13 @@ nb::object spmv_typed(
                 for (int64_t c0 = 0; c0 < k; c0 += kBlockCols) {
                     const int64_t kb = std::min(kBlockCols, k - c0);
                     if (kb == kBlockCols && xc == 1) {
-                        auto step = [lv, li, xp, xr, c0](int64_t p, T* acc) {
+                        // the rows of x are gathered at random: fetch the one 8 entries ahead
+                        auto step = [lv, li, xp, xr, c0, pend](int64_t p, T* acc) {
+                            if (p + 8 < pend) {
+                                const T* ahead = xp + li[p + 8] * xr + c0;
+                                __builtin_prefetch(ahead);
+                                __builtin_prefetch(ahead + kBlockCols - 1);
+                            }
                             const T a = lv[p];
                             const T* row = xp + li[p] * xr + c0;
                             for (int c = 0; c < kBlockCols; ++c) acc[c] = madd(a, row[c], acc[c]);
@@ -223,14 +361,31 @@ nb::object spmv_typed(
         run_gather(n_lines, ip, ix, v);
     } else if (k == 1) {
         auto step = [v, xp, xr](int64_t p, int64_t line, T* yr) { yr[0] = madd(v[p], xp[line * xr], yr[0]); };
-        scatter_serial<T>(n_lines, n_out, ip, ix, 1, o, os_r, os_c, track, step);
+        auto make = [v, xp, xr, ix](int64_t p, int64_t line) { return ProductItem<T>{ix[p], v[p], xp[line * xr]}; };
+        auto apply = [](const ProductItem<T>& t, T* yr) { yr[0] = madd(t.a, t.x, yr[0]); };
+        scatter_any<T>(n_lines, n_out, ip, ix, 1, o, os_r, os_c, track, step, make, apply);
     } else {
-        auto step = [v, xp, xr, xc, k, os_c](int64_t p, int64_t line, T* yr) {
+        // the k values of an output row are contiguous while summing (a transposed result: a work
+        // array, transposed at the end -- the same values)
+        std::vector<T> work;
+        T* y = o;
+        if (transpose_out) {
+            work.resize(static_cast<std::size_t>(rows * k));
+            y = work.data();
+        }
+        auto step = [v, xp, xr, xc, k](int64_t p, int64_t line, T* yr) {
             const T a = v[p];
             const T* row = xp + line * xr;
-            for (int64_t c = 0; c < k; ++c) yr[c * os_c] = madd(a, row[c * xc], yr[c * os_c]);
+            for (int64_t c = 0; c < k; ++c) yr[c] = madd(a, row[c * xc], yr[c]);
         };
-        scatter_serial<T>(n_lines, n_out, ip, ix, k, o, os_r, os_c, track, step);
+        auto make = [ix](int64_t p, int64_t line) { return EntryItem{ix[p], p, line}; };
+        auto apply = [&step](const EntryItem& t, T* yr) { step(t.p, t.line, yr); };
+        scatter_any<T>(n_lines, n_out, ip, ix, k, y, k, 1, track, step, make, apply);
+        if (transpose_out) {
+            const parallel::Unlocked unlocked(rows * k >= kParallelThreshold);
+            for (int64_t j = 0; j < rows; ++j)
+                for (int64_t c = 0; c < k; ++c) o[j * os_r + c * os_c] = y[j * k + c];
+        }
     }
     return wrap(std::move(out));
 }
@@ -302,7 +457,9 @@ nb::object line_sum_typed(
         run_gather(n_lines, ip, v);
     } else if constexpr (std::is_same_v<Acc, R>) {
         auto step = [v, &term](int64_t p, int64_t, Acc* yr) { yr[0] = plus(yr[0], term(v[p])); };
-        scatter_serial<Acc>(n_lines, n_out, ip, ix, 1, o, 1, 1, track, step);
+        auto make = [v, ix, &term](int64_t p, int64_t) { return TermItem<Acc>{ix[p], term(v[p])}; };
+        auto apply = [](const TermItem<Acc>& t, Acc* yr) { yr[0] = plus(yr[0], t.a); };
+        scatter_any<Acc>(n_lines, n_out, ip, ix, 1, o, 1, 1, track, step, make, apply);
         if (count > 0) {
             const parallel::Unlocked unlocked(n_out >= kParallelThreshold);
             for (int64_t j = 0; j < n_out; ++j) o[j] = finish(o[j]);
@@ -310,7 +467,9 @@ nb::object line_sum_typed(
     } else {
         std::vector<Acc> y(static_cast<std::size_t>(n_out));
         auto step = [v, &term](int64_t p, int64_t, Acc* yr) { yr[0] = plus(yr[0], term(v[p])); };
-        scatter_serial<Acc>(n_lines, n_out, ip, ix, 1, y.data(), 1, 1, track, step);
+        auto make = [v, ix, &term](int64_t p, int64_t) { return TermItem<Acc>{ix[p], term(v[p])}; };
+        auto apply = [](const TermItem<Acc>& t, Acc* yr) { yr[0] = plus(yr[0], t.a); };
+        scatter_any<Acc>(n_lines, n_out, ip, ix, 1, y.data(), 1, 1, track, step, make, apply);
         const parallel::Unlocked unlocked(n_out >= kParallelThreshold);
         for (int64_t j = 0; j < n_out; ++j) o[j] = finish(y[static_cast<std::size_t>(j)]);
     }

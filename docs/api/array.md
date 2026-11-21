@@ -186,6 +186,7 @@ full_like(x, fill_value, /, *, dtype=None)
 arange(start, stop=None, step=1, /, *, dtype=None)
 linspace(start, stop, num, /, *, dtype=None, endpoint=True)
 eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
+diag(x, /, *, k=0)
 meshgrid(*arrays, indexing='xy')
 tril(x, /, *, k=0)
 triu(x, /, *, k=0)
@@ -282,6 +283,13 @@ from_dlpack(x, /, *, device=None, copy=None)
   - 마지막 두 축을 행렬로 보고 아래쪽(`tril`: `j ≤ i + k`)이나 위쪽(`triu`: `j ≥ i + k`)만 남긴다. 나머지는 0(`False`)이다.
   - 2차원 미만은 `ValueError`다. 앞의 축은 배치다. 결과는 새 배열이다.
 
+### §3.7 `diag`
+- **`diag(x, /, *, k=0)`**: 1차원 `x`(길이 n)를 k번째 대각에 둔 n + |k| 크기의 정사각 행렬이다. 나머지는 0(`False`)이다. k가 양수면 위쪽(원소 `[i, i + k]`), 음수면 아래쪽(`[i − k, i]`)이다.
+  - dtype은 `x`의 것이다. 값은 그대로 복사한다(-0.0, NaN도). 결과는 새 배열(C 순서)이다.
+  - **만들기만 한다.** `x`가 1차원이 아니면 `ValueError`다. 2차원이면 메시지가 대각을 읽는 함수를 짚는다: `diag(): 'x' must have 1 dimension, got 2; for the diagonal of a matrix use sd.linalg.diagonal`. **[numpy와 다름]** numpy의 `diag`는 2차원을 받으면 대각을 읽는다. 함수 하나에 뜻 하나다(이름 하나에 별칭 없음과 같은 이유). 읽기는 `sd.linalg.diagonal`이 이미 한다.
+  - `sd.sparse.diags_array(x, offsets=k)`의 밀집 짝이다. 값은 `diags_array(x, offsets=k).toarray()`와 비트까지 같다(0의 부호만 다를 수 있다: 희소는 0을 저장하지 않아 -0.0이 +0.0이 된다). 대각이 여럿인 것은 `diag`의 합, 정사각이 아닌 모양은 `zeros`와 대입(§5.3)이다.
+  - **대각에 쓰기**(`setdiag`의 짝)는 함수가 아니라 대입이다: `i = sd.arange(len(v)); x[i + max(-k, 0), i + max(k, 0)] = v`(§5.3). numpy의 `fill_diagonal`은 없다. 배열 영역에서 제자리에서 바꾸는 것은 대입, `out=`, in-place 연산자뿐이고 배열을 바꾸는 함수는 없다.
+
 ---
 
 ## §4. shape 조작과 뷰
@@ -299,6 +307,7 @@ broadcast_to(x, shape, /)
 broadcast_arrays(*arrays)
 concat(arrays, /, *, axis=0)
 stack(arrays, /, *, axis=0)
+block(arrays, /)
 astype(x, dtype, /, *, copy=True)
 flip(x, /, *, axis=None)
 roll(x, /, shift, *, axis=None)
@@ -353,6 +362,16 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
   - `prepend`, `append`는 배열 또는 Python 스칼라다. 그 밖의 값은 `TypeError`다. 스칼라는 그 축의 길이가 1인 배열로 넓혀 붙인다.
   - 배열은 `x`와 차원 수가 같고, `axis` 밖의 축 길이가 `x`와 같아야 한다(`ValueError`). 붙이는 일과 dtype은 `concat`의 규칙을 따른다.
   - `n=0`이면 `x` 자신이다. `prepend`, `append`는 붙이지 않는다(numpy와 같다). 음수는 `ValueError`다.
+
+### §4.5 `block`
+- **`block(arrays, /)`**: 중첩한 리스트의 배열을 블록으로 잇는다(numpy의 `block`).
+  - 리스트의 깊이 d는 모든 잎에서 같아야 한다(`ValueError`: `block(): the lists are nested unevenly: 'arrays[0][0]' is at depth 2 but 'arrays[1]' at depth 1`). 빈 리스트는 `ValueError`다.
+  - 결과의 차원 수는 d와 배열들의 차원 수 가운데 큰 것이다. 차원이 모자란 배열은 앞에 길이 1의 축을 붙여 본다.
+  - 가장 안쪽 리스트는 마지막 축을 따라, 그 바깥은 그 앞 축을 따라 잇는다. 그래서 `block([[a, b], [c, d]])`는 2×2 블록 행렬이고, `block([a, b])`는 마지막 축으로 잇기(`concat(..., axis=-1)`)다. 잇는 축 밖의 길이가 다르면 `ValueError`다(`block(): the blocks of 'arrays[0]' must have the same shape except along axis 1; got (2, 2) at 'arrays[0][0]' and (3, 1) at 'arrays[0][1]'`).
+  - 리스트가 아닌 배열 하나를 주면 그 복사본이다(d = 0, numpy와 같다).
+  - 잎은 `sd.ndarray`만 받는다(`block(): 'arrays[0][1]' must be an sd.ndarray or a list of them, not int`). **[numpy와 다름]** numpy는 스칼라를 잎으로 받고 튜플은 `TypeError`다. 여기는 다른 배열 함수처럼 스칼라를 받지 않고(§1.1), 리스트와 튜플을 같이 받는다(`concat`과 같다. 배열이 될 시퀀스를 받지 않으므로 튜플이 헷갈리지 않는다).
+  - 결과 dtype은 승격 규칙(§1.4)이고, 값은 그대로 복사한다. 결과는 새 배열(C 순서) 하나이고 블록마다 한 번 복사한다.
+  - `sd.sparse.block_array`의 밀집 짝이다. 빈 블록(None)은 없다. 그 자리에는 `zeros`를 둔다. 값은 `block_array(blocks).toarray()`와 비트까지 같다(0의 부호만 다를 수 있다).
 
 ---
 
@@ -498,6 +517,9 @@ logaddexp(x1, x2, /, *, out=None)
 nextafter(x1, x2, /, *, out=None)
 reciprocal(x, /, *, out=None)
 signbit(x, /, *, out=None)
+# 각도 (numpy)
+deg2rad(x, /, *, out=None)
+rad2deg(x, /, *, out=None)
 # 기타
 clip(x, /, *, min=None, max=None, out=None)
 where(condition, x1, x2, /, *, out=None)
@@ -550,6 +572,7 @@ where(condition, x1, x2, /, *, out=None)
 - **`divide`**: 정수 입력도 float64로 계산한다.
 - **`abs`**: complex는 크기를 float64로 반환한다.
 - **`sign`**: 결과는 `-1`, `0`, `1`이다. float의 NaN은 NaN이다. complex는 `z / |z|`이고, `0`은 `0`이다.
+- **`deg2rad`, `rad2deg`**: numpy의 식 `x · (π/180)`, `x · (180/π)`이다. 상수를 먼저 double로 반올림하고 한 번 곱한다(numpy와 같고, numpy와 비트까지 같다). 정확도의 계약은 아래 목록에 있다. 정수와 bool은 float64로 계산한다. complex는 `TypeError`다(numpy도 받지 않는다). 희소 배열의 메서드 `A.deg2rad()`, `A.rad2deg()`는 저장된 값에 이 함수를 쓴 것과 비트까지 같다.
 - **`round`**: half-to-even이다. 예: `round(2.5)`는 `2.0`이다. 자릿수 인자는 없다. complex는 실수부와 허수부를 각각 반올림한다.
 - **비교**: 결과는 bool이다. int와 float의 비교는 §1.6을 따른다.
 - **`logical_and`, `logical_or`, `logical_xor`, `logical_not`**: bool만 받는다. 다른 dtype은 `x != 0`처럼 명시적으로 비교해서 넣는다.
@@ -585,7 +608,7 @@ where(condition, x1, x2, /, *, out=None)
   - `reciprocal`: 정수도 float64로 계산한다(Array API; numpy는 정수 나눗셈). complex는 numpy의 Smith 공식이다.
   - `signbit`: -0.0과 음수 NaN에서도 부호 비트를 본다.
 - **정확도**
-  - float64 입력의 `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `atan2` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh`, 그리고 `pow`와 complex `abs`의 계약은 Arb 참값을 double로 반올림한 값에서 함수마다 정한 ULP 안이다. ULP는 두 값 사이에 있는 double의 수다(0이면 올바르게 반올림한 값). 한계는 `exp` `acos` `atan` `atan2` `pow` complex `abs`가 3, `sin` `atanh`가 5, 나머지가 4다(`tests/array/refdata.py`의 `ULP_BOUND`: 참값 점에서 잰 최대에 2를 더한 값).
+  - float64 입력의 `exp` `log` `log2` `log10` `sin` `asin` `acos` `atan` `atan2` `sinh` `cosh` `tanh` `asinh` `acosh` `atanh` `deg2rad` `rad2deg`, 그리고 `pow`와 complex `abs`의 계약은 Arb 참값을 double로 반올림한 값에서 함수마다 정한 ULP 안이다. ULP는 두 값 사이에 있는 double의 수다(0이면 올바르게 반올림한 값). 한계는 `exp` `acos` `atan` `atan2` `pow` complex `abs` `deg2rad` `rad2deg`가 3, `sin` `atanh`가 5, 나머지가 4다(`tests/array/refdata.py`의 `ULP_BOUND`: 참값 점에서 잰 최대에 2를 더한 값).
   - numpy와는 끝자리가 몇 ULP 다를 수 있다. 그 거리는 기록만 하고 약속하지 않는다. Arb 참값 대비 잰 값은 numpy·R의 것과 함께 [bench/array/accuracy.md](../../bench/array/accuracy.md)에 있다.
   - float64의 `pow`는 libm의 `pow`다(numpy와 같은 함수라 비트까지 같다; 잰 오차는 [bench/array/accuracy.md](../../bench/array/accuracy.md)의 `pow` 행). 다만 지수가 2, 0, 1, −1, 0.5인 원소는 정확한 꼴이다: `x * x`, `1`, `x`, `1 / x`, `sqrt(x)`. 모두 올바르게 반올림되고 특수값은 C99 `pow`의 것이다(0은 NaN에도 1). 지수가 스칼라든 배열이든 같은 규칙이라 같은 비트이고, frame의 `**`도 같은 커널이다.
     - numpy와 다른 곳은 둘이다. **[numpy와 다름]** (1) 스칼라 지수 0.5에서 numpy는 `sqrt`를 그대로 써서 `(-0.0) ** 0.5`가 `-0.0`, `(-inf) ** 0.5`가 `nan`이다. 여기는 C99 `pow`처럼 `+0.0`, `+inf`다. (2) numpy는 지수가 배열이면 이 다섯 값에서도 libm `pow`를 불러, 2, −1, 0.5에서 원소의 약 0.1%가 1 ULP 다르다(libm `pow`는 그 자리에서 올바르게 반올림되지 않는다). 여기는 지수의 모양과 상관없이 정확한 꼴이고, numpy의 스칼라 지수와 같다.

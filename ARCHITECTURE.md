@@ -77,7 +77,7 @@ stardust/
     optimize/     scalar batch lsq minpack minimize objective wolfe hessian nelder_mead bfgs lbfgsb
                   newton_cg trust root hybrd linear
     differentiate/ steps(고정 간격 차분의 간격: optimize가 씀), derivative(derivative·jacobian·hessian; docs/design/integrate.md §3.8)
-    integrate/    samples(표본 규칙과 fixed_quad의 합), gauss(Gauss–Legendre의 점과 가중치), gauss_table(생성한 표; docs/design/integrate.md §3.7)
+    integrate/    samples(표본 규칙과 fixed_quad의 합), gauss(Gauss–Legendre의 점과 가중치), gauss_table(생성한 표; docs/design/integrate.md §3.7), quadpack(QUADPACK의 QAGS·QAGI·QAGP 템플릿과 quad·nquad의 갈래·겹침; §3.1, §3.2)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
                   nary_bind.hpp(원소별 함수의 공통 바인딩), pyutil, errors

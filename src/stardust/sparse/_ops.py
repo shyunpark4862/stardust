@@ -23,7 +23,6 @@ The rules, in short:
     Python scalar. The sums run in the order of docs/design/sparse.md §2.6 (native kernels).
 """
 
-import math
 import numbers
 import operator
 
@@ -342,19 +341,11 @@ FUNCTIONS = {
     "sin": "sin", "tan": "tan", "asin": "asin", "atan": "atan", "sinh": "sinh", "tanh": "tanh",
     "asinh": "asinh", "atanh": "atanh", "sqrt": "sqrt", "expm1": "expm1", "log1p": "log1p",
     "floor": "floor", "ceil": "ceil", "trunc": "trunc", "round": "round", "sign": "sign",
+    "deg2rad": "deg2rad", "rad2deg": "rad2deg",
 }  # fmt: skip
-
-_DEG2RAD = math.pi / 180.0  # numpy's deg2rad is x * (pi / 180), rad2deg x * (180 / pi)
-_RAD2DEG = 180.0 / math.pi
 
 
 def function(A, name):
-    if name in ("deg2rad", "rad2deg"):
-        if A.dtype == _sd.complex128:
-            raise TypeError(f"{name}(): not supported for complex128")
-        c = _DEG2RAD if name == "deg2rad" else _RAD2DEG
-        f = lambda v: _sd.multiply(to_dtype(v, _sd.float64), c)  # noqa: E731
-    else:
-        g = getattr(_sd, FUNCTIONS[name])
-        f = lambda v: C.renamed(name, g, v)  # noqa: E731
+    g = getattr(_sd, FUNCTIONS[name])
+    f = lambda v: C.renamed(name, g, v)  # noqa: E731
     return with_values(A, f, dedupe=True, dok_csr=True)

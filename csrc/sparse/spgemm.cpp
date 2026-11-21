@@ -11,9 +11,9 @@
 //       sorted (canonical).
 //
 // Two passes over fixed line ranges (by size alone): the count of distinct positions per line, then
-// the values; a dense accumulator of the line length per thread. The sort of each line's positions
-// is most of the time on one thread (scipy's csr_matmat leaves its lines unsorted). The results do not depend on the
-// thread count.
+// the values; a dense accumulator of the line length per thread, and a bit set of the positions met
+// that gives them in ascending order without a sort (scipy's csr_matmat leaves its lines unsorted).
+// The results do not depend on the thread count.
 #include "array/kernels/simd_sort.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
@@ -42,21 +42,61 @@ nb::object readonly(NDArray&& a) {
 // A thread's accumulator of one output line (n_minor values) and the marks of the positions met:
 // a mark equals the line's stamp once the position is in the line. Stamps only grow, so the
 // workspace is reused across lines and calls without clearing.
+// The positions met in a line as a bit set (a word per 64 positions) with a summary bit per word:
+// setting one is two writes, and taking them out in ascending order scans the n_minor / 4096
+// summary words and visits only the set bits (count trailing zeros), clearing them. Cheaper than
+// sorting each line's positions (on one thread the sort was about 60% of the product, SP2) while
+// the summary is short against the line (spgemm_typed's choice); the order is exact either way,
+// so the result is the same.
+struct PositionSet {
+    std::vector<std::uint64_t> word, summary;
+    void reserve(int64_t n) {
+        word.assign(static_cast<std::size_t>((n + 63) >> 6), 0);
+        summary.assign(static_cast<std::size_t>((n + 4095) >> 12), 0);
+    }
+    void insert(int64_t j) {
+        word[static_cast<std::size_t>(j >> 6)] |= std::uint64_t(1) << (j & 63);
+        summary[static_cast<std::size_t>(j >> 12)] |= std::uint64_t(1) << ((j >> 6) & 63);
+    }
+    // f(j) for every position in ascending order; the set is empty after.
+    template <class F>
+    void drain(F&& f) {
+        for (std::size_t a = 0; a < summary.size(); ++a) {
+            std::uint64_t s = summary[a];
+            if (!s) continue;
+            summary[a] = 0;
+            while (s) {
+                const int64_t wi = (static_cast<int64_t>(a) << 6) | __builtin_ctzll(s);
+                s &= s - 1;
+                std::uint64_t w = word[static_cast<std::size_t>(wi)];
+                word[static_cast<std::size_t>(wi)] = 0;
+                while (w) {
+                    f((wi << 6) | __builtin_ctzll(w));
+                    w &= w - 1;
+                }
+            }
+        }
+    }
+};
+
 template <class T>
 struct Workspace {
     std::vector<std::uint64_t> mark;
     std::vector<T> acc;
     std::vector<int64_t> cols;
+    PositionSet positions;
     std::uint64_t epoch = 0;
 };
 
 template <class T>
-Workspace<T>& workspace(int64_t n_minor) {
+Workspace<T>& workspace(int64_t n_minor, bool bits) {
     thread_local Workspace<T> ws;
     if (static_cast<int64_t>(ws.mark.size()) < n_minor) {
         ws.mark.resize(static_cast<std::size_t>(n_minor), 0);
         ws.acc.resize(static_cast<std::size_t>(n_minor));
     }
+    // empty between calls (every line drains it); exactly n_minor wide, so the scan is no longer
+    if (bits && static_cast<int64_t>(ws.positions.word.size()) != ((n_minor + 63) >> 6)) ws.positions.reserve(n_minor);
     return ws;
 }
 
@@ -85,6 +125,7 @@ nb::tuple spgemm_typed(
     const int64_t* bi = i64(b_ix);
     const T* av = typed<T>(a_v);
     const T* bv = typed<T>(b_v);
+    bool bits = false;  // how a line's positions come out in order (set below)
     // line r of the product: emit(j, value) for its nonzero entries in ascending j
     auto product_line = [&](int64_t r, Workspace<T>& ws, auto&& emit) {
         const std::uint64_t stamp = ++ws.epoch;
@@ -98,16 +139,22 @@ nb::tuple spgemm_typed(
                 std::uint64_t& m = ws.mark[static_cast<std::size_t>(j)];
                 if (m != stamp) {
                     m = stamp;
-                    ws.cols.push_back(j);
+                    if (bits) ws.positions.insert(j);
+                    else ws.cols.push_back(j);
                     s = T{};
                 }
                 s = swap ? madd(bv[q], a, s) : madd(a, bv[q], s);
             }
         }
-        sort_positions(ws.cols.data(), static_cast<int64_t>(ws.cols.size()));
-        for (const int64_t j : ws.cols) {
+        auto out = [&](int64_t j) {
             const T s = ws.acc[static_cast<std::size_t>(j)];
             if (is_nonzero(s)) emit(j, s);
+        };
+        if (bits) {
+            ws.positions.drain(out);
+        } else {
+            sort_positions(ws.cols.data(), static_cast<int64_t>(ws.cols.size()));
+            for (const int64_t j : ws.cols) out(j);
         }
     };
     // the work of each line: the entries of B it visits
@@ -118,13 +165,15 @@ nb::tuple spgemm_typed(
         cost[static_cast<std::size_t>(r) + 1] = cost[static_cast<std::size_t>(r)] + c;
     }
     const int64_t flops = cost[static_cast<std::size_t>(n_lines)];
+    // the bit set while its summary scan (n_minor / 4096 words a line) is short against the line
+    bits = (n_minor >> 12) <= 4 * (flops / std::max<int64_t>(n_lines, 1)) + 16;
     const std::vector<int64_t> bounds = line_bounds(cost.data(), n_lines, kChunk);
     const int64_t nt = static_cast<int64_t>(bounds.size()) - 1;
     const int64_t work = flops + n_lines + n_minor;
     // pass 1: distinct positions per line (an upper bound of the stored entries)
     std::vector<int64_t> upper(static_cast<std::size_t>(n_lines) + 1, 0);
     for_tasks(nt, work, [&](int64_t t) {
-        Workspace<T>& ws = workspace<T>(n_minor);
+        Workspace<T>& ws = workspace<T>(n_minor, bits);
         for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r) {
             const std::uint64_t stamp = ++ws.epoch;
             int64_t c = 0;
@@ -151,7 +200,7 @@ nb::tuple spgemm_typed(
     std::vector<int64_t> kept(static_cast<std::size_t>(n_lines), 0);
     // pass 2: the values, sorted lines, zeros dropped (each line from its upper-bound offset)
     for_tasks(nt, work, [&](int64_t t) {
-        Workspace<T>& ws = workspace<T>(n_minor);
+        Workspace<T>& ws = workspace<T>(n_minor, bits);
         for (int64_t r = bounds[t]; r < bounds[t + 1]; ++r) {
             int64_t w = upper[static_cast<std::size_t>(r)];
             product_line(r, ws, [&](int64_t j, T v) {

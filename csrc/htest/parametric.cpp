@@ -112,7 +112,7 @@ TLane t_finish(DD diff, DD est, double se2, double df, bool zero, int alt) {
     if (!(se2 >= 0.0) || !(df > 0.0)) return t;
     t.se = std::sqrt(se2);
     t.stat = to_double(diff) / t.se;
-    t.p = t_pvalue(t.stat, df, alt);
+    if (alt >= 0) t.p = t_pvalue(t.stat, df, alt);  // (alt < 0: the statistic alone, a resample's)
     return t;
 }
 
@@ -449,17 +449,27 @@ KLane bartlett(const Moments* g, std::int64_t k) {
 
 // The centre of a sample (levene's and fligner's `center`) as a double-double: the median (the
 // middle value, or the exact half sum of the two middle ones), the mean, or scipy's trim_mean
-// (g = int(proportiontocut n), the mean of the middle n - 2g order statistics). v is reordered.
+// (g = int(proportiontocut n), the mean of the middle n - 2g order statistics). v is reordered
+// by the trimmed mean; the median is a selection in a copy (a long sample sorted on the pool, else
+// nth_element: the same values), so v keeps the data's order.
 DD center_of(std::vector<double>& v, int center, double ptc) {
     const auto n = static_cast<std::int64_t>(v.size());
     if (n == 0) return {kNaN, 0.0};
     if (center == kMean) return moments_of(v.data(), nullptr, n).mean;
     if (center == kTrimmed) return trimmed(v, ptc).mean;
     const std::int64_t h = n / 2;
-    std::nth_element(v.begin(), v.begin() + h, v.end());
-    const double hi = v[static_cast<std::size_t>(h)];
+    std::vector<double> w(v);
+    double hi, lo = kNaN;
+    if (n >= (1 << 16) && parallel::available()) {
+        sort_values(w);
+        hi = w[static_cast<std::size_t>(h)];
+        if (n % 2 == 0) lo = w[static_cast<std::size_t>(h - 1)];
+    } else {
+        std::nth_element(w.begin(), w.begin() + h, w.end());
+        hi = w[static_cast<std::size_t>(h)];
+        if (n % 2 == 0) lo = *std::max_element(w.begin(), w.begin() + h);
+    }
     if (n % 2) return {hi, 0.0};
-    const double lo = *std::max_element(v.begin(), v.begin() + h);
     const DD s = dd::two_sum(lo, hi);
     return {0.5 * s.hi, 0.5 * s.lo};
 }

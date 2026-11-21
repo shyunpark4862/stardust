@@ -28,6 +28,7 @@
 
 #include "array/ndarray.hpp"
 #include "bind/pyutil.hpp"
+#include "htest/dist_array.hpp"
 #include "htest/lanes.hpp"
 #include "htest/moments.hpp"
 #include "htest/rank_exact.hpp"
@@ -289,25 +290,31 @@ struct BinomInversion {
     }
 };
 
+// The normal quantile of the intervals' tail: alpha / 2 two-sided, alpha one-sided.
+double ci_z(double alpha, int alt) { return zq(alt == kTwoSided ? alpha / 2.0 : alpha); }
+
 // One proportion's interval, alpha the level's complement: two-sided intervals put alpha / 2 in
 // each tail (but the inverted binomial test, whose two-sided p-value is already two-sided), a
-// one-sided one alpha in its tail; 'less' is [0, upper], 'greater' [lower, 1].
-void binom_interval(double k, double n, double alpha, int method, int alt, double& lo, double& hi) {
+// one-sided one alpha in its tail; 'less' is [0, upper], 'greater' [lower, 1]. zt: ci_z(alpha,
+// alt) when the caller has it (a batch's lanes share it), else NaN.
+void binom_interval(double k, double n, double alpha, int method, int alt, double& lo, double& hi, double zt = kNaN) {
     if (!(n > 0.0)) {
         lo = hi = kNaN;
         return;
     }
     const double as = alt == kTwoSided ? alpha / 2.0 : alpha;
+    const bool normal = method == kNormal || method == kAgresti || method == kWilson || method == kWilsonCC;
+    const double zn = normal ? (zt == zt ? zt : zq(as)) : kNaN;
     switch (method) {
         case kNormal: {
-            const double z = zq(as);
+            const double z = zn;
             const DD qd = quot(k, n);
             const DD half = sqrt_dd(dd::two_prod(k, n - k) / n / n / n) * z;
             lo = clip01(to_double(qd - half)), hi = clip01(to_double(qd + half));
             break;
         }
         case kAgresti: {
-            const double z = zq(as);
+            const double z = zn;
             const DD z2 = dd::two_prod(z, z), nc = z2 + n;
             const DD c = z2 * 0.5 + k, f = z2 * 0.5 + (n - k);
             const DD qc = c / nc;
@@ -316,14 +323,15 @@ void binom_interval(double k, double n, double alpha, int method, int alt, doubl
             break;
         }
         case kWilson: {
-            const double z = zq(as);
+            const double z = zn;
             const DD z2 = dd::two_prod(z, z);
-            lo = k == 0.0 ? 0.0 : clip01(to_double(wilson_small(k, n, z, z2)));
-            hi = k == n ? 1.0 : clip01(to_double(wilson_big(k, n, z, z2)));
+            const DD big = wilson_big(k, n, z, z2);  // (wilson_small(k, ...)'s denominator too)
+            lo = k == 0.0 ? 0.0 : clip01(to_double(dd::two_prod(k, k) / ((z2 + n) * n) / big));
+            hi = k == n ? 1.0 : clip01(to_double(big));
             break;
         }
         case kWilsonCC: {
-            const double z = zq(as);
+            const double z = zn;
             const DD z2 = dd::two_prod(z, z);
             lo = k == 0.0 ? 0.0 : to_double(wilson_small(k - 0.5, n, z, z2));
             hi = k == n ? 1.0 : to_double(wilson_big(k + 0.5, n, z, z2));
@@ -350,9 +358,10 @@ nb::tuple binom_ci(nb::handle count, nb::handle nobs, double alpha, int method, 
     const std::int64_t lanes = c.shape[0];
     const NDArray& n = vec_arg(nobs, lanes);
     Outs out(2, lanes);
-    const std::int64_t cost = method == kBinomTest ? 100000 : (method == kExact || method == kJeffreys ? 2000 : 200);
+    const std::int64_t cost = method == kBinomTest ? 100000 : (method == kExact || method == kJeffreys ? 2000 : 50);
+    const double z = ci_z(alpha, alt);  // (one normal quantile for every lane)
     each_lane(lanes, cost, [&](std::int64_t l) {
-        binom_interval(vec_at(c, l), vec_at(n, l), alpha, method, alt, out.p[0][l], out.p[1][l]);
+        binom_interval(vec_at(c, l), vec_at(n, l), alpha, method, alt, out.p[0][l], out.p[1][l], z);
     });
     return out.tuple();
 }
@@ -669,8 +678,9 @@ nb::tuple prop_ztest(nb::handle count, nb::handle nobs, double value, double pro
                                               : dd::two_prod(K, N - K) / N / dd::two_prod(n1, n2);
             z = over_sqrt(d, v);
         }
-        out.p[0][l] = z, out.p[1][l] = z_pvalue(z, alt);
+        out.p[0][l] = z;
     });
+    z_pvalues(out.p[0], c.lanes, alt, out.p[1]);  // (z_pvalue's bits, by the normal's chunk kernel)
     return out.tuple();
 }
 
@@ -930,9 +940,10 @@ nb::tuple prop2_test(
             if (d == 0) return nn == 0 ? kNaN : kInf;
             return to_double(exact::to_dd(nn) / exact::to_dd(d));
         };
-        out.p[0][l] = z, out.p[1][l] = z_pvalue(z, alt), out.p[2][l] = var, out.p[3][l] = p1, out.p[4][l] = p0;
+        out.p[0][l] = z, out.p[2][l] = var, out.p[3][l] = p1, out.p[4][l] = p0;
         out.p[5][l] = diff, out.p[6][l] = frac(rn, rd), out.p[7][l] = frac(on, od);
     });
+    z_pvalues(out.p[0], lanes, alt, out.p[1]);  // (z_pvalue's bits, by the normal's chunk kernel)
     return out.tuple();
 }
 
@@ -1054,7 +1065,10 @@ void koopman(const Counts& k, double alpha, bool corr, double& lo, double& hi) {
     if (x1 == 0.0 && !full) lo = 0.0;  // p0 = x0 / n0 is then the root, and its ratio is 0 exactly
 }
 
-void prop2_interval(const Counts& k, int compare, int method, double alpha, bool corr, double& lo, double& hi) {
+// zt: zq(alpha / 2) when the caller has it (a batch's lanes share it), else NaN
+void prop2_interval(
+    const Counts& k, int compare, int method, double alpha, bool corr, double& lo, double& hi, double zt = kNaN
+) {
     if (!(k.n1 > 0.0 && k.n2 > 0.0)) {
         lo = hi = kNaN;
         return;
@@ -1064,11 +1078,11 @@ void prop2_interval(const Counts& k, int compare, int method, double alpha, bool
         else score_inversion(k, compare, alpha, corr, lo, hi);
         return;
     }
-    const double z = zq(alpha / 2.0);
+    const double z = zt == zt ? zt : zq(alpha / 2.0);
     if (compare == kDiff && method == kNewcomb) {  // Wilson's interval of each (alpha / 2 a side)
         double l1, u1, l2, u2;
-        binom_interval(k.c1, k.n1, alpha, kWilson, kTwoSided, l1, u1);
-        binom_interval(k.c2, k.n2, alpha, kWilson, kTwoSided, l2, u2);
+        binom_interval(k.c1, k.n1, alpha, kWilson, kTwoSided, l1, u1, z);
+        binom_interval(k.c2, k.n2, alpha, kWilson, kTwoSided, l2, u2, z);
         const DD p1 = quot(k.c1, k.n1), p2 = quot(k.c2, k.n2), d = p1 - p2;
         const DD e1 = p1 - l1, e2 = D(u2) - p2, e3 = p2 - l2, e4 = D(u1) - p1;
         lo = to_double(d - sqrt_dd(e1 * e1 + e2 * e2)), hi = to_double(d + sqrt_dd(e3 * e3 + e4 * e4));
@@ -1109,8 +1123,9 @@ nb::tuple prop2_ci(
     const std::int64_t lanes = require_ndarray(c1).shape[0];
     const NDArray* a[4] = {&vec_arg(c1, lanes), &vec_arg(n1, lanes), &vec_arg(c2, lanes), &vec_arg(n2, lanes)};
     Outs out(2, lanes);
+    const double z = zq(alpha / 2.0);  // (one normal quantile for every lane)
     each_lane(lanes, method == kScore ? 100000 : 256, [&](std::int64_t l) {
-        prop2_interval(counts_at(a, l), compare, method, alpha, corr, out.p[0][l], out.p[1][l]);
+        prop2_interval(counts_at(a, l), compare, method, alpha, corr, out.p[0][l], out.p[1][l], z);
     });
     return out.tuple();
 }

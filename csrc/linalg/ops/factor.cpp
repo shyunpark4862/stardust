@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace sd::linalg {
@@ -177,11 +178,14 @@ nb::object lu(nb::handle xo) {
     });
 }
 
-nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) {
+nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo, nb::handle trans_o) {
     Input l(lo, "lu_solve", "l");
     Input u(uo, "lu_solve", "u");
     Input p(po, "lu_solve", "perm");
     Input y(bo, "lu_solve", "b");
+    // trans='N' | 'T' | 'H': A, A^T or A^H x = b, as SparseLU.solve (docs/api/linalg.md §2).
+    // Parsed after the arrays, so a wrong array is reported first.
+    const char trans = parse_choice(trans_o, "trans", {"N", "T", "H"})[0];
     require_square(l);
     require_square(u);
     const lint n = l.shape(-1);
@@ -233,10 +237,13 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
                     seen[v] = 1;
                     perm[k] = v;
                 }
-                // x starts as b[perm] (an exact row gather), then L and U are solved
-                // with no further swaps: the same steps as solve()'s getrs after getrf.
+                // trans='N': x starts as b[perm] (an exact row gather), then L and U are
+                // solved with no further swaps: the same steps as solve()'s getrs after getrf.
+                // trans='T'/'H': A = P^T L U, so A^T x = b is U^T y = b, L^T z = y and x = P^T z:
+                // b is read in order, solved in a scratch buffer, and scattered to x[perm]
+                // (getrs's transposed order).
                 LapackSlot<T> xs(res + i * n * r.k, n * r.k, s, Scratch::kAlign0);
-                T* x = xs.get();
+                T* x = trans == 'N' ? xs.get() : s.get<T>(static_cast<std::size_t>(n * r.k), 2);
                 const bool ok = visit_storage(y.dtype(), [&]<class S>(std::type_identity<S>) {
                     if constexpr (std::is_same_v<S, cplx> && !std::is_same_v<T, cplx>) {
                         return false;  // unreachable
@@ -244,7 +251,7 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
                         bool good = true;
                         for (lint j = 0; j < r.k; ++j)
                             for (lint k = 0; k < n; ++k) {
-                                const S v = load<S>(y.data() + off[3] + perm[k] * r.rs + j * r.cs);
+                                const S v = load<S>(y.data() + off[3] + (trans == 'N' ? perm[k] : k) * r.rs + j * r.cs);
                                 if constexpr (std::is_same_v<S, double> || std::is_same_v<S, cplx>) good &= finite(v);
                                 x[j * n + k] = convert<T>(v);
                             }
@@ -256,8 +263,17 @@ nb::object lu_solve(nb::handle lo, nb::handle uo, nb::handle po, nb::handle bo) 
                 // calls, the same bits (checked, docs/design/linalg.md §10.2), and no
                 // packed L\U matrix needed.
                 if (n > 0 && r.k > 0) {
-                    lapack::trtrs('L', 'N', 'U', n, r.k, tl, ldl, x, n);
-                    lapack::trtrs('U', 'N', 'N', n, r.k, tu, ldu, x, n);
+                    if (trans == 'N') {
+                        lapack::trtrs('L', 'N', 'U', n, r.k, tl, ldl, x, n);
+                        lapack::trtrs('U', 'N', 'N', n, r.k, tu, ldu, x, n);
+                    } else {
+                        const char t = trans == 'H' && std::is_same_v<T, cplx> ? 'C' : 'T';
+                        lapack::trtrs('U', t, 'N', n, r.k, tu, ldu, x, n);
+                        lapack::trtrs('L', t, 'U', n, r.k, tl, ldl, x, n);
+                        T* dst = xs.get();
+                        for (lint j = 0; j < r.k; ++j)
+                            for (lint k = 0; k < n; ++k) dst[j * n + perm[k]] = x[j * n + k];
+                    }
                 }
                 return 0;
             },
@@ -287,8 +303,9 @@ void bind_factor(nb::module_& m) {
     );
     m.def("lu", named("lu", &lu), nb::sig("def lu(x, /)"), nb::arg().none());
     m.def(
-        "lu_solve", named("lu_solve", &lu_solve), nb::sig("def lu_solve(l, u, perm, b, /)"), nb::arg().none(),
-        nb::arg().none(), nb::arg().none(), nb::arg().none()
+        "lu_solve", named("lu_solve", &lu_solve), nb::sig("def lu_solve(l, u, perm, b, /, *, trans='N')"),
+        nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::arg().none(), nb::kw_only(),
+        nb::arg("trans").none() = "N"
     );
 }
 

@@ -1,6 +1,6 @@
 """docs/api/integrate.md and the module agree: the signature blocks name the first version's 15
 functions (decision C2) and the result class; the result class (C0) and the functions of the
-milestones done (C3) are exported with the documented signatures, and the documented signatures
+milestones done (C3, C4) are exported with the documented signatures, and the documented signatures
 follow the area's naming decisions (C4, C11-C14, C40)."""
 
 import inspect
@@ -27,7 +27,11 @@ PUBLIC = {
     "cumulative_simpson",
     "fixed_quad",
     "newton_cotes",
-}  # C3
+    "quad",
+    "dblquad",
+    "tplquad",
+    "nquad",
+}  # C3, C4
 ELEMENTWISE = {"tanhsinh", "nsum"}  # C4: the elementwise-iterative family, the only ones with args
 
 
@@ -50,7 +54,7 @@ def test_exports_match_the_document():
     assert set(funcs) == PLANNED
     assert bare == RESULTS
     assert set(sd.integrate.__all__) == RESULTS | PUBLIC
-    assert all(not hasattr(sd.integrate, n) for n in PLANNED - PUBLIC)  # milestones C4-C7
+    assert all(not hasattr(sd.integrate, n) for n in PLANNED - PUBLIC)  # milestones C5-C7
 
 
 def test_signatures_match_the_document():

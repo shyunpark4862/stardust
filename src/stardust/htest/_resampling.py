@@ -696,6 +696,28 @@ class _Held:
         return self.stat(self.held + list(arrays), lead)
 
 
+def kernel_rows(arrays):
+    """Samples (*lead, n_i) whose leads broadcast (a held row against the resamples) as the
+    kernels' rows (L, n_i), and the lead: a test's statistic of the resamples straight from its
+    kernel (H119), the bits of calling the test along axis=-1."""
+    leads = [tuple(a.shape[:-1]) for a in arrays]
+    lead = leads[0]
+    if any(ld != lead for ld in leads):  # numpy's rule: aligned at the right, 1 stretches
+        k = max(len(ld) for ld in leads)
+        lead = tuple(max(d) for d in zip(*[(1,) * (k - len(ld)) + ld for ld in leads]))
+    rows = []
+    for a, ld in zip(arrays, leads):
+        if ld != lead:
+            a = _sd.broadcast_to(a, lead + (a.shape[-1],))
+        rows.append(_sd.reshape(a, (math.prod(lead), a.shape[-1])))
+    return rows, lead
+
+
+def from_lanes(v, lead):
+    """A kernel's per-lane values (L,) in the lead's shape: a float for one 1-D test."""
+    return float(v[0]) if lead == () else _sd.reshape(v, lead)
+
+
 def method_pvalue(
     name, method, s, statistic, alternative, *, ptype="independent", data=None, rvs_default=True, held=0
 ):  # fmt: skip

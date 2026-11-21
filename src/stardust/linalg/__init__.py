@@ -16,6 +16,8 @@ _core._setup(LinAlgError, _results.LINALG)
 
 __all__ = [
     "LinAlgError",
+    "bandwidth",
+    "block_diag",
     "cholesky",
     "cholesky_solve",
     "cond",
@@ -30,6 +32,7 @@ __all__ = [
     "hessenberg",
     "inv",
     "kron",
+    "kronsum",
     "ldl",
     "lstsq",
     "lu",

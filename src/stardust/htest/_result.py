@@ -44,10 +44,14 @@ from .. import _core as _sd
 from .. import _summary as _S
 from . import _common
 
+_PLAIN = (float, int, str, type(None))
+
 
 def _own(v, copy=False):
     """A field as the result keeps and gives it: an sd array made read-only in place (first
     copied when copy: an array the caller may still hold); a tuple's arrays too."""
+    if type(v) in _PLAIN:  # (the usual scalar field: nothing to do)
+        return v
     if isinstance(v, _sd.ndarray):
         if copy:
             v = v.copy()
@@ -95,6 +99,7 @@ def _getitem(self, i):
     return tuple(getattr(self, f) for f in self._UNPACK)[i]
 
 
+@_calls.method("conf_int")
 def conf_int(self, *, alpha=0.05):
     """The 1 - alpha confidence interval (alpha keyword-only, between 0 and 1; regression's
     conf_int, G99): a new (..., 2) float64 array of the lower and upper ends, (2,) for one test.

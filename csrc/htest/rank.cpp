@@ -88,6 +88,29 @@ DD sqrt_dd(DD a) {
     return dd::two_sum(s, ((a.hi - s2.hi) - s2.lo + a.lo) / (2.0 * s));
 }
 DD dd_of(i128 v) { return exact::to_dd(v); }
+
+// The exact counts a batch's lanes ask for again and again (lanes of one size without ties share
+// the null distribution: the counts depend on the sizes and the bound alone): kept per thread.
+// They are exact integers, so a remembered count is the count; a lane alone or in a batch, on any
+// thread, gets the same bits. Each memo is dropped when it holds kMemo entries.
+constexpr std::size_t kMemo = 1 << 16;
+struct Key3 {
+    std::int64_t a, b, c;
+    bool operator<(const Key3& o) const { return a != o.a ? a < o.a : (b != o.b ? b < o.b : c < o.c); }
+};
+template <class F>
+u128 memo_count(std::map<Key3, u128>& m, Key3 k, F&& count) {
+    if (const auto it = m.find(k); it != m.end()) return it->second;
+    if (m.size() >= kMemo) m.clear();
+    const u128 v = count();
+    m.emplace(k, v);
+    return v;
+}
+// #{U <= b} of Mann-Whitney (exact::mwu_lower)
+u128 mwu_lower_memo(std::int64_t N, std::int64_t c, std::int64_t b) {
+    thread_local std::map<Key3, u128> m;
+    return memo_count(m, {N, c, b}, [&] { return exact::mwu_lower(N, c, b); });
+}
 double ratio(DD a, DD b) { return to_double(a / b); }
 double sgn(double v) { return v > 0.0 ? 1.0 : (v < 0.0 ? -1.0 : 0.0); }
 
@@ -268,7 +291,7 @@ Out5 mwu_lane(
             const u128 total = exact::binom_u128(N, c);
             auto lower = [&](std::int64_t w) {
                 const std::int64_t b = floor_div(w, 2);
-                const u128 v = 2 * b >= top ? total - exact::mwu_lower(N, c, top - b - 1) : exact::mwu_lower(N, c, b);
+                const u128 v = 2 * b >= top ? total - mwu_lower_memo(N, c, top - b - 1) : mwu_lower_memo(N, c, b);
                 return count_ratio(v, total);
             };
             le = lower(twoU1), ge = lower(twoU2);
@@ -354,7 +377,11 @@ Out5 wilcoxon_lane(std::vector<Signed>& d, int zm, bool corr, int alt, int req, 
         double le, ge;
         const std::int64_t lo_s = floor_div(twoRp - konst, g), hi_s = ceil_div(twoRp - konst, g);
         if (a.size() <= 124) {
-            const std::vector<u128> c = exact::signed_rank_counts(a);
+            // (the last lane's counts kept per thread: a batch's lanes without ties have the same a)
+            thread_local std::vector<std::int64_t> last_a;
+            thread_local std::vector<u128> last_c;
+            if (a != last_a) last_c = exact::signed_rank_counts(a), last_a = a;
+            const std::vector<u128>& c = last_c;
             u128 tot = 0, below = 0, above = 0;
             for (std::int64_t s = 0; s <= S; ++s) {
                 const u128 v = c[static_cast<std::size_t>(s)];
@@ -445,8 +472,10 @@ Out5 ansari_lane(std::vector<Key>& keys, std::int64_t n, std::int64_t mm, int al
             const exact::AnsariCounts& ac = ansari_counts(k);
             const u128 total = exact::binom_u128(N, n);
             const std::int64_t ab = twoAB / 2;
-            cdf = count_ratio(ac.lower(N, n, ab), total);
-            sf = count_ratio(total - ac.lower(N, n, ab - 1), total);
+            thread_local std::map<Key3, u128> memo;  // (memo_count: the same counts)
+            auto lower = [&](std::int64_t b) { return memo_count(memo, {N, n, b}, [&] { return ac.lower(N, n, b); }); };
+            cdf = count_ratio(lower(ab), total);
+            sf = count_ratio(total - lower(ab - 1), total);
         } else {
             Grouped gd(sc, c);
             gd.run();

@@ -17,9 +17,9 @@ from typing import Callable
 
 import numpy as np
 
-from ..registry import Case, Ref
+from ..registry import Case, Check, Ref
 
-DONE: tuple[str, ...] = ("C3",)  # the milestones whose cases run
+DONE: tuple[str, ...] = ("C3", "C4")  # the milestones whose cases run
 BATCH_SIZES = ((10, "10"), (1000, "10^3"), (10**5, "10^5"))
 SAMPLE_SIZES = ((10**3, "10^3"), (10**6, "10^6"))
 
@@ -170,13 +170,19 @@ def _public(spec) -> bool:
     return spec.milestone in DONE and all(n in sd.integrate.__all__ for n in spec.needs)
 
 
+def _pair(r):
+    """The quad family's result as scipy's (integral, error) (C10)."""
+    return tuple(r)
+
+
 def cases() -> list[Case]:
     out = []
     for s in specs():
         if not _public(s):
             continue
+        check = Check(sd=_pair) if s.group == "quad" else Check()
         out.append(Case(area="integrate", group=s.group, name=s.name, size=s.size, n=s.n, setup=s.setup, sd=s.sd,
-                        refs=(Ref("scipy", s.scipy),), quick=s.quick, note=s.note))  # fmt: skip
+                        refs=(Ref("scipy", s.scipy),), quick=s.quick, note=s.note, check=check))  # fmt: skip
     return out
 
 

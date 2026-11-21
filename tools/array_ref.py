@@ -1,4 +1,5 @@
-"""Reference values for the float64 element-wise functions on Accelerate vForce and pow, with Arb.
+"""Reference values for the float64 element-wise functions on Accelerate vForce, pow and the degree
+conversions (deg2rad, rad2deg), with Arb.
 
     .venv/bin/python tools/array_ref.py              # every function, on 8 processes
     .venv/bin/python tools/array_ref.py exp atan2 --jobs 4
@@ -98,6 +99,12 @@ def inputs(name, rng):
         w = logu(rng, 1e-300, 1e300, 5000, True), logu(rng, 1e-300, 1e300, 5000, True)
         t = u(-1e3, 1e3, 2000)
         return np.r_[re, w[0], t, t * (1 + 1e-9 * u(-1, 1, 2000))], np.r_[im, w[1], t[::-1], t]
+    elif name in ("deg2rad", "rad2deg"):  # x * (pi / 180), x * (180 / pi): every binade, whole degrees, near k pi
+        top = 1.7e308 if name == "deg2rad" else 3e306  # rad2deg overflows past 180 / pi * max
+        k = rng.integers(-2000, 2001, 3000).astype(np.float64)
+        x = np.r_[logu(rng, 1e-300, top, N, True), k, k * 0.5, sub, -sub, logu(rng, 1e306, 1.7e308, 500, True)]
+        if name == "rad2deg":
+            x = np.r_[x, near(math.pi, 1000, rng), near(math.pi / 2, 1000, rng), k * math.pi]
     else:
         raise ValueError(name)
     return (x,)
@@ -123,6 +130,8 @@ ARB = {
     "cabs": lambda re, im: (
         re * re + im * im
     ).sqrt(),  # _value: x^y = exp(y log x) for x > 0, x^k for a negative x and an integer k
+    "deg2rad": lambda x: x * arb.pi() / 180,
+    "rad2deg": lambda x: x * 180 / arb.pi(),
 }
 FUNCTIONS = tuple(ARB)
 EXACT_ONE = {"log", "log2", "log10", "acosh"}  # f(1) = 0 exactly: an exact ball, settled at once
@@ -132,6 +141,8 @@ def _value(name, args):
     if name in EXACT_ONE and args[0] == 1.0:
         return 0.0, 0.0
     if name in ("asin", "atan", "sinh", "tanh", "asinh", "atanh", "sin") and args[0] == 0.0:
+        return args[0], 0.0
+    if name in ("deg2rad", "rad2deg") and args[0] == 0.0:  # an exact zero, its sign kept
         return args[0], 0.0
     if name == "pow" and args[1] == 0.0:
         return 1.0, 0.0

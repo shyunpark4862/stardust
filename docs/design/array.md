@@ -41,6 +41,7 @@
   - 캐스팅과 type promotion, `repr`
   - `matmul`, `tensordot`, `sort`/`argsort`, `unique_*`, `searchsorted`
   - Array API 2024의 모든 함수: `take`, `take_along_axis`, `nonzero`, `flip`, `roll`, `repeat`, `tile`, `unstack`, `meshgrid`, `tril`/`triu`, `diff`, dtype 도구, DLPack
+  - sd.sparse의 밀집 짝(§1.6): `diag`, `block`, `deg2rad`, `rad2deg`
 - **없는 것**
   - 0차원 배열 (§2.2), `dot`
   - 문자열/object/datetime/structured dtype, masked array, memmap, polynomial
@@ -78,6 +79,14 @@
 - 배열 영역의 C++은 `csrc/base/`(Buffer, dtype, pairwise 합), `csrc/parallel/`(스레드풀), `csrc/accelerate/`(BLAS, vForce 래퍼), `csrc/array/`(ndarray, 이터레이터, 커널, 연산, 병렬화 기준값), `csrc/bind/`(nanobind)로 나뉜다.
 - **아래 층은 위 층을 모른다.** `base/`, `parallel/`, `accelerate/`는 `array/`를 include하지 않는다.
   - NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …)에 묶여 있어서 배열 영역에 둔다. `accelerate/vforce.hpp`에는 연산과 무관한 부분(함수 타입, `vvatan2`를 이항 함수 타입으로 감싸는 래퍼(인자 순서는 원래 atan2(y, x)다), strided 실행기)만 있다.
+
+### 1.6 sd.sparse의 밀집 짝
+sd.sparse에는 밀집의 부분집합이거나 희소에만 필요한 것만 둔다(API.md §7). 그래서 희소에 있는데 희소의 것이 아닌 기능은 배열에도 둔다. 2026-11-22에 넷을 더하고 하나는 함수 없이 정했다(추천안, 사용자 위임 2026-11-22). 공개 규칙은 `docs/api/array.md` §3.7, §4.5, §6.4다.
+- **`diag(x, /, *, k=0)`**(`diags_array`의 짝): numpy의 이름이다(Array API에 없다). 만들기만 하고 2차원 입력은 `sd.linalg.diagonal`을 짚는 `ValueError`다(`[numpy와 다름]`). numpy의 `diag`는 입력의 차원으로 두 뜻(만들기, 읽기)을 고르는데, 이 라이브러리는 함수 하나에 뜻 하나이고 읽기는 이미 `sd.linalg.diagonal`이다. 값은 복사뿐이라 `diags_array(x, offsets=k).toarray()`와 비트가 같다(0의 부호만 빼고). C++ `array/ops/creation.cpp`: 0으로 채운 새 배열에 대각 n개만 쓴다.
+- **`block(arrays, /)`**(`block_array`의 짝): numpy의 `block`이다. `hstack`·`vstack`의 짝은 이미 `concat`·`stack`이라(Array API 이름) 따로 두지 않는다. numpy와 다른 곳은 둘이다: 잎은 `sd.ndarray`만(스칼라 없음, 배열 함수의 규칙), 리스트와 튜플을 같이 받는다(`concat`과 같다). 구현(`array/ops/shape.cpp`)은 중첩을 한 번 훑어 나무로 만들고, 아래에서 위로 모양을 정하고, 결과 하나를 만든 뒤 잎마다 제자리에 한 번 `assign`한다. numpy처럼 안쪽부터 `concatenate`를 거듭하지 않아 복사가 한 번이다.
+- **`deg2rad`, `rad2deg`**(메서드 `A.deg2rad()`, `A.rad2deg()`의 짝): numpy의 이름과 식 `x · (π/180)`, `x · (180/π)`다(상수를 먼저 반올림). `scalar_ops.hpp`의 Op이고 `signbit`처럼 float 루프만 있다(정수는 float64로, complex는 `TypeError`). numpy와 비트까지 같고, Arb 참값 대비 잰 최대는 1 ULP다(계약 3 ULP, `tests/array/refdata.py`).
+- **`setdiag`의 짝은 대입이다**: numpy의 `fill_diagonal`은 두지 않는다. 배열 영역에서 배열을 제자리에서 바꾸는 길은 대입, `out=`, in-place 연산자뿐이고 배열을 바꾸고 None을 돌려주는 함수는 없다. 그 틀을 지키는 가장 가까운 꼴은 고급 인덱스 대입 `x[i + max(-k, 0), i + max(k, 0)] = v`(`i = arange(len(v))`)이고, 결과가 `A.setdiag(v, k=k)` 뒤의 `A.toarray()`와 비트까지 같다(`tests/array/test_sparse_counterparts.py`). 새 배열을 돌려주는 함수는 numpy에 짝이 없는 이름을 지어야 해서 두지 않는다.
+- 짝이 이미 있는 것: `eye_array` → `eye`, `tril`·`triu`, `find` → `nonzero`와 인덱싱, `resize` → `zeros`와 슬라이스 대입, `power` → `pow`, 리덕션과 원소별 메서드 → 같은 이름의 함수, `hstack`·`vstack` → `concat`·`stack`(이름은 각자 기준 라이브러리의 것). 희소에만 필요한 것(형식과 변환, `eliminate_zeros`, `sum_duplicates`, `explicit=`, `random_array`의 밀도와 자리)은 짝이 없다.
 
 ---
 

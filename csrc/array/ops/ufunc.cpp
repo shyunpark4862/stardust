@@ -494,7 +494,7 @@ void bind_ufuncs(nb::module_& m) {
     def_unaries<
         Negative, Positive, Abs, Square, Sqrt, Sign, Exp, Expm1, Log, Log1p, Log2, Log10, Sin, Cos, Tan, Asin, Acos,
         Atan, Sinh, Cosh, Tanh, Asinh, Acosh, Atanh, Floor, Ceil, Trunc, Round, IsNan, IsInf, IsFinite, LogicalNot,
-        BitwiseInvert, Conj, Reciprocal, Signbit>(m);
+        BitwiseInvert, Conj, Reciprocal, Signbit, Deg2rad, Rad2deg>(m);
     m.def(
         "where", named("where", &where), nb::sig("def where(condition, x1, x2, /, *, out=None)"), nb::arg().none(),
         nb::arg().none(), nb::arg().none(), nb::kw_only(), nb::arg("out").none() = nb::none()

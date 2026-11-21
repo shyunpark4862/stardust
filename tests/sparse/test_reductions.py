@@ -254,3 +254,20 @@ def test_extreme_dtypes():
         with pytest.raises(TypeError, match=rf"^{name}\(\): not supported for complex128"):
             getattr(C, name)()
     assert I.argmax(keepdims=True).tolist() == [[0]] and I.max(axis=0, keepdims=True).shape == (1, 2)
+
+
+def test_count_nonzero_keepdims_is_the_arrays():
+    # SP114: keepdims as sd.count_nonzero (and the other reductions, SP40)
+    D = sd.asarray(np.array([[1.0, 0, 2], [0, 0, 3]]))
+    for fmt in ("csr", "csc", "coo", "dok"):
+        A = S.csr_array(D).asformat(fmt)
+        for axis in (None, 0, 1, -1):
+            got = A.count_nonzero(axis=axis, keepdims=True)
+            want = sd.count_nonzero(D, axis=axis, keepdims=True)
+            assert tuple(got.shape) == tuple(want.shape) and got.dtype == sd.int64 and got.tolist() == want.tolist()
+    v = S.csr_array(sd.asarray(np.array([1.0, 0, 2])))
+    assert tuple(v.count_nonzero(axis=0, keepdims=True).shape) == (1,)
+    with pytest.raises(TypeError, match=r"^count_nonzero\(\): 'keepdims' must be True or False, not int$"):
+        A.count_nonzero(keepdims=1)
+    with pytest.raises(TypeError, match=r"^trace\(\): 'k' must be an int, not float$"):
+        S.csr_array(D).trace(k=1.5)

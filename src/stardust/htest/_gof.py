@@ -547,11 +547,10 @@ def anderson_ksamp(samples, /, *, variant="midrank", method=None):
     if method is not None:  # H9: the statistic under the permutations of the pooled samples (scipy's)
         code = _VARIANTS[v]
 
-        def a2(*xs):
+        def a2(*xs):  # (the kernel's lanes: one resample each)
             if xs[0].ndim == 1:
                 return float(_k.ad_ksamp([_sd.reshape(x, (1, x.shape[0])) for x in xs], code)[0][0])
-            m = xs[0].shape[0]
-            return _sd.asarray([float(_k.ad_ksamp([x[j : j + 1] for x in xs], code)[0][0]) for j in range(m)])
+            return _k.ad_ksamp(list(xs), code)[0]
 
         s = C.Samples(name, rows, tuple(f"samples[{i}]" for i in range(len(rows))), None, "propagate", scan=False)
         pv, pairs = R.method_pvalue(name, method, s, a2, "greater")

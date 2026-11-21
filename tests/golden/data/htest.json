@@ -19713,7 +19713,7 @@
 "mannwhitneyu method": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "mannwhitneyu(): 'method' must be 'auto', 'asymptotic' or 'exact', not 'permutation'"
+"msg": "mannwhitneyu(): 'method' must be 'auto', 'exact' or 'asymptotic', not 'permutation'"
 }
 },
 "mannwhitneyu nan omit": {

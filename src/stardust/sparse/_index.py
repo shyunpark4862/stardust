@@ -512,8 +512,7 @@ def _check_2d(A, func):
         raise ValueError(f"{func}(): the array must have 2 dimensions, got {A.ndim}")
 
 
-def diagonal(A, k):
-    func = "diagonal"
+def diagonal(A, k, func="diagonal"):
     _check_2d(A, func)
     k = _k_arg(k, func)
     m, n = A.shape
@@ -528,7 +527,7 @@ def diagonal(A, k):
 def trace(A, k):
     """The sum of the k-th diagonal: sd.sum of diagonal(k) (the array's sum: bool and int64 give
     int64)."""
-    return _sd.sum(diagonal(A, k))
+    return _sd.sum(diagonal(A, k, "trace"))
 
 
 def setdiag(A, values, k):

@@ -1,8 +1,8 @@
 # sd.integrate API
 
-> 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `IntegrateResult`와 C3의 일곱 함수(`trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes`, 2026-11-22; §7, §8)다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9 C2–C7)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
+> 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `IntegrateResult`와 C3의 일곱 함수(`trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes`, 2026-11-22; §7, §8), C4의 넷(`quad dblquad tplquad nquad`, 2026-11-22; §2, §3; `quad`의 `weight`는 C5)이다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9 C2–C7)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
 
-- 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C17), 미분은 [docs/api/differentiate.md](differentiate.md), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C70), 미분은 [docs/api/differentiate.md](differentiate.md), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록에는 공개 이름과 시그니처만 둔다(나중의 `test_api_surface.py`가 읽는다).
 
 ## §1. 공통 규칙
@@ -16,12 +16,12 @@
 
 ### §1.2 사용자 함수
 - Python 호출 가능한 객체다. 반복은 C++가 돌고 함숫값은 콜백으로 받는다. 사용자 함수가 낸 에러는 그대로 나간다.
-- **`quad`·`dblquad`·`tplquad`·`nquad`**: 점 하나마다 Python `float`로 부르고 실수 하나(Python·numpy의 수, 0차원 배열)를 받는다. 부르는 순서는 QUADPACK의 순서이고 scipy 1.18.1과 같다(C5, docs/design/integrate.md §2.3). 다른 값은 `quad(): 'func' must return a real number, not shape (3,)`(`ValueError`), bool은 `TypeError`다(optimize와 같다).
+- **`quad`·`dblquad`·`tplquad`·`nquad`**: 점 하나마다 Python `float`로 부르고 실수 하나(Python·numpy의 수, 0차원 배열)를 받는다. 부르는 순서는 QUADPACK의 순서이고 scipy 1.18.1과 같다(점의 비트까지; C5, docs/design/integrate.md §2.3, §7.10). 다른 값은 `quad(): 'func' must return a real number, not shape (3,)`(`ValueError`), bool과 복소수는 `TypeError`다(optimize와 같다). 겹친 적분의 f는 모든 변수를 안쪽부터 받는다(`dblquad`는 `func(y, x)`, `nquad`는 `func(x0, x1, …)`).
 - **`quad_vec`**: 점 하나마다 `float`로 부르고 언제나 같은 모양의 배열(`sd.ndarray`, 실수의 시퀀스, numpy 배열)을 받는다. 모양이 바뀌면 `ValueError`다.
 - **`cubature`**: 점들을 (n_points, ndim) float64 `sd.ndarray`로 한 번에 부르고 (n_points, …)를 받는다(scipy와 같다).
 - **`fixed_quad`**: n점을 (n,) float64 `sd.ndarray`로 한 번 부르고 (n,) 또는 (…, n)의 실수 값(`sd.ndarray`, 시퀀스, numpy 배열)을 받는다(scipy와 같다). 다른 모양은 `fixed_quad(): 'func' must return shape (5,) or (..., 5) for its argument of shape (5,), not (4,)`(`ValueError`), 복소수·bool 값은 `TypeError`다.
 - **`tanhsinh`, `nsum`**: 아직 끝나지 않은 원소의 점을 모아 부른다(O38). 넘기는 꼴은 docs/design/integrate.md §9 C2의 질문이다(추천: (k, p) 2차원, `args`는 (k, 1)). 첫 호출은 (k,)이다(O48). 사용자 함수는 원소별이어야 하고(`f(x)[i]`가 `f(x[i])`), 끝점 바로 옆이나 끝점 자체(반올림)를 받을 수 있으므로 특이점에서 예외를 내지 말고 inf·NaN을 돌려줘야 한다(그 값은 버린다; scipy와 같다).
-- 피적분함수의 값은 실수다. 복소수는 `quad(complex_func=True)`만 받는다(docs/design/integrate.md §9 C4의 추천).
+- 피적분함수의 값은 실수다. 복소수는 `quad(complex_func=True)`만 받는다(docs/design/integrate.md §1.1 C56).
 
 ### §1.3 결과 `IntegrateResult` (C9, C10, C13)
 ```
@@ -30,7 +30,8 @@ IntegrateResult
 - 모든 함수가 이 클래스를 돌려준다(표본 규칙, `fixed_quad`, `newton_cotes` 빼고: 값이나 배열이다). 규칙은 `sd.optimize.OptimizeResult`와 같다: 함수가 주는 필드만 있고 없는 필드는 `AttributeError`, 필드는 읽기 전용, 배열 필드는 읽기 전용이며 읽을 때 복사하지 않는다(O103, API.md §2.2), `repr`는 한 줄, dict처럼 쓰지 않는다.
 - `quad`·`dblquad`·`tplquad`·`nquad`·`quad_vec`의 결과는 scipy의 `(y, abserr)`처럼 둘로 풀린다: `integral, error = sd.integrate.quad(f, 0, 1)`(htest H7의 규칙). `r[0]`, `r[1]`, `len(r) == 2`도 된다. 다른 필드는 이름으로 읽는다. scipy의 `full_output`은 없다(필드가 늘 있다).
   - 다른 함수의 결과(`tanhsinh`, `nsum`, `cubature`)와 `IntegrateResult(...)`로 직접 만든 결과는 풀리지 않는다: `TypeError: this IntegrateResult does not unpack (only the quad family's results do): read its fields by name`. `bool(r)`은 언제나 참이다.
-- 공개 생성자 `IntegrateResult(*, batch=(), **fields)`는 `OptimizeResult`와 같다: 필드는 키워드로만, 모르는 이름은 `TypeError`(`IntegrateResult(): unexpected keyword argument 'estimate'`), 넘긴 배열은 한 번 복사한다. 없는 필드를 읽으면 `AttributeError: 'IntegrateResult' object has no attribute 'sum' (the function does not give it)`다. `summary()`는 `OptimizeResult`처럼 두고, 결과를 내는 첫 함수와 함께(C4) 만든다(docs/design/integrate.md §1.1 C20). 풀리는 것이 `quad` 계열뿐인 것은 C21이다.
+- 공개 생성자 `IntegrateResult(*, batch=(), **fields)`는 `OptimizeResult`와 같다: 필드는 키워드로만, 모르는 이름은 `TypeError`(`IntegrateResult(): unexpected keyword argument 'estimate'`), 넘긴 배열은 한 번 복사한다. 없는 필드를 읽으면 `AttributeError: 'IntegrateResult' object has no attribute 'sum' (the function does not give it)`다. 풀리는 것이 `quad` 계열뿐인 것은 C21이다.
+- `summary()`(C20, C69)는 API.md §2.3의 상자다: 제목 `Integration Results`, 머리에 `Converged`·`Status`와 `Integral`·`Error estimate`·`Function Evals`·`Intervals`, 넓은 줄 `Message`(줄바꿈을 한 칸으로), `quad`의 구간 표(열 `a b integral error`, 오차 추정이 큰 것부터; 20개를 넘으면 앞뒤 5개), 복소수 결과는 `real`·`imag` 두 줄의 표다. 배치는 줄마다 한 원소다. `repr`는 `IntegrateResult(integral=1.71828, error=1.90768e-14, converged=True, nfev=21)`(복소수는 `(0.5+1j)`)다.
 
 | 필드 | 뜻 | 주는 함수 |
 |---|---|---|
@@ -39,10 +40,11 @@ IntegrateResult
 | `error` | 절대 오차의 추정(엄밀한 상계가 아니다) | 모두 |
 | `converged` | 멈춤 판정을 통과했는지 | 모두 |
 | `status` | 멈춘 이유의 번호(scipy의 번호, O17) | 모두 |
-| `message` | 멈춘 이유의 글(scipy의 글) | `quad` 계열, `quad_vec`, `cubature` |
+| `message` | 멈춘 이유의 글(scipy의 글; `quad` 계열의 0은 QUADPACK 문서의 글, C60) | `quad` 계열, `quad_vec`, `cubature` |
 | `nfev` | 사용자 함수의 값을 계산한 점의 수 | 모두 |
 | `max_level` | 마지막 수준(scipy `maxlevel`) | `tanhsinh` |
-| `intervals`, `interval_integrals`, `interval_errors`, `n_intervals` | 쓴 구간과 구간마다의 값·오차(scipy `infodict`의 `alist blist rlist elist last`; docs/design/integrate.md §9 C4) | `quad`(가중치 없는 것), `quad_vec` |
+| `intervals`, `interval_integrals`, `interval_errors`, `n_intervals` | 쓴 구간 (n, 2)과 구간마다의 값·오차 (n,), 구간 수 n(scipy `infodict`의 `alist blist rlist elist last`; 오차 추정이 큰 것부터, C55) | `quad`(가중치 없는 것, 실수), `quad_vec` |
+| `real`, `imag` | 실수부와 허수부의 `quad` 결과(`IntegrateResult`; scipy `full_output`의 `real`·`imag`, C57) | `quad(complex_func=True)` |
 | `subdivisions` | 나눈 수 | `cubature` |
 
 - 원소별 반복 무리(`tanhsinh`, `nsum`)의 필드는 입력의 배치 모양이고(`integral` float64, `converged` bool, `status`·`nfev`·`max_level` int64), 입력이 모두 실수면 Python 수다(O48). `repr`는 `IntegrateResult(batch shape (1000,), 998 of 1000 converged)`다.
@@ -65,14 +67,16 @@ IntegrateResult
 ```
 quad(func, a, b, /, *, atol=1.49e-08, rtol=1.49e-08, limit=50, points=None, weight=None, wvar=None, max_p1=50, limlst=50, complex_func=False)
 ```
-- ∫ₐᵇ func(x) dx를 QUADPACK으로 계산한다. 루틴은 scipy처럼 입력이 고른다: 유한 구간 QAGS, 무한 구간 QAGI, `points` QAGP(C4); `weight` QAWO·QAWF·QAWS·QAWC(C5). 표는 docs/design/integrate.md §3.1이다.
-- `atol`·`rtol`(scipy `epsabs`·`epsrel`, 기본 1.49×10⁻⁸): |I − 값| ≤ max(atol, rtol·|I|)를 목표로 한다. `atol <= 0`이면 `rtol`은 max(50ε, 5×10⁻²⁹) 이상이어야 한다(scipy의 `ier = 6`의 갈래 그대로, `ValueError`).
-- `limit`(기본 50): 구간 수의 상한(1 이상). 닿으면 status 1. `points`: 구간 안의 중단점(유한 구간만, 무한이면 `ValueError`); scipy처럼 정렬하고 끝과 겹친 것은 뺀다. 개수는 `limit`보다 작아야 한다.
-- `weight`와 `wvar`: `'cos'`·`'sin'`(wvar = ω: cos(ωx)·sin(ωx); 유한 구간은 QAWO, 반무한은 QAWF, 양쪽 무한은 `ValueError`), `'alg'`·`'alg-loga'`·`'alg-logb'`·`'alg-log'`(wvar = (α, β), α, β > −1: (x − a)^α (b − x)^β와 그 로그), `'cauchy'`(wvar = c: 1/(x − c)의 주값; c는 a, b가 아니어야 한다). 가중치는 유한 구간만 받는 것이 scipy와 같다(QAWF 빼고). `max_p1`(scipy `maxp1`, 기본 50): QAWO의 체비쇼프 모멘트 수의 상한. `limlst`(기본 50, 3 이상): QAWF의 주기 수의 상한. scipy의 `wopts`(미리 계산한 모멘트)는 없다(docs/design/integrate.md §9 C5의 추천, `[scipy와 다름]`).
-- `complex_func=True`: func가 복소수를 돌려주면 실수부와 허수부를 따로 `quad`로 계산한다(scipy와 같다). `integral`·`error`는 complex이고 다른 필드는 `real`·`imag` 두 결과의 것이다(C4에서 정한다).
-- a > b면 scipy처럼 끝을 바꿔 계산하고 부호를 바꾼다. a == b면 0, `nfev` 0이다.
-- **status와 message** (O17): QUADPACK의 `ier`와 scipy의 글이다. 0 수렴, 1 `The maximum number of subdivisions (50) has been achieved. …`, 2 반올림, 3 나쁜 피적분함수, 4 외삽 표가 수렴하지 않음, 5 발산 또는 느린 수렴, 7 비정상 끝(QAWF는 1·4·7의 글이 scipy의 것으로 다르다). 6(입력이 틀림)은 결과가 아니라 scipy의 글을 쓴 `ValueError`다. `converged`는 `status == 0`이다.
-- 결과: `integral error converged status message nfev`와 구간 정보(§1.3; 가중치 루틴은 C5에서 정한다). 둘로 풀린다.
+- ∫ₐᵇ func(x) dx를 QUADPACK으로 계산한다. 루틴은 scipy처럼 입력이 고른다: 유한 구간 QAGS, 무한 구간 QAGI, `points` QAGP(C4); `weight` QAWO·QAWF·QAWS·QAWC(C5). 표는 docs/design/integrate.md §3.1이다. 점과 결과(값, 오차, `nfev`, status, 구간)는 scipy 1.18.1과 비트까지 같다(시험 모음의 가중치 없는 106개; docs/design/integrate.md §7.10).
+- `a`, `b`: 실수, ±inf를 받는다(NaN은 `ValueError`). a > b면 scipy처럼 끝을 바꿔 계산하고 부호를 바꾼다(`error`는 그대로). a == b면 0, `nfev` 0이고 f를 부르지 않는다(무한한 같은 끝도). 옵션의 검사는 그래도 한다(scipy는 그 전에 0을 돌려준다).
+- `atol`·`rtol`(scipy `epsabs`·`epsrel`, 기본 1.49×10⁻⁸): |I − 값| ≤ max(atol, rtol·|I|)를 목표로 한다. 둘 다 유한한 0 이상의 수다(scipy는 음수 `epsabs`도 받는다). `atol`이 0이면 `rtol`은 50ε(1.11×10⁻¹⁴) 이상이어야 한다(QUADPACK `ier = 6`의 조건; `quad(): if 'atol' is 0, 'rtol' must be at least 50 * machine epsilon (1.11e-14)`).
+- `limit`(기본 50): 구간 수의 상한, 1 이상 2³¹ − 1 이하의 int. 닿으면 status 1. 큰 `limit`도 쓴 구간만큼만 메모리를 쓴다.
+- `points`: None 또는 구간 안의 중단점들(실수의 시퀀스, `sd.ndarray`·numpy 배열; 수 하나는 `TypeError`, NaN은 `ValueError`). scipy처럼 정렬하고 겹친 점을 빼고 (a, b) 안의 것만 쓴다(빈 목록이나 모두 밖이어도 QAGP다). 무한 구간과 함께는 `ValueError`(`quad(): 'points' cannot be used with an infinite range`), 남은 점의 수가 `limit` 이상이어도 `ValueError`다.
+- `weight`와 `wvar`(C5): `'cos'`·`'sin'`(wvar = ω: cos(ωx)·sin(ωx); 유한 구간은 QAWO, 반무한은 QAWF, 양쪽 무한은 `ValueError`), `'alg'`·`'alg-loga'`·`'alg-logb'`·`'alg-log'`(wvar = (α, β), α, β > −1: (x − a)^α (b − x)^β와 그 로그), `'cauchy'`(wvar = c: 1/(x − c)의 주값; c는 a, b가 아니어야 한다). 가중치는 유한 구간만 받는 것이 scipy와 같다(QAWF 빼고). `max_p1`(scipy `maxp1`, 기본 50): QAWO의 체비쇼프 모멘트 수의 상한. `limlst`(기본 50, 3 이상): QAWF의 주기 수의 상한. scipy의 `wopts`(미리 계산한 모멘트)는 없다(docs/design/integrate.md §9 C5의 추천, `[scipy와 다름]`).
+  - C5 전(지금): 알맞은 이름의 `weight`는 `NotImplementedError`(`quad(): 'weight' (QAWO, QAWF, QAWS, QAWC) comes with milestone C5`), 모르는 이름은 `ValueError`, `weight` 없는 `wvar`는 `ValueError`(`quad(): 'wvar' is only used with 'weight'`), 기본값이 아닌 `max_p1`·`limlst`도 `ValueError`다(쓰이지 않는 인자, C61).
+- `complex_func=True`(C56, C57): func가 복소수를 돌려주면 scipy처럼 실수부의 `quad`를 마친 뒤 허수부의 `quad`를 한다(같은 점들을 두 번 부른다; 실수 값은 허수부 0). `integral`·`error`는 complex(scipy의 re + 1j·im), `converged`는 둘 다, `status`·`message`는 실수부가 0이 아니면 그것, 아니면 허수부의 것, `nfev`는 합이고, 두 결과는 `real`·`imag` 필드다(구간 정보는 거기에 있다).
+- **status와 message** (O17): QUADPACK의 `ier`와 scipy의 글이다(scipy의 `"\n  "` 줄바꿈 그대로, C59). 0 수렴(`Normal and reliable termination of the routine. …`, QUADPACK 문서의 글, C60), 1 `The maximum number of subdivisions (50) has been achieved. …`, 2 반올림, 3 나쁜 피적분함수, 4 외삽 표가 수렴하지 않음, 5 발산 또는 느린 수렴, 7 비정상 끝(QAWF는 1·4·7의 글이 scipy의 것으로 다르다, C5). 6(입력이 틀림)은 결과가 아니라 `ValueError`다(위의 글). `converged`는 `status == 0`이다.
+- 결과: `integral error converged status message nfev`와 구간 정보 `intervals`((n, 2)), `interval_integrals`, `interval_errors`((n,)), `n_intervals`(C55; 가중치 루틴은 C5에서 정한다). 구간은 오차 추정이 큰 것부터다: QUADPACK의 `iord`가 순위를 매긴 것(n ≤ `limit`/2 + 2면 모두, 아니면 `limit` + 1 − n개) 다음에 나머지를 오차의 내림차순으로. 무한 구간(QAGI)의 구간은 scipy처럼 바꾼 변수 t ∈ (0, 1]의 것이다(x = a + (1 − t)/t, x = b − (1 − t)/t, 실수 전체는 ±(1 − t)/t). 오차 추정 아래로 수렴한 경우 구간 값의 합이 `integral`이고, 외삽(ε-알고리즘)으로 끝났으면 `integral`은 외삽 값이다. 둘로 풀린다.
 
 ## §3. 겹친 적분 (C4)
 ```
@@ -80,9 +84,9 @@ dblquad(func, a, b, gfun, hfun, /, *, atol=1.49e-08, rtol=1.49e-08)
 tplquad(func, a, b, gfun, hfun, qfun, rfun, /, *, atol=1.49e-08, rtol=1.49e-08)
 nquad(func, ranges, /, *, opts=None)
 ```
-- `dblquad`: ∫ₐᵇ ∫_{g(x)}^{h(x)} func(y, x) dy dx(scipy처럼 안쪽 변수가 먼저). `gfun`·`hfun`은 수 또는 x의 함수다. `tplquad`: ∫ₐᵇ ∫_{g(x)}^{h(x)} ∫_{q(x, y)}^{r(x, y)} func(z, y, x) dz dy dx.
-- `nquad`: `ranges`는 변수마다(안쪽부터) `(lo, hi)` 쌍 또는 바깥 변수를 받아 쌍을 돌려주는 함수다. `opts`는 dict 하나(모든 층) 또는 층마다의 dict·함수의 시퀀스이고, 키는 `quad`의 옵션 이름(`atol rtol limit points weight wvar`; scipy의 `epsabs`·`epsrel`이 아니다)이다. 모르는 키는 `ValueError`(optimize O16의 규칙; scipy는 `TypeError`)다.
-- 안쪽 적분은 바깥 점마다 `quad`로 계산한다(scipy와 같은 순서). `error`는 scipy처럼 바깥 적분의 추정뿐이다(안쪽의 오차를 더하지 않는다). `nfev`는 모든 층의 호출 합이다. `converged`는 모든 층의 모든 `quad`가 수렴했을 때이고, `status`·`message`는 바깥의 것 또는 처음 수렴하지 못한 안쪽의 것이다(C4에서 정한다; scipy는 안쪽의 경고를 그대로 낸다).
+- `dblquad`: ∫ₐᵇ ∫_{g(x)}^{h(x)} func(y, x) dy dx(scipy처럼 안쪽 변수가 먼저). `gfun`·`hfun`은 수 또는 x의 함수다(바깥 점마다 `gfun` 다음 `hfun`을 부른다; scipy와 같다). `tplquad`: ∫ₐᵇ ∫_{g(x)}^{h(x)} ∫_{q(x, y)}^{r(x, y)} func(z, y, x) dz dy dx(`qfun(x, y)`·`rfun(x, y)`은 scipy의 인자 순서). 둘 다 모든 층에 같은 `atol`·`rtol`, `limit` 50이다. 함수가 돌려준 끝은 실수여야 한다(NaN은 `dblquad(): 'hfun' returned NaN`).
+- `nquad`: `ranges`는 변수마다(안쪽부터) `(lo, hi)` 쌍 또는 바깥 변수들을 가까운 것부터 받아(`ranges[i](x_{i+1}, x_{i+2}, …)`; scipy와 같다) 쌍을 돌려주는 함수다. `opts`는 None, dict 하나(모든 층), 또는 층마다의 dict·함수(범위 함수와 같은 인자)의 시퀀스(`ranges`와 길이가 같아야 한다)이고, 키는 `quad`의 옵션 이름(`atol rtol limit points weight wvar`; scipy의 `epsabs`·`epsrel`이 아니다)이다. 모르는 키는 `ValueError`(`nquad(): 'opts' has no option 'epsabs' (scipy's 'epsabs' is 'atol'); …`, optimize O16의 규칙; scipy는 `TypeError`)다. 함수가 돌려준 범위와 옵션도 같은 규칙으로 검사한다. `weight`는 C5다(C61).
+- 안쪽 적분은 바깥 점마다 `quad`로 계산한다(scipy와 같은 순서, f를 부르는 점의 비트까지; 모든 층이 C++ 안에서 돈다, C64). `error`는 scipy처럼 모든 층의 모든 `quad`가 낸 오차 추정의 최댓값이다(안쪽 적분의 오차를 바깥에 더하지 않으므로 엄밀한 상계가 아니다; C63). `nfev`는 f를 부른 수(가장 안쪽 `quad`들의 합, scipy의 `neval`)다. `converged`는 모든 `quad`가 수렴했을 때이고, `status`·`message`는 끝나는 순서로(안쪽이 먼저) 처음 수렴하지 못한 `quad`의 것이다(scipy는 그 `quad`마다 경고한다). 결과에 구간 정보는 없다(scipy `nquad`와 같다).
 - scipy `nquad`의 `args`와 `full_output`은 없다.
 
 ## §4. 벡터 값 함수 `quad_vec` (C7)
@@ -166,4 +170,4 @@ cumulative_simpson(y, /, x=None, *, dx=1.0, axis=-1, initial=None)
 | `ode`, `complex_ode`, `lebedev_rule`, `qmc_quad`, `IntegrationWarning`, `ODEintWarning` | 없음 | docs/design/integrate.md §1.2 |
 
 ## §10. 마일스톤별 남은 질문
-C0 전의 것은 정했다(docs/design/integrate.md §1.1 C8–C17). C2(C26–C38)와 C3(C39–C54)도 정했다. 남은 것은 docs/design/integrate.md §9에 모았고, 이 문서의 꼴은 그 추천안이다: C4의 1–4, C5, C6, C7.
+C0 전의 것은 정했다(docs/design/integrate.md §1.1 C8–C17). C2(C26–C38), C3(C39–C54), C4(C55–C70)도 정했다. 남은 것은 docs/design/integrate.md §9에 모았고, 이 문서의 꼴은 그 추천안이다: C5, C6, C7.

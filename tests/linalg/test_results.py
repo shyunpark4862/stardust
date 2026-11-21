@@ -26,6 +26,7 @@ def _results():
         "schur": LA.schur(a),
         "hessenberg": LA.hessenberg(a),
         "ldl": LA.ldl(a),
+        "bandwidth batch": LA.bandwidth(batch),
     }
 
 

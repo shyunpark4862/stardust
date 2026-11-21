@@ -69,9 +69,16 @@ nb::tuple correct_rows(nb::handle p, int method, double alpha, std::int64_t max_
     auto* o = reinterpret_cast<double*>(out.data);
     auto* j0 = reinterpret_cast<double*>(rej.data);
     each_lane(r.lanes, std::max<std::int64_t>(1, r.n) * 40, [&](std::int64_t l) {
-        std::vector<double> x(static_cast<std::size_t>(r.n));
+        // short families reuse each thread's scratch (a batch of many); a long one has its own
+        thread_local std::vector<double> tx;
+        thread_local multitest::Scratch tw;
+        std::vector<double> ox;
+        multitest::Scratch ow;
+        const bool reuse = r.n <= 4096;
+        std::vector<double>& x = reuse ? tx : ox;
+        multitest::Scratch& w = reuse ? tw : ow;
+        x.resize(static_cast<std::size_t>(r.n));
         for (std::int64_t j = 0; j < r.n; ++j) x[static_cast<std::size_t>(j)] = r.at(l, j);
-        multitest::Scratch w;
         multitest::correct(x.data(), 1, r.n, method, alpha, max_iter, o + l * r.n, j0 + l * r.n, w);
     });
     nb::list lst;

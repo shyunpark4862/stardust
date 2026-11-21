@@ -16,6 +16,7 @@ The native core is stardust._core.sparse.
 from .. import _calls
 from .. import _core as _sd_core
 from ._base import sparray
+from ._compressed import _compressed as _compressed_base
 from ._compressed import csc_array, csr_array
 from ._construct import (
     block_array,
@@ -32,6 +33,7 @@ from ._construct import (
     vstack,
 )
 from ._coo import coo_array
+from ._direct import SparseLU as _SparseLU
 from ._direct import factorized, inv, is_sptriangular, spbandwidth, splu, spsolve, spsolve_triangular
 from ._dok import dok_array
 from ._eigen import eigs, eigsh, svds
@@ -88,6 +90,17 @@ def matrix_transpose(A, /):
     if A.ndim != 2:
         raise ValueError(f"matrix_transpose(): the array must have at least 2 dimensions, got {A.ndim}")
     return A._transpose()
+
+
+issparse = _calls.function(issparse)
+matrix_transpose = _calls.function(matrix_transpose)
+
+# SP118: a wrong call of any public method is reported in the library's form, the method's name
+# first, as every function's ("sum(): unexpected keyword argument 'x'", "tocsr(): takes 0
+# positional arguments but 1 was given"; API.md §2.1); the result classes' summary() already is.
+for _cls in (sparray, _compressed_base, csr_array, csc_array, coo_array, dok_array, LinearOperator, _SparseLU):
+    _calls.methods(_cls)
+del _cls
 
 
 __all__ = [

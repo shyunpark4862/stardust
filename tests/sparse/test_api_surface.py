@@ -23,7 +23,7 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "sparse.md"
 # here to sd.sparse.__all__.
 PLANNED = set()
 # Options without a default (a keyword the caller must give), as sd.linalg's (SP68).
-REQUIRED_OPTIONS = {("spsolve_triangular", "upper")}
+REQUIRED_OPTIONS = {("spsolve_triangular", "upper"), ("random_array", "rng")}  # keyword options without a default
 CLASSES = {"sparray", "coo_array", "csr_array", "csc_array", "dok_array", "SparseLU", "LinearOperator", "CgResult",
            "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult", "EigshResult", "EigsResult",
            "SvdsResult", "OnenormestResult"}  # fmt: skip
@@ -136,8 +136,10 @@ def test_no_callbacks_or_scipy_solver_options():
 
 
 def test_rng_is_keyword_and_defaults_to_none():
-    for name in ("random_array", "eigsh", "eigs", "svds"):
+    # where it is optional (a fixed start vector without it); random_array always needs one (SP112)
+    for name in ("eigsh", "eigs", "svds"):
         assert params(module_names()[name])["rng"] == "None"
+    assert params(module_names()["random_array"])["rng"] is None
 
 
 def test_formats_have_no_dia_default():
@@ -207,3 +209,30 @@ def test_result_classes_have_the_documented_fields(cls):
     klass = getattr(_result, cls)
     assert doc and list(klass._FIELDS) == [n for n in doc if n != "summary"]
     assert {n for n in dir(klass) if not n.startswith("_")} == set(doc)
+
+
+def test_method_call_shape_errors_name_the_method():
+    # SP118: a public method's wrong call starts with the method's name (API.md §2.1), as every function's
+    S = sd.sparse
+    A = S.csr_array(sd.eye(3))
+    cases = [
+        (lambda: A.sum(x=1), "sum(): unexpected keyword argument 'x'"),
+        (lambda: A.tocsr(1), "tocsr(): takes 0 positional arguments but 1 was given"),
+        (lambda: A.multiply(), "multiply(): missing 1 required positional argument: 'other'"),
+        (lambda: A.sin(2), "sin(): takes 0 positional arguments but 1 was given"),
+        (lambda: A.eliminate_zeros(3), "eliminate_zeros(): takes 0 positional arguments but 1 was given"),
+        (lambda: A.tocsc().toarray(1), "toarray(): takes 0 positional arguments but 1 was given"),
+        (lambda: A.tocoo().sum_duplicates(1), "sum_duplicates(): takes 0 positional arguments but 1 was given"),
+        (lambda: A.todok().count_nonzero(foo=1), "count_nonzero(): unexpected keyword argument 'foo'"),
+        (lambda: S.splu(A).solve(), "solve(): missing 1 required positional argument: 'b'"),
+        (lambda: S.aslinearoperator(A).matvec(), "matvec(): missing 1 required positional argument: 'x'"),
+        (lambda: S.issparse(), "issparse(): missing 1 required positional argument: 'x'"),
+        (lambda: S.matrix_transpose(A, 1), "matrix_transpose(): takes 1 positional argument but 2 were given"),
+        (lambda: S.cg(A, sd.ones(3)).summary(1), "summary(): takes 0 positional arguments but 1 was given"),
+    ]
+    for f, msg in cases:
+        with pytest.raises(TypeError, match="^" + re.escape(msg) + "$"):
+            f()
+    # an error raised inside the method is unchanged
+    with pytest.raises(TypeError, match=r"^sum\(\): 'dtype' must be "):
+        A.sum(dtype="x")

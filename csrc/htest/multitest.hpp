@@ -43,6 +43,7 @@
 #include <cstdint>
 #include <limits>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 namespace sd::htest::multitest {
@@ -195,6 +196,7 @@ struct Scratch {
     std::vector<std::int64_t> order;
     std::vector<double> q;
     std::vector<DD> c;
+    std::vector<std::pair<double, std::int64_t>> key;
 };
 inline void correct(
     const double* p,
@@ -208,25 +210,32 @@ inline void correct(
     Scratch& w
 ) {
     if (m == 0) return;
+    const double fm = static_cast<double>(m);
+    const bool logs = method == kSidak || method == kHolmSidak;  // c holds y, the value -expm1(y)
+    if (method == kBonferroni || method == kSidak) {  // each value alone: no order needed
+        const DD la = logs ? log1m(alpha) : DD{alpha, 0.0};
+        for (std::int64_t i = 0; i < m; ++i) {
+            const double v = p[i * stride];
+            const DD ci = logs ? sidak_exponent(v, fm) : dd::two_prod(v, fm);
+            out[i] = cap1(logs ? sidak_value(ci) : ci.hi + ci.lo);
+            if (rej) rej[i] = (logs ? le(la, ci) : le(ci, la)) ? 1.0 : 0.0;
+        }
+        return;
+    }
     w.order.resize(static_cast<std::size_t>(m));
     w.q.resize(static_cast<std::size_t>(m));
     w.c.resize(static_cast<std::size_t>(m));
-    std::iota(w.order.begin(), w.order.end(), std::int64_t{0});
-    std::stable_sort(w.order.begin(), w.order.end(), [&](std::int64_t a, std::int64_t b) {
-        return p[a * stride] < p[b * stride];
-    });
+    // the stable order: by value, equal values by position (pairs sorted in place, no indirection)
+    std::vector<std::pair<double, std::int64_t>>& key = w.key;
+    key.resize(static_cast<std::size_t>(m));
+    for (std::int64_t i = 0; i < m; ++i) key[static_cast<std::size_t>(i)] = {p[i * stride], i};
+    std::sort(key.begin(), key.end());
     double* q = w.q.data();
     DD* c = w.c.data();
-    for (std::int64_t i = 0; i < m; ++i) q[i] = p[w.order[static_cast<std::size_t>(i)] * stride];
-    const double fm = static_cast<double>(m);
-    const bool logs = method == kSidak || method == kHolmSidak;  // c holds y, the value -expm1(y)
+    for (std::int64_t i = 0; i < m; ++i)
+        q[i] = key[static_cast<std::size_t>(i)].first,
+        w.order[static_cast<std::size_t>(i)] = key[static_cast<std::size_t>(i)].second;
     switch (method) {
-        case kBonferroni:
-            for (std::int64_t i = 0; i < m; ++i) c[i] = dd::two_prod(q[i], fm);
-            break;
-        case kSidak:
-            for (std::int64_t i = 0; i < m; ++i) c[i] = sidak_exponent(q[i], fm);
-            break;
         case kHolmSidak: {  // the running maximum of -expm1(y): the running minimum of y
             DD run{0.0, 0.0};
             for (std::int64_t i = 0; i < m; ++i) {

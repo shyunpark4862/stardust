@@ -44,39 +44,10 @@ using linalg::lint;
 using std::int64_t;
 namespace lapack = linalg::lapack;
 
-template <class T>
-inline T madd_(T c, T v, T acc) {
-    if constexpr (kComplex<T>) return add(acc, ops::cmul(c, v));
-    else return std::fma(c, v, acc);
-}
-
 // y = (zero ? 0 : y) + sum_l coef[l] V[:, l]
 template <class T>
 void combine(const T* V, int64_t n, int64_t j, const T* coef, T* y, bool zero) {
-    for_chunks(
-        n,
-        [&](int64_t, int64_t lo, int64_t hi) {
-            constexpr int64_t kRows = 256;  // y's block stays in registers and L1 across columns
-            for (int64_t b0 = lo; b0 < hi; b0 += kRows) {
-                const int64_t b1 = std::min(hi, b0 + kRows);
-                if (zero)
-                    for (int64_t i = b0; i < b1; ++i) y[i] = T{};
-                int64_t l = 0;
-                for (; l + 4 <= j; l += 4) {  // four columns per pass (each element's order kept)
-                    const T c0 = coef[l], c1 = coef[l + 1], c2 = coef[l + 2], c3 = coef[l + 3];
-                    const T *v0 = V + l * n, *v1 = v0 + n, *v2 = v1 + n, *v3 = v2 + n;
-                    for (int64_t i = b0; i < b1; ++i)
-                        y[i] = madd_(c3, v3[i], madd_(c2, v2[i], madd_(c1, v1[i], madd_(c0, v0[i], y[i]))));
-                }
-                for (; l < j; ++l) {
-                    const T c = coef[l];
-                    const T* v = V + l * n;
-                    for (int64_t i = b0; i < b1; ++i) y[i] = madd_(c, v[i], y[i]);
-                }
-            }
-        },
-        kChunk, n * std::max<int64_t>(j, 1)
-    );
+    gaxpy(V, n, j, coef, y, zero);
 }
 
 // x -= V[:, 0:j] (V[:, 0:j]^H x) by classical Gram-Schmidt, a second time when the first pass
@@ -87,7 +58,8 @@ double orthogonalize(const T* V, int64_t n, int64_t j, T* x, std::vector<T>& c) 
     if (j == 0) return before;
     c.resize(static_cast<std::size_t>(j));
     for (int pass = 0; pass < 2; ++pass) {
-        for (int64_t l = 0; l < j; ++l) c[l] = neg(dot(V + l * n, x, n));
+        dots(V, n, j, x, c.data());
+        for (int64_t l = 0; l < j; ++l) c[l] = neg(c[l]);
         combine(V, n, j, c.data(), x, false);
         const double after = nrm2(x, n);
         if (after > 0.717 * before) return after;

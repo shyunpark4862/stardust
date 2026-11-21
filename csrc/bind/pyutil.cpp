@@ -251,6 +251,8 @@ std::string sparse_hint(const std::string& f) {
         {"trunc", "A.trunc()"},
         {"round", "A.round()"},
         {"sign", "A.sign()"},
+        {"deg2rad", "A.deg2rad()"},
+        {"rad2deg", "A.rad2deg()"},
         {"conj", "A.conj()"},
         {"negative", "-A"},
         {"abs", "abs(A)"},
@@ -287,6 +289,8 @@ std::string sparse_hint(const std::string& f) {
         {"permute_dims", "A.transpose()"},
         {"tril", "sd.sparse.tril"},
         {"triu", "sd.sparse.triu"},
+        {"diag", "sd.sparse.diags_array"},
+        {"block", "sd.sparse.block_array"},
         {"real", "A.real"},
         {"imag", "A.imag"},
     };  // fmt: skip

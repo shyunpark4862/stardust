@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 시작 전), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4–C8 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5–C8 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -33,6 +33,7 @@
 | M6 frame과 배열 잇기, 일관성 맞추기 | 2단계 | 완료 (2026-11-12) |
 | M7 마무리 | 마무리 | 완료 (2026-11-12) (최종 보고서) |
 | M8 일관성 2차 | 다듬기 | 완료 (2026-11-12), 변경 목록 DESIGN §10 |
+| M9 희소의 밀집 짝 | 다듬기 | 완료·승인(위임) (2026-11-22) |
 
 ## 마일스톤
 
@@ -115,6 +116,12 @@
   1. frame의 동작과 이름 (§10.1의 frame 항목, §10.2)
   2. 배열·linalg 항목, 에러 메시지 정리, 문서 (§10.1의 나머지, §10.3, §10.4)
   3. 골든·같은 자리 성능 확인
+
+### M9. 희소의 밀집 짝 (2026-11-22 사용자 규칙)
+- 규칙: sd.sparse의 기능은 밀집의 부분집합이거나 희소에만 필요한 것이다(API.md §7). 희소에 있고 밀집에 없던 것을 배열·선형대수에 더한다(추천안, 사용자 위임 2026-11-22).
+- 배열: `diag`, `block`, `deg2rad`, `rad2deg`. `setdiag`의 짝은 함수가 아니라 대입(docs/design/array.md §1.6).
+- 선형대수: `kronsum`, `block_diag`, `bandwidth`(`BandwidthResult`), `kron`의 1차원 입력, `lu_solve`의 `trans=`(docs/design/linalg.md §1.5).
+- 확인: 희소 짝의 `toarray()`와 비트 비교, 골든(새 이름만), 속도 사례 `--smoke`.
 
 # 특수함수 영역 (sd.special)
 
@@ -464,7 +471,7 @@
 
 # 가설검정 영역 (sd.htest)
 
-> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임) (2026-11-21), H9 완료·승인(위임) (2026-11-22)**. H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
+> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임) (2026-11-21), H9 완료·승인(위임) (2026-11-22), H10 완료·승인(위임) (2026-11-22)**. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -488,7 +495,7 @@
 | H7 비율과 이항: `binomtest quantile_test poisson_means_test proportions_ztest proportions_chisquare proportion_confint test_proportions_2indep confint_proportions_2indep` | 완료·승인(위임) (2026-11-21) |
 | H8 다중 비교와 보정: `tukey_hsd dunnett multipletests false_discovery_control combine_pvalues` | 완료·승인(위임) (2026-11-21) |
 | H9 재표본: `permutation_test monte_carlo_test bootstrap`, 재표본 `method=` 객체, `bws_test multiscale_graphcorr goodness_of_fit` | 완료·승인(위임) (2026-11-22) |
-| H10 최적화와 일관성 점검 | 시작 전 |
+| H10 최적화와 일관성 점검 | 완료·승인(위임) (2026-11-22) |
 
 ## 마일스톤
 
@@ -557,10 +564,14 @@
 ### H10. 최적화와 일관성 점검
 - 모든 공개 함수를 크기마다 scipy·statsmodels·R과 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 점검하고, 코드 리뷰를 한다.
 - H1에서 넘어온 것(H32): 1스레드의 double-double 적률 훑기를 NEON으로(10⁶에서 scipy 1.6 ms 대 5.0 ms), `levene`의 집단마다 중앙값 선택을 병렬로(10⁶ 23 ms, scipy 25 ms), `fligner` 정렬의 병합 단계를 병렬로.
+- 결정(추천안, 사용자 위임 2026-11-21): 범위는 O97처럼 모든 공개 함수, 바쁜 기계의 1라운드 측정과 고치기 전후 빌드의 A/B(기준선은 올리지 않는다), 비트를 지키는 개선만, 일관성은 htest 안을 고치고 다른 영역은 적기만, 코드 리뷰는 사용자에게, R `BWStest`·`mgc`·`energy`는 설치하지 않는다 (docs/design/htest.md §1.1 H139–H149).
+- 결과: 1스레드 NEON double-double(적률, `pearsonr`, 중심 적률; csrc/htest/vdd.hpp), 몇 개의 무거운 조각도 자는 일꾼을 깨우는 `for_pieces_woken`(csrc/htest/lanes.hpp), 긴 줄의 병렬(`pearsonr`, 항의 병렬과 차례 합: `power_divergence`·`anderson`, 키 정렬의 병합 경로, 값 정렬, `levene`의 중앙값), 분포 메서드의 배열 호출(csrc/htest/dist_array.hpp: `goodness_of_fit`·`anderson`·z 검정), 재표본의 통계량을 커널에서 바로(H119: `ttest_ind`·`pearsonr`·`spearmanrho`·`anderson_ksamp`), 배치의 정확 분포 공유(`mannwhitneyu wilcoxon ansari`), 보정의 정렬과 Bonferroni·Šidák, 구간의 분위수 하나. 모든 영역의 골든이 1·3·10스레드에서 같다. 측정 사례 셋을 더했다(`ttest_ind_from_stats`, `relative_risk`와 그 구간). 표는 bench/htest/speed.md(바쁜 기계의 1라운드, 기준선이 아니다), 수는 docs/design/htest.md §7.
+- 일관성: 결과의 `conf_int()`를 틀린 꼴로 부른 에러를 regression의 꼴(`conf_int(): takes 0 positional arguments ...`)로, `mannwhitneyu`의 `method` 메시지 순서. 다른 영역은 적기만 했다(docs/design/htest.md §7).
+- 코드 리뷰는 사용자가 직접 한다(H149).
 
 # 희소 영역 (sd.sparse)
 
-> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2는 완료·승인, SP3은 완료·승인(2026-11-21), SP4는 완료·승인(위임, 2026-11-21), SP5는 완료·승인(위임, 2026-11-21), SP6은 완료·승인(위임, 2026-11-21), SP7은 완료·승인(위임, 2026-11-22), SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
+> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2는 완료·승인, SP3은 완료·승인(2026-11-21), SP4는 완료·승인(위임, 2026-11-21), SP5는 완료·승인(위임, 2026-11-21), SP6은 완료·승인(위임, 2026-11-21), SP7은 완료·승인(위임, 2026-11-22), SP8은 완료·승인(위임, 2026-11-22)이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -582,7 +593,7 @@
 | SP5 반복법: `cg gmres minres bicgstab lsqr lsmr` | 완료·승인(위임) (2026-11-21) |
 | SP6 고유값과 특이값: `eigsh eigs svds` | 완료·승인(위임) (2026-11-21) |
 | SP7 행렬 함수와 노름: `expm expm_multiply onenormest norm` | 완료·승인(위임) (2026-11-22) |
-| SP8 최적화와 일관성 점검 | 시작 전 |
+| SP8 최적화와 일관성 점검 | 완료·승인(위임) (2026-11-22) |
 
 ## 마일스톤
 
@@ -644,12 +655,16 @@
 
 ### SP8. 최적화와 일관성 점검
 - 모든 공개 함수를 크기마다 scipy·R과 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 점검하고, 코드 리뷰를 한다.
+- 결정(추천안, 사용자 위임 2026-11-21): docs/design/sparse.md §1.1 SP111–SP117(`kronsum`은 단위 행렬과 곱하지 않고 값을 놓아 `sd.linalg.kronsum`과 같은 값, `random_array`의 `rng`는 기본값 없는 키워드, 결과의 repr은 짧은 실수 배열을 적는다, `count_nonzero(keepdims=)`, `spbandwidth`는 `BandwidthResult`이고 밀집 입력은 `sd.linalg.bandwidth`를 짚는다, 비트를 바꾸지 않는 속도 고침, 고치지 않은 것). 코드 리뷰는 사용자가 따로 한다(optimize O96의 둘째 부분과 같다).
+- 결과: 1스레드 COO → CSR의 LSD 길과 짧은 줄의 순위 정렬, 1스레드 전치의 열 블록 길, 흩뿌리기(`x @ A`, CSC `@`, 열 합, `norm(ord=1)`)의 출력 블록 병렬, `X @ A`의 연속 작업 배열, SpMM의 미리 읽기, SpGEMM의 비트 집합, 색인 배열 고르기의 바이트 표, Krylov의 여러 열 내적·작은 행 구간·`gmres` MGS의 갱신과 내적 한 번에(csrc/sparse/`canonical.cpp spmv.cpp spgemm.cpp index.cpp krylov.hpp arpack.cpp svds.cpp iterative.cpp`). 골든 7,295케이스의 값은 모두 그대로이고, 바뀐 것은 고친 동작의 다섯(`error random_array rng`의 메시지, `spbandwidth` 넷의 결과 형)과 새 케이스 `kronsum complex special`이다. `deg2rad`·`rad2deg`는 이제 `sd.deg2rad`·`sd.rad2deg`를 부른다(같은 비트). 속도 표는 bench/sparse/speed.md(바쁜 기계의 한 라운드; 기준선으로 올리지 않았다).
+- 잰 것(구판과 새판을 번갈아 부른 A/B, 1스레드 / 10스레드, 구판 ÷ 새판): COO → CSR nnz 10⁵ 1.59 / 1.11, 10⁶ 1.45 / 1.23(scipy 대비 1스레드 2.5배·2.0배: SP33의 목표에 닿음), CSR → CSC 10⁶ 1.41 / 1.0, 10⁷ 1.47(scipy 대비 1스레드 10⁵ 1.27배·10⁶ 1.49배: 목표 2배에 못 미침), `x @ A`·열 합·`norm(A, 1)` 10스레드 1.7–2.5(메모리 대역에 묶여 4배에 못 미침), `X @ A`(k = 16) 1스레드 2.9·10스레드 5.7–7.1, SpMM 1스레드 1.3–1.95(scipy 대비 10⁶ 2.0배: 목표 3배에 못 미침), SpGEMM 1스레드 1.27–1.69(정렬하지 않는 scipy의 0.68–0.9배), 정렬되지 않은 열 고르기 1스레드 1.4, `eigsh` n = 10⁴ 10스레드 1.67–1.92, `svds` nnz 10⁵ 10스레드 1.9, `gmres` lap3d/45 10스레드 1.28, `norm(A, 2)` 10스레드 1.44.
+- SP8 뒤의 결정(추천안, 사용자 위임 2026-11-22): SP118–SP120(희소 배열·`LinearOperator`·`SparseLU`의 공개 메서드도 틀린 호출 모양이 메서드 이름으로 시작(`_calls.methods`), `block_diag`의 인자는 희소·밀집 모두 `arrays`(SP28의 예외), bench/sparse/speed.md는 SP8 실행에서 만든 생성 파일 그대로이고 A/B는 설계 §5).
 
 ---
 
 # 수치 미적분 영역 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4–C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
+> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4는 완료·승인(위임, 2026-11-22), C5–C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -668,7 +683,7 @@
 | C1 함께 쓰는 부품: 차분 간격 커널과 `Differences` 옮기기(C3, C15), 반복 고리를 `elementwise/`로 끌어내기(C4, C16); 공개 함수 없음 | 완료·승인(위임) (2026-11-21) |
 | C2 미분: `derivative jacobian hessian` | 완료·승인(위임) (2026-11-21) |
 | C3 표본과 고정 규칙: `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` | 완료·승인(위임) (2026-11-22) |
-| C4 QUADPACK 1: `quad`(QAGS, QAGI, QAGP), `dblquad tplquad nquad` | 시작 전 |
+| C4 QUADPACK 1: `quad`(QAGS, QAGI, QAGP), `dblquad tplquad nquad` | 완료·승인(위임) (2026-11-22) |
 | C5 QUADPACK 2: `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC) | 시작 전 |
 | C6 배치 적분: `tanhsinh nsum` | 시작 전 |
 | C7 벡터 값과 다차원: `quad_vec cubature` | 시작 전 |
@@ -702,7 +717,10 @@
 - 찾은 것(docs/design/integrate.md §7.9): 표본 규칙은 정확한 식과의 계약을 12벌 모두에서 지키고(한계의 0.050까지), scipy의 기록 65개 가운데 59개와 비트로 같다(나머지는 합의 순서로 끝자리). `fixed_quad`의 점은 n = 5에서 scipy와 같고 n = 20·100에서는 모두 다르다(scipy `roots_legendre`의 끝자리). scipy의 `newton_cotes`는 N ≥ 15에서 Vandermonde 풀이라 `B`가 N = 20에서 9%, N = 30에서 10⁶배 틀린다(sd는 정확한 값의 반올림). 표 밖의 Gauss–Legendre는 처음 한 번 O(n²)라 10⁴점이 0.7초다(n에 상한이 없다; C8에서 다시 본다). 속도는 scipy보다 2–25배 빠르다(`newton_cotes`의 첫 계산만 느리고 기억한다).
 
 ### C4. QUADPACK 1
-- QAGS·QAGI·QAGP(QK21·QK15·QK15I, ε-알고리즘), scipy의 status와 글, 겹친 적분. 결정의 자리의 FMA는 scipy의 호출 순서와 견주어 찾는다.
+- QAGS·QAGI·QAGP(QK21·QK15I, ε-알고리즘), scipy의 status와 글, 겹친 적분. 결정의 자리의 FMA는 scipy의 호출 순서와 견주어 찾는다.
+- 결정(추천안, 사용자 위임 2026-11-21): docs/design/integrate.md §1.1 C55–C70(물었던 넷: 구간 정보의 필드 넷 `intervals interval_integrals interval_errors n_intervals`, 복소수는 `quad(complex_func=True)`만, `vectorized=True` 없음, scipy 글의 줄바꿈 그대로; 구현하며 생긴 열둘: 복소수 결과의 `real`·`imag`, 수렴의 글, C5 전의 `weight`는 `NotImplementedError`, FMA는 Kronrod 누적 넷, 겹친 적분의 오차는 모든 `quad`의 최댓값·status는 처음 실패한 것, 겹침은 C++에서, `quad`·`nquad`의 인자, QNG는 옮기지 않음, 파일, `summary()`, 속도의 빠른 길).
+- 결과: csrc/integrate/quadpack.hpp(dqagse·dqagie·dqagpe·dqk21·dqk15i·dqpsrt·dqelg를 문장마다 옮긴 템플릿, `std::fma` 넷), csrc/integrate/quadpack.cpp(scipy의 갈래, 구간 배열, `nquad_solve`의 겹침), src/stardust/integrate/_quadpack.py(`quad dblquad tplquad nquad`), `_result.py`의 `summary()`와 `real`·`imag`, tests/integrate/test_quadpack.py, 골든 171케이스 더함(모두 326), 정확도 스윕 둘(`quad`, `multiple`; 기준선 갱신), 속도 사례 넷 공개(bench/speed/cases/integrate.py); docs/design/integrate.md §1.1·§1.3·§2·§3.1·§3.2·§4·§6.3·§7.10·§8·§9, docs/api/integrate.md.
+- 찾은 것(docs/design/integrate.md §7.10): scipy의 C 판이 FMA로 합친 곳은 Kronrod 규칙의 누적 넷(resg, resk, resabs, resasc)뿐이고, 그 자리에 `std::fma`를 적으면 가중치 없는 106개 모두 점·값·오차·`nfev`·status·글·구간이 scipy와 비트로 같다(축약 없이는 9개, 한 자리만 풀면 12–55개). 겹친 적분 7개와 `nquad`도 점과 값이 같다. scipy `nquad`의 오차는 바깥 `quad`의 것이 아니라 모든 `quad`의 최댓값이다(설계 초안을 고쳤다). Arb: 수렴한 94개 가운데 참 오차가 오차 추정 밖인 것은 scipy와 같은 셋(봉우리 α = 19·20, f10). 속도는 함숫값 21개의 가장 작은 경우만 7% 느리고 나머지는 1.2–2.3배 빠르다(바쁜 기계의 탐침).
 
 ### C5. QUADPACK 2
 - QAWO·QAWF(체비쇼프 모멘트, Clenshaw–Curtis), QAWS·QAWC(수정 Clenshaw–Curtis).

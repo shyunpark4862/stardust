@@ -209,8 +209,9 @@ def ttest_ind(
     info = s.info(alt, **_ind_title(equal_var, tr))
     if method is not None:
 
-        def t(x, y):
-            return ttest_ind(x, y, axis=-1, equal_var=ev, trim=tr).statistic
+        def t(x, y):  # (ttest_ind(x, y, axis=-1, ...).statistic from the kernel, no p-values: H119)
+            rows, lead = R.kernel_rows([x, y])
+            return R.from_lanes(_k.ttest(2, rows[0], rows[1], None, ev, tr, -1, False)[0], lead)
 
         p, pairs = R.method_pvalue(name, method, s, t, alt)
         res = (res[0], p) + tuple(res[2:])

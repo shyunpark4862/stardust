@@ -383,6 +383,7 @@ def _specs() -> list[dict]:
         add(G_CREATE, "M." + s, M6, threads=T1)
     add(G_CREATE, "M.linspace(0.0, 1.0, N)", M6, threads=T1)
     add(G_CREATE, "M.eye(1000)", SQ, threads=T1)
+    add(G_CREATE, "M.diag(v)", SQ, note="1000개에서", threads=T1)
     add(G_CREATE, "M.meshgrid(v, v)", SQ, note="1000개짜리 둘에서", threads=T1)
     add(G_CREATE, "M.tril(f2)", SQ)
     add(G_CREATE, "M.triu(f2)", SQ)
@@ -438,6 +439,7 @@ def _specs() -> list[dict]:
         ("concat([f, g])", M6, "", BOTH),
         ("concat([f2, g2], axis=1)", SQ, "", BOTH),
         ("stack([f, g])", M6, "", BOTH),
+        ("block([[f2, g2], [g2, f2]])", SQ, "블록 넷, 결과 (2000, 2000)", BOTH),
         ("flip(f)", M6, "뷰", T1),
         ("roll(f, 1)", M6, "", BOTH),
         ("roll(f2, 1, axis=1)", SQ, "", BOTH),
@@ -539,6 +541,8 @@ def _specs() -> list[dict]:
         "isfinite",
         "signbit",
         "reciprocal",
+        "deg2rad",
+        "rad2deg",
     ]:
         add(G_UN_F, f"M.{op}(f)", M6, quick=(op == "exp"))
     for op in ["asin", "acos", "atanh"]:

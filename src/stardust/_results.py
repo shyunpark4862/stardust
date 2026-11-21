@@ -33,6 +33,7 @@ EigResult = namedtuple("EigResult", ["eigenvalues", "eigenvectors"])
 SchurResult = namedtuple("SchurResult", ["T", "Z"])
 HessenbergResult = namedtuple("HessenbergResult", ["H", "Q"])
 LDLResult = namedtuple("LDLResult", ["L", "D", "perm"])
+BandwidthResult = namedtuple("BandwidthResult", ["lower", "upper"])
 
 # special: airy (built by csrc/bind/special_bind.cpp, which looks it up by name)
 AiryResult = namedtuple("AiryResult", ["ai", "aip", "bi", "bip"])
@@ -106,6 +107,7 @@ LINALG = (
     SchurResult,
     HessenbergResult,
     LDLResult,
+    BandwidthResult,
 )
 
 # stats: describe, mode (scipy.stats' fields and order, docs/api/stats.md §4)

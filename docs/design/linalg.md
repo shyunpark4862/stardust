@@ -14,17 +14,17 @@
 
 ### 1.1 범위
 - **있는 것**
-  - 기본 연산: `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `cross`
+  - 기본 연산: `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `kronsum`, `block_diag`, `cross`
   - 노름과 지표: `vector_norm`, `matrix_norm`(fro, ±1, ±inf, ±2, nuc), `det`, `slogdet`, `matrix_rank`, `cond`
   - 선형 시스템: `solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lstsq`, `inv`, `pinv`
   - 분해: `lu`, `cholesky`, `qr`, `qr_pivoted`, `ldl`, `eigh`/`eigvalsh`(일반화 문제 `eigh(a, b)` 포함), `eig`/`eigvals`, `schur`, `hessenberg`, `svd`/`svdvals`
-  - 특수 구조: `solve_tridiagonal`, `solve_banded`, `solve_sylvester`
+  - 특수 구조: `solve_tridiagonal`, `solve_banded`, `solve_sylvester`, `bandwidth`
   - 행렬 함수: `expm` (§11)
 - **없는 것**
   - `matmul`, `matrix_transpose`: 배열 영역에 있다 (array.md §9). 다시 만들지 않는다.
   - `tensordot`, `einsum`
   - `sqrtm`, `logm`, `funm`, Toeplitz, Lyapunov 방정식
-  - 희소 행렬과 반복법(CG, GMRES)
+  - 희소 행렬과 반복법(CG, GMRES): `sd.sparse`에 있다. 그 가운데 희소의 것이 아닌 기능은 여기에도 둔다(§1.5).
   - randomized SVD: 난수 생성이 먼저 필요하다. 시그니처가 정해지지 않았다.
 
 ### 1.2 Accelerate LAPACK을 감싼다 (`linalg/lapack.hpp`)
@@ -79,7 +79,7 @@
 | `linalg/input.*`, `linalg/outblock.*` | 경계 코드: 빌린 입력 `Input`과 출력 블록 `Out` (§3.6) |
 | `linalg/ops/common.hpp` | 실패 코드와 `raise`, 우변 규칙(`Rhs`), `LapackSlot`, `triangle_operand`, `lu_factor`, `lu_inverse` |
 | `linalg/ops/lu.cpp` | `solve`, `inv`, `det`, `slogdet` |
-| `linalg/ops/basic.cpp` | `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `cross` |
+| `linalg/ops/basic.cpp` | `vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`, `kron`, `kronsum`, `block_diag`, `bandwidth`, `cross` |
 | `linalg/ops/norms.cpp`, `vnorm.hpp` | `vector_norm`, `matrix_norm`, 노름 공통 루프 |
 | `linalg/ops/factor.cpp` | `solve_triangular`, `cholesky`, `cholesky_solve`, `lu`, `lu_solve` |
 | `linalg/ops/qr.cpp` | `qr`, `qr_pivoted`, `lstsq` |
@@ -91,6 +91,15 @@
 | `src/stardust/linalg/` | `__init__.py`(재노출), `_errors.py`(`LinAlgError`). 결과 namedtuple은 세 영역 공통의 `src/stardust/_results.py` |
 
 - 층은 아래로만 의존한다: `linalg/` → `array/`, `parallel/`, `base/`, 그리고 Python 경계의 공용 도우미 `bind/pyutil.hpp`·`bind/errors.hpp` (ARCHITECTURE §1).
+
+### 1.5 sd.sparse의 밀집 짝
+sd.sparse에는 밀집의 부분집합이거나 희소에만 필요한 것만 둔다(API.md §7). 2026-11-22에 sd.sparse의 기능 가운데 밀집에 없던 다섯을 선형대수에 더했다(추천안, 사용자 위임 2026-11-22). 공개 규칙은 `docs/api/linalg.md` §2, §4, §6이다. 모두 LAPACK을 쓰지 않는 원소 루프라 §10.8에 함께 둔다(`ops/basic.cpp`, `lu_solve`만 `ops/factor.cpp`).
+- **`kronsum(x1, x2, /)`**(`sd.sparse.kronsum`의 짝): `kron` 옆의 이름이다(scipy.linalg에는 없고 scipy.sparse의 이름). 행렬 배치이고 계산 dtype은 §2.1이다(`kron`과 같다). 원소는 `x1`의 값, `x2`의 값, 주대각의 합 `x1[p, p] + x2[i, i]` 하나라 덧셈 한 번이고, 참값은 그 덧셈 자체다(따로 참값 파일이 필요 없다). 단위 행렬과 곱하지 않아 inf × 0의 NaN이 없다. 희소 쪽은 단위 행렬의 1과 곱하므로 complex의 inf와 허수부 -0.0에서만 다를 수 있다(희소에 넘긴 고칠 거리).
+- **`block_diag(arrays, /)`**(`sd.sparse.block_diag`의 짝): scipy.linalg의 이름이되 가변 인자가 아니라 목록 하나다(`[scipy와 다름]`). 같은 일의 `sd.sparse.block_diag(mats)`, 배열을 잇는 `concat`·`stack`·`block`이 모두 목록을 받는다(영역 사이의 일관성, DESIGN.md §1.4). 배치 축은 모든 블록 사이에서 브로드캐스트한다(scipy 1.18과 같다). `Batch`는 피연산자 수에 한계가 있어, 브로드캐스트 shape을 직접 구하고 블록마다 배치 축의 stride를 따로 들고 간다. `diagonal`처럼 옮기기만 하므로 dtype은 입력들의 승격이다(bool은 bool).
+- **`bandwidth(x, /)`**(`spbandwidth`, `is_sptriangular`의 짝): scipy.linalg의 이름과 뜻이다. 결과는 linalg의 규칙대로 namedtuple `BandwidthResult(lower, upper)`다(scipy는 tuple; 풀면 같다). 배치면 슬라이스마다 int64 배열이다(scipy 1.18과 같다). 띠를 넓힐 수 있는 원소만 읽는다: 메모리가 빠른 축을 따라, 아래쪽은 가장 먼 것부터, 위쪽도 가장 먼 것부터 보고 찾은 줄에서 멈춘다. 띠 행렬은 원소 대부분을 읽지 않는다. 삼각 판정은 `upper == 0`, `lower == 0`이다(`is_sptriangular`의 짝을 따로 두지 않는다).
+- **`kron`의 1차원 입력**(`sd.sparse.kron`이 받는 것): 1차원은 한 행 `(1, N)`이고 배치 축이 없다. 둘 다 1차원이면 결과도 1차원이다(np.kron과 같은 값과 비트). 전에는 2차원 이상만 받았다.
+- **`lu_solve`의 `trans=`**(`SparseLU.solve(trans=)`의 짝): `'N'`, `'T'`, `'H'`. A = Pᵀ L U이므로 Aᵀ x = b는 Uᵀ y = b, Lᵀ z = y를 `trtrs`로 풀고 x[perm] = z로 흩는다(`getrs`의 전치 풀이와 같은 순서). b를 순서대로 읽어 작업 버퍼에서 풀고 결과 자리에 흩는다. scipy의 정수 `trans=0, 1, 2`가 아니라 희소와 같은 문자다(`[scipy와 다름]`).
+- 짝이 이미 있는 것: `spsolve` → `solve`, `splu`·`factorized` → `lu`·`lu_solve`, `inv`, `spsolve_triangular` → `solve_triangular`, `norm` → `matrix_norm`·`vector_norm`, `expm`. `eigsh`·`eigs`·`svds`·`onenormest`·`expm_multiply`·`LinearOperator`와 반복법은 밀집 배열도 받는다(scipy와 같다).
 
 ---
 
@@ -694,13 +703,14 @@
   - `solve_sylvester`의 `c`는 항상 행렬 `(..., M, N)`이다. 1차원 `b` 규칙(§2.1)은 solve류의 우변에만 적용된다.
 
 ### 10.8 LAPACK을 쓰지 않는 함수
-`vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`(n ≥ 0), `kron`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf). 직접 루프로 짠다. NaN을 전파한다 (§2.3).
+`vecdot`, `outer`, `trace`, `diagonal`, `matrix_power`(n ≥ 0), `kron`, `kronsum`, `block_diag`, `bandwidth`, `cross`, `vector_norm`, `matrix_norm`(fro, ±1, ±inf). 직접 루프로 짠다. NaN을 전파한다 (§2.3).
 - **원소 곱은 배열(그리고 numpy)과 같은 식이다** (`types.hpp`의 `mul`).
   - complex: `(ar·br − ai·bi, ar·bi + ai·br)`를 `fma(ar, br, −(ai·bi))`, `fma(ar, bi, ai·br)`로 계산한다. 배열의 complex 곱과 같다 (array.md §5.3). numpy는 FMA 축약을 켜고 빌드되어 있어서 `std::complex`의 곱셈과 비트가 다르다.
   - 그래서 `outer(x, y)`는 `x[..., :, None] * y[..., None, :]`와, `kron`은 `np.kron`(2차원)과, `cross`는 `np.cross`와 비트까지 같다.
 - **`vecdot`, `cross`의 축**: `axis`는 브로드캐스트된 shape 기준이다. 축약하는 축 자체는 브로드캐스트하지 않는다. 두 입력의 그 축 크기가 같아야 하며, 다르면 ValueError다 (Array API). `cross`는 길이 3만 받는다.
   - `cross`는 각 곱을 반올림한 뒤 빼는 numpy의 순서 그대로다.
-- **`kron`은 행렬 배치다**: `(..., M, N) ⊗ (..., P, Q) → (..., M·P, N·Q)`. 배치 축은 다른 행렬 함수처럼 브로드캐스트한다. 입력은 2차원 이상이어야 한다. 원소 곱은 x1이 왼쪽이다.
+- **`kron`은 행렬 배치다**: `(..., M, N) ⊗ (..., P, Q) → (..., M·P, N·Q)`. 배치 축은 다른 행렬 함수처럼 브로드캐스트한다. 1차원 입력은 배치 축 없는 한 행이다(§1.5). 원소 곱은 x1이 왼쪽이다.
+- **`kronsum`, `block_diag`, `bandwidth`**는 §1.5다. `kronsum`·`block_diag`의 결과는 열마다 0으로 채운 뒤 값을 쓴다(F 순서). 비용은 `kCopy`(결과 원소 수), `bandwidth`는 `kStream`(행렬 원소 수; 띠 행렬은 실제로 훨씬 적게 읽는다).
 - **`diagonal`**은 입력 dtype을 유지하는 복사본이다. 계산하지 않기 때문이다.
 - **`matrix_power`**: 이진 거듭제곱(최상위 비트부터)이다. `log2(e)`번 제곱과 `popcount(e) − 1`번 곱, 모두 `gemm`이다. n < 0은 `inv`와 같은 경로로 역행렬을 구한 뒤 거듭제곱한다(§2.3).
   - `|n|`은 `INT64_MIN`에서도 넘치지 않게 부호 없는 정수로 구한다.

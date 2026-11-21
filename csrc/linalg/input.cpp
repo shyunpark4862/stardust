@@ -18,14 +18,25 @@ std::string where(const Input& x) { return std::string(x.func()) + "(): '" + x.a
 std::string sparse_hint(nb::handle obj, const char* func) {
     if (!is_sparse_array(obj)) return "";
     static const std::pair<const char*, const char*> table[] = {
-        {"solve", "spsolve"},    {"solve_triangular", "spsolve_triangular"},
-        {"lu", "splu"},          {"lu_solve", "splu"},
-        {"inv", "inv"},          {"expm", "expm"},
-        {"eigh", "eigsh"},       {"eigvalsh", "eigsh"},
-        {"eig", "eigs"},         {"eigvals", "eigs"},
-        {"svd", "svds"},         {"svdvals", "svds"},
-        {"matrix_norm", "norm"}, {"vector_norm", "norm"},
-        {"lstsq", "lsqr"},       {"kron", "kron"},
+        {"solve", "spsolve"},
+        {"solve_triangular", "spsolve_triangular"},
+        {"lu", "splu"},
+        {"lu_solve", "splu"},
+        {"inv", "inv"},
+        {"expm", "expm"},
+        {"eigh", "eigsh"},
+        {"eigvalsh", "eigsh"},
+        {"eig", "eigs"},
+        {"eigvals", "eigs"},
+        {"svd", "svds"},
+        {"svdvals", "svds"},
+        {"matrix_norm", "norm"},
+        {"vector_norm", "norm"},
+        {"lstsq", "lsqr"},
+        {"kron", "kron"},
+        {"kronsum", "kronsum"},
+        {"block_diag", "block_diag"},
+        {"bandwidth", "spbandwidth"},
     };  // fmt: skip
     nb::object sparse = nb::module_::import_("stardust.sparse");
     const std::string f = func;

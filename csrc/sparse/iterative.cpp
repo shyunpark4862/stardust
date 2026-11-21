@@ -318,10 +318,10 @@ void gmres(
             M.apply(tmp.data(), w.data());
             // modified Gram-Schmidt
             const double h0 = nrm2(w.data(), n);
-            for (int64_t k = 0; k <= col; ++k) {
-                const T t = dot(V(k), w.data(), n);
-                H(col, k) = t;
-                axpy(neg(t), V(k), w.data(), n);
+            T hk = dot(V(0), w.data(), n);
+            for (int64_t k = 0; k <= col; ++k) {  // w -= h V(k) and the next dot in one pass
+                H(col, k) = hk;
+                hk = axpy_dot(neg(hk), V(k), w.data(), k < col ? V(k + 1) : nullptr, n);
             }
             const double h1 = nrm2(w.data(), n);
             H(col, col + 1) = of<T>(h1);

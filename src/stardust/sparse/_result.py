@@ -71,17 +71,7 @@ class _SolveResult(_FieldResult):
         return _summary(self)
 
     def __repr__(self):
-        parts = []
-        for k in self._REPR:
-            if k not in self._fields:
-                continue
-            v = self._fields[k]
-            if isinstance(v, _sd.ndarray) and v.dtype == _sd.complex128:  # (compact writes real values)
-                text = f"<array of shape {_S.shape_text(tuple(v.shape))}>"
-            else:
-                text = _S.compact(v)
-            parts.append(f"{k}={text}")
-        return f"{type(self).__name__}(" + ", ".join(parts) + ")"
+        return _one_line(self, [(k, self._fields[k]) for k in self._REPR if k in self._fields])
 
 
 class CgResult(_SolveResult):
@@ -153,6 +143,20 @@ def _num(v):
     return str(v) if isinstance(v, int) else f"{float(v):#.6g}"
 
 
+def _one_line(r, fields):
+    """Name(field=value, ...) in the form every result's repr has (API.md §2.3, stardust._summary's
+    compact: 6 significant digits, a 1-D array of at most 6 values written out, a longer one by its
+    shape; SP113). A complex array is shown by its shape (compact writes real values)."""
+    parts = []
+    for k, v in fields:
+        if isinstance(v, _sd.ndarray) and v.dtype == _sd.complex128:
+            text = f"<array of shape {_S.shape_text(tuple(v.shape))}>"
+        else:
+            text = _S.compact(v)
+        parts.append(f"{k}={text}")
+    return f"{type(r).__name__}(" + ", ".join(parts) + ")"
+
+
 def _summary(r):
     f = r._fields
     left = [("Converged:", str(f["converged"])), ("Status:", str(f["status"]))]
@@ -220,15 +224,9 @@ class _EigenResult(_FieldResult):
         return _S.render(self._TITLE, header=(left, right), wide_rows=[("Message:", f["message"])], tables=tables)
 
     def __repr__(self):
-        parts = []
-        for k in ("converged", "status", "n_iter", "n_converged", self._VALUES):
-            v = self._fields[k]
-            if isinstance(v, _sd.ndarray):
-                text = f"<array of shape {_S.shape_text(tuple(v.shape))}>"
-            else:
-                text = _S.compact(v)
-            parts.append(f"{k}={text}")
-        return f"{type(self).__name__}(" + ", ".join(parts) + ")"
+        return _one_line(
+            self, [(k, self._fields[k]) for k in ("converged", "status", "n_iter", "n_converged", self._VALUES)]
+        )
 
 
 class EigshResult(_EigenResult):
@@ -294,12 +292,7 @@ class OnenormestResult(_FieldResult):
         return _S.render(self._TITLE, header=(left, right))
 
     def __repr__(self):
-        parts = [f"est={_S.compact(self._fields['est'])}"]
-        for k in ("v", "w"):
-            v = self._fields[k]
-            parts.append(f"{k}=None" if v is None else f"{k}=<array of shape {_S.shape_text(tuple(v.shape))}>")
-        parts += [f"n_iter={self._fields['n_iter']}", f"n_op={self._fields['n_op']}"]
-        return f"{type(self).__name__}(" + ", ".join(parts) + ")"
+        return _one_line(self, [(k, self._fields[k]) for k in ("est", "v", "w", "n_iter", "n_op")])
 
 
 __all__ = ["CgResult", "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult", "EigshResult",

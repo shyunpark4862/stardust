@@ -50,6 +50,7 @@ class PearsonrResult(_TestResult):
     _UNPACK = ("statistic", "pvalue")
     _CI = True
 
+    @_calls.method("conf_int")
     def conf_int(self, *, alpha=0.05, method=None):
         """The 1 - alpha confidence interval of r: Fisher's z (method=None), or a BootstrapMethod's
         interval of r (H9, scipy's confidence_interval(method=)), within [-1, 1]; one-sided for a
@@ -162,8 +163,9 @@ def pearsonr(x, y, /, *, axis=None, alternative="two-sided", method=None, nan_po
     s, alt, r, p, z, n = _pearson(name, x, y, axis, alternative, nan_policy, keepdims, False)
     info = s.info(alt)
 
-    def stat(a, b):
-        return pearsonr(a, b, axis=-1).statistic
+    def stat(a, b):  # (pearsonr(a, b, axis=-1).statistic from the kernel, no p-values: H119)
+        rows, lead = R.kernel_rows([a, b])
+        return R.from_lanes(_k.pearson(rows[0], rows[1], -1, False, False)[0], lead)
 
     if method is not None:  # H9: y's order permuted (x held), or both drawn by the method's rvs
         p, pairs = R.method_pvalue(name, method, s, stat, alt, ptype="pairings", held=1)
@@ -198,8 +200,9 @@ def spearmanrho(x, y, /, *, axis=None, alternative="two-sided", method=None, nan
     info = s.info(alt)
     if method is not None:  # H9: rho of y's permutations or of the method's draws (ranked: H126)
 
-        def rho(a, b):
-            return spearmanrho(a, b, axis=-1).statistic
+        def rho(a, b):  # (spearmanrho(a, b, axis=-1).statistic from the kernel, no p-values: H119)
+            rows, lead = R.kernel_rows([a, b])
+            return R.from_lanes(_k.pearson(rows[0], rows[1], -1, False, True)[0], lead)
 
         p, pairs = R.method_pvalue(name, method, s, rho, alt, ptype="pairings", held=1)
         info["pairs"] = pairs

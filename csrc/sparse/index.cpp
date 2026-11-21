@@ -135,6 +135,14 @@ public:
             std::vector<int64_t> fill(table_.begin(), table_.end() - 1);
             for (int64_t t = 0; t < count_; ++t)
                 pos_[static_cast<std::size_t>(fill[static_cast<std::size_t>(sel_[t])]++)] = t;
+            // how many positions select each source index, saturated at 255: a byte table that
+            // stays in cache answers the common "none" without the wide table (SP8)
+            hits_.resize(static_cast<std::size_t>(n_));
+            for (int64_t c = 0; c < n_; ++c) {
+                const int64_t h = table_[static_cast<std::size_t>(c + 1)] - table_[static_cast<std::size_t>(c)];
+                if (h >= 255) saturated_ = true;
+                hits_[static_cast<std::size_t>(c)] = static_cast<std::uint8_t>(std::min<int64_t>(255, h));
+            }
         } else {  // the positions sorted by source index (stably), searched
             std::iota(pos_.begin(), pos_.end(), int64_t{0});
             if (!increasing_)
@@ -146,6 +154,11 @@ public:
     }
 
     Kind kind() const { return kind_; }
+    // An index array with the byte table and no source index picked 255 times or more: hits()[c]
+    // positions pick source index c, they are pos()[table()[c] ...] (else null).
+    const std::uint8_t* hits() const { return hits_.empty() || saturated_ ? nullptr : hits_.data(); }
+    const int64_t* table() const { return table_.data(); }
+    const int64_t* pos() const { return pos_.data(); }
     int64_t count() const { return count_; }
     int64_t start() const { return start_; }
     int64_t step() const { return step_; }
@@ -172,6 +185,10 @@ public:
                 return range_pos(c, t) ? 1 : 0;
             }
             default: {
+                if (!hits_.empty() && c >= 0 && c < n_) {
+                    const std::uint8_t h = hits_[static_cast<std::size_t>(c)];
+                    if (h < 255) return h;
+                }
                 int64_t b, e;
                 span(c, b, e);
                 return e - b;
@@ -190,6 +207,7 @@ public:
                 return;
             }
             default: {
+                if (!hits_.empty() && c >= 0 && c < n_ && hits_[static_cast<std::size_t>(c)] == 0) return;
                 int64_t b, e;
                 span(c, b, e);
                 for (int64_t s = b; s < e; ++s) f(pos_[static_cast<std::size_t>(s)]);
@@ -203,6 +221,8 @@ private:
     const int64_t* sel_ = nullptr;
     bool increasing_ = true;
     std::vector<int64_t> pos_, table_, sorted_, rtable_;
+    std::vector<std::uint8_t> hits_;
+    bool saturated_ = false;
 
     bool range_pos(int64_t c, int64_t& t) const {
         if (!rtable_.empty()) {
@@ -323,6 +343,9 @@ nb::tuple select_compressed(
     NDArray out_ptr = new_index(n_out + 1);
     int64_t* op = i64(out_ptr);
     op[0] = 0;
+    const std::uint8_t* hits = minor.hits();
+    const int64_t* table = minor.table();
+    const int64_t* pos = minor.pos();
     for_chunks(
         n_out,
         [&](int64_t, int64_t lo, int64_t hi) {
@@ -331,6 +354,10 @@ nb::tuple select_compressed(
                 bounds(lines.source(t), b, e);
                 if (minor.unit()) {
                     op[t + 1] = e - b;
+                } else if (hits) {
+                    int64_t c = 0;
+                    for (int64_t k = b; k < e; ++k) c += hits[ix[k]];
+                    op[t + 1] = c;
                 } else {
                     int64_t c = 0;
                     for (int64_t k = b; k < e; ++k) c += minor.count_of(ix[k]);
@@ -359,6 +386,16 @@ nb::tuple select_compressed(
                 if (minor.unit()) {
                     for (int64_t k = b; k < e; ++k) ox[w + k - b] = ix[k] - shift;
                     std::memcpy(ov + w * size, dv + b * size, static_cast<std::size_t>((e - b) * size));
+                } else if (order > 0 && hits) {
+                    for (int64_t k = b; k < e; ++k) {
+                        const int64_t c = ix[k];
+                        if (!hits[c]) continue;
+                        for (int64_t q = table[c]; q < table[c + 1]; ++q) {
+                            ox[w] = pos[q];
+                            copy_value(ov, w, dv, k, size);
+                            ++w;
+                        }
+                    }
                 } else if (order > 0) {
                     for (int64_t k = b; k < e; ++k)
                         minor.each(ix[k], [&](int64_t p) {
@@ -375,7 +412,15 @@ nb::tuple select_compressed(
                         });
                 } else {
                     tmp.clear();
-                    for (int64_t k = b; k < e; ++k) minor.each(ix[k], [&](int64_t p) { tmp.emplace_back(p, k); });
+                    if (hits) {
+                        for (int64_t k = b; k < e; ++k) {
+                            const int64_t c = ix[k];
+                            if (!hits[c]) continue;
+                            for (int64_t q = table[c]; q < table[c + 1]; ++q) tmp.emplace_back(pos[q], k);
+                        }
+                    } else {
+                        for (int64_t k = b; k < e; ++k) minor.each(ix[k], [&](int64_t p) { tmp.emplace_back(p, k); });
+                    }
                     if (tmp.size() <= 16) {  // the positions of a line are distinct
                         for (std::size_t i = 1; i < tmp.size(); ++i)
                             for (std::size_t j = i; j > 0 && tmp[j - 1].first > tmp[j].first; --j)

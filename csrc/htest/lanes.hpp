@@ -47,12 +47,38 @@ struct Outs {
     }
 };
 
+// for_pieces (array/ops/pieces.hpp: the same pieces, so the same bits), but a job of a few long
+// pieces wakes the sleeping workers too. The pool wakes them only for a job of more than 16
+// tasks (csrc/parallel/pool.cpp kWakeTasks: a wake-up costs ~25 us against tasks of ~1 us), so
+// two to sixteen pieces of a heavy test (a tukey_hsd p-value is ~4 ms) ran on the calling thread
+// and the workers that happened to be spinning. Pieces of at least kHeavyPiece elements of work
+// (~50 us and more) are padded with empty tasks past that count.
+inline constexpr std::int64_t kHeavyPiece = 1 << 15;
+inline constexpr std::int64_t kWakeTasks = 17;
+template <class F>
+void for_pieces_woken(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
+    per = std::max<std::int64_t>(per, 1);
+    const std::int64_t pieces = (n + per - 1) / per;
+    if (work < kParallelThreshold || pieces < 2 || pieces >= kWakeTasks || work / pieces < kHeavyPiece) {
+        for_pieces(n, per, work, fn);
+        return;
+    }
+    const parallel::Unlocked unlocked(true);
+    if (!parallel::available()) {
+        for (std::int64_t t = 0; t < pieces; ++t) fn(t, t * per, std::min(n, (t + 1) * per));
+        return;
+    }
+    parallel::parallel_for(kWakeTasks, [&](std::int64_t t) {
+        if (t < pieces) fn(t, t * per, std::min(n, (t + 1) * per));
+    });
+}
+
 // fn(r) for every lane on the pool, `cost` the work of one lane in elements (roughly)
 template <class F>
 void each_lane(std::int64_t lanes, std::int64_t cost, F&& fn) {
     const std::int64_t c = std::max<std::int64_t>(1, cost);
     const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / c);
-    for_pieces(lanes, per, lanes * c, [&](std::int64_t, std::int64_t b, std::int64_t e) {
+    for_pieces_woken(lanes, per, lanes * c, [&](std::int64_t, std::int64_t b, std::int64_t e) {
         for (std::int64_t r = b; r < e; ++r) fn(r);
     });
 }

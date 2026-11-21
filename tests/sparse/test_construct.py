@@ -83,6 +83,31 @@ def test_kron_and_kronsum_store_what_scipy_stores(f1, f2):
         same_as_scipy(S.kronsum(A, B), sp.kronsum(As, Bs))
 
 
+@pytest.mark.parametrize("f1", FORMATS)
+def test_kronsum_is_the_dense_kronsum(f1):
+    # values placed, not multiplied by the identity (SP111): bit for bit sd.linalg.kronsum but for
+    # the zeros sparse does not store -- complex inf and -0.0 parts included
+    g = np.random.default_rng(11)
+    inf = np.inf
+    A = np.array(
+        [[complex(0, inf), complex(1, -0.0), 0], [0, complex(2, -0.0), complex(-inf, 0)], [3, 0, complex(0, -0.0) + 1]]
+    )
+    B = np.array([[1, complex(0, -inf)], [complex(-0.0, -0.0) + 2j, -3]])
+    cases = [(A, B), (g.standard_normal((4, 4)) * (g.random((4, 4)) < 0.5), g.standard_normal((3, 3)))]
+    cases.append((np.array([[np.nan, 1], [0, -inf]]), np.array([[inf, 0], [2, np.nan]])))
+    for a, b in cases:
+        sa = S.csr_array(sd.asarray(a)).asformat(f1)
+        sb = S.csr_array(sd.asarray(b))
+        K = S.kronsum(sa, sb)
+        D = npy(sd.linalg.kronsum(sd.asarray(a), sd.asarray(b)))
+        c = K.tocoo()
+        r, j, v = (npy(x) for x in (c.coords[0], c.coords[1], c.data))
+        assert np.array_equal(v.view(np.uint8), D[r, j].view(np.uint8))  # every stored value, its bits
+        rest = np.ones(D.shape, bool)
+        rest[r, j] = False
+        assert not np.any(D[rest])  # what is not stored is a zero of the dense result
+
+
 def test_kron_of_an_empty_operand_keeps_the_dtype():
     # scipy 1.18.1 gives float64 when an operand stores nothing (it builds an empty default array)
     E = S.csr_array((2, 2), dtype=sd.bool)
@@ -145,7 +170,7 @@ def test_stack_errors():
         S.vstack(A)
     with pytest.raises(ValueError, match=r"block_array\(\): some block must be given"):
         S.block_array([[None]])
-    with pytest.raises(ValueError, match=r"block_diag\(\): 'mats' must hold at least one block"):
+    with pytest.raises(ValueError, match=r"block_diag\(\): 'arrays' must hold at least one array"):
         S.block_diag([])
     with pytest.raises(ValueError, match=r"'format' must be 'coo', 'csr', 'csc', 'dok' or None, not 'bsr'"):
         S.hstack([A], format="bsr")
@@ -241,8 +266,10 @@ def test_diags_array_errors():
 
 
 def test_random_array_needs_an_rng_and_is_reproducible(restore_threads):
-    with pytest.raises(TypeError, match=r"random_array\(\): 'rng' must be an sd.random.Generator"):
+    with pytest.raises(TypeError, match=r"^random_array\(\): missing 1 required keyword-only argument: 'rng'$"):
         S.random_array((3, 4))
+    with pytest.raises(TypeError, match=r"random_array\(\): 'rng' must be an sd.random.Generator .*not NoneType"):
+        S.random_array((3, 4), rng=None)
     with pytest.raises(TypeError, match=r"random_array\(\): 'rng' must be an sd.random.Generator .*not int"):
         S.random_array((3, 4), rng=0)
     with pytest.raises(ValueError, match=r"random_array\(\): 'density' must be in \[0, 1\], got 1.5"):

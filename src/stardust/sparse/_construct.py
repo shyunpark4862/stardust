@@ -185,9 +185,10 @@ def _contiguous(x):
 # ---- random_array ----
 
 
-def random_array(shape, /, *, density=0.01, format="coo", dtype=None, rng=None, data_sampler=None):
+def random_array(shape, /, *, density=0.01, format="coo", dtype=None, rng, data_sampler=None):
     """A random sparse array: exactly round(density * size) positions drawn without replacement,
-    values from data_sampler(n) or uniform on [0, 1). `rng` (an sd.random.Generator) is required;
+    values from data_sampler(n) or uniform on [0, 1). `rng` (an sd.random.Generator) is required (no
+    default: SP112);
     the same state gives the same array whatever the thread count. COO by default."""
     func = "random_array"
     from ..random import Generator
@@ -292,15 +293,32 @@ def kronsum(A, B, /, *, format=None):
         if X.shape[0] != X.shape[1]:
             raise ValueError(f"{func}(): '{name}' must be square, got shape {X.shape}")
     dtype = promote(A.dtype, B.dtype)
-    left = kron(eye_array(B.shape[0], dtype=dtype), A, format="coo")
-    right = kron(B, eye_array(A.shape[0], dtype=dtype), format="coo")
-    return _as(left + right, format, func)
+    loop = C.renamed(func, _sd.multiply, _sd.zeros(1, dtype=dtype), _sd.zeros(1, dtype=dtype)).dtype  # kron's
+    m, n = A.shape[0], B.shape[0]
+    # The entries placed, not multiplied by the identity's ones (SP111): A's in every diagonal
+    # block, b_ij on the diagonal of block (i, j); a position both hold (a_pp and b_ii) is their one
+    # sum a + b, the rest keep their values (complex inf, -0.0 parts), as sd.linalg.kronsum.
+    a, b = _as_2d_csr(A).tocoo(), _as_2d_csr(B).tocoo()
+    (ra, ca), (rb, cb) = a.coords, b.coords
+    base = _sd.arange(n, dtype=_sd.int64)[:, None] * m
+    q = _sd.arange(m, dtype=_sd.int64)[None, :]
+    na, nb = ra.shape[0], rb.shape[0]
+    rows = _sd.concat([(base + ra[None, :]).reshape(n * na), (rb[:, None] * m + q).reshape(nb * m)])
+    cols = _sd.concat([(base + ca[None, :]).reshape(n * na), (cb[:, None] * m + q).reshape(nb * m)])
+    av, bv = to_dtype(a.data, loop), to_dtype(b.data, loop)
+    vals = _sd.concat(
+        [_sd.broadcast_to(av[None, :], (n, na)).reshape(n * na), _sd.broadcast_to(bv[:, None], (nb, m)).reshape(nb * m)]
+    )
+    coo = _classes()[0]._new((m * n, m * n), (_readonly(rows), _readonly(cols)), vals, None)
+    out = coo._tocsr(None, func)  # a + b in that order (left to right, as the old kron(I, A) + kron(B, I))
+    out.eliminate_zeros()  # the exact zeros go, as a sum of two sparse arrays drops them
+    return _as(out, format, func)
 
 
 # ---- stacking ----
 
 
-def _block_arg(b, func, where):
+def _block_arg(b, func, where, arg="blocks"):
     if b is None:
         return None
     from ._base import sparray
@@ -308,11 +326,13 @@ def _block_arg(b, func, where):
     if isinstance(b, sparray):
         A = b
     elif isinstance(b, _sd.ndarray):
-        C.check_ndim(b.ndim, func, (1, 2), what=f"blocks[{where}]")
+        C.check_ndim(b.ndim, func, (1, 2), what=f"{arg}[{where}]")
         A = _classes()[0](b)
     else:
         raise TypeError(
-            f"{func}(): blocks[{where}] must be a sparse array, an sd.ndarray or None, not {C.type_name(b)}"
+            f"{func}(): {arg}[{where}] must be "
+            f"{'a sparse array, an sd.ndarray or None' if arg == 'blocks' else 'a sparse array or an sd.ndarray'}"
+            f", not {C.type_name(b)}"
         )
     if A.ndim == 1:  # a row, as scipy's
         A = A.reshape((1, A.shape[0])) if A.format != "csr" else _as_2d_csr(A)
@@ -434,18 +454,19 @@ def block_array(blocks, /, *, format=None, dtype=None):
     return _block(_grid(blocks, func), format, dtype, func)
 
 
-def block_diag(mats, /, *, format=None, dtype=None):
-    """The blocks along the diagonal (1-D blocks are rows), COO by default."""
+def block_diag(arrays, /, *, format=None, dtype=None):
+    """The blocks along the diagonal (1-D blocks are rows), COO by default. The argument is
+    `arrays`, sd.linalg.block_diag's name (SP119; scipy's is mats)."""
     func = "block_diag"
-    if not isinstance(mats, (list, tuple)):
-        raise TypeError(f"{func}(): 'mats' must be a list or a tuple, not {C.type_name(mats)}")
-    if not mats:
-        raise ValueError(f"{func}(): 'mats' must hold at least one block")
+    if not isinstance(arrays, (list, tuple)):
+        raise TypeError(f"{func}(): 'arrays' must be a list or a tuple, not {C.type_name(arrays)}")
+    if not arrays:
+        raise ValueError(f"{func}(): 'arrays' must hold at least one array")
     blocks = []
-    for j, b in enumerate(mats):
+    for j, b in enumerate(arrays):
         if b is None:
-            raise TypeError(f"{func}(): mats[{j}] must be a sparse array or an sd.ndarray, not NoneType")
-        blocks.append(_block_arg(b, func, f"{j}").tocoo())
+            raise TypeError(f"{func}(): arrays[{j}] must be a sparse array or an sd.ndarray, not NoneType")
+        blocks.append(_block_arg(b, func, f"{j}", "arrays").tocoo())
     coo_array = _classes()[0]
     out_dtype = C.dtype_arg(dtype, func)
     if out_dtype is None:

@@ -25,6 +25,8 @@ _DENSE = {
     "inv": "sd.linalg.inv",
     "spsolve_triangular": "sd.linalg.solve_triangular",
     "expm": "sd.linalg.expm",
+    "spbandwidth": "sd.linalg.bandwidth",
+    "is_sptriangular": "sd.linalg.bandwidth",
 }
 
 
@@ -272,9 +274,12 @@ def _bandwidth(A, func):
 
 
 def spbandwidth(A, /):
-    """(below, above): the farthest stored diagonal below and above the main one (0 when none;
-    stored zeros count)."""
-    return _bandwidth(A, "spbandwidth")
+    """BandwidthResult(lower, upper), sd.linalg.bandwidth's result (a tuple, scipy's (below,
+    above)): the farthest stored diagonal below and above the main one (0 when none; stored zeros
+    count)."""
+    from .._results import BandwidthResult
+
+    return BandwidthResult(*_bandwidth(A, "spbandwidth"))
 
 
 def is_sptriangular(A, /):

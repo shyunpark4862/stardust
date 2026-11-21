@@ -406,6 +406,22 @@ struct Signbit {
     static bool f(double x) { return std::signbit(x); }
 };
 
+// Degrees and radians: numpy's npy_deg2rad and npy_rad2deg, x * (pi / 180) and x * (180 / pi)
+// with the constant rounded first (docs/api/array.md §6.4). Integers in float64; no complex
+// loop (numpy has none).
+inline constexpr double kPi = 3.141592653589793238462643383279502884;
+struct Deg2rad {
+    static constexpr const char* name = "deg2rad";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double x) { return x * (kPi / 180.0); }
+};
+
+struct Rad2deg {
+    static constexpr const char* name = "rad2deg";
+    template <typename T> static constexpr bool ok = is_float<T>;
+    static double f(double x) { return x * (180.0 / kPi); }
+};
+
 // NaN-skipping minimum/maximum, for nanmin/nanmax only (not public
 // ufuncs): a NaN loses to any number, two NaNs give NaN; ±0 ties as in
 // minimum/maximum. What the NEON FMINNM/FMAXNM instructions do.

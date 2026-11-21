@@ -15,13 +15,19 @@
 #pragma once
 
 #include "array/ndarray.hpp"
+#include "array/kernels/simd_sort.hpp"
 #include "array/ops/pieces.hpp"
+#include "htest/lanes.hpp"
 #include "special/dd.hpp"
+
+#include <arm_neon.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 namespace sd::htest {
@@ -133,7 +139,7 @@ template <class F>
 void each_block(std::int64_t lanes, std::int64_t n, F&& body) {
     const std::int64_t nb = std::max<std::int64_t>(1, (n + kBlock - 1) / kBlock);
     const std::int64_t per = std::max<std::int64_t>(1, kTask / std::max<std::int64_t>(1, std::min(n, kBlock)));
-    for_pieces(lanes * nb, per, lanes * n, [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+    for_pieces_woken(lanes * nb, per, lanes * n * 4, [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
         for (std::int64_t it = b0; it < b1; ++it) {
             const std::int64_t r = it / nb, b = it % nb;
             body(it, r, b * kBlock, std::min(n, (b + 1) * kBlock));
@@ -148,12 +154,9 @@ void lane_maxabs(const Src& src, std::int64_t lanes, std::int64_t n, double* out
     const std::int64_t nb = blocks_of(n);
     std::vector<double> part(static_cast<std::size_t>(lanes * nb), 0.0);
     each_block(lanes, n, [&](std::int64_t it, std::int64_t r, std::int64_t j0, std::int64_t j1) {
-        double m = 0.0;
-        for (std::int64_t j = j0; j < j1; ++j) {
-            double h, l;
-            if (src.get(r, j, h, l)) m = std::max(m, std::fabs(h));
-        }
-        part[static_cast<std::size_t>(it)] = m;
+        double m[4] = {0.0, 0.0, 0.0, 0.0};  // (max is exact: four of them give the same value)
+        block_max(src, r, j0, j1, m);
+        part[static_cast<std::size_t>(it)] = std::max(std::max(m[0], m[1]), std::max(m[2], m[3]));
     });
     for (std::int64_t r = 0; r < lanes; ++r)
         for (std::int64_t b = 0; b < nb; ++b) out[r] = std::max(out[r], part[static_cast<std::size_t>(r * nb + b)]);
@@ -172,6 +175,175 @@ struct Acc4 {
         return s;
     }
 };
+
+// body(j, k) for j in [j0, j1) in order, k = j mod 4 as a constant (std::integral_constant): the
+// body's four chains c[k] stay in registers (a chain picked by j & 3 at run time goes through
+// memory, ~4 ns an element), the same operations in the same order as one element at a time.
+template <class Body>
+inline void for4(std::int64_t j0, std::int64_t j1, Body&& body) {
+    using K0 = std::integral_constant<int, 0>;
+    using K1 = std::integral_constant<int, 1>;
+    using K2 = std::integral_constant<int, 2>;
+    using K3 = std::integral_constant<int, 3>;
+    auto one = [&](std::int64_t j) {
+        switch (j & 3) {
+            case 0: body(j, K0{}); break;
+            case 1: body(j, K1{}); break;
+            case 2: body(j, K2{}); break;
+            default: body(j, K3{});
+        }
+    };
+    std::int64_t j = j0;
+    for (; j < j1 && (j & 3); ++j) one(j);
+    for (; j + 4 <= j1; j += 4) {
+        body(j, K0{});
+        body(j + 1, K1{});
+        body(j + 2, K2{});
+        body(j + 3, K3{});
+    }
+    for (; j < j1; ++j) one(j);
+}
+
+// ---- one block of a pass: NEON for a contiguous lane, else element by element ------------------
+//
+// Each is the scalar loop element by element (element j into chain j mod 4, a NaN left out): the
+// NEON form holds chains 0 and 1 in one register and 2 and 3 in another and runs the same IEEE
+// operations lane by lane (two_sum's six, the FMA of two_prod as vfmaq), a NaN element masked
+// out of its chain, so the bits are the scalar loop's. It needs j0 a multiple of 4 (blocks start
+// at multiples of kBlock) and a source whose lane is contiguous: contig(src, r, hi, lo, skip) gives
+// the lane's values hi[j] + lo[j] (lo null: 0) and whether a NaN element is left out (skip; a
+// source that never says NaN adds it), false for any other source or layout.
+template <class Src>
+inline bool contig(const Src&, std::int64_t, const double*&, const double*&, bool&) {
+    return false;
+}
+
+namespace neon {
+// chains (c[i], c[i + 1]) as registers
+inline void load(const Acc4& a, int i, float64x2_t& h, float64x2_t& l) {
+    h = float64x2_t{a.c[i].hi, a.c[i + 1].hi}, l = float64x2_t{a.c[i].lo, a.c[i + 1].lo};
+}
+inline void store(Acc4& a, int i, float64x2_t h, float64x2_t l) {
+    a.c[i].hi = vgetq_lane_f64(h, 0), a.c[i + 1].hi = vgetq_lane_f64(h, 1);
+    a.c[i].lo = vgetq_lane_f64(l, 0), a.c[i + 1].lo = vgetq_lane_f64(l, 1);
+}
+// Acc::add(x, y) on the lanes where ok
+inline void add(float64x2_t& hi, float64x2_t& lo, float64x2_t x, float64x2_t y, uint64x2_t ok) {
+    const float64x2_t s = vaddq_f64(hi, x), bb = vsubq_f64(s, hi);
+    const float64x2_t e = vaddq_f64(vsubq_f64(hi, vsubq_f64(s, bb)), vsubq_f64(x, bb));
+    const float64x2_t nl = vaddq_f64(lo, vaddq_f64(e, y));
+    hi = vbslq_f64(ok, s, hi), lo = vbslq_f64(ok, nl, lo);
+}
+inline float64x2_t low(const double* xl, std::int64_t j) { return xl ? vld1q_f64(xl + j) : vdupq_n_f64(0.0); }
+// the lanes kept: not NaN, or all of them
+inline uint64x2_t kept(float64x2_t u, bool skip) { return skip ? vceqq_f64(u, u) : vdupq_n_u64(~0ull); }
+}  // namespace neon
+
+// max |h| of the elements (m[j mod 4])
+template <class Src>
+inline void block_max(const Src& src, std::int64_t r, std::int64_t j0, std::int64_t j1, double (&m)[4]) {
+    const double *x, *xl;
+    bool skip;
+    std::int64_t j = j0;
+    if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
+        float64x2_t m01 = float64x2_t{m[0], m[1]}, m23 = float64x2_t{m[2], m[3]};
+        const float64x2_t zero = vdupq_n_f64(0.0);
+        for (; j + 4 <= j1; j += 4) {
+            const float64x2_t a = vld1q_f64(x + j), b = vld1q_f64(x + j + 2);
+            // (a NaN never wins std::max(m, |h|): masked whatever the source)
+            m01 = vmaxq_f64(m01, vbslq_f64(vceqq_f64(a, a), vabsq_f64(a), zero));
+            m23 = vmaxq_f64(m23, vbslq_f64(vceqq_f64(b, b), vabsq_f64(b), zero));
+        }
+        m[0] = vgetq_lane_f64(m01, 0), m[1] = vgetq_lane_f64(m01, 1);
+        m[2] = vgetq_lane_f64(m23, 0), m[3] = vgetq_lane_f64(m23, 1);
+    }
+    for4(j, j1, [&](std::int64_t i, auto k) {
+        double h, l;
+        if (src.get(r, i, h, l)) m[k] = std::max(m[k], std::fabs(h));
+    });
+}
+
+// the sum of the elements times f, their count, whether a NaN was met
+template <class Src>
+inline void block_sum(
+    const Src& src, std::int64_t r, std::int64_t j0, std::int64_t j1, double f, Acc4& a, std::int64_t& cnt, bool& nan
+) {
+    const double *x, *xl;
+    bool skip;
+    std::int64_t j = j0;
+    if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
+        float64x2_t h01, l01, h23, l23;
+        neon::load(a, 0, h01, l01);
+        neon::load(a, 2, h23, l23);
+        const float64x2_t vf = vdupq_n_f64(f);
+        int64x2_t nc = vdupq_n_s64(0);
+        uint64x2_t all = vdupq_n_u64(~0ull);
+        for (; j + 4 <= j1; j += 4) {
+            const float64x2_t u = vld1q_f64(x + j), v = vld1q_f64(x + j + 2);
+            const uint64x2_t oku = neon::kept(u, skip), okv = neon::kept(v, skip);
+            neon::add(h01, l01, vmulq_f64(u, vf), vmulq_f64(neon::low(xl, j), vf), oku);
+            neon::add(h23, l23, vmulq_f64(v, vf), vmulq_f64(neon::low(xl, j + 2), vf), okv);
+            nc = vsubq_s64(nc, vreinterpretq_s64_u64(oku));
+            nc = vsubq_s64(nc, vreinterpretq_s64_u64(okv));
+            all = vandq_u64(all, vandq_u64(oku, okv));
+        }
+        neon::store(a, 0, h01, l01);
+        neon::store(a, 2, h23, l23);
+        cnt += vgetq_lane_s64(nc, 0) + vgetq_lane_s64(nc, 1);
+        if (!(vgetq_lane_u64(all, 0) & vgetq_lane_u64(all, 1))) nan = true;
+    }
+    for4(j, j1, [&](std::int64_t i, auto k) {
+        double h, l;
+        if (!src.get(r, i, h, l)) {
+            nan = true;
+            return;
+        }
+        a.c[k].add(h * f, l * f);
+        ++cnt;
+    });
+}
+
+// the sum of the squared deviations sq_dev(h f, l f, mean)
+template <class Src>
+inline void block_ss(const Src& src, std::int64_t r, std::int64_t j0, std::int64_t j1, double f, DD mean, Acc4& a) {
+    const double *x, *xl;
+    bool skip;
+    std::int64_t j = j0;
+    if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
+        float64x2_t h01, l01, h23, l23;
+        neon::load(a, 0, h01, l01);
+        neon::load(a, 2, h23, l23);
+        const float64x2_t vf = vdupq_n_f64(f), nmh = vdupq_n_f64(-mean.hi), mlo = vdupq_n_f64(mean.lo);
+        const float64x2_t two = vdupq_n_f64(2.0);
+        // sq_dev(x f, l f, mean) as (p, q)
+        auto sq = [&](float64x2_t xv, float64x2_t lv, float64x2_t& p, float64x2_t& q) {
+            const float64x2_t xh = vmulq_f64(xv, vf), xlf = vmulq_f64(lv, vf);
+            const float64x2_t s = vaddq_f64(xh, nmh), bb = vsubq_f64(s, xh);
+            const float64x2_t e = vaddq_f64(vsubq_f64(xh, vsubq_f64(s, bb)), vsubq_f64(nmh, bb));
+            const float64x2_t dl = vaddq_f64(e, vsubq_f64(xlf, mlo));
+            p = vmulq_f64(s, s);
+            const float64x2_t pl = vfmaq_f64(vnegq_f64(p), s, s);
+            q = vaddq_f64(pl, vmulq_f64(dl, vaddq_f64(vmulq_f64(two, s), dl)));
+        };
+        for (; j + 4 <= j1; j += 4) {
+            const float64x2_t u = vld1q_f64(x + j), v = vld1q_f64(x + j + 2);
+            float64x2_t pu, qu, pv, qv;
+            sq(u, neon::low(xl, j), pu, qu);
+            sq(v, neon::low(xl, j + 2), pv, qv);
+            neon::add(h01, l01, pu, qu, neon::kept(u, skip));
+            neon::add(h23, l23, pv, qv, neon::kept(v, skip));
+        }
+        neon::store(a, 0, h01, l01);
+        neon::store(a, 2, h23, l23);
+    }
+    for4(j, j1, [&](std::int64_t i, auto k) {
+        double h, l;
+        if (src.get(r, i, h, l)) {
+            const DD q = sq_dev(h * f, l * f, mean);
+            a.c[k].add(q.hi, q.lo);
+        }
+    });
+}
 
 // The moments of every lane of a source: src.get(r, j, h, l) sets element j of lane r to
 // h + l and returns false for a NaN element (left out; the lane is bad unless omit). Two
@@ -196,15 +368,7 @@ void lane_moments(
         Acc4 a;
         std::int64_t cnt = 0;
         bool nan = false;
-        for (std::int64_t j = j0; j < j1; ++j) {
-            double h, l;
-            if (!src.get(r, j, h, l)) {
-                nan = true;
-                continue;
-            }
-            a.add(j, h * f, l * f);
-            ++cnt;
-        }
+        block_sum(src, r, j0, j1, f, a, cnt, nan);
         p1[static_cast<std::size_t>(it)] = {a.total(), cnt, nan};
     });
     for (std::int64_t r = 0; r < lanes; ++r) {
@@ -226,13 +390,7 @@ void lane_moments(
         const double f = factor(r);
         const DD mean = m.mean;
         Acc4 a;
-        for (std::int64_t j = j0; j < j1; ++j) {
-            double h, l;
-            if (src.get(r, j, h, l)) {
-                const DD q = sq_dev(h * f, l * f, mean);
-                a.add(j, q.hi, q.lo);
-            }
-        }
+        block_ss(src, r, j0, j1, f, mean, a);
         p2[static_cast<std::size_t>(it)] = a.total();
     });
     for (std::int64_t r = 0; r < lanes; ++r) {
@@ -247,6 +405,24 @@ void lane_moments(
     }
 }
 
+// The sum (in order, one Acc) of term(i) for i in [0, n): the terms formed on the pool when the
+// lane is long (cost: one term's work in elements, roughly), then added in order, so the bits are
+// those of the plain loop on any thread count.
+template <class Term>
+Acc ordered_sum(std::int64_t n, std::int64_t cost, Term&& term) {
+    Acc s;
+    if (n * cost < kParallelThreshold || n < 2 * kTask || !parallel::available()) {
+        for (std::int64_t i = 0; i < n; ++i) s.add(term(i));
+        return s;
+    }
+    std::vector<double> t(static_cast<std::size_t>(n));
+    for_pieces(n, kTask, n * cost, [&](std::int64_t, std::int64_t b, std::int64_t e) {
+        for (std::int64_t i = b; i < e; ++i) t[static_cast<std::size_t>(i)] = term(i);
+    });
+    for (double v : t) s.add(v);
+    return s;
+}
+
 // The sources: a sample's rows, and paired rows' differences a - b as double-doubles
 // (ttest_rel: the difference of two large values is exact, not rounded to a double).
 struct Plain {
@@ -257,6 +433,11 @@ struct Plain {
         return h == h;
     }
 };
+inline bool contig(const Plain& p, std::int64_t r, const double*& hi, const double*& lo, bool& skip) {
+    if (p.a.s1 != static_cast<std::int64_t>(sizeof(double))) return false;
+    hi = reinterpret_cast<const double*>(p.a.data + r * p.a.s0), lo = nullptr, skip = true;
+    return true;
+}
 struct Diff {
     Rows a, b;
     bool get(std::int64_t r, std::int64_t j, double& h, double& l) const {
@@ -278,6 +459,10 @@ struct Vec {
         return true;
     }
 };
+inline bool contig(const Vec& v, std::int64_t, const double*& hi, const double*& lo, bool& skip) {
+    hi = v.hi, lo = v.lo, skip = false;
+    return true;
+}
 
 // A lane's values without its NaNs (all of them under propagate: the caller has checked).
 inline bool gather(const Rows& a, std::int64_t r, bool omit, std::vector<double>& v) {
@@ -302,34 +487,77 @@ struct Key {
 inline bool key_less(const Key& a, const Key& b) { return a.hi < b.hi || (a.hi == b.hi && a.lo < b.lo); }
 inline bool key_equal(const Key& a, const Key& b) { return a.hi == b.hi && a.lo == b.lo; }
 
-// v sorted by value on the pool: fixed pieces sorted side by side, then merged pairwise. The
-// pieces depend on the length alone, so the order is the same on any thread count (and equal
-// keys are equal values: the ranks do not depend on their order anyway).
-inline void sort_keys(std::vector<Key>& v) {
+// v sorted by less on the pool: fixed pieces of kPiece sorted side by side, then merged pairwise,
+// each merge cut into output segments of kPiece by the merge path (the segment's co-ranks in the
+// two runs; std::merge's rule, the first run's element first among equals), so every merge, the
+// last one too, runs in parallel and gives exactly std::merge's output. The pieces depend on the
+// length alone, so the order is the same on any thread count.
+template <class T, class Less, class Sort>
+void sort_on_pool(std::vector<T>& v, Less less, Sort&& sort) {
     constexpr std::int64_t kPiece = 1 << 15;
     const std::int64_t n = static_cast<std::int64_t>(v.size());
     if (n <= kPiece) {
-        std::sort(v.begin(), v.end(), key_less);
+        sort(v.data(), n);
         return;
     }
     const std::int64_t pieces = (n + kPiece - 1) / kPiece;
-    for_pieces(pieces, 1, n * 16, [&](std::int64_t, std::int64_t p0, std::int64_t p1) {
-        for (std::int64_t p = p0; p < p1; ++p)
-            std::sort(v.begin() + p * kPiece, v.begin() + std::min(n, (p + 1) * kPiece), key_less);
+    for_pieces_woken(pieces, 1, n * 16, [&](std::int64_t, std::int64_t p0, std::int64_t p1) {
+        for (std::int64_t p = p0; p < p1; ++p) sort(v.data() + p * kPiece, std::min(n, (p + 1) * kPiece) - p * kPiece);
     });
-    std::vector<Key> buf(v.size());
+    std::vector<T> buf(v.size());
+    struct Seg {
+        std::int64_t lo, mid, hi, k0, k1;
+    };
+    std::vector<Seg> segs;
     for (std::int64_t w = kPiece; w < n; w *= 2) {
-        const std::int64_t pairs = (n + 2 * w - 1) / (2 * w);
-        for_pieces(pairs, 1, n * 4, [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
-            for (std::int64_t q = q0; q < q1; ++q) {
-                const std::int64_t lo = q * 2 * w, mid = std::min(n, lo + w), hi = std::min(n, lo + 2 * w);
-                std::merge(
-                    v.begin() + lo, v.begin() + mid, v.begin() + mid, v.begin() + hi, buf.begin() + lo, key_less
-                );
+        segs.clear();
+        for (std::int64_t lo = 0; lo < n; lo += 2 * w) {
+            const std::int64_t mid = std::min(n, lo + w), hi = std::min(n, lo + 2 * w);
+            for (std::int64_t k = 0; k < hi - lo; k += kPiece)
+                segs.push_back({lo, mid, hi, k, std::min(hi - lo, k + kPiece)});
+        }
+        const T* src = v.data();
+        T* dst = buf.data();
+        // the number of the first run's elements among the merge's first k
+        auto corank = [&](const Seg& g, std::int64_t k) {
+            const T* a = src + g.lo;
+            const T* b = src + g.mid;
+            const std::int64_t m = g.mid - g.lo, nb = g.hi - g.mid;
+            std::int64_t i0 = std::max<std::int64_t>(0, k - nb), i1 = std::min(k, m);
+            while (i0 < i1) {
+                const std::int64_t i = i0 + (i1 - i0) / 2, j = k - i;  // a[0, i) and b[0, j)
+                if (j > 0 && i < m && !less(b[j - 1], a[i])) i0 = i + 1;  // a[i] comes before b[j - 1]
+                else i1 = i;
             }
-        });
+            return i0;
+        };
+        for_pieces_woken(
+            static_cast<std::int64_t>(segs.size()), 1, n * 4, [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
+                for (std::int64_t q = q0; q < q1; ++q) {
+                    const Seg& g = segs[static_cast<std::size_t>(q)];
+                    const std::int64_t i0 = corank(g, g.k0), i1 = corank(g, g.k1);
+                    const std::int64_t j0 = g.k0 - i0, j1 = g.k1 - i1;
+                    std::merge(
+                        src + g.lo + i0, src + g.lo + i1, src + g.mid + j0, src + g.mid + j1, dst + g.lo + g.k0, less
+                    );
+                }
+            }
+        );
         v.swap(buf);
     }
+}
+
+// v sorted by value on the pool (sort_on_pool; equal keys are equal values: the ranks do not
+// depend on their order anyway).
+inline void sort_keys(std::vector<Key>& v) {
+    sort_on_pool(v, key_less, [](Key* p, std::int64_t m) { std::sort(p, p + m, key_less); });
+}
+
+// v (no NaNs) sorted ascending: the array area's NEON sort (array/kernels/simd_sort.hpp) of each
+// piece. Equal doubles are equal values, but -0 and +0, whose order std::sort leaves open too
+// (here -0 first within a piece): every use here gives them the same value.
+inline void sort_values(std::vector<double>& v) {
+    sort_on_pool(v, std::less<double>{}, [](double* p, std::int64_t m) { simd_sort::sort<simd_sort::F64>(p, m); });
 }
 
 }  // namespace sd::htest

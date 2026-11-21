@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <string>
 
@@ -244,6 +245,34 @@ nb::object eye(nb::handle n_rows_obj, nb::handle n_cols_obj, nb::handle k_obj, n
     return wrap(std::move(out));
 }
 
+// numpy's diag, construction only (docs/api/array.md §3.7): the square matrix of side
+// n + |k| with x on its k-th diagonal, x's dtype, every value copied as it is; the rest is 0
+// (False). A matrix argument is an error that names sd.linalg.diagonal, which reads one.
+nb::object diag(nb::handle x_obj, nb::handle k_obj) {
+    const NDArray& x = require_ndarray(x_obj, "x");
+    const std::int64_t k = parse_int(k_obj, "k");
+    if (x.ndim != 1) {
+        std::string msg = "'x' must have 1 dimension, got " + std::to_string(x.ndim);
+        if (x.ndim == 2) msg += "; for the diagonal of a matrix use sd.linalg.diagonal";
+        throw nb::value_error(msg.c_str());
+    }
+    const std::int64_t n = x.shape[0];
+    // |k| and n + |k| without overflow (k = INT64_MIN has no int64 |k|)
+    const std::uint64_t ak = k < 0 ? std::uint64_t(0) - static_cast<std::uint64_t>(k) : static_cast<std::uint64_t>(k);
+    std::int64_t side;
+    if (ak > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) ||
+        __builtin_add_overflow(n, static_cast<std::int64_t>(ak), &side))
+        throw nb::value_error("array is too big");
+    NDArray out = new_array(x.dtype, std::vector<std::int64_t>{side, side}, /*zeroed=*/true);
+    const std::int64_t r0 = k < 0 ? static_cast<std::int64_t>(ak) : 0, c0 = k > 0 ? k : 0;
+    const std::int64_t isz = out.itemsize(), step = (side + 1) * isz;
+    std::byte* dst = out.data + (r0 * side + c0) * isz;
+    const std::byte* src = x.data;
+    for (std::int64_t i = 0; i < n; ++i)
+        std::memcpy(dst + i * step, src + i * x.strides[0], static_cast<std::size_t>(isz));
+    return wrap(std::move(out));
+}
+
 void bind_creation(nb::module_& m) {
     using nb::arg;
     m.def(
@@ -290,6 +319,10 @@ void bind_creation(nb::module_& m) {
         "linspace", named("linspace", &linspace),
         nb::sig("def linspace(start, stop, num, /, *, dtype=None, endpoint=True)"), arg().none(), arg().none(),
         arg().none(), nb::kw_only(), arg("dtype").none() = nb::none(), arg("endpoint").none() = true
+    );
+    m.def(
+        "diag", named("diag", &diag), nb::sig("def diag(x, /, *, k=0)"), arg().none(), nb::kw_only(),
+        arg("k").none() = 0
     );
     m.def(
         "eye", named("eye", &eye), nb::sig("def eye(n_rows, n_cols=None, /, *, k=0, dtype=None)"), arg().none(),

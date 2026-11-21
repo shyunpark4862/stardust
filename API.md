@@ -174,3 +174,29 @@ numpy, scipy, pandas는 정답지다. 무엇이 정답지와 같아야 하고 �
   - `sd.optimize.root_scalar`: 근의 상대 허용오차다(scipy와 같은 이름과 뜻). 다른 풀이 함수는 같은 뜻에 `xrtol`을 쓴다(`find_root`, `find_minimum`).
 - **`correction`의 기본값**: 배열의 `sd.var`·`sd.std`와 frame의 `var`·`std`는 `correction=0`이다(Array API, numpy; DESIGN.md §8.2). `sd.stats`의 `describe`와 `sem`은 `correction=1`이다(scipy.stats와 같은 기본값). 같은 이름이고 뜻도 같지만(자유도에서 빼는 수) 기본값이 다르다.
   - 이유: 배열은 numpy의 기본값을, 통계는 scipy.stats의 기본값을 따른다. 한쪽으로 맞추면 그 라이브러리에서 옮겨 온 코드가 조용히 다른 값을 낸다. 표본 분산은 어디서든 `correction=1`로 적어 주면 같다.
+
+## §7. sd.sparse와 밀집 배열
+- **sd.sparse의 기능은 밀집의 부분집합이거나 희소에만 필요한 것이다**(사용자 결정 2026-11-22). 희소에 있는 기능이 희소의 것이 아니면(희소 저장과 상관없는 만들기, 판정, 옵션) 밀집 배열에도 있다. 희소에만 필요한 것은 형식과 변환(`tocsr`, `asformat`, `to_scipy` …), 저장의 관리(`eliminate_zeros`, `sum_duplicates`, `nnz`, `explicit=`), 희소의 밀도와 자리(`random_array`), 희소 우변의 풀이 같은 것이다.
+  - 이유: 희소는 같은 수학을 다른 저장으로 하는 것이다. 희소에서만 되는 일이 있으면 사용자는 밀집 문제를 풀려고 희소로 바꾸게 되고, 두 쪽의 결과를 견줄 기준도 없다.
+- **짝의 값은 비트까지 같다**: 둘 다 있는 입력에서 밀집 함수의 결과는 희소 함수의 `toarray()`와 같다(복사이거나 같은 반올림 한 번인 것). 다를 수 있는 것은 0의 부호다(희소는 0을 저장하지 않는다). 그 밖의 차이(`kronsum`의 complex inf 등)와 짝마다의 규칙은 각 영역 문서가 적는다.
+- **희소 함수 → 밀집 짝**
+
+| sd.sparse | 밀집 | 문서 |
+|---|---|---|
+| `eye_array`, `tril`, `triu` | `sd.eye`, `sd.tril`, `sd.triu` | array.md §3 |
+| `diags_array` | `sd.diag`(대각 하나, 여럿은 합) | array.md §3.7 |
+| `setdiag` 메서드 | 고급 인덱스 대입 `x[i + max(-k, 0), i + max(k, 0)] = v` | array.md §3.7 |
+| `hstack`, `vstack` | `sd.concat`, `sd.stack`(이름은 각자 기준 라이브러리의 것) | array.md §4.2 |
+| `block_array` | `sd.block`(None 블록 대신 `zeros`) | array.md §4.5 |
+| `find`, `nonzero` | `sd.nonzero`와 인덱싱 | array.md §5.4 |
+| `resize` 메서드 | `sd.zeros`와 슬라이스 대입(밀집 배열의 모양은 바뀌지 않는다) | array.md §5.3 |
+| 원소별 메서드(`sin` … `sign`), `power`, 리덕션 | 같은 이름의 배열 함수, `sd.pow` | array.md §6, §7 |
+| `deg2rad`, `rad2deg` 메서드 | `sd.deg2rad`, `sd.rad2deg` | array.md §6.4 |
+| `kron` | `sd.linalg.kron`(1차원 입력 포함) | linalg.md §2 |
+| `kronsum` | `sd.linalg.kronsum` | linalg.md §2 |
+| `block_diag` | `sd.linalg.block_diag` | linalg.md §2 |
+| `trace`, `diagonal` 메서드, `norm` | `sd.linalg.trace`, `diagonal`, `matrix_norm`·`vector_norm` | linalg.md §2, §3 |
+| `spsolve`, `inv`, `spsolve_triangular`, `expm` | `sd.linalg.solve`, `inv`, `solve_triangular`, `expm` | linalg.md §4, §7 |
+| `splu`, `factorized`, `SparseLU.solve(trans=)` | `sd.linalg.lu`, `lu_solve(trans=)` | linalg.md §4 |
+| `spbandwidth`, `is_sptriangular` | `sd.linalg.bandwidth`(`upper == 0`이면 아래 삼각) | linalg.md §6 |
+| `eigsh`, `eigs`, `svds`, `onenormest`, `expm_multiply`, `LinearOperator`, 반복법 | 그 함수가 밀집 배열도 받는다 | sparse.md §5–§8 |

@@ -36,10 +36,19 @@ class _compressed(sparray):
     def _long_across(self):
         """Whether some position (an index of the other axis) holds more than L = 4096 entries: a
         sum scattered along it is then cut into pieces (docs/design/sparse.md §2.6), and the
-        scatter must count. Found once and kept (the index arrays never change)."""
-        if self._long is None:
+        scatter must count. Found once and kept (the index arrays never change), in a holder the
+        arrays sharing these index arrays share (.T, copies, new values): A.T @ x does not count again."""
+        holder = self._long_holder()
+        if holder[0] is None:
             lines, positions = self._lines()
-            self._long = lines > _LINE and _core._minor_over(self._indices, positions, _LINE)
+            holder[0] = lines > _LINE and _core._minor_over(self._indices, positions, _LINE)
+        return holder[0]
+
+    def _long_holder(self):
+        """The one-element list that caches _long_across (None: not found yet); new after the
+        index arrays change (the methods that change them set _long to None)."""
+        if self._long is None:
+            self._long = [None]
         return self._long
 
     # ---- attributes ----
@@ -80,14 +89,14 @@ class _compressed(sparray):
     # ---- per format ----
 
     def _with_data(self, data, share=False):
-        return type(self)._new(self._shape, self._indptr, self._indices, data, self._long)
+        return type(self)._new(self._shape, self._indptr, self._indices, data, self._long_holder())
 
     def _copy(self):
-        return type(self)._new(self._shape, self._indptr, self._indices, self._data.copy(), self._long)
+        return type(self)._new(self._shape, self._indptr, self._indices, self._data.copy(), self._long_holder())
 
     def _transpose(self):
         other = csc_array if self._by_rows else csr_array
-        return other._new(self._shape[::-1], self._indptr, self._indices, self._data, self._long)
+        return other._new(self._shape[::-1], self._indptr, self._indices, self._data, self._long_holder())
 
     def _coo_parts(self, copy):
         """(coords, data, canonical) of tocoo(): the major index of every entry expanded."""

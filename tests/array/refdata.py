@@ -27,16 +27,17 @@ from .. import reffile
 REF = pathlib.Path(__file__).parent / "ref"
 ELEMENTWISE = (
     "exp", "log", "log2", "log10", "sin", "asin", "acos", "atan", "atan2",
-    "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "pow", "cabs",
+    "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "pow", "cabs", "deg2rad", "rad2deg",
 )  # fmt: skip
 REDUCTIONS = ("sum", "mean", "var", "std", "prod", "vecdot", "matmul")
 
 # The largest ulp_distance to the correctly rounded value at the reference points, per function:
 # the maximum measured over the reference points (vForce for the fifteen, libm's pow, sd's modulus
-# of a complex) plus 2.
+# of a complex, the one product of deg2rad and rad2deg) plus 2.
 ULP_BOUND = {
     "exp": 3, "log": 4, "log2": 4, "log10": 4, "sin": 5, "asin": 4, "acos": 3, "atan": 3, "atan2": 3,
     "sinh": 4, "cosh": 4, "tanh": 4, "asinh": 4, "acosh": 4, "atanh": 5, "pow": 3, "cabs": 3,
+    "deg2rad": 3, "rad2deg": 3,
 }  # fmt: skip
 
 
