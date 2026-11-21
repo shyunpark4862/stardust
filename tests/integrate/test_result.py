@@ -18,7 +18,7 @@ def quad_like():
 
 def test_exported_and_shares_the_base():
     assert sd.integrate.IntegrateResult is R
-    assert sd.integrate.__all__ == ["IntegrateResult"]
+    assert "IntegrateResult" in sd.integrate.__all__  # with the functions of the milestones done (test_api_surface)
     assert issubclass(R, _FieldResult) and issubclass(sd.optimize.OptimizeResult, _FieldResult)
     assert issubclass(sd.differentiate.DifferentiateResult, _FieldResult)
 

@@ -1,8 +1,8 @@
 # sd.sparse API
 
-> 상태: **초안** (SP6, 2026-11-21). 공개된 것은 §2의 형식과 변환(SP1: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성), §3의 연산(SP2: 연산자, 원소별 메서드, 곱, 리덕션), §4의 인덱싱과 만들기(SP3: 인덱싱과 대입, `trace diagonal setdiag`, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find`), §5의 직접 풀이와 `LinearOperator`(SP4: `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth LinearOperator aslinearoperator`, `splu`의 결과 `SparseLU`), §6의 반복법(SP5: `cg gmres minres bicgstab lsqr lsmr`와 그 결과 객체), §7의 고유값과 특이값(SP6: `eigsh eigs svds`와 그 결과 객체)이다. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
+> 상태: **초안** (SP7, 2026-11-22). 공개된 것은 §2의 형식과 변환(SP1: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성), §3의 연산(SP2: 연산자, 원소별 메서드, 곱, 리덕션), §4의 인덱싱과 만들기(SP3: 인덱싱과 대입, `trace diagonal setdiag`, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find`), §5의 직접 풀이와 `LinearOperator`(SP4: `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth LinearOperator aslinearoperator`, `splu`의 결과 `SparseLU`), §6의 반복법(SP5: `cg gmres minres bicgstab lsqr lsmr`와 그 결과 객체), §7의 고유값과 특이값(SP6: `eigsh eigs svds`와 그 결과 객체), §8의 행렬 함수와 노름(SP7: `expm expm_multiply onenormest norm`)이다. 모든 공개 이름이 나왔다. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
 
-- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP97), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP110), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/sparse/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name`), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -37,7 +37,7 @@
 ### §1.5 결정성과 합의 순서 (SP15)
 - **같은 입력이면 sd의 스레드 수, 저장 형식(CSR·CSC·COO)과 상관없이 같은 비트다**(API.md §3). 한 출력 원소의 항은 줄의 색인 오름차순이고, 4096개(L)까지는 0에서 시작하는 순차 합(곱의 합은 `fma`), 그보다 길면 L개씩의 조각을 순차로 더해 조각들을 pairwise 트리로 더한다. 전체 합(`sum()`)은 논리적 C 순서의 pairwise 합이다. 그래서 줄이 L 이하인 SpMV(`A @ x`)와 축 합은 scipy와 비트까지 같다.
 - 직접 풀이는 Accelerate LU(AMD 순서)다(SP18). Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)가 같으면 같은 비트다(BLAS·LAPACK과 같은 규칙). 여러 Python 스레드에서 동시에 불러도 같다.
-- 무작위를 쓰는 것(`random_array`, `eigsh`·`eigs`·`svds`의 시작 벡터, `onenormest`)은 정해진 키나 `rng`로 결정적이다(§4, §7, §8). 고유값 함수는 `v0=None`이면 `sd.random.default_rng(0)`의 벡터다(SP84).
+- 무작위를 쓰는 것(`random_array`, `eigsh`·`eigs`·`svds`의 시작 벡터, `onenormest`의 열, `expm_multiply`가 연산자의 대각합을 어림하는 열)은 정해진 키나 `rng`로 결정적이다(§4, §7, §8). 고유값 함수는 `v0=None`이면 `sd.random.default_rng(0)`의 벡터이고(SP84), `onenormest`와 `expm_multiply`는 호출마다 `sd.random.default_rng(0)`에서 뽑는다(SP98, SP107; `rng` 인자는 없다).
 
 ### §1.6 에러
 - API.md §2의 종류와 꼴이다. 공개 함수의 에러는 `spsolve(): `로 시작하고, 메서드는 메서드 이름(`sum(): `), 생성자는 클래스 이름(`csr_array(): `)이다. 경고는 내지 않는다.
@@ -46,7 +46,7 @@
 - Accelerate는 행·열 수와 행 색인을 32비트로 받는다. 행이나 열이 2³¹ − 1을 넘는 행렬을 직접 풀이에 주면 `ValueError`다.
 
 ### §1.7 scipy와 다른 점 (모든 함수에 걸친 것)
-- 배열 꼴만(SP2), 평평한 이름공간(SP3), BSR·DIA·LIL 없음과 `format=None`의 CSR(SP6, SP7), int64 색인(SP8), dtype 넷(SP9), 언제나 표준 꼴인 CSR·CSC(SP10), 예외 없는 `A / 0`(SP12), 강한 0의 희소 × 희소, IEEE대로의 비교, numpy 배열은 피연산자가 아님(SP35), 원소별 함수는 메서드만(SP36), 축 리덕션은 밀집(SP37), `A * 밀집`은 A의 형식(SP38), `A + c`·`A ** 0`은 `ValueError`(SP39), 리덕션의 `keepdims`(SP40), 경고 없음, `max_iter`, 데이터는 위치·옵션은 키워드, 별칭 없음, `rng` 필수(`random_array`)와 정해진 시작 벡터(`eigsh` 등).
+- 배열 꼴만(SP2), 평평한 이름공간(SP3), BSR·DIA·LIL 없음과 `format=None`의 CSR(SP6, SP7), int64 색인(SP8), dtype 넷(SP9), 언제나 표준 꼴인 CSR·CSC(SP10), 예외 없는 `A / 0`(SP12), 강한 0의 희소 × 희소, IEEE대로의 비교, numpy 배열은 피연산자가 아님(SP35), 원소별 함수는 메서드만(SP36), 축 리덕션은 밀집(SP37), `A * 밀집`은 A의 형식(SP38), `A + c`·`A ** 0`은 `ValueError`(SP39), 리덕션의 `keepdims`(SP40), 경고 없음, `max_iter`, 데이터는 위치·옵션은 키워드, 별칭 없음, `rng` 필수(`random_array`)와 정해진 시작 벡터(`eigsh` 등)·무작위 열(`onenormest`, `expm_multiply`의 대각합 어림).
 - 직접 풀이의 바탕이 SuperLU가 아니라 Accelerate LU(문턱 부분 피벗, AMD 순서, 척도 조정)와 반복 다듬기 한 번이다. 해의 끝자리와 역오차의 크기가 scipy와 다르고, `splu`의 결과(`SparseLU`)에서 `L`·`U`·`perm_r`·`perm_c`·`nnz`를 꺼낼 수 없다(SP60). 특이의 판정에 조건수 추정이 있어(SP62) scipy가 큰 해를 돌려주는 행렬(κ₁ ≥ 1/ε)이 `LinAlgError`다.
 - 반복법은 이 라이브러리의 커널이 scipy의 알고리즘을 그대로 따른다(SP16). 결과가 scipy의 튜플로 풀리는 결과 객체이고(SP72) `callback`이 없으며(SP74), 내적과 노름의 반올림 순서가 달라 반올림에 민감한 문제에서 반복 수가 scipy와 다를 수 있다(§6).
 
@@ -284,7 +284,7 @@ LinearOperator.adjoint()
 - `LinearOperator(shape, matvec, /, *, rmatvec=None, matmat=None, rmatmat=None, dtype=None)`: Python 클래스. `shape`과 `matvec`만 위치이고 나머지는 키워드다(SP65; `[scipy와 다름]`: scipy는 `rmatvec`, `matmat`, `dtype`도 위치로 받는다). `matvec(x)`는 (N,)이나 (N, 1)의 `sd.ndarray`를 받아 (M,)이나 (M, 1)을 돌려주고, 함수의 결과는 `sd.asarray`의 규칙으로 바꿔 그 모양으로 맞춘다(크기가 다르면 `ValueError`). `matmat`·`rmatmat`이 없으면 열마다 `matvec`·`rmatvec`이다. `dtype=None`이면 0의 벡터로 `matvec`을 한 번 불러 정한다(scipy와 같다). `rmatvec`이 없는 연산자의 `rmatvec`은 `rmatvec(): the operator was made without 'rmatvec'`(`ValueError`, SP71; scipy는 `NotImplementedError`)다. 하위 클래스는 `_matvec`이나 `_matmat`(그리고 `_rmatvec`, `_rmatmat`)을 정의하고 `LinearOperator.__init__(self, shape, None, dtype=...)`을 부른다. repr은 `LinearOperator(shape=(2, 3), dtype=float64)`(하위 클래스는 그 이름)다.
   - 연산: `L @ x`(1차원이나 열 하나는 `matvec`, 2차원은 `matmat`), `x @ L`, `L @ M`(곱), `L + M`, `L - M`, `-L`, `c * L`, `L * c`(스칼라만), `L ** p`(정수 p ≥ 0, 정방), `.T`, `.H`, `adjoint()`. 결과의 모양과 dtype은 scipy와 같다. `[scipy와 다름]`: `L * x`(벡터)와 `L * M`(연산자)은 `TypeError`다(`@`만, 별칭 없음 SP24). `dot`, `__call__`은 없다.
 - `aslinearoperator(A)`: 희소 배열, 2차원 `sd.ndarray`, `LinearOperator`(그 자신)를 받는다. 희소·밀집에서 만든 연산자의 곱은 `A @ x`와 `Aᴴ @ x`이고 비트가 같다(반복법(SP5)은 그 행렬을 바로 쓴다).
-- `sd.linalg`의 함수에 희소 배열을 주면 쓸 함수를 짚는 `TypeError`다: `solve(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.spsolve`(대응은 docs/design/sparse.md §3.10). 짚을 함수가 아직 없으면(`matrix_norm` → `norm`은 SP7) `; a sparse array has no matrix_norm: use matrix_norm(A.toarray())`이고, 그 함수가 생기면 저절로 그것을 짚는다(SP6부터 `eigh`·`eigvalsh`는 `sd.sparse.eigsh`, `eig`·`eigvals`는 `eigs`, `svd`·`svdvals`는 `svds`를 짚는다).
+- `sd.linalg`의 함수에 희소 배열을 주면 쓸 함수를 짚는 `TypeError`다: `solve(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.spsolve`(대응은 docs/design/sparse.md §3.10). 짝이 없는 함수(`det` 등)는 `; a sparse array has no det: use det(A.toarray())`다. `eigh`·`eigvalsh`는 `sd.sparse.eigsh`, `eig`·`eigvals`는 `eigs`, `svd`·`svdvals`는 `svds`(SP6), `matrix_norm`·`vector_norm`은 `norm`, `expm`은 `expm`(SP7)을 짚는다.
 - 배열의 함수도 같다(SP67): `sum(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use A.sum()`, `matmul(): ...; for a sparse array use A @ B`. 희소의 짝이 없으면 `; a sparse array has no sort: use sort(A.toarray())`다.
 
 ## §6. 반복법 (SP5)
@@ -428,11 +428,34 @@ expm(A, /)
 expm_multiply(A, B, /, *, start=None, stop=None, num=None, endpoint=None, traceA=None)
 onenormest(A, /, *, t=2, max_iter=5, compute_v=False, compute_w=False)
 norm(x, /, *, ord=None, axis=None)
+OnenormestResult.est
+OnenormestResult.v
+OnenormestResult.w
+OnenormestResult.n_iter
+OnenormestResult.n_op
+OnenormestResult.summary()
 ```
-- `expm`: Al-Mohy–Higham(2009)의 크기 조정과 제곱(scipy와 같은 알고리즘; 밀집 `sd.linalg.expm`과 같은 꼴의 계약). 결과는 희소다(형식은 SP7에서 정한다; scipy는 CSC).
-- `expm_multiply`: Al-Mohy–Higham(2011). 매개변수와 멈춤(2⁻⁵³)은 scipy와 같다.
-- `onenormest`: Higham–Tisseur(2000). 무작위 ±1 열은 고정 키에서 와서 결정적이다(SP7에서 정한다). 반복 상한은 scipy의 `itmax`가 아니라 `max_iter`다(§1.1).
-- `norm`(SP14): scipy의 뜻(행렬: `'fro'`, 1, −1, inf, −inf, 2; 벡터 축: 정수 p, inf, −inf, 0). `ord`의 규칙과 메시지는 `sd.linalg.matrix_norm`·`vector_norm`의 것이다: 행렬이면 `norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf, not 3`(`ValueError`), 벡터 축이면 `norm(): 'ord' must be an int or a float, not str`(`TypeError`). scipy에 없는 행렬의 `'nuc'`·`-2`는 SP7에서 정한다(§10). `ord=2`는 `svds`로 구한다. 합의 순서는 §1.5다. scipy처럼 `ord`가 위치 인자인 꼴은 받지 않는다(키워드만).
+- **`expm`**: exp(A)다. Al-Mohy–Higham(2009)의 크기 조정과 제곱이고(scipy와 같은 알고리즘), 차수·제곱 수의 선택, 삼각 행렬의 고침, 큰 노름의 가드는 밀집 `sd.linalg.expm`과 같다(SP103; docs/design/sparse.md §3.9). 곱은 SpGEMM, 마지막 풀이는 §5의 LU다.
+  - A는 정방 희소 배열이다(밀집 `sd.ndarray`는 `expm(): 'A' must be a sparse array, not ndarray; for a dense array use sd.linalg.expm`, `TypeError`). bool·int64는 float64, 저장된 NaN·inf는 `ValueError`다(SP104).
+  - 결과는 A의 형식(CSR, CSC, COO, DOK; SP99. `[scipy와 다름]`: scipy의 형식은 경로마다 다르다)이고 정확한 0은 뺀다(`inv`와 같다). 대개 밀집에 가까워 n²의 메모리가 든다. 결과가 넘치면 inf다(경고 없음).
+  - 형식과 sd의 스레드 수와 상관없이 같은 비트다(풀이는 §5처럼 Accelerate의 스레드 모드가 같을 때).
+- **`expm_multiply`**: exp(A) B를 exp(A)를 만들지 않고 구한다. Al-Mohy–Higham(2011)의 잘린 Taylor이고 단계의 선택, 멈춤(허용오차 2⁻⁵³), 구간의 세 경로가 scipy의 것이다.
+  - A는 정방 희소 배열(모든 형식), 2차원 `sd.ndarray`, `LinearOperator`다(§6과 같은 꼴; 저장된 NaN·inf는 `ValueError`). B는 밀집 `sd.ndarray` (n,)·(n, k)다(SP106; 희소 B는 `expm_multiply(): 'B' must be an sd.ndarray, not csr_array; for a sparse B use B.toarray()`, `TypeError`. `[scipy와 다름]`: scipy는 희소 B도 받는다). A, B, `traceA` 가운데 복소가 있으면 complex128, 아니면 float64다.
+  - `start`, `stop`, `num`, `endpoint`(SP105): 넷 중 하나라도 주면 `linspace(start, stop, num, endpoint=endpoint)`의 점 t마다 exp(tA) B이고 결과는 (num,) + B.shape다. `start`·`stop`은 둘 다 있어야 하는 유한한 실수(`expm_multiply(): a time interval needs both 'start' and 'stop'`, `ValueError`), `num`은 2 이상의 int(기본 50), `endpoint`는 bool(기본 True)이다. 넷 모두 None이면 결과는 B의 모양이다.
+  - `traceA`(SP107): A의 대각합(수; bool은 `TypeError`) 또는 None. A를 tr(A)/n만큼 옮기는 데만 쓰여 어떤 값이어도 결과는 exp(A) B다(단계 수와 반올림이 달라진다). None이면 행렬은 정확한 대각합이고, 일반 `LinearOperator`는 scipy의 추정(Hutch++)을 고정된 열(`sd.random.default_rng(0)`)로 한다. `[scipy와 다름]`: scipy는 그때 경고를 내고 실행마다 다른 추정을 쓴다.
+  - 같은 단계를 고르면 scipy와 비트까지 같다(곱·덧셈·멈춤 판정이 같다). scipy는 단계를 고르는 노름을 무작위로 어림하므로 끝자리가 다를 수 있다.
+- **`onenormest`**: ‖A‖₁의 하한 어림이다(Higham–Tisseur 2000, scipy와 같은 단계). A는 정방 희소 배열, 2차원 `sd.ndarray`, `LinearOperator`(Aᴴ의 곱이 필요하다: `rmatvec`이 없으면 §5의 `ValueError`)다.
+  - `t`(1 이상의 int): 한 번에 다루는 열의 수. t ≥ n이면 명시한 행렬의 정확한 1-노름이다. `max_iter`(2 이상의 int, 기본 5; SP100. scipy의 `itmax`): 반복 상한.
+  - 무작위 ±1 열은 호출마다 `sd.random.default_rng(0)`에서 뽑아 같은 호출은 같은 추정값이다(SP98; `[scipy와 다름]`: scipy는 시드 없는 무작위다). 다음 열을 고르는 값이 같으면 색인이 작은 쪽이 먼저다.
+  - 결과(SP102): 옵션과 상관없이 언제나 읽기 전용 결과 객체 하나(`OnenormestResult`, 내보내지 않는다; §6·§7의 결과와 같은 바탕)이고 `est, v, w = onenormest(A, compute_v=True, compute_w=True)`처럼 `(est, v, w)`로 풀린다. `est`는 추정값(float), `v`는 단위 벡터 e_j(float64), `w = A v`이고, `v`·`w`는 `compute_v`·`compute_w`가 True일 때만 있고 아니면 None이다. `n_iter`는 반복 수(t ≥ n의 정확한 노름은 0), `n_op`는 A·X와 Aᴴ·S의 곱 수(t열 묶음 하나가 1; 정확한 노름은 1)다. `summary()`는 API.md §2.3의 상자(추정값, `v`가 있으면 그 열, 셈)이고 repr은 `OnenormestResult(est=3, v=<array of shape (5,)>, w=None, n_iter=2, n_op=3)`이다. `[scipy와 다름]`: scipy는 기본으로 float 하나를 돌려주고 `compute_v`·`compute_w`에 따라 `(est, v)`, `(est, w)`, `(est, v, w)`로 꼴이 바뀐다(docs/api/linalg.md §1.6: 결과의 꼴은 옵션에 따라 바뀌지 않는다).
+  - 0 × 0은 0.0이다.
+- **`norm`**(SP14, SP101, SP108): 희소 배열의 노름이다(밀집 `sd.ndarray`는 `sd.linalg.matrix_norm`·`vector_norm`을 짚는 `TypeError`).
+  - 2차원이고 `axis`가 None이나 두 축이면 행렬 노름이다: `ord`는 `'fro'`(기본), 1, −1, 2, inf, −inf(같은 값의 float와 numpy 정수도). 2는 가장 큰 특이값이고 §7의 `svds`로 구한다(행이나 열이 하나면 그 벡터의 2-노름; 저장된 NaN·inf는 `ValueError`). `axis=(1, 0)`은 전치의 노름이다. 결과는 float다.
+  - 1차원이거나 `axis`가 한 축이면 벡터 노름이다: `ord`는 None(= 2), inf, −inf, 0(0이 아닌 원소의 수), 그 밖의 모든 p(음수 포함)이고 `sd.linalg.vector_norm`의 뜻이다(암시적 0도 원소다: −inf나 음수 p는 0이 있는 줄에서 0). 1차원은 float, 2차원의 한 축은 밀집 float64 배열이다. 합이 넘치거나 모든 항이 아주 작으면 vector_norm처럼 줄의 최댓값으로 나눠 다시 계산한다.
+  - `ord`의 규칙과 메시지는 `sd.linalg`의 것이다: 행렬이면 `norm(): 'ord' must be 'fro', 1, -1, 2, inf or -inf, not 3`(`ValueError`; `'nuc'`과 −2도 이 `ValueError`다, SP101), bool이나 문자열·수가 아닌 것은 `norm(): 'ord' must be a str, an int or a float, not bool`(`TypeError`), 벡터 축이면 `norm(): 'ord' must be an int or a float, not str`(`TypeError`), NaN은 `ValueError`다. `axis`는 int나 축 1–2개의 tuple·list이고 범위 밖·중복·빈 tuple은 `ValueError`다.
+  - NaN이 있으면 결과는 NaN이다(`ord=0` 빼고). bool·int64는 float64로 계산한다. 합의 순서는 §1.5다.
+  - `[scipy와 다름]`: `ord`는 키워드만이다(scipy는 위치 인자). `'f'` 별칭이 없다. 벡터의 `ord=0`은 float다(scipy는 int). 음수 p는 암시적 0을 센다(scipy는 저장된 값만 거듭제곱한다). 중복이 있는 COO의 `'fro'`는 중복을 더한 값의 노름이다(scipy는 저장된 값 그대로).
+- **정확도**(docs/design/sparse.md §4, SP109): `expm`·`expm_multiply`는 Arb의 참값과 C_EXPM·ε·max(1, ‖A‖₁)·척도(C_EXPM = 10; 잰 가장 큰 것 2.4, scipy 4.8) 안이다. 합으로 된 노름은 (γ_m + 2ε)·‖A‖ 안, `ord=2`는 `svds`의 계약이다. `onenormest`는 계약이 없다(참값 이하; 시험 행렬 42개 중 26개가 참값과 같고 가장 작은 비율 0.76).
 
 ## §9. scipy 이름 → sd 이름
 
@@ -474,7 +497,7 @@ norm(x, /, *, ord=None, axis=None)
 | `LinearOperator`, `aslinearoperator` | 같은 이름 | SP4 |
 | `cg`, `gmres`, `minres`, `bicgstab`, `lsqr`, `lsmr` | 같은 이름(`maxiter`·`iter_lim` → `max_iter`; 튜플 대신 그 튜플로 풀리는 결과 객체; `callback`·`show`·`check`·`calc_var` 없음) | SP5, SP16, SP72–SP74 |
 | `eigsh`, `eigs`, `svds` | 같은 이름(`maxiter` → `max_iter`; 튜플 대신 그 값으로 풀리는 결과 객체; `svds`의 `solver`·`options` 없음; `v0=None`은 정해진 벡터) | SP6, SP83–SP97 |
-| `expm`, `expm_multiply`, `norm`, `onenormest` | 같은 이름(`onenormest`의 `itmax` → `max_iter`) | SP7, SP14 |
+| `expm`, `expm_multiply`, `norm`, `onenormest` | 같은 이름(`onenormest`의 `itmax` → `max_iter`, 결과는 `(est, v, w)`로 풀리는 결과 객체; `norm`의 `ord`는 키워드; `expm`은 A의 형식; `onenormest`·`expm_multiply`의 정해진 열) | SP7, SP14, SP98–SP110 |
 | `ArpackError`, `ArpackNoConvergence` | 없음(결과의 상태, 인자의 잘못은 `ValueError`) | SP87 |
 | `MatrixRankWarning` | 없음(`LinAlgError`) | SP4, SP62 |
 | `use_solver` | 없음 | SP4 |
@@ -492,9 +515,5 @@ docs/design/sparse.md §9와 같은 목록이다. 결정이 나면 이 문서와
 - **SP4**: 정했다(SP59–SP65, docs/design/sparse.md §1.1). SP4 뒤에 정했다(SP66–SP71; 추천안, 사용자 위임).
 - **SP5**: 정했다(SP72–SP75, docs/design/sparse.md §1.1; 추천안, 사용자 위임). SP5에서 정했다(SP76–SP82; 추천안, 사용자 위임).
 - **SP6**: 정했다(SP83–SP87, docs/design/sparse.md §1.1; 추천안, 사용자 위임). SP6에서 정했다(SP88–SP97; 추천안, 사용자 위임). R의 `RSpectra`·`irlba`는 사용자 승인으로 설치했다(2026-11-21).
-- **SP7**
-  1. `onenormest`의 무작위 열: 고정 키로 결정적(추천) / `rng`를 받는다.
-  2. `expm`의 결과 형식: 입력의 형식(추천) / scipy처럼 CSC.
-  3. `onenormest`의 `itmax` → `max_iter`(추천, §1.1) / scipy의 이름.
-  4. `norm`의 행렬 `ord='nuc'`·`-2`(scipy에 없고 모든 특이값이 필요하다): 받지 않고 그 값의 `ValueError`(추천; 메시지의 목록은 linalg의 것에서 둘을 뺀다) / `svds`로 받는다.
+- **SP7**: 정했다(SP98–SP101, docs/design/sparse.md §1.1; 추천안, 사용자 위임). SP7에서 정했다(SP102–SP110; 추천안, 사용자 위임).
 - **SP8**: 범위는 모든 공개 함수를 크기마다 scipy·R과 견주는 것(추천). 코드 리뷰를 사용자가 따로 하는지 그때 묻는다.

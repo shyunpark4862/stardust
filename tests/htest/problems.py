@@ -1,5 +1,5 @@
 """The problem collection of sd.htest (docs/design/htest.md §7): fixed inputs for every test of
-H1-H8, shared by the scipy and statsmodels generator (tools/gen_htest_scipy.py), the R generator
+H1-H9, shared by the scipy and statsmodels generator (tools/gen_htest_scipy.py), the R generator
 (tools/gen_htest_r.py), the reference tool (tools/htest_ref.py) and the tests.
 
 A problem is one call: the function's scipy (or statsmodels) name, its positional inputs and
@@ -27,7 +27,7 @@ class Problem:
     args: tuple  # positional inputs: numpy arrays, numbers, or a distribution's name ('norm')
     kwargs: dict  # scipy's keyword options
     tags: tuple = ()  # small, large, ties, tail, offset, degenerate, batch, exact, asymptotic
-    milestone: str = ""  # H1-H8
+    milestone: str = ""  # H1-H9
 
 
 def digest(p: Problem) -> str:
@@ -949,7 +949,99 @@ def _h8_more():
     add(m, "combine_pvalues", "batch", _g(306).uniform(0, 1, (3, 7)), method="stouffer", axis=-1, tags=("batch",))
 
 
-for _f in (_h1, _h2, _h3, _h4, _h5, _h6, _h7, _h7_more, _h8, _h8_more):
+# ---- H9: resampling and Monte Carlo ---------------------------------------------------------
+
+# permutation_test's statistics by name (problems hold the name; statistic(name, xp) is the callable
+# for an array module xp with mean and sum: numpy for scipy, stardust for sd)
+H9_STATISTICS = ("mean_diff", "mean", "cov", "sum_sq_means")
+
+
+def statistic(name, xp):
+    """permutation_test's statistic `name` for the array module xp (numpy or stardust)."""
+    if name == "mean_diff":
+        return lambda a, b, axis: xp.mean(a, axis=axis) - xp.mean(b, axis=axis)
+    if name == "mean":
+        return lambda a, axis: xp.mean(a, axis=axis)
+    if name == "cov":
+        return lambda a, b, axis: xp.mean(a * b, axis=axis) - xp.mean(a, axis=axis) * xp.mean(b, axis=axis)
+    if name == "sum_sq_means":
+        return lambda *s, axis: sum(xp.mean(v, axis=axis) ** 2 for v in s)
+    raise KeyError(name)
+
+
+# goodness_of_fit's families: scipy's name -> (sd.stats' class name, scipy's known_params for sd's
+# family: sd.stats has no location, so scipy's is held at 0)
+GOF_FAMILIES = {
+    "norm": ("Normal", {}),
+    "expon": ("Exponential", {"loc": 0.0}),
+    "logistic": ("Logistic", {}),
+    "gumbel_r": ("Gumbel", {}),
+    "weibull_min": ("Weibull", {"loc": 0.0}),
+    "lognorm": ("LogNormal", {"loc": 0.0}),
+    "laplace": ("Laplace", {}),
+    "rayleigh": ("Rayleigh", {"loc": 0.0}),
+}
+
+
+def _h9():
+    """H9's problems with a fixed answer: permutation_test's and bws_test's exact enumerations
+    (every permutation fits in n_resamples), multiscale_graphcorr's statistic (reps=0: no
+    permutations) and goodness_of_fit's fits and statistics (its p-value is random: the
+    references leave it out)."""
+    m = "H9"
+    x, y = normal(301, 5), normal(302, 4, 0.8)
+    for alt in ("two-sided", "less", "greater"):
+        add(m, "permutation_test", f"independent-{alt}", [x, y], "mean_diff", alternative=alt, tags=("exact",))
+    add(m, "permutation_test", "independent-ties", [rounded(303, 6), rounded(304, 5, loc=1.0)], "mean_diff",
+        tags=("exact", "ties"))  # fmt: skip
+    add(m, "permutation_test", "three-samples", [normal(305, 3), normal(306, 3, 0.5), normal(307, 3, 1.0)],
+        "sum_sq_means", alternative="greater", tags=("exact",))  # fmt: skip
+    add(m, "permutation_test", "pairings", [normal(308, 4), normal(309, 4)], "cov", permutation_type="pairings",
+        tags=("exact",))  # fmt: skip
+    add(m, "permutation_test", "samples", [normal(310, 8), normal(311, 8, 0.4)], "mean_diff",
+        permutation_type="samples", tags=("exact",))  # fmt: skip
+    add(m, "permutation_test", "signs", [normal(312, 10, 0.3)], "mean", permutation_type="samples",
+        alternative="greater", tags=("exact",))  # fmt: skip
+    add(m, "permutation_test", "signs-ties", [rounded(313, 9, loc=0.5)], "mean", permutation_type="samples",
+        tags=("exact", "ties"))  # fmt: skip
+    add(m, "permutation_test", "tail", [normal(314, 7, 2.0), normal(315, 7)], "mean_diff", alternative="greater",
+        n_resamples=10**5, tags=("exact", "tail"))  # fmt: skip
+    add(m, "bws_test", "small", normal(316, 5), normal(317, 5, 1.0), tags=("exact",))
+    add(m, "bws_test", "eight-seven", normal(318, 8), normal(319, 7, 0.6), tags=("exact",))
+    add(m, "bws_test", "ties", rounded(320, 7), rounded(321, 6, loc=1.0), tags=("exact", "ties"))
+    for alt in ("less", "greater"):
+        add(m, "bws_test", f"one-sided-{alt}", normal(322, 6), normal(323, 6, 0.7), alternative=alt,
+            tags=("exact",))  # fmt: skip
+    for n in (8, 15, 25):
+        u = normal(330 + n, n)
+        add(m, "multiscale_graphcorr", f"quadratic-{n}", u, u**2 + 0.4 * normal(340 + n, n), reps=0)
+    add(m, "multiscale_graphcorr", "independent", normal(350, 20), normal(351, 20), reps=0)
+    add(m, "multiscale_graphcorr", "linear", normal(352, 12), 2.0 * normal(352, 12) + 0.1 * normal(353, 12), reps=0)
+    add(m, "multiscale_graphcorr", "ties", rounded(354, 14), rounded(355, 14), reps=0, tags=("ties",))
+    g = _g(360)
+    draws = {
+        "norm": g.normal(1.0, 2.0, 40),
+        "expon": g.exponential(2.0, 40),
+        "logistic": g.logistic(1.0, 2.0, 40),
+        "gumbel_r": g.gumbel(1.0, 2.0, 40),
+        "weibull_min": g.weibull(1.5, 40) * 2.0,
+        "lognorm": g.lognormal(0.5, 0.7, 40),
+        "laplace": g.laplace(1.0, 2.0, 40),
+        "rayleigh": g.rayleigh(2.0, 40),
+    }
+    for dist, data in draws.items():
+        for stat in ("ad", "ks", "cvm", "filliben"):
+            add(m, "goodness_of_fit", f"{dist}-{stat}", dist, data, statistic=stat, n_mc_samples=99)
+    add(m, "goodness_of_fit", "norm-known-mu", "norm", draws["norm"], known_params={"loc": 1.0}, n_mc_samples=99)
+    add(m, "goodness_of_fit", "weibull-known-c", "weibull_min", draws["weibull_min"],
+        known_params={"loc": 0.0, "c": 1.5}, n_mc_samples=99)  # fmt: skip
+    add(m, "goodness_of_fit", "gumbel-known-scale", "gumbel_r", draws["gumbel_r"], known_params={"scale": 2.0},
+        n_mc_samples=99)  # fmt: skip
+    add(m, "goodness_of_fit", "logistic-known-loc", "logistic", draws["logistic"], known_params={"loc": 1.0},
+        n_mc_samples=99)  # fmt: skip
+
+
+for _f in (_h1, _h2, _h3, _h4, _h5, _h6, _h7, _h7_more, _h8, _h8_more, _h9):
     _f()
 del _f
 

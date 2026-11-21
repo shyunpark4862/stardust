@@ -195,7 +195,7 @@ def test_errors():
         (lambda A: sd.linalg.det(A),
          "det(): 'x' must be an sd.ndarray, not csr_array; "
          "a sparse array has no det: use det(A.toarray())"),
-        # (SP6's eigensolvers exist: the hints name them; norm comes with SP7)
+        # (SP6's eigensolvers and SP7's norm and expm exist: the hints name them)
         (lambda A: sd.linalg.eigh(A),
          "eigh(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.eigsh"),
         (lambda A: sd.linalg.svdvals(A),
@@ -203,8 +203,11 @@ def test_errors():
         (lambda A: sd.linalg.eigvals(A),
          "eigvals(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.eigs"),
         (lambda A: sd.linalg.matrix_norm(A),
-         "matrix_norm(): 'x' must be an sd.ndarray, not csr_array; "
-         "a sparse array has no matrix_norm: use matrix_norm(A.toarray())"),
+         "matrix_norm(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.norm"),
+        (lambda A: sd.linalg.vector_norm(A),
+         "vector_norm(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.norm"),
+        (lambda A: sd.linalg.expm(A),
+         "expm(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.expm"),
         (lambda A: sd.linalg.lstsq(A, sd.ones(3)),  # (SP5's solvers exist: the hint names them)
          "lstsq(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.lsqr or sd.sparse.lsmr"),
     ],

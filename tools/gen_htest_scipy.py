@@ -1,7 +1,7 @@
 """scipy 1.18.1's and statsmodels 0.15.0's results on the sd.htest problem collection
 (tests/htest/problems.py; docs/design/htest.md §7). Writes
 
-  tests/htest/data/scipy_h1.json ... scipy_h8.json   scipy.stats (and scipy.stats.contingency)
+  tests/htest/data/scipy_h1.json ... scipy_h9.json   scipy.stats (and scipy.stats.contingency)
   tests/htest/data/statsmodels.json                  statsmodels.stats (multipletests, the
                                                      proportion functions, mcnemar, cochrans_q;
                                                      multipletests' batch one row at a time)
@@ -16,9 +16,9 @@ JSON's NaN and Infinity, which Python reads back); arrays as nested lists.
 
 Not run: fisher_exact on an r x c table (scipy's default is an unseeded Monte Carlo: no fixed
 answer to keep). dunnett's p-values come from scipy's randomized quasi-Monte Carlo and are
-recorded with rng=12345.
+recorded with rng=12345. H9's problems are the resampling functions' fixed answers (h9_call).
 
-Run: .venv/bin/python tools/gen_htest_scipy.py [--jobs N]   (up to 10 processes)
+Run: .venv/bin/python tools/gen_htest_scipy.py [--jobs N] [--milestone H9]   (up to 10 processes)
 """
 
 import json
@@ -83,10 +83,39 @@ def plain(v):
     return repr(v)
 
 
+def h9_call(p):
+    """H9's problems: permutation_test with the named statistic, bws_test (scipy's default
+    PermutationMethod enumerates them all), multiscale_graphcorr (reps=0), goodness_of_fit with
+    the family's location held at 0 where sd's has none (its p-value from rng=12345: random)."""
+    import scipy.stats as st
+
+    from tests.htest import problems as P
+
+    kw = dict(p.kwargs)
+    if p.func == "permutation_test":
+        r = st.permutation_test(tuple(p.args[0]), P.statistic(p.args[1], np), **kw)
+        return {"statistic": plain(r.statistic), "pvalue": plain(r.pvalue), "n_null": len(r.null_distribution)}
+    if p.func == "bws_test":
+        r = st.bws_test(*p.args, **kw)
+        return {"statistic": plain(r.statistic), "pvalue": plain(r.pvalue), "n_null": len(r.null_distribution)}
+    if p.func == "multiscale_graphcorr":
+        r = st.multiscale_graphcorr(*p.args, random_state=1, **kw)
+        return {"statistic": plain(r.statistic), "pvalue": plain(r.pvalue), "opt_scale": plain(r.mgc_dict["opt_scale"]),
+                "mgc_map": plain(r.mgc_dict["mgc_map"])}  # fmt: skip
+    if p.func == "goodness_of_fit":
+        dist, data = p.args
+        known = {**P.GOF_FAMILIES[dist][1], **kw.pop("known_params", {})}
+        r = st.goodness_of_fit(getattr(st, dist), data, known_params=known, rng=12345, **kw)
+        return {"statistic": plain(r.statistic), "pvalue": plain(r.pvalue), "params": plain(list(r.fit_result.params))}
+    raise KeyError(p.func)
+
+
 def scipy_call(p):
     import scipy.stats as st
     from scipy.stats import contingency
 
+    if p.milestone == "H9":
+        return h9_call(p)
     args, kw = list(p.args), dict(p.kwargs)
     if p.func in ("ks_1samp", "kstest") and isinstance(args[1], str):
         args[1] = getattr(st, args[1]).cdf
@@ -201,8 +230,11 @@ def main(argv=None):
 
     ap = argparse.ArgumentParser(prog="tools/gen_htest_scipy.py", description=__doc__.split("\n\n")[0])
     cli.add_jobs(ap, default=JOBS)
-    jobs = ap.parse_args(argv).jobs
-    ids = list(P.PROBLEMS)
+    ap.add_argument("--milestone", action="append", metavar="H9", help="only these milestones' files (repeatable)")
+    a = ap.parse_args(argv)
+    jobs = a.jobs
+    only = set(a.milestone or ())
+    ids = [i for i in P.PROBLEMS if not only or P.PROBLEMS[i].milestone in only]
     with mp.get_context("spawn").Pool(jobs, maxtasksperchild=50) as pool:
         res = dict(pool.imap(run, ids, chunksize=4))
     meta = {
@@ -212,11 +244,14 @@ def main(argv=None):
         "numpy": np.__version__,
     }
     DATA.mkdir(parents=True, exist_ok=True)
-    for ms in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8"):
+    for ms in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9"):
+        if only and ms not in only:
+            continue
         recs = [(i, res[i]) for i in ids if P.PROBLEMS[i].milestone == ms and P.PROBLEMS[i].func not in P.STATSMODELS]
         write(DATA / f"scipy_{ms.lower()}.json", meta, recs)
-    recs = [(i, res[i]) for i in ids if P.PROBLEMS[i].func in P.STATSMODELS]
-    write(DATA / "statsmodels.json", meta, recs)
+    if not only:
+        recs = [(i, res[i]) for i in ids if P.PROBLEMS[i].func in P.STATSMODELS]
+        write(DATA / "statsmodels.json", meta, recs)
     errors = sum("error" in r for r in res.values())
     print(f"{len(res)} problems, {errors} raised")
 

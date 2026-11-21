@@ -5,6 +5,7 @@
 #include "bind/errors.hpp"
 #include "bind/frame_bind.hpp"
 #include "bind/htest_bind.hpp"
+#include "bind/integrate_bind.hpp"
 #include "bind/linalg_bind.hpp"
 #include "bind/optimize_bind.hpp"
 #include "bind/regression_bind.hpp"
@@ -139,6 +140,7 @@ NB_MODULE(_core, m) {
     sd::bind_regression(m);  // after linalg (its batch driver and results)
     sd::bind_optimize(m);  // after the array (it returns ndarrays)
     sd::bind_differentiate(m);  // after the array, like optimize
+    sd::bind_integrate(m);  // after the array, like differentiate
     sd::bind_htest(m);  // after stats (its distributions) and the array
     sd::bind_sparse(m);  // after linalg (its LinAlgError) and the array
 }

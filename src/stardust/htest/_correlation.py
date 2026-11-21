@@ -25,6 +25,7 @@ from .. import _calls
 from .. import _core as _sd
 from ..stats._descriptive import _as_array, _type_name
 from . import _common as C
+from . import _resampling as R
 from ._gof import _nest
 from ._result import _TestResult
 
@@ -48,6 +49,18 @@ class PearsonrResult(_TestResult):
     _FIELDS = ("statistic", "pvalue")
     _UNPACK = ("statistic", "pvalue")
     _CI = True
+
+    def conf_int(self, *, alpha=0.05, method=None):
+        """The 1 - alpha confidence interval of r: Fisher's z (method=None), or a BootstrapMethod's
+        interval of r (H9, scipy's confidence_interval(method=)), within [-1, 1]; one-sided for a
+        one-sided test. A new (..., 2) array, (2,) for one test."""
+        a = C.alpha(alpha)
+        if method is not None:
+            R.check_method(method, "conf_int", R.BootstrapMethod, ("None",))
+        low, high = self._ci(a, method)
+        if isinstance(low, _sd.ndarray):
+            return _sd.stack([low + 0.0, high + 0.0], axis=-1)
+        return _sd.asarray([float(low), float(high)])
 
 
 class SpearmanrhoResult(_TestResult):
@@ -101,17 +114,19 @@ def _paired(name, x, y, axis, nan_policy, keepdims):
     return C.Samples(name, [x, y], ("x", "y"), axis, nan_policy, paired=True, keepdims=keepdims, scan=False)
 
 
-def _no_method(method, name):
-    """method=None only: the resampling methods come with H9."""
+def _resampling(method, name):
+    """method=: None, a PermutationMethod or a MonteCarloMethod (H9)."""
     if method is not None:
-        raise TypeError(f"{name}(): 'method' must be None, not {_type_name(method)}")
+        R.check_method(method, name, (R.PermutationMethod, R.MonteCarloMethod), ("None",))
 
 
-def _fisher_interval(z, n, alt, s):
+def _fisher_interval(z, n, alt, s, boot=None):
     """pearsonr's conf_int (scipy's _pearsonr_fisher_ci): tanh(atanh r -+ q / sqrt(n - 3)), q the
     normal quantile; a one-sided test's other end is -1 or 1; n <= 3 gives (-1, 1)."""
 
-    def ci(alpha):
+    def ci(alpha, method=None):
+        if method is not None:
+            return boot(alpha, method)
         q = float(_st.normal_iccdf(0.0, 1.0, alpha / 2.0 if alt == "two-sided" else alpha))
         small = n <= 3.0
         se = 1.0 / _sd.sqrt(_sd.where(small, 4.0, n) - 3.0)
@@ -138,14 +153,28 @@ def _pearson(name, x, y, axis, alternative, nan_policy, keepdims, ranks):
 def pearsonr(x, y, /, *, axis=None, alternative="two-sided", method=None, nan_policy="propagate", keepdims=False):
     """Pearson's correlation coefficient and the test of no correlation: statistic r, pvalue (the
     beta distribution of r under the normal theory, scipy's; from 1 - r^2 formed without
-    cancellation) and conf_int(alpha=0.05) (Fisher's z). NaN where a sample is constant (H20) or
-    holds an inf, or for fewer than 2 pairs; n = 2 gives r = +-1 and p = 1. method: None only
-    (the resampling methods come with H9). Unpacks as (statistic, pvalue)."""
+    cancellation) and conf_int(alpha=0.05, method=None) (Fisher's z, or a BootstrapMethod's). NaN
+    where a sample is constant (H20) or holds an inf, or for fewer than 2 pairs; n = 2 gives r =
+    +-1 and p = 1. method: None, a PermutationMethod (y's order permuted) or a MonteCarloMethod
+    (both drawn by its rvs; H9). Unpacks as (statistic, pvalue)."""
     name = "pearsonr"
-    _no_method(method, name)
+    _resampling(method, name)
     s, alt, r, p, z, n = _pearson(name, x, y, axis, alternative, nan_policy, keepdims, False)
+    info = s.info(alt)
+
+    def stat(a, b):
+        return pearsonr(a, b, axis=-1).statistic
+
+    if method is not None:  # H9: y's order permuted (x held), or both drawn by the method's rvs
+        p, pairs = R.method_pvalue(name, method, s, stat, alt, ptype="pairings", held=1)
+        info["pairs"] = pairs
+
+    def boot(alpha, bm):
+        lo, hi = R.method_interval("conf_int", bm, s, stat, alt, alpha, clip=(-1.0, 1.0))
+        return s.out(lo), s.out(hi)
+
     return PearsonrResult._make(
-        batch=s.batch, ci=_fisher_interval(z, n, alt, s), info=s.info(alt), statistic=s.out(r), pvalue=s.out(p)
+        batch=s.batch, ci=_fisher_interval(z, n, alt, s, boot), info=info, statistic=s.out(r), pvalue=s.out(p)
     )
 
 
@@ -161,11 +190,20 @@ def spearmanrho(x, y, /, *, axis=None, alternative="two-sided", method=None, nan
     """Spearman's rank correlation: statistic rho (Pearson's r of the exact midranks) and pvalue
     (Pearson's beta distribution of the ranks' r, the t approximation; no exact distribution,
     H63). scipy 1.18's new form: paired samples broadcast, batches along the other axes. method:
-    None only (H9). Unpacks as (statistic, pvalue)."""
+    None, a PermutationMethod or a MonteCarloMethod (H9; the Monte Carlo samples are ranked too).
+    Unpacks as (statistic, pvalue)."""
     name = "spearmanrho"
-    _no_method(method, name)
+    _resampling(method, name)
     s, alt, r, p, _, _ = _pearson(name, x, y, axis, alternative, nan_policy, keepdims, True)
-    return SpearmanrhoResult._make(batch=s.batch, info=s.info(alt), statistic=s.out(r), pvalue=s.out(p))
+    info = s.info(alt)
+    if method is not None:  # H9: rho of y's permutations or of the method's draws (ranked: H126)
+
+        def rho(a, b):
+            return spearmanrho(a, b, axis=-1).statistic
+
+        p, pairs = R.method_pvalue(name, method, s, rho, alt, ptype="pairings", held=1)
+        info["pairs"] = pairs
+    return SpearmanrhoResult._make(batch=s.batch, info=info, statistic=s.out(r), pvalue=s.out(p))
 
 
 def _axis01(axis, name):
@@ -368,17 +406,27 @@ def chatterjeexi(
     """Chatterjee's xi correlation and the test of independence: statistic xi (y as a function of x;
     not symmetric) and pvalue (the normal approximation, one-sided: large xi). y_continuous=True
     takes Chatterjee's variance for a continuous y. Ties in x are broken by position (scipy breaks
-    them by its sort, arbitrarily). method: 'asymptotic' only (the permutation method comes with
-    H9). NaN for fewer than 2 pairs or a constant y. Unpacks as (statistic, pvalue)."""
+    them by its sort, arbitrarily). method: 'asymptotic' or a PermutationMethod (H9: y's order
+    permuted). NaN for fewer than 2 pairs or a constant y. Unpacks as (statistic, pvalue)."""
     name = "chatterjeexi"
     cont = C.flag(y_continuous, name, "y_continuous")
-    if not isinstance(method, str):
-        raise TypeError(f"{name}(): 'method' must be 'asymptotic', not {_type_name(method)}")
-    if method != "asymptotic":
-        raise ValueError(f"{name}(): 'method' must be 'asymptotic', not {method!r}")
+    perm = isinstance(method, R.PermutationMethod)
+    if not perm:
+        if not isinstance(method, str):
+            R.check_method(method, name, R.PermutationMethod, ("asymptotic",))
+        if method != "asymptotic":
+            raise ValueError(f"{name}(): 'method' must be 'asymptotic' or a PermutationMethod, not {method!r}")
     s = _paired(name, x, y, axis, nan_policy, keepdims)
     xi, p = _k.chatterjee(s.rows[0], s.rows[1], cont, s.policy == "omit")
-    return ChatterjeexiResult._make(batch=s.batch, info=s.info(), statistic=s.out(xi), pvalue=s.out(p))
+    info = s.info()
+    if perm:  # H9: xi of y's permutations (x held), large xi extreme (scipy's)
+
+        def stat(a, b):
+            return chatterjeexi(a, b, axis=-1, y_continuous=cont).statistic
+
+        p, pairs = R.method_pvalue(name, method, s, stat, "greater", ptype="pairings", held=1)
+        info["pairs"] = pairs
+    return ChatterjeexiResult._make(batch=s.batch, info=info, statistic=s.out(xi), pvalue=s.out(p))
 
 
 # a wrong call shape in the library's form (API.md §2.1)

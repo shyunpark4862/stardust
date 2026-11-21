@@ -5,7 +5,9 @@ variance, diff, ratio, odds_ratio, prop1_null, prop2_null, conf_int and odds_rat
 conf_int_less and conf_int_greater, binomtest's conf_int_wilson and conf_int_wilsoncc; the interval
 functions' whole result is conf_int), each problem of the family a point; H8's array families
 (tukey_hsd, dunnett, multipletests: refdata.ARRAY_FIELDS) a point per comparison or p-value
-(problem[i]).
+(problem[i]); H9's fixed answers (permutation_test's and bws_test's exact enumerations,
+multiscale_graphcorr's statistic, goodness_of_fit's statistic and fitted parameters param0 and
+param1).
 
 The contract is tests/htest/refdata.py's, as the tests judge it (docs/design/htest.md §4): the
 statistic to 1e-14 times its condition number in what it transforms (kappa_stat), the p-value
@@ -80,6 +82,9 @@ def _sd_regions(fam) -> dict:
             if field in keys:  # an interval: its lower end
                 ci = R.interval_of(fam, field, r)
                 got, hi = float(ci[0]), rec[field][0][0]
+            elif field.startswith("param"):  # goodness_of_fit's fitted parameters (H9)
+                got = float(getattr(r.fit_result, R.GOF_PARAMS[P.PROBLEMS[pid].args[0]][int(field[5:])]))
+                hi = rec[field][0]
             else:
                 got, hi = float(getattr(r, field)), rec[field][0]
             rows.setdefault(field, []).append((pid, got, hi, e, c))

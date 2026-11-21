@@ -56,12 +56,16 @@ def _own(v, copy=False):
         v = tuple(_own(e, copy) for e in v)
     elif isinstance(v, tuple):  # a namedtuple field keeps its type
         v = type(v)(*(_own(e, copy) for e in v))
+    elif isinstance(v, dict):  # multiscale_graphcorr's mgc_dict: its arrays read-only too
+        v = {k: _own(e, copy) for k, e in v.items()}
     return v
 
 
 def _fresh(v):
     """A list field (a batch's per-lane method names, nested in the batch's shape) as a new list
     at each read (regression's G113): changing it does not change the result."""
+    if isinstance(v, dict):  # a dict field (mgc_dict) as a new dict, its lists new too
+        return {k: _fresh(e) for k, e in v.items()}
     return [_fresh(e) for e in v] if isinstance(v, list) else v
 
 
@@ -125,6 +129,7 @@ class _TestResult:
     _CI = False  # has conf_int() (H16)
     _TITLE = None  # summary()'s title: the test's name (scipy's, R's or statsmodels')
     _CI_LABEL = "interval"  # the stub of the interval's row in summary()
+    _HIDDEN = ()  # fields summary() leaves out (a resampling test's null distribution)
 
     def __init_subclass__(cls, **kw):
         super().__init_subclass__(**kw)
@@ -186,6 +191,6 @@ def _summary(r, alpha):
     if r._CI and alpha is not None:
         lo, hi = r._ci(alpha)
         interval = (lo, hi, alpha, r._CI_LABEL)
-    fields = [(k, r._values[k]) for k in r._FIELDS if k in r._values]
+    fields = [(k, r._values[k]) for k in r._FIELDS if k in r._values and k not in r._HIDDEN]
     title = info.get("title") or r._TITLE or type(r).__name__
     return _S.test_box(title, fields, r._batch, info, interval)

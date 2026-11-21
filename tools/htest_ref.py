@@ -41,7 +41,9 @@ rule): Arb and Fractions only.
 A family is a function of a problem giving {field: value}, where a value is a Fraction (exact),
 a zero-argument function giving an arb at the current precision (settled by rigorous()), a float
 (nan, inf, an exact double), an int, a str, or a list of these. Later milestones add families
-the same way (FAMILIES).
+the same way (FAMILIES). H9's: permutation_test's and bws_test's exact enumerations (Fractions),
+multiscale_graphcorr's local correlation map (Fractions and Arb square roots), goodness_of_fit's
+fits (closed forms, or the score equations solved by the secant at 320 bits) and statistics (Arb).
 """
 
 import bisect
@@ -4346,6 +4348,467 @@ def multipletests(p):
 
 
 # ---------------------------------------------------------------- building
+
+
+# ---- H9: resampling and Monte Carlo (the fixed answers)
+
+from itertools import combinations as _combinations  # noqa: E402
+from itertools import permutations as _permutations  # noqa: E402
+from itertools import product as _product  # noqa: E402
+
+
+def _h9_stat(name, samples):
+    """permutation_test's named statistics (tests/htest/problems.py's statistic()) in Fractions."""
+
+    def mean(v):
+        return sum(v, Fraction(0)) / len(v)
+
+    if name == "mean_diff":
+        return mean(samples[0]) - mean(samples[1])
+    if name == "mean":
+        return mean(samples[0])
+    if name == "cov":
+        a, b = samples
+        return mean([u * w for u, w in zip(a, b)]) - mean(a) * mean(b)
+    if name == "sum_sq_means":
+        return sum((mean(v) ** 2 for v in samples), Fraction(0))
+    raise KeyError(name)
+
+
+def _arrangements(samples, ptype):
+    """Every permutation of the samples (scipy's permutation_test, exact): lists of samples."""
+    if ptype == "independent":
+        pooled = [v for s in samples for v in s]
+        sizes = [len(s) for s in samples]
+
+        def deal(left, sizes):
+            if len(sizes) == 1:
+                yield [[pooled[i] for i in left]]
+                return
+            for c in _combinations(left, sizes[0]):
+                rest = [i for i in left if i not in c]
+                for more in deal(rest, sizes[1:]):
+                    yield [[pooled[i] for i in c]] + more
+
+        yield from deal(list(range(len(pooled))), sizes)
+    elif ptype == "pairings":
+        for perms in _product(*(_permutations(s) for s in samples)):
+            yield [list(p) for p in perms]
+    else:
+        if len(samples) == 1:
+            samples = [samples[0], [-v for v in samples[0]]]
+        k, n = len(samples), len(samples[0])
+        for perms in _product(*(_permutations(range(k)) for _ in range(n))):
+            yield [[samples[perms[i][j]][i] for i in range(n)] for j in range(k)]
+
+
+def _exact_p(null, obs, alt):
+    n = len(null)
+    le = Fraction(sum(v <= obs for v in null), n)
+    ge = Fraction(sum(v >= obs for v in null), n)
+    if alt == "less":
+        return le
+    if alt == "greater":
+        return ge
+    return min(2 * min(le, ge), Fraction(1))
+
+
+@family("permutation_test", ("permutation_test",))
+def permutation_test(p):
+    """The statistic of the data (exact rationals) and its exact p-value: the share of all
+    permutations (scipy's enumeration) at least as extreme, compared exactly."""
+    samples = [[fr(v) for v in s] for s in p.args[0]]
+    name = p.args[1]
+    ptype = p.kwargs.get("permutation_type", "independent")
+    null = [_h9_stat(name, arr[:1] if ptype == "samples" and len(samples) == 1 else arr)
+            for arr in _arrangements(samples, ptype)]  # fmt: skip
+    obs = _h9_stat(name, samples)
+    return {
+        "statistic": obs,
+        "pvalue": _exact_p(null, obs, p.kwargs.get("alternative", "two-sided")),
+        "n_null": len(null),
+    }
+
+
+def _bws(r, h, alt):
+    """scipy's _bws_statistic of the ranks r (x's) and h (y's), exact."""
+
+    def side(v, other):
+        v = sorted(v)
+        n = len(v)
+        tot = n + other
+        s = Fraction(0)
+        for i, val in enumerate(v, 1):
+            num = val - Fraction(tot, n) * i
+            sq = num * num if alt == "two-sided" else num * abs(num)
+            q = Fraction(i, n + 1)
+            s += sq / (q * (1 - q) * other * Fraction(tot, n))
+        return s / n
+
+    bx, by = side(r, len(h)), side(h, len(r))
+    return (bx + by) / 2 if alt == "two-sided" else (bx - by) / 2
+
+
+@family("bws_test", ("bws_test",))
+def bws_test(p):
+    """The Baumgartner-Weiss-Schindler statistic of the pooled midranks (exact) and its exact
+    p-value over all C(n + m, n) arrangements of the ranks (large B extreme; 'less': small)."""
+    x, y = [fr(v) for v in p.args[0]], [fr(v) for v in p.args[1]]
+    alt = p.kwargs.get("alternative", "two-sided")
+    ranks, _ = midranks(x + y)
+    n = len(x)
+    obs = _bws(ranks[:n], ranks[n:], alt)
+    null = []
+    idx = range(len(ranks))
+    for c in _combinations(idx, n):
+        cs = set(c)
+        null.append(_bws([ranks[i] for i in c], [ranks[i] for i in idx if i not in cs], alt))
+    return {
+        "statistic": obs,
+        "pvalue": _exact_p(null, obs, "less" if alt == "less" else "greater"),
+        "n_null": len(null),
+    }
+
+
+def _mgc_map(x, y):
+    """scipy's local correlation map of one-dimensional samples (Euclidean distances |x_i - x_j|,
+    exact): the covariances and the local variances in Fractions (y paired with its transpose),
+    the correlations' square roots as arb functions; and the map's values as doubles (for the
+    region's selection)."""
+    n = len(x)
+
+    def prep(v):
+        d = [[abs(v[i] - v[j]) for j in range(n)] for i in range(n)]
+        rank = [[0] * n for _ in range(n)]
+        for j in range(n):
+            col = [d[i][j] for i in range(n)]
+            for i in range(n):
+                rank[i][j] = len({c for c in col if c <= col[i]}) - 1  # the dense rank - 1 (scipy's)
+        cent = [[Fraction(0) if i == j else d[i][j] - sum(d[q][j] for q in range(n)) / (n - 1) for j in range(n)]
+                for i in range(n)]  # fmt: skip
+        m = max(max(r) for r in rank) + 1
+        return cent, rank, m
+
+    cx, rx, mx = prep(x)
+    cy, ry, my = prep(y)
+
+    def local(ca, ra, ma, cb, rb, mb):
+        c = [[Fraction(0)] * mb for _ in range(ma)]
+        ea, eb = [Fraction(0)] * ma, [Fraction(0)] * mb
+        for i in range(n):
+            for j in range(n):
+                c[ra[i][j]][rb[j][i]] += ca[i][j] * cb[j][i]
+                ea[ra[i][j]] += ca[i][j]
+                eb[rb[j][i]] += cb[j][i]
+        for k in range(ma):  # the two-dimensional prefix sums
+            for l in range(mb):
+                c[k][l] += (c[k - 1][l] if k else 0) + (c[k][l - 1] if l else 0) - (c[k - 1][l - 1] if k and l else 0)
+        for k in range(1, ma):
+            ea[k] += ea[k - 1]
+        for l in range(1, mb):
+            eb[l] += eb[l - 1]
+        return [[c[k][l] - ea[k] * eb[l] / (n * n) for l in range(mb)] for k in range(ma)]
+
+    cov = local(cx, rx, mx, cy, ry, my)
+    lx, ly = local(cx, rx, mx, cx, rx, mx), local(cy, ry, my, cy, ry, my)
+    vx = [lx[k][k] for k in range(mx)]
+    vy = [ly[l][l] for l in range(my)]
+
+    def entry(k, l):
+        if vx[k] <= 0 or vy[l] <= 0:
+            return Fraction(0)
+        c = cov[k][l]
+        if c > 0 and c * c >= vx[k] * vy[l]:
+            return Fraction(1)
+        return lambda c=c, a=vx[k], b=vy[l]: A(c) / (A(a) * A(b)).sqrt()
+
+    ent = [[entry(k, l) for l in range(my)] for k in range(mx)]
+    dbl = [[float(e) if isinstance(e, Fraction) else float(to_dd(rigorous(e))[0]) for e in row] for row in ent]
+    return ent, dbl
+
+
+def _beta_quantile(q, a):
+    """The quantile q of Beta(a, a) by bisection on Arb's regularized incomplete beta, to a double."""
+    lo, hi = Fraction(0), Fraction(1)
+    with ar.precision(200):
+        for _ in range(80):
+            mid = (lo + hi) / 2
+            if A(mid).beta_lower(A(a), A(a), 1) < A(q):
+                lo = mid
+            else:
+                hi = mid
+    return float((lo + hi) / 2)
+
+
+def _mgc_select(dbl, n):
+    """scipy's _threshold_mgc_map and _smooth_mgc_map on the map's doubles: the statistic's
+    entry (k, l), 0-based, or the last one."""
+    m, q = len(dbl), len(dbl[0])
+    last = (m - 1, q - 1)
+    if m == 1 or q == 1:
+        return last
+    s = n - 1
+    thr = max(_beta_quantile(Fraction(1) - Fraction(0.02) / s, Fraction(s * (s - 3), 4) - Fraction(1, 2)) * 2 - 1,
+              dbl[m - 1][q - 1])  # fmt: skip
+    lab = [[0] * q for _ in range(m)]
+    sizes = [0]
+    for k0 in range(m):
+        for l0 in range(q):
+            if dbl[k0][l0] > thr and not lab[k0][l0]:
+                g = len(sizes)
+                stack, cnt = [(k0, l0)], 0
+                lab[k0][l0] = g
+                while stack:
+                    k, l = stack.pop()
+                    cnt += 1
+                    for a, b in ((k - 1, l), (k + 1, l), (k, l - 1), (k, l + 1)):
+                        if 0 <= a < m and 0 <= b < q and not lab[a][b] and dbl[a][b] > thr:
+                            lab[a][b] = g
+                            stack.append((a, b))
+                sizes.append(cnt)
+    if len(sizes) == 1:
+        return last
+    best = max(range(1, len(sizes)), key=lambda g: (sizes[g], -g))
+    if sizes[best] < math.ceil(0.02 * max(m, q)) * min(m, q):
+        return last
+    cells = [(k, l) for k in range(m) for l in range(q) if lab[k][l] == best]
+    top = max(dbl[k][l] for k, l in cells)
+    if top < dbl[m - 1][q - 1]:
+        return last
+    return max((k, l) for k, l in cells if dbl[k][l] >= top)
+
+
+@family("multiscale_graphcorr", ("multiscale_graphcorr",), select=lambda p: np.ndim(p.args[0]) == 1)
+def multiscale_graphcorr(p):
+    """MGC's statistic of one-dimensional samples: the local correlation map exactly (Fractions and
+    Arb square roots), the entry scipy's selection picks (on the map's doubles; the threshold's
+    beta quantile from Arb) and the optimal scale."""
+    x, y = [fr(v) for v in p.args[0]], [fr(v) for v in p.args[1]]
+    ent, dbl = _mgc_map(x, y)
+    k, l = _mgc_select(dbl, len(x))
+    return {"statistic": ent[k][l], "opt_scale": [k + 1, l + 1]}
+
+
+# goodness_of_fit: the fitted parameters (sd.stats' names) and the statistics in Arb
+
+GOF_PREC = 320  # the precision of the Newton solutions of the score equations
+
+
+def _newton_root(g, x0, prec=GOF_PREC):
+    """A root of g (arb -> arb) by the secant on the midpoints at prec bits from the double x0 (the
+    score equations are smooth with one root: the iterates converge superlinearly; the result is a
+    Fraction, exact to far below 2^-110)."""
+    with ar.precision(prec):
+        a, b = arb(x0), arb(x0) * (1 + arb(2) ** -20)
+        ga, gb = g(a).mid(), g(b).mid()
+        for _ in range(200):
+            if gb == ga:
+                break
+            c = (b - gb * (b - a) / (gb - ga)).mid()
+            a, ga, b = b, gb, c
+            gb = g(b).mid()
+            if abs(b - a) <= abs(b) * arb(2) ** (-prec + 10):
+                break
+        return _arb_fraction(b)
+
+
+def _arb_fraction(v):
+    m, e = v.mid().man_exp()
+    m, e = int(m), int(e)
+    return Fraction(m) * 2**e if e >= 0 else Fraction(m, 2**-e)
+
+
+def _gof_params(dist, x, known):
+    """The maximum likelihood (Normal: scipy's mean and n - 1 deviation) of sd's family, known
+    parameters held; Fractions."""
+    n = len(x)
+    mean = sum(x, Fraction(0)) / n
+
+    def logs():
+        with ar.precision(GOF_PREC):
+            return [A(v).log() for v in x]
+
+    if dist == "norm":
+        mu = Fraction(known["loc"]) if "loc" in known else mean
+        if "loc" in known:
+            v = sum((u - mu) ** 2 for u in x) / n
+        else:
+            v = sum((u - mu) ** 2 for u in x) / (n - 1)
+        return [mu, lambda v=v: A(v).sqrt()]
+    if dist == "expon":
+        return [mean]
+    if dist == "rayleigh":
+        return [lambda: (A(sum(u * u for u in x)) / (2 * n)).sqrt()]
+    if dist == "laplace":
+        s = sorted(x)
+        med = s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+        return [med, sum(abs(u - med) for u in x) / n]
+    if dist == "lognorm":
+
+        def mu():
+            return sum((A(v).log() for v in x), arb(0)) / n
+
+        def sigma():
+            m = mu()
+            return (sum(((A(v).log() - m) ** 2 for v in x), arb(0)) / n).sqrt()
+
+        return [mu, sigma]
+    if dist == "weibull_min":
+        c = known.get("c")
+        if c is None:
+
+            def h(cc):
+                ys = [A(v).log() for v in x]
+                w = [(cc * yv).exp() for yv in ys]
+                return 1 / cc + sum(ys, arb(0)) / n - sum((wi * yv for wi, yv in zip(w, ys)), arb(0)) / sum(w, arb(0))
+
+            c = _newton_root(h, 1.5)
+        c = Fraction(c)
+        return [c, lambda c=c: (sum((A(v) ** A(c) for v in x), arb(0)) / n) ** (1 / A(c))]
+    if dist == "gumbel_r":
+        sigma = known.get("scale")
+        if sigma is None:
+
+            def h(b):
+                e = [(-A(v) / b).exp() for v in x]
+                return A(mean) - sum((A(v) * ei for v, ei in zip(x, e)), arb(0)) / sum(e, arb(0)) - b
+
+            sigma = _newton_root(h, 2.0)
+        sigma = Fraction(sigma)
+        mu = lambda s=sigma: -A(s) * (sum(((-A(v) / A(s)).exp() for v in x), arb(0)) / n).log()  # noqa: E731
+        return [mu, sigma]
+    if dist == "logistic":
+        if "loc" in known:
+            mu = Fraction(known["loc"])
+
+            def h(s):
+                return sum(((A(v) - A(mu)) / s * ((A(v) - A(mu)) / (2 * s)).tanh() for v in x), arb(0)) - n
+
+            return [mu, _newton_root(h, 2.0)]
+
+        def mu_of(s):
+            return _newton_root(lambda m: sum((((A(v) - m) / (2 * A(s))).tanh() for v in x), arb(0)), float(mean))
+
+        def h2(s):
+            m = mu_of(_arb_fraction(s))
+            return sum(((A(v) - A(m)) / s * ((A(v) - A(m)) / (2 * s)).tanh() for v in x), arb(0)) - n
+
+        s = _newton_root(h2, 1.5)
+        return [mu_of(s), s]
+    raise KeyError(dist)
+
+
+def _gof_funcs(dist, th):
+    """(cdf, logcdf, logsf) of the fitted family at an arb x, th the parameters' arbs."""
+    if dist == "norm":
+        mu, s = th
+        r2 = arb(2).sqrt()
+
+        def cdf(v):
+            return ((mu - v) / (s * r2)).erfc() / 2
+
+        def sf(v):
+            return ((v - mu) / (s * r2)).erfc() / 2
+
+        return cdf, lambda v: cdf(v).log(), lambda v: sf(v).log()
+    if dist == "lognorm":
+        f = _gof_funcs("norm", th)
+        return tuple((lambda v, g=g: g(v.log())) for g in f)
+    if dist == "expon":
+        (s,) = th
+        return (lambda v: -(-v / s).expm1()), (lambda v: (-(-v / s).expm1()).log()), (lambda v: -v / s)
+    if dist == "rayleigh":
+        (s,) = th
+        q = lambda v: v * v / (2 * s * s)  # noqa: E731
+        return (lambda v: -(-q(v)).expm1()), (lambda v: (-(-q(v)).expm1()).log()), (lambda v: -q(v))
+    if dist == "weibull_min":
+        c, s = th
+        q = lambda v: (v / s) ** c  # noqa: E731
+        return (lambda v: -(-q(v)).expm1()), (lambda v: (-(-q(v)).expm1()).log()), (lambda v: -q(v))
+    if dist == "logistic":
+        mu, s = th
+        t = lambda v: (v - mu) / s  # noqa: E731
+        return (
+            (lambda v: 1 / (1 + (-t(v)).exp())),
+            (lambda v: -((-t(v)).exp()).log1p()),
+            (lambda v: -(t(v).exp()).log1p()),
+        )
+    if dist == "gumbel_r":
+        mu, s = th
+        t = lambda v: (v - mu) / s  # noqa: E731
+        return (
+            (lambda v: (-(-t(v)).exp()).exp()),
+            (lambda v: -(-t(v)).exp()),
+            (lambda v: (-(-(-t(v)).exp()).expm1()).log()),
+        )
+    if dist == "laplace":
+        mu, s = th
+
+        def cdf(v):
+            t = (v - mu) / s
+            return t.exp() / 2 if v < mu else 1 - (-t).exp() / 2
+
+        def logsf(v):
+            t = (v - mu) / s
+            return (1 - t.exp() / 2).log() if v < mu else -t - arb(2).log()
+
+        return cdf, lambda v: cdf(v).log(), logsf
+    raise KeyError(dist)
+
+
+def _arbs(params):
+    return [A(v) if isinstance(v, Fraction) else v() for v in params]
+
+
+@family("goodness_of_fit", ("goodness_of_fit",), seconds=240)
+def goodness_of_fit(p):
+    """The fitted parameters (sd.stats' names, in order: param0, param1) and the statistic ('ad',
+    'ks', 'cvm'; Filliben's needs the beta medians' quantiles: none) of the fitted family at the
+    data, in Arb; the p-value is random (none). 'kappa_stat': Anderson-Darling's sum's condition
+    number (anderson's)."""
+    dist, data = p.args
+    known = dict(p.kwargs.get("known_params", {}))
+    x = [fr(v) for v in data]
+    params = _gof_params(dist, x, known)
+    held = {"norm": ("loc", "scale"), "logistic": ("loc", "scale"), "gumbel_r": ("loc", "scale"),
+            "laplace": ("loc", "scale"), "weibull_min": ("c", "scale"), "lognorm": ("s", "scale"),
+            "expon": ("scale",), "rayleigh": ("scale",)}[dist]  # fmt: skip
+    out = {}
+    for i, v in enumerate(params):
+        if held[i] in known and dist != "lognorm":
+            continue  # a held parameter is the problem's
+        out[f"param{i}"] = v
+    stat = p.kwargs.get("statistic", "ad")
+    if stat == "filliben":
+        return out
+    s = sorted(x)
+    n = len(s)
+
+    def value():
+        th = _arbs(params)
+        cdf, logcdf, logsf = _gof_funcs(dist, th)
+        xs = [A(v) for v in s]
+        if stat == "ad":
+            tot = arb(0)
+            for i in range(n):
+                tot += A(Fraction(2 * i + 1, n)) * (logcdf(xs[i]) + logsf(xs[n - 1 - i]))
+            return -n - tot
+        F = [cdf(v) for v in xs]
+        if stat == "cvm":
+            return A(Fraction(1, 12 * n)) + sum(((A(Fraction(2 * i + 1, 2 * n)) - F[i]) ** 2 for i in range(n)), arb(0))
+        cands = [A(Fraction(i + 1, n)) - F[i] for i in range(n)] + [F[i] - A(Fraction(i, n)) for i in range(n)]
+        return max(cands, key=lambda c: float(c.mid()))
+
+    out["statistic"] = value
+    if stat == "ad":  # the sum's condition number (anderson's kappa_stat): N terms of size ~1 cancel to ~1
+        with ar.precision(200):
+            th = _arbs(params)
+            _, logcdf, logsf = _gof_funcs(dist, th)
+            xs = [A(v) for v in s]
+            terms = [A(Fraction(2 * i + 1, n)) * (logcdf(xs[i]) + logsf(xs[n - 1 - i])) for i in range(n)]
+            a2 = float((-n - sum(terms, arb(0))).mid())
+            out["kappa_stat"] = (n + sum(abs(float(t.mid())) for t in terms)) / abs(a2)
+    return out
 
 
 def _encode(v):

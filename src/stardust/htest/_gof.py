@@ -282,19 +282,22 @@ def _anderson_dists():
     if _ANDERSON is None:
         from .. import stats
 
-        _ANDERSON = {stats.Normal: 0, stats.Exponential: 1, stats.Logistic: 2, stats.Gumbel: 3}
+        _ANDERSON = {stats.Normal: 0, stats.Exponential: 1, stats.Logistic: 2, stats.Gumbel: 3, stats.Weibull: 4}
     return _ANDERSON
 
 
 def anderson(x, /, *, axis=None, dist=None, method="interpolate", nan_policy="propagate", keepdims=False):
     """The Anderson-Darling test that x comes from a family of distributions with fitted parameters:
     dist the sd.stats class (None or sd.stats.Normal: mean and standard deviation; Exponential:
-    the mean, location 0; Logistic and Gumbel (the maximum's): maximum likelihood). statistic A^2
-    and pvalue interpolated in scipy's tables of critical values (method='interpolate'; Stephens),
-    which lies in the table's range of levels. Unpacks as (statistic, pvalue)."""
+    the mean, location 0; Logistic and Gumbel (the maximum's): maximum likelihood; Weibull: the
+    three-parameter maximum likelihood with a location, scipy's 'weibull_min', H40). statistic
+    A^2 and pvalue interpolated in scipy's tables of critical values (method='interpolate';
+    Stephens, Lockhart and Stephens for the Weibull), which lies in the table's range of levels,
+    or with a MonteCarloMethod (H9) goodness_of_fit's Monte Carlo p-value of the family (its rvs
+    must be None). Unpacks as (statistic, pvalue)."""
     name = "anderson"
     dists = _anderson_dists()
-    names = "sd.stats.Normal, sd.stats.Exponential, sd.stats.Logistic or sd.stats.Gumbel"
+    names = "sd.stats.Normal, sd.stats.Exponential, sd.stats.Logistic, sd.stats.Gumbel or sd.stats.Weibull"
     if dist is None:
         code = 0
     elif isinstance(dist, type) and dist in dists:
@@ -307,16 +310,50 @@ def anderson(x, /, *, axis=None, dist=None, method="interpolate", nan_policy="pr
         )
     else:
         raise TypeError(f"{name}(): 'dist' must be a distribution class ({names}), not {_type_name(dist)}")
-    if not isinstance(method, str):
-        raise TypeError(f"{name}(): 'method' must be 'interpolate', not {_type_name(method)}")
-    if method != "interpolate":
-        raise ValueError(f"{name}(): 'method' must be 'interpolate', not {method!r}")
+    from . import _resampling as R
+
+    mc = isinstance(method, R.MonteCarloMethod)
+    if not mc:
+        if not isinstance(method, str):
+            R.check_method(method, name, R.MonteCarloMethod, ("interpolate",))
+        if method != "interpolate":
+            raise ValueError(f"{name}(): 'method' must be 'interpolate' or a MonteCarloMethod, not {method!r}")
+    elif method.rvs is not None:
+        raise ValueError(f"{name}(): a MonteCarloMethod's 'rvs' must be None (the samples come from the fitted family)")
     s = _one(name, x, "x", axis, nan_policy, keepdims)
     stat, p = _k.anderson(s.rows[0], code, s.policy == "omit")
-    dist_name = ("Normal", "Exponential", "Logistic", "Gumbel")[code]
-    return AndersonResult._make(
-        batch=s.batch, info=s.info(pairs=[("Distribution:", dist_name)]), statistic=s.out(stat), pvalue=s.out(p)
-    )
+    dist_name = ("Normal", "Exponential", "Logistic", "Gumbel", "Weibull")[code]
+    pairs = [("Distribution:", dist_name)]
+    if mc:
+        p = _anderson_monte_carlo(name, s, code, method, R)
+        pairs += [("P-value:", "Monte Carlo"), ("Resamples:", str(method.n_resamples))]
+    return AndersonResult._make(batch=s.batch, info=s.info(pairs=pairs), statistic=s.out(stat), pvalue=s.out(p))
+
+
+def _anderson_monte_carlo(name, s, code, method, R):
+    """anderson's p-values by goodness_of_fit's Monte Carlo (scipy's _anderson_simulate_pvalue):
+    the family refitted to samples of the fitted distribution, lane by lane (each lane its own
+    draws, in order)."""
+    from .. import stats
+
+    fams = R._families()
+    if code == 4:  # the three-parameter Weibull (mle.hpp's family 8)
+        fam, names, cls, make = 8, ("c", "loc", "scale"), None, R.weibull3
+    else:
+        cls = (stats.Normal, stats.Exponential, stats.Logistic, stats.Gumbel)[code]
+        fam, names = fams[cls]
+        make = None
+    out = []
+    for i in range(s.lanes):
+        (v,) = s.lane(i)
+        if s.propagates(i) or v.shape[0] < 2:
+            out.append(math.nan)
+            continue
+        row = _sd.reshape(v, (1, v.shape[0]))
+        _, pv, _, _ = R.gof_pvalue(name, row, fam, names, cls, {}, {}, "ad", method.n_resamples, method.batch,
+                                   method.rng, make=make)  # fmt: skip
+        out.append(pv)
+    return _sd.asarray(out)
 
 
 # ---- the empirical distribution function tests -------------------------------------------
@@ -488,13 +525,15 @@ def anderson_ksamp(samples, /, *, variant="midrank", method=None):
     least two samples (each flattened). statistic, the standardized (A2kN - (k - 1)) / sigma_N of
     the variant ('midrank': their A2akN for ties, the default; 'right'; 'continuous'), and pvalue
     interpolated in their table as scipy's (0.25 above, 0.001 below the table's range). An empty
-    sample, a NaN, fewer than 4 values or a single distinct value give NaN. method=None only
-    (PermutationMethod comes with H9). Unpacks as (statistic, pvalue) (H57: scipy 1.18.1's
-    behaviour)."""
+    sample, a NaN, fewer than 4 values or a single distinct value give NaN. method=None (the table)
+    or a PermutationMethod (H9: the statistic under the permutations of the pooled samples).
+    Unpacks as (statistic, pvalue) (H57: scipy 1.18.1's behaviour)."""
     name = "anderson_ksamp"
     v = C.choice(variant, name, "variant", tuple(_VARIANTS))
+    from . import _resampling as R
+
     if method is not None:
-        raise TypeError(f"{name}(): 'method' must be None, not {_type_name(method)}")
+        R.check_method(method, name, R.PermutationMethod, ("None",))
     if not isinstance(samples, (list, tuple)):
         raise TypeError(f"{name}(): 'samples' must be a list or tuple of samples, not {_type_name(samples)}")
     if len(samples) < 2:
@@ -505,6 +544,19 @@ def anderson_ksamp(samples, /, *, variant="midrank", method=None):
         rows.append(_sd.reshape(a, (1, a.size)))
     stat, p = _k.ad_ksamp(rows, _VARIANTS[v])
     info = {"nobs": tuple(r.shape[1] for r in rows), "pairs": [("Variant:", v)]}
+    if method is not None:  # H9: the statistic under the permutations of the pooled samples (scipy's)
+        code = _VARIANTS[v]
+
+        def a2(*xs):
+            if xs[0].ndim == 1:
+                return float(_k.ad_ksamp([_sd.reshape(x, (1, x.shape[0])) for x in xs], code)[0][0])
+            m = xs[0].shape[0]
+            return _sd.asarray([float(_k.ad_ksamp([x[j : j + 1] for x in xs], code)[0][0]) for j in range(m)])
+
+        s = C.Samples(name, rows, tuple(f"samples[{i}]" for i in range(len(rows))), None, "propagate", scan=False)
+        pv, pairs = R.method_pvalue(name, method, s, a2, "greater")
+        p = pv
+        info["pairs"] += pairs
     return AndersonKsampResult._make(info=info, statistic=float(stat[0]), pvalue=float(p[0]))
 
 

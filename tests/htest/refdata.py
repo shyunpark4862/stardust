@@ -27,7 +27,10 @@ The contract, per field, in units of its bound (1 or less is within it):
     themselves and its differences against the interval's size;
   - H8's array fields element by element (points()): tukey_hsd's and dunnett's mean differences or t
     statistics, p-values (with kappa per comparison) and interval ends, multipletests' corrected
-    p-values (false_discovery_control's result itself) and its rejections exactly.
+    p-values (false_discovery_control's result itself) and its rejections exactly;
+  - H9's fixed answers: permutation_test's and bws_test's statistics and exact p-values (counts
+    of the enumeration), multiscale_graphcorr's statistic, goodness_of_fit's fitted parameters
+    (param0, param1: relative error / 1e-14) and statistic (its p-value is random: none).
 """
 
 import json
@@ -77,9 +80,24 @@ H7 = (
     "confint_proportions_2indep",
 )
 H8 = ("tukey_hsd", "dunnett", "multipletests", "combine_pvalues")
+H9 = ("permutation_test", "bws_test", "multiscale_graphcorr", "goodness_of_fit")
 PUBLIC = (
-    H1 + H2 + H3 + H4 + H5 + H6 + H7 + H8
+    H1 + H2 + H3 + H4 + H5 + H6 + H7 + H8 + H9
 )  # the families of the public functions (the accuracy measurement's sweeps)
+# goodness_of_fit's sd parameter names by scipy's family name, in the references' order (param0, ...)
+GOF_PARAMS = {
+    "norm": ("mu", "sigma"),
+    "expon": ("scale",),
+    "logistic": ("mu", "sigma"),
+    "gumbel_r": ("mu", "sigma"),
+    "weibull_min": ("c", "scale"),
+    "lognorm": ("mu", "sigma"),
+    "laplace": ("mu", "sigma"),
+    "rayleigh": ("scale",),
+}
+# scipy's known_params names as sd's: the location-scale families' loc and scale are mu and sigma;
+# a location held at 0 (sd's families without one) is left out
+_GOF_KNOWN = {"loc": "mu", "scale": "sigma"}
 # H8's families whose fields are arrays (a value per comparison or per p-value): measured element by
 # element (points())
 ARRAY_FIELDS = ("tukey_hsd", "dunnett", "multipletests")
@@ -122,7 +140,7 @@ def _sd_args(p):
 
     cdf = {"norm": sd.stats.Normal(), "uniform": sd.stats.Uniform(a=0.0, b=1.0), "expon": sd.stats.Exponential()}
     dist = {"norm": None, "expon": sd.stats.Exponential, "logistic": sd.stats.Logistic, "gumbel_r": sd.stats.Gumbel}
-    args = [cdf[a] if isinstance(a, str) else a for a in p.args]
+    args = [cdf[a] if isinstance(a, str) and a in cdf else a for a in p.args]
     kw = dict(p.kwargs)
     if p.func == "anderson":
         kw["dist"] = dist[kw.get("dist", "norm")]
@@ -137,6 +155,25 @@ def _sd_args(p):
         kw["method"] = "exact"
     if "maxiter" in kw:  # statsmodels' multipletests (H110)
         kw["max_iter"] = kw.pop("maxiter")
+    if p.milestone == "H9":
+        from . import problems as P
+
+        if p.func == "permutation_test":
+            args = [list(p.args[0]), P.statistic(p.args[1], sd)]
+        elif p.func == "goodness_of_fit":
+            dist = p.args[0]
+            args = [getattr(sd.stats, P.GOF_FAMILIES[dist][0]), p.args[1]]
+            known = {}
+            for k, v in kw.pop("known_params", {}).items():
+                if dist in ("norm", "logistic", "gumbel_r", "laplace"):
+                    known[_GOF_KNOWN[k]] = v
+                elif k != "loc":
+                    known[k] = v
+            if known:
+                kw["known_params"] = known
+            kw["rng"] = sd.random.default_rng(12345)
+        elif p.func == "multiscale_graphcorr":
+            kw["rng"] = sd.random.default_rng(12345)
     return args, kw
 
 
@@ -353,6 +390,12 @@ def errors(fam, pid, r=None) -> dict:
     p = P.PROBLEMS[pid]
     r = call(p) if r is None else r
     out = {}
+    if fam == "goodness_of_fit":  # the fitted parameters (the fit_result's, sd's names)
+        names = GOF_PARAMS[p.args[0]]
+        for i, k in enumerate(names):
+            if f"param{i}" in rec:
+                v = getattr(r.fit_result, k)
+                out[f"param{i}"] = (rel(v, rec[f"param{i}"]), rel(v, rec[f"param{i}"]) / BOUND)
     if fam not in ARRAY_INTERVALS:
         for f in FIELDS:
             if f in rec and hasattr(r, f):

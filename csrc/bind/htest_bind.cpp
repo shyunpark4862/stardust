@@ -9,6 +9,7 @@
 #include "htest/parametric.hpp"
 #include "htest/proportion.hpp"
 #include "htest/rank.hpp"
+#include "htest/resampling.hpp"
 
 namespace nb = nanobind;
 
@@ -24,6 +25,7 @@ void bind_htest(nb::module_& core) {
     htest::bind_contingency(m);
     htest::bind_proportion(m);
     htest::bind_multicomp(m);
+    htest::bind_resampling(m);
 }
 
 }  // namespace sd

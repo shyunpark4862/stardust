@@ -9,7 +9,7 @@ docs/design/sparse.md §1.1).
 
 The public names come milestone by milestone (docs/design/sparse.md §8): the formats, their
 conversions and operations, indexing and the builders, the direct solves and LinearOperator, the
-iterative solvers and the eigensolvers so far.
+iterative solvers, the eigensolvers, and the matrix functions and norms.
 The native core is stardust._core.sparse.
 """
 
@@ -37,6 +37,7 @@ from ._dok import dok_array
 from ._eigen import eigs, eigsh, svds
 from ._interface import LinearOperator, aslinearoperator
 from ._iterative import bicgstab, cg, gmres, lsmr, lsqr, minres
+from ._matfuncs import expm, expm_multiply, norm, onenormest
 
 _core = _sd_core.sparse
 
@@ -69,6 +70,10 @@ lsmr = _calls.function(lsmr)
 eigsh = _calls.function(eigsh)
 eigs = _calls.function(eigs)
 svds = _calls.function(svds)
+expm = _calls.function(expm)
+expm_multiply = _calls.function(expm_multiply)
+onenormest = _calls.function(onenormest)
+norm = _calls.function(norm)
 
 
 def issparse(x, /):
@@ -93,4 +98,5 @@ __all__ = [
     "LinearOperator", "aslinearoperator",
     "cg", "gmres", "minres", "bicgstab", "lsqr", "lsmr",
     "eigsh", "eigs", "svds",
+    "expm", "expm_multiply", "onenormest", "norm",
 ]  # fmt: skip

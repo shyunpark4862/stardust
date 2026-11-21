@@ -21,15 +21,12 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "sparse.md"
 
 # Documented, not implemented yet (docs/design/sparse.md §8). A milestone moves its names from
 # here to sd.sparse.__all__.
-PLANNED = {
-    # SP7
-    "expm", "expm_multiply", "onenormest", "norm",
-}  # fmt: skip
+PLANNED = set()
 # Options without a default (a keyword the caller must give), as sd.linalg's (SP68).
 REQUIRED_OPTIONS = {("spsolve_triangular", "upper")}
 CLASSES = {"sparray", "coo_array", "csr_array", "csc_array", "dok_array", "SparseLU", "LinearOperator", "CgResult",
            "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult", "EigshResult", "EigsResult",
-           "SvdsResult"}  # fmt: skip
+           "SvdsResult", "OnenormestResult"}  # fmt: skip
 FORMATS = ("coo_array", "csr_array", "csc_array", "dok_array")
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
 
@@ -186,17 +183,18 @@ def test_module_is_wired():
         "block_diag", "tril", "triu", "find", "spsolve", "splu", "factorized", "inv", "spsolve_triangular",
         "is_sptriangular", "spbandwidth", "LinearOperator", "aslinearoperator",
         "cg", "gmres", "minres", "bicgstab", "lsqr", "lsmr", "eigsh", "eigs", "svds",
+        "expm", "expm_multiply", "onenormest", "norm",
     }  # fmt: skip
     assert not hasattr(sd.sparse, "linalg") and not hasattr(sd.sparse, "SparseLU")
     assert callable(sd.sparse._core._lu_solve) and callable(sd.sparse._core._lu_factor)
     for name in ("_cg", "_bicgstab", "_gmres", "_minres", "_lsqr", "_lsmr", "_eigsh", "_eigs", "_svds"):
         assert callable(getattr(sd.sparse._core, name))
     assert not any(hasattr(sd.sparse, f"{n}Result") for n in ("Cg", "Gmres", "Minres", "Bicgstab", "Lsqr", "Lsmr",
-                                                                "Eigsh", "Eigs", "Svds"))  # fmt: skip
+                                                                "Eigsh", "Eigs", "Svds", "Onenormest"))  # fmt: skip
 
 
 RESULTS = ("CgResult", "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult", "EigshResult",
-           "EigsResult", "SvdsResult")  # fmt: skip
+           "EigsResult", "SvdsResult", "OnenormestResult")  # fmt: skip
 
 
 @pytest.mark.parametrize("cls", RESULTS)

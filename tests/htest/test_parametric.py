@@ -472,7 +472,9 @@ def test_messages():
         sd.htest.ttest_ind(a, b, trim="0.1")
     with pytest.raises(TypeError, match=r"ttest_ind\(\): 'equal_var' must be True or False, not int"):
         sd.htest.ttest_ind(a, b, equal_var=1)
-    with pytest.raises(TypeError, match=r"ttest_ind\(\): 'method' must be None, not str"):
+    with pytest.raises(
+        TypeError, match=r"ttest_ind\(\): 'method' must be None, a PermutationMethod or a MonteCarloMethod, not str"
+    ):
         sd.htest.ttest_ind(a, b, method="permutation")
     with pytest.raises(TypeError, match=r"ttest_1samp\(\): 'popmean' must be an int or a float, not bool"):
         sd.htest.ttest_1samp(a, True)

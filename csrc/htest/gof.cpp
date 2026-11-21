@@ -24,6 +24,7 @@
 #include "htest/divergence.hpp"
 #include "htest/ks.hpp"
 #include "htest/lanes.hpp"
+#include "htest/mle.hpp"
 #include "htest/moments.hpp"
 #include "htest/normality.hpp"
 #include "special/dd.hpp"
@@ -409,101 +410,12 @@ nb::tuple shapiro(nb::handle x, bool omit) {
 // for the Gumbel). The p-value interpolates scipy's tables of critical values (Stephens) as
 // scipy's np.interp does, so it lies in the table's range of significance levels.
 
-enum Dist { kNormalD = 0, kExponentialD = 1, kLogisticD = 2, kGumbelD = 3 };
+enum Dist { kNormalD = 0, kExponentialD = 1, kLogisticD = 2, kGumbelD = 3, kWeibullD = 4 };
 
-// the logistic's maximum likelihood (location, scale) of standardized values z (mean 0, sd 1),
-// in the parameters (alpha, beta) of w = beta z - alpha, where the log-likelihood is concave:
-// Newton's steps with halving
-bool logistic_fit(const std::vector<double>& z, double& alpha, double& beta) {
-    const double N = static_cast<double>(z.size());
-    auto loglik = [&](double al, double be) {
-        Acc s;
-        for (double v : z) {
-            const double w = std::fabs(be * v - al);
-            s.add(-w - 2.0 * std::log1p(std::exp(-w)));
-        }
-        return to_double(s.value()) + N * std::log(be);
-    };
-    alpha = 0.0, beta = 1.8137993642342178;  // pi / sqrt 3
-    double ll = loglik(alpha, beta);
-    for (int it = 0; it < 200; ++it) {
-        Acc ga, gb, haa, hab, hbb;
-        for (double v : z) {
-            const double w = beta * v - alpha;
-            const double th = std::tanh(w / 2.0);
-            const double h = -0.5 * (1.0 - th * th);
-            ga.add(th);
-            gb.add(-v * th);
-            haa.add(h);
-            hab.add(-h * v);
-            hbb.add(h * v * v);
-        }
-        const double g1 = to_double(ga.value()), g2 = to_double(gb.value()) + N / beta;
-        const double h11 = to_double(haa.value()), h12 = to_double(hab.value()),
-                     h22 = to_double(hbb.value()) - N / (beta * beta);
-        const double det = h11 * h22 - h12 * h12;
-        if (!(det > 0.0)) return false;
-        double da = -(h22 * g1 - h12 * g2) / det, db = -(-h12 * g1 + h11 * g2) / det;
-        double step = 1.0;
-        double na = alpha + da, nbv = beta + db, nl;
-        while (true) {
-            na = alpha + step * da, nbv = beta + step * db;
-            nl = nbv > 0.0 ? loglik(na, nbv) : -std::numeric_limits<double>::infinity();
-            if (nl >= ll - 1e-12 * std::fabs(ll) || step < 0x1p-30) break;
-            step /= 2.0;
-        }
-        const bool small =
-            std::fabs(step * da) <= 4e-16 * (1.0 + std::fabs(alpha)) && std::fabs(step * db) <= 4e-16 * beta;
-        alpha = na, beta = nbv, ll = std::max(ll, nl);
-        if (small) return true;
-    }
-    return false;
-}
-
-// the Gumbel's (maximum's) maximum likelihood of standardized values z: the scale b solves
-// mean(z) - sum z e^(-z/b) / sum e^(-z/b) - b = 0 (decreasing in b), the location
-// a = -b log(mean(e^(-z/b))).
-bool gumbel_fit(const std::vector<double>& z, double& loc, double& scale) {
-    const double N = static_cast<double>(z.size());
-    const double zmin = *std::min_element(z.begin(), z.end());
-    Acc sm;
-    for (double v : z) sm.add(v);
-    const double mean = to_double(sm.value()) / N;
-    auto f = [&](double b, double* df) {
-        Acc s0, s1, s2;
-        for (double v : z) {
-            const double e = std::exp(-(v - zmin) / b);
-            s0.add(e), s1.add(v * e), s2.add(v * v * e);
-        }
-        const double w0 = to_double(s0.value()), m1 = to_double(s1.value()) / w0, m2 = to_double(s2.value()) / w0;
-        if (df) *df = -(m2 - m1 * m1) / (b * b) - 1.0;
-        return mean - m1 - b;
-    };
-    double lo = 0.39, hi = 1.56;  // around sqrt 6 / pi
-    for (int i = 0; i < 200 && f(lo, nullptr) <= 0.0; ++i) lo /= 2.0;
-    for (int i = 0; i < 200 && f(hi, nullptr) >= 0.0; ++i) hi *= 2.0;
-    if (!(f(lo, nullptr) > 0.0) || !(f(hi, nullptr) < 0.0)) return false;
-    double b = 0.5 * (lo + hi);
-    for (int it = 0; it < 300; ++it) {
-        double d;
-        const double v = f(b, &d);
-        if (v == 0.0) break;
-        (v > 0.0 ? lo : hi) = b;
-        double nb2 = b - v / d;
-        if (!(nb2 > lo && nb2 < hi)) nb2 = 0.5 * (lo + hi);
-        if (std::fabs(nb2 - b) <= 2e-16 * b) {
-            b = nb2;
-            break;
-        }
-        b = nb2;
-        if (hi - lo <= 2e-16 * hi) break;
-    }
-    Acc s0;
-    for (double v : z) s0.add(std::exp(-(v - zmin) / b));
-    loc = -b * (-zmin / b + std::log(to_double(s0.value())) - std::log(N));
-    scale = b;
-    return std::isfinite(loc) && b > 0.0;
-}
+// the logistic's and the Gumbel's maximum likelihood of standardized values (htest/mle.hpp, shared
+// with goodness_of_fit)
+using mle::gumbel_fit;
+using mle::logistic_fit;
 
 double round3(double v) { return std::nearbyint(v * 1000.0) / 1000.0; }
 
@@ -518,6 +430,42 @@ double interp(double x, const double* xp, const double* fp, int k) {
     if (x == xp[j]) return fp[j];
     const double slope = (fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j]);
     return slope * (x - xp[j]) + fp[j];
+}
+
+// the three-parameter Weibull's (Lockhart and Stephens 1994, table 1; scipy's _Avals_weibull):
+// the critical values at c = 1/m = 0, 0.05, ..., 0.5 interpolated linearly in c (scipy's interp1d,
+// the last row beyond 0.5), rounded up (+0.0005, then to 3 decimals), and the p-value interpolated
+// in them over the levels 1 - (0.5, 0.75, 0.85, 0.9, 0.95, 0.975, 0.99, 0.995)
+double anderson_weibull_p(double a2, double m) {
+    static constexpr double A[11][8] = {{0.292, 0.395, 0.467, 0.522, 0.617, 0.711, 0.836, 0.931},
+                                        {0.295, 0.399, 0.471, 0.527, 0.623, 0.719, 0.845, 0.941},
+                                        {0.298, 0.403, 0.476, 0.534, 0.631, 0.728, 0.856, 0.954},
+                                        {0.301, 0.408, 0.483, 0.541, 0.640, 0.738, 0.869, 0.969},
+                                        {0.305, 0.414, 0.490, 0.549, 0.650, 0.751, 0.885, 0.986},
+                                        {0.309, 0.421, 0.498, 0.559, 0.662, 0.765, 0.902, 1.007},
+                                        {0.314, 0.429, 0.508, 0.570, 0.676, 0.782, 0.923, 1.030},
+                                        {0.320, 0.438, 0.519, 0.583, 0.692, 0.802, 0.947, 1.057},
+                                        {0.327, 0.448, 0.532, 0.598, 0.711, 0.824, 0.974, 1.089},
+                                        {0.334, 0.469, 0.547, 0.615, 0.732, 0.850, 1.006, 1.125},
+                                        {0.342, 0.472, 0.563, 0.636, 0.757, 0.879, 1.043, 1.167}};
+    static constexpr double sig[] = {0.5, 0.75, 0.85, 0.9, 0.95, 0.975, 0.99, 0.995};
+    const double c = 1.0 / m;
+    double crit[8], lev[8];
+    int hi = 1;
+    while (hi < 10 && static_cast<double>(hi) * 0.05 < c) ++hi;  // searchsorted(x, c, 'left'), clipped to 1..10
+    const double xlo = static_cast<double>(hi - 1) * 0.05, xhi = static_cast<double>(hi) * 0.05;
+    for (int q = 0; q < 8; ++q) {
+        double v;
+        if (c > 0.5) {
+            v = A[10][q];
+        } else {
+            const double slope = (A[hi][q] - A[hi - 1][q]) / (xhi - xlo);
+            v = slope * (c - xlo) + A[hi - 1][q];
+        }
+        crit[q] = round3(v + 0.0005);
+        lev[q] = 1.0 - sig[q];
+    }
+    return interp(a2, crit, lev, 8);
 }
 
 double anderson_p(int dist, double a2, double N) {
@@ -558,6 +506,21 @@ AdLane anderson_lane(std::vector<double>& x, int dist) {
     const Moments mo = moments_of(x.data(), nullptr, n);
     if (mo.constant() || !std::isfinite(mo.ss.hi)) return o;
     const double N = static_cast<double>(n);
+    if (dist == kWeibullD) {  // the three-parameter Weibull (H40): mle.hpp's profile likelihood
+        double th[3];
+        if (!mle::weibull3_fit(x, th[0], th[1], th[2])) return o;
+        Acc s;
+        for (std::int64_t i = 0; i < n; ++i) {
+            const double c = (2.0 * static_cast<double>(i + 1) - 1.0) / N;
+            s.add(
+                c * (mle::fn<m::Logcdf>(mle::kWeibull3, th, x[static_cast<std::size_t>(i)]) +
+                     mle::fn<m::Logccdf>(mle::kWeibull3, th, x[static_cast<std::size_t>(n - 1 - i)]))
+            );
+        }
+        o.a2 = -N - to_double(s.value());
+        o.p = anderson_weibull_p(o.a2, th[0]);
+        return o;
+    }
     std::vector<double> w(static_cast<std::size_t>(n));
     const double sd = std::sqrt(to_double(mo.ss) / (N - 1.0));
     auto standardized = [&](std::vector<double>& z) {

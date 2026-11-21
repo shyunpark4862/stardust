@@ -105,7 +105,7 @@ def test_reference_fields_are_double_doubles():
 def test_every_problem_kind_is_present():
     tags = {t for p in P.PROBLEMS.values() for t in p.tags}
     assert {"small", "large", "ties", "tail", "offset", "degenerate", "batch", "exact"} <= tags
-    assert {p.milestone for p in P.PROBLEMS.values()} == {f"H{i}" for i in range(1, 9)}
+    assert {p.milestone for p in P.PROBLEMS.values()} == {f"H{i}" for i in range(1, 10)}
 
 
 # ---- the tool's exact distributions -------------------------------------------------------
@@ -401,6 +401,12 @@ SCIPY_KNOWN = {
     ("barnard_exact/mirror", "pvalue"): 9.5e-4,
     ("barnard_exact/mirror-unpooled", "pvalue"): 9.5e-4,
     ("barnard_exact/unpooled-less", "pvalue"): 9.5e-4,
+    # H9: scipy's goodness_of_fit fits the Weibull by its generic optimizer (weibull_min.fit with the
+    # location held), to about 1e-5; the statistic of that fit moves as much
+    ("goodness_of_fit/weibull_min-ad", "statistic"): 5e-06,
+    ("goodness_of_fit/weibull_min-ks", "statistic"): 2.2e-05,
+    ("goodness_of_fit/weibull_min-cvm", "statistic"): 7.2e-06,
+    ("goodness_of_fit/weibull-known-c", "statistic"): 5.4e-05,
 }
 # R's: the same cancellations (and ttest_rel's x - y), its own methods where they differ from scipy's
 # (ks.test is exact only below n = 100 (one sample), wilcox.test is exact up to n = 50 and conditional with

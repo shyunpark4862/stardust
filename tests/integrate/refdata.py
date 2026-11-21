@@ -7,6 +7,11 @@ accuracy measurement (bench/accuracy/integrate.py):
     ref/series.json      per series of problems.SERIES, the same fields (closed forms)
     ref/multiple.json    per multiple integral of problems.MULTI
     ref/vector.json      per vector-valued integrand of problems.VECTOR: "value" a list of pairs
+    ref/samples.json     per sample set of problems.samples(): each sample rule's formula computed
+                         exactly in rationals, as [hi, lo] (a list per lane for a 2-d set; the
+                         cumulative rules a list of running values)
+    ref/gauss.json       per n past fixed_quad's table: "x", "w" the nonnegative Gauss-Legendre
+                         nodes (ascending) and weights correctly rounded, as float.hex
 
 Each file's "_provenance" says what computed it (the npz files' fields of tests/reffile.py).
 """
@@ -39,6 +44,14 @@ def multiple(keep_provenance=False):
 
 def vector(keep_provenance=False):
     return _json(REF / "vector.json", keep_provenance)
+
+
+def samples(keep_provenance=False):
+    return _json(REF / "samples.json", keep_provenance)
+
+
+def gauss(keep_provenance=False):
+    return _json(REF / "gauss.json", keep_provenance)
 
 
 def value(entry):

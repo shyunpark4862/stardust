@@ -14,7 +14,11 @@ cap), batches of tables. The proportions and the binomial (H7) over their method
 values and corrections, the binomial rule's edges, zero counts and batches. The multiple
 comparisons and corrections (H8): Tukey's and Games-Howell's pairs, Dunnett's sides, their intervals
 and degenerate groups, every correction method (alpha, max_iter, ties, an exact tie at alpha,
-axis), false_discovery_control, combine_pvalues' methods, weights, nan_policy and batches.
+axis), false_discovery_control, combine_pvalues' methods, weights, nan_policy and batches. The
+resampling and Monte Carlo functions (H9): permutation_test's three permutation types (exact and
+random, batches, n_resamples=inf), monte_carlo_test, bootstrap's three intervals (paired,
+one-sided, alpha), the method objects, bws_test, multiscale_graphcorr, goodness_of_fit's families
+and statistics, anderson's Weibull and Monte Carlo, the earlier tests' method= and their errors.
 """
 
 import math
@@ -572,6 +576,7 @@ def cases(L):
     yield from proportions(L)
     yield from multicomp(L)
     yield from summaries(L)
+    yield from resampling(L)
 
 
 def proportions(L):
@@ -923,3 +928,165 @@ def summaries(L):
     yield "summary tukey_hsd alpha=0.1", lambda: h.tukey_hsd(a, b, c).summary(alpha=0.1)
     yield "repr tukey_hsd", lambda: repr(h.tukey_hsd(a, b, c))
     yield "repr multipletests", lambda: repr(h.multipletests([0.01, 0.04, 0.2]))
+
+
+def resampling(L):
+    """H9: permutation_test, monte_carlo_test, bootstrap, the method objects and the earlier tests'
+    method=, bws_test, multiscale_graphcorr, goodness_of_fit (small sizes; seeded generators)."""
+    sd, h = L.sd, L.sd.htest
+    r = L.rng(415)
+    x, y, z = r.normal(0.0, 1.0, 6), r.normal(0.8, 1.0, 5), r.normal(0.3, 1.0, 4)
+    big_x, big_y = r.normal(0.0, 1.0, 30), r.normal(0.4, 1.2, 25)
+    X, Y = r.normal(0.0, 1.0, (3, 6)), r.normal(0.5, 1.0, (3, 5))
+    tied = np.round(r.normal(0.0, 2.0, 8))
+    G = sd.random.default_rng
+    PM, MCM, BM = h.PermutationMethod, h.MonteCarloMethod, h.BootstrapMethod
+
+    def md(a, b, axis):
+        return sd.mean(a, axis=axis) - sd.mean(b, axis=axis)
+
+    def mean(a, axis):
+        return sd.mean(a, axis=axis)
+
+    def cov(a, b, axis):
+        return sd.mean(a * b, axis=axis) - sd.mean(a, axis=axis) * sd.mean(b, axis=axis)
+
+    for alt in ("two-sided", "less", "greater"):
+        yield f"permutation_test {alt}", lambda alt=alt: h.permutation_test([x, y], md, alternative=alt)
+    yield (
+        "permutation_test three",
+        lambda: h.permutation_test([x, y, z], lambda *s, axis: sum(sd.mean(v, axis=axis) ** 2 for v in s)),
+    )
+    yield (
+        "permutation_test pairings",
+        lambda: h.permutation_test([x[:5], y], cov, permutation_type="pairings", n_resamples=20000),
+    )
+    yield "permutation_test samples", lambda: h.permutation_test([x[:5], y], md, permutation_type="samples")
+    yield "permutation_test signs", lambda: h.permutation_test([tied], mean, permutation_type="samples")
+    yield "permutation_test inf", lambda: h.permutation_test([x, z], md, n_resamples=math.inf)
+    yield "permutation_test random", lambda: h.permutation_test([big_x, big_y], md, n_resamples=500, rng=G(1))
+    yield (
+        "permutation_test random batch",
+        lambda: h.permutation_test([big_x, big_y], md, n_resamples=500, batch=7, rng=G(1)),
+    )
+    yield (
+        "permutation_test random pairings",
+        lambda: h.permutation_test([big_x[:25], big_y], cov, n_resamples=300, permutation_type="pairings", rng=G(2)),
+    )
+    yield "permutation_test axis", lambda: h.permutation_test([X, Y], md, axis=-1)
+    yield (
+        "permutation_test not vectorized",
+        lambda: h.permutation_test([x, z], lambda a, b: float(sd.mean(a) - sd.mean(b))),
+    )
+    yield "err permutation_test rng", lambda: h.permutation_test([big_x, big_y], md)
+    yield "err permutation_test inf cap", lambda: h.permutation_test([big_x, big_y], md, n_resamples=math.inf)
+    yield "err permutation_test one", lambda: h.permutation_test([x], mean)
+    yield "err permutation_test shape", lambda: h.permutation_test([x, y], lambda a, b, axis: 1.0)
+    yield (
+        "monte_carlo_test",
+        lambda: h.monte_carlo_test(big_x, sd.stats.Normal().sample, mean, n_resamples=300, rng=G(3)),
+    )
+    yield (
+        "monte_carlo_test two",
+        lambda: h.monte_carlo_test(
+            [x, y], [sd.stats.Normal().sample] * 2, md, n_resamples=300, alternative="greater", rng=G(4)
+        ),
+    )
+    yield "err monte_carlo_test rvs", lambda: h.monte_carlo_test(x, 3, mean, rng=G(3))
+    for meth in ("percentile", "basic", "BCa"):
+        yield f"bootstrap {meth}", lambda meth=meth: h.bootstrap([big_x], mean, method=meth, n_resamples=400, rng=G(5))
+    yield "bootstrap alpha=0.1", lambda: h.bootstrap([big_x], mean, n_resamples=400, rng=G(5)).conf_int(alpha=0.1)
+    yield "bootstrap less", lambda: h.bootstrap([big_x], mean, n_resamples=400, rng=G(5), alternative="less")
+    yield "bootstrap two", lambda: h.bootstrap([big_x, big_y], md, n_resamples=300, rng=G(6))
+    yield "bootstrap paired", lambda: h.bootstrap([big_x[:20], big_y[:20]], md, paired=True, n_resamples=300, rng=G(7))
+    yield "bootstrap axis", lambda: h.bootstrap([X], mean, axis=-1, n_resamples=200, rng=G(8))
+    yield "bootstrap constant", lambda: h.bootstrap([np.ones(6)], mean, n_resamples=100, rng=G(8))
+    yield "err bootstrap rng", lambda: h.bootstrap([x], mean, rng=None)
+    yield "PermutationMethod", lambda: repr(PM(500, 50))
+    yield "MonteCarloMethod", lambda: repr(MCM(500, rng=G(1)))
+    yield "BootstrapMethod", lambda: repr(BM(method="basic", rng=G(1)))
+    yield "err PermutationMethod", lambda: PM(0)
+    yield "err BootstrapMethod method", lambda: BM(method="bca", rng=G(1))
+    yield "bws_test", lambda: h.bws_test(x, y)
+    yield "bws_test ties less", lambda: h.bws_test(tied, y, alternative="less")
+    yield "bws_test method", lambda: h.bws_test(big_x, big_y, method=PM(300, rng=G(9)))
+    yield "err bws_test cap", lambda: h.bws_test(big_x, big_y)
+    u = r.normal(0.0, 1.0, 15)
+    v = u**2 + 0.3 * r.normal(0.0, 1.0, 15)
+    yield "multiscale_graphcorr", lambda: h.multiscale_graphcorr(u, v, reps=100, rng=G(10))
+    yield "multiscale_graphcorr 2-d", lambda: h.multiscale_graphcorr(np.c_[u, v], np.c_[v, u], reps=50, rng=G(10))
+    yield "multiscale_graphcorr two samples", lambda: h.multiscale_graphcorr(u[:8], v[:9], reps=50, rng=G(10))
+    yield "err multiscale_graphcorr small", lambda: h.multiscale_graphcorr(u[:4], v[:4], rng=G(10))
+    data = {"Normal": r.normal(1.0, 2.0, 30), "Exponential": r.exponential(2.0, 30),
+            "Logistic": r.logistic(0.0, 1.0, 30),
+            "Gumbel": r.gumbel(0.0, 1.0, 30), "Weibull": r.weibull(1.5, 30), "LogNormal": r.lognormal(0.0, 0.5, 30),
+            "Laplace": r.laplace(0.0, 1.0, 30), "Rayleigh": r.rayleigh(1.0, 30)}  # fmt: skip
+    for fam, d in data.items():
+        for stat in ("ad", "ks", "cvm", "filliben"):
+            yield (
+                f"goodness_of_fit {fam} {stat}",
+                lambda fam=fam, d=d, stat=stat: h.goodness_of_fit(
+                    getattr(sd.stats, fam), d, statistic=stat, n_mc_samples=49, rng=G(11)
+                ),
+            )
+    yield (
+        "goodness_of_fit known",
+        lambda: h.goodness_of_fit(
+            sd.stats.Normal, data["Normal"], known_params={"mu": 1.0}, n_mc_samples=49, rng=G(12)
+        ),
+    )
+    yield (
+        "goodness_of_fit fit",
+        lambda: h.goodness_of_fit(sd.stats.Weibull, data["Weibull"], fit_params={"c": 1.5}, n_mc_samples=49, rng=G(12)),
+    )
+    yield (
+        "goodness_of_fit outside",
+        lambda: h.goodness_of_fit(sd.stats.Weibull, data["Normal"], n_mc_samples=9, rng=G(12)),
+    )
+    yield "err goodness_of_fit dist", lambda: h.goodness_of_fit(sd.stats.Gamma, data["Normal"], rng=G(12))
+    w = r.weibull(3.0, 50) * 2 + 1
+    yield "anderson Weibull", lambda: h.anderson(w, dist=sd.stats.Weibull)
+    yield (
+        "anderson Weibull batch",
+        lambda: h.anderson(np.stack([w, w[::-1] * 1.1, r.weibull(0.6, 50)]), axis=-1, dist=sd.stats.Weibull),
+    )
+    yield "anderson MonteCarlo", lambda: h.anderson(data["Normal"], method=MCM(99, rng=G(13)))
+    yield (
+        "anderson MonteCarlo Gumbel",
+        lambda: h.anderson(data["Gumbel"], dist=sd.stats.Gumbel, method=MCM(99, rng=G(13))),
+    )
+    yield "mannwhitneyu permutation", lambda: h.mannwhitneyu(x, y, method=PM())
+    yield "mannwhitneyu permutation batch", lambda: h.mannwhitneyu(X, Y, axis=-1, method=PM())
+    yield "mannwhitneyu permutation omit", lambda: h.mannwhitneyu(np.r_[x, NAN], y, method=PM(), nan_policy="omit")
+    yield (
+        "wilcoxon permutation",
+        lambda: h.wilcoxon(tied, np.round(r.normal(0.0, 2.0, 8)), method=PM(), zero_method="pratt"),
+    )
+    yield "ansari permutation", lambda: h.ansari(x, y, method=PM(), alternative="less")
+    yield "ttest_ind permutation", lambda: h.ttest_ind(x, y, method=PM())
+    yield "ttest_ind monte carlo", lambda: h.ttest_ind(x, y, method=MCM(300, rng=G(14)))
+    yield "pearsonr permutation", lambda: h.pearsonr(x[:5], y, method=PM())
+    yield "pearsonr monte carlo", lambda: h.pearsonr(big_x[:25], big_y, method=MCM(300, rng=G(15)))
+    yield "pearsonr bootstrap interval", lambda: h.pearsonr(big_x[:25], big_y).conf_int(method=BM(300, rng=G(16)))
+    yield "spearmanrho permutation", lambda: h.spearmanrho(x[:5], y, method=PM())
+    yield "chatterjeexi permutation", lambda: h.chatterjeexi(x[:5], y, method=PM())
+    yield "anderson_ksamp permutation", lambda: h.anderson_ksamp([x, y], method=PM())
+    yield "chi2_contingency permutation", lambda: h.chi2_contingency([[2.0, 1], [1, 3]], correction=False, method=PM())
+    yield (
+        "chi2_contingency monte carlo",
+        lambda: h.chi2_contingency([[12.0, 5, 7], [3, 9, 4]], correction=False, method=MCM(300, rng=G(17))),
+    )
+    yield "fisher_exact permutation", lambda: h.fisher_exact([[2.0, 1, 0], [0, 2, 2]], method=PM())
+    yield "fisher_exact monte carlo", lambda: h.fisher_exact([[12.0, 5, 7], [3, 9, 4]], method=MCM(300, rng=G(17)))
+    yield "err mannwhitneyu MonteCarlo", lambda: h.mannwhitneyu(x, y, method=MCM(rng=G(1)))
+    yield "err chi2_contingency correction", lambda: h.chi2_contingency([[2.0, 1], [1, 3]], method=PM())
+    yield "err fisher_exact alternative", lambda: h.fisher_exact([[2.0, 1], [1, 3]], alternative="less", method=PM())
+    yield "summary permutation_test", lambda: h.permutation_test([x, y], md).summary()
+    yield "summary bootstrap", lambda: h.bootstrap([big_x], mean, n_resamples=200, rng=G(18)).summary(alpha=0.1)
+    yield "summary multiscale_graphcorr", lambda: h.multiscale_graphcorr(u, v, reps=20, rng=G(19)).summary()
+    yield (
+        "summary goodness_of_fit",
+        lambda: h.goodness_of_fit(sd.stats.Normal, data["Normal"], n_mc_samples=19, rng=G(20)).summary(),
+    )
+    yield "summary mannwhitneyu permutation", lambda: h.mannwhitneyu(x, y, method=PM()).summary()
+    yield "repr bws_test", lambda: repr(h.bws_test(x, y))

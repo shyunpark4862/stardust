@@ -7,3 +7,4 @@ csrc/special/coeffs/*
 csrc/stats/coeffs/*
 csrc/frame/ops/pow5_table.hpp
 csrc/*/cost_table.hpp
+csrc/integrate/gauss_table.hpp

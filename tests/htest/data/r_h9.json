@@ -1,0 +1,12 @@
+{
+"_provenance": {"tool": "tools/gen_htest_r.py", "R": "R version 4.6.2 (2026-10-29)", "packages": "coin 1.4.6 MASS 7.3.66"},
+"permutation_test/independent-two-sided": {"call": "coin_two(coin::oneway_test, c(...), c(...), distribution = 'exact')", "digest": "829bdc75ba957a3cb976210df0efc1e6f88ec41d61e54d495f659f70f80c919c", "result": {"less.p.value": [0.11904761904761904], "greater.p.value": [0.8888888888888888]}},
+"permutation_test/independent-less": {"call": "coin_two(coin::oneway_test, c(...), c(...), distribution = 'exact')", "digest": "7dd66b66a9b0467c3fc790073b330b91d8d685dd5d2fbeae19ba55b65687b7ca", "result": {"less.p.value": [0.11904761904761904], "greater.p.value": [0.8888888888888888]}},
+"permutation_test/independent-greater": {"call": "coin_two(coin::oneway_test, c(...), c(...), distribution = 'exact')", "digest": "985a9f7eeafeed317f71a47532ebc15504a5d38b3ce9bdc8eff4d0725ebec244", "result": {"less.p.value": [0.11904761904761904], "greater.p.value": [0.8888888888888888]}},
+"permutation_test/independent-ties": {"call": "coin_two(coin::oneway_test, c(...), c(...), distribution = 'exact')", "digest": "c2372ff970df4801e0c4cbed7698b0b993c038dd066154d157aaa4e23d8c5689", "result": {"less.p.value": [0.45021645021645024], "greater.p.value": [0.6255411255411254]}},
+"permutation_test/tail": {"call": "coin_two(coin::oneway_test, c(...), c(...), distribution = 'exact')", "digest": "a81df3b4c26191b7c8c5829f3369ee4b9bd45695f7e0e78baef73e654d2e25f0", "result": {"less.p.value": [0.9994172494172494], "greater.p.value": [0.0008741258741258306]}},
+"goodness_of_fit/expon-ad": {"call": "h9_fit(c(...), 'exponential')", "digest": "fad94d4f77be852c66043b75d8ee0bb544640818e11f11d4590d2efc2dc40507", "result": {"rate": [0.45616957851865136]}},
+"goodness_of_fit/logistic-ad": {"call": "h9_fit(c(...), 'logistic')", "digest": "8726f8d9fcfaf4d5b9bc68c91f78812042314112c2cffff30354e6744bdb09fa", "result": {"location": [1.420588708969185], "scale": [2.3707133234601203]}},
+"goodness_of_fit/weibull_min-ad": {"call": "h9_fit(c(...), 'weibull')", "digest": "88627e882f9740904dbfae44a55331c01a0c63cf2592a677cb7f225c859a3069", "result": {"shape": [1.486826567916852], "scale": [1.9443999978597477]}},
+"goodness_of_fit/lognorm-ad": {"call": "h9_fit(c(...), 'lognormal')", "digest": "83a5f38d15728fdc4a575e7c24dbfcd1a566ba5fa18d1dd2be03d56625722216", "result": {"meanlog": [0.5263003744317428], "sdlog": [0.6123685552116946]}}
+}

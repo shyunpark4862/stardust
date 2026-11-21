@@ -372,7 +372,7 @@ def test_messages():
         h.anderson_ksamp([x])
     with pytest.raises(TypeError, match=r"anderson_ksamp\(\): 'samples' must be a list or tuple of samples"):
         h.anderson_ksamp(np.array([x, y]))
-    with pytest.raises(TypeError, match=r"anderson_ksamp\(\): 'method' must be None, not str"):
+    with pytest.raises(TypeError, match=r"anderson_ksamp\(\): 'method' must be None or a PermutationMethod, not str"):
         h.anderson_ksamp([x, y], method="permutation")
     with pytest.raises(TypeError, match=r"anderson_ksamp\(\): unexpected keyword argument 'midrank'"):
         h.anderson_ksamp([x, y], midrank=True)

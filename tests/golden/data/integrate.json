@@ -201,6 +201,1698 @@ true
 "tuple": "builtins.tuple"
 }
 },
+"cumulative_simpson 2d/rows": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+8
+],
+"strides": [
+64,
+8
+],
+"v": [
+"0x1.ffef0f52b1aa5p-6",
+"0x1.f56ecb4bb1049p-4",
+"0x1.12e0e9040b92bp-2",
+"0x1.d6bda088b90c2p-2",
+"0x1.5e96c1a48ad09p-1",
+"0x1.dbcaff1cffdc4p-1",
+"0x1.2da1520999591p+0",
+"0x1.6a8aa0d4580acp+0",
+"0x1.fa9ca69cc54a4p-3",
+"0x1.eaf146b6333f8p-2",
+"0x1.5cf32ac6ae1c1p-1",
+"0x1.aed7b244f5aaep-1",
+"0x1.e5cfc9473597dp-1",
+"0x1.feba857dfcf61p-1",
+"0x1.f7bad5769c2c1p-1",
+"0x1.d19209c3f671ap-1",
+"0x1.5555555555555p-8",
+"0x1.5555555555555p-5",
+"0x1.2000000000000p-3",
+"0x1.5555555555555p-2",
+"0x1.4d55555555555p-1",
+"0x1.2000000000000p+0",
+"0x1.c955555555555p+0",
+"0x1.5555555555555p+1"
+]
+}
+},
+"cumulative_simpson 3d axis -1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+4,
+4
+],
+"strides": [
+128,
+32,
+8
+],
+"v": [
+"0x1.a08ad2de4bf25p-7",
+"0x1.a02efb9fb5e33p-5",
+"0x1.d3b69ab8e978cp-4",
+"0x1.9f1bc1d6b9ea2p-3",
+"0x1.1aa12591993a4p-3",
+"0x1.3373522bfeb0ap-2",
+"0x1.f1fd0450bdb03p-2",
+"0x1.643674fba3977p-1",
+"0x1.04870bbfe1e1ap-2",
+"0x1.0f8e5e9cab196p-1",
+"0x1.a7843caefcfb0p-1",
+"0x1.24dfb4fd43cbcp+0",
+"0x1.6afdbf76fc9e0p-2",
+"0x1.73edcc88d528ap-1",
+"0x1.1d67dbb2ccfc4p+0",
+"0x1.84d00ed882544p+0",
+"0x1.ba1e542d5f332p-2",
+"0x1.c06402a291178p-1",
+"0x1.54b461af09dfcp+0",
+"0x1.cbc150ffdfd11p+0",
+"0x1.ecd2826a2fd0ap-2",
+"0x1.f00697e700237p-1",
+"0x1.761993c5af85ap+0",
+"0x1.f523e8dd63c04p+0",
+"0x1.ffd7cdf092d90p-2",
+"0x1.ffc5917d20ab5p-1",
+"0x1.7f71d3058c4ecp+0",
+"0x1.fe4eb84781e80p+0",
+"0x1.f1f52bbc33878p-2",
+"0x1.ee9dc97a03ab4p-1",
+"0x1.702353c064198p+0",
+"0x1.e6aadf5d1cfb9p+0",
+"0x1.c40f2213d4a80p-2",
+"0x1.bda997f2411e2p-1",
+"0x1.492a00b758f4ap+0",
+"0x1.afbd6f9e98e82p+0",
+"0x1.79191778eef8ap-2",
+"0x1.700eac26098d8p-1",
+"0x1.0d07490bf841ep+0",
+"0x1.5d0e68a11490fp+0",
+"0x1.15e4c240140aep-2",
+"0x1.0aca408579eadp-1",
+"0x1.7f31c703c68f0p-1",
+"0x1.e7dd340b0656fp-1",
+"0x1.41a5b02e04aa7p-3",
+"0x1.28bdfc0cdc56fp-2",
+"0x1.9764b70138f0fp-2",
+"0x1.ec809ccb50de0p-2"
+]
+}
+},
+"cumulative_simpson 3d axis 0": {
+"r": {
+"nd": "float64",
+"shape": [
+2,
+4,
+5
+],
+"strides": [
+160,
+40,
+8
+],
+"v": [
+"0x1.f8448b69ef57dp-3",
+"0x1.10be82fe83958p-2",
+"0x1.24a6443312388p-2",
+"0x1.37cc5d470e9cdp-2",
+"0x1.4a24225534eccp-2",
+"0x1.5ba170012cd62p-2",
+"0x1.6c38b37fca4fcp-2",
+"0x1.7bdef23fa40ecp-2",
+"0x1.8a89d12cee4a8p-2",
+"0x1.982f9b8bcb0f1p-2",
+"0x1.a4c74964873e4p-2",
+"0x1.b048857d842dep-2",
+"0x1.baabb2ded9818p-2",
+"0x1.c3e9f1dc091a1p-2",
+"0x1.cbfd24a06fae1p-2",
+"0x1.d2dff33b6f7a5p-2",
+"0x1.d88dcf29a7624p-2",
+"0x1.dd02f658df796p-2",
+"0x1.e03c75a4ac2a0p-2",
+"0x1.e2382aca22ac9p-2",
+"0x1.6ea6da9cf67e6p-1",
+"0x1.79b3c070c5766p-1",
+"0x1.83c6b5d674827p-1",
+"0x1.8cd91036eca7ap-1",
+"0x1.94e4cec936d82p-1",
+"0x1.9be49e8b6e308p-1",
+"0x1.a1d3ddc8b3800p-1",
+"0x1.a6ae9f29cd42dp-1",
+"0x1.aa71ac4e6cd66p-1",
+"0x1.ad1a87ed60ab6p-1",
+"0x1.aea76f7a4b59cp-1",
+"0x1.af175c4fc884ap-1",
+"0x1.ae6a045d3a453p-1",
+"0x1.ac9fda57cc173p-1",
+"0x1.a9ba0d6e8adaap-1",
+"0x1.a5ba8881c4235p-1",
+"0x1.a0a3f0de319bep-1",
+"0x1.9a79a47cc76e0p-1",
+"0x1.933fb7c84e46bp-1",
+"0x1.8afaf2ea426aap-1"
+]
+}
+},
+"cumulative_simpson 3d axis 1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+3,
+5
+],
+"strides": [
+120,
+40,
+8
+],
+"v": [
+"0x1.044d91c2f767cp-4",
+"0x1.6aec8f0fcd58ap-4",
+"0x1.d09b636844362p-4",
+"0x1.1a8b62a0db18dp-3",
+"0x1.4c0e1b42368a0p-3",
+"0x1.fd915dc424067p-3",
+"0x1.30498ad4bf348p-2",
+"0x1.61010b2838dcbp-2",
+"0x1.90cef3048a214p-2",
+"0x1.bf93a025dfcc3p-2",
+"0x1.16cf214549ad3p-1",
+"0x1.39cfdd133410ap-1",
+"0x1.5c00efbb6ab8ap-1",
+"0x1.7d4bb90454d45p-1",
+"0x1.9d9a3117edd9ap-1",
+"0x1.d0f24275852b0p-2",
+"0x1.db11ff69e04d0p-2",
+"0x1.e3f75d56d493cp-2",
+"0x1.eb9c793845295p-2",
+"0x1.f1fc43f737036p-2",
+"0x1.e3f31c7cee173p-1",
+"0x1.eaec22b24ab2ep-1",
+"0x1.f0a04c75996dfp-1",
+"0x1.f50bd388b3f48p-1",
+"0x1.f82bcb25c5e38p-1",
+"0x1.7133fdc527718p+0",
+"0x1.73ffeac854e89p+0",
+"0x1.75d5ad63e1068p+0",
+"0x1.76b40ebc5323ep+0",
+"0x1.769a7ba976242p+0",
+"0x1.a80376b228cb1p-2",
+"0x1.990208a962db9p-2",
+"0x1.88f1f2db57d26p-2",
+"0x1.77ddd6659abf2p-2",
+"0x1.65d100774f0a1p-2",
+"0x1.7daffae0393bdp-1",
+"0x1.6c4543afd1958p-1",
+"0x1.59e97f7061acfp-1",
+"0x1.46a8d4235735bp-1",
+"0x1.328fff433cec5p-1",
+"0x1.f1f096ca65b48p-1",
+"0x1.d4d20ed0a2d23p-1",
+"0x1.b67d4a8c6b6a0p-1",
+"0x1.97065c37dcf62p-1",
+"0x1.7682161035f50p-1"
+]
+}
+},
+"cumulative_simpson complex": {
+"r": {
+"nd": "complex128",
+"shape": [
+4
+],
+"strides": [
+16
+],
+"v": [
+[
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+],
+[
+"0x1.5555555555555p-3",
+"0x1.2aaaaaaaaaaaap+1"
+],
+[
+"0x1.5555555555555p+0",
+"0x1.d555555555555p+1"
+],
+[
+"0x1.4000000000000p+2",
+"0x1.c000000000000p+1"
+]
+]
+}
+},
+"cumulative_simpson exp/squares/10": {
+"r": {
+"nd": "float64",
+"shape": [
+9
+],
+"strides": [
+8
+],
+"v": [
+"0x1.970cf5a3d5786p-7",
+"0x1.9eb2e15c05a88p-5",
+"0x1.e15ad2aa6c5d3p-4",
+"0x1.bf444db5a98e2p-3",
+"0x1.723e6e6fb252fp-2",
+"0x1.1e882225dd479p-1",
+"0x1.a985046de8480p-1",
+"0x1.34261fea9f571p+0",
+"0x1.b7eefc77fe3c1p+0"
+]
+}
+},
+"cumulative_simpson exp/squares/101": {
+"r": {
+"nd": "float64",
+"shape": [
+100
+],
+"strides": [
+8
+],
+"v": [
+"0x1.a3738d21370bbp-14",
+"0x1.a383a8fc5263cp-12",
+"0x1.d8125466997aap-11",
+"0x1.a3c420a8ec72dp-10",
+"0x1.48170668b3096p-9",
+"0x1.d8b5a629bfac2p-9",
+"0x1.41ea1926ec1c7p-8",
+"0x1.a4c683935b4c6p-8",
+"0x1.0a7fa8585e9fbp-7",
+"0x1.4952e97930180p-7",
+"0x1.8ee6baab3f225p-7",
+"0x1.db45e0387b582p-7",
+"0x1.173e17fa7894bp-6",
+"0x1.444b4a2c20090p-6",
+"0x1.74d187e2ee844p-6",
+"0x1.a8d860217b2b4p-6",
+"0x1.e067f1a3f2277p-6",
+"0x1.0dc476874b766p-5",
+"0x1.2d224b8d64159p-5",
+"0x1.4e52658fe2cc0p-5",
+"0x1.7159fec1960a6p-5",
+"0x1.963e9f521cc33p-5",
+"0x1.bd061ec721592p-5",
+"0x1.e5b6a5a8346f1p-5",
+"0x1.082b577bee7cbp-4",
+"0x1.1e76850dceda3p-4",
+"0x1.35c06e399ad65p-4",
+"0x1.4e0cd1c1ebfcfp-4",
+"0x1.675f9b55b276fp-4",
+"0x1.81bce4cb893e1p-4",
+"0x1.9d28f707dd6dcp-4",
+"0x1.b9a84b62c7926p-4",
+"0x1.d73f8c98e91cep-4",
+"0x1.f5f3986159340p-4",
+"0x1.0ae4c033790bbp-3",
+"0x1.1b63460a5bd46p-3",
+"0x1.2c781cca66686p-3",
+"0x1.3e261fed55272p-3",
+"0x1.507047d230525p-3",
+"0x1.6359aae580a5bp-3",
+"0x1.76e57e21152e8p-3",
+"0x1.8b17165c16fc0p-3",
+"0x1.9ff1e8c793d98p-3",
+"0x1.b5798c6bdc8e1p-3",
+"0x1.cbb1ba9f09bbfp-3",
+"0x1.e29e50b5c845ap-3",
+"0x1.fa435070954cfp-3",
+"0x1.095270f374860p-2",
+"0x1.15e3a9f3afcf2p-2",
+"0x1.22d78f128b1a0p-2",
+"0x1.303070c32f218p-2",
+"0x1.3df0b54e8eff0p-2",
+"0x1.4c1ad8ef806b9p-2",
+"0x1.5ab16f3962b2dp-2",
+"0x1.69b723260f56ap-2",
+"0x1.792eb8ac89210p-2",
+"0x1.891b0cbd7392ap-2",
+"0x1.997f171009442p-2",
+"0x1.aa5dea09504e5p-2",
+"0x1.bbbab4c658598p-2",
+"0x1.cd98c2e9db923p-2",
+"0x1.dffb7eeb9b8b9p-2",
+"0x1.f2e671c787a4ep-2",
+"0x1.032ea2cd7f582p-1",
+"0x1.0d31e297f58b0p-1",
+"0x1.177eef78dc5bep-1",
+"0x1.2217d2270d440p-1",
+"0x1.2cfea68655b53p-1",
+"0x1.38359b3f1f076p-1",
+"0x1.43bef3a1b3fccp-1",
+"0x1.4f9d072128504p-1",
+"0x1.5bd24374e9874p-1",
+"0x1.68612bf25cd42p-1",
+"0x1.754c5bf45ca13p-1",
+"0x1.8296860e701f7p-1",
+"0x1.904276c2b90d4p-1",
+"0x1.9e531389039dfp-1",
+"0x1.accb5ddca394ap-1",
+"0x1.bbae7210e321ap-1",
+"0x1.caff8ac166723p-1",
+"0x1.dac1ff6cb26f0p-1",
+"0x1.eaf94852e59afp-1",
+"0x1.fba8fcce29baep-1",
+"0x1.066a6bd675fa9p+0",
+"0x1.0f405a9f85be7p+0",
+"0x1.18584c1d1eb82p+0",
+"0x1.21b453b8d5bdcp+0",
+"0x1.2b5699aa6f3f2p+0",
+"0x1.354159a31f962p+0",
+"0x1.3f76e5e361196p+0",
+"0x1.49f9a5af2b0efp+0",
+"0x1.54cc18c45121dp+0",
+"0x1.5ff0d5906e182p+0",
+"0x1.6b6a8d131f365p+0",
+"0x1.773c08cd7fb00p+0",
+"0x1.83682f1cdea76p+0",
+"0x1.8ff200daada92p+0",
+"0x1.9cdc9e3dc25bdp+0",
+"0x1.aa2b4420820f9p+0",
+"0x1.b7e151785d565p+0"
+]
+}
+},
+"cumulative_simpson exp/squares/3": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.2249081294588p-2",
+"0x1.bad20bbb4a3b2p+0"
+]
+}
+},
+"cumulative_simpson exp/squares/4": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e149860489e11p-4",
+"0x1.1eb33706e8ca9p-1",
+"0x1.b94eb70750f62p+0"
+]
+}
+},
+"cumulative_simpson exp/uniform/17": {
+"r": {
+"nd": "float64",
+"shape": [
+16
+],
+"strides": [
+8
+],
+"v": [
+"0x1.082aa34843978p-4",
+"0x1.10b0245f1f6ebp-3",
+"0x1.a65ba6ef94222p-3",
+"0x1.22d790ad13823p-2",
+"0x1.77a42545935f8p-2",
+"0x1.d1e9478d4e189p-2",
+"0x1.1900297427fd7p-1",
+"0x1.4c25339beb05cp-1",
+"0x1.829662d94b15bp-1",
+"0x1.bc8abe680e02cp-1",
+"0x1.fa3ba492dac2ap-1",
+"0x1.1df3b8237b2c5p+0",
+"0x1.40e791a203241p+0",
+"0x1.661cb2f3d96a0p+0",
+"0x1.8db7f0e22b990p+0",
+"0x1.b7e153d3dbf44p+0"
+]
+}
+},
+"cumulative_simpson exp/uniform/2": {
+"r": {
+"nd": "float64",
+"shape": [
+1
+],
+"strides": [
+8
+],
+"v": [
+"0x1.dbf0a8b145769p+0"
+]
+}
+},
+"cumulative_simpson exp/uniform/3": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4a0ef4790a081p-1",
+"0x1.b80748d1acc36p+0"
+]
+}
+},
+"cumulative_simpson exp/uniform/33": {
+"r": {
+"nd": "float64",
+"shape": [
+32
+],
+"strides": [
+8
+],
+"v": [
+"0x1.040aaa36bab8ap-5",
+"0x1.082b5794af8c6p-4",
+"0x1.929364e19b9d4p-4",
+"0x1.10b022f3b758cp-3",
+"0x1.5a5abf7e224bap-3",
+"0x1.a65c0bab36034p-3",
+"0x1.f4c6eed9e1ba8p-3",
+"0x1.22d78f2979e23p-2",
+"0x1.4c945cc9177a1p-2",
+"0x1.77a45da27af06p-2",
+"0x1.a41247928408bp-2",
+"0x1.d1e9452064b08p-2",
+"0x1.009a5e7f5e34ep-1",
+"0x1.190049085999dp-1",
+"0x1.322c73a32717dp-1",
+"0x1.4c2531e146192p-1",
+"0x1.66f0f96b6579cp-1",
+"0x1.8296864708894p-1",
+"0x1.9f1cb8c3bcf08p-1",
+"0x1.bc8abc179f178p-1",
+"0x1.dae7e219fdb7dp-1",
+"0x1.fa3bcc5d5d62bp-1",
+"0x1.0d4722c9a0aecp+0",
+"0x1.1df3b6a665dc8p+0",
+"0x1.2f27c77086046p+0",
+"0x1.40e7a80000285p+0",
+"0x1.5337c279263cfp+0",
+"0x1.661cb116997c9p+0",
+"0x1.799b26dff8897p+0",
+"0x1.8db80a0d23aa5p+0",
+"0x1.a2785b3c7211ap+0",
+"0x1.b7e15189a37b0p+0"
+]
+}
+},
+"cumulative_simpson exp/uniform/4": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.94663d209b165p-2",
+"0x1.e545ce087c014p-1",
+"0x1.b82a9b0f4d630p+0"
+]
+}
+},
+"cumulative_simpson exp/uniform/4097": {
+"r": {
+"chunk": 256,
+"chunks": "a349d3af817498b8054b37d6a8c59d136aa89dacc219b003ef6143541208a981d8cab265b5a245ce34c4dd0aa62051cd30be8fa67a95c4313de9f16d475ad5d9",
+"n": 4096,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.0008002aaaaaap-12"
+],
+[
+1,
+"0x1.001000aab0002p-11"
+],
+[
+2,
+"0x1.802402401aabap-11"
+],
+[
+3,
+"0x1.002002aad5578p-10"
+],
+[
+256,
+"0x1.093be2b6efd7cp-4"
+],
+[
+512,
+"0x1.1141326618dc0p-3"
+],
+[
+768,
+"0x1.a6f67619ac370p-3"
+],
+[
+1024,
+"0x1.2329bf1a0ad56p-2"
+],
+[
+1280,
+"0x1.77fbda82d0d28p-2"
+],
+[
+1536,
+"0x1.d24666744f726p-2"
+],
+[
+1792,
+"0x1.1931da80775fep-1"
+],
+[
+2048,
+"0x1.4c59f5bcf8743p-1"
+],
+[
+2304,
+"0x1.82ceb14e6373bp-1"
+],
+[
+2560,
+"0x1.bcc6867a2aceep-1"
+],
+[
+2816,
+"0x1.fa7b71ea4aa0dp-1"
+],
+[
+3072,
+"0x1.1e1596d763f00p+0"
+],
+[
+3328,
+"0x1.410bb77e72b26p+0"
+],
+[
+3584,
+"0x1.664313f4e990ep+0"
+],
+[
+3840,
+"0x1.8de0e6b14bd95p+0"
+],
+[
+4092,
+"0x1.b75ee35dfab48p+0"
+],
+[
+4093,
+"0x1.b78a5aa7e7446p+0"
+],
+[
+4094,
+"0x1.b7b5d4a95e2efp+0"
+],
+[
+4095,
+"0x1.b7e151628aeeap+0"
+]
+],
+"sha": "cc0444388e57047effd8851e647f7793",
+"shape": [
+4096
+],
+"strides": [
+8
+]
+}
+},
+"cumulative_simpson exp/uniform/5": {
+"r": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.22a2606fc8076p-2",
+"0x1.4c2706a84021ep-1",
+"0x1.1ddeb5511926ep+0",
+"0x1.b7e3be5e278d3p+0"
+]
+}
+},
+"cumulative_simpson initial lanes": {
+"r": {
+"nd": "float64",
+"shape": [
+2,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+1",
+"0x1.8000000000000p+1",
+"0x1.0000000000000p+2",
+"0x1.0000000000000p+1",
+"0x1.8000000000000p+1",
+"0x1.0000000000000p+2",
+"0x1.4000000000000p+2"
+]
+}
+},
+"cumulative_simpson long": {
+"r": {
+"chunk": 512,
+"chunks": "9afb9c625622592cc17ef863f7a5bb4c5aaafdf92cb6c3a11d31d4bcfe4f2549731d3f00cd680cbee939e63f519b5aa695f7958c7f3bb43f1ec07076189a87a1dec6847904b45c39abcee9d52b4b4863d94d8021f6f9ccb989cb54eb325465b2e7e6b6b61792bd59eee0ce644d5bf1c6e5050ad6d0b975f212ac3c3ad7e7cf21c6d9b32320e9f1adabcd661d76c3f2cff02a43f4bc9752ac8e56ea5ff5c4db615e9af2bb9ed883f79c5bef50b1c4a8ade8a176560575557eb9e0385629afee5dc2b101c871e0f03c2ccfa18705c00c7649b894208bc6b3c2c2c6cf4d30d71f0fe76339be7738625004844a35c1275ced1be1c5fa15ad1cfcec250ae8afde87419784ad35ca93733f9556e6eeb52e6bc902adda7ce2f7c98004d0e0470657b09402c8e85eadf223718ed820b7eb5f4c09a6a5b4944234ee9ca31468342d88babc79f7742fd1802954be56ec112b69c881f1791c6a034c2f50e857434ed40f89b00049ae9d814832d0b0bf4493e45d1ff969bcc1491ad64c1d782f9019bb02f85cae2fa461afe30d13ffe16de01dd75ac2af6bf1fbee4434da2a6e1eaa37acb8896b67c248c32abbe2726982694280a867f7323973b9fa082c4788b90ef30947f669ee7bab7f782484c45acd3b092d33b99ca3dfec46730514d501a925ae6c609011fb1297b60ef5ad7e0305557fe2677fb1886511d609e29e6b0f8d8bf1e5d15dad8f21c487fa1302779289f6920f5c6bda43877bc2d4bf2b0567521977acf0b00484f45dfd7bcdf4a4c0f450588174204ee8e0c7e81aa659ac1ba4a8f4d228b23a17dac4ee40871de07532a0390783a927853e5897e709dc281d443aa21769b37297af85f9d93e24b76baa95c6748ffaf3f83893908c962760927068308ee091678565e1f0e869590c053e8e68877e700dac67ab4170511eaceb7c4daad80c480185cf458b40eb4d28af6c3559035f7622af41777d303942a2e3bd8e0c0ae827de27d2d1ea54ac8db475d1271cf517a6d2d28055636ab606d3404f93006520426277863bc1f6ea830dffa63d99c6baafe7d11798926ac7eb23b807da791a14909290e70667b98b4891162008116b87a531484be2a1d73cd0ce5b11f071d6cca192b95069d07937bf769d1249a4f79ba15dd7dff23982dbcf05f0a32b51c4292214c1bc5cdb909c1907aa14826b226cf871e784a5b6261bc8bd52c440fff5a7d058764e72b8bb6c58adace31129420f8d53663693329fc767d9530a86d853abab31a086cd4972881e562d5ef9315c036d8d9700036b81c45a97311518bf1a5b6619b6c5321df33bd673b9bbdb004d17a206f11c1c6d4e38ce19a555fa5e7cda2d5cf524e78d254f4817d8dd3f02eaea2399806dda13a985432506ffddbfd2134c4eda5aec5e6d0f977578cdd2177d25c3dad3886d7743fe4b5f5a7780ae29d522",
+"n": 131072,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.2204155a263bdp-25"
+],
+[
+1,
+"0x1.3e8d7955f8d69p-23"
+],
+[
+2,
+"0x1.75b71fa3c637fp-22"
+],
+[
+3,
+"0x1.561ba89a9933ep-21"
+],
+[
+8192,
+"0x1.2339f7e8ae872p+1"
+],
+[
+16384,
+"-0x1.294c998fe31aap-2"
+],
+[
+24576,
+"0x1.34770d6d94d89p+1"
+],
+[
+32768,
+"-0x1.860e678cf6ef3p-2"
+],
+[
+40960,
+"0x1.3d2e284b97b14p+1"
+],
+[
+49152,
+"-0x1.bd66fafa0487fp-2"
+],
+[
+57344,
+"0x1.42d7fc21729f9p+1"
+],
+[
+65536,
+"-0x1.e32a82c60f524p-2"
+],
+[
+73728,
+"0x1.46d159dfe72eep+1"
+],
+[
+81920,
+"-0x1.fe0b4808e8920p-2"
+],
+[
+90112,
+"0x1.49a8047969022p+1"
+],
+[
+98304,
+"-0x1.08906ca38e70fp-1"
+],
+[
+106496,
+"0x1.4ba3ecaad31bep+1"
+],
+[
+114688,
+"-0x1.0f0db7877a44bp-1"
+],
+[
+122880,
+"0x1.4ceebbcad954ep+1"
+],
+[
+131068,
+"-0x1.12ab69f176b86p-1"
+],
+[
+131069,
+"-0x1.12c0d3f938d92p-1"
+],
+[
+131070,
+"-0x1.12d636586749ep-1"
+],
+[
+131071,
+"-0x1.12eb910ecd124p-1"
+]
+],
+"sha": "d7e3879aaa83f09c5258a65e96370755",
+"shape": [
+131072
+],
+"strides": [
+8
+]
+}
+},
+"cumulative_simpson many lanes": {
+"r": {
+"chunk": 256,
+"chunks": "b33abef33f205e27073994c0dcab260f34e621de47ba9a9f8ba5b7d89139f866e64d33cc4ead51097562cece5c7642da51349cd0a266570f086792aa8762a53b2361f2a4e5bb10b0e84f13a3c5ea5efabd440d5bde3a124d757d2bc84f5dc62dfe7421de670957c088e6104210d517151fa666911c284a92cc3d4d465749c46397c4f83d66de270179096ad8360bf2d198a4c0b10dbd83f1726278c61f75d2fb3e287539ded499e87a95fef00cad9d795e0fc7748ab9b231aad49da4417d7632214d1cf13804d22ec327b37e491d4c2bb62914217040d87ddad63bd1d2dafa644262fd3b72b80d6d038871cfd5e3e6c43b99e3677fd3afa5a7e98bc1de9adcb3678f066c78efb59010a754022fba23b4b4b641a3607358a054b9c9faa70f264519353f924514eb89937ec549897e77fbf860ed21ff6091621f5bc6144d9d063feedff7117cfa95fc907202765535e816a5c83026576dd975ca33dbda4a1afcef224d7aa2f7784a847a8ee14908f1f54bbdde384f23c80868a62fa8a1466ec6ff171c1a7fbed9d7d1ba72a66ba4c2227956b96f98bf75c101f1714b14a089d75237239700729a794882a82e86dcced50b00f04afbacbffee626100f9b9b9db1eba2399e3cdbb69fc3a0f9337d1195fb0c256d4a47d479a97c8598cf2220db046b6dded3a82c3809b0507d1cefca72b5d28a2ff077aa02b45826c42f530b2bb5b063d314b6d3e18c8016e350b7e3fa8ba6793ba11d83151194d2c589e93f4583c869e47e8f8654dc9721e2d9690b24fcdcca5d65e6de079650ca73cecd99e9d59faab1d93edaba040bee150cdf78b0a50a70c1efdf54fbc5799077622e73ec113365f4c2f08a3b289cab56f2b54f2b43e26ea64ce8d6defbe9deb8ffb732309b9971b65677fa9cc544a1ef7e264bf06d8bddd0143ff0594152b658915ba6942ca2dbda6bd115742bbfa0944574743fbb3c75d8e58c130ed5195c88eea5810ae8b95a3e94b08e0fb52ec2b0d58d0defd13baa2d7e98ed8bb1535b16e3f6068b91ed38d41415acbe74ed4b21b3efc19154d12c85e0206ad56db5f377d6a00eb610b751ba3c2a0e4a25eab038203d73a38041c0780a6b12a3af9c74e3bcf32bfbe1e694301b6008bab086727639e72cb0eabdd8fc2759834cc2c3d2e03eaa4ae0a49f5bb5d762f665631fbdb53883c76733be8a2ed86663535bdcb64d5c8cdc80f06ba50076127957e2539b3eec72b18ffd52df588f678e8e5f27c11c47a6f290bdc61e7af6db0686167ece0af6c8da3f10ad32fe92e6566f70ef31df012d1e25f1f653838352cd464a824d6ea49774a281907c466d90c8a12e7cc37a32aa5ba3826c10d753c5bf0ee0a97058d65ab2ea821aa191c917d9e27f858b0be1adae5f67e2e25dc9297fe9d196cc18fa178debaf24e4fa0d70cd759a630cbb3467e7dbd420",
+"n": 65536,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.ffffffe50d451p-11"
+],
+[
+1,
+"0x1.ffffff9435146p-10"
+],
+[
+2,
+"0x1.7fffff4a19928p-9"
+],
+[
+3,
+"0x1.fffffe50d4520p-9"
+],
+[
+4096,
+"0x1.b1179efca03e1p-11"
+],
+[
+8192,
+"0x1.b9720e06cdfb8p-12"
+],
+[
+12288,
+"-0x1.dd514f8684a46p-14"
+],
+[
+16384,
+"-0x1.41aa776b0f99ap-11"
+],
+[
+20480,
+"-0x1.e48adeaf6221dp-11"
+],
+[
+24576,
+"-0x1.f21a344474d59p-11"
+],
+[
+28672,
+"-0x1.662abe14b0d70p-11"
+],
+[
+32768,
+"-0x1.af6f6473b5175p-13"
+],
+[
+36864,
+"0x1.5f5fd5c1822c4p-12"
+],
+[
+40960,
+"0x1.9517e5d060a1dp-11"
+],
+[
+45056,
+"0x1.fdaa7831bf492p-11"
+],
+[
+49152,
+"0x1.c92e0270a3780p-11"
+],
+[
+53248,
+"0x1.07cf19698a5acp-11"
+],
+[
+57344,
+"-0x1.5b6dfd2868b15p-16"
+],
+[
+61440,
+"-0x1.1a2d7639270aap-11"
+],
+[
+65532,
+"-0x1.c0cd28e38680dp-1"
+],
+[
+65533,
+"-0x1.c141c42be9917p-1"
+],
+[
+65534,
+"-0x1.c1b6614ee4407p-1"
+],
+[
+65535,
+"-0x1.c22b004c51ba2p-1"
+]
+],
+"sha": "c9577dceedd218fec56c6d15e3c5f94e",
+"shape": [
+64,
+1024
+],
+"strides": [
+8192,
+8
+]
+}
+},
+"cumulative_simpson two": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.8000000000000p+1"
+]
+}
+},
+"cumulative_trapezoid 2d/rows": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+8
+],
+"strides": [
+64,
+8
+],
+"v": [
+"0x1.faaeed4f31578p-6",
+"0x1.f2ceba49f0db4p-4",
+"0x1.11516fd6107eep-2",
+"0x1.d446b26d32eedp-2",
+"0x1.5cba2c50ce146p-1",
+"0x1.d94d4b8349729p-1",
+"0x1.2c0ef07582a92p+0",
+"0x1.68a4b77905dfbp+0",
+"0x1.f80aa4fbef750p-3",
+"0x1.e85f45155d6a4p-2",
+"0x1.5b2df0240ff20p-1",
+"0x1.ac963dd024416p-1",
+"0x1.e358cbc81a27dp-1",
+"0x1.fc0dfef4977f9p-1",
+"0x1.f52c92239f093p-1",
+"0x1.cf2209a761a26p-1",
+"0x1.0000000000000p-7",
+"0x1.8000000000000p-5",
+"0x1.3000000000000p-3",
+"0x1.6000000000000p-2",
+"0x1.5400000000000p-1",
+"0x1.2400000000000p+0",
+"0x1.ce00000000000p+0",
+"0x1.5800000000000p+1"
+]
+}
+},
+"cumulative_trapezoid 3d axis -1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+4,
+4
+],
+"strides": [
+128,
+32,
+8
+],
+"v": [
+"0x1.a05ce73f00eadp-7",
+"0x1.a01805d0105f7p-5",
+"0x1.d399f6a4668a2p-4",
+"0x1.9f04db36205c7p-3",
+"0x1.1a902f686d76bp-3",
+"0x1.33625c02d2ed0p-2",
+"0x1.f1e0e2661ece7p-2",
+"0x1.6422ce259a978p-1",
+"0x1.0478108766deep-2",
+"0x1.0f7f63643016ap-1",
+"0x1.a76c96c79ec6fp-1",
+"0x1.24cf8cb223190p+0",
+"0x1.6ae93aaacc45cp-2",
+"0x1.73d947bca4d06p-1",
+"0x1.1d5800dfc2e20p+0",
+"0x1.84ba9b98864bdp+0",
+"0x1.ba059780309a4p-2",
+"0x1.c04b45f5627eap-1",
+"0x1.54a183ece879cp+0",
+"0x1.cba7f3d234518p+0",
+"0x1.ecb724fb68a16p-2",
+"0x1.efeb3a7838f44p-1",
+"0x1.7604e994c8eabp+0",
+"0x1.f5084332fa21fp+0",
+"0x1.ffbb921fd73e4p-2",
+"0x1.ffa955ac6510ap-1",
+"0x1.7f5cb08003958p+0",
+"0x1.fe329124ce42ep+0",
+"0x1.f1d9e23522bb4p-2",
+"0x1.ee827ff2f2df0p-1",
+"0x1.700f14bcc4025p+0",
+"0x1.e690061965335p+0",
+"0x1.c3f68bee796dfp-2",
+"0x1.bd9101cce5e42p-1",
+"0x1.4917f26bd9022p+0",
+"0x1.afa59e1a46a02p+0",
+"0x1.7904c95a8bd0cp-2",
+"0x1.6ffa5e07a665ap-1",
+"0x1.0cf894a27a0b2p+0",
+"0x1.5cfb26dd49b76p+0",
+"0x1.15d60a5777c35p-2",
+"0x1.0abb889cdda34p-1",
+"0x1.7f1cf5fa70147p-1",
+"0x1.e7c249e0f5a96p-1",
+"0x1.4195514114161p-3",
+"0x1.28ad9d1febc2ap-2",
+"0x1.974ef1b4c1cc6p-2",
+"0x1.ec65711f53292p-2"
+]
+}
+},
+"cumulative_trapezoid 3d axis 0": {
+"r": {
+"nd": "float64",
+"shape": [
+2,
+4,
+5
+],
+"strides": [
+160,
+40,
+8
+],
+"v": [
+"0x1.b375b30372eb1p-3",
+"0x1.da9b4a70de581p-3",
+"0x1.004368b22f3b8p-2",
+"0x1.128f9805c5450p-2",
+"0x1.2426178160a5ap-2",
+"0x1.34fb43adc28dep-2",
+"0x1.4503f901dcceep-2",
+"0x1.54359b41c8a9fp-2",
+"0x1.62861c8434f9bp-2",
+"0x1.6fec03d9a643dp-2",
+"0x1.7c5e7391219d4p-2",
+"0x1.87d52f161c7fep-2",
+"0x1.9248a063cfb18p-2",
+"0x1.9bb1dd0a51e3cp-2",
+"0x1.a40aaac227a7ep-2",
+"0x1.ab4d838b41729p-2",
+"0x1.b1759954ad8e6p-2",
+"0x1.b67ed92a92cf7p-2",
+"0x1.ba65ede859630p-2",
+"0x1.bd28426d39083p-2",
+"0x1.4c3f6e69b847fp-1",
+"0x1.5642e2aab10cep-1",
+"0x1.5f63da5591858p-1",
+"0x1.679c4af5a34fdp-1",
+"0x1.6ee6c3f562910p-1",
+"0x1.753e723803e84p-1",
+"0x1.7a9f234ac5ff3p-1",
+"0x1.7f05482bf1de0p-1",
+"0x1.826df7a5b385ap-1",
+"0x1.84d6f03b3be02p-1",
+"0x1.863e99a6e5b8cp-1",
+"0x1.86a405e860d6ap-1",
+"0x1.8606f1e230754p-1",
+"0x1.8467c58614e0ep-1",
+"0x1.81c7939042d48p-1",
+"0x1.7e2818d1961b9p-1",
+"0x1.798bbb0937c81p-1",
+"0x1.73f5874e7ac40p-1",
+"0x1.6d69300bfb7fbp-1",
+"0x1.65eb0a8d58c64p-1"
+]
+}
+},
+"cumulative_trapezoid 3d axis 1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+3,
+5
+],
+"strides": [
+120,
+40,
+8
+],
+"v": [
+"0x1.018b205284b58p-4",
+"0x1.67a0db6636554p-4",
+"0x1.ccc89bd462840p-4",
+"0x1.185fb8ba95ae1p-3",
+"0x1.49a19af3842a6p-3",
+"0x1.faceec53b1544p-3",
+"0x1.2ea3b0fff3b2cp-2",
+"0x1.5f17a75e4803ap-2",
+"0x1.8ea3491e44b68p-2",
+"0x1.bd271fd72d6c9p-2",
+"0x1.157395e250295p-1",
+"0x1.3842a34baf977p-1",
+"0x1.5a430e6b29988p-1",
+"0x1.7b5e57396c688p-1",
+"0x1.9b7e954f7ae7dp-1",
+"0x1.ce53551adad61p-2",
+"0x1.d8696760be659p-2",
+"0x1.e146dcfedf448p-2",
+"0x1.e8e5d82caf67ap-2",
+"0x1.ef414de144d44p-2",
+"0x1.e1542f2243c24p-1",
+"0x1.e8438aa928cb6p-1",
+"0x1.edefcc1da41ebp-1",
+"0x1.f255327d1e32cp-1",
+"0x1.f570d50fd3b45p-1",
+"0x1.6f3527f188bb0p+0",
+"0x1.71fc12096c0a4p+0",
+"0x1.73ce271467e44p+0",
+"0x1.74aa32a614e47p+0",
+"0x1.748fa321cfed6p+0",
+"0x1.a5f24ef921870p-2",
+"0x1.9709064fe3b7cp-2",
+"0x1.871264102f9d2p-2",
+"0x1.7618f88004048p-2",
+"0x1.6427ff24f124ap-2",
+"0x1.7b9ed32731f7cp-1",
+"0x1.6a4c41565271bp-1",
+"0x1.5809f0a53977ap-1",
+"0x1.44e3f63dc07b1p-1",
+"0x1.30e6fdf0df06fp-1",
+"0x1.ef196950ae908p-1",
+"0x1.d22204a8d6c02p-1",
+"0x1.b3f62b0387c6ap-1",
+"0x1.94a9d3876fa22p-1",
+"0x1.7451b442fe232p-1"
+]
+}
+},
+"cumulative_trapezoid exp/squares/10": {
+"r": {
+"nd": "float64",
+"shape": [
+9
+],
+"strides": [
+8
+],
+"v": [
+"0x1.970e4d660a9f1p-7",
+"0x1.9ebc47ab79b76p-5",
+"0x1.e176b109543ecp-4",
+"0x1.bf720685d01dep-3",
+"0x1.727e7bb735f68p-2",
+"0x1.1ecdc32485ab8p-1",
+"0x1.aa1e38ff83b08p-1",
+"0x1.34b2ebfd074fbp+0",
+"0x1.b8ec541b88aeep+0"
+]
+}
+},
+"cumulative_trapezoid exp/squares/101": {
+"r": {
+"nd": "float64",
+"shape": [
+100
+],
+"strides": [
+8
+],
+"v": [
+"0x1.a3738d27147eep-14",
+"0x1.a383a925608a4p-12",
+"0x1.d81254d6d77d1p-11",
+"0x1.a3c4215ee08d0p-10",
+"0x1.481707499c30ep-9",
+"0x1.d8b5a7ff31d5ap-9",
+"0x1.41ea1adbf329dp-8",
+"0x1.a4c6867f295d4p-8",
+"0x1.0a7faab132702p-7",
+"0x1.4952ed0ed2c68p-7",
+"0x1.8ee6bfee598f8p-7",
+"0x1.db45e7afd0a78p-7",
+"0x1.173e1d222d1b9p-6",
+"0x1.444b511e6a002p-6",
+"0x1.74d19110a3587p-6",
+"0x1.a8d86c092b88ep-6",
+"0x1.e06800db0523ap-6",
+"0x1.0dc4801c5295fp-5",
+"0x1.2d22577bed351p-5",
+"0x1.4e52743ed6b5ep-5",
+"0x1.715a10a98df05p-5",
+"0x1.963eb4f1d0c36p-5",
+"0x1.bd0638b3485d9p-5",
+"0x1.e5b6c47a269fep-5",
+"0x1.082b69b223297p-4",
+"0x1.1e769a6cb4516p-4",
+"0x1.35c0872d99ae5p-4",
+"0x1.4e0ceeb6ce5c9p-4",
+"0x1.675fbccc3d924p-4",
+"0x1.81bd0b417cba3p-4",
+"0x1.9d292314dd27fp-4",
+"0x1.b9a87d9840286p-4",
+"0x1.d73fc5a81dc0ap-4",
+"0x1.f5f3d8f13436ap-4",
+"0x1.0ae4e4a2ae3fep-3",
+"0x1.1b636f0002f93p-3",
+"0x1.2c784abd7107bp-3",
+"0x1.3e265349a8024p-3",
+"0x1.507081208f436p-3",
+"0x1.6359ea9fa0ffep-3",
+"0x1.76e5c4e39252ap-3",
+"0x1.8b1764af9f06fp-3",
+"0x1.9ff23f5ed40c1p-3",
+"0x1.b579ebdfb7d6dp-3",
+"0x1.cbb223bab4752p-3",
+"0x1.e29ec423abd0ap-3",
+"0x1.fa43cf1723891p-3",
+"0x1.0952b641bd79fp-2",
+"0x1.15e3f5bf51960p-2",
+"0x1.22d7e1c46b5e5p-2",
+"0x1.3030caee6a261p-2",
+"0x1.3df1176712e9ap-2",
+"0x1.4c1b439b02294p-2",
+"0x1.5ab1e2f7b7593p-2",
+"0x1.69b7a0b188be9p-2",
+"0x1.792f4091d23d9p-2",
+"0x1.891b9fcdb576bp-2",
+"0x1.997fb5e5c596dp-2",
+"0x1.aa5e958efd73bp-2",
+"0x1.bbbb6da562fc7p-2",
+"0x1.cd998a28bfa13p-2",
+"0x1.dffc5543da30ap-2",
+"0x1.f2e7585ea3bb6p-2",
+"0x1.032f1e9de730ap-1",
+"0x1.0d326791253f2p-1",
+"0x1.177f7e0996436p-1",
+"0x1.22186b0642019p-1",
+"0x1.2cff4a2cd943ep-1",
+"0x1.38364a78ec22fp-1",
+"0x1.43bfaef27971dp-1",
+"0x1.4f9dcf6c29573p-1",
+"0x1.5bd3194989085p-1",
+"0x1.6862104da1a8dp-1",
+"0x1.754d4f72489f6p-1",
+"0x1.829789c88c2e4p-1",
+"0x1.90438b62a3d82p-1",
+"0x1.9e543a47d10e5p-1",
+"0x1.accc9772a1db7p-1",
+"0x1.bbafbfda0cb49p-1",
+"0x1.cb00ed85e25b3p-1",
+"0x1.dac378af18c13p-1",
+"0x1.eafad8ec7837ap-1",
+"0x1.fbaaa66c3adcdp-1",
+"0x1.066b4d9d9a9bbp+0",
+"0x1.0f414a4d1329ap+0",
+"0x1.18594a30eab23p+0",
+"0x1.21b5613b558f9p+0",
+"0x1.2b57b7263ebdap+0",
+"0x1.3542883da6cd0p+0",
+"0x1.3f782632e07adp+0",
+"0x1.49faf8f9147c5p+0",
+"0x1.54cd7fab7b460p+0",
+"0x1.5ff2517dc117ap+0",
+"0x1.6b6c1eb70e604p+0",
+"0x1.773db1b834a68p+0",
+"0x1.8369f00d86870p+0",
+"0x1.8ff3db8ce8209p+0",
+"0x1.9cde9380ac5abp+0",
+"0x1.aa2d55dfdaf1dp+0",
+"0x1.b7e380948313cp+0"
+]
+}
+},
+"cumulative_trapezoid exp/squares/3": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.245af1e1f40c3p-2",
+"0x1.c94f7066e8252p+0"
+]
+}
+},
+"cumulative_trapezoid exp/squares/4": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e1da6d27e9daap-4",
+"0x1.20ae6002b8b42p-1",
+"0x1.c08c13ce5efa8p+0"
+]
+}
+},
+"cumulative_trapezoid exp/uniform/17": {
+"r": {
+"nd": "float64",
+"shape": [
+16
+],
+"strides": [
+8
+],
+"v": [
+"0x1.08415abbe9a77p-4",
+"0x1.10c6dbd2c57eap-3",
+"0x1.a67f3d45ceb6ap-3",
+"0x1.22efcb497b0ecp-2",
+"0x1.77c3aaae00d1cp-2",
+"0x1.d21017c1c1708p-2",
+"0x1.1917b33c37a7cp-1",
+"0x1.4c40df11d0ae7p-1",
+"0x1.82b6bcd114195p-1",
+"0x1.bcafc6e1ba616p-1",
+"0x1.fa65fb22be3dep-1",
+"0x1.1e0b8a7688785p+0",
+"0x1.4102656a0c2a6p+0",
+"0x1.663a8830de2aap+0",
+"0x1.8dd92e07e2a90p+0",
+"0x1.b805f8e24553ap+0"
+]
+}
+},
+"cumulative_trapezoid exp/uniform/2": {
+"r": {
+"nd": "float64",
+"shape": [
+1
+],
+"strides": [
+8
+],
+"v": [
+"0x1.dbf0a8b145769p+0"
+]
+}
+},
+"cumulative_trapezoid exp/uniform/3": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.53094c70f034ep-1",
+"0x1.c101a0c992f03p+0"
+]
+}
+},
+"cumulative_trapezoid exp/uniform/33": {
+"r": {
+"nd": "float64",
+"shape": [
+32
+],
+"strides": [
+8
+],
+"v": [
+"0x1.04102b00893f6p-5",
+"0x1.0830d85e7e132p-4",
+"0x1.929bd37e466a1p-4",
+"0x1.10b5d12b7ae24p-3",
+"0x1.5a61fccd5726dp-3",
+"0x1.a664d811dc303p-3",
+"0x1.f4d16415351c3p-3",
+"0x1.22dd9e317a2d6p-2",
+"0x1.4c9b4dee885bep-2",
+"0x1.77ac30e55c68dp-2",
+"0x1.a41b0b88205d0p-2",
+"0x1.d1f2f9c8bbe0ap-2",
+"0x1.009fb8efefc2ap-1",
+"0x1.19062395511d5p-1",
+"0x1.3232d68fb42c4p-1",
+"0x1.4c2c1d2d68be7p-1",
+"0x1.66f875e2b83e7p-1",
+"0x1.829e93e98b6d4p-1",
+"0x1.9f2560ee41cbcp-1",
+"0x1.bc93feca25e9fp-1",
+"0x1.daf1c94bed3c7p-1",
+"0x1.fa46580eb5997p-1",
+"0x1.0d4cc02ffb0ffp+0",
+"0x1.1df9ab9a6e837p+0",
+"0x1.2f2e1997cbd81p+0",
+"0x1.40ee575a8328cp+0",
+"0x1.533ed509b052ep+0",
+"0x1.662426dd2aa80p+0",
+"0x1.79a3064298fefp+0",
+"0x1.8dc0530bd369ep+0",
+"0x1.a28114a6de2c6p+0",
+"0x1.b7ea7b5fcbf10p+0"
+]
+}
+},
+"cumulative_trapezoid exp/uniform/4": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.98d9e767c1e0dp-2",
+"0x1.e9b9784fa2cbcp-1",
+"0x1.bbf2122c2e583p+0"
+]
+}
+},
+"cumulative_trapezoid exp/uniform/4097": {
+"r": {
+"chunk": 256,
+"chunks": "4144a44d88873aa88a0970f845ac26a0904a775b5a3761b8b51fec31873ec322e9fe5728cdc6bb06be73bd9d3d9d7259116e0d20aa9a1ea9d5306ebfd31bca36",
+"n": 4096,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.0008004001556p-12"
+],
+[
+1,
+"0x1.001000c006aaep-11"
+],
+[
+2,
+"0x1.802402601e014p-11"
+],
+[
+3,
+"0x1.002002c02d57cp-10"
+],
+[
+256,
+"0x1.093be2cd0a2b4p-4"
+],
+[
+512,
+"0x1.1141327cde4b5p-3"
+],
+[
+768,
+"0x1.a6f6763ceb6b6p-3"
+],
+[
+1024,
+"0x1.2329bf324e500p-2"
+],
+[
+1280,
+"0x1.77fbdaa225cedp-2"
+],
+[
+1536,
+"0x1.d246669b2aa55p-2"
+],
+[
+1792,
+"0x1.1931da97e631fp-1"
+],
+[
+2048,
+"0x1.4c59f5d8aa9d8p-1"
+],
+[
+2304,
+"0x1.82ceb16e9f576p-1"
+],
+[
+2560,
+"0x1.bcc6869f3b5a1p-1"
+],
+[
+2816,
+"0x1.fa7b72147f952p-1"
+],
+[
+3072,
+"0x1.1e1596ef3b112p+0"
+],
+[
+3328,
+"0x1.410bb79933aafp+0"
+],
+[
+3584,
+"0x1.66431412c47bap+0"
+],
+[
+3840,
+"0x1.8de0e6d273eb5p+0"
+],
+[
+4092,
+"0x1.b75ee38297f11p+0"
+],
+[
+4093,
+"0x1.b78a5acc88202p+0"
+],
+[
+4094,
+"0x1.b7b5d4ce02aa5p+0"
+],
+[
+4095,
+"0x1.b7e151873309ap+0"
+]
+],
+"sha": "eaa84dc31b8b714c7650fb505b496513",
+"shape": [
+4096
+],
+"strides": [
+8
+]
+}
+},
+"cumulative_trapezoid exp/uniform/5": {
+"r": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.245af1e1f40c3p-2",
+"0x1.4ddf981a6c26ap-1",
+"0x1.1f7095fb11946p+0",
+"0x1.ba2b36f90265ep+0"
+]
+}
+},
+"cumulative_trapezoid initial": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.8000000000000p+0",
+"0x1.0000000000000p+2"
+]
+}
+},
+"cumulative_trapezoid long": {
+"r": {
+"chunk": 512,
+"chunks": "6f48240a722fc8db67d5a45699bebe929cdec6d9395371aec3ffc418ea504c51724f7d24011e5bc6d2a09804a8c776d82c42972a21d59a164b595504c7fe843733c0e013ee62f6a95a2dbaaa816b66a4e8deee1cb23c6f7c6d68894ccf550e701a618a082f2e8c6504a362c086fe0f654c4742a9c9865c599f8e742ad9facf5e18f399b2b335ad1a425d985461016eb59dd644a8419aaf2c61ddf5c544603858650b331974e81a74a25bda909e413af59e8b3e5bda047464e730b02f7821062ae32e87a77b465e1b5141a55eae6daacb59cc599bb87e63b10439b98c8634a2bb6b848067ca207a7c5e1a1e2d2fd4b8a290726e8d6d0667f82427095b4021da2497110ad13139cf818466720463afe629133dbf4eff3805ecc5732882459cd663b24cc031c1c04cf1b2b37de428eecf028974c490a2b500f1006bfd64496c57f9fc609213f0f381da4751c2dd1bfbfd703859f5ab0ccbbbd39f7dc284a67d840733fb36400b631ad2208b5187685d866a7c9e5b88ebb958ba6cd9e43bcaedf277ceb4a89990682f1e9e9b19ed5e2877e0c45718f65e30d6dff45ef7b39e540c9800a64c20a9f7ff406130e3204af5eacb2a13478b75ab92e77042cc887833db8e804ce825d9609b65606788ce7d117d16c95d57093afbc41b0f23dac8e15d4e0d9a7cda5e65099b07ff0b6c6233525182c0632fa9d1ab7b803550c7696fa4e58af265323ef37bdb60c9d5e20127bfc1f9f152fd031fae7e6f0d7f1000e8dbe62ea217cfbb9587ba70c55ab8e5f40f73e079894b0a23b63b28f3581472f79e1574f565b57872cbf496f4ea00175a2df8f37bbd8a7fcc336092680806efb3b9f86cf550d121a37ff7fe1c517b04571533b09cce7d41b0fc344b4dc46f7392639be6f43b6d514fbbb8a80966e829f7fa934d8374948e7ef2234d29f4dbadc934b93dc993274f6ec588fee1324456c5e103de7b317fc3874af4c29f4032e893d066a4dee8975139fa9e7e74871fdcb296bca72cabbd04f0cc682ccbd1b09f1d9945a097ea430baec38ded9f1541ba1d2b44e9abdfc999e4c44aaafa38e7b08e4aa9bf41fb704e8db3a63662160dc66463e9cad6851828731faebc641bd8d17ff25cbe8a3cffecea149a0a2cb057e998f6be75cf2fd4dfdd249845784697fcd48147bfb361fd84f18dc49f1b149483a0b151c3009efeb3599e3f76722a2dd3aa05465c3b88eb642fc28c929e8f8c2c3c62af34d61fbbafdd0b82073a1422fd1b4ac295f9262b3f81216119870e0e5c1bcbdaf137ac7c19c089f12678b92dd430f047a0167ef13d28b037fc903f3f8bd6f09812818d410deebc521542dc867b247f6cd7094dd1c136b9e16efc8aac58eb6200fd52c8e69ac4829c6f6b3df796c103ffc6a55ee06d672f88d584c14b05a03191d0aaff67aadd5bd70de2d3c8e284522a6e",
+"n": 131072,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.1c7690fca1e07p-25"
+],
+[
+1,
+"0x1.3b16a7a9a65a4p-23"
+],
+[
+2,
+"0x1.73bfbd8d2939ep-22"
+],
+[
+3,
+"0x1.54fec3f64f324p-21"
+],
+[
+8192,
+"0x1.2339f79ccfe83p+1"
+],
+[
+16384,
+"-0x1.294c99d5c66f4p-2"
+],
+[
+24576,
+"0x1.34770d1e62b5dp+1"
+],
+[
+32768,
+"-0x1.860e67c05f00cp-2"
+],
+[
+40960,
+"0x1.3d2e27faa4bb5p+1"
+],
+[
+49152,
+"-0x1.bd66fb223e5ffp-2"
+],
+[
+57344,
+"0x1.42d7fbcf5a208p+1"
+],
+[
+65536,
+"-0x1.e32a82e6a159ep-2"
+],
+[
+73728,
+"0x1.46d1598d00440p+1"
+],
+[
+81920,
+"-0x1.fe0b482405bccp-2"
+],
+[
+90112,
+"0x1.49a80425ee80cp+1"
+],
+[
+98304,
+"-0x1.08906caf2cc64p-1"
+],
+[
+106496,
+"0x1.4ba3ec56f1668p+1"
+],
+[
+114688,
+"-0x1.0f0db791c6ffcp-1"
+],
+[
+122880,
+"0x1.4ceebb76b463dp+1"
+],
+[
+131068,
+"-0x1.12ab69fb0735ap-1"
+],
+[
+131069,
+"-0x1.12c0d402c5026p-1"
+],
+[
+131070,
+"-0x1.12d63661ef224p-1"
+],
+[
+131071,
+"-0x1.12eb91185099ep-1"
+]
+],
+"sha": "1418af5a9cba0f7edc2a2901479c3e1b",
+"shape": [
+131072
+],
+"strides": [
+8
+]
+}
+},
+"cumulative_trapezoid one": {
+"r": {
+"nd": "float64",
+"shape": [
+0
+],
+"strides": [
+8
+],
+"v": []
+}
+},
 "err IntegrateResult absent field": {
 "r": {
 "error": "builtins.AttributeError",
@@ -235,6 +1927,1089 @@ true
 "r": {
 "error": "builtins.TypeError",
 "msg": "IntegrateResult(): unexpected keyword argument 'estimate'"
+}
+},
+"err cumulative_simpson initial complex": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "cumulative_simpson(): 'initial' must be real for a real y, not complex"
+}
+},
+"err cumulative_simpson positional": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "cumulative_simpson(): takes from 1 to 2 positional arguments but 3 were given"
+}
+},
+"err cumulative_simpson x": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "cumulative_simpson(): 'x' must be strictly increasing along 'axis'"
+}
+},
+"err cumulative_trapezoid empty": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "cumulative_trapezoid(): 'y' must have at least one point along 'axis'"
+}
+},
+"err cumulative_trapezoid initial": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "cumulative_trapezoid(): 'initial' must be None or 0, not 1.0"
+}
+},
+"err fixed_quad args": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "fixed_quad(): unexpected keyword argument 'args'"
+}
+},
+"err fixed_quad infinite": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fixed_quad(): 'b' must be finite (Gaussian quadrature needs a finite interval)"
+}
+},
+"err fixed_quad n": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fixed_quad(): 'n' must be >= 1"
+}
+},
+"err fixed_quad scalar value": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fixed_quad(): 'func' must return shape (5,) or (..., 5) for its argument of shape (5,), not a scalar"
+}
+},
+"err fixed_quad shape": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fixed_quad(): 'func' must return shape (5,) or (..., 5) for its argument of shape (5,), not (4,)"
+}
+},
+"err newton_cotes 0": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "newton_cotes(): 'rn' must be >= 1 (the number of intervals)"
+}
+},
+"err newton_cotes ends": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "newton_cotes(): the sample positions must start at 0 and end at N = 2"
+}
+},
+"err newton_cotes equal": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "newton_cotes(): 'equal' must be True or False, not int"
+}
+},
+"err newton_cotes float": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "newton_cotes(): 'rn' must be an int or a sequence of numbers, not float"
+}
+},
+"err romb samples": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "romb(): 'y' must have 2^k + 1 samples along 'axis' (k >= 0), not 4"
+}
+},
+"err romb show": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "romb(): unexpected keyword argument 'show'"
+}
+},
+"err simpson dx bool": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "simpson(): 'dx' must be a number or an array, not bool"
+}
+},
+"err simpson dx shape": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "simpson(): 'dx' must be a number or an array of shape (2, 1) (the shape of 'y' with 1 along 'axis'), not shape (2,)"
+}
+},
+"err trapezoid axis": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "trapezoid(): axis 1 is out of bounds for an array of dimension 1"
+}
+},
+"err trapezoid axis float": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "trapezoid(): 'axis' must be an int, not float"
+}
+},
+"err trapezoid dx with x": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "trapezoid(): 'dx' is not used with 'x' (the spacing comes from 'x')"
+}
+},
+"err trapezoid scalar": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "trapezoid(): 'y' must be at least 1-dimensional, not a scalar"
+}
+},
+"err trapezoid str": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "trapezoid(): 'y' must be an sd.ndarray, a sequence of numbers or a frame Series, not str"
+}
+},
+"err trapezoid x broadcast": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "trapezoid(): 'x' of shape (3, 3) does not broadcast to the shape (2, 3) of 'y'"
+}
+},
+"err trapezoid x complex": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "trapezoid(): 'x' must be real, not a complex128 array"
+}
+},
+"err trapezoid x length": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "trapezoid(): 'x' must have y's length 3 along 'axis', not 2"
+}
+},
+"err trapezoid x ndim": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "trapezoid(): 'x' must be 1-dimensional or have the 2 dimensions of 'y', not 3"
+}
+},
+"fixed_quad empty interval": {
+"r": {
+"f": "0x0.0p+0"
+}
+},
+"fixed_quad exp n=1": {
+"r": {
+"f": "0x1.a61298e1e069cp+0"
+}
+},
+"fixed_quad exp n=100": {
+"r": {
+"f": "0x1.b7e151628aed2p+0"
+}
+},
+"fixed_quad exp n=101": {
+"r": {
+"f": "0x1.b7e151628aed3p+0"
+}
+},
+"fixed_quad exp n=2": {
+"r": {
+"f": "0x1.b7c80e9975868p+0"
+}
+},
+"fixed_quad exp n=20": {
+"r": {
+"f": "0x1.b7e151628aed4p+0"
+}
+},
+"fixed_quad exp n=300": {
+"r": {
+"f": "0x1.b7e151628aed3p+0"
+}
+},
+"fixed_quad exp n=5": {
+"r": {
+"f": "0x1.b7e151628a352p+0"
+}
+},
+"fixed_quad list": {
+"r": {
+"f": "0x1.5555555555556p-2"
+}
+},
+"fixed_quad peak": {
+"r": {
+"f": "0x1.851a667f1227cp+1"
+}
+},
+"fixed_quad reversed": {
+"r": {
+"f": "-0x1.fffffffffffeap+0"
+}
+},
+"fixed_quad vector": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c15af557207bap+2",
+"0x1.7fffffffffffep+1",
+"0x1.c0325bced6e7cp+0"
+]
+}
+},
+"newton_cotes 1": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p-1",
+"0x1.0000000000000p-1"
+]
+},
+{
+"f": "-0x1.5555555555555p-4"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes 14": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+15
+],
+"strides": [
+8
+],
+"v": [
+"0x1.028acc440f774p-2",
+"0x1.fd3e1eb71feccp+0",
+"-0x1.14036f9e6a12dp+1",
+"0x1.397ccd9411289p+3",
+"-0x1.2893519634721p+4",
+"0x1.1ab25b7cf0a1fp+5",
+"-0x1.7814b0cdfc96dp+5",
+"0x1.b53bf6458ecd3p+5",
+"-0x1.7814b0cdfc96dp+5",
+"0x1.1ab25b7cf0a1fp+5",
+"-0x1.2893519634721p+4",
+"0x1.397ccd9411289p+3",
+"-0x1.14036f9e6a12dp+1",
+"0x1.fd3e1eb71feccp+0",
+"0x1.028acc440f774p-2"
+]
+},
+{
+"f": "-0x1.80419dc403621p-9"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes 15": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+16
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0675ff25c3d0ap-2",
+"0x1.ed77e4beb64f2p+0",
+"-0x1.b0db1fe51c3ddp+0",
+"0x1.e6c2d0e364a75p+2",
+"-0x1.6b054c4695ddcp+3",
+"0x1.1ded2e0c33e13p+4",
+"-0x1.d0a47afac04bap+3",
+"0x1.d94d7445b5655p+2",
+"0x1.d94d7445b5655p+2",
+"-0x1.d0a47afac04bap+3",
+"0x1.1ded2e0c33e13p+4",
+"-0x1.6b054c4695ddcp+3",
+"0x1.e6c2d0e364a75p+2",
+"-0x1.b0db1fe51c3ddp+0",
+"0x1.ed77e4beb64f2p+0",
+"0x1.0675ff25c3d0ap-2"
+]
+},
+{
+"f": "-0x1.a5549a175e937p-8"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes 2": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.5555555555555p-2",
+"0x1.5555555555555p+0",
+"0x1.5555555555555p-2"
+]
+},
+{
+"f": "-0x1.6c16c16c16c17p-7"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes 20": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+21
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e45cfa2b56324p-3",
+"0x1.24314b6d3c97dp+1",
+"-0x1.2eb13b81ca2cfp+2",
+"0x1.81fad48f75eadp+4",
+"-0x1.2daebad1c1a91p+6",
+"0x1.9d78d0535fb2dp+7",
+"-0x1.c62d231a5f92bp+8",
+"0x1.a247d3b653505p+9",
+"-0x1.40605b95555aep+10",
+"0x1.9dfc85d9278fap+10",
+"-0x1.c206deb3efb51p+10",
+"0x1.9dfc85d9278fap+10",
+"-0x1.40605b95555aep+10",
+"0x1.a247d3b653505p+9",
+"-0x1.c62d231a5f92bp+8",
+"0x1.9d78d0535fb2dp+7",
+"-0x1.2daebad1c1a91p+6",
+"0x1.81fad48f75eadp+4",
+"-0x1.2eb13b81ca2cfp+2",
+"0x1.24314b6d3c97dp+1",
+"0x1.e45cfa2b56324p-3"
+]
+},
+{
+"f": "-0x1.042e840b1d8bep-9"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes 4": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+5
+],
+"strides": [
+8
+],
+"v": [
+"0x1.3e93e93e93e94p-2",
+"0x1.6c16c16c16c17p+0",
+"0x1.1111111111111p-1",
+"0x1.6c16c16c16c17p+0",
+"0x1.3e93e93e93e94p-2"
+]
+},
+{
+"f": "-0x1.1566abc011567p-7"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes 8": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+9
+],
+"strides": [
+8
+],
+"v": [
+"0x1.1dc7e7df33feap-2",
+"0x1.a959297bd6515p+0",
+"-0x1.0c2783e45506cp-2",
+"0x1.7b1d623128c2ep+1",
+"-0x1.47f80db9bf2a3p+0",
+"0x1.7b1d623128c2ep+1",
+"-0x1.0c2783e45506cp-2",
+"0x1.a959297bd6515p+0",
+"0x1.1dc7e7df33feap-2"
+]
+},
+{
+"f": "-0x1.4bc2ad577ba6fp-8"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes equal": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.8000000000000p-2",
+"0x1.2000000000000p+0",
+"0x1.2000000000000p+0",
+"0x1.8000000000000p-2"
+]
+},
+{
+"f": "-0x1.3333333333333p-5"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"newton_cotes positions": {
+"r": {
+"items": [
+{
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.5555555555555p-2",
+"0x1.c71c71c71c71cp+0",
+"0x1.1c71c71c71c72p-1"
+]
+},
+{
+"f": "-0x1.c71c71c71c71cp-4"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"romb 3d axis 2": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.f9ad2c325ee95p+1",
+"0x1.c5605a2cce146p+1",
+"0x1.5ce4c81849965p+1",
+"0x1.9882180e5e61ap+0",
+"0x1.20d7ab6892ca3p-2",
+"-0x1.1065f288363d9p+0",
+"-0x1.24d3cb6697989p+1",
+"-0x1.9fc072cc49abbp+1",
+"-0x1.ead2f6821062bp+1"
+]
+}
+},
+"romb complex": {
+"r": {
+"c": [
+"0x1.e666666666667p+2",
+"0x1.bbbbbbbbbbbbcp+0"
+]
+}
+},
+"romb exp/uniform/17": {
+"r": {
+"f": "0x1.b7e151628af68p+0"
+}
+},
+"romb exp/uniform/2": {
+"r": {
+"f": "0x1.dbf0a8b145769p+0"
+}
+},
+"romb exp/uniform/3": {
+"r": {
+"f": "0x1.b80748d1acc35p+0"
+}
+},
+"romb exp/uniform/33": {
+"r": {
+"f": "0x1.b7e151628aed4p+0"
+}
+},
+"romb exp/uniform/4097": {
+"r": {
+"f": "0x1.b7e151628aed2p+0"
+}
+},
+"romb exp/uniform/5": {
+"r": {
+"f": "0x1.b7e15fcdeb787p+0"
+}
+},
+"romb long": {
+"r": {
+"f": "0x1.782ca5c9210b4p-4"
+}
+},
+"simpson 2d/rows": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6a8aa0d4580abp+0",
+"0x1.d19209c3f671ap-1",
+"0x1.5555555555555p+1"
+]
+}
+},
+"simpson 3d axis -1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9f1bc1d6b9ea1p-3",
+"0x1.643674fba3978p-1",
+"0x1.24dfb4fd43cbcp+0",
+"0x1.84d00ed882545p+0",
+"0x1.cbc150ffdfd12p+0",
+"0x1.f523e8dd63c04p+0",
+"0x1.fe4eb84781e80p+0",
+"0x1.e6aadf5d1cfbap+0",
+"0x1.afbd6f9e98e81p+0",
+"0x1.5d0e68a114910p+0",
+"0x1.e7dd340b06570p-1",
+"0x1.ec809ccb50de0p-2"
+]
+}
+},
+"simpson 3d axis 0": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+5
+],
+"strides": [
+40,
+8
+],
+"v": [
+"0x1.6ea6da9cf67e5p-1",
+"0x1.79b3c070c5766p-1",
+"0x1.83c6b5d674828p-1",
+"0x1.8cd91036eca7ap-1",
+"0x1.94e4cec936d84p-1",
+"0x1.9be49e8b6e308p-1",
+"0x1.a1d3ddc8b3801p-1",
+"0x1.a6ae9f29cd42dp-1",
+"0x1.aa71ac4e6cd66p-1",
+"0x1.ad1a87ed60ab6p-1",
+"0x1.aea76f7a4b59dp-1",
+"0x1.af175c4fc884ap-1",
+"0x1.ae6a045d3a454p-1",
+"0x1.ac9fda57cc172p-1",
+"0x1.a9ba0d6e8ada9p-1",
+"0x1.a5ba8881c4235p-1",
+"0x1.a0a3f0de319bep-1",
+"0x1.9a79a47cc76e1p-1",
+"0x1.933fb7c84e46ap-1",
+"0x1.8afaf2ea426a9p-1"
+]
+}
+},
+"simpson 3d axis 1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+5
+],
+"strides": [
+40,
+8
+],
+"v": [
+"0x1.16cf214549ad4p-1",
+"0x1.39cfdd133410ap-1",
+"0x1.5c00efbb6ab8ap-1",
+"0x1.7d4bb90454d44p-1",
+"0x1.9d9a3117edd99p-1",
+"0x1.7133fdc527719p+0",
+"0x1.73ffeac854e88p+0",
+"0x1.75d5ad63e1067p+0",
+"0x1.76b40ebc5323ep+0",
+"0x1.769a7ba976244p+0",
+"0x1.f1f096ca65b48p-1",
+"0x1.d4d20ed0a2d24p-1",
+"0x1.b67d4a8c6b6a1p-1",
+"0x1.97065c37dcf63p-1",
+"0x1.7682161035f4ep-1"
+]
+}
+},
+"simpson complex": {
+"r": {
+"c": [
+"0x1.8aaaaaaaaaaaap+1",
+"0x1.a800000000000p+1"
+]
+}
+},
+"simpson even": {
+"r": {
+"f": "0x1.2d00000000000p+5"
+}
+},
+"simpson exp/squares/10": {
+"r": {
+"f": "0x1.b7eefc77fe3c2p+0"
+}
+},
+"simpson exp/squares/101": {
+"r": {
+"f": "0x1.b7e151785d566p+0"
+}
+},
+"simpson exp/squares/3": {
+"r": {
+"f": "0x1.bad20bbb4a3b1p+0"
+}
+},
+"simpson exp/squares/4": {
+"r": {
+"f": "0x1.b94eb70750f62p+0"
+}
+},
+"simpson exp/uniform/17": {
+"r": {
+"f": "0x1.b7e153d3dbf45p+0"
+}
+},
+"simpson exp/uniform/2": {
+"r": {
+"f": "0x1.dbf0a8b145769p+0"
+}
+},
+"simpson exp/uniform/3": {
+"r": {
+"f": "0x1.b80748d1acc35p+0"
+}
+},
+"simpson exp/uniform/33": {
+"r": {
+"f": "0x1.b7e15189a37aep+0"
+}
+},
+"simpson exp/uniform/4": {
+"r": {
+"f": "0x1.b82a9b0f4d630p+0"
+}
+},
+"simpson exp/uniform/4097": {
+"r": {
+"f": "0x1.b7e151628aed2p+0"
+}
+},
+"simpson exp/uniform/5": {
+"r": {
+"f": "0x1.b7e3be5e278d2p+0"
+}
+},
+"simpson long": {
+"r": {
+"f": "-0x1.12eb910ecd1f4p-1"
+}
+},
+"simpson many lanes": {
+"r": {
+"nd": "float64",
+"shape": [
+64
+],
+"strides": [
+8
+],
+"v": [
+"0x1.984100f561cbfp+6",
+"0x1.903291ada728ep+6",
+"0x1.803d68c96fd1cp+6",
+"0x1.68b22df9889acp+6",
+"0x1.4a07e0c4ec76fp+6",
+"0x1.24d97f1474c0bp+6",
+"0x1.f3c5eba44379dp+5",
+"0x1.93fad626d7ab5p+5",
+"0x1.2c35e91ec2ea2p+5",
+"0x1.7d07402f80fd3p+4",
+"0x1.3439af51eb300p+3",
+"-0x1.2f6200163bfcfp+2",
+"-0x1.304e7e9099732p+4",
+"-0x1.0761369e70ba1p+5",
+"-0x1.7167f994a5fbep+5",
+"-0x1.d423a40eb565dp+5",
+"-0x1.16d0976a7152ap+6",
+"-0x1.3e0e24e982d87p+6",
+"-0x1.5f04251d2effep+6",
+"-0x1.790bffb1a4c53p+6",
+"-0x1.8ba2236cc886ep+6",
+"-0x1.96689f29c9a4ep+6",
+"-0x1.9928fca91f13ep+6",
+"-0x1.93d553d510ad3p+6",
+"-0x1.8688910b82ed7p+6",
+"-0x1.7185ed09c2cdep+6",
+"-0x1.5537992a1ae8dp+6",
+"-0x1.322ca6a87261cp+6",
+"-0x1.09163386c5bd4p+6",
+"-0x1.b587d6b0944abp+5",
+"-0x1.503fdb3fc69b0p+5",
+"-0x1.c8a8b9ec5b528p+4",
+"-0x1.cf9b47b365747p+3",
+"-0x1.2f792bb67edacp-3",
+"0x1.c63775bc5a634p+3",
+"0x1.c41a8779b1f62p+4",
+"0x1.4e16207502080p+5",
+"0x1.b386690df8df5p+5",
+"0x1.082eb4cd42728p+6",
+"0x1.3162f2134c1cap+6",
+"0x1.548faa34f4938p+6",
+"0x1.7103147e857e0p+6",
+"0x1.862d644051e3ep+6",
+"0x1.93a39f9daebb3p+6",
+"0x1.9921bc3dc3fa8p+6",
+"0x1.968bf73163c56p+6",
+"0x1.8bef6143bc94ep+6",
+"0x1.79819cf0b3cafp+6",
+"0x1.5f9fcf4eaf2d3p+6",
+"0x1.3eccc945f5d13p+6",
+"0x1.17ae726125d9ep+6",
+"0x1.d61504892d1b9p+5",
+"0x1.738532b5bb630p+5",
+"0x1.099f98e2c2789p+5",
+"0x1.34f6e7235ed3ap+4",
+"0x1.4254074c643b8p+2",
+"-0x1.2ac85a0b451e4p+3",
+"-0x1.786a49b226a96p+4",
+"-0x1.2a00f06df7af3p+5",
+"-0x1.91ea878f56de2p+5",
+"-0x1.f1e4b56124fd7p+5",
+"-0x1.2405303661ba8p+6",
+"-0x1.49540f3cd375ep+6",
+"-0x1.682266a374951p+6"
+]
+}
+},
+"simpson one": {
+"r": {
+"f": "0x0.0p+0"
+}
+},
+"simpson two": {
+"r": {
+"f": "0x1.4000000000000p+0"
+}
+},
+"simpson zero spacing": {
+"r": {
+"f": "0x1.5555555555555p+1"
+}
+},
+"trapezoid 2d/rows": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.68a4b77905dfbp+0",
+"0x1.cf2209a761a26p-1",
+"0x1.5800000000000p+1"
+]
+}
+},
+"trapezoid 3d axis -1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9f04db36205c7p-3",
+"0x1.6422ce259a978p-1",
+"0x1.24cf8cb223190p+0",
+"0x1.84ba9b98864bdp+0",
+"0x1.cba7f3d234518p+0",
+"0x1.f5084332fa21fp+0",
+"0x1.fe329124ce42ep+0",
+"0x1.e690061965335p+0",
+"0x1.afa59e1a46a02p+0",
+"0x1.5cfb26dd49b76p+0",
+"0x1.e7c249e0f5a96p-1",
+"0x1.ec65711f53292p-2"
+]
+}
+},
+"trapezoid 3d axis 0": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+5
+],
+"strides": [
+40,
+8
+],
+"v": [
+"0x1.4c3f6e69b847fp-1",
+"0x1.5642e2aab10cep-1",
+"0x1.5f63da5591858p-1",
+"0x1.679c4af5a34fdp-1",
+"0x1.6ee6c3f562910p-1",
+"0x1.753e723803e84p-1",
+"0x1.7a9f234ac5ff3p-1",
+"0x1.7f05482bf1de0p-1",
+"0x1.826df7a5b385ap-1",
+"0x1.84d6f03b3be02p-1",
+"0x1.863e99a6e5b8cp-1",
+"0x1.86a405e860d6ap-1",
+"0x1.8606f1e230754p-1",
+"0x1.8467c58614e0ep-1",
+"0x1.81c7939042d48p-1",
+"0x1.7e2818d1961b9p-1",
+"0x1.798bbb0937c81p-1",
+"0x1.73f5874e7ac40p-1",
+"0x1.6d69300bfb7fbp-1",
+"0x1.65eb0a8d58c64p-1"
+]
+}
+},
+"trapezoid 3d axis 1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+5
+],
+"strides": [
+40,
+8
+],
+"v": [
+"0x1.157395e250295p-1",
+"0x1.3842a34baf977p-1",
+"0x1.5a430e6b29988p-1",
+"0x1.7b5e57396c688p-1",
+"0x1.9b7e954f7ae7dp-1",
+"0x1.6f3527f188bb0p+0",
+"0x1.71fc12096c0a4p+0",
+"0x1.73ce271467e44p+0",
+"0x1.74aa32a614e47p+0",
+"0x1.748fa321cfed6p+0",
+"0x1.ef196950ae908p-1",
+"0x1.d22204a8d6c02p-1",
+"0x1.b3f62b0387c6ap-1",
+"0x1.94a9d3876fa22p-1",
+"0x1.7451b442fe232p-1"
+]
+}
+},
+"trapezoid bool": {
+"r": {
+"f": "0x1.0000000000000p+0"
+}
+},
+"trapezoid complex": {
+"r": {
+"c": [
+"0x1.6000000000000p+2",
+"0x1.8000000000000p+0"
+]
+}
+},
+"trapezoid dx per lane": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+2"
+]
+}
+},
+"trapezoid empty": {
+"r": {
+"f": "0x0.0p+0"
+}
+},
+"trapezoid empty lanes": {
+"r": {
+"nd": "float64",
+"shape": [
+0
+],
+"strides": [
+8
+],
+"v": []
+}
+},
+"trapezoid exp/squares/10": {
+"r": {
+"f": "0x1.b8ec541b88aeep+0"
+}
+},
+"trapezoid exp/squares/101": {
+"r": {
+"f": "0x1.b7e380948313cp+0"
+}
+},
+"trapezoid exp/squares/3": {
+"r": {
+"f": "0x1.c94f7066e8252p+0"
+}
+},
+"trapezoid exp/squares/4": {
+"r": {
+"f": "0x1.c08c13ce5efa8p+0"
+}
+},
+"trapezoid exp/uniform/17": {
+"r": {
+"f": "0x1.b805f8e245539p+0"
+}
+},
+"trapezoid exp/uniform/2": {
+"r": {
+"f": "0x1.dbf0a8b145769p+0"
+}
+},
+"trapezoid exp/uniform/3": {
+"r": {
+"f": "0x1.c101a0c992f03p+0"
+}
+},
+"trapezoid exp/uniform/33": {
+"r": {
+"f": "0x1.b7ea7b5fcbf11p+0"
+}
+},
+"trapezoid exp/uniform/4": {
+"r": {
+"f": "0x1.bbf2122c2e583p+0"
+}
+},
+"trapezoid exp/uniform/4097": {
+"r": {
+"f": "0x1.b7e1518733095p+0"
+}
+},
+"trapezoid exp/uniform/5": {
+"r": {
+"f": "0x1.ba2b36f90265ep+0"
+}
+},
+"trapezoid list": {
+"r": {
+"f": "0x1.b000000000000p+3"
+}
+},
+"trapezoid long": {
+"r": {
+"f": "-0x1.12eb911850934p-1"
+}
+},
+"trapezoid nan": {
+"r": {
+"f": "nan"
+}
+},
+"trapezoid series": {
+"r": {
+"f": "nan"
+}
+},
+"trapezoid x broadcast": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.8000000000000p+1",
+"0x1.8000000000000p+1"
+]
 }
 }
 },

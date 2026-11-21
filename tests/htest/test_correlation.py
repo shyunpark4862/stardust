@@ -453,9 +453,13 @@ def test_results():
 
 def test_messages():
     x, y = [0.1, 0.4, -0.2, 1.3, 0.7], [0.3, 1.1, 0.0, -0.5, 2.0]
-    with pytest.raises(TypeError, match=r"pearsonr\(\): 'method' must be None, not str"):
+    with pytest.raises(
+        TypeError, match=r"pearsonr\(\): 'method' must be None, a PermutationMethod or a MonteCarloMethod, not str"
+    ):
         h.pearsonr(x, y, method="permutation")
-    with pytest.raises(TypeError, match=r"spearmanrho\(\): 'method' must be None, not str"):
+    with pytest.raises(
+        TypeError, match=r"spearmanrho\(\): 'method' must be None, a PermutationMethod or a MonteCarloMethod, not str"
+    ):
         h.spearmanrho(x, y, method="exact")
     with pytest.raises(ValueError, match=r"pearsonr\(\): the paired samples must agree in size, not 5 and 4"):
         h.pearsonr(x, y[:4])

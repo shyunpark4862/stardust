@@ -24,6 +24,7 @@ _DENSE = {
     "factorized": "sd.linalg.lu",
     "inv": "sd.linalg.inv",
     "spsolve_triangular": "sd.linalg.solve_triangular",
+    "expm": "sd.linalg.expm",
 }
 
 

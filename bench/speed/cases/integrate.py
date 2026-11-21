@@ -2,9 +2,8 @@
 
 The plan of the area's cases, milestone by milestone: every spec below names the sd.integrate
 names it needs and its milestone, and cases() keeps a case only once the milestone is in DONE and
-the names are public (C0 has none, so the area has no case yet; C3 brings the sample rules and
-fixed_quad, C4 quad and the multiple integrals, C5 quad's weights, C6 tanhsinh and nsum, C7
-quad_vec and cubature). The comparator is scipy at its defaults (one thread); the integrands are
+the names are public (C3 brought the sample rules and fixed_quad; C4 brings quad and the multiple
+integrals, C5 quad's weights, C6 tanhsinh and nsum, C7 quad_vec and cubature). The comparator is scipy at its defaults (one thread); the integrands are
 the same Python functions on both sides (quad's family: one float a call; tanhsinh and nsum:
 numpy arrays for scipy, sd arrays for sd), so the times compare the work between the calls.
 """
@@ -20,7 +19,7 @@ import numpy as np
 
 from ..registry import Case, Ref
 
-DONE: tuple[str, ...] = ()  # the milestones whose cases run
+DONE: tuple[str, ...] = ("C3",)  # the milestones whose cases run
 BATCH_SIZES = ((10, "10"), (1000, "10^3"), (10**5, "10^5"))
 SAMPLE_SIZES = ((10**3, "10^3"), (10**6, "10^6"))
 
@@ -156,7 +155,7 @@ def _sample_specs():
                             lambda d, name=name: lambda: getattr(si, name)(d["y"], x=d["x"]), setup=_samples_setup(n),
                             size=size, n=n + 1, quick=n == 10**6 and name == "trapezoid"))  # fmt: skip
     out.append(Spec("C3", "samples", "fixed_quad n=5", ("fixed_quad",), lambda d: lambda: I.fixed_quad(sd.exp, 0.0, 1.0),
-                    lambda d: lambda: si.fixed_quad(np.exp, 0.0, 1.0)))  # fmt: skip
+                    lambda d: lambda: si.fixed_quad(np.exp, 0.0, 1.0)[0]))  # fmt: skip
     return out
 
 

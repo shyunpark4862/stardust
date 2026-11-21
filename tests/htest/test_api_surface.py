@@ -13,13 +13,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "htest.md"
 
-# Documented, not implemented yet (docs/design/htest.md §8): the tests after H8. A milestone moves
-# its names from here to sd.htest.__all__.
-PLANNED = {
-    # H9
-    "permutation_test", "monte_carlo_test", "bootstrap", "PermutationMethod", "MonteCarloMethod", "BootstrapMethod",
-    "bws_test", "multiscale_graphcorr", "goodness_of_fit",
-}  # fmt: skip
+# Documented, not implemented yet (docs/design/htest.md §8). A milestone moves its names from here to
+# sd.htest.__all__; H9 was the last one with new functions.
+PLANNED = set()
 # Taking tables (the last axes) or summaries, not samples along an axis (H9)
 NO_AXIS = {
     "ttest_ind_from_stats", "page_trend_test", "anderson_ksamp", "somersd", "chi2_contingency",

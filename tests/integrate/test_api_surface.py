@@ -1,7 +1,9 @@
 """docs/api/integrate.md and the module agree: the signature blocks name the first version's 15
-functions (decision C2) and the result class; only the result class is exported so far (C0), and
-the documented signatures follow the area's naming decisions (C4, C11-C14)."""
+functions (decision C2) and the result class; the result class (C0) and the functions of the
+milestones done (C3) are exported with the documented signatures, and the documented signatures
+follow the area's naming decisions (C4, C11-C14, C40)."""
 
+import inspect
 import pathlib
 import re
 
@@ -17,6 +19,15 @@ PLANNED = {
     "newton_cotes", "trapezoid", "simpson", "romb", "cumulative_trapezoid", "cumulative_simpson",
 }  # fmt: skip
 RESULTS = {"IntegrateResult"}
+PUBLIC = {
+    "trapezoid",
+    "simpson",
+    "romb",
+    "cumulative_trapezoid",
+    "cumulative_simpson",
+    "fixed_quad",
+    "newton_cotes",
+}  # C3
 ELEMENTWISE = {"tanhsinh", "nsum"}  # C4: the elementwise-iterative family, the only ones with args
 
 
@@ -38,8 +49,15 @@ def test_exports_match_the_document():
     funcs, bare = documented()
     assert set(funcs) == PLANNED
     assert bare == RESULTS
-    assert set(sd.integrate.__all__) == RESULTS  # C0: no public function yet
-    assert all(not hasattr(sd.integrate, n) for n in PLANNED)
+    assert set(sd.integrate.__all__) == RESULTS | PUBLIC
+    assert all(not hasattr(sd.integrate, n) for n in PLANNED - PUBLIC)  # milestones C4-C7
+
+
+def test_signatures_match_the_document():
+    funcs, _ = documented()
+    for name in PUBLIC:
+        got = str(inspect.signature(getattr(sd.integrate, name)))[1:-1]
+        assert got == funcs[name], (name, got, funcs[name])
 
 
 def test_not_in_the_first_version():

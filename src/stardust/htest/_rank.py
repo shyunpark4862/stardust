@@ -22,6 +22,7 @@ from .. import _calls
 from .. import _core as _sd
 from ..stats._descriptive import _as_array, _scalar_value
 from . import _common as C
+from . import _resampling as R
 from ._gof import _lambda, _nest
 from ._result import _TestResult
 
@@ -29,6 +30,7 @@ _k = _sd.htest
 _ALT = {"two-sided": 0, "less": 1, "greater": 2}
 _REQ = {"auto": 0, "exact": 1, "asymptotic": 2}
 _USED = ("exact", "asymptotic")
+_RANK_METHODS = ("auto", "exact", "asymptotic")
 _ZERO = {"wilcox": 0, "pratt": 1, "zsplit": 2}
 _TIES = {"below": 0, "above": 1, "ignore": 2}
 _DIST = {"t": 0, "normal": 1}
@@ -137,6 +139,25 @@ def _one(s):
     return not _shape(s) and not s.keepdims
 
 
+def _is_permutation(method, name):
+    """method= of a rank test: a PermutationMethod (H9) or one of the strings; another resampling
+    object is a TypeError naming them."""
+    if isinstance(method, R.PermutationMethod):
+        return True
+    if isinstance(method, (R.MonteCarloMethod, R.BootstrapMethod)):
+        R.check_method(method, name, R.PermutationMethod, _RANK_METHODS)
+    return False
+
+
+def _permutation_result(cls, s, stat, p, pairs, info, extra=None):
+    """A rank test's result with its pvalue from the permutations: method 'permutation' (H12), no
+    zstatistic (no normal approximation, H47)."""
+    one = _one(s)
+    m = "permutation" if one else R.nested_names("permutation", _shape(s))
+    info["pairs"] = info.get("pairs", []) + pairs
+    return cls._make(batch=s.batch, info=info, statistic=s.out(stat), pvalue=s.out(p), method=m, **(extra or {}))
+
+
 # ---- two samples --------------------------------------------------------------------------
 
 
@@ -147,14 +168,23 @@ def mannwhitneyu(
     """The Mann-Whitney U test: statistic U1 (x's U: the pairs with x above y, ties counting
     half), pvalue, method and zstatistic (the normal approximation's, with the tie and continuity
     corrections). method 'auto' (exact when one sample has at most 8 values and there are no ties;
-    scipy's rule), 'exact' (with ties, conditional on the midranks) or 'asymptotic'. Unpacks as
-    (statistic, pvalue)."""
+    scipy's rule), 'exact' (with ties, conditional on the midranks), 'asymptotic' or a
+    PermutationMethod (H9: U under the permutations; method 'permutation'). Unpacks as (statistic,
+    pvalue)."""
     name = "mannwhitneyu"
     cont = C.flag(use_continuity, name, "use_continuity")
     alt = C.alternative(alternative, name)
-    meth = C.method(method, name, ("asymptotic", "exact"))
+    perm = _is_permutation(method, name)
+    meth = "asymptotic" if perm else C.method(method, name, ("asymptotic", "exact"))
     s = _two(name, x, y, axis, nan_policy, keepdims)
     stat, p, z, codes, work = _k.mwu(s.rows[0], s.rows[1], cont, _ALT[alt], _REQ[meth], _EXACT_CAP, s.policy == "omit")
+    if perm:  # H9: U under the permutations of the pooled samples (scipy's)
+
+        def u(a, b):
+            return mannwhitneyu(a, b, axis=-1, method="asymptotic").statistic
+
+        p, pairs = R.method_pvalue(name, method, s, u, alt)
+        return _permutation_result(MannwhitneyuResult, s, stat, p, pairs, s.info(alt))
     _check_work(work, meth, name)
     return _with_z(MannwhitneyuResult, s, stat, p, z, codes, _methods(codes, _shape(s), _one(s)), s.info(alt))
 
@@ -180,13 +210,15 @@ def wilcoxon(
     test), pvalue, method and zstatistic. zero_method 'wilcox' (zeros dropped), 'pratt' (ranked,
     then left out) or 'zsplit' (their ranks split between T+ and T-). method 'auto' (exact up to
     50 differences without ties or zeros, exact by the signs' enumeration up to 13 with them:
-    scipy's rule), 'exact' (with ties or zeros, conditional on the midranks) or 'asymptotic'.
-    Unpacks as (statistic, pvalue)."""
+    scipy's rule), 'exact' (with ties or zeros, conditional on the midranks), 'asymptotic' or a
+    PermutationMethod (H9: T+ under the sign flips of the differences). Unpacks as (statistic,
+    pvalue)."""
     name = "wilcoxon"
     zm = C.choice(zero_method, name, "zero_method", tuple(_ZERO))
     corr = C.flag(correction, name, "correction")
     alt = C.alternative(alternative, name)
-    meth = C.method(method, name, ("exact", "asymptotic"))
+    perm = _is_permutation(method, name)
+    meth = "asymptotic" if perm else C.method(method, name, ("exact", "asymptotic"))
     if y is None:
         s = C.Samples(name, [x], ("x",), axis, nan_policy, keepdims=keepdims, scan=False)
         yrows = None
@@ -196,8 +228,16 @@ def wilcoxon(
     stat, p, z, codes, work = _k.wilcoxon(
         s.rows[0], yrows, _ZERO[zm], corr, _ALT[alt], _REQ[meth], _EXACT_CAP, s.policy == "omit"
     )
-    _check_work(work, meth, name)
     info = s.info(alt, pairs=[("Zero Method:", zm)])
+    if perm:  # H9: T+ under the sign flips of the differences (scipy's permutation_type='samples')
+        d = s.rows[0] if yrows is None else s.rows[0] - yrows
+
+        def tplus(v):
+            return wilcoxon(v, axis=-1, zero_method=zm, alternative="greater", method="asymptotic").statistic
+
+        p, pairs = R.method_pvalue(name, method, s, tplus, alt, ptype="samples", data=[d])
+        return _permutation_result(WilcoxonResult, s, stat, p, pairs, info)
+    _check_work(work, meth, name)
     return _with_z(WilcoxonResult, s, stat, p, z, codes, _methods(codes, _shape(s), _one(s)), info)
 
 
@@ -223,14 +263,23 @@ def brunnermunzel(
 def ansari(x, y, /, *, axis=None, alternative="two-sided", method="auto", nan_policy="propagate", keepdims=False):
     """The Ansari-Bradley test of equal scales: statistic AB (x's sum of min(r, N + 1 - r) over its
     midranks r), pvalue and method: 'auto' (exact when both samples have fewer than 55 values and
-    there are no ties: scipy's rule), 'exact' (with ties, conditional on the midranks) or
-    'asymptotic' (the normal approximation, scipy's tie-corrected variance). Unpacks as
-    (statistic, pvalue)."""
+    there are no ties: scipy's rule), 'exact' (with ties, conditional on the midranks),
+    'asymptotic' (the normal approximation, scipy's tie-corrected variance) or a PermutationMethod
+    (H9). Unpacks as (statistic, pvalue)."""
     name = "ansari"
     alt = C.alternative(alternative, name)
-    meth = C.method(method, name, ("exact", "asymptotic"))
+    perm = _is_permutation(method, name)
+    meth = "asymptotic" if perm else C.method(method, name, ("exact", "asymptotic"))
     s = _two(name, x, y, axis, nan_policy, keepdims)
     stat, p, codes, work = _k.ansari(s.rows[0], s.rows[1], _ALT[alt], _REQ[meth], _EXACT_CAP, s.policy == "omit")
+    if perm:  # H9: AB under the permutations; small AB is a larger scale ratio (scipy flips the side)
+
+        def ab(a, b):
+            return ansari(a, b, axis=-1, method="asymptotic").statistic
+
+        palt = {"less": "greater", "greater": "less"}.get(alt, alt)
+        p, pairs = R.method_pvalue(name, method, s, ab, palt)
+        return _permutation_result(AnsariResult, s, stat, p, pairs, s.info(alt))
     _check_work(work, meth, name)
     m = _methods(codes, _shape(s), _one(s))
     return AnsariResult._make(batch=s.batch, info=s.info(alt), statistic=s.out(stat), pvalue=s.out(p), method=m)

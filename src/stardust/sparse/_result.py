@@ -24,6 +24,9 @@ iteration: converged, status (ARPACK's info: 0, 1 the iteration limit, 3 no shif
 applied), message, n_iter (restarts), n_converged and n_op (products with OP, or with A and A^H
 for svds). When the iteration stops short, the converged pairs are the result (scipy raises
 ArpackNoConvergence with them).
+
+onenormest's result (OnenormestResult; SP102) unpacks into (est, v, w), v and w None unless
+compute_v / compute_w asked for them, with the counts n_iter and n_op.
 """
 
 from .. import _calls
@@ -258,5 +261,46 @@ class SvdsResult(_EigenResult):
     _OPS = "No. A x, A^H x:"
 
 
+# ---------------------------------------------------------------- onenormest (SP102)
+
+
+class OnenormestResult(_FieldResult):
+    """onenormest's result: est (the estimate, a lower bound of ||A||_1), v (the unit vector e_j
+    with A v = w; None unless compute_v), w (None unless compute_w), n_iter (the estimator's
+    iterations; 0 when t >= n gave the exact norm), n_op (products with A and A^H, a block of t
+    columns each); unpacks as (est, v, w), whatever compute_v / compute_w asked (the result's form
+    does not change with an option, docs/api/linalg.md §1.6; scipy returns the bare estimate)."""
+
+    __slots__ = ()
+    _ABSENT = "the estimator does not give it"
+    _FIELDS = ("est", "v", "w", "n_iter", "n_op")
+    _UNPACK = ("est", "v", "w")
+    _TITLE = "1-Norm Estimate Results"
+
+    def __init__(self, **fields):
+        self._set((), fields, True)
+
+    __iter__, __len__, __getitem__ = _iter, _len, _getitem
+
+    @_calls.method("summary")
+    def summary(self):
+        """The result as a text table: the estimate, the column it came from (when v was asked
+        for) and the counts."""
+        f = self._fields
+        left = [("Estimate:", _S.forg(f["est"], 6))]
+        if f["v"] is not None:
+            left.append(("Column:", str(int(_sd.argmax(f["v"])))))
+        right = [("No. Iterations:", str(f["n_iter"])), ("No. A X, A^H X:", str(f["n_op"]))]
+        return _S.render(self._TITLE, header=(left, right))
+
+    def __repr__(self):
+        parts = [f"est={_S.compact(self._fields['est'])}"]
+        for k in ("v", "w"):
+            v = self._fields[k]
+            parts.append(f"{k}=None" if v is None else f"{k}=<array of shape {_S.shape_text(tuple(v.shape))}>")
+        parts += [f"n_iter={self._fields['n_iter']}", f"n_op={self._fields['n_op']}"]
+        return f"{type(self).__name__}(" + ", ".join(parts) + ")"
+
+
 __all__ = ["CgResult", "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult", "EigshResult",
-           "EigsResult", "SvdsResult"]  # fmt: skip
+           "EigsResult", "SvdsResult", "OnenormestResult"]  # fmt: skip

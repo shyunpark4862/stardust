@@ -1,0 +1,235 @@
+{
+ "schema": 1,
+ "area": "integrate",
+ "runs": {
+  "20261122-011646-0d9b16e+": {
+   "commit": "0d9b16e",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/accuracy/integrate.py",
+    "bench/accuracy/sparse.py",
+    "bench/speed/cases/sparse.py",
+    "csrc/bind/htest_bind.cpp",
+    "csrc/bind/module.cpp",
+    "csrc/htest/gof.cpp",
+    "src/stardust/htest/__init__.py",
+    "src/stardust/htest/_result.py",
+    "src/stardust/integrate/__init__.py",
+    "src/stardust/sparse/__init__.py",
+    "src/stardust/sparse/_direct.py",
+    "tests/golden/cases_integrate.py",
+    "tests/golden/cases_sparse.py",
+    "tests/golden/data/integrate.json",
+    "tests/golden/data/sparse.json",
+    "tests/integrate/refdata.py",
+    "tests/integrate/test_api_surface.py",
+    "tests/integrate/test_result.py",
+    "tests/sparse/refdata.py",
+    "tests/sparse/test_api_surface.py",
+    "tests/sparse/test_reference_data.py",
+    "tools/integrate_ref.py",
+    "tools/sparse_ref.py"
+   ],
+   "date": "2026-11-22T01:16:46",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "integrate/fixed_quad",
+   "area": "integrate",
+   "name": "fixed_quad",
+   "points": 90,
+   "regions": {
+    "n=5": {
+     "points": 30,
+     "rel_max": 298.78185331485685,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "book/osc/7"
+     ]
+    },
+    "n=20": {
+     "points": 30,
+     "rel_max": 461.48644763288894,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "book/osc/7"
+     ]
+    },
+    "n=100": {
+     "points": 30,
+     "rel_max": 7.927246291729604,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "book/osc/10"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "n=5": {
+      "points": 30,
+      "rel_max": 298.7818533148562,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "book/osc/7"
+      ]
+     },
+     "n=20": {
+      "points": 30,
+      "rel_max": 461.4864476328882,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "book/osc/7"
+      ]
+     },
+     "n=100": {
+      "points": 30,
+      "rel_max": 7.927246291730591,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "book/osc/10"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120,
+   "run": "20261122-011646-0d9b16e+",
+   "comparators_run": "20261122-011646-0d9b16e+"
+  },
+  {
+   "id": "integrate/samples",
+   "area": "integrate",
+   "name": "samples",
+   "points": 54,
+   "regions": {
+    "trapezoid": {
+     "points": 12,
+     "rel_max": 1.4284011528493308e-16,
+     "contract": 0.022974810356099398,
+     "bound": 1.0,
+     "worst": [
+      "samples/2d/rows"
+     ]
+    },
+    "simpson": {
+     "points": 12,
+     "rel_max": 3.3383067392426773e-16,
+     "contract": 0.05009835387302552,
+     "bound": 1.0,
+     "worst": [
+      "samples/exp/uniform/17"
+     ]
+    },
+    "romb": {
+     "points": 6,
+     "rel_max": 1.7331734444842913e-16,
+     "contract": 0.02439026289371689,
+     "bound": 1.0,
+     "worst": [
+      "samples/exp/uniform/33"
+     ]
+    },
+    "cumulative_trapezoid": {
+     "points": 12,
+     "rel_max": 1.7477128734267907e-15,
+     "contract": 0.046638189156991465,
+     "bound": 1.0,
+     "worst": [
+      "samples/exp/uniform/4097"
+     ]
+    },
+    "cumulative_simpson": {
+     "points": 12,
+     "rel_max": 3.992608784400387e-15,
+     "contract": 0.043526100136245686,
+     "bound": 1.0,
+     "worst": [
+      "samples/exp/uniform/17"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "trapezoid": {
+      "points": 12,
+      "rel_max": 9.819162091636206e-17,
+      "contract": 0.018425656140409714,
+      "bound": 1.0,
+      "worst": [
+       "samples/exp/uniform/4"
+      ]
+     },
+     "simpson": {
+      "points": 12,
+      "rel_max": 1.346091534039504e-16,
+      "contract": 0.02006994927659258,
+      "bound": 1.0,
+      "worst": [
+       "samples/2d/rows"
+      ]
+     },
+     "romb": {
+      "points": 6,
+      "rel_max": 1.2635306279745794e-16,
+      "contract": 0.021773020309438357,
+      "bound": 1.0,
+      "worst": [
+       "samples/exp/uniform/5"
+      ]
+     },
+     "cumulative_trapezoid": {
+      "points": 12,
+      "rel_max": 1.7477128734267907e-15,
+      "contract": 0.046638189156991465,
+      "bound": 1.0,
+      "worst": [
+       "samples/exp/uniform/4097"
+      ]
+     },
+     "cumulative_simpson": {
+      "points": 12,
+      "rel_max": 3.992608784400387e-15,
+      "contract": 0.043526100136245686,
+      "bound": 1.0,
+      "worst": [
+       "samples/exp/uniform/17"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120,
+   "run": "20261122-011646-0d9b16e+",
+   "comparators_run": "20261122-011646-0d9b16e+"
+  }
+ ]
+}

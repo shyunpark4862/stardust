@@ -40,6 +40,19 @@ SP6 adds
          v0 = sin(1..n)) and R 4.6.2's RSpectra 0.16.2 (eigs_sym, eigs, svds; real matrices;
          the same initvec).
 
+SP7 adds
+
+  norms     norm(A, ord) for ord 1, -1, inf, -inf, 'fro' and 2 (one region each) on norms.npz: one
+         point per matrix, the sums' contract |v - ref| over (gamma_m + 2 eps) ref (m the terms of
+         the longest line; Frobenius: every stored entry), the 2-norm C_EIG eps ||A||_2 (svds's).
+         The comparators are scipy 1.18.1 (scipy.sparse.linalg.norm; its 2-norm is ARPACK on
+         A^T A) and R's Matrix (norm(A, "1"), "I", "F", "2"; real matrices);
+  matfuncs  expm (region expm: every entry of exp(s A) on expm.npz, |E_ij - ref_ij| over C_EXPM eps
+         max(1, ||s A||_1) max |ref|), expm_multiply (region expm_multiply: exp(s A) b on
+         expmv.npz, over C_EXPM eps max(1, ||s A||_1) max_i (|exp(s A)| |b|)_i) and its time
+         interval (region expm_multiply_interval: t = 0, 1/4, .., 1, the same form at each t). The
+         comparators are scipy 1.18.1 (expm, expm_multiply) and R's Matrix::expm (real matrices).
+
  The contract of the others is
 tests/sparse/refdata.py's (docs/design/sparse.md §4), as the tests judge it: |y - ref| in units of
 gamma_m sum_j |a_ij x_j| (m = min(len, L) + ceil(log2(len / L)), L = 4096), so a region's
@@ -49,8 +62,7 @@ left out.
 
 The comparators are scipy 1.18.1 (live: scipy.sparse's csr_array @ x, x @ A and sum(axis=)) and R
 4.6.2's Matrix 1.7.6 (%*%, crossprod, rowSums, colSums, sum), on the same points and measured the
-same way (solve: scipy's spsolve, SuperLU; R's solve, CSparse's LU). The other families (lstsq,
-eig, norms, expm) join with the milestones that make their functions public (SP5-SP7).
+same way (solve: scipy's spsolve, SuperLU; R's solve, CSparse's LU).
 """
 
 from __future__ import annotations
@@ -59,7 +71,7 @@ import numpy as np
 
 from .common import Custom, compare_libs, region, ulps
 
-FAMILIES = ("spmv", "sums", "solve", "iterative", "eig")
+FAMILIES = ("spmv", "sums", "solve", "iterative", "eig", "norms", "matfuncs")
 RTOL = 1e-10  # the iterative family's rtol (square) and atol = btol (least squares)
 
 
@@ -215,6 +227,10 @@ def _regions(family, lib):
         return None if lib == "R" else _iterative_regions(lib)
     if family == "eig":
         return _eig_regions(lib)
+    if family == "norms":
+        return _norm_regions(lib)
+    if family == "matfuncs":
+        return _matfunc_regions(lib)
 
     rows = {}
     for p, m in _points(family):
@@ -371,6 +387,133 @@ def _eig_regions(lib):
         rel = np.concatenate([r for _, _, r, _ in parts])
         u = np.concatenate([np.asarray(x, dtype=float) for *_, x in parts])
         out[name] = region(where, ulp=u, rel=rel, contract=err, bound=1.0, excluded=excluded.get(name, 0))
+    return out or None
+
+
+# ---------------------------------------------------------------- norms, matfuncs (SP7)
+
+_ORDS = (("1", 1), ("-1", -1), ("inf", np.inf), ("-inf", -np.inf), ("fro", "fro"), ("2", 2))
+_R_NORM = {"1": '"1"', "inf": '"I"', "fro": '"F"', "2": '"2"'}
+
+
+def _norm_value(lib, m, key, o):
+    if lib == "sd":
+        import stardust as sd
+        from tests.sparse.conftest import coo
+
+        return sd.sparse.norm(coo(m).tocsr(), ord=o)
+    if lib == "scipy":
+        import scipy.sparse.linalg as spla
+
+        try:
+            return float(spla.norm(m.scipy("csr"), o))
+        except spla.ArpackError:  # its 2-norm's start vector can be zero (empty/rows: the zero rows)
+            return None
+    if m.data.dtype.kind == "c" or key not in _R_NORM:
+        return None
+    return float(_r_value(f"norm(A, {_R_NORM[key]})", m, {})[0])
+
+
+def _norm_regions(lib):
+    from tests.sparse import refdata as R
+
+    rows = {}
+    for p, m in _points("norms"):
+        if min(m.shape) == 0:
+            continue
+        r, c, _ = m.canonical()
+        col_len = np.bincount(c, minlength=m.shape[1]).max(initial=0)
+        row_len = np.bincount(r, minlength=m.shape[0]).max(initial=0)
+        terms = {"1": col_len, "-1": col_len, "inf": row_len, "-inf": row_len, "fro": len(r)}
+        for key, o in _ORDS:
+            if f"{key}_hi" not in p:
+                continue
+            v = _norm_value(lib, m, key, o)
+            if v is None:
+                continue
+            hi = float(p[f"{key}_hi"][0])
+            ref = hi + float(p[f"{key}_lo"][0])
+            if key == "2":
+                err = abs(v - ref) / (R.C_EIG * R.EPS * ref) if ref else abs(v)
+            else:
+                err = R.norm_error(v, ref, terms[key])
+            rel = abs(v - ref) / abs(ref) if ref else abs(v - ref)
+            rows.setdefault(key, []).append((f"{p['matrix']} norm {key}", err, rel, float(ulps(v, hi))))
+    out = {}
+    for key, parts in rows.items():
+        out[key] = region([w for w, *_ in parts], ulp=np.array([u for *_, u in parts]),
+                          rel=np.array([r for _, _, r, _ in parts]), contract=np.array([e for _, e, _, _ in parts]),
+                          bound=1.0)  # fmt: skip
+    return out or None
+
+
+def _matfunc_values(lib, m, s, b):
+    """(exp(s A), exp(s A) b, [exp(t s A) b for t in TIMES]) of library lib (None where it has no
+    such function)."""
+    if lib == "sd":
+        import stardust as sd
+        from tests.sparse.conftest import coo
+
+        A = coo(m).tocsr() * s
+        E = np.asarray(sd.sparse.expm(A).toarray().tolist())
+        y = np.asarray(sd.sparse.expm_multiply(A, sd.asarray(b)).tolist())
+        Y = np.asarray(sd.sparse.expm_multiply(A, sd.asarray(b), start=0.0, stop=1.0, num=5).tolist())
+        return E, y, Y
+    if lib == "scipy":
+        import scipy.sparse.linalg as spla
+
+        A = m.scipy("csc") * s
+        return (spla.expm(A).toarray(), spla.expm_multiply(A, b),
+                spla.expm_multiply(A, b, start=0.0, stop=1.0, num=5))  # fmt: skip
+    if m.data.dtype.kind == "c":
+        return None
+    n = m.shape[0]
+    E = _r_value("as.numeric(t(as.matrix(expm(A * s))))", m, {"s": np.array([s])}).reshape(n, n)
+    return E, None, None
+
+
+def _matfunc_regions(lib):
+    import scipy.linalg as sl
+
+    from tests.sparse import refdata as R
+
+    rows = {}
+    pts = {p["matrix"] + str(p["scale"]): p for p, _ in _points("expm")}
+    for q, m in _points("expmv"):
+        p = pts[q["matrix"] + str(q["scale"])]
+        s = float(q["scale"])
+        d = m.dense() * s
+        norm1 = float(np.abs(d).sum(axis=0).max())
+        got = _matfunc_values(lib, m, s, q["b"])
+        if got is None:
+            continue
+        E, y, Y = got
+        n = d.shape[0]
+        Eref = (p["expm_hi"] + p["expm_lo"]).reshape(n, n)
+        tag = f"{q['matrix']} s={s:g}"
+        parts = [("expm", E.ravel(), Eref.ravel(), p["expm_hi"], np.abs(Eref).max(), norm1, "E")]
+        if y is not None:
+            parts.append(("expm_multiply", y, q["expmv_hi"] + q["expmv_lo"], q["expmv_hi"],
+                          (np.abs(Eref) @ np.abs(q["b"])).max(), norm1, "y"))  # fmt: skip
+            refs = (q["interval_hi"] + q["interval_lo"]).reshape(len(R.TIMES), n)
+            his = q["interval_hi"].reshape(len(R.TIMES), n)
+            for k, t in enumerate(R.TIMES):
+                scale = (np.abs(sl.expm(t * d)) @ np.abs(q["b"])).max()
+                parts.append(("expm_multiply_interval", Y[k], refs[k], his[k], scale, t * norm1, f"y(t={t:g})"))
+        for name, v, ref, hi, scale, nrm, what in parts:
+            unit = R.C_EXPM * R.EPS * max(1.0, nrm) * scale
+            err = np.abs(v - ref) / unit
+            with np.errstate(all="ignore"):
+                rel = np.where(ref == 0, np.abs(v - ref), np.abs(v - ref) / np.abs(ref))
+            where = [f"{tag} {what}[{i}]" for i in range(v.size)]
+            rows.setdefault(name, []).append((where, err, rel, ulps(v, hi)))
+    out = {}
+    for name, parts in rows.items():
+        where = np.concatenate([np.asarray(w) for w, *_ in parts])
+        err = np.concatenate([e for _, e, _, _ in parts])
+        rel = np.concatenate([r for _, _, r, _ in parts])
+        u = np.concatenate([np.asarray(x, dtype=float) for *_, x in parts])
+        out[name] = region(where, ulp=u, rel=rel, contract=err, bound=1.0)
     return out or None
 
 

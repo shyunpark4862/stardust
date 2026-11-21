@@ -489,9 +489,14 @@ def test_results():
 
 def test_messages():
     t = [[3.0, 7], [9, 2]]
-    with pytest.raises(TypeError, match=r"chi2_contingency\(\): 'method' must be None, not str"):
+    with pytest.raises(
+        TypeError,
+        match=r"chi2_contingency\(\): 'method' must be None, a PermutationMethod or a MonteCarloMethod, not str",
+    ):
         h.chi2_contingency(t, method="permutation")
-    with pytest.raises(TypeError, match=r"fisher_exact\(\): 'method' must be None, not str"):
+    with pytest.raises(
+        TypeError, match=r"fisher_exact\(\): 'method' must be None, a PermutationMethod or a MonteCarloMethod, not str"
+    ):
         h.fisher_exact(t, method="exact")
     with pytest.raises(ValueError, match=r"chi2_contingency\(\): 'observed' must have at least 2 dimensions"):
         h.chi2_contingency([3.0, 4.0])

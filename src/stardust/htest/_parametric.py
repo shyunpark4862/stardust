@@ -15,8 +15,9 @@ called through their own methods. Degenerate lanes give NaN without warnings (H1
 
 from .. import _calls
 from .. import _core as _sd
-from ..stats._descriptive import _as_array, _scalar_value, _type_name
+from ..stats._descriptive import _as_array, _scalar_value
 from . import _common as C
+from . import _resampling as R
 from ._result import _TestResult
 
 _k = _sd.htest
@@ -192,18 +193,29 @@ def ttest_ind(
 ):
     """The two-sample t test: Student's (equal_var=True), Welch's (False), with trim > 0 Yuen's
     trimmed test. statistic, pvalue, df and conf_int(alpha=) (the difference of the means, trimmed
-    means for Yuen). method=None: the t distribution (resampling methods come with H9)."""
+    means for Yuen). method=None: the t distribution; a PermutationMethod or a MonteCarloMethod
+    (H9, scipy's): the pvalue of t under the permutations of the pooled samples or under samples
+    drawn by the method's rvs (the standard normal by default); df and conf_int() stay the t's."""
     name = "ttest_ind"
-    C.flag(equal_var, name, "equal_var")
+    ev = C.flag(equal_var, name, "equal_var")
     alt = C.alternative(alternative, name)
     tr = C.real(trim, name, "trim")
     if not 0.0 <= tr < 0.5:
         raise ValueError(f"{name}(): 'trim' must be >= 0 and < 0.5")
     if method is not None:
-        raise TypeError(f"{name}(): 'method' must be None, not {_type_name(method)}")
+        R.check_method(method, name, (R.PermutationMethod, R.MonteCarloMethod), ("None",))
     s = C.Samples(name, [a, b], ("a", "b"), axis, nan_policy, keepdims=keepdims, scan=False)
     res = _k.ttest(2, s.rows[0], s.rows[1], None, equal_var, tr, _ALT[alt], s.policy == "omit")
-    return _t_result(TtestIndResult, s.out, s.batch, res, alt, s.info(alt, **_ind_title(equal_var, tr)))
+    info = s.info(alt, **_ind_title(equal_var, tr))
+    if method is not None:
+
+        def t(x, y):
+            return ttest_ind(x, y, axis=-1, equal_var=ev, trim=tr).statistic
+
+        p, pairs = R.method_pvalue(name, method, s, t, alt)
+        res = (res[0], p) + tuple(res[2:])
+        info["pairs"] = info.get("pairs", []) + pairs
+    return _t_result(TtestIndResult, s.out, s.batch, res, alt, info)
 
 
 def ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2, /, *, equal_var=True, alternative="two-sided"):

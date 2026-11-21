@@ -1,0 +1,9 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 6, "dropped": []},
+"multiscale_graphcorr/quadratic-8": {"digest": "9d6f7f7348f257094f4c1410eab56d2c41836c9e57746f5c46e67d62b90e07c0", "statistic": [0.36737596292279057, 8.76938562784505e-18], "opt_scale": [8, 8]},
+"multiscale_graphcorr/quadratic-15": {"digest": "6d341039163543e6bcccb0ca5776b046ac5a7cbed64bf11dfcab16081b6611f2", "statistic": [0.7553788055886397, -2.6264786654421322e-17], "opt_scale": [15, 15]},
+"multiscale_graphcorr/quadratic-25": {"digest": "c20d1a5222b2a3e002a142d29134e65b0908b0af85f34dfa20cc9c1eba0ae6ac", "statistic": [0.2677285554372371, 4.125247316345919e-18], "opt_scale": [19, 21]},
+"multiscale_graphcorr/independent": {"digest": "4557cc59b2daf617f48bc4365783bb6275a98362c17cb1126b61852850bcc27f", "statistic": [-0.07106868559972092, 6.7553759563032716e-18], "opt_scale": [20, 20]},
+"multiscale_graphcorr/linear": {"digest": "e9b96c0b3fd20a4627df5d77fbf70c00155c028e9e642eaf26a78c119895226b", "statistic": [0.9909751415944822, 1.6207236152309984e-17], "opt_scale": [12, 12]},
+"multiscale_graphcorr/ties": {"digest": "a0d54461192129abc56c450324fb0d566a28a03fffce29c1ca964d2a624495f8", "statistic": [-0.08705630240739397, 1.0673011176598913e-18], "opt_scale": [9, 9]}
+}

@@ -48,6 +48,13 @@ iteration limit (partial results), the result objects whole; banded matrices of 
 the pool splits the products, the inner products and the basis updates at 3 and 10 threads; the
 wrong calls.
 
+The matrix functions and norms (milestone SP7): expm on a 2-D Laplacian, a random nonsymmetric, a
+complex, a triangular and a diagonal matrix in every format (the result in A's format); expm_multiply
+with vector and matrix B, every path of the time interval, dense and operator A, traceA; onenormest
+with t, max_iter and the vectors, on matrices, dense arrays and operators; norm with every ord and
+axis on 2-D and 1-D arrays of every dtype; banded matrices of n = 4*10^4 where the pool splits the
+products and the vector operations at 3 and 10 threads; the wrong calls.
+
 A sparse array is stored whole: its class, shape, dtype and arrays (COO: coords, data and
 has_canonical_format; CSR and CSC: indptr, indices and data; DOK: its entries in row-major order).
 """
@@ -272,6 +279,7 @@ def cases(L):
     yield from cases_sp4(L, fmts)
     yield from cases_sp5(L, fmts)
     yield from cases_sp6(L, fmts)
+    yield from cases_sp7(L, fmts)
 
 
 def partner(A, S):
@@ -921,3 +929,139 @@ def cases_sp6(L, fmts):
     yield "error svds k", lambda: S.svds(rect, k=40)
     yield "error svds which", lambda: S.svds(rect, which="LA")
     yield "error eigs OPpart", lambda: S.eigs(unsym, sigma=1.0, OPpart="i")
+
+
+def cases_sp7(L, fmts):
+    """The matrix functions and norms (SP7): expm, expm_multiply, onenormest, norm on small matrices
+    in every format and as operators, long banded matrices for the pool, and the wrong calls."""
+    sd, S = L.sd, L.sd.sparse
+    r = L.rng(707)
+    a = L.arr
+    g = 12
+    T = S.diags_array([a(np.full(g - 1, -1.0)), a(np.full(g, 2.0)), a(np.full(g - 1, -1.0))], offsets=[-1, 0, 1])
+    I1 = S.eye_array(g)
+    lap = (S.kron(I1, T) + S.kron(T, I1)).tocsr()  # 144 x 144
+    n = 120
+    rows, cols = r.integers(0, n, 600), r.integers(0, n, 600)
+    unsym = (S.coo_array((a(r.standard_normal(600)), (a(rows), a(cols))), shape=(n, n)) * 0.3).tocsr()
+    m = 40
+    zr, zc = r.integers(0, m, 200), r.integers(0, m, 200)
+    cplx = S.coo_array((a(r.standard_normal(200) + 1j * r.standard_normal(200)), (a(zr), a(zc))), shape=(m, m)).tocsr()
+    upper = S.triu(S.coo_array((a(r.standard_normal(150)), (a(r.integers(0, 30, 150)), a(r.integers(0, 30, 150)))),
+                               shape=(30, 30)), format="csr")  # fmt: skip
+    diag = S.diags_array(a(np.linspace(-3.0, 2.0, 10)), format="csr")
+    b144, bn, bm = a(np.sin(np.arange(144.0))), a(np.cos(np.arange(float(n)))), a(np.sin(np.arange(float(m))) + 0.5j)
+    B3 = a(r.standard_normal((n, 3)))
+
+    for key, A in (("lap", lap * 0.25), ("lap big", lap * 4.0), ("unsym", unsym), ("cplx", cplx), ("upper", upper),
+                   ("lower", upper.T.tocsr()), ("diag", diag)):  # fmt: skip
+        yield f"expm {key}", lambda A=A: S.expm(A)
+        for fm in fmts:
+            if fm != "csr":
+                yield f"expm {key} {fm}", lambda A=A, fm=fm: S.expm(A.asformat(fm))
+    yield "expm int", lambda: S.expm(S.csr_array(a(np.array([[1, 2], [3, 0]]))))
+    yield "expm 1x1", lambda: S.expm(S.csr_array(a(np.array([[0.5]]))))
+    yield "expm empty", lambda: S.expm(S.csr_array((0, 0)))
+    yield "expm zero", lambda: S.expm(S.csr_array((3, 3)))
+    yield "expm huge", lambda: S.expm(S.csr_array(a(np.array([[-1e40, 1e39], [1e39, -2e40]]))))
+
+    for key, A, b in (("lap", lap * -0.1, b144), ("unsym", unsym, bn), ("cplx", cplx, bm)):
+        yield f"expm_multiply {key}", lambda A=A, b=b: S.expm_multiply(A, b)
+        yield f"expm_multiply {key} csc", lambda A=A, b=b: S.expm_multiply(A.tocsc(), b)
+        yield f"expm_multiply {key} dense", lambda A=A, b=b: S.expm_multiply(A.toarray(), b)
+        for kw in ({"start": 0.0, "stop": 1.0, "num": 5}, {"start": 0.0, "stop": 3.0, "num": 4, "endpoint": False},
+                   {"start": -1.0, "stop": 2.0, "num": 31}, {"start": 0.5, "stop": 0.5, "num": 3}):  # fmt: skip
+            yield (
+                f"expm_multiply {key} interval {sorted(kw.items())}",
+                lambda A=A, b=b, kw=kw: S.expm_multiply(A, b, **kw),
+            )
+    yield "expm_multiply unsym B", lambda: S.expm_multiply(unsym, B3)
+    yield "expm_multiply unsym B interval", lambda: S.expm_multiply(unsym, B3, start=0.0, stop=1.0, num=3)
+    yield "expm_multiply unsym traceA", lambda: S.expm_multiply(unsym, bn, traceA=2.5)
+    yield "expm_multiply unsym traceA complex", lambda: S.expm_multiply(unsym, bn, traceA=1 + 1j)
+    yield "expm_multiply unsym aslinearoperator", lambda: S.expm_multiply(S.aslinearoperator(unsym), bn)
+    yield (
+        "expm_multiply unsym python operator",
+        lambda: S.expm_multiply(S.LinearOperator(unsym.shape, lambda v: unsym @ v, rmatvec=lambda v: unsym.T @ v,
+                                                 dtype=sd.float64), bn),
+    )  # fmt: skip
+    yield (
+        "expm_multiply unsym python operator interval",
+        lambda: S.expm_multiply(S.LinearOperator(unsym.shape, lambda v: unsym @ v, rmatvec=lambda v: unsym.T @ v,
+                                                 dtype=sd.float64), bn, start=0.0, stop=1.0, num=4),
+    )  # fmt: skip
+    yield "expm_multiply zero", lambda: S.expm_multiply(S.csr_array((4, 4)), a(np.arange(4.0)))
+    yield "expm_multiply int B", lambda: S.expm_multiply(unsym, a(np.arange(n)))
+
+    for key, A in (("lap", lap), ("unsym", unsym), ("cplx", cplx), ("upper", upper)):
+        yield f"onenormest {key}", lambda A=A: S.onenormest(A)
+        yield f"onenormest {key} vectors", lambda A=A: S.onenormest(A, compute_v=True, compute_w=True)
+        yield f"onenormest {key} t1", lambda A=A: S.onenormest(A, t=1)
+        yield f"onenormest {key} t4 it8", lambda A=A: S.onenormest(A, t=4, max_iter=8)
+        yield f"onenormest {key} exact", lambda A=A: S.onenormest(A, t=A.shape[0], compute_w=True)
+        yield f"onenormest {key} dense", lambda A=A: S.onenormest(A.toarray())
+        yield f"onenormest {key} operator", lambda A=A: S.onenormest(S.aslinearoperator(A))
+    yield "onenormest unsym v", lambda: S.onenormest(unsym, compute_v=True)
+    yield "onenormest unsym w", lambda: S.onenormest(unsym, compute_w=True)
+    yield "onenormest empty", lambda: S.onenormest(S.csr_array((0, 0)))
+    yield "onenormest unsym summary", lambda: S.onenormest(unsym, compute_v=True).summary()
+    yield "onenormest unsym repr", lambda: repr(S.onenormest(unsym, compute_w=True))
+    yield "onenormest unsym unpack", lambda: tuple(S.onenormest(unsym, compute_v=True, compute_w=True))
+
+    x1 = S.csr_array(a(np.array([0.0, 3.0, 0.0, -4.0, 1e-200, 0.0])))
+    big = S.csr_array(a(np.array([[1e200, 1e200, 0.0], [0.0, 1e-200, 3.0], [0.0, 0.0, 0.0]])))
+    nan = S.csr_array(a(np.array([[1.0, np.nan], [0.0, 2.0]])))
+    ints = S.csr_array(a(np.array([[1, -2, 0], [0, 0, 5]])))
+    for key, A in (("lap", lap), ("unsym", unsym), ("cplx", cplx), ("big", big), ("ints", ints)):
+        for o in (None, "fro", 1, -1, 2, math.inf, -math.inf):
+            yield f"norm {key} {o}", lambda A=A, o=o: S.norm(A, ord=o)
+        for o in (None, 1, 0, -1, math.inf, -math.inf, 3, 0.5, -1.5):
+            for ax in (0, 1):
+                yield f"norm {key} {o} axis {ax}", lambda A=A, o=o, ax=ax: S.norm(A, ord=o, axis=ax)
+        yield f"norm {key} transposed axes", lambda A=A: S.norm(A, ord=1, axis=(1, 0))
+    for fm in fmts:
+        if fm != "csr":
+            yield f"norm unsym {fm}", lambda fm=fm: [S.norm(unsym.asformat(fm), ord=o) for o in (None, 1, 2, -math.inf)]
+    for o in (None, 1, 0, -1, math.inf, -math.inf, 3, -0.5):
+        yield f"norm 1-D {o}", lambda o=o: S.norm(x1, ord=o)
+    yield "norm nan", lambda: [S.norm(nan), S.norm(nan, ord=1), S.norm(nan, axis=1)]
+    yield "norm bool", lambda: S.norm(S.csr_array(a(np.array([[True, False], [True, True]]))), ord=math.inf)
+    yield "norm empty", lambda: [S.norm(S.csr_array((0, 3)), ord=o) for o in (None, 1, 2, -math.inf)]
+    yield "norm zero 2", lambda: S.norm(S.csr_array((3, 4)), ord=2)
+    yield "norm row 2", lambda: S.norm(S.csr_array(a(np.array([[3.0, 0.0, -4.0]]))), ord=2)
+
+    # long banded matrices: the pool splits the products and the vector operations at 3 and 10 threads
+    k = 40000
+    t = np.arange(k, dtype=np.float64)
+    band = S.diags_array([a(-1.0 - t / k), a(np.full(k - 1, 0.3)), a(np.full(k - 1, 0.2))], offsets=[0, 1, -1],
+                         format="csr")  # fmt: skip
+    bk = a(np.sin(t))
+    yield "expm_multiply long", lambda: S.expm_multiply(band, bk)
+    yield "expm_multiply long interval", lambda: S.expm_multiply(band, bk, start=0.0, stop=2.0, num=4)
+    yield "onenormest long", lambda: S.onenormest(band, compute_w=True)
+    yield "norm long", lambda: [S.norm(band, ord=o) for o in (None, 1, 2, math.inf)]
+    yield "norm long axis", lambda: S.norm(band, axis=0)
+
+    # wrong calls
+    yield "error expm dense", lambda: S.expm(lap.toarray())
+    yield "error expm rect", lambda: S.expm(S.csr_array((2, 3)))
+    yield "error expm nan", lambda: S.expm(nan)
+    yield "error expm_multiply sparse B", lambda: S.expm_multiply(unsym, unsym)
+    yield "error expm_multiply rows", lambda: S.expm_multiply(unsym, b144)
+    yield "error expm_multiply num", lambda: S.expm_multiply(unsym, bn, start=0, stop=1, num=1)
+    yield "error expm_multiply stop", lambda: S.expm_multiply(unsym, bn, start=0)
+    yield "error expm_multiply traceA", lambda: S.expm_multiply(unsym, bn, traceA="1")
+    yield "error onenormest max_iter", lambda: S.onenormest(lap, max_iter=1)
+    yield "error onenormest itmax", lambda: S.onenormest(lap, itmax=3)
+    yield "error onenormest t", lambda: S.onenormest(lap, t=0)
+    yield "error onenormest rect", lambda: S.onenormest(S.csr_array((2, 3)))
+    yield "error norm nuc", lambda: S.norm(lap, ord="nuc")
+    yield "error norm -2", lambda: S.norm(lap, ord=-2)
+    yield "error norm ord str axis", lambda: S.norm(lap, ord="fro", axis=0)
+    yield "error norm bool", lambda: S.norm(lap, ord=True)
+    yield "error norm axis", lambda: S.norm(lap, axis=(0, 0))
+    yield "error norm dense", lambda: S.norm(lap.toarray())
+    yield "error norm positional ord", lambda: S.norm(lap, 1)
+    yield "error norm 2 nan", lambda: S.norm(nan, ord=2)
+    yield "error sd.linalg.expm sparse", lambda: sd.linalg.expm(lap)
+    yield "error sd.linalg.matrix_norm sparse", lambda: sd.linalg.matrix_norm(lap)

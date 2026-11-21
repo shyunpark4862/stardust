@@ -14,6 +14,8 @@ reference hi + lo (a double-double; complex for complex results):
     eig     smallest, largest (6 each, ascending / descending), svdvals (descending), eigvals (every
             eigenvalue of a nonsymmetric matrix, complex, by real then imaginary part); input kind
     expm    expm (exp(scale A), row-major); input scale
+    expmv   expmv (exp(scale A) b), interval (exp(t scale A) b for t in TIMES, one after another);
+            inputs scale, b (expm's points, in the same order)
 
 tests/sparse/data holds the other libraries' records (tools/gen_sparse_scipy.py: scipy.json;
 tools/gen_sparse_r.py: r.json), each with its own "_provenance".
@@ -27,8 +29,12 @@ The contract (draft, docs/design/sparse.md §4), in units of its bound (1 or les
     relative error ||x - ref||_inf / ||ref||_inf over C_SOLVE kappa eps, is checked against the
     references. Both fixed by SP4's measurements (docs/design/sparse.md §4: at most 0.50 eps and
     0.39 kappa eps over the test matrices, after the one refinement step); lstsq: the forward form;
-  - eigenvalues, singular values, norms: |v - ref| / (C_EIG eps ||A||);
-  - expm: max |E - ref| / (C_EXPM eps max(1, ||s A||_1) max |ref|).
+  - eigenvalues, singular values, the 2-norm: |v - ref| / (C_EIG eps ||A||);
+  - the other norms (sums of magnitudes, SP7): |v - ref| / ((gamma_m + 2 eps) ref), m the terms of
+    the longest line (sum_terms; Frobenius: of every stored entry), 2 eps for the magnitude of a
+    complex entry and the last rounding (norm_error);
+  - expm: max |E - ref| / (C_EXPM eps max(1, ||s A||_1) max |ref|); expm_multiply the same form,
+    max |y - ref| / (C_EXPM eps max(1, ||t s A||_1) max_i (|exp(t s A)| |b|)_i) (expm_error).
 """
 
 from __future__ import annotations
@@ -45,13 +51,17 @@ REF = pathlib.Path(__file__).parent / "ref"
 DATA = pathlib.Path(__file__).parent / "data"
 EPS = float(np.finfo(np.float64).eps)
 L = 4096  # the summation chunk of docs/design/sparse.md §2.6
-FAMILIES = ("spmv", "sums", "norms", "solve", "lstsq", "eig", "expm")
+FAMILIES = ("spmv", "sums", "norms", "solve", "lstsq", "eig", "expm", "expmv")
+TIMES = (0.0, 0.25, 0.5, 0.75, 1.0)  # expmv's interval: linspace(0, 1, 5)
 COMPLEX_METHODS = ("eigvals",)  # complex for a real matrix too
 # the contract's constants (drafts until the milestones that implement the functions measure them)
 C_SOLVE = 4.0
 C_BACKWARD = 4.0
 C_EIG = 1000.0  # SP6: ARPACK's eigenvalues after many restarts, up to 497 (lap1d/1000 'LA'; scipy 217)
-C_EXPM = 100.0
+# SP7: expm and expm_multiply in units of eps max(1, ||s A||_1) scale, measured over expm's and
+# expmv's points: sd's expm up to 2.4 (scipy 4.8, the dense sd.linalg.expm 3.5), expm_multiply up
+# to 2.0 (2.5 on the interval; scipy the same)
+C_EXPM = 10.0
 
 
 def names() -> list[str]:
@@ -150,3 +160,22 @@ def normwise_error(x, ref_hi) -> float:
     if scale == 0:
         return 0.0 if not np.abs(x).max(initial=0) else math.inf
     return float(np.abs(x - ref).max()) / scale
+
+
+def norm_error(v, ref, terms) -> float:
+    """|v - ref| of a norm made of sums of magnitudes, in units of (gamma_m + 2 eps) ref, m =
+    sum_terms(terms) (0 when both are 0)."""
+    err = abs(v - ref)
+    if err == 0:
+        return 0.0
+    return err / ((gamma(sum_terms(int(terms))) + 2 * EPS) * abs(ref))
+
+
+def expm_error(y, ref, norm1, scale) -> float:
+    """max |y - ref| in units of C_EXPM eps max(1, norm1) scale (expm: scale max |ref|; expm_multiply:
+    max_i (|exp(t s A)| |b|)_i)."""
+    y, ref = np.asarray(y), np.asarray(ref)
+    err = float(np.abs(y - ref).max()) if y.size else 0.0
+    if err == 0:
+        return 0.0
+    return err / (C_EXPM * EPS * max(1.0, float(norm1)) * float(scale))

@@ -23,6 +23,13 @@ The multiple comparisons and corrections (H8): tukey_hsd on (k, n) groups (3 of 
 rng=1, R's multcomp: other random draws, checked loosely), multipletests (10^3 p-values per method,
 statsmodels, R's p.adjust) and a batch of 10^3 families of 40, false_discovery_control and
 combine_pvalues (10^3; scipy).
+The resampling and Monte Carlo functions (H9): permutation_test of the difference of the means
+((8, 7): every permutation, compared; 10^2 per sample with 9999 random permutations), bootstrap's
+BCa interval of the mean, monte_carlo_test, bws_test ((8, 7), every permutation), multiscale_graphcorr
+(10^2 points, 10^3 permutations; the statistic compared), goodness_of_fit (the normal, 999 samples;
+the statistic compared), mannwhitneyu's PermutationMethod ((8, 7), compared) and ttest_ind's
+MonteCarloMethod, against scipy at the same numbers of resamples (other random streams: the random
+p-values are not compared).
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -255,6 +262,7 @@ def cases() -> list[Case]:
     out.extend(_table_cases())
     out.extend(_proportion_cases())
     out.extend(_multicomp_cases())
+    out.extend(_resampling_cases())
     return out
 
 
@@ -451,6 +459,7 @@ TITLES = {
     "proportions-batched": "비율과 이항 일괄",
     "multicomp": "다중 비교와 보정",
     "multicomp-batched": "다중 비교와 보정 일괄",
+    "resampling": "재표본과 몬테카를로",
 }
 
 
@@ -806,4 +815,94 @@ def _multicomp_cases():
             check=CHECK,
         )  # fmt: skip
     )
+    return out
+
+
+# ---- resampling and Monte Carlo (H9) --------------------------------------------------------
+
+
+def _resampling_data(seed=2026):
+    import stardust as sd
+
+    g = np.random.Generator(np.random.PCG64(seed))
+    d = {"a8": g.normal(size=8), "b7": g.normal(0.5, 1.0, 7), "a": g.normal(size=100), "b": g.normal(0.2, 1.0, 100)}
+    d["c"] = d["a"] ** 2 + 0.5 * g.normal(size=100)
+    for k in list(d):
+        d["s" + k] = sd.asarray(d[k])
+    return d
+
+
+def _p(r):
+    return np.array([float(r.pvalue)])
+
+
+def _stat(r):
+    return np.array([float(r.statistic)])
+
+
+def _resampling_cases():
+    import scipy.stats as st
+
+    import stardust as sd
+
+    h = sd.htest
+
+    def md(a, b, axis):
+        return sd.mean(a, axis=axis) - sd.mean(b, axis=axis)
+
+    def nmd(a, b, axis):
+        return np.mean(a, axis=axis) - np.mean(b, axis=axis)
+
+    def mean(a, axis):
+        return sd.mean(a, axis=axis)
+
+    rnd = "다른 난수 스트림: 무작위 p값은 견주지 않는다"
+    specs = [
+        ("permutation_test exact", "(8, 7)", 15,
+         lambda d: lambda: h.permutation_test([d["sa8"], d["sb7"]], md),
+         lambda d: lambda: st.permutation_test((d["a8"], d["b7"]), nmd), Check(sd=_p, ref=lambda _, r: _p(r))),
+        ("permutation_test", "100", 200,
+         lambda d: lambda: h.permutation_test([d["sa"], d["sb"]], md, rng=sd.random.default_rng(1)),
+         lambda d: lambda: st.permutation_test((d["a"], d["b"]), nmd, rng=1), Check(skip=rnd)),
+        ("bootstrap BCa", "100", 100,
+         lambda d: lambda: h.bootstrap([d["sa"]], mean, rng=sd.random.default_rng(1)).conf_int(),
+         lambda d: lambda: st.bootstrap((d["a"],), np.mean, rng=1).confidence_interval, Check(skip=rnd)),
+        ("monte_carlo_test", "100", 100,
+         lambda d: lambda: h.monte_carlo_test(d["sa"], sd.stats.Normal().sample, mean, rng=sd.random.default_rng(1)),
+         lambda d: lambda: st.monte_carlo_test(d["a"], np.random.default_rng(1).standard_normal, np.mean),
+         Check(skip=rnd)),
+        ("bws_test", "(8, 7)", 15, lambda d: lambda: h.bws_test(d["sa8"], d["sb7"]),
+         lambda d: lambda: st.bws_test(d["a8"], d["b7"]), Check(sd=_p, ref=lambda _, r: _p(r))),
+        ("multiscale_graphcorr", "100", 100,
+         lambda d: lambda: h.multiscale_graphcorr(d["sa"], d["sc"], rng=sd.random.default_rng(1)),
+         lambda d: lambda: st.multiscale_graphcorr(d["a"], d["c"], random_state=1),
+         Check(sd=_stat, ref=lambda _, r: _stat(r), rtol=1e-10)),
+        ("goodness_of_fit", "100", 100,
+         lambda d: lambda: h.goodness_of_fit(sd.stats.Normal, d["sa"], n_mc_samples=999, rng=sd.random.default_rng(1)),
+         lambda d: lambda: st.goodness_of_fit(st.norm, d["a"], n_mc_samples=999, rng=1),
+         Check(sd=_stat, ref=lambda _, r: _stat(r), rtol=1e-10)),
+        ("mannwhitneyu PermutationMethod", "(8, 7)", 15,
+         lambda d: lambda: h.mannwhitneyu(d["sa8"], d["sb7"], method=h.PermutationMethod()),
+         lambda d: lambda: st.mannwhitneyu(d["a8"], d["b7"], method=st.PermutationMethod()),
+         Check(sd=_p, ref=lambda _, r: _p(r))),
+        ("ttest_ind MonteCarloMethod", "100", 200,
+         lambda d: lambda: h.ttest_ind(d["sa"], d["sb"], method=h.MonteCarloMethod(rng=sd.random.default_rng(1))),
+         lambda d: lambda: st.ttest_ind(d["a"], d["b"], method=st.MonteCarloMethod(rng=1)), Check(skip=rnd)),
+    ]  # fmt: skip
+    out = []
+    for name, size, n, sdf, spf, check in specs:
+        out.append(
+            Case(
+                area="htest",
+                group="resampling",
+                name=name,
+                size=size,
+                n=n,
+                setup=_resampling_data,
+                sd=sdf,
+                refs=(Ref("scipy", lambda d, spf=spf: _quiet(spf(d))),),
+                quick=name in ("permutation_test exact", "bws_test"),
+                check=check,
+            )
+        )
     return out

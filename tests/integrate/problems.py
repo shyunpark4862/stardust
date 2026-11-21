@@ -972,7 +972,8 @@ SERIES_BY_ID = {s.id: s for s in SERIES}
 
 def samples():
     """{id: (y, x or None, dx)}: numpy samples for the sample rules, built from fixed formulas.
-    Their references (the rule's formula computed exactly) come with milestone C3."""
+    Their references (each rule's formula computed exactly) are tests/integrate/ref/samples.json
+    (tools/integrate_ref.py samples, milestone C3)."""
     out = {}
     for n in (2, 3, 4, 5, 17, 33, 4097):
         x = np.linspace(0.0, 1.0, n)

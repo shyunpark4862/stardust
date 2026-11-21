@@ -41,7 +41,10 @@ recorded as its error). One-sided p-values only ("less" and "greater"): coin's t
 P(|T - mu| >= |t - mu|), another rule than scipy's 2 min(...), and its direction is that of its own
 standardized statistic. Without coin the file is left as it is.
 
-Run: .venv/bin/python tools/gen_htest_r.py      (needs Rscript on PATH, and nortest, goftest and coin)
+And r_h9.json: H9's problems with coin (the exact permutation test of the difference of the means)
+and MASS (fitdistr's maximum likelihood) (H125; H9_PRELUDE below).
+
+Run: .venv/bin/python tools/gen_htest_r.py      (needs Rscript on PATH, and nortest, goftest, coin and MASS)
 """
 
 import json
@@ -58,6 +61,7 @@ sys.path.insert(0, str(ROOT))
 OUT = ROOT / "tests" / "htest" / "data" / "r.json"
 OUT_GOF = ROOT / "tests" / "htest" / "data" / "r_gof.json"  # nortest and goftest (H44)
 OUT_COIN = ROOT / "tests" / "htest" / "data" / "r_coin.json"  # coin (H54)
+OUT_H9 = ROOT / "tests" / "htest" / "data" / "r_h9.json"  # coin and MASS on H9's problems (H125)
 
 PRELUDE = r"""
 out <- function(id, name, v) {
@@ -400,6 +404,29 @@ def r_coin_call(p):
     return f"coin_page({mat(a[0])})"
 
 
+# H9: coin's exact permutation test of the difference of the means (oneway_test: the linear
+# statistic sum of x, one-sided p-values as above) on permutation_test's independent two-sample
+# problems, and MASS::fitdistr's maximum likelihood on goodness_of_fit's families that MASS fits as
+# sd's (no location: weibull, logistic, lognormal, exponential's rate 1/scale; MASS's optimizer
+# stops at about 3e-6 relative for the logistic and 8e-5 for the Weibull, where there is no closed form)
+H9_PRELUDE = """
+h9_fit <- function(x, dist) as.list(MASS::fitdistr(x, dist)$estimate)
+"""
+H9_FIT = {"weibull_min": "weibull", "logistic": "logistic", "lognorm": "lognormal", "expon": "exponential"}
+
+
+def r_h9_call(p):
+    """coin's or MASS's call for an H9 problem, or None."""
+    if p.func == "permutation_test" and p.args[1] == "mean_diff" and p.kwargs.get("permutation_type") is None:
+        x, y = p.args[0]
+        return f"coin_two(coin::oneway_test, {vec(x)}, {vec(y)}, distribution = 'exact')"
+    if p.func == "goodness_of_fit" and p.args[0] in H9_FIT and not p.kwargs.get("known_params"):
+        if not p.id.endswith("-ad"):  # one record per data set
+            return None
+        return f"h9_fit({vec(p.args[1])}, '{H9_FIT[p.args[0]]}')"
+    return None
+
+
 def run_r(prelude, calls, P):
     """{problem: record} of R's results for {problem: call}, and R's version."""
     script = prelude + "\n".join(f"run({json.dumps(pid)}, {c})" for pid, c in calls.items())
@@ -465,6 +492,17 @@ def main():
     ).stdout.strip()
     write(OUT_COIN, {"tool": "tools/gen_htest_r.py", "R": version, "packages": pkgs}, recs)
     print(f"{len(recs)} problems run with coin ({pkgs})")
+    calls = {pid: r_h9_call(p) for pid, p in P.PROBLEMS.items()}
+    calls = {k: v for k, v in calls.items() if v is not None}
+    recs, _ = run_r(PRELUDE + COIN_PRELUDE + H9_PRELUDE, calls, P)
+    pkgs = subprocess.run(
+        ["Rscript", "--vanilla", "-e", 'cat(sapply(c("coin", "MASS"), function(p) paste(p, packageVersion(p))))'],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    write(OUT_H9, {"tool": "tools/gen_htest_r.py", "R": version, "packages": pkgs}, recs)
+    print(f"{len(recs)} H9 problems run with coin and MASS ({pkgs})")
 
 
 if __name__ == "__main__":

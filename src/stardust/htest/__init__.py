@@ -11,7 +11,9 @@ The module holds the result objects (_result.py) and the input layer (_common.py
 share; the tests come milestone by milestone (docs/design/htest.md §8): H1's means and variances
 (_parametric.py), H2's goodness of fit (_gof.py), H3's rank tests (_rank.py), H4's goodness of
 fit between samples (_gof.py), H5's correlation (_correlation.py), H6's contingency tables (_contingency.py), H7's
-proportions and binomial tests (_proportion.py) and H8's multiple comparisons and corrections (_multicomp.py) so far.
+proportions and binomial tests (_proportion.py), H8's multiple comparisons and corrections (_multicomp.py) and H9's
+resampling and Monte Carlo (_resampling.py: permutation_test, monte_carlo_test, bootstrap, the method= objects,
+bws_test, multiscale_graphcorr, goodness_of_fit).
 """
 
 from ._contingency import (
@@ -90,6 +92,17 @@ from ._rank import (
     ranksums,
     wilcoxon,
 )
+from ._resampling import (
+    BootstrapMethod,
+    MonteCarloMethod,
+    PermutationMethod,
+    bootstrap,
+    bws_test,
+    goodness_of_fit,
+    monte_carlo_test,
+    multiscale_graphcorr,
+    permutation_test,
+)
 
 __all__ = [
     "ttest_1samp",
@@ -154,4 +167,13 @@ __all__ = [
     "multipletests",
     "false_discovery_control",
     "combine_pvalues",
+    "permutation_test",
+    "monte_carlo_test",
+    "bootstrap",
+    "PermutationMethod",
+    "MonteCarloMethod",
+    "BootstrapMethod",
+    "bws_test",
+    "multiscale_graphcorr",
+    "goodness_of_fit",
 ]

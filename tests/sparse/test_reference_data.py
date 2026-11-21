@@ -242,6 +242,21 @@ def test_scipy_agrees_with_the_references():
             assert m["backward"] < 1e-15, k
 
 
+def test_expmv_references_agree_with_expm_and_b():
+    """expmv (SP7) shares expm's points: exp(s A) b is the expm reference times b (to the rounding of
+    a double product), the interval's t = 1 is expmv and its t = 0 is b itself."""
+    for p, q in zip(POINTS["expm"], POINTS["expmv"]):
+        assert (p["matrix"], p["scale"]) == (q["matrix"], q["scale"])
+        n = M.get(p["matrix"]).shape[0]
+        E = (p["expm_hi"] + p["expm_lo"]).reshape(n, n)
+        b = np.asarray(q["b"])
+        y = q["expmv_hi"] + q["expmv_lo"]
+        assert np.abs(E @ b - y).max() <= 4 * n * refdata.EPS * (np.abs(E) @ np.abs(b)).max(), p["matrix"]
+        steps = (q["interval_hi"] + q["interval_lo"]).reshape(len(refdata.TIMES), n)
+        assert np.array_equal(q["interval_hi"].reshape(len(refdata.TIMES), n)[0], b), p["matrix"]
+        assert np.array_equal(steps[-1], y), p["matrix"]
+
+
 def test_scipy_singular_solves_are_recorded():
     assert SCIPY["direct/struct_singular/40/splu"]["error"] == "RuntimeError: Factor is exactly singular"
     rec = SCIPY["direct/struct_singular/40/spsolve"]

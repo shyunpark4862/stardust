@@ -164,6 +164,10 @@ FACTOR_CHECK = Check(sd=lambda f: np.array(f.shape, float), ref=lambda label, f:
 ITER_CHECK = Check(rtol=1e-2, agree=0.9)
 
 
+# exp(A) b: the values (the steps chosen from scipy's random estimates may differ by rounding).
+EXPMV_CHECK = Check(rtol=1e-12)
+
+
 # Eigenvalues: the sorted values (real parts; scipy returns (w, v)); singular values sorted.
 def _eigvals(x):
     w = x.eigenvalues if hasattr(x, "eigenvalues") else (x[0] if isinstance(x, tuple) else x)
@@ -177,6 +181,12 @@ def _svals(x):
 
 EIG_CHECK = Check(sd=_eigvals, ref=lambda label, x: _eigvals(x), rtol=1e-8)
 SVD_CHECK = Check(sd=_svals, ref=lambda label, x: _svals(x), rtol=1e-8)
+
+# A norm: the value (2-norm: the singular value to the eigensolvers' tolerance).
+NORM_CHECK = Check(rtol=1e-12)
+# A lower-bound estimate with other random columns: the same size (both usually within a factor 3
+# of the norm, Higham and Tisseur's experience: a gross difference fails).
+ESTIMATE_CHECK = Check(sd=lambda r: r.est, rtol=0.7)  # (sd's result object: its estimate; SP102)
 
 # Random results of different generators: the shape and the number of stored entries.
 SIZE_CHECK = Check(sd=_size, ref=lambda label, x: _size(x), rtol=0.0)
@@ -328,12 +338,25 @@ ARRAY_SPECS = (
          lambda d: lambda: _la("svds")(d["a"], k=6, rng=0), limit=10**6, check=SVD_CHECK,
          note="sd는 Golub-Kahan-Lanczos(두꺼운 재시작), scipy는 A^T A의 eigsh(ARPACK)"),
     Spec("SP7", "norms", "norm(A, 1)", ("csr_array", "norm"),
-         lambda d: (lambda A: lambda: __import__("stardust").sparse.norm(A, 1))(_sd_csr(d)),
-         lambda d: lambda: __import__("scipy.sparse.linalg", fromlist=["norm"]).norm(d["a"], 1), r='norm(A, "1")'),
+         lambda d: (lambda A: lambda: _sds("norm")(A, ord=1))(_sd_csr(d)),
+         lambda d: lambda: _la("norm")(d["a"], 1), r='norm(A, "1")', quick=True, check=NORM_CHECK),
+    Spec("SP7", "norms", "norm(A, inf)", ("csr_array", "norm"),
+         lambda d: (lambda A: lambda: _sds("norm")(A, ord=np.inf))(_sd_csr(d)),
+         lambda d: lambda: _la("norm")(d["a"], np.inf), r='norm(A, "I")', check=NORM_CHECK),
+    Spec("SP7", "norms", "norm(A) Frobenius", ("csr_array", "norm"),
+         lambda d: (lambda A: lambda: _sds("norm")(A))(_sd_csr(d)),
+         lambda d: lambda: _la("norm")(d["a"]), r='norm(A, "F")', check=NORM_CHECK),
+    Spec("SP7", "norms", "norm(A, axis=1)", ("csr_array", "norm"),
+         lambda d: (lambda A: lambda: _sds("norm")(A, axis=1))(_sd_csr(d)),
+         lambda d: lambda: _la("norm")(d["a"], axis=1), check=NORM_CHECK, note="행마다의 2-노름(밀집 결과)"),
+    Spec("SP7", "norms", "norm(A, 2)", ("csr_array", "norm"),
+         lambda d: (lambda A: lambda: _sds("norm")(A, ord=2))(_sd_csr(d)),
+         lambda d: lambda: _la("norm")(d["a"], 2), limit=10**6, check=NORM_CHECK,
+         note="가장 큰 특이값: sd는 svds(GKL), scipy는 A^T A의 ARPACK"),
     Spec("SP7", "norms", "onenormest", ("csr_array", "onenormest"),
-         lambda d: (lambda A: lambda: __import__("stardust").sparse.onenormest(A))(_sd_csr(d)),
-         lambda d: lambda: __import__("scipy.sparse.linalg", fromlist=["onenormest"]).onenormest(d["a"]),
-         note="scipy는 시드 없는 무작위 열"),
+         lambda d: (lambda A: lambda: _sds("onenormest")(A))(_sd_csr(d)),
+         lambda d: lambda: _la("onenormest")(d["a"]), check=ESTIMATE_CHECK,
+         note="scipy는 시드 없는 무작위 열, sd는 고정 열(SP98): 추정값은 참값 이하에서 다를 수 있다"),
 )  # fmt: skip
 
 
@@ -404,7 +427,17 @@ SOLVER_SPECS = (
          grids=("lap2d/100", "lap3d/22"), note="같은 시작 벡터(1의 벡터)"),
     Spec("SP7", "matfuncs", "expm_multiply(-0.1 A, b)", ("csc_array", "expm_multiply"),
          lambda d: (lambda A, b: lambda: _sds("expm_multiply")(A, b))(_sd_csc(d, -0.1), _sd(d["b"])),
-         lambda d: (lambda A: lambda: _la("expm_multiply")(A, d["b"]))(-0.1 * d["a"])),
+         lambda d: (lambda A: lambda: _la("expm_multiply")(A, d["b"]))(-0.1 * d["a"]), quick=True,
+         check=EXPMV_CHECK),
+    Spec("SP7", "matfuncs", "expm_multiply(-0.1 A, b, 0..1, 11 points)", ("csc_array", "expm_multiply"),
+         lambda d: (lambda A, b: lambda: _sds("expm_multiply")(A, b, start=0.0, stop=1.0, num=11))(
+             _sd_csc(d, -0.1), _sd(d["b"])),
+         lambda d: (lambda A: lambda: _la("expm_multiply")(A, d["b"], start=0.0, stop=1.0, num=11))(-0.1 * d["a"]),
+         check=EXPMV_CHECK, grids=GRIDS[:2] + GRIDS[3:]),
+    Spec("SP7", "matfuncs", "expm(0.1 A)", ("csc_array", "expm"),
+         lambda d: (lambda A: lambda: _sds("expm")(A))(_sd_csc(d, 0.1)),
+         lambda d: (lambda A: lambda: _la("expm")(A))(0.1 * d["a"]), check=SPARSE_CHECK, grids=("lap2d/30", "lap3d/10"),
+         note="결과는 거의 밀집(n² 원소): 작은 격자만"),
 )  # fmt: skip
 
 
@@ -434,7 +467,7 @@ def _grid_r(setup):
 
 
 # The milestones whose cases run.
-DONE = ("SP1", "SP2", "SP3", "SP4", "SP5", "SP6")
+DONE = ("SP1", "SP2", "SP3", "SP4", "SP5", "SP6", "SP7")
 
 
 def _public(spec) -> bool:

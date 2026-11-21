@@ -20,8 +20,8 @@ from fractions import Fraction
 
 from .. import _calls
 from .. import _core as _sd
-from ..stats._descriptive import _type_name
 from . import _common as C
+from . import _resampling as R
 from ._gof import _lambda
 from ._result import _TestResult
 
@@ -103,12 +103,6 @@ class RelativeRiskResult(_TestResult):
 # ---- helpers ------------------------------------------------------------------------------
 
 
-def _no_method(method, name):
-    """method=None only: the resampling methods come with H9."""
-    if method is not None:
-        raise TypeError(f"{name}(): 'method' must be None, not {_type_name(method)}")
-
-
 def _two_by_two(t, name, arg="table"):
     if t.table != (2, 2):
         raise ValueError(f"{name}(): '{arg}' must be a 2 x 2 table, not {t.table[0]} x {t.table[1]}")
@@ -128,15 +122,29 @@ def chi2_contingency(observed, /, *, correction=True, lambda_=None, method=None)
     degree of freedom and correction=True Yates' correction moves each count towards its
     expectation by min(1/2, |O - E|). The counts may be non-integer (a weighted table). df = 0
     (one row or column) gives statistic 0 and pvalue 1; a zero row or column (an expected count of
-    0) gives NaN. Tables along the last two axes, a batch before them. Unpacks as (statistic,
-    pvalue, df, expected_freq)."""
+    0) gives NaN. Tables along the last two axes, a batch before them. method: None, or (H9,
+    scipy's) a PermutationMethod or a MonteCarloMethod: the pvalue of Pearson's statistic among
+    tables with the observed margins (integer counts, correction=False and lambda_=None; df is
+    NaN). Unpacks as (statistic, pvalue, df, expected_freq)."""
     name = "chi2_contingency"
     corr = C.flag(correction, name, "correction")
     lam = _lambda(lambda_, name)
-    _no_method(method, name)
-    t = C.Tables(observed, name, "observed", integer=False, minimum=(1, 1))
+    if method is not None:  # H9 (scipy's): Pearson's statistic alone, of the counts
+        R.check_method(method, name, (R.PermutationMethod, R.MonteCarloMethod), ("None",))
+        if corr:
+            raise ValueError(
+                f"{name}(): correction=True is not compatible with a resampling method; pass correction=False"
+            )
+        if lambda_ is not None:
+            raise ValueError(f"{name}(): lambda_ is not compatible with a resampling method; leave it None")
+    t = C.Tables(observed, name, "observed", integer=method is not None, minimum=(1, 1))
     stat, p, df, exp = _k.chi2_contingency(t.rows, corr, lam)
     pairs = [("Table:", _shape_text(t))]
+    if method is not None:
+        _, pv, more = R.table_pvalues(name, method, t.rows, 0, "greater")
+        p = _sd.asarray(pv)
+        df = _sd.full((t.lanes,), math.nan)
+        pairs += more
     if lambda_ is not None:
         pairs.append(("Lambda:", lambda_ if isinstance(lambda_, str) else f"{lam:g}"))
     if corr and t.table[0] > 1 and t.table[1] > 1 and (t.table[0] - 1) * (t.table[1] - 1) == 1:
@@ -162,11 +170,25 @@ def fisher_exact(table, /, *, alternative="two-sided", method=None):
     observed table, pvalue the exact sum over every table with its margins at most (1 + 1e-7)
     times as probable (R's fisher.test, the network algorithm; scipy's default is an unseeded Monte
     Carlo), two-sided only; past the documented work cap a ValueError. A zero row or column of a
-    2 x 2 table gives NaN and pvalue 1. Unpacks as (statistic, pvalue)."""
+    2 x 2 table gives NaN and pvalue 1. method: None, or (H9, scipy's) a PermutationMethod or a
+    MonteCarloMethod: for any table (2 x 2 too) statistic the table's probability and pvalue the
+    share of tables with its margins at most as probable (two-sided only). Unpacks as
+    (statistic, pvalue)."""
     name = "fisher_exact"
     alt = C.alternative(alternative, name)
-    _no_method(method, name)
+    if method is not None:
+        R.check_method(method, name, (R.PermutationMethod, R.MonteCarloMethod), ("None",))
+        if alt != "two-sided":
+            raise ValueError(f"{name}(): a resampling method takes alternative='two-sided' only, not {alternative!r}")
     t = C.Tables(table, name, "table", minimum=(1, 1))
+    if method is not None:  # H9 (scipy's r x c path, 2 x 2 too): the tables at most as probable
+        stats, ps, pairs = R.table_pvalues(name, method, t.rows, 1, "less")
+        for i in range(t.lanes):
+            if t.table[0] == 1 or t.table[1] == 1 or float(_sd.sum(t.rows[i])) == 0.0:
+                stats[i], ps[i] = 1.0, 1.0  # one table with these margins (scipy's)
+        stat = _sd.minimum(_sd.asarray(stats), 1.0)
+        info = {"pairs": [("Table:", _shape_text(t))] + pairs}
+        return FisherExactResult._make(batch=t.batch, info=info, statistic=t.out(stat), pvalue=t.out(_sd.asarray(ps)))
     if t.table == (2, 2):
         stat, p = _k.fisher22(t.rows, _ALT[alt])
         info = {"alternative": alt}

@@ -221,7 +221,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
   - linalg: 잔차/(n·eps·척도) ≤ 10.
   - regression: 선형 모형(ols·wls)의 계수 벡터가 설계 행렬의 κ₂ ≤ 1e11에서 노름 상대오차 1e-14 안이다. 그 밖의 필드는 수치 계약이 없어 기준선과의 비교만 한다.
   - optimize: 결과로 확인되는 멈춤 판정(구간법의 xtol + rtol·|x*|, 기울기 판정의 gtol). 그 밖의 측정(xtol = 0의 ULP, 최적값까지의 거리 등)은 기준선과의 비교만 한다.
-  - htest: `tests/htest/refdata.py`의 척도. 통계량은 상대 1e-14·max(1, κ_stat)(D'Agostino 변환의 0 근처, Anderson–Darling의 상쇄하는 합), p값은 1e-14·max(1, κ_p)·max(1, κ_stat), Cramér–von Mises의 p값(한 표본은 근사식의, 두 표본의 점근은 극한 분포의 1 − cdf)은 절대 1e-15도 받는다, 순위 검정의 `zstatistic`·자유도·중앙값 검정의 중앙값은 1e-14, t 검정의 신뢰구간 끝은 추정값·반폭의 크기에 대한 1e-14, 오즈비·상대위험의 구간 끝은 각자에 대한 1e-14, 비율과 이항의 구간(H7)은 끝이 빼는 것(normal, agresti_coull, 두 비율의 차)만 구간의 크기에 대한, 나머지는 각자에 대한 1e-14, 다중 비교와 보정(H8)은 배열 필드의 원소마다 한 점(`tukey_hsd`의 짝, `dunnett`의 비교, 보정 p값)이고 p값은 비교마다의 κ_p로(docs/design/htest.md §4).
+  - htest: `tests/htest/refdata.py`의 척도. 통계량은 상대 1e-14·max(1, κ_stat)(D'Agostino 변환의 0 근처, Anderson–Darling의 상쇄하는 합), p값은 1e-14·max(1, κ_p)·max(1, κ_stat), Cramér–von Mises의 p값(한 표본은 근사식의, 두 표본의 점근은 극한 분포의 1 − cdf)은 절대 1e-15도 받는다, 순위 검정의 `zstatistic`·자유도·중앙값 검정의 중앙값은 1e-14, t 검정의 신뢰구간 끝은 추정값·반폭의 크기에 대한 1e-14, 오즈비·상대위험의 구간 끝은 각자에 대한 1e-14, 비율과 이항의 구간(H7)은 끝이 빼는 것(normal, agresti_coull, 두 비율의 차)만 구간의 크기에 대한, 나머지는 각자에 대한 1e-14, 다중 비교와 보정(H8)은 배열 필드의 원소마다 한 점(`tukey_hsd`의 짝, `dunnett`의 비교, 보정 p값)이고 p값은 비교마다의 κ_p로, 재표본(H9)은 답이 정해진 부분(정확한 나열의 p값, MGC·`goodness_of_fit`의 통계량, 맞춘 모수 `param0`·`param1`은 1e-14)만(docs/design/htest.md §4).
 
 **비교 대상**(`--compare`): scipy, numpy(없는 것은 scipy.linalg), statsmodels, scikit-learn, R(base와 MASS·robustbase·glmnet·Matrix·mvtnorm), Boost.Math 단독(`bench/accuracy/boost_comparator.cpp`).
 

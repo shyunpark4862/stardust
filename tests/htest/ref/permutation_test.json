@@ -1,0 +1,13 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 10, "dropped": []},
+"permutation_test/independent-two-sided": {"digest": "829bdc75ba957a3cb976210df0efc1e6f88ec41d61e54d495f659f70f80c919c", "statistic": [-0.812712183977233, 5.551115123125783e-18], "pvalue": [0.23809523809523808, 1.3216940769347101e-17], "n_null": 126},
+"permutation_test/independent-less": {"digest": "7dd66b66a9b0467c3fc790073b330b91d8d685dd5d2fbeae19ba55b65687b7ca", "statistic": [-0.812712183977233, 5.551115123125783e-18], "pvalue": [0.11904761904761904, 6.6084703846735505e-18], "n_null": 126},
+"permutation_test/independent-greater": {"digest": "985a9f7eeafeed317f71a47532ebc15504a5d38b3ce9bdc8eff4d0725ebec244", "statistic": [-0.812712183977233, 5.551115123125783e-18], "pvalue": [0.8888888888888888, 4.9343245538895844e-17], "n_null": 126},
+"permutation_test/independent-ties": {"digest": "c2372ff970df4801e0c4cbed7698b0b993c038dd066154d157aaa4e23d8c5689", "statistic": [-0.3333333333333333, -1.850371707708594e-17], "pvalue": [0.9004329004329005, -4.085236237798195e-17], "n_null": 462},
+"permutation_test/three-samples": {"digest": "587cdaf151a47ccaa49bf1e7e4f8730e12784a65ba43b499bad9f60dc4cd2758", "statistic": [2.08715439550442, 1.6688220296738047e-16], "pvalue": [0.2, -1.1102230246251566e-17], "n_null": 1680},
+"permutation_test/pairings": {"digest": "8c11a664ab1763fd2d8969ffa0b51613e79119d8c09f1fee17a227504bc4018e", "statistic": [-0.1649847955563628, -1.096762668681147e-17], "pvalue": [0.8333333333333334, -3.700743415417188e-17], "n_null": 576},
+"permutation_test/samples": {"digest": "af3bee553dcf9706c2ec8cc2e7d98c89e1778a74797095a5ec387bf5124c7239", "statistic": [-0.23196076881510205, -2.168404344971009e-18], "pvalue": [0.6171875, 0.0], "n_null": 256},
+"permutation_test/signs": {"digest": "340f55dbda4db895e9b454dc9bae9fa61ec2c9dd9a045ebb4f921e4b20389e59", "statistic": [0.48832658918339494, 5.551115123125783e-18], "pvalue": [0.1005859375, 0.0], "n_null": 1024},
+"permutation_test/signs-ties": {"digest": "3e6b1043f1c766afe20ffb16b4c73fc0dcd151904c20ad86e5e2d8ef7e235b40", "statistic": [-0.3333333333333333, -1.850371707708594e-17], "pvalue": [0.875, 0.0], "n_null": 512},
+"permutation_test/tail": {"digest": "a81df3b4c26191b7c8c5829f3369ee4b9bd45695f7e0e78baef73e654d2e25f0", "statistic": [1.846514357159603, -6.145877457746403e-17], "pvalue": [0.0008741258741258741, 7.5818333740245065e-22], "n_null": 3432}
+}

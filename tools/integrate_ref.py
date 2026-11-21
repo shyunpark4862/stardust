@@ -1,6 +1,6 @@
 """The Arb references of sd.integrate (docs/design/integrate.md §7.2), in tests/integrate/ref/:
 
-    .venv/bin/python tools/integrate_ref.py                    # all four
+    .venv/bin/python tools/integrate_ref.py                    # all six
     .venv/bin/python tools/integrate_ref.py integrals series   # only these
 
   integrals   integrals.json: per one-dimensional integral of tests/integrate/problems.py
@@ -9,6 +9,13 @@
   series      series.json: per series of problems.SERIES, its exact sum
   multiple    multiple.json: per multiple integral of problems.MULTI, its exact value
   vector      vector.json: per vector-valued integrand of problems.VECTOR, its exact values
+  samples     samples.json: per sample set of problems.samples(), each sample rule's formula
+              (scipy's, docs/design/integrate.md §3.7) computed exactly in rationals from the
+              doubles: the value of trapezoid, simpson and romb, the running values of
+              cumulative_trapezoid and cumulative_simpson (C3)
+  gauss       gauss.json: the Gauss-Legendre nodes and weights of fixed_quad past the table
+              (n = 101 ... 1000, decision C42): Arb's, each settled and rounded to the nearest
+              double (tools/gen_gauss_legendre.py, which writes the table of n <= 100)
 
 A reference is an Arb ball settled to 2^-110 of its value (tools/arbref.py) and is stored as the
 double-double [hi, lo]. It comes from up to three methods, and every method a problem allows is
@@ -145,8 +152,8 @@ def _series_task(sid):
     return sid, {"value": [hi, lo], "method": "closed form", "digest": digest(s.id, s.a, s.b, s.step, s.source)}
 
 
-def _write(name, entries, n_requested):
-    prov = {**arbref.provenance(), "tool": TOOL, "n_requested": n_requested, "dropped": []}
+def _write(name, entries, n_requested, extra=None):
+    prov = {**arbref.provenance(extra=extra), "tool": TOOL, "n_requested": n_requested, "dropped": []}
     lines = [f'"_provenance": {json.dumps(prov)}']
     lines += [f"{json.dumps(k)}: {json.dumps(v)}" for k, v in entries]
     (OUT / name).write_text("{\n" + ",\n".join(lines) + "\n}\n")
@@ -202,7 +209,183 @@ def vector():
     _write("vector.json", rows, len(rows))
 
 
-PARTS = {"integrals": integrals, "series": series, "multiple": multiple, "vector": vector}
+# ---- the sample rules, exactly (C3)
+
+
+def _q(v):
+    from fractions import Fraction
+
+    return Fraction(v)
+
+
+def _dd(q):
+    """(hi, lo) of an exact rational: hi the nearest double, lo the nearest double to the rest."""
+    from fractions import Fraction
+
+    hi = float(q)
+    return [hi, float(q - Fraction(hi))]
+
+
+def _h(x, dx, i):
+    return x[i + 1] - x[i] if x is not None else dx
+
+
+def exact_trapezoid_terms(y, x, dx):
+    return [_h(x, dx, i) * (y[i + 1] + y[i]) / 2 for i in range(len(y) - 1)]
+
+
+def _simpson_basic(y, x, dx, stop):
+    from fractions import Fraction
+
+    total = Fraction(0)
+    pairs = []
+    for k in range(0, max(stop, 0), 2):
+        if x is None:
+            pairs.append(y[k] + 4 * y[k + 1] + y[k + 2])
+            continue
+        h0, h1 = x[k + 1] - x[k], x[k + 2] - x[k + 1]
+        hsum, hprod = h0 + h1, h0 * h1
+        r = h0 / h1 if h1 != 0 else Fraction(0)
+        c0 = 2 - (1 / r if r != 0 else 0)
+        c1 = hsum * (hsum / hprod if hprod != 0 else 0)
+        total += hsum / 6 * (y[k] * c0 + y[k + 1] * c1 + y[k + 2] * (2 - r))
+    if x is None:
+        return dx / 3 * sum(pairs, Fraction(0))
+    return total
+
+
+def exact_simpson(y, x, dx):
+    from fractions import Fraction
+
+    n = len(y)
+    if n <= 1:
+        return Fraction(0)
+    if n % 2 == 1:
+        return _simpson_basic(y, x, dx, n - 2)
+    if n == 2:
+        return Fraction(1, 2) * _h(x, dx, 0) * (y[1] + y[0])
+    res = _simpson_basic(y, x, dx, n - 3)
+    h0, h1 = _h(x, dx, n - 3), _h(x, dx, n - 2)
+
+    def ratio(num, den):
+        return num / den if den != 0 else Fraction(0)
+
+    alpha = ratio(2 * h1 * h1 + 3 * h0 * h1, 6 * (h1 + h0))
+    beta = ratio(h1 * h1 + 3 * h0 * h1, 6 * h0)
+    eta = ratio(h1**3, 6 * h0 * (h0 + h1))
+    return res + alpha * y[n - 1] + beta * y[n - 2] - eta * y[n - 3]
+
+
+def exact_romb(y, dx):
+    n = len(y) - 1
+    k = n.bit_length() - 1
+    h = n * dx
+    prev = [(y[0] + y[n]) / 2 * h]
+    start = step = n
+    for i in range(1, k + 1):
+        start >>= 1
+        s = sum(y[start:n:step])
+        step >>= 1
+        cur = [(prev[0] + h * s) / 2]
+        for j in range(1, i + 1):
+            cur.append(cur[j - 1] + (cur[j - 1] - prev[j - 1]) / ((1 << (2 * j)) - 1))
+        h /= 2
+        prev = cur
+    return prev[k]
+
+
+def exact_simpson_pieces(y, x, dx):
+    n = len(y)
+    if n < 3:
+        return exact_trapezoid_terms(y, x, dx)
+    out = []
+    for k in range(n - 1):
+        left = k % 2 == 0 and k != n - 2
+        if left:
+            f1, f2, f3, x21, x32 = y[k], y[k + 1], y[k + 2], _h(x, dx, k), _h(x, dx, k + 1)
+        else:
+            f1, f2, f3, x21, x32 = y[k + 1], y[k], y[k - 1], _h(x, dx, k), _h(x, dx, k - 1)
+        if x is None:
+            out.append(x21 / 3 * (5 * f1 / 4 + 2 * f2 - f3 / 4))
+        else:
+            x31 = x21 + x32
+            a, b = x21 / x31, x21 / x32
+            c = a * b
+            out.append(x21 / 6 * ((3 - a) * f1 + (3 + c + a) * f2 - c * f3))
+    return out
+
+
+def _running(terms):
+    out, s = [], 0
+    for t in terms:
+        s += t
+        out.append(_dd(s))
+    return out
+
+
+def exact_rules(y, x, dx):
+    """{rule: exact value} of one lane (y, x: lists of Fractions or x None; dx a Fraction)."""
+    from fractions import Fraction
+
+    r = {
+        "trapezoid": _dd(sum(exact_trapezoid_terms(y, x, dx), Fraction(0))),
+        "simpson": _dd(exact_simpson(y, x, dx)),
+        "cumulative_trapezoid": _running(exact_trapezoid_terms(y, x, dx)),
+        "cumulative_simpson": _running(exact_simpson_pieces(y, x, dx)),
+    }
+    n = len(y) - 1
+    if x is None and n >= 1 and n & (n - 1) == 0:
+        r["romb"] = _dd(exact_romb(y, dx))
+    return r
+
+
+def samples_digest(sid, y, x, dx) -> str:
+    return digest(sid, y.tobytes(), None if x is None else x.tobytes(), dx)
+
+
+def samples():
+    from tests.integrate import problems as P
+
+    rows = []
+    for sid, (y, x, dx) in P.samples().items():
+        lanes = y.reshape(-1, y.shape[-1])
+        xs = None if x is None else [_q(v) for v in x.tolist()]
+        per = [exact_rules([_q(v) for v in lane.tolist()], xs, _q(dx)) for lane in lanes]
+        entry = {k: [p[k] for p in per] if y.ndim > 1 else per[0][k] for k in per[0]}
+        entry.update(method="exact rationals", digest=samples_digest(sid, y, x, dx))
+        rows.append((sid, entry))
+    _write("samples.json", rows, len(rows), extra="exact rationals (fractions.Fraction) for the sample rules")
+
+
+# ---- the Gauss-Legendre nodes and weights past the table (C42)
+
+GAUSS_N = (101, 128, 150, 200, 256, 500, 1000)
+
+
+def gauss():
+    import gen_gauss_legendre
+
+    rows = []
+    for n in GAUSS_N:
+        half = gen_gauss_legendre.half(n)
+        rows.append(
+            (
+                str(n),
+                {"x": [v.hex() for v, _ in half], "w": [w.hex() for _, w in half], "method": "arb.legendre_p_root"},
+            )
+        )
+        print(f"  n = {n}: {len(half)} nodes")
+    _write("gauss.json", rows, len(rows))
+
+
+PARTS = {
+    "integrals": integrals,
+    "series": series,
+    "multiple": multiple,
+    "vector": vector,
+    "samples": samples,
+    "gauss": gauss,
+}
 
 
 def main(argv=None):

@@ -1,6 +1,6 @@
 # 수치 미적분 영역 설계 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2는 완료·승인(위임, 2026-11-21)이다(결정 C26–C38은 추천안, 사용자 위임). C3–C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2는 완료·승인(위임, 2026-11-21)이다(결정 C26–C38은 추천안, 사용자 위임). C3은 완료·승인(위임, 2026-11-22)이다(결정 C39–C54는 추천안, 사용자 위임). C4–C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -57,6 +57,22 @@
 | C36 결과의 모양과 `summary()` (C2) | `jacobian`·`hessian`의 결과는 항목마다 따로 멈춘 배치다: 배치 모양은 df·ddf의 모양((k, m), 스칼라 f는 (m,); (m, m))이고 `repr`는 `DifferentiateResult(batch shape (3, 3), 7 of 9 converged)`, `summary()`는 항목마다 한 줄(`[i, j]`)이다. `derivative`의 배치는 입력의 브로드캐스트 모양이고 스칼라면 Python 수다(O48). `summary()`의 제목은 `Differentiation Results`, 머리는 하나면 `Converged`·`Status`·`Point`와 `Derivative`(#.6g)·`Error estimate`(#.4g)·`No. Iterations`·`Function Evals`, 배치면 `Batch shape`·`Converged: j of n`과 열 `x df|ddf error converged status n_iter nfev`(있는 것만)다(C20) (추천안, 사용자 위임 2026-11-21) |
 | C37 `jacobian`·`hessian`의 x (C2) | `derivative`의 x와 같은 입력(`sd.ndarray`, 수의 시퀀스, numpy 배열)이고 1차원·비지 않음만 검사한다. 유한하지 않은 값은 받는다(그 항목이 status −3; scipy와 같다). optimize의 `x0`(유한해야 함, `Series`도 받음)의 규칙은 쓰지 않는다: 이 무리의 x는 계산할 점이지 시작점이 아니다 (추천안, 사용자 위임 2026-11-21) |
 | C38 중앙 스텐실의 합 (C2) | 중앙 스텐실의 df는 마디 −t, t의 짝마다 w·(f(x − ht) − f(x + ht))를 바깥 짝부터 더한다(가중치가 정확히 반대칭이라 scipy의 `fc @ wc`와 정확한 산술에서 같은 값). 가까운 두 값의 차는 정확하므로(Sterbenz) f(x)가 f′(x)h보다 훨씬 클 때의 상쇄가 없다: 모음의 최대 상대오차가 차례대로의 합 3.2×10⁻¹⁰에서 6.2×10⁻¹¹로 줄고, scipy와 같은 반복에 멈추는 경우가 늘었다(`jacobian` 호출이 같은 것 39 → 43/47). D-33의 셋째 규칙(더 정확한 계산 순서)이다. 한쪽 스텐실은 차례대로 더한다 (추천안, 사용자 위임 2026-11-21) |
+| C39 표본의 입력 (C3) | 데이터 함수의 규칙(API.md §5)이다: `sd.ndarray`, 수의 시퀀스, numpy 배열, frame의 `Series`(결측값은 NaN). `DataFrame`은 받지 않는다. 까닭: 표본 규칙은 밖에서 가져온 자료를 처음 넣는 자리다 (추천안, 사용자 위임 2026-11-21) |
+| C40 `x`의 꼴 (C3) | `trapezoid(y, /, x=None, *, dx=1.0, axis=-1)`처럼 `x`는 위치와 키워드 모두다(`simpson`, `cumulative_trapezoid`, `cumulative_simpson`도). scipy의 `cumulative_simpson`·`simpson`은 `x`가 키워드뿐이다(`[scipy와 다름]`; scipy 코드의 `simpson(y, x=x)`는 그대로 된다) (추천안, 사용자 위임 2026-11-21) |
+| C41 `axis`의 기본 (C3) | scipy·numpy처럼 −1이다. sd `cumulative_sum`의 "2차원부터는 꼭 준다"는 쓰지 않는다: 적분은 언제나 한 축을 따라가고 scipy 코드가 그대로 돌아야 한다 (추천안, 사용자 위임 2026-11-21) |
+| C42 Gauss–Legendre (C3) | 점과 가중치는 올바로 반올림한 double이다. n ≤ 100은 Arb로 만든 표(`tools/gen_gauss_legendre.py` → `csrc/integrate/gauss_table.hpp`), 그 위는 실행 중의 정확한 알고리즘(C54)이다. 공개 이름은 없다. n ≥ 20에서 호출점이 scipy와 다를 수 있다(C5의 예외, §7.9) (추천안, 사용자 위임 2026-11-21) |
+| C43 `fixed_quad`·`newton_cotes`의 반환 (C3) | `fixed_quad`는 값 하나다(scipy의 `(val, None)` 튜플이 아니다, `[scipy와 다름]`). `newton_cotes`는 scipy처럼 `(an, B)` 튜플이다 (추천안, 사용자 위임 2026-11-21) |
+| C44 `romb` (C3) | `dx`는 다른 표본 규칙과 같은 꼴(C45)이고 `show`는 없다(§1.3: 화면에 쓰지 않는다). 점은 `axis`를 따라 2ᵏ + 1개(k ≥ 0)여야 하고 아니면 `ValueError`다(점 하나도: scipy와 같다) (추천안, 사용자 위임 2026-11-21) |
+| C45 `x`·`dx`의 꼴 (C3) | `x`는 실수이고(int·bool은 바꿔서, complex는 `TypeError`) `axis`를 따라 y의 길이인 1차원이거나, y와 차원 수가 같고 y의 모양으로 브로드캐스트되며 `axis`의 길이가 y와 같은 배열이다. scipy는 함수마다 다르다(`trapezoid`는 더 낮은 차원의 브로드캐스트도, `cumulative_simpson`은 y와 같은 모양만): 다섯 함수에 한 규칙이다. `dx`는 수(유한하지 않아도 받는다) 또는 y의 모양에서 `axis`만 1인 배열(줄마다의 간격; scipy `cumulative_simpson`의 꼴)이고 다섯 함수가 같다. `x`와 함께 1.0이 아닌 `dx`를 주면 `ValueError`다(O29·O62: 쓰이지 않는 인자; scipy는 무시한다). 까닭: 영역 안의 일관성 (추천안, 사용자 위임 2026-11-21) |
+| C46 누적의 `initial` (C3) | scipy 그대로: `cumulative_trapezoid`는 None 또는 0(맨 앞에 넣기만 한다; 다른 수는 `ValueError`), `cumulative_simpson`은 수 또는 줄마다의 배열(C45의 `dx`와 같은 모양)이고 모든 누적값에 더한 뒤 맨 앞에 넣는다. 실수 y에 복소수 `initial`은 `TypeError`다(scipy도 에러) (추천안, 사용자 위임 2026-11-21) |
+| C47 짝수 개 점의 `simpson` (C3) | scipy 1.11부터의 꼴이다: 앞 구간들은 Simpson, 마지막 구간은 Cartwright의 보정(α·β·η), 점 둘이면 사다리꼴. `cumulative_simpson`은 scipy의 구간마다의 Cartwright 식(왼쪽·오른쪽)이고 점이 셋보다 적으면 사다리꼴이다 (추천안, 사용자 위임 2026-11-21) |
+| C48 dtype (C3) | y는 float64 또는 complex128로 계산한다(bool·int64는 float64로, string은 `TypeError`). 결과는 y의 dtype이고 0차원이면 Python 수다. 복소수 y는 실수 계수를 실수부·허수부에 따로 곱한다(numpy는 계수를 복소수로 올려 곱한다: 한쪽이 inf·NaN일 때만 다르다) (추천안, 사용자 위임 2026-11-21) |
+| C49 빈 입력과 짧은 입력 (C3) | `trapezoid`·`simpson`은 점이 하나 이하면 0이다(scipy의 `simpson`은 점 0개에 `IndexError`, `[scipy와 다름]`: 빈 합은 0이다, 배열의 규칙). 누적은 점 0개가 `ValueError`(scipy와 같다), 점 하나면 빈 결과(`initial`이 있으면 그 값 하나)다. 다른 축이 비면 빈 배열이다. 스칼라 y는 `ValueError`다 (추천안, 사용자 위임 2026-11-21) |
+| C50 NaN과 inf (C3) | 값은 검사하지 않고 퍼진다(배열의 원소별 규칙). `cumulative_simpson`의 "x는 순증가"는 scipy처럼 x가 있고 점이 셋 이상일 때 `diff(x) <= 0`이 하나라도 있으면 `ValueError`다(NaN은 걸리지 않는다). `simpson`의 0 간격은 scipy의 `apply_where`처럼 그 몫을 0으로 둔다 (추천안, 사용자 위임 2026-11-21) |
+| C51 표본 규칙의 합 (C3) | 줄(축을 따라간 한 줄)마다 항을 sd의 pairwise 합(누산기 16개, 512개 단위; `sd.sum`이 연속 축에서 하는 것)으로 첨자 순서대로 더하고, 누적은 `cumulative_sum`의 스캔이다. 그래서 줄의 값은 그 줄의 수에만 달려 있다: 축, 메모리 배치, 스레드 수와 상관없다(`sd.sum`의 바깥 축 리덕션은 차례대로 더한다) (추천안, 사용자 위임 2026-11-21) |
+| C52 `fixed_quad`의 함수 (C3) | f는 (n,) float64 `sd.ndarray`를 한 번 받고 (n,) 또는 (…, n)을 돌려준다(scipy의 벡터 값; 결과는 (…) 배열). 값은 실수다(복소수·bool은 `TypeError`, §1.2). a, b는 유한한 실수다(NaN도 `ValueError`; scipy는 inf만 막고 NaN은 NaN을 낸다). 점은 scipy의 식 (b − a)·(x + 1)/2.0 + a, 합은 C51이다 (추천안, 사용자 위임 2026-11-21) |
+| C53 `newton_cotes` (C3) | 모든 입력에서 가중치와 오차 계수를 정확한 유리수로 계산해 한 번 반올림한다(라그랑주 기저의 정확한 적분; scipy는 같은 간격 N ≤ 14만 정확한 표이고 그 밖은 Vandermonde 역행렬). N ≤ 14의 같은 간격은 scipy와 비트로 같고 그 밖은 다를 수 있다(C5의 예외, §7.9). `rn`은 1 이상의 int 또는 2개 이상의 유한하고 서로 다른 위치(0에서 시작해 N에서 끝남, 언제나 검사; scipy는 표 밖에서만 본다), `equal=True`면 길이만 본다(scipy와 같다). 같은 입력은 기억한다 (추천안, 사용자 위임 2026-11-21) |
+| C54 표 밖의 Gauss–Legendre (C3) | n > 100: C++가 점마다 double Newton 뒤 double-double Newton 두 번과 가중치를 double-double(약 106비트)로 계산하고(점마다 따로, 스레드와 상관없음), Python이 반올림한다. double-double의 오차 한계(점 n²·2⁻⁵⁷ ulp, 가중치 n²·2⁻¹⁰⁰ 상대; n = 101–3000에서 Arb와 견준 실제 오차의 2¹⁰배 이상) 안에 반올림 경계가 있으면 정수의 정확한 산술로 정한다(점: 두 반올림 경계에서 P_n의 부호, 가중치: 근을 감싼 구간과 립시츠 한계). n에 상한은 없고 비용은 O(n²)이다(10⁴점 0.7초); 최근 8개의 n을 기억한다 (추천안, 사용자 위임 2026-11-21) |
 
 - C5와 D-33(API.md §4, docs/design/optimize.md §3.7): 호출점의 비트 동일은 지금 맞추는 목표이고 약속이 아니다. 지키는 것은 다른 영역과 같다(스레드 수와 상관없는 비트, 자기 골든, Arb 계약). 반올림이 아닌 동작(멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서)은 scipy 그대로다. 호출점이 같다는 것은 사용자 함수를 부르는 점의 순서와 비트, 호출 수가 같다는 뜻이다.
 
@@ -193,11 +209,15 @@ scipy의 `nsum`을 옮긴다: 항 수가 `maxterms` 이하면 직접 합, 아니
 - 직접 합은 scipy처럼 점들을 한 번에 부르고(`(1, 8192)` 같은 큰 호출) 합의 순서는 numpy의 것이다(§3.5와 같은 까닭).
 - 탐침: Σ1/k²는 10번 호출, `nfev` 8,561, 실제 오차 3×10⁻¹³, 추정 7.4×10⁻⁹였다.
 
-### 3.7 표본의 규칙과 `fixed_quad`, `newton_cotes`
-- **`trapezoid`, `simpson`, `romb`, `cumulative_trapezoid`, `cumulative_simpson`**: 표본 배열에 대한 원소별 연산과 리덕션이다. 식은 scipy의 것(`simpson`은 scipy 1.11부터의 꼴: 짝수 개 점의 마지막 구간을 Cartwright의 보정으로; `cumulative_simpson`은 scipy의 구간별 이차식)이고, 합은 sd의 합 규칙(docs/api/array.md §7.8)이다. 그래서 scipy·numpy와 끝자리가 다를 수 있고(D-33), 스레드 수와 상관없이 같은 비트다. `trapezoid`는 numpy의 `np.trapezoid`와 같은 함수다(scipy의 것이 numpy의 것과 비트까지 같다, §7.4): sd 배열 쪽에는 `trapezoid`가 없으므로 `sd.integrate.trapezoid` 하나만 둔다.
-  - dtype: 배열의 규칙(int·bool은 float64로; complex128은 받는다: 실수부·허수부의 합). `axis`는 scipy·numpy처럼 기본 −1(§9 C3).
-- **`fixed_quad(func, a, b, n=5)`**: n점 Gauss–Legendre. scipy는 `roots_legendre(n)`을 쓰고 f를 n점 배열로 한 번 부른다(벡터화된 f). 점과 가중치를 어디서 얻는지가 §9 C3의 질문이다: scipy의 `roots_legendre`는 n = 5에서 Arb와 같지만 n = 100에서 점 8 ULP, 가중치 83,682 ULP, n = 500에서 가중치 1.5×10⁷ ULP까지 다르다(§7.4). 추천은 올바로 반올림한 점과 가중치(호출점이 scipy와 n ≥ 20에서 다를 수 있다: C5의 예외)다.
-- **`newton_cotes(rn, equal=0)`**: 닫힌 Newton–Cotes 가중치와 오차 계수. 정수 점(`rn`이 int)이면 정확한 유리수로 계산해 반올림한다(scipy는 같은 간격이면 표·유리수, 아니면 Vandermonde 풀이).
+### 3.7 표본의 규칙과 `fixed_quad`, `newton_cotes` (C3에서 했다)
+- **`trapezoid`, `simpson`, `romb`, `cumulative_trapezoid`, `cumulative_simpson`**: 식과 연산의 순서는 scipy 1.18.1의 것(`integrate/_quadrature.py`)이다. `trapezoid`의 항은 d·(y[i+1] + y[i])/2.0, `simpson`은 scipy 1.11부터의 꼴(점이 홀수 개면 `_basic_simpson`, 짝수 개면 앞 구간들의 Simpson과 마지막 구간의 Cartwright 보정 α·y[−1] + β·y[−2] − η·y[−3], 점 둘이면 사다리꼴; C47), `romb`은 scipy의 Richardson 표(R(i, 0) = 0.5·(R(i − 1, 0) + h·Σ), R(i, j) = R(i, j − 1) + (R(i, j − 1) − R(i − 1, j − 1))/(4ʲ − 1)), `cumulative_simpson`은 구간마다 Cartwright의 식(짝수 번째 구간은 그 구간과 다음 점의 왼쪽 식, 홀수 번째와 마지막은 앞 점의 오른쪽 식; scipy의 `h1`·`h2` 부분적분)이다. `simpson`의 0 간격은 scipy의 `apply_where`처럼 그 몫을 0으로 둔다(C50).
+  - **합** (C51): 줄마다 항을 sd의 pairwise 합(`base/pairwise.hpp`: 누산기 16개, 512개 단위; `sd.sum`이 연속 축에서 하는 것)으로 첨자 순서대로 더하고, 누적은 `cumulative_sum`의 스캔(`scan_lane`: 8,192개부터 4,096개 블록의 두 단계)이다. 그래서 scipy·numpy와 끝자리가 다를 수 있고(D-33), 줄의 값은 축·메모리 배치·스레드 수와 상관없다. 줄이 2개 이상이고 일이 2¹⁵ 이상이면 줄을 스레드에 나누고, 줄 하나가 길면 같은 나무의 부분합을 나눈다(`pairwise_sum_mt`). 일이 2¹⁵ 이상이면 GIL을 놓는다.
+  - dtype과 입력 (C39, C45, C48): y는 float64 또는 complex128(복소수는 실수 계수를 부분마다 곱한다), x는 실수, `dx`·`initial`은 수 또는 줄마다의 배열이다. `trapezoid`는 numpy의 `np.trapezoid`와 같은 함수다(scipy의 것이 numpy의 것과 비트까지 같다, §7.4): sd 배열 쪽에는 `trapezoid`가 없으므로 `sd.integrate.trapezoid` 하나만 둔다.
+  - 파일: Python `src/stardust/integrate/_samples.py`(인자 검사와 변환), C++ `csrc/integrate/samples.cpp`(줄마다의 규칙; `stardust._core.integrate.samples`).
+- **`fixed_quad(func, a, b, /, *, n=5)`** (C42, C43, C52): n점 Gauss–Legendre. 점은 scipy의 식 (b − a)·(x + 1)/2.0 + a이고 f를 (n,) 배열로 한 번 부른다. 값은 (b − a)/2.0·Σ wᵢfᵢ이고 합은 표본 규칙의 커널(같은 pairwise 합)이다. f가 (…, n)을 돌려주면 결과는 (…) 배열이다(scipy의 벡터 값).
+  - **점과 가중치** (C42, C54; `src/stardust/integrate/_gauss.py`, `csrc/integrate/gauss.cpp`): 올바로 반올림한 double이다. n ≤ 100은 Arb의 `arb.legendre_p_root`를 2⁻¹¹⁰까지 정해 반올림한 표(`tools/gen_gauss_legendre.py` → `csrc/integrate/gauss_table.hpp`; 반올림 경계를 품은 공이 있으면 도구가 멈춘다)이고 음이 아닌 점 ⌈n/2⌉개만 둔다(나머지는 부호를 바꾼 것). n > 100은 점마다 점근 근사 cos(π(i − 1/4)/(n + 1/2))에서 double Newton, 이어 double-double Newton 두 번(P_n·P_{n−1}은 세 항 점화식, P_n′ = n(xP_n − P_{n−1})/(x² − 1))과 가중치 2/((1 − x²)P_n′²)를 double-double로 계산하고, Python이 반올림한다. double-double이 반올림 경계에서 오차 한계(점 n²·2⁻⁵⁷ ulp, 가중치 n²·2⁻¹⁰⁰ 상대) 안이면 정확한 정수 산술로 정한다: 점은 두 반올림 경계(dyadic 유리수)에서 P_n의 부호(점화식을 p_k = k!·2^{Ek}·P_k로 바꾼 정수 점화식 p_{k+1} = (2k + 1)M p_k − k²4^E p_{k−1}), 가중치는 근을 감싼 구간 [a, b]에서 g = 1/w = (1 − x²)P_n′²/2의 둘레 g(a) ± L(b − a)(L = (3/4)(n(n + 1))², 마르코프 부등식 |P_n′| ≤ n(n + 1)/2에서)이 한 double로 반올림될 때까지 구간을 반으로 줄인다. 이 길은 테스트가 모든 값을 강제로 보내 확인한다(§7.9).
+  - scipy의 `roots_legendre`(모든 n에서 Golub–Welsch: 삼중대각 행렬의 고윳값과 Newton 보정, 가중치의 정규화)는 n = 5에서 점이 같고 가중치가 17 ULP까지, n = 100에서 점 8·가중치 83,682 ULP까지 다르다(§7.4). 그래서 n ≥ 20의 호출점이 scipy와 다르다(C5의 예외).
+- **`newton_cotes(rn, /, *, equal=False)`** (C43, C53): 닫힌 Newton–Cotes 가중치 aᵢ = ∫₀ᴺ Lᵢ(s) ds(Lᵢ는 위치 rᵢ의 라그랑주 기저; W(s) = Π(s − rⱼ)를 (s − rᵢ)로 나눈 몫의 정확한 적분)와 오차 계수 B = (N^{p+1}/(p + 1) − Σ aᵢrᵢᵖ)/p!(p는 scipy의 차수: 같은 간격의 짝수 N이면 N + 2, 아니면 N + 1)를 `fractions.Fraction`으로 정확히 계산해 한 번씩 반올림한다(`src/stardust/integrate/_rules.py`). scipy의 같은 간격 N ≤ 14 표도 정확한 유리수를 한 번 반올림한 것이라 비트로 같다. 같은 입력은 기억한다(N = 8의 첫 계산 0.2 ms).
 
 ### 3.8 `derivative`, `jacobian`, `hessian`
 scipy의 `_differentiate.py`를 원소마다 옮긴다.
@@ -216,8 +236,9 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 ## 4. 정확도 계약 (안)
 - **적응 방법**(`quad` 계열, `quad_vec`, `cubature`, `tanhsinh`, `nsum`): 결과는 "멈춤 판정을 통과한 값"이고, 오차 추정은 엄밀한 상계가 아니다(QUADPACK, tanh-sinh 모두 경험적이다). 그래서 수치 계약은 (1) scipy와 같은 걸음(§7.3의 기록과 호출 순서·`nfev`·`status`가 같다)과 (2) 시험 모음에서 잰 정확도와 정직함의 표다. 표는 `bench/<영역>/accuracy.md`로 만들고 기준선과 견준다(optimize의 "결과로 확인되는 판정 + 기준선 비교"와 같다).
   - **정직함**: ρ = 오차 추정 / |참 오차|(Arb). converged이고 ρ < 1인 경우를 세어 표에 적는다. 첫 탐침(§7.4)에서 `quad`는 QUADPACK 책의 세 무리 62경우 가운데 수렴이라고 알린 것 가운데 둘(봉우리, α = 19·20)이 ρ < 1이고, `tanhsinh`은 수렴한 46경우 가운데 여섯이 ρ < 1(최소 0.015)이었다.
-- **표본 규칙**: 같은 double 입력에 그 규칙(식)을 정확히 계산한 값(Arb)과 견준다. 계약은 리덕션의 오차 한계(n·ε·Σ|항|의 크기; 배열의 합 규칙)다. 구적 자체의 이산화 오차는 계약이 아니다.
-- **`fixed_quad`, `newton_cotes`**: 점·가중치는 올바로 반올림(§9 C3의 추천)이면 그것이 계약이다(0 ULP). 값은 n점 합의 오차 한계다.
+- **표본 규칙**: 같은 double 입력에 그 규칙(식)을 정확히 계산한 값과 견준다(식이 유리 연산뿐이라 참값은 `fractions.Fraction`의 정확한 유리수다, `tests/integrate/ref/samples.json`). 구적 자체의 이산화 오차는 계약이 아니다.
+  - C3에서 정한 계약(`bench/accuracy/integrate.py`, `tests/integrate/test_samples.py`): |값 − 참값| ≤ c·ε·S. S는 항의 크기 Σ|dᵢ|(|yᵢ| + |yᵢ₊₁|)(누적은 k번째까지), c는 합이면 ⌈log₂ n⌉ + 10(pairwise 나무), 누적의 k번째 값이면 k + 10(스캔)이다. 모음의 12벌 모두에서 지키고 가장 큰 것은 한계의 0.050이다(§7.9).
+- **`fixed_quad`, `newton_cotes`** (C3): 점·가중치는 올바로 반올림한 값이고 그것이 계약이다(0 ULP; n ≤ 100은 모두 Arb와, n = 101–1000의 일곱 n은 `tests/integrate/ref/gauss.json`과 비트로 같다). `fixed_quad`의 값은 f가 돌려준 값으로 낸 (b − a)/2·Σwᵢfᵢ의 정확한 유리수와 (⌈log₂ n⌉ + 4)·ε·|(b − a)/2|·Σ|wᵢfᵢ| 안이다(테스트). `newton_cotes`는 정확한 값을 한 번 반올림한 것이다(다른 알고리즘, 유리수의 모멘트 방정식 소거와 테스트가 견준다).
 - **`derivative` 무리**: 수렴한 결과는 error < atol + rtol·|df|이고, 해석적 도함수의 Arb 값과 견준 상대오차를 표에 적는다(탐침: exp·sin의 1에서 1.2×10⁻¹⁴·9×10⁻¹⁵).
   - C2에서 정한 계약(`bench/accuracy/differentiate.py`, 테스트 `test_derivative.py`·`test_jacobian.py`): `derivative`는 수렴한 결과의 참 오차가 atol + rtol·|df| 이하다(모음 전부에서 지킨다; 판정의 뜻이지 증명된 상계는 아니다). `jacobian`·`hessian`은 노름으로: 수렴한 항목의 오차가 rtol·max|참 행렬| 이하다. 항목마다의 상대 판정은 0에 가까운 항목에서 뜻이 없어 계약이 아니다(§7.8).
 - scipy·Arb와 다른 동작은 API 문서에 `[scipy와 다름]`으로 적는다.
@@ -276,8 +297,8 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
   - 모두 ±0.5% 안(10스레드 `find_root` 10⁶만 −1.7%)이라 느려진 곳이 없고 되돌린 곳도 없다. 사례마다의 가장 빠른 값의 비는 0.97–1.013으로 잡음이 더 크다. `bench.speed run optimize --match elementwise --smoke`도 12사례 모두 지났다(검사 0 실패). 기준선(`bench/speed/results/`)은 바꾸지 않았다.
 
 ### 6.3 이 영역의 파일
-- Python: `src/stardust/{integrate,differentiate}/`. integrate는 `_quadpack.py`(`quad`, `dblquad`, `tplquad`, `nquad`), `_quad_vec.py`, `_cubature.py`, `_tanhsinh.py`(`tanhsinh`, `nsum`), `_rules.py`(`fixed_quad`, `newton_cotes`, 표본 규칙), `_result.py`, `_common.py`. differentiate는 `_derivative.py`(`derivative`, `jacobian`, `hessian`: 입력 검사와 결과), `_weights.py`(올바로 반올림한 가중치, C28·C34), `_result.py`(`DifferentiateResult`와 `summary()`), `_differences.py`(C15).
-- C++: `csrc/{integrate,differentiate}/`. integrate는 `quadpack.cpp`(dqagse·dqagie·dqagpe·dqawoe·dqawfe·dqawse·dqawce와 규칙 dqk15·dqk21·dqk15i·dqk15w·dqc25f·dqc25s·dqc25c, ε-알고리즘 dqelg; 상수는 QUADPACK의 리터럴), `adaptive.cpp`(`quad_vec`·`cubature`의 힙), `tanhsinh.cpp`(표, 합, 오차 추정; `nsum`), `samples.cpp`(표본 규칙; 합은 배열의 커널), `gauss.hpp`(Gauss–Legendre). differentiate는 `steps.hpp`(C3), `derivative.hpp`·`derivative.cpp`(스텐실의 점과 갱신, `derivative`는 `elementwise/loop.hpp`의 고리, `jacobian`·`hessian`의 열 호출과 안쪽 `jacobian`; C2). 바인딩 `csrc/bind/{integrate,differentiate}_bind.cpp`(`stardust._core.integrate`, `stardust._core.differentiate`).
+- Python: `src/stardust/{integrate,differentiate}/`. integrate는 `_quadpack.py`(`quad`, `dblquad`, `tplquad`, `nquad`), `_quad_vec.py`, `_cubature.py`, `_tanhsinh.py`(`tanhsinh`, `nsum`), `_samples.py`(표본 규칙의 인자 검사, C3), `_rules.py`(`fixed_quad`, `newton_cotes`, C3), `_gauss.py`(Gauss–Legendre의 반올림과 정확한 산술, C3), `_result.py`, `_common.py`. differentiate는 `_derivative.py`(`derivative`, `jacobian`, `hessian`: 입력 검사와 결과), `_weights.py`(올바로 반올림한 가중치, C28·C34), `_result.py`(`DifferentiateResult`와 `summary()`), `_differences.py`(C15).
+- C++: `csrc/{integrate,differentiate}/`. integrate는 `quadpack.cpp`(dqagse·dqagie·dqagpe·dqawoe·dqawfe·dqawse·dqawce와 규칙 dqk15·dqk21·dqk15i·dqk15w·dqc25f·dqc25s·dqc25c, ε-알고리즘 dqelg; 상수는 QUADPACK의 리터럴), `adaptive.cpp`(`quad_vec`·`cubature`의 힙), `tanhsinh.cpp`(표, 합, 오차 추정; `nsum`), `samples.cpp`(표본 규칙과 `fixed_quad`의 합; 합은 배열의 커널, C3), `gauss.cpp`(Gauss–Legendre: n ≤ 100의 표 `gauss_table.hpp`(생성: `tools/gen_gauss_legendre.py`)와 그 위의 double-double Newton, C3), `integrate.hpp`(바인딩 선언). differentiate는 `steps.hpp`(C3), `derivative.hpp`·`derivative.cpp`(스텐실의 점과 갱신, `derivative`는 `elementwise/loop.hpp`의 고리, `jacobian`·`hessian`의 열 호출과 안쪽 `jacobian`; C2). 바인딩 `csrc/bind/{integrate,differentiate}_bind.cpp`(`stardust._core.integrate`, `stardust._core.differentiate`).
 - 테스트·측정·골든은 영역마다(§7.5): `tests/{integrate,differentiate}/`, `tests/golden/cases_{integrate,differentiate}.py`, `bench/speed/cases/{integrate,differentiate}.py`, `bench/accuracy/{integrate,differentiate}.py`.
 
 ---
@@ -301,6 +322,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
   2. `acb.integral`: 해석적이고 유계인 피적분함수(가지 자름이 있는 함수는 `analytic` 깃발을 넘긴다).
   3. 치환으로 끝점 특이점을 없앤 뒤 `acb.integral`(x = t^k, 무한 구간은 x = t/(1 − t)나 꼬리의 엄밀한 상계와 자르기).
 - 형식은 `tests/reffile.py`와 `_provenance`(다른 영역과 같다). 각 참값에 방법(닫힌 꼴, 적분, 치환)을 적는다. 미분의 참값은 해석적 도함수를 Arb로 계산한 값이다.
+- **C3에서 더한 것**: `tools/integrate_ref.py samples`(→ `tests/integrate/ref/samples.json`: 표본 12벌마다 다섯 규칙의 식을 같은 double에서 `fractions.Fraction`으로 정확히 계산한 값; 식이 유리 연산뿐이라 Arb가 필요 없다. 누적은 줄마다의 값 전부, 항목마다 표본의 해시)와 `tools/integrate_ref.py gauss`(→ `tests/integrate/ref/gauss.json`: n = 101, 128, 150, 200, 256, 500, 1000의 음이 아닌 점·가중치를 Arb `arb.legendre_p_root`로 2⁻¹¹⁰까지 정해 반올림한 값, `tools/gen_gauss_legendre.py`의 함수). n ≤ 100의 표는 `tools/gen_gauss_legendre.py`가 같은 방법으로 `csrc/integrate/gauss_table.hpp`에 쓰고, 테스트가 Arb로 다시 계산해 견준다(`tests/integrate/test_fixed.py`).
 - **C0에서 만든 것**: `tools/integrate_ref.py`(→ `tests/integrate/ref/integrals.json` 116개, `series.json` 9, `multiple.json` 7, `vector.json` 2)와 `tools/differentiate_ref.py`(→ `tests/differentiate/ref/derivatives.json` 104점의 f′·f″, `mgh.npz`: 야코비안 47·헤시안 42). 값은 2⁻¹¹⁰까지 정한 공(double-double)이다. 문제가 허락하는 방법을 모두 계산하고 공이 겹쳐야 한다(겹치지 않으면 도구가 멈춘다): 116개 가운데 닫힌 꼴 103·`acb.integral` 13이 저장되고, 18개는 `acb.integral`, 5개는 치환이 함께 확인했다. 항목마다 문제 정의의 해시가 있어 문제를 바꾸면 테스트가 낡은 참값을 알린다.
   - `acb.integral`은 끝에서 유계인 대수 특이점(√(1 − t²), √t)은 받는다(NaN은 유계가 아닐 때뿐이다). 치환은 x = t^(1/(1+α))(x^−0.9: 상수), x = u²(e^−x x^−1/2: 2e^−u²), x = e^−u(QAWS 예제)와 꼬리의 엄밀한 상계(e^−144/12, e^−90/90³)다. 확인 하나가 실제로 잘못을 잡았다: x^−0.9의 치환 상수를 double로 쓴 첫 판이 닫힌 꼴과 겹치지 않았다.
   - 헤시안의 참값은 Arb 위의 2차 전진 미분(`tests/differentiate/jets.py`, optimize `ad.Dual2`의 Arb 판)이고, 야코비안은 optimize의 `derivatives.npz`와 같은 값이다.
@@ -399,6 +421,35 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **가중치** (`test_weights.py`): (n, c) = (1, 2), (2, 2), (4, 2), (6, 2), (8, 2), (4, 1.5), (4, 4), (4, 0.5), (3, 3), (5, 1.1), (4, 2.25)의 모든 가중치가 Arb(400비트의 Vandermonde 풀이) 공에 가장 가까운 double이다.
 - **속도** (한 번의 탐침, 기계가 바빴다: 부하 1.5–1.9; 기준선은 `bench/speed`가 조용한 기계에서): `derivative`(exp) 원소 10·10³·10⁵에서 sd 0.0096·0.045·1.44 ms, scipy 0.198·0.401·16.0 ms; `jacobian`(Rosenbrock n = 3) 0.014·0.237 ms; `hessian` 0.073·3.61 ms. 같은 입력이면 1·3·10스레드에서 비트가 같다(원소 4만 개로 확인).
 
+### 7.9 C3에서 잰 것 (scipy 1.18.1, 2026-11-22)
+테스트가 아래 수를 그대로 확인한다(`tests/integrate/test_samples.py`, `test_fixed.py`).
+
+**표본 규칙**
+- 정확한 식과의 계약(§4): 12벌 모두 한계 안이고 가장 큰 것은 한계의 0.050(`simpson`, 같은 간격 17점)이다. 상대오차의 최대: `trapezoid` 1.4×10⁻¹⁶, `simpson` 3.3×10⁻¹⁶, `romb` 1.7×10⁻¹⁶, `cumulative_trapezoid` 1.7×10⁻¹⁵, `cumulative_simpson` 4.0×10⁻¹⁵(4,097점의 누적). scipy는 같은 모음에서 9.8×10⁻¹⁷, 1.3×10⁻¹⁶, 1.3×10⁻¹⁶이고 누적은 같은 값이다(정확도 기준선 `bench/accuracy/results/integrate.json`).
+- scipy의 기록(`scipy_samples.json`, 값 65개: 다섯 규칙과 `initial=0`)과 비트로 같은 것은 59개다. 다른 여섯(17점의 `trapezoid`·`simpson`, 33점의 `simpson`·`romb`, 4,097점의 `romb`, 2차원 `trapezoid`)은 합의 순서(16누산기와 numpy의 8누산기)로 끝자리가 다르고 상대 2.6×10⁻¹⁶ 이하다. 누적은 둘 다 차례대로 더해(sd의 스캔은 8,192점부터 블록) 모두 같다.
+- 줄의 값은 축·배치·스레드와 상관없다: 5줄의 각 줄을 혼자, 2차원으로, 전치해 `axis=0`으로, 띄엄띄엄한 뷰로 부른 값이 비트로 같고, 2¹⁷ + 1점 한 줄과 40 × 4,097의 다섯 규칙이 1·3·10스레드에서 같다.
+
+**`fixed_quad`의 점과 가중치**
+- n = 1–100의 표 2,550개 점·가중치가 모두 Arb(256비트)에 가장 가까운 double이고, n = 101, 128, 150, 200, 256, 500, 1000의 실행 중 계산이 `gauss.json`과 비트로 같다. 모든 값을 정확한 산술로 보내도(테스트의 강제; n = 101, 128) 같다.
+- double-double의 실제 오차(Arb와 견줌): 점은 n = 101에서 6.1×10⁻¹⁷ ulp, 1000에서 1.5×10⁻¹⁶ ulp, 3000에서 4.7×10⁻¹⁶ ulp; 가중치는 상대 2⁻⁹⁸(101), 2⁻⁹⁰·⁵(1000), 2⁻⁹⁴(3000). 반올림을 정확한 산술로 넘기는 한계(C54)는 이것의 2¹⁰배 이상이다.
+- scipy `roots_legendre`와: n = 5는 점이 모두 같고 가중치 5개가 17 ULP까지, n = 20은 점 4개가 1 ULP·가중치 20개가 261 ULP까지, n = 100은 점 38개가 8 ULP·가중치 100개가 83,682 ULP까지 다르다(§7.4와 같은 수). 그래서 scipy의 기록(유한한 매끄러운 적분 30개 × n = 5, 20, 100)과 호출점이 같은 것은 n = 5에서 30개, n = 20·100에서 0개이고, 값이 비트로 같은 것은 4·4·0개다.
+- 합의 계약: 처음 40개 문제의 n = 5, 20, 100, 150에서 값이 f의 값으로 낸 정확한 합과 (⌈log₂ n⌉ + 4)·ε·Σ|wᵢfᵢ| 안이고 가장 큰 것은 한계의 0.12다.
+
+**`newton_cotes`**
+- N = 1–14(같은 간격)는 scipy와 `an`·`B`가 비트로 같다(scipy의 표도 정확한 유리수의 반올림이다). 그 위의 scipy는 Vandermonde 역행렬이라 정확한 값과 N = 15에서 가중치 상대 1.2×10⁻¹², `B` 7.2×10⁻⁶, N = 20에서 가중치 1.9×10⁻¹¹, `B` 0.09, N = 30에서 `B`가 10⁶배 다르다(`B`의 식이 크게 상쇄한다). 위치를 준 경우([0, 0.5, 2])도 scipy와 끝자리가 다르다(5.6×10⁻¹⁷, `B` −0.1111111111111111과 scipy −0.11111111111111116).
+- 다른 알고리즘(모멘트 방정식 Σaᵢrᵢᵏ = Nᵏ⁺¹/(k + 1)의 유리수 소거)과 다섯 위치 집합에서 비트로 같다.
+
+**속도** (한 번의 탐침, 기계가 바빴다: 부하 2.9; 기준선은 `bench/speed`가 조용한 기계에서): 스레드는 기본(10), 시간은 따로 적지 않으면 µs.
+
+| 사례 | sd | scipy | 사례 | sd | scipy |
+|---|---|---|---|---|---|
+| `trapezoid` 10³ / 10⁶ (x 있음) | 1.5 / 73 | 3.6 / 646 | `romb` 2¹⁰ + 1 / 2²⁰ + 1 | 1.4 / 75 | 21 / 334 |
+| `simpson` 10³ / 10⁶ | 2.1 / 150 | 36 / 3,770 | `fixed_quad` n = 5 / 200 | 2.4 / 2.8 | 6.4 / 6.9 |
+| `cumulative_trapezoid` 10³ / 10⁶ | 3.0 / 259 | 7.1 / 2,558 | `newton_cotes` 8 / 20 (기억한 뒤) | 약 2 | 1.3 / 24 |
+| `cumulative_simpson` 10³ / 10⁶ | 4.5 / 366 | 29 / 8,079 | Gauss–Legendre 점 계산 n = 1,000 / 3,000 / 10⁴ (처음 한 번) | 9 ms / 68 ms / 0.74 s | |
+
+- `newton_cotes`의 첫 계산은 정확한 유리수라 느리다(N = 8 0.19 ms, N = 20 1.0 ms; scipy 1.3 µs·24 µs). 같은 입력은 기억한다(C53).
+
 ---
 
 ## 8. 마일스톤 (안)
@@ -407,7 +458,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 | C0 준비 (완료·승인(위임) 2026-11-21) | API 문서의 확정, 결과 객체의 바탕(`OptimizeResult`에서 끌어내기, 동작 불변), 모듈 `sd.integrate`·`sd.differentiate`(공개 이름은 결과 클래스뿐), 시험 모음(§7.1), Arb 참값 도구(§7.2), scipy 1.18.1 기록과 호출 순서(§7.3), QUADPACK 원본 대조(C17, §7.6), `bench/areas.py`와 측정·골든의 등록, scipy 시간(바쁜 기계라 점검 수준, §5) |
 | C1 함께 쓰는 부품 (완료·승인(위임) 2026-11-21) | C3·C15: `diff.hpp`와 `Differences`를 differentiate로 옮기기. C4·C16: `batch.cpp`에서 반복 고리를 csrc 아래 `elementwise/`로 끌어내 넓히기. 공개 함수 없음. optimize·regression의 테스트·골든·배치 속도가 그대로(§6.1, §6.2; C22–C25) |
 | C2 미분 (완료·승인(위임) 2026-11-21) | `derivative`, `jacobian`, `hessian`(C26–C38; §3.8, §7.8) |
-| C3 표본과 고정 규칙 | `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` |
+| C3 표본과 고정 규칙 (완료·승인(위임) 2026-11-22) | `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes`(C39–C54; §3.7, §7.9) |
 | C4 QUADPACK 1 | `quad`(QAGS, QAGI, QAGP), `dblquad`, `tplquad`, `nquad`. scipy의 C 판이 FMA로 축약한 누적의 자리를 호출 순서와 결과로 찾아 `std::fma`를 적는다(§7.6의 축약 탐침). `summary()`(C20) |
 | C5 QUADPACK 2 | `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC). QAWS 로그 가중치 예제의 scipy·Fortran 4×10⁻⁹ 차이(§7.6)의 까닭을 찾는다. QAWO·QAWF의 Fortran 대조는 LINPACK 원본 `dgtsl`로 돈 것이다(C18) |
 | C6 배치 적분 | `tanhsinh`, `nsum` |
@@ -426,12 +477,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **C0**: 모두 정했다(C8–C17; C0을 마치며 생긴 넷은 추천안으로 C18–C21, 사용자 위임 2026-11-21). `dgtsl`의 질문도 닫혔다: 원본을 받았다(C18, 사용자 승인 2026-11-21).
 - **C1**: 정했다(C22–C25, 추천안, 사용자 위임 2026-11-21).
 - **C2**: 정했다(C26–C38, 추천안, 사용자 위임 2026-11-21). 물었던 넷은 (a)다: (k, p) 2차원(C26), (m, N)의 f(C27), 올바로 반올림한 가중치(C28; 한쪽은 Arb가 아니라 Q(√c)의 정확한 계산, C34), `hessian`의 작은 rtol은 `ValueError`(C29). 구현하며 생긴 아홉(C30–C38)도 추천안으로 정했다.
-- **C3**
-  1. 입력: (a) 데이터 함수의 규칙(API.md §5: `sd.ndarray`, 시퀀스, numpy 배열, `Series`) / (b) 배열 함수처럼 `sd.ndarray`만.
-  2. `x`의 꼴: (a) `trapezoid(y, /, x=None, *, dx=1.0, axis=-1)`처럼 위치와 키워드 모두(scipy의 `simpson(y, x=x)`가 된다; `cumulative_simpson`도 같게: `[scipy와 다름]`, scipy는 키워드만) / (b) 함수마다 scipy 그대로.
-  3. `axis`의 기본: (a) scipy·numpy의 −1 / (b) sd `cumulative_sum`처럼 2차원부터는 꼭 준다.
-  4. Gauss–Legendre: (a) 올바로 반올림한 점·가중치(n ≤ 100은 Arb로 만든 표, 그 위는 정확한 알고리즘; n ≥ 20에서 호출점이 scipy와 다를 수 있다: C5의 예외), 공개 이름은 없음 / (b) 같은 것을 `sd.special.roots_legendre`로도 공개 / (c) scipy처럼 Golub–Welsch.
-  5. `fixed_quad`의 반환: (a) 값 하나(scipy의 `(val, None)` 튜플이 아니다) / (b) scipy 그대로. `newton_cotes`는 scipy처럼 `(an, B)` 튜플.
+- **C3**: 정했다(C39–C54, 추천안, 사용자 위임 2026-11-21). 물었던 다섯은 (a)다: 데이터 함수의 입력(C39), `x`는 위치와 키워드 모두(C40), `axis`의 기본 −1(C41), 올바로 반올림한 Gauss–Legendre(공개 이름 없음, C42), `fixed_quad`는 값 하나·`newton_cotes`는 `(an, B)`(C43). 구현하며 생긴 열하나(C44–C54: `romb`, `x`·`dx`의 꼴, 누적의 `initial`, 짝수 개 점의 `simpson`, dtype, 빈 입력, NaN, 합의 순서, `fixed_quad`의 함수, `newton_cotes`의 정확한 계산, 표 밖의 Gauss–Legendre)도 추천안으로 정했다.
 - **C4**
   1. `quad` 결과의 구간 정보(scipy `infodict`의 `alist blist rlist elist iord last`): (a) 필드 `intervals`(last, 2), `interval_integrals`, `interval_errors`(QUADPACK의 `iord` 순서), `n_intervals` / (b) 두지 않는다.
   2. 복소수 피적분함수: (a) `quad(complex_func=True)`만(scipy처럼 실수부·허수부의 두 `quad`), 나머지는 실수만 / (b) 모두 실수만 / (c) 모두 복소수도.

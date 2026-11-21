@@ -426,8 +426,8 @@ def test_messages():
         sd.htest.anderson(x, dist="norm")
     with pytest.raises(TypeError, match=r"not an instance of Normal"):
         sd.htest.anderson(x, dist=sd.stats.Normal())
-    with pytest.raises(ValueError, match=r"anderson\(\): 'dist' must be sd.stats.Normal, .* not sd.stats.Weibull"):
-        sd.htest.anderson(x, dist=sd.stats.Weibull)
+    with pytest.raises(ValueError, match=r"anderson\(\): 'dist' must be sd.stats.Normal, .* not sd.stats.Gamma"):
+        sd.htest.anderson(x, dist=sd.stats.Gamma)
     with pytest.raises(ValueError, match=r"anderson\(\): 'method' must be 'interpolate'"):
         sd.htest.anderson(x, method="interpolated")
     with pytest.raises(ValueError, match=r"power_divergence\(\): 'lambda_' must be"):

@@ -30,9 +30,13 @@ the stored doubles, taken as exact rationals. References are double-doubles hi +
             part: method "eigvals", complex; milestone SP6)
     expm    exp(s A) entry by entry (arb_mat.exp / acb_mat.exp) for n <= 200, s a power of two
             putting ||s A||_1 near 1 (input "scale"), and the same at ||s A||_1 near 30
+    expmv   exp(s A) b on expm's points, b = matrices.rhs(a) (input "b"): t = 1 (method "expmv")
+            and t = 0, 1/4, 1/2, 3/4, 1 (method "interval", the times one after another), the
+            products in Arb (milestone SP7, expm_multiply)
 
 Settling: exact sums are exact; an Arb value is settled to 2^-110 relative (eigenvalues,
-singular values and the 2-norm to 2^-110 ||A||, expm's entries to 2^-110 of the largest entry:
+singular values and the 2-norm to 2^-110 ||A||, expm's entries to 2^-110 of the largest entry,
+expmv's to 2^-110 max_i (|exp(t s A)| |b|)_i:
 tools/arbref.py's floor). A solve is verified as Rump's: R = inv(A) in double, alpha >=
 ||I - R A||_inf bounded with the rounding errors of the double products (gamma_n |R||A|), then
 ||A^-1||_inf <= ||R||_inf / (1 - alpha); x is refined in double steps x1 + x2 + ... whose residual
@@ -686,6 +690,52 @@ def _cpairs(fn, floor):
     return hi, lo
 
 
+# ---------------------------------------------------------------- expmv (SP7)
+
+TIMES = (0.0, 0.25, 0.5, 0.75, 1.0)  # linspace(0, 1, 5): exact doubles
+
+
+def expmv_points():
+    """expm's points, each with its right-hand side b = matrices.rhs(a)."""
+    m = M()
+    return [{**p, "b": m.rhs(m.get(p["matrix"]))} for p in expm_points()]
+
+
+def expmv_ref(p):
+    """exp(t s A) b for t = 1 (method "expmv") and for t in TIMES (method "interval", t by t), each
+    entry settled to 2^-110 of max_i (|exp(s A)| |b|)_i over the times (the scale of the measure)."""
+    import scipy.linalg as sl
+
+    a = M().get(p["matrix"])
+    d = a.dense() * p["scale"]  # a power of two: exact
+    b = np.asarray(p["b"])
+    n = d.shape[0]
+    cplx = np.iscomplexobj(d) or np.iscomplexobj(b)
+    floor = max(float((np.abs(sl.expm(t * d)) @ np.abs(b)).max()) for t in TIMES)
+
+    def values(times):
+        def f():
+            from flint import acb, acb_mat, arb, arb_mat
+
+            out = []
+            for t in times:
+                if cplx:
+                    E = (_acb(d) * acb(t)).exp()
+                    y = E * acb_mat([[acb(z.real, z.imag)] for z in b.astype(np.complex128).tolist()])
+                else:
+                    E = (arb_mat(d.tolist()) * arb(t)).exp()
+                    y = E * arb_mat([[v] for v in b.tolist()])
+                out += [y[i, 0] for i in range(n)]
+            return out
+
+        return f
+
+    if cplx:
+        return {"expmv": _cpairs(values((1.0,)), floor), "interval": _cpairs(values(TIMES), floor)}
+    return {"expmv": _pairs(_settle_list(values((1.0,)), floor)),
+            "interval": _pairs(_settle_list(values(TIMES), floor))}  # fmt: skip
+
+
 # ---------------------------------------------------------------- driver
 
 
@@ -697,6 +747,7 @@ FAMILIES = {
     "lstsq": (lstsq_points, lstsq_ref, ("matrix", "digest", "b")),
     "eig": (eig_points, eig_ref, ("matrix", "digest", "kind")),
     "expm": (expm_points, expm_ref, ("matrix", "digest", "scale")),
+    "expmv": (expmv_points, expmv_ref, ("matrix", "digest", "scale", "b")),
 }
 # fields that are per-point extras of a method (attached to the method's entry, not methods)
 EXTRAS = {"cond": "solve", "cond_normal": "lstsq"}
