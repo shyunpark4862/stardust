@@ -38,6 +38,10 @@ FIELDS = (
     "interval_integrals",
     "interval_errors",
     "n_intervals",
+    "cycle_integrals",
+    "cycle_errors",
+    "cycle_status",
+    "n_cycles",
     "subdivisions",
     "real",
     "imag",
@@ -135,8 +139,8 @@ _COLUMNS = (
     ("nfev", str),
     ("max_level", str),
 )
-_COUNTS = (("nfev", "Function Evals:"), ("n_intervals", "Intervals:"), ("max_level", "Max Level:"),
-           ("subdivisions", "Subdivisions:"))  # fmt: skip
+_COUNTS = (("nfev", "Function Evals:"), ("n_intervals", "Intervals:"), ("n_cycles", "Cycles:"),
+           ("max_level", "Max Level:"), ("subdivisions", "Subdivisions:"))  # fmt: skip
 
 
 def _summary(r):
@@ -174,9 +178,16 @@ def _summary(r):
                 continue
             rows.append((f"[{i}]", [_S.forg(iv[i, 0], 6), _S.forg(iv[i, 1], 6), _S.forg(vi[i], 6), _S.forg(ve[i])]))
         tables.append(_S.Table(["a", "b", "integral", "error"], rows))
+    if "cycle_integrals" in f and f["n_cycles"]:  # QAWF's cycles, in order
+        ci, ce, cs = r.cycle_integrals, r.cycle_errors, r.cycle_status
+        rows = [None if i is None else (f"[{i}]", [_S.forg(ci[i], 6), _S.forg(ce[i]), str(cs[i])])
+                for i in _S.shown(int(f["n_cycles"]))]  # fmt: skip
+        tables.append(_S.Table(["integral", "error", "status"], rows))
     parts = [(k, f[k]) for k in ("real", "imag") if k in f]  # a complex quad's two real quads
     if parts:
-        rows = [(k, [_S.forg(p.integral, 6), _S.forg(p.error), str(p.status), str(p.nfev), str(p.n_intervals)])
+        pf = parts[0][1]._fields
+        n = "n_intervals" if "n_intervals" in pf else "n_cycles"
+        rows = [(k, [_S.forg(p.integral, 6), _S.forg(p.error), str(p.status), str(p.nfev), str(p._fields[n])])
                 for k, p in parts]  # fmt: skip
-        tables.append(_S.Table(["integral", "error", "status", "nfev", "intervals"], rows))
+        tables.append(_S.Table(["integral", "error", "status", "nfev", n[2:]], rows))
     return _S.render(_TITLE, header=(left, right), wide_rows=wide, tables=tables)

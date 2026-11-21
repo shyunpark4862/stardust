@@ -145,7 +145,7 @@ def compare_libs(measure, libs, seconds=60.0):
 
         out = {}
         for lib in libs:
-            if lib == "R" and not rsession.available():
+            if lib.split(" ")[0] == "R" and not rsession.available():  # R and its packages ("R irlba")
                 out[lib] = "not run"
                 continue
             try:

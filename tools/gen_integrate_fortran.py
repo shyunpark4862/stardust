@@ -48,6 +48,11 @@ Run:  .venv/bin/python tools/gen_integrate_fortran.py SRC_DIR BUILD_DIR
 With --probe-contract the library is built a second time with -ffp-contract=fast (FMA where the
 compiler likes, as clang's default contraction does in scipy's C port) into BUILD_DIR/contract,
 and only the comparison with scipy is printed; nothing is written.
+
+With --probe-qc25s the library is built a second time with dqc25s.f's typo corrected (QC25S_FIX:
+the loop of the a end's log moments adds cheb24(i) rg(i) to res12, not to res24) into
+BUILD_DIR/qc25s, and the weighted runs' comparison with scipy is printed; nothing is written
+(docs/design/integrate.md §7.11: the QAWS log example's 4e-9 from scipy is this line).
 """
 
 from __future__ import annotations
@@ -187,15 +192,29 @@ def check_sources(src):
     return out
 
 
-def build(src, out, flags=None, standin=False):
-    """The library of the sources and REPLACEMENTS; standin: DGTSL_STANDIN in place of dgtsl.f."""
+# dqc25s.f's typo (netlib's original, loop 50): the log moments' sum of degree 24 restarts from
+# the degree-12 sum; scipy's C port has res24 = res24 + ... (QC25S_FIX, --probe-qc25s only)
+QC25S_FIX = ("        res24 = res12+cheb24(i)*rg(i)", "        res24 = res24+cheb24(i)*rg(i)")
+
+
+def build(src, out, flags=None, standin=False, fix_qc25s=False):
+    """The library of the sources and REPLACEMENTS; standin: DGTSL_STANDIN in place of dgtsl.f;
+    fix_qc25s: dqc25s.f with QC25S_FIX (a copy in out)."""
     out.mkdir(parents=True, exist_ok=True)
     files = []
     texts = {**REPLACEMENTS, **({"dgtsl_standin.f": DGTSL_STANDIN} if standin else {})}
+    if fix_qc25s:
+        text = (src / "dqc25s.f").read_text()
+        if text.count(QC25S_FIX[0]) != 1:
+            raise SystemExit("dqc25s.f: the line of QC25S_FIX is not there once")
+        texts["dqc25s_fixed.f"] = text.replace(*QC25S_FIX)
     for name, text in texts.items():
         (out / name).write_text(text)
         files.append(str(out / name))
-    files += [str(src / f"{s}.f") for s in SOURCES if not (standin and s == "dgtsl")]
+    skip = {"dgtsl"} if standin else set()
+    if fix_qc25s:
+        skip.add("dqc25s")
+    files += [str(src / f"{s}.f") for s in SOURCES if s not in skip]
     lib = out / "libquadpack.dylib"
     subprocess.run([FC, *(flags or FFLAGS), "-o", str(lib), *files], check=True)
     version = subprocess.run([FC, "--version"], capture_output=True, text=True, check=True).stdout.splitlines()[0]
@@ -401,8 +420,12 @@ def main(argv=None):
     ap.add_argument("src", type=pathlib.Path, help="the folder of the 22 Fortran files and SHA256SUMS")
     ap.add_argument("build", type=pathlib.Path, help="the folder for the replacements and the library")
     ap.add_argument("--probe-contract", action="store_true", help="also build with -ffp-contract=fast and compare")
+    ap.add_argument("--probe-qc25s", action="store_true", help="also build with dqc25s.f's typo corrected and compare")
     a = ap.parse_args(argv)
     digests = check_sources(a.src.resolve())
+    if a.probe_qc25s:
+        lib, _ = build(a.src.resolve(), a.build.resolve() / "qc25s", fix_qc25s=True)
+        return _probe(Quadpack(lib), weighted=True)
     if a.probe_contract:
         flags = [f if f != "-ffp-contract=off" else "-ffp-contract=fast" for f in FFLAGS]
         lib, _ = build(a.src.resolve(), a.build.resolve() / "contract", flags)
@@ -460,7 +483,7 @@ def main(argv=None):
     return 0
 
 
-def _probe(qp):
+def _probe(qp, weighted=False):
     from tests.integrate import problems as P
 
     scipy_quad = json.loads((DATA / "scipy_quad.json").read_text())
@@ -468,14 +491,19 @@ def _probe(qp):
     same = {"all": 0, "calls": 0, "integral": 0, "error": 0}
     n = 0
     for p in P.INTEGRALS:
+        if weighted and p.weight is None:
+            continue
         rec, pts = run_routine(qp, p)
         c = compare(rec, pts, scipy_quad[p.id], calls[f"quad/{p.id}"])
+        if weighted:
+            print(f"  {p.id} ({rec['routine']}): calls {c['same_calls']}, {json.dumps(c['same'])}")
         n += 1
         same["all"] += c["same_result"] and c["same_calls"]
         same["calls"] += c["same_calls"]
         same["integral"] += c["same"]["integral"]
         same["error"] += c["same"]["error"]
-    print(f"-ffp-contract=fast: of {n} runs, {same['all']} agree with scipy to the bit; the same calls "
+    print(f"{'dqc25s corrected' if weighted else '-ffp-contract=fast'}: of {n} runs, {same['all']} agree with scipy "
+          f"to the bit; the same calls "
           f"{same['calls']}, integral {same['integral']}, error {same['error']}")  # fmt: skip
     return 0
 

@@ -1,21 +1,20 @@
 """quad, dblquad, tplquad and nquad (docs/api/integrate.md §2, §3; docs/design/integrate.md §3.1,
-§3.2, decisions C5, C10, C11, C55-C66).
+§3.2, decisions C5, C10, C11, C55-C66 and C71-C83).
 
 The arguments are checked here; the integration is the native stardust._core.integrate.quad_solve
-(one quad: scipy 1.18.1's dispatch around QUADPACK's QAGS, QAGI and QAGP, the points and results
-scipy's bit for bit) and nquad_solve (the nested quads of nquad, dblquad and tplquad, every level
-in C++ with the user's functions called back). Each returns an IntegrateResult that unpacks into
-(integral, error) like scipy's tuples (C10).
-
-The weights of quad (weight, wvar, max_p1, limlst: QAWO, QAWF, QAWS, QAWC) come with milestone
-C5 (docs/design/integrate.md §8); until then weight= raises NotImplementedError.
+(one quad: scipy 1.18.1's dispatch around QUADPACK's QAGS, QAGI and QAGP and, with a weight,
+QAWO, QAWF, QAWS and QAWC, the points and results scipy's bit for bit) and nquad_solve (the
+nested quads of nquad, dblquad and tplquad, every level in C++ with the user's functions called
+back). Each returns an IntegrateResult that unpacks into (integral, error) like scipy's tuples
+(C10). What depends on the range (a weight on an infinite range, QAWF's tolerances, the Cauchy
+point at an end) is checked by the native code, after the empty range's shortcut.
 """
 
 import math
 import numbers
 
 from .. import _core as _sd
-from ..optimize._common import _callable, _check_bool, _check_int, _real, _scalar_check, _type_name
+from ..optimize._common import _callable, _check_bool, _check_int, _real, _real_pair, _scalar_check, _type_name
 from ._result import IntegrateResult
 
 _Q = _sd.integrate
@@ -24,6 +23,8 @@ _LIMIT = 50
 _EPS = 2.0**-52
 _INT_MAX = 2**31 - 1  # QUADPACK's limit is a C int
 _WEIGHTS = ("cos", "sin", "alg", "alg-loga", "alg-logb", "alg-log", "cauchy")
+_WEIGHT_CODE = {w: i + 1 for i, w in enumerate(_WEIGHTS)}  # the native codes (0: no weight)
+_MAXP1 = _LIMLST = 50
 _OPT_KEYS = ("atol", "rtol", "limit", "points", "weight", "wvar")
 _SCIPY_KEYS = {"epsabs": "atol", "epsrel": "rtol"}  # nquad's opts in scipy's names
 
@@ -43,9 +44,24 @@ _MESSAGES = {
 }
 
 
-def _message(ier, limit):
+# QAWF's texts for ier 1, 4 and 7 (scipy's, for 'cos' and 'sin' on an infinite range)
+_QAWF_MESSAGES = {
+    1: "The maximum number of cycles allowed has been achieved., e.e.\n  of subintervals (a+(k-1)c, a+kc) where c = "
+    "(2*int(abs(omega)+1))\n  *pi/abs(omega), for k = 1, 2, ..., lst.  One can allow more cycles by increasing the "
+    "value of limlst.  Look at info['ierlst'] with full_output=1.",
+    4: "The extrapolation table constructed for convergence acceleration\n  of the series formed by the integral "
+    "contributions over the cycles, \n  does not converge to within the requested accuracy.  Look at \n  "
+    "info['ierlst'] with full_output=1.",
+    7: "Bad integrand behavior occurs within one or more of the cycles.\n  Location and type of the difficulty "
+    "involved can be determined from \n  the vector info['ierlist'] obtained with full_output=1.",
+}
+
+
+def _message(ier, limit, qawf=False):
     if ier == 0:
         return _MESSAGES[0]
+    if qawf and ier in _QAWF_MESSAGES:
+        return _QAWF_MESSAGES[ier]
     if ier == 1:
         return (
             f"The maximum number of subdivisions ({limit}) has been achieved.\n  If increasing the limit yields no "
@@ -58,7 +74,7 @@ def _message(ier, limit):
 
 
 _CHECK = {fn: _scalar_check(fn) for fn in ("quad", "dblquad", "tplquad", "nquad")}
-_DEFAULT_OPTS = (_TOL, _TOL, _LIMIT, None)
+_DEFAULT_OPTS = (_TOL, _TOL, _LIMIT, None, 0, None, _MAXP1, _LIMLST)
 
 # ---- the arguments
 
@@ -112,21 +128,56 @@ def _limit_count(v, func, arg="limit"):
 
 
 def _weight(weight, wvar, func):
-    """weight and wvar: milestone C5 (until then a weight is NotImplementedError)."""
-    if weight is not None:
-        if not isinstance(weight, str):
-            raise TypeError(f"{func}(): 'weight' must be a str or None, not {_type_name(weight)}")
-        if weight not in _WEIGHTS:
-            raise ValueError(f"{func}(): 'weight' must be one of {', '.join(map(repr, _WEIGHTS))}, not {weight!r}")
-        raise NotImplementedError(f"{func}(): 'weight' (QAWO, QAWF, QAWS, QAWC) comes with milestone C5")
-    if wvar is not None:
-        raise ValueError(f"{func}(): 'wvar' is only used with 'weight'")
+    """weight and wvar as the native (code, wvar): code 0 without a weight; wvar the frequency
+    omega (cos, sin) or the point c (cauchy) as a float, (alpha, beta) for the 'alg' weights."""
+    if weight is None:
+        if wvar is not None:
+            raise ValueError(f"{func}(): 'wvar' is only used with 'weight'")
+        return 0, None
+    if not isinstance(weight, str):
+        raise TypeError(f"{func}(): 'weight' must be a str or None, not {_type_name(weight)}")
+    if weight not in _WEIGHTS:
+        raise ValueError(f"{func}(): 'weight' must be one of {', '.join(map(repr, _WEIGHTS))}, not {weight!r}")
+    if weight.startswith("alg"):
+        if type(wvar) is tuple and len(wvar) == 2 and type(wvar[0]) is float and type(wvar[1]) is float:
+            alfa, beta = wvar  # the checks' fast path (finite below)
+            if not (math.isfinite(alfa) and math.isfinite(beta)):
+                raise ValueError(f"{func}(): the values of 'wvar' must be finite")
+        else:
+            alfa, beta = _real_pair(wvar, func, "wvar", "pair (alpha, beta) of real numbers")
+        if not (alfa > -1 and beta > -1):
+            raise ValueError(f"{func}(): 'wvar' (alpha, beta) must both be > -1 for weight={weight!r}")
+        return _WEIGHT_CODE[weight], (alfa, beta)
+    w = wvar if type(wvar) is float else _real(wvar, func, "wvar")
+    if not math.isfinite(w):
+        raise ValueError(f"{func}(): 'wvar' must be finite for weight={weight!r}")
+    return _WEIGHT_CODE[weight], w
 
 
-def _opts(func, atol, rtol, limit, points):
-    """One quad's options as the native tuple (atol, rtol, limit, points or None)."""
-    atol, rtol = _tolerances(atol, rtol, func)
-    return (atol, rtol, _limit_count(limit, func), _points(points, func))
+def _opts(func, atol, rtol, limit, points, weight=None, wvar=None, max_p1=_MAXP1, limlst=_LIMLST):
+    """One quad's options as the native tuple (atol, rtol, limit, points or None, weight code,
+    wvar, max_p1, limlst)."""
+    if not (atol == _TOL and rtol == _TOL and type(atol) is float and type(rtol) is float):
+        atol, rtol = _tolerances(atol, rtol, func)
+    if not (type(limit) is int and 1 <= limit <= _INT_MAX):
+        limit = _limit_count(limit, func)
+    points = None if points is None else _points(points, func)
+    if not (max_p1 == _MAXP1 and type(max_p1) is int):
+        max_p1 = _limit_count(max_p1, func, "max_p1")
+    if not (limlst == _LIMLST and type(limlst) is int):
+        limlst = _check_int(limlst, func, "limlst", 3)
+        if limlst > _INT_MAX:
+            raise OverflowError(f"{func}(): 'limlst' is out of range")
+    code, wv = _weight(weight, wvar, func)
+    if code and points is not None:
+        raise ValueError(f"{func}(): 'points' is not used with 'weight'")
+    if code and weight.startswith("alg") and limit < 2:
+        raise ValueError(f"{func}(): 'limit' must be >= 2 with weight={weight!r}")
+    if max_p1 != _MAXP1 and weight not in ("cos", "sin"):
+        raise ValueError(f"{func}(): 'max_p1' is only used with weight='cos' or 'sin'")
+    if limlst != _LIMLST and weight not in ("cos", "sin"):
+        raise ValueError(f"{func}(): 'limlst' is only used with weight='cos' or 'sin' on an infinite range")
+    return (atol, rtol, limit, points, code, wv, max_p1, limlst)
 
 
 def _complex_check(func):
@@ -149,7 +200,24 @@ def _complex_check(func):
 
 
 def _quad_result(r, limit):
-    value, err, neval, ier, last, (ends, values, errors) = r
+    value, err, neval, ier, last, arrays, qawf = r
+    if qawf:  # QAWF: the cycles (scipy's lst, rslst, erlst, ierlst)
+        values, errors, iers = arrays
+        return IntegrateResult._quad(
+            {
+                "integral": value,
+                "error": err,
+                "converged": ier == 0,
+                "status": ier,
+                "message": _message(ier, limit, True),
+                "nfev": neval,
+                "cycle_integrals": values,  # read-only arrays made by the native code
+                "cycle_errors": errors,
+                "cycle_status": iers,
+                "n_cycles": last,
+            }
+        )
+    ends, values, errors = arrays
     return IntegrateResult._quad(
         {
             "integral": value,
@@ -186,8 +254,8 @@ def quad(
     complex_func=False,
 ):
     """The integral of func on [a, b] by QUADPACK (docs/api/integrate.md §2): QAGS on a finite
-    range, QAGI on an infinite one, QAGP with break points; the result unpacks into
-    (integral, error)."""
+    range, QAGI on an infinite one, QAGP with break points, QAWO, QAWF, QAWS or QAWC with a
+    weight; the result unpacks into (integral, error)."""
     fn = "quad"
     if not callable(func):
         _callable(func, fn, "func")
@@ -195,23 +263,26 @@ def quad(
         a = _limit_value(a, fn, "a")
     if type(b) is not float or b != b:
         b = _limit_value(b, fn, "b")
-    if atol == _TOL and rtol == _TOL and limit == _LIMIT and points is None and type(limit) is int:
+    if (
+        atol == _TOL
+        and rtol == _TOL
+        and limit == _LIMIT
+        and points is None
+        and weight is None
+        and wvar is None
+        and max_p1 == _MAXP1
+        and limlst == _LIMLST
+        and type(limit) is int
+        and type(max_p1) is int
+        and type(limlst) is int
+    ):
         opts = (
-            (float(atol), float(rtol), _LIMIT, None)
+            (float(atol), float(rtol)) + _DEFAULT_OPTS[2:]
             if type(atol) is not float or type(rtol) is not float
             else _DEFAULT_OPTS
         )
     else:
-        opts = _opts(fn, atol, rtol, limit, points)
-    if not (max_p1 == 50 and limlst == 50 and type(max_p1) is int and type(limlst) is int):
-        _check_int(max_p1, fn, "max_p1", 1)
-        _check_int(limlst, fn, "limlst", 3)
-    if weight is not None or wvar is not None:
-        _weight(weight, wvar, fn)
-    if max_p1 != 50:
-        raise ValueError(f"{fn}(): 'max_p1' is only used with weight='cos' or 'sin'")
-    if limlst != 50:
-        raise ValueError(f"{fn}(): 'limlst' is only used with weight='cos' or 'sin' on an infinite range")
+        opts = _opts(fn, atol, rtol, limit, points, weight, wvar, max_p1, limlst)
     if complex_func is False:
         return _quad_result(_Q.quad_solve(fn, func, _CHECK[fn], a, b, opts, 0), opts[2])
     _check_bool(complex_func, fn, "complex_func")
@@ -272,19 +343,26 @@ def _opts_dict(d, func, what):
         if k not in _OPT_KEYS:
             hint = f" (scipy's {k!r} is {_SCIPY_KEYS[k]!r})" if k in _SCIPY_KEYS else ""
             raise ValueError(f"{func}(): {what} has no option {k!r}{hint}; the options are {', '.join(_OPT_KEYS)}")
-    _weight(d.get("weight"), d.get("wvar"), func)
-    return _opts(func, d.get("atol", _TOL), d.get("rtol", _TOL), d.get("limit", _LIMIT), d.get("points"))
+    return _opts(
+        func,
+        d.get("atol", _TOL),
+        d.get("rtol", _TOL),
+        d.get("limit", _LIMIT),
+        d.get("points"),
+        d.get("weight"),
+        d.get("wvar"),
+    )
 
 
 def _solve(fn, func, levels, range_check, opts_check):
-    value, err, nfev, ier, limit = _Q.nquad_solve(fn, func, _CHECK[fn], levels, range_check, opts_check)
+    value, err, nfev, ier, limit, qawf = _Q.nquad_solve(fn, func, _CHECK[fn], levels, range_check, opts_check)
     return IntegrateResult._quad(
         {
             "integral": value,
             "error": err,
             "converged": ier == 0,
             "status": ier,
-            "message": _message(ier, limit),
+            "message": _message(ier, limit, qawf),
             "nfev": nfev,
         }
     )

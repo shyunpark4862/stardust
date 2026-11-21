@@ -1,6 +1,6 @@
 """The Arb references of sd.integrate (docs/design/integrate.md §7.2), in tests/integrate/ref/:
 
-    .venv/bin/python tools/integrate_ref.py                    # all six
+    .venv/bin/python tools/integrate_ref.py                    # all seven
     .venv/bin/python tools/integrate_ref.py integrals series   # only these
 
   integrals   integrals.json: per one-dimensional integral of tests/integrate/problems.py
@@ -16,6 +16,8 @@
   gauss       gauss.json: the Gauss-Legendre nodes and weights of fixed_quad past the table
               (n = 101 ... 1000, decision C42): Arb's, each settled and rounded to the nearest
               double (tools/gen_gauss_legendre.py, which writes the table of n <= 100)
+  weights     weights.json: per weighted integral of tests/integrate/weights.py (SWEEP: quad's
+              QAWO, QAWF, QAWS, QAWC families, C5), its exact integral like integrals'
 
 A reference is an Arb ball settled to 2^-110 of its value (tools/arbref.py) and is stored as the
 double-double [hi, lo]. It comes from up to three methods, and every method a problem allows is
@@ -122,8 +124,9 @@ def _agree(pid, balls):
 
 def _integral_task(pid):
     from tests.integrate import problems as P
+    from tests.integrate import weights as W
 
-    p = P.get(pid)
+    p = W.BY_ID[pid] if pid.startswith("weights/") else P.get(pid)
     ms = methods_of(p)
     if not ms:
         raise ValueError(f"{pid}: no reference method")
@@ -177,6 +180,17 @@ def integrals():
     for _, e in rows:
         del e["seconds"]
     _write("integrals.json", rows, len(ids))
+
+
+def weights():
+    from tests.integrate import weights as W
+
+    ids = [p.id for p in W.SWEEP]
+    with _pool() as pool:
+        rows = list(pool.imap(_integral_task, ids))
+    for _, e in rows:
+        del e["seconds"]
+    _write("weights.json", rows, len(ids))
 
 
 def series():
@@ -385,6 +399,7 @@ PARTS = {
     "vector": vector,
     "samples": samples,
     "gauss": gauss,
+    "weights": weights,
 }
 
 

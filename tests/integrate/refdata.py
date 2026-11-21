@@ -12,6 +12,7 @@ accuracy measurement (bench/accuracy/integrate.py):
                          cumulative rules a list of running values)
     ref/gauss.json       per n past fixed_quad's table: "x", "w" the nonnegative Gauss-Legendre
                          nodes (ascending) and weights correctly rounded, as float.hex
+    ref/weights.json     per weighted integral of weights.SWEEP (quad's sweep, C5), as integrals'
 
 Each file's "_provenance" says what computed it (the npz files' fields of tests/reffile.py).
 """
@@ -52,6 +53,10 @@ def samples(keep_provenance=False):
 
 def gauss(keep_provenance=False):
     return _json(REF / "gauss.json", keep_provenance)
+
+
+def weights(keep_provenance=False):
+    return _json(REF / "weights.json", keep_provenance)
 
 
 def value(entry):

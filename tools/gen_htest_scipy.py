@@ -4,7 +4,11 @@
   tests/htest/data/scipy_h1.json ... scipy_h9.json   scipy.stats (and scipy.stats.contingency)
   tests/htest/data/statsmodels.json                  statsmodels.stats (multipletests, the
                                                      proportion functions, mcnemar, cochrans_q;
-                                                     multipletests' batch one row at a time)
+                                                     multipletests' batch one row at a time), and
+                                                     statsmodels' counterparts of scipy's tests
+                                                     (sm_counterpart: jarque_bera, normaltest,
+                                                     Welch's f_oneway, tukey_hsd) under the
+                                                     scipy problems' ids
 
 Each problem's line holds the inputs' digest (problems.digest), what the call returned -- every
 field the result has (statistic, pvalue, df or dof, zstatistic, statistic_location,
@@ -18,7 +22,8 @@ Not run: fisher_exact on an r x c table (scipy's default is an unseeded Monte Ca
 answer to keep). dunnett's p-values come from scipy's randomized quasi-Monte Carlo and are
 recorded with rng=12345. H9's problems are the resampling functions' fixed answers (h9_call).
 
-Run: .venv/bin/python tools/gen_htest_scipy.py [--jobs N] [--milestone H9]   (up to 10 processes)
+Run: .venv/bin/python tools/gen_htest_scipy.py [--jobs N] [--milestone H9] [--statsmodels]
+(up to 10 processes; --statsmodels writes statsmodels.json alone)
 """
 
 import json
@@ -194,6 +199,57 @@ def statsmodels_call(p):
     raise KeyError(p.func)
 
 
+def sm_counterpart(p):
+    """statsmodels' function computing the same test as a scipy problem's, or None: stattools'
+    jarque_bera and omni_normtest (D'Agostino and Pearson's K^2, scipy's normaltest), oneway's
+    anova_oneway(use_var='unequal') (Welch's, scipy's f_oneway(equal_var=False)) and
+    pairwise_tukeyhsd (equal variances; its meandiffs are mean_j - mean_i for the pairs i < j of
+    the groups' order). Only problems without other options."""
+    kw = dict(p.kwargs)
+    if p.func in ("jarque_bera", "normaltest") and not kw:
+        from statsmodels.stats.stattools import jarque_bera, omni_normtest
+
+        if p.func == "jarque_bera":
+            return lambda: dict(zip(("statistic", "pvalue"), map(plain, jarque_bera(np.asarray(p.args[0]))[:2])))
+        return lambda: dict(zip(("statistic", "pvalue"), map(plain, omni_normtest(np.asarray(p.args[0])))))
+    if p.func == "f_oneway" and kw == {"equal_var": False}:
+        from statsmodels.stats.oneway import anova_oneway
+
+        def welch():
+            r = anova_oneway([np.asarray(a) for a in p.args], use_var="unequal", welch_correction=True)
+            return {"statistic": plain(r.statistic), "pvalue": plain(r.pvalue)}
+
+        return welch
+    if p.func == "tukey_hsd" and not kw:
+        from statsmodels.stats.multicomp import pairwise_tukeyhsd
+
+        def tukey():
+            groups = [np.asarray(a, dtype=float) for a in p.args]
+            labels = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
+            r = pairwise_tukeyhsd(np.concatenate(groups), labels)
+            return {"meandiffs": plain(np.asarray(r.meandiffs)), "pvalues": plain(np.asarray(r.pvalues))}
+
+        return tukey
+    return None
+
+
+def run_sm(pid):
+    """A scipy problem's statsmodels counterpart (sm_counterpart), recorded like run's."""
+    from tests.htest import problems as P
+
+    p = P.PROBLEMS[pid]
+    rec = {"digest": P.digest(p)}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            rec["result"] = sm_counterpart(p)()
+        except Exception as e:
+            rec["error"] = f"{type(e).__name__}: {e}"
+    if caught:
+        rec["warnings"] = sorted({w.category.__name__ for w in caught})
+    return pid, rec
+
+
 def run(pid):
     from tests.htest import problems as P
 
@@ -231,12 +287,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="tools/gen_htest_scipy.py", description=__doc__.split("\n\n")[0])
     cli.add_jobs(ap, default=JOBS)
     ap.add_argument("--milestone", action="append", metavar="H9", help="only these milestones' files (repeatable)")
+    ap.add_argument("--statsmodels", action="store_true", help="statsmodels.json alone")
     a = ap.parse_args(argv)
     jobs = a.jobs
     only = set(a.milestone or ())
-    ids = [i for i in P.PROBLEMS if not only or P.PROBLEMS[i].milestone in only]
+    if a.statsmodels and only:
+        ap.error("--statsmodels writes statsmodels.json alone: no --milestone")
+    ids = [i for i in P.PROBLEMS if (not only or P.PROBLEMS[i].milestone in only)
+           and (not a.statsmodels or P.PROBLEMS[i].func in P.STATSMODELS)]  # fmt: skip
+    sm_ids = [] if only else [i for i in P.PROBLEMS if P.PROBLEMS[i].func not in P.STATSMODELS
+                              and sm_counterpart(P.PROBLEMS[i]) is not None]  # fmt: skip
     with mp.get_context("spawn").Pool(jobs, maxtasksperchild=50) as pool:
         res = dict(pool.imap(run, ids, chunksize=4))
+        sm_res = dict(pool.imap(run_sm, sm_ids, chunksize=4))
     meta = {
         "tool": "tools/gen_htest_scipy.py",
         "scipy": scipy.__version__,
@@ -245,15 +308,15 @@ def main(argv=None):
     }
     DATA.mkdir(parents=True, exist_ok=True)
     for ms in ("H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9"):
-        if only and ms not in only:
+        if a.statsmodels or (only and ms not in only):
             continue
         recs = [(i, res[i]) for i in ids if P.PROBLEMS[i].milestone == ms and P.PROBLEMS[i].func not in P.STATSMODELS]
         write(DATA / f"scipy_{ms.lower()}.json", meta, recs)
     if not only:
-        recs = [(i, res[i]) for i in ids if P.PROBLEMS[i].func in P.STATSMODELS]
+        recs = [(i, res[i]) for i in ids if P.PROBLEMS[i].func in P.STATSMODELS] + list(sm_res.items())
         write(DATA / "statsmodels.json", meta, recs)
-    errors = sum("error" in r for r in res.values())
-    print(f"{len(res)} problems, {errors} raised")
+    errors = sum("error" in r for r in (*res.values(), *sm_res.values()))
+    print(f"{len(res) + len(sm_res)} problems, {errors} raised")
 
 
 if __name__ == "__main__":

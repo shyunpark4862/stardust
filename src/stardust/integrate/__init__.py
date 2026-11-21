@@ -9,7 +9,7 @@ other areas' field names (integral, error, converged, nfev).
 The public functions come milestone by milestone (docs/design/integrate.md §8): C3 brought the
 sample rules (trapezoid, simpson, romb, cumulative_trapezoid, cumulative_simpson) and the fixed
 rules (fixed_quad, newton_cotes), C4 QUADPACK's quad (without a weight) and the multiple
-integrals (dblquad, tplquad, nquad).
+integrals (dblquad, tplquad, nquad), C6 the elementwise family's tanhsinh and nsum.
 """
 
 from .. import _calls
@@ -17,6 +17,7 @@ from ._quadpack import dblquad, nquad, quad, tplquad
 from ._result import IntegrateResult
 from ._rules import fixed_quad, newton_cotes
 from ._samples import cumulative_simpson, cumulative_trapezoid, romb, simpson, trapezoid
+from ._tanhsinh import nsum, tanhsinh
 
 # a wrong call shape in the library's form, "trapezoid(): unexpected keyword argument 'foo'"
 # (API.md §2.1)
@@ -31,6 +32,8 @@ quad = _calls.function(quad)
 dblquad = _calls.function(dblquad)
 tplquad = _calls.function(tplquad)
 nquad = _calls.function(nquad)
+tanhsinh = _calls.function(tanhsinh)
+nsum = _calls.function(nsum)
 del _calls
 
 __all__ = [
@@ -41,9 +44,11 @@ __all__ = [
     "fixed_quad",
     "newton_cotes",
     "nquad",
+    "nsum",
     "quad",
     "romb",
     "simpson",
+    "tanhsinh",
     "tplquad",
     "trapezoid",
 ]

@@ -58,6 +58,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/integrate/gauss.cpp
   csrc/integrate/quadpack.cpp
   csrc/integrate/samples.cpp
+  csrc/integrate/tanhsinh.cpp
   csrc/optimize/batch.cpp
   csrc/optimize/bfgs.cpp
   csrc/optimize/hybrd.cpp

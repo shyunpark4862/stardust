@@ -135,17 +135,20 @@ def _specs():
         ("gof", "jarque_bera", 1, "normal", h.jarque_bera, st.jarque_bera, None, "", {}),
         ("gof", "shapiro", 1, "normal", h.shapiro, st.shapiro, "shapiro.test(x0)", "", {}),
         ("gof", "anderson", 1, "normal", h.anderson, lambda *a, **k: st.anderson(*a, method="interpolate", **k),
-         None, "", {}),
+         "nortest::ad.test(x0)", "nortest's p-value is its own formula (the statistic is the same)", {}),
         ("gof", "anderson logistic", 1, "normal", lambda *a, **k: h.anderson(*a, dist=sd.stats.Logistic, **k),
          lambda *a, **k: st.anderson(*a, dist="logistic", method="interpolate", **k), None, "", {}),
         ("gof", "ks_1samp", 1, "normal", lambda *a, **k: h.ks_1samp(a[0], N, **k),
          lambda *a, **k: st.ks_1samp(a[0], st.norm.cdf, **k), "ks.test(x0, 'pnorm')",
          "ks.test's exact p-value is 1 - cdf and asymptotic from n = 100", {}),
         ("gof", "cramervonmises", 1, "normal", lambda *a, **k: h.cramervonmises(a[0], N, **k),
-         lambda *a, **k: st.cramervonmises(a[0], "norm", **k), None, "", {}),
-        ("rank", "mannwhitneyu", 2, "normal", h.mannwhitneyu, st.mannwhitneyu, f"wilcox.test({R2})", "", {}),
-        ("rank", "ranksums", 2, "normal", h.ranksums, st.ranksums, None, "", {}),
-        ("rank", "wilcoxon", 2, "normal", h.wilcoxon, st.wilcoxon, f"wilcox.test({R2}, paired = TRUE)", WILCOXON, {}),
+         lambda *a, **k: st.cramervonmises(a[0], "norm", **k), "goftest::cvm.test(x0, 'pnorm')", "", {}),
+        ("rank", "mannwhitneyu", 2, "normal", h.mannwhitneyu, st.mannwhitneyu, f"wilcox.test({R2}, exact = FALSE)", "",
+         {}),
+        ("rank", "ranksums", 2, "normal", h.ranksums, st.ranksums, f"wilcox.test({R2}, exact = FALSE, correct = FALSE)",
+         "R's statistic is W, sd's the normal z (the p-value is the same)", {}),
+        ("rank", "wilcoxon", 2, "normal", h.wilcoxon, st.wilcoxon,
+         f"wilcox.test({R2}, paired = TRUE, correct = FALSE)", WILCOXON, {}),
         ("rank", "kruskal (3)", 3, "normal", h.kruskal, st.kruskal, "kruskal.test(list(x0, x1, x2))", "", {}),
         ("rank", "friedmanchisquare (3)", 3, "normal", h.friedmanchisquare, st.friedmanchisquare,
          "friedman.test(cbind(x0, x1, x2))", "", {}),
@@ -163,8 +166,9 @@ def _specs():
         ("corr", "pearsonr", 2, "normal", h.pearsonr, st.pearsonr, f"cor.test({R2})", "", {}),
         ("corr", "spearmanrho", 2, "normal", h.spearmanrho, st.spearmanrho,
          f"cor.test({R2}, method = 'spearman', exact = FALSE)", "", {}),
-        ("corr", "spearmanr", 2, "normal", h.spearmanr, st.spearmanr, None, "", {}),
-        ("corr", "pointbiserialr", 2, "normal", h.pointbiserialr, st.pointbiserialr, None, "", {}),
+        ("corr", "spearmanr", 2, "normal", h.spearmanr, st.spearmanr,
+         f"cor.test({R2}, method = 'spearman', exact = FALSE)", "", {}),
+        ("corr", "pointbiserialr", 2, "normal", h.pointbiserialr, st.pointbiserialr, f"cor.test({R2})", "", {}),
         ("corr", "kendalltau", 2, "normal", h.kendalltau, st.kendalltau, f"cor.test({R2}, method = 'kendall')",
          KENDALL, {}),
         ("corr", "weightedtau", 2, "normal", h.weightedtau, st.weightedtau, None, "", {}),
@@ -194,6 +198,48 @@ KS2 = "ks.test is exact only for n1 n2 < 10^4 and its asymptotic p-value is Kolm
 FLIGNER = "the median rounded to a double breaks the tie of an even group's middle deviations"
 
 
+class _Pair:
+    def __init__(self, statistic, pvalue):
+        self.statistic, self.pvalue = statistic, pvalue
+
+
+def _sm_jb(x):
+    from statsmodels.stats.stattools import jarque_bera
+
+    jb, p, _, _ = jarque_bera(x)
+    return _Pair(jb, p)
+
+
+def _sm_omni(x):
+    from statsmodels.stats.stattools import omni_normtest
+
+    return omni_normtest(x)
+
+
+def _sm_welch(*xs):
+    from statsmodels.stats.oneway import anova_oneway
+
+    r = anova_oneway(list(xs), use_var="unequal")
+    return _Pair(r.statistic, r.pvalue)
+
+
+# statsmodels' function for the same test, where the accuracy measurement compares with it
+SM_SPECS = {"jarque_bera": _sm_jb, "normaltest": _sm_omni, "f_oneway (3) Welch": _sm_welch}
+
+
+def _rref(rexpr, k, rdiff=""):
+    """An R comparator of the two-sample-table rows: its packages from the expression (car::, nortest::,
+    goftest::), and its value (car's leveneTest table; nortest's statistic only)."""
+    data = {f"x{i}": f"x{i}" for i in range(k)}
+    pk = tuple(p for p in ("car", "nortest", "goftest") if f"{p}::" in rexpr)
+    value = R_PAIR
+    if "car::" in rexpr:
+        value = "c(.v[1, 'F value'], .v[1, 'Pr(>F)'])"
+    elif "nortest::" in rexpr:
+        value = "c(.v$statistic, NA)"
+    return RRef("R", rexpr, data=data, packages=pk, differs=rdiff, value=value)
+
+
 def _no_batch_in_scipy(name):
     # scipy's anderson and median_test take no axis (one sample a call)
     return name.startswith("anderson") or name.startswith("median_test")
@@ -216,11 +262,15 @@ def cases() -> list[Case]:
                     differs=FLIGNER if rdiff == FLIGNER else "",
                 )
             ]
+            if name in SM_SPECS:
+                refs.append(
+                    Ref(
+                        "statsmodels",
+                        lambda d, f=SM_SPECS[name], k=k: _quiet(lambda: f(*(d[f"x{i}"] for i in range(k)))),
+                    )
+                )
             if rexpr and not (name == "shapiro" and n > 5000) and not (name == "kendalltau" and n > 1000):
-                data = {f"x{i}": f"x{i}" for i in range(k)}
-                pk = ("car",) if "car::" in rexpr else ()
-                refs.append(RRef("R", rexpr, data=data, packages=pk, differs=rdiff, value=R_PAIR if "car::" not in rexpr
-                                 else "c(.v[1, 'F value'], .v[1, 'Pr(>F)'])"))  # fmt: skip
+                refs.append(_rref(rexpr, k, rdiff))
             out.append(
                 Case(
                     area="htest",
@@ -259,12 +309,200 @@ def cases() -> list[Case]:
                 check=CHECK,
             )
         )
+    out.extend(_option_cases())
     out.extend(_page_cases())
     out.extend(_summary_cases())
     out.extend(_table_cases())
     out.extend(_proportion_cases())
     out.extend(_multicomp_cases())
     out.extend(_resampling_cases())
+    return out
+
+
+# ---- methods, alternatives and options the table above leaves at their defaults ----------------
+
+
+def _with_nan(d, k):
+    """d's samples with every 100th value NaN (numpy and sd)."""
+    import stardust as sd
+
+    for i in range(k):
+        x = d[f"x{i}"].copy()
+        x[::100] = np.nan
+        d[f"x{i}"], d[f"s{i}"] = x, sd.asarray(x)
+    return d
+
+
+def _with_fexp(d):
+    import stardust as sd
+
+    x = d["x0"]
+    f = 1.0 + 0.1 * np.sin(np.arange(x.size))
+    f *= x.sum() / f.sum()
+    d.update(f=f, sf=sd.asarray(f))
+    return d
+
+
+def _matrix5(n):
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64(2026))
+        X = g.normal(size=(n, 5)) + 0.3 * g.normal(size=(n, 1))
+        return {"X": X, "sX": sd.asarray(X)}
+
+    return setup
+
+
+def _option_cases():
+    import scipy.stats as st
+
+    import stardust as sd
+
+    h = sd.htest
+    R2 = "x0, x1"
+    small, std = ((8, "8"), (30, "30")), SIZES
+    # (group, name, k, data kind, sizes, sd call, scipy call or None, R expression or None, R differs,
+    #  kw, setup extra)
+    rows = [
+        ("rank", "mannwhitneyu method='exact'", 2, "normal", small, h.mannwhitneyu, st.mannwhitneyu,
+         f"wilcox.test({R2}, exact = TRUE)", "", {"method": "exact"}, None),
+        ("rank", "mannwhitneyu method='exact', ties", 2, "ints", ((25, "25"),), h.mannwhitneyu, st.mannwhitneyu,
+         None, "", {"method": "exact"}, None),
+        ("rank", "mannwhitneyu alternative='less'", 2, "normal", std, h.mannwhitneyu, st.mannwhitneyu,
+         f"wilcox.test({R2}, alternative = 'less', exact = FALSE)", "", {"alternative": "less"}, None),
+        ("rank", "wilcoxon method='exact'", 2, "normal", ((10, "10"), (1000, "10^3")), h.wilcoxon, st.wilcoxon,
+         f"wilcox.test({R2}, paired = TRUE, exact = TRUE)", WILCOXON, {"method": "exact"}, None),
+        ("rank", "wilcoxon zero_method='pratt', ties", 2, "ints", ((1000, "10^3"), (10**6, "10^6")), h.wilcoxon,
+         st.wilcoxon, None, "", {"zero_method": "pratt"}, None),
+        ("rank", "wilcoxon zero_method='zsplit', ties", 2, "ints", ((1000, "10^3"), (10**6, "10^6")), h.wilcoxon,
+         st.wilcoxon, None, "", {"zero_method": "zsplit"}, None),
+        ("rank", "wilcoxon correction=True", 2, "normal", ((1000, "10^3"), (10**6, "10^6")), h.wilcoxon,
+         st.wilcoxon, f"wilcox.test({R2}, paired = TRUE, exact = FALSE, correct = TRUE)", WILCOXON,
+         {"correction": True}, None),
+        ("rank", "ansari (exact)", 2, "normal", ((40, "40"),), h.ansari, st.ansari,
+         f"ansari.test({R2}, exact = TRUE)", ANSARI, {}, None),
+        ("rank", "brunnermunzel distribution='normal'", 2, "normal", std, h.brunnermunzel, st.brunnermunzel, None,
+         "", {"distribution": "normal"}, None),
+        ("corr", "kendalltau method='exact'", 2, "normal", ((33, "33"),), h.kendalltau, st.kendalltau,
+         f"cor.test({R2}, method = 'kendall', exact = TRUE)", KENDALL, {"method": "exact"}, None),
+        ("corr", "kendalltau variant='c'", 2, "ints", ((1000, "10^3"), (10**6, "10^6")), h.kendalltau,
+         st.kendalltau, None, "", {"variant": "c"}, None),
+        ("corr", "chatterjeexi y_continuous=True", 2, "normal", std, h.chatterjeexi, st.chatterjeexi, None, "",
+         {"y_continuous": True}, None),
+        ("samples", "cramervonmises_2samp method='exact'", 2, "normal", ((20, "20"),), h.cramervonmises_2samp,
+         st.cramervonmises_2samp, None, "", {"method": "exact"}, None),
+        ("gof", "ks_1samp alternative='greater'", 1, "normal", std,
+         lambda *a, **k: h.ks_1samp(a[0], sd.stats.Normal(), **k), lambda *a, **k: st.ks_1samp(a[0], st.norm.cdf, **k),
+         "ks.test(x0, 'pnorm', alternative = 'greater')", "ks.test is exact only below n = 100",
+         {"alternative": "greater"}, None),
+        ("gof", "anderson expon", 1, "positive", ((10, "10"), (1000, "10^3")),
+         lambda *a, **k: h.anderson(*a, dist=sd.stats.Exponential, **k),
+         lambda *a, **k: st.anderson(*a, dist="expon", method="interpolate", **k), None, "", {}, None),
+        ("gof", "anderson weibull_min", 1, "positive", ((1000, "10^3"),),
+         lambda *a, **k: h.anderson(*a, dist=sd.stats.Weibull, **k),
+         lambda *a, **k: st.anderson(*a, dist="weibull_min", method="interpolate", **k), None, "", {}, None),
+        ("gof", "chisquare f_exp", 1, "counts", std, lambda *a, **k: h.chisquare(a[0], a[1], **k),
+         lambda *a, **k: st.chisquare(a[0], a[1], **k), "chisq.test(x0, p = f / sum(f))", "", {}, "fexp"),
+        ("means", "ttest_ind alternative='less'", 2, "normal", std, h.ttest_ind, st.ttest_ind,
+         f"t.test({R2}, var.equal = TRUE, alternative = 'less')", "", {"alternative": "less"}, None),
+        ("means", "ttest_ind nan_policy='omit'", 2, "normal", ((1000, "10^3"), (10**6, "10^6")), h.ttest_ind,
+         st.ttest_ind, f"t.test({R2}, var.equal = TRUE)", "", {"nan_policy": "omit"}, "nan"),
+        ("rank", "mannwhitneyu nan_policy='omit'", 2, "normal", ((1000, "10^3"), (10**6, "10^6")), h.mannwhitneyu,
+         st.mannwhitneyu, None, "", {"nan_policy": "omit"}, "nan"),
+        ("variances", "levene (3) center='mean'", 3, "normal", std, h.levene, st.levene,
+         "car::leveneTest(c(x0, x1, x2), factor(rep(1:3, c(length(x0), length(x1), length(x2)))), center = mean)",
+         "", {"center": "mean"}, None),
+    ]  # fmt: skip
+    out = []
+    for group, name, k, kind, sizes, sdf, spf, rexpr, rdiff, kw, extra in rows:
+        for n, size in sizes:
+
+            def setup(kind=kind, k=k, n=n, extra=extra):
+                d = _data(kind, k, n)
+                if extra == "nan":
+                    d = _with_nan(d, k)
+                elif extra == "fexp":
+                    d = _with_fexp(d)
+                return d
+
+            args = [f"x{i}" for i in range(k)] + (["f"] if extra == "fexp" else [])
+            sargs = [f"s{i}" for i in range(k)] + (["sf"] if extra == "fexp" else [])
+            refs = []
+            if spf is not None:
+                refs.append(
+                    Ref("scipy", lambda d, spf=spf, a=args, kw=kw: _quiet(lambda: spf(*(d[x] for x in a), **kw)))
+                )
+            if rexpr and not (n > 5000 and "kendall" in rexpr):
+                r = _rref(rexpr, k, rdiff)
+                if extra == "fexp":
+                    r = RRef("R", rexpr, data={"x0": "x0", "f": "f"}, value=R_PAIR)
+                refs.append(r)
+            note = {"mannwhitneyu method='exact', ties": "동점의 조건부 분포(scipy의 exact는 동점을 무시한다)"}.get(
+                name, ""
+            )
+            check = CHECK
+            if name == "mannwhitneyu method='exact', ties":
+                check = Check(skip="scipy's exact null distribution ignores the ties")
+            out.append(
+                Case(
+                    area="htest",
+                    group=group,
+                    name=name,
+                    size=size,
+                    n=n * k,
+                    setup=setup,
+                    sd=lambda d, sdf=sdf, a=sargs, kw=kw: lambda: sdf(*(d[x] for x in a), **kw),
+                    refs=tuple(refs),
+                    note=note,
+                    check=check,
+                )  # fmt: skip
+            )
+    for name, sdf, spf, rexpr in (
+        (
+            "ttest_ind conf_int",
+            lambda a, b: h.ttest_ind(a, b).conf_int(),
+            lambda a, b: st.ttest_ind(a, b).confidence_interval(),
+            "t.test(x0, x1, var.equal = TRUE)$conf.int",
+        ),
+        (
+            "pearsonr conf_int",
+            lambda a, b: h.pearsonr(a, b).conf_int(),
+            lambda a, b: st.pearsonr(a, b).confidence_interval(),
+            "cor.test(x0, x1)$conf.int",
+        ),
+    ):
+        for n, size in SIZES:
+            out.append(
+                Case(
+                    area="htest",
+                    group="means" if name.startswith("ttest") else "corr",
+                    name=name,
+                    size=size,
+                    n=2 * n,
+                    setup=lambda n=n: _data("normal", 2, n),
+                    sd=lambda d, f=sdf: lambda: f(d["s0"], d["s1"]),
+                    refs=(
+                        Ref("scipy", lambda d, f=spf: _quiet(lambda: f(d["x0"], d["x1"]))),
+                        RRef("R", rexpr, data={"x0": "x0", "x1": "x1"}, value=".v"),
+                    ),
+                    check=INTERVAL_CHECK,
+                )  # fmt: skip
+            )
+    for n, size in ((1000, "(1000, 5)"), (10**6, "(1000000, 5)")):
+        out.append(
+            Case(
+                area="htest",
+                group="corr",
+                name="spearmanr of 5 variables",
+                size=size,
+                n=5 * n,
+                setup=_matrix5(n),
+                sd=lambda d: lambda: h.spearmanr(d["sX"], axis=0),
+                refs=(Ref("scipy", lambda d: _quiet(lambda: st.spearmanr(d["X"], axis=0))),),
+                check=CHECK,
+            )  # fmt: skip
+        )
     return out
 
 
@@ -363,12 +601,26 @@ def _table_cases():
         ("barnard_exact", "2x2 N=200", h.barnard_exact, st.barnard_exact, None, ""),
         ("boschloo_exact", "2x2", h.boschloo_exact, st.boschloo_exact, None, ""),
         ("boschloo_exact", "2x2 N=200", h.boschloo_exact, st.boschloo_exact, None, ""),
-        ("mcnemar", "2x2", h.mcnemar, lambda x: smct.mcnemar(x), None, ""),
+        ("mcnemar", "2x2", h.mcnemar, lambda x: smct.mcnemar(x),
+         "{ m <- matrix(xv, nrow = 2); binom.test(min(m[1, 2], m[2, 1]), m[1, 2] + m[2, 1]) }",
+         "R's exact McNemar is binom.test on the discordant pairs (its statistic is the count)"),
         ("mcnemar", "2x2 N=2*10^4", lambda x: h.mcnemar(x, exact=False), lambda x: smct.mcnemar(x, exact=False),
          "mcnemar.test(matrix(xv, nrow = 2))", ""),
         ("cochrans_q", "cochran", h.cochrans_q, lambda x: smct.cochrans_q(x), None, ""),
-        ("odds_ratio", "2x2", lambda x: h.odds_ratio(x).conf_int(), None, None, ""),
-        ("odds_ratio", "2x2 N=200", h.odds_ratio, None, None, ""),
+        ("odds_ratio", "2x2", lambda x: h.odds_ratio(x).conf_int(), None, "fisher.test(matrix(xv, nrow = 2))$conf.int",
+         ""),
+        ("odds_ratio", "2x2 N=200", h.odds_ratio, None, "fisher.test(matrix(xv, nrow = 2))$estimate", ""),
+        ("odds_ratio kind='sample'", "2x2 N=200", lambda x: h.odds_ratio(x, kind="sample"), None, None, ""),
+        ("chi2_contingency correction=False", "2x2", lambda x: h.chi2_contingency(x, correction=False),
+         lambda x: st.chi2_contingency(x, correction=False), "chisq.test(matrix(xv, nrow = 2), correct = FALSE)", ""),
+        ("chi2_contingency lambda_='log-likelihood'", "5x5 N=10^4",
+         lambda x: h.chi2_contingency(x, lambda_="log-likelihood"),
+         lambda x: st.chi2_contingency(x, lambda_="log-likelihood"), None, ""),
+        ("fisher_exact alternative='less'", "2x2 N=2*10^4", lambda x: h.fisher_exact(x, alternative="less"),
+         lambda x: st.fisher_exact(x, alternative="less"),
+         "fisher.test(matrix(xv, nrow = 2), alternative = 'less')", ""),
+        ("barnard_exact pooled=False", "2x2 N=200", lambda x: h.barnard_exact(x, pooled=False),
+         lambda x: st.barnard_exact(x, pooled=False), None, ""),
     ]  # fmt: skip
     out = []
     for name, key, sdf, spf, rexpr, rdiff in specs:
@@ -376,17 +628,29 @@ def _table_cases():
         if spf is not None:
             lib = "statsmodels" if name in ("mcnemar", "cochrans_q") else "scipy"
             refs.append(Ref(lib, lambda d, spf=spf: _quiet(lambda: spf(d["x0"]))))
-        if name == "odds_ratio":
+        if name == "odds_ratio" and key == "2x2":  # the interval
             refs.append(Ref("scipy", lambda d: _quiet(lambda: ctg.odds_ratio(d["xi"]).confidence_interval())))
+        elif name == "odds_ratio":  # the estimate only, as sd's call
+            refs.append(Ref("scipy", lambda d: _quiet(lambda: ctg.odds_ratio(d["xi"]))))
+        elif name == "odds_ratio kind='sample'":
+            refs.append(Ref("scipy", lambda d: _quiet(lambda: ctg.odds_ratio(d["xi"], kind="sample"))))
         if rexpr:
-            val = ".v$p.value" if name == "fisher_exact" else "c(.v$statistic)"
+            val = ".v$p.value" if name.startswith("fisher_exact") or name == "mcnemar" else "c(.v$statistic)"
+            if name == "odds_ratio":
+                val = ".v"
             refs.append(RRef("R", rexpr, data={"xv": "xv"}, differs=rdiff, value=val))
-        check = CHECK if name not in ("odds_ratio",) else Check(skip="the interval, not a statistic")
-        if name == "fisher_exact" and rexpr:
+        check = CHECK if not name.startswith("odds_ratio") else Check(skip="the interval, not a statistic")
+        if name.startswith("odds_ratio") and key != "2x2":
+            # rtol 1e-4: R's fisher.test finds the conditional MLE by uniroot at its default
+            # tolerance (eps^0.25), 1e-5 off here; scipy agrees with sd to 1e-6
+            check = Check(sd=lambda r: np.asarray([float(r.statistic)]),
+                          ref=lambda label, r: np.asarray(r, dtype=float).ravel()[:1] if label.startswith("R")
+                          else np.asarray([float(r.statistic)]), rtol=1e-4)  # fmt: skip
+        if (name.startswith("fisher_exact") or name == "mcnemar") and rexpr:
             check = Check(sd=lambda r: np.ravel(np.asarray(r.pvalue, dtype=float)),
                           ref=lambda label, r: np.asarray(r, dtype=float) if label.startswith("R")
                           else np.ravel(np.asarray(r.pvalue, dtype=float)))  # fmt: skip
-        elif name in ("chi2_contingency", "mcnemar") and rexpr:
+        elif name.startswith("chi2_contingency") and rexpr or name == "mcnemar" and key != "2x2" and rexpr:
             check = TABLE_CHECK
         out.append(
             Case(
@@ -548,12 +812,22 @@ def _proportion_cases():
         ("quantile_test", "10^6", 10**6, lambda d: h.quantile_test(d["sx1000000"], q=0.1),
          [("scipy", lambda d: st.quantile_test(d["x1000000"], q=0.1))], None, "", SM_PAIR),
         ("poisson_means_test", "n=30", 30, lambda d: h.poisson_means_test(10, 5.0, 20, 6.0),
-         [("scipy", lambda d: st.poisson_means_test(10, 5.0, 20, 6.0))], "poisson.test(c(10, 20), c(5, 6))",
-         "poisson.test is the conditional binomial test of the two rates, not the E-test", SM_PAIR),
+         [("scipy", lambda d: st.poisson_means_test(10, 5.0, 20, 6.0))], None, "", SM_PAIR),
         ("poisson_means_test", "n=2300", 2300, lambda d: h.poisson_means_test(1200, 10.0, 1100, 10.0),
          [("scipy", lambda d: st.poisson_means_test(1200, 10.0, 1100, 10.0))], None, "", SM_PAIR),
         ("proportions_ztest", "n=85", 85, lambda d: h.proportions_ztest([15, 25], [40, 45]),
-         [("statsmodels", lambda d: smp.proportions_ztest([15, 25], [40, 45]))], None, "", SM_PAIR),
+         [("statsmodels", lambda d: smp.proportions_ztest([15, 25], [40, 45]))],
+         "prop.test(c(15, 25), c(40, 45), correct = FALSE)", "prop.test reports z squared", SM_PAIR),
+        ("proportions_ztest one sample", "n=40", 40, lambda d: h.proportions_ztest(15, 40, value=0.5),
+         [("statsmodels", lambda d: smp.proportions_ztest(15, 40, value=0.5))],
+         "prop.test(15, 40, p = 0.5, correct = FALSE)", "prop.test reports z squared and the null variance", SM_PAIR),
+        ("binomtest conf_int wilson", "n=10^4", 10**4, lambda d: h.binomtest(5030, 10**4).conf_int(method="wilson"),
+         [("scipy", lambda d: st.binomtest(5030, 10**4).proportion_ci(method="wilson"))],
+         "prop.test(5030, 10000, correct = FALSE)$conf.int", "", INTERVAL_CHECK),
+        ("test_proportions_2indep diff score", "n=85", 85,
+         lambda d: h.test_proportions_2indep(*TWO, compare="diff", method="score"),
+         [("statsmodels", lambda d: smp.test_proportions_2indep(*TWO, compare="diff", method="score"))], None, "",
+         SM_PAIR),
         ("proportions_chisquare", "n=115", 115, lambda d: h.proportions_chisquare([15, 25, 9], [40, 45, 30]),
          [("statsmodels", lambda d: smp.proportions_chisquare([15, 25, 9], [40, 45, 30]))],
          "c(prop.test(c(15, 25, 9), c(40, 45, 30), correct = FALSE)$statistic, "
@@ -589,6 +863,10 @@ def _proportion_cases():
         if rexpr:
             val = ".v" if "conf.int" in rexpr or rexpr.startswith("c(") else "c(.v$statistic, .v$p.value)"
             refs.append(RRef("R", rexpr, differs=rdiff, value=val))
+        if name.startswith("proportions_ztest") and rexpr:  # prop.test's X^2 = z^2: the p-value only
+            check = Check(sd=lambda r: np.asarray([float(r[1] if isinstance(r, tuple) else r.pvalue)]),
+                          ref=lambda label, r: np.asarray(r, dtype=float)[1:] if label.startswith("R")
+                          else np.asarray([float(r[1])]))  # fmt: skip
         if name.startswith("binomtest") and rexpr and "conf.int" not in rexpr:
             check = Check(sd=lambda r: np.asarray([r.pvalue]),
                           ref=lambda label, r: np.asarray(r, dtype=float)[1:] if label.startswith("R")
@@ -679,6 +957,33 @@ CORR_CHECK = Check(sd=_corrected, ref=lambda label, r: np.asarray(r, dtype=float
 DUNNETT_NOTE = "scipy·R의 p값은 무작위 준몬테카를로(약 1e-6)"
 
 
+def _sm_tukey(groups):
+    from statsmodels.stats.multicomp import pairwise_tukeyhsd
+
+    y = np.concatenate(groups)
+    g = np.repeat(np.arange(len(groups)), [len(x) for x in groups])
+    return pairwise_tukeyhsd(y, g)
+
+
+def _dunnett_r(k, n, alt):
+    """multcomp's glht with Dunnett's contrasts against the first group (its own randomized
+    quasi-Monte Carlo for the p-values, as scipy's), the accuracy measurement's R."""
+    key = f"{k}_{n}"
+    L = "list(" + ", ".join(f"x{key}_{i}" for i in range(k)) + ")"
+    ralt = {"two-sided": "two.sided", "greater": "greater", "less": "less"}[alt]
+    expr = (f"local({{L <- {L}; y <- unlist(L); g <- factor(rep(seq_along(L), lengths(L))); "
+            f"set.seed(1); as.numeric(summary(multcomp::glht(aov(y ~ g), linfct = multcomp::mcp(g = 'Dunnett'), "
+            f"alternative = '{ralt}'))$test$pvalues)}})")  # fmt: skip
+    return RRef(
+        "R multcomp",
+        expr,
+        data={f"x{key}_{i}": f"x{key}_{i}" for i in range(k)},
+        packages=("multcomp",),
+        value=".v",
+        differs=DUNNETT_NOTE,
+    )
+
+
 def _multicomp_cases():
     import scipy.stats as st
     from statsmodels.stats import multitest as smt
@@ -699,6 +1004,13 @@ def _multicomp_cases():
             if ev:
                 refs.append(RRef("R", rexpr, data={f"x{key}_{i}": f"x{key}_{i}" for i in range(k)}, value=".v",
                                  differs="R는 짝마다 한 번, 순서가 다르다"))  # fmt: skip
+                refs.append(
+                    Ref(
+                        "statsmodels",
+                        lambda d, key=key: _quiet(lambda: _sm_tukey(d[f"g{key}"])),
+                        differs="statsmodels는 짝마다 한 번(pairwise_tukeyhsd), 순서가 다르다",
+                    )
+                )
             out.append(
                 Case(
                     area="htest",
@@ -728,9 +1040,11 @@ def _multicomp_cases():
                 check=Check(skip="구간의 꼴이 다르다(sd (k, k, 2), scipy low·high)"),
             )  # fmt: skip
         )
-    for k, n in ((3, 10), (6, 30)):
+    for k, n in ((3, 10), (6, 30), (3, 1000)):
         key = f"{k}_{n}"
-        for alt in ("two-sided", "greater"):
+        for alt in ("two-sided", "greater", "less"):
+            if n == 1000 and alt != "two-sided":
+                continue
             out.append(
                 Case(
                     area="htest",
@@ -750,6 +1064,7 @@ def _multicomp_cases():
                             ),
                             differs=DUNNETT_NOTE,
                         ),
+                        _dunnett_r(k, n, alt),
                     ),
                     quick=n == 10 and alt == "two-sided",
                     check=MC_CHECK,
@@ -785,8 +1100,63 @@ def _multicomp_cases():
             n=1000,
             setup=_multicomp_data,
             sd=lambda d: lambda: h.false_discovery_control(d["sp"]),
-            refs=(Ref("scipy", lambda d: _quiet(lambda: st.false_discovery_control(d["p"]))),),
+            refs=(
+                Ref("scipy", lambda d: _quiet(lambda: st.false_discovery_control(d["p"]))),
+                RRef("R", "p.adjust(p, method = 'BH')", data={"p": "p"}, value=".v"),
+            ),
             check=CORR_CHECK,
+        )  # fmt: skip
+    )
+    out.append(
+        Case(
+            area="htest",
+            group="multicomp",
+            name="false_discovery_control method='by'",
+            size="10^3",
+            n=1000,
+            setup=_multicomp_data,
+            sd=lambda d: lambda: h.false_discovery_control(d["sp"], method="by"),
+            refs=(
+                Ref("scipy", lambda d: _quiet(lambda: st.false_discovery_control(d["p"], method="by"))),
+                RRef("R", "p.adjust(p, method = 'BY')", data={"p": "p"}, value=".v"),
+            ),
+            check=CORR_CHECK,
+        )  # fmt: skip
+    )
+    for meth in ("pearson", "tippett"):
+        out.append(
+            Case(
+                area="htest",
+                group="multicomp",
+                name=f"combine_pvalues {meth}",
+                size="10^3",
+                n=1000,
+                setup=_multicomp_data,
+                sd=lambda d, m=meth: lambda: h.combine_pvalues(d["sp"], method=m),
+                refs=(Ref("scipy", lambda d, m=meth: _quiet(lambda: st.combine_pvalues(d["p"], method=m))),),
+                check=CHECK,
+            )  # fmt: skip
+        )
+    out.append(
+        Case(
+            area="htest",
+            group="multicomp",
+            name="combine_pvalues stouffer, weights",
+            size="10^3",
+            n=1000,
+            setup=_multicomp_data,
+            sd=lambda d: (
+                lambda: h.combine_pvalues(d["sp"], method="stouffer", weights=sd.asarray(np.linspace(1, 2, 1000)))
+            ),
+            refs=(
+                Ref(
+                    "scipy",
+                    lambda d: _quiet(
+                        lambda: st.combine_pvalues(d["p"], method="stouffer", weights=np.linspace(1, 2, 1000))
+                    ),
+                ),
+            ),
+            check=CHECK,
         )  # fmt: skip
     )
     for meth in ("fisher", "stouffer", "mudholkar_george"):
@@ -884,6 +1254,16 @@ def _resampling_cases():
     def mean(a, axis):
         return sd.mean(a, axis=axis)
 
+    def pcorr(a, b, axis):  # the correlation of paired values (a permutation of the pairings)
+        a = a - sd.mean(a, axis=axis, keepdims=True)
+        b = b - sd.mean(b, axis=axis, keepdims=True)
+        return sd.sum(a * b, axis=axis) / sd.sqrt(sd.sum(a * a, axis=axis) * sd.sum(b * b, axis=axis))
+
+    def npcorr(a, b, axis):
+        a = a - np.mean(a, axis=axis, keepdims=True)
+        b = b - np.mean(b, axis=axis, keepdims=True)
+        return np.sum(a * b, axis=axis) / np.sqrt(np.sum(a * a, axis=axis) * np.sum(b * b, axis=axis))
+
     rnd = "다른 난수 스트림: 무작위 p값은 견주지 않는다"
     specs = [
         ("permutation_test exact", "(8, 7)", 15,
@@ -916,6 +1296,34 @@ def _resampling_cases():
         ("ttest_ind MonteCarloMethod", "100", 200,
          lambda d: lambda: h.ttest_ind(d["sa"], d["sb"], method=h.MonteCarloMethod(rng=sd.random.default_rng(1))),
          lambda d: lambda: st.ttest_ind(d["a"], d["b"], method=st.MonteCarloMethod(rng=1)), Check(skip=rnd)),
+        ("permutation_test pairings", "100", 200,
+         lambda d: lambda: h.permutation_test([d["sa"], d["sc"]], pcorr, permutation_type="pairings",
+                                              rng=sd.random.default_rng(1)),
+         lambda d: lambda: st.permutation_test((d["a"], d["c"]), npcorr, permutation_type="pairings", rng=1),
+         Check(skip=rnd)),
+        ("permutation_test samples", "100", 200,
+         lambda d: lambda: h.permutation_test([d["sa"], d["sb"]], md, permutation_type="samples",
+                                              rng=sd.random.default_rng(1)),
+         lambda d: lambda: st.permutation_test((d["a"], d["b"]), nmd, permutation_type="samples", rng=1),
+         Check(skip=rnd)),
+        ("bootstrap percentile", "100", 100,
+         lambda d: lambda: h.bootstrap([d["sa"]], mean, method="percentile", rng=sd.random.default_rng(1)).conf_int(),
+         lambda d: lambda: st.bootstrap((d["a"],), np.mean, method="percentile", rng=1).confidence_interval,
+         Check(skip=rnd)),
+        ("bootstrap basic, paired", "100", 200,
+         lambda d: lambda: h.bootstrap([d["sa"], d["sb"]], md, method="basic", paired=True,
+                                       rng=sd.random.default_rng(1)).conf_int(),
+         lambda d: lambda: st.bootstrap((d["a"], d["b"]), nmd, method="basic", paired=True, rng=1).confidence_interval,
+         Check(skip=rnd)),
+        ("multiscale_graphcorr is_twosamp", "(100, 100)", 200,
+         lambda d: lambda: h.multiscale_graphcorr(d["sa"], d["sb"], is_twosamp=True, rng=sd.random.default_rng(1)),
+         lambda d: lambda: st.multiscale_graphcorr(d["a"], d["b"], is_twosamp=True, random_state=1),
+         Check(sd=_stat, ref=lambda _, r: _stat(r), rtol=1e-10)),
+        ("pearsonr conf_int BootstrapMethod", "100", 100,
+         lambda d: lambda: h.pearsonr(d["sa"], d["sc"]).conf_int(
+             method=h.BootstrapMethod(n_resamples=999, rng=sd.random.default_rng(1))),
+         lambda d: lambda: st.pearsonr(d["a"], d["c"]).confidence_interval(
+             method=st.BootstrapMethod(n_resamples=999, rng=1)), Check(skip=rnd)),
     ]  # fmt: skip
     out = []
     for name, size, n, sdf, spf, check in specs:

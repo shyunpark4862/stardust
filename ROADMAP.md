@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5–C8 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7·C8 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -664,7 +664,7 @@
 
 # 수치 미적분 영역 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4는 완료·승인(위임, 2026-11-22), C5–C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
+> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4는 완료·승인(위임, 2026-11-22), C5는 완료·승인(위임, 2026-11-22), C6은 완료·승인(위임, 2026-11-22), C7·C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -684,8 +684,8 @@
 | C2 미분: `derivative jacobian hessian` | 완료·승인(위임) (2026-11-21) |
 | C3 표본과 고정 규칙: `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` | 완료·승인(위임) (2026-11-22) |
 | C4 QUADPACK 1: `quad`(QAGS, QAGI, QAGP), `dblquad tplquad nquad` | 완료·승인(위임) (2026-11-22) |
-| C5 QUADPACK 2: `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC) | 시작 전 |
-| C6 배치 적분: `tanhsinh nsum` | 시작 전 |
+| C5 QUADPACK 2: `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC) | 완료·승인(위임) (2026-11-22) |
+| C6 배치 적분: `tanhsinh nsum` | 완료·승인(위임) (2026-11-22) |
 | C7 벡터 값과 다차원: `quad_vec cubature` | 시작 전 |
 | C8 최적화와 일관성 점검 | 시작 전 |
 
@@ -724,9 +724,15 @@
 
 ### C5. QUADPACK 2
 - QAWO·QAWF(체비쇼프 모멘트, Clenshaw–Curtis), QAWS·QAWC(수정 Clenshaw–Curtis).
+- 결정(추천안, 사용자 위임 2026-11-21): docs/design/integrate.md §1.1 C71–C83(물었던 하나: `wopts` 없음; 구현하며 생긴 열둘: QAWF의 주기 필드 넷 `cycle_integrals cycle_errors cycle_status n_cycles`, `wvar`·`limit`·`max_p1`·`limlst`의 검사와 범위에 달린 검사의 자리, QAWF는 `atol`만(기본값이 아닌 `rtol`은 `ValueError`), scipy 판을 따르는 셋(`dqc25s`의 오타 수정, `dgtsl`의 꼴, `dqawoe`의 작은 구간 판정), scipy가 틀린 값을 내 원본을 따르는 셋(모멘트 행, QAWF의 ω = 0, 큰 ω), QAWO의 구간 하나, 가중치 규칙의 FMA 자리, Arb 계약).
+- 결과: csrc/integrate/quadpack.hpp(dqawoe·dqawfe·dqawse·dqawce·dqk15w·dqc25f·dqc25s·dqc25c·dqcheb·dqmomo·dgtsl을 문장마다 옮김, `std::fma` 127곳), csrc/integrate/quadpack.cpp(가중치의 갈래와 범위 검사, QAWF의 주기 배열, `nquad`의 가중치 층), src/stardust/integrate/_quadpack.py(`weight wvar max_p1 limlst`의 검사, QAWF의 글), `_result.py`의 주기 필드와 `summary()`, tests/integrate/weights.py(가중치 스윕 99개)와 tools/integrate_ref.py의 `weights`(→ tests/integrate/ref/weights.json), tests/integrate/test_quadpack.py(모음 116개 모두)·test_quadpack_weights.py, tools/gen_integrate_fortran.py의 `--probe-qc25s`, 골든 141케이스 더함(모두 508), 정확도 스윕 `quad_weights`(기준선 갱신), 속도 사례 넷 공개; docs/design/integrate.md §1.1·§3.1·§6.3·§7.2·§7.6·§7.11·§8·§9, docs/api/integrate.md §1.3·§2·§3.
+- 찾은 것(docs/design/integrate.md §7.11): 가중치 루틴에서 scipy의 C 판은 원본의 한 식 안의 곱·합을 모두 축약하고(`dqc25f`의 점 centr ± hlgth·x도), 그 127곳에 `std::fma`를 적으면 모음 116개 모두와 스윕 99개 가운데 98개, 만든 400개가 점·값·오차·`nfev`·status·글·구간까지 scipy와 비트로 같다(축약 없이는 1,476개 가운데 432개). §7.6의 QAWS 4×10⁻⁹ 차이는 원본 `dqc25s.f`의 오타(`res24 = res12 + …`)이고 scipy는 고쳤다. scipy의 기계 코드에서 원본과 다른 곳 셋을 더 찾았다: `dgtsl`은 마지막 줄을 소거하지 않고(정확도는 같다), `dqawoe`의 작은 구간 판정에 uflow 대신 ε, `dqc25f`의 모멘트 행이 호출마다 1행이라 `max_p1`을 다 쓰면 틀린 값을 수렴으로 알린다(sd는 원본대로). QAWF의 ω = 0은 원본·scipy 모두 [0, ∞)를 적분한다(sd는 [a, ∞)). Arb: 109개 모두 수렴하고 참 오차 ≤ 오차 추정 + 8ε|I|(Clenshaw–Curtis 추정에는 반올림 하한이 없어 추정만으로 넘는 것이 16개, scipy와 같은 비트). 속도는 scipy와 같거나 1.1배 빠르다(바쁜 기계의 탐침).
 
 ### C6. 배치 적분
 - `tanhsinh`(scipy의 표·합·오차 추정, 무한 구간의 치환), `nsum`(직접 합과 적분 경계).
+- 결정(추천안, 사용자 위임 2026-11-21): docs/design/integrate.md §1.1 C84–C93(물었던 셋: tanh-sinh 표는 scipy의 libm 식, `log=True`는 C4의 답대로 실수만(b < a는 `ValueError`), 끝점은 scipy처럼 부르고 버린다(f는 예외 대신 inf·NaN); 구현하며 생긴 일곱: 합은 numpy의 pairwise와 scipy의 logsumexp 그대로(복소 단계는 시스템의 `cexp`·`clog`), `max_level` ≤ 16과 `max_terms` ≤ 2²⁴(메모리의 상한), log의 허용오차, 첫 호출과 `nsum`의 갈래 순서, `nsum`의 두 예외(log 오차의 합 순서, 넘친 직접 합), 결과와 값 검사).
+- 결과: csrc/integrate/tanhsinh.cpp(표, Euler–Maclaurin 합과 오차 추정, numpy의 pairwise 합·logsumexp, `nsum`의 갈래와 f(−x)·f(x) + f(−x)의 평가; 고리는 csrc/elementwise/loop.hpp를 바꾸지 않고 씀), src/stardust/integrate/_tanhsinh.py, tests/integrate/test_tanhsinh.py, 골든 42케이스, 정확도 스윕 둘(`tanhsinh`, `nsum`; 기준선 갱신), 속도 사례 넷 공개(bench/speed/cases/integrate.py); docs/design/integrate.md §1.1·§3.5·§3.6·§4·§7.12·§8·§9, docs/api/integrate.md §1.2·§6·§10.
+- 찾은 것(docs/design/integrate.md §7.12): 시험 모음의 `tanhsinh` 101개·배치 셋·`nsum` 아홉과 기록 밖의 71경우(log, 수준, 끝의 변환, `nsum`의 네 갈래)가 모두 scipy와 점·값·오차·`nfev`·status까지 비트로 같다(다른 것은 scipy가 복소수를 내는 log의 a = b = −∞ 하나). 표는 scipy와 비트로 같고 정확한 값과는 최대 980 ULP(정확한 j·h로 재면 3,449). Arb: 수렴한 76개 가운데 오차 추정 밖은 scipy와 같은 여덟, `nsum`은 아홉 모두 안. 모음 밖의 e^(−cx²)(c 40,001개)에서는 1,093개가 오차 추정보다 큰 오차를 낸다(상대 1.1×10⁻⁸까지; scipy와 같다). 속도는 작은 배치에서 23–25배, 10⁵원소에서 4배 빠르다(바쁜 기계의 탐침).
 
 ### C7. 벡터 값과 다차원
 - `quad_vec`(적응 Gauss–Kronrod, 노름), `cubature`(gk21·gk15의 곱, Genz–Malik, 무한 축의 치환; C++의 힙).

@@ -31,7 +31,9 @@ PUBLIC = {
     "dblquad",
     "tplquad",
     "nquad",
-}  # C3, C4
+    "tanhsinh",
+    "nsum",
+}  # C3, C4, C6
 ELEMENTWISE = {"tanhsinh", "nsum"}  # C4: the elementwise-iterative family, the only ones with args
 
 
@@ -54,7 +56,7 @@ def test_exports_match_the_document():
     assert set(funcs) == PLANNED
     assert bare == RESULTS
     assert set(sd.integrate.__all__) == RESULTS | PUBLIC
-    assert all(not hasattr(sd.integrate, n) for n in PLANNED - PUBLIC)  # milestones C5-C7
+    assert all(not hasattr(sd.integrate, n) for n in PLANNED - PUBLIC)  # milestone C7
 
 
 def test_signatures_match_the_document():

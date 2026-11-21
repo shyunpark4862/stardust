@@ -4,11 +4,15 @@
 //
 //   - quad_solve: one quad. scipy's _quadpack_py.quad: an empty interval is 0 without a call,
 //     reversed limits are swapped and the sign changed, break points (np.unique, those strictly
-//     inside) take QAGP, an infinite limit QAGI, the rest QAGS. part 0 takes a real value, 1 and 2
-//     the real and the imaginary part of a complex one (complex_func=True: scipy's two quads).
-//     The intervals come back as three read-only arrays (their ends (last, 2), integrals and
-//     errors) from the largest error down: QUADPACK's iord order for the kmax intervals it ranks, the others (when
-//     last > limit/2 + 2) by decreasing error, ties in their order of creation.
+//     inside) take QAGP, an infinite limit QAGI, the rest QAGS; a weight (scipy's _quad_weight,
+//     milestone C5) takes QAWO (cos, sin on a finite range), QAWF (cos, sin on [a, inf); (-inf, b]
+//     by x -> -x), QAWS (the algebraic-logarithmic end point weights) or QAWC (Cauchy). part 0
+//     takes a real value, 1 and 2 the real and the imaginary part of a complex one
+//     (complex_func=True: scipy's two quads). The intervals come back as three read-only arrays
+//     (their ends (last, 2), integrals and errors) from the largest error down: QUADPACK's iord
+//     order for the kmax intervals it ranks, the others (when last > limit/2 + 2) by decreasing
+//     error, ties in their order of creation; QAWF's cycles as their integrals, errors and ier
+//     (scipy's rslst, erlst, ierlst) in order.
 //   - nquad_solve: scipy's _NQuad: the innermost variable's quad inside the next one's, each
 //     level's range and options computed (by the user's functions if given) at every point of
 //     the levels outside it, the innermost function called with all the variables (innermost
@@ -65,12 +69,22 @@ struct Fn {
     double operator()(double x) const { return value(f(x)); }
 };
 
-// One quad's options (stardust/integrate/_quadpack.py checks them).
+constexpr double kTol = 1.49e-8;  // scipy's epsabs and epsrel
+constexpr int kMaxp1 = 50, kLimlst = 50;
+
+// quad's weights (stardust/integrate/_quadpack.py's codes)
+enum Weight { kNone = 0, kCos, kSin, kAlg, kAlgLoga, kAlgLogb, kAlgLog, kCauchy };
+
+// One quad's options (stardust/integrate/_quadpack.py checks them; what depends on the range is
+// checked here).
 struct Opts {
-    double atol = 1.49e-8, rtol = 1.49e-8;
+    double atol = kTol, rtol = kTol;
     int limit = 50;
     bool has_points = false;
     std::vector<double> points;
+    int weight = kNone;
+    double wvar0 = 0.0, wvar1 = 0.0;  // omega or c; (alpha, beta)
+    int max_p1 = kMaxp1, limlst = kLimlst;
 };
 
 Opts read_opts(nb::handle t) {
@@ -83,20 +97,87 @@ Opts read_opts(nb::handle t) {
         o.has_points = true;
         o.points = nb::cast<std::vector<double>>(tu[3]);
     }
+    o.weight = nb::cast<int>(tu[4]);
+    if (o.weight == kAlg || o.weight == kAlgLoga || o.weight == kAlgLogb || o.weight == kAlgLog) {
+        nb::tuple w = nb::borrow<nb::tuple>(tu[5]);
+        o.wvar0 = nb::cast<double>(w[0]);
+        o.wvar1 = nb::cast<double>(w[1]);
+    } else if (o.weight != kNone) {
+        o.wvar0 = nb::cast<double>(tu[5]);
+    }
+    o.max_p1 = nb::cast<int>(tu[6]);
+    o.limlst = nb::cast<int>(tu[7]);
     return o;
 }
 
-// scipy's quad on [a, b] (a, b not NaN): w holds QUADPACK's results; the value (its sign changed
-// for reversed limits) is returned.
+const char* weight_name(int w) {
+    static const char* const names[] = {"", "cos", "sin", "alg", "alg-loga", "alg-logb", "alg-log", "cauchy"};
+    return names[w];
+}
+
+
+// The weighted routes (scipy's _quad_weight) on [a, b], a < b, after quad's swap: QAWO, QAWF
+// (qawf true: r holds the cycles), QAWS, QAWC.
 template <class F>
-double quad(F& f, double a, double b, const Opts& o, qp::Work& w, int& limit_used) {
+void quad_weight(F& f, double a, double b, const Opts& o, qp::Work& w, qp::Cycles& r, bool& qawf) {
+    const std::string name = std::string("weight='") + weight_name(o.weight) + "'";
+    const bool finite = !std::isinf(a) && !std::isinf(b);
+    qawf = false;
+    if (o.weight == kCos || o.weight == kSin) {
+        const int integr = o.weight == kCos ? 1 : 2;
+        if (finite) {
+            if (o.limlst != kLimlst)
+                throw nb::value_error("'limlst' is only used with weight='cos' or 'sin' on an infinite range");
+            qp::qawoe(f, a, b, o.wvar0, integr, o.atol, o.rtol, o.limit, 1, o.max_p1, w);
+            if (w.last == 0) w.last = 1;  // dqawoe ends on its first rule with last = 0: its one interval
+            return;
+        }
+        if (std::isinf(a) && std::isinf(b)) throw nb::value_error((name + " cannot be used on (-inf, inf)").c_str());
+        if (o.atol <= 0.0)
+            throw nb::value_error(
+                ("'atol' must be > 0 with " + name + " on an infinite range (QAWF uses 'atol' only)").c_str()
+            );
+        if (o.rtol != kTol)
+            throw nb::value_error(
+                ("'rtol' is not used with " + name + " on an infinite range (QAWF uses 'atol' only)").c_str()
+            );
+        qawf = true;
+        if (!std::isinf(a)) {
+            qp::qawfe(f, a, o.wvar0, integr, o.atol, o.limlst, o.limit, o.max_p1, w, r);
+        } else {  // (-inf, b]: scipy's x -> -x, f(-x) for the cosine and -f(-x) for the sine
+            const double sign = integr == 1 ? 1.0 : -1.0;
+            auto g = [&](double x) { return sign * f(-x); };
+            qp::qawfe(g, -b, o.wvar0, integr, o.atol, o.limlst, o.limit, o.max_p1, w, r);
+        }
+        return;
+    }
+    if (!finite) throw nb::value_error((name + " cannot be used with an infinite range").c_str());
+    if (o.weight == kCauchy) {
+        if (o.wvar0 == a || o.wvar0 == b)
+            throw nb::value_error("'wvar' must not equal 'a' or 'b' with weight='cauchy'");
+        qp::qawce(f, a, b, o.wvar0, o.atol, o.rtol, o.limit, w);
+        return;
+    }
+    qp::qawse(f, a, b, o.wvar0, o.wvar1, o.weight - kAlg + 1, o.atol, o.rtol, o.limit, w);
+}
+
+// scipy's quad on [a, b] (a, b not NaN): w holds QUADPACK's results (r QAWF's, when qawf); the
+// value (its sign changed for reversed limits) is returned.
+template <class F>
+double quad(F& f, double a, double b, const Opts& o, qp::Work& w, int& limit_used, qp::Cycles& r, bool& qawf) {
     limit_used = o.limit;
+    qawf = false;
     if (a == b) {  // scipy's shortcut, before anything else
         w.reset(1);
         return 0.0;
     }
     const bool flip = b < a;
     if (flip) std::swap(a, b);
+    if (o.weight != kNone) {
+        quad_weight(f, a, b, o, w, r, qawf);
+        const double v = qawf ? r.result : w.result;
+        return flip ? -v : v;
+    }
     if (o.has_points) {
         if (std::isinf(a) || std::isinf(b)) throw nb::value_error("'points' cannot be used with an infinite range");
         std::vector<double> p = o.points;  // np.unique, then a < p < b
@@ -165,6 +246,23 @@ nb::object interval_arrays(const qp::Work& w, int limit) {
     return nb::make_tuple(readonly(std::move(ends)), readonly(std::move(vals)), readonly(std::move(errs)));
 }
 
+// QAWF's cycles as three read-only arrays: their integrals, errors (float64) and ier (int64), in
+// order.
+nb::object cycle_arrays(const qp::Cycles& r) {
+    const std::int64_t s1[1] = {r.lst};
+    NDArray vals = new_array(DType::Float64, s1), errs = new_array(DType::Float64, s1),
+            iers = new_array(DType::Int64, s1);
+    auto* v = reinterpret_cast<double*>(vals.data);
+    auto* e = reinterpret_cast<double*>(errs.data);
+    auto* k = reinterpret_cast<std::int64_t*>(iers.data);
+    for (int i = 1; i <= r.lst; ++i) {
+        v[i - 1] = r.rslst[i];
+        e[i - 1] = r.erlst[i];
+        k[i - 1] = r.ierlst[i];
+    }
+    return nb::make_tuple(readonly(std::move(vals)), readonly(std::move(errs)), readonly(std::move(iers)));
+}
+
 nb::object quad_solve(
     const char* fn, nb::callable f, nb::callable check, double a, double b, nb::handle opts, int part
 ) {
@@ -172,9 +270,12 @@ nb::object quad_solve(
         Fn F{f, check, part};
         const Opts o = read_opts(opts);
         qp::Work w;
+        qp::Cycles c;
         int limit = 0;
-        const double r = quad(F, a, b, o, w, limit);
-        return nb::make_tuple(r, w.abserr, w.neval, w.ier, w.last, interval_arrays(w, o.limit));
+        bool qawf = false;
+        const double r = quad(F, a, b, o, w, limit, c, qawf);
+        if (qawf) return nb::make_tuple(r, c.abserr, c.neval, c.ier, c.lst, cycle_arrays(c), true);
+        return nb::make_tuple(r, w.abserr, w.neval, w.ier, w.last, interval_arrays(w, o.limit), false);
     });
 }
 
@@ -192,9 +293,11 @@ struct NQuad {
     std::vector<Level> levels;  // 0 innermost
     std::vector<double> xs;     // the variables, innermost first
     std::vector<qp::Work> works;
+    std::vector<qp::Cycles> cycles;
     double abserr = 0.0;
     std::int64_t nfev = 0;
     int bad_ier = 0, bad_limit = 0;
+    bool bad_qawf = false;  // the first failure was QAWF's (its texts for ier 1, 4, 7)
 
     // the variables of the levels outside i (nearest first), as scipy passes them (*args)
     nb::tuple outer(int i) const {
@@ -241,26 +344,31 @@ struct NQuad {
             op = &o;
         }
         qp::Work& w = works[static_cast<std::size_t>(i)];
+        qp::Cycles& c = cycles[static_cast<std::size_t>(i)];
         int limit = 0;
+        bool qawf = false;
         double v;
         if (i == 0) {
             auto f = [&](double x) {
                 xs[0] = x;
                 return innermost();
             };
-            v = quad(f, lo, hi, *op, w, limit);
-            nfev += w.neval;
+            v = quad(f, lo, hi, *op, w, limit, c, qawf);
+            nfev += qawf ? c.neval : w.neval;
         } else {
             auto f = [&, i](double x) {
                 xs[static_cast<std::size_t>(i)] = x;
                 return integrate(i - 1);
             };
-            v = quad(f, lo, hi, *op, w, limit);
+            v = quad(f, lo, hi, *op, w, limit, c, qawf);
         }
-        if (w.abserr > abserr) abserr = w.abserr;  // Python's max(self.abserr, abserr)
-        if (w.ier != 0 && bad_ier == 0) {
-            bad_ier = w.ier;
+        const double err = qawf ? c.abserr : w.abserr;
+        const int ier = qawf ? c.ier : w.ier;
+        if (err > abserr) abserr = err;  // Python's max(self.abserr, abserr)
+        if (ier != 0 && bad_ier == 0) {
+            bad_ier = ier;
             bad_limit = limit;
+            bad_qawf = qawf;
         }
         return v;
     }
@@ -303,8 +411,9 @@ nb::object nquad_solve(
         const int n = static_cast<int>(q.levels.size());
         q.xs.assign(static_cast<std::size_t>(n), 0.0);
         q.works.resize(static_cast<std::size_t>(n));
+        q.cycles.resize(static_cast<std::size_t>(n));
         const double v = q.integrate(n - 1);
-        return nb::make_tuple(v, q.abserr, q.nfev, q.bad_ier, q.bad_limit);
+        return nb::make_tuple(v, q.abserr, q.nfev, q.bad_ier, q.bad_limit, q.bad_qawf);
     });
 }
 

@@ -6,8 +6,10 @@ functions are public. SP2 brings two:
 
 one point per output entry, the matrix's id and the entry its description. SP4 adds
 
-  solve  spsolve(A, b) (region solve) on the points of solve.npz: |x_i - ref_i| over
-         C_SOLVE kappa_inf eps ||ref||_inf (refdata's normwise contract, entry by entry).
+  solve  spsolve(A, b) (region solve), splu(A).solve(b) (splu) and factorized(A)(b)
+         (factorized) on the points of solve.npz: |x_i - ref_i| over C_SOLVE kappa_inf eps
+         ||ref||_inf (refdata's normwise contract, entry by entry). scipy has all three; R's
+         Matrix has solve (CSparse's LU) only.
 
 SP5 adds
 
@@ -38,7 +40,9 @@ SP6 adds
          eigenvalue's condition number kappa = 1 / |y^H x|, the nearest reference taken), the
          refdata contract. The comparators are scipy 1.18.1 (eigsh / eigs, svds's default solver;
          v0 = sin(1..n)) and R 4.6.2's RSpectra 0.16.2 (eigs_sym, eigs, svds; real matrices;
-         the same initvec).
+         the same initvec) and, a second R comparator ("R irlba"), irlba 2.4.1's irlba(A, nv = 6)
+         for svds' largest values (the same restarted Lanczos bidiagonalization; tol 1e-12, the
+         starting vector sin(1..n)).
 
 SP7 adds
 
@@ -195,7 +199,9 @@ def _results(family, lib, p, m):
 
         A = coo(m).tocsr()
         if family == "solve":
-            return {"solve": np.asarray(sd.sparse.spsolve(A.tocsc(), sd.asarray(p["b"])))}
+            Ac, b = A.tocsc(), sd.asarray(p["b"])
+            return {"solve": np.asarray(sd.sparse.spsolve(Ac, b)), "splu": np.asarray(sd.sparse.splu(Ac).solve(b)),
+                    "factorized": np.asarray(sd.sparse.factorized(Ac)(b))}  # fmt: skip
         if family == "spmv":
             return {"matvec": np.asarray(A @ sd.asarray(p["x"])), "rmatvec": np.asarray(sd.asarray(p["w"]) @ A)}
         return {"row_sums": np.asarray(A.sum(axis=1)), "col_sums": np.asarray(A.sum(axis=0)),
@@ -205,7 +211,9 @@ def _results(family, lib, p, m):
         if family == "solve":
             import scipy.sparse.linalg as spla
 
-            return {"solve": spla.spsolve(m.scipy("csc"), p["b"])}
+            Ac = m.scipy("csc")
+            return {"solve": spla.spsolve(Ac, p["b"]), "splu": spla.splu(Ac).solve(p["b"]),
+                    "factorized": spla.factorized(Ac)(p["b"])}  # fmt: skip
         if family == "spmv":
             return {"matvec": s @ p["x"], "rmatvec": p["w"] @ s}
         return {"row_sums": s.sum(axis=1), "col_sums": s.sum(axis=0), "total": np.asarray([s.sum()])}
@@ -223,6 +231,8 @@ def _results(family, lib, p, m):
 def _regions(family, lib):
     from tests.sparse import refdata as R
 
+    if lib == "R irlba":  # irlba: svds' largest values only
+        return _eig_regions(lib) if family == "eig" else None
     if family == "iterative":
         return None if lib == "R" else _iterative_regions(lib)
     if family == "eig":
@@ -238,15 +248,16 @@ def _regions(family, lib):
         if got is None:
             continue
         for method, y in got.items():
-            hi, lo = np.atleast_1d(p[f"{method}_hi"]), np.atleast_1d(p[f"{method}_lo"])
-            if method == "solve":
+            src = "solve" if method in ("splu", "factorized") else method  # the same system, spsolve's reference
+            hi, lo = np.atleast_1d(p[f"{src}_hi"]), np.atleast_1d(p[f"{src}_lo"])
+            if src == "solve":
                 y = np.asarray(y).ravel()
                 ref = hi + lo
                 scale = R.C_SOLVE * p["solve_cond"] * R.EPS * float(np.abs(ref).max())
                 err = np.abs(y - ref) / scale
                 with np.errstate(all="ignore"):
                     rel = np.where(ref == 0, np.abs(y - ref), np.abs(y - ref) / np.abs(ref))
-                where = [f"{p['matrix']} solve[{i}]" for i in range(y.size)]
+                where = [f"{p['matrix']} {method}[{i}]" for i in range(y.size)]
                 rows.setdefault(method, []).append((where, err, rel, ulps(y, hi)))
                 continue
             if method in ("matvec", "row_sums"):
@@ -313,6 +324,13 @@ def _eig_values(lib, kind, m, which):
             return None
     if m.data.dtype.kind == "c":  # R's Matrix has no complex sparse class
         return None
+    if lib == "R irlba":
+        expr = ("suppressMessages(library(irlba)); "
+                "irlba(A, nv = 6, tol = 1e-12, maxit = 10000, v = sin(seq_len(ncol(A))))$d")  # fmt: skip
+        try:
+            return _r_value(expr, m, {})
+        except RuntimeError:
+            return None
     opts = "opts = list(tol = 1e-12, maxitr = 100000, initvec = sin(seq_len(nrow(A))))"
     if kind == "svd":
         if which == "SM":  # RSpectra's svds has no smallest singular values
@@ -342,6 +360,8 @@ def _eig_regions(lib):
         norm = 4.0 * int(p["matrix"][3]) if kind == "closed" else float(np.linalg.norm(m.dense(), 2))
         region_name = {"svd": "svds", "nonsym": "eigs"}.get(kind, "eigsh")
         cases = {"svd": ("LM", "SM"), "nonsym": ("LM", "SR")}.get(kind, ("SA", "LA"))
+        if lib == "R irlba":
+            cases = ("LM",) if kind == "svd" else ()
         for which in cases:
             v = _eig_values(lib, kind, m, which)
             if v is None:
@@ -529,5 +549,5 @@ def sweeps():
 
         # (scipy's iterative solvers take about 40 s over the family's points)
         seconds = 300.0 if fam in ("iterative", "eig") else 60.0
-        out.append(Custom("sparse", fam, run, compare_libs(measure, ("scipy", "R"), seconds=seconds)))
+        out.append(Custom("sparse", fam, run, compare_libs(measure, ("scipy", "R", "R irlba"), seconds=seconds)))
     return out

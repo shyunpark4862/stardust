@@ -19,7 +19,7 @@ import numpy as np
 
 from ..registry import Case, Check, Ref
 
-DONE: tuple[str, ...] = ("C3", "C4")  # the milestones whose cases run
+DONE: tuple[str, ...] = ("C3", "C4", "C5", "C6")  # the milestones whose cases run
 BATCH_SIZES = ((10, "10"), (1000, "10^3"), (10**5, "10^5"))
 SAMPLE_SIZES = ((10**3, "10^3"), (10**6, "10^6"))
 
@@ -56,6 +56,10 @@ def _peak5(x):
     return 4.0**-5 / ((x - math.pi / 4) * (x - math.pi / 4) + 16.0**-5)
 
 
+def _log0(x):
+    return math.log(x) if x > 0 else 0.0
+
+
 def _quad_specs():
     import scipy.integrate as si
 
@@ -77,6 +81,15 @@ def _quad_specs():
              lambda d: lambda: I.quad(lambda x: math.exp(-x), 0.0, math.inf, weight="cos", wvar=3.0),
              lambda d: lambda: si.quad(lambda x: math.exp(-x), 0.0, math.inf, weight="cos", wvar=3.0),
              note="QAWF"),
+        Spec("C5", "quad", "quad weight=sin log(x) on (0, 1)", ("quad",),
+             lambda d: lambda: I.quad(_log0, 0.0, 1.0, weight="sin", wvar=10 * math.pi),
+             lambda d: lambda: si.quad(_log0, 0.0, 1.0, weight="sin", wvar=10 * math.pi), note="QAWO, 305 calls"),
+        Spec("C5", "quad", "quad weight=alg-loga", ("quad",),
+             lambda d: lambda: I.quad(_gauss, 0.0, 1.0, weight="alg-loga", wvar=(-0.5, 0.5)),
+             lambda d: lambda: si.quad(_gauss, 0.0, 1.0, weight="alg-loga", wvar=(-0.5, 0.5)), note="QAWS"),
+        Spec("C5", "quad", "quad weight=cauchy", ("quad",),
+             lambda d: lambda: I.quad(_gauss, -1.0, 5.0, weight="cauchy", wvar=0.3),
+             lambda d: lambda: si.quad(_gauss, -1.0, 5.0, weight="cauchy", wvar=0.3), note="QAWC"),
     ]  # fmt: skip
 
 
@@ -175,12 +188,22 @@ def _pair(r):
     return tuple(r)
 
 
+def _value(r):
+    """tanhsinh's integral or nsum's sum (sd's or scipy's result) as an array."""
+    return np.asarray(r.sum if hasattr(r, "sum") and not hasattr(r, "integral") else r.integral, dtype=np.float64)
+
+
 def cases() -> list[Case]:
     out = []
     for s in specs():
         if not _public(s):
             continue
-        check = Check(sd=_pair) if s.group == "quad" else Check()
+        if s.group == "quad":
+            check = Check(sd=_pair)
+        elif s.group == "batch":
+            check = Check(sd=_value, ref=lambda label, r: _value(r))
+        else:
+            check = Check()
         out.append(Case(area="integrate", group=s.group, name=s.name, size=s.size, n=s.n, setup=s.setup, sd=s.sd,
                         refs=(Ref("scipy", s.scipy),), quick=s.quick, note=s.note, check=check))  # fmt: skip
     return out

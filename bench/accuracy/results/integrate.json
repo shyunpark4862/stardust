@@ -74,6 +74,124 @@
     "Boost": "boostorg/math 75cb4c4 2026-11-18",
     "Boost in sd.special": "4682f44"
    }
+  },
+  "20261122-033710-9aacd38+": {
+   "commit": "9aacd38",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/accuracy/common.py",
+    "bench/accuracy/compare.py",
+    "bench/accuracy/htest.py",
+    "bench/accuracy/integrate.py",
+    "bench/accuracy/sparse.py",
+    "bench/speed/cases/htest.py",
+    "bench/speed/cases/integrate.py",
+    "bench/speed/cases/sparse.py",
+    "csrc/bind/integrate_bind.cpp",
+    "csrc/integrate/integrate.hpp",
+    "csrc/integrate/quadpack.cpp",
+    "csrc/integrate/quadpack.hpp",
+    "src/stardust/integrate/__init__.py",
+    "src/stardust/integrate/_quadpack.py",
+    "src/stardust/integrate/_result.py",
+    "tests/golden/cases_integrate.py",
+    "tests/golden/data/integrate.json",
+    "tests/integrate/test_api_surface.py",
+    "tests/integrate/test_quadpack.py",
+    "tools/gen_htest_scipy.py"
+   ],
+   "date": "2026-11-22T03:37:10",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261122-034527-9aacd38+": {
+   "commit": "9aacd38",
+   "dirty": true,
+   "changed": [
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "ROADMAP.md",
+    "bench/accuracy/common.py",
+    "bench/accuracy/compare.py",
+    "bench/accuracy/htest.py",
+    "bench/accuracy/integrate.py",
+    "bench/accuracy/results/integrate.json",
+    "bench/accuracy/sparse.py",
+    "bench/integrate/accuracy.md",
+    "bench/speed/cases/htest.py",
+    "bench/speed/cases/integrate.py",
+    "bench/speed/cases/sparse.py",
+    "csrc/bind/integrate_bind.cpp",
+    "csrc/integrate/integrate.hpp",
+    "csrc/integrate/quadpack.cpp",
+    "csrc/integrate/quadpack.hpp",
+    "docs/api/integrate.md",
+    "docs/design/integrate.md",
+    "src/stardust/integrate/__init__.py",
+    "src/stardust/integrate/_quadpack.py",
+    "src/stardust/integrate/_result.py",
+    "tests/golden/cases_integrate.py",
+    "tests/golden/data/integrate.json",
+    "tests/htest/data/statsmodels.json",
+    "tests/integrate/refdata.py",
+    "tests/integrate/test_api_surface.py",
+    "tests/integrate/test_quadpack.py",
+    "tools/gen_htest_scipy.py",
+    "tools/gen_integrate_fortran.py",
+    "tools/integrate_ref.py"
+   ],
+   "date": "2026-11-22T03:45:27",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
   }
  },
  "sweeps": [
@@ -180,6 +298,43 @@
    "comparators_run": "20261122-021425-cda05f3+"
   },
   {
+   "id": "integrate/nsum",
+   "area": "integrate",
+   "name": "nsum",
+   "points": 9,
+   "regions": {
+    "series": {
+     "points": 9,
+     "rel_max": 3.0026730036483793e-12,
+     "converged_max": 9.0,
+     "short_max": 0.0,
+     "contract": 0.8890788741210753,
+     "bound": 1.0,
+     "worst": [
+      "series/harmonic/2/1000"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "series": {
+      "points": 9,
+      "rel_max": 3.0026730036483793e-12,
+      "converged_max": 9.0,
+      "short_max": 0.0,
+      "contract": 0.8890788741210753,
+      "bound": 1.0,
+      "worst": [
+       "series/harmonic/2/1000"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120,
+   "run": "20261122-033710-9aacd38+",
+   "comparators_run": "20261122-033710-9aacd38+"
+  },
+  {
    "id": "integrate/quad",
    "area": "integrate",
    "name": "quad",
@@ -281,6 +436,109 @@
    "comparator_seconds": 120,
    "run": "20261122-021425-cda05f3+",
    "comparators_run": "20261122-021425-cda05f3+"
+  },
+  {
+   "id": "integrate/quad_weights",
+   "area": "integrate",
+   "name": "quad_weights",
+   "points": 109,
+   "regions": {
+    "qawo": {
+     "points": 20,
+     "rel_max": 4.41523253916265e-15,
+     "converged_max": 20.0,
+     "short_max": 7.0,
+     "contract": 0.45659513116305067,
+     "bound": 1.0,
+     "worst": [
+      "weights/qawo/exp-cos/-1.0/40.0/0.0/1.0"
+     ]
+    },
+    "qawf": {
+     "points": 20,
+     "rel_max": 1.1763582503513496e-09,
+     "converged_max": 20.0,
+     "short_max": 0.0,
+     "contract": 0.004165236512124597,
+     "bound": 1.0,
+     "worst": [
+      "weights/qawf/rsqrt-cos/3.0"
+     ]
+    },
+    "qaws": {
+     "points": 43,
+     "rel_max": 1.3383440177918423e-08,
+     "converged_max": 43.0,
+     "short_max": 0.0,
+     "contract": 0.22434482754181112,
+     "bound": 1.0,
+     "worst": [
+      "quadpack/qaws"
+     ]
+    },
+    "qawc": {
+     "points": 26,
+     "rel_max": 6.47345759296182e-14,
+     "converged_max": 26.0,
+     "short_max": 9.0,
+     "contract": 0.24,
+     "bound": 1.0,
+     "worst": [
+      "weights/qawc/cube/-1.0/5.0/0.0"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "qawo": {
+      "points": 20,
+      "rel_max": 4.41523253916265e-15,
+      "converged_max": 20.0,
+      "short_max": 7.0,
+      "contract": 0.45659513116305067,
+      "bound": 1.0,
+      "worst": [
+       "weights/qawo/exp-cos/-1.0/40.0/0.0/1.0"
+      ]
+     },
+     "qawf": {
+      "points": 20,
+      "rel_max": 1.718281828459045,
+      "converged_max": 20.0,
+      "short_max": 1.0,
+      "contract": 10819033364.197105,
+      "bound": 1.0,
+      "worst": [
+       "weights/qawf/exp-cos/1.0/0.0/1.0"
+      ]
+     },
+     "qaws": {
+      "points": 43,
+      "rel_max": 1.3383440177918423e-08,
+      "converged_max": 43.0,
+      "short_max": 0.0,
+      "contract": 0.22434482754181112,
+      "bound": 1.0,
+      "worst": [
+       "quadpack/qaws"
+      ]
+     },
+     "qawc": {
+      "points": 26,
+      "rel_max": 6.47345759296182e-14,
+      "converged_max": 26.0,
+      "short_max": 9.0,
+      "contract": 0.24,
+      "bound": 1.0,
+      "worst": [
+       "weights/qawc/cube/-1.0/5.0/0.0"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120,
+   "run": "20261122-034527-9aacd38+",
+   "comparators_run": "20261122-034527-9aacd38+"
   },
   {
    "id": "integrate/samples",
@@ -386,6 +644,109 @@
    "comparator_seconds": 120,
    "run": "20261122-021425-cda05f3+",
    "comparators_run": "20261122-021425-cda05f3+"
+  },
+  {
+   "id": "integrate/tanhsinh",
+   "area": "integrate",
+   "name": "tanhsinh",
+   "points": 101,
+   "regions": {
+    "book": {
+     "points": 62,
+     "rel_max": 5.81769715161894,
+     "converged_max": 46.0,
+     "short_max": 7.0,
+     "contract": 0.7800000000000002,
+     "bound": 1.0,
+     "worst": [
+      "book/xlog/-0.6"
+     ]
+    },
+    "quadpack": {
+     "points": 3,
+     "rel_max": 9.070419959817599e-06,
+     "converged_max": 2.0,
+     "short_max": 0.0,
+     "contract": 0.5000000000000001,
+     "bound": 1.0,
+     "worst": [
+      "quadpack/qags"
+     ]
+    },
+    "scipy": {
+     "points": 27,
+     "rel_max": 1.9023955350305948,
+     "converged_max": 23.0,
+     "short_max": 1.0,
+     "contract": 0.7186449165486087,
+     "bound": 1.0,
+     "worst": [
+      "scipy/tanhsinh/norm/-inf,inf"
+     ]
+    },
+    "hard": {
+     "points": 9,
+     "rel_max": 0.009913194455963139,
+     "converged_max": 5.0,
+     "short_max": 0.0,
+     "contract": 0.3633745025209443,
+     "bound": 1.0,
+     "worst": [
+      "hard/gauss"
+     ]
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "book": {
+      "points": 62,
+      "rel_max": 5.81769715161894,
+      "converged_max": 46.0,
+      "short_max": 7.0,
+      "contract": 0.7800000000000002,
+      "bound": 1.0,
+      "worst": [
+       "book/xlog/-0.6"
+      ]
+     },
+     "quadpack": {
+      "points": 3,
+      "rel_max": 9.070419959817599e-06,
+      "converged_max": 2.0,
+      "short_max": 0.0,
+      "contract": 0.5000000000000001,
+      "bound": 1.0,
+      "worst": [
+       "quadpack/qags"
+      ]
+     },
+     "scipy": {
+      "points": 27,
+      "rel_max": 1.9023955350305948,
+      "converged_max": 23.0,
+      "short_max": 1.0,
+      "contract": 0.7186449165486087,
+      "bound": 1.0,
+      "worst": [
+       "scipy/tanhsinh/norm/-inf,inf"
+      ]
+     },
+     "hard": {
+      "points": 9,
+      "rel_max": 0.009913194455963139,
+      "converged_max": 5.0,
+      "short_max": 0.0,
+      "contract": 0.3633745025209443,
+      "bound": 1.0,
+      "worst": [
+       "hard/gauss"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 120,
+   "run": "20261122-033710-9aacd38+",
+   "comparators_run": "20261122-033710-9aacd38+"
   }
  ]
 }

@@ -7,6 +7,12 @@ fixed_quad on its smooth integrals and newton_cotes, with the options, the input
 errors. Since milestone C4: quad on every integral of the collection without a weight (the
 problems' integrands on Python floats and the math module), its options, complex_func, the
 multiple integrals (dblquad, tplquad, nquad) and the errors; a result's summary() is part of it.
+Since milestone C5: quad's weights (QAWO, QAWF, QAWS, QAWC) on the collection's weighted integrals
+and the sweep of tests/integrate/weights.py, with max_p1, limlst, the frequency 0, the left half
+line, complex_func, nquad's weighted levels and the errors.
+Since milestone C6: tanhsinh and nsum (the elementwise family) on integrands and series of sd's own
+operations, with the levels, log=True, the limits' transforms, batches with args, nsum's branches
+and the errors.
 The samples and integrands are sd's own operations (the problems' formulas on sd arrays) or the
 math module, so the results do not depend on numpy. Each milestone adds the cases of the
 functions it makes public (docs/design/integrate.md §8).
@@ -66,6 +72,7 @@ def cases(L):
     yield from fixed_cases(L)
     yield from quad_cases(L)
     yield from multiple_cases(L)
+    yield from elementwise_cases(L)
 
 
 def _sample_sets(sd):
@@ -181,6 +188,7 @@ def quad_cases(L):
         if p.weight is None:
             kw = {"points": list(p.points)} if p.points else {}
             yield f"quad {p.id}", lambda p=p, kw=kw: I.quad(p.f, p.a, p.b, **kw)
+    yield from weight_cases(L)
     g = lambda x: math.exp(-x * x)  # noqa: E731
     root = lambda x: math.sqrt(x)  # noqa: E731
     yield "quad limit 1", lambda: I.quad(root, 0.0, 1.0, limit=1)
@@ -219,7 +227,6 @@ def quad_cases(L):
     yield "err quad points nan", lambda: I.quad(math.exp, 0, 1, points=[math.nan])
     yield "err quad points infinite", lambda: I.quad(math.exp, 0, math.inf, points=[1.0])
     yield "err quad points limit", lambda: I.quad(math.exp, 0, 1, points=[0.1, 0.2, 0.3], limit=3)
-    yield "err quad weight", lambda: I.quad(math.exp, 0, 1, weight="cos", wvar=1.0)
     yield "err quad weight name", lambda: I.quad(math.exp, 0, 1, weight="tan")
     yield "err quad wvar", lambda: I.quad(math.exp, 0, 1, wvar=1.0)
     yield "err quad max_p1", lambda: I.quad(math.exp, 0, 1, max_p1=10)
@@ -227,6 +234,60 @@ def quad_cases(L):
     yield "err quad shape", lambda: I.quad(lambda x: [1.0, 2.0], 0, 1)
     yield "err quad complex value", lambda: I.quad(lambda x: 1j, 0, 1)
     yield "err quad bool value", lambda: I.quad(lambda x: True, 0, 1)
+
+
+def weight_cases(L):
+    from tests.integrate import problems as P
+    from tests.integrate import weights as W
+
+    sd = L.sd
+    I = sd.integrate  # noqa: E741
+    for p in [p for p in P.INTEGRALS if p.weight is not None] + list(W.SWEEP):
+        yield f"quad {p.id}", lambda p=p: I.quad(p.f, p.a, p.b, weight=p.weight, wvar=p.wvar)
+    log0 = lambda x: math.log(x) if x > 0 else 0.0  # noqa: E731
+    rsqrt = lambda x: 1 / math.sqrt(x) if x > 0 else 0.0  # noqa: E731
+    yield "quad cos max_p1 2", lambda: I.quad(log0, 0.0, 1.0, weight="cos", wvar=300.0, max_p1=2)
+    yield "quad sin max_p1 1", lambda: I.quad(log0, 0.0, 1.0, weight="sin", wvar=300.0, max_p1=1)
+    yield "quad cos limit 1", lambda: I.quad(math.exp, 0.0, 1.0, weight="cos", wvar=1.0, limit=1)
+    yield "quad cos small interval", lambda: I.quad(lambda x: 1.0 if x < 0.37 else 0.5, -3.3, 3.7, weight="sin",
+                                                    wvar=300.0, atol=1e-14, rtol=1e-14)  # fmt: skip
+    yield "quad qawf limlst 3", lambda: I.quad(rsqrt, 0.0, math.inf, weight="cos", wvar=1.0, limlst=3)
+    yield "quad qawf limit 3", lambda: I.quad(rsqrt, 0.0, math.inf, weight="sin", wvar=2.0, limit=3)
+    yield "quad qawf zero frequency", lambda: I.quad(lambda x: math.exp(-x), 1.0, math.inf, weight="cos", wvar=0.0)
+    yield "quad qawf zero sine", lambda: I.quad(lambda x: math.exp(-x), 1.0, math.inf, weight="sin", wvar=0.0)
+    yield "quad qawf left sine", lambda: I.quad(math.exp, -math.inf, 1.0, weight="sin", wvar=2.5)
+    yield "quad qawf reversed", lambda: I.quad(rsqrt, math.inf, 0.0, weight="sin", wvar=2.0)
+    yield "quad qawf summary", lambda: I.quad(rsqrt, 0.0, math.inf, weight="cos", wvar=1.0).summary()
+    yield "quad qaws limit 2", lambda: I.quad(math.exp, 0.0, 1.0, weight="alg-log", wvar=(-0.5, 0.5), limit=2)
+    yield "quad qaws reversed", lambda: I.quad(math.exp, 1.0, -1.0, weight="alg-logb", wvar=(0.5, -0.25))
+    yield "quad qawc outside", lambda: I.quad(math.exp, 0.0, 1.0, weight="cauchy", wvar=3.0)
+    yield "quad weight empty", lambda: I.quad(math.exp, 1.0, 1.0, weight="cauchy", wvar=1.0)
+    yield "quad weight complex", lambda: I.quad(lambda x: complex(math.exp(-x), x), 0.0, 1.0, weight="cos", wvar=3.0,
+                                                complex_func=True)  # fmt: skip
+    yield "quad weight complex qawf", lambda: I.quad(lambda x: complex(math.exp(-x), math.exp(-2 * x)), 0.0,
+                                                     math.inf, weight="sin", wvar=2.0, complex_func=True)  # fmt: skip
+    yield (
+        "quad weight complex summary",
+        lambda: I.quad(
+            lambda x: complex(math.exp(-x), 1.0), 0.0, math.inf, weight="cos", wvar=1.0, complex_func=True
+        ).summary(),
+    )
+    yield "nquad weights", lambda: I.nquad(lambda x, y: math.exp(-x) * (1 + y), [[0, math.inf], [0, 1]],
+                                           opts=[lambda y: {"weight": "cos", "wvar": 1 + y},
+                                                 {"weight": "alg", "wvar": (0.5, -0.5)}])  # fmt: skip
+    yield "err quad wvar missing", lambda: I.quad(math.exp, 0, 1, weight="cos")
+    yield "err quad wvar pair", lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=0.5)
+    yield "err quad wvar alpha", lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=(-1.0, 0.0))
+    yield "err quad wvar infinite", lambda: I.quad(math.exp, 0, 1, weight="sin", wvar=math.inf)
+    yield "err quad weight points", lambda: I.quad(math.exp, 0, 1, weight="cos", wvar=1.0, points=[0.5])
+    yield "err quad qaws limit", lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=(0, 0), limit=1)
+    yield "err quad limlst finite", lambda: I.quad(math.exp, 0, 1, weight="cos", wvar=1.0, limlst=10)
+    yield "err quad weight whole line", lambda: I.quad(math.exp, -math.inf, math.inf, weight="cos", wvar=1.0)
+    yield "err quad alg infinite", lambda: I.quad(math.exp, 0, math.inf, weight="alg", wvar=(0, 0))
+    yield "err quad cauchy end", lambda: I.quad(math.exp, 0, 1, weight="cauchy", wvar=1)
+    yield "err quad qawf atol", lambda: I.quad(math.exp, 0, math.inf, weight="sin", wvar=1.0, atol=0.0, rtol=1e-10)
+    yield "err quad qawf rtol", lambda: I.quad(math.exp, -math.inf, 0, weight="cos", wvar=1.0, rtol=1e-10)
+    yield "err quad max_p1 range", lambda: I.quad(math.exp, 0, 1, max_p1=2**31)
 
 
 # problems.MULTI with the math module (its integrands use numpy's exp)
@@ -277,4 +338,72 @@ def multiple_cases(L):
     yield "err nquad opts length", lambda: I.nquad(lambda x, y: x, [[0, 1], [0, 1]], opts=[{}])
     yield "err nquad range function", lambda: I.nquad(lambda x, y: x, [[0, 1], lambda: 3.0])
     yield "err nquad opts function", lambda: I.nquad(lambda x, y: x, [[0, 1], [0, 1]], opts=[lambda y: 3, {}])
-    yield "err nquad weight", lambda: I.nquad(lambda x: x, [[0, 1]], opts={"weight": "sin", "wvar": 2.0})
+    yield "nquad weight", lambda: I.nquad(lambda x: x, [[0, 1]], opts={"weight": "sin", "wvar": 2.0})
+
+
+def elementwise_cases(L):
+    sd = L.sd
+    I = sd.integrate  # noqa: E741
+    inf = math.inf
+
+    def gauss(x):
+        return sd.exp(-x * x)
+
+    yield "tanhsinh exp", lambda: I.tanhsinh(sd.exp, 0.0, 1.0)
+    yield "tanhsinh gauss real line", lambda: I.tanhsinh(gauss, -inf, inf)
+    yield "tanhsinh gauss left", lambda: I.tanhsinh(gauss, -inf, 0.5)
+    yield "tanhsinh gauss right", lambda: I.tanhsinh(gauss, -0.5, inf)
+    yield "tanhsinh reversed", lambda: I.tanhsinh(sd.cos, 2.0, -1.0)
+    yield "tanhsinh equal", lambda: I.tanhsinh(sd.cos, 2.0, 2.0)
+    yield "tanhsinh singular end", lambda: I.tanhsinh(lambda x: sd.log(x) * sd.log(x), 0.0, 1.0)
+    yield "tanhsinh peak", lambda: I.tanhsinh(lambda x: 1 / ((x - 0.3) ** 2 + 1e-4), 0.0, 1.0)
+    yield "tanhsinh levels", lambda: I.tanhsinh(lambda x: sd.sqrt(x), 0.0, 1.0, min_level=0, max_level=4)
+    yield "tanhsinh min_level 5", lambda: I.tanhsinh(sd.sin, 0.0, 3.0, min_level=5)
+    yield "tanhsinh tolerances", lambda: I.tanhsinh(sd.cos, 0.0, 10.0, atol=1e-6, rtol=0.0)
+    yield "tanhsinh log", lambda: I.tanhsinh(lambda x: -x * x, 20.0, 30.0, log=True)
+    yield "tanhsinh log real line", lambda: I.tanhsinh(lambda x: -x * x, -inf, inf, log=True, rtol=-30.0)
+    yield "tanhsinh nan", lambda: I.tanhsinh(sd.exp, [math.nan, 0.0], [1.0, math.nan])
+    yield (
+        "tanhsinh batch",
+        lambda: I.tanhsinh(
+            lambda x, c: sd.cos(c * sd.sin(x)), 0.0, math.pi, args=(sd.asarray([1.0, 4.0, 16.0, 64.0]),)
+        ),
+    )
+    yield (
+        "tanhsinh batch 2d",
+        lambda: I.tanhsinh(lambda x, p: x**p, 0.0, sd.asarray([[1.0], [2.0]]), args=(sd.asarray([0.5, -0.5, 2.0]),)),
+    )
+    yield "tanhsinh summary", lambda: I.tanhsinh(gauss, -inf, inf).summary()
+    yield "tanhsinh batch summary", lambda: I.tanhsinh(sd.exp, 0.0, sd.asarray([1.0, 2.0])).summary()
+    yield "tanhsinh empty", lambda: I.tanhsinh(sd.exp, [], 1.0)
+    big = sd.linspace(0.5, 3.0, 40001)
+    yield "tanhsinh large batch", lambda: I.tanhsinh(lambda x, c: sd.exp(-c * x * x), 0.0, 2.0, args=(big,))
+    yield "err tanhsinh max_level", lambda: I.tanhsinh(sd.exp, 0.0, 1.0, max_level=17)
+    yield "err tanhsinh log reversed", lambda: I.tanhsinh(lambda x: -x, 1.0, 0.0, log=True)
+    yield "err tanhsinh rtol", lambda: I.tanhsinh(sd.exp, 0.0, 1.0, rtol=math.nan)
+    yield "err tanhsinh value shape", lambda: I.tanhsinh(lambda x: sd.ravel(x), 0.0, 1.0)
+    yield "err tanhsinh complex", lambda: I.tanhsinh(lambda x: x * 1j, 0.0, 1.0)
+    yield "err tanhsinh keyword", lambda: I.tanhsinh(sd.exp, 0.0, 1.0, maxlevel=3)
+    yield "nsum zeta 2", lambda: I.nsum(lambda k: 1 / (k * k), 1.0, inf)
+    yield "nsum direct", lambda: I.nsum(lambda k: 1 / (k * k), 1.0, 1000.0)
+    yield "nsum finite many terms", lambda: I.nsum(lambda k: 1 / (k * k), 1.0, 1e7)
+    yield "nsum step", lambda: I.nsum(lambda x: 1 / x - 1 / (x + 1), 1.0, inf, step=2.0)
+    yield "nsum left", lambda: I.nsum(lambda k: 1 / (k * k), -inf, -1.0)
+    yield "nsum both sides", lambda: I.nsum(lambda k: sd.exp(-k * k / 10), -inf, inf)
+    yield "nsum log", lambda: I.nsum(lambda k: -2 * sd.log(k), 1.0, inf, log=True)
+    yield "nsum log both sides", lambda: I.nsum(lambda k: -k * k, -inf, inf, log=True)
+    yield "nsum max_terms", lambda: I.nsum(lambda k: 1 / k**1.01, 1.0, inf, max_terms=100)
+    yield "nsum divergent", lambda: I.nsum(lambda k: 1 / k, 1.0, inf)
+    yield (
+        "nsum invalid",
+        lambda: I.nsum(lambda k: 1 / (k * k), [1.0, 10.0, math.nan], [10.0, 1.0, 5.0], step=[-1.0, 1.0, 1.0]),
+    )
+    yield (
+        "nsum batch",
+        lambda: I.nsum(lambda k, c: sd.exp(-c * k * k), sd.asarray([1.0, -inf, 0.0, -inf, 3.0]),
+                       sd.asarray([inf, 0.0, 50.0, inf, 2.0]), args=(sd.asarray([0.1, 0.2, 0.3, 0.01, 1.0]),)),
+    )  # fmt: skip
+    yield "nsum summary", lambda: I.nsum(lambda k: 1 / (k * k), 1.0, inf).summary()
+    yield "err nsum max_terms", lambda: I.nsum(sd.exp, 0.0, 1.0, max_terms=2**24 + 1)
+    yield "err nsum max_terms float", lambda: I.nsum(sd.exp, 0.0, 1.0, max_terms=1e3)
+    yield "err nsum tolerances", lambda: I.nsum(sd.exp, 0.0, 1.0, tolerances={"rtol": 1e-3})

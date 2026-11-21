@@ -21,12 +21,31 @@ Since milestone C4:
               which are recorded as "short" and left out of the contract; "converged" counts.
   multiple    dblquad and tplquad on problems.MULTI against the Arb integral (relative error;
               the contract as quad's, with the error nquad gives: the largest of every quad's).
+Since milestone C5:
+  quad_weights  quad with a weight (QAWO, QAWF, QAWS, QAWC), one region per routine, on the
+              collection's ten weighted integrals and the sweep of tests/integrate/weights.py (99,
+              ref/weights.json), against the Arb integral: the relative error, and the contract of a
+              converged run: the true error within the error estimate plus the value's rounding,
+              |value - ref| / (error + 8 eps |ref|) <= 1 (a Clenshaw-Curtis estimate has no rounding
+              floor: it is 0 on a polynomial of QAWC, and dqc25f's moments are good to about 2e3
+              ulp); "short" counts the runs past the estimate alone, "converged" the converged.
 scipy.integrate 1.18.1 is the comparator: the same formulas (its sums in numpy's order) and its
 roots_legendre; its QUADPACK for quad (the same steps: equal to the bit, tests/integrate/
 test_quadpack.py).
 
-tanhsinh and nsum (C6), quad_vec and cubature (C7) join with their milestones, measuring the
-relative error and the honesty of the error estimate.
+Since milestone C6:
+  tanhsinh    tanhsinh on the collection's integrals of its records (problems.Integral.tanhsinh),
+              one region per collection, against the Arb integral: the relative error, and the
+              contract of a converged run as quad's (the true error within the error estimate), but
+              for the eight runs where scipy's tanhsinh is short too (test_reference_data.
+              TANHSINH_SHORT: the moderate peaks a = 0, 2, 4, cos(2^a sin x) a = 6, 7, 9, 10 and f9's
+              sliver past the double pi/2), recorded as "short"; "converged" counts.
+  nsum        nsum on problems.SERIES against the Arb sums: the relative error and the same contract.
+scipy.integrate's tanhsinh and nsum are the comparator (the same steps: equal to the bit,
+tests/integrate/test_tanhsinh.py).
+
+quad_vec and cubature (C7) join with their milestone, measuring the relative error and the
+honesty of the error estimate.
 """
 
 from __future__ import annotations
@@ -198,6 +217,132 @@ def _multiple(lib="sd"):
     return {"dblquad, tplquad": region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0)}
 
 
+def _elementwise_lib(lib):
+    """tanhsinh(f, a, b) and nsum(f, a, b, step) of a library on a numpy integrand: (value, error,
+    status)."""
+    if lib == "sd":
+        import stardust as sd
+
+        def wrap(g):
+            def f(x):
+                with np.errstate(all="ignore"):
+                    return sd.asarray(g(np.asarray(x)))
+
+            return f
+
+        def t(g, a, b):
+            r = sd.integrate.tanhsinh(wrap(g), a, b)
+            return r.integral, r.error, r.status
+
+        def n(g, a, b, step):
+            r = sd.integrate.nsum(wrap(g), a, b, step=step)
+            return r.sum, r.error, r.status
+
+        return t, n
+    if lib == "scipy":
+        import warnings
+
+        from scipy import integrate
+
+        def quiet(call):
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore")
+                return call()
+
+        def t(g, a, b):
+            r = quiet(lambda: integrate.tanhsinh(g, a, b))
+            return float(r.integral), float(r.error), int(r.status)
+
+        def n(g, a, b, step):
+            r = quiet(lambda: integrate.nsum(g, a, b, step=step))
+            return float(r.sum), float(r.error), int(r.status)
+
+        return t, n
+    return None
+
+
+def _contract_region(where, runs, short_ids):
+    """region() of (id, value, error, status, [hi, lo]) runs: the relative error and the contract
+    of the converged ones (true error / error estimate) but for short_ids (recorded as "short")."""
+    rel, contract, short, conv = [], [], 0, 0
+    for pid, v, e, status, (hi, lo) in runs:
+        err = abs((v - hi) - lo)
+        rel.append(err / abs(hi) if hi else err)
+        if status == 0:
+            conv += 1
+            if pid in short_ids:
+                short += 1
+                contract.append(0.0)
+            else:
+                contract.append(err / e if e > 0 else (0.0 if err == 0 else math.inf))
+        else:
+            contract.append(0.0)
+    return region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0, converged=np.array([conv]),
+                  short=np.array([short]))  # fmt: skip
+
+
+def _tanhsinh(lib="sd"):
+    fns = _elementwise_lib(lib)
+    if fns is None:
+        return None
+    from tests.integrate import problems as P
+    from tests.integrate import refdata
+    from tests.integrate.test_reference_data import TANHSINH_SHORT
+
+    ref = refdata.integrals()
+    out = {}
+    for coll in ("book", "quadpack", "scipy", "hard"):
+        ps = [p for p in P.INTEGRALS if p.tanhsinh and p.collection == coll]
+        runs = [(p.id, *fns[0](p.f_np, p.a, p.b), ref[p.id]["value"]) for p in ps]
+        out[coll] = _contract_region([p.id for p in ps], runs, TANHSINH_SHORT)
+    return out
+
+
+def _nsum(lib="sd"):
+    fns = _elementwise_lib(lib)
+    if fns is None:
+        return None
+    from tests.integrate import problems as P
+    from tests.integrate import refdata
+
+    ref = refdata.series()
+    runs = [(s.id, *fns[1](s.f_np, s.a, s.b, s.step), ref[s.id]["value"]) for s in P.SERIES]
+    return {"series": _contract_region([s.id for s in P.SERIES], runs, set())}
+
+
+def _quad_weights(lib="sd"):
+    q = _quad_lib(lib)
+    if q is None:
+        return None
+    from tests.integrate import problems as P
+    from tests.integrate import refdata
+    from tests.integrate import weights as W
+
+    refs = {**refdata.integrals(), **refdata.weights()}
+    runs = [p for p in P.INTEGRALS if p.weight is not None] + list(W.SWEEP)
+    out = {}
+    for routine in ("qawo", "qawf", "qaws", "qawc"):
+        where, rel, contract, short, conv = [], [], [], 0, 0
+        for p in runs:
+            if W.routine(p) != routine:
+                continue
+            v, e, status = q(p.f, p.a, p.b, weight=p.weight, wvar=p.wvar)
+            hi, lo = refs[p.id]["value"]
+            err = abs((v - hi) - lo)
+            where.append(p.id)
+            rel.append(err / abs(hi) if hi else err)
+            if status == 0:
+                conv += 1
+                short += err > e
+                contract.append(err / (e + 8 * EPS * abs(hi)) if e or hi else (0.0 if err == 0 else math.inf))
+            else:
+                contract.append(0.0)
+        out[routine] = region(where, rel=np.array(rel), contract=np.array(contract), bound=1.0,
+                              converged=np.array([conv]), short=np.array([short]))  # fmt: skip
+    return out
+
+
 def sweeps():
-    specs = [("samples", _samples), ("fixed_quad", _fixed_quad), ("quad", _quad), ("multiple", _multiple)]
+    specs = [("samples", _samples), ("fixed_quad", _fixed_quad), ("quad", _quad), ("multiple", _multiple),
+             ("quad_weights", _quad_weights), ("tanhsinh", _tanhsinh), ("nsum", _nsum)]  # fmt: skip
     return [Custom("integrate", name, fn, compare_libs(fn, ("scipy",), seconds=120)) for name, fn in specs]

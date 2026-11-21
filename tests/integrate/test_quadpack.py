@@ -1,12 +1,14 @@
 """quad, dblquad, tplquad and nquad (docs/api/integrate.md §2, §3; docs/design/integrate.md §3.1,
-§3.2, §7.10; decisions C5, C55-C66).
+§3.2, §7.10, §7.11; decisions C5, C55-C66, C71-C83).
 
 The calls and results against scipy 1.18.1's records (tests/integrate/data): every integral of
-the collection without a weight calls the integrand at the same points in the same order and
-gives the same integral, error, nfev, status, message and intervals to the bit; the multiple
-integrals call at the same points and give the same values. Against the Arb references: a
-converged result is within its error estimate but for the cases scipy shares (QUAD_SHORT). And
-the options, the input forms, the results' fields and the errors."""
+the collection, with a weight or without, calls the integrand at the same points in the same
+order and gives the same integral, error, nfev, status, message and intervals (QAWF's cycles) to
+the bit; the multiple integrals call at the same points and give the same values. The weighted
+routes against live scipy on a generated set, and where they differ on purpose (C77-C79).
+Against the Arb references: a converged result is within its error estimate but for the cases
+scipy shares (QUAD_SHORT). And the options, the input forms, the results' fields and the
+errors. (The weighted routes' own sweep, test_quadpack_weights.py.)"""
 
 import hashlib
 import math
@@ -26,7 +28,7 @@ WEIGHTED = [p for p in P.INTEGRALS if p.weight is not None]
 
 
 def run(p, **kw):
-    """quad on problem p with its break points, recording the points it calls."""
+    """quad on problem p with its break points or weight, recording the points it calls."""
     pts = []
 
     def f(x):
@@ -35,6 +37,8 @@ def run(p, **kw):
 
     if p.points:
         kw["points"] = list(p.points)
+    if p.weight is not None:
+        kw.update(weight=p.weight, wvar=p.wvar)
     return I.quad(f, p.a, p.b, **kw), np.array(pts, dtype=np.float64)
 
 
@@ -49,7 +53,7 @@ def test_collection():
     assert len(UNWEIGHTED) == 106 and len(WEIGHTED) == 10
 
 
-@pytest.mark.parametrize("p", UNWEIGHTED, ids=lambda p: p.id)
+@pytest.mark.parametrize("p", P.INTEGRALS, ids=lambda p: p.id)
 def test_quad_matches_scipy_to_the_bit(p):
     rec = refdata.data("scipy_quad.json")[p.id]
     calls = np.load(refdata.DATA / "scipy_calls.npz")[f"quad/{p.id}"]
@@ -61,6 +65,12 @@ def test_quad_matches_scipy_to_the_bit(p):
     if rec["status"]:
         assert r.message == rec["message"]
     info = rec["info"]
+    if "lst" in info:  # QAWF: the cycles (scipy's lst, rslst, erlst, ierlst)
+        n = info["lst"]
+        assert r.n_cycles == n and not hasattr(r, "intervals")
+        assert r.cycle_integrals.tolist() == info["rslst"] and r.cycle_errors.tolist() == info["erlst"]
+        assert r.cycle_status.tolist() == info["ierlst"] and r.cycle_status.dtype == sd.int64
+        return
     last = info.get("last", 0)
     assert r.n_intervals == last and r.intervals.shape == (last, 2)
     stored = sorted(zip(info["alist"], info["blist"], info["rlist"], info["elist"])) if last else []
@@ -165,13 +175,13 @@ def test_complex_func_matches_scipy():
 def test_quad_against_the_references():
     ref = refdata.integrals()
     short, n = set(), 0
-    for p in UNWEIGHTED:
+    for p in P.INTEGRALS:
         r, _ = run(p)
         if r.converged:
             n += 1
             if abs(r.integral - refdata.value(ref[p.id])) > r.error:
                 short.add(p.id)
-    assert n == 94 and short == QUAD_SHORT
+    assert n == 104 and short == QUAD_SHORT
 
 
 # ---- the multiple integrals
@@ -380,12 +390,48 @@ ERRORS = [
      "quad(): 'points' cannot be used with an infinite range"),
     (lambda: I.quad(math.exp, 0, 1, points=[0.1, 0.2, 0.3], limit=3), ValueError,
      "quad(): the number of break points (3) must be less than 'limit' (3)"),
-    (lambda: I.quad(math.exp, 0, 1, weight="cos", wvar=1.0), NotImplementedError,
-     "quad(): 'weight' (QAWO, QAWF, QAWS, QAWC) comes with milestone C5"),
     (lambda: I.quad(math.exp, 0, 1, weight="tan"), ValueError, "quad(): 'weight' must be one of 'cos', 'sin'"),
+    (lambda: I.quad(math.exp, 0, 1, weight=1), TypeError, "quad(): 'weight' must be a str or None, not int"),
     (lambda: I.quad(math.exp, 0, 1, wvar=1.0), ValueError, "quad(): 'wvar' is only used with 'weight'"),
+    (lambda: I.quad(math.exp, 0, 1, weight="cos"), TypeError, "quad(): 'wvar' must be an int or a float, not NoneType"),
+    (lambda: I.quad(math.exp, 0, 1, weight="sin", wvar=math.inf), ValueError,
+     "quad(): 'wvar' must be finite for weight='sin'"),
+    (lambda: I.quad(math.exp, 0, 1, weight="cauchy", wvar=(1, 2)), TypeError,
+     "quad(): 'wvar' must be an int or a float, not tuple"),
+    (lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=0.5), TypeError,
+     "quad(): 'wvar' must be a pair (alpha, beta) of real numbers, not float"),
+    (lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=(1, 2, 3)), ValueError,
+     "quad(): 'wvar' must be a pair (alpha, beta) of real numbers, not 3 values"),
+    (lambda: I.quad(math.exp, 0, 1, weight="alg-log", wvar=(-1.0, 0.0)), ValueError,
+     "quad(): 'wvar' (alpha, beta) must both be > -1 for weight='alg-log'"),
+    (lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=(0.0, math.nan)), ValueError,
+     "quad(): the values of 'wvar' must be finite"),
+    (lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=(0, 0), limit=1), ValueError,
+     "quad(): 'limit' must be >= 2 with weight='alg'"),
+    (lambda: I.quad(math.exp, 0, 1, weight="cos", wvar=1.0, points=[0.5]), ValueError,
+     "quad(): 'points' is not used with 'weight'"),
     (lambda: I.quad(math.exp, 0, 1, max_p1=10), ValueError, "quad(): 'max_p1' is only used with weight='cos' or 'sin'"),
+    (lambda: I.quad(math.exp, 0, 1, weight="alg", wvar=(0, 0), max_p1=10), ValueError,
+     "quad(): 'max_p1' is only used with weight='cos' or 'sin'"),
+    (lambda: I.quad(math.exp, 0, 1, max_p1=0), ValueError, "quad(): 'max_p1' must be >= 1"),
+    (lambda: I.quad(math.exp, 0, 1, max_p1=2**31), OverflowError, "quad(): 'max_p1' is out of range"),
     (lambda: I.quad(math.exp, 0, 1, limlst=2), ValueError, "quad(): 'limlst' must be >= 3"),
+    (lambda: I.quad(math.exp, 0, 1, limlst=10), ValueError,
+     "quad(): 'limlst' is only used with weight='cos' or 'sin' on an infinite range"),
+    (lambda: I.quad(math.exp, 0, 1, weight="cos", wvar=1.0, limlst=10), ValueError,
+     "quad(): 'limlst' is only used with weight='cos' or 'sin' on an infinite range"),
+    (lambda: I.quad(math.exp, -math.inf, math.inf, weight="cos", wvar=1.0), ValueError,
+     "quad(): weight='cos' cannot be used on (-inf, inf)"),
+    (lambda: I.quad(math.exp, 0, math.inf, weight="alg", wvar=(0, 0)), ValueError,
+     "quad(): weight='alg' cannot be used with an infinite range"),
+    (lambda: I.quad(math.exp, -math.inf, 1, weight="cauchy", wvar=0.5), ValueError,
+     "quad(): weight='cauchy' cannot be used with an infinite range"),
+    (lambda: I.quad(math.exp, 0, 1, weight="cauchy", wvar=1), ValueError,
+     "quad(): 'wvar' must not equal 'a' or 'b' with weight='cauchy'"),
+    (lambda: I.quad(math.exp, 0, math.inf, weight="sin", wvar=1.0, atol=0.0, rtol=1e-10), ValueError,
+     "quad(): 'atol' must be > 0 with weight='sin' on an infinite range (QAWF uses 'atol' only)"),
+    (lambda: I.quad(math.exp, -math.inf, 0, weight="cos", wvar=1.0, rtol=1e-10), ValueError,
+     "quad(): 'rtol' is not used with weight='cos' on an infinite range (QAWF uses 'atol' only)"),
     (lambda: I.quad(math.exp, 0, 1, complex_func=1), TypeError,
      "quad(): 'complex_func' must be True or False, not int"),
     (lambda: I.quad(lambda x: [1.0, 2.0], 0, 1), ValueError,
@@ -419,8 +465,12 @@ ERRORS = [
      "nquad(): the options of 'opts[0]' must be a dict, not int"),
     (lambda: I.nquad(lambda x: x, [[0, math.inf]], opts={"points": []}), ValueError,
      "nquad(): 'points' cannot be used with an infinite range"),
-    (lambda: I.nquad(lambda x: x, [[0, 1]], opts={"weight": "sin", "wvar": 2.0}), NotImplementedError,
-     "nquad(): 'weight' (QAWO, QAWF, QAWS, QAWC) comes with milestone C5"),
+    (lambda: I.nquad(lambda x: x, [[0, 1]], opts={"weight": "sin"}), TypeError,
+     "nquad(): 'wvar' must be an int or a float, not NoneType"),
+    (lambda: I.nquad(lambda x: x, [[0, 1]], opts={"weight": "alg", "wvar": (0, 0), "points": [0.5]}), ValueError,
+     "nquad(): 'points' is not used with 'weight'"),
+    (lambda: I.nquad(lambda x, y: x, [[0, 1], [0, 1]], opts=[lambda y: {"weight": "cauchy", "wvar": 1.0}, {}]),
+     ValueError, "nquad(): 'wvar' must not equal 'a' or 'b' with weight='cauchy'"),
     (lambda: I.nquad(lambda x: x, [[0, 1]], args=(1,)), TypeError, "nquad(): unexpected keyword argument 'args'"),
 ]  # fmt: skip
 
@@ -432,7 +482,10 @@ def test_errors(call, kind, text):
     assert str(e.value).startswith(text), str(e.value)
 
 
-def test_weighted_problems_wait_for_c5():
-    for p in WEIGHTED:
-        with pytest.raises(NotImplementedError):
-            I.quad(p.f, p.a, p.b, weight=p.weight, wvar=p.wvar)
+def test_range_checks_follow_the_empty_range():
+    # what depends on the range is checked after scipy's a == b shortcut (like 'points' with an
+    # infinite range); the options themselves are checked first (C65)
+    assert tuple(I.quad(math.exp, 1.0, 1.0, weight="cauchy", wvar=1.0)) == (0.0, 0.0)
+    assert I.quad(math.exp, math.inf, math.inf, weight="alg", wvar=(0, 0)).nfev == 0
+    with pytest.raises(ValueError, match="'wvar' must be finite"):
+        I.quad(math.exp, 1.0, 1.0, weight="cauchy", wvar=math.nan)

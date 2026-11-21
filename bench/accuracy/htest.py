@@ -16,11 +16,14 @@ ends to 1e-14 of the estimate's and half width's sizes. ULP is ulp_distance from
 reference's double (common.ulps).
 
 The comparators are the recorded results of scipy 1.18.1 and statsmodels 0.15.0
-(tests/htest/data/scipy_h*.json, statsmodels.json; tools/gen_htest_scipy.py) and of R 4.6.2
-(r.json, and nortest's and goftest's r_gof.json; tools/gen_htest_r.py), measured on the statistic and the p-value the same way: the
-recorded files, so a table does not change with the installed libraries. A library without the
-problem, or a field it does not give (R's statistic where its definition differs, docs/design/
-htest.md §7), has no point there.
+(tests/htest/data/scipy_h*.json, statsmodels.json; tools/gen_htest_scipy.py, with statsmodels'
+counterparts of jarque_bera, normaltest, Welch's f_oneway and tukey_hsd) and of R 4.6.2 (r.json,
+nortest's and goftest's r_gof.json, coin's exact one-sided p-values r_coin.json and r_h9.json;
+tools/gen_htest_r.py), measured on the statistic, the p-value and the intervals (LIB_INTERVALS)
+the same way: the recorded files, so a table does not change with the installed libraries. A
+library without the problem, or a field it does not give (R's statistic where its definition
+differs, docs/design/htest.md §7), has no point there; nor does R on combine_pvalues, whose
+record is a formula written in R, not an R function.
 """
 
 from __future__ import annotations
@@ -36,8 +39,25 @@ R_SAME_STATISTIC = (
     "kruskal", "friedmanchisquare", "ansari", "mood", "chi2_contingency",
 )  # fmt: skip
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
-# cor.test's statistic is its t, S or T: the correlation itself is its estimate
-R_ESTIMATE = ("pearsonr", "spearmanrho", "kendalltau")
+# cor.test's statistic is its t, S or T: the correlation itself is its estimate; fisher.test's
+# estimate is the conditional maximum likelihood odds ratio (odds_ratio's kind 'conditional', the
+# only problems R has)
+R_ESTIMATE = ("pearsonr", "spearmanrho", "kendalltau", "odds_ratio")
+# R records that are no R function's result (a formula in R)
+R_NOT_A_FUNCTION = ("combine_pvalues",)
+# coin's exact distributions (r_coin.json, r_h9.json): one-sided p-values only (coin's two-sided
+# rule is another definition)
+R_COIN = ("r_coin", "r_h9")
+# a library's recorded interval for each reference interval field
+LIB_INTERVALS = {
+    "scipy": {"conf_int": "confidence_interval", "conf_int_less": "confidence_interval_less",
+              "conf_int_greater": "confidence_interval_greater"},
+    "statsmodels": {"conf_int": "confidence_interval"},
+    "R": {"conf_int": "conf.int"},
+}  # fmt: skip
+# binomtest's intervals in scipy's record: proportion_ci by method
+SCIPY_BINOMTEST_INTERVALS = {"conf_int": "proportion_ci_exact", "conf_int_wilson": "proportion_ci_wilson",
+                             "conf_int_wilsoncc": "proportion_ci_wilsoncc"}  # fmt: skip
 # R's goodness-of-fit packages (tests/htest/data/r_gof.json, H44) in the families they share with
 # sd: goftest's cvm.test is the same test (Csörgő and Faraway's p-value); nortest's ad.test has
 # Anderson-Darling's statistic for the normal family, its p-value from Stephens' formula, not the
@@ -120,6 +140,11 @@ def _lib_array_values(fam, lib, pid, res, field):
             return None
         v = res.get("pvals_corrected") if lib == "statsmodels" else res.get("value")
         return [float(x) for x in np.ravel(np.asarray(v, dtype=float))] if v is not None else None
+    if lib == "statsmodels" and fam == "tukey_hsd":  # pairwise_tukeyhsd: mean_j - mean_i for the pairs i < j
+        if field not in ("statistic", "pvalue") or "meandiffs" not in res:
+            return None
+        v = res["meandiffs"] if field == "statistic" else res["pvalues"]
+        return [(-float(x) if field == "statistic" else float(x)) for x in v]
     if lib == "R":
         if fam == "tukey_hsd":
             key = {"statistic": "diff", "pvalue": "p adj"}.get(field)
@@ -170,15 +195,23 @@ def _lib_array_regions(fam, lib, data):
 
 def _lib_regions(fam, lib):
     """A comparator's regions (statistic, pvalue) from its recorded results; None without any."""
+    from tests.htest import problems as P
     from tests.htest import refdata as R
 
+    if lib == "R" and fam in R_NOT_A_FUNCTION:
+        return None
     data = _recorded(lib)
     if fam in R.ARRAY_FIELDS:
         return _lib_array_regions(fam, lib, data)
     gof = R.data("r_gof") if lib == "R" else {}
+    coin = {k: v for name in R_COIN for k, v in R.data(name).items()} if lib == "R" else {}
     rows = {}
     for pid, rec in R.load(fam).items():
         res = data.get(pid, {}).get("result") or {}
+        alt = P.PROBLEMS[pid].kwargs.get("alternative")
+        if lib == "R" and "p.value" not in res and pid in coin and alt in ("less", "greater"):
+            p_one = (coin[pid].get("result") or {}).get(f"{alt}.p.value")
+            res = {"p.value": p_one} if p_one is not None else res
         if lib == "R" and fam in R_GOF and pid in gof:  # nortest's and goftest's tests (H44)
             g = gof[pid].get("result") or {}
             res = {R_FIELD[f]: g.get(f"{R_GOF[fam]}.{R_FIELD[f]}") for f in R_GOF_FIELDS[fam]}
@@ -200,6 +233,18 @@ def _lib_regions(fam, lib):
             rows.setdefault(field, []).append(
                 (pid, v, rec[field][0], R.rel(v, rec[field]), R.contract(fam, rec, field, v))
             )
+        for key in R.interval_keys(fam):  # the intervals, by sd's interval contract
+            if key not in rec:
+                continue
+            name = (SCIPY_BINOMTEST_INTERVALS if lib == "scipy" and fam == "binomtest" else LIB_INTERVALS[lib]).get(key)
+            ci = res.get(name) if name else None
+            if not isinstance(ci, list) or len(ci) != 2 or any(not isinstance(x, (int, float)) for x in ci):
+                continue
+            ci = [float(x) for x in ci]
+            scale = R.interval_scale(fam, P.PROBLEMS[pid], rec[key])
+            c = R.conf_int_contract({"conf_int": rec[key]}, ci, scale)
+            e = max(R.rel(ci[i], rec[key][i]) for i in range(2))
+            rows.setdefault(key, []).append((pid, ci[0], rec[key][0][0], e, max(c)))
     return _regions(rows) or None
 
 
