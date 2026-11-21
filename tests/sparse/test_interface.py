@@ -199,9 +199,8 @@ def test_errors():
         (lambda A: sd.linalg.eigh(A),
          "eigh(): 'a' must be an sd.ndarray, not csr_array; "
          "a sparse array has no eigh: use eigh(A.toarray())"),
-        (lambda A: sd.linalg.lstsq(A, sd.ones(3)),
-         "lstsq(): 'a' must be an sd.ndarray, not csr_array; "
-         "a sparse array has no lstsq: use lstsq(A.toarray())"),
+        (lambda A: sd.linalg.lstsq(A, sd.ones(3)),  # (SP5's solvers exist: the hint names them)
+         "lstsq(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.lsqr or sd.sparse.lsmr"),
     ],
 )  # fmt: skip
 def test_linalg_names_the_sparse_function(call, msg):

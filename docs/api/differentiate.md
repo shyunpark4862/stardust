@@ -3,7 +3,7 @@
 > 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `DifferentiateResult`뿐이다. 아래 시그니처는 scipy 1.18.1 `scipy.differentiate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스 `DifferentiateResult`, `atol`·`rtol`, `max_iter`, `nfev`, C4에서 따라 나오는 것)을 입히고, 남은 질문(docs/design/integrate.md §9 C2)은 그 추천안을 넣은 안이다. 세 함수는 마일스톤 C2에서 공개된다(docs/design/integrate.md §8).
 
 - 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C17, 방법은 §3.8)다. 이 모듈은 설계 문서를 `sd.integrate`와 함께 쓴다(C1). 적분은 [docs/api/integrate.md](integrate.md), 공통 규칙은 [API.md](../../API.md)다.
-- `sd.optimize`의 `approx_fprime`·`check_grad`(고정 간격 차분)는 scipy처럼 `sd.optimize`에 있다. 그 간격의 커널(C++)과 nls의 5점 차분 `Differences`(Python)는 이 영역의 내부로 옮긴다(C3, C15; 값은 그대로).
+- `sd.optimize`의 `approx_fprime`·`check_grad`(고정 간격 차분)는 scipy처럼 `sd.optimize`에 있다. 그 간격의 커널(C++ `csrc/differentiate/steps.hpp`)과 nls의 5점 차분 `Differences`(Python `stardust.differentiate._differences`)는 이 영역의 내부다(C3, C15; C1에서 옮겼고 값은 그대로다). 공개 이름은 아니다.
 - 언어 표시가 없는 코드 블록에는 공개 이름과 시그니처만 둔다.
 
 ## §1. 공통 규칙

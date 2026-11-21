@@ -1,4 +1,4 @@
-"""sd.htest against scipy and R: the public tests (milestones H1-H6; docs/design/htest.md §5) at
+"""sd.htest against scipy, statsmodels and R: the public tests (milestones H1-H7; docs/design/htest.md §5) at
 n = 10, 10^3 and 10^6 per sample and a batch of 10^4 lanes of 30 (axis=-1); page_trend_test on
 tables (m, n) of (12, 8) (exact), (1000, 30) (normal) and a batch 10^3 x (10, 6).
 
@@ -16,6 +16,8 @@ The contingency tables (H6) on fixed tables (2 x 2 small and N = 2 10^4, 5 x 5 N
 the exact Fisher test, (1000, 4) for Cochran's Q) and a batch of 10^4 2 x 2 tables; scipy,
 statsmodels (mcnemar, cochrans_q) and R (chisq.test, fisher.test, mcnemar.test) where they have the
 test (scipy's r x c Fisher test is a Monte Carlo: none).
+The proportions and the binomial (H7) on fixed counts (n=COUNT their total) and batches of 10^4
+counts, against scipy, statsmodels and R (binom.test, prop.test, poisson.test: another test).
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -246,6 +248,7 @@ def cases() -> list[Case]:
         )
     out.extend(_page_cases())
     out.extend(_table_cases())
+    out.extend(_proportion_cases())
     return out
 
 
@@ -438,4 +441,153 @@ TITLES = {
     "corr-batched": "상관 일괄",
     "tables": "분할표",
     "tables-batched": "분할표 일괄",
+    "proportions": "비율과 이항",
+    "proportions-batched": "비율과 이항 일괄",
 }
+
+
+# ---- the proportions and the binomial (H7) ------------------------------------------------
+
+
+def _interval(r):
+    """An interval as its two ends (sd's (2,) or (..., 2) array, scipy's ConfidenceInterval,
+    statsmodels' (low, upp))."""
+    if hasattr(r, "low"):
+        return np.ravel([np.asarray(r.low, dtype=float), np.asarray(r.high, dtype=float)])
+    a = np.asarray(r if not isinstance(r, tuple) else np.stack([np.asarray(v, dtype=float) for v in r], axis=-1),
+                   dtype=float)  # fmt: skip
+    return np.ravel(a)
+
+
+INTERVAL_CHECK = Check(sd=_interval, ref=lambda label, r: np.asarray(r, dtype=float) if label.startswith("R")
+                       else _interval(r))  # fmt: skip
+SM_PAIR = Check(sd=_pair, ref=lambda label, r: np.asarray(r, dtype=float) if label.startswith("R")
+                else (np.ravel(np.asarray(r[:2], dtype=float)) if isinstance(r, tuple) else _pair(r)))  # fmt: skip
+
+
+def _proportion_data(seed=2026):
+    import stardust as sd
+
+    g = np.random.Generator(np.random.PCG64(seed))
+    n = np.floor(g.uniform(20, 200, 10**4))
+    c = np.floor(g.uniform(0, 1, 10**4) * (n + 1))
+    n2 = np.floor(g.uniform(20, 200, 10**4))
+    c2 = np.floor(g.uniform(0, 1, 10**4) * (n2 + 1))
+    d = {"n": n, "c": c, "n2": n2, "c2": c2}
+    d.update({f"s{k}": sd.asarray(v) for k, v in list(d.items())})
+    for size in (10**3, 10**6):
+        x = g.normal(0.0, 1.0, size)
+        d[f"x{size}"], d[f"sx{size}"] = x, sd.asarray(x)
+    return d
+
+
+def _proportion_cases():
+    import scipy.stats as st
+    from statsmodels.stats import proportion as smp
+
+    import stardust as sd
+
+    h = sd.htest
+    TWO = (15, 40, 25, 45)
+    # (name, size, n, sd call, comparators [(label, call)], R expression or None, R differs, check)
+    specs = [
+        ("binomtest", "n=10", 10, lambda d: h.binomtest(3, 10), [("scipy", lambda d: st.binomtest(3, 10))],
+         "binom.test(3, 10)", "", SM_PAIR),
+        ("binomtest", "n=10^4", 10**4, lambda d: h.binomtest(5030, 10**4, p=0.49),
+         [("scipy", lambda d: st.binomtest(5030, 10**4, p=0.49))], "binom.test(5030, 10000, p = 0.49)", "", SM_PAIR),
+        ("binomtest conf_int", "n=10^4", 10**4, lambda d: h.binomtest(5030, 10**4).conf_int(),
+         [("scipy", lambda d: st.binomtest(5030, 10**4).proportion_ci())], "binom.test(5030, 10000)$conf.int", "",
+         INTERVAL_CHECK),
+        ("quantile_test", "10^3", 10**3, lambda d: h.quantile_test(d["sx1000"], q=0.1),
+         [("scipy", lambda d: st.quantile_test(d["x1000"], q=0.1))], None, "", SM_PAIR),
+        ("quantile_test", "10^6", 10**6, lambda d: h.quantile_test(d["sx1000000"], q=0.1),
+         [("scipy", lambda d: st.quantile_test(d["x1000000"], q=0.1))], None, "", SM_PAIR),
+        ("poisson_means_test", "n=30", 30, lambda d: h.poisson_means_test(10, 5.0, 20, 6.0),
+         [("scipy", lambda d: st.poisson_means_test(10, 5.0, 20, 6.0))], "poisson.test(c(10, 20), c(5, 6))",
+         "poisson.test is the conditional binomial test of the two rates, not the E-test", SM_PAIR),
+        ("poisson_means_test", "n=2300", 2300, lambda d: h.poisson_means_test(1200, 10.0, 1100, 10.0),
+         [("scipy", lambda d: st.poisson_means_test(1200, 10.0, 1100, 10.0))], None, "", SM_PAIR),
+        ("proportions_ztest", "n=85", 85, lambda d: h.proportions_ztest([15, 25], [40, 45]),
+         [("statsmodels", lambda d: smp.proportions_ztest([15, 25], [40, 45]))], None, "", SM_PAIR),
+        ("proportions_chisquare", "n=115", 115, lambda d: h.proportions_chisquare([15, 25, 9], [40, 45, 30]),
+         [("statsmodels", lambda d: smp.proportions_chisquare([15, 25, 9], [40, 45, 30]))],
+         "c(prop.test(c(15, 25, 9), c(40, 45, 30), correct = FALSE)$statistic, "
+         "prop.test(c(15, 25, 9), c(40, 45, 30), correct = FALSE)$p.value)", "", SM_PAIR),
+        ("test_proportions_2indep", "n=85", 85, lambda d: h.test_proportions_2indep(*TWO),
+         [("statsmodels", lambda d: smp.test_proportions_2indep(*TWO))], None, "", SM_PAIR),
+        ("test_proportions_2indep score", "n=85", 85,
+         lambda d: h.test_proportions_2indep(*TWO, compare="odds-ratio", method="score", value=2.0),
+         [("statsmodels", lambda d: smp.test_proportions_2indep(*TWO, compare="odds-ratio", method="score", value=2.0))],
+         None, "", SM_PAIR),
+        ("confint_proportions_2indep", "n=85", 85, lambda d: h.confint_proportions_2indep(*TWO),
+         [("statsmodels", lambda d: smp.confint_proportions_2indep(*TWO))], None, "", INTERVAL_CHECK),
+        ("confint_proportions_2indep score ratio", "n=85", 85,
+         lambda d: h.confint_proportions_2indep(*TWO, compare="ratio", method="score"),
+         [("statsmodels", lambda d: smp.confint_proportions_2indep(*TWO, compare="ratio", method="score"))], None, "",
+         INTERVAL_CHECK),
+        ("confint_proportions_2indep score odds-ratio", "n=85", 85,
+         lambda d: h.confint_proportions_2indep(*TWO, compare="odds-ratio", method="score"),
+         [("statsmodels", lambda d: smp.confint_proportions_2indep(*TWO, compare="odds-ratio", method="score"))], None,
+         "", INTERVAL_CHECK),
+    ]  # fmt: skip
+    for meth, smm in (("normal", "normal"), ("agresti_coull", "agresti_coull"), ("exact", "beta"), ("wilson", "wilson"),
+                      ("jeffreys", "jeffreys"), ("binom_test", "binom_test")):  # fmt: skip
+        rexpr = {"exact": "binom.test(7, 30)$conf.int", "wilson": "prop.test(7, 30, correct = FALSE)$conf.int"}.get(
+            meth
+        )
+        specs.append((f"proportion_confint {meth}", "n=30", 30, lambda d, m=meth: h.proportion_confint(7, 30, method=m),
+                      [("statsmodels", lambda d, m=smm: smp.proportion_confint(7, 30, method=m))], rexpr, "",
+                      INTERVAL_CHECK))  # fmt: skip
+    out = []
+    for name, size, n, sdf, comps, rexpr, rdiff, check in specs:
+        refs = [Ref(label, lambda d, f=f: _quiet(lambda: f(d))) for label, f in comps]
+        if rexpr:
+            val = ".v" if "conf.int" in rexpr or rexpr.startswith("c(") else "c(.v$statistic, .v$p.value)"
+            refs.append(RRef("R", rexpr, differs=rdiff, value=val))
+        if name.startswith("binomtest") and rexpr and "conf.int" not in rexpr:
+            check = Check(sd=lambda r: np.asarray([r.pvalue]),
+                          ref=lambda label, r: np.asarray(r, dtype=float)[1:] if label.startswith("R")
+                          else np.asarray([r.pvalue]))  # fmt: skip
+        out.append(
+            Case(
+                area="htest",
+                group="proportions",
+                name=name,
+                size=size,
+                n=n,
+                setup=_proportion_data,
+                sd=lambda d, sdf=sdf: lambda: sdf(d),
+                refs=tuple(refs),
+                quick=size in ("n=10", "n=30", "n=85"),
+                check=check,
+            )
+        )
+    batched = [
+        ("proportion_confint wilson", lambda d: h.proportion_confint(d["sc"], d["sn"], method="wilson"),
+         lambda d: smp.proportion_confint(d["c"], d["n"], method="wilson")),
+        ("proportion_confint exact", lambda d: h.proportion_confint(d["sc"], d["sn"], method="exact"),
+         lambda d: smp.proportion_confint(d["c"], d["n"], method="beta")),
+        ("test_proportions_2indep", lambda d: h.test_proportions_2indep(d["sc"], d["sn"], d["sc2"], d["sn2"]),
+         lambda d: smp.test_proportions_2indep(d["c"], d["n"], d["c2"], d["n2"])),
+        ("confint_proportions_2indep", lambda d: h.confint_proportions_2indep(d["sc"], d["sn"], d["sc2"], d["sn2"]),
+         lambda d: smp.confint_proportions_2indep(d["c"], d["n"], d["c2"], d["n2"])),
+        ("proportions_ztest", lambda d: h.proportions_ztest(sd.stack([d["sc"], d["sc2"]], axis=-1),
+                                                            sd.stack([d["sn"], d["sn2"]], axis=-1)), None),
+    ]  # fmt: skip
+    for name, sdf, smf in batched:
+        check = SM_PAIR if name.startswith(("test", "proportions_z")) else INTERVAL_CHECK
+        refs = (Ref("statsmodels", lambda d, f=smf: _quiet(lambda: f(d))),) if smf else ()
+        out.append(
+            Case(
+                area="htest",
+                group="proportions-batched",
+                name=name,
+                size="10^4",
+                n=10**4,
+                setup=_proportion_data,
+                sd=lambda d, sdf=sdf: lambda: sdf(d),
+                refs=refs,
+                check=check,
+            )
+        )
+    return out

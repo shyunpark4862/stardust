@@ -43,7 +43,20 @@ AiryResult = namedtuple("AiryResult", ["ai", "aip", "bi", "bip"])
 # the function that makes the tuple (no slots, so the tuple has a __dict__ for it).
 
 
+def _tuple_repr(t, first):
+    """The one-line repr of a regression tuple (API.md §2.3, regression G194): its fields as the
+    test results' (stardust._summary.one_line), a batch (first, its first field, an array) its shape."""
+    name = type(t).__name__
+    shape = tuple(first.shape) if isinstance(first, _core.ndarray) else ()
+    if shape:
+        return f"{name}(batch shape {shape})"
+    return _S.one_line(name, [(k, float(v)) for k, v in zip(t._fields, t)])
+
+
 class BreuschPaganResult(namedtuple("BreuschPaganResult", ["lm", "lm_pvalue", "fvalue", "f_pvalue"])):
+    def __repr__(self):
+        return _tuple_repr(self, self.lm)
+
     @_calls.method("summary")
     def summary(self):
         """The test as a text table (G191): LM and F statistics with their p-values."""
@@ -57,6 +70,9 @@ class BreuschPaganResult(namedtuple("BreuschPaganResult", ["lm", "lm_pvalue", "f
 
 # regression: theilslopes, siegelslopes (scipy.stats' fields and order, docs/api/regression.md §5)
 class TheilslopesResult(namedtuple("TheilslopesResult", ["slope", "intercept", "low_slope", "high_slope"])):
+    def __repr__(self):
+        return _tuple_repr(self, self.slope)
+
     @_calls.method("summary")
     def summary(self):
         """The estimate as a text table (G192): slope and intercept, the slope's interval."""
@@ -66,6 +82,9 @@ class TheilslopesResult(namedtuple("TheilslopesResult", ["slope", "intercept", "
 
 
 class SiegelslopesResult(namedtuple("SiegelslopesResult", ["slope", "intercept"])):
+    def __repr__(self):
+        return _tuple_repr(self, self.slope)
+
     @_calls.method("summary")
     def summary(self):
         """The estimate as a text table (G192): slope and intercept."""
@@ -186,14 +205,8 @@ class _FieldResult:
         return f"{name}(batch shape {self._batch}, {done} of {n} converged)"
 
     def _fields_repr(self, keys):
-        """The one-line repr of one result: Name(k=v, ...) over the keys it has, numbers to 6
-        significant digits and short arrays as [v, ...] (API.md §2.3)."""
+        """The one-line repr of one result (API.md §2.3, stardust._summary.one_line): Name(k=v, ...)
+        over the keys it has, numbers to 6 significant digits and short arrays as [v, ...]."""
         if self._batch:
             return self._batch_repr()
-        parts = []
-        for k in keys:
-            if k in self._fields:
-                text = _S.compact(self._fields[k])
-                if text is not None:
-                    parts.append(f"{k}={text}")
-        return f"{type(self).__name__}(" + ", ".join(parts) + ")"
+        return _S.one_line(type(self).__name__, [(k, self._fields[k]) for k in keys if k in self._fields])

@@ -14,6 +14,8 @@ Sections (positional; default all):
          solution's inf / NaN, the residual of a finite wrong solution
   speed  factor and solve times and Accelerate's peak allocation of LU/AMD, LU/Metis, LU/MTMetis
          and Cholesky/AMD on 2-D and 3-D Laplacians
+  iter   Accelerate's iterative solvers (CG, restarted GMRES, DQGMRES, LSMR) on the grids and at the
+         tolerances of the iterative speed cases (SP5), against which sd.sparse's own are compared
   spmv   one CSR SpMV / SpMM kernel (row-sequential std::fma sums) with int32 and with int64
          indices on 1 and 10 threads (tools/sparse_probe_spmv.cpp), and its bits against scipy's
          csr_array @ x, csc_array @ x and csr_array @ X
@@ -48,7 +50,7 @@ PROGRAMS = {
     "accelerate": (ROOT / "tools" / "sparse_probe_accelerate.cpp", ["-framework", "Accelerate"]),
     "spmv": (ROOT / "tools" / "sparse_probe_spmv.cpp", []),
 }
-ACCELERATE_SECTIONS = ("det", "conc", "sing", "speed")
+ACCELERATE_SECTIONS = ("det", "conc", "sing", "speed", "iter")
 SECTIONS = ACCELERATE_SECTIONS + ("spmv",)
 
 

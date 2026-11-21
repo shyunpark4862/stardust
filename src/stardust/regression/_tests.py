@@ -132,6 +132,10 @@ def _t_summary(r, alpha):
     dfs = _sd.reshape(df, (df.size,)).tolist() if isinstance(df, _sd.ndarray) else [float(df)]
     stat = "z" if all(math.isinf(d) for d in dfs) else "t"
     fmts = (lambda x: _S.forg(x, 4), _S.forg, _S.forg, _S.pvalue, _S.forg, _S.forg)
+    same = _S.shared(df, n) if batch else dfs[0]  # Df in the header when the lanes share it (G195)
+    if same is None:  # else a column: df is per regression
+        flat.append([[d] * m for d in dfs])
+        fmts += (_S.df,)
     rows = []
     for i in _S.shown(n * m):
         if i is None:
@@ -140,8 +144,9 @@ def _t_summary(r, alpha):
         lane, j = divmod(i, m)
         stub = f"c{j}" if not batch else f"{_S.lane_label(lane, batch)} c{j}"
         rows.append((stub, [fmt(f[lane][j]) for f, fmt in zip(flat, fmts)]))
-    table = _S.Table(["coef", "std err", stat, f"P>|{stat}|"] + _S.interval_columns(alpha), rows)
-    left = [("Df:", _S.df(dfs[0]))] if len(set(dfs)) == 1 else []
+    heads = ["coef", "std err", stat, f"P>|{stat}|"] + _S.interval_columns(alpha) + ([] if same is not None else ["df"])
+    table = _S.Table(heads, rows)
+    left = [] if same is None else [("Df:", _S.df(same))]
     right = [("No. Constraints:", str(m))]
     if batch:
         right.insert(0, ("Batch shape:", _S.shape_text(batch)))

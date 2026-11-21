@@ -6,7 +6,7 @@
 // default thread mode and with VECLIB_MAXIMUM_THREADS=1). By hand:
 //   clang++ -std=c++20 -O3 -mcpu=native -ffp-contract=off -o probe tools/sparse_probe_accelerate.cpp \
 //       -framework Accelerate
-//   ./probe det|conc|sing|speed
+//   ./probe det|conc|sing|speed|iter
 //
 // Sections (one line per case, tab-free, prefixed by the section name):
 //   det    (DET_FROM=kind:size resumes at that matrix) every factorization x ordering on every matrix kind and size: REPS factor + solve runs in
@@ -21,6 +21,11 @@
 //          NaN in the solution; and messages the reportError callback receives.
 //   speed  best-of-3 factor and solve times of LU/AMD, LU/Metis, LU/MTMetis and Cholesky/AMD on
 //          2-D and 3-D Laplacians (the matrices of bench/speed/cases/sparse.py's splu cases).
+//   iter   best-of-3 times of Accelerate's iterative solvers on the grids of the iterative speed
+//          cases (bench/speed/cases/sparse.py, SP5) and their settings: CG (rtol 1e-10), restarted
+//          GMRES and DQGMRES (20 vectors, rtol 1e-8), LSMR (Fong-Saunders test, atol = btol =
+//          1e-8), from x0 = 0 (so Accelerate's test relative to the first residual is scipy's,
+//          relative to ||b||); the true relative residual ||b - Ax|| / ||b|| of the result.
 //
 // The reportError callback is always set: with NULL, a parameter error stops the process with
 // __builtin_trap().
@@ -891,6 +896,93 @@ void run_speed() {
     }
 }
 
+// ---------------------------------------------------------------- iter (SP5)
+
+enum class Iter { CG, GMRES, DQGMRES, LSMR };
+
+const char* iter_name(Iter k) {
+    switch (k) {
+        case Iter::CG: return "CG";
+        case Iter::GMRES: return "GMRES(20)";
+        case Iter::DQGMRES: return "DQGMRES(20)";
+        case Iter::LSMR: return "LSMR";
+    }
+    return "?";
+}
+
+void iter_case(const Problem<double>& p, const char* grid, Iter k) {
+    const Csc<double>& a = p.full;
+    SparseMatrix_Double A{};
+    A.structure.rowCount = a.m;
+    A.structure.columnCount = a.n;
+    A.structure.columnStarts = const_cast<long*>(a.cs.data());
+    A.structure.rowIndices = const_cast<int*>(a.ri.data());
+    A.structure.attributes = SparseAttributes_t{};
+    A.structure.attributes.kind = SparseOrdinary;
+    A.structure.blockSize = 1;
+    A.data = const_cast<double*>(a.v.data());
+    SparseIterativeMethod method;
+    if (k == Iter::CG) {
+        SparseCGOptions o{};
+        o.reportError = report_error;
+        o.maxIterations = 20000;
+        o.rtol = 1e-10;
+        method = SparseConjugateGradient(o);
+    } else if (k == Iter::LSMR) {
+        SparseLSMROptions o{};
+        o.reportError = report_error;
+        o.convergenceTest = SparseLSMRCTFongSaunders;
+        o.atol = 1e-8;
+        o.btol = 1e-8;
+        o.conditionLimit = 1e8;
+        o.maxIterations = 20000;
+        method = SparseLSMR(o);
+    } else {
+        SparseGMRESOptions o{};
+        o.reportError = report_error;
+        o.variant = k == Iter::GMRES ? SparseVariantGMRES : SparseVariantDQGMRES;
+        o.nvec = 20;
+        o.maxIterations = 40000;
+        o.rtol = 1e-8;
+        method = SparseGMRES(o);
+    }
+    double best = 1e30;
+    int status = 0;
+    std::vector<double> x;
+    for (int r = 0; r < 3; ++r) {
+        std::vector<double> bx(p.b.begin(), p.b.end());
+        x.assign(static_cast<size_t>(a.n), 0.0);
+        DenseVector_Double B{a.m, bx.data()};
+        DenseVector_Double X{a.n, x.data()};
+        t_error.clear();
+        const double t0 = now();
+        status = static_cast<int>(SparseSolve(method, A, B, X));
+        best = std::min(best, (now() - t0) * 1e3);
+        if (best > 20000) break;
+    }
+    std::printf(
+        "ITER mode=%s grid=%s n=%d method=%s status=%d ms=%.2f relres=%.3g%s%s\n", mode(), grid, a.n, iter_name(k),
+        status, best, relres(p, x), t_error.empty() ? "" : " error=", t_error.c_str()
+    );
+    std::fflush(stdout);
+}
+
+void run_iter() {
+    struct Grid {
+        const char* name;
+        int g, dim;
+    };
+    for (const Grid& gr :
+         {Grid{"lap2d/100", 100, 2}, Grid{"lap2d/300", 300, 2}, Grid{"lap2d/1000", 1000, 2}, Grid{"lap3d/22", 22, 3},
+          Grid{"lap3d/45", 45, 3}}) {
+        auto p = make_problem(gr.dim == 2 ? laplacian2d(gr.g) : laplacian3d(gr.g));
+        for (Iter k : {Iter::CG, Iter::GMRES, Iter::DQGMRES, Iter::LSMR}) {
+            if (gr.g == 1000 && k != Iter::CG) continue;  // (the speed cases run CG and BiCGSTAB there)
+            iter_case(p, gr.name, k);
+        }
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -899,5 +991,6 @@ int main(int argc, char** argv) {
     if (what == "conc") run_conc(argc > 2 ? argv[2] : "");
     if (what == "sing") run_sing();
     if (what == "speed") run_speed();
+    if (what == "iter") run_iter();
     return 0;
 }

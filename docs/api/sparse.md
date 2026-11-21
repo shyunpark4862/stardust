@@ -1,8 +1,8 @@
 # sd.sparse API
 
-> 상태: **초안** (SP4, 2026-11-21). 공개된 것은 §2의 형식과 변환(SP1: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성), §3의 연산(SP2: 연산자, 원소별 메서드, 곱, 리덕션), §4의 인덱싱과 만들기(SP3: 인덱싱과 대입, `trace diagonal setdiag`, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find`), §5의 직접 풀이와 `LinearOperator`(SP4: `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth LinearOperator aslinearoperator`, `splu`의 결과 `SparseLU`)다. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
+> 상태: **초안** (SP5, 2026-11-21). 공개된 것은 §2의 형식과 변환(SP1: `sparray coo_array csr_array csc_array dok_array issparse matrix_transpose`와 그 메서드·속성), §3의 연산(SP2: 연산자, 원소별 메서드, 곱, 리덕션), §4의 인덱싱과 만들기(SP3: 인덱싱과 대입, `trace diagonal setdiag`, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find`), §5의 직접 풀이와 `LinearOperator`(SP4: `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth LinearOperator aslinearoperator`, `splu`의 결과 `SparseLU`), §6의 반복법(SP5: `cg gmres minres bicgstab lsqr lsmr`와 그 결과 객체)이다. 나머지 시그니처는 scipy 1.18.1의 `scipy.sparse`(희소 **배열** 꼴)와 `scipy.sparse.linalg`의 이름과 인자 이름에 stardust의 규칙과 SP1–SP34의 결정을 입힌 안이고, 마일스톤 SP2–SP7에서 하나씩 공개된다(docs/design/sparse.md §8). 마일스톤에서 정할 것은 그 자리에 "(SP<n>에서 정한다)"로 적고 §10에 추천과 함께 모았다.
 
-- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP71), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/sparse.md](../design/sparse.md)(§1.1 SP1–SP82), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/sparse/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name`), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -13,7 +13,7 @@
 - **데이터는 위치로만, 옵션은 키워드로만** 받는다(API.md, 다른 영역과 같다). 데이터 인자의 이름은 scipy의 것이다(SP28: `A`, `b`, `B`, `x`, `blocks`). 메시지는 그 이름을 쓴다: `spsolve(): 'A' must be a sparse array, an sd.ndarray or a LinearOperator, not list`.
 - **별칭이 없다**(SP24): `toarray`만(`todense` 없음), `conj`만(`conjugate` 없음), `@`만(`dot` 없음), `coords`만(COO의 `row`·`col` 없음). scipy의 `random_state`는 없고 무작위는 `rng`뿐이다.
 - **반복 상한은 `max_iter`다**(optimize O14): 반복법의 scipy `maxiter`, `lsqr`의 `iter_lim`, `eigsh`·`eigs`·`svds`의 `maxiter`, `onenormest`의 `itmax`가 모두 `max_iter`다(`[scipy와 다름]`).
-- `callback`, `show`, `check`, `calc_var`, `options`, `use_umfpack`, `permc_spec`, `diag_pivot_thresh`, `overwrite_*`, `solver`는 두지 않는다(직접 풀이의 것은 SP61로 정했다; 반복법·고유값의 것은 SP5·SP6에서 정한다, 추천은 두지 않기, §10).
+- `callback`, `show`, `check`, `calc_var`, `options`, `use_umfpack`, `permc_spec`, `diag_pivot_thresh`, `overwrite_*`, `solver`는 두지 않는다(직접 풀이의 것은 SP61, 반복법의 것은 SP74로 정했다; 고유값의 것은 SP6에서 정한다, 추천은 두지 않기, §10).
 - 틀린 호출 모양은 함수 이름으로 시작한다(API.md §2.1): `spsolve(): unexpected keyword argument 'permc_spec'`.
 
 ### §1.2 형식과 dtype (SP6–SP9)
@@ -48,6 +48,7 @@
 ### §1.7 scipy와 다른 점 (모든 함수에 걸친 것)
 - 배열 꼴만(SP2), 평평한 이름공간(SP3), BSR·DIA·LIL 없음과 `format=None`의 CSR(SP6, SP7), int64 색인(SP8), dtype 넷(SP9), 언제나 표준 꼴인 CSR·CSC(SP10), 예외 없는 `A / 0`(SP12), 강한 0의 희소 × 희소, IEEE대로의 비교, numpy 배열은 피연산자가 아님(SP35), 원소별 함수는 메서드만(SP36), 축 리덕션은 밀집(SP37), `A * 밀집`은 A의 형식(SP38), `A + c`·`A ** 0`은 `ValueError`(SP39), 리덕션의 `keepdims`(SP40), 경고 없음, `max_iter`, 데이터는 위치·옵션은 키워드, 별칭 없음, `rng` 필수(`random_array`)와 정해진 시작 벡터(`eigsh` 등).
 - 직접 풀이의 바탕이 SuperLU가 아니라 Accelerate LU(문턱 부분 피벗, AMD 순서, 척도 조정)와 반복 다듬기 한 번이다. 해의 끝자리와 역오차의 크기가 scipy와 다르고, `splu`의 결과(`SparseLU`)에서 `L`·`U`·`perm_r`·`perm_c`·`nnz`를 꺼낼 수 없다(SP60). 특이의 판정에 조건수 추정이 있어(SP62) scipy가 큰 해를 돌려주는 행렬(κ₁ ≥ 1/ε)이 `LinAlgError`다.
+- 반복법은 이 라이브러리의 커널이 scipy의 알고리즘을 그대로 따른다(SP16). 결과가 scipy의 튜플로 풀리는 결과 객체이고(SP72) `callback`이 없으며(SP74), 내적과 노름의 반올림 순서가 달라 반올림에 민감한 문제에서 반복 수가 scipy와 다를 수 있다(§6).
 
 ## §2. 희소 배열 (SP1)
 ```
@@ -294,12 +295,79 @@ minres(A, b, /, *, x0=None, rtol=1e-05, shift=0.0, max_iter=None, M=None)
 bicgstab(A, b, /, *, x0=None, rtol=1e-05, atol=0.0, max_iter=None, M=None)
 lsqr(A, b, /, *, damp=0.0, atol=1e-06, btol=1e-06, conlim=100000000.0, max_iter=None, x0=None)
 lsmr(A, b, /, *, damp=0.0, atol=1e-06, btol=1e-06, conlim=100000000.0, max_iter=None, x0=None)
+CgResult.x
+CgResult.converged
+CgResult.status
+CgResult.message
+CgResult.n_iter
+CgResult.normr
+CgResult.summary()
+BicgstabResult.x
+BicgstabResult.converged
+BicgstabResult.status
+BicgstabResult.message
+BicgstabResult.n_iter
+BicgstabResult.normr
+BicgstabResult.summary()
+GmresResult.x
+GmresResult.converged
+GmresResult.status
+GmresResult.message
+GmresResult.n_iter
+GmresResult.n_inner
+GmresResult.normr
+GmresResult.summary()
+MinresResult.x
+MinresResult.converged
+MinresResult.status
+MinresResult.message
+MinresResult.n_iter
+MinresResult.normr
+MinresResult.norma
+MinresResult.conda
+MinresResult.normar
+MinresResult.normx
+MinresResult.summary()
+LsqrResult.x
+LsqrResult.converged
+LsqrResult.status
+LsqrResult.message
+LsqrResult.n_iter
+LsqrResult.normr
+LsqrResult.normr_damped
+LsqrResult.norma
+LsqrResult.conda
+LsqrResult.normar
+LsqrResult.normx
+LsqrResult.var
+LsqrResult.summary()
+LsmrResult.x
+LsmrResult.converged
+LsmrResult.status
+LsmrResult.message
+LsmrResult.n_iter
+LsmrResult.normr
+LsmrResult.normar
+LsmrResult.norma
+LsmrResult.conda
+LsmrResult.normx
+LsmrResult.summary()
 ```
-- **이 라이브러리가 scipy 1.18.1의 알고리즘과 멈춤 판정으로 짠다**(SP16): `cg`·`bicgstab`은 ‖r‖ ≤ max(rtol·‖b‖, atol), `gmres`는 재시작 GMRES(`restart` 기본 20, `max_iter`는 scipy의 `maxiter`처럼 바깥 반복), `minres`는 Paige–Saunders(`shift`), `lsqr`은 Paige–Saunders 1982, `lsmr`은 Fong–Saunders 2011(`damp`, `atol`·`btol`·`conlim`). 반복 수와 상태는 scipy와 같은 것을 목표로 한다. Accelerate의 반복법은 쓰지 않는다(멈춤 판정이 처음 잔차에 대한 상대이고 반복 수를 돌려주지 않는다).
-- 입력 `A`, `M`(전처리기)은 희소 배열, 밀집 `sd.ndarray`, `LinearOperator`다. 희소·밀집이면 반복 전체가 C++이고, Python 함수의 `LinearOperator`는 반복마다 Python 콜백이다.
-- `max_iter=None`의 상한은 scipy의 것이다: `cg`·`bicgstab`은 10n, `gmres`는 바깥 반복 10n(`restart`는 min(20, n)), `minres`는 5n, `lsqr`은 2n(n은 열 수), `lsmr`은 min(m, n). 상한에 닿으면 마지막 값과 상태를 돌려준다.
-- **결과**: scipy의 튜플 대신 읽기 전용 결과 객체이고 scipy가 돌려주는 개수와 순서로 풀린다(`x, info = cg(A, b)`; `lsqr`은 열, `lsmr`은 여덟). 필드는 `x`, `converged`, `status`(scipy의 `info`·`istop`), `n_iter`와 `lsqr`·`lsmr`의 `normr`, `normar`, `norma`, `conda`, `normx`다(이름과 풀기는 SP5에서 정한다). 배열 필드는 쓰기 금지다(API.md §2.2).
-- scipy의 `callback`, `callback_type`, `show`, `check`, `calc_var`은 없다(SP5에서 정한다).
+- **이 라이브러리가 scipy 1.18.1의 알고리즘과 멈춤 판정으로 짠다**(SP16): scipy의 Python 판(`_isolve`의 `iterative.py`, `minres.py`, `lsqr.py`, `lsmr.py`)을 계산 순서까지 옮겼다. `cg`·`bicgstab`은 재귀 잔차로 ‖r‖ < max(rtol·‖b‖, atol), `gmres`는 재시작 GMRES(scipy의 왼쪽 전처리 꼴, 바깥 반복마다 참 잔차 ‖r‖ ≤ max(rtol·‖b‖, atol), 안쪽 판정은 scipy의 `ptol`; Givens 회전은 LAPACK 3.10의 `lartg`), `minres`는 Paige–Saunders(`shift`), `lsqr`은 Paige–Saunders 1982, `lsmr`은 Fong–Saunders 2011(`damp`, `atol`·`btol`·`conlim`)이다. Accelerate의 반복법은 쓰지 않는다(멈춤 판정이 처음 잔차에 대한 상대이고 반복 수를 돌려주지 않는다).
+- **같은 반복 수와 상태**: 시험 문제(scipy 기록 40개)에서 상태가 모두 scipy와 같고 반복 수가 36개에서 같으며, 단계마다의 잔차 노름이 scipy와 상대 10⁻⁶ 안에서 같다. 예외는 scipy 자신이 반올림에 민감한 문제다: 무작위 비대칭 행렬의 BiCGSTAB, 부정 행렬의 MINRES 뒷부분, 반복이 수백인 LSQR·LSMR은 b를 상대 10⁻¹⁶ 바꾼 scipy끼리도 반복 수가 20%까지 다르다. 그런 문제에서는 상태가 같고 반복 수가 그 퍼짐 안이다(docs/design/sparse.md §3.7; 나머지 하나는 `bicgstab`이 반 단계에서 멈춘 반복을 `n_iter`가 세는 것이다).
+- **입력**(SP77): `A`, `M`(전처리기, A⁻¹을 어림한 것)은 희소 배열(모든 형식), 2차원 `sd.ndarray`, `LinearOperator`다. 행렬(`aslinearoperator`로 감싼 것도)이면 반복 전체가 C++이고, 밀집 행렬은 모든 원소를 저장한 CSR로 곱한다. 다른 `LinearOperator`는 곱마다 Python으로 그 `matvec`(`lsqr`·`lsmr`은 `rmatvec`도)을 부른다. `b`와 `x0`은 밀집 `sd.ndarray`((n,)이나 (n, 1); 리스트와 numpy 배열은 `TypeError`, `spsolve`와 같다)이고 결과의 `x`는 언제나 (n,)이다(scipy와 같다). scipy의 `x0='Mb'`는 없다. 저장된 NaN·inf는 `ValueError`(`cg(): 'A' contains NaN or infinity`; §1.6)다.
+- **dtype**(SP78): 계산은 float64나 complex128이다. A, b, x0, M 가운데 하나라도 복소면 복소다(`[scipy와 다름]`: scipy는 A와 b로만 정해 복소 x0의 허수부를 경고와 함께 버리고, 실수 계에 복소 M을 주면 실패한다). 실수로 선언한 `LinearOperator`가 복소 값을 돌려주면 `TypeError`다.
+- **인자**(SP73, SP76): 반복 상한은 `max_iter`다(`[scipy와 다름]`: scipy의 `maxiter`, `lsqr`의 `iter_lim`). 기본값은 scipy의 것이다: `cg`·`bicgstab`은 10n, `gmres`는 바깥 반복 10n, `minres`는 5n, `lsqr`은 2n(n은 열 수), `lsmr`은 min(m, n). `gmres`의 `restart`는 한 바깥 반복의 안쪽 반복 수(기본 20, n을 넘으면 n), `max_iter`는 바깥 반복 수다(SP75, scipy와 같다). `max_iter`·`restart`는 None이나 1 이상의 int다(`[scipy와 다름]`: scipy는 0을 받고 `info = 0`을 돌려준다). `rtol`·`atol`·`btol`·`damp`는 유한한 0 이상의 수, `conlim`은 0 이상의 수(0과 inf는 한계 없음, scipy와 같다), `shift`는 유한한 수다(`[scipy와 다름]`: scipy는 `atol`만 검사한다). 메시지는 sd.optimize와 같다: `cg(): 'rtol' must be a finite number >= 0`, `gmres(): 'restart' must be >= 1`.
+- `callback`, `callback_type`, `show`, `check`, `calc_var`은 없다(SP74; 주면 `unexpected keyword argument`의 `TypeError`). `lsqr`의 `var`(A^H A + damp² I의 역의 대각 어림)는 언제나 계산한다(scipy의 `calc_var=True`와 같은 값; 반복마다 n번의 곱셈이다). 복소 행렬에서는 |d_k|²를 더한다(`[scipy와 다름]`: scipy는 d_k²를 더해 복소 `var`를 낸다).
+- **결과**(SP72, SP79): 함수마다 읽기 전용 결과 객체(`CgResult` … `LsmrResult`, 내보내지 않는다)이고 scipy의 튜플로 풀린다: `x, info = cg(A, b)`(`cg`·`bicgstab`·`gmres`·`minres`), `x, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, var = lsqr(A, b)`, `x, istop, itn, normr, normar, norma, conda, normx = lsmr(A, b)`. `len(r)`과 `r[i]`도 그 튜플이다. 필드:
+  - `x`(쓰기 금지 배열), `status`(scipy의 `info`·`istop`), `converged`, `message`(멈춘 까닭), `n_iter`.
+  - `status`: `cg`·`gmres`는 0(수렴)이나 `max_iter`, `bicgstab`은 그 밖에 −10(ρ 붕괴), −11(ω 붕괴), `minres`는 0이나 `max_iter`(scipy의 `info`; 멈춘 판정은 `message`), `lsqr`·`lsmr`은 scipy의 `istop` 0–7이다. `converged`는 `cg`·`bicgstab`·`gmres`·`minres`에서 `status == 0`, `lsqr`·`lsmr`에서 `istop`이 0, 1, 2, 4, 5인 것이다(3과 6은 조건수 한계, 7은 반복 상한).
+  - `n_iter`: 반복 수(`cg`·`bicgstab`·`minres`, `lsqr`·`lsmr`의 `itn`). `bicgstab`이 반 단계의 ‖s‖ 판정에서 멈추면 그 반복도 센다(scipy의 `callback`은 세지 않는다). `gmres`의 `n_iter`는 바깥 반복(재시작) 수(`max_iter`와 같은 단위)이고 `n_inner`가 안쪽(Arnoldi) 반복의 합이다(scipy의 `callback_type='pr_norm'` 호출 수).
+  - `normr`: 방법이 쓴 잔차 노름(`cg`·`bicgstab`은 재귀 잔차, `gmres`는 마지막 참 잔차, `minres`·`lsqr`·`lsmr`은 그 어림). `minres`·`lsqr`·`lsmr`의 `norma`, `conda`, `normar`(‖Aᴴr‖, minres는 ‖Ar‖), `normx`는 scipy의 어림이다(`lsqr`의 `anorm`, `acond`, `arnorm`, `xnorm`은 `lsmr`의 이름으로 부른다). `lsqr`의 `normr_damped`는 scipy의 `r2norm` = √(‖r‖² + damp²‖x − x0‖²)다.
+  - `summary()`는 API.md §2.3의 상자(멈춘 까닭, 반복 수와 노름, 그리고 x; 긴 x는 앞뒤 다섯, 복소 x는 실수부·허수부)이고 repr은 `CgResult(converged=True, status=0, n_iter=69, normr=0.00017519, x=<array of shape (900,)>)`이다.
+- **`minres`의 실패**(SP81): 양정치가 아닌 전처리기와 βₖ < 0(대칭이 아닌 행렬)은 `LinAlgError("minres(): the preconditioner is not positive definite")`, `LinAlgError("minres(): the matrix is not symmetric")`다(`[scipy와 다름]`: scipy는 `ValueError`; `LinAlgError`는 `ValueError`의 하위 클래스다).
+- **결정성**(SP80): 곱은 §1.5의 SpMV, 내적은 `sd.linalg.vecdot`의 합(복소는 첫 벡터의 켤레), 노름은 `sd.linalg.vector_norm`의 것이다. 모두 크기만으로 나누므로 같은 입력이면 sd의 스레드 수, A의 형식(CSR·CSC·COO·DOK), 행렬과 그 `aslinearoperator`, `A @ v`를 돌려주는 Python `LinearOperator`와 상관없이 같은 비트다. 행렬만이면 일이 기준값 이상일 때 GIL을 놓고 돈다. Python `LinearOperator`가 있으면 그 호출 때문에 GIL을 쥐고 돈다(다른 커널은 스스로 놓는다).
+- 정확도(docs/design/sparse.md §4): 결과는 "멈춤 판정을 만족한 점"이다. 수렴한 결과의 다시 계산한 참 잔차가 판정을 만족하고, Arb의 해와 견준 앞오차가 그 잔차가 허락하는 ‖A⁻¹‖·‖b − Ax̂‖(최소제곱은 ‖(AᴴA)⁻¹‖·‖Aᴴr̂‖) 안이다(테스트).
 
 ## §7. 고유값과 특이값 (SP6)
 ```
@@ -362,7 +430,7 @@ norm(x, /, *, ord=None, axis=None)
 | `SuperLU` (`splu`의 결과 형) | 내보내지 않는 `SparseLU`(`solve`, `shape`) | SP60 |
 | `is_sptriangular`, `spbandwidth` | 같은 이름 | SP4 |
 | `LinearOperator`, `aslinearoperator` | 같은 이름 | SP4 |
-| `cg`, `gmres`, `minres`, `bicgstab`, `lsqr`, `lsmr` | 같은 이름(`maxiter`·`iter_lim` → `max_iter`) | SP5, SP16 |
+| `cg`, `gmres`, `minres`, `bicgstab`, `lsqr`, `lsmr` | 같은 이름(`maxiter`·`iter_lim` → `max_iter`; 튜플 대신 그 튜플로 풀리는 결과 객체; `callback`·`show`·`check`·`calc_var` 없음) | SP5, SP16, SP72–SP74 |
 | `eigsh`, `eigs`, `svds` | 같은 이름(`maxiter` → `max_iter`) | SP6 |
 | `expm`, `expm_multiply`, `norm`, `onenormest` | 같은 이름(`onenormest`의 `itmax` → `max_iter`) | SP7, SP14 |
 | `ArpackError`, `ArpackNoConvergence` | 없음(결과의 상태) | SP6 |
@@ -380,11 +448,7 @@ docs/design/sparse.md §9와 같은 목록이다. 결정이 나면 이 문서와
 - **SP2**: 정했다(SP35–SP47, docs/design/sparse.md §1.1).
 - **SP3**: 정했다(SP48–SP52, docs/design/sparse.md §1.1). SP3 뒤에 정했다(SP53–SP58).
 - **SP4**: 정했다(SP59–SP65, docs/design/sparse.md §1.1). SP4 뒤에 정했다(SP66–SP71; 추천안, 사용자 위임).
-- **SP5**
-  1. 결과: scipy의 튜플 개수로 풀리는 읽기 전용 결과 객체(추천) / 튜플.
-  2. 이름: `max_iter`(추천, optimize O14) / scipy의 `maxiter`·`iter_lim`.
-  3. `callback`: 두지 않는다(추천, optimize O37·O54) / 둔다.
-  4. `gmres`의 `restart`·`maxiter`의 뜻: scipy 1.18.1 그대로(추천).
+- **SP5**: 정했다(SP72–SP75, docs/design/sparse.md §1.1; 추천안, 사용자 위임). SP5에서 정했다(SP76–SP82; 추천안, 사용자 위임).
 - **SP6**
   1. 알고리즘: ARPACK을 계산 순서까지 옮긴다(추천) / Krylov–Schur.
   2. `v0=None`: 정해진 시작 벡터, `rng=`로 바꿀 수 있다(추천) / `v0`나 `rng`를 꼭 받는다.

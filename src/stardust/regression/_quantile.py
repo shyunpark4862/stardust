@@ -185,10 +185,8 @@ class QuantRegResult(_RegressionResult):
         name = type(self).__name__
         if self._batch:
             return f"{name}({self._shape_text()}, {self.params.shape[-1]} parameters)"
-        return (
-            f"{name}(q={self.q:g}, nobs={self.nobs:g}, rank={self.rank}, objective={self.objective:.6g}, "
-            f"params={self.params})"
-        )
+        fields = [("q", float(self.q)), ("nobs", float(self.nobs)), ("rank", int(self.rank))]
+        return _S.one_line(name, fields + [("objective", float(self.objective)), ("params", self.params)])
 
 
 def _summary(r, alpha):

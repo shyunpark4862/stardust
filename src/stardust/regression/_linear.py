@@ -1211,7 +1211,8 @@ class _LinearResult(_RegressionResult):
         name = type(self).__name__
         if self._batch:
             return f"{name}(batch shape {tuple(self._batch)}, {self.params.shape[-1]} parameters)"
-        return f"{name}(nobs={self.nobs:g}, rank={self.rank}, rsquared={self.rsquared:.6g}, params={self.params})"
+        fields = [("nobs", float(self.nobs)), ("rank", int(self.rank)), ("rsquared", float(self.rsquared))]
+        return _S.one_line(name, fields + [("params", self.params)])
 
 
 _calls.methods(_RegressionResult)
@@ -1317,12 +1318,18 @@ def _batch_summary(r, title, left, stats, right=None):
     """The summary of a batch of regressions (G193): the fit's common description, then a
     table of the per-regression statistics `stats` ((field name, formatter) or (name,
     formatter, value of lane i)) and one of the coefficients, one row per regression (a long
-    batch cut to its first and last rows)."""
+    batch cut to its first and last rows). Df Model is in the header when the regressions share
+    it, else a column after nobs (G195)."""
     shape = tuple(r._batch)
     n = _S.lanes(shape)
     if right is None:
         right = [("Batch shape:", _S.shape_text(shape))]
-    right = right + [("Df Model:", _S.count(_first(r.df_model)))]
+    dfm = _S.shared(r.df_model, n)
+    if dfm is not None:
+        right = right + [("Df Model:", _S.count(dfm))]
+    else:
+        at = next((i + 1 for i, st in enumerate(stats) if st[0] == "nobs"), len(stats))
+        stats = stats[:at] + [("df_model", _S.count)] + stats[at:]
     cols = [(st[2] if len(st) > 2 else _S.flat(getattr(r, st[0]), n), st[1]) for st in stats]
     t1 = _S.Table([st[0] for st in stats], _S.lane_rows(shape, cols))
     names = [str(v) for v in r.param_names]
@@ -1336,13 +1343,6 @@ def _batch_summary(r, title, left, stats, right=None):
         rows.append((_S.lane_label(i, shape), [_S.forg(v, 4) for v in row]))
     t2 = _S.Table(names, rows, stub_head="params")
     return _S.render(title, header=(left, right), tables=[t1, t2])
-
-
-def _first(v):
-    """A field the regressions of a batch share (df_model): its first value."""
-    if isinstance(v, _sd.ndarray):
-        return _sd.reshape(v, (v.size,))[0] if v.size else math.nan
-    return v
 
 
 def _summary(r, alpha=0.05):

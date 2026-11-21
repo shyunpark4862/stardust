@@ -10,7 +10,8 @@ their work cap), scales of 1e+-300, and the wrong calls (their errors are result
 object is stored whole: every field and conf_int(); conf_int(alpha=0.1) as its own case. The
 contingency tables (H6) over their options too (correction, lambda_, alternative, pooled, n, exact,
 kind, conf_int's alternative), weighted tables, zero margins, r x c tables (and one past the work
-cap), batches of tables.
+cap), batches of tables. The proportions and the binomial (H7) over their methods, sides, null
+values and corrections, the binomial rule's edges, zero counts and batches.
 """
 
 import math
@@ -565,7 +566,153 @@ def cases(L):
         yield f"relative_risk {args} alpha=0.1", lambda a=args: h.relative_risk(*a).conf_int(alpha=0.1)
     yield "relative_risk exceeds", lambda: h.relative_risk(5, 4, 1, 2)
     yield "relative_risk float", lambda: h.relative_risk(1.0, 4, 1, 2)
+    yield from proportions(L)
     yield from summaries(L)
+
+
+def proportions(L):
+    """H7: binomtest over its alternatives, p and conf_int's methods (and the rule's edges: p = 0
+    and 1, k = p n, a deep tail), quantile_test over q, p, nan_policy and batches, the E-test
+    (diff, one-sided, past scipy's truncation, a non-positive null estimate), statsmodels'
+    proportions_ztest, proportions_chisquare, proportion_confint (every method and side, batches,
+    nobs = 0), test_proportions_2indep and confint_proportions_2indep over compare, method, value,
+    alternative and correction (zero counts, batches), and the wrong calls."""
+    h = L.sd.htest
+    d = data(L)
+    r = L.rng(411)
+    for alt in ("two-sided", "less", "greater"):
+        for k, n, p in ((3, 10, 0.5), (7, 20, 0.3), (0, 10, 0.5), (31, 100, 0.3), (19, 40, 0.2)):
+            yield f"binomtest {k} {n} {p} {alt}", lambda k=k, n=n, p=p, alt=alt: h.binomtest(k, n, p=p, alternative=alt)
+            for m in ("wilson", "wilsoncc"):
+                yield (
+                    f"binomtest {k} {n} {p} {alt} conf_int {m}",
+                    lambda k=k, n=n, p=p, alt=alt, m=m: h.binomtest(k, n, p=p, alternative=alt).conf_int(method=m),
+                )
+    for args, kw in (((5, 10), {}), ((0, 10), {"p": 0.0}), ((7, 10), {"p": 1.0}), ((0, 1000), {}),
+                     ((1, 10), {"p": 0.1}), ((50300, 100000), {})):  # fmt: skip
+        yield f"binomtest {args} {kw}", lambda a=args, k=kw: h.binomtest(*a, **k)
+    yield "binomtest conf_int alpha=0.1", lambda: h.binomtest(7, 20).conf_int(alpha=0.1)
+    yield "binomtest k float", lambda: h.binomtest(3.0, 10)
+    yield "binomtest k > n", lambda: h.binomtest(11, 10)
+    yield "binomtest p range", lambda: h.binomtest(3, 10, p=1.5)
+    yield "binomtest conf_int method", lambda: h.binomtest(3, 10).conf_int(method="beta")
+    xq = d["ties"]
+    for alt in ("two-sided", "less", "greater"):
+        yield f"quantile_test {alt}", lambda alt=alt: h.quantile_test(xq, q=0.0, p=0.4, alternative=alt)
+        yield (
+            f"quantile_test {alt} alpha=0.1",
+            lambda alt=alt: h.quantile_test(xq, q=1.0, alternative=alt).conf_int(alpha=0.1),
+        )
+    yield "quantile_test outside", lambda: h.quantile_test(d["a"], q=10.0)
+    yield "quantile_test batch", lambda: h.quantile_test(d["batch_a"], q=0.1, axis=-1)
+    yield "quantile_test batch keepdims", lambda: h.quantile_test(d["batch_a"], q=0.1, axis=-1, keepdims=True)
+    for pol in ("propagate", "omit", "raise"):
+        yield f"quantile_test nan {pol}", lambda pol=pol: h.quantile_test(d["nan"], q=0.5, nan_policy=pol)
+    yield "quantile_test empty", lambda: h.quantile_test([], q=0.0)
+    yield "quantile_test p range", lambda: h.quantile_test(d["a"], p=1.0)
+    for args, kw in (((10, 5.0, 20, 6.0), {}), ((30, 2.0, 10, 3.0), {"diff": 2.0}),
+                     ((10, 5.0, 20, 6.0), {"alternative": "less"}), ((10, 5.0, 20, 6.0), {"alternative": "greater"}),
+                     ((15, 5.24, 34, 0.64), {"alternative": "less"}),
+                     ((0, 2.0, 0, 3.0), {}), ((5, 1.0, 5, 1.0), {}), ((400, 1.0, 200, 1.0), {})):  # fmt: skip
+        yield f"poisson_means_test {args} {kw}", lambda a=args, k=kw: h.poisson_means_test(*a, **k)
+    yield "poisson_means_test diff negative", lambda: h.poisson_means_test(3, 1.0, 2, 1.0, diff=-1.0)
+    yield "poisson_means_test n zero", lambda: h.poisson_means_test(3, 0.0, 2, 1.0)
+    cnt, nob = np.array([15.0, 25]), np.array([40.0, 45])
+    for alt in ("two-sided", "less", "greater"):
+        yield f"proportions_ztest two {alt}", lambda alt=alt: h.proportions_ztest(cnt, nob, alternative=alt)
+        yield f"proportions_ztest one {alt}", lambda alt=alt: h.proportions_ztest(15, 40, value=0.5, alternative=alt)
+    yield "proportions_ztest prop_var", lambda: h.proportions_ztest(15, 40, value=0.5, prop_var=0.45)
+    yield "proportions_ztest value two", lambda: h.proportions_ztest(cnt, nob, value=-0.05)
+    yield "proportions_ztest zero var", lambda: h.proportions_ztest(0, 30, value=0.5)
+    yield (
+        "proportions_ztest batch",
+        lambda: h.proportions_ztest(np.array([[15.0, 25], [3, 9]]), np.array([[40.0, 45], [20, 22]])),
+    )
+    yield "proportions_ztest one value", lambda: h.proportions_ztest(15, 40)
+    yield "proportions_ztest three", lambda: h.proportions_ztest([1, 2, 3], [5, 5, 5])
+    yield "proportions_ztest prop_var bool", lambda: h.proportions_ztest(15, 40, value=0.5, prop_var=False)
+    yield "proportions_ztest count exceeds", lambda: h.proportions_ztest(41, 40, value=0.5)
+    yield "proportions_chisquare", lambda: h.proportions_chisquare(cnt, nob)
+    yield "proportions_chisquare three", lambda: h.proportions_chisquare([15, 25, 9], [40, 45, 30])
+    yield "proportions_chisquare value", lambda: h.proportions_chisquare(cnt, nob, value=0.4)
+    yield "proportions_chisquare zero column", lambda: h.proportions_chisquare([5, 7], [5, 7])
+    yield "proportions_chisquare one", lambda: h.proportions_chisquare(12, 40)
+    yield (
+        "proportions_chisquare batch",
+        lambda: h.proportions_chisquare(np.array([[15.0, 25], [3, 9]]), np.array([[40.0, 45], [20, 22]])),
+    )
+    yield "proportions_chisquare non-integer", lambda: h.proportions_chisquare([1.5, 2], [4, 4])
+    for meth in ("normal", "agresti_coull", "exact", "wilson", "wilsoncc", "jeffreys", "binom_test"):
+        for alt in ("two-sided", "less", "greater"):
+            yield (
+                f"proportion_confint {meth} {alt}",
+                lambda m=meth, alt=alt: h.proportion_confint(7, 30, method=m, alternative=alt),
+            )
+        yield f"proportion_confint {meth} ends", lambda m=meth: h.proportion_confint([0, 30, 1, 29], 30, method=m)
+        yield f"proportion_confint {meth} alpha=0.1", lambda m=meth: h.proportion_confint(7, 30, method=m, alpha=0.1)
+    yield "proportion_confint large", lambda: h.proportion_confint(30123, 100000, method="wilson")
+    yield "proportion_confint binom_test 200", lambda: h.proportion_confint(61, 200, method="binom_test")
+    yield (
+        "proportion_confint batch",
+        lambda: h.proportion_confint(np.floor(r.uniform(0, 20, (3, 4))), 20, method="exact"),
+    )
+    yield "proportion_confint nobs zero", lambda: h.proportion_confint([0, 1], [0, 2])
+    yield "proportion_confint beta", lambda: h.proportion_confint(7, 30, method="beta")
+    yield "proportion_confint larger", lambda: h.proportion_confint(7, 30, alternative="larger")
+    for comp, meths in (("diff", ("wald", "agresti-caffo", "score")), ("ratio", ("log", "log-adjusted", "score")),
+                        ("odds-ratio", ("logit", "logit-adjusted", "logit-smoothed", "score"))):  # fmt: skip
+        for meth in meths:
+            yield (
+                f"test_proportions_2indep {comp} {meth}",
+                lambda c=comp, m=meth: h.test_proportions_2indep(15, 40, 25, 45, compare=c, method=m),
+            )
+            yield (
+                f"test_proportions_2indep {comp} {meth} zero",
+                lambda c=comp, m=meth: h.test_proportions_2indep(0, 40, 25, 45, compare=c, method=m),
+            )
+        val = 0.1 if comp == "diff" else 1.5
+        for alt in ("two-sided", "less", "greater"):
+            yield (
+                f"test_proportions_2indep {comp} score value {alt}",
+                lambda c=comp, v=val, alt=alt: h.test_proportions_2indep(
+                    15, 40, 25, 45, compare=c, method="score", value=v, alternative=alt
+                ),
+            )
+        yield (
+            f"test_proportions_2indep {comp} score nocorr",
+            lambda c=comp: h.test_proportions_2indep(15, 40, 25, 45, compare=c, method="score", correction=False),
+        )
+        for meth in meths + (("newcomb",) if comp == "diff" else ()):
+            yield (
+                f"confint_proportions_2indep {comp} {meth}",
+                lambda c=comp, m=meth: h.confint_proportions_2indep(15, 40, 25, 45, compare=c, method=m),
+            )
+            yield (
+                f"confint_proportions_2indep {comp} {meth} zero",
+                lambda c=comp, m=meth: h.confint_proportions_2indep(0, 40, 25, 45, compare=c, method=m),
+            )
+            yield (
+                f"confint_proportions_2indep {comp} {meth} alpha=0.1",
+                lambda c=comp, m=meth: h.confint_proportions_2indep(15, 40, 25, 45, compare=c, method=m, alpha=0.1),
+            )
+        yield (
+            f"confint_proportions_2indep {comp} batch",
+            lambda c=comp: h.confint_proportions_2indep(
+                np.array([15.0, 5, 30]), 40, np.array([25.0, 9, 30]), 45, compare=c
+            ),
+        )
+    yield (
+        "test_proportions_2indep batch",
+        lambda: h.test_proportions_2indep(np.array([15.0, 5, 30]), 40, np.array([25.0, 9, 30]), 45),
+    )
+    yield "test_proportions_2indep newcomb", lambda: h.test_proportions_2indep(15, 40, 25, 45, method="newcomb")
+    yield "test_proportions_2indep or", lambda: h.test_proportions_2indep(15, 40, 25, 45, compare="or")
+    yield "test_proportions_2indep value range", lambda: h.test_proportions_2indep(15, 40, 25, 45, value=1.0)
+    yield "test_proportions_2indep larger", lambda: h.test_proportions_2indep(15, 40, 25, 45, alternative="larger")
+    yield (
+        "test_proportions_2indep return_results",
+        lambda: h.test_proportions_2indep(15, 40, 25, 45, return_results=False),
+    )
 
 
 def summaries(L):
@@ -644,6 +791,22 @@ def summaries(L):
         "median_test batch": lambda: h.median_test(d["batch_a"], d["batch_b"], axis=-1),
         "ttest_1samp keepdims": lambda: h.ttest_1samp(a, 0.1, keepdims=True),
         "ttest_1samp omit": lambda: h.ttest_1samp(d["nan"], 0.0, nan_policy="omit"),
+        "binomtest": lambda: h.binomtest(7, 20, p=0.3),
+        "binomtest less": lambda: h.binomtest(7, 20, p=0.3, alternative="less"),
+        "quantile_test": lambda: h.quantile_test(b, q=0.2, p=0.4),
+        "quantile_test batch": lambda: h.quantile_test(d["batch_a"], q=0.1, axis=-1),
+        "poisson_means_test": lambda: h.poisson_means_test(10, 5.0, 20, 6.0, diff=0.5),
+        "proportions_ztest": lambda: h.proportions_ztest([15, 25], [40, 45]),
+        "proportions_ztest one": lambda: h.proportions_ztest(15, 40, value=0.5, prop_var=0.45),
+        "proportions_chisquare": lambda: h.proportions_chisquare([15, 25, 9], [40, 45, 30]),
+        "proportions_chisquare value": lambda: h.proportions_chisquare([15, 25], [40, 45], value=0.4),
+        "test_proportions_2indep": lambda: h.test_proportions_2indep(15, 40, 25, 45),
+        "test_proportions_2indep score": lambda: h.test_proportions_2indep(
+            15, 40, 25, 45, compare="odds-ratio", method="score", value=2.0
+        ),
+        "test_proportions_2indep batch": lambda: h.test_proportions_2indep(
+            np.array([15.0, 5, 30]), 40, np.array([25.0, 9, 30]), 45
+        ),
     }
     for name, call in calls.items():
         yield f"summary {name}", lambda call=call: call().summary()
@@ -657,3 +820,7 @@ def summaries(L):
     yield "repr chi2_contingency", lambda: repr(h.chi2_contingency([[3.0, 7], [9, 2]]))
     yield "repr relative_risk", lambda: repr(h.relative_risk(9, 20, 4, 21))
     yield "summary odds_ratio alpha=0.1", lambda: h.odds_ratio([[3.0, 7], [9, 2]]).summary(alpha=0.1)
+    yield "repr binomtest", lambda: repr(h.binomtest(7, 20, p=0.3))
+    yield "repr proportions_chisquare", lambda: repr(h.proportions_chisquare([15, 25], [40, 45]))
+    yield "repr test_proportions_2indep", lambda: repr(h.test_proportions_2indep(15, 40, 25, 45, method="score"))
+    yield "summary binomtest alpha=0.1", lambda: h.binomtest(7, 20).summary(alpha=0.1)

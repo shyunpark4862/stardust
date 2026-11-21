@@ -8,7 +8,8 @@ sd.sparse.linalg); inputs and options follow this library's rules (decisions SP1
 docs/design/sparse.md §1.1).
 
 The public names come milestone by milestone (docs/design/sparse.md §8): the formats, their
-conversions and operations, indexing and the builders, the direct solves and LinearOperator so far.
+conversions and operations, indexing and the builders, the direct solves and LinearOperator, the
+iterative solvers so far.
 The native core is stardust._core.sparse.
 """
 
@@ -34,6 +35,7 @@ from ._coo import coo_array
 from ._direct import factorized, inv, is_sptriangular, spbandwidth, splu, spsolve, spsolve_triangular
 from ._dok import dok_array
 from ._interface import LinearOperator, aslinearoperator
+from ._iterative import bicgstab, cg, gmres, lsmr, lsqr, minres
 
 _core = _sd_core.sparse
 
@@ -57,6 +59,12 @@ spsolve_triangular = _calls.function(spsolve_triangular)
 is_sptriangular = _calls.function(is_sptriangular)
 spbandwidth = _calls.function(spbandwidth)
 aslinearoperator = _calls.function(aslinearoperator)
+cg = _calls.function(cg)
+gmres = _calls.function(gmres)
+minres = _calls.function(minres)
+bicgstab = _calls.function(bicgstab)
+lsqr = _calls.function(lsqr)
+lsmr = _calls.function(lsmr)
 
 
 def issparse(x, /):
@@ -79,4 +87,5 @@ __all__ = [
     "tril", "triu", "find",
     "spsolve", "splu", "factorized", "inv", "spsolve_triangular", "is_sptriangular", "spbandwidth",
     "LinearOperator", "aslinearoperator",
+    "cg", "gmres", "minres", "bicgstab", "lsqr", "lsmr",
 ]  # fmt: skip

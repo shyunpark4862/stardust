@@ -20,7 +20,7 @@
 #include "optimize/scalar.hpp"
 
 #include "bind/errors.hpp"
-#include "optimize/diff.hpp"
+#include "differentiate/steps.hpp"
 
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
@@ -483,7 +483,7 @@ RootOut newton(Fn& f, Fn* fprime, Fn* fprime2, double x0, double tol, double rto
     RootOut o;
     double p0 = x0, p = kNaN;
     std::int64_t itr = 0;
-    const double rstep = rel_step_2point();
+    const double rstep = differentiate::rel_step_2point();
     for (itr = 0; itr < maxiter; ++itr) {
         const double fval = f(p0);
         if (fval == 0) {
@@ -496,7 +496,7 @@ RootOut newton(Fn& f, Fn* fprime, Fn* fprime2, double x0, double tol, double rto
         if (fprime) {
             fder = (*fprime)(p0);
         } else {  // scipy's approx_derivative '2-point' (its f(p0) is fval)
-            const double h = absolute_step(p0, rstep, false, 0.0);
+            const double h = differentiate::absolute_step(p0, rstep, false, 0.0);
             const double x1 = p0 + h;
             fder = (f(x1) - fval) / (x1 - p0);
         }

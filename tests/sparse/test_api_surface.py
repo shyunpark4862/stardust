@@ -22,8 +22,6 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "sparse.md"
 # Documented, not implemented yet (docs/design/sparse.md §8). A milestone moves its names from
 # here to sd.sparse.__all__.
 PLANNED = {
-    # SP5
-    "cg", "gmres", "minres", "bicgstab", "lsqr", "lsmr",
     # SP6
     "eigsh", "eigs", "svds",
     # SP7
@@ -31,7 +29,8 @@ PLANNED = {
 }  # fmt: skip
 # Options without a default (a keyword the caller must give), as sd.linalg's (SP68).
 REQUIRED_OPTIONS = {("spsolve_triangular", "upper")}
-CLASSES = {"sparray", "coo_array", "csr_array", "csc_array", "dok_array", "SparseLU", "LinearOperator"}
+CLASSES = {"sparray", "coo_array", "csr_array", "csc_array", "dok_array", "SparseLU", "LinearOperator", "CgResult",
+           "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult"}  # fmt: skip
 FORMATS = ("coo_array", "csr_array", "csc_array", "dok_array")
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
 
@@ -187,6 +186,25 @@ def test_module_is_wired():
         "eye_array", "diags_array", "random_array", "kron", "kronsum", "hstack", "vstack", "block_array",
         "block_diag", "tril", "triu", "find", "spsolve", "splu", "factorized", "inv", "spsolve_triangular",
         "is_sptriangular", "spbandwidth", "LinearOperator", "aslinearoperator",
+        "cg", "gmres", "minres", "bicgstab", "lsqr", "lsmr",
     }  # fmt: skip
     assert not hasattr(sd.sparse, "linalg") and not hasattr(sd.sparse, "SparseLU")
     assert callable(sd.sparse._core._lu_solve) and callable(sd.sparse._core._lu_factor)
+    for name in ("_cg", "_bicgstab", "_gmres", "_minres", "_lsqr", "_lsmr"):
+        assert callable(getattr(sd.sparse._core, name))
+    assert not any(hasattr(sd.sparse, f"{n}Result") for n in ("Cg", "Gmres", "Minres", "Bicgstab", "Lsqr", "Lsmr"))
+
+
+RESULTS = ("CgResult", "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult")
+
+
+@pytest.mark.parametrize("cls", RESULTS)
+def test_result_classes_have_the_documented_fields(cls):
+    """§6's `<Solver>Result.<field>` lines are the result's fields in order (SP72; not exported, as
+    sd.htest's); the classes have no other public names but summary()."""
+    from stardust.sparse import _result
+
+    doc = [name for c, name, sig in entries() if c == cls]
+    klass = getattr(_result, cls)
+    assert doc and list(klass._FIELDS) == [n for n in doc if n != "summary"]
+    assert {n for n in dir(klass) if not n.startswith("_")} == set(doc)

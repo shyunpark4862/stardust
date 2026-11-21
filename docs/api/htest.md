@@ -1,8 +1,8 @@
 # sd.htest API
 
-> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3·H4·H5·H6 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4), H4의 네 함수(§5), H5의 여덟 함수(§6), H6의 여덟 함수(§7)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
+> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3·H4·H5·H6·H7 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4), H4의 네 함수(§5), H5의 여덟 함수(§6), H6의 여덟 함수(§7), H7의 여덟 함수(§8)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
 
-- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H84), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H101), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/htest/test_api_surface.py`가 읽는다. 블록의 이름이 계획한 공개 이름 전부이고, 공개된 함수는 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -85,6 +85,7 @@
 - H4에서 scipy와 다른 것(§5): 동점이 있는 `ks_2samp`의 `'exact'`(H55)와 `cramervonmises_2samp`의 `'exact'`(조건부 분포, H58), `epps_singleton_2samp`의 `df`(H59), `cramervonmises_2samp`의 `'exact'`가 큰 표본까지(H56), `anderson_ksamp`의 기본 `variant='midrank'`(H57), `ks_2samp`·`cramervonmises_2samp`의 `method` 필드, 퇴화한 입력의 NaN(scipy는 `ValueError`), `ks_2samp`의 정확 계산이 넘치지 않는 것(scipy는 큰 표본에서 경고와 함께 점근으로).
 - H5에서 scipy와 다른 것(§6): `pearsonr`·`spearmanrho`의 p값을 1 − r²에서 상쇄 없이(scipy는 |r| ≈ 1에서 틀린다), `pearsonr`의 `nan_policy`·`keepdims`, 거의 상수인 표본(H20)·쌍이 2개 미만·inf의 NaN(scipy는 경고와 값, `ValueError`), `spearmanr`의 기본 `axis=None`, `spearmanr`의 n = 2에서 p = 1(`spearmanrho`와 같다; scipy의 옛 꼴은 NaN), `kendalltau`의 n = 2 정규 근사(scipy는 0/0의 NaN), `weightedtau`의 `nan_policy='propagate'`가 NaN(scipy는 NaN을 가장 큰 값으로 순위 매긴다), `somersd`의 S = 0이 NaN(scipy는 p = 0)·NaN과 2차원 `x`에 준 `y`의 `ValueError`·두 표본의 표가 10⁷칸까지, `chatterjeexi`의 x의 동점을 위치로 가르기(scipy는 `argsort`가 임의로), 별칭 `correlation` 없음(H65).
 - H6에서 scipy와 다른 것(§7): r × c `fisher_exact`가 정확한 망 알고리즘(H77; scipy는 시드 없는 몬테카를로)과 그 작업량 상한, `barnard_exact`·`boschloo_exact`의 `n`이 처음 격자 크기로만(H78)이고 p값이 참 상한, Barnard의 정확한 기각역, `chi2_contingency`의 `df`가 float(H82)·0인 행·열의 NaN·n차원 표 없음(3차원 이상은 배치)·Cressie–Read의 0인 칸의 극한, 표의 배치(모든 분할표 함수), `odds_ratio`의 정수 값 float 표, `mcnemar`의 b + c = 0 NaN(statsmodels는 inf와 0), `cochrans_q`의 0·1 값만.
+- H7에서 scipy·statsmodels와 다른 것(§8): 방법과 `alternative`의 이름(H85, H86), `proportion_confint`의 한쪽 구간의 방향(H95), `prop_var`(H87), `return_results` 없음(H88), `binomtest`의 `proportion_estimate` 없음(H96), 구간을 배열로(H94), 인자 범위의 `ValueError`와 `nobs = 0`의 NaN(H97), 차의 점수 검정의 참 최우추정(H98: statsmodels의 삼차식 버그), E-test의 모든 결과의 합(H99), `quantile_test`의 `nan_policy`와 스칼라 `q`·`p`(H100), `'binom_test'` 구간의 정의(H101), 0인 표준오차의 NaN(H24), 개수의 배치(statsmodels의 함수).
 - H1에서 scipy와 다른 것(§2): `df`는 언제나 float(H22), `ttest_ind_from_stats`의 `df`·`conf_int()`(H23), `f_oneway`의 `df_num`·`df_denom`(H27), `levene`의 `df_num`·`df_denom`과 `bartlett`·`fligner`·`alexandergovern`의 `df`(H29), 표준오차 0과 상수 집단의 NaN(H24, H11), Welch의 nᵢ < 2에서 `df` NaN, `alexandergovern`의 n < 2에서 에러 대신 NaN, 표본이 둘 미만인 `bartlett`·`levene`·`fligner`의 `TypeError`, `ttest_ind`의 `method`는 None만(H9까지).
 
 ## §2. 모수: 평균과 분산 (H1)
@@ -244,15 +245,16 @@ proportion_confint(count, nobs, /, *, alpha=0.05, method='normal', alternative='
 test_proportions_2indep(count1, nobs1, count2, nobs2, /, *, value=None, method=None, compare='diff', alternative='two-sided', correction=True)
 confint_proportions_2indep(count1, nobs1, count2, nobs2, /, *, method=None, compare='diff', alpha=0.05, correction=True)
 ```
-- `binomtest`: 결과 `k n alternative statistic pvalue proportion_estimate`와 메서드 `conf_int(*, alpha=0.05, method='exact')`(scipy의 `proportion_ci(confidence_level=0.95, method='exact')`; 방법 `'exact'`, `'wilson'`, `'wilsoncc'`은 scipy와 같다; H16), 풀리지 않는다. `k`·`n`은 int, `p`는 [0, 1]의 실수다.
-- `quantile_test`: 결과 `statistic statistic_type pvalue`와 `conf_int(alpha=0.05)`, 풀리지 않는다. scipy에 없는 `nan_policy`를 둔다(§1.1).
-- `poisson_means_test`: 결과 `statistic pvalue`, 둘로 풀린다.
-- statsmodels의 함수(H5): 신뢰수준은 statsmodels와 같은 `alpha=0.05`(H16), `alternative`는 `'larger'`·`'smaller'`가 아니라 `'greater'`·`'less'`, `proportions_ztest`의 `prop_var=False`는 None, 결과는 튜플 대신 결과 객체다. 각각 H7에서 정한다(§12의 추천).
-  - `proportions_ztest`: 결과 `statistic pvalue`, 둘로 풀린다(statsmodels의 튜플 순서).
-  - `proportions_chisquare`: 결과 `statistic pvalue table expected_freq`. statsmodels는 `(chi2, p, (table, expected))`를 돌려준다. 풀기의 꼴은 H7에서 정한다.
-  - `proportion_confint`: 아래 끝과 위 끝의 (…, 2) 배열을 돌려준다(`conf_int()`과 같은 꼴, H16; 구간 하나면 statsmodels의 `(low, upp)`처럼 `low, upp = ...`로 풀린다). `method`는 `'normal'`, `'agresti_coull'`, `'exact'`(statsmodels `'beta'`, Clopper–Pearson), `'wilson'`, `'wilsoncc'`, `'jeffreys'`, `'binom_test'`의 안이다(이름은 H7에서 정한다).
-  - `test_proportions_2indep`: 결과는 statsmodels의 필드(`statistic pvalue compare method diff ratio odds_ratio variance alternative value prop1_null prop2_null`)이고 둘로 풀린다. `return_results`는 없다. `method=None`과 기본 방법은 statsmodels 0.15.0의 것으로 고정한다(차 `'agresti-caffo'`, 비 `'log-adjusted'`, 오즈비 `'logit-adjusted'`).
-  - `confint_proportions_2indep`: (…, 2) 배열(`proportion_confint`과 같은 꼴). 기본 방법은 0.15.0의 것(차 `'newcomb'`, 비 `'log-adjusted'`, 오즈비 `'logit-adjusted'`).
+- **개수**(H97): `count`·`nobs`(와 `binomtest`의 `k`·`n`)는 음이 아닌 정수 값이고 `count ≤ nobs`다(`proportions_ztest(): 'count' must not exceed 'nobs'`, `... 'count' must hold non-negative integer counts`, `ValueError`). statsmodels의 다섯 함수는 개수를 브로드캐스트한다: 결과는 그 모양의 배치이고(`repr`는 `batch shape`), 모두 스칼라면 검정 하나(Python 수)다. `proportions_ztest`·`proportions_chisquare`는 마지막 축이 표본이고 앞 축이 배치다(스칼라는 표본 하나). `nobs = 0`인 줄은 NaN이다(H11). 정수가 아닌 개수는 받지 않는다(statsmodels는 `'binom_test'` 밖에서 받는다).
+- `binomtest`: `k`·`n`은 int(0 ≤ k ≤ n, n ≥ 1), `p`는 [0, 1]의 실수다. 결과 `k n alternative statistic pvalue`(scipy의 `proportion_estimate`는 `statistic`과 같은 값이라 두지 않는다: 별칭 없음, H96)와 메서드 `conf_int(*, alpha=0.05, method='exact')`(scipy의 `proportion_ci(confidence_level=0.95, method='exact')`; `'exact'`(Clopper–Pearson), `'wilson'`, `'wilsoncc'`; H16), 풀리지 않는다. 구간은 검정의 `alternative`를 따른다(`'less'`는 [0, 위 끝], `'greater'`는 [아래 끝, 1]). 양쪽 p값은 scipy 1.18.1의 규칙(반대편에서 pmf ≤ (1 + 10⁻⁷)·pmf(k)인 결과; R `binom.test`도 같다)이고 비교는 double-double log pmf와 정확한 pn으로 한다. p = 0·1은 점질량이다. scipy는 n = 10⁵에서 5.9e-14 틀린다.
+- `quantile_test`: `q`는 실수, `p`는 (0, 1)의 실수다(scipy 1.18.1은 그 밖에서 NaN; `ValueError`). 결과 `statistic statistic_type pvalue`(scipy처럼 float: T1 = #(x ≤ q)와 형 1, 또는 T2 = #(x < q)와 형 2)와 `conf_int(*, alpha=0.05)`(순서통계량 x[ppf(a) − 1], x[isf(a)]; 표본 밖이면 NaN, 한쪽 검정의 열린 쪽은 ±inf), 풀리지 않는다. scipy에 없는 `nan_policy`를 두고 `q`·`p`는 스칼라다(배치는 `axis`로; H100). 빈 표본은 NaN이다. 구간은 호출 때의 표본으로 만든다(결과가 복사해 둔다).
+- `poisson_means_test`: `k1`·`k2`는 int(≥ 0), `n1`·`n2`는 양의 유한한 실수, `diff`는 0 이상이다. 결과 `statistic pvalue`, 둘로 풀린다. p값은 T가 관측만큼 극단인 모든 결과의 귀무 확률이다(H99, `[scipy와 다름]`: scipy는 두 합을 [ppf(1e-10), ppf(1 − 1e-16)]로 자르고 격자와 관측의 T를 다른 식으로 계산해 결과를 빠뜨릴 수 있다: 깊은 꼬리에서 4.9e-9–9000배, 관측과 같은 극단의 결과를 빠뜨린 곳 6.6e-4 낮다). 귀무 추정 λ̂₂ ≤ 0이면 (0, 1)이다(scipy).
+- statsmodels의 함수(H5): 신뢰수준은 statsmodels와 같은 `alpha=0.05`(H16), `alternative`는 `'larger'`·`'smaller'`가 아니라 `'greater'`·`'less'`(H86), 결과는 튜플 대신 결과 객체나 배열이다. 기본 방법은 statsmodels 0.15.0의 것으로 고정한다(H90).
+  - `proportions_ztest`: 결과 `statistic pvalue`, 둘로 풀린다(statsmodels의 튜플 순서). 표본 하나는 `value`가 꼭 있고 분산은 표본 비율(또는 `prop_var`)의 것, 둘은 합동 비율의 것이다. `prop_var`는 None이나 [0, 1]의 실수다(H87; statsmodels의 `False`는 받지 않는다, 0은 그 값이다). 셋 이상의 표본은 `ValueError`다(statsmodels는 `NotImplementedError`). 표준오차 0은 NaN이다(H24; statsmodels는 ±inf와 0).
+  - `proportions_chisquare`: 결과 `statistic pvalue df table expected_freq`이고 statsmodels처럼 `(statistic, pvalue, (table, expected_freq))`의 셋으로 풀린다(H93). `table`은 (…, k, 2)의 (count, nobs − count)다. `value=None`이면 같은 비율의 검정으로 `chi2_contingency(table, correction=False)`와 비트까지 같고(`df` = k − 1; 0인 열은 NaN, 표본 하나는 (0, 1)), `value`([0, 1])가 있으면 그 비율에 대한 검정이다(`df` = k). Yates 보정은 없다(H92; R `prop.test(correct = FALSE)`).
+  - `proportion_confint`: 아래 끝과 위 끝의 (…, 2) 배열을 돌려준다(`conf_int()`과 같은 꼴, H94; 구간 하나면 (2,)이라 statsmodels의 `(low, upp)`처럼 `low, upp = ...`로 풀린다). `method`(H85)는 `'normal'`(기본), `'agresti_coull'`, `'exact'`(statsmodels `'beta'`, Clopper–Pearson), `'wilson'`, `'wilsoncc'`(scipy의 것, 연속성 보정), `'jeffreys'`, `'binom_test'`다. 양쪽 구간은 꼬리마다 alpha/2(`'binom_test'`는 양쪽 p값이라 alpha 그대로), 한쪽은 그 꼬리에 alpha다. `'less'`는 [0, 위 끝], `'greater'`는 [아래 끝, 1]이다(H95, `[statsmodels와 다름]`: statsmodels의 `'larger'`가 [0, 위 끝]이다). `'normal'`·`'agresti_coull'`·`'wilson'`은 [0, 1]로 자른다(statsmodels). `'binom_test'`는 count/nobs를 품은 채택 영역의 끝이다(H101; p값이 단조가 아니라 statsmodels의 `brentq`는 바깥의 다른 교차점에 닿기도 한다; 한쪽은 Clopper–Pearson).
+  - `test_proportions_2indep`: 결과는 statsmodels의 필드(`statistic pvalue compare method diff ratio odds_ratio variance alternative value`, `method='score'`면 `prop1_null prop2_null`; 다른 방법에서는 `AttributeError`)이고 둘로 풀린다(H88). `return_results`는 없다. `compare`는 `'diff'`, `'ratio'`, `'odds-ratio'`(H89; `'or'`는 받지 않는다), `method=None`은 0.15.0의 기본(차 `'agresti-caffo'`, 비 `'log-adjusted'`, 오즈비 `'logit-adjusted'`), 차의 방법은 `'wald'`, `'agresti-caffo'`, `'score'`(`'newcomb'`은 구간만), 비는 `'log'`, `'log-adjusted'`, `'score'`, 오즈비는 `'logit'`, `'logit-adjusted'`, `'logit-smoothed'`, `'score'`다. `value`(None: 0 또는 1)는 차가 (−1, 1), 비·오즈비가 (0, ∞)다(H97). 차의 점수 검정은 참 제한 최우추정을 쓴다(H98, `[statsmodels와 다름]`: statsmodels 0.15.0의 삼차식이 틀려 귀무값이 0이 아니면 다른 값이다). 0인 개수의 log는 IEEE의 끝이다(statsmodels와 같다).
+  - `confint_proportions_2indep`: (…, 2) 배열(`proportion_confint`과 같은 꼴). 기본 방법은 0.15.0의 것(차 `'newcomb'`, 비 `'log-adjusted'`, 오즈비 `'logit-adjusted'`)이고 차는 `'wald'`, `'agresti-caffo'`, `'newcomb'`, `'score'`, 비는 `'log'`, `'log-adjusted'`, `'score'`(Koopman), 오즈비는 `'logit'`, `'logit-adjusted'`, `'logit-smoothed'`, `'score'`다. 점수 구간은 그 검정을 뒤집고(|z| = z_{α/2}), z가 닿지 않는 쪽은 정의역의 끝이다(차 ±1, 오즈비 0·inf; statsmodels의 `brentq`는 에러). 차의 점수 구간은 H98 때문에 statsmodels와 다르다.
 
 ## §9. 다중 비교와 보정 (H8)
 ```
@@ -311,7 +313,14 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 | `levene`의 결과 `statistic pvalue` | `statistic pvalue df_num df_denom` | H29 |
 | `bartlett`·`fligner`·`alexandergovern`의 결과 `statistic pvalue` | `statistic pvalue df` | H29 |
 | `alternative='larger'`, `'smaller'` | `'greater'`, `'less'` | H3·H5(scipy의 이름) |
-| `proportion_confint(method='beta')` | `method='exact'` | H7에서 정한다 |
+| `proportion_confint(method='beta')` | `method='exact'` | H85 |
+| `proportion_confint(alternative='larger')`([0, 위 끝]) | `alternative='less'` | H95 |
+| `proportions_ztest(prop_var=False)` | `prop_var=None` | H87 |
+| `test_proportions_2indep(return_results=False)` | 없음(언제나 결과 객체, 둘로 풀린다) | H88 |
+| `test_proportions_2indep(compare='or')` | `compare='odds-ratio'` | H89 |
+| `binomtest(...).proportion_estimate` | 없음(`statistic`) | H96 |
+| `proportions_chisquare` → `(chi2, p, (table, expected))` | 같은 셋으로 풀리는 결과 객체(`df` 필드를 더한다) | H93 |
+| `proportion_confint`·`confint_proportions_2indep` → `(low, upp)` | (…, 2) 배열(풀면 `low, upp`) | H94 |
 | `chi2_contingency(...).dof`, `cochrans_q` 결과의 `df` | `df` | H10 |
 | scipy의 결과 형 `TtestResult`, `SignificanceResult` 등 | 함수마다 `<함수>Result`(내보내지 않음) | H6 |
 | `kstest` | 없음(`ks_1samp`, `ks_2samp`) | H34 |
@@ -351,7 +360,7 @@ docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 
 - **H4**: 정했다(H55–H61, docs/design/htest.md §1.1).
 - **H5**: 정했다(H62–H73, docs/design/htest.md §1.1).
 - **H6**: 정했다(H77–H84, docs/design/htest.md §1.1).
-- **H7**: 방법 이름은 scipy에 있는 것은 scipy의 이름(`'exact'`, `'wilson'`, `'wilsoncc'`)과 statsmodels에만 있는 것(추천) / statsmodels 그대로(`'beta'`). 기본값은 statsmodels의 `'normal'`(추천). `prop_var`는 None 또는 실수(추천). `proportions_chisquare`는 `(statistic, pvalue, (table, expected_freq))`의 셋으로 풀린다(statsmodels 그대로; 추천) / 넷의 필드만. `proportion_confint`·`confint_proportions_2indep`은 `conf_int()`과 같은 (…, 2) 배열(추천; H16) / statsmodels처럼 (low, upp) 튜플. 기본 방법은 statsmodels 0.15.0의 것으로 고정(추천). `proportions_chisquare`에 Yates 보정은 없다(추천).
+- **H7**: 정했다(H85–H101, docs/design/htest.md §1.1).
 - **H8**: `false_discovery_control` + `multipletests`, `fdrcorrection` 없음(추천). `multipletests`의 기본 `'holm-sidak'`(추천). 필드 이름 `reject pvalues_corrected alpha_sidak alpha_bonferroni`(추천). `fdr_gbs`는 넣지 않는다(추천). 스튜던트화 범위 분포는 htest 안에(H14로 정했다). `dunnett`에 `rng`가 없다(추천).
 - **sd.regression과의 경계**: H16–H21로 정했다(§13; docs/design/htest.md §1.4). 남은 것은 regression 쪽의 결정이다(docs/design/regression.md §8의 "htest와의 관계"): 새 회귀 검정(모형 비교의 F·LR·Wald, White, Goldfeld–Quandt, RESET)의 결과를 H6·H7·H11·H19·H21의 꼴로 둘지, `breusch_pagan()`에 자유도 필드를 더할지(H19라면 카이제곱의 `df`), 백색화한 잔차 `wresid`를 결과에 둘지, 단계적 선택에 보정 옵션을 둘지(둔다면 `multipletests`의 방법 이름과 같은 커널).
 - **H9**: 설정 객체는 scipy의 이름과 `rng` 필수(추천). `monte_carlo_test`의 `rvs(size, *, rng)`(추천). `bootstrap_result`를 두지 않는다(추천). 재표본 함수의 `axis=None`(표본마다 펼치기; 추천) / scipy의 0. `multiscale_graphcorr` 넣는다(추천). `goodness_of_fit`은 `anderson`과 같은 족의 최우추정으로(추천). `bws_test`의 기본(나열 아니면 `rng` 요구; 추천). R 꾸러미(`coin` 등)는 마일스톤마다 묻는다(H15).

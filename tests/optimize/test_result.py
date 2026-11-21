@@ -107,11 +107,13 @@ def test_unknown_field_at_construction():
 
 
 def test_repr():
-    assert repr(one()) == "OptimizeResult(method='bfgs', converged=True, fun=0.5, n_iter=3, nfev=5, x=[1.0 2.0])"
+    assert repr(one()) == "OptimizeResult(method='bfgs', converged=True, fun=0.5, n_iter=3, nfev=5, x=[1, 2])"
     lsq = R(x=sd.asarray([1.0]), cost=1.25e-17, fun=sd.asarray([1e-9, 2e-9]), converged=False, nfev=10)
-    assert repr(lsq) == "OptimizeResult(converged=False, cost=1.25e-17, nfev=10, x=[1.0])"
+    assert repr(lsq) == "OptimizeResult(converged=False, cost=1.25e-17, nfev=10, x=[1])"
     nan = R(fun=float("nan"), converged=False)
     assert repr(nan) == "OptimizeResult(converged=False, fun=nan)"
+    assert repr(R(x=sd.zeros(7), fun=2.0)) == "OptimizeResult(fun=2, x=<array of shape (7,)>)"
+    assert repr(R(x=1.5, fun=0.25)) == "OptimizeResult(fun=0.25, x=1.5)"
     batch = R(batch=(3,), x=sd.zeros(3), converged=sd.asarray([True, False, True]))
     assert repr(batch) == "OptimizeResult(batch shape (3,), 2 of 3 converged)"
     assert repr(R(batch=(2, 2), x=sd.zeros((2, 2)))) == "OptimizeResult(batch shape (2, 2))"

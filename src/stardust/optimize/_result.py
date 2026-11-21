@@ -10,8 +10,6 @@ it raises, and .copy() gives an array to change. The fields' machinery is the ba
 with sd.integrate's and sd.differentiate's results (stardust._results._FieldResult).
 """
 
-import math
-
 from .. import _calls, _core
 from .. import _summary as _S
 from .._results import _FieldResult, _Lazy  # noqa: F401  (_Lazy: minimize's import)
@@ -67,33 +65,19 @@ class OptimizeResult(_FieldResult):
         return _summary(self)
 
     def __repr__(self):
-        f = self._fields
+        """One line in the shared form (API.md §2.3, O120): the method, converged, fun (cost for
+        least squares; an array fun, root's f(x), is left out), n_iter, nfev and x. A batch:
+        OptimizeResult(batch shape (k,), j of k converged)."""
         if self._batch:
-            conv = f.get("converged")
-            n = 1
-            for s in self._batch:
-                n *= s
-            done = f" {int(_core.count_nonzero(conv))} of {n} converged" if conv is not None else ""
-            return (
-                f"OptimizeResult(batch shape {self._batch},{done})"
-                if done
-                else f"OptimizeResult(batch shape {self._batch})"
-            )
-        parts = []
-        if "method" in f:
-            parts.append(f"method={f['method']!r}")
-        if "converged" in f:
-            parts.append(f"converged={f['converged']}")
+            return self._batch_repr()
+        f = self._fields
+        items = [(k, f[k]) for k in ("method", "converged") if k in f]
         if "cost" in f:
-            parts.append(f"cost={_num(f['cost'])}")
+            items.append(("cost", _num(f["cost"])))
         elif "fun" in f and not isinstance(f["fun"], _core.ndarray):
-            parts.append(f"fun={_num(f['fun'])}")
-        for k in ("n_iter", "nfev"):
-            if k in f:
-                parts.append(f"{k}={f[k]}")
-        if "x" in f:
-            parts.append(f"x={f['x']}")
-        return "OptimizeResult(" + ", ".join(parts) + ")"
+            items.append(("fun", _num(f["fun"])))
+        items += [(k, f[k]) for k in ("n_iter", "nfev", "x") if k in f]
+        return _S.one_line("OptimizeResult", items)
 
 
 _COUNTS = (("n_iter", "No. Iterations:"), ("nfev", "Function Evals:"), ("njev", "Jacobian Evals:"),
@@ -158,8 +142,8 @@ def _summary(r):
 
 
 def _num(v):
+    """A scalar objective as a Python float for compact() (left as it is when it is not one)."""
     try:
-        v = float(v)
+        return float(v)
     except TypeError, ValueError:
-        return repr(v)
-    return f"{v:.6g}" if math.isfinite(v) else repr(v)
+        return v

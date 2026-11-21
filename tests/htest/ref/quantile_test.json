@@ -1,0 +1,11 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 8, "dropped": []},
+"quantile_test/small": {"digest": "84030d7e2e19192d8ea7c9ccd106d666f64b4d9529b0d2b08d0cbe8a2cc80e44", "statistic": [13.0, 0.0], "statistic_type": [2.0, 0.0], "pvalue": [0.26317596435546875, 0.0], "conf_int": [[-0.5836783627836746, 0.0], [0.44504166087044544, 0.0]]},
+"quantile_test/ties": {"digest": "79c3db1092f26820ceeecff55cebdf08465bd02237f476a554551a4a21077e8b", "statistic": [19.0, 0.0], "statistic_type": [2.0, 0.0], "pvalue": [0.4178575518294883, -1.464418984515918e-17], "conf_int": [[-1.5, 0.0], [0.5, 0.0]]},
+"quantile_test/less": {"digest": "30b66d538f7eb9bd0ad677b6c1b1d3418c1166f7556091ab7a6badcbff96ae57", "statistic": [19.0, 0.0], "statistic_type": [2.0, 0.0], "pvalue": [0.20892877591474415, -7.32209492257959e-18], "conf_int": [[-Infinity, 0.0], [0.5, 0.0]]},
+"quantile_test/greater": {"digest": "c30d998abc335945c8f6e666745575753f98eee076747629ca6b09aab6ab7e4b", "statistic": [23.0, 0.0], "statistic_type": [1.0, 0.0], "pvalue": [0.9916582291088196, -1.0081853736428047e-17], "conf_int": [[-1.5, 0.0], [Infinity, 0.0]]},
+"quantile_test/outside": {"digest": "9687570aff379aef67461ae924fbb738c23bfb06acfc21186ab5dfd6db2a2bf1", "statistic": [15.0, 0.0], "statistic_type": [2.0, 0.0], "pvalue": [6.103515625e-05, 0.0], "conf_int": [[-0.9575432916505224, 0.0], [0.828417134677465, 0.0]]},
+"quantile_test/large": {"digest": "cd07e1c246f0f59d5c388fd60e0481df17792c43635e913686e2ccd7cd5c9704", "statistic": [1097.0, 0.0], "statistic_type": [2.0, 0.0], "pvalue": [1.568861981021355e-05, 3.764292466935254e-22], "conf_int": [[-0.05799058764116547, 0.0], [0.03666782287955481, 0.0]]},
+"quantile_test/p-small": {"digest": "4b79e22380508546080d2b114ab6559ad7cf4c7626b73cfe32f43f9da60408bd", "statistic": [8.0, 0.0], "statistic_type": [2.0, 0.0], "pvalue": [0.49689342774616363, 4.571166076077167e-18], "conf_int": [[-1.6166319168730372, 0.0], [-0.6544785419864444, 0.0]]},
+"quantile_test/tail": {"digest": "5ba2d398ab1e13827b044d7557ca1f3dd3853c5924bdd4d4ff4f1450eb48fa87", "statistic": [80.0, 0.0], "statistic_type": [1.0, 0.0], "pvalue": [1.0891035490519974e-56, -4.7510212073707103e-73], "conf_int": [[0.8800991043055217, 0.0], [1.1051956212532255, 0.0]]}
+}

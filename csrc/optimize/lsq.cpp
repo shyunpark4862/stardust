@@ -14,7 +14,7 @@
 //     infinite bounds this is scipy's trf_no_bounds (v = 1, dv = 0: the same steps).
 // Difference Jacobians (whose calls nfev counts): MINPACK's fdjac2 (nls), or scipy's
 // approx_derivative '2-point' and '3-point' with its steps and their adjustment to the bounds
-// (least_squares; diff.hpp).
+// (least_squares; differentiate/steps.hpp).
 // lmder comes in two builds of one source (O95, below): scipy's (least_squares and root), which
 // factors J (m x n) with MINPACK's own pivoted QR as scipy does, and nls's (also least_squares
 // with m >> n), for which the m x p
@@ -28,7 +28,7 @@
 // tenfold), trf sets Delta to a quarter of the step (scipy's rule).
 #include "optimize/lsq.hpp"
 
-#include "optimize/diff.hpp"
+#include "differentiate/steps.hpp"
 #include "optimize/minpack.hpp"
 
 #include "array/ndarray.hpp"
@@ -106,7 +106,7 @@ double dot(const vec& a, const vec& b) {
 
 // ---- the residual vector and its Jacobian (Python callbacks)
 
-// The difference Jacobians (diff.hpp)
+// The difference Jacobians (differentiate/steps.hpp)
 enum Diff : int {
     kFdjac2 = 0,      // MINPACK's fdjac2 (epsfcn = eps), turned back at a bound or a non-finite side
     kTwoPoint = 1,    // scipy's '2-point'
@@ -204,7 +204,7 @@ struct Model {
             const double t = x[j];
             double h = eps * std::abs(t);
             if (h == 0) h = eps;
-            if (lb) h = adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
+            if (lb) h = differentiate::adjust_one_sided(t, h, (*lb)[j], (*ub)[j]);
             bool ok = false;
             for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
                 if (attempt == 1) {
@@ -225,18 +225,18 @@ struct Model {
 
     double step(lint j, double t, double rstep) const {
         const bool has = rel_step != nullptr;
-        return absolute_step(t, rstep, has, has ? (*rel_step)[static_cast<std::size_t>(j)] : 0.0);
+        return differentiate::absolute_step(t, rstep, has, has ? (*rel_step)[static_cast<std::size_t>(j)] : 0.0);
     }
 
     // scipy's '2-point': (r(x + h e_j) - r(x)) / ((x_j + h) - x_j), h from absolute_step and
     // adjust_one_sided; a side where r is not finite is tried once from the other side when
     // that stays within the bounds.
     bool two_point(vec& x, const double* r, double* J, double* wa) {
-        const double rstep = rel_step_2point();
+        const double rstep = differentiate::rel_step_2point();
         for (lint j = 0; j < p; ++j) {
             const auto uj = static_cast<std::size_t>(j);
             const double t = x[uj];
-            double h = adjust_one_sided(t, step(j, t, rstep), (*lb)[uj], (*ub)[uj]);
+            double h = differentiate::adjust_one_sided(t, step(j, t, rstep), (*lb)[uj], (*ub)[uj]);
             bool ok = false;
             for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
                 if (attempt == 1) {
@@ -258,13 +258,13 @@ struct Model {
     // scipy's '3-point': (r(x + h e_j) - r(x - h e_j)) / ((x_j + h) - (x_j - h)), or at a
     // bound (-3 r(x) + 4 r(x + h e_j) - r(x + 2h e_j)) / ((x_j + 2h) - x_j) (adjust_two_sided).
     bool three_point(vec& x, const double* r, double* J, double* wa) {
-        const double rstep = rel_step_3point();
+        const double rstep = differentiate::rel_step_3point();
         wb.resize(static_cast<std::size_t>(m));
         for (lint j = 0; j < p; ++j) {
             const auto uj = static_cast<std::size_t>(j);
             const double t = x[uj];
             bool one_sided;
-            const double h = adjust_two_sided(t, step(j, t, rstep), (*lb)[uj], (*ub)[uj], one_sided);
+            const double h = differentiate::adjust_two_sided(t, step(j, t, rstep), (*lb)[uj], (*ub)[uj], one_sided);
             const double x1 = one_sided ? t + h : t - h, x2 = one_sided ? t + 2 * h : t + h;
             x[uj] = x1;
             bool ok = eval(x, wa);

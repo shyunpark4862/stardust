@@ -1,6 +1,6 @@
 # 수치 미적분 영역 설계 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1–C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2–C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -21,7 +21,7 @@
 |---|---|
 | C1 이름과 자리 | 최상위 모듈 둘: `sd.integrate`와 `sd.differentiate`다(scipy 1.15부터의 구조, 이름은 scipy와 1:1). 설계 문서 하나(이 문서)와 마일스톤 하나(C0, C1, …)가 둘을 함께 다룬다 (사용자 결정 2026-11-21) |
 | C2 첫 판의 범위 | 적분과 미분을 먼저 한다. integrate: `quad quad_vec dblquad tplquad nquad tanhsinh nsum cubature fixed_quad newton_cotes trapezoid simpson romb cumulative_trapezoid cumulative_simpson`. differentiate: `derivative jacobian hessian`. 상미분방정식(`solve_ivp odeint solve_bvp`와 풀이 클래스 RK45 등)은 나중의 마일스톤 묶음이다(§8에 적어만 둔다). 어느 쪽이든 넣지 않는 것: 옛 `ode`·`complex_ode`, `lebedev_rule`, `qmc_quad` (사용자 결정 2026-11-21) |
-| C3 차분 커널 옮기기 | 지금 `csrc/optimize/diff.hpp`에 있는 고정 간격 차분의 커널(`approx_fprime`, `check_grad`, `jac='2-point'`·`'3-point'`가 쓰는 scipy `approx_derivative`의 간격, O18–O31)을 differentiate 영역의 C++로 옮기고 optimize가 그것을 부른다(H17처럼: 함께 쓰는 커널은 그 본질에 가장 가까운 영역에 둔다). `approx_fprime`·`check_grad`는 scipy의 이름대로 `sd.optimize`에 공개된 채로 둔다. 값은 비트까지 같고 optimize의 골든은 바뀌지 않는다. 지금은 계획만 하고 코드는 옮기지 않는다 (사용자 결정 2026-11-21) |
+| C3 차분 커널 옮기기 | 커밋 1bc8c2b의 `csrc/optimize/diff.hpp`에 있던 고정 간격 차분의 커널(`approx_fprime`, `check_grad`, `jac='2-point'`·`'3-point'`가 쓰는 scipy `approx_derivative`의 간격, O18–O31)을 differentiate 영역의 C++로 옮기고 optimize가 그것을 부른다(H17처럼: 함께 쓰는 커널은 그 본질에 가장 가까운 영역에 둔다). `approx_fprime`·`check_grad`는 scipy의 이름대로 `sd.optimize`에 공개된 채로 둔다. 값은 비트까지 같고 optimize의 골든은 바뀌지 않는다. 지금은 계획만 하고 코드는 옮기지 않는다 (사용자 결정 2026-11-21) |
 | C4 원소별 반복 무리 | `derivative`, `tanhsinh`, `nsum`은 optimize의 `find_root find_minimum bracket_root bracket_minimum`(O2·O5의 배치)과 같은 scipy의 "원소별 반복" 무리다. optimize의 규칙을 쓴다: 결과 이름은 `converged`, `n_iter`, `nfev`(O4; scipy의 `success`·`nit`가 아니다), `args`는 이 무리에서만 받는다(O39), status 번호는 scipy의 것(O17), C++ 반복 고리 하나를 함께 쓴다(`csrc/optimize/batch.cpp`에서 끌어낼 계획) (사용자 결정 2026-11-21) |
 | C5 정확도 | optimize의 O9처럼: scipy와 같은 걸음을 목표로 하고, 결정적인 알고리즘(QUADPACK, tanh-sinh, `derivative`의 간격 줄이기)은 호출점까지 비트가 같게 하며 예외는 문서에 적는다. 따로, Arb의 엄밀한 적분(python-flint `acb.integral`)으로 만든 참값으로 결과와 오차 추정의 정직함을 확인한다 (사용자 결정 2026-11-21) |
 | C6 시험 문제 | QUADPACK 책의 시험 적분, scipy의 시험, Arb 참값이 있는 어려운 적분(끝점 특이점, 진동, 무한 구간)이다. netlib의 QUADPACK Fortran 원본을 받아 견줄지는 나중에 묻는다(C17로 정했다) (사용자 결정 2026-11-21) |
@@ -40,6 +40,10 @@
 | C19 double 끝의 참값 (C0 뒤) | 참값은 double로 낸 문제 그대로의 정확한 적분이다(상한 `math.pi / 2`는 π/2보다 6.1×10⁻¹⁷ 작다). 문제의 뜻인 정확한 π/2·π의 적분은 따로 두지 않고, 그 차이(f9 2×10⁻¹⁵, f10 1.6×10⁻⁸, cos(2^α sin x) 2.5×10⁻¹⁶)는 문서에 적는다(§7.2, §7.7) (추천안, 사용자 위임 2026-11-21) |
 | C20 `summary()` (C0 뒤) | `IntegrateResult`·`DifferentiateResult`도 `OptimizeResult`처럼 `summary()`가 있다(API.md §2.3의 상자: 값·오차·수렴·`nfev`의 머리, 배치는 줄마다). 결과를 내는 첫 함수가 공개될 때(C2·C4) 만든다 (추천안, 사용자 위임 2026-11-21) |
 | C21 풀기의 범위 (C0 뒤) | `(integral, error)`로 풀리는 것은 `quad` 계열(`quad dblquad tplquad nquad quad_vec`)의 결과뿐이다. `tanhsinh`, `nsum`, `cubature`와 공개 생성자로 만든 결과는 이름으로 읽는다(지금 구현) (추천안, 사용자 위임 2026-11-21) |
+| C22 고리의 속도 (C1 전) | 끌어낸 고리에서 optimize 배치의 속도가 1% 넘게 느려지면 그 부분을 되돌리고 그 자리만 템플릿으로 둔다. 잰 결과 느려지지 않아(§6.2) 되돌린 곳이 없다 (추천안, 사용자 위임 2026-11-21) |
+| C23 이름과 자리 (C1 전) | 차분 간격은 `csrc/differentiate/steps.hpp`(이름공간 `sd::differentiate`, 함수 이름은 그대로), 반복 고리는 `csrc/elementwise/loop.hpp`(이름공간 `sd::elementwise`; scipy `eim._loop`의 자리), Python의 5점 차분은 `src/stardust/differentiate/_differences.py`(`Differences`)다. 모두 헤더·내부 모듈이라 CMake와 공개 이름은 그대로다 (추천안, 사용자 위임 2026-11-21) |
+| C24 여러 점의 호출 꼴 (C1) | 고리의 `Call`은 원소마다 점 하나((k,), optimize)와 p개((k, p) C 순서, `args`는 (k, 1), 값 검사는 `check(value, (k, p))`)를 둘 다 받고, p는 호출마다 바뀔 수 있다. 점이 모자란 원소는 부르는 쪽이 NaN으로 채운다(scipy와 같다). 1차원으로 편 꼴(§9 C2.1 (b))도 같은 `Call`로 된다(점 k·p개, 원소의 번호를 p번 되풀이한 `idx`). 어느 꼴을 공개 계약으로 할지는 §9 C2.1에 남긴다 (추천안, 사용자 위임 2026-11-21) |
+| C25 R175·R176 (C1) | R175: `_differences.py`의 `_ROUNDING_TOL = 2⁻²⁶`과 `_forward`의 간격을 √u라 부른 주석을 √ε(= 2⁻²⁶, ε = 2u)로 고쳤다(값은 그대로). R176: `approx_fprime([1e-12], exp)`가 f를 61번 부르는 것은 간격 키우기(O104)가 4배씩 오르기 때문이다. 고치면 고른 간격과 값이 바뀌어 `approx_fprime`·nls의 골든이 바뀌므로 고치지 않고 잰 호출 수를 API 문서(docs/api/optimize.md §2)와 테스트에 적었다(§6.1) (추천안, 사용자 위임 2026-11-21) |
 
 - C5와 D-33(API.md §4, docs/design/optimize.md §3.7): 호출점의 비트 동일은 지금 맞추는 목표이고 약속이 아니다. 지키는 것은 다른 영역과 같다(스레드 수와 상관없는 비트, 자기 골든, Arb 계약). 반올림이 아닌 동작(멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서)은 scipy 그대로다. 호출점이 같다는 것은 사용자 함수를 부르는 점의 순서와 비트, 호출 수가 같다는 뜻이다.
 
@@ -86,7 +90,7 @@ scipy 1.18.1의 `dir(scipy.integrate)`와 `dir(scipy.differentiate)`에서 뽑�
 - 영역 간 일관성이 먼저다: 결과 필드의 이름(O4), 메시지의 꼴(`quad(): …`), 원소별 반복 무리의 호출 규약(O38), `args`(O39), 배열 결과의 읽기 전용 규칙(O103, API.md §2.2)은 optimize를 따른다.
 
 ### 1.4 다른 영역과의 관계
-- **optimize** (C3, C4): 차분 간격의 커널이 이 영역으로 오고(§6.1), 배치 고리가 세 영역이 함께 쓰는 자리로 간다(§6.2). optimize의 공개 함수와 결과는 비트까지 그대로다(골든 불변).
+- **optimize** (C3, C4): 차분 간격의 커널이 이 영역으로 왔고(§6.1), 배치 고리가 세 영역이 함께 쓰는 자리로 갔다(§6.2; 둘 다 C1). optimize의 공개 함수와 결과는 비트까지 그대로다(골든 불변).
   - 옮긴 뒤에도 `diff.hpp`의 간격 규칙을 쓰는 곳은 optimize뿐이다: `sd.differentiate.derivative`는 scipy처럼 다른 방법(중첩 스텐실의 고차 차분, §3.7)이라 `approx_derivative`의 간격을 쓰지 않는다. 옮기는 까닭은 H17의 원칙(함께 쓰는 커널은 그 본질의 영역에 둔다)이다.
 - **stats·special** (C7): 그대로 둔다. 지금 있는 전용 구적: `csrc/stats/mvcdf.hpp`(다변량 정규·t cdf의 적응 Gauss–Kronrod, QUADPACK의 QK21을 자기 사본으로), `csrc/stats/dist/noncentral.hpp`와 `csrc/special/ops/noncentral.hpp`(sinh 사상 위의 사다리꼴 규칙). 나중에 쓸 곳: 분포의 `expect`(scipy `rv_continuous.expect`는 `quad`), 사용자 정의 분포의 cdf·적률, 회귀의 적분 우도. 그때 QK21 표를 함께 쓸지 정한다.
 - **배열**: 표본 규칙(`trapezoid` 등)은 sd의 합 규칙(docs/api/array.md §7.8: 누산기 16개·512개 단위의 pairwise)을 쓴다(§3.6).
@@ -98,7 +102,7 @@ scipy 1.18.1의 `dir(scipy.integrate)`와 `dir(scipy.differentiate)`에서 뽑�
 ### 2.1 결과 객체 (C9, C10, C13)
 - 모듈마다 결과 클래스 하나(C9): `sd.integrate.IntegrateResult`, `sd.differentiate.DifferentiateResult`(optimize의 `OptimizeResult`와 같은 이름 짓기: 모듈 이름 + Result). 규칙은 `OptimizeResult`와 같다: 함수가 주는 필드만 있고 없는 필드는 `AttributeError`, 필드는 읽기 전용, 배열 필드는 읽기 전용이고 읽을 때 복사하지 않는다(O103), `repr`는 한 줄, dict처럼 쓰지 않는다. 바탕은 `src/stardust/optimize/_result.py`의 것을 끌어내 셋이 함께 쓴다(`OptimizeResult`의 동작은 그대로).
 - 이름(C4, O4): `converged`(scipy `success`), `n_iter`(scipy `nit`), `nfev`(scipy `quad`의 `neval`도), `status`, `message`(배치 빼고). 값의 필드(C13): 적분은 어디서나 `integral`, 급수는 `sum`, 오차 추정은 `error`, 미분은 `df`·`ddf`(scipy의 것).
-- C0에서 만든 것: 바탕은 `src/stardust/_results.py`의 `_FieldResult`다(필드 속성, 읽기 전용, `_Lazy`, 생성자 `_make`, 배치의 한 줄 `repr`). `OptimizeResult`는 그 위에 자기 `__init__`·`repr`·`summary()`를 그대로 두었고(Python의 호출 모양 에러가 클래스 이름을 대므로 `__init__`는 클래스마다 둔다), optimize의 테스트와 골든 3,876케이스가 그대로다. `IntegrateResult`·`DifferentiateResult`의 `repr`는 API.md §2.3의 꼴(`IntegrateResult(integral=0.746824, error=8.29e-15, converged=True, nfev=21)`)이다.
+- C0에서 만든 것: 바탕은 `src/stardust/_results.py`의 `_FieldResult`다(필드 속성, 읽기 전용, `_Lazy`, 생성자 `_make`, 배치의 한 줄 `repr`). `OptimizeResult`는 그 위에 자기 `__init__`·`repr`·`summary()`를 그대로 두었고(Python의 호출 모양 에러가 클래스 이름을 대므로 `__init__`는 클래스마다 둔다), optimize의 테스트와 골든 3,876케이스가 그대로다. 그 뒤 O120(2026-11-21)으로 `OptimizeResult`의 `repr`도 바탕의 한 줄 꼴(`one_line`)이 되었다. `IntegrateResult`·`DifferentiateResult`의 `repr`는 API.md §2.3의 꼴(`IntegrateResult(integral=0.746824, error=8.29e-15, converged=True, nfev=21)`)이다.
 - 둘로 풀리는 것(C10)은 결과를 만드는 함수가 정한다: `quad` 계열은 `IntegrateResult._make(…, unpack=True)`로 만들고, 그 결과만 `a, b = r`, `r[0]`, `len(r) == 2`가 된다. 다른 결과(`tanhsinh`, `nsum`, `cubature`, 공개 생성자로 만든 것)에서는 `TypeError`이고, `bool(r)`은 늘 참이다(C21). `summary()`는 C2·C4에서 만든다(C20).
 - `quad` 계열(`quad dblquad tplquad nquad quad_vec`)은 scipy가 튜플 `(y, abserr)`를 돌려준다. 여기서는 결과 객체이고(C10) `integral, error = sd.integrate.quad(f, 0, 1)`처럼 둘로 풀린다(htest H7의 규칙). `full_output`은 없고 scipy `infodict`의 값(`neval`, `last`, `alist`…)은 필드다(docs/api/integrate.md §1.3, §2).
 - 원소별 반복 무리의 결과는 필드마다 배치 모양이고, 입력이 모두 실수면 Python 수다(O48).
@@ -227,17 +231,32 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 
 ## 6. 층과 파일 (안)
 
-### 6.1 차분 간격 커널 옮기기 (C3)
-- 지금: `csrc/optimize/diff.hpp`(`rel_step_2point`, `rel_step_3point`, `absolute_step`, `adjust_one_sided`, `adjust_two_sided`)를 `csrc/optimize/lsq.cpp`(least_squares·nls의 야코비안), `csrc/optimize/objective.hpp`(minimize의 차분 기울기), `csrc/optimize/hessian.hpp`(차분 헤세 곱), `csrc/optimize/scalar.cpp`(차분 newton)가 쓴다.
-- 안: 이 헤더를 csrc 아래 새 `differentiate/` 폴더의 `steps.hpp`(이름공간 `sd::differentiate`)로 옮기고, 네 파일은 include와 이름만 바꾼다. 차분의 고리(호출 수 세기, 한쪽이 유한하지 않을 때 반대쪽 다시 해 보기, 기억)는 부르는 쪽마다 다르므로 그 자리에 둔다. 식과 계산 순서가 같아 비트가 그대로이고, optimize·regression(nls)의 골든이 바뀌지 않음을 확인한다(C1).
-- Python 쪽의 `src/stardust/optimize/_diff.py`의 `Differences`(nls의 정확한 5점 차분, `approx_fprime`의 기본)도 differentiate의 Python 내부(`_differences.py`)로 옮긴다(C15). `regression.nls`와 `approx_fprime`·`check_grad`가 그것을 부르고, `approx_fprime`·`check_grad`는 `sd.optimize`의 공개 이름 그대로다. nls·optimize의 결과는 바이트까지 같아야 한다.
-- ARCHITECTURE.md §1의 그림에 optimize/ ──▶ differentiate/가 생긴다(differentiate/는 array/·parallel/만 쓴다).
+### 6.1 차분 간격 커널 옮기기 (C3, C15; C1에서 했다)
+- 전: 커밋 1bc8c2b의 `csrc/optimize/diff.hpp`(`rel_step_2point`, `rel_step_3point`, `absolute_step`, `adjust_one_sided`, `adjust_two_sided`)를 `csrc/optimize/lsq.cpp`(least_squares·nls의 야코비안), `csrc/optimize/objective.hpp`(minimize의 차분 기울기), `csrc/optimize/hessian.hpp`(차분 헤세 곱), `csrc/optimize/scalar.cpp`(차분 newton)가 썼다.
+- C1: 이 헤더를 `csrc/differentiate/steps.hpp`(이름공간 `sd::differentiate`, C23)로 옮겼고, 네 파일은 include와 이름(`differentiate::absolute_step` 등)만 바뀌었다. 차분의 고리(호출 수 세기, 한쪽이 유한하지 않을 때 반대쪽 다시 해 보기, 기억)는 부르는 쪽마다 다르므로 그 자리에 두었다. 헤더뿐이라 CMake는 그대로다.
+- Python 쪽은 `src/stardust/optimize/_diff.py`의 `Differences`(nls의 정확한 5점 차분, `approx_fprime`의 기본)와 그 상수를 `src/stardust/differentiate/_differences.py`로 옮겼다(C15). `approx_fprime`·`check_grad`(`sd.optimize`의 공개 이름 그대로)와 값 검사·에러의 고리는 `_diff.py`에 남았고, `regression.nls`와 `_diff.py`가 `Differences`를 부른다. 공개 이름은 아니다(`sd.differentiate.__all__`은 그대로).
+- 확인: 식과 계산 순서가 같아 골든이 모든 영역에서 1·3·10스레드로 그대로다(optimize 3,876, regression 902케이스). optimize·regression·integrate·differentiate의 테스트(scipy와 비트까지 같은 걸음, O9)가 모두 지난다. `tests/differentiate/test_differences.py`가 커널이 하나인지와 R175·R176의 것(아래)을 본다.
+- R175(C25): `_ROUNDING_TOL = 2⁻²⁶`과 `_forward`의 간격을 √u라 부른 주석은 틀렸다. 같은 파일의 u = 2⁻⁵³이라 √u = 2^−26.5이고, 2⁻²⁶은 √ε(ε = 2⁻⁵² = 2u)다. 주석만 고쳤다(값은 그대로; docs/design/optimize.md의 O104 설명은 처음부터 √ε이다).
+- R176(C25): 잰 호출 수(f(x₀) 한 번을 넣어; exp): x = 0은 17, 10⁻³⁰⁰·10⁻¹⁰⁰·10⁻³⁰은 25, 10⁻¹²·10⁻⁸·10⁻⁶은 61, 10⁻⁵–10⁻²는 13, 1은 17번이다. 10⁻¹²에서 처음 간격 2⁻⁴⁷의 열은 반올림 한계가 열 크기의 0.023(√ε의 2²¹배)이라 간격을 2⁻²⁶으로 한 번에 키우고, 거기서 절단 오차가 반올림을 넘는 2⁻⁸ 근처까지 4배씩 아홉 번(호출 36번) 더 오른다. 0 근처에서 값이 작은 함수(sin, atan, tanh, log1p)는 열이 반올림 수준이 아니라 9–25번이다. 2의 거듭제곱을 더 크게 뛰거나 이분으로 찾으면 고른 간격이 달라져 값과 nls의 골든이 바뀌므로 고치지 않았다. 함수값이 기울기보다 훨씬 큰 x ≈ 0이 드문 경우이고 상한이 있다(간격 키우기는 2⁻⁷에서 멈춘다).
+  - 같이 본 것: 처음 간격이 반올림 한계 √ε 바로 아래인 x(exp의 10⁻⁵·10⁻⁴는 13번)는 간격을 키우지 않고 아래로만 찾아 상대오차가 5.1×10⁻⁹·2.6×10⁻¹⁰이다(10⁻¹²·10⁻⁶은 키워서 2×10⁻¹³, 10⁻²는 5.5×10⁻¹²; sin(x + 1)의 10⁻⁵는 4.3×10⁻⁹). cos의 10⁻⁹(기울기 −10⁻⁹)는 절대오차 10⁻⁹다. 문서(docs/api/optimize.md §2)의 "10⁻¹²·10⁻³⁰⁰에서도 0과 같은 정확도"는 그 점에서는 맞지만 그 사이의 10⁻⁵ 근처는 덮지 않는다. 바꾸면 골든이 바뀌므로 C1에서는 재기만 했다(따로 알린다).
+- ARCHITECTURE.md §1의 그림에 optimize/ ──▶ differentiate/를 더했다(differentiate/는 아무것도 include하지 않는 헤더 하나다).
 
-### 6.2 함께 쓰는 반복 고리 (C4)
-- 지금 `csrc/optimize/batch.cpp` 안에 있는 고리의 부품: `for_elements`(2¹⁵개부터 스레드에 나눔, GIL 놓기), `gather`(남은 원소의 `args` 모으기), `Call`(남은 원소의 점을 새 float64 `sd.ndarray`에 써서 사용자 함수를 한 번 부르고 값을 검사), `Progress`(진행 중인 원소의 목록과 멈춘 원소의 `status`·`n_iter`·`nfev`), `advance`(갱신·판정 뒤 남은 원소를 순서대로 줄이기). 원소의 상태는 알고리즘마다의 구조체다.
-- 안: 이 부품을 헤더 하나(scipy `_lib/_elementwise_iterative_method.py`에 해당)로 끌어내 optimize의 네 함수, `derivative`, `tanhsinh`, `nsum`이 함께 쓴다. 자리는 csrc 아래 새 바닥 폴더 `elementwise/`다(C16; 세 영역이 아래로만 의존한다. ARCHITECTURE.md §1의 그림에 optimize/·integrate/·differentiate/ ──▶ elementwise/ ──▶ array/·parallel/이 생긴다).
-- 넓힐 것: 원소마다 p개 점의 호출(`Call`이 (k, p)를 만들고 값 (k, p)를 검사), 수준마다 p가 바뀌는 호출(`tanhsinh`), 원소마다 다른 점 수(`nsum`의 직접 합은 원소마다 항 수가 다르다: scipy는 가장 큰 수로 맞추고 남는 자리를 NaN으로 채운다), 결과 필드의 모음. optimize 쪽은 p = 1이라 그대로의 비트다(골든 불변).
-- 끌어내기는 optimize의 코드를 바꾸는 일이라 C1에서 하고, optimize의 배치 테스트·골든·속도(`bench/optimize/speed.md`의 배치 사례)가 그대로인지 본다.
+### 6.2 함께 쓰는 반복 고리 (C4, C16; C1에서 했다)
+- 전: `csrc/optimize/batch.cpp` 안에 고리의 부품이 있었다: `for_elements`(2¹⁵개부터 스레드에 나눔, GIL 놓기), `gather`(남은 원소의 `args` 모으기), `Call`(남은 원소의 점을 새 float64 `sd.ndarray`에 써서 사용자 함수를 한 번 부르고 값을 검사), `Progress`(진행 중인 원소의 목록과 멈춘 원소의 `status`·`n_iter`·`nfev`), `advance`(갱신·판정 뒤 남은 원소를 순서대로 줄이기). 원소의 상태는 알고리즘마다의 구조체다.
+- C1: 이 부품을 `csrc/elementwise/loop.hpp`(이름공간 `sd::elementwise`, C23; scipy `_lib/_elementwise_iterative_method.py`의 `_loop`에 해당)로 끌어냈다. 함께 옮긴 것: scipy의 status 번호(`sConverged` 0, `sSignErr` −1, `sConvErr` −2, `sValueErr` −3, `sInputErr` −5, `sInProgress` 1; −4는 `callback`이 없어 두지 않았다), numpy의 `sign`·`minimum`·`maximum`(`npsign`·`npmin`·`npmax`), Python 층의 1차원 배열과 벡터를 오가는 `read`·`out`. `batch.cpp`에는 네 알고리즘과 그 자리의 뜻(−1의 `bracket_*` 한계, 2의 `bracket_root` 반대쪽)만 남았다. 헤더뿐이라 CMake는 그대로다. ARCHITECTURE.md §1의 그림에 optimize/ ──▶ elementwise/ ──▶ array/·parallel/을 더했다(integrate/·differentiate/의 화살표는 그 함수가 생길 때 더한다).
+- 넓힌 것(C24): `Call::start(k, p)`가 원소마다 p개 점의 호출((k, p) C 순서, `args`는 (k, 1))을 만들고 `put(r, j, x)`·`x(r, j)`·`value(r, j)`로 쓰고 읽는다. 돌아온 값이 float64 (k, p)가 아니면 `check(value, (k, p))`를 부른다((k,)는 지금처럼 `check(value, k)`). p는 호출마다 바뀔 수 있고(`tanhsinh`의 수준), 점이 모자란 원소의 칸은 부르는 쪽이 NaN으로 채운다(`nsum`; scipy와 같다). 1차원으로 편 꼴(§9 C2.1 (b))은 `start(k·p)`와 원소 번호를 p번 되풀이한 `idx`로 된다. optimize 쪽은 (k,)라 그대로다. 넓힌 길은 C2의 `derivative`가 처음 쓰고 시험한다.
+- 확인(C22): 기계어를 견주면 원소 패스(`advance`·`for_elements`의 람다)는 명령 수가 모두 같고, 네 함수의 바깥 몸통은 레지스터 배정이 달라 19–73개 줄었고, `Call::run`은 `gather`를 따로 둔 만큼 짧아졌다. 속도는 같은 소스(다른 작업의 C++ 변경도 함께인 같은 시점의 빌드 둘: 옮기기 전과 뒤)의 `bench/speed`의 optimize 배치 사례(사용자 함수가 sd 배열 연산인 x³ − 2x − c와 (x − c)² + 0.01·c·x⁴)를 한 프로세스에서 사례마다 0.6초씩 되풀이해 재고, 두 빌드를 번갈아 14번(1스레드)·6번(10스레드) 돌린 가운데값의 비(뒤/전)다. 기계가 바빴다(부하 1.9–6.6, 다른 작업 둘).
+
+| 사례 | 1스레드 전 (ms) | 뒤/전 | 10스레드 전 (ms) | 뒤/전 |
+|---|---|---|---|---|
+| `find_root` 10³ / 10⁴ | 0.135 / 1.169 | 0.997 / 1.003 | | |
+| `find_root` 10⁵ / 10⁶ | 12.26 / 123.0 | 1.001 / 1.004 | 3.92 / 31.6 | 0.999 / 0.983 |
+| `bracket_root` 10⁴ / 10⁶ | 0.645 / 63.6 | 1.004 / 1.002 | — / 29.3 | — / 0.989 |
+| `find_minimum` 10³ / 10⁴ | 0.248 / 2.000 | 0.994 / 0.997 | | |
+| `find_minimum` 10⁵ / 10⁶ | 19.25 / 191.7 | 0.995 / 0.992 | 6.46 / 55.3 | 0.998 / 1.004 |
+| `bracket_minimum` 10⁴ / 10⁶ | 0.562 / 53.8 | 1.003 / 0.999 | — / 23.6 | — / 1.006 |
+
+  - 모두 ±0.5% 안(10스레드 `find_root` 10⁶만 −1.7%)이라 느려진 곳이 없고 되돌린 곳도 없다. 사례마다의 가장 빠른 값의 비는 0.97–1.013으로 잡음이 더 크다. `bench.speed run optimize --match elementwise --smoke`도 12사례 모두 지났다(검사 0 실패). 기준선(`bench/speed/results/`)은 바꾸지 않았다.
 
 ### 6.3 이 영역의 파일
 - Python: `src/stardust/{integrate,differentiate}/`. integrate는 `_quadpack.py`(`quad`, `dblquad`, `tplquad`, `nquad`), `_quad_vec.py`, `_cubature.py`, `_tanhsinh.py`(`tanhsinh`, `nsum`), `_rules.py`(`fixed_quad`, `newton_cotes`, 표본 규칙), `_result.py`, `_common.py`. differentiate는 `_derivative.py`(`derivative`, `jacobian`, `hessian`), `_result.py`.
@@ -351,7 +370,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 | 마일스톤 | 내용 |
 |---|---|
 | C0 준비 (완료·승인(위임) 2026-11-21) | API 문서의 확정, 결과 객체의 바탕(`OptimizeResult`에서 끌어내기, 동작 불변), 모듈 `sd.integrate`·`sd.differentiate`(공개 이름은 결과 클래스뿐), 시험 모음(§7.1), Arb 참값 도구(§7.2), scipy 1.18.1 기록과 호출 순서(§7.3), QUADPACK 원본 대조(C17, §7.6), `bench/areas.py`와 측정·골든의 등록, scipy 시간(바쁜 기계라 점검 수준, §5) |
-| C1 함께 쓰는 부품 | C3·C15: `diff.hpp`와 `Differences`를 differentiate로 옮기기. C4·C16: `batch.cpp`에서 반복 고리를 csrc 아래 `elementwise/`로 끌어내 넓히기. 공개 함수 없음. optimize·regression의 테스트·골든·배치 속도가 그대로 |
+| C1 함께 쓰는 부품 (완료·승인(위임) 2026-11-21) | C3·C15: `diff.hpp`와 `Differences`를 differentiate로 옮기기. C4·C16: `batch.cpp`에서 반복 고리를 csrc 아래 `elementwise/`로 끌어내 넓히기. 공개 함수 없음. optimize·regression의 테스트·골든·배치 속도가 그대로(§6.1, §6.2; C22–C25) |
 | C2 미분 | `derivative`, `jacobian`, `hessian` |
 | C3 표본과 고정 규칙 | `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` |
 | C4 QUADPACK 1 | `quad`(QAGS, QAGI, QAGP), `dblquad`, `tplquad`, `nquad`. scipy의 C 판이 FMA로 축약한 누적의 자리를 호출 순서와 결과로 찾아 `std::fma`를 적는다(§7.6의 축약 탐침). `summary()`(C20) |
@@ -370,7 +389,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 추천을 첫째에 둔다.
 
 - **C0**: 모두 정했다(C8–C17; C0을 마치며 생긴 넷은 추천안으로 C18–C21, 사용자 위임 2026-11-21). `dgtsl`의 질문도 닫혔다: 원본을 받았다(C18, 사용자 승인 2026-11-21).
-- **C1**: 끌어낸 고리에서 optimize 배치의 속도가 1% 넘게 느려지면 되돌릴지(추천: 되돌리고 그 자리만 템플릿으로); `steps.hpp`의 이름과 이름공간.
+- **C1**: 정했다(C22–C25, 추천안, 사용자 위임 2026-11-21).
 - **C2**
   1. 원소마다 여러 점을 넘기는 꼴: (a) (k, p) 2차원(scipy의 꼴, `args`는 (k, 1)) / (b) 1차원 (k·p,)으로 펴고 `args`도 p번 되풀이(O38의 1차원 계약을 그대로).
   2. `jacobian`·`hessian`의 f: (a) (m, N)을 받아 (k, N)을 돌려준다(scipy 계약의 2차원 판, x는 1차원 (m,)만) / (b) scipy처럼 (m, …)의 모든 꼴.

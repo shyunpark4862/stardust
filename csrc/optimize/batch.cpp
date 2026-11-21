@@ -15,12 +15,14 @@
 // parameters) as array operations over the elements in progress, then compresses them. Each of
 // them is elementwise, so here one pass over the elements does the update, the tests, the
 // compression and the next step's parameters, and one more writes the points of the next call.
+// The loop's parts (the passes over the elements, the call, the bookkeeping) are the calculus
+// area's too: csrc/elementwise/loop.hpp (docs/design/integrate.md §6.2).
 #include "optimize/scalar.hpp"
 
 #include "array/ndarray.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
-#include "parallel/pool.hpp"
+#include "elementwise/loop.hpp"
 
 #include <nanobind/stl/string.h>
 
@@ -39,246 +41,13 @@ namespace nb = nanobind;
 
 namespace {
 
-using vec = std::vector<double>;
-using ivec = std::vector<std::int64_t>;
+// the loop's parts (for_elements, Call, Progress, advance, ...) and scipy's status codes
+using namespace sd::elementwise;
 
-constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
-
-enum Status : int {
-    sConverged = 0,
-    sSignErr = -1,  // find_*: the bracket does not enclose a root or minimum
-    sLimits = -1,   // bracket_*: a limit (xmin or xmax) reached
-    sConvErr = -2,
-    sValueErr = -3,
-    sInputErr = -5,
-    sInProgress = 1,
-    sOneSide = 2,  // bracket_root: the other side found the bracket
-};
-
-double npsign(double x) {
-    if (x > 0) return 1.0;
-    if (x < 0) return -1.0;
-    return x == 0 ? 0.0 : kNaN;
-}
-
-// numpy's minimum and maximum: NaN when either is.
-double npmin(double a, double b) {
-    if (std::isnan(a) || std::isnan(b)) return kNaN;
-    return a <= b ? a : b;
-}
-double npmax(double a, double b) {
-    if (std::isnan(a) || std::isnan(b)) return kNaN;
-    return a >= b ? a : b;
-}
-
-// A float64 1-D sd.ndarray argument (from the Python layer) as a vector.
-vec read(nb::handle o) {
-    const NDArray& a = as_ndarray(o);
-    vec v(static_cast<std::size_t>(a.shape[0]));
-    for (std::size_t i = 0; i < v.size(); ++i)
-        std::memcpy(&v[i], a.data + static_cast<std::int64_t>(i) * a.strides[0], sizeof(double));
-    return v;
-}
-
-nb::object out(const vec& v) {
-    const std::int64_t shape[1] = {static_cast<std::int64_t>(v.size())};
-    NDArray a = new_array(DType::Float64, shape);
-    if (!v.empty()) std::memcpy(a.data, v.data(), v.size() * sizeof(double));
-    return wrap(std::move(a));
-}
-
-nb::object out(const ivec& v) {
-    const std::int64_t shape[1] = {static_cast<std::int64_t>(v.size())};
-    NDArray a = new_array(DType::Int64, shape);
-    if (!v.empty()) std::memcpy(a.data, v.data(), v.size() * sizeof(std::int64_t));
-    return wrap(std::move(a));
-}
-
-// From this many elements in progress the passes over them (the next points, the arguments'
-// gathering, the updates) split over the threads, in tasks of kBatchTask elements: an element's
-// work is a few ns. Each element's arithmetic is the same on any thread, and the elements that go
-// on keep their order, so the results are the same for any thread count.
-constexpr std::size_t kBatchParallel = std::size_t{1} << 15;
-constexpr std::size_t kBatchTask = std::size_t{1} << 13;
-
-// fn(r0, r1) over [0, k) in pieces (no Python objects inside)
-template <class Fn>
-void for_elements(std::size_t k, Fn&& fn) {
-    if (k >= kBatchParallel && parallel::available()) {
-        const auto tasks = static_cast<std::int64_t>((k + kBatchTask - 1) / kBatchTask);
-        parallel::parallel_for(tasks, [&](std::int64_t t) {
-            const std::size_t r0 = static_cast<std::size_t>(t) * kBatchTask;
-            fn(r0, std::min(k, r0 + kBatchTask));
-        });
-    } else {
-        parallel::Unlocked u(k >= kBatchParallel);
-        fn(std::size_t{0}, k);
-    }
-}
-
-// dst[q] = src[e(q)] for q < k (items of isz bytes; src's stride st), e(q) = idx[q] mod n (idx[q]
-// < 2 n; q when idx is null). The values are copied as they are, so any split gives the same.
-void gather(
-    std::byte* dst,
-    const std::byte* src,
-    std::int64_t st,
-    std::int64_t isz,
-    const std::int64_t* idx,
-    std::int64_t n,
-    std::int64_t k
-) {
-    for_elements(static_cast<std::size_t>(k), [=](std::size_t q0, std::size_t q1) {
-        const auto b = static_cast<std::int64_t>(q0), c = static_cast<std::int64_t>(q1);
-        auto elem = [=](std::int64_t q) {
-            const std::int64_t e = idx ? idx[q] : q;
-            return e >= n ? e - n : e;
-        };
-        if (isz == 8) {
-            auto* out = reinterpret_cast<std::uint64_t*>(dst);
-            for (std::int64_t q = b; q < c; ++q) {
-                std::uint64_t v;
-                std::memcpy(&v, src + elem(q) * st, 8);
-                out[q] = v;
-            }
-        } else {
-            for (std::int64_t q = b; q < c; ++q)
-                std::memcpy(dst + q * isz, src + elem(q) * st, static_cast<std::size_t>(isz));
-        }
-    });
-}
-
-// One call of the user's function on k points. put(r, x) writes the r-th point (into a new
-// float64 sd.ndarray (k,) and a copy kept here: the function may change its argument), run(idx)
-// calls f(x, *args) with each of the user's args (1-D, one value per element, O39) gathered at
-// the elements idx[r] mod n (all of them when idx is null) into a new array, and value(r) is f's
-// r-th value. A returned value that is not a float64 sd.ndarray of shape (k,) goes through
-// check(value, k), which returns one or raises.
-class Call {
-public:
-    Call(nb::handle f, nb::handle check, nb::handle args, std::size_t n)
-        : f_(f), check_(check), n_(static_cast<std::int64_t>(n)) {
-        for (nb::handle a : nb::borrow<nb::tuple>(args)) args_.push_back(&as_ndarray(a));
-    }
-
-    void start(std::size_t k) {
-        k_ = static_cast<std::int64_t>(k);
-        x_.resize(k);
-        const std::int64_t shape[1] = {k_};
-        NDArray a = new_array(DType::Float64, shape);
-        buf_ = reinterpret_cast<double*>(a.data);
-        arr_ = wrap(std::move(a));
-    }
-    void put(std::size_t r, double x) {
-        x_[r] = x;
-        buf_[r] = x;
-    }
-    double x(std::size_t r) const { return x_[r]; }
-
-    void run(const std::int64_t* idx) {
-        if (k_ == 0) return;
-        nb::object r;
-        if (args_.empty()) {
-            r = f_(arr_);
-        } else {
-            nb::tuple call = nb::steal<nb::tuple>(PyTuple_New(static_cast<Py_ssize_t>(args_.size() + 1)));
-            PyTuple_SET_ITEM(call.ptr(), 0, arr_.release().ptr());
-            const std::int64_t shape[1] = {k_};
-            for (std::size_t j = 0; j < args_.size(); ++j) {
-                const NDArray& src = *args_[j];
-                NDArray a = new_array(src.dtype, shape);
-                // the element of q: idx[q] < 2 n (bracket_root's sides), so mod n is one subtraction
-                gather(a.data, src.data, src.strides[0], src.itemsize(), idx, n_, k_);
-                PyTuple_SET_ITEM(call.ptr(), static_cast<Py_ssize_t>(j + 1), wrap(std::move(a)).release().ptr());
-            }
-            PyObject* out = PyObject_Call(f_.ptr(), call.ptr(), nullptr);
-            if (!out) throw nb::python_error();
-            r = nb::steal(out);
-        }
-        arr_ = nb::object();
-        bool ok = false;
-        if (is_ndarray(r)) {
-            const NDArray& v = as_ndarray(r);
-            ok = v.dtype == DType::Float64 && v.ndim == 1 && v.shape[0] == k_;
-        }
-        if (!ok) r = check_(r, k_);
-        const NDArray& v = as_ndarray(r);
-        vp_ = v.data;
-        vs_ = v.strides[0];
-        res_ = std::move(r);
-    }
-    double value(std::size_t r) const {
-        double v;
-        std::memcpy(&v, vp_ + static_cast<std::int64_t>(r) * vs_, sizeof v);
-        return v;
-    }
-
-    // f at the points xs (all of them), into fx.
-    void all(const vec& xs, vec& fx) {
-        start(xs.size());
-        for (std::size_t r = 0; r < xs.size(); ++r) put(r, xs[r]);
-        run(nullptr);
-        fx.resize(xs.size());
-        for (std::size_t r = 0; r < xs.size(); ++r) fx[r] = value(r);
-    }
-
-private:
-    nb::handle f_, check_;
-    std::int64_t n_;
-    std::vector<const NDArray*> args_;
-    nb::object arr_, res_;
-    double* buf_ = nullptr;
-    vec x_;
-    const std::byte* vp_ = nullptr;
-    std::int64_t vs_ = 0, k_ = 0;
-};
-
-// The elements in progress (in order) and the bookkeeping of the ones that stopped.
-struct Progress {
-    std::vector<std::int64_t> active;
-    ivec status, nit, nfev;
-
-    explicit Progress(std::size_t n) : status(n, sInProgress), nit(n, 0), nfev(n, 0) {
-        active.resize(n);
-        for (std::size_t i = 0; i < n; ++i) active[i] = static_cast<std::int64_t>(i);
-    }
-
-    void stopped(std::size_t i, std::int64_t it, std::int64_t fev) {
-        nit[i] = it;
-        nfev[i] = fev;
-    }
-
-    // max_iter reached: the rest stop with -2.
-    void finish(std::int64_t it, std::int64_t fev) {
-        for (std::int64_t i : active) {
-            const auto u = static_cast<std::size_t>(i);
-            status[u] = sConvErr;
-            nit[u] = it;
-            nfev[u] = fev;
-        }
-        active.clear();
-    }
-};
-
-// The update of the elements in progress: goes_on(r) for the r-th of them (it updates the element
-// and records it when it stops), then the ones that go on stay in progress, in their order.
-template <class Fn>
-void advance(Progress& P, std::vector<std::uint32_t>& on, Fn&& goes_on) {
-    const std::size_t k = P.active.size();
-    std::size_t w = 0;
-    if (k >= kBatchParallel && parallel::available()) {
-        on.resize(k);
-        for_elements(k, [&](std::size_t r0, std::size_t r1) {
-            for (std::size_t r = r0; r < r1; ++r) on[r] = goes_on(r);
-        });
-        for (std::size_t r = 0; r < k; ++r)
-            if (on[r]) P.active[w++] = P.active[r];
-    } else {
-        parallel::Unlocked u(k >= kBatchParallel);
-        for (std::size_t r = 0; r < k; ++r)
-            if (goes_on(r)) P.active[w++] = P.active[r];
-    }
-    P.active.resize(w);
-}
+// the codes' meanings here besides scipy's (sSignErr: find_* where the bracket does not enclose a
+// root or minimum)
+constexpr int sLimits = -1;   // bracket_*: a limit (xmin or xmax) reached
+constexpr int sOneSide = 2;  // bracket_root: the other side found the bracket (internal)
 
 // ---- find_root: scipy's _chandrupatla
 

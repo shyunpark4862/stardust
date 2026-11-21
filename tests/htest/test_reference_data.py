@@ -273,6 +273,13 @@ SCIPY_KNOWN = {
     ("ttest_ind/offset", "pvalue"): 3.2e-7,
     ("ttest_1samp/constant", "statistic"): math.inf,
     ("ttest_1samp/constant", "pvalue"): math.inf,
+    # H7: the E-test's sums cut at [ppf(1e-10), ppf(1 - 1e-16)] (the observed counts of
+    # past-truncation beyond the range of X2), and its T of the grid and of the observed counts are
+    # different float expressions (an outcome as extreme as the observed one can drop out)
+    ("poisson_means_test/large", "pvalue"): 4.9e-9,
+    ("poisson_means_test/tail", "pvalue"): 2.1e-3,
+    ("poisson_means_test/deep-tail", "pvalue"): 0.41,
+    ("poisson_means_test/past-truncation", "pvalue"): 1.0,
     # H1's problems: the same offsets (Welch's t and ANOVA, Alexander-Govern), a - b rounded before
     # the paired test, the inf and 0 of zero variances (NaN here, user decision 3 and H11), and
     # the centres of levene and fligner rounded to a double: |x - c| of the two middle values of
@@ -499,6 +506,8 @@ R_KNOWN = {
     ("chi2_contingency/one-row", "pvalue"): 0.22,
     ("mcnemar/equal-chi2", "pvalue"): 0.29,
     ("mcnemar/zero-off-chi2", "pvalue"): math.inf,  # NA (0/0), NaN here (H11)
+    # H7: prop.test of a zero column (NA; NaN here, chi2_contingency's rule)
+    ("proportions_chisquare/zero-column", "pvalue"): math.inf,
 }
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
 R_SAME_STATISTIC = {
@@ -799,3 +808,26 @@ def test_odds_ratio_roots_are_their_equations():
     assert abs(float(sum(C[k] * lo**k for k in ks if k >= a) / tot) - 0.025) < 1e-14
     _, tot = moments(hi)
     assert abs(float(sum(C[k] * hi**k for k in ks if k <= a) / tot) - 0.025) < 1e-14
+
+
+def test_binomial_inversion_and_score_estimates():
+    """The H7 tool's own definitions against independent forms: the inverted binomial test's ends
+    reject just outside and accept just inside (scipy's two-sided rule in exact rationals), and the
+    score test's constrained estimate of a difference is the stationary point of the likelihood."""
+    T = tool()
+    for k, n in ((7, 30), (1, 50), (12, 12), (3, 7)):
+        inv = T._BinomInversion(k, n, Fraction(0.05))
+        lo, hi = inv.lower(), inv.upper()
+        al = Fraction(0.05)
+        if lo > 0:
+            assert T.binom_two_sided(k, n, lo * (1 - Fraction(1, 10**12))) <= al
+        for q in (lo + (hi - lo) * Fraction(i, 8) for i in range(1, 8)):
+            assert T.binom_two_sided(k, n, q) > al
+        if hi < 1:
+            assert T.binom_two_sided(k, n, hi * (1 + Fraction(1, 10**12))) <= al
+    from flint import arb
+
+    for c1, n1, c0, n0, v in ((15, 40, 25, 45, Fraction(1, 10)), (10, 30, 20, 40, Fraction(-1, 5))):
+        r = T._mn_diff_root(c1, n1, c0, n0, v)
+        dl = c1 / (r + T.A(v)) - (n1 - c1) / (1 - r - T.A(v)) + c0 / r - (n0 - c0) / (1 - r)
+        assert abs(dl) < arb(2) ** -40

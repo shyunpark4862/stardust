@@ -17,7 +17,7 @@
 // hess called again while one is held fills another holder (kept for reuse).
 #pragma once
 
-#include "optimize/diff.hpp"
+#include "differentiate/steps.hpp"
 #include "optimize/objective.hpp"
 
 #include "linalg/types.hpp"
@@ -165,13 +165,13 @@ struct Hessian {
         }
         const double norm = std::sqrt(np_dot(p, p, n));  // numpy's norm: sqrt(p . p)
         if (mode == kHessTwoPoint) {
-            const double dx = rel_step_2point() / norm;
+            const double dx = differentiate::rel_step_2point() / norm;
             for (std::size_t i = 0; i < n; ++i) xt[i] = hx[i] + dx * p[i];
             obj.raw_gradient(xt.data(), g1.data());
             for (std::size_t i = 0; i < n; ++i) out[i] = (g1[i] - hg[i]) / dx;
             return;
         }
-        const double dx = 2 * rel_step_3point() / norm;
+        const double dx = 2 * differentiate::rel_step_3point() / norm;
         for (std::size_t i = 0; i < n; ++i) xt[i] = hx[i] - (dx / 2) * p[i];
         obj.raw_gradient(xt.data(), g1.data());
         for (std::size_t i = 0; i < n; ++i) xt[i] = hx[i] + (dx / 2) * p[i];

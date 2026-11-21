@@ -6,7 +6,7 @@ R's base `stats` package (decision H15), and the `car` package's leveneTest for 
 H33; car is the regression area's comparison package, installed for G7a): t.test,
 oneway.test, bartlett.test, fligner.test, chisq.test, shapiro.test, ks.test, wilcox.test,
 kruskal.test, friedman.test, ansari.test, mood.test, cor.test (pearson, kendall, spearman), fisher.test, mcnemar.test,
-binom.test, prop.test, TukeyHSD, p.adjust, pchisq, car::leveneTest. A problem is run where R has
+binom.test, prop.test, poisson.test, TukeyHSD, p.adjust, pchisq, car::leveneTest. A problem is run where R has
 the same test with the same options; the others (Yuen's trim, alexandergovern, the Cressie-Read family,
 cramervonmises, anderson, brunnermunzel, median_test, page_trend_test, epps_singleton, batches,
 ...) are left out. Where R's definition differs from scipy's (ks.test's exact distribution with
@@ -15,7 +15,8 @@ exact; wilcox.test's exact switch at n < 50 and its zeros ranked as Pratt's, fis
 conditional MLE odds ratio (odds_ratio's conditional problems take fisher.test's estimate and
 interval, both found by R's uniroot to its default tolerance), mcnemar.test's continuity correction
 (none when b = c; statsmodels' (|b - c| - 1)^2 / (b + c) still subtracts 1), prop.test's one-sample
-variance), the record keeps R's own value; the
+variance (the null proportion's; statsmodels' z test takes the sample's), poisson.test's two rates (the
+conditional binomial test, not the E-test of poisson_means_test)), the record keeps R's own value; the
 comparison says which differ. wilcox.test's exact p-values with ties are conditional on the
 midranks, as sd's method='exact' (H45): the H3 problems with ties and method='exact' compare
 the two. cor.test's Kendall is called with exact as scipy's (and sd's) method (R's own default is
@@ -219,14 +220,32 @@ def r_call(p):
         return f"mcnemar.test({mat(t)}, correct = {c})"
     if f == "binomtest":
         return f"binom.test({a[0]}, {a[1]}, p = {kw.get('p', 0.5)!r}, alternative = '{alt(p)}')"
-    if f == "proportions_ztest" and np.ndim(a[0]) == 1:
-        return f"prop.test({vec(a[0])}, {vec(a[1])}, correct = FALSE)"
+    if f == "proportions_ztest" and np.ndim(a[0]) == 1 and "value" not in kw:
+        ra = {"two-sided": "two.sided", "larger": "greater", "smaller": "less"}[kw.get("alternative", "two-sided")]
+        return f"prop.test({vec(a[0])}, {vec(a[1])}, alternative = '{ra}', correct = FALSE)"
     if f == "proportions_chisquare":
+        k = np.size(a[0])
+        if "value" in kw:
+            nobs = vec(np.broadcast_to(np.asarray(a[1], dtype=float), (k,)))
+            return f"prop.test({vec(a[0])}, {nobs}, p = rep({kw['value']!r}, {k}), correct = FALSE)"
+        if k < 2:
+            return None
         return f"prop.test({vec(a[0])}, {vec(a[1])}, correct = FALSE)"
-    if f == "proportion_confint" and kw.get("method") in ("beta", "wilson"):
+    if f == "proportion_confint" and kw.get("method") in ("beta", "wilson", "wilsoncc"):
+        # statsmodels' one-sided 'larger' interval is [0, upper]: R's alternative = 'less' (H95)
+        ra = {"two-sided": "two.sided", "larger": "less", "smaller": "greater"}[kw.get("alternative", "two-sided")]
+        cl = 1 - kw.get("alpha", 0.05)
         if kw["method"] == "beta":
-            return f"binom.test({a[0]}, {a[1]})"
-        return f"prop.test({a[0]}, {a[1]}, correct = FALSE)"
+            return f"binom.test({a[0]}, {a[1]}, alternative = '{ra}', conf.level = {cl!r})"
+        cc = "TRUE" if kw["method"] == "wilsoncc" else "FALSE"
+        return f"prop.test({a[0]}, {a[1]}, alternative = '{ra}', conf.level = {cl!r}, correct = {cc})"
+    if f == "poisson_means_test":
+        # R's poisson.test of two rates is another test (the conditional binomial), recorded beside
+        ra = {"two-sided": "two.sided", "less": "less", "greater": "greater"}[kw.get("alternative", "two-sided")]
+        return (
+            f"local({{h <- poisson.test(c({a[0]}, {a[2]}), c({a[1]!r}, {a[3]!r}), alternative = '{ra}'); "
+            "list(conditional.p.value = h$p.value, conditional.estimate = h$estimate)})"
+        )
     if f == "tukey_hsd" and kw.get("equal_var", True):
         g = "factor(rep(seq_along(L), lengths(L)))"
         return f"local({{L <- {groups(a)}; T <- TukeyHSD(aov(unlist(L) ~ {g}), conf.level = 0.95)[[1]]; as.list(as.data.frame(T))}})"  # noqa: E501

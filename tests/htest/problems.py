@@ -756,6 +756,119 @@ def _h7():
             add(m, "confint_proportions_2indep", f"{comp}-{meth}", 15, 40, 25, 45, compare=comp, method=meth)
 
 
+def _h7_more():
+    """H7's own problems: the rule's edges (p n an integer, p of a rounded tenth, the point
+    masses), the deep tails (2^-999), ties at the quantile, the E-test past scipy's truncation,
+    the one-sided intervals (statsmodels' names: 'larger' is [0, upper]), the score tests away
+    from their default null, zero counts, near-null differences (cancellation) and batches."""
+    m = "H7"
+    for case, args, kw in (
+        ("n-1", (1, 1), {}),
+        ("mean", (5, 10), {}),
+        ("p-tenth", (1, 10), {"p": 0.1}),
+        ("deep-tail", (0, 1000), {}),
+        ("p-zero", (0, 10), {"p": 0.0}),
+        ("p-one", (7, 10), {"p": 1.0}),
+        ("less-tail", (2, 500), {"p": 0.3, "alternative": "less"}),
+        ("large-greater", (5100, 10000), {"alternative": "greater"}),
+        ("near-mode", (31, 100), {"p": 0.3}),
+        ("skew", (3, 40), {"p": 0.2}),
+        ("upper-side", (19, 40), {"p": 0.2}),
+    ):
+        add(m, "binomtest", case, *args, tags=("tail",) if "tail" in case else (), **kw)
+    xt = rounded(241, 40, step=0.5)
+    add(m, "quantile_test", "ties", xt, q=0.5, p=0.4, tags=("ties",))
+    add(m, "quantile_test", "less", xt, q=0.5, p=0.4, alternative="less", tags=("ties",))
+    add(m, "quantile_test", "greater", xt, q=0.5, p=0.4, alternative="greater", tags=("ties",))
+    add(m, "quantile_test", "outside", normal(242, 15), q=5.0, p=0.5)
+    add(m, "quantile_test", "large", normal(243, 2000), q=0.1, p=0.5, tags=("large",))
+    add(m, "quantile_test", "p-small", normal(244, 60), q=-1.0, p=0.1)
+    add(m, "quantile_test", "tail", normal(245, 500, 1.0), q=0.0, p=0.5, tags=("tail",))
+    add(m, "quantile_test", "batch", normal(246, (3, 25)), q=0.2, p=0.5, axis=-1, tags=("batch",))
+    for case, args, kw in (
+        ("diff", (30, 2.0, 10, 3.0), {"diff": 2.0}),
+        ("less", (10, 5.0, 20, 6.0), {"alternative": "less"}),
+        ("greater", (10, 5.0, 20, 6.0), {"alternative": "greater"}),
+        ("large", (1200, 10.0, 1100, 10.0), {}),
+        ("tail", (200, 1.0, 100, 1.0), {}),
+        ("deep-tail", (400, 1.0, 200, 1.0), {}),
+        ("null-zero", (0, 2.0, 0, 3.0), {}),
+        ("equal", (5, 1.0, 5, 1.0), {}),
+        ("non-integer", (7, 2.5, 3, 1.75), {}),
+        ("past-truncation", (15, 5.24, 34, 0.64), {"alternative": "less"}),
+        ("diff-greater", (40, 4.0, 5, 2.0), {"diff": 5.0, "alternative": "greater"}),
+    ):
+        tags = ("tail",) if "tail" in case or case == "past-truncation" else (("large",) if case == "large" else ())
+        add(m, "poisson_means_test", case, *args, tags=tags, **kw)
+    add(m, "proportions_ztest", "prop-var", 15, 40, value=0.5, prop_var=0.45)
+    add(m, "proportions_ztest", "value-two", np.array([15.0, 25]), np.array([40.0, 45]), value=-0.05)
+    add(m, "proportions_ztest", "larger", 30, 40, value=0.6, alternative="larger")
+    add(m, "proportions_ztest", "zero-var", 0, 30, value=0.5, tags=("degenerate",))
+    add(m, "proportions_ztest", "large", np.array([50000.0, 49000]), np.array([100000.0, 100000]), tags=("large",))
+    add(m, "proportions_ztest", "tail", np.array([900.0, 100]), np.array([1000.0, 1000]), tags=("tail",))
+    add(m, "proportions_ztest", "near-null", np.array([3001.0, 2000]), np.array([10000.0, 10000]), value=0.1001,
+        tags=("offset",))  # fmt: skip
+    add(m, "proportions_ztest", "batch", np.array([[15.0, 25], [3, 9], [40, 41]]), np.array([[40.0, 45], [20, 22],
+        [80, 80]]), tags=("batch",))  # fmt: skip
+    add(m, "proportions_chisquare", "three", np.array([15.0, 25, 9]), np.array([40.0, 45, 30]))
+    add(m, "proportions_chisquare", "value", np.array([15.0, 25]), np.array([40.0, 45]), value=0.4)
+    add(m, "proportions_chisquare", "value-one", 12, 40, value=0.5)
+    add(m, "proportions_chisquare", "zero-column", np.array([5.0, 7]), np.array([5.0, 7]), tags=("degenerate",))
+    add(m, "proportions_chisquare", "near-equal", np.array([100000.0, 100001]), np.array([200000.0, 200000]))
+    add(m, "proportions_chisquare", "tail", np.array([800.0, 200, 500]), np.array([1000.0, 1000, 1000]),
+        tags=("tail",))  # fmt: skip
+    add(m, "proportions_chisquare", "batch", np.array([[15.0, 25], [3, 9]]), np.array([[40.0, 45], [20, 22]]),
+        tags=("batch",))  # fmt: skip
+    for meth in ("normal", "agresti_coull", "beta", "wilson", "jeffreys", "binom_test"):
+        add(m, "proportion_confint", f"{meth}-full", 30, 30, method=meth)
+        add(m, "proportion_confint", f"{meth}-larger", 7, 30, method=meth, alternative="larger")
+        add(m, "proportion_confint", f"{meth}-smaller", 7, 30, method=meth, alternative="smaller")
+        add(m, "proportion_confint", f"{meth}-alpha", 7, 30, method=meth, alpha=0.1)
+        if meth != "binom_test":
+            add(m, "proportion_confint", f"{meth}-large", 30123, 100000, method=meth, tags=("large",))
+            add(m, "proportion_confint", f"{meth}-rare", 2, 100000, method=meth, tags=("tail",))
+    add(m, "proportion_confint", "binom_test-200", 61, 200, method="binom_test", tags=("large",))
+    add(m, "proportion_confint", "binom_test-one", 1, 50, method="binom_test")
+    for case, args in (("wilsoncc", (7, 30)), ("wilsoncc-zero", (0, 30)), ("wilsoncc-full", (30, 30)),
+                       ("wilsoncc-large", (30123, 100000))):  # fmt: skip
+        add(m, "proportion_confint", case, *args, method="wilsoncc")
+    add(m, "proportion_confint", "batch", np.array([0.0, 7, 30]), 30, method="wilson", tags=("batch",))
+    for comp, val in (("diff", 0.1), ("ratio", 1.5), ("odds-ratio", 2.0)):
+        add(
+            m, "test_proportions_2indep", f"{comp}-score-value", 15, 40, 25, 45, compare=comp, method="score", value=val
+        )
+        add(m, "test_proportions_2indep", f"{comp}-score-larger", 25, 40, 15, 45, compare=comp, method="score",
+            value=val, alternative="larger")  # fmt: skip
+        add(m, "test_proportions_2indep", f"{comp}-score-nocorr", 15, 40, 25, 45, compare=comp, method="score",
+            correction=False)  # fmt: skip
+        add(m, "test_proportions_2indep", f"{comp}-smaller", 15, 40, 25, 45, compare=comp, alternative="smaller")
+        add(m, "test_proportions_2indep", f"{comp}-zero", 0, 40, 25, 45, compare=comp, tags=("degenerate",))
+        add(m, "test_proportions_2indep", f"{comp}-large", 5200, 10000, 4800, 10000, compare=comp, tags=("large",))
+    add(m, "test_proportions_2indep", "diff-wald-value", 15, 40, 25, 45, method="wald", value=-0.2)
+    add(m, "test_proportions_2indep", "ratio-log-value", 15, 40, 25, 45, compare="ratio", method="log", value=0.5)
+    add(m, "test_proportions_2indep", "odds-ratio-smoothed-value", 15, 40, 25, 45, compare="odds-ratio",
+        method="logit-smoothed", value=0.5)  # fmt: skip
+    add(m, "test_proportions_2indep", "batch", np.array([15.0, 5, 30]), 40, np.array([25.0, 9, 30]), 45,
+        tags=("batch",))  # fmt: skip
+    for comp, meths in {
+        "diff": ("wald", "agresti-caffo", "newcomb", "score"),
+        "ratio": ("log", "log-adjusted", "score"),
+        "odds-ratio": ("logit", "logit-adjusted", "logit-smoothed", "score"),
+    }.items():
+        for meth in meths:
+            add(m, "confint_proportions_2indep", f"{comp}-{meth}-alpha", 15, 40, 25, 45, compare=comp, method=meth,
+                alpha=0.1)  # fmt: skip
+            add(m, "confint_proportions_2indep", f"{comp}-{meth}-zero", 0, 40, 25, 45, compare=comp, method=meth,
+                tags=("degenerate",))  # fmt: skip
+        add(m, "confint_proportions_2indep", f"{comp}-score-nocorr", 15, 40, 25, 45, compare=comp, method="score",
+            correction=False)  # fmt: skip
+        add(m, "confint_proportions_2indep", f"{comp}-large", 5200, 10000, 4800, 10000, compare=comp, tags=("large",))
+        add(m, "confint_proportions_2indep", f"{comp}-score-large", 5200, 10000, 4800, 10000, compare=comp,
+            method="score", tags=("large",))  # fmt: skip
+    add(m, "confint_proportions_2indep", "batch", np.array([15.0, 5, 30]), 40, np.array([25.0, 9, 30]), 45,
+        tags=("batch",))  # fmt: skip
+
+
 # ---- H8: multiple comparisons and corrections ---------------------------------------------
 
 PVALS = np.array(
@@ -785,7 +898,7 @@ def _h8():
         weights=np.array([1.0, 2.0, 0.5]))  # fmt: skip
 
 
-for _f in (_h1, _h2, _h3, _h4, _h5, _h6, _h7, _h8):
+for _f in (_h1, _h2, _h3, _h4, _h5, _h6, _h7, _h7_more, _h8):
     _f()
 del _f
 

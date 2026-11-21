@@ -12,7 +12,8 @@
  bind/ ─────┴───────┴──────────┴───────────┴────────────┴────────────┴───────────────┴────────────┴──  _core 확장 모듈 하나
                                                         │
                      regression/ ──▶ linalg/, special/, random/
-                     optimize/   ──▶ linalg/
+                     optimize/   ──▶ linalg/, differentiate/(차분의 간격), elementwise/(원소별 반복 고리)
+                     elementwise/ ──▶ array/, parallel/  (differentiate/의 steps는 표준 라이브러리만 쓴다)
                      stats/      ──▶ special/, random/
                      special/, linalg/, random/, frame/(interop만) ──▶ array/
                                                         │
@@ -71,8 +72,10 @@ stardust/
                   coeffs/   생성한 계수 표
     regression/   linear lsq slopes glm penalized robust quantile dot2
     random/       philox random
-    optimize/     scalar batch diff lsq minpack minimize objective wolfe hessian nelder_mead bfgs lbfgsb
+    optimize/     scalar batch lsq minpack minimize objective wolfe hessian nelder_mead bfgs lbfgsb
                   newton_cg trust root hybrd linear
+    differentiate/ steps(고정 간격 차분의 간격: optimize가 씀)
+    elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
                   nary_bind.hpp(원소별 함수의 공통 바인딩), pyutil, errors
 

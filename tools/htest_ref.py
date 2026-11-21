@@ -2883,50 +2883,936 @@ def relative_risk(p):
     return {"relative_risk": rr, "conf_int": [end(-1), end(1)]}
 
 
-@family("binomtest", ("binomtest",), seconds=300)
-def binomtest(p):
-    """The binomial test with p the double's exact rational q = A/D: the terms
-    C(n, j) A^j (D - A)^(n - j) are integers (streamed, not stored), the tails their sums over D^n;
-    two-sided by scipy's rule (the other side's terms at most (1 + 1e-7) pmf(k), as scipy's binary
-    search finds them)."""
-    k, n = int(p.args[0]), int(p.args[1])
-    q = fr(p.kwargs.get("p", 0.5))
-    alt = p.kwargs.get("alternative", "two-sided")
+# ---- H7: proportions and the binomial
+
+H7_TINY = Fraction(1, 2**130)  # the width the exact bisections below stop at (relative to 1)
+
+
+def _binom_terms(n, q):
+    """The integer terms C(n, j) A^j (D - A)^(n - j), j = 0..n, of q = A / D (streamed), and D^n."""
     a, D = q.numerator, q.denominator
     b = D - a
-    if a == 0 or b == 0:
-        raise NotSettled("p = 0 or 1: not a case of this family")
 
-    def weights():
+    def gen():
         c, ap, bp = 1, 1, b**n
         for j in range(n + 1):
             yield j, c * ap * bp
             if j < n:
                 c = c * (n - j) // (j + 1)
                 ap *= a
-                bp //= b
+                bp //= b if b else 1
 
-    total = D**n
-    if alt == "less":
-        s = sum(w for j, w in weights() if j <= k)
-    elif alt == "greater":
-        s = sum(w for j, w in weights() if j >= k)
-    elif k * D == a * n:
-        s = total
+    return gen, D**n
+
+
+def binom_tail(n, q, lo, hi):
+    """P(lo <= X <= hi) of Binomial(n, q) exactly (q a Fraction in [0, 1])."""
+    lo, hi = max(lo, 0), min(hi, n)
+    if lo > hi:
+        return Fraction(0)
+    if q == 0:
+        return Fraction(1 if lo == 0 else 0)
+    if q == 1:
+        return Fraction(1 if hi == n else 0)
+    gen, total = _binom_terms(n, q)
+    return Fraction(sum(w for j, w in gen() if lo <= j <= hi), total)
+
+
+def binom_two_sided(k, n, q):
+    """scipy's two-sided p-value of k at q (Fractions): the far side's terms at most (1 + 1e-7)
+    pmf(k) (its double as an exact rational), from ceil(q n) (k below q n) or up to floor(q n)."""
+    if q == 0:
+        return Fraction(1 if k == 0 else 0)
+    if q == 1:
+        return Fraction(1 if k == n else 0)
+    gen, total = _binom_terms(n, q)
+    w = dict(gen()) if n <= 20000 else None
+    if w is None:
+        raise NotSettled("n too large for the exact two-sided rule")
+    wk = w[k]
+    small = lambda j: w[j] * RERR.denominator <= wk * RERR.numerator  # noqa: E731
+    D = q.denominator
+    if k * D < q.numerator * n:
+        lo = -(-q.numerator * n // D)
+        s = sum(w[j] for j in range(n + 1) if j <= k or (j >= lo and small(j)))
     else:
-        wk = math.comb(n, k) * a**k * b ** (n - k)
-        num, den = RERR.numerator, RERR.denominator  # w_j <= w_k (1 + 1e-7), in integers
+        hi = q.numerator * n // D
+        s = sum(w[j] for j in range(n + 1) if j >= k or (j <= hi and small(j)))
+    return min(Fraction(1), Fraction(s, total))
 
-        def small(w):
-            return w * den <= wk * num
 
-        if k * D < a * n:  # k below the mean: its tail, and the far side's terms from ceil(pn) on
-            lo = -(-a * n // D)
-            s = sum(w for j, w in weights() if j <= k or (j >= lo and small(w)))
+@family("binomtest", ("binomtest",), seconds=300)
+def binomtest(p):
+    """The binomial test with p the double's exact rational q = A/D: the terms
+    C(n, j) A^j (D - A)^(n - j) are integers (streamed, not stored), the tails their sums over D^n;
+    two-sided by scipy's rule (the other side's terms at most (1 + 1e-7) pmf(k), as scipy's binary
+    search finds them). The intervals of conf_int (scipy's proportion_ci at alpha = 0.05, the
+    test's alternative): conf_int Clopper-Pearson's (certified roots of the beta tails),
+    conf_int_wilson and conf_int_wilsoncc the closed forms in Arb."""
+    k, n = int(p.args[0]), int(p.args[1])
+    q = fr(p.kwargs.get("p", 0.5))
+    alt = p.kwargs.get("alternative", "two-sided")
+    if alt == "less":
+        pv = binom_tail(n, q, 0, k)
+    elif alt == "greater":
+        pv = binom_tail(n, q, k, n)
+    elif q in (0, 1):
+        pv = binom_two_sided(k, n, q)
+    else:
+        a, D = q.numerator, q.denominator
+        gen, total = _binom_terms(n, q)
+        if k * D == a * n:
+            s = total
         else:
-            hi = a * n // D
-            s = sum(w for j, w in weights() if j >= k or (j <= hi and small(w)))
-    return {"statistic": Fraction(k, n), "pvalue": min(Fraction(1), Fraction(s, total))}
+            wk = math.comb(n, k) * a**k * (D - a) ** (n - k)
+            num, den = RERR.numerator, RERR.denominator  # w_j <= w_k (1 + 1e-7), in integers
+
+            def small(w):
+                return w * den <= wk * num
+
+            if k * D < a * n:  # k below the mean: its tail, and the far side's terms from ceil(pn) on
+                lo = -(-a * n // D)
+                s = sum(w for j, w in gen() if j <= k or (j >= lo and small(w)))
+            else:
+                hi = a * n // D
+                s = sum(w for j, w in gen() if j >= k or (j <= hi and small(w)))
+        pv = min(Fraction(1), Fraction(s, total))
+    out = {"statistic": Fraction(k, n), "pvalue": pv}
+    out["conf_int"] = _clopper_pearson(k, n, ALPHA, alt)
+    out["conf_int_wilson"] = _wilson(k, n, ALPHA, alt, False)
+    out["conf_int_wilsoncc"] = _wilson(k, n, ALPHA, alt, True, scipy_cc=True)
+    return out
+
+
+def _side_alpha(alpha, alt):
+    return alpha / 2 if alt == "two-sided" else alpha
+
+
+def _beta_root(a, b, t, lower, guess):
+    """The x with I_x(a, b) = t (lower) or I_{1-x}(b, a) = t (upper: the upper tail of Beta(a,
+    b) at x equal to t), certified (an arb point)."""
+    if lower:
+        g = lambda x: beta_reg(x, A(a), A(b)) - A(t)  # noqa: E731
+    else:
+        g = lambda x: A(t) - beta_reg(1 - x, A(b), A(a))  # noqa: E731
+
+    def dg(x):
+        x = A(x)
+        return (
+            (A(a) - 1) * x.log() + (A(b) - 1) * (1 - x).log() - (A(a).lgamma() + A(b).lgamma() - (A(a) + A(b)).lgamma())
+        ).exp()
+
+    return ar.solve_settled(g, dg, arb(guess), increasing=True)
+
+
+def _clopper_pearson(k, n, alpha, alt, beta_params=None):
+    """Clopper-Pearson's interval (or Jeffreys', beta_params the two Beta shapes of both ends):
+    the lower end the q with P(X >= k) = a (the Beta(k, n - k + 1) quantile), the upper with
+    P(X <= k) = a; a = alpha / 2 two-sided; 'less' [0, upper], 'greater' [lower, 1]."""
+    from scipy import stats as st
+
+    a = _side_alpha(alpha, alt)
+    if beta_params is None:
+        lo_ab = (k, n - k + 1) if k > 0 else None
+        hi_ab = (k + 1, n - k) if k < n else None
+    else:
+        lo_ab = hi_ab = beta_params
+    if alt == "less" or lo_ab is None:
+        lo = Fraction(0)
+    else:
+        x0 = float(st.beta.ppf(float(a), float(lo_ab[0]), float(lo_ab[1])))
+        lo = _beta_root(lo_ab[0], lo_ab[1], a, True, x0)
+    if alt == "greater" or hi_ab is None:
+        hi = Fraction(1)
+    else:
+        x0 = float(st.beta.isf(float(a), float(hi_ab[0]), float(hi_ab[1])))
+        hi = _beta_root(hi_ab[0], hi_ab[1], a, False, x0)
+    return [_fixed(lo), _fixed(hi)]
+
+
+def _fixed(v):
+    """A certified point (arb) or an exact value as a reference field."""
+    if isinstance(v, arb):
+        return lambda v=v: v
+    return v
+
+
+def _clip01(v):
+    """max(0, min(1, v)) of a ball, decided (NotSettled while it straddles an end)."""
+    if v > 1:
+        return arb(1)
+    if v < 0:
+        return arb(0)
+    if v >= 0 and v <= 1:
+        return v
+    if v.is_exact():
+        return v
+    raise NotSettled("clip: at an end")
+
+
+def _wilson(k, n, alpha, alt, cc, scipy_cc=False, clip=True):
+    """Wilson's interval (with the continuity correction, scipy's wilsoncc) in Arb: the roots of
+    (n + z^2) t^2 - (2x + z^2) t + x^2 / n = 0, x = k (or k -+ 1/2); 0 at k = 0 and 1 at k = n."""
+    a = _side_alpha(alpha, alt)
+
+    def end(lower):
+        def f():
+            z = norm_isf(a)
+            x = A(k - Fraction(1, 2) if lower else k + Fraction(1, 2)) if cc else A(k)
+            disc = z * z + 4 * x * (n - x) / n
+            c, d = 2 * x + z * z, z * disc.sqrt()
+            v = (c - d if lower else c + d) / (2 * (n + z * z))
+            return _clip01(v) if clip else v
+
+        return f
+
+    lo = Fraction(0) if (k == 0 or alt == "less") else end(True)
+    hi = Fraction(1) if (k == n or alt == "greater") else end(False)
+    return [lo, hi]
+
+
+# the inverted two-sided binomial test (statsmodels' 'binom_test' interval): exact bisections
+
+
+def _bisect(f, lo, hi, target_rel=Fraction(1, 2**118)):
+    """f(lo) True, f(hi) False (Fractions, either order of lo and hi): the boundary to 2^-118
+    of its size (and at least 2^-140 absolutely) as the Fraction pair (true side, false side)."""
+    while abs(hi - lo) > max(target_rel * max(abs(lo), abs(hi)), Fraction(1, 2**140)):
+        mid = (lo + hi) / 2
+        if f(mid):
+            lo = mid
+        else:
+            hi = mid
+    return lo, hi
+
+
+class _BinomInversion:
+    """The ends of statsmodels' 'binom_test' interval, exactly: lower = sup{q < k/n: p(q) <=
+    alpha}, upper = inf{q > k/n: p(q) <= alpha}, p scipy's two-sided p-value. Below k/n the far
+    side's last count j steps up at s_j = max(j/n, t_j), t_j the root of C(n, j)(1 - q)^(k - j)
+    = R C(n, k) q^(k - j) (R the double 1 + 1e-7); on each piece p_j = P(X >= k) + P(X <= j) is
+    decreasing then increasing (its derivative's sign changes once, at the root of C(n - 1, k -
+    1) q^(k - 1 - j) = C(n - 1, j)(1 - q)^(k - 1 - j)); the pieces from k/n out, the first holding a
+    rejection gives the end. Every decision is an exact rational comparison; the algebraic
+    points are bisected to 2^-118."""
+
+    def __init__(self, k, n, alpha):
+        self.k, self.n, self.alpha = k, n, Fraction(alpha)
+
+    def p(self, q, lo_count, hi_count):
+        """P(X <= lo_count) + P(X >= hi_count) at q."""
+        return binom_tail(self.n, q, 0, lo_count) + binom_tail(self.n, q, hi_count, self.n)
+
+    def lower(self):
+        k, n, al = self.k, self.n, self.alpha
+        if k == 0:
+            return Fraction(0)
+        R = RERR
+        b = Fraction(k, n)
+        for j in range(k - 1, -2, -1):
+            if j >= 0:
+                cj, ck, e = math.comb(n, j), math.comb(n, k), k - j
+                # t_j: h(q) = C(n, j)(1 - q)^e - R C(n, k) q^e <= 0 for q >= t_j
+                h = lambda q, cj=cj, ck=ck, e=e: cj * (1 - q) ** e - R * ck * q**e  # noqa: E731
+                t_lo, t_hi = _bisect(lambda q: h(q) > 0, Fraction(0), Fraction(1))
+                a = max(Fraction(j, n), (t_lo + t_hi) / 2)
+            else:
+                a = Fraction(0)
+            a = min(a, b)
+
+            def pv(q, j=j):
+                return self.p(q, j, k) if j >= 0 else binom_tail(n, q, k, n)
+
+            if pv(b) <= al:
+                return b
+            if j < k - 1:
+                if j >= 0:
+                    c1, c2, e = math.comb(n - 1, k - 1), math.comb(n - 1, j), k - 1 - j
+                    g = lambda q, c1=c1, c2=c2, e=e: c1 * q**e - c2 * (1 - q) ** e  # noqa: E731
+                    m_lo, m_hi = _bisect(lambda q: g(q) < 0, Fraction(0), Fraction(1))
+                    mm = min(max((m_lo + m_hi) / 2, a), b)
+                else:
+                    mm = a
+                if pv(mm) <= al:
+                    r_in, r_out = _bisect(lambda q: pv(q) <= al, mm, b)
+                    return (r_in + r_out) / 2
+            b = a
+            if b <= 0:
+                break
+        return Fraction(0)
+
+    def upper(self):
+        k, n, al = self.k, self.n, self.alpha
+        if k == n:
+            return Fraction(1)
+        R = RERR
+        a = Fraction(k, n)
+        for mo in range(k + 1, n + 2):
+            if mo <= n:
+                cm, ck, e = math.comb(n, mo), math.comb(n, k), mo - k
+                # t'_m: pmf(m) <= R pmf(k) for q <= t'_m: C(n, m) q^e <= R C(n, k)(1 - q)^e
+                h = lambda q, cm=cm, ck=ck, e=e: cm * q**e - R * ck * (1 - q) ** e  # noqa: E731
+                t_lo, t_hi = _bisect(lambda q: h(q) <= 0, Fraction(0), Fraction(1))
+                b = min(Fraction(mo, n), (t_lo + t_hi) / 2)
+            else:
+                b = Fraction(1)
+            b = max(b, a)
+
+            def pv(q, mo=mo):
+                return self.p(q, k, mo) if mo <= n else binom_tail(n, q, 0, k)
+
+            if pv(a) <= al:
+                return a
+            if mo > k + 1:
+                if mo <= n:
+                    c1, c2, e = math.comb(n - 1, mo - 1), math.comb(n - 1, k), mo - 1 - k
+                    g = lambda q, c1=c1, c2=c2, e=e: c1 * q**e - c2 * (1 - q) ** e  # noqa: E731
+                    m_lo, m_hi = _bisect(lambda q: g(q) < 0, Fraction(0), Fraction(1))
+                    mm = min(max((m_lo + m_hi) / 2, a), b)
+                else:
+                    mm = b
+                if pv(mm) <= al:
+                    r_in, r_out = _bisect(lambda q: pv(q) <= al, mm, a)
+                    return (r_in + r_out) / 2
+            a = b
+            if a >= 1:
+                break
+        return Fraction(1)
+
+
+def _confint_one(k, n, alpha, method, alt):
+    """[lower, upper] of proportion_confint (H85, H95: 'less' [0, upper], 'greater' [lower, 1])."""
+    a = _side_alpha(alpha, alt)
+    if n == 0:
+        return [NAN, NAN]
+    if method == "binom_test" and alt == "two-sided":
+        inv = _BinomInversion(k, n, alpha)
+        return [inv.lower(), inv.upper()]
+    if method in ("exact", "binom_test"):
+        return _clopper_pearson(k, n, alpha, alt)
+    if method == "jeffreys":
+        return _clopper_pearson(k, n, alpha, alt, beta_params=(k + Fraction(1, 2), n - k + Fraction(1, 2)))
+    if method == "wilson":
+        return _wilson(k, n, alpha, alt, False)
+    if method == "wilsoncc":
+        return _wilson(k, n, alpha, alt, True, clip=False)
+    q = Fraction(k, n)
+
+    def end(lower):
+        def f():
+            z = norm_isf(a)
+            if method == "normal":
+                c, half = A(q), z * A(q * (1 - q) / n).sqrt()
+            else:  # agresti_coull
+                nc = n + z * z
+                c = (k + z * z / 2) / nc
+                half = z * (c * (1 - c) / nc).sqrt()
+            return _clip01(c - half if lower else c + half)
+
+        return f
+
+    lo = Fraction(0) if alt == "less" else end(True)
+    hi = Fraction(1) if alt == "greater" else end(False)
+    return [lo, hi]
+
+
+SM_ALT = {"larger": "greater", "smaller": "less"}  # statsmodels' test alternatives as scipy's
+CI_ALT = {"larger": "less", "smaller": "greater"}  # proportion_confint's one-sided intervals (H95)
+
+
+@family("proportion_confint", ("proportion_confint",), seconds=300)
+def proportion_confint(p):
+    """statsmodels' proportion_confint with scipy's method names (H85: 'beta' is 'exact') and the
+    one-sided intervals' directions (H95): normal and Agresti-Coull in Arb (clipped to [0, 1]),
+    Clopper-Pearson and Jeffreys as certified beta quantiles, Wilson's closed forms, the inverted
+    binomial test exactly (rational bisections)."""
+    k, n = int(p.args[0]), int(p.args[1])
+    method = {"beta": "exact"}.get(p.kwargs.get("method", "normal"), p.kwargs.get("method", "normal"))
+    alt = CI_ALT.get(p.kwargs.get("alternative", "two-sided"), "two-sided")
+    alpha = fr(p.kwargs.get("alpha", 0.05))
+    return {"conf_int": _confint_one(k, n, alpha, method, alt)}
+
+
+@family("quantile_test", ("quantile_test",))
+def quantile_test(p):
+    """scipy's quantile test exactly: T1 = #(x <= q), T2 = #(x < q), the binomial tails of
+    Binomial(n, p) with p the double's rational; the interval's order statistics from the exact
+    quantiles ppf(a) = min{k: cdf(k) >= a} and isf(a) = min{k: sf(k) <= a} (a = alpha / 2 or
+    alpha), ends NaN past the sample and -inf or inf on a one-sided test's open side."""
+    x = sorted(fvec(p.args[0]))
+    q, pp = fr(p.kwargs.get("q", 0.0)), fr(p.kwargs.get("p", 0.5))
+    alt = p.kwargs.get("alternative", "two-sided")
+    n = len(x)
+    T1, T2 = sum(v <= q for v in x), sum(v < q for v in x)
+    lo_p, up_p = binom_tail(n, pp, 0, T1), binom_tail(n, pp, T2, n)
+    if alt == "less":
+        out = {"statistic": Fraction(T2), "statistic_type": Fraction(2), "pvalue": up_p}
+    elif alt == "greater":
+        out = {"statistic": Fraction(T1), "statistic_type": Fraction(1), "pvalue": lo_p}
+    else:
+        two = lo_p > up_p
+        out = {
+            "statistic": Fraction(T2 if two else T1),
+            "statistic_type": Fraction(2 if two else 1),
+            "pvalue": min(Fraction(1), 2 * min(lo_p, up_p)),
+        }
+    a = _side_alpha(ALPHA, alt)
+    gen, total = _binom_terms(n, pp)
+    cdf, run = [], 0
+    for _j, w in gen():
+        run += w
+        cdf.append(Fraction(run, total))
+    ppf = next(j for j in range(n + 1) if cdf[j] >= a)
+    isf = next(j for j in range(n + 1) if 1 - cdf[j] <= a)
+    lo = -math.inf if alt == "less" else (float(x[ppf - 1]) if ppf - 1 >= 0 else NAN)
+    hi = math.inf if alt == "greater" else (float(x[isf]) if isf < n else NAN)
+    out["conf_int"] = [lo, hi]
+    return out
+
+
+def _e_compare(D, V, c_sign, c2):
+    """T = D / sqrt(V) against c (its sign and square): -1, 0 or 1 (exact). V = 0: T = -inf for D
+    < 0; None (undefined) for D = 0."""
+    if V == 0:
+        return None if D == 0 else -1
+    s = sign(D)
+    if s != c_sign:
+        return (s > c_sign) - (s < c_sign)
+    t2 = D * D / V
+    if s >= 0:
+        return (t2 > c2) - (t2 < c2)
+    return (t2 < c2) - (t2 > c2)
+
+
+@family("poisson_means_test", ("poisson_means_test",), seconds=600)
+def poisson_means_test(p):
+    """The E-test (scipy's poisson_means_test) summed over every outcome: lambda2 = (k1 + k2 -
+    diff n1) / (n1 + n2) exact (<= 0: (0, 1)), T(x1, x2) = (x1/n1 - x2/n2 - diff) / sqrt(x1/n1^2 +
+    x2/n2^2) compared with the observed one exactly (squares of rationals), and the p-value
+    sum_x2 pmf(x2) (P(X1 >= a(x2)) + P(X1 <= b(x2))) of the Poisson laws in Arb, the x2 sum cut
+    where its rest (a Poisson tail, added to the ball) is below 2^-120 of it."""
+    k1, n1, k2, n2 = int(p.args[0]), fr(p.args[1]), int(p.args[2]), fr(p.args[3])
+    diff = fr(p.kwargs.get("diff", 0))
+    alt = p.kwargs.get("alternative", "two-sided")
+    lam2 = (k1 + k2 - diff * n1) / (n1 + n2)
+    if lam2 <= 0:
+        return {"statistic": Fraction(0), "pvalue": Fraction(1)}
+    mu1, mu2 = n1 * (lam2 + diff), n2 * lam2
+
+    def DV(x1, x2):
+        return Fraction(x1) / n1 - Fraction(x2) / n2 - diff, Fraction(x1) / n1**2 + Fraction(x2) / n2**2
+
+    Do, Vo = DV(k1, k2)
+    stat = lambda: sign(Do) * (A(Do * Do / Vo)).sqrt()  # noqa: E731
+    if alt == "two-sided" and Do == 0:
+        p00 = Fraction(0) if diff > 0 else None
+        pv = (lambda: 1 - (-(A(mu1) + A(mu2))).exp()) if p00 is None else Fraction(1)
+        return {"statistic": Fraction(0), "pvalue": pv}
+    cs, c2 = (1 if alt == "two-sided" else sign(Do)), Do * Do / Vo
+    if alt == "two-sided":
+        cs = 1 if Do != 0 else 0
+
+    def up_ok(x1, x2):  # T >= c (c = T_obs, or |T_obs| two-sided)
+        r = _e_compare(*DV(x1, x2), cs, c2)
+        return r is not None and r >= 0
+
+    def low_ok(x1, x2):  # T <= c ('less') or T <= -|T_obs| (two-sided)
+        s_, cc = (sign(Do), c2) if alt == "less" else (-1, c2)
+        r = _e_compare(*DV(x1, x2), s_, cc)
+        return r is not None and r <= 0
+
+    def first_up(x2):
+        hi = 1
+        while not up_ok(hi, x2):
+            hi *= 2
+            if hi > 2**40:
+                return None
+        lo = -1
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            if mid >= 0 and up_ok(mid, x2):
+                hi = mid
+            else:
+                lo = mid
+        return hi
+
+    def last_low(x2):  # the largest x1 in the lower region, from s0 (1 where T(0, 0) is undefined)
+        s0 = 1 if (x2 == 0 and diff == 0) else 0
+        if not low_ok(s0, x2):
+            return -1
+        lo, hi = s0, s0 + 1
+        while low_ok(hi, x2):
+            lo, hi = hi, hi * 2
+        while hi - lo > 1:
+            mid = (lo + hi) // 2
+            if low_ok(mid, x2):
+                lo = mid
+            else:
+                hi = mid
+        return lo
+
+    X = int(math.ceil(float(mu2) + 12 * math.sqrt(float(mu2)) + 30))
+    regions = {}
+
+    def region(x2):
+        if x2 not in regions:
+            a = first_up(x2) if alt != "less" else None
+            b = last_low(x2) if alt != "greater" else -1
+            regions[x2] = (a, b)
+        return regions[x2]
+
+    def pmfs(m, top):
+        """Poisson(m)'s pmf at 0..top by the recursion, and the bound on its mass above top."""
+        out = [(-m).exp()]
+        for x in range(top):
+            out.append(out[-1] * m / (x + 1))
+        r = m / (top + 2)
+        if not r < 1:
+            raise NotSettled("pmf range")
+        return out, out[-1] * m / (top + 1) / (1 - r)
+
+    def total(Xmax):
+        """The sum over x2 <= Xmax as a ball (the X1 tails past their range in the radius) and the
+        bound on the x2 > Xmax rest."""
+        for x2 in range(Xmax + 1):
+            region(x2)
+        ends = [v for ab in regions.values() for v in ab if v is not None and v >= 0]
+        X1 = max([int(math.ceil(float(mu1) + 12 * math.sqrt(float(mu1)) + 30))] + [e + 1 for e in ends])
+        p1, rest1 = pmfs(A(mu1), X1)
+        p2, rest2 = pmfs(A(mu2), Xmax)
+        suffix = [arb(0)] * (X1 + 2)
+        for x in range(X1, -1, -1):
+            suffix[x] = suffix[x + 1] + p1[x]
+        prefix, run = [], arb(0)
+        for x in range(X1 + 1):
+            run = run + p1[x]
+            prefix.append(run)
+        tail1 = arb(0, rest1.upper())
+        s = arb(0)
+        for x2 in range(Xmax + 1):
+            a, b = regions[x2]
+            t = arb(0)
+            if a is not None:
+                t += (suffix[a] + tail1) if a <= X1 else tail1
+            if b >= 0:
+                t += prefix[min(b, X1)] + (tail1 if b > X1 else 0) - (p1[0] if (x2 == 0 and diff == 0) else 0)
+            s += p2[x2] * t
+        return s, rest2
+
+    while True:
+        with ar.precision(128):
+            s, rest = total(X)
+        if rest.upper() <= s.lower() * arb(2) ** -120:
+            break
+        X = 2 * X
+        if X > 10**6:
+            raise NotSettled("E-test: the x2 range")
+
+    def pv(Xmax=X):
+        s, rest = total(Xmax)
+        return ar.add_error(s, rest)
+
+    return {"statistic": stat, "pvalue": pv}
+
+
+@family("proportions_ztest", ("proportions_ztest",))
+def proportions_ztest(p):
+    """statsmodels' z test exactly: the difference and the variance as rationals (count / nobs,
+    the pooled proportion or prop_var), z = D / sqrt(V) and the normal tail in Arb; a zero
+    variance NaN (H24)."""
+    c = [fr(v) for v in np.atleast_1d(np.asarray(p.args[0], dtype=float))]
+    nn = np.atleast_1d(np.asarray(p.args[1], dtype=float))
+    nn = [fr(v) for v in (np.broadcast_to(nn, (len(c),)))]
+    alt = SM_ALT.get(p.kwargs.get("alternative", "two-sided"), p.kwargs.get("alternative", "two-sided"))
+    value = p.kwargs.get("value")
+    pv_ = p.kwargs.get("prop_var")
+    if len(c) == 1:
+        D = c[0] / nn[0] - fr(value)
+        pp = fr(pv_) if pv_ else c[0] / nn[0]
+        V = pp * (1 - pp) / nn[0]
+    else:
+        D = c[0] / nn[0] - c[1] / nn[1] - (fr(value) if value is not None else 0)
+        pp = fr(pv_) if pv_ else (c[0] + c[1]) / (nn[0] + nn[1])
+        V = pp * (1 - pp) * (1 / nn[0] + 1 / nn[1])
+    if V == 0:
+        return {"statistic": NAN, "pvalue": NAN, "kappa": NAN}
+    z = lambda: sign(D) * A(D * D / V).sqrt()  # noqa: E731
+    return {"statistic": z, "pvalue": lambda: norm_p(z(), alt), "kappa": kappa(lambda s: norm_p(s, alt), z)}
+
+
+@family("proportions_chisquare", ("proportions_chisquare",))
+def proportions_chisquare(p):
+    """statsmodels' chi^2 test of proportions exactly: the k x 2 table (count, nobs - count);
+    without a value Pearson's statistic against R_i C_j / N (df = k - 1; df = 0 gives 0 and 1, a
+    zero margin NaN), with one sum (c - n v)^2 / (n v (1 - v)) (df = k); the chi^2 tail in Arb."""
+    c = [fr(v) for v in np.atleast_1d(np.asarray(p.args[0], dtype=float))]
+    nn = np.broadcast_to(np.atleast_1d(np.asarray(p.args[1], dtype=float)), (len(c),))
+    nn = [fr(v) for v in nn]
+    k = len(c)
+    value = p.kwargs.get("value")
+    if value is None:
+        t = [[ci, ni - ci] for ci, ni in zip(c, nn)]
+        rows = [sum(r) for r in t]
+        cols = [sum(col) for col in zip(*t)]
+        N = sum(rows)
+        E = [[r * cc / N for cc in cols] for r in rows]
+        df = k - 1
+        out = {"df": Fraction(df), "expected_freq": [[float(e) for e in r] for r in E]}
+        if any(e == 0 for r in E for e in r):
+            out.update(statistic=NAN, pvalue=NAN, kappa=NAN)
+            return out
+        if df == 0:
+            out.update(statistic=Fraction(0), pvalue=Fraction(1), kappa=NAN)
+            return out
+        S = sum((o - e) ** 2 / e for ro, re in zip(t, E) for o, e in zip(ro, re))
+    else:
+        v = fr(value)
+        df = k
+        out = {"df": Fraction(df), "expected_freq": [[float(ni * v), float(ni * (1 - v))] for ni in nn]}
+        S = sum((ci - ni * v) ** 2 / (ni * v * (1 - v)) for ci, ni in zip(c, nn))
+    out.update(statistic=S, pvalue=lambda: chi2_sf(S, df), kappa=kappa(chi2_p_arb, S, (df,)))
+    return out
+
+
+# two independent proportions
+
+SCORE_EPS = (Fraction(1e-10), Fraction(1 - 1e-10))  # statsmodels' clip of the odds ratio's estimates
+
+
+def _mn_diff_root(c1, n1, c0, n0, v):
+    """The Miettinen-Nurminen constrained p0 at the difference v (rational), the maximum of the
+    concave log likelihood on the feasible (max(0, -v), min(1, 1 - v)): the root of N x^3 + L2 x^2
+    + L1 x + L0 inside it (an arb ball from flint's roots; unique), else the end the derivative
+    points to (exact). Where statsmodels' trigonometric form gives a value it is this root."""
+    from flint import fmpq_poly
+
+    N, C = n1 + n0, c1 + c0
+    L2 = (n1 + 2 * n0) * v - N - C
+    L1 = (n0 * v - N - 2 * c0) * v + C  # (statsmodels 0.15.0 has c0 v for n0 v here: H98)
+    L0 = c0 * v * (1 - v)
+    poly = fmpq_poly(
+        [fmpq(r.numerator, r.denominator) for r in (Fraction(L0), Fraction(L1), Fraction(L2), Fraction(N))]
+    )
+    lo, hi = max(Fraction(0), -v), min(Fraction(1), 1 - v)
+    roots = [r.real for r, _m in poly.complex_roots() if r.imag.contains(0)]
+    inside = [r for r in roots if r > A(lo) and r < A(hi)]
+    if len(inside) == 1:
+        return inside[0]
+    if inside:
+        raise NotSettled(f"{len(inside)} feasible roots")
+
+    def dl(x):  # the log likelihood's derivative in p0 (exact)
+        x1 = x + v
+        t = Fraction(0)
+        if c1:
+            t += c1 / x1
+        if n1 - c1:
+            t -= (n1 - c1) / (1 - x1)
+        if c0:
+            t += c0 / x
+        if n0 - c0:
+            t -= (n0 - c0) / (1 - x)
+        return t
+
+    eps = Fraction(1, 2**200)
+    if dl(lo + eps) <= 0:  # no root inside: the estimate is the end the derivative points to
+        return A(lo)
+    if dl(hi - eps) >= 0:
+        return A(hi)
+    raise NotSettled("no feasible root")
+
+
+def _score_z(c1, n1, c0, n0, compare, v, corr):
+    """(z, var, p1, p0) of the score test at the null value v (Fractions in, arb balls out)."""
+    N, C = n1 + n0, c1 + c0
+    pooled = (compare == "diff" and v == 0) or (compare != "diff" and v == 1)
+    if pooled:
+        p0 = p1 = A(Fraction(C, N))
+    if compare == "diff":
+        if not pooled:
+            p0 = _mn_diff_root(c1, n1, c0, n0, v)
+            p1 = p0 + A(v)
+        var = p1 * (1 - p1) / n1 + p0 * (1 - p0) / n0
+        D = A(Fraction(c1, n1) - Fraction(c0, n0) - v)
+    elif compare == "ratio":
+        if not pooled:
+            a, b, c = N * v, -(n1 * v + c1 + n0 + c0 * v), Fraction(C)
+            p0 = (-A(b) - A(b * b - 4 * a * c).sqrt()) / (2 * A(a))
+            p1 = p0 * A(v)
+        var = p1 * (1 - p1) / n1 + A(v) ** 2 * p0 * (1 - p0) / n0
+        D = A(Fraction(c1, n1) - v * Fraction(c0, n0))
+    else:
+        if not pooled:
+            a, b, c = n0 * (v - 1), n1 * v + n0 - C * (v - 1), Fraction(-C)
+            p0 = (-A(b) + A(b * b - 4 * a * c).sqrt()) / (2 * A(a))
+            p1 = p0 * A(v) / (1 + p0 * A(v - 1))
+
+        def clip(x):
+            lo, hi = A(SCORE_EPS[0]), A(SCORE_EPS[1])
+            if x < lo:
+                return lo
+            if x > hi:
+                return hi
+            if x > lo and x < hi:
+                return x
+            raise NotSettled("score clip: at an end")
+
+        p0, p1 = clip(p0), clip(p1)
+        q1, q0 = p1 * (1 - p1), p0 * (1 - p0)
+        var = 1 / (q1 * n1) + 1 / (q0 * n0)
+        D = (A(Fraction(c1, n1)) - p1) / q1 - (A(Fraction(c0, n0)) - p0) / q0
+    if corr:
+        var = var * N / (N - 1)
+    return D / var.sqrt(), var, p1, p0
+
+
+def _wald_type(c1, n1, c2, n2, compare, method, v):
+    """(D, V) of the Wald-type statistics, exact where they are rational (D an arb function
+    otherwise); None for an undefined (zero-count) statistic."""
+    if compare == "diff":
+        a = 1 if method == "agresti-caffo" else 0
+        p1, p2 = Fraction(c1 + a, n1 + 2 * a), Fraction(c2 + a, n2 + 2 * a)
+        return p1 - p2 - v, p1 * (1 - p1) / (n1 + 2 * a) + p2 * (1 - p2) / (n2 + 2 * a)
+    if compare == "ratio":
+        h = Fraction(1, 2) if method == "log-adjusted" else 0
+        s1, m1, s2, m2 = c1 + h, n1 + h, c2 + h, n2 + h
+        if s1 == 0 or s2 == 0:
+            return None
+        r = s1 * m2 / (m1 * s2)
+        return (lambda: A(r / v).log()), (n1 - c1) / (s1 * m1) + (n2 - c2) / (s2 * m2)
+    s1, f1, s2, f2 = _logit_counts(c1, n1, c2, n2, method)
+    if 0 in (s1, f1, s2, f2):
+        return None
+    r = s1 * f2 / (f1 * s2)
+    return (lambda: A(r / v).log()), 1 / s1 + 1 / f1 + 1 / s2 + 1 / f2
+
+
+def _logit_counts(c1, n1, c2, n2, method):
+    if method == "logit-smoothed":  # statsmodels' _shrink_prob: twice the independence table
+        N, C = n1 + n2, c1 + c2
+        return (c1 + Fraction(2 * n1 * C, N * N), n1 - c1 + Fraction(2 * n1 * (N - C), N * N),
+                c2 + Fraction(2 * n2 * C, N * N), n2 - c2 + Fraction(2 * n2 * (N - C), N * N))  # fmt: skip
+    h = Fraction(1, 2) if method == "logit-adjusted" else 0
+    return c1 + h, n1 - c1 + h, c2 + h, n2 - c2 + h
+
+
+TEST_DEFAULT = {"diff": "agresti-caffo", "ratio": "log-adjusted", "odds-ratio": "logit-adjusted"}
+CI_DEFAULT = {"diff": "newcomb", "ratio": "log-adjusted", "odds-ratio": "logit-adjusted"}
+
+
+def _frac_or_ieee(num, den):
+    if den == 0:
+        return NAN if num == 0 else math.inf
+    return Fraction(num, den)
+
+
+@family("test_proportions_2indep", ("test_proportions_2indep",), seconds=300)
+def test_proportions_2indep(p):
+    """statsmodels' tests of two independent proportions: the Wald-type statistics from exact
+    rationals (the logs of the ratios in Arb), the score tests with the constrained estimates
+    exact (the diff's cubic root by flint, the quadratics' in Arb, the odds ratio's clipped to
+    [1e-10, 1 - 1e-10]); the normal tails in Arb; the sample diff, ratio and odds ratio exact."""
+    c1, n1, c2, n2 = (int(a) for a in p.args)
+    compare = p.kwargs.get("compare", "diff")
+    method = p.kwargs.get("method") or TEST_DEFAULT[compare]
+    alt = SM_ALT.get(p.kwargs.get("alternative", "two-sided"), p.kwargs.get("alternative", "two-sided"))
+    corr = p.kwargs.get("correction", True)
+    value = p.kwargs.get("value")
+    v = fr(value) if value is not None else Fraction(0 if compare == "diff" else 1)
+    out = {
+        "diff": Fraction(c1 * n2 - c2 * n1, n1 * n2),
+        "ratio": _frac_or_ieee(c1 * n2, n1 * c2),
+        "odds_ratio": _frac_or_ieee(c1 * (n2 - c2), (n1 - c1) * c2),
+    }
+    if method == "score":
+
+        def parts():
+            return _score_z(c1, n1, c2, n2, compare, v, corr)
+
+        out.update(
+            statistic=lambda: parts()[0],
+            variance=lambda: parts()[1],
+            prop1_null=lambda: parts()[2],
+            prop2_null=lambda: parts()[3],
+            pvalue=lambda: norm_p(parts()[0], alt),
+            kappa=kappa(lambda s: norm_p(s, alt), lambda: parts()[0]),
+        )
+        return out
+    w = _wald_type(c1, n1, c2, n2, compare, method, v)
+    if w is None:
+        out.update(statistic=NAN, pvalue=NAN, variance=math.inf, kappa=NAN)
+        return out
+    D, V = w
+    out["variance"] = V
+    if V == 0:
+        out.update(statistic=NAN, pvalue=NAN, kappa=NAN)
+        return out
+    if callable(D):
+        z = lambda: D() / A(V).sqrt()  # noqa: E731
+    else:
+        z = lambda: sign(D) * A(D * D / V).sqrt()  # noqa: E731
+    out.update(statistic=z, pvalue=lambda: norm_p(z(), alt), kappa=kappa(lambda s: norm_p(s, alt), z))
+    return out
+
+
+def _score_end(c1, n1, c2, n2, compare, alpha, corr, guess, lower):
+    """An end of the score test inverted: z(v) = z_{alpha/2} (lower) or -z_{alpha/2} (upper), z
+    decreasing in v; bisection on rationals from a 1e-8 bracket about the guess (statsmodels'
+    value) to 2^-118, each sign certain in Arb; a point."""
+    a = alpha / 2
+
+    def g(v):  # increasing in v across the root
+        def f():
+            z = _score_z(c1, n1, c2, n2, compare, v, corr)[0]
+            zc = norm_isf(a)
+            return (zc - z) if lower else (-zc - z)
+
+        return ar.sign(f) > 0
+
+    x = Fraction(guess)
+    lo, hi = (
+        x - abs(x) * Fraction(1, 10**8) - Fraction(1, 10**14),
+        x + abs(x) * Fraction(1, 10**8) + Fraction(1, 10**14),
+    )
+    if g(lo) or not g(hi):
+        raise NotSettled("score end not bracketed")
+    t, f = _bisect(lambda v: not g(v), lo, hi)
+    return (t + f) / 2
+
+
+def _koopman(c1, n1, c2, n2, alpha, corr):
+    """Koopman's interval of the ratio (statsmodels' _confint_riskratio_koopman): the cubic's
+    two smallest roots (numpy's starts, bisected in Arb with the coefficient's ball), mapped by
+    Nam's equation 5."""
+    x0, x1, n0, n1_, x, n = c2, c1, n2, n1, c1 + c2, n1 + n2
+
+    def coeffs():
+        z = norm_isf(alpha / 2) ** 2
+        if corr:
+            z = z * n / (n - 1)
+        return (
+            n0 * (n0 * n * x1 + n1_ * (n0 + x1) * z),
+            -n0 * (n0 * n1_ * x + 2 * n * x0 * x1 + n1_ * (n0 + x0 + 2 * x1) * z),
+            2 * n0 * n1_ * x0 * x + n * x0 * x0 * x1 + n0 * n1_ * x * z,
+            arb(-n1_ * x0 * x0 * x),
+        )
+
+    with ar.precision(128):
+        cs = [float(cc.mid()) for cc in coeffs()]
+    starts = sorted(np.roots(cs).real)
+
+    def root(r0):
+        if cs[3] == 0 and abs(r0) < 1e-6:
+            return Fraction(0)
+
+        def poly_sign(t):
+            def f():
+                a1, a2, a3, a4 = coeffs()
+                tt = A(t)
+                return ((a1 * tt + a2) * tt + a3) * tt + a4
+
+            return ar.sign(f)
+
+        lo, hi = Fraction(r0) * (1 - Fraction(1, 10**7)), Fraction(r0) * (1 + Fraction(1, 10**7))
+        slo, shi = poly_sign(lo), poly_sign(hi)
+        if slo == shi or 0 in (slo, shi):
+            raise NotSettled("Koopman root not bracketed")
+        t, f = _bisect(lambda t: poly_sign(t) == slo, lo, hi)
+        return (t + f) / 2
+
+    r1, r2 = root(starts[0]), root(starts[1])
+    if x1 == 0 and x0 != n0:  # p0 = x0 / n0 is then a root and maps to the ratio 0 exactly
+        return [Fraction(0), _koopman_g(r1, x0, x1, n1_, n)]
+
+    return [_koopman_g(r2, x0, x1, n1_, n), _koopman_g(r1, x0, x1, n1_, n)]
+
+
+def _koopman_g(pr, x0, x1, n1, n):
+    """Nam's equation 5: the ratio of the root p0 (a Fraction), at least 0."""
+    num = 1 - (n1 - x1) * (1 - pr) / (x0 + n1 - n * pr)
+    if pr == 0:
+        return math.inf if num > 0 else NAN
+    return max(Fraction(0), num / pr)
+
+
+@family("confint_proportions_2indep", ("confint_proportions_2indep",), seconds=600)
+def confint_proportions_2indep(p):
+    """statsmodels' intervals of two independent proportions: Wald-type ends in Arb, Newcombe's
+    from Wilson's closed forms, the score tests inverted by certified bisections, Koopman's ratio
+    interval from its cubic's roots; zero counts by IEEE's rules on the log's ends (statsmodels')."""
+    import stardust as sd
+
+    c1, n1, c2, n2 = (int(a) for a in p.args)
+    compare = p.kwargs.get("compare", "diff")
+    method = p.kwargs.get("method") or CI_DEFAULT[compare]
+    alpha = fr(p.kwargs.get("alpha", 0.05))
+    corr = p.kwargs.get("correction", True)
+    a = alpha / 2
+    if method == "score":
+        if compare == "ratio":
+            return {"conf_int": _koopman(c1, n1, c2, n2, alpha, corr)}
+        if compare == "diff":
+            param, lo_end, hi_end = Fraction(c1, n1) - Fraction(c2, n2), Fraction(-1), Fraction(1)
+        else:
+            param = _frac_or_ieee(c1 * (n2 - c2), (n1 - c1) * c2)
+            lo_end, hi_end = Fraction(0), math.inf
+        # (the starts: sd's ends; each end is then bracketed and bisected in Arb on its own)
+        g_lo, g_hi = sd.htest.confint_proportions_2indep(c1, n1, c2, n2, method="score", compare=compare,
+                                                         alpha=float(alpha), correction=corr).tolist()  # fmt: skip
+        ends = []
+        for lower, guess, end in ((True, g_lo, lo_end), (False, g_hi, hi_end)):
+            if (lower and param == lo_end) or (not lower and param == hi_end):
+                ends.append(float(end) if end != math.inf else end)
+                continue
+            if guess is None or not math.isfinite(guess):
+                raise NotSettled("score interval: no start")
+            ends.append(_score_end(c1, n1, c2, n2, compare, alpha, corr, guess, lower))
+        return {"conf_int": ends}
+    if compare == "diff" and method == "newcomb":
+        w1, w2 = _wilson(c1, n1, alpha, "two-sided", False), _wilson(c2, n2, alpha, "two-sided", False)
+
+        def val(x):
+            return A(x) if not callable(x) else x()
+
+        def end(lower):
+            def f():
+                p1, p2 = A(Fraction(c1, n1)), A(Fraction(c2, n2))
+                l1, u1, l2, u2 = val(w1[0]), val(w1[1]), val(w2[0]), val(w2[1])
+                if lower:
+                    return p1 - p2 - ((p1 - l1) ** 2 + (u2 - p2) ** 2).sqrt()
+                return p1 - p2 + ((p2 - l2) ** 2 + (u1 - p1) ** 2).sqrt()
+
+            return f
+
+        return {"conf_int": [end(True), end(False)]}
+    if compare == "diff":
+        aa = 1 if method == "agresti-caffo" else 0
+        q1, q2 = Fraction(c1 + aa, n1 + 2 * aa), Fraction(c2 + aa, n2 + 2 * aa)
+        D, V = q1 - q2, q1 * (1 - q1) / (n1 + 2 * aa) + q2 * (1 - q2) / (n2 + 2 * aa)
+
+        def end(sg):
+            return lambda: A(D) + sg * norm_isf(a) * A(V).sqrt()
+
+        return {"conf_int": [end(-1), end(1)]}
+    if compare == "ratio":
+        h = Fraction(1, 2) if method == "log-adjusted" else 0
+        s1, m1, s2, m2 = c1 + h, n1 + h, c2 + h, n2 + h
+        r = _frac_or_ieee(s1 * m2, m1 * s2) if (m1 * s2) else _frac_or_ieee(s1 * m2, 0)
+        V = None if (s1 == 0 or s2 == 0) else (n1 - c1) / (s1 * m1) + (n2 - c2) / (s2 * m2)
+    else:
+        s1, f1, s2, f2 = _logit_counts(c1, n1, c2, n2, method)
+        r = _frac_or_ieee(s1 * f2, f1 * s2)
+        V = None if 0 in (s1, f1, s2, f2) else 1 / s1 + 1 / f1 + 1 / s2 + 1 / f2
+    if V is None:  # exp(log r -+ inf): IEEE's ends
+        lr = -math.inf if r == 0 else (math.inf if r == math.inf else 0.0)
+        lo = math.exp(lr - math.inf) if not (lr == math.inf) else NAN
+        hi = math.exp(lr + math.inf) if not (lr == -math.inf) else NAN
+        return {"conf_int": [lo, hi]}
+
+    def end(sg):
+        return lambda: A(r) * (sg * norm_isf(a) * A(V).sqrt()).exp()
+
+    return {"conf_int": [end(-1), end(1)]}
 
 
 @family("combine_pvalues", ("combine_pvalues",), lambda p: p.kwargs.get("method", "fisher") != "mudholkar_george")

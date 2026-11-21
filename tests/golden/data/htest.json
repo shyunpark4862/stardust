@@ -1318,7 +1318,7 @@
 "0x1.ab01259407596p+0"
 ]
 },
-"summary()": "                  Bartlett test of homogeneity of variances\n==============================================================================\nBatch shape:                      (4,)  No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             3.443      0.064          1\n[1]             0.069      0.792          1\n[2]             5.129      0.024          1\n[3]             1.668      0.197          1\n=============================================================================="
+"summary()": "                  Bartlett test of homogeneity of variances\n==============================================================================\nDf:                                  1  Batch shape:                      (4,)\n                                        No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             3.443      0.064\n[1]             0.069      0.792\n[2]             5.129      0.024\n[3]             1.668      0.197\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.BartlettResult"
 }
@@ -1338,6 +1338,1125 @@
 "summary()": "                  Bartlett test of homogeneity of variances\n==============================================================================\nStatistic:                         nan  No. Observations:                12, 8\nP-value:                           nan\nDf:                                  1\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.BartlettResult"
+}
+},
+"binomtest (0, 10) {'p': 0.0}": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.3be6aa73f7f9cp-2"
+]
+},
+"k": 0,
+"n": 10,
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                       0.000  Alternative:                 two-sided\nP-value:                          1.00  No. Observations:                   10\n                                        Null Proportion:                     0\n                                        No. Successes:                       0\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.000      0.308\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest (0, 1000) {}": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.e29e3bd619e49p-9"
+]
+},
+"k": 0,
+"n": 1000,
+"pvalue": {
+"f": "0x1.0000000000000p-999"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                       0.000  Alternative:                 two-sided\nP-value:                     1.87e-301  No. Observations:                 1000\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       0\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.000      0.004\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest (1, 10) {'p': 0.1}": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4b6d044ec2e42p-9",
+"0x1.c7b24e1350e77p-2"
+]
+},
+"k": 1,
+"n": 10,
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x1.999999999999ap-4"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.1000  Alternative:                 two-sided\nP-value:                          1.00  No. Observations:                   10\n                                        Null Proportion:                   0.1\n                                        No. Successes:                       1\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.003      0.445\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest (5, 10) {}": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.7f26f5adc2c51p-3",
+"0x1.a03642948f4ecp-1"
+]
+},
+"k": 5,
+"n": 10,
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x1.0000000000000p-1"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.5000  Alternative:                 two-sided\nP-value:                          1.00  No. Observations:                   10\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       5\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.187      0.813\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest (50300, 100000) {}": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.ffe4bec6a0434p-2",
+"0x1.0320095d5ad5dp-1"
+]
+},
+"k": 50300,
+"n": 100000,
+"pvalue": {
+"f": "0x1.dcc0b20a4e338p-5"
+},
+"statistic": {
+"f": "0x1.0189374bc6a7fp-1"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.5030  Alternative:                 two-sided\nP-value:                        0.0582  No. Observations:               100000\n                                        Null Proportion:                   0.5\n                                        No. Successes:                   50300\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.500      0.506\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest (7, 10) {'p': 1.0}": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.63e3666b3dc48p-2",
+"0x1.ddd4519c47fd4p-1"
+]
+},
+"k": 7,
+"n": 10,
+"pvalue": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "0x1.6666666666666p-1"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.7000  Alternative:                 two-sided\nP-value:                          0.00  No. Observations:                   10\n                                        Null Proportion:                     1\n                                        No. Successes:                       7\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.348      0.933\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 0 10 0.5 greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+]
+},
+"k": 0,
+"n": 10,
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                       0.000  Alternative:                   greater\nP-value:                          1.00  No. Observations:                   10\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       0\n==============================================================================\n                [0.050     1.000]\n------------------------------------------------------------------------------\nproportion       0.000      1.000\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 0 10 0.5 greater conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 0 10 0.5 greater conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 0 10 0.5 less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.09140d0c96342p-2"
+]
+},
+"k": 0,
+"n": 10,
+"pvalue": {
+"f": "0x1.0000000000000p-10"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                       0.000  Alternative:                      less\nP-value:                      0.000977  No. Observations:                   10\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       0\n==============================================================================\n                [0.000     0.950]\n------------------------------------------------------------------------------\nproportion       0.000      0.259\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 0 10 0.5 less conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.b41aeb6ba1e18p-3"
+]
+}
+},
+"binomtest 0 10 0.5 less conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.239232a0c8807p-2"
+]
+}
+},
+"binomtest 0 10 0.5 two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.3be6aa73f7f9cp-2"
+]
+},
+"k": 0,
+"n": 10,
+"pvalue": {
+"f": "0x1.0000000000000p-9"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                       0.000  Alternative:                 two-sided\nP-value:                       0.00195  No. Observations:                   10\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       0\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.000      0.308\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 0 10 0.5 two-sided conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.1c318eebe9e78p-2"
+]
+}
+},
+"binomtest 0 10 0.5 two-sided conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.60ce5d53883cep-2"
+]
+}
+},
+"binomtest 19 40 0.2 greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.59cd13f3d4c1ap-2",
+"0x1.0000000000000p+0"
+]
+},
+"k": 19,
+"n": 40,
+"pvalue": {
+"f": "0x1.65413770adf2bp-14"
+},
+"statistic": {
+"f": "0x1.e666666666666p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.4750  Alternative:                   greater\nP-value:                      8.52e-05  No. Observations:                   40\n                                        Null Proportion:                   0.2\n                                        No. Successes:                      19\n==============================================================================\n                [0.050     1.000]\n------------------------------------------------------------------------------\nproportion       0.338      1.000\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 19 40 0.2 greater conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.674d4627655fcp-2",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 19 40 0.2 greater conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.5b8072041a5c8p-2",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 19 40 0.2 less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.3afbea45c79eep-1"
+]
+},
+"k": 19,
+"n": 40,
+"pvalue": {
+"f": "0x1.fffd28240e8efp-1"
+},
+"statistic": {
+"f": "0x1.e666666666666p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.4750  Alternative:                      less\nP-value:                          1.00  No. Observations:                   40\n                                        Null Proportion:                   0.2\n                                        No. Successes:                      19\n==============================================================================\n                [0.000     0.950]\n------------------------------------------------------------------------------\nproportion       0.000      0.615\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 19 40 0.2 less conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.345ef4c5b4408p-1"
+]
+}
+},
+"binomtest 19 40 0.2 less conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.3a6c0da1c3b91p-1"
+]
+}
+},
+"binomtest 19 40 0.2 two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.42aebd894a1d9p-2",
+"0x1.47064a44b15afp-1"
+]
+},
+"k": 19,
+"n": 40,
+"pvalue": {
+"f": "0x1.65413770adf2bp-14"
+},
+"statistic": {
+"f": "0x1.e666666666666p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.4750  Alternative:                 two-sided\nP-value:                      8.52e-05  No. Observations:                   40\n                                        Null Proportion:                   0.2\n                                        No. Successes:                      19\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.315      0.639\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 19 40 0.2 two-sided conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.51425bd87e601p-2",
+"0x1.400375214f4a1p-1"
+]
+}
+},
+"binomtest 19 40 0.2 two-sided conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.45cc17465a66ap-2",
+"0x1.45eae7460fc19p-1"
+]
+}
+},
+"binomtest 3 10 0.5 greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.656f641c3e60ap-4",
+"0x1.0000000000000p+0"
+]
+},
+"k": 3,
+"n": 10,
+"pvalue": {
+"f": "0x1.e400000000000p-1"
+},
+"statistic": {
+"f": "0x1.3333333333333p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3000  Alternative:                   greater\nP-value:                         0.945  No. Observations:                   10\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       3\n==============================================================================\n                [0.050     1.000]\n------------------------------------------------------------------------------\nproportion       0.087      1.000\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 3 10 0.5 greater conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.03d7ded3f081bp-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 3 10 0.5 greater conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.8b0e25f67988fp-4",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 3 10 0.5 less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.3697730244ce6p-1"
+]
+},
+"k": 3,
+"n": 10,
+"pvalue": {
+"f": "0x1.5ffffffffffffp-3"
+},
+"statistic": {
+"f": "0x1.3333333333333p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3000  Alternative:                      less\nP-value:                         0.172  No. Observations:                   10\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       3\n==============================================================================\n                [0.000     0.950]\n------------------------------------------------------------------------------\nproportion       0.000      0.607\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 3 10 0.5 less conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.1dd9863c2da95p-1"
+]
+}
+},
+"binomtest 3 10 0.5 less conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.356d0af5f5560p-1"
+]
+}
+},
+"binomtest 3 10 0.5 two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.115d731dc0160p-4",
+"0x1.4e0e4cca611dcp-1"
+]
+},
+"k": 3,
+"n": 10,
+"pvalue": {
+"f": "0x1.5ffffffffffffp-2"
+},
+"statistic": {
+"f": "0x1.3333333333333p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3000  Alternative:                 two-sided\nP-value:                         0.344  No. Observations:                   10\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       3\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.067      0.652\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 3 10 0.5 two-sided conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.b9835604df0aep-4",
+"0x1.34d97ea1c619cp-1"
+]
+}
+},
+"binomtest 3 10 0.5 two-sided conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4b8ff21aa0e77p-4",
+"0x1.4aebabc1ef09dp-1"
+]
+}
+},
+"binomtest 31 100 0.3 greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.df403076e25c5p-3",
+"0x1.0000000000000p+0"
+]
+},
+"k": 31,
+"n": 100,
+"pvalue": {
+"f": "0x1.cdb28af4f1f4dp-2"
+},
+"statistic": {
+"f": "0x1.3d70a3d70a3d7p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3100  Alternative:                   greater\nP-value:                         0.451  No. Observations:                  100\n                                        Null Proportion:                   0.3\n                                        No. Successes:                      31\n==============================================================================\n                [0.050     1.000]\n------------------------------------------------------------------------------\nproportion       0.234      1.000\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 31 100 0.3 greater conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.eb0e7f6ce850fp-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 31 100 0.3 greater conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e1c288b6ac137p-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 31 100 0.3 less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.9424ce5ac4a26p-2"
+]
+},
+"k": 31,
+"n": 100,
+"pvalue": {
+"f": "0x1.4426badd88926p-1"
+},
+"statistic": {
+"f": "0x1.3d70a3d70a3d7p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3100  Alternative:                      less\nP-value:                         0.633  No. Observations:                  100\n                                        Null Proportion:                   0.3\n                                        No. Successes:                      31\n==============================================================================\n                [0.000     0.950]\n------------------------------------------------------------------------------\nproportion       0.000      0.395\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 31 100 0.3 less conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.8f9a27647d062p-2"
+]
+}
+},
+"binomtest 31 100 0.3 less conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.94e9f4c6e0366p-2"
+]
+}
+},
+"binomtest 31 100 0.3 two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c5330ee9616ecp-3",
+"0x1.a4297f9cc3753p-2"
+]
+},
+"k": 31,
+"n": 100,
+"pvalue": {
+"f": "0x1.a7c25745a1f56p-1"
+},
+"statistic": {
+"f": "0x1.3d70a3d70a3d7p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3100  Alternative:                 two-sided\nP-value:                         0.828  No. Observations:                  100\n                                        Null Proportion:                   0.3\n                                        No. Successes:                      31\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.221      0.410\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 31 100 0.3 two-sided conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d287380b31eb6p-3",
+"0x1.a002c47b3a2bdp-2"
+]
+}
+},
+"binomtest 31 100 0.3 two-sided conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c974a89ce81bap-3",
+"0x1.a552e97294136p-2"
+]
+}
+},
+"binomtest 7 20 0.3 greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6b21fc81a5e8ep-3",
+"0x1.0000000000000p+0"
+]
+},
+"k": 7,
+"n": 20,
+"pvalue": {
+"f": "0x1.9165e033ccba8p-2"
+},
+"statistic": {
+"f": "0x1.6666666666666p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3500  Alternative:                   greater\nP-value:                         0.392  No. Observations:                   20\n                                        Null Proportion:                   0.3\n                                        No. Successes:                       7\n==============================================================================\n                [0.050     1.000]\n------------------------------------------------------------------------------\nproportion       0.177      1.000\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 7 20 0.3 greater conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.9e3a830aa6c94p-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 7 20 0.3 greater conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.7671a760702f4p-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"binomtest 7 20 0.3 less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.1db6b310475b0p-1"
+]
+},
+"k": 7,
+"n": 20,
+"pvalue": {
+"f": "0x1.8b673583117a5p-1"
+},
+"statistic": {
+"f": "0x1.6666666666666p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3500  Alternative:                      less\nP-value:                         0.772  No. Observations:                   20\n                                        Null Proportion:                   0.3\n                                        No. Successes:                       7\n==============================================================================\n                [0.000     0.950]\n------------------------------------------------------------------------------\nproportion       0.000      0.558\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 7 20 0.3 less conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.11253fb4741dep-1"
+]
+}
+},
+"binomtest 7 20 0.3 less conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.1d8749115f8f4p-1"
+]
+}
+},
+"binomtest 7 20 0.3 two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.3b34bfc8d2e27p-3",
+"0x1.2f3355e9c4f2ap-1"
+]
+},
+"k": 7,
+"n": 20,
+"pvalue": {
+"f": "0x1.424d8eb78cb66p-1"
+},
+"statistic": {
+"f": "0x1.6666666666666p-2"
+},
+"summary()": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3500  Alternative:                 two-sided\nP-value:                         0.629  No. Observations:                   20\n                                        Null Proportion:                   0.3\n                                        No. Successes:                       7\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.154      0.592\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.BinomtestResult"
+}
+},
+"binomtest 7 20 0.3 two-sided conf_int wilson": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.7314b2f688aaep-3",
+"0x1.2260ec9b68069p-1"
+]
+}
+},
+"binomtest 7 20 0.3 two-sided conf_int wilsoncc": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4e00639e5bb31p-3",
+"0x1.2e576232a71d1p-1"
+]
+}
+},
+"binomtest conf_int alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6b21fc81a5e8ep-3",
+"0x1.1db6b310475b0p-1"
+]
+}
+},
+"binomtest conf_int method": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "conf_int(): 'method' must be 'exact', 'wilson' or 'wilsoncc', not 'beta'"
+}
+},
+"binomtest k > n": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "binomtest(): 'k' must not exceed 'n'"
+}
+},
+"binomtest k float": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "binomtest(): 'k' must be an int, not float"
+}
+},
+"binomtest p range": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "binomtest(): 'p' must be in [0, 1]"
 }
 },
 "boschloo_exact batch": {
@@ -2772,7 +3891,7 @@
 "0x1.dbb6db6db6db7p+0"
 ]
 },
-"summary()": "                       Chi-squared test of independence\n==============================================================================\nBatch shape:                      (4,)  Correction:                      Yates\nTable:                           2 x 2\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             0.000      1.000          1\n[1]             0.025      0.874          1\n[2]             0.048      0.827          1\n[3]             1.858      0.173          1\n=============================================================================="
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nDf:                                  1  Batch shape:                      (4,)\n                                        Table:                           2 x 2\n                                        Correction:                      Yates\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.000      1.000\n[1]             0.025      0.874\n[2]             0.048      0.827\n[3]             1.858      0.173\n=============================================================================="
 },
 "obj": "stardust.htest._contingency.Chi2ContingencyResult"
 }
@@ -3577,7 +4696,7 @@
 "0x1.05c83cd4e9303p+5"
 ]
 },
-"summary()": "                       Chi-squared goodness-of-fit test\n==============================================================================\nBatch shape:                      (4,)  No. Categories:                      6\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]            33.221      0.000          5\n[1]            33.865      0.000          5\n[2]             9.692      0.084          5\n[3]            32.723      0.000          5\n=============================================================================="
+"summary()": "                       Chi-squared goodness-of-fit test\n==============================================================================\nDf:                                  5  Batch shape:                      (4,)\n                                        No. Categories:                      6\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            33.221      0.000\n[1]            33.865      0.000\n[2]             9.692      0.084\n[3]            32.723      0.000\n=============================================================================="
 },
 "obj": "stardust.htest._gof.ChisquareResult"
 }
@@ -3630,7 +4749,7 @@
 "0x1.05c83cd4e9303p+5"
 ]
 },
-"summary()": "                       Chi-squared goodness-of-fit test\n==============================================================================\nBatch shape:                      (4,)  No. Categories:                      6\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]            33.221      0.000          5\n[1]            33.865      0.000          5\n[2]             9.692      0.084          5\n[3]            32.723      0.000          5\n=============================================================================="
+"summary()": "                       Chi-squared goodness-of-fit test\n==============================================================================\nDf:                                  5  Batch shape:                      (4,)\n                                        No. Categories:                      6\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            33.221      0.000\n[1]            33.865      0.000\n[2]             9.692      0.084\n[3]            32.723      0.000\n=============================================================================="
 },
 "obj": "stardust.htest._gof.ChisquareResult"
 }
@@ -3811,7 +4930,7 @@
 "0x1.d89d89d89d89ep+0"
 ]
 },
-"summary()": "                               Cochran's Q test\n==============================================================================\nBatch shape:                      (3,)  No. Treatments:                      3\nNo. Observations:                   15\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             2.000      0.368          2\n[1]             0.615      0.735          2\n[2]             1.846      0.397          2\n=============================================================================="
+"summary()": "                               Cochran's Q test\n==============================================================================\nDf:                                  2  Batch shape:                      (3,)\n                                        No. Observations:                   15\n                                        No. Treatments:                      3\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             2.000      0.368\n[1]             0.615      0.735\n[2]             1.846      0.397\n=============================================================================="
 },
 "obj": "stardust.htest._contingency.CochransQResult"
 }
@@ -3837,6 +4956,564 @@
 "r": {
 "error": "builtins.ValueError",
 "msg": "cochrans_q(): 'x' must hold 0 and 1 values (the successes)"
+}
+},
+"confint_proportions_2indep diff agresti-caffo": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.81a8b7d77d7ebp-2",
+"0x1.074e904e77805p-5"
+]
+}
+},
+"confint_proportions_2indep diff agresti-caffo alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.6002e91e99b2fp-2",
+"-0x1.77f95e29b7655p-11"
+]
+}
+},
+"confint_proportions_2indep diff agresti-caffo zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.5b8c9cb676bb1p-1",
+"-0x1.8513633c2ecf6p-2"
+]
+}
+},
+"confint_proportions_2indep diff batch": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-0x1.7ad27cc0e3d17p-2",
+"0x1.f5eb319da062dp-6",
+"-0x1.d74cb2ac27086p-3",
+"0x1.6b8ea0147ac8fp-4",
+"-0x1.c30dc8c2c2d55p-4",
+"0x1.0f57c31b8d3c7p-2"
+]
+}
+},
+"confint_proportions_2indep diff newcomb": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.7ad27cc0e3d17p-2",
+"0x1.f5eb319da062dp-6"
+]
+}
+},
+"confint_proportions_2indep diff newcomb alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.5f01f36d0580ap-2",
+"-0x1.518523525de95p-9"
+]
+}
+},
+"confint_proportions_2indep diff newcomb zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.6197b9c28770dp-1",
+"-0x1.8c75ce64ce814p-2"
+]
+}
+},
+"confint_proportions_2indep diff score": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.830c56c324eb4p-2",
+"0x1.103e9fdeda8c0p-5"
+]
+}
+},
+"confint_proportions_2indep diff score alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.64b09da08408fp-2",
+"-0x1.1d7af8a0c68f4p-10"
+]
+}
+},
+"confint_proportions_2indep diff score zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.61f56779371c9p-1",
+"-0x1.a4d04e0b2e229p-2"
+]
+}
+},
+"confint_proportions_2indep diff wald": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.8eac5ca1a5b4cp-2",
+"0x1.ce5402fde984bp-6"
+]
+}
+},
+"confint_proportions_2indep diff wald alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.6c4d6aeb0d152p-2",
+"-0x1.5e6c61ae81d5ep-8"
+]
+}
+},
+"confint_proportions_2indep diff wald zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.66c7240495543p-1",
+"-0x1.a438d4689c741p-2"
+]
+}
+},
+"confint_proportions_2indep odds-ratio batch": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.a83ff11a14f32p-3",
+"0x1.2717c56dc185fp+0",
+"0x1.830e3753613bep-3",
+"0x1.dff56a98f8b9dp+0",
+"0x1.2a18df2dfa65ap-1",
+"0x1.df14282e713a0p+1"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.9c2e4f11d60d0p-3",
+"0x1.2510bd8490f0ep+0"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d9ffada741cb1p-3",
+"0x1.fdb05d70f5937p-1"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"nan"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit-adjusted": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.a83ff11a14f32p-3",
+"0x1.2717c56dc185fp+0"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit-adjusted alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e704582025636p-3",
+"0x1.010f9ec3e840cp+0"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit-adjusted zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.2d5957199b55dp-11",
+"0x1.5efbeee250242p-3"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit-smoothed": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.a7e5eabf40bb1p-3",
+"0x1.26fb00ad69873p+0"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit-smoothed alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e6a17d7edab41p-3",
+"0x1.00f43040d0092p+0"
+]
+}
+},
+"confint_proportions_2indep odds-ratio logit-smoothed zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0a5a91adbc681p-13",
+"0x1.f60e488b0fe62p-3"
+]
+}
+},
+"confint_proportions_2indep odds-ratio score": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.9d0cb8fb10fb9p-3",
+"0x1.24862ee6b5293p+0"
+]
+}
+},
+"confint_proportions_2indep odds-ratio score alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d9fc857300526p-3",
+"0x1.fdc46e1dca046p-1"
+]
+}
+},
+"confint_proportions_2indep odds-ratio score zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.4ceb7b99c3df0p-4"
+]
+}
+},
+"confint_proportions_2indep ratio batch": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.b5d6ed2c267fdp-2",
+"0x1.1734124bfcf30p+0",
+"0x1.fd867c4248c6cp-3",
+"0x1.b34e702401f97p+0",
+"0x1.b754be588fc6cp-1",
+"0x1.788e9b845d6c4p+0"
+]
+}
+},
+"confint_proportions_2indep ratio log": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.ac9e2f2c7f646p-2",
+"0x1.16a95fdd76d86p+0"
+]
+}
+},
+"confint_proportions_2indep ratio log alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.ced87d1b36734p-2",
+"0x1.020ded5362b95p+0"
+]
+}
+},
+"confint_proportions_2indep ratio log zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"nan"
+]
+}
+},
+"confint_proportions_2indep ratio log-adjusted": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.b5d6ed2c267fdp-2",
+"0x1.1734124bfcf30p+0"
+]
+}
+},
+"confint_proportions_2indep ratio log-adjusted alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d811ae068d40dp-2",
+"0x1.02f5600de0301p+0"
+]
+}
+},
+"confint_proportions_2indep ratio log-adjusted zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6b11f85e7ad4ap-10",
+"0x1.66c64b5a8b364p-2"
+]
+}
+},
+"confint_proportions_2indep ratio score": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.a39a0aea18e16p-2",
+"0x1.12b4c78e9db89p+0"
+]
+}
+},
+"confint_proportions_2indep ratio score alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c78095faa121cp-2",
+"0x1.fed1a47ff2bf6p-1"
+]
+}
+},
+"confint_proportions_2indep ratio score zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.488bfefbf6f4cp-3"
+]
 }
 },
 "cramervonmises batch": {
@@ -4336,7 +6013,7 @@
 "0x1.6393fa1fe7c94p+2"
 ]
 },
-"summary()": "                        Epps-Singleton two-sample test\n==============================================================================\nBatch shape:                      (4,)  No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             5.759      0.218          4\n[1]             2.835      0.586          4\n[2]             9.380      0.052          4\n[3]             5.556      0.235          4\n=============================================================================="
+"summary()": "                        Epps-Singleton two-sample test\n==============================================================================\nDf:                                  4  Batch shape:                      (4,)\n                                        No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             5.759      0.218\n[1]             2.835      0.586\n[2]             9.380      0.052\n[3]             5.556      0.235\n=============================================================================="
 },
 "obj": "stardust.htest._gof.EppsSingleton2sampResult"
 }
@@ -4621,7 +6298,7 @@
 "0x1.bc016a0667564p-1"
 ]
 },
-"summary()": "                                One-way ANOVA\n==============================================================================\nBatch shape:                      (4,)  No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue     df_num   df_denom\n------------------------------------------------------------------------------\n[0]             0.572      0.454          1         43\n[1]             0.007      0.934          1         43\n[2]             0.269      0.607          1         43\n[3]             0.867      0.357          1         43\n=============================================================================="
+"summary()": "                                One-way ANOVA\n==============================================================================\nDf Num:                              1  Batch shape:                      (4,)\nDf Denom:                           43  No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.572      0.454\n[1]             0.007      0.934\n[2]             0.269      0.607\n[3]             0.867      0.357\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.FOnewayResult"
 }
@@ -5236,7 +6913,7 @@
 "0x0.0p+0"
 ]
 },
-"summary()": "                            Friedman rank sum test\n==============================================================================\nBatch shape:                     (10,)  No. Observations:                   12\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             0.667      0.717          2\n[1]             0.667      0.717          2\n[2]             0.667      0.717          2\n[3]             2.667      0.264          2\n[4]             0.667      0.717          2\n[5]             0.000      1.000          2\n[6]            10.667      0.005          2\n[7]             0.000      1.000          2\n[8]             6.000      0.050          2\n[9]             0.000      1.000          2\n=============================================================================="
+"summary()": "                            Friedman rank sum test\n==============================================================================\nDf:                                  2  Batch shape:                     (10,)\n                                        No. Observations:                   12\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.667      0.717\n[1]             0.667      0.717\n[2]             0.667      0.717\n[3]             2.667      0.264\n[4]             0.667      0.717\n[5]             0.000      1.000\n[6]            10.667      0.005\n[7]             0.000      1.000\n[8]             6.000      0.050\n[9]             0.000      1.000\n=============================================================================="
 },
 "obj": "stardust.htest._rank.FriedmanchisquareResult"
 }
@@ -6139,7 +7816,7 @@
 "0x1.1a9fbe76c8b44p+0"
 ]
 },
-"summary()": "                         Kruskal-Wallis rank sum test\n==============================================================================\nBatch shape:                      (4,)  No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             0.534      0.465          1\n[1]             0.002      0.964          1\n[2]             0.063      0.802          1\n[3]             1.104      0.293          1\n=============================================================================="
+"summary()": "                         Kruskal-Wallis rank sum test\n==============================================================================\nDf:                                  1  Batch shape:                      (4,)\n                                        No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.534      0.465\n[1]             0.002      0.964\n[2]             0.063      0.802\n[3]             1.104      0.293\n=============================================================================="
 },
 "obj": "stardust.htest._rank.KruskalResult"
 }
@@ -9330,7 +11007,7 @@
 "0x1.80c246d47d787p-3"
 ]
 },
-"summary()": "                              Mood's median test\n==============================================================================\nBatch shape:                      (4,)  Ties:                            below\nNo. Observations:               20, 25\n==============================================================================\n            statistic     pvalue     median         df\n------------------------------------------------------------------------------\n[0]             0.000      1.000      0.006          1\n[1]             0.000      1.000      0.205          1\n[2]             0.188      0.665      0.168          1\n[3]             0.188      0.665     -0.032          1\n==============================================================================",
+"summary()": "                              Mood's median test\n==============================================================================\nDf:                                  1  Batch shape:                      (4,)\n                                        No. Observations:               20, 25\n                                        Ties:                            below\n==============================================================================\n            statistic     pvalue     median\n------------------------------------------------------------------------------\n[0]             0.000      1.000      0.006\n[1]             0.000      1.000      0.205\n[2]             0.188      0.665      0.168\n[3]             0.188      0.665     -0.032\n==============================================================================",
 "table": {
 "nd": "int64",
 "shape": [
@@ -9437,7 +11114,7 @@
 "0x1.80c246d47d787p-3"
 ]
 },
-"summary()": "                              Mood's median test\n==============================================================================\nBatch shape:                      (4,)  Ties:                            below\nNo. Observations:               20, 25\n==============================================================================\n            statistic     pvalue     median         df\n------------------------------------------------------------------------------\n[0]             0.000      1.000      0.006          1\n[1]             0.000      1.000      0.205          1\n[2]             0.188      0.665      0.168          1\n[3]             0.188      0.665     -0.032          1\n==============================================================================",
+"summary()": "                              Mood's median test\n==============================================================================\nDf:                                  1  Batch shape:                      (4,)\n                                        No. Observations:               20, 25\n                                        Ties:                            below\n==============================================================================\n            statistic     pvalue     median\n------------------------------------------------------------------------------\n[0]             0.000      1.000      0.006\n[1]             0.000      1.000      0.205\n[2]             0.188      0.665      0.168\n[3]             0.188      0.665     -0.032\n==============================================================================",
 "table": {
 "nd": "int64",
 "shape": [
@@ -12253,6 +13930,130 @@
 "msg": "pointbiserialr(): the input contains NaN (nan_policy='raise')"
 }
 },
+"poisson_means_test (0, 2.0, 0, 3.0) {}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                       0.000  Alternative:                 two-sided\nP-value:                          1.00  Counts:                           0, 0\n                                        Sizes:                            2, 3\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test (10, 5.0, 20, 6.0) {'alternative': 'greater'}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.d28d99203130dp-1"
+},
+"statistic": {
+"f": "-0x1.5d2e5cb02a658p+0"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                      -1.364  Alternative:                   greater\nP-value:                         0.911  Counts:                         10, 20\n                                        Sizes:                            5, 6\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test (10, 5.0, 20, 6.0) {'alternative': 'less'}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.7ddd85bfbef66p-4"
+},
+"statistic": {
+"f": "-0x1.5d2e5cb02a658p+0"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                      -1.364  Alternative:                      less\nP-value:                        0.0932  Counts:                         10, 20\n                                        Sizes:                            5, 6\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test (10, 5.0, 20, 6.0) {}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.7094175488b17p-3"
+},
+"statistic": {
+"f": "-0x1.5d2e5cb02a658p+0"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                      -1.364  Alternative:                 two-sided\nP-value:                         0.180  Counts:                         10, 20\n                                        Sizes:                            5, 6\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test (15, 5.24, 34, 0.64) {'alternative': 'less'}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.5d0e598773391p-68"
+},
+"statistic": {
+"f": "-0x1.5fea8fc091eacp+2"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                      -5.499  Alternative:                      less\nP-value:                      4.62e-21  Counts:                         15, 34\n                                        Sizes:                      5.24, 0.64\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test (30, 2.0, 10, 3.0) {'diff': 2.0}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.613d069d44f84p-10"
+},
+"statistic": {
+"f": "0x1.a5a7a5480e22bp+1"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                       3.294  Alternative:                 two-sided\nP-value:                       0.00135  Counts:                         30, 10\n                                        Sizes:                            2, 3\n                                        Diff:                                2\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test (400, 1.0, 200, 1.0) {}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.934b96c889302p-53"
+},
+"statistic": {
+"f": "0x1.0547666079ba7p+3"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                       8.165  Alternative:                 two-sided\nP-value:                      1.75e-16  Counts:                       400, 200\n                                        Sizes:                            1, 1\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test (5, 1.0, 5, 1.0) {}": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.fffa0ca192a6ep-1"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                       0.000  Alternative:                 two-sided\nP-value:                          1.00  Counts:                           5, 5\n                                        Sizes:                            1, 1\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.PoissonMeansTestResult"
+}
+},
+"poisson_means_test diff negative": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "poisson_means_test(): 'diff' must be non-negative and finite"
+}
+},
+"poisson_means_test n zero": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "poisson_means_test(): 'n1' must be positive and finite"
+}
+},
 "power_divergence None": {
 "r": {
 "attrs": {
@@ -12614,6 +14415,1650 @@
 "summary()": "                    Power divergence goodness-of-fit test\n==============================================================================\nStatistic:                       18.25  No. Categories:                      5\nP-value:                       0.00110  Lambda:                        pearson\nDf:                                  4\n=============================================================================="
 },
 "obj": "stardust.htest._gof.PowerDivergenceResult"
+}
+},
+"proportion_confint agresti_coull alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0a2ca67e35b28p-3",
+"0x1.85f53cefc9ff3p-2"
+]
+}
+},
+"proportion_confint agresti_coull ends": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.13e3b9ca77925p-3",
+"0x1.bb07118d621b7p-1",
+"0x1.0000000000000p+0",
+"0x0.0p+0",
+"0x1.728520d69b3c6p-3",
+"0x1.a35eb7ca5930fp-1",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint agresti_coull greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0a2ca67e35b28p-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint agresti_coull less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.85f53cefc9ff3p-2"
+]
+}
+},
+"proportion_confint agresti_coull two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d7b44aa7eef21p-4",
+"0x1.a5ef1dcc13623p-2"
+]
+}
+},
+"proportion_confint batch": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+4,
+2
+],
+"strides": [
+64,
+16,
+8
+],
+"v": [
+"0x1.94a2f42cd2d10p-7",
+"0x1.44971dd86fe6fp-2",
+"0x1.5db47113c80c8p-1",
+"0x1.f9ad742f4cb4cp-1",
+"0x1.80a6196ce69ccp-1",
+"0x1.ff5a2ea3f5a76p-1",
+"0x1.0495a2b05b65cp-1",
+"0x1.d3ace786e2a4ep-1",
+"0x1.3dfd4d90d255fp-1",
+"0x1.ef9465eb45d16p-1",
+"0x1.878ea79115660p-3",
+"0x1.4766f64565f16p-1",
+"0x1.0495a2b05b65cp-1",
+"0x1.d3ace786e2a4ep-1",
+"0x1.80a6196ce69ccp-1",
+"0x1.ff5a2ea3f5a76p-1",
+"0x1.d42f129600c60p-2",
+"0x1.c31b66097e051p-1",
+"0x1.e724cfb40fd7ap-4",
+"0x1.15e876b4ff9d0p-1",
+"0x1.42d8455a365dfp-2",
+"0x1.89f1b1a455797p-1",
+"0x1.71321375341d4p-2",
+"0x1.9e1c561bbaa68p-1"
+]
+}
+},
+"proportion_confint beta": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "proportion_confint(): 'method' must be 'normal', 'agresti_coull', 'exact', 'wilson', 'wilsoncc', 'jeffreys' or 'binom_test', not 'beta'"
+}
+},
+"proportion_confint binom_test 200": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.f4faaccc217cdp-3",
+"0x1.7d3eabc5382a3p-2"
+]
+}
+},
+"proportion_confint binom_test alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.09316f5636b2ep-3",
+"0x1.88cdcb08cf09dp-2"
+]
+}
+},
+"proportion_confint binom_test ends": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.c8d47259d4775p-4",
+"0x1.c6e571b4c5711p-1",
+"0x1.0000000000000p+0",
+"0x1.bfd31f4c01c4bp-10",
+"0x1.4e4be225f85b8p-3",
+"0x1.ac6d077681e92p-1",
+"0x1.ff20167059ff2p-1"
+]
+}
+},
+"proportion_confint binom_test greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d6fc7fbf0cad8p-4",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint binom_test less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.9366f4004ee4ap-2"
+]
+}
+},
+"proportion_confint binom_test two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c8d4719745a8fp-4",
+"0x1.a994d67b65fe5p-2"
+]
+}
+},
+"proportion_confint exact alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d6fc7fbf0cad8p-4",
+"0x1.9366f4004ee4ap-2"
+]
+}
+},
+"proportion_confint exact ends": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.d9ebb64da4521p-4",
+"0x1.c4c289364b75cp-1",
+"0x1.0000000000000p+0",
+"0x1.ba462c5578ce1p-11",
+"0x1.609a612a86693p-3",
+"0x1.a7d967b55e65bp-1",
+"0x1.ff916e74eaa1dp-1"
+]
+}
+},
+"proportion_confint exact greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d6fc7fbf0cad8p-4",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint exact less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.9366f4004ee4ap-2"
+]
+}
+},
+"proportion_confint exact two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.96e34d13fc8e6p-4",
+"0x1.b0fc0eb6fbb46p-2"
+]
+}
+},
+"proportion_confint jeffreys alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0509fa7c0e0ffp-3",
+"0x1.809ea7dd2e37fp-2"
+]
+}
+},
+"proportion_confint jeffreys ends": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.10535027d860cp-16",
+"0x1.465c9eec008dcp-4",
+"0x1.d7346c227fee4p-1",
+"0x1.fffddf595fb05p-1",
+"0x1.da8aa029dd894p-9",
+"0x1.29d0cbaff0b18p-3",
+"0x1.b58bcd1403d3ap-1",
+"0x1.fe25755fd6227p-1"
+]
+}
+},
+"proportion_confint jeffreys greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0509fa7c0e0ffp-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint jeffreys less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.809ea7dd2e37fp-2"
+]
+}
+},
+"proportion_confint jeffreys two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c655004aff5ffp-4",
+"0x1.9e1b02bf4a858p-2"
+]
+}
+},
+"proportion_confint large": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.318e398d29b1bp-2",
+"0x1.37610d74e5663p-2"
+]
+}
+},
+"proportion_confint larger": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "proportion_confint(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'larger'"
+}
+},
+"proportion_confint nobs zero": {
+"r": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"nan",
+"nan",
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint normal alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.b379d733372f6p-4",
+"0x1.70ff681110120p-2"
+]
+}
+},
+"proportion_confint normal ends": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x0.0p+0",
+"0x1.8fa2cd29b7cc6p-4",
+"0x1.ce0ba65ac9067p-1",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint normal greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.b379d733372f6p-4",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint normal less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.70ff681110120p-2"
+]
+}
+},
+"proportion_confint normal two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4fcef4269bda4p-4",
+"0x1.89ea20d436e75p-2"
+]
+}
+},
+"proportion_confint wilson alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0dd850a9a173cp-3",
+"0x1.841f67da141e9p-2"
+]
+}
+},
+"proportion_confint wilson ends": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.d0f36b7571663p-4",
+"0x1.c5e1929151d34p-1",
+"0x1.0000000000000p+0",
+"0x1.8339b274592b8p-8",
+"0x1.5568dc0992221p-3",
+"0x1.aaa5c8fd9b778p-1",
+"0x1.fcf98c9b174dbp-1"
+]
+}
+},
+"proportion_confint wilson greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0dd850a9a173cp-3",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint wilson less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.841f67da141e9p-2"
+]
+}
+},
+"proportion_confint wilson two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e30426e3923f9p-4",
+"0x1.a31b26bd2a8edp-2"
+]
+}
+},
+"proportion_confint wilsoncc alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e8ba22e884978p-4",
+"0x1.96748813bbd2ap-2"
+]
+}
+},
+"proportion_confint wilsoncc ends": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.216ca1b3ede65p-3",
+"0x1.b7a4d79304867p-1",
+"0x1.0000000000000p+0",
+"0x1.c8c6fc0474781p-10",
+"0x1.8634b4c0e8d85p-3",
+"0x1.9e72d2cfc5c9fp-1",
+"0x1.ff1b9c81fdc5cp-1"
+]
+}
+},
+"proportion_confint wilsoncc greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e8ba22e884978p-4",
+"0x1.0000000000000p+0"
+]
+}
+},
+"proportion_confint wilsoncc less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.96748813bbd2ap-2"
+]
+}
+},
+"proportion_confint wilsoncc two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.b39c467158828p-4",
+"0x1.b5401a2e04311p-2"
+]
+}
+},
+"proportions_chisquare": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.2d2d2d2d2d2d3p+4",
+"0x1.52d2d2d2d2d2dp+4",
+"0x1.52d2d2d2d2d2dp+4",
+"0x1.7d2d2d2d2d2d3p+4"
+]
+},
+"pvalue": {
+"f": "0x1.89272767d70cdp-4"
+},
+"statistic": {
+"f": "0x1.62b0fcd6e9e06p+1"
+},
+"summary()": "                       Chi-squared test of proportions\n==============================================================================\nStatistic:                       2.771  No. Samples:                         2\nP-value:                        0.0960\nDf:                                  1\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                15         25\n[1]                25         20\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                18.824     21.176\n[1]                21.176     23.824\n==============================================================================",
+"table": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.e000000000000p+3",
+"0x1.9000000000000p+4",
+"0x1.9000000000000p+4",
+"0x1.4000000000000p+4"
+]
+}
+},
+"obj": "stardust.htest._proportion.ProportionsChisquareResult"
+}
+},
+"proportions_chisquare batch": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2,
+2
+],
+"strides": [
+32,
+16,
+8
+],
+"v": [
+"0x1.2d2d2d2d2d2d3p+4",
+"0x1.52d2d2d2d2d2dp+4",
+"0x1.52d2d2d2d2d2dp+4",
+"0x1.7d2d2d2d2d2d3p+4",
+"0x1.6db6db6db6db7p+2",
+"0x1.c924924924925p+3",
+"0x1.9249249249249p+2",
+"0x1.f6db6db6db6dbp+3"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.89272767d70cdp-4",
+"0x1.03b8a9a0d0b39p-4"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.62b0fcd6e9e06p+1",
+"0x1.b9138c9138c91p+1"
+]
+},
+"summary()": "                       Chi-squared test of proportions\n==============================================================================\nDf:                                  1  Batch shape:                      (2,)\n                                        No. Samples:                         2\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             2.771      0.096\n[1]             3.446      0.063\n==============================================================================",
+"table": {
+"nd": "float64",
+"shape": [
+2,
+2,
+2
+],
+"strides": [
+32,
+16,
+8
+],
+"v": [
+"0x1.e000000000000p+3",
+"0x1.9000000000000p+4",
+"0x1.9000000000000p+4",
+"0x1.4000000000000p+4",
+"0x1.8000000000000p+1",
+"0x1.1000000000000p+4",
+"0x1.2000000000000p+3",
+"0x1.a000000000000p+3"
+]
+}
+},
+"obj": "stardust.htest._proportion.ProportionsChisquareResult"
+}
+},
+"proportions_chisquare non-integer": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "proportions_chisquare(): 'count' must hold non-negative integer counts"
+}
+},
+"proportions_chisquare one": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x0.0p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+1,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.8000000000000p+3",
+"0x1.c000000000000p+4"
+]
+},
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                       Chi-squared test of proportions\n==============================================================================\nStatistic:                       0.000  No. Samples:                         1\nP-value:                          1.00\nDf:                                  0\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                12         28\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                    12         28\n==============================================================================",
+"table": {
+"nd": "float64",
+"shape": [
+1,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.8000000000000p+3",
+"0x1.c000000000000p+4"
+]
+}
+},
+"obj": "stardust.htest._proportion.ProportionsChisquareResult"
+}
+},
+"proportions_chisquare three": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.10b21642c8591p+4",
+"0x1.6f4de9bd37a6fp+4",
+"0x1.32c8590b21643p+4",
+"0x1.9d37a6f4de9bdp+4",
+"0x1.990b21642c859p+3",
+"0x1.137a6f4de9bd3p+4"
+]
+},
+"pvalue": {
+"f": "0x1.0ae38b34408b6p-4"
+},
+"statistic": {
+"f": "0x1.5d8f3e1404b6ep+2"
+},
+"summary()": "                       Chi-squared test of proportions\n==============================================================================\nStatistic:                       5.462  No. Samples:                         3\nP-value:                        0.0652\nDf:                                  2\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                15         25\n[1]                25         20\n[2]                 9         21\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                17.043     22.957\n[1]                19.174     25.826\n[2]                12.783     17.217\n==============================================================================",
+"table": {
+"nd": "float64",
+"shape": [
+3,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.e000000000000p+3",
+"0x1.9000000000000p+4",
+"0x1.9000000000000p+4",
+"0x1.4000000000000p+4",
+"0x1.2000000000000p+3",
+"0x1.5000000000000p+4"
+]
+}
+},
+"obj": "stardust.htest._proportion.ProportionsChisquareResult"
+}
+},
+"proportions_chisquare value": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.0000000000000p+4",
+"0x1.8000000000000p+4",
+"0x1.2000000000000p+4",
+"0x1.b000000000000p+4"
+]
+},
+"pvalue": {
+"f": "0x1.9249529ecfc0bp-4"
+},
+"statistic": {
+"f": "0x1.29097b425ed08p+2"
+},
+"summary()": "                       Chi-squared test of proportions\n==============================================================================\nStatistic:                       4.641  No. Samples:                         2\nP-value:                        0.0982  Value:                             0.4\nDf:                                  2\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                15         25\n[1]                25         20\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                    16         24\n[1]                    18         27\n==============================================================================",
+"table": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.e000000000000p+3",
+"0x1.9000000000000p+4",
+"0x1.9000000000000p+4",
+"0x1.4000000000000p+4"
+]
+}
+},
+"obj": "stardust.htest._proportion.ProportionsChisquareResult"
+}
+},
+"proportions_chisquare zero column": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.4000000000000p+2",
+"0x0.0p+0",
+"0x1.c000000000000p+2",
+"0x0.0p+0"
+]
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                       Chi-squared test of proportions\n==============================================================================\nStatistic:                         nan  No. Samples:                         2\nP-value:                           nan\nDf:                                  1\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5          0\n[1]                 7          0\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                     5          0\n[1]                     7          0\n==============================================================================",
+"table": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.4000000000000p+2",
+"0x0.0p+0",
+"0x1.c000000000000p+2",
+"0x0.0p+0"
+]
+}
+},
+"obj": "stardust.htest._proportion.ProportionsChisquareResult"
+}
+},
+"proportions_ztest batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.89272767d70d0p-4",
+"0x1.03b8a9a0d0b38p-4"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.aa25d85d04350p+0",
+"-0x1.db37867df233cp+0"
+]
+},
+"summary()": "                          Z-test of two proportions\n==============================================================================\nBatch shape:                      (2,)  Value:                               0\nAlternative:                 two-sided\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            -1.665      0.096\n[1]            -1.856      0.063\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest count exceeds": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "proportions_ztest(): 'count' must not exceed 'nobs'"
+}
+},
+"proportions_ztest one greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.e5c47f6178714p-1"
+},
+"statistic": {
+"f": "-0x1.a20bd700c2c3ep+0"
+},
+"summary()": "                           Z-test of one proportion\n==============================================================================\nStatistic:                      -1.633  Alternative:                   greater\nP-value:                         0.949  No. Observations:                   40\n                                        Value:                             0.5\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest one less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.a3b809e878ec5p-5"
+},
+"statistic": {
+"f": "-0x1.a20bd700c2c3ep+0"
+},
+"summary()": "                           Z-test of one proportion\n==============================================================================\nStatistic:                      -1.633  Alternative:                      less\nP-value:                        0.0512  No. Observations:                   40\n                                        Value:                             0.5\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest one two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.a3b809e878ec5p-4"
+},
+"statistic": {
+"f": "-0x1.a20bd700c2c3ep+0"
+},
+"summary()": "                           Z-test of one proportion\n==============================================================================\nStatistic:                      -1.633  Alternative:                 two-sided\nP-value:                         0.102  No. Observations:                   40\n                                        Value:                             0.5\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest one value": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "proportions_ztest(): 'value' must be given for a one-sample test"
+}
+},
+"proportions_ztest prop_var": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.cae725393996ep-4"
+},
+"statistic": {
+"f": "-0x1.96cf8a589d917p+0"
+},
+"summary()": "                           Z-test of one proportion\n==============================================================================\nStatistic:                      -1.589  Alternative:                 two-sided\nP-value:                         0.112  No. Observations:                   40\n                                        Value:                             0.5\n                                        Prop Var:                         0.45\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest prop_var bool": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "proportions_ztest(): 'prop_var' must be an int or a float, not bool"
+}
+},
+"proportions_ztest three": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "proportions_ztest(): 'count' must hold one or two samples along its last axis, not 3"
+}
+},
+"proportions_ztest two greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.e76d8d89828f3p-1"
+},
+"statistic": {
+"f": "-0x1.aa25d85d04350p+0"
+},
+"summary()": "                          Z-test of two proportions\n==============================================================================\nStatistic:                      -1.665  Alternative:                   greater\nP-value:                         0.952  No. Observations:               40, 45\n                                        Value:                               0\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest two less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.89272767d70d0p-5"
+},
+"statistic": {
+"f": "-0x1.aa25d85d04350p+0"
+},
+"summary()": "                          Z-test of two proportions\n==============================================================================\nStatistic:                      -1.665  Alternative:                      less\nP-value:                        0.0480  No. Observations:               40, 45\n                                        Value:                               0\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest two two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.89272767d70d0p-4"
+},
+"statistic": {
+"f": "-0x1.aa25d85d04350p+0"
+},
+"summary()": "                          Z-test of two proportions\n==============================================================================\nStatistic:                      -1.665  Alternative:                 two-sided\nP-value:                        0.0960  No. Observations:               40, 45\n                                        Value:                               0\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest value two": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.d46b20d1651e8p-3"
+},
+"statistic": {
+"f": "-0x1.34233dec9ca46p+0"
+},
+"summary()": "                          Z-test of two proportions\n==============================================================================\nStatistic:                      -1.204  Alternative:                 two-sided\nP-value:                         0.229  No. Observations:               40, 45\n                                        Value:                           -0.05\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"proportions_ztest zero var": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                           Z-test of one proportion\n==============================================================================\nStatistic:                         nan  Alternative:                 two-sided\nP-value:                           nan  No. Observations:                   30\n                                        Value:                             0.5\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.ProportionsZtestResult"
+}
+},
+"quantile_test batch": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-0x1.3a9d23e3acc65p-3",
+"0x1.c4d9edf88b710p-1",
+"-0x1.8f2774fea0fa8p-3",
+"0x1.786da51066636p-1",
+"-0x1.09d8316256a60p-1",
+"0x1.67adef8eff688p-2",
+"-0x1.5e9084fc72193p-1",
+"0x1.4f67a153fcd61p-1"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.a5c9800000003p-1",
+"0x1.01c3800000001p-1",
+"0x1.a5c9800000003p-1"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4000000000000p+3",
+"0x1.2000000000000p+3",
+"0x1.0000000000000p+3",
+"0x1.2000000000000p+3"
+]
+},
+"statistic_type": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+},
+"summary()": "                                Quantile test\n==============================================================================\nBatch shape:                      (4,)  Quantile:                          0.1\nAlternative:                 two-sided  Probability:                       0.5\nNo. Observations:                   20\n==============================================================================\n            statistic statistic_type     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]            10.000          1.000      1.000     -0.154      0.884\n[1]             9.000          1.000      0.824     -0.195      0.735\n[2]             8.000          1.000      0.503     -0.519      0.351\n[3]             9.000          1.000      0.824     -0.685      0.655\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test batch keepdims": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+4,
+1,
+2
+],
+"strides": [
+16,
+16,
+8
+],
+"v": [
+"-0x1.3a9d23e3acc65p-3",
+"0x1.c4d9edf88b710p-1",
+"-0x1.8f2774fea0fa8p-3",
+"0x1.786da51066636p-1",
+"-0x1.09d8316256a60p-1",
+"0x1.67adef8eff688p-2",
+"-0x1.5e9084fc72193p-1",
+"0x1.4f67a153fcd61p-1"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.a5c9800000003p-1",
+"0x1.01c3800000001p-1",
+"0x1.a5c9800000003p-1"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.4000000000000p+3",
+"0x1.2000000000000p+3",
+"0x1.0000000000000p+3",
+"0x1.2000000000000p+3"
+]
+},
+"statistic_type": {
+"nd": "float64",
+"shape": [
+4,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+},
+"summary()": "                                Quantile test\n==============================================================================\nBatch shape:                      (4,)  Quantile:                          0.1\nAlternative:                 two-sided  Probability:                       0.5\nNo. Observations:                   20\n==============================================================================\n            statistic statistic_type     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]            10.000          1.000      1.000     -0.154      0.884\n[1]             9.000          1.000      0.824     -0.195      0.735\n[2]             8.000          1.000      0.503     -0.519      0.351\n[3]             9.000          1.000      0.824     -0.685      0.655\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test empty": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan"
+]
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"statistic_type": {
+"f": "nan"
+},
+"summary()": "                                Quantile test\n==============================================================================\nStatistic:                         nan  Alternative:                 two-sided\nP-value:                           nan  No. Observations:                    0\n                                        Quantile:                            0\n                                        Probability:                       0.5\n                                        Statistic Type:                    nan\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nquantile          nan        nan\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test greater": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.0000000000000p+0",
+"inf"
+]
+},
+"pvalue": {
+"f": "0x1.fe89ef9710cf1p-1"
+},
+"statistic": {
+"f": "0x1.3000000000000p+4"
+},
+"statistic_type": {
+"f": "0x1.0000000000000p+0"
+},
+"summary()": "                                Quantile test\n==============================================================================\nStatistic:                       19.00  Alternative:                   greater\nP-value:                         0.997  No. Observations:                   30\n                                        Quantile:                            0\n                                        Probability:                       0.4\n                                        Statistic Type:             1 (x <= q)\n==============================================================================\n               [0.050     1.000]\n------------------------------------------------------------------------------\nquantile       -1.000        inf\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test greater alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.0000000000000p+0",
+"inf"
+]
+}
+},
+"quantile_test less": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-inf",
+"0x0.0p+0"
+]
+},
+"pvalue": {
+"f": "0x1.6727e3ec56a45p-3"
+},
+"statistic": {
+"f": "0x1.e000000000000p+3"
+},
+"statistic_type": {
+"f": "0x1.0000000000000p+1"
+},
+"summary()": "                                Quantile test\n==============================================================================\nStatistic:                       15.00  Alternative:                      less\nP-value:                         0.175  No. Observations:                   30\n                                        Quantile:                            0\n                                        Probability:                       0.4\n                                        Statistic Type:              2 (x < q)\n==============================================================================\n               [0.000     0.950]\n------------------------------------------------------------------------------\nquantile         -inf      0.000\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test less alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-inf",
+"0x1.0000000000000p+0"
+]
+}
+},
+"quantile_test nan omit": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.3333333333333p+0",
+"0x1.199999999999ap+1"
+]
+},
+"pvalue": {
+"f": "0x1.7400000000000p-1"
+},
+"statistic": {
+"f": "0x1.4000000000000p+2"
+},
+"statistic_type": {
+"f": "0x1.0000000000000p+1"
+},
+"summary()": "                                Quantile test\n==============================================================================\nStatistic:                       5.000  Alternative:                 two-sided\nP-value:                         0.727  Quantile:                          0.5\n                                        Probability:                       0.5\n                                        Statistic Type:              2 (x < q)\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nquantile       -1.200      2.200\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test nan propagate": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan"
+]
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"statistic_type": {
+"f": "nan"
+},
+"summary()": "                                Quantile test\n==============================================================================\nStatistic:                         nan  Alternative:                 two-sided\nP-value:                           nan  No. Observations:                    9\n                                        Quantile:                          0.5\n                                        Probability:                       0.5\n                                        Statistic Type:                    nan\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nquantile          nan        nan\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "quantile_test(): the input contains NaN (nan_policy='raise')"
+}
+},
+"quantile_test outside": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.183c4f8e8bd98p-1",
+"0x1.35289c230f7b4p+0"
+]
+},
+"pvalue": {
+"f": "0x1.ffffffffffffdp-12"
+},
+"statistic": {
+"f": "0x1.8000000000000p+3"
+},
+"statistic_type": {
+"f": "0x1.0000000000000p+1"
+},
+"summary()": "                                Quantile test\n==============================================================================\nStatistic:                       12.00  Alternative:                 two-sided\nP-value:                      0.000488  No. Observations:                   12\n                                        Quantile:                           10\n                                        Probability:                       0.5\n                                        Statistic Type:              2 (x < q)\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nquantile       -0.547      1.208\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test p range": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "quantile_test(): 'p' must be in (0, 1)"
+}
+},
+"quantile_test two-sided": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"pvalue": {
+"f": "0x1.6727e3ec56a45p-2"
+},
+"statistic": {
+"f": "0x1.e000000000000p+3"
+},
+"statistic_type": {
+"f": "0x1.0000000000000p+1"
+},
+"summary()": "                                Quantile test\n==============================================================================\nStatistic:                       15.00  Alternative:                 two-sided\nP-value:                         0.351  No. Observations:                   30\n                                        Quantile:                            0\n                                        Probability:                       0.4\n                                        Statistic Type:              2 (x < q)\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nquantile       -1.000      0.000\n=============================================================================="
+},
+"obj": "stardust.htest._proportion.QuantileTestResult"
+}
+},
+"quantile_test two-sided alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
 }
 },
 "ranksums batch": {
@@ -13027,17 +16472,26 @@
 "msg": "relative_risk(): 'exposed_cases' must be an int, not float"
 }
 },
+"repr binomtest": {
+"r": "BinomtestResult(k=7, n=20, alternative='two-sided', statistic=0.35, pvalue=0.629498)"
+},
 "repr chi2_contingency": {
 "r": "Chi2ContingencyResult(statistic=3.82216, pvalue=0.050579, df=1, expected_freq=<array of shape (2, 2)>)"
 },
 "repr median_test": {
 "r": "MedianTestResult(statistic=4.17778, pvalue=0.123825, median=0.107924, table=<array of shape (2, 3)>, df=2)"
 },
+"repr proportions_chisquare": {
+"r": "ProportionsChisquareResult(statistic=2.77103, pvalue=0.0959846, df=1, table=<array of shape (2, 2)>, expected_freq=<array of shape (2, 2)>)"
+},
 "repr relative_risk": {
 "r": "RelativeRiskResult(relative_risk=2.3625, exposed_cases=9, exposed_total=20, control_cases=4, control_total=21)"
 },
 "repr somersd": {
 "r": "SomersdResult(statistic=0.595556, pvalue=6.58885e-08, table=<array of shape (3, 3)>)"
+},
+"repr test_proportions_2indep": {
+"r": "TestProportions2indepResult(statistic=-1.65482, pvalue=0.0979612, compare='diff', method='score', diff=-0.180556, ratio=0.675, odds_ratio=0.48, variance=0.0119048, alternative='two-sided', value=0, prop1_null=0.470588, prop2_null=0.470588)"
 },
 "repr ttest_1samp keepdims": {
 "r": "Ttest1sampResult(statistic=[1.15432], pvalue=[0.272833], df=[11])"
@@ -14735,6 +18189,15 @@
 "summary bartlett": {
 "r": "                  Bartlett test of homogeneity of variances\n==============================================================================\nStatistic:                       6.709  No. Observations:            12, 15, 9\nP-value:                        0.0349\nDf:                                  2\n=============================================================================="
 },
+"summary binomtest": {
+"r": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3500  Alternative:                 two-sided\nP-value:                         0.629  No. Observations:                   20\n                                        Null Proportion:                   0.3\n                                        No. Successes:                       7\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nproportion       0.154      0.592\n=============================================================================="
+},
+"summary binomtest alpha=0.1": {
+"r": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3500  Alternative:                 two-sided\nP-value:                         0.263  No. Observations:                   20\n                                        Null Proportion:                   0.5\n                                        No. Successes:                       7\n==============================================================================\n                [0.050     0.950]\n------------------------------------------------------------------------------\nproportion       0.177      0.558\n=============================================================================="
+},
+"summary binomtest less": {
+"r": "                             Exact binomial test\n==============================================================================\nStatistic:                      0.3500  Alternative:                      less\nP-value:                         0.772  No. Observations:                   20\n                                        Null Proportion:                   0.3\n                                        No. Successes:                       7\n==============================================================================\n                [0.000     0.950]\n------------------------------------------------------------------------------\nproportion       0.000      0.558\n=============================================================================="
+},
 "summary boschloo_exact": {
 "r": "                            Boschloo's exact test\n==============================================================================\nStatistic:                     0.02417  Alternative:                 two-sided\nP-value:                        0.0208\n=============================================================================="
 },
@@ -14829,7 +18292,7 @@
 "r": "                              Mood's median test\n==============================================================================\nStatistic:                       4.178  No. Observations:            12, 15, 9\nP-value:                         0.124  Ties:                            below\nMedian:                         0.1079\nDf:                                  2\n==============================================================================\ntable             [0]        [1]        [2]\n------------------------------------------------------------------------------\n[0]                 8          8          2\n[1]                 4          7          7\n=============================================================================="
 },
 "summary median_test batch": {
-"r": "                              Mood's median test\n==============================================================================\nBatch shape:                      (4,)  Ties:                            below\nNo. Observations:               20, 25\n==============================================================================\n            statistic     pvalue     median         df\n------------------------------------------------------------------------------\n[0]             0.000      1.000      0.006          1\n[1]             0.000      1.000      0.205          1\n[2]             0.188      0.665      0.168          1\n[3]             0.188      0.665     -0.032          1\n=============================================================================="
+"r": "                              Mood's median test\n==============================================================================\nDf:                                  1  Batch shape:                      (4,)\n                                        No. Observations:               20, 25\n                                        Ties:                            below\n==============================================================================\n            statistic     pvalue     median\n------------------------------------------------------------------------------\n[0]             0.000      1.000      0.006\n[1]             0.000      1.000      0.205\n[2]             0.188      0.665      0.168\n[3]             0.188      0.665     -0.032\n=============================================================================="
 },
 "summary mood": {
 "r": "                        Mood two-sample test of scale\n==============================================================================\nStatistic:                      0.1193  Alternative:                 two-sided\nP-value:                         0.905  No. Observations:               12, 15\n=============================================================================="
@@ -14855,8 +18318,29 @@
 "summary pointbiserialr": {
 "r": "                       Point-biserial correlation test\n==============================================================================\nStatistic:                     0.03936  No. Observations:                   25\nP-value:                         0.852\n=============================================================================="
 },
+"summary poisson_means_test": {
+"r": "                         Poisson means test (E-test)\n==============================================================================\nStatistic:                      -1.875  Alternative:                 two-sided\nP-value:                        0.0626  Counts:                         10, 20\n                                        Sizes:                            5, 6\n                                        Diff:                              0.5\n=============================================================================="
+},
 "summary power_divergence": {
 "r": "                    Power divergence goodness-of-fit test\n==============================================================================\nStatistic:                       2.007  No. Categories:                      6\nP-value:                         0.848  Lambda:                 log-likelihood\nDf:                                  5\n=============================================================================="
+},
+"summary proportions_chisquare": {
+"r": "                       Chi-squared test of proportions\n==============================================================================\nStatistic:                       5.462  No. Samples:                         3\nP-value:                        0.0652\nDf:                                  2\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                15         25\n[1]                25         20\n[2]                 9         21\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                17.043     22.957\n[1]                19.174     25.826\n[2]                12.783     17.217\n=============================================================================="
+},
+"summary proportions_chisquare value": {
+"r": "                       Chi-squared test of proportions\n==============================================================================\nStatistic:                       4.641  No. Samples:                         2\nP-value:                        0.0982  Value:                             0.4\nDf:                                  2\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                15         25\n[1]                25         20\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                    16         24\n[1]                    18         27\n=============================================================================="
+},
+"summary proportions_ztest": {
+"r": "                          Z-test of two proportions\n==============================================================================\nStatistic:                      -1.665  Alternative:                 two-sided\nP-value:                        0.0960  No. Observations:               40, 45\n                                        Value:                               0\n=============================================================================="
+},
+"summary proportions_ztest one": {
+"r": "                           Z-test of one proportion\n==============================================================================\nStatistic:                      -1.589  Alternative:                 two-sided\nP-value:                         0.112  No. Observations:                   40\n                                        Value:                             0.5\n                                        Prop Var:                         0.45\n=============================================================================="
+},
+"summary quantile_test": {
+"r": "                                Quantile test\n==============================================================================\nStatistic:                       8.000  Alternative:                 two-sided\nP-value:                         0.426  No. Observations:                   15\n                                        Quantile:                          0.2\n                                        Probability:                       0.4\n                                        Statistic Type:              2 (x < q)\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nquantile       -2.163      0.583\n=============================================================================="
+},
+"summary quantile_test batch": {
+"r": "                                Quantile test\n==============================================================================\nBatch shape:                      (4,)  Quantile:                          0.1\nAlternative:                 two-sided  Probability:                       0.5\nNo. Observations:                   20\n==============================================================================\n            statistic statistic_type     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]            10.000          1.000      1.000     -0.154      0.884\n[1]             9.000          1.000      0.824     -0.195      0.735\n[2]             8.000          1.000      0.503     -0.519      0.351\n[3]             9.000          1.000      0.824     -0.685      0.655\n=============================================================================="
 },
 "summary ranksums": {
 "r": "                            Wilcoxon rank-sum test\n==============================================================================\nStatistic:                      0.8295  Alternative:                 two-sided\nP-value:                         0.407  No. Observations:               12, 15\n=============================================================================="
@@ -14879,6 +18363,15 @@
 "summary spearmanrho": {
 "r": "                        Spearman rank correlation test\n==============================================================================\nStatistic:                   -0.008462  Alternative:                 two-sided\nP-value:                         0.968  No. Observations:                   25\n=============================================================================="
 },
+"summary test_proportions_2indep": {
+"r": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.652  Compare:                          diff\nP-value:                        0.0986  Method:                  agresti-caffo\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                      0.01087\nValue:                           0.000\n=============================================================================="
+},
+"summary test_proportions_2indep batch": {
+"r": "                     Test of two independent proportions\n==============================================================================\nValue:                           0.000  Batch shape:                      (3,)\n                                        Compare:                          diff\n                                        Method:                  agresti-caffo\n                                        Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue       diff      ratio odds_ratio   variance\n------------------------------------------------------------------------------\n[0]            -1.652      0.099     -0.181      0.675      0.480      0.011\n[1]            -0.869      0.385     -0.075      0.625      0.571      0.006\n[2]             0.811      0.418      0.083      1.125      1.500      0.009\n=============================================================================="
+},
+"summary test_proportions_2indep score": {
+"r": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -3.269  Compare:                    odds-ratio\nP-value:                       0.00108  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                       0.1972\nValue:                           2.000\nProp1 null:                     0.5612\nProp2 null:                     0.3900\n=============================================================================="
+},
 "summary ttest_1samp": {
 "r": "                              One-sample t-test\n==============================================================================\nStatistic:                       1.154  Alternative:                 two-sided\nP-value:                         0.273  No. Observations:                   12\nDf:                                 11\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nmean           -0.191      1.034\n=============================================================================="
 },
@@ -14886,7 +18379,7 @@
 "r": "                              One-sample t-test\n==============================================================================\nStatistic:                       1.154  Alternative:                 two-sided\nP-value:                         0.273  No. Observations:                   12\nDf:                                 11\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nmean           -0.191      1.034\n=============================================================================="
 },
 "summary ttest_1samp long batch": {
-"r": "                              One-sample t-test\n==============================================================================\nBatch shape:                     (30,)  No. Observations:                    8\nAlternative:                 two-sided\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.856      0.420          7     -0.527      1.124\n[1]            -1.421      0.198          7     -0.704      0.176\n[2]             0.701      0.506          7     -0.851      1.567\n[3]             1.597      0.154          7     -0.158      0.816\n[4]            -0.538      0.607          7     -1.184      0.745\n...               ...        ...        ...        ...        ...\n[25]            1.495      0.179          7     -0.324      1.438\n[26]            0.616      0.557          7     -0.653      1.112\n[27]           -1.179      0.277          7     -0.900      0.301\n[28]           -0.877      0.409          7     -1.868      0.857\n[29]           -0.351      0.736          7     -1.043      0.773\n=============================================================================="
+"r": "                              One-sample t-test\n==============================================================================\nDf:                                  7  Batch shape:                     (30,)\n                                        Alternative:                 two-sided\n                                        No. Observations:                    8\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.856      0.420     -0.527      1.124\n[1]            -1.421      0.198     -0.704      0.176\n[2]             0.701      0.506     -0.851      1.567\n[3]             1.597      0.154     -0.158      0.816\n[4]            -0.538      0.607     -1.184      0.745\n...               ...        ...        ...        ...\n[25]            1.495      0.179     -0.324      1.438\n[26]            0.616      0.557     -0.653      1.112\n[27]           -1.179      0.277     -0.900      0.301\n[28]           -0.877      0.409     -1.868      0.857\n[29]           -0.351      0.736     -1.043      0.773\n=============================================================================="
 },
 "summary ttest_1samp omit": {
 "r": "                              One-sample t-test\n==============================================================================\nStatistic:                      0.9306  Alternative:                 two-sided\nP-value:                         0.383\nDf:                                  7\n==============================================================================\n               [0.025     0.975]\n------------------------------------------------------------------------------\nmean           -0.597      1.372\n=============================================================================="
@@ -14898,7 +18391,7 @@
 "r": "                         Two-sample t-test (Student)\n==============================================================================\nStatistic:                      0.8762  Alternative:                 two-sided\nP-value:                         0.389  No. Observations:               12, 15\nDf:                                 25\n==============================================================================\n                     [0.050     0.950]\n------------------------------------------------------------------------------\nmean difference      -0.366      1.136\n=============================================================================="
 },
 "summary ttest_ind batch": {
-"r": "                         Two-sample t-test (Student)\n==============================================================================\nBatch shape:                      (4,)  No. Observations:               20, 25\nAlternative:                 two-sided\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.756      0.454         43     -0.486      1.069\n[1]            -0.083      0.934         43     -0.641      0.590\n[2]            -0.519      0.607         43     -0.704      0.416\n[3]             0.931      0.357         43     -0.328      0.891\n=============================================================================="
+"r": "                         Two-sample t-test (Student)\n==============================================================================\nDf:                                 43  Batch shape:                      (4,)\n                                        Alternative:                 two-sided\n                                        No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.756      0.454     -0.486      1.069\n[1]            -0.083      0.934     -0.641      0.590\n[2]            -0.519      0.607     -0.704      0.416\n[3]             0.931      0.357     -0.328      0.891\n=============================================================================="
 },
 "summary ttest_ind trim": {
 "r": "                  Two-sample trimmed t-test (Yuen, Student)\n==============================================================================\nStatistic:                      0.7484  Alternative:                   greater\nP-value:                         0.233  No. Observations:               12, 15\nDf:                                 15  Trim:                              0.2\n==============================================================================\n                     [0.050     1.000]\n------------------------------------------------------------------------------\nmean difference      -0.411        inf\n=============================================================================="
@@ -14917,6 +18410,1386 @@
 },
 "summary wilcoxon": {
 "r": "                          Wilcoxon signed-rank test\n==============================================================================\nStatistic:                       23.00  Alternative:                 two-sided\nP-value:                         0.233  Method:                          exact\n                                        No. Observations:                   12\n                                        Zero Method:                    wilcox\n=============================================================================="
+},
+"test_proportions_2indep batch": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.71c71c71c71c7p-3",
+"-0x1.3333333333333p-4",
+"0x1.5555555555555p-4"
+]
+},
+"method": "agresti-caffo",
+"odds_ratio": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.eb851eb851eb8p-2",
+"0x1.2492492492492p-1",
+"0x1.8000000000000p+0"
+]
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.93d292206f6cap-4",
+"0x1.8a5cc19d7122cp-2",
+"0x1.ab8898b29181ep-2"
+]
+},
+"ratio": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.599999999999ap-1",
+"0x1.4000000000000p-1",
+"0x1.2000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.a6d7d08cd815ap+0",
+"-0x1.bcac5264aaf0ap-1",
+"0x1.9f19b596041bcp-1"
+]
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nValue:                           0.000  Batch shape:                      (3,)\n                                        Compare:                          diff\n                                        Method:                  agresti-caffo\n                                        Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue       diff      ratio odds_ratio   variance\n------------------------------------------------------------------------------\n[0]            -1.652      0.099     -0.181      0.675      0.480      0.011\n[1]            -0.869      0.385     -0.075      0.625      0.571      0.006\n[2]             0.811      0.418      0.083      1.125      1.500      0.009\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6450d71995c67p-7",
+"0x1.a89f18aa6b07ap-8",
+"0x1.335d1c67ce3aep-7"
+]
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff agresti-caffo": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "agresti-caffo",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.93d292206f6cap-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.a6d7d08cd815ap+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.652  Compare:                          diff\nP-value:                        0.0986  Method:                  agresti-caffo\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                      0.01087\nValue:                           0.000\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"f": "0x1.6450d71995c67p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff agresti-caffo zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "agresti-caffo",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.0cb4e8114e656p-38"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.bc663928137abp+2"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -6.944  Compare:                          diff\nP-value:                      3.82e-12  Method:                  agresti-caffo\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000\nVariance:                     0.005812\nValue:                           0.000\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"f": "0x1.7ceafd3b0c5e8p-8"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff score": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"prop2_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"pvalue": {
+"f": "0x1.913fc85bae129p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.a7a237d1e816bp+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.655  Compare:                          diff\nP-value:                        0.0980  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01190\nValue:                           0.000\nProp1 null:                     0.4706\nProp2 null:                     0.4706\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"f": "0x1.8618618618618p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff score nocorr": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"prop2_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"pvalue": {
+"f": "0x1.89272767d70d0p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.aa25d85d04350p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.665  Compare:                          diff\nP-value:                        0.0960  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                      False\nVariance:                      0.01176\nValue:                           0.000\nProp1 null:                     0.4706\nProp2 null:                     0.4706\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"f": "0x1.8181818181818p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff score value greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"compare": "diff",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.0cc5e0cb0b76fp-1"
+},
+"prop2_null": {
+"f": "0x1.b3255b2fb0878p-2"
+},
+"pvalue": {
+"f": "0x1.fd7cd6c0d51cap-1"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.4a89748449ecap+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.582  Compare:                          diff\nP-value:                         0.995  Method:                          score\nDiff:                          -0.1806  Alternative:                   greater\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01180\nValue:                          0.1000\nProp1 null:                     0.5249\nProp2 null:                     0.4249\n==============================================================================",
+"value": {
+"f": "0x1.999999999999ap-4"
+},
+"variance": {
+"f": "0x1.82c8817d80a81p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff score value less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"compare": "diff",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.0cc5e0cb0b76fp-1"
+},
+"prop2_null": {
+"f": "0x1.b3255b2fb0878p-2"
+},
+"pvalue": {
+"f": "0x1.41949f9571ae6p-8"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.4a89748449ecap+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.582  Compare:                          diff\nP-value:                       0.00491  Method:                          score\nDiff:                          -0.1806  Alternative:                      less\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01180\nValue:                          0.1000\nProp1 null:                     0.5249\nProp2 null:                     0.4249\n==============================================================================",
+"value": {
+"f": "0x1.999999999999ap-4"
+},
+"variance": {
+"f": "0x1.82c8817d80a81p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff score value two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.0cc5e0cb0b76fp-1"
+},
+"prop2_null": {
+"f": "0x1.b3255b2fb0878p-2"
+},
+"pvalue": {
+"f": "0x1.41949f9571ae6p-7"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.4a89748449ecap+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.582  Compare:                          diff\nP-value:                       0.00981  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01180\nValue:                          0.1000\nProp1 null:                     0.5249\nProp2 null:                     0.4249\n==============================================================================",
+"value": {
+"f": "0x1.999999999999ap-4"
+},
+"variance": {
+"f": "0x1.82c8817d80a81p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff score zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"f": "0x1.2d2d2d2d2d2d3p-2"
+},
+"prop2_null": {
+"f": "0x1.2d2d2d2d2d2d3p-2"
+},
+"pvalue": {
+"f": "0x1.a2a0540acc88ep-26"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.64f995f90ea79p+2"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -5.578  Compare:                          diff\nP-value:                      2.44e-08  Method:                          score\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000  Correction:                       True\nVariance:                     0.009921\nValue:                           0.000\nProp1 null:                     0.2941\nProp2 null:                     0.2941\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"f": "0x1.4514514514514p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff wald": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "wald",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.70e8af27221a3p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.b1eee4d9a36f4p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.695  Compare:                          diff\nP-value:                        0.0901  Method:                           wald\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                      0.01135\nValue:                           0.000\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"f": "0x1.73cc0705f8464p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep diff wald zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "diff",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "wald",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.1f68f3dbb8189p-44"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.e000000000000p+2"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -7.500  Compare:                          diff\nP-value:                      6.38e-14  Method:                           wald\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000\nVariance:                     0.005487\nValue:                           0.000\n==============================================================================",
+"value": {
+"f": "0x0.0p+0"
+},
+"variance": {
+"f": "0x1.67980e0bf08c7p-8"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep larger": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "test_proportions_2indep(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'larger'"
+}
+},
+"test_proportions_2indep newcomb": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "test_proportions_2indep(): 'method' must be 'wald', 'agresti-caffo' or 'score', not 'newcomb'"
+}
+},
+"test_proportions_2indep odds-ratio logit": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "logit",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.910d921808a77p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.a7b1affcf8f28p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.655  Compare:                    odds-ratio\nP-value:                        0.0979  Method:                          logit\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                       0.1967\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.92c5f92c5f92cp-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio logit zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "logit",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "nan"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                         nan  Compare:                    odds-ratio\nP-value:                           nan  Method:                          logit\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000\nVariance:                          inf\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "inf"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio logit-adjusted": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "logit-adjusted",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.a1a49376169c5p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.a2aa15930ebb4p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.635  Compare:                    odds-ratio\nP-value:                         0.102  Method:                 logit-adjusted\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                       0.1917\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.88a8af212188bp-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio logit-adjusted zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "logit-adjusted",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.8ad450b09c423p-10"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.9635165817dacp+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -3.173  Compare:                    odds-ratio\nP-value:                       0.00151  Method:                 logit-adjusted\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000\nVariance:                        2.113\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.0e6c8b8886e88p+1"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio logit-smoothed": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "logit-smoothed",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.a0d3161b5fe4ap-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.a2e8a1e742101p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.636  Compare:                    odds-ratio\nP-value:                         0.102  Method:                 logit-smoothed\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                       0.1918\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.88dd34a2d7c50p-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio logit-smoothed zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "logit-smoothed",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.d67c1863d67e6p-8"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.581e43311aba3p+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.688  Compare:                    odds-ratio\nP-value:                       0.00718  Method:                 logit-smoothed\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000\nVariance:                        3.725\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.dcc63022a2f58p+1"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio score": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"prop2_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"pvalue": {
+"f": "0x1.913fc85bae129p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.a7a237d1e816bp+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.655  Compare:                    odds-ratio\nP-value:                        0.0980  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                       0.1918\nValue:                           1.000\nProp1 null:                     0.4706\nProp2 null:                     0.4706\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.88cf166ca9296p-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio score nocorr": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"prop2_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"pvalue": {
+"f": "0x1.89272767d70d0p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.aa25d85d04350p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.665  Compare:                    odds-ratio\nP-value:                        0.0960  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                      False\nVariance:                       0.1895\nValue:                           1.000\nProp1 null:                     0.4706\nProp2 null:                     0.4706\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.84300a1d13985p-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio score value greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.0c3f0b7c694c1p-1"
+},
+"prop2_null": {
+"f": "0x1.b1570806613fep-2"
+},
+"pvalue": {
+"f": "0x1.fd8a90f33bb61p-1"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.4b7d201b1062cp+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.590  Compare:                    odds-ratio\nP-value:                         0.995  Method:                          score\nDiff:                          -0.1806  Alternative:                   greater\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                       0.1935\nValue:                           1.500\nProp1 null:                     0.5239\nProp2 null:                     0.4232\n==============================================================================",
+"value": {
+"f": "0x1.8000000000000p+0"
+},
+"variance": {
+"f": "0x1.8c60ccea6b4e0p-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio score value less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.0c3f0b7c694c1p-1"
+},
+"prop2_null": {
+"f": "0x1.b1570806613fep-2"
+},
+"pvalue": {
+"f": "0x1.3ab7866224f89p-8"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.4b7d201b1062cp+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.590  Compare:                    odds-ratio\nP-value:                       0.00480  Method:                          score\nDiff:                          -0.1806  Alternative:                      less\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                       0.1935\nValue:                           1.500\nProp1 null:                     0.5239\nProp2 null:                     0.4232\n==============================================================================",
+"value": {
+"f": "0x1.8000000000000p+0"
+},
+"variance": {
+"f": "0x1.8c60ccea6b4e0p-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio score value two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.0c3f0b7c694c1p-1"
+},
+"prop2_null": {
+"f": "0x1.b1570806613fep-2"
+},
+"pvalue": {
+"f": "0x1.3ab7866224f89p-7"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.4b7d201b1062cp+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.590  Compare:                    odds-ratio\nP-value:                       0.00960  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                       0.1935\nValue:                           1.500\nProp1 null:                     0.5239\nProp2 null:                     0.4232\n==============================================================================",
+"value": {
+"f": "0x1.8000000000000p+0"
+},
+"variance": {
+"f": "0x1.8c60ccea6b4e0p-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep odds-ratio score zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "odds-ratio",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"f": "0x1.2d2d2d2d2d2d3p-2"
+},
+"prop2_null": {
+"f": "0x1.2d2d2d2d2d2d3p-2"
+},
+"pvalue": {
+"f": "0x1.a2a0540acc88ep-26"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.64f995f90ea79p+2"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -5.578  Compare:                    odds-ratio\nP-value:                      2.44e-08  Method:                          score\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000  Correction:                       True\nVariance:                       0.2302\nValue:                           1.000\nProp1 null:                     0.2941\nProp2 null:                     0.2941\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.d75ee7b597cb4p-3"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep or": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "test_proportions_2indep(): 'compare' must be 'diff', 'ratio' or 'odds-ratio', not 'or'"
+}
+},
+"test_proportions_2indep ratio log": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "log",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.b60daf4fd1300p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.9cb0a37dc8b57p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.612  Compare:                         ratio\nP-value:                         0.107  Method:                            log\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                      0.05944\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.e6f8091a2b3c5p-5"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio log zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "log",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "nan"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                         nan  Compare:                         ratio\nP-value:                           nan  Method:                            log\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000\nVariance:                          inf\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "inf"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio log-adjusted": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "log-adjusted",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.c3dfeb7c1e1b9p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.98c4bf867e679p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.597  Compare:                         ratio\nP-value:                         0.110  Method:                   log-adjusted\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800\nVariance:                      0.05706\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.d37499aec0c21p-5"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio log-adjusted zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "log-adjusted",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop1_null' (the test does not give it for this call)"
+},
+"prop2_null": {
+"error": "builtins.AttributeError",
+"msg": "'TestProportions2indepResult' object has no attribute 'prop2_null' (the test does not give it for this call)"
+},
+"pvalue": {
+"f": "0x1.c269cbbe53ec2p-8"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.59fa2ea5b80f1p+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -2.703  Compare:                         ratio\nP-value:                       0.00687  Method:                   log-adjusted\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000\nVariance:                        1.993\nValue:                           1.000\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.fe1783c533f59p+0"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio score": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"prop2_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"pvalue": {
+"f": "0x1.913fc85bae129p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.a7a237d1e816bp+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.655  Compare:                         ratio\nP-value:                        0.0980  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01190\nValue:                           1.000\nProp1 null:                     0.4706\nProp2 null:                     0.4706\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.8618618618618p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio score nocorr": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"prop2_null": {
+"f": "0x1.e1e1e1e1e1e1ep-2"
+},
+"pvalue": {
+"f": "0x1.89272767d70d0p-4"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.aa25d85d04350p+0"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -1.665  Compare:                         ratio\nP-value:                        0.0960  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                      False\nVariance:                      0.01176\nValue:                           1.000\nProp1 null:                     0.4706\nProp2 null:                     0.4706\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.8181818181818p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio score value greater": {
+"r": {
+"attrs": {
+"alternative": "greater",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.126ee86e3ff87p-1"
+},
+"prop2_null": {
+"f": "0x1.6de935e8554b4p-2"
+},
+"pvalue": {
+"f": "0x1.ffd7aaf9ff22bp-1"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.b65d6d613b8b3p+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -3.425  Compare:                         ratio\nP-value:                          1.00  Method:                          score\nDiff:                          -0.1806  Alternative:                   greater\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01791\nValue:                           1.500\nProp1 null:                     0.5360\nProp2 null:                     0.3573\n==============================================================================",
+"value": {
+"f": "0x1.8000000000000p+0"
+},
+"variance": {
+"f": "0x1.2572aea410ca3p-6"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio score value less": {
+"r": {
+"attrs": {
+"alternative": "less",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.126ee86e3ff87p-1"
+},
+"prop2_null": {
+"f": "0x1.6de935e8554b4p-2"
+},
+"pvalue": {
+"f": "0x1.42a83006eab95p-12"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.b65d6d613b8b3p+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -3.425  Compare:                         ratio\nP-value:                      0.000308  Method:                          score\nDiff:                          -0.1806  Alternative:                      less\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01791\nValue:                           1.500\nProp1 null:                     0.5360\nProp2 null:                     0.3573\n==============================================================================",
+"value": {
+"f": "0x1.8000000000000p+0"
+},
+"variance": {
+"f": "0x1.2572aea410ca3p-6"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio score value two-sided": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.71c71c71c71c7p-3"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x1.eb851eb851eb8p-2"
+},
+"prop1_null": {
+"f": "0x1.126ee86e3ff87p-1"
+},
+"prop2_null": {
+"f": "0x1.6de935e8554b4p-2"
+},
+"pvalue": {
+"f": "0x1.42a83006eab95p-11"
+},
+"ratio": {
+"f": "0x1.599999999999ap-1"
+},
+"statistic": {
+"f": "-0x1.b65d6d613b8b3p+1"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -3.425  Compare:                         ratio\nP-value:                      0.000615  Method:                          score\nDiff:                          -0.1806  Alternative:                 two-sided\nRatio:                          0.6750  No. Observations:               40, 45\nOdds ratio:                     0.4800  Correction:                       True\nVariance:                      0.01791\nValue:                           1.500\nProp1 null:                     0.5360\nProp2 null:                     0.3573\n==============================================================================",
+"value": {
+"f": "0x1.8000000000000p+0"
+},
+"variance": {
+"f": "0x1.2572aea410ca3p-6"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep ratio score zero": {
+"r": {
+"attrs": {
+"alternative": "two-sided",
+"compare": "ratio",
+"diff": {
+"f": "-0x1.1c71c71c71c72p-1"
+},
+"method": "score",
+"odds_ratio": {
+"f": "0x0.0p+0"
+},
+"prop1_null": {
+"f": "0x1.2d2d2d2d2d2d3p-2"
+},
+"prop2_null": {
+"f": "0x1.2d2d2d2d2d2d3p-2"
+},
+"pvalue": {
+"f": "0x1.a2a0540acc88ep-26"
+},
+"ratio": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "-0x1.64f995f90ea79p+2"
+},
+"summary()": "                     Test of two independent proportions\n==============================================================================\nStatistic:                      -5.578  Compare:                         ratio\nP-value:                      2.44e-08  Method:                          score\nDiff:                          -0.5556  Alternative:                 two-sided\nRatio:                           0.000  No. Observations:               40, 45\nOdds ratio:                      0.000  Correction:                       True\nVariance:                     0.009921\nValue:                           1.000\nProp1 null:                     0.2941\nProp2 null:                     0.2941\n==============================================================================",
+"value": {
+"f": "0x1.0000000000000p+0"
+},
+"variance": {
+"f": "0x1.4514514514514p-7"
+}
+},
+"obj": "stardust.htest._proportion.TestProportions2indepResult"
+}
+},
+"test_proportions_2indep return_results": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "test_proportions_2indep(): unexpected keyword argument 'return_results'"
+}
+},
+"test_proportions_2indep value range": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "test_proportions_2indep(): 'value' must be between -1 and 1 (exclusive) for compare='diff'"
+}
 },
 "ttest_1samp axis tuple": {
 "r": {
@@ -15017,7 +19890,7 @@
 "0x1.28fcfe9fdf980p-4"
 ]
 },
-"summary()": "                              One-sample t-test\n==============================================================================\nBatch shape:                     (10,)  No. Observations:                   12\nAlternative:                 two-sided\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.665      0.520         11     -0.361      0.674\n[1]             0.242      0.813         11     -0.585      0.729\n[2]             1.243      0.240         11     -0.368      1.322\n[3]             0.840      0.419         11     -0.329      0.734\n[4]             1.553      0.149         11     -0.129      0.749\n[5]             0.620      0.548         11     -0.382      0.682\n[6]            -3.528      0.005         11     -1.058     -0.245\n[7]             1.353      0.203         11     -0.180      0.755\n[8]             1.594      0.139         11     -0.129      0.807\n[9]             0.073      0.944         11     -0.665      0.710\n=============================================================================="
+"summary()": "                              One-sample t-test\n==============================================================================\nDf:                                 11  Batch shape:                     (10,)\n                                        Alternative:                 two-sided\n                                        No. Observations:                   12\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.665      0.520     -0.361      0.674\n[1]             0.242      0.813     -0.585      0.729\n[2]             1.243      0.240     -0.368      1.322\n[3]             0.840      0.419     -0.329      0.734\n[4]             1.553      0.149     -0.129      0.749\n[5]             0.620      0.548     -0.382      0.682\n[6]            -3.528      0.005     -1.058     -0.245\n[7]             1.353      0.203     -0.180      0.755\n[8]             1.594      0.139     -0.129      0.807\n[9]             0.073      0.944     -0.665      0.710\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.Ttest1sampResult"
 }
@@ -15322,7 +20195,7 @@
 "-0x1.e0d66d62099c5p-1"
 ]
 },
-"summary()": "                              One-sample t-test\n==============================================================================\nBatch shape:                      (4,)  No. Observations:                   20\nAlternative:                 two-sided\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             1.445      0.165         19     -0.141      0.772\n[1]             0.448      0.659         19     -0.262      0.659\n[2]             0.628      0.537         19     -0.314      0.297\n[3]            -0.939      0.359         19     -0.370      0.417\n=============================================================================="
+"summary()": "                              One-sample t-test\n==============================================================================\nDf:                                 19  Batch shape:                      (4,)\n                                        Alternative:                 two-sided\n                                        No. Observations:                   20\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             1.445      0.165     -0.141      0.772\n[1]             0.448      0.659     -0.262      0.659\n[2]             0.628      0.537     -0.314      0.297\n[3]            -0.939      0.359     -0.370      0.417\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.Ttest1sampResult"
 }
@@ -15516,7 +20389,7 @@
 "0x1.dccacf6dee03dp-1"
 ]
 },
-"summary()": "                         Two-sample t-test (Student)\n==============================================================================\nBatch shape:                      (4,)  No. Observations:               20, 25\nAlternative:                 two-sided\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.756      0.454         43     -0.486      1.069\n[1]            -0.083      0.934         43     -0.641      0.590\n[2]            -0.519      0.607         43     -0.704      0.416\n[3]             0.931      0.357         43     -0.328      0.891\n=============================================================================="
+"summary()": "                         Two-sample t-test (Student)\n==============================================================================\nDf:                                 43  Batch shape:                      (4,)\n                                        Alternative:                 two-sided\n                                        No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.756      0.454     -0.486      1.069\n[1]            -0.083      0.934     -0.641      0.590\n[2]            -0.519      0.607     -0.704      0.416\n[3]             0.931      0.357     -0.328      0.891\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.TtestIndResult"
 }
@@ -15598,7 +20471,7 @@
 "0x1.dccacf6dee03dp-1"
 ]
 },
-"summary()": "                         Two-sample t-test (Student)\n==============================================================================\nBatch shape:                      (4,)  No. Observations:               20, 25\nAlternative:                 two-sided\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.756      0.454         43     -0.486      1.069\n[1]            -0.083      0.934         43     -0.641      0.590\n[2]            -0.519      0.607         43     -0.704      0.416\n[3]             0.931      0.357         43     -0.328      0.891\n=============================================================================="
+"summary()": "                         Two-sample t-test (Student)\n==============================================================================\nDf:                                 43  Batch shape:                      (4,)\n                                        Alternative:                 two-sided\n                                        No. Observations:               20, 25\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.756      0.454     -0.486      1.069\n[1]            -0.083      0.934     -0.641      0.590\n[2]            -0.519      0.607     -0.704      0.416\n[3]             0.931      0.357     -0.328      0.891\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.TtestIndResult"
 }
@@ -16137,7 +21010,7 @@
 "0x1.25d2c6b5698fep+0"
 ]
 },
-"summary()": "                         Two-sample t-test (Student)\n==============================================================================\nBatch shape:                    (2, 3)  Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n[0, 0]         -0.467      0.645         20     -1.093      0.693\n[0, 1]          0.701      0.492         20     -0.593      1.193\n[0, 2]          1.868      0.076         20     -0.093      1.693\n[1, 0]         -0.287      0.777         20     -1.654      1.254\n[1, 1]          0.430      0.672         20     -1.154      1.754\n[1, 2]          1.148      0.265         20     -0.654      2.254\n=============================================================================="
+"summary()": "                         Two-sample t-test (Student)\n==============================================================================\nDf:                                 20  Batch shape:                    (2, 3)\n                                        Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n[0, 0]         -0.467      0.645     -1.093      0.693\n[0, 1]          0.701      0.492     -0.593      1.193\n[0, 2]          1.868      0.076     -0.093      1.693\n[1, 0]         -0.287      0.777     -1.654      1.254\n[1, 1]          0.430      0.672     -1.154      1.754\n[1, 2]          1.148      0.265     -0.654      2.254\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.TtestIndFromStatsResult"
 }

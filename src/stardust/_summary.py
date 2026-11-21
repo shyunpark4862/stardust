@@ -248,6 +248,29 @@ def _flatten(v):
     return [v]
 
 
+def shared(v, n):
+    """The value every lane of a batch has for a per-lane field (NaNs count as equal), else None.
+    The rule of every batch summary (API.md §2.3, regression G195): a degrees of freedom the
+    lanes share goes in the header, one that varies is a column of the table."""
+    from . import _core as _sd
+
+    if n == 0:
+        return None
+    if isinstance(v, _sd.ndarray):
+        vals = _sd.reshape(v, (n,)).tolist() if v.size == n else None
+    elif isinstance(v, list):
+        vals = _flatten(v)
+    else:
+        return v
+    if not vals:
+        return None
+    first = vals[0]
+    for x in vals[1:]:
+        if not (x == first or (x != x and first != first)):
+            return None
+    return first
+
+
 def lane_rows(shape, columns):
     """The rows of a batch's table, one per lane (cut by shown()): columns is a list of
     (per-lane getter, formatter)."""
@@ -382,7 +405,10 @@ def test_box(title, fields, batch, info, interval=None):
         elif isinstance(v, _sd.ndarray):
             if v.size == n:
                 get = flat(v, n)
-                if batch:
+                same = shared(v, n) if batch and k in _DF_FIELDS else None
+                if same is not None:  # degrees of freedom the lanes share: the header (G195)
+                    left.append((_label(k), _head(k, same)))
+                elif batch:
                     columns.append((k, get, _cell_fn(k)))
                 else:  # one test kept as an array (keepdims=True)
                     left.append((_label(k), _head(k, get(0))))
@@ -475,3 +501,14 @@ def compact(v):
             return "[" + ", ".join(compact(e) for e in v.tolist()) + "]"
         return f"<array of shape {shape_text(tuple(v.shape))}>"
     return None
+
+
+def one_line(name, fields):
+    """The one-line repr of a result (API.md §2.3, regression G194): Name(field=value, ...) with
+    each value compact(); fields are (name, value) pairs, a value compact() cannot write left out."""
+    parts = []
+    for k, v in fields:
+        text = compact(v)
+        if text is not None:
+            parts.append(f"{k}={text}")
+    return f"{name}(" + ", ".join(parts) + ")"

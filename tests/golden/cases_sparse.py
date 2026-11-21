@@ -32,6 +32,14 @@ columns: the column blocks run on the pool at 3 and 10 threads), spbandwidth and
 LinearOperator's products and combinations, the singular and wrong calls, and sd.linalg's
 refusals of a sparse array.
 
+The iterative solvers (milestone SP5): cg, bicgstab, gmres, minres, lsqr and lsmr on a 2-D
+Laplacian, a random nonsymmetric, a complex Hermitian, a complex nonsymmetric and a rectangular
+matrix in every format, dense and as LinearOperators (aslinearoperator, and Python functions of
+the same products), with x0, a Jacobi preconditioner, the caps, restart, shift and damp; long
+banded systems (n = 4*10^4) where the pool splits the products, the inner products, the norms and
+the updates at 3 and 10 threads; the result objects whole (every field, summary()); the wrong
+calls.
+
 A sparse array is stored whole: its class, shape, dtype and arrays (COO: coords, data and
 has_canonical_format; CSR and CSC: indptr, indices and data; DOK: its entries in row-major order).
 """
@@ -254,6 +262,7 @@ def cases(L):
     yield from cases_sp2(L, mats, fmts)
     yield from cases_sp3(L, mats, fmts)
     yield from cases_sp4(L, fmts)
+    yield from cases_sp5(L, fmts)
 
 
 def partner(A, S):
@@ -659,3 +668,129 @@ def cases_sp4(L, fmts):
                      ("solve_triangular",
                       lambda A: sd.linalg.solve_triangular(A, a(np.ones(144)), upper=True))):  # fmt: skip
         yield f"error sd.linalg.{fn} sparse", lambda call=call: call(lap)
+
+
+def cases_sp5(L, fmts):
+    """The iterative solvers (SP5): every solver on small matrices in every format and as
+    operators, their options, long systems for the pool, and the wrong calls."""
+    sd, S = L.sd, L.sd.sparse
+    r = L.rng(605)
+    a = L.arr
+    g = 12
+    T = S.diags_array([a(np.full(g - 1, -1.0)), a(np.full(g, 2.0)), a(np.full(g - 1, -1.0))], offsets=[-1, 0, 1])
+    I1 = S.eye_array(g)
+    lap = (S.kron(I1, T) + S.kron(T, I1)).tocsr()  # 144 x 144, SPD
+    n = 200
+    rows, cols = r.integers(0, n, 1600), r.integers(0, n, 1600)
+    keep = rows != cols
+    diag = np.arange(n)
+    uv = a(np.concatenate([r.standard_normal(keep.sum()), 8.0 + r.random(n)]))
+    unsym = S.coo_array((uv, (a(np.concatenate([rows[keep], diag])), a(np.concatenate([cols[keep], diag])))),
+                        shape=(n, n)).tocsr()  # fmt: skip
+    m = 50
+    zr, zc = r.integers(0, m, 300), r.integers(0, m, 300)
+    zk = zr != zc
+    zv = r.standard_normal(zk.sum()) + 1j * r.standard_normal(zk.sum())
+    Z = S.coo_array((a(zv), (a(zr[zk]), a(zc[zk]))), shape=(m, m)).tocsr()
+    herm = (Z + Z.T.conj() + S.eye_array(m) * 12.0).tocsr()
+    cplx = (Z + S.eye_array(m) * (9.0 + 1j)).tocsr()
+    rr, rc = r.integers(0, 120, 500), r.integers(0, 40, 500)
+    rect = S.coo_array((a(r.standard_normal(500)), (a(rr), a(rc))), shape=(120, 40)).tocsr()
+    rect = (rect + S.eye_array(120, 40) * 3.0).tocsr()
+    vec = {k: a(r.standard_normal(A.shape[0])) for k, A in (("lap", lap), ("unsym", unsym), ("rect", rect))}
+    vec["herm"] = a(r.standard_normal(m) + 1j * r.standard_normal(m))
+    vec["cplx"] = vec["herm"]
+    cases_of = {
+        "lap": ("cg", "minres", "gmres", "bicgstab", "lsqr", "lsmr"),
+        "unsym": ("gmres", "bicgstab", "lsqr", "lsmr"),
+        "herm": ("cg", "minres"),
+        "cplx": ("gmres", "bicgstab", "lsmr"),
+        "rect": ("lsqr", "lsmr"),
+    }
+    mats = {"lap": lap, "unsym": unsym, "herm": herm, "cplx": cplx, "rect": rect}
+    for key, fns in cases_of.items():
+        A, b = mats[key], vec[key]
+        for fn in fns:
+            f = getattr(S, fn)
+            yield f"{fn} {key}", lambda f=f, A=A, b=b: f(A, b)
+            for fm in fmts:
+                if fm != "csr":
+                    yield f"{fn} {key} {fm}", lambda f=f, A=A, b=b, fm=fm: f(A.asformat(fm), b).x
+            yield f"{fn} {key} dense", lambda f=f, A=A, b=b: f(A.toarray(), b).x
+            yield f"{fn} {key} aslinearoperator", lambda f=f, A=A, b=b: f(S.aslinearoperator(A), b).x
+            AH = A.T.conj().tocsr() if A.dtype == sd.complex128 else A.T.tocsr()
+            yield (f"{fn} {key} python operator",
+                   lambda f=f, A=A, AH=AH, b=b: f(S.LinearOperator(A.shape, lambda v: A @ v,
+                                                                     rmatvec=lambda v: AH @ v), b).x)  # fmt: skip
+            yield f"{fn} {key} max_iter 3", lambda f=f, A=A, b=b: f(A, b, max_iter=3)
+            if fn in ("lsqr", "lsmr"):
+                x0 = a(np.cos(np.arange(A.shape[1])))
+                yield f"{fn} {key} damp", lambda f=f, A=A, b=b: f(A, b, damp=0.5)
+                yield f"{fn} {key} x0 tight", lambda f=f, A=A, b=b, x0=x0: f(A, b, x0=x0, atol=1e-12, btol=1e-12)
+                yield f"{fn} {key} conlim", lambda f=f, A=A, b=b: f(A, b, conlim=2.0)
+            else:
+                x0 = a(np.cos(np.arange(A.shape[0])))
+                D = S.diags_array(a(1.0 / np.abs(np.asarray(A.diagonal()))), format="csr")
+                yield f"{fn} {key} x0 tight", lambda f=f, A=A, b=b, x0=x0: f(A, b, x0=x0, rtol=1e-12)
+                yield f"{fn} {key} jacobi", lambda f=f, A=A, b=b, D=D: f(A, b, M=D, rtol=1e-10)
+                if fn != "minres":  # (minres has rtol only, as scipy's)
+                    yield f"{fn} {key} atol", lambda f=f, A=A, b=b: f(A, b, rtol=0.0, atol=1e-3)
+            if fn == "gmres":
+                yield f"gmres {key} restart 5", lambda A=A, b=b: S.gmres(A, b, restart=5, max_iter=4)
+                yield f"gmres {key} restart 60", lambda A=A, b=b: S.gmres(A, b, restart=60, rtol=1e-11)
+            if fn == "minres":
+                yield f"minres {key} shift", lambda A=A, b=b: S.minres(A, b, shift=0.75, rtol=1e-10)
+    yield "summary cg lap", lambda: S.cg(lap, vec["lap"]).summary()
+    yield "repr lsqr rect", lambda: repr(S.lsqr(rect, vec["rect"]))
+    yield "unpack lsmr rect", lambda: tuple(S.lsmr(rect, vec["rect"]))
+    yield "unpack lsqr rect", lambda: tuple(S.lsqr(rect, vec["rect"]))
+    yield (
+        "bicgstab breakdown",
+        lambda: S.bicgstab(S.csr_array(a(np.array([[0.0, 1.0], [1.0, 0.0]]))), a(np.array([1.0, 0.0]))),
+    )
+    yield "gmres exact", lambda: S.gmres(S.eye_array(5) * 3.0, a(np.arange(1.0, 6.0)))
+    yield "cg b zero", lambda: S.cg(lap, a(np.zeros(144)))
+    yield "lsmr b zero", lambda: S.lsmr(rect, a(np.zeros(120)))
+    yield "cg empty", lambda: S.cg(S.csr_array((0, 0)), a(np.zeros(0)))
+    yield "cg b (n, 1)", lambda: S.cg(lap, vec["lap"].reshape((144, 1))).x
+    yield "cg int matrix", lambda: S.cg(lap.astype(sd.int64) * 1, vec["lap"]).x
+    yield "gmres complex b real matrix", lambda: S.gmres(unsym, vec["unsym"] * (1 + 2j)).x
+
+    # long systems: the pool splits every vector operation at 3 and 10 threads
+    k = 40000
+    band = S.diags_array([a(np.full(k, 4.0)), a(np.full(k - 1, -1.0)), a(np.full(k - 1, -1.0))], offsets=[0, 1, -1],
+                         format="csr")  # fmt: skip
+    skew = S.diags_array([a(np.full(k, 4.0)), a(np.full(k - 1, -1.0)), a(np.full(k - 1, 0.5))], offsets=[0, 1, -1],
+                         format="csr")  # fmt: skip
+    tall = S.diags_array([a(np.full(k, 4.0)), a(np.full(k, -1.0)), a(np.full(k, 0.5))], offsets=[0, 1, -1],
+                         shape=(k + 5000, k), format="csr")  # fmt: skip
+    t = np.arange(k + 5000, dtype=np.float64)
+    bl, bt = a(np.sin(0.37 * t[:k]) + 0.1), a(np.sin(0.37 * t) + 0.1)
+    for fn in ("cg", "minres"):
+        yield f"{fn} long", lambda fn=fn: getattr(S, fn)(band, bl, rtol=1e-12)
+    for fn in ("gmres", "bicgstab"):
+        yield f"{fn} long", lambda fn=fn: getattr(S, fn)(skew, bl, rtol=1e-12)
+    for fn in ("lsqr", "lsmr"):
+        yield f"{fn} long", lambda fn=fn: getattr(S, fn)(tall, bt, atol=1e-12, btol=1e-12)
+    yield "gmres long complex", lambda: S.gmres(skew * (1 + 0.5j), bl * (1 - 1j), rtol=1e-12)
+
+    # wrong calls
+    b = vec["lap"]
+    yield "error cg list A", lambda: S.cg([[1.0]], b)
+    yield "error cg numpy b", lambda: S.cg(lap, np.ones(144))
+    yield "error cg rect", lambda: S.cg(rect, vec["rect"])
+    yield "error cg b shape", lambda: S.cg(lap, a(np.ones(3)))
+    yield "error cg M shape", lambda: S.cg(lap, b, M=S.eye_array(3))
+    yield "error cg rtol", lambda: S.cg(lap, b, rtol=-1.0)
+    yield "error cg max_iter 0", lambda: S.cg(lap, b, max_iter=0)
+    yield "error cg maxiter", lambda: S.cg(lap, b, maxiter=5)
+    yield "error cg callback", lambda: S.cg(lap, b, callback=print)
+    yield "error gmres restart", lambda: S.gmres(lap, b, restart=0)
+    yield "error minres shift", lambda: S.minres(lap, b, shift=float("nan"))
+    yield "error minres indefinite M", lambda: S.minres(lap, b, M=S.eye_array(144) * -1.0)
+    yield "error lsqr iter_lim", lambda: S.lsqr(rect, vec["rect"], iter_lim=3)
+    yield "error lsqr calc_var", lambda: S.lsqr(rect, vec["rect"], calc_var=True)
+    yield "error lsmr damp", lambda: S.lsmr(rect, vec["rect"], damp=-1.0)
+    yield "error lsmr conlim", lambda: S.lsmr(rect, vec["rect"], conlim=float("nan"))
+    yield "error cg nan", lambda: S.cg(lap, b * float("nan"))
+    yield "error lsqr no rmatvec", lambda: S.lsqr(S.LinearOperator(rect.shape, lambda v: rect @ v), vec["rect"])

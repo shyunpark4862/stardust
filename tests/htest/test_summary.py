@@ -96,10 +96,14 @@ def test_array_fields_of_one_test_are_tables():
 def test_batch_one_row_per_lane():
     r = _r()
     A, B = r.normal(size=(4, 20)), r.normal(size=(4, 22))
-    t = h.ttest_ind(A, B, axis=-1)
+    t = h.ttest_ind(A, B, axis=-1, equal_var=False)  # Welch: df varies per lane, a column
     s = t.summary()
     assert "Batch shape:                      (4,)" in s
     assert "statistic     pvalue         df     [0.025     0.975]" in s
+    # the pooled df every lane shares is in the header (regression G195, API.md §2.3)
+    pooled = h.ttest_ind(A, B, axis=-1).summary()
+    assert "Df:                                 40" in pooled and "pvalue     [0.025     0.975]" in pooled
+    assert "         df " not in pooled
     ci = t.conf_int()
     for i in range(4):
         cells = _row(s, f"[{i}]")

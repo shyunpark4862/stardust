@@ -259,7 +259,8 @@ class _PenalizedResult:
             parts.append(f"a path of {self._P.shape[-2]} alphas")
         if parts:
             return f"{name}({' and '.join(parts)}, {self._P.shape[-1]} parameters)"
-        return f"{name}(alpha={self.alpha:g}, nobs={self.nobs:g}, df_model={self.df_model:.6g}, params={self.params})"
+        fields = [("alpha", float(self.alpha)), ("nobs", float(self.nobs)), ("df_model", float(self.df_model))]
+        return _S.one_line(name, fields + [("params", self.params)])
 
 
 _MODEL_NAMES = {
@@ -298,11 +299,13 @@ def _penalized_summary(r):
         else:
             alpha_of = None
         cols = [] if alpha_of is None else [("alpha", alpha_of, lambda v: f"{v:g}")]
-        cols += [
-            ("nobs", _S.flat(r.nobs, n), _S.count),
-            ("df_model", _S.flat(r.df_model, n), _S.forg),
-            (fit_name, _S.flat(getattr(r, fit_name), n), _S.forg),
-        ]
+        cols.append(("nobs", _S.flat(r.nobs, n), _S.count))
+        dfm = _S.shared(r.df_model, n)  # in the header when every row has it (G195)
+        if dfm is not None:
+            right.append(("Df Model:", f"{dfm:#.4g}"))
+        else:
+            cols.append(("df_model", _S.flat(r.df_model, n), _S.forg))
+        cols.append((fit_name, _S.flat(getattr(r, fit_name), n), _S.forg))
         if iterative:
             cols.append(("converged", _S.flat(r.converged, n), _S.flag))
         t1 = _S.Table([c[0] for c in cols], _S.lane_rows(shape, [(g, f) for _, g, f in cols]))

@@ -159,6 +159,10 @@ def _size(x):
 # A factorization object (SparseLU, scipy's SuperLU): its shape.
 FACTOR_CHECK = Check(sd=lambda f: np.array(f.shape, float), ref=lambda label, f: np.array(f.shape, float), rtol=0.0)
 
+# An iterative solution: the same point to what the tolerances allow (the iterates of two
+# implementations part at rounding, amplified by the condition: up to 1e-3 relative here).
+ITER_CHECK = Check(rtol=1e-2, agree=0.9)
+
 # Random results of different generators: the shape and the number of stored entries.
 SIZE_CHECK = Check(sd=_size, ref=lambda label, x: _size(x), rtol=0.0)
 
@@ -185,6 +189,7 @@ class Spec:
     r_data: tuple = ()  # more (case data key, R variable) pairs the R expression reads
     r_sparse: bool = False  # the R result is a sparse matrix: compared by the three sums (R_SUMMARY)
     check: object = None  # the smoke check, when not the milestone's
+    grids: tuple = GRIDS  # the grids a solver case runs on
 
 
 def _quiet(f):
@@ -343,11 +348,28 @@ SOLVER_SPECS = (
          lambda d: (lambda L: lambda: _la("spsolve_triangular")(L, d["b"]))(
              __import__("scipy.sparse", fromlist=["tril"]).tril(d["a"], format="csr"))),
     Spec("SP5", "iterative", "cg (rtol 1e-10)", ("csc_array", "cg"),
-         lambda d: (lambda A, b: lambda: _sds("cg")(A, b, rtol=1e-10, max_iter=20000))(_sd_csc(d), _sd(d["b"])),
-         lambda d: lambda: _la("cg")(d["a"], d["b"], rtol=1e-10, maxiter=20000)),
+         lambda d: (lambda A, b: lambda: _sds("cg")(A, b, rtol=1e-10, max_iter=20000).x)(_sd_csc(d), _sd(d["b"])),
+         lambda d: lambda: _la("cg")(d["a"], d["b"], rtol=1e-10, maxiter=20000)[0], quick=True, check=ITER_CHECK),
     Spec("SP5", "iterative", "minres (rtol 1e-10)", ("csc_array", "minres"),
-         lambda d: (lambda A, b: lambda: _sds("minres")(A, b, rtol=1e-10, max_iter=20000))(_sd_csc(d), _sd(d["b"])),
-         lambda d: lambda: _la("minres")(d["a"], d["b"], rtol=1e-10, maxiter=20000)),
+         lambda d: (lambda A, b: lambda: _sds("minres")(A, b, rtol=1e-10, max_iter=20000).x)(_sd_csc(d), _sd(d["b"])),
+         lambda d: lambda: _la("minres")(d["a"], d["b"], rtol=1e-10, maxiter=20000)[0], check=ITER_CHECK),
+    Spec("SP5", "iterative", "bicgstab (rtol 1e-8)", ("csc_array", "bicgstab"),
+         lambda d: (lambda A, b: lambda: _sds("bicgstab")(A, b, rtol=1e-8, max_iter=20000).x)(_sd_csc(d), _sd(d["b"])),
+         lambda d: lambda: _la("bicgstab")(d["a"], d["b"], rtol=1e-8, maxiter=20000)[0], check=ITER_CHECK),
+    Spec("SP5", "iterative", "gmres (rtol 1e-8)", ("csc_array", "gmres"),
+         lambda d: (lambda A, b: lambda: _sds("gmres")(A, b, rtol=1e-8, max_iter=2000).x)(_sd_csc(d), _sd(d["b"])),
+         lambda d: lambda: _la("gmres")(d["a"], d["b"], rtol=1e-8, maxiter=2000)[0], check=ITER_CHECK,
+         grids=GRIDS[:2] + GRIDS[3:], note="restart 20(기본)"),
+    Spec("SP5", "iterative", "lsqr (atol = btol = 1e-8)", ("csc_array", "lsqr"),
+         lambda d: (lambda A, b: lambda: _sds("lsqr")(A, b, atol=1e-8, btol=1e-8, max_iter=20000).x)(
+             _sd_csc(d), _sd(d["b"])),
+         lambda d: lambda: _la("lsqr")(d["a"], d["b"], atol=1e-8, btol=1e-8, iter_lim=20000)[0], check=ITER_CHECK,
+         grids=GRIDS[:2] + GRIDS[3:]),
+    Spec("SP5", "iterative", "lsmr (atol = btol = 1e-8)", ("csc_array", "lsmr"),
+         lambda d: (lambda A, b: lambda: _sds("lsmr")(A, b, atol=1e-8, btol=1e-8, max_iter=20000).x)(
+             _sd_csc(d), _sd(d["b"])),
+         lambda d: lambda: _la("lsmr")(d["a"], d["b"], atol=1e-8, btol=1e-8, maxiter=20000)[0], check=ITER_CHECK,
+         grids=GRIDS[:2] + GRIDS[3:]),
     Spec("SP6", "eigen", "eigsh(k=6)", ("csc_array", "eigsh"),
          lambda d: (lambda A: lambda: _sds("eigsh")(A, k=6))(_sd_csc(d)),
          lambda d: lambda: _la("eigsh")(d["a"], k=6, v0=np.ones(d["n"])), note="같은 시작 벡터(1의 벡터)"),
@@ -383,7 +405,7 @@ def _grid_r(setup):
 
 
 # The milestones whose cases run.
-DONE = ("SP1", "SP2", "SP3", "SP4")
+DONE = ("SP1", "SP2", "SP3", "SP4", "SP5")
 
 
 def _public(spec) -> bool:
@@ -421,7 +443,7 @@ def cases() -> list[Case]:
     for s in SOLVER_SPECS:
         if not _public(s):
             continue
-        for mid in GRIDS:
+        for mid in s.grids:
             refs = [Ref("scipy", lambda d, f=s.scipy: _quiet(lambda: f(d)))]
             if s.r:
                 refs.append(RRef("R", s.r, data={**R_DATA, "b": "b"}, setup=R_GRID_SETUP, packages=("Matrix",)))

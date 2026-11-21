@@ -16,8 +16,8 @@
 | 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (`ols wls gls glm ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm rlm theilslopes siegelslopes quantreg nls anova stepwise best_subset`) |
 | 난수 | `sd.random` | [docs/api/random.md](docs/api/random.md) (Philox4×64-10, `default_rng`, `random`·`integers`·`choice`·`permutation`·`spawn`·`state`) |
 | 최적화 | `sd.optimize` | [docs/api/optimize.md](docs/api/optimize.md) (`approx_fprime check_grad least_squares lsq_linear nnls root_scalar minimize_scalar find_root bracket_root find_minimum bracket_minimum minimize root`, 결과 객체 `OptimizeResult`) |
-| 가설검정 | `sd.htest` | [docs/api/htest.md](docs/api/htest.md) (초안: H1의 t 검정·분산분석·분산의 동질성, H2의 적합도 검정, H3의 순위 검정, H4의 표본끼리의 적합도 검정, H5의 상관 검정, H6의 분할표 검정이 공개. scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정, 검정마다의 결과 객체) |
-| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환(SP1), 연산·곱·리덕션(SP2), 인덱싱과 만들기(SP3), 직접 풀이와 `LinearOperator`(SP4)다. 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
+| 가설검정 | `sd.htest` | [docs/api/htest.md](docs/api/htest.md) (초안: H1의 t 검정·분산분석·분산의 동질성, H2의 적합도 검정, H3의 순위 검정, H4의 표본끼리의 적합도 검정, H5의 상관 검정, H6의 분할표 검정, H7의 비율·이항 검정이 공개. scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정, 검정마다의 결과 객체) |
+| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환(SP1), 연산·곱·리덕션(SP2), 인덱싱과 만들기(SP3), 직접 풀이와 `LinearOperator`(SP4), 반복법(SP5)이다. 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
 | 적분 | `sd.integrate` | [docs/api/integrate.md](docs/api/integrate.md) (확정: 공개된 것은 결과 클래스 `IntegrateResult`(C0)이고, scipy.integrate의 적분 15개 `quad dblquad tplquad nquad quad_vec cubature tanhsinh nsum fixed_quad newton_cotes trapezoid simpson romb cumulative_trapezoid cumulative_simpson`는 C3–C7에서 공개된다; 설계 [docs/design/integrate.md](docs/design/integrate.md)) |
 | 미분 | `sd.differentiate` | [docs/api/differentiate.md](docs/api/differentiate.md) (확정: 공개된 것은 결과 클래스 `DifferentiateResult`(C0)이고, `derivative jacobian hessian`은 C2에서 공개된다; 설계는 적분과 함께 [docs/design/integrate.md](docs/design/integrate.md)) |
 
@@ -119,8 +119,9 @@ bool  int64  float64  complex128  string
   - 머리의 수는 statsmodels의 꼴이다: 통계량 `#.4g`, p값 `#.3g`, 자유도는 정수면 정수. 표의 수는 statsmodels의 forg(소수 3자리, 계수는 4자리; [1e-4, 1e4) 밖은 유효숫자)이고 표의 p값은 소수 3자리다. 표가 78칸보다 넓으면 줄만 넓어지고 제목과 머리는 78칸 그대로다.
   - 구간이 있는 결과(`conf_int(alpha=)`가 있는 결과)만 `summary(*, alpha=0.05)`이고 `alpha`의 검사와 메시지는 `conf_int`와 같다(regression G99, htest H16). 다른 결과의 `summary()`는 인자가 없다.
   - 배치(여러 문제를 한 번에 푼 결과)는 줄마다 한 문제(레인)인 표다. 줄의 이름은 그 레인의 첨자(`[0]`, `[1, 2]`)다. 20줄을 넘는 표는 앞뒤 5줄씩만 두고 가운데에 `...` 줄을 둔다. 긴 x(최적화)도 같다.
+  - 배치에서 자유도(`df`, `df_num`, `df_denom`, `df_model`)는 모든 레인이 같은 값이면 머리에 한 번, 레인마다 다르면 표의 열에 둔다(regression G195). 회귀의 검정과 비교(`wald_test`, `compare_f_test`, `t_test` 등), htest의 검정, 모형 배치의 `Df Model`이 모두 이 규칙이다. 이유: 같은 자료의 모양(같은 X의 배치)이면 어느 결과든 자유도가 같은 자리에 있어야 하고, 레인마다 다른 값(열이 겹친 레인의 계수 수)을 첫 레인의 값 하나로 보이면 틀린다.
   - 이유: 영역마다 다른 꼴이면 사용자가 꼴마다 읽는 법을 배워야 한다. 회귀 상자는 statsmodels 사용자에게 익숙하고, 머리와 표의 두 부분으로 어떤 결과든 담긴다.
-- **`repr`는 한 줄 `Name(field=value, …)`이고 주된 필드를 보인다.** 배치는 `Name(batch shape (4,))`다. 검정의 결과(htest와 회귀의 검정)는 수를 유효숫자 6자리로, 짧은 1차원 배열(6개까지)을 `[v, v]`로, 다른 배열을 `<array of shape (m, k)>`로 적는다. 여러 줄의 표는 `summary()`의 몫이다.
+- **`repr`는 한 줄 `Name(field=value, …)`이고 주된 필드를 보인다.** 배치는 `Name(batch shape (4,))`다(회귀 모형은 뒤에 계수 수를 붙인다: `OLSResult(batch shape (3,), 6 parameters)`). 회귀와 htest의 모든 결과(모형, 정규화, 검정, `BreuschPaganResult`·`TheilslopesResult`·`SiegelslopesResult`)는 같은 꼴로 수를 유효숫자 6자리로, 짧은 1차원 배열(6개까지)을 `[v, v]`로, 다른 배열을 `<array of shape (m, k)>`로 적는다(regression G194): `OLSResult(nobs=40, rank=4, rsquared=0.804348, params=[0.421749, 1.19944, -1.922, 0.302937])`. 쓰는 곳은 `stardust/_summary.py`의 한 함수다. 여러 줄의 표는 `summary()`의 몫이다.
 
 ## §3. 스레드와 결정성
 ```

@@ -1,14 +1,16 @@
-// The steps of the difference Jacobians in the least squares iterations
-// (docs/design/optimize.md §3.1): scipy 1.18.1's approx_derivative ('2-point', '3-point';
+// The steps of the fixed-step differences (docs/design/integrate.md §6.1, decisions C3, C15;
+// docs/design/optimize.md §3.1): scipy 1.18.1's approx_derivative ('2-point', '3-point';
 // scipy/optimize/_numdiff.py: _compute_absolute_step and _adjust_scheme_to_bounds) and
-// MINPACK's fdjac2 step (lmdif, regression.nls's iteration).
+// MINPACK's fdjac2 step (lmdif, regression.nls's iteration). sd.optimize's difference Jacobians,
+// gradients and Hessian products use them (csrc/optimize/lsq.cpp, objective.hpp, hessian.hpp,
+// scalar.cpp), each with its own loop (the counts, the other side tried, what is kept).
 #pragma once
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-namespace sd::optimize {
+namespace sd::differentiate {
 
 // sqrt(eps) = 2^-26: the relative step of fdjac2 (epsfcn = eps) and of scipy's '2-point'.
 inline double rel_step_2point() { return std::sqrt(std::numeric_limits<double>::epsilon()); }
@@ -58,4 +60,4 @@ inline double adjust_two_sided(double x, double h, double lb, double ub, bool& o
     return ha;
 }
 
-}  // namespace sd::optimize
+}  // namespace sd::differentiate

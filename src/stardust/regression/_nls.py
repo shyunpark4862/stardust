@@ -4,9 +4,9 @@ The iterations are sd.optimize's least squares kernel stardust._core.optimize.ls
 (MINPACK's Levenberg-Marquardt without bounds, scipy's trust region reflective method with
 them; MINPACK's forward differences), which calls back into this module for the residuals
 sqrt(w) (f(x, *theta) - y) of the rows used and for a user Jacobian. After a converged
-iteration, Gauss-Newton steps with an accurate Jacobian (the user's, or sd.optimize's 5-point
-differences, optimize/_diff.py) solved by the linear models' QR kernel (with its refinement)
-continue while the parameters move by more than rounding (G73). The covariance
+iteration, Gauss-Newton steps with an accurate Jacobian (the user's, or the 5-point differences
+of approx_fprime, differentiate/_differences.py) solved by the linear models' QR kernel (with its
+refinement) continue while the parameters move by more than rounding (G73). The covariance
 sigma^2 (J^T W J)^-1 and the aliased parameters (G9, G21) come from the same kernel at the
 solution.
 """
@@ -20,8 +20,8 @@ from .. import _core as _sd
 from .. import _summary as _S
 from .. import frame as _frame
 from .. import linalg as _linalg
+from ..differentiate._differences import Differences as _Differences
 from ..optimize._common import _show_x, _values_text
-from ..optimize._diff import Differences as _Differences
 from ._glm import _check_int
 from ._linear import (
     _aliased_note,
@@ -297,10 +297,8 @@ class NLSResult(_RegressionResult):
         return _summary(self, alpha)
 
     def __repr__(self):
-        return (
-            f"NLSResult(method={self.method!r}, nobs={self.nobs:g}, ssr={self.ssr:.6g}, "
-            f"converged={self.converged}, params={self.params})"
-        )
+        fields = [("method", self.method), ("nobs", float(self.nobs)), ("ssr", float(self.ssr))]
+        return _S.one_line("NLSResult", fields + [("converged", bool(self.converged)), ("params", self.params)])
 
 
 def _summary(r, alpha):

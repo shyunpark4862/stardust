@@ -78,6 +78,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/htest/rank.cpp
   csrc/htest/correlation.cpp
   csrc/htest/contingency.cpp
+  csrc/htest/proportion.cpp
   csrc/sparse/direct.cpp
   csrc/sparse/canonical.cpp
   csrc/sparse/convert.cpp
@@ -89,6 +90,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/sparse/index.cpp
   csrc/sparse/construct.cpp
   csrc/sparse/triangular.cpp
+  csrc/sparse/iterative.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp

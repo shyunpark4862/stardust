@@ -224453,7 +224453,7 @@ true
 }
 },
 "least_squares repr": {
-"r": "OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1.0 1.0])"
+"r": "OptimizeResult(method='trf', converged=True, cost=0, n_iter=18, nfev=61, x=[1, 1])"
 },
 "least_squares sd array x0": {
 "r": {
@@ -283798,7 +283798,7 @@ true
 }
 },
 "minimize repr": {
-"r": "OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[0.9999999710014291 0.9999999461191459])"
+"r": "OptimizeResult(method='bfgs', converged=True, fun=2.5353e-15, n_iter=32, nfev=39, x=[1, 1])"
 },
 "minimize rosen2 bfgs ": {
 "r": {
@@ -311075,7 +311075,7 @@ true
 }
 },
 "root repr": {
-"r": "OptimizeResult(method='hybr', converged=True, n_iter=21, nfev=26, x=[1.0 1.0])"
+"r": "OptimizeResult(method='hybr', converged=True, n_iter=21, nfev=26, x=[1, 1])"
 },
 "root tol hybr": {
 "r": {
@@ -350182,7 +350182,7 @@ true
 }
 },
 "root_scalar repr": {
-"r": "OptimizeResult(method='brentq', converged=True, n_iter=10, nfev=11, x=0.9999999999999969)"
+"r": "OptimizeResult(method='brentq', converged=True, n_iter=10, nfev=11, x=1)"
 },
 "root_scalar toms748 k": {
 "r": {

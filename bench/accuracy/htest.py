@@ -1,7 +1,9 @@
 """sd.htest's accuracy sweeps: one per reference family of the public tests
 (tests/htest/refdata.PUBLIC: tests/htest/ref/<family>.json, tools/htest_ref.py), one region per
-field (statistic, pvalue, zstatistic, df, df_num, df_denom, median, relative_risk, conf_int and
-odds_ratio's one-sided conf_int_less and conf_int_greater), each problem of the family a point.
+field (statistic, pvalue, zstatistic, df, df_num, df_denom, median, relative_risk, statistic_type,
+variance, diff, ratio, odds_ratio, prop1_null, prop2_null, conf_int and odds_ratio's one-sided
+conf_int_less and conf_int_greater, binomtest's conf_int_wilson and conf_int_wilsoncc; the interval
+functions' whole result is conf_int), each problem of the family a point.
 
 The contract is tests/htest/refdata.py's, as the tests judge it (docs/design/htest.md §4): the
 statistic to 1e-14 times its condition number in what it transforms (kappa_stat), the p-value
@@ -64,10 +66,10 @@ def _sd_regions(fam) -> dict:
     rows = {}
     for pid, rec in R.load(fam).items():
         r = R.call(P.PROBLEMS[pid])
-        alts = dict(R.INTERVALS)
+        keys = R.interval_keys(fam)
         for field, (e, c) in R.errors(fam, pid, r).items():
-            if field in alts:  # an interval: its lower end
-                ci = r.conf_int() if field == "conf_int" else r.conf_int(alternative=alts[field])
+            if field in keys:  # an interval: its lower end
+                ci = R.interval_of(fam, field, r)
                 got, hi = float(ci[0]), rec[field][0][0]
             else:
                 got, hi = float(getattr(r, field)), rec[field][0]

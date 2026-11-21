@@ -171,14 +171,8 @@ class _TestResult:
         name = type(self).__name__
         if self._batch:
             return f"{name}(batch shape {self._batch})"
-        parts = []
-        for k in self._FIELDS:
-            if k not in self._values:
-                continue
-            text = _S.compact(self._values[k])  # a short array as [v, ...], a long one as its shape
-            if text is not None:
-                parts.append(f"{k}={text}")
-        return f"{name}(" + ", ".join(parts) + ")"
+        # a short array as [v, ...], a long one as its shape (stardust._summary.one_line)
+        return _S.one_line(name, [(k, self._values[k]) for k in self._FIELDS if k in self._values])
 
 
 # ---- summary() (H74-H76)

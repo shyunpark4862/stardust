@@ -10,12 +10,12 @@
 //     another point than fun's last call calls fun again; that call counts as a gradient);
 //   - scipy's approx_derivative '2-point' (absolute step eps when jac is None, else the relative
 //     step finite_diff_rel_step or sqrt(eps) max(1, |x|)) or '3-point' (relative), adjusted to
-//     the bounds (diff.hpp), with f0 the value at the point.
+//     the bounds (differentiate/steps.hpp), with f0 the value at the point.
 // The user's functions get a new float64 sd.ndarray x; a returned value that is not a Python
 // float (fun) or a float64 sd.ndarray of shape (n,) (the gradient) goes through Python's check.
 #pragma once
 
-#include "optimize/diff.hpp"
+#include "differentiate/steps.hpp"
 
 #include "array/ndarray.hpp"
 #include "bind/pyutil.hpp"
@@ -201,12 +201,13 @@ struct Objective {
         xt = x;
         const double f0 = f;
         if (mode == kGradThreePoint) {
-            const double rstep = rel_step_3point();
+            const double rstep = differentiate::rel_step_3point();
             for (std::size_t j = 0; j < n; ++j) {
                 const double t = x[j];
-                const double h0 = absolute_step(t, rstep, !steps.empty(), steps.empty() ? 0.0 : steps[j]);
+                const double h0 =
+                    differentiate::absolute_step(t, rstep, !steps.empty(), steps.empty() ? 0.0 : steps[j]);
                 bool one_sided;
-                const double h = adjust_two_sided(t, h0, lb[j], ub[j], one_sided);
+                const double h = differentiate::adjust_two_sided(t, h0, lb[j], ub[j], one_sided);
                 const double x1 = one_sided ? t + h : t - h, x2 = one_sided ? t + 2 * h : t + h;
                 xt[j] = x1;
                 const double f1 = call_f(xt.data());
@@ -218,7 +219,7 @@ struct Objective {
             nfev += 2 * static_cast<std::int64_t>(n);
             return;
         }
-        const double rstep = rel_step_2point();
+        const double rstep = differentiate::rel_step_2point();
         for (std::size_t j = 0; j < n; ++j) {
             const double t = x[j];
             double h;
@@ -227,9 +228,9 @@ struct Objective {
                 h = steps[j];
                 if ((t + h) - t == 0) h = rstep * (t >= 0 ? 1.0 : -1.0) * std::max(1.0, std::abs(t));
             } else {
-                h = absolute_step(t, rstep, !steps.empty(), steps.empty() ? 0.0 : steps[j]);
+                h = differentiate::absolute_step(t, rstep, !steps.empty(), steps.empty() ? 0.0 : steps[j]);
             }
-            h = adjust_one_sided(t, h, lb[j], ub[j]);
+            h = differentiate::adjust_one_sided(t, h, lb[j], ub[j]);
             xt[j] = t + h;
             const double f1 = call_f(xt.data());
             xt[j] = t;

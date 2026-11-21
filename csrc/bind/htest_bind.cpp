@@ -6,6 +6,7 @@
 #include "htest/gof.hpp"
 #include "htest/gof2.hpp"
 #include "htest/parametric.hpp"
+#include "htest/proportion.hpp"
 #include "htest/rank.hpp"
 
 namespace nb = nanobind;
@@ -20,6 +21,7 @@ void bind_htest(nb::module_& core) {
     htest::bind_gof2(m);
     htest::bind_correlation(m);
     htest::bind_contingency(m);
+    htest::bind_proportion(m);
 }
 
 }  // namespace sd

@@ -169,10 +169,8 @@ class RLMResult(_RegressionResult):
         name = type(self).__name__
         if self._batch:
             return f"{name}(batch shape {tuple(self._batch)}, {self.params.shape[-1]} parameters)"
-        return (
-            f"{name}(method={self.method!r}, norm={self.norm!r}, nobs={self.nobs:g}, rank={self.rank}, "
-            f"scale={self.scale:.6g}, params={self.params})"
-        )
+        fields = [("method", self.method), ("norm", self.norm), ("nobs", float(self.nobs)), ("rank", int(self.rank))]
+        return _S.one_line(name, fields + [("scale", float(self.scale)), ("params", self.params)])
 
 
 def _summary(r, alpha):

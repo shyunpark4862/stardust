@@ -192,3 +192,84 @@ def test_reprs_show_the_fields():
     assert text.startswith("TTestResult(effect=[") and "df=36" in text and "\n" not in text
     one = repr(R.ols(y, X).t_test([0.0, 1.0, 0.0, 0.0]))
     assert one.startswith("TTestResult(effect=") and "pvalue=" in one
+
+
+def test_model_reprs_are_one_line_like_the_tests():
+    # G194: Name(field=value, ...), 6 significant digits, a short params as [a, b], a long one as its shape
+    y, X = _data()
+    X6 = np.column_stack([X, X[:, 0] ** 2, X[:, 1] * X[:, 2], X[:, 2] ** 2])
+    yp = np.abs(y) + 0.1
+    fits = [
+        R.ols(y, X),
+        R.wls(y, X, weights=np.full(y.shape[0], 2.0)),
+        R.glm(yp, X, family="gamma", link="log"),
+        R.rlm(y, X),
+        R.quantreg(y, X, q=0.5),
+        R.ridge(y, X, alpha=0.5),
+        R.lasso(y, X, alpha=0.1),
+        R.elastic_net(y, X, alpha=0.1, l1_ratio=0.5),
+        R.ridge_cv(y, X),
+        R.lasso_cv(y, X, rng=sd.random.default_rng(1)),
+        R.elastic_net_cv(y, X, rng=sd.random.default_rng(1)),
+        R.penalized_glm((y > 1.0).astype(float), X, family="binomial", alpha=0.05),
+    ]
+    for r in fits:
+        text = repr(r)
+        name = type(r).__name__
+        assert "\n" not in text and text.startswith(name + "(") and text.endswith(")"), text
+        p = r.params.tolist()
+        assert "params=[" + ", ".join(f"{v:.6g}" for v in p) + "])" in text, text
+    assert repr(R.ols(y, X)).startswith("OLSResult(nobs=40, rank=4, rsquared=")
+    assert repr(R.lasso(y, X6, alpha=0.1)).endswith("params=<array of shape (7,)>)")
+    assert repr(R.ridge(y, X, alpha=0.5)).startswith("RidgeResult(alpha=0.5, nobs=40, df_model=")
+    r = R.ridge(y, X, alpha=0.5)
+    assert f"df_model={float(r.df_model):.6g}," in repr(r)
+    t = R.theilslopes(y, X[:, 0])
+    assert repr(t) == (
+        f"TheilslopesResult(slope={t.slope:.6g}, intercept={t.intercept:.6g}, low_slope={t.low_slope:.6g}, "
+        f"high_slope={t.high_slope:.6g})"
+    )
+    assert repr(R.theilslopes(np.vstack([y, y]), X[:, 0])) == "TheilslopesResult(batch shape (2,))"
+    assert repr(R.siegelslopes(y, X[:, 0])).startswith("SiegelslopesResult(slope=")
+    bp = R.ols(y, X).breusch_pagan()
+    assert repr(bp) == (
+        f"BreuschPaganResult(lm={bp.lm:.6g}, lm_pvalue={bp.lm_pvalue:.6g}, fvalue={bp.fvalue:.6g}, "
+        f"f_pvalue={bp.f_pvalue:.6g})"
+    )
+
+
+def _header(text):
+    """The header lines of a box: between the first two '=' rules."""
+    lines = _lines(text)
+    rules = [k for k, line in enumerate(lines) if line.startswith("===")]
+    return "\n".join(lines[rules[0] + 1 : rules[1]])
+
+
+def test_batch_degrees_of_freedom_header_when_shared_table_when_not():
+    # G195: a degrees of freedom every lane shares is in the header, one that varies a column
+    y, X = _data()
+    Y = np.vstack([y, 2.0 * y + 1.0, y - X[:, 2]])
+    big, small = R.ols(Y, X), R.ols(Y, X[:, :1])
+    R2 = [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]
+    for s in (big.wald_test(R2).summary(), big.compare_f_test(small).summary()):
+        head = _header(s)
+        assert "Df Num:                              2" in head and "Df Denom:                           36" in head
+        assert "df_num" not in s and "df_denom" not in s
+    assert "Df:                                  2" in _header(big.compare_lr_test(small).summary())
+    assert "Df:                                 36" in _header(big.t_test(R2).summary())
+    assert "Df Model:                            3" in _header(big.summary())
+    # one regression with a repeated column: rank, df_model and the tests' dfs vary per lane
+    XB = np.stack([X, np.column_stack([X[:, :2], X[:, 0]]), X])
+    bigv, smallv = R.ols(Y, XB), R.ols(Y, XB[:, :, :1])
+    f = bigv.compare_f_test(smallv).summary()
+    assert "Df Num:" not in f and "fvalue     pvalue     df_num   df_denom" in f
+    assert _row(f, "[1]")[2:] == ["1", "37"] and _row(f, "[0]")[2:] == ["2", "36"]
+    m = bigv.summary()
+    assert "Df Model:" not in m and "nobs   df_model   rsquared" in m and _row(m, "[1]")[:2] == ["40", "2"]
+    t = bigv.t_test([0.0, 1.0, 0.0, 0.0]).summary()
+    assert "Df:" not in t and _row(t, "[1] c0")[-1] == "37" and _row(t, "[0] c0")[-1] == "36"
+    # the penalized fits: a ridge batch on one X shares df_model, a lasso batch does not
+    rs = R.ridge(Y, X, alpha=0.5).summary()
+    assert "Df Model:" in _header(rs) and "df_model" not in rs
+    ls = R.lasso(np.vstack([y, 0.01 * y]), X, alpha=0.3).summary()
+    assert "Df Model:" not in ls and "df_model" in ls

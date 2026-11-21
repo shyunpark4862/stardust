@@ -456,10 +456,8 @@ class GLMResult(_RegressionResult):
         name = type(self).__name__
         if self._batch:
             return f"{name}(batch shape {tuple(self._batch)}, {self.params.shape[-1]} parameters)"
-        return (
-            f"{name}(family={self.family!r}, link={self.link!r}, nobs={self.nobs:g}, rank={self.rank}, "
-            f"deviance={self.deviance:.6g}, params={self.params})"
-        )
+        fields = [("family", self.family), ("link", self.link), ("nobs", float(self.nobs)), ("rank", int(self.rank))]
+        return _S.one_line(name, fields + [("deviance", float(self.deviance)), ("params", self.params)])
 
 
 def _summary(r, alpha):

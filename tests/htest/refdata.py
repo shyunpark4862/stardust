@@ -20,7 +20,11 @@ The contract, per field, in units of its bound (1 or less is within it):
   - conf_int (the t tests' and pearsonr's 95% interval): each end's error / (1e-14 times the larger of the end
     and the estimate's and half width's sizes: the ends subtract them); odds_ratio's and relative_risk's
     ends (positive, no subtraction) each against itself, odds_ratio's one-sided ones too
-    (conf_int_less, conf_int_greater).
+    (conf_int_less, conf_int_greater); H7's: binomtest's three (conf_int Clopper-Pearson's,
+    conf_int_wilson, conf_int_wilsoncc) and quantile_test's order statistics each against itself,
+    proportion_confint's (the result itself) against itself but 'normal' and 'agresti_coull'
+    (q -+ z se: the interval's size), confint_proportions_2indep's ratios and odds ratios against
+    themselves and its differences against the interval's size.
 """
 
 import json
@@ -59,9 +63,27 @@ H6 = (
     "odds_ratio",
     "relative_risk",
 )
-PUBLIC = H1 + H2 + H3 + H4 + H5 + H6  # the families of the public functions (the accuracy measurement's sweeps)
-# the estimates whose interval ends are measured each against itself (no estimate to subtract)
-OWN_SCALE = ("odds_ratio", "relative_risk")
+H7 = (
+    "binomtest",
+    "quantile_test",
+    "poisson_means_test",
+    "proportions_ztest",
+    "proportions_chisquare",
+    "proportion_confint",
+    "test_proportions_2indep",
+    "confint_proportions_2indep",
+)
+PUBLIC = H1 + H2 + H3 + H4 + H5 + H6 + H7  # the families of the public functions (the accuracy measurement's sweeps)
+# the estimates whose interval ends are measured each against itself (no estimate to subtract): the
+# ratios, binomtest's intervals (Clopper-Pearson's beta quantiles, Wilson's roots formed without
+# cancellation) and quantile_test's order statistics
+OWN_SCALE = ("odds_ratio", "relative_risk", "binomtest", "quantile_test")
+# proportion_confint's methods whose ends subtract (q -+ z se): measured against the interval's size
+SUBTRACTING = ("normal", "agresti_coull")
+# the families whose result is the interval itself, a (..., 2) array (statsmodels' (low, upp))
+ARRAY_INTERVALS = ("proportion_confint", "confint_proportions_2indep")
+# binomtest's intervals by conf_int's method (scipy's proportion_ci)
+BINOMTEST_INTERVALS = (("conf_int", "exact"), ("conf_int_wilson", "wilson"), ("conf_int_wilsoncc", "wilsoncc"))
 
 
 def load(fam) -> dict:
@@ -95,6 +117,15 @@ def _sd_args(p):
     kw = dict(p.kwargs)
     if p.func == "anderson":
         kw["dist"] = dist[kw.get("dist", "norm")]
+    # statsmodels' names (H85, H86): 'beta' is 'exact'; its 'larger' and 'smaller' are 'greater' and
+    # 'less', but proportion_confint's 'larger' is the interval [0, upper], sd's 'less' (H95)
+    if kw.get("alternative") in ("larger", "smaller"):
+        flip = p.func == "proportion_confint"
+        kw["alternative"] = {"larger": "less" if flip else "greater", "smaller": "greater" if flip else "less"}[
+            kw["alternative"]
+        ]
+    if p.func == "proportion_confint" and kw.get("method") == "beta":
+        kw["method"] = "exact"
     return args, kw
 
 
@@ -167,9 +198,62 @@ def ci_scale(p):
     return abs(lo2 + hi2) / 2 + abs(hi2 - lo2) / 2
 
 
-FIELDS = ("statistic", "pvalue", "zstatistic", "df", "df_num", "df_denom", "median", "relative_risk")
+FIELDS = (
+    "statistic",
+    "pvalue",
+    "zstatistic",
+    "df",
+    "df_num",
+    "df_denom",
+    "median",
+    "relative_risk",
+    # H7: quantile_test's, and test_proportions_2indep's (statsmodels' fields)
+    "statistic_type",
+    "variance",
+    "diff",
+    "ratio",
+    "odds_ratio",
+    "prop1_null",
+    "prop2_null",
+)
 # odds_ratio's intervals by the alternative of conf_int (its own argument, scipy's)
 INTERVALS = (("conf_int", "two-sided"), ("conf_int_less", "less"), ("conf_int_greater", "greater"))
+
+
+def interval_keys(fam):
+    """The reference's interval fields of a family."""
+    if fam == "binomtest":
+        return [k for k, _ in BINOMTEST_INTERVALS]
+    if fam in ARRAY_INTERVALS:
+        return ["conf_int"]
+    return [k for k, _ in INTERVALS]
+
+
+def interval_of(fam, key, r):
+    """sd's interval for the reference field `key` of result r (an array family's result is it)."""
+    if fam in ARRAY_INTERVALS:
+        return r
+    if fam == "binomtest":
+        return r.conf_int(method=dict(BINOMTEST_INTERVALS)[key])
+    return r.conf_int() if key == "conf_int" else r.conf_int(alternative=dict(INTERVALS)[key])
+
+
+def _ref_scale(ends):
+    """The size of an interval from its reference ends (estimate and half width)."""
+    lo, hi = ends[0][0], ends[1][0]
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        return 0.0
+    return abs(lo + hi) / 2 + abs(hi - lo) / 2
+
+
+def interval_scale(fam, p, ends):
+    if fam in OWN_SCALE:
+        return 0.0
+    if fam == "proportion_confint":
+        return _ref_scale(ends) if p.kwargs.get("method", "normal") in SUBTRACTING else 0.0
+    if fam == "confint_proportions_2indep":
+        return _ref_scale(ends) if p.kwargs.get("compare", "diff") == "diff" else 0.0
+    return ci_scale(p)
 
 
 def errors(fam, pid, r=None) -> dict:
@@ -181,15 +265,16 @@ def errors(fam, pid, r=None) -> dict:
     p = P.PROBLEMS[pid]
     r = call(p) if r is None else r
     out = {}
-    for f in FIELDS:
-        if f in rec and hasattr(r, f):
-            v = getattr(r, f)
-            out[f] = (rel(v, rec[f]), contract(fam, rec, f, v))
-    for key, alt in INTERVALS:
+    if fam not in ARRAY_INTERVALS:
+        for f in FIELDS:
+            if f in rec and hasattr(r, f):
+                v = getattr(r, f)
+                out[f] = (rel(v, rec[f]), contract(fam, rec, f, v))
+    for key in interval_keys(fam):
         if key not in rec:
             continue
-        ci = r.conf_int(alternative=alt) if key != "conf_int" else r.conf_int()
-        scale = 0.0 if fam in OWN_SCALE else ci_scale(p)
+        ci = interval_of(fam, key, r)
+        scale = interval_scale(fam, p, rec[key])
         c = conf_int_contract({"conf_int": rec[key]}, ci, scale)
         out[key] = (max(rel(float(ci[i]), rec[key][i]) for i in range(2)), max(c))
     return out
