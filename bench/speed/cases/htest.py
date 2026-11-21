@@ -1,4 +1,4 @@
-"""sd.htest against scipy and R: the public tests (milestones H1-H5; docs/design/htest.md §5) at
+"""sd.htest against scipy and R: the public tests (milestones H1-H6; docs/design/htest.md §5) at
 n = 10, 10^3 and 10^6 per sample and a batch of 10^4 lanes of 30 (axis=-1); page_trend_test on
 tables (m, n) of (12, 8) (exact), (1000, 30) (normal) and a batch 10^3 x (10, 6).
 
@@ -12,6 +12,10 @@ wilcox.test, kruskal.test, friedman.test, ansari.test, mood.test, ks.test (two s
 cor.test (pearson, spearman with exact = FALSE, kendall up to n = 10^3). anderson_ksamp (a list
 of samples, no axis), spearmanr (its axis is the variables') and somersd (no axis) have no batch;
 somersd takes rounded values (a table of some 30 x 30 distinct values).
+The contingency tables (H6) on fixed tables (2 x 2 small and N = 2 10^4, 5 x 5 N = 10^4, r x c for
+the exact Fisher test, (1000, 4) for Cochran's Q) and a batch of 10^4 2 x 2 tables; scipy,
+statsmodels (mcnemar, cochrans_q) and R (chisq.test, fisher.test, mcnemar.test) where they have the
+test (scipy's r x c Fisher test is a Monte Carlo: none).
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -23,7 +27,7 @@ import warnings
 
 import numpy as np
 
-from ..registry import Case, Check, Ref, RRef
+from ..registry import Case, Check, Ref, RRef, count
 
 SIZES = ((10, "10"), (1000, "10^3"), (10**6, "10^6"))
 BATCH = (10**4, 30)
@@ -241,6 +245,132 @@ def cases() -> list[Case]:
             )
         )
     out.extend(_page_cases())
+    out.extend(_table_cases())
+    return out
+
+
+# ---- the contingency tables (H6) ----------------------------------------------------------
+
+TABLES = {
+    "2x2": np.array([[12.0, 5], [7, 16]]),
+    "2x2 N=2*10^4": np.array([[5200.0, 4800], [4700, 5300]]),
+    "5x5 N=10^4": np.array([[420.0, 380, 410, 395, 405], [390, 415, 400, 405, 390], [405, 400, 385, 410, 400],
+                            [395, 405, 410, 390, 400], [390, 400, 395, 400, 415]]),
+    "3x3": np.array([[3.0, 1, 4], [1, 5, 9], [2, 6, 5]]),
+    "4x5 N=100": np.array([[1.0, 2, 5, 20, 2], [9, 0, 1, 10, 9], [0, 0, 10, 0, 1], [3, 8, 5, 5, 9]]),
+    "2x2 N=200": np.array([[60.0, 45], [40, 55]]),
+}  # fmt: skip
+
+
+def _table_data(key, batch=False, seed=2026):
+    import stardust as sd
+
+    if batch:
+        g = np.random.Generator(np.random.PCG64(seed))
+        x = np.floor(g.uniform(1, 30, (10**4, 2, 2)))
+    elif key == "cochran":
+        g = np.random.Generator(np.random.PCG64(seed))
+        x = (g.uniform(size=(1000, 4)) < np.array([0.3, 0.4, 0.5, 0.6])).astype(np.float64)
+    else:
+        x = TABLES[key]
+    return {"x0": x, "s0": sd.asarray(x), "xv": np.ravel(x.T), "xi": x.astype(np.int64)}
+
+
+def _first(r):
+    return np.ravel(np.asarray(r.statistic if hasattr(r, "statistic") else r.relative_risk, dtype=float))
+
+
+TABLE_CHECK = Check(sd=_first, ref=lambda label, r: np.asarray(r, dtype=float) if label.startswith("R") else _first(r))
+
+
+def _table_size(key):
+    """The id notation of a table key (bench/README.md): "(r, c)" for the small tables, "n=N" for
+    the ones named by their total count ("5x5 N=10^4" -> "n=10^4")."""
+    shape, _, total = key.partition(" N=")
+    if total:
+        n = 1
+        for factor in total.split("*"):  # "2*10^4" -> 20000
+            base, _, exp = factor.partition("^")
+            n *= int(base) ** int(exp or 1)
+        return "n=" + count(n)
+    r, c = shape.split("x")
+    return f"({r}, {c})"
+
+
+def _table_cases():
+    import scipy.stats as st
+    from scipy.stats import contingency as ctg
+    from statsmodels.stats import contingency_tables as smct
+
+    import stardust as sd
+
+    h = sd.htest
+    specs = [  # (name, table key, sd call, comparators [(label, call)], R expression or None, R differs)
+        ("chi2_contingency", "2x2", h.chi2_contingency, st.chi2_contingency, "chisq.test(matrix(xv, nrow = 2))", ""),
+        ("chi2_contingency", "5x5 N=10^4", h.chi2_contingency, st.chi2_contingency,
+         "chisq.test(matrix(xv, nrow = 5))", ""),
+        ("fisher_exact", "2x2", h.fisher_exact, st.fisher_exact, "fisher.test(matrix(xv, nrow = 2))", ""),
+        ("fisher_exact", "2x2 N=2*10^4", h.fisher_exact, st.fisher_exact, "fisher.test(matrix(xv, nrow = 2))", ""),
+        ("fisher_exact", "3x3", h.fisher_exact, None, "fisher.test(matrix(xv, nrow = 3))", ""),
+        ("fisher_exact", "4x5 N=100", h.fisher_exact, None, "fisher.test(matrix(xv, nrow = 4), workspace = 2e8)",
+         "R needs workspace = 2e8 (its default fails) and merges past values (1.7e-10 off)"),
+        ("barnard_exact", "2x2", h.barnard_exact, st.barnard_exact, None, ""),
+        ("barnard_exact", "2x2 N=200", h.barnard_exact, st.barnard_exact, None, ""),
+        ("boschloo_exact", "2x2", h.boschloo_exact, st.boschloo_exact, None, ""),
+        ("boschloo_exact", "2x2 N=200", h.boschloo_exact, st.boschloo_exact, None, ""),
+        ("mcnemar", "2x2", h.mcnemar, lambda x: smct.mcnemar(x), None, ""),
+        ("mcnemar", "2x2 N=2*10^4", lambda x: h.mcnemar(x, exact=False), lambda x: smct.mcnemar(x, exact=False),
+         "mcnemar.test(matrix(xv, nrow = 2))", ""),
+        ("cochrans_q", "cochran", h.cochrans_q, lambda x: smct.cochrans_q(x), None, ""),
+        ("odds_ratio", "2x2", lambda x: h.odds_ratio(x).conf_int(), None, None, ""),
+        ("odds_ratio", "2x2 N=200", h.odds_ratio, None, None, ""),
+    ]  # fmt: skip
+    out = []
+    for name, key, sdf, spf, rexpr, rdiff in specs:
+        refs = []
+        if spf is not None:
+            lib = "statsmodels" if name in ("mcnemar", "cochrans_q") else "scipy"
+            refs.append(Ref(lib, lambda d, spf=spf: _quiet(lambda: spf(d["x0"]))))
+        if name == "odds_ratio":
+            refs.append(Ref("scipy", lambda d: _quiet(lambda: ctg.odds_ratio(d["xi"]).confidence_interval())))
+        if rexpr:
+            val = ".v$p.value" if name == "fisher_exact" else "c(.v$statistic)"
+            refs.append(RRef("R", rexpr, data={"xv": "xv"}, differs=rdiff, value=val))
+        check = CHECK if name not in ("odds_ratio",) else Check(skip="the interval, not a statistic")
+        if name == "fisher_exact" and rexpr:
+            check = Check(sd=lambda r: np.ravel(np.asarray(r.pvalue, dtype=float)),
+                          ref=lambda label, r: np.asarray(r, dtype=float) if label.startswith("R")
+                          else np.ravel(np.asarray(r.pvalue, dtype=float)))  # fmt: skip
+        elif name in ("chi2_contingency", "mcnemar") and rexpr:
+            check = TABLE_CHECK
+        out.append(
+            Case(
+                area="htest",
+                group="tables",
+                name=name,
+                size="(1000, 4)" if key == "cochran" else _table_size(key),
+                n=int(TABLES[key].sum()) if key in TABLES else 4000,
+                setup=lambda key=key: _table_data(key),
+                sd=lambda d, sdf=sdf: lambda: sdf(d["s0"]),
+                refs=tuple(refs),
+                quick=key == "2x2",
+                check=check,
+            )
+        )
+    for name in ("chi2_contingency", "fisher_exact", "barnard_exact", "mcnemar", "odds_ratio"):
+        out.append(
+            Case(
+                area="htest",
+                group="tables-batched",
+                name=name,
+                size="10^4 x (2, 2)",
+                n=4 * 10**4,
+                setup=lambda: _table_data("", batch=True),
+                sd=lambda d, f=getattr(h, name): lambda: f(d["s0"]),
+                refs=(),
+                check=CHECK,
+            )
+        )
     return out
 
 
@@ -306,4 +436,6 @@ TITLES = {
     "samples-batched": "표본끼리의 적합도 일괄",
     "corr": "상관",
     "corr-batched": "상관 일괄",
+    "tables": "분할표",
+    "tables-batched": "분할표 일괄",
 }

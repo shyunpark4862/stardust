@@ -156,6 +156,9 @@ def _size(x):
     return np.array([float(x.shape[0]), float(x.shape[1]), float(x.nnz)])
 
 
+# A factorization object (SparseLU, scipy's SuperLU): its shape.
+FACTOR_CHECK = Check(sd=lambda f: np.array(f.shape, float), ref=lambda label, f: np.array(f.shape, float), rtol=0.0)
+
 # Random results of different generators: the shape and the number of stored entries.
 SIZE_CHECK = Check(sd=_size, ref=lambda label, x: _size(x), rtol=0.0)
 
@@ -318,13 +321,27 @@ def _sds(name):
     return getattr(__import__("stardust").sparse, name)
 
 
+# The direct solves have no R comparator: Matrix keeps a matrix's factorization in the object
+# (A@factors), so every timed call after the first is a lookup (0.01-0.4 ms in SP4's smoke run),
+# and the first, CSparse's LU in the setup, took about 11 minutes and 6.5 GB on lap2d/1000 and
+# lap3d/45. docs/design/sparse.md §5 has R's times measured once (SP0).
 SOLVER_SPECS = (
     Spec("SP4", "direct", "spsolve", ("csc_array", "spsolve"),
          lambda d: (lambda A, b: lambda: _sds("spsolve")(A, b))(_sd_csc(d), _sd(d["b"])),
-         lambda d: lambda: _la("spsolve")(d["a"], d["b"]), r="solve(A, b)", quick=True,
-         note="sd는 Accelerate LU/AMD, scipy는 SuperLU/COLAMD, R은 CSparse LU"),
+         lambda d: lambda: _la("spsolve")(d["a"], d["b"]), quick=True,
+         note="sd는 Accelerate LU/AMD, scipy는 SuperLU/COLAMD"),
     Spec("SP4", "direct", "splu", ("csc_array", "splu"), lambda d: (lambda A: lambda: _sds("splu")(A))(_sd_csc(d)),
-         lambda d: lambda: _la("splu")(d["a"]), r="lu(A)"),
+         lambda d: lambda: _la("splu")(d["a"]), check=FACTOR_CHECK,
+         note="sd는 특이 판정(조건수 추정)까지"),
+    Spec("SP4", "direct", "splu solve", ("csc_array", "splu"),
+         lambda d: (lambda f, b: lambda: f.solve(b))(_sds("splu")(_sd_csc(d)), _sd(d["b"])),
+         lambda d: (lambda f: lambda: f.solve(d["b"]))(_quiet(lambda: _la("splu")(d["a"]))),
+         note="sd는 반복 다듬기 한 번(풀이 둘과 SpMV 하나)"),
+    Spec("SP4", "direct", "spsolve_triangular", ("csr_array", "tril", "spsolve_triangular"),
+         lambda d: (lambda L, b: lambda: _sds("spsolve_triangular")(L, b, upper=False))(
+             _sds("tril")(_sd_csc(d), format="csr"), _sd(d["b"])),
+         lambda d: (lambda L: lambda: _la("spsolve_triangular")(L, d["b"]))(
+             __import__("scipy.sparse", fromlist=["tril"]).tril(d["a"], format="csr"))),
     Spec("SP5", "iterative", "cg (rtol 1e-10)", ("csc_array", "cg"),
          lambda d: (lambda A, b: lambda: _sds("cg")(A, b, rtol=1e-10, max_iter=20000))(_sd_csc(d), _sd(d["b"])),
          lambda d: lambda: _la("cg")(d["a"], d["b"], rtol=1e-10, maxiter=20000)),
@@ -366,7 +383,7 @@ def _grid_r(setup):
 
 
 # The milestones whose cases run.
-DONE = ("SP1", "SP2", "SP3")
+DONE = ("SP1", "SP2", "SP3", "SP4")
 
 
 def _public(spec) -> bool:
@@ -410,7 +427,7 @@ def cases() -> list[Case]:
                 refs.append(RRef("R", s.r, data={**R_DATA, "b": "b"}, setup=R_GRID_SETUP, packages=("Matrix",)))
             out.append(Case(area="sparse", group=s.group, name=f"{s.name} {mid.split('/')[0]}", size=_grid_size(mid),
                             setup=_grid_r(_grid_setup(mid)), sd=s.sd, refs=tuple(refs),
-                            quick=s.quick and mid == "lap2d/300", note=s.note))  # fmt: skip
+                            quick=s.quick and mid == "lap2d/300", note=s.note, check=s.check or Check()))  # fmt: skip
     return out
 
 

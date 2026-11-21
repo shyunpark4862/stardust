@@ -6,13 +6,15 @@ converged, n_iter, nfev, njev; regression's NLSResult): scipy's success and nit 
 aliased. A method gives the fields it has; reading one it does not give raises
 AttributeError (so hasattr() tells). Every field is read-only (regression G98) and an array
 field is a read-only array, the same at each access without a copy (API.md §2): writing into
-it raises, and .copy() gives an array to change.
+it raises, and .copy() gives an array to change. The fields' machinery is the base it shares
+with sd.integrate's and sd.differentiate's results (stardust._results._FieldResult).
 """
 
 import math
 
 from .. import _calls, _core
 from .. import _summary as _S
+from .._results import _FieldResult, _Lazy  # noqa: F401  (_Lazy: minimize's import)
 
 # The field names, in the order repr and the documentation list them. Scalar problems give
 # Python numbers; a batched scalar function (find_root, ...) gives arrays of the batch shape.
@@ -44,73 +46,18 @@ FIELDS = (
     # the method that ran
     "method",
 )
-_FIELD_SET = frozenset(FIELDS)
 
 
-class _Lazy:
-    """A field computed when first read: make() gives its value."""
-
-    __slots__ = ("make",)
-
-    def __init__(self, make):
-        self.make = make
-
-
-def _own(v, copy=False):
-    """An array field (or a tuple of them) made read-only, as the result keeps and gives it:
-    copied first when copy (an array the caller may still hold), else taken as it is."""
-    if isinstance(v, _core.ndarray):
-        if copy:
-            v = v.copy()
-        v._set_readonly()
-    elif isinstance(v, tuple):
-        v = tuple(_own(e, copy) for e in v)
-    return v
-
-
-def _field(name):
-    def get(self):
-        try:
-            v = self._fields[name]
-        except KeyError:
-            raise AttributeError(
-                f"'OptimizeResult' object has no attribute '{name}' (its method does not give it)"
-            ) from None
-        if isinstance(v, _Lazy):
-            v = self._fields[name] = _own(v.make())
-        return v
-
-    get.__name__ = name
-    return property(get, doc=f"The result's '{name}' (read-only; arrays are read-only too).")
-
-
-class OptimizeResult:
+class OptimizeResult(_FieldResult):
     """The result of a solver in sd.optimize: x, fun, converged, status, message, n_iter, nfev,
     njev and the method's other fields (docs/api/optimize.md §1.3)."""
 
-    __slots__ = ("_fields", "_batch")
+    __slots__ = ()
+    _FIELDS = FIELDS
+    _ABSENT = "its method does not give it"
 
     def __init__(self, *, batch=(), **fields):
         self._set(batch, fields, True)  # the caller's arrays are copied once
-
-    @classmethod
-    def _make(cls, *, batch=(), **fields):
-        """The solvers' constructor: their arrays are new and held by nobody else, so the result
-        takes them without a copy."""
-        r = cls.__new__(cls)
-        r._set(batch, fields, False)
-        return r
-
-    def _set(self, batch, fields, copy):
-        unknown = sorted(set(fields) - _FIELD_SET)
-        if unknown:
-            raise TypeError(f"OptimizeResult(): unexpected keyword argument {unknown[0]!r}")
-        stored = {}
-        for k in FIELDS:  # a fixed order, whatever the caller's
-            if k in fields:
-                stored[k] = _own(fields[k], copy)  # the result owns its arrays, read-only
-        self._fields = stored
-        self._batch = tuple(batch)
 
     @_calls.method("summary")
     def summary(self):
@@ -216,8 +163,3 @@ def _num(v):
     except TypeError, ValueError:
         return repr(v)
     return f"{v:.6g}" if math.isfinite(v) else repr(v)
-
-
-for _name in FIELDS:
-    setattr(OptimizeResult, _name, _field(_name))
-del _name

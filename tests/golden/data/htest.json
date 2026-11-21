@@ -1049,6 +1049,210 @@
 "obj": "stardust.htest._rank.AnsariResult"
 }
 },
+"barnard_exact batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.35c71533d78c0p-1",
+"0x1.6f13db86ceee9p-1",
+"0x1.4d57b55f30000p-1",
+"0x1.0b61860bfffffp-3"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.4f76f6a60a932p-1",
+"0x1.8c2fc91c1bbe3p-2",
+"-0x1.025ec1e5ef8a0p-1",
+"-0x1.91a105483ffc6p+0"
+]
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nBatch shape:                      (4,)  Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            -0.655      0.605\n[1]             0.387      0.717\n[2]            -0.505      0.651\n[3]            -1.569      0.131\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact cap": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "0x1.6a9810d6cdac6p+5"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                       45.32  Alternative:                 two-sided\nP-value:                           nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact large": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.314337555d5a6p-5"
+},
+"statistic": {
+"f": "0x1.0fde7a41261a2p+1"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                       2.124  Alternative:                 two-sided\nP-value:                        0.0373\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact n": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "barnard_exact(): 'n' must be >= 1"
+}
+},
+"barnard_exact n=1": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.540fffffffffdp-6"
+},
+"statistic": {
+"f": "-0x1.32c04dcf9096ap+1"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                      -2.396  Alternative:                 two-sided\nP-value:                        0.0208\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact pooled=False greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "-0x1.026c5e3d6f160p+1"
+},
+"summary()": "                       Barnard's exact test (unpooled)\n==============================================================================\nStatistic:                      -2.019  Alternative:                   greater\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact pooled=False less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.176c14f881287p-5"
+},
+"statistic": {
+"f": "-0x1.026c5e3d6f160p+1"
+},
+"summary()": "                       Barnard's exact test (unpooled)\n==============================================================================\nStatistic:                      -2.019  Alternative:                      less\nP-value:                        0.0341\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact pooled=False two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.176c14f881287p-4"
+},
+"statistic": {
+"f": "-0x1.026c5e3d6f160p+1"
+},
+"summary()": "                       Barnard's exact test (unpooled)\n==============================================================================\nStatistic:                      -2.019  Alternative:                 two-sided\nP-value:                        0.0682\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact pooled=True greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "-0x1.e4f357143f037p+0"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                      -1.894  Alternative:                   greater\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact pooled=True less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.176c14f881287p-5"
+},
+"statistic": {
+"f": "-0x1.e4f357143f037p+0"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                      -1.894  Alternative:                      less\nP-value:                        0.0341\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact pooled=True two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.176c14f881287p-4"
+},
+"statistic": {
+"f": "-0x1.e4f357143f037p+0"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                      -1.894  Alternative:                 two-sided\nP-value:                        0.0682\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact shape": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "barnard_exact(): 'table' must be a 2 x 2 table, not 3 x 4"
+}
+},
+"barnard_exact tail": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.4630000000001p-35"
+},
+"statistic": {
+"f": "0x1.8e639b963f8d2p+2"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                       6.225  Alternative:                 two-sided\nP-value:                      3.71e-11\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
+"barnard_exact zero column": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                        Barnard's exact test (pooled)\n==============================================================================\nStatistic:                         nan  Alternative:                 two-sided\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BarnardExactResult"
+}
+},
 "bartlett": {
 "r": {
 "attrs": {
@@ -1134,6 +1338,170 @@
 "summary()": "                  Bartlett test of homogeneity of variances\n==============================================================================\nStatistic:                         nan  No. Observations:                12, 8\nP-value:                           nan\nDf:                                  1\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.BartlettResult"
+}
+},
+"boschloo_exact batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4d3f42d550462p-1",
+"0x1.6ef0037da64a4p-1",
+"0x1.50e990b6c7246p-1",
+"0x1.1f8e5c1be8f24p-3"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c66fba0ca1467p-2",
+"0x1.c288ce29a80fbp-2",
+"0x1.bf5f42f077679p-2",
+"0x1.c1e3a74b77a97p-4"
+]
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nBatch shape:                      (4,)  Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.444      0.651\n[1]             0.440      0.717\n[2]             0.437      0.658\n[3]             0.110      0.140\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact equal": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.76497ffffffffp-6"
+},
+"statistic": {
+"f": "0x1.40848af45cb52p-6"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                     0.01956  Alternative:                 two-sided\nP-value:                        0.0228\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.f449461800003p-1"
+},
+"statistic": {
+"f": "0x1.faa3b4fa72946p-1"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                      0.9895  Alternative:                   greater\nP-value:                         0.977\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.176c14f881287p-5"
+},
+"statistic": {
+"f": "0x1.066c21ac3a3c9p-4"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                     0.06407  Alternative:                      less\nP-value:                        0.0341\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact small greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.fbea5d492fba9p-1"
+},
+"statistic": {
+"f": "0x1.ff1ece427d1f2p-1"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                      0.9983  Alternative:                   greater\nP-value:                         0.992\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact small less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.54924dce1a2e6p-7"
+},
+"statistic": {
+"f": "0x1.8c0a7c7e91392p-6"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                     0.02417  Alternative:                      less\nP-value:                        0.0104\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact small two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.54924dce1a2e6p-6"
+},
+"statistic": {
+"f": "0x1.8c0a7c7e91392p-6"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                     0.02417  Alternative:                 two-sided\nP-value:                        0.0208\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact tail": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.53949c6b3bf81p-35"
+},
+"statistic": {
+"f": "0x1.2515f1da4ef5cp-34"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                   6.664e-11  Alternative:                 two-sided\nP-value:                      3.86e-11\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.176c14f881287p-4"
+},
+"statistic": {
+"f": "0x1.066c21ac3a3c9p-4"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                     0.06407  Alternative:                 two-sided\nP-value:                        0.0682\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
+}
+},
+"boschloo_exact zero column": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                            Boschloo's exact test\n==============================================================================\nStatistic:                         nan  Alternative:                 two-sided\nP-value:                           nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.BoschlooExactResult"
 }
 },
 "brunnermunzel batch": {
@@ -1731,6 +2099,1419 @@
 "obj": "stardust.htest._correlation.ChatterjeexiResult"
 }
 },
+"chi2_contingency 1-D": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "chi2_contingency(): 'observed' must have at least 2 dimensions (the table's), not 1"
+}
+},
+"chi2_contingency 3x4 correction=False lambda=0.3": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.0cfde64095b3bp-4"
+},
+"statistic": {
+"f": "0x1.7ad46bbc1974ep+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.84  Table:                           3 x 4\nP-value:                        0.0657  Lambda:                            0.3\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=False lambda=None": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.1f06a8a02aa7cp-4"
+},
+"statistic": {
+"f": "0x1.7505958680a87p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.66  Table:                           3 x 4\nP-value:                        0.0701\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=False lambda=cressie-read": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.189073972789ap-4"
+},
+"statistic": {
+"f": "0x1.7710287062f66p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.72  Table:                           3 x 4\nP-value:                        0.0685  Lambda:                   cressie-read\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=False lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.ca859a87b282ap-5"
+},
+"statistic": {
+"f": "0x1.89038711847eep+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       12.28  Table:                           3 x 4\nP-value:                        0.0560  Lambda:                  freeman-tukey\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=False lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.0040712a38480p-4"
+},
+"statistic": {
+"f": "0x1.7f27546e651f0p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.97  Table:                           3 x 4\nP-value:                        0.0626  Lambda:                 log-likelihood\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=False lambda=mod-log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.8940be7131a17p-5"
+},
+"statistic": {
+"f": "0x1.967dfecf26dc8p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       12.70  Table:                           3 x 4\nP-value:                        0.0480  Lambda:             mod-log-likelihood\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=False lambda=neyman": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.f00a7bf3aa4e4p-6"
+},
+"statistic": {
+"f": "0x1.be2f8cafafd6fp+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       13.94  Table:                           3 x 4\nP-value:                        0.0303  Lambda:                         neyman\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=True lambda=0.3": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.0cfde64095b3bp-4"
+},
+"statistic": {
+"f": "0x1.7ad46bbc1974ep+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.84  Table:                           3 x 4\nP-value:                        0.0657  Lambda:                            0.3\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=True lambda=None": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.1f06a8a02aa7cp-4"
+},
+"statistic": {
+"f": "0x1.7505958680a87p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.66  Table:                           3 x 4\nP-value:                        0.0701\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=True lambda=cressie-read": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.189073972789ap-4"
+},
+"statistic": {
+"f": "0x1.7710287062f66p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.72  Table:                           3 x 4\nP-value:                        0.0685  Lambda:                   cressie-read\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=True lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.ca859a87b282ap-5"
+},
+"statistic": {
+"f": "0x1.89038711847eep+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       12.28  Table:                           3 x 4\nP-value:                        0.0560  Lambda:                  freeman-tukey\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=True lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.0040712a38480p-4"
+},
+"statistic": {
+"f": "0x1.7f27546e651f0p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       11.97  Table:                           3 x 4\nP-value:                        0.0626  Lambda:                 log-likelihood\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=True lambda=mod-log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.8940be7131a17p-5"
+},
+"statistic": {
+"f": "0x1.967dfecf26dc8p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       12.70  Table:                           3 x 4\nP-value:                        0.0480  Lambda:             mod-log-likelihood\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency 3x4 correction=True lambda=neyman": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+2"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.9ca1af286bca2p+2",
+"0x1.4435e50d79436p+3",
+"0x1.308fb823ee090p+3",
+"0x1.1ce98b3a62ceap+3",
+"0x1.ef286bca1af28p+2",
+"0x1.850d79435e50dp+3",
+"0x1.6d79435e50d79p+3",
+"0x1.55e50d79435e5p+3",
+"0x1.b435e50d79436p+2",
+"0x1.56bca1af286bdp+3",
+"0x1.41f7047dc11f7p+3",
+"0x1.2d31674c59d31p+3"
+]
+},
+"pvalue": {
+"f": "0x1.f00a7bf3aa4e4p-6"
+},
+"statistic": {
+"f": "0x1.be2f8cafafd6fp+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       13.94  Table:                           3 x 4\nP-value:                        0.0303  Lambda:                         neyman\nDf:                                  6\n==============================================================================\nexpected_freq         [0]        [1]        [2]        [3]\n------------------------------------------------------------------------------\n[0]                 6.447     10.132      9.518      8.904\n[1]                 7.737     12.158     11.421     10.684\n[2]                 6.816     10.711     10.061      9.412\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency batch": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+4,
+2,
+2
+],
+"strides": [
+32,
+16,
+8
+],
+"v": [
+"0x1.5555555555555p+0",
+"0x1.5555555555555p-1",
+"0x1.2aaaaaaaaaaabp+4",
+"0x1.2aaaaaaaaaaabp+3",
+"0x1.22c8590b21643p+4",
+"0x1.da6f4de9bd37ap+3",
+"0x1.3d37a6f4de9bdp+4",
+"0x1.02c8590b21643p+4",
+"0x1.b99999999999ap+3",
+"0x1.ccccccccccccdp+2",
+"0x1.2666666666666p+3",
+"0x1.3333333333333p+2",
+"0x1.ea60dd67c8a61p+3",
+"0x1.6b3e45306eb3ep+2",
+"0x1.759f22983759fp+3",
+"0x1.14c1bacf914c2p+2"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.bfb9f64f0e398p-1",
+"0x1.a79dae68f4b7fp-1",
+"0x1.61f288dfe7b09p-3"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.98f3b630ea8b8p-6",
+"0x1.8590b21642c86p-5",
+"0x1.dbb6db6db6db7p+0"
+]
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nBatch shape:                      (4,)  Correction:                      Yates\nTable:                           2 x 2\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             0.000      1.000          1\n[1]             0.025      0.874          1\n[2]             0.048      0.827          1\n[3]             1.858      0.173          1\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=False lambda=0.3": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.ed87915618817p-7"
+},
+"statistic": {
+"f": "0x1.7a31a481096f3p+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       5.909  Table:                           2 x 2\nP-value:                        0.0151  Lambda:                            0.3\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=False lambda=None": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.0f33647842cecp-6"
+},
+"statistic": {
+"f": "0x1.6f904a7904a79p+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       5.743  Table:                           2 x 2\nP-value:                        0.0166\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=False lambda=cressie-read": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.0651373fb7649p-6"
+},
+"statistic": {
+"f": "0x1.734f41903ce75p+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       5.802  Table:                           2 x 2\nP-value:                        0.0160  Lambda:                   cressie-read\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=False lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.8684651567b18p-7"
+},
+"statistic": {
+"f": "0x1.94ad5c0a1925ep+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       6.323  Table:                           2 x 2\nP-value:                        0.0119  Lambda:                  freeman-tukey\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=False lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.cbe2856819214p-7"
+},
+"statistic": {
+"f": "0x1.82299b4e2114bp+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       6.034  Table:                           2 x 2\nP-value:                        0.0140  Lambda:                 log-likelihood\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=False lambda=mod-log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.36835a45573d6p-7"
+},
+"statistic": {
+"f": "0x1.aec5bd590fcfdp+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       6.731  Table:                           2 x 2\nP-value:                       0.00948  Lambda:             mod-log-likelihood\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=False lambda=neyman": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.30c86a430c4bcp-8"
+},
+"statistic": {
+"f": "0x1.00563edc178d4p+3"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       8.011  Table:                           2 x 2\nP-value:                       0.00465  Lambda:                         neyman\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=True lambda=0.3": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.8db2d671c7482p-5"
+},
+"statistic": {
+"f": "0x1.f20a622149081p+1"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       3.891  Table:                           2 x 2\nP-value:                        0.0485  Lambda:                            0.3\nDf:                                  1  Correction:                      Yates\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=True lambda=None": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.9e57e601b3167p-5"
+},
+"statistic": {
+"f": "0x1.e93c8253c8254p+1"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       3.822  Table:                           2 x 2\nP-value:                        0.0506  Correction:                      Yates\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=True lambda=cressie-read": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.986669504ddd4p-5"
+},
+"statistic": {
+"f": "0x1.ec56228f2530ep+1"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       3.846  Table:                           2 x 2\nP-value:                        0.0499  Lambda:                   cressie-read\nDf:                                  1  Correction:                      Yates\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=True lambda=freeman-tukey": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.67f446caa4d0ep-5"
+},
+"statistic": {
+"f": "0x1.03c4a246ea919p+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       4.059  Table:                           2 x 2\nP-value:                        0.0439  Lambda:                  freeman-tukey\nDf:                                  1  Correction:                      Yates\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=True lambda=log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.81c792e3efe32p-5"
+},
+"statistic": {
+"f": "0x1.f8966829d847bp+1"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       3.942  Table:                           2 x 2\nP-value:                        0.0471  Lambda:                 log-likelihood\nDf:                                  1  Correction:                      Yates\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=True lambda=mod-log-likelihood": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.47799bf555abbp-5"
+},
+"statistic": {
+"f": "0x1.0e0336f5d29cfp+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       4.219  Table:                           2 x 2\nP-value:                        0.0400  Lambda:             mod-log-likelihood\nDf:                                  1  Correction:                      Yates\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency correction=True lambda=neyman": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.6db6db6db6db7p+2",
+"0x1.1249249249249p+2",
+"0x1.9249249249249p+2",
+"0x1.2db6db6db6db7p+2"
+]
+},
+"pvalue": {
+"f": "0x1.f02149a6e0992p-6"
+},
+"statistic": {
+"f": "0x1.2c5e28891a3d7p+2"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       4.693  Table:                           2 x 2\nP-value:                        0.0303  Lambda:                         neyman\nDf:                                  1  Correction:                      Yates\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency lambda type": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "chi2_contingency(): 'lambda_' must be None, a real number or one of 'pearson', 'log-likelihood', 'freeman-tukey', 'mod-log-likelihood', 'neyman', 'cressie-read', not list"
+}
+},
+"chi2_contingency method": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "chi2_contingency(): 'method' must be None, not str"
+}
+},
+"chi2_contingency near expected": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.e848100000000p+19",
+"0x1.e848100000000p+19",
+"0x1.e848100000000p+19",
+"0x1.e848100000000p+19"
+]
+},
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       0.000  Table:                           2 x 2\nP-value:                          1.00  Lambda:                 log-likelihood\nDf:                                  1  Correction:                      Yates\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 1e+06      1e+06\n[1]                 1e+06      1e+06\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency negative": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "chi2_contingency(): 'observed' must hold non-negative finite counts"
+}
+},
+"chi2_contingency one row": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x0.0p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+1,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.8000000000000p+1",
+"0x1.0000000000000p+2",
+"0x1.4000000000000p+2"
+]
+},
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       0.000  Table:                           1 x 3\nP-value:                          1.00\nDf:                                  0\n==============================================================================\nexpected_freq         [0]        [1]        [2]\n------------------------------------------------------------------------------\n[0]                     3          4          5\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency weighted": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.26bca1af286bdp+1",
+"0x1.2e1af286bca1bp+2",
+"0x1.ba1af286bca1bp+0",
+"0x1.59435e50d7943p+1",
+"0x1.61e50d79435e5p+2",
+"0x1.02f286bca1af3p+1"
+]
+},
+"pvalue": {
+"f": "0x1.9e9a95c84c5bap-2"
+},
+"statistic": {
+"f": "0x1.ceec877826202p+0"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       1.808  Table:                           2 x 3\nP-value:                         0.405\nDf:                                  2\n==============================================================================\nexpected_freq         [0]        [1]        [2]\n------------------------------------------------------------------------------\n[0]                 2.303      4.720      1.727\n[1]                 2.697      5.530      2.023\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency yates within half": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.30c30c30c30c3p+2",
+"0x1.4f3cf3cf3cf3dp+2",
+"0x1.4f3cf3cf3cf3dp+2",
+"0x1.70c30c30c30c3p+2"
+]
+},
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       0.000  Table:                           2 x 2\nP-value:                          1.00  Correction:                      Yates\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 4.762      5.238\n[1]                 5.238      5.762\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency zero cell neyman": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.2762762762762p+1",
+"0x1.589d89d89d89ep+1",
+"0x1.d89d89d89d89ep+1",
+"0x1.13b13b13b13b1p+2"
+]
+},
+"pvalue": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "inf"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                         inf  Table:                           2 x 2\nP-value:                          0.00  Lambda:                         neyman\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 2.308      2.692\n[1]                 3.692      4.308\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency zero row": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0",
+"0x0.0p+0",
+"0x1.8000000000000p+1",
+"0x1.0000000000000p+2",
+"0x1.4000000000000p+2"
+]
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                         nan  Table:                           2 x 3\nP-value:                           nan\nDf:                                  2\n==============================================================================\nexpected_freq         [0]        [1]        [2]\n------------------------------------------------------------------------------\n[0]                     0          0          0\n[1]                     3          4          5\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
+"chi2_contingency zero table": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"expected_freq": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                         nan  Table:                           2 x 2\nP-value:                           nan  Correction:                      Yates\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                   nan        nan\n[1]                   nan        nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.Chi2ContingencyResult"
+}
+},
 "chisquare": {
 "r": {
 "attrs": {
@@ -1966,6 +3747,96 @@
 "r": {
 "error": "builtins.ValueError",
 "msg": "chisquare(): the sums of 'f_obs' and 'f_exp' must agree to a relative tolerance of 1.49e-08 in each sample, not 0.0682 (sum_check)"
+}
+},
+"cochrans_q": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.8000000000000p+1"
+},
+"pvalue": {
+"f": "0x1.14482d12c40fap-1"
+},
+"statistic": {
+"f": "0x1.14a5294a5294ap+1"
+},
+"summary()": "                               Cochran's Q test\n==============================================================================\nStatistic:                       2.161  No. Observations:                   30\nP-value:                         0.540  No. Treatments:                      4\nDf:                                  3\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.CochransQResult"
+}
+},
+"cochrans_q batch": {
+"r": {
+"attrs": {
+"df": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.78b56362cef38p-2",
+"0x1.786476d2260b2p-1",
+"0x1.96d46ce03b422p-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+1",
+"0x1.3b13b13b13b14p-1",
+"0x1.d89d89d89d89ep+0"
+]
+},
+"summary()": "                               Cochran's Q test\n==============================================================================\nBatch shape:                      (3,)  No. Treatments:                      3\nNo. Observations:                   15\n==============================================================================\n            statistic     pvalue         df\n------------------------------------------------------------------------------\n[0]             2.000      0.368          2\n[1]             0.615      0.735          2\n[2]             1.846      0.397          2\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.CochransQResult"
+}
+},
+"cochrans_q degenerate": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+1"
+},
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                               Cochran's Q test\n==============================================================================\nStatistic:                         nan  No. Observations:                    2\nP-value:                           nan  No. Treatments:                      3\nDf:                                  2\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.CochransQResult"
+}
+},
+"cochrans_q values": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "cochrans_q(): 'x' must hold 0 and 1 values (the successes)"
 }
 },
 "cramervonmises batch": {
@@ -2873,6 +4744,328 @@
 "summary()": "                                One-way ANOVA\n==============================================================================\nStatistic:                       3.503  No. Observations:               40, 41\nP-value:                        0.0650\nDf Num:                              1\nDf Denom:                           79\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.FOnewayResult"
+}
+},
+"fisher_exact 2x6": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.19ae9f880267ap-10"
+},
+"statistic": {
+"f": "0x1.7d26c5d1b418cp-24"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                   8.874e-08  Table:                           2 x 6\nP-value:                       0.00107\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact 3x3": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.21230a31012fcp-2"
+},
+"statistic": {
+"f": "0x1.d77b69ebe6c60p-10"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                    0.001799  Table:                           3 x 3\nP-value:                         0.282\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact 4x5": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.3896196d387b0p-32"
+},
+"statistic": {
+"f": "0x1.2b2bbc04ace4ep-64"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                   6.335e-20  Table:                           4 x 5\nP-value:                      2.84e-10\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact balanced": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x1.0000000000000p+0"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                       1.000  Alternative:                 two-sided\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.9e782627934aep-1",
+"0x1.7129f94796c0ap-1",
+"0x1.181a038736263p-3"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.e50d79435e50dp-2",
+"0x1.36db6db6db6dbp+0",
+"0x1.4cccccccccccdp-1",
+"0x1.db6db6db6db6ep-3"
+]
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nBatch shape:                      (4,)  Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.474      1.000\n[1]             1.214      0.810\n[2]             0.650      0.721\n[3]             0.232      0.137\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact batch rxc": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.8086c6c8cb5ebp-4",
+"0x1.792d7f3bc1eedp-2",
+"0x1.f02802664efbbp-1"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.3dd37327c7337p-10",
+"0x1.92d8aed0fcd2bp-9",
+"0x1.95995c2b4d39dp-7"
+]
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nBatch shape:                      (3,)  Table:                           3 x 3\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.001      0.094\n[1]             0.003      0.368\n[2]             0.012      0.969\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact cap": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fisher_exact(): the exact r x c test needs more than its cap of 2e+08 operations for this table; use chi2_contingency"
+}
+},
+"fisher_exact counts": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fisher_exact(): 'table' must hold non-negative integer counts"
+}
+},
+"fisher_exact deep tail": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.3d253ce20a2cbp-994"
+},
+"statistic": {
+"f": "inf"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                         inf  Alternative:                 two-sided\nP-value:                     7.40e-300\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact empty": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fisher_exact(): 'table' must be at least a 1 x 1 table, not 0 x 2"
+}
+},
+"fisher_exact greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.ff1ece427d1f2p-1"
+},
+"statistic": {
+"f": "0x1.8618618618618p-4"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                     0.09524  Alternative:                   greater\nP-value:                         0.998\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.8c0a7c7e91392p-6"
+},
+"statistic": {
+"f": "0x1.8618618618618p-4"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                     0.09524  Alternative:                      less\nP-value:                        0.0242\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact mirror greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.ffb858e69c2cdp-1"
+},
+"statistic": {
+"f": "0x1.0000000000000p-4"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                     0.06250  Alternative:                   greater\nP-value:                         0.999\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact mirror less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.79104a0c0c9d5p-7"
+},
+"statistic": {
+"f": "0x1.0000000000000p-4"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                     0.06250  Alternative:                      less\nP-value:                        0.0115\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact mirror two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.79104a0c0c9d5p-6"
+},
+"statistic": {
+"f": "0x1.0000000000000p-4"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                     0.06250  Alternative:                 two-sided\nP-value:                        0.0230\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact one row": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x1.0000000000000p+0"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                       1.000  Table:                           1 x 3\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact rxc alternative": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "fisher_exact(): 'alternative' must be 'two-sided' for a table that is not 2 x 2, not 'less'"
+}
+},
+"fisher_exact tail greater": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.65d644604b547p-494"
+},
+"statistic": {
+"f": "0x1.c200000000000p+9"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                       900.0  Alternative:                   greater\nP-value:                     2.73e-149\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact tail less": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x1.c200000000000p+9"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                       900.0  Alternative:                      less\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact tail two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.65d644604b547p-493"
+},
+"statistic": {
+"f": "0x1.c200000000000p+9"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                       900.0  Alternative:                 two-sided\nP-value:                     5.47e-149\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact two-sided": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.eb14639a3ccf6p-6"
+},
+"statistic": {
+"f": "0x1.8618618618618p-4"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                     0.09524  Alternative:                 two-sided\nP-value:                        0.0300\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
+}
+},
+"fisher_exact zero column": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                             Fisher's exact test\n==============================================================================\nStatistic:                         nan  Alternative:                 two-sided\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.FisherExactResult"
 }
 },
 "fligner long": {
@@ -6552,6 +8745,232 @@
 "obj": "stardust.htest._rank.MannwhitneyuResult"
 }
 },
+"mcnemar batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.4ffffffffffffp-15",
+"0x1.f288dea800002p-2",
+"0x1.a10a000000003p-1",
+"0x1.2526400000003p-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.c000000000000p+3",
+"0x1.0000000000000p+3",
+"0x1.0000000000000p+3"
+]
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nBatch shape:                      (4,)\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             1.000      0.000\n[1]            14.000      0.487\n[2]             8.000      0.815\n[3]             8.000      0.286\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar equal exact=False correction=False": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                         McNemar's test (chi-squared)\n==============================================================================\nStatistic:                       0.000  Correction:                      False\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar equal exact=False correction=True": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.8bb05f6fe52eap-1"
+},
+"statistic": {
+"f": "0x1.5555555555555p-4"
+},
+"summary()": "                         McNemar's test (chi-squared)\n==============================================================================\nStatistic:                     0.08333  Correction:                       True\nP-value:                         0.773\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar equal exact=True correction=False": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x1.8000000000000p+2"
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       6.000\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar equal exact=True correction=True": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x1.8000000000000p+2"
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       6.000\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar exact type": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "mcnemar(): 'exact' must be True or False, not int"
+}
+},
+"mcnemar exact=False correction=False": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.74bcf82c9d85fp-5"
+},
+"statistic": {
+"f": "0x1.0000000000000p+2"
+},
+"summary()": "                         McNemar's test (chi-squared)\n==============================================================================\nStatistic:                       4.000  Correction:                      False\nP-value:                        0.0455\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar exact=False correction=True": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.482a2414556dbp-4"
+},
+"statistic": {
+"f": "0x1.8800000000000p+1"
+},
+"summary()": "                         McNemar's test (chi-squared)\n==============================================================================\nStatistic:                       3.062  Correction:                       True\nP-value:                        0.0801\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar exact=True correction=False": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.3aa0000000001p-4"
+},
+"statistic": {
+"f": "0x1.0000000000000p+2"
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       4.000\nP-value:                        0.0768\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar exact=True correction=True": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.3aa0000000001p-4"
+},
+"statistic": {
+"f": "0x1.0000000000000p+2"
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       4.000\nP-value:                        0.0768\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar large": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.16b7663ebab8bp-34"
+},
+"statistic": {
+"f": "0x1.c200000000000p+9"
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       900.0\nP-value:                      6.34e-11\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar zero exact=False correction=False": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                         McNemar's test (chi-squared)\n==============================================================================\nStatistic:                         nan  Correction:                      False\nP-value:                           nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar zero exact=False correction=True": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                         McNemar's test (chi-squared)\n==============================================================================\nStatistic:                         nan  Correction:                       True\nP-value:                           nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar zero exact=True correction=False": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       0.000\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
+"mcnemar zero exact=True correction=True": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.0000000000000p+0"
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       0.000\nP-value:                          1.00\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.McnemarResult"
+}
+},
 "median_test above correction=False lambda=0.4": {
 "r": {
 "attrs": {
@@ -7882,6 +10301,43 @@
 "obj": "stardust.htest._rank.MedianTestResult"
 }
 },
+"median_test zero cell neyman": {
+"r": {
+"attrs": {
+"df": {
+"f": "0x1.0000000000000p+0"
+},
+"median": {
+"f": "0x1.c000000000000p+2"
+},
+"pvalue": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "inf"
+},
+"summary()": "                              Mood's median test\n==============================================================================\nStatistic:                         inf  No. Observations:                 4, 4\nP-value:                          0.00  Ties:                            below\nMedian:                          7.000\nDf:                                  1\n==============================================================================\ntable             [0]        [1]\n------------------------------------------------------------------------------\n[0]                 0          4\n[1]                 4          0\n==============================================================================",
+"table": {
+"nd": "int64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+0,
+4,
+4,
+0
+]
+}
+},
+"obj": "stardust.htest._rank.MedianTestResult"
+}
+},
 "mood batch": {
 "r": {
 "attrs": {
@@ -8346,6 +10802,466 @@
 "summary()": "                      D'Agostino-Pearson normality test\n==============================================================================\nStatistic:                       1.441  No. Observations:                   30\nP-value:                         0.486\n=============================================================================="
 },
 "obj": "stardust.htest._gof.NormaltestResult"
+}
+},
+"odds_ratio alternative": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "conf_int(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'up'"
+}
+},
+"odds_ratio conditional": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d237f71191501p-8",
+"0x1.f9d5db9908e4bp-1"
+]
+},
+"statistic": {
+"f": "0x1.c01d15ab5c797p-4"
+},
+"summary()": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nStatistic:                      0.1094\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.007      0.988\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio conditional alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6020c2896977ap-7",
+"0x1.838c95d22ea0cp-1"
+]
+}
+},
+"odds_ratio conditional batch": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.0a0f093bfc42ap-5",
+"0x1.009322f6e7f12p+3",
+"0x1.ba534b29a47edp-2",
+"0x1.ac2f6f25e2791p+1",
+"0x1.256e997a763c6p-3",
+"0x1.a057385a1b4f7p+1",
+"0x1.7a86a39fc5a4ap-5",
+"0x1.a2de75a50d8c6p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.05a0ca80f75fcp-1",
+"0x1.326ed6b5e9995p+0",
+"0x1.6d3bae613be49p-1",
+"0x1.47a600791262fp-2"
+]
+},
+"summary()": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nBatch shape:                      (4,)\n==============================================================================\n            statistic     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.511      0.032      8.018\n[1]             1.197      0.432      3.345\n[2]             0.713      0.143      3.253\n[3]             0.320      0.046      1.636\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio conditional conf_int greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6020c2896977ap-7",
+"inf"
+]
+}
+},
+"odds_ratio conditional conf_int less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.838c95d22ea0cp-1"
+]
+}
+},
+"odds_ratio conditional conf_int two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d237f71191501p-8",
+"0x1.f9d5db9908e4bp-1"
+]
+}
+},
+"odds_ratio conditional infinite": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.25388e0e462acp-1",
+"inf"
+]
+},
+"statistic": {
+"f": "inf"
+},
+"summary()": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nStatistic:                         inf\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.573        inf\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio conditional large": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.25de134be5c25p+2",
+"0x1.c0cf44895c7b6p+3"
+]
+},
+"statistic": {
+"f": "0x1.fbd99bca30f9bp+2"
+},
+"summary()": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nStatistic:                       7.935\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       4.592     14.025\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio conditional zero cell": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.9749da6a0f7dcp+1"
+]
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nStatistic:                       0.000\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.000      3.182\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio conditional zero margin": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"inf"
+]
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nStatistic:                         nan\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.000        inf\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio kind": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "odds_ratio(): 'kind' must be 'conditional' or 'sample', not 'exact'"
+}
+},
+"odds_ratio sample": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.944756efbbe3dp-7",
+"0x1.7868ceef7777fp-1"
+]
+},
+"statistic": {
+"f": "0x1.8618618618618p-4"
+},
+"summary()": "                             Odds ratio (sample)\n==============================================================================\nStatistic:                     0.09524\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.012      0.735\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio sample alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.18c508cfaf512p-6",
+"0x1.0efeb1bf011dfp-1"
+]
+}
+},
+"odds_ratio sample batch": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.f4aa766a93771p-5",
+"0x1.05cb9c83b2d61p+2",
+"0x1.e7c6ce26525e4p-2",
+"0x1.82f26dda6bcb5p+1",
+"0x1.77ecd37a520e0p-3",
+"0x1.5ca12efe752a3p+1",
+"0x1.1d7f4d0c8373dp-4",
+"0x1.637dc6fe6a4cdp+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p-1",
+"0x1.3333333333333p+0",
+"0x1.6a052bf5a814bp-1",
+"0x1.3e93e93e93e94p-2"
+]
+},
+"summary()": "                             Odds ratio (sample)\n==============================================================================\nBatch shape:                      (4,)\n==============================================================================\n            statistic     [0.025     0.975]\n------------------------------------------------------------------------------\n[0]             0.500      0.061      4.091\n[1]             1.200      0.476      3.023\n[2]             0.707      0.184      2.724\n[3]             0.311      0.070      1.389\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio sample conf_int greater": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.18c508cfaf512p-6",
+"inf"
+]
+}
+},
+"odds_ratio sample conf_int less": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.0efeb1bf011dfp-1"
+]
+}
+},
+"odds_ratio sample conf_int two-sided": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.944756efbbe3dp-7",
+"0x1.7868ceef7777fp-1"
+]
+}
+},
+"odds_ratio sample infinite": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"inf"
+]
+},
+"statistic": {
+"f": "inf"
+},
+"summary()": "                             Odds ratio (sample)\n==============================================================================\nStatistic:                         inf\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio         nan        inf\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio sample large": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.2ef804c693d01p+2",
+"0x1.b0a01871c98d2p+3"
+]
+},
+"statistic": {
+"f": "0x1.0000000000000p+3"
+},
+"summary()": "                             Odds ratio (sample)\n==============================================================================\nStatistic:                       8.000\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       4.734     13.520\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio sample zero cell": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"nan"
+]
+},
+"statistic": {
+"f": "0x0.0p+0"
+},
+"summary()": "                             Odds ratio (sample)\n==============================================================================\nStatistic:                       0.000\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.000        nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
+}
+},
+"odds_ratio sample zero margin": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"inf"
+]
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                             Odds ratio (sample)\n==============================================================================\nStatistic:                         nan\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.000        inf\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.OddsRatioResult"
 }
 },
 "page_trend_test 20 x 3": {
@@ -9884,8 +12800,241 @@
 "obj": "stardust.htest._rank.RanksumsResult"
 }
 },
+"relative_risk (0, 10, 0, 12)": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan"
+]
+},
+"control_cases": 0,
+"control_total": 12,
+"exposed_cases": 0,
+"exposed_total": 10,
+"relative_risk": {
+"f": "nan"
+},
+"summary()": "                                Relative risk\n==============================================================================\nRelative risk:                     nan\nExposed cases:                       0\nExposed total:                      10\nControl cases:                       0\nControl total:                      12\n==============================================================================\n                   [0.025     0.975]\n------------------------------------------------------------------------------\nrelative risk         nan        nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.RelativeRiskResult"
+}
+},
+"relative_risk (0, 10, 0, 12) alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan"
+]
+}
+},
+"relative_risk (0, 10, 3, 12)": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"nan"
+]
+},
+"control_cases": 3,
+"control_total": 12,
+"exposed_cases": 0,
+"exposed_total": 10,
+"relative_risk": {
+"f": "0x0.0p+0"
+},
+"summary()": "                                Relative risk\n==============================================================================\nRelative risk:                   0.000\nExposed cases:                       0\nExposed total:                      10\nControl cases:                       3\nControl total:                      12\n==============================================================================\n                   [0.025     0.975]\n------------------------------------------------------------------------------\nrelative risk       0.000        nan\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.RelativeRiskResult"
+}
+},
+"relative_risk (0, 10, 3, 12) alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"nan"
+]
+}
+},
+"relative_risk (3, 10, 0, 12)": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"inf"
+]
+},
+"control_cases": 0,
+"control_total": 12,
+"exposed_cases": 3,
+"exposed_total": 10,
+"relative_risk": {
+"f": "inf"
+},
+"summary()": "                                Relative risk\n==============================================================================\nRelative risk:                     inf\nExposed cases:                       3\nExposed total:                      10\nControl cases:                       0\nControl total:                      12\n==============================================================================\n                   [0.025     0.975]\n------------------------------------------------------------------------------\nrelative risk         nan        inf\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.RelativeRiskResult"
+}
+},
+"relative_risk (3, 10, 0, 12) alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"inf"
+]
+}
+},
+"relative_risk (3000, 10000, 2000, 10000)": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6d84d3e726f3dp+0",
+"0x1.936a630be971ep+0"
+]
+},
+"control_cases": 2000,
+"control_total": 10000,
+"exposed_cases": 3000,
+"exposed_total": 10000,
+"relative_risk": {
+"f": "0x1.8000000000000p+0"
+},
+"summary()": "                                Relative risk\n==============================================================================\nRelative risk:                   1.500\nExposed cases:                    3000\nExposed total:                   10000\nControl cases:                    2000\nControl total:                   10000\n==============================================================================\n                   [0.025     0.975]\n------------------------------------------------------------------------------\nrelative risk       1.428      1.576\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.RelativeRiskResult"
+}
+},
+"relative_risk (3000, 10000, 2000, 10000) alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.706dd1e9fbdcap+0",
+"0x1.903aa6280b3dcp+0"
+]
+}
+},
+"relative_risk (9, 20, 4, 21)": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.ba4a532003930p-1",
+"0x1.9d8296118b4adp+2"
+]
+},
+"control_cases": 4,
+"control_total": 21,
+"exposed_cases": 9,
+"exposed_total": 20,
+"relative_risk": {
+"f": "0x1.2e66666666666p+1"
+},
+"summary()": "                                Relative risk\n==============================================================================\nRelative risk:                   2.362\nExposed cases:                       9\nExposed total:                      20\nControl cases:                       4\nControl total:                      21\n==============================================================================\n                   [0.025     0.975]\n------------------------------------------------------------------------------\nrelative risk       0.864      6.461\n=============================================================================="
+},
+"obj": "stardust.htest._contingency.RelativeRiskResult"
+}
+},
+"relative_risk (9, 20, 4, 21) alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.03f8947d65df7p+0",
+"0x1.5fc0f0cbdab74p+2"
+]
+}
+},
+"relative_risk exceeds": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "relative_risk(): 'exposed_cases' must not exceed 'exposed_total'"
+}
+},
+"relative_risk float": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "relative_risk(): 'exposed_cases' must be an int, not float"
+}
+},
+"repr chi2_contingency": {
+"r": "Chi2ContingencyResult(statistic=3.82216, pvalue=0.050579, df=1, expected_freq=<array of shape (2, 2)>)"
+},
 "repr median_test": {
 "r": "MedianTestResult(statistic=4.17778, pvalue=0.123825, median=0.107924, table=<array of shape (2, 3)>, df=2)"
+},
+"repr relative_risk": {
+"r": "RelativeRiskResult(relative_risk=2.3625, exposed_cases=9, exposed_total=20, control_cases=4, control_total=21)"
 },
 "repr somersd": {
 "r": "SomersdResult(statistic=0.595556, pvalue=6.58885e-08, table=<array of shape (3, 3)>)"
@@ -11580,8 +14729,14 @@
 "summary ansari": {
 "r": "                             Ansari-Bradley test\n==============================================================================\nStatistic:                       85.00  Alternative:                 two-sided\nP-value:                         0.877  Method:                          exact\n                                        No. Observations:               12, 15\n=============================================================================="
 },
+"summary barnard_exact": {
+"r": "                       Barnard's exact test (unpooled)\n==============================================================================\nStatistic:                      -2.828  Alternative:                 two-sided\nP-value:                        0.0214\n=============================================================================="
+},
 "summary bartlett": {
 "r": "                  Bartlett test of homogeneity of variances\n==============================================================================\nStatistic:                       6.709  No. Observations:            12, 15, 9\nP-value:                        0.0349\nDf:                                  2\n=============================================================================="
+},
+"summary boschloo_exact": {
+"r": "                            Boschloo's exact test\n==============================================================================\nStatistic:                     0.02417  Alternative:                 two-sided\nP-value:                        0.0208\n=============================================================================="
 },
 "summary brunnermunzel": {
 "r": "                             Brunner-Munzel test\n==============================================================================\nStatistic:                     -0.8204  Alternative:                 two-sided\nP-value:                         0.420  No. Observations:               12, 15\nDf:                              23.24  Distribution:                        t\n=============================================================================="
@@ -11589,8 +14744,17 @@
 "summary chatterjeexi": {
 "r": "                       Chatterjee's xi correlation test\n==============================================================================\nStatistic:                     -0.2404  No. Observations:                   25\nP-value:                         0.971\n=============================================================================="
 },
+"summary chi2_contingency": {
+"r": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                       3.822  Table:                           2 x 2\nP-value:                        0.0506  Correction:                      Yates\nDf:                                  1\n==============================================================================\nexpected_freq         [0]        [1]\n------------------------------------------------------------------------------\n[0]                 5.714      4.286\n[1]                 6.286      4.714\n=============================================================================="
+},
+"summary chi2_contingency lambda": {
+"r": "                       Chi-squared test of independence\n==============================================================================\nStatistic:                      0.9087  Table:                           2 x 3\nP-value:                         0.635  Lambda:                 log-likelihood\nDf:                                  2\n==============================================================================\nexpected_freq         [0]        [1]        [2]\n------------------------------------------------------------------------------\n[0]                 8.361     13.279      8.361\n[1]                 8.639     13.721      8.639\n=============================================================================="
+},
 "summary chisquare": {
 "r": "                       Chi-squared goodness-of-fit test\n==============================================================================\nStatistic:                       2.000  No. Categories:                      6\nP-value:                         0.736  Ddof:                                1\nDf:                                  4\n=============================================================================="
+},
+"summary cochrans_q": {
+"r": "                               Cochran's Q test\n==============================================================================\nStatistic:                      0.6667  No. Observations:                    6\nP-value:                         0.881  No. Treatments:                      4\nDf:                                  3\n=============================================================================="
 },
 "summary cramervonmises": {
 "r": "                            Cramer-von Mises test\n==============================================================================\nStatistic:                     0.08403  No. Observations:                   15\nP-value:                         0.676\n=============================================================================="
@@ -11606,6 +14770,15 @@
 },
 "summary f_oneway welch": {
 "r": "                            One-way ANOVA (Welch)\n==============================================================================\nStatistic:                       3.306  No. Observations:            12, 15, 9\nP-value:                        0.0560\nDf Num:                              2\nDf Denom:                        21.51\n=============================================================================="
+},
+"summary fisher_exact": {
+"r": "                             Fisher's exact test\n==============================================================================\nStatistic:                     0.09524  Alternative:                      less\nP-value:                        0.0242\n=============================================================================="
+},
+"summary fisher_exact batch": {
+"r": "                             Fisher's exact test\n==============================================================================\nBatch shape:                      (2,)  Alternative:                 two-sided\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.095      0.030\n[1]             1.000      1.000\n=============================================================================="
+},
+"summary fisher_exact rxc": {
+"r": "                             Fisher's exact test\n==============================================================================\nStatistic:                    0.001799  Table:                           3 x 3\nP-value:                         0.282\n=============================================================================="
 },
 "summary fligner": {
 "r": "               Fligner-Killeen test of homogeneity of variances\n==============================================================================\nStatistic:                       3.548  No. Observations:            12, 15, 9\nP-value:                         0.170  Center:                         median\nDf:                                  2\n=============================================================================="
@@ -11646,6 +14819,12 @@
 "summary mannwhitneyu batch methods": {
 "r": "                             Mann-Whitney U test\n==============================================================================\nBatch shape:                    (3, 4)  Method:                     asymptotic\nAlternative:                 two-sided  No. Observations:               10, 10\n==============================================================================\n            statistic     pvalue zstatistic\n------------------------------------------------------------------------------\n[0, 0]         26.000      0.076     -1.776\n[0, 1]         33.000      0.212     -1.247\n[0, 2]         41.000      0.521     -0.643\n[0, 3]         23.000      0.045     -2.003\n[1, 0]         40.000      0.473     -0.718\n[1, 1]         39.000      0.427     -0.794\n[1, 2]         37.000      0.345     -0.945\n[1, 3]         37.000      0.345     -0.945\n[2, 0]         59.000      0.521      0.643\n[2, 1]         44.000      0.678     -0.416\n[2, 2]         38.000      0.385     -0.869\n[2, 3]         59.000      0.521      0.643\n=============================================================================="
 },
+"summary mcnemar": {
+"r": "                            McNemar's test (exact)\n==============================================================================\nStatistic:                       4.000\nP-value:                        0.0768\n=============================================================================="
+},
+"summary mcnemar chi2": {
+"r": "                         McNemar's test (chi-squared)\n==============================================================================\nStatistic:                       3.062  Correction:                       True\nP-value:                        0.0801\n=============================================================================="
+},
 "summary median_test": {
 "r": "                              Mood's median test\n==============================================================================\nStatistic:                       4.178  No. Observations:            12, 15, 9\nP-value:                         0.124  Ties:                            below\nMedian:                         0.1079\nDf:                                  2\n==============================================================================\ntable             [0]        [1]        [2]\n------------------------------------------------------------------------------\n[0]                 8          8          2\n[1]                 4          7          7\n=============================================================================="
 },
@@ -11657,6 +14836,12 @@
 },
 "summary normaltest": {
 "r": "                      D'Agostino-Pearson normality test\n==============================================================================\nStatistic:                       1.215  No. Observations:                   15\nP-value:                         0.545\n=============================================================================="
+},
+"summary odds_ratio": {
+"r": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nStatistic:                      0.1094\n==============================================================================\n                [0.025     0.975]\n------------------------------------------------------------------------------\nodds ratio       0.007      0.988\n=============================================================================="
+},
+"summary odds_ratio alpha=0.1": {
+"r": "                 Odds ratio (conditional maximum likelihood)\n==============================================================================\nStatistic:                      0.1094\n==============================================================================\n                [0.050     0.950]\n------------------------------------------------------------------------------\nodds ratio       0.011      0.757\n=============================================================================="
 },
 "summary page_trend_test": {
 "r": "                              Page's trend test\n==============================================================================\nStatistic:                       151.0  Method:                          exact\nP-value:                         0.472  No. Blocks:                          6\n                                        No. Treatments:                      4\n=============================================================================="
@@ -11675,6 +14860,9 @@
 },
 "summary ranksums": {
 "r": "                            Wilcoxon rank-sum test\n==============================================================================\nStatistic:                      0.8295  Alternative:                 two-sided\nP-value:                         0.407  No. Observations:               12, 15\n=============================================================================="
+},
+"summary relative_risk": {
+"r": "                                Relative risk\n==============================================================================\nRelative risk:                   2.362\nExposed cases:                       9\nExposed total:                      20\nControl cases:                       4\nControl total:                      21\n==============================================================================\n                   [0.025     0.975]\n------------------------------------------------------------------------------\nrelative risk       0.864      6.461\n=============================================================================="
 },
 "summary shapiro": {
 "r": "                         Shapiro-Wilk normality test\n==============================================================================\nStatistic:                      0.9395  No. Observations:                   15\nP-value:                         0.376\n=============================================================================="

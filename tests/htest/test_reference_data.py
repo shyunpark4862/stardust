@@ -56,6 +56,8 @@ def rel(v, ref):
         return 0.0 if v != v else math.inf
     if v != v:
         return math.inf
+    if math.isinf(ref):
+        return 0.0 if v == ref else math.inf
     if ref == 0:
         return 0.0 if v == 0 else abs(v)
     return abs(v - ref) / abs(ref)
@@ -375,6 +377,18 @@ SCIPY_KNOWN = {
     ("pearsonr/near-minus-1", "pvalue"): 3.3e-3,
     ("pearsonr/deep-tail", "pvalue"): 1.2e-12,
     ("chatterjeexi/large", "pvalue"): 1.6e-12,
+    # H6's problems: the Cressie-Read terms of a zero count (scipy's NaN where the limits are 0 and
+    # +inf), the G statistic when O ~ E, and Barnard's region from rounded Wald statistics: the
+    # mirror-image tables (3, 8) and (8, 3) of [[7, 12], [8, 3]] have |T| = |T_obs| exactly but one
+    # ulp below it in doubles, so scipy leaves them out (here exact T^2 comparisons)
+    ("chi2_contingency/freeman-tukey-zero", "statistic"): math.inf,
+    ("chi2_contingency/freeman-tukey-zero", "pvalue"): math.inf,
+    ("chi2_contingency/neyman-zero", "statistic"): math.inf,
+    ("chi2_contingency/neyman-zero", "pvalue"): math.inf,
+    ("chi2_contingency/near-expected-g", "statistic"): 1.6e-11,
+    ("barnard_exact/mirror", "pvalue"): 9.5e-4,
+    ("barnard_exact/mirror-unpooled", "pvalue"): 9.5e-4,
+    ("barnard_exact/unpooled-less", "pvalue"): 9.5e-4,
 }
 # R's: the same cancellations (and ttest_rel's x - y), its own methods where they differ from scipy's
 # (ks.test is exact only below n = 100 (one sample), wilcox.test is exact up to n = 50 and conditional with
@@ -476,6 +490,15 @@ R_KNOWN = {
     ("pearsonr/constant", "pvalue"): math.inf,  # NA, NaN here (as the others' constant samples)
     ("spearmanrho/constant", "pvalue"): math.inf,
     ("kendalltau/constant", "pvalue"): math.inf,
+    # H6's problems: chisq.test of a one-row matrix is the goodness-of-fit test of its counts (scipy's
+    # and sd's df = 0 test is 0 and 1); mcnemar.test does not correct b = c (statsmodels'
+    # (|b - c| - 1)^2 / (b + c) still subtracts 1: 1/12 here)
+    ("chi2_contingency/one-row", "statistic"): 0.5,
+    ("chi2_contingency/zero-row", "statistic"): math.inf,  # NA (its 0/0), NaN here (H11)
+    ("chi2_contingency/zero-row", "pvalue"): math.inf,
+    ("chi2_contingency/one-row", "pvalue"): 0.22,
+    ("mcnemar/equal-chi2", "pvalue"): 0.29,
+    ("mcnemar/zero-off-chi2", "pvalue"): math.inf,  # NA (0/0), NaN here (H11)
 }
 # the families whose R statistic is scipy's (R's W, V, S, T and z differ by definition elsewhere)
 R_SAME_STATISTIC = {
@@ -493,6 +516,7 @@ R_SAME_STATISTIC = {
     "friedmanchisquare",
     "ansari",
     "mood",
+    "chi2_contingency",
 }
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
 TOL = 1e-12
@@ -709,3 +733,69 @@ def test_somers_d_and_xi_definitions():
     for cont in (True, False):
         r = T.chatterjeexi(P.Problem("chatterjeexi/t", "chatterjeexi", (x, np.exp(x)), {"y_continuous": cont}))
         assert r["statistic"] == Fraction(13, 16)
+
+
+# ---- the tool's H6 definitions against independent forms ----------------------------------
+
+
+def test_rxc_dynamic_programme_against_enumeration():
+    # the r x c tail by the columns' dynamic programme is the sum over every table (enumerated)
+    T = tool()
+    for t in ([[3, 1, 4], [1, 5, 9], [2, 6, 5]], [[3, 1, 0, 5], [0, 4, 6, 1]], [[2, 0, 3], [1, 4, 0], [0, 2, 2]]):
+        rows, cols = [sum(r) for r in t], [sum(c) for c in zip(*t)]
+        N = sum(rows)
+        num = math.prod(math.factorial(v) for v in rows + cols)
+
+        def prob(tab):
+            return Fraction(num, math.factorial(N) * math.prod(math.factorial(v) for r in tab for v in r))
+
+        tabs = list(T._tables(rows, cols))
+        assert sum(prob(x) for x in tabs) == 1
+        p0 = prob(t)
+        want = sum(q for q in (prob(x) for x in tabs) if q <= p0 * T.RERR)
+        got, stat = T._rxc_tail(t, T.RERR)
+        assert got == min(Fraction(1), want) and stat == p0
+
+
+def test_nuisance_supremum_against_a_dense_grid():
+    # the supremum at the critical points (flint's roots) is at least every value of a dense grid of
+    # pi and exceeds the largest by no more than the grid's curvature allows
+    T = tool()
+    for pid in ("barnard_exact/small", "barnard_exact/mirror", "boschloo_exact/large", "barnard_exact/tail"):
+        rec = T.FAMILIES[P.PROBLEMS[pid].func].compute(P.PROBLEMS[pid])
+        sup = float(T.rigorous(rec["pvalue"]).mid())
+        t = np.asarray(P.PROBLEMS[pid].args[0]).astype(int)
+        n1, n2 = int(t[0, 0] + t[1, 0]), int(t[0, 1] + t[1, 1])
+        assert 0 < sup <= 1
+        # Barnard's region (two-sided) again, by floats away from the ties: the grid's maximum
+        if pid.startswith("barnard") and P.PROBLEMS[pid].kwargs == {}:
+            obs = T._wald2(int(t[0, 0]), int(t[0, 1]), n1, n2, True)
+            region = [(a, b) for a in range(n1 + 1) for b in range(n2 + 1) if T._wald2(a, b, n1, n2, True)[0] >= obs[0]]
+            grid = np.linspace(1e-9, 1 - 1e-9, 20001)
+            f = sum(math.comb(n1, a) * math.comb(n2, b) * grid ** (a + b) * (1 - grid) ** (n1 + n2 - a - b)
+                    for a, b in region)  # fmt: skip
+            assert f.max() <= sup * (1 + 1e-12) and f.max() >= sup * (1 - 1e-6), pid
+
+
+def test_odds_ratio_roots_are_their_equations():
+    # the conditional MLE solves E X = x, the interval's ends P(X >= x) = alpha/2 and P(X <= x) = alpha/2
+    T = tool()
+    t = [[3, 7], [9, 2]]
+    rec = T.odds_ratio(P.PROBLEMS["odds_ratio/conditional"])
+    (a, b), (c, d) = t
+    M, n, N = a + b + c + d, a + b, a + c
+    ks = range(max(0, n + N - M), min(n, N) + 1)
+    C = {k: math.comb(n, k) * math.comb(M - n, N - k) for k in ks}
+
+    def moments(w):
+        tot = sum(C[k] * w**k for k in ks)
+        return sum(k * C[k] * w**k for k in ks) / tot, tot
+
+    w = Fraction(float(T.rigorous(rec["statistic"]).mid()))
+    mean, _ = moments(w)
+    assert abs(float(mean) - a) < 1e-12
+    lo, hi = (Fraction(float(T.rigorous(v).mid())) for v in rec["conf_int"])
+    _, tot = moments(lo)
+    assert abs(float(sum(C[k] * lo**k for k in ks if k >= a) / tot) - 0.025) < 1e-14
+    _, tot = moments(hi)
+    assert abs(float(sum(C[k] * hi**k for k in ks if k <= a) / tot) - 0.025) < 1e-14

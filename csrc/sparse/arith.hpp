@@ -15,9 +15,11 @@
 #include "base/dtype.hpp"
 #include "base/pairwise.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <type_traits>
+#include <vector>
 
 namespace sd::sparse {
 
@@ -58,6 +60,27 @@ T tree_sum(const T* parts, std::int64_t n, std::int64_t s = 1) {
         for (std::int64_t i = 0; i < n; ++i) acc = plus(acc, parts[i * s]);
         return acc;
     }
+}
+
+// The sum over entries [b, e) of one line in order: step(p, acc) -> acc with entry p's term added.
+// Past kLine terms, pieces of kLine summed in order and joined along the tree; `parts` is scratch.
+template <class T, class Step>
+inline T ordered_sum(std::int64_t b, std::int64_t e, const Step& step, std::vector<T>& parts) {
+    const std::int64_t n = e - b;
+    if (n <= kLine) {
+        T acc{};
+        for (std::int64_t p = b; p < e; ++p) acc = step(p, acc);
+        return acc;
+    }
+    const std::int64_t nch = (n + kLine - 1) / kLine;
+    parts.resize(static_cast<std::size_t>(nch));
+    for (std::int64_t ch = 0; ch < nch; ++ch) {
+        T acc{};
+        const std::int64_t pe = std::min(e, b + (ch + 1) * kLine);
+        for (std::int64_t p = b + ch * kLine; p < pe; ++p) acc = step(p, acc);
+        parts[static_cast<std::size_t>(ch)] = acc;
+    }
+    return tree_sum(parts.data(), nch);
 }
 
 }  // namespace sd::sparse

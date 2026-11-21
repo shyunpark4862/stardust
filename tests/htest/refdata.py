@@ -18,7 +18,9 @@ The contract, per field, in units of its bound (1 or less is within it):
   - zstatistic (the normal approximation's z of the rank tests), df, df_num, df_denom, median
     (median_test's grand median): relative error / 1e-14;
   - conf_int (the t tests' and pearsonr's 95% interval): each end's error / (1e-14 times the larger of the end
-    and the estimate's and half width's sizes: the ends subtract them).
+    and the estimate's and half width's sizes: the ends subtract them); odds_ratio's and relative_risk's
+    ends (positive, no subtraction) each against itself, odds_ratio's one-sided ones too
+    (conf_int_less, conf_int_greater).
 """
 
 import json
@@ -47,7 +49,19 @@ H3 = (
 )
 H4 = ("ks_2samp", "cramervonmises_2samp", "anderson_ksamp", "epps_singleton_2samp")
 H5 = ("pearsonr", "spearmanrho", "kendalltau", "weightedtau", "somersd", "chatterjeexi")
-PUBLIC = H1 + H2 + H3 + H4 + H5  # the families of the public functions (the accuracy measurement's sweeps)
+H6 = (
+    "chi2_contingency",
+    "fisher_exact",
+    "barnard_exact",
+    "boschloo_exact",
+    "mcnemar",
+    "cochrans_q",
+    "odds_ratio",
+    "relative_risk",
+)
+PUBLIC = H1 + H2 + H3 + H4 + H5 + H6  # the families of the public functions (the accuracy measurement's sweeps)
+# the estimates whose interval ends are measured each against itself (no estimate to subtract)
+OWN_SCALE = ("odds_ratio", "relative_risk")
 
 
 def load(fam) -> dict:
@@ -137,7 +151,7 @@ def conf_int_contract(rec, ci, scale):
     for i in range(2):
         hi, lo = rec["conf_int"][i]
         v = float(ci[i])
-        if hi != hi or math.isinf(hi):
+        if hi != hi or math.isinf(hi) or (hi == 0.0 and scale == 0.0):
             out.append(0.0 if v == hi or (v != v and hi != hi) else math.inf)
         else:
             out.append(abs((v - hi) - lo) / (BOUND * max(abs(hi), scale)))
@@ -153,7 +167,9 @@ def ci_scale(p):
     return abs(lo2 + hi2) / 2 + abs(hi2 - lo2) / 2
 
 
-FIELDS = ("statistic", "pvalue", "zstatistic", "df", "df_num", "df_denom", "median")
+FIELDS = ("statistic", "pvalue", "zstatistic", "df", "df_num", "df_denom", "median", "relative_risk")
+# odds_ratio's intervals by the alternative of conf_int (its own argument, scipy's)
+INTERVALS = (("conf_int", "two-sided"), ("conf_int_less", "less"), ("conf_int_greater", "greater"))
 
 
 def errors(fam, pid, r=None) -> dict:
@@ -169,8 +185,11 @@ def errors(fam, pid, r=None) -> dict:
         if f in rec and hasattr(r, f):
             v = getattr(r, f)
             out[f] = (rel(v, rec[f]), contract(fam, rec, f, v))
-    if "conf_int" in rec:
-        ci = r.conf_int()
-        c = conf_int_contract(rec, ci, ci_scale(p))
-        out["conf_int"] = (max(rel(float(ci[i]), rec["conf_int"][i]) for i in range(2)), max(c))
+    for key, alt in INTERVALS:
+        if key not in rec:
+            continue
+        ci = r.conf_int(alternative=alt) if key != "conf_int" else r.conf_int()
+        scale = 0.0 if fam in OWN_SCALE else ci_scale(p)
+        c = conf_int_contract({"conf_int": rec[key]}, ci, scale)
+        out[key] = (max(rel(float(ci[i]), rec[key][i]) for i in range(2)), max(c))
     return out

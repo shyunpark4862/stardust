@@ -50,7 +50,7 @@ def test_lu_solves(mid, fmt):
 
 def test_several_right_hand_sides():
     # Accelerate solves the columns together: each column agrees with its own solve to rounding,
-    # not to the bit (an SP4 question, docs/design/sparse.md §9), and the batched result is the
+    # not to the bit (decision SP64, docs/design/sparse.md §1.1), and the batched result is the
     # same on every call.
     a = M.get("convdiff2d/10")
     b = M.rhs(a, 4)
@@ -89,6 +89,18 @@ def test_same_bits_from_concurrent_python_threads():
     assert all(bits_equal(x, first) for x in out)
 
 
+def test_transposed_solves_of_several_columns_go_one_by_one():
+    # Accelerate's solve that runs transposed (a CSR handed with the transpose flag here) is wrong
+    # for several columns at once (SDK 26.5; docs/design/sparse.md §1.4); the wrapper solves such
+    # columns one at a time, so each equals its own solve bit for bit.
+    a = M.get("random_unsym/50x5")
+    b = M.rhs(a, 3)
+    x = solve(a, b, "csr")
+    assert backward_error(a, x, b) < 1e-14
+    for j in range(3):
+        assert bits_equal(x[:, j].copy(), solve(a, np.ascontiguousarray(b[:, j]), "csr"))
+
+
 @pytest.mark.parametrize("mid", ["struct_singular/40", "struct_singular/1000"])
 def test_structurally_singular_is_linalg_error(mid):
     a = M.get(mid)
@@ -125,8 +137,8 @@ def test_rejected_parameter_is_value_error_with_accelerates_message():
 
 
 def test_empty_matrix_is_rejected_by_accelerate():
-    # Accelerate takes no 0 x 0 matrix; SP4's spsolve answers it before calling (scipy returns
-    # an empty solution).
+    # Accelerate takes no 0 x 0 matrix; spsolve answers it before calling (scipy returns an empty
+    # solution; tests/sparse/test_direct.py).
     a = M.get("empty/0x0")
     with pytest.raises(ValueError, match="rowCount must be > 0"):
         solve(a, np.zeros(0))

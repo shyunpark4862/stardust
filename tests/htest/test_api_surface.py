@@ -13,12 +13,9 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "htest.md"
 
-# Documented, not implemented yet (docs/design/htest.md §8): the tests after H4. A milestone moves
+# Documented, not implemented yet (docs/design/htest.md §8): the tests after H6. A milestone moves
 # its names from here to sd.htest.__all__.
 PLANNED = {
-    # H6
-    "chi2_contingency", "fisher_exact", "barnard_exact", "boschloo_exact", "mcnemar", "cochrans_q", "odds_ratio",
-    "relative_risk",
     # H7
     "binomtest", "quantile_test", "poisson_means_test", "proportions_ztest", "proportions_chisquare",
     "proportion_confint", "test_proportions_2indep", "confint_proportions_2indep",

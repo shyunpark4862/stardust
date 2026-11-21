@@ -2,6 +2,7 @@
 #include "array/convert.hpp"
 
 #include <cstring>
+#include <utility>
 #include <stdexcept>
 #include <string>
 
@@ -215,9 +216,83 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* what) {
 }
 
 NDArray& require_ndarray(nb::handle o, const char* what) {
-    if (!is_ndarray(o))
-        throw nb::type_error((std::string("'") + what + "' must be an sd.ndarray, not " + py_type_name(o)).c_str());
+    if (!is_ndarray(o)) {
+        const std::string msg = std::string("'") + what + "' must be an sd.ndarray, not " + py_type_name(o);
+        if (is_sparse_array(o)) throw SparseOperand(msg);  // rethrow_named adds what to use instead
+        throw nb::type_error(msg.c_str());
+    }
     return as_ndarray(o);
+}
+
+// ---- a sparse array where an array is required (docs/design/sparse.md §3.10, decisions SP36,
+// SP67) ----
+
+bool is_sparse_array(nb::handle o) {
+    nb::object mod = nb::getattr(nb::handle(reinterpret_cast<PyObject*>(Py_TYPE(o.ptr()))), "__module__", nb::none());
+    return nb::isinstance<nb::str>(mod) && std::string(nb::str(mod).c_str()).rfind("stardust.sparse", 0) == 0;
+}
+
+std::string sparse_hint(const std::string& f) {
+    static const std::pair<const char*, const char*> table[] = {
+        // the element-wise functions with f(0) = 0 are methods, the operators operators (SP36)
+        {"sin", "A.sin()"},
+        {"tan", "A.tan()"},
+        {"asin", "A.asin()"},
+        {"atan", "A.atan()"},
+        {"sinh", "A.sinh()"},
+        {"tanh", "A.tanh()"},
+        {"asinh", "A.asinh()"},
+        {"atanh", "A.atanh()"},
+        {"sqrt", "A.sqrt()"},
+        {"expm1", "A.expm1()"},
+        {"log1p", "A.log1p()"},
+        {"floor", "A.floor()"},
+        {"ceil", "A.ceil()"},
+        {"trunc", "A.trunc()"},
+        {"round", "A.round()"},
+        {"sign", "A.sign()"},
+        {"conj", "A.conj()"},
+        {"negative", "-A"},
+        {"abs", "abs(A)"},
+        {"add", "A + B"},
+        {"subtract", "A - B"},
+        {"multiply", "A * B"},
+        {"divide", "A / B"},
+        {"pow", "A ** p"},
+        {"maximum", "A.maximum(B)"},
+        {"minimum", "A.minimum(B)"},
+        {"equal", "A == B"},
+        {"not_equal", "A != B"},
+        {"less", "A < B"},
+        {"less_equal", "A <= B"},
+        {"greater", "A > B"},
+        {"greater_equal", "A >= B"},
+        // the other array functions with a sparse counterpart (SP67)
+        {"matmul", "A @ B"},
+        {"sum", "A.sum()"},
+        {"mean", "A.mean()"},
+        {"max", "A.max()"},
+        {"min", "A.min()"},
+        {"nanmax", "A.nanmax()"},
+        {"nanmin", "A.nanmin()"},
+        {"argmax", "A.argmax()"},
+        {"argmin", "A.argmin()"},
+        {"count_nonzero", "A.count_nonzero()"},
+        {"nonzero", "A.nonzero()"},
+        {"reshape", "A.reshape(shape)"},
+        {"astype", "A.astype(dtype)"},
+        {"diagonal", "A.diagonal()"},
+        {"trace", "A.trace()"},
+        {"matrix_transpose", "sd.sparse.matrix_transpose"},
+        {"permute_dims", "A.transpose()"},
+        {"tril", "sd.sparse.tril"},
+        {"triu", "sd.sparse.triu"},
+        {"real", "A.real"},
+        {"imag", "A.imag"},
+    };  // fmt: skip
+    for (const auto& [name, hint] : table)
+        if (f == name) return std::string("; for a sparse array use ") + hint;
+    return "; a sparse array has no " + f + ": use " + f + "(A.toarray())";
 }
 
 NDArray view_of(nb::handle x) {

@@ -62,3 +62,36 @@ def test_lu_solves_and_repeats(name):
         r = b - s @ x
         scale = abs(s).sum(axis=1).max() * np.abs(x).max() + np.abs(b).max()
         assert np.abs(r).max() <= 1e-10 * scale
+
+
+# SP4 (docs/design/sparse.md §3.6, §7.2): the public solves on the real matrices. sherman3 and
+# cvxqp3 have kappa_1 of about 6.9e16 and 2.2e16 (scipy's SuperLU and the estimate agree), past
+# 1/eps: by decision SP62 they are LinAlgError, where scipy returns a solution without a word.
+TOO_ILL = {"HB/sherman3", "GHS_indef/cvxqp3"}
+SQUARE = [m[0] for m in T.MATRICES if m[2] == m[3]]
+
+
+@pytest.mark.parametrize("name", [n for n in SQUARE if n not in TOO_ILL])
+def test_spsolve_within_the_contract(name):
+    from . import refdata as R
+
+    a = get(name)
+    indptr, indices, data = a.csc()
+    A = sd.sparse.csc_array((sd.asarray(data), sd.asarray(indices), sd.asarray(indptr)), shape=a.shape)
+    b = M.rhs(a, 2)
+    lu = sd.sparse.splu(A)
+    s = a.scipy("csr")
+    for trans, op in (("N", s), ("T", s.T), ("H", s.conj().T)):
+        x = np.asarray(lu.solve(sd.asarray(b), trans=trans))
+        assert R.backward_error(op, x, b) <= R.C_BACKWARD, trans
+    assert bits_equal(sd.sparse.spsolve(A, sd.asarray(b)), lu.solve(sd.asarray(b)))
+    assert lu._factor.core.cond * R.EPS < 1
+
+
+@pytest.mark.parametrize("name", sorted(TOO_ILL))
+def test_condition_past_one_over_eps_is_singular(name):
+    a = get(name)
+    indptr, indices, data = a.csc()
+    A = sd.sparse.csc_array((sd.asarray(data), sd.asarray(indices), sd.asarray(indptr)), shape=a.shape)
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^spsolve\(\): singular matrix$"):
+        sd.sparse.spsolve(A, sd.asarray(M.rhs(a)))

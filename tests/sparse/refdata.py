@@ -21,9 +21,11 @@ The contract (draft, docs/design/sparse.md §4), in units of its bound (1 or les
   - sums of products (spmv, sums): |y - ref| / (gamma_m sum_j |a_ij x_j|), m = min(len, L) +
     ceil(log2(len / L)), L = 4096 (the summation chunk), per output entry: sum_abs() gives the
     sum of magnitudes;
-  - solve, lstsq: the normwise relative error ||x - ref||_inf / ||ref||_inf over
-    C_SOLVE kappa eps (C_SOLVE fixed by SP4's measurements; the backward error is the contract,
-    this is its forward consequence);
+  - solve: the normwise backward error ||b - A x||_inf / (||A||_inf ||x||_inf + ||b||_inf) over
+    C_BACKWARD eps (backward_error) is the contract; its forward consequence, the normwise
+    relative error ||x - ref||_inf / ||ref||_inf over C_SOLVE kappa eps, is checked against the
+    references. Both fixed by SP4's measurements (docs/design/sparse.md §4: at most 0.50 eps and
+    0.39 kappa eps over the test matrices, after the one refinement step); lstsq: the forward form;
   - eigenvalues, singular values, norms: |v - ref| / (C_EIG eps ||A||);
   - expm: max |E - ref| / (C_EXPM eps max(1, ||s A||_1) max |ref|).
 """
@@ -44,7 +46,8 @@ EPS = float(np.finfo(np.float64).eps)
 L = 4096  # the summation chunk of docs/design/sparse.md §2.6
 FAMILIES = ("spmv", "sums", "norms", "solve", "lstsq", "eig", "expm")
 # the contract's constants (drafts until the milestones that implement the functions measure them)
-C_SOLVE = 10.0
+C_SOLVE = 4.0
+C_BACKWARD = 4.0
 C_EIG = 100.0
 C_EXPM = 100.0
 
@@ -126,6 +129,17 @@ def spmv_error(y, ref_hi, ref_lo, abs_sum, lengths) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore"):
         out = np.where(err == 0, 0.0, err / bound)
     return out
+
+
+def backward_error(A, x, b) -> float:
+    """||b - A x||_inf / (||A||_inf ||x||_inf + ||b||_inf) in units of eps, A dense or scipy sparse
+    (the residual in float64: its own rounding is a small part of eps for these sizes; 0 when
+    both norms vanish)."""
+    x, b = np.asarray(x), np.asarray(b)
+    r = b - A @ x
+    anorm = float(abs(A).sum(axis=1).max()) if A.shape[0] else 0.0
+    scale = anorm * float(np.abs(x).max(initial=0)) + float(np.abs(b).max(initial=0))
+    return 0.0 if scale == 0 else float(np.abs(r).max()) / scale / EPS
 
 
 def normwise_error(x, ref_hi) -> float:

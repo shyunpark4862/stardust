@@ -7,7 +7,10 @@ zero_method, correction, use_continuity, distribution, ties, ranked, predicted_r
 batches along an axis and a tuple of axes (the rank tests' per-lane methods), long lanes
 (n = 10^5: the multithreaded kernels), the exact distributions (with ties, deep tails, past
 their work cap), scales of 1e+-300, and the wrong calls (their errors are results). A result
-object is stored whole: every field and conf_int(); conf_int(alpha=0.1) as its own case.
+object is stored whole: every field and conf_int(); conf_int(alpha=0.1) as its own case. The
+contingency tables (H6) over their options too (correction, lambda_, alternative, pooled, n, exact,
+kind, conf_int's alternative), weighted tables, zero margins, r x c tables (and one past the work
+cap), batches of tables.
 """
 
 import math
@@ -257,6 +260,9 @@ def cases(L):
                         t1, t2, ties=ties, correction=corr, lambda_=lam
                     ),
                 )
+    # H83: a zero cell with lambda <= -1 is +inf and p = 0 (the shared Cressie-Read rule)
+    yield "median_test zero cell neyman", lambda: h.median_test([1.0, 2, 3, 4], [10.0, 11, 12, 13], lambda_="neyman",
+                                                                 correction=False)  # fmt: skip
     yield "median_test batch", lambda: h.median_test(d["batch_a"], d["batch_b"], axis=-1)
     yield "median_test batch keepdims", lambda: h.median_test(d["batch_a"], d["batch_b"], axis=-1, keepdims=True)
     yield "page_trend_test ties", lambda: h.page_trend_test(np.round(d["cube"][1].T[:6]))
@@ -452,6 +458,113 @@ def cases(L):
         yield f"{f} lengths", lambda f=f: getattr(h, f)(u, v[:20])
         for pol in ("propagate", "omit", "raise"):
             yield f"{f} nan {pol}", lambda f=f, pol=pol: getattr(h, f)(d["nan"], u[:9], nan_policy=pol)
+
+    # ---- H6: contingency tables
+    r6 = L.rng(406)
+    t22 = np.array([[3.0, 7], [9, 2]])
+    t34 = np.array([[10.0, 12, 8, 5], [7, 15, 9, 11], [4, 6, 14, 13]])
+    weighted = np.array([[3.5, 4.25, 1.0], [1.5, 6.0, 2.75]])
+    tb = np.floor(r6.uniform(0, 20, (4, 2, 2)))
+    trc = np.floor(r6.uniform(0, 6, (3, 3, 3)))
+    mirror = np.array([[7.0, 12], [8, 3]])
+    for corr in (True, False):
+        for lam in (None, "log-likelihood", "freeman-tukey", "mod-log-likelihood", "neyman", "cressie-read", 0.3):
+            yield (
+                f"chi2_contingency correction={corr} lambda={lam}",
+                lambda c=corr, lam=lam: h.chi2_contingency(t22, correction=c, lambda_=lam),
+            )
+            yield (
+                f"chi2_contingency 3x4 correction={corr} lambda={lam}",
+                lambda c=corr, lam=lam: h.chi2_contingency(t34, correction=c, lambda_=lam),
+            )
+    yield "chi2_contingency weighted", lambda: h.chi2_contingency(weighted)
+    yield "chi2_contingency zero cell neyman", lambda: h.chi2_contingency([[0.0, 5], [6, 2]], lambda_="neyman",
+                                                                           correction=False)  # fmt: skip
+    yield "chi2_contingency yates within half", lambda: h.chi2_contingency([[5.0, 5], [5, 6]])
+    yield "chi2_contingency zero row", lambda: h.chi2_contingency([[0.0, 0, 0], [3, 4, 5]])
+    yield "chi2_contingency zero table", lambda: h.chi2_contingency([[0.0, 0], [0, 0]])
+    yield "chi2_contingency one row", lambda: h.chi2_contingency([[3.0, 4, 5]])
+    yield "chi2_contingency near expected", lambda: h.chi2_contingency([[1e6, 1e6 + 1], [1e6 + 1, 1e6]],
+                                                                        lambda_="log-likelihood")  # fmt: skip
+    yield "chi2_contingency batch", lambda: h.chi2_contingency(tb)
+    yield "chi2_contingency 1-D", lambda: h.chi2_contingency([3.0, 4.0])
+    yield "chi2_contingency negative", lambda: h.chi2_contingency([[1.0, -1.0], [2.0, 3.0]])
+    yield "chi2_contingency method", lambda: h.chi2_contingency(t22, method="permutation")
+    yield "chi2_contingency lambda type", lambda: h.chi2_contingency(t22, lambda_=[1])
+    for alt in ("two-sided", "less", "greater"):
+        yield f"fisher_exact {alt}", lambda alt=alt: h.fisher_exact(t22, alternative=alt)
+        yield f"fisher_exact mirror {alt}", lambda alt=alt: h.fisher_exact([[2.0, 8], [8, 2]], alternative=alt)
+        yield f"fisher_exact tail {alt}", lambda alt=alt: h.fisher_exact([[300.0, 10], [10, 300]], alternative=alt)
+        for pooled in (True, False):
+            yield (
+                f"barnard_exact pooled={pooled} {alt}",
+                lambda alt=alt, p=pooled: h.barnard_exact(mirror, alternative=alt, pooled=p),
+            )
+        yield f"boschloo_exact {alt}", lambda alt=alt: h.boschloo_exact(mirror, alternative=alt)
+        yield f"boschloo_exact small {alt}", lambda alt=alt: h.boschloo_exact(t22, alternative=alt)
+        for kind in ("conditional", "sample"):
+            yield (
+                f"odds_ratio {kind} conf_int {alt}",
+                lambda alt=alt, k=kind: h.odds_ratio(t22, kind=k).conf_int(alternative=alt),
+            )
+    yield "fisher_exact balanced", lambda: h.fisher_exact([[5.0, 5], [5, 5]])
+    yield "fisher_exact zero column", lambda: h.fisher_exact([[0.0, 4], [0, 5]])
+    yield "fisher_exact deep tail", lambda: h.fisher_exact([[500.0, 0], [0, 500]])
+    yield "fisher_exact 3x3", lambda: h.fisher_exact([[3.0, 1, 4], [1, 5, 9], [2, 6, 5]])
+    yield "fisher_exact 2x6", lambda: h.fisher_exact([[9.0, 3, 7, 1, 6, 12], [4, 10, 2, 8, 9, 3]])
+    yield "fisher_exact 4x5", lambda: h.fisher_exact([[1.0, 2, 5, 20, 2], [9, 0, 1, 10, 9], [0, 0, 10, 0, 1],
+                                                       [3, 8, 5, 5, 9]])  # fmt: skip
+    yield "fisher_exact one row", lambda: h.fisher_exact([[3.0, 4, 5]])
+    yield "fisher_exact batch", lambda: h.fisher_exact(tb)
+    yield "fisher_exact batch rxc", lambda: h.fisher_exact(trc)
+    cap = [[0.0, 0, 2, 0, 1, 1], [2, 0, 2, 0, 0, 3], [4, 1, 3, 1, 2, 2], [1, 2, 3, 0, 1, 3], [1, 3, 4, 0, 1, 2],
+           [1, 2, 1, 5, 2, 4]]  # fmt: skip
+    yield "fisher_exact cap", lambda: h.fisher_exact(cap)
+    yield "fisher_exact rxc alternative", lambda: h.fisher_exact(trc[0], alternative="less")
+    yield "fisher_exact counts", lambda: h.fisher_exact([[1.0, 2.5], [3, 1]])
+    yield "fisher_exact empty", lambda: h.fisher_exact(np.zeros((0, 2)))
+    yield "barnard_exact n=1", lambda: h.barnard_exact(t22, n=1)
+    yield "barnard_exact tail", lambda: h.barnard_exact([[25.0, 2], [1, 22]])
+    yield "barnard_exact zero column", lambda: h.barnard_exact([[0.0, 3], [0, 4]])
+    yield "barnard_exact large", lambda: h.barnard_exact([[60.0, 45], [40, 55]])
+    yield "barnard_exact cap", lambda: h.barnard_exact([[2000.0, 1], [3000, 4000]])
+    yield "barnard_exact batch", lambda: h.barnard_exact(tb + 1.0)
+    yield "barnard_exact shape", lambda: h.barnard_exact(t34)
+    yield "barnard_exact n", lambda: h.barnard_exact(t22, n=0)
+    yield "boschloo_exact tail", lambda: h.boschloo_exact([[25.0, 2], [1, 22]])
+    yield "boschloo_exact equal", lambda: h.boschloo_exact([[9.0, 3], [3, 9]])
+    yield "boschloo_exact zero column", lambda: h.boschloo_exact([[0.0, 3], [0, 4]])
+    yield "boschloo_exact batch", lambda: h.boschloo_exact(tb + 1.0)
+    for ex in (True, False):
+        for corr in (True, False):
+            for case, tab in (("", [[30.0, 12], [4, 25]]), (" equal", [[10.0, 6], [6, 12]]),
+                              (" zero", [[10.0, 0], [0, 12]])):  # fmt: skip
+                yield (
+                    f"mcnemar{case} exact={ex} correction={corr}",
+                    lambda e=ex, c=corr, t=tab: h.mcnemar(t, exact=e, correction=c),
+                )
+    yield "mcnemar large", lambda: h.mcnemar([[500.0, 1200], [900, 400]])
+    yield "mcnemar batch", lambda: h.mcnemar(tb)
+    yield "mcnemar exact type", lambda: h.mcnemar(t22, exact=1)
+    q = np.floor(r6.uniform(0, 2, (30, 4)))
+    yield "cochrans_q", lambda: h.cochrans_q(q)
+    yield "cochrans_q degenerate", lambda: h.cochrans_q([[1.0, 1, 1], [0, 0, 0]])
+    yield "cochrans_q batch", lambda: h.cochrans_q(np.floor(r6.uniform(0, 2, (3, 15, 3))))
+    yield "cochrans_q values", lambda: h.cochrans_q([[0.0, 2.0], [1.0, 1.0]])
+    for kind in ("conditional", "sample"):
+        yield f"odds_ratio {kind}", lambda k=kind: h.odds_ratio(t22, kind=k)
+        yield f"odds_ratio {kind} alpha=0.1", lambda k=kind: h.odds_ratio(t22, kind=k).conf_int(alpha=0.1)
+        for case, tab in (("zero cell", [[0.0, 5], [3, 4]]), ("infinite", [[5.0, 0], [3, 4]]),
+                          ("zero margin", [[0.0, 0], [3, 4]]), ("large", [[100.0, 50], [30, 120]])):  # fmt: skip
+            yield f"odds_ratio {kind} {case}", lambda k=kind, t=tab: h.odds_ratio(t, kind=k)
+        yield f"odds_ratio {kind} batch", lambda k=kind: h.odds_ratio(tb + 1.0, kind=k)
+    yield "odds_ratio kind", lambda: h.odds_ratio(t22, kind="exact")
+    yield "odds_ratio alternative", lambda: h.odds_ratio(t22).conf_int(alternative="up")
+    for args in ((9, 20, 4, 21), (0, 10, 3, 12), (3, 10, 0, 12), (0, 10, 0, 12), (3000, 10000, 2000, 10000)):
+        yield f"relative_risk {args}", lambda a=args: h.relative_risk(*a)
+        yield f"relative_risk {args} alpha=0.1", lambda a=args: h.relative_risk(*a).conf_int(alpha=0.1)
+    yield "relative_risk exceeds", lambda: h.relative_risk(5, 4, 1, 2)
+    yield "relative_risk float", lambda: h.relative_risk(1.0, 4, 1, 2)
     yield from summaries(L)
 
 
@@ -512,6 +625,18 @@ def summaries(L):
         "weightedtau": lambda: h.weightedtau(u, v),
         "somersd": lambda: h.somersd([[8.0, 3, 1], [2, 9, 4], [0, 3, 7]]),
         "chatterjeexi": lambda: h.chatterjeexi(u, v),
+        "chi2_contingency": lambda: h.chi2_contingency([[3.0, 7], [9, 2]]),
+        "chi2_contingency lambda": lambda: h.chi2_contingency([[10.0, 12, 8], [7, 15, 9]], lambda_="log-likelihood"),
+        "fisher_exact": lambda: h.fisher_exact([[3.0, 7], [9, 2]], alternative="less"),
+        "fisher_exact rxc": lambda: h.fisher_exact([[3.0, 1, 4], [1, 5, 9], [2, 6, 5]]),
+        "barnard_exact": lambda: h.barnard_exact([[3.0, 7], [9, 2]], pooled=False),
+        "boschloo_exact": lambda: h.boschloo_exact([[3.0, 7], [9, 2]]),
+        "mcnemar": lambda: h.mcnemar([[30.0, 12], [4, 25]]),
+        "mcnemar chi2": lambda: h.mcnemar([[30.0, 12], [4, 25]], exact=False),
+        "cochrans_q": lambda: h.cochrans_q(np.eye(4)[[0, 1, 2, 3, 0, 1]]),
+        "odds_ratio": lambda: h.odds_ratio([[3.0, 7], [9, 2]]),
+        "relative_risk": lambda: h.relative_risk(9, 20, 4, 21),
+        "fisher_exact batch": lambda: h.fisher_exact(np.array([[[3.0, 7], [9, 2]], [[5.0, 5], [5, 5]]])),
         "ttest_ind batch": lambda: h.ttest_ind(d["batch_a"], d["batch_b"], axis=-1),
         "ttest_1samp long batch": lambda: h.ttest_1samp(r.normal(0.0, 1.0, (30, 8)), 0.0, axis=-1),
         "mannwhitneyu batch methods": lambda: h.mannwhitneyu(d["cube"], d["cube"][::-1] + 0.3, axis=1),
@@ -529,3 +654,6 @@ def summaries(L):
     yield "repr median_test", lambda: repr(h.median_test(a, b, c))
     yield "repr somersd", lambda: repr(h.somersd([[8.0, 3, 1], [2, 9, 4], [0, 3, 7]]))
     yield "repr ttest_1samp keepdims", lambda: repr(h.ttest_1samp(a, 0.1, keepdims=True))
+    yield "repr chi2_contingency", lambda: repr(h.chi2_contingency([[3.0, 7], [9, 2]]))
+    yield "repr relative_risk", lambda: repr(h.relative_risk(9, 20, 4, 21))
+    yield "summary odds_ratio alpha=0.1", lambda: h.odds_ratio([[3.0, 7], [9, 2]]).summary(alpha=0.1)

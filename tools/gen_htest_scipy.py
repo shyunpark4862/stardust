@@ -8,7 +8,8 @@
 Each problem's line holds the inputs' digest (problems.digest), what the call returned -- every
 field the result has (statistic, pvalue, df or dof, zstatistic, statistic_location,
 statistic_sign, expected_freq, median, table, method, ...), the 95% confidence interval where
-the result has confidence_interval() (binomtest: proportion_ci() by its three methods) -- or the
+the result has confidence_interval() (binomtest: proportion_ci() by its three methods; odds_ratio:
+the one-sided ones too) -- or the
 exception it raised, and the warnings' categories. Floats are written with repr (NaN and inf as
 JSON's NaN and Infinity, which Python reads back); arrays as nested lists.
 
@@ -109,6 +110,10 @@ def scipy_call(p):
             out["confidence_interval"] = [plain(ci.low), plain(ci.high)]
         except Exception as e:  # (scipy raises for some configurations)
             out["confidence_interval"] = f"{type(e).__name__}: {e}"
+    if p.func == "odds_ratio":  # its one-sided intervals too
+        for alt in ("less", "greater"):
+            ci = r.confidence_interval(confidence_level=0.95, alternative=alt)
+            out[f"confidence_interval_{alt}"] = [plain(ci.low), plain(ci.high)]
     if p.func == "binomtest":
         for m in ("exact", "wilson", "wilsoncc"):
             ci = r.proportion_ci(confidence_level=0.95, method=m)

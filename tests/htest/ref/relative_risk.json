@@ -1,0 +1,9 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 6, "dropped": []},
+"relative_risk/small": {"digest": "00a913394f70582c41552f6666f351597ed1cf2c703358db5c53d7d7f972d54c", "relative_risk": [2.3625, 1.7763568394002506e-16], "conf_int": [[0.8638483025149861, 1.5547427987576084e-17], [6.461095349438593, 3.037885066193905e-16]]},
+"relative_risk/zero-exposed": {"digest": "d32dfa058f83b6d6a985718270aa286f6b8937c6a700f91a1104d7b08aa3d934", "relative_risk": [0.0, 0.0], "conf_int": [[0.0, 0.0], [NaN, 0.0]]},
+"relative_risk/zero-control": {"digest": "f1e35d068316a7f23cb3686ee01d2e704827397660dc8ccad65badd67b2bfd91", "relative_risk": [Infinity, 0.0], "conf_int": [[NaN, 0.0], [Infinity, 0.0]]},
+"relative_risk/zero-both": {"digest": "30bac5d8965913074a265ff4063b4a6b7e7877f95ef8111027b49a5dd9a1c70f", "relative_risk": [NaN, 0.0], "conf_int": [[NaN, 0.0], [NaN, 0.0]]},
+"relative_risk/large": {"digest": "80e4bc2a3612166f81e94d7ad7b6630b25c9d19cd480c9f216f2f95eae8bbfa9", "relative_risk": [1.5, 0.0], "conf_int": [[1.4278080405556033, 5.681974635439015e-17], [1.575842085273912, -9.728125476166411e-17]]},
+"relative_risk/equal": {"digest": "9a5b3a0a43044147a43ee32b240f7c67c9cdb389c8f081c891a105d6c6ac9b9a", "relative_risk": [1.0, 0.0], "conf_int": [[0.4162278132637267, 9.97318743785632e-18], [2.402530460804138, -1.5016656204889503e-16]]}
+}

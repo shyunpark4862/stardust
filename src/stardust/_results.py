@@ -7,7 +7,8 @@ Field names follow the Array API where it has the function
 
 from collections import namedtuple
 
-from . import _calls
+from . import _calls, _core
+from . import _summary as _S
 
 # array: unique_* (built by csrc/array/ops/sort.cpp, which looks them up by name)
 UniqueAllResult = namedtuple("UniqueAllResult", ["values", "indices", "inverse_indices", "counts"])
@@ -93,3 +94,106 @@ DescribeResult = namedtuple("DescribeResult", ["nobs", "minmax", "mean", "varian
 ModeResult = namedtuple("ModeResult", ["mode", "count"])
 # stats: MultivariateNormal.cdf and MultivariateT.cdf with return_error=True (docs/api/stats.md §3)
 CdfResult = namedtuple("CdfResult", ["value", "error"])
+
+
+# ---- the field results: sd.optimize's OptimizeResult, sd.integrate's IntegrateResult and
+# sd.differentiate's DifferentiateResult (optimize O4, O103; integrate C9). A function gives the
+# fields it has; reading another raises AttributeError (so hasattr() tells). Every field is a
+# read-only property and an array field a read-only array, the same at each access without a
+# copy (API.md §2.2). The subclass lists its fields (_FIELDS, in the order repr and the documents
+# use), says why an absent field is absent (_ABSENT), and defines its own __init__ (so Python's
+# call-shape errors name the class) and __repr__.
+
+
+class _Lazy:
+    """A field computed when first read: make() gives its value."""
+
+    __slots__ = ("make",)
+
+    def __init__(self, make):
+        self.make = make
+
+
+def _own(v, copy=False):
+    """An array field (or a tuple of them) made read-only, as the result keeps and gives it:
+    copied first when copy (an array the caller may still hold), else taken as it is."""
+    if isinstance(v, _core.ndarray):
+        if copy:
+            v = v.copy()
+        v._set_readonly()
+    elif isinstance(v, tuple):
+        v = tuple(_own(e, copy) for e in v)
+    return v
+
+
+def _result_field(name):
+    def get(self):
+        try:
+            v = self._fields[name]
+        except KeyError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}' ({self._ABSENT})") from None
+        if isinstance(v, _Lazy):
+            v = self._fields[name] = _own(v.make())
+        return v
+
+    get.__name__ = name
+    return property(get, doc=f"The result's '{name}' (read-only; arrays are read-only too).")
+
+
+class _FieldResult:
+    """The base of the field results (the comment above)."""
+
+    __slots__ = ("_fields", "_batch")
+    _FIELDS = ()
+    _ABSENT = "the function does not give it"
+
+    def __init_subclass__(cls, **kw):
+        super().__init_subclass__(**kw)
+        cls._FIELD_SET = frozenset(cls._FIELDS)
+        for name in cls._FIELDS:
+            if name not in cls.__dict__:
+                setattr(cls, name, _result_field(name))
+
+    @classmethod
+    def _make(cls, *, batch=(), **fields):
+        """The functions' constructor: their arrays are new and held by nobody else, so the
+        result takes them without a copy."""
+        r = cls.__new__(cls)
+        r._set(batch, fields, False)
+        return r
+
+    def _set(self, batch, fields, copy):
+        unknown = sorted(set(fields) - self._FIELD_SET)
+        if unknown:
+            raise TypeError(f"{type(self).__name__}(): unexpected keyword argument {unknown[0]!r}")
+        stored = {}
+        for k in self._FIELDS:  # a fixed order, whatever the caller's
+            if k in fields:
+                stored[k] = _own(fields[k], copy)  # the result owns its arrays, read-only
+        self._fields = stored
+        self._batch = tuple(batch)
+
+    def _batch_repr(self):
+        """The one-line repr of a batch: Name(batch shape (k,), j of k converged)."""
+        name = type(self).__name__
+        conv = self._fields.get("converged")
+        if conv is None:
+            return f"{name}(batch shape {self._batch})"
+        n = 1
+        for s in self._batch:
+            n *= s
+        done = int(_core.count_nonzero(conv)) if isinstance(conv, _core.ndarray) else int(bool(conv)) * n
+        return f"{name}(batch shape {self._batch}, {done} of {n} converged)"
+
+    def _fields_repr(self, keys):
+        """The one-line repr of one result: Name(k=v, ...) over the keys it has, numbers to 6
+        significant digits and short arrays as [v, ...] (API.md §2.3)."""
+        if self._batch:
+            return self._batch_repr()
+        parts = []
+        for k in keys:
+            if k in self._fields:
+                text = _S.compact(self._fields[k])
+                if text is not None:
+                    parts.append(f"{k}={text}")
+        return f"{type(self).__name__}(" + ", ".join(parts) + ")"

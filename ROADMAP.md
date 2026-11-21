@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4–SP8 시작 전), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(설계 초안, C0–C8 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7–H10 시작 전), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5–SP8 시작 전), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1–C8 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -464,7 +464,7 @@
 
 # 가설검정 영역 (sd.htest)
 
-> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인** (2026-11-21). H6–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
+> 상태: **H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임)** (2026-11-21). H7–H10은 시작 전이다. 설계는 [docs/design/htest.md](docs/design/htest.md), API의 초안은 [docs/api/htest.md](docs/api/htest.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -484,7 +484,7 @@
 | H3 순위 검정: `mannwhitneyu ranksums wilcoxon kruskal friedmanchisquare brunnermunzel ansari mood median_test page_trend_test` | 완료·승인 (2026-11-21) |
 | H4 적합도 2: `ks_2samp cramervonmises_2samp anderson_ksamp epps_singleton_2samp` | 완료·승인 (2026-11-21) |
 | H5 상관: `pearsonr spearmanrho spearmanr pointbiserialr kendalltau weightedtau somersd chatterjeexi` | 완료·승인 (2026-11-21) |
-| H6 분할표: `chi2_contingency fisher_exact barnard_exact boschloo_exact mcnemar cochrans_q` | 시작 전 |
+| H6 분할표: `chi2_contingency fisher_exact barnard_exact boschloo_exact mcnemar cochrans_q odds_ratio relative_risk` | 완료·승인(위임) (2026-11-21) |
 | H7 비율과 이항: `binomtest quantile_test poisson_means_test proportions_ztest proportions_chisquare proportion_confint test_proportions_2indep confint_proportions_2indep` | 시작 전 |
 | H8 다중 비교와 보정: `tukey_hsd dunnett multipletests false_discovery_control combine_pvalues` | 시작 전 |
 | H9 재표본: `permutation_test monte_carlo_test bootstrap`, 재표본 `method=` 객체, `bws_test` | 시작 전 |
@@ -531,7 +531,10 @@
 - 찾은 것: 모든 참값이 계약 안이다(최대 0.038). scipy의 `pearsonr` p값은 r ≈ 1에서 0.11(eps 10⁻⁷)–1(eps 10⁻⁹: p = 0, 참 1.2e-74), R `cor.test`는 5.6e10배 틀린다. R의 Kendall 정확 p값은 n > 33에서 1 − cdf라 깊은 꼬리가 6.8e-14(참 2.4e-82)·음수다. scipy의 `weightedtau`는 동점에서 1e-14 (docs/design/htest.md §7).
 
 ### H6. 분할표
-- 카이제곱 독립성 검정(Yates, Cressie–Read), Fisher 정확 검정(2 × 2와 r × c), Barnard·Boschloo(장애 모수의 참 상한), McNemar, Cochran Q.
+- 카이제곱 독립성 검정(Yates, Cressie–Read, 가중 표), Fisher 정확 검정(2 × 2와 r × c), Barnard·Boschloo(장애 모수의 참 상한), McNemar, Cochran Q, 오즈비(조건부 MLE·표본)와 상대위험의 추정과 구간.
+- 결정(사용자, 2026-11-21): r × c `fisher_exact`의 기본은 정확한 망 알고리즘과 작업량 상한, `barnard_exact`·`boschloo_exact`의 `n`은 처음 격자 크기로만(결과는 참 상한), `odds_ratio`·`relative_risk`를 넣는다, `chi2_contingency`는 가중 표를 받는다, `mcnemar`의 기본 `exact=True`, `chi2_contingency`의 `df`는 float (docs/design/htest.md §1.1 H77–H82).
+- 결과: src/stardust/htest/_contingency.py(여덟 함수와 결과 클래스), csrc/htest/(contingency.cpp: 검정; fexact.hpp: r × c 망 알고리즘(정확한 경로 병합과 가운데에서 만나기); nuisance.hpp: Bernstein 꼴의 장애 모수 함수와 테일러 상한의 분기 한정; nchg.hpp: Fisher의 비중심 초기하; divergence.hpp: 0인 칸의 극한을 커널에), tests/htest/test_contingency.py, 참값 8묶음 88문제(r × c는 열의 동적 계획, Barnard·Boschloo·오즈비는 정수 다항식의 근을 flint로 고립), 문제 70개 더(596개), scipy·statsmodels·R(`chisq.test`, `fisher.test`, `mcnemar.test`) 대조, 골든과 측정 사례.
+- 찾은 것: 모든 참값이 계약 안이다(최대 0.25: 오즈비의 한쪽 구간 끝). scipy의 `barnard_exact`는 반올림한 Wald 통계량으로 |T| = |T_obs|인 거울 표를 빠뜨려 [[7, 12], [8, 3]]에서 p값이 9.5e-4 낮고, `shgo`가 상한을 1.2e-7 놓치는 표가 있다; Cressie–Read의 0인 칸은 NaN, O ≈ E의 G는 1.6e-11이다. R `fisher.test`의 r × c는 참값과 1e-12 안이고, 기본 workspace가 거부하는 4 × 5(N = 100)는 workspace = 2e8에서 7초에 sd와 1.7e-10 다르다(sd 1.1초). R의 조건부 오즈비와 구간은 `uniroot`의 허용오차로 6e-4까지 다르다. 결과를 보고하며 물은 것도 정했다: `median_test`도 0인 칸의 극한 규칙, R `Exact`는 설치하지 않는다(H83–H84) (docs/design/htest.md §7).
 
 ### H7. 비율과 이항
 - 이항 검정과 비율의 구간, 분위수 검정, 포아송 평균의 E-test, statsmodels의 비율 z·카이제곱 검정, 비율의 신뢰구간(모든 방법), 두 독립 비율의 차·비·오즈비 검정과 구간. 비교 대상에 R `prop.test`·`binom.test`.
@@ -548,7 +551,7 @@
 
 # 희소 영역 (sd.sparse)
 
-> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2는 완료·승인, SP3은 완료·승인(2026-11-21), SP4–SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
+> 상태: **설계 초안** (2026-11-21). SP0은 완료·승인, SP1은 완료·승인, SP2는 완료·승인, SP3은 완료·승인(2026-11-21), SP4는 완료·승인(위임, 2026-11-21), SP5–SP8은 시작 전이다. 설계는 [docs/design/sparse.md](docs/design/sparse.md), API의 초안은 [docs/api/sparse.md](docs/api/sparse.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -566,7 +569,7 @@
 | SP1 형식과 변환: `coo_array csr_array csc_array dok_array`, 표준 꼴, `sd.ndarray`·numpy·scipy와 주고받기 | 완료·승인 (2026-11-21) |
 | SP2 연산: 산술·비교·원소별 함수, SpMV·SpMM·SpGEMM, 리덕션 | 완료·승인 (2026-11-21) |
 | SP3 인덱싱과 만들기: 인덱싱과 대입, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find` | 완료·승인 (2026-11-21) |
-| SP4 직접 풀이: `spsolve splu factorized inv spsolve_triangular`, `LinearOperator`, `sd.linalg`의 `TypeError` | 시작 전 |
+| SP4 직접 풀이: `spsolve splu factorized inv spsolve_triangular`, `LinearOperator`, `sd.linalg`의 `TypeError` | 완료·승인(위임) (2026-11-21) |
 | SP5 반복법: `cg gmres minres bicgstab lsqr lsmr` | 시작 전 |
 | SP6 고유값과 특이값: `eigsh eigs svds` | 시작 전 |
 | SP7 행렬 함수와 노름: `expm expm_multiply onenormest norm` | 시작 전 |
@@ -603,6 +606,11 @@
 
 ### SP4. 직접 풀이
 - Accelerate LU(AMD 순서)로 `spsolve`·`splu`·`factorized`·`inv`, 이 라이브러리의 삼각 풀이, 특이의 판정(`LinAlgError`), `LinearOperator`, `sd.linalg`가 희소 입력에 쓸 함수를 짚는 `TypeError`.
+- 결정(사용자, 2026-11-21): docs/design/sparse.md §1.1 SP59–SP65(LU 순서는 AMD 고정, `splu`는 내보내지 않는 `SparseLU`(`solve`, `shape`), scipy의 SuperLU 옵션 없음, 특이의 판정에 조건수 추정(κ₁·ε ≥ 1), 잰 역오차가 계약을 넘으면 반복 다듬기 한 번, 우변 여럿은 함께, `LinearOperator`는 `shape`·`matvec`만 위치).
+- SP4 뒤의 결정(추천안, 사용자 위임 2026-11-21): docs/design/sparse.md §1.1 SP66–SP71(κ₁·ε ≥ 1의 판정 그대로, 배열의 함수도 희소 배열에 쓸 것을 짚는 `TypeError`(`csrc/bind/pyutil.cpp`·`errors.cpp`), `spsolve_triangular`는 꼭 주는 `upper`, (n, 1)의 b는 (n, 1), 열 하나·1차원의 희소 b는 희소 결과, `rmatvec` 없는 연산자는 `ValueError`; 모두 구현함).
+- 결과: 공개 이름 `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth LinearOperator aslinearoperator`(docs/api/sparse.md §5), src/stardust/sparse/(`_direct.py`, `_interface.py`), csrc/sparse/(`direct.cpp`: `_lu_factor`·`_LuFactor`와 `lacn2`의 조건수 추정, `triangular.cpp`: 대입과 띠 폭; `arith.hpp`로 줄 합 `ordered_sum`을 옮김), csrc/accelerate/sparse.hpp(전치·켤레 전치 풀이), linalg의 입력 검사 한 곳(`csrc/linalg/input.cpp`)에 희소 배열을 짚는 메시지(실패한 호출에서만), 테스트 tests/sparse/(test_direct.py, test_interface.py; test_accelerate.py·test_suitesparse.py에 더함), 정확도 스윕 `solve`, 골든 158케이스를 더함(모두 6,666, 1·3·10스레드 같음), 속도 사례 SP4의 4가지 × 격자 다섯(smoke만; 기준선으로 올리지 않았다).
+- 잰 것: 반복 다듬기 없이 saddle/600x150의 정규화 역오차가 404ε(나머지는 4ε 이하)이라 한 번 넣었고(SP63), 그 뒤 모든 시험 행렬과 SuiteSparse 다섯에서 0.50ε 이하, 참값 대비 앞오차는 0.39κ∞ε 이하다(계약 C_BACKWARD = C_SOLVE = 4). 특이 판정은 정확히 특이한 행렬 모두(Neumann 라플라시안, 같은 열, 상쇄, 구조적)를 잡고 특이가 아닌 것(κ 7.5×10¹⁴까지)은 모두 푼다. 비용은 분해의 10–15%다. 속도(smoke, scipy 대비): `spsolve`·`splu`는 2차원 n = 10⁴에서 같고 9×10⁴에서 1.7–1.8배, 10⁶에서 3.3배, 3차원 9.1×10⁴에서 17배, `SparseLU.solve`는 다듬기 때문에 n = 10⁴에서 0.38배(큰 행렬 1.3–2.6배), `spsolve_triangular`는 5–7배다.
+- 찾은 것(Accelerate, SDK 26.5): 전치로 도는 풀이는 우변이 둘 이상이면 틀린 답을 내고(그래서 열마다), 복소 LU의 켤레 전치 풀이는 몇백 행에서 프로세스를 멈추고(SIGTRAP; 켤레와 전치로 돌림), CSR을 전치 속성으로 넘긴 분해는 CSC와 끝자리가 다르다(그래서 모두 CSC로). scipy 1.18.1의 `spsolve_triangular`는 고른 삼각 밖의 원소가 있으면 경고 없이 틀린 답을 내고, `spbandwidth`·`is_sptriangular`는 빈 CSR에서 예외다. SuiteSparse의 sherman3·cvxqp3(κ₁ 6.9×10¹⁶·2.2×10¹⁶)은 판정대로 `LinAlgError`다(scipy는 해를 돌려준다).
 
 ### SP5. 반복법
 - CG, GMRES, MINRES, BiCGSTAB, LSQR, LSMR(scipy 1.18.1과 같은 알고리즘과 멈춤 판정, 결정적인 SpMV와 내적).
@@ -620,7 +628,7 @@
 
 # 수치 미적분 영역 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). C0–C8은 모두 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
+> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1–C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -635,7 +643,7 @@
 ## 진행 상태
 | 마일스톤 | 상태 |
 |---|---|
-| C0 준비: API 문서, 결과 객체의 바탕, 시험 모음, Arb 참값 도구, scipy 기록과 호출 순서, QUADPACK 원본 대조(받기 전에 묻는다), 측정·골든 등록, 기준선 | 시작 전 |
+| C0 준비: API 문서, 결과 객체의 바탕, 시험 모음, Arb 참값 도구, scipy 기록과 호출 순서, QUADPACK 원본 대조, 측정·골든 등록, scipy 시간 | 완료·승인(위임) (2026-11-21) |
 | C1 함께 쓰는 부품: 차분 간격 커널과 `Differences` 옮기기(C3, C15), 반복 고리를 `elementwise/`로 끌어내기(C4, C16); 공개 함수 없음 | 시작 전 |
 | C2 미분: `derivative jacobian hessian` | 시작 전 |
 | C3 표본과 고정 규칙: `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` | 시작 전 |
@@ -650,6 +658,8 @@
 ### C0. 준비
 - 결정(사용자, 2026-11-21): docs/design/integrate.md §1.1 C8–C17(C0 전에 정할 것을 모두 정했다).
 - API 초안의 확정(C11–C13의 이름), 결과 객체 `IntegrateResult`·`DifferentiateResult`의 바탕(`OptimizeResult`에서 끌어내되 동작 불변), 시험 모음(QUADPACK 책의 무리, scipy 시험의 f1–f15 등, 어려운 적분, 미분의 초등 함수·MGH), Arb 참값 도구(닫힌 꼴, `acb.integral`, 치환), scipy 1.18.1의 결과와 호출 순서의 기록, QUADPACK 원본 21개 파일(docs/design/integrate.md §7.6)을 크기와 함께 물은 뒤 `build/comparators/quadpack/`에 받아 gfortran으로 돌린 결과(원본은 저장소에 넣지 않는다), `bench/areas.py`·골든·측정의 등록, scipy 기준선.
+- 결과: docs/api/integrate.md·differentiate.md(확정; 풀기와 생성자의 규칙), 결과의 바탕 `src/stardust/_results.py`의 `_FieldResult`(`OptimizeResult`가 그 위로 옮겨 가고 동작·골든 불변), src/stardust/integrate/(`IntegrateResult`)·src/stardust/differentiate/(`DifferentiateResult`), 시험 모음 tests/integrate/problems.py(1차원 116, 배치 3, 겹친 7, 벡터 2, 급수 9, 표본 12)·tests/differentiate/problems.py(초등 함수 11 × 9점, 끝 근처 14, MGH 47), Arb 참값 tools/integrate_ref.py(닫힌 꼴·`acb.integral`·치환을 모두 계산해 겹쳐야 저장; 134개 → tests/integrate/ref/)·tools/differentiate_ref.py(f′·f″ 104점, 야코비안 47·헤시안 42 → tests/differentiate/ref/; 헤시안은 Arb 위의 2차 전진 미분 tests/differentiate/jets.py), scipy 기록 tools/gen_integrate_scipy.py·tools/gen_differentiate_scipy.py(값과 호출 순서: `quad`는 점 전부, 배열 호출은 모양과 SHA-256), QUADPACK 원본 tools/gen_integrate_fortran.py(netlib 21개 파일과 LINPACK `dgtsl.f`를 build/comparators/quadpack/에, gfortran 라이브러리를 ctypes로; `d1mach`·`xerror`는 도구가 쓴 대체, 먼저 쓴 `dgtsl` 대체는 원본과 116개 실행 모두 비트로 같다 → tests/integrate/data/fortran_quadpack.json, fortran_vs_scipy.json), 측정·골든 등록(bench/areas.py, bench/accuracy/integrate.py·differentiate.py, bench/speed/cases/integrate.py·differentiate.py의 사례 계획 26개, tests/golden/cases_integrate.py·cases_differentiate.py). scipy 시간은 기계가 바빠 점검 수준으로 한 번씩만 쟀고 기준선에 넣지 않았다(docs/design/integrate.md §5).
+- 찾은 것(docs/design/integrate.md §7.6, §7.7): Fortran 원본과 scipy의 C 판은 116개 가운데 112개에서 같은 점을 같은 순서로 부르지만 적분이 비트로 같은 것은 62개다. FMA 축약을 켜고 빌드하면 적분 100개가 같아지고 점은 90개만 같아, scipy는 누적만 축약한 것으로 보인다(C4에서 `std::fma`의 자리를 찾는다). QAWS의 로그 가중치 예제는 같은 점에서 4×10⁻⁹ 다르다(C5에서 본다). 수렴이라고 알린 값이 오차 추정 밖인 것: `quad`는 봉우리 α = 19·20과 f10(double 상한 `math.pi / 2` 대신 π/2의 적분으로 외삽), `tanhsinh`은 76개 가운데 여덟. scipy `derivative`는 같은 점을 혼자와 배치로 부르면 df가 99점 가운데 29점에서 끝자리가 다르다(BLAS dgemv의 합 순서). 책의 무리 목록은 책 없이 설계 초안의 세 무리와 루틴 예제를 쓰고 닫힌 꼴을 Arb로 확인했다. C0을 마치며 생긴 넷(`dgtsl`, double 끝의 참값, `summary()`, 풀기의 범위)은 추천안으로 정했다(사용자 위임 2026-11-21, docs/design/integrate.md §1.1 C18–C21); `dgtsl`은 사용자 승인으로 LINPACK 원본을 받아 빌드에 넣었다.
 
 ### C1. 함께 쓰는 부품
 - `csrc/optimize/diff.hpp`를 differentiate의 C++로, `src/stardust/optimize/_diff.py`의 `Differences`를 differentiate의 Python 내부로 옮기고 optimize·regression이 그것을 부른다. 반복 고리는 csrc 아래 새 바닥 `elementwise/`로 간다. `csrc/optimize/batch.cpp`의 반복 고리(원소 패스의 병렬, `args` 모으기, 호출, 진행 목록)를 끌어내 원소마다 여러 점의 호출로 넓힌다. optimize·regression의 테스트·골든·배치 속도가 그대로인지 확인한다.

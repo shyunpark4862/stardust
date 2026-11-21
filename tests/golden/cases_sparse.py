@@ -24,6 +24,14 @@ reductions with axis, keepdims, dtype and explicit, on the same matrices in ever
 and long matrices take the threaded line ranges at 3 and 10 threads (the scatter runs on one
 thread on every count) and the long rows' pieces of L.
 
+The direct solves and LinearOperator (milestone SP4): spsolve with dense (1-D, 2-D) and sparse
+right-hand sides, splu's solve with trans N, T and H, factorized and inv on a 2-D Laplacian, a
+random nonsymmetric and a complex matrix in every format (Accelerate's LU/AMD: its bits depend on
+Accelerate's thread mode, never on sd's thread count), spsolve_triangular (lower, upper, unit, 64
+columns: the column blocks run on the pool at 3 and 10 threads), spbandwidth and is_sptriangular,
+LinearOperator's products and combinations, the singular and wrong calls, and sd.linalg's
+refusals of a sparse array.
+
 A sparse array is stored whole: its class, shape, dtype and arrays (COO: coords, data and
 has_canonical_format; CSR and CSC: indptr, indices and data; DOK: its entries in row-major order).
 """
@@ -245,6 +253,7 @@ def cases(L):
 
     yield from cases_sp2(L, mats, fmts)
     yield from cases_sp3(L, mats, fmts)
+    yield from cases_sp4(L, fmts)
 
 
 def partner(A, S):
@@ -531,3 +540,122 @@ def cases_sp3(L, mats, fmts):
     yield "error block_array none", lambda: S.block_array([[None]])
     yield "error tril 1-D", lambda: S.tril(mats["1d"]())
     yield "error eye_array format", lambda: S.eye_array(3, format="dia")
+
+
+def cases_sp4(L, fmts):
+    """The direct solves, the patterns, LinearOperator and sd.linalg's refusals (SP4)."""
+    sd, S = L.sd, L.sd.sparse
+    r = L.rng(604)
+    a = L.arr
+    g = 12
+    T = S.diags_array([a(np.full(g - 1, -1.0)), a(np.full(g, 2.0)), a(np.full(g - 1, -1.0))], offsets=[-1, 0, 1])
+    I1 = S.eye_array(g)
+    lap = (S.kron(I1, T) + S.kron(T, I1)).tocsc()  # 144 x 144
+    n = 300
+    rows, cols = r.integers(0, n, 2400), r.integers(0, n, 2400)
+    keep = rows != cols
+    diag = np.arange(n)
+    uv = a(np.concatenate([r.standard_normal(keep.sum()), 10.0 + r.random(n)]))
+    ur, uc = a(np.concatenate([rows[keep], diag])), a(np.concatenate([cols[keep], diag]))
+    unsym = S.coo_array((uv, (ur, uc)), shape=(n, n)).tocsr()
+    m = 60
+    zr, zc = r.integers(0, m, 400), r.integers(0, m, 400)
+    zk = zr != zc
+    zv = a(np.concatenate([r.standard_normal(zk.sum()) + 1j * r.standard_normal(zk.sum()), 8.0 + 2j + np.zeros(m)]))
+    zrr, zcc = a(np.concatenate([zr[zk], np.arange(m)])), a(np.concatenate([zc[zk], np.arange(m)]))
+    cplx = S.coo_array((zv, (zrr, zcc)), shape=(m, m)).tocsr()
+    mats = {"lap": lap, "unsym": unsym, "complex": cplx}
+
+    for name, A in mats.items():
+        k = A.shape[0]
+        b1 = a(r.standard_normal(k))
+        B = a(r.standard_normal((k, 5)))
+        Bs = S.csc_array(a(np.where(r.random((k, 3)) < 0.1, r.standard_normal((k, 3)), 0.0)))
+        for f in fmts:
+            Af = A.asformat(f)
+            yield f"spsolve {name} {f} b 1-D", lambda Af=Af, b1=b1: S.spsolve(Af, b1)
+            yield f"spsolve {name} {f} b 2-D", lambda Af=Af, B=B: S.spsolve(Af, B)
+            yield f"spsolve {name} {f} b sparse", lambda Af=Af, Bs=Bs: S.spsolve(Af, Bs)
+        for trans in ("N", "T", "H"):
+            yield f"splu {name} solve {trans} 1-D", lambda A=A, b1=b1, t=trans: S.splu(A).solve(b1, trans=t)
+            yield f"splu {name} solve {trans} 2-D", lambda A=A, B=B, t=trans: S.splu(A).solve(B, trans=t)
+        yield f"splu {name} shape", lambda A=A: S.splu(A).shape
+        yield f"factorized {name}", lambda A=A, b1=b1: S.factorized(A)(b1 * 1j)
+        yield f"spsolve {name} b complex", lambda A=A, b1=b1: S.spsolve(A, b1 * (1 - 2j))
+        yield f"spsolve {name} b (n, 1)", lambda A=A, b1=b1: S.spsolve(A, b1.reshape((k, 1)))
+        wide = a(r.standard_normal((k, 64)))
+        for lower in (True, False):
+            for unit in (False, True):
+                tag = f"{'lower' if lower else 'upper'}{' unit' if unit else ''}"
+                for f in ("csr", "csc"):
+                    yield (f"spsolve_triangular {name} {f} {tag}",
+                           lambda A=A, f=f, b1=b1, lower=lower, unit=unit:
+                           S.spsolve_triangular(A.asformat(f), b1, upper=not lower, unit_diagonal=unit))  # fmt: skip
+                yield (f"spsolve_triangular {name} {tag} 64 columns",
+                       lambda A=A, w=wide, lower=lower, unit=unit:
+                       S.spsolve_triangular(A, w, upper=not lower, unit_diagonal=unit))  # fmt: skip
+        yield f"spbandwidth {name}", lambda A=A: S.spbandwidth(A)
+        yield f"is_sptriangular {name} tril", lambda A=A: S.is_sptriangular(S.tril(A))
+    yield "inv lap csc", lambda: S.inv(lap)
+    yield "inv complex csr", lambda: S.inv(cplx)
+    yield "inv lap coo", lambda: S.inv(lap.tocoo())
+    yield "spsolve int matrix", lambda: S.spsolve(S.csr_array(a(np.array([[2, 1], [0, 3]]))), a(np.array([1, 1])))
+    yield "spsolve empty", lambda: S.spsolve(S.csr_array((0, 0)), a(np.zeros((0, 2))))
+    yield "inv empty", lambda: S.inv(S.csc_array((0, 0)))
+    yield "spbandwidth rect", lambda: S.spbandwidth(S.csr_array(a(np.triu(np.ones((3, 6)), 2))))
+    yield "is_sptriangular empty", lambda: S.is_sptriangular(S.csr_array((3, 3)))
+
+    # singular and wrong calls
+    singular = S.csr_array(a(np.array([[1.0, 2.0, 0.0], [2.0, 4.0, 0.0], [0.0, 0.0, 1.0]])))
+    dupcol = S.csr_array(a(np.array([[1.0, 1.0, 0.0], [2.0, 2.0, 1.0], [3.0, 3.0, 5.0]])))
+    struct = S.csr_array(a(np.array([[1.0, 0.0, 2.0], [3.0, 0.0, 4.0], [5.0, 0.0, 6.0]])))
+    for name, A in (("exact zero pivot", singular), ("dupcol", dupcol), ("structural", struct)):
+        yield f"error singular {name} spsolve", lambda A=A: S.spsolve(A, a(np.ones(3)))
+        yield f"error singular {name} splu", lambda A=A: S.splu(A)
+        yield f"error singular {name} inv", lambda A=A: S.inv(A)
+        yield f"error singular {name} factorized", lambda A=A: S.factorized(A)
+    yield "error spsolve dense A", lambda: S.spsolve(a(np.eye(2)), a(np.ones(2)))
+    yield "error spsolve rect", lambda: S.spsolve(S.csr_array((2, 3)), a(np.ones(2)))
+    yield "error spsolve rows", lambda: S.spsolve(lap, a(np.ones(3)))
+    yield "error spsolve list b", lambda: S.spsolve(lap, [1.0])
+    yield "error spsolve nan", lambda: S.spsolve(S.csr_array(a(np.array([[1.0, np.nan], [0, 1]]))), a(np.ones(2)))
+    yield "error spsolve permc_spec", lambda: S.spsolve(lap, a(np.ones(144)), permc_spec="COLAMD")
+    yield "error splu trans", lambda: S.splu(lap).solve(a(np.ones(144)), trans="C")
+    yield "error triangular zero diagonal", lambda: S.spsolve_triangular(struct, a(np.ones(3)), upper=False)
+    yield "error triangular upper", lambda: S.spsolve_triangular(lap, a(np.ones(144)), upper=0)
+    yield "error spbandwidth 1-D", lambda: S.spbandwidth(S.csr_array(a(np.ones(3))))
+
+    # LinearOperator
+    X = a(r.standard_normal((n, 4)))
+    x1, y1 = a(r.standard_normal(n)), a(r.standard_normal(n))
+    U = unsym
+    yield "aslinearoperator matvec", lambda: S.aslinearoperator(U) @ x1
+    yield "aslinearoperator matmat", lambda: S.aslinearoperator(U) @ X
+    yield "aslinearoperator rmatvec", lambda: S.aslinearoperator(U).rmatvec(y1)
+    yield "aslinearoperator dense", lambda: S.aslinearoperator(a(np.eye(3) * 2.0)).matvec(a(np.ones(3)))
+    yield (
+        "LinearOperator T H",
+        lambda: (S.aslinearoperator(cplx).T @ a(np.ones(m) * 1j), S.aslinearoperator(cplx).H @ a(np.ones(m))),
+    )
+    yield (
+        "LinearOperator combination",
+        lambda: (2.0 * S.aslinearoperator(U) - S.aslinearoperator(U) @ S.aslinearoperator(U)) @ x1,
+    )
+    yield "LinearOperator power", lambda: (S.aslinearoperator(U) ** 3) @ x1
+    yield (
+        "LinearOperator custom",
+        lambda: S.LinearOperator((n, n), lambda v: U @ v, rmatvec=lambda v: U.T @ v).matmat(X),
+    )
+    yield "LinearOperator custom dtype", lambda: S.LinearOperator((m, m), lambda v: cplx @ v).dtype
+    yield "LinearOperator shape", lambda: S.LinearOperator((2, 3), lambda v: a(np.ones(2))).shape
+    yield "error LinearOperator no rmatvec", lambda: S.LinearOperator((n, n), lambda v: U @ v).rmatvec(x1)
+    yield "error LinearOperator matvec shape", lambda: S.aslinearoperator(U).matvec(a(np.ones(3)))
+    yield "error aslinearoperator list", lambda: S.aslinearoperator([1.0])
+
+    # sd.linalg refuses a sparse array, naming the function to use
+    for fn, call in (("solve", lambda A: sd.linalg.solve(A, a(np.ones(144)))), ("inv", sd.linalg.inv),
+                     ("lu", sd.linalg.lu), ("det", sd.linalg.det), ("eigh", sd.linalg.eigh),
+                     ("kron", lambda A: sd.linalg.kron(A, A)),
+                     ("solve_triangular",
+                      lambda A: sd.linalg.solve_triangular(A, a(np.ones(144)), upper=True))):  # fmt: skip
+        yield f"error sd.linalg.{fn} sparse", lambda call=call: call(lap)

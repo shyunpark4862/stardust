@@ -33,6 +33,7 @@ void bind_spgemm(nanobind::module_& m);
 void bind_reduce(nanobind::module_& m);
 void bind_index(nanobind::module_& m);
 void bind_construct(nanobind::module_& m);
+void bind_triangular(nanobind::module_& m);
 
 // ---- element helpers ----
 

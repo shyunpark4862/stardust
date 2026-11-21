@@ -1,0 +1,12 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0", "target_bits": 110, "tool": "tools/integrate_ref.py", "n_requested": 9, "dropped": []},
+"series/zeta/2": {"value": [1.6449340668482264, 3.040672350398476e-17], "method": "closed form", "digest": "ba020fa880c45e003129c6fc1e27be8e18498f6d918cf965159e793f60936902"},
+"series/zeta/3": {"value": [1.2020569031595942, 4.875891010379532e-17], "method": "closed form", "digest": "a0210c00917512fc2fa37e87f7b57c68fa24eb76622e0f41c5563a43f93ee51e"},
+"series/zeta/1.5": {"value": [2.612375348685488, 1.9109248306373604e-16], "method": "closed form", "digest": "a525fa5d318a0cd8c27d913bfd84fab16a51e6aaf0ad860444a37f61a4a095e0"},
+"series/harmonic/2/1000": {"value": [1.64393456668156, -1.0249301267116964e-16], "method": "closed form", "digest": "7bf5c1852b85c02a9077922b6e1082c538ae70f2f5b4acbd7cb9cfd19acf9565"},
+"series/half-step": {"value": [2.5797362673929056, 1.2162689401593905e-16], "method": "closed form", "digest": "fe4a562b8fb5c22a80725677da5a0ec8eaeb8de047be0f14824b63345107cc7d"},
+"series/lorentz": {"value": [2.076674047468581, -2.2661816277319086e-17], "method": "closed form", "digest": "67687d6f4482c5eeceade1b65073be7c0b38c6c8fa896be843eec6807b14b593"},
+"series/geometric": {"value": [10.50833194477505, 2.3047603398901413e-16], "method": "closed form", "digest": "940e99c200a826e9184b5ba10f39fe9f58fcab883239c3eeb88576e4a62eb8fb"},
+"series/gauss-two-sided": {"value": [1.772637204826652, 5.1045776987030397e-17], "method": "closed form", "digest": "e4e6c3c4b2c96a499f9f5a21d14edc4e9536138836b26abd10cff7955474d239"},
+"series/zeta-left": {"value": [1.6449340668482264, 3.040672350398476e-17], "method": "closed form", "digest": "d2e82942d85caded11d1e1a0dbd3f35b2f3be24519c0202255b24cb617d243c3"}
+}

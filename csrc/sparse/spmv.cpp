@@ -52,27 +52,7 @@ using i128 = __int128;
 
 constexpr int64_t kBlockCols = 16;
 
-// ---- one output element: the sum over [b, e) in order, in pieces of kLine past kLine terms ----
-
-// step(p, acc) -> acc with entry p's term added.
-template <class T, class Step>
-inline T ordered_sum(int64_t b, int64_t e, const Step& step, std::vector<T>& parts) {
-    const int64_t n = e - b;
-    if (n <= kLine) {
-        T acc{};
-        for (int64_t p = b; p < e; ++p) acc = step(p, acc);
-        return acc;
-    }
-    const int64_t nch = (n + kLine - 1) / kLine;
-    parts.resize(static_cast<std::size_t>(nch));
-    for (int64_t ch = 0; ch < nch; ++ch) {
-        T acc{};
-        const int64_t pe = std::min(e, b + (ch + 1) * kLine);
-        for (int64_t p = b + ch * kLine; p < pe; ++p) acc = step(p, acc);
-        parts[static_cast<std::size_t>(ch)] = acc;
-    }
-    return tree_sum(parts.data(), nch);
-}
+// ---- one output element: ordered_sum (sparse/arith.hpp) ----
 
 // The same for kb columns at once (acc[0, kb)): step(p, acc) adds entry p's kb terms. K > 0 fixes
 // kb at compile time (a full block of contiguous columns: the loop runs in NEON lanes; the order

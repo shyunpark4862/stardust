@@ -52,6 +52,8 @@ std::string with_name(const char* func, const char* msg) {
 void rethrow_named(const char* func) {
     try {
         throw;
+    } catch (const SparseOperand& e) {
+        throw nb::type_error(with_name(func, (std::string(e.what()) + sparse_hint(func ? func : "")).c_str()).c_str());
     } catch (const nb::builtin_exception& e) {
         switch (e.type()) {
             case nb::exception_type::type_error:

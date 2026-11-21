@@ -2,7 +2,8 @@
 reference files; their layout: tests/reffile.py).
 
 The areas are bench/areas.py's that have references: array, linalg, special, stats (with its
-multivariate group, sweeps stats/mv/...), regression, optimize, htest and sparse (no sweep yet).
+multivariate group, sweeps stats/mv/...), regression, optimize, htest, sparse, integrate and
+differentiate (the last two without a sweep yet).
 Each area's sweeps are its reference files, read through tests/<area>/refdata.py, which also
 holds the contract the tests judge with (special: tests/special/test_reference.py), so a run
 computes only the stardust side and judges it as the tests do. A region of a sweep gets its

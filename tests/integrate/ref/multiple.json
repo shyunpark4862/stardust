@@ -1,0 +1,10 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0", "target_bits": 110, "tool": "tools/integrate_ref.py", "n_requested": 7, "dropped": []},
+"multi/dbl-linear": {"value": [5.833333333333333, 2.9605947323337506e-16], "method": "closed form", "digest": "e1808d4e52d25d9e8e6f28fcbb61c9cb87f08aea9ccf33bbd3a0a5c10a18fe4d"},
+"multi/dbl-args": {"value": [10.333333333333334, -5.921189464667501e-16], "method": "closed form", "digest": "bdf946d839ae927cb37b50ea3506559a8d9850f76b4049d1dd346566b6cf38e2"},
+"multi/dbl-const-limits": {"value": [6.0, 0.0], "method": "closed form", "digest": "1ae51a9d398bbf3cdba521f234084e0a98870a06923bb5fcd080f9d557f9abc6"},
+"multi/dbl-gauss-square": {"value": [0.5577462853510337, -1.4123253732222386e-17], "method": "closed form", "digest": "0d6977e5d0ef79b45b868e4f7eaadfcbcf46a90068ea99366bd142628337b7f7"},
+"multi/dbl-gauss-plane": {"value": [3.141592653589793, 1.2246467991473532e-16], "method": "closed form", "digest": "4a4d7270d3fa1035648de43317147fe75ed8f2993def38e64af086f6c9754681"},
+"multi/tpl-linear": {"value": [80.0, -3.76158192263132e-37], "method": "closed form", "digest": "ccd60f67ed4ce166d9892625859fa2ba2604eb8d2a2642f45523c61a0f9952a5"},
+"multi/tpl-gauss-cube": {"value": [0.41653838588663816, 6.829089405961031e-18], "method": "closed form", "digest": "e3bc56da9186e7b89f8d1869b1f6cfcb39d8725d919cd367b2ddf44d97c9798c"}
+}

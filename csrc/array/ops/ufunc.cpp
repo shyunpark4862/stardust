@@ -418,26 +418,7 @@ namespace {
 // method or operator (the element-wise functions with f(0) = 0 are methods),
 // else the dense array. Only the error path looks; other calls are unchanged.
 
-bool is_sparse_array(nb::handle o) {
-    nb::object mod = nb::getattr(nb::handle(reinterpret_cast<PyObject*>(Py_TYPE(o.ptr()))), "__module__", nb::none());
-    return nb::isinstance<nb::str>(mod) && std::string(nb::str(mod).c_str()).rfind("stardust.sparse", 0) == 0;
-}
-
-std::string sparse_hint(const std::string& f) {
-    static const std::pair<const char*, const char*> table[] = {
-        {"sin", "A.sin()"},          {"tan", "A.tan()"},          {"asin", "A.asin()"},   {"atan", "A.atan()"},
-        {"sinh", "A.sinh()"},        {"tanh", "A.tanh()"},        {"asinh", "A.asinh()"}, {"atanh", "A.atanh()"},
-        {"sqrt", "A.sqrt()"},        {"expm1", "A.expm1()"},      {"log1p", "A.log1p()"}, {"floor", "A.floor()"},
-        {"ceil", "A.ceil()"},        {"trunc", "A.trunc()"},      {"round", "A.round()"}, {"sign", "A.sign()"},
-        {"conj", "A.conj()"},        {"negative", "-A"},          {"abs", "abs(A)"},      {"add", "A + B"},
-        {"subtract", "A - B"},       {"multiply", "A * B"},       {"divide", "A / B"},    {"pow", "A ** p"},
-        {"maximum", "A.maximum(B)"}, {"minimum", "A.minimum(B)"}, {"equal", "A == B"},    {"not_equal", "A != B"},
-        {"less", "A < B"},           {"less_equal", "A <= B"},    {"greater", "A > B"},   {"greater_equal", "A >= B"},
-    };
-    for (const auto& [name, hint] : table)
-        if (f == name) return std::string("; for a sparse array use ") + hint;
-    return "; a sparse array has no " + f + ": use " + f + "(A.toarray())";
-}
+// is_sparse_array and sparse_hint (the table of what to use) are bind/pyutil's.
 
 [[noreturn]] void refuse_sparse(nb::handle o, const char* what, const char* func) {
     throw nb::type_error((std::string("'") + what + "' must be an sd.ndarray or a bool, int, float or complex, not " +

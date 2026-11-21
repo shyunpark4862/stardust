@@ -1,6 +1,6 @@
 # 수치 미적분 영역 설계 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. 마일스톤 C0–C8은 모두 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1–C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -36,6 +36,10 @@
 | C15 C3의 범위 (C0 전) | `diff.hpp`와 함께 `src/stardust/optimize/_diff.py`의 `Differences`(nls의 정확한 5점 차분, `approx_fprime`의 기본)도 differentiate의 내부로 옮긴다. 공개 이름(`approx_fprime`, `check_grad`)은 optimize에 그대로이고, 차분의 고리(호출 수 세기, 다시 해 보기, 기억)는 부르는 쪽에 둔다. 비트와 골든은 그대로다 (사용자 결정 2026-11-21) |
 | C16 반복 고리의 자리 (C0 전) | 함께 쓰는 반복 고리는 csrc 아래 새 바닥 폴더 `elementwise/`에 둔다(scipy `_lib/_elementwise_iterative_method.py`에 해당; optimize·integrate·differentiate가 아래로 의존한다) (사용자 결정 2026-11-21) |
 | C17 QUADPACK 원본 (C0 전) | netlib의 Fortran 원본을 받아 gfortran으로 돌린 결과와 견준다(optimize O13처럼). 받기 전에 정확한 파일 목록과 크기를 적어 사용자에게 다시 묻는다(§7.6). 원본은 저장소 밖에 두고 저장소에는 결과만 넣는다 (사용자 결정 2026-11-21) |
+| C18 `dgtsl` (C0 뒤) | QUADPACK의 `dqc25f`가 부르는 LINPACK `dgtsl`은 netlib의 원본 `linpack/dgtsl.f`(파일 하나, 3,240바이트, 바깥 호출 없음)를 받아 QUADPACK과 함께 빌드한다. 그 전에 문서의 알고리즘으로 도구 안에 쓴 대체는 빌드에서 빼고 견주기에만 쓴다: 116개 실행 모두 값·점이 원본과 비트로 같다(§7.6). QAWO·QAWF의 대조 다섯 실행은 이제 잠정이 아니다 (추천안 사용자 위임 2026-11-21; 사용자 승인 2026-11-21, 원본 받음) |
+| C19 double 끝의 참값 (C0 뒤) | 참값은 double로 낸 문제 그대로의 정확한 적분이다(상한 `math.pi / 2`는 π/2보다 6.1×10⁻¹⁷ 작다). 문제의 뜻인 정확한 π/2·π의 적분은 따로 두지 않고, 그 차이(f9 2×10⁻¹⁵, f10 1.6×10⁻⁸, cos(2^α sin x) 2.5×10⁻¹⁶)는 문서에 적는다(§7.2, §7.7) (추천안, 사용자 위임 2026-11-21) |
+| C20 `summary()` (C0 뒤) | `IntegrateResult`·`DifferentiateResult`도 `OptimizeResult`처럼 `summary()`가 있다(API.md §2.3의 상자: 값·오차·수렴·`nfev`의 머리, 배치는 줄마다). 결과를 내는 첫 함수가 공개될 때(C2·C4) 만든다 (추천안, 사용자 위임 2026-11-21) |
+| C21 풀기의 범위 (C0 뒤) | `(integral, error)`로 풀리는 것은 `quad` 계열(`quad dblquad tplquad nquad quad_vec`)의 결과뿐이다. `tanhsinh`, `nsum`, `cubature`와 공개 생성자로 만든 결과는 이름으로 읽는다(지금 구현) (추천안, 사용자 위임 2026-11-21) |
 
 - C5와 D-33(API.md §4, docs/design/optimize.md §3.7): 호출점의 비트 동일은 지금 맞추는 목표이고 약속이 아니다. 지키는 것은 다른 영역과 같다(스레드 수와 상관없는 비트, 자기 골든, Arb 계약). 반올림이 아닌 동작(멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서)은 scipy 그대로다. 호출점이 같다는 것은 사용자 함수를 부르는 점의 순서와 비트, 호출 수가 같다는 뜻이다.
 
@@ -94,6 +98,8 @@ scipy 1.18.1의 `dir(scipy.integrate)`와 `dir(scipy.differentiate)`에서 뽑�
 ### 2.1 결과 객체 (C9, C10, C13)
 - 모듈마다 결과 클래스 하나(C9): `sd.integrate.IntegrateResult`, `sd.differentiate.DifferentiateResult`(optimize의 `OptimizeResult`와 같은 이름 짓기: 모듈 이름 + Result). 규칙은 `OptimizeResult`와 같다: 함수가 주는 필드만 있고 없는 필드는 `AttributeError`, 필드는 읽기 전용, 배열 필드는 읽기 전용이고 읽을 때 복사하지 않는다(O103), `repr`는 한 줄, dict처럼 쓰지 않는다. 바탕은 `src/stardust/optimize/_result.py`의 것을 끌어내 셋이 함께 쓴다(`OptimizeResult`의 동작은 그대로).
 - 이름(C4, O4): `converged`(scipy `success`), `n_iter`(scipy `nit`), `nfev`(scipy `quad`의 `neval`도), `status`, `message`(배치 빼고). 값의 필드(C13): 적분은 어디서나 `integral`, 급수는 `sum`, 오차 추정은 `error`, 미분은 `df`·`ddf`(scipy의 것).
+- C0에서 만든 것: 바탕은 `src/stardust/_results.py`의 `_FieldResult`다(필드 속성, 읽기 전용, `_Lazy`, 생성자 `_make`, 배치의 한 줄 `repr`). `OptimizeResult`는 그 위에 자기 `__init__`·`repr`·`summary()`를 그대로 두었고(Python의 호출 모양 에러가 클래스 이름을 대므로 `__init__`는 클래스마다 둔다), optimize의 테스트와 골든 3,876케이스가 그대로다. `IntegrateResult`·`DifferentiateResult`의 `repr`는 API.md §2.3의 꼴(`IntegrateResult(integral=0.746824, error=8.29e-15, converged=True, nfev=21)`)이다.
+- 둘로 풀리는 것(C10)은 결과를 만드는 함수가 정한다: `quad` 계열은 `IntegrateResult._make(…, unpack=True)`로 만들고, 그 결과만 `a, b = r`, `r[0]`, `len(r) == 2`가 된다. 다른 결과(`tanhsinh`, `nsum`, `cubature`, 공개 생성자로 만든 것)에서는 `TypeError`이고, `bool(r)`은 늘 참이다(C21). `summary()`는 C2·C4에서 만든다(C20).
 - `quad` 계열(`quad dblquad tplquad nquad quad_vec`)은 scipy가 튜플 `(y, abserr)`를 돌려준다. 여기서는 결과 객체이고(C10) `integral, error = sd.integrate.quad(f, 0, 1)`처럼 둘로 풀린다(htest H7의 규칙). `full_output`은 없고 scipy `infodict`의 값(`neval`, `last`, `alist`…)은 필드다(docs/api/integrate.md §1.3, §2).
 - 원소별 반복 무리의 결과는 필드마다 배치 모양이고, 입력이 모두 실수면 Python 수다(O48).
 
@@ -204,6 +210,18 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **`cubature`·`quad_vec`**: scipy의 Python 고리와 힙이 오버헤드다(2차원 gk21 첫 호출 7.4 ms는 대부분 준비; genz-malik 106번 1.6 ms). C++ 힙으로 옮긴다.
 - **표본 규칙**: 배열의 원소별 연산과 리덕션의 속도(배열 영역의 기준)다.
 - 측정은 1·10스레드. 사례는 `bench/speed/cases/` 아래 영역 파일에 마일스톤마다 더한다(§7.5).
+- **C0의 scipy 시간** (2026-11-21): 기계가 바빠(다른 작업 둘이 돌았다, 부하 2.0) 기준선을 재지 않았다. `bench/speed/cases/integrate.py`·`differentiate.py`의 계획한 사례 26개(아직 공개 함수가 없어 `cases()`는 비었고 `run integrate differentiate --smoke`는 고를 사례가 없다고 알린다)에서 scipy 쪽만 데운 뒤 한 번씩 불렀다(점검 실행과 같은 한 번의 호출이라 잡음이 크다). 기준선(`bench/speed/results/`)에 넣지 않았고, 사례가 공개되는 마일스톤에서 조용한 기계로 다시 잰다.
+
+| 사례 | scipy | 사례 | scipy |
+|---|---|---|---|
+| `trapezoid` 10³ / 10⁶ | 14.7 µs / 694 µs | `quad` exp(−x²) [0, 1] (21번) | 5.4 µs |
+| `simpson` 10³ / 10⁶ | 61 µs / 4.45 ms | `quad` exp(−x²) (−∞, ∞) (270번) | 16.2 µs |
+| `cumulative_trapezoid` 10³ / 10⁶ | 15.3 µs / 2.65 ms | `quad` 봉우리 α = 5 (525번) | 39.8 µs |
+| `cumulative_simpson` 10³ / 10⁶ | 44 µs / 9.28 ms | `dblquad` 단위 정사각형 (441번) | 68 µs |
+| `fixed_quad` n = 5 | 14.0 µs | `quad` `weight='cos'` [0, ∞) | 13.9 µs |
+| `tanhsinh` exp 10 / 10³ / 10⁵ | 0.46 / 1.11 / 79 ms | `nsum` 1/k² | 0.86 ms |
+| `cubature` gk21 / genz-malik 2차원 | 0.32 / 1.52 ms | `quad_vec` 함수 셋 | 0.17 ms |
+| `derivative` exp 10 / 10³ / 10⁵ | 0.29 / 0.45 / 17.4 ms | `jacobian` / `hessian` Rosenbrock n = 3 | 0.28 / 4.08 ms |
 
 ---
 
@@ -235,6 +253,11 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **scipy의 시험**: `scipy/integrate/tests/`의 `test_quadpack.py`(가중치·중단점·무한 구간·복소수의 경우), `test_tanhsinh.py`(Bailey–Jeyabalan–Li의 f1–f15와 적분 변환·로그 경우), `test_cubature.py`, `test__quad_vec.py`, `test_quadrature.py`(표본 규칙), `scipy/differentiate/tests/test_differentiate.py`. 식과 참값을 옮기고 출처를 적는다(optimize의 `tests/optimize/functions.py`와 같은 방식).
 - **어려운 적분**(Arb 참값): 끝점 특이점(x^−0.9, log(x)², x^−1/2 log x), 내부의 꺾임과 특이점(|x − 1/3|, 중단점과 함께), 진동(cos(100x), sin(1/x)의 구간), 무한 구간(e^−x²의 실수 전체, e^−x x^−1/2의 [0, ∞): 끝점 특이점과 무한 구간이 함께), 급수(ζ(p), 교대급수, 양쪽 무한의 e^−k²).
 - **미분**: 초등 함수 11개(optimize O1의 것)의 9점, 끝 근처(log의 10⁻³, √의 10⁻⁶, `step_direction`), 도함수가 0인 점(x³의 0: 기본 atol로는 status −2, §7.4), 큰 값(exp의 30), 야코비안·헤시안은 MGH 문제(`tests/optimize/mgh.py`; 해석적 야코비안과 `ad.Dual2`의 헤시안).
+- **C0에서 만든 것** (`tests/integrate/problems.py`, `tests/differentiate/problems.py`): 피적분함수는 한 번만 쓰고 이름공간 셋(Python float와 `math`: `quad`의 호출, numpy 배열: `tanhsinh`·`nsum`의 호출, Arb `acb`와 `analytic` 깃발: 참값)에서 돈다. 문제의 상수와 끝(π/4, 상한 π, 중단점, 가중치의 매개변수)은 코드의 double이고, 참값은 double로 낸 문제 그대로의 정확한 적분이다.
+  - 1차원 적분 116개: QUADPACK 책의 세 무리 62(x^α log(1/x) 30, 봉우리 21, cos(2^α sin x) 11), QUADPACK 루틴마다의 고전 예제 7(QAGS log(x)/√x, QAGP x³ log|(x² − 1)(x² − 2)|와 중단점 1·√2, QAGI log(x)/(1 + 100x²), QAWO log(x) sin(10πx), QAWF x^−1/2 cos(πx/2), QAWS log(x)/(1 + log²x)², QAWC 1/(5x³ + 6)의 주값), scipy `test_quadpack.py`의 1차원 경우 14, `test_tanhsinh.py`의 f1–f15와 정규 밀도의 변환 다섯, 어려운 적분 13(x^−1/2, x^−0.9, x^−1/2 log x, cos(100x), [0.01, 1]의 sin(1/x), e^−x², 1/(x² + 10⁻⁶), |x − 1/3|^α(α = −0.5, 0.5, 1)를 중단점과 함께·없이).
+  - 책의 무리의 목록은 책을 갖고 있지 않아 책으로 확인하지 못했다. 설계 초안의 세 무리(Gonnet 2012 등이 책의 무리로 인용하는 꼴)와 루틴 예제를 쓰고, 모든 닫힌 꼴을 Arb의 수치 적분이나 scipy와 견주었다(아래 §7.2, `test_problems.py`). 책의 다른 무리는 책을 볼 수 있을 때 더한다.
+  - 무리 셋의 배치(`tanhsinh`에 매개변수를 `args` 배열로; `BATCHES`), 겹친 적분 7(scipy `test_quadpack.py`의 `dblquad`·`tplquad`와 단위 정사각형·평면·정육면체의 가우스), 벡터 값 2, 급수 9(ζ(2), ζ(3), ζ(1.5), H(1000, 2), 걸음 0.5, 1/(k² + 1), e^−k/10, 양쪽 무한의 e^−k², 왼쪽 무한), 표본 12벌(같은 간격 2–4,097점, 제곱 간격, 2차원).
+  - 미분: 초등 함수 11개(exp log sin cos tan sqrt atan tanh x³ 1/x e^−x²) × 9점과 끝 근처 14경우(`EDGES`), MGH 47경우(헤시안은 n ≤ 10의 42경우).
 
 ### 7.2 Arb 참값 (`tools/<영역>_ref.py` → `tests/<영역>/ref/`)
 - `acb.integral`은 피적분함수가 구간에서 해석적이고 유계일 때 빠르고 엄밀하다(cos(16 sin x)의 [0, π] 1 ms, cos(100x)의 [0, 1] 1 ms 미만). 끝점에서 유계가 아니면 NaN(무한 공)을 돌려준다: x^−1/2, x^−0.9, log x/√x의 [0, 1]이 모두 그랬다(eval_limit를 늘려도). 그래서 참값은 세 방법이다.
@@ -242,10 +265,15 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
   2. `acb.integral`: 해석적이고 유계인 피적분함수(가지 자름이 있는 함수는 `analytic` 깃발을 넘긴다).
   3. 치환으로 끝점 특이점을 없앤 뒤 `acb.integral`(x = t^k, 무한 구간은 x = t/(1 − t)나 꼬리의 엄밀한 상계와 자르기).
 - 형식은 `tests/reffile.py`와 `_provenance`(다른 영역과 같다). 각 참값에 방법(닫힌 꼴, 적분, 치환)을 적는다. 미분의 참값은 해석적 도함수를 Arb로 계산한 값이다.
+- **C0에서 만든 것**: `tools/integrate_ref.py`(→ `tests/integrate/ref/integrals.json` 116개, `series.json` 9, `multiple.json` 7, `vector.json` 2)와 `tools/differentiate_ref.py`(→ `tests/differentiate/ref/derivatives.json` 104점의 f′·f″, `mgh.npz`: 야코비안 47·헤시안 42). 값은 2⁻¹¹⁰까지 정한 공(double-double)이다. 문제가 허락하는 방법을 모두 계산하고 공이 겹쳐야 한다(겹치지 않으면 도구가 멈춘다): 116개 가운데 닫힌 꼴 103·`acb.integral` 13이 저장되고, 18개는 `acb.integral`, 5개는 치환이 함께 확인했다. 항목마다 문제 정의의 해시가 있어 문제를 바꾸면 테스트가 낡은 참값을 알린다.
+  - `acb.integral`은 끝에서 유계인 대수 특이점(√(1 − t²), √t)은 받는다(NaN은 유계가 아닐 때뿐이다). 치환은 x = t^(1/(1+α))(x^−0.9: 상수), x = u²(e^−x x^−1/2: 2e^−u²), x = e^−u(QAWS 예제)와 꼬리의 엄밀한 상계(e^−144/12, e^−90/90³)다. 확인 하나가 실제로 잘못을 잡았다: x^−0.9의 치환 상수를 double로 쓴 첫 판이 닫힌 꼴과 겹치지 않았다.
+  - 헤시안의 참값은 Arb 위의 2차 전진 미분(`tests/differentiate/jets.py`, optimize `ad.Dual2`의 Arb 판)이고, 야코비안은 optimize의 `derivatives.npz`와 같은 값이다.
+  - double 상한의 차이: f9 log(cos t)와 f10 √tan t의 상한 `math.pi / 2`는 π/2보다 6.1×10⁻¹⁷ 작아 참값이 닫힌 꼴과 2×10⁻¹⁵·1.6×10⁻⁸ 다르다(남는 조각을 엄밀한 상계와 함께 뺐다). cos(2^α sin x)의 상한 π도 같아 그 무리는 `acb.integral`이 참값이고 πJ₀(2^α)와 2.5×10⁻¹⁶ 안이다.
 
 ### 7.3 scipy 1.18.1의 기록 (`tests/<영역>/data/`)
 - 함수마다 시험 모음 전부의 결과(값, 오차, `nfev`, `status`)와, 호출점 비트 동일을 볼 함수(`quad` 계열, `tanhsinh`, `nsum`, `derivative`)의 호출 순서 전부(점의 hex)를 기록한다. 테스트는 sd의 호출 순서와 견준다(optimize O9의 방식: scipy 판이 1.18.1이 아니면 실패).
 - netlib Fortran 원본과의 대조(C17): 받은 뒤 optimize O13처럼 gfortran(`-O2 -ffp-contract=off -std=legacy`)으로 돌린 결과를 고정 데이터로 둔다. 받을 파일은 §7.6이다.
+- **C0에서 만든 것**: `tools/gen_integrate_scipy.py` → `tests/integrate/data/`의 `scipy_quad.json`(116개: 값, 오차, `nfev`, scipy 자신의 분기에서 읽은 `ier`, 글, `infodict`), `scipy_calls.npz`(`quad`의 점 전부를 부른 순서대로), `scipy_tanhsinh.json`(101개와 배치 셋), `scipy_nsum.json`, `scipy_multiple.json`(`dblquad`·`tplquad`·`nquad`, 상자 영역의 `cubature` 규칙 셋), `scipy_vector.json`, `scipy_samples.json`(표본 규칙, `fixed_quad`, `newton_cotes`); `tools/gen_differentiate_scipy.py` → `tests/differentiate/data/`의 `scipy_derivative.json`(점마다·배치·`EDGES`), `scipy_jacobian.json`, `scipy_hessian.json`. 배열을 넘기는 함수의 호출은 모양의 차례(연속 길이로 줄여)와 점 수, 모든 점의 바이트의 SHA-256이다(`tanhsinh`은 적분 하나에 16,387점까지 불러 점을 다 두지 않는다; 테스트는 자기 호출의 해시와 견준다). 테스트는 scipy 판이 1.18.1이 아니면 실패하고, 기록의 표본을 다시 돌려 비트까지 같은지 본다.
 
 ### 7.4 설계 초안의 탐침 (scipy 1.18.1, 2026-11-21)
 **한 문제씩** (`quad` 기본 허용오차 1.49×10⁻⁸, `tanhsinh` 기본; 참값은 닫힌 꼴과 `acb.integral`; ρ = 오차 추정/참 오차)
@@ -293,40 +321,41 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 ### 7.5 정확도·속도 체계와 골든
 - `bench/areas.py`에 영역 둘 `integrate`·`differentiate`를 더한다(C8). 골든은 모든 공개 이름의 사례(또는 `EXCLUDED`의 까닭), 1·3·10스레드 같음. 정확도 스윕은 §4의 표(정확도와 ρ), 표본 규칙의 리덕션 계약. 속도 사례는 §5의 크기.
 - 테스트는 주제 이름(`test_quadpack.py`, `test_tanhsinh.py`, `test_samples.py`, `test_derivative.py` 등)이고, `test_api_surface.py`가 API 문서의 시그니처 블록을 읽는다.
+- **C0에서 한 것**: `bench/areas.py`에 `integrate`·`differentiate`, 골든 `tests/golden/cases_integrate.py`(13케이스)·`cases_differentiate.py`(9케이스: 결과 클래스의 필드, 읽기 전용, 풀기, `repr`, 에러), 정확도 `bench/accuracy/integrate.py`·`differentiate.py`(스윕은 함수가 공개되면 생긴다), 속도 `bench/speed/cases/integrate.py`·`differentiate.py`(마일스톤마다의 사례 계획 26개; `DONE`과 공개 이름으로 거른다). 테스트는 `tests/integrate/`(`test_result.py`, `test_api_surface.py`, `test_problems.py`, `test_reference_data.py`)와 `tests/differentiate/`(같은 넷)다.
 
-### 7.6 QUADPACK Fortran 원본 (C17; 받기 전에 묻는다)
-아직 받지 않았다. 아래 목록은 netlib `quadpack` 디렉터리의 알려진 파일 이름(루틴마다 `.f` 하나)과 QUADPACK의 호출 관계에서 만든 것이고, 크기는 받지 않고는 알 수 없어 짐작이다. 받기 전에 사용자에게 이 목록과 (그때 netlib의 색인에서 확인한) 크기를 보여 묻는다.
+### 7.6 QUADPACK Fortran 원본 (C17)
+사용자의 승인(2026-11-21)을 받아 netlib의 21개 파일을 받았고, 뒤에 승인을 받아 LINPACK의 `dgtsl.f`도 받았다(C18).
 
-- 받을 곳: `https://www.netlib.org/quadpack/<이름>.f`(배정밀도 루틴은 이름이 d로 시작한다).
-- 둘 곳: 저장소 밖 `build/comparators/quadpack/`(git이 보지 않는 `build/` 아래; Boost의 `build/comparators/boost-math`와 같다). 원본 소스는 저장소에 넣지 않고, 저장소에는 돌린 결과(`tests/<영역>/data/`)와 도구(`tools/` 아래 새 생성기, optimize의 `tools/gen_optimize_fortran.py`와 같은 꼴: 소스 폴더와 빌드 폴더를 인자로 받는다)만 둔다.
-- 컴파일러: `/opt/homebrew/bin/gfortran`(GNU Fortran, Homebrew GCC 16.2.0)이 설치되어 있다(2026-11-21 확인; O0이 쓴 것과 같다). 옵션은 `-O2 -ffp-contract=off -std=legacy`.
+- 받은 곳과 둔 곳: `https://www.netlib.org/quadpack/<이름>.f`에서 `dqagse dqk21 dqelg dqpsrt dqagie dqk15i dqagpe dqawoe dqc25f dqk15w dqwgtf dqcheb dqawfe dqawse dqc25s dqmomo dqwgts dqawce dqc25c dqwgtc dqng`(.f, 모두 252 KB)와 `https://www.netlib.org/linpack/dgtsl.f`(3,240바이트)를 저장소 밖 `build/comparators/quadpack/`(git이 보지 않는다)에 `SHA256SUMS`와 함께 두었다. 원본은 저장소에 넣지 않는다. 도구가 해시를 확인하고 결과 파일에 적는다.
+- 도구: `tools/gen_integrate_fortran.py SRC_DIR BUILD_DIR`(optimize의 `tools/gen_optimize_fortran.py`와 같은 꼴). 22개 파일과 대체 루틴 둘을 `gfortran -O2 -ffp-contract=off -std=legacy -shared -fPIC`(GNU Fortran, Homebrew GCC 16.2.0)로 라이브러리 하나로 빌드하고 ctypes로 부른다. 그래서 피적분함수는 scipy의 기록이 부른 것과 같은 Python 함수(`problems.MATH`)이고, 두 실행은 같은 값을 보며 점마다 기록된다. 인자는 scipy `quad`의 것이다(허용오차 1.49×10⁻⁸, `limit` 50, `maxp1` 50, `limlst` 50, 끝을 바꾸면 부호, (−∞, b]의 푸리에 가중치는 x → −x; QAGP의 중단점은 scipy처럼 정렬하고 두 칸을 더한다). 결과는 `tests/integrate/data/fortran_quadpack.json`(루틴마다의 값·오차·`nfev`·`ier`·`last`·호출 수와 `dqng` 30개)과 `fortran_vs_scipy.json`(scipy의 기록과 비트 비교, 처음 다른 점, ULP 거리)이다.
+- 원본이 부르는 바깥 루틴 가운데 둘은 도구가 대신 쓴다: `d1mach`(Fortran의 `TINY`·`HUGE`·`EPSILON`; QUADPACK은 1·2·4번을 쓴다), `xerror`(`dqng.f`만 부른다: 아무것도 하지 않음). **`dgtsl`**(LINPACK의 삼중대각 풀이; `dqc25f.f`가 QAWO·QAWF에서 |ω(b − a)/2| ≤ 24인 구간의 체비쇼프 모멘트를 풀 때 두 번 부른다)은 LINPACK의 원본이다(C18).
+  - 원본을 받기 전에는 LINPACK의 문서에 적힌 알고리즘(부분 피벗의 가우스 소거: 아래 대각 성분이 큰 줄을 피벗으로, 같으면 바꾼다)과 그 연산 순서로 도구 안에 쓴 대체를 썼다. 지금 그 대체(`DGTSL_STANDIN`)는 빌드에서 빠졌고, 도구가 실행마다 대체를 넣은 두 번째 라이브러리(`BUILD_DIR/standin`, 부른 수를 센다)로 모음을 다시 돌려 원본과 견준다: 116개 실행 모두 값·오차·`nfev`·`ier`·점이 비트로 같다(`dgtsl`을 부르는 다섯 실행, 24번). 결과 파일의 `dgtsl_standin`에 그 비교와 대체의 해시를 적고, 실행마다의 `dgtsl_calls`는 그 셈이다. 원본으로 바꿔도 `fortran_quadpack.json`·`fortran_vs_scipy.json`의 값은 그대로다.
+  - FMA 축약을 켠 빌드(`--probe-contract`, 아래, 원본 `dgtsl`로)에서 `dgtsl`을 부르는 다섯 가운데 둘(QAWO 예제 6번, (−∞, 0]의 cos 가중치 4번)이 값·오차·점까지 scipy와 비트로 같다. scipy의 `dgtsl` 옮김도 같은 산술로 보인다.
 
-| 루틴(scipy `quad`의 길) | 파일 |
-|---|---|
-| QAGS(유한 구간) | `dqagse.f`, `dqk21.f`, `dqelg.f`, `dqpsrt.f` |
-| QAGI(무한 구간) | `dqagie.f`, `dqk15i.f` (+ `dqelg.f`, `dqpsrt.f`) |
-| QAGP(`points`) | `dqagpe.f` (+ `dqk21.f`, `dqelg.f`, `dqpsrt.f`) |
-| QAWO(`'cos'`·`'sin'`, 유한) | `dqawoe.f`, `dqc25f.f`, `dqk15w.f`, `dqwgtf.f`, `dqcheb.f` (+ `dqelg.f`, `dqpsrt.f`) |
-| QAWF(`'cos'`·`'sin'`, 반무한) | `dqawfe.f` (+ QAWO의 파일 모두) |
-| QAWS(`'alg*'`) | `dqawse.f`, `dqc25s.f`, `dqmomo.f`, `dqwgts.f` (+ `dqk15w.f`, `dqcheb.f`, `dqpsrt.f`) |
-| QAWC(`'cauchy'`) | `dqawce.f`, `dqc25c.f`, `dqwgtc.f` (+ `dqk15w.f`, `dqcheb.f`, `dqpsrt.f`) |
-| QNG(scipy가 부르지 않음; 대조만) | `dqng.f` |
+**scipy 1.18.1과 견준 것** (`fortran_vs_scipy.json`, 116개)
+- 점과 순서: 116개 가운데 112개가 같다. 다른 넷은 QAWF의 첫 주기(QK15W의 점 c + h·x가 끝자리에서 다르다; 셋)와 x·log(1/x)(α = 1) QAGS 하나(멈춤 판정이 반대로 갈려 Fortran 231번, scipy 189번; 둘 다 수렴)다. `nfev`·`ier`는 그 하나 말고 모두 같다.
+- 값: 적분 62개, 오차 추정 32개가 비트로 같고, 모두 같은 것은 26개다. 다른 적분은 대개 1–26 ULP, ε-알고리즘이 외삽한 경우 114–162 ULP다.
+- 까닭의 탐침(`--probe-contract`: 같은 원본을 `-ffp-contract=fast`로 빌드해 견주기만 하고 아무것도 쓰지 않는다): 모두 같은 것이 26 → 72개, 적분 62 → 100개, 오차 81개가 되지만 점이 같은 것은 112 → 90개로 준다. scipy의 C 판은 누적(합)은 FMA로 축약하고 점의 계산(c ± h·x)은 축약하지 않은 것처럼 보인다(clang의 축약은 한 식 안에서만 일어나고, scipy가 점을 따로 계산한 줄은 축약할 곱셈-덧셈이 없다). C4에서 이 자리를 scipy의 호출 순서와 결과로 찾아 `std::fma`를 적는다(§3.1, §8의 C4). 오차 추정이 축약으로도 남는 차이는 식의 꼴(`**1.5`와 `pow`의 차이 등)로 보고 C4에서 찾는다.
+- QAWS의 로그 가중치 예제(`alg-loga`)는 점이 같고도 적분이 4×10⁻⁹ 다르다(Fortran −0.189275181, scipy −0.189275185, 참값 −0.189275188; 둘 다 허용오차 안). 축약으로도 남는다. 모멘트(`dqmomo`)나 수정 Clenshaw–Curtis(`dqc25s`)의 옮김에서 갈린 것으로 보고 C5에서 찾는다(§8의 C5).
+- Fortran과 scipy가 수렴이라고 알린 값은 참값과 오차 추정 안이다(scipy와 같은 예외 셋 빼고: §7.7).
 
-- 모두 21개: `dqagse dqagie dqagpe dqawoe dqawfe dqawse dqawce dqng dqk21 dqk15i dqk15w dqc25f dqc25s dqc25c dqelg dqpsrt dqmomo dqcheb dqwgtf dqwgts dqwgtc`(`.f`). 파일 하나가 대략 3–20 KB라 모두 합쳐 약 150–250 KB로 짐작한다(확인 전).
-- 받지 않는 것: 단순 드라이버 `dqags.f`·`dqagi.f`·…(scipy처럼 `…e` 루틴을 바로 부른다), QAG(`dqage.f`, `dqk15.f`·`dqk31.f`–`dqk61.f`; scipy의 `quad`에 길이 없다), 단정밀도 판(`qagse.f` 등), 문서 `doc`.
-- 원본이 부르는 바깥 루틴은 받지 않고 도구가 대신 쓴다: `d1mach`(기계 상수; O0의 `DPMPAR`처럼 Fortran의 `EPSILON`·`TINY`·`HUGE`로), `xerror`(오류 알림; `dqng.f`가 부른다고 알고 있다: 아무것도 하지 않는 대체). 받은 뒤 소스에서 실제로 부르는 바깥 이름을 다시 확인한다.
+### 7.7 C0의 기록에서 찾은 것 (scipy 1.18.1, 2026-11-21)
+- **오차 추정의 정직함**(수렴이라고 알렸는데 |값 − 참값| > 오차 추정): `quad`는 116개 가운데 수렴 104개에서 셋이다. 봉우리 α = 19·20(값 ≈ 0, 참값 ≈ π; 설계 초안과 같다)과 f10 √tan t다. f10은 외삽이 double 상한이 아니라 정확한 π/2의 적분(π√2/2, 8×10⁻¹³ 안)으로 가서 double 상한의 참값과 1.6×10⁻⁸ 다르다(참값은 double 문제 그대로다: C19). `tanhsinh`은 수렴 76개 가운데 여덟이다: 봉우리 α = 0·2·4, cos(2^α sin x)의 α = 6·7·9·10, f9(double 상한의 조각 2×10⁻¹⁵). 배치로 부른 무리 셋은 원소마다 혼자 부른 것과 값·오차·`nfev`가 비트로 같다.
+- `tanhsinh`이 수렴하지 못하는 것(status −2): 봉우리 α ≥ 5, 내부 특이점(QAGP 예제, |x − 1/3|^α 셋), 끝점 특이점과 무한 구간(f12), 좁은 봉우리 1/(x² + 10⁻⁶), f7, f10, f15. `nsum`은 급수 아홉이 모두 수렴하고 오차 추정 안이다.
+- `quad`가 수렴하지 못하는 것: 봉우리 α = 10–18(ier 5), cos(2^α sin x)의 α = 9(ier 1)·10(ier 5), f15 sin(t)/t의 [0, ∞)(ier 5; QAGI는 진동을 위한 것이 아니다).
+- `derivative`: 같은 점을 혼자 부를 때와 배치(9점)로 부를 때 `status`·`nfev`·`n_iter`는 같지만 df가 99점 가운데 29점에서 끝자리가 다르다(최대 상대 2.8×10⁻¹⁰, 언제나 오차 추정 안). df = `fc @ wc`가 BLAS(dgemv)라 합의 순서가 배치의 크기에 달려 있고, 스텐실의 상쇄가 그 차이를 키운다. sd는 원소마다 같은 비트를 지키므로(§1.3) C2의 호출점 비교는 혼자 부른 기록과 견주고 df의 끝자리는 C5의 예외로 적는다(§3.8). 끝 근처의 기록: log의 10⁻³·√의 10⁻⁶은 기본값으로 status −3(9번), `step_direction=1`의 log 10⁻³은 status −2(오차가 줄지 않는다), x³의 0은 −2(`nfev` 27), tan의 1.5는 x + 0.5가 π/2를 넘는데도 7번 반복 뒤 수렴(값은 맞다).
 
 ---
 
 ## 8. 마일스톤 (안)
 | 마일스톤 | 내용 |
 |---|---|
-| C0 준비 | API 문서의 확정, 결과 객체의 바탕(`OptimizeResult`에서 끌어내기, 동작 불변), 모듈 `sd.integrate`·`sd.differentiate`(공개 이름 없음), 시험 모음(§7.1), Arb 참값 도구(§7.2), scipy 1.18.1 기록과 호출 순서(§7.3), QUADPACK 원본 대조(C17: 파일 목록과 크기를 묻고 받은 뒤, §7.6), `bench/areas.py`와 측정·골든의 빈 등록, scipy 기준선 |
+| C0 준비 (완료·승인(위임) 2026-11-21) | API 문서의 확정, 결과 객체의 바탕(`OptimizeResult`에서 끌어내기, 동작 불변), 모듈 `sd.integrate`·`sd.differentiate`(공개 이름은 결과 클래스뿐), 시험 모음(§7.1), Arb 참값 도구(§7.2), scipy 1.18.1 기록과 호출 순서(§7.3), QUADPACK 원본 대조(C17, §7.6), `bench/areas.py`와 측정·골든의 등록, scipy 시간(바쁜 기계라 점검 수준, §5) |
 | C1 함께 쓰는 부품 | C3·C15: `diff.hpp`와 `Differences`를 differentiate로 옮기기. C4·C16: `batch.cpp`에서 반복 고리를 csrc 아래 `elementwise/`로 끌어내 넓히기. 공개 함수 없음. optimize·regression의 테스트·골든·배치 속도가 그대로 |
 | C2 미분 | `derivative`, `jacobian`, `hessian` |
 | C3 표본과 고정 규칙 | `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` |
-| C4 QUADPACK 1 | `quad`(QAGS, QAGI, QAGP), `dblquad`, `tplquad`, `nquad` |
-| C5 QUADPACK 2 | `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC) |
+| C4 QUADPACK 1 | `quad`(QAGS, QAGI, QAGP), `dblquad`, `tplquad`, `nquad`. scipy의 C 판이 FMA로 축약한 누적의 자리를 호출 순서와 결과로 찾아 `std::fma`를 적는다(§7.6의 축약 탐침). `summary()`(C20) |
+| C5 QUADPACK 2 | `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC). QAWS 로그 가중치 예제의 scipy·Fortran 4×10⁻⁹ 차이(§7.6)의 까닭을 찾는다. QAWO·QAWF의 Fortran 대조는 LINPACK 원본 `dgtsl`로 돈 것이다(C18) |
 | C6 배치 적분 | `tanhsinh`, `nsum` |
 | C7 벡터 값과 다차원 | `quad_vec`, `cubature` |
 | C8 최적화와 일관성 점검 | 모든 공개 함수를 크기마다 scipy와 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 보고, 코드 리뷰를 한다 |
@@ -340,7 +369,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 ## 9. 마일스톤을 시작하기 전에 물을 것
 추천을 첫째에 둔다.
 
-- **C0**: 모두 정했다(2026-11-21, §1.1 C8–C17). 남은 일은 QUADPACK 원본을 받기 전에 §7.6의 목록과 크기로 묻는 것이다(C17).
+- **C0**: 모두 정했다(C8–C17; C0을 마치며 생긴 넷은 추천안으로 C18–C21, 사용자 위임 2026-11-21). `dgtsl`의 질문도 닫혔다: 원본을 받았다(C18, 사용자 승인 2026-11-21).
 - **C1**: 끌어낸 고리에서 optimize 배치의 속도가 1% 넘게 느려지면 되돌릴지(추천: 되돌리고 그 자리만 템플릿으로); `steps.hpp`의 이름과 이름공간.
 - **C2**
   1. 원소마다 여러 점을 넘기는 꼴: (a) (k, p) 2차원(scipy의 꼴, `args`는 (k, 1)) / (b) 1차원 (k·p,)으로 펴고 `args`도 p번 되풀이(O38의 1차원 계약을 그대로).

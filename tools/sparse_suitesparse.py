@@ -35,7 +35,13 @@ sys.path.insert(0, str(ROOT))
 from bench import cli  # noqa: E402
 
 DEST = ROOT / "build" / "sparse" / "suitesparse"
-URL = "https://suitesparse-collection-website.herokuapp.com/MM/{group}/{name}.tar.gz"
+# The collection's own address first, then its original home at the University of Florida: since
+# 2026-10 the collection's file host (sparse-files.engr.tamu.edu, behind the first address) answers
+# every request with S3 AccessDenied (403); the user approved the mirror on 2026-11-21.
+URLS = (
+    "https://suitesparse-collection-website.herokuapp.com/MM/{group}/{name}.tar.gz",
+    "https://www.cise.ufl.edu/research/sparse/MM/{group}/{name}.tar.gz",
+)
 
 # (group/name, kind, rows, cols, nonzeros as the collection lists them); decision SP20
 MATRICES = (
@@ -50,8 +56,17 @@ MATRICES = (
 )
 NAMES = tuple(m[0] for m in MATRICES)
 
-# sha256 of each archive as downloaded; None until the first successful fetch records it
-SHA256 = dict.fromkeys(NAMES)
+# sha256 of each archive as downloaded (2026-11-21, from the University of Florida mirror)
+SHA256 = {
+    "HB/bcsstk14": "c991b4801adde149520d18969cf57dc2ed4c1ded7b147f6631f6c9edb2ec84ba",
+    "Boeing/msc10848": "d16462c5afd43ab447c01734ac165156efd2d94434872566d82961f76e8a4d3f",
+    "HB/sherman3": "8c6f89bc76a00f7a6d40f1a9c5014ca95445a4c22b0da137a2242f0b3e9762a9",
+    "Goodwin/goodwin": "1d384e54cacfb3d8e3c06226ff7d2c879ee6390ff894fa092df22ae680f29061",
+    "Hamm/memplus": "5a96dfa40b75614a0ca348fe2338c8af32d96e024a7b71a9354231e8df4dfd62",
+    "GHS_indef/cvxqp3": "6665ed766f37fbb3ec7bb2831ebf3ed4c49a98e510cc68832ca45c037446527e",
+    "HB/well1850": "88610559a4e9ba0fbfc9c46828bfe65e198b4418409f1f4be835d91a6313c831",
+    "HB/young1c": "ffd2ee189206556432077ca81e1cec533a06eedf2afc649ffe64ad74336b0941",
+}
 
 
 def mtx_path(name: str) -> pathlib.Path:
@@ -77,17 +92,21 @@ def load(name: str):
 
 def fetch(name: str, log: pathlib.Path) -> tuple[str, bool, str]:
     group, base = name.split("/")
-    url = URL.format(group=group, name=base)
     out = mtx_path(name)
     if out.exists():
         return name, True, "already present"
     with tempfile.TemporaryDirectory() as tmp:
         arc = pathlib.Path(tmp) / f"{base}.tar.gz"
-        try:
-            with urllib.request.urlopen(url, timeout=300) as r, arc.open("wb") as f:
-                shutil.copyfileobj(r, f)
-        except Exception as e:  # HTTP errors, refused connections
-            return name, False, f"download failed: {e}"
+        errors = []
+        for url in (u.format(group=group, name=base) for u in URLS):
+            try:
+                with urllib.request.urlopen(url, timeout=300) as r, arc.open("wb") as f:
+                    shutil.copyfileobj(r, f)
+                break
+            except Exception as e:  # HTTP errors, refused connections: try the next address
+                errors.append(f"{url}: {e}")
+        else:
+            return name, False, "download failed: " + "; ".join(errors)
         data = arc.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
         if data[:2] != b"\x1f\x8b":
@@ -103,7 +122,7 @@ def fetch(name: str, log: pathlib.Path) -> tuple[str, bool, str]:
             tar.extractall(tmp, members=main, filter="data")
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(pathlib.Path(tmp) / main[0].name, out)
-        note = f"{len(data)} bytes, sha256 {digest}" + ("" if want else " (record it in SHA256)")
+        note = f"{len(data)} bytes from {url}, sha256 {digest}" + ("" if want else " (record it in SHA256)")
     with log.open("a") as f:
         f.write(f"{name}: {note}\n")
     return name, True, note

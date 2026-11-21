@@ -1,7 +1,7 @@
 """sd.htest's accuracy sweeps: one per reference family of the public tests
 (tests/htest/refdata.PUBLIC: tests/htest/ref/<family>.json, tools/htest_ref.py), one region per
-field (statistic, pvalue, zstatistic, df, df_num, df_denom, median, conf_int), each problem of the
-family a point.
+field (statistic, pvalue, zstatistic, df, df_num, df_denom, median, relative_risk, conf_int and
+odds_ratio's one-sided conf_int_less and conf_int_greater), each problem of the family a point.
 
 The contract is tests/htest/refdata.py's, as the tests judge it (docs/design/htest.md §4): the
 statistic to 1e-14 times its condition number in what it transforms (kappa_stat), the p-value
@@ -27,7 +27,7 @@ from .common import Custom, compare_libs, region, ulps
 R_SAME_STATISTIC = (
     "ttest", "f_oneway", "bartlett", "fligner", "levene", "power_divergence", "ks_1samp", "ks_2samp", "shapiro",
     "mannwhitneyu",
-    "kruskal", "friedmanchisquare", "ansari", "mood",
+    "kruskal", "friedmanchisquare", "ansari", "mood", "chi2_contingency",
 )  # fmt: skip
 R_FIELD = {"statistic": "statistic", "pvalue": "p.value"}
 # cor.test's statistic is its t, S or T: the correlation itself is its estimate
@@ -64,9 +64,13 @@ def _sd_regions(fam) -> dict:
     rows = {}
     for pid, rec in R.load(fam).items():
         r = R.call(P.PROBLEMS[pid])
+        alts = dict(R.INTERVALS)
         for field, (e, c) in R.errors(fam, pid, r).items():
-            got = float(r.conf_int()[0]) if field == "conf_int" else float(getattr(r, field))
-            hi = rec[field][0][0] if field == "conf_int" else rec[field][0]
+            if field in alts:  # an interval: its lower end
+                ci = r.conf_int() if field == "conf_int" else r.conf_int(alternative=alts[field])
+                got, hi = float(ci[0]), rec[field][0][0]
+            else:
+                got, hi = float(getattr(r, field)), rec[field][0]
             rows.setdefault(field, []).append((pid, got, hi, e, c))
     return _regions(rows)
 
@@ -96,7 +100,9 @@ def _lib_regions(fam, lib):
         if lib == "R" and fam in R_GOF and pid in gof:  # nortest's and goftest's tests (H44)
             g = gof[pid].get("result") or {}
             res = {R_FIELD[f]: g.get(f"{R_GOF[fam]}.{R_FIELD[f]}") for f in R_GOF_FIELDS[fam]}
-        for field in ("statistic", "pvalue"):
+        for field in ("statistic", "pvalue", "relative_risk"):
+            if field not in rec or (lib == "R" and field == "relative_risk"):
+                continue
             if lib == "R":
                 key = "estimate" if field == "statistic" and fam in R_ESTIMATE else R_FIELD[field]
                 if key == "statistic" and fam not in R_SAME_STATISTIC and fam not in R_GOF:

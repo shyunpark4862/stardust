@@ -2480,14 +2480,60 @@ def _tables(rows, cols):
             yield [row] + t
 
 
+def _rxc_tail(t, rerr):
+    """The r x c Fisher p-value of the table t (lists of ints): sum over every table with its
+    margins of the probability, the tables at most rerr times as probable as t. Exact: the columns
+    filled one at a time, the state the sorted remaining row sums with {prod x!: number of paths}
+    (integers), the probability K / prod x!, K = prod R! prod C! / N!."""
+    rows = [sum(r) for r in t]
+    cols = [sum(c) for c in zip(*t)]
+    N = sum(rows)
+    fact = [1] * (N + 1)
+    for k in range(2, N + 1):
+        fact[k] = fact[k - 1] * k
+    K = Fraction(math.prod(fact[r] for r in rows) * math.prod(fact[c] for c in cols), fact[N])
+    d_obs = math.prod(fact[v] for r in t for v in r)
+
+    def splits(key, total):
+        def rec(i, left):
+            if i == len(key) - 1:
+                if left <= key[i]:
+                    yield (left,)
+                return
+            for v in range(min(key[i], left) + 1):
+                for tail in rec(i + 1, left - v):
+                    yield (v,) + tail
+
+        yield from rec(0, total)
+
+    stage = {tuple(sorted(rows, reverse=True)): {1: 1}}
+    for c in cols:
+        nxt = {}
+        for key, ds in stage.items():
+            for x in splits(key, c):
+                child = tuple(sorted((k - v for k, v in zip(key, x)), reverse=True))
+                w = math.prod(fact[v] for v in x)
+                dst = nxt.setdefault(child, {})
+                for d, m in ds.items():
+                    dd = d * w
+                    dst[dd] = dst.get(dd, 0) + m
+        stage = nxt
+    (ds,) = stage.values()
+    # P = K / d <= rerr K / d_obs  <=>  d rerr >= d_obs
+    tot = sum(Fraction(m, d) for d, m in ds.items() if d * rerr >= d_obs)
+    return min(Fraction(1), K * tot), K / d_obs
+
+
 @family("fisher_exact", ("fisher_exact",), seconds=600)
 def fisher_exact(p):
     """Fisher's exact test, the null in exact rationals. 2 x 2 (the hypergeometric): scipy's
     two-sided rule -- p = 1 when the observed table is as probable as the mode to 1e-14; else the
     observed tail and the other side's tables less probable than (1 + 1e-14) times the observed
-    one (at most as probable, below the mode). r x c (the multiple hypergeometric, every table with
-    the margins): R's fisher.test rule, the tables at most (1 + 1e-7) times as probable. The 2 x 2
-    statistic is the sample odds ratio ad/bc."""
+    one (at most as probable, below the mode). r x c (the multiple hypergeometric over every table
+    with the margins, by an exact dynamic programme over the columns): R's fisher.test rule, the
+    tables at most (1 + 1e-7) times as probable; the statistic the observed table's probability
+    (scipy's). The 2 x 2 statistic is the sample odds ratio ad/bc. A zero margin of a 2 x 2 table:
+    NaN and 1 (scipy's); an r x c table with one nonzero row or column: 1 and 1."""
     t = [[int(v) for v in row] for row in np.asarray(p.args[0])]
     rows = [sum(r) for r in t]
     cols = [sum(c) for c in zip(*t)]
@@ -2495,7 +2541,9 @@ def fisher_exact(p):
     alt = p.kwargs.get("alternative", "two-sided")
     if len(t) == 2 and len(t[0]) == 2:
         (a, b), (c, d) = t
-        stat = Fraction(a * d, b * c) if b * c else (math.inf if a * d else NAN)
+        if 0 in rows or 0 in cols:
+            return {"statistic": NAN, "pvalue": Fraction(1)}
+        stat = Fraction(a * d, b * c) if b * c else math.inf
         lo, hi = max(0, rows[0] - (N - cols[0])), min(rows[0], cols[0])
         pm = {x: _hyper_pmf(x, rows[0], cols[0], N) for x in range(lo, hi + 1)}
         if alt == "less":
@@ -2513,26 +2561,50 @@ def fisher_exact(p):
             else:
                 pv = sum(v for x, v in pm.items() if x >= a) + sum(v for x, v in pm.items() if x <= mode and v <= g)
         return {"statistic": stat, "pvalue": min(Fraction(1), pv)}
-    num = math.prod(math.factorial(r) for r in rows) * math.prod(math.factorial(c) for c in cols)
+    if sum(1 for r in rows if r) <= 1 or sum(1 for c in cols if c) <= 1:
+        return {"statistic": Fraction(1), "pvalue": Fraction(1), "rule": "R"}
+    pv, stat = _rxc_tail(t, RERR)
+    return {"statistic": stat, "pvalue": pv, "rule": "R"}
 
-    def prob(tab):
-        return Fraction(num, math.factorial(N) * math.prod(math.factorial(v) for r in tab for v in r))
 
-    p0 = prob(t)
-    pv = sum(q for q in (prob(tab) for tab in _tables(rows, cols)) if q <= p0 * RERR)
-    return {"pvalue": min(Fraction(1), pv), "rule": "R"}
+def _cressie_read(O, E, lam):
+    """The Cressie-Read statistic of rationals O and E (E > 0): Pearson's exact (lam = 1), the
+    others as an arb function; O = 0 contributes its limit (0 for lam > -1, inf for lam <= -1)."""
+    if lam == 1:
+        return sum((o - e) ** 2 / e for o, e in zip(O, E))
+    if lam <= -1 and any(o == 0 for o in O):
+        return math.inf
+
+    def S():
+        if lam == 0:
+            return 2 * sum((A(o) * (A(o) / A(e)).log() if o else arb(0)) for o, e in zip(O, E))
+        if lam == -1:
+            return 2 * sum(A(e) * (A(e) / A(o)).log() for o, e in zip(O, E))
+        L = A(lam)
+        return 2 / (L * (L + 1)) * sum((A(o) * ((A(o) / A(e)) ** L - 1) if o else arb(0)) for o, e in zip(O, E))
+
+    return S
 
 
 @family("chi2_contingency", ("chi2_contingency",))
 def chi2_contingency(p):
-    """The chi^2 test of independence: exact expected counts, Yates's correction (one degree of
-    freedom), Pearson's statistic exact or the log-likelihood ratio in Arb, the chi^2 tail."""
+    """The chi^2 test of independence: exact expected counts R_i C_j / N of the rational counts
+    (weighted tables too), Yates's correction (one degree of freedom: each O moved towards E by
+    min(1/2, |O - E|)), the Cressie-Read statistic (Pearson's exact, the others in Arb), the chi^2
+    tail; df = 0 gives 0 and 1, a zero margin NaN (H11; scipy raises)."""
     t = [fvec(r) for r in np.asarray(p.args[0])]
     rows = [sum(r) for r in t]
     cols = [sum(c) for c in zip(*t)]
     N = sum(rows)
-    E = [[r * c / N for c in cols] for r in rows]
     df = (len(rows) - 1) * (len(cols) - 1)
+    E = [[r * c / N if N else Fraction(0) for c in cols] for r in rows]
+    out = {"df": Fraction(df), "expected_freq": [[float(e) for e in r] for r in E]}
+    if any(e == 0 for r in E for e in r):
+        out.update(statistic=NAN, pvalue=NAN, kappa=NAN)
+        return out
+    if df == 0:
+        out.update(statistic=Fraction(0), pvalue=Fraction(1), kappa=NAN)
+        return out
     O = [list(r) for r in t]
     if df == 1 and p.kwargs.get("correction", True):
         for i in range(len(O)):
@@ -2540,18 +2612,275 @@ def chi2_contingency(p):
                 diff = E[i][j] - O[i][j]
                 O[i][j] += sign(diff) * min(Fraction(1, 2), abs(diff))
     lam = p.kwargs.get("lambda_")
-    pairs = [(o, e) for ro, re in zip(O, E) for o, e in zip(ro, re)]
-    out = {"df": df, "expected_freq": [[float(e) for e in r] for r in E]}
-    if lam is None or lam == "pearson":
-        stat = sum((o - e) ** 2 / e for o, e in pairs)
-        out.update(statistic=stat, pvalue=lambda: chi2_sf(stat, df))
+    lam = Fraction(1) if lam is None else (LAMBDA[lam] if isinstance(lam, str) else fr(lam))
+    S = _cressie_read([o for r in O for o in r], [e for r in E for e in r], lam)
+    if S == math.inf:
+        out.update(statistic=math.inf, pvalue=0.0, kappa=NAN)
         return out
-
-    def S():
-        return 2 * sum((A(o) * (A(o) / A(e)).log() if o else arb(0)) for o, e in pairs)
-
-    out.update(statistic=S, pvalue=lambda: chi2_sf(S(), df))
+    out.update(statistic=S, pvalue=lambda: chi2_sf(S() if callable(S) else S, df), kappa=kappa(chi2_p_arb, S, (df,)))
     return out
+
+
+# ---- H6: Barnard, Boschloo, McNemar, Cochran's Q, the odds ratio, the relative risk
+
+
+def _poly_sup(Acoef, N):
+    """sup over [0, 1] of f(pi) = sum_s A_s pi^s (1 - pi)^(N - s) (A_s >= 0 integers) as a
+    function giving a ball: f at 0 and 1 and at every real root in [0, 1] of f' (flint's
+    certified root isolation at the current precision), the largest."""
+    from flint import arb_poly, fmpz_poly
+
+    co = [0] * (N + 1)
+    for s, a in enumerate(Acoef):
+        if a:
+            for j in range(N - s + 1):
+                co[s + j] += a * math.comb(N - s, j) * (-1 if j % 2 else 1)
+    f = fmpz_poly(co)
+    d = f.derivative()
+
+    def sup():
+        F = arb_poly(f)
+        vals = [arb(Acoef[0]), arb(Acoef[N])]
+        if d != 0:
+            for r, _m in d.complex_roots():
+                if not r.imag.contains(0):
+                    continue
+                x = r.real
+                if x.upper() < 0 or x.lower() > 1:
+                    continue
+                vals.append(F(x))
+        return amax(vals)
+
+    return sup
+
+
+def _wald2(x1, x2, n1, n2, pooled):
+    """Barnard's T^2 (a Fraction; inf for a zero variance with p1 != p2) and the sign of T."""
+    D = x1 * n2 - x2 * n1
+    if D == 0:
+        return Fraction(0), 0
+    N, s = n1 + n2, x1 + x2
+    if pooled:
+        den = Fraction(n1 * n2 * s * (N - s), N)
+    else:
+        den = Fraction(x1 * (n1 - x1) * n2**3 + x2 * (n2 - x2) * n1**3, n1 * n2)
+    return (math.inf if den == 0 else Fraction(D * D) / den), (1 if D > 0 else -1)
+
+
+def _signed_ge(a, b):
+    """T_a >= T_b for (T^2, sign) pairs."""
+    (ta, sa), (tb, sb) = a, b
+    if sa != sb:
+        return sa > sb
+    return ta >= tb if sa >= 0 else ta <= tb
+
+
+@family("barnard_exact", ("barnard_exact",), seconds=600)
+def barnard_exact(p):
+    """Barnard's exact test: the region of the tables (x1, x2) with |T| >= |T_obs| (or T <= T_obs,
+    T >= T_obs) by exact T^2 (rationals; scipy compares rounded doubles), and the supremum over
+    pi of sum C(n1, x1) C(n2, x2) pi^s (1 - pi)^(N - s) at the critical points (flint's roots of
+    the integer polynomial's derivative) and the ends. The columns are the samples (scipy's)."""
+    t = [[int(v) for v in row] for row in np.asarray(p.args[0])]
+    n1, n2 = t[0][0] + t[1][0], t[0][1] + t[1][1]
+    if n1 == 0 or n2 == 0:
+        return {"statistic": NAN, "pvalue": Fraction(1)}
+    alt = p.kwargs.get("alternative", "two-sided")
+    pooled = p.kwargs.get("pooled", True)
+    obs = _wald2(t[0][0], t[0][1], n1, n2, pooled)
+    N = n1 + n2
+    Acoef = [0] * (N + 1)
+    for x1 in range(n1 + 1):
+        for x2 in range(n2 + 1):
+            w = _wald2(x1, x2, n1, n2, pooled)
+            if alt == "two-sided":
+                inside = w[0] >= obs[0]
+            elif alt == "less":
+                inside = _signed_ge(obs, w)
+            else:
+                inside = _signed_ge(w, obs)
+            if inside:
+                Acoef[x1 + x2] += math.comb(n1, x1) * math.comb(n2, x2)
+    sup = _poly_sup(Acoef, N)
+    t2, sg = obs
+    stat = (sg * math.inf) if t2 == math.inf else (Fraction(0) if sg == 0 else (lambda: sg * A(t2).sqrt()))
+    return {"statistic": stat, "pvalue": sup}
+
+
+def _boschloo_side(t, n1, n2, less):
+    N = n1 + n2
+    tol = Fraction(1.0 + 1e-13)
+
+    def fisher(x1, s):  # P(X1 <= x1 | s) or P(X1 >= x1 | s)
+        lo, hi = max(0, s - n2), min(n1, s)
+        js = range(lo, x1 + 1) if less else range(x1, hi + 1)
+        return Fraction(sum(math.comb(n1, j) * math.comb(n2, s - j) for j in js), math.comb(N, s))
+
+    obs = fisher(t[0][0], t[0][0] + t[0][1])
+    Acoef = [0] * (N + 1)
+    for x1 in range(n1 + 1):
+        for x2 in range(n2 + 1):
+            if fisher(x1, x1 + x2) <= obs * tol:
+                Acoef[x1 + x2] += math.comb(n1, x1) * math.comb(n2, x2)
+    return obs, _poly_sup(Acoef, N)
+
+
+@family("boschloo_exact", ("boschloo_exact",), seconds=600)
+def boschloo_exact(p):
+    """Boschloo's exact test: the one-sided Fisher p-value of every table (exact rationals), the
+    region the tables at most (1 + 1e-13) times as significant as the observed one (scipy's
+    tolerance, its double as a rational), the supremum as barnard_exact's. Two-sided: the side of
+    the smaller supremum (exactly; a tie takes 'greater', scipy's strict '<'), doubled, at most 1."""
+    t = [[int(v) for v in row] for row in np.asarray(p.args[0])]
+    n1, n2 = t[0][0] + t[1][0], t[0][1] + t[1][1]
+    if n1 == 0 or n2 == 0:
+        return {"statistic": NAN, "pvalue": NAN}
+    alt = p.kwargs.get("alternative", "two-sided")
+    if alt != "two-sided":
+        stat, sup = _boschloo_side(t, n1, n2, alt == "less")
+        return {"statistic": stat, "pvalue": sup}
+    (sl, pl), (sg, pg) = _boschloo_side(t, n1, n2, True), _boschloo_side(t, n1, n2, False)
+    with ar.precision(600):
+        vl, vg = pl(), pg()
+        less = bool(vl < vg)
+        if not less and not bool(vl >= vg):
+            raise NotSettled("the two sides' suprema are not separated at 600 bits")
+
+    def two():
+        v = 2 * (pl() if less else pg())
+        if v < 1:
+            return v
+        if v > 1:
+            return arb(1)
+        raise NotSettled("twice the supremum is not separated from 1")
+
+    return {"statistic": sl if less else sg, "pvalue": two}
+
+
+@family("mcnemar", ("mcnemar",))
+def mcnemar(p):
+    """McNemar's test (statsmodels'): exact -- min(b, c) and 2 P(B <= min(b, c)), B ~ Binomial(b + c,
+    1/2), at most 1 (exact rationals); otherwise ((|b - c| - correction)^2 / (b + c)) exact and its
+    chi^2(1) tail in Arb (b + c = 0: NaN, H11)."""
+    t = np.asarray(p.args[0])
+    b, c = int(t[0, 1]), int(t[1, 0])
+    n = b + c
+    if p.kwargs.get("exact", True):
+        k = min(b, c)
+        pv = min(Fraction(1), Fraction(2 * sum(math.comb(n, i) for i in range(k + 1)), 2**n))
+        return {"statistic": Fraction(k), "pvalue": pv}
+    if n == 0:
+        return {"statistic": NAN, "pvalue": NAN, "kappa": NAN}
+    stat = Fraction((abs(b - c) - (1 if p.kwargs.get("correction", True) else 0)) ** 2, n)
+    return {"statistic": stat, "pvalue": lambda: chi2_sf(stat, 1), "kappa": kappa(chi2_p_arb, stat, (1,))}
+
+
+@family("cochrans_q", ("cochrans_q",))
+def cochrans_q(p):
+    """Cochran's Q (statsmodels' SAS form) exact and its chi^2 (k - 1) tail in Arb; NaN when every
+    block is all 0 or all 1."""
+    x = [[int(v) for v in row] for row in np.asarray(p.args[0])]
+    k = len(x[0])
+    R = [sum(r) for r in x]
+    C = [sum(c) for c in zip(*x)]
+    T = sum(R)
+    den = k * T - sum(r * r for r in R)
+    if den == 0:
+        return {"statistic": NAN, "pvalue": NAN, "df": Fraction(k - 1), "kappa": NAN}
+    q = Fraction((k - 1) * (k * sum(c * c for c in C) - T * T), den)
+    return {
+        "statistic": q,
+        "pvalue": lambda: chi2_sf(q, k - 1),
+        "df": Fraction(k - 1),
+        "kappa": kappa(chi2_p_arb, q, (k - 1,)),
+    }
+
+
+def _nchg_root(t, coef_of):
+    """The positive root of sum_k coef_of(k) C_k w^(k - lo) (an integer polynomial after clearing
+    denominators), C_k = C(n, k) C(M - n, N - k): a function giving its ball (flint's roots)."""
+    from flint import fmpz_poly
+
+    (a, b), (c, d) = t
+    M, n, N = a + b + c + d, a + b, a + c
+    lo, hi = max(0, n + N - M), min(n, N)
+    cs = [coef_of(k) * math.comb(n, k) * math.comb(M - n, N - k) for k in range(lo, hi + 1)]
+    den = math.lcm(*[Fraction(v).denominator for v in cs])
+    poly = fmpz_poly([int(Fraction(v) * den) for v in cs])
+
+    def root():
+        pos = [r.real for r, _m in poly.complex_roots() if r.imag.contains(0) and r.real > 0]
+        if len(pos) != 1:
+            raise NotSettled(f"{len(pos)} positive roots")
+        return pos[0]
+
+    return root
+
+
+@family("odds_ratio", ("odds_ratio",))
+def odds_ratio(p):
+    """The odds ratio (scipy.stats.contingency's). Conditional: the MLE of Fisher's noncentral
+    hypergeometric, E X = x, and the exact interval P(X >= x) = alpha_t, P(X <= x) = alpha_t
+    (alpha_t = 0.05 / 2 two-sided, 0.05 one-sided: conf_int_less, conf_int_greater), each the positive
+    root of an integer polynomial (flint); 0 or inf at the ends of the support. Sample: ad / bc and
+    Woolf's OR exp(-+ z se). A zero margin: NaN and (0, inf)."""
+    t = [[int(v) for v in row] for row in np.asarray(p.args[0])]
+    (a, b), (c, d) = t
+    kind = p.kwargs.get("kind", "conditional")
+    if 0 in (a + b, c + d, a + c, b + d):
+        z = [0.0, math.inf]
+        return {"statistic": NAN, "conf_int": z, "conf_int_less": z, "conf_int_greater": z}
+    M, n, N = a + b + c + d, a + b, a + c
+    lo, hi = max(0, n + N - M), min(n, N)
+    out = {}
+
+    def ends(at):
+        if kind == "conditional":
+            low = 0.0 if a == lo else _nchg_root(t, lambda k: (1 if k >= a else 0) - at)
+            high = math.inf if a == hi else _nchg_root(t, lambda k: (1 if k <= a else 0) - at)
+            return low, high
+        r = Fraction(a * d, b * c) if b * c else math.inf
+        if 0 in (a, b, c, d):  # se = inf: IEEE's ends, as scipy's
+            if r == 0:
+                return 0.0, NAN
+            return NAN, math.inf
+        se2 = Fraction(1, a) + Fraction(1, b) + Fraction(1, c) + Fraction(1, d)
+
+        def end(sg):
+            return lambda: A(r) * (sg * norm_isf(at) * A(se2).sqrt()).exp()
+
+        return end(-1), end(1)
+
+    if kind == "conditional":
+        out["statistic"] = 0.0 if a == lo else (math.inf if a == hi else _nchg_root(t, lambda k: k - a))
+    else:
+        out["statistic"] = Fraction(a * d, b * c) if b * c else math.inf
+    lo2, hi2 = ends(ALPHA / 2)
+    lo1, hi1 = ends(ALPHA)
+    out["conf_int"] = [lo2, hi2]
+    out["conf_int_less"] = [0.0, hi1]
+    out["conf_int_greater"] = [lo1, math.inf]
+    return out
+
+
+@family("relative_risk", ("relative_risk",))
+def relative_risk(p):
+    """The relative risk (a / n1) / (c / n2) exact, Katz's interval rr exp(-+ z se) in Arb, se^2 =
+    1/a - 1/n1 + 1/c - 1/n2 (scipy's ends where a case count is 0)."""
+    a, n1, c, n2 = (int(v) for v in p.args)
+    if a == 0 and c == 0:
+        return {"relative_risk": NAN, "conf_int": [NAN, NAN]}
+    if a == 0:
+        return {"relative_risk": Fraction(0), "conf_int": [0.0, NAN]}
+    if c == 0:
+        return {"relative_risk": math.inf, "conf_int": [NAN, math.inf]}
+    rr = Fraction(a * n2, n1 * c)
+    se2 = Fraction(1, a) - Fraction(1, n1) + Fraction(1, c) - Fraction(1, n2)
+
+    def end(sg):
+        return lambda: A(rr) * (sg * norm_isf(ALPHA / 2) * A(se2).sqrt()).exp()
+
+    return {"relative_risk": rr, "conf_int": [end(-1), end(1)]}
 
 
 @family("binomtest", ("binomtest",), seconds=300)

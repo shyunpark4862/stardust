@@ -1,0 +1,7 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 4, "dropped": []},
+"cochrans_q/small": {"digest": "7ee8c454ee6b9a0b5f6143e1b01f6bec21c187d7c8e9e1db9e290d35d83e1ea9", "statistic": [1.5, 0.0], "pvalue": [0.4723665527410147, 1.7984004434373214e-17], "df": [2.0, 0.0], "kappa": 0.75},
+"cochrans_q/k4": {"digest": "f68fb8c33a741533ddfb8403c08a2cd1026317ae876ef32264a13a2e5b491a0f", "statistic": [4.225806451612903, 2.0055641735164118e-16], "pvalue": [0.23809083711091059, 4.666244795375838e-18], "df": [3.0, 0.0], "kappa": 1.7595822600921862},
+"cochrans_q/degenerate": {"digest": "4cf38e76498f3ec684cc0bf99d7badaea7f899657ef19ebb297d892c8810ec0f", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0], "df": [2.0, 0.0], "kappa": NaN},
+"cochrans_q/tail": {"digest": "5ec0765189807130e21d15c9347305aac06b637d7fe2470d5a854ceae064b01a", "statistic": [354.3855650522317, 2.1107100450689396e-14], "pvalue": [1.9817206065468559e-75, -3.928911037534986e-92], "df": [4.0, 0.0], "kappa": 176.1983944256879}
+}

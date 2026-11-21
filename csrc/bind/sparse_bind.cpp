@@ -20,6 +20,7 @@ void bind_sparse(nb::module_& core) {
     sparse::bind_reduce(m);
     sparse::bind_index(m);
     sparse::bind_construct(m);
+    sparse::bind_triangular(m);
 }
 
 }  // namespace sd

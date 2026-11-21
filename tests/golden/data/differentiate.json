@@ -1,0 +1,239 @@
+{
+"area": "differentiate",
+"cases": {
+"DifferentiateResult batch": {
+"r": {
+"attrs": {
+"converged": {
+"nd": "bool",
+"shape": [
+2
+],
+"strides": [
+1
+],
+"v": [
+true,
+false
+]
+},
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+1"
+]
+},
+"error": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0"
+]
+},
+"n_iter": {
+"nd": "int64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+2,
+10
+]
+},
+"nfev": {
+"nd": "int64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+11,
+27
+]
+},
+"status": {
+"nd": "int64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+0,
+-2
+]
+},
+"x": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'x' (the function does not give it)"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"DifferentiateResult fields": {
+"r": {
+"attrs": {
+"converged": true,
+"ddf": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+},
+"df": {
+"f": "0x1.5bf0a8b145720p+1"
+},
+"error": {
+"f": "0x1.9552ef775510ep-45"
+},
+"n_iter": 2,
+"nfev": 11,
+"status": 0,
+"x": {
+"f": "0x1.0000000000000p+0"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"DifferentiateResult hessian-like": {
+"r": {
+"attrs": {
+"converged": {
+"nd": "bool",
+"shape": [
+2,
+2
+],
+"strides": [
+2,
+1
+],
+"v": [
+true,
+true,
+true,
+true
+]
+},
+"ddf": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x0.0p+0",
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+]
+},
+"df": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'df' (the function does not give it)"
+},
+"error": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0",
+"0x0.0p+0",
+"0x0.0p+0"
+]
+},
+"n_iter": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'n_iter' (the function does not give it)"
+},
+"nfev": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'nfev' (the function does not give it)"
+},
+"status": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'status' (the function does not give it)"
+},
+"x": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'x' (the function does not give it)"
+}
+},
+"obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"DifferentiateResult repr": {
+"r": "DifferentiateResult(df=inf, converged=False)"
+},
+"err DifferentiateResult absent field": {
+"r": {
+"error": "builtins.AttributeError",
+"msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
+}
+},
+"err DifferentiateResult positional": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "DifferentiateResult.__init__() takes 1 positional argument but 2 were given"
+}
+},
+"err DifferentiateResult read-only": {
+"r": {
+"error": "builtins.AttributeError",
+"msg": "property 'df' of 'DifferentiateResult' object has no setter"
+}
+},
+"err DifferentiateResult unknown field": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "DifferentiateResult(): unexpected keyword argument 'nit'"
+}
+},
+"err DifferentiateResult unpack": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "'DifferentiateResult' object is not iterable"
+}
+}
+},
+"format": 2,
+"threads": [
+1,
+3,
+10
+]
+}

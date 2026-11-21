@@ -1,0 +1,5 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0", "target_bits": 110, "tool": "tools/integrate_ref.py", "n_requested": 2, "dropped": []},
+"vector/exp-sin-square": {"value": [[1.7182818284590453, -7.747991575210629e-17], [0.4596976941318603, -7.901605105213652e-18], [0.3333333333333333, 1.850371707708594e-17]], "method": "closed form", "digest": "2c4ce70f883d4c39a2a62da4e5e88fde26cabbd15107fda17f12a82971819f13"},
+"vector/gauss-moments": {"value": [[1.772453850905516, -7.666586499825799e-17], [0.886226925452758, -3.8332932499128993e-17]], "method": "closed form", "digest": "d66d961b47c1c4270c85d589ac97072bc9b9d011c41cfccc80f645e70caa0f60"}
+}

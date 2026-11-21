@@ -8,7 +8,8 @@ sd.sparse.linalg); inputs and options follow this library's rules (decisions SP1
 docs/design/sparse.md §1.1).
 
 The public names come milestone by milestone (docs/design/sparse.md §8): the formats, their
-conversions and operations, indexing and the builders so far. The native core is stardust._core.sparse.
+conversions and operations, indexing and the builders, the direct solves and LinearOperator so far.
+The native core is stardust._core.sparse.
 """
 
 from .. import _calls
@@ -30,7 +31,9 @@ from ._construct import (
     vstack,
 )
 from ._coo import coo_array
+from ._direct import factorized, inv, is_sptriangular, spbandwidth, splu, spsolve, spsolve_triangular
 from ._dok import dok_array
+from ._interface import LinearOperator, aslinearoperator
 
 _core = _sd_core.sparse
 
@@ -46,6 +49,14 @@ block_diag = _calls.function(block_diag)
 tril = _calls.function(tril)
 triu = _calls.function(triu)
 find = _calls.function(find)
+spsolve = _calls.function(spsolve)
+splu = _calls.function(splu)
+factorized = _calls.function(factorized)
+inv = _calls.function(inv)
+spsolve_triangular = _calls.function(spsolve_triangular)
+is_sptriangular = _calls.function(is_sptriangular)
+spbandwidth = _calls.function(spbandwidth)
+aslinearoperator = _calls.function(aslinearoperator)
 
 
 def issparse(x, /):
@@ -66,4 +77,6 @@ __all__ = [
     "sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose",
     "eye_array", "diags_array", "random_array", "kron", "kronsum", "hstack", "vstack", "block_array", "block_diag",
     "tril", "triu", "find",
+    "spsolve", "splu", "factorized", "inv", "spsolve_triangular", "is_sptriangular", "spbandwidth",
+    "LinearOperator", "aslinearoperator",
 ]  # fmt: skip

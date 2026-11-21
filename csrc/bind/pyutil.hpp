@@ -108,8 +108,12 @@ std::vector<int> parse_axes(nb::handle o, int ndim, const char* what = "axis");
 
 inline bool is_ndarray(nb::handle o) { return nb::isinstance<NDArray>(o); }
 inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
-// as_ndarray, with a TypeError naming the argument when `o` is not an array.
+// as_ndarray, with a TypeError naming the argument when `o` is not an array. A sparse array of
+// sd.sparse raises SparseOperand (a TypeError), to which rethrow_named adds what to use instead.
 NDArray& require_ndarray(nb::handle o, const char* what = "x");
+
+// Whether `o` is a sparse array of sd.sparse (its class's module is stardust.sparse).
+bool is_sparse_array(nb::handle o);
 inline nb::object wrap(NDArray&& a) { return nb::cast(std::move(a)); }
 
 // A new array object over the same memory as array `x`, ready to have its

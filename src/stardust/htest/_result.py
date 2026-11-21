@@ -136,7 +136,7 @@ class _TestResult:
             raise TypeError(f"{cls.__name__}: _UNPACK names fields it does not have: {sorted(unknown)}")
         if cls._UNPACK:
             cls.__iter__, cls.__len__, cls.__getitem__ = _iter, _len, _getitem
-        if cls._CI:
+        if cls._CI and "conf_int" not in cls.__dict__:  # (odds_ratio's takes the alternative too)
             cls.conf_int = conf_int
         if "summary" not in cls.__dict__:
             cls.summary = summary_ci if cls._CI else summary_plain

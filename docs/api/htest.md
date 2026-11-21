@@ -1,8 +1,8 @@
 # sd.htest API
 
-> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3·H4·H5 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4), H4의 네 함수(§5), H5의 여덟 함수(§6)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
+> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3·H4·H5·H6 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4), H4의 네 함수(§5), H5의 여덟 함수(§6), H6의 여덟 함수(§7)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
 
-- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H73), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H84), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/htest/test_api_surface.py`가 읽는다. 블록의 이름이 계획한 공개 이름 전부이고, 공개된 함수는 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -84,6 +84,7 @@
 - H3에서 scipy와 다른 것(§4): 동점이 있을 때의 `'exact'`(H45), 정규 근사의 `zstatistic`(H47), 줄마다의 `method`(H48), `median_test`의 `axis`(H49)와 정확한 중앙값, `kruskal`·`friedmanchisquare`·`brunnermunzel`의 `df`, 퇴화한 입력의 NaN, `wilcoxon`의 정확한 차.
 - H4에서 scipy와 다른 것(§5): 동점이 있는 `ks_2samp`의 `'exact'`(H55)와 `cramervonmises_2samp`의 `'exact'`(조건부 분포, H58), `epps_singleton_2samp`의 `df`(H59), `cramervonmises_2samp`의 `'exact'`가 큰 표본까지(H56), `anderson_ksamp`의 기본 `variant='midrank'`(H57), `ks_2samp`·`cramervonmises_2samp`의 `method` 필드, 퇴화한 입력의 NaN(scipy는 `ValueError`), `ks_2samp`의 정확 계산이 넘치지 않는 것(scipy는 큰 표본에서 경고와 함께 점근으로).
 - H5에서 scipy와 다른 것(§6): `pearsonr`·`spearmanrho`의 p값을 1 − r²에서 상쇄 없이(scipy는 |r| ≈ 1에서 틀린다), `pearsonr`의 `nan_policy`·`keepdims`, 거의 상수인 표본(H20)·쌍이 2개 미만·inf의 NaN(scipy는 경고와 값, `ValueError`), `spearmanr`의 기본 `axis=None`, `spearmanr`의 n = 2에서 p = 1(`spearmanrho`와 같다; scipy의 옛 꼴은 NaN), `kendalltau`의 n = 2 정규 근사(scipy는 0/0의 NaN), `weightedtau`의 `nan_policy='propagate'`가 NaN(scipy는 NaN을 가장 큰 값으로 순위 매긴다), `somersd`의 S = 0이 NaN(scipy는 p = 0)·NaN과 2차원 `x`에 준 `y`의 `ValueError`·두 표본의 표가 10⁷칸까지, `chatterjeexi`의 x의 동점을 위치로 가르기(scipy는 `argsort`가 임의로), 별칭 `correlation` 없음(H65).
+- H6에서 scipy와 다른 것(§7): r × c `fisher_exact`가 정확한 망 알고리즘(H77; scipy는 시드 없는 몬테카를로)과 그 작업량 상한, `barnard_exact`·`boschloo_exact`의 `n`이 처음 격자 크기로만(H78)이고 p값이 참 상한, Barnard의 정확한 기각역, `chi2_contingency`의 `df`가 float(H82)·0인 행·열의 NaN·n차원 표 없음(3차원 이상은 배치)·Cressie–Read의 0인 칸의 극한, 표의 배치(모든 분할표 함수), `odds_ratio`의 정수 값 float 표, `mcnemar`의 b + c = 0 NaN(statsmodels는 inf와 0), `cochrans_q`의 0·1 값만.
 - H1에서 scipy와 다른 것(§2): `df`는 언제나 float(H22), `ttest_ind_from_stats`의 `df`·`conf_int()`(H23), `f_oneway`의 `df_num`·`df_denom`(H27), `levene`의 `df_num`·`df_denom`과 `bartlett`·`fligner`·`alexandergovern`의 `df`(H29), 표준오차 0과 상수 집단의 NaN(H24, H11), Welch의 nᵢ < 2에서 `df` NaN, `alexandergovern`의 n < 2에서 에러 대신 NaN, 표본이 둘 미만인 `bartlett`·`levene`·`fligner`의 `TypeError`, `ttest_ind`의 `method`는 None만(H9까지).
 
 ## §2. 모수: 평균과 분산 (H1)
@@ -218,16 +219,19 @@ barnard_exact(table, /, *, alternative='two-sided', pooled=True, n=32)
 boschloo_exact(table, /, *, alternative='two-sided', n=32)
 mcnemar(table, /, *, exact=True, correction=True)
 cochrans_q(x, /)
-odds_ratio(table, /, *, kind='conditional')   # 넣을지 H6에서 정한다
-relative_risk(exposed_cases, exposed_total, control_cases, control_total, /)   # 넣을지 H6에서 정한다
+odds_ratio(table, /, *, kind='conditional')
+relative_risk(exposed_cases, exposed_total, control_cases, control_total, /)
 ```
-- 표는 마지막 축들이고 앞이 배치다(§1.2).
-- `chi2_contingency`: 결과 `statistic pvalue df expected_freq`(scipy의 `dof`는 `df`, H10), 넷으로 풀린다. `df`는 float다(H6에서 정한다). 소수의 개수(가중 표)를 받을지는 H6에서 정한다.
-- `fisher_exact`: 결과 `statistic pvalue`, 둘로 풀린다. 2 × 2는 초기하 분포(양쪽 p값은 scipy·R의 1 + 10⁻⁷ 규칙), r × c의 기본 방법은 H6에서 정한다(scipy는 시드 없는 몬테카를로; 추천: R `fisher.test`의 정확한 망 알고리즘과 상한, `[scipy와 다름]`). scipy의 기본값 `alternative=None`은 `'two-sided'`와 같다. 여기서는 기본값을 `'two-sided'`로 적는다.
-- `barnard_exact`·`boschloo_exact`: 결과 `statistic pvalue`, 풀리지 않는다. 2 × 2만이다. `n`의 뜻(분할의 처음 격자 크기로만 쓸지)은 H6에서 정한다.
-- `mcnemar`(statsmodels): 결과 `statistic pvalue`, 풀리지 않는다(statsmodels의 `Bunch`). `exact=True`는 이항 정확 검정, `False`는 카이제곱(1)과 `correction`.
-- `cochrans_q`(statsmodels): `x`는 (N, k)의 0·1 값이다. 결과 `statistic pvalue df`, 풀리지 않는다. statsmodels의 `return_object`는 없다(언제나 결과 객체).
-- `odds_ratio`·`relative_risk`(`scipy.stats.contingency`): 검정이 아니라 신뢰구간이 있는 추정이다. 결과는 scipy의 필드(`odds_ratio`는 `statistic`, `relative_risk`는 `relative_risk exposed_cases exposed_total control_cases control_total`)와 `conf_int(alpha=0.05)`이다(`odds_ratio`의 `conf_int`는 scipy의 `confidence_interval`처럼 `alternative`도 받는다: `conf_int(*, alpha=0.05, alternative='two-sided')`).
+- 표는 마지막 두 축이고 앞의 축이 배치다(§1.2, H9): (10, 2, 3)은 2 × 3 표 10개다. scipy의 `chi2_contingency`가 받는 n차원 표(3원 이상의 표)는 없다(`[scipy와 다름]`: 3차원 이상의 입력은 배치다). `nan_policy`는 없다: 개수는 음이 아닌 유한한 값이어야 하고(정확한 검정은 정수 값; 아니면 `fisher_exact(): 'table' must hold non-negative integer counts`, `ValueError`), 빈 표는 `fisher_exact(): 'table' must be at least a 1 x 1 table, not 0 x 2`, 2차원이 아니면 `chi2_contingency(): 'observed' must have at least 2 dimensions (the table's), not 1`(`ValueError`)이다. 표 하나는 배치 안에서나 혼자서나 같은 비트다.
+- **결과**: `chi2_contingency`는 `statistic pvalue df expected_freq`이고 넷으로 풀린다(scipy의 `dof`는 `df`, H10; `df`는 float, H82; `expected_freq`는 (…, r, c)의 쓰기 금지 배열). `fisher_exact`는 `statistic pvalue`이고 둘로 풀린다. `barnard_exact`·`boschloo_exact`·`mcnemar`는 `statistic pvalue`, `cochrans_q`는 `statistic pvalue df`이고 풀리지 않는다(scipy의 dataclass, statsmodels의 Bunch). `odds_ratio`는 `statistic`과 `conf_int(*, alpha=0.05, alternative='two-sided')`, `relative_risk`는 `relative_risk exposed_cases exposed_total control_cases control_total`과 `conf_int(*, alpha=0.05)`이고 풀리지 않는다(검정이 아니라 `pvalue`가 없다). `method`는 None만 받는다(`chi2_contingency(): 'method' must be None, not str`, `TypeError`; 재표본은 H9).
+- `chi2_contingency`: 기댓값 E = R_i C_j / N(정확한 double-double에서 한 번 반올림), 자유도 (r − 1)(c − 1)이다. 자유도가 1이고 `correction=True`면 Yates의 보정(각 칸을 E 쪽으로 min(1/2, |O − E|)), 통계량은 `power_divergence`의 것(`lambda_`는 그 이름이나 수, None은 Pearson)이다. 정수가 아닌 개수(가중 표)도 받는다(H80, scipy와 같다). 자유도 0(행이나 열이 하나)은 통계량 0, p = 1(scipy와 같다). 0인 행·열(기댓값 0)은 통계량·p가 NaN이다(H11, `[scipy와 다름]`: scipy는 `ValueError`). 0인 칸은 `power_divergence`처럼 극한이다(λ ≤ −1이면 +inf, p = 0; scipy는 NaN).
+- `fisher_exact`: 2 × 2 표의 통계량은 표본 오즈비 ad/bc(bc = 0이면 inf), p값은 첫 칸의 초기하 분포에서 scipy의 규칙이다(양쪽: 관측 표의 확률 × (1 + 10⁻¹⁴)보다 작은 반대편 표; 최빈값과 같으면 1; R `fisher.test`는 1 + 10⁻⁷). 0인 행·열은 NaN과 p = 1(scipy). r × c 표(H77, `[scipy와 다름]`: scipy의 기본은 시드 없는 몬테카를로)는 정확한 망 알고리즘의 p값이다: 주변합이 같은 모든 표 가운데 관측 표의 확률 × (1 + 10⁻⁷) 이하인 표의 확률 합(R `fisher.test`의 규칙). 통계량은 scipy처럼 관측 표의 확률이다. 작업량이 상한(2·10⁸)을 넘으면 `fisher_exact(): the exact r x c test needs more than its cap of 2e+08 operations for this table; use chi2_contingency`(`ValueError`, H13)이고 상한에 닿는 데 몇 초다. R의 기본 workspace가 거부하는 4 × 5(N = 100) 같은 표도 정확한 값을 낸다(R은 workspace를 늘리면 7초, 1.7e-10 다른 값; docs/design/htest.md §7). 0인 행·열을 뺀 뒤 행이나 열이 하나면 (1, 1)이다. r × c 표의 `alternative`는 `'two-sided'`만이다(`fisher_exact(): 'alternative' must be 'two-sided' for a table that is not 2 x 2, not 'less'`; scipy는 None만). scipy의 기본값 `alternative=None`은 `'two-sided'`와 같고 여기서는 `'two-sided'`로 적는다.
+- `barnard_exact`·`boschloo_exact`: 2 × 2 표만이고(`barnard_exact(): 'table' must be a 2 x 2 table, not 2 x 3`) 두 열이 두 이항 표본이다(scipy의 방향). `n`은 1 이상의 int이고 상한 찾기의 처음 격자 크기로만 쓴다(H78, `[scipy와 다름]`: scipy는 `shgo`의 표본 수라 결과가 `n`에 따라 다르고 상한을 놓칠 수 있다). p값은 `n`과 상관없이 장애 모수에 대한 참 상한이다(상대 2⁻⁴⁸ 안으로 증명한 값). Barnard의 기각역은 Wald 통계량을 정확한 유리수로 견준다(`[scipy와 다름]`: scipy는 반올림한 통계량을 견주어 |T| = |T_obs|인 거울 표를 빠뜨릴 수 있다: [[7, 12], [8, 3]]에서 9.5e-4 낮다). Boschloo의 통계량은 한쪽 Fisher p값이고 기각역은 그것이 관측의 (1 + 10⁻¹³)배 이하인 표(scipy의 허용오차), 양쪽은 작은 쪽의 두 배다. 0인 열은 Barnard (NaN, 1), Boschloo (NaN, NaN)(scipy). 표가 (n₁ + 1)(n₂ + 1) = 10⁷개를 넘으면 p값이 NaN이다(통계량은 낸다).
+- `mcnemar`(statsmodels): 2 × 2 표의 b = table[0, 1], c = table[1, 0]이다. `exact=True`(기본, H81)는 통계량 min(b, c)와 이항(b + c, 1/2) 꼬리의 두 배(1로 자른다), `exact=False`는 (|b − c| − correction)²/(b + c)와 카이제곱(1)이다(statsmodels의 식: b = c에서도 1을 뺀다; R `mcnemar.test`는 b = c를 보정하지 않는다). b + c = 0의 카이제곱 꼴은 NaN이다(H11, `[statsmodels와 다름]`: inf와 0).
+- `cochrans_q`(statsmodels): `x`는 (…, N, k)의 0·1 값(블록 × 처리)이다(다른 값은 `cochrans_q(): 'x' must hold 0 and 1 values (the successes)`; statsmodels는 가장 큰 값을 성공으로 본다). 결과 `statistic pvalue df`(k − 1)다. statsmodels의 `return_object`는 없다(언제나 결과 객체). 모든 블록이 모두 0이나 모두 1이면 NaN이다.
+- `odds_ratio`(`scipy.stats.contingency`, H79): `kind='conditional'`은 Fisher의 비중심 초기하 분포의 조건부 최우추정(첫 칸이 받침의 끝이면 0이나 inf), `'sample'`은 ad/bc다. `conf_int(*, alpha=0.05, alternative='two-sided')`는 scipy의 `confidence_interval(confidence_level, alternative)`이다(조건부: 정확 구간, 표본: Woolf 구간; 한쪽은 아래 끝 0이나 위 끝 inf). 0인 행·열은 NaN과 (0, inf)다. 정수 값의 float 표를 받는다(scipy는 정수 dtype만). 배치가 있다.
+- `relative_risk`(`scipy.stats.contingency`, H79): 네 개수는 int 인자다(scipy처럼; 사례 수는 0 이상, 총수는 1 이상, 사례 수 ≤ 총수: `relative_risk(): 'exposed_cases' must not exceed 'exposed_total'`). 추정값은 정확한 몫을 한 번 반올림한 값, `conf_int(*, alpha=0.05)`는 Katz 구간이고 0인 사례 수의 끝은 scipy의 것((0, NaN), (NaN, inf), (NaN, NaN))이다.
+- scipy·R과의 값의 차이(docs/design/htest.md §7): scipy의 `barnard_exact`는 거울 표를 빠뜨리거나(9.5e-4) `shgo`가 상한을 놓친다(1.2e-7), `chi2_contingency`는 Cressie–Read의 0인 칸이 NaN이고 O ≈ E의 G가 1.6e-11 틀린다, 조건부 오즈비의 구간은 `brentq`의 허용오차로 8e-12다. R `fisher.test`의 r × c p값은 큰 표에서 1.7e-10, 조건부 오즈비와 구간은 `uniroot`의 허용오차로 6e-4까지 다르다.
 
 ## §8. 비율과 이항 (H7)
 ```
@@ -319,6 +323,12 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 | `mannwhitneyu`·`wilcoxon`의 `zstatistic`(`method='asymptotic'`을 준 때만) | 정규 근사를 쓴 때마다 | H47 |
 | 동점이 있을 때 `method='exact'`(동점이 없는 분포) | 중간 순위의 조건부 정확 분포 | H45 |
 | `kruskal`·`friedmanchisquare`·`brunnermunzel`의 결과 `statistic pvalue` | `statistic pvalue df` | H51 |
+| r × c `fisher_exact`(시드 없는 몬테카를로) | 정확한 망 알고리즘(R `fisher.test`의 규칙)과 작업량 상한 | H77 |
+| `barnard_exact`·`boschloo_exact`의 `n`(`shgo`의 표본 수) | 처음 격자 크기로만, p값은 참 상한 | H78 |
+| `odds_ratio(...).confidence_interval(confidence_level, alternative)` | `conf_int(*, alpha=0.05, alternative='two-sided')` | H16, H79 |
+| `relative_risk(...).confidence_interval(confidence_level)` | `conf_int(*, alpha=0.05)` | H16, H79 |
+| `chi2_contingency`의 결과 `dof`(int), n차원 표 | `df`(float), 2차원 표와 앞 축의 배치 | H10, H82, H9 |
+| statsmodels `cochrans_q(x, return_object=True)` | `cochrans_q(x)`(언제나 결과 객체) | §1.5 |
 | `median_test`(`axis` 없음) | `axis`, `keepdims`, 배치, 결과의 `df` | H49 |
 | 배치의 `method`(`page_trend_test`: 배치가 없다) | 줄마다의 이름의 중첩 리스트 | H48 |
 | `ks_2samp(method='exact')`의 동점(동점이 없는 분포) | 관측한 동점의 조건부 정확 분포(R `psmirnov`) | H55 |
@@ -340,7 +350,7 @@ docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 
 - **H3**: 정했다(H45–H54, docs/design/htest.md §1.1).
 - **H4**: 정했다(H55–H61, docs/design/htest.md §1.1).
 - **H5**: 정했다(H62–H73, docs/design/htest.md §1.1).
-- **H6**: r × c `fisher_exact`의 기본은 정확한 망 알고리즘과 상한(추천). `barnard_exact`·`boschloo_exact`의 `n`은 처음 격자 크기로만(추천). `odds_ratio`·`relative_risk`를 넣는다(추천). `chi2_contingency`는 소수의 개수도 받는다(추천). `mcnemar`의 기본 `exact=True`(statsmodels 그대로; 추천). `chi2_contingency`의 `df`는 float(추천, H10과 `ttest`의 `df`와 같은 형) / int.
+- **H6**: 정했다(H77–H84, docs/design/htest.md §1.1).
 - **H7**: 방법 이름은 scipy에 있는 것은 scipy의 이름(`'exact'`, `'wilson'`, `'wilsoncc'`)과 statsmodels에만 있는 것(추천) / statsmodels 그대로(`'beta'`). 기본값은 statsmodels의 `'normal'`(추천). `prop_var`는 None 또는 실수(추천). `proportions_chisquare`는 `(statistic, pvalue, (table, expected_freq))`의 셋으로 풀린다(statsmodels 그대로; 추천) / 넷의 필드만. `proportion_confint`·`confint_proportions_2indep`은 `conf_int()`과 같은 (…, 2) 배열(추천; H16) / statsmodels처럼 (low, upp) 튜플. 기본 방법은 statsmodels 0.15.0의 것으로 고정(추천). `proportions_chisquare`에 Yates 보정은 없다(추천).
 - **H8**: `false_discovery_control` + `multipletests`, `fdrcorrection` 없음(추천). `multipletests`의 기본 `'holm-sidak'`(추천). 필드 이름 `reject pvalues_corrected alpha_sidak alpha_bonferroni`(추천). `fdr_gbs`는 넣지 않는다(추천). 스튜던트화 범위 분포는 htest 안에(H14로 정했다). `dunnett`에 `rng`가 없다(추천).
 - **sd.regression과의 경계**: H16–H21로 정했다(§13; docs/design/htest.md §1.4). 남은 것은 regression 쪽의 결정이다(docs/design/regression.md §8의 "htest와의 관계"): 새 회귀 검정(모형 비교의 F·LR·Wald, White, Goldfeld–Quandt, RESET)의 결과를 H6·H7·H11·H19·H21의 꼴로 둘지, `breusch_pagan()`에 자유도 필드를 더할지(H19라면 카이제곱의 `df`), 백색화한 잔차 `wresid`를 결과에 둘지, 단계적 선택에 보정 옵션을 둘지(둔다면 `multipletests`의 방법 이름과 같은 커널).

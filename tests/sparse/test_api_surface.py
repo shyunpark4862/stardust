@@ -22,9 +22,6 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "sparse.md"
 # Documented, not implemented yet (docs/design/sparse.md §8). A milestone moves its names from
 # here to sd.sparse.__all__.
 PLANNED = {
-    # SP4
-    "spsolve", "splu", "factorized", "inv", "spsolve_triangular", "is_sptriangular", "spbandwidth", "LinearOperator",
-    "aslinearoperator",
     # SP5
     "cg", "gmres", "minres", "bicgstab", "lsqr", "lsmr",
     # SP6
@@ -32,6 +29,8 @@ PLANNED = {
     # SP7
     "expm", "expm_multiply", "onenormest", "norm",
 }  # fmt: skip
+# Options without a default (a keyword the caller must give), as sd.linalg's (SP68).
+REQUIRED_OPTIONS = {("spsolve_triangular", "upper")}
 CLASSES = {"sparray", "coo_array", "csr_array", "csc_array", "dok_array", "SparseLU", "LinearOperator"}
 FORMATS = ("coo_array", "csr_array", "csc_array", "dok_array")
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
@@ -122,7 +121,7 @@ def test_data_positional_options_keyword():
             after = parts[parts.index("/") + 1 :]
             assert not after or after[0] == "*", (cls, name)
         for p in parts[parts.index("*") + 1 :] if "*" in parts else []:
-            assert "=" in p, (cls, name, p)
+            assert "=" in p or (name, p) in REQUIRED_OPTIONS, (cls, name, p)
 
 
 @pytest.mark.parametrize("name", ["cg", "gmres", "minres", "bicgstab", "lsqr", "lsmr", "eigsh", "eigs", "svds",
@@ -153,18 +152,23 @@ def test_formats_have_no_dia_default():
 
 
 def members(cls):
-    """{name: signature text or None} the document's §2 to §4 (the public milestones SP1 to SP3)
-    give class `cls`: its own lines and, for a format, the sparray lines. The methods of §5 on
+    """{name: signature text or None} the document's §2 to §5 (the public milestones SP1 to SP4)
+    give class `cls`: its own lines and, for a format, the sparray lines. The methods of §6 on
     come with their milestones."""
     owners = {cls, "sparray"} if cls in FORMATS else {cls}
-    public = API.read_text().split("\n## §5.")[0]
+    public = API.read_text().split("\n## §6.")[0]
     return {name: sig for c, name, sig in entries(public) if c in owners}
 
 
-@pytest.mark.parametrize("cls", FORMATS)
+def _class(cls):
+    # SparseLU is not exported: splu's result is its only instance (decision SP60)
+    return sd.sparse._direct.SparseLU if cls == "SparseLU" else getattr(sd.sparse, cls)
+
+
+@pytest.mark.parametrize("cls", FORMATS + ("SparseLU", "LinearOperator"))
 def test_exported_classes_have_the_documented_members(cls):
     doc = members(cls)
-    klass = getattr(sd.sparse, cls)
+    klass = _class(cls)
     public = {n for n in dir(klass) if not n.startswith("_")}
     assert public == set(doc), (cls, public ^ set(doc))
     for name, sig in doc.items():
@@ -181,7 +185,8 @@ def test_module_is_wired():
     assert set(sd.sparse.__all__) == {
         "sparray", "coo_array", "csr_array", "csc_array", "dok_array", "issparse", "matrix_transpose",
         "eye_array", "diags_array", "random_array", "kron", "kronsum", "hstack", "vstack", "block_array",
-        "block_diag", "tril", "triu", "find",
+        "block_diag", "tril", "triu", "find", "spsolve", "splu", "factorized", "inv", "spsolve_triangular",
+        "is_sptriangular", "spbandwidth", "LinearOperator", "aslinearoperator",
     }  # fmt: skip
-    assert not hasattr(sd.sparse, "linalg")
-    assert callable(sd.sparse._core._lu_solve)
+    assert not hasattr(sd.sparse, "linalg") and not hasattr(sd.sparse, "SparseLU")
+    assert callable(sd.sparse._core._lu_solve) and callable(sd.sparse._core._lu_factor)

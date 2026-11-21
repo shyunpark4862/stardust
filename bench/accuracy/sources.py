@@ -366,6 +366,8 @@ def sweeps(areas=None):
         "optimize": lambda: _module("optimize").sweeps(),
         "htest": lambda: _module("htest").sweeps(),
         "sparse": lambda: _module("sparse").sweeps(),
+        "integrate": lambda: _module("integrate").sweeps(),
+        "differentiate": lambda: _module("differentiate").sweeps(),
     }
     out = []
     for a in check_areas(areas):

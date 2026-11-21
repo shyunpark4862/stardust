@@ -141,3 +141,39 @@ def test_reprs_show_short_arrays_and_shapes():
 def test_spearmanr_matrix_lanes():
     s = h.spearmanr(_r().normal(size=(15, 3)), axis=0).summary()
     assert "Batch shape:                    (3, 3)" in s and _row(s, "[1, 1]")[0] == "1.000"
+
+
+def test_contingency_tables():
+    """H6's results: the expected counts of one table as a table, the table's shape and Yates'
+    correction in the header, the variants' titles, the odds ratio's and the relative risk's
+    intervals as one row each."""
+    t = [[3.0, 7], [9, 2]]
+    s = h.chi2_contingency(t).summary()
+    assert s.splitlines()[0].strip() == "Chi-squared test of independence"
+    assert "Table:                           2 x 2" in s and "Correction:                      Yates" in s
+    assert "expected_freq         [0]        [1]" in s and "Df:                                  1" in s
+    assert "Correction" not in h.chi2_contingency([[3.0, 7, 1], [9, 2, 4]]).summary()
+    for res, title in (
+        (h.fisher_exact(t), "Fisher's exact test"),
+        (h.barnard_exact(t), "Barnard's exact test (pooled)"),
+        (h.barnard_exact(t, pooled=False), "Barnard's exact test (unpooled)"),
+        (h.boschloo_exact(t), "Boschloo's exact test"),
+        (h.mcnemar(t), "McNemar's test (exact)"),
+        (h.mcnemar(t, exact=False), "McNemar's test (chi-squared)"),
+        (h.cochrans_q(np.eye(3)), "Cochran's Q test"),
+        (h.odds_ratio(t), "Odds ratio (conditional maximum likelihood)"),
+        (h.odds_ratio(t, kind="sample"), "Odds ratio (sample)"),
+        (h.relative_risk(9, 20, 4, 21), "Relative risk"),
+    ):
+        assert res.summary().splitlines()[0].strip() == title
+    f = h.fisher_exact([[3.0, 1, 4], [1, 5, 9], [2, 6, 5]]).summary()
+    assert "Table:                           3 x 3" in f and "Alternative" not in f
+    o = h.odds_ratio(t)
+    lo, hi = o.conf_int(alpha=0.1).tolist()
+    assert [float(v) for v in _row(o.summary(alpha=0.1), "odds ratio")] == pytest.approx([lo, hi], abs=5e-4)
+    rr = h.relative_risk(9, 20, 4, 21).summary()
+    assert "Exposed cases:                       9" in rr and _row(rr, "relative risk")
+    b = h.chi2_contingency(np.ones((3, 2, 2)) + np.eye(2)).summary()  # a batch: the tables are left out
+    assert "Batch shape:                      (3,)" in b and "expected_freq" not in b
+    q = h.cochrans_q(np.eye(3)).summary()
+    assert "No. Observations:                    3" in q and "No. Treatments:                      3" in q

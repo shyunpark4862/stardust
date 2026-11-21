@@ -1,6 +1,7 @@
 // The terms of the Cressie-Read power divergence statistics (docs/design/htest.md §3.3), shared
 // by power_divergence (htest/gof.cpp) and the contingency tables' chi-squared tests
-// (median_test's, htest/rank.cpp; chi2_contingency later).
+// (median_test's, htest/rank.cpp; chi2_contingency's, htest/contingency.cpp). A zero count
+// with lambda <= -1 contributes +inf (the limit, power_divergence's rule) everywhere.
 //
 // With delta = (O - E)/E and a = lambda + 1, every Cressie-Read statistic is
 // 2 sum E g_a(delta) + (2/a) sum (O - E), with
@@ -91,13 +92,10 @@ struct Divergence {
         const DD q = d / E;
         const double t = q.hi + q.lo;
         const double aa = lam + 1.0;
-        if (lam == 0.0) {
-            pos.add(E * (2.0 * g1(t)));
-        } else if (lam == -1.0) {
-            pos.add(E * (2.0 * ga(0.0, t)));
-        } else {
-            pos.add(E * (2.0 * ga(aa, t)));
-        }
+        const double g = lam == 0.0 ? g1(t) : (lam == -1.0 ? ga(0.0, t) : ga(aa, t));
+        // a zero count with lambda <= -1 contributes its limit +inf (power_divergence's rule)
+        if (std::isfinite(g)) pos.add(E * (2.0 * g));
+        else pos.add(2.0 * E.hi * g);
         lin.add(d);
     }
     double value() const {

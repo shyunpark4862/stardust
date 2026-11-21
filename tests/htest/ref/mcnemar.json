@@ -1,0 +1,13 @@
+{
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 10, "dropped": []},
+"mcnemar/exact": {"digest": "f17c425baa78623400023f556e31801c3287f161b00f226b5a84ca7ce91dcc1e", "statistic": [4.0, 0.0], "pvalue": [0.076812744140625, 0.0]},
+"mcnemar/chi2": {"digest": "3a8aeb84e2cc4825a60c0eaeb8f13dc40e2e8c4eb457ee8b4c06c304e0294429", "statistic": [3.0625, 0.0], "pvalue": [0.08011831372763419, -4.735075597625971e-18], "kappa": 1.8845292782830716},
+"mcnemar/chi2-no-correction": {"digest": "92eaf222d1ec7c96dc993ddc7c6d498c60052e0099f5a1d0d60ec942ad29ef63", "statistic": [4.0, 0.0], "pvalue": [0.04550026389635842, -2.7699526216779393e-18], "kappa": 2.373215532822841},
+"mcnemar/equal": {"digest": "02fb26b76de829fece29ae85889bd6149b0c9fef049b10a89fe6e19b721773c5", "statistic": [6.0, 0.0], "pvalue": [1.0, 0.0]},
+"mcnemar/equal-chi2": {"digest": "207919eb3d7ad606c7656ae84a42f94e28a013e65bae1274d437a188db5659fb", "statistic": [0.08333333333333333, 4.625929269271485e-18], "pvalue": [0.7728299926844475, -2.336153829443986e-17], "kappa": 0.14293542297044562},
+"mcnemar/zero-off": {"digest": "b9c4b274f58db7470a018cc76d55f54d2b4f3a8fde93fb510d224af6c49026f6", "statistic": [0.0, 0.0], "pvalue": [1.0, 0.0]},
+"mcnemar/zero-off-chi2": {"digest": "3ca66f3867cf94d84d0176444000fd175408cff3c07764178937c29920ea14d4", "statistic": [NaN, 0.0], "pvalue": [NaN, 0.0], "kappa": NaN},
+"mcnemar/large": {"digest": "1e28d1cf4af79e28672fbe6b54729564295dd145685862e93d6270e0e88daf8c", "statistic": [900.0, 0.0], "pvalue": [6.337277315775436e-11, -2.3435732027995667e-27]},
+"mcnemar/large-chi2": {"digest": "81e3b59c836d0387550435d1d4af6646952e276b753a025c5cfe66ef1f195ad6", "statistic": [42.57190476190476, 4.3309271512996583e-16], "pvalue": [6.813099376103972e-11, 1.1887986899155376e-27], "kappa": 21.76482712946429},
+"mcnemar/large-chi2-no-correction": {"digest": "0fafd53483cfab3bca61de099126e600ac7e7d7fea55fdbcaafc79fc57e6cf49", "statistic": [42.857142857142854, 3.045183153257572e-15], "pvalue": [5.888668049571948e-11, -2.6233130785399245e-27], "kappa": 21.907573291977982}
+}

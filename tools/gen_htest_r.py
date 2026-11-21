@@ -12,7 +12,10 @@ cramervonmises, anderson, brunnermunzel, median_test, page_trend_test, epps_sing
 ...) are left out. Where R's definition differs from scipy's (ks.test's exact distribution with
 ties, which is sd's: H55, so ks.test is called with exact = TRUE wherever sd's ks_2samp is
 exact; wilcox.test's exact switch at n < 50 and its zeros ranked as Pratt's, fisher.test's
-conditional MLE odds ratio, prop.test's one-sample variance), the record keeps R's own value; the
+conditional MLE odds ratio (odds_ratio's conditional problems take fisher.test's estimate and
+interval, both found by R's uniroot to its default tolerance), mcnemar.test's continuity correction
+(none when b = c; statsmodels' (|b - c| - 1)^2 / (b + c) still subtracts 1), prop.test's one-sample
+variance), the record keeps R's own value; the
 comparison says which differ. wilcox.test's exact p-values with ties are conditional on the
 midranks, as sd's method='exact' (H45): the H3 problems with ties and method='exact' compare
 the two. cor.test's Kendall is called with exact as scipy's (and sd's) method (R's own default is
@@ -205,6 +208,9 @@ def r_call(p):
         return f"chisq.test({mat(a[0])}, correct = {c})"
     if f == "fisher_exact":
         return f"fisher.test({mat(a[0])}, alternative = '{alt(p)}')"
+    if f == "odds_ratio" and kw.get("kind", "conditional") == "conditional":
+        # fisher.test's estimate and interval are the conditional MLE and the exact interval
+        return f"fisher.test({mat(a[0])})"
     if f == "mcnemar":
         t = np.asarray(a[0])
         if kw.get("exact", True):

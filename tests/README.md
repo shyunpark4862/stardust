@@ -8,7 +8,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 결과와 표도 이 순서다. |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 결과와 표도 이 순서다. |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -61,7 +61,7 @@
 .venv/bin/python tools/golden.py list                     # 영역별 케이스 수
 ```
 
-- 케이스는 `tests/golden/cases_<영역>.py`, 기록은 `tests/golden/data/<영역>.json`이다. 영역은 `bench/areas.py`의 열이다.
+- 케이스는 `tests/golden/cases_<영역>.py`, 기록은 `tests/golden/data/<영역>.json`이다. 영역은 `bench/areas.py`의 열둘이다.
 - 영역마다 스레드 수 1, 3, 10에서 따로 프로세스를 띄워 돌리고(동시에 `--jobs`개), 세 결과가 같아야 한다. 스레드 수에 따라 결과가 다른 케이스는 저장하지 않는다: `record`가 그 케이스 이름을 적고 종료 코드 1로 끝난다. 예외는 케이스 파일의 `THREAD_DEPENDENT = {케이스 이름: 이유}`에 적은 케이스뿐이고, 그 결과는 스레드 수마다 저장한다.
 - 전체 비교(2026-11-20, 24,422케이스, `--jobs` 기본 8)는 약 25초이고, 작업 프로세스 하나의 최대 RSS는 약 1.6GB다.
 - **저장 형식**(형식 2): 결과를 정확한 JSON으로 바꿔 정규화한 글자열끼리 비교한다. 그래서 형도 결과의 일부다(`True`는 `1`이 아니고, numpy 스칼라는 Python 스칼라가 아니다).

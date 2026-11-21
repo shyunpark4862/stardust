@@ -185,16 +185,18 @@ public:
         lu.owned_ = true;
         check(lu.f_.status, errors.messages());
         lu.n_ = a.rows;
+        lu.transposed_ = a.transpose;
         return lu;
     }
 
-    Lu(Lu&& o) noexcept : f_(o.f_), owned_(std::exchange(o.owned_, false)), n_(o.n_) {}
+    Lu(Lu&& o) noexcept : f_(o.f_), owned_(std::exchange(o.owned_, false)), n_(o.n_), transposed_(o.transposed_) {}
     Lu& operator=(Lu&& o) noexcept {
         if (this != &o) {
             release();
             f_ = o.f_;
             owned_ = std::exchange(o.owned_, false);
             n_ = o.n_;
+            transposed_ = o.transposed_;
         }
         return *this;
     }
@@ -204,11 +206,23 @@ public:
 
     int n() const { return n_; }
 
-    // Solves A X = B in place: xb holds B (n x nrhs, column-major with column stride ld >= n) and
-    // receives X. Throws Error.
-    void solve(T* xb, std::int64_t nrhs, std::int64_t ld) const {
+    // Solves op(A) X = B in place: xb holds B (n x nrhs, column-major with column stride ld >= n)
+    // and receives X. op is 'N' (A), 'T' (A^T) or 'H' (A^H; A^T for real values): the transposed
+    // solves go through Accelerate's reference-counted transposed factorization (no new factor),
+    // A^H as the conjugate of an A^T solve of the conjugate. The columns of an untransposed solve
+    // are solved together (Accelerate's blocked solve); a transposed one goes column by column.
+    // Throws Error.
+    void solve(T* xb, std::int64_t nrhs, std::int64_t ld, char op = 'N') const {
         constexpr std::int64_t kMax = std::numeric_limits<int>::max();
         if (nrhs > kMax || ld > kMax) throw std::length_error("too many right-hand sides for Accelerate");
+        // A solve that runs transposed (op 'T' or 'H' on a CSC factor, 'N' on a CSR one) is wrong
+        // for more than one column at a time (SDK 26.5, measured in SP4: residuals of order 1 for
+        // k = 2 and 5 on every test matrix, real and complex; one column is right). Such solves go
+        // one column at a time.
+        if (nrhs > 1 && (transposed_ != (op != 'N'))) {
+            for (std::int64_t j = 0; j < nrhs; ++j) solve(xb + j * ld, 1, ld, op);
+            return;
+        }
         typename Ty::Dense d{};
         d.rowCount = n_;
         d.columnCount = static_cast<int>(nrhs);
@@ -216,12 +230,30 @@ public:
         d.attributes.kind = SparseOrdinary;
         d.data = reinterpret_cast<typename Ty::Value*>(xb);
         ErrorScope errors;
-        SparseSolve(f_, d);
+        if (op == 'N') {
+            SparseSolve(f_, d);
+        } else {
+            // A^H x = b is conj(A^T conj(x)) = b: SparseGetConjugateTranspose's solve stops the
+            // process (SIGTRAP) on complex LU factors of a few hundred rows (SDK 26.5, measured in
+            // SP4 on random_complex/800), so the conjugate goes around the plain transpose.
+            constexpr bool cplx = std::is_same_v<T, std::complex<double>>;
+            const bool conj = cplx && op == 'H';
+            if (conj) conjugate(xb, nrhs, ld);
+            typename Ty::Factor t = SparseGetTranspose(f_);
+            SparseSolve(t, d);
+            SparseCleanup(t);
+            if (conj) conjugate(xb, nrhs, ld);
+        }
         check(SparseStatusOK, errors.messages());
     }
 
 private:
     Lu() = default;
+    void conjugate(T* xb, std::int64_t nrhs, std::int64_t ld) const {
+        if constexpr (std::is_same_v<T, std::complex<double>>)
+            for (std::int64_t j = 0; j < nrhs; ++j)
+                for (std::int64_t i = 0; i < n_; ++i) xb[j * ld + i] = std::conj(xb[j * ld + i]);
+    }
     void release() {
         if (owned_) SparseCleanup(f_);
         owned_ = false;
@@ -230,6 +262,7 @@ private:
     typename Ty::Factor f_{};
     bool owned_ = false;
     int n_ = 0;
+    bool transposed_ = false;  // factored from a CSR (the structure's transpose flag)
 };
 
 }  // namespace sd::sparse_solve

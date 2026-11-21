@@ -1,6 +1,6 @@
 # sd.differentiate API
 
-> 상태: **초안** (설계 초안, 2026-11-21). 공개된 이름은 아직 없다. 아래 시그니처는 scipy 1.18.1 `scipy.differentiate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스 `DifferentiateResult`, `atol`·`rtol`, `max_iter`, `nfev`, C4에서 따라 나오는 것)을 입히고, 남은 질문(docs/design/integrate.md §9 C2)은 그 추천안을 넣은 안이다. 세 함수는 마일스톤 C2에서 공개된다(docs/design/integrate.md §8).
+> 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `DifferentiateResult`뿐이다. 아래 시그니처는 scipy 1.18.1 `scipy.differentiate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스 `DifferentiateResult`, `atol`·`rtol`, `max_iter`, `nfev`, C4에서 따라 나오는 것)을 입히고, 남은 질문(docs/design/integrate.md §9 C2)은 그 추천안을 넣은 안이다. 세 함수는 마일스톤 C2에서 공개된다(docs/design/integrate.md §8).
 
 - 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C17, 방법은 §3.8)다. 이 모듈은 설계 문서를 `sd.integrate`와 함께 쓴다(C1). 적분은 [docs/api/integrate.md](integrate.md), 공통 규칙은 [API.md](../../API.md)다.
 - `sd.optimize`의 `approx_fprime`·`check_grad`(고정 간격 차분)는 scipy처럼 `sd.optimize`에 있다. 그 간격의 커널(C++)과 nls의 5점 차분 `Differences`(Python)는 이 영역의 내부로 옮긴다(C3, C15; 값은 그대로).
@@ -38,6 +38,7 @@ DifferentiateResult
 | `x` | 미분한 점(`args`·`step_direction`과 브로드캐스트한 뒤) | `derivative` |
 
 - 원소별 결과는 입력의 배치 모양이고 입력이 모두 실수면 Python 수다(O48). scipy의 −4(`callback`)는 없다.
+- 결과는 풀리지 않는다(이름으로 읽는다). 공개 생성자 `DifferentiateResult(*, batch=(), **fields)`, 없는 필드의 `AttributeError`(`(the function does not give it)`), `repr`(`DifferentiateResult(df=2.71828, error=4.5e-14, converged=True, n_iter=2, nfev=11)`, 배치는 `DifferentiateResult(batch shape (3,), 2 of 3 converged)`)는 `IntegrateResult`와 같다(docs/api/integrate.md §1.3). `summary()`는 `OptimizeResult`처럼 두고 C2에서 만든다(docs/design/integrate.md §1.1 C20).
 
 ### §1.4 멈춤, 상한, 경고
 - 모든 호출은 `max_iter`번 안에 끝난다. 상한에 닿은 원소는 마지막 추정과 status −2다.

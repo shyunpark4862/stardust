@@ -1,0 +1,247 @@
+{
+"area": "integrate",
+"cases": {
+"IntegrateResult batch": {
+"r": {
+"absent": [
+"interval_errors",
+"interval_integrals",
+"intervals",
+"max_level",
+"message",
+"n_intervals",
+"status",
+"subdivisions",
+"sum"
+],
+"attrs": {
+"converged": {
+"nd": "bool",
+"shape": [
+3
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+true
+]
+},
+"error": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0",
+"0x0.0p+0"
+]
+},
+"integral": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+1",
+"0x1.8000000000000p+1"
+]
+},
+"nfev": {
+"nd": "int64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+67,
+16387,
+131
+]
+}
+},
+"obj": "stardust.integrate._result.IntegrateResult",
+"repr": "IntegrateResult(batch shape (3,), 2 of 3 converged)",
+"unpack": {
+"error": "TypeError",
+"msg": "this IntegrateResult does not unpack (only the quad family's results do): read its fields by name"
+}
+}
+},
+"IntegrateResult fields": {
+"r": {
+"absent": [
+"interval_errors",
+"interval_integrals",
+"intervals",
+"max_level",
+"message",
+"n_intervals",
+"subdivisions",
+"sum"
+],
+"attrs": {
+"converged": true,
+"error": {
+"f": "0x1.203af9ee75616p-50"
+},
+"integral": {
+"f": "0x1.0000000000000p-1"
+},
+"nfev": 21,
+"status": 0
+},
+"obj": "stardust.integrate._result.IntegrateResult",
+"repr": "IntegrateResult(integral=0.5, error=1e-15, converged=True, nfev=21)",
+"unpack": {
+"error": "TypeError",
+"msg": "this IntegrateResult does not unpack (only the quad family's results do): read its fields by name"
+}
+}
+},
+"IntegrateResult getitem": {
+"r": {
+"f": "0x1.8000000000000p+1"
+}
+},
+"IntegrateResult quad-like": {
+"r": {
+"absent": [
+"interval_errors",
+"interval_integrals",
+"intervals",
+"max_level",
+"n_intervals",
+"subdivisions",
+"sum"
+],
+"attrs": {
+"converged": true,
+"error": {
+"f": "0x1.203af9ee75616p-50"
+},
+"integral": {
+"f": "0x1.0000000000000p-1"
+},
+"message": "ok",
+"nfev": 21,
+"status": 0
+},
+"obj": "stardust.integrate._result.IntegrateResult",
+"repr": "IntegrateResult(integral=0.5, error=1e-15, converged=True, nfev=21)",
+"unpack": {
+"items": [
+{
+"f": "0x1.0000000000000p-1"
+},
+{
+"f": "0x1.203af9ee75616p-50"
+}
+],
+"tuple": "builtins.tuple"
+}
+}
+},
+"IntegrateResult repr": {
+"r": "IntegrateResult(integral=nan, converged=False)"
+},
+"IntegrateResult series": {
+"r": {
+"absent": [
+"integral",
+"interval_errors",
+"interval_integrals",
+"intervals",
+"max_level",
+"message",
+"n_intervals",
+"status",
+"subdivisions"
+],
+"attrs": {
+"converged": true,
+"error": {
+"f": "0x1.fc862d3e17360p-28"
+},
+"nfev": 8561,
+"sum": {
+"f": "0x1.a51a6625307d3p+0"
+}
+},
+"obj": "stardust.integrate._result.IntegrateResult",
+"repr": "IntegrateResult(sum=1.64493, error=7.4e-09, converged=True, nfev=8561)",
+"unpack": {
+"error": "TypeError",
+"msg": "this IntegrateResult does not unpack (only the quad family's results do): read its fields by name"
+}
+}
+},
+"IntegrateResult unpack": {
+"r": {
+"items": [
+{
+"f": "0x1.0000000000000p+1"
+},
+{
+"f": "0x1.8000000000000p+1"
+}
+],
+"tuple": "builtins.tuple"
+}
+},
+"err IntegrateResult absent field": {
+"r": {
+"error": "builtins.AttributeError",
+"msg": "'IntegrateResult' object has no attribute 'error' (the function does not give it)"
+}
+},
+"err IntegrateResult array read-only": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "assignment destination is read-only"
+}
+},
+"err IntegrateResult no unpack": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "this IntegrateResult does not unpack (only the quad family's results do): read its fields by name"
+}
+},
+"err IntegrateResult positional": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "IntegrateResult.__init__() takes 1 positional argument but 2 were given"
+}
+},
+"err IntegrateResult read-only": {
+"r": {
+"error": "builtins.AttributeError",
+"msg": "property 'integral' of 'IntegrateResult' object has no setter"
+}
+},
+"err IntegrateResult unknown field": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "IntegrateResult(): unexpected keyword argument 'estimate'"
+}
+}
+},
+"format": 2,
+"threads": [
+1,
+3,
+10
+]
+}

@@ -1,5 +1,5 @@
 {
-"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 8, "dropped": []},
+"_provenance": {"arb": "python-flint 0.9.0; exact rationals", "target_bits": 110, "tool": "tools/htest_ref.py", "n_requested": 18, "dropped": []},
 "fisher_exact/small": {"digest": "7f18f18de83df53075a8b76d72b9f7c58861acc8de700833313aa2a104225779", "statistic": [0.09523809523809523, 5.28677630773884e-18], "pvalue": [0.029973122852379817, 9.416952261656154e-19]},
 "fisher_exact/zero": {"digest": "814828fb3e4f98d2b852bd30e2bc42f5aa0bc7a143dc40e41d33528a01a4debf", "statistic": [0.0, 0.0], "pvalue": [0.02097902097902098, -8.491653378907448e-19]},
 "fisher_exact/large": {"digest": "21b7484177bffc95618a9a9474304451123f1844d247c205474dbc5c26d6d0d8", "statistic": [8.0, 0.0], "pvalue": [2.262833236177402e-16, 6.496370029152705e-35]},
@@ -7,5 +7,15 @@
 "fisher_exact/less": {"digest": "4b2515d76a8572e825dbca24675b5ae94e43116da91bd588eb50e5aa3bad3783", "statistic": [0.09523809523809523, 5.28677630773884e-18], "pvalue": [0.024172422005239343, 5.453286468895892e-20]},
 "fisher_exact/greater": {"digest": "f2948a400a00c188d1a07e74e0e312b221d67a03c1bb626a27d04738f5ee13a8", "statistic": [0.09523809523809523, 5.28677630773884e-18], "pvalue": [0.9982819038546593, -4.1163578138893464e-17]},
 "fisher_exact/tail": {"digest": "31981774ef856269f1a7e67354e6f69143eea7667f98d13feae27bbcbf8657cf", "statistic": [900.0, 0.0], "pvalue": [5.465846024822999e-149, -3.4383373987869036e-165]},
-"fisher_exact/3x3": {"digest": "87394d4123e47be62af6430319ed11483378a554c92daaa6abde7b0f98c80d7b", "pvalue": [0.282360228768354, -4.735672981175987e-18], "rule": "R"}
+"fisher_exact/3x3": {"digest": "87394d4123e47be62af6430319ed11483378a554c92daaa6abde7b0f98c80d7b", "statistic": [0.0017985614203783957, -3.325568849905154e-20], "pvalue": [0.282360228768354, -4.735672981175987e-18], "rule": "R"},
+"fisher_exact/zero-column": {"digest": "1b58d26e147539de3d31c88dcf285a4eb3cfb0d356f5ea81fb44262843b28a09", "statistic": [NaN, 0.0], "pvalue": [1.0, 0.0]},
+"fisher_exact/deep-tail": {"digest": "45bf79595a169799db57a35b154a315b5060daf938f076bb69c39776bb7a4c11", "statistic": [Infinity, 0.0], "pvalue": [7.399507995628054e-300, 5.25627874e-316]},
+"fisher_exact/mirror": {"digest": "55bcab04d33484ebfc6d1cd12fe4ddebff04e04398ffaa86080affa81b22aa15", "statistic": [0.0625, 0.0], "pvalue": [0.023014137565221155, 1.4673546993096594e-18]},
+"fisher_exact/2x4": {"digest": "849ff518e86737e2b247e581eaff826be5a9c34cc4160e44e4dc40ab28bc0d5a", "statistic": [0.00017861395570373899, -2.646599730406387e-22], "pvalue": [0.0020838294832102883, -1.7475304366234565e-19], "rule": "R"},
+"fisher_exact/3x4": {"digest": "12e8b22d4806833107ffa6b9bd0b6f2d0adbb23dc3411c3c2dfd49ecd0cf9d2f", "statistic": [1.1378971201780767e-06, 1.02723899637352e-22], "pvalue": [0.035721129967338235, -8.763537265074142e-19], "rule": "R"},
+"fisher_exact/4x4": {"digest": "ca208e17c8fb174094c16e9b3553d72373742bc023f74700a85d3515b9e385a0", "statistic": [1.679183413720809e-09, 2.2121671652215796e-26], "pvalue": [0.0025219078465420846, -8.475116385992381e-20], "rule": "R"},
+"fisher_exact/2x6": {"digest": "18c18b4ff0d18c8fb8158dff9e3137952c4833ef52daaf5acda46db2a7c49fbc", "statistic": [8.874373882560714e-08, 5.676610949815166e-26], "pvalue": [0.0010745320196313955, -3.459236910785269e-20], "rule": "R"},
+"fisher_exact/rxc-tail": {"digest": "2ab947abd40e6573573faff03ec99a212b1f1efdf49271b422f723268e09dc5e", "statistic": [3.0124881371402773e-13, -2.492975355946735e-29], "pvalue": [4.859281724059437e-12, 4.0050125402185234e-28], "rule": "R"},
+"fisher_exact/rxc-one-row": {"digest": "a98c12926a1fee39f7aa3c2d699e8a29124904a8ce6ad0113c336304745cb0a5", "statistic": [1.0, 0.0], "pvalue": [1.0, 0.0], "rule": "R"},
+"fisher_exact/rxc-zero-row": {"digest": "efc50cf624380079a0f235bad4c9812dbe1f4cb4a40b981b27d7cf4b9606a860", "statistic": [0.1048951048951049, -7.763797375001095e-19], "pvalue": [0.493006993006993, -1.475121501250208e-17], "rule": "R"}
 }

@@ -1,10 +1,10 @@
 """stardust: a library that rebuilds arrays, linear algebra, dataframes,
-special functions, statistics, random numbers, regression, optimization, hypothesis tests and
-sparse arrays.
+special functions, statistics, random numbers, regression, optimization, hypothesis tests,
+sparse arrays and numerical integration and differentiation.
 
 Usage: ``import stardust as sd``. The top level is the array area (docs/api/array.md);
 the others are sd.linalg, sd.frame, sd.special, sd.stats, sd.random, sd.regression,
-sd.optimize, sd.htest and sd.sparse.
+sd.optimize, sd.htest, sd.sparse, sd.integrate and sd.differentiate.
 """
 
 import math as _math
@@ -369,3 +369,5 @@ from . import regression  # noqa: E402  (sd.regression; it needs sd.stats and sd
 from . import optimize  # noqa: E402  (sd.optimize)
 from . import htest  # noqa: E402  (sd.htest; it needs sd.stats and sd.random)
 from . import sparse  # noqa: E402  (sd.sparse)
+from . import integrate  # noqa: E402  (sd.integrate)
+from . import differentiate  # noqa: E402  (sd.differentiate)

@@ -644,6 +644,74 @@ def _h6():
     add(m, "odds_ratio", "conditional", t22.astype(np.int64))
     add(m, "odds_ratio", "sample", t22.astype(np.int64), kind="sample")
     add(m, "relative_risk", "small", 9, 20, 4, 21)
+    # H6's own problems: weighted tables (H80), the degenerate margins, Yates' boundary, the
+    # Cressie-Read family on zeros, r x c tables for the network algorithm (H77), Barnard's
+    # mirror-image ties (scipy's rounded comparison drops them), the deep tails, batches
+    add(m, "chi2_contingency", "weighted", np.array([[3.5, 4.25, 1.0], [1.5, 6.0, 2.75]]))
+    add(m, "chi2_contingency", "weighted-2x2", np.array([[3.5, 4.25], [1.5, 6.0]]))
+    add(m, "chi2_contingency", "yates-within-half", np.array([[5.0, 5], [5, 6]]))
+    add(m, "chi2_contingency", "zero-row", np.array([[0.0, 0, 0], [3, 4, 5]]), tags=("degenerate",))
+    add(m, "chi2_contingency", "one-row", np.array([[3.0, 4, 5]]), tags=("degenerate",))
+    t34 = np.array([[10.0, 12, 8, 5], [7, 15, 9, 11], [4, 6, 14, 13]])
+    add(m, "chi2_contingency", "cressie-read", t34, lambda_="cressie-read")
+    add(m, "chi2_contingency", "lambda-number", t34, lambda_=0.3)
+    add(m, "chi2_contingency", "freeman-tukey-zero", np.array([[0.0, 5, 7], [6, 2, 3]]), lambda_="freeman-tukey")
+    add(m, "chi2_contingency", "neyman-zero", np.array([[0.0, 5], [6, 2]]), lambda_="neyman", correction=False)
+    add(m, "chi2_contingency", "near-expected-g", np.array([[1e6, 1e6 + 1], [1e6 + 1, 1e6]]),
+        lambda_="log-likelihood", correction=False)  # fmt: skip
+    add(m, "chi2_contingency", "tail-4x5", np.array([[60.0, 10, 5, 2, 1], [8, 50, 9, 3, 2], [3, 7, 55, 10, 4],
+                                                     [1, 2, 6, 48, 30]]), tags=("tail",))  # fmt: skip
+    add(m, "chi2_contingency", "batch", ints(233, (3, 2, 3), 20) + 1.0, tags=("batch",))
+    add(m, "fisher_exact", "zero-column", np.array([[0.0, 4], [0, 5]]), tags=("degenerate",))
+    add(m, "fisher_exact", "deep-tail", np.array([[500.0, 0], [0, 500]]), tags=("tail",))
+    add(m, "fisher_exact", "mirror", np.array([[2.0, 8], [8, 2]]))
+    add(m, "fisher_exact", "2x4", np.array([[3.0, 1, 0, 5], [0, 4, 6, 1]]), tags=("rxc",))
+    add(m, "fisher_exact", "3x4", np.array([[4.0, 7, 2, 9], [6, 3, 8, 1], [2, 5, 4, 6]]), tags=("rxc",))
+    add(m, "fisher_exact", "4x4", np.array([[2.0, 6, 1, 3], [5, 0, 4, 2], [1, 3, 7, 0], [4, 2, 1, 6]]), tags=("rxc",))
+    add(m, "fisher_exact", "2x6", np.array([[9.0, 3, 7, 1, 6, 12], [4, 10, 2, 8, 9, 3]]), tags=("rxc",))
+    add(m, "fisher_exact", "rxc-tail", np.array([[12.0, 1, 0], [1, 11, 2], [0, 1, 13]]), tags=("rxc", "tail"))
+    add(m, "fisher_exact", "rxc-one-row", np.array([[3.0, 4, 5]]), tags=("rxc", "degenerate"))
+    add(m, "fisher_exact", "rxc-zero-row", np.array([[0.0, 0, 0], [2, 3, 1], [4, 1, 2]]), tags=("rxc",))
+    add(m, "fisher_exact", "batch", ints(234, (3, 2, 2), 12), tags=("batch",))
+    add(m, "fisher_exact", "batch-rxc", ints(235, (2, 3, 3), 6), tags=("batch", "rxc"))
+    mirror, tail22 = np.array([[7.0, 12], [8, 3]]), np.array([[25.0, 2], [1, 22]])
+    for f in ("barnard_exact", "boschloo_exact"):
+        add(m, f, "mirror", mirror)
+        add(m, f, "zero-cell", np.array([[0.0, 5], [6, 2]]))
+        add(m, f, "tail", tail22, tags=("tail",))
+        add(m, f, "zero-column", np.array([[0.0, 3], [0, 4]]), tags=("degenerate",))
+        add(m, f, "equal-n", np.array([[9.0, 3], [3, 9]]))
+        add(m, f, "greater", np.array([[20.0, 12], [8, 25]]), alternative="greater")
+        add(m, f, "grid-4", t22, n=4)
+        add(m, f, "batch", ints(236, (2, 2, 2), 10) + 1.0, tags=("batch",))
+    add(m, "barnard_exact", "unpooled-less", mirror, pooled=False, alternative="less")
+    add(m, "barnard_exact", "mirror-unpooled", mirror, pooled=False)
+    add(m, "boschloo_exact", "less", t22, alternative="less")
+    add(m, "boschloo_exact", "greater-small", t22, alternative="greater")
+    for case, tab in {"equal": [[10.0, 6], [6, 12]], "zero-off": [[10.0, 0], [0, 12]],
+                      "large": [[500.0, 1200], [900, 400]]}.items():  # fmt: skip
+        tags = ("degenerate",) if case == "zero-off" else ()
+        add(m, "mcnemar", case, np.array(tab), tags=tags)
+        add(m, "mcnemar", f"{case}-chi2", np.array(tab), exact=False, tags=tags)
+    add(m, "mcnemar", "large-chi2-no-correction", np.array([[500.0, 1200], [900, 400]]), exact=False, correction=False)
+    add(m, "mcnemar", "batch", ints(237, (3, 2, 2), 15), tags=("batch",))
+    add(m, "cochrans_q", "k4", ints(231, (30, 4), 2))
+    add(m, "cochrans_q", "degenerate", np.array([[1.0, 1, 1], [0, 0, 0], [1, 1, 1]]), tags=("degenerate",))
+    g = _g(232)
+    add(m, "cochrans_q", "tail", (g.uniform(size=(400, 5)) < np.array([0.2, 0.3, 0.5, 0.6, 0.8])).astype(np.float64),
+        tags=("tail",))  # fmt: skip
+    add(m, "cochrans_q", "batch", ints(238, (3, 20, 3), 2), tags=("batch",))
+    for case, tab in {"zero-cell": [[0, 5], [3, 4]], "infinite": [[5, 0], [3, 4]], "large": [[100, 50], [30, 120]],
+                      "zero-margin": [[0, 0], [3, 4]]}.items():  # fmt: skip
+        for kind in ("conditional", "sample"):
+            add(m, "odds_ratio", f"{case}-{kind}", np.array(tab, dtype=np.int64), kind=kind,
+                tags=("degenerate",) if case == "zero-margin" else ())  # fmt: skip
+    add(m, "odds_ratio", "batch", ints(239, (2, 2, 2), 12).astype(np.int64) + 1, tags=("batch",))
+    add(m, "relative_risk", "zero-exposed", 0, 10, 3, 12, tags=("degenerate",))
+    add(m, "relative_risk", "zero-control", 3, 10, 0, 12, tags=("degenerate",))
+    add(m, "relative_risk", "zero-both", 0, 10, 0, 12, tags=("degenerate",))
+    add(m, "relative_risk", "large", 3000, 10000, 2000, 10000)
+    add(m, "relative_risk", "equal", 5, 10, 5, 10)
 
 
 # ---- H7: proportions and binomial ---------------------------------------------------------

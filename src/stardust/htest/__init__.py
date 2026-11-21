@@ -10,9 +10,20 @@ in docs/design/htest.md §1.1).
 The module holds the result objects (_result.py) and the input layer (_common.py) the tests
 share; the tests come milestone by milestone (docs/design/htest.md §8): H1's means and variances
 (_parametric.py), H2's goodness of fit (_gof.py), H3's rank tests (_rank.py), H4's goodness of
-fit between samples (_gof.py) and H5's correlation (_correlation.py) so far.
+fit between samples (_gof.py), H5's correlation (_correlation.py) and H6's contingency tables
+(_contingency.py) so far.
 """
 
+from ._contingency import (
+    barnard_exact,
+    boschloo_exact,
+    chi2_contingency,
+    cochrans_q,
+    fisher_exact,
+    mcnemar,
+    odds_ratio,
+    relative_risk,
+)
 from ._correlation import (
     chatterjeexi,
     kendalltau,
@@ -105,4 +116,12 @@ __all__ = [
     "weightedtau",
     "somersd",
     "chatterjeexi",
+    "chi2_contingency",
+    "fisher_exact",
+    "barnard_exact",
+    "boschloo_exact",
+    "mcnemar",
+    "cochrans_q",
+    "odds_ratio",
+    "relative_risk",
 ]

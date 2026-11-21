@@ -1,6 +1,6 @@
 # sd.integrate API
 
-> 상태: **초안** (설계 초안, 2026-11-21). 공개된 이름은 아직 없다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9 C2–C7)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
+> 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `IntegrateResult`뿐이다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9 C2–C7)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
 
 - 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C17), 미분은 [docs/api/differentiate.md](differentiate.md), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록에는 공개 이름과 시그니처만 둔다(나중의 `test_api_surface.py`가 읽는다).
@@ -28,7 +28,9 @@
 IntegrateResult
 ```
 - 모든 함수가 이 클래스를 돌려준다(표본 규칙, `fixed_quad`, `newton_cotes` 빼고: 값이나 배열이다). 규칙은 `sd.optimize.OptimizeResult`와 같다: 함수가 주는 필드만 있고 없는 필드는 `AttributeError`, 필드는 읽기 전용, 배열 필드는 읽기 전용이며 읽을 때 복사하지 않는다(O103, API.md §2.2), `repr`는 한 줄, dict처럼 쓰지 않는다.
-- `quad`·`dblquad`·`tplquad`·`nquad`·`quad_vec`의 결과는 scipy의 `(y, abserr)`처럼 둘로 풀린다: `integral, error = sd.integrate.quad(f, 0, 1)`(htest H7의 규칙). 다른 필드는 이름으로 읽는다. scipy의 `full_output`은 없다(필드가 늘 있다).
+- `quad`·`dblquad`·`tplquad`·`nquad`·`quad_vec`의 결과는 scipy의 `(y, abserr)`처럼 둘로 풀린다: `integral, error = sd.integrate.quad(f, 0, 1)`(htest H7의 규칙). `r[0]`, `r[1]`, `len(r) == 2`도 된다. 다른 필드는 이름으로 읽는다. scipy의 `full_output`은 없다(필드가 늘 있다).
+  - 다른 함수의 결과(`tanhsinh`, `nsum`, `cubature`)와 `IntegrateResult(...)`로 직접 만든 결과는 풀리지 않는다: `TypeError: this IntegrateResult does not unpack (only the quad family's results do): read its fields by name`. `bool(r)`은 언제나 참이다.
+- 공개 생성자 `IntegrateResult(*, batch=(), **fields)`는 `OptimizeResult`와 같다: 필드는 키워드로만, 모르는 이름은 `TypeError`(`IntegrateResult(): unexpected keyword argument 'estimate'`), 넘긴 배열은 한 번 복사한다. 없는 필드를 읽으면 `AttributeError: 'IntegrateResult' object has no attribute 'sum' (the function does not give it)`다. `summary()`는 `OptimizeResult`처럼 두고, 결과를 내는 첫 함수와 함께(C4) 만든다(docs/design/integrate.md §1.1 C20). 풀리는 것이 `quad` 계열뿐인 것은 C21이다.
 
 | 필드 | 뜻 | 주는 함수 |
 |---|---|---|

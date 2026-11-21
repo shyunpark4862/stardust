@@ -24,6 +24,19 @@ namespace nb = nanobind;
 // starting with '.' is a property: ".T: " + msg. A null or empty name adds nothing.
 std::string with_name(const char* func, const char* msg);
 
+// A TypeError raised for an sd.sparse array given where an sd.ndarray is required
+// (require_ndarray): rethrow_named names the function and adds what to use for a sparse
+// array, sparse_hint(func) (docs/design/sparse.md §3.10, decision SP67). Anywhere else it is
+// a plain TypeError with its message.
+struct SparseOperand : nb::builtin_exception {
+    explicit SparseOperand(const std::string& msg)
+        : nb::builtin_exception(nb::exception_type::type_error, msg.c_str()) {}
+};
+
+// "; for a sparse array use A.sum()" (the sparse method, operator or function for array function
+// `func`), else "; a sparse array has no func: use func(A.toarray())". In bind/pyutil.cpp.
+std::string sparse_hint(const std::string& func);
+
 // Inside a catch block: rethrows the exception being handled with `func`'s
 // name in front of its message (TypeError, ValueError, IndexError, KeyError,
 // BufferError, OverflowError and LinAlgError keep their type). Anything

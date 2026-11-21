@@ -1,6 +1,6 @@
 # 희소 영역 설계 (sd.sparse)
 
-> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 SP1–SP5)과 SP0–SP3의 결정(SP6–SP58)은 사용자가 정했다. 나머지는 안이다. SP0(준비)은 완료·승인, SP1(형식과 변환)은 완료·승인, SP2(연산)는 완료·승인, SP3(인덱싱과 만들기)은 완료·승인(2026-11-21), SP4–SP8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 SP1–SP5)과 SP0–SP4의 결정(SP6–SP71; SP66–SP71은 추천안을 사용자가 위임)은 사용자가 정했다. 나머지는 안이다. SP0(준비)은 완료·승인, SP1(형식과 변환)은 완료·승인, SP2(연산)는 완료·승인, SP3(인덱싱과 만들기)은 완료·승인(2026-11-21), SP4(직접 풀이)는 완료·승인(위임, 2026-11-21), SP5–SP8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
 
 `sd.sparse`(희소 배열과 희소 선형대수)의 확정 사항과 내부 구조의 안을 적는다.
 
@@ -74,6 +74,19 @@
 | SP56 bool의 `kron` | bool × bool은 int64다(배열의 `multiply`, 희소 `A * B`와 같다; `[scipy와 다름]`: scipy는 bool) (사용자 결정 2026-11-21) |
 | SP57 `diags_array`의 대각 | 대각 하나하나는 `sd.ndarray`나 수다(API.md §5의 배열 함수 입력 규칙; 수의 리스트는 `TypeError`) (사용자 결정 2026-11-21) |
 | SP58 `random_array`의 `data_sampler` | `data_sampler(n)`으로 위치 인자 하나로 부르고, `dtype=None`이면 그 결과의 dtype을 둔다(`[scipy와 다름]`: scipy는 `data_sampler(size=n)`과 float64) (사용자 결정 2026-11-21) |
+| SP59 LU의 순서 | AMD로 고정한다. `ordering=` 옵션은 없다(Metis는 동시 호출에서 비트가 다르고 MTMetis는 동시 호출에서 프로세스가 죽는다, §1.4) (사용자 결정 2026-11-21) |
+| SP60 `splu`의 결과 | 내보내지 않는 `SparseLU`다. `solve`와 `shape`만 있고 `L`·`U`·`perm_r`·`perm_c`·`nnz`는 없다(Accelerate가 인수를 내보이지 않는다) (사용자 결정 2026-11-21) |
+| SP61 scipy의 옵션 | `permc_spec`, `diag_pivot_thresh`, `use_umfpack`, `relax`, `panel_size`, `options`, `overwrite_A`, `overwrite_b`를 받지 않는다(그런 키워드가 없어 `unexpected keyword argument`의 `TypeError`다) (사용자 결정 2026-11-21) |
+| SP62 특이의 판정 | 구조적 특이(Accelerate의 `SparseMatrixIsSingular`), 유한하지 않은 해, 분해의 조건수 추정(‖A‖₁ × `onenormest` 꼴로 어림한 ‖A⁻¹‖₁ = κ₁, κ₁·ε ≥ 1이면 특이) 셋이 모두 `LinAlgError("<함수>(): singular matrix")`다. 정확히 특이한 행렬이 Accelerate에서 크기 1/ε의 유한한 해를 내기 때문이다(§1.4, §3.6) (사용자 결정 2026-11-21) |
+| SP63 반복 다듬기 | 잰 역오차가 계약을 넘는 행렬이 있으면 한 번 넣는다. SP4에서 쟀고 saddle/600x150이 404ε이라 모든 풀이에 한 번 넣었다(§3.6의 측정) (사용자 결정 2026-11-21) |
+| SP64 우변이 여럿 | Accelerate가 함께 푼다. 결과는 열 수 k와 값으로 정해지고 결정적이다. 열 하나의 비트는 혼자 푼 것과 다를 수 있다 (사용자 결정 2026-11-21) |
+| SP65 `LinearOperator`의 위치 인자 | `shape`, `matvec`만 위치다. `rmatvec`, `matmat`, `rmatmat`, `dtype`은 키워드다(API 초안대로) (사용자 결정 2026-11-21) |
+| SP66 κ₁·ε ≥ 1의 판정 | 그대로 둔다: SuiteSparse의 sherman3(κ₁ 6.9×10¹⁶)·cvxqp3(2.2×10¹⁶)도 `LinAlgError`다. scipy는 이 행렬에서 해를 돌려주지만 앞오차가 κε ≥ 1이라 맞는 자리가 없는 해다(§3.6, §7.2) (추천안, 사용자 위임 2026-11-21) |
+| SP67 배열의 함수 | 배열의 함수(`sd.matmul`, `sd.sum` 등)도 희소 배열을 받으면 쓸 희소 메서드·연산자·함수를 짚는 `TypeError`다. 배열 영역의 한 곳(`csrc/bind/pyutil.cpp`의 `require_ndarray`와 표 `sparse_hint`, 이름을 붙이는 `csrc/bind/errors.cpp`의 `rethrow_named`)에서 실패한 호출에만 한다(§3.10) (추천안, 사용자 위임 2026-11-21) |
+| SP68 `spsolve_triangular`의 `upper` | `sd.linalg.solve_triangular`처럼 꼭 주는 키워드 `upper`를 받는다. `lower`는 없다(`[scipy와 다름]`: scipy는 `lower=True`가 기본) (추천안, 사용자 위임 2026-11-21) |
+| SP69 (n, 1)의 밀집 b | 결과도 (n, 1)이다(`sd.linalg.solve`와 같다; `[scipy와 다름]`: scipy는 (n,)) (추천안, 사용자 위임 2026-11-21) |
+| SP70 열 하나·1차원의 희소 b | 결과도 희소다(1차원은 CSR; `[scipy와 다름]`: scipy는 밀집) (추천안, 사용자 위임 2026-11-21) |
+| SP71 `rmatvec` 없는 연산자 | `rmatvec`은 `ValueError`(`rmatvec(): the operator was made without 'rmatvec'`)다(`[scipy와 다름]`: scipy는 `NotImplementedError`) (추천안, 사용자 위임 2026-11-21) |
 
 ### 1.2 범위 (안)
 마일스톤은 §8이다. "SPn"은 그 마일스톤에서 만든다는 뜻이고 "나중"은 첫 판에 넣지 않는 후보다.
@@ -147,6 +160,10 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
 - LU에 COLAMD 순서를 주면 `reportError`에 "not supported for this factorization type"을 보내지만 **status는 0이고 다른 순서로 분해한다**. 그래서 래퍼는 콜백이 불렸는지를 status와 따로 보고 메시지가 있으면 실패로 다룬다(`csrc/accelerate/sparse.hpp`). LU의 순서는 AMD, Metis, MTMetis, 사용자다.
 - 0 × 0 행렬은 받지 않는다(`rowCount must be > 0`, 매개변수 오류). 직사각 행렬의 LU도 매개변수 오류다(status −4).
 - 특이 판정: 구조적으로 특이하면 `SparseMatrixIsSingular`다(LU는 메시지도 보내고, QR은 보내지 않는다). **수치적으로 특이하면 성공(status 0)을 돌려준다**: 2 × 2 [[1, 2], [2, 4]]의 LU는 status 0이고, `zeroTolerance = 0`이면 풀이가 ±inf, `zeroTolerance = 10⁻¹⁴`이면 틀린 유한한 값(x = (1, −0); Ax ≠ b)이다. QR도 status 0에 x ≈ 2.6×10¹⁵다. 반올림 때문에 0 피벗이 정확히 0이 되지 않는 정확히 특이한 행렬(Neumann 라플라시안, 같은 열 둘)은 `zeroTolerance = 0`에서도 status 0과 크기 1/ε의 유한한 해다(SP0, §7). 그래서 특이의 판정은 이쪽이 한다(§3.6).
+- **SP4에서 찾은 것**(SDK 26.5, 모든 시험 행렬에서 재현):
+  - 전치로 도는 풀이(CSC 인수의 `SparseGetTranspose`, 또는 CSR을 전치 속성으로 넘긴 인수의 보통 풀이)는 **우변이 둘 이상이면 틀린 답**을 낸다(k = 2, 5에서 잔차가 1 크기; 실수·복소, 대칭 행렬도). 우변이 하나면 맞다. 그래서 래퍼는 전치 풀이를 열마다 따로 부른다(`csrc/accelerate/sparse.hpp`).
+  - 복소 LU의 `SparseGetConjugateTranspose`로 풀면 몇백 행(random_complex/800)에서 **프로세스가 멈춘다**(SIGTRAP). Aᴴx = b는 conj(Aᵀ conj(x)) = b로 푼다(켤레 둘과 전치 풀이).
+  - CSR을 전치 속성으로 넘겨 분해한 인수와 같은 행렬의 CSC로 분해한 인수는 풀이의 끝자리가 다르다(상대 10⁻¹⁶–10⁻¹⁵). 형식이 비트를 바꾸지 않도록 모든 입력을 CSC로 바꿔 분해한다(§3.6).
 - 반복법의 멈춤 판정은 ‖b − Ax‖₂ < rtol·‖b − Ax₀‖₂ + atol이고(처음 잔차에 대한 상대, scipy는 ‖b‖에 대한 상대), rtol의 기본은 √ε다. `SparseSolve`는 반복 수를 돌려주지 않는다(상태 넷과 `reportStatus` 글뿐).
 
 **결정성** (SP0에서 잼, `tools/sparse_probe.py det·conc`: 행렬 꼴 열 가지(2·3차원 라플라시안, 대류-확산, 대각 우세 무작위, 띠, 밀집 블록 대각, 안장점, Neumann + 10⁻⁸I, 직사각, 복소), 크기 n ≈ 3.6×10³, 9×10⁴, 4.9×10⁵; 같은 프로세스에서 같은 입력을 20번 분해하고 풀어 결과의 바이트를 견줌. 칸은 "다른 결과가 나온 꼴 / 잰 꼴")
@@ -354,22 +371,29 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
 - 두지 않는 것: `dot`(`@`와 같다), `conjugate`(`conj`와 같다), `todense`(`toarray`와 같다), `power`의 정수 지수 0, `prune`(표준 꼴이라 할 일이 없다), `getrow`·`getcol`(옛 꼴), scipy의 `reshape(order=)`·`transpose(axes=, copy=)`·`astype(casting=)`.
 
 ### 3.6 직접 풀이 (SP4)
-- **LU는 Accelerate의 `SparseFactorizationLU`(문턱 부분 피벗)를 AMD 순서로 부른다**(SP18). LU의 기본 순서 MTMetis와 `SparseOrderDefault`는 쓰지 않는다: 실행마다 결과가 다르고 동시 호출에서 프로세스가 죽는다(§1.4). Metis는 동시 호출에서 실행마다 다르다. 3차원 격자에서는 AMD의 채움이 더 많아 Metis보다 1.5–2배 느리다(§5). 순서를 고르는 옵션을 둘지는 §9 SP4의 1번이다.
-- **Cholesky·LDLᵀ는 첫 판에 쓰지 않는다**(SP18). Accelerate의 대칭 분해는 기본 스레드 모드에서 실행마다 비트가 다르고, 프로세스 안에서 그것을 막을 길이 없다(`BLASSetThreading`도 듣지 않는다, §1.4). scipy.sparse.linalg의 공개 함수에는 대칭 분해가 없으므로(모두 SuperLU의 LU다) 범위는 줄지 않는다. 대칭 행렬도 LU로 푼다(대칭을 쓰지 못해 2차원 라플라시안 n = 9×10⁴에서 Cholesky 21 ms 대 LU 92 ms; scipy의 SuperLU 139 ms보다는 빠르다, §5).
+- **LU는 Accelerate의 `SparseFactorizationLU`(문턱 부분 피벗, `pivotTolerance` 0.01)를 AMD 순서로 부른다**(SP18, SP59). LU의 기본 순서 MTMetis와 `SparseOrderDefault`는 쓰지 않는다: 실행마다 결과가 다르고 동시 호출에서 프로세스가 죽는다(§1.4). Metis는 동시 호출에서 실행마다 다르다. 3차원 격자에서는 AMD의 채움이 더 많아 Metis보다 1.5–2배 느리다(§5). 순서를 고르는 옵션은 없다(SP59).
+- **Cholesky·LDLᵀ는 첫 판에 쓰지 않는다**(SP18). Accelerate의 대칭 분해는 기본 스레드 모드에서 실행마다 비트가 다르고, 프로세스 안에서 그것을 막을 길이 없다(`BLASSetThreading`도 듣지 않는다, §1.4). scipy.sparse.linalg의 공개 함수에는 대칭 분해가 없으므로(모두 SuperLU의 LU다) 범위는 줄지 않는다. 대칭 행렬도 LU로 푼다.
   - 나중 후보: 이 라이브러리가 결정적인 희소 Cholesky를 짠다(초마디 Cholesky: 기호 분석과 제거 트리, 초마디마다 밀집 `potrf`·`trsm`·`syrk`, 트리 위의 병렬은 형제의 결과를 고정 순서로 더한다). CHOLMOD 꼴이라 큰 일이고 나중 후보다(regression의 정규방정식, eigsh의 shift-invert에 쓰인다).
-- **특이의 판정**: Accelerate는 구조적 특이만 알린다(§1.4). `zeroTolerance = 0`으로 분해하면 정확한 0 피벗이 풀이에 ±inf·NaN을 낸다. 그래서 (1) 구조적 특이(`SparseMatrixIsSingular`)는 `LinAlgError("singular matrix")`, (2) 유한한 입력의 풀이가 유한하지 않으면 `LinAlgError("singular matrix")`다. linalg의 "특이는 정확한 0 피벗만"(linalg.md §2.2)에 가장 가깝지만, 피벗을 볼 수 없으므로 넘침으로 생긴 inf도 특이로 보고한다. `splu(A)`는 분해할 때 1의 벡터로 한 번 풀어 확인한다(O(nnz(L + U)), 분해보다 작다).
-  - **SP0에서 찾은 빈틈**: 반올림 때문에 0 피벗이 정확히 0이 되지 않는 정확히 특이한 행렬(Neumann 라플라시안, 같은 열 둘)은 status 0과 크기 1/ε의 유한한 해다(n = 100에서 2.6×10¹⁶). 그 해의 정규화 역오차는 ε 크기라(1.6×10⁻¹⁶) 잔차 검사로는 보이지 않는다. 판정을 더할지(분해의 조건수 추정: `onenormest`로 ‖A⁻¹‖₁을 어림해 κ₁·ε ≥ 1이면 `LinAlgError`)는 §9 SP4의 4번이다. scipy의 SuperLU도 이런 행렬(dupcol/40, lap2d/10n)에서 경고 없이 크기 3×10¹⁹·5×10¹⁴의 해를 낸다(SP0의 기록).
-- **빈 행렬**: Accelerate는 0 × 0을 받지 않는다(매개변수 오류). `spsolve`는 부르기 전에 빈 결과로 답한다.
-  - `[scipy와 다름]`: scipy `spsolve`는 특이 행렬에서 `MatrixRankWarning`과 NaN 배열을, `splu`는 `RuntimeError("Factor is exactly singular")`를 낸다. 여기서는 둘 다 `LinAlgError`다(linalg와 같다).
-- **유한성 검사**: `A`와 `b`에 NaN·inf가 있으면 `ValueError`다(linalg.md §2.3과 같다; 저장된 원소만 본다).
-- `spsolve(A, b, /)`: A는 정방 CSR·CSC(다른 형식은 CSC로 바꾼다). b가 (n,)이면 (n,), (n, k)이면 (n, k) 밀집, b가 희소면 결과도 희소(scipy와 같다). `permc_spec`, `use_umfpack`은 없다.
-- `splu(A, /)`: 분해 객체. 메서드 `solve(b, /, *, trans='N')`(`'N'`, `'T'`, `'H'`; Accelerate의 전치·켤레 전치 풀이), 속성 `shape`, `nnz`(인수의 크기를 줄 수 있으면). scipy `SuperLU`의 `L`, `U`, `perm_r`, `perm_c`는 줄 수 없다(§1.4; §9 SP4의 2번). `permc_spec`, `diag_pivot_thresh`, `relax`, `panel_size`, `options`는 SuperLU의 옵션이라 두지 않는다.
-- `factorized(A, /)`: `splu(A).solve`와 같은 호출 가능한 객체.
-- `inv(A, /)`: 단위 행렬을 우변으로 푼 희소 결과(scipy와 같다; 결과의 0은 지운다). 대개 밀집이 되므로 문서에 적는다.
-- `spsolve_triangular(A, b, /, *, lower=True, unit_diagonal=False)`: 이 라이브러리의 커널이다. CSR의 앞(뒤)으로 대입: xᵢ = (bᵢ − Σⱼ aᵢⱼxⱼ)/aᵢᵢ, 합은 §2.6의 줄 합(j 오름차순 FMA). 우변이 여럿이면 열마다 병렬(열끼리 독립). 한 우변 안의 병렬은 단계 스케줄링(같은 단계의 행은 서로 기대지 않는다)으로 하고 행 하나의 순서는 바뀌지 않는다. 대각의 0은 `LinAlgError("singular matrix")`(linalg.md §2.2의 `zero_on_diagonal`과 같다). scipy의 `overwrite_A`, `overwrite_b`는 없다.
-- `is_sptriangular`, `spbandwidth`: 패턴만 보는 O(nnz) 도구.
-- **우변이 여럿**: Accelerate가 열을 함께 풀어 열 하나의 비트가 혼자 푼 것과 다르다(반올림 크기, 결정적). 열마다 따로 풀지는 §9 SP4의 6번이다.
-- 정확도는 SuperLU와 다른 피벗(문턱 ≤ 0.5)과 척도 조정이라 끝자리뿐 아니라 역오차의 크기도 다를 수 있다. 계약은 역오차로 정한다(§4). 반복 다듬기(iterative refinement)를 넣을지는 SP4에서 잰 역오차를 보고 묻는다.
+- **입력**: A는 희소 배열이다(밀집 `sd.ndarray`는 `sd.linalg.solve` 등을 짚는 `TypeError`). 모든 형식을 CSC로 바꿔 분해한다: Accelerate에 CSR을 전치 속성으로 넘기면 같은 행렬의 CSC와 끝자리가 다르고(형식이 비트를 바꾼다), 그 인수의 여러 우변 풀이가 틀리기 때문이다(§1.4). CSR → CSC는 O(nnz)라 분해에 비해 작다. 값은 float64(bool·int64에서)나 complex128이고, 저장된 NaN·inf는 `ValueError`(`'A' contains NaN or infinity`, linalg와 같은 문장)다. 우변 b는 밀집 `sd.ndarray`((n,)이나 (n, k); numpy 배열과 리스트는 `TypeError`, API.md §5)이고 `spsolve`는 희소 b도 받는다.
+- **특이의 판정**(SP62, `csrc/sparse/direct.cpp`): 분해 뒤에 한 번 한다(`splu`는 만들 때, `spsolve`·`inv`·`factorized`는 풀기 전). 셋 중 하나면 `LinAlgError("<함수>(): singular matrix")`다.
+  1. 구조적 특이: Accelerate의 `SparseMatrixIsSingular`.
+  2. 조건수 추정 안의 풀이가 유한하지 않다(정확한 0 피벗; `zeroTolerance = 0`이라 inf가 나온다; 넘침도 여기에 든다).
+  3. κ₁ = ‖A‖₁ · est(‖A⁻¹‖₁)이 κ₁·ε ≥ 1이다. est는 LAPACK의 1-노름 추정기 `lacn2`(Hager 1984, Higham 1988; `gecon`이 쓰는 것, linalg의 래퍼)를 A와 Aᴴ의 인수 풀이로 돌린 것이다. 시작 벡터가 정해져 있어 결정적이고, 참값의 하한이다. 풀이는 보통 4–5번이다. SP7의 `onenormest`(Higham–Tisseur의 블록 t = 2)와 같은 꼴이지만 t = 1이고 무작위 열이 없다.
+  - 잰 것(SP4, 시험 행렬 64개 중 정방 전부): 특이로 판정한 것은 정확히 특이한 행렬 모두(Neumann 라플라시안 lap1d/10n·lap2d/10n·lap2d/60n, 같은 열 dupcol/40·dupcol/1000, 상쇄 행렬 cancel/50·cancel/400(dense κ₁ 3×10²⁴·3×10²⁸, 랭크 47/50·382/400), 구조적 특이 셋)이고, 특이가 아닌 행렬은 모두 풀었다(가장 나쁜 graded/400x12의 κ₁ 추정 7.5×10¹⁴, near_singular/20 8×10⁸). 추정값은 작은 행렬에서 dense κ₁의 1/10 이상, 그 이하다(테스트). scipy의 SuperLU는 dupcol/40·lap2d/10n에서 경고 없이 크기 3×10¹⁹·5×10¹⁴의 해를 낸다.
+  - SuiteSparse(§7.2)의 sherman3(κ₁ 6.9×10¹⁶)과 cvxqp3(κ₁ 2.2×10¹⁶)은 κ₁·ε ≥ 1이라 `LinAlgError`다(SP66). scipy는 경고 없이 해를 돌려주지만 앞오차 κε가 1을 넘어 맞는 자리가 없다.
+  - 비용: 분해 시간의 약 10–15%(2차원 라플라시안 n = 9×10⁴에서 `_lu_solve`의 분해 + 풀이 69 ms 대 `spsolve` 82 ms; 다듬기 포함).
+  - `[scipy와 다름]`: scipy `spsolve`는 구조적 특이에서 `MatrixRankWarning`과 NaN 배열을, `splu`는 `RuntimeError("Factor is exactly singular")`를 내고, 값으로 특이한 행렬은 경고 없이 큰 유한한 해를 낸다. 여기서는 모두 `LinAlgError`다(linalg와 같은 예외).
+- **반복 다듬기**(SP63): 모든 풀이(`spsolve`, `SparseLU.solve`, `factorized`, `inv`)에 한 번 한다: x ← x + solve(b − op(A)x), 잔차는 이 라이브러리의 SpMV(§2.6)다. 잰 것: 다듬기 없이 정규화 역오차가 saddle/600x150에서 404ε(문턱 피벗 0.01의 성장)이었고 나머지는 4ε 이하였다. 한 번 다듬은 뒤에는 모든 시험 행렬에서 0.50ε 이하, 앞오차는 참값 대비 0.39·κ∞ε 이하다(scipy의 SuperLU는 0.10–4.4ε). 비용은 풀이 하나와 SpMV 하나다(random_unsym/100000x10의 풀이 28 ms 대 scipy 15 ms; 분해는 sd 621 ms 대 scipy 727 ms).
+- **빈 행렬**: Accelerate는 0 × 0을 받지 않는다(매개변수 오류). `spsolve`·`splu`·`inv`는 Accelerate를 부르지 않고 빈 결과로 답한다(scipy와 같다).
+- `spsolve(A, b, /)`: b가 (n,)이면 (n,), (n, k)이면 (n, k) 밀집이다. `[scipy와 다름]`(SP69): scipy는 (n, 1)을 (n,)으로 펴지만 여기서는 (n, 1)이다(`sd.linalg.solve`와 같다). b가 희소면 결과도 희소이고 A의 형식이다(CSR은 CSR, 나머지는 CSC; scipy와 같다). 희소 b는 크기로만 정해지는 열 묶음(약 2²²개 값, 1–64열)마다 밀집으로 풀어 정확한 0을 뺀다(NaN은 남는다; scipy는 열마다 풀어 `flatnonzero`). `[scipy와 다름]`(SP70): scipy는 열이 하나인 희소 b와 1차원 희소 b에 밀집 결과를 주지만 여기서는 희소다(1차원은 CSR). dtype은 A와 b의 승격이다: 실수 A와 복소 b는 실수 인수로 실수부·허수부를 함께 푼다(scipy는 A를 복소로 바꿔 분해한다; 반올림만 다르다).
+- `splu(A, /)`: 내보내지 않는 `SparseLU`(SP60). `solve(b, /, *, trans='N')`(`'N'`, `'T'`, `'H'`), `shape`, repr `SparseLU(shape=(n, n), dtype=float64)`. `L`, `U`, `perm_r`, `perm_c`, `nnz`는 없다(Accelerate가 인수를 내보이지 않는다, §1.4). 실수 인수에 복소 b를 주면 실수부·허수부를 함께 푼다(`[scipy와 다름]`: scipy의 `SuperLU.solve`는 `TypeError`; `sd.linalg.lu_solve`와 같다). 한 인수를 여러 Python 스레드가 동시에 풀어도 같은 비트다(GIL을 놓는다). scipy의 SuperLU 옵션(`permc_spec`, `diag_pivot_thresh`, `relax`, `panel_size`, `options`)은 없다(SP61).
+- `factorized(A, /)`: `splu(A).solve`(묶인 메서드)다. scipy(umfpack이 없을 때)와 같다.
+- `inv(A, /)`: 단위 행렬을 희소 우변으로 푼 결과(scipy와 같다; A의 형식, 정확한 0은 뺀다). 대개 밀집에 가까워 크기 n²의 메모리가 든다.
+- **우변이 여럿**(SP64): 보통 풀이(`trans='N'`)는 Accelerate가 열을 함께 푼다. 열 하나의 비트는 혼자 푼 것과 반올림 크기만큼 다를 수 있고(결정적이다), 전치 풀이(`'T'`, `'H'`)는 Accelerate의 결함 때문에 열마다 따로 푼다(§1.4).
+- `spsolve_triangular(A, b, /, *, upper, unit_diagonal=False)`: 이 라이브러리의 대입 커널이다(`csrc/sparse/triangular.cpp`). `upper`는 꼭 주는 키워드다(SP68; `sd.linalg.solve_triangular`와 같다; `[scipy와 다름]`: scipy는 `lower=True`가 기본이다). A를 CSR로 바꾸고(형식과 무관한 비트) 고른 삼각만 읽는다: xᵢ = (bᵢ − sᵢ)/aᵢᵢ, sᵢ는 행의 삼각 원소 Σⱼ aᵢⱼxⱼ를 §2.6의 줄 합(0에서 j 오름차순 FMA, L 조각)으로 더한 것이다. 복소의 나눗셈은 배열의 `divide`와 같은 꼴이다. 열은 서로 기대지 않으므로 우변이 여럿이면 16열씩의 고정 묶음이 스레드풀에서 돌고, 열 하나의 비트는 다른 열이나 k와 무관하다(scipy도 열마다다). 우변 하나는 한 스레드다(단계 스케줄링은 SP8 후보). 대각이 없거나 0이면 `LinAlgError("spsolve_triangular(): singular matrix")`(linalg.md §2.2의 `zero_on_diagonal`과 같다; 풀기 전에 본다). `unit_diagonal=True`면 대각을 읽지 않는다. 결과는 b의 모양이다(scipy와 같다).
+  - `[scipy와 다름]`: 고른 삼각 밖의 원소는 읽지 않는다(`sd.linalg.solve_triangular`와 같다). scipy 1.18.1은 그 원소가 있으면 경고 없이 틀린 답을 낸다(SuperLU `gstrs`에 그대로 넘긴다; 문서는 `LinAlgError`라 한다). scipy의 `overwrite_A`, `overwrite_b`는 없다. scipy는 A·diag(1/d)로 단위 삼각을 푼 뒤 1/d를 곱하는 순서라 반올림만 다르다.
+  - 정확도: 대입의 표준 역오차 |b − Tx̂| ≤ γₙ|T||x̂|를 정확한 유리수 잔차로 원소마다 확인했다(테스트). 정해진 순서와 비트까지 같다(Python의 `math.fma`로 같은 순서를 짠 것과 견준다).
+- `is_sptriangular(A, /)`, `spbandwidth(A, /)`: 패턴만 보는 O(nnz) 도구다(저장된 0도 센다; scipy와 같다). 행마다 첫 열과 마지막 열만 본다(정렬된 표준 꼴). 아무것도 저장하지 않은 행렬은 `(0, 0)`과 `(True, True)`다(`[scipy와 다름]`: scipy 1.18.1의 `spbandwidth`는 빈 CSR에서 `ValueError`, `is_sptriangular`는 0 × 0 CSR에서 `IndexError`).
 
 ### 3.7 반복법 (SP5)
 - **이 라이브러리가 짠다**(SP16; SP4의 "알맞은 반복법은 Accelerate"를 바꾼다). 이유:
@@ -418,15 +442,16 @@ SDK의 `Accelerate.framework/Frameworks/vecLib.framework/Headers/Sparse/`(`Types
   | `kron` | `sd.sparse.kron` |
   | 그 밖 | `A.toarray()`로 바꾸라는 글 |
 
-- 배열의 함수(`sd.matmul`, `sd.sum` 등)도 희소 배열에 같은 꼴의 `TypeError`다(`A @ x`, `A.sum()`을 짚는다). 이것은 `sd.linalg`·배열의 인자 검사에 판별 하나를 더하는 일이고, 다른 입력의 결과는 바뀌지 않는다(골든 그대로).
+- **SP4의 구현**: linalg의 모든 입력이 지나는 한 곳(`csrc/linalg/input.cpp`의 `Input`)이 실패한 호출에서만 받은 객체가 `stardust.sparse`의 클래스인지 보고 메시지 끝에 짚는 글을 붙인다. 짚는 함수가 아직 `sd.sparse`에 없으면(SP5–SP7의 `eigsh`, `eigs`, `svds`, `norm`, `lsqr`·`lsmr`, `expm`) 그 마일스톤까지는 "그 밖"의 글(`; a sparse array has no eigh: use eigh(A.toarray())`, 배열의 원소별 함수와 같은 꼴)이고, 함수가 생기면 저절로 그 함수를 짚는다. 다른 입력의 메시지와 결과는 그대로다(linalg 골든 같음). 메시지 예: `inv(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.inv`.
+- **배열의 함수**(SP67): `sd.matmul`, `sd.sum` 등도 희소 배열에 같은 꼴의 `TypeError`다: `sum(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use A.sum()`, `matmul(): ...; for a sparse array use A @ B`, 짝이 없으면 `; a sparse array has no sort: use sort(A.toarray())`. 배열의 입력 검사 `require_ndarray`(`csrc/bind/pyutil.cpp`)가 희소 배열에서만 `SparseOperand`(TypeError)를 내고, 함수 이름을 붙이는 `rethrow_named`(`csrc/bind/errors.cpp`)가 표 `sparse_hint`(같은 파일; SP36의 원소별 함수 표를 `csrc/array/ops/ufunc.cpp`에서 옮겨 넓혔다)의 글을 붙인다. 실패한 호출에서만 동작하고 다른 입력의 메시지와 결과는 그대로다(모든 영역의 골든 같음). `require_ndarray`를 쓰는 다른 영역(special, stats, htest)의 함수도 같은 글을 받는다(짝이 없으면 `A.toarray()`).
 
 ---
 
 ## 4. 정확도 계약 (안)
 - **정확한 연산**: 형식 변환, 전치, 인덱싱, 만들기, 패턴 연산, 원소 하나의 산술(희소끼리의 ±, `*`, 스칼라 곱, 원소별 함수)은 같은 원소의 배열 연산과 비트까지 같다. 원소별 함수의 정확도는 배열의 것(array.md §2.7의 표)이다.
 - **합과 곱의 합**(SpMV, SpMM, SpGEMM, 리덕션): §2.6의 순서로 계산한 값이 참값과 |ŷ − y| ≤ γ_m·Σ|aᵢⱼxⱼ|(m = min(n, L) + ⌈log₂(n/L)⌉, γ_m = mε/(1 − mε))다. Arb의 정확한 내적과 견준다(상쇄가 큰 줄, 긴 줄, 아주 큰·작은 값). 순서 자체가 정의이므로 같은 순서의 다른 구현(scipy의 SpMV)과는 비트까지 같다.
-- **직접 풀이**: 정규화한 역오차 ‖b − Ax̂‖∞ / (‖A‖∞‖x̂‖∞ + ‖b‖∞)가 c·ε 이하다. c는 SP4에서 시험 행렬로 재서 정한다(문턱 피벗이라 c는 행렬에 따라 자랄 수 있다; 넘는 행렬은 문서화한다). 작은 행렬(n ≤ 2000)은 Arb의 정확한 풀이와 견주어 앞오차가 κ∞(A)·c·ε 안인지 본다.
-- **삼각 풀이**: 대입의 표준 역오차 |ΔA| ≤ γ_n|A|(Higham 2002, 8장)를 원소별로 확인한다.
+- **직접 풀이**: 정규화한 역오차 ‖b − Ax̂‖∞ / (‖A‖∞‖x̂‖∞ + ‖b‖∞)가 c·ε 이하이고 c = 4다(`tests/sparse/refdata.py`의 `C_BACKWARD`). SP4에서 쟀다: 반복 다듬기 한 번 뒤에 정방이고 특이가 아닌 시험 행렬 모두와 SuiteSparse의 다섯(§7.2)에서 0.50ε 이하다(우변 여럿과 `trans='T'`·`'H'`는 네 시험 행렬과 SuiteSparse 다섯에서 테스트가 계약 안을 확인한다). 작은 행렬(n ≤ 2000, 참값 30점)은 Arb의 검증된 풀이와 견주어 앞오차가 C_SOLVE·κ∞(A)·ε(C_SOLVE = 4) 안이다(가장 큰 것 0.39κ∞ε; 정확도 스윕 `solve`).
+- **삼각 풀이**: 대입의 표준 역오차 |b − Tx̂| ≤ γ_n|T||x̂|(Higham 2002, 8장)를 원소마다 정확한 유리수 잔차로 확인한다(SP4, 실수·복소·긴 행).
 - **반복법**: 결과는 "멈춤 판정을 만족한 점"이다(optimize §4와 같은 원리). `converged=True`면 반환 시점에 다시 계산한 참 잔차가 판정을 만족하는지 시험에서 확인한다(재귀 잔차와 참 잔차가 갈라지는 경우는 기록한다). 같은 문제에서 반복 수·상태를 scipy와 견준다.
 - **고유값·특이값**: 각 쌍의 잔차 ‖Av − λv‖₂ ≤ tol·‖A‖₂ 꼴(ARPACK의 판정; tol = 0이면 ε), 고유벡터의 직교성 ‖VᴴV − I‖ ≤ c·k·ε. 대칭 문제의 고유값은 작은 행렬(n ≤ 500)에서 Arb의 고유값과 |λ̂ − λ| ≤ c·ε‖A‖₂다.
 - **`expm`**: 밀집 `sd.linalg.expm`과 같은 꼴의 계약(linalg.md §11.5)이고 작은 행렬에서 Arb의 `arb_mat_exp`와 견준다. `expm_multiply`는 알고리즘의 허용오차(2⁻⁵³ 상대)에 조건수를 곱한 꼴이다.
@@ -516,12 +541,31 @@ SP0에서 잰 scipy 1.18.1의 시간이다(ms, 호출 하나의 가장 좋은 �
 - 정렬되지 않은 열 고르기는 줄마다 결과를 자리로 정렬하는 몫이 있다(1스레드 0.64배). `random_array`의 시간 대부분은 `sd.random`의 `choice(10¹⁰, 10⁶, replace=False)`(약 70 ms; numpy는 약 15 ms)다. 둘 다 SP8의 고칠 목록에 넣는다.
 - 원소 하나 읽기 `A[i, j]`는 호출 하나에 약 1.4 µs(scipy 4.2 µs)다(키 읽기가 대부분).
 
+**SP4에서 잰 것**(2026-11-21; `--smoke` 한 번 부른 값이라 기준선으로 올리지 않았다(SP34와 같다); 다른 에이전트가 같은 기기를 쓰는 중이었다; Dirichlet 라플라시안, sd는 Accelerate 기본 스레드 모드, scipy는 1스레드; 배율은 scipy ÷ sd, ms)
+
+| 연산 | 2차원 n = 10⁴ | 9×10⁴ | 10⁶ | 3차원 n = 1.1×10⁴ | 9.1×10⁴ |
+|---|---:|---:|---:|---:|---:|
+| `spsolve` sd (1·10스레드) | 11.3 · 10.8 | 89.6 · 83.8 | 1,149 · 1,146 | 39.9 · 38.1 | 1,055 · 1,068 |
+| `spsolve` scipy | 11.2 | 153 | 3,772 | 151 | 18,191 |
+| 배율 | 0.99 | 1.7–1.8 | 3.3 | 3.8–4.0 | 17 |
+| `splu` sd | 10.2 | 83.6 | 1,173 | 37.9 | 1,039 |
+| `splu` scipy | 11.3 | 154 | 3,752 | 148 | 17,913 |
+| `SparseLU.solve` sd (다듬기 포함) | 1.09 | 4.33 | 30.6 | 1.78 | 29.0 |
+| `SuperLU.solve` scipy | 0.41 | 5.51 | 79.4 | 2.04 | 68.3 |
+| `spsolve_triangular` sd (`tril`) | 0.10 | 0.78 | 9.0 | 0.10 | 0.76 |
+| `spsolve_triangular` scipy | 0.72 | 4.09 | 47.0 | 0.77 | 5.12 |
+
+- `spsolve`·`splu`는 n ≥ 9×10⁴에서 1.7–17배다(목표 2배: 2차원 n = 9×10⁴의 1.7–1.8배만 못 미친다). n = 10⁴에서는 scipy와 같다(조건수 추정과 다듬기의 몫이 분해의 10–15%). 스레드 수는 거의 상관없다(Accelerate의 LU는 sd의 스레드풀을 쓰지 않는다).
+- `SparseLU.solve`는 다듬기(풀이 둘과 SpMV 하나) 때문에 작은 행렬에서 scipy보다 느리다(n = 10⁴에서 0.38배; 큰 행렬은 Accelerate의 풀이가 빨라 1.3–2.6배). 다듬기를 빼는 옵션은 두지 않았다(SP63).
+- `spsolve_triangular`는 5–7배다(scipy는 A·diag(1/d)를 만들고 SuperLU `gstrs`를 거친다). 우변 하나는 한 스레드라 10스레드도 같다(단계 스케줄링은 SP8 후보).
+- R의 Matrix는 행렬 객체에 분해를 저장해 두므로(`A@factors`) 같은 행렬을 다시 부르면 찾기만 한다(0.01–0.4 ms). 그래서 직접 풀이 사례에는 R 비교가 없다(처음 분해는 lap2d/1000·lap3d/45에서 약 11분, 6.5 GB였다). R의 값은 위 SP0 표다.
+
 **목표** (같은 기기, 1·10스레드, scipy 대비 배율)
 - SpMV, `A.T @ x`, 축 리덕션: 1스레드에서 scipy와 같거나 빠르게(int64 색인의 대역 비용이 있어 0.8배까지를 받아들이고 넘으면 §2.2의 int32 안을 묻는다), 10스레드에서 nnz ≥ 10⁶이면 4배 이상(메모리 대역의 한계, array.md §10.6의 `f + g` 1.7배보다 SpMV는 무작위 읽기라 더 나뉜다).
 - SpMM: scipy가 k 방향으로 벡터화하지 않아 느리다(10⁷에서 SpMV의 29배). 1스레드에서 3배 이상.
 - 변환(COO → CSR, CSR → CSC, 중복 더하기): 1스레드에서 2배, 10스레드에서 5배 이상.
 - SpGEMM, 이항 연산: 1스레드에서 같거나 빠르게, 10스레드에서 4배 이상.
-- 직접 풀이: Accelerate LU/AMD는 2차원 격자에서 SuperLU보다 1.2–3.4배, 3차원에서 4–18배 빠르다(위 표). `spsolve`·`splu`는 n ≥ 10⁵에서 2배 이상을 목표로 하고 행렬 꼴(2·3차원 격자, 회로, 무작위)마다 잰다.
+- 직접 풀이: Accelerate LU/AMD는 2차원 격자에서 SuperLU보다 1.2–3.4배, 3차원에서 4–18배 빠르다(위 표). `spsolve`·`splu`는 n ≥ 10⁵에서 2배 이상을 목표로 하고 행렬 꼴(2·3차원 격자, 회로, 무작위)마다 잰다(SP4의 smoke: 위 표).
 - 반복법: 반복 하나의 비용이 SpMV + 내적이다. scipy의 Python 반복 대비 같은 반복 수에서 1스레드 1.5배, 10스레드 4배 이상.
 - `eigsh`·`svds`: ARPACK(Fortran)과 같은 SpMV 수에서 같거나 빠르게, 10스레드에서 SpMV 몫만큼 빠르게.
 - 작은 행렬(nnz ≤ 10³): 호출 하나의 고정 비용이 scipy(Python 층, 수 µs–수십 µs)보다 작게.
@@ -531,8 +575,8 @@ SP0에서 잰 scipy 1.18.1의 시간이다(ms, 호출 하나의 가장 좋은 �
 
 ## 6. 층과 파일
 - **층**: `sparse/`는 `array/`, `linalg/`(LAPACK 래퍼, 비용 규칙, pairwise 잎), `parallel/`, `accelerate/`, `base/` 위에 있다(ARCHITECTURE §1의 "아래로만"). 다른 영역은 `sparse/`를 모른다. 예외는 §3.10의 판별 하나(`bind/pyutil`의 `is_sparse` 꼴)와 나중의 그래프 영역이다.
-- `src/stardust/sparse/` (하위 패키지 없음, SP3): `__init__.py`(공개 이름, `issparse`, `matrix_transpose`), `_base.py`(`sparray`: 공통 메서드, SP2의 연산자·원소별 메서드·리덕션의 입구), `_ops.py`(SP2: 연산자, 원소별 함수, 곱의 규칙), `_reduce.py`(SP2: 리덕션), `_coo.py`, `_compressed.py`(`csr_array`, `csc_array`), `_dok.py`, `_construct.py`(만들기 함수), `_index.py`(인덱싱과 대입), `_interop.py`(생성자의 입력과 `to_scipy`), `_interface.py`(`LinearOperator`, `aslinearoperator`), `_direct.py`(`spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth`), `_iterative.py`(`cg gmres minres bicgstab lsqr lsmr`), `_eigen.py`(`eigsh eigs svds`), `_matfuncs.py`(`expm expm_multiply onenormest norm`), `_result.py`(결과 클래스), `_common.py`(입력 정리와 메시지).
-- `csrc/sparse/`(SP0: `direct.hpp`·`direct.cpp`, 비공개 `_lu_solve`로 래퍼를 시험한다; SP1: `format.hpp`, `parallel.hpp`, `canonical.cpp`, `convert.cpp`, `dok.cpp`; 나머지는 마일스톤마다): `format.hpp`(§2.2의 표현, 커널이 함께 쓰는 것), `canonical.cpp`(표준 꼴: 정렬, 중복 더하기, 전치, 입력의 검사; §3.1), `convert.cpp`(밀집 사이, 펼치기, 거르기, 세기, `reshape`의 좌표), `arith.hpp`(SP2: 항 하나와 긴 줄의 조각 합, §2.6), `spmv.cpp`(SP2: SpMV·SpMM·Aᵀx·밀집 @ 희소, 축 합과 평균, §2.6의 순서), `spgemm.cpp`(SP2), `binop.cpp`(SP2: 병합 이항 연산, 비교, 밀집 값 읽기), `reduce.cpp`(SP2: max·min·argmax·argmin; 원소별 함수는 커널이 따로 없다: Python 층이 배열의 함수를 `data`에 한 번 부른다), `index.cpp`, `construct.cpp`, `dok.cpp`(해시 맵), `triangular.cpp`, `direct.cpp`(Accelerate LU, 특이의 판정), `iterative.cpp`, `lanczos.cpp`(IRLM, 이중대각화), `arnoldi.cpp`(IRAM), `matfuncs.cpp`(expm, expm_multiply, onenormest), `parallel.hpp`(크기로만 정하는 분할, 기준값 2^15).
+- `src/stardust/sparse/` (하위 패키지 없음, SP3): `__init__.py`(공개 이름, `issparse`, `matrix_transpose`), `_base.py`(`sparray`: 공통 메서드, SP2의 연산자·원소별 메서드·리덕션의 입구), `_ops.py`(SP2: 연산자, 원소별 함수, 곱의 규칙), `_reduce.py`(SP2: 리덕션), `_coo.py`, `_compressed.py`(`csr_array`, `csc_array`), `_dok.py`, `_construct.py`(만들기 함수), `_index.py`(인덱싱과 대입), `_interop.py`(생성자의 입력과 `to_scipy`), `_interface.py`(SP4: `LinearOperator`, `aslinearoperator`), `_direct.py`(SP4: `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth`, `SparseLU`), `_iterative.py`(`cg gmres minres bicgstab lsqr lsmr`), `_eigen.py`(`eigsh eigs svds`), `_matfuncs.py`(`expm expm_multiply onenormest norm`), `_result.py`(결과 클래스), `_common.py`(입력 정리와 메시지).
+- `csrc/sparse/`(SP0: `direct.hpp`·`direct.cpp`, 비공개 `_lu_solve`로 래퍼를 시험한다; SP1: `format.hpp`, `parallel.hpp`, `canonical.cpp`, `convert.cpp`, `dok.cpp`; 나머지는 마일스톤마다): `format.hpp`(§2.2의 표현, 커널이 함께 쓰는 것), `canonical.cpp`(표준 꼴: 정렬, 중복 더하기, 전치, 입력의 검사; §3.1), `convert.cpp`(밀집 사이, 펼치기, 거르기, 세기, `reshape`의 좌표), `arith.hpp`(SP2: 항 하나와 긴 줄의 조각 합, §2.6), `spmv.cpp`(SP2: SpMV·SpMM·Aᵀx·밀집 @ 희소, 축 합과 평균, §2.6의 순서), `spgemm.cpp`(SP2), `binop.cpp`(SP2: 병합 이항 연산, 비교, 밀집 값 읽기), `reduce.cpp`(SP2: max·min·argmax·argmin; 원소별 함수는 커널이 따로 없다: Python 층이 배열의 함수를 `data`에 한 번 부른다), `index.cpp`, `construct.cpp`, `dok.cpp`(해시 맵), `triangular.cpp`(SP4: 대입, `_bandwidth`), `direct.cpp`(SP4: `_lu_factor`·`_LuFactor`, Accelerate LU, 특이의 판정과 조건수 추정), `iterative.cpp`, `lanczos.cpp`(IRLM, 이중대각화), `arnoldi.cpp`(IRAM), `matfuncs.cpp`(expm, expm_multiply, onenormest), `parallel.hpp`(크기로만 정하는 분할, 기준값 2^15).
 - `csrc/accelerate/sparse.hpp`(SP0): Sparse Solvers 래퍼(ARCHITECTURE §4.4: Accelerate 래퍼는 `accelerate/` 한곳). int64 → int32 행 색인 복사(`Csc::narrow`), 스레드마다 모으는 `reportError` 콜백(`ErrorScope`; status가 0이어도 메시지가 있으면 실패), status → `Error{Singular, Parameter, Failed, Internal}`, LU/AMD·`zeroTolerance = 0` 고정, `SparseCleanup`의 RAII(`Lu<T>`, float64·complex128).
 - `csrc/linalg/lapack.hpp`에 더할 래퍼: `stev`·`steqr`(삼중대각 고유값), `hseqr`·`trevc`(헤센베르크), 필요하면 `bdsqr`(이중대각 SVD).
 - `csrc/bind/sparse_bind.cpp`(`stardust._core.sparse`, SP0), `csrc/bind/module.cpp`에 하위 모듈 하나.
@@ -553,7 +597,8 @@ SP0에서 잰 scipy 1.18.1의 시간이다(ms, 호출 하나의 가장 좋은 �
 
 ### 7.2 SuiteSparse의 실제 행렬 (SP17, SP20)
 SP20으로 승인된 여덟 개다. 주소는 SuiteSparse Matrix Collection의 Matrix Market 파일(`https://suitesparse-collection-website.herokuapp.com/MM/<group>/<name>.tar.gz`, 설명은 `https://sparse.tamu.edu/<group>/<name>`)이다. 서버가 내용 없는 크기 조회(HEAD)를 거절해(S3 403) 파일 크기는 저장 원소 수에서 어림한 값이다(대칭 행렬은 아래 삼각만 저장; Matrix Market 글 한 줄 약 30바이트, gzip 약 40%). 받는 도구는 `tools/sparse_suitesparse.py`이고 파일은 `build/sparse/suitesparse/<group>/<name>.mtx`(git이 무시한다)에 둔다. 읽는 테스트는 `tests/sparse/test_suitesparse.py`(external 등급, 파일이 없으면 받는 명령을 적고 건너뛴다)다.
-- **2026-11-21의 내려받기는 되지 않았다**: 여덟 주소 모두 컬렉션의 파일 서버(`sparse-files.engr.tamu.edu`, S3)로 넘어가 `403 Forbidden`(AccessDenied)을 돌려줬다(`https://sparse.tamu.edu/MM/...`도 같은 곳으로 간다). 그래서 받은 파일, 실제 크기, sha256이 아직 없다(`SHA256`은 비어 있고, 처음 받을 때 도구가 값을 찍는다). 서버가 다시 열리면 같은 도구로 받고 sha256을 적는다. 여기서 나온 참값·기록도 그때 만든다.
+- **받은 곳**: 컬렉션의 공식 파일 서버(`sparse-files.engr.tamu.edu`, S3; `https://suitesparse-collection-website.herokuapp.com/MM/...`와 `https://sparse.tamu.edu/MM/...`가 모두 그리로 간다)는 2026-10부터 모든 파일에 `403 Forbidden`(AccessDenied)을 돌려준다. 그래서 2026-11-21에 사용자의 승인을 받아 컬렉션의 원래 자리인 University of Florida의 사본(`https://www.cise.ufl.edu/research/sparse/MM/<group>/<name>.tar.gz`, 여덟 개 합쳐 10.4 MB)에서 받았다. `tools/sparse_suitesparse.py`의 `URLS`는 공식 주소를 먼저, 그 사본을 다음에 두고, `SHA256`에 받은 압축 파일 여덟의 sha256이 있다. 저장 원소 수는 컬렉션의 목록과 맞는다(파일에는 저장된 0이 남아 있다: memplus는 저장 126,150개 대 0이 아닌 것 99,147개). SP20의 다른 조건(버전 관리 밖, external 등급, 없으면 건너뜀)은 그대로다.
+- **SP4에서 쓴 것**(`tests/sparse/test_suitesparse.py`, external; `--tier all`에서 22개 통과, 최대 RSS 1.97 GB): 정방 일곱 가운데 다섯(bcsstk14, msc10848, goodwin, memplus, young1c(복소))은 `splu`의 `trans='N'·'T'·'H'` 두 우변 풀이가 역오차 계약(§4) 안이고 κ₁ 추정이 1/ε 아래다(1.3×10¹⁰, 3.3×10¹⁰, 3.3×10¹⁰, 2.7×10⁵, 5.2×10²; 역오차 9×10⁻⁸–0.28ε, scipy SuperLU 1.3×10⁻⁷–0.74ε). sherman3(κ₁ 6.9×10¹⁶)과 cvxqp3(2.2×10¹⁶; 둘 다 scipy의 LU로 잰 `onenormest`도 같다)는 κ₁·ε ≥ 1이라 SP62대로 `LinAlgError`다. 분해 시간(`splu`, 판정 포함, 한 번 잰 값; Accelerate 기본 스레드 모드, scipy 1스레드): msc10848 70 ms(scipy 302), goodwin 63 ms(274), memplus 23 ms(307), cvxqp3 2.0초(13.5초; 판정에서 멈춘다).
 
 | 행렬 | 꼴 | n | nnz | 조건수(사이트) | 쓰임 | 어림 크기 |
 |---|---|---:|---:|---:|---|---:|
@@ -619,9 +664,9 @@ python-flint 0.9.0(Arb)과 정확한 유리수다. mpmath는 쓰지 않는다. �
 - 비트: int32·int64, 1·10스레드의 결과가 모든 경우에 같고 scipy와도 같다(§7.4). 이 커널의 int64판(nnz 10⁶ 0.74 ms, 10⁷ 8.07 ms)은 scipy(0.645, 7.38 ms)의 0.87–0.91배 빠르기다(목표 0.8배 이상, §5).
 
 ### 7.6 정확도·속도 체계와 골든
-- **정확도** (`bench/accuracy/sparse.py`, 등록함): SP2에서 `spmv`(영역 `matvec`, `rmatvec`)와 `sums`(`row_sums`, `col_sums`, `total`) 두 스윕이 생겼다. 점은 출력 원소 하나이고, 판정은 `tests/sparse/refdata.py`의 계약(γ_m Σ|aᵢⱼxⱼ| 단위, 경계 1)이다. 비교 패키지 열은 scipy(그 자리에서 부름)와 R Matrix(`%*%`, `crossprod`, `rowSums`, `colSums`, `sum`)다. 2026-11-21의 실행(작업 중인 트리)에서 다섯 영역 모두 계약 안(가장 큰 것 0.83)이고 scipy·R도 sd의 경계 안이다. 기준선은 커밋 뒤에 깨끗한 트리에서 `promote`한다. 나머지 묶음은 그 함수가 공개되는 마일스톤에 들어간다(`solve`는 SP4, `lstsq`는 SP5, `eig`는 SP6, `norms`·`expm`은 SP7). SP3의 함수(인덱싱, 대입, 대각, 만들기)는 반올림이 없는 연산이라 스윕이 없다(값은 입력의 값이거나 곱 하나이고, 테스트가 밀집 결과와 비트까지 견준다).
-- **속도** (`bench/speed/cases/sparse.py`, 등록함): 사례마다 마일스톤과 필요한 sd.sparse 이름을 적어 두고, 그 마일스톤이 `DONE`에 들고 이름이 공개되면 사례가 된다(SP1의 형식 변환과 만들기 12가지, SP2의 15가지, SP3의 인덱싱 5가지·만들기 6가지(`random_array`는 난수가 달라 모양과 저장 수만 견준다), 크기마다; 기준선 `bench/speed/results/sparse.json`, 표 `bench/sparse/speed.md`). 희소 결과는 값·(행 + 1)·(열 + 1)로 가중한 세 합으로 견준다(형식·순서·중복과 무관). 비교 대상은 scipy와 R Matrix(같은 R 세션), 크기는 §5다. 직접 풀이에 Accelerate를 직접 부른 값(감싸기 비용)을 더할지는 SP4에서 정한다.
-- **골든** (`tests/golden/cases_sparse.py`, 기록 `tests/golden/data/sparse.json`): SP1의 812케이스(모든 입력 꼴, 네 형식 사이의 변환, 밀집, 전치, `reshape`·`resize`, `nonzero`·`count_nonzero`, `eliminate_zeros`·`sum_duplicates`, 값의 메서드, DOK 원소, 틀린 호출). 2×10⁵개의 무작위 COO는 3·10스레드에서 양동이 길을 탄다. SP2가 4,627케이스를 더했다(모두 5,439)(같은 아홉 행렬 × 네 형식의 모든 연산자, 스칼라·밀집과의 연산과 행·열 브로드캐스트, 원소별 함수, 곱, `axis`·`keepdims`·`dtype`·`explicit`의 리덕션, 틀린 호출; 큰 두 행렬은 병렬 줄 구간과 1스레드 길을 탄다). 1·3·10스레드의 결과가 모두 같다. SP3이 1,069케이스를 더했다(모두 6,508)(같은 아홉 행렬 × 네 형식에서 모든 꼴의 키로 읽기, 스칼라·밀집·희소 값의 대입(복사본에), `diagonal`·`trace`·`setdiag`, 만들기 함수 열두 개와 그 형식·dtype, 틀린 호출; 큰 두 행렬은 병렬 줄 구간의 고르기를 탄다). 1·3·10스레드의 결과가 모두 같다. 공개 이름마다 그 마일스톤에서 더한다.
+- **정확도** (`bench/accuracy/sparse.py`, 등록함): SP2에서 `spmv`(영역 `matvec`, `rmatvec`)와 `sums`(`row_sums`, `col_sums`, `total`) 두 스윕이 생겼다. 점은 출력 원소 하나이고, 판정은 `tests/sparse/refdata.py`의 계약(γ_m Σ|aᵢⱼxⱼ| 단위, 경계 1)이다. 비교 패키지 열은 scipy(그 자리에서 부름)와 R Matrix(`%*%`, `crossprod`, `rowSums`, `colSums`, `sum`)다. 2026-11-21의 실행(작업 중인 트리)에서 다섯 영역 모두 계약 안(가장 큰 것 0.83)이고 scipy·R도 sd의 경계 안이다. 기준선은 커밋 뒤에 깨끗한 트리에서 `promote`한다. SP4에서 `solve`(영역 `solve`, 참값 30점, 원소마다 |x̂ᵢ − xᵢ| / (C_SOLVE·κ∞·ε·‖x‖∞), 비교 패키지 scipy `spsolve`·R `solve`)를 더했다. 나머지 묶음은 그 함수가 공개되는 마일스톤에 들어간다(`lstsq`는 SP5, `eig`는 SP6, `norms`·`expm`은 SP7). SP3의 함수(인덱싱, 대입, 대각, 만들기)는 반올림이 없는 연산이라 스윕이 없다(값은 입력의 값이거나 곱 하나이고, 테스트가 밀집 결과와 비트까지 견준다).
+- **속도** (`bench/speed/cases/sparse.py`, 등록함): 사례마다 마일스톤과 필요한 sd.sparse 이름을 적어 두고, 그 마일스톤이 `DONE`에 들고 이름이 공개되면 사례가 된다(SP1의 형식 변환과 만들기 12가지, SP2의 15가지, SP3의 인덱싱 5가지·만들기 6가지(`random_array`는 난수가 달라 모양과 저장 수만 견준다), 크기마다; 기준선 `bench/speed/results/sparse.json`, 표 `bench/sparse/speed.md`). 희소 결과는 값·(행 + 1)·(열 + 1)로 가중한 세 합으로 견준다(형식·순서·중복과 무관). 비교 대상은 scipy와 R Matrix(같은 R 세션), 크기는 §5다. SP4에서 `spsolve`·`splu`·`splu solve`·`spsolve_triangular`(격자 다섯)를 더했다. Accelerate를 직접 부른 값(감싸기 비용)은 사례로 두지 않고 §3.6에 잰 값으로 적었다(분해의 10–15%).
+- **골든** (`tests/golden/cases_sparse.py`, 기록 `tests/golden/data/sparse.json`): SP1의 812케이스(모든 입력 꼴, 네 형식 사이의 변환, 밀집, 전치, `reshape`·`resize`, `nonzero`·`count_nonzero`, `eliminate_zeros`·`sum_duplicates`, 값의 메서드, DOK 원소, 틀린 호출). 2×10⁵개의 무작위 COO는 3·10스레드에서 양동이 길을 탄다. SP2가 4,627케이스를 더했다(모두 5,439)(같은 아홉 행렬 × 네 형식의 모든 연산자, 스칼라·밀집과의 연산과 행·열 브로드캐스트, 원소별 함수, 곱, `axis`·`keepdims`·`dtype`·`explicit`의 리덕션, 틀린 호출; 큰 두 행렬은 병렬 줄 구간과 1스레드 길을 탄다). 1·3·10스레드의 결과가 모두 같다. SP3이 1,069케이스를 더했다(모두 6,508)(같은 아홉 행렬 × 네 형식에서 모든 꼴의 키로 읽기, 스칼라·밀집·희소 값의 대입(복사본에), `diagonal`·`trace`·`setdiag`, 만들기 함수 열두 개와 그 형식·dtype, 틀린 호출; 큰 두 행렬은 병렬 줄 구간의 고르기를 탄다). 1·3·10스레드의 결과가 모두 같다. SP4가 158케이스를 더했다(모두 6,666)(2차원 라플라시안 144 × 144, 무작위 비대칭 300 × 300, 복소 60 × 60을 네 형식으로: 밀집 1·2차원·희소 우변의 `spsolve`, `trans='N'·'T'·'H'`의 `splu().solve`, `factorized`, `inv`, 아래·위·단위 대각의 `spsolve_triangular`(64열은 3·10스레드에서 열 묶음이 스레드풀에서 돈다), `spbandwidth`·`is_sptriangular`, `LinearOperator`의 곱과 조합, 특이와 틀린 호출, `sd.linalg`의 거절 메시지). 1·3·10스레드의 결과가 모두 같다(Accelerate의 LU는 sd의 스레드 수와 무관하다). 공개 이름마다 그 마일스톤에서 더한다.
   - **워커의 메모리**(사용자 승인 2026-11-21): SP1의 큰 무작위 행렬은 20,000 × 15,000(3×10⁸자리)과 30 × 10⁶이라 `toarray`·밀집 케이스 하나가 워커 하나를 약 10 GB로 키웠다(`--jobs 2`에서 11 GB). 같은 2×10⁵개의 중복 있는 원소(양동이 길과 병렬 줄 구간을 타는 크기)를 2,000 × 1,500(자리의 약 7%)과 30 × 10⁵(줄마다 약 6,700개: L = 4096을 넘는 줄의 조각 합)에 두어, 밀집 결과가 많아야 3×10⁶개가 되게 줄였다. 다시 기록한 뒤 `/usr/bin/time -l tools/golden.py check --jobs 10`(모든 영역, 다른 무거운 일 없음)에서 sparse 워커의 최대 RSS는 0.58 GB였고(모든 워커 중 가장 큰 것은 array의 1.56 GB, `time -l`의 최대 1.63 GB), 전체 확인은 29초, sparse 기록은 1분 2초에서 12초가 되었다.
 - **나중 일**(SP34): SP1의 속도는 다른 에이전트의 일과 함께 재서 † 줄(다른 프로세스가 1코어 넘게 쓴 사례)이 있다. 기계가 한가할 때 `.venv/bin/python -m bench.speed run --rerun-busy build/speed/<SP1 실행>.jsonl --promote`로 다시 잰다.
 
@@ -634,7 +679,7 @@ python-flint 0.9.0(Arb)과 정확한 유리수다. mpmath는 쓰지 않는다. �
 | SP1 형식과 변환 (완료·승인 2026-11-21) | `coo_array csr_array csc_array dok_array sparray issparse`, 생성자, 표준 꼴(§2.3), 형식 변환, `sd.ndarray`·numpy·scipy와 주고받기(§2.5), `astype copy .T transpose matrix_transpose conj real imag reshape resize nonzero eliminate_zeros sum_duplicates`, repr |
 | SP2 연산 (완료·승인 2026-11-21) | 산술과 비교(§3.2), 원소별 함수, `multiply maximum minimum power`, SpMV·SpMM·밀집 @ 희소·SpGEMM, 리덕션(§3.3; `trace`·`diagonal`은 SP3) |
 | SP3 인덱싱과 만들기 (완료·승인 2026-11-21) | 인덱싱과 대입, `diagonal setdiag trace`, `eye_array diags_array random_array kron kronsum hstack vstack block_array block_diag tril triu find` |
-| SP4 직접 풀이 | `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth`, `LinearOperator aslinearoperator`, `sd.linalg`·배열의 `TypeError`(§3.10) |
+| SP4 직접 풀이 (완료·승인(위임) 2026-11-21) | `spsolve splu factorized inv spsolve_triangular is_sptriangular spbandwidth`, `LinearOperator aslinearoperator`, `sd.linalg`·배열의 `TypeError`(§3.10) |
 | SP5 반복법 | `cg gmres minres bicgstab lsqr lsmr` |
 | SP6 고유값과 특이값 | `eigsh eigs svds`, linalg 래퍼에 `stev steqr hseqr trevc` |
 | SP7 행렬 함수와 노름 | `expm expm_multiply onenormest norm` |
@@ -653,14 +698,7 @@ python-flint 0.9.0(Arb)과 정확한 유리수다. mpmath는 쓰지 않는다. �
 - **SP1**: 정했다(SP21–SP34, §1.1).
 - **SP2**: 정했다(SP35–SP47, §1.1).
 - **SP3**: 정했다(SP48–SP52, §1.1). SP3 뒤에 정했다(SP53–SP58, §1.1).
-- **SP4**
-  1. LU의 순서: AMD 고정(추천; Metis는 동시 호출에서 비트가 다르고 MTMetis는 동시 호출에서 프로세스가 죽는다) / `ordering=` 옵션.
-  2. `splu`의 결과: 내보내지 않는 `SparseLU`(`solve`, `shape`; `L`·`U` 없음)(추천) / 이 라이브러리의 LU(나중 후보)를 기다린다.
-  3. scipy의 옵션(`permc_spec`, `diag_pivot_thresh`, `use_umfpack` 등): 두지 않는다(추천) / 받되 `ValueError`.
-  4. 특이의 판정: 구조적 특이 + 유한하지 않은 해 + 분해의 조건수 추정(`onenormest`로 ‖A⁻¹‖₁을 어림해 κ₁·ε ≥ 1이면 `LinAlgError`)(추천; 정확히 특이한 행렬이 Accelerate에서 크기 1/ε의 유한한 해를 내기 때문, §7.5) / 구조적 특이 + 유한하지 않은 해만(scipy와 비슷하게 큰 유한한 해를 돌려준다).
-  5. 반복 다듬기: 잰 역오차가 계약을 넘는 행렬이 있으면 한 번(추천) / 넣지 않는다.
-  6. 우변이 여럿: Accelerate가 함께 푼다(추천; 결과는 k와 값으로 정해지고 결정적) / 열마다 따로 풀어 한 열의 비트가 k와 무관하게.
-  7. `LinearOperator`의 위치 인자: `shape`, `matvec`만(추천) / scipy처럼 `rmatvec`, `matmat`, `dtype`도.
+- **SP4**: 정했다(SP59–SP65, §1.1). SP4 뒤에 정했다(SP66–SP71, §1.1; 추천안, 사용자 위임).
 - **SP5**
   1. 결과: scipy의 튜플 개수로 풀리는 읽기 전용 결과 객체(추천) / 튜플.
   2. 이름: `max_iter`(추천, optimize O14) / scipy의 `maxiter`·`iter_lim`.
