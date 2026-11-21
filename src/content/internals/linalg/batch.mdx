@@ -3,7 +3,7 @@ title: 배치와 병렬화
 group: 구조
 order: 3
 summary: 행렬 묶음 하나를 배치 원소로 쪼개 스레드풀에 나누는 방식을 설명해요. 나눌지는 원소 하나의 비용을 시간으로 추정해 정하고, 작업 메모리와 16바이트 정렬까지 맞춰서 어떻게 나눠도 결과가 비트까지 같아요.
-seeAlso: [overview, packing, basic, lu, performance]
+seeAlso: [overview, packing, basic, lu]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -692,34 +692,9 @@ T pairwise_sum_mt(std::int64_t n, Fill&& fill) {
 1. **호출 비용.** numpy는 배치의 행렬마다 같은 LAPACK을 부르지만 그 사이에 numpy 쪽 고정비가 있어요. stardust는 배치 전체를 C++ 루프 하나로 돌고, workspace 질의를 한 번만 하고, 0 채우기를 하지 않아요. 그래서 1스레드에서도 배치가 numpy보다 빨라요.
 2. **코어 수.** numpy와 scipy는 배치를 코어 하나로 돌아요. scipy의 일부 함수(`schur`, `hessenberg`, `ldl` 등)는 Python 수준에서 행렬을 하나씩 돌아요. stardust는 배치를 나눠 여러 코어로 돌아요.
 
-아래 표는 numpy(numpy에 없는 함수는 scipy) 시간 ÷ stardust 시간이에요. 1보다 크면 stardust가 빨라요.
+32×32의 `inv`는 위의 태스크 수 상한에 걸리는 크기라서, 10스레드에서도 배치가 태스크 세 개까지만 나뉘어요.
 
-| 함수 | (1000, 3, 3) 10스레드 | (1000, 3, 3) 1스레드 | (100, 32, 32) 10스레드 | (100, 32, 32) 1스레드 |
-|---|:---:|:---:|:---:|:---:|
-| `solve` | ⟦BENCH solve (1000,3,3) t10⟧ | ⟦BENCH solve (1000,3,3) t1⟧ | ⟦BENCH solve (100,32,32) t10⟧ | ⟦BENCH solve (100,32,32) t1⟧ |
-| `inv` | ⟦BENCH inv (1000,3,3) t10⟧ | ⟦BENCH inv (1000,3,3) t1⟧ | ⟦BENCH inv (100,32,32) t10⟧ | ⟦BENCH inv (100,32,32) t1⟧ |
-| `det` | ⟦BENCH det (1000,3,3) t10⟧ | ⟦BENCH det (1000,3,3) t1⟧ | ⟦BENCH det (100,32,32) t10⟧ | ⟦BENCH det (100,32,32) t1⟧ |
-| `cholesky` | ⟦BENCH cholesky (1000,3,3) t10⟧ | ⟦BENCH cholesky (1000,3,3) t1⟧ | ⟦BENCH cholesky (100,32,32) t10⟧ | ⟦BENCH cholesky (100,32,32) t1⟧ |
-| `qr` | ⟦BENCH qr (1000,3,3) t10⟧ | ⟦BENCH qr (1000,3,3) t1⟧ | ⟦BENCH qr (100,32,32) t10⟧ | ⟦BENCH qr (100,32,32) t1⟧ |
-| `eigh` | ⟦BENCH eigh (1000,3,3) t10⟧ | ⟦BENCH eigh (1000,3,3) t1⟧ | ⟦BENCH eigh (100,32,32) t10⟧ | ⟦BENCH eigh (100,32,32) t1⟧ |
-| `svd` | ⟦BENCH svd (1000,3,3) t10⟧ | ⟦BENCH svd (1000,3,3) t1⟧ | ⟦BENCH svd (100,32,32) t10⟧ | ⟦BENCH svd (100,32,32) t1⟧ |
-| `eig` | ⟦BENCH eig (1000,3,3) t10⟧ | ⟦BENCH eig (1000,3,3) t1⟧ | ⟦BENCH eig (100,32,32) t10⟧ | ⟦BENCH eig (100,32,32) t1⟧ |
-| `schur` (scipy) | ⟦BENCH schur (1000,3,3) t10⟧ | ⟦BENCH schur (1000,3,3) t1⟧ | ⟦BENCH schur (100,32,32) t10⟧ | ⟦BENCH schur (100,32,32) t1⟧ |
-| `expm` (scipy) | ⟦BENCH expm (1000,3,3) t10⟧ | ⟦BENCH expm (1000,3,3) t1⟧ | ⟦BENCH expm (100,32,32) t10⟧ | ⟦BENCH expm (100,32,32) t1⟧ |
-
-{/* BENCH-FIG: solve (1000,3,3) t10, solve (1000,3,3) t1, inv (100,32,32) t10, inv (100,32,32) t1, eigh (1000,3,3) t10, eigh (1000,3,3) t1, svd (100,32,32) t10, svd (100,32,32) t1 | 캡션: 배치의 시간. numpy는 배치를 코어 하나로 돌고, stardust는 1스레드에서도 호출 비용만큼 빠르며 10스레드에서는 배치를 나눈 만큼 더 빨라져요. 32×32 inv는 AMX 경로의 태스크 수 상한(3) 때문에 확장이 작아요. */}
-
-1스레드 열과 10스레드 열의 차이가 배치 분할의 몫이에요. 32×32의 `solve`와 `inv`는 위의 태스크 수 상한에 걸리는 크기라서 10스레드의 이득이 다른 함수보다 작을 것으로 예상돼요.
-
-출력 하나의 긴 합은 트리의 잎을 나눠 돌아요.
-
-| 호출 | numpy 대비, 10스레드 | numpy 대비, 1스레드 |
-|---|:---:|:---:|
-| `vecdot` (1000000,) | ⟦BENCH vecdot (1000000,) t10⟧ | ⟦BENCH vecdot (1000000,) t1⟧ |
-| `vector_norm` (1000000,) | ⟦BENCH vector_norm (1000000,) t10⟧ | ⟦BENCH vector_norm (1000000,) t1⟧ |
-| `vector_norm` inf (1000000,) | ⟦BENCH vector_norm inf (1000000,) t10⟧ | ⟦BENCH vector_norm inf (1000000,) t1⟧ |
-
-그냥 합은 잎 버퍼를 채우고 다시 읽는 두 단계라, 1스레드의 긴 합은 numpy보다 느릴 수 있어요. 곱의 합(`vecdot`, 2-노름)은 연속 입력이면 곱과 잎 합을 NEON 레지스터 안에서 한 번에 해요. numpy 2.5.4의 `np.vecdot`은 BLAS 내적(`np.dot`과 같은 값)을 쓰고, `np.linalg.vector_norm`은 `x*x`를 만든 뒤 numpy의 합을 불러요.
+출력 하나의 긴 합은 트리의 잎을 나눠 돌아요. 그냥 합은 잎 버퍼를 채우고 다시 읽는 두 단계라, 1스레드의 긴 합은 numpy보다 느릴 수 있어요. 곱의 합(`vecdot`, 2-노름)은 연속 입력이면 곱과 잎 합을 NEON 레지스터 안에서 한 번에 해요. numpy 2.5.4의 `np.vecdot`은 BLAS 내적(`np.dot`과 같은 값)을 쓰고, `np.linalg.vector_norm`은 `x*x`를 만든 뒤 numpy의 합을 불러요.
 
 부분별 비용은 이래요.
 

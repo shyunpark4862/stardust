@@ -11,7 +11,6 @@ import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
 import Plot from '../../../components/fig/Plot.astro';
-import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
@@ -229,7 +228,7 @@ TBB나 Rayon 같은 범용 풀은 스레드마다 큐를 두고 남의 큐에서
 | spin하지만 새 일을 볼 때 mutex를 잡음 | 약 18µs |
 | spin 중에는 mutex 없이 시작 | **약 1.5µs** |
 
-- macOS에서 잠든 스레드를 깨우는 비용은 작업당 수십 µs예요. 10스레드로 나눈 원소 100만 개 덧셈 전체(약 50µs)와 맞먹고, 원소 수만 개짜리 연산에서는 계산보다 훨씬 커요.
+- macOS에서 잠든 스레드를 깨우는 비용은 작업당 수십 µs예요. 원소 100만 개 덧셈 전체보다도 크고, 원소 수만 개짜리 연산에서는 계산보다 훨씬 커요.
 - spin을 넣어도 18µs가 남는 원인은 깨우기가 아니라 mutex 경합이에요. 새 일이 나타나는 순간 워커 9개가 한꺼번에 같은 mutex를 잡으려 해서, 프로파일에 `__psynch_mutexwait`(macOS의 mutex 대기)가 크게 보여요.
 - 대가도 있어요. 일이 끝난 뒤 워커가 최대 100µs 동안 CPU를 써요. 워커 9개면 일 하나마다 최대 0.9ms의 CPU 시간이에요. 원소별 연산은 연달아 오는 경우가 많아서(`a * b + c`는 연산 둘) 이 절충이 이득이에요. OpenMP 런타임도 같은 종류의 절충을 해요. OpenMP 표준은 기다리는 스레드가 돌지 잠들지를 `OMP_WAIT_POLICY`로 고르게 하고 [2], LLVM의 OpenMP 런타임은 `KMP_BLOCKTIME`(기본 200ms) 동안 돌다가 잠들어요 [3]. stardust의 100µs는 그보다 훨씬 짧아요.
 
@@ -437,7 +436,7 @@ macOS는 코어를 성능 등급별로 알려 줘요. `hw.perflevel0`이 가장 
 
 ### Accelerate는 따르지 않아요
 
-`sd.set_num_threads`가 정하는 것은 우리 풀의 스레드 수예요. 큰 BLAS·LAPACK 호출(`matmul`, `cov`, linalg의 분해)은 Accelerate가 안에서 스레드를 정하고, 이 설정을 따르지 않아요. 그래서 `cov` 1000×1000은 1스레드 설정에서 1.78ms, 10스레드 설정에서 1.52ms로 거의 같아요(numpy 2.16ms). 일부러 이렇게 둬요.
+`sd.set_num_threads`가 정하는 것은 우리 풀의 스레드 수예요. 큰 BLAS·LAPACK 호출(`matmul`, `cov`, linalg의 분해)은 Accelerate가 안에서 스레드를 정하고, 이 설정을 따르지 않아요. 그래서 `cov` 1000×1000은 1스레드 설정에서 1.89ms, 10스레드 설정에서 1.60ms로 거의 같아요. 일부러 이렇게 둬요.
 
 - **결과는 Accelerate의 스레드 모드가 같을 때 비트까지 같아요.** `sd.set_num_threads`로 우리 풀의 스레드 수를 바꿔도 BLAS·LAPACK을 부르는 계산(행렬 곱, 분해, 회귀의 QR 등)의 비트는 그대로예요. Accelerate가 한 스레드로 돌지 여러 스레드로 돌지는 환경 변수 `VECLIB_MAXIMUM_THREADS`가 정하고, 두 모드 사이에서는 마지막 자리 몇 개가 다를 수 있어요(`ols`의 `bse`가 상대 $2 \times 10^{-16}$, `lstsq`가 $3 \times 10^{-14}$). Accelerate가 안에서 일을 나누는 방식은 stardust가 정하지 않아요. stardust가 모드를 고정하면 사용자의 설정을 덮고 큰 행렬 곱이 느려질 수 있어서, 모드는 바꾸지 않아요.
 - **고칠 수단이 프로세스 전체에 걸려요.** Accelerate의 스레드를 제한하는 함수(`BLASSetThreading`)는 호출 하나가 아니라 프로세스 전체의 설정이에요. 호출마다 바꾸고 되돌리면 같은 프로세스에서 Accelerate를 쓰는 다른 코드(numpy, 다른 Python 스레드의 호출)까지 그 사이에 설정이 바뀌어요.
@@ -721,10 +720,10 @@ private:
 |---|---:|
 | 병렬 호출 한 번 (워커가 spin 중일 때) | 약 1.5µs |
 | 병렬 호출 한 번 (워커가 잠들어 있을 때) | 약 25µs |
-| 태스크 하나의 일 (float64 원소 4096개 `f + g`, 1스레드 기준 환산) | 약 0.6~0.7µs |
+| 태스크 하나의 일 (float64 원소 4096개 분량) | 약 0.5–1.5µs |
 | 일이 끝난 뒤 워커가 spin하는 시간 | 최대 100µs |
 
-셋째 줄은 원소 100만 개 `f + g` 1스레드 약 151~164µs를 245태스크로 나눈 값이에요. 태스크가 고정 비용(1.5µs, 호출당 한 번)보다 작아도 되는 이유는, 고정 비용은 호출당 한 번이고 태스크마다 드는 비용은 atomic 증가 한 번과 간접 호출 한 번뿐이기 때문이에요.
+태스크가 고정 비용(1.5µs, 호출당 한 번)보다 작아도 되는 이유는, 고정 비용은 호출당 한 번이고 태스크마다 드는 비용은 atomic 증가 한 번과 간접 호출 한 번뿐이기 때문이에요.
 
 ### 확장성
 
@@ -802,47 +801,14 @@ private:
 | int64 matmul 500³ | 34.0ms | 1.8 | 3.3 | 4.7 | 6.0 | 7.5 | 7.7 | 8.1 | 37.0ms |
 
 - **메모리에 묶인 연산은 대역폭에서 멈춰요.** `f + g`(원소 400만 개, 읽기 64MB + 쓰기 32MB = 96MB)는 1스레드가 이미 초당 약 130GB를 옮기고, 스레드를 늘려도 1.7배가 한계예요. 결과는 항상 새 배열에 쓰므로 새 메모리의 첫 쓰기에서 나는 페이지 폴트(페이지 16KB마다 한 번)도 이 크기에서는 무시할 수 없어요.
-- **계산에 묶인 연산은 거의 코어 수만큼 빨라져요.** `argmax`나 정렬은 원소당 일이 많아 메모리를 기다리는 시간이 상대적으로 작아요.
+- **계산에 묶인 연산은 거의 코어 수만큼 빨라져요.** `argmax`나 정렬은 원소당 일이 많아 메모리를 기다리는 시간이 상대적으로 작아요. 원소 100만 개, 10스레드에서 `exp`는 121µs, `sin`은 94µs예요(numpy는 1스레드로 1.49ms, 3.81ms).
 - 10스레드를 넘으면 E코어가 붙어요. 메모리 연산은 조금 느려지고(`f + g` 1.7 → 1.5), 계산 연산은 조금 더 빨라져요(`argmax` 8.0 → 9.7). 기본값이 10인 이유예요.
-
-### 원소 100만 개에서 numpy와 비교
-
-배열 영역 전체 측정의 값이에요(원소 100만 개, Apple M4 Pro, numpy 2.5.4, 7번 반복의 최솟값을 다시 10라운드 사이의 최솟값으로 잡은 값이에요. 측정 방법은 [성능 종합](/internals/array/performance/)에 있어요).
-
-<Bench
-  rows={[
-    { label: 'f + g', times: [177.1e-6, 150.8e-6, 39.0e-6] },
-    { label: 'exp(f)', times: [1.49e-3, 1.07e-3, 121.4e-6] },
-    { label: 'sin(f)', times: [3.81e-3, 801.7e-6, 93.6e-6] },
-    { label: 'sum(f)', times: [112.8e-6, 111.2e-6, 24.0e-6] },
-    { label: 'argmax(f)', times: [558.2e-6, 471.2e-6, 57.3e-6] },
-    { label: 'cumulative_sum(f)', times: [2.18e-3, 384.5e-6, 69.9e-6] },
-    { label: 'sort(f2, axis=1) 1000행', times: [13.81e-3, 6.27e-3, 703.8e-6] },
-    { label: 'int64 matmul 200³', times: [2.56e-3, 1.55e-3, 216.3e-6] },
-    { label: 'float64 matmul 1000³', times: [2.02e-3, 2.01e-3, 2.01e-3] },
-    { label: 'g[idx] = 1.0 (scatter 10⁶)', times: [960.4e-6, 1.03e-3, 795.0e-6] },
-  ]}
-  caption="원소 100만 개 기준. 배율은 numpy 대비예요. float64 matmul은 양쪽 모두 Accelerate의 BLAS가 자기 스레드로 돌아요. scatter는 반복 인덱스의 '마지막 쓰기가 이긴다'를 지키려고 나누지 않아요."
-/>
-
-1스레드에서 10스레드로 갈 때의 배율을 보면 연산의 성격이 보여요.
-
-| 연산 | 1 → 10스레드 | 성격 |
-|---|---:|---|
-| `f + g` | 3.9× | 메모리 대역폭 (100만 개는 일부가 캐시에 남아 400만 개보다 잘 늘어요) |
-| `sum(f)` | 4.6× | 메모리 대역폭 |
-| `exp(f)` | 8.8× | 계산 (vForce) |
-| `argmax(f)` | 8.2× | 계산 (비교 + 선택) |
-| `sort(f2, axis=1)` 1000행 | 8.9× | 계산, 레인 단위 |
-| int64 matmul 200³ | 7.2× | 계산, 출력 행 단위 |
-| float64 matmul 1000³ | 1.0× | Accelerate가 이미 여러 스레드를 써요 |
-| scatter | 1.3× | 나누지 않아요 (범위 검사만 나눠요) |
 
 ### numpy와 BLAS의 스레드
 
-- **numpy는 BLAS 말고는 한 스레드로 돌아요.** 위 표의 numpy 수치는 모두 1스레드예요. stardust 1스레드가 numpy보다 빠른 줄(`sin`, `cumulative_sum`, `sort` 등)은 알고리즘이나 커널이 달라서이고, 10스레드 열의 차이는 여기에 병렬화가 더해진 것이에요.
-- **BLAS는 자기 스레드를 따로 가져요.** 이 환경의 numpy 2.5.4는 BLAS와 LAPACK으로 Apple Accelerate를 써요(`numpy.show_config()`에 나와요). stardust의 float64·complex128 matmul도 Accelerate를 부르므로, 큰 행렬 하나의 곱은 양쪽 모두 Accelerate 안에서 나뉘어 돌아요. 그래서 float64 matmul 1000³이 2.02ms 대 2.01ms로 같아요.
-- **두 풀을 겹치지 않아요.** stardust는 큰 행렬의 배치를 우리 풀로 나누지 않고 차례로 돌려요. 우리 풀과 Accelerate의 스레드가 동시에 코어를 다투면 둘 다 느려지기 때문이에요. 반대로 Accelerate는 정사각 `dgemm`을 256까지는 한 스레드로 돌리므로(CPU 시간/경과 시간이 256에서 1.00, 288에서 1.62), 행렬 하나가 256³ 이하인 배치는 우리 풀로 나눠요(1000 × 8×8: 1스레드 71.5µs → 10스레드 13.8µs, numpy 70.5µs). 자세한 것은 [행렬곱](/internals/array/matmul/)에 있어요.
+- **numpy는 BLAS 말고는 한 스레드로 돌아요.** 위 표의 numpy 수치는 모두 1스레드예요. stardust 1스레드가 numpy보다 빠른 줄(`i + f`, `var`, `sort` 등)은 알고리즘이나 커널이 달라서이고, 여러 스레드 열의 차이는 여기에 병렬화가 더해진 것이에요.
+- **BLAS는 자기 스레드를 따로 가져요.** 이 환경의 numpy 2.5.4는 BLAS와 LAPACK으로 Apple Accelerate를 써요(`numpy.show_config()`에 나와요). stardust의 float64·complex128 matmul도 Accelerate를 부르므로, 큰 행렬 하나의 곱은 양쪽 모두 Accelerate 안에서 나뉘어 돌아요. 두 쪽이 같은 BLAS 호출을 하는 셈이라 시간도 거의 같아요.
+- **두 풀을 겹치지 않아요.** stardust는 큰 행렬의 배치를 우리 풀로 나누지 않고 차례로 돌려요. 우리 풀과 Accelerate의 스레드가 동시에 코어를 다투면 둘 다 느려지기 때문이에요. 반대로 Accelerate는 정사각 `dgemm`을 256까지는 한 스레드로 돌리므로(CPU 시간/경과 시간이 256에서 1.00, 288에서 1.62), 행렬 하나가 256³ 이하인 배치는 우리 풀로 나눠요(1000 × 8×8: 1스레드 65µs → 10스레드 14µs, numpy 66µs). 자세한 것은 [행렬곱](/internals/array/matmul/)에 있어요.
 - Linux에서 흔한 OpenBLAS는 자기 스레드 수를 `OPENBLAS_NUM_THREADS` 같은 환경 변수로 따로 정해요. numpy 사용자가 Python 스레드로 직접 병렬화하면서 BLAS도 여러 스레드를 쓰면 과다 구독이 생기기 쉬워요. stardust 안에서는 `busy_` 규칙과 "큰 BLAS 배치는 차례로" 규칙이 이것을 막아요.
 
 <Callout type="warn" title="짧은 병렬 호출의 측정은 프로세스마다 갈릴 수 있어요">

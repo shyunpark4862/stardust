@@ -355,18 +355,7 @@ C++가 맡는 것은 메모리(Buffer, 비트맵, Column), 해시 테이블과 �
 
 Python 층이 더하는 비용은 연산 하나에 30~200 ns, 컬럼 3개짜리 필터에서 0.7 µs예요. 원소 100만 개에서는 세 모양의 차이가 측정 오차 안이에요. stardust는 Python Series를 써요.
 
-지금 빌드의 10행 호출 비용을 pandas·Polars와 비교하면 이래요. 위 표보다 늘어난 몫은 결측 전파, 이름 규칙, dtype 검사예요.
-
-| 연산 (10행) | stardust | pandas 3.1.1 | Polars 2.1.0 |
-|---|---:|---:|---:|
-| `s + s` | ⟦FBENCH "s + s" 10 sd@1⟧ | ⟦FBENCH "s + s" 10 pandas⟧ | ⟦FBENCH "s + s" 10 polars@1⟧ |
-| `s.sum()` | ⟦FBENCH "s.sum()" 10 sd@1⟧ | ⟦FBENCH "s.sum()" 10 pandas⟧ | ⟦FBENCH "s.sum()" 10 polars@1⟧ |
-| `df["a"]` | ⟦FBENCH 'df["a"]' 10 sd@1⟧ | ⟦FBENCH 'df["a"]' 10 pandas⟧ | ⟦FBENCH 'df["a"]' 10 polars@1⟧ |
-| `df[df["a"] > 0]` | ⟦FBENCH 'df[df["a"] > 0]' 10 sd@1⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 pandas⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 polars@1⟧ |
-
-{/* BENCH-FIG: "s + s" 10, "s.sum()" 10, 'df["a"]' 10, 'df[df["a"] > 0]' 10 — pandas, polars@1, sd@1 | 캡션: 원소 10개짜리 연산 하나의 시간. 작은 데이터에서는 계산보다 호출 경로가 시간을 정해요. */}
-
-작은 데이터의 호출 비용이 어디서 나오는지는 [성능과 검증](/internals/frame/performance/)에 있어요.
+실제 Series 연산에는 이 비용 위에 결측 전파, 이름 규칙, dtype 검사가 더해져요. 작은 데이터의 호출 비용이 어디서 나오는지는 [성능과 검증](/internals/frame/performance/)에 있어요.
 
 ### Column은 값 타입으로 Python에 넘어가요
 
@@ -537,19 +526,7 @@ stardust에는 lazy 엔진이 없어요. 연산 하나는 부르는 즉시 커�
 
 ## 성능의 위치
 
-큰 데이터(1M 행)에서 시간을 정하는 것은 커널이고, 작은 데이터(10~1천 행)에서는 호출 경로예요. 대표 연산의 시간이에요.
-
-| 1M 행 | stardust 1스레드 | stardust 10스레드 | pandas | Polars 14스레드 |
-|---|---:|---:|---:|---:|
-| `float + float` | ⟦FBENCH "float + float" 1M sd@1⟧ | ⟦FBENCH "float + float" 1M sd@10⟧ | ⟦FBENCH "float + float" 1M pandas⟧ | ⟦FBENCH "float + float" 1M polars@14⟧ |
-| `groupby string sum` | ⟦FBENCH "groupby string sum" 1M sd@1⟧ | ⟦FBENCH "groupby string sum" 1M sd@10⟧ | ⟦FBENCH "groupby string sum" 1M pandas⟧ | ⟦FBENCH "groupby string sum" 1M polars@14⟧ |
-| `sort int64` | ⟦FBENCH "sort int64" 1M sd@1⟧ | ⟦FBENCH "sort int64" 1M sd@10⟧ | ⟦FBENCH "sort int64" 1M pandas⟧ | ⟦FBENCH "sort int64" 1M polars@14⟧ |
-| `merge n x n/10 inner` | ⟦FBENCH "merge n x n/10 inner" 1M sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 1M pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@14⟧ |
-| `read_csv mixed` | ⟦FBENCH "read_csv mixed" 1M sd@1⟧ | ⟦FBENCH "read_csv mixed" 1M sd@10⟧ | ⟦FBENCH "read_csv mixed" 1M pandas⟧ | ⟦FBENCH "read_csv mixed" 1M polars@14⟧ |
-
-{/* BENCH-FIG: "float + float" 1M, "groupby string sum" 1M, "sort int64" 1M, "merge n x n/10 inner" 1M, "read_csv mixed" 1M — pandas, sd@1, sd@10, polars@14 | 캡션: 1M 행에서의 대표 연산. 원소별 연산은 메모리 대역폭에, 해시 연산은 캐시 미스에 묶여요. */}
-
-10행과 1천 행은 호출 비용이 시간을 정하고, pandas는 연산 하나의 고정비가 수 µs라서 이 크기에서 차이가 가장 커요. 10만 행은 스레드를 쓰는 기준값(2¹⁷ = 131,072행) 바로 아래라서 대부분의 연산이 1스레드로 돌아요. 1M 행에서는 원소별 연산과 리덕션이 메모리 대역폭에 가깝고, 키가 많은 해시 연산(`nunique`, `groupby`, `merge`)은 캐시 미스가 시간을 정해요. 수치 전체와 원인은 [성능과 검증](/internals/frame/performance/)에 있어요.
+큰 데이터(1M 행)에서 시간을 정하는 것은 커널이고, 작은 데이터(10~1천 행)에서는 호출 경로예요. pandas는 연산 하나의 고정비가 수 µs라서 작은 데이터에서 차이가 가장 커요. 10만 행은 스레드를 쓰는 기준값(2¹⁷ = 131,072행) 바로 아래라서 대부분의 연산이 1스레드로 돌아요. 1M 행에서는 원소별 연산과 리덕션이 메모리 대역폭에 가깝고, 키가 많은 해시 연산(`nunique`, `groupby`, `merge`)은 캐시 미스가 시간을 정해요. 원인은 [성능과 검증](/internals/frame/performance/)에 자세히 있어요.
 
 ## 참고 문헌
 

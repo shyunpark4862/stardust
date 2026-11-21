@@ -3,7 +3,7 @@ title: LU 분해와 선형 시스템
 group: 선형 시스템과 분해
 order: 1
 summary: "`solve`, `inv`, `det`가 함께 기대는 LU 분해를 가우스 소거에서 출발해 설명해요. 부분 피벗이 소거를 안정하게 만드는 이유를 보이고, LAPACK 루틴을 재서 골라 `inv(a)`가 `solve(a, I)`와 비트까지 같아지게 한 선택을 다뤄요."
-seeAlso: [overview, packing, batch, symmetric, qr, svd, performance]
+seeAlso: [overview, packing, batch, symmetric, qr, svd]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -743,39 +743,11 @@ C[i] = nx * ni;
 - **배치**: numpy와 scipy는 행렬 묶음을 한 코어로 차례로 돌아요. stardust는 배치를 스레드풀에 나눠요. 1스레드에서는 같은 LAPACK을 차례로 부르므로 차이는 호출 비용에서만 나요.
 - **큰 행렬 하나**: 같은 LAPACK이라 대부분 비슷해요. 단 `solve`는 `gesv` 대신 `getrf` + `getrs`를 써서 $n \ge 768$에서 Accelerate의 스레드를 쓰는 `getrf` 경로를 타요. stardust의 스레드 수 설정은 Accelerate 안의 스레드와 무관하므로 1스레드 설정에서도 마찬가지예요.
 
-**10스레드(기본)**, numpy·scipy 시간 / stardust 시간:
-
-| 함수 | (3,3) | (32,32) | (300,300) | (1000,1000) | (1000,3,3) | (100,32,32) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `solve` | ⟦BENCH solve (3,3) t10⟧ | ⟦BENCH solve (32,32) t10⟧ | ⟦BENCH solve (300,300) t10⟧ | ⟦BENCH solve (1000,1000) t10⟧ | ⟦BENCH solve (1000,3,3) t10⟧ | ⟦BENCH solve (100,32,32) t10⟧ |
-| `inv` | ⟦BENCH inv (3,3) t10⟧ | ⟦BENCH inv (32,32) t10⟧ | ⟦BENCH inv (300,300) t10⟧ | ⟦BENCH inv (1000,1000) t10⟧ | ⟦BENCH inv (1000,3,3) t10⟧ | ⟦BENCH inv (100,32,32) t10⟧ |
-| `det` | ⟦BENCH det (3,3) t10⟧ | ⟦BENCH det (32,32) t10⟧ | ⟦BENCH det (300,300) t10⟧ | ⟦BENCH det (1000,1000) t10⟧ | ⟦BENCH det (1000,3,3) t10⟧ | ⟦BENCH det (100,32,32) t10⟧ |
-| `slogdet` | ⟦BENCH slogdet (3,3) t10⟧ | ⟦BENCH slogdet (32,32) t10⟧ | ⟦BENCH slogdet (300,300) t10⟧ | ⟦BENCH slogdet (1000,1000) t10⟧ | ⟦BENCH slogdet (1000,3,3) t10⟧ | ⟦BENCH slogdet (100,32,32) t10⟧ |
-| `lu` | ⟦BENCH lu (3,3) t10⟧ | ⟦BENCH lu (32,32) t10⟧ | ⟦BENCH lu (300,300) t10⟧ | ⟦BENCH lu (1000,1000) t10⟧ | ⟦BENCH lu (1000,3,3) t10⟧ | ⟦BENCH lu (100,32,32) t10⟧ |
-| `lu_solve` | ⟦BENCH lu_solve (3,3) t10⟧ | ⟦BENCH lu_solve (32,32) t10⟧ | ⟦BENCH lu_solve (300,300) t10⟧ | ⟦BENCH lu_solve (1000,1000) t10⟧ | 기준 없음 | 기준 없음 |
-| `solve_triangular` | ⟦BENCH solve_triangular (3,3) t10⟧ | ⟦BENCH solve_triangular (32,32) t10⟧ | ⟦BENCH solve_triangular (300,300) t10⟧ | ⟦BENCH solve_triangular (1000,1000) t10⟧ | ⟦BENCH solve_triangular (1000,3,3) t10⟧ | ⟦BENCH solve_triangular (100,32,32) t10⟧ |
-
-**1스레드**:
-
-| 함수 | (3,3) | (32,32) | (300,300) | (1000,1000) | (1000,3,3) | (100,32,32) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `solve` | ⟦BENCH solve (3,3) t1⟧ | ⟦BENCH solve (32,32) t1⟧ | ⟦BENCH solve (300,300) t1⟧ | ⟦BENCH solve (1000,1000) t1⟧ | ⟦BENCH solve (1000,3,3) t1⟧ | ⟦BENCH solve (100,32,32) t1⟧ |
-| `inv` | ⟦BENCH inv (3,3) t1⟧ | ⟦BENCH inv (32,32) t1⟧ | ⟦BENCH inv (300,300) t1⟧ | ⟦BENCH inv (1000,1000) t1⟧ | ⟦BENCH inv (1000,3,3) t1⟧ | ⟦BENCH inv (100,32,32) t1⟧ |
-| `det` | ⟦BENCH det (3,3) t1⟧ | ⟦BENCH det (32,32) t1⟧ | ⟦BENCH det (300,300) t1⟧ | ⟦BENCH det (1000,1000) t1⟧ | ⟦BENCH det (1000,3,3) t1⟧ | ⟦BENCH det (100,32,32) t1⟧ |
-| `slogdet` | ⟦BENCH slogdet (3,3) t1⟧ | ⟦BENCH slogdet (32,32) t1⟧ | ⟦BENCH slogdet (300,300) t1⟧ | ⟦BENCH slogdet (1000,1000) t1⟧ | ⟦BENCH slogdet (1000,3,3) t1⟧ | ⟦BENCH slogdet (100,32,32) t1⟧ |
-| `lu` | ⟦BENCH lu (3,3) t1⟧ | ⟦BENCH lu (32,32) t1⟧ | ⟦BENCH lu (300,300) t1⟧ | ⟦BENCH lu (1000,1000) t1⟧ | ⟦BENCH lu (1000,3,3) t1⟧ | ⟦BENCH lu (100,32,32) t1⟧ |
-| `lu_solve` | ⟦BENCH lu_solve (3,3) t1⟧ | ⟦BENCH lu_solve (32,32) t1⟧ | ⟦BENCH lu_solve (300,300) t1⟧ | ⟦BENCH lu_solve (1000,1000) t1⟧ | 기준 없음 | 기준 없음 |
-| `solve_triangular` | ⟦BENCH solve_triangular (3,3) t1⟧ | ⟦BENCH solve_triangular (32,32) t1⟧ | ⟦BENCH solve_triangular (300,300) t1⟧ | ⟦BENCH solve_triangular (1000,1000) t1⟧ | ⟦BENCH solve_triangular (1000,3,3) t1⟧ | ⟦BENCH solve_triangular (100,32,32) t1⟧ |
-
-(`solve`, `lu_solve`, `solve_triangular`의 우변은 한 열 `(..., n, 1)`이에요. `solve_triangular`의 입력은 C 순서 위 삼각 행렬이에요. scipy의 `lu_solve`는 배치를 받지 않아 배치 줄의 기준이 없어요.)
-
-{/* BENCH-FIG: solve (3,3) t10, solve (1000,3,3) t10, solve (100,32,32) t10, solve (1000,1000) t10, inv (3,3) t10, inv (1000,1000) t10, det (1000,3,3) t10 (계열: numpy, stardust 1스레드, stardust 10스레드) | 캡션: Apple M4 Pro, numpy 2.5.4, float64. 작은 행렬 하나는 호출 비용에서, 배치는 스레드풀에서 차이가 나요. 큰 solve는 gesv 대신 Accelerate가 스레드를 쓰는 getrf 경로를 타요. */}
-
-몇 가지 줄은 설명이 필요해요.
+몇 가지 경우는 설명이 필요해요.
 
 - **큰 `inv`**: 위에서 본 대로 `getri`보다 flop이 많은 경로예요. numpy의 `inv`는 단위행렬 우변의 `gesv`라서 numpy와는 같은 종류의 계산이고, 차이는 `gesv`와 `getrf` + `getrs`의 차이를 따라가요.
-- **큰 C 순서 `solve_triangular`**: $O(n^2)$ 계산에 $O(n^2)$ 전치 패킹이 그대로 보여요. 원소 $2^{17}$개 이상인 C 순서 행렬의 전치는 열 32개 단위로 스레드풀에 나눠 줄이지만([패킹과 결과 레이아웃](/internals/linalg/packing/)), scipy가 `trans` 플래그로 복사 없이 읽는 것을 따라가지 않아요. 큰 크기에서 scipy보다 느린 줄은 이 때문이에요(⟦BENCH solve_triangular (1000,1000) t10⟧배).
-- **큰 `lu_solve`**: 인수는 열 우선이라 그 자리에서 읽고 전치도 없는데 큰 크기에서 scipy보다 느려요(⟦BENCH lu_solve (300,300) t10⟧배, ⟦BENCH lu_solve (1000,1000) t10⟧배). 원인은 아직 밝히지 못했어요.
+- **큰 C 순서 `solve_triangular`**: $O(n^2)$ 계산에 $O(n^2)$ 전치 패킹이 그대로 보여요. 원소 $2^{17}$개 이상인 C 순서 행렬의 전치는 열 32개 단위로 스레드풀에 나눠 줄이지만([패킹과 결과 레이아웃](/internals/linalg/packing/)), scipy가 `trans` 플래그로 복사 없이 읽는 것을 따라가지 않아요. 그래서 큰 크기에서는 scipy보다 느려요.
+- **큰 `lu_solve`**: 인수는 열 우선이라 그 자리에서 읽고 전치도 없는데 큰 크기에서 scipy보다 느려요. 원인은 밝혀지지 않았어요.
 - **`lu`의 나누는 복사**: 큰 행렬에서는 $L$, $U$를 나눠 쓰는 $O(mn)$ 루프가 보여요. $n = 300$에서 `getrf`가 약 302µs, 이 루프가 51µs였어요(scipy의 같은 부분은 28µs, Apple M4 Pro, float64). 결과를 바꾸지 않고 줄일 여지가 있는 부분이에요.
 
 ## 정확도
@@ -807,7 +779,7 @@ $\varepsilon = 2^{-52}$는 float64의 기계 엡실론이에요. 왼쪽을 오�
 | `det` 대 numpy | 큰 $n$에서 반올림 수준 차이. 중간 곱만 넘치는 행렬은 stardust가 정확 | numpy는 $\text{sign} \cdot \exp(\text{logabsdet})$ |
 | `cond` (±2 외) 대 numpy | `inv`가 다른 크기에서 반올림 수준 차이 | 역행렬 경로의 차이 |
 
-우리 함수끼리의 관계(위의 세 줄)는 약속이에요. numpy·scipy와의 관계는 지금의 사실이고 약속이 아니에요. 고침이나 최적화로 마지막 자리가 달라질 수 있어요($n$ = 32–46의 `getf2`처럼). 이 관계들은 `tests/linalg/`의 테스트로 고정돼 있어요(`test_solve_inv_det.py`, `test_factorizations.py`). 모든 함수의 결과는 입력의 메모리 배치, 배치 안의 위치, 스레드 수와도 무관하게 비트까지 같아요. 패킹이 모든 배치를 같은 열 우선 버퍼로 만들고, LAPACK에 넘기는 배열을 16바이트로 정렬하고, 배치 원소 하나는 어느 스레드에서 돌든 같은 호출이기 때문이에요([배치와 병렬화](/internals/linalg/batch/), [성능과 정확도](/internals/linalg/performance/)).
+우리 함수끼리의 관계(위의 세 줄)는 약속이에요. numpy·scipy와의 관계는 지금의 사실이고 약속이 아니에요. 고침이나 최적화로 마지막 자리가 달라질 수 있어요($n$ = 32–46의 `getf2`처럼). 이 관계들은 `tests/linalg/`의 테스트로 고정돼 있어요(`test_solve_inv_det.py`, `test_factorizations.py`). 모든 함수의 결과는 입력의 메모리 배치, 배치 안의 위치, 스레드 수와도 무관하게 비트까지 같아요. 패킹이 모든 배치를 같은 열 우선 버퍼로 만들고, LAPACK에 넘기는 배열을 16바이트로 정렬하고, 배치 원소 하나는 어느 스레드에서 돌든 같은 호출이기 때문이에요([패킹과 결과 레이아웃](/internals/linalg/packing/), [배치와 병렬화](/internals/linalg/batch/)).
 
 ## 참고 문헌
 

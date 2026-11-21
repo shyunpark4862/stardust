@@ -2,7 +2,7 @@
 title: 성능과 검증
 group: 병렬화와 성능
 order: 2
-summary: 데이터프레임 영역을 pandas·Polars와 어떻게 재고, 결과가 맞는지 무엇을 정답으로 시험하는지 설명해요. 같은 입력을 되풀이해 재면 분기 예측기가 입력을 외워 해시 같은 코드가 실제보다 빨라 보여서, 비교 표는 호출마다 새 입력으로 재요.
+summary: 데이터프레임 영역을 pandas·Polars와 어떻게 재고, 결과가 맞는지 무엇을 정답으로 시험하는지 설명해요. 같은 입력을 되풀이해 재면 분기 예측기가 입력을 외워 해시 같은 코드가 실제보다 빨라 보여서, 비교 측정은 호출마다 새 입력으로 재요.
 seeAlso: [parallel, overview, hashing, groupby-sort, merge-concat, csv, elementwise]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -12,18 +12,9 @@ import Steps from '../../../components/fig/Steps.astro';
 
 ## 한눈에 보기
 
-이 페이지는 데이터프레임 영역(`sd.frame`)의 성능을 pandas 3.1.1, Polars 2.1.0과 나란히 놓고, 결과가 맞는지 어떻게 확인하는지 설명해요. 비교 측정은 15개 케이스를 1천, 10만, 100만(1M) 행에서, 그리고 호출 비용을 보는 10행 케이스 4개를 재요(`bench/frame/final_compare.py`).
+이 페이지는 데이터프레임 영역(`sd.frame`)의 성능을 pandas 3.1.1, Polars 2.1.0과 나란히 놓고, 결과가 맞는지 어떻게 확인하는지 설명해요. 비교 측정은 15개 케이스를 1천, 10만, 100만(1M) 행에서, 그리고 호출 비용을 보는 10행 케이스 4개를 재요.
 
-{/* 아래 표의 ⟦FBENCH …⟧는 측정 뒤에 실제 값으로 바뀌는 자리예요. 기하평균은 그 크기의 모든 케이스의 시간 비율로 구해요. */}
-
-| 행 수 | pandas ÷ sd 1스레드 | Polars 1스레드 ÷ sd 1스레드 | pandas ÷ sd 10스레드 | Polars 14스레드 ÷ sd 10스레드 |
-|---:|---:|---:|---:|---:|
-| 10 | ⟦FBENCH 기하평균 10 pandas/sd@1⟧ | ⟦FBENCH 기하평균 10 polars@1/sd@1⟧ | ⟦FBENCH 기하평균 10 pandas/sd@10⟧ | ⟦FBENCH 기하평균 10 polars@14/sd@10⟧ |
-| 1,000 | ⟦FBENCH 기하평균 1k pandas/sd@1⟧ | ⟦FBENCH 기하평균 1k polars@1/sd@1⟧ | ⟦FBENCH 기하평균 1k pandas/sd@10⟧ | ⟦FBENCH 기하평균 1k polars@14/sd@10⟧ |
-| 100,000 | ⟦FBENCH 기하평균 100k pandas/sd@1⟧ | ⟦FBENCH 기하평균 100k polars@1/sd@1⟧ | ⟦FBENCH 기하평균 100k pandas/sd@10⟧ | ⟦FBENCH 기하평균 100k polars@14/sd@10⟧ |
-| 1,000,000 | ⟦FBENCH 기하평균 1M pandas/sd@1⟧ | ⟦FBENCH 기하평균 1M polars@1/sd@1⟧ | ⟦FBENCH 기하평균 1M pandas/sd@10⟧ | ⟦FBENCH 기하평균 1M polars@14/sd@10⟧ |
-
-시간 비율의 기하평균이에요. 1보다 크면 stardust가 빨라요. 크기마다 성능을 정하는 것이 달라요.
+크기마다 성능을 정하는 것이 달라요.
 
 1. **10행과 1천 행은 호출 비용이 정해요.** 데이터를 만지는 시간보다 Python에서 C++로 들어가고 결과 객체를 만드는 고정 비용이 커요. pandas는 연산 하나에 수 µs를 쓰고, stardust는 수백 ns를 써요(아래 "작은 데이터").
 2. **10만 행은 병렬화 기준값의 그늘이에요.** stardust는 2¹⁷(131,072)행보다 작은 일을 나누지 않으므로, 10만 행의 원소별 연산·필터·합·해시가 1스레드로 돌아요([병렬화와 결정성](/internals/frame/parallel/)).
@@ -43,7 +34,7 @@ import Steps from '../../../components/fig/Steps.astro';
 | Polars | 2.1.0. 1스레드(`POLARS_MAX_THREADS=1`)와 기본값 14스레드 |
 | stardust | 1스레드(`sd.set_num_threads(1)`)와 기본값 10스레드(P코어 수) |
 
-열 이름은 `sd@1`, `sd@10`, `pandas`, `polars@1`, `polars@14`예요. 기본 스레드 수가 서로 달라요. Polars는 E코어까지 14개를 쓰고, stardust는 E코어를 섞으면 메모리에 묶인 연산이 느려져서 P코어 10개만 써요. 각자의 기본값을 그대로 비교하고, 1스레드 열로 코어 수를 뺀 비교도 함께 봐요.
+stardust와 Polars는 1스레드와 각자의 기본 스레드 수로 재요. 기본 스레드 수가 서로 달라요. Polars는 E코어까지 14개를 쓰고, stardust는 E코어를 섞으면 메모리에 묶인 연산이 느려져서 P코어 10개만 써요. 각자의 기본값을 그대로 비교하고, 1스레드끼리 견줘 코어 수를 뺀 비교도 함께 봐요.
 
 ### 입력
 
@@ -90,13 +81,13 @@ merge의 왼쪽 키는 오른쪽 키 범위보다 약 11% 넓게 뽑으므로, �
 
 ### 시간을 재는 법
 
-<Fig column caption="한 줄의 시간이 정해지는 과정. 최솟값을 두 번 취해요: 한 프로세스 안의 반복 사이에서, 그리고 라운드 사이에서.">
+<Fig column caption="케이스 하나의 시간이 정해지는 과정. 최솟값을 두 번 취해요: 한 프로세스 안의 반복 사이에서, 그리고 라운드 사이에서.">
   <Steps
     steps={[
-      { label: 'per_call_ns(fn)', note: '호출을 1, 2, 4, …번 묶어 한 묶음이 목표 시간(1M 행 0.2초, 그 밖 0.05초)을 넘을 때까지 늘려요', where: 'bench/frame/_harness.py' },
+      { label: '묶음 크기 정하기', note: '호출을 1, 2, 4, …번 묶어 한 묶음이 수 ms 걸릴 때까지 늘려요' },
       { label: '같은 묶음 크기로 되풀이', note: '10행 케이스는 7번, 나머지는 5번. 묶음마다 (시간 ÷ 호출 수)의 최솟값', depth: 1 },
-      { label: '라운드', note: '열(sd@1, sd@10, pandas, polars@1, polars@14)마다 프로세스를 따로 띄워 차례로 한 바퀴', where: 'bench/frame/final_compare.sh' },
-      { label: '라운드 사이의 최솟값', note: '두 바퀴(기본값) 돌리고 줄마다 더 빠른 값을 남겨요', depth: 1 },
+      { label: '라운드', note: '열(stardust 1스레드와 10스레드, pandas, Polars 1스레드와 14스레드)마다 프로세스를 따로 띄워 차례로 한 바퀴' },
+      { label: '라운드 사이의 최솟값', note: '두 바퀴(기본값) 돌리고 케이스마다 더 빠른 값을 남겨요', depth: 1 },
     ]}
   />
 </Fig>
@@ -104,12 +95,12 @@ merge의 왼쪽 키는 오른쪽 키 범위보다 약 11% 넓게 뽑으므로, �
 - 최솟값을 써요. 평균과 중앙값은 다른 프로세스의 일, 운영체제의 인터럽트, 온도에 따라 흔들려요. 최솟값은 가장 덜 방해받은 실행이라 기계의 상태 변화에 가장 덜 흔들려요.
 - 묶어서 재요. 10행 연산은 수백 ns라 타이머 해상도와 루프 비용이 무시할 수 없어요. 묶음 하나가 수십 ms가 되게 해서 그것을 지워요.
 - 번갈아 재요. 세 라이브러리를 각각 한꺼번에 재면, 그사이 기계 상태가 바뀐 몫이 한 열에만 들어가요. 같은 스크립트로 열을 번갈아 두 바퀴 돌리면 그 변화가 모든 열에 고르게 들어가요. 다른 벤치마크가 함께 돌면 모든 값이 1.5~2배로 나오므로, 시작 전에 기계가 조용한지 확인해요.
-- Polars는 열마다 프로세스를 따로 띄워요. Polars의 스레드 수는 `POLARS_MAX_THREADS`로 프로세스가 시작할 때 한 번 정해지고 바꿀 수 없어요. stardust도 같은 방식으로 열마다 프로세스를 띄워요(`--threads 1`).
+- Polars는 열마다 프로세스를 따로 띄워요. Polars의 스레드 수는 `POLARS_MAX_THREADS`로 프로세스가 시작할 때 한 번 정해지고 바꿀 수 없어요. stardust도 같은 방식으로 스레드 수마다 프로세스를 띄워요.
 - 결과를 버리지 않아요. 각 호출은 결과 객체를 실제로 만들고 돌려줘요. 1M 행 원소별 연산은 매번 새 8MB 버퍼를 받아 처음 쓰면서 페이지 폴트를 내는데, 실제 사용에서도 그렇기 때문에 그대로 둬요.
 
 ### 새 입력 모드
 
-`--fresh`를 주면 크기마다 시드가 다른 입력을 여러 벌 만들고(`fresh(n) = min(64, max(4, 4,000,000 // n))`: 1천 행 64벌, 10만 행 40벌, 1M 행 4벌), 호출할 때마다 다음 벌을 써요(`per_call_ns_cycle`). 비교 표의 1천·10만·1M 행은 이 모드예요. 10행 케이스는 같은 입력을 되풀이해요. 10행은 분기가 몇 개뿐이라 외울 것이 거의 없고, 보려는 것이 호출의 고정 비용이기 때문이에요. 이 모드가 필요한 이유는 다음 절에 있어요.
+새 입력 모드는 크기마다 시드가 다른 입력을 여러 벌 만들고(`min(64, max(4, 4,000,000 // n))`벌: 1천 행 64벌, 10만 행 40벌, 1M 행 4벌), 호출할 때마다 다음 벌을 써요. 1천·10만·1M 행 케이스는 이 모드로 재요. 10행 케이스는 같은 입력을 되풀이해요. 10행은 분기가 몇 개뿐이라 외울 것이 거의 없고, 보려는 것이 호출의 고정 비용이기 때문이에요. 이 모드가 필요한 이유는 다음 절에 있어요.
 
 ## 같은 입력 반복의 함정
 
@@ -155,16 +146,7 @@ CPU는 조건 분기(`if`)의 결과가 나오기 전에 어느 쪽으로 갈지
 
 ## 작은 데이터: 호출 비용
 
-10행 케이스의 시간이에요(같은 입력 반복).
-
-| 케이스 | sd 1스레드 | sd 10스레드 | pandas | Polars 1스레드 | Polars 14스레드 | pandas ÷ sd@1 | Polars@1 ÷ sd@1 | Polars@14 ÷ sd@10 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `s + s` | ⟦FBENCH "s + s" 10 sd@1⟧ | ⟦FBENCH "s + s" 10 sd@10⟧ | ⟦FBENCH "s + s" 10 pandas⟧ | ⟦FBENCH "s + s" 10 polars@1⟧ | ⟦FBENCH "s + s" 10 polars@14⟧ | ⟦FBENCH "s + s" 10 pandas/sd@1⟧ | ⟦FBENCH "s + s" 10 polars@1/sd@1⟧ | ⟦FBENCH "s + s" 10 polars@14/sd@10⟧ |
-| `s.sum()` | ⟦FBENCH "s.sum()" 10 sd@1⟧ | ⟦FBENCH "s.sum()" 10 sd@10⟧ | ⟦FBENCH "s.sum()" 10 pandas⟧ | ⟦FBENCH "s.sum()" 10 polars@1⟧ | ⟦FBENCH "s.sum()" 10 polars@14⟧ | ⟦FBENCH "s.sum()" 10 pandas/sd@1⟧ | ⟦FBENCH "s.sum()" 10 polars@1/sd@1⟧ | ⟦FBENCH "s.sum()" 10 polars@14/sd@10⟧ |
-| `df["a"]` | ⟦FBENCH 'df["a"]' 10 sd@1⟧ | ⟦FBENCH 'df["a"]' 10 sd@10⟧ | ⟦FBENCH 'df["a"]' 10 pandas⟧ | ⟦FBENCH 'df["a"]' 10 polars@1⟧ | ⟦FBENCH 'df["a"]' 10 polars@14⟧ | ⟦FBENCH 'df["a"]' 10 pandas/sd@1⟧ | ⟦FBENCH 'df["a"]' 10 polars@1/sd@1⟧ | ⟦FBENCH 'df["a"]' 10 polars@14/sd@10⟧ |
-| `df[df["a"] > 0]` | ⟦FBENCH 'df[df["a"] > 0]' 10 sd@1⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 sd@10⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 pandas⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 polars@1⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 polars@14⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 pandas/sd@1⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 polars@1/sd@1⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 polars@14/sd@10⟧ |
-
-{/* BENCH-FIG: "s + s" 10 pandas, sd@1, polars@1; "s.sum()" 10 pandas, sd@1, polars@1; 'df["a"]' 10 pandas, sd@1, polars@1; 'df[df["a"] > 0]' 10 pandas, sd@1, polars@1 | 캡션: 원소 10개짜리 연산 하나의 시간. 데이터는 거의 없고 호출의 고정 비용이 전부예요. */}
+10행 연산은 데이터를 만지는 시간이 거의 없고 호출의 고정 비용이 전부예요.
 
 ### 시간이 어디에 드나
 
@@ -198,7 +180,7 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 
 ### 1천 행도 호출 비용이 커요
 
-1천 행 float 덧셈은 8KB를 읽고 쓰는 일이라 커널이 1µs도 걸리지 않아요. 이 크기에서도 시간의 상당 부분이 위의 고정 비용이에요. Polars는 이 크기에서 스레드를 켜면 오히려 느려지는 줄이 있어요(1천 행 표의 Polars 1스레드와 14스레드 열). 일을 나누는 비용이 계산보다 크기 때문이에요. stardust는 기준값(2¹⁷행) 아래에서 풀을 쓰지 않으므로, 1천 행에서는 1스레드 열과 10스레드 열이 같은 일을 해요.
+1천 행 float 덧셈은 8KB를 읽고 쓰는 일이라 커널이 1µs도 걸리지 않아요. 이 크기에서도 시간의 상당 부분이 위의 고정 비용이에요. Polars는 이 크기에서 스레드를 켜면 오히려 느려지는 연산이 있어요. 일을 나누는 비용이 계산보다 크기 때문이에요. stardust는 기준값(2¹⁷행) 아래에서 풀을 쓰지 않으므로, 1천 행에서는 1스레드와 10스레드가 같은 일을 해요.
 
 ### 작은 데이터에서 효과가 큰 설계
 
@@ -225,79 +207,9 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 - **히스토그램을 한 번에 세는 이유.** 기수 정렬은 8자리(바이트) 각각의 히스토그램이 필요해요. 나누지 않을 때는 키를 한 번 읽으며 8개 히스토그램을 모두 셀 수 있어요. 키를 8번 읽지 않아도 돼요. 1천~1만 행에서 25~29% 빨라지고, 10만 행부터는 차이가 없어요(키를 읽는 시간보다 흩뿌리기가 커요) ([groupby와 정렬](/internals/frame/groupby-sort/)).
 - **조회 루프를 고르는 이유.** 행마다 "NA인가, 문자열인가, 어느 dtype인가"를 물으면 1스레드 1M 행 merge 시간의 약 절반(48%)이 조회예요. 루프 밖에서 한 번 고르면 행 루프에는 찾기와 저장만 남아요([merge와 concat](/internals/frame/merge-concat/)).
 
-## pandas, Polars와 비교
+## 빠른 이유
 
-1천·10만·1M 행은 새 입력 모드예요. 비율 열은 1보다 크면 stardust가 빨라요.
-
-### 1,000행
-
-| 케이스 | sd 1스레드 | sd 10스레드 | pandas | Polars 1스레드 | Polars 14스레드 | pandas ÷ sd@1 | Polars@1 ÷ sd@1 | Polars@14 ÷ sd@10 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `float + float` | ⟦FBENCH "float + float" 1k sd@1⟧ | ⟦FBENCH "float + float" 1k sd@10⟧ | ⟦FBENCH "float + float" 1k pandas⟧ | ⟦FBENCH "float + float" 1k polars@1⟧ | ⟦FBENCH "float + float" 1k polars@14⟧ | ⟦FBENCH "float + float" 1k pandas/sd@1⟧ | ⟦FBENCH "float + float" 1k polars@1/sd@1⟧ | ⟦FBENCH "float + float" 1k polars@14/sd@10⟧ |
-| `float sum` | ⟦FBENCH "float sum" 1k sd@1⟧ | ⟦FBENCH "float sum" 1k sd@10⟧ | ⟦FBENCH "float sum" 1k pandas⟧ | ⟦FBENCH "float sum" 1k polars@1⟧ | ⟦FBENCH "float sum" 1k polars@14⟧ | ⟦FBENCH "float sum" 1k pandas/sd@1⟧ | ⟦FBENCH "float sum" 1k polars@1/sd@1⟧ | ⟦FBENCH "float sum" 1k polars@14/sd@10⟧ |
-| `mask filter` | ⟦FBENCH "mask filter" 1k sd@1⟧ | ⟦FBENCH "mask filter" 1k sd@10⟧ | ⟦FBENCH "mask filter" 1k pandas⟧ | ⟦FBENCH "mask filter" 1k polars@1⟧ | ⟦FBENCH "mask filter" 1k polars@14⟧ | ⟦FBENCH "mask filter" 1k pandas/sd@1⟧ | ⟦FBENCH "mask filter" 1k polars@1/sd@1⟧ | ⟦FBENCH "mask filter" 1k polars@14/sd@10⟧ |
-| `nunique int, 1k keys` | ⟦FBENCH "nunique int, 1k keys" 1k sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1k sd@10⟧ | ⟦FBENCH "nunique int, 1k keys" 1k pandas⟧ | ⟦FBENCH "nunique int, 1k keys" 1k polars@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1k polars@14⟧ | ⟦FBENCH "nunique int, 1k keys" 1k pandas/sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1k polars@1/sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1k polars@14/sd@10⟧ |
-| `nunique int, n keys` | ⟦FBENCH "nunique int, n keys" 1k sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1k sd@10⟧ | ⟦FBENCH "nunique int, n keys" 1k pandas⟧ | ⟦FBENCH "nunique int, n keys" 1k polars@1⟧ | ⟦FBENCH "nunique int, n keys" 1k polars@14⟧ | ⟦FBENCH "nunique int, n keys" 1k pandas/sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1k polars@1/sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1k polars@14/sd@10⟧ |
-| `nunique string` | ⟦FBENCH "nunique string" 1k sd@1⟧ | ⟦FBENCH "nunique string" 1k sd@10⟧ | ⟦FBENCH "nunique string" 1k pandas⟧ | ⟦FBENCH "nunique string" 1k polars@1⟧ | ⟦FBENCH "nunique string" 1k polars@14⟧ | ⟦FBENCH "nunique string" 1k pandas/sd@1⟧ | ⟦FBENCH "nunique string" 1k polars@1/sd@1⟧ | ⟦FBENCH "nunique string" 1k polars@14/sd@10⟧ |
-| `groupby int 1k sum` | ⟦FBENCH "groupby int 1k sum" 1k sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1k sd@10⟧ | ⟦FBENCH "groupby int 1k sum" 1k pandas⟧ | ⟦FBENCH "groupby int 1k sum" 1k polars@1⟧ | ⟦FBENCH "groupby int 1k sum" 1k polars@14⟧ | ⟦FBENCH "groupby int 1k sum" 1k pandas/sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1k polars@1/sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1k polars@14/sd@10⟧ |
-| `groupby int, n keys, sum` | ⟦FBENCH "groupby int, n keys, sum" 1k sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1k sd@10⟧ | ⟦FBENCH "groupby int, n keys, sum" 1k pandas⟧ | ⟦FBENCH "groupby int, n keys, sum" 1k polars@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1k polars@14⟧ | ⟦FBENCH "groupby int, n keys, sum" 1k pandas/sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1k polars@1/sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1k polars@14/sd@10⟧ |
-| `groupby string sum` | ⟦FBENCH "groupby string sum" 1k sd@1⟧ | ⟦FBENCH "groupby string sum" 1k sd@10⟧ | ⟦FBENCH "groupby string sum" 1k pandas⟧ | ⟦FBENCH "groupby string sum" 1k polars@1⟧ | ⟦FBENCH "groupby string sum" 1k polars@14⟧ | ⟦FBENCH "groupby string sum" 1k pandas/sd@1⟧ | ⟦FBENCH "groupby string sum" 1k polars@1/sd@1⟧ | ⟦FBENCH "groupby string sum" 1k polars@14/sd@10⟧ |
-| `groupby int + string sum` | ⟦FBENCH "groupby int + string sum" 1k sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1k sd@10⟧ | ⟦FBENCH "groupby int + string sum" 1k pandas⟧ | ⟦FBENCH "groupby int + string sum" 1k polars@1⟧ | ⟦FBENCH "groupby int + string sum" 1k polars@14⟧ | ⟦FBENCH "groupby int + string sum" 1k pandas/sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1k polars@1/sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1k polars@14/sd@10⟧ |
-| `merge n x n/10 inner` | ⟦FBENCH "merge n x n/10 inner" 1k sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1k sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 1k pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 1k polars@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1k polars@14⟧ | ⟦FBENCH "merge n x n/10 inner" 1k pandas/sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1k polars@1/sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1k polars@14/sd@10⟧ |
-| `sort int64` | ⟦FBENCH "sort int64" 1k sd@1⟧ | ⟦FBENCH "sort int64" 1k sd@10⟧ | ⟦FBENCH "sort int64" 1k pandas⟧ | ⟦FBENCH "sort int64" 1k polars@1⟧ | ⟦FBENCH "sort int64" 1k polars@14⟧ | ⟦FBENCH "sort int64" 1k pandas/sd@1⟧ | ⟦FBENCH "sort int64" 1k polars@1/sd@1⟧ | ⟦FBENCH "sort int64" 1k polars@14/sd@10⟧ |
-| `sort string` | ⟦FBENCH "sort string" 1k sd@1⟧ | ⟦FBENCH "sort string" 1k sd@10⟧ | ⟦FBENCH "sort string" 1k pandas⟧ | ⟦FBENCH "sort string" 1k polars@1⟧ | ⟦FBENCH "sort string" 1k polars@14⟧ | ⟦FBENCH "sort string" 1k pandas/sd@1⟧ | ⟦FBENCH "sort string" 1k polars@1/sd@1⟧ | ⟦FBENCH "sort string" 1k polars@14/sd@10⟧ |
-| `read_csv floats` | ⟦FBENCH "read_csv floats" 1k sd@1⟧ | ⟦FBENCH "read_csv floats" 1k sd@10⟧ | ⟦FBENCH "read_csv floats" 1k pandas⟧ | ⟦FBENCH "read_csv floats" 1k polars@1⟧ | ⟦FBENCH "read_csv floats" 1k polars@14⟧ | ⟦FBENCH "read_csv floats" 1k pandas/sd@1⟧ | ⟦FBENCH "read_csv floats" 1k polars@1/sd@1⟧ | ⟦FBENCH "read_csv floats" 1k polars@14/sd@10⟧ |
-| `read_csv mixed` | ⟦FBENCH "read_csv mixed" 1k sd@1⟧ | ⟦FBENCH "read_csv mixed" 1k sd@10⟧ | ⟦FBENCH "read_csv mixed" 1k pandas⟧ | ⟦FBENCH "read_csv mixed" 1k polars@1⟧ | ⟦FBENCH "read_csv mixed" 1k polars@14⟧ | ⟦FBENCH "read_csv mixed" 1k pandas/sd@1⟧ | ⟦FBENCH "read_csv mixed" 1k polars@1/sd@1⟧ | ⟦FBENCH "read_csv mixed" 1k polars@14/sd@10⟧ |
-
-{/* BENCH-FIG: "float + float" 1k pandas, sd@1, polars@1; "nunique int, 1k keys" 1k pandas, sd@1, polars@1; "groupby int 1k sum" 1k pandas, sd@1, polars@1; "merge n x n/10 inner" 1k pandas, sd@1, polars@1; "sort int64" 1k pandas, sd@1, polars@1; "read_csv mixed" 1k pandas, sd@1, polars@1 | 캡션: 1천 행. 호출 비용이 시간을 정하는 크기예요. */}
-
-### 100,000행
-
-| 케이스 | sd 1스레드 | sd 10스레드 | pandas | Polars 1스레드 | Polars 14스레드 | pandas ÷ sd@1 | Polars@1 ÷ sd@1 | Polars@14 ÷ sd@10 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `float + float` | ⟦FBENCH "float + float" 100k sd@1⟧ | ⟦FBENCH "float + float" 100k sd@10⟧ | ⟦FBENCH "float + float" 100k pandas⟧ | ⟦FBENCH "float + float" 100k polars@1⟧ | ⟦FBENCH "float + float" 100k polars@14⟧ | ⟦FBENCH "float + float" 100k pandas/sd@1⟧ | ⟦FBENCH "float + float" 100k polars@1/sd@1⟧ | ⟦FBENCH "float + float" 100k polars@14/sd@10⟧ |
-| `float sum` | ⟦FBENCH "float sum" 100k sd@1⟧ | ⟦FBENCH "float sum" 100k sd@10⟧ | ⟦FBENCH "float sum" 100k pandas⟧ | ⟦FBENCH "float sum" 100k polars@1⟧ | ⟦FBENCH "float sum" 100k polars@14⟧ | ⟦FBENCH "float sum" 100k pandas/sd@1⟧ | ⟦FBENCH "float sum" 100k polars@1/sd@1⟧ | ⟦FBENCH "float sum" 100k polars@14/sd@10⟧ |
-| `mask filter` | ⟦FBENCH "mask filter" 100k sd@1⟧ | ⟦FBENCH "mask filter" 100k sd@10⟧ | ⟦FBENCH "mask filter" 100k pandas⟧ | ⟦FBENCH "mask filter" 100k polars@1⟧ | ⟦FBENCH "mask filter" 100k polars@14⟧ | ⟦FBENCH "mask filter" 100k pandas/sd@1⟧ | ⟦FBENCH "mask filter" 100k polars@1/sd@1⟧ | ⟦FBENCH "mask filter" 100k polars@14/sd@10⟧ |
-| `nunique int, 1k keys` | ⟦FBENCH "nunique int, 1k keys" 100k sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 100k sd@10⟧ | ⟦FBENCH "nunique int, 1k keys" 100k pandas⟧ | ⟦FBENCH "nunique int, 1k keys" 100k polars@1⟧ | ⟦FBENCH "nunique int, 1k keys" 100k polars@14⟧ | ⟦FBENCH "nunique int, 1k keys" 100k pandas/sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 100k polars@1/sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 100k polars@14/sd@10⟧ |
-| `nunique int, n keys` | ⟦FBENCH "nunique int, n keys" 100k sd@1⟧ | ⟦FBENCH "nunique int, n keys" 100k sd@10⟧ | ⟦FBENCH "nunique int, n keys" 100k pandas⟧ | ⟦FBENCH "nunique int, n keys" 100k polars@1⟧ | ⟦FBENCH "nunique int, n keys" 100k polars@14⟧ | ⟦FBENCH "nunique int, n keys" 100k pandas/sd@1⟧ | ⟦FBENCH "nunique int, n keys" 100k polars@1/sd@1⟧ | ⟦FBENCH "nunique int, n keys" 100k polars@14/sd@10⟧ |
-| `nunique string` | ⟦FBENCH "nunique string" 100k sd@1⟧ | ⟦FBENCH "nunique string" 100k sd@10⟧ | ⟦FBENCH "nunique string" 100k pandas⟧ | ⟦FBENCH "nunique string" 100k polars@1⟧ | ⟦FBENCH "nunique string" 100k polars@14⟧ | ⟦FBENCH "nunique string" 100k pandas/sd@1⟧ | ⟦FBENCH "nunique string" 100k polars@1/sd@1⟧ | ⟦FBENCH "nunique string" 100k polars@14/sd@10⟧ |
-| `groupby int 1k sum` | ⟦FBENCH "groupby int 1k sum" 100k sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 100k sd@10⟧ | ⟦FBENCH "groupby int 1k sum" 100k pandas⟧ | ⟦FBENCH "groupby int 1k sum" 100k polars@1⟧ | ⟦FBENCH "groupby int 1k sum" 100k polars@14⟧ | ⟦FBENCH "groupby int 1k sum" 100k pandas/sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 100k polars@1/sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 100k polars@14/sd@10⟧ |
-| `groupby int, n keys, sum` | ⟦FBENCH "groupby int, n keys, sum" 100k sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k sd@10⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k pandas⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k polars@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k polars@14⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k pandas/sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k polars@1/sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k polars@14/sd@10⟧ |
-| `groupby string sum` | ⟦FBENCH "groupby string sum" 100k sd@1⟧ | ⟦FBENCH "groupby string sum" 100k sd@10⟧ | ⟦FBENCH "groupby string sum" 100k pandas⟧ | ⟦FBENCH "groupby string sum" 100k polars@1⟧ | ⟦FBENCH "groupby string sum" 100k polars@14⟧ | ⟦FBENCH "groupby string sum" 100k pandas/sd@1⟧ | ⟦FBENCH "groupby string sum" 100k polars@1/sd@1⟧ | ⟦FBENCH "groupby string sum" 100k polars@14/sd@10⟧ |
-| `groupby int + string sum` | ⟦FBENCH "groupby int + string sum" 100k sd@1⟧ | ⟦FBENCH "groupby int + string sum" 100k sd@10⟧ | ⟦FBENCH "groupby int + string sum" 100k pandas⟧ | ⟦FBENCH "groupby int + string sum" 100k polars@1⟧ | ⟦FBENCH "groupby int + string sum" 100k polars@14⟧ | ⟦FBENCH "groupby int + string sum" 100k pandas/sd@1⟧ | ⟦FBENCH "groupby int + string sum" 100k polars@1/sd@1⟧ | ⟦FBENCH "groupby int + string sum" 100k polars@14/sd@10⟧ |
-| `merge n x n/10 inner` | ⟦FBENCH "merge n x n/10 inner" 100k sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 100k pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@14⟧ | ⟦FBENCH "merge n x n/10 inner" 100k pandas/sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@1/sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@14/sd@10⟧ |
-| `sort int64` | ⟦FBENCH "sort int64" 100k sd@1⟧ | ⟦FBENCH "sort int64" 100k sd@10⟧ | ⟦FBENCH "sort int64" 100k pandas⟧ | ⟦FBENCH "sort int64" 100k polars@1⟧ | ⟦FBENCH "sort int64" 100k polars@14⟧ | ⟦FBENCH "sort int64" 100k pandas/sd@1⟧ | ⟦FBENCH "sort int64" 100k polars@1/sd@1⟧ | ⟦FBENCH "sort int64" 100k polars@14/sd@10⟧ |
-| `sort string` | ⟦FBENCH "sort string" 100k sd@1⟧ | ⟦FBENCH "sort string" 100k sd@10⟧ | ⟦FBENCH "sort string" 100k pandas⟧ | ⟦FBENCH "sort string" 100k polars@1⟧ | ⟦FBENCH "sort string" 100k polars@14⟧ | ⟦FBENCH "sort string" 100k pandas/sd@1⟧ | ⟦FBENCH "sort string" 100k polars@1/sd@1⟧ | ⟦FBENCH "sort string" 100k polars@14/sd@10⟧ |
-| `read_csv floats` | ⟦FBENCH "read_csv floats" 100k sd@1⟧ | ⟦FBENCH "read_csv floats" 100k sd@10⟧ | ⟦FBENCH "read_csv floats" 100k pandas⟧ | ⟦FBENCH "read_csv floats" 100k polars@1⟧ | ⟦FBENCH "read_csv floats" 100k polars@14⟧ | ⟦FBENCH "read_csv floats" 100k pandas/sd@1⟧ | ⟦FBENCH "read_csv floats" 100k polars@1/sd@1⟧ | ⟦FBENCH "read_csv floats" 100k polars@14/sd@10⟧ |
-| `read_csv mixed` | ⟦FBENCH "read_csv mixed" 100k sd@1⟧ | ⟦FBENCH "read_csv mixed" 100k sd@10⟧ | ⟦FBENCH "read_csv mixed" 100k pandas⟧ | ⟦FBENCH "read_csv mixed" 100k polars@1⟧ | ⟦FBENCH "read_csv mixed" 100k polars@14⟧ | ⟦FBENCH "read_csv mixed" 100k pandas/sd@1⟧ | ⟦FBENCH "read_csv mixed" 100k polars@1/sd@1⟧ | ⟦FBENCH "read_csv mixed" 100k polars@14/sd@10⟧ |
-
-{/* BENCH-FIG: "float + float" 100k sd@10, polars@14; "mask filter" 100k sd@10, polars@14; "nunique int, n keys" 100k sd@10, polars@14; "groupby string sum" 100k sd@10, polars@14; "sort int64" 100k sd@10, polars@14; "read_csv mixed" 100k sd@10, polars@14 | 캡션: 10만 행에서 stardust 10스레드와 Polars 14스레드. stardust는 정렬과 CSV만 나누고 나머지는 1스레드로 돌아요. */}
-
-### 1,000,000행
-
-| 케이스 | sd 1스레드 | sd 10스레드 | pandas | Polars 1스레드 | Polars 14스레드 | pandas ÷ sd@1 | Polars@1 ÷ sd@1 | Polars@14 ÷ sd@10 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `float + float` | ⟦FBENCH "float + float" 1M sd@1⟧ | ⟦FBENCH "float + float" 1M sd@10⟧ | ⟦FBENCH "float + float" 1M pandas⟧ | ⟦FBENCH "float + float" 1M polars@1⟧ | ⟦FBENCH "float + float" 1M polars@14⟧ | ⟦FBENCH "float + float" 1M pandas/sd@1⟧ | ⟦FBENCH "float + float" 1M polars@1/sd@1⟧ | ⟦FBENCH "float + float" 1M polars@14/sd@10⟧ |
-| `float sum` | ⟦FBENCH "float sum" 1M sd@1⟧ | ⟦FBENCH "float sum" 1M sd@10⟧ | ⟦FBENCH "float sum" 1M pandas⟧ | ⟦FBENCH "float sum" 1M polars@1⟧ | ⟦FBENCH "float sum" 1M polars@14⟧ | ⟦FBENCH "float sum" 1M pandas/sd@1⟧ | ⟦FBENCH "float sum" 1M polars@1/sd@1⟧ | ⟦FBENCH "float sum" 1M polars@14/sd@10⟧ |
-| `mask filter` | ⟦FBENCH "mask filter" 1M sd@1⟧ | ⟦FBENCH "mask filter" 1M sd@10⟧ | ⟦FBENCH "mask filter" 1M pandas⟧ | ⟦FBENCH "mask filter" 1M polars@1⟧ | ⟦FBENCH "mask filter" 1M polars@14⟧ | ⟦FBENCH "mask filter" 1M pandas/sd@1⟧ | ⟦FBENCH "mask filter" 1M polars@1/sd@1⟧ | ⟦FBENCH "mask filter" 1M polars@14/sd@10⟧ |
-| `nunique int, 1k keys` | ⟦FBENCH "nunique int, 1k keys" 1M sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1M sd@10⟧ | ⟦FBENCH "nunique int, 1k keys" 1M pandas⟧ | ⟦FBENCH "nunique int, 1k keys" 1M polars@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1M polars@14⟧ | ⟦FBENCH "nunique int, 1k keys" 1M pandas/sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1M polars@1/sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1M polars@14/sd@10⟧ |
-| `nunique int, n keys` | ⟦FBENCH "nunique int, n keys" 1M sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1M sd@10⟧ | ⟦FBENCH "nunique int, n keys" 1M pandas⟧ | ⟦FBENCH "nunique int, n keys" 1M polars@1⟧ | ⟦FBENCH "nunique int, n keys" 1M polars@14⟧ | ⟦FBENCH "nunique int, n keys" 1M pandas/sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1M polars@1/sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1M polars@14/sd@10⟧ |
-| `nunique string` | ⟦FBENCH "nunique string" 1M sd@1⟧ | ⟦FBENCH "nunique string" 1M sd@10⟧ | ⟦FBENCH "nunique string" 1M pandas⟧ | ⟦FBENCH "nunique string" 1M polars@1⟧ | ⟦FBENCH "nunique string" 1M polars@14⟧ | ⟦FBENCH "nunique string" 1M pandas/sd@1⟧ | ⟦FBENCH "nunique string" 1M polars@1/sd@1⟧ | ⟦FBENCH "nunique string" 1M polars@14/sd@10⟧ |
-| `groupby int 1k sum` | ⟦FBENCH "groupby int 1k sum" 1M sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1M sd@10⟧ | ⟦FBENCH "groupby int 1k sum" 1M pandas⟧ | ⟦FBENCH "groupby int 1k sum" 1M polars@1⟧ | ⟦FBENCH "groupby int 1k sum" 1M polars@14⟧ | ⟦FBENCH "groupby int 1k sum" 1M pandas/sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1M polars@1/sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1M polars@14/sd@10⟧ |
-| `groupby int, n keys, sum` | ⟦FBENCH "groupby int, n keys, sum" 1M sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M sd@10⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M pandas⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M polars@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M polars@14⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M pandas/sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M polars@1/sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M polars@14/sd@10⟧ |
-| `groupby string sum` | ⟦FBENCH "groupby string sum" 1M sd@1⟧ | ⟦FBENCH "groupby string sum" 1M sd@10⟧ | ⟦FBENCH "groupby string sum" 1M pandas⟧ | ⟦FBENCH "groupby string sum" 1M polars@1⟧ | ⟦FBENCH "groupby string sum" 1M polars@14⟧ | ⟦FBENCH "groupby string sum" 1M pandas/sd@1⟧ | ⟦FBENCH "groupby string sum" 1M polars@1/sd@1⟧ | ⟦FBENCH "groupby string sum" 1M polars@14/sd@10⟧ |
-| `groupby int + string sum` | ⟦FBENCH "groupby int + string sum" 1M sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1M sd@10⟧ | ⟦FBENCH "groupby int + string sum" 1M pandas⟧ | ⟦FBENCH "groupby int + string sum" 1M polars@1⟧ | ⟦FBENCH "groupby int + string sum" 1M polars@14⟧ | ⟦FBENCH "groupby int + string sum" 1M pandas/sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1M polars@1/sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1M polars@14/sd@10⟧ |
-| `merge n x n/10 inner` | ⟦FBENCH "merge n x n/10 inner" 1M sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 1M pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@14⟧ | ⟦FBENCH "merge n x n/10 inner" 1M pandas/sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@1/sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@14/sd@10⟧ |
-| `sort int64` | ⟦FBENCH "sort int64" 1M sd@1⟧ | ⟦FBENCH "sort int64" 1M sd@10⟧ | ⟦FBENCH "sort int64" 1M pandas⟧ | ⟦FBENCH "sort int64" 1M polars@1⟧ | ⟦FBENCH "sort int64" 1M polars@14⟧ | ⟦FBENCH "sort int64" 1M pandas/sd@1⟧ | ⟦FBENCH "sort int64" 1M polars@1/sd@1⟧ | ⟦FBENCH "sort int64" 1M polars@14/sd@10⟧ |
-| `sort string` | ⟦FBENCH "sort string" 1M sd@1⟧ | ⟦FBENCH "sort string" 1M sd@10⟧ | ⟦FBENCH "sort string" 1M pandas⟧ | ⟦FBENCH "sort string" 1M polars@1⟧ | ⟦FBENCH "sort string" 1M polars@14⟧ | ⟦FBENCH "sort string" 1M pandas/sd@1⟧ | ⟦FBENCH "sort string" 1M polars@1/sd@1⟧ | ⟦FBENCH "sort string" 1M polars@14/sd@10⟧ |
-| `read_csv floats` | ⟦FBENCH "read_csv floats" 1M sd@1⟧ | ⟦FBENCH "read_csv floats" 1M sd@10⟧ | ⟦FBENCH "read_csv floats" 1M pandas⟧ | ⟦FBENCH "read_csv floats" 1M polars@1⟧ | ⟦FBENCH "read_csv floats" 1M polars@14⟧ | ⟦FBENCH "read_csv floats" 1M pandas/sd@1⟧ | ⟦FBENCH "read_csv floats" 1M polars@1/sd@1⟧ | ⟦FBENCH "read_csv floats" 1M polars@14/sd@10⟧ |
-| `read_csv mixed` | ⟦FBENCH "read_csv mixed" 1M sd@1⟧ | ⟦FBENCH "read_csv mixed" 1M sd@10⟧ | ⟦FBENCH "read_csv mixed" 1M pandas⟧ | ⟦FBENCH "read_csv mixed" 1M polars@1⟧ | ⟦FBENCH "read_csv mixed" 1M polars@14⟧ | ⟦FBENCH "read_csv mixed" 1M pandas/sd@1⟧ | ⟦FBENCH "read_csv mixed" 1M polars@1/sd@1⟧ | ⟦FBENCH "read_csv mixed" 1M polars@14/sd@10⟧ |
-
-{/* BENCH-FIG: "float + float" 1M pandas, sd@1, sd@10, polars@14; "groupby int 1k sum" 1M pandas, sd@1, sd@10, polars@14; "groupby int, n keys, sum" 1M pandas, sd@1, sd@10, polars@14; "merge n x n/10 inner" 1M pandas, sd@1, sd@10, polars@14; "sort string" 1M pandas, sd@1, sd@10, polars@14; "read_csv mixed" 1M pandas, sd@1, sd@10, polars@14 | 캡션: 1M 행. pandas는 한 스레드, stardust는 10스레드, Polars는 14스레드가 기본값이에요. */}
-
-### 빠른 이유
-
-줄마다의 메커니즘은 각 글에 있어요. 크게 묶으면 이래요.
+stardust가 pandas보다 빠른 메커니즘은 연산마다 각 글에 있어요. 크게 묶으면 이래요.
 
 - **원소별 연산과 리덕션**: dtype, NA 유무, 스칼라 여부를 템플릿 인자로 루프 밖에서 고르므로 행 루프에 분기가 없고 컴파일러가 NEON으로 벡터화해요. float 합은 numpy와 같은 pairwise 트리를 잎 단위로 나눠 여러 스레드로 더해요([원소별 연산과 리덕션](/internals/frame/elementwise/)).
 - **해시**: Swiss table(16칸 제어 바이트의 SIMD 비교), 미리 잡은 테이블, 해시로 나눈 병렬 factorize([해시 테이블과 factorize](/internals/frame/hashing/)).
@@ -305,21 +217,21 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 - **CSV**: 64바이트 블록마다 따옴표·구분자·줄바꿈의 비트 마스크를 만들어 필드 경계를 꺼내는 structural index 토크나이저, Eisel–Lemire 숫자 파싱, 512KB 청크의 병렬 읽기([read_csv](/internals/frame/csv/)).
 - **스레드**: pandas는 한 스레드예요. stardust는 기준값 이상에서 10스레드로 나눠요.
 
-## 느린 줄과 그 원인
+## 느린 경우와 그 원인
 
 ### 10만 행: 기준값의 그늘
 
-10만 행은 기준값 2¹⁷(131,072)보다 작아요. 그래서 `cost`가 1인 커널(`float + float`, `float sum`, `mask filter`)과 해시 분할 factorize(`nunique`, groupby의 키 정리, merge의 테이블)가 1스레드로 돌아요. 이 크기에서 10스레드 열은 1스레드 열과 거의 같아요. Polars 14스레드는 이 크기에서도 나누는 연산이 있어서, 원소별 연산을 뺀 여러 줄에서 앞설 수 있어요.
+10만 행은 기준값 2¹⁷(131,072)보다 작아요. 그래서 `cost`가 1인 커널(`float + float`, `float sum`, `mask filter`)과 해시 분할 factorize(`nunique`, groupby의 키 정리, merge의 테이블)가 1스레드로 돌아요. 이 크기에서는 10스레드로 불러도 1스레드와 거의 같은 일을 해요. Polars 14스레드는 이 크기에서도 나누는 연산이 있어서, 원소별 연산을 뺀 여러 경우에서 앞설 수 있어요.
 
-이 크기에서도 나누는 것은 기수 정렬(흩뿌리기의 `cost`가 2라 65,536행부터)과 CSV(512KB 청크로 자르고, 10만 행 파일은 1MB를 넘어요)예요. 그래서 `sort int64`, `sort string`, `read_csv` 줄은 10만 행에서도 10스레드 열이 실제로 나눠서 돌아요.
+이 크기에서도 나누는 것은 기수 정렬(흩뿌리기의 `cost`가 2라 65,536행부터)과 CSV(512KB 청크로 자르고, 10만 행 파일은 1MB를 넘어요)예요. 그래서 `sort int64`, `sort string`, `read_csv`는 10만 행에서도 10스레드에서 실제로 나눠서 돌아요.
 
 기준값을 연산마다 다르게 두면 이 그늘을 줄일 수 있어요. 예를 들어 키가 많은 해시는 분기와 캐시 미스가 많아서 더 작은 크기부터 나눠도 이득일 수 있어요. 지금은 상수 하나와 커널별 무게(`cost`)만 둬요. 연산마다 기준값을 따로 두면 그 값마다 측정 근거를 지켜야 하기 때문이에요([병렬화와 결정성](/internals/frame/parallel/)).
 
 ### 키가 많은 해시: Polars보다 느린 무리
 
-`nunique int, n keys`, `groupby int, n keys, sum`, `groupby string sum`, `merge` 줄은 Polars와 비교해 불리할 수 있는 무리예요. 구조에서 오는 이유가 셋 있어요.
+`nunique int, n keys`, `groupby int, n keys, sum`, `groupby string sum`, `merge`는 Polars와 비교해 불리할 수 있는 무리예요. 구조에서 오는 이유가 셋 있어요.
 
-1. 처음 나타난 순서로 번호를 다시 매겨요. 병렬 factorize는 파티션마다 지역 코드를 매긴 뒤, 결과를 스레드 수와 무관하게 하려고 전역 코드를 "처음 나타난 순서"로 다시 매겨요(행 청크마다 첫 등장 행의 순위 매기기, 행마다 코드 쓰기). 행 전체를 두 번 더 지나는 일이에요. Polars는 그룹 순서를 기본으로 보장하지 않으므로(`maintain_order=False`) [5] 이런 단계가 필요 없어요. 이 단계가 차이의 얼마를 차지하는지는 아직 재지 않았어요.
+1. 처음 나타난 순서로 번호를 다시 매겨요. 병렬 factorize는 파티션마다 지역 코드를 매긴 뒤, 결과를 스레드 수와 무관하게 하려고 전역 코드를 "처음 나타난 순서"로 다시 매겨요(행 청크마다 첫 등장 행의 순위 매기기, 행마다 코드 쓰기). 행 전체를 두 번 더 지나는 일이에요. Polars는 그룹 순서를 기본으로 보장하지 않으므로(`maintain_order=False`) [5] 이런 단계가 필요 없어요. 이 단계가 차이의 얼마를 차지하는지는 따로 재지 않았어요.
 2. 키가 많으면 테이블이 캐시를 넘어요. 1M 행에 키 63만 종이면, 파티션으로 나누지 않은 테이블은 칸 2M개 × 16바이트 = 32MB예요. 256 파티션으로 나누면 파티션마다 약 3,900행, 칸 8,192개 × 16바이트 = 128KB라 L1~L2에 들어가요. 그래서 1스레드(나누지 않는 경로)에서 키가 많은 해시는 찾을 때마다 캐시 미스를 내요.
 3. 문자열 키는 바이트를 다시 읽어요. 8바이트 키는 (키, 행) 쌍 자체를 파티션으로 흩뿌려서 파티션 안에서 앞에서부터 차례로 읽어요. 문자열 키는 해시만 흩뿌리고, 해시가 같은 후보를 만나면 행 번호로 원래 문자열 바이트를 읽어 비교해요. 그 읽기는 문자열 버퍼의 아무 곳으로나 튀어요.
 
@@ -327,15 +239,15 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 
 ### `read_csv`의 1스레드
 
-1스레드 `read_csv`는 필드 하나에 약 12ns를 써요. pandas의 C 토크나이저도 한 스레드인데, 1스레드 열끼리 비교하면 stardust가 불리할 수 있는 줄이에요(`read_csv floats`, `read_csv mixed`의 pandas ÷ sd@1 열). 10스레드에서는 512KB 청크를 나눠 읽어 앞서요. 토크나이저와 숫자 파싱의 구조는 [read_csv](/internals/frame/csv/)에 있어요.
+1스레드 `read_csv`는 필드 하나에 약 12ns를 써요. pandas의 C 토크나이저도 한 스레드인데, 1스레드끼리 비교하면 stardust가 불리할 수 있는 경우예요. 10스레드에서는 512KB 청크를 나눠 읽어 앞서요. 토크나이저와 숫자 파싱의 구조는 [read_csv](/internals/frame/csv/)에 있어요.
 
 ### 10행 `s.sum()`
 
-10행 `s.sum()`은 Polars가 앞설 수 있는 몇 안 되는 작은 줄이에요. 커널은 원소 10개를 더하는 몇 ns이고 나머지는 호출 비용이에요. 어느 단계(Python 메서드, 인자 변환, 결과 스칼라 만들기, NA 규칙 검사)가 차이를 만드는지는 아직 재지 않았어요.
+10행 `s.sum()`은 Polars가 앞설 수 있는 몇 안 되는 작은 연산이에요. 커널은 원소 10개를 더하는 몇 ns이고 나머지는 호출 비용이에요. 어느 단계(Python 메서드, 인자 변환, 결과 스칼라 만들기, NA 규칙 검사)가 차이를 만드는지는 따로 재지 않았어요.
 
-### 단순한 구현보다 느린 세 줄
+### 단순한 구현보다 느린 세 경우
 
-같은 기능을 단일 코어 최적화와 병렬화 없이 짠 단순한 직렬 구현과 비교하면, 새 입력 모드에서 이 설계가 10% 넘게 느린 줄이 셋 있어요.
+같은 기능을 단일 코어 최적화와 병렬화 없이 짠 단순한 직렬 구현과 비교하면, 새 입력 모드에서 이 설계가 10% 넘게 느린 경우가 셋 있어요.
 
 | 경우 | 단순한 구현 | 이 설계 |
 |---|---:|---:|
@@ -347,7 +259,7 @@ Column은 값 타입으로 넘겨요. `_core.frame.Column`을 `std::shared_ptr<C
 
 ## 결과의 비트를 지키느라 하지 않는 최적화
 
-더 빠를 수 있지만 결과를 바꾸거나 결과가 데이터에 따라 몰래 달라지게 하는 기법은 쓰지 않아요. 각각의 대가가 위 표의 어딘가에 있어요.
+더 빠를 수 있지만 결과를 바꾸거나 결과가 데이터에 따라 몰래 달라지게 하는 기법은 쓰지 않아요. 각각에 대가가 있어요.
 
 | 하지 않는 것 | 지키는 것 | 대가 |
 |---|---|---|

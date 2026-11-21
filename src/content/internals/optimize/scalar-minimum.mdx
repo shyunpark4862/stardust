@@ -295,4 +295,4 @@ $10^{-9}$ 떨어진 점은 최솟값과 같은 double이고, $3 \times 10^{-8}$ 
 
 ## 비용
 
-방법 자체(걸음 계산과 콜백을 부르는 고리)의 비용은 f 호출 하나에 brent 0.44 µs, golden 0.21 µs, bounded 0.43 µs예요. scipy는 같은 문제에서 1.46, 0.38, 2.15 µs예요(Apple M4 Pro, scipy 1.18.1, $e^x - 5x$를 세 점 (0, 1, 3)과 범위 (0, 3)에서; `bench/optimize/o6/speed.md`). f를 부르는 횟수는 같으니(brent 13, golden 43, bounded 10), 차이는 방법 자체의 비용이에요. 어느 쪽이든 µs 단위라 f가 조금만 무거워도 시간은 f가 정해요.
+방법 자체(걸음 계산과 콜백을 부르는 고리)의 비용은 근 찾기와 최솟값 찾기의 스칼라 방법을 통틀어 f 호출 하나에 0.17–1.6 µs예요(Apple M4 Pro, 1스레드). scipy의 brent, golden, bounded는 Python으로 쓴 방법이라 반복마다 Python과 numpy를 거치고, scipy의 Python 구현은 이 비용의 1.8–36배예요. f를 부르는 횟수는 scipy와 같으니($e^x - 5x$를 세 점 (0, 1, 3)과 범위 (0, 3)에서 brent 13, golden 43, bounded 10), 차이는 방법 자체의 비용이에요. 어느 쪽이든 µs 단위라 f가 조금만 무거워도 시간은 f가 정해요.

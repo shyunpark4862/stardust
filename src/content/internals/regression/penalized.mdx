@@ -191,7 +191,7 @@ $$
 
 보정 $(Z^{\mathsf T}\Omega Z + \alpha I)^{-1}g$는 같은 SVD로 풀어요. 그래서 고정점이 double로 반올림한 설계가 아니라 정확한 문제의 해이고, 한 번에 오차가 그 조건수 × $u$배 줄어요. 걸음이 $4u\lVert b\rVert$ 아래가 되거나 직전 걸음의 1/2 아래로 줄지 않으면 멈춰요. 조건수가 문턱 아래면 개선하지 않으니 조건이 좋은 문제의 비용은 그대로예요.
 
-`bench/regression/g3/accuracy.md`에서 $n = 200$, $k = 8$, 중심화한 설계의 특이값이 1에서 $1/\kappa$까지인 문제의 ridge는 alpha $10^{-3}$, $10^{-8}$ 모두 $\kappa \le 10^6$에서 $2\times10^{-16}$ 안이고, 최소제곱에 가까운 $\kappa = 10^8$–$10^{10}$, alpha $10^{-12}$–$10^{-18}$에서 $1.7\times10^{-15}$ 안이에요(Arb 참값, 씨앗 2개의 최대).
+$n = 200$, $k = 8$, 중심화한 설계의 특이값이 1에서 $1/\kappa$까지인 문제의 ridge는 alpha $10^{-3}$, $10^{-8}$ 모두 $\kappa \le 10^6$에서 $2\times10^{-16}$ 안이고, 최소제곱에 가까운 $\kappa = 10^8$–$10^{10}$, alpha $10^{-12}$–$10^{-18}$에서 $1.7\times10^{-15}$ 안이에요(Arb 참값, 씨앗 2개의 최대).
 
 ## 좌표 하강
 
@@ -1027,7 +1027,7 @@ def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, 
 
 ## 정확도
 
-참값은 `tools/regref.py`의 `penalized`가 만들어요. sd 해의 활성 집합과 부호로 정상 조건을 Arb(구간 산술)에서 정확히 풀고(GLM은 뉴턴법과 Krawczyk 검사로 근 하나를 증명), 부호와 0인 계수마다의 엄격한 KKT 부등식으로 그 해가 최소점임을 증명해요. 아래는 `bench/regression/g3/accuracy.md`의 계수 벡터 상대오차(노름, 절편 포함)예요. scikit-learn은 같은 목적함수의 `Lasso`·`ElasticNet`·`Ridge`(svd)·`LogisticRegression`·`PoissonRegressor`예요(1.9.1).
+참값은 `tools/regref.py`의 `penalized`가 만들어요. sd 해의 활성 집합과 부호로 정상 조건을 Arb(구간 산술)에서 정확히 풀고(GLM은 뉴턴법과 Krawczyk 검사로 근 하나를 증명), 부호와 0인 계수마다의 엄격한 KKT 부등식으로 그 해가 최소점임을 증명해요. 아래는 계수 벡터의 상대오차(노름, 절편 포함)예요. scikit-learn은 같은 목적함수의 `Lasso`·`ElasticNet`·`Ridge`(svd)·`LogisticRegression`·`PoissonRegressor`예요(1.9.1).
 
 | 문제 | sd | scikit-learn `tol=1e-4` | `tol=1e-12` |
 |---|---:|---:|---:|
@@ -1041,7 +1041,7 @@ def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, 
 
 ## 속도
 
-`bench/regression/g3/speed.md`의 측정이에요(커널 최적화 전). Apple M4 Pro, scikit-learn 1.9.1, numpy 2.5.4, 여러 번 가운데 가장 빠른 값이고, 칸은 scikit-learn 시간 / sd 시간(1보다 크면 sd가 빨라요)이에요. X는 표준정규, lasso는 alpha = alpha_max/20, 경로는 alpha_max에서 $10^{-3}$·alpha_max까지 100개(`lasso_path`), CV는 같은 격자와 같은 겹의 `LassoCV`, GCV는 100개 alpha의 `RidgeCV`, 로지스틱은 alpha = $10^{-3}$이에요.
+Apple M4 Pro에서 scikit-learn 1.9.1(numpy 2.5.4)과 견준 값이에요. 여러 번 가운데 가장 빠른 값이고, 칸은 scikit-learn 시간 / sd 시간(1보다 크면 sd가 빨라요)이에요. X는 표준정규, lasso는 alpha = alpha_max/20, 경로는 alpha_max에서 $10^{-3}$·alpha_max까지 100개(`lasso_path`), CV는 같은 격자와 같은 겹의 `LassoCV`, GCV는 100개 alpha의 `RidgeCV`, 로지스틱은 alpha = $10^{-3}$이에요.
 
 | (n, k) | 스레드 | ridge (Cholesky / svd) | lasso | 경로 100개 | lasso_cv 5겹 | ridge_cv GCV | 로지스틱 L1 (saga / liblinear) | 로지스틱 L2 (lbfgs / newton-cholesky) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -1054,7 +1054,7 @@ def _run(func, kind, y, X, w, alphas, l1_ratio, family, intercept, standardize, 
 
 - ridge는 QR과 SVD라 $X^{\mathsf T}X$의 Cholesky(scikit-learn의 기본)보다 1스레드 5–11배 느리고, 같은 SVD 해법과는 비슷해요. 그 대신 여러 alpha와 GCV가 분해 하나로 나와요(`ridge_cv` GCV 7–63배).
 - lasso·엘라스틱 넷의 한 alpha는 Gram 한 번이 시간의 대부분이에요. (10⁴, 1000)의 경로와 CV가 1스레드에서 느린 것은 0 아닌 계수가 수백 개인 작은 alpha마다 연마의 Cholesky($a^3/3$)가 들기 때문이에요.
-- 로지스틱 L2는 newton-cholesky와 같은 뉴턴법이지만 반복마다 Gram을 다시 만들고 Dot2로 $\eta$를 구해요. lbfgs는 더 빠르지만 계수가 기본 `tol`에서 $3\times10^{-5}$–$4\times10^{-4}$ 달라요. saga와 liblinear도 기본 `tol`에서 계수가 $10^{-5}$–$6\times10^{-3}$ 달라요(liblinear는 절편에도 벌점을 줘서 다른 문제예요).
+- 로지스틱 L2는 newton-cholesky와 같은 뉴턴법이지만 반복마다 Gram을 다시 만들고 Dot2로 $\eta$를 구해요. lbfgs는 더 빠르지만 계수가 기본 `tol`에서 $3\times10^{-5}$–$4\times10^{-4}$ 달라요. saga와 liblinear도 기본 `tol`에서 계수가 달라요(liblinear는 절편에도 벌점을 줘서 다른 문제예요).
 
 ## 참고 문헌
 

@@ -773,31 +773,12 @@ ValueError: read_csv(): line 4: column 'a': cannot read 'x' as int64
 
 ## 성능
 
-### pandas·Polars와 비교
-
-측정은 `bench/frame/final_compare.py`의 두 줄이에요. `read_csv floats`는 표준정규분포 값 한 열(pandas `to_csv`로 쓴 파일), `read_csv mixed`는 정수 id, float, 문자열 `keyNNN`, bool `True`/`False` 네 열이에요. Apple M4 Pro, pandas 3.1.1, Polars 2.1.0이에요.
-
-| 줄 | 행 | stardust 1스레드 | stardust 10스레드 | pandas | Polars 1스레드 | Polars 14스레드 |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| read_csv floats | 1천 | ⟦FBENCH "read_csv floats" 1k sd@1⟧ | ⟦FBENCH "read_csv floats" 1k sd@10⟧ | ⟦FBENCH "read_csv floats" 1k pandas⟧ | ⟦FBENCH "read_csv floats" 1k polars@1⟧ | ⟦FBENCH "read_csv floats" 1k polars@14⟧ |
-| read_csv floats | 10만 | ⟦FBENCH "read_csv floats" 100k sd@1⟧ | ⟦FBENCH "read_csv floats" 100k sd@10⟧ | ⟦FBENCH "read_csv floats" 100k pandas⟧ | ⟦FBENCH "read_csv floats" 100k polars@1⟧ | ⟦FBENCH "read_csv floats" 100k polars@14⟧ |
-| read_csv floats | 1M | ⟦FBENCH "read_csv floats" 1M sd@1⟧ | ⟦FBENCH "read_csv floats" 1M sd@10⟧ | ⟦FBENCH "read_csv floats" 1M pandas⟧ | ⟦FBENCH "read_csv floats" 1M polars@1⟧ | ⟦FBENCH "read_csv floats" 1M polars@14⟧ |
-| read_csv mixed | 1천 | ⟦FBENCH "read_csv mixed" 1k sd@1⟧ | ⟦FBENCH "read_csv mixed" 1k sd@10⟧ | ⟦FBENCH "read_csv mixed" 1k pandas⟧ | ⟦FBENCH "read_csv mixed" 1k polars@1⟧ | ⟦FBENCH "read_csv mixed" 1k polars@14⟧ |
-| read_csv mixed | 10만 | ⟦FBENCH "read_csv mixed" 100k sd@1⟧ | ⟦FBENCH "read_csv mixed" 100k sd@10⟧ | ⟦FBENCH "read_csv mixed" 100k pandas⟧ | ⟦FBENCH "read_csv mixed" 100k polars@1⟧ | ⟦FBENCH "read_csv mixed" 100k polars@14⟧ |
-| read_csv mixed | 1M | ⟦FBENCH "read_csv mixed" 1M sd@1⟧ | ⟦FBENCH "read_csv mixed" 1M sd@10⟧ | ⟦FBENCH "read_csv mixed" 1M pandas⟧ | ⟦FBENCH "read_csv mixed" 1M polars@1⟧ | ⟦FBENCH "read_csv mixed" 1M polars@14⟧ |
-
-{/* BENCH-FIG: "read_csv floats" 1M pandas, sd@1, sd@10, polars@14 | 캡션: float 한 열 1M 행 파일 읽기. pandas는 1스레드, stardust와 Polars는 청크를 나눠 병렬로 읽어요. */}
-
-{/* BENCH-FIG: "read_csv mixed" 1M pandas, sd@1, sd@10, polars@14 | 캡션: int·float·string·bool 네 열 1M 행 파일 읽기. 문자열과 bool 열은 추론 뒤 다시 만드는 일이 더해져요. */}
-
-1M 행 float 파일에서 stardust 1스레드 시간 ÷ 10스레드 시간은 ⟦FBENCH "read_csv floats" 1M sd@1/sd@10⟧배, pandas 시간 ÷ stardust 10스레드 시간은 ⟦FBENCH "read_csv floats" 1M pandas/sd@10⟧배예요. 1스레드끼리 비교하면 stardust의 시간이 pandas의 ⟦FBENCH "read_csv floats" 1M sd@1/pandas⟧배예요. 혼합 파일에서 stardust 10스레드에 대한 시간 비는 pandas가 ⟦FBENCH "read_csv mixed" 1M pandas/sd@10⟧배, Polars 14스레드가 ⟦FBENCH "read_csv mixed" 1M polars@14/sd@10⟧배예요.
-
 ### 시간이 어디에 드나
 
 - 크기마다 쓸 수 있는 스레드가 달라요. 1천 행 파일은 512KB보다 작아 청크 하나, 곧 직렬이에요. 10만 행이면 float 파일이 4청크, 혼합 파일이 8청크라서 10스레드가 다 일하지 못해요. 1M 행에서야 청크가 38개, 79개로 스레드보다 넉넉해요.
 - 숫자 변환에서는 float 파일 값의 약 52%가 Clinger의 빠른 길(나눗셈이나 곱셈 한 번)로, 나머지가 Eisel–Lemire의 첫 곱셈으로 끝나요. pandas 3.1.1도 fast_float를 쓰니, 숫자 변환 자체는 pandas와 비슷한 알고리즘이에요.
 - 문자열과 bool 열은 값을 조각에 문자열로 쌓은 뒤 다시 옮겨요. 숫자 추론은 첫 필드에서 끝나고, 쌓으면서 UTF-8과 `all_bool`을 함께 봐요. bool 열은 쌓은 문자열에서 값을 만들고, string 열은 조각의 바이트를 최종 버퍼로 복사해요.
-- 파일 전체를 Python에서 읽어요. `open(path, "rb").read()`가 파일 크기만큼의 `bytes`를 만드는 시간도 측정에 들어가요.
+- 파일 전체를 Python에서 읽어요. `open(path, "rb").read()`가 파일 크기만큼의 `bytes`를 만드는 시간도 `read_csv`의 시간에 들어가요.
 - 청크를 나누면 일이 조금 늘어요. 따옴표 세기 한 번, 청크마다 첫 레코드 찾기, 청크 경계를 넘는 마지막 레코드예요. 그래서 1스레드에서는 나누지 않아요.
 
 앞에서 본 설계 비교를 한데 모은 표예요(1M 행, 1스레드, Apple M4 Pro. int 파일이라고 적은 줄 말고는 float 파일).

@@ -838,14 +838,7 @@ ValueError: assignment destination is read-only
 | 1M bool 컬럼의 `sum()` | 44 µs | 1M 바이트 더하기 |
 | 1M 행 `isna` (결측 10%) | 47 µs | 비트맵 펼치기 (위 비교 표) |
 
-결측이 없는 컬럼은 비트맵이 없어서 커널이 NA 검사 없는 루프를 고르고, 값 버퍼가 numpy와 같은 연속 배치라서 메모리를 차례로 지나가요. 결측 없는 float 컬럼 1M 행의 합과 마스크 필터를 pandas·Polars와 비교한 값이에요.
-
-| 1M 행 | stardust 1스레드 | stardust 10스레드 | pandas 3.1.1 | Polars 2.1.0 (14스레드) |
-|---|---:|---:|---:|---:|
-| `float sum` | ⟦FBENCH "float sum" 1M sd@1⟧ | ⟦FBENCH "float sum" 1M sd@10⟧ | ⟦FBENCH "float sum" 1M pandas⟧ | ⟦FBENCH "float sum" 1M polars@14⟧ |
-| `mask filter` | ⟦FBENCH "mask filter" 1M sd@1⟧ | ⟦FBENCH "mask filter" 1M sd@10⟧ | ⟦FBENCH "mask filter" 1M pandas⟧ | ⟦FBENCH "mask filter" 1M polars@14⟧ |
-
-{/* BENCH-FIG: "float sum" 1M, "mask filter" 1M — pandas, sd@1, sd@10, polars@14 | 캡션: 1M 행 float 컬럼의 합과 마스크 필터. 값 버퍼가 numpy와 같은 배치라서 커널이 메모리를 차례로 지나가요. */}
+결측이 없는 컬럼은 비트맵이 없어서 커널이 NA 검사 없는 루프를 고르고, 값 버퍼가 numpy와 같은 연속 배치라서 메모리를 차례로 지나가요. 결측 없는 float 컬럼의 합과 마스크 필터가 이 경로를 타요.
 
 ## 참고 문헌
 

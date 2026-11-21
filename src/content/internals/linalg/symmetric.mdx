@@ -3,7 +3,7 @@ title: "대칭 행렬의 분해: Cholesky와 LDL"
 group: 선형 시스템과 분해
 order: 2
 summary: 대칭 행렬을 절반만 읽고 계산하는 두 분해를 설명해요. 양정치 행렬의 Cholesky 분해는 피벗 없이도 안정하고, 양정치가 아닌 행렬은 2×2 블록과 대칭 피벗을 쓰는 LDL 분해로 풀어 그 결과를 scipy와 같은 꼴로 돌려줘요.
-seeAlso: [lu, packing, batch, eigen, special, performance]
+seeAlso: [lu, packing, batch, eigen, special]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -422,31 +422,7 @@ for (lint k = 0; k < n; ++k) perm_out[perm[k]] = k;
 
 ### numpy·scipy와 비교
 
-기준은 `cholesky`가 numpy 2.5.4, `cholesky_solve`와 `ldl`이 scipy 1.18.1(`cho_solve`, `ldl`)이에요. 표의 값은 기준 시간 / stardust 시간이라서 1보다 크면 stardust가 빨라요. scipy의 `ldl`은 배치를 받지 않아서 그 배치 줄에는 기준이 없어요.
-
-| 함수 | 모양 | 10스레드 | 1스레드 |
-|---|---|:---:|:---:|
-| `cholesky` | (3,3) | ⟦BENCH cholesky (3,3) t10⟧ | ⟦BENCH cholesky (3,3) t1⟧ |
-| `cholesky` | (32,32) | ⟦BENCH cholesky (32,32) t10⟧ | ⟦BENCH cholesky (32,32) t1⟧ |
-| `cholesky` | (300,300) | ⟦BENCH cholesky (300,300) t10⟧ | ⟦BENCH cholesky (300,300) t1⟧ |
-| `cholesky` | (1000,1000) | ⟦BENCH cholesky (1000,1000) t10⟧ | ⟦BENCH cholesky (1000,1000) t1⟧ |
-| `cholesky` | (1000,3,3) | ⟦BENCH cholesky (1000,3,3) t10⟧ | ⟦BENCH cholesky (1000,3,3) t1⟧ |
-| `cholesky` | (100,32,32) | ⟦BENCH cholesky (100,32,32) t10⟧ | ⟦BENCH cholesky (100,32,32) t1⟧ |
-| `cholesky_solve` | (3,3) | ⟦BENCH cholesky_solve (3,3) t10⟧ | ⟦BENCH cholesky_solve (3,3) t1⟧ |
-| `cholesky_solve` | (32,32) | ⟦BENCH cholesky_solve (32,32) t10⟧ | ⟦BENCH cholesky_solve (32,32) t1⟧ |
-| `cholesky_solve` | (300,300) | ⟦BENCH cholesky_solve (300,300) t10⟧ | ⟦BENCH cholesky_solve (300,300) t1⟧ |
-| `cholesky_solve` | (1000,1000) | ⟦BENCH cholesky_solve (1000,1000) t10⟧ | ⟦BENCH cholesky_solve (1000,1000) t1⟧ |
-| `cholesky_solve` | (1000,3,3) | ⟦BENCH cholesky_solve (1000,3,3) t10⟧ | ⟦BENCH cholesky_solve (1000,3,3) t1⟧ |
-| `cholesky_solve` | (100,32,32) | ⟦BENCH cholesky_solve (100,32,32) t10⟧ | ⟦BENCH cholesky_solve (100,32,32) t1⟧ |
-| `ldl` | (3,3) | ⟦BENCH ldl (3,3) t10⟧ | ⟦BENCH ldl (3,3) t1⟧ |
-| `ldl` | (32,32) | ⟦BENCH ldl (32,32) t10⟧ | ⟦BENCH ldl (32,32) t1⟧ |
-| `ldl` | (300,300) | ⟦BENCH ldl (300,300) t10⟧ | ⟦BENCH ldl (300,300) t1⟧ |
-| `ldl` | (1000,1000) | ⟦BENCH ldl (1000,1000) t10⟧ | ⟦BENCH ldl (1000,1000) t1⟧ |
-| `ldl` | (1000,3,3) | — | — |
-| `ldl` | (100,32,32) | — | — |
-
-{/* BENCH-FIG: cholesky (3,3) t10, cholesky (32,32) t10, cholesky (300,300) t10, cholesky (1000,1000) t10, cholesky (1000,3,3) t10, cholesky (100,32,32) t10, cholesky_solve (3,3) t10, cholesky_solve (300,300) t10, ldl (3,3) t10, ldl (300,300) t10, ldl (1000,1000) t10 | 캡션: numpy(cholesky)·scipy(cholesky_solve, ldl)와 stardust 1스레드·10스레드의 시간. 작은 행렬과 배치는 호출 경로와 배치 분할에서, 큰 행렬은 같은 Accelerate라서 차이가 작아요. */}
-차이가 나는 곳은 세 갈래예요.
+비교 대상은 `cholesky`가 numpy 2.5.4, `cholesky_solve`와 `ldl`이 scipy 1.18.1(`cho_solve`, `ldl`)이에요. 차이가 나는 곳은 세 갈래예요.
 
 - **작은 행렬 하나.** 3×3 Cholesky의 계산은 수십 ns예요. 시간 대부분이 호출 경로(인자 해석, 결과 배열 만들기)라서, Python 래퍼 없이 C++ 함수가 바로 불리고 입력 복사가 결과 자리로 한 번뿐인 stardust가 유리해요([선형대수 영역의 구조](/internals/linalg/overview/)).
 - **배치.** numpy는 배치를 코어 하나로 차례로 돌아요. stardust는 비용 모델이 10µs를 넘는 배치를 태스크로 나눠요. 1스레드에서도 numpy와 같은 LAPACK을 부르면서 호출 고정비만큼 빨라요.

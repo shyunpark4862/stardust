@@ -836,28 +836,10 @@ merge를 "양쪽 키를 이어 붙여 함께 factorize"하는 방법과 build/pr
 
 ## 성능
 
-pandas, Polars와 비교한 시간은 아래 표예요. 측정은 Apple M4 Pro, pandas 3.1.1, Polars 2.1.0이에요. `sd@1`·`sd@10`은 stardust 1스레드·10스레드, `polars@14`는 Polars 14스레드예요. "1k keys"는 키 1,000종, "n keys"는 0부터 행 수까지의 무작위 정수(1M 행이면 약 63만 종), string은 행 수의 1/10종이에요.
+`nunique`는 factorize 한 번이 시간의 거의 전부라서 이 영역의 해시 성능을 가장 직접 보여 줘요. pandas, Polars와 다른 점은 이래요.
 
-| 경우 | 행 | sd@1 | sd@10 | pandas | polars@1 | polars@14 |
-|---|:---:|---:|---:|---:|---:|---:|
-| `nunique` int, 키 1,000종 | 1천 | ⟦FBENCH "nunique int, 1k keys" 1k sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1k sd@10⟧ | ⟦FBENCH "nunique int, 1k keys" 1k pandas⟧ | ⟦FBENCH "nunique int, 1k keys" 1k polars@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1k polars@14⟧ |
-| | 10만 | ⟦FBENCH "nunique int, 1k keys" 100k sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 100k sd@10⟧ | ⟦FBENCH "nunique int, 1k keys" 100k pandas⟧ | ⟦FBENCH "nunique int, 1k keys" 100k polars@1⟧ | ⟦FBENCH "nunique int, 1k keys" 100k polars@14⟧ |
-| | 1M | ⟦FBENCH "nunique int, 1k keys" 1M sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1M sd@10⟧ | ⟦FBENCH "nunique int, 1k keys" 1M pandas⟧ | ⟦FBENCH "nunique int, 1k keys" 1M polars@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1M polars@14⟧ |
-| `nunique` int, 키 많음 | 1천 | ⟦FBENCH "nunique int, n keys" 1k sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1k sd@10⟧ | ⟦FBENCH "nunique int, n keys" 1k pandas⟧ | ⟦FBENCH "nunique int, n keys" 1k polars@1⟧ | ⟦FBENCH "nunique int, n keys" 1k polars@14⟧ |
-| | 10만 | ⟦FBENCH "nunique int, n keys" 100k sd@1⟧ | ⟦FBENCH "nunique int, n keys" 100k sd@10⟧ | ⟦FBENCH "nunique int, n keys" 100k pandas⟧ | ⟦FBENCH "nunique int, n keys" 100k polars@1⟧ | ⟦FBENCH "nunique int, n keys" 100k polars@14⟧ |
-| | 1M | ⟦FBENCH "nunique int, n keys" 1M sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1M sd@10⟧ | ⟦FBENCH "nunique int, n keys" 1M pandas⟧ | ⟦FBENCH "nunique int, n keys" 1M polars@1⟧ | ⟦FBENCH "nunique int, n keys" 1M polars@14⟧ |
-| `nunique` string | 1천 | ⟦FBENCH "nunique string" 1k sd@1⟧ | ⟦FBENCH "nunique string" 1k sd@10⟧ | ⟦FBENCH "nunique string" 1k pandas⟧ | ⟦FBENCH "nunique string" 1k polars@1⟧ | ⟦FBENCH "nunique string" 1k polars@14⟧ |
-| | 10만 | ⟦FBENCH "nunique string" 100k sd@1⟧ | ⟦FBENCH "nunique string" 100k sd@10⟧ | ⟦FBENCH "nunique string" 100k pandas⟧ | ⟦FBENCH "nunique string" 100k polars@1⟧ | ⟦FBENCH "nunique string" 100k polars@14⟧ |
-| | 1M | ⟦FBENCH "nunique string" 1M sd@1⟧ | ⟦FBENCH "nunique string" 1M sd@10⟧ | ⟦FBENCH "nunique string" 1M pandas⟧ | ⟦FBENCH "nunique string" 1M polars@1⟧ | ⟦FBENCH "nunique string" 1M polars@14⟧ |
-
-{/* BENCH-FIG: "nunique int, 1k keys" 1M pandas, sd@1, sd@10, polars@14; "nunique int, n keys" 1M pandas, sd@1, sd@10, polars@14; "nunique string" 1M pandas, sd@1, sd@10, polars@14 | 캡션: 1M 행의 nunique. 키가 적으면 직렬 테이블도 L1에 들어가 10스레드의 이득이 작고, 키가 많으면 파티션으로 나눈 작은 테이블이 캐시에 들어가 이득이 커요. Apple M4 Pro, pandas 3.1.1, Polars 2.1.0. */}
-
-`nunique`는 factorize 한 번이 시간의 거의 전부라서 이 영역의 해시 성능을 가장 직접 보여 줘요. 1M 행에서 pandas 대비 배율은 키 1,000종 ⟦FBENCH "nunique int, 1k keys" 1M pandas/sd@1⟧배(1스레드), ⟦FBENCH "nunique int, 1k keys" 1M pandas/sd@10⟧배(10스레드), 키가 많을 때 ⟦FBENCH "nunique int, n keys" 1M pandas/sd@10⟧배, string ⟦FBENCH "nunique string" 1M pandas/sd@10⟧배예요. Polars(14스레드)와는 키가 많을 때 ⟦FBENCH "nunique int, n keys" 1M polars@14/sd@10⟧배, string ⟦FBENCH "nunique string" 1M polars@14/sd@10⟧배예요.
-
-원인으로 알려진 것은 이래요.
-
-- **pandas와의 차이.** pandas 3.1.1의 int64 테이블(khash)은 해시가 32비트(`key >> 33 ^ key ^ key << 11`)이고, 충돌하면 두 번째 해시(`murmur2_32to32(h) | 1`)만큼 건너뛰는 double hashing이에요. 칸이 찼는지는 칸마다 1비트의 플래그 배열에 따로 두고, 적재율 0.77에서 두 배로 늘려요(`khash.h`)[10]. 칸마다 "비었나, 키가 같나"를 분기로 묻는 구조라 위 linear probing과 같은 종류의 분기가 있어요. pandas가 문자열 객체 배열에 쓰는 `StringHashTable`은 Python 문자열 객체마다 UTF-8 포인터와 길이를 얻은 뒤(`PyUnicode_AsUTF8AndSize`) X31 해시(`h = h × 31 + 바이트`)로 테이블에 넣어요(`kh_strview`, `khash_python.h`). pyarrow가 없으면 pandas 3.1.1의 `str` dtype이 Python 객체로 저장되고(이 측정 환경이 그래요) 이 경로를 타요. stardust는 문자열이 이미 연속 바이트라 Python 객체를 거치지 않아요.
-- **Polars와의 차이.** 구조에서 눈에 띄는 차이는 순서예요. stardust는 결과를 처음 나타난 순서로 다시 번호 매기는 단계(5, 6단계)를 늘 거치고, Polars는 그 순서를 기본으로 만들지 않아요. 키가 많은 줄에서 Polars가 빠르다면 이 단계가 그 차이에 들어가지만, 얼마를 차지하는지는 아직 재지 않았어요.
+- **pandas와의 차이.** pandas 3.1.1의 int64 테이블(khash)은 해시가 32비트(`key >> 33 ^ key ^ key << 11`)이고, 충돌하면 두 번째 해시(`murmur2_32to32(h) | 1`)만큼 건너뛰는 double hashing이에요. 칸이 찼는지는 칸마다 1비트의 플래그 배열에 따로 두고, 적재율 0.77에서 두 배로 늘려요(`khash.h`)[10]. 칸마다 "비었나, 키가 같나"를 분기로 묻는 구조라 위 linear probing과 같은 종류의 분기가 있어요. pandas가 문자열 객체 배열에 쓰는 `StringHashTable`은 Python 문자열 객체마다 UTF-8 포인터와 길이를 얻은 뒤(`PyUnicode_AsUTF8AndSize`) X31 해시(`h = h × 31 + 바이트`)로 테이블에 넣어요(`kh_strview`, `khash_python.h`). pyarrow가 없으면 pandas 3.1.1의 `str` dtype이 Python 객체로 저장되고 이 경로를 타요. stardust는 문자열이 이미 연속 바이트라 Python 객체를 거치지 않아요.
+- **Polars와의 차이.** 구조에서 눈에 띄는 차이는 순서예요. stardust는 결과를 처음 나타난 순서로 다시 번호 매기는 단계(5, 6단계)를 늘 거치고, Polars는 그 순서를 기본으로 만들지 않아요. 키가 많은 해시에서는 Polars가 더 빨라요. 이 단계가 그 차이에 들어가지만, 얼마를 차지하는지는 재지 않았어요.
 
 groupby와 merge의 시간은 factorize 뒤의 단계(행 모으기, 집계, 쌍 만들기)가 함께 들어가서 각 글에서 다뤄요([groupby와 정렬](/internals/frame/groupby-sort/), [merge와 concat](/internals/frame/merge-concat/)).
 

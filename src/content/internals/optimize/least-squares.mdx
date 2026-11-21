@@ -7,7 +7,6 @@ seeAlso: [overview, derivatives, linear-least-squares, root, accuracy-performanc
 ---
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
-import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
@@ -400,25 +399,11 @@ scipy는 `cost`를 `np.dot(f, f)`로, `grad`를 `J.T.dot(f)`로 계산해요. BL
 
 ## 성능
 
-반복 하나의 자기 비용(사용자 함수 밖의 시간을 반복 수로 나눈 것)을 scipy와 견주면 이래요. Apple M4 Pro, 1스레드, scipy 1.18.1·numpy 2.5.4(Accelerate), 해석적 야코비안이에요(`bench/optimize/o6/speed.md`). `'lm'`의 (1000, 10)과 (10⁴, 100)은 그 모양에서 쓰는 nls의 빌드로 잰 값이에요.
+반복 하나의 자기 비용(사용자 함수 밖의 시간을 반복 수로 나눈 것)을 scipy와 견줘요. Apple M4 Pro, 1스레드, scipy 1.18.1·numpy 2.5.4(Accelerate), 해석적 야코비안이에요.
 
-<Bench
-  series={['scipy 1.18.1', 'stardust 1스레드']}
-  rows={[
-    { label: "trf, Rosenbrock (2, 2)", times: [41.0e-6, 3.36e-6] },
-    { label: "lm, Rosenbrock (2, 2)", times: [7.72e-6, 1.53e-6] },
-    { label: "trf, m = n = 40", times: [83.7e-6, 76.5e-6] },
-    { label: "lm, m = n = 40", times: [51.0e-6, 35.3e-6] },
-    { label: "trf, (1000, 10)", times: [112e-6, 66.1e-6] },
-    { label: "lm, (1000, 10)", times: [88.3e-6, 57.2e-6] },
-    { label: "trf, (10⁴, 100)", times: [18.1e-3, 6.83e-3] },
-    { label: "lm, (10⁴, 100)", times: [36.8e-3, 6.57e-3] },
-  ]}
-/>
-
-- 작은 문제에서 scipy는 반복마다 Python에서 numpy 연산과 `VectorFunction`의 감싸기를 거쳐요. 이 커널은 반복 전체가 C++이고 콜백만 Python이라 5–12배 싸요.
-- m ≫ n에서는 `'trf'`와 `'lm'` 모두 야코비안마다 LAPACK의 블록 QR 하나가 대부분이고 그 뒤는 n 크기예요(`'lm'`은 nls의 빌드). 그 모양에서 scipy의 빌드로 풀면 MINPACK 순서의 피벗 QR이라 (10⁴, 100)에서 반복당 17.7 ms(10스레드 7.8 ms)가 들어요.
-- m = n = 40의 `'trf'`는 40 × 40의 QR(18 µs)과 80 × 40의 SVD(47 µs)가 반복의 대부분이라 scipy와 비슷해요.
+- 작은 문제에서 scipy는 반복마다 Python에서 numpy 연산과 `VectorFunction`의 감싸기를 거쳐요. 이 커널은 반복 전체가 C++이고 콜백만 Python이라 반복 하나가 scipy보다 여러 배 싸요. `'lm'`의 m = n = 40은 0.035 ms(scipy 0.051 ms)예요.
+- m ≫ n에서는 `'trf'`와 `'lm'` 모두 야코비안마다 LAPACK의 블록 QR 하나가 대부분이고 그 뒤는 n 크기예요(`'lm'`은 nls의 빌드). (10⁴, 100)의 `'lm'`은 반복당 6.6 ms로 scipy(36.8 ms)보다 훨씬 싸요. 같은 모양을 scipy의 빌드로 풀면 MINPACK 순서의 피벗 QR이라 반복당 17.7 ms(10스레드 7.8 ms)가 들어요.
+- m = n = 40의 `'trf'`는 40 × 40의 QR과 80 × 40의 SVD가 반복의 대부분이라 scipy와 비슷해요.
 
 ## 참고 문헌
 

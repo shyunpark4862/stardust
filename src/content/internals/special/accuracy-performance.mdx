@@ -2,7 +2,7 @@
 title: 정확도와 성능
 group: 정확도와 성능
 order: 1
-summary: 특수함수의 정확도를 Arb로 구한 기준값에 대고 ULP로 잰 결과와 속도를 정리해요. 대부분의 함수가 몇 ULP 안이고, scipy보다 나쁜 몇 줄은 차이가 많아야 2 ULP인데 그 원인도 함께 보여 줘요.
+summary: 특수함수의 정확도를 Arb로 구한 기준값에 대고 ULP로 잰 결과와 원소당 비용이 드는 곳을 정리해요. 대부분의 함수가 몇 ULP 안이고, scipy보다 나쁜 몇 줄은 차이가 많아야 2 ULP인데 그 원인도 함께 보여 줘요.
 seeAlso: [overview, engine, techniques, distributions, incomplete]
 ---
 import Callout from '../../../components/Callout.astro';
@@ -267,26 +267,26 @@ Riemann `zeta`의 9는 $x \approx -3.3 \times 10^{-4}$와 $x \approx -4.7 \times
 
 특수값(NaN, ±inf, 0, 극점)은 Boost를 부르기 전에 stardust가 정하고, Boost의 결과가 정상 범위(서브노멀·0·inf·NaN이 아님)가 아니면 그 값을 버리고 stardust의 코드로 다시 계산해요(`bst::normal`). Boost의 오류 정책은 모두 "값을 돌려준다"이고, double 연산을 long double로 올리지 않게(`promote_double<false>`) 해서 결과가 기계에 따라 달라지지 않아요.
 
-구간은 함수 전체와 구간별로 Boost와 stardust를 견주고, 후보 규칙마다 합친 결과의 계약 위반 수를 세어 골랐어요. 정확도는 위와 같은 기준값 파일로, 속도는 그 구간 안 점 $2 \times 10^5$개에서 1스레드로 쟀어요(Boost는 같은 입력의 C++ 루프). 아래 표의 "고를 때의 비"는 그때의 Boost / stardust 시간이에요. 구간을 고를 때 잰 값이라, stardust 쪽 일부(불완전 함수, 초기하)는 지금 코드에서 비가 다를 수 있어요.
+구간은 함수 전체와 구간별로 Boost와 stardust를 견주고, 후보 규칙마다 합친 결과의 계약 위반 수를 세어 골랐어요. 정확도는 위와 같은 기준값 파일로, 속도는 그 구간 안 점 $2 \times 10^5$개에서 1스레드로 쟀어요(Boost는 같은 입력의 C++ 루프).
 
 ### Boost를 부르는 구간과 그 안의 방법
 
 | 함수 | Boost 구간 | Boost가 쓰는 방법 (double) | 고를 때의 근거 | stardust 구간 |
 |---|---|---|---|---|
-| `zeta` | $x \ge -1$(짝수 2–52 제외), 음의 홀수 $-3 \ldots -59$ | $s < 1$: $1-s$의 유리식에 극 $1/(s-1)$을 붙인 꼴. $(1,2]$, $(2,4]$, $(4,7]$, $(7,15)$: 구간별 minimax 유리식. $[15,36)$: $1 + e^{R(s-15)}$. $s \ge 36$: $1 + 2^{-s}$. 짝수는 닫힌 꼴 $2^{s-1}\pi^s\lvert B_s\rvert/s!$, 음의 정수는 Bernoulli 수의 표. $-1 \le s < 0$: 함수방정식 $\zeta(s) = 2\sin(\tfrac{\pi s}{2})(2\pi)^{s-1}\Gamma(1-s)\zeta(1-s)$ | $x > 1$에서 최대 1 대 3 ULP, 비 0.14 | 짝수 2–52: 표(Boost의 닫힌 꼴은 9 ULP). 그 밖의 $x < -1$: 함수방정식(Boost는 $(-32, -31)$에서 65 ULP, $x \approx -250$에서 1.5e3 ULP) |
-| `i0`, `i1` | 전부 | $x < 7.75$: $1 + aP(a)$, $a = x^2/4$(`i1`도 같은 꼴). 그 위: $e^x P(1/x)/\sqrt{x}$, 큰 $x$는 $e^{x/2}$를 두 번 곱해 넘침을 피함 | 3–4 ULP, 비 0.50 | 결과가 정상 범위 밖(713 근처의 참값) |
-| `k0`, `k1` | 전부 | $x \le 1$: $x^2$의 유리식 $- \log x \cdot (I_0$류 급수$)$. $x > 1$: $(Y + R(1/x))\,e^{-x}/\sqrt{x}$ | `k0`의 $x < 2$에서 2 대 17 ULP, 비 0.29–0.30 | `k1(5e-324)` 등 결과가 정상 범위 밖 |
-| `iv`, `kv` | $\lvert\nu\rvert < 30$, $\lvert\nu\rvert < 400$($x > 0$) | Temme의 방법 [9]: $\nu = n + \mu$, $\lvert\mu\rvert \le \tfrac12$. $x \le 2$는 Temme 급수, $x > 2$는 CF2(Steed의 방법, Boost 소스가 인용하는 Thompson–Barnett [10])로 $K_\mu, K_{\mu+1}$, CF1(수정 Lentz)로 $I$의 비, Wronskian으로 $I$, 앞으로 점화해 $K_\nu$. $x$가 $\nu$에 비해 작으면 거듭제곱급수, 아주 크면 점근전개 | 구간 안 위반 0, 비 0.42(`iv`), 0.14(`kv`) | 그 밖. $\nu \ge 30$은 Debye 균등 점근전개 |
+| `zeta` | $x \ge -1$(짝수 2–52 제외), 음의 홀수 $-3 \ldots -59$ | $s < 1$: $1-s$의 유리식에 극 $1/(s-1)$을 붙인 꼴. $(1,2]$, $(2,4]$, $(4,7]$, $(7,15)$: 구간별 minimax 유리식. $[15,36)$: $1 + e^{R(s-15)}$. $s \ge 36$: $1 + 2^{-s}$. 짝수는 닫힌 꼴 $2^{s-1}\pi^s\lvert B_s\rvert/s!$, 음의 정수는 Bernoulli 수의 표. $-1 \le s < 0$: 함수방정식 $\zeta(s) = 2\sin(\tfrac{\pi s}{2})(2\pi)^{s-1}\Gamma(1-s)\zeta(1-s)$ | $x > 1$에서 최대 1 대 3 ULP | 짝수 2–52: 표(Boost의 닫힌 꼴은 9 ULP). 그 밖의 $x < -1$: 함수방정식(Boost는 $(-32, -31)$에서 65 ULP, $x \approx -250$에서 1.5e3 ULP) |
+| `i0`, `i1` | 전부 | $x < 7.75$: $1 + aP(a)$, $a = x^2/4$(`i1`도 같은 꼴). 그 위: $e^x P(1/x)/\sqrt{x}$, 큰 $x$는 $e^{x/2}$를 두 번 곱해 넘침을 피함 | 3–4 ULP. `i0 i1 k0 k1`에서 Boost가 2–4.5배 빠름 | 결과가 정상 범위 밖(713 근처의 참값) |
+| `k0`, `k1` | 전부 | $x \le 1$: $x^2$의 유리식 $- \log x \cdot (I_0$류 급수$)$. $x > 1$: $(Y + R(1/x))\,e^{-x}/\sqrt{x}$ | `k0`의 $x < 2$에서 2 대 17 ULP | `k1(5e-324)` 등 결과가 정상 범위 밖 |
+| `iv`, `kv` | $\lvert\nu\rvert < 30$, $\lvert\nu\rvert < 400$($x > 0$) | Temme의 방법 [9]: $\nu = n + \mu$, $\lvert\mu\rvert \le \tfrac12$. $x \le 2$는 Temme 급수, $x > 2$는 CF2(Steed의 방법, Boost 소스가 인용하는 Thompson–Barnett [10])로 $K_\mu, K_{\mu+1}$, CF1(수정 Lentz)로 $I$의 비, Wronskian으로 $I$, 앞으로 점화해 $K_\nu$. $x$가 $\nu$에 비해 작으면 거듭제곱급수, 아주 크면 점근전개 | 구간 안 위반 0, Boost가 2–7배 빠름 | 그 밖. $\nu \ge 30$은 Debye 균등 점근전개 |
 | `ive`, `kve`, `i0e` 등 | 위 구간, $0 < x < 700$ | Boost의 값 $\times e^{\mp x}$ | 같음 | 그 밖 |
 | `betaln` | $a, b > 0$, $a + b < 40$ | $\log$(Boost의 `beta`) | 위반 0 | 그 밖 |
-| `expi` | $x \ge -700$ | $x < 0$: $-E_1(-x)$. $0 < x \le 6$: $(x - r)R(x/3 - 1) + \log(x/r)$, $r = 0.3725\ldots$(양의 영점, 두 조각으로 저장해 정확히 빼기). 그 위: 구간별 $\tfrac{e^x}{x}(Y + R(1/x))$ | ≤ 5 ULP, 비 0.47 | $x < -700$: Boost는 서브노멀 꼬리를 0으로 |
-| `lambertw` | $\lvert x + 1/e\rvert \ge 0.05$ | $z$(큰 $z$는 $\log z$)의 구간별 minimax 유리식, 분기점 근처는 $\sqrt{2(ez+1)}$의 급수 | ≤ 1 ULP, 비 0.31 | 분기점 근처: Boost 2e7 ULP |
-| `digamma` | $x > 0$ | $x \ge 10$: Bernoulli 수의 점근전개. $[1, 2]$: $(x - x_0)(Y + R(x-1))$, $x_0$는 양의 근. 그 사이는 점화식 | 2 대 2 ULP, 비 0.95 | $x < 0$: 극점 근처에서 Boost가 틀림 |
-| `gamma` | $x > -170$, 극점 제외 | Lanczos 근사(`lanczos13m53`, $g \approx 6.02$), 작은 정수는 계승 표, 작은·음의 $x$는 점화식, $x < -20$은 반사식($x\sin\pi x$를 정확히 줄여서) | 위반 0, 비 1.09(10% 안) | 서브노멀 꼬리 |
-| `beta` | $a, b > 0$, $a + b < 40$ | 세 감마를 Lanczos 꼴로 한 식에 모음 | 위반 0, 비 0.98 | 큰 인자: Boost 1.8e3 ULP |
-| `gammaincinv`, `gammainccinv` | $p \ge 10^{-300}$, 근 $\ge 10^{-300}$ / 근이 정상 범위 | DiDonato–Morris(1986) [2]의 초기값 + Halley. 그 근에서 stardust의 순방향 함수로 Halley 한 걸음(자세한 것은 [불완전 감마와 베타](/internals/special/incomplete/)) | 위반 0, 비 0.82, 0.49 | 서브노멀 근, $a \ge 10^{10}$ |
-| `betainc`, `betaincc` | $a, b \le 6$ | TOMS 708 [1]의 구조: 닫힌 꼴, 거듭제곱급수, 옆걸음 + BGRAT, 정수 매개변수의 이항 유한합, 꼬리부터 다시 계산하는 연분수 | 위반 0, 비 0.26 | 큰 $a, b$. $a, b \le 6$ 안에서도 서브노멀 $x$, 결과가 $2^{-960}$ 아래, Boost가 1에서 빼서 보수를 만드는 쪽 |
-| `betaincinv`, `betainccinv` | $10 \le a, b \le 10^6$ / $1 \le a, b \le 10^6$ | Temme의 세 균등 점근 역전개 [11]로 초기값 + Halley | 위반 0, 비 0.73, 0.35 | 작은 $a, b$: Boost가 언더플로를 틀림. $10^6$보다 큰 모양: Boost가 다른 확률의 근을 냄 |
+| `expi` | $x \ge -700$ | $x < 0$: $-E_1(-x)$. $0 < x \le 6$: $(x - r)R(x/3 - 1) + \log(x/r)$, $r = 0.3725\ldots$(양의 영점, 두 조각으로 저장해 정확히 빼기). 그 위: 구간별 $\tfrac{e^x}{x}(Y + R(1/x))$ | ≤ 5 ULP | $x < -700$: Boost는 서브노멀 꼬리를 0으로 |
+| `lambertw` | $\lvert x + 1/e\rvert \ge 0.05$ | $z$(큰 $z$는 $\log z$)의 구간별 minimax 유리식, 분기점 근처는 $\sqrt{2(ez+1)}$의 급수 | ≤ 1 ULP | 분기점 근처: Boost 2e7 ULP |
+| `digamma` | $x > 0$ | $x \ge 10$: Bernoulli 수의 점근전개. $[1, 2]$: $(x - x_0)(Y + R(x-1))$, $x_0$는 양의 근. 그 사이는 점화식 | 2 대 2 ULP | $x < 0$: 극점 근처에서 Boost가 틀림 |
+| `gamma` | $x > -170$, 극점 제외 | Lanczos 근사(`lanczos13m53`, $g \approx 6.02$), 작은 정수는 계승 표, 작은·음의 $x$는 점화식, $x < -20$은 반사식($x\sin\pi x$를 정확히 줄여서) | 위반 0, 속도는 10% 안 | 서브노멀 꼬리 |
+| `beta` | $a, b > 0$, $a + b < 40$ | 세 감마를 Lanczos 꼴로 한 식에 모음 | 위반 0 | 큰 인자: Boost 1.8e3 ULP |
+| `gammaincinv`, `gammainccinv` | $p \ge 10^{-300}$, 근 $\ge 10^{-300}$ / 근이 정상 범위 | DiDonato–Morris(1986) [2]의 초기값 + Halley. 그 근에서 stardust의 순방향 함수로 Halley 한 걸음(자세한 것은 [불완전 감마와 베타](/internals/special/incomplete/)) | 위반 0 | 서브노멀 근, $a \ge 10^{10}$ |
+| `betainc`, `betaincc` | $a, b \le 6$ | TOMS 708 [1]의 구조: 닫힌 꼴, 거듭제곱급수, 옆걸음 + BGRAT, 정수 매개변수의 이항 유한합, 꼬리부터 다시 계산하는 연분수 | 위반 0 | 큰 $a, b$. $a, b \le 6$ 안에서도 서브노멀 $x$, 결과가 $2^{-960}$ 아래, Boost가 1에서 빼서 보수를 만드는 쪽 |
+| `betaincinv`, `betainccinv` | $10 \le a, b \le 10^6$ / $1 \le a, b \le 10^6$ | Temme의 세 균등 점근 역전개 [11]로 초기값 + Halley | 위반 0 | 작은 $a, b$: Boost가 언더플로를 틀림. $10^6$보다 큰 모양: Boost가 다른 확률의 근을 냄 |
 | `hyp1f1` | 보장 영역의 $0 \le x < 16$, $b < 11$, $a \le 100$. 느슨한 영역에서는 stardust의 앞선 세 방법이 안 될 때만 $\lvert a\rvert, \lvert b\rvert \le 100$ | 검사하는 급수, Kummer 변환, A&S 13.3.6, Tricomi의 Bessel 전개(13.3.7), 큰 $a \approx b$의 감마 전개, 큰 $z$의 점근전개, Luke의 유리 근사, $a$·$b$의 점화식 중 입력에 맞는 것 [6] | 보장 영역에서 $x \ge 18$부터 점의 4%가 45 ULP를 넘고 $x \approx 500$에서 297 ULP(무작위 4만 점)라 구간을 $x < 16$으로 좁힘. 느슨한 영역의 $\lvert a\rvert, \lvert b\rvert \le 100$에서 상대 $1.2 \times 10^{-12}$ | 보장 영역의 나머지. 느슨한 영역: 상쇄를 아는 급수, $a$의 점화식, 점근전개, Tricomi 전개, 모두 안 되면 NaN |
 
 `betainc`와 `betaincc`의 구간을 같게($a, b \le 6$) 둔 이유가 있어요. 둘이 다르면 한쪽만 Boost인 점이 넓게 생겨서 두 구현의 오차가 따로 놀아요. 그래도 Boost는 두 함수를 따로 계산하고, 위의 예외로 한쪽만 stardust인 점도 있어서 합 `betainc + betaincc`는 1에서 최대 $4.5\varepsilon$($\varepsilon = 2^{-52}$) 벗어나요(모양 $10^{-5}$–6의 34만 점).
@@ -295,20 +295,20 @@ Riemann `zeta`의 9는 $x \approx -3.3 \times 10^{-4}$와 $x \approx -4.7 \times
 
 | 함수 | 이유 (속도는 구간을 고를 때 잰 1스레드 비교, 정확도는 같은 기준값 파일에서 잰 비교용 Boost.Math boostorg/math 75cb4c4) |
 |---|---|
-| `erf erfc erfinv erfcinv` | Boost가 더 정확하지만(1–3 ULP) 1스레드에서 우리 청크 커널보다 느렸어요(2.0–2.9배) |
-| `gammaln` | Boost 2 대 6 ULP이지만 1.28배 느렸어요 |
-| `j0 j1 y0 y1` | Boost가 비슷하거나 더 정확하지만 1.2–1.5배 느렸어요 |
+| `erf erfc erfinv erfcinv` | Boost가 더 정확하지만(1–3 ULP) 1스레드에서 우리 청크 커널보다 느렸어요 |
+| `gammaln` | Boost 2 대 6 ULP이지만 느렸어요 |
+| `j0 j1 y0 y1` | Boost가 비슷하거나 더 정확하지만 느렸어요 |
 | `expit` | Boost가 $x \approx -709 \ldots -740$의 서브노멀 꼬리를 0으로 내요(2.4e15 ULP) |
-| `polygamma` | Boost는 $n = 170$에서 넘칠 때 부호가 반대인 inf를 내고, 유한한 값도 556 ULP까지 틀려요. 4.9배 느렸어요 |
-| `expn` | Boost 1.7e11 ULP, 큰 $n$이 섞인 표본에서 93배 느렸어요 |
-| `jv`, `yv` | Boost 2.5e4 ULP($x \approx 5 \times 10^4$, $\nu \approx -900$, 포락선 배율로 나눈 값), 넘치는 점에서 부호가 반대인 inf, 2.4배 느렸어요 |
+| `polygamma` | Boost는 $n = 170$에서 넘칠 때 부호가 반대인 inf를 내고, 유한한 값도 556 ULP까지 틀려요 |
+| `expn` | Boost 1.7e11 ULP |
+| `jv`, `yv` | Boost 2.5e4 ULP($x \approx 5 \times 10^4$, $\nu \approx -900$, 포락선 배율로 나눈 값), 넘치는 점에서 부호가 반대인 inf |
 | `gammainc`, `gammaincc` | Boost 5e5 ULP($a \approx 10^6$) |
 | `airy` | Boost는 $x \approx -7 \times 10^{10}$에서 부호까지 틀리고(위상), 넷을 따로 불러야 해요. stardust는 넷을 한 번에 계산해요 |
 | `ellipk`, `ellipe` | Boost는 모듈러스 $k$를 받아요. $m$을 $\sqrt{m}$으로 바꾸는 반올림이 $m \to 1$의 로그 특이점에서 커져서 같은 조건의 비교가 안 되고, $m < 0$은 Boost의 정의역 밖이에요 |
 
 Boost.Math에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, e-스케일 Bessel의 일부 구간, `hyp2f1`, Hurwitz 제타, 리덕션)는 모두 stardust의 코드예요.
 
-## 속도와 원소당 비용
+## 원소당 비용
 
 ### 재는 방법
 
@@ -321,115 +321,11 @@ Boost.Math에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, e-�
 </Fig>
 
 - **입력.** 배열 사례는 기준값 파일의 보장 영역 입력에서 $10^6$개를 뽑아요(비중심 분포 함수는 $10^5$개). 기준값 파일은 경계와 어려운 점을 일부러 많이 넣은 집합이라, 이 표본은 "보통의" 입력보다 비싼 쪽으로 치우쳐요. 그래서 함수마다 정한 범위의 "보통 입력" 사례를 따로 재요.
-- **같은 자리에서 잇달아.** 라운드마다 사례 안에서 stardust와 scipy를 잇달아 재고, 모든 라운드의 모든 배치 가운데 가장 빠른 값을 남겨요. 기계의 상태가 바뀌어도 두 쪽이 같이 영향을 받게 하려는 거예요.
-- **스칼라 호출.** Python `float` 하나를 넣는 호출 시간이에요. 계산보다 Python 경계를 넘는 비용이 커요([Python 경계](/internals/core/python-boundary/)).
-- **원소당 비용과 가중치.** 배열의 원소별 연산은 일의 양이 원소 $2^{15}$개를 넘으면 여러 스레드로 나눠요. 특수함수는 원소 하나의 비용이 add 하나의 수 배에서 수천 배라서 같은 기준을 쓰면 비싼 함수는 너무 늦게 나눠요. 그래서 함수마다 원소당 비용(ns)을 두고(`cost_table.hpp`, `cost.hpp`), 그 값을 add의 비용(`kAddNs = 0.19` ns)으로 나눈 **가중치** $w$로 일을 세요. 가중치 $w$인 함수는 원소 $2^{15}/w$개부터 병렬이고, 태스크 하나는 원소 약 $2^{12}/w$개예요. 가중치는 256에서 잘라요(`kMaxWeight`). 자르지 않으면 불완전 함수(가중치 800–8500)는 태스크 하나가 원소 하나가 되어 스레드들이 풀의 계수기를 두고 다투고, 10스레드가 1스레드의 5.4–7.8배에 그쳤어요. 256에서는 8.1–8.9배였어요(불완전 감마·베타 원소 $10^6$개). 가중치는 병렬로 나눌 위치만 바꾸고 결과의 비트는 바꾸지 않아요.
-
-### 표
-
-| 묶음 | 함수 | 1스레드 (ms) | 10스레드 (ms) | scipy / sd (1) | scipy / sd (10) | 스칼라 (µs) | 원소당 비용 (ns) |
-|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| 오차함수와 정규분포 | `erf` | ⟦SPEED erf t1⟧ | ⟦SPEED erf t10⟧ | ⟦SPEED erf ratio1⟧ | ⟦SPEED erf ratio10⟧ | ⟦SPEED erf scalar⟧ | ⟦COST erf⟧ |
-|  | `erfc` | ⟦SPEED erfc t1⟧ | ⟦SPEED erfc t10⟧ | ⟦SPEED erfc ratio1⟧ | ⟦SPEED erfc ratio10⟧ | ⟦SPEED erfc scalar⟧ | ⟦COST erfc⟧ |
-|  | `erfcx` | ⟦SPEED erfcx t1⟧ | ⟦SPEED erfcx t10⟧ | ⟦SPEED erfcx ratio1⟧ | ⟦SPEED erfcx ratio10⟧ | ⟦SPEED erfcx scalar⟧ | ⟦COST erfcx⟧ |
-|  | `erfinv` | ⟦SPEED erfinv t1⟧ | ⟦SPEED erfinv t10⟧ | ⟦SPEED erfinv ratio1⟧ | ⟦SPEED erfinv ratio10⟧ | ⟦SPEED erfinv scalar⟧ | ⟦COST erfinv⟧ |
-|  | `erfcinv` | ⟦SPEED erfcinv t1⟧ | ⟦SPEED erfcinv t10⟧ | ⟦SPEED erfcinv ratio1⟧ | ⟦SPEED erfcinv ratio10⟧ | ⟦SPEED erfcinv scalar⟧ | ⟦COST erfcinv⟧ |
-|  | `ndtr` | ⟦SPEED ndtr t1⟧ | ⟦SPEED ndtr t10⟧ | ⟦SPEED ndtr ratio1⟧ | ⟦SPEED ndtr ratio10⟧ | ⟦SPEED ndtr scalar⟧ | ⟦COST ndtr⟧ |
-|  | `log_ndtr` | ⟦SPEED log_ndtr t1⟧ | ⟦SPEED log_ndtr t10⟧ | ⟦SPEED log_ndtr ratio1⟧ | ⟦SPEED log_ndtr ratio10⟧ | ⟦SPEED log_ndtr scalar⟧ | ⟦COST log_ndtr⟧ |
-|  | `ndtri` | ⟦SPEED ndtri t1⟧ | ⟦SPEED ndtri t10⟧ | ⟦SPEED ndtri ratio1⟧ | ⟦SPEED ndtri ratio10⟧ | ⟦SPEED ndtri scalar⟧ | ⟦COST ndtri⟧ |
-|  | `ndtri_exp` | ⟦SPEED ndtri_exp t1⟧ | ⟦SPEED ndtri_exp t10⟧ | ⟦SPEED ndtri_exp ratio1⟧ | ⟦SPEED ndtri_exp ratio10⟧ | ⟦SPEED ndtri_exp scalar⟧ | ⟦COST ndtri_exp⟧ |
-| 감마와 베타 | `gamma` | ⟦SPEED gamma t1⟧ | ⟦SPEED gamma t10⟧ | ⟦SPEED gamma ratio1⟧ | ⟦SPEED gamma ratio10⟧ | ⟦SPEED gamma scalar⟧ | ⟦COST gamma⟧ |
-|  | `rgamma` | ⟦SPEED rgamma t1⟧ | ⟦SPEED rgamma t10⟧ | ⟦SPEED rgamma ratio1⟧ | ⟦SPEED rgamma ratio10⟧ | ⟦SPEED rgamma scalar⟧ | ⟦COST rgamma⟧ |
-|  | `gammaln` | ⟦SPEED gammaln t1⟧ | ⟦SPEED gammaln t10⟧ | ⟦SPEED gammaln ratio1⟧ | ⟦SPEED gammaln ratio10⟧ | ⟦SPEED gammaln scalar⟧ | ⟦COST gammaln⟧ |
-|  | `digamma` | ⟦SPEED digamma t1⟧ | ⟦SPEED digamma t10⟧ | ⟦SPEED digamma ratio1⟧ | ⟦SPEED digamma ratio10⟧ | ⟦SPEED digamma scalar⟧ | ⟦COST digamma⟧ |
-|  | `polygamma` | ⟦SPEED polygamma t1⟧ | ⟦SPEED polygamma t10⟧ | ⟦SPEED polygamma ratio1⟧ | ⟦SPEED polygamma ratio10⟧ | ⟦SPEED polygamma scalar⟧ | ⟦COST polygamma⟧ |
-|  | `beta` | ⟦SPEED beta t1⟧ | ⟦SPEED beta t10⟧ | ⟦SPEED beta ratio1⟧ | ⟦SPEED beta ratio10⟧ | ⟦SPEED beta scalar⟧ | ⟦COST beta⟧ |
-|  | `betaln` | ⟦SPEED betaln t1⟧ | ⟦SPEED betaln t10⟧ | ⟦SPEED betaln ratio1⟧ | ⟦SPEED betaln ratio10⟧ | ⟦SPEED betaln scalar⟧ | ⟦COST betaln⟧ |
-|  | `binom` | ⟦SPEED binom t1⟧ | ⟦SPEED binom t10⟧ | ⟦SPEED binom ratio1⟧ | ⟦SPEED binom ratio10⟧ | ⟦SPEED binom scalar⟧ | ⟦COST binom⟧ |
-| 불완전 감마와 베타 | `gammainc` | ⟦SPEED gammainc t1⟧ | ⟦SPEED gammainc t10⟧ | ⟦SPEED gammainc ratio1⟧ | ⟦SPEED gammainc ratio10⟧ | ⟦SPEED gammainc scalar⟧ | ⟦COST gammainc⟧ |
-|  | `gammaincc` | ⟦SPEED gammaincc t1⟧ | ⟦SPEED gammaincc t10⟧ | ⟦SPEED gammaincc ratio1⟧ | ⟦SPEED gammaincc ratio10⟧ | ⟦SPEED gammaincc scalar⟧ | ⟦COST gammaincc⟧ |
-|  | `gammaincinv` | ⟦SPEED gammaincinv t1⟧ | ⟦SPEED gammaincinv t10⟧ | ⟦SPEED gammaincinv ratio1⟧ | ⟦SPEED gammaincinv ratio10⟧ | ⟦SPEED gammaincinv scalar⟧ | ⟦COST gammaincinv⟧ |
-|  | `gammainccinv` | ⟦SPEED gammainccinv t1⟧ | ⟦SPEED gammainccinv t10⟧ | ⟦SPEED gammainccinv ratio1⟧ | ⟦SPEED gammainccinv ratio10⟧ | ⟦SPEED gammainccinv scalar⟧ | ⟦COST gammainccinv⟧ |
-|  | `betainc` | ⟦SPEED betainc t1⟧ | ⟦SPEED betainc t10⟧ | ⟦SPEED betainc ratio1⟧ | ⟦SPEED betainc ratio10⟧ | ⟦SPEED betainc scalar⟧ | ⟦COST betainc⟧ |
-|  | `betaincc` | ⟦SPEED betaincc t1⟧ | ⟦SPEED betaincc t10⟧ | ⟦SPEED betaincc ratio1⟧ | ⟦SPEED betaincc ratio10⟧ | ⟦SPEED betaincc scalar⟧ | ⟦COST betaincc⟧ |
-|  | `betaincinv` | ⟦SPEED betaincinv t1⟧ | ⟦SPEED betaincinv t10⟧ | ⟦SPEED betaincinv ratio1⟧ | ⟦SPEED betaincinv ratio10⟧ | ⟦SPEED betaincinv scalar⟧ | ⟦COST betaincinv⟧ |
-|  | `betainccinv` | ⟦SPEED betainccinv t1⟧ | ⟦SPEED betainccinv t10⟧ | ⟦SPEED betainccinv ratio1⟧ | ⟦SPEED betainccinv ratio10⟧ | ⟦SPEED betainccinv scalar⟧ | ⟦COST betainccinv⟧ |
-| 로지스틱과 정보량 | `expit` | ⟦SPEED expit t1⟧ | ⟦SPEED expit t10⟧ | ⟦SPEED expit ratio1⟧ | ⟦SPEED expit ratio10⟧ | ⟦SPEED expit scalar⟧ | ⟦COST expit⟧ |
-|  | `logit` | ⟦SPEED logit t1⟧ | ⟦SPEED logit t10⟧ | ⟦SPEED logit ratio1⟧ | ⟦SPEED logit ratio10⟧ | ⟦SPEED logit scalar⟧ | ⟦COST logit⟧ |
-|  | `log_expit` | ⟦SPEED log_expit t1⟧ | ⟦SPEED log_expit t10⟧ | ⟦SPEED log_expit ratio1⟧ | ⟦SPEED log_expit ratio10⟧ | ⟦SPEED log_expit scalar⟧ | ⟦COST log_expit⟧ |
-|  | `xlogy` | ⟦SPEED xlogy t1⟧ | ⟦SPEED xlogy t10⟧ | ⟦SPEED xlogy ratio1⟧ | ⟦SPEED xlogy ratio10⟧ | ⟦SPEED xlogy scalar⟧ | ⟦COST xlogy⟧ |
-|  | `xlog1py` | ⟦SPEED xlog1py t1⟧ | ⟦SPEED xlog1py t10⟧ | ⟦SPEED xlog1py ratio1⟧ | ⟦SPEED xlog1py ratio10⟧ | ⟦SPEED xlog1py scalar⟧ | ⟦COST xlog1py⟧ |
-|  | `entr` | ⟦SPEED entr t1⟧ | ⟦SPEED entr t10⟧ | ⟦SPEED entr ratio1⟧ | ⟦SPEED entr ratio10⟧ | ⟦SPEED entr scalar⟧ | ⟦COST entr⟧ |
-|  | `rel_entr` | ⟦SPEED rel_entr t1⟧ | ⟦SPEED rel_entr t10⟧ | ⟦SPEED rel_entr ratio1⟧ | ⟦SPEED rel_entr ratio10⟧ | ⟦SPEED rel_entr scalar⟧ | ⟦COST rel_entr⟧ |
-| 제타와 지수적분 | `zeta (Riemann)` | ⟦SPEED zeta t1⟧ | ⟦SPEED zeta t10⟧ | ⟦SPEED zeta ratio1⟧ | ⟦SPEED zeta ratio10⟧ | ⟦SPEED zeta scalar⟧ | ⟦COST zeta⟧ |
-|  | `zeta (Hurwitz)` | ⟦SPEED zeta_hurwitz t1⟧ | ⟦SPEED zeta_hurwitz t10⟧ | ⟦SPEED zeta_hurwitz ratio1⟧ | ⟦SPEED zeta_hurwitz ratio10⟧ | ⟦SPEED zeta_hurwitz scalar⟧ | ⟦COST zeta_hurwitz⟧ |
-|  | `expi` | ⟦SPEED expi t1⟧ | ⟦SPEED expi t10⟧ | ⟦SPEED expi ratio1⟧ | ⟦SPEED expi ratio10⟧ | ⟦SPEED expi scalar⟧ | ⟦COST expi⟧ |
-|  | `expn` | ⟦SPEED expn t1⟧ | ⟦SPEED expn t10⟧ | ⟦SPEED expn ratio1⟧ | ⟦SPEED expn ratio10⟧ | ⟦SPEED expn scalar⟧ | ⟦COST expn⟧ |
-| Bessel과 Airy | `i0` | ⟦SPEED i0 t1⟧ | ⟦SPEED i0 t10⟧ | ⟦SPEED i0 ratio1⟧ | ⟦SPEED i0 ratio10⟧ | ⟦SPEED i0 scalar⟧ | ⟦COST i0⟧ |
-|  | `i0e` | ⟦SPEED i0e t1⟧ | ⟦SPEED i0e t10⟧ | ⟦SPEED i0e ratio1⟧ | ⟦SPEED i0e ratio10⟧ | ⟦SPEED i0e scalar⟧ | ⟦COST i0e⟧ |
-|  | `i1` | ⟦SPEED i1 t1⟧ | ⟦SPEED i1 t10⟧ | ⟦SPEED i1 ratio1⟧ | ⟦SPEED i1 ratio10⟧ | ⟦SPEED i1 scalar⟧ | ⟦COST i1⟧ |
-|  | `i1e` | ⟦SPEED i1e t1⟧ | ⟦SPEED i1e t10⟧ | ⟦SPEED i1e ratio1⟧ | ⟦SPEED i1e ratio10⟧ | ⟦SPEED i1e scalar⟧ | ⟦COST i1e⟧ |
-|  | `k0` | ⟦SPEED k0 t1⟧ | ⟦SPEED k0 t10⟧ | ⟦SPEED k0 ratio1⟧ | ⟦SPEED k0 ratio10⟧ | ⟦SPEED k0 scalar⟧ | ⟦COST k0⟧ |
-|  | `k0e` | ⟦SPEED k0e t1⟧ | ⟦SPEED k0e t10⟧ | ⟦SPEED k0e ratio1⟧ | ⟦SPEED k0e ratio10⟧ | ⟦SPEED k0e scalar⟧ | ⟦COST k0e⟧ |
-|  | `k1` | ⟦SPEED k1 t1⟧ | ⟦SPEED k1 t10⟧ | ⟦SPEED k1 ratio1⟧ | ⟦SPEED k1 ratio10⟧ | ⟦SPEED k1 scalar⟧ | ⟦COST k1⟧ |
-|  | `k1e` | ⟦SPEED k1e t1⟧ | ⟦SPEED k1e t10⟧ | ⟦SPEED k1e ratio1⟧ | ⟦SPEED k1e ratio10⟧ | ⟦SPEED k1e scalar⟧ | ⟦COST k1e⟧ |
-|  | `j0` | ⟦SPEED j0 t1⟧ | ⟦SPEED j0 t10⟧ | ⟦SPEED j0 ratio1⟧ | ⟦SPEED j0 ratio10⟧ | ⟦SPEED j0 scalar⟧ | ⟦COST j0⟧ |
-|  | `j1` | ⟦SPEED j1 t1⟧ | ⟦SPEED j1 t10⟧ | ⟦SPEED j1 ratio1⟧ | ⟦SPEED j1 ratio10⟧ | ⟦SPEED j1 scalar⟧ | ⟦COST j1⟧ |
-|  | `y0` | ⟦SPEED y0 t1⟧ | ⟦SPEED y0 t10⟧ | ⟦SPEED y0 ratio1⟧ | ⟦SPEED y0 ratio10⟧ | ⟦SPEED y0 scalar⟧ | ⟦COST y0⟧ |
-|  | `y1` | ⟦SPEED y1 t1⟧ | ⟦SPEED y1 t10⟧ | ⟦SPEED y1 ratio1⟧ | ⟦SPEED y1 ratio10⟧ | ⟦SPEED y1 scalar⟧ | ⟦COST y1⟧ |
-|  | `iv` | ⟦SPEED iv t1⟧ | ⟦SPEED iv t10⟧ | ⟦SPEED iv ratio1⟧ | ⟦SPEED iv ratio10⟧ | ⟦SPEED iv scalar⟧ | ⟦COST iv⟧ |
-|  | `ive` | ⟦SPEED ive t1⟧ | ⟦SPEED ive t10⟧ | ⟦SPEED ive ratio1⟧ | ⟦SPEED ive ratio10⟧ | ⟦SPEED ive scalar⟧ | ⟦COST ive⟧ |
-|  | `kv` | ⟦SPEED kv t1⟧ | ⟦SPEED kv t10⟧ | ⟦SPEED kv ratio1⟧ | ⟦SPEED kv ratio10⟧ | ⟦SPEED kv scalar⟧ | ⟦COST kv⟧ |
-|  | `kve` | ⟦SPEED kve t1⟧ | ⟦SPEED kve t10⟧ | ⟦SPEED kve ratio1⟧ | ⟦SPEED kve ratio10⟧ | ⟦SPEED kve scalar⟧ | ⟦COST kve⟧ |
-|  | `jv` | ⟦SPEED jv t1⟧ | ⟦SPEED jv t10⟧ | ⟦SPEED jv ratio1⟧ | ⟦SPEED jv ratio10⟧ | ⟦SPEED jv scalar⟧ | ⟦COST jv⟧ |
-|  | `yv` | ⟦SPEED yv t1⟧ | ⟦SPEED yv t10⟧ | ⟦SPEED yv ratio1⟧ | ⟦SPEED yv ratio10⟧ | ⟦SPEED yv scalar⟧ | ⟦COST yv⟧ |
-|  | `airy` | ⟦SPEED airy t1⟧ | ⟦SPEED airy t10⟧ | ⟦SPEED airy ratio1⟧ | ⟦SPEED airy ratio10⟧ | ⟦SPEED airy scalar⟧ | ⟦COST airy⟧ |
-| 타원적분, 초기하, Lambert W | `ellipk` | ⟦SPEED ellipk t1⟧ | ⟦SPEED ellipk t10⟧ | ⟦SPEED ellipk ratio1⟧ | ⟦SPEED ellipk ratio10⟧ | ⟦SPEED ellipk scalar⟧ | ⟦COST ellipk⟧ |
-|  | `ellipe` | ⟦SPEED ellipe t1⟧ | ⟦SPEED ellipe t10⟧ | ⟦SPEED ellipe ratio1⟧ | ⟦SPEED ellipe ratio10⟧ | ⟦SPEED ellipe scalar⟧ | ⟦COST ellipe⟧ |
-|  | `hyp1f1` | ⟦SPEED hyp1f1 t1⟧ | ⟦SPEED hyp1f1 t10⟧ | ⟦SPEED hyp1f1 ratio1⟧ | ⟦SPEED hyp1f1 ratio10⟧ | ⟦SPEED hyp1f1 scalar⟧ | ⟦COST hyp1f1⟧ |
-|  | `hyp2f1` | ⟦SPEED hyp2f1 t1⟧ | ⟦SPEED hyp2f1 t10⟧ | ⟦SPEED hyp2f1 ratio1⟧ | ⟦SPEED hyp2f1 ratio10⟧ | ⟦SPEED hyp2f1 scalar⟧ | ⟦COST hyp2f1⟧ |
-|  | `lambertw (k = 0)` | ⟦SPEED lambertw t1⟧ | ⟦SPEED lambertw t10⟧ | ⟦SPEED lambertw ratio1⟧ | ⟦SPEED lambertw ratio10⟧ | ⟦SPEED lambertw scalar⟧ | ⟦COST lambertw⟧ |
-|  | `lambertw (k = −1)` | ⟦SPEED lambertw_m1 t1⟧ | ⟦SPEED lambertw_m1 t10⟧ | ⟦SPEED lambertw_m1 ratio1⟧ | ⟦SPEED lambertw_m1 ratio10⟧ | ⟦SPEED lambertw_m1 scalar⟧ | ⟦COST lambertw_m1⟧ |
-| 복소수 | `erf (complex)` | ⟦SPEED erf_complex t1⟧ | ⟦SPEED erf_complex t10⟧ | ⟦SPEED erf_complex ratio1⟧ | ⟦SPEED erf_complex ratio10⟧ | ⟦SPEED erf_complex scalar⟧ | ⟦COST erf_complex⟧ |
-|  | `erfc (complex)` | ⟦SPEED erfc_complex t1⟧ | ⟦SPEED erfc_complex t10⟧ | ⟦SPEED erfc_complex ratio1⟧ | ⟦SPEED erfc_complex ratio10⟧ | ⟦SPEED erfc_complex scalar⟧ | ⟦COST erfc_complex⟧ |
-|  | `erfcx (complex)` | ⟦SPEED erfcx_complex t1⟧ | ⟦SPEED erfcx_complex t10⟧ | ⟦SPEED erfcx_complex ratio1⟧ | ⟦SPEED erfcx_complex ratio10⟧ | ⟦SPEED erfcx_complex scalar⟧ | ⟦COST erfcx_complex⟧ |
-|  | `wofz` | ⟦SPEED wofz t1⟧ | ⟦SPEED wofz t10⟧ | ⟦SPEED wofz ratio1⟧ | ⟦SPEED wofz ratio10⟧ | ⟦SPEED wofz scalar⟧ | ⟦COST wofz⟧ |
-|  | `loggamma` | ⟦SPEED loggamma_complex t1⟧ | ⟦SPEED loggamma_complex t10⟧ | ⟦SPEED loggamma_complex ratio1⟧ | ⟦SPEED loggamma_complex ratio10⟧ | ⟦SPEED loggamma_complex scalar⟧ | ⟦COST loggamma_complex⟧ |
-|  | `lambertw complex (k = 0)` | ⟦SPEED lambertw_c0 t1⟧ | ⟦SPEED lambertw_c0 t10⟧ | ⟦SPEED lambertw_c0 ratio1⟧ | ⟦SPEED lambertw_c0 ratio10⟧ | ⟦SPEED lambertw_c0 scalar⟧ | ⟦COST lambertw_c0⟧ |
-|  | `lambertw complex (k = −1)` | ⟦SPEED lambertw_cm1 t1⟧ | ⟦SPEED lambertw_cm1 t10⟧ | ⟦SPEED lambertw_cm1 ratio1⟧ | ⟦SPEED lambertw_cm1 ratio10⟧ | ⟦SPEED lambertw_cm1 scalar⟧ | ⟦COST lambertw_cm1⟧ |
-|  | `lambertw complex (k = 1)` | ⟦SPEED lambertw_c1 t1⟧ | ⟦SPEED lambertw_c1 t10⟧ | ⟦SPEED lambertw_c1 ratio1⟧ | ⟦SPEED lambertw_c1 ratio10⟧ | ⟦SPEED lambertw_c1 scalar⟧ | ⟦COST lambertw_c1⟧ |
-|  | `lambertw complex (k = 4)` | ⟦SPEED lambertw_c4 t1⟧ | ⟦SPEED lambertw_c4 t10⟧ | ⟦SPEED lambertw_c4 ratio1⟧ | ⟦SPEED lambertw_c4 ratio10⟧ | ⟦SPEED lambertw_c4 scalar⟧ | ⟦COST lambertw_c4⟧ |
-| 분포 함수 | `stdtr` | ⟦SPEED stdtr t1⟧ | ⟦SPEED stdtr t10⟧ | ⟦SPEED stdtr ratio1⟧ | ⟦SPEED stdtr ratio10⟧ | ⟦SPEED stdtr scalar⟧ | ⟦COST stdtr⟧ |
-|  | `stdtrit` | ⟦SPEED stdtrit t1⟧ | ⟦SPEED stdtrit t10⟧ | ⟦SPEED stdtrit ratio1⟧ | ⟦SPEED stdtrit ratio10⟧ | ⟦SPEED stdtrit scalar⟧ | ⟦COST stdtrit⟧ |
-|  | `chdtr` | ⟦SPEED chdtr t1⟧ | ⟦SPEED chdtr t10⟧ | ⟦SPEED chdtr ratio1⟧ | ⟦SPEED chdtr ratio10⟧ | ⟦SPEED chdtr scalar⟧ | ⟦COST chdtr⟧ |
-|  | `chdtrc` | ⟦SPEED chdtrc t1⟧ | ⟦SPEED chdtrc t10⟧ | ⟦SPEED chdtrc ratio1⟧ | ⟦SPEED chdtrc ratio10⟧ | ⟦SPEED chdtrc scalar⟧ | ⟦COST chdtrc⟧ |
-|  | `chdtri` | ⟦SPEED chdtri t1⟧ | ⟦SPEED chdtri t10⟧ | ⟦SPEED chdtri ratio1⟧ | ⟦SPEED chdtri ratio10⟧ | ⟦SPEED chdtri scalar⟧ | ⟦COST chdtri⟧ |
-|  | `fdtr` | ⟦SPEED fdtr t1⟧ | ⟦SPEED fdtr t10⟧ | ⟦SPEED fdtr ratio1⟧ | ⟦SPEED fdtr ratio10⟧ | ⟦SPEED fdtr scalar⟧ | ⟦COST fdtr⟧ |
-|  | `fdtrc` | ⟦SPEED fdtrc t1⟧ | ⟦SPEED fdtrc t10⟧ | ⟦SPEED fdtrc ratio1⟧ | ⟦SPEED fdtrc ratio10⟧ | ⟦SPEED fdtrc scalar⟧ | ⟦COST fdtrc⟧ |
-|  | `fdtri` | ⟦SPEED fdtri t1⟧ | ⟦SPEED fdtri t10⟧ | ⟦SPEED fdtri ratio1⟧ | ⟦SPEED fdtri ratio10⟧ | ⟦SPEED fdtri scalar⟧ | ⟦COST fdtri⟧ |
-|  | `pdtr` | ⟦SPEED pdtr t1⟧ | ⟦SPEED pdtr t10⟧ | ⟦SPEED pdtr ratio1⟧ | ⟦SPEED pdtr ratio10⟧ | ⟦SPEED pdtr scalar⟧ | ⟦COST pdtr⟧ |
-|  | `pdtrc` | ⟦SPEED pdtrc t1⟧ | ⟦SPEED pdtrc t10⟧ | ⟦SPEED pdtrc ratio1⟧ | ⟦SPEED pdtrc ratio10⟧ | ⟦SPEED pdtrc scalar⟧ | ⟦COST pdtrc⟧ |
-|  | `bdtr` | ⟦SPEED bdtr t1⟧ | ⟦SPEED bdtr t10⟧ | ⟦SPEED bdtr ratio1⟧ | ⟦SPEED bdtr ratio10⟧ | ⟦SPEED bdtr scalar⟧ | ⟦COST bdtr⟧ |
-|  | `bdtrc` | ⟦SPEED bdtrc t1⟧ | ⟦SPEED bdtrc t10⟧ | ⟦SPEED bdtrc ratio1⟧ | ⟦SPEED bdtrc ratio10⟧ | ⟦SPEED bdtrc scalar⟧ | ⟦COST bdtrc⟧ |
-|  | `nbdtr` | ⟦SPEED nbdtr t1⟧ | ⟦SPEED nbdtr t10⟧ | ⟦SPEED nbdtr ratio1⟧ | ⟦SPEED nbdtr ratio10⟧ | ⟦SPEED nbdtr scalar⟧ | ⟦COST nbdtr⟧ |
-|  | `nbdtrc` | ⟦SPEED nbdtrc t1⟧ | ⟦SPEED nbdtrc t10⟧ | ⟦SPEED nbdtrc ratio1⟧ | ⟦SPEED nbdtrc ratio10⟧ | ⟦SPEED nbdtrc scalar⟧ | ⟦COST nbdtrc⟧ |
-|  | `chndtr` | ⟦SPEED chndtr t1⟧ | ⟦SPEED chndtr t10⟧ | ⟦SPEED chndtr ratio1⟧ | ⟦SPEED chndtr ratio10⟧ | ⟦SPEED chndtr scalar⟧ | ⟦COST chndtr⟧ |
-|  | `chndtrc` | ⟦SPEED chndtrc t1⟧ | ⟦SPEED chndtrc t10⟧ | ⟦SPEED chndtrc ratio1⟧ | ⟦SPEED chndtrc ratio10⟧ | ⟦SPEED chndtrc scalar⟧ | ⟦COST chndtrc⟧ |
-|  | `chndtrix` | ⟦SPEED chndtrix t1⟧ | ⟦SPEED chndtrix t10⟧ | ⟦SPEED chndtrix ratio1⟧ | ⟦SPEED chndtrix ratio10⟧ | ⟦SPEED chndtrix scalar⟧ | ⟦COST chndtrix⟧ |
-|  | `nctdtr` | ⟦SPEED nctdtr t1⟧ | ⟦SPEED nctdtr t10⟧ | ⟦SPEED nctdtr ratio1⟧ | ⟦SPEED nctdtr ratio10⟧ | ⟦SPEED nctdtr scalar⟧ | ⟦COST nctdtr⟧ |
-|  | `nctdtrc` | ⟦SPEED nctdtrc t1⟧ | ⟦SPEED nctdtrc t10⟧ | ⟦SPEED nctdtrc ratio1⟧ | ⟦SPEED nctdtrc ratio10⟧ | ⟦SPEED nctdtrc scalar⟧ | ⟦COST nctdtrc⟧ |
-|  | `nctdtrit` | ⟦SPEED nctdtrit t1⟧ | ⟦SPEED nctdtrit t10⟧ | ⟦SPEED nctdtrit ratio1⟧ | ⟦SPEED nctdtrit ratio10⟧ | ⟦SPEED nctdtrit scalar⟧ | ⟦COST nctdtrit⟧ |
-|  | `ncfdtr` | ⟦SPEED ncfdtr t1⟧ | ⟦SPEED ncfdtr t10⟧ | ⟦SPEED ncfdtr ratio1⟧ | ⟦SPEED ncfdtr ratio10⟧ | ⟦SPEED ncfdtr scalar⟧ | ⟦COST ncfdtr⟧ |
-|  | `ncfdtrc` | ⟦SPEED ncfdtrc t1⟧ | ⟦SPEED ncfdtrc t10⟧ | ⟦SPEED ncfdtrc ratio1⟧ | ⟦SPEED ncfdtrc ratio10⟧ | ⟦SPEED ncfdtrc scalar⟧ | ⟦COST ncfdtrc⟧ |
-|  | `ncfdtri` | ⟦SPEED ncfdtri t1⟧ | ⟦SPEED ncfdtri t10⟧ | ⟦SPEED ncfdtri ratio1⟧ | ⟦SPEED ncfdtri ratio10⟧ | ⟦SPEED ncfdtri scalar⟧ | ⟦COST ncfdtri⟧ |
-
-(원소 $10^6$개, Apple M4 Pro, scipy 1.18.1. 1스레드·10스레드는 ms, 스칼라는 µs, 원소당 비용은 1스레드 ns. 배율은 scipy / stardust라서 1보다 크면 stardust가 빨라요. 복소수 줄은 complex 입력, `airy`는 네 값을 한 번에 계산하는 호출이에요.)
-
-{/* BENCH-FIG: erf, gamma, gammainc, betainc, betaincinv, iv, jv, hyp1f1, hyp2f1, zeta, wofz, loggamma의 scipy, sd 1스레드, sd 10스레드 | 캡션: 특수함수의 원소 10⁶개 시간 */}
+- **원소당 비용과 가중치.** 배열의 원소별 연산은 일의 양이 원소 $2^{15}$개를 넘으면 여러 스레드로 나눠요. 특수함수는 원소 하나의 비용이 add 하나의 수 배에서 10만 배 남짓이라서 같은 기준을 쓰면 비싼 함수는 너무 늦게 나눠요. 그래서 함수마다 원소당 비용(ns)을 두고(`cost_table.hpp`, `cost.hpp`), 그 값을 add의 비용(`kAddNs = 0.19` ns)으로 나눈 **가중치** $w$로 일을 세요. 가중치 $w$인 함수는 원소 $2^{15}/w$개부터 병렬이고, 태스크 하나는 원소 약 $2^{12}/w$개예요. 가중치는 256에서 잘라요(`kMaxWeight`). 자르지 않으면 불완전 함수(가중치 800–8500)는 태스크 하나가 원소 하나가 되어 스레드들이 풀의 계수기를 두고 다투고, 10스레드가 1스레드의 5.4–7.8배에 그쳤어요. 256에서는 8.1–8.9배였어요(불완전 감마·베타 원소 $10^6$개). 가중치는 병렬로 나눌 위치만 바꾸고 결과의 비트는 바꾸지 않아요.
 
 ### 비용이 드는 곳
 
-측정값과 별개로, 원소 하나의 비용이 큰 함수들은 구조에서 이유가 보여요.
+원소 하나의 비용이 큰 함수들은 구조에서 이유가 보여요.
 
 - **긴 급수를 오차를 보정하며 더하는 함수.** `hyp1f1`, `hyp2f1`은 항이 천천히 줄어드는 입력에서 항마다 곱과 몫의 반올림 오차를 fma로 꺼내 들고 가요. 먼저 float64로 더하면서 오차 상한을 재고, 상한이 크면 보정 루프로 다시 더해요([제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)).
 - **차수에 비례하는 점화식.** `jv`, `yv`의 큰 차수는 점화식을 $O(\nu)$번 돌고, 다섯 재귀 모두 double-double이에요. `iv`, `kv`는 $\nu \ge 30$에서 Debye 전개로 바꿔 차수와 상관없는 비용이에요.
@@ -438,8 +334,6 @@ Boost.Math에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, e-�
 - **복소수.** 실수부·허수부를 함께 계산하고, 위상의 인자 축소와 double-double 지수를 써요.
 
 반대로 `erf`, `erfc`, `ndtr`, `ndtri`, `erfinv`, `erfcinv`, `expit`, `logit` 등은 1024원소 청크 커널이에요. NEON으로 `exp`·`log`의 인자를 만들고, vForce를 묶음에 한 번 부르고, 유리식은 원소마다 자기 구간만 계산해요. 스칼라 입력과 비연속 배열도 같은 묶음 경로를 타서 결과의 비트가 같아요([원소별 엔진과 병렬화](/internals/special/engine/)).
-
-{/* SPEED-TODO: 1스레드에서 scipy보다 느린 함수 목록과 각 원인은 새 측정으로 배율을 채운 뒤 이 자리에 정리해요. */}
 
 ## 비트 테스트와 결정성
 

@@ -10,7 +10,6 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
-import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
@@ -1171,18 +1170,13 @@ C++ 정적 변수가 쥔 Python 객체 가운데는 일부러 놓지 않는 것�
 
 ## 성능
 
-경계를 넘는 비용을 모으면 이래요. 막대그래프는 [성능 종합](/internals/array/performance/)의 전체 측정(Apple M4 Pro, numpy 2.5.4)에서 가져온 값이에요.
+경계를 넘는 비용을 모으면 이래요. 작은 입력의 호출은 계산이 거의 없어서, 시간 대부분이 경계를 넘는 고정 비용이에요.
 
-<Bench
-  rows={[
-    { label: 'x[10, 20]', times: [33e-9, 25e-9, 25e-9] },
-    { label: 'a + b (원소 3개)', times: [151e-9, 179e-9, 183e-9] },
-    { label: 'sum(a) (원소 3개)', times: [548e-9, 90e-9, 92e-9] },
-    { label: 'x.shape', times: [18e-9, 19e-9, 19e-9] },
-    { label: 'asarray(원소 1만 개 리스트)', times: [137.5e-6, 62.3e-6, 62.3e-6] },
-  ]}
-  caption="작은 입력의 호출 비용. 대부분 경계를 넘는 고정 비용이에요."
-/>
+| 연산 | sd | numpy |
+|---|---:|---:|
+| 작은 `a + b` | 179ns | 151ns |
+| `x[1, 2]` | 25ns | 33ns |
+| `x.shape` | 19ns | 18ns |
 
 | 항목 | 값 | 비고 |
 |---|---:|---|
@@ -1190,40 +1184,31 @@ C++ 정적 변수가 쥔 Python 객체 가운데는 일부러 놓지 않는 것�
 | `NDArray` + Python 객체 만들기 | 약 75ns | linalg 결과 하나에 남는 비용 |
 | linalg 경계(버퍼 프로토콜 왕복 + `asarray` 감싸기) | 결과 하나에 약 120ns | 확장 모듈이 하나라서 들지 않는 비용 |
 | Column을 `shared_ptr` 대신 값 타입으로 | 원소 10개 `add` 89ns (`shared_ptr`이면 190ns) | nanobind의 keep-alive 등록 비용 |
-| frame 커널의 `func`를 `std::string` 대신 `nb::handle`로 | 작은 리덕션 약 200ns에서 약 15ns | UTF-8 캐시 사용 |
+| frame 커널의 `func`를 `std::string` 대신 `nb::handle`로 | 약 200ns인 작은 리덕션에서 약 15ns | 호출마다 문자열로 바꾸지 않아요. str의 UTF-8은 캐시돼요 |
 | bool 버퍼 바이트 검사 (원소 100만 개) | 8.3µs | 원소별 비교 235µs |
 | 에러 이름 붙이기 (`named`) | 정상 경로 0 | 예외가 날 때만 비용 |
 
-- `x[10, 20]`이 numpy보다 빠른 것은 앞쪽 축이 모두 Python int인 키에서 일반 키 해석을 건너뛰기 때문이에요.
+- `x[1, 2]`가 numpy보다 빠른 것은 앞쪽 축이 모두 Python int인 키에서 일반 키 해석을 건너뛰기 때문이에요.
 - 작은 연산의 남은 비용에서 가장 큰 몫은 결과 배열의 Python 객체 할당이에요. `NDArray`(560바이트)를 담은 객체는 512바이트를 넘어 Python의 소형 할당기(pymalloc)를 쓰지 못하고 시스템 `malloc`으로 가요. 호출당 15~20ns예요. 나머지는 nanobind 인스턴스 등록, `NDArray` 복사, 메서드 호출 경로에 고르게 퍼져 있어요. 자세한 내용은 [작은 배열의 호출 비용](/internals/array/small-arrays/)에 있어요.
 - 큰 배열에서는 경계 비용이 측정 오차 안이에요. 버퍼 프로토콜과 DLPack으로 가져오기는 공유할 수 있으면 원소 수와 무관한 상수 시간이에요.
 
 ### numpy와 배열을 주고받는 고정 비용
 
-그 "상수 시간"은 성능 종합의 전체 측정에서 이래요. 원소 100만 개 float64 배열이지만 복사가 없으니 크기와 상관없는 값이에요.
+복사 없이 주고받을 때도 고정 비용은 들어요. 크기와 상관없는 비용이에요.
 
-<Bench
-  rows={[
-    { label: 'np.asarray(sd 배열)', times: [12e-9, 110e-9, 108e-9] },
-    { label: 'from_dlpack(numpy 배열)', times: [116e-9, 225e-9, 226e-9] },
-    { label: 'sd.asarray(numpy 배열)', times: [12e-9, 139e-9, 136e-9] },
-  ]}
-  caption="numpy 열은 첫째·셋째 줄이 np.asarray(numpy 배열), 둘째 줄이 np.from_dlpack(numpy 배열)이에요. 스레드를 쓰지 않아 1스레드와 10스레드가 같아요."
-/>
+**`np.asarray(sd 배열)`과 `np.asarray(numpy 배열)`은 같은 일이 아니에요.** `np.asarray(numpy 배열)`은 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. `np.asarray(sd 배열)`은 numpy가 남의 객체에서 새 numpy 배열을 만드는 일이에요. stardust 배열에는 `__array__`도 `__array_interface__`도 없어서 numpy는 버퍼 프로토콜로 가져가요. 결과의 `base`가 `memoryview`예요. 그러니 공정한 비교 대상은 numpy가 다른 외부 버퍼를 받는 비용이에요. 그 비용에는 우리 `getbuffer` 한 번과 numpy가 안에서 새로 만드는 `memoryview`가 들어 있어요. 우리 `getbuffer`는 shape와 strides를 복사하지 않고 `NDArray` 안의 배열을 그대로 가리키므로 가벼워요.
 
-**`np.asarray(sd 배열)` 110ns 대 12ns는 같은 일이 아니에요.** numpy 열의 12ns는 `np.asarray(numpy 배열)`이고, 이미 numpy 배열이면 같은 객체를 그대로 돌려주는 값이에요. `np.asarray(sd 배열)`은 numpy가 남의 객체에서 새 numpy 배열을 만드는 일이에요. stardust 배열에는 `__array__`도 `__array_interface__`도 없어서 numpy는 버퍼 프로토콜로 가져가요. 결과의 `base`가 `memoryview`예요. 그러니 공정한 비교 대상은 numpy가 다른 외부 버퍼를 받는 비용이에요. 미리 만든 `memoryview`를 `np.asarray`로 받으면 90ns예요. 110ns는 이와 비슷한 크기예요. 차이 20ns에는 우리 `getbuffer` 한 번과 numpy가 안에서 새로 만드는 `memoryview`가 들어 있어요. 우리 `getbuffer`는 shape와 strides를 복사하지 않고 `NDArray` 안의 배열을 그대로 가리키므로 가벼워요. Python에서 `memoryview(sd 배열)`은 47ns, `memoryview(numpy 배열)`은 68ns예요.
-
-**`sd.from_dlpack(numpy 배열)` 225ns 대 116ns.** 코드(위 "가져오기 (`sd.from_dlpack`)")가 하는 일을 세면 이래요.
+**`sd.from_dlpack(numpy 배열)`은 229ns, numpy의 `np.from_dlpack`은 114ns예요.** 코드(위 "가져오기 (`sd.from_dlpack`)")가 하는 일을 세면 이래요.
 
 1. `__dlpack__`, `__dlpack_device__`를 한 번씩 조회해요(intern된 이름).
 2. `__dlpack_device__()`를 불러 돌아온 tuple이 CPU인지 확인해요.
 3. `__dlpack__(max_version=(1, 0), copy=None)`을 vectorcall로 불러요. numpy가 `DLManagedTensorVersioned`를 할당해 capsule에 넣어 줘요.
 4. capsule 이름 바꾸기, 소유자 capsule(`sd_dlpack_owner`) 만들기, `NDArray` 채우기, `wrap`으로 Python 객체 만들기.
-5. (측정에 포함) 결과가 버려질 때 소유자 capsule의 소멸자가 numpy의 `deleter`를 불러요.
+5. 결과가 버려질 때 소유자 capsule의 소멸자가 numpy의 `deleter`를 불러요.
 
-1~3단계를 일반 속성 조회와 키워드 호출로 하면 가져오기 한 번에 약 23ns가 더 들어요. 조회를 한 번씩만 하고 vectorcall을 쓰는 이유예요. numpy의 `np.from_dlpack`도 3단계는 해야 해요. 남은 차이의 대부분은 4단계에서 결과 배열 객체를 만드는 비용이에요. 이 객체는 크기 때문에 시스템 `malloc`으로 할당되고, 해제할 때 macOS의 `malloc`이 메모리를 0으로 채워요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
+1~3단계를 일반 속성 조회와 키워드 호출로 하면 가져오기 한 번이 252ns로, 약 23ns가 더 들어요. 조회를 한 번씩만 하고 vectorcall을 쓰는 이유예요. numpy의 `np.from_dlpack`도 3단계는 해야 해요. 남은 차이의 대부분은 4단계에서 결과 배열 객체를 만드는 비용이에요. 이 객체는 크기 때문에 시스템 `malloc`으로 할당되고, 해제할 때 macOS의 `malloc`이 메모리를 0으로 채워요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 어느 쪽이든 한 번에 수백 ns인 비용이라, 큰 배열을 주고받을 때는 문제가 되지 않아요.
 
-`sd.asarray(numpy 배열)` 139ns의 내역은 [변환과 승격](/internals/array/conversion/)의 "복사 없이 공유하는 비용"에 있어요. 30~40ns는 numpy가 버퍼를 내주는 비용이고, 나머지 약 110ns가 새 배열 객체를 만들고 해제하는 비용이에요. numpy 배열은 타입 이름만 보고 스칼라 검사(`PyObject_IsInstance` 네 번)를 건너뛰어요.
+`sd.asarray(numpy 배열)`이 복사 없이 공유할 때의 비용은 [변환과 승격](/internals/array/conversion/)에서 다뤄요. numpy 배열은 타입 이름만 보고 스칼라 검사(`PyObject_IsInstance` 네 번)를 건너뛰어요.
 
 ## 참고 문헌
 

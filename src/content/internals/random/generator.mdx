@@ -9,7 +9,6 @@ import Fig from '../../../components/fig/Fig.astro';
 import FigRow from '../../../components/fig/FigRow.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Plot from '../../../components/fig/Plot.astro';
-import Bench from '../../../components/fig/Bench.astro';
 import Steps from '../../../components/fig/Steps.astro';
 
 ## 한눈에 보기
@@ -445,13 +444,7 @@ for_pieces(n, kParallelTask, n * kWordWork, [&](int64_t, int64_t i0, int64_t i1)
 
 `integers`, `race_keys`, `bits`도 같은 모양이에요. `fisher_yates`(섞기와 비복원 추출)만 순차 알고리즘이라 풀을 쓰지 않고, 크기와 상관없이 루프 동안 GIL만 놓아요. 그래도 걸음 i가 원소 `pos + i`의 단어를 쓰니 결과는 (키, `pos`, n, k)로만 정해져요.
 
-같은 조건(원소 10⁶개, Apple M4 Pro, numpy 2.5.4)에서 `random(10**6)`은 stardust 1스레드 1.14ms, 10스레드 0.15ms이고, numpy의 `Generator`는 PCG64로 2.72ms, Philox로 2.37ms예요. 1스레드에서도 numpy보다 빠른 이유와 다른 메서드의 수치는 [성능과 검증](/internals/random/performance/)에서 다뤄요.
-
-<Bench
-  rows={[{ label: 'random(10**6)', times: [2.72e-3, 2.37e-3, 1.14e-3, 0.15e-3] }]}
-  series={['numpy PCG64', 'numpy Philox', 'stardust 1스레드', 'stardust 10스레드']}
-  caption="균등 난수 10⁶개(Apple M4 Pro, numpy 2.5.4). 배율은 numpy PCG64 대비예요."
-/>
+`random(10**6)`은 stardust 1스레드에서 1.14ms로, numpy의 기본 `Generator`(PCG64)보다 2.4배 빨라요. 1스레드에서도 numpy보다 빠른 이유와 다른 메서드의 배율은 [성능과 검증](/internals/random/performance/)에서 다뤄요.
 
 ## 정확성: 알려진 답
 

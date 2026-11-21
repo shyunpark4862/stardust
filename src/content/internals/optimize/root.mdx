@@ -7,7 +7,6 @@ seeAlso: [least-squares, derivatives, overview, accuracy-performance]
 ---
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
-import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
@@ -271,22 +270,10 @@ lm True True 16 18
 
 ## 성능
 
-scipy의 `root`도 반복 전체가 C이고 콜백만 Python이라, 반복 하나의 자기 비용은 비슷해요. Apple M4 Pro, 1스레드, scipy 1.18.1, 해석적 야코비안이에요(`bench/optimize/o6/speed.md`).
+scipy의 `root`도 반복 전체가 C이고 콜백만 Python이라, 반복 하나의 자기 비용은 비슷해요. Apple M4 Pro, 1스레드, scipy 1.18.1, 해석적 야코비안에서 n = 100의 반복 하나가 `'hybr'` 24 µs(scipy 28 µs), `'lm'` 0.11 ms(scipy 0.17 ms)예요.
 
-<Bench
-  series={['scipy 1.18.1', 'stardust 1스레드']}
-  rows={[
-    { label: 'hybr n = 2', times: [0.679e-6, 0.689e-6] },
-    { label: 'hybr n = 10', times: [0.924e-6, 0.98e-6] },
-    { label: 'hybr n = 100', times: [27.8e-6, 24.1e-6] },
-    { label: 'lm n = 2', times: [1.94e-6, 1.43e-6] },
-    { label: 'lm n = 10', times: [3.58e-6, 2.18e-6] },
-    { label: 'lm n = 100', times: [169e-6, 114e-6] },
-  ]}
-/>
-
-- n = 100의 `'hybr'`는 QR(qrfac, $n^3$)과 Broyden 갱신($n^2$)이 대부분이에요. qrfac과 qform은 서로 독립인 열 여덟 개를 한 번에 반사해요(열마다의 합은 제 순서라 비트가 같아요). n = 300에서 자기 비용 전체가 19.6 ms로 scipy(35.4 ms)의 0.55배예요.
-- 작은 n의 `'lm'`이 싼 것은 scipy가 `fun`을 호출 수를 세는 Python 함수로 한 번 더 감싸기 때문이에요. n = 100의 `'lm'`은 m = n이라 LAPACK QR을 먼저 하지 않고 lmder의 QR 하나로 끝나요.
+- n = 100의 `'hybr'`는 QR(qrfac, $n^3$)과 Broyden 갱신($n^2$)이 대부분이에요. qrfac과 qform은 서로 독립인 열 여덟 개를 한 번에 반사해요(열마다의 합은 제 순서라 비트가 같아요). n = 300에서 자기 비용 전체가 scipy의 0.55배예요.
+- 작은 n의 `'lm'`이 scipy의 절반쯤으로 싼 것은 scipy가 `fun`을 호출 수를 세는 Python 함수로 한 번 더 감싸기 때문이에요. n = 100의 `'lm'`은 m = n이라 LAPACK QR을 먼저 하지 않고 lmder의 QR 하나로 끝나요.
 
 ## 참고 문헌
 

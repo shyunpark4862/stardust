@@ -6,7 +6,6 @@ summary: 다변량 정규·t의 누적확률을 차원에 따라 다른 방법�
 seeAlso: [multivariate, matrix, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
-import Bench from '../../../components/fig/Bench.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import Plot from '../../../components/fig/Plot.astro';
 import Steps from '../../../components/fig/Steps.astro';
@@ -411,37 +410,21 @@ $P \ge 10^{-15}$이면(보장 영역, 4778점) 모든 $r$에서 $5.2 \times 10^{
 
 ## 속도
 
-점 하나를 계산하는 시간이에요(Apple M4 Pro, `bench/stats/t9/cdf_speed.md`). scipy 1.18.1은 1스레드에 자기 기본값이에요.
+점 하나를 1스레드로 계산하는 시간이에요(Apple M4 Pro). scipy 1.18.1은 모든 $d$에서 준몬테카를로이고 자기 기본값이에요.
 
-<Bench
-  rows={[
-    { label: 'normal d=2', times: [6.6e-6, 0.3e-6] },
-    { label: 'normal d=3', times: [1.87e-3, 1.1e-6] },
-    { label: 't df=4 d=2', times: [589.6e-6, 34.0e-6] },
-    { label: 't df=4 d=3', times: [872.3e-6, 473.9e-6] },
-  ]}
-  series={['scipy 1.18.1', 'stardust 1스레드']}
-  caption="정확한 공식(d ≤ 3). 점 하나, 오차 출력 0. scipy는 모든 d에서 준몬테카를로예요."
-/>
+| | stardust | scipy 대비 |
+|---|---:|---:|
+| 정규 $d = 2$ | 0.3 µs | 20.6배 |
+| 정규 $d = 3$ | 1.1 µs | 1700배 |
+| t $d = 2$ | 34 µs | 17배 |
+| t $d = 3$ | 474 µs | 1.8배 |
 
-$d = 2, 3$의 정규는 21배, 1700배 빨라요(점 $2 \times 10^4$개의 평균). 삼변량 정규는 대개 직접 경로 하나(이변량 정규 하나와 경로 적분 둘)로 끝나요. t의 $d = 3$은 혼합 노드마다 삼변량 정규를 계산해서 474 µs이고, 10스레드에서 점이 나뉘어 54 µs예요.
+삼변량 정규는 대개 직접 경로 하나(이변량 정규 하나와 경로 적분 둘)로 끝나요. t의 $d = 3$은 혼합 노드마다 삼변량 정규를 계산해서 정확한 공식 가운데 가장 무거워요.
 
-<Bench
-  rows={[
-    { label: 'normal d=5, atol 1e-5', times: [1.74e-3, 773.0e-6, 139.7e-6] },
-    { label: 'normal d=10, atol 1e-4', times: [35.03e-3, 1.66e-3, 230.0e-6] },
-    { label: 'normal d=10, atol 1e-6', times: [35.03e-3, 199.33e-3, 32.68e-3] },
-    { label: 't df=4 d=5, atol 1e-4', times: [1.62e-3, 837.1e-6, 113.5e-6] },
-    { label: 't df=4 d=10, atol 1e-4', times: [4.45e-3, 2.07e-3, 439.7e-6] },
-  ]}
-  series={['scipy 1.18.1 (기본값)', 'stardust 1스레드', 'stardust 10스레드']}
-  caption="준몬테카를로(d ≥ 4). scipy는 자기 기본값(정규 abseps 1e-5)이에요."
-/>
-
-준몬테카를로의 시간은 목표 `atol`이 작아질수록 빠르게 늘어요. 오차가 $N^{-1}$로 줄면 시간은 대략 $1/\mathrm{atol}$에 비례해요. 같은 `atol = 1e-5`에서 정규 $d = 5$는 2.3배, $d = 10$은 1.3배예요. 기본 `atol = 1e-6`은 scipy의 기본값($10^{-5}$; t는 실제 오차가 약 $5 \times 10^{-5}$)보다 엄격해서 기본값끼리 비교하면 정규 $d = 5, 10$이 0.2–0.3배, t의 $d = 5$가 0.07배, $d = 10$이 0.01배예요. 기본 `max_points`에서 $d = 50$은 8.9초가 걸려요(scipy 13.8초).
+준몬테카를로의 시간은 목표 `atol`이 작아질수록 빠르게 늘어요. 오차가 $N^{-1}$로 줄면 시간은 대략 $1/\mathrm{atol}$에 비례해요. 같은 `atol = 1e-5`에서 정규 $d = 5$는 0.77 ms로 2.3배, $d = 10$은 26.4 ms로 1.3배예요. 기본 `atol = 1e-6`은 scipy의 기본값($10^{-5}$; t는 실제 오차가 약 $5 \times 10^{-5}$)보다 엄격해서 기본값끼리 비교하면 정규가 0.2–0.3배예요. $d \ge 4$인 t는 `atol = 1e-4`에서 1.9–2.2배예요. 기본 `max_points`에서 $d = 50$은 8.9초가 걸려요(scipy 13.8초).
 
 <Callout type="note" title="atol을 고르는 법">
-오차 출력은 표준오차의 3배이고, 시간은 대략 1/atol에 비례해요. 유효숫자 네다섯 자리면 충분한 계산은 `atol=1e-4`로 기본값보다 10–150배 빨라져요(위 표의 $d = 5, 10$). 정확한 값이 필요하면 $d \le 3$으로 줄일 수 있는지 먼저 보세요. +inf인 좌표는 빠지므로 주변 분포의 확률은 정확한 공식으로 가요.
+오차 출력은 표준오차의 3배이고, 시간은 대략 1/atol에 비례해요. 유효숫자 네다섯 자리면 충분한 계산은 `atol=1e-4`로 하면 기본값보다 훨씬 빨라져요. 정확한 값이 필요하면 $d \le 3$으로 줄일 수 있는지 먼저 보세요. +inf인 좌표는 빠지므로 주변 분포의 확률은 정확한 공식으로 가요.
 </Callout>
 
 ## 참고 문헌

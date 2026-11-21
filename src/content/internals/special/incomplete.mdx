@@ -443,7 +443,7 @@ Boost의 `gamma_incomplete_imp`는 이 넷 말고도 갈래가 더 있어요. �
 
 ### 불완전 감마에 Boost를 쓰지 않는 이유
 
-같은 참값 집합에서 비교용 Boost.Math(boostorg/math 75cb4c4, C++ 루프)는 `gammainc` 최대 $5.0 \times 10^5$ ULP(45 ULP를 넘는 점 136개), `gammaincc` $3.5 \times 10^5$ ULP(200개)예요. 구간을 고를 때 잰 1스레드 C++ 루프에서 원소당 시간은 Boost가 243 ns, 215 ns이고 stardust는 ⟦COST gammainc⟧ ns, ⟦COST gammaincc⟧ ns예요. 45 ULP를 넘는 점은 $a \approx 10^6$ 같은 큰 인자에 몰려 있어요.
+같은 참값 집합에서 비교용 Boost.Math(boostorg/math 75cb4c4, C++ 루프)는 `gammainc` 최대 $5.0 \times 10^5$ ULP(45 ULP를 넘는 점 136개), `gammaincc` $3.5 \times 10^5$ ULP(200개)예요. 45 ULP를 넘는 점은 $a \approx 10^6$ 같은 큰 인자에 몰려 있어요.
 
 ### 끝점
 
@@ -594,7 +594,7 @@ BGRAT와 BASYM은 앞 인자 $\mathcal{B}$를 쓰지 않아요(각자 다른 꼴
 
 ### Boost가 맡는 구간: $a, b \le 6$
 
-`betainc`와 `betaincc`는 $a, b \le 6$이면 Boost.Math의 `ibeta`, `ibetac`을 불러요. 이 구간에서 Boost는 참값 집합의 모든 점에서 계약을 지키고, 구간 안의 $2 \times 10^5$점에서 잰 1스레드 원소당 시간이 146 ns로 stardust의 같은 구간(570 ns)보다 짧았어요. 두 함수의 구간을 같게 둔 것은 합 $I + (1 - I)$가 1에서 멀리 벗어나지 않게 하기 위해서예요. 구간이 서로 다르면 한쪽만 Boost인 점에서 두 구현의 오차가 따로 놀아요.
+`betainc`와 `betaincc`는 $a, b \le 6$이면 Boost.Math의 `ibeta`, `ibetac`을 불러요. 이 구간에서 Boost는 참값 집합의 모든 점에서 계약을 지키고, 구간 안의 $2 \times 10^5$점에서 1스레드로 재면 stardust의 같은 구간보다 빨랐어요. 두 함수의 구간을 같게 둔 것은 합 $I + (1 - I)$가 1에서 멀리 벗어나지 않게 하기 위해서예요. 구간이 서로 다르면 한쪽만 Boost인 점에서 두 구현의 오차가 따로 놀아요.
 
 $a, b \le 6$ 안에서도 Boost를 부르지 않는 곳이 셋 있어요. 모두 Arb 참값과 견줘 정했어요.
 
@@ -689,7 +689,7 @@ $$
 
 **깊은 꼬리.** $t < 2^{-1000}$이면 $F$를 float64로 반올림한 값 자체가 서브노멀이라 몇 자리밖에 없어요. 이때는 반올림하지 않은 조각으로 $\log F - \log t$를 직접 만들어 Newton을 해요(`log_tail`). $\log D = -E - \log(\sqrt{2\pi a}\,\Gamma^*(a))$이고 $-E$와 $\log t$는 각각 $-740$ 정도라서 그 차를 double-double로 구해요. $P$는 $\log x$에서, $Q$는 $x$에서 반복해요. 이 반복도 100걸음까지이고, 급수나 연분수가 끝나지 않거나 100걸음 안에 멈추지 못하면(마지막 걸음이 $2^{-48}x$ 아래인 경우 말고) NaN이에요.
 
-**Boost가 맡는 구간.** `gammaincinv`는 $p \ge 10^{-300}$이고 $a < 10^{10}$이면 먼저 Boost의 `gamma_p_inv`를 부르고, 결과가 정상 범위이고 $10^{-300}$ 이상이면 그 근을 써요. `gammainccinv`는 $q \ge 10^{-300}$이고 $a < 10^{10}$이면 `gamma_q_inv`를 부르고 결과가 정상 범위이면 써요. 구간을 고를 때 그 구간 안의 $2 \times 10^5$점에서 잰 1스레드 원소당 시간은 Boost 527 ns 대 우리 645 ns, 294 ns 대 596 ns였고, 계약 위반은 둘 다 0이었어요(`bench/special/boost/routing.md`).
+**Boost가 맡는 구간.** `gammaincinv`는 $p \ge 10^{-300}$이고 $a < 10^{10}$이면 먼저 Boost의 `gamma_p_inv`를 부르고, 결과가 정상 범위이고 $10^{-300}$ 이상이면 그 근을 써요. `gammainccinv`는 $q \ge 10^{-300}$이고 $a < 10^{10}$이면 `gamma_q_inv`를 부르고 결과가 정상 범위이면 써요. 이 구간에서 Boost는 계약을 어기는 점이 없고 1스레드에서 우리 코드보다 느리지 않아요.
 
 **Boost의 근을 한 걸음 다듬기 (`igam_polish`).** Boost는 아래에서 보듯 걸음이 $x$의 약 $2^{-25}$배 아래가 되면 멈추고, 함수 값도 자기 순방향 함수의 float64 앞 인자로 만들어서 근의 마지막 몇 비트가 남아요. 그래서 Boost의 근 $x$에서 우리 `igam`을 한 번 불러 Halley 걸음을 하나 더해요.
 
@@ -741,7 +741,7 @@ $z$는 $t$의 정규 편차예요. 다음 항은 $\sigma z^3/\min(p, q)$ 크기�
 
 $2^{-1022}$ 바로 위의 정규 모양에서도 Halley만으로 풀면 그 모양에서 $1.5 \times 10^{-12}$까지 틀려요(`betainccinv(1.17e-301, 0.137, 1.57e-300)`, $\kappa \approx 13$). 극한 꼴로 풀면 Arb 대비 $q = 2^{-1074}$–$2^{-60}$의 무작위 1250점에서 $\lvert\Delta v/v\rvert/\max(1, \kappa)$가 $7.7 \times 10^{-16}$ 이하예요.
 
-**Boost가 맡는 구간.** `betaincinv`는 $10 \le a, b \le 10^6$이고 $p \ge 10^{-300}$이면 Boost의 `ibeta_inv`를, `betainccinv`는 $1 \le a, b \le 10^6$이고 $q \ge 10^{-300}$이면 `ibetac_inv`를 먼저 불러요. 모양의 상한은 Boost가 큰 모양에서 다른 확률의 근을 내기 때문이에요($a = 14.38$, $p = 0.617$에서 $b = 10^{200}$이면 $15.19/b$ 대신 $12.96/b$). 서브노멀 영역의 확률에서도 Boost는 크게 틀려서($a = 10$, $b = 14.38$, $p = 5 \times 10^{-324}$에서 근의 27배) 우리 코드예요. 구간을 고를 때 잰 1스레드 원소당 시간은 Boost 1093 ns 대 우리 1491 ns, 843 ns 대 2387 ns였고 계약 위반은 0이었어요(`bench/special/boost/routing.md`). 작은 $a, b$는 Boost가 근의 언더플로를 틀리게 다뤄서 우리 코드예요.
+**Boost가 맡는 구간.** `betaincinv`는 $10 \le a, b \le 10^6$이고 $p \ge 10^{-300}$이면 Boost의 `ibeta_inv`를, `betainccinv`는 $1 \le a, b \le 10^6$이고 $q \ge 10^{-300}$이면 `ibetac_inv`를 먼저 불러요. 모양의 상한은 Boost가 큰 모양에서 다른 확률의 근을 내기 때문이에요($a = 14.38$, $p = 0.617$에서 $b = 10^{200}$이면 $15.19/b$ 대신 $12.96/b$). 서브노멀 영역의 확률에서도 Boost는 크게 틀려서($a = 10$, $b = 14.38$, $p = 5 \times 10^{-324}$에서 근의 27배) 우리 코드예요. 맡긴 구간에서 Boost는 계약을 어기는 점이 없고 1스레드에서 우리 코드보다 느리지 않아요. 작은 $a, b$는 Boost가 근의 언더플로를 틀리게 다뤄서 우리 코드예요.
 
 Boost의 `ibeta_inv_imp`(`detail/ibeta_inverse.hpp`)는 초기값을 $a, b$의 크기에 따라 골라요[10, 15].
 
@@ -821,23 +821,12 @@ Arb 참값 대비로 $a$를 $5 \times 10^{-324}$부터 $2^{-900}$ 바로 아래�
 
 ## 성능
 
-원소 $10^6$개를 Apple M4 Pro에서 scipy 1.18.1과 같은 자리에서 번갈아 잰 값이에요. 1스레드·10스레드는 배열 한 번 호출의 ms(= 원소당 ns), 스칼라는 호출 한 번의 µs, 배율은 scipy 시간 / sd 시간이라 1보다 크면 stardust가 빨라요.
-
-| 함수 | sd 1스레드 | sd 10스레드 | scipy / sd 1스레드 | scipy / sd 10스레드 | sd 스칼라 |
-|---|:---:|:---:|:---:|:---:|:---:|
-| `gammainc` | ⟦SPEED gammainc t1⟧ | ⟦SPEED gammainc t10⟧ | ⟦SPEED gammainc ratio1⟧ | ⟦SPEED gammainc ratio10⟧ | ⟦SPEED gammainc scalar⟧ |
-| `gammaincc` | ⟦SPEED gammaincc t1⟧ | ⟦SPEED gammaincc t10⟧ | ⟦SPEED gammaincc ratio1⟧ | ⟦SPEED gammaincc ratio10⟧ | ⟦SPEED gammaincc scalar⟧ |
-| `gammaincinv` | ⟦SPEED gammaincinv t1⟧ | ⟦SPEED gammaincinv t10⟧ | ⟦SPEED gammaincinv ratio1⟧ | ⟦SPEED gammaincinv ratio10⟧ | ⟦SPEED gammaincinv scalar⟧ |
-| `gammainccinv` | ⟦SPEED gammainccinv t1⟧ | ⟦SPEED gammainccinv t10⟧ | ⟦SPEED gammainccinv ratio1⟧ | ⟦SPEED gammainccinv ratio10⟧ | ⟦SPEED gammainccinv scalar⟧ |
-| `betainc` | ⟦SPEED betainc t1⟧ | ⟦SPEED betainc t10⟧ | ⟦SPEED betainc ratio1⟧ | ⟦SPEED betainc ratio10⟧ | ⟦SPEED betainc scalar⟧ |
-| `betaincc` | ⟦SPEED betaincc t1⟧ | ⟦SPEED betaincc t10⟧ | ⟦SPEED betaincc ratio1⟧ | ⟦SPEED betaincc ratio10⟧ | ⟦SPEED betaincc scalar⟧ |
-| `betaincinv` | ⟦SPEED betaincinv t1⟧ | ⟦SPEED betaincinv t10⟧ | ⟦SPEED betaincinv ratio1⟧ | ⟦SPEED betaincinv ratio10⟧ | ⟦SPEED betaincinv scalar⟧ |
-| `betainccinv` | ⟦SPEED betainccinv t1⟧ | ⟦SPEED betainccinv t10⟧ | ⟦SPEED betainccinv ratio1⟧ | ⟦SPEED betainccinv ratio10⟧ | ⟦SPEED betainccinv scalar⟧ |
+원소 하나에 시간이 드는 곳과 병렬로 나누는 방식이에요.
 
 - **앞 인자의 몫.** double-double 지수는 공짜가 아니에요. 표 기반 로그, 나눗셈을 줄인 double-double 몫, $a < 13$의 지름길, 정상 범위에서 `frexp`·`ldexp` 건너뛰기가 모두 앞 인자의 시간을 줄이려는 장치예요. 앞 인자만 따로 1스레드로 잰 값은 원소당 약 38 ns였어요. 로그 하나는 표판 7 ns, 급수판 31 ns였어요.
 - **`betainc`의 무거운 구간.** $a, b \ge 100$의 평균 근처(BASYM, 계수 점화식이 $O(N^3)$)와 작은 $a$·큰 $b$의 BGRAT가 가장 무거워요. 두 구간만 따로 1스레드로 재면 scipy 시간 / stardust 시간이 각각 0.5, 0.7이었어요. stardust가 scipy보다 약 2배, 1.4배 오래 걸려요.
 - **역함수.** 원소마다 순방향 평가를 여러 번 해요(초기값 계산에 정규 분위수나 `lgamma`, Halley 걸음마다 불완전 함수 한 번).
-- **병렬.** 원소당 비용(`cost.hpp`)이 덧셈 한 번(약 0.19 ns)의 수백–수천 배라, 가중치가 모두 상한 256에 걸려요. 그래서 원소 128개부터 병렬이 되고 태스크 하나는 원소 16개예요. 원소마다 반복 횟수가 달라도 작은 태스크를 풀이 나눠 가져서 스레드 사이의 일이 고르게 돼요. 상한이 없으면 태스크 하나가 원소 하나가 되어 풀의 계수기 경합으로 10스레드가 5.4–7.8배에 그쳤고, 상한 256에서 8.1–8.9배였어요(불완전 감마·베타 원소 $10^6$개). 지금 코드의 원소당 비용은 `gammainc` ⟦COST gammainc⟧ ns, `betainc` ⟦COST betainc⟧ ns, `gammaincinv` ⟦COST gammaincinv⟧ ns, `betaincinv` ⟦COST betaincinv⟧ ns예요. 자세한 내용은 [원소별 엔진과 병렬화](/internals/special/engine/)에 있어요.
+- **병렬.** 원소당 비용(`cost.hpp`)이 덧셈 한 번(약 0.19 ns)의 수백–수천 배라, 가중치가 모두 상한 256에 걸려요. 그래서 원소 128개부터 병렬이 되고 태스크 하나는 원소 16개예요. 원소마다 반복 횟수가 달라도 작은 태스크를 풀이 나눠 가져서 스레드 사이의 일이 고르게 돼요. 상한이 없으면 태스크 하나가 원소 하나가 되어 풀의 계수기 경합으로 10스레드가 5.4–7.8배에 그쳤고, 상한 256에서 8.1–8.9배였어요(불완전 감마·베타 원소 $10^6$개). 자세한 내용은 [원소별 엔진과 병렬화](/internals/special/engine/)에 있어요.
 
 ## 정확도
 

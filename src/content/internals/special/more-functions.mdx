@@ -217,7 +217,7 @@ scipy 1.18.1은 $x_0$를 반올림한 double $0.3725074107813666$에서 참값 $
 
 ### Boost가 하는 일 (x ≥ −700)
 
-`expi`는 $x \ge -700$에서 Boost.Math를 불러요(서브노멀 $x$는 빼요. 그곳에서 Boost는 $\gamma + \log x$의 $\log x$를 정확히 내지 못해요). 1스레드에서 우리 경로의 절반 시간이고(`bench/special/boost/routing.md`) 참값 파일의 모든 점에서 계약을 지켰어요. Boost의 double 식은 이래요(`expint.hpp`의 `expint_i_imp` 53비트 판, Boost 문서 [13]).
+`expi`는 $x \ge -700$에서 Boost.Math를 불러요(서브노멀 $x$는 빼요. 그곳에서 Boost는 $\gamma + \log x$의 $\log x$를 정확히 내지 못해요). 1스레드에서 우리 경로보다 느리지 않고 참값 파일의 모든 점에서 계약을 지켰어요. Boost의 double 식은 이래요(`expint.hpp`의 `expint_i_imp` 53비트 판, Boost 문서 [13]).
 
 - **$0 < x \le 6$: 근을 품은 근사.**
 $$
@@ -242,7 +242,7 @@ Boost의 결과가 정상 범위를 벗어나는 곳은 우리 코드예요. 실
 
 ### E_n: 급수와 연분수
 
-`expn`은 Boost를 쓰지 않아요. Boost의 $E_n$은 정확도에서는 비슷했지만 참값 표본(큰 $n$이 섞임)에서 93배 느렸어요(1스레드). Numerical Recipes [4]의 `expint` 구조로 두 구간이에요.
+`expn`은 Boost를 쓰지 않아요. Boost의 $E_n$은 정확도에서는 비슷했지만 참값 표본(큰 $n$이 섞임)에서 1스레드로 더 느렸어요. Numerical Recipes [4]의 `expint` 구조로 두 구간이에요.
 
 **$x \le 1$: 거듭제곱급수.**
 
@@ -286,7 +286,7 @@ $y = 1 - m$은 $m \ge \tfrac12$에서 Sterbenz 보조정리로 **정확**해요.
 
 ### 다른 방법: AGM과 Carlson 대칭형
 
-같은 적분을 계산하는 다른 방법이 둘 있어요. 공개 함수가 이 둘이 아닌 이유는 측정 때문이에요. 두 방법을 구현해 견주었을 때 정확도는 비슷했고 Cephes가 4–7배 빨랐어요(1스레드 원소당 AGM 30 ns, Carlson 65 ns. 공개 함수는 ⟦COST ellipk⟧, ⟦COST ellipe⟧ ns).
+같은 적분을 계산하는 다른 방법이 둘 있어요. 공개 함수가 이 둘이 아닌 이유는 측정 때문이에요. 두 방법을 구현해 견주었을 때 정확도는 비슷했고 1스레드에서 Cephes가 4–7배 빨랐어요.
 
 **AGM(산술-기하 평균).** $a_0 = 1$, $b_0 = \sqrt{1-m}$에서 시작해 $a_{n+1} = \tfrac{a_n + b_n}{2}$, $b_{n+1} = \sqrt{a_n b_n}$을 반복하면 둘이 같은 값 $\mathrm{AGM}(1, \sqrt{1-m})$으로 모이고, Gauss가 보였듯이
 
@@ -633,33 +633,6 @@ Weideman [10]의 유리 근사와 Poppe–Wijers의 한 식 방법도 후보였�
 - 실수축·허수축 위는 따로 다뤄서 0인 부분을 정확한 0으로 내요(`erf(iy)` = i·erfi(y)).
 
 ## 성능
-
-측정 조건은 원소 $10^6$개(각 함수의 보장 영역 참값 입력에서 복원 추출), 1스레드와 10스레드, scipy 1.18.1 대비예요. 배율은 scipy 시간 ÷ stardust 시간이라 1보다 크면 stardust가 빨라요.
-
-| 함수 | 1스레드 (ms) | 10스레드 (ms) | scipy 대비 (1스레드) | scipy 대비 (10스레드) | 원소당 비용 (ns) |
-|---|:---:|:---:|:---:|:---:|:---:|
-| `zeta` (Riemann) | ⟦SPEED zeta t1⟧ | ⟦SPEED zeta t10⟧ | ⟦SPEED zeta ratio1⟧ | ⟦SPEED zeta ratio10⟧ | ⟦COST zeta⟧ |
-| `zeta` (Hurwitz) | ⟦SPEED zeta_hurwitz t1⟧ | ⟦SPEED zeta_hurwitz t10⟧ | ⟦SPEED zeta_hurwitz ratio1⟧ | ⟦SPEED zeta_hurwitz ratio10⟧ | ⟦COST zeta_hurwitz⟧ |
-| `expi` | ⟦SPEED expi t1⟧ | ⟦SPEED expi t10⟧ | ⟦SPEED expi ratio1⟧ | ⟦SPEED expi ratio10⟧ | ⟦COST expi⟧ |
-| `expn` | ⟦SPEED expn t1⟧ | ⟦SPEED expn t10⟧ | ⟦SPEED expn ratio1⟧ | ⟦SPEED expn ratio10⟧ | ⟦COST expn⟧ |
-| `ellipk` | ⟦SPEED ellipk t1⟧ | ⟦SPEED ellipk t10⟧ | ⟦SPEED ellipk ratio1⟧ | ⟦SPEED ellipk ratio10⟧ | ⟦COST ellipk⟧ |
-| `ellipe` | ⟦SPEED ellipe t1⟧ | ⟦SPEED ellipe t10⟧ | ⟦SPEED ellipe ratio1⟧ | ⟦SPEED ellipe ratio10⟧ | ⟦COST ellipe⟧ |
-| `hyp1f1` | ⟦SPEED hyp1f1 t1⟧ | ⟦SPEED hyp1f1 t10⟧ | ⟦SPEED hyp1f1 ratio1⟧ | ⟦SPEED hyp1f1 ratio10⟧ | ⟦COST hyp1f1⟧ |
-| `hyp2f1` | ⟦SPEED hyp2f1 t1⟧ | ⟦SPEED hyp2f1 t10⟧ | ⟦SPEED hyp2f1 ratio1⟧ | ⟦SPEED hyp2f1 ratio10⟧ | ⟦COST hyp2f1⟧ |
-| `lambertw` (k = 0) | ⟦SPEED lambertw t1⟧ | ⟦SPEED lambertw t10⟧ | ⟦SPEED lambertw ratio1⟧ | ⟦SPEED lambertw ratio10⟧ | ⟦COST lambertw⟧ |
-| `lambertw` (k = −1) | ⟦SPEED lambertw_m1 t1⟧ | ⟦SPEED lambertw_m1 t10⟧ | ⟦SPEED lambertw_m1 ratio1⟧ | ⟦SPEED lambertw_m1 ratio10⟧ | ⟦COST lambertw_m1⟧ |
-| `lambertw` (complex, k = 0) | ⟦SPEED lambertw_c0 t1⟧ | ⟦SPEED lambertw_c0 t10⟧ | ⟦SPEED lambertw_c0 ratio1⟧ | ⟦SPEED lambertw_c0 ratio10⟧ | ⟦COST lambertw_c0⟧ |
-| `expit` | ⟦SPEED expit t1⟧ | ⟦SPEED expit t10⟧ | ⟦SPEED expit ratio1⟧ | ⟦SPEED expit ratio10⟧ | ⟦COST expit⟧ |
-| `logit` | ⟦SPEED logit t1⟧ | ⟦SPEED logit t10⟧ | ⟦SPEED logit ratio1⟧ | ⟦SPEED logit ratio10⟧ | ⟦COST logit⟧ |
-| `log_expit` | ⟦SPEED log_expit t1⟧ | ⟦SPEED log_expit t10⟧ | ⟦SPEED log_expit ratio1⟧ | ⟦SPEED log_expit ratio10⟧ | ⟦COST log_expit⟧ |
-| `xlogy` | ⟦SPEED xlogy t1⟧ | ⟦SPEED xlogy t10⟧ | ⟦SPEED xlogy ratio1⟧ | ⟦SPEED xlogy ratio10⟧ | ⟦COST xlogy⟧ |
-| `xlog1py` | ⟦SPEED xlog1py t1⟧ | ⟦SPEED xlog1py t10⟧ | ⟦SPEED xlog1py ratio1⟧ | ⟦SPEED xlog1py ratio10⟧ | ⟦COST xlog1py⟧ |
-| `entr` | ⟦SPEED entr t1⟧ | ⟦SPEED entr t10⟧ | ⟦SPEED entr ratio1⟧ | ⟦SPEED entr ratio10⟧ | ⟦COST entr⟧ |
-| `rel_entr` | ⟦SPEED rel_entr t1⟧ | ⟦SPEED rel_entr t10⟧ | ⟦SPEED rel_entr ratio1⟧ | ⟦SPEED rel_entr ratio10⟧ | ⟦COST rel_entr⟧ |
-| `wofz` | ⟦SPEED wofz t1⟧ | ⟦SPEED wofz t10⟧ | ⟦SPEED wofz ratio1⟧ | ⟦SPEED wofz ratio10⟧ | ⟦COST wofz⟧ |
-| `erf` (complex) | ⟦SPEED erf_complex t1⟧ | ⟦SPEED erf_complex t10⟧ | ⟦SPEED erf_complex ratio1⟧ | ⟦SPEED erf_complex ratio10⟧ | ⟦COST erf_complex⟧ |
-| `erfc` (complex) | ⟦SPEED erfc_complex t1⟧ | ⟦SPEED erfc_complex t10⟧ | ⟦SPEED erfc_complex ratio1⟧ | ⟦SPEED erfc_complex ratio10⟧ | ⟦COST erfc_complex⟧ |
-| `erfcx` (complex) | ⟦SPEED erfcx_complex t1⟧ | ⟦SPEED erfcx_complex t10⟧ | ⟦SPEED erfcx_complex ratio1⟧ | ⟦SPEED erfcx_complex ratio10⟧ | ⟦COST erfcx_complex⟧ |
 
 정확도를 위해 시간을 더 쓰는 곳은 이래요.
 

@@ -6,7 +6,6 @@ summary: Wishart, 역Wishart, 행렬 정규의 log 밀도와 엔트로피, 표�
 seeAlso: [multivariate, mvcdf, sampling, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
-import Bench from '../../../components/fig/Bench.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
 
@@ -437,35 +436,9 @@ $$
 
 ## 속도
 
-행렬 $10^4$개, Apple M4 Pro에서 scipy 1.18.1과 비교한 값이에요(`bench/stats/t10/speed.md`).
+scipy 1.18.1의 Wishart·역Wishart `logpdf`는 행렬마다 Python 루프에서 `scipy.linalg`의 촐레스키와 `cho_solve`를 불러서, 행렬 하나마다 고정 비용이 들어요. 작은 $p$일수록 그 몫이 커요. stardust는 double-double 분해를 하지만 행렬을 도는 루프가 C++ 안에 있어요. 역Wishart는 점마다 double-double 대입을 $p$번 하므로, $p$가 커지면 그 계산이 시간의 큰 몫이 돼요.
 
-<Bench
-  rows={[
-    { label: 'Wishart p=3 logpdf', times: [81.74e-3, 0.95e-3, 0.18e-3] },
-    { label: 'InverseWishart p=3 logpdf', times: [42.88e-3, 1.47e-3, 0.26e-3] },
-    { label: 'Wishart p=10 logpdf', times: [89.76e-3, 9.70e-3, 1.28e-3] },
-    { label: 'InverseWishart p=10 logpdf', times: [48.32e-3, 25.97e-3, 3.20e-3] },
-    { label: 'MatrixNormal 3x2 logpdf', times: [0.57e-3, 0.71e-3, 0.10e-3] },
-    { label: 'MatrixNormal 10x5 logpdf', times: [3.82e-3, 3.04e-3, 0.38e-3] },
-  ]}
-  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
-  caption="행렬 10⁴개의 logpdf. 배율은 scipy 대비예요."
-/>
-
-Wishart·역Wishart의 logpdf는 1스레드에서 1.9–86배예요. scipy는 행렬마다 Python 루프에서 `scipy.linalg`의 촐레스키와 `cho_solve`를 부르므로 행렬 하나에 수 µs의 고정 비용이 있고, 작은 $p$일수록 그 몫이 커요. stardust는 double-double 분해를 하지만 루프가 C++ 안에 있어요. $p = 10$의 역Wishart는 점마다 double-double 대입을 $p$번 하므로 차이가 1.9배로 줄어요. 행렬 정규의 logpdf는 0.80–1.26배예요.
-
-<Bench
-  rows={[
-    { label: 'Wishart p=3 sample', times: [8.60e-3, 0.53e-3, 0.09e-3] },
-    { label: 'Wishart p=10 sample', times: [16.86e-3, 5.38e-3, 0.63e-3] },
-    { label: 'InverseWishart p=10 sample', times: [18.46e-3, 8.34e-3, 0.97e-3] },
-    { label: 'MatrixNormal 10x5 sample', times: [6.12e-3, 3.77e-3, 0.43e-3] },
-  ]}
-  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
-  caption="행렬 10⁴개의 표본."
-/>
-
-표본은 1스레드에서 1.6–16배, 10스레드에서 14–94배예요.
+행렬 $10^4$개에서 scipy 1.18.1과 견주면 1스레드 / 10스레드로 Wishart·역Wishart의 `logpdf`가 1.86–85.8배 / 15.1–467배, 표본이 2.21–16.3배 / 19–94배예요. 행렬 정규는 `logpdf`가 0.80–1.26배 / 5.8–10.1배, 표본이 1.62–2.44배 / 14.2–14.4배예요.
 
 ## 참고 문헌
 

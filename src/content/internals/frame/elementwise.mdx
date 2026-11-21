@@ -940,22 +940,7 @@ clang에 `-Rpass=loop-vectorize -Rpass-missed=loop-vectorize`를 주면 루프�
 
 ## 성능
 
-pandas 3.1.1, Polars 2.1.0과 비교한 시간이에요(Apple M4 Pro). Polars는 1스레드(`polars@1`)와 기본 14스레드(`polars@14`), stardust는 1스레드(`sd@1`)와 기본 10스레드(`sd@10`)예요.
-
-| 케이스 | 행 수 | sd@1 | sd@10 | pandas | polars@1 | polars@14 |
-|---|---:|:---:|:---:|:---:|:---:|:---:|
-| `float + float` | 1천 | ⟦FBENCH "float + float" 1k sd@1⟧ | ⟦FBENCH "float + float" 1k sd@10⟧ | ⟦FBENCH "float + float" 1k pandas⟧ | ⟦FBENCH "float + float" 1k polars@1⟧ | ⟦FBENCH "float + float" 1k polars@14⟧ |
-| `float + float` | 10만 | ⟦FBENCH "float + float" 100k sd@1⟧ | ⟦FBENCH "float + float" 100k sd@10⟧ | ⟦FBENCH "float + float" 100k pandas⟧ | ⟦FBENCH "float + float" 100k polars@1⟧ | ⟦FBENCH "float + float" 100k polars@14⟧ |
-| `float + float` | 1M | ⟦FBENCH "float + float" 1M sd@1⟧ | ⟦FBENCH "float + float" 1M sd@10⟧ | ⟦FBENCH "float + float" 1M pandas⟧ | ⟦FBENCH "float + float" 1M polars@1⟧ | ⟦FBENCH "float + float" 1M polars@14⟧ |
-| `float sum` | 1천 | ⟦FBENCH "float sum" 1k sd@1⟧ | ⟦FBENCH "float sum" 1k sd@10⟧ | ⟦FBENCH "float sum" 1k pandas⟧ | ⟦FBENCH "float sum" 1k polars@1⟧ | ⟦FBENCH "float sum" 1k polars@14⟧ |
-| `float sum` | 10만 | ⟦FBENCH "float sum" 100k sd@1⟧ | ⟦FBENCH "float sum" 100k sd@10⟧ | ⟦FBENCH "float sum" 100k pandas⟧ | ⟦FBENCH "float sum" 100k polars@1⟧ | ⟦FBENCH "float sum" 100k polars@14⟧ |
-| `float sum` | 1M | ⟦FBENCH "float sum" 1M sd@1⟧ | ⟦FBENCH "float sum" 1M sd@10⟧ | ⟦FBENCH "float sum" 1M pandas⟧ | ⟦FBENCH "float sum" 1M polars@1⟧ | ⟦FBENCH "float sum" 1M polars@14⟧ |
-| `s + s` | 10 | ⟦FBENCH "s + s" 10 sd@1⟧ | ⟦FBENCH "s + s" 10 sd@10⟧ | ⟦FBENCH "s + s" 10 pandas⟧ | ⟦FBENCH "s + s" 10 polars@1⟧ | ⟦FBENCH "s + s" 10 polars@14⟧ |
-| `s.sum()` | 10 | ⟦FBENCH "s.sum()" 10 sd@1⟧ | ⟦FBENCH "s.sum()" 10 sd@10⟧ | ⟦FBENCH "s.sum()" 10 pandas⟧ | ⟦FBENCH "s.sum()" 10 polars@1⟧ | ⟦FBENCH "s.sum()" 10 polars@14⟧ |
-
-{/* BENCH-FIG: "float + float" 1M pandas, sd@1, sd@10, polars@1, polars@14; "float sum" 1M pandas, sd@1, sd@10, polars@1, polars@14 | 캡션: 1M 행 float64. 원소별 덧셈과 합은 메모리 대역폭에 묶인 연산이에요. */}
-
-1M 행 `float + float`는 pandas의 ⟦FBENCH "float + float" 1M pandas/sd@1⟧배(1스레드), `float sum`은 ⟦FBENCH "float sum" 1M pandas/sd@1⟧배예요. 원인은 이래요.
+데이터의 크기에 따라 시간을 정하는 것이 달라요.
 
 - 큰 데이터는 메모리 대역폭이 정해요. `float + float` 1M 행은 16MB를 읽고 8MB를 써요. 커널은 벡터화된 루프 하나라 계산은 메모리를 기다리는 시간 아래에 숨어요. 10스레드는 코어마다 대역폭을 나눠 쓰다 대역폭 한계에 가까워지면 더 늘지 않아요. 합은 8MB를 한 번 읽고, pairwise의 사슬 8개 덕분에 덧셈의 지연이 드러나지 않아요.
 - 작은 데이터는 호출 비용이 정해요. 10행과 1천 행에서는 Python 층(인자 검사, 1행 Column 만들기, 결과 Series 만들기)과 nanobind 경계의 고정비가 시간의 대부분이에요. 이 비용과 그것을 줄인 방법은 [성능과 검증](/internals/frame/performance/)에 있어요.

@@ -539,18 +539,6 @@ void compact_rows(const std::uint8_t* keep, std::int64_t lo, std::int64_t hi, Ge
 
 컬럼마다 `filter`가 남길 행 수를 다시 세요. 마스크 바이트를 한 번 더 더하는 일이라 압축에 비하면 작아요.
 
-| 1M 행 float `f[f > 0]` | 시간 |
-|---|---:|
-| stardust 1스레드 | ⟦FBENCH "mask filter" 1M sd@1⟧ |
-| stardust 10스레드 | ⟦FBENCH "mask filter" 1M sd@10⟧ |
-| pandas 3.1.1 | ⟦FBENCH "mask filter" 1M pandas⟧ |
-| Polars 2.1.0, 1스레드 | ⟦FBENCH "mask filter" 1M polars@1⟧ |
-| Polars 2.1.0, 14스레드 | ⟦FBENCH "mask filter" 1M polars@14⟧ |
-
-{/* BENCH-FIG: "mask filter" 1k pandas, sd@1, sd@10; "mask filter" 100k pandas, sd@1, sd@10; "mask filter" 1M pandas, sd@1, sd@10 | 캡션: f[f > 0] (float64, True가 약 절반)의 시간. 비교와 압축 두 커널이고, 압축은 분기 없는 항상 쓰기예요. */}
-
-이 줄은 비교(`f > 0`)와 압축 두 커널의 합이에요. pandas에 대한 배율은 1M 행 1스레드에서 ⟦FBENCH "mask filter" 1M pandas/sd@1⟧배예요.
-
 ### pandas와 Polars의 필터
 
 - **pandas 3.1.1**: Series의 bool 인덱싱은 `SingleBlockManager.get_rows_with_mask`에서 numpy의 bool 인덱싱(`values[mask]`)을 그대로 써요. DataFrame은 `DataFrame._getitem_bool_array`가 마스크를 위치로 바꾼 뒤(`key.nonzero()[0]`) `take`해요. 마스크가 모두 True면 얕은 복사로 끝내는 빠른 길도 있어요.
@@ -672,11 +660,6 @@ stardust는 Buffer를 가리키는 `shared_ptr`의 참조 수 하나로 판단�
 ### 작은 데이터의 호출 비용
 
 10행에서는 커널보다 호출 비용(Python 층, 바인딩, 결과 객체 만들기)이 시간을 정해요.
-
-| 10행 | stardust 1스레드 | pandas 3.1.1 | Polars 2.1.0, 1스레드 |
-|---|---:|---:|---:|
-| `df["a"]` | ⟦FBENCH 'df["a"]' 10 sd@1⟧ | ⟦FBENCH 'df["a"]' 10 pandas⟧ | ⟦FBENCH 'df["a"]' 10 polars@1⟧ |
-| `df[df["a"] > 0]` | ⟦FBENCH 'df[df["a"] > 0]' 10 sd@1⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 pandas⟧ | ⟦FBENCH 'df[df["a"] > 0]' 10 polars@1⟧ |
 
 - `df["a"]`는 dict에서 Column을 꺼내 Series 객체 하나를 만드는 일이에요. Column은 값 타입이라 Python 객체 안으로 `shared_ptr` 셋을 옮기기만 해요.
 - `df[df["a"] > 0]`은 비교 한 번, 마스크 맞추기(같은 Index 객체라서 `is`에서 끝나요), 컬럼마다 `filter`, 결과 라벨의 `nonzero`예요.

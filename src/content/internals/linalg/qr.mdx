@@ -929,33 +929,7 @@ Accelerate는 `geqrf`를 n = 1024까지 사실상 1스레드로 돌려요(CPU �
 
 ### numpy·scipy와 비교
 
-기준은 `qr`이 numpy 2.5.4의 `np.linalg.qr`, `qr_pivoted`가 scipy 1.18.1의 `qr(pivoting=True)`, `lstsq`가 행렬 하나면 numpy, 배치면 scipy예요(numpy의 `lstsq`는 배치를 받지 않아요). 표의 값은 기준 시간 / stardust 시간이고, 1보다 크면 stardust가 빨라요. `lstsq`의 우변은 한 열이에요.
-
-| 모양 | `qr` | `qr` complete | `qr_pivoted` | `lstsq` |
-|:---:|:---:|:---:|:---:|:---:|
-| (3, 3) | ⟦BENCH qr (3,3) t10⟧ | ⟦BENCH qr complete (3,3) t10⟧ | ⟦BENCH qr_pivoted (3,3) t10⟧ | ⟦BENCH lstsq (3,3) t10⟧ |
-| (32, 32) | ⟦BENCH qr (32,32) t10⟧ | ⟦BENCH qr complete (32,32) t10⟧ | ⟦BENCH qr_pivoted (32,32) t10⟧ | ⟦BENCH lstsq (32,32) t10⟧ |
-| (300, 300) | ⟦BENCH qr (300,300) t10⟧ | ⟦BENCH qr complete (300,300) t10⟧ | ⟦BENCH qr_pivoted (300,300) t10⟧ | ⟦BENCH lstsq (300,300) t10⟧ |
-| (1000, 1000) | ⟦BENCH qr (1000,1000) t10⟧ | ⟦BENCH qr complete (1000,1000) t10⟧ | ⟦BENCH qr_pivoted (1000,1000) t10⟧ | ⟦BENCH lstsq (1000,1000) t10⟧ |
-| (1000, 3, 3) | ⟦BENCH qr (1000,3,3) t10⟧ | ⟦BENCH qr complete (1000,3,3) t10⟧ | ⟦BENCH qr_pivoted (1000,3,3) t10⟧ | ⟦BENCH lstsq (1000,3,3) t10⟧ |
-| (100, 32, 32) | ⟦BENCH qr (100,32,32) t10⟧ | ⟦BENCH qr complete (100,32,32) t10⟧ | ⟦BENCH qr_pivoted (100,32,32) t10⟧ | ⟦BENCH lstsq (100,32,32) t10⟧ |
-
-기본 10스레드예요. 1스레드는 이래요.
-
-| 모양 | `qr` | `qr` complete | `qr_pivoted` | `lstsq` |
-|:---:|:---:|:---:|:---:|:---:|
-| (3, 3) | ⟦BENCH qr (3,3) t1⟧ | ⟦BENCH qr complete (3,3) t1⟧ | ⟦BENCH qr_pivoted (3,3) t1⟧ | ⟦BENCH lstsq (3,3) t1⟧ |
-| (32, 32) | ⟦BENCH qr (32,32) t1⟧ | ⟦BENCH qr complete (32,32) t1⟧ | ⟦BENCH qr_pivoted (32,32) t1⟧ | ⟦BENCH lstsq (32,32) t1⟧ |
-| (300, 300) | ⟦BENCH qr (300,300) t1⟧ | ⟦BENCH qr complete (300,300) t1⟧ | ⟦BENCH qr_pivoted (300,300) t1⟧ | ⟦BENCH lstsq (300,300) t1⟧ |
-| (1000, 1000) | ⟦BENCH qr (1000,1000) t1⟧ | ⟦BENCH qr complete (1000,1000) t1⟧ | ⟦BENCH qr_pivoted (1000,1000) t1⟧ | ⟦BENCH lstsq (1000,1000) t1⟧ |
-| (1000, 3, 3) | ⟦BENCH qr (1000,3,3) t1⟧ | ⟦BENCH qr complete (1000,3,3) t1⟧ | ⟦BENCH qr_pivoted (1000,3,3) t1⟧ | ⟦BENCH lstsq (1000,3,3) t1⟧ |
-| (100, 32, 32) | ⟦BENCH qr (100,32,32) t1⟧ | ⟦BENCH qr complete (100,32,32) t1⟧ | ⟦BENCH qr_pivoted (100,32,32) t1⟧ | ⟦BENCH lstsq (100,32,32) t1⟧ |
-
-{/* BENCH-FIG: qr (3,3) t10, qr (1000,3,3) t10, qr (100,32,32) t10, qr_pivoted (1000,3,3) t10, lstsq (3,3) t10, lstsq (1000,3,3) t10, lstsq (100,32,32) t10 | 캡션: 작은 행렬과 배치. 같은 LAPACK을 부르므로 차이는 호출 경로의 고정비와 배치 병렬화에서 나와요. */}
-
-{/* BENCH-FIG: qr (300,300) t10, qr (1000,1000) t10, qr complete (1000,1000) t10, qr_pivoted (1000,1000) t10, lstsq (300,300) t10, lstsq (1000,1000) t10 | 캡션: 큰 행렬 하나. 양쪽 모두 Accelerate의 같은 루틴을 코어 하나로 돌려요. */}
-
-차이가 나는 곳과 그 원인은 이래요.
+비교 대상은 `qr`이 numpy 2.5.4의 `np.linalg.qr`, `qr_pivoted`가 scipy 1.18.1의 `qr(pivoting=True)`, `lstsq`가 행렬 하나면 numpy, 배치면 scipy예요(numpy의 `lstsq`는 배치를 받지 않아요). 모두 같은 Accelerate 루틴을 불러요. 시간 차이가 나는 곳과 그 원인은 이래요.
 
 - **작은 행렬 하나.** LAPACK의 계산 자체는 수백 ns인데, 호출 경로의 고정비가 그와 비슷하거나 커요. stardust는 함수가 C++에 바로 바인딩돼 있어 Python 코드를 거치지 않고, 작업 배열의 크기를 기억해 두고 0으로 채우지 않으며, 결과 배열과 namedtuple을 C++에서 바로 만들어요([선형대수 영역의 구조](/internals/linalg/overview/)). `qr`는 결과가 둘, `qr_pivoted`는 셋이라 결과 배열을 만드는 비용도 그만큼 보여요.
 - **배치.** numpy와 scipy는 배치를 코어 하나로 차례로 돌아요. stardust는 원소 묶음을 풀의 스레드에 나눠요. 1스레드에서도 고정비 차이만큼 빨라요.

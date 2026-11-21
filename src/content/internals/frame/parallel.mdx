@@ -314,7 +314,7 @@ GilRelease::GilRelease() {
 - `read_csv` 전체(토큰화, 추론, 값 만들기)
 - 큰 복사: numpy 배열과 `sd.ndarray`에서 컬럼 만들기(`from_numpy`의 넓히기, `from_array`), `to_array`의 `columns_to_array`, NA 없는 `isna`, 스칼라로 컬럼 채우기(`full`), 다중 키 merge의 압축, 그룹 순서의 순위 매기기. 배열(`NDArray`)을 만들고 없애는 일은 GIL을 쥔 채 해요. 그 `base`가 Python 참조이기 때문이에요.
 
-그래서 1스레드에서도 큰 호출은 모두 GIL을 놓아요. `sd.set_num_threads(1)`에서 1,600만 행 float64 Series의 `s + s`(약 11ms), `s.sum()`(약 8ms), `s[s > 0]`(약 50ms)을 부르는 동안, 옆의 Python 스레드가 `while` 루프로 카운터를 각각 약 43만 번, 28만 번, 190만 번 올렸어요(Apple M4 Pro). GIL을 쥔 채였다면 0번이에요.
+그래서 1스레드에서도 큰 호출은 모두 GIL을 놓아요. `sd.set_num_threads(1)`에서 큰 float64 Series의 `s + s`, `s.sum()`, `s[s > 0]`을 부르는 동안에도 옆의 Python 스레드가 계속 돌아요. GIL을 쥔 채였다면 그동안 한 번도 돌지 못해요.
 
 1스레드에서 더 드는 비용은 기준값 이상인 호출마다 GIL을 한 번 놓고 다시 잡는 것이에요. 호출 하나에 0.1µs 안팎이고, 기준값 크기의 호출도 계산에 수 µs가 걸려서 보이지 않아요. 131,072행부터 1M 행까지 여덟 연산(`f + f`, `sum`, `min`, 필터, groupby `sum` 등)을 GIL을 쥐는 빌드와 번갈아 쟀을 때 기하평균 차이가 +0.6%였고, 경우별 차이(대부분 ±3% 안)는 실행마다 부호가 바뀌는 잡음이었어요. 다른 Python 스레드가 Python 코드를 돌리고 있으면, 계산을 마친 호출이 GIL을 돌려받을 때까지 기다리는 시간은 따로 있어요(최대 `sys.getswitchinterval()`, 기본 5ms). 이것은 GIL을 놓는 모든 확장 모듈이 같아요.
 
@@ -613,8 +613,6 @@ True
 
 ## 확장성
 
-### 같은 입력을 반복해 잰 값
-
 1M 행, 1스레드와 10스레드, Apple M4 Pro. 같은 입력으로 거듭 불러 최솟값을 잰 값이에요([성능과 검증](/internals/frame/performance/)의 "같은 입력 반복의 함정" 참고. 이 표의 연산은 분기가 적어 그 영향이 작아요).
 
 | 연산 | 1스레드 | 10스레드 | 배율 |
@@ -635,31 +633,7 @@ True
 - 옮기는 메모리에 비해 일이 많은 연산은 5~7배예요. 비교(`float > 0`)는 행마다 8바이트를 읽고 1바이트를 써서 덧셈(24바이트)보다 메모리를 훨씬 덜 옮겨요. 필터는 세기와 쓰기 두 패스, `std`는 두 번 훑기, 정렬은 8자리 × 두 패스예요. CPU가 일하는 몫이 커서 코어 수의 이득이 더 많이 남아요.
 - 키가 1,000종인 해시(`nunique`, groupby)는 10스레드에서도 약 2배예요. 직렬 패스의 테이블(키 1,000개)이 L1 캐시에 들어가서 1스레드가 이미 빠르고, 나누는 경로는 흩뿌리기와 번호 매기기 패스를 더 내기 때문이에요.
 
-### 비교 측정의 1M 행 줄
-
-[성능과 검증](/internals/frame/performance/)의 비교 측정(새 입력 모드)에서 1스레드와 10스레드 열을 나란히 놓으면 이래요.
-
-| 케이스 | 1스레드 | 10스레드 | 배율 |
-|---|---:|---:|---:|
-| `float + float` | ⟦FBENCH "float + float" 1M sd@1⟧ | ⟦FBENCH "float + float" 1M sd@10⟧ | ⟦FBENCH "float + float" 1M sd@1/sd@10⟧ |
-| `float sum` | ⟦FBENCH "float sum" 1M sd@1⟧ | ⟦FBENCH "float sum" 1M sd@10⟧ | ⟦FBENCH "float sum" 1M sd@1/sd@10⟧ |
-| `mask filter` | ⟦FBENCH "mask filter" 1M sd@1⟧ | ⟦FBENCH "mask filter" 1M sd@10⟧ | ⟦FBENCH "mask filter" 1M sd@1/sd@10⟧ |
-| `nunique int, 1k keys` | ⟦FBENCH "nunique int, 1k keys" 1M sd@1⟧ | ⟦FBENCH "nunique int, 1k keys" 1M sd@10⟧ | ⟦FBENCH "nunique int, 1k keys" 1M sd@1/sd@10⟧ |
-| `nunique int, n keys` | ⟦FBENCH "nunique int, n keys" 1M sd@1⟧ | ⟦FBENCH "nunique int, n keys" 1M sd@10⟧ | ⟦FBENCH "nunique int, n keys" 1M sd@1/sd@10⟧ |
-| `nunique string` | ⟦FBENCH "nunique string" 1M sd@1⟧ | ⟦FBENCH "nunique string" 1M sd@10⟧ | ⟦FBENCH "nunique string" 1M sd@1/sd@10⟧ |
-| `groupby int 1k sum` | ⟦FBENCH "groupby int 1k sum" 1M sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1M sd@10⟧ | ⟦FBENCH "groupby int 1k sum" 1M sd@1/sd@10⟧ |
-| `groupby int, n keys, sum` | ⟦FBENCH "groupby int, n keys, sum" 1M sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M sd@10⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M sd@1/sd@10⟧ |
-| `groupby string sum` | ⟦FBENCH "groupby string sum" 1M sd@1⟧ | ⟦FBENCH "groupby string sum" 1M sd@10⟧ | ⟦FBENCH "groupby string sum" 1M sd@1/sd@10⟧ |
-| `groupby int + string sum` | ⟦FBENCH "groupby int + string sum" 1M sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1M sd@10⟧ | ⟦FBENCH "groupby int + string sum" 1M sd@1/sd@10⟧ |
-| `merge n x n/10 inner` | ⟦FBENCH "merge n x n/10 inner" 1M sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@1/sd@10⟧ |
-| `sort int64` | ⟦FBENCH "sort int64" 1M sd@1⟧ | ⟦FBENCH "sort int64" 1M sd@10⟧ | ⟦FBENCH "sort int64" 1M sd@1/sd@10⟧ |
-| `sort string` | ⟦FBENCH "sort string" 1M sd@1⟧ | ⟦FBENCH "sort string" 1M sd@10⟧ | ⟦FBENCH "sort string" 1M sd@1/sd@10⟧ |
-| `read_csv floats` | ⟦FBENCH "read_csv floats" 1M sd@1⟧ | ⟦FBENCH "read_csv floats" 1M sd@10⟧ | ⟦FBENCH "read_csv floats" 1M sd@1/sd@10⟧ |
-| `read_csv mixed` | ⟦FBENCH "read_csv mixed" 1M sd@1⟧ | ⟦FBENCH "read_csv mixed" 1M sd@10⟧ | ⟦FBENCH "read_csv mixed" 1M sd@1/sd@10⟧ |
-
-{/* BENCH-FIG: "float + float" 1M sd@1, sd@10; "mask filter" 1M sd@1, sd@10; "nunique int, 1k keys" 1M sd@1, sd@10; "nunique int, n keys" 1M sd@1, sd@10; "groupby int + string sum" 1M sd@1, sd@10; "sort int64" 1M sd@1, sd@10; "read_csv mixed" 1M sd@1, sd@10 | 캡션: 1M 행, 새 입력 모드에서 1스레드와 10스레드. 메모리에 묶인 원소별 연산, 키가 적은 해시, 키가 많은 해시, 정렬, CSV가 서로 다르게 늘어나요. */}
-
-새 입력 모드에서는 1M 행 입력 4개가 번갈아 들어오므로 입력이 캐시에 남아 있지 않아요. 그래서 메모리에 묶인 원소별 연산은 보통 위의 같은 입력 표보다 느리고, 배율도 메모리 대역폭의 한계에 더 가깝게 나와요. 같은 입력 표의 연산은 직전 호출이 남긴 입력이 L2 캐시(16MB)에 일부 남아 있어서 실제보다 빨라 보여요.
+같은 입력을 거듭 넣으면 직전 호출이 남긴 입력이 L2 캐시(16MB)에 일부 남아 있어서, 이 표의 값은 실제보다 빨라 보여요. 부를 때마다 다른 입력을 주면(1M 행이면 입력 4개를 번갈아) 입력이 캐시에 남아 있지 않아서, 메모리에 묶인 원소별 연산은 이 표보다 느리고 배율도 메모리 대역폭의 한계에 더 가깝게 나와요.
 
 ## 참고 문헌
 

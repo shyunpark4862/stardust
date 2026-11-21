@@ -400,25 +400,11 @@ merge의 모든 단계는 스레드 수와 무관하게 같은 결과를 내요.
 | 결과 위치 두 배열 | $16r$ B |
 | 결과 컬럼 | 컬럼마다 `take` 한 번 |
 
-### 측정
+### 비교할 때 알아 둘 것
 
-벤치마크의 merge 줄은 왼쪽 $n$행, 오른쪽 $n/10$행의 int 키 inner 조인이에요. 오른쪽 키는 $0 .. n/10 - 1$의 무작위 순열(고유), 왼쪽 키는 $0 .. n/10 + n/90$ 범위의 무작위 정수라서 왼쪽 행의 약 10%는 짝이 없어요. pandas는 기본 옵션, Polars는 같은 행 순서를 내도록 `maintain_order="left"`로 불러요.
+왼쪽 $n$행, 오른쪽 $n/10$행의 int 키 inner 조인으로 pandas, Polars와 견준다고 해 볼게요. 오른쪽 키는 $0 .. n/10 - 1$의 무작위 순열(고유)이고 왼쪽 키는 $0 .. n/10 + n/90$ 범위의 무작위 정수라서, 왼쪽 행의 약 10%는 짝이 없어요.
 
-| `merge n x n/10 inner` | 1천 행 | 10만 행 | 1M 행 |
-|---|---:|---:|---:|
-| stardust 1스레드 | ⟦FBENCH "merge n x n/10 inner" 1k sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k sd@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@1⟧ |
-| stardust 10스레드 | ⟦FBENCH "merge n x n/10 inner" 1k sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 100k sd@10⟧ | ⟦FBENCH "merge n x n/10 inner" 1M sd@10⟧ |
-| pandas 3.1.1 | ⟦FBENCH "merge n x n/10 inner" 1k pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 100k pandas⟧ | ⟦FBENCH "merge n x n/10 inner" 1M pandas⟧ |
-| Polars 2.1.0, 1스레드 | ⟦FBENCH "merge n x n/10 inner" 1k polars@1⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@1⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@1⟧ |
-| Polars 2.1.0, 14스레드 | ⟦FBENCH "merge n x n/10 inner" 1k polars@14⟧ | ⟦FBENCH "merge n x n/10 inner" 100k polars@14⟧ | ⟦FBENCH "merge n x n/10 inner" 1M polars@14⟧ |
-
-{/* BENCH-FIG: "merge n x n/10 inner" 1M pandas, sd@1, sd@10, polars@14; "merge n x n/10 inner" 100k pandas, sd@1, sd@10, polars@14 | 캡션: 왼쪽 n행 × 오른쪽 n/10행(고유 키) int inner merge. pandas는 오른쪽 키가 고유한 int inner 조인에서 해시 조회 한 번으로 가는 빠른 길을 타요. */}
-
-1M 행에서 pandas 대비 배율은 1스레드 ⟦FBENCH "merge n x n/10 inner" 1M pandas/sd@1⟧배, 10스레드 ⟦FBENCH "merge n x n/10 inner" 1M pandas/sd@10⟧배이고, Polars 14스레드 대비 10스레드는 ⟦FBENCH "merge n x n/10 inner" 1M polars@14/sd@10⟧배예요.
-
-이 줄을 읽을 때 알아 둘 것이 있어요.
-
-- pandas가 빠른 길을 타는 입력이에요. pandas 3.1.1의 `_factorize_keys`는 `how`가 inner나 left이고, `sort=False`이고, 키가 숫자·bool이면 오른쪽 키를 먼저 factorize하고, 오른쪽 키가 모두 고유하면 왼쪽 키를 그 테이블에서 조회만 하고 끝내요(아래 비교). 이 벤치마크의 오른쪽 키는 순열이라 고유해요.
+- pandas가 빠른 길을 타는 입력이에요. pandas 3.1.1의 `_factorize_keys`는 `how`가 inner나 left이고, `sort=False`이고, 키가 숫자·bool이면 오른쪽 키를 먼저 factorize하고, 오른쪽 키가 모두 고유하면 왼쪽 키를 그 테이블에서 조회만 하고 끝내요(아래 비교). 이 입력의 오른쪽 키는 순열이라 고유해요.
 - 결과 조립이 시간의 일부예요. 결과 약 0.9n행에 대해 키, 왼쪽 값, 오른쪽 값 세 컬럼을 `take`해요. 오른쪽 값의 `take`는 무작위 읽기예요.
 - 키가 많은 해시 연산(`nunique`, groupby, merge)에서 stardust가 Polars보다 느린 경우가 있어요. 코드를 처음 나타난 순서로 다시 매기는 단계(스레드 수와 무관한 결과를 위한 것)가 그 일부예요. Polars는 파티션별 테이블의 결과를 그대로 쓰고, 순서가 필요할 때만 결과 쌍을 정렬해요.
 

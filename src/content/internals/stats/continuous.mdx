@@ -746,7 +746,7 @@ return -num::exp_dd((num::log_dd(df) - r.lx + r.ly) * 0.5);
 같은 방법으로 Arb에서 잰 근의 상대오차는 $9 \times 10^{-19}$, $1.5 \times 10^{-17}$, $1.8 \times 10^{-16}$, $5.7 \times 10^{-17}$이에요. 마지막은 서브노멀 확률이에요. scipy 1.18.1의 `t.ppf(1e-310, 5)`는 $-\infty$예요.
 
 <Callout title="t의 깊은 역함수와 큰 자유도">
-$1 - x$를 $\log(1 - x)$에서 직접 구하기 때문에, t의 `icdf`·`iccdf`는 자유도가 $10^5$ 이상이고 확률이 $2^{-1000}$ 아래인 구석에서도 잰 오차가 반올림 수준이에요. 이 구석을 포함한 보장 영역 밖 점의 잰 최대가 $3.2 \times 10^{-16}$(`ilog…`는 $2.8 \times 10^{-16}$)이고, 영역 안은 $1.0 \times 10^{-15}$(`ilog…`는 $4.9 \times 10^{-16}$)이에요(`bench/stats/t4/accuracy.md`).
+$1 - x$를 $\log(1 - x)$에서 직접 구하기 때문에, t의 `icdf`·`iccdf`는 자유도가 $10^5$ 이상이고 확률이 $2^{-1000}$ 아래인 구석에서도 잰 오차가 반올림 수준이에요. 이 구석을 포함한 보장 영역 밖 점에서 `icdf`의 잰 최대 상대오차가 $3.2 \times 10^{-16}$이에요(`bench/stats/accuracy.md`).
 </Callout>
 
 ## 작은 모양의 불완전 베타와 감마의 유한합
@@ -783,7 +783,7 @@ special의 `betaincinv`는 double-double `ibeta`와 그 도함수로 Halley 반�
 4. **멈춤.** Halley는 3차 수렴이라, 걸음이 $x$의 $10^{-6}$ 아래가 되면 남는 오차는 $(a/x)^2\cdot\text{걸음}^3 \le 10^{-16}x$ 정도예요. 그래서 다시 평가하지 않고 끝내요.
 5. **상한과 실패 처리.** 8걸음 안에 끝나지 않거나, 걸음이 지금까지의 브래킷을 벗어나거나, $F$가 $2^{-960}$ 아래로 가면 실패로 돌아가 일반 경로(special의 역함수, 깊은 역함수)를 써요.
 
-결과의 오차는 함수의 오차(Boost의 betainc)에 역함수의 조건수 $F/(xF')$를 곱한 것으로, double-double 경로와 같은 형태예요. 1스레드에서 원소 $10^5$개로 잰 원소당 시간은 `Beta(2, 3).icdf`가 169 ns(scipy 1.18.1은 387 ns), `Beta(2.5, 0.7).icdf`가 549 ns(scipy 652 ns)예요(`bench/stats/opt/b/results.md`, Apple M4 Pro). F는 $d_1/2$, $d_2/2$가 이 구간이면 같은 함수로 $w$나 $v$를 구해 $x = (d_2/d_1)\,w/v$로 돌아가요.
+결과의 오차는 함수의 오차(Boost의 betainc)에 역함수의 조건수 $F/(xF')$를 곱한 것으로, double-double 경로와 같은 형태예요. F는 $d_1/2$, $d_2/2$가 이 구간이면 같은 함수로 $w$나 $v$를 구해 $x = (d_2/d_1)\,w/v$로 돌아가요.
 
 ### 감마의 정수·반정수 모양: 유한합
 
@@ -794,7 +794,7 @@ Q(n, y) = e^{-y}\sum_{k \lt n}\frac{y^k}{k!}, \qquad
 Q(n + \tfrac12, y) = \operatorname{erfc}(\sqrt y) + \frac{e^{-y}}{\sqrt{\pi y}}\sum_{k=1}^{n}\frac{y^k}{(\tfrac12)(\tfrac32)\cdots(k - \tfrac12)}
 $$
 
-합은 double-double Horner이고(비 $y/k$를 나눗셈의 나머지로 만들어서 $y_{hi} + y_{lo}$가 정확히 들어가요), 남는 것은 $e^{-y}$와 `erfc` 같은 libm 호출의 몇 ULP예요. 반올림을 세면 정수 모양 4, 반정수 모양 8 단위($2^{-53}$)예요. 쓰는 곳은 $a \le 30$, $a \le y \le 690$이에요. $y \ge a$면 중앙값이 평균 아래라 $Q$가 작은 쪽이고, $y \le 690$이면 $e^{-y}$가 여유 있는 정규수예요. 연분수를 돌리지 않으므로, 1스레드 원소당 시간이 `ChiSquared(7).cdf` 45 ns로 반정수가 아닌 `ChiSquared(4.5).cdf`의 107 ns보다 짧아요(scipy 1.18.1은 각각 66 ns, 73 ns, `bench/stats/opt/b/results.md`). 같은 모양의 위꼬리 역함수도 Boost의 출발점에서 Halley 한 걸음을 이 유한합 위에서 밟아요.
+합은 double-double Horner이고(비 $y/k$를 나눗셈의 나머지로 만들어서 $y_{hi} + y_{lo}$가 정확히 들어가요), 남는 것은 $e^{-y}$와 `erfc` 같은 libm 호출의 몇 ULP예요. 반올림을 세면 정수 모양 4, 반정수 모양 8 단위($2^{-53}$)예요. 쓰는 곳은 $a \le 30$, $a \le y \le 690$이에요. $y \ge a$면 중앙값이 평균 아래라 $Q$가 작은 쪽이고, $y \le 690$이면 $e^{-y}$가 여유 있는 정규수예요. 연분수(두 번 훑는 수십 항)를 돌리지 않으므로 `ChiSquared(7).cdf`가 반정수가 아닌 `ChiSquared(4.5).cdf`보다 가벼워요. 같은 모양의 위꼬리 역함수도 Boost의 출발점에서 Halley 한 걸음을 이 유한합 위에서 밟아요.
 
 ### 정확하지 않은 a − 1
 

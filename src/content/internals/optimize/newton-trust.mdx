@@ -278,17 +278,10 @@ ValueError: minimize(): 'jac' is not finite at x = [0.9999999999999999, 1.999999
 
 ## 속도
 
-`bench/optimize/o4/speed.md`와 `bench/optimize/o6/speed.md`의 값이에요. Apple M4 Pro, scipy 1.18.1·numpy 2.5.4, 일반화된 Rosenbrock(x0 = (−1.2, 1, …)), 1스레드. "자기 비용"은 사용자 함수(`fun`, `jac`, `hess`, `hessp`) 밖의 시간을 반복 수로 나눈 값(ms)이에요. n = 1000의 `hess` 행렬은 사용자 행렬을 반복마다 복사하는 지금 커널을 같은 사례로 잰 값이에요.
+Apple M4 Pro, scipy 1.18.1·numpy 2.5.4, 일반화된 Rosenbrock(x0 = (−1.2, 1, …)), 1스레드에서 견줘요. "자기 비용"은 사용자 함수(`fun`, `jac`, `hess`, `hessp`) 밖의 시간을 반복 수로 나눈 값이에요.
 
-| 방법 | 헤시안 | n | 반복 상한 | 반복당 자기 비용 sd / scipy (ms) |
-|---|---|---:|---:|---|
-| newton-cg | hess | 10 | | 0.00095 / 0.0253 |
-| trust-ncg | hess | 10 | | 0.0011 / 0.0225 |
-| trust-exact | hess | 10 | | 0.0021 / 0.060 |
-| trust-exact | hess | 100 | | 0.049 / 0.143 |
-| newton-cg | '2-point' | 1000 | 200 | 0.033 / 0.307 |
-| newton-cg | hess | 1000 | 200 | 0.24 / 0.216 |
-| trust-ncg | hess | 1000 | 300 | 0.20 / 0.135 |
-| trust-exact | hess | 1000 | 100 | 5.13 / 7.24 |
+- n = 2–100에서는 반복 하나의 자기 비용이 scipy의 1/3–1/60이에요.
+- 차분 헤세 곱(`hess='2-point'`)을 쓰는 Newton-CG는 n = 1000에서도 scipy의 1/9쯤이에요.
+- n = 1000에서 `hess` 행렬을 쓰면 Newton-CG가 0.24 ms(scipy 0.22 ms), trust-ncg가 0.20 ms(scipy 0.14 ms)로 scipy보다 조금 느려요.
 
 작은 n에서 scipy는 CG 걸음마다, λ 반복마다 Python에서 numpy와 `scipy.linalg`를 불러요(trust-exact의 최소 특이값 추정은 n번의 Python 고리예요). 여기서는 반복 전체가 C++이에요. n = 1000의 `hess` 행렬에서는 두 쪽 모두 CG 걸음마다의 같은 dgemv가 대부분이고, 여기서는 사용자 행렬을 복사하는 만큼(8 MB) scipy보다 느려요. trust-exact는 반복마다 H + λI의 Cholesky가 대부분이에요. 위 삼각만 옮기는 복사가 scipy의 $n \times n$ 행렬 네 개(`np.eye`, λ배, 합, 열 우선 복사)보다 싸요.

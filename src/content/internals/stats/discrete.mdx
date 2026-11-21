@@ -174,7 +174,7 @@ inf
 
 ### 시작점
 
-평가 한 번은 불완전 함수 한 번이라 비싸요(넓은 매개변수에서 이항 cdf는 1스레드 원소당 90 ns, 음이항은 133 ns, bench/stats/t5/speed.md). 그래서 시작점이 답에 가까울수록 빨라요. 분포마다 `Fns`라는 작은 구조체가 `cdf`, `ccdf`, `logcdf`, `logccdf`, 지지집합의 끝 `lo`, `hi`, 시작점 `guess`를 묶어요. 기본 시작점은 평균의 floor예요.
+평가 한 번은 불완전 함수 한 번이라 비싸요. 그래서 시작점이 답에 가까울수록 빨라요. 분포마다 `Fns`라는 작은 구조체가 `cdf`, `ccdf`, `logcdf`, `logccdf`, 지지집합의 끝 `lo`, `hi`, 시작점 `guess`를 묶어요. 기본 시작점은 평균의 floor예요.
 
 - **넓은 분포**(표준편차 ≥ 8, `kWideSd`): 평균에서 꼬리의 분위수까지는 수천 칸일 수 있어요. 그래서 Cornish–Fisher 추정에서 시작해요.
 
@@ -352,7 +352,7 @@ $R$의 18번째 항은 $(1/8)^{17}/20 = 2^{-55}$보다 작아서 17항이면 충
 | $\lvert t_1\rvert, \lvert t_2\rvert \le 1/8$ | 급수 $R(t)$ | `a_mu`(double-double log 포함) |
 | pmf: $E \le 12$ / logpmf: 언제나 | 상한 $0.5E + 9.9$ / $8.1$단위 | 정밀 경로 |
 
-음이항은 $a = n$, $b = k$, $c = n + k$, $\Delta = pk - qn$으로, 포아송은 항 하나($\Delta = \mu - k$, $E = \Delta^2 P(\Delta/k)/k$)로 같은 커널을 써요. 넓은 매개변수(이항 $n = 10^9$, 원소 2만 개, 거의 모든 $k$가 다름)에서 이항 pmf는 1스레드 원소당 15.3 ns이고 scipy 1.18.1은 33.9 ns예요(bench/stats/t5/speed.md, Apple M4 Pro).
+음이항은 $a = n$, $b = k$, $c = n + k$, $\Delta = pk - qn$으로, 포아송은 항 하나($\Delta = \mu - k$, $E = \Delta^2 P(\Delta/k)/k$)로 같은 커널을 써요.
 
 ### 다른 분포의 pmf
 

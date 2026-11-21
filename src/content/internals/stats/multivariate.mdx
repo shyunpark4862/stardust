@@ -6,7 +6,6 @@ summary: 다변량 정규·t, 다항, 디리클레의 밀도와 엔트로피를 
 seeAlso: [mvcdf, matrix, sampling, accuracy-performance]
 ---
 import Callout from '../../../components/Callout.astro';
-import Bench from '../../../components/fig/Bench.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
 
@@ -255,7 +254,7 @@ $$
 받아들이는 조건은 계약의 단위 그대로예요. logpdf는 $\text{상한} + u(\lvert l\rvert + u\lvert c_{hi}\rvert) \le 40u \cdot \max(1, \lvert l\rvert)$, pdf는 $\text{상한} + u(4 + u\lvert c_{hi}\rvert) \le 40u$이고 $\lvert l\rvert \le 700$이에요. pdf는 $e^{hi}(1 + lo)$로 만들고(libm의 exp를 2단위로 셈), 상대오차가 곧 $l$의 절대오차라서 예산이 절대예요. 무엇이든 유한하지 않으면 상한이 inf나 NaN이 되어 검사에서 떨어져요.
 
 <Callout type="note" title="왜 40단위인가">
-stats의 다른 빠른 경로는 예산이 16단위($1.8 \times 10^{-15}$)예요. 그런데 내적의 최악 상한은 $(m + 2)u\sum\lvert t_k\rvert$ 아래로 내려갈 수 없어요. 분포에서 뽑은 점에서 이것이 이미 14–22단위이고, 행렬 정규처럼 곱을 두 번 거치면 그 두 배예요. 그래서 이 세 밀도(다변량 정규·t, 행렬 정규)만 예산을 40단위($4.4 \times 10^{-15}$)로 둬요. 계약 $10^{-14}$의 절반 아래예요. 상한은 최악의 경우라서 실제 차이는 훨씬 작아요. 정밀 경로와의 차이를 여러 $d$, $\kappa$, 점의 종류(분포에서 뽑은 점, 100σ 밖, 1e-8σ 안, 좌표축 위)에서 재면 $5 \times 10^{-16}$ 아래예요(`bench/stats/opt/e/mv_sweep.py`).
+stats의 다른 빠른 경로는 예산이 16단위($1.8 \times 10^{-15}$)예요. 그런데 내적의 최악 상한은 $(m + 2)u\sum\lvert t_k\rvert$ 아래로 내려갈 수 없어요. 분포에서 뽑은 점에서 이것이 이미 14–22단위이고, 행렬 정규처럼 곱을 두 번 거치면 그 두 배예요. 그래서 이 세 밀도(다변량 정규·t, 행렬 정규)만 예산을 40단위($4.4 \times 10^{-15}$)로 둬요. 계약 $10^{-14}$의 절반 아래예요. 상한은 최악의 경우라서 실제 차이는 훨씬 작아요. 정밀 경로와의 차이를 여러 $d$, $\kappa$, 점의 종류(분포에서 뽑은 점, 100σ 밖, 1e-8σ 안, 좌표축 위)에서 재면 $5 \times 10^{-16}$ 아래예요.
 </Callout>
 
 정밀 경로로 가는 점은 대개 셋이에요. 조건이 나쁜 인수($W$의 원소가 커서 상쇄가 큰 경우), 상수 $c$와 $Q/2$가 서로 상쇄해 log 밀도가 0 근처인 점(혼합 단위가 1로 고정되어 예산이 좁아요), 그리고 $d$가 4096을 넘는 경우예요. 빠른 경로의 인수는 분포 하나에 $W$와 상수를 합쳐 $\mathrm{padded}(d)\cdot(d + 3)$개의 double이고, 배치가 아주 커서 이것이 $2^{23}$개(64 MB)를 넘으면 만들지 않고 모든 점을 정밀 경로로 보내요. 인수는 첫 `logpdf`나 `pdf` 호출에서 만들어요.
@@ -393,7 +392,7 @@ $$
 - $E[\log X!] = \sum_k P(X = k)\log k!$을 최빈값 $\lfloor(n + 1)p\rfloor$에서 시작해 양쪽으로 더해요.
 - 각 $P(X = k)$는 double-double log pmf(`log_gamma`로 $\log k!$, $\log(n-k)!$)에서 `exp_full`(약 $10^{-30}$)로 구해요. 이항 분포의 보통 log pmf는 앞 인자의 로그를 double로 반올림하므로 pmf마다 $10^{-16}$이 틀리고, 크기 $n\log n$의 기댓값이 그것을 키워 $n = 10^5$에서 $4 \times 10^{-11}$이 돼요.
 - 멈추는 규칙: 한 항 $t$와 그 앞 항의 비가 $r < 1$이면 나머지 꼬리는 약 $tr/(1 - r)$이에요. 이것이 합의 $2^{-110}$ 아래면 멈춰요.
-- 상한: 일은 범주별 표준편차 $\sqrt{np_i(1-p_i)}$의 합에 비례해요(범주마다 표준편차의 약 25배 항). 그 합이 $2^{17}$(약 $3 \times 10^6$항, 1초 정도)을 넘거나 $n > 2^{53}$이면(정수 $n - k$가 정확하지 않아요) NaN이에요. 한쪽 걸음은 $2^{23}$번까지예요. 확률이 1인 범주(점질량)는 엔트로피 0이고 $n$에 상관없이 계산해요. $n = 0$도 모든 개수가 0인 점질량이라 엔트로피가 0이에요.
+- 상한: 일은 범주별 표준편차 $\sqrt{np_i(1-p_i)}$의 합에 비례해요(범주마다 표준편차의 약 25배 항). 그 합이 $2^{17}$(약 $3 \times 10^6$항)을 넘거나 $n > 2^{53}$이면(정수 $n - k$가 정확하지 않아요) NaN이에요. 한쪽 걸음은 $2^{23}$번까지예요. 확률이 1인 범주(점질량)는 엔트로피 0이고 $n$에 상관없이 계산해요. $n = 0$도 모든 개수가 0인 점질량이라 엔트로피가 0이에요.
 
 ```python
 >>> sd.stats.Multinomial(n=100000.0, p=sd.asarray([0.2, 0.3, 0.5])).entropy()
@@ -499,34 +498,9 @@ scipy의 최대는 정규 logpdf가 $d = 20$, $\kappa = 10^9$인 점, t logpdf�
 
 ## 속도
 
-점(벡터) $10^5$개, Apple M4 Pro에서 scipy 1.18.1과 비교한 값이에요(`bench/stats/t9/speed.md`). 공분산은 $AA^\top + dI$, $\nu = 5$예요.
+`logpdf`에서 scipy 1.18.1은 모든 점을 행렬곱 하나로 계산하고 그 뒤의 일이 거의 없어요. stardust는 순서가 고정된 내적을 쓰고, 점마다 오차 상한을 세는 일을 더 해요. 그 대가로 $\kappa = 10^9$에서도 반올림 수준이고, 값이 위치와 스레드 수에 무관해요. 점 $10^5$개에서 scipy와 견주면 정규·t의 `logpdf`는 1스레드에서 $d = 3$ 0.71–0.78배, $d = 10$ 0.54–0.56배, $d = 50$ 0.40–0.42배로 느리고, 점끼리는 독립이라 10스레드에서는 2.8–4.3배 빨라요.
 
-<Bench
-  rows={[
-    { label: 'MultivariateNormal d=3 logpdf', times: [1.18e-3, 1.50e-3, 0.28e-3] },
-    { label: 'MultivariateNormal d=10 logpdf', times: [1.46e-3, 2.61e-3, 0.37e-3] },
-    { label: 'MultivariateNormal d=50 logpdf', times: [5.85e-3, 14.77e-3, 1.80e-3] },
-    { label: 'MultivariateT d=50 logpdf', times: [6.28e-3, 14.80e-3, 1.83e-3] },
-  ]}
-  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
-  caption="점 10⁵개의 logpdf. 배율은 scipy 대비예요."
-/>
-
-logpdf는 1스레드에서 scipy보다 느려요(0.40–0.78배). scipy는 모든 점을 행렬곱 하나로 계산하고 그 뒤의 일이 거의 없어요. stardust는 순서가 고정된 내적을 쓰고, 점마다 오차 상한을 세는 일을 더 해요. 그 대가로 $\kappa = 10^9$에서도 반올림 수준이고, 값이 위치와 스레드 수에 무관해요. 점끼리는 독립이라 10스레드에서는 scipy보다 2.8–4.3배 빨라요(측정 파일의 logpdf 여섯 줄, 정규·t의 $d = 3, 10, 50$. 그림에는 그중 넷만 그렸어요).
-
-<Bench
-  rows={[
-    { label: 'MultivariateNormal d=10 sample', times: [10.14e-3, 4.91e-3, 0.60e-3] },
-    { label: 'MultivariateNormal d=50 sample', times: [49.92e-3, 29.17e-3, 3.68e-3] },
-    { label: 'Multinomial K=4 n=20 logpmf', times: [8.17e-3, 2.50e-3, 0.30e-3] },
-    { label: 'Dirichlet K=4 logpdf', times: [2.71e-3, 1.78e-3, 0.22e-3] },
-    { label: 'Dirichlet K=4 sample', times: [7.93e-3, 5.62e-3, 0.62e-3] },
-  ]}
-  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
-  caption="같은 조건의 표본 10⁵개와 다항·디리클레의 밀도."
-/>
-
-표본은 1스레드에서 1.01–2.1배, 10스레드에서 8.2–17배예요. 다항 logpmf(3.3배)는 $\log k!$ 표 덕분이고, 디리클레 logpdf(1.5배)는 빠른 경로의 libm log 덕분이에요.
+표본은 1스레드에서 1.01–2.07배, 10스레드에서 8.2–16.8배예요. 다항 `logpmf`(1스레드 3.3배, 10스레드 27배)는 $\log k!$ 표 덕분이고, 디리클레 `logpdf`(1.5배, 12.6배)는 빠른 경로의 libm log 덕분이에요.
 
 ## 참고 문헌
 

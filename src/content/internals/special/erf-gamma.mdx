@@ -178,19 +178,11 @@ Cephes 문서는 `erfc`의 최대 상대오차를 $[0, 26.6417]$에서 $5.7 \tim
 
 `exp`·`log`를 원소마다 libm으로 부르는 대신 묶음 전체를 vForce(Accelerate의 벡터 수학 함수)에 한 번에 넘기면 호출 비용이 나뉘고 vForce 안의 SIMD 경로를 탈 수 있어요. vForce의 오차(libm 대비 6 ULP 이하)는 정확도 약속 안이에요. 스칼라 입력도, 띄엄띄엄한(strided) 배열도 같은 버퍼 경로를 거치므로 따로 맞출 스칼라 정의가 없어요.
 
-3단계를 분기 없이 짤 수도 있어요. 두 레인이 서로 다른 구간에 있을 수 있으니 세 유리식을 모두 NEON으로 계산하고 `vbslq`(비트 선택)로 고르는 방식이에요. 두 방식을 재면 이래요(`bench/special/s2/variants.md`, 원소 $10^6$개, 1스레드, 원소당 ns).
+3단계를 분기 없이 짤 수도 있어요. 두 레인이 서로 다른 구간에 있을 수 있으니 세 유리식을 모두 NEON으로 계산하고 `vbslq`(비트 선택)로 고르는 방식이에요. 두 방식을 1스레드로 견주면 원소마다 자기 구간만 계산하는 분기 쪽이 빠르거나 같아요. 예외는 구간이 무작위로 섞인 입력 하나이고, 그때도 원소당 4.7 대 4.2 ns로 차이가 작아요.
 
-| 입력 | 원소마다 분기(채택) | NEON, 세 구간 모두 + 선택 | NEON Estrin, 세 구간 모두 + 선택 |
-|---|:---:|:---:|:---:|
-| $\lvert x \rvert \lt 1$만 | 2.29 | 4.15 | 4.03 |
-| $1 \le x \lt 8$만 | 3.83 | 4.17 | 4.14 |
-| $x \ge 8$만 | 3.26 | 4.17 | 4.07 |
-| 섞임, 정렬됨 | 3.51 | 4.16 | 4.02 |
-| 섞임, 무작위 | 4.72 | 4.20 | 4.06 |
+차수 5–8의 유리식 셋을 모두 계산하는 비용이 레인 두 개로 얻는 이득보다 커요. M4의 분기 예측기와 넓은 비순차 실행 코어 덕에 분기가 싸요. 결과 비트는 두 방식이 같아요(같은 연산을 같은 순서로 하니까요). 그래서 3단계는 스칼라 분기예요.
 
-차수 5–8의 유리식 셋을 모두 계산하는 비용이 레인 두 개로 얻는 이득보다 커요. M4의 분기 예측기와 넓은 비순차 실행 코어 덕에 분기가 싸서, 구간이 무작위로 섞인 입력을 빼면 분기 쪽이 빠르거나 같아요. 결과 비트는 두 방식이 같아요(같은 연산을 같은 순서로 하니까요). 그래서 3단계는 스칼라 분기예요.
-
-다항식을 계산하는 순서에는 두 후보가 있어요. **Horner** 방식은 $c_0 x^n + \dots + c_n = (\dots((c_0 x + c_1)x + c_2)\dots)x + c_n$으로 곱셈-덧셈이 한 줄로 이어져서, 앞 단계가 끝나야 다음을 시작할 수 있어요. **Estrin** 방식은 $(c_{n-1}x + c_n) + x^2(c_{n-3}x + c_{n-2}) + \dots$처럼 짝을 먼저 만들고 $x^2, x^4$로 묶어 나가는 트리라서, 독립된 곱셈이 동시에 돌 수 있어요. 두 방식은 속도가 비슷하고(위 표의 셋째 열), 오차는 Estrin이 커요(`erfc`의 참값 파일에서 최대 9 대 6 ULP). 정확도를 먼저 보므로 Horner를 써요. Horner의 각 단계는 FMA 하나라 반올림이 한 번이에요. 컴파일러가 스스로 곱셈과 덧셈을 FMA로 합치지 않게(`-ffp-contract=off`) 빌드하고 FMA는 코드에 적은 곳에서만 생기므로, NEON 레인(`vfmaq_f64`)과 스칼라(`std::fma`)가 같은 반올림을 해서 비트가 같아요.
+다항식을 계산하는 순서에는 두 후보가 있어요. **Horner** 방식은 $c_0 x^n + \dots + c_n = (\dots((c_0 x + c_1)x + c_2)\dots)x + c_n$으로 곱셈-덧셈이 한 줄로 이어져서, 앞 단계가 끝나야 다음을 시작할 수 있어요. **Estrin** 방식은 $(c_{n-1}x + c_n) + x^2(c_{n-3}x + c_{n-2}) + \dots$처럼 짝을 먼저 만들고 $x^2, x^4$로 묶어 나가는 트리라서, 독립된 곱셈이 동시에 돌 수 있어요. 두 방식은 속도가 같고, 오차는 Estrin이 커요(`erfc`의 참값 파일에서 최대 9 대 6 ULP). 정확도를 먼저 보므로 Horner를 써요. Horner의 각 단계는 FMA 하나라 반올림이 한 번이에요. 컴파일러가 스스로 곱셈과 덧셈을 FMA로 합치지 않게(`-ffp-contract=off`) 빌드하고 FMA는 코드에 적은 곳에서만 생기므로, NEON 레인(`vfmaq_f64`)과 스칼라(`std::fma`)가 같은 반올림을 해서 비트가 같아요.
 
 ### erfcx: 같은 유리식, 그리고 발산하는 급수
 
@@ -332,23 +324,23 @@ $\operatorname{ndtri\_exp}(y) = \operatorname{ndtri}(e^y)$는 $y \le 0$인 로�
 2. $-700 \lt y \le \log\tfrac12$: $\operatorname{ndtri}(e^y)$. $e^y$가 보통 수이고, 이 꼬리에서 x는 p의 반올림에 둔감해요($\kappa = \lvert p/(x\,\phi(x)) \rvert$가 작아요).
 3. $y \le -700$: 꼬리의 점근식 $\log\operatorname{ndtr}(x) \approx -\tfrac{x^2}{2} - \log(-x) - \tfrac12\log 2\pi + \log(1 - x^{-2} + 3x^{-4})$를 $x^2$에 대한 고정점 반복으로 다섯 번 풀고, 그 값에서 `log_ndtr(x) = y`를 Newton으로 다듬어요. Newton의 기울기는 $\phi(x)/\operatorname{ndtr}(x) = \exp(-x^2/2 - \tfrac12\log 2\pi - \log\operatorname{ndtr}(x))$로, 이미 계산한 `log_ndtr`에서 나와요. $y \lt -10^8$이면 점근식의 다음 항($15/x^6$)이 마지막 비트보다 작아서 고정점이 곧 답이에요. 그 아래에서 Newton을 계속하면 기울기 계산이 크기 $x^2/2$인 두 수의 차가 되어 오히려 망가져요.
 
-`ndtri`을 원소마다 길이 1의 묶음로 부르므로, 1024원소를 vForce 한 번에 넘기는 청크 커널의 이점이 없어요. 원소당 비용은 ⟦COST ndtri_exp⟧ ns, scipy 대비 ⟦SPEED ndtri_exp ratio1⟧배예요.
+`ndtri`을 원소마다 길이 1의 묶음로 부르므로, 1024원소를 vForce 한 번에 넘기는 청크 커널의 이점이 없어요.
 
-### 오차함수 가족의 정확도와 속도
+### 오차함수 가족의 정확도
 
-정확도는 기준값 대비 ULP예요. 참값은 Arb(python-flint의 구간 산술)로 구해요. 참값을 품은 공의 반지름이 값의 $2^{-110}$배 아래가 될 때까지 정밀도를 올려서, 저장한 hi + lo가 참값을 반올림한 값이 돼요. 여덟 함수 모두 보장 영역이 정의역 전체(유한한 모든 x, 서브노멀 포함)이고, 결과가 서브노멀이면 절대오차로 봐요. 속도는 원소 $10^6$개 배열 한 번 호출의 시간(ms)과 스칼라 한 번 호출의 시간(µs)이에요.
+정확도는 기준값 대비 ULP예요. 참값은 Arb(python-flint의 구간 산술)로 구해요. 참값을 품은 공의 반지름이 값의 $2^{-110}$배 아래가 될 때까지 정밀도를 올려서, 저장한 hi + lo가 참값을 반올림한 값이 돼요. 여덟 함수 모두 보장 영역이 정의역 전체(유한한 모든 x, 서브노멀 포함)이고, 결과가 서브노멀이면 절대오차로 봐요.
 
-| 함수 | 최대 ULP | 99.9% | scipy 최대 | 1스레드 ms | 10스레드 ms | scipy 대비 (1스레드) | 스칼라 µs |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `erf` | 2 | 2 | 2 | ⟦SPEED erf t1⟧ | ⟦SPEED erf t10⟧ | ⟦SPEED erf ratio1⟧ | ⟦SPEED erf scalar⟧ |
-| `erfc` | 6 | 4 | 2.3e13 | ⟦SPEED erfc t1⟧ | ⟦SPEED erfc t10⟧ | ⟦SPEED erfc ratio1⟧ | ⟦SPEED erfc scalar⟧ |
-| `erfcx` | 9 | 3 | 500 | ⟦SPEED erfcx t1⟧ | ⟦SPEED erfcx t10⟧ | ⟦SPEED erfcx ratio1⟧ | ⟦SPEED erfcx scalar⟧ |
-| `ndtr` | 8 | 5 | 1.1e13 | ⟦SPEED ndtr t1⟧ | ⟦SPEED ndtr t10⟧ | ⟦SPEED ndtr ratio1⟧ | ⟦SPEED ndtr scalar⟧ |
-| `log_ndtr` | 5 | 4 | 1.1e13 | ⟦SPEED log_ndtr t1⟧ | ⟦SPEED log_ndtr t10⟧ | ⟦SPEED log_ndtr ratio1⟧ | ⟦SPEED log_ndtr scalar⟧ |
-| `ndtri` | 5 | 4 | 3 | ⟦SPEED ndtri t1⟧ | ⟦SPEED ndtri t10⟧ | ⟦SPEED ndtri ratio1⟧ | ⟦SPEED ndtri scalar⟧ |
-| `erfinv` | 4 | 3 | 2 | ⟦SPEED erfinv t1⟧ | ⟦SPEED erfinv t10⟧ | ⟦SPEED erfinv ratio1⟧ | ⟦SPEED erfinv scalar⟧ |
-| `erfcinv` | 4 | 3 | 1.5e12 (2) | ⟦SPEED erfcinv t1⟧ | ⟦SPEED erfcinv t10⟧ | ⟦SPEED erfcinv ratio1⟧ | ⟦SPEED erfcinv scalar⟧ |
-| `ndtri_exp` | 146 | 3.00 | 5.3e3 | ⟦SPEED ndtri_exp t1⟧ | ⟦SPEED ndtri_exp t10⟧ | ⟦SPEED ndtri_exp ratio1⟧ | ⟦SPEED ndtri_exp scalar⟧ |
+| 함수 | 최대 ULP | 99.9% | scipy 최대 |
+|---|:---:|:---:|:---:|
+| `erf` | 2 | 2 | 2 |
+| `erfc` | 6 | 4 | 2.3e13 |
+| `erfcx` | 9 | 3 | 500 |
+| `ndtr` | 8 | 5 | 1.1e13 |
+| `log_ndtr` | 5 | 4 | 1.1e13 |
+| `ndtri` | 5 | 4 | 3 |
+| `erfinv` | 4 | 3 | 2 |
+| `erfcinv` | 4 | 3 | 1.5e12 (2) |
+| `ndtri_exp` | 146 | 3.00 | 5.3e3 |
 
 (정확도는 정확도 측정 도구 `bench/accuracy/`가 지금 빌드로 잰 값이에요. 기준값은 `tests/special/ref`(Arb)이고, scipy 1.18.1의 같은 값을 함께 적었어요. scipy 최대는 참값이 유한한데 scipy가 NaN이나 inf를 낸 점을 빼고 잰 값이고, 괄호 안이 뺀 점의 수예요. `ndtri_exp`는 ULP를 조건수로 나눈 값이고, 146은 결과가 0을 지나는 $y = \log(1/2)$의 점 하나예요. 그 점은 조건수가 커서 계약 안이고, 빼면 최대는 4예요.)
 
@@ -437,7 +429,7 @@ $\Gamma(x)$는 171.62에서 넘치지만, 그것으로 만드는 많은 값은 �
 
 ### gamma: Boost.Math의 Lanczos 근사
 
-`gamma`는 정의역의 대부분($x \gt -170$, 극점 제외)에서 Boost.Math의 `tgamma`를 불러요. 구간마다 Boost와 stardust 자체 구현을 같은 기준값으로 재서, Boost가 모든 점에서 상대오차 $10^{-14}$를 지키고 1스레드에서 느리지 않으면(10% 안은 같은 속도로 봐요) Boost를 써요. `gamma`의 이 구간은 기준값의 97.4%를 덮고, 계약 위반이 0이고, 속도는 원소당 19.6 대 18.0 ns(stardust 자체 Cephes 경로 대비 1.09배)였어요(`bench/special/boost/routing.md`). 특수값(NaN, ±inf, ±0, 극점)은 Boost를 부르기 전에 stardust가 정하고, Boost의 결과가 정상 범위가 아니면(서브노멀, 0, inf, NaN) stardust 코드로 다시 계산해요. 쓰는 Boost는 `boostorg/math` 커밋 4682f44의 헤더로, 쓰는 것만 `third_party/boost_math/`에 두었어요(Boost Software License 1.0). 아래 설명은 이 판의 소스(`special_functions/gamma.hpp`, `lanczos.hpp`, `tools/rational.hpp`)와 Boost.Math 문서 [6, 7]를 따라 적었어요.
+`gamma`는 정의역의 대부분($x \gt -170$, 극점 제외)에서 Boost.Math의 `tgamma`를 불러요. 구간마다 Boost와 stardust 자체 구현을 같은 기준값으로 재서, Boost가 모든 점에서 상대오차 $10^{-14}$를 지키고 1스레드에서 느리지 않으면(10% 안은 같은 속도로 봐요) Boost를 써요. `gamma`의 이 구간에서 Boost는 계약을 어기는 점이 없고, 속도도 stardust 자체 Cephes 경로와 10% 안이에요. 특수값(NaN, ±inf, ±0, 극점)은 Boost를 부르기 전에 stardust가 정하고, Boost의 결과가 정상 범위가 아니면(서브노멀, 0, inf, NaN) stardust 코드로 다시 계산해요. 쓰는 Boost는 `boostorg/math` 커밋 4682f44의 헤더로, 쓰는 것만 `third_party/boost_math/`에 두었어요(Boost Software License 1.0). 아래 설명은 이 판의 소스(`special_functions/gamma.hpp`, `lanczos.hpp`, `tools/rational.hpp`)와 Boost.Math 문서 [6, 7]를 따라 적었어요.
 
 <Fig column caption="Gamma::f의 갈래(ops/gamma.hpp). 위에서부터 차례로 검사해요.">
   <Steps
@@ -583,7 +575,7 @@ Cephes `lgam`은 $x \lt 13$을 $[2, 3]$으로 옮긴 뒤 $(x - 2)P/Q$의 유리�
 | 1.00000001 | −5.772156531688512e-9 | 0 ULP | 1.3e7 ULP |
 | 2.0000001 | 4.227843666532498e-8 | 0 ULP | 1 ULP |
 
-(2 근처는 Cephes도 $(x - 2)$를 인수로 빼서 정확해요.) Boost.Math의 `lgamma`는 stardust보다 조금 더 정확하지만(같은 기준값에서 최대 2 대 6 ULP) 같은 기준값 입력에서 1스레드로 1.28배 느려서 쓰지 않아요.
+(2 근처는 Cephes도 $(x - 2)$를 인수로 빼서 정확해요.) Boost.Math의 `lgamma`는 stardust보다 조금 더 정확하지만(같은 기준값에서 최대 2 대 6 ULP) 같은 기준값 입력에서 1스레드로 더 느려서 쓰지 않아요.
 
 ### digamma: 근을 인수로 뺀 유리식
 
@@ -634,7 +626,7 @@ $$
 
 음의 비정수 $x$에서 큰 $n$은 가장 가까운 극점의 항 $d^{-(n+1)}$ 또는 $(1-d)^{-(n+1)}$($d$는 $x$의 소수 부분) 하나가 지배해서 $n!$과 곱하면 언제나 범위 밖, 곧 부호 있는 inf예요. $d = \tfrac12$이고 $n + 1$이 홀수일 때만 두 항이 정확히 지워져서 $\zeta(n+1, 1 - x)$가 남아요.
 
-Boost.Math의 `polygamma`는 같은 기준값에서 넘칠 때 부호가 반대인 inf를 내고 유한한 값도 556 ULP까지 틀렸고, 4.9배 느려서 쓰지 않아요.
+Boost.Math의 `polygamma`는 같은 기준값에서 넘칠 때 부호가 반대인 inf를 내고 유한한 값도 556 ULP까지 틀려서 쓰지 않아요.
 
 ### beta와 betaln
 
@@ -660,7 +652,7 @@ $$
 
 예요(`beta_imp`). $S(x) = L(x)/e^g$는 Boost의 `lanczos_sum_expG_scaled`이고, $a \ge b$가 되게 바꾼 뒤 계산해요. 거듭제곱의 밑이 모두 1 근처의 비라서 넘치지 않고, 큰 거듭제곱 $\text{agh}^{a - 1/2}$ 같은 것이 만들어지지 않아요. 큰 $a$($a \gt 100$이고 $\lvert b(a - \tfrac12 - b) \rvert \lt 100\,\text{cgh}$)에서는 첫 거듭제곱을 $\exp\bigl((a - \tfrac12 - b)\operatorname{log1p}(-b/\text{cgh})\bigr)$로 바꾸지만, $a + b \lt 40$ 구간에서는 이 갈래를 타지 않아요. 특수한 경우로 $b = 1$이면 $1/a$, 한쪽이 $\varepsilon$보다 작으면 $1/b$ 같은 극한을 바로 내요. (Boost 문서는 1보다 작은 인자를 점화식으로 1 위로 옮긴다고 적지만, 이 판의 소스에서는 그 부분이 "더는 필요 없다"는 주석과 함께 꺼져 있어요.)
 
-이 식의 오차는 주로 거듭제곱에서 와요. 밑 $\text{agh}/\text{cgh}$의 반올림 $2^{-53}$이 지수 $a - \tfrac12 - b$배로 커지므로, $a + b \lt 40$에서 수십 ULP까지 날 수 있어요. 잰 최대 오차 53 ULP가 이것이에요. 그래도 상대오차는 $10^{-14}$ 안이고(가수가 2에 가까운 값에서는 한 ULP가 상대 $1.1 \times 10^{-16}$이에요), 속도가 같아서(27.6 대 28.3 ns) 이 구간은 Boost예요.
+이 식의 오차는 주로 거듭제곱에서 와요. 밑 $\text{agh}/\text{cgh}$의 반올림 $2^{-53}$이 지수 $a - \tfrac12 - b$배로 커지므로, $a + b \lt 40$에서 수십 ULP까지 날 수 있어요. 잰 최대 오차 53 ULP가 이것이에요. 그래도 상대오차는 $10^{-14}$ 안이고(가수가 2에 가까운 값에서는 한 ULP가 상대 $1.1 \times 10^{-16}$이에요), 속도가 같아서 이 구간은 Boost예요.
 
 **Cephes 감마 셋.** $40 \le a + b \le 170$에서는 어느 감마도 넘치지 않으므로 Cephes 감마를 세 번 불러요. $\Gamma(a)/\Gamma(c)$를 먼저 나누는 이유는 $c \gt a$면 이 비가 1 이하라 곱하는 순서에서 넘침이 없기 때문이에요. $c$는 `two_sum`으로 hi + lo를 만들고 $1/\Gamma(c)$에 $(1 - \psi(\text{hi})\,\text{lo})$를 곱해요.
 
@@ -706,24 +698,24 @@ $B(x, y)$는 두 인자 중 작은 쪽이 1100을 넘으면 $B(y, y) \approx 4^{
 
 **n < 0이고 인자가 7000을 넘을 때**(혼합 오차 영역): n이 보통이고 k가 거대하면 반사식과 Γ 비율 $\Gamma(k - n)/\Gamma(k + 1)$로 계산하고(사인의 인자와 $n + 1$의 lo는 위와 같이 다뤄요), 그 밖은 $\log\lvert\Gamma\rvert$ 셋의 합과 감마 셋의 부호예요. 이 영역의 약속은 상대오차가 아니라 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\text{값}\rvert)$예요(잰 최대는 아래 표의 혼합 줄).
 
-### 감마 가족의 정확도와 속도
+### 감마 가족의 정확도
 
-| 함수 | 영역 | 최대 | 99.9% | scipy 최대 | 1스레드 ms | 10스레드 ms | scipy 대비 (1스레드) | 스칼라 µs |
-|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `gamma` | 보장 | 10 | 7 | 1.5e17 | ⟦SPEED gamma t1⟧ | ⟦SPEED gamma t10⟧ | ⟦SPEED gamma ratio1⟧ | ⟦SPEED gamma scalar⟧ |
-| `rgamma` | 보장 | 5 | 4 | 1.1e15 (21) | ⟦SPEED rgamma t1⟧ | ⟦SPEED rgamma t10⟧ | ⟦SPEED rgamma ratio1⟧ | ⟦SPEED rgamma scalar⟧ |
-| `gammaln` | 보장 / 혼합 | 6 / 2.09 | 3 / 1.89 | 4.4e18 (68) / 1.34 | ⟦SPEED gammaln t1⟧ | ⟦SPEED gammaln t10⟧ | ⟦SPEED gammaln ratio1⟧ | ⟦SPEED gammaln scalar⟧ |
-| `digamma` | 보장 / 혼합 | 2 / 14.9 | 2 / 9.24 | 2 / 2.5e13 | ⟦SPEED digamma t1⟧ | ⟦SPEED digamma t10⟧ | ⟦SPEED digamma ratio1⟧ | ⟦SPEED digamma scalar⟧ |
-| `polygamma` | 보장 / 혼합 | 17 / 3.13 | 8 / 3.13 | 4.3e18 / 3.13 | ⟦SPEED polygamma t1⟧ | ⟦SPEED polygamma t10⟧ | ⟦SPEED polygamma ratio1⟧ | ⟦SPEED polygamma scalar⟧ |
-| `beta` | 보장 / 혼합 | 53 / 6.78 | 35 / 6.78 | 3.1e8 / 839 | ⟦SPEED beta t1⟧ | ⟦SPEED beta t10⟧ | ⟦SPEED beta ratio1⟧ | ⟦SPEED beta scalar⟧ |
-| `betaln` | 혼합 | 27.3 | 12.9 | 9.8e5 (184) | ⟦SPEED betaln t1⟧ | ⟦SPEED betaln t10⟧ | ⟦SPEED betaln ratio1⟧ | ⟦SPEED betaln scalar⟧ |
-| `binom` | 보장 / 혼합 | 9 / 7.98 | 8 / 6.99 | 2.8e4 / 6844 (320) | ⟦SPEED binom t1⟧ | ⟦SPEED binom t10⟧ | ⟦SPEED binom ratio1⟧ | ⟦SPEED binom scalar⟧ |
+| 함수 | 영역 | 최대 | 99.9% | scipy 최대 |
+|---|---|:---:|:---:|:---:|
+| `gamma` | 보장 | 10 | 7 | 1.5e17 |
+| `rgamma` | 보장 | 5 | 4 | 1.1e15 (21) |
+| `gammaln` | 보장 / 혼합 | 6 / 2.09 | 3 / 1.89 | 4.4e18 (68) / 1.34 |
+| `digamma` | 보장 / 혼합 | 2 / 14.9 | 2 / 9.24 | 2 / 2.5e13 |
+| `polygamma` | 보장 / 혼합 | 17 / 3.13 | 8 / 3.13 | 4.3e18 / 3.13 |
+| `beta` | 보장 / 혼합 | 53 / 6.78 | 35 / 6.78 | 3.1e8 / 839 |
+| `betaln` | 혼합 | 27.3 | 12.9 | 9.8e5 (184) |
+| `binom` | 보장 / 혼합 | 9 / 7.98 | 8 / 6.99 | 2.8e4 / 6844 (320) |
 
 ("보장"은 ULP로, "혼합"은 음수 쪽과 `betaln`처럼 0을 지나는 곳에서 $\lvert\text{오차}\rvert/\max(1, \lvert\text{값}\rvert)$를 $2^{-52}$ 단위로 잰 값이에요. 괄호 안은 scipy를 잴 때 뺀 점(참값은 유한한데 scipy가 NaN이나 inf를 낸 점)의 수예요. 조건은 오차함수 표와 같아요.)
 
 - scipy의 최대 오차가 $10^{15}$을 넘는 줄은 서브노멀 꼬리(`gamma`의 −184…−171, `rgamma`의 171.6…177.8)를 0으로 내거나 1 근처의 `gammaln`(위의 상쇄)에서 틀리는 점이고, 뺀 점은 `gammaln(±5e-324)`나 음의 정수 근처의 `rgamma`에서 inf를 낸 점이에요. `beta`의 $3 \times 10^8$은 큰 인자에서 $\exp(\log B)$류의 계산이 상대오차를 잃는 점이에요. `beta(300, 2.5)`에서 stardust는 1 ULP, scipy는 2.4e3 ULP예요.
-- 원소 하나의 계산량으로 보면, `gamma`의 Boost Lanczos는 차수 12 유리식 둘과 `pow`, `exp`를 써서 scipy(Cephes)의 차수 6/7 유리식 하나보다 무거워요. `beta`와 `binom`은 정수가 아닌 인자에서 지수를 따로 둔 계산(`frexp`, `pow_scaled`, Γ 셋)을 해요. scipy.special의 원소별 함수는 1스레드예요.
-- scipy 1.18.1의 `polygamma`는 Python 함수로, `gamma`, `zeta`, `psi`를 따로 부르고 numpy 연산으로 합쳐요. stardust는 한 번의 C++ 호출이에요(스칼라 한 번 ⟦SPEED polygamma scalar⟧ µs).
+- 원소 하나의 계산량으로 보면, `gamma`의 Boost Lanczos는 차수 12 유리식 둘과 `pow`, `exp`를 써서 scipy(Cephes)의 차수 6/7 유리식 하나보다 무거워요. `beta`와 `binom`은 정수가 아닌 인자에서 지수를 따로 둔 계산(`frexp`, `pow_scaled`, Γ 셋)을 해요.
+- scipy 1.18.1의 `polygamma`는 Python 함수로, `gamma`, `zeta`, `psi`를 따로 부르고 numpy 연산으로 합쳐요. stardust는 한 번의 C++ 호출이에요.
 
 ## 복소수 loggamma
 
@@ -771,7 +763,7 @@ $\log\sin(\pi z)$에는 두 가지를 더 챙겨요(`log_sinpi`). 첫째, $z$가
 
 **무한대와 극점.** 방향이 극한을 정하는 곳은 그 극한을 내요. $\operatorname{loggamma}(\infty \pm 0i) = \infty \pm 0i$, $\operatorname{loggamma}(x \pm \infty i) = -\infty \pm \infty i$ 같은 것이에요. 극점 $-n \pm 0i$는 $\infty + \text{NaN}\,i$예요(실수부는 무한대, 허수부는 다가가는 방향마다 달라요). scipy는 이 경우들을 모두 NaN으로 내요.
 
-**정확도와 속도.** 보장은 $\operatorname{Re} z \gt 0$에서 상대 $10^{-14}$, $\operatorname{Re} z \le 0$에서 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\operatorname{loggamma}(z)\rvert)$예요. 잰 최대 오차는 상대 $1.0 \times 10^{-15}$(계약의 0.1배)이고, scipy 1.18.1은 상대 $2.5 \times 10^{-14}$로 계약의 2.5배예요. 원소 $10^6$개에 1스레드 ⟦SPEED loggamma_complex t1⟧ ms, 10스레드 ⟦SPEED loggamma_complex t10⟧ ms, scipy 대비 ⟦SPEED loggamma_complex ratio1⟧배예요. 1–2 둘레의 영역에서 복소 로그 여섯 번($\mu$)과 49항 복소 다항식을 계산하므로 Stirling 경로보다 무거워요.
+**정확도와 비용.** 보장은 $\operatorname{Re} z \gt 0$에서 상대 $10^{-14}$, $\operatorname{Re} z \le 0$에서 $\lvert\text{오차}\rvert \le 10^{-14}\max(1, \lvert\operatorname{loggamma}(z)\rvert)$예요. 잰 최대 오차는 상대 $1.0 \times 10^{-15}$(계약의 0.1배)이고, scipy 1.18.1은 상대 $2.5 \times 10^{-14}$로 계약의 2.5배예요. 1–2 둘레의 영역에서 복소 로그 여섯 번($\mu$)과 49항 복소 다항식을 계산하므로 Stirling 경로보다 무거워요.
 
 복소수 `erf`, `erfc`, `erfcx`는 Faddeeva 함수 $w(z)$로 계산해요. [제타, 지수적분, 타원적분, 초기하, Lambert W, Faddeeva](/internals/special/more-functions/)에서 다뤄요.
 

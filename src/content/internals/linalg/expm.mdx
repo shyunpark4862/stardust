@@ -3,7 +3,7 @@ title: 행렬 지수
 group: 특수 구조와 행렬 함수
 order: 2
 summary: LAPACK에 없어서 직접 짠 행렬 지수 `expm`을 설명해요. 행렬을 2의 거듭제곱으로 나눠 Padé 근사로 지수를 구한 뒤 다시 제곱하는데, 오차가 단위 반올림 아래에 머무는 가장 싼 차수와 제곱 횟수를 행렬마다 골라요.
-seeAlso: [lu, batch, packing, special, performance]
+seeAlso: [lu, batch, packing, special]
 ---
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
@@ -473,20 +473,7 @@ $\lVert A\rVert_1 \lt 2^{-1022}$(예: 모든 원소가 $10^{-310}$)이면 $\ell$
 
 ## 성능
 
-기준은 scipy 1.18.1이에요(numpy에는 `expm`이 없어요). 표는 scipy 시간을 stardust 시간으로 나눈 값이에요(1보다 크면 stardust가 빨라요).
-
-| 모양 | 10스레드 | 1스레드 |
-|---|:---:|:---:|
-| (3, 3) | ⟦BENCH expm (3,3) t10⟧ | ⟦BENCH expm (3,3) t1⟧ |
-| (32, 32) | ⟦BENCH expm (32,32) t10⟧ | ⟦BENCH expm (32,32) t1⟧ |
-| (300, 300) | ⟦BENCH expm (300,300) t10⟧ | ⟦BENCH expm (300,300) t1⟧ |
-| (1000, 1000) | ⟦BENCH expm (1000,1000) t10⟧ | ⟦BENCH expm (1000,1000) t1⟧ |
-| (1000, 3, 3) | ⟦BENCH expm (1000,3,3) t10⟧ | ⟦BENCH expm (1000,3,3) t1⟧ |
-| (100, 32, 32) | ⟦BENCH expm (100,32,32) t10⟧ | ⟦BENCH expm (100,32,32) t1⟧ |
-
-{/* BENCH-FIG: expm (3,3) t10, expm (32,32) t10, expm (300,300) t10, expm (1000,1000) t10, expm (1000,3,3) t10, expm (100,32,32) t10 (계열: scipy, stardust 1스레드, stardust 10스레드) | 캡션: Apple M4 Pro, scipy 1.18.1. 같은 알고리즘이고 큰 행렬에서는 둘 다 Accelerate의 gemm이 시간의 대부분이라 비슷해요. 배치는 scipy가 차례로 돌고 stardust는 스레드풀에 나눠요. */}
-
-큰 행렬 하나에서는 시간 대부분이 `gemm`이고 양쪽이 같은 Accelerate를 쓰므로 차이가 작아요. 작은 행렬에서는 노름 계산과 호출 경로의 고정비가, 배치에서는 스레드풀이 차이를 만들어요.
+비교 대상은 scipy 1.18.1이에요(numpy에는 `expm`이 없어요). 큰 행렬 하나에서는 시간 대부분이 `gemm`이고 양쪽이 같은 Accelerate를 쓰므로 차이가 작아요. 작은 행렬에서는 노름 계산과 호출 경로의 고정비가, 배치에서는 스레드풀이 차이를 만들어요.
 
 비용은 차수와 제곱 횟수로 정해져요($n\times n$ 실수, 행렬곱 $2n^3$, LU 풀기 $\tfrac{8}{3}n^3$ flop).
 

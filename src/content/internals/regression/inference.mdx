@@ -8,7 +8,6 @@ seeAlso: [least-squares, overview, glm, accuracy-performance]
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
-import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
@@ -455,7 +454,7 @@ $$
 0.01716463306656841
 ```
 
-statsmodels의 `resid_studentized_external`은 행을 하나씩 뺀 적합을 $n$번 해요. (10⁵, 10)에서 sd의 외적 스튜던트화 잔차는 적합을 포함해 14.5 ms(1스레드)예요.
+statsmodels의 `resid_studentized_external`은 행을 하나씩 뺀 적합을 $n$번 해요. sd는 위 항등식으로 내적 잔차에서 바로 구하므로 적합을 다시 하지 않아요.
 
 완전 적합(SSR이 판정으로 0)에서는 백색화 잔차 $\tilde e_t$를 0으로 보고(`_wresid`), $s = 0$이고 $h_t < 1$이라 스튜던트화 잔차와 Cook 거리가 $0/0$ = NaN이에요. 잔차 필드에 남은 반올림 크기의 값으로 나누면 그 반올림이 정한 유한한 값이 나오므로, 판정과 같은 기준으로 0으로 둬요. DW, JB, BP도 같은 이유로 NaN이에요.
 
@@ -490,7 +489,7 @@ Durbin–Watson $d$는 이웃한 잔차의 차이로 1차 자기상관을 봐요
 
 덩어리는 n만으로 정한 4,096행이고 순서대로 더하므로, 비트가 스레드 수와 상관없어요. 덩어리 경계의 차 $\tilde e_{t_0} - \tilde e_{t_0-1}$도 그 덩어리가 맡아요(`t > 0`이면 앞 덩어리의 마지막 행을 읽어요). Durbin–Watson의 분모는 적합의 SSR이에요. 진단은 모두 적합의 단위(척도를 바꿔 적합했으면 바꾼 $y$의 잔차)에서 만들어요. 잔차끼리의 비라서 단위가 약분되고, 제곱이 double을 벗어나지 않아요.
 
-이 합들은 적합 안에서 구하지 않고 처음 읽을 때 따로 구해요. (10⁵, 10)·1스레드에서 적합 안에서 더하면 적합이 9.0 ms에서 10.3 ms로 느려지기 때문이에요(`bench/regression/g1b/speed.md`).
+이 합들은 적합 안에서 구하지 않고 처음 읽을 때 따로 구해요. 적합 안에서 더하면 진단을 읽지 않는 적합까지 행을 한 번 더 훑는 만큼 느려지기 때문이에요.
 
 ## Breusch–Pagan
 
@@ -604,23 +603,7 @@ Arb(구간 산술)로 만든 참값과 같은 double 입력에서 비교한 값�
 
 ## 속도
 
-`bench/regression/g1b/speed.md`(커널 최적화 전에 잰 값; Apple M4 Pro, statsmodels 0.15.0, numpy 2.5.4)의 값이에요. 오차는 AR(1)(계수 0.5)이고, 시간은 여러 번 가운데 가장 빠른 값이에요. 두 라이브러리 모두 `bse`·`pvalues`를 읽고, statsmodels는 `use_t=True`예요. 진단은 지렛대, 내적 스튜던트화 잔차, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan이에요. statsmodels의 시간은 BLAS 1스레드 값이에요(10스레드에서도 거의 같아요).
+오차가 AR(1)인 자료에서 statsmodels 0.15.0(`use_t=True`)과 견주면(Apple M4 Pro, '배'는 statsmodels 시간 / sd 시간), (10⁵, 10)에서 HAC 1.2배(1스레드)·2.3배(10스레드), 군집(1,000개) 1.1배·2.0배, 적합과 진단 1.2배·2.3배, (10⁶, 50)에서 HAC 1.7배·3.1배, 군집 1.8배·2.9배, 적합과 진단 1.5배·2.4배 빨라요. 진단은 지렛대, 내적 스튜던트화 잔차, Cook 거리, Durbin–Watson, Jarque–Bera, Breusch–Pagan이에요.
 
-<Bench
-  series={['statsmodels 0.15.0', 'stardust 1스레드', 'stardust 10스레드']}
-  rows={[
-    { label: '(10⁵, 10) HAC, 지연 18', times: [17.6e-3, 14.8e-3, 7.77e-3] },
-    { label: '(10⁵, 10) 군집 1,000개', times: [13.5e-3, 12.3e-3, 6.90e-3] },
-    { label: '(10⁵, 10) 적합 + 진단', times: [30.2e-3, 25.5e-3, 13.1e-3] },
-    { label: '(10⁵, 10) 적합 + summary()', times: [17.9e-3, 11.0e-3, 4.39e-3] },
-    { label: '(10⁶, 50) HAC, 지연 30', times: [1500e-3, 871e-3, 489e-3] },
-    { label: '(10⁶, 50) 군집 1,000개', times: [1200e-3, 659e-3, 420e-3] },
-    { label: '(10⁶, 50) 적합 + 진단', times: [2040e-3, 1370e-3, 860e-3] },
-    { label: '(10⁶, 50) 적합 + summary()', times: [1040e-3, 486e-3, 242e-3] },
-  ]}
-  caption="배수는 statsmodels 대비예요."
-/>
-
-- 모든 경우에 statsmodels보다 빨라요(1스레드 1.1–2.1배, 10스레드 2.0–4.3배).
-- HAC와 군집이 고전형 적합에 더하는 시간의 대부분은 얇은 Q(`orgqr`, QR 한 번 꼴)예요. (10⁶, 50)에서 HAC(지연 30)는 군집보다 1스레드 212 ms, 10스레드 69 ms 더 걸리는데, 이것이 Bartlett 필터와 $U^{\mathsf T}V$예요.
+- HAC와 군집이 고전형 적합에 더하는 계산은 얇은 Q(`orgqr`, QR 한 번 꼴)와, HAC의 Bartlett 필터와 $U^{\mathsf T}V$예요.
 - 진단의 시간은 적합, 지렛대를 위한 QR과 `orgqr`, Breusch–Pagan의 보조 회귀(같은 크기의 적합 한 번)예요. 고전형 적합의 시간은 진단을 읽지 않으면 그대로예요.

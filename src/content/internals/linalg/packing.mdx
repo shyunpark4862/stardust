@@ -3,7 +3,7 @@ title: 패킹과 결과 레이아웃
 group: 구조
 order: 2
 summary: 어떤 메모리 배치의 입력이든 LAPACK이 읽는 열 우선 작업 버퍼로 옮기는 패킹을 설명해요. 모든 배치가 같은 버퍼로 바뀌니 결과가 입력 배치와 무관하게 같은 비트이고, 결과는 C 순서로 되돌리지 않고 열 우선 그대로 돌려줘요.
-seeAlso: [overview, batch, lu, symmetric, performance]
+seeAlso: [overview, batch, lu, symmetric]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -443,7 +443,7 @@ C 순서 행렬은 "전치된 F 순서"예요. 그래서 위 삼각 C 순서 행
 
 stardust는 이 방법을 쓰지 않아요. `trans='N'`과 `trans='T'`는 수학적으로 같은 해를 내지만 안에서 원소를 더하는 순서가 달라서, 결과의 마지막 비트가 달라져요. 같은 행렬을 C 순서로 넘겼는지 F 순서로 넘겼는지에 따라 답이 달라지니, "결과는 입력 배치와 무관하다"는 보장이 깨져요. 그래서 C 순서 삼각 행렬은 언제나 전치하며 복사해요.
 
-대가는 큰 C 순서 삼각 풀기의 속도예요. 계산이 $O(n^2)$이라 $O(n^2)$ 전치가 그대로 보이고, 전치하지 않는 scipy보다 느려요. C 순서 1000×1000 `solve_triangular`의 scipy 대비 배율은 ⟦BENCH solve_triangular (1000,1000) t10⟧, 300×300은 ⟦BENCH solve_triangular (300,300) t10⟧예요. 다음 절의 병렬 전치가 이 차이를 줄여요.
+대가는 큰 C 순서 삼각 풀기의 속도예요. 계산이 $O(n^2)$이라 $O(n^2)$ 전치가 그대로 보이고, 전치하지 않는 scipy보다 느려요. 다음 절의 병렬 전치가 이 차이를 줄여요.
 
 ## 큰 C 순서 행렬은 풀에서 전치
 
@@ -603,18 +603,7 @@ True
 | 작은 행렬의 배치 | 원소마다 몇 ns. 호출 경로의 고정비와 같은 규모예요 |
 | 큰 삼각 풀기 ($O(n^2)$) | 계산과 같은 규모예요. F 순서면 그 자리에서 읽어 없애고, C 순서면 타일 전치(큰 행렬은 풀에서)로 줄여요 |
 
-큰 삼각 풀기의 scipy 대비 배율이에요. 우변은 한 열이에요.
-
-| 호출 | scipy 대비 (10스레드) | scipy 대비 (1스레드) |
-|---|:---:|:---:|
-| `solve_triangular` (300, 300) | ⟦BENCH solve_triangular (300,300) t10⟧ | ⟦BENCH solve_triangular (300,300) t1⟧ |
-| `solve_triangular` (1000, 1000) | ⟦BENCH solve_triangular (1000,1000) t10⟧ | ⟦BENCH solve_triangular (1000,1000) t1⟧ |
-| `cholesky_solve` (1000, 1000) | ⟦BENCH cholesky_solve (1000,1000) t10⟧ | ⟦BENCH cholesky_solve (1000,1000) t1⟧ |
-| `lu_solve` (1000, 1000) | ⟦BENCH lu_solve (1000,1000) t10⟧ | ⟦BENCH lu_solve (1000,1000) t1⟧ |
-
-{/* BENCH-FIG: solve_triangular (300,300) t10, solve_triangular (1000,1000) t10, cholesky_solve (1000,1000) t10, lu_solve (1000,1000) t10 (계열: scipy, stardust 1스레드, stardust 10스레드) | 캡션: Apple M4 Pro, scipy 1.18.1. solve_triangular와 cholesky_solve의 삼각 인수는 C 순서라 전치 패킹이 계산과 같은 규모로 보여요. lu_solve의 인수는 lu의 결과(F 순서)라 그 자리에서 읽혀요. */}
-
-이 표의 `solve_triangular`와 `cholesky_solve`는 삼각 인수가 C 순서(numpy로 만든 배열)라서 전치하며 패킹해요. `lu_solve`는 인수가 `sd.linalg.lu`의 결과(F 순서)라서 그 자리에서 읽혀요. 그래서 `lu_solve`의 줄에서 scipy와 차이가 남는다면 그 원인은 패킹 밖에 있어요. 함수와 모양 전체의 수치는 [성능과 정확도](/internals/linalg/performance/)에 있어요.
+큰 삼각 풀기에서 `solve_triangular`와 `cholesky_solve`의 삼각 인수가 C 순서(numpy로 만든 배열)면 전치하며 패킹해요. `lu_solve`의 인수가 `sd.linalg.lu`의 결과(F 순서)면 그 자리에서 읽혀요. 그래서 큰 `lu_solve`가 scipy보다 느린 원인은 패킹 밖에 있어요([LU 분해와 선형 시스템](/internals/linalg/lu/)).
 
 ## 정확도
 

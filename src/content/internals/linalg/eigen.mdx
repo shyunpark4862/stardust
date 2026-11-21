@@ -3,7 +3,7 @@ title: 고유값 분해
 group: 고유값과 특이값
 order: 1
 summary: 고유값에는 유한한 공식이 없어서 모든 알고리즘이 반복법이에요. 반복 전에 행렬을 삼중대각이나 Hessenberg 꼴로 줄여 한 번의 비용을 낮추는 생각을 따라, 대칭 행렬과 일반 행렬이 서로 다른 길로 고유값을 구하는 과정을 설명해요.
-seeAlso: [qr, symmetric, svd, special, batch, performance]
+seeAlso: [qr, symmetric, svd, special, batch]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -762,60 +762,11 @@ array([[                                   (1+0j),
 
 ## 성능
 
-numpy 2.5.4와 scipy 1.18.1도 같은 Accelerate의 같은 루틴을 불러요(`eigh`, `eigvalsh`, `eig`, `eigvals`는 numpy, `eigh(a, b)`, `schur`, `hessenberg`는 scipy와 비교해요). 그래서 차이는 LAPACK 바깥에서 나와요.
+numpy 2.5.4와 scipy 1.18.1도 같은 Accelerate의 같은 루틴을 불러요(`eigh`, `eigvalsh`, `eig`, `eigvals`는 numpy에, `eigh(a, b)`, `schur`, `hessenberg`는 scipy에 같은 함수가 있어요). 그래서 둘과의 시간 차이는 LAPACK 바깥에서 나와요.
 
 - **작은 행렬 하나**: 3×3의 LAPACK 계산은 마이크로초 아래라, 호출 경로의 고정비가 시간을 정해요. stardust는 Python 래퍼 없이 C++로 바로 들어가고, 작업 메모리 크기를 행렬마다 묻지 않아요. `eig`는 정렬과 복소 조립이 더해지지만 $O(n^2)$이라 작아요.
 - **배치**: numpy와 scipy는 배치를 코어 하나로 차례로 돌고, scipy의 `schur`, `hessenberg`, `eigh(a, b)`는 배치를 Python 수준에서 행렬 하나씩 돌아요. stardust는 배치를 스레드풀에 나눠요. 1스레드에서도 원소마다의 호출 비용이 작은 만큼 빨라요.
 - **큰 행렬 하나**: 시간이 거의 다 LAPACK 안이고 그 LAPACK이 같아서 비슷해요. 패킹($O(n^2)$)과 `eig`의 정렬·복사($O(n^2)$)는 $O(n^3)$ 옆에서 작아요.
-
-| 호출 | 기준 | 10스레드 | 1스레드 |
-|---|:---:|:---:|:---:|
-| `eigh` (3, 3) | numpy | ⟦BENCH eigh (3,3) t10⟧ | ⟦BENCH eigh (3,3) t1⟧ |
-| `eigh` (32, 32) | numpy | ⟦BENCH eigh (32,32) t10⟧ | ⟦BENCH eigh (32,32) t1⟧ |
-| `eigh` (300, 300) | numpy | ⟦BENCH eigh (300,300) t10⟧ | ⟦BENCH eigh (300,300) t1⟧ |
-| `eigh` (1000, 1000) | numpy | ⟦BENCH eigh (1000,1000) t10⟧ | ⟦BENCH eigh (1000,1000) t1⟧ |
-| `eigh` (1000, 3, 3) | numpy | ⟦BENCH eigh (1000,3,3) t10⟧ | ⟦BENCH eigh (1000,3,3) t1⟧ |
-| `eigh` (100, 32, 32) | numpy | ⟦BENCH eigh (100,32,32) t10⟧ | ⟦BENCH eigh (100,32,32) t1⟧ |
-| `eigvalsh` (3, 3) | numpy | ⟦BENCH eigvalsh (3,3) t10⟧ | ⟦BENCH eigvalsh (3,3) t1⟧ |
-| `eigvalsh` (32, 32) | numpy | ⟦BENCH eigvalsh (32,32) t10⟧ | ⟦BENCH eigvalsh (32,32) t1⟧ |
-| `eigvalsh` (300, 300) | numpy | ⟦BENCH eigvalsh (300,300) t10⟧ | ⟦BENCH eigvalsh (300,300) t1⟧ |
-| `eigvalsh` (1000, 1000) | numpy | ⟦BENCH eigvalsh (1000,1000) t10⟧ | ⟦BENCH eigvalsh (1000,1000) t1⟧ |
-| `eigvalsh` (1000, 3, 3) | numpy | ⟦BENCH eigvalsh (1000,3,3) t10⟧ | ⟦BENCH eigvalsh (1000,3,3) t1⟧ |
-| `eigvalsh` (100, 32, 32) | numpy | ⟦BENCH eigvalsh (100,32,32) t10⟧ | ⟦BENCH eigvalsh (100,32,32) t1⟧ |
-| `eigh(a, b)` (3, 3) | scipy | ⟦BENCH eigh(a, b) (3,3) t10⟧ | ⟦BENCH eigh(a, b) (3,3) t1⟧ |
-| `eigh(a, b)` (32, 32) | scipy | ⟦BENCH eigh(a, b) (32,32) t10⟧ | ⟦BENCH eigh(a, b) (32,32) t1⟧ |
-| `eigh(a, b)` (300, 300) | scipy | ⟦BENCH eigh(a, b) (300,300) t10⟧ | ⟦BENCH eigh(a, b) (300,300) t1⟧ |
-| `eigh(a, b)` (1000, 1000) | scipy | ⟦BENCH eigh(a, b) (1000,1000) t10⟧ | ⟦BENCH eigh(a, b) (1000,1000) t1⟧ |
-| `eigh(a, b)` (1000, 3, 3) | scipy | ⟦BENCH eigh(a, b) (1000,3,3) t10⟧ | ⟦BENCH eigh(a, b) (1000,3,3) t1⟧ |
-| `eigh(a, b)` (100, 32, 32) | scipy | ⟦BENCH eigh(a, b) (100,32,32) t10⟧ | ⟦BENCH eigh(a, b) (100,32,32) t1⟧ |
-| `eig` (3, 3) | numpy | ⟦BENCH eig (3,3) t10⟧ | ⟦BENCH eig (3,3) t1⟧ |
-| `eig` (32, 32) | numpy | ⟦BENCH eig (32,32) t10⟧ | ⟦BENCH eig (32,32) t1⟧ |
-| `eig` (300, 300) | numpy | ⟦BENCH eig (300,300) t10⟧ | ⟦BENCH eig (300,300) t1⟧ |
-| `eig` (1000, 1000) | numpy | ⟦BENCH eig (1000,1000) t10⟧ | ⟦BENCH eig (1000,1000) t1⟧ |
-| `eig` (1000, 3, 3) | numpy | ⟦BENCH eig (1000,3,3) t10⟧ | ⟦BENCH eig (1000,3,3) t1⟧ |
-| `eig` (100, 32, 32) | numpy | ⟦BENCH eig (100,32,32) t10⟧ | ⟦BENCH eig (100,32,32) t1⟧ |
-| `eigvals` (3, 3) | numpy | ⟦BENCH eigvals (3,3) t10⟧ | ⟦BENCH eigvals (3,3) t1⟧ |
-| `eigvals` (32, 32) | numpy | ⟦BENCH eigvals (32,32) t10⟧ | ⟦BENCH eigvals (32,32) t1⟧ |
-| `eigvals` (300, 300) | numpy | ⟦BENCH eigvals (300,300) t10⟧ | ⟦BENCH eigvals (300,300) t1⟧ |
-| `eigvals` (1000, 1000) | numpy | ⟦BENCH eigvals (1000,1000) t10⟧ | ⟦BENCH eigvals (1000,1000) t1⟧ |
-| `eigvals` (1000, 3, 3) | numpy | ⟦BENCH eigvals (1000,3,3) t10⟧ | ⟦BENCH eigvals (1000,3,3) t1⟧ |
-| `eigvals` (100, 32, 32) | numpy | ⟦BENCH eigvals (100,32,32) t10⟧ | ⟦BENCH eigvals (100,32,32) t1⟧ |
-| `schur` (3, 3) | scipy | ⟦BENCH schur (3,3) t10⟧ | ⟦BENCH schur (3,3) t1⟧ |
-| `schur` (32, 32) | scipy | ⟦BENCH schur (32,32) t10⟧ | ⟦BENCH schur (32,32) t1⟧ |
-| `schur` (300, 300) | scipy | ⟦BENCH schur (300,300) t10⟧ | ⟦BENCH schur (300,300) t1⟧ |
-| `schur` (1000, 1000) | scipy | ⟦BENCH schur (1000,1000) t10⟧ | ⟦BENCH schur (1000,1000) t1⟧ |
-| `schur` (1000, 3, 3) | scipy | ⟦BENCH schur (1000,3,3) t10⟧ | ⟦BENCH schur (1000,3,3) t1⟧ |
-| `schur` (100, 32, 32) | scipy | ⟦BENCH schur (100,32,32) t10⟧ | ⟦BENCH schur (100,32,32) t1⟧ |
-| `hessenberg` (3, 3) | scipy | ⟦BENCH hessenberg (3,3) t10⟧ | ⟦BENCH hessenberg (3,3) t1⟧ |
-| `hessenberg` (32, 32) | scipy | ⟦BENCH hessenberg (32,32) t10⟧ | ⟦BENCH hessenberg (32,32) t1⟧ |
-| `hessenberg` (300, 300) | scipy | ⟦BENCH hessenberg (300,300) t10⟧ | ⟦BENCH hessenberg (300,300) t1⟧ |
-| `hessenberg` (1000, 1000) | scipy | ⟦BENCH hessenberg (1000,1000) t10⟧ | ⟦BENCH hessenberg (1000,1000) t1⟧ |
-| `hessenberg` (1000, 3, 3) | scipy | ⟦BENCH hessenberg (1000,3,3) t10⟧ | ⟦BENCH hessenberg (1000,3,3) t1⟧ |
-| `hessenberg` (100, 32, 32) | scipy | ⟦BENCH hessenberg (100,32,32) t10⟧ | ⟦BENCH hessenberg (100,32,32) t1⟧ |
-
-(칸의 값은 기준 시간 ÷ stardust 시간이에요. 1보다 크면 stardust가 빨라요.)
-
-{/* BENCH-FIG: eigh (3,3) t10, eigh (1000,3,3) t10, eigh (1000,1000) t10, eig (3,3) t10, eig (1000,3,3) t10, eig (1000,1000) t10, schur (1000,3,3) t10, schur (1000,1000) t10 (계열: numpy 또는 scipy, stardust 1스레드, stardust 10스레드) | 캡션: Apple M4 Pro, numpy 2.5.4, scipy 1.18.1. 작은 행렬 하나는 호출 비용에서, 배치는 스레드풀에서 차이가 나고, 큰 행렬 하나는 같은 LAPACK이라 비슷해요. */}
 
 함수별 복잡도는 이래요(flop은 실수 기준의 대략값이에요 [2]).
 

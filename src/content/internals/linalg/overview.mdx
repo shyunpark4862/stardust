@@ -3,7 +3,7 @@ title: 선형대수 영역의 구조
 group: 구조
 order: 1
 summary: "`sd.linalg` 전체의 지도예요. 분해는 LAPACK에 맡기고 stardust는 그 앞뒤에서 입력을 옮기고 행렬을 스레드에 나누고 실패를 알리는 일을 맡는데, numpy·scipy와의 속도 차이도 거의 다 여기서 나와요."
-seeAlso: [packing, batch, basic, lu, symmetric, qr, eigen, svd, special, expm, performance]
+seeAlso: [packing, batch, basic, lu, symmetric, qr, eigen, svd, special, expm]
 ---
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
@@ -58,7 +58,6 @@ import Layers from '../../../components/fig/Layers.astro';
 | SVD, 랭크, 유사역행렬, 조건수 | [특이값 분해](/internals/linalg/svd/) |
 | 삼중대각·띠 행렬, Sylvester 방정식 | [띠 행렬과 Sylvester 방정식](/internals/linalg/special/) |
 | `expm` | [행렬 지수](/internals/linalg/expm/) |
-| numpy·scipy와 비교한 수치 전체, 검증 방법 | [성능과 정확도](/internals/linalg/performance/) |
 
 ## 무엇이 들어 있나
 
@@ -777,15 +776,7 @@ scipy에는 옵션에 따라 돌려주는 값의 개수가 바뀌는 함수가 �
 | 짧은 합에는 아무것도 할당하지 않음 | 출력마다의 힙 할당 | [LAPACK 없이 계산하는 함수](/internals/linalg/basic/) |
 | 큰 행렬 전용 코드는 함수 밖으로 | 작은 호출의 분기와 코드 크기 | [패킹과 결과 레이아웃](/internals/linalg/packing/) |
 
-남는 고정비의 대부분은 결과 객체예요. `NDArray`와 그 Python 객체를 만드는 데 약 75ns가 들어요. 그래서 스칼라를 돌려주는 함수가 가장 가벼워요. 아래 표의 값은 numpy 시간을 stardust 시간으로 나눈 배율이에요(1보다 크면 stardust가 빨라요).
-
-| 호출 (행렬 하나, 3×3) | numpy 대비 (10스레드) |
-|---|:---:|
-| `trace` | ⟦BENCH trace (3,3) t10⟧ |
-| `det` | ⟦BENCH det (3,3) t10⟧ |
-| `diagonal` | ⟦BENCH diagonal (3,3) t10⟧ |
-| `solve` | ⟦BENCH solve (3,3) t10⟧ |
-| `inv` | ⟦BENCH inv (3,3) t10⟧ |
+남는 고정비의 대부분은 결과 객체예요. `NDArray`와 그 Python 객체를 만드는 데 약 75ns가 들어요. 그래서 스칼라를 돌려주는 함수가 가장 가벼워요.
 
 ## 파일 지도
 
@@ -826,20 +817,6 @@ numpy 2.5.4와 scipy 1.18.1도 Accelerate의 LAPACK을 불러요. 같은 루틴�
 - **작은 행렬 하나**: 계산이 0.1µs 안팎이라 호출 경로의 고정비가 시간을 정해요. 위 "호출 비용"의 장치들이 그대로 차이가 돼요.
 - **행렬 묶음(배치)**: numpy와 scipy는 배치를 코어 하나에서 차례로 돌아요. stardust는 배치 원소를 스레드풀에 나눠요. scipy의 일부 함수(`schur`, `hessenberg`, `ldl`, `expm` 등)는 배치를 Python 수준에서 하나씩 돌기 때문에 차이가 더 커요. 1스레드에서도 호출 비용이 원소마다 줄어든 만큼 빨라요.
 - **큰 행렬 하나**: 시간의 거의 전부가 LAPACK 안이고, 그 LAPACK이 같아요. 그래서 차이가 작아요. 예외는 stardust가 numpy·scipy와 다른 루틴을 고른 함수예요. `solve`는 `getrf` + `getrs`인데, Accelerate의 `gesv`는 스레드를 쓰는 `getrf` 경로를 타지 않아서 $n = 1024$에서 `gesv` 9.0ms, `getrf` 4.8ms예요. `solve_sylvester`는 블록 루틴 `trsyl3`를 써서 `trsyl`보다 $n = 1000$에서 4.8배 빨라요.
-
-| 호출 | numpy 대비 (10스레드) | numpy 대비 (1스레드) |
-|---|:---:|:---:|
-| `solve` (3, 3) | ⟦BENCH solve (3,3) t10⟧ | ⟦BENCH solve (3,3) t1⟧ |
-| `solve` (1000, 3, 3) | ⟦BENCH solve (1000,3,3) t10⟧ | ⟦BENCH solve (1000,3,3) t1⟧ |
-| `solve` (100, 32, 32) | ⟦BENCH solve (100,32,32) t10⟧ | ⟦BENCH solve (100,32,32) t1⟧ |
-| `solve` (1000, 1000) | ⟦BENCH solve (1000,1000) t10⟧ | ⟦BENCH solve (1000,1000) t1⟧ |
-| `eigh` (3, 3) | ⟦BENCH eigh (3,3) t10⟧ | ⟦BENCH eigh (3,3) t1⟧ |
-| `eigh` (1000, 3, 3) | ⟦BENCH eigh (1000,3,3) t10⟧ | ⟦BENCH eigh (1000,3,3) t1⟧ |
-| `eigh` (1000, 1000) | ⟦BENCH eigh (1000,1000) t10⟧ | ⟦BENCH eigh (1000,1000) t1⟧ |
-
-{/* BENCH-FIG: solve (3,3) t10, solve (1000,3,3) t10, solve (100,32,32) t10, solve (1000,1000) t10, eigh (3,3) t10, eigh (1000,3,3) t10, eigh (1000,1000) t10 (계열: numpy, stardust 1스레드, stardust 10스레드; 1스레드 값은 같은 줄의 t1) | 캡션: Apple M4 Pro, numpy 2.5.4. 작은 행렬 하나는 호출 비용에서, 배치는 스레드풀에서 차이가 나고, 큰 행렬 하나는 같은 LAPACK이라 비슷해요. */}
-
-함수와 모양 전체의 수치, 느린 경우와 그 이유는 [성능과 정확도](/internals/linalg/performance/)에 있어요.
 
 복잡도는 루틴이 정해요. 밀집 행렬의 분해는 모두 $O(n^3)$ 시간이고(LU는 약 $\tfrac{2}{3}n^3$ flop, Cholesky는 약 $\tfrac{1}{3}n^3$ flop [3]), stardust가 더하는 패킹과 유한성 검사는 $O(n^2)$이에요. 공간은 입력의 작업용 복사본 하나($n^2$)와 결과, 그리고 루틴이 요구하는 workspace예요. 루틴마다의 flop 수는 각 알고리즘 글에 있어요.
 
@@ -882,7 +859,7 @@ stardust의 함수끼리 비트까지 같은 관계도 있어요. 함수마다 �
 - `solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=1)`과 `solve_tridiagonal`
 - `trace(x)`와 `sum(diagonal(x), axis=-1)`, 노름의 줄 합과 그 줄의 `sd.sum`
 
-이 관계와 불변성은 모두 `tests/linalg/`의 테스트가 바이트 비교로 확인해요. 검증 방법은 [성능과 정확도](/internals/linalg/performance/)에 있어요.
+이 관계와 불변성은 모두 `tests/linalg/`의 테스트가 바이트 비교로 확인해요.
 
 ## 참고 문헌
 

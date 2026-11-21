@@ -846,33 +846,11 @@ frame이 모든 숫자 정렬에 기수 정렬을 쓰는 것은 frame의 정렬�
 
 $G$는 그룹 수, $u$는 고유값 수예요. groupby 전체에서는 factorize(해시)가 가장 무거운 단계인 경우가 많아요([해시 테이블과 factorize](/internals/frame/hashing/)).
 
-### pandas, Polars와 비교
+### pandas, Polars와 견주는 입력
 
-아래 수치는 `bench/frame/final_compare.py`의 측정이에요. 입력은 무작위예요. `groupby int 1k`는 키 $[0, 1000)$, `groupby int, n keys`는 키 $[0, n)$(1M 행이면 고유값 약 63만), `groupby string`은 `"key0"`…`"key99999"` 꼴의 문자열 키(1M 행이면 10만 종), `groupby int + string`은 두 키를 함께 쓰고, 값은 표준정규분포 float이에요. `sort int64`는 $[0, n)$의 int64, `sort string`은 같은 문자열 컬럼이에요. pandas 정렬은 `kind="stable"`, Polars groupby는 결과를 키로 정렬해 같은 일을 하게 했어요. `sd@1`, `sd@10`은 stardust 1스레드와 10스레드, `polars@14`는 Polars 기본(14스레드)이에요.
+입력은 무작위예요. `groupby int 1k`는 키 $[0, 1000)$, `groupby int, n keys`는 키 $[0, n)$(1M 행이면 고유값 약 63만), `groupby string`은 `"key0"`…`"key99999"` 꼴의 문자열 키(1M 행이면 10만 종), `groupby int + string`은 두 키를 함께 쓰고, 값은 표준정규분포 float이에요. `sort int64`는 $[0, n)$의 int64, `sort string`은 같은 문자열 컬럼이에요. pandas 정렬은 `kind="stable"`, Polars groupby는 결과를 키로 정렬해 같은 일을 하게 했어요.
 
-| 1M 행 | sd@1 | sd@10 | pandas | polars@1 | polars@14 | pandas / sd@10 | polars@14 / sd@10 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| groupby int 1k sum | ⟦FBENCH "groupby int 1k sum" 1M sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1M sd@10⟧ | ⟦FBENCH "groupby int 1k sum" 1M pandas⟧ | ⟦FBENCH "groupby int 1k sum" 1M polars@1⟧ | ⟦FBENCH "groupby int 1k sum" 1M polars@14⟧ | ⟦FBENCH "groupby int 1k sum" 1M pandas/sd@10⟧ | ⟦FBENCH "groupby int 1k sum" 1M polars@14/sd@10⟧ |
-| groupby int, n keys, sum | ⟦FBENCH "groupby int, n keys, sum" 1M sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M sd@10⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M pandas⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M polars@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M polars@14⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M pandas/sd@10⟧ | ⟦FBENCH "groupby int, n keys, sum" 1M polars@14/sd@10⟧ |
-| groupby string sum | ⟦FBENCH "groupby string sum" 1M sd@1⟧ | ⟦FBENCH "groupby string sum" 1M sd@10⟧ | ⟦FBENCH "groupby string sum" 1M pandas⟧ | ⟦FBENCH "groupby string sum" 1M polars@1⟧ | ⟦FBENCH "groupby string sum" 1M polars@14⟧ | ⟦FBENCH "groupby string sum" 1M pandas/sd@10⟧ | ⟦FBENCH "groupby string sum" 1M polars@14/sd@10⟧ |
-| groupby int + string sum | ⟦FBENCH "groupby int + string sum" 1M sd@1⟧ | ⟦FBENCH "groupby int + string sum" 1M sd@10⟧ | ⟦FBENCH "groupby int + string sum" 1M pandas⟧ | ⟦FBENCH "groupby int + string sum" 1M polars@1⟧ | ⟦FBENCH "groupby int + string sum" 1M polars@14⟧ | ⟦FBENCH "groupby int + string sum" 1M pandas/sd@10⟧ | ⟦FBENCH "groupby int + string sum" 1M polars@14/sd@10⟧ |
-| sort int64 | ⟦FBENCH "sort int64" 1M sd@1⟧ | ⟦FBENCH "sort int64" 1M sd@10⟧ | ⟦FBENCH "sort int64" 1M pandas⟧ | ⟦FBENCH "sort int64" 1M polars@1⟧ | ⟦FBENCH "sort int64" 1M polars@14⟧ | ⟦FBENCH "sort int64" 1M pandas/sd@10⟧ | ⟦FBENCH "sort int64" 1M polars@14/sd@10⟧ |
-| sort string | ⟦FBENCH "sort string" 1M sd@1⟧ | ⟦FBENCH "sort string" 1M sd@10⟧ | ⟦FBENCH "sort string" 1M pandas⟧ | ⟦FBENCH "sort string" 1M polars@1⟧ | ⟦FBENCH "sort string" 1M polars@14⟧ | ⟦FBENCH "sort string" 1M pandas/sd@10⟧ | ⟦FBENCH "sort string" 1M polars@14/sd@10⟧ |
-
-{/* BENCH-FIG: "groupby int 1k sum" 1M pandas, polars@14, sd@1, sd@10; "groupby int, n keys, sum" 1M pandas, polars@14, sd@1, sd@10; "groupby string sum" 1M pandas, polars@14, sd@1, sd@10; "groupby int + string sum" 1M pandas, polars@14, sd@1, sd@10 | 캡션: 1M 행 groupby 합. 키가 적을 때와 많을 때, 정수와 문자열 키 */}
-
-{/* BENCH-FIG: "sort int64" 1M pandas, polars@14, sd@1, sd@10; "sort string" 1M pandas, polars@14, sd@1, sd@10 | 캡션: 1M 행 정렬. stardust는 숫자를 LSD 기수 정렬로, 문자열을 고유값 순위로 정렬해요 */}
-
-| 1천 행, 10만 행 | sd@1 | pandas | polars@1 | pandas / sd@1 | polars@1 / sd@1 |
-|---|---:|---:|---:|---:|---:|
-| groupby int 1k sum, 1천 | ⟦FBENCH "groupby int 1k sum" 1k sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1k pandas⟧ | ⟦FBENCH "groupby int 1k sum" 1k polars@1⟧ | ⟦FBENCH "groupby int 1k sum" 1k pandas/sd@1⟧ | ⟦FBENCH "groupby int 1k sum" 1k polars@1/sd@1⟧ |
-| sort int64, 1천 | ⟦FBENCH "sort int64" 1k sd@1⟧ | ⟦FBENCH "sort int64" 1k pandas⟧ | ⟦FBENCH "sort int64" 1k polars@1⟧ | ⟦FBENCH "sort int64" 1k pandas/sd@1⟧ | ⟦FBENCH "sort int64" 1k polars@1/sd@1⟧ |
-| sort string, 1천 | ⟦FBENCH "sort string" 1k sd@1⟧ | ⟦FBENCH "sort string" 1k pandas⟧ | ⟦FBENCH "sort string" 1k polars@1⟧ | ⟦FBENCH "sort string" 1k pandas/sd@1⟧ | ⟦FBENCH "sort string" 1k polars@1/sd@1⟧ |
-| groupby int, n keys, sum, 10만 | ⟦FBENCH "groupby int, n keys, sum" 100k sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k pandas⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k polars@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k pandas/sd@1⟧ | ⟦FBENCH "groupby int, n keys, sum" 100k polars@1/sd@1⟧ |
-| sort int64, 10만 | ⟦FBENCH "sort int64" 100k sd@1⟧ | ⟦FBENCH "sort int64" 100k pandas⟧ | ⟦FBENCH "sort int64" 100k polars@1⟧ | ⟦FBENCH "sort int64" 100k pandas/sd@1⟧ | ⟦FBENCH "sort int64" 100k polars@1/sd@1⟧ |
-| sort string, 10만 | ⟦FBENCH "sort string" 100k sd@1⟧ | ⟦FBENCH "sort string" 100k pandas⟧ | ⟦FBENCH "sort string" 100k polars@1⟧ | ⟦FBENCH "sort string" 100k pandas/sd@1⟧ | ⟦FBENCH "sort string" 100k polars@1/sd@1⟧ |
-
-수치와 상관없이 입력의 성질에서 알 수 있는 점이에요.
+이 입력의 성질에서 알 수 있는 점이에요.
 
 - `sort int64`는 건너뛸 수 있는 자리가 많은 입력이에요. 키가 $[0, n)$이라 1M 행에서도 아래 세 바이트만 값이 달라요. stardust는 이 입력에서도 8패스를 모두 돌아요([바이트 자리를 건너뛰지 않아요](#바이트-자리를-건너뛰지-않아요)).
 - `sort string`의 문자열은 모두 8바이트 이하예요(`"key99999"`가 가장 길어요). 접두사가 문자열 전체라 구간 비교가 없고, 시간은 factorize와 두 번의 기수 정렬(고유값의 접두사, 행의 순위)이에요.

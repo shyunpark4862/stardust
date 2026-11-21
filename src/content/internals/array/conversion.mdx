@@ -9,7 +9,6 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
-import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
@@ -133,7 +132,7 @@ template <typename Op> inline constexpr LoopTable binary_table = make_table<Op, 
 
 ### dtype이 다른 입력
 
-`int_arr + float_arr`은 float64 루프로 계산해요. int64 입력은 실행 중에 4096원소씩 작은 버퍼로 변환한 뒤 루프에 넘겨요(버퍼 단위 캐스팅). 입력 전체를 float64 임시 배열로 바꾸면 메모리를 두 번 더 지나기 때문이에요. 자세한 내용과 버퍼 크기가 4096인 이유는 [연산 엔진](/internals/array/engine/)에 있어요. 원소 100만 개의 `f * i + g`(float64와 int64가 섞임)는 numpy 592µs, stardust 1스레드 426µs, 10스레드 147µs예요.
+`int_arr + float_arr`은 float64 루프로 계산해요. int64 입력은 실행 중에 4096원소씩 작은 버퍼로 변환한 뒤 루프에 넘겨요(버퍼 단위 캐스팅). 입력 전체를 float64 임시 배열로 바꾸면 메모리를 두 번 더 지나기 때문이에요. 자세한 내용과 버퍼 크기가 4096인 이유는 [연산 엔진](/internals/array/engine/)에 있어요. 원소 100만 개의 `f * i + g`(float64와 int64가 섞임)는 1스레드 397µs, numpy 635µs예요.
 
 Python 스칼라 피연산자는 루프 dtype으로 미리 변환한 원소 1개짜리 배열이 되고, 이터레이터가 stride 0으로 브로드캐스트해요. 원소마다 변환하지 않아요.
 
@@ -219,8 +218,6 @@ ValueError: asarray(): inhomogeneous nested sequence: expected every level to ma
 - 추가 메모리: shape 벡터와 재귀 스택뿐이에요. 재귀 깊이는 ndim + 1 이하이고 ndim은 32 이하라 스택이 넘칠 걱정이 없어요. 중간 Python 객체를 만들지 않아요.
 - `PyList_GET_ITEM`/`PyTuple_GET_ITEM` 매크로로 원소를 **빌린 참조**로 읽어요. 원소마다 참조 카운트를 올렸다 내리는 일이 없어요. list와 tuple만 받으니 일반 시퀀스 프로토콜(`PySequence_GetItem`)을 쓸 필요가 없어요.
 - 원소의 종류 판정은 `PyBool_Check` → `PyLong_Check` → `PyFloat_Check` → `PyComplex_Check` 순서예요. `bool`은 `int`의 서브클래스라 반드시 먼저 봐야 해요.
-
-원소 1만 개짜리 float 리스트에서 numpy 138µs, stardust 62µs예요(numpy 2.5.4, Apple M4 Pro). 원소 3개짜리는 137ns 대 143ns로 비슷해요. 큰 리스트에서 차이가 나는 것은 stardust가 list·tuple과 네 가지 스칼라만 받는 반면, numpy의 같은 경로는 원소마다 더 많은 경우(배열 프로토콜을 지원하는 객체, 임의의 시퀀스, 문자열과 object dtype 등)를 다뤄야 하기 때문이에요.
 
 ### 범위 밖의 Python int
 
@@ -411,15 +408,15 @@ for_pieces(n, kParallelTask, n, [&](std::int64_t, std::int64_t i0, std::int64_t 
 });
 ```
 
-- 결과의 메모리 순서로 걷는 이유: 논리적 C 순서(마지막 축이 가장 빨리 도는 순서)로 걸으면, 전치한 뷰에서는 논리적 마지막 축이 원본과 결과 양쪽에서 메모리상 가장 멀리 뛰는 축이에요. 안쪽 루프가 원소마다 수 KB씩 건너뛰며 읽고 써서 캐시 미스가 시간을 정해요(float32 `m.T` 1000×1000을 그렇게 걸으면 1스레드 870µs). 메모리 순서로 걸으면 안쪽 축이 원본에서 가장 촘촘한 축이 되어 122~128µs예요.
-- 안쪽 축이 붙어 있으면 인덱스 루프예요. `m[:, 1:1001]`처럼 행 안은 연속이고 행 사이만 떨어진 버퍼는 안쪽 축의 간격이 양쪽 모두 원소 크기와 같아요. 이때는 평탄한 경로처럼 `sp + k * sizeof(S)`로 읽고 `dp[k]`에 쓰는 루프라 컴파일러가 벡터화해요. 간격이 런타임 값인 strided 루프로 돌면 같은 버퍼가 260µs, 인덱스 루프로는 127~131µs예요.
+- 결과의 메모리 순서로 걷는 이유: 논리적 C 순서(마지막 축이 가장 빨리 도는 순서)로 걸으면, 전치한 뷰에서는 논리적 마지막 축이 원본과 결과 양쪽에서 메모리상 가장 멀리 뛰는 축이에요. 안쪽 루프가 원소마다 수 KB씩 건너뛰며 읽고 써서 캐시 미스가 시간을 정해요(float32 `m.T` 1000×1000을 그렇게 걸으면 1스레드 870µs). 메모리 순서로 걸으면 안쪽 축이 원본에서 가장 촘촘한 축이 되어 122µs예요.
+- 안쪽 축이 붙어 있으면 인덱스 루프예요. `m[:, 1:1001]`처럼 행 안은 연속이고 행 사이만 떨어진 버퍼는 안쪽 축의 간격이 양쪽 모두 원소 크기와 같아요. 이때는 평탄한 경로처럼 `sp + k * sizeof(S)`로 읽고 `dp[k]`에 쓰는 루프라 컴파일러가 벡터화해요. 간격이 런타임 값인 strided 루프로 돌면 같은 버퍼가 260µs, 인덱스 루프로는 127µs예요.
 - 조각의 시작점은 나눗셈으로 구해요. 번호 $i_0$의 축별 인덱스는 shape를 진법의 밑으로 삼은 자릿수예요. 마지막 축부터 `%`와 `/`로 풀면서, 인덱스에 그 축의 stride를 곱해 더하면 원본과 결과에서의 바이트 오프셋이 나와요. 조각마다 한 번, $O(\text{ndim})$이에요. 그래서 조각은 앞 조각이 어디서 끝났는지 몰라도 혼자 시작할 수 있고, 어느 스레드가 어느 조각을 맡아도 같은 원소를 같은 자리에 써요.
-- 안쪽 루프는 평탄해요. 안쪽 축을 따라 `len`개를 도는 동안 하는 일은 포인터 이동과 load, 변환, store뿐이에요. 축 인덱스를 올리고 끝을 검사하는 odometer의 일은 안쪽 축 한 줄에 한 번만 해요. 원소마다 odometer를 한 칸씩 돌리면(원소마다 자리올림 검사) 100만 개에 약 420µs가 들어요.
+- 안쪽 루프는 평탄해요. 안쪽 축을 따라 `len`개를 도는 동안 하는 일은 포인터 이동과 load, 변환, store뿐이에요. 축 인덱스를 올리고 끝을 검사하는 odometer의 일은 안쪽 축 한 줄에 한 번만 해요. 원소마다 odometer를 한 칸씩 돌리면(원소마다 자리올림 검사) int32 100만 개에 417µs가 들어요.
 - 자리올림: 축 $d$가 끝에 닿으면 인덱스를 0으로 되돌리고 축 $d - 1$을 한 칸 올려요. 오프셋은 `ss[d - 1] - shp[d] * ss[d]`만큼 옮겨요. 축 $d$를 처음으로 되감고(`- shp[d] * ss[d]`) 바깥 축을 한 칸 나아가는(`+ ss[d - 1]`) 것을 한 번에 더한 값이에요.
 - 1차원에서는 odometer가 사라져요. `nd == 1`이면 자리올림 루프가 돌지 않고, 조각 하나가 strided 루프 하나예요.
 - 결과는 스레드 수와 무관해요. 조각마다 서로 다른 원소를 쓰고, 값은 원소마다 독립이에요.
 
-안쪽 축이 붙어 있지 않으면(`i32[::2]`, `m[:, ::2]`) 간격 `si`, `di`가 런타임 값이라 컴파일러가 벡터화하지 못해요. 그래서 이 경우의 1스레드 속도는 원소당 약 0.24ns로, 평탄한 루프(약 0.09ns)의 2.5~3배예요. numpy도 원소마다 간격을 건너뛰는 루프라 같은 속도예요. 안쪽 축이 붙어 있는 2차원 버퍼와 전치한 뷰는 평탄한 루프와 같은 속도예요.
+안쪽 축이 붙어 있지 않으면(`i32[::2]`, `m[:, ::2]`) 간격 `si`, `di`가 런타임 값이라 컴파일러가 벡터화하지 못해요. 그래서 이 경우는 벡터화되는 루프보다 느려요. 안쪽 축이 붙어 있는 2차원 버퍼와 전치한 뷰는 안쪽 루프가 벡터화돼요.
 
 ### 바이트 뒤집기
 
@@ -451,94 +448,33 @@ S load_swapped(const std::byte* p) {
 
 ### 복사하는 경로의 속도
 
-[성능 종합](/internals/array/performance/)의 전체 측정(원소 100만 개, numpy 2.5.4)에서 가져온 값이에요. numpy 쪽은 같은 변환을 하는 `np.asarray(…, dtype=…)`예요.
+원소 100만 개, 1스레드, numpy 2.5.4에서 잰 값이에요. `m`은 float32 2차원 배열이에요.
 
-<Bench
-  rows={[
-    { label: 'asarray(int32) 넓히기', times: [79.0e-6, 77.0e-6, 31.3e-6] },
-    { label: 'asarray(float32) 넓히기', times: [88.9e-6, 90.0e-6, 31.0e-6] },
-    { label: 'asarray(sd 배열, copy=True)', times: [90.7e-6, 90.5e-6, 34.4e-6] },
-  ]}
-  caption="numpy는 np.asarray(i32, dtype=np.int64), np.asarray(f32, dtype=np.float64), np.asarray(f, copy=True)."
-/>
+| 연산 | stardust | numpy | 지나는 경로 |
+|---|---:|---:|---|
+| `sd.asarray(i32)` (int32 → int64) | 60µs | 99µs (`astype`) | 평탄한 루프 |
+| `sd.asarray(>f8 2차원 [::2])` (행을 한 칸 건너) | 102µs | 117µs | 일반 경로, 안쪽 축은 인덱스 루프 + 뒤집기 |
+| `sd.asarray(m[:, 1:1001])` (행 안이 연속) | 127µs | 142µs | 일반 경로, 안쪽 축은 인덱스 루프 |
+| `sd.asarray(m.T)` (1000×1000 전치) | 122µs | 137µs | 일반 경로, 결과의 메모리 순서 |
 
-1스레드에서 numpy와 같고(1.03배, 0.99배, 1.00배), 10스레드에서 2.5~2.9배예요.
+- 연속인 버퍼는 평탄한 루프 하나라 컴파일러가 벡터화해요. 같은 int32 넓히기를 원소마다 odometer로 걸으면 417µs예요. 연속인 big-endian 버퍼도 뒤집기가 load에 붙은 명령 하나라 같은 평탄한 루프예요.
+- 행 안이 연속인 2차원 버퍼와 전치한 뷰는 안쪽 축이 양쪽에서 붙어 있어 인덱스 루프가 벡터화돼요. 간격이 런타임 값인 strided 루프로 돌면 `m[:, 1:1001]`이 260µs, 논리적 C 순서로 걸으면 `m.T`가 870µs예요.
+- 전치한 뷰의 결과는 원본처럼 F 순서이고, 이후 연산의 엔진이 이 레이아웃을 그대로 따라가요.
+- 결과 배열을 새로 할당하는 비용은 두 라이브러리 모두 같은 조건이에요(numpy의 `astype`도 새 배열을 만들어요).
 
-아래는 원천 dtype과 경로를 바꿔 가며 같은 방법으로 따로 잰 값이에요.
+### 복사 없이 공유하는 비용
 
-| 연산 | 1스레드 | 10스레드 | numpy | 지나는 경로 |
-|---|---:|---:|---:|---|
-| `sd.asarray(i32)` (int32 → int64) | 93µs | 34µs | 95µs (`astype`) | 평탄한 루프 |
-| `sd.asarray(f32)` (float32 → float64) | 92µs | 33µs | 98µs (`astype`) | 평탄한 루프 |
-| `sd.asarray(f, copy=True)` (float64 → float64) | 98µs | 35µs | 95µs (`copy`) | 평탄한 루프 |
-| `sd.asarray(i64, copy=True)` (int64 → int64) | 87µs | 36µs | 97µs (`copy`) | 평탄한 루프 |
-| `sd.asarray(F, copy=True)` (stardust 배열의 복사) | 101µs | 40µs | 101µs (`copy`) | 엔진의 캐스트 커널 |
+복사가 없는 경로도 고정 비용이 있어요. `np.asarray(ndarray)`는 이미 numpy 배열이면 같은 객체를 그대로 돌려주므로 하는 일이 인자 확인뿐이에요. stardust에서 이에 맞는 것은 같은 객체를 돌려주는 `sd.asarray(sd 배열)`이에요. `sd.asarray(numpy 배열)`은 다른 라이브러리의 객체를 받아 새 Python 객체를 만드는 일이라 하는 일이 달라요. strided 뷰나 전치한 뷰도 복사 없이 공유하므로 같은 경로예요.
 
-- 넓히든 안 넓히든 같은 시간이에요. 100만 원소에 90µs 안팎, 원소당 약 0.09ns예요. 8MB(int32는 4MB)를 읽고 8MB를 새 메모리에 쓰는 일이라, 시간을 정하는 것은 변환이 아니라 메모리 왕복이에요. numpy의 연속 캐스트 루프, stardust 배열끼리의 복사(엔진의 캐스트 커널, 아래 "캐스트 커널 표")와도 같은 속도예요.
-- 10스레드에서 2.4~2.8배예요. 메모리에 묶인 연산이라 코어 수만큼 빨라지지는 않아요. stardust 배열의 복사(1스레드 101µs, 10스레드 40µs, 2.5배)와 비슷한 비율이에요.
-
-big-endian 버퍼와 연속이 아닌 버퍼도 전체 측정(원소 100만 개)에서 가져왔어요. `m`은 float32 (2000, 2000) 배열이고, 결과는 모두 원소 100만 개예요.
-
-<Bench
-  rows={[
-    { label: 'asarray(>f8)', times: [91.1e-6, 92.7e-6, 31.9e-6] },
-    { label: 'asarray(>f8 2차원 [::2])', times: [108.1e-6, 105.7e-6, 31.1e-6] },
-    { label: 'asarray(m[:, 1:1001]) float32', times: [132.9e-6, 130.5e-6, 28.0e-6] },
-    { label: 'asarray(m[:1000, :1000].T) float32', times: [133.3e-6, 127.5e-6, 27.7e-6] },
-    { label: '같은 .T를 C 순서로 (numpy ascontiguousarray)', times: [443.6e-6, 130.9e-6, 27.4e-6] },
-  ]}
-  caption="첫 줄은 연속인 big-endian 버퍼(평탄한 경로), 나머지는 연속이 아닌 버퍼(일반 경로)예요. 마지막 줄의 numpy는 결과를 C 순서로 만드는 np.ascontiguousarray예요."
-/>
-
-- 연속인 big-endian은 numpy와 같아요. 뒤집기가 벡터화된 평탄한 루프 안의 명령 하나라, 기계 바이트 순서의 복사와 같은 시간이에요.
-- 행 안이 연속인 2차원 버퍼도 numpy와 같아요. `m[:, 1:1001]`과 `>f8`의 `[::2]`(행을 한 칸 건너)는 안쪽 축이 양쪽에서 붙어 있어 인덱스 루프가 벡터화돼요. 10스레드에서는 3.5~4.8배예요.
-- 전치한 뷰도 numpy와 같아요. 결과의 메모리 순서(= 원본의 메모리 순서)로 걸으므로 안쪽 축이 원본에서 붙어 있는 축이에요. numpy도 `np.asarray(…, dtype=…)`는 원본의 축 순서(F 순서)를 지키는 결과를 만들어 같은 일을 해요(133µs). 결과를 C 순서로 만들게 하면(`np.ascontiguousarray`) numpy는 444µs가 들어요. stardust의 결과는 원본처럼 F 순서이고, 이후 연산의 엔진이 이 레이아웃을 그대로 따라가요.
-
-다른 dtype과 원소마다 건너뛰는 버퍼는 같은 방법으로 따로 쟀어요. numpy 쪽은 같은 변환을 하는 `astype`이에요.
-
-| 연산 | numpy (`astype`) | 1스레드 | 10스레드 | 지나는 경로 |
-|---|---:|---:|---:|---|
-| `sd.asarray(i32.astype('>i4'))` → int64 | 185µs | 77µs | 32µs | 평탄한 루프 + 뒤집기 |
-| `sd.asarray(i16be)` (`>i2` → int64) | 191µs | 105µs | 32µs | 평탄한 루프 + 뒤집기 |
-| `sd.asarray(c8be)` (`>c8` → complex128) | 513µs | 148µs | 66µs | 평탄한 루프 + 뒤집기 |
-| `sd.asarray(c16be)` (`>c16`) | 433µs | 234µs | 76µs | 평탄한 루프 + 뒤집기 |
-| `sd.asarray(i32[::2])` (1차원, 한 칸 건너) → int64 | 250µs | 241µs | 34µs | 일반 경로, strided 루프 |
-| `sd.asarray(m[:1000, ::2])` (float32, 열을 한 칸 건너) | 240µs | 250µs | 37µs | 일반 경로, strided 루프 |
-
-- 정수와 complex의 big-endian은 numpy의 `astype`보다 1.8~3.5배 빨라요. stardust에서는 원천 타입이 무엇이든 뒤집기가 평탄한 루프 안의 명령 하나예요.
-- 안쪽 축이 떨어져 있는 버퍼는 1스레드에서 numpy와 같아요. `i32[::2]`와 `m[:, ::2]`는 두 라이브러리 모두 원소마다 간격을 건너뛰는 스칼라 루프라 원소당 약 0.24ns로 같아요. 10스레드에서는 조각으로 나뉘어 6.5~7.3배예요.
-- 결과 배열을 새로 할당하는 비용은 두 라이브러리 모두 같은 조건이에요(numpy의 `astype`과 `copy`도 새 배열을 만들어요).
-- numpy 배열이 아닌 버퍼도 같은 경로예요. 8000바이트 `bytearray`의 `asarray`(uint8 → int64 8000개)가 0.72µs예요.
-
-### 복사 없이 공유하는 비용: 약 140ns
-
-복사가 없는 경로도 고정 비용이 있어요. 같은 조건의 측정이에요.
-
-| 연산 | numpy | stardust |
-|---|---:|---:|
-| `asarray(numpy float64 배열)` | 12ns (`np.asarray`) | 139ns (`sd.asarray`) |
-
-이 두 수치는 같은 일을 비교한 것이 아니에요. `np.asarray(ndarray)`는 이미 numpy 배열이면 같은 객체를 그대로 돌려줘요. 하는 일이 인자 확인뿐이에요. stardust에서 이에 맞는 비교 대상은 `sd.asarray(sd 배열)`이고, 같은 객체를 돌려주며 20ns예요. `sd.asarray(numpy 배열)`은 다른 라이브러리의 객체를 받아 새 Python 객체를 만드는 일이에요. strided 뷰(134ns)나 전치한 뷰(147ns)도 복사 없이 공유하므로 비슷한 시간이에요.
-
-그 시간이 어디에 쓰이는지 코드 순서대로 보면 이래요(`asarray` → `from_buffer`).
+그 비용이 어디에 쓰이는지 코드 순서대로 보면 이래요(`asarray` → `from_buffer`).
 
 1. `is_ndarray`가 아니므로 `scalar_dtype(obj)`로 Python·numpy 스칼라인지 봐요. Python의 `bool`, `int`, `float`, `complex`는 타입 검사 네 번이고, 그다음 `numpy_scalar_dtype`이 타입 이름(`tp_name`) 문자열을 봐요. `numpy.`으로 시작하지 않으면 numpy 스칼라가 아니고, 정확히 `numpy.ndarray`이면 배열이지 스칼라가 아니므로 바로 돌아와요. 문자열 비교 두 번이에요. numpy의 스칼라 타입 넷(`np.bool`, `np.integer`, `np.floating`, `np.complexfloating`)에 대한 `PyObject_IsInstance`는 그 밖의 `numpy.*` 타입에만 불러요. `PyObject_IsInstance` 네 번은 약 37ns가 드는 일이라, 가장 흔한 입력인 numpy 배열이 그 비용을 치르지 않게 이름으로 먼저 걸러요.
 2. `PyObject_GetBuffer`: numpy가 format, shape, strides를 채운 `Py_buffer`를 내줘요.
 3. format 해석, `NDArray` 채우기, 정렬 검사.
 4. `Buffer::adopt(view)`로 `Py_buffer`를 넘겨받는 Buffer(`shared_ptr`, 할당 1번)와 `wrap`으로 nanobind 인스턴스(할당 1번)를 만들어요.
-5. (측정에 포함) 결과가 버려질 때 Buffer의 소멸자가 GIL을 확인(`PyGILState_Ensure`)한 뒤 `PyBuffer_Release`를 부르고, 메모리를 돌려줘요.
+5. 결과가 버려질 때 Buffer의 소멸자가 GIL을 확인(`PyGILState_Ensure`)한 뒤 `PyBuffer_Release`를 부르고, 메모리를 돌려줘요.
 
-입력을 바꾼 대조 측정으로 몇 단계의 몫을 나눌 수 있어요(같은 조건).
-
-| 입력 | `sd.asarray` | 달라지는 단계 |
-|---|---:|---|
-| numpy 배열 | 147ns | 없음 |
-| numpy 배열의 Python 서브클래스(타입 이름이 `numpy.`으로 시작하지 않음) | 140ns | 1단계의 두 번째 문자열 비교가 없어요. 측정 흔들림 안에서 같아요 |
-| 같은 메모리의 `memoryview` | 109ns | numpy의 버퍼 내보내기 대신 `memoryview`의 내보내기 |
-
-- 1단계는 측정되지 않을 만큼 작아요. 스칼라 검사를 아예 건너뛰는 것과 다름없는 서브클래스 입력이 numpy 배열과 같은 시간이에요.
-- 약 30~40ns는 numpy의 버퍼 내보내기 비용이에요. Python에서 `memoryview(f)`가 69ns, `memoryview(memoryview)`가 33ns로 같은 크기의 차이가 나요. 버퍼 프로토콜로 numpy 배열을 받는 한 줄일 수 없는 몫이에요.
-- 남은 약 110ns는 함수 호출과 인자 해석, `NDArray` 구성, 할당 두 번, 해제예요. 그중 15~20ns는 배열 객체가 512바이트를 넘어 시스템 `malloc`으로 할당되는 비용이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)). numpy도 `np.asarray(memoryview)`로 외부 버퍼를 받으면 90ns가 걸리니, 외부 객체로 새 배열 객체를 만드는 일 자체의 비용은 두 라이브러리가 비슷한 크기예요.
+이 가운데 할당의 15~20ns는 배열 객체가 512바이트를 넘어 시스템 `malloc`으로 할당되는 비용이에요([작은 배열의 호출 비용](/internals/array/small-arrays/)). 버퍼 프로토콜로 numpy 배열을 받는 한 2단계의 버퍼 내보내기 비용도 줄일 수 없는 몫이에요.
 
 반대 방향(stardust 배열을 numpy가 읽는 것)은 `bf_getbuffer` 슬롯으로 복사 없이 내보내요. format은 `?`, `q`, `d`, `Zd`예요. 자세한 내용은 [데이터 모델](/internals/array/data-model/)과 [Python과 C++의 경계](/internals/core/python-boundary/)에 있어요.
 
@@ -688,7 +624,7 @@ if (x < -0x1p63) return INT64_MIN;
 return static_cast<std::int64_t>(x);   // 여기서는 범위 안이라 정의된 동작
 ```
 
-정의된 동작이지만 clang은 이 루프를 벡터화하지 못해요. 이렇게 짜면 원소 100만 개 `astype` float → int64가 1스레드 464µs로, numpy(264µs)보다 1.8배 느려요.
+정의된 동작이지만 clang은 이 루프를 벡터화하지 못해요. 이렇게 짜면 원소 100만 개 `astype` float → int64가 1스레드 464µs로, numpy(243µs)보다 느려요.
 
 ARM에는 이 규칙을 그대로 수행하는 명령이 있어요. AArch64의 `FCVTZS`(Floating-point Convert to Signed integer, rounding toward Zero)는 0 방향으로 자르고, 범위를 벗어나면 가장 가까운 표현 가능한 값으로 포화시키고, NaN이면 0을 내요 [8]. 규칙이 정확히 같으니 명령을 직접 불러요.
 
@@ -703,14 +639,7 @@ inline std::int64_t saturate_to_int64(double x) { return vcvtd_s64_f64(x); }
 - 연속 캐스트 루프는 벡터판 `vcvtq_s64_f64`를 직접 쓰고, 한 번에 레지스터 두 개(원소 4개)씩 처리해 load를 더 많이 겹쳐 띄워요.
 - 이 함수는 배열, linalg, frame이 함께 써요. frame의 `astype`도 같은 규칙(포화, NaN → 0)을 따르므로 공통 기반(`csrc/base/`)에 있어요.
 
-명령 하나로 하면 분기 셋으로 쓴 루프(464µs)보다 3.7배 빨라요. [성능 종합](/internals/array/performance/)의 측정(원소 100만 개, numpy 2.5.4)에서는 이래요.
-
-<Bench
-  rows={[
-    { label: 'astype(f, int64)', times: [264.0e-6, 126.4e-6, 30.1e-6] },
-  ]}
-  caption="float64 → int64 변환, 원소 100만 개. stardust 1스레드가 numpy보다 2.1배, 10스레드가 8.8배 빨라요."
-/>
+명령 하나로 하면 89µs로, 분기 셋으로 쓴 루프(464µs)보다 5배 넘게 빠르고 numpy(243µs)보다도 빨라요.
 
 <Callout type="note" title="이식성">
   이 구현은 ARM의 `FCVTZS` 의미에 기대요. stardust의 대상은 Apple silicon Mac 하나이고 런타임 CPU 디스패치를 하지 않아요. 다른 아키텍처로 옮긴다면 같은 규칙을 그 아키텍처의 명령이나 분기 없는 선택(select)으로 다시 써야 해요. 규칙 자체는 `saturate_to_int64` 한 함수에 모여 있어요.
@@ -810,35 +739,21 @@ double py_to_double(PyObject* p) {
 
 ## 성능
 
-<Bench
-  rows={[
-    { label: 'astype(f, int64)', times: [264.0e-6, 126.4e-6, 30.1e-6] },
-    { label: 'f * i (dtype 변환)', times: [426.9e-6, 227.9e-6, 44.8e-6] },
-    { label: 'f * i + g (dtype 변환)', times: [592.3e-6, 426.0e-6, 147.4e-6] },
-    { label: 'asarray(1만 개 리스트)', times: [137.5e-6, 62.3e-6, 62.3e-6] },
-    { label: 'asarray(int32 100만) 넓히기', times: [79.0e-6, 77.0e-6, 31.3e-6] },
-    { label: 'asarray(float32 .T 100만)', times: [133.3e-6, 127.5e-6, 27.7e-6] },
-    { label: 'asarray(numpy float64) 공유', times: [12e-9, 139e-9, 136e-9] },
-    { label: 'from_dlpack(numpy)', times: [116e-9, 225e-9, 226e-9] },
-  ]}
-  caption="원소 100만 개(리스트는 1만 개), Apple M4 Pro, numpy 2.5.4, 성능 종합의 전체 측정. 넓히기의 numpy 쪽은 np.asarray(…, dtype=…), 공유의 numpy 쪽은 같은 객체를 돌려주는 np.asarray라 같은 일이 아니에요."
-/>
-
 | 작업 | 시간 복잡도 | 추가 메모리 | 비고 |
 |---|---|---|---|
 | 승격, 루프 선택 | $O(1)$ | 없음 | enum 비교와 표 네 칸 |
 | 암묵적 변환 검사 | $O(1)$ | 없음 | dtype만 봐요 |
 | 중첩 시퀀스 | $O(N + M)$ (두 번 방문) | $O(\text{ndim})$ | 재귀 깊이 33 이하 |
 | 버퍼 공유 | $O(\text{ndim})$, bool이면 $O(n)$ 검사 | 없음 | bool 검사 100만 개 8.3µs |
-| 버퍼 복사·넓히기 (연속, 어느 바이트 순서든) | $O(n)$, 병렬 | 결과 배열 | 평탄한 루프, 원소당 약 0.09ns (numpy `astype`과 같거나 빠름) |
-| 버퍼 복사·넓히기 (연속이 아님) | $O(n)$, 병렬. 축 정렬 $O(\text{ndim} \log \text{ndim})$, 조각마다 시작점 계산 $O(\text{ndim})$ | 결과 배열 | 결과의 메모리 순서로 odometer. 안쪽 축이 붙어 있으면 평탄한 루프와 같은 속도, 떨어져 있으면 원소당 약 0.24ns |
+| 버퍼 복사·넓히기 (연속, 어느 바이트 순서든) | $O(n)$, 병렬 | 결과 배열 | 평탄한 루프 (int32 → int64 100만 개 60µs, numpy `astype` 99µs) |
+| 버퍼 복사·넓히기 (연속이 아님) | $O(n)$, 병렬. 축 정렬 $O(\text{ndim} \log \text{ndim})$, 조각마다 시작점 계산 $O(\text{ndim})$ | 결과 배열 | 결과의 메모리 순서로 odometer. 안쪽 축이 붙어 있으면 인덱스 루프가 벡터화돼요 |
 | DLPack 공유 | $O(\text{ndim})$, bool이면 $O(n \cdot \text{ndim})$ 검사 | 없음 | |
 | `astype` | $O(n)$, 병렬 | 결과 배열 | 연속 f → i는 벡터 `FCVTZS` |
 
 - `astype` f → int64가 numpy보다 빠른 이유는 분기 없는 `FCVTZS` 하나로 변환하기 때문이에요(위 "float → int64" 절).
-- `f * i + g`가 빠른 이유는 int64 → float64 변환을 4096원소 버퍼로 하면서 바로 계산해, 변환 결과를 메모리에 다시 쓰지 않기 때문이에요([연산 엔진](/internals/array/engine/)).
+- `f * i + g`가 빠른 이유는 int64 → float64 변환을 4096원소 버퍼로 하면서 바로 계산해, 변환 결과를 메모리에 다시 쓰지 않기 때문이에요(1스레드 397µs, numpy 635µs, [연산 엔진](/internals/array/engine/)).
 - DLPack의 bool 검사는 원소마다 오프셋을 처음부터 다시 계산하는 단순한 순회라 $O(n \cdot \text{ndim})$이에요. 버퍼 프로토콜 쪽은 C 연속이면 평탄한 OR 루프를 써요.
-- 버퍼 프로토콜의 복사가 1스레드에서 numpy와 같고 10스레드에서 2.5~4.8배인 이유는 위 "복사하는 경로의 속도"에, 복사 없는 공유의 약 140ns는 "복사 없이 공유하는 비용"에 있어요. `from_dlpack`의 고정 비용은 [Python과 C++의 경계](/internals/core/python-boundary/)에서 다뤄요.
+- 버퍼 프로토콜의 복사 경로는 위 "복사하는 경로의 속도"에, 복사 없는 공유의 고정 비용은 "복사 없이 공유하는 비용"에 있어요. `from_dlpack`의 고정 비용은 [Python과 C++의 경계](/internals/core/python-boundary/)에서 다뤄요.
 
 ## 정확도
 

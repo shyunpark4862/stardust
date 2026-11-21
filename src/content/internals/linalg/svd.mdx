@@ -3,7 +3,7 @@ title: 특이값 분해
 group: 고유값과 특이값
 order: 2
 summary: 특이값 분해가 어떤 행렬이든 돌리기, 늘이기, 돌리기로 나눈다는 뜻에서 출발해 LAPACK이 이중대각화와 반복법으로 특이값을 구하는 과정을 설명해요. 특이값만 쓰는 함수는 모두 같은 헬퍼를 거쳐 `svdvals`와 비트까지 같은 값을 봐요.
-seeAlso: [eigen, qr, lu, batch, packing, performance]
+seeAlso: [eigen, qr, lu, batch, packing]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -619,32 +619,10 @@ numpy 2.5.4의 `pinv`도 SVD로 계산하지만 기본 허용오차가 `rcond=1e
 
 같은 Accelerate LAPACK을 부르므로, 큰 행렬 하나에서는 stardust와 numpy의 시간이 비슷해요. 차이는 작은 행렬 하나(호출 경로와 패킹의 고정비), 배치(numpy는 배치를 한 코어로 차례로 돌고, stardust는 스레드풀에 나눠요), 그리고 값 전용 함수(루틴이 달라요)에서 나와요.
 
-아래 표는 numpy 2.5.4 시간을 stardust 시간으로 나눈 값이에요(1보다 크면 stardust가 빨라요). 각 칸은 기본 10스레드 / 1스레드예요.
-
-| 모양 | `svd` | `svdvals` | `pinv` |
-|---|:---:|:---:|:---:|
-| (3, 3) | ⟦BENCH svd (3,3) t10⟧ / ⟦BENCH svd (3,3) t1⟧ | ⟦BENCH svdvals (3,3) t10⟧ / ⟦BENCH svdvals (3,3) t1⟧ | ⟦BENCH pinv (3,3) t10⟧ / ⟦BENCH pinv (3,3) t1⟧ |
-| (32, 32) | ⟦BENCH svd (32,32) t10⟧ / ⟦BENCH svd (32,32) t1⟧ | ⟦BENCH svdvals (32,32) t10⟧ / ⟦BENCH svdvals (32,32) t1⟧ | ⟦BENCH pinv (32,32) t10⟧ / ⟦BENCH pinv (32,32) t1⟧ |
-| (300, 300) | ⟦BENCH svd (300,300) t10⟧ / ⟦BENCH svd (300,300) t1⟧ | ⟦BENCH svdvals (300,300) t10⟧ / ⟦BENCH svdvals (300,300) t1⟧ | ⟦BENCH pinv (300,300) t10⟧ / ⟦BENCH pinv (300,300) t1⟧ |
-| (1000, 1000) | ⟦BENCH svd (1000,1000) t10⟧ / ⟦BENCH svd (1000,1000) t1⟧ | ⟦BENCH svdvals (1000,1000) t10⟧ / ⟦BENCH svdvals (1000,1000) t1⟧ | ⟦BENCH pinv (1000,1000) t10⟧ / ⟦BENCH pinv (1000,1000) t1⟧ |
-| (1000, 3, 3) | ⟦BENCH svd (1000,3,3) t10⟧ / ⟦BENCH svd (1000,3,3) t1⟧ | ⟦BENCH svdvals (1000,3,3) t10⟧ / ⟦BENCH svdvals (1000,3,3) t1⟧ | ⟦BENCH pinv (1000,3,3) t10⟧ / ⟦BENCH pinv (1000,3,3) t1⟧ |
-| (100, 32, 32) | ⟦BENCH svd (100,32,32) t10⟧ / ⟦BENCH svd (100,32,32) t1⟧ | ⟦BENCH svdvals (100,32,32) t10⟧ / ⟦BENCH svdvals (100,32,32) t1⟧ | ⟦BENCH pinv (100,32,32) t10⟧ / ⟦BENCH pinv (100,32,32) t1⟧ |
-
-| 모양 | `matrix_rank` | `cond` | `matrix_norm` (`ord=2`) |
-|---|:---:|:---:|:---:|
-| (3, 3) | ⟦BENCH matrix_rank (3,3) t10⟧ / ⟦BENCH matrix_rank (3,3) t1⟧ | ⟦BENCH cond (3,3) t10⟧ / ⟦BENCH cond (3,3) t1⟧ | ⟦BENCH matrix_norm 2 (3,3) t10⟧ / ⟦BENCH matrix_norm 2 (3,3) t1⟧ |
-| (32, 32) | ⟦BENCH matrix_rank (32,32) t10⟧ / ⟦BENCH matrix_rank (32,32) t1⟧ | ⟦BENCH cond (32,32) t10⟧ / ⟦BENCH cond (32,32) t1⟧ | ⟦BENCH matrix_norm 2 (32,32) t10⟧ / ⟦BENCH matrix_norm 2 (32,32) t1⟧ |
-| (300, 300) | ⟦BENCH matrix_rank (300,300) t10⟧ / ⟦BENCH matrix_rank (300,300) t1⟧ | ⟦BENCH cond (300,300) t10⟧ / ⟦BENCH cond (300,300) t1⟧ | ⟦BENCH matrix_norm 2 (300,300) t10⟧ / ⟦BENCH matrix_norm 2 (300,300) t1⟧ |
-| (1000, 1000) | ⟦BENCH matrix_rank (1000,1000) t10⟧ / ⟦BENCH matrix_rank (1000,1000) t1⟧ | ⟦BENCH cond (1000,1000) t10⟧ / ⟦BENCH cond (1000,1000) t1⟧ | ⟦BENCH matrix_norm 2 (1000,1000) t10⟧ / ⟦BENCH matrix_norm 2 (1000,1000) t1⟧ |
-| (1000, 3, 3) | ⟦BENCH matrix_rank (1000,3,3) t10⟧ / ⟦BENCH matrix_rank (1000,3,3) t1⟧ | ⟦BENCH cond (1000,3,3) t10⟧ / ⟦BENCH cond (1000,3,3) t1⟧ | ⟦BENCH matrix_norm 2 (1000,3,3) t10⟧ / ⟦BENCH matrix_norm 2 (1000,3,3) t1⟧ |
-| (100, 32, 32) | ⟦BENCH matrix_rank (100,32,32) t10⟧ / ⟦BENCH matrix_rank (100,32,32) t1⟧ | ⟦BENCH cond (100,32,32) t10⟧ / ⟦BENCH cond (100,32,32) t1⟧ | ⟦BENCH matrix_norm 2 (100,32,32) t10⟧ / ⟦BENCH matrix_norm 2 (100,32,32) t1⟧ |
-
-{/* BENCH-FIG: svd (3,3) t10, svd (1000,3,3) t10, svd (100,32,32) t10, svd (1000,1000) t10, svdvals (3,3) t10, svdvals (1000,3,3) t10, svdvals (1000,1000) t10 (계열: numpy, stardust 1스레드, stardust 10스레드) | 캡션: Apple M4 Pro, numpy 2.5.4. 작은 행렬 하나는 호출 경로에서, 배치는 스레드풀에서 차이가 나요. 큰 행렬 하나는 같은 Accelerate gesdd라 비슷하고, svdvals는 루틴이 달라요(stardust gesvd, numpy gesdd). */}
-
-해석할 때 알아 둘 점이에요.
+알아 둘 점이에요.
 
 - **값 전용 함수는 루틴부터 달라요.** numpy의 `svdvals`, `matrix_rank`, `cond`, `matrix_norm(ord=2)`는 `gesdd` `'N'`, stardust는 `gesvd` `'N'`이에요. 큰 행렬 하나에서 나는 차이는 대부분 이 루틴의 차이예요.
-- **`cond`의 기본 `ord`는 2라서** 이 표의 `cond`도 특이값 경로예요.
+- **`cond`의 기본 `ord`는 2라서** 따로 `ord`를 주지 않은 `cond`도 특이값 경로예요.
 - **`pinv`는 SVD 뒤에 `gemm` 한 번**이라 `svd`와 비슷하게 움직여요.
 
 복잡도는 이래요($m \ge n$, $k = n$).

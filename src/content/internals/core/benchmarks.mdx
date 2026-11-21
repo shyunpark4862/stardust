@@ -165,7 +165,7 @@ MAX_CALLS = 1 << 24
 
 ### 같은 입력을 되풀이하지 않기
 
-정렬처럼 가지가 많은 계산은 같은 입력으로 되풀이해 재면 실제보다 빠르게 나와요. CPU의 분기 예측기가 그 입력의 분기 순서를 배우고, 캐시에도 그 입력이 남기 때문이에요. numpy의 `argsort`(원소 $10^3$개)는 한 입력을 되풀이하면 7.6 µs, 매번 새 입력이면 29.3 µs였어요. 실제 사용에서 같은 배열을 수천 번 정렬하는 일은 드무니, 뒤쪽이 맞는 값이에요.
+정렬처럼 가지가 많은 계산은 같은 입력으로 되풀이해 재면 실제보다 빠르게 나와요. CPU의 분기 예측기가 그 입력의 분기 순서를 배우고, 캐시에도 그 입력이 남기 때문이에요. numpy의 `argsort`(원소 $10^3$개)는 한 입력을 되풀이하면 7.6 µs, 매번 새 입력이면 29 µs였어요. 실제 사용에서 같은 배열을 수천 번 정렬하는 일은 드무니, 뒤쪽이 맞는 값이에요.
 
 그래서 가지가 많은 계산은 같은 분포와 모양의 입력 여럿을 미리 만들어, 부를 때마다 다음 입력을 써요(`harness.rotate`). 입력 수는 원소 수에 따라 정해요.
 
@@ -620,7 +620,7 @@ constexpr double find(std::string_view dist, std::string_view method, bool memo 
 - **1스레드 줄은 BLAS도 1스레드예요.** BLAS를 부르는 사례에서 sd의 1스레드 줄은 Accelerate까지 1스레드로 묶은 시간이에요.
 - **†와 \*를 놓치지 않아요.** †는 기계가 바쁠 때 잰 줄이고, \*는 입력의 일부로 재서 늘린 값이에요.
 
-영역별로 실제 속도를 정리한 글은 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/), [최적화 정확도와 성능](/internals/optimize/accuracy-performance/)에 있어요.
+재서 나온 시간은 영역마다 `bench/<영역>/speed.md` 표에 모여요. 영역마다 어디서 왜 빠르거나 느린지, 무엇과 견주는지는 [배열 성능](/internals/array/performance/), [데이터프레임 성능](/internals/frame/performance/), [난수 성능과 검증](/internals/random/performance/), [특수함수 정확도와 성능](/internals/special/accuracy-performance/), [통계 정확도와 성능](/internals/stats/accuracy-performance/), [회귀 정확도와 성능](/internals/regression/accuracy-performance/), [최적화 정확도와 성능](/internals/optimize/accuracy-performance/)에서 다뤄요.
 
 ## 명령 모음
 

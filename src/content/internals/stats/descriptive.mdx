@@ -5,7 +5,6 @@ order: 1
 summary: 기술통계 함수 11개가 축을 줄로 펼쳐 네이티브 커널에서 계산하는 방법을 설명해요. 평균을 두 부분으로 나눠 들고 보상 합으로 더해서, 평균이 아주 큰 데이터에서도 왜도와 첨도의 자릿수를 지켜요.
 seeAlso: [overview, engine, accuracy-performance]
 ---
-import Bench from '../../../components/fig/Bench.astro';
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import Steps from '../../../components/fig/Steps.astro';
@@ -80,7 +79,7 @@ okc = vsubq_u64(okc, ok);
 q.add2(v, vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(x), ok)));
 ```
 
-그래서 `'omit'`은 NaN이 없는 데이터와 거의 같은 비용이에요. scipy 1.18.1의 `'omit'`은 마스크 배열로 계산해서, 원소 $10^6$개의 `skew`가 `axis=None`에서 9.59 ms, `(1000, 1000)`의 `axis=0`에서 51.59 ms예요. stardust는 1스레드로 1.03 ms, 1.32 ms예요(9.3배, 39배; `bench/stats/t8/speed.md`).
+그래서 `'omit'`은 NaN이 없는 데이터와 거의 같은 비용이에요. scipy 1.18.1의 `'omit'`은 마스크 배열을 만들어 계산해서, 원소 $10^6$개의 `skew`에서 stardust 1스레드가 9–39배 빨라요.
 
 ```python
 >>> x = sd.asarray([[1.0, 2.0, 4.0], [3.0, sd.nan, 9.0]])
@@ -603,49 +602,15 @@ scipy 1.18.1과는 크기 5, 9, 50, 2000, 20000인 정규 표본에서 네 방�
 
 ## 속도
 
-`bench/stats/t8/speed.md`의 값이에요. 조건은 원소 $10^6$개(감마(2) 데이터), Apple M4 Pro, scipy 1.18.1, 다섯 번 재서 가장 빠른 값이에요. "전체"는 길이 $10^6$인 벡터의 `axis=None`, "axis 0"은 `(1000, 1000)` 행렬의 `axis=0`이에요. `mode`는 같은 데이터를 $\mathrm{round}(4x)$로 바꿔 반복값이 있게 했고, "skew omit"은 1000번째마다 NaN을 넣었어요.
+원소 $10^6$개에서 scipy 1.18.1과 견주면 1스레드에서 `skew`·`kurtosis`·`moment` 6.0–7.6배, `describe` 4.8–6.4배, `zscore` 1.2–1.4배, `rankdata` 1.3–1.7배, `mode` 1.0–2.7배, `iqr` 1.3–2.0배, `differential_entropy` 1.9–3.1배 빨라요. 10스레드에서는 대부분 10–45배예요. 1스레드에서 scipy보다 느린 것은 `sem`(0.67배, `axis=0`은 0.83배)뿐이고, 10스레드에서는 3.9배 빨라요.
 
-<Bench
-  series={['scipy 1.18.1', 'stardust 1스레드', 'stardust 10스레드']}
-  rows={[
-    { label: 'skew 전체', times: [9.49e-3, 1.41e-3, 0.24e-3] },
-    { label: 'kurtosis 전체', times: [9.02e-3, 1.51e-3, 0.22e-3] },
-    { label: 'describe 전체', times: [19.71e-3, 3.10e-3, 0.52e-3] },
-    { label: 'moment(3) 전체', times: [7.86e-3, 1.04e-3, 0.17e-3] },
-    { label: 'sem 전체', times: [0.55e-3, 0.81e-3, 0.14e-3] },
-    { label: 'zscore 전체', times: [1.56e-3, 1.27e-3, 0.27e-3] },
-    { label: 'rankdata 전체', times: [80.84e-3, 47.86e-3, 8.38e-3] },
-    { label: 'iqr 전체', times: [26.44e-3, 13.15e-3, 6.51e-3] },
-    { label: 'mode 전체', times: [6.62e-3, 6.40e-3, 2.05e-3] },
-    { label: 'entropy 전체', times: [2.71e-3, 2.23e-3, 0.41e-3] },
-    { label: 'differential_entropy 전체', times: [66.13e-3, 21.65e-3, 5.46e-3] },
-    { label: 'skew omit 전체', times: [9.59e-3, 1.03e-3, 0.18e-3] },
-  ]}
-  caption="원소 10⁶개의 벡터, axis=None. 막대 옆 배율은 scipy 시간 / stardust 시간이에요."
-/>
-
-| 함수 | axis 0: scipy (ms) | stardust 1스레드 | stardust 10스레드 | scipy / 1스레드 | scipy / 10스레드 |
-|---|:---:|:---:|:---:|:---:|:---:|
-| `skew` | 9.59 | 1.40 | 0.36 | 6.85 | 26.6 |
-| `kurtosis` | 9.67 | 1.57 | 0.44 | 6.15 | 22.0 |
-| `describe` | 21.23 | 4.39 | 0.59 | 4.84 | 35.7 |
-| `moment(3)` | 8.31 | 1.32 | 0.35 | 6.30 | 23.7 |
-| `sem` | 0.95 | 1.14 | 0.25 | 0.83 | 3.9 |
-| `zscore` | 2.18 | 1.61 | 0.40 | 1.36 | 5.4 |
-| `rankdata` | 38.58 | 29.52 | 3.39 | 1.31 | 11.4 |
-| `iqr` | 14.64 | 11.41 | 1.36 | 1.28 | 10.8 |
-| `mode` | 20.04 | 7.45 | 0.89 | 2.69 | 22.6 |
-| `entropy` | 3.03 | 2.31 | 0.42 | 1.31 | 7.2 |
-| `differential_entropy` | 30.55 | 15.83 | 1.94 | 1.93 | 15.8 |
-| `skew` omit | 51.59 | 1.32 | 0.29 | 39.13 | 179.4 |
-
-- 모멘트(`skew`, `kurtosis`, `moment`, `describe`)은 1스레드에서 4.8–7.6배예요. stardust는 데이터를 두 번 훑는 동안 중간 배열을 만들지 않고, 보상 합이 NEON 사슬 여덟 개라 원소 $10^6$개에 1–1.6 ms(`describe`는 최솟값·최댓값을 함께 구해서 3.1–4.4 ms)예요.
-- scipy보다 느린 것은 `sem`뿐이에요(1스레드 0.67배, 0.83배). stardust는 첫 훑기의 합, 두 번째 훑기의 $S_1$, $S_2$로 보상 합 셋을 계산하고, scipy의 표준편차는 보상하지 않는 합이에요. 10스레드에서는 3.9배 빨라요.
-- 정렬하는 함수(`rankdata`, `mode`, `differential_entropy`)는 1스레드 1.0–3.1배, 10스레드 3.2–22.6배예요. `axis=None`의 긴 줄 하나는 samplesort가 풀에서 나눠요.
-- `iqr` 전체는 10스레드에서도 1스레드의 2.0배에 그쳐요. 분위수 두 번이 각자 긴 줄 하나를 다루기 때문이에요. 배열 영역의 `quantile`이 레인 하나를 어떻게 고르고 언제 병렬 정렬로 가는지는 [배열의 통계 함수](/internals/array/statistics/)에 있어요.
+- 모멘트(`skew`, `kurtosis`, `moment`, `describe`)는 데이터를 두 번 훑는 동안 중간 배열을 만들지 않고, 보상 합을 NEON 사슬 여덟 개로 더해요. `describe`는 최솟값·최댓값도 함께 구해요.
+- `sem`은 첫 훑기의 합, 두 번째 훑기의 $S_1$, $S_2$로 보상 합 셋을 계산해요. scipy의 표준편차는 보상하지 않는 합이라 일이 더 적어요. `sem`이 1스레드에서 느린 이유예요.
+- 정렬하는 함수(`rankdata`, `mode`, `differential_entropy`)에서 `axis=None`의 긴 줄 하나는 samplesort가 풀에서 나눠요.
+- `iqr`은 `sd.quantile`을 두 번 불러요. 배열 영역의 `quantile`이 레인 하나를 어떻게 고르고 언제 병렬 정렬로 가는지는 [배열의 통계 함수](/internals/array/statistics/)에 있어요.
 
 <Callout>
-기술통계의 결과는 스레드 수와 상관없이 같은 비트예요. 모멘트은 블록의 경계가, 정렬은 표본과 분할자와 조각의 경계가 데이터만으로 정해지기 때문이에요. `bench/stats/opt/e/`의 `desc_moments.py`, `desc_sort.py`는 크기·NaN 정책·레이아웃·스레드 수(1, 3, 4, 10)를 바꿔 가며 결과의 해시를 만들어, 두 빌드의 결과가 비트까지 같은지 비교하는 도구예요.
+기술통계의 결과는 스레드 수와 상관없이 같은 비트예요. 모멘트은 블록의 경계가, 정렬은 표본과 분할자와 조각의 경계가 데이터만으로 정해지기 때문이에요. `tests/stats/test_descriptive.py`가 1, 3, 10스레드의 결과를 비트로 비교해요.
 </Callout>
 
 ## 참고 문헌

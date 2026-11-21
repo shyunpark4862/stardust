@@ -145,7 +145,7 @@ export const envNegPts = [[0.25, -1.355], [0.5, -1.038], [0.75, -0.8751], [1, -0
 
 - 의존은 한 방향이에요. `special/`은 `array/`를 쓰지만 `array/`는 `special/`을 몰라요. 배열 영역에 더한 n항 디스패처(`nary_loop`, `run_nary`)도 특수함수 전용 이름이나 분기가 없는 일반 장치예요. 원소 함수 하나를 템플릿 인자로 받을 뿐이에요.
 - 함수는 헤더에 있어요. `ops/*.hpp`의 Op 구조체는 모두 `inline` 함수예요. 바인딩 파일 하나(`bind/special_bind.cpp`)가 이 헤더들을 포함하고, `nary_loop<Op, double>`을 함수마다 한 번씩 인스턴스화해요. 그래서 원소 함수 `Op::f`가 루프 안으로 인라인되고, 원소마다 함수 포인터를 거치지 않아요. 컴파일 단위로 따로 떨어진 것은 배열의 리덕션 드라이버를 부르는 `reduce.cpp`뿐이에요.
-- Python 코드를 거치지 않아요. `sd.special.erf`는 nanobind로 등록한 C++ 함수 그 자체예요. 원소 하나짜리 호출에서는 계산보다 호출 경로가 더 오래 걸리기 때문이에요. `erf`의 스칼라 호출 한 번이 ⟦SPEED erf scalar⟧µs예요.
+- Python 코드를 거치지 않아요. `sd.special.erf`는 nanobind로 등록한 C++ 함수 그 자체예요. 원소 하나짜리 호출에서는 계산보다 호출 경로가 더 오래 걸리기 때문이에요.
 - 컴파일 옵션도 결과를 정해요. 모든 코드는 `-ffp-contract=off`로 빌드돼요. 컴파일러가 `a + b*c`를 FMA 하나로 합치지 못하게 막아서, 반올림이 일어나는 자리가 소스 코드에 적힌 대로예요. FMA가 필요한 곳은 `std::fma`로 적어요(다항식의 Horner는 단계마다 FMA 하나예요). 같은 $x$의 사인과 코사인도 컴파일러가 스스로 합치지 못하게 빌드하고, 합칠 곳은 `special/sincos.hpp`의 `sincos`로 적어서 어느 경로에서든 같은 함수가 불려요. 같은 파일에 포함되는 Boost.Math 헤더도 같은 옵션으로 컴파일돼요.
 
 함수 하나는 이런 모양이에요. 두 입력을 받는 `xlogy`예요.
@@ -390,7 +390,7 @@ static double f(double x) {
 | `lambertw` ($k = -1$) | $\lvert x + 1/e \rvert \ge 0.05$ | Fukushima의 방법 [12]: $W$의 정수 부분을 표에서 찾고, 지수 함수 없이 이분법으로 소수 부분을 8–11번 좁힌 뒤, 5차 Schröder 갱신 한 번. $\lvert x \rvert$가 아주 작으면 $L_1 - L_2 + L_2/L_1$에서 Halley 반복 | 분기점 근처 |
 | `hyp1f1` | 보장 영역의 $0 \le x < 16$, $b < 11$, $a \le 100$. 느슨한 영역에서는 stardust의 급수·점화식·점근전개가 안 될 때 $\lvert a\rvert, \lvert b\rvert \le 100$ | 매개변수 영역마다 거듭제곱급수(넘침을 지수로 따로 세는 판), Kummer 변환, 큰 인자의 점근전개, Bessel 함수 전개, $a$·$b$에 대한 점화식과 함수 비율 중 하나를 골라요 | 보장 영역의 나머지 (Boost는 $x \ge 18$부터 45 ULP를 넘는 점이 생기고 $x \approx 500$에서 297 ULP). 느슨한 영역의 나머지는 상쇄를 아는 급수, $a$의 점화식, 점근전개, 큰 음의 $a$의 Tricomi 전개 순이고, 모두 안 되면 NaN |
 
-Boost를 쓰지 않는 함수에도 이유가 있어요. `erf` 계열, `gammaln`, `j0 j1 y0 y1`은 Boost가 더 정확해도 느려서 이 저장소의 코드예요. `airy`는 stardust가 값 넷을 한 번에 계산하고 Boost는 넷을 따로 불러야 해서, 1스레드 원소당 시간이 stardust는 넷을 합쳐 약 277ns, Boost는 값 하나에 143–218ns였어요. 게다가 Boost는 $x \approx -10^{11}$ 같은 큰 음수에서 위상을 잃어 부호까지 틀려요. 불완전 감마, `expn`, `polygamma`, 타원적분, `jv`·`yv`도 Boost가 느리거나 틀려요. 비중심 분포는 scipy 1.18이 쓰는 Boost 구현이 깊은 꼬리에서 0을 내거나 수천 ULP가 틀려서 직접 계산해요. Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, `hyp2f1`, Hurwitz 제타, 리덕션)도 이 저장소의 코드예요. 구간을 고른 근거는 [정확도와 성능](/internals/special/accuracy-performance/)에서 정리해요.
+Boost를 쓰지 않는 함수에도 이유가 있어요. `erf` 계열, `gammaln`, `j0 j1 y0 y1`은 Boost가 더 정확해도 느려서 이 저장소의 코드예요. `airy`는 stardust가 값 넷을 한 번에 계산하고 Boost는 넷을 따로 불러야 해서, 1스레드 원소당 시간이 stardust는 넷을 합쳐 약 277ns, Boost는 넷을 따로 불러 약 720ns였어요. 게다가 Boost는 $x \approx -10^{11}$ 같은 큰 음수에서 위상을 잃어 부호까지 틀려요. 불완전 감마, `expn`, `polygamma`, 타원적분, `jv`·`yv`도 Boost가 느리거나 틀려요. 비중심 분포는 scipy 1.18이 쓰는 Boost 구현이 깊은 꼬리에서 0을 내거나 수천 ULP가 틀려서 직접 계산해요. Boost에 없는 함수(복소수 전부, `erfcx`, 정규분포 함수, `hyp2f1`, Hurwitz 제타, 리덕션)도 이 저장소의 코드예요. 구간을 고른 근거는 [정확도와 성능](/internals/special/accuracy-performance/)에서 정리해요.
 
 <Callout type="warn" title="Boost 구간은 betainc와 betaincc가 같아야 해요">
   `betainc`와 `betaincc`는 더하면 1이에요. 한쪽만 Boost이고 다른 쪽이 BRATIO인 점이 넓게 생기면 두 구현의 오차가 따로 놀아요. 그래서 두 함수의 Boost 구간을 $a, b \le 6$으로 맞춰 두었어요. 그래도 이 구간에서는 Boost가 두 값을 따로 계산하고, 서브노멀 $x$나 Boost가 1에서 빼서 만드는 쪽처럼 한쪽만 BRATIO로 가는 점도 있어서 합이 1에서 최대 $1.0 \times 10^{-15}$($4.5\varepsilon$, $\varepsilon = 2^{-52}$) 벗어나요. BRATIO 구간에서는 한 호출이 $I$와 $1 - I$를 함께 내므로 합이 2 ULP 안이에요.

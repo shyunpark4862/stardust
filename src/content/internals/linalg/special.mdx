@@ -3,7 +3,7 @@ title: 띠 행렬과 Sylvester 방정식
 group: 특수 구조와 행렬 함수
 order: 1
 summary: 띠 행렬과 Sylvester 방정식을 일반 LU 대신 문제의 구조를 이용해 푸는 방법을 설명해요. 띠 행렬은 띠 안에서만 소거해 시간이 크기에 비례하고, Sylvester 방정식은 두 행렬을 따로 삼각화하는 Bartels–Stewart 방법으로 계산량을 크게 줄여요.
-seeAlso: [lu, eigen, symmetric, batch, packing, performance]
+seeAlso: [lu, eigen, symmetric, batch, packing]
 ---
 import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
@@ -438,36 +438,7 @@ lapack::gemm('N', 'C', m, n, n, tmp, m, W, n, x, m);    // x = U Y Wᴴ
 
 ### numpy·scipy와 비교
 
-numpy에는 세 함수가 없어서 기준은 scipy 1.18.1이에요. `solve_tridiagonal`은 scipy에 같은 이름의 함수가 없어서 `scipy.linalg.solve_banded((1, 1), …)`과 비교해요(같은 `gtsv`). 행렬 모양 $(n, n)$의 띠 줄은 그 크기의 띠 행렬이에요(`solve_banded 2,2`는 $k_l = k_u = 2$). 표의 값은 기준 시간 / stardust 시간이라서 1보다 크면 stardust가 빨라요. scipy의 `solve_banded`는 배치를 받지 않아서 띠 함수의 배치 줄에는 기준이 없어요.
-
-| 함수 | 모양 | 10스레드 | 1스레드 |
-|---|---|:---:|:---:|
-| `solve_tridiagonal` | (3,3) | ⟦BENCH solve_tridiagonal (3,3) t10⟧ | ⟦BENCH solve_tridiagonal (3,3) t1⟧ |
-| `solve_tridiagonal` | (32,32) | ⟦BENCH solve_tridiagonal (32,32) t10⟧ | ⟦BENCH solve_tridiagonal (32,32) t1⟧ |
-| `solve_tridiagonal` | (300,300) | ⟦BENCH solve_tridiagonal (300,300) t10⟧ | ⟦BENCH solve_tridiagonal (300,300) t1⟧ |
-| `solve_tridiagonal` | (1000,1000) | ⟦BENCH solve_tridiagonal (1000,1000) t10⟧ | ⟦BENCH solve_tridiagonal (1000,1000) t1⟧ |
-| `solve_tridiagonal` | n=100000 | ⟦BENCH solve_tridiagonal n=100000 t10⟧ | ⟦BENCH solve_tridiagonal n=100000 t1⟧ |
-| `solve_tridiagonal` | (1000,3,3), (100,32,32) | — | — |
-| `solve_banded 1,1` | (3,3) | ⟦BENCH solve_banded 1,1 (3,3) t10⟧ | ⟦BENCH solve_banded 1,1 (3,3) t1⟧ |
-| `solve_banded 1,1` | (32,32) | ⟦BENCH solve_banded 1,1 (32,32) t10⟧ | ⟦BENCH solve_banded 1,1 (32,32) t1⟧ |
-| `solve_banded 1,1` | (300,300) | ⟦BENCH solve_banded 1,1 (300,300) t10⟧ | ⟦BENCH solve_banded 1,1 (300,300) t1⟧ |
-| `solve_banded 1,1` | (1000,1000) | ⟦BENCH solve_banded 1,1 (1000,1000) t10⟧ | ⟦BENCH solve_banded 1,1 (1000,1000) t1⟧ |
-| `solve_banded 2,2` | (3,3) | ⟦BENCH solve_banded 2,2 (3,3) t10⟧ | ⟦BENCH solve_banded 2,2 (3,3) t1⟧ |
-| `solve_banded 2,2` | (32,32) | ⟦BENCH solve_banded 2,2 (32,32) t10⟧ | ⟦BENCH solve_banded 2,2 (32,32) t1⟧ |
-| `solve_banded 2,2` | (300,300) | ⟦BENCH solve_banded 2,2 (300,300) t10⟧ | ⟦BENCH solve_banded 2,2 (300,300) t1⟧ |
-| `solve_banded 2,2` | (1000,1000) | ⟦BENCH solve_banded 2,2 (1000,1000) t10⟧ | ⟦BENCH solve_banded 2,2 (1000,1000) t1⟧ |
-| `solve_banded 2,2` | n=100000 | ⟦BENCH solve_banded 2,2 n=100000 t10⟧ | ⟦BENCH solve_banded 2,2 n=100000 t1⟧ |
-| `solve_banded` | 배치 두 줄 | — | — |
-| `solve_sylvester` | (3,3) | ⟦BENCH solve_sylvester (3,3) t10⟧ | ⟦BENCH solve_sylvester (3,3) t1⟧ |
-| `solve_sylvester` | (32,32) | ⟦BENCH solve_sylvester (32,32) t10⟧ | ⟦BENCH solve_sylvester (32,32) t1⟧ |
-| `solve_sylvester` | (300,300) | ⟦BENCH solve_sylvester (300,300) t10⟧ | ⟦BENCH solve_sylvester (300,300) t1⟧ |
-| `solve_sylvester` | (1000,1000) | ⟦BENCH solve_sylvester (1000,1000) t10⟧ | ⟦BENCH solve_sylvester (1000,1000) t1⟧ |
-| `solve_sylvester` | (1000,3,3) | ⟦BENCH solve_sylvester (1000,3,3) t10⟧ | ⟦BENCH solve_sylvester (1000,3,3) t1⟧ |
-| `solve_sylvester` | (100,32,32) | ⟦BENCH solve_sylvester (100,32,32) t10⟧ | ⟦BENCH solve_sylvester (100,32,32) t1⟧ |
-
-{/* BENCH-FIG: solve_tridiagonal (3,3) t10, solve_tridiagonal (1000,1000) t10, solve_tridiagonal n=100000 t10, solve_banded 2,2 (3,3) t10, solve_banded 2,2 (1000,1000) t10, solve_banded 2,2 n=100000 t10, solve_sylvester (3,3) t10, solve_sylvester (32,32) t10, solve_sylvester (300,300) t10, solve_sylvester (1000,1000) t10, solve_sylvester (1000,3,3) t10 | 캡션: scipy와 stardust 1스레드·10스레드의 시간. 띠 함수는 호출 경로에서, solve_sylvester는 큰 행렬에서 trsyl3와 Schur 분해 두 개의 동시 실행에서, 배치에서는 배치 분할에서 차이가 나요. */}
-
-{/* 띠 함수의 배치 줄((1000,3,3), (100,32,32))은 scipy 기준이 없어요. solve_banded 2,2의 두 배치 줄은 n(kl + ku + 1)이 400 미만이라 10스레드에서도 나누지 않아요. */}
+numpy에는 세 함수가 없어서 기준은 scipy 1.18.1이에요. `solve_tridiagonal`은 scipy에 같은 이름의 함수가 없어서 `scipy.linalg.solve_banded((1, 1), …)`과 비교해요(같은 `gtsv`).
 
 차이가 나는 곳은 이래요.
 

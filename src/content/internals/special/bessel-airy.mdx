@@ -97,7 +97,7 @@ Cephes의 `j0`·`j1`은 $x \le 5$에서 첫 두 영점을 인수로 빼서 그 �
 
 ## 0·1차 J와 Y (Cephes)
 
-`j0 j1 y0 y1`은 Cephes [1]의 `j0.c`, `j1.c` 식이에요. 계수는 scipy 1.15.1이 포함한 Cephes(BSD 3조항)의 십진 값을 그대로 옮겨 `coeffs/cephes_bessel.hpp`에 두었어요. Boost.Math에도 같은 함수가 있고 최대 오차는 조금 작았지만(같은 참값 파일에서 `y1` 21 대 48 ULP, 포락선 배율로 나눈 값), 1스레드에서 20–50% 느렸어요(Boost는 C++ 루프). 계약을 지키는 두 구현 중에서는 빠른 쪽을 고르므로 이 넷은 우리 코드예요.
+`j0 j1 y0 y1`은 Cephes [1]의 `j0.c`, `j1.c` 식이에요. 계수는 scipy 1.15.1이 포함한 Cephes(BSD 3조항)의 십진 값을 그대로 옮겨 `coeffs/cephes_bessel.hpp`에 두었어요. Boost.Math에도 같은 함수가 있고 최대 오차는 조금 작았지만(같은 참값 파일에서 `y1` 21 대 48 ULP, 포락선 배율로 나눈 값), 1스레드에서 느렸어요(Boost는 C++ 루프). 계약을 지키는 두 구현 중에서는 빠른 쪽을 고르므로 이 넷은 우리 코드예요.
 
 ### x ≤ 5: 영점을 뺀 유리식
 
@@ -207,7 +207,7 @@ scipy 1.18.1과 비교하면 차이가 분명해요(진폭 대비 ULP, 곧 ULP�
 
 ### Boost가 하는 일
 
-`i0 i1 k0 k1`은 결과가 정상 범위(서브노멀도 inf도 아닌 수)인 모든 곳에서 Boost.Math를 직접 불러요(`special/boost.hpp`, 헤더는 `third_party/boost_math`에 커밋 4682f44를 옮긴 것, Boost Software License 1.0). 참값 파일의 모든 점에서 계약을 지키고, 1스레드에서 우리 Cephes 경로보다 2–3.5배 빨랐기 때문이에요. Boost가 double에서 쓰는 식은 이래요(`detail/bessel_i0.hpp` 등의 53비트 판).
+`i0 i1 k0 k1`은 결과가 정상 범위(서브노멀도 inf도 아닌 수)인 모든 곳에서 Boost.Math를 직접 불러요(`special/boost.hpp`, 헤더는 `third_party/boost_math`에 커밋 4682f44를 옮긴 것, Boost Software License 1.0). 참값 파일의 모든 점에서 계약을 지키고, 1스레드에서 우리 Cephes 경로보다 2–4.5배 빨랐기 때문이에요. Boost가 double에서 쓰는 식은 이래요(`detail/bessel_i0.hpp` 등의 53비트 판).
 
 **$I_0$.** Holoborodko의 방법 [10]을 따른 근사예요.
 
@@ -295,7 +295,7 @@ $\nu < x$인 진동 영역에서는 $J$, $Y$가 비슷한 크기라 어느 방�
 
 ## 실수 차수 J와 Y
 
-`jv`, `yv`는 Numerical Recipes [9]의 `bessjy` 구조, 곧 Temme [5]와 Steed(Thompson–Barnett [6])의 방법을 따르고, 여기에 정확도를 위한 경로 셋(거듭제곱급수, 위로 점화, Hankel 점근)을 더했어요. $J$, $Y$에는 Boost를 쓰지 않아요. Boost는 참값 파일에서 $2.5 \times 10^4$ ULP까지 틀렸고(큰 $x$, 큰 $\nu$, 포락선 배율로 나눈 값), 넘치는 점에서는 부호가 반대인 무한대를 냈어요. 1스레드에서는 2.4배 느렸어요.
+`jv`, `yv`는 Numerical Recipes [9]의 `bessjy` 구조, 곧 Temme [5]와 Steed(Thompson–Barnett [6])의 방법을 따르고, 여기에 정확도를 위한 경로 셋(거듭제곱급수, 위로 점화, Hankel 점근)을 더했어요. $J$, $Y$에는 Boost를 쓰지 않아요. Boost는 참값 파일에서 $2.5 \times 10^4$ ULP까지 틀렸고(큰 $x$, 큰 $\nu$, 포락선 배율로 나눈 값), 넘치는 점에서는 부호가 반대인 무한대를 냈어요.
 
 ### 경로의 지도
 
@@ -519,7 +519,7 @@ $$
 
 ### 구간과 Boost
 
-`iv`는 $\lvert\nu\rvert < 30$, `kv`는 $\lvert\nu\rvert < 400$이고 $2^{-200} \le x < 10^4$이면 Boost.Math를 불러요. $10^4$ 위에서 $I$는 어차피 넘치고, $2^{-200}$ 아래는 위의 첫 항 경로가 값을 내요. 결과가 정상 범위가 아니면 우리 코드로 다시 계산해요. `ive`, `kve`는 같은 차수 구간과 $2^{-200} \le x < 700$에서 Boost의 값에 $e^{\mp x}$를 곱해요. 경계는 측정으로 정했어요. Boost는 $\nu \ge 30$의 $I$에서 결과가 작은 곳에 30배까지 틀렸고, `kv`의 $30 \le \nu < 400$은 Boost와 우리 Debye 경로가 모두 계약 안인데 Boost가 5% 빨랐어요(1스레드, `bench/special/boost/routing.md`의 구간 표본).
+`iv`는 $\lvert\nu\rvert < 30$, `kv`는 $\lvert\nu\rvert < 400$이고 $2^{-200} \le x < 10^4$이면 Boost.Math를 불러요. $10^4$ 위에서 $I$는 어차피 넘치고, $2^{-200}$ 아래는 위의 첫 항 경로가 값을 내요. 결과가 정상 범위가 아니면 우리 코드로 다시 계산해요. `ive`, `kve`는 같은 차수 구간과 $2^{-200} \le x < 700$에서 Boost의 값에 $e^{\mp x}$를 곱해요. 경계는 측정으로 정했어요. Boost는 $\nu \ge 30$의 $I$에서 결과가 작은 곳에 30배까지 틀렸고, `kv`의 $30 \le \nu < 400$은 Boost와 우리 Debye 경로가 모두 계약 안인데 Boost가 5% 빨랐어요(1스레드).
 
 ### Boost의 `bessel_ik`
 
@@ -681,37 +681,13 @@ inline dd::DD zeta_of(double z) {
 
 scipy 1.18.1과 비교하면 $x = -10^4$의 $\mathrm{Ai}$가 진폭 대비 $2.7 \times 10^5$ ULP(scipy)와 0.48 ULP(stardust)예요. double-double의 남은 오차는 $\zeta \cdot 2^{-106}$이라, $\lvert x\rvert \approx 10^{12}$를 넘으면 그것도 위상을 흐려요. 그래서 보장 영역은 $x \ge -10^{12}$이고, 그 밖은 느슨한 영역으로 잰 오차를 적어 두었어요(포락선 대비 $2^{-52}$ 단위로 $-10^{14}$에서 $6 \times 10^3$, $-10^{20}$에서 $8 \times 10^{12}$). 거기서는 입력의 마지막 비트 하나가 위상을 $\lvert x\rvert^{1.5} \cdot 2^{-52}$만큼 움직이는, 조건이 나쁜 영역이에요. $x < -10^{20}$이면 위상 $\zeta \cdot 2^{-106}$의 오차가 $10^{-3}$ 라디안을 넘고, $x \approx -2.4 \times 10^{21}$부터는 바퀴 단위로 틀려요. 포락선 말고는 아는 것이 없으므로 네 값 모두 NaN을 내요.
 
-Boost.Math에도 Airy 함수가 있지만 쓰지 않아요. Boost는 네 값을 따로 불러야 해서 원소당 약 720 ns가 들고(함께 계산하는 우리 경로는 ⟦COST airy⟧ ns), 위상을 반올림해서 $\lvert x\rvert > 15$부터 포락선 기준을 넘었어요(참값 파일의 $x \approx -7 \times 10^{10}$에서는 부호까지 틀려요).
+Boost.Math에도 Airy 함수가 있지만 쓰지 않아요. Boost는 네 값을 따로 불러야 해서 원소당 약 720 ns가 들고(함께 계산하는 우리 경로는 277 ns), 위상을 반올림해서 $\lvert x\rvert > 15$부터 포락선 기준을 넘었어요(참값 파일의 $x \approx -7 \times 10^{10}$에서는 부호까지 틀려요).
 
 ## 성능
 
-측정 조건은 원소 $10^6$개(각 함수의 보장 영역 참값 입력에서 복원 추출), 1스레드와 10스레드, scipy 1.18.1 대비예요. 배율은 scipy 시간 ÷ stardust 시간이라 1보다 크면 stardust가 빨라요.
-
-| 함수 | 1스레드 (ms) | 10스레드 (ms) | scipy 대비 (1스레드) | scipy 대비 (10스레드) | 원소당 비용 (ns) |
-|---|:---:|:---:|:---:|:---:|:---:|
-| `i0` | ⟦SPEED i0 t1⟧ | ⟦SPEED i0 t10⟧ | ⟦SPEED i0 ratio1⟧ | ⟦SPEED i0 ratio10⟧ | ⟦COST i0⟧ |
-| `i0e` | ⟦SPEED i0e t1⟧ | ⟦SPEED i0e t10⟧ | ⟦SPEED i0e ratio1⟧ | ⟦SPEED i0e ratio10⟧ | ⟦COST i0e⟧ |
-| `i1` | ⟦SPEED i1 t1⟧ | ⟦SPEED i1 t10⟧ | ⟦SPEED i1 ratio1⟧ | ⟦SPEED i1 ratio10⟧ | ⟦COST i1⟧ |
-| `i1e` | ⟦SPEED i1e t1⟧ | ⟦SPEED i1e t10⟧ | ⟦SPEED i1e ratio1⟧ | ⟦SPEED i1e ratio10⟧ | ⟦COST i1e⟧ |
-| `k0` | ⟦SPEED k0 t1⟧ | ⟦SPEED k0 t10⟧ | ⟦SPEED k0 ratio1⟧ | ⟦SPEED k0 ratio10⟧ | ⟦COST k0⟧ |
-| `k0e` | ⟦SPEED k0e t1⟧ | ⟦SPEED k0e t10⟧ | ⟦SPEED k0e ratio1⟧ | ⟦SPEED k0e ratio10⟧ | ⟦COST k0e⟧ |
-| `k1` | ⟦SPEED k1 t1⟧ | ⟦SPEED k1 t10⟧ | ⟦SPEED k1 ratio1⟧ | ⟦SPEED k1 ratio10⟧ | ⟦COST k1⟧ |
-| `k1e` | ⟦SPEED k1e t1⟧ | ⟦SPEED k1e t10⟧ | ⟦SPEED k1e ratio1⟧ | ⟦SPEED k1e ratio10⟧ | ⟦COST k1e⟧ |
-| `j0` | ⟦SPEED j0 t1⟧ | ⟦SPEED j0 t10⟧ | ⟦SPEED j0 ratio1⟧ | ⟦SPEED j0 ratio10⟧ | ⟦COST j0⟧ |
-| `j1` | ⟦SPEED j1 t1⟧ | ⟦SPEED j1 t10⟧ | ⟦SPEED j1 ratio1⟧ | ⟦SPEED j1 ratio10⟧ | ⟦COST j1⟧ |
-| `y0` | ⟦SPEED y0 t1⟧ | ⟦SPEED y0 t10⟧ | ⟦SPEED y0 ratio1⟧ | ⟦SPEED y0 ratio10⟧ | ⟦COST y0⟧ |
-| `y1` | ⟦SPEED y1 t1⟧ | ⟦SPEED y1 t10⟧ | ⟦SPEED y1 ratio1⟧ | ⟦SPEED y1 ratio10⟧ | ⟦COST y1⟧ |
-| `jv` | ⟦SPEED jv t1⟧ | ⟦SPEED jv t10⟧ | ⟦SPEED jv ratio1⟧ | ⟦SPEED jv ratio10⟧ | ⟦COST jv⟧ |
-| `yv` | ⟦SPEED yv t1⟧ | ⟦SPEED yv t10⟧ | ⟦SPEED yv ratio1⟧ | ⟦SPEED yv ratio10⟧ | ⟦COST yv⟧ |
-| `iv` | ⟦SPEED iv t1⟧ | ⟦SPEED iv t10⟧ | ⟦SPEED iv ratio1⟧ | ⟦SPEED iv ratio10⟧ | ⟦COST iv⟧ |
-| `ive` | ⟦SPEED ive t1⟧ | ⟦SPEED ive t10⟧ | ⟦SPEED ive ratio1⟧ | ⟦SPEED ive ratio10⟧ | ⟦COST ive⟧ |
-| `kv` | ⟦SPEED kv t1⟧ | ⟦SPEED kv t10⟧ | ⟦SPEED kv ratio1⟧ | ⟦SPEED kv ratio10⟧ | ⟦COST kv⟧ |
-| `kve` | ⟦SPEED kve t1⟧ | ⟦SPEED kve t10⟧ | ⟦SPEED kve ratio1⟧ | ⟦SPEED kve ratio10⟧ | ⟦COST kve⟧ |
-| `airy` | ⟦SPEED airy t1⟧ | ⟦SPEED airy t10⟧ | ⟦SPEED airy ratio1⟧ | ⟦SPEED airy ratio10⟧ | ⟦COST airy⟧ |
-
 시간이 어디에 드는지는 구조에서 정해져요.
 
-- `i0`·`i1`·`k0`·`k1`은 Boost의 다항식이나 유리식 하나라 원소당 연산이 수십 번이에요. 같은 입력에서 Boost를 C++ 루프로 부른 시간은 우리 Cephes Chebyshev 경로(30항 안팎의 Clenshaw)의 1/2–1/3.5였어요(1스레드). e-스케일 판은 Boost 값에 `exp`를 한 번 더 불러요.
+- `i0`·`i1`·`k0`·`k1`은 Boost의 다항식이나 유리식 하나라 원소당 연산이 수십 번이에요. 같은 입력에서 Boost를 C++ 루프로 부른 시간은 우리 Cephes Chebyshev 경로(30항 안팎의 Clenshaw)의 1/2–1/4.5였어요(1스레드). e-스케일 판은 Boost 값에 `exp`를 한 번 더 불러요.
 - `jv`·`yv`의 원소당 비용은 차수에 달려 있어요. 입력 표본의 차수가 $\lvert\nu\rvert \le 1000$까지 퍼져 있고, 큰 차수는 $O(\nu)$걸음의 double-double 점화식이에요. 병렬 분할에 쓰는 원소당 비용은 `cost.hpp`의 `kJv = 750` 같은 상수예요.
 - `iv`·`kv`는 Boost 구간(작은 차수)과 Debye 구간(차수와 상관없이 일정)으로 나뉘어 차수가 커져도 비용이 늘지 않아요.
 - `airy`는 Bessel 함수 넷(1/3차와 2/3차의 두 종류)을 한 번에 계산해서 네 출력을 함께 내요.

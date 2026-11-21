@@ -9,7 +9,6 @@ import Callout from '../../../components/Callout.astro';
 import Fig from '../../../components/fig/Fig.astro';
 import ArrayFig from '../../../components/fig/ArrayFig.astro';
 import Op from '../../../components/fig/Op.astro';
-import Bench from '../../../components/fig/Bench.astro';
 
 ## 한눈에 보기
 
@@ -23,36 +22,16 @@ stardust는 이 비용을 다루는 데 세 가지 원칙을 지켜요.
 
 특수 경로는 두 개뿐이에요. 가장 흔한 작은 호출인 `x[1, 2]` 같은 정수 인덱싱, 그리고 피연산자가 모두 Python 스칼라인 원소별 호출(`sd.sin(0.5)`)이에요. 둘 다 일반 경로와 결과가 비트까지 같고, 조금이라도 특이한 입력은 일반 경로로 넘겨요. 이와 별도로 배열의 단순 속성(`shape`, `ndim` …)과 `len()`은 nanobind를 거치지 않고 CPython의 타입 슬롯으로 등록해요.
 
-<Bench
-  rows={[
-    { label: 'sum(a) (원소 3개)', times: [548e-9, 90e-9, 92e-9] },
-    { label: 'finfo(float64)', times: [110e-9, 20e-9, 20e-9] },
-    { label: 'x[10, 20]', times: [33e-9, 25e-9, 25e-9] },
-    { label: 'a[1] (1차원, 원소)', times: [28e-9, 23e-9, 23e-9] },
-    { label: 'x.shape', times: [18e-9, 19e-9, 19e-9] },
-    { label: 'a + b (원소 3개)', times: [151e-9, 179e-9, 183e-9] },
-    { label: 'exp(a) (원소 3개)', times: [124e-9, 154e-9, 155e-9] },
-    { label: 'zeros(3)', times: [61e-9, 91e-9, 90e-9] },
-    { label: 'm[1] (2차원, 행 뷰)', times: [43e-9, 72e-9, 72e-9] },
-    { label: 'm.T', times: [38e-9, 68e-9, 67e-9] },
-  ]}
-  caption="작은 배열의 호출 하나. a, b는 원소 3개 float64, m은 3×4 float64, x는 1000×1000 float64예요. 작은 연산은 기준값보다 작아 스레드풀을 쓰지 않으므로 1스레드와 10스레드의 차이는 측정 잡음이에요. numpy 쪽 sum(a)는 np.sum(a)예요."
-/>
-
 | 연산 | stardust | numpy 2.5.4 | 비고 |
 |---|---:|---:|---|
-| `sd.sum(a)` / `np.sum(a)` | 90ns | 548ns | stardust가 6.1배 빨라요 |
-| `sd.mean(a)` / `np.mean(a)` | 89ns | 888ns | stardust가 10배 빨라요 |
-| `finfo(float64)` | 20ns | 110ns | 결과 객체를 한 번만 만들어 공유해요 |
-| `x[10, 20]` | 25ns | 33ns | 정수 인덱스 빠른 경로 |
-| `a[1]` (1차원, 원소 하나) | 23ns | 28ns | 같은 빠른 경로 |
-| `x.shape`, `len(a)` | 19ns, 7ns | 18ns, 7ns | 타입 슬롯 |
+| `finfo(float64)` | 20ns | 111ns | 결과 객체를 한 번만 만들어 공유해요 |
+| `x[1, 2]` | 25ns | 33ns | 정수 인덱스 빠른 경로 |
+| `x.shape`, `len(x)` | 19ns, 7ns | 18ns, 7ns | 타입 슬롯 |
 | `a + b` (원소 3개) | 179ns | 151ns | numpy가 1.2배 빨라요 |
 | `zeros(3)` | 91ns | 61ns | numpy가 1.5배 빨라요 |
 | `m[1]` (2차원, 행 뷰) | 72ns | 43ns | numpy가 1.7배 빨라요 |
-| `m.T`, `m[1:, ::2]` | 68ns, 102ns | 38ns, 51ns | numpy가 1.8~2배 빨라요 |
 
-모두 [성능 종합](/internals/array/performance/)의 전체 측정(Apple M4 Pro, numpy 2.5.4, 7번 반복한 최솟값을 10라운드 동안 구해 그중 가장 작은 값)에서 가져온 값이에요. 1차원의 `a[1]`은 Python `float`을 돌려주고, 2차원의 `m[1]`은 행 하나의 뷰(새 배열 객체)를 돌려주므로 서로 다른 일이에요. numpy보다 느린 줄은 모두 새 배열 객체를 돌려주는 호출이에요. 그 이유는 뒤의 "남은 비용: 배열 객체의 할당"에서 다뤄요.
+Apple M4 Pro, numpy 2.5.4에서 잰 값이에요. `x[1, 2]`는 Python `float`을 돌려주고, 2차원의 `m[1]`은 행 하나의 뷰(새 배열 객체)를 돌려줘요. numpy보다 느린 줄은 모두 새 배열 객체를 돌려주는 호출이에요. 그 이유는 뒤의 "남은 비용: 배열 객체의 할당"에서 다뤄요.
 
 ## 왜 작은 배열이 중요한가
 
@@ -346,10 +325,10 @@ nb::object getitem(nb::handle x, nb::handle key) {
 
 - 조금이라도 특이하면 일반 경로로 넘겨요. `PyLong_CheckExact`는 int의 하위 클래스를 받지 않으므로 `True`(bool은 int의 하위 클래스)는 일반 경로로 가서 평소대로 IndexError가 나요(stardust는 Python bool을 인덱스로 받지 않아요). `numpy.int64(1)` 같은 정수형 객체도 일반 경로에서 `__index__`로 처리돼요. 범위 밖 인덱스는 빠른 경로가 에러를 내지 않고 일반 경로로 넘겨서, 에러 메시지가 한 곳에서만 만들어져요.
 - 결과는 일반 경로와 같아요. 모든 축이 정수면 Python 스칼라(`float`, `int`, `bool`, `complex`), 아니면 남은 축의 뷰예요. `view_of`는 뷰의 `.base`를 메모리의 최종 소유자로 접는 일반 경로의 규칙을 그대로 써요.
-- 첫 항목이 slice인 키는 이 길을 타지 않아요. `f[1000:2000]`, `f[::2]`, `x[:, 5]`는 일반 계획을 거쳐 뷰를 만들어요(89~103ns, numpy 43~48ns).
+- 첫 항목이 slice인 키는 이 길을 타지 않아요. `f[1000:2000]`, `f[::2]`, `x[:, 5]`는 일반 계획을 거쳐 뷰를 만들어요.
 - 반복(`for row in x`)은 키를 만들지 않고 `item_along_axis0`으로 축 0을 직접 걸어요.
 
-결과는 `x[10, 20]` 25ns(numpy 33ns), 1차원 `a[1]` 23ns(numpy 28ns)예요.
+결과는 `x[1, 2]` 25ns(numpy 33ns)예요.
 
 ## 피연산자가 모두 Python 스칼라일 때
 
@@ -378,7 +357,7 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
 ```
 
 - 결과가 비트까지 같아요. 같은 변환으로 만든 같은 값에 같은 루프를 부르기 때문이에요. 원소별 연산은 원소마다 따로 계산하므로 "배열의 i번째 원소에 대한 결과"와 "그 원소 하나에 대한 결과"가 같아요.
-- 배열 경로를 거치는 것보다 호출 하나에 약 90ns 짧아요. 같은 ufunc 디스패치를 쓰는 모든 영역이 함께 덕을 봐요. `sd.special.expit(0.5)`는 48ns예요(배열 경로로 가면 140ns).
+- 배열 경로를 거치는 것보다 호출 하나에 약 90ns 짧아요. 같은 ufunc 디스패치를 쓰는 모든 영역(`sd.special.expit(0.5)` 등)이 함께 덕을 봐요.
 
 ## 속성과 `len()`은 타입 슬롯으로
 
@@ -386,11 +365,11 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
 
 그래서 `shape`, `strides`, `ndim`, `size`, `dtype`, `itemsize`, `nbytes`, `base`는 CPython의 `tp_getset` 슬롯에, `len()`은 `sq_length`/`mp_length` 슬롯에 C 함수로 직접 등록해요(`bind/array_bind.cpp`). 인터프리터가 이 함수를 바로 불러서 `x.shape` 19ns, `len(x)` 7ns로 numpy와 같아져요. 이 함수들은 메모리 부족 말고는 실패하지 않아서 nanobind의 예외 변환이 필요 없어요. 등록 방법은 [Python과 C++의 경계](/internals/core/python-boundary/)의 "속성"에 있어요.
 
-`finfo`, `iinfo`는 결과를 한 번만 만들어요. 결과는 바뀌지 않는 namedtuple이라, 처음 부를 때 만들어 정적 변수에 두고 같은 객체를 돌려줘요. 부를 때마다 결과 모듈에서 클래스를 찾아 만들면 377ns가 드는데, 한 번만 만들면 20ns예요. numpy(110ns, numpy도 객체를 캐시해요)보다 빨라요.
+`finfo`, `iinfo`는 결과를 한 번만 만들어요. 결과는 바뀌지 않는 namedtuple이라, 처음 부를 때 만들어 정적 변수에 두고 같은 객체를 돌려줘요. 부를 때마다 결과 모듈에서 클래스를 찾아 만들면 377ns가 드는데, 한 번만 만들면 20ns예요. numpy(111ns, numpy도 객체를 캐시해요)보다 빨라요.
 
 ## 남은 비용: 배열 객체의 할당
 
-위의 방법을 모두 써도, 새 배열 객체를 돌려주는 호출은 numpy보다 20~50ns 느려요. 가장 큰 몫은 결과를 담는 Python 객체의 할당이에요.
+위의 방법을 모두 써도, 새 배열 객체를 돌려주는 호출은 numpy보다 약 30ns 느려요. 가장 큰 몫은 결과를 담는 Python 객체의 할당이에요.
 
 - pymalloc을 쓰지 못해요. CPython은 512바이트 이하의 작은 요청을 전용 할당기(pymalloc)로 처리해요 [5]. 크기별로 나뉜 풀에서 블록을 꺼내는 일이라 싸요. `NDArray`가 560바이트이고 nanobind 인스턴스가 객체 머리를 더하므로, 배열 객체 하나는 이 경계를 넘어 시스템 `malloc`으로 가요.
 - macOS의 `free`는 메모리를 0으로 채워요. `sample`로 보면 작은 배열 연산에서 가장 뜨거운 곳이 `_xzm_free`와 `__bzero`예요. 해제하는 블록을 0으로 지우는 일이에요.
@@ -400,7 +379,7 @@ nb::object launch_scalars(std::span<const nb::handle> objs, std::span<const DTyp
 15~20ns를 얻으려고 최대 차원을 24로 낮추면, 32차원까지 받는 numpy 1.x보다도 상한이 낮아져요(numpy 2.x는 64). 길이 1인 축을 많이 끼워 브로드캐스팅하는 코드처럼 차원이 많은 배열을 쓰는 코드가 stardust에서만 실패하게 돼요. 작은 차원만 객체 안에 두고 넘치면 힙에 두는 구조도 맞지 않아요. shape와 strides를 읽는 모든 곳이 두 저장소를 구별해야 하고, 복사와 이동이 힙 소유권까지 다뤄야 해요. 그래서 32차원과 이 비용을 함께 받아들여요.
 </Callout>
 
-이 비용은 결과로 배열 객체를 만드는 모든 작은 호출에 똑같이 붙어요. 결과가 Python 스칼라인 호출(`x[10, 20]`, `sum(a)`)이나 객체를 만들지 않는 호출(`x.shape`, `len`)에는 없어요. 그래서 numpy보다 느린 작은 호출이 모두 "새 배열을 돌려주는 호출"이에요.
+이 비용은 결과로 배열 객체를 만드는 모든 작은 호출에 똑같이 붙어요. 결과가 Python 스칼라인 호출(`x[1, 2]`, `sum(a)`)이나 객체를 만들지 않는 호출(`x.shape`, `len`)에는 없어요. 그래서 numpy보다 느린 작은 호출이 모두 "새 배열을 돌려주는 호출"이에요.
 
 ## 넣지 않은 것
 
@@ -437,47 +416,43 @@ numpy가 약 28ns 빨라요. 할당 횟수는 numpy와 비슷해요(결과 데�
 - nanobind 인스턴스 등록(nanobind는 C++ 객체 주소 → Python 객체의 표를 관리해요), `NDArray` 이동
 - `named()`처럼 에러 메시지에 함수 이름을 붙이는 래퍼는 연산자에는 쓰지 않고, 공개 함수에 쓰더라도 C++ 예외가 나지 않으면 비용이 없어요(`try`/`catch`는 예외가 날 때만 실행되는 표 기반 방식이에요).
 
-`exp(a)`(154ns 대 124ns), `sqrt(a)`(149ns 대 121ns), `a < b`(179ns 대 148ns)도 같은 구성이에요. 반대로 `a * 2.0`(209ns 대 247ns), `i + 1`(216ns 대 285ns)처럼 Python 스칼라가 끼면 stardust가 빨라요. numpy는 Python 스칼라를 배열로 바꾸는 단계가 더 길어요.
+`exp(a)`, `sqrt(a)`, `a < b`도 같은 구성이에요.
 
 ### 뷰를 돌려주는 인덱싱: `m[1]` 72ns 대 43ns
 
-1차원 배열의 `a[1]`은 원소 하나라서 `x[10, 20]`과 같은 빠른 경로를 타고 Python `float`을 돌려줘요(23ns, numpy 28ns).
+1차원 배열의 `a[1]`은 원소 하나라서 `x[1, 2]`와 같은 빠른 경로를 타고 Python `float`을 돌려줘요.
 
-2차원 배열의 `m[1]`은 원소가 아니라 남은 축의 뷰(새 배열 객체)를 돌려줘요. 빠른 경로가 키 해석은 건너뛰지만, 뷰 객체를 만드는 비용은 남아요. 그 비용은 객체 할당(15~20ns) 말고는 nanobind 인스턴스의 등록, `NDArray` 복사(`view_of`에서 `NDArray`를 하나 복사하고 `.base` 참조를 올림), 메서드 호출 경로에 고르게 퍼져 있어서 한 군데를 고쳐 크게 줄일 곳이 없어요. 인스턴스를 만드는 길을 `inst_alloc`으로 바꿔도 약 3ns밖에 줄지 않아요. `m.T`(68ns 대 38ns)도 같은 구성이에요.
+2차원 배열의 `m[1]`은 원소가 아니라 남은 축의 뷰(새 배열 객체)를 돌려줘요. 빠른 경로가 키 해석은 건너뛰지만, 뷰 객체를 만드는 비용은 남아요. 그 비용은 객체 할당(15~20ns) 말고는 nanobind 인스턴스의 등록, `NDArray` 복사(`view_of`에서 `NDArray`를 하나 복사하고 `.base` 참조를 올림), 메서드 호출 경로에 고르게 퍼져 있어서 한 군데를 고쳐 크게 줄일 곳이 없어요. 인스턴스를 만드는 길을 `inst_alloc`으로 바꿔도 약 3ns밖에 줄지 않아요. `m.T`도 같은 구성이에요.
 
-`m[1:, ::2]`(102ns 대 51ns), `f[::2]`(89ns 대 43ns)처럼 slice가 있는 키는 여기에 일반 키 해석이 더해져요.
+`m[1:, ::2]`, `f[::2]`처럼 slice가 있는 키는 여기에 일반 키 해석이 더해져요.
 
 ### `zeros(3)`: 91ns 대 61ns
 
 shape는 `parse_shape_arg`로 할당 없이 읽어요. 남은 차이는 배열 객체의 할당, `dtype=` 키워드 인자를 받는 nanobind의 인자 처리, `make_shared`로 만드는 결과 Buffer(데이터는 Buffer 안에 있어 할당은 1번)와 그 0 채우기예요.
 
-### `x[10, 20]`이 더 빠른 이유: 25ns 대 33ns
+### `x[1, 2]`가 더 빠른 이유: 25ns 대 33ns
 
 - stardust는 빠른 경로에서 tuple 확인, 정수 두 개 읽기, 곱셈·덧셈 두 번, `float` 객체 하나 만들기로 끝나요.
 - 돌려주는 객체가 달라요. stardust는 Python 내장 `float`을 돌려주고(`PyFloat_FromDouble`), numpy는 `numpy.float64` 스칼라 객체를 돌려줘요(`type(x[1, 2])`로 볼 수 있어요). stardust에는 0차원 배열도 자체 스칼라 타입도 없어서, 원소 하나는 언제나 Python 스칼라예요. Python `float`은 pymalloc의 자유 목록에서 바로 나와요.
 
-### `sum(a)`가 6배 빠른 이유: 90ns 대 548ns
+### `sum(a)`: 호출 경로의 Python 코드
 
-이 차이는 C++과 C의 속도 차이가 아니라 호출 경로에 Python 코드가 있느냐의 차이예요. numpy 2.5.4의 `np.sum`을 따라가 보면(`numpy/_core/fromnumeric.py`) 이래요[2].
+작은 배열의 `sum`에서 두 라이브러리는 호출 경로에 Python 코드가 있느냐로 갈려요. numpy 2.5.4의 `np.sum`을 따라가 보면(`numpy/_core/fromnumeric.py`) 이래요[2].
 
 1. `np.sum`은 `numpy._ArrayFunctionDispatcher` 객체예요. `__array_function__` 프로토콜(다른 배열 라이브러리가 numpy 함수를 가로챌 수 있게 하는 장치)을 위해 인자를 먼저 살펴요.
 2. 그다음 Python으로 짠 함수 `sum`이 돌아요. 제너레이터 검사 뒤 `_wrapreduction(a, np.add, 'sum', axis, dtype, out, keepdims=…, initial=…, where=…)`을 불러요.
 3. `_wrapreduction`은 Python 코드예요. 키워드 인자를 dict comprehension으로 걸러 새 dict를 만들고, `type(obj) is not mu.ndarray`를 확인한 뒤 `ufunc.reduce(obj, axis, dtype, out, **passkwargs)`를 불러요.
 4. `np.add.reduce`가 C에서 리덕션을 하고 `numpy.float64` 스칼라를 돌려줘요.
 
-stardust의 `sd.sum`은 nanobind 함수 객체 자체예요(`type(sd.sum)`은 `nanobind.nb_func`). Python 코드를 하나도 거치지 않고 C++의 `sum()`으로 바로 들어가서, 인자 확인 → 출력(원소 1개, Buffer 내장) 할당 → 이터레이터 → 리덕션 커널(원소 3개라 순서대로 덧셈) → Python `float`으로 끝나요. 결과가 Python 스칼라라서 배열 객체를 만들지 않아요. 작은 배열을 위한 특수 경로는 없어요. 일반 리덕션 경로가 그 자체로 90ns예요. `mean(a)`(89ns 대 888ns)는 numpy 쪽 Python 층이 더 두꺼워서 차이가 더 커요.
+stardust의 `sd.sum`은 nanobind 함수 객체 자체예요(`type(sd.sum)`은 `nanobind.nb_func`). Python 코드를 하나도 거치지 않고 C++의 `sum()`으로 바로 들어가서, 인자 확인 → 출력(원소 1개, Buffer 내장) 할당 → 이터레이터 → 리덕션 커널(원소 3개라 순서대로 덧셈) → Python `float`으로 끝나요. 결과가 Python 스칼라라서 배열 객체를 만들지 않아요. 작은 배열을 위한 특수 경로는 없어요. 일반 리덕션 경로 그대로예요.
 
-### `a.sum()` 메서드: 91ns 대 213ns
-
-함수 형태의 비교는 numpy에 불리해요. 그래서 메서드 형태 `a.sum()`도 같은 방법(numpy 2.5.4, 여러 라운드 중 가장 빠른 값)으로 비교했어요. stardust 91ns, numpy 213ns로 여전히 2.3배 차이예요.
+### `a.sum()` 메서드
 
 numpy의 `a.sum()`은 `np.sum`의 래퍼 층을 건너뛰지만, C로 바로 가지는 않아요.
 
 - numpy의 `a.sum()`도 Python 함수 하나를 거쳐요. `sys.setprofile`로 보면 `a.sum()` 한 번에 `numpy/_core/_methods.py`의 `_sum`이 불려요. 이 함수는 `umr_sum(a, axis, dtype, out, keepdims, initial, where)`, 곧 `np.add.reduce`를 부르는 한 줄짜리예요. `np.sum(a)`가 거치는 `_sum_dispatcher`, `sum`, `_wrapreduction` 세 단계보다는 훨씬 얇아요.
-- 남은 비용 대부분은 numpy의 리덕션 기계 자체예요. 같은 방법으로 `np.add.reduce(a)`만 따로 재면 188ns예요. `a.sum()`의 213ns 중 약 25ns가 `_sum` 래퍼이고, 나머지가 ufunc 리덕션의 준비와 `numpy.float64` 스칼라 만들기예요.
+- 그 뒤는 `np.add.reduce`의 ufunc 리덕션 준비와 `numpy.float64` 스칼라 만들기예요.
 - stardust의 메서드 `A.sum()`은 모듈 함수 `sum`을 그대로 등록한 것이라(`.def("sum", named("sum", &sum), ...)`) `sd.sum(A)`와 같은 경로예요.
-
-그러니 함수 형태의 6배 중 약 2.6배(548ns → 213ns 수준)는 numpy의 Python 래퍼 층이고, 남은 2.3배는 리덕션 경로 자체의 고정 비용 차이예요.
 
 ## 성능
 
@@ -489,25 +464,21 @@ numpy의 `a.sum()`은 `np.sum`의 래퍼 층을 건너뛰지만, C로 바로 가
 - 할당: 결과 배열당 C++ 1번(256바이트 이하면 Buffer와 데이터가 한 덩어리) + Python 객체 1번(시스템 `malloc`)
 - 계산: $O(n)$, 원소 3개면 몇 ns
 
-원소가 많아지면 계산이 빠르게 고정 비용을 넘어서요. 원소 1000개의 `a + b`는 이미 numpy와 같고(287ns 대 285ns), 원소 100만 개 `f + g`는 1스레드 151µs로 고정 비용(약 0.2µs)은 0.1% 남짓이에요. 일이 원소 2¹⁵개(256KB) 분량 이상이면 스레드풀이 끼어들어요([스레드풀과 결정성](/internals/core/threads/)).
+원소가 많아지면 계산이 빠르게 고정 비용을 넘어서요. 원소 400만 개 `f + g`는 1스레드 0.72ms라서 고정 비용(약 0.2µs)은 무시할 만해요. 일이 원소 2¹⁵개(256KB) 분량 이상이면 스레드풀이 끼어들어요([스레드풀과 결정성](/internals/core/threads/)).
 
 ### 정리
 
 | 연산 | stardust | numpy | 무엇이 시간을 정하나 |
 |---|---:|---:|---|
-| `sum(a)`, `mean(a)` (원소 3개) | 90ns, 89ns | 548ns, 888ns | 일반 리덕션 경로만 (numpy는 Python 래퍼를 거침) |
-| `a.sum()` (원소 3개) | 91ns | 213ns | `sd.sum`과 같은 경로 (numpy는 `_methods._sum`과 `add.reduce`) |
-| `finfo(float64)` | 20ns | 110ns | 결과 객체 공유 |
-| `x[10, 20]` | 25ns | 33ns | 정수 인덱스 빠른 경로, Python `float` |
-| `a[1]` (1차원, 원소) | 23ns | 28ns | 정수 인덱스 빠른 경로 |
-| `x.shape`, `len(a)` | 19ns, 7ns | 18ns, 7ns | 타입 슬롯 |
+| `finfo(float64)` | 20ns | 111ns | 결과 객체 공유 |
+| `x[1, 2]` | 25ns | 33ns | 정수 인덱스 빠른 경로, Python `float` |
+| `x.shape`, `len(x)` | 19ns, 7ns | 18ns, 7ns | 타입 슬롯 |
 | `a + b` (원소 3개) | 179ns | 151ns | 배열 객체 할당 + 경로 전체의 고정 작업 |
 | `zeros(3)` | 91ns | 61ns | 배열 객체 할당, 키워드 인자 처리 |
 | `m[1]` (2차원, 뷰) | 72ns | 43ns | 배열 객체 할당, 인스턴스 등록, `NDArray` 복사 |
-| `m[1:, ::2]` | 102ns | 51ns | 위 + 일반 키 해석 |
-| 스칼라만의 원소별 호출 | 약 90ns 단축 | — | `launch_scalars` (`expit(0.5)` 48ns) |
+| 스칼라만의 원소별 호출 | 약 90ns 단축 | — | `launch_scalars` |
 
-이 페이지의 수치는 모두 1스레드와 10스레드에서 같아요. 작은 연산은 일이 기준값보다 작아 `parallel_for`를 부르지 않으므로, 스레드 수는 `available()` 확인 비용 말고는 영향이 없어요. 위 벤치마크에서 1스레드와 10스레드가 몇 ns 다른 것은 측정 잡음이에요.
+작은 연산은 일이 기준값보다 작아 `parallel_for`를 부르지 않으므로, 스레드 수는 `available()` 확인 비용 말고는 이 비용에 영향을 주지 않아요.
 
 정확도는 이 페이지의 어떤 기법에도 영향을 받지 않아요. 다룬 것은 모두 메모리 관리와 호출 경로이고, 계산하는 루프와 순서는 그대로예요. 빠른 경로 두 개도 일반 경로와 결과가 비트까지 같아요.
 
