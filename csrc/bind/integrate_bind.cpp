@@ -14,6 +14,7 @@ void bind_integrate(nb::module_& core) {
     integrate::bind_gauss(m);
     integrate::bind_quadpack(m);
     integrate::bind_tanhsinh(m);
+    integrate::bind_adaptive(m);
 }
 
 }  // namespace sd

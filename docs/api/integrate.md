@@ -1,8 +1,8 @@
 # sd.integrate API
 
-> 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `IntegrateResult`와 C3의 일곱 함수(`trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes`, 2026-11-22; §7, §8), C4의 넷(`quad dblquad tplquad nquad`, 2026-11-22; §2, §3; `quad`의 `weight`는 C5, 2026-11-22), C6의 둘(`tanhsinh nsum`, 2026-11-22; §6)이다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9 C2–C7)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
+> 상태: **확정** (C0, 2026-11-21; 승인 대기). 공개된 이름은 결과 클래스 `IntegrateResult`와 C3의 일곱 함수(`trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes`, 2026-11-22; §7, §8), C4의 넷(`quad dblquad tplquad nquad`, 2026-11-22; §2, §3; `quad`의 `weight`는 C5, 2026-11-22), C6의 둘(`tanhsinh nsum`, 2026-11-22; §6), C7의 둘(`quad_vec cubature`, 2026-11-22; §4, §5)이다. 첫 판의 15개가 모두 공개되었다. 아래 시그니처는 scipy 1.18.1 `scipy.integrate`의 이름과 인자 이름(C1, C2)에 stardust의 규칙과 C4·C8–C17의 결정(결과 클래스, 둘로 풀림, `atol`·`rtol`, `max_…`, `integral`·`error`·`nfev`)을 입히고, 남은 질문(docs/design/integrate.md §9)은 그 추천안을 넣은 안이다. 함수는 마일스톤 C3–C7에서 공개된다(docs/design/integrate.md §8).
 
-- 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C70), 미분은 [docs/api/differentiate.md](differentiate.md), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/integrate.md](../design/integrate.md)(§1.1 C1–C107), 미분은 [docs/api/differentiate.md](differentiate.md), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록에는 공개 이름과 시그니처만 둔다(나중의 `test_api_surface.py`가 읽는다).
 
 ## §1. 공통 규칙
@@ -31,7 +31,7 @@ IntegrateResult
 - `quad`·`dblquad`·`tplquad`·`nquad`·`quad_vec`의 결과는 scipy의 `(y, abserr)`처럼 둘로 풀린다: `integral, error = sd.integrate.quad(f, 0, 1)`(htest H7의 규칙). `r[0]`, `r[1]`, `len(r) == 2`도 된다. 다른 필드는 이름으로 읽는다. scipy의 `full_output`은 없다(필드가 늘 있다).
   - 다른 함수의 결과(`tanhsinh`, `nsum`, `cubature`)와 `IntegrateResult(...)`로 직접 만든 결과는 풀리지 않는다: `TypeError: this IntegrateResult does not unpack (only the quad family's results do): read its fields by name`. `bool(r)`은 언제나 참이다.
 - 공개 생성자 `IntegrateResult(*, batch=(), **fields)`는 `OptimizeResult`와 같다: 필드는 키워드로만, 모르는 이름은 `TypeError`(`IntegrateResult(): unexpected keyword argument 'estimate'`), 넘긴 배열은 한 번 복사한다. 없는 필드를 읽으면 `AttributeError: 'IntegrateResult' object has no attribute 'sum' (the function does not give it)`다. 풀리는 것이 `quad` 계열뿐인 것은 C21이다.
-- `summary()`(C20, C69)는 API.md §2.3의 상자다: 제목 `Integration Results`, 머리에 `Converged`·`Status`와 `Integral`·`Error estimate`·`Function Evals`·`Intervals`, 넓은 줄 `Message`(줄바꿈을 한 칸으로), `quad`의 구간 표(열 `a b integral error`, 오차 추정이 큰 것부터; 20개를 넘으면 앞뒤 5개), 복소수 결과는 `real`·`imag` 두 줄의 표다. 배치는 줄마다 한 원소다. `repr`는 `IntegrateResult(integral=1.71828, error=1.90768e-14, converged=True, nfev=21)`(복소수는 `(0.5+1j)`)다.
+- `summary()`(C20, C69)는 API.md §2.3의 상자다: 제목 `Integration Results`, 머리에 `Converged`·`Status`와 `Integral`·`Error estimate`·`Function Evals`·`Intervals`, 넓은 줄 `Message`(줄바꿈을 한 칸으로), `quad`의 구간 표(열 `a b integral error`, 오차 추정이 큰 것부터; 20개를 넘으면 앞뒤 5개), 복소수 결과는 `real`·`imag` 두 줄의 표다. 배열 값(`quad_vec`, `cubature`)은 머리에 `shape (3,)`을 적고 원소마다 한 줄의 표(열 `integral`, `cubature`는 `error`도)를 더한다. `quad_vec`의 배열 값은 구간 표에 `integral` 열이 없고, `cubature`의 영역 표는 열 `a b integral error`(배열 값이면 `a b max error`)다(C106). 배치는 줄마다 한 원소다. `repr`는 `IntegrateResult(integral=1.71828, error=1.90768e-14, converged=True, nfev=21)`(복소수는 `(0.5+1j)`)다.
 
 | 필드 | 뜻 | 주는 함수 |
 |---|---|---|
@@ -40,13 +40,14 @@ IntegrateResult
 | `error` | 절대 오차의 추정(엄밀한 상계가 아니다) | 모두 |
 | `converged` | 멈춤 판정을 통과했는지 | 모두 |
 | `status` | 멈춘 이유의 번호(scipy의 번호, O17) | 모두 |
-| `message` | 멈춘 이유의 글(scipy의 글; `quad` 계열의 0은 QUADPACK 문서의 글, C60) | `quad` 계열, `quad_vec`, `cubature` |
+| `message` | 멈춘 이유의 글(scipy의 글; `quad` 계열의 0은 QUADPACK 문서의 글, C60; `cubature`는 `quad_vec`의 글, C94) | `quad` 계열, `quad_vec`, `cubature` |
 | `nfev` | 사용자 함수의 값을 계산한 점의 수 | 모두 |
 | `max_level` | 마지막 수준(scipy `maxlevel`) | `tanhsinh` |
-| `intervals`, `interval_integrals`, `interval_errors`, `n_intervals` | 쓴 구간 (n, 2)과 구간마다의 값·오차 (n,), 구간 수 n(scipy `infodict`의 `alist blist rlist elist last`; 오차 추정이 큰 것부터, C55) | `quad`(QAWF 빼고, 실수), `quad_vec` |
+| `intervals`, `interval_integrals`, `interval_errors`, `n_intervals` | 쓴 구간 (n, 2)과 구간마다의 값·오차 (n,)(`quad_vec`의 배열 값은 (n, …)), 구간 수 n(scipy `infodict`의 `alist blist rlist elist last`, `quad_vec`의 `full_output`; 오차 추정이 큰 것부터, C55, C95) | `quad`(QAWF 빼고, 실수), `quad_vec` |
 | `cycle_integrals`, `cycle_errors`, `cycle_status`, `n_cycles` | QAWF의 주기마다의 값·오차·status (n,)와 주기 수 n(scipy `infodict`의 `rslst erlst ierlst lst`, C72) | `quad`(`weight='cos'`·`'sin'`의 무한 구간) |
 | `real`, `imag` | 실수부와 허수부의 `quad` 결과(`IntegrateResult`; scipy `full_output`의 `real`·`imag`, C57) | `quad(complex_func=True)` |
 | `subdivisions` | 나눈 수 | `cubature` |
+| `regions`, `region_integrals`, `region_errors`, `n_regions` | 영역의 모서리 (n, 2, ndim)과 영역마다의 값·오차 (n,) 또는 (n, …), 영역 수 n(scipy `CubatureResult.regions`; 최대 오차가 큰 것부터, C95) | `cubature` |
 
 - 원소별 반복 무리(`tanhsinh`, `nsum`)의 필드는 입력의 배치 모양이고(`integral` float64, `converged` bool, `status`·`nfev`·`max_level` int64), 입력이 모두 실수면 Python 수다(O48). `repr`는 `IntegrateResult(batch shape (1000,), 998 of 1000 converged)`다.
 
@@ -97,15 +98,28 @@ nquad(func, ranges, /, *, opts=None)
 ```
 quad_vec(f, a, b, /, *, atol=1e-200, rtol=1e-08, norm='2', limit=10000, points=None, quadrature=None)
 ```
-- 배열 값 f의 ∫ₐᵇ f(x) dx를 원소마다 한 번에 적응 Gauss–Kronrod로 계산한다(scipy의 알고리즘). `norm`은 `'2'`(기본) 또는 `'max'`: 오차를 재는 노름. `quadrature`: None(유한 구간 `'gk21'`, 무한 `'gk15'`), `'gk21'`, `'gk15'`, `'trapezoid'`.
-- 결과의 `integral`·`error`는 f의 모양(`error`는 노름의 값 하나, scipy와 같다)이다. `status`: 0 수렴, 1 `limit`, 2 반올림(scipy의 번호와 글). scipy의 `cache_size`, `workers`, `full_output`은 없다(`[scipy와 다름]`).
+- 수 또는 배열 값 f의 ∫ₐᵇ f(x) dx를 scipy의 전역 적응 구적으로 계산한다(scipy `_quad_vec.py`의 알고리즘: 오차가 큰 구간을 한 번에 128개까지 반으로 나눈다). 점, 값, 오차, `nfev`, status, 구간은 scipy 1.18.1과 비트까지 같다(기록 2개, 기록 밖의 경우 30개, 모음 106개와 무리 셋; docs/design/integrate.md §7.13). 둘로 풀린다(`integral, error = sd.integrate.quad_vec(f, 0, 1)`).
+- f는 점 하나마다 Python `float`로 불리고 실수 하나(Python·numpy의 수, 0차원 배열) 또는 실수 배열(`sd.ndarray`, numpy 배열, 시퀀스)을 돌려준다. 첫 값이 꼴을 정한다: 수면 `integral`은 Python 수, 배열이면 그 모양의 읽기 전용 `sd.ndarray`이고 다른 꼴이 오면 `ValueError`(`quad_vec(): 'f' must return the same shape at every point, not (3,) and then (2,)`), 빈 배열도 `ValueError`다. 값은 float64로 계산한다(scipy는 float32 배열을 float32로 계산한다, `[scipy와 다름]`, C104).
+- `a`, `b`: 실수, ±inf를 받는다(NaN은 `ValueError`). 무한 구간은 scipy의 치환이다: [a, ∞)는 x = a + (1 − t)/t, (−∞, b]는 x = b − (1 − t)/t(t ∈ (0, 1]), 실수 전체는 x = (1 − |t|)/t(t ∈ [−1, 1], t = 0에서 나눈다). |t| < √(DBL_MIN)인 점은 f를 부르지 않고 0으로 둔다(scipy와 같다). a > b면 그대로 계산한다(유한한 끝은 반대 방향의 규칙, 무한한 끝은 부호). a == b면 scipy처럼 f를 그 점(무한한 같은 끝은 x = 0)에서 부르고 0이다.
+- `atol`·`rtol`(scipy `epsabs`·`epsrel`, 기본 10⁻²⁰⁰·10⁻⁸): 유한한 0 이상의 수다. 오차 ≤ max(atol, rtol·‖I‖)/8에서 멈춘다(scipy의 판정). `norm`(기본 `'2'`): 오차를 재는 노름 `'2'`(numpy `linalg.norm`) 또는 `'max'`; 값이 수면 둘 다 |·|다. `limit`(기본 10⁴): 구간 수의 상한, 1 이상의 int(한 번에 128개까지 나누므로 끝의 구간 수는 `limit`을 조금 넘을 수 있다). `points`: 나눌 점(실수의 시퀀스; NaN은 `ValueError`). 정렬해 (a, b) 안의 것만 쓰고, 무한 구간이면 scipy처럼 바꾼 변수 t로 옮긴다. `quadrature`: None(유한 구간 `'gk21'`, 무한 구간 `'gk15'`), `'gk21'`, `'gk15'`, `'trapezoid'`.
+- 결과: `integral error converged status message nfev`와 구간 정보 `intervals`((n, 2)), `interval_integrals`((n,), 배열 값이면 (n, …)), `interval_errors`((n,)), `n_intervals`(C55의 이름, C95). 구간은 오차 추정이 큰 것부터(scipy의 힙이 꺼내는 순서)이고 무한 구간이면 바꾼 변수 t의 것이다. `interval_integrals`는 `integral`에 더해지는 몫(치환의 부호를 곱한 값)이다. scipy처럼 구간 값을 100×10⁶바이트(첫 값의 `sys.getsizeof`로 센 개수)까지만 기억하고 넘치면 오래된 것부터 버린다: 버린 구간을 나눌 때는 다시 계산하고(f를 21·15번 더 부른다; scipy와 같다), 결과의 그 칸은 NaN이다(C98).
+- `nfev`는 scipy의 `neval`이다: 규칙의 점마다 하나(t가 너무 작아 0으로 둔 점도 센다), 사다리꼴은 나누기 하나 안에서 같은 점을 한 번만 센다(scipy의 `lru_cache`).
+- status와 message(scipy의 번호와 글): 0 `Target precision reached.`, 1 `Target precision not reached.`(`limit`), 2 `Target precision could not be reached due to rounding error.`, 3 `Non-finite values encountered.`. `converged`는 `status == 0`이다.
+- scipy의 `cache_size`, `workers`, `full_output`, `args`는 없다(`[scipy와 다름]`, C96).
 
 ## §5. 다차원 `cubature` (C7)
 ```
 cubature(f, a, b, /, *, rule='gk21', rtol=1e-08, atol=0.0, max_subdivisions=10000, points=None)
 ```
-- `a`·`b`는 길이 ndim의 끝(±inf 받음). `rule`: `'gk21'`, `'gk15'`(1차원 Gauss–Kronrod의 곱), `'genz-malik'`(ndim ≥ 2). scipy의 `'gauss-kronrod'`(별칭)와 규칙 객체는 받지 않는다(`[scipy와 다름]`). `points`: 피해야 할 점의 목록(scipy와 같다).
-- 결과: `integral error converged status message subdivisions nfev`. scipy `CubatureResult`의 `estimate`는 `integral`, 문자열 `status`는 `converged`와 정수 `status`다(docs/design/integrate.md §9 C7의 추천, `[scipy와 다름]`). `regions`는 C7에서 정한다. `workers`는 없다.
+- 상자 [a, b] 위의 배열 값 f의 적분을 scipy의 적응 구적으로 계산한다(scipy `_cubature.py`: 최대 오차가 가장 큰 영역을 축마다 반으로 나눠 2^ndim개로). 점, 값, 오차, `subdivisions`, 영역은 scipy 1.18.1과 비트까지 같다(기록 12개, 기록 밖의 경우 39개, 1차원 모음의 105개를 규칙 둘로 210개, 무리 셋을 규칙 둘로 여섯; 아래의 다른 셋 빼고; docs/design/integrate.md §7.13). 풀리지 않는다(C21).
+- f는 영역마다 두 번 불린다: 규칙의 점(n, ndim)과, 오차 추정을 위한 두 규칙의 점(높은 규칙의 점 다음 낮은 규칙의 점) 모두다(scipy와 같다). 넘기는 것은 float64 `sd.ndarray`이고 그 배치는 scipy의 것이다: `'gk21'`·`'gk15'`는 C 순서, `'genz-malik'`는 Fortran 순서(scipy가 점의 표를 전치한다). f는 (n,) 또는 (n, …)을 돌려준다: (n,)이면 `integral`·`error`가 Python 수, 아니면 뒤 모양의 읽기 전용 배열이고, 뒤 모양이 호출마다 같아야 한다(`ValueError`). 점들에 따라 더하는 합은 numpy의 것이다: 점의 축이 메모리에서 가장 안쪽인 값(점마다 값 하나, Fortran 순서의 값)은 pairwise, 아니면 점의 차례대로(C100).
+- `a`, `b`: 길이 ndim ≥ 1의 실수 시퀀스(`sd.ndarray`, numpy 배열, 리스트)이고 길이가 같아야 한다(scipy는 수 하나를 다른 쪽에 맞춰 늘린다, `[scipy와 다름]`). ±inf를 받고 NaN과 같은 무한(a_i = b_i = ±inf)은 `ValueError`다(scipy는 그 축에서 f를 inf에서 부른다). a_i > b_i면 그 축을 바꾸고 부호를 바꾼다. 무한 축은 scipy의 치환이다: 실수 전체 x = (1 − |t|)/t(t ∈ (−1, 1)), [a, ∞) x = a + (1 − t)/t, (−∞, b] x = b − (1 − t)/t(t ∈ (0, 1)); 무한 축이 있으면 t = 0(원점)에서 처음 영역을 나눈다.
+  - (−∞, b]는 scipy 문서의 치환이다: scipy의 코드는 f를 −b + (1 − t)/t에서 불러 [−b, ∞)를 적분한다(∫₋∞⁰ eˣ에 inf, `[scipy와 다름]`, C101).
+- `rule`: `'gk21'`(기본), `'gk15'`(1차원 Gauss–Kronrod 규칙의 곱: 점 21^ndim·15^ndim개, 낮은 규칙은 scipy의 `roots_legendre(10)`·`(7)` 값 그대로, C99), `'genz-malik'`(차수 7과 5, 점 2^ndim + 2ndim² + 2ndim + 1개; ndim ≥ 2). scipy의 별칭 `'gauss-kronrod'`(`'gk21'`)와 규칙 객체는 받지 않는다(`[scipy와 다름]`, C96).
+- `rtol`·`atol`(기본 10⁻⁸·0): 유한한 0 이상의 수다. 모든 값에서 error ≤ atol + rtol·|integral|이면 멈춘다(scipy의 판정). `max_subdivisions`(기본 10⁴): 나누기 수의 상한, 1 이상의 int(scipy는 None(상한 없음)과 0(그래도 한 번 나눈다)도 받는다, `[scipy와 다름]`). `points`: 피할 점의 목록(점마다 ndim개의 실수; NaN은 `ValueError`, 무한한 좌표의 점은 쓰지 않는다). 그 점이 영역의 모서리에 오게 처음 영역을 나누고, 폭이 0인 조각은 버린다(scipy와 같다). 무한 축이 있으면 각 좌표를 그 축의 치환으로 옮긴다(scipy는 이중 무한 축 하나만인 경우 말고 에러를 낸다, C102).
+- 결과: `integral error converged status message nfev subdivisions`와 영역 정보 `regions`((n, 2, ndim): `regions[k, 0]`이 a, `regions[k, 1]`이 b), `region_integrals`·`region_errors`((n,) 또는 (n, …)), `n_regions`(C95; scipy `CubatureResult`의 `regions` 목록을 배열로). 영역은 최대 오차가 큰 것부터(scipy의 힙이 꺼내는 순서)이고 무한 축이면 바꾼 변수의 것이다. `region_integrals`는 `integral`에 더해지는 몫(뒤집은 축의 부호를 곱한 값)이다. scipy의 `estimate`는 `integral`이고(C13), `atol`·`rtol`은 결과에 두지 않는다. `nfev`는 f를 부른 점의 수다.
+- status(C94; scipy의 문자열 `'converged'`·`'not_converged'` 대신, `[scipy와 다름]`): 0 `Target precision reached.`, 1 `Target precision not reached.`(`max_subdivisions`), 3 `Non-finite values encountered.`(멈춘 값이나 오차가 유한하지 않다: scipy는 NaN에서 판정이 거짓이라 `'converged'`라고 알린다, C103). 번호와 글은 `quad_vec`의 것이다. 점이 모두 폭 0인 조각으로 갈리면 f를 부르지 않고 0(수)이다.
+- scipy의 `args`와 `workers`는 없다(`[scipy와 다름]`, C96).
 
 ## §6. 배치 tanh-sinh와 급수 (C6)
 ```
@@ -169,8 +183,8 @@ cumulative_simpson(y, /, x=None, *, dx=1.0, axis=-1, initial=None)
 | `quad(func, a, b, args, full_output, epsabs, epsrel, limit, points, weight, wvar, wopts, maxp1, limlst, complex_func)` | `quad(func, a, b, /, *, atol, rtol, limit, points, weight, wvar, max_p1, limlst, complex_func)` | `[scipy와 다름]` `args`·`full_output`·`wopts` 없음, `epsabs`→`atol`, `epsrel`→`rtol`, `maxp1`→`max_p1`, 결과 객체(둘로 풀림), 경고 대신 status |
 | `dblquad`, `tplquad` | 같다 | `[scipy와 다름]` `args` 없음, `atol`·`rtol` |
 | `nquad(func, ranges, args, opts, full_output)` | `nquad(func, ranges, /, *, opts)` | `[scipy와 다름]` `args`·`full_output` 없음, `opts`의 키 이름 |
-| `quad_vec(..., epsabs, epsrel, norm, cache_size, limit, workers, points, quadrature, full_output, args)` | `quad_vec(f, a, b, /, *, atol, rtol, norm, limit, points, quadrature)` | `[scipy와 다름]` `cache_size`·`workers`·`full_output`·`args` 없음 |
-| `cubature(..., rule, rtol, atol, max_subdivisions, args, workers, points)` | `cubature(f, a, b, /, *, rule, rtol, atol, max_subdivisions, points)` | `[scipy와 다름]` `args`·`workers`·규칙 객체·`'gauss-kronrod'` 없음, `estimate`→`integral`, status |
+| `quad_vec(..., epsabs, epsrel, norm, cache_size, limit, workers, points, quadrature, full_output, args)` | `quad_vec(f, a, b, /, *, atol, rtol, norm, limit, points, quadrature)` | `[scipy와 다름]` `cache_size`·`workers`·`full_output`·`args` 없음(`infodict`의 값은 필드), 노름은 `'2'`·`'max'`만, float32 값도 float64로 |
+| `cubature(..., rule, rtol, atol, max_subdivisions, args, workers, points)` | `cubature(f, a, b, /, *, rule, rtol, atol, max_subdivisions, points)` | `[scipy와 다름]` `args`·`workers`·규칙 객체·`'gauss-kronrod'` 없음, `estimate`→`integral`, 정수 status(0, 1, 3), `regions`는 배열 필드, (−∞, b]의 치환, `max_subdivisions`는 1 이상의 int |
 | `tanhsinh(f, a, b, *, args, kwargs, log, maxlevel, minlevel, atol, rtol, preserve_shape, callback)` | `tanhsinh(f, a, b, /, *, args, log, max_level, min_level, atol, rtol)` | `[scipy와 다름]` `kwargs`·`preserve_shape`·`callback` 없음, `success`→`converged`, `maxlevel`→`max_level` |
 | `nsum(f, a, b, *, step, args, kwargs, log, maxterms, tolerances)` | `nsum(f, a, b, /, *, step, args, log, max_terms, atol, rtol)` | `[scipy와 다름]` `kwargs` 없음, `tolerances`→`atol`·`rtol`, `maxterms`→`max_terms` |
 | `fixed_quad(func, a, b, args, n)` | `fixed_quad(func, a, b, /, *, n)` | `[scipy와 다름]` `args` 없음, 값 하나(또는 배열)를 돌려준다, NaN 끝은 `ValueError` |
@@ -182,4 +196,4 @@ cumulative_simpson(y, /, x=None, *, dx=1.0, axis=-1, initial=None)
 | `ode`, `complex_ode`, `lebedev_rule`, `qmc_quad`, `IntegrationWarning`, `ODEintWarning` | 없음 | docs/design/integrate.md §1.2 |
 
 ## §10. 마일스톤별 남은 질문
-C0 전의 것은 정했다(docs/design/integrate.md §1.1 C8–C17). C2(C26–C38), C3(C39–C54), C4(C55–C70), C6(C84–C93)도 정했다. 남은 것은 docs/design/integrate.md §9에 모았고, 이 문서의 꼴은 그 추천안이다: C5, C7.
+C0 전의 것은 정했다(docs/design/integrate.md §1.1 C8–C17). C2(C26–C38), C3(C39–C54), C4(C55–C70), C5(C71–C83), C6(C84–C93), C7(C94–C107)도 정했다. 남은 것은 docs/design/integrate.md §9에 모았다(C8).

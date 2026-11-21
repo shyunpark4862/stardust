@@ -37,6 +37,7 @@
 // [1] Bailey, Jeyabalan and Li, "A comparison of three high-precision quadrature schemes",
 //     Experimental Mathematics 14.3 (2005).
 #include "integrate/integrate.hpp"
+#include "integrate/numpy_ops.hpp"
 
 #include "array/ndarray.hpp"
 #include "bind/errors.hpp"
@@ -84,30 +85,8 @@ constexpr int kMaxLevel = 16;  // the largest max_level (C88)
 
 // ---- numpy's arithmetic
 
-// DOUBLE_pairwise_sum over n doubles
-double pairwise(const double* a, std::size_t n) {
-    if (n < 8) {
-        double res = 0.;
-        for (std::size_t i = 0; i < n; ++i) res += a[i];
-        return res;
-    }
-    if (n <= 128) {
-        double r[8];
-        for (int j = 0; j < 8; ++j) r[j] = a[j];
-        std::size_t i = 8;
-        for (; i < n - n % 8; i += 8)
-            for (int j = 0; j < 8; ++j) r[j] += a[i + static_cast<std::size_t>(j)];
-        double res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
-        for (; i < n; ++i) res += a[i];
-        return res;
-    }
-    std::size_t n2 = n / 2;
-    n2 -= n2 % 8;
-    return pairwise(a, n2) + pairwise(a + n2, n - n2);
-}
-
-// np.sum along a row: the reduction starts from add's identity 0
-double np_sum(const double* a, std::size_t n) { return 0.0 + pairwise(a, n); }
+// the real pairwise sum and np.sum along a row (integrate/numpy_ops.hpp)
+using numpy::np_sum;
 
 // CDOUBLE_pairwise_sum over n doubles (re, im interleaved)
 void cpairwise(const double* a, std::size_t n, double& rr, double& ri) {

@@ -13,6 +13,9 @@ line, complex_func, nquad's weighted levels and the errors.
 Since milestone C6: tanhsinh and nsum (the elementwise family) on integrands and series of sd's own
 operations, with the levels, log=True, the limits' transforms, batches with args, nsum's branches
 and the errors.
+Since milestone C7: quad_vec (scalar and array values, the rules, norms, infinite ranges, points,
+limits, statuses) and cubature (the three rules in one to four variables, array values, infinite
+limits, points, flipped limits, max_subdivisions, status 3) with their summaries and errors.
 The samples and integrands are sd's own operations (the problems' formulas on sd arrays) or the
 math module, so the results do not depend on numpy. Each milestone adds the cases of the
 functions it makes public (docs/design/integrate.md §8).
@@ -73,6 +76,7 @@ def cases(L):
     yield from quad_cases(L)
     yield from multiple_cases(L)
     yield from elementwise_cases(L)
+    yield from adaptive_cases(L)
 
 
 def _sample_sets(sd):
@@ -407,3 +411,95 @@ def elementwise_cases(L):
     yield "err nsum max_terms", lambda: I.nsum(sd.exp, 0.0, 1.0, max_terms=2**24 + 1)
     yield "err nsum max_terms float", lambda: I.nsum(sd.exp, 0.0, 1.0, max_terms=1e3)
     yield "err nsum tolerances", lambda: I.nsum(sd.exp, 0.0, 1.0, tolerances={"rtol": 1e-3})
+
+
+def adaptive_cases(L):
+    sd = L.sd
+    I = sd.integrate  # noqa: E741
+    inf = math.inf
+
+    def three(x):
+        return sd.asarray([math.exp(x), math.sin(x), x * x])
+
+    def peaks(x):
+        return sd.asarray([1 / (1e-4 + (x - 0.3) ** 2), math.sqrt(abs(x - 0.7))])
+
+    def gauss(X):
+        return sd.exp(-sd.sum(X * X, axis=-1))
+
+    def sing(X):
+        return 1 / sd.sqrt(sd.abs(X[:, 0] - 0.3) + sd.abs(X[:, 1] - 0.6))
+
+    yield "quad_vec three", lambda: I.quad_vec(three, 0.0, 1.0)
+    yield "quad_vec scalar", lambda: I.quad_vec(lambda x: math.exp(-x * x), 0.0, 3.0)
+    yield "quad_vec real line", lambda: I.quad_vec(lambda x: sd.asarray([math.exp(-x * x), 1 / (1 + x * x)]), -inf, inf)
+    yield "quad_vec half line", lambda: I.quad_vec(lambda x: math.exp(-x), 0.0, inf)
+    yield "quad_vec left half line", lambda: I.quad_vec(lambda x: math.exp(x), -inf, 0.0)
+    yield "quad_vec reversed real line", lambda: I.quad_vec(lambda x: math.exp(-x * x), inf, -inf)
+    yield "quad_vec same infinities", lambda: I.quad_vec(lambda x: 1.0, inf, inf)
+    yield "quad_vec empty range", lambda: I.quad_vec(three, 2.0, 2.0)
+    yield "quad_vec reversed", lambda: I.quad_vec(three, 1.0, 0.0)
+    yield "quad_vec peaks", lambda: I.quad_vec(peaks, 0.0, 1.0)
+    yield "quad_vec peaks max", lambda: I.quad_vec(peaks, 0.0, 1.0, norm="max")
+    yield "quad_vec gk15", lambda: I.quad_vec(peaks, 0.0, 1.0, quadrature="gk15")
+    yield "quad_vec trapezoid", lambda: I.quad_vec(three, 0.0, 1.0, quadrature="trapezoid", rtol=1e-6)
+    yield "quad_vec trapezoid real line", lambda: I.quad_vec(lambda x: math.exp(-x * x), -inf, inf,
+                                                             quadrature="trapezoid", rtol=1e-6)  # fmt: skip
+    yield "quad_vec points", lambda: I.quad_vec(peaks, 0.0, 1.0, points=[0.3, 0.7, 2.0])
+    yield "quad_vec points real line", lambda: I.quad_vec(lambda x: math.exp(-abs(x - 1)), -inf, inf, points=[1.0])
+    yield "quad_vec limit", lambda: I.quad_vec(lambda x: math.sin(1 / x) if x else 0.0, 0.0, 1.0, limit=40)
+    yield "quad_vec limit 1", lambda: I.quad_vec(three, 0.0, 1.0, limit=1)
+    yield "quad_vec rounding", lambda: I.quad_vec(lambda x: [1.0 + 1e-17 * x, 2.0], 0.0, 1.0, rtol=1e-17, atol=0.0)
+    yield "quad_vec nan", lambda: I.quad_vec(lambda x: math.log(x - 0.5) if x > 0.5 else math.nan, 0.0, 1.0)
+    yield "quad_vec 2-D value", lambda: I.quad_vec(lambda x: sd.asarray([[math.exp(x), x], [x * x, 1.0]]), 0.0, 1.0)
+    k = sd.linspace(0.0, 30.0, 1000)
+    yield "quad_vec 1000 values", lambda: I.quad_vec(lambda x: sd.cos(k * x), 0.0, 2.0)
+    yield "quad_vec summary", lambda: I.quad_vec(three, 0.0, 1.0).summary()
+    yield "quad_vec scalar summary", lambda: I.quad_vec(lambda x: x * x, 0.0, 1.0).summary()
+    yield "err quad_vec shape", lambda: I.quad_vec(lambda x: [1.0] if x < 0.5 else [1.0, 2.0], 0.0, 1.0)
+    yield "err quad_vec complex", lambda: I.quad_vec(lambda x: 1j, 0.0, 1.0)
+    yield "err quad_vec empty value", lambda: I.quad_vec(lambda x: [], 0.0, 1.0)
+    yield "err quad_vec norm", lambda: I.quad_vec(three, 0.0, 1.0, norm="fro")
+    yield "err quad_vec quadrature", lambda: I.quad_vec(three, 0.0, 1.0, quadrature="gk31")
+    yield "err quad_vec limit", lambda: I.quad_vec(three, 0.0, 1.0, limit=0)
+    yield "err quad_vec nan limit", lambda: I.quad_vec(three, 0.0, math.nan)
+    yield "err quad_vec epsabs", lambda: I.quad_vec(three, 0.0, 1.0, epsabs=1e-3)
+    yield "err quad_vec workers", lambda: I.quad_vec(three, 0.0, 1.0, workers=2)
+
+    yield "cubature gk21 2-D", lambda: I.cubature(gauss, [0.0, 0.0], [1.0, 1.0])
+    yield "cubature gk15 3-D", lambda: I.cubature(gauss, [0.0, 0.0, 0.0], [1.0, 1.0, 2.0], rule="gk15")
+    yield "cubature genz-malik 2-D", lambda: I.cubature(gauss, [0.0, 0.0], [1.0, 1.0], rule="genz-malik")
+    yield "cubature genz-malik 4-D", lambda: I.cubature(gauss, [0.0] * 4, [1.0] * 4, rule="genz-malik", rtol=1e-6)
+    yield "cubature 1-D", lambda: I.cubature(lambda X: sd.cos(X[:, 0]), [0.0], [3.0])
+    yield "cubature vector", lambda: I.cubature(lambda X: sd.stack([gauss(X), X[:, 0] * X[:, 1]], axis=1), [0.0, 0.0],
+                                                [2.0, 1.0], rule="genz-malik")  # fmt: skip
+    yield (
+        "cubature elementwise",
+        lambda: I.cubature(lambda X: sd.exp(-X * X), [0.0, 0.0], [2.0, 1.0], rule="genz-malik"),
+    )
+    yield "cubature plane", lambda: I.cubature(gauss, [-inf, -inf], [inf, inf])
+    yield "cubature plane genz-malik", lambda: I.cubature(gauss, [-inf, -inf], [inf, inf], rule="genz-malik")
+    yield "cubature half plane", lambda: I.cubature(gauss, [0.0, -1.0], [inf, 1.0], rule="genz-malik")
+    yield "cubature left half line", lambda: I.cubature(lambda X: sd.exp(X[:, 0]), [-inf], [0.0])
+    yield "cubature flipped", lambda: I.cubature(gauss, [1.0, 0.0], [0.0, 1.0], rule="genz-malik")
+    yield "cubature points", lambda: I.cubature(sing, [0.0, 0.0], [1.0, 1.0], rule="genz-malik",
+                                                points=[[0.3, 0.6], [0.5, 0.5]], max_subdivisions=200)  # fmt: skip
+    yield "cubature points plane", lambda: I.cubature(gauss, [-inf, -inf], [inf, inf], rule="genz-malik",
+                                                      points=[[1.0, 1.0]])  # fmt: skip
+    yield "cubature max_subdivisions", lambda: I.cubature(sing, [0.0, 0.0], [1.0, 1.0], rule="genz-malik",
+                                                          max_subdivisions=7)  # fmt: skip
+    yield "cubature zero width", lambda: I.cubature(gauss, [1.0, 0.0], [1.0, 1.0], rule="genz-malik")
+    yield "cubature zero width split", lambda: I.cubature(gauss, [1.0, 0.0], [1.0, 1.0], points=[[1.0, 0.5]])
+    yield "cubature nan", lambda: I.cubature(lambda X: sd.log(X[:, 0] - 0.5), [0.0, 0.0], [1.0, 1.0], rule="genz-malik")
+    yield "cubature summary", lambda: I.cubature(gauss, [0.0, 0.0], [1.0, 1.0], rule="genz-malik").summary()
+    yield "cubature vector summary", lambda: I.cubature(lambda X: sd.stack([gauss(X), X[:, 0]], axis=1), [0.0, 0.0],
+                                                        [1.0, 1.0], rule="genz-malik").summary()  # fmt: skip
+    yield "err cubature lengths", lambda: I.cubature(gauss, [0.0], [1.0, 2.0])
+    yield "err cubature alias", lambda: I.cubature(gauss, [0.0, 0.0], [1.0, 1.0], rule="gauss-kronrod")
+    yield "err cubature genz-malik 1-D", lambda: I.cubature(gauss, [0.0], [1.0], rule="genz-malik")
+    yield "err cubature max_subdivisions", lambda: I.cubature(gauss, [0.0], [1.0], max_subdivisions=0)
+    yield "err cubature same infinity", lambda: I.cubature(gauss, [inf], [inf])
+    yield "err cubature point length", lambda: I.cubature(gauss, [0.0], [1.0], points=[[0.5, 0.5]])
+    yield "err cubature value", lambda: I.cubature(lambda X: 1.0, [0.0], [1.0])
+    yield "err cubature value shape", lambda: I.cubature(lambda X: X[:3, 0], [0.0], [1.0])
+    yield "err cubature args", lambda: I.cubature(gauss, [0.0], [1.0], args=())

@@ -44,8 +44,21 @@ Since milestone C6:
 scipy.integrate's tanhsinh and nsum are the comparator (the same steps: equal to the bit,
 tests/integrate/test_tanhsinh.py).
 
-quad_vec and cubature (C7) join with their milestone, measuring the relative error and the
-honesty of the error estimate.
+Since milestone C7:
+  quad_vec    quad_vec on the collection's integrals without a weight (Python floats, quad's break
+              points), the three book families as one vector-valued integrand each (norms '2' and
+              'max') and problems.VECTOR (tests/integrate/adaptive.quad_vec_runs), against the Arb
+              integrals: the relative error (of the run's norm), and the contract of a converged run:
+              the true error within the error estimate plus the value's rounding, |value - ref| <=
+              error + 8 eps |ref| in the run's norm, but for adaptive.QUAD_VEC_SHORT (scipy's too),
+              recorded as "short"; "converged" counts.
+  cubature    cubature on the collection's integrals in one variable and on the book families as
+              vector values (rules gk21, gk15) and on the boxes of problems.MULTI (every rule),
+              element by element: the relative error and the same contract (cubature's |K - G|
+              estimate has no rounding floor), but for adaptive.CUBATURE_SHORT.
+scipy.integrate's quad_vec and cubature are the comparator (the same steps: equal to the bit,
+tests/integrate/test_quad_vec.py, test_cubature.py; cubature but on (-inf, b], where scipy's
+transform integrates over [-b, inf)).
 """
 
 from __future__ import annotations
@@ -342,7 +355,90 @@ def _quad_weights(lib="sd"):
     return out
 
 
+def _adaptive_libs(lib):
+    """(quad_vec wrap, cubature wrap) of a library for the runners of tests/integrate/adaptive.py."""
+    if lib == "sd":
+        import stardust as sd
+
+        def qv(f, a, b, **kw):
+            r = sd.integrate.quad_vec(f, a, b, **kw)
+            v = r.integral.tolist() if isinstance(r.integral, sd.ndarray) else r.integral
+            return v, r.error, r.status
+
+        def cub(f, a, b, **kw):
+            r = sd.integrate.cubature(lambda X: sd.asarray(f(np.asarray(X.tolist()))), a, b, **kw)
+            v = r.integral.tolist() if isinstance(r.integral, sd.ndarray) else [r.integral]
+            e = r.error.tolist() if isinstance(r.error, sd.ndarray) else [r.error]
+            return v, e, r.status
+
+        return qv, cub
+    if lib == "scipy":
+        import warnings
+
+        from scipy import integrate
+
+        def qv(f, a, b, **kw):
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore")
+                y, err, info = integrate.quad_vec(f, a, b, full_output=True, **kw)
+            return (np.asarray(y).tolist() if np.ndim(y) else float(y)), float(err), int(info.status)
+
+        def cub(f, a, b, **kw):
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore")
+                r = integrate.cubature(f, np.asarray(a, dtype=float), np.asarray(b, dtype=float), **kw)
+            ok = r.status == "converged" and bool(np.all(np.isfinite(r.estimate)))
+            return np.atleast_1d(r.estimate).tolist(), np.atleast_1d(r.error).tolist(), 0 if ok else 1
+
+        return qv, cub
+    return None
+
+
+def _adaptive_region(rows, contract):
+    out = {}
+    for row in rows:
+        out.setdefault(row[0], []).append(row)
+    regions = {}
+    for name, rs in out.items():
+        rel, con, short, conv = [], [], 0, 0
+        for row in rs:
+            ratio, known = contract(row)
+            vals = row[2] if isinstance(row[2], list) else [row[2]]
+            refs = row[5] if isinstance(row[2], list) else [row[5]]
+            rel.append(max(abs((v - r[0]) - r[1]) / abs(r[0]) if r[0] else abs(v - r[0]) for v, r in zip(vals, refs)))
+            if row[4] == 0:
+                conv += 1
+                if known:
+                    short += 1
+                    con.append(0.0)
+                else:
+                    con.append(ratio)
+            else:
+                con.append(0.0)
+        regions[name] = region([r[1] for r in rs], rel=np.array(rel), contract=np.array(con), bound=1.0,
+                               converged=np.array([conv]), short=np.array([short]))  # fmt: skip
+    return regions
+
+
+def _quad_vec(lib="sd"):
+    fns = _adaptive_libs(lib)
+    if fns is None:
+        return None
+    from tests.integrate import adaptive as A
+
+    return _adaptive_region(A.quad_vec_runs(fns[0]), A.quad_vec_contract)
+
+
+def _cubature(lib="sd"):
+    fns = _adaptive_libs(lib)
+    if fns is None:
+        return None
+    from tests.integrate import adaptive as A
+
+    return _adaptive_region(A.cubature_runs(fns[1]), A.cubature_contract)
+
+
 def sweeps():
     specs = [("samples", _samples), ("fixed_quad", _fixed_quad), ("quad", _quad), ("multiple", _multiple),
-             ("quad_weights", _quad_weights), ("tanhsinh", _tanhsinh), ("nsum", _nsum)]  # fmt: skip
+             ("quad_weights", _quad_weights), ("tanhsinh", _tanhsinh), ("nsum", _nsum), ("quad_vec", _quad_vec), ("cubature", _cubature)]  # fmt: skip
     return [Custom("integrate", name, fn, compare_libs(fn, ("scipy",), seconds=120)) for name, fn in specs]

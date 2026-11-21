@@ -1,6 +1,6 @@
 # 수치 미적분 영역 설계 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2는 완료·승인(위임, 2026-11-21)이다(결정 C26–C38은 추천안, 사용자 위임). C3은 완료·승인(위임, 2026-11-22)이다(결정 C39–C54는 추천안, 사용자 위임). C4는 완료·승인(위임, 2026-11-22)이다(결정 C55–C70은 추천안, 사용자 위임). C5는 완료·승인(위임, 2026-11-22)이다(결정 C71–C83은 추천안, 사용자 위임). C6은 완료·승인(위임, 2026-11-22)이다(결정 C84–C93은 추천안, 사용자 위임). C7·C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2는 완료·승인(위임, 2026-11-21)이다(결정 C26–C38은 추천안, 사용자 위임). C3은 완료·승인(위임, 2026-11-22)이다(결정 C39–C54는 추천안, 사용자 위임). C4는 완료·승인(위임, 2026-11-22)이다(결정 C55–C70은 추천안, 사용자 위임). C5는 완료·승인(위임, 2026-11-22)이다(결정 C71–C83은 추천안, 사용자 위임). C6은 완료·승인(위임, 2026-11-22)이다(결정 C84–C93은 추천안, 사용자 위임). C7은 완료·승인(위임, 2026-11-22)이다(결정 C94–C107은 추천안, 사용자 위임). C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -112,6 +112,20 @@
 | C91 첫 호출과 갈래 (C6) | 첫 호출은 scipy의 `eim._initialize`처럼 모든 원소에서 한 번, (k,)다(O48): `tanhsinh`은 구간의 가운데(무한한 끝은 b − 1·a + 1, 양쪽 무한은 0), `nsum`은 a(틀린 원소에서도). `tanhsinh`에서 그 값이 NaN이면 원소가 −3으로 멈춘다(scipy와 같다). 빈 배치는 f를 부르지 않는다(optimize의 배치와 같다; scipy는 빈 배열로 부른다). `nsum`은 scipy처럼 갈래마다 따로 부르고(그 갈래의 원소만, `args`도) 순서는 직접 합, 오른쪽, 왼쪽(f(−x)), 양쪽(f(x)·f(−x) 두 번)이다 (추천안, 사용자 위임 2026-11-21) |
 | C92 `nsum`의 두 예외 (C6) | (1) log의 오차는 네 항의 복소 logsumexp인데 numpy는 그 합(축 0)을 원소 하나면 pairwise((e₀ + e₁) + (e₂ + e₃)), 여럿이면 차례대로 더한다. 원소의 비트가 배치와 상관없도록(§1.3) 원소 하나의 꼴을 쓴다: 원소 여럿으로 부른 scipy와는 이 오차의 끝자리가 다를 수 있다. (2) 항의 위치 a + n·step가 넘쳐 직접 합의 항 수가 유한하지 않으면 scipy는 에러(`int(inf)`)를 내지만 sd는 그 원소의 직접 합을 비운다(다른 원소는 그대로). 까닭: 원소의 비트는 배치와 상관없고 원소의 문제는 그 원소의 결과다 (추천안, 사용자 위임 2026-11-21) |
 | C93 결과와 검사 (C6) | `tanhsinh`의 필드는 `integral error converged status nfev max_level`, `nsum`은 `sum error converged status nfev`이고 풀리지 않는다(C21). `max_level`은 scipy처럼 `min_level` + 반복 수 − 1(첫 호출 뒤 멈추면 −1)이다. `summary()`·`repr`는 C69의 배치 꼴이다. f의 값 검사와 글은 `derivative`의 것을 함께 쓴다(C35의 꼴: `tanhsinh(): 'f' must return shape (1, 66) like its argument, not (66,)`). 원소 패스는 2¹⁵개부터 스레드에 나눈다(§2.2) (추천안, 사용자 위임 2026-11-21) |
+| C94 `cubature`의 status (C7) | scipy의 문자열 `'converged'`·`'not_converged'` 대신 다른 결과처럼 `converged`(bool)와 정수 `status`다: 0 수렴, 1 `max_subdivisions`에 닿음(`[scipy와 다름]`). 유한하지 않은 값의 3은 C103이다. `message`는 `quad_vec`의 같은 번호의 글(`Target precision reached.`, `Target precision not reached.`, `Non-finite values encountered.`)이다. 까닭: 영역 간 일관성(O4, O17), 같은 알고리즘 무리인 `quad_vec`과 같은 번호·같은 글 (추천안, 사용자 위임 2026-11-21) |
+| C95 영역·구간의 필드 (C7) | `cubature`의 영역은 C55의 꼴인 읽기 전용 배열 넷이다: `regions`((n, 2, ndim): `[k, 0]`이 a, `[k, 1]`이 b), `region_integrals`·`region_errors`((n,) 또는 (n, …), 값의 모양), `n_regions`. `quad_vec`도 C55의 이름 그대로 `intervals`((n, 2)), `interval_integrals`((n,) 또는 (n, …)), `interval_errors`((n,)), `n_intervals`다(scipy `full_output`의 `intervals integrals errors`). 순서는 scipy의 힙이 꺼내는 차례(오차 추정·최대 오차가 큰 것부터, 같으면 힙의 비교 그대로)이고 무한 구간·무한 축은 바꾼 변수의 것이다. 값은 `integral`에 더해지는 몫이다(치환의 부호, 뒤집은 축의 부호를 곱한다; scipy의 목록은 곱하기 전의 값). scipy `CubatureResult`의 `atol`·`rtol`은 두지 않는다(입력을 되돌려 주지 않는다). 까닭: scipy의 목록·`infodict`를 필드로(C10, C55), 순서는 C55의 "큰 것부터" (추천안, 사용자 위임 2026-11-21) |
+| C96 넣지 않는 것 (C7) | `cubature`의 규칙 객체(scipy `rule=`에 `_rules.Rule`)와 `workers`, `quad_vec`의 `cache_size`·`workers`·`full_output`, 둘의 `args`는 없다. 규칙은 이름 셋(`'gk21' 'gk15' 'genz-malik'`)뿐이고 별칭 `'gauss-kronrod'`는 `ValueError`(글에 `'gk21'`을 알린다)다 (추천안, 사용자 위임 2026-11-21) |
+| C97 numpy·Python의 산술 (C7) | 두 함수는 scipy의 Python 코드라 산술이 numpy·Python의 것이다(C 판 QUADPACK의 축약이 없다: FMA를 한 곳도 쓰지 않는다). 원소별 단계는 scipy의 순서 그대로, 합은 numpy의 것(C100), `norm='2'`는 numpy `linalg.norm`(원소 하나면 x·x, 아니면 0.0 + Accelerate `cblas_ddot`의 √), 힙은 Python `heapq`(C 모듈의 siftdown·siftup)를 scipy의 비교(`quad_vec`: 튜플 (−오차, a, b), `cubature`: max|오차|의 `>`)로 옮겼다(같은 값·NaN에서도 같은 차례), `min`·`max`·`**1.5`는 Python의 것이다. `cblas_ddot`은 897원소부터 벡터의 주소(1024 이상의 나머지)에 따라 끝자리가 달라지고(16바이트 정렬이면 그 아래는 같고, 페이지 정렬끼리는 같다; 2026-11-22 잼) numpy의 임시 배열은 256바이트 정렬이라 scipy 자신도 실행마다 다를 수 있다: sd는 페이지 정렬 버퍼에 옮겨 부른다(결정적이고, numpy의 배열이 페이지 정렬이면 같다). Python `**`이 넘치면 scipy는 `OverflowError`를 내지만(200·err/dabs > 10²⁰⁵) sd는 inf로 이어 간다(`min(1.0, inf)`). 까닭: 호출점의 비트(C5)와 스레드·주소와 상관없는 비트(§1.3) (추천안, 사용자 위임 2026-11-21) |
+| C98 scipy의 구간 기억 (C7) | `quad_vec`은 scipy의 `LRUDict`를 그대로 둔다: 구간 값을 100×10⁶바이트 ÷ `sys.getsizeof`(첫 구간의 값: Python float 24, numpy 수 32, 배열 96 + 16·ndim + 8·원소 수)개까지 기억하고 넘치면 오래 쓰지 않은 것부터 버린다. 버린 구간을 나눌 때는 다시 계산하고(규칙 한 번 더) 결과의 그 칸은 NaN이다. 그래서 값이 큰 배열(8×50,000바이트면 249개)에서도 호출과 `nfev`가 scipy와 같고 기억이 100 MB 안이다. `cache_size`는 인자가 아니다(C96) (추천안, 사용자 위임 2026-11-21) |
+| C99 `cubature`의 낮은 Gauss 규칙 (C7) | `'gk21'`·`'gk15'`의 오차 추정에 쓰는 낮은 규칙은 scipy의 `roots_legendre(10)`·`(7)` 값을 비트 그대로 둔 표다(QUADPACK의 Kronrod 점 사이의 Gauss 점이 아니다; scipy와 같다). 올바로 반올림한 값(C42)과 점은 최대 1 ULP, 가중치는 19 ULP 다르다. 높은 규칙은 scipy의 10진 리터럴(QUADPACK의 값)이다. 까닭: 이 점들이 f를 부르는 점이다(C5) (추천안, 사용자 위임 2026-11-21) |
+| C100 인자의 배치와 합의 순서 (C7) | scipy의 `genz-malik` 점은 전치한 배열이라 f가 받는 (n, ndim)이 Fortran 순서다(곱 규칙은 C 순서). sd도 같은 배치의 `sd.ndarray`를 넘긴다. 점을 따라 더하는 numpy의 `sum(w·f, axis=0)`은 f의 값의 배치에 달려 있다(numpy가 곱의 배치를 입력에서 고른다): 점의 축이 메모리에서 가장 안쪽이면(점마다 값 하나, Fortran 순서, 원소별 계산이 그 배치를 이어받은 값) 값마다 pairwise, 아니면 점의 차례대로 0부터 더한다. sd는 f가 돌려준 배열의 걸음으로 같은 것을 고른다(걸음 0의 브로드캐스트 축은 보지 않는다). 그래서 C·Fortran·뒤집은 열·건너뛴 줄·브로드캐스트·3차원의 값이 scipy와 같다(§7.13). 까닭: 이 합이 멈춤 판정을 정한다 (추천안, 사용자 위임 2026-11-21) |
+| C101 (−∞, b]의 치환 (C7) | `cubature`는 (−∞, b]의 축에서 f를 x = b − (1 − t)/t에서 부른다(scipy 문서의 치환). scipy 1.18.1의 코드는 −b + (1 − t)/t에서 불러 [−b, ∞)를 적분한다(∫₋∞⁰ eˣ에 inf를 수렴으로, e^(−x²)·[x > 0]의 (−∞, 1]에 0.886(참값 0.747)). 점의 역변환도 같은 뜻으로 t = 1/((b − x) + 1)이다. (−∞, b]가 아닌 경우는 scipy와 비트로 같다(`quad_vec`의 (−∞, b]는 scipy가 옳고 같다). `[scipy와 다름]`. 까닭: 틀린 결과를 따르지 않는다(C77, C78) (추천안, 사용자 위임 2026-11-21) |
+| C102 무한 축과 `points` (C7) | 무한 축이 있으면 `points`의 각 좌표를 그 축의 치환으로 옮긴다(유한 축은 그대로, 실수 전체는 x = 0이 inf, 아니면 1/(x + sign x), 반무한은 1/(x − a + 1)). scipy의 `inv`는 이중 무한 축이 하나뿐이 아닌 모든 경우(이중 무한 둘 이상, 반무한만)에 `IndexError`·`ValueError`를 낸다: sd는 scipy가 뜻한 대로 옮긴다(scipy가 도는 경우는 같다). 무한한 좌표가 남은 점은 쓰지 않는다(scipy와 같다) (추천안, 사용자 위임 2026-11-21) |
+| C103 유한하지 않은 값 (C7) | `cubature`가 멈췄을 때 값이나 오차의 어느 원소가 유한하지 않으면 `converged=False`, status 3(`Non-finite values encountered.`; `quad_vec`의 번호와 글)이다. scipy는 NaN에서 판정 err > atol + rtol·|est|가 거짓이라 멈추고 `'converged'`라고 알린다. 걸음은 그대로다(멈추는 곳은 scipy와 같다). `[scipy와 다름]`. 까닭: 틀린 수렴을 알리지 않는다, `quad_vec`과 같은 번호 (추천안, 사용자 위임 2026-11-21) |
+| C104 `quad_vec`의 인자와 값 (C7) | `a`, `b`는 실수(±inf, NaN은 `ValueError`; a > b, a == b, 같은 무한은 scipy 그대로 계산한다), `atol`·`rtol`은 유한한 0 이상의 수, `norm`은 `'2'`·`'max'`(scipy의 호출 가능한 노름과 None은 받지 않는다), `limit`은 1 이상의 int(scipy는 실수도), `points`는 `quad`의 꼴(C65; NaN `ValueError`, 무한 구간에서도 받아 scipy처럼 옮긴다), `quadrature`는 None과 이름 셋이다. f의 값은 실수 하나 또는 실수 배열(첫 값이 꼴을 정하고 다른 꼴은 `ValueError`, 빈 배열·복소수·bool·글은 에러)이고 float64로 계산한다(scipy는 float32 배열이면 float32로 계산한다, `[scipy와 다름]`). `nfev`는 scipy의 `neval`이다(0으로 둔 |t| < √DBL_MIN의 점도 세고, 사다리꼴은 scipy의 `lru_cache`처럼 나누기 하나에서 같은 점을 한 번). 까닭: 다른 함수의 규칙, scipy의 걸음 (추천안, 사용자 위임 2026-11-21) |
+| C105 `cubature`의 인자 (C7) | `a`, `b`는 길이가 같은 비지 않은 1차원 실수 시퀀스다(scipy는 수 하나를 브로드캐스트한다, `[scipy와 다름]`). NaN은 `ValueError`, 같은 무한(a_i = b_i = ±inf)도 `ValueError`(scipy는 그 축의 f를 inf에서 불러 0이나 NaN을 낸다). `rtol`·`atol`은 유한한 0 이상의 수, `max_subdivisions`는 1 이상의 int(scipy의 None(상한 없음)은 §1.3의 "정해진 시간"에 어긋나고, 0은 그래도 한 번 나누어 뜻이 틀린다), `genz-malik`은 ndim ≥ 2(scipy와 같다), `points`는 점마다 ndim개의 실수(NaN `ValueError`)다. f의 값은 (n,) 또는 (n, …)이고 뒤 모양이 호출마다 같아야 한다(빈 값은 `ValueError`). `nfev`는 f에 넘긴 점의 수다. 점이 모든 영역을 폭 0의 조각으로 가르면 f를 부르지 않고 0(Python 수)이다(scipy와 같다) (추천안, 사용자 위임 2026-11-21) |
+| C106 `summary()`와 `repr` (C7) | C69의 상자에 더한다: 배열 값은 머리에 `Integral: shape (3,)`(`cubature`는 `Error estimate`도)을 적고 원소마다 한 줄의 표(열 `integral`, `cubature`는 `error`도, 줄 이름은 원소의 첨자)를 둔다. `quad_vec`의 구간 표는 배열 값이면 `integral` 열을 뺀다. `cubature`의 영역 표는 열 `a b integral error`(모서리는 (x, y, …), 배열 값이면 `a b max error`)이고 머리에 `Subdivisions:`·`Regions:`가 있다. `repr`는 바탕의 한 줄 꼴이다(짧은 배열은 `[v, v]`) (추천안, 사용자 위임 2026-11-21) |
+| C107 Arb 계약 (C7) | 수렴한 결과의 참 오차는 오차 추정 + 8ε\|I\| 안이다(`quad_vec`은 그 노름으로, `cubature`는 원소마다; `cubature`의 \|K − G\| 추정에는 반올림 하한이 없다, C83과 같은 꼴). 넘는 것은 scipy도 같은 비트인 짧은 목록이다(`tests/integrate/adaptive.py`의 `QUAD_VEC_SHORT` 5개, `CUBATURE_SHORT` 규칙·무리마다 3–8개: 끝점 특이점 x^−0.9…−0.7, 좁은 봉우리, f10·f12). 계약 대비 최대는 0.95·0.96이다(§7.13) (추천안, 사용자 위임 2026-11-21) |
 
 - C5와 D-33(API.md §4, docs/design/optimize.md §3.7): 호출점의 비트 동일은 지금 맞추는 목표이고 약속이 아니다. 지키는 것은 다른 영역과 같다(스레드 수와 상관없는 비트, 자기 골든, Arb 계약). 반올림이 아닌 동작(멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서)은 scipy 그대로다. 호출점이 같다는 것은 사용자 함수를 부르는 점의 순서와 비트, 호출 수가 같다는 뜻이다.
 
@@ -189,8 +203,8 @@ scipy 1.18.1의 `dir(scipy.integrate)`와 `dir(scipy.differentiate)`에서 뽑�
 - 사용자 함수는 Python 호출 가능한 객체다. 반복은 C++가 돌고 함숫값은 콜백으로 받는다(optimize와 같다). 콜백을 부르는 동안 GIL을 쥔다.
 - **`quad` 계열**: scipy처럼 점 하나마다 Python `float`로 부르고 실수 하나를 받는다(numpy·Python의 수, 0차원 배열). 순서는 QUADPACK의 순서다: QK21이면 가운데, 다음에 Gauss 점의 쌍(c − h·x₂, c + h·x₂, c − h·x₄, …), 그 뒤 Kronrod만의 점의 쌍(§7.4: scipy와 21점 모두 비트까지 같다). 한 규칙의 점들을 배열 하나로 부르는 선택은 scipy에 없어 두지 않는다(C58). `complex_func=True`면 실수부의 `quad`를 마친 뒤 허수부의 `quad`가 같은 점들을 다시 부른다(C56).
 - **`dblquad`·`tplquad`·`nquad`**: 안쪽 적분을 바깥 점마다 `quad`로 계산한다(scipy와 같은 겹침, 같은 순서; 겹침은 C++에서, C64). `gfun`·`hfun`(`qfun`·`rfun`)은 수 또는 바깥 변수의 함수이고, 가장 안쪽 f는 모든 변수를 안쪽부터 Python `float`로 받는다.
-- **`quad_vec`**: 점 하나마다 부르고 같은 모양의 배열(`sd.ndarray`, 시퀀스, numpy 배열)을 받는다.
-- **`cubature`**: scipy처럼 점들을 한 번에 (n_points, ndim) 배열로 부르고 (n_points, …)를 받는다.
+- **`quad_vec`**: 점 하나마다 Python `float`로 부르고 수 하나 또는 같은 모양의 배열(`sd.ndarray`, 시퀀스, numpy 배열)을 받는다(첫 값이 꼴을 정한다, C104). 순서는 scipy의 것(규칙의 점을 큰 것부터, 구간은 힙에서 꺼낸 차례)이고 점의 비트까지 같다.
+- **`cubature`**: scipy처럼 영역마다 두 번, 점들을 한 번에 (n_points, ndim) float64 배열로 부르고(`genz-malik`은 Fortran 순서, C100) (n_points, …)를 받는다.
 - **원소별 무리**: §2.2. 사용자 함수는 원소별이어야 한다(`f(x)[i]`가 `f(x[i])`와 같다; scipy의 계약). 구간의 끝 바로 옆을 계산하므로 특이점에서 예외를 내지 말고 inf·NaN을 돌려줘야 한다: scipy `tanhsinh`은 반올림으로 끝점 자체(예: x = 0)를 부르고 그 값을 버린다(§7.4). 이것을 문서의 계약으로 적는다.
 - `jacobian`·`hessian`의 f는 (m, …)을 받아 (k, …)을 돌려주는 벡터화된 함수다(scipy의 계약: 첫 축이 변수, 뒤 축이 점). 첫 호출부터 (m, m)·(m, m, p)를 받는다(§7.4). sd에서는 (m, N)을 받아 (k, N)이나 (N,)을 돌려준다(C27; 바이트는 scipy와 같다).
 - 사용자 함수가 낸 에러는 그대로 나간다. 틀린 모양·형의 값은 optimize와 같은 꼴의 에러다(`quad(): 'func' must return a real number, not shape (3,)`).
@@ -225,12 +239,14 @@ scipy 1.18.1의 `quad`는 옵션으로 QUADPACK의 일곱 루틴 가운데 하�
 - `nfev`는 가장 안쪽 `quad`들의 `nfev` 합, 곧 f를 부른 수다(scipy `nquad(full_output=True)`의 `neval`). `converged`·`status`·`message`는 C63이다. 탐침: 단위 정사각형의 exp(−(x² + y²))는 441번(21 × 21), 0.09 ms다.
 
 ### 3.3 `quad_vec`
-- scipy의 Python 판(`_quad_vec.py`)을 옮긴다: 전역 적응, 오차가 큰 구간을 힙에서 꺼내 반으로 나눔, 규칙 `'gk21'`(유한 기본)·`'gk15'`(무한 기본)·`'trapezoid'`, 무한 구간은 scipy의 변수 치환, 수렴은 `norm`(`'max'`·`'2'`)으로 잰 오차 ≤ max(`epsabs`, `epsrel`·‖I‖).
-- scipy의 `cache_size`(구간 값의 기억), `workers`(다중 프로세스)는 없다(사용자 함수가 Python이고 sd는 다중 프로세스를 띄우지 않는다). `full_output`의 `intervals`, `integrals`, `errors`는 필드다.
+- scipy의 Python 판(`_quad_vec.py`)을 옮겼다(C7, `csrc/integrate/adaptive.cpp`): 전역 적응, 한 바퀴에 오차가 큰 구간을 128개까지(그 오차의 합이 전체 오차 − tol/8을 넘을 때까지) 힙에서 꺼내 반으로 나눔, 규칙 `'gk21'`(유한 기본)·`'gk15'`(무한 기본)·`'trapezoid'`, 무한 구간은 scipy의 변수 치환((0, 1] 또는 [−1, 1]과 t = 0의 나눔), 멈춤은 구간이 둘 이상일 때 `norm`(`'max'`·`'2'`)으로 잰 오차 < max(`atol`, `rtol`·‖I‖)/8(0), 오차 < 반올림 오차(2), 유한하지 않은 오차(3), 구간 수 ≥ `limit`(1).
+  - 전체 값은 구간 값의 합을 다시 내지 않고 나눌 때마다 (s₁ + s₂) − s_old를 더한다(scipy와 같다). 오차 추정은 QUADPACK의 꼴을 노름으로 옮긴 것(err = dabs·min(1, (200 err/dabs)^1.5), 반올림 하한 50ε·h·∫|f|)이다.
+  - 산술(C97), 구간 기억(C98), 필드(C95), 인자(C104)는 결정 기록에 있다. scipy의 `cache_size`(인자), `workers`(다중 프로세스), `full_output`은 없다(C96; 그 값은 필드다).
 
 ### 3.4 `cubature`
 - scipy의 Python 판(`_cubature.py`)을 옮긴다: 영역의 힙, 오차가 가장 큰 영역을 축마다 반으로 나눔(2ⁿ개), 규칙 `'gk21'`·`'gk15'`(1차원 Gauss–Kronrod의 곱: 점 21ⁿ·15ⁿ개), `'genz-malik'`(차수 7, 점 2ⁿ + 2n² + 2n + 1개; n ≥ 2). 무한 축은 scipy의 치환(x = (1 − |t|)/t, x = a + (1 − t)/t). `points`는 그 점을 지나게 영역을 처음에 나눈다.
-- 이름 `'gauss-kronrod'`는 `'gk21'`의 별칭이라 받지 않는다(별칭 없음). 사용자 규칙 객체(scipy `_rules.Rule`), `workers`는 첫 판에 없다(§9 C7).
+- 이름 `'gauss-kronrod'`는 `'gk21'`의 별칭이라 받지 않는다(별칭 없음). 사용자 규칙 객체(scipy `_rules.Rule`), `workers`는 없다(C96).
+- 옮긴 것(C7, `csrc/integrate/adaptive.cpp`): 영역마다 규칙의 점으로 한 번(값), 두 규칙의 점으로 한 번(오차 = |Σ w·f − Σ w_low·f|, 원소마다) f를 부른다. 점은 (x + 1)·(길이·0.5) + a, 가중치는 w·(Π 길이/2ⁿ)(곱은 차례대로)이고 Genz–Malik의 점·가중치는 scipy의 순서(`_distinct_permutations`, `itertools.product`)와 Python의 산술(정수의 나눗셈은 올바로 반올림)이다. 처음 영역들은 힙으로 만들지 않은 목록이다(scipy가 그대로 꺼낸다). 뒤집은 축의 부호, 무한 축의 치환과 야코비안 1/Π t², 치환이 만든 원점의 나눔은 scipy와 같고 다른 셋은 C101–C103이다. 낮은 규칙(C99), 배치와 합(C100), 인자(C105)는 결정 기록에 있다.
 - 탐침(§7.4): 2차원 가우스를 gk21로는 첫 영역에서 끝내고(441점), genz-malik은 106번 2,491점이다.
 
 ### 3.5 `tanhsinh`
@@ -278,6 +294,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
   - **정직함**: ρ = 오차 추정 / |참 오차|(Arb). converged이고 ρ < 1인 경우를 세어 표에 적는다. 첫 탐침(§7.4)에서 `quad`는 QUADPACK 책의 세 무리 62경우 가운데 수렴이라고 알린 것 가운데 둘(봉우리, α = 19·20)이 ρ < 1이고, `tanhsinh`은 수렴한 46경우 가운데 여섯이 ρ < 1(최소 0.015)이었다.
   - C4에서 잰 것(§7.10): `quad`는 scipy와 같은 걸음(가중치 없는 106개 모두 비트까지)이고, 수렴한 94개 가운데 참 오차가 오차 추정 밖인 것은 scipy와 같은 셋이다. 이 셋을 뺀 "수렴이면 참 오차 ≤ 오차 추정"이 정확도 스윕의 계약이다(판정의 뜻이지 증명된 상계가 아니다). 겹친 적분도 같다(오차는 모든 `quad`의 최댓값, C63).
 - C6에서 잰 것(§7.12): `tanhsinh`·`nsum`은 scipy와 같은 걸음(기록과 기록 밖의 모든 경우가 비트까지)이고, `tanhsinh`이 수렴한 76개 가운데 참 오차가 오차 추정 밖인 것은 scipy와 같은 여덟이다(`TANHSINH_SHORT`). 이 여덟을 뺀 "수렴이면 참 오차 ≤ 오차 추정"이 정확도 스윕의 계약이고(한계의 0.78까지), `nsum`은 급수 아홉 모두 그 안이다(0.89까지). 모음 밖에서는 오차 추정이 더 자주 짧다(§7.12의 e^(−cx²)).
+- C7에서 잰 것(§7.13): `quad_vec`·`cubature`는 scipy와 같은 걸음(기록과 기록 밖, 모음의 모든 경우가 비트까지; `cubature`의 다른 셋 C101–C103 빼고)이다. 계약은 C83의 꼴인 "수렴이면 참 오차 ≤ 오차 추정 + 8ε|I|"이고(`cubature`의 |K − G| 추정에는 반올림 하한이 없다), 넘는 것은 scipy도 같은 짧은 목록(C107)이다. 계약 대비 최대는 `quad_vec` 0.95, `cubature` 0.96이다.
 - **표본 규칙**: 같은 double 입력에 그 규칙(식)을 정확히 계산한 값과 견준다(식이 유리 연산뿐이라 참값은 `fractions.Fraction`의 정확한 유리수다, `tests/integrate/ref/samples.json`). 구적 자체의 이산화 오차는 계약이 아니다.
   - C3에서 정한 계약(`bench/accuracy/integrate.py`, `tests/integrate/test_samples.py`): |값 − 참값| ≤ c·ε·S. S는 항의 크기 Σ|dᵢ|(|yᵢ| + |yᵢ₊₁|)(누적은 k번째까지), c는 합이면 ⌈log₂ n⌉ + 10(pairwise 나무), 누적의 k번째 값이면 k + 10(스캔)이다. 모음의 12벌 모두에서 지키고 가장 큰 것은 한계의 0.050이다(§7.9).
 - **`fixed_quad`, `newton_cotes`** (C3): 점·가중치는 올바로 반올림한 값이고 그것이 계약이다(0 ULP; n ≤ 100은 모두 Arb와, n = 101–1000의 일곱 n은 `tests/integrate/ref/gauss.json`과 비트로 같다). `fixed_quad`의 값은 f가 돌려준 값으로 낸 (b − a)/2·Σwᵢfᵢ의 정확한 유리수와 (⌈log₂ n⌉ + 4)·ε·|(b − a)/2|·Σ|wᵢfᵢ| 안이다(테스트). `newton_cotes`는 정확한 값을 한 번 반올림한 것이다(다른 알고리즘, 유리수의 모멘트 방정식 소거와 테스트가 견준다).
@@ -340,7 +357,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 
 ### 6.3 이 영역의 파일
 - Python: `src/stardust/{integrate,differentiate}/`. integrate는 `_quadpack.py`(`quad`, `dblquad`, `tplquad`, `nquad`; C4), `_quad_vec.py`, `_cubature.py`, `_tanhsinh.py`(`tanhsinh`, `nsum`), `_samples.py`(표본 규칙의 인자 검사, C3), `_rules.py`(`fixed_quad`, `newton_cotes`, C3), `_gauss.py`(Gauss–Legendre의 반올림과 정확한 산술, C3), `_result.py`, `_common.py`. differentiate는 `_derivative.py`(`derivative`, `jacobian`, `hessian`: 입력 검사와 결과), `_weights.py`(올바로 반올림한 가중치, C28·C34), `_result.py`(`DifferentiateResult`와 `summary()`), `_differences.py`(C15).
-- C++: `csrc/{integrate,differentiate}/`. integrate는 `quadpack.hpp`(C4: dqagse·dqagie·dqagpe, 규칙 dqk21·dqk15i, 목록 dqpsrt, ε-알고리즘 dqelg의 템플릿; 상수는 QUADPACK의 리터럴; C5: dqawoe·dqawfe·dqawse·dqawce, 규칙 dqk15w·dqc25f·dqc25s·dqc25c, dqcheb, dqmomo, dgtsl)와 `quadpack.cpp`(scipy의 갈래, 구간 배열, `nquad`의 겹침; C68), `adaptive.cpp`(`quad_vec`·`cubature`의 힙), `tanhsinh.cpp`(표, 합, 오차 추정; `nsum`), `samples.cpp`(표본 규칙과 `fixed_quad`의 합; 합은 배열의 커널, C3), `gauss.cpp`(Gauss–Legendre: n ≤ 100의 표 `gauss_table.hpp`(생성: `tools/gen_gauss_legendre.py`)와 그 위의 double-double Newton, C3), `integrate.hpp`(바인딩 선언). differentiate는 `steps.hpp`(C3), `derivative.hpp`·`derivative.cpp`(스텐실의 점과 갱신, `derivative`는 `elementwise/loop.hpp`의 고리, `jacobian`·`hessian`의 열 호출과 안쪽 `jacobian`; C2). 바인딩 `csrc/bind/{integrate,differentiate}_bind.cpp`(`stardust._core.integrate`, `stardust._core.differentiate`).
+- C++: `csrc/{integrate,differentiate}/`. integrate는 `quadpack.hpp`(C4: dqagse·dqagie·dqagpe, 규칙 dqk21·dqk15i, 목록 dqpsrt, ε-알고리즘 dqelg의 템플릿; 상수는 QUADPACK의 리터럴; C5: dqawoe·dqawfe·dqawse·dqawce, 규칙 dqk15w·dqc25f·dqc25s·dqc25c, dqcheb, dqmomo, dgtsl)와 `quadpack.cpp`(scipy의 갈래, 구간 배열, `nquad`의 겹침; C68), `adaptive.cpp`(`quad_vec`·`cubature`의 힙), `tanhsinh.cpp`(표, 합, 오차 추정; `nsum`), `numpy_ops.hpp`(numpy의 pairwise 합과 `linalg.norm`의 페이지 정렬 `cblas_ddot`; `tanhsinh.cpp`와 함께 쓴다, C97), `samples.cpp`(표본 규칙과 `fixed_quad`의 합; 합은 배열의 커널, C3), `gauss.cpp`(Gauss–Legendre: n ≤ 100의 표 `gauss_table.hpp`(생성: `tools/gen_gauss_legendre.py`)와 그 위의 double-double Newton, C3), `integrate.hpp`(바인딩 선언). differentiate는 `steps.hpp`(C3), `derivative.hpp`·`derivative.cpp`(스텐실의 점과 갱신, `derivative`는 `elementwise/loop.hpp`의 고리, `jacobian`·`hessian`의 열 호출과 안쪽 `jacobian`; C2). 바인딩 `csrc/bind/{integrate,differentiate}_bind.cpp`(`stardust._core.integrate`, `stardust._core.differentiate`).
 - 테스트·측정·골든은 영역마다(§7.5): `tests/{integrate,differentiate}/`, `tests/golden/cases_{integrate,differentiate}.py`, `bench/speed/cases/{integrate,differentiate}.py`, `bench/accuracy/{integrate,differentiate}.py`.
 
 ---
@@ -604,6 +621,41 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 
 - 원소 1·10과 `nsum`에서 23–25배, 원소 10³에서 2.5배, 10⁵에서 4.3배(1스레드 1.8배) 빠르다. 1스레드 10⁵원소는 함숫값 하나에 5.3 ns(사용자 함수의 `sd.exp` 포함)다. `csrc/elementwise/loop.hpp`는 바꾸지 않아 optimize 배치와 `derivative`의 비트와 속도는 그대로다.
 
+### 7.13 C7에서 잰 것 (scipy 1.18.1, 2026-11-22)
+테스트가 아래 수를 그대로 확인한다(`tests/integrate/test_quad_vec.py`, `test_cubature.py`; 경우의 목록은 `tests/integrate/adaptive.py`).
+
+**scipy와** (기록은 `scipy_vector.json`·`scipy_multiple.json`, 나머지는 지금의 scipy와 그 자리에서)
+- `quad_vec`: 기록 2개, 기록 밖의 30경우(무한 구간 넷과 거꾸로·같은 끝, 규칙 셋, 노름 둘, `points`(무한 구간에서도), `limit` 1·40, 허용오차 0, `atol`, NaN, 2차원 값, 1,000원소, 진동, 반올림 멈춤, 정수·numpy 수의 값), 모음 106개(가중치 없는 것, 수 값, `quad`의 중단점), 무리 셋을 벡터 값 하나로(노름 둘)와 scipy의 기억이 넘치는 경우(50,000원소의 √|x − c|: 기억 249개, `limit` 400에서 구간 512개 가운데 263칸이 NaN이고 다시 계산한 호출(`nfev` 24,318)까지 같다)가 부른 점(호출 순서대로의 SHA-256, 호출 수), 적분, 오차, `nfev`, status, 글, 구간(끝·값·오차)까지 비트로 같다. 처음 만든 구현이 그대로 같았다.
+- `cubature`: 기록 12개(상자 넷 × 규칙 셋, 호출의 모양까지), 기록 밖의 39경우(1–4차원, 벡터·3차원 값, C·Fortran·뒤집은 열·건너뛴 줄·브로드캐스트·전치한 3차원 배치, 정수 값, f가 인자를 그대로 돌려주는 경우, 평면·반평면·반직선·직선, 뒤집은 끝, `points`(모서리 위의 점, 폭 0의 조각), `max_subdivisions`, `atol`), 1차원 모음 105개 × 규칙 둘과 무리 셋 × 규칙 둘이 같다(점, 값, 오차, `subdivisions`, 영역).
+  - 처음 구현은 `genz-malik`의 정수 값과 인자를 그대로 돌려주는 경우에서 오차의 끝자리가 달랐다: scipy가 f에 Fortran 순서의 배열을 넘기고(점의 표가 전치) 원소별 계산의 값이 그 배치를 이어받아 numpy의 합이 pairwise가 된다(C100). 같은 배치를 넘기고 같은 규칙으로 더하자 모두 같아졌다.
+  - 다른 것은 셋이고 모두 C101–C103이다: (−∞, b](모음의 (−∞, 0]의 정규 밀도: sd는 Arb 값과 오차 추정 안), 무한 축과 `points`(scipy는 에러), NaN(scipy는 `'converged'`, sd는 status 3).
+- numpy에서 확인한 것(같은 탐침): 1차원 `np.sum`은 0 + pairwise(5–194,481점), C 순서 (n, m)의 `sum(axis=0)`은 0부터 차례대로, Fortran 순서는 줄마다 0 + pairwise, `np.prod`는 차례대로다. numpy의 새 배열은 256바이트 정렬이다. `cblas_ddot`은 8바이트씩 옮긴 주소에서 2,250개 가운데 967개, 16바이트 정렬끼리 56개(모두 897원소 이상), 128바이트 정렬끼리도 700개 가운데 255개가 달랐고, 페이지 정렬끼리는 152개 모두 같았다(C97).
+
+**Arb 참값과** (§4의 계약, C107; `bench/accuracy/integrate.py`의 `quad_vec`·`cubature`, 기준선 `bench/accuracy/results/integrate.json`; scipy는 같은 비트라 같은 수다)
+
+| 영역 | 경우 | 수렴 | 짧음 | 계약 대비 최대 |
+|---|---|---|---|---|
+| `quad_vec` 모음 | 106 | 99 | 5(봉우리 α = 15–18, f10) | 0.95 |
+| `quad_vec` 무리, 노름 `'2'` / `'max'` | 3 / 3 | 2 / 2 | 0 / 0 | 0.84 / 0.84 |
+| `quad_vec` 벡터 값 | 2 | 2 | 0 | 0.0047 |
+| `cubature` 1차원 `'gk21'` / `'gk15'` | 106 / 106 | 105 / 105 | 8 / 6 | 0.96 / 0.96 |
+| `cubature` 무리의 원소 `'gk21'` / `'gk15'` | 62 / 62 | 62 / 62 | 3 / 5 | 0.64 / 0.62 |
+| `cubature` 상자 `'gk21'` / `'gk15'` / `'genz-malik'` | 4 / 4 / 4 | 4 / 4 / 4 | 0 | 0.093 / 1.2×10⁻⁵ / 0.082 |
+
+- 짧은 것(`tests/integrate/adaptive.py`): `quad_vec`은 `quad`가 수렴하지 못하는 봉우리 α = 15–18을 수렴으로 알리고(참 오차가 추정의 2.2–33배), f10은 `quad`와 같다. `cubature`는 끝점 특이점 x^−0.9·−0.8·−0.7과 x^−0.9(추정의 1.4–6.0배), 좁은 봉우리, f12, |x − 1/3|^−0.5다. 무리를 벡터 값으로 부르면 원소마다의 판정이라 x^−0.9 하나와 봉우리 몇이 남는다.
+- 계약의 8ε|I|가 덮는 것: `cubature`의 \|K − G\|에는 반올림 하한이 없어 끝자리까지 맞은 원소(cos(2^α sin x)의 α = 0–3, 매끄러운 x^α log(1/x))의 추정이 참 오차보다 작다(무리의 `'gk21'`에서 21개가 추정만으로는 넘고 모두 8ε|I| 안).
+
+**속도** (한 번의 탐침, 부하 2.2–3.0; 기준선은 `bench/speed`가 조용한 기계에서): 시간은 ms, f는 양쪽 같은 식(`cubature`의 sd는 `sd.exp`·`sd.sum`, scipy는 numpy).
+
+| 사례 | sd | scipy | 사례 | sd | scipy |
+|---|---|---|---|---|---|
+| `cubature` gk21 2차원 (호출 2번) | 0.021 | 0.116 | `quad_vec` 함수 셋 (63번) | 0.020 | 0.149 |
+| `cubature` genz-malik 2차원 (106번) | 0.13 | 1.34 | `quad_vec` 봉우리 둘 (819번) | 0.23 | 1.92 |
+| `cubature` gk15 평면 (448번) | 1.63 | 13.6 | `quad_vec` 수 하나, 실수 전체 (330번) | 0.023 | 0.104 |
+| `cubature` genz-malik 4차원 (rtol 10⁻⁶) | 0.73 | 5.12 | `quad_vec` cos(kx), 1,000원소 (315번) | 1.17 | 2.11 |
+
+- 호출 사이의 일(힙, 규칙의 합, 구간 기억)이 C++라 함숫값이 작은 경우 4.5–10배 빠르다. 1,000원소의 `quad_vec`은 사용자 함수(`sd.cos`)와 값의 읽기가 시간의 대부분이라 1.8배다.
+
 ---
 
 ## 8. 마일스톤 (안)
@@ -616,7 +668,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 | C4 QUADPACK 1 (완료·승인(위임) 2026-11-22) | `quad`(QAGS, QAGI, QAGP), `dblquad`, `tplquad`, `nquad`. scipy의 C 판이 FMA로 축약한 누적의 자리를 호출 순서와 결과로 찾아 `std::fma`를 적는다(§7.6의 축약 탐침). `summary()`(C20) (C55–C70; §3.1, §3.2, §7.10) |
 | C5 QUADPACK 2 (완료·승인(위임) 2026-11-22) | `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC). QAWS 로그 가중치 예제의 scipy·Fortran 4×10⁻⁹ 차이(§7.6)의 까닭을 찾는다(C75). QAWO·QAWF의 Fortran 대조는 LINPACK 원본 `dgtsl`로 돈 것이다(C18) (C71–C83; §3.1, §7.11) |
 | C6 배치 적분 (완료·승인(위임) 2026-11-22) | `tanhsinh`, `nsum`(C84–C93; §3.5, §3.6, §7.12) |
-| C7 벡터 값과 다차원 | `quad_vec`, `cubature` |
+| C7 벡터 값과 다차원 (완료·승인(위임) 2026-11-22) | `quad_vec`, `cubature`(C94–C107; §3.3, §3.4, §7.13) |
 | C8 최적화와 일관성 점검 | 모든 공개 함수를 크기마다 scipy와 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 보고, 코드 리뷰를 한다 |
 
 - 순서의 까닭: C1의 고리를 처음 쓰는 C2가 고리의 넓힘(원소마다 여러 점)을 바로 시험한다. C3은 다른 것에 기대지 않는다. C6의 `nsum`은 C6의 `tanhsinh`을, C7의 무한 축 치환은 C4·C6과 같은 식을 쓴다.
@@ -635,5 +687,5 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **C4**: 정했다(C55–C70, 추천안, 사용자 위임 2026-11-21). 물었던 넷은 (a)다: 구간 정보의 필드 넷(C55), 복소수는 `quad(complex_func=True)`만(C56), `vectorized=True` 없음(C58), scipy 글의 줄바꿈 그대로(C59). 구현하며 생긴 열둘(C57, C60–C70: 복소수 결과의 필드, 수렴의 글, C5 전의 `weight`, FMA의 자리, 겹친 적분의 오차·`nfev`·status, 겹침의 자리, `quad`와 겹친 적분의 인자, QNG, 파일, `summary()`, 속도)도 추천안으로 정했다.
 - **C5**: 정했다(C71–C83, 추천안, 사용자 위임 2026-11-21). 물었던 하나는 (a)다: `wopts`를 두지 않는다(C71). 구현하며 생긴 열둘(C72–C83: 결과의 필드, 인자, QAWF의 허용오차, `dqc25s`의 오타, `dgtsl`의 꼴, 모멘트 행, QAWF의 ω = 0, `dqawoe`의 작은 구간, QAWO의 구간 하나, FMA의 자리, 큰 ω, Arb 계약)도 추천안으로 정했다.
 - **C6**: 정했다(C84–C93, 추천안, 사용자 위임 2026-11-21). 물었던 셋: tanh-sinh 표는 (a) scipy의 libm 식(C84), `log=True`는 C4의 답대로 실수만(C85), 끝점은 (a) 부르고 버린다(C86). 구현하며 생긴 일곱(C87–C93: numpy의 합과 logsumexp, 수준과 `max_terms`의 상한, log의 허용오차, 첫 호출과 갈래, `nsum`의 두 예외, 결과와 검사)도 추천안으로 정했다.
-- **C7**: `cubature`의 `status`(scipy는 문자열 `'converged'`·`'not_converged'`): (a) `converged`(bool)와 정수 `status`(0, 1) / (b) scipy의 문자열; `regions`(영역 객체의 목록)를 둘지; 사용자 규칙 객체와 `workers`는 없음.
+- **C7**: 정했다(C94–C107, 추천안, 사용자 위임 2026-11-21). 물었던 셋: `cubature`는 (a) `converged`와 정수 `status`(C94; 유한하지 않은 값의 3은 구현하며 더했다, C103), `regions`는 C55의 꼴인 배열 필드(C95), 규칙 객체·`workers`는 없음(C96). 구현하며 생긴 열하나(C97–C107: numpy·Python의 산술, scipy의 구간 기억, 낮은 Gauss 규칙, 배치와 합, (−∞, b]의 치환, 무한 축의 `points`, 유한하지 않은 값, 두 함수의 인자, `summary()`, Arb 계약)도 추천안으로 정했다.
 - **C8**: 정할 것은 그때.

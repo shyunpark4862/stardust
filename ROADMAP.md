@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7·C8 시작 전)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 시작 전)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -664,7 +664,7 @@
 
 # 수치 미적분 영역 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4는 완료·승인(위임, 2026-11-22), C5는 완료·승인(위임, 2026-11-22), C6은 완료·승인(위임, 2026-11-22), C7·C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
+> 상태: **설계 초안** (2026-11-21). C0은 완료·승인(위임, 2026-11-21), C1은 완료·승인(위임, 2026-11-21), C2는 완료·승인(위임, 2026-11-21), C3은 완료·승인(위임, 2026-11-22), C4는 완료·승인(위임, 2026-11-22), C5는 완료·승인(위임, 2026-11-22), C6은 완료·승인(위임, 2026-11-22), C7은 완료·승인(위임, 2026-11-22), C8은 시작 전이다. 설계는 [docs/design/integrate.md](docs/design/integrate.md)(두 모듈을 함께), API의 초안은 [docs/api/integrate.md](docs/api/integrate.md)와 [docs/api/differentiate.md](docs/api/differentiate.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -686,7 +686,7 @@
 | C4 QUADPACK 1: `quad`(QAGS, QAGI, QAGP), `dblquad tplquad nquad` | 완료·승인(위임) (2026-11-22) |
 | C5 QUADPACK 2: `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC) | 완료·승인(위임) (2026-11-22) |
 | C6 배치 적분: `tanhsinh nsum` | 완료·승인(위임) (2026-11-22) |
-| C7 벡터 값과 다차원: `quad_vec cubature` | 시작 전 |
+| C7 벡터 값과 다차원: `quad_vec cubature` | 완료·승인(위임) (2026-11-22) |
 | C8 최적화와 일관성 점검 | 시작 전 |
 
 ## 마일스톤
@@ -736,6 +736,9 @@
 
 ### C7. 벡터 값과 다차원
 - `quad_vec`(적응 Gauss–Kronrod, 노름), `cubature`(gk21·gk15의 곱, Genz–Malik, 무한 축의 치환; C++의 힙).
+- 결정(추천안, 사용자 위임 2026-11-21): docs/design/integrate.md §1.1 C94–C107(물었던 셋: `cubature`는 `converged`와 정수 `status`, `regions`는 C55의 꼴인 배열 필드 `regions region_integrals region_errors n_regions`, 규칙 객체·`workers` 없음; 구현하며 생긴 열하나: numpy·Python의 산술(FMA 없음, numpy의 합, 페이지 정렬 `cblas_ddot`의 노름, Python `heapq`), scipy의 구간 기억(100 MB의 LRU) 그대로, 낮은 Gauss 규칙은 scipy의 `roots_legendre` 값, `genz-malik`의 Fortran 순서 인자와 배치를 따르는 합, scipy와 다른 셋((−∞, b]의 치환, 무한 축의 `points`, 유한하지 않은 값의 status 3), 두 함수의 인자, `summary()`, Arb 계약).
+- 결과: csrc/integrate/adaptive.cpp(두 알고리즘, 힙, 규칙, 치환), csrc/integrate/numpy_ops.hpp(numpy의 합·노름; tanhsinh.cpp와 함께), src/stardust/integrate/_quad_vec.py·_cubature.py, tests/integrate/test_quad_vec.py·test_cubature.py·adaptive.py, 골든 62케이스(결과 클래스의 필드 넷이 늘어 기존 케이스는 `absent` 목록만 바뀜), 정확도 스윕 둘(`quad_vec`, `cubature`; 기준선 갱신), 속도 사례 여덟 공개; docs/design/integrate.md §1.1·§2.3·§3.3·§3.4·§4·§6.3·§7.13·§8·§9, docs/api/integrate.md §1.3·§4·§5·§9·§10.
+- 찾은 것(docs/design/integrate.md §7.13): 기록 14개와 기록 밖의 69경우, 모음과 무리가 scipy와 점·값·오차·`nfev`·status·구간·영역까지 비트로 같다(scipy의 구간 기억이 넘쳐 다시 계산하는 경우도). scipy `cubature`의 결함 셋: (−∞, b]에서 [−b, ∞)를 적분, 무한 축과 `points`에서 에러, NaN을 'converged'로. `genz-malik`은 f에 Fortran 순서의 배열을 넘겨 합의 순서가 바뀐다. Accelerate의 `cblas_ddot`은 897원소부터 주소에 따라 끝자리가 달라 scipy의 `quad_vec` 자신도 결정적이지 않다. Arb: 수렴하면 참 오차 ≤ 오차 추정 + 8ε|I|이고 넘는 것은 scipy와 같은 짧은 목록(끝점 특이점 x^−0.9, 좁은 봉우리). 속도는 함숫값이 작은 경우 4.5–10배 빠르다(바쁜 기계의 탐침).
 
 ### C8. 최적화와 일관성 점검
 - 모든 공개 함수를 크기마다 scipy와 견주어 느린 곳을 고치고, 메시지·시그니처의 영역 간 일관성을 점검하고, 코드 리뷰를 한다.

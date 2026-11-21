@@ -19,7 +19,7 @@ import numpy as np
 
 from ..registry import Case, Check, Ref
 
-DONE: tuple[str, ...] = ("C3", "C4", "C5", "C6")  # the milestones whose cases run
+DONE: tuple[str, ...] = ("C3", "C4", "C5", "C6", "C7")  # the milestones whose cases run
 BATCH_SIZES = ((10, "10"), (1000, "10^3"), (10**5, "10^5"))
 SAMPLE_SIZES = ((10**3, "10^3"), (10**6, "10^6"))
 
@@ -132,15 +132,42 @@ def _vector_specs():
     def sg(X):
         return sd.exp(-sd.sum(X * X, axis=-1))
 
+    def three(x):
+        return np.array([math.exp(x), math.sin(x), x * x])
+
+    def peaks(x):
+        return np.array([1 / (1e-4 + (x - 0.3) ** 2), math.sqrt(abs(x - 0.7))])
+
+    k = np.linspace(0.0, 30.0, 1000)
+    sk = sd.asarray(k)
+
+    def wide(x):
+        return np.cos(k * x)
+
+    def swide(x):
+        return sd.cos(sk * x)
+
+    inf = math.inf
     return [
         Spec("C7", "vector", "cubature gk21 2-D gauss", ("cubature",), lambda d: lambda: I.cubature(sg, [0.0, 0.0], [1.0, 1.0]),
-             lambda d: lambda: si.cubature(g, [0.0, 0.0], [1.0, 1.0])),
+             lambda d: lambda: si.cubature(g, [0.0, 0.0], [1.0, 1.0]), note="호출 2번, 점 982개"),
         Spec("C7", "vector", "cubature genz-malik 2-D gauss", ("cubature",),
              lambda d: lambda: I.cubature(sg, [0.0, 0.0], [1.0, 1.0], rule="genz-malik"),
-             lambda d: lambda: si.cubature(g, [0.0, 0.0], [1.0, 1.0], rule="genz-malik")),
-        Spec("C7", "vector", "quad_vec three functions", ("quad_vec",),
-             lambda d: lambda: I.quad_vec(lambda x: np.array([math.exp(x), math.sin(x), x * x]), 0.0, 1.0),
-             lambda d: lambda: si.quad_vec(lambda x: np.array([math.exp(x), math.sin(x), x * x]), 0.0, 1.0)),
+             lambda d: lambda: si.cubature(g, [0.0, 0.0], [1.0, 1.0], rule="genz-malik"), note="호출 106번"),
+        Spec("C7", "vector", "cubature gk15 plane gauss", ("cubature",),
+             lambda d: lambda: I.cubature(sg, [-inf, -inf], [inf, inf], rule="gk15"),
+             lambda d: lambda: si.cubature(g, [-inf, -inf], [inf, inf], rule="gk15"), note="호출 448번"),
+        Spec("C7", "vector", "cubature genz-malik 4-D gauss", ("cubature",),
+             lambda d: lambda: I.cubature(sg, [0.0] * 4, [1.0] * 4, rule="genz-malik", rtol=1e-6),
+             lambda d: lambda: si.cubature(g, [0.0] * 4, [1.0] * 4, rule="genz-malik", rtol=1e-6)),
+        Spec("C7", "vector", "quad_vec three functions", ("quad_vec",), lambda d: lambda: I.quad_vec(three, 0.0, 1.0),
+             lambda d: lambda: si.quad_vec(three, 0.0, 1.0), note="호출 63번"),
+        Spec("C7", "vector", "quad_vec two peaks", ("quad_vec",), lambda d: lambda: I.quad_vec(peaks, 0.0, 1.0),
+             lambda d: lambda: si.quad_vec(peaks, 0.0, 1.0), note="호출 819번"),
+        Spec("C7", "vector", "quad_vec scalar real line", ("quad_vec",),
+             lambda d: lambda: I.quad_vec(_gauss, -inf, inf), lambda d: lambda: si.quad_vec(_gauss, -inf, inf)),
+        Spec("C7", "vector", "quad_vec cos(kx)", ("quad_vec",), lambda d: lambda: I.quad_vec(swide, 0.0, 2.0),
+             lambda d: lambda: si.quad_vec(wide, 0.0, 2.0), size="(1000,)", n=1000),
     ]  # fmt: skip
 
 
@@ -193,6 +220,17 @@ def _value(r):
     return np.asarray(r.sum if hasattr(r, "sum") and not hasattr(r, "integral") else r.integral, dtype=np.float64)
 
 
+def _vector_value(r):
+    """quad_vec's integral (sd's result or scipy's tuple) or cubature's (sd's integral, scipy's
+    estimate) as an array."""
+    import stardust as sd
+
+    v = r[0] if isinstance(r, tuple) else getattr(r, "estimate", None)
+    if v is None:
+        v = r.integral
+    return np.asarray(v.tolist() if isinstance(v, sd.ndarray) else v, dtype=np.float64)
+
+
 def cases() -> list[Case]:
     out = []
     for s in specs():
@@ -202,6 +240,8 @@ def cases() -> list[Case]:
             check = Check(sd=_pair)
         elif s.group == "batch":
             check = Check(sd=_value, ref=lambda label, r: _value(r))
+        elif s.group == "vector":
+            check = Check(sd=_vector_value, ref=lambda label, r: _vector_value(r))
         else:
             check = Check()
         out.append(Case(area="integrate", group=s.group, name=s.name, size=s.size, n=s.n, setup=s.setup, sd=s.sd,

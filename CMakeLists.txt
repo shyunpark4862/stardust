@@ -55,6 +55,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/linalg/ops/spectral.cpp
   csrc/linalg/ops/special.cpp
   csrc/differentiate/derivative.cpp
+  csrc/integrate/adaptive.cpp
   csrc/integrate/gauss.cpp
   csrc/integrate/quadpack.cpp
   csrc/integrate/samples.cpp

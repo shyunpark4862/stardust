@@ -13,7 +13,8 @@ The function marks that when it makes the result (_make(unpack=True)); the other
 (tanhsinh, nsum, cubature) do not unpack and are read by name.
 
 summary() is the shared box (API.md §2.3, C20): the value, its error estimate, convergence,
-status and counts in the header, the message, and quad's intervals as a table (largest error
+status and counts in the header, the message, an array value (quad_vec, cubature) one row per
+element, and quad's and quad_vec's intervals and cubature's regions as tables (largest error
 first); a batch (tanhsinh, nsum) one row per element. A complex quad (complex_func=True) gives its
 two real quads as the fields real and imag (C57).
 """
@@ -43,6 +44,10 @@ FIELDS = (
     "cycle_status",
     "n_cycles",
     "subdivisions",
+    "regions",
+    "region_integrals",
+    "region_errors",
+    "n_regions",
     "real",
     "imag",
 )
@@ -101,7 +106,8 @@ class IntegrateResult(_FieldResult):
     @_calls.method("summary")
     def summary(self):
         """The result as a text table (C20): the value, its error estimate, convergence, status and
-        counts, the message, quad's intervals; a batch one row per element."""
+        counts, the message, an array value's elements, quad's and quad_vec's intervals and
+        cubature's regions; a batch one row per element."""
         return _summary(self)
 
     def __repr__(self):
@@ -125,7 +131,31 @@ def _complex_text(v, digits):
 def _value_text(v, spec):
     if isinstance(v, complex):
         return _complex_text(v, 6 if spec == "#.6g" else 4)
+    if isinstance(v, _core.ndarray):  # an array value: its table follows
+        return f"shape {_S.shape_text(tuple(v.shape))}"
     return f"{float(v):{spec}}"
+
+
+def _point(v):
+    """A region's corner as (x, y, ...) with 6 significant digits (at most 6 values)."""
+    if v.shape[0] > 6:
+        return f"<{v.shape[0]} values>"
+    return "(" + ", ".join(f"{t:.6g}" for t in v.tolist()) + ")"
+
+
+def _values_table(value, error):
+    """An array value (and error estimate of the same shape) as a table, one row per element."""
+    shape = tuple(value.shape)
+    n = _S.lanes(shape)
+    vals = value.reshape((n,)).tolist()
+    errs = error.reshape((n,)).tolist() if isinstance(error, _core.ndarray) else None
+    rows = []
+    for i in _S.shown(n):
+        if i is None:
+            rows.append(None)
+            continue
+        rows.append((_S.lane_label(i, shape), [_S.forg(vals[i], 6)] + ([_S.forg(errs[i])] if errs else [])))
+    return _S.Table(["integral"] + (["error"] if errs else []), rows)
 
 
 _TITLE = "Integration Results"
@@ -140,7 +170,8 @@ _COLUMNS = (
     ("max_level", str),
 )
 _COUNTS = (("nfev", "Function Evals:"), ("n_intervals", "Intervals:"), ("n_cycles", "Cycles:"),
-           ("max_level", "Max Level:"), ("subdivisions", "Subdivisions:"))  # fmt: skip
+           ("max_level", "Max Level:"), ("subdivisions", "Subdivisions:"),
+           ("n_regions", "Regions:"))  # fmt: skip
 
 
 def _summary(r):
@@ -164,20 +195,39 @@ def _summary(r):
             right.append((label, _value_text(f[k], "#.6g")))
     if "error" in f:
         right.append(("Error estimate:", _value_text(f["error"], "#.4g")))
+    tables = []
+    if isinstance(f.get("integral"), _core.ndarray):  # quad_vec's and cubature's array values
+        tables.append(_values_table(f["integral"], f.get("error")))
     for k, label in _COUNTS:
         if k in f:
             right.append((label, str(f[k])))
     wide = [("Message:", " ".join(str(f["message"]).split()))] if "message" in f else []
-    tables = []
     if "intervals" in f and f["n_intervals"]:
         iv, vi, ve = r.intervals, r.interval_integrals, r.interval_errors
+        one = vi.ndim == 1  # quad_vec's array values: the integrals are in the field, not the table
         rows = []
         for i in _S.shown(int(f["n_intervals"])):
             if i is None:
                 rows.append(None)
                 continue
-            rows.append((f"[{i}]", [_S.forg(iv[i, 0], 6), _S.forg(iv[i, 1], 6), _S.forg(vi[i], 6), _S.forg(ve[i])]))
-        tables.append(_S.Table(["a", "b", "integral", "error"], rows))
+            cells = [_S.forg(iv[i, 0], 6), _S.forg(iv[i, 1], 6)] + ([_S.forg(vi[i], 6)] if one else [])
+            rows.append((f"[{i}]", cells + [_S.forg(ve[i])]))
+        tables.append(_S.Table(["a", "b"] + (["integral"] if one else []) + ["error"], rows))
+    if "regions" in f and f["n_regions"]:  # cubature's regions (corners a, b)
+        rg, vi, ve = r.regions, r.region_integrals, r.region_errors
+        one = vi.ndim == 1
+        rows = []
+        for i in _S.shown(int(f["n_regions"])):
+            if i is None:
+                rows.append(None)
+                continue
+            cells = [_point(rg[i, 0]), _point(rg[i, 1])]
+            if one:
+                cells += [_S.forg(vi[i], 6), _S.forg(ve[i])]
+            else:
+                cells.append(_S.forg(float(_core.max(_core.abs(ve[i])))))
+            rows.append((f"[{i}]", cells))
+        tables.append(_S.Table(["a", "b"] + (["integral", "error"] if one else ["max error"]), rows, left={0, 1}))
     if "cycle_integrals" in f and f["n_cycles"]:  # QAWF's cycles, in order
         ci, ce, cs = r.cycle_integrals, r.cycle_errors, r.cycle_status
         rows = [None if i is None else (f"[{i}]", [_S.forg(ci[i], 6), _S.forg(ce[i]), str(cs[i])])

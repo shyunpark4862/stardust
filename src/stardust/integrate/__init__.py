@@ -9,10 +9,13 @@ other areas' field names (integral, error, converged, nfev).
 The public functions come milestone by milestone (docs/design/integrate.md §8): C3 brought the
 sample rules (trapezoid, simpson, romb, cumulative_trapezoid, cumulative_simpson) and the fixed
 rules (fixed_quad, newton_cotes), C4 QUADPACK's quad (without a weight) and the multiple
-integrals (dblquad, tplquad, nquad), C6 the elementwise family's tanhsinh and nsum.
+integrals (dblquad, tplquad, nquad), C6 the elementwise family's tanhsinh and nsum, C7 the
+vector-valued and multidimensional quad_vec and cubature.
 """
 
 from .. import _calls
+from ._cubature import cubature
+from ._quad_vec import quad_vec
 from ._quadpack import dblquad, nquad, quad, tplquad
 from ._result import IntegrateResult
 from ._rules import fixed_quad, newton_cotes
@@ -32,12 +35,15 @@ quad = _calls.function(quad)
 dblquad = _calls.function(dblquad)
 tplquad = _calls.function(tplquad)
 nquad = _calls.function(nquad)
+quad_vec = _calls.function(quad_vec)
+cubature = _calls.function(cubature)
 tanhsinh = _calls.function(tanhsinh)
 nsum = _calls.function(nsum)
 del _calls
 
 __all__ = [
     "IntegrateResult",
+    "cubature",
     "cumulative_simpson",
     "cumulative_trapezoid",
     "dblquad",
@@ -46,6 +52,7 @@ __all__ = [
     "nquad",
     "nsum",
     "quad",
+    "quad_vec",
     "romb",
     "simpson",
     "tanhsinh",

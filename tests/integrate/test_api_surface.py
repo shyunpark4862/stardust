@@ -1,6 +1,6 @@
 """docs/api/integrate.md and the module agree: the signature blocks name the first version's 15
 functions (decision C2) and the result class; the result class (C0) and the functions of the
-milestones done (C3, C4) are exported with the documented signatures, and the documented signatures
+milestones C3-C7 (all 15) are exported with the documented signatures, and the documented signatures
 follow the area's naming decisions (C4, C11-C14, C40)."""
 
 import inspect
@@ -13,7 +13,7 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "integrate.md"
 
-# C2: the first version's functions, all documented and none public yet (milestones C3-C7).
+# C2: the first version's functions, all documented (public with milestones C3-C7).
 PLANNED = {
     "quad", "quad_vec", "dblquad", "tplquad", "nquad", "tanhsinh", "nsum", "cubature", "fixed_quad",
     "newton_cotes", "trapezoid", "simpson", "romb", "cumulative_trapezoid", "cumulative_simpson",
@@ -33,7 +33,9 @@ PUBLIC = {
     "nquad",
     "tanhsinh",
     "nsum",
-}  # C3, C4, C6
+    "quad_vec",
+    "cubature",
+}  # C3, C4, C6, C7
 ELEMENTWISE = {"tanhsinh", "nsum"}  # C4: the elementwise-iterative family, the only ones with args
 
 
@@ -56,7 +58,7 @@ def test_exports_match_the_document():
     assert set(funcs) == PLANNED
     assert bare == RESULTS
     assert set(sd.integrate.__all__) == RESULTS | PUBLIC
-    assert all(not hasattr(sd.integrate, n) for n in PLANNED - PUBLIC)  # milestone C7
+    assert PUBLIC == PLANNED  # every planned function is public since milestone C7
 
 
 def test_signatures_match_the_document():
