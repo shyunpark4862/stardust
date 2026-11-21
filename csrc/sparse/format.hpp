@@ -86,6 +86,9 @@ const NDArray& vector_arg(nanobind::handle o, const char* func, DType dtype = DT
 
 // A new 1-D int64 array of n elements, uninitialized (or zeroed), writeable.
 NDArray new_index(std::int64_t n, bool zeroed = false);
+// An indptr of `lines` + 1 entries; ValueError("array is too big") for lines = 2^63 - 1, whose
+// length does not fit in int64 (the check comes before the + 1, which would overflow).
+NDArray new_indptr(std::int64_t lines, bool zeroed = false);
 
 // ---- the canonical compressed form ----
 

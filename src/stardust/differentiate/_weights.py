@@ -121,24 +121,36 @@ def _lagrange(nodes, zero, one):
 
 
 @functools.lru_cache(maxsize=64)
-def weights(n, c):
-    """(central, one_sided): two tuples of 2n + 1 doubles for n terms and the step factor c (a
-    finite double > 0, not 1), in the order of scipy's stencils (above)."""
+def central_weights(n, c):
+    """The 2n + 1 central weights (doubles) for n terms and the step factor c (a finite double
+    > 0, not 1), in the order of scipy's stencil (above)."""
     cf = Fraction(c)
     central = [-(cf ** -(k - 1)) for k in range(n, 0, -1)] + [Fraction(0)] + [cf ** -(k - 1) for k in range(1, n + 1)]
-    wc = tuple(_round(w) for w in _lagrange(central, Fraction(0), Fraction(1)))
+    return tuple(_round(w) for w in _lagrange(central, Fraction(0), Fraction(1)))
+
+
+@functools.lru_cache(maxsize=64)
+def one_sided_weights(n, c):
+    """The 2n + 1 one-sided weights (doubles) for n terms and the step factor c, in the order of
+    scipy's stencil (above). Computed only when an element takes a side: in Q(sqrt(c)) they cost
+    about 6 times the central ones (n = 50, c = 2: 165 ms of 188 ms)."""
+    cf = Fraction(c)
     root = _rational_sqrt(cf)
     if root is not None:
         side = [Fraction(0)] + [root**-k for k in range(2 * n)]
-        wr = tuple(_round(w) for w in _lagrange(side, Fraction(0), Fraction(1)))
-    else:
-        zero, one = _Quad(Fraction(0), Fraction(0), cf), _Quad(Fraction(1), Fraction(0), cf)
+        return tuple(_round(w) for w in _lagrange(side, Fraction(0), Fraction(1)))
+    zero, one = _Quad(Fraction(0), Fraction(0), cf), _Quad(Fraction(1), Fraction(0), cf)
 
-        def inv_root_power(k):  # d^-k = c^(-k/2): rational for even k, sqrt(c) c^(-(k+1)/2) for odd
-            if k % 2 == 0:
-                return _Quad(cf ** -(k // 2), Fraction(0), cf)
-            return _Quad(Fraction(0), cf ** -((k + 1) // 2), cf)
+    def inv_root_power(k):  # d^-k = c^(-k/2): rational for even k, sqrt(c) c^(-(k+1)/2) for odd
+        if k % 2 == 0:
+            return _Quad(cf ** -(k // 2), Fraction(0), cf)
+        return _Quad(Fraction(0), cf ** -((k + 1) // 2), cf)
 
-        side = [zero] + [inv_root_power(k) for k in range(2 * n)]
-        wr = tuple(w.rounded() for w in _lagrange(side, zero, one))
-    return wc, wr
+    side = [zero] + [inv_root_power(k) for k in range(2 * n)]
+    return tuple(w.rounded() for w in _lagrange(side, zero, one))
+
+
+def weights(n, c):
+    """(central, one_sided): the two tuples of 2n + 1 doubles (central_weights,
+    one_sided_weights; each kept once computed)."""
+    return central_weights(n, c), one_sided_weights(n, c)

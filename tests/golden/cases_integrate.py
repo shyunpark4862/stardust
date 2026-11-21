@@ -215,6 +215,7 @@ def quad_cases(L):
     yield "quad points array", lambda: I.quad(lambda x: abs(x - 0.3), 0.0, 1.0, points=sd.asarray([0.3, 0.6]))
     yield "quad nan", lambda: I.quad(lambda x: math.nan if x > 0.5 else 1.0, 0.0, 1.0)
     yield "quad inf", lambda: I.quad(lambda x: math.inf if x > 0.9 else x, 0.0, 1.0)
+    yield "dblquad inf", lambda: I.dblquad(lambda y, x: math.inf, 0.0, 1.0, 0.0, 1.0)  # status -3 (C119)
     # status 3 on each of QAGS, QAGI, QAGP and status 4 (docs/api/integrate.md §2)
     inv = lambda x: 1.0 / x if x else math.inf  # noqa: E731
     yield "quad status 3 QAGS", lambda: I.quad(inv, 0.0, 1.0, limit=10000)
@@ -275,6 +276,8 @@ def weight_cases(L):
     yield "quad qawf zero sine", lambda: I.quad(lambda x: math.exp(-x), 1.0, math.inf, weight="sin", wvar=0.0)
     yield "quad qawf left sine", lambda: I.quad(math.exp, -math.inf, 1.0, weight="sin", wvar=2.5)
     yield "quad qawf reversed", lambda: I.quad(rsqrt, math.inf, 0.0, weight="sin", wvar=2.0)
+    # a large frequency: the Clenshaw-Curtis estimate's rounding floor (C123)
+    yield "quad qawf omega 2^40", lambda: I.quad(lambda x: math.exp(-x), 0.0, math.inf, weight="cos", wvar=2.0**40)
     yield "quad qawf summary", lambda: I.quad(rsqrt, 0.0, math.inf, weight="cos", wvar=1.0).summary()
     yield "quad qaws limit 2", lambda: I.quad(math.exp, 0.0, 1.0, weight="alg-log", wvar=(-0.5, 0.5), limit=2)
     yield "quad qaws reversed", lambda: I.quad(math.exp, 1.0, -1.0, weight="alg-logb", wvar=(0.5, -0.25))
@@ -491,6 +494,7 @@ def adaptive_cases(L):
 
     yield "cubature gk21 2-D", lambda: I.cubature(gauss, [0.0, 0.0], [1.0, 1.0])
     yield "cubature gk15 3-D", lambda: I.cubature(gauss, [0.0, 0.0, 0.0], [1.0, 1.0, 2.0], rule="gk15")
+    yield "err cubature gk21 8-D", lambda: I.cubature(lambda X: X[:, 0], [0.0] * 8, [1.0] * 8)  # C117
     yield "cubature genz-malik 2-D", lambda: I.cubature(gauss, [0.0, 0.0], [1.0, 1.0], rule="genz-malik")
     yield "cubature genz-malik 4-D", lambda: I.cubature(gauss, [0.0] * 4, [1.0] * 4, rule="genz-malik", rtol=1e-6)
     yield "cubature 1-D", lambda: I.cubature(lambda X: sd.cos(X[:, 0]), [0.0], [3.0])

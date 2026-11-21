@@ -7,10 +7,12 @@ A factor is checked for singularity once (SP62): Accelerate's structural singula
 is not finite, and the estimated condition number kappa_1 with kappa_1 * eps >= 1, all
 LinAlgError("<func>(): singular matrix"). Several right-hand sides are solved together (SP64).
 
-The matrix is a sparse array: CSR and CSC are used as they are, COO and DOK become CSC (scipy).
-Values become float64 (bool, int64) or stay complex128; NaN and infinity are a ValueError (as in
-sd.linalg). A right-hand side is a dense sd.ndarray of shape (n,) or (n, k), or for spsolve also a
-sparse array (the solution is then sparse, its exact zeros dropped).
+The matrix is a sparse array; the LU always factors its CSC (every format converts, so the format
+never changes the bits), and spsolve_triangular reads its CSR. Values become float64 (bool, int64)
+or stay complex128; NaN and infinity are a ValueError (as in sd.linalg; spsolve_triangular looks
+only at the values it reads, as sd.linalg.solve_triangular). A right-hand side is a dense
+sd.ndarray of shape (n,) or (n, k), or for spsolve also a sparse array (the solution is then
+sparse, its exact zeros dropped).
 """
 
 from .. import _core as _sd
@@ -57,16 +59,18 @@ def _finite(x, func, what):
         raise ValueError(f"{func}(): '{what}' contains NaN or infinity")
 
 
-def _compressed(A, func, dtype=None, by_rows=None):
+def _compressed(A, func, dtype=None, by_rows=None, check=True):
     """(A as CSR or CSC, its values in dtype (default: A's float dtype), csr flag). by_rows None
-    keeps CSR and CSC as they are (others become CSC); True asks for CSR."""
+    keeps CSR and CSC as they are (others become CSC); True asks for CSR. check: every stored value
+    must be finite."""
     if by_rows is True:
         A = A.tocsr()
     elif A.format not in ("csr", "csc"):
         A = A.tocsc()
     dtype = dtype or _float(A.dtype)
     data = A.data if A.data.dtype == dtype else A.data.astype(dtype)
-    _finite(data, func, "A")
+    if check:
+        _finite(data, func, "A")
     return A, data, A.format == "csr"
 
 
@@ -251,7 +255,16 @@ def spsolve_triangular(A, b, /, *, upper, unit_diagonal=False):
     n = A.shape[0]
     b = _dense_rhs(b, n, func)
     dtype = _sd.complex128 if _sd.complex128 in (A.dtype, b.dtype) else _sd.float64
-    A, data, _ = _compressed(A, func, dtype=dtype, by_rows=True)
+    A, data, _ = _compressed(A, func, dtype=dtype, by_rows=True, check=False)
+    if data.size and not bool(_sd.all(_sd.isfinite(data))):
+        # only the values read must be finite: the chosen triangle, and the diagonal unless
+        # unit_diagonal (sd.linalg.solve_triangular's rule; the others may be NaN)
+        rows = _core._expand(A.indptr, n, data.shape[0])
+        cols = A.indices
+        read = (cols != rows) if unit_diagonal else (cols == cols)
+        read = read & ((cols >= rows) if upper else (cols <= rows))
+        if bool(_sd.any(read & ~_sd.isfinite(data))):
+            raise ValueError(f"{func}(): 'A' contains NaN or infinity")
     if b.dtype != dtype:
         b = b.astype(dtype)
     if not C.contiguous(b):

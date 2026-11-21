@@ -130,7 +130,13 @@ class sparray:
             raise ValueError(f"{func}(): a csc_array has 2 dimensions, the array has {len(self._shape)}")
         if fmt == self.format:
             return self._copy() if copy else self
-        return getattr(self, "_to" + fmt)(copy, func)
+        try:
+            return getattr(self, "_to" + fmt)(copy, func)
+        except (MemoryError, ValueError) as e:  # a kernel's allocation failure, named by the caller
+            r = C.allocation_error(func, e)
+            if r is None:
+                raise
+            raise r from None
 
     def to_scipy(self, *, copy=None):
         """The scipy.sparse array of the same format (csr_array, ...). The values and index arrays
@@ -188,7 +194,7 @@ class sparray:
         new = C.shape_arg(shape, "resize")
         if len(new) != len(self._shape):
             raise ValueError(f"resize(): the shape must have {len(self._shape)} dimensions, got {len(new)}")
-        self._resize(new)
+        C.sized("resize", self._resize, new)
 
     def nonzero(self):
         """The positions of the nonzero values: one int64 array per axis, in row-major order (a
@@ -267,6 +273,13 @@ class sparray:
             return O.with_values(self, (lambda v: f(other, v)) if reflected else (lambda v: f(v, other)), dedupe=False)
         if isinstance(other, _sd.ndarray):
             return O.dense_result(self, other, getattr(_sd, op), reflected)
+        return self._other(other, "+" if op == "add" else "-", reflected)
+
+    def _other(self, other, symbol, reflected=False):
+        """An operand we do not take: NotImplemented (Python raises TypeError), or that TypeError
+        raised here for a numpy array, whose own operator would answer with numpy's message."""
+        if O.is_numpy_array(other):
+            raise O.refused(other, self, symbol) if reflected else O.refused(self, other, symbol)
         return NotImplemented
 
     def __add__(self, other):
@@ -282,18 +295,21 @@ class sparray:
         return self._add_sub(other, "subtract", True)
 
     def _mul(self, other, reflected, func=None):
+        # an operator calls the array's operator (its errors carry no function name: API.md §2),
+        # the method A.multiply the array's function multiply (named "multiply(): ...")
+        mul = _sd.multiply if func else operator.mul
         if O.is_number(other):
-            f = (lambda v: _sd.multiply(other, v)) if reflected else (lambda v: _sd.multiply(v, other))
+            f = (lambda v: mul(other, v)) if reflected else (lambda v: mul(v, other))
             return O.with_values(self, f, dedupe=False)
         if isinstance(other, _sd.ndarray):
-            return O.dense_pattern_op(self, other, _sd.multiply, reflected, func)
+            return O.dense_pattern_op(self, other, mul, reflected, func)
         if O.is_sparse(other):
             return (
                 O.sparse_sparse(other, self, "multiply", func)
                 if reflected
                 else O.sparse_sparse(self, other, "multiply", func)
             )
-        return NotImplemented
+        return NotImplemented if func else self._other(other, "*", reflected)
 
     def __mul__(self, other):
         return self._mul(other, False)
@@ -303,17 +319,17 @@ class sparray:
 
     def __truediv__(self, other):
         if O.is_number(other):
-            return O.with_values(self, lambda v: _sd.divide(v, other), dedupe=False)
+            return O.with_values(self, lambda v: v / other, dedupe=False)
         if isinstance(other, _sd.ndarray):
-            return O.dense_pattern_op(self, other, _sd.divide)
+            return O.dense_pattern_op(self, other, operator.truediv)
         if O.is_sparse(other):  # dense: 0 / 0 is NaN where neither stores a value
             O.check_same_shape(self, other)
             return self.toarray() / other.toarray()
-        return NotImplemented
+        return self._other(other, "/")
 
     def __pow__(self, other):
         if not O.is_number(other):
-            return NotImplemented
+            return self._other(other, "** or pow()")
         return self._power(other, None)
 
     def __matmul__(self, other):
@@ -321,12 +337,12 @@ class sparray:
             return O.matmul_dense(self, other)
         if O.is_sparse(other):
             return O.matmul_sparse(self, other)
-        return NotImplemented
+        return self._other(other, "@")
 
     def __rmatmul__(self, other):
         if isinstance(other, _sd.ndarray):
             return O.rmatmul_dense(self, other)
-        return NotImplemented
+        return self._other(other, "@", True)
 
     def _compare(self, other, op):
         if O.is_sparse(other):
@@ -335,7 +351,7 @@ class sparray:
             return O.scalar_compare(self, other, op)
         if isinstance(other, _sd.ndarray):
             return O.dense_result(self, other, O._OPERATORS[op])
-        return NotImplemented
+        return NotImplemented  # a numpy array answers with Python's "'<' not supported ..." itself
 
     def __eq__(self, other):
         r = self._compare(other, "equal")
@@ -405,7 +421,11 @@ class sparray:
             )
         if not n > 0:
             raise ValueError(f"{head}'n' must be positive: 0 ** {n} is not 0, the result would not be sparse")
-        return O.with_values(self, lambda v: _sd.pow(v, n), dedupe=True, dok_csr=True)
+        if func:
+            f = lambda v: C.renamed(func, _sd.pow, v, n)  # noqa: E731  (the method's name, not pow's)
+        else:
+            f = lambda v: v**n  # noqa: E731  (the operator: no function name)
+        return O.with_values(self, f, dedupe=True, dok_csr=True)
 
     # ---- reductions (docs/api/sparse.md §3.3) ----
 
@@ -502,6 +522,8 @@ def _reshape_target(shape, old):
         )
         raise TypeError(f"reshape(): 'shape' must be an int or a tuple of ints, not {what}")
     C.check_ndim(len(dims), "reshape", (1, 2), what="'shape'")
+    if any(d > 2**63 - 1 or d < -(2**63) for d in dims):
+        raise OverflowError("reshape(): 'shape' is out of range")
     size = math.prod(old)
     unknown = [i for i, d in enumerate(dims) if d == -1]
     if len(unknown) > 1:
@@ -513,6 +535,8 @@ def _reshape_target(shape, old):
         if rest == 0 or size % rest:
             raise ValueError(f"reshape(): cannot reshape array of size {size} into shape {dims}")
         dims = tuple(size // rest if d == -1 else d for d in dims)
+        if any(d > 2**63 - 1 for d in dims):  # a 1-D shape of more than 2**63 - 1 elements
+            raise OverflowError("reshape(): 'shape' is out of range")
     if math.prod(dims) != size:
         raise ValueError(f"reshape(): cannot reshape array of size {size} into shape {dims}")
     return dims

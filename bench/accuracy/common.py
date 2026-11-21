@@ -39,12 +39,20 @@ def ulps(got, ref):
     """ulp_distance(got, ref) as float64 for the measures' columns, where ref is the reference
     rounded to a double (a double-double's hi): inf where exactly one of them is NaN or where
     they are unequal and one is infinite (no distance in doubles is meant there). For complex
-    values the larger of the two parts' distances."""
+    values one scale for both parts, the ulp of the larger part of ref:
+    max(|re(got - ref)|, |im(got - ref)|) / ulp(max(|re ref|, |im ref|)). A part near zero (or
+    changing sign) then does not count the many tiny doubles around zero. Where a part is not
+    finite, the larger of the two parts' distances."""
     got = np.asarray(got)
     ref = np.asarray(ref)
     if np.iscomplexobj(got) or np.iscomplexobj(ref):
-        got, ref = np.asarray(got, dtype=np.complex128), np.asarray(ref, dtype=np.complex128)
-        return np.maximum(ulps(got.real, ref.real), ulps(got.imag, ref.imag))
+        got, ref = np.broadcast_arrays(np.asarray(got, dtype=np.complex128), np.asarray(ref, dtype=np.complex128))
+        parts = np.maximum(ulps(got.real, ref.real), ulps(got.imag, ref.imag))
+        finite = np.isfinite(got) & np.isfinite(ref)
+        with np.errstate(all="ignore"):
+            scale = np.spacing(np.maximum(np.abs(ref.real), np.abs(ref.imag)))
+            d = np.maximum(np.abs(got.real - ref.real), np.abs(got.imag - ref.imag)) / scale
+        return np.where(finite, d, parts)
     got, ref = np.asarray(got, dtype=np.float64), np.asarray(ref, dtype=np.float64)
     d = ulp_distance(got, ref).astype(np.float64)
     finite = np.isfinite(got) & np.isfinite(ref)

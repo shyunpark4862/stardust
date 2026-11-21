@@ -17,10 +17,10 @@
 #include "array/ops/pieces.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -147,10 +147,16 @@ nb::object race_keys(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, cons
 // entry i with entry i + bounded(n - i), its draw from element pos + i of the stream
 // (extra words for rejections), so the result depends on (key, pos, n, k) only. k = n is
 // a permutation, shuffled in the result itself. For a small sample of a large population
-// the entries touched live in a hash map (O(k) time and memory; numpy's choice without
+// the entries touched live in a hash table (O(k) time and memory; numpy's choice without
 // replacement does the same in effect); else in a full array of n beside the result.
 // The memory of each path is checked before the stream moves (random/__init__.py
 // _shuffle_bytes, docs/design/random.md §4).
+struct Slot {
+    std::int64_t key, value;
+};
+inline constexpr std::int64_t kSlotsPerEntry = 2;  // the table's bytes: 16 * bit_ceil(2 k) < 64 k
+inline constexpr std::int64_t kAhead = 16;          // draws made ahead of the table work
+
 nb::object fisher_yates(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, std::int64_t n, std::int64_t k) {
     const std::int64_t shape[] = {k};
     NDArray out = new_array(DType::Int64, shape);
@@ -168,16 +174,43 @@ nb::object fisher_yates(std::uint64_t k0, std::uint64_t k1, std::uint64_t pos, s
             for (std::int64_t i = 0; i < n; ++i) o[i] = i;
             for (std::int64_t i = 0; i < n; ++i) std::swap(o[i], o[draw(i)]);
         } else if (k <= n / 16) {
-            std::unordered_map<std::int64_t, std::int64_t> moved;  // entries that are not their own index
-            moved.reserve(static_cast<std::size_t>(2 * k));
-            auto at = [&](std::int64_t i) {
-                const auto it = moved.find(i);
-                return it == moved.end() ? i : it->second;
+            // The entries that are not their own index, in a flat open-addressing table: a power
+            // of two of at least kSlotsPerEntry * k slots (key -1 is empty), Fibonacci hashing,
+            // linear probing. At most k keys (one per step), so the load stays at most 1/2. The
+            // node-based std::unordered_map took 51 ms for k = 1e6 of n = 1e10 (numpy 10 ms).
+            const std::size_t cap =
+                std::bit_ceil(static_cast<std::size_t>(std::max<std::int64_t>(kSlotsPerEntry * k, 16)));
+            const int shift = 64 - std::countr_zero(cap);
+            std::vector<Slot> table(cap, Slot{-1, 0});
+            auto home = [&](std::int64_t key) {
+                return static_cast<std::size_t>((static_cast<std::uint64_t>(key) * 0x9E3779B97F4A7C15ull) >> shift);
             };
+            auto slot = [&](std::int64_t key) -> Slot& {
+                std::size_t h = home(key);
+                while (table[h].key != -1 && table[h].key != key) h = (h + 1) & (cap - 1);
+                return table[h];
+            };
+            // The draws do not depend on the table: step i + kAhead's is made kAhead steps early
+            // and its two home slots are prefetched, so the random reads overlap.
+            std::int64_t ahead[kAhead];
+            const std::int64_t first = std::min<std::int64_t>(k, kAhead);
+            for (std::int64_t t = 0; t < first; ++t) {
+                ahead[t] = draw(t);
+                __builtin_prefetch(&table[home(ahead[t])], 1);
+                __builtin_prefetch(&table[home(t)]);
+            }
             for (std::int64_t i = 0; i < k; ++i) {
-                const std::int64_t j = draw(i);
-                const std::int64_t vi = at(i), vj = at(j);
-                moved[j] = vi;
+                const std::int64_t j = ahead[i % kAhead];
+                if (const std::int64_t t = i + kAhead; t < k) {
+                    ahead[i % kAhead] = draw(t);
+                    __builtin_prefetch(&table[home(ahead[i % kAhead])], 1);
+                    __builtin_prefetch(&table[home(t)]);
+                }
+                const Slot& si = slot(i);
+                const std::int64_t vi = si.key == -1 ? i : si.value;
+                Slot& sj = slot(j);
+                const std::int64_t vj = sj.key == -1 ? j : sj.value;
+                sj = Slot{j, vi};
                 o[i] = vj;
             }
         } else {

@@ -20,6 +20,7 @@ from .. import _calls
 from .. import _core as _sd
 from . import _common as C
 from ._base import sparray
+from ._ops import is_numpy_array, refused
 
 _DTYPES = (_sd.bool, _sd.int64, _sd.float64, _sd.complex128)
 
@@ -36,7 +37,13 @@ def _conj(x):
 def _as_result(y, func, shape):
     """The user's function's result as an sd.ndarray of `shape` (an equal size reshaped)."""
     if not isinstance(y, _sd.ndarray):
-        y = C.renamed(func, _sd.asarray, y)
+        try:
+            y = _sd.asarray(y)
+        except TypeError, ValueError:
+            raise TypeError(
+                f"{func}(): the operator's function must return an sd.ndarray or a sequence of numbers, "
+                f"not {C.type_name(y)}"
+            ) from None
     if tuple(y.shape) != shape:
         size = 1
         for d in shape:
@@ -63,12 +70,22 @@ def _check_matrix(X, n, func):
         raise ValueError(f"{func}(): the operator has {n} columns but 'X' has {X.shape[0]} rows")
 
 
+def _other(left, right, symbol):
+    """NotImplemented for an operand not taken (Python raises TypeError), or Python's TypeError
+    raised here for a numpy array, which would answer with numpy's own message."""
+    if is_numpy_array(left) or is_numpy_array(right):
+        raise refused(left, right, symbol)
+    return NotImplemented
+
+
 def _is_scalar(c):
     return isinstance(c, numbers.Number) and not isinstance(c, bool) and not isinstance(c, _sd.ndarray)
 
 
 class LinearOperator:
     """A linear map of shape (M, N) given by its product with vectors (scipy's LinearOperator)."""
+
+    __array_ufunc__ = None  # a numpy array is not an operand: numpy defers, and Python's TypeError follows
 
     @_calls.method("LinearOperator")
     def __init__(self, shape, matvec, /, *, rmatvec=None, matmat=None, rmatmat=None, dtype=None):
@@ -117,6 +134,17 @@ class LinearOperator:
         if type(self)._rmatmat is not LinearOperator._rmatmat or self._f.get("rmatmat") is not None:
             return self._rmatmat(x.reshape((self._shape[0], 1)))
         raise ValueError("rmatvec(): the operator was made without 'rmatvec'")
+
+    def _has_adjoint(self):
+        """Whether rmatvec can run: given (rmatvec or rmatmat) or defined by a subclass. An
+        operator made from others (a sum, a product, .T ...) reports True and asks its parts."""
+        cls = type(self)
+        return (
+            self._f.get("rmatvec") is not None
+            or self._f.get("rmatmat") is not None
+            or cls._rmatvec is not LinearOperator._rmatvec
+            or cls._rmatmat is not LinearOperator._rmatmat
+        )
 
     def _rmatmat(self, X):
         f = self._f.get("rmatmat")
@@ -187,8 +215,8 @@ class LinearOperator:
                 return self.matvec(other)
             if other.ndim == 2:
                 return self.matmat(other)
-            raise ValueError(f"matmul: expected a 1-D or 2-D operand, got {other.ndim} dimensions")
-        return NotImplemented
+            raise ValueError(f"the operand must have 1 or 2 dimensions, got {other.ndim}")
+        return _other(self, other, "@")
 
     def __rmatmul__(self, other):
         if isinstance(other, _sd.ndarray):
@@ -197,28 +225,35 @@ class LinearOperator:
                 return y.mT if other.ndim == 2 else y
             if other.ndim == 2:
                 return self.T.matmat(other.mT).mT
-            raise ValueError(f"matmul: expected a 1-D or 2-D operand, got {other.ndim} dimensions")
-        return NotImplemented
+            raise ValueError(f"the operand must have 1 or 2 dimensions, got {other.ndim}")
+        return _other(other, self, "@")
 
     def __add__(self, other):
         if not isinstance(other, LinearOperator):
-            return NotImplemented
+            return _other(self, other, "+")
         if self._shape != other._shape:
             raise ValueError(f"cannot add operators of shapes {self._shape} and {other._shape}")
         return _sum(self, other)
 
+    def __radd__(self, other):
+        return _other(other, self, "+")
+
     def __sub__(self, other):
         if not isinstance(other, LinearOperator):
-            return NotImplemented
+            return _other(self, other, "-")
         return self + (-other)
 
     def __neg__(self):
         return _scaled(self, -1)
 
-    def __mul__(self, c):
-        return _scaled(self, c) if _is_scalar(c) else NotImplemented
+    def __rsub__(self, other):
+        return _other(other, self, "-")
 
-    __rmul__ = __mul__
+    def __mul__(self, c):
+        return _scaled(self, c) if _is_scalar(c) else _other(self, c, "*")
+
+    def __rmul__(self, c):
+        return _scaled(self, c) if _is_scalar(c) else _other(c, self, "*")
 
     def __pow__(self, p):
         if not C.is_int(p):

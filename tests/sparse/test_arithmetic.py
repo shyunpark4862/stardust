@@ -13,6 +13,7 @@ follow IEEE for NaN (scipy's <=, >= are the negation of >, <), a dok_array + spa
 DOK)."""
 
 import operator
+import re
 import warnings
 
 import numpy as np
@@ -409,3 +410,73 @@ def test_array_functions_point_at_the_methods():
         sd.add(1.0, A.tocoo())
     with pytest.raises(TypeError, match=r"use A.maximum\(B\)$"):
         sd.maximum(A, A)
+
+
+# ---- the messages of operators ----
+
+
+@pytest.mark.parametrize("fmt", ["csr", "csc", "coo", "dok"])
+def test_operator_errors_have_no_function_name(fmt):
+    """An operator's error is the dense operator's (SPR-9, API.md §2): no "multiply(): "; only
+    the method A.multiply names itself."""
+    A = S.csr_array(sd.asarray([[1]])).asformat(fmt)
+    F = S.csr_array(sd.asarray([[1.0]])).asformat(fmt)
+    x = sd.asarray([[1]])
+    for f, g, msg in (
+        (lambda: A * 2**70, lambda: x * 2**70, "Python int too large to convert to int64"),
+        (lambda: 2**70 * A, lambda: 2**70 * x, "Python int too large to convert to int64"),
+        (lambda: A / 2**70, lambda: x / 2**70, None),
+        (lambda: F * 10**400, lambda: sd.asarray([[1.0]]) * 10**400, "Python int too large to convert to float64"),
+        (lambda: A ** (2**70), lambda: x ** (2**70), None),
+    ):
+        with pytest.raises(OverflowError) as want:
+            g()
+        with pytest.raises(OverflowError) as got:
+            f()
+        assert str(got.value) == str(want.value) and not str(got.value).startswith(("multiply(", "divide(", "pow("))
+        if msg:
+            assert str(got.value) == msg
+    with pytest.raises(OverflowError, match=r"^multiply\(\): Python int too large to convert to int64$"):
+        A.multiply(2**70)
+    with pytest.raises(OverflowError, match=r"^power\(\): "):
+        A.power(2**70)
+
+
+@pytest.mark.parametrize("fmt", ["csr", "csc", "coo", "dok"])
+def test_numpy_operands_get_pythons_message(fmt):
+    """A numpy array on either side: Python's own TypeError (SPR-10, docs/api/sparse.md §3.1),
+    not numpy's "does not support ufuncs"."""
+    A = S.eye_array(3, format=fmt)
+    name = type(A).__name__
+    for f, sym in ((operator.mul, "*"), (operator.add, "+"), (operator.sub, "-"), (operator.truediv, "/"),
+                   (operator.matmul, "@"), (operator.pow, "** or pow()")):  # fmt: skip
+        for other in (np.ones(3), np.array(2.0), np.ones((3, 3))):
+            with pytest.raises(TypeError, match=rf"^unsupported operand type\(s\) for {re.escape(sym)}: "
+                                                rf"'{name}' and 'numpy.ndarray'$"):  # fmt: skip
+                f(A, other)
+            with pytest.raises(TypeError, match=rf"^unsupported operand type\(s\) for {re.escape(sym)}: "
+                                                rf"'numpy.ndarray' and '{name}'$"):  # fmt: skip
+                f(other, A)
+    for f, sym in ((operator.lt, "<"), (operator.ge, ">=")):
+        with pytest.raises(
+            TypeError, match=rf"^'{sym}' not supported between instances of '{name}' and 'numpy.ndarray'$"
+        ):
+            f(A, np.ones(3))
+    assert npy((A * np.float64(2.0)).toarray()).tolist() == [[2.0, 0, 0], [0, 2.0, 0], [0, 0, 2.0]]
+
+
+def test_matmul_operands_of_three_dimensions():
+    """A dense operand of @ has 1 or 2 dimensions: the message says so, without the kernel's name
+    (R221); the axis message names the real second-to-last axis."""
+    M_ = S.eye_array(3)
+    for f in (lambda: M_ @ sd.ones((3, 3, 3)), lambda: M_ @ sd.ones((2, 3, 3)), lambda: sd.ones((3, 3, 3)) @ M_):
+        with pytest.raises(ValueError, match=r"^the operand must have 1 or 2 dimensions, got 3$"):
+            f()
+    with pytest.raises(
+        ValueError, match=r"^the last axis of 'x1' \(3\) must match the second-to-last axis of 'x2' \(2\)$"
+    ):
+        M_ @ sd.ones((2, 4))
+    with pytest.raises(
+        ValueError, match=r"^the last axis of 'x1' \(3\) must match the second-to-last axis of 'x2' \(2\)$"
+    ):
+        sd.ones((3, 3)) @ sd.ones((2, 4))  # the dense array's message

@@ -3,7 +3,7 @@
 Usage: ``import stardust as sd`` then ``sd.integrate.trapezoid(y, x)``,
 ``sd.integrate.fixed_quad(f, 0, 1, n=10)``. The functions and their arguments are
 scipy.integrate's names; the inputs, options and results follow this library's rules
-(decisions C1-C54 in docs/design/integrate.md §1.1): one result class, IntegrateResult, with the
+(the decisions in docs/design/integrate.md §1.1): one result class, IntegrateResult, with the
 other areas' field names (integral, error, converged, nfev).
 
 The public functions come milestone by milestone (docs/design/integrate.md §8): C3 brought the

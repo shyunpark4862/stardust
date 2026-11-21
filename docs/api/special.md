@@ -443,7 +443,7 @@ ndtri_exp(y, /, *, out=None)
   | `stdtr(df, t)`, 서브노멀 df, t ≠ 0 유한 | 0.5 | df → 0에서 질량이 ±∞로 반씩 간다. df = 5e-324의 df/2는 double이 아니라 반을 a·B(a, 1/2) → 1의 극한으로 들고 간다 |
   | `chdtr(df, 0)`, `chdtrc(df, 0)`, df > 0 | 0, 1 | 서브노멀 df도(df > 0에는 0의 점질량이 없다) |
   | `chdtri(df, q)`, 마지막 비트가 홀수인 서브노멀 df | Q(df, y) = 2q의 근의 2배 | df/2가 double이 아니다. Q(a, y)는 a → 0에서 a에 선형이라 Q(df/2, y) = Q(df, y)/2. q > 1/2이면 0 |
-  | `fdtri(dfn, dfd, p)`, dfn이나 dfd가 5e-324 | 극한 | dfn만이면 0(분포가 0에 몰린다), dfd만이면 inf(p ≤ 1/2이면 dfd에 대해 선형인 `fdtr`로 2p의 근), 둘 다 2⁻⁶⁹⁹ 아래이면 질량 dfd/(dfn + dfd)와 p를 비교해 0이나 inf |
+  | `fdtri(dfn, dfd, p)`, dfn이나 dfd가 5e-324 | 극한 | dfn만이면 0(분포가 0에 몰린다), dfd만이면 inf(p ≤ 1/2이면 dfd에 대해 선형인 `fdtr`로 2p의 근; 그 근이 double 밖이면 inf, 예: `fdtri(2, 5e-324, 0.1)`), 둘 다 2⁻⁶⁹⁹ 아래이면 질량 dfd/(dfn + dfd)와 p를 비교해 0이나 inf |
   | `chdtr(0, x)`, x > 0 | 1 | `chdtr(0, 0)`은 NaN(scipy와 같다) |
   | **`fdtr(dfn, inf, x)`** | `gammainc(dfn/2, dfn·x/2)` | 극한(dfn·F → 카이제곱). **scipy는 NaN** |
   | **`fdtr(inf, dfd, x)`** | `gammaincc(dfd/2, dfd/(2x))` | 극한(dfd/F → 카이제곱). **scipy는 NaN** |
@@ -505,6 +505,10 @@ ncfdtri(dfn, dfd, nc, p, /, *, out=None)
   - **잰 값**: Arb 참값 대비 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 표(`python -m bench.accuracy`가 만든다)에 함수마다 있다. 역함수는 ULP/max(1, κ) 열이다.
   - 같은 점에서 잰 scipy(Boost를 감싼 것)·R·Boost 단독의 오차는 [bench/special/accuracy.md](../../bench/special/accuracy.md)의 비교 패키지 열에 있다.
   - 잰 범위: 자유도 1e-2–1e4(카이제곱·F), 1e-1–1e5(t); nc 1e-3–1e4(카이제곱·F), |δ| ≤ 100(t); 확률은 1e-300까지. 근이 double 범위 밖이면 0이나 ±inf이고 순방향 함수로 확인한다(tests/special/test_noncentral.py).
-  - NaN이 되는 곳(잰 범위 밖): 포아송 혼합을 걷는 길이가 2¹⁸걸음에서 멈추므로(정해진 시간), 비중심 모수가 크면 분포의 중심에서 NaN이다. 카이제곱·F는 λ ≳ 4e9(λ/2 ≳ 2e9)부터 중심 근처에서, λ ≥ 9e15(무게의 최빈값이 2⁵²를 넘는다)부터는 위의 Chernoff 한계로 걸러지지 않는 모든 x에서 NaN이다(`chndtr(1, 4e9, 4e9)`, `chndtrix(1, 1e10, 0.5)`). t는 |δ| ≳ 3.9e4(δ²/2 ≈ 7.6e8)부터 모든 t에서 NaN이다(`nctdtr(10, 4e4, 4e4)`, `nctdtrit(3.64e23, 51019.1, 0.0564)`). 모두 몇 ms 안에 끝난다. `ncfdtr`·`ncfdtrc`는 먼 꼬리에서 구한 쪽의 보수가 1/64 아래일 때(dfn이나 dfd ≤ 1e-10에서만 봤다. 전에는 `ncfdtr(1e7, 1e-300, 2, 0.1)`이 참값 3.4e-298 대신 2.2e-16). `chndtrix nctdtrit ncfdtri`는 nc ≠ 0이고 p < 2⁻¹⁰²²(서브노멀)일 때다(전에는 9–16% 틀렸다). t 함수는 |nc| < 2⁻⁵⁰⁰이면 중심 분포의 값이다.
+  - NaN이 되는 곳(잰 범위 밖): 포아송 혼합을 걷는 길이가 2¹⁸걸음에서 멈추므로(정해진 시간), 비중심 모수가 크면 NaN이다. 문턱과 NaN의 범위는 잰 값이다(2026-11-22).
+    - 카이제곱은 λ ≳ 2.33e9부터 중심 근처의 띠에서 NaN이다. 띠는 λ와 함께 넓어진다: λ = 2.4e9에서 x ≈ λ ± 0.4√λ, 4e9와 1e10에서 적어도 λ ± 60√λ다. 띠 밖의 먼 꼬리는 0이나 1이다(`chndtr(1, 4e9, 1e9)` = 0, `chndtr(1, 4e9, 1e10)` = 1). 예: `chndtr(1, 4e9, 4e9)`, `chndtrix(1, 1e10, 0.5)`.
+    - F는 λ ≳ 1.47e9부터 NaN이고 띠가 훨씬 넓다: dfn = 1, dfd = 10, λ = 1.5e9와 4e9에서 f ≈ 1e7–1e182 전체가 NaN이다(값이 1로 반올림되는 위꼬리까지). f ≲ 1e6은 0, f ≳ 1e183은 1이다.
+    - 두 분포 모두 λ ≥ 9e15(무게의 최빈값이 2⁵²를 넘는다)부터는 위의 Chernoff 한계로 걸러지지 않는 모든 x에서 NaN이다.
+    - t는 |δ| ≳ 3.83e4(δ²/2 ≈ 7.3e8)부터 NaN이다(그 조금 아래 3.8e4에서도 t ≈ ±3.2e3의 점은 NaN이다). 가운데만이 아니다: `nctdtr(10, 3.9e4, t)`는 t ≲ 1e3에서 0, t ≳ 3e151에서 1이고 그 사이(t ≈ 3e3–1e151, 값이 1로 반올림되는 곳까지) 전체가 NaN이다. `nctdtrc`는 0 < t ≲ 1e91(값이 1인 곳)과 t < −3e3도 NaN이다. δ < 0이면 거울로 바뀐다(`nctdtr(10, -4e4, t)`는 −1e91 ≲ t < 0과 t ≈ 3e3–1e151에서 NaN). 경계는 df에 따라 조금 움직인다(df = 1이면 3e2–1e3, df = 1e4이면 1e4–3e4). 예: `nctdtr(10, 4e4, 1.0)` = 0.0, `nctdtr(10, 4e4, 4e4)` = nan, `nctdtrc(10, 4e4, 1.0)` = nan, `nctdtrit(3.64e23, 51019.1, 0.0564)` = nan.
   - 잰 범위 밖의 값은 보장하지 않는다(사용자 결정 2026-11-18: 값 유지): `nctdtr`·`nctdtrc`는 df ≤ 1e-3에서 상대 2.4e-13까지 틀린 점이 있었다(극단 인자 점검의 23점).
   - 그 밖(거대한 t·f에서 작은 인자가 2⁻¹⁰⁰⁰ 아래인 꼬리)은 첫 항 y^b로 계산한다. mpmath와 1e-16 수준으로 맞지만 보장하지 않는다.

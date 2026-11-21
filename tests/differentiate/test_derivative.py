@@ -330,3 +330,35 @@ def test_nan_point_and_order_one():
         two.n_iter,
         two.status,
     )
+
+
+def test_order_cap():
+    # CAL-2 (C118): every even order up to 18 keeps the contract at the eleven functions' nine
+    # points (Arb); from 20 on it does not, and higher orders converge to wrong values (exp'(1) = 0
+    # at order 160) and take ever longer. The same cap for jacobian and hessian
+    for o in (19, 20, 60, 10**9):
+        with pytest.raises(ValueError, match=r"^derivative\(\): 'order' must be at most 18$"):
+            D.derivative(sd.exp, 1.0, order=o)
+    with pytest.raises(ValueError, match=r"^jacobian\(\): 'order' must be at most 18$"):
+        D.jacobian(lambda x: x, [1.0], order=20)
+    with pytest.raises(ValueError, match=r"^hessian\(\): 'order' must be at most 18$"):
+        D.hessian(lambda x: x[0] ** 2, [1.0], order=20)
+    for o in (17, 18):
+        r = D.derivative(sd.exp, 1.0, order=o)
+        assert r.converged and abs(r.df - math.e) <= 2.0**-26 * math.e
+
+
+def test_one_sided_weights_only_when_a_side_is_taken():
+    # CAL-7: the one-sided weights (in Q(sqrt(c)), most of the first call's cost) are computed only
+    # when an element takes a side; the results are the same bits
+    from stardust.differentiate import _weights as W
+
+    c = 1.0 + 2.0**-20  # a step factor no other test uses: its weights are not kept yet
+    W.one_sided_weights.cache_clear()
+    central = D.derivative(sd.exp, sd.asarray([0.5, 1.0]), step_factor=c)
+    D.hessian(lambda x: sd.exp(x[0]) * x[1] ** 2, [0.5, 1.0], step_factor=c)
+    D.jacobian(lambda x: sd.exp(x), [0.5, 1.0], step_factor=c, step_direction=[0, math.nan])
+    assert W.one_sided_weights.cache_info().currsize == 0
+    mixed = D.derivative(sd.exp, sd.asarray([0.5, 1.0]), step_factor=c, step_direction=sd.asarray([0.0, 1.0]))
+    assert W.one_sided_weights.cache_info().currsize == 1
+    assert mixed.df[0] == central.df[0] and mixed.nfev[0] == central.nfev[0]

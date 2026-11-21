@@ -251,60 +251,73 @@ void bind_ndarray(nb::module_& m) {
         nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots))
             .def_prop_ro("T", named(".T", &transpose_2d))
             .def_prop_ro("mT", named(".mT", &matrix_transpose))
-            .def("tolist", [](const NDArray& a) { return tolist(a, 0, a.data); })
-            .def("astype", named("astype", &astype), nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = true)
             .def(
-                "copy", [](const NDArray& a) { return call_named("copy", [&] { return wrap(cast_copy(a, a.dtype)); }); }
+                "tolist", [](const NDArray& a) { return tolist(a, 0, a.data); }, nb::sig("def tolist(self, /)")
+            )
+            .def(
+                "astype", named("astype", &astype), nb::sig("def astype(self, dtype, /, *, copy=True)"),
+                nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = true
+            )
+            .def(
+                "copy",
+                [](const NDArray& a) { return call_named("copy", [&] { return wrap(cast_copy(a, a.dtype)); }); },
+                nb::sig("def copy(self, /)")
             )
             .def(
                 "reshape", named("reshape", nb::overload_cast<nb::handle, nb::handle, nb::handle>(&reshape)),
-                nb::arg().none(), nb::kw_only(), nb::arg("copy").none() = nb::none()
+                nb::sig("def reshape(self, shape, /, *, copy=None)"), nb::arg().none(), nb::kw_only(),
+                nb::arg("copy").none() = nb::none()
             )
             // .none(): x[None] is newaxis, and nanobind rejects None by default.
             // Reductions as methods (docs/design/array.md §12.2): the same functions, x as self.
+            // Each nb::sig is the module function's with self for x (no type annotations).
             .def(
-                "sum", named("sum", &sum), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-                nb::arg("dtype").none() = nb::none(), nb::arg("keepdims").none() = false
-            )
-            .def(
-                "prod", named("prod", &prod), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-                nb::arg("dtype").none() = nb::none(), nb::arg("keepdims").none() = false
-            )
-            .def(
-                "min", named("min", &min), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                "sum", named("sum", &sum), nb::sig("def sum(self, /, *, axis=None, dtype=None, keepdims=False)"),
+                nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
                 nb::arg("keepdims").none() = false
             )
             .def(
-                "max", named("max", &max), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                "prod", named("prod", &prod), nb::sig("def prod(self, /, *, axis=None, dtype=None, keepdims=False)"),
+                nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("dtype").none() = nb::none(),
                 nb::arg("keepdims").none() = false
             )
             .def(
-                "mean", named("mean", &mean), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                "min", named("min", &min), nb::sig("def min(self, /, *, axis=None, keepdims=False)"), nb::kw_only(),
+                nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
+            )
+            .def(
+                "max", named("max", &max), nb::sig("def max(self, /, *, axis=None, keepdims=False)"), nb::kw_only(),
+                nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
+            )
+            .def(
+                "mean", named("mean", &mean), nb::sig("def mean(self, /, *, axis=None, keepdims=False)"), nb::kw_only(),
+                nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
+            )
+            .def(
+                "var", named("var", &var), nb::sig("def var(self, /, *, axis=None, correction=0, keepdims=False)"),
+                nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction").none() = 0,
                 nb::arg("keepdims").none() = false
             )
             .def(
-                "var", named("var", &var), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-                nb::arg("correction").none() = 0, nb::arg("keepdims").none() = false
-            )
-            .def(
-                "std", named("std", &stddev), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-                nb::arg("correction").none() = 0, nb::arg("keepdims").none() = false
-            )
-            .def(
-                "argmin", named("argmin", &argmin), nb::kw_only(), nb::arg("axis").none() = nb::none(),
+                "std", named("std", &stddev), nb::sig("def std(self, /, *, axis=None, correction=0, keepdims=False)"),
+                nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("correction").none() = 0,
                 nb::arg("keepdims").none() = false
             )
             .def(
-                "argmax", named("argmax", &argmax), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-                nb::arg("keepdims").none() = false
+                "argmin", named("argmin", &argmin), nb::sig("def argmin(self, /, *, axis=None, keepdims=False)"),
+                nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
             )
             .def(
-                "any", named("any", &any), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-                nb::arg("keepdims").none() = false
+                "argmax", named("argmax", &argmax), nb::sig("def argmax(self, /, *, axis=None, keepdims=False)"),
+                nb::kw_only(), nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
             )
             .def(
-                "all", named("all", &all), nb::kw_only(), nb::arg("axis").none() = nb::none(),
-                nb::arg("keepdims").none() = false
+                "any", named("any", &any), nb::sig("def any(self, /, *, axis=None, keepdims=False)"), nb::kw_only(),
+                nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
+            )
+            .def(
+                "all", named("all", &all), nb::sig("def all(self, /, *, axis=None, keepdims=False)"), nb::kw_only(),
+                nb::arg("axis").none() = nb::none(), nb::arg("keepdims").none() = false
             )
             // There is no constructor (docs/api/array.md §10). Without this
             // __init__, nanobind says "stardust._core.ndarray: no constructor defined!".

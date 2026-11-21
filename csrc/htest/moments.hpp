@@ -117,6 +117,40 @@ inline Moments moments_of(const double* hi, const double* lo, std::int64_t n) {
     return m;
 }
 
+// ---- exact zeros -----------------------------------------------------------------------------
+//
+// A correlation whose true Sxy is 0 comes out of the double-double sums as a rounding of ~1e-32,
+// an infinite relative error (H161). For data of short dyadic values (every x an integer times
+// 2^-k below 2^40, k common: integers, halves, ...) the sums of up to 2^20 of them and of their
+// products are exact in 128 bits, and the zero is decided exactly; other data keep the
+// double-double value.
+inline constexpr std::int64_t kExactZeroN = 1 << 20;
+
+// k with every x[0..n) times 2^k an integer below 2^40 in magnitude (n <= kExactZeroN), else false.
+inline bool small_dyadic(const double* x, std::int64_t n, int& k) {
+    if (n > kExactZeroN) return false;
+    int low = std::numeric_limits<int>::max(), high = std::numeric_limits<int>::min();
+    for (std::int64_t j = 0; j < n; ++j) {
+        const double v = x[j];
+        if (v == 0.0) continue;
+        if (!std::isfinite(v)) return false;
+        int e;
+        const double f = std::frexp(std::fabs(v), &e);  // v = f 2^e, f in [1/2, 1)
+        auto mant = static_cast<std::uint64_t>(std::ldexp(f, 53));
+        int tz = 0;
+        while (!(mant & 1u)) mant >>= 1, ++tz;
+        low = std::min(low, e - 53 + tz), high = std::max(high, e);
+    }
+    if (low == std::numeric_limits<int>::max()) {  // all zeros
+        k = 0;
+        return true;
+    }
+    k = -low;
+    return high + k <= 40;
+}
+// x times 2^k as an integer (small_dyadic's k)
+inline std::int64_t dyadic_int(double x, int k) { return static_cast<std::int64_t>(std::ldexp(x, k)); }
+
 // ---- scaling ---------------------------------------------------------------------------------
 //
 // The statistics of H1 do not change when every sample of a test is multiplied by the same

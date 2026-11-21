@@ -1,8 +1,8 @@
 // Pairwise summation for every floating-point sum in linalg: numpy's
-// DOUBLE_pairwise_sum and CDOUBLE_pairwise_sum as defined once in
-// base/pairwise.hpp (the tree, the leaf sums, the parallel plan), so linalg's
-// sums have the array area's bits (docs/design/linalg.md §8.2). A sum is
-// 0.0 + tree, as numpy's add.reduce does.
+// DOUBLE_pairwise_sum and CDOUBLE_pairwise_sum algorithm with base/pairwise.hpp's
+// wider leaf (the tree, the leaf sums, the parallel plan, defined once there), so
+// linalg's sums have the array area's bits, not numpy's (docs/design/linalg.md §8.2).
+// A sum is 0.0 + tree, as numpy's add.reduce does.
 //
 // What is linalg's own is how terms reach a leaf: fill(begin, len, buf)
 // writes terms begin .. begin+len-1 (at most one leaf) to buf, in order. A
@@ -29,7 +29,7 @@
 
 namespace sd::linalg {
 
-inline constexpr std::int64_t kPairwiseBlock = pairwise::kBlock;  // numpy's PW_BLOCKSIZE, in doubles
+inline constexpr std::int64_t kPairwiseBlock = pairwise::kBlock;  // 512 doubles (numpy's PW_BLOCKSIZE is 128)
 
 namespace detail {
 

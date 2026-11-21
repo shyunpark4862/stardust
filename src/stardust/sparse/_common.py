@@ -29,6 +29,50 @@ def renamed(func, call, *args, **kwargs):
         raise
 
 
+def allocation_error(func, e):
+    """e renamed "func(): ..." when it is an allocation failure of an array kernel (MemoryError
+    "cannot allocate N bytes: ...", ValueError "array is too big"), with or without the kernel's
+    name in front; else None. The user called func, not the kernel (API.md §2.1)."""
+    if type(e) not in (MemoryError, ValueError):
+        return None
+    msg = str(e)
+    head, sep, rest = msg.partition("(): ")
+    if not (sep and head.isidentifier()):
+        rest = msg
+    if rest.startswith("cannot allocate ") if type(e) is MemoryError else rest == "array is too big":
+        return type(e)(f"{func}(): {rest}")
+    return None
+
+
+def sized(func, call, *args, **kwargs):
+    """call(*args, **kwargs), an allocation failure inside named func (allocation_error)."""
+    try:
+        return call(*args, **kwargs)
+    except (MemoryError, ValueError) as e:
+        r = allocation_error(func, e)
+        if r is None:
+            raise
+        raise r from None
+
+
+def int64_arg(v, func, name):
+    """An int argument (is_int's rule) as a Python int in the int64 range: OverflowError
+    "func(): 'name' is out of range" outside it, as the dense functions (API.md §2)."""
+    if not is_int(v):
+        raise TypeError(f"{func}(): '{name}' must be an int, not {type_name(v)}")
+    v = operator.index(v)
+    if not -(2**63) <= v <= 2**63 - 1:
+        raise OverflowError(f"{func}(): '{name}' is out of range")
+    return v
+
+
+def check_shape_range(dims, func):
+    """OverflowError "func(): the result's shape is out of range" when a computed shape has a
+    length past int64 (a product or a sum of the inputs' lengths)."""
+    if any(d > 2**63 - 1 for d in dims):
+        raise OverflowError(f"{func}(): the result's shape is out of range")
+
+
 def copy_arg(copy, func):
     if copy is None or copy is True or copy is False:
         return copy

@@ -13,9 +13,13 @@
 //   m.copy(), m.transposed()    new maps
 //   m.astype(dtype)             a new map, every value converted explicitly (the caller checks
 //                               that the conversion is allowed)
-//   m.resize(shape)             drops the keys outside the new shape, in place
+//   m.resized(shape)            a new map of the new shape holding the keys inside it (the
+//                               map is never resized in place: two dok_arrays may share it, and
+//                               each keeps its own shape)
 //   m.to_coo()                  (major or None, minor, data) in row-major order (new arrays;
 //                               indices read-only)
+//   m.to_csr()                  the canonical CSR arrays (indptr, indices, data), new (indices
+//                               read-only); a 1-D map gives one line
 //   m.set_many(major, minor, values)
 //                               sets each (major[k], minor[k]) in turn (a repeat takes its last
 //                               value): values of the map's dtype, a zero erases the key; major
@@ -23,6 +27,9 @@
 //   _DokMap.from_coo(dtype, shape, major, minor, data)
 //                               a map holding the given entries (distinct positions), stored
 //                               zeros included
+//
+// Building a map (from_coo) and reading it out (to_coo, to_csr) touch no Python object and run
+// without the GIL from the parallel threshold; the sort is COO -> CSR's (counting sorts).
 //
 // Errors in get and set are Python's protocol form (IndexError, TypeError), without a name.
 #include "array/convert.hpp"
@@ -152,46 +159,74 @@ public:
         return out;
     }
 
-    void resize(std::vector<int64_t> shape) {
-        const int64_t rows = shape.size() == 2 ? shape[0] : std::numeric_limits<int64_t>::max();
-        const int64_t cols = shape.back();
+    DokMap resized(std::vector<int64_t> shape) const {
         const bool two = shape.size() == 2;
+        const int64_t rows = two ? shape[0] : std::numeric_limits<int64_t>::max();
+        const int64_t cols = shape.back();
+        DokMap out(dtype_, std::move(shape));
+        out.reserve(count_);
         for (int64_t s = 0; s < cap_; ++s)
-            if (ki_[s] >= 0 && (two ? (ki_[s] >= rows || kj_[s] >= cols) : ki_[s] >= cols)) {
-                ki_[s] = kGone;
-                --count_;
-            }
-        shape_ = std::move(shape);
+            if (ki_[s] >= 0 && (two ? (ki_[s] < rows && kj_[s] < cols) : ki_[s] < cols))
+                std::memcpy(out.slot_for(ki_[s], kj_[s]), val_.data() + s * size_, size_);
+        return out;
+    }
+
+    // The canonical CSR arrays (indptr, indices, data) of the entries: COO -> CSR's counting sort
+    // of the keys in slot order (the keys are distinct, so nothing is summed and the values move
+    // unchanged). indices read-only.
+    nb::tuple to_csr() const {
+        const bool two = shape_.size() == 2;
+        NDArray major, minor, data;
+        gather(major, minor, data);
+        Compressed c = compress(two ? shape_[0] : 1, two ? i64(major) : nullptr, i64(minor), data, count_, false);
+        c.indptr.writeable = false;
+        c.indices.writeable = false;
+        return nb::make_tuple(wrap(std::move(c.indptr)), wrap(std::move(c.indices)), wrap(std::move(c.data)));
     }
 
     nb::tuple to_coo() const {
         const int64_t n = count_;
-        NDArray minor = new_index(n);
         const bool two = shape_.size() == 2;
-        NDArray major = two ? new_index(n) : NDArray();
+        const int64_t n_major = two ? shape_[0] : 1;
         const int64_t shp[] = {n};
-        NDArray data = new_array(dtype_, shp);
-        {
+        NDArray minor, major, data;
+        // With few rows for the entries, to_csr's counting sort and the rows expanded; otherwise a
+        // sort of the keys (no indptr of a huge shape). Both give row-major order, the same result.
+        const bool counting = n_major <= 2 * n + 65536;
+        if (counting) {
+            gather(major, minor, data);
+        } else {
+            minor = new_index(n);
+            major = two ? new_index(n) : NDArray();
+            data = new_array(dtype_, shp);
             const parallel::Unlocked unlocked(n >= kParallelThreshold);
-            std::vector<int64_t> order;
-            order.reserve(static_cast<std::size_t>(n));
-            for (int64_t s = 0; s < cap_; ++s)
-                if (ki_[s] >= 0) order.push_back(s);
-            std::sort(order.begin(), order.end(), [&](int64_t a, int64_t b) {
-                return ki_[a] < ki_[b] || (ki_[a] == ki_[b] && kj_[a] < kj_[b]);
-            });
             int64_t* mi = i64(minor);
             int64_t* ma = two ? i64(major) : nullptr;
-            for (int64_t k = 0; k < n; ++k) {
-                const int64_t s = order[static_cast<std::size_t>(k)];
-                if (two) {
-                    ma[k] = ki_[s];
-                    mi[k] = kj_[s];
-                } else {
-                    mi[k] = ki_[s];
+            {
+                std::vector<int64_t> order;
+                order.reserve(static_cast<std::size_t>(n));
+                for (int64_t s = 0; s < cap_; ++s)
+                    if (ki_[s] >= 0) order.push_back(s);
+                std::sort(order.begin(), order.end(), [&](int64_t a, int64_t b) {
+                    return ki_[a] < ki_[b] || (ki_[a] == ki_[b] && kj_[a] < kj_[b]);
+                });
+                for (int64_t k = 0; k < n; ++k) {
+                    const int64_t s = order[static_cast<std::size_t>(k)];
+                    if (two) {
+                        ma[k] = ki_[s];
+                        mi[k] = kj_[s];
+                    } else {
+                        mi[k] = ki_[s];
+                    }
+                    std::memcpy(data.data + k * size_, val_.data() + s * size_, size_);
                 }
-                std::memcpy(data.data + k * size_, val_.data() + s * size_, size_);
             }
+        }
+        if (counting) {
+            Compressed c = compress(n_major, two ? i64(major) : nullptr, i64(minor), data, n, false);
+            minor = std::move(c.indices);
+            data = std::move(c.data);
+            if (two) major = expand(c.indptr, n_major, n);  // the GIL is let go inside when large
         }
         minor.writeable = false;
         nb::object rows = nb::none();
@@ -202,11 +237,57 @@ public:
         return nb::make_tuple(rows, wrap(std::move(minor)), wrap(std::move(data)));
     }
 
+    // The entries in slot order: (major or empty for 1-D, minor, data), new arrays.
+    void gather(NDArray& major, NDArray& minor, NDArray& data) const {
+        const int64_t n = count_;
+        const bool two = shape_.size() == 2;
+        const int64_t shp[] = {n};
+        minor = new_index(n);
+        if (two) major = new_index(n);
+        data = new_array(dtype_, shp);
+        int64_t* mi = i64(minor);
+        int64_t* ma = two ? i64(major) : nullptr;
+        std::byte* out = data.data;
+        const std::byte* val = val_.data();
+        auto put = [&](int64_t s, int64_t k) {
+            if (two) {
+                ma[k] = ki_[s];
+                mi[k] = kj_[s];
+            } else {
+                mi[k] = ki_[s];
+            }
+            std::memcpy(out + k * size_, val + s * size_, size_);
+        };
+        if (n < kParallelThreshold || !parallel::available()) {  // one pass on this thread
+            const parallel::Unlocked unlocked(n >= kParallelThreshold);
+            for (int64_t s = 0, k = 0; s < cap_; ++s)
+                if (ki_[s] >= 0) put(s, k++);
+            return;
+        }
+        // on the pool: slot blocks of a fixed size, each block's live keys counted, then copied to
+        // their place (the slot order either way)
+        constexpr int64_t kBlock = 1 << 16;
+        const int64_t nb_ = num_chunks(cap_, kBlock);
+        std::vector<int64_t> start(static_cast<std::size_t>(nb_ + 1), 0);
+        for_tasks(nb_, n, [&](int64_t b) {
+            int64_t c = 0;
+            for (int64_t s = b * kBlock, e = std::min(cap_, s + kBlock); s < e; ++s) c += ki_[s] >= 0;
+            start[static_cast<std::size_t>(b + 1)] = c;
+        });
+        for (int64_t b = 0; b < nb_; ++b) start[static_cast<std::size_t>(b + 1)] += start[static_cast<std::size_t>(b)];
+        for_tasks(nb_, n, [&](int64_t b) {
+            int64_t k = start[static_cast<std::size_t>(b)];
+            for (int64_t s = b * kBlock, e = std::min(cap_, s + kBlock); s < e; ++s)
+                if (ki_[s] >= 0) put(s, k++);
+        });
+    }
+
     static DokMap from_coo(
         DType dtype, std::vector<int64_t> shape, const int64_t* major, const int64_t* minor, const NDArray& data
     ) {
         DokMap out(dtype, std::move(shape));
         const int64_t n = data.shape[0];
+        const parallel::Unlocked unlocked(n >= kParallelThreshold);  // touches no Python object
         out.reserve(n);
         for (int64_t k = 0; k < n; ++k)
             std::memcpy(
@@ -367,8 +448,9 @@ void bind_dok(nb::module_& m) {
         .def("copy", &DokMap::copy)
         .def("transposed", &DokMap::transposed)
         .def("astype", [](const DokMap& d, nb::handle dtype) { return d.astype(dtype_arg(dtype)); })
-        .def("resize", [](DokMap& d, nb::handle shape) { d.resize(shape_arg(shape)); })
+        .def("resized", [](const DokMap& d, nb::handle shape) { return d.resized(shape_arg(shape)); })
         .def("to_coo", &DokMap::to_coo)
+        .def("to_csr", &DokMap::to_csr)
         .def_static(
             "from_coo",
             [](nb::handle dtype, nb::handle shape, nb::handle major_h, nb::handle minor_h, nb::handle data_h) {

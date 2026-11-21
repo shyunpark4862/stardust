@@ -318,3 +318,89 @@ def test_format_names(call):
     with pytest.raises(TypeError, match="'format' must be"):
         call(1)
     assert call(None).format in ("csr", "coo")
+
+
+# ---- out of the int64 range and too large to allocate ----
+
+
+def _one(shape, at):
+    return S.coo_array((sd.asarray([1.0]), tuple(sd.asarray([i]) for i in at)), shape=shape)
+
+
+def test_result_shapes_past_int64_are_an_overflow_error():
+    """A built shape past int64 is refused before anything is built (SPR-2): no negative index."""
+    A = S.csr_array(_one((1, 2**32), (0, 2**32 - 1)))
+    with pytest.raises(OverflowError, match=r"^kron\(\): the result's shape is out of range$"):
+        S.kron(A, A)
+    v = S.coo_array((sd.asarray([1.0]), (sd.asarray([2**32 - 1]),)), shape=(2**32,))
+    with pytest.raises(OverflowError, match=r"^kron\(\): the result's shape is out of range$"):
+        S.kron(v, v)
+    H = _one((1, 2**62 + 1), (0, 2**62))
+    V = _one((2**62 + 1, 1), (2**62, 0))
+    for f, arg in ((S.hstack, [H, H]), (S.vstack, [V, V]), (S.block_diag, [V, V]), (S.block_array, [[H, H]])):
+        with pytest.raises(OverflowError, match=rf"^{f.__name__}\(\): the result's shape is out of range$"):
+            f(arg, format="coo")
+    with pytest.raises(OverflowError, match=r"^hstack\(\): the result's shape is out of range$"):
+        S.hstack([H.tocsr(), H.tocsr()])
+    big = S.coo_array((2**32, 2**32))
+    with pytest.raises(OverflowError, match=r"^kronsum\(\): the result's shape is out of range$"):
+        S.kronsum(big, big)  # (unchecked: a 32 GB arange)
+    # just inside: the largest index stays in range
+    K = S.kron(_one((1, 2**31), (0, 2**31 - 1)), _one((1, 2**31), (0, 2**31 - 1)))
+    assert K.shape == (1, 2**62) and npy(K.indices).tolist() == [2**62 - 1]
+
+
+def test_int_arguments_past_int64_are_an_overflow_error():
+    """k, offsets, n_rows, n_cols outside int64: the dense twins' OverflowError (SPR-6)."""
+    A = S.csr_array(sd.asarray([[1.0, 0, 2], [0, 3, 0]]))
+    for fmt in ("csr", "csc", "coo", "dok"):
+        B = A.asformat(fmt)
+        with pytest.raises(OverflowError, match=r"^diagonal\(\): 'k' is out of range$"):
+            B.diagonal(k=2**70)
+        with pytest.raises(OverflowError, match=r"^trace\(\): 'k' is out of range$"):
+            B.trace(k=-(2**70))
+        with pytest.raises(OverflowError, match=r"^setdiag\(\): 'k' is out of range$"):
+            B.copy().setdiag(1.0, k=2**70)
+    for f in (S.tril, S.triu):
+        with pytest.raises(OverflowError, match=rf"^{f.__name__}\(\): 'k' is out of range$"):
+            f(A, k=2**63)
+    assert S.tril(A, k=2**63 - 1).nnz == 3 and S.triu(A, k=-(2**63)).nnz == 3
+    with pytest.raises(OverflowError, match=r"^diags_array\(\): 'offsets' is out of range$"):
+        S.diags_array(sd.ones(2), offsets=2**70)
+    with pytest.raises(OverflowError, match=r"^diags_array\(\): 'offsets' is out of range$"):
+        S.diags_array([sd.ones(2)], offsets=[-(2**70)])
+    with pytest.raises(OverflowError, match=r"^eye_array\(\): 'n_rows' is out of range$"):
+        S.eye_array(2**70)
+    with pytest.raises(OverflowError, match=r"^eye_array\(\): 'n_cols' is out of range$"):
+        S.eye_array(2, 2**64)
+    with pytest.raises(OverflowError, match=r"^eye_array\(\): 'k' is out of range$"):
+        S.eye_array(2, k=2**70)
+    assert S.eye_array(2, k=2**63 - 1).nnz == 0 and S.eye_array(2, k=-(2**63)).nnz == 0
+    for f in (lambda: sd.eye(2**70), lambda: sd.tril(sd.ones((2, 2)), k=2**70)):  # the dense twins' form
+        with pytest.raises(OverflowError, match=r"\(\): '(n_rows|k)' is out of range$"):
+            f()
+
+
+def test_allocation_failures_name_the_function_called():
+    """An array kernel's allocation failure carries the name the user called (SPR-7)."""
+    with pytest.raises(MemoryError, match=r"^csr_array\(\): cannot allocate \d+ bytes: "):
+        S.csr_array((2**40, 3))
+    with pytest.raises(MemoryError, match=r"^diags_array\(\): cannot allocate \d+ bytes: "):
+        S.diags_array(1.0, offsets=0, shape=(2**40, 2**40))
+    with pytest.raises(MemoryError, match=r"^eye_array\(\): cannot allocate \d+ bytes: "):
+        S.eye_array(2**40)
+    with pytest.raises(MemoryError, match=r"^kron\(\): cannot allocate \d+ bytes: "):
+        S.kron(_one((2**40, 1), (0, 0)), S.eye_array(1))
+    tall = _one((2**62 + 1, 1), (2**62, 0))
+    with pytest.raises(ValueError, match=r"^tocsr\(\): array is too big$"):
+        tall.tocsr()
+    with pytest.raises(ValueError, match=r"^tocsc\(\): array is too big$"):
+        S.coo_array((2**63 - 1, 2**63 - 1)).tocsc()  # an indptr of 2^63 entries
+    with pytest.raises(ValueError, match=r"^csr_array\(\): array is too big$"):
+        S.csr_array(tall)
+    with pytest.raises(ValueError, match=r"^eye_array\(\): array is too big$"):
+        S.eye_array(2**63 - 1)
+    with pytest.raises(ValueError, match=r"^csr_array\(\): array is too big$"):
+        S.csr_array((2**63 - 1, 1))
+    with pytest.raises(ValueError, match=r"^resize\(\): array is too big$"):
+        S.csr_array((2, 2)).resize((2**63 - 1, 2))

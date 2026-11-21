@@ -1,0 +1,1140 @@
+{
+ "schema": 1,
+ "area": "sparse",
+ "runs": {
+  "20261122-065911-f0a7f92+": {
+   "commit": "f0a7f92",
+   "dirty": true,
+   "changed": [
+    "csrc/accelerate/sparse.hpp",
+    "csrc/sparse/binop.cpp",
+    "csrc/sparse/canonical.cpp",
+    "csrc/sparse/construct.cpp",
+    "csrc/sparse/convert.cpp",
+    "csrc/sparse/direct.cpp",
+    "csrc/sparse/dok.cpp",
+    "csrc/sparse/format.hpp",
+    "csrc/sparse/index.cpp",
+    "csrc/sparse/iterative.cpp",
+    "csrc/sparse/spgemm.cpp",
+    "csrc/sparse/triangular.cpp",
+    "docs/api/sparse.md",
+    "src/stardust/sparse/__init__.py",
+    "src/stardust/sparse/_base.py",
+    "src/stardust/sparse/_common.py",
+    "src/stardust/sparse/_construct.py",
+    "src/stardust/sparse/_direct.py",
+    "src/stardust/sparse/_dok.py",
+    "src/stardust/sparse/_eigen.py",
+    "src/stardust/sparse/_index.py",
+    "src/stardust/sparse/_interface.py",
+    "src/stardust/sparse/_interop.py",
+    "src/stardust/sparse/_iterative.py",
+    "src/stardust/sparse/_matfuncs.py",
+    "src/stardust/sparse/_ops.py",
+    "tests/golden/data/sparse.json",
+    "tests/sparse/test_arithmetic.py",
+    "tests/sparse/test_construct.py",
+    "tests/sparse/test_conversions.py",
+    "tests/sparse/test_direct.py",
+    "tests/sparse/test_dok.py",
+    "tests/sparse/test_eigen.py",
+    "tests/sparse/test_formats.py",
+    "tests/sparse/test_indexing.py",
+    "tests/sparse/test_interface.py",
+    "tests/sparse/test_iterative.py",
+    "tests/sparse/test_matfuncs.py"
+   ],
+   "date": "2026-11-22T06:59:11",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": null,
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261122-071515-f0a7f92+": {
+   "commit": "f0a7f92",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/README.md",
+    "bench/accuracy/common.py",
+    "bench/accuracy/results/htest.json",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/tables.py",
+    "bench/array/accuracy.md",
+    "bench/htest/accuracy.md",
+    "csrc/accelerate/sparse.hpp",
+    "csrc/array/kernels/reduce.hpp",
+    "csrc/array/kernels/scalar_ops.hpp",
+    "csrc/array/ops/asarray.cpp",
+    "csrc/array/ops/histogram.cpp",
+    "csrc/array/ops/shape.cpp",
+    "csrc/bind/array_bind.cpp",
+    "csrc/htest/contingency.cpp",
+    "csrc/htest/correlation.cpp",
+    "csrc/htest/cvm2.hpp",
+    "csrc/htest/gof.cpp",
+    "csrc/htest/gof2.cpp",
+    "csrc/htest/moments.hpp",
+    "csrc/htest/nchg.hpp",
+    "csrc/htest/normality.hpp",
+    "csrc/htest/proportion.cpp",
+    "csrc/htest/rank.cpp",
+    "csrc/integrate/adaptive.cpp",
+    "csrc/integrate/quadpack.hpp",
+    "csrc/integrate/tanhsinh.cpp",
+    "csrc/linalg/input.cpp",
+    "csrc/linalg/ops/qr.cpp",
+    "csrc/linalg/pairwise.hpp",
+    "csrc/random/random.cpp",
+    "csrc/regression/penalized.cpp",
+    "csrc/sparse/binop.cpp",
+    "csrc/sparse/canonical.cpp",
+    "csrc/sparse/construct.cpp",
+    "csrc/sparse/convert.cpp",
+    "csrc/sparse/direct.cpp",
+    "csrc/sparse/dok.cpp",
+    "csrc/sparse/format.hpp",
+    "csrc/sparse/index.cpp",
+    "csrc/sparse/iterative.cpp",
+    "csrc/sparse/spgemm.cpp",
+    "csrc/sparse/triangular.cpp",
+    "csrc/special/cplx.hpp",
+    "csrc/special/ops/airy.hpp",
+    "csrc/special/ops/bessel.hpp",
+    "csrc/special/ops/bessel01.hpp",
+    "csrc/special/ops/distr.hpp",
+    "csrc/special/ops/wofz.hpp",
+    "csrc/special/sincos.hpp",
+    "csrc/stats/dist/normal.hpp",
+    "docs/api/array.md",
+    "docs/api/differentiate.md",
+    "docs/api/frame.md",
+    "docs/api/htest.md",
+    "docs/api/integrate.md",
+    "docs/api/linalg.md",
+    "docs/api/optimize.md",
+    "docs/api/random.md",
+    "docs/api/regression.md",
+    "docs/api/sparse.md",
+    "docs/api/special.md",
+    "docs/api/stats.md",
+    "docs/design/array.md",
+    "docs/design/frame.md",
+    "docs/design/htest.md",
+    "docs/design/integrate.md",
+    "docs/design/linalg.md",
+    "docs/design/optimize.md",
+    "docs/design/random.md",
+    "docs/design/regression.md",
+    "docs/design/sparse.md",
+    "docs/design/special.md",
+    "docs/design/stats.md",
+    "src/stardust/_calls.py",
+    "src/stardust/_results.py",
+    "src/stardust/_summary.py",
+    "src/stardust/differentiate/_derivative.py",
+    "src/stardust/differentiate/_differences.py",
+    "src/stardust/differentiate/_weights.py",
+    "src/stardust/frame/_ops.py",
+    "src/stardust/htest/_common.py",
+    "src/stardust/htest/_contingency.py",
+    "src/stardust/htest/_correlation.py",
+    "src/stardust/htest/_parametric.py",
+    "src/stardust/htest/_proportion.py",
+    "src/stardust/htest/_rank.py",
+    "src/stardust/htest/_resampling.py",
+    "src/stardust/htest/_result.py",
+    "src/stardust/integrate/__init__.py",
+    "src/stardust/integrate/_cubature.py",
+    "src/stardust/integrate/_gauss.py",
+    "src/stardust/integrate/_quadpack.py",
+    "src/stardust/integrate/_result.py",
+    "src/stardust/random/__init__.py",
+    "src/stardust/regression/__init__.py",
+    "src/stardust/regression/_diagnostics.py",
+    "src/stardust/regression/_linear.py",
+    "src/stardust/regression/_select.py",
+    "src/stardust/regression/_tests.py",
+    "src/stardust/sparse/__init__.py",
+    "src/stardust/sparse/_base.py",
+    "src/stardust/sparse/_common.py",
+    "src/stardust/sparse/_construct.py",
+    "src/stardust/sparse/_direct.py",
+    "src/stardust/sparse/_dok.py",
+    "src/stardust/sparse/_eigen.py",
+    "src/stardust/sparse/_index.py",
+    "src/stardust/sparse/_interface.py",
+    "src/stardust/sparse/_interop.py",
+    "src/stardust/sparse/_iterative.py",
+    "src/stardust/sparse/_matfuncs.py",
+    "src/stardust/sparse/_ops.py",
+    "src/stardust/stats/_descriptive.py",
+    "tests/array/test_api_surface.py",
+    "tests/array/test_sparse_counterparts.py",
+    "tests/differentiate/test_derivative.py",
+    "tests/differentiate/test_weights.py",
+    "tests/frame/test_elementwise.py",
+    "tests/frame/test_reduce.py",
+    "tests/golden/cases_differentiate.py",
+    "tests/golden/cases_integrate.py",
+    "tests/golden/cases_optimize.py",
+    "tests/golden/cases_regression.py",
+    "tests/golden/data/array.json",
+    "tests/golden/data/differentiate.json",
+    "tests/golden/data/htest.json",
+    "tests/golden/data/integrate.json",
+    "tests/golden/data/optimize.json",
+    "tests/golden/data/regression.json",
+    "tests/golden/data/sparse.json",
+    "tests/golden/data/special.json",
+    "tests/golden/data/stats.json",
+    "tests/htest/test_contingency.py",
+    "tests/htest/test_correlation.py",
+    "tests/htest/test_parametric.py",
+    "tests/htest/test_rank.py",
+    "tests/htest/test_resampling.py",
+    "tests/integrate/test_cubature.py",
+    "tests/integrate/test_quadpack.py",
+    "tests/integrate/test_quadpack_weights.py",
+    "tests/integrate/test_result.py",
+    "tests/linalg/test_sparse_counterparts.py",
+    "tests/optimize/test_diff.py",
+    "tests/random/test_alloc_errors.py",
+    "tests/random/test_random.py",
+    "tests/regression/test_api_surface.py",
+    "tests/regression/test_linear.py",
+    "tests/regression/test_selection.py",
+    "tests/sparse/test_arithmetic.py",
+    "tests/sparse/test_construct.py",
+    "tests/sparse/test_conversions.py",
+    "tests/sparse/test_direct.py",
+    "tests/sparse/test_dok.py",
+    "tests/sparse/test_eigen.py",
+    "tests/sparse/test_formats.py",
+    "tests/sparse/test_indexing.py",
+    "tests/sparse/test_interface.py",
+    "tests/sparse/test_iterative.py",
+    "tests/sparse/test_matfuncs.py",
+    "tests/special/test_distributions.py",
+    "tests/stats/test_descriptive.py",
+    "tests/stats/test_distributions.py",
+    "tests/test_summary.py"
+   ],
+   "date": "2026-11-22T07:15:15",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "sparse/eig",
+   "area": "sparse",
+   "name": "eig",
+   "points": 276,
+   "regions": {
+    "eigsh": {
+     "points": 204,
+     "ulp_max": 8.435137572174044e+18,
+     "ulp_p999": 8.435137572174044e+18,
+     "rel_max": 8.4885411944406e+44,
+     "contract": 0.4965,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "lap1d/1000 eigsh LA[3]"
+     ]
+    },
+    "svds": {
+     "points": 36,
+     "ulp_max": 4.3726931863944335e+18,
+     "ulp_p999": 4.3726931863944335e+18,
+     "rel_max": 2.3700349653828763e-15,
+     "contract": 0.008857572934063924,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "rect/80x30d svds LM[4]"
+     ]
+    },
+    "eigs": {
+     "points": 36,
+     "ulp_max": 93.0,
+     "ulp_p999": 93.0,
+     "rel_max": 1.2057547652800017e-14,
+     "contract": 0.010809921849512556,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "random_unsym/50x5 eigs SR[5]"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "eigsh": {
+      "points": 204,
+      "ulp_max": 6.770318149534444e+17,
+      "ulp_p999": 6.770318149534444e+17,
+      "rel_max": 1.8811707176784947e+45,
+      "contract": 0.153,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "lap1d/1000 eigsh LA[1]"
+      ]
+     },
+     "svds": {
+      "points": 36,
+      "ulp_max": 4.614885644306108e+18,
+      "ulp_p999": 4.614885644306108e+18,
+      "rel_max": 3.4209193282969497,
+      "contract": 2132246304617.0461,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "rect/80x30d svds SM[0]"
+      ]
+     },
+     "eigs": {
+      "points": 36,
+      "ulp_max": 4.039728865751335e+18,
+      "ulp_p999": 4.039728865751335e+18,
+      "rel_max": 1.4902250910758656e-14,
+      "contract": 0.020454695347659223,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "random_unsym/50x5 eigs SR[4]"
+      ]
+     }
+    },
+    "R": {
+     "eigsh": {
+      "points": 192,
+      "ulp_max": 7.847111263929155e+18,
+      "ulp_p999": 7.847111263929155e+18,
+      "rel_max": 5.273109000254697e+59,
+      "contract": 2.444189239501953,
+      "bound": 1.0,
+      "excluded": 2,
+      "worst": [
+       "lap1d/1000 eigsh SA[3]"
+      ]
+     },
+     "svds": {
+      "points": 18,
+      "ulp_max": 20.0,
+      "ulp_p999": 20.0,
+      "rel_max": 3.10550262952376e-15,
+      "contract": 0.011071966167579906,
+      "bound": 1.0,
+      "excluded": 3,
+      "worst": [
+       "rect/80x30d svds LM[1]"
+      ]
+     },
+     "eigs": {
+      "points": 24,
+      "ulp_max": 4.039728865751335e+18,
+      "ulp_p999": 4.039728865751335e+18,
+      "rel_max": 2.5465632288101737e-13,
+      "contract": 0.26501743889127555,
+      "bound": 1.0,
+      "excluded": 2,
+      "worst": [
+       "random_unsym/50x5 eigs SR[5]"
+      ]
+     }
+    },
+    "R irlba": {
+     "svds": {
+      "points": 18,
+      "ulp_max": 25.0,
+      "ulp_p999": 25.0,
+      "rel_max": 3.8818782869047e-15,
+      "contract": 0.013839957709474882,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "rect/80x30d svds LM[1]"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-065911-f0a7f92+",
+   "comparator_seconds": 300.0
+  },
+  {
+   "id": "sparse/iterative",
+   "area": "sparse",
+   "name": "iterative",
+   "points": 42376,
+   "regions": {
+    "minres": {
+     "points": 8429,
+     "ulp_max": 510709785274789.0,
+     "ulp_p999": 510709772693745.0,
+     "rel_max": 0.08360476104124176,
+     "contract": 0.08081134761078902,
+     "bound": 1.0,
+     "excluded": 2,
+     "worst": [
+      "random_indef/60 minres[59]"
+     ]
+    },
+    "cg": {
+     "points": 5669,
+     "ulp_max": 1667259847.0,
+     "ulp_p999": 136551307.0,
+     "rel_max": 2.3597597739195988e-07,
+     "contract": 0.10188499263343,
+     "bound": 1.0,
+     "excluded": 2,
+     "worst": [
+      "random_herm/800 cg[159]"
+     ]
+    },
+    "gmres": {
+     "points": 13119,
+     "ulp_max": 5663763813.0,
+     "ulp_p999": 816471319.0,
+     "rel_max": 8.016220170447663e-07,
+     "contract": 0.3091275086604967,
+     "bound": 1.0,
+     "excluded": 6,
+     "worst": [
+      "random_indef/1500 gmres[1173]"
+     ]
+    },
+    "bicgstab": {
+     "points": 14519,
+     "ulp_max": 2186098161.0,
+     "ulp_p999": 526923440.0,
+     "rel_max": 2.685360803687384e-07,
+     "contract": 0.39101551046227756,
+     "bound": 1.0,
+     "excluded": 4,
+     "worst": [
+      "random_indef/1500 bicgstab[1173]"
+     ]
+    },
+    "lsqr": {
+     "points": 320,
+     "ulp_max": 2946149777.0,
+     "ulp_p999": 2946149777.0,
+     "rel_max": 5.286538229428514e-07,
+     "contract": 0.051014441785639277,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "rect/60x20 lsqr[15]"
+     ]
+    },
+    "lsmr": {
+     "points": 320,
+     "ulp_max": 3962606640.0,
+     "ulp_p999": 3962606640.0,
+     "rel_max": 7.110457063007381e-07,
+     "contract": 0.05138244744813273,
+     "bound": 1.0,
+     "excluded": 0,
+     "worst": [
+      "rect/60x20 lsmr[15]"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "minres": {
+      "points": 8429,
+      "ulp_max": 510706856370819.0,
+      "ulp_p999": 510706843800747.0,
+      "rel_max": 0.08360428157144403,
+      "contract": 0.08080840347259233,
+      "bound": 1.0,
+      "excluded": 2,
+      "worst": [
+       "random_indef/60 minres[59]"
+      ]
+     },
+     "cg": {
+      "points": 5669,
+      "ulp_max": 1667259133.0,
+      "ulp_p999": 168680451.0,
+      "rel_max": 2.3597587633581788e-07,
+      "contract": 0.10188496415334804,
+      "bound": 1.0,
+      "excluded": 2,
+      "worst": [
+       "random_herm/800 cg[159]"
+      ]
+     },
+     "gmres": {
+      "points": 13119,
+      "ulp_max": 5663764859.0,
+      "ulp_p999": 824071023.0,
+      "rel_max": 8.01622165090599e-07,
+      "contract": 0.3091268926221824,
+      "bound": 1.0,
+      "excluded": 6,
+      "worst": [
+       "random_indef/1500 gmres[1173]"
+      ]
+     },
+     "bicgstab": {
+      "points": 14519,
+      "ulp_max": 3148922456.0,
+      "ulp_p999": 666471148.0,
+      "rel_max": 3.7988967477108663e-07,
+      "contract": 0.31901584646062964,
+      "bound": 1.0,
+      "excluded": 4,
+      "worst": [
+       "random_herm/800 bicgstab[356]"
+      ]
+     },
+     "lsqr": {
+      "points": 320,
+      "ulp_max": 2946149593.0,
+      "ulp_p999": 2946149593.0,
+      "rel_max": 5.286537899260971e-07,
+      "contract": 0.051014411944116204,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "rect/60x20 lsqr[15]"
+      ]
+     },
+     "lsmr": {
+      "points": 320,
+      "ulp_max": 3962606428.0,
+      "ulp_p999": 3962606428.0,
+      "rel_max": 7.110456682596951e-07,
+      "contract": 0.05138241760660966,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "rect/60x20 lsmr[15]"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-065911-f0a7f92+",
+   "comparator_seconds": 300.0
+  },
+  {
+   "id": "sparse/matfuncs",
+   "area": "sparse",
+   "name": "matfuncs",
+   "points": 267366,
+   "regions": {
+    "expm": {
+     "points": 252570,
+     "ulp_max": 7.987490951157382e+18,
+     "ulp_p999": 7.59486748685229e+18,
+     "rel_max": 3.1995364974156036e+56,
+     "contract": 0.23517637780575767,
+     "bound": 1.0,
+     "worst": [
+      "lap2d/10n s=0.125 E[4444]"
+     ]
+    },
+    "expm_multiply": {
+     "points": 2466,
+     "ulp_max": 34383.0,
+     "ulp_p999": 693.0,
+     "rel_max": 5.750294558425748e-12,
+     "contract": 0.1983416845348892,
+     "bound": 1.0,
+     "worst": [
+      "saddle/40x10 s=0.125 y[30]"
+     ]
+    },
+    "expm_multiply_interval": {
+     "points": 12330,
+     "ulp_max": 27539.0,
+     "ulp_p999": 320.0,
+     "rel_max": 4.6056877481454985e-12,
+     "contract": 0.24986254599026356,
+     "bound": 1.0,
+     "worst": [
+      "saddle/40x10 s=0.125 y(t=0.5)[1]"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "expm": {
+      "points": 252570,
+      "ulp_max": 8.594925014735985e+18,
+      "ulp_p999": 7.597558160507915e+18,
+      "rel_max": 3.199536497383151e+56,
+      "contract": 0.48014959105820176,
+      "bound": 1.0,
+      "worst": [
+       "random_indef/60 s=0.0625 E[366]"
+      ]
+     },
+     "expm_multiply": {
+      "points": 2466,
+      "ulp_max": 34383.0,
+      "ulp_p999": 693.0,
+      "rel_max": 5.750294558425748e-12,
+      "contract": 0.1983416845348892,
+      "bound": 1.0,
+      "worst": [
+       "saddle/40x10 s=0.125 y[30]"
+      ]
+     },
+     "expm_multiply_interval": {
+      "points": 12330,
+      "ulp_max": 27539.0,
+      "ulp_p999": 347.0,
+      "rel_max": 4.6056877481454985e-12,
+      "contract": 0.24986254599026356,
+      "bound": 1.0,
+      "worst": [
+       "saddle/40x10 s=0.125 y(t=0.5)[1]"
+      ]
+     }
+    },
+    "R": {
+     "expm": {
+      "points": 246170,
+      "ulp_max": 8.046233082686366e+18,
+      "ulp_p999": 7.86282960152784e+18,
+      "rel_max": 5.349889163396398e+58,
+      "contract": 0.42013089217592653,
+      "bound": 1.0,
+      "worst": [
+       "random_indef/60 s=0.0625 E[1098]"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-065911-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "sparse/norms",
+   "area": "sparse",
+   "name": "norms",
+   "points": 274,
+   "regions": {
+    "1": {
+     "points": 49,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.7618220428158987e-16,
+     "contract": 0.1417216513971688,
+     "bound": 1.0,
+     "worst": [
+      "saddle/600x150 norm 1"
+     ]
+    },
+    "-1": {
+     "points": 49,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.0773351419640809e-16,
+     "contract": 0.15873015873015864,
+     "bound": 1.0,
+     "worst": [
+      "convdiff2d/10 norm -1"
+     ]
+    },
+    "inf": {
+     "points": 49,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.972639239568537e-16,
+     "contract": 0.16734471214534707,
+     "bound": 1.0,
+     "worst": [
+      "coo/unsorted norm inf"
+     ]
+    },
+    "-inf": {
+     "points": 49,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.0773351419640809e-16,
+     "contract": 0.15873015873015864,
+     "bound": 1.0,
+     "worst": [
+      "convdiff2d/10 norm -inf"
+     ]
+    },
+    "fro": {
+     "points": 49,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.081004611373178e-16,
+     "contract": 0.006871097748550602,
+     "bound": 1.0,
+     "worst": [
+      "coo/complex norm fro"
+     ]
+    },
+    "2": {
+     "points": 29,
+     "ulp_max": 18.0,
+     "ulp_p999": 18.0,
+     "rel_max": 2.8033444461828527e-15,
+     "contract": 0.012625141003220245,
+     "bound": 1.0,
+     "worst": [
+      "lap3d/6 norm 2"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "1": {
+      "points": 49,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.7618220428158987e-16,
+      "contract": 0.1417216513971688,
+      "bound": 1.0,
+      "worst": [
+       "saddle/600x150 norm 1"
+      ]
+     },
+     "-1": {
+      "points": 49,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.586032892321652e-16,
+      "contract": 0.15873015873015864,
+      "bound": 1.0,
+      "worst": [
+       "convdiff2d/10 norm -1"
+      ]
+     },
+     "inf": {
+      "points": 49,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.972639239568537e-16,
+      "contract": 0.19059716209721375,
+      "bound": 1.0,
+      "worst": [
+       "struct_singular/40 norm inf"
+      ]
+     },
+     "-inf": {
+      "points": 49,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.8013393835992281e-16,
+      "contract": 0.15873015873015864,
+      "bound": 1.0,
+      "worst": [
+       "convdiff2d/10 norm -inf"
+      ]
+     },
+     "fro": {
+      "points": 49,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.6878058495866452e-16,
+      "contract": 0.00420885588920072,
+      "bound": 1.0,
+      "worst": [
+       "coo/dups norm fro"
+      ]
+     },
+     "2": {
+      "points": 28,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.1491411394257694e-16,
+      "contract": 0.0014182470862054994,
+      "bound": 1.0,
+      "worst": [
+       "rect/20x60 norm 2"
+      ]
+     }
+    },
+    "R": {
+     "1": {
+      "points": 44,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.7618220428158987e-16,
+      "contract": 0.1417216513971688,
+      "bound": 1.0,
+      "worst": [
+       "saddle/600x150 norm 1"
+      ]
+     },
+     "inf": {
+      "points": 44,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.972639239568537e-16,
+      "contract": 0.16734471214534707,
+      "bound": 1.0,
+      "worst": [
+       "coo/unsorted norm inf"
+      ]
+     },
+     "fro": {
+      "points": 44,
+      "ulp_max": 227.0,
+      "ulp_p999": 227.0,
+      "rel_max": 3.4831995180895646e-14,
+      "contract": 0.07650298001325591,
+      "bound": 1.0,
+      "worst": [
+       "convdiff2d/40 norm fro"
+      ]
+     },
+     "2": {
+      "points": 26,
+      "ulp_max": 6.0,
+      "ulp_p999": 6.0,
+      "rel_max": 6.828442018071423e-16,
+      "contract": 0.0030752568928107495,
+      "bound": 1.0,
+      "worst": [
+       "lap2d/10n norm 2"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-065911-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "sparse/solve",
+   "area": "sparse",
+   "name": "solve",
+   "points": 50337,
+   "regions": {
+    "solve": {
+     "points": 16779,
+     "ulp_max": 6983851.0,
+     "ulp_p999": 6983850.0,
+     "rel_max": 1.143277660492059e-09,
+     "contract": 0.09719224932992657,
+     "bound": 1.0,
+     "worst": [
+      "banded/2000x5x5 solve[700]"
+     ]
+    },
+    "splu": {
+     "points": 16779,
+     "ulp_max": 6983851.0,
+     "ulp_p999": 6983850.0,
+     "rel_max": 1.143277660492059e-09,
+     "contract": 0.09719224932992657,
+     "bound": 1.0,
+     "worst": [
+      "banded/2000x5x5 splu[700]"
+     ]
+    },
+    "factorized": {
+     "points": 16779,
+     "ulp_max": 6983851.0,
+     "ulp_p999": 6983850.0,
+     "rel_max": 1.143277660492059e-09,
+     "contract": 0.09719224932992657,
+     "bound": 1.0,
+     "worst": [
+      "banded/2000x5x5 factorized[700]"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "solve": {
+      "points": 16779,
+      "ulp_max": 11329520.0,
+      "ulp_p999": 11329517.0,
+      "rel_max": 1.8546771125154134e-09,
+      "contract": 0.28651002811344045,
+      "bound": 1.0,
+      "worst": [
+       "random_unsym/1000x8 solve[861]"
+      ]
+     },
+     "splu": {
+      "points": 16779,
+      "ulp_max": 11329520.0,
+      "ulp_p999": 11329517.0,
+      "rel_max": 1.8546771125154134e-09,
+      "contract": 0.28651002811344045,
+      "bound": 1.0,
+      "worst": [
+       "random_unsym/1000x8 splu[861]"
+      ]
+     },
+     "factorized": {
+      "points": 16779,
+      "ulp_max": 11329520.0,
+      "ulp_p999": 11329517.0,
+      "rel_max": 1.8546771125154134e-09,
+      "contract": 0.28651002811344045,
+      "bound": 1.0,
+      "worst": [
+       "random_unsym/1000x8 factorized[861]"
+      ]
+     }
+    },
+    "R": {
+     "solve": {
+      "points": 15099,
+      "ulp_max": 23795179.0,
+      "ulp_p999": 23795173.0,
+      "rel_max": 3.895340918960403e-09,
+      "contract": 0.26122973151519574,
+      "bound": 1.0,
+      "worst": [
+       "random_unsym/1000x8 solve[15]"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-065911-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "sparse/spmv",
+   "area": "sparse",
+   "name": "spmv",
+   "points": 200440,
+   "regions": {
+    "matvec": {
+     "points": 101178,
+     "ulp_max": 33421432006.0,
+     "ulp_p999": 40.0,
+     "rel_max": 3.8146964708487624e-06,
+     "contract": 0.6664367376504406,
+     "bound": 1.0,
+     "worst": [
+      "lap2d/100 matvec[1575]"
+     ]
+    },
+    "rmatvec": {
+     "points": 99262,
+     "ulp_max": 9337.0,
+     "ulp_p999": 18.0,
+     "rel_max": 1.9902119957361063e-12,
+     "contract": 0.8250522473752807,
+     "bound": 1.0,
+     "worst": [
+      "struct_singular/1000 rmatvec[354]"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "matvec": {
+      "points": 101178,
+      "ulp_max": 33421432006.0,
+      "ulp_p999": 54.0,
+      "rel_max": 3.8146964708487624e-06,
+      "contract": 0.6664367376504406,
+      "bound": 1.0,
+      "worst": [
+       "lap2d/100 matvec[1575]"
+      ]
+     },
+     "rmatvec": {
+      "points": 99262,
+      "ulp_max": 9337.0,
+      "ulp_p999": 22.0,
+      "rel_max": 1.9902119957361063e-12,
+      "contract": 0.8250522473752807,
+      "bound": 1.0,
+      "worst": [
+       "struct_singular/1000 rmatvec[354]"
+      ]
+     }
+    },
+    "R": {
+     "matvec": {
+      "points": 97758,
+      "ulp_max": 33421432006.0,
+      "ulp_p999": 51.0,
+      "rel_max": 3.8146964708487624e-06,
+      "contract": 0.6664367376504406,
+      "bound": 1.0,
+      "worst": [
+       "lap2d/100 matvec[1575]"
+      ]
+     },
+     "rmatvec": {
+      "points": 95842,
+      "ulp_max": 9337.0,
+      "ulp_p999": 19.0,
+      "rel_max": 1.9902119957361063e-12,
+      "contract": 0.8250522473752807,
+      "bound": 1.0,
+      "worst": [
+       "struct_singular/1000 rmatvec[354]"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-065911-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "sparse/sums",
+   "area": "sparse",
+   "name": "sums",
+   "points": 78977,
+   "regions": {
+    "row_sums": {
+     "points": 39941,
+     "ulp_max": 33421432006.0,
+     "ulp_p999": 32768.0,
+     "rel_max": 3.8146964708487624e-06,
+     "contract": 0.4809011810604476,
+     "bound": 1.0,
+     "worst": [
+      "saddle/600x150 row_sums[620]"
+     ]
+    },
+    "col_sums": {
+     "points": 38983,
+     "ulp_max": 1024.0,
+     "ulp_p999": 9.0,
+     "rel_max": 1.1370321153234118e-13,
+     "contract": 0.592264163169505,
+     "bound": 1.0,
+     "worst": [
+      "dupcol/1000 col_sums[363]"
+     ]
+    },
+    "total": {
+     "points": 53,
+     "ulp_max": 44040192.0,
+     "ulp_p999": 44040192.0,
+     "rel_max": 9.32587346352904e-09,
+     "contract": 0.010095762386151353,
+     "bound": 1.0,
+     "worst": [
+      "rect/20x60 total[0]"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "row_sums": {
+      "points": 39941,
+      "ulp_max": 132079925352.0,
+      "ulp_p999": 7427950.0,
+      "rel_max": 2.932677475837122e-05,
+      "contract": 0.495424820650175,
+      "bound": 1.0,
+      "worst": [
+       "saddle/600x150 row_sums[689]"
+      ]
+     },
+     "col_sums": {
+      "points": 38983,
+      "ulp_max": 1024.0,
+      "ulp_p999": 10.0,
+      "rel_max": 1.1370321153234118e-13,
+      "contract": 0.592264163169505,
+      "bound": 1.0,
+      "worst": [
+       "dupcol/1000 col_sums[363]"
+      ]
+     },
+     "total": {
+      "points": 53,
+      "ulp_max": 4.4008612608711066e+18,
+      "ulp_p999": 4.4008612608711066e+18,
+      "rel_max": 7.993605825882035e-09,
+      "contract": 0.0026893581168721025,
+      "bound": 1.0,
+      "worst": [
+       "rect/80x30d total[0]"
+      ]
+     }
+    },
+    "R": {
+     "row_sums": {
+      "points": 38231,
+      "ulp_max": 33421432006.0,
+      "ulp_p999": 65536.0,
+      "rel_max": 3.8146964708487624e-06,
+      "contract": 0.4809011810604476,
+      "bound": 1.0,
+      "worst": [
+       "saddle/600x150 row_sums[620]"
+      ]
+     },
+     "col_sums": {
+      "points": 37273,
+      "ulp_max": 1024.0,
+      "ulp_p999": 10.0,
+      "rel_max": 1.1370321153234118e-13,
+      "contract": 0.592264163169505,
+      "bound": 1.0,
+      "worst": [
+       "dupcol/1000 col_sums[363]"
+      ]
+     },
+     "total": {
+      "points": 48,
+      "ulp_max": 54.0,
+      "ulp_p999": 54.0,
+      "rel_max": 8.318174531944703e-15,
+      "contract": 0.020191524772302707,
+      "bound": 1.0,
+      "worst": [
+       "rect/20x60 total[0]"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-065911-f0a7f92+",
+   "comparator_seconds": 60.0
+  }
+ ]
+}

@@ -111,7 +111,7 @@ nb::tuple binop_typed(
     const T* bv = typed<T>(b_v);
     const int64_t nnz = a_ix.shape[0] + b_ix.shape[0];
     const int64_t per = std::max<int64_t>(1, kChunk / std::max<int64_t>(1, nnz / std::max<int64_t>(n_lines, 1)));
-    NDArray indptr = new_index(n_lines + 1);
+    NDArray indptr = new_indptr(n_lines);
     int64_t* op = i64(indptr);
     op[0] = 0;
     if (nnz + n_lines < kParallelThreshold || parallel::num_threads() <= 1) {
@@ -238,7 +238,7 @@ nb::tuple fill_true(nb::handle ptr_h, nb::handle ix_h, nb::handle flags_h, int64
     const int64_t* ip = i64(ptr);
     const int64_t* ii = i64(ix);
     const bool* fv = typed<bool>(flags);
-    NDArray indptr = new_index(n_lines + 1);
+    NDArray indptr = new_indptr(n_lines);
     int64_t* op = i64(indptr);
     op[0] = 0;
     const int64_t per = std::max<int64_t>(1, kChunk / std::max<int64_t>(1, n_minor));

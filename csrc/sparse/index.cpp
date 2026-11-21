@@ -32,9 +32,9 @@
 //       stored there. major None: 1-D (i unused).
 //   _assign_compressed(indptr, indices, data, n_minor, major, minor, values, /, *, insert)
 //       Sets the value at each (major[k], minor[k]); a position that repeats takes its last
-//       value. A stored position is changed in place in `data` (when writeable); a new one is
-//       inserted (insert=True), which rebuilds the arrays: (indptr, indices, data), new. None
-//       when every value went in place.
+//       value. A stored position is changed in place in `data` (when writeable), also when new
+//       ones come with it; a new one is inserted (insert=True), which rebuilds the arrays:
+//       (indptr, indices, data), new. None when every value went in place.
 //   _coo_remove(major, minor, data, tmajor, tminor, /)
 //       The COO entries at none of the target positions (repeats too), order kept:
 //       (rows or None, cols, data), or None when nothing goes.
@@ -340,7 +340,7 @@ nb::tuple select_compressed(
         }
     };
 
-    NDArray out_ptr = new_index(n_out + 1);
+    NDArray out_ptr = new_indptr(n_out);
     int64_t* op = i64(out_ptr);
     op[0] = 0;
     const std::uint8_t* hits = minor.hits();
@@ -738,12 +738,17 @@ nb::object assign_compressed(
         nb::object ptr = nb::borrow(indptr_h), idx = nb::borrow(indices_h);
         return nb::make_tuple(ptr, idx, wrap(std::move(fresh)));
     }
+    // The stored positions first change in place, as without new ones, so that the arrays sharing
+    // the values (a .T, to_scipy() views) see them (scipy's _set_many); then the new arrays.
+    if (data.writeable)
+        for (std::size_t u = 0; u < uniq.size(); ++u)
+            if (off[u] >= 0) copy_value(data.data, off[u], values.data, uniq[u], size);
     // per line, the new positions to merge in
     std::vector<int64_t> tptr(static_cast<std::size_t>(n_major + 1), 0);
     for (std::size_t u = 0; u < uniq.size(); ++u) ++tptr[static_cast<std::size_t>((tm ? tm[uniq[u]] : 0) + 1)];
     for (int64_t r = 0; r < n_major; ++r) tptr[static_cast<std::size_t>(r + 1)] += tptr[static_cast<std::size_t>(r)];
     const int64_t nnz = indices.shape[0], total = nnz + n_new;
-    NDArray out_ptr = new_index(n_major + 1);
+    NDArray out_ptr = new_indptr(n_major);
     int64_t* op = i64(out_ptr);
     op[0] = 0;
     for (int64_t r = 0; r < n_major; ++r) {

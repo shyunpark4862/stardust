@@ -81,7 +81,8 @@ def test_subsets_match_the_reference(name):
 @pytest.mark.parametrize("name", sorted(REFS))
 def test_criterion_values_against_arb(name):
     """The criterion along every path and of each size's best: 1e-15 relative (Cp, a difference
-    of terms of order n, 1e-13 of n; adjr2 1e-15 absolute). The cross-validation errors of the
+    of terms of order n, relative to n: |error| / n <= 1e-13, the scale docs/api/regression.md
+    §9.3 states (G196); adjr2 1e-15 absolute). The cross-validation errors of the
     nearly collinear design (kappa 2.3e5) are kappa u (1.3e-12 and 3e-12 measured): the folds'
     fits come from their triangles without refinement."""
     p = REFS[name]

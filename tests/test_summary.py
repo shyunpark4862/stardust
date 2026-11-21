@@ -123,3 +123,27 @@ def test_alpha_only_where_there_is_an_interval():
         sd.optimize.root_scalar(lambda x: x - 1.0, bracket=(0.0, 3.0)).summary(alpha=0.1)
     with pytest.raises(TypeError, match=r"^summary\(\): takes 0 positional arguments but 1 was given$"):
         sd.htest.ttest_1samp([1.0, 2.0, 4.0], 0.0).summary(0.1)
+
+
+def test_empty_batch_with_per_lane_names():
+    """A batch of no lanes whose result names each lane's method (htest H48): an empty table, not
+    an IndexError."""
+    r = sd.htest.mannwhitneyu(sd.zeros((0, 5)), sd.zeros((0, 4)), axis=1)
+    text = r.summary()
+    assert "Batch shape:                      (0,)" in text
+    assert "statistic" in text and "Method" not in text
+
+
+def test_table_fields_by_name():
+    """Table fields are named by the result class (htest's _TABLES), not guessed from their size:
+    one test's 1 x 1 table is a table (not a header number), a batch's tables are left out (not a
+    column of the lanes); other areas' boxes are unchanged."""
+    one = sd.htest.chi2_contingency([[5]]).summary()
+    assert "Expected freq:" not in one and "expected_freq" in one.splitlines()[-4]
+    batch = sd.htest.chi2_contingency(sd.ones((3, 1, 1))).summary()
+    assert "expected_freq" not in batch and "Batch shape:                      (3,)" in batch
+    t = sd.htest.proportions_chisquare([3, 5], [10, 12]).summary()
+    assert "table" in t and "expected_freq" in t
+    # a per-lane array field of one test kept as an array (keepdims) is still the header's
+    k = sd.htest.ttest_1samp([1.0, 2, 4], 0.0, keepdims=True).summary()
+    assert "Statistic:" in k

@@ -115,6 +115,10 @@ def cases(L):
     yield "approx_fprime scalar x", lambda: O.approx_fprime(1.5, lambda x: x * x)
     for x0 in (3e-6, 1e-5, 1e-4):  # the start above 2^-36 of the column grows (C112)
         yield f"approx_fprime exp x0={x0:g}", lambda x0=x0: O.approx_fprime([x0], lambda x: sd.exp(x))
+    # f much larger than f' near 0: the largest step whose column is not noise, and the search from
+    # x_j = 0's start where the estimates never agree (C122)
+    yield "approx_fprime cos x0=3.41e-08", lambda: O.approx_fprime([3.41e-8], lambda x: sd.cos(x))
+    yield "approx_fprime log(1+x) x0=1e-14", lambda: O.approx_fprime([1e-14], lambda x: sd.log(1.0 + x))
     yield (
         "approx_fprime epsilon array",
         lambda: O.approx_fprime([1.0, 2.0], lambda x: x[0] * x[1], epsilon=sd.asarray([1e-4, 1e-6])),

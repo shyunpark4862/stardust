@@ -460,6 +460,10 @@ nb::object asarray(nb::handle obj, nb::handle dtype_obj, nb::handle copy_obj) {
         return from_nested(items, dtype);
     }
     if (PyObject_CheckBuffer(obj.ptr())) return from_buffer(obj, dtype, copy);
+    if (is_sparse_array(obj))  // np.asarray(A)'s sentence (sd.sparse's __array__, docs/api/sparse.md §2)
+        throw nb::type_error(("a sparse array is not converted to a dense array implicitly; use A.toarray() (" +
+                              py_type_name(obj) + ")")
+                                 .c_str());
     throw nb::type_error(
         ("'obj' must be an sd.ndarray, a list, a tuple, a range or a buffer, not " + py_type_name(obj)).c_str()
     );

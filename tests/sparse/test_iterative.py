@@ -655,5 +655,48 @@ def test_python_operators():
         S.gmres(S.LinearOperator(A.shape, bad, dtype=sd.float64), b)
     with pytest.raises(TypeError, match="complex128 values for a float64 system"):
         S.cg(S.LinearOperator(A.shape, lambda v: (A @ v) * 1j, dtype=sd.float64), b)
-    with pytest.raises(ValueError, match="rmatvec\\(\\): the operator was made without 'rmatvec'"):
+    with pytest.raises(ValueError, match="^lsqr\\(\\): the operator was made without 'rmatvec'$"):
         S.lsqr(S.LinearOperator(A.shape, lambda v: A @ v), b)
+
+
+def test_operator_errors_name_the_solver():
+    """An error of a Python operator inside a solve starts with the solver's name (R228); lsqr and
+    lsmr check for rmatvec before the first product."""
+    op = S.LinearOperator((2, 2), lambda v: v * 1j, dtype=sd.float64)
+    for f in (S.cg, S.gmres, S.bicgstab, S.minres):
+        with pytest.raises(TypeError, match=rf"^{f.__name__}\(\): the operator returned complex128 values for a "
+                                            r"float64 system; give it dtype=complex128$"):  # fmt: skip
+            f(op, sd.ones(2))
+    m = M.get("lap2d/10")
+    A, b = sparse(m), sd.asarray(M.rhs(m))
+    calls = []
+
+    def mv(v):
+        calls.append(1)
+        return A @ v
+
+    for f in (S.lsqr, S.lsmr):
+        with pytest.raises(ValueError, match=rf"^{f.__name__}\(\): the operator was made without 'rmatvec'$"):
+            f(S.LinearOperator(A.shape, mv, dtype=sd.float64), b)
+        assert not calls  # before the first product
+        # an operator made from one without rmatvec (its .H, a sum) names the solver too
+        L = S.LinearOperator(A.shape, mv, dtype=sd.float64)
+        with pytest.raises(ValueError, match=rf"^{f.__name__}\(\): the operator was made without 'rmatvec'$"):
+            f(L + L, b)
+        calls.clear()
+
+
+def test_minres_names_the_preconditioner():
+    """r2^H M r2 < 0 inside the iteration comes from an indefinite M (R227, SP126): the message
+    names it; a nonsymmetric A is not checked (scipy's)."""
+    T = S.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(30, 30))
+    A = S.kronsum(T, T)
+    d = np.ones(900)
+    d[::7] = -1.0
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^minres\(\): the preconditioner is not positive definite$"):
+        S.minres(A, sd.ones(900), M=S.diags_array(sd.asarray(d)))
+    D1 = S.diags_array([-1.0, 1.0], offsets=[-1, 0], shape=(30, 30))
+    C = A + 1.5 * S.kron(S.eye_array(30), D1)
+    r = S.minres(C, sd.ones(900))
+    assert r.status == 0  # no symmetry check: the result is not a solution of C x = b
+    assert float(sd.linalg.vector_norm(sd.ones(900) - C @ r.x)) > 1.0

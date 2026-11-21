@@ -13,13 +13,13 @@
 | 데이터프레임 | `sd.frame` | [docs/api/frame.md](docs/api/frame.md) |
 | 특수함수 | `sd.special` | [docs/api/special.md](docs/api/special.md) (로지스틱·정보, 오차함수, 감마·베타·제타, 불완전 감마·베타, 리덕션·지수적분·타원, Bessel·Airy, 초기하·Lambert W, 복소수 판) |
 | 통계 | `sd.stats` | [docs/api/stats.md](docs/api/stats.md) (단변량·다변량·행렬 분포, 기술통계) |
-| 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (`ols wls gls glm ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm rlm theilslopes siegelslopes quantreg nls anova stepwise best_subset`) |
+| 회귀 | `sd.regression` | [docs/api/regression.md](docs/api/regression.md) (`ols wls gls glm ridge lasso elastic_net ridge_cv lasso_cv elastic_net_cv penalized_glm rlm theilslopes siegelslopes quantreg nls anova stepwise best_subset`, 결과 객체 `<모형>Result`, 선택의 결과 `StepwiseResult BestSubsetResult`와 그 원소의 형 `SelectionStep SkippedFit SkippedSubset`) |
 | 난수 | `sd.random` | [docs/api/random.md](docs/api/random.md) (Philox4×64-10, `default_rng`, `random`·`integers`·`choice`·`permutation`·`spawn`·`state`) |
 | 최적화 | `sd.optimize` | [docs/api/optimize.md](docs/api/optimize.md) (`approx_fprime check_grad least_squares lsq_linear nnls root_scalar minimize_scalar find_root bracket_root find_minimum bracket_minimum minimize root`, 결과 객체 `OptimizeResult`) |
 | 가설검정 | `sd.htest` | [docs/api/htest.md](docs/api/htest.md) (초안: H1의 t 검정·분산분석·분산의 동질성, H2의 적합도 검정, H3의 순위 검정, H4의 표본끼리의 적합도 검정, H5의 상관 검정, H6의 분할표 검정, H7의 비율·이항 검정, H8의 다중 비교와 보정, H9의 재표본과 몬테카를로가 공개. scipy.stats의 검정 전부와 statsmodels의 다중 비교 보정·비율 검정, 검정마다의 결과 객체) |
-| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환(SP1), 연산·곱·리덕션(SP2), 인덱싱과 만들기(SP3), 직접 풀이와 `LinearOperator`(SP4), 반복법(SP5), 고유값과 특이값(SP6)이다. 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
-| 적분 | `sd.integrate` | [docs/api/integrate.md](docs/api/integrate.md) (확정: 공개된 것은 결과 클래스 `IntegrateResult`(C0)이고, scipy.integrate의 적분 15개 `quad dblquad tplquad nquad quad_vec cubature tanhsinh nsum fixed_quad newton_cotes trapezoid simpson romb cumulative_trapezoid cumulative_simpson`는 C3–C7에서 공개된다; 설계 [docs/design/integrate.md](docs/design/integrate.md)) |
-| 미분 | `sd.differentiate` | [docs/api/differentiate.md](docs/api/differentiate.md) (확정: `derivative jacobian hessian`과 결과 클래스 `DifferentiateResult`(C2에서 공개); 설계는 적분과 함께 [docs/design/integrate.md](docs/design/integrate.md)) |
+| 희소 | `sd.sparse` | [docs/api/sparse.md](docs/api/sparse.md) (초안: 공개된 것은 형식과 변환, 연산·곱·리덕션, 인덱싱과 만들기, 직접 풀이와 `LinearOperator`, 반복법, 고유값과 특이값, 행렬 함수와 노름이다(모든 공개 이름). 희소 배열 `coo_array csr_array csc_array dok_array`와 희소 선형대수 `spsolve splu cg gmres eigsh svds expm norm LinearOperator` 등; 설계 [docs/design/sparse.md](docs/design/sparse.md)) |
+| 적분 | `sd.integrate` | [docs/api/integrate.md](docs/api/integrate.md) (확정: 결과 클래스 `IntegrateResult`와 scipy.integrate의 적분 15개 `quad dblquad tplquad nquad quad_vec cubature tanhsinh nsum fixed_quad newton_cotes trapezoid simpson romb cumulative_trapezoid cumulative_simpson`가 공개되었다; 설계 [docs/design/integrate.md](docs/design/integrate.md)) |
+| 미분 | `sd.differentiate` | [docs/api/differentiate.md](docs/api/differentiate.md) (확정: `derivative jacobian hessian`과 결과 클래스 `DifferentiateResult`가 공개되었다; 설계는 적분과 함께 [docs/design/integrate.md](docs/design/integrate.md)) |
 
 - 설계의 근거와 측정은 `docs/design/<영역>.md`, 통합의 결정은 [DESIGN.md](DESIGN.md), 진행 상황은 [ROADMAP.md](ROADMAP.md)에 있다.
 
@@ -88,7 +88,7 @@ bool  int64  float64  complex128  string
   - 인덱싱이 없는 라벨이나 열을 찾으면 dict처럼 `KeyError(label)`다. 함수가 없는 열을 받으면 `sort_values(): no column 'x'`다.
   - 속성 대입: `property 'shape' of 'ndarray' object has no setter`
 - **틀린 호출 모양도 함수 이름으로 시작한다**: 없는 키워드, 빠진 인자, 인자 개수, 위치 전용 인자를 키워드로 준 호출이다. Python으로 쓴 무거운 입구가 그렇다: 모듈 수준의 함수(`sd.stats`의 기술통계, `sd.regression`과 `sd.optimize`의 모든 함수, `sd.random.default_rng`, `sd.frame`의 `read_csv`·`merge`·`concat`), 생성자(frame의 `Series`·`DataFrame`·`Index`·`RangeIndex`, 분포), 그리고 frame의 `groupby`.
-  - 문장은 Python의 것이고, 앞의 `f() got an`이 `f(): `가 된다: `ols(): unexpected keyword argument 'foo'`, `moment(): missing 1 required keyword-only argument: 'order'`, `Normal(): takes no positional arguments but 1 was given`, `merge(): got some positional-only arguments passed as keyword arguments: 'right'`
+  - 문장은 Python의 것이고, 앞의 `f() got an`이 `f(): `가 된다: `ols(): unexpected keyword argument 'foo'`, `moment(): missing 1 required keyword-only argument: 'order'`, `Normal(): takes 0 positional arguments but 1 was given`, `merge(): got some positional-only arguments passed as keyword arguments: 'right'`
   - 이름은 위의 규칙과 같다. 생성자는 클래스 이름이다.
   - 이유: 값이 틀린 에러와 호출이 틀린 에러의 꼴이 같아야 메시지만 보고 어느 함수인지 안다.
 - **예외: 작은 메서드는 Python의 기본 꼴이다**: frame의 메서드, `Generator`의 메서드, 분포의 메서드(`Series.head() got some positional-only arguments passed as keyword arguments: 'n'`, `Generator.random() got an unexpected keyword argument 'foo'`, `sample() missing 1 required keyword-only argument: 'rng'`처럼 Python이 만드는 그대로다. 콜론이 없고, 클래스 이름이 붙기도 한다).
@@ -178,7 +178,9 @@ numpy, scipy, pandas는 정답지다. 무엇이 정답지와 같아야 하고 �
 ## §7. sd.sparse와 밀집 배열
 - **sd.sparse의 기능은 밀집의 부분집합이거나 희소에만 필요한 것이다**(사용자 결정 2026-11-22). 희소에 있는 기능이 희소의 것이 아니면(희소 저장과 상관없는 만들기, 판정, 옵션) 밀집 배열에도 있다. 희소에만 필요한 것은 형식과 변환(`tocsr`, `asformat`, `to_scipy` …), 저장의 관리(`eliminate_zeros`, `sum_duplicates`, `nnz`, `explicit=`), 희소의 밀도와 자리(`random_array`), 희소 우변의 풀이 같은 것이다.
   - 이유: 희소는 같은 수학을 다른 저장으로 하는 것이다. 희소에서만 되는 일이 있으면 사용자는 밀집 문제를 풀려고 희소로 바꾸게 되고, 두 쪽의 결과를 견줄 기준도 없다.
-- **짝의 값은 비트까지 같다**: 둘 다 있는 입력에서 밀집 함수의 결과는 희소 함수의 `toarray()`와 같다(복사이거나 같은 반올림 한 번인 것). 다를 수 있는 것은 0의 부호다(희소는 0을 저장하지 않는다). 그 밖의 차이(`kronsum`의 complex inf 등)와 짝마다의 규칙은 각 영역 문서가 적는다.
+- **복사이거나 같은 반올림 한 번인 짝만 비트까지 같다**: 둘 다 있는 입력에서 그런 짝은 밀집 함수의 결과가 희소 함수의 `toarray()`와 같다(만들기, 인덱싱, 원소별 연산, `diagonal`, float의 `trace`, `kron`·`kronsum`, 대각 행렬과 2 × 2 삼각 행렬의 `expm`). 다를 수 있는 것은 0의 부호다(희소는 0을 저장하지 않는다).
+  - 계산 순서가 다른 짝은 두 쪽 모두 정확도 계약 안에서 끝자리가 다를 수 있다: 풀이(`spsolve`, `inv`, `spsolve_triangular`, `splu`), 일반 행렬의 `expm`, 리덕션(희소는 저장된 값만 더하므로 pairwise 트리가 다르다), `norm`이다. 짝마다의 규칙과 예는 각 영역 문서가 적는다(sparse.md §3, §5, §8).
+  - 결과 dtype이 다른 짝은 아래 표가 적는다. bool·int 입력에서 희소 쪽은 배열 영역의 규칙(`sd.sum`, `sd.multiply`)이라 int64이고, 밀집 linalg 쪽은 float64다(DESIGN §9.6). float64·complex128 입력에서는 두 쪽이 비트까지 같다.
 - **희소 함수 → 밀집 짝**
 
 | sd.sparse | 밀집 | 문서 |
@@ -192,10 +194,10 @@ numpy, scipy, pandas는 정답지다. 무엇이 정답지와 같아야 하고 �
 | `resize` 메서드 | `sd.zeros`와 슬라이스 대입(밀집 배열의 모양은 바뀌지 않는다) | array.md §5.3 |
 | 원소별 메서드(`sin` … `sign`), `power`, 리덕션 | 같은 이름의 배열 함수, `sd.pow` | array.md §6, §7 |
 | `deg2rad`, `rad2deg` 메서드 | `sd.deg2rad`, `sd.rad2deg` | array.md §6.4 |
-| `kron` | `sd.linalg.kron`(1차원 입력 포함) | linalg.md §2 |
-| `kronsum` | `sd.linalg.kronsum` | linalg.md §2 |
+| `kron` | `sd.linalg.kron`(1차원 입력 포함); bool·int의 결과 dtype이 다르다(희소 int64, 밀집 float64) | linalg.md §2, sparse.md §4 |
+| `kronsum` | `sd.linalg.kronsum`; bool·int의 결과 dtype이 다르다(희소 int64, 밀집 float64) | linalg.md §2, sparse.md §4 |
 | `block_diag` | `sd.linalg.block_diag` | linalg.md §2 |
-| `trace`, `diagonal` 메서드, `norm` | `sd.linalg.trace`, `diagonal`, `matrix_norm`·`vector_norm` | linalg.md §2, §3 |
+| `trace`, `diagonal` 메서드, `norm` | `sd.linalg.trace`, `diagonal`, `matrix_norm`·`vector_norm`; bool·int의 `trace` 결과 dtype이 다르다(희소 `A.trace()`는 int64, 밀집 `sd.linalg.trace`는 float64) | linalg.md §2, §3, sparse.md §4 |
 | `spsolve`, `inv`, `spsolve_triangular`, `expm` | `sd.linalg.solve`, `inv`, `solve_triangular`, `expm` | linalg.md §4, §7 |
 | `splu`, `factorized`, `SparseLU.solve(trans=)` | `sd.linalg.lu`, `lu_solve(trans=)` | linalg.md §4 |
 | `spbandwidth`, `is_sptriangular` | `sd.linalg.bandwidth`(`upper == 0`이면 아래 삼각) | linalg.md §6 |

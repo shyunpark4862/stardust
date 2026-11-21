@@ -366,9 +366,14 @@ def test_messages_in_the_shared_forms():
             call()
 
 
-@pytest.mark.parametrize("n, k", [(1000, 1000), (1000, 600), (1000, 62), (1000, 10), (1, 1), (0, 0)])
+@pytest.mark.parametrize(
+    "n, k",
+    [(1000, 1000), (1000, 600), (1000, 62), (1000, 10), (1, 1), (0, 0)]
+    # the hash table path (k <= n / 16) around its 16 draws made ahead, and at its edge
+    + [(65536, 4096), (65536, 4097), (65536, 15), (65536, 16), (65536, 17), (65536, 1), (100003, 3001)],
+)
 def test_choice_without_replacement_is_the_permutations_head(n, k):
-    # permutation(n) shuffles in its result, choice's paths in an array of n or a hash map:
+    # permutation(n) shuffles in its result, choice's paths in an array of n or a hash table:
     # the same steps, the same draws
     perm = sd.random.default_rng(5).permutation(n)
     head = sd.random.default_rng(5).choice(n, shape=k, replace=False)

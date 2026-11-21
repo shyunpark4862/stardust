@@ -99,6 +99,9 @@ inline DD quantile_z(double p, bool upper) {
 
 // The z for ilogcdf (upper: ilogccdf) at lp <= 0.
 inline DD quantile_z_log(double lp, bool upper) {
+    // log(1/2) rounded is logcdf(0)'s value: the median, as the t distribution's ilogcdf (the
+    // exact root for that double is ndtri_exp's 2.9e-17, both within the contract)
+    if (lp == -num::kLn2.hi) return {0.0, 0.0};
     if (lp > -num::kLn2.hi) {
         const double q = -std::expm1(lp);  // the other side
         if (q == 0.0) return {upper ? -kInf : kInf, 0.0};

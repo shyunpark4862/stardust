@@ -42,7 +42,7 @@ INTRO = {
         "(tools/array_ref.py; test_vforce.py의 범위와 함수마다 오차가 몰리는 곳: 영점·극 근처, 정의역의 끝, "
         "서브노멀과 아주 큰 인자). 계약은 함수마다 참값을 double로 반올림한 값에서 정해진 ULP 안이다"
         "(docs/api/array.md, tests/array/refdata.py의 ULP_BOUND: exp·acos·atan·atan2·pow 3, log·log2·log10·asin·"
-        "sinh·cosh·tanh·asinh·acosh 4, sin·atanh 5, 복소수의 절댓값 1). 계약 대비는 그 점의 ULP를 한계로 나눈 값이고, "
+        "sinh·cosh·tanh·asinh·acosh 4, sin·atanh 5, 복소수의 절댓값 3). 계약 대비는 그 점의 ULP를 한계로 나눈 값이고, "
         "numpy와의 ULP 거리는 기록만 한다. 리덕션의 참값과 조건수는 tests/array/ref/reductions.npz(같은 도구)에 있다: "
         "정확한 계산으로 한 번 만들었다(합은 Shewchuk의 fsum으로 올바르게 반올림한 값과 그 반올림 오차, 내적과 행렬 곱은 "
         "곱을 정확히 나눈 뒤의 fsum, 분산·표준편차는 정확한 유리수, 곱은 Arb). 입력은 함께 저장하고, 20만 원소를 넘는 "

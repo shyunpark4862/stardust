@@ -29,7 +29,7 @@ from ..optimize._common import (
 )
 from ..optimize._elementwise import _args, _inputs, _shaped
 from ._result import DifferentiateResult
-from ._weights import weights
+from ._weights import central_weights, one_sided_weights
 
 _k = _sd.differentiate
 
@@ -37,6 +37,12 @@ _TINY = 2.2250738585072014e-308  # the smallest normal double: scipy's default a
 _EPS = 2.0**-52
 _RTOL = _EPS**0.5  # scipy's default rtol, sqrt(eps)
 _RTOL_MIN = 100 * _EPS  # hessian: the smallest rtol other than 0 (C29)
+# the highest order (C118): every even order up to it keeps the contract (atol + rtol |df|) at
+# the eleven elementary functions' nine points against Arb, order 20 does not (log at 1e4,
+# 1.02 of the bound) and higher ones less and less (sqrt at 1e4 64 times from order 32; from
+# order 60 on wrong values converge, as exp'(1) = 0 at 160): the inner nodes h / c^(n-1) of the
+# first iteration fall towards rounding, and the exact weights cost O(n^2) big rationals
+_ORDER_MAX = 18
 
 
 def _real_array(v, func, what):
@@ -130,11 +136,21 @@ def _step_factor(v, func):
 
 
 def _stencil(order, step_factor, func):
+    """(n, c, central weights): n = (order + 1) // 2 terms and the step factor, checked."""
     order = _check_int(order, func, "order", 1)
+    if order > _ORDER_MAX:
+        raise ValueError(f"{func}(): 'order' must be at most {_ORDER_MAX}")
     c = _step_factor(step_factor, func)
     n = (order + 1) // 2
-    wc, wr = weights(n, c)
-    return n, c, _sd.asarray(wc, dtype=_sd.float64), _sd.asarray(wr, dtype=_sd.float64)
+    return n, c, _sd.asarray(central_weights(n, c), dtype=_sd.float64)
+
+
+def _one_sided(n, c, d):
+    """The one-sided weights when an element of the step directions d takes a side (d != 0 and
+    not NaN), else an empty array: the kernels read them only for such elements."""
+    if bool(_sd.any(_sd.abs(d) > 0)):
+        return _sd.asarray(one_sided_weights(n, c), dtype=_sd.float64)
+    return _sd.zeros(0)
 
 
 def _fields(shape, df, err, status, nit, nfev):
@@ -157,9 +173,10 @@ def derivative(
     _callable(f, func, "f")
     atol, rtol = _tolerances(atol, rtol, func)
     max_iter = _check_int(max_iter, func, "max_iter", 1)
-    n, c, wc, wr = _stencil(order, step_factor, func)
+    n, c, wc = _stencil(order, step_factor, func)
     named = [("x", x), ("initial_step", initial_step), ("step_direction", step_direction)]
     (xs, h0, d), extra, shape = _inputs(func, named, _args(args, func))
+    wr = _one_sided(n, c, d)
     df, err, status, nit, nfev = _k.derivative_solve(
         func, f, _values(func), extra, xs, h0, d, wc, wr, n, c, atol, rtol, max_iter
     )
@@ -190,11 +207,12 @@ def jacobian(
     _callable(f, func, "f")
     atol, rtol = _tolerances(atol, rtol, func)
     max_iter = _check_int(max_iter, func, "max_iter", 1)
-    n, c, wc, wr = _stencil(order, step_factor, func)
+    n, c, wc = _stencil(order, step_factor, func)
     x0 = _point(x, func)
     m = x0.shape[0]
     h0 = _per_variable(initial_step, func, "initial_step", m)
     d = _per_variable(step_direction, func, "step_direction", m)
+    wr = _one_sided(n, c, d)
     df, err, status, nit, nfev, k, scalar = _k.jacobian_solve(
         func, f, _vectorized_values(func), x0, h0, d, wc, wr, n, c, atol, rtol, max_iter
     )
@@ -215,10 +233,11 @@ def hessian(f, x, /, *, atol=None, rtol=None, max_iter=10, order=8, initial_step
             f"jacobian's is rtol / 100), not {rtol!r}"
         )
     max_iter = _check_int(max_iter, func, "max_iter", 1)
-    n, c, wc, wr = _stencil(order, step_factor, func)
+    n, c, wc = _stencil(order, step_factor, func)
     x0 = _point(x, func)
     m = x0.shape[0]
     h0 = _per_variable(initial_step, func, "initial_step", m)
+    wr = _sd.zeros(0)  # always central
     ddf, err, status, _nit, nfev, _, _ = _k.hessian_solve(
         func, f, _vectorized_values(func), x0, h0, wc, wr, n, c, atol, rtol, max_iter
     )

@@ -457,7 +457,8 @@ void minres(
         M.apply(r2.data(), y.data());
         oldb = beta;
         const T betat = dot(r2.data(), y.data(), n);
-        if (lt(betat, 0.0)) throw linalg::LinAlgError("minres(): the matrix is not symmetric");
+        // r2^H M r2 < 0 can only come from M (A's symmetry is not checked, as scipy): its cause named
+        if (lt(betat, 0.0)) throw linalg::LinAlgError("minres(): the preconditioner is not positive definite");
         beta = std::sqrt(re(betat));
         tnorm2 = add(tnorm2, add(add(mul(alfa, alfa), of<T>(oldb * oldb)), of<T>(beta * beta)));
         if (itn == 1 && beta / beta1 <= 10 * kEps) istop = -1;  // terminate later

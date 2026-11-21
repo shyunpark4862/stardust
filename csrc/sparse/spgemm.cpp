@@ -211,7 +211,7 @@ nb::tuple spgemm_typed(
             kept[static_cast<std::size_t>(r)] = w - upper[static_cast<std::size_t>(r)];
         }
     });
-    NDArray indptr = new_index(n_lines + 1);
+    NDArray indptr = new_indptr(n_lines);
     int64_t* op = i64(indptr);
     op[0] = 0;
     for (int64_t r = 0; r < n_lines; ++r) op[r + 1] = op[r] + kept[static_cast<std::size_t>(r)];

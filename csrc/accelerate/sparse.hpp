@@ -12,8 +12,9 @@
 //     wrong one, which the caller's singularity check sees (§3.6).
 //
 // Matrices are compressed sparse column (CSC) with 32-bit row indices and dimensions: the int64
-// arrays of sd.sparse are narrowed once (Csc::narrow). A CSR matrix is passed as the CSC of its
-// transpose with the structure's transpose flag set (no copy of the values).
+// arrays of sd.sparse are narrowed once (Csc::narrow). The public functions always hand over a
+// CSC; the CSR path (the CSC of the transpose with the structure's transpose flag set, no copy of
+// the values) is used only by the tests of the private _lu_solve(csr=True).
 #pragma once
 
 #include <Accelerate/Accelerate.h>

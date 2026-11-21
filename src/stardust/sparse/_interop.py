@@ -30,6 +30,16 @@ def _ndims(fmt):
 
 
 def build(fmt, arg, shape, dtype, copy, func):
+    try:
+        return _build(fmt, arg, shape, dtype, copy, func)
+    except (MemoryError, ValueError) as e:  # a kernel's allocation failure, named by the constructor
+        r = C.allocation_error(func, e)
+        if r is None:
+            raise
+        raise r from None
+
+
+def _build(fmt, arg, shape, dtype, copy, func):
     from ._base import sparray
 
     copy = C.copy_arg(copy, func)
@@ -71,9 +81,16 @@ def _empty(fmt, dims, shape, dtype, func):
     if fmt == "coo":
         return cls._new(dims, tuple(idx for _ in dims), data, True)
     lines = 1 if len(dims) == 1 else (dims[0] if fmt == "csr" else dims[1])
+    if lines == 2**63 - 1:  # an indptr of 2**63 entries (build names the constructor)
+        raise ValueError("array is too big")
     indptr = _sd.zeros(lines + 1, dtype=_sd.int64)
     indptr._set_readonly()
     return cls._new(dims, indptr, idx, data)
+
+
+def _check_inferred(shape, func):
+    if any(d > 2**63 - 1 for d in shape):  # an index of 2**63 - 1 needs a length of 2**63
+        raise OverflowError(f"{func}(): the shape inferred from the indices is out of range; pass 'shape'")
 
 
 def _from_sparse(fmt, A, shape, dtype, copy, func):
@@ -123,6 +140,7 @@ def _from_coords(fmt, data, coords, shape, dtype, copy, func):
         if data.shape[0] == 0:
             raise ValueError(f"{func}(): cannot infer the shape from empty index arrays; pass 'shape'")
         shape = tuple(_core._index_max(i, axis=a, func=func) + 1 for a, i in enumerate(idx))
+        _check_inferred(shape, func)
     elif len(shape) != nd:
         raise ValueError(f"{func}(): 'shape' has {len(shape)} dimensions, the coordinates are for {nd}")
     owned = tuple(_core._index_copy(i, shape[a], axis=a, func=func) for a, i in enumerate(idx))
@@ -150,6 +168,7 @@ def _from_parts(fmt, parts, shape, dtype, copy, func):
         lines = indptr.shape[0] - 1
         positions = _core._index_max(indices, axis=1 if by_rows else 0, func=func) + 1
         shape = (lines, positions) if by_rows else (positions, lines)
+        _check_inferred(shape, func)
     if len(shape) == 1:
         lines, positions, word = 1, shape[0], "lines (1 for a 1-D array)"
     else:

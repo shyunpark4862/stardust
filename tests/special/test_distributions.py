@@ -199,6 +199,44 @@ def test_ndtri_exp_huge_negative(y):
     assert sd.stats.Normal(mu=1.0, sigma=2.0).ilogcdf(y) == pytest.approx(1.0 + 2.0 * v, rel=1e-15)
 
 
+def test_fdtri_root_past_the_doubles_with_a_vanishing_dfd():
+    # dfd / dfn underflowed to 0 while (1 - v) / v was inf (v = 0): inf x 0 = NaN. The root is
+    # past the doubles (fdtr at the largest double is below p), so inf.
+    rows = [(2, 5e-324, 0.1), (3, 5e-324, 0.5), (10, 1e-323, 0.1), (1e5, 1e-323, 1e-300), (1e20, 1e-310, 0.1)]
+    for dfn, dfd, p in rows:
+        assert S.fdtri(dfn, dfd, p) == math.inf, (dfn, dfd, p)
+        assert S.fdtr(dfn, dfd, 1.7976931348623157e308) < p
+    assert S.fdtri(1, 5e-324, 0.1) == math.inf
+    # a normal quotient keeps the plain product's bits
+    assert S.fdtri(3.0, 7.0, 0.3) == 0.49029710674478816
+
+
+def test_ndtri_exp_near_minus_log_2():
+    # p - 1/2 from expm1(y + log 2) with log 2 in two parts: exp(y) - 1/2 cancelled every bit
+    # of q at y = -log 2 (gave 0). Values: sqrt(2) erfinv(2 exp(y) - 1) in Arb.
+    rows = [
+        (-0.6931471805599453, 2.9064941568900345e-17),
+        (-0.6931471805599454, -1.10080879664688e-16),
+        (-0.6931471805599452, 1.682107628024887e-16),
+        (-0.69314718, 7.017874053400538e-10),
+    ]
+    for y, want in rows:
+        assert abs(S.ndtri_exp(y) / want - 1) < 4e-16, y
+    ys = sd.asarray(np.linspace(-2.7, -0.05, 20001))
+    before = sd.get_num_threads()
+    try:
+        runs = []
+        for t in (1, 3, 10):
+            sd.set_num_threads(t)
+            runs.append(np.asarray(S.ndtri_exp(ys)).view(np.uint64))
+    finally:
+        sd.set_num_threads(before)
+    for r in runs[1:]:
+        np.testing.assert_array_equal(r, runs[0])
+    lanes = np.asarray(S.ndtri_exp(ys))
+    assert [S.ndtri_exp(float(y)) for y in np.asarray(ys)[::997]] == list(lanes[::997])
+
+
 # ---- argument names (user decision 2026-11-20): chdtr(df, x), chdtri(df, q), ncfdtr(..., x) ----
 
 

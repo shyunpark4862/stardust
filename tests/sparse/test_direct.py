@@ -544,3 +544,26 @@ def test_spbandwidth_is_the_dense_bandwidth():
             r = S.spbandwidth(X)
             assert type(r) is type(sd.linalg.bandwidth(sd.asarray(D))) and r == sd.linalg.bandwidth(sd.asarray(D))
             assert (r.lower, r.upper) == tuple(r)
+
+
+@pytest.mark.parametrize("fmt", ["csr", "csc", "coo", "dok"])
+def test_triangular_solve_checks_only_what_it_reads(fmt):
+    """spsolve_triangular reads the chosen triangle and the diagonal (not with unit_diagonal):
+    only those must be finite, as sd.linalg.solve_triangular (SP125, R223)."""
+    nan, inf = float("nan"), float("inf")
+    A = sd.asarray([[1.0, nan], [1.0, 1.0]])
+    b = sd.ones(2)
+    got = S.spsolve_triangular(S.csr_array(A).asformat(fmt), b, upper=False)
+    assert bits_equal(np.asarray(got), np.asarray(sd.linalg.solve_triangular(A, b, upper=False)))
+    assert np.asarray(got).tolist() == [1.0, 0.0]
+    U = sd.asarray([[2.0, 1.0], [inf, 4.0]])
+    assert np.asarray(S.spsolve_triangular(S.csr_array(U).asformat(fmt), b, upper=True)).tolist() == [0.375, 0.25]
+    D = sd.asarray([[nan, 0.0], [1.0, nan]])  # the diagonal is not read with unit_diagonal
+    got = S.spsolve_triangular(S.csr_array(D).asformat(fmt), b, upper=False, unit_diagonal=True)
+    assert np.asarray(got).tolist() == [1.0, 0.0]
+    for M_, kw in ((sd.asarray([[nan, 0.0], [1.0, 1.0]]), {}), (sd.asarray([[1.0, 0.0], [inf, 1.0]]), {}),
+                   (sd.asarray([[1.0, 0.0], [nan, 1.0]]), {"unit_diagonal": True})):  # fmt: skip
+        with pytest.raises(ValueError, match=r"^spsolve_triangular\(\): 'A' contains NaN or infinity$"):
+            S.spsolve_triangular(S.csr_array(M_).asformat(fmt), b, upper=False, **kw)
+    with pytest.raises(ValueError, match=r"^spsolve\(\): 'A' contains NaN or infinity$"):
+        S.spsolve(S.csr_array(A).asformat(fmt), b)  # the LU reads every entry

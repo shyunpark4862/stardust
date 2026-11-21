@@ -10,7 +10,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate)을 다룬다(sparse는 공개 함수가 생기는 마일스톤마다 스윕이 생긴다: 지금은 `spmv`, `sums`, `solve`, `iterative`; differentiate는 `derivative`, `jacobian`, `hessian`; integrate는 아직 스윕이 없다). |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate)을 다룬다(sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -165,7 +165,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 |---|---|
 | `bench/accuracy/sources.py` | 영역마다의 스윕과 스윕 하나를 재는 법 |
 | `bench/accuracy/common.py` | ULP 거리 `ulp_distance`, 영역 하나의 요약, 일반 스윕 |
-| `bench/accuracy/array.py`, `linalg.py`, `multivariate.py`, `optimize.py` | 그 영역(stats는 다변량 묶음)의 스윕과 지표 |
+| `bench/accuracy/array.py`, `linalg.py`, `multivariate.py`, `optimize.py`, `htest.py`, `sparse.py`, `integrate.py`, `differentiate.py` | 그 영역(stats는 다변량 묶음)의 스윕과 지표 |
 | `bench/accuracy/parallel.py` | 작업 프로세스로 스윕을 나눠 재기 |
 | `bench/accuracy/compare.py`, `regcompare.py`, `linalg_ops.py` | 비교 대상(scipy·numpy·statsmodels·scikit-learn·R·Boost.Math)의 표 |
 | `bench/accuracy/rsession.py` | 작업 프로세스마다 R 프로세스 하나 |
@@ -182,7 +182,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 .venv/bin/python -m bench.accuracy table                             # 기준선에서 표만 다시
 ```
 
-- 영역은 참값이 있는 일곱이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest. 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
+- 영역은 참값이 있는 열이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate. 기준선 파일도 영역마다 하나씩 열 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
 - `--jobs`개(기본 8, 최대 10) 작업 프로세스가 스윕을 나눠 잰다. 워커는 sd 1스레드이고 몇 스윕마다 새로 띄운다. 결과는 프로세스 수와 무관하다.
 - `run --promote`는 재고 바로 기준선에 넣는다. `-q`는 터미널에 아무것도 쓰지 않는다(로그만).
 - 콘솔은 머리 블록, 스윕마다 sd와 비교 대상의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes다. 같은 줄이 시각과 함께 `build/logs/accuracy/<시각>.log`에 남는다.
@@ -198,9 +198,9 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 | stats(다변량·행렬 분포, 다변량 cdf) | `tests/stats/ref/mv` | `tools/stats_ref.py` (`tools/mvref.py`, `tools/mvcdfref.py`를 부른다) |
 | regression | `tests/regression/ref/<종류>.json` | `tools/regression_ref.py` (식은 `tools/regref.py`) |
 | htest | `tests/htest/ref/<묶음>.json`(다른 라이브러리의 기록은 `tests/htest/data`) | `tools/htest_ref.py` (기록은 `tools/gen_htest_scipy.py`, `tools/gen_htest_r.py`) |
-| sparse | `tests/sparse/ref/<묶음>.npz`(다른 라이브러리의 기록은 `tests/sparse/data`; 공개 함수가 생기면 스윕이 된다: SP2의 `spmv`, `sums`, SP4의 `solve`, SP5의 `iterative`, SP6의 `eig`) | `tools/sparse_ref.py` (기록은 `tools/gen_sparse_scipy.py`, `tools/gen_sparse_r.py`) |
-| integrate | `tests/integrate/ref/<묶음>.json`(다른 라이브러리의 기록은 `tests/integrate/data`: scipy와 QUADPACK Fortran 원본; 공개 함수가 생기면 스윕이 된다) | `tools/integrate_ref.py` (기록은 `tools/gen_integrate_scipy.py`, `tools/gen_integrate_fortran.py`) |
-| differentiate | `tests/differentiate/ref`(`derivatives.json`, `mgh.npz`; 기록은 `tests/differentiate/data`; 스윕 `derivative`·`jacobian`·`hessian`) | `tools/differentiate_ref.py` (기록은 `tools/gen_differentiate_scipy.py`) |
+| sparse | `tests/sparse/ref/<묶음>.npz`(다른 라이브러리의 기록은 `tests/sparse/data`; 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱이고 기준선은 `bench/accuracy/results/sparse.json`, 표는 `bench/sparse/accuracy.md`) | `tools/sparse_ref.py` (기록은 `tools/gen_sparse_scipy.py`, `tools/gen_sparse_r.py`) |
+| integrate | `tests/integrate/ref/<묶음>.json`(다른 라이브러리의 기록은 `tests/integrate/data`: scipy와 QUADPACK Fortran 원본; 스윕은 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열) | `tools/integrate_ref.py` (기록은 `tools/gen_integrate_scipy.py`, `tools/gen_integrate_fortran.py`) |
+| differentiate | `tests/differentiate/ref`(`derivatives.json`, `mgh.npz`; 기록은 `tests/differentiate/data`; 스윕 `derivative`·`jacobian`·`hessian`·`gradient`) | `tools/differentiate_ref.py` (기록은 `tools/gen_differentiate_scipy.py`) |
 | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
 | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |
 | optimize | `tests/optimize/ref`(`scalar_roots.json`, `scalar_minima.json`, `derivatives.npz`), NIST StRD 인증값 | `tools/optimize_ref.py` |
@@ -208,13 +208,13 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 - 폴더의 뜻: `ref/`는 Arb나 정확한 산술로 만든 참값, `data/`는 바깥에서 가져온 입력과 다른 라이브러리의 기록(R의 회귀 결과 `tests/regression/data/*_r.json`, scipy·Fortran의 optimize 실행 등)이다. 참값 도구는 Arb(python-flint)나 정확한 산술만 쓴다(mpmath는 쓰지 않는다).
 - npz 참값 파일은 모두 한 형식이다(`tests/reffile.py`): 점의 입력, 묶음 번호와 묶음의 입력, 메서드마다의 참값(hi + lo)과 그 점, 보장 영역·배율 같은 필드, 출처(`arb`, `target_bits`, `tool`). JSON 참값도 `_provenance`에 같은 출처를 적는다.
 - 생성기는 참값이 정해진 정밀도(8192비트)와 반복 상한 안에서 정해지지 않는 점을 버리고, 요청한 점 수(`n_requested`)와 버린 점(`dropped`)을 파일에 적는다. 형식을 바꿔 옮긴 파일은 `n_requested = -1`이다(기록 없음).
-- 참값 폴더의 크기 한도는 영역마다 60MiB이고, 영역의 `tests/<영역>/ref`와 `ref_*` 폴더를 합한 크기다. `tools/check.py`가 잰다. 2026-11-20: stats 35.5, array 18.8, special 11.3, linalg 4.3, regression 0.8, optimize 0.07MiB.
+- 참값 폴더의 크기 한도는 영역마다 60MiB이고, 영역의 `tests/<영역>/ref`와 `ref_*` 폴더를 합한 크기다. `tools/check.py`가 잰다. 2026-11-22: stats 35.5, array 20.0, special 11.3, sparse 6.1, linalg 4.3, regression 1.0, integrate 0.5, htest 0.25, optimize 0.08, differentiate 0.06MiB.
 - 생성기는 위치 인자로 만들 함수·분포·묶음을 고르고(`--help`), `--jobs`(기본 8, 최대 10; regression 기본 6; optimize는 한 프로세스)를 받는다.
 
 **지표와 계약.**
 
 - 지표는 (스윕, 영역)마다: 최대·99.9% ULP, 배율이 1보다 큰 점이 있는 함수의 ULP/배율(역함수의 max(1, κ), Bessel·Airy·복소 오차함수·wofz의 영점 근처 포락선 배율), 0을 지나는 값의 mixed(|오차|/max(1, |값|), 2⁻⁵² 단위), 최대 상대오차, 계약 대비(1 이하가 계약 안). 영역에 따라 상대오차/(u·조건수), 잔차/(n·eps·척도), 기울기·‖F‖·KKT 잔차, 수렴하지 못한 수를 더한다(표의 범례). 회귀는 참값이 유한한데 sd가 NaN·inf를 낸 점의 수도 센다.
-- **ULP**는 어디서나 `ulp_distance`(`bench/accuracy/common.py`)다: 두 값 사이에 있는 double의 수(0이면 같은 값, 1이면 이웃; ±0은 0, NaN끼리 0). 참값과 견줄 때는 참값을 double로 반올림한 값(hi)과의 거리다.
+- **ULP**는 어디서나 `ulp_distance`(`bench/accuracy/common.py`)다: 두 값 사이에 있는 double의 수(0이면 같은 값, 1이면 이웃; ±0은 0, NaN끼리 0). 참값과 견줄 때는 참값을 double로 반올림한 값(hi)과의 거리다. 복소 값은 두 성분에 한 척도를 쓴다: max(|Δre|, |Δim|) / ulp(max(|re 참값|, |im 참값|)), 곧 참값의 큰 성분의 ulp를 단위로 잰 큰 성분 오차다. 그래서 0 근처에서 부호가 바뀌는 성분이 0 주변의 아주 작은 double을 모두 세지 않는다. 성분이 유한하지 않으면 두 성분의 거리 가운데 큰 쪽이다.
 - 계약
   - special·stats(다변량 포함): `tests/<영역>/refdata.py`의 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, 역함수는 max(1, κ)를 곱한 한계, 0을 지나는 영역은 mixed). 다변량 t cdf는 d = 2에서 상대 5e-15, d = 3에서 1e-14다.
   - array: 원소별 함수마다 Arb 참값에서의 ULP 한계(`tests/array/refdata.py`의 `ULP_BOUND`, 3–5; 복소 abs 3). numpy와의 거리는 기록만 한다. 리덕션은 계약 없이 기록만 한다.
@@ -227,6 +227,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 
 - 같은 참값, 같은 점에서 같은 척도로 잰 그 라이브러리의 오차를 표의 라이브러리별 열에 둔다. 같은 양을 계산하는 공개 함수만 재고(없으면 —), R·Boost가 없으면 not run이다. 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점은 빼고 센다(제외 열).
 - Boost 헤더는 저장소 밖 `build/comparators/boost-math`(또는 `SD_BOOST_MATH`)에 `git clone --depth 1 https://github.com/boostorg/math.git`으로 둔다. 첫 실행에 clang++로 빌드하고, 소스·옵션·체크아웃의 커밋이 바뀌면 다시 빌드한다. 컴파일 옵션은 속도 측정과 같고 부동소수 축약은 끈다. 표에는 비교 대상의 Boost 판과 sd.special이 담은 Boost 판(`third_party/boost_math/README.md`)을 둘 다 적는다.
+- 비교 열의 Boost.Math(체크아웃 75cb4c4)에는 알려진 결함이 있다: airy는 x ≈ −7×10¹⁰에서 부호가 틀리고, polygamma(n = 170)·jv·yv는 넘칠 때 부호가 반대인 inf다. 비교 열은 기록만이고 계약은 Arb 참값으로 잰다.
 - optimize는 R의 uniroot·optimize·optim·nls.lm이 reticulate로 같은 Python 시험 함수를 부르고, 반복 상한·허용오차는 R에 같은 설정이 있으면 Python 호출의 기본값에 맞춘다. R의 `qr(LAPACK = TRUE)`는 열을 바꾸는 QR이라 linalg의 `qr_pivoted`와 견준다. R 회귀에서 R이 겹친다고 본 열의 계수는 제외로 세고, glm이 기본 설정으로 시작값을 찾지 못하면 표에 시작값 필요로 적는다.
 - 비교 대상의 호출마다 시간·메모리(2GB) 한도가 있고, 넘으면 멈춤이다. 시간 한도는 비교 대상마다 다르고 표의 범례에 적힌다.
 

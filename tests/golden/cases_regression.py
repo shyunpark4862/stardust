@@ -48,6 +48,9 @@ EXCLUDED = {
     "ResetTestResult": "a result class: the cases of the function that returns it store it whole",
     "StepwiseResult": "a result class: the cases of the function that returns it store it whole",
     "BestSubsetResult": "a result class: the cases of the function that returns it store it whole",
+    "SelectionStep": "an element type of StepwiseResult.steps: the stepwise cases store it whole",
+    "SkippedFit": "an element type of StepwiseResult.skipped: the stepwise cases store it whole",
+    "SkippedSubset": "an element type of BestSubsetResult.skipped: the best_subset cases store it whole",
 }
 
 NAN, INF = math.nan, math.inf

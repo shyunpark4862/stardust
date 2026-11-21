@@ -13,6 +13,8 @@ variances keep their digits; the p-values are sd.stats' distributions (StudentT,
 called through their own methods. Degenerate lanes give NaN without warnings (H11).
 """
 
+import math
+
 from .. import _calls
 from .. import _core as _sd
 from ..stats._descriptive import _as_array, _scalar_value
@@ -222,7 +224,8 @@ def ttest_ind(
 def ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2, /, *, equal_var=True, alternative="two-sided"):
     """The two-sample t test from the samples' means, standard deviations (correction 1) and
     sizes: real numbers or arrays that broadcast together. statistic, pvalue, df and
-    conf_int(alpha=) as ttest_ind's."""
+    conf_int(alpha=) as ttest_ind's. A row with a negative standard deviation, or a mean or
+    standard deviation that is not finite, is NaN (H155); a non-integer nobs is taken (scipy's)."""
     name = "ttest_ind_from_stats"
     C.flag(equal_var, name, "equal_var")
     alt = C.alternative(alternative, name)
@@ -245,6 +248,13 @@ def ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2, /, *, equal_var
     for d in batch:
         lanes *= d
     flat = [_sd.reshape(x + 0.0, (lanes,)) for x in arrays]
+    # a negative standard deviation or a mean or standard deviation that is not finite: that row
+    # is NaN (H155; the summaries are data, as a sample's values: H11)
+    m1, s1, _, m2, s2, _ = flat
+    bad = (s1 < 0.0) | (s2 < 0.0) | ~(_sd.isfinite(m1) & _sd.isfinite(s1) & _sd.isfinite(m2) & _sd.isfinite(s2))
+    if bool(_sd.any(bad)):
+        flat[0] = _sd.where(bad, math.nan, m1)
+        flat[1] = _sd.where(bad, math.nan, s1)
 
     def out(v):
         return float(v[0]) if scalar else _sd.reshape(v, batch)

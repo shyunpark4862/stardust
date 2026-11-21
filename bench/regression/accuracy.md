@@ -2,7 +2,7 @@
 
 `.venv/bin/python -m bench.accuracy promote`가 bench/accuracy/results/regression.json에서 만든다. 손으로 고치지 않는다.
 
-참값은 tests/regression/ref의 Arb 참값이다(tools/regression_ref.py). 문제마다 결과의 필드 하나가 한 줄이다(영역 열). 문서에 적힌 수치 계약은 선형 모형(ols·wls)의 계수 벡터다(docs/design/regression.md §3.1): 설계 행렬의 κ₂ ≤ 1e11이면 노름 상대오차 ≤ 1e-14이고, params 줄의 계약 대비가 그것이다(κ₂는 상수 열과 가중치의 제곱근을 곱한 설계 행렬의 특잇값으로 잰다). 다른 필드는 수치 계약이 없어 계약 대비가 없고, 기준선보다 나빠지면 compare가 짚는다.
+참값은 tests/regression/ref의 Arb 참값이다(tools/regression_ref.py). 문제마다 결과의 필드 하나가 한 줄이다(영역 열). 문서에 적힌 수치 계약은 선형 모형(ols·wls)의 계수 벡터다(docs/design/regression.md §3.1): 설계 행렬의 κ₂ ≤ 1e11이면 노름 상대오차 ≤ 1e-14이고, params 줄의 계약 대비가 그것이다(κ₂는 상수 열과 가중치의 제곱근을 곱한 설계 행렬의 특잇값으로 잰다). 다른 필드는 수치 계약이 없어 계약 대비가 없고, 기준선보다 나빠지면 compare가 짚는다. 비교 패키지는 statsmodels, scikit-learn(ElasticNet), R(lm·glm, MASS의 rlm, robustbase의 lmrob, glmnet)이다. 적합한 모형의 검정(model_tests)은 statsmodels의 같은 이름 함수와 R의 car(linearHypothesis·Anova·vif)·lmtest(lrtest·gqtest·resettest, White 식의 bptest), anova·drop1, 영향 측도(hatvalues·cooks.distance·dffits·dfbetas)이고, 변수 선택(selection)은 참값의 stepwise 경로와 크기별 부분집합을 statsmodels로 다시 적합한 AIC·BIC와 leaps의 regsubsets가 낸 Cp·수정 R²다(R step의 AIC는 상수가 달라 넣지 않는다). 가중치가 0인 관측은 선택 비교에서 뺀다.
 
 - ULP: sd의 값과 참값을 double로 반올림한 값 사이에 있는 double의 수(ulp_distance; 0이면 올바르게 반올림한 값, 1이면 그 이웃). 99.9%는 그 분위수다.
 - 상대오차: |sd − 참값|/|참값|.
@@ -11,7 +11,7 @@
 - 계약 대비: 그 영역의 계약 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, mixed는 |오차|/max(1, |값|))로 잰 가장 큰 오차를 한계로 나눈 값. 1 이하가 계약 안이다.
 - 비교 패키지(statsmodels 0.15.0, R 4.6.2, scikit-learn 1.9.1): 같은 참값, 같은 점에서 같은 척도로 잰 그 라이브러리의 오차다. 같은 양을 계산하는 공개 함수가 없으면 —, R이 없는 기계에서는 not run, 함수가 입력 전체를 거부하면 에러, 시간(120초)·메모리(2GB) 한도를 넘으면 멈춤, R의 glm이 기본 설정으로 시작값을 찾지 못하면 시작값 필요다. 제외: 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점의 수(정의가 다르거나 실패한 점; 다른 열에서 빠진다). compare는 이 열들의 변화를 알리기만 하고 종료 코드에 넣지 않는다.
 
-측정: 20261120-222439-cc758f7 (2026-11-20T22:24:39, cc758f7, 참값 0fbe4d0eeee7), 20261121-083442-c080a9e+ (2026-11-21T08:34:42, c080a9e dirty, 참값 d18611e3becf).
+측정: 20261120-222439-cc758f7 (2026-11-20T22:24:39, cc758f7, 참값 0fbe4d0eeee7), 20261122-071515-f0a7f92+ (2026-11-22T07:15:15, f0a7f92 dirty, 참값 d18611e3becf).
 
 | 함수 | 영역 | 점 | 최대 ULP | 99.9% ULP | 최대 상대오차 | 노름 상대오차 | NaN·inf 점 | 계약 대비 | statsmodels 최대 ULP | statsmodels 99.9% ULP | statsmodels 최대 상대오차 | statsmodels 노름 상대오차 | statsmodels 제외 | R 최대 ULP | R 99.9% ULP | R 최대 상대오차 | R 노름 상대오차 | R 제외 | scikit-learn 최대 ULP | scikit-learn 99.9% ULP | scikit-learn 최대 상대오차 | scikit-learn 노름 상대오차 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -637,7 +637,7 @@
 | `linear/nist_Wampler2` | bp_lm_nonstudentized | 1 | inf | inf | inf |  | 1 |  | 1.17e+16 | 1.17e+16 | 5.22 |  | 0 | — | — | — | — | — | — | — | — | — |
 | `linear/nist_Wampler2` | bp_lm_nonstudentized_pvalue | 1 | inf | inf | inf |  | 1 |  | 1.30e+17 | 1.30e+17 | 1 |  | 0 | — | — | — | — | — | — | — | — | — |
 | `linear/nist_Wampler2` | fvalue | 1 | inf | inf | inf |  | 1 |  | 1.58e+17 | 1.58e+17 | 1 |  | 0 | — | — | — | — | — | — | — | — | — |
-| `linear/nist_Wampler2` | f_pvalue | 1 | 9.29e+17 | 9.29e+17 | 1 |  | 0 |  | 1.19e+18 | 1.19e+18 | 1.84e+79 |  | 0 | — | — | — | — | — | — | — | — | — |
+| `linear/nist_Wampler2` | f_pvalue | 1 | inf | inf | inf |  | 1 |  | 1.19e+18 | 1.19e+18 | 1.84e+79 |  | 0 | — | — | — | — | — | — | — | — | — |
 | `linear/nist_Wampler3` | params | 6 | 0 | 0 | 3.46e-64 | 1.42e-64 | 0 | 1.4e-50 | 1.41e+6 | 1.41e+6 | 3.13e-10 | 1.44e-10 | 0 | 2.00e+6 | 2.00e+6 | 2.22e-10 | 1.32e-10 | 0 | — | — | — | — |
 | `linear/nist_Wampler3` | bse | 6 | 165 | 165 | 3.49e-14 | 2.42e-14 | 0 |  | 4.91e+5 | 4.91e+5 | 1.04e-10 | 7.42e-11 | 0 | 288 | 288 | 4.04e-14 | 2.87e-14 | 0 | — | — | — | — |
 | `linear/nist_Wampler3` | tvalues | 6 | 299 | 299 | 3.49e-14 | 6.05e-15 | 0 |  | 1.79e+6 | 1.79e+6 | 2.09e-10 | 5.88e-13 | 0 | 1.73e+6 | 1.73e+6 | 2.22e-10 | 3.98e-14 | 0 | — | — | — | — |
@@ -1321,7 +1321,7 @@
 | `selection/cond` | step_backward_cv | 3 | 1.11e+04 | 1.11e+04 | 1.30e-12 | 1.07e-12 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/cond` | best_aic | 6 | 1 | 1 | 1.31e-16 | 7.27e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/cond` | best_bic | 6 | 1 | 1 | 1.37e-16 | 7.74e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `selection/cond` | best_cp | 6 | 13 | 13 | 2.24e-15 | 1.14e-15 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/cond` | best_cp | 6 | 13 | 13 | 8.01e-16 | 1.14e-15 | 0 | 0.008 | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/cond` | best_adjr2 | 6 | 5 | 5 | 8.81e-16 | 4.17e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/cond` | best_cv | 6 | 1.36e+04 | 1.36e+04 | 2.99e-12 | 1.14e-12 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/glm_gamma` | step_both_aic | 3 | 0 | 0 | 5.49e-17 | 3.39e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
@@ -1359,7 +1359,7 @@
 | `selection/noint` | step_backward_cv | 3 | 1 | 1 | 2.35e-16 | 1.91e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/noint` | best_aic | 5 | 1 | 1 | 1.53e-16 | 9.67e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/noint` | best_bic | 5 | 1 | 1 | 2.04e-16 | 1.29e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `selection/noint` | best_cp | 5 | 39 | 39 | 4.67e-15 | 1.27e-15 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/noint` | best_cp | 5 | 39 | 39 | 1.45e-16 | 1.27e-15 | 0 | 0.0015 | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/noint` | best_adjr2 | 5 | 2 | 2 | 3.00e-16 | 2.39e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/noint` | best_cv | 5 | 2 | 2 | 3.11e-16 | 2.26e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/ols` | step_both_aic | 5 | 1 | 1 | 1.80e-16 | 1.06e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
@@ -1373,7 +1373,7 @@
 | `selection/ols` | step_backward_cv | 5 | 1 | 1 | 9.89e-17 | 5.59e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/ols` | best_aic | 7 | 1 | 1 | 1.80e-16 | 1.13e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/ols` | best_bic | 7 | 1 | 1 | 2.45e-16 | 1.62e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `selection/ols` | best_cp | 7 | 21 | 21 | 4.49e-15 | 6.54e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/ols` | best_cp | 7 | 21 | 21 | 3.12e-16 | 6.54e-16 | 0 | 0.0031 | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/ols` | best_adjr2 | 7 | 3 | 3 | 4.18e-16 | 1.88e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/ols` | best_cv | 7 | 1 | 1 | 9.24e-17 | 4.29e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/wls_zero` | step_both_aic | 5 | 0 | 0 | 9.79e-17 | 4.93e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
@@ -1387,6 +1387,6 @@
 | `selection/wls_zero` | step_backward_cv | 5 | 2 | 2 | 2.40e-16 | 1.69e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/wls_zero` | best_aic | 7 | 1 | 1 | 1.29e-16 | 7.65e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/wls_zero` | best_bic | 7 | 1 | 1 | 1.15e-16 | 7.89e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `selection/wls_zero` | best_cp | 7 | 28 | 28 | 3.67e-15 | 6.07e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `selection/wls_zero` | best_cp | 7 | 28 | 28 | 3.13e-16 | 6.07e-16 | 0 | 0.0031 | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/wls_zero` | best_adjr2 | 7 | 1 | 1 | 1.69e-16 | 9.97e-17 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `selection/wls_zero` | best_cv | 7 | 2 | 2 | 3.21e-16 | 1.82e-16 | 0 |  | — | — | — | — | — | — | — | — | — | — | — | — | — | — |

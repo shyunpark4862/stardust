@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <mutex>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -54,6 +55,11 @@ enum Requested { kAuto = 0, kExactReq = 1, kAsymptoticReq = 2 };
 constexpr double kUsedExact = 0.0, kUsedAsymptotic = 1.0;
 constexpr double kStateCap = 1e7;  // the exact distributions' entries held at once (H13, with the work cap)
 constexpr double kPlanStates = 4e6;  // the Cramér-von Mises plan's states (blocks x counts) at most
+constexpr double kTryBytes = 256.0 * 1024 * 1024;  // a try past the plan's bound: its storage at most (H152)
+std::mutex& try_mutex() {
+    static std::mutex m;
+    return m;
+}
 
 DD dd_of(i128 v) { return exact::to_dd(v); }
 double ratio(DD a, DD b) { return to_double(a / b); }
@@ -241,8 +247,14 @@ CvmLane cvm2_lane(std::vector<double>& x, std::vector<double>& y, int req, doubl
             return o;
         }
         if (req == kExactReq) {
-            // the plan's bound is far above the work usually done: try within the cap
-            const double p = plan.ok ? cvm2::tail(plan, cap, kStateCap) : -1.0;
+            // the plan's bound is far above the work usually done: try within the cap and
+            // kTryBytes of storage, one lane at a time (H152: the lanes of a batch run on the pool,
+            // and each try may hold its whole storage bound)
+            double p = -1.0;
+            if (plan.ok) {
+                const std::lock_guard<std::mutex> one(try_mutex());
+                p = cvm2::tail(plan, cap, kTryBytes);
+            }
             if (p >= 0.0) {
                 o.p = p;
                 return o;
@@ -602,6 +614,21 @@ EsLane epps_lane(std::vector<double>& x, std::vector<double>& y, const std::vect
         if (!std::isfinite(v)) return o;
     for (double v : y)
         if (!std::isfinite(v)) return o;
+    {  // a lane past H1's range in its unit of 2^e (W depends on x / IQR only: H160)
+        double big = 0.0;
+        for (double v : x) big = std::max(big, std::fabs(v));
+        for (double v : y) big = std::max(big, std::fabs(v));
+        const int e = unit_exponent(big);
+        if (e) {
+            const double f = std::ldexp(1.0, -std::clamp(e, -1000, 1000)),
+                         f2 = std::ldexp(1.0, -e + std::clamp(e, -1000, 1000));
+            for (double& v : x) v = v * f * f2;
+            for (double& v : y) v = v * f * f2;
+        }
+    }
+    // each sample constant (H20's rule): the g vectors are too, their covariance 0 but for the
+    // rounding of the means (H153; on the values in their unit)
+    if (moments_of(x.data(), nullptr, nx).constant() && moments_of(y.data(), nullptr, ny).constant()) return o;
     std::vector<double> z(x);
     z.insert(z.end(), y.begin(), y.end());
     std::sort(z.begin(), z.end());
@@ -628,7 +655,8 @@ EsLane epps_lane(std::vector<double>& x, std::vector<double>& y, const std::vect
     jacobi(Sd, m2, ev, V);
     double smax = 0.0;
     for (double e : ev) smax = std::max(smax, std::fabs(e));
-    if (!(smax > 0.0) || !std::isfinite(smax)) return o;
+    // the g vectors are bounded by 1: a covariance of the rounding's size (at most N eps^2) is 0
+    if (!(smax > N * 0x1p-104) || !std::isfinite(smax)) return o;
     // numpy's pinv keeps the singular values above 1e-15 of the largest; matrix_rank of the pinv
     // counts its singular values (the kept 1/s) above max(1/s) m eps
     const double cut = 1e-15 * smax;

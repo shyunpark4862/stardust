@@ -47,6 +47,22 @@
 "obj": "stardust.optimize._result.OptimizeResult"
 }
 },
+"approx_fprime cos x0=3.41e-08": {
+"r": {
+"nd": "float64",
+"shape": [
+1,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"-0x1.24eaaaaaaaaabp-25"
+]
+}
+},
 "approx_fprime epsilon array": {
 "r": {
 "nd": "float64",
@@ -107,6 +123,22 @@
 ],
 "v": [
 "0x1.00003254ebc00p+0"
+]
+}
+},
+"approx_fprime log(1+x) x0=1e-14": {
+"r": {
+"nd": "float64",
+"shape": [
+1,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.fffffffffffa5p-1"
 ]
 }
 },
@@ -30860,7 +30892,7 @@ true
 "err OptimizeResult positional": {
 "r": {
 "error": "builtins.TypeError",
-"msg": "OptimizeResult.__init__() takes 1 positional argument but 2 were given"
+"msg": "OptimizeResult(): takes 0 positional arguments but 1 was given"
 }
 },
 "err approx_fprime epsilon": {

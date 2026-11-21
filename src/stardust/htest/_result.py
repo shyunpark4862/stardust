@@ -135,6 +135,7 @@ class _TestResult:
     _TITLE = None  # summary()'s title: the test's name (scipy's, R's or statsmodels')
     _CI_LABEL = "interval"  # the stub of the interval's row in summary()
     _HIDDEN = ()  # fields summary() leaves out (a resampling test's null distribution)
+    _TABLES = ()  # array fields that are a table of each test (summary(): one test's shown, a batch's not)
 
     def __init_subclass__(cls, **kw):
         super().__init_subclass__(**kw)
@@ -198,4 +199,4 @@ def _summary(r, alpha):
         interval = (lo, hi, alpha, r._CI_LABEL)
     fields = [(k, r._values[k]) for k in r._FIELDS if k in r._values and k not in r._HIDDEN]
     title = info.get("title") or r._TITLE or type(r).__name__
-    return _S.test_box(title, fields, r._batch, info, interval)
+    return _S.test_box(title, fields, r._batch, info, interval, r._TABLES)

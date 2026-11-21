@@ -96,7 +96,7 @@
 sd.sparse에는 밀집의 부분집합이거나 희소에만 필요한 것만 둔다(API.md §7). 2026-11-22에 sd.sparse의 기능 가운데 밀집에 없던 다섯을 선형대수에 더했다(추천안, 사용자 위임 2026-11-22). 공개 규칙은 `docs/api/linalg.md` §2, §4, §6이다. 모두 LAPACK을 쓰지 않는 원소 루프라 §10.8에 함께 둔다(`ops/basic.cpp`, `lu_solve`만 `ops/factor.cpp`).
 - **`kronsum(x1, x2, /)`**(`sd.sparse.kronsum`의 짝): `kron` 옆의 이름이다(scipy.linalg에는 없고 scipy.sparse의 이름). 행렬 배치이고 계산 dtype은 §2.1이다(`kron`과 같다). 원소는 `x1`의 값, `x2`의 값, 주대각의 합 `x1[p, p] + x2[i, i]` 하나라 덧셈 한 번이고, 참값은 그 덧셈 자체다(따로 참값 파일이 필요 없다). 단위 행렬과 곱하지 않아 inf × 0의 NaN이 없다. 희소 쪽은 단위 행렬의 1과 곱하므로 complex의 inf와 허수부 -0.0에서만 다를 수 있다(희소에 넘긴 고칠 거리).
 - **`block_diag(arrays, /)`**(`sd.sparse.block_diag`의 짝): scipy.linalg의 이름이되 가변 인자가 아니라 목록 하나다(`[scipy와 다름]`). 같은 일의 `sd.sparse.block_diag(mats)`, 배열을 잇는 `concat`·`stack`·`block`이 모두 목록을 받는다(영역 사이의 일관성, DESIGN.md §1.4). 배치 축은 모든 블록 사이에서 브로드캐스트한다(scipy 1.18과 같다). `Batch`는 피연산자 수에 한계가 있어, 브로드캐스트 shape을 직접 구하고 블록마다 배치 축의 stride를 따로 들고 간다. `diagonal`처럼 옮기기만 하므로 dtype은 입력들의 승격이다(bool은 bool).
-- **`bandwidth(x, /)`**(`spbandwidth`, `is_sptriangular`의 짝): scipy.linalg의 이름과 뜻이다. 결과는 linalg의 규칙대로 namedtuple `BandwidthResult(lower, upper)`다(scipy는 tuple; 풀면 같다). 배치면 슬라이스마다 int64 배열이다(scipy 1.18과 같다). 띠를 넓힐 수 있는 원소만 읽는다: 메모리가 빠른 축을 따라, 아래쪽은 가장 먼 것부터, 위쪽도 가장 먼 것부터 보고 찾은 줄에서 멈춘다. 띠 행렬은 원소 대부분을 읽지 않는다. 삼각 판정은 `upper == 0`, `lower == 0`이다(`is_sptriangular`의 짝을 따로 두지 않는다).
+- **`bandwidth(x, /)`**(`spbandwidth`, `is_sptriangular`의 짝): scipy.linalg의 이름과 뜻이다. 결과는 linalg의 규칙대로 namedtuple `BandwidthResult(lower, upper)`다(scipy는 tuple; 풀면 같다). 배치면 슬라이스마다 int64 배열이다(scipy 1.18과 같다). 띠를 넓힐 수 있는 원소만 읽는다: 메모리가 빠른 축을 따라, 아래쪽은 가장 먼 것부터, 위쪽도 가장 먼 것부터 지금의 띠 바로 바깥까지 보고 0이 아닌 원소를 찾은 줄에서 멈춘다(`band_of`). 꽉 찬 행렬은 첫 줄에서 가장 넓은 띠가 정해져 곧 끝나고, 좁은 띠 행렬은 띠 바깥의 0을 모두 읽는다(바깥이 모두 0인지는 다 봐야 안다; 건너뛰는 것은 띠 안뿐이다). 삼각 판정은 `upper == 0`, `lower == 0`이다(`is_sptriangular`의 짝을 따로 두지 않는다).
 - **`kron`의 1차원 입력**(`sd.sparse.kron`이 받는 것): 1차원은 한 행 `(1, N)`이고 배치 축이 없다. 둘 다 1차원이면 결과도 1차원이다(np.kron과 같은 값과 비트). 전에는 2차원 이상만 받았다.
 - **`lu_solve`의 `trans=`**(`SparseLU.solve(trans=)`의 짝): `'N'`, `'T'`, `'H'`. A = Pᵀ L U이므로 Aᵀ x = b는 Uᵀ y = b, Lᵀ z = y를 `trtrs`로 풀고 x[perm] = z로 흩는다(`getrs`의 전치 풀이와 같은 순서). b를 순서대로 읽어 작업 버퍼에서 풀고 결과 자리에 흩는다. scipy의 정수 `trans=0, 1, 2`가 아니라 희소와 같은 문자다(`[scipy와 다름]`).
 - 짝이 이미 있는 것: `spsolve` → `solve`, `splu`·`factorized` → `lu`·`lu_solve`, `inv`, `spsolve_triangular` → `solve_triangular`, `norm` → `matrix_norm`·`vector_norm`, `expm`. `eigsh`·`eigs`·`svds`·`onenormest`·`expm_multiply`·`LinearOperator`와 반복법은 밀집 배열도 받는다(scipy와 같다).
@@ -710,7 +710,7 @@ sd.sparse에는 밀집의 부분집합이거나 희소에만 필요한 것만 �
 - **`vecdot`, `cross`의 축**: `axis`는 브로드캐스트된 shape 기준이다. 축약하는 축 자체는 브로드캐스트하지 않는다. 두 입력의 그 축 크기가 같아야 하며, 다르면 ValueError다 (Array API). `cross`는 길이 3만 받는다.
   - `cross`는 각 곱을 반올림한 뒤 빼는 numpy의 순서 그대로다.
 - **`kron`은 행렬 배치다**: `(..., M, N) ⊗ (..., P, Q) → (..., M·P, N·Q)`. 배치 축은 다른 행렬 함수처럼 브로드캐스트한다. 1차원 입력은 배치 축 없는 한 행이다(§1.5). 원소 곱은 x1이 왼쪽이다.
-- **`kronsum`, `block_diag`, `bandwidth`**는 §1.5다. `kronsum`·`block_diag`의 결과는 열마다 0으로 채운 뒤 값을 쓴다(F 순서). 비용은 `kCopy`(결과 원소 수), `bandwidth`는 `kStream`(행렬 원소 수; 띠 행렬은 실제로 훨씬 적게 읽는다).
+- **`kronsum`, `block_diag`, `bandwidth`**는 §1.5다. `kronsum`·`block_diag`의 결과는 열마다 0으로 채운 뒤 값을 쓴다(F 순서). 비용은 `kCopy`(결과 원소 수), `bandwidth`는 `kStream`(행렬 원소 수; 좁은 띠는 거의 모두 읽고, 넓은 띠일수록 덜 읽는다. 꽉 찬 행렬은 거의 읽지 않는다).
 - **`diagonal`**은 입력 dtype을 유지하는 복사본이다. 계산하지 않기 때문이다.
 - **`matrix_power`**: 이진 거듭제곱(최상위 비트부터)이다. `log2(e)`번 제곱과 `popcount(e) − 1`번 곱, 모두 `gemm`이다. n < 0은 `inv`와 같은 경로로 역행렬을 구한 뒤 거듭제곱한다(§2.3).
   - `|n|`은 `INT64_MIN`에서도 넘치지 않게 부호 없는 정수로 구한다.

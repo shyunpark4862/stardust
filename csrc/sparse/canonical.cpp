@@ -39,6 +39,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -58,6 +59,11 @@ const NDArray& vector_arg(nb::handle o, const char* func, DType dtype) {
 NDArray new_index(std::int64_t n, bool zeroed) {
     const std::int64_t shape[] = {n};
     return new_array(DType::Int64, shape, zeroed);
+}
+
+NDArray new_indptr(std::int64_t lines, bool zeroed) {
+    if (lines == std::numeric_limits<std::int64_t>::max()) throw nb::value_error("array is too big");
+    return new_index(lines + 1, zeroed);
 }
 
 namespace {
@@ -432,7 +438,7 @@ Compressed compress(
     int64_t n_major, const int64_t* major, const int64_t* minor, const NDArray& data, int64_t nnz, bool presorted
 ) {
     Compressed out;
-    out.indptr = new_index(n_major + 1);
+    out.indptr = new_indptr(n_major);
     out.indices = new_index(nnz);
     const int64_t shape[] = {nnz};
     out.data = new_array(data.dtype, shape);
@@ -598,7 +604,7 @@ Compressed transpose(
         return compress(n_minor, i64(indices), i64(rows), data, nnz, true);
     }
     Compressed out;
-    out.indptr = new_index(n_minor + 1);
+    out.indptr = new_indptr(n_minor);
     out.indices = new_index(nnz);
     const int64_t shape[] = {nnz};
     out.data = new_array(data.dtype, shape);
@@ -730,7 +736,7 @@ nb::tuple compressed_in(
     const int64_t nnz = ix_in.shape[0];
     if (ip_in.shape[0] != n_major + 1 || data.shape[0] != nnz)
         throw nb::value_error("_compressed_in(): lengths differ");
-    NDArray indptr = new_index(n_major + 1);
+    NDArray indptr = new_indptr(n_major);
     NDArray indices = new_index(nnz);
     const int64_t* ips = i64(ip_in);
     const int64_t* ixs = i64(ix_in);
@@ -807,7 +813,7 @@ void bind_canonical(nb::module_& m) {
             if (data.shape[0] != nnz) throw nb::value_error("_compress(): lengths differ");
             const int64_t* major = opt_major(major_h, "_compress", nnz);
             if (is_canonical(major, i64(minor), nnz)) {
-                NDArray indptr = new_index(n_major + 1);
+                NDArray indptr = new_indptr(n_major);
                 indptr_of_sorted(major, nnz, n_major, i64(indptr));
                 indptr.writeable = false;
                 return nb::make_tuple(

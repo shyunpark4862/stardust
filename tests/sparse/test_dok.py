@@ -171,3 +171,122 @@ def test_copy_transpose_resize_astype():
         A[1, 0]
     K = S.dok_array(np.array([[1.9, -0.4]])).astype(sd.int64)
     assert K[0, 0] == 1 and K.nnz == 2 and K[0, 1] == 0
+
+
+# ---- a shared map, the conversions' sort and the GIL ----
+
+
+def test_resizing_a_shared_map_copies_it():
+    """dok_array(D) shares D's map (element writes are seen by both); resizing one copies the map
+    first (SP121), so the other keeps its shape and keys and its conversions stay in bounds."""
+    D = S.dok_array((2, 2))
+    D[0, 0] = 1.0
+    D2 = S.dok_array(D)
+    D2[1, 1] = 5.0
+    assert D[1, 1] == 5.0  # shared until a resize
+    D2[1, 1] = 0.0
+    D.resize((1000, 1000))
+    D[999, 999] = 7.0
+    assert D2.shape == (2, 2) and D2.nnz == 1
+    with pytest.raises(IndexError, match="index 999 is out of bounds for axis 0 with size 2"):
+        D2[999, 999]
+    C = D2.tocsr()
+    assert npy(C.indices).tolist() == [0] and npy(C.indptr).tolist() == [0, 1, 1]
+    assert D2.sum() == 1.0 and D2.max() == 1.0
+    assert npy(sd.ones(2) @ C).tolist() == [1.0, 0.0]
+    assert npy(D2.sum(axis=0)).tolist() == [1.0, 0.0]
+    assert D.shape == (1000, 1000) and D.nnz == 2 and D[999, 999] == 7.0
+    D[0, 0] = 3.0
+    assert D2[0, 0] == 1.0  # no longer shared
+    D2.resize((1, 1))
+    assert D2.toarray().tolist() == [[1.0]] and D[0, 0] == 3.0
+    # 1-D
+    v = S.dok_array((3,))
+    v[2] = 4.0
+    w = S.dok_array(v)
+    v.resize((2,))
+    assert w.shape == (3,) and w[2] == 4.0 and npy(w.tocsr().indices).tolist() == [2] and v.nnz == 0
+
+
+def _random_dok(n, nnz, seed, shape=None):
+    g = np.random.default_rng(seed)
+    shape = shape or (n, n)
+    flat = g.choice(shape[0] * shape[1], nnz, replace=False)
+    r, c = flat // shape[1], flat % shape[1]
+    A = S.coo_array((sd.asarray(g.standard_normal(nnz)), (sd.asarray(r), sd.asarray(c))), shape=shape)
+    return A, A.todok()
+
+
+@pytest.mark.usefixtures("restore_threads")
+@pytest.mark.parametrize("nnz", [0, 7, 40_000, 300_000])
+def test_conversions_sort_by_counting_with_the_same_bits(nnz):
+    """DOK -> CSR and COO take COO -> CSR's counting sort (SPR-13): the same arrays as converting
+    the COO entries, for 1 and 10 threads (the pool's gather is cut by slot blocks)."""
+    A, D = _random_dok(3000, nnz, nnz)
+    want = A.tocsr()
+    for t in (1, 10):
+        sd.set_num_threads(t)
+        got = D.tocsr()
+        assert bits_equal(npy(got.indptr), npy(want.indptr)) and bits_equal(npy(got.indices), npy(want.indices))
+        assert bits_equal(npy(got.data), npy(want.data))
+        coo = D.tocoo()
+        assert coo.has_canonical_format
+        assert bits_equal(npy(coo.coords[0]), npy(want.tocoo().coords[0]))
+        assert bits_equal(npy(coo.coords[1]), npy(want.indices)) and bits_equal(npy(coo.data), npy(want.data))
+        assert bits_equal(npy(D.tocsc().toarray()), npy(want.toarray()))
+
+
+def test_conversions_of_a_huge_shape_sort_the_keys():
+    """Few entries in a huge shape: to_coo sorts the keys (no indptr of 2^62 rows), row-major."""
+    D = S.dok_array((2**62, 2**62))
+    D[2**61, 5] = 1.0
+    D[3, 2**60] = 2.0
+    D[3, 1] = 3.0
+    c = D.tocoo()
+    assert npy(c.coords[0]).tolist() == [3, 3, 2**61] and npy(c.coords[1]).tolist() == [1, 2**60, 5]
+    assert npy(c.data).tolist() == [3.0, 2.0, 1.0]
+    v = S.dok_array((10,))
+    v[7] = 2.0
+    v[3] = 1.0
+    assert npy(v.tocsr().indices).tolist() == [3, 7] and npy(v.tocoo().coords[0]).tolist() == [3, 7]
+
+
+@pytest.mark.serial
+@pytest.mark.usefixtures("restore_threads")
+def test_building_and_reading_a_map_release_the_gil():
+    """todok and DOK -> CSR / COO touch no Python object: from the parallel threshold they run
+    without the GIL on one thread too (API.md §3), so another Python thread keeps running."""
+    import threading
+    import time
+
+    A, D = _random_dok(200_000, 1_500_000, 3, shape=(200_000, 200_000))
+    C = A.tocsr()
+    sd.set_num_threads(1)
+    calls = {"csr.todok": C.todok, "coo.todok": A.todok, "dok.tocsr": D.tocsr, "dok.tocoo": D.tocoo}
+    for name, call in calls.items():
+        call()
+        best = 1.0
+        for _ in range(4):
+            stop, longest = threading.Event(), [0.0]
+
+            def watch(stop=stop, longest=longest):
+                last = time.perf_counter()
+                while not stop.is_set():
+                    now = time.perf_counter()
+                    longest[0] = max(longest[0], now - last)
+                    last = now
+
+            th = threading.Thread(target=watch)
+            th.start()
+            time.sleep(0.005)
+            longest[0] = 0.0
+            t0 = time.perf_counter()
+            call()
+            took = time.perf_counter() - t0
+            time.sleep(0.002)
+            stop.set()
+            th.join()
+            best = min(best, longest[0] / took)
+            if best < 0.25:
+                break
+        assert best < 0.25, f"{name} held the GIL ({best:.2f} of the call)"

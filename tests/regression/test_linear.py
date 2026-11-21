@@ -327,10 +327,10 @@ def test_exact_fit():
     r = R.ols(1 + 2 * x + 3 * x**2, X)
     assert np.array_equal(a(r.params), [1.0, 2.0, 3.0])
     assert r.ssr == 0.0 and r.scale == 0.0 and np.all(a(r.bse) == 0.0)
-    # a perfect fit: t and p are NaN (D-3), the intervals [theta, theta]
+    # a perfect fit: t, p and F are NaN (D-3, G196), the intervals [theta, theta]
     assert np.all(np.isnan(a(r.tvalues))) and np.all(np.isnan(a(r.pvalues)))
     assert np.array_equal(a(r.conf_int())[:, 0], a(r.params)) and np.array_equal(a(r.conf_int())[:, 1], a(r.params))
-    assert r.rsquared == 1.0 and math.isinf(r.fvalue) and r.f_pvalue == 0.0 and r.llf == math.inf
+    assert r.rsquared == 1.0 and math.isnan(r.fvalue) and math.isnan(r.f_pvalue) and r.llf == math.inf
 
 
 def test_intercept_only():

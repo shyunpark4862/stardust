@@ -87,10 +87,11 @@ def _float_dtype(dtype):
 class _Operand:
     """A, M: a matrix (sparse or dense; also inside an aslinearoperator) or another LinearOperator."""
 
-    __slots__ = ("matrix", "op", "shape", "dtype")
+    __slots__ = ("matrix", "op", "shape", "dtype", "func")
 
     def __init__(self, A, func, what):
         self.matrix = self.op = None
+        self.func = func
         if isinstance(A, LinearOperator):
             inner = getattr(A, "_matrix", None)
             if inner is not None:
@@ -119,7 +120,9 @@ class _Operand:
         of its adjoint) in dtype, or a Python function of a vector."""
         A = self.matrix
         if A is None:
-            return _python(self.op.rmatvec if adjoint else self.op.matvec, dtype)
+            if adjoint and not self.op._has_adjoint():
+                raise ValueError(f"{self.func}(): the operator was made without 'rmatvec'")
+            return _python(self.op.rmatvec if adjoint else self.op.matvec, dtype, self.func)
         if isinstance(A, sparray):
             if adjoint:
                 A = A.tocsr().T.tocsr()  # the transpose's CSR (its values in A's order of columns)
@@ -141,18 +144,27 @@ class _Operand:
         return (indptr, indices, data)
 
 
-def _python(f, dtype):
+_NO_RMATVEC = "rmatvec(): the operator was made without 'rmatvec'"
+
+
+def _python(f, dtype, func):
     """A LinearOperator's product for the kernel: a new C-contiguous vector of the system's dtype
-    (a real result widens to complex; a complex one in a real system is a TypeError)."""
+    (a real result widens to complex; a complex one in a real system is a TypeError). Its errors
+    name the solver `func`: the operator is called inside it."""
 
     def call(x):
-        y = f(x)
+        try:
+            y = f(x)
+        except ValueError as e:  # an operator made from one without rmatvec (A.H, a sum ...)
+            if str(e) != _NO_RMATVEC:
+                raise
+            raise ValueError(f"{func}(): the operator was made without 'rmatvec'") from None
         if y.ndim != 1:
             y = _sd.reshape(y, (y.size,))
         if y.dtype != dtype:
             if y.dtype == _sd.complex128:
                 raise TypeError(
-                    "the operator returned complex128 values for a float64 system; give it dtype=complex128"
+                    f"{func}(): the operator returned complex128 values for a float64 system; give it dtype=complex128"
                 )
             y = y.astype(dtype)
         if not C.contiguous(y):

@@ -298,7 +298,7 @@ DataFrame.to_array(*, dtype=None, copy=None, na_value=<없음>)
 ### §3.1 피연산자
 - **Series와 Series**: 라벨로 정렬(alignment)한다 (§5.6).
 - **Series와 스칼라, 스칼라와 Series**
-  - 스칼라는 Python 스칼라(bool, int, float, str), numpy 스칼라, `NA`다. numpy의 complex, `datetime64`, `timedelta64`, `void`, `bytes_` 스칼라는 Python `complex`처럼 스칼라로 받지 않는다. 연산자는 TypeError다.
+  - 스칼라는 Python 스칼라(bool, int, float, str), numpy 스칼라, `NA`다. numpy의 complex, `datetime64`, `timedelta64`, `void`, `bytes_` 스칼라는 Python `complex`처럼 스칼라로 받지 않는다. 연산자는 TypeError이고 문장도 Python의 것이다: `s + np.complex128(1)`은 `unsupported operand type(s) for +: 'Series' and 'numpy.complex128'`, `np.complex128(1) + s`는 `... for +: 'numpy.complex128' and 'Series'`, `s < np.complex128(1)`은 `'<' not supported between instances of 'Series' and 'numpy.complex128'`다(`s + 1j`와 같은 꼴; 2026-11-22). numpy 쪽 이름은 라이브러리 메시지처럼 모듈을 붙인다.
   - int64 범위 밖의 int 스칼라는 배열과 같은 규칙이다 (array.md §1.5): float64 컬럼과 만나면 float로 바꿔 계산하고(`s_float + 2**70`), 그 밖에는 `OverflowError`다(`s_int + 2**70`).
 - **DataFrame과 스칼라**
 - **DataFrame과 DataFrame**

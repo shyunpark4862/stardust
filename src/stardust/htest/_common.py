@@ -117,6 +117,10 @@ def check_exact_work(work, cap, name, *, instead="method='asymptotic'"):
     """method='exact' within its documented cap (H13): `work` the call's operation count (or
     memory, in the same unit as `cap`). Beyond it a ValueError that names the way out."""
     if work > cap:
+        if not math.isfinite(work):  # (a count past the doubles: only that it passes the cap is known)
+            raise ValueError(
+                f"{name}(): method='exact' needs more than {cap:.3g} operations for this input; use {instead}"
+            )
         raise ValueError(
             f"{name}(): method='exact' needs about {work:.3g} operations for this input, more than its cap of "
             f"{cap:.3g}; use {instead}"

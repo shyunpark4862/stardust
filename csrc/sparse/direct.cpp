@@ -1,8 +1,9 @@
 // Direct solves of sd.sparse through Accelerate's LU (docs/design/sparse.md §3.6).
 //
 //   _lu_factor(shape, indptr, indices, data, /, *, csr, func) -> _LuFactor
-//       Factors the square matrix given by its canonical compressed arrays (CSC, or CSR with
-//       csr=True: the CSC of the transpose, handed to Accelerate with the transpose flag) with
+//       Factors the square matrix given by its canonical compressed arrays (CSC; the public
+//       functions always pass CSC. csr=True, the CSC of the transpose with Accelerate's transpose
+//       flag, has no caller: that path is tested through the private _lu_solve(csr=True)) with
 //       LU/AMD (decision SP59) and checks that it is not singular (SP62):
 //         - Accelerate reports a structurally singular matrix (SparseMatrixIsSingular);
 //         - a solve inside the condition estimate gives a value that is not finite (an exactly
@@ -100,7 +101,8 @@ double magnitude(T v) {
 }
 
 // ||A||_1 of the user's matrix: the largest column sum of magnitudes. The stored CSC is A itself
-// (lines are columns) or, for csr, A^T (lines are rows: the column sums scatter over indices).
+// (lines are columns) or, for csr (only the tests of the private _lu_solve(csr=True)), A^T (lines
+// are rows: the column sums scatter over indices).
 template <class T>
 double norm1(int64_t n, const int64_t* ip, const int64_t* ix, const T* v, bool csr) {
     double best = 0.0;

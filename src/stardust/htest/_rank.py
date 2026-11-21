@@ -92,6 +92,7 @@ class MedianTestResult(_TestResult):
     __slots__ = ()
     _TITLE = "Mood's median test"
     _FIELDS = ("statistic", "pvalue", "median", "table", "df")
+    _TABLES = ("table",)
     _UNPACK = ("statistic", "pvalue", "median", "table")
 
 
@@ -127,10 +128,13 @@ def _two(name, x, y, axis, nan_policy, keepdims):
 
 
 def _with_z(cls, s, stat, p, z, codes, method_out, info):
-    """The result with zstatistic wherever a lane used the normal approximation (H47; NaN in a
-    batch's exact lanes)."""
+    """The result with zstatistic where the normal approximation was used (H47): a single test's
+    when it was, a batch's always (H156; NaN in its exact lanes), so the field does not come and go
+    with the data."""
     fields = {"statistic": s.out(stat), "pvalue": s.out(p), "method": method_out}
-    if codes.size and bool(_sd.any(codes == 1.0)):
+    if not _one(s):
+        fields["zstatistic"] = s.out(_sd.where(codes == 1.0, z, math.nan))
+    elif codes.size and bool(_sd.any(codes == 1.0)):
         fields["zstatistic"] = s.out(z)
     return cls._make(batch=s.batch, info=info, **fields)
 

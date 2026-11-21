@@ -71,12 +71,14 @@ def _real_dtype(dtype):
     return _sd.complex128 if dtype == _sd.complex128 else _sd.float64
 
 
-def _cast(y, dtype):
+def _cast(y, dtype, func):
     """An operator's product as the system's dtype (a real result widens; a complex one in a real
     system is a TypeError, as the iterative solvers')."""
     if y.dtype != dtype:
         if y.dtype == _sd.complex128:
-            raise TypeError("the operator returned complex128 values for a float64 system; give it dtype=complex128")
+            raise TypeError(
+                f"{func}(): the operator returned complex128 values for a float64 system; give it dtype=complex128"
+            )
         y = y.astype(dtype)
     return y
 
@@ -96,13 +98,13 @@ class _Map:
     matrix by its CSR (SpMV, SpMM), a dense one by matmul, another LinearOperator by its own
     products. A^H is formed on its first use."""
 
-    __slots__ = ("fwd", "_A", "_op", "_AH", "_dtype")
+    __slots__ = ("fwd", "_A", "_op", "_AH", "_dtype", "_func")
 
     def __init__(self, operand, dtype):
-        A, self._op, self._AH, self._dtype = operand.matrix, operand.op, None, dtype
+        A, self._op, self._AH, self._dtype, self._func = operand.matrix, operand.op, None, dtype, operand.func
         if A is None:
-            op = self._op
-            self.fwd = lambda X: _cast(op @ X, dtype)
+            op, func = self._op, operand.func
+            self.fwd = lambda X: _cast(op @ X, dtype, func)
         else:
             if isinstance(A, sparray):
                 A = _compressed(A)
@@ -114,8 +116,10 @@ class _Map:
     def adj(self, X):
         if self._A is None:
             if self._AH is None:
+                if not self._op._has_adjoint():
+                    raise ValueError(f"{self._func}(): the operator was made without 'rmatvec'")
                 self._AH = self._op.H
-            return _cast(self._AH @ X, self._dtype)
+            return _cast(self._AH @ X, self._dtype, self._func)
         if self._AH is None:
             A, cplx = self._A, self._dtype == _sd.complex128
             if isinstance(A, sparray):
@@ -346,17 +350,6 @@ def _scale2(M, k):
     return M * math.ldexp(1.0, k)
 
 
-def _exp_divided_difference(l1, l2):
-    """t * (e^l2 - e^l1) / (l2 - l1) without t: exp(mean) sinch(d / 2) when |d| < 1, else the
-    difference quotient (Al-Mohy & Higham 2009, (2.2); sd.linalg.expm's rule)."""
-    d = l2 - l1
-    h = d * 0.5
-    sinch = _sd.where(h != 0, _sd.sinh(h) / h, 1)
-    close = _sd.exp(l1 + h) * sinch
-    far = (_sd.exp(l2) - _sd.exp(l1)) / d
-    return _sd.where(_sd.abs(d) < 1.0, close, far)
-
-
 class _AbsPowers:
     """log2 || |A|^p ||_1 for p = 1, 2, ... in turn: e^T |A|^p from B = 2^-e |A| (||B||_1 <= 1, so no
     power overflows), log2 max(e^T B^p) + p e."""
@@ -400,7 +393,8 @@ def expm(A, /):
         return X0.asformat(fmt)
     lower, upper = is_sptriangular(X0)
     if lower and upper:  # diagonal (1 x 1 too): exp of the diagonal, exactly
-        out = diags_array(_sd.exp(X0.diagonal()), format="csr")
+        d = X0.diagonal()
+        out = diags_array(C._core._expm_fix(d, d[1:], 0)[0], format="csr")  # libm exp, as sd.linalg.expm
         out.eliminate_zeros()
         return out.asformat(fmt)
     shape = "upper" if upper else ("lower" if lower else "full")
@@ -526,11 +520,10 @@ def expm(A, /):
     X = _sparse_solve(factor, U, "csr", func) * 2.0 + eye
 
     # ---- squaring, with the triangular fix-ups (Code Fragment 2.1)
-    def fix(X, k):  # X ~ exp(2^-k A): its exact diagonal and first off-diagonal
-        f = math.ldexp(1.0, -k) if k <= 1022 else 0.0
-        lk = lam * f
-        X.setdiag(_sd.exp(lk))
-        X.setdiag((tt * f) * _exp_divided_difference(lk[:-1], lk[1:]), k=1 if shape == "upper" else -1)
+    def fix(X, k):  # X ~ exp(2^-k A): its exact diagonal and first off-diagonal, sd.linalg.expm's bits
+        diag, off = C._core._expm_fix(lam, tt, k)  # libm exp and sinh (Al-Mohy & Higham 2009, (2.2))
+        X.setdiag(diag)
+        X.setdiag(off, k=1 if shape == "upper" else -1)
 
     if shape != "full":
         fix(X, sq)
@@ -630,7 +623,22 @@ def _fragment_3_1(info, n0):
 
 
 def _exp(z):
-    return cmath.exp(z) if isinstance(z, complex) else math.exp(z)
+    """exp(z), inf (each part ±inf) when it overflows, as expm and scipy (math.exp raises)."""
+    if not isinstance(z, complex):
+        return _exp_real(z)
+    try:
+        return cmath.exp(z)
+    except OverflowError:  # |exp(z)| past the largest double: magnitude and phase apart
+        h = _exp_real(z.real / 2)  # exp(re) = h * h, so a part with a tiny cos or sin may stay finite
+        c, s = math.cos(z.imag), math.sin(z.imag)
+        return complex(h * c * h, h * s * h if s != 0 else z.imag)
+
+
+def _exp_real(x):
+    try:
+        return math.exp(x)
+    except OverflowError:
+        return _INF
 
 
 def _simple_core(prod, B, t, mu, m_star, s):
@@ -677,12 +685,15 @@ def _interval_blocks(prod, X, h, mu, m_star, s, q):
             X[k + i * d] = F * _exp(k * h * mu)
 
 
-def _trace_estimate(fwd, n, m3, dtype):
+def _trace_estimate(fwd, n, m3, dtype, func):
     """scipy's traceest (Hutch++, Meyer et al. 2021) on fixed draws (sd.random.default_rng(0))."""
     g = _default_rng(0)
     signs = _sd.asarray([-1.0, 1.0])
     S = g.choice(signs, shape=(n, m3))
-    Q = _sd.linalg.qr(fwd(S.astype(dtype)))[0]
+    Y = fwd(S.astype(dtype))
+    if not bool(_sd.all(_sd.isfinite(Y))):  # the QR below would name itself
+        raise ValueError(f"{func}(): the operator returned NaN or infinity")
+    Q = _sd.linalg.qr(Y)[0]
     QH = _sd.conj(Q.mT) if dtype == _sd.complex128 else Q.mT
     tr_q = _sd.linalg.trace(QH @ fwd(Q))
     G = g.choice(signs, shape=(n, m3)).astype(dtype)
@@ -750,14 +761,14 @@ def expm_multiply(A, B, /, *, start=None, stop=None, num=None, endpoint=None, tr
     complex_ = op.dtype == _sd.complex128 or B.dtype == _sd.complex128 or isinstance(traceA, complex)
     dtype = _sd.complex128 if complex_ else _sd.float64
     B = B.astype(dtype) if B.dtype != dtype else B.copy()
-    if n == 0:
+    if n == 0 or B.ndim == 2 and B.shape[1] == 0:  # nothing to compute: an empty result (B (n, 0) too)
         return _sd.zeros(((num,) if interval else ()) + tuple(B.shape), dtype=dtype)
 
     # A - mu I, mu = trace(A) / n
     M = op.matrix
     if traceA is None:
         if M is None:
-            traceA = _trace_estimate(_Map(op, dtype).fwd, n, 5 if interval else 1, dtype)
+            traceA = _trace_estimate(_Map(op, dtype).fwd, n, 5 if interval else 1, dtype, func)
         elif isinstance(M, sparray):
             traceA = M.trace()
         else:
@@ -938,7 +949,10 @@ def _line_norms(X, p, axis):
     redo = (_sd.isinf(s) | ((amax > 0) & (top < 2.0**-969))) & _sd.isfinite(amax)
     if bool(_sd.any(redo)):
         div = _sd.where(redo & (amax > 0), amax, 1.0)
-        r = a.multiply(_sd.reshape(1.0 / div, (-1, 1) if axis == 1 else (1, -1)))
+        # each stored magnitude over its line's largest (a division, as vector_norm: a reciprocal
+        # of a subnormal largest overflows, and its product rounds once more)
+        line = C._core._expand(a._indptr, a.shape[0], a.nnz) if axis == 1 else a._indices
+        r = a._with_data(a.data / div[line])
         t = _powered(r, p).sum(axis=axis)
         again = div * (_sd.sqrt(t) if p == 2 else t ** (1.0 / p))
         out = _sd.where(redo, again, out)

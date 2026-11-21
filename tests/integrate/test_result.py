@@ -90,7 +90,8 @@ def test_absent_fields():
 def test_unknown_field_and_positional():
     with pytest.raises(TypeError, match="IntegrateResult\\(\\): unexpected keyword argument 'estimate'"):
         R(estimate=1.0)
-    with pytest.raises(TypeError, match="takes 1 positional argument"):
+    # the class's name (R248; the rest is Python's sentence, _calls.keyword_init)
+    with pytest.raises(TypeError, match=r"^IntegrateResult\(\): takes "):
         R(1.0)
 
 
@@ -105,3 +106,52 @@ def test_repr():
     assert repr(R(batch=(2, 2), integral=sd.zeros((2, 2)))) == "IntegrateResult(batch shape (2, 2))"
     v = R(integral=sd.asarray([1.0, 2.0, 3.0]), error=1e-12)  # quad_vec: an array value
     assert repr(v) == "IntegrateResult(integral=[1, 2, 3], error=1e-12)"
+
+
+def test_public_constructor_copies_numpy_arrays_and_lists():
+    # R249 (C121): a numpy array or a list of numbers becomes an sd.ndarray of the result's own,
+    # read-only, shown by repr; the three areas' classes alike
+    import numpy as np
+
+    for cls, name in ((R, "integral"), (sd.optimize.OptimizeResult, "x"), (sd.differentiate.DifferentiateResult, "df")):
+        a = np.array([1.0, 2.0])
+        w = cls(**{name: a})
+        v = getattr(w, name)
+        assert isinstance(v, sd.ndarray) and v is not a and v.tolist() == [1.0, 2.0]
+        a[0] = 9.0
+        assert getattr(w, name).tolist() == [1.0, 2.0]
+        with pytest.raises(ValueError, match="assignment destination is read-only"):
+            v[0] = 3.0
+        assert repr(w) == f"{cls.__name__}({name}=[1, 2])"
+        assert repr(cls(**{name: [1.0, 2.0]})) == f"{cls.__name__}({name}=[1, 2])"
+    # a 0-d numpy array is its number; tuples hold their arrays copied too
+    assert R(integral=np.array(2.5)).integral == 2.5
+    b = sd.asarray([1.0, 2.0])
+    r = sd.optimize.OptimizeResult(bracket=(b, [3.0, 4.0]))
+    assert r.bracket[0] is not b and r.bracket[1].tolist() == [3.0, 4.0]
+    c = R(batch=(2,), converged=np.array([True, False]), status=[0, 1])
+    assert c.converged.dtype == sd.bool and c.status.tolist() == [0, 1]
+
+
+def test_public_constructor_checks_the_kinds():
+    # R249 (C121): the shared fields' kinds, in the class's name
+    for kw, text in (({"integral": "abc"}, "'integral' must be a number or an array of numbers, not str"),
+                     ({"integral": [1, "a"]}, "'integral' must be a number or an array of numbers, not list"),
+                     ({"error": True}, "'error' must be a number or an array of numbers, not bool"),
+                     ({"converged": 3}, "'converged' must be a bool or an array of bools, not int"),
+                     ({"converged": sd.zeros(2)}, "'converged' must be a bool or an array of bools, not ndarray"),
+                     ({"status": 1.5}, "'status' must be an int or an array of ints, not float"),
+                     ({"nfev": True}, "'nfev' must be an int or an array of ints, not bool"),
+                     ({"n_intervals": 2.0}, "'n_intervals' must be an int or an array of ints, not float"),
+                     ({"message": 3}, "'message' must be a str, not int")):  # fmt: skip
+        with pytest.raises(TypeError, match=rf"^IntegrateResult\(\): {text}$"):
+            R(**kw)
+    with pytest.raises(TypeError, match=r"^OptimizeResult\(\): 'method' must be a str, not int$"):
+        sd.optimize.OptimizeResult(method=1)
+    # the class's name for a positional argument (R248), the three alike
+    for cls in (R, sd.optimize.OptimizeResult, sd.differentiate.DifferentiateResult):
+        with pytest.raises(TypeError, match=rf"^{cls.__name__}\(\): takes "):
+            cls(1.0)
+    # what the functions give is taken as it is (no copy, no checks)
+    m = R._make(integral=sd.asarray([1.0]), message=3)
+    assert m.message == 3

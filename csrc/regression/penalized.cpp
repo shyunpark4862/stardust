@@ -60,6 +60,7 @@
 #include <nanobind/stl/string.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -435,6 +436,9 @@ struct Solver {
     double vv = 0;  // sum omega v^2
     double R2 = 0;  // sum omega r^2 at the last gap()
     std::vector<double> d, b, Gb, r, xta;
+    // the lasso (no L2 term): first[j] is the first of the exact copies of column j (j itself
+    // when it has none, see copies()); empty otherwise
+    std::vector<lint> first;
 
     void init_state() {
         d.assign(static_cast<std::size_t>(pc), 0.0);
@@ -572,9 +576,18 @@ CDResult cd_solve(
     std::vector<lint> all(static_cast<std::size_t>(s.pc)), act;
     std::iota(all.begin(), all.end(), lint(0));
     std::vector<std::int8_t> pat, prev, tried;
+    std::vector<double> tot;
     auto pattern = [&](std::vector<std::int8_t>& v) {
         v.resize(static_cast<std::size_t>(s.pc));
-        for (lint j = 0; j < s.pc; ++j) v[j] = static_cast<std::int8_t>((s.b[j] > 0) - (s.b[j] < 0));
+        if (s.first.empty() || !(l2 == 0.0 && l1 > 0.0)) {
+            for (lint j = 0; j < s.pc; ++j) v[j] = static_cast<std::int8_t>((s.b[j] > 0) - (s.b[j] < 0));
+            return;
+        }
+        // with exact copies, the polish's pattern: the sign of each copies' total at the first
+        // copy (whichever copies hold it), so a total that changes sign is a new pattern
+        tot.assign(static_cast<std::size_t>(s.pc), 0.0);
+        for (lint j = 0; j < s.pc; ++j) tot[s.first[j]] += s.b[j];
+        for (lint j = 0; j < s.pc; ++j) v[j] = static_cast<std::int8_t>((tot[j] > 0) - (tot[j] < 0));
     };
     // after a sweep: the polish when the signs settled (true: converged on it)
     auto settle = [&]() {
@@ -736,6 +749,30 @@ bool same_column(const Src& src, const Prep& P, lint j, lint k) {
     return true;
 }
 
+// first[j] = the first column q <= j that is an exact copy of the solver's column j (same_column;
+// q = j when there is none). Copies share d, the center and the scale bit for bit: sorting on
+// those three leaves only the candidates side by side (the values are finite here).
+std::vector<lint> copies(const Solver& s, const Src& src, const Prep& P) {
+    std::vector<lint> first(static_cast<std::size_t>(s.pc)), ord(static_cast<std::size_t>(s.pc));
+    std::iota(first.begin(), first.end(), lint(0));
+    std::iota(ord.begin(), ord.end(), lint(0));
+    auto key = [&](lint j) { return std::array<double, 3>{s.d[j], P.cx[P.cols[j]], P.sc[P.cols[j]]}; };
+    std::stable_sort(ord.begin(), ord.end(), [&](lint a, lint b) { return key(a) < key(b); });
+    for (lint u = 0; u < s.pc;) {
+        lint v = u + 1;
+        while (v < s.pc && key(ord[v]) == key(ord[u])) ++v;
+        // ord[u..v) share the key, in column order (stable): each takes the first earlier copy
+        for (lint i = u + 1; i < v; ++i)
+            for (lint h = u; h < i; ++h)
+                if (first[ord[h]] == ord[h] && same_column(src, P, ord[h], ord[i])) {
+                    first[ord[i]] = ord[h];
+                    break;
+                }
+        u = v;
+    }
+    return first;
+}
+
 // The KKT polish of a converged iterate s.b (see the file comment): the system on the active
 // set solved by Cholesky of its Gram block, refined with double-double residuals from the
 // data (G51) when the estimated condition number of that block exceeds refine_cond times its
@@ -743,23 +780,27 @@ bool same_column(const Src& src, const Prep& P, lint j, lint k) {
 // Without an L2 term, exact copies of a column that are active together make the system
 // singular (any split of their total with their sign is a minimizer, R116): the first copy
 // keeps the total and the later ones leave the active set (0), and the KKT test of the
-// inactive columns confirms the point (a copy's gradient is its column's, l1). The polished
-// point is then the same whatever split the descent left (a path's or a single fit's, R118).
+// inactive columns confirms the point (a copy's gradient is its column's, l1). The first copy
+// is in the system whichever copies the descent left active (it may have left the first at 0
+// and given a later one the total, R178), with the sign of the copies' total, so the polished
+// point is the same whatever split the descent left (a path's or a single fit's, R118).
 PolishOut polish(Solver& s, const Src& src, const Prep& P, bool intercept, double l1, double l2, double refine_cond) {
     PolishOut o;
     std::vector<lint> A;
     std::vector<double> sg;
-    for (lint j = 0; j < s.pc; ++j) {
-        // without an L1 term every column is in the system and the signs are free
-        if (!(s.b[j] != 0.0 || (l1 == 0.0 && s.d[j] > 0.0))) continue;
-        bool copy = false;
-        if (l2 == 0.0 && l1 > 0.0)
-            for (const lint q : A)
-                if (s.d[q] == s.d[j] && same_column(src, P, q, j)) {
-                    copy = true;
-                    break;
-                }
-        if (!copy) A.push_back(j), sg.push_back(s.b[j] > 0 ? 1.0 : -1.0);
+    if (l2 == 0.0 && l1 > 0.0 && !s.first.empty()) {
+        // the exact copies' total at the first copy, in column order as without copies (the
+        // system's bits must not depend on which copies the descent left active)
+        std::vector<double> tot(static_cast<std::size_t>(s.pc), 0.0);
+        for (lint j = 0; j < s.pc; ++j) tot[s.first[j]] += s.b[j];
+        for (lint j = 0; j < s.pc; ++j)
+            if (tot[j] != 0.0) A.push_back(j), sg.push_back(tot[j] > 0 ? 1.0 : -1.0);
+    } else {
+        for (lint j = 0; j < s.pc; ++j) {
+            // without an L1 term every column is in the system and the signs are free
+            if (!(s.b[j] != 0.0 || (l1 == 0.0 && s.d[j] > 0.0))) continue;
+            A.push_back(j), sg.push_back(s.b[j] > 0 ? 1.0 : -1.0);
+        }
     }
     const lint a = static_cast<lint>(A.size());
     o.a = a;
@@ -1041,7 +1082,10 @@ int enet_one(
     Solver s;
     bool descent = false;  // an alpha > 0 (alpha = 0 is not solved here, below)
     for (lint l = 0; l < L && !descent; ++l) descent = rd(reinterpret_cast<const std::byte*>(alphas) + l * as) != 0.0;
-    if (descent) build(src, P, op, s);
+    if (descent) {
+        build(src, P, op, s);
+        s.first = copies(s, src, P);  // the lasso's exact copies (R116, R178)
+    }
     const double rho = op.l1_ratio;
     const double tss = descent ? s.vv * P.sw : kNaN;
     for (const lint l : path_order(alphas, as, L)) {

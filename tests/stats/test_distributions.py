@@ -1610,15 +1610,15 @@ def test_noncentral_f_moments_were_off_by_a_bit():
     "call,msg",
     [
         (lambda: S.Normal(cool=1), r"Normal\(\): unexpected keyword argument 'cool'"),
-        (lambda: S.Normal(1), r"Normal\(\): takes no positional arguments but 1 was given"),
-        (lambda: S.Normal(1, 2), r"Normal\(\): takes no positional arguments but 2 were given"),
+        (lambda: S.Normal(1), r"Normal\(\): takes 0 positional arguments but 1 was given"),
+        (lambda: S.Normal(1, 2), r"Normal\(\): takes 0 positional arguments but 2 were given"),
         (lambda: S.Gamma(), r"Gamma\(\): missing 1 required keyword-only argument: 'a'"),
         (lambda: S.Binomial(n=3, p=0.5, k=2), r"Binomial\(\): unexpected keyword argument 'k'"),
         (
             lambda: S.MultivariateNormal(mu=A([0.0, 0.0])),
             r"MultivariateNormal\(\): missing 1 required keyword-only argument: 'cov'",
         ),
-        (lambda: S.Dirichlet(A([1.0, 1.0])), r"Dirichlet\(\): takes no positional arguments but 1 was given"),
+        (lambda: S.Dirichlet(A([1.0, 1.0])), r"Dirichlet\(\): takes 0 positional arguments but 1 was given"),
         (lambda: S.Wishart(df=3.0, scale=A(np.eye(2)), q=1), r"Wishart\(\): unexpected keyword argument 'q'"),
         (lambda: S.InverseWishart(df=3.0), r"InverseWishart\(\): missing 1 required keyword-only argument: 'scale'"),
         (

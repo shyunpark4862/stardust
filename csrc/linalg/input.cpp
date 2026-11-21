@@ -13,8 +13,8 @@ namespace {
 std::string where(const Input& x) { return std::string(x.func()) + "(): '" + x.arg() + "'"; }
 
 // A sparse array of sd.sparse given to a linalg function (docs/design/sparse.md §3.10): the
-// message names the sd.sparse function to use, once that function exists, else the dense
-// conversion. Only the error path looks; other calls are unchanged.
+// message names the sd.sparse function (or the sparse array's method) to use, once that
+// function exists, else the dense conversion. Only the error path looks; other calls are unchanged.
 std::string sparse_hint(nb::handle obj, const char* func) {
     if (!is_sparse_array(obj)) return "";
     static const std::pair<const char*, const char*> table[] = {
@@ -38,8 +38,11 @@ std::string sparse_hint(nb::handle obj, const char* func) {
         {"block_diag", "block_diag"},
         {"bandwidth", "spbandwidth"},
     };  // fmt: skip
-    nb::object sparse = nb::module_::import_("stardust.sparse");
     const std::string f = func;
+    // The sparse pair is a method of the sparse array (API.md §7), not an sd.sparse function.
+    for (const char* method : {"trace", "diagonal"})
+        if (f == method) return std::string("; for a sparse array use A.") + method + "()";
+    nb::object sparse = nb::module_::import_("stardust.sparse");
     for (const auto& [name, target] : table) {
         if (f != name || !nb::hasattr(sparse, target)) continue;
         if (f == "lstsq") {

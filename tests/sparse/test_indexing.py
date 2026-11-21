@@ -378,3 +378,40 @@ def test_diagonal_errors():
         A.setdiag(sd.eye(2))
     with pytest.raises(TypeError, match="cannot implicitly convert float64 to int64"):
         A.astype(sd.int64).setdiag(1.5)
+
+
+# ---- huge slice steps, mixed assignments ----
+
+
+@pytest.mark.parametrize("fmt", ["csr", "csc", "coo", "dok"])
+def test_slice_steps_past_int64(fmt):
+    """A step past the length takes one element, as the dense array (SPR-6), also a step past
+    int64."""
+    x = np.array([[1.0, 0, 2], [0, 3, 0]])
+    A = S.csr_array(sd.asarray(x)).asformat(fmt)
+    X = sd.asarray(x)
+    for key in (
+        np.s_[:: 2**64],
+        np.s_[:, :: 2**64],
+        np.s_[:: -(2**64)],
+        np.s_[1 :: 2**70, :: -(2**63)],
+        np.s_[:: 2**63 - 1],
+    ):
+        assert bits_equal(npy(A[key].toarray()), npy(X[key])), key
+    v = S.csr_array(sd.asarray([0.0, 4.0, 5.0]))
+    assert npy(v[:: 2**64].toarray()).tolist() == [0.0] and npy(v[:: -(2**64)].toarray()).tolist() == [5.0]
+
+
+@pytest.mark.parametrize("fmt", ["csr", "csc"])
+def test_mixed_assignment_changes_stored_positions_in_place_first(fmt):
+    """A stored and a new position in one assignment: the stored one changes in the old values
+    in place, so a view sharing them sees it (R233, scipy's _set_many), then new arrays."""
+    B = S.csr_array(sd.asarray([[1.0, 0.0], [0.0, 2.0]])).asformat(fmt)
+    V = B.T
+    B[[0, 0], [0, 1]] = sd.asarray([10.0, 20.0])
+    assert npy(V.toarray()).tolist() == [[10.0, 0.0], [0.0, 2.0]]
+    assert npy(B.toarray()).tolist() == [[10.0, 20.0], [0.0, 2.0]]
+    s = sp.csr_array(np.array([[1.0, 0.0], [0.0, 2.0]])).asformat(fmt)
+    sv = s.T
+    s[[0, 0], [0, 1]] = np.array([10.0, 20.0])  # (its SparseEfficiencyWarning is filtered for the module)
+    assert sv.toarray().tolist() == npy(V.toarray()).tolist()

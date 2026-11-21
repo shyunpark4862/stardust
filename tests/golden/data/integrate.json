@@ -10426,6 +10426,55 @@ true
 }
 }
 },
+"dblquad inf": {
+"r": {
+"absent": [
+"cycle_errors",
+"cycle_integrals",
+"cycle_status",
+"imag",
+"interval_errors",
+"interval_integrals",
+"intervals",
+"max_level",
+"n_cycles",
+"n_intervals",
+"n_regions",
+"real",
+"region_errors",
+"region_integrals",
+"regions",
+"subdivisions",
+"sum"
+],
+"attrs": {
+"converged": false,
+"error": {
+"f": "inf"
+},
+"integral": {
+"f": "inf"
+},
+"message": "Non-finite values encountered.",
+"nfev": 441,
+"status": -3,
+"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                          inf\nStatus:                             -3  Error estimate:                    inf\n                                        Function Evals:                    441\nMessage:                                        Non-finite values encountered.\n=============================================================================="
+},
+"obj": "stardust.integrate._result.IntegrateResult",
+"repr": "IntegrateResult(integral=inf, error=inf, converged=False, nfev=441)",
+"unpack": {
+"items": [
+{
+"f": "inf"
+},
+{
+"f": "inf"
+}
+],
+"tuple": "builtins.tuple"
+}
+}
+},
 "dblquad tolerances": {
 "r": {
 "absent": [
@@ -10496,7 +10545,7 @@ true
 "err IntegrateResult positional": {
 "r": {
 "error": "builtins.TypeError",
-"msg": "IntegrateResult.__init__() takes 1 positional argument but 2 were given"
+"msg": "IntegrateResult(): takes 0 positional arguments but 1 was given"
 }
 },
 "err IntegrateResult read-only": {
@@ -10527,6 +10576,12 @@ true
 "r": {
 "error": "builtins.ValueError",
 "msg": "cubature(): rule='genz-malik' needs ndim >= 2 (it is defined from 2 variables), not 1"
+}
+},
+"err cubature gk21 8-D": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "cubature(): rule='gk21' in 8 dimensions needs 21**8 + 10**8 points per region of 8 values each, more than 2**25 values; use rule='genz-malik'"
 }
 },
 "err cubature lengths": {
@@ -10700,7 +10755,7 @@ true
 "err nquad opts function": {
 "r": {
 "error": "builtins.TypeError",
-"msg": "nquad(): the options of 'opts[0]' must be a dict, not int"
+"msg": "nquad(): the result of 'opts[0]' must be a dict, not int"
 }
 },
 "err nquad opts key": {
@@ -21209,7 +21264,7 @@ true
 "attrs": {
 "converged": false,
 "error": {
-"f": "0x1.5ecd27785d7dfp-45"
+"f": "0x1.642127785d7dfp-45"
 },
 "integral": {
 "f": "-0x1.645c2131d81adp-10"
@@ -21224,13 +21279,22 @@ true
 ],
 "v": [
 "0x1.5e4bb7ef9f136p-45",
+"0x1.c000000000000p-52",
+"0x1.c000000000000p-54",
+"0x1.c000000000000p-55",
+"0x1.c000000000000p-56",
 "0x1.b4bfe49c2037ap-56",
+"0x1.c000000000000p-57",
+"0x1.c000000000000p-57",
 "0x1.9a4c1fb7d5a7fp-57",
 "0x1.66c7ca1fd7befp-57",
+"0x1.c000000000000p-58",
 "0x1.4377d9c8c7ef2p-58",
 "0x1.0a3dea9a82ee9p-58",
 "0x1.1eee43d8ddf4ap-59",
+"0x1.c000000000000p-60",
 "0x1.28431d6375549p-60",
+"0x1.c000000000000p-61",
 "0x1.2ca9edd1e88a5p-61",
 "0x1.30319b684d531p-63",
 "0x1.2f261b94868c3p-64",
@@ -21259,16 +21323,7 @@ true
 "0x1.2e97cf4cb5a89p-86",
 "0x1.2e97cf4dc4311p-87",
 "0x1.2e97cf4e4b75dp-88",
-"0x1.2e97cf4e8f177p-89",
-"0x0.0p+0",
-"0x0.0p+0",
-"0x0.0p+0",
-"0x0.0p+0",
-"0x0.0p+0",
-"0x0.0p+0",
-"0x0.0p+0",
-"0x0.0p+0",
-"0x0.0p+0"
+"0x1.2e97cf4e8f177p-89"
 ]
 },
 "interval_integrals": {
@@ -21281,13 +21336,22 @@ true
 ],
 "v": [
 "-0x1.406d313ec15b5p-43",
+"0x1.ad2c10a18b863p-14",
+"0x1.1ecff1569c752p-9",
+"-0x1.12410fc947535p-9",
+"-0x1.90683ccb66a76p-11",
 "-0x1.0c92c94802616p-9",
+"0x1.a4932d344d57ap-9",
+"-0x1.db2486ba28377p-9",
 "0x1.7d58930fe86aap-11",
 "-0x1.cb3d2bade0f46p-11",
+"0x1.7e8daa2e67c43p-9",
 "-0x1.9e0a0c861ea2bp-12",
 "-0x1.54ca220d74649p-12",
 "-0x1.6f45759078436p-13",
+"-0x1.2ce88fc1ec0aap-9",
 "-0x1.7b372fdb77768p-14",
+"0x1.27a9f64fe06d1p-9",
 "-0x1.80d982545cda0p-15",
 "-0x1.855e378fbf22ap-17",
 "-0x1.8407d161f3e6ap-18",
@@ -21316,16 +21380,7 @@ true
 "-0x1.8351ad2efd00bp-40",
 "-0x1.8351ad3057491p-41",
 "-0x1.8351ad31046dep-42",
-"-0x1.8351ad315aff5p-43",
-"0x1.ad2c10a18b863p-14",
-"0x1.1ecff1569c752p-9",
-"-0x1.12410fc947535p-9",
-"-0x1.90683ccb66a76p-11",
-"0x1.a4932d344d57ap-9",
-"-0x1.db2486ba28377p-9",
-"0x1.7e8daa2e67c43p-9",
-"-0x1.2ce88fc1ec0aap-9",
-"0x1.27a9f64fe06d1p-9"
+"-0x1.8351ad315aff5p-43"
 ]
 },
 "intervals": {
@@ -21341,20 +21396,38 @@ true
 "v": [
 "0x1.7ae147ae13ed0p-2",
 "0x1.7ae147ae14cd0p-2",
+"-0x1.a666666666666p+1",
+"0x1.99999999999a0p-3",
+"0x1.f333333333334p+0",
+"0x1.d99999999999ap+1",
+"0x1.1333333333334p+0",
+"0x1.f333333333334p+0",
+"0x1.4666666666668p-1",
+"0x1.1333333333334p+0",
 "0x1.7bcccccccccd0p-2",
 "0x1.82cccccccccd0p-2",
+"0x1.accccccccccd0p-2",
+"0x1.4666666666668p-1",
+"0x1.99999999999a0p-3",
+"0x1.3ccccccccccd0p-2",
 "0x1.74cccccccccd0p-2",
 "0x1.784ccccccccd0p-2",
 "0x1.784ccccccccd0p-2",
 "0x1.7a0ccccccccd0p-2",
+"0x1.3ccccccccccd0p-2",
+"0x1.74cccccccccd0p-2",
 "0x1.7aeccccccccd0p-2",
 "0x1.7bcccccccccd0p-2",
 "0x1.7a0ccccccccd0p-2",
 "0x1.7a7ccccccccd0p-2",
 "0x1.7a7ccccccccd0p-2",
 "0x1.7ab4cccccccd0p-2",
+"0x1.90cccccccccd0p-2",
+"0x1.accccccccccd0p-2",
 "0x1.7ab4cccccccd0p-2",
 "0x1.7ad0cccccccd0p-2",
+"0x1.82cccccccccd0p-2",
+"0x1.90cccccccccd0p-2",
 "0x1.7ad0cccccccd0p-2",
 "0x1.7adecccccccd0p-2",
 "0x1.7ae5cccccccd0p-2",
@@ -21412,42 +21485,24 @@ true
 "0x1.7ae147ae114d0p-2",
 "0x1.7ae147ae130d0p-2",
 "0x1.7ae147ae130d0p-2",
-"0x1.7ae147ae13ed0p-2",
-"-0x1.a666666666666p+1",
-"0x1.99999999999a0p-3",
-"0x1.f333333333334p+0",
-"0x1.d99999999999ap+1",
-"0x1.1333333333334p+0",
-"0x1.f333333333334p+0",
-"0x1.4666666666668p-1",
-"0x1.1333333333334p+0",
-"0x1.accccccccccd0p-2",
-"0x1.4666666666668p-1",
-"0x1.99999999999a0p-3",
-"0x1.3ccccccccccd0p-2",
-"0x1.3ccccccccccd0p-2",
-"0x1.74cccccccccd0p-2",
-"0x1.90cccccccccd0p-2",
-"0x1.accccccccccd0p-2",
-"0x1.82cccccccccd0p-2",
-"0x1.90cccccccccd0p-2"
+"0x1.7ae147ae13ed0p-2"
 ]
 },
 "message": "Extremely bad integrand behavior occurs at some points of the\n  integration interval.",
 "n_intervals": 46,
 "nfev": 1555,
 "status": 3,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                  -0.00135941\nStatus:                              3  Error estimate:              3.895e-14\n                                        Function Evals:                   1555\n                                        Intervals:                          46\nMessage: Extremely bad integrand behavior occurs at some points of the\n    integration interval.\n==============================================================================\n                    a          b     integral      error\n------------------------------------------------------------------------------\n[0]          0.370000   0.370000 -1.42298e-13   3.89e-14\n[1]          0.370898   0.377734    -0.002049   2.37e-17\n[2]          0.364063   0.367480     0.000727   1.11e-17\n[3]          0.367480   0.369189    -0.000876   9.72e-18\n[4]          0.370044   0.370898    -0.000395   4.38e-18\n...               ...        ...          ...        ...\n[41]         0.418750   0.637500     0.003209      0.000\n[42]         0.200000   0.309375    -0.003625      0.000\n[43]         0.309375   0.364063     0.002919      0.000\n[44]         0.391406   0.418750    -0.002296      0.000\n[45]         0.377734   0.391406     0.002256      0.000\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                  -0.00135941\nStatus:                              3  Error estimate:              3.954e-14\n                                        Function Evals:                   1555\n                                        Intervals:                          46\nMessage: Extremely bad integrand behavior occurs at some points of the\n    integration interval.\n==============================================================================\n                    a          b     integral      error\n------------------------------------------------------------------------------\n[0]          0.370000   0.370000 -1.42298e-13   3.89e-14\n[1]         -3.300000   0.200000     0.000102   3.89e-16\n[2]          1.950000   3.700000     0.002188   9.71e-17\n[3]          1.075000   1.950000    -0.002092   4.86e-17\n[4]          0.637500   1.075000    -0.000764   2.43e-17\n...               ...        ...          ...        ...\n[41]         0.370000   0.370000 -2.75207e-12   3.06e-26\n[42]         0.370000   0.370000 -1.37603e-12   1.53e-26\n[43]         0.370000   0.370000 -6.88017e-13   7.64e-27\n[44]         0.370000   0.370000 -3.44008e-13   3.82e-27\n[45]         0.370000   0.370000 -1.72004e-13   1.91e-27\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=-0.00135941, error=3.89468e-14, converged=False, nfev=1555)",
+"repr": "IntegrateResult(integral=-0.00135941, error=3.95383e-14, converged=False, nfev=1555)",
 "unpack": {
 "items": [
 {
 "f": "-0x1.645c2131d81adp-10"
 },
 {
-"f": "0x1.5ecd27785d7dfp-45"
+"f": "0x1.642127785d7dfp-45"
 }
 ],
 "tuple": "builtins.tuple"
@@ -23105,7 +23160,7 @@ true
 "sum"
 ],
 "attrs": {
-"converged": true,
+"converged": false,
 "error": {
 "f": "inf"
 },
@@ -23151,14 +23206,14 @@ true
 "0x1.0000000000000p+0"
 ]
 },
-"message": "Normal and reliable termination of the routine. It is assumed that the requested accuracy has been achieved.",
+"message": "Non-finite values encountered.",
 "n_intervals": 1,
 "nfev": 21,
-"status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                          inf\nStatus:                              0  Error estimate:                    inf\n                                        Function Evals:                     21\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000        inf        inf\n=============================================================================="
+"status": -3,
+"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                          inf\nStatus:                             -3  Error estimate:                    inf\n                                        Function Evals:                     21\n                                        Intervals:                           1\nMessage:                                        Non-finite values encountered.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000        inf        inf\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=inf, error=inf, converged=True, nfev=21)",
+"repr": "IntegrateResult(integral=inf, error=inf, converged=False, nfev=21)",
 "unpack": {
 "items": [
 {
@@ -25019,17 +25074,17 @@ true
 "0x1.14388049949a1p-3",
 "0x1.67326abe95631p-40",
 "0x1.59933fc6a97b7p-51",
-"0x1.269a83d313df7p-103",
-"0x1.f6a7a29553867p-56",
-"0x1.157e2e38da2dbp-110",
-"0x1.f6a7a29553864p-56",
-"0x1.f6a7a29553886p-56",
-"0x1.f6a7a2955385fp-56",
-"0x1.8f2a525d54cf1p-108",
-"0x1.f6a7a29553863p-56",
-"0x1.f6a7a29553865p-57",
-"0x1.c919604362ee8p-103",
-"0x1.b1070e6ac66f1p-105"
+"0x1.9e36a9c593d0fp-53",
+"0x1.66b82d1432f7dp-53",
+"0x1.40d931ff62708p-53",
+"0x1.24e4a86554ee5p-53",
+"0x1.0f2a999ef779fp-53",
+"0x1.fb4e4f1347eb5p-54",
+"0x1.de4ae6c5994a7p-54",
+"0x1.c5bf891b4ef6dp-54",
+"0x1.b0a1c5847e684p-54",
+"0x1.9e36a9c593d0ep-54",
+"0x1.8df6a6f622b44p-54"
 ]
 },
 "cycle_integrals": {
@@ -25092,7 +25147,7 @@ true
 "n_cycles": 14,
 "nfev": 430,
 "status": 7,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                     0.886301\nStatus:                              7  Error estimate:                  1.349\n                                        Function Evals:                    430\n                                        Cycles:                             14\nMessage: Bad integrand behavior occurs within one or more of the cycles.\n    Location and type of the difficulty involved can be determined from the\n    vector info['ierlist'] obtained with full_output=1.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.064189      0.135          1\n[1]         -0.303949   1.28e-12          0\n[2]          0.229033   5.99e-16          0\n[3]         -0.192161   1.13e-31          0\n[4]          0.168968   2.72e-17          0\n[5]         -0.152609   8.35e-34          0\n[6]          0.140260   2.72e-17          0\n[7]         -0.130505   2.72e-17          0\n[8]          0.122544   2.72e-17          0\n[9]         -0.115886    4.8e-33          0\n[10]         0.110209   2.72e-17          0\n[11]        -0.105294   1.36e-17          0\n[12]         0.100984   1.76e-31          0\n[13]        -0.097164   4.17e-32          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                     0.886301\nStatus:                              7  Error estimate:                  1.349\n                                        Function Evals:                    430\n                                        Cycles:                             14\nMessage: Bad integrand behavior occurs within one or more of the cycles.\n    Location and type of the difficulty involved can be determined from the\n    vector info['ierlist'] obtained with full_output=1.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.064189      0.135          1\n[1]         -0.303949   1.28e-12          0\n[2]          0.229033   5.99e-16          0\n[3]         -0.192161    1.8e-16          0\n[4]          0.168968   1.56e-16          0\n[5]         -0.152609   1.39e-16          0\n[6]          0.140260   1.27e-16          0\n[7]         -0.130505   1.18e-16          0\n[8]          0.122544    1.1e-16          0\n[9]         -0.115886   1.04e-16          0\n[10]         0.110209   9.84e-17          0\n[11]        -0.105294   9.38e-17          0\n[12]         0.100984   8.98e-17          0\n[13]        -0.097164   8.63e-17          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=0.886301, error=1.34873, converged=False, nfev=430)",
@@ -25139,7 +25194,7 @@ true
 "v": [
 "0x1.b0d0000000000p-40",
 "0x1.8a25ac3fc42e4p-43",
-"0x1.3bbae5529876fp-53"
+"0x1.15dce5d1822cdp-52"
 ]
 },
 "cycle_integrals": {
@@ -25171,7 +25226,7 @@ true
 ]
 },
 "error": {
-"f": "0x1.df23a59a8bc9bp-2"
+"f": "0x1.df23a59a8bc9dp-2"
 },
 "integral": {
 "f": "0x1.41b224fd67c35p+0"
@@ -25180,7 +25235,7 @@ true
 "n_cycles": 3,
 "nfev": 365,
 "status": 1,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                      1.25662\nStatus:                              1  Error estimate:                 0.4679\n                                        Function Evals:                    365\n                                        Cycles:                              3\nMessage: The maximum number of cycles allowed has been achieved., e.e. of\n    subintervals (a+(k-1)c, a+kc) where c = (2*int(abs(omega)+1))\n    *pi/abs(omega), for k = 1, 2, ..., lst. One can allow more cycles by\n    increasing the value of limlst. Look at info['ierlst'] with full_output=1.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.269962   1.54e-12          0\n[1]         -0.022696   1.75e-13          0\n[2]          0.009358   1.37e-16          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                       False  Integral:                      1.25662\nStatus:                              1  Error estimate:                 0.4679\n                                        Function Evals:                    365\n                                        Cycles:                              3\nMessage: The maximum number of cycles allowed has been achieved., e.e. of\n    subintervals (a+(k-1)c, a+kc) where c = (2*int(abs(omega)+1))\n    *pi/abs(omega), for k = 1, 2, ..., lst. One can allow more cycles by\n    increasing the value of limlst. Look at info['ierlst'] with full_output=1.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.269962   1.54e-12          0\n[1]         -0.022696   1.75e-13          0\n[2]          0.009358   2.41e-16          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=1.25662, error=0.467909, converged=False, nfev=365)",
@@ -25190,7 +25245,104 @@ true
 "f": "0x1.41b224fd67c35p+0"
 },
 {
-"f": "0x1.df23a59a8bc9bp-2"
+"f": "0x1.df23a59a8bc9dp-2"
+}
+],
+"tuple": "builtins.tuple"
+}
+}
+},
+"quad qawf omega 2^40": {
+"r": {
+"absent": [
+"imag",
+"interval_errors",
+"interval_integrals",
+"intervals",
+"max_level",
+"n_intervals",
+"n_regions",
+"real",
+"region_errors",
+"region_integrals",
+"regions",
+"subdivisions",
+"sum"
+],
+"attrs": {
+"converged": true,
+"cycle_errors": {
+"nd": "float64",
+"shape": [
+6
+],
+"strides": [
+8
+],
+"v": [
+"0x1.921fb544439a9p-51",
+"0x1.807ba3309e00dp-60",
+"0x1.6f9daf0d9a596p-69",
+"0x1.5f7d27e50cb80p-78",
+"0x1.5011be5c51f6cp-87",
+"0x1.4153806c200f3p-96"
+]
+},
+"cycle_integrals": {
+"nd": "float64",
+"shape": [
+6
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0510a05ad409fp-61",
+"0x1.c8d3c148708c4p-62",
+"-0x1.c51848e7d555ap-69",
+"-0x1.0d66db0b18995p-79",
+"0x1.4fe5e465be0dcp-86",
+"-0x1.22607206532c2p-94"
+]
+},
+"cycle_status": {
+"nd": "int64",
+"shape": [
+6
+],
+"strides": [
+8
+],
+"v": [
+0,
+0,
+0,
+0,
+0,
+0
+]
+},
+"error": {
+"f": "0x1.92e04f2953740p-51"
+},
+"integral": {
+"f": "0x1.e7b5260460aa3p-61"
+},
+"message": "Normal and reliable termination of the routine. It is assumed that the requested accuracy has been achieved.",
+"n_cycles": 6,
+"nfev": 150,
+"status": 0,
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                  8.26209e-19\nStatus:                              0  Error estimate:              6.989e-16\n                                        Function Evals:                    150\n                                        Cycles:                              6\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n               integral      error     status\n------------------------------------------------------------------------------\n[0]         4.42261e-19   6.98e-16          0\n[1]         3.86948e-19    1.3e-18          0\n[2]        -2.99833e-21   2.43e-21          0\n[3]        -1.74097e-24   4.54e-24          0\n[4]         1.69585e-26   8.48e-27          0\n[5]        -5.72667e-29   1.58e-29          0\n=============================================================================="
+},
+"obj": "stardust.integrate._result.IntegrateResult",
+"repr": "IntegrateResult(integral=8.26209e-19, error=6.98879e-16, converged=True, nfev=150)",
+"unpack": {
+"items": [
+{
+"f": "0x1.e7b5260460aa3p-61"
+},
+{
+"f": "0x1.92e04f2953740p-51"
 }
 ],
 "tuple": "builtins.tuple"
@@ -25228,17 +25380,17 @@ true
 "0x1.133c200000000p-32",
 "0x1.67326abe95631p-40",
 "0x1.59933fc6a97b7p-51",
-"0x1.269a83d313df7p-103",
-"0x1.f6a7a29553867p-56",
-"0x1.157e2e38da2dbp-110",
-"0x1.f6a7a29553864p-56",
-"0x1.f6a7a29553886p-56",
-"0x1.f6a7a2955385fp-56",
-"0x1.8f2a525d54cf1p-108",
-"0x1.f6a7a29553863p-56",
-"0x1.f6a7a29553865p-57",
-"0x1.c919604362ee8p-103",
-"0x1.b1070e6ac66f1p-105"
+"0x1.9e36a9c593d0fp-53",
+"0x1.66b82d1432f7dp-53",
+"0x1.40d931ff62708p-53",
+"0x1.24e4a86554ee5p-53",
+"0x1.0f2a999ef779fp-53",
+"0x1.fb4e4f1347eb5p-54",
+"0x1.de4ae6c5994a7p-54",
+"0x1.c5bf891b4ef6dp-54",
+"0x1.b0a1c5847e684p-54",
+"0x1.9e36a9c593d0ep-54",
+"0x1.8df6a6f622b44p-54"
 ]
 },
 "cycle_integrals": {
@@ -25301,7 +25453,7 @@ true
 "n_cycles": 14,
 "nfev": 580,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    -0.886227\nStatus:                              0  Error estimate:              7.253e-09\n                                        Function Evals:                    580\n                                        Cycles:                             14\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.064115    2.5e-10          0\n[1]         -0.303949   1.28e-12          0\n[2]          0.229033   5.99e-16          0\n[3]         -0.192161   1.13e-31          0\n[4]          0.168968   2.72e-17          0\n[5]         -0.152609   8.35e-34          0\n[6]          0.140260   2.72e-17          0\n[7]         -0.130505   2.72e-17          0\n[8]          0.122544   2.72e-17          0\n[9]         -0.115886    4.8e-33          0\n[10]         0.110209   2.72e-17          0\n[11]        -0.105294   1.36e-17          0\n[12]         0.100984   1.76e-31          0\n[13]        -0.097164   4.17e-32          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    -0.886227\nStatus:                              0  Error estimate:              7.253e-09\n                                        Function Evals:                    580\n                                        Cycles:                             14\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.064115    2.5e-10          0\n[1]         -0.303949   1.28e-12          0\n[2]          0.229033   5.99e-16          0\n[3]         -0.192161    1.8e-16          0\n[4]          0.168968   1.56e-16          0\n[5]         -0.152609   1.39e-16          0\n[6]          0.140260   1.27e-16          0\n[7]         -0.130505   1.18e-16          0\n[8]          0.122544    1.1e-16          0\n[9]         -0.115886   1.04e-16          0\n[10]         0.110209   9.84e-17          0\n[11]        -0.105294   9.38e-17          0\n[12]         0.100984   8.98e-17          0\n[13]        -0.097164   8.63e-17          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=-0.886227, error=7.25252e-09, converged=True, nfev=580)",
@@ -25319,7 +25471,7 @@ true
 }
 },
 "quad qawf summary": {
-"r": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                      1.25331\nStatus:                              0  Error estimate:              3.703e-09\n                                        Function Evals:                    615\n                                        Cycles:                             13\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.269962   1.54e-12          0\n[1]         -0.022696   1.75e-13          0\n[2]          0.009358   1.37e-16          0\n[3]         -0.005465   2.76e-17          0\n[4]          0.003698   1.48e-17          0\n[5]         -0.002717   2.35e-17          0\n[6]          0.002107    4.6e-18          0\n[7]         -0.001695   1.58e-17          0\n[8]          0.001403   6.64e-18          0\n[9]         -0.001186   7.66e-19          0\n[10]         0.001020    3.7e-18          0\n[11]        -0.000889   2.55e-18          0\n[12]         0.000784   5.88e-18          0\n=============================================================================="
+"r": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                      1.25331\nStatus:                              0  Error estimate:              3.703e-09\n                                        Function Evals:                    615\n                                        Cycles:                             13\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.269962   1.54e-12          0\n[1]         -0.022696   1.75e-13          0\n[2]          0.009358   2.41e-16          0\n[3]         -0.005465   1.97e-16          0\n[4]          0.003698    1.7e-16          0\n[5]         -0.002717   1.52e-16          0\n[6]          0.002107   1.39e-16          0\n[7]         -0.001695   1.29e-16          0\n[8]          0.001403   1.21e-16          0\n[9]         -0.001186   1.14e-16          0\n[10]         0.001020   1.08e-16          0\n[11]        -0.000889   1.03e-16          0\n[12]         0.000784   9.84e-17          0\n=============================================================================="
 },
 "quad qawf zero frequency": {
 "r": {
@@ -26245,17 +26397,17 @@ true
 "v": [
 "0x1.5990000000000p-40",
 "0x1.3a6d000000001p-43",
-"0x1.e000000000009p-54",
-"0x1.80000000000d4p-61",
-"0x1.b000000000000p-58",
-"0x1.b000000000007p-57",
-"0x1.5000000000000p-57",
-"0x1.c800000000000p-58",
-"0x1.3800000000000p-58",
-"0x1.1400000000077p-57",
-"0x1.c20000000000ap-56",
-"0x1.8780000000000p-56",
-"0x1.5000000000000p-61"
+"0x1.bb67ae8584cadp-53",
+"0x1.6a09e667f3bcep-53",
+"0x1.3988e14092130p-53",
+"0x1.186f174f88474p-53",
+"0x1.0000000000000p-53",
+"0x1.da05179501506p-54",
+"0x1.bb67ae8584caep-54",
+"0x1.a20bd700c2c41p-54",
+"0x1.8c97ef43f7248p-54",
+"0x1.7a23166210bb5p-54",
+"0x1.6a09e667f3bcep-54"
 ]
 },
 "cycle_integrals": {
@@ -26316,7 +26468,7 @@ true
 "n_cycles": 13,
 "nfev": 615,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                      1.00000\nStatus:                              0  Error estimate:              2.955e-09\n                                        Function Evals:                    615\n                                        Cycles:                             13\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.013283   1.23e-12          0\n[1]         -0.018109    1.4e-13          0\n[2]          0.007467   1.04e-16          0\n[3]         -0.004360   6.51e-19          0\n[4]          0.002950   5.85e-18          0\n[5]         -0.002168   1.17e-17          0\n[6]          0.001681   9.11e-18          0\n[7]         -0.001353   6.18e-18          0\n[8]          0.001119   4.23e-18          0\n[9]         -0.000946   7.48e-18          0\n[10]         0.000814   2.44e-17          0\n[11]        -0.000709   2.12e-17          0\n[12]         0.000626   5.69e-19          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                      1.00000\nStatus:                              0  Error estimate:              2.955e-09\n                                        Function Evals:                    615\n                                        Cycles:                             13\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          1.013283   1.23e-12          0\n[1]         -0.018109    1.4e-13          0\n[2]          0.007467   1.92e-16          0\n[3]         -0.004360   1.57e-16          0\n[4]          0.002950   1.36e-16          0\n[5]         -0.002168   1.22e-16          0\n[6]          0.001681   1.11e-16          0\n[7]         -0.001353   1.03e-16          0\n[8]          0.001119   9.61e-17          0\n[9]         -0.000946   9.06e-17          0\n[10]         0.000814    8.6e-17          0\n[11]        -0.000709    8.2e-17          0\n[12]         0.000626   7.85e-17          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=1, error=2.95455e-09, converged=True, nfev=615)",
@@ -37786,7 +37938,7 @@ true
 }
 },
 "quad weight complex summary": {
-"r": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:           (0.5+1.24951e-14j)\nStatus:                              0  Error estimate:   (2.19e-12+7.35e-13j)\n                                        Function Evals:                    350\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n              integral      error     status       nfev     cycles\n------------------------------------------------------------------------------\nreal          0.500000   2.19e-12          0        200          6\nimag       1.24951e-14   7.35e-13          0        150          6\n=============================================================================="
+"r": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:           (0.5+1.24951e-14j)\nStatus:                              0  Error estimate:  (2.19e-12+7.413e-13j)\n                                        Function Evals:                    350\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n              integral      error     status       nfev     cycles\n------------------------------------------------------------------------------\nreal          0.500000   2.19e-12          0        200          6\nimag       1.24951e-14   7.41e-13          0        150          6\n=============================================================================="
 },
 "quad weight empty": {
 "r": {
@@ -41211,15 +41363,15 @@ true
 "0x1.634c24219cc00p-30",
 "0x1.2af7f89a0ca2dp-42",
 "0x1.9f92e4c45b4dep-54",
-"0x1.66243d70cb82ap-61",
-"0x1.242b09b3988d4p-62",
-"0x1.8bd7366f31c61p-64",
-"0x1.2d97c7f33258dp-68",
-"0x1.c463abeccb2b8p-68",
-"0x1.78fdb9effea44p-67",
-"0x1.2d97c7f333116p-70",
-"0x1.ea16a4eb31b6ap-68",
-"0x1.78fdb9effef62p-67"
+"0x1.81d3e33418a95p-60",
+"0x1.b24b242ad729cp-61",
+"0x1.1604aa7e44095p-61",
+"0x1.823085b4d9f1ap-62",
+"0x1.1bc12f233a017p-62",
+"0x1.b285cd4313c48p-63",
+"0x1.5756d7419d9ccp-63",
+"0x1.161cb3713031fp-63",
+"0x1.cbb2cbe8bd0ffp-64"
 ]
 },
 "cycle_integrals": {
@@ -41278,7 +41430,7 @@ true
 "n_cycles": 12,
 "nfev": 410,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.577864\nStatus:                              0  Error estimate:              1.372e-08\n                                        Function Evals:                    410\n                                        Cycles:                             12\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n               integral      error     status\n------------------------------------------------------------------------------\n[0]            0.579960   1.29e-09          0\n[1]           -0.002384   2.66e-13          0\n[2]            0.000375   9.01e-17          0\n[3]           -0.000124   6.07e-19          0\n[4]         5.59611e-05   2.47e-19          0\n[5]        -3.00054e-05   8.38e-20          0\n[6]          1.7955e-05   3.99e-21          0\n[7]        -1.15974e-05   5.99e-21          0\n[8]         7.92534e-06   9.98e-21          0\n[9]          -5.656e-06   9.98e-22          0\n[10]        4.17781e-06   6.49e-21          0\n[11]       -3.17358e-06   9.98e-21          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.577864\nStatus:                              0  Error estimate:              1.372e-08\n                                        Function Evals:                    410\n                                        Cycles:                             12\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n               integral      error     status\n------------------------------------------------------------------------------\n[0]            0.579960   1.29e-09          0\n[1]           -0.002384   2.66e-13          0\n[2]            0.000375   9.01e-17          0\n[3]           -0.000124   1.31e-18          0\n[4]         5.59611e-05   7.36e-19          0\n[5]        -3.00054e-05   4.71e-19          0\n[6]          1.7955e-05   3.27e-19          0\n[7]        -1.15974e-05    2.4e-19          0\n[8]         7.92534e-06   1.84e-19          0\n[9]          -5.656e-06   1.45e-19          0\n[10]        4.17781e-06   1.18e-19          0\n[11]       -3.17358e-06   9.73e-20          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=0.577864, error=1.37226e-08, converged=True, nfev=410)",
@@ -41328,11 +41480,11 @@ true
 "0x1.19cc2bd47e6eep-47",
 "0x1.c36bccc7a8e94p-55",
 "0x1.61c858a6947f1p-60",
-"0x1.71c3f4e15e443p-63",
-"0x1.c13f6c8242fdcp-65",
-"0x1.1475cc9eee120p-64",
-"0x1.bdcac059dfdc4p-66",
-"0x1.9eb0b2ee65151p-67"
+"0x1.7af81a3564e1bp-61",
+"0x1.073d8572a300dp-61",
+"0x1.82dc9b8709bedp-62",
+"0x1.28387e1b82b35p-62",
+"0x1.d422496e79b62p-63"
 ]
 },
 "cycle_integrals": {
@@ -41387,7 +41539,7 @@ true
 "n_cycles": 10,
 "nfev": 400,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0105839\nStatus:                              0  Error estimate:              3.234e-09\n                                        Function Evals:                    400\n                                        Cycles:                             10\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n               integral      error     status\n------------------------------------------------------------------------------\n[0]            0.010814    4.3e-12          0\n[1]           -0.000260   1.78e-11          0\n[2]         3.88236e-05   7.82e-15          0\n[3]        -1.26968e-05   4.89e-17          0\n[4]         5.70832e-06    1.2e-18          0\n[5]        -3.05466e-06   1.57e-19          0\n[6]         1.82589e-06   4.76e-20          0\n[7]        -1.17858e-06   5.85e-20          0\n[8]         8.05054e-07   2.36e-20          0\n[9]        -5.74359e-07    1.1e-20          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0105839\nStatus:                              0  Error estimate:              3.234e-09\n                                        Function Evals:                    400\n                                        Cycles:                             10\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n               integral      error     status\n------------------------------------------------------------------------------\n[0]            0.010814    4.3e-12          0\n[1]           -0.000260   1.78e-11          0\n[2]         3.88236e-05   7.82e-15          0\n[3]        -1.26968e-05   4.89e-17          0\n[4]         5.70832e-06    1.2e-18          0\n[5]        -3.05466e-06   6.42e-19          0\n[6]         1.82589e-06   4.46e-19          0\n[7]        -1.17858e-06   3.28e-19          0\n[8]         8.05054e-07   2.51e-19          0\n[9]        -5.74359e-07   1.98e-19          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=0.0105839, error=3.2341e-09, converged=True, nfev=400)",
@@ -41436,14 +41588,14 @@ true
 "0x1.235511ad6c7c6p-35",
 "0x1.d7f8de391baafp-46",
 "0x1.51a7dfea1bf10p-52",
-"0x1.060fa9f6a6e15p-55",
-"0x1.f2774e074829bp-56",
-"0x1.40b449bb45f69p-56",
-"0x1.1de28ade8780ep-58",
-"0x1.5b46e2205e0e4p-56",
-"0x1.932bca67c603ap-60",
-"0x1.705a0b8b07686p-58",
-"0x1.af9387cb02bd1p-57"
+"0x1.5a8e4f8ccf0dep-53",
+"0x1.35f811c89f76bp-53",
+"0x1.1af63287f0ccep-53",
+"0x1.05f8bd37c0e64p-53",
+"0x1.ea1aa3667d6cbp-54",
+"0x1.ce1314bbbebd0p-54",
+"0x1.b65cc5d90f73fp-54",
+"0x1.a1f64f032f39bp-54"
 ]
 },
 "cycle_integrals": {
@@ -41502,7 +41654,7 @@ true
 "n_cycles": 12,
 "nfev": 640,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.723601\nStatus:                              0  Error estimate:              3.648e-09\n                                        Function Evals:                    640\n                                        Cycles:                             12\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          0.726379   1.79e-12          0\n[1]         -0.003766   3.31e-11          0\n[2]          0.001526   2.62e-14          0\n[3]         -0.000888   2.93e-16          0\n[4]          0.000600   2.84e-17          0\n[5]         -0.000441    2.7e-17          0\n[6]          0.000342   1.74e-17          0\n[7]         -0.000275   3.87e-18          0\n[8]          0.000227   1.88e-17          0\n[9]         -0.000192   1.37e-18          0\n[10]         0.000165   4.99e-18          0\n[11]        -0.000144   1.17e-17          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.723601\nStatus:                              0  Error estimate:              3.648e-09\n                                        Function Evals:                    640\n                                        Cycles:                             12\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          0.726379   1.79e-12          0\n[1]         -0.003766   3.31e-11          0\n[2]          0.001526   2.62e-14          0\n[3]         -0.000888   2.93e-16          0\n[4]          0.000600    1.5e-16          0\n[5]         -0.000441   1.34e-16          0\n[6]          0.000342   1.23e-16          0\n[7]         -0.000275   1.14e-16          0\n[8]          0.000227   1.06e-16          0\n[9]         -0.000192      1e-16          0\n[10]         0.000165   9.51e-17          0\n[11]        -0.000144   9.06e-17          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=0.723601, error=3.64792e-09, converged=True, nfev=640)",
@@ -41550,17 +41702,17 @@ true
 "0x1.025ec00000000p-34",
 "0x1.32e6208ec0731p-38",
 "0x1.25371ed71b73bp-49",
-"0x1.d524fe24f8b7cp-55",
-"0x1.d524fe24f8a02p-56",
-"0x1.d524fe24f8a24p-57",
-"0x1.d524fe24f8a43p-57",
-"0x1.8aaf4a6f25ca7p-107",
-"0x1.d524fe24f8abep-57",
-"0x1.d524fe24f8a04p-57",
-"0x1.d524fe24f8a18p-56",
-"0x1.d524fe24f8a54p-57",
-"0x1.4cfb70b5a1d49p-101",
-"0x1.d524fe24f8a10p-57"
+"0x1.902b14c81925fp-53",
+"0x1.5a8e4f8ccf0dep-53",
+"0x1.35f811c89f76bp-53",
+"0x1.1af63287f0ccep-53",
+"0x1.05f8bd37c0e64p-53",
+"0x1.ea1aa3667d6cbp-54",
+"0x1.ce1314bbbebd0p-54",
+"0x1.b65cc5d90f73fp-54",
+"0x1.a1f64f032f39bp-54",
+"0x1.902b14c81925fp-54",
+"0x1.807820f617ae0p-54"
 ]
 },
 "cycle_integrals": {
@@ -41623,7 +41775,7 @@ true
 "n_cycles": 14,
 "nfev": 630,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.723601\nStatus:                              0  Error estimate:              3.900e-09\n                                        Function Evals:                    630\n                                        Cycles:                             14\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          0.846530   5.87e-11          0\n[1]         -0.209951   4.36e-12          0\n[2]          0.158092   2.03e-15          0\n[3]         -0.132621   5.09e-17          0\n[4]          0.116608   2.54e-17          0\n[5]         -0.105316   1.27e-17          0\n[6]          0.096792   1.27e-17          0\n[7]         -0.090059    9.5e-33          0\n[8]          0.084565   1.27e-17          0\n[9]         -0.079970   1.27e-17          0\n[10]         0.076053   2.54e-17          0\n[11]        -0.072661   1.27e-17          0\n[12]         0.069686   5.13e-31          0\n[13]        -0.067050   1.27e-17          0\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.723601\nStatus:                              0  Error estimate:              3.900e-09\n                                        Function Evals:                    630\n                                        Cycles:                             14\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n             integral      error     status\n------------------------------------------------------------------------------\n[0]          0.846530   5.87e-11          0\n[1]         -0.209951   4.36e-12          0\n[2]          0.158092   2.03e-15          0\n[3]         -0.132621   1.74e-16          0\n[4]          0.116608    1.5e-16          0\n[5]         -0.105316   1.34e-16          0\n[6]          0.096792   1.23e-16          0\n[7]         -0.090059   1.14e-16          0\n[8]          0.084565   1.06e-16          0\n[9]         -0.079970      1e-16          0\n[10]         0.076053   9.51e-17          0\n[11]        -0.072661   9.06e-17          0\n[12]         0.069686   8.68e-17          0\n[13]        -0.067050   8.34e-17          0\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
 "repr": "IntegrateResult(integral=0.723601, error=3.90029e-09, converged=True, nfev=630)",
@@ -41749,7 +41901,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x1.24247995a460cp-58"
+"f": "0x1.0000000000000p-53"
 },
 "integral": {
 "f": "0x1.f3cd5465185fbp-8"
@@ -41763,7 +41915,7 @@ true
 8
 ],
 "v": [
-"0x1.24247995a460cp-58"
+"0x1.0000000000000p-53"
 ]
 },
 "interval_integrals": {
@@ -41797,17 +41949,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                   0.00762637\nStatus:                              0  Error estimate:              3.959e-18\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.007626   3.96e-18\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                   0.00762637\nStatus:                              0  Error estimate:              1.110e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.007626   1.11e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=0.00762637, error=3.95927e-18, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=0.00762637, error=1.11022e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "0x1.f3cd5465185fbp-8"
 },
 {
-"f": "0x1.24247995a460cp-58"
+"f": "0x1.0000000000000p-53"
 }
 ],
 "tuple": "builtins.tuple"
@@ -41834,7 +41986,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x0.0p+0"
+"f": "0x1.0000000000000p-53"
 },
 "integral": {
 "f": "0x1.d5bc43d05abebp-7"
@@ -41848,7 +42000,7 @@ true
 8
 ],
 "v": [
-"0x0.0p+0"
+"0x1.0000000000000p-53"
 ]
 },
 "interval_integrals": {
@@ -41882,17 +42034,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0143352\nStatus:                              0  Error estimate:                  0.000\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.014335      0.000\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0143352\nStatus:                              0  Error estimate:              1.110e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.014335   1.11e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=0.0143352, error=0, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=0.0143352, error=1.11022e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "0x1.d5bc43d05abebp-7"
 },
 {
-"f": "0x0.0p+0"
+"f": "0x1.0000000000000p-53"
 }
 ],
 "tuple": "builtins.tuple"
@@ -41919,7 +42071,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x1.f87c28b687e31p-56"
+"f": "0x1.5dd8c884d3f74p-51"
 },
 "integral": {
 "f": "0x1.99d150799d9fbp-5"
@@ -41933,7 +42085,7 @@ true
 8
 ],
 "v": [
-"0x1.f87c28b687e31p-56"
+"0x1.5dd8c884d3f74p-51"
 ]
 },
 "interval_integrals": {
@@ -41967,17 +42119,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0500266\nStatus:                              0  Error estimate:              2.735e-17\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]         -1.000000   2.000000   0.050027   2.73e-17\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0500266\nStatus:                              0  Error estimate:              6.069e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]         -1.000000   2.000000   0.050027   6.07e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=0.0500266, error=2.73482e-17, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=0.0500266, error=6.06887e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "0x1.99d150799d9fbp-5"
 },
 {
-"f": "0x1.f87c28b687e31p-56"
+"f": "0x1.5dd8c884d3f74p-51"
 }
 ],
 "tuple": "builtins.tuple"
@@ -42174,7 +42326,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x0.0p+0"
+"f": "0x1.5bf0a8b14576ap-52"
 },
 "integral": {
 "f": "0x1.26adae4e933cap-9"
@@ -42188,7 +42340,7 @@ true
 8
 ],
 "v": [
-"0x0.0p+0"
+"0x1.5bf0a8b14576ap-52"
 ]
 },
 "interval_integrals": {
@@ -42222,17 +42374,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                   0.00224822\nStatus:                              0  Error estimate:                  0.000\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.002248      0.000\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                   0.00224822\nStatus:                              0  Error estimate:              3.018e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.002248   3.02e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=0.00224822, error=0, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=0.00224822, error=3.0179e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "0x1.26adae4e933cap-9"
 },
 {
-"f": "0x0.0p+0"
+"f": "0x1.5bf0a8b14576ap-52"
 }
 ],
 "tuple": "builtins.tuple"
@@ -42344,7 +42496,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x1.052c2a3dee928p-59"
+"f": "0x1.0000000000000p-53"
 },
 "integral": {
 "f": "0x1.faf905c912fe5p-6"
@@ -42358,7 +42510,7 @@ true
 8
 ],
 "v": [
-"0x1.052c2a3dee928p-59"
+"0x1.0000000000000p-53"
 ]
 },
 "interval_integrals": {
@@ -42392,17 +42544,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0309432\nStatus:                              0  Error estimate:              1.770e-18\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.030943   1.77e-18\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0309432\nStatus:                              0  Error estimate:              1.110e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.030943   1.11e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=0.0309432, error=1.76977e-18, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=0.0309432, error=1.11022e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "0x1.faf905c912fe5p-6"
 },
 {
-"f": "0x1.052c2a3dee928p-59"
+"f": "0x1.0000000000000p-53"
 }
 ],
 "tuple": "builtins.tuple"
@@ -42429,7 +42581,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x0.0p+0"
+"f": "0x1.0000000000000p-53"
 },
 "integral": {
 "f": "0x1.bc5e80504a076p-4"
@@ -42443,7 +42595,7 @@ true
 8
 ],
 "v": [
-"0x0.0p+0"
+"0x1.0000000000000p-53"
 ]
 },
 "interval_integrals": {
@@ -42477,17 +42629,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.108489\nStatus:                              0  Error estimate:                  0.000\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.108489      0.000\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                     0.108489\nStatus:                              0  Error estimate:              1.110e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000   0.108489   1.11e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=0.108489, error=0, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=0.108489, error=1.11022e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "0x1.bc5e80504a076p-4"
 },
 {
-"f": "0x0.0p+0"
+"f": "0x1.0000000000000p-53"
 }
 ],
 "tuple": "builtins.tuple"
@@ -42514,7 +42666,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x1.1b3b80bc486abp-56"
+"f": "0x1.5dd8c884d3f74p-51"
 },
 "integral": {
 "f": "0x1.bc69fa17e40e2p-6"
@@ -42528,7 +42680,7 @@ true
 8
 ],
 "v": [
-"0x1.1b3b80bc486abp-56"
+"0x1.5dd8c884d3f74p-51"
 ]
 },
 "interval_integrals": {
@@ -42562,17 +42714,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0271249\nStatus:                              0  Error estimate:              1.535e-17\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]         -1.000000   2.000000   0.027125   1.54e-17\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    0.0271249\nStatus:                              0  Error estimate:              6.069e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]         -1.000000   2.000000   0.027125   6.07e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=0.0271249, error=1.53541e-17, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=0.0271249, error=6.06887e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "0x1.bc69fa17e40e2p-6"
 },
 {
-"f": "0x1.1b3b80bc486abp-56"
+"f": "0x1.5dd8c884d3f74p-51"
 }
 ],
 "tuple": "builtins.tuple"
@@ -42599,7 +42751,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x1.39480ccee0c1ep-50"
+"f": "0x1.ae3dfd977a7e3p-50"
 },
 "integral": {
 "f": "-0x1.0ee5f1da3a93cp-1"
@@ -42613,7 +42765,7 @@ true
 8
 ],
 "v": [
-"0x1.39480ccee0c1ep-50"
+"0x1.ae3dfd977a7e3p-50"
 ]
 },
 "interval_integrals": {
@@ -42647,17 +42799,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    -0.529098\nStatus:                              0  Error estimate:              1.087e-15\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   3.000000   0.529098   1.09e-15\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                    -0.529098\nStatus:                              0  Error estimate:              1.493e-15\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   3.000000   0.529098   1.49e-15\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=-0.529098, error=1.08691e-15, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=-0.529098, error=1.4927e-15, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "-0x1.0ee5f1da3a93cp-1"
 },
 {
-"f": "0x1.39480ccee0c1ep-50"
+"f": "0x1.ae3dfd977a7e3p-50"
 }
 ],
 "tuple": "builtins.tuple"
@@ -42769,7 +42921,7 @@ true
 "attrs": {
 "converged": true,
 "error": {
-"f": "0x0.0p+0"
+"f": "0x1.5bf0a8b14576ap-52"
 },
 "integral": {
 "f": "-0x1.1403cf3be6136p-11"
@@ -42783,7 +42935,7 @@ true
 8
 ],
 "v": [
-"0x0.0p+0"
+"0x1.5bf0a8b14576ap-52"
 ]
 },
 "interval_integrals": {
@@ -42817,17 +42969,17 @@ true
 "n_intervals": 1,
 "nfev": 25,
 "status": 0,
-"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                 -0.000526457\nStatus:                              0  Error estimate:                  0.000\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000  -0.000526      0.000\n=============================================================================="
+"summary": "                             Integration Results\n==============================================================================\nConverged:                        True  Integral:                 -0.000526457\nStatus:                              0  Error estimate:              3.018e-16\n                                        Function Evals:                     25\n                                        Intervals:                           1\nMessage: Normal and reliable termination of the routine. It is assumed that\n    the requested accuracy has been achieved.\n==============================================================================\n                    a          b   integral      error\n------------------------------------------------------------------------------\n[0]          0.000000   1.000000  -0.000526   3.02e-16\n=============================================================================="
 },
 "obj": "stardust.integrate._result.IntegrateResult",
-"repr": "IntegrateResult(integral=-0.000526457, error=0, converged=True, nfev=25)",
+"repr": "IntegrateResult(integral=-0.000526457, error=3.0179e-16, converged=True, nfev=25)",
 "unpack": {
 "items": [
 {
 "f": "-0x1.1403cf3be6136p-11"
 },
 {
-"f": "0x0.0p+0"
+"f": "0x1.5bf0a8b14576ap-52"
 }
 ],
 "tuple": "builtins.tuple"

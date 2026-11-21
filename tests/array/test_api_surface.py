@@ -57,3 +57,20 @@ def test_every_documented_ndarray_member_exists():
 def test_nothing_undocumented_is_exported():
     assert sorted(set(sd.__all__) - api_names() - CONSTANTS) == []
     assert set(sd.__all__) <= set(dir(sd))
+
+
+def test_method_docstrings_have_the_module_functions_signature():
+    # Each public method's __doc__ starts with the module function's signature, self for x
+    # (no nanobind type annotations): sum(self, /, *, axis=None, dtype=None, keepdims=False).
+    x = sd.zeros((2, 2))
+    public = sorted(m for m in dir(x) if not m.startswith("_") and callable(getattr(x, m)))
+    assert public == sorted(METHODS)
+    for m in public:
+        first = getattr(x, m).__doc__.split("\n")[0]
+        assert ":" not in first and "->" not in first, first
+        mod = getattr(sd, m, None)
+        if mod is not None:  # reshape, astype and the reductions: the function's, self for x
+            want = mod.__doc__.split("\n")[0].replace(f"{m}(x, ", f"{m}(self, ", 1)
+        else:  # copy, tolist: methods only
+            want = f"{m}(self, /)"
+        assert first == want, (m, first)

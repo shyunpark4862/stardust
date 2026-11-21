@@ -833,12 +833,21 @@ struct Fixed {
     vec nodes, weights;
 };
 
+// The most values (points x ndim) of one region's nodes, both rules together (decision C117):
+// cubature() checks it first, the kernel again where it multiplies. kCubePointsMax bounds the
+// points of the first regions that 'points' makes, all regions together.
+constexpr std::size_t kCubeValuesMax = std::size_t{1} << 25;
+constexpr std::size_t kCubePointsMax = std::size_t{1} << 24;
+
 // _cartesian_product of d copies of a 1-D rule (the first variable slowest) and the products of
 // the weights (np.prod along the row: in order)
 Fixed product_rule(const double* x, const double* w, std::size_t k, std::size_t d) {
     Fixed r;
     r.n = 1;
-    for (std::size_t i = 0; i < d; ++i) r.n *= k;
+    for (std::size_t i = 0; i < d; ++i) {
+        if (r.n > kCubeValuesMax / k / d) throw nb::value_error("the rule needs more than 2**25 values per region");
+        r.n *= k;
+    }
     r.nodes.resize(r.n * d);
     r.weights.resize(r.n);
     std::vector<std::size_t> idx(d, 0);
@@ -1106,6 +1115,7 @@ nb::object cubature_solve(
             lower = product_rule(k21 ? kGL10x : kGL7x, k21 ? kGL10w : kGL7w, k21 ? 10 : 7, d);
         }
         c.both.n = c.hi.n + lower.n;
+        if (c.both.n > kCubeValuesMax / d) throw nb::value_error("the rule needs more than 2**25 values per region");
         c.both.nodes = c.hi.nodes;
         c.both.nodes.insert(c.both.nodes.end(), lower.nodes.begin(), lower.nodes.end());
         c.both.weights = c.hi.weights;
@@ -1168,6 +1178,12 @@ nb::object cubature_solve(
                 }
             }
             initial = std::move(next);
+            if (initial.size() > kCubePointsMax / c.both.n) {  // checked as they grow: up to 2^d per point
+                const std::string msg = "'points' split the box into more than " +
+                                        std::to_string(kCubePointsMax / c.both.n) + " regions of " +
+                                        std::to_string(c.both.n) + " points each (more than 2**24 points)";
+                throw nb::value_error(msg.c_str());
+            }
         }
 
         std::vector<Region> regions;

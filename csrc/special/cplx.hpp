@@ -4,7 +4,7 @@
 // sign of a zero imaginary part (the side of a branch cut).
 #pragma once
 
-#include "special/sincos.hpp"
+#include "base/sincos.hpp"
 #include "array/kernels/scalar_ops.hpp"
 
 #include <cmath>

@@ -21,7 +21,7 @@
 // ~1e10 (zeta past 2^50) the phase itself is no longer resolved (S6 note).
 #pragma once
 
-#include "special/sincos.hpp"
+#include "base/sincos.hpp"
 #include "special/common.hpp"
 #include "special/cost.hpp"
 #include "special/dd.hpp"

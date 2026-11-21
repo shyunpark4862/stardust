@@ -136,6 +136,7 @@ class ProportionsChisquareResult(_TestResult):
     __slots__ = ()
     _TITLE = "Chi-squared test of proportions"
     _FIELDS = ("statistic", "pvalue", "df", "table", "expected_freq")
+    _TABLES = ("table", "expected_freq")
 
     def _parts(self):
         return (self.statistic, self.pvalue, (self.table, self.expected_freq))
@@ -198,6 +199,14 @@ def _scalars(*vs):
     return all(_scalar_value(v) is not None for v in vs)
 
 
+_COUNT_LIMIT = 2**53  # the trials of binomtest and proportion_confint: exact float64 integers (H151)
+
+
+def _below_limit(n, name, arg):
+    if n.size and bool(_sd.any(n >= float(_COUNT_LIMIT))):
+        raise ValueError(f"{name}(): '{arg}' must be below 2**53")
+
+
 def _not_above(c, n, name, carg, narg):
     if c.size and bool(_sd.any(c > n)):
         raise ValueError(f"{name}(): '{carg}' must not exceed '{narg}'")
@@ -251,7 +260,7 @@ def _samples(name, count, nobs):
 
 def binomtest(k, n, /, *, p=0.5, alternative="two-sided"):
     """The exact binomial test that the probability of success is p: k successes of n trials
-    (ints, 0 <= k <= n, n >= 1), p in [0, 1]. statistic k / n, pvalue the binomial tail
+    (ints, 0 <= k <= n, 1 <= n < 2**53: H151), p in [0, 1]. statistic k / n, pvalue the binomial tail
     ('less' P(X <= k), 'greater' P(X >= k), two-sided scipy's rule: the far side's outcomes at
     most (1 + 1e-7) times as probable as k, R's binom.test's too), and conf_int(*, alpha=0.05,
     method='exact') (scipy's proportion_ci: 'exact', 'wilson', 'wilsoncc'). Fields k n alternative
@@ -259,6 +268,8 @@ def binomtest(k, n, /, *, p=0.5, alternative="two-sided"):
     name = "binomtest"
     kk = C.integer(k, name, "k", minimum=0)
     nn = C.integer(n, name, "n", minimum=1)
+    if nn >= _COUNT_LIMIT:
+        raise ValueError(f"{name}(): 'n' must be below 2**53")
     if kk > nn:
         raise ValueError(f"{name}(): 'k' must not exceed 'n'")
     pp = _proportion(p, name, "p")
@@ -304,6 +315,9 @@ def quantile_test(x, /, *, axis=None, q=0.0, p=0.5, alternative="two-sided", nan
     )
 
 
+_POISSON_STEPS = 2e7  # poisson_means_test's x2 steps at most (csrc/htest/proportion.cpp kPoissonSteps, H154)
+
+
 def _positive(v, name, arg):
     r = C.real(v, name, arg)
     if not (r > 0.0 and math.isfinite(r)):
@@ -316,7 +330,8 @@ def poisson_means_test(k1, n1, k2, n2, /, *, diff=0, alternative="two-sided"):
     k1 and k2 the counts (ints >= 0) in sizes n1 and n2 (> 0). statistic T = (k1/n1 - k2/n2 -
     diff) / sqrt(k1/n1^2 + k2/n2^2), pvalue the null probability (rates estimated under the null)
     of the outcomes with T at least as extreme, summed over all outcomes (scipy truncates the sums;
-    the tail left out here is below 2^-60 of the sum). A null estimate <= 0 gives (0, 1) (scipy's).
+    the tail left out here is below 2^-60 of the sum; past 2e7 steps of it a ValueError, H154). A
+    null estimate <= 0 gives (0, 1) (scipy's).
     Unpacks as (statistic, pvalue)."""
     name = "poisson_means_test"
     a1 = C.integer(k1, name, "k1", minimum=0)
@@ -327,7 +342,11 @@ def poisson_means_test(k1, n1, k2, n2, /, *, diff=0, alternative="two-sided"):
     if not (d >= 0.0 and math.isfinite(d)):
         raise ValueError(f"{name}(): 'diff' must be non-negative and finite")
     alt = C.alternative(alternative, name)
-    stat, pv = _k.poisson_means(float(a1), m1, float(a2), m2, d, _ALT[alt])
+    stat, pv, capped = _k.poisson_means(float(a1), m1, float(a2), m2, d, _ALT[alt])
+    if capped:
+        raise ValueError(
+            f"{name}(): the counts are too large for the exact sum (it needs more than {_POISSON_STEPS:.0e} steps)"
+        )
     pairs = [("Counts:", f"{a1}, {a2}"), ("Sizes:", f"{m1:g}, {m2:g}")]
     if d:
         pairs.append(("Diff:", f"{d:g}"))
@@ -407,13 +426,15 @@ def proportion_confint(count, nobs, /, *, alpha=0.05, method="normal", alternati
     correction), 'jeffreys', 'binom_test' (the two-sided binomial test inverted: the ends of the
     acceptance region about count / nobs, alpha not halved). Two-sided intervals put alpha / 2 in
     each tail; 'less' gives [0, upper] and 'greater' [lower, 1] with alpha in the one tail (H95).
-    'normal', 'agresti_coull' and 'wilson' are clipped to [0, 1]. nobs = 0 gives NaN."""
+    'normal', 'agresti_coull' and 'wilson' are clipped to [0, 1]. nobs = 0 gives NaN; nobs must be
+    below 2**53 (H151)."""
     name = "proportion_confint"
     a = C.alpha(alpha, name)
     meth = C.choice(method, name, "method", tuple(_CI))
     alt = C.alternative(alternative, name)
     c, n = _broadcast(name, [_counts(count, name, "count"), _counts(nobs, name, "nobs")], ("count", "nobs"))
     _not_above(c, n, name, "count", "nobs")
+    _below_limit(n, name, "nobs")
     shape = () if _scalars(count, nobs) else tuple(c.shape)
     lo, hi = _k.binom_ci(_flat(c), _flat(n), a, _CI[meth], _ALT[alt])
     return _pair(lo, hi, shape)

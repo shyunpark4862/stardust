@@ -149,6 +149,8 @@ def parse(key, shape):
         elif kind == "slice":
             start, stop, step = it[1].indices(shape[a])
             count = len(range(start, stop, step))
+            if abs(step) > shape[a]:  # past the length a step takes one element: the same slice in int64
+                step = max(shape[a], 1) if step > 0 else -max(shape[a], 1)
             axes[a] = ("slice", start, step, count)
             out.append(("dim", count))
             a += 1
@@ -502,9 +504,7 @@ def _coo_assign(A, rows, cols, new_rows, new_cols, vals, keep_zeros):
 
 
 def _k_arg(k, func):
-    if not C.is_int(k):
-        raise TypeError(f"{func}(): 'k' must be an int, not {C.type_name(k)}")
-    return operator.index(k)
+    return C.int64_arg(k, func, "k")
 
 
 def _check_2d(A, func):

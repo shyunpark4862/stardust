@@ -749,6 +749,32 @@ def test_numpy_scalars_without_a_column_dtype_are_not_operands(value):
         for f in (lambda: s + value, lambda: value + s, lambda: s == value, lambda: s < value, lambda: df * value):
             with pytest.raises(TypeError):
                 f()
+    # Python's sentence on both sides, not numpy's "operand 'Series' does not support ufuncs"
+    # (bytes_ on the left is bytes' own "can't concat ...", from Python).
+    name = f"numpy.{type(value).__name__}"
+    left = not isinstance(value, bytes)
+    for f, msg in (
+        (lambda: s + value, f"unsupported operand type(s) for +: 'Series' and '{name}'"),
+        (lambda: value + s, f"unsupported operand type(s) for +: '{name}' and 'Series'"),
+        (lambda: s**value, f"unsupported operand type(s) for ** or pow(): 'Series' and '{name}'"),
+        (lambda: s - value, f"unsupported operand type(s) for -: 'Series' and '{name}'"),
+        (lambda: s & value, f"unsupported operand type(s) for &: 'Series' and '{name}'"),
+        (lambda: s < value, f"'<' not supported between instances of 'Series' and '{name}'"),
+        (lambda: df * value, f"unsupported operand type(s) for *: 'DataFrame' and '{name}'"),
+        (lambda: value * df, f"unsupported operand type(s) for *: '{name}' and 'DataFrame'"),
+    ):
+        with pytest.raises(TypeError) as e:
+            f()
+        assert str(e.value) == msg or (not left and msg.startswith("unsupported") and f"'{name}' and" in msg)
+
+
+def test_rejected_numpy_scalar_message_matches_python_complex():
+    s = sd.frame.Series([1.0])
+    with pytest.raises(TypeError) as a:
+        s + 1j
+    with pytest.raises(TypeError) as b:
+        s + np.complex128(1)
+    assert str(b.value) == str(a.value).replace("'complex'", "'numpy.complex128'")
 
 
 def test_unary_plus_returns_a_new_object():

@@ -327,3 +327,16 @@ def test_same_bits_for_any_thread_count():
                 assert out.setdefault(name, r) == r, (name, t)
     finally:
         sd.set_num_threads(before)
+
+
+# ------------------------------------------- the sparse pairs that are methods --
+
+
+@pytest.mark.parametrize("name", ["trace", "diagonal"])
+def test_trace_and_diagonal_of_a_sparse_array_name_the_method(name):
+    S = sd.sparse.csr_array(as_sd(np.array([[1.0, 2.0], [3.0, 4.0]])))
+    with pytest.raises(TypeError) as e:
+        getattr(LA, name)(S)
+    assert str(e.value) == f"{name}(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use A.{name}()"
+    # and the method is there, with the dense function's value
+    assert same_bits(np.asarray(getattr(S, name)()), np.asarray(getattr(LA, name)(S.toarray())))

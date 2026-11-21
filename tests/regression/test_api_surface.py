@@ -43,6 +43,9 @@ RESULTS = {
     "ResetTestResult",
     "StepwiseResult",
     "BestSubsetResult",
+    "SelectionStep",
+    "SkippedFit",
+    "SkippedSubset",
 }
 
 

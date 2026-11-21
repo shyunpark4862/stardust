@@ -86,7 +86,8 @@ def issparse(x, /):
 def matrix_transpose(A, /):
     """The transpose of a 2-D sparse array (A.T); a ValueError for 1-D, as for an sd.ndarray."""
     if not isinstance(A, sparray):
-        raise TypeError(f"matrix_transpose(): 'A' must be a sparse array, not {_sd_core._type_name(A)}")
+        hint = "; for a dense array use sd.matrix_transpose" if isinstance(A, _sd_core.ndarray) else ""
+        raise TypeError(f"matrix_transpose(): 'A' must be a sparse array, not {_sd_core._type_name(A)}{hint}")
     if A.ndim != 2:
         raise ValueError(f"matrix_transpose(): the array must have at least 2 dimensions, got {A.ndim}")
     return A._transpose()

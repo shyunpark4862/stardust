@@ -20,7 +20,7 @@
 //     i1(+-inf) = +-inf, j0, j1, y0, y1 -> 0.
 #pragma once
 
-#include "special/sincos.hpp"
+#include "base/sincos.hpp"
 #include "special/boost.hpp"
 
 #include "special/coeffs/cephes_bessel.hpp"

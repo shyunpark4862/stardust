@@ -31,10 +31,11 @@ import numbers
 
 from .. import _calls
 from .. import _core as _sd
+from .. import _summary as _S
 from .. import special as _special
 from ..random import _check_alloc
 from ..stats import _distribution as _dist
-from ..stats._descriptive import _as_array, _type_name
+from ..stats._descriptive import _as_array, _scalar_value, _type_name
 from . import _common as C
 from ._result import _TestResult
 
@@ -204,6 +205,14 @@ class GoodnessOfFitResult(_TestResult):
     _FIELDS = ("fit_result", "statistic", "pvalue", "null_distribution")
     _HIDDEN = ("null_distribution",)
 
+    def __repr__(self):
+        """fit_result always shown (H158): the fitted distribution as <Name> (an array's
+        <array of shape ...> form), None where the fit failed."""
+        fr = self._values.get("fit_result")
+        text = "None" if fr is None else f"<{type(fr).__name__}>"
+        rest = _S.one_line("", [(k, self._values[k]) for k in self._FIELDS[1:] if k in self._values])
+        return f"{type(self).__name__}(fit_result={text}" + (", " + rest[1:] if rest != "()" else ")")
+
 
 # ---- the statistic --------------------------------------------------------------------------
 
@@ -279,6 +288,10 @@ def _samples(name, data, axis, *, paired=False, least=1, arg="data"):
         raise TypeError(f"{name}(): '{arg}' must be a list or tuple of samples, not {_type_name(data)}")
     if not data:
         raise ValueError(f"{name}(): '{arg}' must hold at least one sample")
+    if all(_scalar_value(e) is not None for e in data):  # one sample given bare: its numbers
+        raise TypeError(
+            f"{name}(): '{arg}' must be a sequence of samples (one sample is given as (x,)), not a sequence of numbers"
+        )
     args = tuple(f"{arg}[{i}]" for i in range(len(data)))
     s = C.Samples(name, list(data), args, axis, "propagate", paired=paired, scan=False)
     for i, n in enumerate(s.n):
@@ -1142,7 +1155,7 @@ def goodness_of_fit(
     label = statistic if isinstance(statistic, str) else getattr(statistic, "__name__", "callable")
     info = {
         "nobs": a.shape[0],
-        "pairs": [("Distribution:", dist.__name__), ("Statistic:", label), ("Samples:", str(nmc))],
+        "pairs": [("Distribution:", dist.__name__), ("Statistic type:", label), ("Samples:", str(nmc))],
     }
     return GoodnessOfFitResult._make(info=info, fit_result=fitted, statistic=stat, pvalue=p, null_distribution=null)
 

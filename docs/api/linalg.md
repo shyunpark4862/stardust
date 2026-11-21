@@ -62,6 +62,7 @@
 ### §1.2 입력 배열
 - **배열 인자는 `sd.ndarray`만 받는다.** 리스트, numpy 배열, Python 스칼라는 `TypeError`다.
   - 필요하면 먼저 `sd.asarray`로 변환한다. numpy 배열은 복사 없이 바뀐다 (array.md §3.3).
+  - `sd.sparse`의 희소 배열이면 메시지가 쓸 것을 짚는다(sparse.md의 짝): `solve(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.spsolve`, 메서드가 짝인 `trace`·`diagonal`은 `...; for a sparse array use A.trace()`, `A.diagonal()`(2026-11-22)이다. 짝이 없으면 `; a sparse array has no det: use det(A.toarray())`다.
 - 메모리 레이아웃은 무엇이든 받는다: C 순서, F 순서, 임의의 strides, 쓰기 금지 배열, `broadcast_to`의 뷰
   - 결과는 입력의 레이아웃과 무관하게 비트까지 같다 (§1.11).
 - 입력 배열은 바뀌지 않는다.
@@ -103,6 +104,7 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
   - bool과 int64 입력은 float64로 바꿔서 계산한다. 계산만 하는 함수(`vecdot`, `outer`, `kron`, `kronsum`, `cross`, `matrix_power`, `trace`)도 같다.
     - **그래서 int 입력의 결과도 float64다.** 배열 영역과 다른 점이다: `sd.matmul`, `sd.sum`은 int64를 유지한다. 예: `trace(int64 행렬)`은 `float`, `sd.sum(diagonal(int64 행렬), axis=-1)`은 `int`다.
     - 이유: LAPACK과 BLAS는 float에서만 돈다. int 결과가 필요하면 배열 영역의 함수(`sd.matmul`, `sd.sum`)를 쓰거나 `trace(dtype=sd.int64)`를 준다 (DESIGN §9.6).
+    - **희소 짝은 dtype이 다르다.** 희소 쪽(`A.trace()`, `sd.sparse.kron`, `sd.sparse.kronsum`)은 배열 영역의 규칙(`sd.sum`, `sd.multiply`)이라 bool·int64에서 int64다(sparse SP55·SP56, scipy와 같다). 그래서 `sd.linalg.trace(A.toarray())`는 `float`, `A.trace()`는 `int`이고, bool끼리의 `sd.linalg.kron`은 float64, `sd.sparse.kron`은 int64다. float64·complex128에서는 두 쪽이 비트까지 같다(§2의 `kron`·`kronsum`, sparse.md의 `trace`). 두 규칙을 모두 지키고 짝의 예외로 적는다(사용자 승인 2026-11-22).
   - 예: `det(int64 행렬)`은 `float`, 실수 `a`와 complex `b`의 `solve`는 complex128이다.
 - **함수별 결과 dtype**
 
@@ -533,7 +535,7 @@ bandwidth(x, /)                        # -> BandwidthResult(lower, upper)
   - 0이 아닌 것은 `!= 0`이다. NaN은 0이 아니고 -0.0은 0이다. complex는 실수부나 허수부가 0이 아니면 0이 아니다.
   - 결과는 `BandwidthResult(lower, upper)`이고 tuple로 풀 수 있다. 2차원이면 두 필드가 Python `int`, 배치 `(..., M, N)`이면 배치 shape의 int64 배열(쓰기 금지, API.md §2.2)이다(scipy와 같다: 슬라이스마다 하나).
   - 삼각 판정은 이것으로 한다: `upper == 0`이면 아래 삼각, `lower == 0`이면 위 삼각이다(`sd.sparse.is_sptriangular`의 짝). `solve_banded`의 `lower_bandwidth`, `upper_bandwidth`에 그대로 쓸 수 있다.
-  - 띠를 넓힐 수 있는 원소만 읽는다. 행렬이 띠 모양이면 원소 대부분을 읽지 않는다.
+  - 띠를 넓힐 수 있는 원소만 읽는다. 줄마다 먼 모서리에서 지금의 띠 바로 바깥까지 보고, 0이 아닌 원소를 찾으면 그 줄을 멈춘다. 그래서 꽉 찬 행렬은 모서리에서 곧 끝나고, 좁은 띠 행렬은 띠 바깥의 0을 모두 읽어야 끝난다(건너뛰는 것은 띠 안뿐이다). 2000 × 2000 float64에서 꽉 찬 행렬은 약 3 µs, 삼중대각 행렬은 약 1 ms(0 행렬과 같은 수준)다.
   - `sd.sparse.spbandwidth(A)`와 같은 값이다(A가 이 행렬에서 만든 희소 배열일 때: 희소는 0을 저장하지 않는다).
 
 ---

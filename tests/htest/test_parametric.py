@@ -492,3 +492,35 @@ def test_messages():
         sd.htest.fligner(a, b, center="trimmed", proportiontocut=0.5)
     with pytest.raises(TypeError, match=r"ttest_1samp\(\): 'a' must be real, not a complex128 array"):
         sd.htest.ttest_1samp(np.array([1j, 2.0]), 0.0)
+
+
+def test_ttest_ind_from_stats_degenerate_summaries():
+    """H155: a negative standard deviation, or a mean or standard deviation that is not finite,
+    makes that row NaN (the summaries are data: H11; scipy squares a negative one and gives t = -0,
+    p = 1 for an infinite one); a non-integer nobs is taken (the df formula's, scipy's)."""
+    h = sd.htest
+    for args in (
+        (1.0, -1.0, 5, 2.0, 1.0, 6),
+        (1.0, 1.0, 5, 2.0, sd.inf, 6),
+        (sd.nan, 1.0, 5, 2.0, 1.0, 6),
+        (1.0, 1.0, 5, -sd.inf, 1.0, 6),
+    ):
+        for ev in (True, False):
+            r = h.ttest_ind_from_stats(*args, equal_var=ev)
+            assert math.isnan(r.statistic) and math.isnan(r.pvalue)
+            assert all(math.isnan(v) for v in r.conf_int().tolist())
+    assert h.ttest_ind_from_stats(1.0, -1.0, 5, 2.0, 1.0, 6).df == 9.0
+    r = h.ttest_ind_from_stats(1.0, 1.0, 5.5, 2.0, 1.0, 6)
+    assert r.df == 9.5 and r.statistic == pytest.approx(-1.69398, rel=1e-5)
+    # a batch: the other rows as alone
+    b = h.ttest_ind_from_stats(sd.asarray([1.0, 1.0]), sd.asarray([1.0, -2.0]), 5, 2.0, 1.0, 6)
+    assert b.statistic[0] == h.ttest_ind_from_stats(1.0, 1.0, 5, 2.0, 1.0, 6).statistic
+    assert math.isnan(b.statistic[1])
+
+
+def test_ttest_1samp_infinite_popmean():
+    """popmean = +-inf: NaN (an argument holding inf, the area's rule; scipy t = -+inf, p = 0);
+    conf_int() is the mean's interval, which does not involve popmean."""
+    r = sd.htest.ttest_1samp([1.0, 2, 3], sd.inf)
+    assert math.isnan(r.statistic) and math.isnan(r.pvalue) and r.df == 2.0
+    assert r.conf_int().tolist() == sd.htest.ttest_1samp([1.0, 2, 3], 0.0).conf_int().tolist()

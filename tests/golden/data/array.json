@@ -24689,7 +24689,7 @@ false
 "astype copy positional err": {
 "r": {
 "error": "builtins.TypeError",
-"msg": "astype(): incompatible function arguments. The following argument types are supported:\n    1. astype(self, arg0: object | None, /, *, copy: object | None = True) -> object\n\nInvoked with types: stardust._core.ndarray, stardust._core.DType, bool"
+"msg": "astype(): incompatible function arguments. The following argument types are supported:\n    1. astype(self, dtype, /, *, copy=True)\n\nInvoked with types: stardust._core.ndarray, stardust._core.DType, bool"
 }
 },
 "astype copy=False needs copy err": {
@@ -508495,7 +508495,7 @@ false
 "reshape method tuple args err": {
 "r": {
 "error": "builtins.TypeError",
-"msg": "reshape(): incompatible function arguments. The following argument types are supported:\n    1. reshape(self, arg0: object | None, /, *, copy: object | None = None) -> object\n\nInvoked with types: stardust._core.ndarray, int, int"
+"msg": "reshape(): incompatible function arguments. The following argument types are supported:\n    1. reshape(self, shape, /, *, copy=None)\n\nInvoked with types: stardust._core.ndarray, int, int"
 }
 },
 "reshape size mismatch err": {

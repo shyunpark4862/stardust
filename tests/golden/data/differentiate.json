@@ -4394,7 +4394,7 @@ true
 "obj": "stardust.differentiate._result.DifferentiateResult"
 }
 },
-"derivative order 20": {
+"derivative order 18": {
 "r": {
 "attrs": {
 "converged": true,
@@ -4403,20 +4403,26 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b145742p+1"
+"f": "0x1.5bf0a8b1458dbp+1"
 },
 "error": {
-"f": "0x1.9a00000000000p-43"
+"f": "0x1.9b00000000000p-43"
 },
 "n_iter": 2,
-"nfev": 23,
+"nfev": 21,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              1.821e-13\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     23\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              1.825e-13\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     21\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
 },
 "obj": "stardust.differentiate._result.DifferentiateResult"
+}
+},
+"derivative order 20": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "derivative(): 'order' must be at most 18"
 }
 },
 "derivative order 3": {
@@ -6543,7 +6549,7 @@ true
 "err DifferentiateResult positional": {
 "r": {
 "error": "builtins.TypeError",
-"msg": "DifferentiateResult.__init__() takes 1 positional argument but 2 were given"
+"msg": "DifferentiateResult(): takes 0 positional arguments but 1 was given"
 }
 },
 "err DifferentiateResult read-only": {

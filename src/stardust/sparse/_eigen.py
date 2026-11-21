@@ -244,10 +244,12 @@ _STATUS = {
 }
 
 
-def _message(status, got, k, what="eigenvalues"):
+def _message(status, got, k, what="eigenvalue"):
+    """The result's message; `what` singular ("eigenvalue", "singular value"), plural after a count
+    other than 1."""
     if status == 0:
-        return f"the {k} wanted {what} converged"
-    return f"{_STATUS[status]}: {got} of {k} {what} converged"
+        return f"the {k} wanted {what if k == 1 else what + 's'} converged"
+    return f"{_STATUS[status]}: {got} of {k} {what if k == 1 else what + 's'} converged"
 
 
 def _finish(cls, d, k, func, vals_dtype=None):
@@ -258,12 +260,16 @@ def _finish(cls, d, k, func, vals_dtype=None):
         from ..linalg import LinAlgError
 
         raise LinAlgError(f"{func}(): the small eigenvalue problem inside ARPACK failed (info {info}, {extract})")
-    w = d["d"]
-    if vals_dtype is not None:
+    w, z = d["d"], d["z"]
+    if vals_dtype is not None:  # a complex Hermitian eigsh: real values, ascending as the real path's
         w = _sd.real(w).copy()
+        order = _sd.argsort(w, stable=True)
+        w = w[order]
+        if z is not None:
+            z = z[:, order]
     got = w.shape[0]
     status = 0 if info == 0 else info
-    return cls._make(eigenvalues=w, eigenvectors=d["z"], converged=status == 0, status=status,
+    return cls._make(eigenvalues=w, eigenvectors=z, converged=status == 0, status=status,
                      message=_message(status, got, k), n_iter=int(d["iter"]), n_converged=got,
                      n_op=int(d["nopx"]))  # fmt: skip
 
@@ -313,14 +319,14 @@ def eigsh(A, /, *, k=6, M=None, sigma=None, which="LM", v0=None, ncv=None, max_i
         imode = 1 if M is None else 2
         inv = None
         if M is not None:
-            inv = _native(Minv, dtype) if Minv is not None else _python(_inverse_of(M, func, tol), dtype)
+            inv = _native(Minv, dtype) if Minv is not None else _python(_inverse_of(M, func, tol), dtype, func)
         Mn = _native(M, dtype)
     else:
         imode = {"normal": 3, "buckling": 4, "cayley": 5}[mode]
         if OPinv is not None:
             inv = _native(OPinv, dtype)
         else:
-            inv = _python(_op_inverse(A, M, sigma, dtype, func, tol), dtype)
+            inv = _python(_op_inverse(A, M, sigma, dtype, func, tol), dtype, func)
         Mn = None if imode == 4 else _native(M, dtype)
     d = _sd_core_sparse()._eigsh(A.native(dtype), Mn, inv, v, draw, k=k, ncv=ncv, which=which,
                                  tol=tol if tol > 0 else _EPS, max_iter=max_iter, mode=imode,
@@ -388,7 +394,7 @@ def _arnoldi(func, A, n, k, ncv, which, tol, max_iter, vectors, sigma, M, Minv, 
         imode = 1 if M is None else 2
         inv = None
         if M is not None:
-            inv = _native(Minv, dtype) if Minv is not None else _python(_inverse_of(M, func, tol), dtype)
+            inv = _native(Minv, dtype) if Minv is not None else _python(_inverse_of(M, func, tol), dtype, func)
     else:
         sigma = complex(sigma)
         sr, si = sigma.real, sigma.imag
@@ -397,13 +403,14 @@ def _arnoldi(func, A, n, k, ncv, which, tol, max_iter, vectors, sigma, M, Minv, 
             inv = _native(OPinv, dtype)
             if dtype != _sd.complex128 and si != 0:  # the user's inverse is complex: take its part
                 f = OPinv.op.matvec if OPinv.op is not None else (lambda x, m=OPinv.matrix: m @ x)
-                inv = _part_of(f, "imag" if imode == 4 else "real", dtype)
+                inv = _part_of(f, "imag" if imode == 4 else "real", dtype, func)
         else:
             sdtype = _sd.complex128 if (si != 0 or dtype == _sd.complex128) else dtype
             part = None
             if dtype != _sd.complex128 and si != 0:
                 part = "imag" if imode == 4 else "real"
-            inv = _python(_op_inverse(A, M, sigma if sdtype == _sd.complex128 else sr, sdtype, func, tol, part), dtype)
+            shift = sigma if sdtype == _sd.complex128 else sr
+            inv = _python(_op_inverse(A, M, shift, sdtype, func, tol, part), dtype, func)
     # eigs with a real A and a complex sigma needs the vectors for its Rayleigh quotients
     rvec = vectors or (dtype != _sd.complex128 and sigma is not None and si != 0)
     d = _sd_core_sparse()._eigs(A.native(dtype), _native(M, dtype), inv, v, draw, k=k, ncv=ncv, which=which,
@@ -414,12 +421,12 @@ def _arnoldi(func, A, n, k, ncv, which, tol, max_iter, vectors, sigma, M, Minv, 
     return d
 
 
-def _part_of(f, part, dtype):
+def _part_of(f, part, dtype, func):
     def call(x):
         y = f(x)
         return _sd.imag(y) if part == "imag" else _sd.real(y)
 
-    return _python(call, dtype)
+    return _python(call, dtype, func)
 
 
 def _sd_core_sparse():
@@ -482,7 +489,7 @@ def svds(A, /, *, k=6, ncv=None, tol=0, which="LM", v0=None, max_iter=None, retu
     status = int(d["status"])
     got = s.shape[0]
     return SvdsResult._make(U=U, S=s, Vh=Vh, converged=status == 0, status=status,
-                            message=_message(status, got, k, "singular values"), n_iter=int(d["iter"]),
+                            message=_message(status, got, k, "singular value"), n_iter=int(d["iter"]),
                             n_converged=got, n_op=int(d["nmv"]))  # fmt: skip
 
 

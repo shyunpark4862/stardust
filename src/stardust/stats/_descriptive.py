@@ -87,7 +87,8 @@ def _base(base, name):
 def _choice(v, name, arg, choices):
     """A string option, by the message form of every area (API.md §2.1): not a str is a
     TypeError ("must be 'a', 'b' or 'c', not NoneType"), another str a ValueError ("..., not 'x'")."""
-    listed = ", ".join(f"'{c}'" for c in choices[:-1]) + f" or '{choices[-1]}'"
+    quoted = [f"'{c}'" for c in choices]
+    listed = quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + f" or {quoted[-1]}"
     if not isinstance(v, str):
         raise TypeError(f"{name}(): '{arg}' must be {listed}, not {_type_name(v)}")
     if v not in choices:

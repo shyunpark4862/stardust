@@ -34,7 +34,11 @@ def close(x, y, scale, ulps=64):
 FLOATS = st.floats(allow_nan=False, allow_infinity=False, min_value=-1e12, max_value=1e12) | st.sampled_from(
     [0.0, -0.0, 1e-300]
 )
-LENGTHS = st.sampled_from([0, 1, 7, 8, 9, 127, 128, 129, 300, 1000, 5000]) | st.integers(0, 64)
+LENGTHS = (
+    st.sampled_from([0, 1, 7, 8, 9, 127, 128, 129, 300, 511, 512, 513, 1000, 1023, 1024, 1025, 5000])
+    | st.integers(0, 64)
+    | st.integers(500, 530)
+)
 
 
 @settings(max_examples=EXAMPLES, deadline=None)

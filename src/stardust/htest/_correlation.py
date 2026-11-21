@@ -97,6 +97,7 @@ class SomersdResult(_TestResult):
     __slots__ = ()
     _TITLE = "Somers' D"
     _FIELDS = ("statistic", "pvalue", "table")
+    _TABLES = ("table",)
 
 
 class ChatterjeexiResult(SpearmanrhoResult):

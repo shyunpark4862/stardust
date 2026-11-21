@@ -155,9 +155,17 @@ nb::tuple chi2_contingency(nb::handle tables, bool correction, double lam) {
 // Hypergeometric tails. 'two-sided': p = 1 when the observed table is as probable as the mode to
 // a relative 1e-14; else the observed tail and the other side's tables less probable than
 // (1 + 1e-14) times the observed one (at most as probable below the mode): scipy's binary
-// search, here on the exact pmf ratios to the observed table (double-doubles kept with a power of
-// two). The statistic is the sample odds ratio ad / bc (inf for bc = 0); a zero margin gives NaN
-// and p = 1.
+// search. Within kWalk of the mode the comparisons are on the exact pmf ratios to the observed
+// table (double-doubles kept with a power of two), walked one table at a time; farther (H150) a
+// binary search on sd.stats' double-double log pmf (its error, about 1e-30, is far below the
+// 1e-14 of the rule). Where the hypergeometric tails are NaN (sd.stats' sum bound, a total of
+// about 4e10 and more) and the tables between the two boundaries are at most kMiddle, the
+// p-value is 1 minus their probability when that is at most 1/2, else NaN. The statistic is the
+// sample odds ratio ad / bc (inf for bc = 0); a zero margin gives NaN and p = 1. The counts are
+// below 2^53 (checked by the caller), the mode a 128-bit product.
+constexpr std::int64_t kWalk = 1 << 16;
+constexpr std::int64_t kMiddle = 1 << 21;
+
 struct Ratio {  // a positive value m 2^e
     DD m{1.0, 0.0};
     int e = 0;
@@ -169,31 +177,66 @@ struct Ratio {  // a positive value m 2^e
             e += k;
         }
     }
-    // compared with a double-double g of order 1: -1, 0, 1
+    // compared with a double-double g in [1, 2): -1, 0, 1 (by the exponent alone when the value
+    // is at least 4 or below 1/2: m 2^e itself may be past the doubles)
     int cmp(DD g) const {
-        if (e > 1100) return 1;
-        if (e < -1100) return -1;
+        if (!(m.hi > 0.0)) return -1;
+        const int k = e + std::ilogb(m.hi);
+        if (k >= 2) return 1;
+        if (k < -1) return -1;
         const DD v = dd::ldexp(m, e);
         const DD d = v - g;
         return d.hi > 0.0 ? 1 : (d.hi < 0.0 ? -1 : (d.lo > 0.0 ? 1 : (d.lo < 0.0 ? -1 : 0)));
     }
 };
 
+int dd_cmp(DD a, DD b) {
+    const DD d = a - b;
+    return d.hi > 0.0 ? 1 : (d.hi < 0.0 ? -1 : (d.lo > 0.0 ? 1 : (d.lo < 0.0 ? -1 : 0)));
+}
+
 struct Pair {
     double stat, p;
 };
 
+// The margins of a 2 x 2 table and the hypergeometric of its top-left cell.
+struct Hyper22 {
+    std::int64_t r0, r1, c0, c1, N, lo, hi, mode;
+    Hyper22(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d)
+        : r0(a + b), r1(c + d), c0(a + c), c1(b + d), N(r0 + r1) {
+        lo = std::max<std::int64_t>(0, c0 - r1), hi = std::min(r0, c0);
+        const i128 m = N + 2 > 0 ? (static_cast<i128>(c0) + 1) * (static_cast<i128>(r0) + 1) / (N + 2) : 0;
+        mode = static_cast<std::int64_t>(std::clamp<i128>(m, lo, hi));
+    }
+    // the standard deviation of the cell (a rough size of the sums)
+    double sd() const {
+        if (N < 2) return 0.0;
+        const double Nd = static_cast<double>(N);
+        return std::sqrt(
+            static_cast<double>(r0) / Nd * (static_cast<double>(r1) / Nd) * static_cast<double>(c0) *
+            (static_cast<double>(c1) / (Nd - 1.0))
+        );
+    }
+};
+
+// the work of one lane in elements (each_lane's cost; the pool and the GIL go by it)
+std::int64_t fisher22_cost(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d) {
+    const Hyper22 h(a, b, c, d);
+    const std::int64_t walk = std::min<std::int64_t>(std::abs(a - h.mode), kWalk);
+    const double sums = std::min(40.0 * h.sd(), static_cast<double>(1 << 21));
+    return 64 + 8 * walk + 4 * static_cast<std::int64_t>(sums);
+}
+
 Pair fisher22_lane(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d, int alt) {
-    const std::int64_t r0 = a + b, r1 = c + d, c0 = a + c, c1 = b + d, N = r0 + r1;
-    if (r0 == 0 || r1 == 0 || c0 == 0 || c1 == 0) return {kNaN, 1.0};
+    const Hyper22 h(a, b, c, d);
+    const std::int64_t r0 = h.r0, c0 = h.c0, N = h.N, lo = h.lo, hi = h.hi, mode = h.mode;
+    if (r0 == 0 || h.r1 == 0 || c0 == 0 || h.c1 == 0) return {kNaN, 1.0};
     const double stat =
         (b > 0 && c > 0) ? to_double(dd_of(static_cast<i128>(a) * d) / dd_of(static_cast<i128>(b) * c)) : kInf;
     const double Nd = static_cast<double>(N), K = static_cast<double>(r0), n = static_cast<double>(c0);
     using H = stats::Hypergeometric;
     if (alt == kLess) return {stat, H::cdf(static_cast<double>(a), Nd, K, n)};
     if (alt == kGreater) return {stat, H::ccdf(static_cast<double>(a - 1), Nd, K, n)};
-    const std::int64_t lo = std::max<std::int64_t>(0, c0 - r1), hi = std::min(r0, c0);
-    const std::int64_t mode = std::clamp<std::int64_t>((c0 + 1) * (r0 + 1) / (N + 2), lo, hi);
     // pmf(x + 1) / pmf(x) = (r0 - x)(c0 - x) / ((x + 1)(N - r0 - c0 + x + 1)), and its inverse
     auto up = [&](std::int64_t x) {
         return dd::two_prod(static_cast<double>(r0 - x), static_cast<double>(c0 - x)) /
@@ -203,48 +246,99 @@ Pair fisher22_lane(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t 
         return dd::two_prod(static_cast<double>(x), static_cast<double>(N - r0 - c0 + x)) /
                dd::two_prod(static_cast<double>(r0 - x + 1), static_cast<double>(c0 - x + 1));
     };
-    // rho = pmf(mode) / pmf(a)
-    Ratio rho;
-    if (a < mode)
-        for (std::int64_t x = a; x < mode; ++x) rho.mul(up(x));
-    else
-        for (std::int64_t x = a; x > mode; --x) rho.mul(down(x));
+    auto lpmf = [&](std::int64_t x) { return H::log_pmf(static_cast<double>(x), Nd, K, n); };
     const double eps = 1e-14, gamma = 1.0 + eps;
-    // |pexact - pmode| / max(...) <= eps: 1 - 1/rho <= eps, i.e. rho <= 1 / (1 - eps)
-    {
-        const DD lim = DD{1.0, 0.0} / dd::two_sum(1.0, -eps);
-        if (rho.cmp(lim) <= 0) return {stat, 1.0};
-    }
+    const DD lim = DD{1.0, 0.0} / dd::two_sum(1.0, -eps);  // rho <= 1 / (1 - eps): p = 1
     const DD g{gamma, 0.0};
-    double p;
-    if (a < mode) {
-        // the smallest x >= mode with pmf(x) < gamma pmf(a); P(X >= x) beside P(X <= a)
-        const double plower = H::cdf(static_cast<double>(a), Nd, K, n);
+    const bool near = std::abs(a - mode) <= kWalk;
+    // The other side's boundary by the log pmf: a < mode the smallest x in [from, hi] with
+    // pmf(x) < gamma pmf(a) (hi + 1 for none), else the largest x in [lo, from] with pmf(x) <=
+    // gamma pmf(a) (lo - 1 for none); the log pmf falls away from the mode.
+    auto search = [&](std::int64_t from) {
+        const DD thr = lpmf(a) + dd::log(g);
+        if (a < mode) {
+            std::int64_t L = from, R = hi + 1;  // L: not below (from is not), R: below
+            while (R - L > 1) {
+                const std::int64_t mid = L + (R - L) / 2;
+                if (dd_cmp(lpmf(mid), thr) < 0) R = mid;
+                else L = mid;
+            }
+            return R;
+        }
+        std::int64_t L = lo - 1, R = from;  // L: at most, R: above (from is)
+        while (R - L > 1) {
+            const std::int64_t mid = L + (R - L) / 2;
+            if (dd_cmp(lpmf(mid), thr) <= 0) L = mid;
+            else R = mid;
+        }
+        return L;
+    };
+    std::int64_t x;
+    if (near) {
+        // rho = pmf(mode) / pmf(a)
+        Ratio rho;
+        if (a < mode)
+            for (std::int64_t y = a; y < mode; ++y) rho.mul(up(y));
+        else
+            for (std::int64_t y = a; y > mode; --y) rho.mul(down(y));
+        if (rho.cmp(lim) <= 0) return {stat, 1.0};
         Ratio v = rho;
-        std::int64_t x = mode;
-        while (x <= hi && v.cmp(g) >= 0) {
-            if (x == hi) {
+        x = mode;
+        std::int64_t steps = 0;
+        if (a < mode) {
+            while (x <= hi && v.cmp(g) >= 0) {
+                if (x == hi) {
+                    ++x;
+                    break;
+                }
+                if (++steps > 4 * kWalk) {  // a long side: the rest by the search
+                    x = search(x);
+                    break;
+                }
+                v.mul(up(x));
                 ++x;
-                break;
             }
-            v.mul(up(x));
-            ++x;
-        }
-        p = x > hi ? plower : plower + H::ccdf(static_cast<double>(x - 1), Nd, K, n);
-    } else {
-        // the largest x <= mode with pmf(x) <= gamma pmf(a); P(X <= x) beside P(X >= a)
-        const double pupper = H::ccdf(static_cast<double>(a - 1), Nd, K, n);
-        Ratio v = rho;
-        std::int64_t x = mode;
-        while (x >= lo && v.cmp(g) > 0) {
-            if (x == lo) {
+        } else {
+            while (x >= lo && v.cmp(g) > 0) {
+                if (x == lo) {
+                    --x;
+                    break;
+                }
+                if (++steps > 4 * kWalk) {
+                    x = search(x);
+                    break;
+                }
+                v.mul(down(x));
                 --x;
-                break;
             }
-            v.mul(down(x));
-            --x;
         }
-        p = x < lo ? pupper : pupper + H::cdf(static_cast<double>(x), Nd, K, n);
+    } else {
+        if (dd_cmp(lpmf(mode) - lpmf(a), dd::log(lim)) <= 0) return {stat, 1.0};
+        x = search(mode);
+    }
+    // a < mode: P(X <= a) + P(X >= x); else P(X >= a) + P(X <= x)
+    double p;
+    if (a < mode)
+        p = H::cdf(static_cast<double>(a), Nd, K, n) + (x > hi ? 0.0 : H::ccdf(static_cast<double>(x - 1), Nd, K, n));
+    else p = H::ccdf(static_cast<double>(a - 1), Nd, K, n) + (x < lo ? 0.0 : H::cdf(static_cast<double>(x), Nd, K, n));
+    if (p != p) {
+        // 1 - the probability of the tables strictly between a and x (the mode among them)
+        const std::int64_t b0 = a < mode ? a + 1 : x + 1, b1 = a < mode ? x - 1 : a - 1;
+        if (b1 - b0 + 1 > kMiddle) return {stat, kNaN};
+        Acc s;
+        s.add(1.0);
+        DD t{1.0, 0.0};
+        for (std::int64_t y = mode; y < b1; ++y) {
+            t = t * up(y);
+            s.add(t);
+        }
+        t = DD{1.0, 0.0};
+        for (std::int64_t y = mode; y > b0; --y) {
+            t = t * down(y);
+            s.add(t);
+        }
+        const DD mid = s.value() * stats::num::exp_full(lpmf(mode));
+        p = mid.hi <= 0.5 ? to_double(DD{1.0, 0.0} - mid) : kNaN;
     }
     return {stat, std::min(p, 1.0)};
 }
@@ -252,7 +346,10 @@ Pair fisher22_lane(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t 
 nb::tuple fisher22(nb::handle tables, int alt) {
     const Tabs t(tables);
     Outs out(2, t.lanes);
-    each_lane(t.lanes, 64, [&](std::int64_t l) {
+    std::int64_t cost = 64;
+    for (std::int64_t l = 0; l < t.lanes; ++l)
+        cost = std::max(cost, fisher22_cost(t.count(l, 0, 0), t.count(l, 0, 1), t.count(l, 1, 0), t.count(l, 1, 1)));
+    each_lane(t.lanes, cost, [&](std::int64_t l) {
         const Pair r = fisher22_lane(t.count(l, 0, 0), t.count(l, 0, 1), t.count(l, 1, 0), t.count(l, 1, 1), alt);
         out.p[0][l] = r.stat, out.p[1][l] = r.p;
     });
@@ -519,32 +616,55 @@ bool zero_margin(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d)
     return a + b == 0 || c + d == 0 || a + c == 0 || b + d == 0;
 }
 
+// the work of one conditional lane in elements: the support or the window, times the solver's
+// evaluations
+std::int64_t odds_ratio_cost(std::int64_t a, std::int64_t b, std::int64_t c, std::int64_t d) {
+    const Hyper22 h(a, b, c, d);
+    const double pts = std::min(static_cast<double>(h.hi - h.lo + 1), 40.0 * h.sd() + 64.0);
+    return 64 * (1 + static_cast<std::int64_t>(std::min(pts, static_cast<double>(nchg::Dist::kMaxWindow))));
+}
+std::int64_t odds_ratio_cost(const Tabs& t, int kind) {
+    std::int64_t cost = 1 << 12;
+    if (kind == 0)
+        for (std::int64_t l = 0; l < t.lanes; ++l)
+            cost =
+                std::max(cost, odds_ratio_cost(t.count(l, 0, 0), t.count(l, 0, 1), t.count(l, 1, 0), t.count(l, 1, 1)));
+    return cost;
+}
+
+// (statistic, too big): the second 1 where the conditional estimate's window passed its cap
 nb::tuple odds_ratio(nb::handle tables, int kind) {
     const Tabs t(tables);
-    Outs out(1, t.lanes);
-    each_lane(t.lanes, 1 << 12, [&](std::int64_t l) {
+    Outs out(2, t.lanes);
+    each_lane(t.lanes, odds_ratio_cost(t, kind), [&](std::int64_t l) {
         const std::int64_t a = t.count(l, 0, 0), b = t.count(l, 0, 1), c = t.count(l, 1, 0), d = t.count(l, 1, 1);
-        double v;
+        double v, big = 0.0;
         if (zero_margin(a, b, c, d)) v = kNaN;
         else if (kind == 1) v = sample_or(a, b, c, d);
-        else v = nchg::Dist(a + b + c + d, a + b, a + c).mle(a);
-        out.p[0][l] = v;
+        else {
+            nchg::Dist D(a + b + c + d, a + b, a + c);
+            v = D.mle(a);
+            if (D.too_big()) v = kNaN, big = 1.0;
+        }
+        out.p[0][l] = v, out.p[1][l] = big;
     });
     return out.tuple();
 }
 
+// (lower, upper, too big)
 nb::tuple odds_ratio_ci(nb::handle tables, int kind, double alpha, int alt) {
     const Tabs t(tables);
-    Outs out(2, t.lanes);
-    each_lane(t.lanes, 1 << 12, [&](std::int64_t l) {
+    Outs out(3, t.lanes);
+    each_lane(t.lanes, 2 * odds_ratio_cost(t, kind), [&](std::int64_t l) {
         const std::int64_t a = t.count(l, 0, 0), b = t.count(l, 0, 1), c = t.count(l, 1, 0), d = t.count(l, 1, 1);
-        double lo = 0.0, hi = kInf;
+        double lo = 0.0, hi = kInf, big = 0.0;
         const double tail = alt == kTwoSided ? 0.5 * alpha : alpha;
         if (!zero_margin(a, b, c, d)) {
             if (kind == 0) {
                 nchg::Dist D(a + b + c + d, a + b, a + c);
                 if (alt != kLess) lo = D.end(a, tail, true);
                 if (alt != kGreater) hi = D.end(a, tail, false);
+                if (D.too_big()) lo = kNaN, hi = kNaN, big = 1.0;
             } else {
                 const double r = sample_or(a, b, c, d);
                 double se = kInf;
@@ -559,7 +679,7 @@ nb::tuple odds_ratio_ci(nb::handle tables, int kind, double alpha, int alt) {
                 if (alt != kGreater) hi = r * std::exp(z * se);
             }
         }
-        out.p[0][l] = lo, out.p[1][l] = hi;
+        out.p[0][l] = lo, out.p[1][l] = hi, out.p[2][l] = big;
     });
     return out.tuple();
 }
@@ -576,6 +696,7 @@ void bind_contingency(nb::module_& m) {
     m.def("cochrans_q", &cochrans_q);
     m.def("odds_ratio", &odds_ratio);
     m.def("odds_ratio_ci", &odds_ratio_ci);
+    m.attr("ODDS_RATIO_WINDOW") = static_cast<double>(nchg::Dist::kMaxWindow);
 }
 
 }  // namespace sd::htest

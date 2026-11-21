@@ -198,3 +198,38 @@ def test_same_bits_for_any_thread_count():
                 assert out.setdefault(name, r) == r, (name, t)
     finally:
         sd.set_num_threads(before)
+
+
+# ------------------------------------------------ sparse operands' messages --
+
+
+def test_asarray_of_a_sparse_array_names_toarray():
+    # np.asarray(A)'s sentence (docs/api/array.md §3.2, sparse.md §2)
+    for fmt in ("csr", "csc", "coo", "dok"):
+        A = sd.sparse.csr_array(sd.eye(2)).asformat(fmt)
+        name = type(A).__name__
+        with pytest.raises(TypeError) as e:
+            sd.asarray(A)
+        assert str(e.value) == (
+            f"asarray(): a sparse array is not converted to a dense array implicitly; use A.toarray() ({name})"
+        )
+        with pytest.raises(TypeError) as n:
+            np.asarray(A)
+        assert str(e.value) == "asarray(): " + str(n.value)
+
+
+def test_concat_and_stack_of_sparse_arrays_name_the_sparse_joins():
+    S = sd.sparse.csr_array(sd.asarray([[1.0, 2.0], [3.0, 4.0]]))
+    head = "'arrays' must hold sd.ndarray only, not csr_array; for sparse arrays use "
+    for call, name, hint in (
+        (lambda: sd.concat([S, S]), "concat", "sd.sparse.hstack or sd.sparse.vstack"),
+        (lambda: sd.concat((sd.ones((2, 2)), S), axis=1), "concat", "sd.sparse.hstack or sd.sparse.vstack"),
+        (lambda: sd.stack([S, S]), "stack", "sd.sparse.vstack"),
+    ):
+        with pytest.raises(TypeError) as e:
+            call()
+        assert str(e.value) == f"{name}(): {head}{hint}"
+    # other objects keep the plain message
+    with pytest.raises(TypeError) as e:
+        sd.concat([sd.ones(2), [1.0]])
+    assert str(e.value) == "concat(): 'arrays' must hold sd.ndarray only, not list"

@@ -247,8 +247,27 @@ def _python_scalar(y):
     return y.tolist()[0]
 
 
+def check_matmul_ndim(X):
+    """A dense operand of @ with a sparse array: 1-D or 2-D (an operator: no function name)."""
+    if X.ndim not in (1, 2):
+        raise ValueError(f"the operand must have 1 or 2 dimensions, got {X.ndim}")
+
+
+def is_numpy_array(v):
+    t = type(v)
+    return t.__name__ == "ndarray" and t.__module__ == "numpy"
+
+
+def refused(left, right, symbol):
+    """Python's TypeError for an operator whose operands we do not take, raised here when one is a
+    numpy array: numpy would answer for it with its own message (the sparse arrays and operators
+    set __array_ufunc__ = None, so numpy defers)."""
+    return TypeError(f"unsupported operand type(s) for {symbol}: '{C.type_name(left)}' and '{C.type_name(right)}'")
+
+
 def matmul_dense(A, X):
     """A @ X for a dense X: (m,) or (m, k); 1-D A gives a scalar or (k,)."""
+    check_matmul_ndim(X)
     n = A.shape[-1]
     if X.shape[0] != n:
         _mismatch(n, X.shape[0])
@@ -266,6 +285,7 @@ def matmul_dense(A, X):
 
 def rmatmul_dense(A, X):
     """X @ A for a dense X: X (m,) gives (n,), X (p, m) gives (p, n); a 1-D A (n,) is a column."""
+    check_matmul_ndim(X)
     if A.ndim == 1:
         n = A.shape[0]
         if X.shape[-1] != n:

@@ -14,7 +14,7 @@ rng.spawn(n, /)
 rng.state
 ```
 - 물리 메모리보다 큰 결과를 요청하면 스트림을 움직이기 전에 `MemoryError`다: `permutation(): cannot allocate 8796093022208 bytes: more than this machine's physical memory`(API.md §2). 생성기의 `position`은 그대로다.
-  - 검사하는 양은 그 호출이 실제로 받는 메모리다. 결과(배열 `permutation`은 섞은 복사본, 배열 `a`의 `choice`는 고른 원소)와 섞기에 쓰는 자리를 더한다. 비복원 `choice`는 작은 표본이면 원소당 64바이트, 그 밖에는 모집단 n개의 자리(8n바이트)를 더 쓴다.
+  - 검사하는 양은 그 호출이 실제로 받는 메모리다. 결과(배열 `permutation`은 섞은 복사본, 배열 `a`의 `choice`는 고른 원소)와 섞기에 쓰는 자리를 더한다. 비복원 `choice`는 작은 표본이면 원소당 64바이트(상한; 16바이트 칸 bit_ceil(2k)개라 실제로는 32–64바이트), 그 밖에는 모집단 n개의 자리(8n바이트)를 더 쓴다.
 - 전역 함수와 전역 상태가 없다. 난수는 언제나 Generator에서 받는다. 분포의 표본은 `sd.stats`의 각 분포에 있다(`X.sample(shape, rng=rng)`).
 - 생성기는 **Philox4×64-10**이다(R5). 같은 시드와 같은 호출 순서면 같은 값이고, **스레드 수와 상관없다**. 한 호출을 둘로 나누어 불러도 앞의 원소들은 같다. numpy의 `default_rng`와 값은 다르다.
 - 틀린 호출 모양(인자 개수, 없는 키워드, positional-only를 키워드로)의 에러: `default_rng`는 라이브러리의 꼴로 함수 이름으로 시작한다(`default_rng(): got some positional-only arguments passed as keyword arguments: 'seed'`). Generator의 메서드는 Python의 꼴 그대로다(`Generator.random() takes from 1 to 2 positional arguments but 3 were given`). 짧은 호출에 감싸는 비용(약 60ns)을 더하지 않으려는 예외다 (API.md §2.1).

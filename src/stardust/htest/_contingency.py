@@ -39,6 +39,7 @@ class Chi2ContingencyResult(_TestResult):
     __slots__ = ()
     _TITLE = "Chi-squared test of independence"
     _FIELDS = ("statistic", "pvalue", "df", "expected_freq")
+    _TABLES = ("expected_freq",)
     _UNPACK = ("statistic", "pvalue", "df", "expected_freq")
 
 
@@ -108,6 +109,23 @@ def _two_by_two(t, name, arg="table"):
         raise ValueError(f"{name}(): '{arg}' must be a 2 x 2 table, not {t.table[0]} x {t.table[1]}")
 
 
+_COUNT_LIMIT = 2**53  # fisher_exact's and odds_ratio's counts: exact float64 integers (H150)
+
+
+def _below_limit(t, name):
+    """Every table's total (so every cell and margin) below 2^53: past it the counts are not exact
+    float64 integers (H150)."""
+    if not t.lanes or not t.rows.size:
+        return
+    flat = _sd.reshape(t.rows, (t.lanes, -1))
+    big = _sd.sum(flat, axis=1) >= float(_COUNT_LIMIT // 2)  # (a float sum near 2^53 may round)
+    if not bool(_sd.any(big)):
+        return
+    for i in range(t.lanes):
+        if bool(big[i]) and sum(int(float(v)) for v in flat[i]) >= _COUNT_LIMIT:
+            raise ValueError(f"{name}(): the table's counts must be below 2**53")
+
+
 def _shape_text(t):
     return f"{t.table[0]} x {t.table[1]}"
 
@@ -164,16 +182,17 @@ def chi2_contingency(observed, /, *, correction=True, lambda_=None, method=None)
 
 def fisher_exact(table, /, *, alternative="two-sided", method=None):
     """Fisher's exact test. A 2 x 2 table: statistic the sample odds ratio ad / bc (inf for bc =
-    0), pvalue from the hypergeometric distribution of the top-left cell given the margins
-    (scipy's two-sided rule: the tables at most (1 + 1e-14) times as probable as the observed
-    one; 1 when it is as probable as the mode). An r x c table: statistic the probability of the
-    observed table, pvalue the exact sum over every table with its margins at most (1 + 1e-7)
-    times as probable (R's fisher.test, the network algorithm; scipy's default is an unseeded Monte
-    Carlo), two-sided only; past the documented work cap a ValueError. A zero row or column of a
-    2 x 2 table gives NaN and pvalue 1. method: None, or (H9, scipy's) a PermutationMethod or a
-    MonteCarloMethod: for any table (2 x 2 too) statistic the table's probability and pvalue the
-    share of tables with its margins at most as probable (two-sided only). Unpacks as
-    (statistic, pvalue)."""
+        0), pvalue from the hypergeometric distribution of the top-left cell given the margins
+        (scipy's two-sided rule: the tables at most (1 + 1e-14) times as probable as the observed
+        one; 1 when it is as probable as the mode). An r x c table: statistic the probability of the
+        observed table, pvalue the exact sum over every table with its margins at most (1 + 1e-7)
+        times as probable (R's fisher.test, the network algorithm; scipy's default is an unseeded Monte
+        Carlo), two-sided only; past the documented work cap a ValueError. A zero row or column of a
+        2 x 2 table gives NaN and pvalue 1. A table's total must be below 2**53 (H150; a 2 x 2 table
+    of any size within it takes bounded work). method: None, or (H9, scipy's) a PermutationMethod or a
+        MonteCarloMethod: for any table (2 x 2 too) statistic the table's probability and pvalue the
+        share of tables with its margins at most as probable (two-sided only). Unpacks as
+        (statistic, pvalue)."""
     name = "fisher_exact"
     alt = C.alternative(alternative, name)
     if method is not None:
@@ -181,6 +200,7 @@ def fisher_exact(table, /, *, alternative="two-sided", method=None):
         if alt != "two-sided":
             raise ValueError(f"{name}(): a resampling method takes alternative='two-sided' only, not {alternative!r}")
     t = C.Tables(table, name, "table", minimum=(1, 1))
+    _below_limit(t, name)
     if method is not None:  # H9 (scipy's r x c path, 2 x 2 too): the tables at most as probable
         stats, ps, pairs = R.table_pvalues(name, method, t.rows, 1, "less")
         for i in range(t.lanes):
@@ -266,13 +286,15 @@ def mcnemar(table, /, *, exact=True, correction=True):
 
 def cochrans_q(x, /):
     """Cochran's Q test that k related binary samples have the same proportion of successes
-    (statsmodels'): x is (N, k) of 0 and 1 (blocks by treatments); statistic Q, pvalue (chi^2 with
+    (statsmodels'): x is (N, k) of 0 and 1 (blocks by treatments; any other value but NaN is the
+    one message, before the counts' check); statistic Q, pvalue (chi^2 with
     k - 1 degrees of freedom) and df. NaN when every block is all 0 or all 1. Batches along the
     leading axes. Does not unpack."""
     name = "cochrans_q"
-    t = C.Tables(x, name, "x", minimum=(1, 1))
-    if t.rows.size and bool(_sd.any(t.rows > 1.0)):
+    a = C._as_array(x, name, "x")
+    if a.size and bool(_sd.any((a == a) & (a != 0.0) & (a != 1.0))):  # (before the counts' check; NaN: its message)
         raise ValueError(f"{name}(): 'x' must hold 0 and 1 values (the successes)")
+    t = C.Tables(a, name, "x", minimum=(1, 1))
     q, p, df = _k.cochrans_q(t.rows)
     info = {"nobs": t.table[0], "pairs": [("No. Treatments:", str(t.table[1]))]}
     return CochransQResult._make(batch=t.batch, info=info, statistic=t.out(q), pvalue=t.out(p), df=t.out(df))
@@ -287,20 +309,33 @@ def odds_ratio(table, /, *, kind="conditional"):
     given the margins; 0 or inf at the ends of its support), 'sample' ad / bc. statistic, and
     conf_int(*, alpha=0.05, alternative='two-sided'): the exact interval (conditional) or Woolf's
     (sample). A zero row or column gives NaN and the interval (0, inf). Batches along the leading
-    axes. Not a test: no pvalue, does not unpack."""
+    axes. The table's total below 2**53; a support past 2^16 points is summed over a window about
+    each t's mode, and a window at the root past 2^22 points is a ValueError (H150). Not a test:
+    no pvalue, does not unpack."""
     name = "odds_ratio"
     kd = C.choice(kind, name, "kind", tuple(_KIND))
     t = C.Tables(table, name, "table")
     _two_by_two(t, name)
-    (stat,) = _k.odds_ratio(t.rows, _KIND[kd])
+    _below_limit(t, name)
+    stat, big = _k.odds_ratio(t.rows, _KIND[kd])
+    _window_check(big, name)
     rows = t.rows + 0.0  # (the interval is computed when asked: the table kept, not the caller's array)
 
     def ci(alpha, alternative="two-sided"):
-        lo, hi = _k.odds_ratio_ci(rows, _KIND[kd], alpha, _ALT[alternative])
+        lo, hi, big = _k.odds_ratio_ci(rows, _KIND[kd], alpha, _ALT[alternative])
+        _window_check(big, "conf_int")
         return t.out(lo), t.out(hi)
 
     title = "Odds ratio (conditional maximum likelihood)" if kd == "conditional" else "Odds ratio (sample)"
     return OddsRatioResult._make(batch=t.batch, ci=ci, info={"title": title}, statistic=t.out(stat))
+
+
+def _window_check(big, name):
+    if bool(_sd.any(big != 0.0)):
+        raise ValueError(
+            f"{name}(): the conditional odds ratio needs more than {_k.ODDS_RATIO_WINDOW:.3g} terms of its sums for "
+            "this table; use kind='sample'"
+        )
 
 
 def relative_risk(exposed_cases, exposed_total, control_cases, control_total, /):

@@ -259,8 +259,14 @@ def test_exact_work_cap():
         h.wilcoxon(rng.normal(size=3000), method="exact")
     with pytest.raises(ValueError, match=r"ansari\(\): method='exact' needs about"):
         h.ansari(np.round(rng.normal(size=400)), np.round(rng.normal(size=400)), method="exact")
-    with pytest.raises(ValueError, match=r"page_trend_test\(\): method='exact' needs about"):
+    # a count past the doubles (page's work is inf here): "needs more than <cap>", no "about inf"
+    with pytest.raises(
+        ValueError, match=r"page_trend_test\(\): method='exact' needs more than 1e\+09 operations for this input; use"
+    ):
         h.page_trend_test(rng.normal(size=(5, 25)), method="exact")
+    with pytest.raises(ValueError) as e:
+        h.page_trend_test(np.random.default_rng(2).normal(size=(200, 12)), method="exact")
+    assert "inf" not in str(e.value)
     with pytest.raises(ValueError, match=r"needs ranks that are integers or halves"):
         h.page_trend_test(np.array([[1.0, 2.3, 3], [2.0, 1, 3]]), ranked=True, method="exact")
 
@@ -581,3 +587,37 @@ def test_coin_conditional_exact():
         assert ok[convention[p.func]], (pid, "coin's direction changed")
         seen += 1
     assert seen >= 8
+
+
+def test_batch_zstatistic_always_there():
+    """H156: a batch of a test whose 'auto' may take the normal approximation always has
+    zstatistic (NaN in its exact lanes), so the field does not come and go with the data; one
+    test has it only when the approximation was used (H47)."""
+    A = sd.asarray([[1.0, 2, 3, 4], [1.0, 2, 3, 4]])
+    r = h.mannwhitneyu(A, sd.asarray([[5.0, 6, 7], [2.5, 2.2, 5]]), axis=1)
+    assert all(math.isnan(v) for v in r.zstatistic.tolist())
+    r = h.mannwhitneyu(A, sd.asarray([[5.0, 6, 7], [2.0, 2, 5]]), axis=1)
+    z = r.zstatistic.tolist()
+    assert math.isnan(z[0]) and z[1] == pytest.approx(-0.18345, rel=1e-4)
+    assert h.mannwhitneyu(sd.zeros((0, 5)), sd.zeros((0, 4)), axis=1).zstatistic.shape == (0,)
+    w = h.wilcoxon(sd.asarray([[0.5, -0.25, 1.0, 2.0], [0.5, 0.75, 1.0, 2.0]]), axis=1)
+    assert w.zstatistic.shape == (2,)
+    with pytest.raises(AttributeError):
+        _ = h.mannwhitneyu([1.0, 2, 3, 4], [5.0, 6, 7]).zstatistic
+    # each lane's other fields as alone
+    one = h.mannwhitneyu([1.0, 2, 3, 4], [2.0, 2, 5])
+    assert r.pvalue[1] == one.pvalue and z[1] == one.zstatistic
+
+
+def test_all_values_equal_is_nan():
+    """H157 (the §4 rule; scipy gives p = 0.2207 for ansari's normal approximation, 1 for its
+    exact one, and 0, 1 for ranksums): every value of the row equal gives NaN."""
+    for meth in ("auto", "exact", "asymptotic"):
+        r = h.ansari([1.0, 1, 1], [1.0, 1], method=meth)
+        assert r.statistic == 9.0 and math.isnan(r.pvalue)
+    assert math.isnan(h.ansari([2.0] * 4, [2.0] * 3).pvalue)
+    r = h.ranksums([1.0] * 3, [1.0] * 2)
+    assert math.isnan(r.statistic) and math.isnan(r.pvalue)
+    assert h.ranksums([1.0, 2, 3], [4.0, 5]).statistic == pytest.approx(-1.73205, rel=1e-5)
+    b = h.ansari(sd.asarray([[1.0, 1, 1], [1.0, 2, 3]]), sd.asarray([[1.0, 1], [1.0, 5]]), axis=1)
+    assert math.isnan(b.pvalue[0]) and b.pvalue[1] == h.ansari([1.0, 2, 3], [1.0, 5]).pvalue

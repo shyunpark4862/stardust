@@ -83,6 +83,8 @@ class dok_array(sparray):
 
     def _parts(self):
         """(major or None, minor, data): the entries in row-major order (new arrays)."""
+        if self._map.shape != self._shape:  # an invariant: a shared map is never resized in place
+            raise RuntimeError("dok_array: the hash map's shape differs from the array's")
         return self._map.to_coo()
 
     def _copy(self):
@@ -105,9 +107,9 @@ class dok_array(sparray):
         from ._compressed import csr_array
 
         C.check_copy_false(copy, func, "converting dok to csr")
-        major, minor, data = self._parts()
-        n_major = self._shape[0] if major is not None else 1
-        return csr_array._new(self._shape, *_core._compress(n_major, major, minor, data, share=True))
+        if self._map.shape != self._shape:  # an invariant: a shared map is never resized in place
+            raise RuntimeError("dok_array: the hash map's shape differs from the array's")
+        return csr_array._new(self._shape, *self._map.to_csr())
 
     def _tocsc(self, copy, func):
         return self._tocsr(copy, func)._swap(None, func)
@@ -117,7 +119,9 @@ class dok_array(sparray):
         return _core._coo_to_dense(self._shape, major, minor, data, distinct=True)
 
     def _resize(self, shape):
-        self._map.resize(shape)
+        # A new map: dok_array(D) shares D's map, and resizing one of the two must not change the
+        # keys or the shape the other one sees (copy on resize; element writes stay shared until then).
+        self._map = self._map.resized(shape)
         self._shape = shape
 
     def _count_nonzero(self, axis):

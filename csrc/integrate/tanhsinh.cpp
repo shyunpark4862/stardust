@@ -36,6 +36,10 @@
 //
 // [1] Bailey, Jeyabalan and Li, "A comparison of three high-precision quadrature schemes",
 //     Experimental Mathematics 14.3 (2005).
+// [2] Vanherck, Soree and Magnus, "Tanh-sinh quadrature for single and multiple integration using
+//     floating-point arithmetic", arXiv:2007.15057 (2020).
+// [3] van Engelen, "Improving the Double Exponential Quadrature Tanh-Sinh, Sinh-Sinh and Exp-Sinh
+//     Formulas", https://www.genivia.com/files/qthsh.pdf
 #include "integrate/integrate.hpp"
 #include "integrate/numpy_ops.hpp"
 

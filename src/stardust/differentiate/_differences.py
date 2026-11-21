@@ -37,6 +37,9 @@ _ROUNDING_TOL = 2.0**-26
 _GROW_TOL = 2.0**-36
 # the largest start of that search: x_j = 0's (2^-8 of a variable of size 1)
 _FD_CAP = math.ldexp(1.0, math.frexp(1.0)[1] + _FD_START)
+# a search whose last two estimates differ by more than this (relative) never saw the truncation
+# error fall: its estimates did not agree to about 6 digits
+_SETTLED = 2.0**-20
 
 
 class Differences:
@@ -63,6 +66,7 @@ class Differences:
         # a failed jacobian(): no stencil fitted within the bounds at any step (else g was not
         # finite at the points of every stencil that fitted)
         self.too_narrow = False
+        self._settled = False  # the last _descend's estimates agreed (_SETTLED)
 
     def column(self, x, j, h, g0):
         """dg/dx_j (unweighted) by the first feasible 5-point stencil with step h, or None;
@@ -119,7 +123,9 @@ class Differences:
         """The step of variable j, chosen once: from 2^-8 |x_j| down by factors of 4 while
         consecutive estimates get closer by more than 8 times; the last such estimate and its
         step. A start at rounding level is moved up first (_grow); when no larger step leaves
-        rounding level (a column that is 0 or noise) the search is the plain one from the start."""
+        rounding level (a column that is 0 or noise) the search is the plain one from the start.
+        Below _FD_CAP (|x_j| < 1) a search whose estimates never agreed (_settled) is checked
+        against the search from x_j = 0's start (_from_cap)."""
         base = math.frexp(abs(x[j]) if x[j] != 0 else 1.0)[1]
         e0 = base + _FD_START
         col0 = self.column(x, j, math.ldexp(1.0, e0), g0)
@@ -127,7 +133,10 @@ class Differences:
             return self._descend(x, j, g0, e0, (col0, self.fits))
         r0 = self._rounding(col0, j)
         if r0 <= _GROW_TOL:
-            return self._descend(x, j, g0, e0, (col0, self.fits))
+            best, hbest = self._descend(x, j, g0, e0, (col0, self.fits))
+            if best is not None and not self._settled:
+                best, hbest = self._from_cap(x, j, g0, best, hbest)
+            return best, hbest
         fits0 = self.fits
         e = self._grow(x, j, g0, e0, col0)
         if e is not None:
@@ -141,12 +150,30 @@ class Differences:
         self.fits = self.fits or fits0
         return best, hbest
 
+    def _from_cap(self, x, j, g0, best, hbest):
+        """The search from _FD_CAP (x_j = 0's start) in place of (best, hbest), a search from
+        2^-8 |x_j| whose estimates never agreed to _SETTLED: its start was below the rounding of
+        f's own evaluation, which the rounding level (u |f|) does not see (log(1 + x) at
+        x = 1e-14: 1 + x rounds to a multiple of 2^-52, and the start 2^-54 gave -1/3). Taken
+        when its estimates agree; else (best, hbest) as they were."""
+        fits = self.fits
+        cap = math.frexp(_FD_CAP)[1] - 1
+        alt, halt = self._descend(x, j, g0, cap)
+        if alt is not None and self._settled:
+            self.fits = self.fits or fits
+            return alt, halt
+        self.fits = fits
+        return best, hbest
+
     def _grow(self, x, j, g0, e0, col0):
         """The exponent of the step to start from when the start 2^e0 is at rounding level:
         moved by the factor that brings the rounding to sqrt(eps) of the column (at most to
         _FD_CAP), then up by factors of 4 until consecutive estimates differ by more than their
         rounding levels (the truncation error shows) or _FD_CAP; None when no such step leaves
-        rounding level (a column that is 0 or noise at every step: the usual search decides)."""
+        rounding level (a column that is 0 or within _NOISE_FACTOR of its rounding level at every
+        step: the usual search decides). A last column above sqrt(eps) of rounding still counts:
+        a smaller step only has more (cos at x = 3.4e-8, whose derivative is 3.4e-8 of its value:
+        2^-7 leaves 2e-14 of rounding, the start 2^-32 gave -4.8e-7)."""
         cap = math.frexp(_FD_CAP)[1] - 1
         r = self._rounding(col0, j)
         jump = cap - e0 if math.isinf(r) else math.ceil(math.log2(r / _ROUNDING_TOL))
@@ -166,7 +193,7 @@ class Differences:
             if shows:
                 break
         size = self._wnorm(col)
-        if not (size > 0 and lvl / size <= _ROUNDING_TOL):
+        if not (size > 0 and lvl / size * _NOISE_FACTOR < 1):
             return None
         return e
 
@@ -175,7 +202,8 @@ class Differences:
         consecutive ones stop getting closer by more than 8 times. first: (column, fits) at
         2^e0 when just computed. strict: the second estimate is not taken over the first when
         it is rounding noise (within _NOISE_FACTOR of its rounding level, regression G88's test)
-        and the first is not."""
+        and the first is not. Sets _settled: the last estimate taken differs from the one before
+        by at most _SETTLED (relative; False when only one was taken)."""
         best = hbest = None
         dprev = math.inf
         prev = None
@@ -208,6 +236,7 @@ class Differences:
                     break
             prev = col
         self.fits = fits
+        self._settled = dprev <= _SETTLED
         return best, hbest
 
     def jacobian(self, x, g0, zero_noise=False):

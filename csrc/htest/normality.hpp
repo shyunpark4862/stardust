@@ -6,6 +6,11 @@
 //
 // The sums are double-doubles (special/dd.hpp): the sample's sum gives the mean m, then
 // d = x - m (a double-double), and the sums of d^2, d^3, d^4, each rounded once at the end.
+// A sample whose largest |x| is past 2^120 or below 2^-120 is summed in a unit of 2^e, e that
+// value's exponent (H160; H1's unit, htest/moments.hpp, with the bounds of a fourth power): d^4
+// then neither overflows nor leaves the normal doubles for any finite sample, and every
+// statistic formed from the sums (a ratio of matching powers, and H20's rule) is the same. Other
+// samples are summed as they are (their bits unchanged).
 // The rows go in fixed chunks of kSumChunk added in order (in parallel for a long sample), so
 // the bits do not depend on the thread count.
 #pragma once
@@ -29,7 +34,18 @@ struct CentralSums {
     special::dd::DD s2{std::numeric_limits<double>::quiet_NaN(), 0.0};
     special::dd::DD s3{std::numeric_limits<double>::quiet_NaN(), 0.0};
     special::dd::DD s4{std::numeric_limits<double>::quiet_NaN(), 0.0};
+    int e = 0;  // the sums (and the mean) are those of x 2^-e
 };
+
+// The unit's exponent of x[0..m): that of the largest |x| when it is past 2^120 or below 2^-120
+// (x 2^-e then has its largest |value| in [1, 2)), else 0 (also for 0 and non-finite values).
+inline int scale_exponent(const double* x, std::int64_t m) {
+    double big = 0.0;
+    for (std::int64_t t = 0; t < m; ++t) big = std::max(big, std::fabs(x[t]));
+    if (!(big > 0.0) || !std::isfinite(big)) return 0;
+    const int e = std::ilogb(big);
+    return (e > 120 || e < -120) ? e : 0;
+}
 
 inline constexpr std::int64_t kSumChunk = 4096;
 
@@ -72,6 +88,11 @@ inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
     using special::dd::operator*;
     CentralSums out;
     if (m <= 0) return out;
+    const int e = scale_exponent(x, m);
+    const double sc = std::ldexp(1.0, -std::clamp(e, -1020, 1020));
+    const double sc2 = std::ldexp(1.0, -e + std::clamp(e, -1020, 1020));  // (|e| > 1020: two factors)
+    const float64x2_t vsc = vdupq_n_f64(sc), vsc2 = vdupq_n_f64(sc2);
+    auto at = [&](std::int64_t t) { return x[t] * sc * sc2; };
     const std::int64_t nc = (m + kSumChunk - 1) / kSumChunk;
     auto total = [&](int q) {
         DD acc{0.0, 0.0};
@@ -81,7 +102,7 @@ inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
     auto full = [&](std::int64_t c) { return c < nc && (c + 1) * kSumChunk <= m; };
     // element t of chunks c and c + 1
     auto pair_at = [&](std::int64_t c, std::int64_t t) {
-        return float64x2_t{x[c * kSumChunk + t], x[(c + 1) * kSumChunk + t]};
+        return vmulq_f64(vmulq_f64(float64x2_t{x[c * kSumChunk + t], x[(c + 1) * kSumChunk + t]}, vsc), vsc2);
     };
     auto put = [&](std::int64_t c, int q, vdd::D2 v) {
         part[c * 8 + 2 * q] = vgetq_lane_f64(v.hi, 0), part[c * 8 + 2 * q + 1] = vgetq_lane_f64(v.lo, 0);
@@ -91,7 +112,7 @@ inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
     auto sum1 = [&](std::int64_t c) {
         const std::int64_t t0 = c * kSumChunk, t1 = std::min(m, t0 + kSumChunk);
         DD s1{0.0, 0.0};
-        for (std::int64_t t = t0; t < t1; ++t) s1 = s1 + DD{x[t], 0.0};
+        for (std::int64_t t = t0; t < t1; ++t) s1 = s1 + DD{at(t), 0.0};
         part[c * 8 + 0] = s1.hi, part[c * 8 + 1] = s1.lo;
     };
     sum_chunk_pairs(m, [&](std::int64_t p) {
@@ -110,7 +131,7 @@ inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
         const std::int64_t t0 = c * kSumChunk, t1 = std::min(m, t0 + kSumChunk);
         DD a2{0.0, 0.0}, a3{0.0, 0.0}, a4{0.0, 0.0};
         for (std::int64_t t = t0; t < t1; ++t) {
-            const DD d = DD{x[t], 0.0} - mean;
+            const DD d = DD{at(t), 0.0} - mean;
             const DD d2 = d * d;
             a2 = a2 + d2;
             a3 = a3 + d2 * d;
@@ -137,6 +158,7 @@ inline CentralSums central_sums(const double* x, std::int64_t m, double* part) {
         sums234(c);
         if (c + 1 < nc) sums234(c + 1);
     });
+    out.e = e;
     out.mean = mean;
     out.s2 = total(0);
     out.s3 = total(1);

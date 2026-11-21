@@ -15,7 +15,7 @@
 #pragma once
 
 #include "base/dtype.hpp"
-#include "special/sincos.hpp"
+#include "base/sincos.hpp"
 
 #include <algorithm>
 #include <bit>

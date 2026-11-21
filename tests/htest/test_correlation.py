@@ -499,3 +499,19 @@ def test_messages():
         h.pearsonr(x, y, nan="omit")
     with pytest.raises(TypeError, match=r"pearsonr\(\): 'x' must be"):
         h.pearsonr({"a": 1}, y)
+
+
+def test_pearsonr_exact_zero():
+    """H161: a true Sxy of 0 (x symmetric, y even) is 0, not the double-double sums' rounding
+    (3e-33); decided exactly for short dyadic data, other data keep their bits."""
+    x = [float(i) for i in range(-10, 11)]
+    r = h.pearsonr(x, [v * v for v in x])
+    assert r.statistic == 0.0 and r.pvalue == 1.0
+    assert h.pearsonr([v / 4 for v in x], [v * v / 8 + 3 for v in x]).statistic == 0.0
+    assert h.spearmanrho(x, [v * v for v in x]).statistic == 0.0
+    # not a zero: untouched
+    assert h.pearsonr([1.0, 2, 3], [1.0, 2, 4]).statistic == pytest.approx(0.9819805060619657, rel=1e-15)
+    xs = [0.1 * i for i in range(-10, 11)]  # not short dyadic: the double-double value
+    assert abs(h.pearsonr(xs, [v * v for v in xs]).statistic) < 1e-15
+    b = h.pearsonr(sd.asarray([x, x]), sd.asarray([[v * v for v in x], [v * v * v for v in x]]), axis=1)
+    assert b.statistic[0] == 0.0 and b.statistic[1] == h.pearsonr(x, [v * v * v for v in x]).statistic

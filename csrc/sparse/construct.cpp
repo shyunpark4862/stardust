@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,11 @@ int64_t lines_per_task(int64_t line_len) { return std::max<int64_t>(1, kChunk / 
 
 // ---- _kron ----
 
+[[noreturn]] void overflow() {
+    PyErr_SetString(PyExc_OverflowError, "_kron(): the result's shape is out of range");
+    throw nb::python_error();
+}
+
 nb::tuple kron(
     nb::handle ap_h, nb::handle ai_h, nb::handle av_h, nb::handle bp_h, nb::handle bi_h, nb::handle bv_h, int64_t q
 ) {
@@ -66,14 +72,23 @@ nb::tuple kron(
     const int64_t* ai = i64(ai_a);
     const int64_t* bp = i64(bp_a);
     const int64_t* bi = i64(bi_a);
-    const int64_t rows = m * p;
-    NDArray indptr = new_index(rows + 1);
+    // The caller checks the result's shape (kron(): the result's shape is out of range); these
+    // guard the index arithmetic below all the same.
+    int64_t rows = 0, top = 0;
+    if (__builtin_mul_overflow(m, p, &rows) || rows == std::numeric_limits<int64_t>::max()) overflow();
+    for (int64_t s = 0; s < ai_a.shape[0]; ++s) top = std::max(top, ai[s]);
+    if (ai_a.shape[0] > 0 && (__builtin_mul_overflow(top, q, &top) || __builtin_add_overflow(top, q - 1, &top)))
+        overflow();
+    NDArray indptr = new_indptr(rows);
     int64_t* op = i64(indptr);
     op[0] = 0;
     for (int64_t i = 0; i < m; ++i)
         for (int64_t r = 0; r < p; ++r) {
             const int64_t R = i * p + r;
-            op[R + 1] = op[R] + (ap[i + 1] - ap[i]) * (bp[r + 1] - bp[r]);
+            int64_t cnt = 0;
+            if (__builtin_mul_overflow(ap[i + 1] - ap[i], bp[r + 1] - bp[r], &cnt) ||
+                __builtin_add_overflow(op[R], cnt, &op[R + 1]))
+                throw nb::value_error("array is too big");  // more stored entries than an int64 counts
         }
     const int64_t total = op[rows];
     NDArray indices = new_index(total);
@@ -143,7 +158,7 @@ nb::tuple stack_minor(nb::handle parts_h, nb::handle offsets_h) {
         if (p.lines != lines) throw nb::value_error("_stack_minor(): line counts differ");
         nnz += p.nnz;
     }
-    NDArray indptr = new_index(lines + 1);
+    NDArray indptr = new_indptr(lines);
     int64_t* op = i64(indptr);
     op[0] = 0;
     for (int64_t r = 0; r < lines; ++r) {
@@ -182,7 +197,7 @@ nb::tuple stack_major(nb::handle parts_h) {
         lines += p.lines;
         nnz += p.nnz;
     }
-    NDArray indptr = new_index(lines + 1);
+    NDArray indptr = new_indptr(lines);
     NDArray indices = new_index(nnz);
     NDArray data = new_values(dtype, nnz);
     int64_t* op = i64(indptr);

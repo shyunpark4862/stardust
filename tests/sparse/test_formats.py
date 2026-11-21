@@ -407,3 +407,23 @@ def test_large_shape_without_entries():
     assert A.shape == (10**12, 10**12) and A.nnz == 0
     B = S.coo_array(([1.0], ([10**12 - 1], [5])), shape=(10**12, 10**12))
     assert B.nnz == 1 and i64(B.coords[0])[0] == 10**12 - 1
+
+
+def test_shapes_past_int64_are_an_overflow_error():
+    """An inferred shape whose length is 2^63 and a reshape past int64 (SPR-6; the dense array's
+    reshape(): 'shape' is out of range)."""
+    i = sd.asarray([2**63 - 1])
+    for f in (S.coo_array, S.csr_array, S.dok_array):
+        with pytest.raises(
+            OverflowError, match=rf"^{f.__name__}\(\): the shape inferred from the indices is out of range"
+        ):
+            f((sd.asarray([1.0]), (i, sd.asarray([0]))))
+    with pytest.raises(OverflowError, match=r"^csr_array\(\): the shape inferred from the indices is out of range"):
+        S.csr_array((sd.asarray([1.0]), i, sd.asarray([0, 1])))
+    B = S.coo_array((sd.asarray([1.0]), (sd.asarray([3]), sd.asarray([5]))), shape=(2**40, 2**40))
+    for shape in (2**80, (2**64, 1), (-1,)):
+        with pytest.raises(OverflowError, match=r"^reshape\(\): 'shape' is out of range$"):
+            B.reshape(shape)
+    with pytest.raises(OverflowError, match=r"^reshape\(\): 'shape' is out of range$"):
+        sd.ones(3).reshape(2**80)  # the dense twin
+    assert B.reshape((2**20, 2**60)).shape == (2**20, 2**60)

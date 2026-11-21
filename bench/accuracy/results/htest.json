@@ -2,79 +2,49 @@
  "schema": 1,
  "area": "htest",
  "runs": {
-  "20261122-004411-ee069cd+": {
-   "commit": "ee069cd",
+  "20261122-070905-f0a7f92+": {
+   "commit": "f0a7f92",
    "dirty": true,
    "changed": [
-    "API.md",
-    "ARCHITECTURE.md",
-    "CMakeLists.txt",
-    "README.md",
-    "ROADMAP.md",
-    "bench/README.md",
-    "bench/accuracy/differentiate.py",
-    "bench/accuracy/htest.py",
-    "bench/accuracy/sparse.py",
-    "bench/speed/cases/differentiate.py",
-    "bench/speed/cases/htest.py",
-    "bench/speed/cases/sparse.py",
-    "csrc/bind/htest_bind.cpp",
-    "csrc/bind/module.cpp",
-    "csrc/bind/sparse_bind.cpp",
-    "csrc/linalg/lapack.hpp",
-    "csrc/sparse/format.hpp",
-    "csrc/sparse/iterative.cpp",
-    "docs/api/differentiate.md",
+    "csrc/htest/contingency.cpp",
+    "csrc/htest/correlation.cpp",
+    "csrc/htest/cvm2.hpp",
+    "csrc/htest/gof.cpp",
+    "csrc/htest/gof2.cpp",
+    "csrc/htest/moments.hpp",
+    "csrc/htest/nchg.hpp",
+    "csrc/htest/normality.hpp",
+    "csrc/htest/proportion.cpp",
+    "csrc/htest/rank.cpp",
     "docs/api/htest.md",
-    "docs/api/sparse.md",
     "docs/design/htest.md",
-    "docs/design/integrate.md",
-    "docs/design/sparse.md",
-    "src/stardust/differentiate/__init__.py",
-    "src/stardust/differentiate/_result.py",
-    "src/stardust/htest/__init__.py",
-    "src/stardust/sparse/__init__.py",
-    "src/stardust/sparse/_result.py",
-    "tests/README.md",
-    "tests/differentiate/test_api_surface.py",
-    "tests/differentiate/test_result.py",
-    "tests/golden/cases_differentiate.py",
-    "tests/golden/cases_htest.py",
-    "tests/golden/cases_sparse.py",
-    "tests/golden/data/differentiate.json",
+    "src/stardust/_summary.py",
+    "src/stardust/htest/_common.py",
+    "src/stardust/htest/_contingency.py",
+    "src/stardust/htest/_correlation.py",
+    "src/stardust/htest/_parametric.py",
+    "src/stardust/htest/_proportion.py",
+    "src/stardust/htest/_rank.py",
+    "src/stardust/htest/_resampling.py",
+    "src/stardust/htest/_result.py",
     "tests/golden/data/htest.json",
-    "tests/golden/data/sparse.json",
-    "tests/htest/data/r.json",
-    "tests/htest/data/scipy_h8.json",
-    "tests/htest/data/statsmodels.json",
-    "tests/htest/problems.py",
-    "tests/htest/ref/combine_pvalues.json",
-    "tests/htest/ref/multipletests.json",
-    "tests/htest/refdata.py",
-    "tests/htest/test_api_surface.py",
-    "tests/htest/test_reference_data.py",
-    "tests/sparse/ref/eig.npz",
-    "tests/sparse/refdata.py",
-    "tests/sparse/test_api_surface.py",
-    "tests/sparse/test_interface.py",
-    "tests/sparse/test_reference_data.py",
-    "tests/sparse/test_suitesparse.py",
-    "tools/gen_htest_r.py",
-    "tools/gen_htest_scipy.py",
-    "tools/gen_sparse_r.py",
-    "tools/htest_ref.py",
-    "tools/sparse_ref.py"
+    "tests/htest/test_contingency.py",
+    "tests/htest/test_correlation.py",
+    "tests/htest/test_parametric.py",
+    "tests/htest/test_rank.py",
+    "tests/htest/test_resampling.py",
+    "tests/test_summary.py"
    ],
-   "date": "2026-11-22T00:44:11",
+   "date": "2026-11-22T07:09:05",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
-    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
     "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
     "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
     "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
     "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
-    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
    },
    "comparators": {
     "scipy": "1.18.1",
@@ -85,8 +55,195 @@
     "R mvtnorm": "1.4.2",
     "R reticulate": "1.47.0",
     "R minpack.lm": "1.2.4",
-    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": null,
     "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261122-071515-f0a7f92+": {
+   "commit": "f0a7f92",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/README.md",
+    "bench/accuracy/common.py",
+    "bench/accuracy/results/htest.json",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/tables.py",
+    "bench/array/accuracy.md",
+    "bench/htest/accuracy.md",
+    "csrc/accelerate/sparse.hpp",
+    "csrc/array/kernels/reduce.hpp",
+    "csrc/array/kernels/scalar_ops.hpp",
+    "csrc/array/ops/asarray.cpp",
+    "csrc/array/ops/histogram.cpp",
+    "csrc/array/ops/shape.cpp",
+    "csrc/bind/array_bind.cpp",
+    "csrc/htest/contingency.cpp",
+    "csrc/htest/correlation.cpp",
+    "csrc/htest/cvm2.hpp",
+    "csrc/htest/gof.cpp",
+    "csrc/htest/gof2.cpp",
+    "csrc/htest/moments.hpp",
+    "csrc/htest/nchg.hpp",
+    "csrc/htest/normality.hpp",
+    "csrc/htest/proportion.cpp",
+    "csrc/htest/rank.cpp",
+    "csrc/integrate/adaptive.cpp",
+    "csrc/integrate/quadpack.hpp",
+    "csrc/integrate/tanhsinh.cpp",
+    "csrc/linalg/input.cpp",
+    "csrc/linalg/ops/qr.cpp",
+    "csrc/linalg/pairwise.hpp",
+    "csrc/random/random.cpp",
+    "csrc/regression/penalized.cpp",
+    "csrc/sparse/binop.cpp",
+    "csrc/sparse/canonical.cpp",
+    "csrc/sparse/construct.cpp",
+    "csrc/sparse/convert.cpp",
+    "csrc/sparse/direct.cpp",
+    "csrc/sparse/dok.cpp",
+    "csrc/sparse/format.hpp",
+    "csrc/sparse/index.cpp",
+    "csrc/sparse/iterative.cpp",
+    "csrc/sparse/spgemm.cpp",
+    "csrc/sparse/triangular.cpp",
+    "csrc/special/cplx.hpp",
+    "csrc/special/ops/airy.hpp",
+    "csrc/special/ops/bessel.hpp",
+    "csrc/special/ops/bessel01.hpp",
+    "csrc/special/ops/distr.hpp",
+    "csrc/special/ops/wofz.hpp",
+    "csrc/special/sincos.hpp",
+    "csrc/stats/dist/normal.hpp",
+    "docs/api/array.md",
+    "docs/api/differentiate.md",
+    "docs/api/frame.md",
+    "docs/api/htest.md",
+    "docs/api/integrate.md",
+    "docs/api/linalg.md",
+    "docs/api/optimize.md",
+    "docs/api/random.md",
+    "docs/api/regression.md",
+    "docs/api/sparse.md",
+    "docs/api/special.md",
+    "docs/api/stats.md",
+    "docs/design/array.md",
+    "docs/design/frame.md",
+    "docs/design/htest.md",
+    "docs/design/integrate.md",
+    "docs/design/linalg.md",
+    "docs/design/optimize.md",
+    "docs/design/random.md",
+    "docs/design/regression.md",
+    "docs/design/sparse.md",
+    "docs/design/special.md",
+    "docs/design/stats.md",
+    "src/stardust/_calls.py",
+    "src/stardust/_results.py",
+    "src/stardust/_summary.py",
+    "src/stardust/differentiate/_derivative.py",
+    "src/stardust/differentiate/_differences.py",
+    "src/stardust/differentiate/_weights.py",
+    "src/stardust/frame/_ops.py",
+    "src/stardust/htest/_common.py",
+    "src/stardust/htest/_contingency.py",
+    "src/stardust/htest/_correlation.py",
+    "src/stardust/htest/_parametric.py",
+    "src/stardust/htest/_proportion.py",
+    "src/stardust/htest/_rank.py",
+    "src/stardust/htest/_resampling.py",
+    "src/stardust/htest/_result.py",
+    "src/stardust/integrate/__init__.py",
+    "src/stardust/integrate/_cubature.py",
+    "src/stardust/integrate/_gauss.py",
+    "src/stardust/integrate/_quadpack.py",
+    "src/stardust/integrate/_result.py",
+    "src/stardust/random/__init__.py",
+    "src/stardust/regression/__init__.py",
+    "src/stardust/regression/_diagnostics.py",
+    "src/stardust/regression/_linear.py",
+    "src/stardust/regression/_select.py",
+    "src/stardust/regression/_tests.py",
+    "src/stardust/sparse/__init__.py",
+    "src/stardust/sparse/_base.py",
+    "src/stardust/sparse/_common.py",
+    "src/stardust/sparse/_construct.py",
+    "src/stardust/sparse/_direct.py",
+    "src/stardust/sparse/_dok.py",
+    "src/stardust/sparse/_eigen.py",
+    "src/stardust/sparse/_index.py",
+    "src/stardust/sparse/_interface.py",
+    "src/stardust/sparse/_interop.py",
+    "src/stardust/sparse/_iterative.py",
+    "src/stardust/sparse/_matfuncs.py",
+    "src/stardust/sparse/_ops.py",
+    "src/stardust/stats/_descriptive.py",
+    "tests/array/test_api_surface.py",
+    "tests/array/test_sparse_counterparts.py",
+    "tests/differentiate/test_derivative.py",
+    "tests/differentiate/test_weights.py",
+    "tests/frame/test_elementwise.py",
+    "tests/frame/test_reduce.py",
+    "tests/golden/cases_differentiate.py",
+    "tests/golden/cases_integrate.py",
+    "tests/golden/cases_optimize.py",
+    "tests/golden/cases_regression.py",
+    "tests/golden/data/array.json",
+    "tests/golden/data/differentiate.json",
+    "tests/golden/data/htest.json",
+    "tests/golden/data/integrate.json",
+    "tests/golden/data/optimize.json",
+    "tests/golden/data/regression.json",
+    "tests/golden/data/sparse.json",
+    "tests/golden/data/special.json",
+    "tests/golden/data/stats.json",
+    "tests/htest/test_contingency.py",
+    "tests/htest/test_correlation.py",
+    "tests/htest/test_parametric.py",
+    "tests/htest/test_rank.py",
+    "tests/htest/test_resampling.py",
+    "tests/integrate/test_cubature.py",
+    "tests/integrate/test_quadpack.py",
+    "tests/integrate/test_quadpack_weights.py",
+    "tests/integrate/test_result.py",
+    "tests/linalg/test_sparse_counterparts.py",
+    "tests/optimize/test_diff.py",
+    "tests/random/test_alloc_errors.py",
+    "tests/random/test_random.py",
+    "tests/regression/test_api_surface.py",
+    "tests/regression/test_linear.py",
+    "tests/regression/test_selection.py",
+    "tests/sparse/test_arithmetic.py",
+    "tests/sparse/test_construct.py",
+    "tests/sparse/test_conversions.py",
+    "tests/sparse/test_direct.py",
+    "tests/sparse/test_dok.py",
+    "tests/sparse/test_eigen.py",
+    "tests/sparse/test_formats.py",
+    "tests/sparse/test_indexing.py",
+    "tests/sparse/test_interface.py",
+    "tests/sparse/test_iterative.py",
+    "tests/sparse/test_matfuncs.py",
+    "tests/special/test_distributions.py",
+    "tests/stats/test_descriptive.py",
+    "tests/stats/test_distributions.py",
+    "tests/test_summary.py"
+   ],
+   "date": "2026-11-22T07:15:15",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
    }
   }
  },
@@ -131,6 +288,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -157,9 +315,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/anderson",
@@ -190,6 +347,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -229,9 +387,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/anderson_ksamp",
@@ -262,6 +419,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -288,9 +446,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/ansari",
@@ -321,6 +478,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -371,9 +529,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/barnard_exact",
@@ -404,6 +561,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -430,9 +588,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/bartlett",
@@ -474,6 +631,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -524,9 +682,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/binomtest",
@@ -590,6 +747,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -613,6 +771,39 @@
       "worst": [
        "binomtest/large"
       ]
+     },
+     "conf_int": {
+      "points": 20,
+      "ulp_max": 12.0,
+      "ulp_p999": 12.0,
+      "rel_max": 1.9494703052251094e-15,
+      "contract": 0.19494703052251094,
+      "bound": 1e-14,
+      "worst": [
+       "binomtest/p-small"
+      ]
+     },
+     "conf_int_wilson": {
+      "points": 20,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 4.689366381499075e-16,
+      "contract": 0.04689366381499075,
+      "bound": 1e-14,
+      "worst": [
+       "binomtest/p-tenth"
+      ]
+     },
+     "conf_int_wilsoncc": {
+      "points": 20,
+      "ulp_max": 29.0,
+      "ulp_p999": 29.0,
+      "rel_max": 4.761095380595696e-15,
+      "contract": 0.4761095380595696,
+      "bound": 1e-14,
+      "worst": [
+       "binomtest/p-tenth"
+      ]
      }
     },
     "R": {
@@ -626,12 +817,22 @@
       "worst": [
        "binomtest/deep-tail"
       ]
+     },
+     "conf_int": {
+      "points": 20,
+      "ulp_max": 8.0,
+      "ulp_p999": 8.0,
+      "rel_max": 2.8238468415663517e-15,
+      "contract": 0.2823846841566352,
+      "bound": 1e-14,
+      "worst": [
+       "binomtest/p-small"
+      ]
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/boschloo_exact",
@@ -662,6 +863,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -688,9 +890,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/brunnermunzel",
@@ -732,6 +933,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -758,9 +960,67 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "htest/bws_test",
+   "area": "htest",
+   "name": "bws_test",
+   "points": 10,
+   "regions": {
+    "statistic": {
+     "points": 5,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.6879790684644514e-16,
+     "contract": 0.026879790684644515,
+     "bound": 1e-14,
+     "worst": [
+      "bws_test/ties"
+     ]
+    },
+    "pvalue": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 6.966105252550002e-17,
+     "contract": 0.006966105252550002,
+     "bound": 1e-14,
+     "worst": [
+      "bws_test/ties"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "statistic": {
+      "points": 5,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.6879790684644514e-16,
+      "contract": 0.026879790684644515,
+      "bound": 1e-14,
+      "worst": [
+       "bws_test/ties"
+      ]
+     },
+     "pvalue": {
+      "points": 5,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 6.966105252550002e-17,
+      "contract": 0.006966105252550002,
+      "bound": 1e-14,
+      "worst": [
+       "bws_test/ties"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/chatterjeexi",
@@ -791,6 +1051,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -817,9 +1078,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/chi2_contingency",
@@ -861,6 +1121,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -911,9 +1172,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/cochrans_q",
@@ -955,6 +1215,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -981,9 +1242,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/combine_pvalues",
@@ -1014,6 +1274,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1038,24 +1299,10 @@
        "combine_pvalues/pearson-deep"
       ]
      }
-    },
-    "R": {
-     "pvalue": {
-      "points": 5,
-      "ulp_max": 38.0,
-      "ulp_p999": 38.0,
-      "rel_max": 5.066982929677149e-15,
-      "contract": 0.073155155478732,
-      "bound": 1e-14,
-      "worst": [
-       "combine_pvalues/fisher-many"
-      ]
-     }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/confint_proportions_2indep",
@@ -1075,10 +1322,24 @@
      ]
     }
    },
-   "comparators": {},
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "statsmodels": {
+     "conf_int": {
+      "points": 39,
+      "ulp_max": 4.400516454024636e+18,
+      "ulp_p999": 4.400516454024636e+18,
+      "rel_max": 0.015378458537007169,
+      "contract": Infinity,
+      "bound": 1e-14,
+      "worst": [
+       "confint_proportions_2indep/ratio-score-zero"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/cramervonmises",
@@ -1109,6 +1370,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1159,9 +1421,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/cramervonmises_2samp",
@@ -1192,6 +1453,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1218,9 +1480,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/dagostino",
@@ -1251,6 +1512,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1275,11 +1537,34 @@
        "skewtest/symmetric"
       ]
      }
+    },
+    "statsmodels": {
+     "statistic": {
+      "points": 6,
+      "ulp_max": 259.0,
+      "ulp_p999": 259.0,
+      "rel_max": 3.3550278093662434e-14,
+      "contract": 3.3550278093662436,
+      "bound": 1e-14,
+      "worst": [
+       "normaltest/tail"
+      ]
+     },
+     "pvalue": {
+      "points": 6,
+      "ulp_max": 267.0,
+      "ulp_p999": 267.0,
+      "rel_max": 5.57923195772286e-14,
+      "contract": 0.07372437452652883,
+      "bound": 1e-14,
+      "worst": [
+       "normaltest/skewed"
+      ]
+     }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/dunnett",
@@ -1332,6 +1617,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1382,9 +1668,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/epps_singleton_2samp",
@@ -1426,6 +1711,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1452,9 +1738,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/f_oneway",
@@ -1507,6 +1792,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1529,6 +1815,30 @@
       "bound": 1e-14,
       "worst": [
        "f_oneway/constant-groups"
+      ]
+     }
+    },
+    "statsmodels": {
+     "statistic": {
+      "points": 4,
+      "ulp_max": 272816536.0,
+      "ulp_p999": 272816536.0,
+      "rel_max": 5.614026653364561e-08,
+      "contract": 5614026.653364561,
+      "bound": 1e-14,
+      "worst": [
+       "f_oneway/welch-offset"
+      ]
+     },
+     "pvalue": {
+      "points": 4,
+      "ulp_max": 506990675.0,
+      "ulp_p999": 506990675.0,
+      "rel_max": 1.1182514190454765e-07,
+      "contract": 5394981.351891644,
+      "bound": 1e-14,
+      "worst": [
+       "f_oneway/welch-offset"
       ]
      }
     },
@@ -1557,9 +1867,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/fisher_exact",
@@ -1590,6 +1899,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1629,9 +1939,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/fligner",
@@ -1673,6 +1982,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1723,9 +2033,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/friedmanchisquare",
@@ -1767,6 +2076,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1817,9 +2127,67 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "htest/goodness_of_fit",
+   "area": "htest",
+   "name": "goodness_of_fit",
+   "points": 88,
+   "regions": {
+    "param0": {
+     "points": 33,
+     "ulp_max": 5.0,
+     "ulp_p999": 5.0,
+     "rel_max": 9.331827074492133e-16,
+     "contract": 0.09331827074492134,
+     "bound": 1e-14,
+     "worst": [
+      "goodness_of_fit/gumbel_r-ad"
+     ]
+    },
+    "param1": {
+     "points": 27,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2671144112670893e-16,
+     "contract": 0.012671144112670894,
+     "bound": 1e-14,
+     "worst": [
+      "goodness_of_fit/gumbel_r-ad"
+     ]
+    },
+    "statistic": {
+     "points": 28,
+     "ulp_max": 152.0,
+     "ulp_p999": 152.0,
+     "rel_max": 1.9419588542606935e-14,
+     "contract": 0.5305462160841039,
+     "bound": 1e-14,
+     "worst": [
+      "goodness_of_fit/gumbel_r-cvm"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "statistic": {
+      "points": 28,
+      "ulp_max": 401472855677.0,
+      "ulp_p999": 401472855677.0,
+      "rel_max": 5.3768403327897865e-05,
+      "contract": 2174801204.826788,
+      "bound": 1e-14,
+      "worst": [
+       "goodness_of_fit/weibull_min-ks"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/jarque_bera",
@@ -1850,6 +2218,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1874,11 +2243,34 @@
        "jarque_bera/n2000"
       ]
      }
+    },
+    "statsmodels": {
+     "statistic": {
+      "points": 7,
+      "ulp_max": 1326096025.0,
+      "ulp_p999": 1326096025.0,
+      "rel_max": 1.5260122491780797e-07,
+      "contract": 15260122.491780797,
+      "bound": 1e-14,
+      "worst": [
+       "jarque_bera/offset"
+      ]
+     },
+     "pvalue": {
+      "points": 7,
+      "ulp_max": 409304210.0,
+      "ulp_p999": 409304210.0,
+      "rel_max": 7.361311946176617e-08,
+      "contract": 7361311.946176617,
+      "bound": 1e-14,
+      "worst": [
+       "jarque_bera/offset"
+      ]
+     }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/kendalltau",
@@ -1909,6 +2301,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1959,9 +2352,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/kruskal",
@@ -2003,6 +2395,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2053,9 +2446,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/ks_1samp",
@@ -2086,6 +2478,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2136,9 +2529,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/ks_2samp",
@@ -2169,6 +2561,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2219,9 +2612,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/levene",
@@ -2274,6 +2666,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2324,9 +2717,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/mannwhitneyu",
@@ -2368,6 +2760,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2418,9 +2811,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/mcnemar",
@@ -2451,6 +2843,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -2490,9 +2883,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/median_test",
@@ -2545,6 +2937,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2571,9 +2964,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/mood",
@@ -2604,6 +2996,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2654,9 +3047,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/multipletests",
@@ -2676,6 +3068,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "pvalues_corrected": {
@@ -2717,9 +3110,45 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "htest/multiscale_graphcorr",
+   "area": "htest",
+   "name": "multiscale_graphcorr",
+   "points": 6,
+   "regions": {
+    "statistic": {
+     "points": 6,
+     "ulp_max": 36.0,
+     "ulp_p999": 36.0,
+     "rel_max": 7.479690346706685e-15,
+     "contract": 0.7479690346706684,
+     "bound": 1e-14,
+     "worst": [
+      "multiscale_graphcorr/quadratic-25"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "statistic": {
+      "points": 6,
+      "ulp_max": 37.0,
+      "ulp_p999": 37.0,
+      "rel_max": 7.687031514108871e-15,
+      "contract": 0.7687031514108872,
+      "bound": 1e-14,
+      "worst": [
+       "multiscale_graphcorr/quadratic-25"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/odds_ratio",
@@ -2772,6 +3201,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2784,12 +3214,68 @@
       "worst": [
        "odds_ratio/large-conditional"
       ]
+     },
+     "conf_int": {
+      "points": 10,
+      "ulp_max": 61.0,
+      "ulp_p999": 61.0,
+      "rel_max": 7.671144798369973e-15,
+      "contract": 0.7671144798369973,
+      "bound": 1e-14,
+      "worst": [
+       "odds_ratio/large-conditional"
+      ]
+     },
+     "conf_int_less": {
+      "points": 10,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 4.2342654042073385e-15,
+      "contract": 0.42342654042073385,
+      "bound": 1e-14,
+      "worst": [
+       "odds_ratio/large-conditional"
+      ]
+     },
+     "conf_int_greater": {
+      "points": 10,
+      "ulp_max": 66.0,
+      "ulp_p999": 66.0,
+      "rel_max": 1.1761175417266576e-14,
+      "contract": 1.1761175417266576,
+      "bound": 1e-14,
+      "worst": [
+       "odds_ratio/large-conditional"
+      ]
+     }
+    },
+    "R": {
+     "statistic": {
+      "points": 5,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1e-14,
+      "worst": [
+       "odds_ratio/zero-margin-conditional"
+      ]
+     },
+     "conf_int": {
+      "points": 5,
+      "ulp_max": 4872281771769.0,
+      "ulp_p999": 4872281771769.0,
+      "rel_max": 0.0005940499701457172,
+      "contract": 59404997014.57172,
+      "bound": 1e-14,
+      "worst": [
+       "odds_ratio/conditional"
+      ]
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/page_trend_test",
@@ -2820,6 +3306,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2846,9 +3333,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/pearsonr",
@@ -2890,6 +3376,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2912,6 +3399,17 @@
       "bound": 1e-14,
       "worst": [
        "pearsonr/near-1-eps9"
+      ]
+     },
+     "conf_int": {
+      "points": 19,
+      "ulp_max": 141.0,
+      "ulp_p999": 141.0,
+      "rel_max": 2.7593287382973287e-14,
+      "contract": 0.40372096770142957,
+      "bound": 1e-14,
+      "worst": [
+       "pearsonr/offset-both"
       ]
      }
     },
@@ -2937,12 +3435,94 @@
       "worst": [
        "pearsonr/near-1-eps9"
       ]
+     },
+     "conf_int": {
+      "points": 15,
+      "ulp_max": 73590196.0,
+      "ulp_p999": 73590196.0,
+      "rel_max": 9.608381068564944e-09,
+      "contract": 823871.9936098256,
+      "bound": 1e-14,
+      "worst": [
+       "pearsonr/offset-both"
+      ]
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
+  },
+  {
+   "id": "htest/permutation_test",
+   "area": "htest",
+   "name": "permutation_test",
+   "points": 20,
+   "regions": {
+    "statistic": {
+     "points": 10,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.1030818444585197e-16,
+     "contract": 0.011030818444585196,
+     "bound": 1e-14,
+     "worst": [
+      "permutation_test/samples"
+     ]
+    },
+    "pvalue": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.551115123125783e-17,
+     "contract": 0.005551115123125783,
+     "bound": 1e-14,
+     "worst": [
+      "permutation_test/independent-two-sided"
+     ]
+    }
+   },
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "scipy": {
+     "statistic": {
+      "points": 10,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.1030818444585197e-16,
+      "contract": 0.011030818444585196,
+      "bound": 1e-14,
+      "worst": [
+       "permutation_test/samples"
+      ]
+     },
+     "pvalue": {
+      "points": 10,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 5.551115123125783e-17,
+      "contract": 0.005551115123125783,
+      "bound": 1e-14,
+      "worst": [
+       "permutation_test/independent-two-sided"
+      ]
+     }
+    },
+    "R": {
+     "pvalue": {
+      "points": 3,
+      "ulp_max": 401.0,
+      "ulp_p999": 401.0,
+      "rel_max": 4.973799150320701e-14,
+      "contract": 4.973799150320701,
+      "bound": 1e-14,
+      "worst": [
+       "permutation_test/tail"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/poisson_means_test",
@@ -2973,6 +3553,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2999,9 +3580,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/power_divergence",
@@ -3043,6 +3623,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3093,9 +3674,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/proportion_confint",
@@ -3115,10 +3695,37 @@
      ]
     }
    },
-   "comparators": {},
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "run": "20261122-071515-f0a7f92+",
+   "comparators": {
+    "statsmodels": {
+     "conf_int": {
+      "points": 48,
+      "ulp_max": 60312.0,
+      "ulp_p999": 60312.0,
+      "rel_max": 7.50466391211141e-12,
+      "contract": 750.466391211141,
+      "bound": 1e-14,
+      "worst": [
+       "proportion_confint/binom_test"
+      ]
+     }
+    },
+    "R": {
+     "conf_int": {
+      "points": 20,
+      "ulp_max": 6.0,
+      "ulp_p999": 6.0,
+      "rel_max": 9.790353374226385e-16,
+      "contract": 0.09790353374226382,
+      "bound": 1e-14,
+      "worst": [
+       "proportion_confint/beta-rare"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/proportions_chisquare",
@@ -3160,6 +3767,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -3199,9 +3807,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/proportions_ztest",
@@ -3232,6 +3839,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -3271,9 +3879,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/quantile_test",
@@ -3326,6 +3933,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3349,12 +3957,22 @@
       "worst": [
        "quantile_test/tail"
       ]
+     },
+     "conf_int": {
+      "points": 8,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1e-14,
+      "worst": [
+       "quantile_test/small"
+      ]
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/ranksums",
@@ -3385,6 +4003,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3424,9 +4043,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/relative_risk",
@@ -3457,6 +4075,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "relative_risk": {
@@ -3469,12 +4088,22 @@
       "worst": [
        "relative_risk/large"
       ]
+     },
+     "conf_int": {
+      "points": 6,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2007786080171641e-16,
+      "contract": 0.022007786080171638,
+      "bound": 1e-14,
+      "worst": [
+       "relative_risk/large"
+      ]
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/shapiro",
@@ -3505,6 +4134,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3555,9 +4185,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/somersd",
@@ -3588,6 +4217,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3614,9 +4244,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/spearmanrho",
@@ -3647,6 +4276,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3697,9 +4327,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/test_proportions_2indep",
@@ -3796,6 +4425,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -3822,9 +4452,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/ttest",
@@ -3877,6 +4506,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3899,6 +4529,17 @@
       "bound": 1e-14,
       "worst": [
        "ttest_1samp/constant"
+      ]
+     },
+     "conf_int": {
+      "points": 28,
+      "ulp_max": 790989809.0,
+      "ulp_p999": 790989809.0,
+      "rel_max": 9.773574186814122e-08,
+      "contract": 2081120.5579133201,
+      "bound": 1e-14,
+      "worst": [
+       "ttest_ind/offset"
       ]
      }
     },
@@ -3924,12 +4565,22 @@
       "worst": [
        "ttest_rel/offset"
       ]
+     },
+     "conf_int": {
+      "points": 22,
+      "ulp_max": 2770542950.0,
+      "ulp_p999": 2770542950.0,
+      "rel_max": 3.8555072044614133e-07,
+      "contract": 38275781.073348805,
+      "bound": 1e-14,
+      "worst": [
+       "ttest_rel/offset"
+      ]
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/tukey_hsd",
@@ -3982,6 +4633,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3997,6 +4649,30 @@
      },
      "pvalue": {
       "points": 43,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1e-14,
+      "worst": [
+       "tukey_hsd/constant[0]"
+      ]
+     }
+    },
+    "statsmodels": {
+     "statistic": {
+      "points": 37,
+      "ulp_max": 335544320.0,
+      "ulp_p999": 335544320.0,
+      "rel_max": 7.239095854880683e-08,
+      "contract": 7239095.854880683,
+      "bound": 1e-14,
+      "worst": [
+       "tukey_hsd/offset[5]"
+      ]
+     },
+     "pvalue": {
+      "points": 37,
       "ulp_max": Infinity,
       "ulp_p999": Infinity,
       "rel_max": Infinity,
@@ -4032,9 +4708,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/weightedtau",
@@ -4065,6 +4740,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4091,9 +4767,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "htest/wilcoxon",
@@ -4135,6 +4810,7 @@
      ]
     }
    },
+   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4174,9 +4850,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261122-004411-ee069cd+",
-   "comparators_run": "20261122-004411-ee069cd+"
+   "comparators_run": "20261122-070905-f0a7f92+",
+   "comparator_seconds": 60.0
   }
  ]
 }

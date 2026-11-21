@@ -149,7 +149,7 @@ target_compile_definitions(_core PRIVATE BOOST_MATH_STANDALONE)
 # that want FMA write std::fma / vfmaq.
 # -fno-builtin-sin/-cos: for the same reason clang does not merge sin(x) and
 # cos(x) of one x into a __sincos_stret call by itself; code that wants the
-# merged call writes it (sd::sincos, special/sincos.hpp).
+# merged call writes it (sd::sincos, base/sincos.hpp).
 target_compile_options(_core PRIVATE -mcpu=native -ffp-contract=off -fno-builtin-sin -fno-builtin-cos
                        -Wall -Wextra -Wpedantic)
 

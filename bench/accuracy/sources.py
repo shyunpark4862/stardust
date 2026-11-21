@@ -254,6 +254,17 @@ def measure_regression(sw: RegSweep, compare=False) -> dict:
         if design_kappa(sw.problem) <= PARAMS_KAPPA:
             nr = e["norm_rel"] if e["norm_rel"] is not None else e["rel_max"]  # one coefficient: its error
             e["contract"], e["bound"] = nr / PARAMS_BOUND, PARAMS_BOUND
+    if sw.kind == "selection" and out["regions"].get("best_cp", {}).get("points"):
+        # Cp = SSR / scale - n + 2 rank is a difference of terms of size n: its error relative
+        # to n (docs/api/regression.md §9.3, tests/regression/test_selection.py), bound 1e-13
+        e = out["regions"]["best_cp"]
+        hl = np.asarray(sw.problem["ref"]["best_cp"], dtype=np.float64).reshape(-1, 2)
+        got = np.asarray(get("best_cp"), dtype=np.float64).reshape(-1)
+        n = len(sw.problem["y"])
+        with np.errstate(all="ignore"):
+            d = np.abs((got - hl[:, 0]) - hl[:, 1]) / n
+        e["rel_max"] = float(np.nanmax(d))  # the scale of the field: relative to n
+        e["contract"], e["bound"] = e["rel_max"] / 1e-13, 1e-13
     out["points"] = sum(x["points"] for x in out["regions"].values())
     if compare:
         out["comparators"] = _reg_comparators(sw)

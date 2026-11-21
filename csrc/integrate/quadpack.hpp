@@ -1238,6 +1238,12 @@ void qc25f(
         result = std::fma(conc, resc24, -(cons * ress24));
         abserr = std::abs(conc * estc) + std::abs(cons * ests);
     }
+    // The rounding floor eps resabs (decision C123; not in QUADPACK or scipy): the difference of
+    // the degree 12 and 24 series does not see the rounding of the Chebyshev coefficients and the
+    // moments, which leaves about eps times the integral of |f| (resabs, the coefficients' sum)
+    // in the result. Where |integral| << integral of |f| (a large omega) the estimate fell 1e8
+    // times below the true error; the Kronrod rules' floor is 50 eps resabs (kronrod_error).
+    if (resabs > kUflow / kEpmach) abserr = std::max(abserr, kEpmach * resabs);
 }
 
 // dqawoe: QAWO, the integral of f(x) cos(omega x) (integr 1) or sin(omega x) (2) on the finite

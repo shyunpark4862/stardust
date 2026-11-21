@@ -12601,7 +12601,7 @@
 "statistic": {
 "f": "0x1.6a98f075bec40p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3541  No. Observations:                   30\nP-value:                         0.760  Distribution:              Exponential\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3541  No. Observations:                   30\nP-value:                         0.760  Distribution:              Exponential\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -12718,7 +12718,7 @@
 "statistic": {
 "f": "0x1.796777a9c69fdp-5"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.04607  No. Observations:                   30\nP-value:                         0.840  Distribution:              Exponential\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.04607  No. Observations:                   30\nP-value:                         0.840  Distribution:              Exponential\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -12835,7 +12835,7 @@
 "statistic": {
 "f": "0x1.f942b228be072p-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9868  No. Observations:                   30\nP-value:                         0.700  Distribution:              Exponential\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9868  No. Observations:                   30\nP-value:                         0.700  Distribution:              Exponential\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -12952,7 +12952,7 @@
 "statistic": {
 "f": "0x1.82899765fc090p-4"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.09437  No. Observations:                   30\nP-value:                         0.880  Distribution:              Exponential\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.09437  No. Observations:                   30\nP-value:                         0.880  Distribution:              Exponential\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13072,7 +13072,7 @@
 "statistic": {
 "f": "0x1.b6723498d6000p-3"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2141  No. Observations:                   30\nP-value:                         0.940  Distribution:                   Gumbel\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2141  No. Observations:                   30\nP-value:                         0.940  Distribution:                   Gumbel\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13192,7 +13192,7 @@
 "statistic": {
 "f": "0x1.efdb6e07320dfp-6"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.03026  No. Observations:                   30\nP-value:                         0.880  Distribution:                   Gumbel\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.03026  No. Observations:                   30\nP-value:                         0.880  Distribution:                   Gumbel\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13312,7 +13312,7 @@
 "statistic": {
 "f": "0x1.faab2cafa845cp-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9896  No. Observations:                   30\nP-value:                         0.860  Distribution:                   Gumbel\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9896  No. Observations:                   30\nP-value:                         0.860  Distribution:                   Gumbel\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13432,7 +13432,7 @@
 "statistic": {
 "f": "0x1.42955a78474c4p-4"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.07876  No. Observations:                   30\nP-value:                         0.920  Distribution:                   Gumbel\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.07876  No. Observations:                   30\nP-value:                         0.920  Distribution:                   Gumbel\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13552,7 +13552,7 @@
 "statistic": {
 "f": "0x1.9ff1527b4c800p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.4062  No. Observations:                   30\nP-value:                         0.480  Distribution:                  Laplace\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.4062  No. Observations:                   30\nP-value:                         0.480  Distribution:                  Laplace\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13672,7 +13672,7 @@
 "statistic": {
 "f": "0x1.d4621e96cd710p-5"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.05718  No. Observations:                   30\nP-value:                         0.540  Distribution:                  Laplace\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.05718  No. Observations:                   30\nP-value:                         0.540  Distribution:                  Laplace\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13792,7 +13792,7 @@
 "statistic": {
 "f": "0x1.e6ad455aa8e1fp-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9505  No. Observations:                   30\nP-value:                         0.120  Distribution:                  Laplace\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9505  No. Observations:                   30\nP-value:                         0.120  Distribution:                  Laplace\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -13912,7 +13912,7 @@
 "statistic": {
 "f": "0x1.cda0b117b4be4p-4"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1127  No. Observations:                   30\nP-value:                         0.480  Distribution:                  Laplace\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1127  No. Observations:                   30\nP-value:                         0.480  Distribution:                  Laplace\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14032,7 +14032,7 @@
 "statistic": {
 "f": "0x1.3c3cfdd85b600p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3088  No. Observations:                   30\nP-value:                         0.540  Distribution:                LogNormal\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3088  No. Observations:                   30\nP-value:                         0.540  Distribution:                LogNormal\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14152,7 +14152,7 @@
 "statistic": {
 "f": "0x1.dce6ed02d06a6p-5"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.05822  No. Observations:                   30\nP-value:                         0.360  Distribution:                LogNormal\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.05822  No. Observations:                   30\nP-value:                         0.360  Distribution:                LogNormal\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14272,7 +14272,7 @@
 "statistic": {
 "f": "0x1.fbfb8249b8a96p-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9922  No. Observations:                   30\nP-value:                         0.860  Distribution:                LogNormal\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9922  No. Observations:                   30\nP-value:                         0.860  Distribution:                LogNormal\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14392,7 +14392,7 @@
 "statistic": {
 "f": "0x1.ebc7208523688p-4"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1201  No. Observations:                   30\nP-value:                         0.280  Distribution:                LogNormal\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1201  No. Observations:                   30\nP-value:                         0.280  Distribution:                LogNormal\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14512,7 +14512,7 @@
 "statistic": {
 "f": "0x1.8f8c0a4704d40p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3902  No. Observations:                   30\nP-value:                         0.400  Distribution:                 Logistic\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3902  No. Observations:                   30\nP-value:                         0.400  Distribution:                 Logistic\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14632,7 +14632,7 @@
 "statistic": {
 "f": "0x1.ca95753393e81p-5"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.05598  No. Observations:                   30\nP-value:                         0.380  Distribution:                 Logistic\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.05598  No. Observations:                   30\nP-value:                         0.380  Distribution:                 Logistic\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14752,7 +14752,7 @@
 "statistic": {
 "f": "0x1.f6afe2f9f8de7p-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9818  No. Observations:                   30\nP-value:                         0.580  Distribution:                 Logistic\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9818  No. Observations:                   30\nP-value:                         0.580  Distribution:                 Logistic\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14872,7 +14872,7 @@
 "statistic": {
 "f": "0x1.c1a895f4c591cp-4"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1098  No. Observations:                   30\nP-value:                         0.340  Distribution:                 Logistic\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1098  No. Observations:                   30\nP-value:                         0.340  Distribution:                 Logistic\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -14992,7 +14992,7 @@
 "statistic": {
 "f": "0x1.043785764ea00p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2541  No. Observations:                   30\nP-value:                         0.640  Distribution:                   Normal\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2541  No. Observations:                   30\nP-value:                         0.640  Distribution:                   Normal\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15112,7 +15112,7 @@
 "statistic": {
 "f": "0x1.3c35a23b05218p-5"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.03860  No. Observations:                   30\nP-value:                         0.620  Distribution:                   Normal\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.03860  No. Observations:                   30\nP-value:                         0.620  Distribution:                   Normal\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15232,7 +15232,7 @@
 "statistic": {
 "f": "0x1.f91be0dc46724p-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9865  No. Observations:                   30\nP-value:                         0.500  Distribution:                   Normal\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9865  No. Observations:                   30\nP-value:                         0.500  Distribution:                   Normal\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15352,7 +15352,7 @@
 "statistic": {
 "f": "0x1.7a9a839fcaff0p-4"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.09243  No. Observations:                   30\nP-value:                         0.640  Distribution:                   Normal\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.09243  No. Observations:                   30\nP-value:                         0.640  Distribution:                   Normal\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15469,7 +15469,7 @@
 "statistic": {
 "f": "0x1.07c9b04b75cf0p+0"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                       1.030  No. Observations:                   30\nP-value:                         0.120  Distribution:                 Rayleigh\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                       1.030  No. Observations:                   30\nP-value:                         0.120  Distribution:                 Rayleigh\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15586,7 +15586,7 @@
 "statistic": {
 "f": "0x1.8ad37d7cbc856p-3"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1928  No. Observations:                   30\nP-value:                         0.120  Distribution:                 Rayleigh\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1928  No. Observations:                   30\nP-value:                         0.120  Distribution:                 Rayleigh\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15703,7 +15703,7 @@
 "statistic": {
 "f": "0x1.f038fc58bcc3dp-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9692  No. Observations:                   30\nP-value:                         0.120  Distribution:                 Rayleigh\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9692  No. Observations:                   30\nP-value:                         0.120  Distribution:                 Rayleigh\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15820,7 +15820,7 @@
 "statistic": {
 "f": "0x1.8c50fd6a894c6p-3"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1935  No. Observations:                   30\nP-value:                        0.0600  Distribution:                 Rayleigh\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.1935  No. Observations:                   30\nP-value:                        0.0600  Distribution:                 Rayleigh\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -15940,7 +15940,7 @@
 "statistic": {
 "f": "0x1.221bc31827a00p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2833  No. Observations:                   30\nP-value:                         0.740  Distribution:                  Weibull\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2833  No. Observations:                   30\nP-value:                         0.740  Distribution:                  Weibull\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -16060,7 +16060,7 @@
 "statistic": {
 "f": "0x1.bc071ba0267bbp-6"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.02710  No. Observations:                   30\nP-value:                         0.920  Distribution:                  Weibull\n                                        Statistic:                         cvm\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.02710  No. Observations:                   30\nP-value:                         0.920  Distribution:                  Weibull\n                                        Statistic type:                    cvm\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -16180,7 +16180,7 @@
 "statistic": {
 "f": "0x1.f6186ec533558p-1"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9807  No. Observations:                   30\nP-value:                         0.360  Distribution:                  Weibull\n                                        Statistic:                    filliben\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.9807  No. Observations:                   30\nP-value:                         0.360  Distribution:                  Weibull\n                                        Statistic type:               filliben\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -16300,7 +16300,7 @@
 "statistic": {
 "f": "0x1.2494fa83ae823p-4"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.07143  No. Observations:                   30\nP-value:                         0.960  Distribution:                  Weibull\n                                        Statistic:                          ks\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                     0.07143  No. Observations:                   30\nP-value:                         0.960  Distribution:                  Weibull\n                                        Statistic type:                     ks\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -16420,7 +16420,7 @@
 "statistic": {
 "f": "0x1.221bc31827a00p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2833  No. Observations:                   30\nP-value:                         0.760  Distribution:                  Weibull\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2833  No. Observations:                   30\nP-value:                         0.760  Distribution:                  Weibull\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -16540,7 +16540,7 @@
 "statistic": {
 "f": "0x1.85e8349b45700p-2"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3808  No. Observations:                   30\nP-value:                         0.820  Distribution:                   Normal\n                                        Statistic:                          ad\n                                        Samples:                            49\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.3808  No. Observations:                   30\nP-value:                         0.820  Distribution:                   Normal\n                                        Statistic type:                     ad\n                                        Samples:                            49\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -16575,7 +16575,7 @@
 "statistic": {
 "f": "nan"
 },
-"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                         nan  No. Observations:                   30\nP-value:                           nan  Distribution:                  Weibull\n                                        Statistic:                          ad\n                                        Samples:                             9\n=============================================================================="
+"summary()": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                         nan  No. Observations:                   30\nP-value:                           nan  Distribution:                  Weibull\n                                        Statistic type:                     ad\n                                        Samples:                             9\n=============================================================================="
 },
 "obj": "stardust.htest._resampling.GoodnessOfFitResult"
 }
@@ -26431,7 +26431,7 @@ true
 "page_trend_test exact cap": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "page_trend_test(): method='exact' needs about inf operations for this input, more than its cap of 1e+09; use method='asymptotic'"
+"msg": "page_trend_test(): method='exact' needs more than 1e+09 operations for this input; use method='asymptotic'"
 }
 },
 "page_trend_test large": {
@@ -35659,7 +35659,7 @@ true
 "r": "                            Friedman rank sum test\n==============================================================================\nStatistic:                       2.667  No. Observations:                    9\nP-value:                         0.264\nDf:                                  2\n=============================================================================="
 },
 "summary goodness_of_fit": {
-"r": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2541  No. Observations:                   30\nP-value:                         0.800  Distribution:                   Normal\n                                        Statistic:                          ad\n                                        Samples:                            19\n=============================================================================="
+"r": "                        Goodness of fit (Monte Carlo)\n==============================================================================\nStatistic:                      0.2541  No. Observations:                   30\nP-value:                         0.800  Distribution:                   Normal\n                                        Statistic type:                     ad\n                                        Samples:                            19\n=============================================================================="
 },
 "summary jarque_bera": {
 "r": "                               Jarque-Bera test\n==============================================================================\nStatistic:                      0.2278  No. Observations:                   15\nP-value:                         0.892\n=============================================================================="
@@ -40045,10 +40045,21 @@ true
 "0x1.9000000000000p+6"
 ]
 },
-"summary()": "                          Wilcoxon signed-rank test\n==============================================================================\nBatch shape:                      (4,)  No. Observations:                   20\nAlternative:                 two-sided  Zero Method:                    wilcox\nMethod:                          exact\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            76.000      0.294\n[1]            78.000      0.330\n[2]           104.000      0.985\n[3]           100.000      0.869\n==============================================================================",
+"summary()": "                          Wilcoxon signed-rank test\n==============================================================================\nBatch shape:                      (4,)  No. Observations:                   20\nAlternative:                 two-sided  Zero Method:                    wilcox\nMethod:                          exact\n==============================================================================\n            statistic     pvalue zstatistic\n------------------------------------------------------------------------------\n[0]            76.000      0.294        nan\n[1]            78.000      0.330        nan\n[2]           104.000      0.985        nan\n[3]           100.000      0.869        nan\n==============================================================================",
 "zstatistic": {
-"error": "builtins.AttributeError",
-"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan"
+]
 }
 },
 "obj": "stardust.htest._rank.WilcoxonResult"
@@ -40087,10 +40098,19 @@ true
 "0x1.9000000000000p+3"
 ]
 },
-"summary()": "                          Wilcoxon signed-rank test\n==============================================================================\nBatch shape:                      (2,)  No. Observations:                   12\nAlternative:                 two-sided  Zero Method:                    wilcox\nMethod:                          exact\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            21.000      0.176\n[1]            12.500      0.036\n==============================================================================",
+"summary()": "                          Wilcoxon signed-rank test\n==============================================================================\nBatch shape:                      (2,)  No. Observations:                   12\nAlternative:                 two-sided  Zero Method:                    wilcox\nMethod:                          exact\n==============================================================================\n            statistic     pvalue zstatistic\n------------------------------------------------------------------------------\n[0]            21.000      0.176        nan\n[1]            12.500      0.036        nan\n==============================================================================",
 "zstatistic": {
-"error": "builtins.AttributeError",
-"msg": "'WilcoxonResult' object has no attribute 'zstatistic' (the test does not give it for this call)"
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"nan",
+"nan"
+]
 }
 },
 "obj": "stardust.htest._rank.WilcoxonResult"

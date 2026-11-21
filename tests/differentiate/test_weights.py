@@ -5,7 +5,7 @@ Vandermonde system, and scipy's LAPACK-solved weights are not (docs/design/integ
 import numpy as np
 import pytest
 
-from stardust.differentiate._weights import weights
+from stardust.differentiate._weights import central_weights, one_sided_weights, weights
 
 CASES = [(1, 2.0), (2, 2.0), (4, 2.0), (6, 2.0), (4, 1.5), (4, 4.0), (4, 0.5), (3, 3.0), (5, 1.1), (4, 2.25), (8, 2.0)]
 
@@ -81,7 +81,8 @@ def test_scipy_weights_differ():
 
 
 def test_cached_and_rational_root():
-    assert weights(4, 2.0) is weights(4, 2.0)
+    assert central_weights(4, 2.0) is central_weights(4, 2.0) and one_sided_weights(4, 2.0) is one_sided_weights(4, 2.0)
+    assert weights(4, 2.0) == (central_weights(4, 2.0), one_sided_weights(4, 2.0))
     # c = 4: d = 2 exactly, the one-sided nodes are rationals
     _, wr = weights(2, 4.0)
     assert np.isclose(sum(wr), 0.0, atol=1e-12)

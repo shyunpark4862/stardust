@@ -192,12 +192,13 @@ inline void merge_into(
 }
 
 // P(4U/G >= v) (module comment) on a plan made for it (L.ok); -1 when the entries merged pass
-// `budget` or those held at once pass `hold` (the plan's bounds are upper bounds, often far above
-// the work done: a problem past them is tried within these limits).
+// `budget` or the lists' storage (their capacities, the entries of both levels and the merge's
+// scratch) passes `bytes` (the plan's bounds are upper bounds, often far above the work done: a
+// problem past them is tried within these limits).
 inline double tail(
     const Plan& L,
     double budget = std::numeric_limits<double>::infinity(),
-    double hold = std::numeric_limits<double>::infinity()
+    double bytes = std::numeric_limits<double>::infinity()
 ) {
     if (L.v <= 0) return 1.0;
     const std::size_t B = L.t.size();
@@ -207,7 +208,7 @@ inline double tail(
     List tmp;
     std::vector<DD> hg;
     std::int64_t lo = 0, hi = 0;
-    double merged = 0.0;
+    double merged = 0.0, stored = sizeof(List::value_type);  // (the lists' capacities only grow)
     for (std::size_t b = 0; b < B; ++b) {
         const std::int64_t t = L.t[b], R = L.N - L.p0[b], np = L.p0[b] + t;
         const std::int64_t nlo = std::max<std::int64_t>(lo, np - L.no), nhi = std::min(L.nc, hi + t);
@@ -222,16 +223,15 @@ inline double tail(
                 const std::int64_t k = kmin + static_cast<std::int64_t>(i), c2 = c + k;
                 const std::int64_t rl = L.lo_at(b + 1, c2), rh = L.hi_at(b + 1, c2);
                 if (rl == kNone) continue;
-                merge_into(
-                    nw[static_cast<std::size_t>(c2)], tmp, src, L.inc(b, c, k), hg[i], L.v - rh, L.v - rl, absorbed
-                );
+                List& dst = nw[static_cast<std::size_t>(c2)];
+                const std::size_t before = dst.capacity() + tmp.capacity();
+                merge_into(dst, tmp, src, L.inc(b, c, k), hg[i], L.v - rh, L.v - rl, absorbed);
+                stored += static_cast<double>(dst.capacity() + tmp.capacity() - before) * sizeof(List::value_type);
                 merged += static_cast<double>(src.size());
+                if (stored > bytes) return -1.0;
             }
             if (merged > budget) return -1.0;
         }
-        double held = 0.0;
-        for (std::int64_t c = nlo; c <= nhi; ++c) held += static_cast<double>(nw[static_cast<std::size_t>(c)].size());
-        if (held > hold) return -1.0;
         lo = nhi + 1, hi = nlo - 1;
         for (std::int64_t c = nlo; c <= nhi; ++c)
             if (!nw[static_cast<std::size_t>(c)].empty()) lo = std::min(lo, c), hi = std::max(hi, c);

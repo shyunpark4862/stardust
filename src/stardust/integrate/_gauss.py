@@ -15,8 +15,8 @@ arithmetic on integers:
     the three-term recurrence scaled to integers);
   - a weight: w = 1/g(r), g(x) = (1 - x^2) P_n'(x)^2 / 2, at the node r enclosed by an interval
     [a, b] with a sign change; g on [a, b] lies within g(a) +- L (b - a) with
-    L = 3/4 (n (n + 1))^2 (|g'| <= |x| P_n'^2 + n (n + 1) |P_n P_n'| and Markov's
-    |P_n'| <= n (n + 1) / 2 on [-1, 1]), and the interval is halved until both ends of the
+    L = 3/4 (n (n + 1))^2 (|g'| <= |x| P_n'^2 + n (n + 1) |P_n P_n'| and the Legendre bound
+    |P_n'| <= P_n'(1) = n (n + 1) / 2 on [-1, 1]), and the interval is halved until both ends of the
     enclosure of w round to the same double.
 """
 

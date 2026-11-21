@@ -255,7 +255,11 @@ def test_one_dimensional_transpose():
         _ = v.mT
     with pytest.raises(ValueError, match=r"^matrix_transpose\(\): the array must have at least 2 dimensions, got 1$"):
         S.matrix_transpose(v)
-    with pytest.raises(TypeError, match=r"^matrix_transpose\(\): 'A' must be a sparse array, not ndarray$"):
+    with pytest.raises(
+        TypeError,
+        match=r"^matrix_transpose\(\): 'A' must be a sparse array, not ndarray; for a dense array use "
+        r"sd\.matrix_transpose$",
+    ):
         S.matrix_transpose(sd.asarray([[1.0]]))
 
 

@@ -20,6 +20,21 @@ from ._result import IntegrateResult
 _k = _sd.integrate
 _RULES = ("gk21", "gk15", "genz-malik")
 _ALIASES = {"gauss-kronrod": "gk21"}  # scipy's other name, not taken (no aliases, §1.1)
+# the most values of one region's points, both rules together (points x ndim, C117): 2^25, 256 MiB
+# for each array of the nodes (the rules' tables, f's argument), which are kept in a few copies;
+# gk21 and gk15 to 5 dimensions, genz-malik to 20
+_VALUES_MAX = 2**25
+_PRODUCT = {"gk21": (21, 10), "gk15": (15, 7)}  # the Kronrod and Gauss rules' points per variable
+
+
+def _points_per_region(rule, d):
+    """(points of one region, its text): the product rules' k^d + g^d, genz-malik's degree 7 and
+    5 rules 2^d + 4d^2 + 4d + 2 (their nodes are computed apart, as scipy's)."""
+    if rule == "genz-malik":
+        n = 2**d + 4 * d * d + 4 * d + 2
+        return n, str(n)
+    k, g = _PRODUCT[rule]
+    return k**d + g**d, f"{k}**{d} + {g}**{d}"
 
 
 def _limits(v, func, arg):
@@ -87,6 +102,13 @@ def cubature(f, a, b, /, *, rule="gk21", rtol=1e-08, atol=0.0, max_subdivisions=
         raise ValueError(f"{fn}(): 'rule' must be 'gk21', 'gk15' or 'genz-malik', not {rule!r}{hint}")
     if rule == "genz-malik" and d < 2:
         raise ValueError(f"{fn}(): rule='genz-malik' needs ndim >= 2 (it is defined from 2 variables), not {d}")
+    n, text = _points_per_region(rule, d)
+    if n * d > _VALUES_MAX:
+        hint = "; use rule='genz-malik'" if rule != "genz-malik" else ""
+        raise ValueError(
+            f"{fn}(): rule={rule!r} in {d} dimensions needs {text} points per region of {d} values each, "
+            f"more than 2**25 values{hint}"
+        )
     rtol = _tolerance(rtol, fn, "rtol")
     atol = _tolerance(atol, fn, "atol")
     max_subdivisions = _check_int(max_subdivisions, fn, "max_subdivisions", 1)

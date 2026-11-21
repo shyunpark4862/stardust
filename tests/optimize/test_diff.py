@@ -248,6 +248,49 @@ def test_small_nonzero_x():
     assert abs(d - 1e9 * math.e) <= 1e-9 * 1e9 * math.e
 
 
+def test_small_nonzero_x_where_f_dwarfs_its_derivative():
+    # TS-1, R258 (C122): where f is much larger than f' near 0 the start's column is noise; the
+    # step grows to the largest one whose column is not (cos at 3.41e-8 gave -4.77e-7 before, its
+    # sign wrong), and a search whose estimates never agree is checked against x_j = 0's start
+    # (log(1 + x) at 1e-15, 1e-14 gave 74.7 and -0.333: 1 + x rounds to a multiple of 2^-52)
+    A = sd.optimize.approx_fprime
+    for x in (3.41e-8, -3.41e-8, 1e-7, 1e-9):
+        d = float(A([x], lambda v: math.cos(float(v[0])))[0])
+        assert abs(d + math.sin(x)) <= 1e-13, x
+    for x in (1e-15, 1e-14, -1e-14):
+        d = float(A([x], lambda v: math.log(1 + float(v[0])))[0])
+        assert abs(d - 1 / (1 + x)) <= 1e-11, x
+    d = float(A([1e-8], lambda v: math.exp(-(float(v[0]) ** 2)))[0])
+    assert abs(d + 2e-8) <= 1e-13
+
+
+def test_small_x_band_against_the_references():
+    # the band of the accuracy sweep 'small |x|' (tests/optimize/functions.FPRIME_SMALL at
+    # +-10^(-14 ... 0), Arb references): every absolute error at most 1e-11 (5.3e-12 at most);
+    # scipy's forward differences reach 7.3e-8
+    from . import functions, refdata
+
+    ref = refdata.fprime_small()
+    worst = 0.0
+    for name, f, _ in functions.FPRIME_SMALL:
+        for x, r in zip(ref["x"], ref[name]["df"], strict=True):
+            if r is None:
+                continue
+            got = float(sd.optimize.approx_fprime([x], lambda v, f=f: f(float(v[0])))[0])
+            worst = max(worst, abs((got - r[0]) - r[1]))
+    assert worst <= 1e-11
+
+
+@pytest.mark.usefixtures("restore_threads")
+def test_small_x_threads():
+    xs = (3.41e-8, 1e-14, 1e-5, 0.3)
+    got = {}
+    for t in (1, 10):
+        sd.set_num_threads(t)
+        got[t] = [sd.optimize.approx_fprime([x], lambda v: sd.cos(v[0]) + sd.exp(v[0])).tolist() for x in xs]
+    assert got[1] == got[10]
+
+
 def test_empty_values():
     with pytest.raises(ValueError, match=r"^approx_fprime\(\): 'f' must return at least 1 value$"):
         sd.optimize.approx_fprime([1.0, 2.0], lambda x: [])

@@ -56,7 +56,7 @@
 | `NOMINSIZE` (`-O3` 유지) | nanobind는 기본으로 `-Os`를 `-O3` 뒤에 붙인다. `-Os`에서는 연속 메모리 루프가 거의 벡터화되지 않는다. 연속 fast path(§5.1)와 짝을 이뤄야 효과가 난다: 같은 fast path 코드를 `-Os`로 빌드하면 `-O3`보다 약 2배 느리다 |
 | `-mcpu=native` | 대상은 이 Mac 하나다 |
 | `-ffp-contract=off` | FMA를 쓰는 곳은 컴파일러가 아니라 코드가 정한다. 이것이 없으면 clang이 `a + b*c`를 인라인 상황에 따라 FMA 하나로 합쳐서, 같은 식이 경로마다 다른 비트를 낼 수 있다(`f(x)[i] == f(x[i])`, NEON 커널 = 스칼라 정의). FMA가 필요한 곳은 코드에 `std::fma`나 `vfmaq`로 적는다(complex `abs` §5.3, pairwise 잎 §6.2, `var`의 편차 제곱 §6.8) |
-| `-fno-builtin-sin -fno-builtin-cos` | 같은 이유다. 이것이 없으면 clang이 같은 인자의 `sin`/`cos`를 인라인 상황에 따라 `__sincos_stret` 호출 하나로 합친다(결과가 따로 부른 것과 1 ULP 다를 수 있다). 합친 호출이 필요한 곳은 코드에 `sd::sincos`(`special/sincos.hpp`)로 적는다. 한 번의 인자 축소로 둘을 구해 약 1.5배 빠르다 |
+| `-fno-builtin-sin -fno-builtin-cos` | 같은 이유다. 이것이 없으면 clang이 같은 인자의 `sin`/`cos`를 인라인 상황에 따라 `__sincos_stret` 호출 하나로 합친다(결과가 따로 부른 것과 1 ULP 다를 수 있다). 합친 호출이 필요한 곳은 코드에 `sd::sincos`(`base/sincos.hpp`)로 적는다. 한 번의 인자 축소로 둘을 구해 약 1.5배 빠르다 |
 | `-ffast-math` 쓰지 않음 | NaN/inf가 없다고 가정하고, 재배치를 컴파일러에 맡긴다. 재배치는 코드에서 명시적으로 한다 (§6) |
 | `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64` | Accelerate의 새 인터페이스, 64비트 정수 인자 (§9.2) |
 | `-Wall -Wextra -Wpedantic` | — |
@@ -76,7 +76,7 @@
 - SME 직접 사용 (§1.1)
 
 ### 1.5 층 사이의 의존
-- 배열 영역의 C++은 `csrc/base/`(Buffer, dtype, pairwise 합), `csrc/parallel/`(스레드풀), `csrc/accelerate/`(BLAS, vForce 래퍼), `csrc/array/`(ndarray, 이터레이터, 커널, 연산, 병렬화 기준값), `csrc/bind/`(nanobind)로 나뉜다.
+- 배열 영역의 C++은 `csrc/base/`(Buffer, dtype, pairwise 합, 같은 x의 sin·cos `sincos.hpp`), `csrc/parallel/`(스레드풀), `csrc/accelerate/`(BLAS, vForce 래퍼), `csrc/array/`(ndarray, 이터레이터, 커널, 연산, 병렬화 기준값), `csrc/bind/`(nanobind)로 나뉜다.
 - **아래 층은 위 층을 모른다.** `base/`, `parallel/`, `accelerate/`는 `array/`를 include하지 않는다.
   - NEON 커널(`array/kernels/neon.hpp`)과 "어느 연산이 vForce로 가는가"의 표(`array/kernels/vforce.hpp`)는 배열의 연산 정의(`ops::Maximum`, `ops::Exp` …)에 묶여 있어서 배열 영역에 둔다. `accelerate/vforce.hpp`에는 연산과 무관한 부분(함수 타입, `vvatan2`를 이항 함수 타입으로 감싸는 래퍼(인자 순서는 원래 atan2(y, x)다), strided 실행기)만 있다.
 
@@ -919,6 +919,7 @@ dtype과 레인 길이만 본다. 데이터를 보고 고르지 않는다 (§1.4
 - `__hash__ = None` (가변 컨테이너). `v in x`는 TypeError다: `__contains__`가 없으면 조용히 반복으로 떨어진다. `==`와 `any()`를 쓴다.
 - `__array_ufunc__ = None`: numpy가 `np_array + sd_array`를 보고 우리 배열을 버퍼 프로토콜로 바꿔 numpy 결과를 돌려주는 것을 막는다. 섞으면 TypeError다.
 - 리덕션 등 정해진 메서드는 모듈 함수를 x를 self로 해서 부른다 (§2.8).
+- 메서드의 `__doc__` 첫 줄은 모듈 함수의 시그니처에서 x를 self로 바꾼 것이다(`nb::sig("def sum(self, /, *, axis=None, dtype=None, keepdims=False)")`; `copy`·`tolist`는 `(self, /)`). nanobind가 만드는 `axis: object | None = None ... -> object` 꼴을 쓰지 않는다(2026-11-22). 틀린 호출의 nanobind 메시지(`incompatible function arguments`)에도 이 시그니처가 보인다. 그래서 골든 `array/reshape method tuple args err`, `array/astype copy positional err` 둘을 다시 기록했다(메시지 안의 시그니처만 바뀜).
 - **에러 메시지의 함수 이름** (API.md §2.1): 헬퍼와 커널은 이름 없이 메시지를 쓰고, 공개 함수와 메서드의 바인딩이 `bind/errors.hpp`의 `named("zeros", &zeros)`로 `zeros(): `를 붙인다. 예외를 잡아 같은 종류로 메시지만 바꿔 다시 던지므로, 에러가 없을 때의 비용은 없다. 이미 그 이름으로 시작하는 메시지(linalg가 직접 붙인 것)는 그대로 둔다.
   - 연산자는 `named` 없이 바인딩하고, ufunc에 연산자 기호를 넘긴다(`binary<Op>(a, b, out, "+")`). dtype이 맞지 않으면 Python의 형식인 `unsupported operand dtypes for +: ...`가 된다. 같은 커널을 `sd.add`로 부르면 `add(): not supported for ...`다.
   - 프로퍼티(`.T`, `.mT`)는 `named(".T", ...)`로 `.T: `가 붙는다.

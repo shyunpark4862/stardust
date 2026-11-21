@@ -4,10 +4,12 @@
   - the sweep (tests/integrate/weights.py, 99 integrals with closed forms): every run calls the
     integrand at scipy 1.18.1's points and gives its integral, error, nfev, status and message to
     the bit, but for QAWF at the frequency 0 on [a, inf), a != 0, where scipy integrates from 0
-    (C78); against the Arb references every run converges within its error estimate plus the
-    rounding of the value (C83);
+    (C78), and the error of QAWO and QAWF, which is not below scipy's (the Clenshaw-Curtis
+    estimate's rounding floor, C123); against the Arb references every run converges within its
+    error estimate plus the rounding of the value (C83);
   - a generated set of 400 runs (weights, frequencies through the three kinds of first rule,
-    tolerances, limits, max_p1, limlst) against live scipy, to the bit;
+    tolerances, limits, max_p1, limlst) against live scipy, to the bit (QAWO and QAWF: their error
+    not below scipy's, and one run the floor sends on another path, C123);
   - the differences on purpose: the frequency 0 of QAWF, the moments of dqc25f once max_p1 is
     reached (C77), QAWO's single interval (C80); and what follows scipy's C port rather than the
     netlib original (dgtsl's form C76, dqawoe's size test C79, the corrected dqc25s C75)."""
@@ -28,6 +30,10 @@ from .test_reference_data import live_scipy
 I = sd.integrate  # noqa: E741
 EPS = 2.0**-52
 ZERO_FREQUENCY = {"weights/qawf/exp-cos/1.0/0.0/1.0"}  # C78: scipy integrates from 0
+# C123: dqc25f's Clenshaw-Curtis estimate (QAWO, QAWF) is at least eps resabs, scipy's has no floor:
+# the same points, integral and counts while the floor does not change the path, an error not below
+# scipy's
+FLOORED = ("cos", "sin")
 
 
 def _sd(f, a, b, **kw):
@@ -52,12 +58,20 @@ def _bits(x):
     return np.float64(x).view(np.int64).item()
 
 
+def _same_error(r, s, kw):
+    """sd's error is scipy's, or not below it for QAWO and QAWF (C123's floor)."""
+    if kw.get("weight") in FLOORED:
+        return r.error >= s
+    return _bits(r.error) == _bits(s)
+
+
 def same_as_scipy(f, a, b, **kw):
-    """sd's quad and scipy's on the same call: the same points, integral, error, nfev, message."""
+    """sd's quad and scipy's on the same call: the same points, integral, error (_same_error),
+    nfev, message."""
     r, pts = _sd(f, a, b, **kw)
     s, spts = _scipy(f, a, b, **kw)
     ok = pts.size == spts.size and np.array_equal(pts.view(np.int64), spts.view(np.int64))
-    ok = ok and _bits(r.integral) == _bits(s[0]) and _bits(r.error) == _bits(s[1]) and r.nfev == s[2]["neval"]
+    ok = ok and _bits(r.integral) == _bits(s[0]) and _same_error(r, s[1], kw) and r.nfev == s[2]["neval"]
     if len(s) > 3:
         ok = ok and not r.converged and r.message == s[3]
     else:
@@ -94,9 +108,10 @@ def test_sweep_matches_scipy(p):
 
 
 def test_sweep_against_the_references():
-    # every run converges; the true error is within the estimate but for 16 runs, all within it
-    # plus 8 eps |I| (a Clenshaw-Curtis estimate has no rounding floor: polynomial integrands of
-    # QAWC give 0, and dqc25f's moments are good to about 2e3 ulp; scipy gives the same bits)
+    # every run converges; the true error is within the estimate but for 9 runs of QAWC, all within
+    # it plus 8 eps |I| (dqc25c's Clenshaw-Curtis estimate has no rounding floor: polynomial
+    # integrands give 0; scipy gives the same bits). QAWO's 7 of the kind are within the estimate
+    # since dqc25f's floor eps resabs (C123)
     ref = refdata.weights()
     short = set()
     for p in W.SWEEP:
@@ -106,7 +121,7 @@ def test_sweep_against_the_references():
         assert r.converged and err <= r.error + 8 * EPS * abs(hi), p.id
         if err > r.error:
             short.add(p.id)
-    assert len(short) == 16 and {W.routine(W.BY_ID[i]) for i in short} == {"qawo", "qawc"}
+    assert len(short) == 9 and {W.routine(W.BY_ID[i]) for i in short} == {"qawc"}
 
 
 # ---- a generated set against live scipy
@@ -171,7 +186,12 @@ def test_generated_set_matches_scipy():
     live_scipy()
     bad = [name for name, f, a, b, kw in GENERATED if not same_as_scipy(f, a, b, **kw)[0]]
     statuses = {I.quad(f, a, b, **kw).status for _, f, a, b, kw in GENERATED}
-    assert bad == [] and len(GENERATED) == 400 and statuses == {0, 1, 2, 7}
+    assert bad == ["99-cos3-cos"] and len(GENERATED) == 400 and statuses == {0, 1, 2, 7}
+    # C123: at rtol 1e-14 the floor (6e-16 against scipy's 8e-17) keeps the run from converging in
+    # its 50 intervals (status 1); scipy's converged value is within both estimates
+    _, f, a, b, kw = GENERATED[99]
+    r, s = I.quad(f, a, b, **kw), _scipy(f, a, b, **kw)[0]
+    assert r.status == 1 and abs(r.integral - s[0]) <= r.error + s[1] and r.error > s[1]
 
 
 # ---- the differences on purpose and what follows scipy's port
@@ -309,10 +329,42 @@ def test_sweep_matches_the_scipy_records(pid):
         assert _bits(r.integral) != _bits(rec["integral"])
         return
     assert hashlib.sha256(np.ascontiguousarray(pts).tobytes()).hexdigest() == rec["points_sha256"]
-    assert _bits(r.integral) == _bits(rec["integral"]) and _bits(r.error) == _bits(rec["error"])
+    assert _bits(r.integral) == _bits(rec["integral"]) and _same_error(r, rec["error"], kw)
     assert r.nfev == rec["nfev"] and r.status == rec["status"] and (r.message if r.status else None) == rec["message"]
     info = rec["info"]
     if "lst" in info:  # QAWF: its cycles
         assert r.n_cycles == info["lst"]
     elif "last" in info:
         assert r.n_intervals == max(int(info["last"]), 1)
+
+
+def _large_frequency_runs():
+    """exp(-x) cos(omega x), sin(omega x) on [0, inf) and [0, 1] at omega = 1.37 * 2^k: (result,
+    exact value). The exact values in double (1/(1 + w^2), w/(1 + w^2) and QAWO's closed forms)
+    are within a few ulps, far below the bound's eps |I| + floor."""
+    out = []
+    for k in (12, 16, 20, 24, 28, 30, 32, 36, 40, 44, 48, 52, 56):
+        w = 1.37 * 2.0**k
+        for wt in ("cos", "sin"):
+            r = I.quad(lambda x: math.exp(-x), 0.0, math.inf, weight=wt, wvar=w)
+            out.append((r, 1 / (1 + w * w) if wt == "cos" else w / (1 + w * w)))
+    return out
+
+
+def test_large_frequency_estimate_is_honest():
+    # CAL-5 (C123): the cancellation of exp(-x) cos(omega x) at a large omega leaves about eps times
+    # the integral of |f| in the result, which the Clenshaw-Curtis estimate did not count: the true
+    # error was 13 to 4e8 times its estimate plus 8 eps |I| from omega = 2^20 on (scipy's bits); with
+    # the floor eps resabs every run is within it, still converged
+    for r, exact in _large_frequency_runs():
+        assert r.converged and abs(r.integral - exact) <= r.error + 8 * EPS * abs(exact)
+        assert r.error >= EPS * 0.5  # the floor of the cycles' sum of |f| (about 1)
+
+
+@pytest.mark.usefixtures("restore_threads")
+def test_large_frequency_threads():
+    got = {}
+    for t in (1, 10):
+        sd.set_num_threads(t)
+        got[t] = [(_bits(r.integral), _bits(r.error), r.nfev, r.n_cycles) for r, _ in _large_frequency_runs()]
+    assert got[1] == got[10]

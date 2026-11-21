@@ -316,11 +316,24 @@ struct SwLane {
     double w = kNaN, p = kNaN;
 };
 
+// A lane past H1's range (htest/moments.hpp unit_exponent) in its unit of 2^e: W and A^2 do not
+// change with the scale (H160), and the squared deviations stay in the normal doubles.
+void to_unit(std::vector<double>& x) {
+    double big = 0.0;
+    for (const double v : x) big = std::max(big, std::fabs(v));
+    const int e = unit_exponent(big);
+    if (!e) return;
+    const double f = std::ldexp(1.0, -std::clamp(e, -1000, 1000)),
+                 f2 = std::ldexp(1.0, -e + std::clamp(e, -1000, 1000));
+    for (double& v : x) v = v * f * f2;
+}
+
 SwLane shapiro_lane(std::vector<double>& x) {
     namespace dd = special::dd;
     SwLane o;
     const auto n = static_cast<std::int64_t>(x.size());
     if (n < 3) return o;
+    to_unit(x);
     sort_values(x);
     const Moments mo = moments_of(x.data(), nullptr, n);
     if (mo.constant() || !std::isfinite(mo.ss.hi)) return o;
@@ -527,6 +540,7 @@ AdLane anderson_lane(std::vector<double>& x, int dist) {
     AdLane o;
     const auto n = static_cast<std::int64_t>(x.size());
     if (n < 2) return o;
+    to_unit(x);
     sort_values(x);
     const Moments mo = moments_of(x.data(), nullptr, n);
     if (mo.constant() || !std::isfinite(mo.ss.hi)) return o;

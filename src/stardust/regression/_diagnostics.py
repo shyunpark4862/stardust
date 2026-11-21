@@ -151,7 +151,9 @@ def white_test(r, cross_terms):
     A = _sd.concat(cols, axis=-1)
     raw = _k.fit("white_test", e * e, A, wa, None, True, tol, 0, _REFINE_STEPS)
     a = OLSResult(raw, param_names=None, intercept=True, cov_type="nonrobust", batch=_batch_shape(raw))
-    lm = a.nobs * a.rsquared
+    # no degree of freedom left in the auxiliary fit (more auxiliary columns than rows): it
+    # passes through the data, R^2 = 1 says nothing, and lm is 0/0 like its F (G95)
+    lm = _nan_where_no_df(a.nobs * a.rsquared, a.df_resid)
     df = a.df_model
     dfp = _sd.where(df > 0, df, math.nan) if isinstance(df, _sd.ndarray) else (df if df > 0 else math.nan)
     pv = r._scalar(_ChiSquared(df=_arg(dfp)).ccdf(_arg(lm)))
@@ -166,6 +168,13 @@ def white_test(r, cross_terms):
         df_num=df,
         df_denom=a.df_resid,
     )
+
+
+def _nan_where_no_df(v, df_resid):
+    """v, NaN where the auxiliary regression has df_resid 0 (G95)."""
+    if isinstance(df_resid, _sd.ndarray):
+        return _sd.where(df_resid == 0.0, math.nan, v)
+    return math.nan if df_resid == 0 else v
 
 
 _ALTERNATIVES = ("greater", "less", "two-sided")

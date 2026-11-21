@@ -108,7 +108,8 @@ def test_expm_returns_the_input_format_with_the_same_bits(fmt):
 def test_expm_diagonal_and_triangular_shortcuts():
     d = np.array([1.0, -2.0, 0.0, -800.0, 3.5])
     E = S.expm(S.diags_array(sd.asarray(d), format="csr"))
-    assert bits_equal(dense_of(E), np.diag(npy(sd.exp(sd.asarray(d)))))
+    assert bits_equal(dense_of(E), np.diag([math.exp(x) for x in d]))  # libm exp, as sd.linalg.expm (SP122)
+    assert bits_equal(dense_of(E), npy(sd.linalg.expm(sd.asarray(np.diag(d)))))
     assert E.nnz == 4  # exp(-800) underflows to an exact zero, dropped
     g = np.random.default_rng(5)
     for T in (np.triu(g.standard_normal((8, 8))) * 3, np.tril(g.standard_normal((8, 8))) * 0.01):
@@ -116,7 +117,7 @@ def test_expm_diagonal_and_triangular_shortcuts():
         ref = sl.expm(T)
         assert np.abs(E - ref).max() <= 1e-13 * np.abs(ref).max()
         assert np.all(E[np.tril_indices(8, -1) if T[1, 0] == 0 else np.triu_indices(8, 1)] == 0)
-        assert np.array_equal(np.diag(E), npy(sd.exp(sd.asarray(np.diag(T).copy()))))  # the fix-up's exact diagonal
+        assert np.array_equal(np.diag(E), [math.exp(x) for x in np.diag(T)])  # the fix-up's exact diagonal (libm)
     # close eigenvalues: the fix-up's sinch form keeps the off-diagonal entry (scipy loses digits)
     T = np.array([[10.0, 1.0], [0.0, 10.0 + 1e-12]])
     E = dense_of(S.expm(S.csr_array(sd.asarray(T))))
@@ -628,3 +629,87 @@ def test_onenormest_result_object():
     assert text.splitlines()[0].strip() == "1-Norm Estimate Results"
     assert "Estimate:" in text and "Column:" in text and str(j) in text and "No. Iterations:" in text
     assert "Column:" not in S.onenormest(A).summary()
+
+
+# ---- the fixes of the 2026-11-22 review ----
+
+
+@pytest.mark.usefixtures("restore_threads")
+def test_vector_norm_rescale_divides_as_vector_norm():
+    """The second pass divides each magnitude by its line's largest (SPR-3): a subnormal largest
+    gives the right value (its reciprocal overflows), and the bits are vector_norm's."""
+    x = sd.asarray([3e-310, 1e-310])
+    y = sd.asarray([1e-300, 1e-300])
+    for t in (1, 10):
+        sd.set_num_threads(t)
+        for v in (x, y, sd.asarray([5e-324, 0.0, 5e-324, 1e-320])):
+            for o in (None, 2, 3, 0.5):
+                want = float(sd.linalg.vector_norm(v, ord=2 if o is None else o))
+                assert bits_equal(np.float64(S.norm(S.coo_array(v), ord=o)), np.float64(want)), (v, o)
+        assert S.norm(S.coo_array(x)) == 3.1622776601684e-310
+        X = sd.asarray([[3e-310, 1e-310], [1.0, 2.0], [1e-300, 1e-300]])
+        for ax in (0, 1):
+            for o in (None, 3):
+                got = npy(S.norm(S.csr_array(X), ord=o, axis=ax))
+                want = npy(sd.linalg.vector_norm(X, ord=2 if o is None else o, axis=ax))
+                assert bits_equal(got, want), (ax, o)
+
+
+def test_expm_multiply_overflow_is_inf():
+    """exp(tr(A)/n) past the largest double: inf (and inf * 0 = NaN), as expm and scipy (SPR-5),
+    not math.exp's OverflowError."""
+    I2 = S.eye_array(2)
+    assert npy(S.expm_multiply(I2 * 709.0, sd.ones(2))).tolist() == [math.exp(709.0)] * 2
+    assert npy(S.expm_multiply(I2 * 710.0, sd.ones(2))).tolist() == [math.inf, math.inf]
+    r = npy(S.expm_multiply(I2 * 800.0, sd.ones(2), start=0, stop=1, num=3))
+    assert r[0].tolist() == [1.0, 1.0] and np.isfinite(r[1]).all() and np.isinf(r[2]).all()
+    r = npy(S.expm_multiply(I2 * (800.0 + 1j), sd.ones(2, dtype=sd.complex128)))
+    assert not np.isfinite(r).any()
+    assert npy(S.expm_multiply(I2 * 710.0, sd.asarray([1.0, 0.0])))[0] == math.inf
+
+
+def test_expm_multiply_of_a_zero_column_b_is_empty():
+    """B (n, 0): an empty result, as n = 0 (R230; no ZeroDivisionError)."""
+    L = S.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(50, 50), format="csr")
+    assert S.expm_multiply(-L, sd.zeros((50, 0))).shape == (50, 0)
+    assert S.expm_multiply(-L, sd.zeros((50, 0)), start=0, stop=1, num=3).shape == (3, 50, 0)
+    op = S.LinearOperator((50, 50), lambda v: L @ v, dtype=sd.float64)
+    assert S.expm_multiply(op, sd.zeros((50, 0), dtype=sd.complex128)).dtype == sd.complex128
+
+
+def test_expm_multiply_operator_errors_name_it():
+    """The trace estimate's products: NaN or infinity named by expm_multiply, not the QR inside
+    (SPR-12); a complex product in a real system names it too."""
+    n = 50
+    op = S.LinearOperator((n, n), lambda v: v * sd.nan, rmatvec=lambda v: v, dtype=sd.float64)
+    with pytest.raises(ValueError, match=r"^expm_multiply\(\): the operator returned NaN or infinity$"):
+        S.expm_multiply(op, sd.ones(n))
+    cop = S.LinearOperator((n, n), lambda v: v * 1j, rmatvec=lambda v: v, dtype=sd.float64)
+    with pytest.raises(TypeError, match=r"^expm_multiply\(\): the operator returned complex128 values"):
+        S.expm_multiply(cop, sd.ones(n))
+    with pytest.raises(TypeError, match=r"^onenormest\(\): the operator returned complex128 values"):
+        S.onenormest(cop)
+    nov = S.LinearOperator((n, n), lambda v: v, dtype=sd.float64)
+    with pytest.raises(ValueError, match=r"^onenormest\(\): the operator was made without 'rmatvec'$"):
+        S.onenormest(nov)
+
+
+@pytest.mark.usefixtures("restore_threads")
+def test_expm_triangular_fix_ups_are_the_dense_bits():
+    """The diagonal and the first off-diagonal of a triangular expm come from the dense formulas
+    and libm (SP122): a diagonal and a 2 x 2 triangular matrix are sd.linalg.expm's bits (R239),
+    real and complex, for 1 and 10 threads."""
+    cases = [
+        np.array([[10.0, 1.0], [0.0, 10.0 + 1e-12]]),
+        np.array([[0.3, 0.0], [-2.0, 1.7]]),
+        np.array([[1.0 + 2j, 0.5 - 1j], [0.0, -0.5 + 0.25j]]),
+        np.diag([1.0, -2.0, 0.0, 3.5]),
+        np.diag([1.0 + 1j, -2.0 - 0.5j]),
+    ]
+    for t in (1, 10):
+        sd.set_num_threads(t)
+        for T in cases:
+            got = dense_of(S.expm(S.csr_array(sd.asarray(T))))
+            assert bits_equal(got, npy(sd.linalg.expm(sd.asarray(T)))), T
+    T = sd.asarray(cases[0])
+    assert dense_of(S.expm(S.csr_array(T)))[0, 0] == 22026.465794806718  # libm's exp(10)

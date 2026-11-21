@@ -357,7 +357,9 @@ def _parse_terms(func, terms, names):
         )
     out, seen = [], set()
     for t in terms:
-        cols = [_column(func, "terms", t, names)] if _is_column(t) else [_column(func, "terms", c, names) for c in t]
+        # a scalar that is not a column (a float, a bool, bytes) is a column of the wrong type
+        one = _is_column(t) or isinstance(t, (bytes, bool)) or not hasattr(t, "__iter__")
+        cols = [_column(func, "terms", t, names)] if one else [_column(func, "terms", c, names) for c in t]
         if not cols:
             raise ValueError(f"{func}(): a term must have at least one column")
         for c in cols:
@@ -372,7 +374,17 @@ def _parse_terms(func, terms, names):
 
 
 def _is_column(c):
-    return isinstance(c, str) or (hasattr(c, "__index__") and not isinstance(c, bool))
+    """A name, or a position: an int or any integer with __index__ (numpy's scalars and 0-d
+    arrays; an array of positions is a list of columns)."""
+    if isinstance(c, str):
+        return True
+    if isinstance(c, bool):
+        return False
+    try:
+        operator.index(c)
+    except TypeError:
+        return False
+    return True
 
 
 def _column(func, arg, c, names):
@@ -381,9 +393,9 @@ def _column(func, arg, c, names):
         if c not in names:
             raise ValueError(f"{func}(): '{arg}' names a column {c!r} that 'X' does not have")
         return names.index(c)
-    if isinstance(c, bool) or not hasattr(c, "__index__"):
+    if not _is_column(c):
         raise TypeError(f"{func}(): '{arg}' must give columns as positions (int) or names (str), not {_type_name(c)}")
-    j = c.__index__()
+    j = operator.index(c)
     if not -p <= j < p:
         raise ValueError(f"{func}(): '{arg}' has the column {j}, out of range for {p} columns")
     return j % p

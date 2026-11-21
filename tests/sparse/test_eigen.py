@@ -240,13 +240,19 @@ def test_eigs_modes_follow_scipy(kw):
 @LIVE
 @pytest.mark.parametrize("kw", [{}, {"which": "SA"}, {"which": "LA"}, {"sigma": 0.3}], ids=str)
 def test_complex_hermitian_runs_on_complex_arnoldi(kw):
-    """A complex Hermitian eigsh is scipy's: eigs (znaupd) with 'LA' as 'LR', real eigenvalues."""
+    """A complex Hermitian eigsh is scipy's: eigs (znaupd) with 'LA' as 'LR', real eigenvalues;
+    the values ascending as the real path's (SP127; scipy keeps ARPACK's order), each column of
+    the vectors moved with its value."""
     H = (_CPLX + _CPLX.conj().T).tocsr()
     v0 = _v0(300, True)
-    w = spla.eigsh(H, k=4, v0=v0, **kw)[0]
+    w, V = spla.eigsh(H, k=4, v0=v0, **kw)
     r = S.eigsh(_sd(H), k=4, v0=sd.asarray(v0), **kw)
     assert r.eigenvalues.dtype == sd.float64 and r.eigenvectors.dtype == sd.complex128
-    np.testing.assert_allclose(npy(r.eigenvalues), w, rtol=1e-10)
+    got = npy(r.eigenvalues)
+    assert np.all(np.diff(got) >= 0)
+    np.testing.assert_allclose(got, np.sort(w), rtol=1e-10)
+    Z = npy(r.eigenvectors)
+    np.testing.assert_allclose(np.linalg.norm(H @ Z - Z * got, axis=0), 0, atol=1e-10 * abs(w).max())
 
 
 RECORDED = sorted(k for k in R.data("scipy") if k.startswith("eigen/eigs"))
@@ -655,3 +661,45 @@ def test_complex_shift_without_vectors_still_gives_the_values():
         assert b.eigenvectors is None
         assert bits_equal(npy(a.eigenvalues), npy(b.eigenvalues))
         assert np.abs(npy(b.eigenvalues)).min() > 0.1
+
+
+def test_message_singular_for_one_and_n_iter_at_the_limit():
+    """k = 1 says "eigenvalue" (R231); at the iteration limit eigsh and eigs count max_iter + 1
+    restarts (ARPACK's iparam(3), scipy's), svds max_iter (R232, docs/api/sparse.md §7)."""
+    A = S.eye_array(30, format="csr") * 0.5 + S.diags_array(0.1, offsets=1, shape=(30, 30), format="csr")
+    assert S.eigs(A, k=1).message == "the 1 wanted eigenvalue converged"
+    L = S.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(100, 100), format="csr")
+    assert S.eigsh(L, k=1).message == "the 1 wanted eigenvalue converged"
+    assert S.svds(L, k=1).message == "the 1 wanted singular value converged"
+    assert S.eigsh(L, k=2).message == "the 2 wanted eigenvalues converged"
+    r = (S.eigsh(L, k=3, which="SA", max_iter=5), S.eigs(L, k=3, which="SR", max_iter=5),
+         S.svds(L, k=3, which="SM", max_iter=5))  # fmt: skip
+    assert [x.n_iter for x in r] == [6, 6, 5] and not any(x.converged for x in r)
+    assert r[0].message.endswith(" of 3 eigenvalues converged") and r[2].message.endswith(
+        " of 3 singular values converged"
+    )
+
+
+@pytest.mark.usefixtures("restore_threads")
+def test_complex_hermitian_sorted_on_every_thread_count():
+    """R229: the complex Hermitian eigsh's ascending values and their vectors, the same bits for
+    1 and 10 threads, 'LA' and 'SA' both ascending."""
+    n = 100
+    L = S.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(n, n), format="csr")
+    sh = S.diags_array(sd.ones(n - 1), offsets=1, shape=(n, n), format="csr")
+    H = (L + 1j * (sh - sh.T) * 0.5).tocsr()
+    Hd = npy(H.toarray())
+    ref = np.linalg.eigvalsh(Hd)
+    out = []
+    for t in (1, 10):
+        sd.set_num_threads(t)
+        got = []
+        for which, want in (("LA", ref[-3:]), ("SA", ref[:3])):
+            r = S.eigsh(H, k=3, which=which)
+            w, V = npy(r.eigenvalues), npy(r.eigenvectors)
+            assert np.all(np.diff(w) > 0)
+            np.testing.assert_allclose(w, want, rtol=1e-12)
+            np.testing.assert_allclose(np.linalg.norm(Hd @ V - V * w, axis=0), 0, atol=1e-12)
+            got += [w.tobytes(), V.tobytes()]
+        out.append(got)
+    assert out[0] == out[1]

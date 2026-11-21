@@ -11,7 +11,8 @@
 //       b is (n,) or (n, k), C-contiguous, of data's dtype (float64 or complex128); every column
 //       is solved on its own, so a column's bits do not depend on k or on the other columns.
 //       Columns are split into fixed blocks over the pool (the bits do not depend on the thread
-//       count); one right-hand side runs on one thread (level scheduling is left to SP8).
+//       count); one right-hand side runs on one thread (no level scheduling: a later candidate,
+//       docs/design/sparse.md §3.6).
 //       A missing or zero diagonal entry (not unit_diagonal) is LinAlgError("<func>(): singular
 //       matrix"), checked before solving.
 //   _bandwidth(indptr, indices, /) -> (below, above)

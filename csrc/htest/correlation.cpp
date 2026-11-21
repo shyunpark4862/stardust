@@ -241,6 +241,19 @@ std::int64_t residuals_neon(
     return j;
 }
 
+// n sum xy - sum x sum y == 0 exactly, for short dyadic x and y (htest/moments.hpp small_dyadic;
+// false when the data are not)
+bool exact_zero_sxy(const double* x, const double* y, std::int64_t n) {
+    int kx, ky;
+    if (!small_dyadic(x, n, kx) || !small_dyadic(y, n, ky)) return false;
+    i128 sx = 0, sy = 0, sxy = 0;
+    for (std::int64_t j = 0; j < n; ++j) {
+        const i128 u = dyadic_int(x[j], kx), v = dyadic_int(y[j], ky);
+        sx += u, sy += v, sxy += u * v;
+    }
+    return static_cast<i128>(n) * sxy == sx * sy;
+}
+
 RQ corr_rq(const double* x, const double* y, std::int64_t n) {
     RQ o;
     if (n < 2) return o;
@@ -265,6 +278,16 @@ RQ corr_rq(const double* x, const double* y, std::int64_t n) {
         mx = std::max(mx, pmx[static_cast<std::size_t>(b)]), my = std::max(my, pmy[static_cast<std::size_t>(b)]);
     }
     if (!(mx > 0.0) || !(my > 0.0)) return o;  // a sample of zeros: constant
+    if (std::ilogb(mx) < -1000 || std::ilogb(my) < -1000) {
+        // a variable of subnormal size: 2^-ilogb would overflow; times 2^600 first (exact, and r
+        // does not change with the scale of either variable)
+        std::vector<double> xs(x, x + n), ys(y, y + n);
+        if (std::ilogb(mx) < -1000)
+            for (double& v : xs) v *= 0x1p600;
+        if (std::ilogb(my) < -1000)
+            for (double& v : ys) v *= 0x1p600;
+        return corr_rq(xs.data(), ys.data(), n);
+    }
     const double fx = std::ldexp(1.0, -std::ilogb(mx)), fy = std::ldexp(1.0, -std::ilogb(my));
     Acc s1[2];
     block_sums<2>(n, s1, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
@@ -287,7 +310,12 @@ RQ corr_rq(const double* x, const double* y, std::int64_t n) {
             a[2].c[k].add(uv.hi, uv.lo);
         });
     });
-    const DD Sxx = s2[0].value(), Syy = s2[1].value(), Sxy = s2[2].value();
+    const DD Sxx = s2[0].value(), Syy = s2[1].value();
+    DD Sxy = s2[2].value();
+    // r of a rounding's size (|r| <= 2^-80): 0 when Sxy is 0 exactly (H161)
+    if (Sxy.hi != 0.0 && std::fabs(Sxy.hi) <= 0x1p-80 * std::sqrt(Sxx.hi) * std::sqrt(Syy.hi) &&
+        exact_zero_sxy(x, y, n))
+        Sxy = DD{0.0, 0.0};
     if (!(Sxx.hi > 0.0) || !(Syy.hi > 0.0) || constant(Sxx, mxd, n) || constant(Syy, myd, n)) return o;
     o.r = clip_unit(Sxy / sqrt_dd(Sxx * Syy));
     const DD w = o.r * o.r;

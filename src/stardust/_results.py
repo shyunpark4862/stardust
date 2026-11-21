@@ -122,8 +122,10 @@ CdfResult = namedtuple("CdfResult", ["value", "error"])
 # fields it has; reading another raises AttributeError (so hasattr() tells). Every field is a
 # read-only property and an array field a read-only array, the same at each access without a
 # copy (API.md §2.2). The subclass lists its fields (_FIELDS, in the order repr and the documents
-# use), says why an absent field is absent (_ABSENT), and defines its own __init__ (so Python's
-# call-shape errors name the class) and __repr__.
+# use), says why an absent field is absent (_ABSENT), and defines its own __init__ (keyword-only;
+# its call-shape errors name the class, _calls.keyword_init) and __repr__. The public
+# constructor copies what the caller gave (an sd.ndarray, a numpy array, a list of numbers: an
+# sd.ndarray of its own) and checks the kinds of the shared fields (integrate C121).
 
 
 class _Lazy:
@@ -135,15 +137,62 @@ class _Lazy:
         self.make = make
 
 
-def _own(v, copy=False):
-    """An array field (or a tuple of them) made read-only, as the result keeps and gives it:
-    copied first when copy (an array the caller may still hold), else taken as it is."""
+def _own(v):
+    """An array field (or a tuple of them) made read-only, as the result keeps and gives it."""
     if isinstance(v, _core.ndarray):
-        if copy:
-            v = v.copy()
         v._set_readonly()
     elif isinstance(v, tuple):
-        v = tuple(_own(e, copy) for e in v)
+        v = tuple(_own(e) for e in v)
+    return v
+
+
+def _type_text(v):
+    """The type's name as the errors give it: numpy.ndarray, sd.ndarray as ndarray."""
+    t = type(v)
+    return (
+        t.__name__ if t.__module__ in ("builtins", "stardust._core") else f"{t.__module__.split('.')[0]}.{t.__name__}"
+    )
+
+
+def _as_array(v):
+    """A numpy array or a list of numbers as a new sd.ndarray (a 0-d numpy array as its Python
+    number), or None when v is neither."""
+    if isinstance(v, list) or (type(v).__module__ == "numpy" and type(v).__name__ == "ndarray"):
+        if getattr(v, "ndim", 1) == 0:
+            return v.item()
+        try:
+            a = _core.asarray(v)
+        except TypeError, ValueError, OverflowError:
+            return False
+        return a.copy() if not isinstance(v, list) else a  # asarray shares a numpy array's memory
+    return None
+
+
+def _given(cls, name, v):
+    """A field the caller of the public constructor gave: copied into a read-only array of the
+    result's own when it is an array or a list of numbers, its kind checked."""
+    a = _as_array(v)
+    if a is False:
+        raise TypeError(f"{cls.__name__}(): '{name}' must be a number or an array of numbers, not {_type_text(v)}")
+    if a is not None:
+        v = a
+    elif isinstance(v, _core.ndarray):
+        v = v.copy()
+    elif isinstance(v, tuple):
+        return tuple(_given(cls, name, e) for e in v)
+    arr = isinstance(v, _core.ndarray)
+    if name in cls._TEXT:
+        ok, want = isinstance(v, str), "a str"
+    elif name in cls._BOOL:
+        ok, want = isinstance(v, bool) or (arr and _core.isdtype(v.dtype, "bool")), "a bool or an array of bools"
+    elif name in cls._INT:
+        ok = (isinstance(v, int) and not isinstance(v, bool)) or (arr and _core.isdtype(v.dtype, "integral"))
+        want = "an int or an array of ints"
+    else:
+        ok = not isinstance(v, (str, bytes, bool, dict, set))
+        want = "a number or an array of numbers"
+    if not ok:
+        raise TypeError(f"{cls.__name__}(): '{name}' must be {want}, not {_type_text(v)}")
     return v
 
 
@@ -167,6 +216,11 @@ class _FieldResult:
     __slots__ = ("_fields", "_batch")
     _FIELDS = ()
     _ABSENT = "the function does not give it"
+    # the kinds the public constructor checks (any other field: a number, an array, a tuple of
+    # them, a result, None)
+    _TEXT = frozenset(("message", "method"))
+    _BOOL = frozenset(("converged",))
+    _INT = frozenset(("status", "n_iter", "nfev", "njev", "nhev"))
 
     def __init_subclass__(cls, **kw):
         super().__init_subclass__(**kw)
@@ -174,6 +228,7 @@ class _FieldResult:
         for name in cls._FIELDS:
             if name not in cls.__dict__:
                 setattr(cls, name, _result_field(name))
+        _calls.keyword_init(cls)  # "IntegrateResult(): takes ... positional arguments but 1 was given"
 
     @classmethod
     def _make(cls, *, batch=(), **fields):
@@ -188,9 +243,11 @@ class _FieldResult:
         if unknown:
             raise TypeError(f"{type(self).__name__}(): unexpected keyword argument {unknown[0]!r}")
         stored = {}
+        cls = type(self)
         for k in self._FIELDS:  # a fixed order, whatever the caller's
             if k in fields:
-                stored[k] = _own(fields[k], copy)  # the result owns its arrays, read-only
+                v = _given(cls, k, fields[k]) if copy else fields[k]  # copy: the public constructor
+                stored[k] = _own(v)  # the result owns its arrays, read-only
         self._fields = stored
         self._batch = tuple(batch)
 

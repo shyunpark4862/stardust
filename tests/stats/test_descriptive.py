@@ -582,3 +582,20 @@ def test_result_objects_are_read_only():
         nobs[0] = 1
     # without axes: Python numbers
     assert type(S.describe(x).mean) is float and type(S.mode(x).count) is int
+
+
+def test_choice_message_lists_one_two_or_more_options():
+    from stardust.stats._descriptive import _choice
+
+    for choices, listed in (
+        (("asymptotic",), "'asymptotic'"),
+        (("a", "b"), "'a' or 'b'"),
+        (("a", "b", "c"), "'a', 'b' or 'c'"),
+    ):
+        with pytest.raises(ValueError) as e:
+            _choice("x", "f", "method", choices)
+        assert str(e.value) == f"f(): 'method' must be {listed}, not 'x'"
+        with pytest.raises(TypeError) as e:
+            _choice(None, "f", "method", choices)
+        assert str(e.value) == f"f(): 'method' must be {listed}, not NoneType"
+        assert _choice(choices[0], "f", "method", choices) == choices[0]

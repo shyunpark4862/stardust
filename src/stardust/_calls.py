@@ -119,8 +119,8 @@ def _bound(fn, name):
 def keyword_init(cls):
     """cls.__init__ (keyword-only parameters) with its call-shape errors named by the class
     called, which may be a subclass sharing the __init__: "Normal(): unexpected keyword argument
-    'cool'", "Gamma(): missing 1 required keyword-only argument: 'a'", "Normal(): takes no
-    positional arguments but 1 was given", not "Normal.__init__() got ..."."""
+    'cool'", "Gamma(): missing 1 required keyword-only argument: 'a'", "Normal(): takes 0
+    positional arguments but 1 was given" (Python's sentence), not "Normal.__init__() got ..."."""
     init = cls.__dict__.get("__init__")
     if init is None or getattr(init, "_calls_wrapped", False):
         return
@@ -130,7 +130,7 @@ def keyword_init(cls):
         if args:
             n = len(args)
             raise TypeError(
-                f"{type(self).__name__}(): takes no positional arguments but {n} {'was' if n == 1 else 'were'} given"
+                f"{type(self).__name__}(): takes 0 positional arguments but {n} {'was' if n == 1 else 'were'} given"
             )
         try:
             init(self, **kwargs)

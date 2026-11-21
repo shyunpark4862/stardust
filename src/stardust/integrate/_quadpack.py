@@ -14,7 +14,16 @@ import math
 import numbers
 
 from .. import _core as _sd
-from ..optimize._common import _callable, _check_bool, _check_int, _real, _real_pair, _scalar_check, _type_name
+from ..optimize._common import (
+    _callable,
+    _check_bool,
+    _check_int,
+    _real,
+    _real_pair,
+    _scalar_check,
+    _type_name,
+    _values_text,
+)
 from ._result import IntegrateResult
 
 _Q = _sd.integrate
@@ -57,9 +66,22 @@ _QAWF_MESSAGES = {
 }
 
 
+# a normal end (QUADPACK's 0) with an integral or error that is not finite: not converged, status
+# -3 (tanhsinh's and nsum's number) with quad_vec's text (C119, [scipy differs]: scipy's ier 0)
+_NONFINITE = -3
+_MESSAGES[_NONFINITE] = "Non-finite values encountered."
+
+
+def _status(ier, value, err):
+    """QUADPACK's ier, or _NONFINITE for ier 0 with a value or error that is not finite."""
+    if ier == 0 and not (math.isfinite(value) and math.isfinite(err)):
+        return _NONFINITE
+    return ier
+
+
 def _message(ier, limit, qawf=False):
-    if ier == 0:
-        return _MESSAGES[0]
+    if ier == 0 or ier == _NONFINITE:
+        return _MESSAGES[ier]
     if qawf and ier in _QAWF_MESSAGES:
         return _QAWF_MESSAGES[ier]
     if ier == 1:
@@ -157,14 +179,15 @@ def _weight(weight, wvar, func):
 def _opts(func, atol, rtol, limit, points, weight=None, wvar=None, max_p1=_MAXP1, limlst=_LIMLST):
     """One quad's options as the native tuple (atol, rtol, limit, points or None, weight code,
     wvar, max_p1, limlst)."""
-    if not (atol == _TOL and rtol == _TOL and type(atol) is float and type(rtol) is float):
+    # the fast paths compare only Python ints and floats (an array's == is not a bool)
+    if not (type(atol) is float and type(rtol) is float and atol == _TOL and rtol == _TOL):
         atol, rtol = _tolerances(atol, rtol, func)
     if not (type(limit) is int and 1 <= limit <= _INT_MAX):
         limit = _limit_count(limit, func)
     points = None if points is None else _points(points, func)
-    if not (max_p1 == _MAXP1 and type(max_p1) is int):
+    if not (type(max_p1) is int and max_p1 == _MAXP1):
         max_p1 = _limit_count(max_p1, func, "max_p1")
-    if not (limlst == _LIMLST and type(limlst) is int):
+    if not (type(limlst) is int and limlst == _LIMLST):
         limlst = _check_int(limlst, func, "limlst", 3)
         if limlst > _INT_MAX:
             raise OverflowError(f"{func}(): 'limlst' is out of range")
@@ -201,6 +224,7 @@ def _complex_check(func):
 
 def _quad_result(r, limit):
     value, err, neval, ier, last, arrays, qawf = r
+    ier = _status(ier, value, err)
     if qawf:  # QAWF: the cycles (scipy's lst, rslst, erlst, ierlst)
         values, errors, iers = arrays
         return IntegrateResult._quad(
@@ -263,8 +287,13 @@ def quad(
         a = _limit_value(a, fn, "a")
     if type(b) is not float or b != b:
         b = _limit_value(b, fn, "b")
-    if (
-        atol == _TOL
+    if (  # the defaults (the types first: an array's == is not a bool)
+        type(atol) in (int, float)
+        and type(rtol) in (int, float)
+        and type(limit) is int
+        and type(max_p1) is int
+        and type(limlst) is int
+        and atol == _TOL
         and rtol == _TOL
         and limit == _LIMIT
         and points is None
@@ -272,15 +301,8 @@ def quad(
         and wvar is None
         and max_p1 == _MAXP1
         and limlst == _LIMLST
-        and type(limit) is int
-        and type(max_p1) is int
-        and type(limlst) is int
     ):
-        opts = (
-            (float(atol), float(rtol)) + _DEFAULT_OPTS[2:]
-            if type(atol) is not float or type(rtol) is not float
-            else _DEFAULT_OPTS
-        )
+        opts = _DEFAULT_OPTS
     else:
         opts = _opts(fn, atol, rtol, limit, points, weight, wvar, max_p1, limlst)
     if complex_func is False:
@@ -312,7 +334,7 @@ def _pair(v, func, what):
     if isinstance(v, (str, bytes, dict)) or not hasattr(v, "__len__") or not hasattr(v, "__getitem__"):
         raise TypeError(f"{func}(): {what} must be a pair (lo, hi) of numbers, not {_type_name(v)}")
     if len(v) != 2:
-        raise ValueError(f"{func}(): {what} must be a pair (lo, hi) of numbers, not {len(v)} values")
+        raise ValueError(f"{func}(): {what} must be a pair (lo, hi) of numbers, not {_values_text(len(v))}")
     out = []
     for t in (v[0], v[1]):
         if isinstance(t, bool) or not isinstance(t, numbers.Real):
@@ -356,6 +378,7 @@ def _opts_dict(d, func, what):
 
 def _solve(fn, func, levels, range_check, opts_check):
     value, err, nfev, ier, limit, qawf = _Q.nquad_solve(fn, func, _CHECK[fn], levels, range_check, opts_check)
+    ier = _status(ier, value, err)
     return IntegrateResult._quad(
         {
             "integral": value,
@@ -403,7 +426,7 @@ def nquad(func, ranges, /, *, opts=None):
         return _pair(v, fn, f"the range of 'ranges[{i}]'")
 
     def opts_check(i, v):
-        return _opts_dict(v, fn, f"the options of 'opts[{i}]'")
+        return _opts_dict(v, fn, f"the result of 'opts[{i}]'")
 
     return _solve(fn, func, levels, range_check, opts_check)
 

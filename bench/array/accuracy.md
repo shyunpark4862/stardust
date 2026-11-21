@@ -2,7 +2,7 @@
 
 `.venv/bin/python -m bench.accuracy promote`가 bench/accuracy/results/array.json에서 만든다. 손으로 고치지 않는다.
 
-원소별 함수(vForce를 쓰는 float64 함수 15개와 pow, 복소수의 절댓값)의 참값은 tests/array/ref의 Arb 참값이다(tools/array_ref.py; test_vforce.py의 범위와 함수마다 오차가 몰리는 곳: 영점·극 근처, 정의역의 끝, 서브노멀과 아주 큰 인자). 계약은 함수마다 참값을 double로 반올림한 값에서 정해진 ULP 안이다(docs/api/array.md, tests/array/refdata.py의 ULP_BOUND: exp·acos·atan·atan2·pow 3, log·log2·log10·asin·sinh·cosh·tanh·asinh·acosh 4, sin·atanh 5, 복소수의 절댓값 1). 계약 대비는 그 점의 ULP를 한계로 나눈 값이고, numpy와의 ULP 거리는 기록만 한다. 리덕션의 참값과 조건수는 tests/array/ref/reductions.npz(같은 도구)에 있다: 정확한 계산으로 한 번 만들었다(합은 Shewchuk의 fsum으로 올바르게 반올림한 값과 그 반올림 오차, 내적과 행렬 곱은 곱을 정확히 나눈 뒤의 fsum, 분산·표준편차는 정확한 유리수, 곱은 Arb). 입력은 함께 저장하고, 20만 원소를 넘는 것은 시드와 모양으로 다시 만들어 저장한 SHA-256과 견준다. 문서에 수치 계약이 없어 계약 대비는 없고, 기준선보다 나빠지면 compare가 짚는다. 영역 열은 입력의 종류와 모양이다.
+원소별 함수(vForce를 쓰는 float64 함수 15개와 pow, 복소수의 절댓값)의 참값은 tests/array/ref의 Arb 참값이다(tools/array_ref.py; test_vforce.py의 범위와 함수마다 오차가 몰리는 곳: 영점·극 근처, 정의역의 끝, 서브노멀과 아주 큰 인자). 계약은 함수마다 참값을 double로 반올림한 값에서 정해진 ULP 안이다(docs/api/array.md, tests/array/refdata.py의 ULP_BOUND: exp·acos·atan·atan2·pow 3, log·log2·log10·asin·sinh·cosh·tanh·asinh·acosh 4, sin·atanh 5, 복소수의 절댓값 3). 계약 대비는 그 점의 ULP를 한계로 나눈 값이고, numpy와의 ULP 거리는 기록만 한다. 리덕션의 참값과 조건수는 tests/array/ref/reductions.npz(같은 도구)에 있다: 정확한 계산으로 한 번 만들었다(합은 Shewchuk의 fsum으로 올바르게 반올림한 값과 그 반올림 오차, 내적과 행렬 곱은 곱을 정확히 나눈 뒤의 fsum, 분산·표준편차는 정확한 유리수, 곱은 Arb). 입력은 함께 저장하고, 20만 원소를 넘는 것은 시드와 모양으로 다시 만들어 저장한 SHA-256과 견준다. 문서에 수치 계약이 없어 계약 대비는 없고, 기준선보다 나빠지면 compare가 짚는다. 영역 열은 입력의 종류와 모양이다.
 
 - ULP: sd의 값과 참값을 double로 반올림한 값 사이에 있는 double의 수(ulp_distance; 0이면 올바르게 반올림한 값, 1이면 그 이웃). 99.9%는 그 분위수다.
 - 상대오차: |sd − 참값|/|참값|.
@@ -11,7 +11,7 @@
 - 계약 대비: 그 영역의 계약 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, mixed는 |오차|/max(1, |값|))로 잰 가장 큰 오차를 한계로 나눈 값. 1 이하가 계약 안이다.
 - 비교 패키지(numpy 2.5.4, R 4.6.2): 같은 참값, 같은 점에서 같은 척도로 잰 그 라이브러리의 오차다. 같은 양을 계산하는 공개 함수가 없으면 —, R이 없는 기계에서는 not run, 함수가 입력 전체를 거부하면 에러, 시간(60·120초)·메모리(2GB) 한도를 넘으면 멈춤, R의 glm이 기본 설정으로 시작값을 찾지 못하면 시작값 필요다. 제외: 참값은 유한한데 그 라이브러리가 NaN·inf를 낸 점의 수(정의가 다르거나 실패한 점; 다른 열에서 빠진다). compare는 이 열들의 변화를 알리기만 하고 종료 코드에 넣지 않는다.
 
-측정: 20261120-222439-cc758f7 (2026-11-20T22:24:39, cc758f7, 참값 c40e961bb505).
+측정: 20261120-222439-cc758f7 (2026-11-20T22:24:39, cc758f7, 참값 c40e961bb505), 20261122-071515-f0a7f92+ (2026-11-22T07:15:15, f0a7f92 dirty, 참값 aef7e7bf22a5).
 
 | 함수 | 영역 | 점 | 최대 ULP | 99.9% ULP | 최대 상대오차 | numpy와의 ULP | 상대오차/(u·조건수) | 계약 대비 | numpy 최대 ULP | numpy 99.9% ULP | numpy 최대 상대오차 | numpy 상대오차/(u·조건수) | numpy 계약 대비 | R 최대 ULP | R 99.9% ULP | R 최대 상대오차 | R 상대오차/(u·조건수) | R 계약 대비 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|

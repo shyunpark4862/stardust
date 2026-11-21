@@ -410,6 +410,7 @@ s + 1  →  Series.__add__  →  1행 Column(1)
   - 반대쪽 연산(`1 - s`)은 피연산자 순서만 바꿔 같은 커널을 부른다.
   - **NA 스칼라는 반대쪽 dtype의 1행 NA Column이다.** `s_int + NA`는 int64, `s_int / NA`는 float64다. NA를 위한 dtype 규칙이 따로 없다.
   - `__array_ufunc__ = None`: `np.array + s`에서 numpy가 Series를 배열로 바꿔 버리지 않게 한다.
+  - 그 대가로 numpy가 받지 않는 스칼라(complex, `datetime64` …)를 오른쪽에 두면 Python이 numpy 스칼라의 반대쪽 연산을 부르고, numpy는 ufunc의 문장(`operand 'Series' does not support ufuncs`)을 낸다. 그래서 정방향 연산자가 그런 numpy 스칼라를 만나면 NotImplemented 대신 Python의 문장(`unsupported operand type(s) for +: 'Series' and 'numpy.complex128'`, 순서 비교는 `'<' not supported between instances of ...`)을 직접 낸다(`_ops.python_error`; 2026-11-22). 반대쪽(`np.complex128(1) + s`)은 Python이 그 문장을 낸다. `1j < s`처럼 왼쪽이 numpy 스칼라인 순서 비교는 Python이 `s > 1j`로 돌려 부르므로 기호가 `>`로 보인다.
 - **연산 종류도 템플릿 인자다.** 행마다 `switch`로 고르던 int–float 비교가 1.90ms, 템플릿 인자로 올리자 0.71ms였다(옛 규칙의 정확한 비교에서 잰 값). Kleene `&`는 5.09ms → 1.07ms였다(분기 없는 식, 연산 종류를 템플릿 인자로).
 - **결과 validity**는 세 단계다.
   1. 두 입력의 비트맵을 비트 0으로 맞춘 뒤 AND한다 (`and_validity`). NA 스칼라면 모든 행이 NA다.

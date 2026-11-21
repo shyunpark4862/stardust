@@ -380,13 +380,15 @@ def _split(items):
     return items[:h], items[h:]
 
 
-def test_box(title, fields, batch, info, interval=None):
+def test_box(title, fields, batch, info, interval=None, tables=()):
     """The summary of a test result (htest H74-H76, regression G191): fields its (name, value)
     pairs in order: numbers go to the header's left column, strings (the method, the alternative
     field) to the right one with info's alternative, sample sizes ('nobs') and extra 'pairs';
     the arrays of one test (a contingency table) become tables. A batch (its shape) gives one
     row per lane of the per-lane fields. interval (low, high, alpha, label): the 1 - alpha
-    interval, a row of its own (or two columns of a batch's table)."""
+    interval, a row of its own (or two columns of a batch's table). tables: the names of the
+    fields that are tables whatever their size (one test's table, a batch's left out:
+    docs/api/htest.md §1.5); another array field is per lane when it has one value per lane."""
     from . import _core as _sd
 
     n = lanes(batch) if batch else 1
@@ -396,6 +398,8 @@ def test_box(title, fields, batch, info, interval=None):
         if isinstance(v, str):
             right.append((_label(k), v))
         elif isinstance(v, list):  # a batch's per-lane method names (htest H48)
+            if n == 0:  # an empty batch: no lane to name (its table has no rows)
+                continue
             names = flat(v, n)
             first = names(0)
             if all(names(i) == first for i in range(n)):
@@ -403,7 +407,11 @@ def test_box(title, fields, batch, info, interval=None):
             else:
                 columns.append((k, names, str))
         elif isinstance(v, _sd.ndarray):
-            if v.size == n:
+            if k in tables:
+                t = None if batch else _array_table(k, v)
+                if t is not None:
+                    arrays.append(t)
+            elif v.size == n:
                 get = flat(v, n)
                 same = shared(v, n) if batch and k in _DF_FIELDS else None
                 if same is not None:  # degrees of freedom the lanes share: the header (G195)

@@ -31,11 +31,11 @@
 
 namespace sd {
 
-// ---- pairwise summation (numpy's DOUBLE/CDOUBLE_pairwise_sum) --------------
+// ---- pairwise summation (numpy's DOUBLE/CDOUBLE_pairwise_sum algorithm, a wider leaf)
 // The tree and the leaf sums are base/pairwise.hpp, shared by every area; here
 // the terms reach a leaf through an accessor (docs/design/array.md §6.2).
 
-inline constexpr std::int64_t kPairwiseBlock = pairwise::kBlock;  // numpy's PW_BLOCKSIZE, in doubles
+inline constexpr std::int64_t kPairwiseBlock = pairwise::kBlock;  // 512 doubles (numpy's PW_BLOCKSIZE is 128)
 
 // Sum of get(begin), ..., get(begin + n - 1).
 template <typename Get>
@@ -45,8 +45,8 @@ double pairwise_sum(std::int64_t begin, std::int64_t n, const Get& get) {
     });
 }
 
-// The complex version: real and imaginary parts summed side by side. numpy
-// counts doubles, so a block holds 64 complex numbers and 4 accumulators.
+// The complex version: real and imaginary parts summed side by side. The block
+// counts doubles, so it holds 256 complex numbers and 8 accumulators per part.
 template <typename Get>
 complex128 pairwise_sum_complex(std::int64_t begin, std::int64_t n, const Get& get) {
     return pairwise::tree_complex(begin, n, [&](std::int64_t b, std::int64_t m) {
@@ -57,7 +57,8 @@ complex128 pairwise_sum_complex(std::int64_t begin, std::int64_t n, const Get& g
 // ---- the same sums on many threads, with the same bits ---------------------
 // The subtrees of at most kLeaf elements are summed in parallel, then combined
 // along the very same tree (pairwise::plan, pairwise::combine). The result is
-// bit-for-bit the serial one (and numpy's), for any thread count
+// bit-for-bit the serial one, for any thread count (not numpy's: its leaf is
+// narrower, base/pairwise.hpp)
 // (docs/design/array.md §6.2).
 
 inline constexpr std::int64_t kLeaf = kParallelTask;

@@ -440,6 +440,7 @@ Out5 ansari_lane(std::vector<Key>& keys, std::int64_t n, std::int64_t mm, int al
     std::int64_t twoAB = 0, A = 0;
     i128 fac4 = 0;
     bool ties = false;
+    std::int64_t runs = 0;
     Scores sc;
     tie_runs(keys, [&](std::int64_t b, std::int64_t t, std::int64_t first) {
         const std::int64_t r2 = 2 * b + t + 1, s2 = std::min(r2, 2 * (N + 1) - r2);
@@ -447,6 +448,7 @@ Out5 ansari_lane(std::vector<Key>& keys, std::int64_t n, std::int64_t mm, int al
         A += t * s2;
         fac4 += static_cast<i128>(t) * s2 * s2;
         ties = ties || t > 1;
+        ++runs;
         sc.add(s2, t);
     });
     const std::int64_t c = std::min(n, mm), k = N / 2;
@@ -466,6 +468,7 @@ Out5 ansari_lane(std::vector<Key>& keys, std::int64_t n, std::int64_t mm, int al
         return o;
     }
     o.stat = 0.5 * static_cast<double>(twoAB);
+    if (runs == 1) return o;  // every value equal: AB is fixed, no distribution (H157: p NaN)
     if (use_exact) {
         double cdf, sf;
         if (ints) {
@@ -547,14 +550,17 @@ nb::tuple ranksums(nb::handle x, nb::handle y, int alt, bool omit) {
             double z = kNaN, p = kNaN;
             if (!nan && n1 > 0 && n2 > 0) {
                 sort_keys(k);
-                std::int64_t twoR1 = 0;
+                std::int64_t twoR1 = 0, runs = 0;
                 tie_runs(k, [&](std::int64_t b, std::int64_t t, std::int64_t first) {
                     twoR1 += tag_count(k, first, t, 0) * (2 * b + t + 1);
+                    ++runs;
                 });
                 const std::int64_t N = n1 + n2;
-                const DD var = dd_of(static_cast<i128>(n1) * n2 * (N + 1)) / 12.0;
-                z = ratio(DD{0.5 * static_cast<double>(twoR1 - n1 * (N + 1)), 0.0}, sqrt_dd(var));
-                p = normal_p(z, alt);
+                if (runs > 1) {  // every value equal: NaN (H157)
+                    const DD var = dd_of(static_cast<i128>(n1) * n2 * (N + 1)) / 12.0;
+                    z = ratio(DD{0.5 * static_cast<double>(twoR1 - n1 * (N + 1)), 0.0}, sqrt_dd(var));
+                    p = normal_p(z, alt);
+                }
             }
             out.p[0][r] = z, out.p[1][r] = p;
         }

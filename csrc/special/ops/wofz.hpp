@@ -23,7 +23,7 @@
 // scipy (Johnson's code) rounds z^2 and loses up to 450 ULP there.
 #pragma once
 
-#include "special/sincos.hpp"
+#include "base/sincos.hpp"
 #include "special/coeffs/wofz_grid.hpp"
 #include "special/cplx.hpp"
 #include "special/common.hpp"

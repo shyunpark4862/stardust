@@ -173,6 +173,16 @@ def _groups(groups, func, n, cov_type):
     return codes, int(u.values.shape[0]), miss
 
 
+def _nobs_info(r):
+    """{'nobs': n} for the summary of a test on the fit r (G191): its number of observations, or
+    for a batch the one its lanes share (G196, as the degrees of freedom of G195); {} when the
+    lanes' differ."""
+    if not r._batch:
+        return {"nobs": r.nobs}
+    n = _S.shared(r.nobs, math.prod(r._batch))
+    return {} if n is None else {"nobs": n}
+
+
 def _real(v, func, arg):
     """v (an int or a float; numpy's too) as a float: TypeError for anything else, OverflowError
     'out of range' for an int beyond the doubles (API.md §2)."""
@@ -863,15 +873,24 @@ class _LinearResult(_RegressionResult):
 
     @property
     def fvalue(self):
+        """NaN for a perfect fit with df_resid > 0, as t and p (G118, G196): the scale (or the
+        robust covariance) is 0 there, and a rounding-size ESS over it would be a false F."""
+
         def make():
             if self._robust:
-                return self._no_tss(self._stat(_WALDF))
-            dfm = self.df_model
-            f = _div(_div(self._ess_s(), dfm), self._scale_s())
-            # no parameter but the intercept: no F test (statsmodels: NaN)
-            if self._batch:
-                return self._no_tss(_sd.where(dfm == 0.0, math.nan, f))
-            return self._no_tss(math.nan if dfm == 0 else f)
+                f = self._no_tss(self._stat(_WALDF))
+            else:
+                dfm = self.df_model
+                f = _div(_div(self._ess_s(), dfm), self._scale_s())
+                # no parameter but the intercept: no F test (statsmodels: NaN)
+                if self._batch:
+                    f = self._no_tss(_sd.where(dfm == 0.0, math.nan, f))
+                else:
+                    f = self._no_tss(math.nan if dfm == 0 else f)
+            bad = self._perfect()
+            if isinstance(bad, _sd.ndarray):
+                return _sd.where(bad, math.nan, f)
+            return math.nan if bad else f
 
         return self._cached("fvalue", make)
 
@@ -957,7 +976,9 @@ class _LinearResult(_RegressionResult):
                 e = _k.apply("resid", D, b, False, y)[1]
                 e = _sd.broadcast_to(e, tuple(self.resid.shape)) if e.shape != self.resid.shape else e
             elif w is not None:
-                e = _sd.sqrt(w) * r
+                # + 0.0: a row with weight 0 gets +0, not sqrt(0) * (a negative residual) = -0
+                # (G196), and so do the diagnostics formed from it there
+                e = _sd.sqrt(w) * r + 0.0
             else:
                 e = r
             const = self._extra.get("const")
@@ -1071,7 +1092,7 @@ class _LinearResult(_RegressionResult):
         def make():
             sums = (self._resid_stat(i) for i in (1, 2, 3, 4))
             jb, p = _jb_of_sums(self.nobs, *sums)
-            info = {} if self._batch else {"nobs": self.nobs}  # summary() (G191)
+            info = _nobs_info(self)  # summary() (G191, G196)
             return JarqueBeraResult._make(batch=self._batch, info=info, statistic=jb, pvalue=p)
 
         return self._cached("jarque_bera", make)
@@ -1106,12 +1127,15 @@ class _LinearResult(_RegressionResult):
             return OLSResult(raw, param_names=None, intercept=True, cov_type="nonrobust", batch=_batch_shape(raw))
 
         def make():
+            from . import _diagnostics
+
             a = self._cached("bp_aux", aux)
             if studentize:
                 lm = a.nobs * a.rsquared
             else:
                 s2 = _div(self._ssr_s(), self.nobs)  # the fit's units, as the auxiliary's
                 lm = _div(a._ess_s(), 2.0 * s2 * s2)
+            lm = _diagnostics._nan_where_no_df(lm, a.df_resid)  # as white_test (G95, G196)
             df = a.df_model
             if self._batch:
                 df = _sd.where(df > 0, df, math.nan)
@@ -1119,9 +1143,7 @@ class _LinearResult(_RegressionResult):
                 df = math.nan
             p = self._scalar(_ChiSquared(df=_arg(df)).ccdf(_arg(lm)))
             r = _results.BreuschPaganResult(lm, p, a.fvalue, a.f_pvalue)
-            r._info = {"pairs": [("Studentized:", str(studentize))]}  # summary() (G191)
-            if not self._batch:
-                r._info["nobs"] = self.nobs
+            r._info = {"pairs": [("Studentized:", str(studentize))], **_nobs_info(self)}  # summary() (G191)
             return r
 
         return self._cached(("breusch_pagan", studentize), make)

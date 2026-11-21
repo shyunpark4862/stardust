@@ -59,7 +59,10 @@ def test_quad_matches_scipy_to_the_bit(p):
     calls = np.load(refdata.DATA / "scipy_calls.npz")[f"quad/{p.id}"]
     r, pts = run(p)
     assert pts.size == calls.size and np.array_equal(pts.view(np.int64), calls.view(np.int64))
-    assert same(r.integral, rec["integral"]) and same(r.error, rec["error"])
+    if p.weight in ("cos", "sin"):  # C123: dqc25f's estimate has a rounding floor, scipy's none
+        assert same(r.integral, rec["integral"]) and r.error >= rec["error"]
+    else:
+        assert same(r.integral, rec["integral"]) and same(r.error, rec["error"])
     assert r.nfev == rec["nfev"] == pts.size and r.status == rec["status"]
     assert r.converged is (rec["status"] == 0)
     if rec["status"]:
@@ -68,7 +71,8 @@ def test_quad_matches_scipy_to_the_bit(p):
     if "lst" in info:  # QAWF: the cycles (scipy's lst, rslst, erlst, ierlst)
         n = info["lst"]
         assert r.n_cycles == n and not hasattr(r, "intervals")
-        assert r.cycle_integrals.tolist() == info["rslst"] and r.cycle_errors.tolist() == info["erlst"]
+        assert r.cycle_integrals.tolist() == info["rslst"]
+        assert all(e >= f for e, f in zip(r.cycle_errors.tolist(), info["erlst"], strict=True))
         assert r.cycle_status.tolist() == info["ierlst"] and r.cycle_status.dtype == sd.int64
         return
     last = info.get("last", 0)
@@ -136,6 +140,7 @@ LIVE = [
     ("no extrapolation", lambda x: x**-0.999 / (1.0 + x) if x else math.inf, 0.0, math.inf, {}),
     ("divergent", lambda x: x**-1.01 if x else math.inf, 0.0, 1.0, {}),
 ]
+NONFINITE = {"inf"}  # an infinite integral that scipy reports as converged (C119)
 # the status each case ends with (the ones the records do not reach)
 LIVE_STATUS = {"limit 3": 1, "nan": 2, "bad QAGS": 3, "bad QAGI": 3, "bad QAGP": 3, "no extrapolation": 4,
                "divergent": 5}  # fmt: skip
@@ -154,6 +159,8 @@ def test_quad_matches_live_scipy(case):
     assert same(r.integral, sp[0]) and same(r.error, sp[1]) and r.nfev == sp[2]["neval"]
     if len(sp) > 3:
         assert not r.converged and r.message == sp[3]
+    elif case[0] in NONFINITE:  # C119: scipy's ier 0 with an infinite integral is status -3 here
+        assert not r.converged and r.status == -3 and r.message == "Non-finite values encountered."
     else:
         assert r.converged
     if case[0] in LIVE_STATUS:
@@ -474,7 +481,7 @@ ERRORS = [
     (lambda: I.nquad(lambda x, y: x, [[0, 1], [0, 1]], opts=[lambda y: {"rtol": -1.0}, {}]), ValueError,
      "nquad(): 'rtol' must be a finite number >= 0"),
     (lambda: I.nquad(lambda x, y: x, [[0, 1], [0, 1]], opts=[lambda y: 3, {}]), TypeError,
-     "nquad(): the options of 'opts[0]' must be a dict, not int"),
+     "nquad(): the result of 'opts[0]' must be a dict, not int"),
     (lambda: I.nquad(lambda x: x, [[0, math.inf]], opts={"points": []}), ValueError,
      "nquad(): 'points' cannot be used with an infinite range"),
     (lambda: I.nquad(lambda x: x, [[0, 1]], opts={"weight": "sin"}), TypeError,
@@ -484,6 +491,18 @@ ERRORS = [
     (lambda: I.nquad(lambda x, y: x, [[0, 1], [0, 1]], opts=[lambda y: {"weight": "cauchy", "wvar": 1.0}, {}]),
      ValueError, "nquad(): 'wvar' must not equal 'a' or 'b' with weight='cauchy'"),
     (lambda: I.nquad(lambda x: x, [[0, 1]], args=(1,)), TypeError, "nquad(): unexpected keyword argument 'args'"),
+    # R250: the counts and the subject agree
+    (lambda: I.nquad(lambda x, y: x * y, [lambda y: (0,), (0, 1)]), ValueError,
+     "nquad(): the range of 'ranges[0]' must be a pair (lo, hi) of numbers, not 1 value"),
+    (lambda: I.nquad(lambda x, y: x * y, [(0, 1), (0, 1)], opts=[lambda y: {"foo": 1}, {}]), ValueError,
+     "nquad(): the result of 'opts[0]' has no option 'foo'; the options are atol, rtol, limit, points, weight, wvar"),
+    # CAL-4 (C119): an array tolerance takes the checks, not the defaults' fast path
+    (lambda: I.quad(math.exp, 0, 1, atol=sd.asarray([1e-3])), TypeError,
+     "quad(): 'atol' must be an int or a float, not ndarray"),
+    (lambda: I.quad(math.exp, 0, 1, rtol=sd.asarray([1.49e-8])), TypeError,
+     "quad(): 'rtol' must be an int or a float, not ndarray"),
+    (lambda: I.dblquad(lambda y, x: 1.0, 0, 1, 0, 1, atol=sd.asarray([1e-3])), TypeError,
+     "dblquad(): 'atol' must be an int or a float, not ndarray"),
 ]  # fmt: skip
 
 
@@ -508,3 +527,32 @@ def test_dblquad_calls_gfun_then_hfun():
     order = []
     I.dblquad(lambda y, x: x * y, 0.0, 1.0, lambda x: (order.append("g"), 0.0)[1], lambda x: (order.append("h"), x)[1])
     assert order and order[::2] == ["g"] * (len(order) // 2) and order[1::2] == ["h"] * (len(order) // 2)
+
+
+def test_numpy_tolerances_as_dblquad():
+    # CAL-4 (C119): a numpy array (0-d too) is not a tolerance for quad, as for dblquad and the
+    # area's other functions
+    for call in (lambda t: I.quad(math.exp, 0, 1, atol=t), lambda t: I.dblquad(lambda y, x: 1.0, 0, 1, 0, 1, atol=t)):
+        for t in (np.array(1.49e-8), np.array([1.49e-8])):
+            with pytest.raises(
+                TypeError, match=r"^(quad|dblquad)\(\): 'atol' must be an int or a float, not numpy\.ndarray$"
+            ):
+                call(t)
+    # an int is a tolerance: the defaults' values as ints take the fast path's result
+    assert tuple(I.quad(math.exp, 0, 1, atol=0, rtol=1)) == tuple(I.quad(math.exp, 0, 1, atol=0.0, rtol=1.0))
+
+
+def test_non_finite_results_do_not_converge():
+    # CAL-3, R247 (C119): QUADPACK's normal end (0) with an integral or error that is not finite is
+    # status -3 with quad_vec's text, as tanhsinh's and nsum's; scipy reports ier 0
+    want = (False, -3, "Non-finite values encountered.")
+    for r in (I.quad(lambda x: math.inf, 0, 1), I.quad(lambda x: 1.0, -1.7e308, 1.7e308),
+              I.dblquad(lambda y, x: math.inf, 0, 1, 0, 1), I.tplquad(lambda z, y, x: math.inf, 0, 1, 0, 1, 0, 1),
+              I.nquad(lambda x, y: math.inf, [[0, 1], [0, 1]])):  # fmt: skip
+        assert (r.converged, r.status, r.message) == want and not math.isfinite(r.integral)
+    c = I.quad(lambda x: complex(1.0, math.inf), 0, 1, complex_func=True)
+    assert (c.converged, c.status, c.message) == want and c.real.converged and c.imag.status == -3
+    s = I.quad(lambda x: math.inf, 0, 1).summary()
+    assert "Non-finite values encountered." in s
+    # a status QUADPACK gives stays (scipy's): 1/x on [0, 1] runs out of room
+    assert I.quad(lambda x: 1.0 / x if x else math.inf, 0.0, 1.0, limit=10000).status == 3

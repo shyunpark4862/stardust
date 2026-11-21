@@ -16,7 +16,6 @@ tril, triu, find.
 """
 
 import math
-import operator
 
 from .. import _core as _sd
 from . import _common as C
@@ -45,12 +44,6 @@ def _format_arg(format, func):
     if format not in C.FORMATS:
         raise ValueError(f"{func}(): 'format' must be 'coo', 'csr', 'csc', 'dok' or None, not {format!r}")
     return format
-
-
-def _int_arg(v, func, name):
-    if not C.is_int(v):
-        raise TypeError(f"{func}(): '{name}' must be an int, not {C.type_name(v)}")
-    return operator.index(v)
 
 
 def _sparse_arg(A, func, name, ndims=(1, 2)):
@@ -84,18 +77,23 @@ def eye_array(n_rows, n_cols=None, /, *, k=0, dtype=None, format=None):
     """The n_rows x n_cols array with ones on the k-th diagonal (sd.eye's arguments), CSR by
     default."""
     func = "eye_array"
-    m = _int_arg(n_rows, func, "n_rows")
-    n = m if n_cols is None else _int_arg(n_cols, func, "n_cols")
-    k = _int_arg(k, func, "k")
+    m = C.int64_arg(n_rows, func, "n_rows")
+    n = m if n_cols is None else C.int64_arg(n_cols, func, "n_cols")
+    k = C.int64_arg(k, func, "k")
     if m < 0 or n < 0:
         raise ValueError(f"{func}(): negative dimensions are not allowed")
     dtype = _dtype_or(dtype, func, _sd.float64)
     format = _format_arg(format, func)
     length = max(0, min(m, n - k) if k >= 0 else min(m + k, n))
     r0, c0 = max(-k, 0), max(k, 0)
-    indptr = _readonly(_sd.clip(_sd.arange(-r0, m + 1 - r0, dtype=_sd.int64), min=0, max=length))
-    indices = _readonly(_sd.arange(c0, c0 + length, dtype=_sd.int64))
-    data = _sd.ones(length, dtype=dtype)
+
+    def parts():
+        if m == 2**63 - 1:  # an indptr of 2**63 entries
+            raise ValueError("array is too big")
+        indptr = _sd.clip(_sd.arange(-r0, m + 1 - r0, dtype=_sd.int64), min=0, max=length)
+        return _readonly(indptr), _readonly(_sd.arange(c0, c0 + length, dtype=_sd.int64)), _sd.ones(length, dtype=dtype)
+
+    indptr, indices, data = C.sized(func, parts)
     return _as(_classes()[1]._new((m, n), indptr, indices, data), format, func)
 
 
@@ -121,9 +119,9 @@ def diags_array(diagonals, /, *, offsets=0, shape=None, format=None, dtype=None)
                 f"not {C.type_name(diagonals)}; for several give a list of offsets"
             )
         diags = [_diagonal_arg(diagonals, func, 0)]
-        offs = [operator.index(offsets)]
+        offs = [C.int64_arg(offsets, func, "offsets")]
     elif isinstance(offsets, (list, tuple)):
-        offs = [_int_arg(o, func, "offsets") for o in offsets]
+        offs = [C.int64_arg(o, func, "offsets") for o in offsets]
         if not isinstance(diagonals, (list, tuple)):
             raise TypeError(
                 f"{func}(): with a list of offsets, 'diagonals' must be a list or a tuple, not {C.type_name(diagonals)}"
@@ -139,6 +137,7 @@ def diags_array(diagonals, /, *, offsets=0, shape=None, format=None, dtype=None)
         raise ValueError(f"{func}(): the offsets repeat a value")
     if shape is None:
         m = diags[0].shape[0] + abs(offs[0])
+        C.check_shape_range((m,), func)
         shape = (m, m)
     else:
         shape = C.shape_arg(shape, func, (2,))
@@ -149,6 +148,11 @@ def diags_array(diagonals, /, *, offsets=0, shape=None, format=None, dtype=None)
         for d in diags[1:]:
             out_dtype = promote(out_dtype, d.dtype)
     format = _format_arg(format, func)
+    return _as(C.sized(func, _diags, func, diags, offs, shape, out_dtype), format, func)
+
+
+def _diags(func, diags, offs, shape, out_dtype):
+    m, n = shape
     rows, cols, vals = [], [], []
     for j, (d, off) in enumerate(zip(diags, offs)):
         length = min(m + off, n - off, m, n)  # scipy's: an offset just past the corner is an empty diagonal
@@ -175,7 +179,7 @@ def diags_array(diagonals, /, *, offsets=0, shape=None, format=None, dtype=None)
     kept = _core._filter_compressed(m, ip, ix, dv, m, n, drop_zeros=True)  # scipy stores no zeros
     if kept is not None:
         ip, ix, dv = kept
-    return _as(csr_array._new((m, n), ip, ix, dv), format, func)
+    return csr_array._new((m, n), ip, ix, dv)
 
 
 def _contiguous(x):
@@ -272,15 +276,23 @@ def kron(A, B, /, *, format=None):
     format = _format_arg(format, func)
     loop = C.renamed(func, _sd.multiply, _sd.zeros(1, dtype=A.dtype), _sd.zeros(1, dtype=B.dtype)).dtype
     a, b = _as_2d_csr(A), _as_2d_csr(B)
-    ip, ix, dv = _core._kron(
-        a._indptr, a._indices, to_dtype(a._data, loop), b._indptr, b._indices, to_dtype(b._data, loop), b.shape[1]
-    )
-    csr_array = _classes()[1]
     if A.ndim == 1 and B.ndim == 1:
-        out = csr_array._new((A.shape[0] * B.shape[0],), ip, ix, dv)
+        shape = (A.shape[0] * B.shape[0],)
     else:
-        out = csr_array._new((a.shape[0] * b.shape[0], a.shape[1] * b.shape[1]), ip, ix, dv)
-    return _as(out, format, func)
+        shape = (a.shape[0] * b.shape[0], a.shape[1] * b.shape[1])
+    C.check_shape_range(shape, func)
+    ip, ix, dv = C.sized(
+        func,
+        _core._kron,
+        a._indptr,
+        a._indices,
+        to_dtype(a._data, loop),
+        b._indptr,
+        b._indices,
+        to_dtype(b._data, loop),
+        b.shape[1],
+    )
+    return _as(_classes()[1]._new(shape, ip, ix, dv), format, func)
 
 
 def kronsum(A, B, /, *, format=None):
@@ -295,6 +307,11 @@ def kronsum(A, B, /, *, format=None):
     dtype = promote(A.dtype, B.dtype)
     loop = C.renamed(func, _sd.multiply, _sd.zeros(1, dtype=dtype), _sd.zeros(1, dtype=dtype)).dtype  # kron's
     m, n = A.shape[0], B.shape[0]
+    C.check_shape_range((m * n,), func)
+    return _as(C.sized(func, _kronsum, A, B, m, n, loop, func), format, func)
+
+
+def _kronsum(A, B, m, n, loop, func):
     # The entries placed, not multiplied by the identity's ones (SP111): A's in every diagonal
     # block, b_ij on the diagonal of block (i, j); a position both hold (a_pp and b_ii) is their one
     # sum a + b, the rest keep their values (complex inf, -0.0 parts), as sd.linalg.kronsum.
@@ -312,7 +329,7 @@ def kronsum(A, B, /, *, format=None):
     coo = _classes()[0]._new((m * n, m * n), (_readonly(rows), _readonly(cols)), vals, None)
     out = coo._tocsr(None, func)  # a + b in that order (left to right, as the old kron(I, A) + kron(B, I))
     out.eliminate_zeros()  # the exact zeros go, as a sum of two sparse arrays drops them
-    return _as(out, format, func)
+    return out
 
 
 # ---- stacking ----
@@ -351,7 +368,6 @@ def _grid(blocks, func):
 
 
 def _block(grid, format, dtype, func):
-    coo_array, csr_array, csc_array, _ = _classes()
     format = _format_arg(format, func)
     dtype = C.dtype_arg(dtype, func)
     M, N = len(grid), len(grid[0])
@@ -388,6 +404,13 @@ def _block(grid, format, dtype, func):
         return C.renamed(func, _sd.astype, A._data, dtype) if A.dtype != dtype else A._data
 
     shape = (sum(heights), sum(widths))
+    C.check_shape_range(shape, func)
+    return C.sized(func, _assemble, grid, shape, heights, widths, given, values, format, func)
+
+
+def _assemble(grid, shape, heights, widths, given, values, format, func):
+    coo_array, csr_array, csc_array, _ = _classes()
+    M, N = len(grid), len(grid[0])
     full = all(A is not None for row in grid for A in row)
     fmts = {A.format for A in given}
     if full and fmts == {"csr"} and format in (None, "csr"):
@@ -474,6 +497,7 @@ def block_diag(arrays, /, *, format=None, dtype=None):
         for A in blocks[1:]:
             out_dtype = promote(out_dtype, A.dtype)
     format = _format_arg(format, func)
+    C.check_shape_range((sum(A.shape[0] for A in blocks), sum(A.shape[1] for A in blocks)), func)
     rs, cs, vs = [], [], []
     r_off = c_off = 0
     for A in blocks:
@@ -493,7 +517,7 @@ def block_diag(arrays, /, *, format=None, dtype=None):
 
 def _band(A, k, format, lower, func):
     A = _sparse_arg(A, func, "A", (2,))
-    k = _int_arg(k, func, "k")
+    k = C.int64_arg(k, func, "k")
     format = _format_arg(format, func)
     coo = A if A.format == "coo" else A._tocoo(None, func)
     kept = _core._band_coo(coo._coords[0], coo._coords[1], coo._data, k, lower=lower)

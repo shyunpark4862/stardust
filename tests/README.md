@@ -39,7 +39,7 @@
 - **병렬**: `pytest`만 치면 한 프로세스다. `tools/test.py`는 `serial`이 아닌 테스트를 pytest-xdist 워커 `--jobs`개로 돌리고, 그 뒤에 `serial` 테스트를 혼자 돌린다. `serial`은 다른 테스트 프로세스와 기계를 나누면 안 되는 테스트다(GIL 해제를 벽시계로 재는 것, 시간 제한이 있는 하위 프로세스, 물리 메모리 근처의 할당, 스스로 작업 프로세스를 띄우는 것). 모듈 전체는 `tests/conftest.py`의 `SERIAL`에, 테스트 하나는 `@pytest.mark.serial`로 적는다. 모두 보려면 `.venv/bin/python -m pytest -m serial --co -q`.
   - 워커 수 기본 8은 이 Mac에서 quick 전체를 잰 값으로 정했다(2026-11-20, 다른 실행이 없을 때, serial 부분 44초 포함): 워커 6개 76.6초·워커 합 RSS 7.6GB, 8개 69.6초·9.7GB, 10개 75.7초·12.9GB. 워커마다 sd 스레드 수는 기본값 그대로가 가장 빨랐다(2로 줄이면 느렸다).
 - **종료 코드**: 0 고른 테스트가 모두 통과, 1 실패가 있거나 두 단계 모두 고른 테스트가 없음, 2 명령행 오류나 pytest 자신의 오류(중단, 내부 오류). 두 단계 중 나쁜 쪽이 정한다. pytest의 출력과 실패한 테스트의 traceback은 `build/logs/test/<시각>.log`에 있다.
-- **테스트 수**(2026-11-20에 센 값): quick 10,133개(그 가운데 serial 25개), deep 10,854개(serial 27개, deep 마커 721개). 수는 커밋마다 바뀌므로 모으기만 해서 센다: `.venv/bin/python -m pytest --collect-only -q -p no:cacheprovider | tail -1`(deep은 `--tier deep`, serial은 `-m serial`을 더한다).
+- **테스트 수**(2026-11-22에 센 값): quick 16,977개(그 가운데 serial 29개), deep 17,700개(serial 31개, deep 마커 723개). 수는 커밋마다 바뀌므로 모으기만 해서 센다: `.venv/bin/python -m pytest --collect-only -q -p no:cacheprovider | tail -1`(deep은 `--tier deep`, serial은 `-m serial`을 더한다).
 - `--strict-markers`라서 등록하지 않은 마커는 에러다. 마커는 `deep`, `external`, `serial`이다.
 - **파일 이름과 도우미**
   - 테스트 파일은 주제로 이름 짓는다(`test_<주제>.py`). 리뷰 번호나 날짜는 파일 이름에 쓰지 않고 docstring이나 주석에만 적는다.
@@ -63,7 +63,7 @@
 
 - 케이스는 `tests/golden/cases_<영역>.py`, 기록은 `tests/golden/data/<영역>.json`이다. 영역은 `bench/areas.py`의 열둘이다.
 - 영역마다 스레드 수 1, 3, 10에서 따로 프로세스를 띄워 돌리고(동시에 `--jobs`개), 세 결과가 같아야 한다. 스레드 수에 따라 결과가 다른 케이스는 저장하지 않는다: `record`가 그 케이스 이름을 적고 종료 코드 1로 끝난다. 예외는 케이스 파일의 `THREAD_DEPENDENT = {케이스 이름: 이유}`에 적은 케이스뿐이고, 그 결과는 스레드 수마다 저장한다.
-- 전체 비교(2026-11-20, 24,422케이스, `--jobs` 기본 8)는 약 25초이고, 작업 프로세스 하나의 최대 RSS는 약 1.6GB다.
+- 전체 비교(2026-11-22, 34,391케이스)는 영역마다 `--jobs 2`로 차례로 돌린 합이 약 2분 15초다. 작업 프로세스 하나의 최대 RSS는 약 1.8GB(array)라서 `--jobs` 기본 8은 메모리가 넉넉할 때만 쓴다.
 - **저장 형식**(형식 2): 결과를 정확한 JSON으로 바꿔 정규화한 글자열끼리 비교한다. 그래서 형도 결과의 일부다(`True`는 `1`이 아니고, numpy 스칼라는 Python 스칼라가 아니다).
   - bool, int, str, None은 그대로, float는 `float.hex`(기본 NaN이 아닌 NaN은 비트까지), complex는 그 둘, numpy 스칼라는 dtype과 값, 내장 형의 하위 클래스는 클래스와 값이다.
   - 에러도 결과다. 에러와 케이스가 낸 경고는 클래스(`module.qualname`)와 메시지로 저장한다.

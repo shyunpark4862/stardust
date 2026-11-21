@@ -1,10 +1,13 @@
 // bincount and histogram (docs/api/array.md §7.12; T0b), numpy's signatures.
 //
 // histogram follows numpy's _histograms_impl.histogram step by step, so the
-// edges, counts and (uniform bins) weighted sums are numpy's bits: the edges
-// come from linspace, each value's bin from numpy's float formula and its
+// edges, counts and the weighted sums of uniform bins are numpy's bits: the
+// edges come from linspace, each value's bin from numpy's float formula and its
 // two corrections, and weights are summed per 65536-element block (a
-// bincount from 0.0) and then added block by block.
+// bincount from 0.0) and then added block by block. With given edges the
+// weights are summed per bin in the same blocks, not as numpy's differences of
+// sorted cumulative sums, so float weights there are not numpy's last bits
+// (docs/api/array.md §7.12).
 
 #include "array/ops/histogram.hpp"
 

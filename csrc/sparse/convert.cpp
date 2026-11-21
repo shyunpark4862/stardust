@@ -20,6 +20,13 @@
 //   _reshape_coords(major, minor, old_shape, new_shape, /)
 //                                                 the coordinates of the same C-order positions in
 //                                                 the new shape (read-only; major None for 1-D)
+//   _expm_fix(lam, tt, k, /)                      expm's triangular fix-ups of exp(2^-k A) for the
+//                                                 diagonal lam (n,) and the first off-diagonal tt
+//                                                 (n - 1,) of A (float64 or complex128): (diagonal
+//                                                 exp(2^-k lam_j), off-diagonal 2^-k tt_j times the
+//                                                 divided difference of exp), new arrays. The
+//                                                 same formulas and libm calls as sd.linalg.expm's
+//                                                 fix-ups, so a triangular matrix's are its bits.
 //
 // The work is cut by sizes alone; every output element is written by one task, or counts are
 // combined in task order, so the results do not depend on the thread count.
@@ -30,6 +37,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -60,7 +69,7 @@ nb::tuple from_dense(nb::handle xh, bool by_rows) {
     const int64_t n_major = by_rows ? rows : cols, n_minor = by_rows ? cols : rows;
     const int64_t ms = by_rows ? rs : cs, ns = by_rows ? cs : rs;
     const int64_t per = lines_per_task(n_minor), work = n_major * n_minor;
-    NDArray indptr = new_index(n_major + 1);
+    NDArray indptr = new_indptr(n_major);
     int64_t* ip = i64(indptr);
     ip[0] = 0;
     visit_dtype(x.dtype, [&]<class T>(std::type_identity<T>) {
@@ -197,7 +206,7 @@ nb::object filter_compressed(
     const int64_t* ip = i64(indptr);
     const int64_t* ix = i64(indices);
     const int64_t keep_lines = std::min(n_major, new_major), nnz = indices.shape[0];
-    NDArray out_ptr = new_index(new_major + 1);
+    NDArray out_ptr = new_indptr(new_major);
     int64_t* op = i64(out_ptr);
     op[0] = 0;
     const int64_t per = lines_per_task(n_major > 0 ? nnz / n_major : 0);
@@ -381,7 +390,61 @@ nb::tuple reshape_coords(nb::handle major_h, nb::handle minor_h, nb::handle old_
 
 }  // namespace
 
+namespace {
+
+// ---- expm's triangular fix-ups (the formulas of csrc/linalg/ops/expm.cpp, written again here:
+// the areas share no internal header; tests check the two give the same bits)
+
+using c128 = std::complex<double>;
+
+NDArray new_values(DType dtype, int64_t n) {
+    const int64_t shape[] = {n};
+    return new_array(dtype, shape);
+}
+
+inline double scale2(double v, int k) { return std::ldexp(v, k); }
+inline c128 scale2(c128 v, int k) { return {std::ldexp(v.real(), k), std::ldexp(v.imag(), k)}; }
+inline bool nonzero(double v) { return v != 0.0; }
+inline bool nonzero(c128 v) { return v.real() != 0.0 || v.imag() != 0.0; }
+
+// t * (e^l2 - e^l1) / (l2 - l1) without t: exp(mean) sinch(d/2) when l1 and l2 are close (the
+// difference quotient would cancel), else the difference quotient (Al-Mohy & Higham 2009, (2.2)).
+template <class T>
+T exp_divided_difference(T l1, T l2) {
+    const T d = l2 - l1;
+    if (std::abs(d) < 1.0) {
+        const T h = d * 0.5;
+        const T sinch = nonzero(h) ? std::sinh(h) / h : T(1);
+        return std::exp(l1 + h) * sinch;
+    }
+    return (std::exp(l2) - std::exp(l1)) / d;
+}
+
+nb::tuple expm_fix(nb::handle lam_h, nb::handle tt_h, int k) {
+    const NDArray& lam = vector_arg(lam_h, "_expm_fix");
+    const NDArray& tt = vector_arg(tt_h, "_expm_fix", lam.dtype);
+    const int64_t n = lam.shape[0];
+    if ((lam.dtype != DType::Float64 && lam.dtype != DType::Complex128) || tt.shape[0] != std::max<int64_t>(n - 1, 0))
+        throw nb::value_error("_expm_fix(): wrong operands");
+    NDArray diag = new_values(lam.dtype, n), off = new_values(lam.dtype, tt.shape[0]);
+    auto run = [&]<class T>() {
+        const T* l = typed<T>(lam);
+        const T* t = typed<T>(tt);
+        T* d = typed<T>(diag);
+        T* o = typed<T>(off);
+        for (int64_t j = 0; j < n; ++j) d[j] = std::exp(scale2(l[j], -k));
+        for (int64_t j = 0; j + 1 < n; ++j)
+            o[j] = scale2(t[j], -k) * exp_divided_difference(scale2(l[j], -k), scale2(l[j + 1], -k));
+    };
+    if (lam.dtype == DType::Complex128) run.template operator()<c128>();
+    else run.template operator()<double>();
+    return nb::make_tuple(wrap(std::move(diag)), wrap(std::move(off)));
+}
+
+}  // namespace
+
 void bind_convert(nb::module_& m) {
+    m.def("_expm_fix", &expm_fix);
     m.def("_expand", [](nb::handle indptr_h, int64_t n_major, int64_t nnz) {
         const NDArray& indptr = vector_arg(indptr_h, "_expand", DType::Int64);
         if (indptr.shape[0] != n_major + 1) throw nb::value_error("_expand(): lengths differ");

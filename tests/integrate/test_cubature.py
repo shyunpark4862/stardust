@@ -12,6 +12,7 @@ errors and the result."""
 
 import hashlib
 import math
+import re
 import warnings
 
 import numpy as np
@@ -338,3 +339,45 @@ def test_boxes_match_live_scipy(bid):
             warnings.simplefilter("ignore")
             s = integrate.cubature(bx.func, np.asarray(bx.a), np.asarray(bx.b), rule=rule, **kw)
         assert (r.integral, r.error, r.subdivisions) == (float(s.estimate), float(s.error), s.subdivisions), rule
+
+
+# ---- the size of a region's rules (C117)
+
+
+def test_points_per_region_cap():
+    # a region's nodes are 21^d + 10^d (gk21), 15^d + 7^d (gk15), 2^d + 4d^2 + 4d + 2 (genz-malik)
+    # points of d values: past 2^25 values (256 MiB an array) the call is a ValueError before any
+    # node is made (gk21 in 8 dimensions took the process down; from 15 dimensions the product
+    # overflowed size_t; gk15 in 6 and genz-malik in 22 dimensions passed 2.4 GB)
+    f = lambda X: X[:, 0]  # noqa: E731
+
+    def tail(d):
+        return rf" points per region of {d} values each, more than 2\*\*25 values"
+
+    for rule, d, text in (("gk21", 6, "21**6 + 10**6"), ("gk21", 8, "21**8 + 10**8"), ("gk21", 15, "21**15 + 10**15"),
+                          ("gk21", 25, "21**25 + 10**25"), ("gk15", 6, "15**6 + 7**6"),
+                          ("gk15", 7, "15**7 + 7**7")):  # fmt: skip
+        msg = rf"^cubature\(\): rule='{rule}' in {d} dimensions needs {re.escape(text)}{tail(d)}; use rule='genz-malik'"
+        with pytest.raises(ValueError, match=msg + "$"):
+            I.cubature(f, [0.0] * d, [1.0] * d, rule=rule)
+    for d in (21, 22, 24, 40):
+        msg = rf"^cubature\(\): rule='genz-malik' in {d} dimensions needs {2**d + 4 * d * d + 4 * d + 2}{tail(d)}$"
+        with pytest.raises(ValueError, match=msg):
+            I.cubature(f, [0.0] * d, [1.0] * d, rule="genz-malik")
+    # the largest that run: gk21 and gk15 in 5 dimensions, genz-malik in 20 (2.1e7 values); a small
+    # one here: one region is 21^3 + 10^3 points, called with the Kronrod nodes first
+    r = I.cubature(f, [0.0] * 3, [1.0] * 3)
+    assert r.converged and r.nfev == 2 * 21**3 + 10**3
+
+
+def test_points_split_cap():
+    # the regions that 'points' makes are counted as they grow (each point inside a region splits
+    # it into up to 2^d): past 2^24 points in all, a ValueError
+    f = lambda X: X[:, 0]  # noqa: E731
+    d = 10
+    pts = [[0.03 * k] * d for k in range(1, 30)]
+    msg = r"^cubature\(\): 'points' split the box into more than 11444 regions of 1466 points each"
+    with pytest.raises(ValueError, match=msg + r" \(more than 2\*\*24 points\)$"):
+        I.cubature(f, [0.0] * d, [1.0] * d, rule="genz-malik", points=pts)
+    r = I.cubature(f, [0.0] * d, [1.0] * d, rule="genz-malik", points=[[0.5] * d, [0.25] * d])
+    assert r.converged and r.n_regions == 2 * (2**d - 1) + 1

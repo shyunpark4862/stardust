@@ -32,7 +32,7 @@
 // half-integers: yv(-1/2, 0) = 0, scipy -inf).
 #pragma once
 
-#include "special/sincos.hpp"
+#include "base/sincos.hpp"
 #include "special/boost.hpp"
 
 #include "special/cf.hpp"

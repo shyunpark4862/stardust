@@ -38,15 +38,16 @@ DifferentiateResult
 | `x` | 미분한 점(`args`·`initial_step`·`step_direction`과 브로드캐스트한 뒤) | `derivative` |
 
 - 원소별 결과는 배치 모양이다: `derivative`는 입력의 브로드캐스트 모양이고 입력이 모두 수면 Python 수다(O48). `jacobian`·`hessian`의 결과는 항목마다 따로 멈추므로 df·ddf의 모양을 배치 모양으로 가진다(C36). scipy의 −4(`callback`)는 없다.
-- 결과는 풀리지 않는다(이름으로 읽는다). 공개 생성자 `DifferentiateResult(*, batch=(), **fields)`, 없는 필드의 `AttributeError`(`(the function does not give it)`)는 `IntegrateResult`와 같다(docs/api/integrate.md §1.3).
-- `repr`(API.md §2.3): `DifferentiateResult(df=2.71828, error=7.13385e-12, converged=True, n_iter=2, nfev=11)`, 배치는 `DifferentiateResult(batch shape (3, 3), 7 of 9 converged)`.
+- 결과는 풀리지 않는다(이름으로 읽는다). 공개 생성자 `DifferentiateResult(*, batch=(), **fields)`(넘긴 배열·리스트의 복사, 필드 종류의 검사, 위치 인자의 `DifferentiateResult(): takes 0 positional arguments but 1 was given`; C121), 없는 필드의 `AttributeError`(`(the function does not give it)`)는 `IntegrateResult`와 같다(docs/api/integrate.md §1.3).
+- `repr`(API.md §2.3): `DifferentiateResult(df=2.71828, error=7.13118e-12, converged=True, n_iter=2, nfev=11)`, 배치는 `DifferentiateResult(batch shape (3, 3), 7 of 9 converged)`.
 - `summary()`(C20, C36): 제목 `Differentiation Results`의 상자다. 원소 하나면 머리에 `Converged`·`Status`·`Point`와 `Derivative`·`Error estimate`·`No. Iterations`·`Function Evals`, 배치면 머리에 `Batch shape`·`Converged: j of n`, 표는 원소(항목)마다 한 줄(`[0]`, `[1, 2]`)에 있는 것만의 열 `x df ddf error converged status n_iter nfev`다.
 
 ### §1.4 멈춤, 상한, 경고
 - 모든 호출은 `max_iter`번 안에 끝난다. 상한에 닿은 원소는 마지막 추정과 status −2다.
 - 원소마다의 판정은 scipy의 순서다: error < atol + rtol·|df|이면 0, 아니고 x나 df가 유한하지 않으면 −3(df는 NaN), 아니고 오차 추정이 직전 반복의 10배를 넘으면 −1(반올림이 이기기 시작했다; 그때의 df와 error를 돌려준다). −1은 셋째 반복부터다(오차 추정은 둘째 반복에 처음 생기고, 비교할 직전 오차는 셋째에 생긴다).
 - 경고를 내지 않는다. 같은 입력이면 스레드 수·배치의 크기와 상관없이 원소마다 같은 비트다(원소를 배치에 넣어도 혼자 부른 것과 같다; scipy는 BLAS의 합 때문에 끝자리가 다르다). 원소를 지나가는 패스의 일(진행 중인 원소 수 × 원소마다의 점 수: 첫 반복 `order`점, 다음부터 2점)이 2¹⁵점 이상이면 그 패스를 스레드에 나누고 GIL을 놓는다(docs/design/integrate.md C111; optimize의 배치는 원소마다 점 하나라 같은 기준이다).
-- 도함수가 0인 점에서는 기본 `atol`(가장 작은 정규수)이 사실상 절대 판정을 하지 않으므로 오차가 반올림 수준이어도 status −2가 될 수 있다(scipy와 같다: sin(x₀)의 x₁에 대한 편미분처럼 함수가 그 변수에 기대지 않는 항목). 그런 점에는 `atol`을 준다. x³의 0은 sd에서 둘째 반복에 수렴한다(정확한 가중치와 짝의 합이라 추정이 매번 같다; scipy는 −2: `[scipy와 다름]`, docs/design/integrate.md §3.8).
+- 도함수가 0인 점에서는 기본 `atol`(가장 작은 정규수)이 사실상 절대 판정을 하지 않으므로 오차가 반올림 수준이어도 status −1이나 −2가 될 수 있다(scipy와 같다: 대칭이 아닌 0 도함수, `derivative(sd.sin, π/2)`는 status −1, `n_iter` 6). 그런 점에는 `atol`을 준다. 함수가 그 변수에 기대지 않는 항목(sin(x₀)의 x₁에 대한 편미분)은 차분이 정확히 0이라 둘째 반복에 수렴한다.
+- 간격이 x의 ulp보다 작으면 스텐실의 점이 x로 반올림되어 함숫값이 모두 같아지고, df 0·error 0으로 수렴할 수 있다(scipy와 같다: `derivative(sd.sin, [1e300, 1e17, 1e16])`은 df [0, 0, 0], converged [True, True, True]; 참값 cos x는 0이 아니다). 기본 `initial_step` 0.5는 절대 간격이라 |x| ≳ 2⁵³에서 그렇다. 큰 |x|에는 |x|에 맞춘 `initial_step`을 준다(C120). `jacobian`·`hessian`도 같다. x³의 0은 sd에서 둘째 반복에 수렴한다(정확한 가중치와 짝의 합이라 추정이 매번 같다; scipy는 −2: `[scipy와 다름]`, docs/design/integrate.md §3.8).
 
 ## §2. 도함수 `derivative` (C2)
 ```
@@ -55,7 +56,8 @@ derivative(f, x, /, *, args=(), atol=None, rtol=None, max_iter=10, order=8, init
 - 원소별 도함수 f′(x). 방법(docs/design/integrate.md §3.8): `order`차(짝수로 올림) 차분 공식을 간격을 `step_factor`씩 줄이며 되풀이하고, 이웃한 두 추정의 차가 error다. 중앙 스텐실은 처음에 `order`점, 다음 반복부터 두 점만 새로 부른다. scipy와 같은 점을 같은 순서로 부른다(C5; 모음의 124개 기록 가운데 123개가 점·수·status까지 같다, docs/design/integrate.md §7.8).
 - 가중치는 정확한 값을 올바로 반올림한 것이다(C28). scipy는 Vandermonde 계를 LAPACK으로 풀어 order 8에서 정확한 값과 상대 2.7×10⁻¹⁴(한쪽은 1.1×10⁻¹⁰)까지 다르다. 중앙 스텐실의 합은 마디의 짝마다의 차를 더한다(C38; 상쇄가 적어 더 정확하다). 그래서 df는 scipy와 끝자리가 다를 수 있고(허용오차 안), 판정의 경계에서는 반복 수가 갈릴 수 있다(`[scipy와 다름]`).
 - `x`, `initial_step`, `step_direction`, `args`의 값은 서로 브로드캐스트한다. `atol`(기본: 가장 작은 정규수)·`rtol`(기본 √ε): error < atol + rtol·|df|이면 멈춘다. 둘 다 유한한 0 이상의 수다. `initial_step`(기본 0.5): 처음의 절대 간격이다. 0 이하·NaN인 원소는 점이 NaN이고 첫 반복 뒤 status −3이다(scipy와 같다). x의 척도를 보지 않으므로 함수가 x ± 0.5에서 정의되지 않으면 더 작은 값이나 `step_direction`을 준다(scipy와 같다: log의 x = 10⁻³은 기본값으로 status −3). `step_factor`(기본 2.0): 유한하고 0보다 크고 1이 아니어야 한다(C31; `ValueError`, scipy는 1·inf에 `LinAlgError`). 1보다 작으면 간격이 커진다. `step_direction`: 0 중앙, 음수면 x 왼쪽만, 양수면 오른쪽만(한쪽 스텐실, 마디 1/√c의 거듭제곱). NaN인 원소는 status −3이다(C32).
-- `order`는 1 이상의 int(홀수는 다음 짝수), `max_iter`는 1 이상의 int다.
+- `order`는 1 이상 18 이하의 int(홀수는 다음 짝수)다(C118: `derivative(): 'order' must be at most 18`, `ValueError`; scipy는 상한이 없다, `[scipy와 다름]`). 첫 반복의 안쪽 마디 h/c^(n−1)가 반올림 쪽으로 내려가고 정확한 가중치의 비용이 O(n²)개의 큰 유리수 연산으로 늘기 때문이다. 초등 함수 11개 × 9점에서 Arb와 견주면 18까지의 모든 짝수 차수가 계약(atol + rtol·|df|) 안이고, 20부터는 넘는 점이 있다(20은 log의 10⁴에서 계약의 1.02배, 32부터 sqrt의 10⁴에서 64배; 더 올리면 틀린 값을 수렴으로 알리고(order 160에서 exp′(1) = 0, status 0) 시간이 끝없이 는다). `jacobian`·`hessian`도 같은 상한이다.
+- `max_iter`는 1 이상의 int다(scipy와 같다; optimize의 원소별 넷 `find_root`·`find_minimum`·`bracket_root`·`bracket_minimum`은 0 이상이고 그것도 scipy와 같다, C120).
 - 결과: `df error converged status n_iter nfev x`.
 
 ## §3. 야코비안과 헤시안 (C2)
@@ -68,6 +70,7 @@ hessian(f, x, /, *, atol=None, rtol=None, max_iter=10, order=8, initial_step=0.5
   - 결과: `df error converged status n_iter nfev`(항목마다 (k, m)). scipy처럼 `x`는 없다.
 - `hessian`: 스칼라 f의 헤시안 (m, m). 기울기를 `jacobian`으로 계산하는 함수의 `jacobian`이다(scipy와 같다). 안쪽 `jacobian`은 rtol/100이고 나머지 옵션(atol, `max_iter`, `order`, `initial_step`, `step_factor`)은 같으며 늘 중앙 스텐실이다. `initial_step`의 j번째 값은 바깥과 안쪽 모두 변수 j의 간격이다(C30; scipy는 배열을 주면 에러다, `[scipy와 다름]`). rtol은 0이거나 100ε(2.22×10⁻¹⁴) 이상이어야 한다(C29: `ValueError`; scipy는 경고하고 100ε로 올린다, `[scipy와 다름]`).
   - 결과: `ddf error converged status nfev`. `nfev`는 항목 (i, j)마다 바깥 호출에서 안쪽 항목 i의 변수 j 열들이 부른 점의 수를 그 항목이 멈출 때까지 더한 (m, m) int64 배열이다(scipy의 셈). scipy처럼 `n_iter`는 없다(바깥의 반복 수뿐이라 뜻이 없다).
+  - 메모리(C120): 바깥 `jacobian`의 첫 반복은 열 m·p개(p = `order`를 짝수로 올린 수)에서 기울기를 부르고, 안쪽 `jacobian`은 그 열마다 변수마다 p점을 쌓아 f를 (m, (m·p)²) 한 번으로 부른다. 인자만 8m³p² 바이트다(m = 40, p = 8에서 (40, 102,400)·33 MB, 최대 RSS 149 MB; m = 100이면 512 MB). 변수가 많으면 `order`를 낮추거나 기울기를 따로 구해 `jacobian`을 쓴다.
 - 두 함수 모두 `args`가 없다(scipy와 같다): 상수는 클로저로 넘긴다.
 
 ## §4. scipy 이름 → sd 이름

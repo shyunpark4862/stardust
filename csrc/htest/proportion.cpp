@@ -173,22 +173,26 @@ double binom_two_sided(double k, double n, double p) {
     double pv;
     if (std::fma(p, n, -k) > 0.0) {
         double a = ceil_prod(p, n), b = n + 1.0;  // the first x in [a, n] with small(x); n + 1 for none
-        while (a < b) {
+        while (a < b) {  // (n < 2^53, checked by the caller: mid + 1 and mid - 1 move; the guard is for safety)
             const double mid = std::floor((a + b) / 2.0);
+            const double a0 = a, b0 = b;
             if (small(mid)) b = mid;
             else a = mid + 1.0;
+            if (a == a0 && b == b0) return kNaN;
         }
         pv = Binomial::cdf(k, n, p) + Binomial::ccdf(a - 1.0, n, p);
     } else {
         double a = -1.0, b = floor_prod(p, n);  // the last x in [0, b] with small(x); -1 for none
         while (a < b) {
             const double mid = std::floor((a + b + 1.0) / 2.0);
+            const double a0 = a, b0 = b;
             if (small(mid)) a = mid;
             else b = mid - 1.0;
+            if (a == a0 && b == b0) return kNaN;
         }
         pv = Binomial::cdf(a, n, p) + Binomial::ccdf(k - 1.0, n, p);
     }
-    return std::min(1.0, pv);
+    return pv < 1.0 ? pv : (pv >= 1.0 ? 1.0 : kNaN);  // (NaN kept: a tail past sd.stats' range)
 }
 
 double binom_p(double k, double n, double p, int alt) {
@@ -473,10 +477,31 @@ struct EStat {
     }
 };
 
+// The x2 steps of poisson_means at most (H154): past them a ValueError (the third value 1).
+constexpr std::int64_t kPoissonSteps = 20000000;
+
+struct PoissonOut {
+    double stat, p;
+    bool capped;
+};
+PoissonOut poisson_means_body(double k1, double n1, double k2, double n2, double diff, int alt);
+
+// (statistic, p-value, capped): the body without the GIL when it is long (sqrt(mu2) x2 steps,
+// each a few bisections)
 nb::tuple poisson_means(double k1, double n1, double k2, double n2, double diff, int alt) {
+    const double mu2 = std::max(0.0, (k1 + k2 - diff * n1) / (n1 + n2) * n2);
+    PoissonOut o;
+    {
+        const parallel::Unlocked unlocked(std::sqrt(mu2) * 400.0 >= static_cast<double>(kParallelThreshold));
+        o = poisson_means_body(k1, n1, k2, n2, diff, alt);
+    }
+    return nb::make_tuple(o.stat, o.p, o.capped ? 1.0 : 0.0);
+}
+
+PoissonOut poisson_means_body(double k1, double n1, double k2, double n2, double diff, int alt) {
     const DD num_ = D(k1 + k2) - dd::two_prod(diff, n1);
     const DD lam2 = num_ / dd::two_sum(n1, n2);
-    if (!(lam2.hi > 0.0)) return nb::make_tuple(0.0, 1.0);
+    if (!(lam2.hi > 0.0)) return {0.0, 1.0, false};
     const EStat E{n1, n2, diff};
     double sobs;
     bool nanobs;
@@ -598,12 +623,15 @@ nb::tuple poisson_means(double k1, double n1, double k2, double n2, double diff,
     if (alt == kTwoSided && std::fabs(tobs.hi) <= 0x1p-90 * sobs) {
         // |T| >= 0 holds everywhere but at (0, 0), which counts only for diff > 0 (T = -inf)
         const double p00 = diff > 0.0 ? 0.0 : num::exp_dd(-(mu1 + mu2));
-        return nb::make_tuple(stat, 1.0 - p00);
+        return {stat, 1.0 - p00, false};
     }
     const double mode = std::floor(mu2.hi);
     double sum = 0.0;
     std::int64_t steps = 0;
-    const std::int64_t cap = 20000000;
+    const std::int64_t cap = kPoissonSteps;
+    // the sums reach about 9.2 sqrt(mu2) on each side of the mode (a tail of 2^-60): far past
+    // the cap, no need to start
+    if (16.0 * std::sqrt(mu2.hi) > 1.5 * static_cast<double>(cap)) return {stat, kNaN, true};
     double gu = to_double(mu1), gl = gu;
     auto term = [&](double x2, double pm, double& gup, double& glo) {
         double t = 0.0;
@@ -627,7 +655,7 @@ nb::tuple poisson_means(double k1, double n1, double k2, double n2, double diff,
     for (double x2 = mode;; x2 += 1.0) {
         const double pm = pmf2(x2);
         sum += term(x2, pm, gup, glo);
-        if (++steps > cap) return nb::make_tuple(stat, kNaN);
+        if (++steps > cap) return {stat, kNaN, true};
         if (x2 + 1.0 > mu2.hi) {  // the mass above x2: at most pmf(x2 + 1) / (1 - mu2 / (x2 + 2))
             const double rest = pm * (mu2.hi / (x2 + 1.0)) / (1.0 - mu2.hi / (x2 + 2.0));
             if (rest <= 0x1p-60 * sum || rest < 1e-320) break;
@@ -637,13 +665,13 @@ nb::tuple poisson_means(double k1, double n1, double k2, double n2, double diff,
     for (double x2 = mode - 1.0; x2 >= 0.0; x2 -= 1.0) {
         const double pm = pmf2(x2);
         sum += term(x2, pm, gup, glo);
-        if (++steps > cap) return nb::make_tuple(stat, kNaN);
+        if (++steps > cap) return {stat, kNaN, true};
         if (x2 < mu2.hi) {  // the mass below x2: at most pmf(x2 - 1) / (1 - (x2 - 1) / mu2)
             const double rest = x2 >= 1.0 ? pm * (x2 / mu2.hi) / (1.0 - (x2 - 1.0) / mu2.hi) : 0.0;
             if (rest <= 0x1p-60 * sum || rest < 1e-320) break;
         }
     }
-    return nb::make_tuple(stat, std::min(1.0, sum));
+    return {stat, std::min(1.0, sum), false};
 }
 
 // ---- statsmodels' proportions_ztest and proportions_chisquare -----------------------------------

@@ -215,6 +215,7 @@ from_dlpack(x, /, *, device=None, copy=None)
     - generator와 그 밖의 iterable은 `TypeError`다. 데이터프레임도 같다.
   - 버퍼 프로토콜 객체: 예: numpy 배열, `bytes`, `memoryview` (§3.3)
   - Python 스칼라는 0차원이 되므로 `ValueError`다 (§1.2).
+  - `sd.sparse`의 희소 배열은 `TypeError`이고 `np.asarray(A)`와 같은 문장으로 `toarray()`를 짚는다: `asarray(): a sparse array is not converted to a dense array implicitly; use A.toarray() (csr_array)` (sparse.md §2).
 - **중첩 시퀀스의 dtype 추론**
   - 원소 중 가장 높은 dtype을 따른다 (§1.4). 예: `[True, 1]`은 int64, `[1, 2.5]`는 float64다.
   - 들쭉날쭉한(ragged) 시퀀스는 `ValueError`다.
@@ -333,6 +334,7 @@ diff(x, /, *, axis=-1, n=1, prepend=None, append=None)
 ### §4.2 `concat`, `stack`
 - `arrays`는 `sd.ndarray`의 `list` 또는 `tuple`만 받는다.
   - 다른 객체가 섞이면 `TypeError`다. 필요하면 먼저 `asarray`로 변환한다.
+  - 희소 배열이 섞이면 메시지가 희소 짝을 짚는다: `concat(): 'arrays' must hold sd.ndarray only, not csr_array; for sparse arrays use sd.sparse.hstack or sd.sparse.vstack`(`stack`은 `sd.sparse.vstack`).
   - 빈 목록은 `ValueError`다.
 - 결과 dtype은 승격 규칙을 따른다 (§1.4).
 - `concat`: `axis` 밖의 shape이 모두 같아야 한다. `axis=None`이면 각 배열을 평탄화해서 잇는다.

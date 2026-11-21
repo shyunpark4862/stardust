@@ -645,3 +645,28 @@ def test_results_summary_and_repr():
     assert "permutation" in m.summary() and "Resamples:" in m.summary()
     gof = h.goodness_of_fit(sd.stats.Normal, g.normal(size=20), n_mc_samples=19, rng=rng(1))
     assert "Normal" in gof.summary() and "statistic=" in repr(gof)
+
+
+def test_goodness_of_fit_summary_and_repr():
+    """H158: one 'Statistic:' line (the statistic's kind is 'Statistic type:'), and fit_result
+    always in the repr: the fitted distribution as <Name>, None where the fit failed."""
+    x = [0.42, -1.10, 0.85, 2.31, -0.27, 0.66, 1.94, -0.58, 0.12, 3.05, 0.77, -0.91]
+    r = h.goodness_of_fit(sd.stats.Normal, x, n_mc_samples=10, rng=sd.random.default_rng(8))
+    text = r.summary()
+    assert text.count("Statistic:") == 1 and "Statistic type:                     ad" in text
+    assert repr(r).startswith("GoodnessOfFitResult(fit_result=<Normal>, statistic=0.262854, pvalue=")
+    bad = h.goodness_of_fit(sd.stats.Exponential, [-1.0, 2, 3], n_mc_samples=10, rng=sd.random.default_rng(1))
+    assert repr(bad).startswith("GoodnessOfFitResult(fit_result=None, statistic=nan, pvalue=nan")
+
+
+def test_data_of_numbers_is_a_type_error():
+    """One sample given bare (its numbers, not (x,)): a TypeError that says how to give it."""
+    for f in (h.bootstrap, h.permutation_test):
+        name = f.__name__
+        with pytest.raises(
+            TypeError,
+            match=rf"{name}\(\): 'data' must be a sequence of samples \(one sample is given as \(x,\)\), not a "
+            r"sequence of numbers",
+        ):
+            f([1.0, 2, 3, 4], smean, rng=rng(0))
+    assert h.bootstrap(([1.0, 2, 3, 4],), smean, rng=rng(0), n_resamples=50).standard_error > 0

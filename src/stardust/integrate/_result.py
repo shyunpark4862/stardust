@@ -61,6 +61,7 @@ class IntegrateResult(_FieldResult):
 
     __slots__ = ("_unpack",)
     _FIELDS = FIELDS
+    _INT = _FieldResult._INT | {"max_level", "n_intervals", "cycle_status", "n_cycles", "subdivisions", "n_regions"}
 
     def __init__(self, *, batch=(), **fields):
         self._set(batch, fields, True)  # the caller's arrays are copied once

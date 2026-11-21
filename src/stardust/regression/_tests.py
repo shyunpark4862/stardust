@@ -16,6 +16,7 @@ statsmodels returns one.
 """
 
 import math
+import operator
 
 from .. import _calls
 from .. import _core as _sd
@@ -32,6 +33,7 @@ from ._linear import (
     _div,
     _expand,
     _fresh,
+    _nobs_info,
     _ro,
     _type_name,
 )
@@ -152,16 +154,15 @@ def _t_summary(r, alpha):
         right.insert(0, ("Batch shape:", _S.shape_text(batch)))
     if "nobs" in r._info:
         right.append(("No. Observations:", _S.sizes(r._info["nobs"])))
+    if not left:  # no Df the lanes share: the descriptors in both columns, as test_box's
+        left, right = _S._split(right)
     return _S.render(r._TITLE, header=(left, right), tables=[table])
 
 
 def _model_info(r, **extra):
     """summary()'s description of the model a test is on (G191): its number of observations
-    (one regression) and extra keys."""
-    d = dict(extra)
-    if not r._batch:
-        d["nobs"] = r.nobs
-    return d
+    (a batch's when its lanes share it, G196) and extra keys."""
+    return {**extra, **_nobs_info(r)}
 
 
 # ---- the hypothesis
@@ -913,6 +914,23 @@ def _anova_models(func, models, test):
     return AnovaResult("models", vals, info)
 
 
+def _is_position(c):
+    """An int or any integer with __index__ (numpy's scalars and 0-d arrays), not a bool."""
+    if isinstance(c, bool):
+        return False
+    try:
+        operator.index(c)
+    except TypeError:
+        return False
+    return True
+
+
+def _one_column(t):
+    """Whether a term t is one column rather than a list of them: a name, a position, or a
+    scalar of the wrong type (a float, a bool, bytes), which col() then rejects."""
+    return isinstance(t, (str, bytes, bool)) or not hasattr(t, "__iter__") or _is_position(t)
+
+
 def _parse_terms(func, r, terms):
     """[(name, [column positions in X, 0-based])] covering every column of X once."""
     names = r._param_names[1:] if r._intercept else list(r._param_names)
@@ -929,9 +947,9 @@ def _parse_terms(func, r, terms):
             if c not in names:
                 raise ValueError(f"{func}(): 'terms' names a column {c!r} that 'X' does not have")
             return names.index(c)
-        if isinstance(c, bool) or not hasattr(c, "__index__"):
+        if not _is_position(c):
             raise TypeError(f"{func}(): a term's columns must be positions (int) or names (str), not {_type_name(c)}")
-        j = c.__index__()
+        j = operator.index(c)
         if not -p <= j < p:
             raise ValueError(f"{func}(): 'terms' has the column {j}, out of range for {p} columns")
         return j % p
@@ -939,7 +957,9 @@ def _parse_terms(func, r, terms):
     out = []
     seen = set()
     for t in terms:
-        cols = [col(t)] if (isinstance(t, (str, int)) and not isinstance(t, bool)) else [col(c) for c in t]
+        # a column alone: a name, or a position (int, or any integer with __index__: numpy's);
+        # a scalar that is neither (a float, a bool, bytes) is a column of the wrong type
+        cols = [col(t)] if _one_column(t) else [col(c) for c in t]
         if not cols:
             raise ValueError(f"{func}(): a term must have at least one column")
         for c in cols:
@@ -1014,6 +1034,10 @@ def _anova_terms(func, r, typ, terms, test):
     ss_out = [float(out2(v)) for v in rows_ss] + [float(out2(_ssr_s(r)))]
     df_out = [float(v) for v in rows_df] + [float(df_res)]
     mean = [_div(s, d) if d else math.nan for s, d in zip(ss_out, df_out)]
+    if glm:
+        # the 'Residual' row's mean square is the scale, the statistics' denominator (G196): a
+        # GLM's deviance / df_resid is not it (a Pearson scale, or a fixed 1)
+        mean[-1] = float(r.scale)
     vals = {
         "terms": [nm for nm, _ in parsed] + ["Residual"],
         "df": _sd.asarray(df_out),

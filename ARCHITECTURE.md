@@ -4,13 +4,16 @@
 
 ## 1. 층 구조
 
-영역은 여덟이다: array, linalg, frame, special, stats, regression, random, optimize(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다.
+영역은 열둘이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다.
 
 ```
  Python:  sd   sd.linalg   sd.frame   sd.special   sd.stats   sd.regression   sd.random   sd.optimize
+          sd.htest   sd.sparse   sd.integrate   sd.differentiate
             │       │          │           │            │            │               │            │
  bind/ ─────┴───────┴──────────┴───────────┴────────────┴────────────┴───────────────┴────────────┴──  _core 확장 모듈 하나
                                                         │
+                     htest/      ──▶ stats/, special/, random/, array/, parallel/
+                     sparse/     ──▶ linalg/, array/, base/, parallel/, accelerate/(Accelerate의 희소 LU와 BLAS)
                      regression/ ──▶ linalg/, special/, random/
                      optimize/   ──▶ linalg/, differentiate/(차분의 간격), elementwise/(원소별 반복 고리)
                      differentiate/ ──▶ elementwise/(derivative의 원소별 고리)  (steps는 표준 라이브러리만 쓴다)
@@ -23,10 +26,11 @@
 ```
 
 - **아래로만 의존한다.** 위 층은 아래 층을 쓰고, 아래 층은 위 층을 모른다.
-  - `array/`는 다른 영역을 include하지 않는다. 예외는 의존이 없는 `special/sincos.hpp`(같은 x의 sin과 cos를 한 번에, docs/design/array.md §1.3) 하나다.
+  - `array/`는 다른 영역을 include하지 않는다. 같은 x의 sin과 cos를 한 번에 구하는 `base/sincos.hpp`(docs/design/array.md §1.3)는 의존이 없어 바닥 층에 두고 array와 special이 함께 쓴다.
   - `linalg/`는 `array/`의 `NDArray`를 직접 받는다. buffer protocol을 거치지 않는다 (DESIGN §3.1). LAPACK 래퍼(`linalg/lapack.hpp`, `linalg/ops/common.hpp`)는 regression과 optimize도 쓴다.
   - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.{hpp,cpp}` 한 곳에만 둔다 (DESIGN §4.3). `array/` 헤더를 include하는 frame 파일은 `interop.cpp` 하나다. 다른 frame 파일은 `interop.hpp`(Column과 nanobind만 쓰는 선언)를 통해 부른다 (docs/design/frame.md §5.4).
   - `stats/`는 special의 커널(불완전 감마·베타, 오차함수 등)과 random의 생성기를 쓴다. `regression/`은 linalg의 LAPACK 래퍼, special의 double-double·오차함수·감마·로지스틱 함수, random의 생성기를 쓴다. Python 쪽에서 `regression.nls`는 optimize의 최소제곱(`csrc/optimize/lsq.cpp`)을 쓴다.
+  - Python 층에서 `stardust.integrate`와 `stardust.differentiate`는 인자 검사 도우미(`_callable`, `_check_int`, `_real` 등)를 `stardust.optimize._common`에서, 원소별 무리의 입력(`_inputs`, `_args`, `_shaped`)을 `stardust.optimize._elementwise`에서 가져온다. C++의 반복 고리는 바닥 폴더 `csrc/elementwise/`에 있어 optimize를 거치지 않는다(docs/design/integrate.md C16, §6.3).
   - Python 경계의 공용 도우미 `bind/pyutil.hpp`(배열 받기와 만들기)와 `bind/errors.hpp`(에러 메시지에 공개 함수 이름 붙이기)는 모든 영역의 `ops/`가 쓴다. 영역마다의 바인딩 파일(`bind/<영역>_bind.cpp`)은 맨 위 층이다.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다.
   - 새 영역은 `docs/design/<영역>.md`, `docs/api/<영역>.md`, `tests/<영역>/`, 골든 케이스 `tests/golden/cases_<영역>.py`, 속도 사례 `bench/speed/cases/<영역>.py`를 함께 갖고, `bench/areas.py`의 목록에 들어간다. 참값이 있으면 `tests/<영역>/ref/`, `tests/<영역>/refdata.py`, `tools/<영역>_ref.py`와 정확도 스윕을 더한다.
@@ -49,10 +53,15 @@ stardust/
     stats/                      _distribution(공통 기반), _continuous, _discrete, _multivariate, _matrix, _descriptive
     regression/                 _linear, _glm, _penalized, _robust, _quantile, _nls
     optimize/                   _scalar, _elementwise, _minimize, _lsq, _linear, _root, _diff, _result, _common
+    htest/                      _common, _parametric, _rank, _correlation, _contingency, _proportion, _gof, _multicomp, _resampling, _result
+    sparse/                     _base, _compressed, _coo, _dok, _construct, _index, _ops, _reduce, _direct, _iterative, _eigen, _matfuncs,
+                                _interface, _interop, _result, _common
+    integrate/                  _quadpack, _quad_vec, _cubature, _tanhsinh, _samples, _rules, _gauss, _result
+    differentiate/              _derivative, _weights, _differences, _result
 
   csrc/
     base/         buffer(참조 카운트 메모리 블록), dtype(DType enum), pairwise(pairwise 합의 정의),
-                  saturate(float64 → int64 명시적 변환), int_sum(int64의 정확한 합)
+                  saturate(float64 → int64 명시적 변환), int_sum(int64의 정확한 합), sincos(같은 x의 sin·cos)
     parallel/     pool(스레드풀 하나, GIL 해제, FirstRow, Unlocked)
     accelerate/   blas(dot, gemv, gemm), vforce(연산과 무관한 vForce 래퍼)
     array/        ndarray  iter  convert  parallel_limits
@@ -64,7 +73,7 @@ stardust/
     frame/        column bitmap convert parallel interop
                   ops/      cast elementwise groupby hash join reduce selection sort radix parse pairwise pow5_table
                   io/       csv
-    special/      common dd cf halley prefix reduce sincos gamma_core cplx boost cost cost_table
+    special/      common dd cf halley prefix reduce gamma_core cplx boost cost cost_table
                   ops/      logistic erf gamma loggamma zeta incgamma incbeta distr noncentral expint ellip
                             bessel bessel01 airy hyper lambertw wofz testing
                   kernels/  simd chunked
@@ -78,6 +87,9 @@ stardust/
                   newton_cg trust root hybrd linear
     differentiate/ steps(고정 간격 차분의 간격: optimize가 씀), derivative(derivative·jacobian·hessian; docs/design/integrate.md §3.8)
     integrate/    samples(표본 규칙과 fixed_quad의 합), gauss(Gauss–Legendre의 점과 가중치), gauss_table(생성한 표; docs/design/integrate.md §3.7), quadpack(QUADPACK의 QAGS·QAGI·QAGP 템플릿과 quad·nquad의 갈래·겹침; §3.1, §3.2), tanhsinh(tanhsinh·nsum: scipy의 표·합·오차 추정과 nsum의 갈래; §3.5, §3.6), adaptive(quad_vec·cubature: scipy의 Python 알고리즘, 힙, 규칙, 치환; §3.3, §3.4), numpy_ops(numpy의 pairwise 합과 linalg.norm)
+    htest/        parametric rank correlation contingency proportion gof gof2 multicomp resampling와 헤더(정확한 분포, 점근 분포, MLE, 레인)
+    sparse/       format canonical convert construct index binop arith spmv spgemm reduce dok triangular direct iterative
+                  krylov arpack svds parallel
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
                   nary_bind.hpp(원소별 함수의 공통 바인딩), pyutil, errors
@@ -104,7 +116,7 @@ stardust/
 
   tools/
     test.py  golden.py  coverage.py    테스트, 골든, 커버리지 (tests/README.md)
-    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize)
+    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize, htest, sparse, integrate, differentiate)
     arbref.py  regref.py  mvref.py  mvcdfref.py   생성기가 함께 쓰는 Arb 도우미와 식
     gen_*.py                           C++ 계수 표(csrc/*/coeffs, frame의 pow5_table)와 다른 라이브러리의 기록(R, scipy, Fortran)
     check.py  format.py  check_refs.py  procrun.py  vendor_boost_math.py
@@ -119,7 +131,7 @@ stardust/
 - **"얇은 Python, 두꺼운 C++"**: 계산은 C++에 있고, Python은 인자 정리, 결과 객체, 메시지를 맡는다.
   - 예외: `Series`, `DataFrame`, 분포 객체(`sd.stats`), 회귀·최적화의 결과 객체는 Python 클래스다.
 - **확장 모듈은 `_core` 하나다** (DESIGN §3.2).
-  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`를 만든다(`bind/module.cpp`가 차례로 부른다).
+  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다).
   - nanobind 타입 테이블이 하나라서, C++ 어디서든 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 배열을 직접 받는다.
 - **linalg는 배열을 C++에서 직접 주고받는다.**
   - 입력은 `const NDArray&`이고, 결과는 linalg가 정한 strides로 `new_array_strided(dtype, shape, strides, nbytes)`가 `NDArray`를 직접 만든다. 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C-order, 길이 0인 축도 그대로 곱함)은 linalg의 정책이라 linalg에 두고, 메모리와 플래그만 배열이 맡는다.
@@ -154,7 +166,7 @@ stardust/
 - `nanobind_add_module(_core NB_STATIC NOMINSIZE ...)` 하나.
 - 컴파일 플래그는 모듈 전체에 하나다: `-mcpu=native -ffp-contract=off -fno-builtin-sin -fno-builtin-cos -Wall -Wextra -Wpedantic`
   - `-ffp-contract=off`: 컴파일러가 곱셈과 덧셈을 FMA로 스스로 합치지 않는다. FMA는 재서 이득이 확인된 곳에만 명시적으로(`std::fma`, NEON `vfmaq`) 쓴다 (DESIGN.md §1.6).
-  - `-fno-builtin-sin`, `-fno-builtin-cos`: 같은 x의 `sin`과 `cos`를 컴파일러가 `sincos` 하나로 바꾸지 않는다. 함께 구하는 곳은 코드가 `special/sincos.hpp`로 명시한다. 같은 이유다.
+  - `-fno-builtin-sin`, `-fno-builtin-cos`: 같은 x의 `sin`과 `cos`를 컴파일러가 `sincos` 하나로 바꾸지 않는다. 함께 구하는 곳은 코드가 `base/sincos.hpp`로 명시한다. 같은 이유다.
 - editable 설치(`pip install --no-build-isolation -e ".[test]"`)는 `import stardust`에서 바뀐 파일만 다시 컴파일한다. 빌드 폴더는 `build/<휠 태그>`다.
 
 ## 6. 측정·시험 체계

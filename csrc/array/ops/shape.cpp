@@ -251,13 +251,18 @@ nb::tuple broadcast_arrays(nb::args arrays) {
 
 // --------------------------------------------------------------- joining
 
-std::vector<nb::handle> array_list(nb::handle arrays) {
+// `sparse`: what to use for sparse arrays, added when an element is one (concat and stack are
+// not in sparse_hint's table, whose fallback "use concat(A.toarray())" would not name them).
+std::vector<nb::handle> array_list(nb::handle arrays, const char* sparse) {
     if (!PyList_Check(arrays.ptr()) && !PyTuple_Check(arrays.ptr()))
         throw nb::type_error(("'arrays' must be a list or tuple of sd.ndarray, not " + py_type_name(arrays)).c_str());
     std::vector<nb::handle> out;
     for (nb::handle h : arrays) {
-        if (!is_ndarray(h))
-            throw nb::type_error(("'arrays' must hold sd.ndarray only, not " + py_type_name(h)).c_str());
+        if (!is_ndarray(h)) {
+            std::string msg = "'arrays' must hold sd.ndarray only, not " + py_type_name(h);
+            if (is_sparse_array(h)) msg += std::string("; for sparse arrays use ") + sparse;
+            throw nb::type_error(msg.c_str());
+        }
         out.push_back(h);
     }
     if (out.empty()) throw nb::value_error("need at least one array");
@@ -280,7 +285,7 @@ NDArray slab(const NDArray& out, int axis, std::int64_t offset, std::int64_t n) 
 }
 
 nb::object concat(nb::handle arrays_obj, nb::handle axis_obj) {
-    const std::vector<nb::handle> arrays = array_list(arrays_obj);
+    const std::vector<nb::handle> arrays = array_list(arrays_obj, "sd.sparse.hstack or sd.sparse.vstack");
     const DType dtype = promoted(arrays);
 
     if (axis_obj.is_none()) {
@@ -330,7 +335,7 @@ nb::object concat(nb::handle arrays_obj, nb::handle axis_obj) {
 }
 
 nb::object stack(nb::handle arrays_obj, nb::handle axis_obj) {
-    const std::vector<nb::handle> arrays = array_list(arrays_obj);
+    const std::vector<nb::handle> arrays = array_list(arrays_obj, "sd.sparse.vstack");
     const NDArray& first = as_ndarray(arrays[0]);
     for (nb::handle h : arrays) {
         const NDArray& a = as_ndarray(h);

@@ -255,3 +255,48 @@ def test_array_functions_name_the_sparse_counterpart(call, msg):
     assert str(e.value) == msg
     with pytest.raises(TypeError, match=r"^sum\(\): 'x' must be an sd.ndarray, not list$"):
         sd.sum([1.0])
+
+
+# ---- numpy operands, the results of the user's function, 3-D operands ----
+
+
+def test_numpy_arrays_are_not_operands():
+    """numpy defers (__array_ufunc__ = None, SPR-4), and Python's TypeError follows (not an
+    object array of operators)."""
+    L = S.aslinearoperator(sd.eye(3))
+    x = np.ones(3)
+    cases = [
+        (lambda: x * L, r"^unsupported operand type\(s\) for \*: 'numpy.ndarray' and 'LinearOperator'$"),
+        (lambda: L * x, r"^unsupported operand type\(s\) for \*: 'LinearOperator' and 'numpy.ndarray'$"),
+        (lambda: L @ x, r"^unsupported operand type\(s\) for @: 'LinearOperator' and 'numpy.ndarray'$"),
+        (lambda: x @ L, r"^unsupported operand type\(s\) for @: 'numpy.ndarray' and 'LinearOperator'$"),
+        (lambda: L + np.ones((3, 3)), r"^unsupported operand type\(s\) for \+: 'LinearOperator' and 'numpy.ndarray'$"),
+        (lambda: np.ones((3, 3)) - L, r"^unsupported operand type\(s\) for -: 'numpy.ndarray' and 'LinearOperator'$"),
+    ]
+    for f, msg in cases:
+        with pytest.raises(TypeError, match=msg):
+            f()
+    assert npy((np.float64(2.0) * L) @ sd.ones(3)).tolist() == [2.0, 2.0, 2.0]  # numpy scalars still scale
+    assert npy((L * np.int64(3)) @ sd.ones(3)).tolist() == [3.0, 3.0, 3.0]
+    with pytest.raises(TypeError, match=r"^unsupported operand type\(s\) for \+: 'LinearOperator' and 'int'$"):
+        L + 1
+
+
+def test_a_function_result_that_is_not_an_array():
+    """matvec's conversion of the user's result names the method and says what it must return
+    (SPR-12; not asarray's 'obj')."""
+    L = S.LinearOperator((2, 3), lambda v: None, dtype=sd.float64)
+    with pytest.raises(TypeError, match=r"^matvec\(\): the operator's function must return an sd.ndarray or a "
+                                        r"sequence of numbers, not NoneType$"):  # fmt: skip
+        L @ sd.ones(3)
+    L = S.LinearOperator((2, 3), lambda v: v[:2], rmatvec=lambda v: "ab", dtype=sd.float64)
+    with pytest.raises(TypeError, match=r"^rmatvec\(\): the operator's function must return .* not str$"):
+        L.rmatvec(sd.ones(2))
+
+
+def test_operands_of_three_dimensions():
+    """L @ X and X @ L of a 3-D X: an operator's message, no function name (R225)."""
+    L = S.LinearOperator((5, 5), lambda v: v)
+    for f in (lambda: L @ sd.ones((5, 5, 5)), lambda: sd.ones((5, 5, 5)) @ L):
+        with pytest.raises(ValueError, match=r"^the operand must have 1 or 2 dimensions, got 3$"):
+            f()

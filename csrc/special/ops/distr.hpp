@@ -27,6 +27,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 
 namespace sd::special {
 
@@ -238,6 +239,21 @@ inline bool t_quantile(double df, double q2, double& out) {
         }
     }
     return false;
+}
+
+// (n / d) (dfd / dfn) for fdtri's x = (dfd/dfn) w / (1 - w) and (dfd/dfn) (1 - v) / v, with
+// n, d >= 0 not both 0. Where dfd / dfn is a normal double this is the plain product (its bits
+// are kept); past the normal doubles the quotient lost its bits or was 0 or inf, and an inf
+// ratio n / d times it was NaN (fdtri(2, 5e-324, 0.1)): there the four mantissas are combined
+// and the exponents added, one ldexp at the end.
+inline double scaled_ratio(double n, double d, double dfd, double dfn) {
+    const double q = dfd / dfn;
+    if (q >= std::numeric_limits<double>::min() && q <= std::numeric_limits<double>::max()) return (n / d) * q;
+    if (n == 0.0) return 0.0;
+    if (d == 0.0) return kInf;
+    int en, ed, eu, el;
+    const double mn = std::frexp(n, &en), md = std::frexp(d, &ed), mu = std::frexp(dfd, &eu), ml = std::frexp(dfn, &el);
+    return std::ldexp((mn * mu) / (md * ml), en - ed + eu - el);
 }
 
 }  // namespace distr_detail
@@ -466,7 +482,7 @@ struct Fdtri : Real {
             if (a == 0.0) return 0.0;
             if (p > 0.5) return kInf;
             const double v = Betainccinv::f(dfd, a, 2.0 * p);
-            return ((1.0 - v) / v) * (dfd / dfn);
+            return distr_detail::scaled_ratio(1.0 - v, v, dfd, dfn);
         }
         // One shape far beyond the other (the incomplete beta's gamma limit, ibeta_detail::
         // limit_shapes): w = z / b with P(a, z) = p, or v = z / a with Q(b, z) = p, and x =
@@ -492,7 +508,7 @@ struct Fdtri : Real {
                 if (!(l.hi / a > -0x1p1000)) return 0.0;
                 return distr_detail::exp_dd(l / a + dd::log(dfd) - dd::log(dfn));
             }
-            return (w / (1.0 - w)) * (dfd / dfn);
+            return distr_detail::scaled_ratio(w, 1.0 - w, dfd, dfn);
         }
         const double v = Betainccinv::f(b, a, p);  // 1 - I_v(b, a) = p, i.e. I_w(a, b) = p
         // 1 - p = v^b / (b B) (1 + O((a + 1) v)), 1 - p exact here: x = (dfd/dfn) / v
@@ -501,7 +517,7 @@ struct Fdtri : Real {
             if (!(l.hi / b > -0x1p1000)) return kInf;  // (as above: fdtri(1, 1e-310, 0.5))
             return distr_detail::exp_dd(dd::log(dfd) - dd::log(dfn) - l / b);
         }
-        return ((1.0 - v) / v) * (dfd / dfn);
+        return distr_detail::scaled_ratio(1.0 - v, v, dfd, dfn);
     }
 };
 
@@ -624,6 +640,10 @@ struct Nbdtrc : Real {
 // ------------------------------------------------------------------ ndtri_exp
 
 // ndtri_exp(y) = ndtri(exp(y)), for y <= 0:
+//   |p - 1/2| <= 1/4: q = expm1(y + log 2) / 2 with log 2 as hi + lo (y + hi exact near
+//                  y = -log 2), then ndtri's central rational q R(q^2): exp(y) - 1/2 cancelled
+//                  every bit of q there (ndtri_exp(-0.6931471805599453) was 0 for 2.9e-17).
+//                  Past |q| = 0.3 the paths below were the more accurate (measured with Arb).
 //   y > log(1/2):  -ndtri(-expm1(y))  (1 - p from expm1, without cancellation)
 //   y > -700:      ndtri(exp(y))      (exp(y) normal; x is insensitive to p's rounding there)
 //   below:         Newton on log_ndtr(x) = y from the asymptote
@@ -639,6 +659,11 @@ struct NdtriExp : Real {
         if (y == 0.0) return kInf;
         if (std::isinf(y)) return -kInf;
         constexpr double kLogHalf = -0.69314718055994530942;
+        constexpr double kLn2Hi = 0x1.62e42fefa39efp-1, kLn2Lo = 0x1.abc9e3b39803fp-56;
+        if (y > -1.39 && y < -0.28) {
+            const double q = 0.5 * std::expm1((y + kLn2Hi) + kLn2Lo);
+            if (std::fabs(q) <= 0.25) return q * erf_detail::ndtri_parts(q, 0.0).ratio;
+        }
         if (y > kLogHalf) return -one<Ndtri>(-std::expm1(y));
         if (y > -700.0) return one<Ndtri>(std::exp(y));
         constexpr double kLog2Pi = 1.83787706640934548356;

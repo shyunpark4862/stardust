@@ -536,3 +536,14 @@ def test_messages():
         h.chi2_contingency(t, dof=1)
     with pytest.raises(TypeError, match=r"chi2_contingency\(\): 'lambda_' must be None, a real number or one of"):
         h.chi2_contingency(t, lambda_=[1])
+
+
+def test_cochrans_q_value_message():
+    """A value that is not 0 or 1 (negative, not an integer, above 1, inf) has the one message,
+    before the counts' check; NaN keeps the counts' message (no nan_policy here)."""
+    msg = r"cochrans_q\(\): 'x' must hold 0 and 1 values \(the successes\)"
+    for x in ([[1, 2], [0, 1]], [[1, 0.5], [0, 1]], [[1, -1], [0, 1]], [[1, math.inf], [0, 1]]):
+        with pytest.raises(ValueError, match=msg):
+            h.cochrans_q(x)
+    with pytest.raises(ValueError, match=r"cochrans_q\(\): 'x' must hold non-negative integer counts"):
+        h.cochrans_q([[1, math.nan], [0, 1]])

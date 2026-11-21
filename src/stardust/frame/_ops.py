@@ -59,6 +59,22 @@ def apply(op, a, b, scalar_side):
 
 
 SYMBOLS = {"eq": "==", "ne": "!="}
+# The symbols of Python's own TypeError for an operand no side takes.
+OPERATOR_SYMBOLS = {
+    "add": "+",
+    "sub": "-",
+    "mul": "*",
+    "truediv": "/",
+    "floordiv": "//",
+    "mod": "%",
+    "pow": "** or pow()",
+    "and": "&",
+    "or": "|",
+    "xor": "^",
+    "lshift": "<<",
+    "rshift": ">>",
+}
+ORDER_SYMBOLS = {"lt": "<", "le": "<=", "gt": ">", "ge": ">="}
 
 
 def not_supported(op, a, b):
@@ -66,6 +82,23 @@ def not_supported(op, a, b):
     array, None, ...): a TypeError, as < gives, not Python's fallback to
     identity (DESIGN.md §10.1 #1, as in the array area)."""
     return TypeError(f"'{SYMBOLS[op]}' not supported between instances of {type_name(a)!r} and {type_name(b)!r}")
+
+
+def is_rejected_numpy_scalar(value):
+    """A numpy scalar the operators do not take (complex, datetime64, ...)."""
+    np = sys.modules.get("numpy")
+    return np is not None and isinstance(value, np.generic) and not is_operand_scalar(value)
+
+
+def python_error(op, a, b):
+    """Python's TypeError for `a op b` when neither side takes the other: what `s + 1j` gives.
+    A numpy scalar would otherwise answer through its ufunc ("operand 'Series' does not support
+    ufuncs"), since Series and DataFrame set __array_ufunc__ = None."""
+    if op in ORDER_SYMBOLS:
+        return TypeError(
+            f"'{ORDER_SYMBOLS[op]}' not supported between instances of {type_name(a)!r} and {type_name(b)!r}"
+        )
+    return TypeError(f"unsupported operand type(s) for {OPERATOR_SYMBOLS[op]}: {type_name(a)!r} and {type_name(b)!r}")
 
 
 def make_binary(op, reflected, defer):
@@ -78,10 +111,17 @@ def make_binary(op, reflected, defer):
             if result is NotImplemented and not isinstance(other, defer()):
                 raise not_supported(op, self, other)
             return result
-    else:
+    elif reflected:
 
         def method(self, other):
             return self._binary(other, op, reflected)
+    else:
+
+        def method(self, other):
+            result = self._binary(other, op, reflected)
+            if result is NotImplemented and is_rejected_numpy_scalar(other):
+                raise python_error(op, self, other)
+            return result
 
     return method
 
