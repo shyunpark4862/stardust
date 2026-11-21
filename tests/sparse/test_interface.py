@@ -195,10 +195,16 @@ def test_errors():
         (lambda A: sd.linalg.det(A),
          "det(): 'x' must be an sd.ndarray, not csr_array; "
          "a sparse array has no det: use det(A.toarray())"),
-        # until their milestones make sd.sparse.eigsh, svds, norm, lsqr and lsmr, the dense way
+        # (SP6's eigensolvers exist: the hints name them; norm comes with SP7)
         (lambda A: sd.linalg.eigh(A),
-         "eigh(): 'a' must be an sd.ndarray, not csr_array; "
-         "a sparse array has no eigh: use eigh(A.toarray())"),
+         "eigh(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.eigsh"),
+        (lambda A: sd.linalg.svdvals(A),
+         "svdvals(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.svds"),
+        (lambda A: sd.linalg.eigvals(A),
+         "eigvals(): 'x' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.eigs"),
+        (lambda A: sd.linalg.matrix_norm(A),
+         "matrix_norm(): 'x' must be an sd.ndarray, not csr_array; "
+         "a sparse array has no matrix_norm: use matrix_norm(A.toarray())"),
         (lambda A: sd.linalg.lstsq(A, sd.ones(3)),  # (SP5's solvers exist: the hint names them)
          "lstsq(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.lsqr or sd.sparse.lsmr"),
     ],

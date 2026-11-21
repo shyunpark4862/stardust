@@ -32,7 +32,7 @@
 - **등급**은 `--tier`나 환경 변수 `SD_TIER` 하나로 고른다. 정의는 `tests/conftest.py`와 `tests/_tier.py`에 있다.
   - `quick`(기본): `deep`·`external` 마커가 없는 모든 테스트. hypothesis는 `derandomize=True`라 매번 같은 예제다(병렬로 돌려도 결정적이다).
   - `deep`: quick과 `@pytest.mark.deep` 테스트(Arb 참값을 그 자리에서 계산하는 것, 넓은 격자, 골든 비교 `tests/golden/test_golden.py`, 정확도 비교 `tests/bench/test_accuracy_baseline.py`). hypothesis는 무작위이고 예제 수가 10배다.
-  - `all`: deep과 `@pytest.mark.external`(R이나 Fortran 컴파일러를 실제로 부르는 테스트와, 저장소 밖에서 받은 파일을 읽는 테스트: `tests/sparse/test_suitesparse.py`는 `tools/sparse_suitesparse.py`로 받은 행렬이 없으면 건너뛴다).
+  - `all`: deep과 `@pytest.mark.external`(R이나 Fortran 컴파일러를 실제로 부르는 테스트와, 저장소 밖에서 받은 파일을 읽는 테스트: `tests/sparse/test_suitesparse.py`는 `tools/sparse_suitesparse.py`로 받은 행렬이 없으면 건너뛴다; 희소의 R 비교(RSpectra·irlba)는 기록 `tests/sparse/data/r_eigen.json`을 읽고 기록이 없으면 건너뛴다).
   - 고르지 않은 등급의 테스트는 deselect된다(요약에 `N deselected`).
 - **예제 수**: hypothesis 테스트는 대부분 프로필 기본값(quick 100, deep 1000)을 쓴다. 수를 따로 정하는 테스트는 `examples(n)`(`tests/_tier.py`)으로 써서 quick에서 n, deep에서 10n이다.
 - **고르기**: `AREA`는 `tests/<영역>`이고, 주지 않으면 영역 밖(`tests/interop`, `tests/bench`, `tests/test_*.py`)까지 모두다. `--match`는 테스트 id(`tests/<영역>/test_<주제>.py::test_<이름>[…]`)에 맞춘다. `tests/conftest.py`가 적용하므로 `pytest`에 바로 줘도 된다.

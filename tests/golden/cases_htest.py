@@ -11,7 +11,10 @@ object is stored whole: every field and conf_int(); conf_int(alpha=0.1) as its o
 contingency tables (H6) over their options too (correction, lambda_, alternative, pooled, n, exact,
 kind, conf_int's alternative), weighted tables, zero margins, r x c tables (and one past the work
 cap), batches of tables. The proportions and the binomial (H7) over their methods, sides, null
-values and corrections, the binomial rule's edges, zero counts and batches.
+values and corrections, the binomial rule's edges, zero counts and batches. The multiple
+comparisons and corrections (H8): Tukey's and Games-Howell's pairs, Dunnett's sides, their intervals
+and degenerate groups, every correction method (alpha, max_iter, ties, an exact tie at alpha,
+axis), false_discovery_control, combine_pvalues' methods, weights, nan_policy and batches.
 """
 
 import math
@@ -567,6 +570,7 @@ def cases(L):
     yield "relative_risk exceeds", lambda: h.relative_risk(5, 4, 1, 2)
     yield "relative_risk float", lambda: h.relative_risk(1.0, 4, 1, 2)
     yield from proportions(L)
+    yield from multicomp(L)
     yield from summaries(L)
 
 
@@ -715,6 +719,90 @@ def proportions(L):
     )
 
 
+def multicomp(L):
+    """H8: tukey_hsd (equal_var, conf_int's alpha, two groups, constant, NaN, a group of one, an
+    offset), dunnett (each alternative, one treatment, constant), multipletests (every method,
+    alpha, max_iter, ties, the tie at alpha, axis, a scalar, empty), false_discovery_control and
+    combine_pvalues (every method, weights, nan_policy, batches), and the wrong calls."""
+    h = L.sd.htest
+    d = data(L)
+    a, b, c = d["a"], d["b"], d["c"]
+    r = L.rng(413)
+    for ev in (True, False):
+        yield f"tukey_hsd equal_var={ev}", lambda ev=ev: h.tukey_hsd(a, b, c, equal_var=ev)
+        yield (
+            f"tukey_hsd equal_var={ev} alpha=0.1",
+            lambda ev=ev: h.tukey_hsd(a, b, c, equal_var=ev).conf_int(alpha=0.1),
+        )
+    yield "tukey_hsd two", lambda: h.tukey_hsd(a, b)
+    yield "tukey_hsd four", lambda: h.tukey_hsd(a, b, c, d["ties"][:10])
+    yield "tukey_hsd offset", lambda: h.tukey_hsd(d["off_a"], d["off_b"], d["off_a"][:20] + 0.3)
+    yield "tukey_hsd constant", lambda: h.tukey_hsd(d["const"], d["const"] + 1.0, d["const"][:3] - 1.0)
+    yield "tukey_hsd nan", lambda: h.tukey_hsd(d["nan"], a, b)
+    yield "tukey_hsd nan games-howell", lambda: h.tukey_hsd(d["nan"], a, b, equal_var=False)
+    yield "tukey_hsd one element", lambda: h.tukey_hsd([1.5], a, b)
+    yield "tukey_hsd empty", lambda: h.tukey_hsd([], a, b)
+    yield "tukey_hsd one sample", lambda: h.tukey_hsd(a)
+    yield "tukey_hsd equal_var type", lambda: h.tukey_hsd(a, b, equal_var=1)
+    for alt in ("two-sided", "less", "greater"):
+        yield f"dunnett {alt}", lambda alt=alt: h.dunnett(a, b, control=c, alternative=alt)
+        yield (
+            f"dunnett {alt} alpha=0.1",
+            lambda alt=alt: h.dunnett(a, b, control=c, alternative=alt).conf_int(alpha=0.1),
+        )
+    yield "dunnett one", lambda: h.dunnett(a, control=c)
+    yield "dunnett four", lambda: h.dunnett(a, b, d["ties"][:10], d["expo"][:15], control=c)
+    yield "dunnett constant", lambda: h.dunnett(d["const"], control=d["const"] + 1.0)
+    yield "dunnett no samples", lambda: h.dunnett(control=c)
+    yield "dunnett rng", lambda: h.dunnett(a, control=c, rng=L.sd.random.default_rng(1))
+    yield "dunnett alternative", lambda: h.dunnett(a, control=c, alternative="larger")
+    pv = np.r_[1e-12, r.uniform(0, 0.08, 12), r.uniform(0, 1, 7), 1.0, 0.0]
+    for meth in ("bonferroni", "sidak", "holm-sidak", "holm", "simes-hochberg", "hommel", "fdr_bh", "fdr_by",
+                 "fdr_tsbh", "fdr_tsbky"):  # fmt: skip
+        yield f"multipletests {meth}", lambda m=meth: h.multipletests(pv, method=m)
+        yield f"multipletests {meth} alpha=0.2", lambda m=meth: h.multipletests(pv, method=m, alpha=0.2)
+    for mi in (0, 3):
+        yield (
+            f"multipletests fdr_tsbky max_iter={mi}",
+            lambda mi=mi: h.multipletests(pv, method="fdr_tsbky", max_iter=mi),
+        )
+    ties = np.array([0.01, 0.04, 0.04, 0.01, 0.2, 0.04, 0.5, 0.01, 0.03, 0.2])
+    yield "multipletests hommel ties", lambda: h.multipletests(ties, method="hommel")
+    yield "multipletests at alpha", lambda: h.multipletests([0.01, 0.3, 0.6, 0.8, 0.02], method="bonferroni")
+    pb = r.uniform(0, 0.2, (3, 8))
+    yield "multipletests axis=-1", lambda: h.multipletests(pb, method="holm", axis=-1)
+    yield "multipletests axis=0", lambda: h.multipletests(pb, method="hommel", axis=0)
+    yield "multipletests axis=None 2-D", lambda: h.multipletests(pb)
+    yield "multipletests scalar", lambda: h.multipletests(0.02)
+    yield "multipletests empty", lambda: h.multipletests([])
+    for bad, kw in (("method hs", {"method": "hs"}), ("method fdr_gbs", {"method": "fdr_gbs"}),
+                    ("alpha", {"alpha": 1.0}), ("max_iter", {"max_iter": -1}), ("max_iter bool", {"max_iter": True}),
+                    ("axis tuple", {"axis": (0,)}), ("maxiter", {"maxiter": 2})):  # fmt: skip
+        yield f"multipletests {bad}", lambda kw=kw: h.multipletests(pv, **kw)
+    yield "multipletests range", lambda: h.multipletests([0.1, 1.5])
+    yield "multipletests nan", lambda: h.multipletests([0.1, NAN])
+    for meth in ("bh", "by"):
+        yield f"false_discovery_control {meth}", lambda m=meth: h.false_discovery_control(pv, method=m)
+        yield f"false_discovery_control {meth} batch", lambda m=meth: h.false_discovery_control(pb, axis=-1, method=m)
+    yield "false_discovery_control scalar", lambda: h.false_discovery_control(0.3)
+    yield "false_discovery_control method", lambda: h.false_discovery_control(pv, method="BH")
+    yield "false_discovery_control range", lambda: h.false_discovery_control([-0.1, 0.2])
+    pc = np.array([0.01, 0.2, 0.3, 0.04, 0.6])
+    for meth in ("fisher", "pearson", "tippett", "stouffer", "mudholkar_george"):
+        yield f"combine_pvalues {meth}", lambda m=meth: h.combine_pvalues(pc, method=m)
+        yield f"combine_pvalues {meth} deep", lambda m=meth: h.combine_pvalues([1e-40, 3e-25, 2e-30], method=m)
+        yield f"combine_pvalues {meth} batch", lambda m=meth: h.combine_pvalues(pb, axis=-1, method=m)
+    yield "combine_pvalues weights", lambda: h.combine_pvalues(pc, method="stouffer", weights=[1.0, 2, 0.5, 1, 3])
+    for pol in ("propagate", "omit", "raise"):
+        yield f"combine_pvalues nan {pol}", lambda pol=pol: h.combine_pvalues([0.1, NAN, 0.3], nan_policy=pol)
+    yield "combine_pvalues keepdims", lambda: h.combine_pvalues(pb, axis=-1, keepdims=True)
+    yield "combine_pvalues zero and one", lambda: h.combine_pvalues([0.0, 1.0])
+    yield "combine_pvalues empty", lambda: h.combine_pvalues([])
+    yield "combine_pvalues range", lambda: h.combine_pvalues([0.1, 1.5])
+    yield "combine_pvalues method", lambda: h.combine_pvalues(pc, method="stouffers")
+    yield "combine_pvalues weights size", lambda: h.combine_pvalues(pc, method="stouffer", weights=[1.0, 2.0])
+
+
 def summaries(L):
     """summary() of every test once (H74-H76; the result cases store it too, as a method without
     arguments): small samples, a one-sided interval, a batch, a long batch (cut), keepdims, the
@@ -807,6 +895,14 @@ def summaries(L):
         "test_proportions_2indep batch": lambda: h.test_proportions_2indep(
             np.array([15.0, 5, 30]), 40, np.array([25.0, 9, 30]), 45
         ),
+        "tukey_hsd": lambda: h.tukey_hsd(a, b, c),
+        "tukey_hsd games-howell": lambda: h.tukey_hsd(a, b, c, equal_var=False),
+        "dunnett": lambda: h.dunnett(a, b, control=c),
+        "dunnett greater": lambda: h.dunnett(a, b, control=c, alternative="greater"),
+        "multipletests": lambda: h.multipletests(np.abs(u[:8]) * 0.1),
+        "multipletests long batch": lambda: h.multipletests(np.abs(u[:24].reshape(4, 6)) * 0.1, axis=-1),
+        "combine_pvalues": lambda: h.combine_pvalues([0.01, 0.2, 0.3]),
+        "combine_pvalues batch": lambda: h.combine_pvalues(np.abs(u[:12].reshape(3, 4)) * 0.2, axis=-1),
     }
     for name, call in calls.items():
         yield f"summary {name}", lambda call=call: call().summary()
@@ -824,3 +920,6 @@ def summaries(L):
     yield "repr proportions_chisquare", lambda: repr(h.proportions_chisquare([15, 25], [40, 45]))
     yield "repr test_proportions_2indep", lambda: repr(h.test_proportions_2indep(15, 40, 25, 45, method="score"))
     yield "summary binomtest alpha=0.1", lambda: h.binomtest(7, 20).summary(alpha=0.1)
+    yield "summary tukey_hsd alpha=0.1", lambda: h.tukey_hsd(a, b, c).summary(alpha=0.1)
+    yield "repr tukey_hsd", lambda: repr(h.tukey_hsd(a, b, c))
+    yield "repr multipletests", lambda: repr(h.multipletests([0.01, 0.04, 0.2]))

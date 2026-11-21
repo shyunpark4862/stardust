@@ -11,7 +11,8 @@ reference hi + lo (a double-double; complex for complex results):
     norms   1, -1, inf, -inf, fro, 2 (2: n <= 220)
     solve   solve (x = A^-1 b; field cond: kappa_inf); input b
     lstsq   lstsq (the least-squares solution; field cond: kappa_inf of A^T A); input b
-    eig     smallest, largest (6 each, ascending / descending), svdvals (descending); input kind
+    eig     smallest, largest (6 each, ascending / descending), svdvals (descending), eigvals (every
+            eigenvalue of a nonsymmetric matrix, complex, by real then imaginary part); input kind
     expm    expm (exp(scale A), row-major); input scale
 
 tests/sparse/data holds the other libraries' records (tools/gen_sparse_scipy.py: scipy.json;
@@ -45,10 +46,11 @@ DATA = pathlib.Path(__file__).parent / "data"
 EPS = float(np.finfo(np.float64).eps)
 L = 4096  # the summation chunk of docs/design/sparse.md §2.6
 FAMILIES = ("spmv", "sums", "norms", "solve", "lstsq", "eig", "expm")
+COMPLEX_METHODS = ("eigvals",)  # complex for a real matrix too
 # the contract's constants (drafts until the milestones that implement the functions measure them)
 C_SOLVE = 4.0
 C_BACKWARD = 4.0
-C_EIG = 100.0
+C_EIG = 1000.0  # SP6: ARPACK's eigenvalues after many restarts, up to 497 (lap1d/1000 'LA'; scipy 217)
 C_EXPM = 100.0
 
 
@@ -85,7 +87,7 @@ def points(family):
             if hit.size:
                 j = int(hit[0])
                 hi, lo = mm.hi[j], mm.lo[j]
-                if real and np.iscomplexobj(hi):
+                if real and np.iscomplexobj(hi) and m not in COMPLEX_METHODS:
                     hi, lo = np.real(hi).astype(np.float64), np.real(lo).astype(np.float64)
                 g[f"{m}_hi"], g[f"{m}_lo"] = hi, lo
                 if "cond" in mm.fields:

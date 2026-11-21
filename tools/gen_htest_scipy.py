@@ -3,7 +3,8 @@
 
   tests/htest/data/scipy_h1.json ... scipy_h8.json   scipy.stats (and scipy.stats.contingency)
   tests/htest/data/statsmodels.json                  statsmodels.stats (multipletests, the
-                                                     proportion functions, mcnemar, cochrans_q)
+                                                     proportion functions, mcnemar, cochrans_q;
+                                                     multipletests' batch one row at a time)
 
 Each problem's line holds the inputs' digest (problems.digest), what the call returned -- every
 field the result has (statistic, pvalue, df or dof, zstatistic, statistic_location,
@@ -131,6 +132,11 @@ def statsmodels_call(p):
     from statsmodels.stats import proportion as pr
 
     args, kw = p.args, p.kwargs
+    if p.func == "multipletests" and "axis" in kw:  # statsmodels is 1-D: one call per family
+        kw = {k: v for k, v in kw.items() if k != "axis"}
+        res = [mt.multipletests(row, **kw) for row in np.asarray(args[0])]
+        return {"reject": plain(np.array([r[0] for r in res])), "pvals_corrected": plain(np.array([r[1] for r in res])),
+                "alphacSidak": res[0][2], "alphacBonf": res[0][3]}  # fmt: skip
     if p.func == "multipletests":
         reject, corrected, sidak, bonf = mt.multipletests(*args, **kw)
         return {"reject": plain(reject), "pvals_corrected": plain(corrected), "alphacSidak": sidak, "alphacBonf": bonf}

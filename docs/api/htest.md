@@ -1,8 +1,8 @@
 # sd.htest API
 
-> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3·H4·H5·H6·H7 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4), H4의 네 함수(§5), H5의 여덟 함수(§6), H6의 여덟 함수(§7), H7의 여덟 함수(§8)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
+> 상태: **초안** (H0, 2026-11-20; H1·H2 구현 2026-11-20, H3·H4·H5·H6·H7·H8 구현 2026-11-21). 공개된 검정은 H1의 아홉 함수(§2), H2의 열 함수(§3), H3의 열 함수(§4), H4의 네 함수(§5), H5의 여덟 함수(§6), H6의 여덟 함수(§7), H7의 여덟 함수(§8), H8의 다섯 함수(§9)다. 나머지는 모듈 `sd.htest`, 결과 객체의 바탕, 공통 입력 층(H0) 위에 마일스톤마다 더한다. 아래 시그니처는 scipy 1.18.1의 `scipy.stats`와 statsmodels 0.15.0의 `statsmodels.stats`의 이름과 인자 이름(H3, H5)에 stardust의 규칙과 H6–H15의 결정을 입힌 안이다. 함수는 마일스톤 H1–H9에서 하나씩 공개된다(docs/design/htest.md §8). 마일스톤에서 정할 것은 그 자리에 "(H<n>에서 정한다)"로 적고 §12에 추천과 함께 모았다. sd.regression과 같은 값을 계산하는 곳은 §13에 있다.
 
-- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H101), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/htest.md](../design/htest.md)(§1.1 H1–H116), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/htest/test_api_surface.py`가 읽는다. 블록의 이름이 계획한 공개 이름 전부이고, 공개된 함수는 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -86,6 +86,7 @@
 - H5에서 scipy와 다른 것(§6): `pearsonr`·`spearmanrho`의 p값을 1 − r²에서 상쇄 없이(scipy는 |r| ≈ 1에서 틀린다), `pearsonr`의 `nan_policy`·`keepdims`, 거의 상수인 표본(H20)·쌍이 2개 미만·inf의 NaN(scipy는 경고와 값, `ValueError`), `spearmanr`의 기본 `axis=None`, `spearmanr`의 n = 2에서 p = 1(`spearmanrho`와 같다; scipy의 옛 꼴은 NaN), `kendalltau`의 n = 2 정규 근사(scipy는 0/0의 NaN), `weightedtau`의 `nan_policy='propagate'`가 NaN(scipy는 NaN을 가장 큰 값으로 순위 매긴다), `somersd`의 S = 0이 NaN(scipy는 p = 0)·NaN과 2차원 `x`에 준 `y`의 `ValueError`·두 표본의 표가 10⁷칸까지, `chatterjeexi`의 x의 동점을 위치로 가르기(scipy는 `argsort`가 임의로), 별칭 `correlation` 없음(H65).
 - H6에서 scipy와 다른 것(§7): r × c `fisher_exact`가 정확한 망 알고리즘(H77; scipy는 시드 없는 몬테카를로)과 그 작업량 상한, `barnard_exact`·`boschloo_exact`의 `n`이 처음 격자 크기로만(H78)이고 p값이 참 상한, Barnard의 정확한 기각역, `chi2_contingency`의 `df`가 float(H82)·0인 행·열의 NaN·n차원 표 없음(3차원 이상은 배치)·Cressie–Read의 0인 칸의 극한, 표의 배치(모든 분할표 함수), `odds_ratio`의 정수 값 float 표, `mcnemar`의 b + c = 0 NaN(statsmodels는 inf와 0), `cochrans_q`의 0·1 값만.
 - H7에서 scipy·statsmodels와 다른 것(§8): 방법과 `alternative`의 이름(H85, H86), `proportion_confint`의 한쪽 구간의 방향(H95), `prop_var`(H87), `return_results` 없음(H88), `binomtest`의 `proportion_estimate` 없음(H96), 구간을 배열로(H94), 인자 범위의 `ValueError`와 `nobs = 0`의 NaN(H97), 차의 점수 검정의 참 최우추정(H98: statsmodels의 삼차식 버그), E-test의 모든 결과의 합(H99), `quantile_test`의 `nan_policy`와 스칼라 `q`·`p`(H100), `'binom_test'` 구간의 정의(H101), 0인 표준오차의 NaN(H24), 개수의 배치(statsmodels의 함수).
+- H8에서 scipy·statsmodels와 다른 것(§9): `dunnett`의 `rng` 없음과 결정적인 p값(H108, H115), `tukey_hsd`·`dunnett`의 `df`(H113), 원소 하나인 집단·빈 표본·inf의 NaN과 표본이 모자라는 `TypeError`(H114), 스튜던트화 범위의 꼬리(scipy `studentized_range.sf`는 깊은 꼬리를 잃는다), `multipletests`의 `axis`(H105)·방법 이름(H102, H106, H109)·`max_iter`(H110)·정확한 기각(H111)·p값과 alpha의 검사(H112), `combine_pvalues`의 p값 검사(H112).
 - H1에서 scipy와 다른 것(§2): `df`는 언제나 float(H22), `ttest_ind_from_stats`의 `df`·`conf_int()`(H23), `f_oneway`의 `df_num`·`df_denom`(H27), `levene`의 `df_num`·`df_denom`과 `bartlett`·`fligner`·`alexandergovern`의 `df`(H29), 표준오차 0과 상수 집단의 NaN(H24, H11), Welch의 nᵢ < 2에서 `df` NaN, `alexandergovern`의 n < 2에서 에러 대신 NaN, 표본이 둘 미만인 `bartlett`·`levene`·`fligner`의 `TypeError`, `ttest_ind`의 `method`는 None만(H9까지).
 
 ## §2. 모수: 평균과 분산 (H1)
@@ -264,13 +265,14 @@ multipletests(pvals, /, *, alpha=0.05, method='holm-sidak', max_iter=1, axis=Non
 false_discovery_control(ps, /, *, axis=None, method='bh')
 combine_pvalues(pvalues, /, *, axis=None, method='fisher', weights=None, nan_policy='propagate', keepdims=False)
 ```
-- `tukey_hsd`: 결과 `statistic pvalue`((k, k) 배열)와 `conf_int(alpha=0.05)`, 풀리지 않는다. `equal_var=False`는 Games–Howell이다(scipy 1.18.1).
-- `dunnett`: `control`은 키워드로만이다(scipy와 같다). 결과 `statistic pvalue`와 `conf_int(alpha=0.05)`, 풀리지 않는다. 다변량 t의 cdf가 결정적이라(sd.stats의 `MultivariateT`) `rng`가 없다(`[scipy와 다름]`; H8에서 정한다).
-- `multipletests`(statsmodels): 방법은 statsmodels의 긴 이름 열 개(`'bonferroni'`, `'sidak'`, `'holm-sidak'`, `'holm'`, `'simes-hochberg'`, `'hommel'`, `'fdr_bh'`, `'fdr_by'`, `'fdr_tsbh'`, `'fdr_tsbky'`)만이다. 결과 `reject pvalues_corrected alpha_sidak alpha_bonferroni`이고 statsmodels의 튜플 순서로 넷으로 풀린다(필드 이름은 H8에서 정한다). `is_sorted`·`returnsorted`는 없다. `axis=None`이면 모든 p값이 한 묶음이다.
-- `multipletests`·`false_discovery_control`은 회귀 계수 여럿의 p값(`r.pvalues`, 배치면 (…, k))과 계획 중인 `sd.regression`의 단계적 변수 선택이 내는 p값을 보정하는 짝이다: `multipletests(r.pvalues, axis=-1)`. 다만 같은 자료로 고르고 검정한 선택 뒤의 p값은 명목 수준을 지키지 않고, 다중 검정 보정도 그 선택의 편향을 고치지 못한다(§13).
-- `false_discovery_control`: 보정한 p값의 배열을 돌려준다(결과 객체가 아니다; scipy와 같다). `method`는 `'bh'`, `'by'`. `axis=None`이면 모든 원소가 한 묶음이고 결과는 입력의 모양이다(sd.stats의 `rankdata`와 같다; scipy는 펼친 1차원을 돌려준다).
-- `combine_pvalues`: 결과 `statistic pvalue`, 둘로 풀린다. `method`는 `'fisher'`, `'pearson'`, `'tippett'`, `'stouffer'`, `'mudholkar_george'`.
-- statsmodels의 `fdrcorrection`은 두지 않는다(H8에서 정한다).
+- `tukey_hsd`(H113, H114, H116): k ≥ 2개 표본의 모든 짝(같지 않은 크기는 Tukey–Kramer, `equal_var=False`는 Games–Howell; scipy 1.18.1). 결과 `statistic`((k, k): 평균의 차 meanᵢ − meanⱼ), `pvalue`((k, k): 스튜던트화 범위의 위꼬리, 대각은 1), `df`(N − k의 float, Games–Howell은 짝마다의 Welch 자유도 (k, k))와 `conf_int(alpha=0.05)`((k, k, 2))이고 풀리지 않는다. 표본은 펼치고(`axis`·`nan_policy`·배치가 없다) NaN은 퍼진다. 원소 하나인 집단은 Tukey–Kramer에서 그대로 쓴다(N − k ≥ 1). 상수 집단으로 표준오차가 0이면 p값은 NaN이다(H24).
+- `dunnett`(H108, H113–H116): `control`은 키워드로만이다(scipy와 같다). 결과 `statistic`(처리마다의 t), `pvalue`(가족 전체의 꼬리: 양쪽 P(max|Tⱼ| > |tᵢ|), `'greater'` P(max Tⱼ > tᵢ), `'less'` P(min Tⱼ < tᵢ)), `df`(N − k − 1)와 `conf_int(alpha=0.05)`((처리 수, 2); 한쪽은 한 끝이 ±inf)이고 풀리지 않는다. p값과 구간은 한 인자 다변량 t의 결정적인 적분이라 `rng`가 없다(`[scipy와 다름]`: scipy는 무작위 준몬테카를로).
+- `multipletests`(statsmodels; H102–H106, H109–H112): 방법은 statsmodels의 긴 이름 열 개(`'bonferroni'`, `'sidak'`, `'holm-sidak'`, `'holm'`, `'simes-hochberg'`, `'hommel'`, `'fdr_bh'`, `'fdr_by'`, `'fdr_tsbh'`, `'fdr_tsbky'`)만이다(`'hs'` 같은 줄임, `'fdr_gbs'`, `'lfdr'`는 없다). 기본은 `'holm-sidak'`. 결과 `reject`(bool 배열: 그 절차의 판정, 정확한 보정 p값이 alpha 이하), `pvalues_corrected`, `alpha_sidak`(1 − (1 − alpha)^(1/m)), `alpha_bonferroni`(alpha/m)이고 statsmodels의 튜플 순서로 넷으로 풀린다. `max_iter`(0 이상의 int)는 두 단계 방법의 단계 수다(statsmodels의 `maxiter`; 끝까지는 `max_iter=len(pvals)`). `is_sorted`·`returnsorted`는 없다. `axis`가 int면 그 축을 따라 레인마다 한 가족(결과는 입력의 모양), None이면 모든 p값이 한 가족이고 결과는 펼친 1차원이다(스칼라는 Python 수). p값은 [0, 1]이고 NaN이 없어야 한다(`ValueError`).
+- `multipletests`·`false_discovery_control`은 회귀 계수 여럿의 p값(`r.pvalues`, 배치면 (…, k))과 `sd.regression`의 단계적 변수 선택이 내는 p값을 보정하는 짝이다: `multipletests(r.pvalues, axis=-1)`. 다만 같은 자료로 고르고 검정한 선택 뒤의 p값은 명목 수준을 지키지 않고, 다중 검정 보정도 그 선택의 편향을 고치지 못한다(§13).
+- `false_discovery_control`: 보정한 p값의 배열을 돌려준다(결과 객체가 아니다; scipy와 같다). `method`는 `'bh'`, `'by'`이고 `multipletests(method='fdr_bh'`·`'fdr_by')`의 `pvalues_corrected`와 비트까지 같다(한 커널, H102). `axis=None`이면 모든 원소가 한 묶음이고 결과는 펼친 1차원이다(scipy와 sd.stats의 `rankdata`와 같다; H105). p값의 범위는 `multipletests`와 같다.
+- `combine_pvalues`: 결과 `statistic pvalue`, 둘로 풀린다. `method`는 `'fisher'`, `'pearson'`, `'tippett'`, `'stouffer'`, `'mudholkar_george'`(통계량은 scipy처럼 배율을 곱하지 않은 −Σlog(p/(1 − p))). `weights`는 p값과 짝지은 표본이다(`'stouffer'`만 쓴다). NaN은 `nan_policy`를 따르고 그 밖의 [0, 1] 밖 값은 `ValueError`다(H112).
+- statsmodels의 `fdrcorrection`은 두지 않는다(H102).
+- `summary()`(H116): `tukey_hsd`는 짝 i < j마다 한 줄, `dunnett`은 비교마다 한 줄, `multipletests`는 p값마다 한 줄(보정 p값과 기각; 머리에 alpha와 두 보정 수준)이다.
 
 ## §10. 재표본과 몬테카를로 (H9)
 ```
@@ -302,7 +304,11 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 | 결과의 `correlation`, MGC의 `stat` | 없음(`statistic`) | 별칭 없음 |
 | `random_state=`, `seed=` | `rng=`(sd.random의 Generator) | H3 |
 | `multipletests(maxiter=)` | `max_iter=` | optimize O14와 같은 이름 |
-| `multipletests` 결과 튜플 `(reject, pvals_corrected, alphacSidak, alphacBonf)` | 필드 `reject pvalues_corrected alpha_sidak alpha_bonferroni` | H8에서 정한다 |
+| `multipletests` 결과 튜플 `(reject, pvals_corrected, alphacSidak, alphacBonf)` | 필드 `reject pvalues_corrected alpha_sidak alpha_bonferroni`(넷으로 풀린다) | H104 |
+| `multipletests(method='hs')` 등 줄임, `'fdr_gbs'`, `'lfdr'` | 긴 이름 열 개만 | H102, H106, H109 |
+| `multipletests(maxiter=-1)` | `max_iter=len(pvals)` | H110 |
+| `tukey_hsd`·`dunnett` 결과의 비공개 `_df` | `df` | H113 |
+| `dunnett(rng=)` | 없음(결정적) | H108 |
 | 결과의 `confidence_interval(confidence_level=0.95)` → `ConfidenceInterval(low, high)` | `conf_int(*, alpha=0.05)` → (…, 2) 배열 | H16(regression의 G99) |
 | `binomtest(...).proportion_ci(confidence_level=0.95, method=)` | `conf_int(*, alpha=0.05, method=)` | H16 |
 | `bootstrap(confidence_level=0.95)`와 필드 `confidence_interval` | 결과의 `conf_int(*, alpha=0.05)` | H16 |
@@ -327,7 +333,7 @@ goodness_of_fit(dist, data, /, *, known_params=None, fit_params=None, guessed_pa
 | 분포 인자의 이름 문자열(`'norm'`)과 `args=()` | sd.stats 분포 객체나 호출 가능한 `cdf` | H35 |
 | `anderson(dist='norm')`(문자열), `method` 없으면 옛 꼴 | `dist=sd.stats.Normal`(클래스), 기본 `method='interpolate'` | H36 |
 | `power_divergence`·`chisquare`의 결과 `statistic pvalue` | `statistic pvalue df` | H43(H29의 꼴) |
-| `statsmodels.stats.multitest.fdrcorrection` | 없음(`multipletests(method='fdr_bh')`·`false_discovery_control`) | H8에서 정한다 |
+| `statsmodels.stats.multitest.fdrcorrection` | 없음(`multipletests(method='fdr_bh')`·`false_discovery_control`) | H102 |
 | `statsmodels` `binom_test` | 없음(`binomtest`) | 같은 검정 |
 | `mannwhitneyu`·`wilcoxon`의 `zstatistic`(`method='asymptotic'`을 준 때만) | 정규 근사를 쓴 때마다 | H47 |
 | 동점이 있을 때 `method='exact'`(동점이 없는 분포) | 중간 순위의 조건부 정확 분포 | H45 |
@@ -361,7 +367,7 @@ docs/design/htest.md §9와 같은 목록이다. 결정이 나면 이 문서와 
 - **H5**: 정했다(H62–H73, docs/design/htest.md §1.1).
 - **H6**: 정했다(H77–H84, docs/design/htest.md §1.1).
 - **H7**: 정했다(H85–H101, docs/design/htest.md §1.1).
-- **H8**: `false_discovery_control` + `multipletests`, `fdrcorrection` 없음(추천). `multipletests`의 기본 `'holm-sidak'`(추천). 필드 이름 `reject pvalues_corrected alpha_sidak alpha_bonferroni`(추천). `fdr_gbs`는 넣지 않는다(추천). 스튜던트화 범위 분포는 htest 안에(H14로 정했다). `dunnett`에 `rng`가 없다(추천).
+- **H8**: 정했다(H102–H116, docs/design/htest.md §1.1).
 - **sd.regression과의 경계**: H16–H21로 정했다(§13; docs/design/htest.md §1.4). 남은 것은 regression 쪽의 결정이다(docs/design/regression.md §8의 "htest와의 관계"): 새 회귀 검정(모형 비교의 F·LR·Wald, White, Goldfeld–Quandt, RESET)의 결과를 H6·H7·H11·H19·H21의 꼴로 둘지, `breusch_pagan()`에 자유도 필드를 더할지(H19라면 카이제곱의 `df`), 백색화한 잔차 `wresid`를 결과에 둘지, 단계적 선택에 보정 옵션을 둘지(둔다면 `multipletests`의 방법 이름과 같은 커널).
 - **H9**: 설정 객체는 scipy의 이름과 `rng` 필수(추천). `monte_carlo_test`의 `rvs(size, *, rng)`(추천). `bootstrap_result`를 두지 않는다(추천). 재표본 함수의 `axis=None`(표본마다 펼치기; 추천) / scipy의 0. `multiscale_graphcorr` 넣는다(추천). `goodness_of_fit`은 `anderson`과 같은 족의 최우추정으로(추천). `bws_test`의 기본(나열 아니면 `rng` 요구; 추천). R 꾸러미(`coin` 등)는 마일스톤마다 묻는다(H15).
 

@@ -2,8 +2,9 @@
 
 The plan of the area's cases: every spec names the sd.differentiate names it needs and its
 milestone, and cases() keeps a case only once the milestone is in DONE and the names are public
-(C0 has none; C2 brings all three functions). The comparator is scipy at its defaults (one
-thread); the functions are numpy's for scipy and sd's for sd, elementwise on the batch.
+(C2 brought all three functions). The comparator is scipy at its defaults (one
+thread); the functions are numpy's for scipy and sd's for sd, elementwise on the batch. A case
+returns the derivative (df, ddf), which the speed check compares with scipy's.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import numpy as np
 
 from ..registry import Case, Ref
 
-DONE: tuple[str, ...] = ()  # the milestones whose cases run
+DONE: tuple[str, ...] = ("C2",)  # the milestones whose cases run
 BATCH_SIZES = ((10, "10"), (1000, "10^3"), (10**5, "10^5"))
 
 
@@ -67,8 +68,8 @@ def specs() -> list[Spec]:
     D = sd.differentiate
     out = []
     for n, size in BATCH_SIZES:
-        out.append(Spec("C2", "derivative", "derivative exp", ("derivative",), lambda d: lambda: D.derivative(sd.exp, d["sx"]),
-                        lambda d: _quiet(lambda: sdf.derivative(np.exp, d["x"])), setup=_points(n), size=size, n=n,
+        out.append(Spec("C2", "derivative", "derivative exp", ("derivative",), lambda d: lambda: D.derivative(sd.exp, d["sx"]).df,
+                        lambda d: _quiet(lambda: sdf.derivative(np.exp, d["x"]).df), setup=_points(n), size=size, n=n,
                         quick=n == 1000))  # fmt: skip
     x0 = [1.2, 0.8, 1.1]
     out.append(
@@ -77,14 +78,14 @@ def specs() -> list[Spec]:
             "multivariate",
             "jacobian Rosenbrock",
             ("jacobian",),
-            lambda d: lambda: D.jacobian(lambda x: _rosen(x, sd), sd.asarray(x0)),
-            lambda d: _quiet(lambda: sdf.jacobian(lambda x: _rosen(x, np), np.array(x0))),
+            lambda d: lambda: D.jacobian(lambda x: _rosen(x, sd), sd.asarray(x0)).df,
+            lambda d: _quiet(lambda: sdf.jacobian(lambda x: _rosen(x, np), np.array(x0)).df),
             size="n=3",
         )
     )
     out.append(Spec("C2", "multivariate", "hessian Rosenbrock", ("hessian",),
-                    lambda d: lambda: D.hessian(lambda x: _rosen(x, sd), sd.asarray(x0)),
-                    lambda d: _quiet(lambda: sdf.hessian(lambda x: _rosen(x, np), np.array(x0))), size="n=3",
+                    lambda d: lambda: D.hessian(lambda x: _rosen(x, sd), sd.asarray(x0)).ddf,
+                    lambda d: _quiet(lambda: sdf.hessian(lambda x: _rosen(x, np), np.array(x0)).ddf), size="n=3",
                     note="33 calls"))  # fmt: skip
     return out
 

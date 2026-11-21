@@ -16,7 +16,7 @@ def one():
 
 def test_exported_and_shares_the_base():
     assert sd.differentiate.DifferentiateResult is R
-    assert sd.differentiate.__all__ == ["DifferentiateResult"]
+    assert "DifferentiateResult" in sd.differentiate.__all__
     assert issubclass(R, _FieldResult)
 
 

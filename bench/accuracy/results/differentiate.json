@@ -1,0 +1,169 @@
+{
+ "schema": 1,
+ "area": "differentiate",
+ "runs": {
+  "20261121-234631-ee069cd+": {
+   "commit": "ee069cd",
+   "dirty": true,
+   "changed": [
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "ROADMAP.md",
+    "bench/accuracy/differentiate.py",
+    "bench/speed/cases/differentiate.py",
+    "csrc/bind/htest_bind.cpp",
+    "csrc/bind/module.cpp",
+    "csrc/bind/sparse_bind.cpp",
+    "csrc/linalg/lapack.hpp",
+    "csrc/sparse/format.hpp",
+    "csrc/sparse/iterative.cpp",
+    "docs/api/differentiate.md",
+    "docs/design/integrate.md",
+    "src/stardust/differentiate/__init__.py",
+    "src/stardust/differentiate/_result.py",
+    "src/stardust/htest/__init__.py",
+    "tests/differentiate/test_api_surface.py",
+    "tests/differentiate/test_result.py",
+    "tests/golden/cases_differentiate.py",
+    "tests/golden/data/differentiate.json",
+    "tests/htest/problems.py"
+   ],
+   "date": "2026-11-21T23:46:31",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "differentiate/derivative",
+   "area": "differentiate",
+   "name": "derivative",
+   "points": 109,
+   "regions": {
+    "elementary": {
+     "points": 109,
+     "rel_max": 6.218084870341207e-11,
+     "contract": 0.004172886118782383,
+     "bound": 1.0,
+     "worst": [
+      "tanh/-0.5"
+     ],
+     "unconverged": 4,
+     "error_below_true": 5
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "elementary": {
+      "points": 108,
+      "rel_max": 6.217943701007495e-11,
+      "contract": 0.0041727913816462245,
+      "bound": 1.0,
+      "worst": [
+       "tanh/-0.5"
+      ],
+      "unconverged": 5,
+      "error_below_true": 15
+     }
+    }
+   },
+   "comparator_seconds": 300,
+   "run": "20261121-234631-ee069cd+",
+   "comparators_run": "20261121-234631-ee069cd+"
+  },
+  {
+   "id": "differentiate/hessian",
+   "area": "differentiate",
+   "name": "hessian",
+   "points": 42,
+   "regions": {
+    "mgh": {
+     "points": 42,
+     "contract": 0.10558037459850311,
+     "bound": 1.0,
+     "worst": [
+      "mgh04-n2-m3-x1"
+     ],
+     "entries": 1612,
+     "unconverged": 136,
+     "error_below_true": 330
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 42,
+      "contract": 0.0030680572038007535,
+      "bound": 1.0,
+      "worst": [
+       "mgh35-n8-m8-x1"
+      ],
+      "entries": 1542,
+      "unconverged": 206,
+      "error_below_true": 488
+     }
+    }
+   },
+   "comparator_seconds": 300,
+   "run": "20261121-234631-ee069cd+",
+   "comparators_run": "20261121-234631-ee069cd+"
+  },
+  {
+   "id": "differentiate/jacobian",
+   "area": "differentiate",
+   "name": "jacobian",
+   "points": 47,
+   "regions": {
+    "mgh": {
+     "points": 47,
+     "contract": 0.0036734480572022925,
+     "bound": 1.0,
+     "worst": [
+      "mgh11-n3-m99-x1"
+     ],
+     "entries": 7389,
+     "unconverged": 67,
+     "error_below_true": 1234
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "mgh": {
+      "points": 47,
+      "contract": 0.0036736189887233697,
+      "bound": 1.0,
+      "worst": [
+       "mgh11-n3-m99-x1"
+      ],
+      "entries": 7357,
+      "unconverged": 99,
+      "error_below_true": 2829
+     }
+    }
+   },
+   "comparator_seconds": 300,
+   "run": "20261121-234631-ee069cd+",
+   "comparators_run": "20261121-234631-ee069cd+"
+  }
+ ]
+}

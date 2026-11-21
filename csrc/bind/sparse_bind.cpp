@@ -22,6 +22,8 @@ void bind_sparse(nb::module_& core) {
     sparse::bind_construct(m);
     sparse::bind_triangular(m);
     sparse::bind_iterative(m);
+    sparse::bind_arpack(m);
+    sparse::bind_svds(m);
 }
 
 }  // namespace sd

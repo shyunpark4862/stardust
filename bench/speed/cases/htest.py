@@ -1,4 +1,4 @@
-"""sd.htest against scipy, statsmodels and R: the public tests (milestones H1-H7; docs/design/htest.md §5) at
+"""sd.htest against scipy, statsmodels and R: the public tests (milestones H1-H8; docs/design/htest.md §5) at
 n = 10, 10^3 and 10^6 per sample and a batch of 10^4 lanes of 30 (axis=-1); page_trend_test on
 tables (m, n) of (12, 8) (exact), (1000, 30) (normal) and a batch 10^3 x (10, 6).
 
@@ -18,6 +18,11 @@ statsmodels (mcnemar, cochrans_q) and R (chisq.test, fisher.test, mcnemar.test) 
 test (scipy's r x c Fisher test is a Monte Carlo: none).
 The proportions and the binomial (H7) on fixed counts (n=COUNT their total) and batches of 10^4
 counts, against scipy, statsmodels and R (binom.test, prop.test, poisson.test: another test).
+The multiple comparisons and corrections (H8): tukey_hsd on (k, n) groups (3 of 10 and 10^3, 6 of
+30; scipy, R's TukeyHSD), dunnett with 2 and 5 treatments (scipy's randomized quasi-Monte Carlo at
+rng=1, R's multcomp: other random draws, checked loosely), multipletests (10^3 p-values per method,
+statsmodels, R's p.adjust) and a batch of 10^3 families of 40, false_discovery_control and
+combine_pvalues (10^3; scipy).
 R's ks.test is exact only below n = 100 and its exact p-value is 1 - cdf (differs, noted);
 scipy's anderson fits the logistic to fsolve's xtol 1e-5 (a tolerance, not a difference worth a
 note: the statistics agree to 1e-6).
@@ -249,6 +254,7 @@ def cases() -> list[Case]:
     out.extend(_page_cases())
     out.extend(_table_cases())
     out.extend(_proportion_cases())
+    out.extend(_multicomp_cases())
     return out
 
 
@@ -443,6 +449,8 @@ TITLES = {
     "tables-batched": "분할표 일괄",
     "proportions": "비율과 이항",
     "proportions-batched": "비율과 이항 일괄",
+    "multicomp": "다중 비교와 보정",
+    "multicomp-batched": "다중 비교와 보정 일괄",
 }
 
 
@@ -590,4 +598,212 @@ def _proportion_cases():
                 check=check,
             )
         )
+    return out
+
+
+# ---- multiple comparisons and corrections (H8) --------------------------------------------
+
+
+def _multicomp_data(seed=2026):
+    import stardust as sd
+
+    g = np.random.Generator(np.random.PCG64(seed))
+    d = {}
+    for k, n in ((3, 10), (3, 1000), (6, 30)):
+        xs = [g.normal(0.2 * i, 1.0, n) for i in range(k)]
+        d[f"g{k}_{n}"] = xs
+        d[f"sg{k}_{n}"] = [sd.asarray(x) for x in xs]
+        for i, x in enumerate(xs):
+            d[f"x{k}_{n}_{i}"] = x
+    p = g.uniform(0, 1, 1000) ** 3
+    pb = g.uniform(0, 1, (1000, 40)) ** 3
+    d.update(p=p, sp=sd.asarray(p), pb=pb, spb=sd.asarray(pb))
+    return d
+
+
+def _mc_pair(r):
+    """statistic and p-value (tukey_hsd's (k, k), dunnett's per comparison), raveled."""
+    return np.concatenate([np.ravel(np.asarray(r.statistic, dtype=float)), np.ravel(np.asarray(r.pvalue, dtype=float))])
+
+
+def _corrected(r):
+    if isinstance(r, tuple):  # statsmodels' (reject, pvals_corrected, ...)
+        return np.ravel(np.asarray(r[1], dtype=float))
+    if hasattr(r, "pvalues_corrected"):
+        return np.ravel(np.asarray(r.pvalues_corrected, dtype=float))
+    return np.ravel(np.asarray(r, dtype=float))
+
+
+MC_CHECK = Check(sd=_mc_pair, ref=lambda label, r: _mc_pair(r), rtol=1e-3)
+TUKEY_CHECK = Check(sd=lambda r: np.ravel(np.asarray(r.pvalue, dtype=float)),
+                    ref=lambda label, r: np.ravel(np.asarray(r.pvalue, dtype=float)))  # fmt: skip
+CORR_CHECK = Check(sd=_corrected, ref=lambda label, r: np.asarray(r, dtype=float) if label.startswith("R")
+                   else _corrected(r))  # fmt: skip
+DUNNETT_NOTE = "scipy·R의 p값은 무작위 준몬테카를로(약 1e-6)"
+
+
+def _multicomp_cases():
+    import scipy.stats as st
+    from statsmodels.stats import multitest as smt
+
+    import stardust as sd
+
+    h = sd.htest
+    out = []
+    for k, n in ((3, 10), (3, 1000), (6, 30)):
+        key = f"{k}_{n}"
+        size = f"({k}, {n})"
+        L = "list(" + ", ".join(f"x{key}_{i}" for i in range(k)) + ")"
+        rexpr = (f"local({{L <- {L}; T <- TukeyHSD(aov(unlist(L) ~ factor(rep(seq_along(L), lengths(L)))))[[1]]; "
+                 "T[, 'p adj']})")  # fmt: skip
+        for ev in (True, False):
+            name = "tukey_hsd" if ev else "tukey_hsd Games-Howell"
+            refs = [Ref("scipy", lambda d, key=key, ev=ev: _quiet(lambda: st.tukey_hsd(*d[f"g{key}"], equal_var=ev)))]
+            if ev:
+                refs.append(RRef("R", rexpr, data={f"x{key}_{i}": f"x{key}_{i}" for i in range(k)}, value=".v",
+                                 differs="R는 짝마다 한 번, 순서가 다르다"))  # fmt: skip
+            out.append(
+                Case(
+                    area="htest",
+                    group="multicomp",
+                    name=name,
+                    size=size,
+                    n=k * n,
+                    setup=_multicomp_data,
+                    sd=lambda d, key=key, ev=ev: lambda: h.tukey_hsd(*d[f"sg{key}"], equal_var=ev),
+                    refs=tuple(refs),
+                    quick=n == 10,
+                    check=TUKEY_CHECK,
+                )  # fmt: skip
+            )
+        out.append(
+            Case(
+                area="htest",
+                group="multicomp",
+                name="tukey_hsd conf_int",
+                size=size,
+                n=k * n,
+                setup=_multicomp_data,
+                sd=lambda d, key=key: lambda: h.tukey_hsd(*d[f"sg{key}"]).conf_int(),
+                refs=(
+                    Ref("scipy", lambda d, key=key: _quiet(lambda: st.tukey_hsd(*d[f"g{key}"]).confidence_interval())),
+                ),
+                check=Check(skip="구간의 꼴이 다르다(sd (k, k, 2), scipy low·high)"),
+            )  # fmt: skip
+        )
+    for k, n in ((3, 10), (6, 30)):
+        key = f"{k}_{n}"
+        for alt in ("two-sided", "greater"):
+            out.append(
+                Case(
+                    area="htest",
+                    group="multicomp",
+                    name=f"dunnett {alt}",
+                    size=f"({k}, {n})",
+                    n=k * n,
+                    setup=_multicomp_data,
+                    sd=lambda d, key=key, alt=alt: (
+                        lambda: h.dunnett(*d[f"sg{key}"][1:], control=d[f"sg{key}"][0], alternative=alt)
+                    ),
+                    refs=(
+                        Ref(
+                            "scipy",
+                            lambda d, key=key, alt=alt: _quiet(
+                                lambda: st.dunnett(*d[f"g{key}"][1:], control=d[f"g{key}"][0], alternative=alt, rng=1)
+                            ),
+                            differs=DUNNETT_NOTE,
+                        ),
+                    ),
+                    quick=n == 10 and alt == "two-sided",
+                    check=MC_CHECK,
+                )  # fmt: skip
+            )
+    padj = {"bonferroni": "bonferroni", "holm": "holm", "simes-hochberg": "hochberg", "hommel": "hommel",
+            "fdr_bh": "BH", "fdr_by": "BY"}  # fmt: skip
+    for meth in ("bonferroni", "sidak", "holm-sidak", "holm", "simes-hochberg", "hommel", "fdr_bh", "fdr_by",
+                 "fdr_tsbh", "fdr_tsbky"):  # fmt: skip
+        refs = [Ref("statsmodels", lambda d, m=meth: _quiet(lambda: smt.multipletests(d["p"], method=m)))]
+        if meth in padj:
+            refs.append(RRef("R", f"p.adjust(p, method = '{padj[meth]}')", data={"p": "p"}, value=".v"))
+        out.append(
+            Case(
+                area="htest",
+                group="multicomp",
+                name=f"multipletests {meth}",
+                size="10^3",
+                n=1000,
+                setup=_multicomp_data,
+                sd=lambda d, m=meth: lambda: h.multipletests(d["sp"], method=m),
+                refs=tuple(refs),
+                quick=meth == "holm-sidak",
+                check=CORR_CHECK,
+            )  # fmt: skip
+        )
+    out.append(
+        Case(
+            area="htest",
+            group="multicomp",
+            name="false_discovery_control",
+            size="10^3",
+            n=1000,
+            setup=_multicomp_data,
+            sd=lambda d: lambda: h.false_discovery_control(d["sp"]),
+            refs=(Ref("scipy", lambda d: _quiet(lambda: st.false_discovery_control(d["p"]))),),
+            check=CORR_CHECK,
+        )  # fmt: skip
+    )
+    for meth in ("fisher", "stouffer", "mudholkar_george"):
+        out.append(
+            Case(
+                area="htest",
+                group="multicomp",
+                name=f"combine_pvalues {meth}",
+                size="10^3",
+                n=1000,
+                setup=_multicomp_data,
+                sd=lambda d, m=meth: lambda: h.combine_pvalues(d["sp"], method=m),
+                refs=(Ref("scipy", lambda d, m=meth: _quiet(lambda: st.combine_pvalues(d["p"], method=m))),),
+                check=CHECK,
+            )  # fmt: skip
+        )
+    for meth in ("holm", "hommel", "fdr_bh"):
+        out.append(
+            Case(
+                area="htest",
+                group="multicomp-batched",
+                name=f"multipletests {meth}",
+                size="10^3 x (40,)",
+                n=40000,
+                setup=_multicomp_data,
+                sd=lambda d, m=meth: lambda: h.multipletests(d["spb"], method=m, axis=-1),
+                refs=(),
+                check=Check(skip="statsmodels는 1차원만"),
+            )  # fmt: skip
+        )
+    out.append(
+        Case(
+            area="htest",
+            group="multicomp-batched",
+            name="false_discovery_control",
+            size="10^3 x (40,)",
+            n=40000,
+            setup=_multicomp_data,
+            sd=lambda d: lambda: h.false_discovery_control(d["spb"], axis=-1),
+            refs=(Ref("scipy", lambda d: _quiet(lambda: st.false_discovery_control(d["pb"], axis=-1))),),
+            check=CORR_CHECK,
+        )  # fmt: skip
+    )
+    out.append(
+        Case(
+            area="htest",
+            group="multicomp-batched",
+            name="combine_pvalues fisher",
+            size="10^3 x (40,)",
+            n=40000,
+            setup=_multicomp_data,
+            sd=lambda d: lambda: h.combine_pvalues(d["spb"], axis=-1),
+            refs=(Ref("scipy", lambda d: _quiet(lambda: st.combine_pvalues(d["pb"], axis=-1))),),
+            check=CHECK,
+        )  # fmt: skip
+    )
     return out

@@ -87,14 +87,19 @@ def test_versions_and_provenance():
         assert prov["n_requested"] == len(load(path)[1]), path
 
 
+# H8's families whose statistic and pvalue are lists (a value per comparison): their comparators
+# are checked by test_h8_comparators_against_the_references
+LISTS = ("tukey_hsd", "dunnett")
+
+
 def test_reference_fields_are_double_doubles():
-    for recs in REFS.values():
+    for fam, recs in REFS.items():
         for pid, rec in recs.items():
             for k in ("statistic", "pvalue"):
                 if k in rec:
-                    hi, lo = rec[k]
-                    assert isinstance(hi, float) and isinstance(lo, float), (pid, k)
-                    assert hi != hi or not math.isfinite(hi) or abs(lo) <= abs(hi) * 2.0**-52, (pid, k)
+                    for hi, lo in rec[k] if fam in LISTS else [rec[k]]:
+                        assert isinstance(hi, float) and isinstance(lo, float), (pid, k)
+                        assert hi != hi or not math.isfinite(hi) or abs(lo) <= abs(hi) * 2.0**-52, (pid, k)
 
 
 def test_every_problem_kind_is_present():
@@ -534,6 +539,8 @@ TOL = 1e-12
 def _check(known, got_of, families=None):
     seen = set()
     for fam, recs in REFS.items():
+        if fam in LISTS:
+            continue
         for pid, rec in recs.items():
             for k in ("statistic", "pvalue"):
                 if k not in rec or (families is not None and k == "statistic" and fam not in families):
@@ -567,6 +574,60 @@ def test_r_against_the_references():
         return None if not r or R_FIELD[k] not in r else r[R_FIELD[k]]
 
     _check(R_KNOWN, got, R_SAME_STATISTIC)
+
+
+# tukey_hsd's p-values (relative) farther than the libraries' quadrature from the references:
+# scipy's studentized_range.sf loses the tail (0 for 7.8e-21) and both means of data at 1e8 lose
+# digits; R's ptukey is 1 - cdf in the tail (3e-10 for 7.8e-21) and good to some 1e-11 elsewhere
+H8_KNOWN = {
+    ("scipy", "tukey_hsd/tail"): 1.0,
+    ("scipy", "tukey_hsd/offset"): 1.9e-7,
+    ("scipy", "tukey_hsd/six"): 2.0e-12,
+    ("R", "tukey_hsd/tail"): 4.0e10,
+    ("R", "tukey_hsd/offset"): 1.3e-7,
+}
+
+
+def _h8_pairs(k, r_order=False):
+    if r_order:  # R's TukeyHSD rows j-i
+        return [(j, i) for i in range(k) for j in range(i + 1, k)]
+    return [(i, j) for i in range(k) for j in range(i + 1, k)]
+
+
+def test_h8_comparators_against_the_references():
+    # tukey_hsd: scipy's p-values to 1e-12 and R's to 1e-9 but the known; dunnett: scipy's
+    # randomized quasi-Monte Carlo (rng=12345) to 2e-4 absolute, R's multcomp (mvtnorm, abseps 1e-7)
+    # to 1e-6 absolute (exact to 3e-16 for one and two treatments)
+    seen = set()
+    for pid, rec in REFS["tukey_hsd"].items():
+        ref = [v[0] for v in rec["pvalue"]]
+        k = int(round((1 + math.sqrt(1 + 8 * len(ref))) / 2))
+        pairs = _h8_pairs(k)
+        sp = SCIPY.get(pid, {}).get("result", {}).get("pvalue")
+        rp = (R.get(pid, {}).get("result") or {}).get("p adj")
+        libs = [("scipy", None if sp is None else [sp[i][j] for i, j in pairs])]
+        if rp is not None and None not in rp:
+            d = dict(zip(_h8_pairs(k, True), rp))
+            libs.append(("R", [d[(j, i)] for i, j in pairs]))
+        for lib, got in libs:
+            if got is None or all(r != r for r in ref):
+                continue
+            e = max(abs(g - r) / r for g, r in zip(got, ref) if r == r and r > 0)
+            if (lib, pid) in H8_KNOWN:
+                seen.add((lib, pid))
+                want = H8_KNOWN[(lib, pid)]
+                assert 0.5 * want <= e <= 2 * want, (lib, pid, e)
+            else:
+                assert e <= (1e-12 if lib == "scipy" else 1e-9), (lib, pid, e)
+    assert seen == set(H8_KNOWN)
+    for pid, rec in REFS["dunnett"].items():
+        ref = [v[0] for v in rec["pvalue"]]
+        if all(r != r for r in ref):
+            continue
+        sp = SCIPY.get(pid, {}).get("result", {}).get("pvalue")
+        rp = (R.get(pid, {}).get("result") or {}).get("p.value")
+        assert max(abs(g - r) for g, r in zip(sp, ref)) <= 2e-4, pid
+        assert max(abs(g - r) for g, r in zip(rp, ref)) <= 1e-6, pid
 
 
 # The 95% intervals of the t tests (scipy's confidence_interval(), R's conf.int) farther than 1e-12
@@ -678,6 +739,28 @@ def test_multiple_testing_corrections():
         assert max(rel(a, b) for a, b in zip(got, ref)) <= 1e-15, pid
         if pid in R and "result" in R[pid]:
             assert max(rel(a, b) for a, b in zip(R[pid]["result"]["value"], ref)) <= 1e-15, pid
+
+
+def test_h8_integrals_against_closed_forms():
+    # the tool's two-level integrals (tukey_hsd's and dunnett's references) against closed forms at
+    # its cheap setting (53 bits, the outer quadrature to 2^-30): the studentized range of two
+    # groups is sqrt(2) |T|, Dunnett's one treatment is the t itself (Arb's incomplete beta)
+    from flint import arb
+
+    T = tool()
+    nu = Fraction(10)
+    v, _ = T.sr_sf(Fraction(3), 2, nu, **T.CHEAP)
+    with T.ar.precision(64):
+        want = 2 * T.t_upper(arb(3) / arb(2).sqrt(), arb(10))
+    assert abs(float(v.mid()) / float(want.mid()) - 1) < 1e-8
+    with T.ar.precision(64):
+        l, s_ = [T.A(Fraction(8, 19)).sqrt()], [T.A(Fraction(11, 19)).sqrt()]
+    for two, c in ((True, Fraction(5, 2)), (False, Fraction(5, 2)), (False, Fraction(-1))):
+        v, _ = T.dunnett_tail(c, l, s_, nu, two, **T.CHEAP)
+        with T.ar.precision(64):
+            up = T.t_upper(abs(T.A(c)), arb(10))
+            want = 2 * up if two else (up if c > 0 else 1 - up)
+        assert abs(float(v.mid()) / float(want.mid()) - 1) < 1e-8, (two, c)
 
 
 @pytest.mark.parametrize("fam", sorted(REFS))

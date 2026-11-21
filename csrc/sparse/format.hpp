@@ -35,6 +35,8 @@ void bind_index(nanobind::module_& m);
 void bind_construct(nanobind::module_& m);
 void bind_triangular(nanobind::module_& m);
 void bind_iterative(nanobind::module_& m);
+void bind_arpack(nanobind::module_& m);
+void bind_svds(nanobind::module_& m);
 
 // ---- element helpers ----
 

@@ -1,5 +1,5 @@
-"""The result objects of the iterative solvers of sd.sparse (docs/api/sparse.md §6; decisions SP72
-and SP79 in docs/design/sparse.md §1.1).
+"""The result objects of the iterative solvers and the eigensolvers of sd.sparse (docs/api/sparse.md
+§6, §7; decisions SP72, SP79 and SP87 in docs/design/sparse.md §1.1).
 
 One class per solver, named after it (CgResult, GmresResult, ..., LsmrResult), on the field
 results' base (stardust._results._FieldResult, as sd.optimize's OptimizeResult): every field is a
@@ -15,6 +15,15 @@ acond, arnorm, xnorm are normr, normr_damped, norma, conda, normar, normx, lsmr'
 summary() is the box every result shares (stardust._summary, API.md §2.3): the solver and how it
 stopped, the counts and norms, then x (cut at both ends when long; complex x as its real and
 imaginary parts). repr is one line of the main fields.
+
+The eigensolvers' results (EigshResult, EigsResult, SvdsResult; SP87) unpack into scipy's
+(w, v) and (u, s, vh), whatever return_eigenvectors / return_singular_vectors asked: a part not
+computed is None (the result's form does not change with an option, docs/api/linalg.md §1.6).
+The fields are sd.linalg's names (eigenvalues, eigenvectors; U, S, Vh) and the state of the
+iteration: converged, status (ARPACK's info: 0, 1 the iteration limit, 3 no shifts could be
+applied), message, n_iter (restarts), n_converged and n_op (products with OP, or with A and A^H
+for svds). When the iteration stops short, the converged pairs are the result (scipy raises
+ArpackNoConvergence with them).
 """
 
 from .. import _calls
@@ -163,4 +172,91 @@ def _summary(r):
     return _S.render(r._TITLE, header=(left, right), wide_rows=wide, tables=tables)
 
 
-__all__ = ["CgResult", "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult"]
+# ---------------------------------------------------------------- the eigensolvers (SP87)
+
+
+class _EigenResult(_FieldResult):
+    """The base of the eigensolvers' results."""
+
+    __slots__ = ()
+    _ABSENT = "the eigensolver does not give it"
+    _UNPACK = ("eigenvalues", "eigenvectors")
+    _VALUES = "eigenvalues"
+    _TITLE = ""
+    _OPS = "No. OP x:"
+
+    def __init_subclass__(cls, **kw):
+        super().__init_subclass__(**kw)
+        cls.__iter__, cls.__len__, cls.__getitem__ = _iter, _len, _getitem
+
+    def __init__(self, **fields):
+        self._set((), fields, True)
+
+    @_calls.method("summary")
+    def summary(self):
+        """The result as a text table: convergence, status and message, the counts, then the
+        eigenvalues (singular values) found."""
+        f = self._fields
+        left = [("Converged:", str(f["converged"])), ("Status:", str(f["status"]))]
+        right = [("No. Restarts:", str(f["n_iter"])), (self._OPS, str(f["n_op"])),
+                 ("No. Converged:", str(f["n_converged"]))]  # fmt: skip
+        vals = f[self._VALUES]
+        n = vals.shape[0]
+        cplx = vals.dtype == _sd.complex128
+        cols = ["real", "imag"] if cplx else ["value"]
+        listed = vals.tolist() if n <= _S.MAX_ROWS else None
+        rows = []
+        for i in _S.shown(n):
+            if i is None:
+                rows.append(None)
+                continue
+            v = listed[i] if listed is not None else vals[i]
+            rows.append((f"[{i}]",
+                         [_S.forg(v.real, 6), _S.forg(v.imag, 6)] if cplx else [_S.forg(v, 6)]))  # fmt: skip
+        tables = [_S.Table(cols, rows)] if n else []
+        return _S.render(self._TITLE, header=(left, right), wide_rows=[("Message:", f["message"])], tables=tables)
+
+    def __repr__(self):
+        parts = []
+        for k in ("converged", "status", "n_iter", "n_converged", self._VALUES):
+            v = self._fields[k]
+            if isinstance(v, _sd.ndarray):
+                text = f"<array of shape {_S.shape_text(tuple(v.shape))}>"
+            else:
+                text = _S.compact(v)
+            parts.append(f"{k}={text}")
+        return f"{type(self).__name__}(" + ", ".join(parts) + ")"
+
+
+class EigshResult(_EigenResult):
+    """eigsh's result: eigenvalues (float64), eigenvectors (columns; None when not asked for),
+    converged, status, message, n_iter, n_converged, n_op; unpacks as (eigenvalues, eigenvectors)."""
+
+    __slots__ = ()
+    _FIELDS = ("eigenvalues", "eigenvectors", "converged", "status", "message", "n_iter", "n_converged", "n_op")
+    _TITLE = "Lanczos Eigenvalue Results"
+
+
+class EigsResult(_EigenResult):
+    """eigs's result: eigenvalues (complex128), eigenvectors (columns; None when not asked for),
+    converged, status, message, n_iter, n_converged, n_op; unpacks as (eigenvalues, eigenvectors)."""
+
+    __slots__ = ()
+    _FIELDS = ("eigenvalues", "eigenvectors", "converged", "status", "message", "n_iter", "n_converged", "n_op")
+    _TITLE = "Arnoldi Eigenvalue Results"
+
+
+class SvdsResult(_EigenResult):
+    """svds's result: U, S (ascending), Vh (U and Vh None when not asked for), converged, status,
+    message, n_iter, n_converged, n_op (products with A and A^H); unpacks as (U, S, Vh)."""
+
+    __slots__ = ()
+    _FIELDS = ("U", "S", "Vh", "converged", "status", "message", "n_iter", "n_converged", "n_op")
+    _UNPACK = ("U", "S", "Vh")
+    _VALUES = "S"
+    _TITLE = "Singular Value Results"
+    _OPS = "No. A x, A^H x:"
+
+
+__all__ = ["CgResult", "BicgstabResult", "GmresResult", "MinresResult", "LsqrResult", "LsmrResult", "EigshResult",
+           "EigsResult", "SvdsResult"]  # fmt: skip

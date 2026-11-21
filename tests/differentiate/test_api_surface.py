@@ -1,7 +1,8 @@
 """docs/api/differentiate.md and the module agree: the signature blocks name scipy.differentiate's
-three functions (decision C2) and the result class; only the result class is exported so far (C0),
-and the signatures follow the area's naming decisions (C4, C11, C12, C14)."""
+three functions (decision C2) and the result class, the module exports them with the documented
+signatures (C2), and the signatures follow the area's naming decisions (C4, C11, C12, C14)."""
 
+import inspect
 import pathlib
 import re
 
@@ -10,7 +11,7 @@ import stardust as sd
 from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "differentiate.md"
-PLANNED = {"derivative", "jacobian", "hessian"}  # milestone C2
+FUNCTIONS = {"derivative", "jacobian", "hessian"}  # milestone C2
 RESULTS = {"DifferentiateResult"}
 
 
@@ -29,9 +30,15 @@ def documented():
 
 def test_exports_match_the_document():
     funcs, bare = documented()
-    assert set(funcs) == PLANNED and bare == RESULTS
-    assert set(sd.differentiate.__all__) == RESULTS
-    assert all(not hasattr(sd.differentiate, n) for n in PLANNED)
+    assert set(funcs) == FUNCTIONS and bare == RESULTS
+    assert set(sd.differentiate.__all__) == FUNCTIONS | RESULTS
+
+
+def test_signatures_match_the_document():
+    funcs, _ = documented()
+    for name, sig in funcs.items():
+        got = str(inspect.signature(getattr(sd.differentiate, name)))[1:-1]
+        assert got == sig, (name, got, sig)
 
 
 def test_signatures_follow_the_naming_decisions():

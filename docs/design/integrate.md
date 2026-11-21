@@ -1,6 +1,6 @@
 # 수치 미적분 영역 설계 (sd.integrate, sd.differentiate)
 
-> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2–C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
+> 상태: **설계 초안** (2026-11-21). 큰 결정(§1.1 C1–C7)과 C0 전의 결정(C8–C17)은 사용자가 정했다. 나머지는 안이다. C0은 완료·승인(위임, 2026-11-21)이다. C1은 완료·승인(위임, 2026-11-21)이다. C2는 완료·승인(위임, 2026-11-21)이다(결정 C26–C38은 추천안, 사용자 위임). C3–C8은 시작 전이다. 시작 전에 정할 것은 §9에 있다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -44,6 +44,19 @@
 | C23 이름과 자리 (C1 전) | 차분 간격은 `csrc/differentiate/steps.hpp`(이름공간 `sd::differentiate`, 함수 이름은 그대로), 반복 고리는 `csrc/elementwise/loop.hpp`(이름공간 `sd::elementwise`; scipy `eim._loop`의 자리), Python의 5점 차분은 `src/stardust/differentiate/_differences.py`(`Differences`)다. 모두 헤더·내부 모듈이라 CMake와 공개 이름은 그대로다 (추천안, 사용자 위임 2026-11-21) |
 | C24 여러 점의 호출 꼴 (C1) | 고리의 `Call`은 원소마다 점 하나((k,), optimize)와 p개((k, p) C 순서, `args`는 (k, 1), 값 검사는 `check(value, (k, p))`)를 둘 다 받고, p는 호출마다 바뀔 수 있다. 점이 모자란 원소는 부르는 쪽이 NaN으로 채운다(scipy와 같다). 1차원으로 편 꼴(§9 C2.1 (b))도 같은 `Call`로 된다(점 k·p개, 원소의 번호를 p번 되풀이한 `idx`). 어느 꼴을 공개 계약으로 할지는 §9 C2.1에 남긴다 (추천안, 사용자 위임 2026-11-21) |
 | C25 R175·R176 (C1) | R175: `_differences.py`의 `_ROUNDING_TOL = 2⁻²⁶`과 `_forward`의 간격을 √u라 부른 주석을 √ε(= 2⁻²⁶, ε = 2u)로 고쳤다(값은 그대로). R176: `approx_fprime([1e-12], exp)`가 f를 61번 부르는 것은 간격 키우기(O104)가 4배씩 오르기 때문이다. 고치면 고른 간격과 값이 바뀌어 `approx_fprime`·nls의 골든이 바뀌므로 고치지 않고 잰 호출 수를 API 문서(docs/api/optimize.md §2)와 테스트에 적었다(§6.1) (추천안, 사용자 위임 2026-11-21) |
+| C26 여러 점의 꼴 (C2) | `derivative`의 둘째 호출부터 f는 원소마다 p개 점의 (k, p) 2차원 float64 `sd.ndarray`를 받는다(scipy의 꼴; 원소의 순서는 입력의 C 순서, 아직 끝나지 않은 원소만, O38). `args`의 값은 (k, 1)이다. 첫 호출은 (k,)다(O48). 까닭: scipy의 사용자 함수가 그대로 돌고(`f(x)[i]`가 원소 i의 점들), 1차원으로 펴면 `args`를 p번 되풀이해야 한다 (추천안, 사용자 위임 2026-11-21) |
+| C27 `jacobian`·`hessian`의 f (C2) | f는 (m, N)을 받아 (k, N)(스칼라 함수는 (N,))을 돌려준다. scipy 계약의 2차원 판이고 x는 1차원 (m,)만이다. 넘기는 열은 scipy의 `xph`를 C 순서로 편 것이라 바이트가 scipy와 같다(`jacobian`: 열 j·p + q는 변수 j의 q번째 점; `hessian`의 안쪽: 열 (j·B + b)·p + q) (추천안, 사용자 위임 2026-11-21) |
+| C28 가중치 (C2) | 가중치는 정확한 값을 한 번 올바로 반올림한 것이다(중앙은 정확한 유리수, 한쪽은 Q(√c)의 정확한 값; C34). 점은 scipy의 식 그대로라 비트로 같고, df는 scipy의 LAPACK 가중치(order 8에서 정확한 값과 2.7×10⁻¹⁴까지 다르다)와 끝자리가 다를 수 있다. 그래서 멈춤 판정의 경계에서 반복 수가 갈리는 경우가 생긴다(§7.8에 잰 비율) (추천안, 사용자 위임 2026-11-21) |
+| C29 `hessian`의 rtol (C2) | 0 < rtol < 100ε이면 `ValueError`다(scipy는 경고하고 100ε로 올린다; 안쪽 `jacobian`의 rtol/100이 ε 아래가 된다). scipy의 조건 그대로 rtol = 0은 받는다(atol만의 판정) (추천안, 사용자 위임 2026-11-21) |
+| C30 `initial_step`의 꼴 (C2) | `jacobian`·`hessian`의 `initial_step`(과 `jacobian`의 `step_direction`)은 수 하나 또는 변수마다 m개다. `hessian`에서는 바깥과 안쪽 미분 모두 변수 j에 j번째 값을 쓴다. scipy의 `hessian`은 배열을 주면 안쪽 호출의 브로드캐스트가 틀어져 에러다(`[scipy와 다름]`). 까닭: `jacobian`과 같은 꼴, 같은 뜻 (추천안, 사용자 위임 2026-11-21) |
+| C31 `step_factor`의 범위 (C2) | 유한하고 0보다 크고 1이 아닌 수다. 아니면 `ValueError`다(scipy: 1과 inf는 Vandermonde가 특이해 `LinAlgError`, 0은 모든 원소가 NaN·status −3). 1보다 작은 값은 받는다(간격이 커진다; scipy와 같다) (추천안, 사용자 위임 2026-11-21) |
+| C32 NaN `step_direction` (C2) | 그 원소의 점은 NaN이고 첫 반복 뒤 status −3, df NaN이다. scipy는 그 원소를 어느 쪽에도 넣지 않아 우연히 x = 0을 부르고 같은 결과(NaN, −3)를 낸다. 결과는 같고 호출점만 다르다. `initial_step` ≤ 0(scipy: NaN 간격)과 같은 꼴이다 (추천안, 사용자 위임 2026-11-21) |
+| C33 `jacobian`의 호출 범위 (C2) | 모든 항목이 멈출 때까지 반복마다 모든 열(변수)을 부른다(scipy의 `preserve_shape=True`와 같다). O38의 "남은 원소만"은 원소별 f(`derivative`)의 규칙이고, `jacobian`의 f는 원소별이 아니다(한 열이 k개 출력을 함께 낸다). 까닭: 호출점이 scipy와 같고(C5), f의 계약이 늘 (m, N)이다. 멈춘 항목의 결과는 멈춘 때의 것이다 (추천안, 사용자 위임 2026-11-21) |
+| C34 한쪽 가중치의 계산 (C2) | python-flint(Arb)는 라이브러리의 의존이 아니라서(테스트 의존) 한쪽 가중치는 실행 중에 Q(√c)에서 정확히(a + b√c, a·b 유리수) 풀고, √c를 정수로 감싼 구간을 정밀도를 올리며 좁혀 양 끝이 같게 반올림될 때 그 double을 쓴다. c가 유리수의 제곱이면 유리수로 계산한다. 테스트가 모든 가중치를 Arb의 풀이와 견준다(`tests/differentiate/test_weights.py`). (n, c)마다 기억해 둔다 (추천안, 사용자 위임 2026-11-21) |
+| C35 틀린 값의 글 (C2) | `derivative`는 optimize 배치의 꼴이다: `derivative(): 'f' must return shape (2, 8) like its argument, not (2, 1)`(첫 호출은 `(k,)`, 스칼라는 `not a scalar`). `jacobian`·`hessian`은 받은 모양을 함께 적는다: `jacobian(): 'f' must return shape (2,) or (k, 2) for its argument of shape (2, 2), not (3, 3)`, 다음 호출부터 첫 호출이 정한 꼴(`(k, N)` 또는 `(N,)`; `hessian`은 처음부터 `(N,)`). 까닭: 영역 간 일관성 (추천안, 사용자 위임 2026-11-21) |
+| C36 결과의 모양과 `summary()` (C2) | `jacobian`·`hessian`의 결과는 항목마다 따로 멈춘 배치다: 배치 모양은 df·ddf의 모양((k, m), 스칼라 f는 (m,); (m, m))이고 `repr`는 `DifferentiateResult(batch shape (3, 3), 7 of 9 converged)`, `summary()`는 항목마다 한 줄(`[i, j]`)이다. `derivative`의 배치는 입력의 브로드캐스트 모양이고 스칼라면 Python 수다(O48). `summary()`의 제목은 `Differentiation Results`, 머리는 하나면 `Converged`·`Status`·`Point`와 `Derivative`(#.6g)·`Error estimate`(#.4g)·`No. Iterations`·`Function Evals`, 배치면 `Batch shape`·`Converged: j of n`과 열 `x df|ddf error converged status n_iter nfev`(있는 것만)다(C20) (추천안, 사용자 위임 2026-11-21) |
+| C37 `jacobian`·`hessian`의 x (C2) | `derivative`의 x와 같은 입력(`sd.ndarray`, 수의 시퀀스, numpy 배열)이고 1차원·비지 않음만 검사한다. 유한하지 않은 값은 받는다(그 항목이 status −3; scipy와 같다). optimize의 `x0`(유한해야 함, `Series`도 받음)의 규칙은 쓰지 않는다: 이 무리의 x는 계산할 점이지 시작점이 아니다 (추천안, 사용자 위임 2026-11-21) |
+| C38 중앙 스텐실의 합 (C2) | 중앙 스텐실의 df는 마디 −t, t의 짝마다 w·(f(x − ht) − f(x + ht))를 바깥 짝부터 더한다(가중치가 정확히 반대칭이라 scipy의 `fc @ wc`와 정확한 산술에서 같은 값). 가까운 두 값의 차는 정확하므로(Sterbenz) f(x)가 f′(x)h보다 훨씬 클 때의 상쇄가 없다: 모음의 최대 상대오차가 차례대로의 합 3.2×10⁻¹⁰에서 6.2×10⁻¹¹로 줄고, scipy와 같은 반복에 멈추는 경우가 늘었다(`jacobian` 호출이 같은 것 39 → 43/47). D-33의 셋째 규칙(더 정확한 계산 순서)이다. 한쪽 스텐실은 차례대로 더한다 (추천안, 사용자 위임 2026-11-21) |
 
 - C5와 D-33(API.md §4, docs/design/optimize.md §3.7): 호출점의 비트 동일은 지금 맞추는 목표이고 약속이 아니다. 지키는 것은 다른 영역과 같다(스레드 수와 상관없는 비트, 자기 골든, Arb 계약). 반올림이 아닌 동작(멈춤 판정, status의 뜻, 기본값, 구간을 나누는 순서)은 scipy 그대로다. 호출점이 같다는 것은 사용자 함수를 부르는 점의 순서와 비트, 호출 수가 같다는 뜻이다.
 
@@ -110,7 +123,7 @@ scipy 1.18.1의 `dir(scipy.integrate)`와 `dir(scipy.differentiate)`에서 뽑�
 ### 2.2 원소별 반복 무리 (C4)
 `derivative`, `tanhsinh`, `nsum`은 optimize의 배치 넷과 같은 틀이다: 배치의 원소마다 따로 풀고, 반복마다 아직 끝나지 않은 원소의 점을 모아 사용자 함수를 한 번 부른다.
 - **status** (O17, scipy의 번호): 0 수렴, −1(`derivative`: 오차 추정이 늘어 멈춤; `nsum`: `a`·`b`·`step`이 틀림; `tanhsinh`: 쓰지 않음), −2 반복·수준 상한, −3 유한하지 않은 값, −4(`nsum`만: 부분합의 마지막 항이 허용오차보다 커서 오차 추정이 허용오차를 넘음). scipy 원소별 무리의 −4는 `callback`이 멈춘 것인데 `nsum`은 같은 번호를 다른 뜻으로 쓴다. `callback`이 없으므로(O37) 그 −4는 없고, `nsum`의 −4는 scipy의 뜻 그대로다.
-- **호출 규약** (O38 + 여러 점): optimize의 배치는 원소마다 점 하나라 사용자 함수가 (k,)를 받는다. 이 무리는 원소마다 여러 점을 한 번에 부른다(scipy: `derivative`는 첫 반복 order개, 다음부터 2개; `tanhsinh`은 처음 66개, 다음 수준부터 64·128·…). 넘기는 꼴은 §9 C2의 질문이다(추천: (k, p) 2차원, 원소의 순서는 입력의 C 순서, `args`는 (k, 1)).
+- **호출 규약** (O38 + 여러 점): optimize의 배치는 원소마다 점 하나라 사용자 함수가 (k,)를 받는다. 이 무리는 원소마다 여러 점을 한 번에 부른다(scipy: `derivative`는 첫 반복 order개, 다음부터 2개; `tanhsinh`은 처음 66개, 다음 수준부터 64·128·…). 넘기는 꼴은 (k, p) 2차원이다(C26: 원소의 순서는 입력의 C 순서, `args`는 (k, 1)).
 - scipy의 첫 호출은 원소마다 점 하나(입력 모양 그대로: `tanhsinh`은 구간의 가운데, `derivative`는 x)다. O48처럼 첫 호출도 1차원 (k,)이다.
 - `args`(O39): 값마다 배치 모양으로 브로드캐스트하고, 호출마다 남은 원소로 줄여 넘긴다. `kwargs`(scipy 1.18의 이 셋에는 있다), `callback`, `preserve_shape`는 없다(C14).
 - 허용오차는 scipy의 `tolerances` dict 대신 키워드다(O36): `derivative(atol=, rtol=)`, `nsum(atol=, rtol=)`. `tanhsinh`은 scipy도 키워드다.
@@ -124,7 +137,7 @@ scipy 1.18.1의 `dir(scipy.integrate)`와 `dir(scipy.differentiate)`에서 뽑�
 - **`quad_vec`**: 점 하나마다 부르고 같은 모양의 배열(`sd.ndarray`, 시퀀스, numpy 배열)을 받는다.
 - **`cubature`**: scipy처럼 점들을 한 번에 (n_points, ndim) 배열로 부르고 (n_points, …)를 받는다.
 - **원소별 무리**: §2.2. 사용자 함수는 원소별이어야 한다(`f(x)[i]`가 `f(x[i])`와 같다; scipy의 계약). 구간의 끝 바로 옆을 계산하므로 특이점에서 예외를 내지 말고 inf·NaN을 돌려줘야 한다: scipy `tanhsinh`은 반올림으로 끝점 자체(예: x = 0)를 부르고 그 값을 버린다(§7.4). 이것을 문서의 계약으로 적는다.
-- `jacobian`·`hessian`의 f는 (m, …)을 받아 (k, …)을 돌려주는 벡터화된 함수다(scipy의 계약: 첫 축이 변수, 뒤 축이 점). 첫 호출부터 (m, m)·(m, m, p)를 받는다(§7.4). sd에서 넘기는 꼴은 §9 C2.
+- `jacobian`·`hessian`의 f는 (m, …)을 받아 (k, …)을 돌려주는 벡터화된 함수다(scipy의 계약: 첫 축이 변수, 뒤 축이 점). 첫 호출부터 (m, m)·(m, m, p)를 받는다(§7.4). sd에서는 (m, N)을 받아 (k, N)이나 (N,)을 돌려준다(C27; 바이트는 scipy와 같다).
 - 사용자 함수가 낸 에러는 그대로 나간다. 틀린 모양·형의 값은 optimize와 같은 꼴의 에러다(`quad(): 'func' must return a real number, not shape (3,)`).
 
 ---
@@ -190,9 +203,12 @@ scipy의 `nsum`을 옮긴다: 항 수가 `maxterms` 이하면 직접 합, 아니
 scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **방법**: Richardson 외삽이 아니다(scipy의 주석이 그것을 "나중 일"로 적는다). order차(기본 8, 홀수는 올림) 차분 공식을 간격을 step_factor(c, 기본 2)씩 줄이며 되풀이한다. 중앙 스텐실은 x ± h/cᵏ(k = 0…n − 1, n = order/2)이고 다음 반복은 x ± h/cⁿ 두 점만 새로 부른다. 한쪽 스텐실(`step_direction` ≠ 0)은 d = √c로 x + h/dᵏ(k = 0…2n − 1), 다음 반복에 두 점이다. 가중치는 Vandermonde 계를 풀어 얻는다(scipy는 `np.linalg.solve`; 중앙 가중치는 반대칭을 강제한다).
 - **멈춤**: 오차 = |dfₙ − dfₙ₋₁|, error < atol + rtol·|df|이면 0(기본 atol = 가장 작은 정규수, rtol = √ε), 유한하지 않으면 −3, 오차가 직전의 10배를 넘으면 −1(반올림이 이기기 시작함), `maxiter`(기본 10)면 −2.
-- **호출점의 비트** (C5): 점은 원소별 식(x + h/cᵏ)이라 scipy와 같게 계산할 수 있다. 다만 df는 `fc @ wc`(numpy의 행렬·벡터 곱 = BLAS dgemv, 지금 Accelerate)라 합의 순서가 scipy 쪽의 BLAS에 달려 있고, 멈춤 판정의 경계에서 반복 수가 갈릴 수 있다(호출점의 예외로 적고 C2에서 갈리는 비율을 잰다).
-- **가중치의 정확도**: scipy의 order 8 중앙 가중치는 정확한 유리수 값과 9개 가운데 8개가 다르고 최대 상대 2.7×10⁻¹⁴다(order 12면 1.7×10⁻¹¹; §7.4). c는 double이라 유리수이므로 중앙 가중치는 정확한 유리수 풀이로, 한쪽 가중치(√c)는 Arb로 올바로 반올림할 수 있다. 가중치는 점에 영향을 주지 않으므로 호출점은 그대로다. 어느 쪽을 쓸지는 §9 C2의 질문이다.
-- **`jacobian(f, x)`**: x (m, …)에서 변수 i만 바꾼 복사본 m개를 쌓아 f를 한 번에 부른다(f는 (m, m, …, p)를 받는다). 결과 `df` (k, m, …), 원소마다의 `status`·`n_iter`·`nfev`. **`hessian`**: `jacobian`의 `jacobian`, 안쪽 rtol = rtol/100. scipy는 rtol < 100ε에 경고하고 100ε로 올린다: 경고가 없으므로 §9 C2. `nfev`는 원소마다 안쪽 호출을 합한 (m, m) 배열이다(scipy는 33번 호출에 121–297, Rosenbrock n = 3; §7.4).
+- **호출점의 비트** (C5): 점은 원소별 식(x + h/cᵏ)이라 scipy와 같게 계산한다. scipy의 식을 그대로 옮겼다: 첫 반복의 cᵏ·dᵏ은 numpy의 `c ** arange`(libm `pow`), 다음 반복의 c^(n−1)과 d = c**0.5는 Python의 `pow`, 간격은 반복마다 h /= c, 점은 x + (−h/cᵏ)·x ± h/dᵏ. 다만 df는 scipy에서 `fc @ wc`(numpy의 행렬·벡터 곱 = BLAS dgemv, 지금 Accelerate)라 합의 순서가 scipy 쪽의 BLAS에 달려 있고, 멈춤 판정의 경계에서 반복 수가 갈릴 수 있다. 갈리는 비율은 §7.8이다.
+- **df의 합** (C2, C38): 중앙 스텐실은 마디 −t, t의 짝마다 w·(f(x − ht) − f(x + ht))를 바깥 짝부터 더하고, 한쪽 스텐실은 스텐실의 순서대로 곱하고 더한다(w₀f₀에서 시작해 한 항씩). 축약은 없다(D-33). 원소마다 따로 계산하므로 원소의 비트는 배치의 크기·스레드 수와 상관없다(scipy는 배치의 크기에 따라 끝자리가 다르다, §7.7). 중앙 스텐실의 가운데 가중치는 0이고, 첫 반복에서만 f(x)가 0·f(x)로 들어간다(f(x)가 유한하지 않으면 NaN, scipy와 같다). scipy는 다음 반복부터 그 칸에 앞서 쓴 왼쪽 점의 값을 두는데 그 값은 유한하거나(아니면 원소가 이미 −3으로 멈췄다) 가중치 0이라 셈에서 뺐다.
+- **가중치의 정확도** (C28, C34): scipy의 order 8 중앙 가중치는 정확한 유리수 값과 9개 가운데 8개가 다르고 최대 상대 2.7×10⁻¹⁴다(order 12면 1.7×10⁻¹¹; §7.4). 한쪽 가중치는 9개 모두 다르고 최대 상대 1.1×10⁻¹⁰이다(order 12면 1.5×10⁻⁴). sd의 가중치는 마디 tᵢ의 라그랑주 기저의 도함수 Lᵢ′(0)(scipy의 Vandermonde 계의 정확한 해)를 한 번 반올림한 것이다: 중앙은 `fractions.Fraction`의 정확한 유리수(가운데는 정확히 0, 나머지는 정확히 반대칭), 한쪽은 Q(√c)의 정확한 값을 올바로 반올림한다(`src/stardust/differentiate/_weights.py`). order 8은 0.5 ms 안에 계산되고 (n, c)마다 기억한다. 가중치는 점에 영향을 주지 않으므로 호출점은 그대로다.
+  - 정확한 가중치와 짝의 합의 효과 하나: x³의 0에서 중앙 스텐실의 합이 매번 같은 작은 값이라 오차 추정이 0이 되어 둘째 반복에 수렴한다(status 0, `nfev` 11). scipy는 가중치와 합의 반올림 흔들림(10⁻¹⁴) 때문에 기본 atol로 끝내 멈추지 못한다(−2, `nfev` 27; `[scipy와 다름]`). 짝을 안쪽부터 더하면 sd도 −2라, 이것은 반올림이 가르는 경계의 경우다.
+- **`jacobian(f, x)`**: x (m,)에서 변수 j만 바꾼 열을 쌓아 f를 한 번에 부른다. 첫 호출은 열 m개가 모두 x인 (m, m)이고(scipy의 `eim._initialize`), 반복마다 (m, m·p)다(C27; 열 j·p + q는 변수 j의 q번째 점, 다른 변수는 x). scipy처럼 모든 항목이 멈출 때까지 모든 열을 부르고(C33), 항목(출력 i, 변수 j)마다 따로 판정한다. 결과 `df` (k, m)(스칼라 f는 (m,)), 항목마다의 `status`·`n_iter`·`nfev`. `nfev`는 그 항목이 멈출 때까지 부른 점의 수(열 하나의 몫: 1 + 2n + 2·(반복 − 1))다.
+- **`hessian`**: `jacobian`의 `jacobian`이다. 바깥 `jacobian`의 함수는 그 호출의 열 N개마다의 기울기이고, 안쪽 `jacobian`(rtol/100, 같은 atol·`max_iter`·`order`·`initial_step`·`step_factor`, 중앙)이 그 N개 점을 한 번에 계산한다(안쪽 f는 (m, m·N·p)을 받는다). rtol은 0이거나 100ε 이상이다(C29). `nfev`는 scipy의 셈이다: 항목 (i, j)는 바깥 호출마다 안쪽 항목 i의 변수 j 열들(점 p개)의 `nfev` 합을 그 항목이 멈출 때까지 더한다(Rosenbrock n = 3에서 121–297; §7.4). `n_iter`와 `x`는 없다(scipy와 같다).
 - scipy의 기본 `initial_step = 0.5`는 절대 간격이라 x의 척도를 보지 않는다: log의 x = 10⁻³에서 x − 0.5 < 0이 NaN이라 status −3이다(§7.4). scipy 그대로 두고(기본값은 scipy의 것) 문서에 `initial_step`·`step_direction`을 적는다.
 
 ---
@@ -203,6 +219,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - **표본 규칙**: 같은 double 입력에 그 규칙(식)을 정확히 계산한 값(Arb)과 견준다. 계약은 리덕션의 오차 한계(n·ε·Σ|항|의 크기; 배열의 합 규칙)다. 구적 자체의 이산화 오차는 계약이 아니다.
 - **`fixed_quad`, `newton_cotes`**: 점·가중치는 올바로 반올림(§9 C3의 추천)이면 그것이 계약이다(0 ULP). 값은 n점 합의 오차 한계다.
 - **`derivative` 무리**: 수렴한 결과는 error < atol + rtol·|df|이고, 해석적 도함수의 Arb 값과 견준 상대오차를 표에 적는다(탐침: exp·sin의 1에서 1.2×10⁻¹⁴·9×10⁻¹⁵).
+  - C2에서 정한 계약(`bench/accuracy/differentiate.py`, 테스트 `test_derivative.py`·`test_jacobian.py`): `derivative`는 수렴한 결과의 참 오차가 atol + rtol·|df| 이하다(모음 전부에서 지킨다; 판정의 뜻이지 증명된 상계는 아니다). `jacobian`·`hessian`은 노름으로: 수렴한 항목의 오차가 rtol·max|참 행렬| 이하다. 항목마다의 상대 판정은 0에 가까운 항목에서 뜻이 없어 계약이 아니다(§7.8).
 - scipy·Arb와 다른 동작은 API 문서에 `[scipy와 다름]`으로 적는다.
 
 ---
@@ -244,7 +261,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 ### 6.2 함께 쓰는 반복 고리 (C4, C16; C1에서 했다)
 - 전: `csrc/optimize/batch.cpp` 안에 고리의 부품이 있었다: `for_elements`(2¹⁵개부터 스레드에 나눔, GIL 놓기), `gather`(남은 원소의 `args` 모으기), `Call`(남은 원소의 점을 새 float64 `sd.ndarray`에 써서 사용자 함수를 한 번 부르고 값을 검사), `Progress`(진행 중인 원소의 목록과 멈춘 원소의 `status`·`n_iter`·`nfev`), `advance`(갱신·판정 뒤 남은 원소를 순서대로 줄이기). 원소의 상태는 알고리즘마다의 구조체다.
 - C1: 이 부품을 `csrc/elementwise/loop.hpp`(이름공간 `sd::elementwise`, C23; scipy `_lib/_elementwise_iterative_method.py`의 `_loop`에 해당)로 끌어냈다. 함께 옮긴 것: scipy의 status 번호(`sConverged` 0, `sSignErr` −1, `sConvErr` −2, `sValueErr` −3, `sInputErr` −5, `sInProgress` 1; −4는 `callback`이 없어 두지 않았다), numpy의 `sign`·`minimum`·`maximum`(`npsign`·`npmin`·`npmax`), Python 층의 1차원 배열과 벡터를 오가는 `read`·`out`. `batch.cpp`에는 네 알고리즘과 그 자리의 뜻(−1의 `bracket_*` 한계, 2의 `bracket_root` 반대쪽)만 남았다. 헤더뿐이라 CMake는 그대로다. ARCHITECTURE.md §1의 그림에 optimize/ ──▶ elementwise/ ──▶ array/·parallel/을 더했다(integrate/·differentiate/의 화살표는 그 함수가 생길 때 더한다).
-- 넓힌 것(C24): `Call::start(k, p)`가 원소마다 p개 점의 호출((k, p) C 순서, `args`는 (k, 1))을 만들고 `put(r, j, x)`·`x(r, j)`·`value(r, j)`로 쓰고 읽는다. 돌아온 값이 float64 (k, p)가 아니면 `check(value, (k, p))`를 부른다((k,)는 지금처럼 `check(value, k)`). p는 호출마다 바뀔 수 있고(`tanhsinh`의 수준), 점이 모자란 원소의 칸은 부르는 쪽이 NaN으로 채운다(`nsum`; scipy와 같다). 1차원으로 편 꼴(§9 C2.1 (b))은 `start(k·p)`와 원소 번호를 p번 되풀이한 `idx`로 된다. optimize 쪽은 (k,)라 그대로다. 넓힌 길은 C2의 `derivative`가 처음 쓰고 시험한다.
+- 넓힌 것(C24): `Call::start(k, p)`가 원소마다 p개 점의 호출((k, p) C 순서, `args`는 (k, 1))을 만들고 `put(r, j, x)`·`x(r, j)`·`value(r, j)`로 쓰고 읽는다. 돌아온 값이 float64 (k, p)가 아니면 `check(value, (k, p))`를 부른다((k,)는 지금처럼 `check(value, k)`). p는 호출마다 바뀔 수 있고(`tanhsinh`의 수준), 점이 모자란 원소의 칸은 부르는 쪽이 NaN으로 채운다(`nsum`; scipy와 같다). 1차원으로 편 꼴(§9 C2.1 (b))은 `start(k·p)`와 원소 번호를 p번 되풀이한 `idx`로 된다. optimize 쪽은 (k,)라 그대로다. 넓힌 길은 C2의 `derivative`가 처음 썼다(`tests/differentiate/test_derivative.py`의 호출 꼴·스레드 시험; `loop.hpp`는 C2에서 바뀌지 않아 optimize 배치의 비트와 속도는 그대로다).
 - 확인(C22): 기계어를 견주면 원소 패스(`advance`·`for_elements`의 람다)는 명령 수가 모두 같고, 네 함수의 바깥 몸통은 레지스터 배정이 달라 19–73개 줄었고, `Call::run`은 `gather`를 따로 둔 만큼 짧아졌다. 속도는 같은 소스(다른 작업의 C++ 변경도 함께인 같은 시점의 빌드 둘: 옮기기 전과 뒤)의 `bench/speed`의 optimize 배치 사례(사용자 함수가 sd 배열 연산인 x³ − 2x − c와 (x − c)² + 0.01·c·x⁴)를 한 프로세스에서 사례마다 0.6초씩 되풀이해 재고, 두 빌드를 번갈아 14번(1스레드)·6번(10스레드) 돌린 가운데값의 비(뒤/전)다. 기계가 바빴다(부하 1.9–6.6, 다른 작업 둘).
 
 | 사례 | 1스레드 전 (ms) | 뒤/전 | 10스레드 전 (ms) | 뒤/전 |
@@ -259,8 +276,8 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
   - 모두 ±0.5% 안(10스레드 `find_root` 10⁶만 −1.7%)이라 느려진 곳이 없고 되돌린 곳도 없다. 사례마다의 가장 빠른 값의 비는 0.97–1.013으로 잡음이 더 크다. `bench.speed run optimize --match elementwise --smoke`도 12사례 모두 지났다(검사 0 실패). 기준선(`bench/speed/results/`)은 바꾸지 않았다.
 
 ### 6.3 이 영역의 파일
-- Python: `src/stardust/{integrate,differentiate}/`. integrate는 `_quadpack.py`(`quad`, `dblquad`, `tplquad`, `nquad`), `_quad_vec.py`, `_cubature.py`, `_tanhsinh.py`(`tanhsinh`, `nsum`), `_rules.py`(`fixed_quad`, `newton_cotes`, 표본 규칙), `_result.py`, `_common.py`. differentiate는 `_derivative.py`(`derivative`, `jacobian`, `hessian`), `_result.py`.
-- C++: `csrc/{integrate,differentiate}/`. integrate는 `quadpack.cpp`(dqagse·dqagie·dqagpe·dqawoe·dqawfe·dqawse·dqawce와 규칙 dqk15·dqk21·dqk15i·dqk15w·dqc25f·dqc25s·dqc25c, ε-알고리즘 dqelg; 상수는 QUADPACK의 리터럴), `adaptive.cpp`(`quad_vec`·`cubature`의 힙), `tanhsinh.cpp`(표, 합, 오차 추정; `nsum`), `samples.cpp`(표본 규칙; 합은 배열의 커널), `gauss.hpp`(Gauss–Legendre). differentiate는 `steps.hpp`(C3), `derivative.cpp`(스텐실, 가중치, `jacobian`·`hessian`). 바인딩 `csrc/bind/{integrate,differentiate}_bind.cpp`(`stardust._core.integrate`, `stardust._core.differentiate`).
+- Python: `src/stardust/{integrate,differentiate}/`. integrate는 `_quadpack.py`(`quad`, `dblquad`, `tplquad`, `nquad`), `_quad_vec.py`, `_cubature.py`, `_tanhsinh.py`(`tanhsinh`, `nsum`), `_rules.py`(`fixed_quad`, `newton_cotes`, 표본 규칙), `_result.py`, `_common.py`. differentiate는 `_derivative.py`(`derivative`, `jacobian`, `hessian`: 입력 검사와 결과), `_weights.py`(올바로 반올림한 가중치, C28·C34), `_result.py`(`DifferentiateResult`와 `summary()`), `_differences.py`(C15).
+- C++: `csrc/{integrate,differentiate}/`. integrate는 `quadpack.cpp`(dqagse·dqagie·dqagpe·dqawoe·dqawfe·dqawse·dqawce와 규칙 dqk15·dqk21·dqk15i·dqk15w·dqc25f·dqc25s·dqc25c, ε-알고리즘 dqelg; 상수는 QUADPACK의 리터럴), `adaptive.cpp`(`quad_vec`·`cubature`의 힙), `tanhsinh.cpp`(표, 합, 오차 추정; `nsum`), `samples.cpp`(표본 규칙; 합은 배열의 커널), `gauss.hpp`(Gauss–Legendre). differentiate는 `steps.hpp`(C3), `derivative.hpp`·`derivative.cpp`(스텐실의 점과 갱신, `derivative`는 `elementwise/loop.hpp`의 고리, `jacobian`·`hessian`의 열 호출과 안쪽 `jacobian`; C2). 바인딩 `csrc/bind/{integrate,differentiate}_bind.cpp`(`stardust._core.integrate`, `stardust._core.differentiate`).
 - 테스트·측정·골든은 영역마다(§7.5): `tests/{integrate,differentiate}/`, `tests/golden/cases_{integrate,differentiate}.py`, `bench/speed/cases/{integrate,differentiate}.py`, `bench/accuracy/{integrate,differentiate}.py`.
 
 ---
@@ -364,6 +381,24 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 - `quad`가 수렴하지 못하는 것: 봉우리 α = 10–18(ier 5), cos(2^α sin x)의 α = 9(ier 1)·10(ier 5), f15 sin(t)/t의 [0, ∞)(ier 5; QAGI는 진동을 위한 것이 아니다).
 - `derivative`: 같은 점을 혼자 부를 때와 배치(9점)로 부를 때 `status`·`nfev`·`n_iter`는 같지만 df가 99점 가운데 29점에서 끝자리가 다르다(최대 상대 2.8×10⁻¹⁰, 언제나 오차 추정 안). df = `fc @ wc`가 BLAS(dgemv)라 합의 순서가 배치의 크기에 달려 있고, 스텐실의 상쇄가 그 차이를 키운다. sd는 원소마다 같은 비트를 지키므로(§1.3) C2의 호출점 비교는 혼자 부른 기록과 견주고 df의 끝자리는 C5의 예외로 적는다(§3.8). 끝 근처의 기록: log의 10⁻³·√의 10⁻⁶은 기본값으로 status −3(9번), `step_direction=1`의 log 10⁻³은 status −2(오차가 줄지 않는다), x³의 0은 −2(`nfev` 27), tan의 1.5는 x + 0.5가 π/2를 넘는데도 7번 반복 뒤 수렴(값은 맞다).
 
+### 7.8 C2에서 잰 것 (scipy 1.18.1, 2026-11-21)
+`tests/differentiate/data/`의 scipy 기록(§7.3)과 견준 것. 호출점은 sd가 부른 점의 바이트를 scipy 기록과 같은 방법(호출 순서대로의 SHA-256, 점의 수, 호출 수)으로 잰 것이다. 테스트가 아래 수를 그대로 확인한다(`tests/differentiate/test_derivative.py`, `test_jacobian.py`, `test_weights.py`).
+
+| 함수 | 기록 | 호출점이 같다 | status·`n_iter`·`nfev`가 같다 | df가 비트로 같다 |
+|---|---|---|---|---|
+| `derivative` | 124(점마다 99, 배치 11, 끝 14) | 123 | 123 | 5 |
+| `jacobian` | 47(MGH) | 43 | 항목 7,289 / 7,456 (status·`nfev`) | 항목 2,937 / 7,456 |
+| `hessian` | 42(MGH, n ≤ 10) | 33 | 항목 1,517 / 1,748 (status·`nfev`) | 항목 66 / 1,748 |
+
+- `derivative`에서 다른 하나는 x³의 0(기본값)이다: sd는 둘째 반복에 수렴하고 scipy는 −2다(§3.8, C28, C38). 다른 123개는 점·모양·수·status·`n_iter`·`nfev`가 모두 같다. df가 비트로 같은 것이 적은 것은 가중치(C28)와 합(C38)이 둘 다 다르기 때문이다.
+- 까닭을 가르는 탐침: sd의 커널에 scipy의 LAPACK 가중치를 넣으면 `derivative`는 124개 모두 호출점·status가 같다(x³의 0도 −2). `jacobian`은 scipy 가중치로도 같은 네 경우의 호출이 다르다: 그 경우들은 0에 가까운 항목이나 판정의 경계에 있는 항목이 다른 반복에 멈춘 것이고, 가르는 것은 합의 순서다. scipy의 합(BLAS dgemv, Accelerate)의 순서는 행의 수에 따라 바뀌어 하나로 흉내 낼 수 없다(차례대로, FMA 사슬, 2·4·8갈래 누산을 1–1,000행에서 견주었다: 어느 것도 늘 같지 않다). 차례대로의 합에 scipy 가중치를 넣은 탐침에서는 df가 124개 가운데 70개까지 비트로 같았다.
+  - 호출이 다른 경우: `jacobian`은 mgh20(n9), mgh27(n30, n40), mgh28(n10); `hessian`은 mgh13, mgh10, mgh35(n9), mgh04, mgh14, mgh18, mgh24(n10), mgh30, mgh31. 호출이 같아도 항목 하나가 다른 반복에 멈출 수 있다(다른 항목이 남아 호출이 이어지므로).
+  - 차례대로의 합(C38 전의 구현)과 견주면: `jacobian`의 같은 호출 39 → 43, 같은 항목 7,156 → 7,289; `hessian`의 같은 호출 35 → 33, 같은 항목 1,488 → 1,517; `derivative`는 그대로 123.
+- 둘 다 수렴한 값의 차이: `derivative`는 atol + rtol·|df| 안, `jacobian`은 최대 9.1×10⁻¹⁴·max|J|, `hessian`은 4.7×10⁻¹²·max|H|(rtol의 3×10⁻⁴)다.
+- **Arb 계약**: `derivative`는 모음 113점(배치 빼고) 가운데 109점이 수렴하고 모두 참 오차 ≤ atol + rtol·|df|, 최대 상대오차 6.2×10⁻¹¹(tanh의 −0.5; scipy도 6.2×10⁻¹¹)이다. 수렴하지 못한 넷은 scipy와 같다(log 10⁻³ 기본값 −3, log 10⁻³ 오른쪽 −2, √ 10⁻⁶ 기본값 −3, exp의 order 2는 −2). 오차 추정이 참 오차보다 작은 것은 다섯이다(log 10⁴ 0.15배, √의 10·100 0.95·0.64배, atan의 10 0.48배, √ 10⁻⁶ 오른쪽 0.26배). `jacobian`은 수렴한 항목 7,389개의 노름 오차가 최대 rtol의 0.0037배(mgh11), `hessian`은 1,612개가 0.11배(mgh04, Brown의 나쁜 척도)다. 항목마다 atol + rtol·|df|를 넘는 것은 0에 가까운 항목에서 `jacobian` 210, `hessian` 4다.
+- **가중치** (`test_weights.py`): (n, c) = (1, 2), (2, 2), (4, 2), (6, 2), (8, 2), (4, 1.5), (4, 4), (4, 0.5), (3, 3), (5, 1.1), (4, 2.25)의 모든 가중치가 Arb(400비트의 Vandermonde 풀이) 공에 가장 가까운 double이다.
+- **속도** (한 번의 탐침, 기계가 바빴다: 부하 1.5–1.9; 기준선은 `bench/speed`가 조용한 기계에서): `derivative`(exp) 원소 10·10³·10⁵에서 sd 0.0096·0.045·1.44 ms, scipy 0.198·0.401·16.0 ms; `jacobian`(Rosenbrock n = 3) 0.014·0.237 ms; `hessian` 0.073·3.61 ms. 같은 입력이면 1·3·10스레드에서 비트가 같다(원소 4만 개로 확인).
+
 ---
 
 ## 8. 마일스톤 (안)
@@ -371,7 +406,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 |---|---|
 | C0 준비 (완료·승인(위임) 2026-11-21) | API 문서의 확정, 결과 객체의 바탕(`OptimizeResult`에서 끌어내기, 동작 불변), 모듈 `sd.integrate`·`sd.differentiate`(공개 이름은 결과 클래스뿐), 시험 모음(§7.1), Arb 참값 도구(§7.2), scipy 1.18.1 기록과 호출 순서(§7.3), QUADPACK 원본 대조(C17, §7.6), `bench/areas.py`와 측정·골든의 등록, scipy 시간(바쁜 기계라 점검 수준, §5) |
 | C1 함께 쓰는 부품 (완료·승인(위임) 2026-11-21) | C3·C15: `diff.hpp`와 `Differences`를 differentiate로 옮기기. C4·C16: `batch.cpp`에서 반복 고리를 csrc 아래 `elementwise/`로 끌어내 넓히기. 공개 함수 없음. optimize·regression의 테스트·골든·배치 속도가 그대로(§6.1, §6.2; C22–C25) |
-| C2 미분 | `derivative`, `jacobian`, `hessian` |
+| C2 미분 (완료·승인(위임) 2026-11-21) | `derivative`, `jacobian`, `hessian`(C26–C38; §3.8, §7.8) |
 | C3 표본과 고정 규칙 | `trapezoid simpson romb cumulative_trapezoid cumulative_simpson fixed_quad newton_cotes` |
 | C4 QUADPACK 1 | `quad`(QAGS, QAGI, QAGP), `dblquad`, `tplquad`, `nquad`. scipy의 C 판이 FMA로 축약한 누적의 자리를 호출 순서와 결과로 찾아 `std::fma`를 적는다(§7.6의 축약 탐침). `summary()`(C20) |
 | C5 QUADPACK 2 | `quad`의 `weight`(QAWO, QAWF, QAWS, QAWC). QAWS 로그 가중치 예제의 scipy·Fortran 4×10⁻⁹ 차이(§7.6)의 까닭을 찾는다. QAWO·QAWF의 Fortran 대조는 LINPACK 원본 `dgtsl`로 돈 것이다(C18) |
@@ -390,11 +425,7 @@ scipy의 `_differentiate.py`를 원소마다 옮긴다.
 
 - **C0**: 모두 정했다(C8–C17; C0을 마치며 생긴 넷은 추천안으로 C18–C21, 사용자 위임 2026-11-21). `dgtsl`의 질문도 닫혔다: 원본을 받았다(C18, 사용자 승인 2026-11-21).
 - **C1**: 정했다(C22–C25, 추천안, 사용자 위임 2026-11-21).
-- **C2**
-  1. 원소마다 여러 점을 넘기는 꼴: (a) (k, p) 2차원(scipy의 꼴, `args`는 (k, 1)) / (b) 1차원 (k·p,)으로 펴고 `args`도 p번 되풀이(O38의 1차원 계약을 그대로).
-  2. `jacobian`·`hessian`의 f: (a) (m, N)을 받아 (k, N)을 돌려준다(scipy 계약의 2차원 판, x는 1차원 (m,)만) / (b) scipy처럼 (m, …)의 모든 꼴.
-  3. 가중치: (a) 올바로 반올림(중앙은 정확한 유리수, 한쪽은 Arb; 점은 scipy와 같다, df는 끝자리가 다르다) / (b) scipy처럼 Vandermonde를 LAPACK으로 풀기.
-  4. `hessian`의 rtol < 100ε: (a) `ValueError` / (b) scipy처럼 말없이 100ε로.
+- **C2**: 정했다(C26–C38, 추천안, 사용자 위임 2026-11-21). 물었던 넷은 (a)다: (k, p) 2차원(C26), (m, N)의 f(C27), 올바로 반올림한 가중치(C28; 한쪽은 Arb가 아니라 Q(√c)의 정확한 계산, C34), `hessian`의 작은 rtol은 `ValueError`(C29). 구현하며 생긴 아홉(C30–C38)도 추천안으로 정했다.
 - **C3**
   1. 입력: (a) 데이터 함수의 규칙(API.md §5: `sd.ndarray`, 시퀀스, numpy 배열, `Series`) / (b) 배열 함수처럼 `sd.ndarray`만.
   2. `x`의 꼴: (a) `trapezoid(y, /, x=None, *, dx=1.0, axis=-1)`처럼 위치와 키워드 모두(scipy의 `simpson(y, x=x)`가 된다; `cumulative_simpson`도 같게: `[scipy와 다름]`, scipy는 키워드만) / (b) 함수마다 scipy 그대로.

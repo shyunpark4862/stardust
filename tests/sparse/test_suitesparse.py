@@ -151,3 +151,59 @@ def test_iterative_solvers_follow_scipy(name, fn, opts, slack):
         assert abs(mine - count) <= slack, (mine, count)
     if r.converged and fn not in ("lsqr", "lsmr", "minres"):
         assert np.linalg.norm(b - s @ np.asarray(r.x)) <= 1.01e-5 * np.linalg.norm(b)
+
+
+# SP6 (docs/design/sparse.md §3.8, §7.2): the eigensolvers on the real matrices, against scipy
+# 1.18.1 live with the same v0 (sin(1..n)): the same status, the eigenvalues to 1e-9 relative,
+# and the same number of OP x products (bcsstk14 106, msc10848 37, memplus 125, young1c 372; the
+# shift-invert ones are compared by their values: scipy's inverse is its own SuperLU); svds against
+# the dense SVD (well1850, 1850 x 712).
+EIGEN = [
+    ("HB/bcsstk14", "eigsh", {"k": 6}, 0),
+    ("HB/bcsstk14", "eigsh", {"k": 6, "sigma": 0.0}, 0),
+    ("Boeing/msc10848", "eigsh", {"k": 4}, 0),
+    ("Hamm/memplus", "eigs", {"k": 6}, 0),
+    ("HB/young1c", "eigs", {"k": 6}, 0),
+    ("Goodwin/goodwin", "eigs", {"k": 4, "sigma": 0.0}, 0),
+]
+
+
+@pytest.mark.usefixtures("reference_scipy")
+@pytest.mark.parametrize(("name", "fn", "kw", "slack"), EIGEN, ids=[f"{n}-{f}-{sorted(k)}" for n, f, k, _ in EIGEN])
+def test_eigensolvers_follow_scipy(name, fn, kw, slack):
+    import scipy.sparse.linalg as spla
+
+    a = get(name)
+    s = a.scipy("csr")
+    indptr, indices, data = a.csr()
+    A = sd.sparse.csr_array((sd.asarray(data), sd.asarray(indices), sd.asarray(indptr)), shape=a.shape)
+    n = a.shape[0]
+    v0 = np.sin(np.arange(1.0, n + 1)).astype(a.dtype)
+    c = [0]
+
+    def mv(x):
+        c[0] += 1
+        return s @ x
+
+    op = s if "sigma" in kw else spla.LinearOperator(s.shape, matvec=mv, dtype=s.dtype)
+    w = getattr(spla, fn)(op, v0=v0, return_eigenvectors=False, **kw)
+    r = getattr(sd.sparse, fn)(A, v0=sd.asarray(v0), return_eigenvectors=False, **kw)
+    assert r.converged
+    got = np.asarray(r.eigenvalues)
+    np.testing.assert_allclose(np.sort_complex(got), np.sort_complex(w), rtol=1e-9)
+    if "sigma" not in kw:
+        if slack is None:
+            assert abs(r.n_op - c[0]) <= 0.2 * c[0], (r.n_op, c[0])
+        else:
+            assert abs(r.n_op - c[0]) <= slack, (r.n_op, c[0])
+
+
+def test_svds_on_well1850():
+    a = get("HB/well1850")
+    indptr, indices, data = a.csr()
+    A = sd.sparse.csr_array((sd.asarray(data), sd.asarray(indices), sd.asarray(indptr)), shape=a.shape)
+    s = np.linalg.svd(a.dense(), compute_uv=False)
+    for which, ref in (("LM", np.sort(s[:6])), ("SM", np.sort(s[-6:]))):
+        r = sd.sparse.svds(A, k=6, which=which)
+        assert r.converged
+        np.testing.assert_allclose(np.asarray(r.S), ref, rtol=1e-10)

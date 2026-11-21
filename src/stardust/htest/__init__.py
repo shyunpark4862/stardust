@@ -10,8 +10,8 @@ in docs/design/htest.md §1.1).
 The module holds the result objects (_result.py) and the input layer (_common.py) the tests
 share; the tests come milestone by milestone (docs/design/htest.md §8): H1's means and variances
 (_parametric.py), H2's goodness of fit (_gof.py), H3's rank tests (_rank.py), H4's goodness of
-fit between samples (_gof.py), H5's correlation (_correlation.py), H6's contingency tables (_contingency.py) and H7's
-proportions and binomial tests (_proportion.py) so far.
+fit between samples (_gof.py), H5's correlation (_correlation.py), H6's contingency tables (_contingency.py), H7's
+proportions and binomial tests (_proportion.py) and H8's multiple comparisons and corrections (_multicomp.py) so far.
 """
 
 from ._contingency import (
@@ -49,6 +49,13 @@ from ._gof import (
     power_divergence,
     shapiro,
     skewtest,
+)
+from ._multicomp import (
+    combine_pvalues,
+    dunnett,
+    false_discovery_control,
+    multipletests,
+    tukey_hsd,
 )
 from ._parametric import (
     alexandergovern,
@@ -142,4 +149,9 @@ __all__ = [
     "proportion_confint",
     "test_proportions_2indep",
     "confint_proportions_2indep",
+    "tukey_hsd",
+    "dunnett",
+    "multipletests",
+    "false_discovery_control",
+    "combine_pvalues",
 ]

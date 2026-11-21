@@ -898,7 +898,58 @@ def _h8():
         weights=np.array([1.0, 2.0, 0.5]))  # fmt: skip
 
 
-for _f in (_h1, _h2, _h3, _h4, _h5, _h6, _h7, _h7_more, _h8):
+def _h8_more():
+    """H8's own problems: Tukey's equal and unequal sizes, a large offset (the mean differences
+    cancel), deep tails, few degrees of freedom, more groups, two groups (the t test), constant
+    groups; Dunnett's one treatment (the t test), one-sided alternatives, five treatments (scipy's
+    quasi-Monte Carlo), a tail and an offset; the corrections' ties, an exact tie at alpha (the
+    rejection), one p-value, the two stages' iterations and batches; the combinations' tails,
+    p-values near 1 and batches."""
+    m = "H8"
+    add(m, "tukey_hsd", "equal", normal(260, 8), normal(261, 8, 0.9), normal(262, 8, -0.4))
+    add(m, "tukey_hsd", "offset", normal(263, 12, 1e8), normal(264, 12, 1e8 + 0.7), normal(265, 12, 1e8 - 0.2),
+        normal(266, 12, 1e8 + 0.1), tags=("offset",))  # fmt: skip
+    add(m, "tukey_hsd", "tail", normal(267, 30), normal(268, 30, 2.5), normal(269, 30, 1.2), tags=("tail",))
+    add(m, "tukey_hsd", "small-df", normal(270, 2), normal(271, 2, 3.0), normal(272, 3, 1.0), tags=("small",))
+    add(m, "tukey_hsd", "six", *[normal(273 + i, 6, 0.4 * i) for i in range(6)])
+    add(m, "tukey_hsd", "two", normal(279, 9), normal(280, 11, 0.8))
+    add(m, "tukey_hsd", "constant", np.full(4, 1.5), np.full(5, 2.5), np.full(3, 0.5), tags=("degenerate",))
+    add(m, "tukey_hsd", "games-howell-tail", normal(281, 25), normal(282, 30, 2.0, 2.0), normal(283, 20, 0.5, 0.5),
+        equal_var=False, tags=("tail",))  # fmt: skip
+    add(m, "dunnett", "one", normal(284, 10, 0.8), control=normal(285, 12))
+    for alt in ("less", "greater"):
+        add(m, "dunnett", f"three-{alt}", normal(286, 8, 0.6), normal(287, 9, -0.3), normal(288, 10, 1.1),
+            control=normal(289, 9), alternative=alt)  # fmt: skip
+    add(m, "dunnett", "five", *[normal(290 + i, 7 + i, 0.3 * i) for i in range(5)], control=normal(295, 10))
+    add(m, "dunnett", "tail", normal(296, 25, 2.2), normal(297, 25, 0.4), control=normal(298, 30), tags=("tail",))
+    add(m, "dunnett", "offset", normal(299, 15, 1e9 + 0.9), normal(300, 15, 1e9 + 0.2), control=normal(301, 15, 1e9),
+        tags=("offset",))  # fmt: skip
+    add(m, "dunnett", "constant", np.full(4, 2.0), np.full(3, 1.0), control=np.full(5, 1.5), tags=("degenerate",))
+    ties = np.array([0.01, 0.04, 0.04, 0.01, 0.2, 0.04, 0.5, 0.01, 0.03, 0.2])
+    for meth in ("holm", "simes-hochberg", "hommel", "fdr_bh", "fdr_tsbky"):
+        add(m, "multipletests", f"{meth}-ties", ties, method=meth, tags=("ties",))
+    add(m, "multipletests", "bonferroni-at-alpha", np.array([0.01, 0.3, 0.6, 0.8, 0.02]), method="bonferroni")
+    add(m, "multipletests", "holm-one", np.array([0.03]), method="holm")
+    add(m, "multipletests", "hommel-many", _g(302).uniform(0, 1, 400) ** 3, method="hommel", tags=("large",))
+    add(m, "multipletests", "sidak-tiny", np.array([1e-20, 3e-18, 1e-15, 0.5]), method="sidak", tags=("tail",))
+    add(m, "multipletests", "holm-sidak-tiny", np.array([1e-20, 3e-18, 1e-15, 0.5]), tags=("tail",))
+    for meth in ("fdr_tsbh", "fdr_tsbky"):
+        add(m, "multipletests", f"{meth}-maxiter", PVALS, method=meth, maxiter=5)
+        add(m, "multipletests", f"{meth}-alpha", PVALS, method=meth, alpha=0.2)
+    add(m, "multipletests", "batch", _g(303).uniform(0, 0.2, (3, 12)), method="holm", axis=-1, tags=("batch",))
+    add(m, "false_discovery_control", "batch", _g(304).uniform(0, 0.3, (4, 9)), method="bh", axis=-1, tags=("batch",))
+    add(m, "false_discovery_control", "ties", ties, method="by", tags=("ties",))
+    deep = np.array([1e-40, 3e-25, 2e-30, 1e-12])
+    for meth in ("fisher", "pearson", "tippett", "stouffer", "mudholkar_george"):
+        add(m, "combine_pvalues", f"{meth}-deep", deep, method=meth, tags=("tail",))
+    near1 = np.array([0.999, 0.97, 0.995, 0.9999, 0.98, 0.9])
+    for meth in ("fisher", "pearson", "stouffer", "mudholkar_george"):
+        add(m, "combine_pvalues", f"{meth}-near-one", near1, method=meth)
+    add(m, "combine_pvalues", "fisher-many", _g(305).uniform(0, 1, 500), tags=("large",))
+    add(m, "combine_pvalues", "batch", _g(306).uniform(0, 1, (3, 7)), method="stouffer", axis=-1, tags=("batch",))
+
+
+for _f in (_h1, _h2, _h3, _h4, _h5, _h6, _h7, _h7_more, _h8, _h8_more):
     _f()
 del _f
 

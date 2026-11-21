@@ -3,7 +3,9 @@
 field (statistic, pvalue, zstatistic, df, df_num, df_denom, median, relative_risk, statistic_type,
 variance, diff, ratio, odds_ratio, prop1_null, prop2_null, conf_int and odds_ratio's one-sided
 conf_int_less and conf_int_greater, binomtest's conf_int_wilson and conf_int_wilsoncc; the interval
-functions' whole result is conf_int), each problem of the family a point.
+functions' whole result is conf_int), each problem of the family a point; H8's array families
+(tukey_hsd, dunnett, multipletests: refdata.ARRAY_FIELDS) a point per comparison or p-value
+(problem[i]).
 
 The contract is tests/htest/refdata.py's, as the tests judge it (docs/design/htest.md §4): the
 statistic to 1e-14 times its condition number in what it transforms (kappa_stat), the p-value
@@ -63,6 +65,13 @@ def _sd_regions(fam) -> dict:
     from tests.htest import problems as P
     from tests.htest import refdata as R
 
+    if fam in R.ARRAY_FIELDS:  # H8: a point per comparison or p-value
+        rows = {}
+        for pid in R.load(fam):
+            for label, field, got, hi, e, c in R.points(fam, pid):
+                if field != "reject":
+                    rows.setdefault(field, []).append((label, got, hi, e, c))
+        return _regions(rows)
     rows = {}
     for pid, rec in R.load(fam).items():
         r = R.call(P.PROBLEMS[pid])
@@ -90,11 +99,77 @@ def _recorded(lib):
     return out
 
 
+def _pairs_of(k, r_order=False):
+    """tukey_hsd's pairs i < j (the references' order); R's TukeyHSD rows j-i in its order."""
+    if r_order:
+        return [(j, i) for i in range(k) for j in range(i + 1, k)]
+    return [(i, j) for i in range(k) for j in range(i + 1, k)]
+
+
+def _lib_array_values(fam, lib, pid, res, field):
+    """A comparator's values of an H8 array field in the reference's order, or None."""
+    import math as _m
+
+    if fam == "multipletests":
+        if field != "pvalues_corrected":
+            return None
+        v = res.get("pvals_corrected") if lib == "statsmodels" else res.get("value")
+        return [float(x) for x in np.ravel(np.asarray(v, dtype=float))] if v is not None else None
+    if lib == "R":
+        if fam == "tukey_hsd":
+            key = {"statistic": "diff", "pvalue": "p adj"}.get(field)
+            v = res.get(key)
+            if v is None or any(x is None for x in v):
+                return None
+            k = int(round((1 + _m.sqrt(1 + 8 * len(v))) / 2))
+            order = _pairs_of(k, r_order=True)
+            vals = dict(zip(order, v))
+            # R's diff is mean_j - mean_i for its row j-i: the reference's i < j is its negative
+            return [(-vals[(j, i)] if field == "statistic" else vals[(j, i)]) for i, j in _pairs_of(k)]
+        key = {"statistic": "statistic", "pvalue": "p.value"}.get(field)
+        v = res.get(key)
+        return None if v is None or any(x is None for x in v) else [float(x) for x in v]
+    v = res.get(field)
+    if v is None or isinstance(v, (int, float)):
+        return None
+    a = np.asarray(v, dtype=float)
+    if fam == "tukey_hsd":
+        return [float(a[i, j]) for i, j in _pairs_of(a.shape[0])]
+    return [float(x) for x in np.ravel(a)]
+
+
+def _lib_array_regions(fam, lib, data):
+    from tests.htest import refdata as R
+
+    rows = {}
+    fields = ("pvalues_corrected",) if fam == "multipletests" else ("statistic", "pvalue")
+    for pid, rec in R.load(fam).items():
+        res = data.get(pid, {}).get("result") or {}
+        for field in fields:
+            if field not in rec:
+                continue
+            refs = rec[field] if isinstance(rec[field][0], list) else [rec[field]]
+            vals = _lib_array_values(fam, lib, pid, res, field)
+            if vals is None or len(vals) != len(refs):
+                continue
+            kap = rec.get("kappa")
+            for i, (v, ref) in enumerate(zip(vals, refs)):
+                e = R.rel(v, ref)
+                k = 1.0
+                if field == "pvalue" and kap is not None:
+                    kk = kap[i] if isinstance(kap, list) else kap
+                    k = 1.0 if kk != kk else max(1.0, kk)
+                rows.setdefault(field, []).append((f"{pid}[{i}]", v, ref[0], e, e / (R.BOUND * k)))
+    return _regions(rows) or None
+
+
 def _lib_regions(fam, lib):
     """A comparator's regions (statistic, pvalue) from its recorded results; None without any."""
     from tests.htest import refdata as R
 
     data = _recorded(lib)
+    if fam in R.ARRAY_FIELDS:
+        return _lib_array_regions(fam, lib, data)
     gof = R.data("r_gof") if lib == "R" else {}
     rows = {}
     for pid, rec in R.load(fam).items():

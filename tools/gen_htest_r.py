@@ -6,7 +6,9 @@ R's base `stats` package (decision H15), and the `car` package's leveneTest for 
 H33; car is the regression area's comparison package, installed for G7a): t.test,
 oneway.test, bartlett.test, fligner.test, chisq.test, shapiro.test, ks.test, wilcox.test,
 kruskal.test, friedman.test, ansari.test, mood.test, cor.test (pearson, kendall, spearman), fisher.test, mcnemar.test,
-binom.test, prop.test, poisson.test, TukeyHSD, p.adjust, pchisq, car::leveneTest. A problem is run where R has
+binom.test, prop.test, poisson.test, TukeyHSD, p.adjust, pchisq, car::leveneTest, and multcomp's
+Dunnett contrasts (glht with mcp(g = 'Dunnett'), installed; mvtnorm's seeded quasi-Monte Carlo) for
+dunnett. A problem is run where R has
 the same test with the same options; the others (Yuen's trim, alexandergovern, the Cressie-Read family,
 cramervonmises, anderson, brunnermunzel, median_test, page_trend_test, epps_singleton, batches,
 ...) are left out. Where R's definition differs from scipy's (ks.test's exact distribution with
@@ -25,7 +27,8 @@ and its default (AS 89's exact distribution) recorded beside it as p.value.defau
 
 Each record: the R call (its data vectors shown as c(...)), the inputs' digest, and R's htest fields: statistic,
 parameter (df), p.value, conf.int, estimate; for TukeyHSD the matrix of diff, lwr, upr, p adj;
-for p.adjust the adjusted vector. Doubles go to R as %.17g (exact) and come back as %.17g.
+for p.adjust the adjusted vector; for multcomp's Dunnett the t statistics, the adjusted p-values and the
+interval ends (lwr, upr). Doubles go to R as %.17g (exact) and come back as %.17g.
 
 Also writes tests/htest/data/r_gof.json: the goodness-of-fit packages nortest and goftest (decision
 H44; GOF_PRELUDE below).
@@ -249,6 +252,21 @@ def r_call(p):
     if f == "tukey_hsd" and kw.get("equal_var", True):
         g = "factor(rep(seq_along(L), lengths(L)))"
         return f"local({{L <- {groups(a)}; T <- TukeyHSD(aov(unlist(L) ~ {g}), conf.level = 0.95)[[1]]; as.list(as.data.frame(T))}})"  # noqa: E501
+    if f == "dunnett":
+        # multcomp's single-step Dunnett contrasts (the treatments minus the control, the control the
+        # factor's first level): mvtnorm's pmvt and qmvt (Genz and Bretz's randomized quasi-Monte
+        # Carlo, seeded, abseps 1e-7)
+        ra = {"two-sided": "two.sided", "less": "less", "greater": "greater"}[kw.get("alternative", "two-sided")]
+        L = groups([kw["control"], *a])
+        alg = "mvtnorm::GenzBretz(maxpts = 2e6, abseps = 1e-7)"
+        return (
+            f"local({{set.seed(1); L <- {L}; g <- factor(rep(seq_along(L), lengths(L))); fit <- aov(unlist(L) ~ g); "
+            f"h <- multcomp::glht(fit, linfct = multcomp::mcp(g = 'Dunnett'), alternative = '{ra}'); "
+            f"s <- summary(h, test = multcomp::adjusted('single-step', algorithm = {alg})); "
+            "ci <- confint(h, level = 0.95); "
+            "list(statistic = s$test$tstat, p.value = as.numeric(s$test$pvalues), lwr = ci$confint[, 'lwr'], "
+            "upr = ci$confint[, 'upr'])})"
+        )
     if f == "multipletests":
         rm = {
             "bonferroni": "bonferroni",

@@ -5,6 +5,7 @@
 #include "htest/correlation.hpp"
 #include "htest/gof.hpp"
 #include "htest/gof2.hpp"
+#include "htest/multicomp.hpp"
 #include "htest/parametric.hpp"
 #include "htest/proportion.hpp"
 #include "htest/rank.hpp"
@@ -22,6 +23,7 @@ void bind_htest(nb::module_& core) {
     htest::bind_correlation(m);
     htest::bind_contingency(m);
     htest::bind_proportion(m);
+    htest::bind_multicomp(m);
 }
 
 }  // namespace sd

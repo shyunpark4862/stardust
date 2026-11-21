@@ -4958,6 +4958,460 @@
 "msg": "cochrans_q(): 'x' must hold 0 and 1 values (the successes)"
 }
 },
+"combine_pvalues empty": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nStatistic:                         nan  No. P-values:                        0\nP-value:                           nan\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues fisher": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.bfb5fc076e7d7p-7"
+},
+"statistic": {
+"f": "0x1.64bebaa1385a7p+4"
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nStatistic:                       22.30  No. P-values:                        5\nP-value:                        0.0137\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues fisher batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.23476882dab96p-11",
+"0x1.7f24e3f728d8ep-9",
+"0x1.2a80ac9d50fe3p-11"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.47fcd83af8f23p+5",
+"0x1.1fbe948d251c1p+5",
+"0x1.476927442f460p+5"
+]
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nBatch shape:                      (3,)  No. P-values:                        8\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            40.998      0.001\n[1]            35.968      0.003\n[2]            40.926      0.001\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues fisher deep": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.7397ec85f2e38p-299"
+},
+"statistic": {
+"f": "0x1.b1e85baacd60cp+8"
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nStatistic:                       433.9  No. P-values:                        3\nP-value:                      1.43e-90\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues keepdims": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.23476882dab96p-11",
+"0x1.7f24e3f728d8ep-9",
+"0x1.2a80ac9d50fe3p-11"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+1
+],
+"strides": [
+8,
+8
+],
+"v": [
+"0x1.47fcd83af8f23p+5",
+"0x1.1fbe948d251c1p+5",
+"0x1.476927442f460p+5"
+]
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nBatch shape:                      (3,)  No. P-values:                        8\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            40.998      0.001\n[1]            35.968      0.003\n[2]            40.926      0.001\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues method": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "combine_pvalues(): 'method' must be 'fisher', 'pearson', 'tippett', 'stouffer' or 'mudholkar_george', not 'stouffers'"
+}
+},
+"combine_pvalues mudholkar_george": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.4e337ecde2824p-7"
+},
+"statistic": {
+"f": "0x1.333ddb2998f39p+3"
+},
+"summary()": "                     Combined p-values (Mudholkar-George)\n==============================================================================\nStatistic:                       9.601  No. P-values:                        5\nP-value:                        0.0102\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues mudholkar_george batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.3dbd26bd02c81p-13",
+"0x1.a213db9e21d62p-11",
+"0x1.53b85c5be67f6p-13"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.3a9b57936f435p+4",
+"0x1.0de0bb467ecbfp+4",
+"0x1.38db92ed3cf33p+4"
+]
+},
+"summary()": "                     Combined p-values (Mudholkar-George)\n==============================================================================\nBatch shape:                      (3,)  No. P-values:                        8\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            19.663      0.000\n[1]            16.867      0.001\n[2]            19.554      0.000\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues mudholkar_george deep": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.2c5c46d2af678p-81"
+},
+"statistic": {
+"f": "0x1.b1e85baacd60cp+7"
+},
+"summary()": "                     Combined p-values (Mudholkar-George)\n==============================================================================\nStatistic:                       217.0  No. P-values:                        3\nP-value:                      4.85e-25\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues nan omit": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.14e206dcc3c78p-3"
+},
+"statistic": {
+"f": "0x1.c0d6e3a1428a6p+2"
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nStatistic:                       7.013\nP-value:                         0.135\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues nan propagate": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "nan"
+},
+"statistic": {
+"f": "nan"
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nStatistic:                         nan  No. P-values:                        3\nP-value:                           nan\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues nan raise": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "combine_pvalues(): the input contains NaN (nan_policy='raise')"
+}
+},
+"combine_pvalues pearson": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.560243e0f55fep-6"
+},
+"statistic": {
+"f": "-0x1.8c06fbbcfb372p+1"
+},
+"summary()": "                         Combined p-values (Pearson)\n==============================================================================\nStatistic:                      -3.094  No. P-values:                        5\nP-value:                        0.0209\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues pearson batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.7c1e46864e323p-19",
+"0x1.773fcef83e4ecp-16",
+"0x1.5cdd09968164fp-18"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.ac3014f135dc5p+0",
+"-0x1.1ddd946a65020p+1",
+"-0x1.d1b28ade4a590p+0"
+]
+},
+"summary()": "                         Combined p-values (Pearson)\n==============================================================================\nBatch shape:                      (3,)  No. P-values:                        8\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            -1.673      0.000\n[1]            -2.233      0.000\n[2]            -1.819      0.000\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues pearson deep": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.048993cc30db4p-247"
+},
+"statistic": {
+"f": "-0x1.73626dc89dddap-81"
+},
+"summary()": "                         Combined p-values (Pearson)\n==============================================================================\nStatistic:                  -6.000e-25  No. P-values:                        3\nP-value:                      4.50e-75\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues range": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "combine_pvalues(): 'pvalues' must hold p-values between 0 and 1"
+}
+},
+"combine_pvalues stouffer": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.4c75f6fe0eb61p-7"
+},
+"statistic": {
+"f": "0x1.2913856865096p+1"
+},
+"summary()": "                         Combined p-values (Stouffer)\n==============================================================================\nStatistic:                       2.321  No. P-values:                        5\nP-value:                        0.0101\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues stouffer batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.66fe8a3502bd5p-15",
+"0x1.4577fb0be4e03p-12",
+"0x1.a7ba76d87bddfp-15"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.f6ce9f9edd07ep+1",
+"0x1.b61027e720817p+1",
+"0x1.f1add5a1d6862p+1"
+]
+},
+"summary()": "                         Combined p-values (Stouffer)\n==============================================================================\nBatch shape:                      (3,)  No. P-values:                        8\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             3.928      0.000\n[1]             3.422      0.000\n[2]             3.888      0.000\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues stouffer deep": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.356e9fa5af406p-301"
+},
+"statistic": {
+"f": "0x1.43986a8025d92p+4"
+},
+"summary()": "                         Combined p-values (Stouffer)\n==============================================================================\nStatistic:                       20.22  No. P-values:                        3\nP-value:                      2.97e-91\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues tippett": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.917d509b757d4p-5"
+},
+"statistic": {
+"f": "0x1.47ae147ae147bp-7"
+},
+"summary()": "                         Combined p-values (Tippett)\n==============================================================================\nStatistic:                     0.01000  No. P-values:                        5\nP-value:                        0.0490\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues tippett batch": {
+"r": {
+"attrs": {
+"pvalue": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.ae99860ddda27p-4",
+"0x1.89aeff61e967dp-4",
+"0x1.9bbba93f472a2p-4"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c3d00708d838dp-7",
+"0x1.9b4e80a4104f4p-7",
+"0x1.af11227a40380p-7"
+]
+},
+"summary()": "                         Combined p-values (Tippett)\n==============================================================================\nBatch shape:                      (3,)  No. P-values:                        8\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]             0.014      0.105\n[1]             0.013      0.096\n[2]             0.013      0.101\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues tippett deep": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.a22393b33036ap-132"
+},
+"statistic": {
+"f": "0x1.16c262777579cp-133"
+},
+"summary()": "                         Combined p-values (Tippett)\n==============================================================================\nStatistic:                   1.000e-40  No. P-values:                        3\nP-value:                      3.00e-40\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues weights": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x1.6c206afed5417p-4"
+},
+"statistic": {
+"f": "0x1.58fa73f3a5ebcp+0"
+},
+"summary()": "                         Combined p-values (Stouffer)\n==============================================================================\nStatistic:                       1.348  No. P-values:                        5\nP-value:                        0.0889\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
+"combine_pvalues weights size": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "combine_pvalues(): the paired samples must agree in size, not 5 and 2"
+}
+},
+"combine_pvalues zero and one": {
+"r": {
+"attrs": {
+"pvalue": {
+"f": "0x0.0p+0"
+},
+"statistic": {
+"f": "inf"
+},
+"summary()": "                          Combined p-values (Fisher)\n==============================================================================\nStatistic:                         inf  No. P-values:                        2\nP-value:                          0.00\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.CombinePvaluesResult"
+}
+},
 "confint_proportions_2indep diff agresti-caffo": {
 "r": {
 "nd": "float64",
@@ -5965,6 +6419,405 @@
 "obj": "stardust.htest._gof.Cramervonmises2sampResult"
 }
 },
+"dunnett alternative": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "dunnett(): 'alternative' must be 'two-sided', 'less' or 'greater', not 'larger'"
+}
+},
+"dunnett constant": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+1,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p+0"
+]
+},
+"df": {
+"f": "0x1.c000000000000p+3"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+1
+],
+"strides": [
+8
+],
+"v": [
+"nan"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+1
+],
+"strides": [
+8
+],
+"v": [
+"nan"
+]
+},
+"summary()": "                                Dunnett's test\n==============================================================================\nDf:                                 14  Alternative:                 two-sided\n                                        No. Observations:                    8\n                                        Control Observations:                8\n==============================================================================\n                statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - control)         nan        nan     -1.000     -1.000\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.DunnettResult"
+}
+},
+"dunnett four": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+4,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-0x1.3e4b5bab8a854p-2",
+"0x1.f2475e2a92b67p+0",
+"-0x1.4afea7786f0dbp-1",
+"0x1.83090177348aep+0",
+"-0x1.612e9d835ad94p+0",
+"0x1.f1da437fb273cp-1",
+"-0x1.097de1d1fb1c0p-5",
+"0x1.101e33126e1c7p+1"
+]
+},
+"df": {
+"f": "0x1.c000000000000p+5"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.b0cd331433afcp-3",
+"0x1.5e715bce13b68p-1",
+"0x1.f2ce67780ff14p-1",
+"0x1.e7b65fd348ab9p-5"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.cd74596455897p+0",
+"0x1.feb0a871ff34ep-1",
+"-0x1.b915ee9b86f46p-2",
+"0x1.34dccd121afeap+1"
+]
+},
+"summary()": "                                Dunnett's test\n==============================================================================\nDf:                                 56  Alternative:                 two-sided\n                                        No. Observations:       12, 15, 10, 15\n                                        Control Observations:                9\n==============================================================================\n                statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - control)       1.803      0.211     -0.311      1.946\n(1 - control)       0.997      0.684     -0.646      1.512\n(2 - control)      -0.431      0.974     -1.380      0.972\n(3 - control)       2.413      0.060     -0.032      2.126\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.DunnettResult"
+}
+},
+"dunnett greater": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-0x1.01c00b8a9b240p-4",
+"inf",
+"-0x1.a34184f9c3d5ap-2",
+"inf"
+]
+},
+"df": {
+"f": "0x1.0800000000000p+5"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0d3cfa0c6daadp-4",
+"0x1.f897b6d3cc862p-3"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d2edbc75a8667p+0",
+"0x1.025fc8b662e21p+0"
+]
+},
+"summary()": "                                Dunnett's test\n==============================================================================\nDf:                                 33  Alternative:                   greater\n                                        No. Observations:               12, 15\n                                        Control Observations:                9\n==============================================================================\n                statistic     pvalue     [0.050     1.000]\n------------------------------------------------------------------------------\n(0 - control)       1.824      0.066     -0.063        inf\n(1 - control)       1.009      0.246     -0.409        inf\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.DunnettResult"
+}
+},
+"dunnett greater alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.a5926350770f0p-4",
+"inf",
+"-0x1.00ddee3cca862p-2",
+"inf"
+]
+}
+},
+"dunnett less": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-inf",
+"0x1.b2d087f859c76p+0",
+"-inf",
+"0x1.465a0ef96df98p+0"
+]
+},
+"df": {
+"f": "0x1.0800000000000p+5"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.fa1d1e45a0fefp-1",
+"0x1.da366b9afe66dp-1"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d2edbc75a8667p+0",
+"0x1.025fc8b662e21p+0"
+]
+},
+"summary()": "                                Dunnett's test\n==============================================================================\nDf:                                 33  Alternative:                      less\n                                        No. Observations:               12, 15\n                                        Control Observations:                9\n==============================================================================\n                statistic     pvalue     [0.000     0.950]\n------------------------------------------------------------------------------\n(0 - control)       1.824      0.989       -inf      1.698\n(1 - control)       1.009      0.926       -inf      1.275\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.DunnettResult"
+}
+},
+"dunnett less alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-inf",
+"0x1.885b610aa8a43p+0",
+"-inf",
+"0x1.1dc1294a2fa5ap+0"
+]
+}
+},
+"dunnett no samples": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "dunnett(): at least one sample besides the control is required, not 0"
+}
+},
+"dunnett one": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+1,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.45d26d7bbae70p-4",
+"0x1.8e576067f466bp+0"
+]
+},
+"df": {
+"f": "0x1.3000000000000p+4"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+1
+],
+"strides": [
+8
+],
+"v": [
+"0x1.03dd130a0ed05p-5"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+1
+],
+"strides": [
+8
+],
+"v": [
+"0x1.28c648c29c53fp+1"
+]
+},
+"summary()": "                                Dunnett's test\n==============================================================================\nDf:                                 19  Alternative:                 two-sided\n                                        No. Observations:                   12\n                                        Control Observations:                9\n==============================================================================\n                statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - control)       2.319      0.032      0.080      1.556\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.DunnettResult"
+}
+},
+"dunnett rng": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "dunnett(): unexpected keyword argument 'rng'"
+}
+},
+"dunnett two-sided": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-0x1.b0f03d49b8830p-3",
+"0x1.d8d28ee8e7258p+0",
+"-0x1.1a50216ba2f24p-1",
+"0x1.6ab1be70ce7d3p+0"
+]
+},
+"df": {
+"f": "0x1.0800000000000p+5"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0d2d80aa8c6c5p-3",
+"0x1.f3fce98dbf356p-2"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.d2edbc75a8667p+0",
+"0x1.025fc8b662e21p+0"
+]
+},
+"summary()": "                                Dunnett's test\n==============================================================================\nDf:                                 33  Alternative:                 two-sided\n                                        No. Observations:               12, 15\n                                        Control Observations:                9\n==============================================================================\n                statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - control)       1.824      0.131     -0.211      1.847\n(1 - control)       1.009      0.488     -0.551      1.417\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.DunnettResult"
+}
+},
+"dunnett two-sided alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"-0x1.01a4b8c233a78p-4",
+"0x1.b2ced2cbd34fap+0",
+"-0x1.a33afce7198f6p-2",
+"0x1.46586cf4c367ep+0"
+]
+}
+},
 "epps_singleton_2samp batch": {
 "r": {
 "attrs": {
@@ -6421,6 +7274,171 @@
 "summary()": "                                One-way ANOVA\n==============================================================================\nStatistic:                       3.503  No. Observations:               40, 41\nP-value:                        0.0650\nDf Num:                              1\nDf Denom:                           79\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.FOnewayResult"
+}
+},
+"false_discovery_control bh": {
+"r": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.83073119f21d7p-37",
+"0x1.4d339a8a6aa35p-6",
+"0x1.3eac91a52fb7bp-4",
+"0x1.349388fe94529p-6",
+"0x1.c4bbebdb4d753p-6",
+"0x1.e0162f4527c07p-4",
+"0x1.b77a9365dd4a1p-4",
+"0x1.2258c8d75d8d0p-5",
+"0x1.722b2dc5cabb7p-5",
+"0x1.36223a55106ddp-4",
+"0x1.2258c8d75d8d0p-5",
+"0x1.e0162f4527c07p-4",
+"0x1.9a117097ae128p-4",
+"0x1.dfeff338c6717p-2",
+"0x1.ddaf13f330a5ep-1",
+"0x1.697be376aec8bp-2",
+"0x1.b25d1d730b62ap-1",
+"0x1.13d32b8cec08ap-2",
+"0x1.14cd343786443p-1",
+"0x1.36223a55106ddp-4",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+}
+},
+"false_discovery_control bh batch": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+8
+],
+"strides": [
+64,
+8
+],
+"v": [
+"0x1.c3d00708d838dp-4",
+"0x1.1cf5b1d2ae197p-3",
+"0x1.1cf5b1d2ae197p-3",
+"0x1.5c8f7f2856ca3p-3",
+"0x1.1cf5b1d2ae197p-3",
+"0x1.7035b54539926p-3",
+"0x1.1cf5b1d2ae197p-3",
+"0x1.7035b54539926p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.9b4e80a4104f4p-4",
+"0x1.af11227a40380p-4",
+"0x1.4dfdc3add082dp-3",
+"0x1.8fad3040d03e3p-3",
+"0x1.3cd23f36a8c69p-3",
+"0x1.8fad3040d03e3p-3",
+"0x1.4dfdc3add082dp-3",
+"0x1.f3602b07454d4p-4",
+"0x1.8fad3040d03e3p-3"
+]
+}
+},
+"false_discovery_control by": {
+"r": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.651cb2cfa76fdp-35",
+"0x1.33723a1428980p-4",
+"0x1.260aa943aba28p-2",
+"0x1.1cb9712359fe9p-4",
+"0x1.a1bd3dc74a3c6p-4",
+"0x1.bafa40bdc7006p-2",
+"0x1.958230adaafcbp-2",
+"0x1.0be76a6bf378bp-3",
+"0x1.558e4c8a5dd37p-3",
+"0x1.1e295129d4f64p-2",
+"0x1.0be76a6bf378bp-3",
+"0x1.bafa40bdc7006p-2",
+"0x1.7a5f080dc7b25p-2",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.fd02523684671p-1",
+"0x1.0000000000000p+0",
+"0x1.1e295129d4f64p-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+}
+},
+"false_discovery_control by batch": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+8
+],
+"strides": [
+64,
+8
+],
+"v": [
+"0x1.32fd9368861d7p-2",
+"0x1.833d6c9ec19e0p-2",
+"0x1.833d6c9ec19e0p-2",
+"0x1.d9ab3af830749p-2",
+"0x1.833d6c9ec19e0p-2",
+"0x1.f45eeda5d7d60p-2",
+"0x1.833d6c9ec19e0p-2",
+"0x1.f45eeda5d7d60p-2",
+"0x1.0351b361e2598p-1",
+"0x1.0351b361e2598p-1",
+"0x1.0351b361e2598p-1",
+"0x1.0351b361e2598p-1",
+"0x1.0351b361e2598p-1",
+"0x1.0351b361e2598p-1",
+"0x1.0351b361e2598p-1",
+"0x1.1777da9b5c740p-2",
+"0x1.24e5038a611ecp-2",
+"0x1.c5deca5ef1c06p-2",
+"0x1.0f90e019c0b19p-1",
+"0x1.ae8998a53fde4p-2",
+"0x1.0f90e019c0b19p-1",
+"0x1.c5deca5ef1c06p-2",
+"0x1.534ed417e95fbp-2",
+"0x1.0f90e019c0b19p-1"
+]
+}
+},
+"false_discovery_control method": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "false_discovery_control(): 'method' must be 'bh' or 'by', not 'BH'"
+}
+},
+"false_discovery_control range": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "false_discovery_control(): 'ps' must hold p-values between 0 and 1 (and no NaN)"
+}
+},
+"false_discovery_control scalar": {
+"r": {
+"f": "0x1.3333333333333p-2"
 }
 },
 "fisher_exact 2x6": {
@@ -12241,6 +13259,2234 @@
 "obj": "stardust.htest._rank.MoodResult"
 }
 },
+"multipletests alpha": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "multipletests(): 'alpha' must be between 0 and 1 (exclusive)"
+}
+},
+"multipletests at alpha": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.47ae147ae147bp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4e6ff6ef63641p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+5
+],
+"strides": [
+8
+],
+"v": [
+"0x1.999999999999ap-5",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.999999999999ap-4"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+5
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+false,
+false
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     bonferroni\nAlpha Sidak:                   0.01021  No. Tests:                           5\nAlpha Bonferroni:              0.01000  No. Rejected:                        1\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.050       True\n[1]             1.000      False\n[2]             1.000      False\n[3]             1.000      False\n[4]             0.100      False\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests axis tuple": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "multipletests(): 'axis' must be an int or None, not tuple"
+}
+},
+"multipletests axis=-1": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.999999999999ap-8"
+},
+"alpha_sidak": {
+"f": "0x1.a2d9b85564d66p-8"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+3,
+8
+],
+"strides": [
+64,
+8
+],
+"v": [
+"0x1.c3d00708d838dp-4",
+"0x1.c0f0a7e6fc986p-2",
+"0x1.c0f0a7e6fc986p-2",
+"0x1.c0f0a7e6fc986p-2",
+"0x1.31c2730598034p-2",
+"0x1.c0f0a7e6fc986p-2",
+"0x1.c0f0a7e6fc986p-2",
+"0x1.c0f0a7e6fc986p-2",
+"0x1.a789b56f30dcap-1",
+"0x1.a789b56f30dcap-1",
+"0x1.a789b56f30dcap-1",
+"0x1.a789b56f30dcap-1",
+"0x1.a789b56f30dcap-1",
+"0x1.a789b56f30dcap-1",
+"0x1.a789b56f30dcap-1",
+"0x1.9b4e80a4104f4p-4",
+"0x1.af11227a40380p-4",
+"0x1.dad7a5faf1771p-2",
+"0x1.ec5a553763760p-2",
+"0x1.646c871d7ddf6p-2",
+"0x1.ec5a553763760p-2",
+"0x1.dad7a5faf1771p-2",
+"0x1.b4f425a65ca3ap-3",
+"0x1.ec5a553763760p-2"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+3,
+8
+],
+"strides": [
+8,
+1
+],
+"v": [
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                           holm\nAlpha Sidak:                  0.006391  No. Tests:                           8\nAlpha Bonferroni:             0.006250  No. Rejected:                        0\n                                        Shape:                          (3, 8)\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0, 0]          0.110      False\n[0, 1]          0.438      False\n[0, 2]          0.438      False\n[0, 3]          0.438      False\n[0, 4]          0.299      False\n...               ...        ...\n[2, 3]          0.348      False\n[2, 4]          0.481      False\n[2, 5]          0.464      False\n[2, 6]          0.213      False\n[2, 7]          0.481      False\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests axis=0": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.1111111111111p-6"
+},
+"alpha_sidak": {
+"f": "0x1.15bfa26f23e9fp-6"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+3,
+8
+],
+"strides": [
+8,
+24
+],
+"v": [
+"0x1.c3d00708d838dp-6",
+"0x1.0b5a88e254233p-3",
+"0x1.6b08525f4e73fp-3",
+"0x1.056b9f5e4117ap-3",
+"0x1.0614629714951p-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.1334a99b45c8bp-3",
+"0x1.7035b54539926p-3",
+"0x1.7acc30e7c502dp-3",
+"0x1.0b5a88e254233p-3",
+"0x1.8fad3040d03e3p-3",
+"0x1.056b9f5e4117ap-3",
+"0x1.82408093b562ep-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.1334a99b45c8bp-3",
+"0x1.347ae07b0c3b7p-5",
+"0x1.af11227a40380p-6",
+"0x1.0b5a88e254233p-3",
+"0x1.8fad3040d03e3p-3",
+"0x1.056b9f5e4117ap-3",
+"0x1.82408093b562ep-3",
+"0x1.7da7009ad35a6p-3",
+"0x1.7688204573f9fp-4",
+"0x1.7035b54539926p-3"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+3,
+8
+],
+"strides": [
+1,
+3
+],
+"v": [
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                         hommel\nAlpha Sidak:                   0.01695  No. Tests:                           3\nAlpha Bonferroni:              0.01667  No. Rejected:                        3\n                                        Shape:                          (3, 8)\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0, 0]          0.028       True\n[0, 1]          0.131      False\n[0, 2]          0.177      False\n[0, 3]          0.128      False\n[0, 4]          0.128      False\n...               ...        ...\n[2, 3]          0.128      False\n[2, 4]          0.189      False\n[2, 5]          0.186      False\n[2, 6]          0.091      False\n[2, 7]          0.180      False\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests axis=None 2-D": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.1111111111111p-9"
+},
+"alpha_sidak": {
+"f": "0x1.17d4a4f424db4p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+24
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0d86c9ec9f920p-2",
+"0x1.8ebb25482f9bbp-1",
+"0x1.7d58f7d01553dp-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.29e4e3bb5878cp-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.8ebb25482f9bbp-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.0bcb000cedaa7p-2",
+"0x1.0cdd7d2617494p-2",
+"0x1.8ebb25482f9bbp-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.5b830a34e9f82p-1",
+"0x1.9c2c8d5a8f599p-1",
+"0x1.8ebb25482f9bbp-1",
+"0x1.e9706bd636648p-2",
+"0x1.9c2c8d5a8f599p-1"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+24
+],
+"strides": [
+1
+],
+"v": [
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     holm-sidak\nAlpha Sidak:                  0.002135  No. Tests:                          24\nAlpha Bonferroni:             0.002083  No. Rejected:                        0\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.263      False\n[1]             0.779      False\n[2]             0.745      False\n[3]             0.805      False\n[4]             0.582      False\n...               ...        ...\n[19]            0.679      False\n[20]            0.805      False\n[21]            0.779      False\n[22]            0.478      False\n[23]            0.805      False\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests bonferroni": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.83073119f21d7p-36",
+"0x1.4d339a8a6aa35p-4",
+"0x1.b62d4843219c9p-1",
+"0x1.cedd4d7dde7bdp-5",
+"0x1.1af5736910694p-3",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.fc1b5f78e3b6bp-3",
+"0x1.722b2dc5cabb7p-2",
+"0x1.6233f83e45e43p-1",
+"0x1.fbe1698995345p-3",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.83aac8ea54894p-1",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     bonferroni\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        2\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.081      False\n[2]             0.856      False\n[3]             0.057      False\n[4]             0.138      False\n...               ...        ...\n[17]            1.000      False\n[18]            1.000      False\n[19]            0.757      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests bonferroni alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.83073119f21d7p-36",
+"0x1.4d339a8a6aa35p-4",
+"0x1.b62d4843219c9p-1",
+"0x1.cedd4d7dde7bdp-5",
+"0x1.1af5736910694p-3",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.fc1b5f78e3b6bp-3",
+"0x1.722b2dc5cabb7p-2",
+"0x1.6233f83e45e43p-1",
+"0x1.fbe1698995345p-3",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.83aac8ea54894p-1",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                     bonferroni\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                        5\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.081       True\n[2]             0.856      False\n[3]             0.057       True\n[4]             0.138       True\n...               ...        ...\n[17]            1.000      False\n[18]            1.000      False\n[19]            0.757      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests empty": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "nan"
+},
+"alpha_sidak": {
+"f": "nan"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+0
+],
+"strides": [
+8
+],
+"v": []
+},
+"reject": {
+"nd": "bool",
+"shape": [
+0
+],
+"strides": [
+1
+],
+"v": []
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     holm-sidak\nAlpha Sidak:                       nan  No. Tests:                           0\nAlpha Bonferroni:                  nan  No. Rejected:                        0\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_bh": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.83073119f21d7p-37",
+"0x1.4d339a8a6aa35p-6",
+"0x1.3eac91a52fb7bp-4",
+"0x1.349388fe94529p-6",
+"0x1.c4bbebdb4d753p-6",
+"0x1.e0162f4527c07p-4",
+"0x1.b77a9365dd4a1p-4",
+"0x1.2258c8d75d8d0p-5",
+"0x1.722b2dc5cabb7p-5",
+"0x1.36223a55106ddp-4",
+"0x1.2258c8d75d8d0p-5",
+"0x1.e0162f4527c07p-4",
+"0x1.9a117097ae128p-4",
+"0x1.dfeff338c6717p-2",
+"0x1.ddaf13f330a5ep-1",
+"0x1.697be376aec8bp-2",
+"0x1.b25d1d730b62ap-1",
+"0x1.13d32b8cec08ap-2",
+"0x1.14cd343786443p-1",
+"0x1.36223a55106ddp-4",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+true,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                         fdr_bh\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        8\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.020       True\n[2]             0.078      False\n[3]             0.019       True\n[4]             0.028       True\n...               ...        ...\n[17]            0.269      False\n[18]            0.541      False\n[19]            0.076      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_bh alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.83073119f21d7p-37",
+"0x1.4d339a8a6aa35p-6",
+"0x1.3eac91a52fb7bp-4",
+"0x1.349388fe94529p-6",
+"0x1.c4bbebdb4d753p-6",
+"0x1.e0162f4527c07p-4",
+"0x1.b77a9365dd4a1p-4",
+"0x1.2258c8d75d8d0p-5",
+"0x1.722b2dc5cabb7p-5",
+"0x1.36223a55106ddp-4",
+"0x1.2258c8d75d8d0p-5",
+"0x1.e0162f4527c07p-4",
+"0x1.9a117097ae128p-4",
+"0x1.dfeff338c6717p-2",
+"0x1.ddaf13f330a5ep-1",
+"0x1.697be376aec8bp-2",
+"0x1.b25d1d730b62ap-1",
+"0x1.13d32b8cec08ap-2",
+"0x1.14cd343786443p-1",
+"0x1.36223a55106ddp-4",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+true,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                         fdr_bh\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                       15\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.020       True\n[2]             0.078       True\n[3]             0.019       True\n[4]             0.028       True\n...               ...        ...\n[17]            0.269      False\n[18]            0.541      False\n[19]            0.076       True\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_by": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.651cb2cfa76fdp-35",
+"0x1.33723a1428980p-4",
+"0x1.260aa943aba28p-2",
+"0x1.1cb9712359fe9p-4",
+"0x1.a1bd3dc74a3c6p-4",
+"0x1.bafa40bdc7006p-2",
+"0x1.958230adaafcbp-2",
+"0x1.0be76a6bf378bp-3",
+"0x1.558e4c8a5dd37p-3",
+"0x1.1e295129d4f64p-2",
+"0x1.0be76a6bf378bp-3",
+"0x1.bafa40bdc7006p-2",
+"0x1.7a5f080dc7b25p-2",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.fd02523684671p-1",
+"0x1.0000000000000p+0",
+"0x1.1e295129d4f64p-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                         fdr_by\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        2\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.075      False\n[2]             0.287      False\n[3]             0.070      False\n[4]             0.102      False\n...               ...        ...\n[17]            0.994      False\n[18]            1.000      False\n[19]            0.279      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_by alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.651cb2cfa76fdp-35",
+"0x1.33723a1428980p-4",
+"0x1.260aa943aba28p-2",
+"0x1.1cb9712359fe9p-4",
+"0x1.a1bd3dc74a3c6p-4",
+"0x1.bafa40bdc7006p-2",
+"0x1.958230adaafcbp-2",
+"0x1.0be76a6bf378bp-3",
+"0x1.558e4c8a5dd37p-3",
+"0x1.1e295129d4f64p-2",
+"0x1.0be76a6bf378bp-3",
+"0x1.bafa40bdc7006p-2",
+"0x1.7a5f080dc7b25p-2",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.fd02523684671p-1",
+"0x1.0000000000000p+0",
+"0x1.1e295129d4f64p-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+true,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                         fdr_by\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                        8\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.075       True\n[2]             0.287      False\n[3]             0.070       True\n[4]             0.102       True\n...               ...        ...\n[17]            0.994      False\n[18]            1.000      False\n[19]            0.279      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_tsbh": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.ec94ca210599ep-38",
+"0x1.a81321c77072cp-7",
+"0x1.9595d0a3b1185p-5",
+"0x1.88bbc5a119dd7p-7",
+"0x1.201a7ed15fd63p-6",
+"0x1.31827b2c02061p-4",
+"0x1.17ab17fb012f2p-4",
+"0x1.7188456f313f1p-6",
+"0x1.d71fae9ea4ee9p-6",
+"0x1.8ab732f7e65d3p-5",
+"0x1.7188456f313f1p-6",
+"0x1.31827b2c02061p-4",
+"0x1.04f3d349403a5p-4",
+"0x1.316a2669f2a55p-2",
+"0x1.2ffb0cb207af6p-1",
+"0x1.cc120a39f5b99p-3",
+"0x1.1469ccec1e849p-1",
+"0x1.5f0cc31072399p-3",
+"0x1.604afca3c2284p-2",
+"0x1.8ab732f7e65d3p-5",
+"0x1.45d1745d1745dp-1",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+true,
+true,
+true,
+false,
+false,
+true,
+true,
+true,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                       fdr_tsbh\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                       11\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.013       True\n[2]             0.050       True\n[3]             0.012       True\n[4]             0.018       True\n...               ...        ...\n[17]            0.171      False\n[18]            0.344      False\n[19]            0.048       True\n[20]            0.636      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_tsbh alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.ec94ca210599ep-39",
+"0x1.a81321c77072cp-8",
+"0x1.9595d0a3b1185p-6",
+"0x1.88bbc5a119dd7p-8",
+"0x1.201a7ed15fd63p-7",
+"0x1.31827b2c02061p-5",
+"0x1.17ab17fb012f2p-5",
+"0x1.7188456f313f1p-7",
+"0x1.d71fae9ea4ee9p-7",
+"0x1.8ab732f7e65d3p-6",
+"0x1.7188456f313f1p-7",
+"0x1.31827b2c02061p-5",
+"0x1.04f3d349403a5p-5",
+"0x1.316a2669f2a55p-3",
+"0x1.2ffb0cb207af6p-2",
+"0x1.cc120a39f5b99p-4",
+"0x1.1469ccec1e849p-2",
+"0x1.5f0cc31072399p-4",
+"0x1.604afca3c2284p-3",
+"0x1.8ab732f7e65d3p-6",
+"0x1.45d1745d1745dp-2",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+false,
+true,
+false,
+true,
+true,
+true,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                       fdr_tsbh\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                       19\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.006       True\n[2]             0.025       True\n[3]             0.006       True\n[4]             0.009       True\n...               ...        ...\n[17]            0.086       True\n[18]            0.172       True\n[19]            0.024       True\n[20]            0.318      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_tsbky": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.029aea1e22f0cp-37",
+"0x1.bd4749de36121p-7",
+"0x1.a9dd4e4579f32p-5",
+"0x1.9c5ec2b5f4c21p-7",
+"0x1.2e82385bd7d42p-6",
+"0x1.40c901549bb99p-4",
+"0x1.25a6d92df4718p-4",
+"0x1.840248e7f3b57p-6",
+"0x1.eeae10f36060ep-6",
+"0x1.9e738f1de5151p-5",
+"0x1.840248e7f3b57p-6",
+"0x1.40c901549bb99p-4",
+"0x1.120004401d0a1p-4",
+"0x1.40af752271fa6p-2",
+"0x1.3f2e0087bb44fp-1",
+"0x1.e312f1234202ep-3",
+"0x1.223be3f7ecd80p-1",
+"0x1.709a3337ab22dp-3",
+"0x1.71e8561258aa5p-2",
+"0x1.9e738f1de5151p-5",
+"0x1.561bed61bed62p-1",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+true,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                      fdr_tsbky\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        8\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.014       True\n[2]             0.052      False\n[3]             0.013       True\n[4]             0.018       True\n...               ...        ...\n[17]            0.180      False\n[18]            0.361      False\n[19]            0.051      False\n[20]            0.668      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_tsbky alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.278c7947035c5p-38",
+"0x1.fce3c22286f01p-8",
+"0x1.e6b3c72ad483ap-6",
+"0x1.d747b9f485702p-8",
+"0x1.59b964fb3fcdep-7",
+"0x1.6e9c93ce68d42p-5",
+"0x1.4f9a1cc6ce389p-5",
+"0x1.bb7053523b188p-7",
+"0x1.1aac9bf8c95bfp-6",
+"0x1.d9a8a38fe13cap-6",
+"0x1.bb7053523b188p-7",
+"0x1.6e9c93ce68d42p-5",
+"0x1.39249724b3793p-5",
+"0x1.6e7f614beff99p-3",
+"0x1.6cc6dc08d605ap-2",
+"0x1.140ad2ef936f6p-3",
+"0x1.4bb2291b57d25p-2",
+"0x1.a54283ad55debp-4",
+"0x1.a6c0625e1c305p-3",
+"0x1.d9a8a38fe13cap-6",
+"0x1.86fb586fb5870p-2",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+true,
+false,
+true,
+false,
+true,
+false,
+true,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                      fdr_tsbky\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                       18\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.008       True\n[2]             0.030       True\n[3]             0.007       True\n[4]             0.011       True\n...               ...        ...\n[17]            0.103       True\n[18]            0.206      False\n[19]            0.029       True\n[20]            0.382      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_tsbky max_iter=0": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.966126c1a49efp-37",
+"0x1.5ddc9577bcc51p-6",
+"0x1.4e9b98ed721a8p-4",
+"0x1.44014fd81bbd1p-6",
+"0x1.db5eead977bb1p-6",
+"0x1.f8174b3bd023ap-4",
+"0x1.cd73e7915b8dcp-4",
+"0x1.30dd394888a0dp-5",
+"0x1.84ad567614de6p-5",
+"0x1.45a3f072ead9bp-4",
+"0x1.30dd394888a0dp-5",
+"0x1.f8174b3bd023ap-4",
+"0x1.ae924fd276c6ap-4",
+"0x1.f7ef25c869f72p-2",
+"0x1.f5916e8c2647cp-1",
+"0x1.7b8ee2096ab92p-2",
+"0x1.c814f88598c13p-1",
+"0x1.219dba872b091p-2",
+"0x1.22a443a0b3614p-1",
+"0x1.45a3f072ead9bp-4",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+true,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                      fdr_tsbky\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        8\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.021       True\n[2]             0.082      False\n[3]             0.020       True\n[4]             0.029       True\n...               ...        ...\n[17]            0.283      False\n[18]            0.568      False\n[19]            0.080      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests fdr_tsbky max_iter=3": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.029aea1e22f0cp-37",
+"0x1.bd4749de36121p-7",
+"0x1.a9dd4e4579f32p-5",
+"0x1.9c5ec2b5f4c21p-7",
+"0x1.2e82385bd7d42p-6",
+"0x1.40c901549bb99p-4",
+"0x1.25a6d92df4718p-4",
+"0x1.840248e7f3b57p-6",
+"0x1.eeae10f36060ep-6",
+"0x1.9e738f1de5151p-5",
+"0x1.840248e7f3b57p-6",
+"0x1.40c901549bb99p-4",
+"0x1.120004401d0a1p-4",
+"0x1.40af752271fa6p-2",
+"0x1.3f2e0087bb44fp-1",
+"0x1.e312f1234202ep-3",
+"0x1.223be3f7ecd80p-1",
+"0x1.709a3337ab22dp-3",
+"0x1.71e8561258aa5p-2",
+"0x1.9e738f1de5151p-5",
+"0x1.561bed61bed62p-1",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+true,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                      fdr_tsbky\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        8\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.014       True\n[2]             0.052      False\n[3]             0.013       True\n[4]             0.018       True\n...               ...        ...\n[17]            0.180      False\n[18]            0.361      False\n[19]            0.051      False\n[20]            0.668      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests holm": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798c4336p-36",
+"0x1.1fc3d6ebe7bb9p-4",
+"0x1.de02da77c7938p-2",
+"0x1.a4c92f2c9bb66p-5",
+"0x1.cf0602abec4f2p-4",
+"0x1.6f0211f2fa0dep-1",
+"0x1.449d72b10f16bp-1",
+"0x1.88740018dc058p-3",
+"0x1.f8c6843c42ff9p-3",
+"0x1.c2cdc79513226p-2",
+"0x1.88740018dc058p-3",
+"0x1.6f0211f2fa0dep-1",
+"0x1.338d1471c28dep-1",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.ca26ed7206d0cp-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                           holm\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        2\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.070      False\n[2]             0.467      False\n[3]             0.051      False\n[4]             0.113      False\n...               ...        ...\n[17]            1.000      False\n[18]            1.000      False\n[19]            0.447      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests holm alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798c4336p-36",
+"0x1.1fc3d6ebe7bb9p-4",
+"0x1.de02da77c7938p-2",
+"0x1.a4c92f2c9bb66p-5",
+"0x1.cf0602abec4f2p-4",
+"0x1.6f0211f2fa0dep-1",
+"0x1.449d72b10f16bp-1",
+"0x1.88740018dc058p-3",
+"0x1.f8c6843c42ff9p-3",
+"0x1.c2cdc79513226p-2",
+"0x1.88740018dc058p-3",
+"0x1.6f0211f2fa0dep-1",
+"0x1.338d1471c28dep-1",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.ca26ed7206d0cp-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+false,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                           holm\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                        7\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.070       True\n[2]             0.467      False\n[3]             0.051       True\n[4]             0.113       True\n...               ...        ...\n[17]            1.000      False\n[18]            1.000      False\n[19]            0.447      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests holm-sidak": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798b4557p-36",
+"0x1.1662e229b3120p-4",
+"0x1.83e8a817d1ee6p-2",
+"0x1.9aad0025834ebp-5",
+"0x1.b71d892e378c9p-4",
+"0x1.0d6a20c259670p-1",
+"0x1.ec17fd9b9a77ep-2",
+"0x1.66fb17d6d3314p-3",
+"0x1.c2a74289f274ep-3",
+"0x1.714f1d528fb4cp-2",
+"0x1.66fb17d6d3314p-3",
+"0x1.0d6a20c259670p-1",
+"0x1.d7e1b63e78116p-2",
+"0x1.d26499ee870c7p-1",
+"0x1.f9def38b7fd52p-1",
+"0x1.b4458962ff24fp-1",
+"0x1.f9def38b7fd52p-1",
+"0x1.90b66288e7e23p-1",
+"0x1.d6a62bc7d74f9p-1",
+"0x1.76844600d3d8fp-2",
+"0x1.0000000000000p+0",
+"-0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     holm-sidak\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        2\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.068      False\n[2]             0.379      False\n[3]             0.050      False\n[4]             0.107      False\n...               ...        ...\n[17]            0.783      False\n[18]            0.919      False\n[19]            0.366      False\n[20]            1.000      False\n[21]           -0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests holm-sidak alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798b4557p-36",
+"0x1.1662e229b3120p-4",
+"0x1.83e8a817d1ee6p-2",
+"0x1.9aad0025834ebp-5",
+"0x1.b71d892e378c9p-4",
+"0x1.0d6a20c259670p-1",
+"0x1.ec17fd9b9a77ep-2",
+"0x1.66fb17d6d3314p-3",
+"0x1.c2a74289f274ep-3",
+"0x1.714f1d528fb4cp-2",
+"0x1.66fb17d6d3314p-3",
+"0x1.0d6a20c259670p-1",
+"0x1.d7e1b63e78116p-2",
+"0x1.d26499ee870c7p-1",
+"0x1.f9def38b7fd52p-1",
+"0x1.b4458962ff24fp-1",
+"0x1.f9def38b7fd52p-1",
+"0x1.90b66288e7e23p-1",
+"0x1.d6a62bc7d74f9p-1",
+"0x1.76844600d3d8fp-2",
+"0x1.0000000000000p+0",
+"-0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+false,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                     holm-sidak\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                        7\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.068       True\n[2]             0.379      False\n[3]             0.050       True\n[4]             0.107       True\n...               ...        ...\n[17]            0.783      False\n[18]            0.919      False\n[19]            0.366      False\n[20]            1.000      False\n[21]           -0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests hommel": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798c4336p-36",
+"0x1.109e95b7116e5p-4",
+"0x1.668223d9d5aeap-2",
+"0x1.8fbf2003fa53ap-5",
+"0x1.9b939098d20d7p-4",
+"0x1.4754f1af26bd6p-1",
+"0x1.03b1288da5abcp-1",
+"0x1.43573cc14b173p-3",
+"0x1.88cc553894e34p-3",
+"0x1.21cd6e0467babp-2",
+"0x1.43325a6ed34fdp-3",
+"0x1.463aba9f1728cp-1",
+"0x1.bf58d7eb49889p-2",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.f57ff2177e9b6p-1",
+"0x1.0000000000000p+0",
+"0x1.3d2ea462a241cp-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                         hommel\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        3\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.067      False\n[2]             0.350      False\n[3]             0.049       True\n[4]             0.100      False\n...               ...        ...\n[17]            0.979      False\n[18]            1.000      False\n[19]            0.310      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests hommel alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798c4336p-36",
+"0x1.109e95b7116e5p-4",
+"0x1.668223d9d5aeap-2",
+"0x1.8fbf2003fa53ap-5",
+"0x1.9b939098d20d7p-4",
+"0x1.4754f1af26bd6p-1",
+"0x1.03b1288da5abcp-1",
+"0x1.43573cc14b173p-3",
+"0x1.88cc553894e34p-3",
+"0x1.21cd6e0467babp-2",
+"0x1.43325a6ed34fdp-3",
+"0x1.463aba9f1728cp-1",
+"0x1.bf58d7eb49889p-2",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.f57ff2177e9b6p-1",
+"0x1.0000000000000p+0",
+"0x1.3d2ea462a241cp-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+true,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                         hommel\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                        8\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.067       True\n[2]             0.350      False\n[3]             0.049       True\n[4]             0.100       True\n...               ...        ...\n[17]            0.979      False\n[18]            1.000      False\n[19]            0.310      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests hommel ties": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.47ae147ae147bp-8"
+},
+"alpha_sidak": {
+"f": "0x1.4f4b8a548d34fp-8"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+10
+],
+"strides": [
+8
+],
+"v": [
+"0x1.1eb851eb851ecp-4",
+"0x1.47ae147ae147bp-3",
+"0x1.47ae147ae147bp-3",
+"0x1.1eb851eb851ecp-4",
+"0x1.999999999999ap-2",
+"0x1.47ae147ae147bp-3",
+"0x1.0000000000000p-1",
+"0x1.1eb851eb851ecp-4",
+"0x1.eb851eb851eb8p-4",
+"0x1.999999999999ap-2"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+10
+],
+"strides": [
+1
+],
+"v": [
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                         hommel\nAlpha Sidak:                  0.005116  No. Tests:                          10\nAlpha Bonferroni:             0.005000  No. Rejected:                        0\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.070      False\n[1]             0.160      False\n[2]             0.160      False\n[3]             0.070      False\n[4]             0.400      False\n[5]             0.160      False\n[6]             0.500      False\n[7]             0.070      False\n[8]             0.120      False\n[9]             0.400      False\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests max_iter": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "multipletests(): 'max_iter' must be >= 0"
+}
+},
+"multipletests max_iter bool": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "multipletests(): 'max_iter' must be an int, not bool"
+}
+},
+"multipletests maxiter": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "multipletests(): unexpected keyword argument 'maxiter'. Did you mean 'max_iter'?"
+}
+},
+"multipletests method fdr_gbs": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "multipletests(): 'method' must be 'bonferroni', 'sidak', 'holm-sidak', 'holm', 'simes-hochberg', 'hommel', 'fdr_bh', 'fdr_by', 'fdr_tsbh' or 'fdr_tsbky', not 'fdr_gbs'"
+}
+},
+"multipletests method hs": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "multipletests(): 'method' must be 'bonferroni', 'sidak', 'holm-sidak', 'holm', 'simes-hochberg', 'hommel', 'fdr_bh', 'fdr_by', 'fdr_tsbh' or 'fdr_tsbky', not 'hs'"
+}
+},
+"multipletests nan": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "multipletests(): 'pvals' must hold p-values between 0 and 1 (and no NaN)"
+}
+},
+"multipletests range": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "multipletests(): 'pvals' must hold p-values between 0 and 1 (and no NaN)"
+}
+},
+"multipletests scalar": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.999999999999ap-5"
+},
+"alpha_sidak": {
+"f": "0x1.999999999999ap-5"
+},
+"pvalues_corrected": {
+"f": "0x1.47ae147ae147bp-6"
+},
+"reject": true,
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     holm-sidak\nAlpha Sidak:                   0.05000  No. Tests:                           1\nAlpha Bonferroni:              0.05000  No. Rejected:                        1\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.020       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests sidak": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.83073119e0a95p-36",
+"0x1.40940d7c198c1p-4",
+"0x1.2a1e75f19c1eep-1",
+"0x1.c297f584eb0cdp-5",
+"0x1.090ef5914dae6p-3",
+"0x1.ae0fe46590c91p-1",
+"0x1.86d0bfff8635fp-1",
+"0x1.c43b6912e10e9p-3",
+"0x1.38c8b852d7f28p-2",
+"0x1.027cebc258bd6p-1",
+"0x1.c40dbb1b3947fp-3",
+"0x1.ad887cbd699abp-1",
+"0x1.6b27abcb00e5ep-1",
+"0x1.fffcdd06835d8p-1",
+"0x1.0000000000000p+0",
+"0x1.ff8962e195049p-1",
+"0x1.fffffffffffb7p-1",
+"0x1.fbc5b12af68d4p-1",
+"0x1.ffffdf3bbc887p-1",
+"0x1.130e35083d0dbp-1",
+"0x1.0000000000000p+0",
+"-0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                          sidak\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        2\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.078      False\n[2]             0.582      False\n[3]             0.055      False\n[4]             0.129      False\n...               ...        ...\n[17]            0.992      False\n[18]            1.000      False\n[19]            0.537      False\n[20]            1.000      False\n[21]           -0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests sidak alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.83073119e0a95p-36",
+"0x1.40940d7c198c1p-4",
+"0x1.2a1e75f19c1eep-1",
+"0x1.c297f584eb0cdp-5",
+"0x1.090ef5914dae6p-3",
+"0x1.ae0fe46590c91p-1",
+"0x1.86d0bfff8635fp-1",
+"0x1.c43b6912e10e9p-3",
+"0x1.38c8b852d7f28p-2",
+"0x1.027cebc258bd6p-1",
+"0x1.c40dbb1b3947fp-3",
+"0x1.ad887cbd699abp-1",
+"0x1.6b27abcb00e5ep-1",
+"0x1.fffcdd06835d8p-1",
+"0x1.0000000000000p+0",
+"0x1.ff8962e195049p-1",
+"0x1.fffffffffffb7p-1",
+"0x1.fbc5b12af68d4p-1",
+"0x1.ffffdf3bbc887p-1",
+"0x1.130e35083d0dbp-1",
+"0x1.0000000000000p+0",
+"-0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                          sidak\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                        5\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.078       True\n[2]             0.582      False\n[3]             0.055       True\n[4]             0.129       True\n...               ...        ...\n[17]            0.992      False\n[18]            1.000      False\n[19]            0.537      False\n[20]            1.000      False\n[21]           -0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests simes-hochberg": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-9"
+},
+"alpha_sidak": {
+"f": "0x1.313d7a5506bd3p-9"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798c4336p-36",
+"0x1.1fc3d6ebe7bb9p-4",
+"0x1.de02da77c7938p-2",
+"0x1.a4c92f2c9bb66p-5",
+"0x1.cf0602abec4f2p-4",
+"0x1.4754f1af26bd6p-1",
+"0x1.449d72b10f16bp-1",
+"0x1.7188456f313f1p-3",
+"0x1.f8c6843c42ff9p-3",
+"0x1.c2cdc79513226p-2",
+"0x1.7188456f313f1p-3",
+"0x1.4754f1af26bd6p-1",
+"0x1.338d1471c28dep-1",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.ca26ed7206d0cp-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                 simes-hochberg\nAlpha Sidak:                  0.002329  No. Tests:                          22\nAlpha Bonferroni:             0.002273  No. Rejected:                        2\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.070      False\n[2]             0.467      False\n[3]             0.051      False\n[4]             0.113      False\n...               ...        ...\n[17]            1.000      False\n[18]            1.000      False\n[19]            0.447      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
+"multipletests simes-hochberg alpha=0.2": {
+"r": {
+"attrs": {
+"alpha_bonferroni": {
+"f": "0x1.29e4129e4129fp-7"
+},
+"alpha_sidak": {
+"f": "0x1.4aaeab8890455p-7"
+},
+"pvalues_corrected": {
+"nd": "float64",
+"shape": [
+22
+],
+"strides": [
+8
+],
+"v": [
+"0x1.716f9798c4336p-36",
+"0x1.1fc3d6ebe7bb9p-4",
+"0x1.de02da77c7938p-2",
+"0x1.a4c92f2c9bb66p-5",
+"0x1.cf0602abec4f2p-4",
+"0x1.4754f1af26bd6p-1",
+"0x1.449d72b10f16bp-1",
+"0x1.7188456f313f1p-3",
+"0x1.f8c6843c42ff9p-3",
+"0x1.c2cdc79513226p-2",
+"0x1.7188456f313f1p-3",
+"0x1.4754f1af26bd6p-1",
+"0x1.338d1471c28dep-1",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.ca26ed7206d0cp-2",
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+]
+},
+"reject": {
+"nd": "bool",
+"shape": [
+22
+],
+"strides": [
+1
+],
+"v": [
+true,
+true,
+false,
+true,
+true,
+false,
+false,
+true,
+false,
+false,
+true,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+false,
+true
+]
+},
+"summary()": "                         Multiple testing correction\n==============================================================================\nAlpha:                             0.2  Method:                 simes-hochberg\nAlpha Sidak:                   0.01009  No. Tests:                          22\nAlpha Bonferroni:             0.009091  No. Rejected:                        7\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.000       True\n[1]             0.070       True\n[2]             0.467      False\n[3]             0.051       True\n[4]             0.113       True\n...               ...        ...\n[17]            1.000      False\n[18]            1.000      False\n[19]            0.447      False\n[20]            1.000      False\n[21]            0.000       True\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.MultipletestsResult"
+}
+},
 "normaltest batch": {
 "r": {
 "attrs": {
@@ -16481,6 +19727,9 @@
 "repr median_test": {
 "r": "MedianTestResult(statistic=4.17778, pvalue=0.123825, median=0.107924, table=<array of shape (2, 3)>, df=2)"
 },
+"repr multipletests": {
+"r": "MultipletestsResult(reject=[True, False, False], pvalues_corrected=[0.029701, 0.0784, 0.2], alpha_sidak=0.0169524, alpha_bonferroni=0.0166667)"
+},
 "repr proportions_chisquare": {
 "r": "ProportionsChisquareResult(statistic=2.77103, pvalue=0.0959846, df=1, table=<array of shape (2, 2)>, expected_freq=<array of shape (2, 2)>)"
 },
@@ -16495,6 +19744,9 @@
 },
 "repr ttest_1samp keepdims": {
 "r": "Ttest1sampResult(statistic=[1.15432], pvalue=[0.272833], df=[11])"
+},
+"repr tukey_hsd": {
+"r": "TukeyHsdResult(statistic=<array of shape (3, 3)>, pvalue=<array of shape (3, 3)>, df=33)"
 },
 "shapiro batch": {
 "r": {
@@ -18219,11 +21471,23 @@
 "summary cochrans_q": {
 "r": "                               Cochran's Q test\n==============================================================================\nStatistic:                      0.6667  No. Observations:                    6\nP-value:                         0.881  No. Treatments:                      4\nDf:                                  3\n=============================================================================="
 },
+"summary combine_pvalues": {
+"r": "                          Combined p-values (Fisher)\n==============================================================================\nStatistic:                       14.84  No. P-values:                        3\nP-value:                        0.0216\n=============================================================================="
+},
+"summary combine_pvalues batch": {
+"r": "                          Combined p-values (Fisher)\n==============================================================================\nBatch shape:                      (3,)  No. P-values:                        4\n==============================================================================\n            statistic     pvalue\n------------------------------------------------------------------------------\n[0]            18.260      0.019\n[1]            13.843      0.086\n[2]            13.522      0.095\n=============================================================================="
+},
 "summary cramervonmises": {
 "r": "                            Cramer-von Mises test\n==============================================================================\nStatistic:                     0.08403  No. Observations:                   15\nP-value:                         0.676\n=============================================================================="
 },
 "summary cramervonmises_2samp": {
 "r": "                       Two-sample Cramer-von Mises test\n==============================================================================\nStatistic:                     0.09815  Method:                          exact\nP-value:                         0.630  No. Observations:               12, 15\n=============================================================================="
+},
+"summary dunnett": {
+"r": "                                Dunnett's test\n==============================================================================\nDf:                                 33  Alternative:                 two-sided\n                                        No. Observations:               12, 15\n                                        Control Observations:                9\n==============================================================================\n                statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - control)       1.824      0.131     -0.211      1.847\n(1 - control)       1.009      0.488     -0.551      1.417\n=============================================================================="
+},
+"summary dunnett greater": {
+"r": "                                Dunnett's test\n==============================================================================\nDf:                                 33  Alternative:                   greater\n                                        No. Observations:               12, 15\n                                        Control Observations:                9\n==============================================================================\n                statistic     pvalue     [0.050     1.000]\n------------------------------------------------------------------------------\n(0 - control)       1.824      0.066     -0.063        inf\n(1 - control)       1.009      0.246     -0.409        inf\n=============================================================================="
 },
 "summary epps_singleton_2samp": {
 "r": "                        Epps-Singleton two-sample test\n==============================================================================\nStatistic:                       4.636  No. Observations:               12, 15\nP-value:                         0.327\nDf:                                  4\n=============================================================================="
@@ -18296,6 +21560,12 @@
 },
 "summary mood": {
 "r": "                        Mood two-sample test of scale\n==============================================================================\nStatistic:                      0.1193  Alternative:                 two-sided\nP-value:                         0.905  No. Observations:               12, 15\n=============================================================================="
+},
+"summary multipletests": {
+"r": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     holm-sidak\nAlpha Sidak:                  0.006391  No. Tests:                           8\nAlpha Bonferroni:             0.006250  No. Rejected:                        0\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0]             0.332      False\n[1]             0.366      False\n[2]             0.110      False\n[3]             0.366      False\n[4]             0.366      False\n[5]             0.366      False\n[6]             0.366      False\n[7]             0.366      False\n=============================================================================="
+},
+"summary multipletests long batch": {
+"r": "                         Multiple testing correction\n==============================================================================\nAlpha:                            0.05  Method:                     holm-sidak\nAlpha Sidak:                  0.008512  No. Tests:                           6\nAlpha Bonferroni:             0.008333  No. Rejected:                        0\n                                        Shape:                          (4, 6)\n==============================================================================\n            corrected     reject\n------------------------------------------------------------------------------\n[0, 0]          0.250      False\n[0, 1]          0.262      False\n[0, 2]          0.084      False\n[0, 3]          0.262      False\n[0, 4]          0.262      False\n...               ...        ...\n[3, 1]          0.093      False\n[3, 2]          0.310      False\n[3, 3]          0.310      False\n[3, 4]          0.310      False\n[3, 5]          0.310      False\n=============================================================================="
 },
 "summary normaltest": {
 "r": "                      D'Agostino-Pearson normality test\n==============================================================================\nStatistic:                       1.215  No. Observations:                   15\nP-value:                         0.545\n=============================================================================="
@@ -18404,6 +21674,15 @@
 },
 "summary ttest_rel": {
 "r": "                                Paired t-test\n==============================================================================\nStatistic:                       1.433  Alternative:                 two-sided\nP-value:                         0.180  No. Observations:                   12\nDf:                                 11\n==============================================================================\n                     [0.025     0.975]\n------------------------------------------------------------------------------\nmean difference      -0.299      1.413\n=============================================================================="
+},
+"summary tukey_hsd": {
+"r": "                               Tukey's HSD test\n==============================================================================\nDf:                                 33  No. Groups:                          3\n                                        No. Observations:            12, 15, 9\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)         0.385      0.596     -0.581      1.351\n(0 - 2)         0.818      0.178     -0.282      1.918\n(1 - 2)         0.433      0.576     -0.619      1.485\n=============================================================================="
+},
+"summary tukey_hsd alpha=0.1": {
+"r": "                               Tukey's HSD test\n==============================================================================\nDf:                                 33  No. Groups:                          3\n                                        No. Observations:            12, 15, 9\n==============================================================================\n            statistic     pvalue     [0.050     0.950]\n------------------------------------------------------------------------------\n(0 - 1)         0.385      0.596     -0.452      1.222\n(0 - 2)         0.818      0.178     -0.135      1.771\n(1 - 2)         0.433      0.576     -0.479      1.344\n=============================================================================="
+},
+"summary tukey_hsd games-howell": {
+"r": "                              Games-Howell test\n==============================================================================\nNo. Groups:                          3\nNo. Observations:            12, 15, 9\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)         0.385      0.644      24.98     -0.678      1.448\n(0 - 2)         0.818      0.053      17.09     -0.010      1.646\n(1 - 2)         0.433      0.470      19.80     -0.485      1.350\n=============================================================================="
 },
 "summary weightedtau": {
 "r": "                             Weighted Kendall tau\n==============================================================================\nStatistic:                    -0.03206  No. Observations:                   25\nP-value:                           nan\n=============================================================================="
@@ -21229,6 +24508,1014 @@
 "summary()": "                                Paired t-test\n==============================================================================\nStatistic:                       1.433  Alternative:                 two-sided\nP-value:                         0.180  No. Observations:                   12\nDf:                                 11\n==============================================================================\n                     [0.025     0.975]\n------------------------------------------------------------------------------\nmean difference      -0.299      1.413\n=============================================================================="
 },
 "obj": "stardust.htest._parametric.TtestRelResult"
+}
+},
+"tukey_hsd constant": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x0.0p+0",
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x0.0p+0",
+"0x0.0p+0",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p+1",
+"-0x1.0000000000000p+1",
+"0x0.0p+0",
+"0x0.0p+0"
+]
+},
+"df": {
+"f": "0x1.0000000000000p+4"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x0.0p+0",
+"-0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x0.0p+0",
+"0x1.0000000000000p+1",
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p+1",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 16  No. Groups:                          3\n                                        No. Observations:              8, 8, 3\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)        -1.000        nan     -1.000     -1.000\n(0 - 2)         1.000        nan      1.000      1.000\n(1 - 2)         2.000        nan      2.000      2.000\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd empty": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"df": {
+"f": "0x1.8000000000000p+4"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"nan:fff8000000000000",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 24  No. Groups:                          3\n                                        No. Observations:            0, 12, 15\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)           nan        nan        nan        nan\n(0 - 2)           nan        nan        nan        nan\n(1 - 2)         0.385        nan        nan        nan\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd equal_var type": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "tukey_hsd(): 'equal_var' must be True or False, not int"
+}
+},
+"tukey_hsd equal_var=False": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"-0x1.fa76846f8b5cap-1",
+"0x1.fa76846f8b5cap-1",
+"-0x1.5b14c37581cd3p-1",
+"0x1.72b53b3f73f7ap+0",
+"-0x1.481012cb56700p-7",
+"0x1.a544a76546c20p+0",
+"-0x1.72b53b3f73f7ap+0",
+"0x1.5b14c37581cd3p-1",
+"-0x1.21b0648427534p+0",
+"0x1.21b0648427534p+0",
+"-0x1.f05331b2442a4p-2",
+"0x1.599e7a278e0eap+0",
+"-0x1.a544a76546c20p+0",
+"0x1.481012cb56700p-7",
+"-0x1.599e7a278e0eap+0",
+"0x1.f05331b2442a4p-2",
+"-0x1.314c4a8750798p-1",
+"0x1.314c4a8750798p-1"
+]
+},
+"df": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.6000000000000p+4",
+"0x1.8fab89ef219fep+4",
+"0x1.117fcc22290aap+4",
+"0x1.8fab89ef219fep+4",
+"0x1.c000000000000p+4",
+"0x1.3cd7928489120p+4",
+"0x1.117fcc22290aap+4",
+"0x1.3cd7928489120p+4",
+"0x1.0000000000000p+4"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.49a3fe3f54900p-1",
+"0x1.b32d42f346286p-5",
+"0x1.49a3fe3f54900p-1",
+"0x1.0000000000000p+0",
+"0x1.e19132384e8e2p-2",
+"0x1.b32d42f346286p-5",
+"0x1.e19132384e8e2p-2",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"0x1.a2b4873fb0152p-1",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0",
+"0x1.bb135b75fa082p-2",
+"-0x1.a2b4873fb0152p-1",
+"-0x1.bb135b75fa082p-2",
+"0x0.0p+0"
+]
+},
+"summary()": "                              Games-Howell test\n==============================================================================\nNo. Groups:                          3\nNo. Observations:            12, 15, 9\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)         0.385      0.644      24.98     -0.678      1.448\n(0 - 2)         0.818      0.053      17.09     -0.010      1.646\n(1 - 2)         0.433      0.470      19.80     -0.485      1.350\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd equal_var=False alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"-0x1.b45c367a076f7p-1",
+"0x1.b45c367a076f7p-1",
+"-0x1.10aff7d388291p-1",
+"0x1.4d82d56e7725ap+0",
+"0x1.ba8fe21f942c8p-4",
+"0x1.870b891db6d26p+0",
+"-0x1.4d82d56e7725ap+0",
+"0x1.10aff7d388291p-1",
+"-0x1.f4f94827ddee2p-1",
+"0x1.f4f94827ddee2p-1",
+"-0x1.6cc73804e7664p-2",
+"0x1.38bb7bbc36ddap+0",
+"-0x1.870b891db6d26p+0",
+"-0x1.ba8fe21f942c8p-4",
+"-0x1.38bb7bbc36ddap+0",
+"0x1.6cc73804e7664p-2",
+"-0x1.055bfd1dda306p-1",
+"0x1.055bfd1dda306p-1"
+]
+}
+},
+"tukey_hsd equal_var=True": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"-0x1.04c1452b47d40p+0",
+"0x1.04c1452b47d40p+0",
+"-0x1.2994934add124p-1",
+"0x1.59f5232a219a3p+0",
+"-0x1.212e0885bf8ecp-2",
+"0x1.eb0009611ff8dp+0",
+"-0x1.59f5232a219a3p+0",
+"0x1.2994934add124p-1",
+"-0x1.d273e140cf4bfp-1",
+"0x1.d273e140cf4bfp-1",
+"-0x1.3d13488ae505dp-1",
+"0x1.7c1352006f870p+0",
+"-0x1.eb0009611ff8dp+0",
+"0x1.212e0885bf8ecp-2",
+"-0x1.7c1352006f870p+0",
+"0x1.3d13488ae505dp-1",
+"-0x1.2d18097ab9982p+0",
+"0x1.2d18097ab9982p+0"
+]
+},
+"df": {
+"f": "0x1.0800000000000p+5"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.310717daf058cp-1",
+"0x1.6b9a97979b784p-3",
+"0x1.310717daf058cp-1",
+"0x1.0000000000000p+0",
+"0x1.2714d305e2c8ep-1",
+"0x1.6b9a97979b784p-3",
+"0x1.2714d305e2c8ep-1",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"0x1.a2b4873fb0152p-1",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0",
+"0x1.bb135b75fa082p-2",
+"-0x1.a2b4873fb0152p-1",
+"-0x1.bb135b75fa082p-2",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 33  No. Groups:                          3\n                                        No. Observations:            12, 15, 9\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)         0.385      0.596     -0.581      1.351\n(0 - 2)         0.818      0.178     -0.282      1.918\n(1 - 2)         0.433      0.576     -0.619      1.485\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd equal_var=True alpha=0.1": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"-0x1.c3d2c2bd95411p-1",
+"0x1.c3d2c2bd95411p-1",
+"-0x1.cef08c763f098p-2",
+"0x1.38e6fca242d37p+0",
+"-0x1.154768bb53ee0p-3",
+"0x1.c55d74571a92ep+0",
+"-0x1.38e6fca242d37p+0",
+"0x1.cef08c763f098p-2",
+"-0x1.941f7ef15130ep-1",
+"0x1.941f7ef15130ep-1",
+"-0x1.ea34e0547c730p-2",
+"0x1.5816e5d01c20dp+0",
+"-0x1.c55d74571a92ep+0",
+"0x1.154768bb53ee0p-3",
+"-0x1.5816e5d01c20dp+0",
+"0x1.ea34e0547c730p-2",
+"-0x1.04dc3c451b985p+0",
+"0x1.04dc3c451b985p+0"
+]
+}
+},
+"tukey_hsd four": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+4,
+4,
+2
+],
+"strides": [
+64,
+16,
+8
+],
+"v": [
+"-0x1.444cd1f3b9ccdp+0",
+"0x1.444cd1f3b9ccdp+0",
+"-0x1.a22614c9e0945p-1",
+"0x1.963de3e9a35b4p+0",
+"-0x1.19dcf0e22fc60p-1",
+"0x1.17d17fd863fc1p+1",
+"-0x1.3a97dc009188cp-2",
+"0x1.2ccdfd01ab0b6p+1",
+"-0x1.963de3e9a35b4p+0",
+"0x1.a22614c9e0945p-1",
+"-0x1.221014355a59bp+0",
+"0x1.221014355a59bp+0",
+"-0x1.c05563d89222fp-1",
+"0x1.bdb45fa746158p+0",
+"-0x1.42ce7a68f4f64p-1",
+"0x1.e73266b2f91e8p+0",
+"-0x1.17d17fd863fc1p+1",
+"0x1.19dcf0e22fc60p-1",
+"-0x1.bdb45fa746158p+0",
+"0x1.c05563d89222fp-1",
+"-0x1.76782f89b99c3p+0",
+"0x1.76782f89b99c3p+0",
+"-0x1.38dc1bcb893f8p+0",
+"0x1.a11d978f0adeep+0",
+"-0x1.2ccdfd01ab0b6p+1",
+"0x1.3a97dc009188cp-2",
+"-0x1.e73266b2f91e8p+0",
+"0x1.42ce7a68f4f64p-1",
+"-0x1.a11d978f0adeep+0",
+"0x1.38dc1bcb893f8p+0",
+"-0x1.6340c079431a3p+0",
+"0x1.6340c079431a3p+0"
+]
+},
+"df": {
+"f": "0x1.5000000000000p+5"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+4,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.a7415185cbdecp-1",
+"0x1.8fb73508d7303p-2",
+"0x1.794fcbf3e3fc2p-3",
+"0x1.a7415185cbdecp-1",
+"0x1.0000000000000p+0",
+"0x1.a025d232a155ap-1",
+"0x1.1500455f1a99cp-1",
+"0x1.8fb73508d7303p-2",
+"0x1.a025d232a155ap-1",
+"0x1.0000000000000p+0",
+"0x1.f62760dffb4cap-1",
+"0x1.794fcbf3e3fc2p-3",
+"0x1.1500455f1a99cp-1",
+"0x1.f62760dffb4cap-1",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+4,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"0x1.a2b4873fb0152p-1",
+"0x1.057b018198da4p+0",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0",
+"0x1.bb135b75fa082p-2",
+"0x1.45cb297e7ea36p-1",
+"-0x1.a2b4873fb0152p-1",
+"-0x1.bb135b75fa082p-2",
+"0x0.0p+0",
+"0x1.a105ef0e067d6p-3",
+"-0x1.057b018198da4p+0",
+"-0x1.45cb297e7ea36p-1",
+"-0x1.a105ef0e067d6p-3",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 42  No. Groups:                          4\n                                        No. Observations:        12, 15, 9, 10\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)         0.385      0.827     -0.817      1.587\n(0 - 2)         0.818      0.390     -0.551      2.186\n(0 - 3)         1.021      0.184     -0.307      2.350\n(1 - 2)         0.433      0.813     -0.876      1.741\n(1 - 3)         0.636      0.541     -0.630      1.903\n(2 - 3)         0.204      0.981     -1.222      1.629\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd nan": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"df": {
+"f": "0x1.0000000000000p+5"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"nan:fff8000000000000",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 32  No. Groups:                          3\n                                        No. Observations:            9, 12, 15\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)           nan        nan        nan        nan\n(0 - 2)           nan        nan        nan        nan\n(1 - 2)         0.385        nan        nan        nan\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd nan games-howell": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"-0x1.fa76846f8b5cap-1",
+"0x1.fa76846f8b5cap-1",
+"-0x1.5b14c37581cd3p-1",
+"0x1.72b53b3f73f7ap+0",
+"nan:fff8000000000000",
+"nan:fff8000000000000",
+"-0x1.72b53b3f73f7ap+0",
+"0x1.5b14c37581cd3p-1",
+"-0x1.21b0648427534p+0",
+"0x1.21b0648427534p+0"
+]
+},
+"df": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan",
+"0x1.6000000000000p+4",
+"0x1.8fab89ef219fep+4",
+"nan",
+"0x1.8fab89ef219fep+4",
+"0x1.c000000000000p+4"
+]
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan",
+"nan",
+"nan",
+"nan",
+"0x1.0000000000000p+0",
+"0x1.49a3fe3f54900p-1",
+"nan",
+"0x1.49a3fe3f54900p-1",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"nan:fff8000000000000",
+"nan",
+"nan",
+"nan:fff8000000000000",
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"nan:fff8000000000000",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0"
+]
+},
+"summary()": "                              Games-Howell test\n==============================================================================\nNo. Groups:                          3\nNo. Observations:            9, 12, 15\n==============================================================================\n            statistic     pvalue         df     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)           nan        nan        nan        nan        nan\n(0 - 2)           nan        nan        nan        nan        nan\n(1 - 2)         0.385      0.644      24.98     -0.678      1.448\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd offset": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"-0x1.1099c5ed99700p-1",
+"0x1.1099c5ed99700p-1",
+"-0x1.ea8c16639f3e7p-1",
+"0x1.9a8e6b0041218p-4",
+"-0x1.e27ac9295c936p-1",
+"0x1.72817fdf85f38p-2",
+"-0x1.9a8e6b0041218p-4",
+"0x1.ea8c16639f3e7p-1",
+"-0x1.0d41793c03523p-1",
+"0x1.0d41793c03523p-1",
+"-0x1.05817efc8ef98p-1",
+"0x1.9381bec68c7a2p-1",
+"-0x1.72817fdf85f38p-2",
+"0x1.e27ac9295c936p-1",
+"-0x1.9381bec68c7a2p-1",
+"0x1.05817efc8ef98p-1",
+"-0x1.8183fca2c98fep-1",
+"0x1.8183fca2c98fep-1"
+]
+},
+"df": {
+"f": "0x1.8800000000000p+6"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.16720c646086ap-3",
+"0x1.154171c271002p-1",
+"0x1.16720c646086ap-3",
+"0x1.0000000000000p+0",
+"0x1.bc2ebe0a61cffp-1",
+"0x1.154171c271002p-1",
+"0x1.bc2ebe0a61cffp-1",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x0.0p+0",
+"-0x1.b73a4903971a4p-2",
+"-0x1.293a09399999ap-2",
+"0x1.b73a4903971a4p-2",
+"0x0.0p+0",
+"0x1.1c007f93fb014p-3",
+"0x1.293a09399999ap-2",
+"-0x1.1c007f93fb014p-3",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 98  No. Groups:                          3\n                                        No. Observations:           40, 41, 20\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)        -0.429      0.136     -0.958      0.100\n(0 - 2)        -0.290      0.542     -0.942      0.362\n(1 - 2)         0.139      0.868     -0.511      0.788\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd one element": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+3,
+3,
+2
+],
+"strides": [
+48,
+16,
+8
+],
+"v": [
+"-0x1.ffac144b457a9p+1",
+"0x1.ffac144b457a9p+1",
+"-0x1.dd0aa351a1964p+0",
+"0x1.0151f4e068c54p+2",
+"-0x1.74a45103b6f7ep+0",
+"0x1.188316ae1ae1ep+2",
+"-0x1.0151f4e068c54p+2",
+"0x1.dd0aa351a1964p+0",
+"-0x1.276a00b96a5fdp+0",
+"0x1.276a00b96a5fdp+0",
+"-0x1.6b5766e1d9debp-1",
+"0x1.7ad68cf5a0006p+0",
+"-0x1.188316ae1ae1ep+2",
+"0x1.74a45103b6f7ep+0",
+"-0x1.7ad68cf5a0006p+0",
+"0x1.6b5766e1d9debp-1",
+"-0x1.0839f409f79bcp+0",
+"0x1.0839f409f79bcp+0"
+]
+},
+"df": {
+"f": "0x1.9000000000000p+4"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.463db9d274fbfp-1",
+"0x1.befacb8fa0413p-2",
+"0x1.463db9d274fbfp-1",
+"0x1.0000000000000p+0",
+"0x1.51e772ab934bap-1",
+"0x1.befacb8fa0413p-2",
+"0x1.51e772ab934bap-1",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+3,
+3
+],
+"strides": [
+24,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.141e981800bf6p+0",
+"0x1.76b404da5a47ep+0",
+"-0x1.141e981800bf6p+0",
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"-0x1.76b404da5a47ep+0",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 25  No. Groups:                          3\n                                        No. Observations:            1, 12, 15\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)         1.079      0.637     -1.863      4.021\n(0 - 2)         1.464      0.437     -1.456      4.383\n(1 - 2)         0.385      0.660     -0.710      1.480\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
+}
+},
+"tukey_hsd one sample": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "tukey_hsd(): at least two samples are required, not 1"
+}
+},
+"tukey_hsd two": {
+"r": {
+"attrs": {
+"conf_int()": {
+"nd": "float64",
+"shape": [
+2,
+2,
+2
+],
+"strides": [
+32,
+16,
+8
+],
+"v": [
+"-0x1.e886752e05a8fp-1",
+"0x1.e886752e05a8fp-1",
+"-0x1.0a49d0afe32b9p-1",
+"0x1.4a4fc1dca4a6ep+0",
+"-0x1.4a4fc1dca4a6ep+0",
+"0x1.0a49d0afe32b9p-1",
+"-0x1.b4f34344e6f04p-1",
+"0x1.b4f34344e6f04p-1"
+]
+},
+"df": {
+"f": "0x1.9000000000000p+4"
+},
+"pvalue": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.8e9cc96a5246ap-2",
+"0x1.8e9cc96a5246ap-2",
+"0x1.0000000000000p+0"
+]
+},
+"statistic": {
+"nd": "float64",
+"shape": [
+2,
+2
+],
+"strides": [
+16,
+8
+],
+"v": [
+"0x0.0p+0",
+"0x1.8a55b30966222p-2",
+"-0x1.8a55b30966222p-2",
+"0x0.0p+0"
+]
+},
+"summary()": "                               Tukey's HSD test\n==============================================================================\nDf:                                 25  No. Groups:                          2\n                                        No. Observations:               12, 15\n==============================================================================\n            statistic     pvalue     [0.025     0.975]\n------------------------------------------------------------------------------\n(0 - 1)         0.385      0.389     -0.520      1.290\n=============================================================================="
+},
+"obj": "stardust.htest._multicomp.TukeyHsdResult"
 }
 },
 "weightedtau additive=False rank=False": {

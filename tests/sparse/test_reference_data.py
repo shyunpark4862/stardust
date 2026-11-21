@@ -90,7 +90,7 @@ def test_references_are_double_doubles():
 def test_the_families_cover_their_kinds():
     assert {"cancel/50", "long_rows/9000", "coo/cancel", "coo/complex", "coo/int"} <= set(by_matrix("spmv"))
     assert {"graded/400x12", "near_singular/20", "random_complex/800", "random_herm/800"} <= set(by_matrix("solve"))
-    assert {p["kind"] for p in POINTS["eig"]} == {"closed", "arb", "svd"}
+    assert {p["kind"] for p in POINTS["eig"]} == {"closed", "arb", "svd", "nonsym"}
     assert all("2_hi" in p for p in POINTS["norms"] if min(M.get(p["matrix"]).shape) <= 220)
 
 

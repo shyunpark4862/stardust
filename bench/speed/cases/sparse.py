@@ -163,6 +163,21 @@ FACTOR_CHECK = Check(sd=lambda f: np.array(f.shape, float), ref=lambda label, f:
 # implementations part at rounding, amplified by the condition: up to 1e-3 relative here).
 ITER_CHECK = Check(rtol=1e-2, agree=0.9)
 
+
+# Eigenvalues: the sorted values (real parts; scipy returns (w, v)); singular values sorted.
+def _eigvals(x):
+    w = x.eigenvalues if hasattr(x, "eigenvalues") else (x[0] if isinstance(x, tuple) else x)
+    return np.sort(np.asarray(w).real)
+
+
+def _svals(x):
+    s = x.S if hasattr(x, "S") else x[1]
+    return np.sort(np.asarray(s))
+
+
+EIG_CHECK = Check(sd=_eigvals, ref=lambda label, x: _eigvals(x), rtol=1e-8)
+SVD_CHECK = Check(sd=_svals, ref=lambda label, x: _svals(x), rtol=1e-8)
+
 # Random results of different generators: the shape and the number of stored entries.
 SIZE_CHECK = Check(sd=_size, ref=lambda label, x: _size(x), rtol=0.0)
 
@@ -308,6 +323,10 @@ ARRAY_SPECS = (
          lambda d: lambda: __import__("scipy.sparse", fromlist=["random_array"]).random_array(
              (d["n"], d["n"]), density=10 / d["n"], rng=1),
          note="난수 생성기가 달라 값은 다르다(검사는 모양과 저장 수만)", check="size"),
+    Spec("SP6", "eigen", "svds(k=6)", ("csr_array", "svds"),
+         lambda d: (lambda A: lambda: _sds("svds")(A, k=6))(_sd_csr(d)),
+         lambda d: lambda: _la("svds")(d["a"], k=6, rng=0), limit=10**6, check=SVD_CHECK,
+         note="sd는 Golub-Kahan-Lanczos(두꺼운 재시작), scipy는 A^T A의 eigsh(ARPACK)"),
     Spec("SP7", "norms", "norm(A, 1)", ("csr_array", "norm"),
          lambda d: (lambda A: lambda: __import__("stardust").sparse.norm(A, 1))(_sd_csr(d)),
          lambda d: lambda: __import__("scipy.sparse.linalg", fromlist=["norm"]).norm(d["a"], 1), r='norm(A, "1")'),
@@ -371,8 +390,18 @@ SOLVER_SPECS = (
          lambda d: lambda: _la("lsmr")(d["a"], d["b"], atol=1e-8, btol=1e-8, maxiter=20000)[0], check=ITER_CHECK,
          grids=GRIDS[:2] + GRIDS[3:]),
     Spec("SP6", "eigen", "eigsh(k=6)", ("csc_array", "eigsh"),
-         lambda d: (lambda A: lambda: _sds("eigsh")(A, k=6))(_sd_csc(d)),
-         lambda d: lambda: _la("eigsh")(d["a"], k=6, v0=np.ones(d["n"])), note="같은 시작 벡터(1의 벡터)"),
+         lambda d: (lambda A, v: lambda: _sds("eigsh")(A, k=6, v0=v))(_sd_csc(d), _sd(np.ones(d["n"]))),
+         lambda d: lambda: _la("eigsh")(d["a"], k=6, v0=np.ones(d["n"])), check=EIG_CHECK,
+         grids=("lap2d/100", "lap3d/22"), note="같은 시작 벡터(1의 벡터): 같은 ARPACK, 같은 OP 횟수"),
+    Spec("SP6", "eigen", "eigsh(k=6, sigma=0)", ("csc_array", "eigsh"),
+         lambda d: (lambda A, v: lambda: _sds("eigsh")(A, k=6, sigma=0.0, v0=v))(_sd_csc(d), _sd(np.ones(d["n"]))),
+         lambda d: lambda: _la("eigsh")(d["a"], k=6, sigma=0.0, v0=np.ones(d["n"])), check=EIG_CHECK,
+         grids=("lap2d/100", "lap2d/300", "lap3d/22"), quick=True,
+         note="shift-invert: sd는 Accelerate LU/AMD, scipy는 SuperLU"),
+    Spec("SP6", "eigen", "eigs(k=6)", ("csc_array", "eigs"),
+         lambda d: (lambda A, v: lambda: _sds("eigs")(A, k=6, v0=v))(_sd_csc(d), _sd(np.ones(d["n"]))),
+         lambda d: lambda: _la("eigs")(d["a"], k=6, v0=np.ones(d["n"])), check=EIG_CHECK,
+         grids=("lap2d/100", "lap3d/22"), note="같은 시작 벡터(1의 벡터)"),
     Spec("SP7", "matfuncs", "expm_multiply(-0.1 A, b)", ("csc_array", "expm_multiply"),
          lambda d: (lambda A, b: lambda: _sds("expm_multiply")(A, b))(_sd_csc(d, -0.1), _sd(d["b"])),
          lambda d: (lambda A: lambda: _la("expm_multiply")(A, d["b"]))(-0.1 * d["a"])),
@@ -405,7 +434,7 @@ def _grid_r(setup):
 
 
 # The milestones whose cases run.
-DONE = ("SP1", "SP2", "SP3", "SP4", "SP5")
+DONE = ("SP1", "SP2", "SP3", "SP4", "SP5", "SP6")
 
 
 def _public(spec) -> bool:
@@ -438,6 +467,8 @@ def cases() -> list[Case]:
             check = SPARSE_CHECK if s.milestone == "SP1" else SP2_CHECK
             if s.check == "size":
                 check = SIZE_CHECK
+            elif isinstance(s.check, Check):
+                check = s.check
             out.append(Case(area="sparse", group=s.group, name=s.name, size=size, n=nnz, setup=_array_setup(nnz),
                             sd=s.sd, refs=tuple(refs), quick=s.quick and nnz == 10**6, note=s.note, check=check))  # fmt: skip
     for s in SOLVER_SPECS:

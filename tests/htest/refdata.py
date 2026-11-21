@@ -24,7 +24,10 @@ The contract, per field, in units of its bound (1 or less is within it):
     conf_int_wilson, conf_int_wilsoncc) and quantile_test's order statistics each against itself,
     proportion_confint's (the result itself) against itself but 'normal' and 'agresti_coull'
     (q -+ z se: the interval's size), confint_proportions_2indep's ratios and odds ratios against
-    themselves and its differences against the interval's size.
+    themselves and its differences against the interval's size;
+  - H8's array fields element by element (points()): tukey_hsd's and dunnett's mean differences or t
+    statistics, p-values (with kappa per comparison) and interval ends, multipletests' corrected
+    p-values (false_discovery_control's result itself) and its rejections exactly.
 """
 
 import json
@@ -73,7 +76,13 @@ H7 = (
     "test_proportions_2indep",
     "confint_proportions_2indep",
 )
-PUBLIC = H1 + H2 + H3 + H4 + H5 + H6 + H7  # the families of the public functions (the accuracy measurement's sweeps)
+H8 = ("tukey_hsd", "dunnett", "multipletests", "combine_pvalues")
+PUBLIC = (
+    H1 + H2 + H3 + H4 + H5 + H6 + H7 + H8
+)  # the families of the public functions (the accuracy measurement's sweeps)
+# H8's families whose fields are arrays (a value per comparison or per p-value): measured element by
+# element (points())
+ARRAY_FIELDS = ("tukey_hsd", "dunnett", "multipletests")
 # the estimates whose interval ends are measured each against itself (no estimate to subtract): the
 # ratios, binomtest's intervals (Clopper-Pearson's beta quantiles, Wilson's roots formed without
 # cancellation) and quantile_test's order statistics
@@ -126,6 +135,8 @@ def _sd_args(p):
         ]
     if p.func == "proportion_confint" and kw.get("method") == "beta":
         kw["method"] = "exact"
+    if "maxiter" in kw:  # statsmodels' multipletests (H110)
+        kw["max_iter"] = kw.pop("maxiter")
     return args, kw
 
 
@@ -256,11 +267,88 @@ def interval_scale(fam, p, ends):
     return ci_scale(p)
 
 
+def _pairs(k):
+    return [(i, j) for i in range(k) for j in range(i + 1, k)]
+
+
+def _elements(fam, rec, r, field):
+    """sd's values of an array field in the reference's order: tukey_hsd's pairs i < j (row-major),
+    dunnett's comparisons, multipletests' p-values (false_discovery_control's result itself)."""
+    import numpy as np
+
+    if fam == "multipletests":
+        v = r if not hasattr(r, "pvalues_corrected") else (r.reject if field == "reject" else r.pvalues_corrected)
+        return [float(x) for x in np.ravel(np.asarray(v, dtype=float))]
+    v = getattr(r, field)
+    if fam == "tukey_hsd" and not isinstance(v, float):
+        a = np.asarray(v, dtype=float)
+        return [float(a[i, j]) for i, j in _pairs(a.shape[0])]
+    if isinstance(v, float):
+        return [v] * len(rec[field]) if isinstance(rec[field][0], list) else [v]
+    return [float(x) for x in np.ravel(np.asarray(v, dtype=float))]
+
+
+def _interval_ends(fam, r, n):
+    """sd's 95% interval ends per comparison (tukey_hsd's pairs i < j, dunnett's comparisons)."""
+    import numpy as np
+
+    ci = np.asarray(r.conf_int(), dtype=float)
+    if fam == "tukey_hsd":
+        return [(float(ci[i, j, 0]), float(ci[i, j, 1])) for i, j in _pairs(ci.shape[0])]
+    return [(float(ci[i, 0]), float(ci[i, 1])) for i in range(n)]
+
+
+def points(fam, pid, r=None) -> list:
+    """H8's array families element by element: [(label, field, sd's value, the reference's hi, relative
+    error, error in bound units)]. The p-values against 1e-14 max(1, kappa) (kappa per element: the
+    studentized range's and the multivariate t's condition number in the statistic), the corrected
+    p-values and the statistics (mean differences, t's) against 1e-14 of themselves, degrees of
+    freedom too, the interval ends against 1e-14 of the larger of the end and the estimate's and
+    half width's sizes, and the rejections exactly (an unequal one is inf)."""
+    from . import problems as P
+
+    rec = load(fam)[pid]
+    p = P.PROBLEMS[pid]
+    r = call(p) if r is None else r
+    out = []
+    fields = ("reject", "pvalues_corrected") if fam == "multipletests" else ("statistic", "pvalue", "df")
+    for field in fields:
+        if field not in rec:
+            continue
+        refs = rec[field] if isinstance(rec[field][0], list) or field == "reject" else [rec[field]]
+        got = _elements(fam, rec, r, field)
+        kap = rec.get("kappa")
+        for i, (g, ref) in enumerate(zip(got, refs)):
+            if field == "reject":
+                bad = float(g != float(ref))
+                out.append((f"{pid}[{i}]", field, g, float(ref), bad, math.inf if bad else 0.0))
+                continue
+            e = rel(g, ref)
+            k = 1.0 if field != "pvalue" or kap is None else max(1.0, kap[i] if isinstance(kap, list) else kap)
+            if k != k:
+                k = 1.0
+            out.append((f"{pid}[{i}]", field, g, ref[0], e, e / (BOUND * k)))
+    if "conf_int" in rec:
+        ends = _interval_ends(fam, r, len(rec["conf_int"]))
+        for i, ((lo, hi), ref) in enumerate(zip(ends, rec["conf_int"])):
+            scale = _ref_scale(ref)
+            c = conf_int_contract({"conf_int": ref}, (lo, hi), scale)
+            e = max(rel(lo, ref[0]), rel(hi, ref[1]))
+            out.append((f"{pid}[{i}]", "conf_int", lo, ref[0][0], e, max(c)))
+    return out
+
+
 def errors(fam, pid, r=None) -> dict:
     """{field: (relative error, error in bound units)} of sd's result for a reference problem
     (conf_int: its two ends)."""
     from . import problems as P
 
+    if fam in ARRAY_FIELDS:
+        out = {}
+        for _, field, _, _, e, c in points(fam, pid, r):
+            old = out.get(field, (0.0, 0.0))
+            out[field] = (max(old[0], e), max(old[1], c))
+        return out
     rec = load(fam)[pid]
     p = P.PROBLEMS[pid]
     r = call(p) if r is None else r

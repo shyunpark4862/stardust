@@ -28,6 +28,18 @@ SP5 adds
          recurrence's residual parted from it). The comparator is scipy 1.18.1 at the same
          tolerances (R's Matrix has no iterative solver).
 
+SP6 adds
+
+  eig    eigsh (the 6 smallest and largest eigenvalues of the symmetric and Hermitian points: 'SA',
+         'LA'; shift-invert for the smallest of the large grids and of graded/100x8, where plain
+         Lanczos does not converge), svds (the 6 largest and smallest singular values of the
+         rectangular points) and eigs (the 6 of each `which` 'LM', 'SR' of the nonsymmetric points)
+         on eig.npz: one point per value, |v - ref| over C_EIG eps ||A||_2 (eigs: times the
+         eigenvalue's condition number kappa = 1 / |y^H x|, the nearest reference taken), the
+         refdata contract. The comparators are scipy 1.18.1 (eigsh / eigs, svds's default solver;
+         v0 = sin(1..n)) and R 4.6.2's RSpectra 0.16.2 (eigs_sym, eigs, svds; real matrices;
+         the same initvec).
+
  The contract of the others is
 tests/sparse/refdata.py's (docs/design/sparse.md §4), as the tests judge it: |y - ref| in units of
 gamma_m sum_j |a_ij x_j| (m = min(len, L) + ceil(log2(len / L)), L = 4096), so a region's
@@ -47,7 +59,7 @@ import numpy as np
 
 from .common import Custom, compare_libs, region, ulps
 
-FAMILIES = ("spmv", "sums", "solve", "iterative")
+FAMILIES = ("spmv", "sums", "solve", "iterative", "eig")
 RTOL = 1e-10  # the iterative family's rtol (square) and atol = btol (least squares)
 
 
@@ -201,6 +213,8 @@ def _regions(family, lib):
 
     if family == "iterative":
         return None if lib == "R" else _iterative_regions(lib)
+    if family == "eig":
+        return _eig_regions(lib)
 
     rows = {}
     for p, m in _points(family):
@@ -243,6 +257,123 @@ def _regions(family, lib):
     return out or None
 
 
+# ---------------------------------------------------------------- eig (SP6)
+
+
+def _eig_values(lib, kind, m, which):
+    """The values of library lib on matrix m: eigsh's / svds's / eigs's k = 6 for `which` (None:
+    not run there, or not converged)."""
+    n = min(m.shape)
+    k = min(6, n - 1)
+    big_or_graded = m.shape[0] > 2000 or m.id.startswith("graded")
+    sigma = (-1.0 if m.shape[0] > 2000 else 0.0) if kind != "svd" and which == "SA" and big_or_graded else None
+    if lib == "sd":
+        import stardust as sd
+        from tests.sparse.conftest import coo
+
+        A = coo(m).tocsr()
+        if kind == "svd":
+            r = sd.sparse.svds(A, k=k, which=which)
+            return np.asarray(r.S) if r.converged else None
+        if kind == "nonsym":
+            r = sd.sparse.eigs(A, k=k, which=which)
+            return np.asarray(r.eigenvalues) if r.converged else None
+        kw = {"sigma": sigma} if sigma is not None else {"which": which}
+        r = sd.sparse.eigsh(A, k=k, **kw)
+        return np.asarray(r.eigenvalues) if r.converged else None
+    if lib == "scipy":
+        import scipy.sparse.linalg as spla
+
+        A = m.scipy("csr")
+        v0 = np.sin(np.arange(1.0, m.shape[0] + 1))  # (ones lies in the null space of the Neumann grids)
+        try:
+            if kind == "svd":
+                return np.asarray(spla.svds(A, k=k, which=which, rng=0, return_singular_vectors=False))
+            if kind == "nonsym":
+                return spla.eigs(A, k=k, which=which, v0=v0, return_eigenvectors=False)
+            kw = {"sigma": sigma} if sigma is not None else {"which": which}
+            return spla.eigsh(A, k=k, v0=v0, return_eigenvectors=False, **kw)
+        except spla.ArpackError:  # (ArpackNoConvergence included)
+            return None
+    if m.data.dtype.kind == "c":  # R's Matrix has no complex sparse class
+        return None
+    opts = "opts = list(tol = 1e-12, maxitr = 100000, initvec = sin(seq_len(nrow(A))))"
+    if kind == "svd":
+        if which == "SM":  # RSpectra's svds has no smallest singular values
+            return None
+        expr = "suppressMessages(library(RSpectra)); svds(A, 6, opts = list(tol = 1e-12, maxitr = 100000))$d"
+    elif kind == "nonsym":
+        expr = (f'suppressMessages(library(RSpectra)); e <- eigs(A, 6, which = "{which}", {opts})$values; '
+                "c(Re(e), Im(e))")  # fmt: skip
+        v = _r_value(expr, m, {})
+        return v[:6] + 1j * v[6:]
+    elif sigma is not None:
+        expr = f"suppressMessages(library(RSpectra)); eigs_sym(A, 6, sigma = {sigma!r}, {opts})$values"
+    else:
+        expr = f'suppressMessages(library(RSpectra)); eigs_sym(A, 6, which = "{which}", {opts})$values'
+    try:
+        return _r_value(expr, m, {})
+    except RuntimeError:
+        return None
+
+
+def _eig_regions(lib):
+    from tests.sparse import refdata as R
+
+    rows, excluded = {}, {}
+    for p, m in _points("eig"):
+        kind = p["kind"]
+        norm = 4.0 * int(p["matrix"][3]) if kind == "closed" else float(np.linalg.norm(m.dense(), 2))
+        region_name = {"svd": "svds", "nonsym": "eigs"}.get(kind, "eigsh")
+        cases = {"svd": ("LM", "SM"), "nonsym": ("LM", "SR")}.get(kind, ("SA", "LA"))
+        for which in cases:
+            v = _eig_values(lib, kind, m, which)
+            if v is None:
+                excluded[region_name] = excluded.get(region_name, 0) + 1
+                continue
+            v = np.asarray(v)
+            if kind == "nonsym":
+                import scipy.linalg as sl
+
+                ref_all = p["eigvals_hi"] + p["eigvals_lo"]
+                lam, Y, X = sl.eig(m.dense(), left=True, right=True)
+                idx = [int(np.argmin(np.abs(ref_all - z))) for z in v]
+                ref = ref_all[idx]
+                hi = p["eigvals_hi"][idx]
+                kappa = []
+                for z in v:
+                    j = int(np.argmin(np.abs(lam - z)))
+                    y, x = Y[:, j], X[:, j]
+                    kappa.append(np.linalg.norm(y) * np.linalg.norm(x) / abs(np.vdot(y, x)))
+                scale = R.C_EIG * R.EPS * norm * np.asarray(kappa)
+            else:
+                if kind == "svd":
+                    allv = p["svdvals_hi"] + p["svdvals_lo"]
+                    allhi = p["svdvals_hi"]
+                    sel = slice(0, 6) if which == "LM" else slice(len(allv) - 6, len(allv))
+                    ref, hi = np.sort(allv[sel]), np.sort(allhi[sel])
+                    v = np.sort(v)
+                else:
+                    key = "smallest" if which == "SA" else "largest"
+                    k = v.size
+                    ref, hi = np.sort((p[f"{key}_hi"] + p[f"{key}_lo"])[:k]), np.sort(p[f"{key}_hi"][:k])
+                    v = np.sort(np.real(v))
+                scale = R.C_EIG * R.EPS * norm
+            err = np.abs(v - ref) / scale
+            with np.errstate(all="ignore"):
+                rel = np.where(ref == 0, np.abs(v - ref), np.abs(v - ref) / np.abs(ref))
+            where = [f"{p['matrix']} {region_name} {which}[{i}]" for i in range(v.size)]
+            rows.setdefault(region_name, []).append((where, err, rel, ulps(v, hi)))
+    out = {}
+    for name, parts in rows.items():
+        where = np.concatenate([np.asarray(w) for w, *_ in parts])
+        err = np.concatenate([e for _, e, _, _ in parts])
+        rel = np.concatenate([r for _, _, r, _ in parts])
+        u = np.concatenate([np.asarray(x, dtype=float) for *_, x in parts])
+        out[name] = region(where, ulp=u, rel=rel, contract=err, bound=1.0, excluded=excluded.get(name, 0))
+    return out or None
+
+
 def sweeps():
     out = []
     for fam in FAMILIES:
@@ -254,6 +385,6 @@ def sweeps():
             return _regions(fam, lib)
 
         # (scipy's iterative solvers take about 40 s over the family's points)
-        seconds = 300.0 if fam == "iterative" else 60.0
+        seconds = 300.0 if fam in ("iterative", "eig") else 60.0
         out.append(Custom("sparse", fam, run, compare_libs(measure, ("scipy", "R"), seconds=seconds)))
     return out

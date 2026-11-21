@@ -54,6 +54,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/linalg/ops/qr.cpp
   csrc/linalg/ops/spectral.cpp
   csrc/linalg/ops/special.cpp
+  csrc/differentiate/derivative.cpp
   csrc/optimize/batch.cpp
   csrc/optimize/bfgs.cpp
   csrc/optimize/hybrd.cpp
@@ -79,6 +80,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/htest/correlation.cpp
   csrc/htest/contingency.cpp
   csrc/htest/proportion.cpp
+  csrc/htest/multicomp.cpp
   csrc/sparse/direct.cpp
   csrc/sparse/canonical.cpp
   csrc/sparse/convert.cpp
@@ -91,6 +93,8 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/sparse/construct.cpp
   csrc/sparse/triangular.cpp
   csrc/sparse/iterative.cpp
+  csrc/sparse/arpack.cpp
+  csrc/sparse/svds.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -119,6 +123,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/regression_bind.cpp
   csrc/bind/htest_bind.cpp
   csrc/bind/optimize_bind.cpp
+  csrc/bind/differentiate_bind.cpp
   csrc/bind/sparse_bind.cpp
   csrc/bind/module.cpp)
 

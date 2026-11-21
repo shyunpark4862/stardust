@@ -40,6 +40,14 @@ banded systems (n = 4*10^4) where the pool splits the products, the inner produc
 the updates at 3 and 10 threads; the result objects whole (every field, summary()); the wrong
 calls.
 
+The eigensolvers (milestone SP6): eigsh, eigs and svds on a 2-D Laplacian, a random symmetric, a
+random nonsymmetric, a complex Hermitian, a complex nonsymmetric and a rectangular matrix in every
+format, dense and as LinearOperators, every `which`, the spectral transformations (M, sigma,
+buckling, Cayley, OPpart), return_eigenvectors / return_singular_vectors, v0 and rng, the
+iteration limit (partial results), the result objects whole; banded matrices of n = 4*10^4 where
+the pool splits the products, the inner products and the basis updates at 3 and 10 threads; the
+wrong calls.
+
 A sparse array is stored whole: its class, shape, dtype and arrays (COO: coords, data and
 has_canonical_format; CSR and CSC: indptr, indices and data; DOK: its entries in row-major order).
 """
@@ -263,6 +271,7 @@ def cases(L):
     yield from cases_sp3(L, mats, fmts)
     yield from cases_sp4(L, fmts)
     yield from cases_sp5(L, fmts)
+    yield from cases_sp6(L, fmts)
 
 
 def partner(A, S):
@@ -794,3 +803,121 @@ def cases_sp5(L, fmts):
     yield "error lsmr conlim", lambda: S.lsmr(rect, vec["rect"], conlim=float("nan"))
     yield "error cg nan", lambda: S.cg(lap, b * float("nan"))
     yield "error lsqr no rmatvec", lambda: S.lsqr(S.LinearOperator(rect.shape, lambda v: rect @ v), vec["rect"])
+
+
+def cases_sp6(L, fmts):
+    """The eigensolvers (SP6): eigsh, eigs, svds on small matrices in every format and as
+    operators, their options, long banded matrices for the pool, and the wrong calls."""
+    sd, S = L.sd, L.sd.sparse
+    r = L.rng(606)
+    a = L.arr
+    g = 12
+    T = S.diags_array([a(np.full(g - 1, -1.0)), a(np.full(g, 2.0)), a(np.full(g - 1, -1.0))], offsets=[-1, 0, 1])
+    I1 = S.eye_array(g)
+    lap = (S.kron(I1, T) + S.kron(T, I1)).tocsr()  # 144 x 144, repeated eigenvalues
+    n = 120
+    rows, cols = r.integers(0, n, 900), r.integers(0, n, 900)
+    vals = r.standard_normal(900)
+    R0 = S.coo_array((a(vals), (a(rows), a(cols))), shape=(n, n)).tocsr()
+    sym = (R0 + R0.T + S.diags_array(a(np.linspace(-3.0, 3.0, n)), format="csr")).tocsr()
+    unsym = (R0 + S.diags_array(a(np.linspace(-1.0, 4.0, n)), format="csr")).tocsr()
+    m = 60
+    zr, zc = r.integers(0, m, 400), r.integers(0, m, 400)
+    zv = r.standard_normal(400) + 1j * r.standard_normal(400)
+    Z = S.coo_array((a(zv), (a(zr), a(zc))), shape=(m, m)).tocsr()
+    herm = (Z + Z.T.conj() + S.diags_array(a(np.linspace(0.0, 6.0, m)), format="csr")).tocsr()
+    cplx = (Z + S.diags_array(a(np.linspace(0.0, 3.0, m) + 1j), format="csr")).tocsr()
+    rr, rc = r.integers(0, 90, 500), r.integers(0, 40, 500)
+    rect = (
+        S.coo_array((a(r.standard_normal(500)), (a(rr), a(rc))), shape=(90, 40)) + S.eye_array(90, 40) * 3.0
+    ).tocsr()
+    Mg = S.diags_array(a(np.linspace(1.0, 2.0, 144)), format="csr")
+    Mu = S.diags_array(a(np.linspace(1.0, 2.0, n)), format="csr")
+    for key, A in (("lap", lap), ("sym", sym), ("herm", herm)):
+        for which in ("LM", "SM", "LA", "SA") + (("BE",) if key != "herm" else ()):
+            yield f"eigsh {key} {which}", lambda A=A, which=which: S.eigsh(A, k=4, which=which)
+        for fm in fmts:
+            if fm != "csr":
+                yield f"eigsh {key} {fm}", lambda A=A, fm=fm: S.eigsh(A.asformat(fm), k=3).eigenvectors
+        yield f"eigsh {key} dense", lambda A=A: S.eigsh(A.toarray(), k=3).eigenvectors
+        yield (
+            f"eigsh {key} python operator",
+            lambda A=A: S.eigsh(S.LinearOperator(A.shape, lambda v: A @ v, dtype=A.dtype), k=3).eigenvalues,
+        )
+        yield f"eigsh {key} sigma", lambda A=A: S.eigsh(A, k=3, sigma=0.7)
+        yield f"eigsh {key} no vectors", lambda A=A: S.eigsh(A, k=3, return_eigenvectors=False)
+        yield f"eigsh {key} max_iter 2", lambda A=A: S.eigsh(A, k=4, which="SM", max_iter=2)
+    yield "eigsh lap M", lambda: S.eigsh(lap, k=3, M=Mg)
+    yield "eigsh lap M SA", lambda: S.eigsh(lap, k=3, M=Mg, which="SA")
+    yield "eigsh lap M sigma", lambda: S.eigsh(lap, k=3, M=Mg, sigma=0.5)
+    yield "eigsh lap buckling", lambda: S.eigsh(lap, k=3, sigma=0.5, mode="buckling")
+    yield "eigsh lap cayley", lambda: S.eigsh(lap, k=3, sigma=0.5, mode="cayley")
+    yield "eigsh lap cayley M", lambda: S.eigsh(lap, k=3, sigma=0.5, mode="cayley", M=Mg)
+    yield "eigsh lap OPinv", lambda: S.eigsh(lap, k=3, sigma=0.0, OPinv=S.LinearOperator(
+        lap.shape, lambda v: S.spsolve(lap.tocsc(), v)))  # fmt: skip
+    yield "eigsh lap v0", lambda: S.eigsh(lap, k=3, v0=a(np.ones(144)))
+    yield "eigsh lap rng", lambda: S.eigsh(lap, k=3, rng=sd.random.default_rng(3))
+    yield "eigsh lap ncv tol", lambda: S.eigsh(lap, k=3, ncv=8, tol=1e-6)
+    for key, A in (("unsym", unsym), ("cplx", cplx)):
+        for which in ("LM", "SM", "LR", "SR", "LI", "SI"):
+            yield f"eigs {key} {which}", lambda A=A, which=which: S.eigs(A, k=4, which=which)
+        for fm in fmts:
+            if fm != "csr":
+                yield f"eigs {key} {fm}", lambda A=A, fm=fm: S.eigs(A.asformat(fm), k=3).eigenvectors
+        yield f"eigs {key} dense", lambda A=A: S.eigs(A.toarray(), k=3).eigenvalues
+        yield f"eigs {key} aslinearoperator", lambda A=A: S.eigs(S.aslinearoperator(A), k=3).eigenvalues
+        yield f"eigs {key} sigma", lambda A=A: S.eigs(A, k=3, sigma=0.5 + 0.25j)
+        yield f"eigs {key} no vectors", lambda A=A: S.eigs(A, k=3, return_eigenvectors=False)
+    yield "eigs unsym M", lambda: S.eigs(unsym, k=3, M=Mu)
+    yield "eigs unsym sigma real", lambda: S.eigs(unsym, k=3, sigma=0.5)
+    yield "eigs unsym OPpart i", lambda: S.eigs(unsym, k=3, sigma=0.5 + 0.25j, OPpart="i")
+    yield "eigs unsym max_iter 1", lambda: S.eigs(unsym, k=4, which="SM", max_iter=1)
+    for key, A in (("rect", rect), ("wide", rect.T.tocsr()), ("cplx", cplx), ("lap", lap)):
+        for which in ("LM", "SM"):
+            yield f"svds {key} {which}", lambda A=A, which=which: S.svds(A, k=4, which=which)
+        for opt in (False, "u", "vh"):
+            yield f"svds {key} {opt}", lambda A=A, opt=opt: S.svds(A, k=3, return_singular_vectors=opt)
+    for fm in fmts:
+        if fm != "csr":
+            yield f"svds rect {fm}", lambda fm=fm: S.svds(rect.asformat(fm), k=3).U
+    yield "svds rect dense", lambda: S.svds(rect.toarray(), k=3).Vh
+    yield (
+        "svds rect python operator",
+        lambda: S.svds(S.LinearOperator(rect.shape, lambda v: rect @ v, rmatvec=lambda v: rect.T @ v), k=3).S,
+    )
+    yield "svds rect ncv v0", lambda: S.svds(rect, k=3, ncv=6, v0=a(np.ones(40)))
+    yield "svds lap SM max_iter 2", lambda: S.svds(lap, k=4, which="SM", max_iter=2)
+    yield "summary eigsh lap", lambda: S.eigsh(lap, k=3).summary()
+    yield "summary eigs cplx", lambda: S.eigs(cplx, k=3).summary()
+    yield "summary svds rect", lambda: S.svds(rect, k=3).summary()
+    yield "repr eigs unsym", lambda: repr(S.eigs(unsym, k=3))
+    yield "unpack eigsh lap", lambda: tuple(S.eigsh(lap, k=3))
+    yield "unpack svds rect", lambda: tuple(S.svds(rect, k=3))
+
+    # long banded matrices: the pool splits every vector operation at 3 and 10 threads
+    k = 40000
+    t = np.arange(k, dtype=np.float64)
+    band = S.diags_array([a(1.0 + 3.0 * t / k), a(np.full(k - 1, 0.2)), a(np.full(k - 1, 0.2))], offsets=[0, 1, -1],
+                         format="csr")  # fmt: skip
+    skew = (band + S.diags_array(a(np.full(k - 1, 0.1)), offsets=1, format="csr")).tocsr()
+    yield "eigsh long", lambda: S.eigsh(band, k=3, ncv=12)
+    yield "eigsh long complex", lambda: S.eigsh(band * (1 + 0j), k=3, ncv=12)
+    yield "eigs long", lambda: S.eigs(skew, k=3, ncv=12)
+    yield "svds long", lambda: S.svds(skew, k=3, ncv=12)
+
+    # wrong calls
+    yield "error eigsh list A", lambda: S.eigsh([[1.0]])
+    yield "error eigsh k n", lambda: S.eigsh(lap, k=144)
+    yield "error eigs k n-1", lambda: S.eigs(unsym, k=119)
+    yield "error eigsh ncv", lambda: S.eigsh(lap, k=3, ncv=3)
+    yield "error eigsh which", lambda: S.eigsh(lap, which="LR")
+    yield "error eigs which", lambda: S.eigs(unsym, which="LA")
+    yield "error eigsh mode no sigma", lambda: S.eigsh(lap, mode="buckling")
+    yield "error eigsh maxiter", lambda: S.eigsh(lap, maxiter=3)
+    yield "error eigsh v0 zero", lambda: S.eigsh(lap, v0=a(np.zeros(144)))
+    singular = S.diags_array(a(np.r_[0.0, np.arange(1.0, 10.0)]), format="csr")
+    yield "error eigsh singular sigma", lambda: S.eigsh(singular, k=2, sigma=0.0)
+    yield "error svds solver", lambda: S.svds(rect, solver="arpack")
+    yield "error svds k", lambda: S.svds(rect, k=40)
+    yield "error svds which", lambda: S.svds(rect, which="LA")
+    yield "error eigs OPpart", lambda: S.eigs(unsym, sigma=1.0, OPpart="i")

@@ -55,7 +55,7 @@ from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
-from flint import arb, arb_mat, fmpq
+from flint import acb, arb, arb_mat, fmpq
 from flint import ctx as flint_ctx
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -3815,11 +3815,412 @@ def confint_proportions_2indep(p):
     return {"conf_int": [end(-1), end(1)]}
 
 
-@family("combine_pvalues", ("combine_pvalues",), lambda p: p.kwargs.get("method", "fisher") != "mudholkar_george")
+# ---- H8: multiple comparisons and corrections
+#
+# tukey_hsd's and dunnett's p-values are two-level integrals (docs/design/htest.md §3.9, §7):
+#   the studentized range  P(Q > q) = E[P(W > R q)],  P(W > w) = k int phi(z) [A^m - B^m] dz
+#   (A = Phi(-z), B = Phi(z + w) - Phi(z), m = k - 1: the textbook P(W <= w) = k int phi(z) B^m dz
+#   subtracted from k int phi(z) A^m dz = 1), the difference of powers factored as
+#   (A - B)(A^(m-1) + ... + B^(m-1)) so every term is positive;
+#   Dunnett's one-factor t  P(max_j |T_j| > c) = E[int phi(z) (1 - prod_j (1 - u_j(z))) dz]
+#   (u_j = P(|l_j z + s_j E| > R c), one-sided P(l_j z + s_j E > R c)), the bracket summed as
+#   u_1 + (1 - u_1) u_2 + (1 - u_1)(1 - u_2) u_3 + ..., positive terms.
+# The inner integral is Arb's acb.integral (rigorous, its truncation bounded and added to the
+# ball). The outer one, over v = log(S / a) (S ~ Gamma(a), a = nu / 2, R = e^(v/2)), is
+# Gauss-Legendre on panels refined until the 16- and 24-point rules agree to 2^-80 of the total
+# (an estimate: these references are not proven balls, docs/design/htest.md §4); its ends are
+# bounded: below v_c the integrand is g(0) to 2^-115 (|g(R c) - g(0)| <= R h / sqrt(2 pi)) and that
+# part is g(0) P(S < a e^v_c), above v_hi the gamma's tail Q(a, a + 40 sqrt(a) + 800) < 1e-340.
+# Our code integrates other forms (no cancellation, the chi variable in sd.stats' mixture, double
+# arithmetic): an independent evaluation.
+
+H8_PREC = 100
+H8_TOL = 2.0**-80  # the outer quadrature's estimate against the total
+_GL_CACHE = {}
+
+
+def _gl(n):
+    key = (n, flint_ctx.prec)
+    if key not in _GL_CACHE:
+        _GL_CACHE[key] = [arb.legendre_p_root(n, i, weight=True) for i in range(n)]
+    return _GL_CACHE[key]
+
+
+def _gl_panel(f, a, b):
+    """The 24-point Gauss-Legendre integral of f over [a, b] and its distance to the 16-point one."""
+    c, h = (arb(a) + arb(b)) / 2, (arb(b) - arb(a)) / 2
+    r = []
+    for n in (16, 24):
+        tot = arb(0)
+        for x, w in _gl(n):
+            tot += w * f(c + h * x)
+        r.append(tot * h)
+    return r[1], float(abs((r[1] - r[0]).mid()))
+
+
+def _gl_adaptive(f, pts, tol, cap=600, stop=None):
+    """sum of the panels between the sorted points, the panel with the largest estimate bisected until
+    the estimates sum to tol of the total. stop(v, total): the panels are added left to right and
+    the rest is left out once stop(the panel's right end, the total so far) holds (it bounds the
+    rest by then); the last end used is returned too."""
+    P = []
+    end = pts[-1]
+    for i in range(len(pts) - 1):
+        P.append((pts[i], pts[i + 1], *_gl_panel(f, pts[i], pts[i + 1])))
+        if stop is not None and i < len(pts) - 2 and stop(pts[i + 1], sum((q[2] for q in P), arb(0))):
+            end = pts[i + 1]
+            break
+    while True:
+        tot = sum((q[2] for q in P), arb(0))
+        err = sum(q[3] for q in P)
+        if err <= tol * abs(float(tot.mid())) or len(P) >= cap or err == 0.0:
+            return tot, err, end
+        i = max(range(len(P)), key=lambda j: P[j][3])
+        lo, hi = P[i][0], P[i][1]
+        mid = (lo + hi) / 2
+        P[i : i + 1] = [(lo, mid, *_gl_panel(f, lo, mid)), (mid, hi, *_gl_panel(f, mid, hi))]
+
+
+def _phic(x):
+    """Phi(-x) for an arb or acb x."""
+    return (x / arb(2).sqrt()).erfc() / 2
+
+
+def _range_sf(k, w):
+    """P(W > w), the range of k standard normals (w an arb > 0), its truncation in the ball."""
+    m = k - 1
+    # the node's midpoint, exact: a ball for w (its last bits) is not reduced by subdividing and blew
+    # the enclosure up in the tail (4.7 relative at w = 17.8 from a radius of 2^-118); the outer
+    # rule's nodes are its midpoints
+    ww = arb(w.mid())
+    c = 1 / (2 * arb.pi()).sqrt()
+
+    def f(z, analytic):
+        # A^m - B^m = C (A^(m-1) + A^(m-2) B + ... + B^(m-1)), B = A - C = Phi(z + w) - Phi(z):
+        # every term positive (the difference of powers factored, no cancellation)
+        A_, C_ = _phic(z), _phic(z + ww)
+        B_ = A_ - C_
+        tot = acb(0)
+        for i in range(m):
+            tot += A_**i * B_ ** (m - 1 - i)
+        return k * c * (-z * z / 2).exp() * C_ * tot
+
+    lo = -ww - 12
+    v = acb.integral(f, lo, 9, rel_tol=arb(2) ** (-flint_ctx.prec), abs_tol=arb(2) ** (-flint_ctx.prec - 1500)).real
+    # below lo the integrand is at most k m phi(z); above 9, k m phi(z) Phi(-(9 + w))
+    bound = k * m * (_phic(-lo) + _phic(arb(9)) * _phic(9 + ww))
+    return v + arb(0, bound.upper())
+
+
+def _mixture(g, nu, g0, habs, hint, upper=None, tol=H8_TOL):
+    """E[g(R)], R = sqrt(chi^2_nu / nu), as (the value with its ends' bounds, the quadrature's
+    estimate). g(R) takes R as an arb; g0 = g(0); |g(R) - g0| <= R habs / sqrt(2 pi); hint the R
+    where g turns; upper(R) a bound on g beyond R (decreasing; None: 1). The panels stop where the
+    gamma's tail times that bound is below 2^-130 of the total so far (so a tail of 1e-18 does
+    not integrate R up to 8, where P(W > R q) needs thousands of bits)."""
+    a = A(nu) / 2
+    af = float(a.mid())
+    vc = 2 * math.log(2.0**-115 * math.sqrt(2 * math.pi) / habs)
+    vhi = math.log((af + 40 * math.sqrt(af) + 800) / af)
+    c0 = a * a.log() - a.lgamma()
+
+    def f(v):
+        return (c0 + a * v - a * v.exp()).exp() * g((v / 2).exp())
+
+    def rest(v):
+        q = (a * arb(v).exp()).gamma_upper(a, 1)
+        return q * (1 if upper is None else upper(math.exp(v / 2)))
+
+    def stop(v, tot):
+        return bool(rest(v).upper() <= 2.0**-130 * abs(tot.lower()))
+
+    sig = min(1.0, 1 / math.sqrt(af))
+    cuts = {0.0} | {s * sig * 4**j for j in range(10) for s in (1, -1)} | {sig * t for t in (2, 3, 6, 8, 12, 24)}
+    if hint > 0:
+        vq = 2 * math.log(hint)
+        cuts |= {vq + d for d in (-4, -1, 0, 1, 4)}
+    pts = [vc] + sorted(t for t in cuts if vc < t < vhi) + [vhi]
+    tot, err, end = _gl_adaptive(f, pts, tol, stop=stop)
+    left = A(g0) * (a * arb(vc).exp()).gamma_lower(a, 1)
+    bound = left.upper() * 2.0**-115 + rest(end).upper()
+    return tot + left + arb(0, bound), err
+
+
+def _settle(v, err):
+    """The midpoint of a numerical-integration value as a Fraction, when its ball and the
+    quadrature's estimate are within 2^-75 of it; else not settled (the point is dropped)."""
+    mid = v.mid()
+    if not v.is_finite() or mid == 0:
+        raise NotSettled(f"integral {v}")
+    if float(v.rad()) + err > 2.0**-75 * abs(float(mid)):
+        raise NotSettled(f"integral {v} +- {err:.3g}")
+    return _arf_fraction(mid)
+
+
+def _arf_fraction(x):
+    man, exp = x.man_exp()
+    man, exp = int(man), int(exp)
+    return Fraction(man) * (Fraction(2) ** exp) if exp >= 0 else Fraction(man, 2**-exp)
+
+
+def sr_sf(q, k, nu, tol=H8_TOL, prec=H8_PREC):
+    """P(Q > q) of the studentized range (q, nu arbs or Fractions), as (arb, estimate)."""
+    with ar.precision(prec):
+        q = A(q)
+        if q.is_zero():
+            return arb(1), 0.0
+        habs = float((q * arb(2).sqrt()).upper())
+        qf = float(q.mid())
+
+        def upper(R):  # P(W > w) <= sum over pairs of P(|Z_i - Z_j| > w) = k (k - 1) Phi(-w / sqrt 2)
+            return k * (k - 1) * _phic(arb(R * qf * (1 - 1e-12)) / arb(2).sqrt())
+
+        return _mixture(lambda R: _range_sf(k, q * R), nu, 1, habs, 3 / qf, upper, tol)
+
+
+def _factor_tail(c, l, s, two):
+    """P(max_j |Z_j| > c) (two) or P(max_j Z_j > c), Z_j = l_j Z_0 + s_j E_j, c an arb."""
+    cf = float(c.mid())
+    cc = arb(c.mid())  # (the node's midpoint, exact: as _range_sf)
+    ls, ss = [A(x) for x in l], [A(x) for x in s]
+    cn = 1 / (2 * arb.pi()).sqrt()
+
+    def f(z, analytic):
+        # 1 - prod_j (1 - u_j) = u_1 + (1 - u_1) u_2 + (1 - u_1)(1 - u_2) u_3 + ...: positive terms
+        tot, keep = acb(0), acb(1)
+        for lj, sj in zip(ls, ss):
+            u = _phic((cc - lj * z) / sj)
+            if two:
+                u += _phic((cc + lj * z) / sj)
+            tot += keep * u
+            keep *= 1 - u
+        return cn * (-z * z / 2).exp() * tot
+
+    T = math.sqrt(cf * cf + 200) + 2
+    inner = acb.integral(f, -T, T, rel_tol=arb(2) ** (-flint_ctx.prec), abs_tol=arb(2) ** (-flint_ctx.prec - 1500))
+    return inner.real + arb(0, (2 * _phic(arb(T))).upper())  # the rest of the z line
+
+
+def dunnett_tail(c, l, s, nu, two, tol=H8_TOL, prec=H8_PREC):
+    """Dunnett's family-wise tail at c (an arb or Fraction) for the factors l, s (Fractions or
+    arbs) and nu degrees of freedom, as (arb, estimate)."""
+    with ar.precision(prec):
+        c = A(c)
+        if two and c.is_zero():
+            return arb(1), 0.0
+        g0 = arb(1) if two else _factor_tail(arb(0), l, s, False)
+        habs = 2 * abs(float(c.mid())) if two else len(l) * abs(float(c.mid()))
+        if habs == 0.0:
+            return g0, 0.0
+        cf = float(c.mid())
+
+        def upper(R):  # the marginals' union bound (c > 0: g decreasing in R); else g <= 1
+            return (2 if two else 1) * len(l) * _phic(arb(R * cf * (1 - 1e-12))) if cf > 0 else arb(1)
+
+        return _mixture(lambda R: _factor_tail(c * R, l, s, two), nu, g0, habs, 1 / abs(cf), upper, tol)
+
+
+# a cheaper evaluation for the condition numbers and the roots' first phase: 53 bits, the
+# quadrature to 2^-30
+CHEAP = {"tol": 2.0**-30, "prec": 53}
+
+
+def _h8_cond(tail, x, p):
+    """|x dp/dx| / p by central differences of the cheap tail at 2^-16 relative (a tolerance
+    factor, good to some 1e-6)."""
+    if not (p > 0) or x == 0:
+        return NAN
+    h = 2.0**-16
+    up = float(tail(A(x) * (1 + arb(h)), **CHEAP)[0].mid())
+    dn = float(tail(A(x) * (1 - arb(h)), **CHEAP)[0].mid())
+    return abs(up - dn) / (2 * h * p)
+
+
+def _h8_root(tail, a, lo, hi):
+    """The x in [lo, hi] with tail(x) = a for a decreasing tail: Illinois' regula falsi on the
+    logarithm of the cheap tail to 1e-9, then secant steps on the full one to 2^-80 of x."""
+    la = math.log(a)
+
+    def g(x, **kw):
+        return math.log(float(tail(A(Fraction(x)), **kw)[0].mid())) - la
+
+    glo, ghi = g(lo, **CHEAP), g(hi, **CHEAP)
+    side = 0
+    for _ in range(100):
+        x = hi - ghi * (hi - lo) / (ghi - glo)
+        if not lo < x < hi:
+            x = (lo + hi) / 2
+        gx = g(x, **CHEAP)
+        if gx > 0:
+            lo, glo = x, gx
+            if side == 1:
+                ghi /= 2
+            side = 1
+        else:
+            hi, ghi = x, gx
+            if side == -1:
+                glo /= 2
+            side = -1
+        if hi - lo <= 1e-9 * hi:
+            break
+    x0, x1 = Fraction(x), Fraction(x) * (1 + Fraction(1, 10**9))
+    g0, g1 = g(x0), g(x1)
+    for _ in range(12):
+        if g1 == g0:
+            break
+        x2 = x1 - Fraction(g1) * (x1 - x0) / Fraction(g1 - g0)
+        x0, g0, x1 = x1, g1, x2
+        if abs(x1 - x0) <= Fraction(2) ** -80 * abs(x1):
+            break
+        g1 = g(x1)
+    return float(x1)
+
+
+def _t_quantile(a, nu):
+    from scipy import stats as sps
+
+    return float(sps.t.isf(a, float(nu)))
+
+
+def _groups(p):
+    """The groups' sizes, means and sums of squares (Fractions) of a tukey_hsd or dunnett problem
+    (dunnett's control last)."""
+    xs = list(p.args) + ([p.kwargs["control"]] if p.func == "dunnett" else [])
+    out = []
+    for x in xs:
+        v = fvec(x)
+        n = len(v)
+        mu = sum(v) / n
+        out.append((n, mu, sum((t - mu) ** 2 for t in v)))
+    return out
+
+
+CI_PROBLEMS = (
+    "tukey_hsd/three",
+    "tukey_hsd/equal",
+    "tukey_hsd/games-howell",
+    "tukey_hsd/small-df",
+    "dunnett/two",
+    "dunnett/three-greater",
+)
+
+
+@family("tukey_hsd", ("tukey_hsd",), seconds=7200)
+def tukey_hsd(p):
+    """Tukey-Kramer's (or Games and Howell's) mean differences, degrees of freedom and the studentized
+    range's tail per pair i < j; kappa per pair; the 95% intervals on CI_PROBLEMS."""
+    g = _groups(p)
+    k = len(g)
+    ev = p.kwargs.get("equal_var", True)
+    N = sum(n for n, _, _ in g)
+    pairs = [(i, j) for i in range(k) for j in range(i + 1, k)]
+    const = all(ss == 0 for _, _, ss in g)
+    out = {"statistic": [g[i][1] - g[j][1] for i, j in pairs]}
+    se2, dfs = [], []
+    for i, j in pairs:
+        (ni, _, si), (nj, _, sj) = g[i], g[j]
+        if ev:
+            mse = sum(ss for _, _, ss in g) / (N - k)
+            se2.append(mse * (Fraction(1, ni) + Fraction(1, nj)) / 2)
+            dfs.append(Fraction(N - k))
+        else:
+            vi, vj = si / (ni - 1) / ni, sj / (nj - 1) / nj
+            se2.append((vi + vj) / 2)
+            dfs.append((vi + vj) ** 2 / (vi * vi / (ni - 1) + vj * vj / (nj - 1)))
+    out["df"] = dfs[0] if ev else dfs
+    pv, kap = [], []
+    for (i, j), d, s2, nu in zip(pairs, out["statistic"], se2, dfs):
+        zero = const if ev else (g[i][2] == 0 and g[j][2] == 0)
+        if zero or s2 == 0:
+            pv.append(NAN)
+            kap.append(NAN)
+            continue
+        with ar.precision(H8_PREC):
+            q = (A(d * d / s2)).sqrt()
+            v, err = sr_sf(q, k, nu)
+            pf = _settle(v, err)
+            pv.append(pf)
+            kap.append(_h8_cond(lambda x, **kw: sr_sf(x, k, nu, **kw), q, float(pf)))
+    out["pvalue"], out["kappa"] = pv, kap
+    if p.id in CI_PROBLEMS:
+        a = float(ALPHA)
+        crit = {}
+        ends = []
+        for d, s2, nu in zip(out["statistic"], se2, dfs):
+            if nu not in crit:
+                lo = math.sqrt(2) * _t_quantile(a / 2, nu)
+                hi = math.sqrt(2) * _t_quantile(a / 2 / (k * (k - 1) / 2), nu)
+                crit[nu] = _h8_root(lambda x, nu=nu, **kw: sr_sf(x, k, nu, **kw), a, lo, hi) if hi > lo else lo
+            with ar.precision(H8_PREC):
+                r = A(Fraction(crit[nu])) * A(s2).sqrt()
+                ends.append([_arf_fraction((A(d) - r).mid()), _arf_fraction((A(d) + r).mid())])
+        out["conf_int"] = ends
+    return out
+
+
+@family("dunnett", ("dunnett",), seconds=7200)
+def dunnett(p):
+    """Dunnett's t statistics against the control, the pooled degrees of freedom and the one-factor
+    multivariate t's family-wise tails; kappa per comparison; the 95% intervals on CI_PROBLEMS."""
+    g = _groups(p)
+    d = len(g) - 1
+    n0, m0, _ = g[-1]
+    N = sum(n for n, _, _ in g)
+    df = N - d - 1
+    alt = p.kwargs.get("alternative", "two-sided")
+    two = alt == "two-sided"
+    s2 = sum(ss for _, _, ss in g) / df if df > 0 else None
+    const = all(ss == 0 for _, _, ss in g)
+    l = [None] * d
+    sfac = [None] * d
+    with ar.precision(H8_PREC):
+        for j in range(d):
+            nj = g[j][0]
+            l[j] = A(Fraction(nj, nj + n0)).sqrt()
+            sfac[j] = A(Fraction(n0, nj + n0)).sqrt()
+    out = {"df": Fraction(df)}
+    stats_, pv, kap = [], [], []
+    for j in range(d):
+        nj, mj, _ = g[j]
+        diff = mj - m0
+        w2 = s2 * (Fraction(1, nj) + Fraction(1, n0)) if s2 is not None else None
+        if const or not w2:
+            stats_.append(NAN)
+            pv.append(NAN)
+            kap.append(NAN)
+            continue
+        with ar.precision(H8_PREC):
+            t = A(diff * diff / w2).sqrt() * sign(diff)
+            stats_.append(_arf_fraction(t.mid()) if not t.is_zero() else Fraction(0))
+            c = abs(t) if two else (t if alt == "greater" else -t)
+            v, err = dunnett_tail(c, l, sfac, Fraction(df), two)
+            pf = _settle(v, err)
+        pv.append(pf)
+        kap.append(_h8_cond(lambda x, **kw: dunnett_tail(x, l, sfac, Fraction(df), two, **kw), c, float(pf)))
+    out.update(statistic=stats_, pvalue=pv, kappa=kap)
+    if p.id in CI_PROBLEMS:
+        a = float(ALPHA)
+        one = a / 2 if two else a
+        lo, hi = _t_quantile(one, df), _t_quantile(one / d, df)
+        crit = _h8_root(lambda x, **kw: dunnett_tail(x, l, sfac, Fraction(df), two, **kw), a, lo, hi) if hi > lo else lo
+        ends = []
+        for j in range(d):
+            nj, mj, _ = g[j]
+            with ar.precision(H8_PREC):
+                r = A(Fraction(crit)) * A(s2 * (Fraction(1, nj) + Fraction(1, n0))).sqrt()
+                lo_e = _arf_fraction((A(mj - m0) - r).mid()) if alt != "less" else -math.inf
+                hi_e = _arf_fraction((A(mj - m0) + r).mid()) if alt != "greater" else math.inf
+            ends.append([lo_e, hi_e])
+        out["conf_int"] = ends
+    return out
+
+
+@family("combine_pvalues", ("combine_pvalues",))
 def combine_pvalues(p):
     """Fisher's (-2 sum log p, chi^2 (2k) upper tail), Pearson's (2 sum log(1 - p), the chi^2 lower
-    tail of its negative), Tippett's (1 - (1 - min p)^k, exact) and Stouffer's (the normal isf,
-    weighted) combinations, in Arb."""
+    tail of its negative), Tippett's (1 - (1 - min p)^k, exact), Stouffer's (the normal isf,
+    weighted) and Mudholkar and George's (-sum log(p / (1 - p)), scipy's t with 5k + 4 degrees of
+    freedom) combinations, in Arb; kappa the p-value's condition number in the statistic."""
     ps = fvec(p.args[0])
     k = len(ps)
     method = p.kwargs.get("method", "fisher")
@@ -3828,30 +4229,56 @@ def combine_pvalues(p):
         def S():
             return -2 * sum(A(v).log() for v in ps)
 
-        return {"statistic": S, "pvalue": lambda: gamma_q(k, S() / 2)}
+        def pf(s):
+            return gamma_q(k, s / 2)
+
+        return {"statistic": S, "pvalue": lambda: pf(S()), "kappa": kappa(pf, S)}
     if method == "pearson":
 
         def S():
             return 2 * sum((1 - A(v)).log() for v in ps)
 
-        return {"statistic": S, "pvalue": lambda: gamma_p(k, -S() / 2)}
+        def pf(s):
+            return gamma_p(k, -s / 2)
+
+        return {"statistic": S, "pvalue": lambda: pf(S()), "kappa": kappa(pf, S)}
     if method == "tippett":
         m = min(ps)
         return {"statistic": m, "pvalue": 1 - (1 - m) ** k}
+    if method == "mudholkar_george":
+        nu = Fraction(5 * k + 4)
+
+        def T():
+            return sum((1 - A(v)).log() - A(v).log() for v in ps)
+
+        def pf(t):
+            x = t * (A(Fraction(3, k)) * A(nu / (nu - 2))).sqrt() / arb.pi()
+            return t_upper(x, A(nu)) if x >= 0 else 1 - t_upper(-x, A(nu))
+
+        return {"statistic": T, "pvalue": lambda: pf(T()), "kappa": kappa(pf, T)}
     w = fvec(p.kwargs["weights"]) if p.kwargs.get("weights") is not None else [Fraction(1)] * k
 
     def Z():
         return sum(A(wi) * norm_isf(v) for wi, v in zip(w, ps)) / A(sum(wi * wi for wi in w)).sqrt()
 
-    return {"statistic": Z, "pvalue": lambda: norm_sf(Z())}
+    return {"statistic": Z, "pvalue": lambda: norm_sf(Z()), "kappa": kappa(norm_sf, Z)}
 
 
-def _multitest(ps, method):
+def _multitest(ps, method, alpha=Fraction(0.05), maxiter=1):
     """statsmodels' multipletests corrections (or scipy's false_discovery_control) in exact
-    rationals: the sorted p-values, the step-down/up accumulations, clipped at 1."""
+    rationals: the sorted p-values, the step-down/up accumulations, clipped at 1; the two-stage
+    procedures with their rejection counts compared exactly."""
     n = len(ps)
     order = sorted(range(n), key=lambda i: ps[i])
     s = [ps[i] for i in order]
+
+    def bh(v):
+        c, run = [None] * n, None
+        for i in range(n - 1, -1, -1):
+            run = v[i] if run is None else min(run, v[i])
+            c[i] = run
+        return c
+
     if method == "bonferroni":
         c = [v * n for v in s]
     elif method == "sidak":
@@ -3863,11 +4290,7 @@ def _multitest(ps, method):
             run = max(run, v)
             c.append(run)
     elif method == "simes-hochberg":
-        raw = [v * (n - i) for i, v in enumerate(s)]
-        c, run = [None] * n, None
-        for i in range(n - 1, -1, -1):
-            run = raw[i] if run is None else min(run, raw[i])
-            c[i] = run
+        c = bh([v * (n - i) for i, v in enumerate(s)])
     elif method == "hommel":
         a = list(s)
         for m in range(n, 1, -1):
@@ -3879,11 +4302,27 @@ def _multitest(ps, method):
         c = a
     elif method in ("fdr_bh", "fdr_by", "bh", "by"):
         cm = sum(Fraction(1, i) for i in range(1, n + 1)) if method in ("fdr_by", "by") else Fraction(1)
-        raw = [v * n * cm / (i + 1) for i, v in enumerate(s)]
-        c, run = [None] * n, None
-        for i in range(n - 1, -1, -1):
-            run = raw[i] if run is None else min(run, raw[i])
-            c[i] = run
+        c = bh([v * n * cm / (i + 1) for i, v in enumerate(s)])
+    elif method in ("fdr_tsbh", "fdr_tsbky"):
+        bky = method == "fdr_tsbky"
+        fact = 1 + alpha if bky else Fraction(1)
+        ap = alpha / fact
+
+        def rejections(level):  # BH's step-up at level: the largest i with s_i <= i level / n
+            return max((i + 1 for i, v in enumerate(s) if v <= (i + 1) * level / n), default=0)
+
+        c = [min(Fraction(1), v) for v in bh([v * n / (i + 1) for i, v in enumerate(s)])]
+        r1 = rejections(ap)
+        n0 = n
+        if r1 not in (0, n):
+            old = r1
+            for it in range(maxiter):
+                n0 = n - old
+                r = rejections(ap * n / n0)
+                if it >= maxiter - 1 or r == old:
+                    break
+                old = r
+        c = [v * Fraction(n0, n) * fact for v in c]
     else:
         raise KeyError(method)
     out = [None] * n
@@ -3892,16 +4331,18 @@ def _multitest(ps, method):
     return out
 
 
-@family(
-    "multipletests",
-    ("multipletests", "false_discovery_control"),
-    lambda p: p.kwargs.get("method") not in ("fdr_tsbh", "fdr_tsbky"),
-)
+@family("multipletests", ("multipletests", "false_discovery_control"))
 def multipletests(p):
-    """The corrected p-values of multipletests (statsmodels' definitions) and
-    false_discovery_control (scipy's), exact."""
+    """The corrected p-values of multipletests (statsmodels' definitions; the two-stage ones at the
+    problem's alpha and maxiter) and false_discovery_control (scipy's), exact; multipletests'
+    rejections at alpha (the exact corrected value against alpha, H111)."""
     ps = fvec(p.args[0])
-    return {"pvalues_corrected": _multitest(ps, p.kwargs.get("method", "holm-sidak"))}
+    alpha = Fraction(p.kwargs.get("alpha", 0.05))
+    c = _multitest(ps, p.kwargs.get("method", "holm-sidak"), alpha, p.kwargs.get("maxiter", 1))
+    out = {"pvalues_corrected": c}
+    if p.func == "multipletests":
+        out["reject"] = [int(v <= alpha) for v in c]
+    return out
 
 
 # ---------------------------------------------------------------- building

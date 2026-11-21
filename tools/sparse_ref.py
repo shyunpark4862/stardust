@@ -24,8 +24,10 @@ the stored doubles, taken as exact rationals. References are double-doubles hi +
             equations A^T A x = A^T b formed exactly and solved as in solve
     eig     the 6 smallest and 6 largest eigenvalues of symmetric / Hermitian matrices: Arb's
             acb_mat.eig for n <= 220, the closed form sum_d (2 - 2 cos(k_d pi / (g + 1))) for
-            the Dirichlet Laplacians; and every singular value of small rectangular matrices
-            (sqrt of the eigenvalues of the smaller Gram matrix)
+            the Dirichlet Laplacians; every singular value of small rectangular matrices
+            (sqrt of the eigenvalues of the smaller Gram matrix); and every eigenvalue of small
+            nonsymmetric real and complex matrices (acb_mat.eig, sorted by real then imaginary
+            part: method "eigvals", complex; milestone SP6)
     expm    exp(s A) entry by entry (arb_mat.exp / acb_mat.exp) for n <= 200, s a power of two
             putting ||s A||_1 near 1 (input "scale"), and the same at ||s A||_1 near 30
 
@@ -539,7 +541,12 @@ def eig_points():
     for i in m.ids("rect"):
         if min(m.get(i).shape) <= EIG_MAX:
             out.append({"matrix": i, "kind": "svd"})
+    for i in NONSYM:  # eigs (SP6)
+        out.append({"matrix": i, "kind": "nonsym"})
     return out
+
+
+NONSYM = ("convdiff2d/10", "random_unsym/50x5", "random_complex/40")
 
 
 def eig_ref(p):
@@ -580,6 +587,16 @@ def eig_ref(p):
 
         vals = _settle_list(sv, scale)
         return {"svdvals": _pairs(vals)}
+    if p["kind"] == "nonsym":
+        d = a.dense()
+
+        def every():
+            e = _acb(d).eig(multiple=True)
+            if len(e) != n:
+                raise NotSettled("eig")
+            return sorted(e, key=lambda z: (float(z.real.mid()), float(z.imag.mid())))
+
+        return {"eigvals": _cpairs(every, scale)}
 
     d = a.dense()
 

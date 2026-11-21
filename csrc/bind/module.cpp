@@ -1,6 +1,7 @@
 // Python entry point of the native core (`stardust._core`).
 
 #include "bind/array_bind.hpp"
+#include "bind/differentiate_bind.hpp"
 #include "bind/errors.hpp"
 #include "bind/frame_bind.hpp"
 #include "bind/htest_bind.hpp"
@@ -137,6 +138,7 @@ NB_MODULE(_core, m) {
     sd::bind_random(m);  // after the array too (it returns ndarrays)
     sd::bind_regression(m);  // after linalg (its batch driver and results)
     sd::bind_optimize(m);  // after the array (it returns ndarrays)
+    sd::bind_differentiate(m);  // after the array, like optimize
     sd::bind_htest(m);  // after stats (its distributions) and the array
     sd::bind_sparse(m);  // after linalg (its LinAlgError) and the array
 }

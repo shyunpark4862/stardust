@@ -620,4 +620,154 @@ void lacn2(lint n, T* v, T* x, lint* isgn, double& est, lint& kase, lint* isave)
     else zlacn2_(&n, v, x, &est, &kase, isave);
 }
 
+// ---- The small dense problems inside ARPACK (sd.sparse eigsh, eigs; docs/design/sparse.md §3.8).
+// Plain calls, no workspace query: the caller passes LAPACK's documented minimum workspace.
+
+// All eigenvalues (ascending, in d) and eigenvectors (z, ldz) of the symmetric tridiagonal matrix
+// with diagonal d and off-diagonal e (dsteqr, compz 'I'); work has max(1, 2n - 2) doubles.
+inline lint steqr(lint n, double* d, double* e, double* z, lint ldz, double* work) {
+    lint info = 0;
+    const char compz = 'I';
+    dsteqr_(&compz, &n, d, e, z, &ldz, work, &info);
+    return checked(info, "steqr");
+}
+
+// The Schur form of an upper Hessenberg matrix by the double-shift QR algorithm (dlahqr, zlahqr):
+// wantt, wantz, rows iloz..ihiz of z updated. Real: eigenvalues in wr, wi; complex: in w.
+inline lint lahqr(
+    bool wantt,
+    bool wantz,
+    lint n,
+    lint ilo,
+    lint ihi,
+    double* h,
+    lint ldh,
+    double* wr,
+    double* wi,
+    lint iloz,
+    lint ihiz,
+    double* z,
+    lint ldz
+) {
+    lint info = 0;
+    const __LAPACK_bool t = wantt, zz = wantz;
+    dlahqr_(&t, &zz, &n, &ilo, &ihi, h, &ldh, wr, wi, &iloz, &ihiz, z, &ldz, &info);
+    return checked(info, "lahqr");
+}
+inline lint lahqr(
+    bool wantt,
+    bool wantz,
+    lint n,
+    lint ilo,
+    lint ihi,
+    cplx* h,
+    lint ldh,
+    cplx* w,
+    lint iloz,
+    lint ihiz,
+    cplx* z,
+    lint ldz
+) {
+    lint info = 0;
+    const __LAPACK_bool t = wantt, zz = wantz;
+    zlahqr_(&t, &zz, &n, &ilo, &ihi, h, &ldh, w, &iloz, &ihiz, z, &ldz, &info);
+    return checked(info, "lahqr");
+}
+
+// Right eigenvectors of a (quasi-)triangular matrix (dtrevc, ztrevc; side 'R'): howmny 'A' (all),
+// 'B' (back-transformed by vr) or 'S' (the selected ones). Real work: 3n doubles; complex work:
+// 2n, rwork: n.
+inline lint trevc(
+    char howmny,
+    __LAPACK_bool* select,
+    lint n,
+    const double* t,
+    lint ldt,
+    double* vr,
+    lint ldvr,
+    lint mm,
+    lint& m,
+    double* work
+) {
+    lint info = 0, ldvl = 1;
+    const char side = 'R';
+    double vl = 0;
+    dtrevc_(&side, &howmny, select, &n, t, &ldt, &vl, &ldvl, vr, &ldvr, &mm, &m, work, &info);
+    return checked(info, "trevc");
+}
+inline lint trevc(
+    char howmny,
+    __LAPACK_bool* select,
+    lint n,
+    cplx* t,
+    lint ldt,
+    cplx* vr,
+    lint ldvr,
+    lint mm,
+    lint& m,
+    cplx* work,
+    double* rwork
+) {
+    lint info = 0, ldvl = 1;
+    const char side = 'R';
+    cplx vl{};
+    ztrevc_(&side, &howmny, select, &n, t, &ldt, &vl, &ldvl, vr, &ldvr, &mm, &m, work, rwork, &info);
+    return checked(info, "trevc");
+}
+
+// Reorders a (quasi-)triangular Schur form so the selected eigenvalues lead (dtrsen, ztrsen; job
+// 'N', compq 'V'); m returns their number. Real work: n doubles; complex work: n.
+inline lint trsen(
+    const __LAPACK_bool* select,
+    lint n,
+    double* t,
+    lint ldt,
+    double* q,
+    lint ldq,
+    double* wr,
+    double* wi,
+    lint& m,
+    double* work
+) {
+    lint info = 0, liwork = 1, iwork = 0;
+    const char job = 'N', compq = 'V';
+    double s = 0, sep = 0;
+    dtrsen_(&job, &compq, select, &n, t, &ldt, q, &ldq, wr, wi, &m, &s, &sep, work, &n, &iwork, &liwork, &info);
+    return checked(info, "trsen");
+}
+inline lint trsen(
+    const __LAPACK_bool* select, lint n, cplx* t, lint ldt, cplx* q, lint ldq, cplx* w, lint& m, cplx* work
+) {
+    lint info = 0;
+    const char job = 'N', compq = 'V';
+    double s = 0, sep = 0;
+    ztrsen_(&job, &compq, select, &n, t, &ldt, q, &ldq, w, &m, &s, &sep, work, &n, &info);
+    return checked(info, "trsen");
+}
+
+// The unblocked QR factorization (dgeqr2, zgeqr2); work has n entries.
+template <class T>
+lint geqr2(lint m, lint n, T* a, lint lda, T* tau, T* work) {
+    lint info = 0;
+    if constexpr (std::is_same_v<T, double>) dgeqr2_(&m, &n, a, &lda, tau, work, &info);
+    else zgeqr2_(&m, &n, a, &lda, tau, work, &info);
+    return checked(info, "geqr2");
+}
+
+// The 1-norm of an upper Hessenberg matrix (dlanhs, zlanhs '1').
+template <class T>
+double lanhs1(lint n, const T* a, lint lda) {
+    const char norm = '1';
+    double work = 0;
+    if constexpr (std::is_same_v<T, double>) return dlanhs_(&norm, &n, a, &lda, &work);
+    else return zlanhs_(&norm, &n, a, &lda, &work);
+}
+
+// C = H C (side 'L') or C H (side 'R') for H = I - tau v v^T (dlarf); work has n ('L') or m
+// ('R') doubles.
+inline void larf(char side, lint m, lint n, const double* v, double tau, double* c, lint ldc, double* work) {
+    const lint one = 1;
+    dlarf_(&side, &m, &n, v, &one, &tau, c, &ldc, work);
+}
+
 }  // namespace sd::linalg::lapack
