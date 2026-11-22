@@ -1709,10 +1709,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.aed548f090c9fp-1"
+"f": "0x1.aed548f090ca0p-1"
 },
 "error": {
-"f": "0x1.3508000000000p-39"
+"f": "0x1.3514000000000p-39"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -1809,10 +1809,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "-0x1.aed548f090c9fp-1"
+"f": "-0x1.aed548f090ca0p-1"
 },
 "error": {
-"f": "0x1.3508000000000p-39"
+"f": "0x1.3514000000000p-39"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -1962,10 +1962,10 @@ true
 ],
 "v": [
 "0x1.d18f6ead1b3f3p-1",
-"0x1.aed548f090c9fp-1",
+"0x1.aed548f090ca0p-1",
 "0x0.0p+0",
 "-0x1.eaee8744b0591p-2",
-"-0x1.aed548f090c9fp-1",
+"-0x1.aed548f090ca0p-1",
 "-0x1.feb7a9b2c6d2dp-1",
 "-0x1.d18f6ead1b3f3p-1",
 "-0x1.210386db6d538p-3",
@@ -1982,10 +1982,10 @@ true
 ],
 "v": [
 "0x1.4e08000000000p-39",
-"0x1.3508000000000p-39",
+"0x1.3514000000000p-39",
 "0x0.0p+0",
 "0x1.6028000000000p-40",
-"0x1.3508000000000p-39",
+"0x1.3514000000000p-39",
 "0x1.6e54000000000p-39",
 "0x1.4e08000000000p-39",
 "0x1.9f60000000000p-42",
@@ -2655,10 +2655,10 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b1409e1p+1"
+"f": "0x1.5bf0a8b1409e0p+1"
 },
 "error": {
-"f": "0x1.de82c00000000p-33"
+"f": "0x1.de81800000000p-33"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -2683,12 +2683,12 @@ false
 "f": "0x1.5bf0a8b14579ap+1"
 },
 "error": {
-"f": "0x1.3200000000000p-44"
+"f": "0x1.3600000000000p-44"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              6.795e-14\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              6.883e-14\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -2705,7 +2705,7 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b145c00p+1"
+"f": "0x1.5bf0a8b145800p+1"
 },
 "error": {
 "f": "0x1.0000000000000p-39"
@@ -2730,15 +2730,15 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b145788p+1"
+"f": "0x1.5bf0a8b145798p+1"
 },
 "error": {
-"f": "0x1.e000000000000p-48"
+"f": "0x1.3400000000000p-45"
 },
 "n_iter": 2,
 "nfev": 15,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              6.661e-15\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     15\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              3.419e-14\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     15\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -2755,10 +2755,10 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0ac511ca00p+1"
+"f": "0x1.5bf0ac511c800p+1"
 },
 "error": {
-"f": "0x1.5bf0ac0000000p-20"
+"f": "0x1.5bf0b00000000p-20"
 },
 "n_iter": 10,
 "nfev": 21,
@@ -2780,15 +2780,15 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b14577ap+1"
+"f": "0x1.5bf0a8b14574cp+1"
 },
 "error": {
-"f": "0x1.5c00000000000p-45"
+"f": "0x1.4800000000000p-46"
 },
 "n_iter": 3,
 "nfev": 13,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              3.864e-14\nPoint:                         1.00000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              1.821e-14\nPoint:                         1.00000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -2808,7 +2808,7 @@ false
 "f": "0x1.370470aec28bcp+43"
 },
 "error": {
-"f": "0x1.c148000000000p+4"
+"f": "0x1.c158000000000p+4"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -3087,15 +3087,15 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.8ebef9eac81ccp-1"
+"f": "0x1.8ebef9eac81c8p-1"
 },
 "error": {
-"f": "0x1.2010000000000p-39"
+"f": "0x1.1fd0000000000p-39"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                   0.778801\nStatus:                              0  Error estimate:              2.047e-12\nPoint:                       -0.250000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                   0.778801\nStatus:                              0  Error estimate:              2.045e-12\nPoint:                       -0.250000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "-0x1.0000000000000p-2"
 }
@@ -3137,10 +3137,10 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.97db0ccceb076p-5"
+"f": "0x1.97db0ccceb063p-5"
 },
 "error": {
-"f": "0x1.2668000000000p-43"
+"f": "0x1.264c000000000p-43"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -3162,15 +3162,15 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.fffffffffffc0p-1"
+"f": "0x1.fffffffffffb2p-1"
 },
 "error": {
-"f": "0x1.71d8000000000p-39"
+"f": "0x1.71f8000000000p-39"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    1.00000\nStatus:                              0  Error estimate:              2.628e-12\nPoint:                         0.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    1.00000\nStatus:                              0  Error estimate:              2.629e-12\nPoint:                         0.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x0.0p+0"
 }
@@ -3187,15 +3187,15 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.a61298e1e063cp+0"
+"f": "0x1.a61298e1e065cp+0"
 },
 "error": {
-"f": "0x1.3000000000000p-38"
+"f": "0x1.30e4000000000p-38"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    1.64872\nStatus:                              0  Error estimate:              4.320e-12\nPoint:                        0.500000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    1.64872\nStatus:                              0  Error estimate:              4.333e-12\nPoint:                        0.500000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p-1"
 }
@@ -3215,12 +3215,12 @@ false
 "f": "0x1.5bf0a8b145723p+1"
 },
 "error": {
-"f": "0x1.f5d0000000000p-38"
+"f": "0x1.f5c0000000000p-38"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              7.131e-12\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              7.130e-12\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -3237,15 +3237,15 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5829dcf950533p+14"
+"f": "0x1.5829dcf950518p+14"
 },
 "error": {
-"f": "0x1.f1a8000000000p-25"
+"f": "0x1.f070000000000p-25"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    22026.5\nStatus:                              0  Error estimate:              5.793e-08\nPoint:                         10.0000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    22026.5\nStatus:                              0  Error estimate:              5.779e-08\nPoint:                         10.0000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x1.4000000000000p+3"
 }
@@ -3262,15 +3262,15 @@ false
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.d8e64b8d4dd4ap+2"
+"f": "0x1.d8e64b8d4dd5ep+2"
 },
 "error": {
-"f": "0x1.5548000000000p-36"
+"f": "0x1.5578000000000p-36"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    7.38906\nStatus:                              0  Error estimate:              1.940e-11\nPoint:                         2.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    7.38906\nStatus:                              0  Error estimate:              1.941e-11\nPoint:                         2.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+1"
 }
@@ -3290,7 +3290,7 @@ false
 "f": "0x1.28d3899703352p+7"
 },
 "error": {
-"f": "0x1.ac48000000000p-32"
+"f": "0x1.ac38000000000p-32"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -3339,15 +3339,15 @@ true
 8
 ],
 "v": [
-"0x1.97db0ccceb076p-5",
+"0x1.97db0ccceb063p-5",
 "0x1.78b56362ceef9p-2",
-"0x1.8ebef9eac81ccp-1",
-"0x1.fffffffffffc0p-1",
-"0x1.a61298e1e063cp+0",
+"0x1.8ebef9eac81c8p-1",
+"0x1.fffffffffffb2p-1",
+"0x1.a61298e1e065cp+0",
 "0x1.5bf0a8b145723p+1",
-"0x1.d8e64b8d4dd4ap+2",
+"0x1.d8e64b8d4dd5ep+2",
 "0x1.28d3899703352p+7",
-"0x1.5829dcf950533p+14"
+"0x1.5829dcf950518p+14"
 ]
 },
 "error": {
@@ -3359,15 +3359,15 @@ true
 8
 ],
 "v": [
-"0x1.2668000000000p-43",
+"0x1.264c000000000p-43",
 "0x1.1004000000000p-40",
-"0x1.2010000000000p-39",
-"0x1.71d8000000000p-39",
-"0x1.3000000000000p-38",
-"0x1.f5d0000000000p-38",
-"0x1.5548000000000p-36",
-"0x1.ac48000000000p-32",
-"0x1.f1a8000000000p-25"
+"0x1.1fd0000000000p-39",
+"0x1.71f8000000000p-39",
+"0x1.30e4000000000p-38",
+"0x1.f5c0000000000p-38",
+"0x1.5578000000000p-36",
+"0x1.ac38000000000p-32",
+"0x1.f070000000000p-25"
 ]
 },
 "n_iter": {
@@ -3430,7 +3430,7 @@ true
 0
 ]
 },
-"summary()": "                           Differentiation Results\n=======================================================================================\nBatch shape:                      (9,)  Converged:                      9 of 9\n=======================================================================================\n                    x         df      error  converged     status     n_iter       nfev\n---------------------------------------------------------------------------------------\n[0]           -3.0000   0.049787   1.31e-13       True          0          2         11\n[1]           -1.0000   0.367879   9.66e-13       True          0          2         11\n[2]           -0.2500   0.778801   2.05e-12       True          0          2         11\n[3]            0.0000   1.000000   2.63e-12       True          0          2         11\n[4]            0.5000   1.648721   4.32e-12       True          0          2         11\n[5]            1.0000   2.718282   7.13e-12       True          0          2         11\n[6]            2.0000   7.389056   1.94e-11       True          0          2         11\n[7]            5.0000 148.413159    3.9e-10       True          0          2         11\n[8]           10.0000    22026.5   5.79e-08       True          0          2         11\n=======================================================================================",
+"summary()": "                           Differentiation Results\n=======================================================================================\nBatch shape:                      (9,)  Converged:                      9 of 9\n=======================================================================================\n                    x         df      error  converged     status     n_iter       nfev\n---------------------------------------------------------------------------------------\n[0]           -3.0000   0.049787   1.31e-13       True          0          2         11\n[1]           -1.0000   0.367879   9.66e-13       True          0          2         11\n[2]           -0.2500   0.778801   2.05e-12       True          0          2         11\n[3]            0.0000   1.000000   2.63e-12       True          0          2         11\n[4]            0.5000   1.648721   4.33e-12       True          0          2         11\n[5]            1.0000   2.718282   7.13e-12       True          0          2         11\n[6]            2.0000   7.389056   1.94e-11       True          0          2         11\n[7]            5.0000 148.413159   3.89e-10       True          0          2         11\n[8]           10.0000    22026.5   5.78e-08       True          0          2         11\n=======================================================================================",
 "x": {
 "nd": "float64",
 "shape": [
@@ -3464,15 +3464,15 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.8ebef9eac7ae4p-1"
+"f": "0x1.8ebef9eac7b12p-1"
 },
 "error": {
-"f": "0x1.c05a000000000p-35"
+"f": "0x1.c065800000000p-35"
 },
 "n_iter": 3,
 "nfev": 13,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                   0.778801\nStatus:                              0  Error estimate:              5.097e-11\nPoint:                       -0.500000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                   0.778801\nStatus:                              0  Error estimate:              5.098e-11\nPoint:                       -0.500000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
 "x": {
 "f": "-0x1.0000000000000p-1"
 }
@@ -3489,10 +3489,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.78b56363268b1p-1"
+"f": "0x1.78b56363268bbp-1"
 },
 "error": {
-"f": "0x1.4c6d728000000p-27"
+"f": "0x1.4c6d714000000p-27"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -3514,10 +3514,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.2c155b8213367p-4"
+"f": "0x1.2c155b8213372p-4"
 },
 "error": {
-"f": "0x1.2f6f600000000p-37"
+"f": "0x1.2f70c00000000p-37"
 },
 "n_iter": 3,
 "nfev": 13,
@@ -3564,15 +3564,15 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "-0x1.e0fabfbc6f236p-2"
+"f": "-0x1.e0fabfbc6f1bap-2"
 },
 "error": {
-"f": "0x1.07f4c00000000p-34"
+"f": "0x1.07e6c00000000p-34"
 },
 "n_iter": 3,
 "nfev": 13,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                  -0.469707\nStatus:                              0  Error estimate:              6.002e-11\nPoint:                        0.250000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                  -0.469707\nStatus:                              0  Error estimate:              6.000e-11\nPoint:                        0.250000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p-2"
 }
@@ -3589,15 +3589,15 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "-0x1.8ebef9eac7ae4p-1"
+"f": "-0x1.8ebef9eac7b12p-1"
 },
 "error": {
-"f": "0x1.c05a000000000p-35"
+"f": "0x1.c065800000000p-35"
 },
 "n_iter": 3,
 "nfev": 13,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                  -0.778801\nStatus:                              0  Error estimate:              5.097e-11\nPoint:                        0.500000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                  -0.778801\nStatus:                              0  Error estimate:              5.098e-11\nPoint:                        0.500000  No. Iterations:                      3\n                                        Function Evals:                     13\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p-1"
 }
@@ -3614,10 +3614,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "-0x1.78b56363268b1p-1"
+"f": "-0x1.78b56363268bbp-1"
 },
 "error": {
-"f": "0x1.4c6d728000000p-27"
+"f": "0x1.4c6d714000000p-27"
 },
 "n_iter": 2,
 "nfev": 11,
@@ -3664,10 +3664,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "-0x1.2c155b8213367p-4"
+"f": "-0x1.2c155b8213372p-4"
 },
 "error": {
-"f": "0x1.2f6f600000000p-37"
+"f": "0x1.2f70c00000000p-37"
 },
 "n_iter": 3,
 "nfev": 13,
@@ -3716,15 +3716,15 @@ true
 8
 ],
 "v": [
-"0x1.2c155b8213367p-4",
-"0x1.78b56363268b1p-1",
-"0x1.8ebef9eac7ae4p-1",
+"0x1.2c155b8213372p-4",
+"0x1.78b56363268bbp-1",
+"0x1.8ebef9eac7b12p-1",
 "0x0.0p+0",
-"-0x1.e0fabfbc6f236p-2",
-"-0x1.8ebef9eac7ae4p-1",
-"-0x1.78b56363268b1p-1",
+"-0x1.e0fabfbc6f1bap-2",
+"-0x1.8ebef9eac7b12p-1",
+"-0x1.78b56363268bbp-1",
 "-0x1.43c952ae27bdcp-2",
-"-0x1.2c155b8213367p-4"
+"-0x1.2c155b8213372p-4"
 ]
 },
 "error": {
@@ -3736,15 +3736,15 @@ true
 8
 ],
 "v": [
-"0x1.2f6f600000000p-37",
-"0x1.4c6d728000000p-27",
-"0x1.c05a000000000p-35",
+"0x1.2f70c00000000p-37",
+"0x1.4c6d714000000p-27",
+"0x1.c065800000000p-35",
 "0x0.0p+0",
-"0x1.07f4c00000000p-34",
-"0x1.c05a000000000p-35",
-"0x1.4c6d728000000p-27",
+"0x1.07e6c00000000p-34",
+"0x1.c065800000000p-35",
+"0x1.4c6d714000000p-27",
 "0x1.2632c00000000p-31",
-"0x1.2f6f600000000p-37"
+"0x1.2f70c00000000p-37"
 ]
 },
 "n_iter": {
@@ -4218,7 +4218,7 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b141869p+1"
+"f": "0x1.5bf0a8b14186bp+1"
 },
 "error": {
 "f": "nan"
@@ -4305,7 +4305,7 @@ true
 "v": [
 "nan",
 "nan",
-"0x1.f5d0000000000p-38"
+"0x1.f5c0000000000p-38"
 ]
 },
 "n_iter": {
@@ -4378,10 +4378,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0ac511ca00p+1"
+"f": "0x1.5bf0ac511c800p+1"
 },
 "error": {
-"f": "0x1.5bf0ac0000000p-20"
+"f": "0x1.5bf0b00000000p-20"
 },
 "n_iter": 10,
 "nfev": 21,
@@ -4403,15 +4403,15 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b1458dbp+1"
+"f": "0x1.5bf0a8b1455f4p+1"
 },
 "error": {
-"f": "0x1.9b00000000000p-43"
+"f": "0x1.4c00000000000p-43"
 },
 "n_iter": 2,
 "nfev": 21,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              1.825e-13\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     21\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              1.474e-13\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     21\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -4434,10 +4434,10 @@ true
 "msg": "'DifferentiateResult' object has no attribute 'ddf' (the function does not give it)"
 },
 "df": {
-"f": "0x1.5bf0a8b08be6ap+1"
+"f": "0x1.5bf0a8b08be75p+1"
 },
 "error": {
-"f": "0x1.5bf37e0000000p-28"
+"f": "0x1.5bf3ea0000000p-28"
 },
 "n_iter": 6,
 "nfev": 15,
@@ -5664,7 +5664,7 @@ false
 ],
 "v": [
 "0x1.5bf0a8b145723p+1",
-"0x1.5bf0a8b1457f3p+1",
+"0x1.5bf0a8b145806p+1",
 "nan",
 "nan",
 "nan"
@@ -5679,8 +5679,8 @@ false
 8
 ],
 "v": [
-"0x1.f5d0000000000p-38",
-"0x1.1a00000000000p-44",
+"0x1.f5c0000000000p-38",
+"0x1.b400000000000p-44",
 "nan",
 "nan",
 "nan"
@@ -5734,7 +5734,7 @@ false
 -3
 ]
 },
-"summary()": "                           Differentiation Results\n=======================================================================================\nBatch shape:                      (5,)  Converged:                      2 of 5\n=======================================================================================\n                    x         df      error  converged     status     n_iter       nfev\n---------------------------------------------------------------------------------------\n[0]            1.0000   2.718282   7.13e-12       True          0          2         11\n[1]            1.0000   2.718282   6.26e-14       True          0          2         11\n[2]            1.0000        nan        nan      False         -3          1          9\n[3]            1.0000        nan        nan      False         -3          1          9\n[4]            1.0000        nan        nan      False         -3          1          9\n=======================================================================================",
+"summary()": "                           Differentiation Results\n=======================================================================================\nBatch shape:                      (5,)  Converged:                      2 of 5\n=======================================================================================\n                    x         df      error  converged     status     n_iter       nfev\n---------------------------------------------------------------------------------------\n[0]            1.0000   2.718282   7.13e-12       True          0          2         11\n[1]            1.0000   2.718282   9.68e-14       True          0          2         11\n[2]            1.0000        nan        nan      False         -3          1          9\n[3]            1.0000        nan        nan      False         -3          1          9\n[4]            1.0000        nan        nan      False         -3          1          9\n=======================================================================================",
 "x": {
 "nd": "float64",
 "shape": [
@@ -5756,10 +5756,10 @@ false
 }
 },
 "derivative summary": {
-"r": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              7.131e-12\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n=============================================================================="
+"r": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              7.130e-12\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n=============================================================================="
 },
 "derivative summary batch": {
-"r": "                           Differentiation Results\n========================================================================================\nBatch shape:                      (3,)  Converged:                      3 of 3\n========================================================================================\n                    x          df      error  converged     status     n_iter       nfev\n----------------------------------------------------------------------------------------\n[0]            1.0000    2.718282   7.13e-12       True          0          2         11\n[1]            2.0000    7.389056   1.94e-11       True          0          2         11\n[2]           30.0000 1.06865e+13     28.080       True          0          2         11\n========================================================================================"
+"r": "                           Differentiation Results\n========================================================================================\nBatch shape:                      (3,)  Converged:                      3 of 3\n========================================================================================\n                    x          df      error  converged     status     n_iter       nfev\n----------------------------------------------------------------------------------------\n[0]            1.0000    2.718282   7.13e-12       True          0          2         11\n[1]            2.0000    7.389056   1.94e-11       True          0          2         11\n[2]           30.0000 1.06865e+13     28.084       True          0          2         11\n========================================================================================"
 },
 "derivative tan -0.5": {
 "r": {
@@ -6527,12 +6527,12 @@ true
 "f": "0x1.5bf0a8b145723p+1"
 },
 "error": {
-"f": "0x1.f5d0000000000p-38"
+"f": "0x1.f5c0000000000p-38"
 },
 "n_iter": 2,
 "nfev": 11,
 "status": 0,
-"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              7.131e-12\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
+"summary()": "                           Differentiation Results\n==============================================================================\nConverged:                        True  Derivative:                    2.71828\nStatus:                              0  Error estimate:              7.130e-12\nPoint:                         1.00000  No. Iterations:                      2\n                                        Function Evals:                     11\n==============================================================================",
 "x": {
 "f": "0x1.0000000000000p+0"
 }
@@ -59969,7 +59969,7 @@ true
 "nan",
 "0x0.0p+0",
 "0x1.5bf0a8b14576ap+1",
-"0x1.644a671bed000p-9"
+"0x1.644a671becfffp-9"
 ]
 },
 "error": {
@@ -59986,7 +59986,7 @@ true
 "nan:7ff8000000000033",
 "0x0.0p+0",
 "0x0.0p+0",
-"0x1.00d0000000000p-47"
+"0x1.00c4000000000p-47"
 ]
 },
 "n_iter": {
@@ -60205,7 +60205,7 @@ true
 "0x1.f3fffffffe0c0p+9",
 "0x0.0p+0",
 "0x1.5bf0a8b145ef0p+1",
-"0x1.644a671bed000p-9"
+"0x1.644a671becfffp-9"
 ]
 },
 "error": {
@@ -60222,7 +60222,7 @@ true
 "0x1.3880000000000p-29",
 "0x0.0p+0",
 "0x1.3880000000000p-39",
-"0x1.00d0000000000p-47"
+"0x1.00c4000000000p-47"
 ]
 },
 "n_iter": {

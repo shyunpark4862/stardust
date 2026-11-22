@@ -16,7 +16,7 @@
                      sparse/     ──▶ linalg/, array/, base/, parallel/, accelerate/(Accelerate의 희소 LU와 BLAS)
                      regression/ ──▶ linalg/, special/, random/
                      optimize/   ──▶ linalg/, differentiate/(차분의 간격), elementwise/(원소별 반복 고리)
-                     differentiate/ ──▶ elementwise/(derivative의 원소별 고리)  (steps는 표준 라이브러리만 쓴다)
+                     differentiate/ ──▶ elementwise/(derivative의 원소별 고리), linalg/(accurate의 fastsum 합), parallel/, array/  (steps는 표준 라이브러리만 쓴다)
                      integrate/  ──▶ array/(pairwise 합과 cumulative_sum의 스캔), parallel/, elementwise/(tanhsinh·nsum의 원소별 고리), linalg/(Accelerate의 BLAS: quad_vec의 2-노름)
                      elementwise/ ──▶ array/, parallel/
                      stats/      ──▶ special/, random/
@@ -65,27 +65,28 @@ stardust/
     parallel/     pool(스레드풀 하나, GIL 해제, FirstRow, Unlocked)
     accelerate/   blas(dot, gemv, gemm), vforce(연산과 무관한 vForce 래퍼)
     array/        ndarray  iter  convert  parallel_limits
-                  kernels/  elementwise buffered cast scalar_ops reduce sort simd_sort neon vforce
+                  kernels/  elementwise buffered cast scalar_ops reduce sort simd_sort neon vforce vmath
                   ops/      asarray copy creation indexing manipulation shape matmul reduction
                             covariance quantile histogram searching sort ufunc lanes pieces dlpack dtype_info
-    linalg/       args batch pack cost errors input outblock pyrefs types pairwise lapack
+    linalg/       args batch pack cost errors input outblock pyrefs types pairwise fastsum lapack
                   ops/      lu basic norms vnorm factor qr spectral svals nonsym special expm common
     frame/        column bitmap convert parallel interop
                   ops/      cast elementwise groupby hash join reduce selection sort radix parse pairwise pow5_table
                   io/       csv
     special/      common dd cf halley prefix reduce gamma_core cplx boost cost cost_table
                   ops/      logistic erf gamma loggamma zeta incgamma incbeta distr noncentral expint ellip
-                            bessel bessel01 airy hyper lambertw wofz testing
+                            bessel bessel01 airy hyper lambertw wofz cf_fast halley_fast testing
                   kernels/  simd chunked
                   coeffs/   생성한 계수 표 (tools/gen_*.py)
-    stats/        engine chunk chunk_dd numeric discrete dd_linalg mvcdf sample sample_dist cost_table
+    stats/        engine chunk chunk_dd vmath numeric discrete dd_linalg mvcdf sample sample_dist cost_table
                   dist/     분포 계열마다 한 파일 (normal, gamma, beta, t_f, noncentral, discrete_basic, …)
                   coeffs/   생성한 계수 표
-    regression/   linear lsq slopes glm penalized robust quantile dot2
+    regression/   linear lsq slopes glm penalized robust quantile select dot2 dd2 unitdev
     random/       philox random
     optimize/     scalar batch lsq minpack minimize objective wolfe hessian nelder_mead bfgs lbfgsb
                   newton_cg trust root hybrd linear
-    differentiate/ steps(고정 간격 차분의 간격: optimize가 씀), derivative(derivative·jacobian·hessian; docs/design/integrate.md §3.8)
+    differentiate/ steps(고정 간격 차분의 간격: optimize가 씀), derivative(derivative·jacobian·hessian; docs/design/integrate.md §3.8),
+                  accurate(정확한 차분 `Differences`의 C++ 고리: optimize의 approx_fprime·check_grad와 regression의 nls가 씀; docs/design/integrate.md C124)
     integrate/    samples(표본 규칙과 fixed_quad의 합), gauss(Gauss–Legendre의 점과 가중치), gauss_table(생성한 표; docs/design/integrate.md §3.7), quadpack(QUADPACK의 QAGS·QAGI·QAGP 템플릿과 quad·nquad의 갈래·겹침; §3.1, §3.2), tanhsinh(tanhsinh·nsum: scipy의 표·합·오차 추정과 nsum의 갈래; §3.5, §3.6), adaptive(quad_vec·cubature: scipy의 Python 알고리즘, 힙, 규칙, 치환; §3.3, §3.4), numpy_ops(numpy의 pairwise 합과 linalg.norm)
     htest/        parametric rank correlation contingency proportion gof gof2 multicomp resampling와 헤더(정확한 분포, 점근 분포, MLE, 레인)
     sparse/       format canonical convert construct index binop arith spmv spgemm reduce dok triangular direct iterative
@@ -136,14 +137,14 @@ stardust/
 - **linalg는 배열을 C++에서 직접 주고받는다.**
   - 입력은 `const NDArray&`이고, 결과는 linalg가 정한 strides로 `new_array_strided(dtype, shape, strides, nbytes)`가 `NDArray`를 직접 만든다. 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C-order, 길이 0인 축도 그대로 곱함)은 linalg의 정책이라 linalg에 두고, 메모리와 플래그만 배열이 맡는다.
   - `pyrefs`에는 결과 namedtuple과 `LinAlgError`만 있다. 스레드 수는 `parallel::num_threads()`로 읽는다.
-  - 결과 배열 하나를 만드는 비용은 약 120ns이고, 그 가운데 `NDArray`와 Python 객체를 만드는 약 75ns는 피할 수 없다 (docs/design/linalg.md §3.6).
+  - 배열을 직접 주고받아, buffer protocol과 `sd.asarray`를 거치던 때보다 결과 배열 하나가 싸다(docs/design/linalg.md §3.6). 남는 비용은 `NDArray`와 그 Python 객체를 만드는 것이고, 그 Python 객체는 인스턴스 풀에서 다시 쓴다(docs/design/array.md §11, A1).
 
 ## 4. 공통 부품
 
 ### 4.1 스레드풀
-- 하나만 둔다(`parallel/pool.hpp`): 상주 워커, spin 후 대기, atomic 카운터, 호출 스레드 참여, 중첩 금지. 풀이 다른 Python 스레드의 일로 바쁘면 직렬 경로로 간다(`available()`). 병렬로 도는 동안 GIL을 놓는다. `FirstRow`(병렬 검사에서 실패한 가장 앞의 위치: 에러가 스레드 수와 상관없이 같은 위치를 말한다)와 `Unlocked`(풀을 쓰지 않는 긴 직렬 구간에서 GIL 놓기)가 함께 있다.
+- 하나만 둔다(`parallel/pool.hpp`): 상주 워커, spin 후 대기, atomic 카운터, 호출 스레드 참여, 중첩 금지. 잠든 워커는 일이 깨우기를 갚을 만큼(약 20 µs, `kWakeWorkNs`) 길 때만 깨우고, 호출자는 `parallel_for(ntasks, fn, task_ns)`로 태스크 하나의 시간을 알릴 수 있다(docs/design/array.md §10.1, A15). 풀이 다른 Python 스레드의 일로 바쁘면 직렬 경로로 간다(`available()`). 병렬로 도는 동안 GIL을 놓는다. `FirstRow`(병렬 검사에서 실패한 가장 앞의 위치: 에러가 스레드 수와 상관없이 같은 위치를 말한다)와 `Unlocked`(풀을 쓰지 않는 긴 직렬 구간에서 GIL 놓기)가 함께 있다.
 - **병렬화 기준값은 영역마다 따로 둔다.** 측정해서 정한 값이 다르기 때문이다. 이름은 같고 이름공간이 다르다.
-  - array: `sd::kParallelThreshold` = 2¹⁵, `sd::kParallelTask`(`array/parallel_limits.hpp`, docs/design/array.md §10.4)
+  - array: `sd::kParallelThreshold` = 2¹⁵, 전체 float 리덕션의 `sd::kReduceThreshold` = 2¹⁶, `sd::kParallelTask`(`array/parallel_limits.hpp`, docs/design/array.md §10.4)
   - frame: `sd::frame::kParallelThreshold` = 2¹⁷, `for_chunks`, `Unlocked`(`frame/parallel.hpp`)
   - linalg: 비용 모델(`linalg/cost.hpp`)
   - special·stats: 원소마다 잰 비용표(`csrc/special/cost_table.hpp`, `csrc/stats/cost_table.hpp`; bench/README.md의 C++ 비용표)
@@ -159,7 +160,7 @@ stardust/
 - `visit_dtype`은 배열 dtype만 받는다. 모든 커널이 모든 dtype을 인스턴스화하지 않게 하기 위해서다. frame 코드는 dtype마다 `switch`로 고르고, 그 `switch`들이 `Complex128`을 "frame dtype이 아님"으로 따로 적는다. `interop.cpp`는 고정폭 dtype의 바이트를 복사할 뿐이라 `itemsize`로 충분하다.
 
 ### 4.4 Accelerate 래퍼
-- 영역을 넘어 쓰는 BLAS(`accelerate/blas.hpp`: 배열의 `matmul`·공분산)와 vForce(`accelerate/vforce.hpp`: 배열·special·stats의 원소별 초월함수)는 `accelerate/`에 둔다. LAPACK 래퍼는 `linalg/lapack.hpp`에 있다(§1).
+- 영역을 넘어 쓰는 BLAS(`accelerate/blas.hpp`: 배열의 `matmul`·공분산)와 vForce(`accelerate/vforce.hpp`: 배열·special·stats의 원소별 초월함수)는 `accelerate/`에 둔다. 배열의 `exp`·`expm1`·`log1p`·`cos`는 vForce가 아니라 자체 NEON 커널(`array/kernels/vmath.hpp`, docs/design/array.md §5.4)이고, stats의 chunk 커널의 exp도 자체 커널(`stats/vmath.hpp`, docs/design/stats.md T55)이다. LAPACK 래퍼는 `linalg/lapack.hpp`에 있다(§1).
 - 컴파일 정의 `ACCELERATE_NEW_LAPACK`, `ACCELERATE_LAPACK_ILP64`는 모듈 전체에 건다.
 
 ## 5. 빌드

@@ -64,7 +64,7 @@
   - 필요하면 먼저 `sd.asarray`로 변환한다. numpy 배열은 복사 없이 바뀐다 (array.md §3.3).
   - `sd.sparse`의 희소 배열이면 메시지가 쓸 것을 짚는다(sparse.md의 짝): `solve(): 'a' must be an sd.ndarray, not csr_array; for a sparse array use sd.sparse.spsolve`, 메서드가 짝인 `trace`·`diagonal`은 `...; for a sparse array use A.trace()`, `A.diagonal()`(2026-11-22)이다. 짝이 없으면 `; a sparse array has no det: use det(A.toarray())`다.
 - 메모리 레이아웃은 무엇이든 받는다: C 순서, F 순서, 임의의 strides, 쓰기 금지 배열, `broadcast_to`의 뷰
-  - 결과는 입력의 레이아웃과 무관하게 비트까지 같다 (§1.11).
+  - 분해와 풀이(`lu`, `cholesky`, `qr`, `eigh`, `svd`, `solve`, `inv`, `det` 등)의 결과는 입력의 레이아웃과 무관하게 비트까지 같다. 몇몇 함수는 끝 비트가 레이아웃에 달릴 수 있다 (§1.11).
 - 입력 배열은 바뀌지 않는다.
 - **행렬과 배치**
   - 배열의 마지막 두 축이 행렬이고, 그 앞의 축은 배치다.
@@ -246,16 +246,19 @@ solve류 함수(`solve`, `solve_triangular`, `cholesky_solve`, `lu_solve`, `lsts
   - `cond`도 배치가 비어 있으면 빈 배열이다. 행렬 자체가 비어 있을 때만 에러다.
 
 ### §1.11 결정성과 스레드
-- 스레드 수와 결정성은 API.md §3을 따른다. 결과 비트와 에러 메시지는 스레드 수와 무관하다.
-- **결과는 입력의 메모리 레이아웃과 무관하다.** C 순서, F 순서, strided 입력이 같은 비트를 낸다.
+- 스레드 수와 결정성은 API.md §3을 따른다: 같은 기계, 같은 스레드 수에서 실행마다 같은 비트다. 스레드 수와 무관한 비트는 약속이 아니지만, 이 영역의 분할은 모두 크기로만 정해서 지금 결과 비트와 에러 메시지가 스레드 수와 무관하다.
+- **메모리 레이아웃**: 입력을 F 순서 버퍼로 패킹하는 함수(분해, `solve`, `inv`, `det` 등)는 C 순서, F 순서, strided 입력이 같은 비트를 낸다. 레이아웃과 무관한 비트는 약속이 아니고, 아래는 끝 비트가 레이아웃에 달릴 수 있다(값은 반올림 수준에서 같다).
+  - C 순서 삼각 인수를 그 자리에서 읽는 풀이: `solve_triangular`, `lu_solve`, `cholesky_solve`
+  - 밑을 그 자리에서 읽는 `matrix_power`
+  - 메모리 순서로 더하는 노름: F 순서 등 한 덩어리 메모리의 `'fro'`와 2-노름, `matrix_norm`의 `±1`·`±inf`, `cond`의 같은 `ord`
 - **같은 행렬은 배치 안의 어느 자리에 있어도 같은 비트를 받는다.** 배치 결과는 행렬 하나씩 부른 결과와 같다.
 - 배치와 출력 하나의 긴 합은 `sd.get_num_threads()`개의 스레드로 나눠 계산한다.
-- **부동소수점 합은 pairwise 합이다.** 트리는 배열의 합과 같고, 항의 순서는 논리적 C 순서다. 오차는 항 수의 log에 비례한다.
-  - 대상: `vecdot`, `trace`, `vector_norm`, `matrix_norm`(`'fro'`, `±1`, `±inf`, `'nuc'`), `cond`(같은 `ord`)
-  - 그냥 합(`trace`, `ord=1`과 p-노름, `matrix_norm`의 `±1`, `±inf`)은 같은 항이면 `sd.sum`과 비트까지 같다. 예: `trace(x) == sum(diagonal(x), axis=-1)`
-  - 곱의 합(`vecdot`, 2-노름, `'fro'`)은 곱을 합에 융합한다(곱-덧셈을 한 번 반올림). 그래서 `vecdot(x, y)`는 `sum(conj(x) * y, axis=-1)`과 끝 비트가 다를 수 있다. 정확도는 같거나 낫다.
+- **부동소수점 합**: 대상은 `vecdot`, `trace`, `vector_norm`, `matrix_norm`(`'fro'`, `±1`, `±inf`, `'nuc'`), `cond`(같은 `ord`)다. 합은 길이로만 정한 조각으로 나누고 조각의 부분합을 고정된 트리로 합친다. 오차는 항 수의 log에 비례하는 수준이다.
+  - 그 자리에서 읽을 수 있는 float64·complex128 입력은 메모리 순서로 더한다. 짧은 합(1024항 이하; 제곱합은 2048항, complex는 256항)은 배열의 합과 같은 pairwise 트리와 잎이고, 더 긴 합은 Accelerate의 `ddot`·`zdotc`·`dasum`이 든 조각 합이다. 그 밖의 입력(bool·int64, 음수 stride, 이어지지 않는 여러 축)과 `trace`, p-노름은 논리적 C 순서의 pairwise 합이다.
+  - 그냥 합(`trace`, 1024항 이하의 `ord=1`, p-노름, 연속인 줄의 1024항 이하의 `matrix_norm` `±1`, `±inf`)은 같은 항이면 `sd.sum`과 비트까지 같다. 예: `trace(x) == sum(diagonal(x), axis=-1)`. 더 긴 합은 `sd.sum`과 반올림 수준에서 같다.
+  - 곱의 합(`vecdot`, 2-노름, `'fro'`)은 짧으면 곱을 합에 융합하고(곱-덧셈을 한 번 반올림) 길면 Accelerate의 곱의 합이다. 그래서 `vecdot(x, y)`는 `sum(conj(x) * y, axis=-1)`과 끝 비트가 다를 수 있다.
 - **numpy·scipy와의 비트 일치는 약속하지 않는다** (API.md의 비트 규칙).
-  - 약속하는 것: 위의 비트 불변성(스레드 수, 레이아웃, 배치 위치), 이 문서가 적은 우리 함수끼리의 비트 관계(예: `inv(x)`와 `solve(x, I)`), 정확도다.
+  - 약속하는 것: 같은 기계·같은 스레드 수에서 실행마다 같은 비트, 배치 위치와 무관한 비트, 이 문서가 적은 우리 함수끼리의 비트 관계(예: `inv(x)`와 `solve(x, I)`), 정확도다.
   - 반올림이 아닌 동작(dtype 규칙, NaN과 ±0, 특이의 판정, 에러)은 문서대로 numpy·scipy와 같다.
   - 이 문서에서 "`np.kron`과 비트까지 같다"처럼 numpy·scipy와 비트가 같다고 적은 곳은 지금의 사실이다. 고침이나 최적화로 마지막 자리가 달라질 수 있다.
 

@@ -2,102 +2,171 @@
  "schema": 1,
  "area": "linalg",
  "runs": {
-  "20261120-222439-cc758f7": {
-   "commit": "cc758f7",
-   "dirty": false,
-   "changed": [],
-   "date": "2026-11-20T22:24:39",
-   "machine": "arm64",
-   "python": "3.15.0",
-   "references": {
-    "array": "c40e961bb50551b32e4dfb5ece370b3887a07179e0f8de4908fe01146b5296b3",
-    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
-    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
-    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
-    "regression": "0fbe4d0eeee71ed80a6462566f558c7f9c4b355ade5e7c36fd744c0faceb4985",
-    "optimize": "0e8bc07345a16ae3f2578c9052a2246313f10cdd86027167a6ca0477a5cfb002"
-   },
-   "comparators": {
-    "scipy": "1.18.1",
-    "numpy": "2.5.4",
-    "statsmodels": "0.15.0",
-    "scikit-learn": "1.9.1",
-    "R": "4.6.2",
-    "R mvtnorm": "1.4.2",
-    "R reticulate": "1.47.0",
-    "R minpack.lm": "1.2.4",
-    "Boost": "boostorg/math 75cb4c4 2026-11-18",
-    "Boost in sd.special": "4682f44"
-   }
-  },
-  "20261122-071515-f0a7f92+": {
-   "commit": "f0a7f92",
+  "20261122-185357-1483fa0+": {
+   "commit": "1483fa0",
    "dirty": true,
    "changed": [
-    "CMakeLists.txt",
-    "bench/README.md",
-    "bench/accuracy/common.py",
-    "bench/accuracy/results/htest.json",
-    "bench/accuracy/sources.py",
-    "bench/accuracy/tables.py",
-    "bench/array/accuracy.md",
-    "bench/htest/accuracy.md",
-    "csrc/accelerate/sparse.hpp",
+    "API.md",
+    "ARCHITECTURE.md",
+    "DESIGN.md",
+    "csrc/array/iter.cpp",
+    "csrc/array/iter.hpp",
+    "csrc/array/kernels/elementwise.hpp",
     "csrc/array/kernels/reduce.hpp",
-    "csrc/array/kernels/scalar_ops.hpp",
+    "csrc/array/kernels/vforce.hpp",
+    "csrc/array/kernels/vmath.hpp",
+    "csrc/array/ndarray.hpp",
     "csrc/array/ops/asarray.cpp",
-    "csrc/array/ops/histogram.cpp",
-    "csrc/array/ops/shape.cpp",
+    "csrc/array/ops/creation.hpp",
+    "csrc/array/ops/dlpack.cpp",
+    "csrc/array/ops/indexing.cpp",
+    "csrc/array/ops/indexing.hpp",
+    "csrc/array/ops/manipulation.cpp",
+    "csrc/array/ops/matmul.cpp",
+    "csrc/array/ops/pieces.hpp",
+    "csrc/array/ops/reduction.cpp",
+    "csrc/array/ops/searching.cpp",
+    "csrc/array/ops/sort.cpp",
+    "csrc/array/ops/ufunc.cpp",
+    "csrc/array/ops/ufunc.hpp",
+    "csrc/array/parallel_limits.hpp",
+    "csrc/base/buffer.cpp",
+    "csrc/base/buffer.hpp",
     "csrc/bind/array_bind.cpp",
-    "csrc/htest/contingency.cpp",
+    "csrc/bind/differentiate_bind.cpp",
+    "csrc/bind/frame_bind.cpp",
+    "csrc/bind/module.cpp",
+    "csrc/bind/nary_bind.hpp",
+    "csrc/bind/pyutil.cpp",
+    "csrc/bind/pyutil.hpp",
+    "csrc/bind/stats_bind.cpp",
+    "csrc/bind/stats_desc.cpp",
+    "csrc/bind/stats_matrix.cpp",
+    "csrc/bind/stats_mv.cpp",
+    "csrc/bind/stats_mvcdf.cpp",
+    "csrc/bind/stats_sample.cpp",
+    "csrc/differentiate/accurate.hpp",
+    "csrc/elementwise/loop.hpp",
+    "csrc/frame/bitmap.hpp",
+    "csrc/frame/column.cpp",
+    "csrc/frame/io/csv.cpp",
+    "csrc/frame/io/csv.hpp",
+    "csrc/frame/ops/elementwise.cpp",
+    "csrc/frame/ops/groupby.cpp",
+    "csrc/frame/ops/groupby.hpp",
+    "csrc/frame/ops/hash.cpp",
+    "csrc/frame/ops/hash.hpp",
+    "csrc/frame/ops/join.cpp",
+    "csrc/frame/ops/join.hpp",
+    "csrc/frame/ops/pairwise.hpp",
+    "csrc/frame/ops/parse.hpp",
+    "csrc/frame/ops/radix.hpp",
+    "csrc/frame/ops/reduce.cpp",
+    "csrc/frame/ops/reduce.hpp",
+    "csrc/frame/ops/selection.cpp",
+    "csrc/frame/ops/selection.hpp",
+    "csrc/frame/ops/sort.cpp",
+    "csrc/frame/ops/sort.hpp",
+    "csrc/frame/parallel.hpp",
     "csrc/htest/correlation.cpp",
-    "csrc/htest/cvm2.hpp",
+    "csrc/htest/divergence.hpp",
+    "csrc/htest/dunnett.hpp",
     "csrc/htest/gof.cpp",
-    "csrc/htest/gof2.cpp",
+    "csrc/htest/ks.hpp",
+    "csrc/htest/lanes.hpp",
     "csrc/htest/moments.hpp",
-    "csrc/htest/nchg.hpp",
-    "csrc/htest/normality.hpp",
+    "csrc/htest/multicomp.cpp",
+    "csrc/htest/parametric.cpp",
     "csrc/htest/proportion.cpp",
     "csrc/htest/rank.cpp",
-    "csrc/integrate/adaptive.cpp",
-    "csrc/integrate/quadpack.hpp",
-    "csrc/integrate/tanhsinh.cpp",
-    "csrc/linalg/input.cpp",
-    "csrc/linalg/ops/qr.cpp",
+    "csrc/htest/rank_exact.hpp",
+    "csrc/htest/studentized_range.hpp",
+    "csrc/integrate/samples.cpp",
+    "csrc/linalg/batch.hpp",
+    "csrc/linalg/fastsum.hpp",
+    "csrc/linalg/lapack.hpp",
+    "csrc/linalg/ops/basic.cpp",
+    "csrc/linalg/ops/common.hpp",
+    "csrc/linalg/ops/expm.cpp",
+    "csrc/linalg/ops/factor.cpp",
+    "csrc/linalg/ops/lu.cpp",
+    "csrc/linalg/ops/norms.cpp",
+    "csrc/linalg/ops/spectral.cpp",
+    "csrc/linalg/ops/vnorm.hpp",
+    "csrc/linalg/outblock.cpp",
+    "csrc/linalg/outblock.hpp",
+    "csrc/linalg/pack.hpp",
     "csrc/linalg/pairwise.hpp",
+    "csrc/optimize/linear.cpp",
+    "csrc/optimize/lsq.cpp",
+    "csrc/parallel/pool.cpp",
+    "csrc/parallel/pool.hpp",
     "csrc/random/random.cpp",
+    "csrc/random/random.hpp",
+    "csrc/regression/dd2.hpp",
+    "csrc/regression/dot2.hpp",
+    "csrc/regression/glm.cpp",
+    "csrc/regression/linear.cpp",
     "csrc/regression/penalized.cpp",
-    "csrc/sparse/binop.cpp",
+    "csrc/regression/robust.cpp",
+    "csrc/regression/unitdev.hpp",
+    "csrc/sparse/arith.hpp",
+    "csrc/sparse/arpack.cpp",
     "csrc/sparse/canonical.cpp",
     "csrc/sparse/construct.cpp",
     "csrc/sparse/convert.cpp",
     "csrc/sparse/direct.cpp",
-    "csrc/sparse/dok.cpp",
-    "csrc/sparse/format.hpp",
     "csrc/sparse/index.cpp",
     "csrc/sparse/iterative.cpp",
+    "csrc/sparse/krylov.hpp",
     "csrc/sparse/spgemm.cpp",
+    "csrc/sparse/spmv.cpp",
     "csrc/sparse/triangular.cpp",
-    "csrc/special/cplx.hpp",
+    "csrc/special/boost.hpp",
+    "csrc/special/gamma_core.hpp",
+    "csrc/special/kernels/chunked.hpp",
     "csrc/special/ops/airy.hpp",
     "csrc/special/ops/bessel.hpp",
     "csrc/special/ops/bessel01.hpp",
+    "csrc/special/ops/cf_fast.hpp",
     "csrc/special/ops/distr.hpp",
+    "csrc/special/ops/ellip.hpp",
+    "csrc/special/ops/expint.hpp",
+    "csrc/special/ops/gamma.hpp",
+    "csrc/special/ops/halley_fast.hpp",
+    "csrc/special/ops/hyper.hpp",
+    "csrc/special/ops/incbeta.hpp",
+    "csrc/special/ops/incgamma.hpp",
+    "csrc/special/ops/lambertw.hpp",
+    "csrc/special/ops/loggamma.hpp",
+    "csrc/special/ops/logistic.hpp",
+    "csrc/special/ops/noncentral.hpp",
     "csrc/special/ops/wofz.hpp",
-    "csrc/special/sincos.hpp",
+    "csrc/special/ops/zeta.hpp",
+    "csrc/special/reduce.cpp",
+    "csrc/stats/chunk.hpp",
+    "csrc/stats/chunk_dd.hpp",
+    "csrc/stats/cost_table.hpp",
+    "csrc/stats/dd_linalg.hpp",
+    "csrc/stats/discrete.hpp",
+    "csrc/stats/dist/beta.hpp",
+    "csrc/stats/dist/cauchy.hpp",
+    "csrc/stats/dist/discrete_basic.hpp",
+    "csrc/stats/dist/discrete_more.hpp",
+    "csrc/stats/dist/exponential.hpp",
+    "csrc/stats/dist/gamma.hpp",
+    "csrc/stats/dist/laplace.hpp",
+    "csrc/stats/dist/lifetime.hpp",
+    "csrc/stats/dist/lognormal.hpp",
+    "csrc/stats/dist/noncentral.hpp",
     "csrc/stats/dist/normal.hpp",
+    "csrc/stats/dist/uniform.hpp",
+    "csrc/stats/engine.hpp",
+    "csrc/stats/mvcdf.hpp",
+    "csrc/stats/sample_dist.hpp",
+    "csrc/stats/vmath.hpp",
     "docs/api/array.md",
-    "docs/api/differentiate.md",
-    "docs/api/frame.md",
-    "docs/api/htest.md",
-    "docs/api/integrate.md",
     "docs/api/linalg.md",
-    "docs/api/optimize.md",
-    "docs/api/random.md",
-    "docs/api/regression.md",
-    "docs/api/sparse.md",
-    "docs/api/special.md",
-    "docs/api/stats.md",
     "docs/design/array.md",
     "docs/design/frame.md",
     "docs/design/htest.md",
@@ -109,98 +178,56 @@
     "docs/design/sparse.md",
     "docs/design/special.md",
     "docs/design/stats.md",
-    "src/stardust/_calls.py",
-    "src/stardust/_results.py",
-    "src/stardust/_summary.py",
-    "src/stardust/differentiate/_derivative.py",
     "src/stardust/differentiate/_differences.py",
-    "src/stardust/differentiate/_weights.py",
-    "src/stardust/frame/_ops.py",
-    "src/stardust/htest/_common.py",
-    "src/stardust/htest/_contingency.py",
-    "src/stardust/htest/_correlation.py",
-    "src/stardust/htest/_parametric.py",
-    "src/stardust/htest/_proportion.py",
-    "src/stardust/htest/_rank.py",
-    "src/stardust/htest/_resampling.py",
-    "src/stardust/htest/_result.py",
-    "src/stardust/integrate/__init__.py",
-    "src/stardust/integrate/_cubature.py",
-    "src/stardust/integrate/_gauss.py",
-    "src/stardust/integrate/_quadpack.py",
-    "src/stardust/integrate/_result.py",
+    "src/stardust/frame/_frame.py",
+    "src/stardust/frame/_groupby.py",
+    "src/stardust/frame/_io.py",
+    "src/stardust/frame/_merge.py",
+    "src/stardust/frame/_series.py",
+    "src/stardust/frame/_unique.py",
+    "src/stardust/optimize/_diff.py",
     "src/stardust/random/__init__.py",
-    "src/stardust/regression/__init__.py",
     "src/stardust/regression/_diagnostics.py",
-    "src/stardust/regression/_linear.py",
+    "src/stardust/regression/_glm.py",
+    "src/stardust/regression/_penalized.py",
     "src/stardust/regression/_select.py",
     "src/stardust/regression/_tests.py",
-    "src/stardust/sparse/__init__.py",
-    "src/stardust/sparse/_base.py",
     "src/stardust/sparse/_common.py",
     "src/stardust/sparse/_construct.py",
     "src/stardust/sparse/_direct.py",
-    "src/stardust/sparse/_dok.py",
     "src/stardust/sparse/_eigen.py",
     "src/stardust/sparse/_index.py",
-    "src/stardust/sparse/_interface.py",
     "src/stardust/sparse/_interop.py",
-    "src/stardust/sparse/_iterative.py",
-    "src/stardust/sparse/_matfuncs.py",
     "src/stardust/sparse/_ops.py",
     "src/stardust/stats/_descriptive.py",
-    "tests/array/test_api_surface.py",
-    "tests/array/test_sparse_counterparts.py",
-    "tests/differentiate/test_derivative.py",
-    "tests/differentiate/test_weights.py",
-    "tests/frame/test_elementwise.py",
-    "tests/frame/test_reduce.py",
-    "tests/golden/cases_differentiate.py",
-    "tests/golden/cases_integrate.py",
-    "tests/golden/cases_optimize.py",
-    "tests/golden/cases_regression.py",
+    "src/stardust/stats/_distribution.py",
+    "tests/array/test_ufunc.py",
+    "tests/differentiate/test_differences.py",
     "tests/golden/data/array.json",
     "tests/golden/data/differentiate.json",
     "tests/golden/data/htest.json",
     "tests/golden/data/integrate.json",
+    "tests/golden/data/linalg.json",
     "tests/golden/data/optimize.json",
     "tests/golden/data/regression.json",
     "tests/golden/data/sparse.json",
     "tests/golden/data/special.json",
     "tests/golden/data/stats.json",
-    "tests/htest/test_contingency.py",
-    "tests/htest/test_correlation.py",
-    "tests/htest/test_parametric.py",
-    "tests/htest/test_rank.py",
-    "tests/htest/test_resampling.py",
-    "tests/integrate/test_cubature.py",
-    "tests/integrate/test_quadpack.py",
-    "tests/integrate/test_quadpack_weights.py",
-    "tests/integrate/test_result.py",
-    "tests/linalg/test_sparse_counterparts.py",
-    "tests/optimize/test_diff.py",
-    "tests/random/test_alloc_errors.py",
+    "tests/integrate/test_samples.py",
+    "tests/linalg/test_factorizations.py",
+    "tests/linalg/test_optimizations.py",
+    "tests/linalg/test_parallel.py",
+    "tests/optimize/test_least_squares.py",
+    "tests/optimize/test_lsq_linear.py",
     "tests/random/test_random.py",
-    "tests/regression/test_api_surface.py",
-    "tests/regression/test_linear.py",
-    "tests/regression/test_selection.py",
-    "tests/sparse/test_arithmetic.py",
-    "tests/sparse/test_construct.py",
-    "tests/sparse/test_conversions.py",
-    "tests/sparse/test_direct.py",
-    "tests/sparse/test_dok.py",
+    "tests/regression/test_kernel_paths.py",
     "tests/sparse/test_eigen.py",
-    "tests/sparse/test_formats.py",
-    "tests/sparse/test_indexing.py",
-    "tests/sparse/test_interface.py",
-    "tests/sparse/test_iterative.py",
-    "tests/sparse/test_matfuncs.py",
-    "tests/special/test_distributions.py",
-    "tests/stats/test_descriptive.py",
-    "tests/stats/test_distributions.py",
-    "tests/test_summary.py"
+    "tests/sparse/test_suitesparse.py",
+    "tests/special/test_bessel_airy.py",
+    "tests/special/test_extreme.py",
+    "tests/special/test_logistic.py"
    ],
-   "date": "2026-11-22T07:15:15",
+   "date": "2026-11-22T18:53:57",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -210,6 +237,23 @@
     "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
     "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
     "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
    }
   }
  },
@@ -257,7 +301,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -336,8 +379,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/det",
@@ -386,7 +430,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -473,8 +516,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/eig",
@@ -519,7 +563,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -598,8 +641,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/eigh",
@@ -648,7 +692,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -735,8 +778,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/eigvals",
@@ -785,7 +829,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -872,8 +915,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/eigvalsh",
@@ -922,7 +966,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1009,8 +1052,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/expm",
@@ -1029,7 +1073,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "cases": {
@@ -1056,8 +1099,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/inv",
@@ -1102,7 +1146,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1181,8 +1224,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/lstsq",
@@ -1218,7 +1262,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1279,8 +1322,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/lstsq_x",
@@ -1319,7 +1363,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1386,8 +1429,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/lu",
@@ -1432,7 +1476,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1473,8 +1516,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/lu_solve",
@@ -1493,8 +1537,8 @@
     },
     "kappa=10000": {
      "points": 4,
-     "backward_max": 0.013220229755609108,
-     "contract": 0.0013220229755609109,
+     "backward_max": 0.014982927056356985,
+     "contract": 0.0014982927056356986,
      "bound": 10.0,
      "worst": [
       "3x3 kappa=10000"
@@ -1519,7 +1563,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1560,8 +1603,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/qr",
@@ -1610,7 +1654,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1655,8 +1698,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/qr_pivoted",
@@ -1705,7 +1749,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1792,8 +1835,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/solve",
@@ -1812,8 +1856,8 @@
     },
     "kappa=10000": {
      "points": 4,
-     "backward_max": 0.013220229755609108,
-     "contract": 0.0013220229755609109,
+     "backward_max": 0.014982927056356985,
+     "contract": 0.0014982927056356986,
      "bound": 10.0,
      "worst": [
       "3x3 kappa=10000"
@@ -1838,7 +1882,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -1917,8 +1960,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/solve_x",
@@ -1928,8 +1972,8 @@
    "regions": {
     "kappa=1": {
      "points": 4,
-     "norm_inf_rel_max": 1.0139764449270821e-14,
-     "rel_cond_max": 0.6600980828453629,
+     "norm_inf_rel_max": 8.010961534470236e-15,
+     "rel_cond_max": 0.5215131354488245,
      "contract": null,
      "bound": null,
      "worst": [
@@ -1938,8 +1982,8 @@
     },
     "kappa=10000": {
      "points": 4,
-     "norm_inf_rel_max": 2.111957475721628e-13,
-     "rel_cond_max": 0.024695384711859832,
+     "norm_inf_rel_max": 2.0751118597789167e-13,
+     "rel_cond_max": 0.024742271540454202,
      "contract": null,
      "bound": null,
      "worst": [
@@ -1948,8 +1992,8 @@
     },
     "kappa=1e+08": {
      "points": 4,
-     "norm_inf_rel_max": 6.451800569358472e-10,
-     "rel_cond_max": 0.005699106246565918,
+     "norm_inf_rel_max": 6.451782095106545e-10,
+     "rel_cond_max": 0.0056990899275983,
      "contract": null,
      "bound": null,
      "worst": [
@@ -1967,7 +2011,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -2054,8 +2097,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/svd",
@@ -2104,7 +2148,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -2191,8 +2234,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "linalg/svdvals",
@@ -2231,7 +2275,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "numpy": {
      "kappa=1": {
@@ -2298,8 +2341,9 @@
      }
     }
    },
-   "comparators_run": "20261120-222439-cc758f7",
-   "comparator_seconds": 120
+   "comparator_seconds": 120,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   }
  ]
 }

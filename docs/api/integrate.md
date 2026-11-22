@@ -56,7 +56,7 @@ IntegrateResult
 - **경고를 내지 않는다.** scipy가 `IntegrationWarning`으로 알리는 것은 `converged=False`와 `status`·`message`다. scipy의 `show`(`romb`)는 없다(화면에 쓰지 않는다, `[scipy와 다름]`).
 - 오차 추정은 경험적이다: 수렴이라고 알려도 실제 오차가 추정보다 클 수 있다. 좁은 봉우리를 처음 규칙이 놓치면 `quad`가 틀린 값을 수렴으로 알린다(docs/design/integrate.md §7.4). 어려운 곳의 자리를 알면 `points`로 준다. 봉우리의 너비가 구간의 2⁻³⁸ 근처로 아주 좁으면(QUADPACK 책의 4⁻ᵅ/((x − π/4)² + 16⁻ᵅ), α = 19: 너비 3.6×10⁻¹²) `points=[π/4]`나 봉우리 둘레의 작은 구간도 status 5로 끝나고 값이 틀린다. 그때는 변수를 바꿔 봉우리를 넓힌다: x = π/4 + 4⁻ᵅ sinh t로 바꾸면 피적분함수가 1/cosh t가 되어 `quad`가 수렴한다(참값과 1.3×10⁻¹⁵). `tanhsinh`은 봉우리에서 나눠 불러도 status −2다(docs/design/integrate.md §3.1).
 - 적분이나 오차 추정이 유한하지 않으면 수렴이 아니다: `quad` 계열은 status −3 `Non-finite values encountered.`(C119), `quad_vec`·`cubature`는 3, `tanhsinh`·`nsum`은 −3이다.
-- 같은 입력이면 스레드 수와 상관없이 같은 비트다.
+- 같은 기계, 같은 스레드 수에서는 실행마다 같은 비트다(API.md §3). 스레드 수와 무관한 비트는 약속이 아니지만, 이 영역은 지금 결과가 스레드 수와 무관하다.
 
 ### §1.5 에러
 - 공개 함수의 에러는 `quad(): …`로 시작한다(API.md §2.1). 끝: `a`, `b`는 실수(±inf 받음; NaN은 `ValueError`, 원소별 무리는 그 원소의 status −3)다. 옵션의 검사와 글은 다른 영역과 같은 꼴이다(`'limit' must be an int, not float`, `'rtol' must be a finite number >= 0`).

@@ -267,7 +267,7 @@ from_dlpack(x, /, *, device=None, copy=None)
 ### §3.5 DLPack (`from_dlpack`)
 - 다른 라이브러리(numpy, PyTorch 등)의 CPU 배열을 **복사 없이** 가져온다. `x`는 `__dlpack__`이 있는 객체다.
   - DLPack 1.0의 버전 있는 capsule을 먼저 청하고, 받지 못하면 옛 형식으로 청한다.
-  - 결과는 외부 메모리를 공유한다. `base`는 그 메모리를 붙잡은 capsule이다. 임의의 strides(음수 포함)를 그대로 쓴다.
+  - 결과는 외부 메모리를 공유한다. `base`는 그 메모리를 붙잡은 객체다: 정확한 `numpy.ndarray`이면 그 numpy 배열이고(numpy의 메모리를 직접 공유한다), 그 밖에는 메모리를 붙잡은 capsule이다. 임의의 strides(음수 포함)를 그대로 쓴다.
   - 읽기 전용 표시가 있으면 쓰기 금지 배열이 된다.
 - dtype은 bool, int64, float64, complex128만 받는다. 그 밖은 `TypeError`다(버퍼 프로토콜과 달리 넓히는 복사도 하지 않는다). 0차원은 `ValueError`다.
 - 정렬되지 않은 메모리와 0·1이 아닌 bool 바이트는 복사한다(§3.3과 같다). 이때 `copy=False`이면 `ValueError`다.
@@ -615,9 +615,10 @@ where(condition, x1, x2, /, *, out=None)
   - float64의 `pow`는 libm의 `pow`다(numpy와 같은 함수라 비트까지 같다; 잰 오차는 [bench/array/accuracy.md](../../bench/array/accuracy.md)의 `pow` 행). 다만 지수가 2, 0, 1, −1, 0.5인 원소는 정확한 꼴이다: `x * x`, `1`, `x`, `1 / x`, `sqrt(x)`. 모두 올바르게 반올림되고 특수값은 C99 `pow`의 것이다(0은 NaN에도 1). 지수가 스칼라든 배열이든 같은 규칙이라 같은 비트이고, frame의 `**`도 같은 커널이다.
     - numpy와 다른 곳은 둘이다. **[numpy와 다름]** (1) 스칼라 지수 0.5에서 numpy는 `sqrt`를 그대로 써서 `(-0.0) ** 0.5`가 `-0.0`, `(-inf) ** 0.5`가 `nan`이다. 여기는 C99 `pow`처럼 `+0.0`, `+inf`다. (2) numpy는 지수가 배열이면 이 다섯 값에서도 libm `pow`를 불러, 2, −1, 0.5에서 원소의 약 0.1%가 1 ULP 다르다(libm `pow`는 그 자리에서 올바르게 반올림되지 않는다). 여기는 지수의 모양과 상관없이 정확한 꼴이고, numpy의 스칼라 지수와 같다.
   - 특수값(±0, ±inf, NaN)은 부호까지 정확하다.
-  - 같은 입력이면 위치, stride, 스레드 수와 상관없이 같은 비트가 나온다. 예: `exp(x)[i] == exp(x[i])`
+  - `expm1` `log1p` `cos`는 자체 NEON 커널이고(`exp`도 같다) Arb 참값에서 잰 최대가 1 ULP다. 이 셋은 참값 파일이 없어 시험은 numpy(libm)와의 거리 8 ULP를 본다. numpy와 끝자리가 다를 수 있다.
+  - 같은 입력이면 위치와 stride와 상관없이 같은 비트가 나온다. 예: `exp(x)[i] == exp(x[i])`. 스레드 수와도 지금은 상관없다(약속하는 것은 같은 스레드 수에서 실행마다 같은 비트다, API.md §3).
   - complex `abs`는 `sqrt(re² + im²)`을 위의 계약(3 ULP) 안으로 계산한다(numpy의 공식과 달라 끝자리가 다를 수 있다).
-  - 그 밖의 원소별 함수는 지금 numpy와 비트까지 같지만, 그것을 약속하지는 않는다. 약속하는 것은 위의 정확도와, 스레드 수·위치·stride와 상관없는 같은 비트다 (API.md §3).
+  - 그 밖의 원소별 함수는 지금 numpy와 비트까지 같지만, 그것을 약속하지는 않는다. 약속하는 것은 위의 정확도와, 위치·stride와 상관없는 같은 비트다 (API.md §3).
 
 ---
 

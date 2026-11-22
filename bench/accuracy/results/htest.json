@@ -2,40 +2,232 @@
  "schema": 1,
  "area": "htest",
  "runs": {
-  "20261122-070905-f0a7f92+": {
-   "commit": "f0a7f92",
+  "20261122-185357-1483fa0+": {
+   "commit": "1483fa0",
    "dirty": true,
    "changed": [
-    "csrc/htest/contingency.cpp",
+    "API.md",
+    "ARCHITECTURE.md",
+    "DESIGN.md",
+    "csrc/array/iter.cpp",
+    "csrc/array/iter.hpp",
+    "csrc/array/kernels/elementwise.hpp",
+    "csrc/array/kernels/reduce.hpp",
+    "csrc/array/kernels/vforce.hpp",
+    "csrc/array/kernels/vmath.hpp",
+    "csrc/array/ndarray.hpp",
+    "csrc/array/ops/asarray.cpp",
+    "csrc/array/ops/creation.hpp",
+    "csrc/array/ops/dlpack.cpp",
+    "csrc/array/ops/indexing.cpp",
+    "csrc/array/ops/indexing.hpp",
+    "csrc/array/ops/manipulation.cpp",
+    "csrc/array/ops/matmul.cpp",
+    "csrc/array/ops/pieces.hpp",
+    "csrc/array/ops/reduction.cpp",
+    "csrc/array/ops/searching.cpp",
+    "csrc/array/ops/sort.cpp",
+    "csrc/array/ops/ufunc.cpp",
+    "csrc/array/ops/ufunc.hpp",
+    "csrc/array/parallel_limits.hpp",
+    "csrc/base/buffer.cpp",
+    "csrc/base/buffer.hpp",
+    "csrc/bind/array_bind.cpp",
+    "csrc/bind/differentiate_bind.cpp",
+    "csrc/bind/frame_bind.cpp",
+    "csrc/bind/module.cpp",
+    "csrc/bind/nary_bind.hpp",
+    "csrc/bind/pyutil.cpp",
+    "csrc/bind/pyutil.hpp",
+    "csrc/bind/stats_bind.cpp",
+    "csrc/bind/stats_desc.cpp",
+    "csrc/bind/stats_matrix.cpp",
+    "csrc/bind/stats_mv.cpp",
+    "csrc/bind/stats_mvcdf.cpp",
+    "csrc/bind/stats_sample.cpp",
+    "csrc/differentiate/accurate.hpp",
+    "csrc/elementwise/loop.hpp",
+    "csrc/frame/bitmap.hpp",
+    "csrc/frame/column.cpp",
+    "csrc/frame/io/csv.cpp",
+    "csrc/frame/io/csv.hpp",
+    "csrc/frame/ops/elementwise.cpp",
+    "csrc/frame/ops/groupby.cpp",
+    "csrc/frame/ops/groupby.hpp",
+    "csrc/frame/ops/hash.cpp",
+    "csrc/frame/ops/hash.hpp",
+    "csrc/frame/ops/join.cpp",
+    "csrc/frame/ops/join.hpp",
+    "csrc/frame/ops/pairwise.hpp",
+    "csrc/frame/ops/parse.hpp",
+    "csrc/frame/ops/radix.hpp",
+    "csrc/frame/ops/reduce.cpp",
+    "csrc/frame/ops/reduce.hpp",
+    "csrc/frame/ops/selection.cpp",
+    "csrc/frame/ops/selection.hpp",
+    "csrc/frame/ops/sort.cpp",
+    "csrc/frame/ops/sort.hpp",
+    "csrc/frame/parallel.hpp",
     "csrc/htest/correlation.cpp",
-    "csrc/htest/cvm2.hpp",
+    "csrc/htest/divergence.hpp",
+    "csrc/htest/dunnett.hpp",
     "csrc/htest/gof.cpp",
-    "csrc/htest/gof2.cpp",
+    "csrc/htest/ks.hpp",
+    "csrc/htest/lanes.hpp",
     "csrc/htest/moments.hpp",
-    "csrc/htest/nchg.hpp",
-    "csrc/htest/normality.hpp",
+    "csrc/htest/multicomp.cpp",
+    "csrc/htest/parametric.cpp",
     "csrc/htest/proportion.cpp",
     "csrc/htest/rank.cpp",
-    "docs/api/htest.md",
+    "csrc/htest/rank_exact.hpp",
+    "csrc/htest/studentized_range.hpp",
+    "csrc/integrate/samples.cpp",
+    "csrc/linalg/batch.hpp",
+    "csrc/linalg/fastsum.hpp",
+    "csrc/linalg/lapack.hpp",
+    "csrc/linalg/ops/basic.cpp",
+    "csrc/linalg/ops/common.hpp",
+    "csrc/linalg/ops/expm.cpp",
+    "csrc/linalg/ops/factor.cpp",
+    "csrc/linalg/ops/lu.cpp",
+    "csrc/linalg/ops/norms.cpp",
+    "csrc/linalg/ops/spectral.cpp",
+    "csrc/linalg/ops/vnorm.hpp",
+    "csrc/linalg/outblock.cpp",
+    "csrc/linalg/outblock.hpp",
+    "csrc/linalg/pack.hpp",
+    "csrc/linalg/pairwise.hpp",
+    "csrc/optimize/linear.cpp",
+    "csrc/optimize/lsq.cpp",
+    "csrc/parallel/pool.cpp",
+    "csrc/parallel/pool.hpp",
+    "csrc/random/random.cpp",
+    "csrc/random/random.hpp",
+    "csrc/regression/dd2.hpp",
+    "csrc/regression/dot2.hpp",
+    "csrc/regression/glm.cpp",
+    "csrc/regression/linear.cpp",
+    "csrc/regression/penalized.cpp",
+    "csrc/regression/robust.cpp",
+    "csrc/regression/unitdev.hpp",
+    "csrc/sparse/arith.hpp",
+    "csrc/sparse/arpack.cpp",
+    "csrc/sparse/canonical.cpp",
+    "csrc/sparse/construct.cpp",
+    "csrc/sparse/convert.cpp",
+    "csrc/sparse/direct.cpp",
+    "csrc/sparse/index.cpp",
+    "csrc/sparse/iterative.cpp",
+    "csrc/sparse/krylov.hpp",
+    "csrc/sparse/spgemm.cpp",
+    "csrc/sparse/spmv.cpp",
+    "csrc/sparse/triangular.cpp",
+    "csrc/special/boost.hpp",
+    "csrc/special/gamma_core.hpp",
+    "csrc/special/kernels/chunked.hpp",
+    "csrc/special/ops/airy.hpp",
+    "csrc/special/ops/bessel.hpp",
+    "csrc/special/ops/bessel01.hpp",
+    "csrc/special/ops/cf_fast.hpp",
+    "csrc/special/ops/distr.hpp",
+    "csrc/special/ops/ellip.hpp",
+    "csrc/special/ops/expint.hpp",
+    "csrc/special/ops/gamma.hpp",
+    "csrc/special/ops/halley_fast.hpp",
+    "csrc/special/ops/hyper.hpp",
+    "csrc/special/ops/incbeta.hpp",
+    "csrc/special/ops/incgamma.hpp",
+    "csrc/special/ops/lambertw.hpp",
+    "csrc/special/ops/loggamma.hpp",
+    "csrc/special/ops/logistic.hpp",
+    "csrc/special/ops/noncentral.hpp",
+    "csrc/special/ops/wofz.hpp",
+    "csrc/special/ops/zeta.hpp",
+    "csrc/special/reduce.cpp",
+    "csrc/stats/chunk.hpp",
+    "csrc/stats/chunk_dd.hpp",
+    "csrc/stats/cost_table.hpp",
+    "csrc/stats/dd_linalg.hpp",
+    "csrc/stats/discrete.hpp",
+    "csrc/stats/dist/beta.hpp",
+    "csrc/stats/dist/cauchy.hpp",
+    "csrc/stats/dist/discrete_basic.hpp",
+    "csrc/stats/dist/discrete_more.hpp",
+    "csrc/stats/dist/exponential.hpp",
+    "csrc/stats/dist/gamma.hpp",
+    "csrc/stats/dist/laplace.hpp",
+    "csrc/stats/dist/lifetime.hpp",
+    "csrc/stats/dist/lognormal.hpp",
+    "csrc/stats/dist/noncentral.hpp",
+    "csrc/stats/dist/normal.hpp",
+    "csrc/stats/dist/uniform.hpp",
+    "csrc/stats/engine.hpp",
+    "csrc/stats/mvcdf.hpp",
+    "csrc/stats/sample_dist.hpp",
+    "csrc/stats/vmath.hpp",
+    "docs/api/array.md",
+    "docs/api/linalg.md",
+    "docs/design/array.md",
+    "docs/design/frame.md",
     "docs/design/htest.md",
-    "src/stardust/_summary.py",
-    "src/stardust/htest/_common.py",
-    "src/stardust/htest/_contingency.py",
-    "src/stardust/htest/_correlation.py",
-    "src/stardust/htest/_parametric.py",
-    "src/stardust/htest/_proportion.py",
-    "src/stardust/htest/_rank.py",
-    "src/stardust/htest/_resampling.py",
-    "src/stardust/htest/_result.py",
+    "docs/design/integrate.md",
+    "docs/design/linalg.md",
+    "docs/design/optimize.md",
+    "docs/design/random.md",
+    "docs/design/regression.md",
+    "docs/design/sparse.md",
+    "docs/design/special.md",
+    "docs/design/stats.md",
+    "src/stardust/differentiate/_differences.py",
+    "src/stardust/frame/_frame.py",
+    "src/stardust/frame/_groupby.py",
+    "src/stardust/frame/_io.py",
+    "src/stardust/frame/_merge.py",
+    "src/stardust/frame/_series.py",
+    "src/stardust/frame/_unique.py",
+    "src/stardust/optimize/_diff.py",
+    "src/stardust/random/__init__.py",
+    "src/stardust/regression/_diagnostics.py",
+    "src/stardust/regression/_glm.py",
+    "src/stardust/regression/_penalized.py",
+    "src/stardust/regression/_select.py",
+    "src/stardust/regression/_tests.py",
+    "src/stardust/sparse/_common.py",
+    "src/stardust/sparse/_construct.py",
+    "src/stardust/sparse/_direct.py",
+    "src/stardust/sparse/_eigen.py",
+    "src/stardust/sparse/_index.py",
+    "src/stardust/sparse/_interop.py",
+    "src/stardust/sparse/_ops.py",
+    "src/stardust/stats/_descriptive.py",
+    "src/stardust/stats/_distribution.py",
+    "tests/array/test_ufunc.py",
+    "tests/differentiate/test_differences.py",
+    "tests/golden/data/array.json",
+    "tests/golden/data/differentiate.json",
     "tests/golden/data/htest.json",
-    "tests/htest/test_contingency.py",
-    "tests/htest/test_correlation.py",
-    "tests/htest/test_parametric.py",
-    "tests/htest/test_rank.py",
-    "tests/htest/test_resampling.py",
-    "tests/test_summary.py"
+    "tests/golden/data/integrate.json",
+    "tests/golden/data/linalg.json",
+    "tests/golden/data/optimize.json",
+    "tests/golden/data/regression.json",
+    "tests/golden/data/sparse.json",
+    "tests/golden/data/special.json",
+    "tests/golden/data/stats.json",
+    "tests/integrate/test_samples.py",
+    "tests/linalg/test_factorizations.py",
+    "tests/linalg/test_optimizations.py",
+    "tests/linalg/test_parallel.py",
+    "tests/optimize/test_least_squares.py",
+    "tests/optimize/test_lsq_linear.py",
+    "tests/random/test_random.py",
+    "tests/regression/test_kernel_paths.py",
+    "tests/sparse/test_eigen.py",
+    "tests/sparse/test_suitesparse.py",
+    "tests/special/test_bessel_airy.py",
+    "tests/special/test_extreme.py",
+    "tests/special/test_logistic.py"
    ],
-   "date": "2026-11-22T07:09:05",
+   "date": "2026-11-22T18:53:57",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -60,190 +252,8 @@
     "R leaps": "3.2",
     "R irlba": "2.4.1",
     "R numDeriv": "2016.8.1.1",
-    "Boost": null,
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
     "Boost in sd.special": "4682f44"
-   }
-  },
-  "20261122-071515-f0a7f92+": {
-   "commit": "f0a7f92",
-   "dirty": true,
-   "changed": [
-    "CMakeLists.txt",
-    "bench/README.md",
-    "bench/accuracy/common.py",
-    "bench/accuracy/results/htest.json",
-    "bench/accuracy/sources.py",
-    "bench/accuracy/tables.py",
-    "bench/array/accuracy.md",
-    "bench/htest/accuracy.md",
-    "csrc/accelerate/sparse.hpp",
-    "csrc/array/kernels/reduce.hpp",
-    "csrc/array/kernels/scalar_ops.hpp",
-    "csrc/array/ops/asarray.cpp",
-    "csrc/array/ops/histogram.cpp",
-    "csrc/array/ops/shape.cpp",
-    "csrc/bind/array_bind.cpp",
-    "csrc/htest/contingency.cpp",
-    "csrc/htest/correlation.cpp",
-    "csrc/htest/cvm2.hpp",
-    "csrc/htest/gof.cpp",
-    "csrc/htest/gof2.cpp",
-    "csrc/htest/moments.hpp",
-    "csrc/htest/nchg.hpp",
-    "csrc/htest/normality.hpp",
-    "csrc/htest/proportion.cpp",
-    "csrc/htest/rank.cpp",
-    "csrc/integrate/adaptive.cpp",
-    "csrc/integrate/quadpack.hpp",
-    "csrc/integrate/tanhsinh.cpp",
-    "csrc/linalg/input.cpp",
-    "csrc/linalg/ops/qr.cpp",
-    "csrc/linalg/pairwise.hpp",
-    "csrc/random/random.cpp",
-    "csrc/regression/penalized.cpp",
-    "csrc/sparse/binop.cpp",
-    "csrc/sparse/canonical.cpp",
-    "csrc/sparse/construct.cpp",
-    "csrc/sparse/convert.cpp",
-    "csrc/sparse/direct.cpp",
-    "csrc/sparse/dok.cpp",
-    "csrc/sparse/format.hpp",
-    "csrc/sparse/index.cpp",
-    "csrc/sparse/iterative.cpp",
-    "csrc/sparse/spgemm.cpp",
-    "csrc/sparse/triangular.cpp",
-    "csrc/special/cplx.hpp",
-    "csrc/special/ops/airy.hpp",
-    "csrc/special/ops/bessel.hpp",
-    "csrc/special/ops/bessel01.hpp",
-    "csrc/special/ops/distr.hpp",
-    "csrc/special/ops/wofz.hpp",
-    "csrc/special/sincos.hpp",
-    "csrc/stats/dist/normal.hpp",
-    "docs/api/array.md",
-    "docs/api/differentiate.md",
-    "docs/api/frame.md",
-    "docs/api/htest.md",
-    "docs/api/integrate.md",
-    "docs/api/linalg.md",
-    "docs/api/optimize.md",
-    "docs/api/random.md",
-    "docs/api/regression.md",
-    "docs/api/sparse.md",
-    "docs/api/special.md",
-    "docs/api/stats.md",
-    "docs/design/array.md",
-    "docs/design/frame.md",
-    "docs/design/htest.md",
-    "docs/design/integrate.md",
-    "docs/design/linalg.md",
-    "docs/design/optimize.md",
-    "docs/design/random.md",
-    "docs/design/regression.md",
-    "docs/design/sparse.md",
-    "docs/design/special.md",
-    "docs/design/stats.md",
-    "src/stardust/_calls.py",
-    "src/stardust/_results.py",
-    "src/stardust/_summary.py",
-    "src/stardust/differentiate/_derivative.py",
-    "src/stardust/differentiate/_differences.py",
-    "src/stardust/differentiate/_weights.py",
-    "src/stardust/frame/_ops.py",
-    "src/stardust/htest/_common.py",
-    "src/stardust/htest/_contingency.py",
-    "src/stardust/htest/_correlation.py",
-    "src/stardust/htest/_parametric.py",
-    "src/stardust/htest/_proportion.py",
-    "src/stardust/htest/_rank.py",
-    "src/stardust/htest/_resampling.py",
-    "src/stardust/htest/_result.py",
-    "src/stardust/integrate/__init__.py",
-    "src/stardust/integrate/_cubature.py",
-    "src/stardust/integrate/_gauss.py",
-    "src/stardust/integrate/_quadpack.py",
-    "src/stardust/integrate/_result.py",
-    "src/stardust/random/__init__.py",
-    "src/stardust/regression/__init__.py",
-    "src/stardust/regression/_diagnostics.py",
-    "src/stardust/regression/_linear.py",
-    "src/stardust/regression/_select.py",
-    "src/stardust/regression/_tests.py",
-    "src/stardust/sparse/__init__.py",
-    "src/stardust/sparse/_base.py",
-    "src/stardust/sparse/_common.py",
-    "src/stardust/sparse/_construct.py",
-    "src/stardust/sparse/_direct.py",
-    "src/stardust/sparse/_dok.py",
-    "src/stardust/sparse/_eigen.py",
-    "src/stardust/sparse/_index.py",
-    "src/stardust/sparse/_interface.py",
-    "src/stardust/sparse/_interop.py",
-    "src/stardust/sparse/_iterative.py",
-    "src/stardust/sparse/_matfuncs.py",
-    "src/stardust/sparse/_ops.py",
-    "src/stardust/stats/_descriptive.py",
-    "tests/array/test_api_surface.py",
-    "tests/array/test_sparse_counterparts.py",
-    "tests/differentiate/test_derivative.py",
-    "tests/differentiate/test_weights.py",
-    "tests/frame/test_elementwise.py",
-    "tests/frame/test_reduce.py",
-    "tests/golden/cases_differentiate.py",
-    "tests/golden/cases_integrate.py",
-    "tests/golden/cases_optimize.py",
-    "tests/golden/cases_regression.py",
-    "tests/golden/data/array.json",
-    "tests/golden/data/differentiate.json",
-    "tests/golden/data/htest.json",
-    "tests/golden/data/integrate.json",
-    "tests/golden/data/optimize.json",
-    "tests/golden/data/regression.json",
-    "tests/golden/data/sparse.json",
-    "tests/golden/data/special.json",
-    "tests/golden/data/stats.json",
-    "tests/htest/test_contingency.py",
-    "tests/htest/test_correlation.py",
-    "tests/htest/test_parametric.py",
-    "tests/htest/test_rank.py",
-    "tests/htest/test_resampling.py",
-    "tests/integrate/test_cubature.py",
-    "tests/integrate/test_quadpack.py",
-    "tests/integrate/test_quadpack_weights.py",
-    "tests/integrate/test_result.py",
-    "tests/linalg/test_sparse_counterparts.py",
-    "tests/optimize/test_diff.py",
-    "tests/random/test_alloc_errors.py",
-    "tests/random/test_random.py",
-    "tests/regression/test_api_surface.py",
-    "tests/regression/test_linear.py",
-    "tests/regression/test_selection.py",
-    "tests/sparse/test_arithmetic.py",
-    "tests/sparse/test_construct.py",
-    "tests/sparse/test_conversions.py",
-    "tests/sparse/test_direct.py",
-    "tests/sparse/test_dok.py",
-    "tests/sparse/test_eigen.py",
-    "tests/sparse/test_formats.py",
-    "tests/sparse/test_indexing.py",
-    "tests/sparse/test_interface.py",
-    "tests/sparse/test_iterative.py",
-    "tests/sparse/test_matfuncs.py",
-    "tests/special/test_distributions.py",
-    "tests/stats/test_descriptive.py",
-    "tests/stats/test_distributions.py",
-    "tests/test_summary.py"
-   ],
-   "date": "2026-11-22T07:15:15",
-   "machine": "arm64",
-   "python": "3.15.0",
-   "references": {
-    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
-    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
-    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
-    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
-    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
-    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
    }
   }
  },
@@ -288,7 +298,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -315,8 +324,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/anderson",
@@ -347,7 +357,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -387,8 +396,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/anderson_ksamp",
@@ -419,7 +429,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -446,8 +455,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/ansari",
@@ -478,7 +488,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -529,8 +538,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/barnard_exact",
@@ -561,7 +571,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -588,8 +597,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/bartlett",
@@ -631,7 +641,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -682,8 +691,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/binomtest",
@@ -704,24 +714,24 @@
     },
     "pvalue": {
      "points": 20,
-     "ulp_max": 2.0,
-     "ulp_p999": 2.0,
-     "rel_max": 3.9497069609724173e-16,
-     "contract": 0.03949706960972417,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 6.260928040986576e-16,
+     "contract": 0.06260928040986576,
      "bound": 1e-14,
      "worst": [
-      "binomtest/less-tail"
+      "binomtest/greater"
      ]
     },
     "conf_int": {
      "points": 20,
-     "ulp_max": 2.0,
-     "ulp_p999": 2.0,
-     "rel_max": 3.890584375025317e-16,
-     "contract": 0.038905843750253175,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.5238344724466998e-16,
+     "contract": 0.015238344724466998,
      "bound": 1e-14,
      "worst": [
-      "binomtest/p-tenth"
+      "binomtest/upper-side"
      ]
     },
     "conf_int_wilson": {
@@ -739,15 +749,14 @@
      "points": 20,
      "ulp_max": 2.0,
      "ulp_p999": 2.0,
-     "rel_max": 3.679902929882244e-16,
-     "contract": 0.03679902929882244,
+     "rel_max": 4.1383626757077573e-16,
+     "contract": 0.041383626757077574,
      "bound": 1e-14,
      "worst": [
-      "binomtest/p-tenth"
+      "binomtest/deep-tail"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -831,8 +840,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/boschloo_exact",
@@ -863,7 +873,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -890,8 +899,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/brunnermunzel",
@@ -912,13 +922,13 @@
     },
     "pvalue": {
      "points": 7,
-     "ulp_max": 4.0,
-     "ulp_p999": 4.0,
-     "rel_max": 5.131379329018087e-16,
-     "contract": 0.006597082054453413,
+     "ulp_max": 5.0,
+     "ulp_p999": 5.0,
+     "rel_max": 7.581924099374399e-16,
+     "contract": 0.017233200006098157,
      "bound": 1e-14,
      "worst": [
-      "brunnermunzel/small"
+      "brunnermunzel/ties"
      ]
     },
     "df": {
@@ -933,7 +943,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -960,8 +969,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/bws_test",
@@ -992,7 +1002,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1019,8 +1028,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/chatterjeexi",
@@ -1051,7 +1061,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1078,8 +1087,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/chi2_contingency",
@@ -1103,7 +1113,7 @@
      "ulp_max": 70.0,
      "ulp_p999": 70.0,
      "rel_max": 1.2294480959710117e-14,
-     "contract": 0.030693987382405436,
+     "contract": 0.010436903564639628,
      "bound": 1e-14,
      "worst": [
       "chi2_contingency/weighted"
@@ -1121,7 +1131,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1172,8 +1181,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/cochrans_q",
@@ -1197,10 +1207,10 @@
      "ulp_max": 84.0,
      "ulp_p999": 84.0,
      "rel_max": 1.0424013151188562e-14,
-     "contract": 0.04319962946287156,
+     "contract": 0.007739005210281095,
      "bound": 1e-14,
      "worst": [
-      "cochrans_q/small"
+      "cochrans_q/k4"
      ]
     },
     "df": {
@@ -1215,7 +1225,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -1242,8 +1251,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/combine_pvalues",
@@ -1274,7 +1284,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1301,8 +1310,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/confint_proportions_2indep",
@@ -1312,8 +1322,8 @@
    "regions": {
     "conf_int": {
      "points": 44,
-     "ulp_max": 6.0,
-     "ulp_p999": 6.0,
+     "ulp_max": 12.0,
+     "ulp_p999": 12.0,
      "rel_max": 7.207443785446435e-14,
      "contract": 0.12683153483944185,
      "bound": 1e-14,
@@ -1322,7 +1332,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "conf_int": {
@@ -1338,8 +1347,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/cramervonmises",
@@ -1370,7 +1380,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1421,8 +1430,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/cramervonmises_2samp",
@@ -1443,9 +1453,9 @@
     },
     "pvalue": {
      "points": 13,
-     "ulp_max": 1.2104217344537781e+17,
-     "ulp_p999": 1.2104217344537781e+17,
-     "rel_max": 119491752.34701848,
+     "ulp_max": 1.1653857381800731e+17,
+     "ulp_p999": 1.1653857381800731e+17,
+     "rel_max": 59745875.67350924,
      "contract": 1.0,
      "bound": 1e-14,
      "worst": [
@@ -1453,7 +1463,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1480,8 +1489,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/dagostino",
@@ -1512,7 +1522,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1563,8 +1572,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/dunnett",
@@ -1574,24 +1584,24 @@
    "regions": {
     "statistic": {
      "points": 20,
-     "ulp_max": 0.0,
-     "ulp_p999": 0.0,
-     "rel_max": 8.933322450831219e-17,
-     "contract": 0.00893332245083122,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2976911961022442e-16,
+     "contract": 0.012976911961022441,
      "bound": 1e-14,
      "worst": [
-      "dunnett/one[0]"
+      "dunnett/three-less[0]"
      ]
     },
     "pvalue": {
      "points": 20,
-     "ulp_max": 16.0,
-     "ulp_p999": 16.0,
-     "rel_max": 1.7628622206188783e-15,
-     "contract": 0.027928696775125224,
+     "ulp_max": 30.0,
+     "ulp_p999": 30.0,
+     "rel_max": 3.319828865387901e-15,
+     "contract": 0.016806654363238627,
      "bound": 1e-14,
      "worst": [
-      "dunnett/three-less[1]"
+      "dunnett/three-less[2]"
      ]
     },
     "df": {
@@ -1607,17 +1617,16 @@
     },
     "conf_int": {
      "points": 5,
-     "ulp_max": 12.0,
-     "ulp_p999": 12.0,
-     "rel_max": 1.812603526879385e-15,
-     "contract": 0.1812603526879385,
+     "ulp_max": 6.0,
+     "ulp_p999": 6.0,
+     "rel_max": 1.0635083608974404e-15,
+     "contract": 0.05931124548705787,
      "bound": 1e-14,
      "worst": [
       "dunnett/three-greater[0]"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1668,8 +1677,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/epps_singleton_2samp",
@@ -1711,7 +1721,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1738,8 +1747,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/f_oneway",
@@ -1751,19 +1761,19 @@
      "points": 10,
      "ulp_max": 2.0,
      "ulp_p999": 2.0,
-     "rel_max": 2.1528121948074372e-16,
-     "contract": 0.021528121948074373,
+     "rel_max": 1.8551643235574114e-16,
+     "contract": 0.018551643235574112,
      "bound": 1e-14,
      "worst": [
-      "f_oneway/welch-offset"
+      "f_oneway/welch"
      ]
     },
     "pvalue": {
      "points": 10,
-     "ulp_max": 175.0,
-     "ulp_p999": 175.0,
-     "rel_max": 3.3381354382581227e-14,
-     "contract": 0.026783377852188654,
+     "ulp_max": 122.0,
+     "ulp_p999": 122.0,
+     "rel_max": 2.325960250953948e-14,
+     "contract": 0.018305173623880656,
      "bound": 1e-14,
      "worst": [
       "f_oneway/two-groups"
@@ -1792,7 +1802,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1867,8 +1876,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/fisher_exact",
@@ -1899,7 +1909,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -1939,8 +1948,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/fligner",
@@ -1982,7 +1992,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2033,8 +2042,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/friedmanchisquare",
@@ -2076,7 +2086,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2127,8 +2136,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/goodness_of_fit",
@@ -2163,14 +2173,13 @@
      "ulp_max": 152.0,
      "ulp_p999": 152.0,
      "rel_max": 1.9419588542606935e-14,
-     "contract": 0.5305462160841039,
+     "contract": 0.5187165052633973,
      "bound": 1e-14,
      "worst": [
       "goodness_of_fit/gumbel_r-cvm"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2186,8 +2195,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/jarque_bera",
@@ -2218,7 +2228,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2269,8 +2278,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/kendalltau",
@@ -2301,7 +2311,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2352,8 +2361,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/kruskal",
@@ -2395,7 +2405,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2446,8 +2455,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/ks_1samp",
@@ -2478,7 +2488,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2529,8 +2538,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/ks_2samp",
@@ -2561,7 +2571,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2612,8 +2621,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/levene",
@@ -2634,13 +2644,13 @@
     },
     "pvalue": {
      "points": 7,
-     "ulp_max": 184.0,
-     "ulp_p999": 184.0,
-     "rel_max": 3.62219332483697e-14,
-     "contract": 0.030153413522434173,
+     "ulp_max": 186.0,
+     "ulp_p999": 186.0,
+     "rel_max": 3.6616473482529823e-14,
+     "contract": 0.03373480925511413,
      "bound": 1e-14,
      "worst": [
-      "levene/tail"
+      "levene/large"
      ]
     },
     "df_num": {
@@ -2666,7 +2676,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2717,8 +2726,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/mannwhitneyu",
@@ -2760,7 +2770,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2811,8 +2820,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/mcnemar",
@@ -2836,14 +2846,13 @@
      "ulp_max": 7.0,
      "ulp_p999": 7.0,
      "rel_max": 1.580938028647999e-15,
-     "contract": 0.02409279176710982,
+     "contract": 0.0180670381758627,
      "bound": 1e-14,
      "worst": [
-      "mcnemar/large"
+      "mcnemar/exact"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -2883,8 +2892,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/median_test",
@@ -2937,7 +2947,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -2964,8 +2973,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/mood",
@@ -2996,7 +3006,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3047,8 +3056,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/multipletests",
@@ -3068,7 +3078,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "pvalues_corrected": {
@@ -3110,8 +3119,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/multiscale_graphcorr",
@@ -3131,7 +3141,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3147,8 +3156,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/odds_ratio",
@@ -3201,7 +3211,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3274,8 +3283,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/page_trend_test",
@@ -3306,7 +3316,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3333,8 +3342,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/pearsonr",
@@ -3344,39 +3354,38 @@
    "regions": {
     "statistic": {
      "points": 21,
-     "ulp_max": 0.0,
-     "ulp_p999": 0.0,
-     "rel_max": 1.083884633634086e-16,
-     "contract": 0.010838846336340859,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 1.735295140016992e-16,
+     "contract": 0.01735295140016992,
      "bound": 1e-14,
      "worst": [
-      "pearsonr/large"
+      "pearsonr/near-1-eps7"
      ]
     },
     "pvalue": {
      "points": 21,
-     "ulp_max": 5.0,
-     "ulp_p999": 5.0,
-     "rel_max": 6.714401064845785e-16,
-     "contract": 0.037785002005220836,
+     "ulp_max": 8.0,
+     "ulp_p999": 8.0,
+     "rel_max": 1.6202920802754181e-15,
+     "contract": 0.008478237639104755,
      "bound": 1e-14,
      "worst": [
-      "pearsonr/three"
+      "pearsonr/scale-huge"
      ]
     },
     "conf_int": {
      "points": 19,
-     "ulp_max": 45.0,
-     "ulp_p999": 45.0,
-     "rel_max": 8.767195919839674e-15,
-     "contract": 0.025109686027501694,
+     "ulp_max": 103.0,
+     "ulp_p999": 103.0,
+     "rel_max": 1.993385268714495e-14,
+     "contract": 0.028160715874067387,
      "bound": 1e-14,
      "worst": [
-      "pearsonr/large"
+      "pearsonr/scale-huge"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3406,7 +3415,7 @@
       "ulp_max": 141.0,
       "ulp_p999": 141.0,
       "rel_max": 2.7593287382973287e-14,
-      "contract": 0.40372096770142957,
+      "contract": 0.40372096770142946,
       "bound": 1e-14,
       "worst": [
        "pearsonr/offset-both"
@@ -3441,7 +3450,7 @@
       "ulp_max": 73590196.0,
       "ulp_p999": 73590196.0,
       "rel_max": 9.608381068564944e-09,
-      "contract": 823871.9936098256,
+      "contract": 823871.9936098255,
       "bound": 1e-14,
       "worst": [
        "pearsonr/offset-both"
@@ -3449,8 +3458,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/permutation_test",
@@ -3481,7 +3491,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3521,8 +3530,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/poisson_means_test",
@@ -3543,17 +3553,16 @@
     },
     "pvalue": {
      "points": 13,
-     "ulp_max": 2.0,
-     "ulp_p999": 2.0,
-     "rel_max": 3.487784799007201e-16,
-     "contract": 0.03487784799007201,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 4.183336465540626e-16,
+     "contract": 0.04183336465540626,
      "bound": 1e-14,
      "worst": [
-      "poisson_means_test/diff"
+      "poisson_means_test/small"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3580,8 +3589,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/power_divergence",
@@ -3591,24 +3601,24 @@
    "regions": {
     "statistic": {
      "points": 25,
-     "ulp_max": 10.0,
-     "ulp_p999": 10.0,
-     "rel_max": 1.2971254773419658e-15,
-     "contract": 0.12971254773419658,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.412834721457672e-16,
+     "contract": 0.02412834721457672,
      "bound": 1e-14,
      "worst": [
-      "power_divergence/cr-near-equal"
+      "power_divergence/lambda-near-minus-1"
      ]
     },
     "pvalue": {
      "points": 25,
-     "ulp_max": 803.0,
-     "ulp_p999": 803.0,
-     "rel_max": 1.7422453350100124e-13,
-     "contract": 0.031237636750704116,
+     "ulp_max": 432.0,
+     "ulp_p999": 432.0,
+     "rel_max": 6.654279200582991e-14,
+     "contract": 0.017086345571705776,
      "bound": 1e-14,
      "worst": [
-      "chisquare/expected"
+      "power_divergence/lambda-near-minus-1"
      ]
     },
     "df": {
@@ -3623,7 +3633,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3674,8 +3683,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/proportion_confint",
@@ -3688,14 +3698,13 @@
      "ulp_max": 72.0,
      "ulp_p999": 72.0,
      "rel_max": 9.501169024348599e-15,
-     "contract": 0.05174040071880363,
+     "contract": 0.042754651784214,
      "bound": 1e-14,
      "worst": [
-      "proportion_confint/jeffreys-zero"
+      "proportion_confint/wilson-rare"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "conf_int": {
@@ -3724,8 +3733,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/proportions_chisquare",
@@ -3767,7 +3777,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -3807,8 +3816,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/proportions_ztest",
@@ -3839,7 +3849,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -3879,8 +3888,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/quantile_test",
@@ -3901,10 +3911,10 @@
     },
     "pvalue": {
      "points": 8,
-     "ulp_max": 3.0,
-     "ulp_p999": 3.0,
-     "rel_max": 4.218557828197377e-16,
-     "contract": 0.04218557828197377,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.1092789140986884e-16,
+     "contract": 0.021092789140986886,
      "bound": 1e-14,
      "worst": [
       "quantile_test/small"
@@ -3933,7 +3943,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -3971,8 +3980,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/ranksums",
@@ -4003,7 +4013,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4043,8 +4052,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/relative_risk",
@@ -4075,7 +4085,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "relative_risk": {
@@ -4102,8 +4111,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/shapiro",
@@ -4134,7 +4144,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4185,8 +4194,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/somersd",
@@ -4217,7 +4227,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4244,8 +4253,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/spearmanrho",
@@ -4266,17 +4276,16 @@
     },
     "pvalue": {
      "points": 10,
-     "ulp_max": 2.0,
-     "ulp_p999": 2.0,
-     "rel_max": 3.65839784030623e-16,
-     "contract": 0.008949871363532352,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.0807440498659554e-16,
+     "contract": 0.005090313410303358,
      "bound": 1e-14,
      "worst": [
       "spearmanrho/less"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4327,8 +4336,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/test_proportions_2indep",
@@ -4425,7 +4435,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "statsmodels": {
      "statistic": {
@@ -4452,8 +4461,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/ttest",
@@ -4474,21 +4484,21 @@
     },
     "pvalue": {
      "points": 32,
-     "ulp_max": 133.0,
-     "ulp_p999": 133.0,
-     "rel_max": 2.0201041232816257e-14,
-     "contract": 0.03647448893093652,
+     "ulp_max": 134.0,
+     "ulp_p999": 134.0,
+     "rel_max": 1.850345475229074e-14,
+     "contract": 0.02398944421147933,
      "bound": 1e-14,
      "worst": [
-      "ttest_1samp/offset"
+      "ttest_ind/small"
      ]
     },
     "df": {
      "points": 32,
      "ulp_max": 1.0,
      "ulp_p999": 1.0,
-     "rel_max": 1.744892935608946e-16,
-     "contract": 0.01744892935608946,
+     "rel_max": 2.4373886763314927e-16,
+     "contract": 0.024373886763314926,
      "bound": 1e-14,
      "worst": [
       "ttest_ind/small-welch"
@@ -4506,7 +4516,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4579,8 +4588,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/tukey_hsd",
@@ -4601,13 +4611,13 @@
     },
     "pvalue": {
      "points": 43,
-     "ulp_max": 27.0,
-     "ulp_p999": 27.0,
-     "rel_max": 5.139627951908906e-15,
-     "contract": 0.03321404988862593,
+     "ulp_max": 30.0,
+     "ulp_p999": 30.0,
+     "rel_max": 5.870171168920496e-15,
+     "contract": 0.020933216968286022,
      "bound": 1e-14,
      "worst": [
-      "tukey_hsd/small-df[0]"
+      "tukey_hsd/games-howell[1]"
      ]
     },
     "df": {
@@ -4623,17 +4633,16 @@
     },
     "conf_int": {
      "points": 12,
-     "ulp_max": 11.0,
-     "ulp_p999": 11.0,
-     "rel_max": 2.1740187575121027e-15,
-     "contract": 0.01996483590623772,
+     "ulp_max": 5.0,
+     "ulp_p999": 5.0,
+     "rel_max": 1.1333111331940462e-15,
+     "contract": 0.030908362906677842,
      "bound": 1e-14,
      "worst": [
-      "tukey_hsd/small-df[0]"
+      "tukey_hsd/three[2]"
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4708,8 +4717,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/weightedtau",
@@ -4740,7 +4750,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4767,8 +4776,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   },
   {
    "id": "htest/wilcoxon",
@@ -4810,7 +4820,6 @@
      ]
     }
    },
-   "run": "20261122-071515-f0a7f92+",
    "comparators": {
     "scipy": {
      "statistic": {
@@ -4850,8 +4859,9 @@
      }
     }
    },
-   "comparators_run": "20261122-070905-f0a7f92+",
-   "comparator_seconds": 60.0
+   "comparator_seconds": 60.0,
+   "run": "20261122-185357-1483fa0+",
+   "comparators_run": "20261122-185357-1483fa0+"
   }
  ]
 }

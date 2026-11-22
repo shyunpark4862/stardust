@@ -21,7 +21,7 @@
 
 ## 1. 속도 (`bench/speed`)
 
-속도의 기준선(`bench/speed/results/<영역>.json`)과 표(`bench/<영역>/speed.md`)는 아직 없다. 전체 측정을 한 번 하면 생긴다(§1.9). 그 전까지 C++ 비용표는 이전 파일의 값을 둔다(§1.6).
+속도의 기준선(`bench/speed/results/<영역>.json`)은 htest와 sparse에만 있고, 표(`bench/<영역>/speed.md`)는 htest, sparse, integrate, differentiate에만 있다(표의 머리가 만든 실행 파일을 적는다). 나머지 영역은 전체 측정을 한 번 하면 생긴다(§1.9). 그 전까지 C++ 비용표는 §1.6의 값을 둔다.
 
 ### 1.1 명령
 
@@ -121,6 +121,8 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 
 - `csrc/stats/cost_table.hpp`: 키 `분포.메서드`(예: `normal.cdf`). stats의 연속·이산·극값 분포 사례가 채운다. 같은 키의 사례가 여럿이면(매개변수 묶음이 여럿) 기하평균이다. 이산 분포의 좁은 지지 사례는 키 `분포.메서드@memo`로 따로 잰다. 스칼라 매개변수에서 정수점 기억 표가 답하는 호출(원소당 1–2 ns)의 비용이고, 표에서 `memo = true`인 줄이 된다. 넓은 지지의 계산(수백 ns–수십 µs)과 섞으면 좁은 지지 호출이 무거운 가중치를 받아 10스레드가 1스레드보다 느려진다. 아직 잰 적 없는 `@memo` 키의 줄은 `bench/speed/cost.py`의 값으로 채워, 첫 측정 전에도 좁은 지지 가중치가 켜진다: 역함수(icdf, iccdf, ilogcdf, ilogccdf)의 24줄은 점검 실행에서 잰 1스레드 시간(`MEMO_PRESET_NS`, 원소당 9–1080 ns), 나머지는 `MEMO_DEFAULT_NS`(1.5 ns)다. 측정하면 잰 값으로 바뀐다.
 - `csrc/special/cost_table.hpp`: 키는 함수 이름(예: `erf`, `erf_complex`, `_add`). special의 10⁶ 원소 사례가 채운다. `csrc/special/cost.hpp`는 연산마다 이 표의 어느 이름을 쓰는지만 적는다. 표에 없는 이름은 컴파일되지 않는다.
+
+지금의 `csrc/stats/cost_table.hpp`는 기준선이 아니라 2026-11-22에 분포 사례를 한 번 잰 실행에서 `cost`의 코드로 만든 것이다(docs/design/stats.md T63). 전체 측정 뒤 `cost`로 다시 만든다.
 
 `cost`는 기준선에 있는 키만 바꾸고 나머지 줄은 지금 파일의 값을 둔다. `cost --check`는 쓰지 않고 바뀔지만 알린다(바뀌면 종료 코드 1). 아직 기준선이 없는 영역, 먹이는 사례가 없어 영영 바뀌지 않는 줄(Bernoulli의 넓은 지지 줄 등), 줄이 없는 사례 키도 함께 알린다. 헤더가 바뀌면 다음 `import stardust`에서 C++가 다시 빌드된다.
 
