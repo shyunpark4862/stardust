@@ -104,10 +104,9 @@ struct LogNormal {
     // -(z^2 / 2 + log(sigma sqrt(2 pi)) + log x) in the scalar definition's double-doubles: its
     // absolute error is |z| dz + kLq |log x| and the last bit of the sum (1); logpdf against
     // the mixed bound (T20), pdf with exp's kVfExp + 1 more.
-    static void density_chunk(const Chunk<2>& c, double* out, bool log) {
+    static void density_dd(const Chunk<2>& c, double* out, bool* fast, bool log) {
         double zh[kChunkSize], zl[kChunkSize], dz[kChunkSize], lh[kChunkSize], ll[kChunkSize], kh[kChunkSize],
             kl[kChunkSize];
-        bool fast[kChunkSize];
         z_chunk(c, zh, zl, dz, lh, ll);
         ckd::constant(c, kh, kl, [&](int i) { return num::log_dd(c.p[1][i]) + num::kLogSqrt2Pi; });
         for (int i = 0; i < c.n; ++i) {
@@ -126,6 +125,55 @@ struct LogNormal {
             ckd::exp_dd(out, zh, zl, c.n);
             for (int i = 0; i < c.n; ++i) fast[i] = dz[i] <= kFastBudget && out[i] >= 0x1p-1000;
         }
+    }
+    // The first tier: log x as L + r, L = log x by vForce and r = x e^-L - 1 (fma; e^-L by
+    // stats/vmath.hpp's exp, 1.04 units): log x is then off by at most 1.04 units absolutely,
+    // z = (log x - mu) / sigma (two_sum, the quotient and its fma remainder) by 1.04 / sigma, and
+    // the exponent -(z^2 / 2 + log(sigma sqrt(2 pi)) + log x), summed by two_sum with the low
+    // parts gathered, by T = 1.04 (|z| / sigma + 1) + 1 units. pdf: e^(exponent) with
+    // kVfExp + 1 more, inside the budget for |z| / sigma up to about 10 (the bulk); logpdf
+    // against the mixed bound (T20). The rest (and |log x| > 700) goes to density_dd's
+    // double-double log, then to the scalar definition.
+    template <bool Log>
+    static void density_fast(const Chunk<2>& c, double* out, bool* fast) {
+        double L[kChunkSize], e[kChunkSize], kh[kChunkSize], kl[kChunkSize];
+        ck::log(L, c.x, c.n);
+        for (int i = 0; i < c.n; ++i) e[i] = std::fabs(L[i]) <= 700.0 ? -L[i] : 0.0;
+        ck::exp(e, e, c.n);
+        ckd::constant(c, kh, kl, [&](int i) { return num::log_dd(c.p[1][i]) + num::kLogSqrt2Pi; });
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], mu = c.p[0][i], sigma = c.p[1][i];
+            const double r = std::fma(x, e[i], -1.0);
+            const num::DD d = num::dd::two_sum(L[i], -mu);
+            const double q = d.hi / sigma;
+            const double ql = (std::fma(-q, sigma, d.hi) + (d.lo + r)) / sigma;
+            const double zz = q * q;
+            const double zzl = std::fma(q, q, -zz) + 2.0 * q * ql;
+            const num::DD s1 = num::dd::two_sum(-0.5 * zz, -kh[i]);
+            const num::DD s2 = num::dd::two_sum(s1.hi, -L[i]);
+            const double lo = (s1.lo + s2.lo) + ((-0.5 * zzl - kl[i]) - r);
+            const double t = 1.04 * (std::fabs(q) / sigma + 1.0) + 1.0;
+            const bool ok = x > 0.0 && std::fabs(L[i]) <= 700.0 && std::fabs(q) <= 1e150;  // false for NaN
+            if constexpr (Log) {
+                const double v = s2.hi + lo;
+                out[i] = v;
+                fast[i] = ok & (t + std::fabs(v) <= kFastBudget * std::max(1.0, std::fabs(v)));
+            } else {
+                const bool f = ok & (t + ck::kVfExp + 1.0 <= kFastBudget);
+                L[i] = f ? s2.hi : 0.0, e[i] = lo;
+                fast[i] = f;
+            }
+        }
+        if constexpr (!Log) {
+            ckd::exp_dd(out, L, e, c.n);
+            for (int i = 0; i < c.n; ++i) fast[i] = fast[i] & (out[i] >= 0x1p-1000);
+        }
+    }
+    static void density_chunk(const Chunk<2>& c, double* out, bool log) {
+        bool fast[kChunkSize];
+        if (log) density_fast<true>(c, out, fast);
+        else density_fast<false>(c, out, fast);
+        ckd::retry(c, out, fast, [&](const Chunk<2>& s, double* o, bool* f) { density_dd(s, o, f, log); });
         ck::fallback(c.n, fast, out, [&](int i) {
             return log ? logpdf(c.x[i], c.p[0][i], c.p[1][i]) : pdf(c.x[i], c.p[0][i], c.p[1][i]);
         });
@@ -133,7 +181,7 @@ struct LogNormal {
     static void pdf_chunk(const Chunk<2>& c, double* out) { density_chunk(c, out, false); }
     static void logpdf_chunk(const Chunk<2>& c, double* out) { density_chunk(c, out, true); }
     // The scalar definition's first branch for the chunk (special's ndtri kernel, sigma |z| <=
-    // 4), exp by vForce: within kVfExp + 3 of it.
+    // 4), exp by ck::exp: within kVfExp + 3 of it.
     static void quantile_chunk(const Chunk<2>& c, double* out, bool upper) {
         double z[kChunkSize], el[kChunkSize];
         bool fast[kChunkSize];

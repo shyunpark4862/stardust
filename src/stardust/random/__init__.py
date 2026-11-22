@@ -293,23 +293,27 @@ class Generator:
     schedule: for reproducible threads, give each its own spawn().
     """
 
-    __slots__ = ("_seq", "_key", "_pos", "_lock")
+    # _st: the key and position (stardust._core.random.State, native: a reservation is atomic
+    # there, and the scalar samplers take from it directly); _lock guards _seq with them for
+    # state and spawn (the position alone moves without it)
+    __slots__ = ("_seq", "_st", "_lock")
 
     def __init__(self, _seq=None, _pos=0):
         if not isinstance(_seq, _SeedSequence):
             raise TypeError("Generator(): make a generator with sd.random.default_rng(seed)")
         self._seq = _seq
-        self._key = _seq.key()
-        self._pos = _pos
+        k0, k1 = _seq.key()
+        self._st = _k.State(k0, k1, _pos)
         self._lock = threading.Lock()
 
+    @property
+    def _key(self):
+        return self._st.get()[0]
+
     def _reserve(self, n):
-        """Take n elements of the stream: (key, position), read together under the lock, so
+        """Take n elements of the stream: (key, position), read and moved in one native step, so
         that a `state` assigned from another thread is seen whole or not at all."""
-        with self._lock:
-            key, p = self._key, self._pos
-            self._pos = (p + n) & _MASK64
-        return key, p
+        return self._st.reserve(n)
 
     def _take(self, n, name, nbytes=None):
         """_reserve(n) for a call `name` whose result takes nbytes (8 per element unless
@@ -327,7 +331,7 @@ class Generator:
     def state(self):
         """The generator's state: a dict with its seed sequence and position (writable)."""
         with self._lock:
-            seq, pos = self._seq, self._pos
+            seq, pos = self._seq, self._st.get()[1]
         return {
             "bit_generator": "Philox4x64-10",
             "entropy": seq.entropy,
@@ -364,8 +368,10 @@ class Generator:
         if not 0 <= pos <= _MASK64:
             raise ValueError(".state: 'position' must be an int in [0, 2**64)")
         seq = _SeedSequence(entropy, spawn_key, n_spawned)
+        k0, k1 = seq.key()
         with self._lock:
-            self._seq, self._key, self._pos = seq, seq.key(), pos
+            self._seq = seq
+            self._st.set(k0, k1, pos)
 
     def spawn(self, n, /):
         """n independent generators, each with its own key (numpy's SeedSequence.spawn)."""
@@ -387,6 +393,8 @@ class Generator:
 
     def random(self, shape=None, /):
         """Uniform float64 on [0, 1): a float, or an array of `shape`."""
+        if shape is None:  # one float, made directly (no array, no allocation check for 8 bytes)
+            return _k.uniform1_state(self._st)  # (the reservation native)
         shp = _result_shape(shape, "random")
         n = 1 if shp is None else _size(shp)
         key, pos = self._take(n, "random")
@@ -503,8 +511,8 @@ class Generator:
                 if k > int(sd.count_nonzero(p)):
                     raise ValueError("choice(): fewer non-zero probabilities in 'p' than the sample size")
                 key, pos = self._take(n, "choice")
-                keys = _k.race_keys(key[0], key[1], pos, p)
-                idx = sd.argsort(keys)[:k]
+                # the k smallest keys E/p in (key, index) order: argsort(keys)[:k] (stable)
+                idx = _k.race_choice(key[0], key[1], pos, p, k)
         res = idx if pool is None else sd.take(pool, idx)
         if shp is None:
             return res[0]

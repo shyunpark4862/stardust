@@ -60,9 +60,12 @@ inline double tail(double a, DD y, bool upper) {
     return upper ? r.q - d : r.p + d;
 }
 
+inline bool finite_log_upper(double a, DD y, double& out);
 // log P(a, y) (upper: log Q). The smaller side: log of its value, or below the
-// normal range log_tail's unrounded pieces; the larger: log1p(-smaller).
+// normal range log_tail's unrounded pieces; the larger: log1p(-smaller). log Q for an
+// integer a with its exponent apart (finite_log_upper).
 inline double log_tail(double a, DD y, bool upper) {
+    if (double l; upper && finite_log_upper(a, y, l)) return l;
     const special::igam_detail::PQ r = special::igam_detail::igam(a, y.hi);
     const double d = r.xderiv * (y.lo / y.hi);
     const double p = r.p + d, q = r.q - d;
@@ -149,6 +152,26 @@ inline bool finite_upper(double a, DD y, double& q) {
     return true;
 }
 
+// log Q(a, y) = -y + log s for an integer a (finite_upper's sum s, its exponent kept apart: the
+// log of the rounded e^-y s was an ULP off -y, Poisson's logcdf(0) = -mu, the chi-square's
+// logccdf at df = 2 = -x/2): a = 1 (s = 1) at every y; else for y >= a and y <= 690
+// (finite_upper's range) where log s <= y / 2, so that -y + log s cancels at most one bit
+// (nearer the median it cancelled ~20 to 1: 13 ULP at Poisson(19.2).logcdf(17)). False
+// elsewhere: the log of Q itself.
+inline bool finite_log_upper(double a, DD y, double& out) {
+    if (a == 1.0 && y.hi == y.hi) {
+        out = -y.hi - y.lo;
+        return true;
+    }
+    if (!(a <= kFiniteMax && a >= 2.0 && a == std::floor(a) && y.hi >= a && y.hi <= 690.0)) return false;
+    DD s{1.0, 0.0};
+    for (int k = static_cast<int>(a) - 1; k >= 1; --k) s = s * dd::DD(y / static_cast<double>(k)) + 1.0;
+    const double ls = std::log(s.hi);
+    if (!(ls <= 0.5 * y.hi)) return false;
+    out = -y.hi + (ls + (s.lo / s.hi - y.lo));
+    return true;
+}
+
 // P(a, y) or Q(a, y) for the distributions (the gamma, chi-square and inverse gamma cdfs):
 // the finite sum where it applies, else `tail`.
 inline double dist_tail(double a, DD y, bool upper) {
@@ -159,6 +182,7 @@ inline double dist_tail(double a, DD y, bool upper) {
 // log of it: Q is the smaller side wherever the finite sum is used.
 inline double dist_log_tail(double a, DD y, bool upper) {
     double q;
+    if (double l; upper && finite_log_upper(a, y, l)) return l;
     if (finite_upper(a, y, q)) return upper ? std::log(q) : std::log1p(-q);
     return log_tail(a, y, upper);
 }
@@ -250,16 +274,19 @@ inline constexpr double kDeepP = 0x1p-1000;
 // as a float64 before s scales it).
 inline double lower_inverse(double a, double s, double p, DD lt) {
     if (p >= kDeepP) {
-        const double est = (lt.hi + special::Gammaln::f(a + 1.0)) / a;  // log of the leading-term root
+        thread_local num::Memo memo;  // log Gamma(a + 1), per shape (an array of p has one)
+        const double lg = memo.get(a, 0.0, [&] { return DD{special::Gammaln::f(a + 1.0), 0.0}; }).hi;
+        const double est = (lt.hi + lg) / a;  // log of the leading-term root
         if (est > -40.0) return s * special::Gammaincinv::f(a, p);
     }
     return deep_inverse(a, lt, true, s);
 }
-// The upper side: sd.special's gammainccinv (Boost's inverse and one Halley step on igam,
-// special/ops/incgamma.hpp). Where the finite sum gives Q (finite_upper: 2a an integer, the
-// root at or above a) that step is taken on it instead of igam's continued fraction: the
-// same step from a value at least as accurate, with x Q' = -y^a e^-y / Gamma(a) in double
-// (it multiplies a step of a few 1e-15 x: 1e-10 would do).
+// The upper side: sd.special's gammainccinv (Boost's find_inverse_gamma as the starting value,
+// then our Halley steps on igam: special/ops/incgamma.hpp, halley_fast.hpp). Where the finite
+// sum gives Q (finite_upper: 2a an integer, the root at or above a) Boost's inverse is taken
+// whole and one Halley step is taken on that sum instead of igam: a value at least as
+// accurate, with x Q' = -y^a e^-y / Gamma(a) in double (it multiplies a step of a few 1e-15 x:
+// 1e-10 would do).
 // A small shape's upper root far below 1: P = 1 - q = y^a / Gamma(a + 1) (1 + O(y)), so
 //     log y = (log(1 - q) + log Gamma(1 + a)) / a,
 // exact to the doubles once y < 2^-960. Where that is the case, log y (true); the root is
@@ -401,10 +428,6 @@ inline DD log_gamma_dd(DD z) {
     return l;
 }
 
-// log Gamma(a) + log s as a double-double (the density kernel's constant);
-// log Gamma(a) = log Gamma(1 + a) - log a (nothing large to round for a tiny a).
-inline DD log_norm(double a, double s) { return log_gamma_dd(DD{1.0, 0.0} + a) - num::log_dd(a) + num::log_dd(s); }
-
 // Past this a parameter's log-gammas (terms of a log a, double-doubles) are no longer good to
 // a hundredth of a unit: the kernels leave such parameters to the scalar definitions.
 inline constexpr double kPlainMax = 1e10;
@@ -434,7 +457,7 @@ inline constexpr double kPlainMax = 1e10;
 // The scalar definition keeps what is left: huge shapes near the mode, far tails, the ends
 // of the support, non-finite values.
 // logpdf returns lh + ll rounded (one more unit of |l|) under the mixed bound (T20):
-// T + |l| <= kFastBudget max(1, |l|). pdf returns e^lh (1 + ll) with vForce's exp: T, kVfExp
+// T + |l| <= kFastBudget max(1, |l|). pdf returns e^lh (1 + ll) with ck::exp: T, kVfExp
 // and two roundings, while the result is a normal number.
 namespace dens {
 
@@ -480,6 +503,35 @@ inline DD log(DD x) {
     return dd::quick_two_sum(s.hi, lo);
 }
 inline constexpr double kLog = 0x1p-10;  // its error in units of 2^-53 per unit of |log x|
+
+// log Gamma(z) for z > 0 a double-double, as gamma_detail::log_gamma_dd (the shift to w >= 13,
+// Stirling's series to k = 8) with dens::log for the two logs where w <= 64: their 2^-63
+// relative is then at most 2^-55 absolute ((w - 1/2) log w <= 266, log of the shift's product
+// <= 23), against dd::log's 8 ns each 3. Larger w takes log_gamma_dd, and z below 2^-1000 (the
+// product would leave the normal range) log Gamma(1 + z) - log z.
+inline DD log_gamma(DD z) {
+    if (z.hi < 0x1p-1000) return gamma_detail::log_gamma_dd(DD{1.0, 0.0} + z) - num::log_dd(z.hi);
+    if (!(z.hi <= 64.0)) return gamma_detail::log_gamma_dd(z);
+    // the shift's product z (z + 1) ... (z + n - 1) in four independent chains (a double-double
+    // product's latency, not its work, was the cost)
+    const int n = z.hi < 13.0 ? static_cast<int>(std::ceil(13.0 - z.hi)) : 0;
+    DD pr[4] = {{1.0, 0.0}, {1.0, 0.0}, {1.0, 0.0}, {1.0, 0.0}};
+    for (int k = 0; k < n; ++k) pr[k & 3] = pr[k & 3] * (z + static_cast<double>(k));
+    const DD prod = (pr[0] * pr[1]) * (pr[2] * pr[3]);
+    const DD w = z + static_cast<double>(n);
+    const DD lw = dens::log(w);
+    // the series sum_k B_2k / (2k (2k - 1)) t^(k-1), t = 1 / w^2, by Estrin's scheme (Horner's
+    // eight dependent steps were the longest chain); it is below 2^-7, so its rounding is nothing
+    const double r = 1.0 / w.hi, t = r * r, t2 = t * t;
+    const double q0 = (1.0 / 12 + t * (-1.0 / 360)) + t2 * (1.0 / 1260 + t * (-1.0 / 1680));
+    const double q1 = (1.0 / 1188 + t * (-691.0 / 360360)) + t2 * (1.0 / 156 + t * (-3617.0 / 122400));
+    const double series = q0 + (t2 * t2) * q1;
+    DD l = w * lw - w - lw * 0.5 + num::kLogSqrt2Pi + series * r;
+    if (prod.hi != 1.0 || prod.lo != 0.0) l = l - dens::log(prod);
+    return l;
+}
+// log of a positive finite double as a double-double: dens::log in the normal range, else num::log_dd.
+inline DD log_pos(double v) { return v >= 0x1p-1000 && v <= 0x1p1000 ? dens::log(DD{v, 0.0}) : num::log_dd(v); }
 
 struct In {
     DD k1, x1, k2, x2, lin, c;
@@ -577,7 +629,7 @@ template <class Precise>
 inline void gamma_kernel(
     int n, const double* x, const double* a, const double* s, bool inverse, bool log, double* out, Precise&& precise
 ) {
-    thread_local Const cst_gamma, cst_inverse;  // (one each: a gamma and an inverse gamma may alternate)
+    thread_local Const cst_gamma, cst_inverse, cst_ls;  // (one each: a gamma and an inverse gamma may alternate)
     Const& cst = inverse ? cst_inverse : cst_gamma;
     kernel<false>(
         n, log, out,
@@ -585,7 +637,8 @@ inline void gamma_kernel(
             In in = kBlank;
             const DD c = cst.get(a[i], s[i], [&] {
                 const bool valid = a[i] > 0.0 && a[i] <= gamma_detail::kPlainMax && s[i] > 0.0 && std::isfinite(s[i]);
-                return valid ? gamma_detail::log_norm(a[i], s[i]) : DD{kNaN, 0.0};
+                return valid ? log_gamma(DD{a[i], 0.0}) + cst_ls.get(s[i], 0.0, [&] { return log_pos(s[i]); })
+                             : DD{kNaN, 0.0};
             });
             in.x1 = inverse ? quotient(s[i], x[i]) : quotient(x[i], s[i]);
             in.k1 = dd::two_sum(a[i], inverse ? 1.0 : -1.0);

@@ -355,80 +355,71 @@ nb::object logpdf(
             M, std::clamp<std::int64_t>(16384 / std::max<std::int64_t>(1, d * d), 16, 2048), M * d * d,
             [&](std::int64_t, std::int64_t m0, std::int64_t m1) {
                 std::vector<double> zh(static_cast<std::size_t>(d)), zl(static_cast<std::size_t>(d));
-                // the fast path's r, z and its bounds (zero past d), and the batch element's mu
-                std::vector<double> buf(static_cast<std::size_t>(3 * dp + d), 0.0);
-                double *r = buf.data(), *z = r + dp, *e = z + dp, *mub = e + dp;
+                // the fast path's r, z and its bounds (zero past d), the batch element's mu, and a
+                // second point's r for the pairs
+                std::vector<double> buf(static_cast<std::size_t>(4 * dp + d), 0.0);
+                double *r = buf.data(), *z = r + dp, *e = z + dp, *r2 = e + dp, *mub = r2 + dp;
                 const std::int64_t xs1 = x.strides[1];
                 std::int64_t last = -1;
                 double df = kNaN;
                 bool bad = true;  // the batch element's parameters are invalid
-                for (std::int64_t m = m0; m < m1; ++m) {
-                    const std::int64_t b = eli(bi, m);
-                    if (b != last) {
-                        last = b, df = el(dfa, b);
-                        bad = el(ok, b) == 0.0 || std::isnan(df);
-                        for (std::int64_t i = 0; i < d; ++i) mub[i] = el(mu, b, i);
-                    }
-                    if (bad) {
-                        po[m] = kNaN;
-                        continue;
-                    }
-                    // r = x - mu (rounded: the fast path's) and whether x is all finite, one pass
+                // r = x_m - mu (rounded: the fast path's) into rr; whether x_m is all finite
+                auto residual = [&](std::int64_t m, double* rr) {
                     const char* xb = reinterpret_cast<const char*>(x.data) + m * x.strides[0];
                     bool finite = true;
                     for (std::int64_t i = 0; i < d; ++i) {
                         const double xi = *reinterpret_cast<const double*>(xb + i * xs1);
                         finite = finite & (std::fabs(xi) < kInf);
-                        r[i] = xi - mub[i];
+                        rr[i] = xi - mub[i];
                     }
-                    if (!finite) {  // a NaN: NaN; else an infinite component: density 0
-                        bool nan = false;
-                        for (std::int64_t i = 0; i < d; ++i) nan = nan || std::isnan(el(x, m, i));
-                        po[m] = nan ? kNaN : (as_pdf ? 0.0 : -kInf);
-                        continue;
+                    return finite;
+                };
+                // a NaN: NaN; else an infinite component: density 0
+                auto not_finite = [&](std::int64_t m) {
+                    bool nan = false;
+                    for (std::int64_t i = 0; i < d; ++i) nan = nan || std::isnan(el(x, m, i));
+                    po[m] = nan ? kNaN : (as_pdf ? 0.0 : -kInf);
+                };
+                // the fast path's result from Q to within err (ddla::fast_norm2): po[m] and true
+                // when it fits the budget. c = cst[b] is exact to the double-double; l = c.hi -
+                // t (its error exactly, by TwoSum) + c.lo rounds once: u |l| + u^2 |c.hi|.
+                // Normal: t = Q / 2, off by err / 2. t: t = a log1p(Q / df), a = (df + d) / 2 the
+                // same double as below; log1p moves by at most err / (df + Q - err), the
+                // quotient, log1p (libm, 2 u allowed) and the product by 4 u t in all. The
+                // density is exp(l), relative error the bound on l, so its budget is absolute:
+                // exp(hi) (1 + lo) rounds three times (libm's exp allowed 2 u): 4 u.
+                // Anything non-finite fails the test.
+                auto accept = [&](std::int64_t m, std::int64_t b, double q, double err) {
+                    const DD c = cst[b];
+                    double t, bound;
+                    if (std::isinf(df)) {
+                        t = 0.5 * q;
+                        bound = 0.5 * err;
+                    } else {
+                        const double a = 0.5 * df + hd;
+                        const double den = df + q - err;
+                        t = a * std::log1p(q / df);
+                        bound = den > 0.0 ? a * err / den + 4.5 * kU * t : kInf;
                     }
-                    if (pf) {
-                        // Q to within err (ddla::fast_norm2), then the same formula in plain
-                        // double. c = cst[b] is exact to the double-double; l = c.hi - t (its
-                        // error exactly, by TwoSum) + c.lo rounds once: u |l| + u^2 |c.hi|.
-                        // Normal: t = Q / 2, off by
-                        // err / 2. t: t = a log1p(Q / df), a = (df + d) / 2 the same double as
-                        // below; log1p moves by at most err / (df + Q - err), the quotient,
-                        // log1p (libm, 2 u allowed) and the product by 4 u t in all. The
-                        // density is exp(l), relative error the bound on l, so its budget is
-                        // absolute: exp(hi) (1 + lo) rounds three times (libm's exp allowed
-                        // 2 u): 4 u.
-                        // Anything non-finite fails the test.
-                        stats::ddla::fast_solve(pf + b * fs, d, r, nullptr, z, e);
-                        double err;
-                        const double q = stats::ddla::fast_norm2(z, e, d, err);
-                        const DD c = cst[b];
-                        double t, bound;
-                        if (std::isinf(df)) {
-                            t = 0.5 * q;
-                            bound = 0.5 * err;
-                        } else {
-                            const double a = 0.5 * df + hd;
-                            const double den = df + q - err;
-                            t = a * std::log1p(q / df);
-                            bound = den > 0.0 ? a * err / den + 4.5 * kU * t : kInf;
+                    const DD sdd = dd::two_sum(c.hi, -t);
+                    const double lo = sdd.lo + c.lo;
+                    if (as_pdf) {
+                        if (bound + kU * (4.0 + kU * std::fabs(c.hi)) <= kQuadBudget && std::fabs(sdd.hi) <= 700.0) {
+                            po[m] = std::exp(sdd.hi) * (1.0 + lo);
+                            return true;
                         }
-                        const DD s = dd::two_sum(c.hi, -t);
-                        const double lo = s.lo + c.lo;
-                        if (as_pdf) {
-                            if (bound + kU * (4.0 + kU * std::fabs(c.hi)) <= kQuadBudget && std::fabs(s.hi) <= 700.0) {
-                                po[m] = std::exp(s.hi) * (1.0 + lo);
-                                continue;
-                            }
-                        } else {
-                            const double l = s.hi + lo;
-                            if (bound + kU * (std::fabs(l) + kU * std::fabs(c.hi)) <=
-                                kQuadBudget * std::max(1.0, std::fabs(l))) {
-                                po[m] = l;
-                                continue;
-                            }
+                    } else {
+                        const double l = sdd.hi + lo;
+                        if (bound + kU * (std::fabs(l) + kU * std::fabs(c.hi)) <=
+                            kQuadBudget * std::max(1.0, std::fabs(l))) {
+                            po[m] = l;
+                            return true;
                         }
                     }
+                    return false;
+                };
+                // the double-double substitution
+                auto precise = [&](std::int64_t m, std::int64_t b) {
                     const DD q =
                         quad_form(plh + b * d * d, pll + b * d * d, pih + b * d, pil + b * d, x, m, mu, b, d, zh, zl);
                     if (!(std::isfinite(q.hi) && std::isfinite(q.lo) && std::isfinite(q.hi / df))) [[unlikely]] {
@@ -442,12 +433,48 @@ nb::object logpdf(
                                             );
                         const double l = log_density_scaled(cst[b], qs, E, df, hd);
                         po[m] = as_pdf ? std::exp(l) : l;
-                        continue;
+                        return;
                     }
                     const DD l = std::isinf(df)
                                      ? cst[b] - q * 0.5
                                      : cst[b] - dd_log1p(q / df) * (0.5 * df + hd);  // - (df+d)/2 log1p(Q/df)
                     po[m] = as_pdf ? num::exp_dd(l) : l.hi + l.lo;
+                };
+                const bool pairs = pf && d <= stats::ddla::kPairMaxDim;
+                for (std::int64_t m = m0; m < m1; ++m) {
+                    const std::int64_t b = eli(bi, m);
+                    if (b != last) {
+                        last = b, df = el(dfa, b);
+                        bad = el(ok, b) == 0.0 || std::isnan(df);
+                        for (std::int64_t i = 0; i < d; ++i) mub[i] = el(mu, b, i);
+                    }
+                    if (bad) {
+                        po[m] = kNaN;
+                        continue;
+                    }
+                    if (!residual(m, r)) {
+                        not_finite(m);
+                        continue;
+                    }
+                    if (pairs && m + 1 < m1 && eli(bi, m + 1) == b && residual(m + 1, r2)) {
+                        // two points of the same batch element together (ddla::fast_pair: the
+                        // same Q and bounds as one at a time)
+                        float64x2_t R[stats::ddla::kPairMaxDim];
+                        for (std::int64_t k = 0; k < dp; ++k) R[k] = vcombine_f64(vld1_f64(r + k), vld1_f64(r2 + k));
+                        alignas(16) double q[2], er[2];
+                        stats::ddla::fast_pair(pf + b * fs, d, R, q, er);
+                        for (int lane = 0; lane < 2; ++lane)
+                            if (!accept(m + lane, b, q[lane], er[lane])) precise(m + lane, b);
+                        ++m;
+                        continue;
+                    }
+                    if (pf) {
+                        stats::ddla::fast_solve(pf + b * fs, d, r, nullptr, z, e);
+                        double err;
+                        const double q = stats::ddla::fast_norm2(z, e, d, err);
+                        if (accept(m, b, q, err)) continue;
+                    }
+                    precise(m, b);
                 }
             }
         );
@@ -496,6 +523,38 @@ nb::object entropy(nb::handle ldh_obj, nb::handle ldl_obj, nb::handle ok_obj, nb
     return wrap(std::move(out));
 }
 
+// out[q * dq + r] = sum_k z_q[k] Lt[k * dq + r] (k = 0..d-1 in order, one fma chain per
+// output) for S consecutive rows z_q = z + q d, r < dq: components in tiles of eight (four
+// vectors), the rows' z_q[k] broadcast. Lt is zero past each column's end, so row r's chain
+// past k = r adds only 0 * z.
+template <int S>
+inline void mul_lt(const double* Lt, std::int64_t d, std::int64_t dq, const double* z, double* out) {
+    for (std::int64_t r0 = 0; r0 < dq; r0 += 8) {
+        float64x2_t a[S][4];
+        for (int q = 0; q < S; ++q)
+            for (int v = 0; v < 4; ++v) a[q][v] = vdupq_n_f64(0.0);
+        const std::int64_t kend = std::min(d, r0 + 8);  // columns past r0 + 7 are zero in this tile
+        for (std::int64_t k = 0; k < kend; ++k) {
+            const double* l = Lt + k * dq + r0;
+            const float64x2_t l0 = vld1q_f64(l), l1 = vld1q_f64(l + 2), l2 = vld1q_f64(l + 4), l3 = vld1q_f64(l + 6);
+            for (int q = 0; q < S; ++q) {
+                const double zk = z[q * d + k];
+                a[q][0] = vfmaq_n_f64(a[q][0], l0, zk), a[q][1] = vfmaq_n_f64(a[q][1], l1, zk);
+                a[q][2] = vfmaq_n_f64(a[q][2], l2, zk), a[q][3] = vfmaq_n_f64(a[q][3], l3, zk);
+            }
+        }
+        for (int q = 0; q < S; ++q)
+            for (int v = 0; v < 4; ++v) vst1q_f64(out + q * dq + r0 + 2 * v, a[q][v]);
+    }
+}
+
+// The t's scale sqrt(df / V), V = 2 G(df / 2): sqrt((df / 2) / G) for df >= 2 (G cannot
+// underflow), in logs below (lh = log(df / 2)), the same words either way.
+inline double chi_scale(stats::smp::Words& w, const stats::smp::GammaPrep& g, double df, double lh) {
+    if (!g.small) return std::sqrt(0.5 * df / stats::smp::gamma_mt(w, g.d, g.c));
+    return std::exp(0.5 * (lh - stats::smp::log_gamma_draw(w, g)));
+}
+
 // Samples: row i of the (N, d) result is stream element pos + i, its batch i mod B (the
 // result's shape is sample shape + batch + (d,)): mu + L z, z standard normal (the
 // ziggurat, stats/sample_dist.hpp), times sqrt(df / V), V = 2 G(df/2), for the t.
@@ -522,45 +581,103 @@ nb::object sample(
         // (one block alone is 12 ns, 3 ns a normal), and L z as eight interleaved sums per row
         // (one chain is latency-bound, 0.7 ns a term: 2/3 of a row at d = 50)
         const bool dense = Lh.strides[2] == 8 && mu.strides[1] == 8;
-        const std::uint64_t nb = static_cast<std::uint64_t>(d / 4 + 2);
-        for_pieces(
-            N, std::max<std::int64_t>(4, 4096 / std::max<std::int64_t>(1, d * d)), N * d * (d + 8),
-            [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+        // the extra blocks computed ahead per row (a cache only: Words draws the same words past
+        // them): d - 1 normals' words beyond the first, the t's gamma two more, and a few spare
+        // for the ziggurat's rare second rounds
+        bool any_t = false;
+        for (std::int64_t b = 0; b < B; ++b) any_t = any_t || std::isfinite(el(dfa, b));
+        const std::uint64_t nb = static_cast<std::uint64_t>((d - 1 + (any_t ? 2 : 0) + 4) / 4);
+        // One parameter set (the usual call, d >= 2): the rows' z of a piece first, then L z for
+        // four rows at a time (the per-row dot products were half the time at d = 50 and
+        // load-bound). Every row's value is that of the row alone (the bits of the path below):
+        // a call split anywhere, or on any thread count, gives the same rows. (BLAS dtrmm on the
+        // piece was faster still but its rows depended on the piece's size.)
+        const bool blocked =
+            B == 1 && dense && d >= 2 && el(ok, 0) != 0.0 && !std::isnan(el(dfa, 0)) && Lh.strides[1] == 8 * d;
+        if (blocked) {
+            const double df = el(dfa, 0);
+            const double* L = reinterpret_cast<const double*>(Lh.data);
+            const double* m = reinterpret_cast<const double*>(mu.data);
+            const std::int64_t per = std::max<std::int64_t>(16, 16384 / d);
+            // L's columns as rows: Lt[k * dq + r] = L_rk, zero past d (dq = d rounded up to 8)
+            const std::int64_t dq = (d + 7) & ~std::int64_t{7};
+            std::vector<double> Lt(static_cast<std::size_t>(d * dq), 0.0);
+            for (std::int64_t r = 0; r < d; ++r)
+                for (std::int64_t k = 0; k <= r; ++k) Lt[static_cast<std::size_t>(k * dq + r)] = L[r * d + k];
+            for_pieces(N, per, N * d * (d + 8), [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
                 random::Stream s(key);
-                std::vector<double> z(static_cast<std::size_t>(d));
+                std::vector<double> scale(static_cast<std::size_t>(i1 - i0), 1.0);
                 std::vector<std::uint64_t> buf;
+                double* Z = po + i0 * d;  // z in place, then Z L^T, then mu + scale (L z)
+                const bool t = std::isfinite(df);
+                const auto g = stats::smp::gamma_prep(t ? 0.5 * df : 1.0);
+                const double lh = t ? std::log(0.5 * df) : 0.0;
                 stats::smp::each_words(s, pos, i0, i1, nb, buf, [&](std::int64_t i, stats::smp::Words& w) {
-                    const std::int64_t b = i % B;
-                    double* o = po + i * d;
-                    const double df = el(dfa, b);
-                    if (el(ok, b) == 0.0 || std::isnan(df)) {
-                        for (std::int64_t j = 0; j < d; ++j) o[j] = kNaN;
-                        return;
-                    }
+                    double* z = po + i * d;
                     for (std::int64_t j = 0; j < d; ++j) z[j] = stats::smp::std_normal(w);
-                    double scale = 1.0;
-                    if (std::isfinite(df)) {
-                        const auto g = stats::smp::gamma_prep(0.5 * df);
-                        scale = std::exp(0.5 * (std::log(0.5 * df) - stats::smp::log_gamma_draw(w, g)));
-                    }
-                    if (dense) {
-                        const char* L = reinterpret_cast<const char*>(Lh.data) + b * Lh.strides[0];
-                        const double* m =
-                            reinterpret_cast<const double*>(reinterpret_cast<const char*>(mu.data) + b * mu.strides[0]);
-                        for (std::int64_t r = 0; r < d; ++r)
-                            o[r] = m[r] + stats::ddla::dotn(
-                                              reinterpret_cast<const double*>(L + r * Lh.strides[1]), z.data(), r + 1
-                                          ) * scale;
-                        return;
-                    }
-                    for (std::int64_t r = 0; r < d; ++r) {
-                        double acc = 0.0;
-                        for (std::int64_t k = 0; k <= r; ++k) acc += el(Lh, b, r, k) * z[k];
-                        o[r] = el(mu, b, r) + acc * scale;
-                    }
+                    if (t) scale[static_cast<std::size_t>(i - i0)] = chi_scale(w, g, df, lh);
                 });
-            }
-        );
+                // L z: o_r = sum_k z_k L_rk as one fma chain over k in order, for a tile of 4
+                // rows x 8 components at a time (L's columns as vectors of components; 0.5 loads
+                // per fma against 1.25 for the dot products of each row alone). A row's value is
+                // the same chain whatever the tile (the terms past r are 0 * z), so the rows do
+                // not depend on how a call is split.
+                std::vector<double> acc(static_cast<std::size_t>(4 * dq));
+                auto finish = [&](std::int64_t i, int q) {
+                    double* o = po + i * d;
+                    const double sc = scale[static_cast<std::size_t>(i - i0)];
+                    for (std::int64_t r = 0; r < d; ++r) o[r] = m[r] + acc[static_cast<std::size_t>(q * dq + r)] * sc;
+                };
+                std::int64_t i = i0;
+                for (; i + 4 <= i1; i += 4) {
+                    mul_lt<4>(Lt.data(), d, dq, Z + (i - i0) * d, acc.data());
+                    for (int q = 0; q < 4; ++q) finish(i + q, q);
+                }
+                for (; i < i1; ++i) {
+                    mul_lt<1>(Lt.data(), d, dq, Z + (i - i0) * d, acc.data());
+                    finish(i, 0);
+                }
+            });
+        } else {
+            for_pieces(
+                N, std::max<std::int64_t>(4, 4096 / std::max<std::int64_t>(1, d * d)), N * d * (d + 8),
+                [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
+                    random::Stream s(key);
+                    std::vector<double> z(static_cast<std::size_t>(d));
+                    std::vector<std::uint64_t> buf;
+                    stats::smp::each_words(s, pos, i0, i1, nb, buf, [&](std::int64_t i, stats::smp::Words& w) {
+                        const std::int64_t b = i % B;
+                        double* o = po + i * d;
+                        const double df = el(dfa, b);
+                        if (el(ok, b) == 0.0 || std::isnan(df)) {
+                            for (std::int64_t j = 0; j < d; ++j) o[j] = kNaN;
+                            return;
+                        }
+                        for (std::int64_t j = 0; j < d; ++j) z[j] = stats::smp::std_normal(w);
+                        double scale = 1.0;
+                        if (std::isfinite(df))
+                            scale = chi_scale(w, stats::smp::gamma_prep(0.5 * df), df, std::log(0.5 * df));
+                        if (dense) {
+                            const char* L = reinterpret_cast<const char*>(Lh.data) + b * Lh.strides[0];
+                            const double* m = reinterpret_cast<const double*>(
+                                reinterpret_cast<const char*>(mu.data) + b * mu.strides[0]
+                            );
+                            for (std::int64_t r = 0; r < d; ++r)
+                                o[r] =
+                                    m[r] + stats::ddla::dotn(
+                                               reinterpret_cast<const double*>(L + r * Lh.strides[1]), z.data(), r + 1
+                                           ) * scale;
+                            return;
+                        }
+                        for (std::int64_t r = 0; r < d; ++r) {
+                            double acc = 0.0;
+                            for (std::int64_t k = 0; k <= r; ++k) acc += el(Lh, b, r, k) * z[k];
+                            o[r] = el(mu, b, r) + acc * scale;
+                        }
+                    });
+                }
+            );
+        }
     }
     return wrap(std::move(out));
 }

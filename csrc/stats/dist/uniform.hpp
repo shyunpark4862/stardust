@@ -4,6 +4,7 @@
 #pragma once
 
 #include "stats/chunk.hpp"
+#include "stats/chunk_dd.hpp"
 #include "stats/engine.hpp"
 #include "stats/numeric.hpp"
 
@@ -67,6 +68,66 @@ struct Uniform {
     }
     static double logcdf(double x, double a, double b) { return log_tail(x, a, b, false); }
     static double logccdf(double x, double a, double b) { return log_tail(x, a, b, true); }
+
+    // ---- chunk kernels: the scalar definitions without their branches (the same bits); a
+    // width that overflows goes to them.
+    static void pdf_chunk(const Chunk<2>& c, double* out) {
+        bool fast[kChunkSize];
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], a = c.p[0][i], b = c.p[1][i];
+            const double w = b - a;
+            out[i] = x < a || x > b ? 0.0 : 1.0 / w;
+            fast[i] = std::isfinite(w);
+        }
+        ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i], c.p[1][i]); });
+    }
+    // -log(b - a): one libm call per chunk when the parameters are broadcast scalars, else the
+    // scalar definition (whose log it is).
+    static void logpdf_chunk(const Chunk<2>& c, double* out) {
+        if (!(c.same[0] && c.same[1])) {
+            for (int i = 0; i < c.n; ++i) out[i] = logpdf(c.x[i], c.p[0][i], c.p[1][i]);
+            return;
+        }
+        const double a = c.p[0][0], b = c.p[1][0];
+        const double v = logpdf(0.5 * a + 0.5 * b, a, b);
+        for (int i = 0; i < c.n; ++i) out[i] = c.x[i] < a || c.x[i] > b ? -kInf : v;
+    }
+    static void tail_chunk(const Chunk<2>& c, double* out, bool upper) {
+        bool fast[kChunkSize];
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], a = c.p[0][i], b = c.p[1][i];
+            const double w = b - a;
+            const double v = (upper ? b - x : x - a) / w;
+            const double below = upper ? 1.0 : 0.0;
+            out[i] = x <= a ? below : (x >= b ? 1.0 - below : v);
+            fast[i] = std::isfinite(w);
+        }
+        ck::fallback(c.n, fast, out, [&](int i) { return tail(c.x[i], c.p[0][i], c.p[1][i], upper); });
+    }
+    static void cdf_chunk(const Chunk<2>& c, double* out) { tail_chunk(c, out, false); }
+    static void ccdf_chunk(const Chunk<2>& c, double* out) { tail_chunk(c, out, true); }
+    // The scalar definition with vForce's log for log v (v <= 1/2: v's 2 units over |log v| >=
+    // log 2, plus kVfLog) and ckd::log1p for log(1 - u), u = 1 - v the other side's quotient
+    // (u < 1/2: its 2 units times u / ((1 - u) |log(1 - u)|) <= 1.45, plus kLog1p: 9.6).
+    static void log_tail_chunk(const Chunk<2>& c, double* out, bool upper) {
+        double v[kChunkSize], u[kChunkSize];
+        bool fast[kChunkSize];
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], a = c.p[0][i], b = c.p[1][i];
+            const double w = b - a;
+            const double t = (upper ? b - x : x - a) / w, o = (upper ? x - a : b - x) / w;
+            const double below = upper ? 1.0 : 0.0;
+            v[i] = x <= a ? below : (x >= b ? 1.0 - below : t);
+            u[i] = v[i] > 0.5 ? -(x <= a || x >= b ? 0.0 : o) : 0.0;
+            fast[i] = std::isfinite(w) && (v[i] >= 0x1p-1000 || !(x > a && x < b));
+        }
+        ck::log(out, v, c.n);
+        ckd::log1p(u, u, c.n);
+        for (int i = 0; i < c.n; ++i) out[i] = v[i] > 0.5 ? u[i] : out[i];
+        ck::fallback(c.n, fast, out, [&](int i) { return log_tail(c.x[i], c.p[0][i], c.p[1][i], upper); });
+    }
+    static void logcdf_chunk(const Chunk<2>& c, double* out) { log_tail_chunk(c, out, false); }
+    static void logccdf_chunk(const Chunk<2>& c, double* out) { log_tail_chunk(c, out, true); }
 
     // a + p (b - a) for p <= 1/2, b - q (b - a) above (q = 1 - p exact), one rounding.
     static double from_lower(double p, double a, double b) {

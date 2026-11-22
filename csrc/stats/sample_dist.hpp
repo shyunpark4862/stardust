@@ -901,8 +901,14 @@ struct Custom<BetaBinomial> {
     static double draw(Words& w, const State& s) {
         if (s.n == 0.0) return 0.0;
         if (s.at) return s.t.q == 0.0 ? 0.0 : (s.t.qc == 0.0 ? s.n : (w.u01() < s.t.q ? s.n : 0.0));
-        const double d = log_gamma_diff(w, s.ga, s.gb);  // log X - log Y
-        const double p = beta_of_logs(0.0, -d), q = beta_of_logs(0.0, d);
+        double p, q;
+        if (!s.ga.small && !s.gb.small) {  // shapes >= 1: X / (X + Y), Y / (X + Y) directly (the same draws)
+            const double x = gamma_mt(w, s.ga.d, s.ga.c), y = gamma_mt(w, s.gb.d, s.gb.c), t = x + y;
+            p = x / t, q = y / t;
+        } else {
+            const double d = log_gamma_diff(w, s.ga, s.gb);  // log X - log Y
+            p = beta_of_logs(0.0, -d), q = beta_of_logs(0.0, d);
+        }
         if (p == 0.0) return 0.0;
         if (q == 0.0) return s.n;
         // p and q each to a few ULP; the flip in binom_prep takes the smaller one as given

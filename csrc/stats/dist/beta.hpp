@@ -171,15 +171,13 @@ inline Root lower_root(double a, double b, double p, DD lt) {
 
 // ---- pieces of the densities' chunk kernels (beta, t, F) ----------------------------------
 
-// log B(a, b) as a double-double for the kernels' constants (gamma_detail::log_gamma_dd;
-// log Gamma(z) = log Gamma(1 + z) - log z keeps a tiny z out of the shift's product). NaN
+// log B(a, b) as a double-double for the kernels' constants (dens::log_gamma; a tiny shape is
+// the shift's product's first factor, exact, or log_gamma_dd's 1 + z form below 2^-1000). NaN
 // past gamma_detail::kPlainMax, where the log-gammas' cancellation is no longer free.
 inline DD log_beta_dd(double a, double b) {
     if (!(a > 0.0 && b > 0.0 && a <= gamma_detail::kPlainMax && b <= gamma_detail::kPlainMax)) return {kNaN, 0.0};
-    const DD one{1.0, 0.0};
     const DD c = dd::two_sum(a, b);
-    return gamma_detail::log_gamma_dd(one + a) - num::log_dd(a) +
-           (gamma_detail::log_gamma_dd(one + b) - num::log_dd(b)) - (gamma_detail::log_gamma_dd(c + 1.0) - dd::log(c));
+    return dens::log_gamma(DD{a, 0.0}) + dens::log_gamma(DD{b, 0.0}) - dens::log_gamma(c);
 }
 
 // ---- the inverse for small shapes ----------------------------------------------------------------
@@ -335,10 +333,28 @@ struct Beta {
     // cdf a step between neighbouring doubles; special's incomplete beta is not measured near
     // there (F(1.7e308, 1.7e308).cdf(0.5) was 1). The cdfs and inverses are NaN.
     static bool degenerate(double a, double b) { return a > 0x1p100 && b > 0x1p100; }
+    // Beta(1/2, 1/2), the arcsine distribution: P(X <= x) = (2 / pi) asin(sqrt x), its inverse
+    // sin^2(pi p / 2), each from the smaller side (1 - x and 1 - p exact above 1/2): a few libm
+    // operations (the sine's argument 1 unit, sin and asin 2 each, the square root's and the
+    // square's halving and doubling, the products: at most 7 units) against the incomplete
+    // beta's iteration (the inverse took 180 ns).
+    static bool arcsine(double a, double b) { return a == 0.5 && b == 0.5; }
+    static double arcsine_tail(double x, bool upper) {  // 0 < x < 1
+        const bool low = x <= 0.5;
+        const double s = 2.0 * num::kInvPi.hi * std::asin(std::sqrt(low ? x : 1.0 - x));  // the side x is near
+        return low != upper ? s : 1.0 - s;
+    }
+    static double arcsine_root(double p, bool upper) {  // 0 < p < 1
+        const bool low = p <= 0.5;
+        const double h = std::sin(0.5 * num::kPi.hi * (low ? p : 1.0 - p));
+        const double s = h * h;  // the end p is near
+        return low != upper ? s : 1.0 - s;
+    }
     static double tail(double x, double a, double b, bool upper) {
         if (degenerate(a, b)) return kNaN;
         if (x <= 0.0) return upper ? 1.0 : 0.0;
         if (x >= 1.0) return upper ? 0.0 : 1.0;
+        if (arcsine(a, b)) return arcsine_tail(x, upper);
         if (small_shapes(a, b)) {
             // (kept from 2^-960 up: Boost's value loses digits just above the subnormals,
             // 1.7e-13 at 1e-308)
@@ -413,10 +429,12 @@ struct Beta {
     }
     static double icdf(double p, double a, double b) {
         if (!(p > 0.0 && p < 1.0)) return special::Betaincinv::f(a, b, p);
+        if (arcsine(a, b)) return arcsine_root(p, false);
         return solve(p, num::log_dd(p), a, b, false);
     }
     static double iccdf(double p, double a, double b) {
         if (!(p > 0.0 && p < 1.0)) return special::Betainccinv::f(a, b, p);
+        if (arcsine(a, b)) return arcsine_root(p, true);
         return solve(p, num::log_dd(p), a, b, true);
     }
     // From log p: e^lp (lp exact) for the side asked, or, above log 1/2, 1 - e^lp for the

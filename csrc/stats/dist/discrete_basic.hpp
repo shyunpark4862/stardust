@@ -58,7 +58,7 @@ namespace sd::stats {
 //   * P / a with the division's remainder (fma), the sum of the two quotients by two_sum,
 //     the product with D^2 by two_prod: exact up to terms of u^2.
 //   * S: three (or one) Stirling series of size <= 1/156 each to 4u: 0.08u absolute.
-// Together: X is within 0.5u E + 1.1u of its value. The kernels then add vForce's exp or
+// Together: X is within 0.5u E + 1.1u of its value. The kernels then add ck::exp or
 // log and their own factor's roundings, written at each.
 
 namespace saddle {
@@ -160,7 +160,7 @@ inline Parts poisson(double k, double mu) {
 // The kernels' common shape. parts(i) -> Parts of element i; precise(i) -> the scalar
 // definition (called for the elements outside the fast path; it must be safe to call).
 //
-// pmf = sqrt(r) e^xh (1 + xl): X's 0.5u E + 1.1u, vForce's exp (ck::kVfExp = 2.5u), the
+// pmf = sqrt(r) e^xh (1 + xl): X's 0.5u E + 1.1u, ck::exp (ck::kVfExp = 2.5u), the
 // factor 1 + xl and the two products 3u, sqrt(r) (r_err / 2 + 1)u. With r_err <= 4.5 (the
 // negative binomial's: c, c k, 2 pi (.), n / (.)) that is 0.5 E + 9.9 units, inside
 // kFastBudget for E <= 12; a caller whose factor takes more operations passes a smaller e_max.
@@ -408,17 +408,55 @@ struct Bernoulli {
     static double ccdf(double x, double p) { return x < 0.0 ? 1.0 : (x < 1.0 ? p : 0.0); }
     static double logcdf(double x, double p) { return x < 0.0 ? -kInf : (x < 1.0 ? std::log1p(-p) : 0.0); }
     static double logccdf(double x, double p) { return x < 0.0 ? 0.0 : (x < 1.0 ? std::log(p) : -kInf); }
+    // The chunk kernels: the closed forms as branch-free loops, the two logs once per chunk for a
+    // broadcast scalar p (the same libm calls: the same bits as the scalar definitions).
+    template <class F>
+    static void plain_chunk(const Chunk<1>& c, double* out, F&& f) {
+        for (int i = 0; i < c.n; ++i) out[i] = f(c.x[i], c.p[0][i]);
+    }
+    static void pmf_chunk(const Chunk<1>& c, double* out) {
+        plain_chunk(c, out, [](double k, double p) { return pmf(k, p); });
+    }
+    static void cdf_chunk(const Chunk<1>& c, double* out) {
+        plain_chunk(c, out, [](double x, double p) { return cdf(x, p); });
+    }
+    static void ccdf_chunk(const Chunk<1>& c, double* out) {
+        plain_chunk(c, out, [](double x, double p) { return ccdf(x, p); });
+    }
+    // a, b, d: the values at x < 0, x in [0, 1) and x >= 1 (logpmf: elsewhere, k = 0, k = 1)
+    template <class F>
+    static void log_chunk(const Chunk<1>& c, double* out, bool pmf_like, F&& scalar) {
+        if (!c.same[0]) {
+            for (int i = 0; i < c.n; ++i) out[i] = scalar(c.x[i], c.p[0][i]);
+            return;
+        }
+        const double p = c.p[0][0];
+        const double a = scalar(-1.0, p), b = scalar(0.0, p), d = scalar(1.0, p);
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i];
+            out[i] = pmf_like ? (x == 0.0 ? b : (x == 1.0 ? d : a)) : (x < 0.0 ? a : (x < 1.0 ? b : d));
+        }
+    }
+    static void logpmf_chunk(const Chunk<1>& c, double* out) {
+        log_chunk(c, out, true, [](double k, double p) { return logpmf(k, p); });
+    }
+    static void logcdf_chunk(const Chunk<1>& c, double* out) {
+        log_chunk(c, out, false, [](double x, double p) { return logcdf(x, p); });
+    }
+    static void logccdf_chunk(const Chunk<1>& c, double* out) {
+        log_chunk(c, out, false, [](double x, double p) { return logccdf(x, p); });
+    }
     static double icdf(double t, double p) {
-        return disc::settle<Bernoulli>(disc::Inv::icdf, t, Binomial::icdf(t, 1.0, p), p);
+        return disc::settle<Bernoulli>(disc::Inv::icdf, t, Binomial::icdf(t, 1.0, p), nullptr, p);
     }
     static double iccdf(double t, double p) {
-        return disc::settle<Bernoulli>(disc::Inv::iccdf, t, Binomial::iccdf(t, 1.0, p), p);
+        return disc::settle<Bernoulli>(disc::Inv::iccdf, t, Binomial::iccdf(t, 1.0, p), nullptr, p);
     }
     static double ilogcdf(double t, double p) {
-        return disc::settle<Bernoulli>(disc::Inv::ilogcdf, t, Binomial::ilogcdf(t, 1.0, p), p);
+        return disc::settle<Bernoulli>(disc::Inv::ilogcdf, t, Binomial::ilogcdf(t, 1.0, p), nullptr, p);
     }
     static double ilogccdf(double t, double p) {
-        return disc::settle<Bernoulli>(disc::Inv::ilogccdf, t, Binomial::ilogccdf(t, 1.0, p), p);
+        return disc::settle<Bernoulli>(disc::Inv::ilogccdf, t, Binomial::ilogccdf(t, 1.0, p), nullptr, p);
     }
     static double mean(double p) { return p; }
     static double variance(double p) { return p * (1.0 - p); }
@@ -551,6 +589,9 @@ struct Poisson {
             [&](int i, double& lower, double& higher) {
                 const double k = std::floor(c.x[i]), mu = c.p[0][i];
                 if (!(k >= 0.0 && k < 0x1p53 && mu > 0.0 && std::isfinite(mu))) return false;
+                // logcdf at k = 0, log Q(1, mu) = -mu: the scalar log_tail gives it to the last bit
+                // (gamma_detail::finite_log_upper); the log of the rounded Q was an ULP off it
+                if (!upper && k == 0.0) return false;
                 const special::igam_detail::PQ r = special::igam_detail::igam(k + 1.0, mu);
                 lower = r.q, higher = r.p;  // P(X <= k) = Q(k + 1, mu)
                 return true;
@@ -670,19 +711,21 @@ struct Geometric {
         return disc::with_guess(fns(p), std::ceil(log_upper / std::log1p(-p)));
     }
     static double icdf(double t, double p) {
-        return disc::settle<Geometric>(disc::Inv::icdf, t, disc::icdf(t, at(p, std::log1p(-t))), p);
+        return disc::settle<Geometric>(disc::Inv::icdf, t, disc::icdf(t, at(p, std::log1p(-t))), nullptr, p);
     }
     static double iccdf(double t, double p) {
-        return disc::settle<Geometric>(disc::Inv::iccdf, t, disc::iccdf(t, at(p, std::log(t))), p);
+        return disc::settle<Geometric>(disc::Inv::iccdf, t, disc::iccdf(t, at(p, std::log(t))), nullptr, p);
     }
     static double ilogcdf(double t, double p) {
-        return disc::settle<Geometric>(disc::Inv::ilogcdf, t, disc::ilogcdf(t, at(p, std::log(-std::expm1(t)))), p);
+        return disc::settle<Geometric>(
+            disc::Inv::ilogcdf, t, disc::ilogcdf(t, at(p, std::log(-std::expm1(t)))), nullptr, p
+        );
     }
     static double ilogccdf(double t, double p) {
-        return disc::settle<Geometric>(disc::Inv::ilogccdf, t, disc::ilogccdf(t, at(p, t)), p);
+        return disc::settle<Geometric>(disc::Inv::ilogccdf, t, disc::ilogccdf(t, at(p, t)), nullptr, p);
     }
 
-    // ---- chunk kernels: log q and log p once per chunk for a scalar p, vForce's exp ----
+    // ---- chunk kernels: log q and log p once per chunk for a scalar p, ck::exp ----
 
     // The logs of element i: {log q, log p} (double-doubles), from `hoisted` for a scalar p.
     struct Logs {
@@ -702,7 +745,7 @@ struct Geometric {
     static constexpr double kExpMin = -700.0;
 
     // pmf = exp((k - 1) log q + log p): the exponent in double-double as in the scalar
-    // definition (exact to 2^-100 of itself), vForce's exp 2.5u, the factor 1 + lo and the
+    // definition (exact to 2^-100 of itself), ck::exp 2.5u, the factor 1 + lo and the
     // product 2u: 4.5 units.
     static void pmf_kernel(const Chunk<1>& c, double* out) {
         double eh[kChunkSize], el[kChunkSize];
@@ -785,6 +828,7 @@ struct Geometric {
     static void inverse_kernel(const Chunk<1>& c, double* out, LogUpper&& log_upper, Scalar&& scalar, disc::Inv which) {
         const bool same = c.same[0];
         double lq = same ? std::log1p(-c.p[0][0]) : 0.0;
+        disc::InvMemo* m = disc::inv_memo_for<Geometric>(c);  // settle's values at g - 1, for scalar p
         for (int i = 0; i < c.n; ++i) {
             const double t = c.x[i], p = c.p[0][i];
             if (t > 0.0 && t < 1.0 && p > 0.0 && p < 1.0) {
@@ -792,7 +836,7 @@ struct Geometric {
                 const double r = log_upper(t) / lq, g = std::ceil(r);
                 const double margin = 64.0 * kUlp * (r - 1.0 / lq);
                 if (g - r > margin && r - (g - 1.0) > margin && g < 0x1p52) {
-                    out[i] = disc::settle<Geometric>(which, t, g, p);
+                    out[i] = disc::settle<Geometric>(which, t, g, m, p);
                     continue;
                 }
             }

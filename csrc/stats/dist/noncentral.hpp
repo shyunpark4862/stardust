@@ -261,9 +261,10 @@ double invert(const Tail& tail, Target tg, double x0, bool positive) {
 }
 
 // The root of tail(x) = p (the side and p of tg) by Newton steps on log(tail / p), in log x
-// for a positive variable: eval(x, upper, tail, f) gives the tail by the sums of the bulk
-// (relative error inside kFastBudget: special's *_lite) and the density f (a derivative:
-// 1e-8 is enough). The root's error is the tail's, times the tail's length tail / f: the
+// for a positive variable: eval(x, upper, tail, len) gives the tail and its length tail / f,
+// f the density (a derivative: 1e-8 is enough), by sd.special's evaluation for its own
+// inverses (special's *_tail_len: the sums of the bulk, else the walk with its density; the
+// length from the m 2^e values, as a heavy tail's density underflows first). The root's error is the tail's, times the tail's length tail / f: the
 // contract's max(1, kappa). A step d is the last when the next error, K d^2 + 2^-30 d (the
 // quadratic constant K = d / d_prev^2 measured from the two steps, both already in the
 // quadratic regime: d_prev below 2^-5 of the scale max(|x|, tail / f) and d below d_prev / 8;
@@ -276,9 +277,8 @@ bool newton(const Eval& eval, Target tg, double x0, bool positive, double& out) 
     if (!(p >= 0x1p-900 && std::isfinite(x0)) || (positive && !(x0 > 0.0))) return false;
     double x = x0, prev = 0.0;
     for (int it = 0; it < 12; ++it) {
-        double tail, f;
-        if (!eval(x, tg.upper, tail, f) || !(f > 0.0 && tail > 0.0 && std::isfinite(f))) return false;
-        const double len = tail / f;
+        double tail, len;
+        if (!eval(x, tg.upper, tail, len) || !(len > 0.0 && tail > 0.0 && std::isfinite(len))) return false;
         double d = -std::log(tail / p) * len;  // lower tail: increasing in x
         if (tg.upper) d = -d;
         const double scale = std::max(std::fabs(x), len);
@@ -617,8 +617,12 @@ struct NoncentralChiSquared {
         const ncd::Target tg = ncd::target_p(p, upper);
         double out;
         if (ncd::newton(
-                [&](double x, bool u, double& t, double& f) {
-                    return special::nc_detail::ncx2_lite(df, nc, x, u, t, &f);
+                [&](double x, bool u, double& t, double& len) {
+                    // chndtrix's own evaluation (past the bulk's terms, nc = 200, the bracketing
+                    // solver took 3 us an element)
+                    double o;
+                    return x >= 0x1p-1000 && df >= 0x1p-960 && !special::ncx2_obvious(df, nc, x, u, o) &&
+                           special::nc_detail::ncx2_tail_len(df, nc, x, u, t, len);
                 },
                 tg, x0, true, out
             ))
@@ -906,8 +910,8 @@ struct NoncentralF {
         const ncd::Target tg = ncd::target_p(p, upper);
         double out;
         if (ncd::newton(
-                [&](double x, bool u, double& t, double& f) {
-                    return special::nc_detail::ncf_lite(dfn, dfd, nc, x, u, t, &f);
+                [&](double x, bool u, double& t, double& len) {  // ncfdtri's own evaluation
+                    return special::nc_detail::ncf_tail_len(dfn, dfd, nc, x, u, t, len);
                 },
                 tg, x0, true, out
             ))
@@ -1303,8 +1307,8 @@ struct NoncentralT {
         if (p == 1.0) return upper ? -kInf : kInf;
         double out;
         if (ncd::newton(
-                [&](double t, bool u, double& v, double& f) {
-                    return special::nc_detail::nct_lite(df, nc, t, u, v, &f);
+                [&](double t, bool u, double& v, double& len) {  // nctdtrit's own evaluation
+                    return special::nc_detail::nct_tail_len(df, nc, t, u, v, len);
                 },
                 ncd::target_p(p, upper), start(p, df, nc, upper), false, out
             ))

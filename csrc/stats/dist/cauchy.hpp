@@ -105,14 +105,12 @@ struct Cauchy {
     // definition's z.hi; NaN where it must take over).
     //
     // 1 / (pi sigma (1 + z^2)) in double where nothing leaves the normal range (the scalar
-    // definition carries every factor as m 2^e): z^2 (2 for z's 1/2 ULP, 1 for the product),
-    // the sum, the product with sigma and the quotient: at most 6.
+    // definition carries every factor as m 2^e), z = (x - mu) / sigma in double (2 units): z^2
+    // (5), the sum, the product with sigma and the quotient: at most 8.
     static void pdf_chunk(const Chunk<2>& c, double* out) {
-        double zh[kChunkSize], zl[kChunkSize];
         bool fast[kChunkSize];
-        ckd::standardize(c.x, c.p[0], c.p[1], zh, zl, c.n);
         for (int i = 0; i < c.n; ++i) {
-            const double z = zh[i], sigma = c.p[1][i];
+            const double z = (c.x[i] - c.p[0][i]) / c.p[1][i], sigma = c.p[1][i];
             const double d = sigma * (1.0 + z * z);
             out[i] = num::kInvPi.hi / d;
             fast[i] =
@@ -120,22 +118,40 @@ struct Cauchy {
         }
         ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }
-    // -(log(1 + z^2) + log sigma + log pi), the first log by vForce (1 + z^2 carries 4 units,
-    // absolute in its log; kVfLog |log| more), the rest in double-double: 4 + kVfLog |log(1 +
-    // z^2)| and the last rounding, against logpdf's mixed bound (T20).
+    // -(log(1 + z^2) + log sigma + log pi), the first log by vForce (1 + z^2 carries 6 units,
+    // absolute in its log; kVfLog |log| more), k = log sigma + log pi as the scalar definition's
+    // double-double rounded (1 unit of k; per element where sigma is an array), the sum (1 of the
+    // value v): 6 + kVfLog |log(1 + z^2)| + |k| + |v|, against logpdf's mixed bound (T20). With a
+    // scalar sigma >= 1/pi (k >= 0) every z passes: |v| >= log(1 + z^2), k.
     static void logpdf_chunk(const Chunk<2>& c, double* out) {
-        double zh[kChunkSize], zl[kChunkSize], kh[kChunkSize], kl[kChunkSize];
+        double lt[kChunkSize], kh[kChunkSize], kl[kChunkSize];
         bool fast[kChunkSize];
-        ckd::standardize(c.x, c.p[0], c.p[1], zh, zl, c.n);
-        for (int i = 0; i < c.n; ++i) zl[i] = 1.0 + zh[i] * zh[i];
-        ck::log(zl, zl, c.n);
-        ckd::constant(c, kh, kl, [&](int i) { return num::log_dd(c.p[1][i]) + num::kLogPi; });
+        bool all = true;
         for (int i = 0; i < c.n; ++i) {
-            const num::DD l = -(num::DD{kh[i], kl[i]} + zl[i]);
-            out[i] = l.hi + l.lo;
-            const double v = std::fabs(out[i]);
-            fast[i] = std::fabs(zh[i]) < 1e150 &&
-                      4.0 + ck::kVfLog * zl[i] + v <= kFastBudget * std::max(1.0, v);  // false for NaN
+            const double z = (c.x[i] - c.p[0][i]) / c.p[1][i];
+            lt[i] = 1.0 + z * z;
+            all &= std::fabs(z) < 1e150;  // false for NaN
+        }
+        ck::log(lt, lt, c.n);
+        if (c.same[1]) {
+            const num::DD kd = num::log_dd(c.p[1][0]) + num::kLogPi;
+            const double k = kd.hi + kd.lo;
+            if (k >= 0.0 && all) {
+                for (int i = 0; i < c.n; ++i) out[i] = -(lt[i] + k);
+                return;
+            }
+            for (int i = 0; i < c.n; ++i) kh[i] = k;
+        } else {
+            ckd::constant(c, kh, kl, [&](int i) { return num::log_dd(c.p[1][i]) + num::kLogPi; });
+            for (int i = 0; i < c.n; ++i) kh[i] += kl[i];
+        }
+        for (int i = 0; i < c.n; ++i) {
+            const double v = -(lt[i] + kh[i]);
+            out[i] = v;
+            const double av = std::fabs(v);
+            const double z = (c.x[i] - c.p[0][i]) / c.p[1][i];
+            fast[i] = std::fabs(z) < 1e150 &&
+                      6.0 + ck::kVfLog * lt[i] + std::fabs(kh[i]) + av <= kFastBudget * std::max(1.0, av);
         }
         ck::fallback(c.n, fast, out, [&](int i) { return logpdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }

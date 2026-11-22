@@ -51,7 +51,7 @@ using special::Real;
 // non-NaN x: the engine gives the other elements a good element's values in the kernel's
 // copy of the chunk and puts their own values (NaN, a limit's) afterwards. A kernel is the
 // method's definition for every layout: a single element is a chunk of n = 1, and its
-// building blocks (vForce's exp, log, pow, ...: accelerate/vforce.hpp; elementwise loops)
+// building blocks (ck::exp: stats/vmath.hpp; log, pow, ...: accelerate/vforce.hpp; elementwise loops)
 // do not depend on an element's position, so f(x)[i] == f(x[i]) on any thread count.
 //
 // The usual shape: the result in plain double for the whole chunk (vForce), a bound on its
@@ -286,6 +286,30 @@ using Dbl = double;
 // scalar definition for the elements its fast path leaves, and the scalar definition
 // assumes valid() (a Pareto with scale <= 0 never ends there); an element's kernel value
 // depends on that element alone, so the good elements keep their bits.
+//
+// The common case takes a shorter way: every element good (scalar parameters checked once per
+// call, then only a branch-free scan of x for NaNs; parameter arrays checked by one branch-free
+// pass), the kernel reads the operands in place and writes the output in place when they are
+// contiguous and the output does not overlap an input. A broadcast scalar parameter fills its
+// chunk buffer once per call. The kernel computes the same values either way (elementwise).
+template <class D, std::size_t NP, std::size_t... I>
+inline bool all_good_params(const Chunk<NP>& c, std::index_sequence<I...>) {
+    bool ok = true;
+    for (int i = 0; i < c.n; ++i) {
+        bool limit = false;
+        if constexpr (has_limit<D, Dbl<I>...>) limit = D::at_limit(c.p[I][i]...);
+        ok &= !limit & D::valid(c.p[I][i]...) & (c.x[i] == c.x[i]);
+    }
+    return ok;
+}
+inline bool no_nan(const double* x, int n) {
+    bool ok = true;
+    for (int i = 0; i < n; ++i) ok &= x[i] == x[i];
+    return ok;
+}
+// Whether [a, a + n) and [b, b + n) (doubles) are apart.
+inline bool apart(const double* a, const double* b, int n) { return a + n <= b || b + n <= a; }
+
 template <class D, class M, std::size_t... I>
 void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t* s, std::index_sequence<I...>) {
     constexpr std::size_t NP = sizeof...(I);
@@ -296,16 +320,43 @@ void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t*
     unsigned char state[kChunk];
     [[maybe_unused]] double lim[kLimits ? kChunk : 1];
     const bool all_same = ((s[I] == 0) && ...);
+    const int first = static_cast<int>(std::min<std::int64_t>(kChunk, n));
+    // a broadcast scalar parameter: its buffer filled once (the slow path below never writes it)
+    ((s[I] == 0 ? (void)std::fill(pb[I], pb[I] + first, *reinterpret_cast<const double*>(args[I])) : void()), ...);
+    bool same_good = false;  // scalar parameters, valid and not at a limit
+    if (all_same) {
+        bool limit = false;
+        if constexpr (kLimits) limit = D::at_limit(pb[I][0]...);
+        same_good = !limit && D::valid(pb[I][0]...);
+    }
+    const bool out_direct = s[NP + 1] == sizeof(double);
     for (std::int64_t off = 0; off < n; off += kChunk) {
         const int m = static_cast<int>(std::min<std::int64_t>(kChunk, n - off));
         Chunk<NP> c{
             m,
             gather(args[NP] + off * s[NP], s[NP], m, xb),
-            {gather(args[I] + off * s[I], s[I], m, pb[I])...},
+            {(s[I] == 0 ? static_cast<const double*>(pb[I]) : gather(args[I] + off * s[I], s[I], m, pb[I]))...},
             {(s[I] == 0)...}
         };
         // the NaNs, and for a probability or a density + 0.0 (kNonNegative) in the same pass
         constexpr double zero = kNonNegative<M> ? 0.0 : -0.0;  // v + -0.0 is v for every v
+        std::byte* o = args[NP + 1] + off * s[NP + 1];
+        const bool fast = all_same ? same_good && no_nan(c.x, m) : all_good_params<D>(c, std::index_sequence<I...>{});
+        if (fast) {
+            double* dst = ob;
+            if (out_direct) {
+                double* od = reinterpret_cast<double*>(o);
+                if (apart(od, c.x, m) && ((s[I] == 0 || apart(od, c.p[I], m)) && ...)) dst = od;
+            }
+            M::template run_chunk<D, Chunk<NP>>(c, dst);
+            if constexpr (kNonNegative<M>)
+                for (int i = 0; i < m; ++i) dst[i] += zero;
+            if (dst == ob) {
+                if (out_direct) std::memcpy(o, ob, static_cast<std::size_t>(m) * sizeof(double));
+                else scatter(ob, o, s[NP + 1], m);
+            }
+            continue;
+        }
         int good = -1, bad = 0;
         auto classify = [&](int i, bool limit, bool valid) {
             const bool nan = c.x[i] != c.x[i];
@@ -351,7 +402,6 @@ void chunk_loop_impl(std::byte* const* args, std::int64_t n, const std::int64_t*
             else if constexpr (kLimits) ob[i] = state[i] == kLimit ? lim[i] : kNaN;
             else ob[i] = kNaN;
         }
-        std::byte* o = args[NP + 1] + off * s[NP + 1];
         if (s[NP + 1] == sizeof(double)) std::memcpy(o, ob, static_cast<std::size_t>(m) * sizeof(double));
         else scatter(ob, o, s[NP + 1], m);
     }

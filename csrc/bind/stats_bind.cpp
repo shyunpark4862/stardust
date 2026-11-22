@@ -25,15 +25,67 @@
 
 #include <nanobind/nanobind.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <utility>
+
 namespace nb = nanobind;
 
 namespace sd {
 
 namespace {
 
+// One method bound as nary_bind::def does, with a shorter way for the commonest call: every
+// input a Python float and no out= (a distribution object's scalar call). The op's float64
+// loop then runs on one element from the stack, the loop run_nary would pick for those inputs
+// (the same bits); run_nary's argument handling took most of a scalar call (80 ns of 110).
+// Anything else (ints, arrays, out=) is nary_bind's call.
+template <class Op>
+nb::object call_fast(std::span<const nb::handle> objs, nb::handle out) {
+    if (out.is_none()) {
+        double v[Op::nin + 1];
+        bool floats = true;
+        for (int k = 0; k < Op::nin; ++k) {
+            PyObject* o = objs[static_cast<std::size_t>(k)].ptr();
+            floats = floats && PyFloat_CheckExact(o);
+            if (!floats) break;
+            v[k] = PyFloat_AS_DOUBLE(o);
+        }
+        const Loop loop = nary_bind::table_of<Op>()[static_cast<std::size_t>(DType::Float64)].loop;
+        if (floats && loop != nullptr) {
+            std::byte* args[Op::nin + 1];
+            std::int64_t st[Op::nin + 1];
+            for (int k = 0; k <= Op::nin; ++k) {
+                args[k] = reinterpret_cast<std::byte*>(&v[k]);
+                st[k] = sizeof(double);
+            }
+            loop(args, 1, st, nullptr);
+            return nb::steal(PyFloat_FromDouble(v[Op::nin]));
+        }
+    }
+    return nary_bind::call<Op>(objs, out);
+}
+template <class Op>
+void def_fast(nb::module_& m) {
+    [&]<std::size_t... I>(std::index_sequence<I...>) {
+        m.def(
+            Op::name,
+            [](nary_bind::handle_t<I>... xs, nb::handle out) {
+                return call_named(Op::name, [&] {
+                    const nb::handle objs[] = {xs...};
+                    return call_fast<Op>(objs, out);
+                });
+            },
+            nb::sig(nary_bind::signature<Op>()), ((void)I, nb::arg().none())..., nb::kw_only(),
+            nb::arg("out").none() = nb::none()
+        );
+    }(std::make_index_sequence<Op::nin>{});
+}
+
 template <class D, class... M>
 void def_methods(nb::module_& m) {
-    (nary_bind::def<stats::DistOp<D, M>>(m), ...);
+    (def_fast<stats::DistOp<D, M>>(m), ...);
 }
 
 // Every method of a continuous distribution (T9; sample, T7, is bound in bind/stats_sample.cpp).

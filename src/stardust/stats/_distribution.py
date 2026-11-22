@@ -13,6 +13,8 @@ from .. import _calls
 from .. import _core as _sd_core
 from .. import random as _random
 
+_Generator = _random.Generator
+
 _k = _sd_core.stats
 
 # Methods with an input (and out=) besides the density, and the parameter-only ones (T9, T22).
@@ -155,6 +157,36 @@ def _parameter(i, name):
     return property(get, doc=f"The parameter {name}, as given (read-only).")
 
 
+_INPUT_ARG = {"icdf": "p", "iccdf": "p", "ilogcdf": "logp", "ilogccdf": "logp", "pmf": "k", "logpmf": "k"}
+
+
+def _fast_input(name, op, nparams, slow):
+    """The input method `name` of a distribution class with a shorter way for the commonest call,
+    one Python float and no out= (a scalar call took twice the native function's time in the
+    wrapper): the parameters unpacked by arity and the native op called directly. Every other
+    call is the base class's method `slow`, which checks the input (a Python int beyond int64)
+    and passes out=."""
+    ps = ", ".join(f"p{i}" for i in range(nparams))
+    a = _INPUT_ARG.get(name, "x")  # the input's name, as the base method's signature has it
+    src = (
+        f"def {name}(self, {a}, /, *, out=None):\n"
+        f"    if out is None and type({a}) is float:\n"
+        f"        {ps}, = self._p\n"
+        f"        try:\n"
+        f"            return op({ps}, {a})\n"
+        f"        except _RENAMED as e:\n"
+        f"            raise _renamed(e, name, arg, {a}) from None\n"
+        f"    return slow(self, {a}, out=out)\n"
+    )
+    env = {"op": op, "slow": slow, "name": name, "arg": a, "_RENAMED": _RENAMED, "_renamed": _renamed}
+    exec(src, env)
+    f = env[name]
+    f.__qualname__ = name
+    f.__doc__ = slow.__doc__
+    f.__module__ = slow.__module__
+    return f
+
+
 class _Distribution:
     """What the continuous and discrete distributions share. A distribution class sets _name
     (the native prefix) and _params (the parameter names in native order) and defines
@@ -172,9 +204,13 @@ class _Distribution:
         ops = {m: getattr(_k, f"{cls._name}_{m}") for m in cls._density + _INPUT_METHODS + _PARAM_METHODS}
         ops["sample"] = getattr(_k, f"{cls._name}_sample")
         ops["sample1"] = getattr(_k, f"{cls._name}_sample1")
+        ops["sample1s"] = getattr(_k, f"{cls._name}_sample1s")
         cls._ops = ops
+        cls._s1 = staticmethod(ops["sample1s"])  # sample()'s scalar call, one attribute away
         for i, p in enumerate(cls._params):  # read-only attributes (T19)
             setattr(cls, p, _parameter(i, p))
+        for m in cls._density + _INPUT_METHODS:
+            setattr(cls, m, _fast_input(m, ops[m], len(cls._params), getattr(cls, m)))
         _calls.keyword_init(cls)
 
     def __init__(self, *args, **kwargs):
@@ -185,6 +221,14 @@ class _Distribution:
         )
 
     def _set(self, *values):
+        for v in values:  # the common case, Python floats and ints, without the checks below
+            t = type(v)
+            if t is not float and (t is not int or not -_MAX_DOUBLE_INT <= v <= _MAX_DOUBLE_INT):
+                break
+        else:
+            self._p = values
+            self._scalar = tuple(map(float, values))
+            return
         cls = type(self).__name__
         arrays = []
         values = tuple(_kept(_check_param(cls, name, v)) for name, v in zip(self._params, values))
@@ -351,14 +395,16 @@ class _Distribution:
         else an array of shape `shape` + the parameters' broadcast shape. `rng` is an
         sd.random.Generator (sd.random.default_rng(seed)); the values depend on its state only,
         not on the thread count (docs/api/stats.md §2.5)."""
+        if shape is None and type(rng) is _Generator and self._scalar is not None:
+            # one float: no arrays on the way, the stream element reserved natively
+            return self._s1(rng._st, self._scalar)
         if not isinstance(rng, _random.Generator):
             raise TypeError(
                 f"sample(): 'rng' must be an sd.random.Generator (sd.random.default_rng(seed)), "
                 f"not {_sd_core._type_name(rng)}"
             )
-        if shape is None and self._scalar is not None:  # one float: no arrays on the way
-            key, pos = rng._reserve(1)
-            return self._ops["sample1"](key[0], key[1], pos, *self._scalar)
+        if shape is None and self._scalar is not None:
+            return self._ops["sample1s"](rng._st, self._scalar)
         shp = _random._sample_shape(shape)
         arrays = [v for v in self._p if isinstance(v, _sd_core.ndarray)]
         pshape = tuple(_sd_core.broadcast_arrays(*arrays)[0].shape) if arrays else ()

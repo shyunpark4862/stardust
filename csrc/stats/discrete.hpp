@@ -405,7 +405,8 @@ double log_tail_factor(double k, double dir, double end, Ratio&& ratio) {
 // InvMemo keeps both functions' values (the search's own cdf and ccdf: the precise scalar
 // definitions), Memoized wraps a distribution's Fns with it (m = nullptr: no memo).
 struct InvMemo {
-    KMemo cdf, ccdf;
+    KMemo cdf, ccdf, logcdf, logccdf;
+    KMemo mcdf, mccdf, mlogcdf, mlogccdf;  // the methods' own values at k - 1 (settle)
 };
 template <class D>
 InvMemo& inv_memo() {
@@ -419,6 +420,12 @@ InvMemo* inv_memo_for(const Chunk<NP>& c) {
     InvMemo& m = inv_memo<D>();
     bind(m.cdf, c);
     bind(m.ccdf, c);
+    bind(m.logcdf, c);
+    bind(m.logccdf, c);
+    bind(m.mcdf, c);
+    bind(m.mccdf, c);
+    bind(m.mlogcdf, c);
+    bind(m.mlogccdf, c);
     return &m;
 }
 template <class F>
@@ -459,8 +466,22 @@ struct Memoized {
         if (m && v == v) m->ccdf.put(k, v);
         return known(v);
     }
-    double logcdf(double k) const { return unknown ? 0.0 : known(f.logcdf(k)); }
-    double logccdf(double k) const { return unknown ? 0.0 : known(f.logccdf(k)); }
+    double logcdf(double k) const {
+        double v;
+        if (m && m->logcdf.find(k, v)) return v;
+        if (unknown) return 0.0;
+        v = f.logcdf(k);
+        if (m && v == v) m->logcdf.put(k, v);
+        return known(v);
+    }
+    double logccdf(double k) const {
+        double v;
+        if (m && m->logccdf.find(k, v)) return v;
+        if (unknown) return 0.0;
+        v = f.logccdf(k);
+        if (m && v == v) m->logccdf.put(k, v);
+        return known(v);
+    }
     num::DD logccdf_dd(double k) const
         requires requires { f.logccdf_dd(k); }
     {
@@ -497,23 +518,40 @@ double inverse(Inv which, double t, const F& f) {
 // |t|) below kTinyP is left as found: a subnormal tail's double is not relative to it
 // (LogSeries at q = 1.2e-320, ilogcdf(-5e-324)). One or two method evaluations; NaN, infinities and the
 // support's lower end pass.
+// With a memo (scalar parameters over a chunk) the cdf and ccdf methods' values come from it:
+// the same doubles, without an evaluation per element (the hypergeometric's icdf spent most
+// of its 450 ns an element there).
 inline constexpr double kSettleSlack = 1e-15;
 template <class D, class... P>
-double settle(Inv which, double t, double k, P... p) {
+double settle(Inv which, double t, double k, InvMemo* m, P... p) {
     if (!(k == k) || std::isinf(k)) return k;
     const double km = k - 1.0;
     if (!(km >= D::support_lo(p...)) || km + 1.0 != k) return k;  // (past 2^53 k - 1 is no double)
     const bool log = which == Inv::ilogcdf || which == Inv::ilogccdf;
     if (!((log ? -t : std::min(t, 1.0 - t)) >= kTinyP) || t == -kInf) return k;  // (the ends are exact)
+    const auto cdf = [&] {
+        const auto f = [&] { return method_of<D, method::Cdf>(km, p...); };
+        return m ? m->mcdf.get(km, f) : f();
+    };
+    const auto ccdf = [&] {
+        const auto f = [&] { return method_of<D, method::Ccdf>(km, p...); };
+        return m ? m->mccdf.get(km, f) : f();
+    };
     switch (which) {
         case Inv::icdf:
-            if (!(method_of<D, method::Cdf>(km, p...) >= t)) return k;
-            return t <= 0.5 || method_of<D, method::Ccdf>(km, p...) <= (1.0 - t) * (1.0 + kSettleSlack) ? km : k;
+            if (!(cdf() >= t)) return k;
+            return t <= 0.5 || ccdf() <= (1.0 - t) * (1.0 + kSettleSlack) ? km : k;
         case Inv::iccdf:
-            if (!(method_of<D, method::Ccdf>(km, p...) <= t)) return k;
-            return t <= 0.5 || method_of<D, method::Cdf>(km, p...) >= (1.0 - t) * (1.0 - kSettleSlack) ? km : k;
-        case Inv::ilogcdf: return method_of<D, method::Logcdf>(km, p...) >= t ? km : k;
-        default: return method_of<D, method::Logccdf>(km, p...) <= t ? km : k;
+            if (!(ccdf() <= t)) return k;
+            return t <= 0.5 || cdf() >= (1.0 - t) * (1.0 - kSettleSlack) ? km : k;
+        case Inv::ilogcdf: {
+            const auto f = [&] { return method_of<D, method::Logcdf>(km, p...); };
+            return (m ? m->mlogcdf.get(km, f) : f()) >= t ? km : k;
+        }
+        default: {
+            const auto f = [&] { return method_of<D, method::Logccdf>(km, p...); };
+            return (m ? m->mlogccdf.get(km, f) : f()) <= t ? km : k;
+        }
     }
 }
 
@@ -717,13 +755,13 @@ F with_guess(F f, double g) {
     template <class... P>                                                                                        \
     static double fname(double t, P... p) {                                                                      \
         const double k = disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, nullptr, p...)); \
-        return disc::settle<Self>(disc::Inv::fname, t, k, p...);                                                 \
+        return disc::settle<Self>(disc::Inv::fname, t, k, nullptr, p...);                                        \
     }                                                                                                            \
     static void fname##_chunk(const Chunk<NP>& c, double* out) {                                                 \
         disc::InvMemo* m = disc::inv_memo_for<Self>(c);                                                          \
         disc::scalar_kernel<Self>(c, out, [m](double t, auto... p) {                                             \
             const double k = disc::inverse(disc::Inv::fname, t, Self::searcher(disc::Inv::fname, t, m, p...));   \
-            return disc::settle<Self>(disc::Inv::fname, t, k, p...);                                             \
+            return disc::settle<Self>(disc::Inv::fname, t, k, m, p...);                                          \
         });                                                                                                      \
     }
 #define SD_DISC_INVERSES(Self, NP)     \

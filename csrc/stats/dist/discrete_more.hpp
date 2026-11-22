@@ -82,17 +82,19 @@ struct DiscreteUniform {
         return disc::with_guess(fns(lo, hi), lo + std::ceil(p * (hi - lo)) - 1.0);
     }
     static double icdf(double t, double lo, double hi) {
-        return disc::settle<DiscreteUniform>(disc::Inv::icdf, t, disc::icdf(t, at(lo, hi, t)), lo, hi);
+        return disc::settle<DiscreteUniform>(disc::Inv::icdf, t, disc::icdf(t, at(lo, hi, t)), nullptr, lo, hi);
     }
     static double iccdf(double t, double lo, double hi) {
-        return disc::settle<DiscreteUniform>(disc::Inv::iccdf, t, disc::iccdf(t, at(lo, hi, 1.0 - t)), lo, hi);
+        return disc::settle<DiscreteUniform>(disc::Inv::iccdf, t, disc::iccdf(t, at(lo, hi, 1.0 - t)), nullptr, lo, hi);
     }
     static double ilogcdf(double t, double lo, double hi) {
-        return disc::settle<DiscreteUniform>(disc::Inv::ilogcdf, t, disc::ilogcdf(t, at(lo, hi, std::exp(t))), lo, hi);
+        return disc::settle<DiscreteUniform>(
+            disc::Inv::ilogcdf, t, disc::ilogcdf(t, at(lo, hi, std::exp(t))), nullptr, lo, hi
+        );
     }
     static double ilogccdf(double t, double lo, double hi) {
         return disc::settle<DiscreteUniform>(
-            disc::Inv::ilogccdf, t, disc::ilogccdf(t, at(lo, hi, -std::expm1(t))), lo, hi
+            disc::Inv::ilogccdf, t, disc::ilogccdf(t, at(lo, hi, -std::expm1(t))), nullptr, lo, hi
         );
     }
     SD_DISC_MEMO_SCALAR(DiscreteUniform, 2, logcdf, true)  // a log each; the rest is arithmetic
@@ -363,7 +365,7 @@ struct Hypergeometric {
     //     X = X_1 + X_2 - X_3 (two_sum),   r = K (N - K) n (N - n) / (2 pi N k (K - k) (n - k) (N - K - n + k)),
     // the pmf sqrt(r) e^X. Every count is >= 13 and every t within 1/8, or the element goes to
     // the scalar definition (as do totals up to kExactN, whose ratios of integers are exact).
-    //   pmf: X within 0.5u (E_1 + E_2 + E_3) + 3.3u; vForce's exp 2.5u; 1 + xl and two products
+    //   pmf: X within 0.5u (E_1 + E_2 + E_3) + 3.3u; ck::exp 2.5u; 1 + xl and two products
     //        3u; r nine products and quotients and the constant, 9.5u, sqrt: 5.75u. Together
     //        0.5 E + 14.6 units: the fast path keeps to E <= 2.5 (2.2 sd around the mean).
     //   logpmf = X + log(r) / 2 for r <= 1/2 (so log(r) / 2 <= -0.34 and X <= 0.03 add without
@@ -944,7 +946,7 @@ struct LogSeries {
     // the value methods behind their memos (stats/discrete.hpp)
     // pmf = exp((k - 1) log p - log(L / p)) / k, the exponent in double-double with its two
     // logs taken once per chunk for a scalar p (by the functions the per-element path calls):
-    // vForce's exp 2.5u, the factor 1 + lo, the product and the division 3u: 5.5 units (no
+    // ck::exp 2.5u, the factor 1 + lo, the product and the division 3u: 5.5 units (no
     // log k: the scalar definition's third log). logpmf = exponent - log k with vForce's
     // log: both parts are negative, so the 4u of log k and the two sums' 2u are relative to
     // the result: 6 units.

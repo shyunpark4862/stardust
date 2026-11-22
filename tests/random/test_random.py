@@ -418,3 +418,32 @@ def test_errors_from_inside_a_method_pass_unchanged():
     r = sd.random.default_rng(1)
     with pytest.raises(TypeError, match=r"^random\(\): 'shape' must be an int or a tuple of ints, not str$"):
         r.random("3")
+
+
+def test_kernels_match_their_reference_forms():
+    # the fast kernels give the plain forms' values (csrc/random/random.cpp): random()'s scalar,
+    # integers' batched rejections (half the words rejected at r = 2^63 + 1), the weighted
+    # sample without replacement (the k smallest race keys in stable order, ties included)
+    import numpy as np
+
+    k = sd._core.random
+    K0, K1 = 0x1234567, 0xDEADBEEF12345
+    for pos in [*range(40), 2**64 - 1, 2**63 + 5]:
+        assert k.uniform1(K0, K1, pos) == float(k.uniform(K0, K1, pos, (1,))[0])
+    n = 5000
+    for lo, hi in ((-(2**62), 2**62 + 1), (0, 3 * 2**61), (0, 1000)):
+        scalar = k.integers(
+            K0, K1, 77, sd.broadcast_to(sd.asarray([lo]), (n,)), sd.broadcast_to(sd.asarray([hi]), (n,)), False
+        )
+        general = k.integers(K0, K1, 77, sd.full((n,), lo, dtype=sd.int64), sd.full((n,), hi, dtype=sd.int64), False)
+        assert np.array_equal(np.asarray(scalar), np.asarray(general))
+    rng = np.random.default_rng(3)
+    for n, kk in ((20000, 300), (500, 300), (1000, 1000), (10, 0)):
+        p = rng.dirichlet(np.ones(n))
+        p[::7] = 0
+        p[2] = p[5] = 1e-310  # keys cut at the largest double: ties, ordered by index
+        p /= p.sum()
+        ps = sd.asarray(p)
+        got = np.asarray(k.race_choice(K0, K1, 9, ps, kk))
+        want = np.asarray(sd.argsort(k.race_keys(K0, K1, 9, ps)))[:kk]
+        assert np.array_equal(got, want)

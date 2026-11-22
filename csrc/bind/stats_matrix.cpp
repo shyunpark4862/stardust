@@ -526,6 +526,51 @@ nb::object wishart_sample(
 
 // log pdf at x (M, n, p): mean (B, n, p), the factors of U (B, n, n) and V (B, p, p) hi/lo,
 // their log dets hi/lo (B,), ok (B,).
+#if defined(__aarch64__)
+// The fast path's Q and bound for two matrices at once (the lanes; la::fast_solve_pair and
+// fast_norm2_pair: the operations of one matrix at a time, so the same bits): rows of X - M
+// through W_V, then the columns through W_U. x0, x1 read by (i, j).
+template <int DN, int DPP, class X0, class X1, class Mean>
+void matnorm_pair(
+    const double* fu,
+    const double* fv,
+    std::int64_t n,
+    std::int64_t p,
+    X0&& x0,
+    X1&& x1,
+    Mean&& mean,
+    double* q2,
+    double* err2
+) {
+    const float64x2_t zero = vdupq_n_f64(0.0);
+    float64x2_t Y[DN][DPP], EY[DN][DPP];
+    for (std::int64_t i = 0; i < n; ++i) {
+        float64x2_t Rr[DPP];
+        for (int j = 0; j < DPP; ++j) {
+            if (j < p) {
+                const double mu = mean(i, j);
+                Rr[j] = vcombine_f64(vdup_n_f64(x0(i, j) - mu), vdup_n_f64(x1(i, j) - mu));
+            } else {
+                Rr[j] = zero;
+            }
+        }
+        la::fast_solve_pair<DPP, false>(fv, p, Rr, nullptr, Y[i], EY[i]);
+    }
+    float64x2_t q = zero, err = zero;
+    for (std::int64_t c = 0; c < p; ++c) {
+        float64x2_t yc[DN], ec[DN], A[DN], EA[DN], qq, e1;
+        for (int i = 0; i < DN; ++i) yc[i] = i < n ? Y[i][c] : zero, ec[i] = i < n ? EY[i][c] : zero;
+        la::fast_solve_pair<DN, true>(fu, n, yc, ec, A, EA);
+        la::fast_norm2_pair<DN>(A, EA, n, qq, e1);
+        q = vaddq_f64(q, qq), err = vaddq_f64(err, e1);
+    }
+    err = vmulq_f64(
+        vaddq_f64(err, vmulq_f64(vdupq_n_f64((static_cast<double>(p) + 1.5) * kU), q)), vdupq_n_f64(la::kBoundSlack)
+    );
+    vst1q_f64(q2, q), vst1q_f64(err2, err);
+}
+#endif
+
 nb::object matnorm_logpdf(
     nb::handle x_obj,
     nb::handle batch_obj,
@@ -582,19 +627,66 @@ nb::object matnorm_logpdf(
                 std::vector<double> buf(static_cast<std::size_t>(pfu ? pp + 2 * n * pp + 4 * np_ : 0), 0.0);
                 double *rr = buf.data(), *Yf = rr + pp, *Ef = Yf + n * pp, *yc = Ef + n * pp, *ec = yc + np_,
                        *ac = ec + np_, *ea = ac + np_;
-                for (std::int64_t m = m0; m < m1; ++m) {
-                    const std::int64_t b = eli(bi, m);
-                    bool nan = el(ok, b) == 0.0, inf = false;
+                // l from Q to within err: po[m] and true when it fits the budget (see below)
+                auto accept = [&](std::int64_t m, std::int64_t b, double q, double err) {
+                    const DD c = cst[b];
+                    const double t = 0.5 * q, bound = 0.5 * err;
+                    const DD s = dd::two_sum(c.hi, -t);
+                    const double lo = s.lo + c.lo;
+                    if (as_pdf) {
+                        if (bound + kU * (4.0 + kU * std::fabs(c.hi)) <= kQuadBudget && std::fabs(s.hi) <= 700.0) {
+                            po[m] = std::exp(s.hi) * (1.0 + lo);
+                            return true;
+                        }
+                    } else {
+                        const double l = s.hi + lo;
+                        if (bound + kU * (std::fabs(l) + kU * std::fabs(c.hi)) <=
+                            kQuadBudget * std::max(1.0, std::fabs(l))) {
+                            po[m] = l;
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                auto finite = [&](std::int64_t m, bool& nan, bool& inf) {
+                    nan = false, inf = false;
                     for (std::int64_t i = 0; i < n && !nan; ++i)
                         for (std::int64_t j = 0; j < p; ++j) {
                             const double v = el(x, m, i, j);
                             nan = nan || std::isnan(v);
                             inf = inf || std::isinf(v);
                         }
+                    return !(nan || inf);
+                };
+                const bool pairs = pfu && n <= la::kPairMaxDim && p <= la::kPairMaxDim;
+                std::int64_t skip = -1;  // a matrix the pair path finished already
+                for (std::int64_t m = m0; m < m1; ++m) {
+                    if (m == skip) continue;
+                    const std::int64_t b = eli(bi, m);
+                    bool nan = el(ok, b) == 0.0, inf = false;
+                    if (!nan) finite(m, nan, inf);
                     if (nan || inf) {
                         po[m] = nan ? kNaN : (as_pdf ? 0.0 : -kInf);
                         continue;
                     }
+#if defined(__aarch64__)
+                    bool n1 = true, i1 = true;
+                    if (pairs && m + 1 < m1 && eli(bi, m + 1) == b && finite(m + 1, n1, i1)) {
+                        alignas(16) double q2[2], e2[2];
+                        const double *fu = pfu + b * fsu, *fv = pfv + b * fsv;
+                        auto x0 = [&](std::int64_t i, std::int64_t j) { return el(x, m, i, j); };
+                        auto x1 = [&](std::int64_t i, std::int64_t j) { return el(x, m + 1, i, j); };
+                        auto mn = [&](std::int64_t i, std::int64_t j) { return el(mean, b, i, j); };
+                        if (n <= 8 && p <= 8) matnorm_pair<8, 8>(fu, fv, n, p, x0, x1, mn, q2, e2);
+                        else if (n <= 8) matnorm_pair<8, 16>(fu, fv, n, p, x0, x1, mn, q2, e2);
+                        else if (p <= 8) matnorm_pair<16, 8>(fu, fv, n, p, x0, x1, mn, q2, e2);
+                        else matnorm_pair<16, 16>(fu, fv, n, p, x0, x1, mn, q2, e2);
+                        const bool a0 = accept(m, b, q2[0], e2[0]), a1 = accept(m + 1, b, q2[1], e2[1]);
+                        if (a1) skip = m + 1;
+                        if (a0) continue;  // (else m takes the precise path below; m + 1 its own turn)
+                        goto precise;
+                    }
+#endif
                     if (pfu) {
                         // Row i of Y = (X - M) W_V^T is W_V applied to row i of X - M (each
                         // entry rounded once), to within Ef; column c of A = W_U Y is W_U
@@ -617,24 +709,9 @@ nb::object matnorm_logpdf(
                             err += e1;
                         }
                         err = (err + (static_cast<double>(p) + 1.5) * kU * q) * la::kBoundSlack;
-                        const DD c = cst[b];
-                        const double t = 0.5 * q, bound = 0.5 * err;
-                        const DD s = dd::two_sum(c.hi, -t);
-                        const double lo = s.lo + c.lo;
-                        if (as_pdf) {
-                            if (bound + kU * (4.0 + kU * std::fabs(c.hi)) <= kQuadBudget && std::fabs(s.hi) <= 700.0) {
-                                po[m] = std::exp(s.hi) * (1.0 + lo);
-                                continue;
-                            }
-                        } else {
-                            const double l = s.hi + lo;
-                            if (bound + kU * (std::fabs(l) + kU * std::fabs(c.hi)) <=
-                                kQuadBudget * std::max(1.0, std::fabs(l))) {
-                                po[m] = l;
-                                continue;
-                            }
-                        }
+                        if (accept(m, b, q, err)) continue;
                     }
+                precise:
                     // X - M far out (|.| > 2^400) is scaled by 2^-kFar before the solves, so
                     // that neither they nor the squares overflow; Q comes back by ldexp, and
                     // a log density below the doubles is -inf (it was NaN from inf - inf).
@@ -699,14 +776,18 @@ nb::object matnorm_sample(
             [&](std::int64_t, std::int64_t i0, std::int64_t i1) {
                 random::Stream s(key);
                 std::vector<double> Z(static_cast<std::size_t>(n * p)), T(static_cast<std::size_t>(n * p));
-                for (std::int64_t i = i0; i < i1; ++i) {
+                // each matrix's words with its first extra blocks computed four matrices at a
+                // time (a cache: Words draws the same words past them; one block alone is
+                // latency-bound)
+                std::vector<std::uint64_t> wbuf;
+                const std::uint64_t nbk = static_cast<std::uint64_t>((n * p - 1 + 4) / 4);
+                stats::smp::each_words(s, pos, i0, i1, nbk, wbuf, [&](std::int64_t i, stats::smp::Words& w) {
                     const std::int64_t b = i % B;
                     double* o = po + i * n * p;
                     if (el(ok, b) == 0.0) {
                         for (std::int64_t k = 0; k < n * p; ++k) o[k] = kNaN;
-                        continue;
+                        return;
                     }
-                    stats::smp::Words w(s, pos + static_cast<std::uint64_t>(i));
                     for (std::int64_t k = 0; k < n * p; ++k) Z[k] = stats::smp::std_normal(w);
                     for (std::int64_t r = 0; r < n; ++r)  // T = L_U Z
                         for (std::int64_t c = 0; c < p; ++c) {
@@ -720,7 +801,7 @@ nb::object matnorm_sample(
                             for (std::int64_t k = 0; k <= c; ++k) t += T[r * p + k] * el(Vh, b, c, k);
                             o[r * p + c] = el(mean, b, r, c) + t;
                         }
-                }
+                });
             }
         );
     }

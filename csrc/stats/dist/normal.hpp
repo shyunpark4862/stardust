@@ -136,7 +136,7 @@ inline double locate(double mu, double sigma, DD z) {
 // log-normal's) ----------------------------------------------------------------------------
 
 // tail_z for the chunk: special's ndtr kernel at z.hi (the scalar definition calls the same
-// kernel with n = 1) plus phi(z.hi) z.lo, phi through vForce's exp. Only the correction
+// kernel with n = 1) plus phi(z.hi) z.lo, phi through ck::exp. Only the correction
 // differs from the scalar definition, by kVfExp + 1 of itself, and it is at most
 // |z| phi / Phi * 2^-53 <= (z^2 + 1) 2^-53 of the result: the two agree to the last bit or
 // differ in it (bound: 1). z is used as given (negate it for the upper tail); out is NaN
@@ -159,7 +159,7 @@ inline void tail_z_chunk(const double* zh, const double* zl, double* out, int n)
 //           definition 4.4 (bench/stats/opt/a at commit 4151d2a). ok[i] is false where t is below 2^-1000
 //           (the scalar form's region) or z.hi is NaN.
 // Then the first-order correction (phi / Phi)(z.hi) z.lo as the scalar definition's, its
-// exp by vForce (a few units of a term that is itself 2^-53 (z^2 + 1) of the result).
+// exp by ck::exp (a few units of a term that is itself 2^-53 (z^2 + 1) of the result).
 inline void log_tail_z_chunk(const double* zh, const double* zl, double* out, bool* ok, int n) {
     double t[kChunkSize], e[kChunkSize];
     for (int i = 0; i < n; ++i) e[i] = -std::fabs(zh[i]);
@@ -214,7 +214,7 @@ struct Normal {
         }
     }
     // Grade 0, in double: z = (x - mu) / sigma (2 units), z^2 (5), the exponent -z^2 / 2
-    // (2.5 z^2 absolute), exp by vForce and the product with 1 / (sigma sqrt(2 pi)) (itself 1.5):
+    // (2.5 z^2 absolute), exp by ck::exp and the product with 1 / (sigma sqrt(2 pi)) (itself 1.5):
     // 2.5 z^2 + kVfExp + 3.5, inside the budget up to |z| = 2.
     // Grade 1, for the rest: exp of the double-double exponent by vForce, the scalar definition
     // with libm's exp replaced: relative error kVfExp + 1 whatever z (the exponent is exact to
@@ -247,14 +247,47 @@ struct Normal {
         ckd::retry(c, out, fast, [&](const Chunk<2>& s, double* o, bool* f) { pdf_kernel(s, o, f, 1); });
         ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }
-    // The same bits as the scalar definition (no elementary function per element).
+    // In double: z = (x - mu) / sigma (2 units of z), h = z^2 / 2 (5 units of h), k = log sigma +
+    // log sqrt(2 pi) with vForce's log (kVfLog |log sigma| + 2 |k| absolute, from a one-element
+    // call when sigma is a broadcast scalar: the same bits as in an array of scales) and -(h + k)
+    // (1 unit of the value v): at most 5 h + kVfLog |log sigma| + 2 |k| + |v| absolute, inside the
+    // budget of logpdf's mixed bound max(1, |v|) (T20) unless h and k cancel (sigma < 0.4) or are
+    // large. The rest (and |z| > 2^500, x infinite) is the scalar definition's double-double.
     static void logpdf_chunk(const Chunk<2>& c, double* out) {
-        double eh[kChunkSize], el[kChunkSize];
+        double ls[kChunkSize];
         bool fast[kChunkSize];
-        exponent_chunk(c, eh, el);
+        if (c.same[1]) {
+            double l;
+            ck::log(&l, c.p[1], 1);
+            const double k = l + num::kLogSqrt2Pi.hi;
+            if (k >= 0.0) {
+                // then |v| = h + k >= h, k and |log sigma| - 1: the bound is inside the budget for
+                // every finite z (the same values as the general loop below)
+                const double mu = c.p[0][0], sigma = c.p[1][0];
+                bool all = true;
+                for (int i = 0; i < c.n; ++i) {
+                    const double z = (c.x[i] - mu) / sigma;
+                    out[i] = -(0.5 * (z * z) + k);
+                    all &= std::fabs(z) <= 0x1p500;  // false for NaN
+                }
+                if (all) return;
+                for (int i = 0; i < c.n; ++i) fast[i] = std::fabs((c.x[i] - mu) / sigma) <= 0x1p500;
+                ck::fallback(c.n, fast, out, [&](int i) { return logpdf(c.x[i], mu, sigma); });
+                return;
+            }
+            for (int i = 0; i < c.n; ++i) ls[i] = l;
+        } else {
+            ck::log(ls, c.p[1], c.n);
+        }
         for (int i = 0; i < c.n; ++i) {
-            out[i] = eh[i] + el[i];
-            fast[i] = eh[i] == eh[i];
+            const double z = (c.x[i] - c.p[0][i]) / c.p[1][i];
+            const double h = 0.5 * (z * z);
+            const double k = ls[i] + num::kLogSqrt2Pi.hi;
+            const double v = -(h + k);
+            out[i] = v;
+            const double av = std::fabs(v);
+            const double mag = 5.0 * h + ck::kVfLog * std::fabs(ls[i]) + 2.0 * std::fabs(k) + av;
+            fast[i] = std::fabs(z) <= 0x1p500 && mag <= kFastBudget * std::max(1.0, av);  // false for NaN
         }
         ck::fallback(c.n, fast, out, [&](int i) { return logpdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }
@@ -327,8 +360,30 @@ struct Normal {
     // >= q sigma / (phi |x|): within e_t + 2 of the contract's max(1, kappa) (docs/design/
     // stats.md §2.3). The rest (p = 0, 1, outside [0, 1], cancellation with z0 < -1, |z| > 30)
     // goes to the scalar definition.
+    // The Newton step of quantile_chunk for the elements idx[0 .. m): q[j] the smaller side's
+    // probability, z[j] = ndtri(q[j]) <= 0, flip[j] whether x is on the upper side. q and z are
+    // overwritten; out and fast are set for those elements.
+    static void newton_linear(
+        const Chunk<2>& c, const int* idx, int m, double* q, double* z, const bool* flip, double* out, bool* fast
+    ) {
+        double t[kChunkSize];
+        special::Ndtr::chunk(z, t, m);
+        for (int j = 0; j < m; ++j) t[j] = q[j] - t[j];
+        for (int j = 0; j < m; ++j) q[j] = -0.5 * z[j] * z[j];
+        ck::exp(q, q, m);
+        for (int j = 0; j < m; ++j) {
+            const int i = idx[j];
+            const double mu = c.p[0][i], sigma = c.p[1][i];
+            // z0 + dz on the lower side; the other side by symmetry
+            const double dz = t[j] / (num::kInvSqrt2Pi * q[j]);
+            const double zh = flip[j] ? -z[j] : z[j], zl = flip[j] ? -dz : dz;
+            const num::DD x = num::dd::two_prod(sigma, zh) + sigma * zl + mu;
+            out[i] = x.hi + x.lo;
+            fast[i] = true;
+        }
+    }
     static void quantile_chunk(const Chunk<2>& c, double* out, bool upper) {
-        double z[kChunkSize], q[kChunkSize], t[kChunkSize];
+        double z[kChunkSize], q[kChunkSize];
         int idx[kChunkSize];
         bool fast[kChunkSize];
         special::Ndtri::chunk(c.x, z, c.n);
@@ -343,26 +398,14 @@ struct Normal {
             m += newton ? 1 : 0;
         }
         if (m > 0) {
+            bool flip[kChunkSize];
             for (int j = 0; j < m; ++j) {
                 const double p = c.x[idx[j]];
                 q[j] = p > 0.5 ? 1.0 - p : p;
                 z[j] = -std::fabs(z[idx[j]]);  // z0 = ndtri(q): ndtri is odd about 1/2 to the last bit
+                flip[j] = (p > 0.5) != upper;
             }
-            special::Ndtr::chunk(z, t, m);
-            for (int j = 0; j < m; ++j) t[j] = q[j] - t[j];
-            for (int j = 0; j < m; ++j) q[j] = -0.5 * z[j] * z[j];
-            ck::exp(q, q, m);
-            for (int j = 0; j < m; ++j) {
-                const int i = idx[j];
-                const double mu = c.p[0][i], sigma = c.p[1][i];
-                // z0 + dz on the lower side; the other side by symmetry
-                const bool flip = (c.x[i] > 0.5) != upper;
-                const double dz = t[j] / (num::kInvSqrt2Pi * q[j]);
-                const double zh = flip ? -z[j] : z[j], zl = flip ? -dz : dz;
-                const num::DD x = num::dd::two_prod(sigma, zh) + sigma * zl + mu;
-                out[i] = x.hi + x.lo;
-                fast[i] = true;
-            }
+            newton_linear(c, idx, m, q, z, flip, out, fast);
         }
         ck::fallback(c.n, fast, out, [&](int i) {
             return upper ? iccdf(c.x[i], c.p[0][i], c.p[1][i]) : icdf(c.x[i], c.p[0][i], c.p[1][i]);
@@ -370,6 +413,46 @@ struct Normal {
     }
     static void icdf_chunk(const Chunk<2>& c, double* out) { quantile_chunk(c, out, false); }
     static void iccdf_chunk(const Chunk<2>& c, double* out) { quantile_chunk(c, out, true); }
+    // The icdf chunk's first branch on the log scale: z = ndtri(e^lp) (special's kernel) for lp <=
+    // log(1/2), -ndtri(1 - e^lp) above (ckd::one_minus_exp, kOneMinusExp), then mu + sigma z by fma
+    // where no Newton step is needed (needs_step: no cancellation, |z| <= 30). The rounding of
+    // p = e^lp (kVfExp units of p) moves z by p eps / phi(z), which is 1 / |lp| <= 1.45 of the
+    // condition number kappa = Phi |lp| / (phi |z|) times eps; 1 - e^lp's kOneMinusExp units of
+    // q likewise (q <= |lp| / Phi there): within the quantile contract's max(1, kappa) units.
+    // lp = log(1/2) rounded (the median: the scalar definition gives mu), lp below -700 (p near
+    // the subnormals), 0, -inf and the rest go to the scalar definition.
+    static void quantile_log_chunk(const Chunk<2>& c, double* out, bool upper) {
+        double p[kChunkSize], q[kChunkSize], z[kChunkSize];
+        int idx[kChunkSize];
+        bool fast[kChunkSize], flip[kChunkSize];
+        for (int i = 0; i < c.n; ++i) q[i] = -c.x[i];
+        ck::exp(p, c.x, c.n);
+        ckd::one_minus_exp(q, q, c.n);
+        for (int i = 0; i < c.n; ++i) p[i] = c.x[i] <= -num::kLn2.hi ? p[i] : q[i];  // the smaller side
+        special::Ndtri::chunk(p, z, c.n);  // <= 0
+        int m = 0;
+        for (int i = 0; i < c.n; ++i) {
+            const double lp = c.x[i], mu = c.p[0][i], sigma = c.p[1][i];
+            const bool fl = (lp > -num::kLn2.hi) != upper;
+            const double zi = fl ? -z[i] : z[i];
+            out[i] = std::fma(sigma, zi, mu);
+            const bool ok = lp < 0.0 && lp >= -700.0 && lp != -num::kLn2.hi;
+            fast[i] = ok && !normal_detail::needs_step(mu, sigma, zi);
+            const bool newton = ok && !fast[i] && z[i] >= -1.0;
+            idx[m] = i;
+            flip[m] = fl;
+            m += newton ? 1 : 0;
+        }
+        if (m > 0) {
+            for (int j = 0; j < m; ++j) q[j] = p[idx[j]], z[j] = z[idx[j]];  // (j <= idx[j]: in place)
+            newton_linear(c, idx, m, q, z, flip, out, fast);
+        }
+        ck::fallback(c.n, fast, out, [&](int i) {
+            return upper ? ilogccdf(c.x[i], c.p[0][i], c.p[1][i]) : ilogcdf(c.x[i], c.p[0][i], c.p[1][i]);
+        });
+    }
+    static void ilogcdf_chunk(const Chunk<2>& c, double* out) { quantile_log_chunk(c, out, false); }
+    static void ilogccdf_chunk(const Chunk<2>& c, double* out) { quantile_log_chunk(c, out, true); }
     static double ilogcdf(double lp, double mu, double sigma) {
         if (!(lp <= 0.0)) return kNaN;
         return normal_detail::locate(mu, sigma, normal_detail::quantile_z_log(lp, false));

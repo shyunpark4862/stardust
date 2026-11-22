@@ -11,6 +11,7 @@
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "random/philox.hpp"
+#include "random/random.hpp"
 #include "stats/dist/beta.hpp"
 #include "stats/dist/cauchy.hpp"
 #include "stats/dist/discrete_basic.hpp"
@@ -174,12 +175,30 @@ struct Sampler<D, std::index_sequence<I...>> {
         if constexpr (requires { C::prep(p...); }) return C::draw(w, C::prep(p...));
         else return stats::smp::sample<D>(w, p...);
     }
+    // ... with the element reserved from the generator's state here (sample()'s scalar call:
+    // no Python lock, no key tuple; the element is taken whatever the parameters, as before)
+    // The parameters as the distribution's tuple of Python floats (its _scalar): unpacked here,
+    // a third of the call's cost when Python spread them as arguments.
+    static double one_state(random::State& st, nb::handle params) {
+        PyObject* t = params.ptr();
+        if (!PyTuple_Check(t) || PyTuple_GET_SIZE(t) != static_cast<Py_ssize_t>(sizeof...(I)))
+            throw nb::type_error("sample: the parameters must be a tuple of floats");
+        double v[sizeof...(I) + 1];
+        for (std::size_t q = 0; q < sizeof...(I); ++q) {
+            PyObject* o = PyTuple_GET_ITEM(t, static_cast<Py_ssize_t>(q));
+            v[q] = PyFloat_CheckExact(o) ? PyFloat_AS_DOUBLE(o) : PyFloat_AsDouble(o);
+            if (v[q] == -1.0 && PyErr_Occurred()) throw nb::python_error();
+        }
+        const random::State::Taken r = st.reserve(1);
+        return one(r.k0, r.k1, r.pos, v[I]...);
+    }
 };
 
 template <class... D>
 void def_samples(nb::module_& m) {
     (m.def((std::string(D::name) + "_sample").c_str(), &Sampler<D>::call), ...);
     (m.def((std::string(D::name) + "_sample1").c_str(), &Sampler<D>::one), ...);
+    (m.def((std::string(D::name) + "_sample1s").c_str(), &Sampler<D>::one_state), ...);
 }
 
 }  // namespace

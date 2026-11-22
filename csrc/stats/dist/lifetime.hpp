@@ -403,35 +403,94 @@ struct Rayleigh {
     static void cdf_chunk(const Chunk<1>& c, double* out) {
         tail_chunk(c, out, weibull_detail::Tail::kOneExp, false, false);
     }
+    // e^-t, t = y^2 / 2 from y = x / s = q + ql (the quotient and its fma remainder): t = (q^2 +
+    // tl) / 2 with q^2's rounding error (fma) and 2 q ql in tl, so t is exact to 2^-100 relative:
+    // exp(-q^2/2) (1 - tl/2), relative error kVfExp + 1. x <= 0 gives 1; t > 700 (and x = inf)
+    // the scalar definition.
     static void ccdf_chunk(const Chunk<1>& c, double* out) {
-        tail_chunk(c, out, weibull_detail::Tail::kExp, true, false);
+        double e[kChunkSize], el[kChunkSize];
+        bool fast[kChunkSize];
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], s = c.p[0][i];
+            const double q = x / s;
+            const double ql = std::fma(-q, s, x) / s;
+            const double h = q * q;
+            el[i] = 0.5 * (std::fma(q, q, -h) + 2.0 * q * ql);
+            e[i] = -0.5 * h;
+            fast[i] = h <= 1400.0 || x <= 0.0;  // false for NaN
+        }
+        ck::exp(e, e, c.n);
+        for (int i = 0; i < c.n; ++i) {
+            const double v = e[i] * (1.0 - el[i]);
+            out[i] = c.x[i] <= 0.0 ? 1.0 : v;
+        }
+        ck::fallback(c.n, fast, out, [&](int i) { return ccdf(c.x[i], c.p[0][i]); });
     }
     static void logcdf_chunk(const Chunk<1>& c, double* out) {
         tail_chunk(c, out, weibull_detail::Tail::kLogOne, false, true);
     }
+    // -y^2 / 2 in double, y = x / s: 3 units (the quotient doubled by the square, the product).
+    // 0 for x <= 0; y^2 = inf gives -inf as the scalar definition.
     static void logccdf_chunk(const Chunk<1>& c, double* out) {
-        tail_chunk(c, out, weibull_detail::Tail::kLogExp, true, true);
-    }
-    // (y / s) e^-t in double, e^-t from the double-double t: kVfExp + 1 and y's rounding, the
-    // quotient and the product: kVfExp + 4. logpdf is its log by vForce (kVfLog |value| more:
-    // inside the mixed bound of T20 for any value).
-    static void density_chunk(const Chunk<1>& c, double* out, bool log) {
-        double th[kChunkSize], tl[kChunkSize], tau[kChunkSize];
-        bool fast[kChunkSize];
-        t_chunk(c, th, tl, tau);
-        for (int i = 0; i < c.n; ++i) th[i] = -th[i], tl[i] = -tl[i];
-        ckd::exp_dd(out, th, tl, c.n);
         for (int i = 0; i < c.n; ++i) {
-            const double m = (c.x[i] / c.p[0][i]) / c.p[0][i];
-            fast[i] = tau[i] == 0.0 && out[i] >= 0x1p-900 && m >= 0x1p-900 && m <= 0x1p900;
-            out[i] *= m;
-            fast[i] = fast[i] && out[i] >= 0x1p-1000 && out[i] <= 0x1p1000;
+            const double y = c.x[i] / c.p[0][i];
+            const double v = -0.5 * (y * y);
+            out[i] = c.x[i] > 0.0 ? v : 0.0;
         }
-        if (log) ck::log(out, out, c.n);
-        ck::fallback(c.n, fast, out, [&](int i) { return log ? logpdf(c.x[i], c.p[0][i]) : pdf(c.x[i], c.p[0][i]); });
     }
-    static void pdf_chunk(const Chunk<1>& c, double* out) { density_chunk(c, out, false); }
-    static void logpdf_chunk(const Chunk<1>& c, double* out) { density_chunk(c, out, true); }
+    // (y / s) e^-t, t = y^2 / 2 as ccdf_chunk's (exact to 2^-100): kVfExp + 1, y's rounding,
+    // the quotient and the product: kVfExp + 4. x <= 0 gives 0; t > 700 and results outside
+    // [2^-1000, 2^1000] the scalar definition.
+    static void pdf_chunk(const Chunk<1>& c, double* out) {
+        double e[kChunkSize], el[kChunkSize];
+        bool fast[kChunkSize];
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], s = c.p[0][i];
+            const double q = x / s;
+            const double ql = std::fma(-q, s, x) / s;
+            const double h = q * q;
+            el[i] = 0.5 * (std::fma(q, q, -h) + 2.0 * q * ql);
+            e[i] = -0.5 * h;
+            fast[i] = h <= 1400.0;  // false for NaN
+        }
+        ck::exp(e, e, c.n);
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], s = c.p[0][i];
+            const double v = e[i] * (1.0 - el[i]) * ((x / s) / s);
+            out[i] = x <= 0.0 ? 0.0 : v;
+            fast[i] = x <= 0.0 || (fast[i] && v >= 0x1p-1000 && v <= 0x1p1000);
+        }
+        ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i]); });
+    }
+    // log y - log s - t in double: log x and log s by vForce (log y = log x - log s; log s from
+    // a one-element call for a broadcast scalar), t = y^2 / 2 (3 units of t), two sums: at most
+    // kVfLog (|log x| + |log s|) + 2 |log s| + 3 t + 2 |v| absolute, against the mixed bound
+    // max(1, |v|) (T20); the scalar definition where it fails (log y and t cancel near the
+    // mode only by 1/2: |v| >= 1/2 there) or x is not positive finite.
+    static void logpdf_chunk(const Chunk<1>& c, double* out) {
+        double lx[kChunkSize], ls[kChunkSize];
+        bool fast[kChunkSize];
+        ck::log(lx, c.x, c.n);
+        if (c.same[0]) {
+            double l;
+            ck::log(&l, c.p[0], 1);
+            for (int i = 0; i < c.n; ++i) ls[i] = l;
+        } else {
+            ck::log(ls, c.p[0], c.n);
+        }
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i];
+            const double y = x / c.p[0][i];
+            const double t = 0.5 * (y * y);
+            const double v = (lx[i] - ls[i]) - ls[i] - t;
+            out[i] = v;
+            const double av = std::fabs(v);
+            const double mag =
+                ck::kVfLog * (std::fabs(lx[i]) + std::fabs(ls[i])) + 2.0 * std::fabs(ls[i]) + 3.0 * t + 2.0 * av;
+            fast[i] = x > 0.0 && x <= 0x1p1023 && t <= 0x1p1000 && mag <= kFastBudget * std::max(1.0, av);
+        }
+        ck::fallback(c.n, fast, out, [&](int i) { return logpdf(c.x[i], c.p[0][i]); });
+    }
     // s sqrt(2t) in double from t with relative error tu: tu / 2, the square root and the
     // product: at most 5.75 (icdf: t = -log(1 - p) as Weibull::icdf_chunk's, tu = 7.5; iccdf:
     // t = -log p by vForce, tu = kVfLog).

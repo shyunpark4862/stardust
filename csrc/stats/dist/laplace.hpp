@@ -36,34 +36,71 @@ struct Laplace {
         const num::DD l = log_density(num::standardize(x, mu, sigma), sigma);
         return l.hi + l.lo;
     }
-    // -(|z| + log 2 sigma) for the chunk, the scalar definition's double-double arithmetic
-    // (the same bits); hi = NaN where ckd::standardize leaves z to it.
-    static void exponent_chunk(const Chunk<2>& c, double* eh, double* el) {
-        double kh[kChunkSize], kl[kChunkSize];
-        ckd::standardize(c.x, c.p[0], c.p[1], eh, el, c.n);
-        ckd::constant(c, kh, kl, [&](int i) { return num::log_dd(c.p[1][i]) + num::kLn2; });
-        for (int i = 0; i < c.n; ++i) {
-            const num::DD e = -(abs(num::DD{eh[i], el[i]}) + num::DD{kh[i], kl[i]});
-            eh[i] = e.hi, el[i] = e.lo;
-        }
-    }
-    // exp of it by vForce: relative error kVfExp + 1 (the scalar definition with libm's exp).
+    // exp(-|z|) / (2 sigma) with z = (x - mu) / sigma as q + ql: d = x - mu by two_sum, q = d /
+    // sigma, ql = (d - q sigma + d.lo) / sigma (fma; not renormalised, and only for the
+    // exponent: its rounding reaches the result times |z|): exp(-|q|) (1 - sign(q) ql) / (2 sigma),
+    // relative error kVfExp + 3. Where d or q is not finite, |q| > 700 (the result may leave the
+    // normal range) or a result outside [2^-1000, 2^1000] the scalar definition.
     static void pdf_chunk(const Chunk<2>& c, double* out) {
-        double eh[kChunkSize], el[kChunkSize];
+        double e[kChunkSize], el[kChunkSize];
         bool fast[kChunkSize];
-        exponent_chunk(c, eh, el);
-        ckd::exp_dd(out, eh, el, c.n);
-        for (int i = 0; i < c.n; ++i) fast[i] = out[i] >= 0x1p-1000;  // false for NaN
+        for (int i = 0; i < c.n; ++i) {
+            const double a = c.x[i], b = -c.p[0][i], s = c.p[1][i];
+            const double d = a + b;
+            const double bb = d - a;
+            const double dl = (a - (d - bb)) + (b - bb);
+            const double q = d / s;
+            const double ql = (std::fma(-q, s, d) + dl) / s;
+            const bool neg = q < 0.0;
+            e[i] = neg ? q : -q;
+            el[i] = neg ? ql : -ql;
+            fast[i] = std::fabs(q) <= 700.0 && std::fabs(d) <= 0x1p1023;  // false for NaN
+        }
+        ck::exp(e, e, c.n);
+        for (int i = 0; i < c.n; ++i) {
+            const double v = e[i] * (1.0 + el[i]) / (2.0 * c.p[1][i]);
+            out[i] = v;
+            fast[i] = fast[i] && v >= 0x1p-1000 && v <= 0x1p1000;
+        }
         ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }
-    // The same bits as the scalar definition.
+    // -(|z| + log 2 sigma) in double, log sigma by vForce (one element when sigma is a broadcast
+    // scalar): |z| (2 units), k = log sigma + log 2 (kVfLog |log sigma| + 2 |k|) and the sum (1 of
+    // the value v), against the mixed bound max(1, |v|) (T20); the scalar definition where the
+    // bound fails or z is not finite. With a scalar sigma >= 1/2 (k >= 0) every finite z passes:
+    // |v| >= |z|, k, |log sigma| - log 2.
     static void logpdf_chunk(const Chunk<2>& c, double* out) {
-        double eh[kChunkSize], el[kChunkSize];
+        double ls[kChunkSize];
         bool fast[kChunkSize];
-        exponent_chunk(c, eh, el);
+        if (c.same[1]) {
+            double l;
+            ck::log(&l, c.p[1], 1);
+            const double k = l + num::kLn2.hi;
+            if (k >= 0.0) {
+                const double mu = c.p[0][0], sigma = c.p[1][0];
+                bool all = true;
+                for (int i = 0; i < c.n; ++i) {
+                    const double z = (c.x[i] - mu) / sigma;
+                    out[i] = -(std::fabs(z) + k);
+                    all &= std::fabs(z) <= 0x1p1000;  // false for NaN
+                }
+                if (all) return;
+                for (int i = 0; i < c.n; ++i) fast[i] = std::fabs((c.x[i] - mu) / sigma) <= 0x1p1000;
+                ck::fallback(c.n, fast, out, [&](int i) { return logpdf(c.x[i], mu, sigma); });
+                return;
+            }
+            for (int i = 0; i < c.n; ++i) ls[i] = l;
+        } else {
+            ck::log(ls, c.p[1], c.n);
+        }
         for (int i = 0; i < c.n; ++i) {
-            out[i] = eh[i] + el[i];
-            fast[i] = eh[i] == eh[i];
+            const double z = std::fabs((c.x[i] - c.p[0][i]) / c.p[1][i]);
+            const double k = ls[i] + num::kLn2.hi;
+            const double v = -(z + k);
+            out[i] = v;
+            const double av = std::fabs(v);
+            const double mag = 2.0 * z + ck::kVfLog * std::fabs(ls[i]) + 2.0 * std::fabs(k) + av;
+            fast[i] = z <= 0x1p1000 && mag <= kFastBudget * std::max(1.0, av);  // false for NaN
         }
         ck::fallback(c.n, fast, out, [&](int i) { return logpdf(c.x[i], c.p[0][i], c.p[1][i]); });
     }

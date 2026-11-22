@@ -31,8 +31,12 @@
 #include "special/ops/distr.hpp"
 #include "special/ops/erf.hpp"
 #include "special/ops/incgamma.hpp"
+#include "stats/vmath.hpp"
+
+#include <arm_neon.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -1323,15 +1327,9 @@ inline ChiTable chi_table(double nu) {
 }
 
 // r for E clamped uniforms u (in [kChiLo, kChiHi]); y and z are scratch of E values.
-inline void chi_r(const ChiTable& T, const double* u, double* r, double* y, double* z, int E) {
-    if (T.exact) {
-        for (int q = 0; q < E; ++q) r[q] = T.exact_r(u[q]);
-        return;
-    }
-    vvlog(y, u, &E);
-    special::Ndtri::chunk(u, z, E);
-    for (int q = 0; q < E; ++q) r[q] = std::exp(u[q] <= T.wsplit ? T.left.eval(y[q]) : T.right.eval(z[q]));
-}
+// Phi^-1 for every element (the right table's ~98%), the log for the left's alone.
+inline void chi_r(const ChiTable& T, const double* u, double* r, double* y, double* z, int E);
+
 
 struct Problem {
     int n = 0;
@@ -1383,6 +1381,169 @@ inline bool reorder(std::vector<double> S, std::vector<double> b, int n, double 
     return true;
 }
 
+// ---- the integrand's Phi and Phi^-1
+//
+// sd.special's algorithms (Cephes ndtr's rationals with exp(-x^2 / 2) split as hi + lo; Wichura's
+// AS241) in NEON lanes, two elements a vector: a pair computes the regions its two elements
+// need (one when they share a region, the usual case) and selects. exp is stats/vmath.hpp's
+// (0.52 ULP against vvexp's 1), the tail's log log01 below (vvlog was 17% of the integrand).
+// The chunk kernels branch per element on scalars after a vForce pass; on mixed regions the
+// lanes measured about 1.25x (Phi) and 2.8x (Phi^-1) faster. Computing every region branch-free,
+// interleaving four pairs, and loading the coefficients from memory all measured slower. Each
+// element's value depends on that element alone (the odd last one takes both lanes).
+namespace qv {
+
+template <std::size_t N>
+inline float64x2_t horner(float64x2_t x, const std::array<double, N>& c) {
+    float64x2_t r = vdupq_n_f64(c[0]);
+    for (std::size_t i = 1; i < N; ++i) r = vfmaq_f64(vdupq_n_f64(c[i]), r, x);
+    return r;
+}
+template <std::size_t N>
+inline float64x2_t horner1(float64x2_t x, const std::array<double, N>& c) {  // with a leading 1
+    float64x2_t r = vaddq_f64(x, vdupq_n_f64(c[0]));
+    for (std::size_t i = 1; i < N; ++i) r = vfmaq_f64(vdupq_n_f64(c[i]), r, x);
+    return r;
+}
+inline bool any(uint64x2_t m) { return (vgetq_lane_u64(m, 0) | vgetq_lane_u64(m, 1)) != 0; }
+inline bool all(uint64x2_t m) { return (vgetq_lane_u64(m, 0) & vgetq_lane_u64(m, 1)) != 0; }
+inline float64x2_t splat(double c) { return vdupq_n_f64(c); }
+
+// e^x for x <= 0 (NaN passes): the lanes' exp where x >= -kExpMax, libm's below (subnormal or 0)
+inline float64x2_t exp_neg(float64x2_t x) {
+    const uint64x2_t in = vcgeq_f64(x, splat(-vm::kExpMax));  // false for NaN
+    float64x2_t y = vm::exp_core(vbslq_f64(in, x, splat(0.0)));
+    if (!all(in)) [[unlikely]] {
+        double a[2];
+        vst1q_f64(a, y);
+        if (vgetq_lane_u64(in, 0) == 0) a[0] = std::exp(vgetq_lane_f64(x, 0));
+        if (vgetq_lane_u64(in, 1) == 0) a[1] = std::exp(vgetq_lane_f64(x, 1));
+        y = vld1q_f64(a);
+    }
+    return y;
+}
+
+// Phi(x) = ndtr(x): 1/2 + erf(t) / 2 for |t| < 1 (t = x / sqrt 2), else y = exp(-x^2 / 2) P/Q(|t|) / 2
+// (R/S from |t| = 8), y for x < 0 and 1 - y above. Each region's value is a quotient N / D;
+// a pair that mixes regions selects N and D per lane and divides once.
+inline float64x2_t phi(float64x2_t x) {
+    using special::cephes::kNdtrP, special::cephes::kNdtrQ, special::cephes::kNdtrR, special::cephes::kNdtrS;
+    using special::cephes::kNdtrT, special::cephes::kNdtrU;
+    const float64x2_t t = vmulq_f64(x, splat(special::kSqrtHalf)), a = vabsq_f64(t);
+    const uint64x2_t cen = vcltq_f64(a, splat(1.0));
+    float64x2_t nc = splat(0.0), dc = splat(1.0);
+    if (any(cen)) {  // erf(t) = t T(t^2) / U(t^2)
+        const float64x2_t z = vmulq_f64(t, t);
+        nc = vmulq_f64(t, horner(z, kNdtrT)), dc = horner1(z, kNdtrU);
+        if (all(cen)) return vfmaq_f64(splat(0.5), splat(0.5), vdivq_f64(nc, dc));
+    }
+    const float64x2_t hi = vmulq_f64(x, x);
+    const float64x2_t lo = vmulq_f64(splat(0.5), vfmaq_f64(vnegq_f64(hi), x, x));
+    const float64x2_t e = exp_neg(vmulq_f64(splat(-0.5), hi));
+    const uint64x2_t far = vcgeq_f64(a, splat(8.0));
+    float64x2_t p = horner(a, kNdtrP), q = horner1(a, kNdtrQ);
+    if (any(far)) [[unlikely]] {  // |x| >= 11.3
+        p = vbslq_f64(far, horner(a, kNdtrR), p);
+        q = vbslq_f64(far, horner1(a, kNdtrS), q);
+    }
+    // erfc = (e (p - p lo)) / q, 0 where e is 0 (also x = +-inf, where p, q are inf and lo NaN)
+    const float64x2_t nt = vmulq_f64(e, vfmsq_f64(p, p, lo));
+    const float64x2_t r = vdivq_f64(vbslq_f64(cen, nc, nt), vbslq_f64(cen, dc, q));
+    float64x2_t y = vmulq_f64(splat(0.5), r);
+    y = vbslq_f64(vceqq_f64(e, splat(0.0)), splat(0.0), y);
+    const float64x2_t rt = vbslq_f64(vcltq_f64(x, splat(0.0)), y, vsubq_f64(splat(1.0), y));
+    return vbslq_f64(cen, vfmaq_f64(splat(0.5), splat(0.5), r), rt);
+}
+
+// log x for x in [2^-1022, 1] (normal, positive; the integrand's clamped probabilities):
+// fdlibm's e_log.c in lanes. x = 2^k m, m in [sqrt(1/2), sqrt 2), f = m - 1, s = f / (2 + f),
+// log m = f - (f^2 / 2 - s (f^2 / 2 + R(s^2))), R its degree-14 minimax polynomial (Lg1..Lg7);
+// k log 2 in two parts (fma where fdlibm rounds twice). Measured against Arb on 7000 points of
+// (2^-1000, 1]: at most 2 units of 2^-53 relative (1 ULP); a measured figure, not a proof.
+inline float64x2_t log01(float64x2_t x) {
+    const uint64x2_t bits = vreinterpretq_u64_f64(x);
+    // the mantissa as a double in [1, 2), then halved above sqrt 2 (k one more)
+    const uint64x2_t mb =
+        vorrq_u64(vandq_u64(bits, vdupq_n_u64(0x000fffffffffffffULL)), vdupq_n_u64(0x3ff0000000000000ULL));
+    float64x2_t m = vreinterpretq_f64_u64(mb);
+    int64x2_t k = vsubq_s64(vreinterpretq_s64_u64(vshrq_n_u64(bits, 52)), vdupq_n_s64(1023));
+    const uint64x2_t big = vcgtq_f64(m, splat(1.4142135623730951));
+    m = vbslq_f64(big, vmulq_f64(m, splat(0.5)), m);
+    k = vsubq_s64(k, vreinterpretq_s64_u64(big));  // big is all ones (-1): k + 1
+    const float64x2_t f = vsubq_f64(m, splat(1.0));
+    const float64x2_t sv = vdivq_f64(f, vaddq_f64(splat(2.0), f));
+    const float64x2_t z = vmulq_f64(sv, sv), w = vmulq_f64(z, z);
+    static constexpr std::array<double, 3> kOdd = {
+        1.531383769920937332e-01, 2.222219843214978396e-01, 3.999999999940941908e-01
+    };
+    static constexpr std::array<double, 4> kEven = {
+        1.479819860511658591e-01, 1.818357216161805012e-01, 2.857142874366239149e-01, 6.666666666666735130e-01
+    };
+    const float64x2_t t1 = vmulq_f64(w, horner(w, kOdd));   // w (Lg2 + w (Lg4 + w Lg6))
+    const float64x2_t t2 = vmulq_f64(z, horner(w, kEven));  // z (Lg1 + w (Lg3 + w (Lg5 + w Lg7)))
+    const float64x2_t Rv = vaddq_f64(t2, t1);
+    const float64x2_t hfsq = vmulq_f64(splat(0.5), vmulq_f64(f, f));
+    const float64x2_t dk = vcvtq_f64_s64(k);
+    // k ln2_hi - ((hfsq - (s (hfsq + R) + k ln2_lo)) - f)
+    const float64x2_t inner = vfmaq_f64(vmulq_f64(dk, splat(1.90821492927058770002e-10)), sv, vaddq_f64(hfsq, Rv));
+    return vfmaq_f64(vsubq_f64(f, vsubq_f64(hfsq, inner)), dk, splat(6.93147180369123816490e-01));
+}
+
+// Phi^-1(p) = ndtri(p): q = p - 1/2, q A/B(0.180625 - q^2) for |q| <= 0.425, else from
+// L = log(min(p, 1 - p)) t = C/D(s - 1.6) (s = sqrt(-L) <= 5) or E/F(s - 5), -t for q < 0.
+// p in [2^-1022, 1 - 2^-53] (the integrand's clamp). One division a pair, as phi.
+inline float64x2_t ndtri(float64x2_t p) {
+    namespace as = special::as241;
+    const float64x2_t q = vsubq_f64(p, splat(0.5));
+    const uint64x2_t cen = vcleq_f64(vabsq_f64(q), splat(as::kSplit1));
+    float64x2_t nc = splat(0.0), dc = splat(1.0);
+    if (any(cen)) {
+        const float64x2_t r = vfmsq_f64(splat(as::kConst1), q, q);
+        nc = horner(r, as::kA), dc = horner(r, as::kB);
+        if (all(cen)) return vmulq_f64(q, vdivq_f64(nc, dc));
+    }
+    // 1 - p is exact for p >= 1/2; a central lane's value here is not used
+    const float64x2_t L = log01(vminq_f64(p, vsubq_f64(splat(1.0), p)));
+    const float64x2_t s = vsqrtq_f64(vnegq_f64(L));
+    const uint64x2_t near = vcleq_f64(s, splat(as::kSplit2));
+    const float64x2_t s1 = vsubq_f64(s, splat(as::kConst2));
+    float64x2_t nt = horner(s1, as::kC), dt = horner(s1, as::kD);
+    if (!all(near)) [[unlikely]] {  // s > 5: p < 1.4e-11
+        const float64x2_t s2 = vsubq_f64(s, splat(as::kSplit2));
+        nt = vbslq_f64(near, nt, horner(s2, as::kE)), dt = vbslq_f64(near, dt, horner(s2, as::kF));
+    }
+    const float64x2_t r = vdivq_f64(vbslq_f64(cen, nc, nt), vbslq_f64(cen, dc, dt));
+    const float64x2_t rt = vbslq_f64(vcltq_f64(q, splat(0.0)), vnegq_f64(r), r);
+    return vbslq_f64(cen, vmulq_f64(q, r), rt);
+}
+
+// o[i] = Phi(x[i]), i < n
+inline void phi(const double* x, double* o, int n) {
+    int i = 0;
+    for (; i + 2 <= n; i += 2) vst1q_f64(o + i, phi(vld1q_f64(x + i)));
+    if (i < n) o[i] = vgetq_lane_f64(phi(vdupq_n_f64(x[i])), 0);
+}
+
+// o[i] = Phi^-1(p[i]), i < n, p[i] in [2^-1022, 1 - 2^-53]
+inline void ndtri(const double* p, double* o, int n) {
+    int i = 0;
+    for (; i + 2 <= n; i += 2) vst1q_f64(o + i, ndtri(vld1q_f64(p + i)));
+    if (i < n) o[i] = vgetq_lane_f64(ndtri(vdupq_n_f64(p[i])), 0);
+}
+
+}  // namespace qv
+
+inline void chi_r(const ChiTable& T, const double* u, double* r, double* y, double* z, int E) {
+    if (T.exact) {
+        for (int q = 0; q < E; ++q) r[q] = T.exact_r(u[q]);
+        return;
+    }
+    static_cast<void>(y);
+    qv::ndtri(u, z, E);
+    for (int q = 0; q < E; ++q) r[q] = u[q] <= T.wsplit ? T.left.eval(std::log(u[q])) : T.right.eval(z[q]);
+    vm::exp(r, r, E);
+}
+
 // Scratch for one task: the coordinates, y's and products of a block.
 struct QmcWork {
     std::vector<double> W, Y, f, e, arg, p, r;
@@ -1423,7 +1584,22 @@ inline double qmc_sum(
             std::int64_t k = w.k[j];
             const std::int64_t zj = z[j] % N;
             const double dj = Dm[j];
-            for (int q = 0; q < E; ++q) {
+            // two points a vector: i z_j mod N for i, i + 1, stepped by 2 z_j mod N (the same
+            // operations as one point at a time)
+            const std::int64_t k1 = k + zj >= N ? k + zj - N : k + zj, z2 = 2 * zj >= N ? 2 * zj - N : 2 * zj;
+            int64x2_t kv = vcombine_s64(vdup_n_s64(k), vdup_n_s64(k1));
+            const int64x2_t z2v = vdupq_n_s64(z2), Nv = vdupq_n_s64(N);
+            const float64x2_t inv = vdupq_n_f64(invN), dv = vdupq_n_f64(dj), one = vdupq_n_f64(1.0);
+            int q = 0;
+            for (; q + 2 <= E; q += 2) {
+                float64x2_t x = vaddq_f64(vmulq_f64(vcvtq_f64_s64(kv), inv), dv);
+                x = vbslq_f64(vcgeq_f64(x, one), vsubq_f64(x, one), x);
+                vst1q_f64(Wj + q, vabsq_f64(vsubq_f64(vmulq_f64(vdupq_n_f64(2.0), x), one)));
+                kv = vaddq_s64(kv, z2v);
+                kv = vbslq_s64(vcgeq_s64(kv, Nv), vsubq_s64(kv, Nv), kv);
+            }
+            k = vgetq_lane_s64(kv, 0);
+            for (; q < E; ++q) {
                 double x = static_cast<double>(k) * invN + dj;
                 if (x >= 1.0) x -= 1.0;
                 Wj[q] = std::fabs(2.0 * x - 1.0);
@@ -1449,7 +1625,7 @@ inline double qmc_sum(
                 }
             }
             for (int q = 0; q < E; ++q) arg[q] = r[q] * P.b[0] * P.inv_diag[0];
-            special::Ndtr::chunk(arg, e, E);
+            qv::phi(arg, e, E);
             for (int q = 0; q < E; ++q) f[q] = e[q];
         } else {
             for (int q = 0; q < E; ++q) r[q] = 1.0, e[q] = e0, f[q] = e0;
@@ -1458,7 +1634,7 @@ inline double qmc_sum(
             const double* Wi = w.W.data() + static_cast<std::size_t>(i - 1 + off) * kQmcBlock;
             double* Yp = w.Y.data() + static_cast<std::size_t>(i - 1) * kQmcBlock;
             for (int q = 0; q < E; ++q) p[q] = std::clamp(Wi[q] * e[q], 0x1p-1000, 1.0 - 0x1p-53);
-            special::Ndtri::chunk(p, Yp, E);
+            qv::ndtri(p, Yp, E);
             const double bi = P.b[i], id = P.inv_diag[i];
             for (int q = 0; q < E; ++q) arg[q] = r[q] * bi;
             for (int j = 0; j < i; ++j) {
@@ -1467,7 +1643,7 @@ inline double qmc_sum(
                 for (int q = 0; q < E; ++q) arg[q] -= l * Yj[q];
             }
             for (int q = 0; q < E; ++q) arg[q] *= id;
-            special::Ndtr::chunk(arg, e, E);
+            qv::phi(arg, e, E);
             for (int q = 0; q < E; ++q) f[q] *= e[q];
         }
         double s = 0.0;
@@ -1492,9 +1668,15 @@ struct Neumaier {
     double value() const { return s + c; }
 };
 
-// The QMC estimate of a reordered problem (n >= 2). The work of a level is cut into
-// (shift, piece of kQmcItem points) tasks on the pool -- serially when the caller is
-// itself a task -- and the pieces are added per shift in order.
+// The QMC estimate of a reordered problem (n >= 2), level by level: QmcRun holds one
+// problem's state; a level is prepare() (its N's lattice and shifts), the integrand over its
+// items (shift, piece of kQmcItem points: item(it), any order, on any thread) and finish()
+// (the pieces added per shift in order, the levels combined, the stopping test). qmc() runs
+// one problem with each level's items on the pool -- serially when the caller is itself a
+// task; mv_cdf (bind/stats_mvcdf.cpp) runs the levels of all its points together, their items
+// on the pool at once. Either way the result is a function of the problem alone: the items'
+// values do not depend on where they run, and finish() reads them in a fixed order, so the
+// stopping decision and every bit are the same on any thread count (guardrail d).
 //
 // Nearly singular problems (a variable whose conditional standard deviation given the
 // ones before it is below kQmcHardRatio of its own: R^2 > 0.9975) have integrands with a
@@ -1509,90 +1691,131 @@ struct Neumaier {
 inline constexpr double kQmcHardRatio = 0.05;
 inline constexpr int kQmcHardLevels = 3;
 inline constexpr int kQmcMaxLevels = 96;  // N grows by 1.5 at least: more than max_evals = 2^63 allows
-inline Estimate qmc(const Problem& P, double atol, std::int64_t max_evals) {
-    const int n = P.n;
-    const int D = std::isfinite(P.nu) ? n : n - 1;
-    bool hard = false;
-    for (int i = 1; i < n; ++i) {
-        double s2 = 0.0;
-        for (int k = 0; k <= i; ++k)
-            s2 += P.L[static_cast<std::size_t>(i) * n + k] * P.L[static_cast<std::size_t>(i) * n + k];
-        hard = hard || P.L[static_cast<std::size_t>(i) * n + i] < kQmcHardRatio * std::sqrt(s2);
+
+class QmcRun {
+public:
+    QmcRun(const Problem& P, double atol, std::int64_t max_evals)
+        : P_(&P),
+          atol_(atol),
+          max_evals_(max_evals),
+          n_(P.n),
+          D_(std::isfinite(P.nu) ? P.n : P.n - 1),
+          key_{kShiftKey, static_cast<std::uint64_t>(P.n)} {
+        for (int i = 1; i < n_; ++i) {
+            double s2 = 0.0;
+            for (int k = 0; k <= i; ++k)
+                s2 += P.L[static_cast<std::size_t>(i) * n_ + k] * P.L[static_cast<std::size_t>(i) * n_ + k];
+            hard_ = hard_ || P.L[static_cast<std::size_t>(i) * n_ + i] < kQmcHardRatio * std::sqrt(s2);
+        }
+        N_ = cbc::next_prime(kQmcStart);
+        if (kShifts * N_ > max_evals) N_ = cbc::prev_prime(std::max<std::int64_t>(3, max_evals / kShifts));
+        shifts_.resize(static_cast<std::size_t>(kShifts) * D_);
     }
-    double lvar[kQmcMaxLevels], lmean[kQmcMaxLevels], lN[kQmcMaxLevels];
-    const random::Key key{kShiftKey, static_cast<std::uint64_t>(n)};
-    std::vector<double> shifts(static_cast<std::size_t>(kShifts) * D);
-    double prec = 0.0, wsum = 0.0;  // the combination: sum 1 / var_l and sum v_l / var_l
-    std::int64_t evals = 0;
-    std::int64_t N = cbc::next_prime(kQmcStart);
-    if (kShifts * N > max_evals) N = cbc::prev_prime(std::max<std::int64_t>(3, max_evals / kShifts));
-    std::vector<double> part;
-    for (int level = 0;; ++level) {
-        const std::vector<std::int64_t> z = cbc::lattice(D, N);
+    bool done() const { return done_; }
+    const Estimate& result() const { return res_; }
+    // the level's lattice and shifts (thread-safe across runs: the lattice cache locks)
+    void prepare() {
+        z_ = cbc::lattice(D_, N_);
         for (int m = 0; m < kShifts; ++m)
-            for (int j = 0; j < D; j += 4) {
+            for (int j = 0; j < D_; j += 4) {
                 const random::Block blk = random::philox(
                     {static_cast<std::uint64_t>(m), static_cast<std::uint64_t>(j >> 2),
-                     static_cast<std::uint64_t>(level), 0},
-                    key
+                     static_cast<std::uint64_t>(level_), 0},
+                    key_
                 );
-                for (int q = 0; q < 4 && j + q < D; ++q)
-                    shifts[static_cast<std::size_t>(m) * D + j + q] = random::to_unit(blk[q]);
+                for (int q = 0; q < 4 && j + q < D_; ++q)
+                    shifts_[static_cast<std::size_t>(m) * D_ + j + q] = random::to_unit(blk[q]);
             }
-        const std::int64_t per = (N + kQmcItem - 1) / kQmcItem;
-        const std::int64_t items = kShifts * per;
-        part.assign(static_cast<std::size_t>(items), 0.0);
-        for_pieces(items, 1, items * kQmcItem * n * 8, [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
-            QmcWork w;
-            for (std::int64_t it = b0; it < b1; ++it) {
-                const std::int64_t m = it / per, k = it % per;
-                const std::int64_t lo = k * kQmcItem, hi = std::min(N, lo + kQmcItem);
-                part[static_cast<std::size_t>(it)] =
-                    qmc_sum(P, z.data(), N, shifts.data() + static_cast<std::size_t>(m) * D, lo, hi, w);
-            }
-        });
+        per_ = (N_ + kQmcItem - 1) / kQmcItem;
+    }
+    std::int64_t items() const { return kShifts * per_; }
+    std::int64_t work() const { return items() * kQmcItem * n_ * 8; }  // for the pool's threshold
+    // the integrand summed over item it of the level
+    double item(std::int64_t it, QmcWork& w) const {
+        const std::int64_t m = it / per_, k = it % per_;
+        const std::int64_t lo = k * kQmcItem, hi = std::min(N_, lo + kQmcItem);
+        return qmc_sum(*P_, z_.data(), N_, shifts_.data() + static_cast<std::size_t>(m) * D_, lo, hi, w);
+    }
+    // the level's items' values (items() of them, in order): the estimate so far, and done()
+    // or the next level's N
+    void finish(const double* part) {
+        const std::int64_t N = N_, per = per_;
+        const int level = level_;
         double mu[kShifts], mean = 0.0;
         for (int m = 0; m < kShifts; ++m) {
             Neumaier s;
-            for (std::int64_t k = 0; k < per; ++k) s.add(part[static_cast<std::size_t>(m * per + k)]);
+            for (std::int64_t k = 0; k < per; ++k) s.add(part[m * per + k]);
             mu[m] = s.value() / static_cast<double>(N), mean += mu[m];
         }
         mean /= kShifts;
         double var = 0.0;
         for (int m = 0; m < kShifts; ++m) var += (mu[m] - mean) * (mu[m] - mean);
         var /= static_cast<double>(kShifts) * (kShifts - 1);
-        evals += kShifts * N;
-        if (!std::isfinite(mean)) return {kNaN, kNaN, evals};
-        if (hard) {
+        evals_ += kShifts * N;
+        if (!std::isfinite(mean)) return stop({kNaN, kNaN, evals_});
+        if (hard_) {
             // 12 N values in [0, 1] cannot rule out a region of volume ~1 / (12 N): shifts that
             // agree (or all see 0) are no evidence below that
             const double floor = 1.0 / (static_cast<double>(kShifts) * static_cast<double>(N));
             var = std::max(var, floor * floor / 9.0);
         }
-        if (var == 0.0) return {std::clamp(mean, 0.0, 1.0), 0.0, evals};  // a constant integrand
-        if (hard) {
-            lvar[level] = var, lmean[level] = mean, lN[level] = static_cast<double>(N);
-            prec = 0.0, wsum = 0.0;
+        if (var == 0.0) return stop({std::clamp(mean, 0.0, 1.0), 0.0, evals_});  // a constant integrand
+        if (hard_) {
+            lvar_[level] = var, lmean_[level] = mean, lN_[level] = static_cast<double>(N);
+            prec_ = 0.0, wsum_ = 0.0;
             for (int k = 0; k <= level; ++k) {
-                const double vk = std::max(lvar[k], var * lN[level] / lN[k]);
-                prec += 1.0 / vk, wsum += lmean[k] / vk;
+                const double vk = std::max(lvar_[k], var * lN_[level] / lN_[k]);
+                prec_ += 1.0 / vk, wsum_ += lmean_[k] / vk;
             }
         } else {
-            prec += 1.0 / var, wsum += mean / var;
+            prec_ += 1.0 / var, wsum_ += mean / var;
         }
-        const double value = wsum / prec, err = 3.0 / std::sqrt(prec);
-        const std::int64_t room = (max_evals - evals) / kShifts;
-        const bool enough = !hard || level + 1 >= kQmcHardLevels;
-        if ((!(err > atol) && enough) || room < kQmcStart || level + 1 == kQmcMaxLevels)
-            return {std::clamp(value, 0.0, 1.0), err, evals};
+        const double value = wsum_ / prec_, err = 3.0 / std::sqrt(prec_);
+        const std::int64_t room = (max_evals_ - evals_) / kShifts;
+        const bool enough = !hard_ || level + 1 >= kQmcHardLevels;
+        if ((!(err > atol_) && enough) || room < kQmcStart || level + 1 == kQmcMaxLevels)
+            return stop({std::clamp(value, 0.0, 1.0), err, evals_});
         // the next level alone should reach atol: its error ~ N^-1 (lattice rules with
         // the baker's transformation do at least that on these integrands)
         const double lvl = 3.0 * std::sqrt(var);
-        const double g = std::clamp(1.2 * lvl / atol, 1.5, 8.0);
+        const double g = std::clamp(1.2 * lvl / atol_, 1.5, 8.0);
         const std::int64_t want = static_cast<std::int64_t>(std::ceil(static_cast<double>(N) * g));
-        N = want <= room ? cbc::next_prime(want) : cbc::prev_prime(room);
-        if (N > room) N = cbc::prev_prime(room);
+        N_ = want <= room ? cbc::next_prime(want) : cbc::prev_prime(room);
+        if (N_ > room) N_ = cbc::prev_prime(room);
+        ++level_;
     }
+
+private:
+    void stop(Estimate e) { res_ = e, done_ = true; }
+    const Problem* P_;
+    double atol_;
+    std::int64_t max_evals_;
+    int n_, D_;
+    random::Key key_;
+    bool hard_ = false, done_ = false;
+    int level_ = 0;
+    std::int64_t N_ = 0, per_ = 0, evals_ = 0;
+    double prec_ = 0.0, wsum_ = 0.0;  // the combination: sum 1 / var_l and sum v_l / var_l
+    double lvar_[kQmcMaxLevels] = {}, lmean_[kQmcMaxLevels] = {}, lN_[kQmcMaxLevels] = {};
+    std::vector<std::int64_t> z_;
+    std::vector<double> shifts_;
+    Estimate res_{kNaN, kNaN, 0};
+};
+
+inline Estimate qmc(const Problem& P, double atol, std::int64_t max_evals) {
+    QmcRun run(P, atol, max_evals);
+    std::vector<double> part;
+    while (!run.done()) {
+        run.prepare();
+        const std::int64_t items = run.items();
+        part.assign(static_cast<std::size_t>(items), 0.0);
+        for_pieces(items, 1, run.work(), [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+            QmcWork w;
+            for (std::int64_t it = b0; it < b1; ++it) part[static_cast<std::size_t>(it)] = run.item(it, w);
+        });
+        run.finish(part.data());
+    }
+    return run.result();
 }
 
 }  // namespace sd::stats::mvcdf

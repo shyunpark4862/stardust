@@ -323,6 +323,116 @@ inline double fast_norm2(const double* z, const double* e, std::int64_t d, doubl
     return q;
 }
 
+#if defined(__aarch64__)
+// fast_solve then fast_norm2 (er = nullptr) for two points at once, the points as the lanes:
+// every operation of the one-point path, in the same order, on the pair's vectors -- the
+// same bits per point. For short vectors (d <= kPairMaxDim), where a point alone is mostly
+// fixed overhead (d = 3: 13 ns a point, d = 10: 26 ns): R holds r_k for both points (dp
+// vectors, zero past d); out: Q and its error bound per lane.
+inline constexpr std::int64_t kPairMaxDim = 16;
+
+// dot8's chains: S_c = the fma chain of the terms k = c mod 8 from 0, then
+// ((S0 + S2) + (S4 + S6)) + ((S1 + S3) + (S5 + S7)) (the NEON form's lanes and their sum)
+inline float64x2_t tree8(const float64x2_t* S) {
+    const float64x2_t t0 = vaddq_f64(vaddq_f64(S[0], S[2]), vaddq_f64(S[4], S[6]));
+    const float64x2_t t1 = vaddq_f64(vaddq_f64(S[1], S[3]), vaddq_f64(S[5], S[7]));
+    return vaddq_f64(t0, t1);
+}
+
+// fast_solve for two inputs (R: dp vectors, zero past d; ER: their bounds, or nullptr) into Z,
+// E (dp vectors each)
+template <int DP, bool HasEr>
+inline void fast_solve_pair(
+    const double* f, std::int64_t d, const float64x2_t* R, const float64x2_t* ER, float64x2_t* Z, float64x2_t* E
+) {
+    constexpr std::int64_t dp = DP;
+    const double *W = f, *wd = f + d * dp, *rn = wd + dp, *ec = rn + dp;
+    float64x2_t sr = vdupq_n_f64(0.0), se = sr, nr = sr;
+    const float64x2_t zero = vdupq_n_f64(0.0), slack = vdupq_n_f64(kBoundSlack);
+    // the rows, unrolled: row i takes its terms k <= i (W is zero past the diagonal: the terms
+    // the one-point path adds there are 0 * r, which change no value, a zero's sign at most,
+    // which Q and the bounds do not see)
+#pragma clang loop unroll(full)
+    for (int i = 0; i < DP; ++i) {
+        if (i >= d) {
+            Z[i] = zero;
+            continue;
+        }
+        const double* w = W + i * dp;
+        float64x2_t S[8] = {zero, zero, zero, zero, zero, zero, zero, zero};
+#pragma clang loop unroll(full)
+        for (int k = 0; k <= i; ++k) S[k & 7] = vfmaq_f64(S[k & 7], vdupq_n_f64(w[k]), R[k]);
+        Z[i] = tree8(S);
+    }
+    for (std::int64_t i0 = 0; i0 < d; i0 += 8) {
+        const std::int64_t blocks = i0 / 8 + 1;
+        {
+            float64x2_t S[8];
+#pragma clang loop unroll(full)
+            for (int c = 0; c < 8; ++c) S[c] = vmulq_f64(R[i0 + c], R[i0 + c]);  // fma(r, r, 0)
+            sr = vaddq_f64(sr, tree8(S));
+        }
+        const double g0 = HasEr ? 1.5 : 2.5, gm = static_cast<double>(blocks) + 3.0;
+        nr = vsqrtq_f64(sr);
+        float64x2_t ne = zero;
+        if constexpr (HasEr) {
+            float64x2_t S[8];
+#pragma clang loop unroll(full)
+            for (int c = 0; c < 8; ++c) S[c] = vmulq_f64(ER[i0 + c], ER[i0 + c]);
+            se = vaddq_f64(se, tree8(S));
+            ne = vmulq_f64(vsqrtq_f64(se), slack);
+        }
+        for (int j = 0; j < 8; ++j) {
+            const double g = ((i0 == 0 ? kFirstM[j] : gm) + g0) * (kU * kBoundSlack);
+            const float64x2_t rr = vdupq_n_f64(rn[i0 + j]), w = vdupq_n_f64(wd[i0 + j]);
+            const float64x2_t a = vaddq_f64(vmulq_f64(rr, nr), vmulq_f64(w, vabsq_f64(R[i0 + j])));
+            E[i0 + j] = vmulq_f64(vdupq_n_f64(g), a);
+            if constexpr (HasEr)
+                E[i0 + j] =
+                    vaddq_f64(E[i0 + j], vaddq_f64(vmulq_f64(rr, ne), vmulq_f64(w, vmulq_f64(ER[i0 + j], slack))));
+        }
+    }
+    const float64x2_t c2 = vmulq_f64(nr, slack);
+    for (std::int64_t i = 0; i < dp; ++i) E[i] = vaddq_f64(E[i], vmulq_f64(vdupq_n_f64(ec[i]), c2));
+}
+
+// fast_norm2 for two (Z, E): Q and its bound per lane
+template <int DP>
+inline void fast_norm2_pair(
+    const float64x2_t* Z, const float64x2_t* E, std::int64_t d, float64x2_t& q, float64x2_t& err
+) {
+    constexpr std::int64_t dp = DP;
+    const float64x2_t zero = vdupq_n_f64(0.0);
+    float64x2_t S[8] = {zero, zero, zero, zero, zero, zero, zero, zero};
+    for (std::int64_t k = 0; k < dp / 8; ++k)
+#pragma clang loop unroll(full)
+        for (int c = 0; c < 8; ++c) S[c] = vfmaq_f64(S[c], Z[8 * k + c], Z[8 * k + c]);
+    q = tree8(S);
+    float64x2_t b = zero;
+    for (std::int64_t i0 = 0; i0 < dp; i0 += 8) {
+        float64x2_t T[8];
+#pragma clang loop unroll(full)
+        for (int j = 0; j < 8; ++j)
+            T[j] = vmulq_f64(vaddq_f64(vmulq_f64(vdupq_n_f64(2.0), vabsq_f64(Z[i0 + j])), E[i0 + j]), E[i0 + j]);
+        b = vaddq_f64(b, tree8(T));
+    }
+    const double m = d <= 8 ? kFirstM[d - 1] : static_cast<double>(dp / 8) + 3.0;
+    err = vmulq_f64(vaddq_f64(b, vmulq_f64(vdupq_n_f64((m + 0.5) * kU), q)), vdupq_n_f64(kBoundSlack));
+}
+
+template <int DP>
+inline void fast_pair_dp(const double* f, std::int64_t d, const float64x2_t* R, double* q2, double* err2) {
+    float64x2_t Z[DP], E[DP], q, err;
+    fast_solve_pair<DP, false>(f, d, R, nullptr, Z, E);
+    fast_norm2_pair<DP>(Z, E, d, q, err);
+    vst1q_f64(q2, q), vst1q_f64(err2, err);
+}
+inline void fast_pair(const double* f, std::int64_t d, const float64x2_t* R, double* q2, double* err2) {
+    if (d <= 8) fast_pair_dp<8>(f, d, R, q2, err2);
+    else fast_pair_dp<16>(f, d, R, q2, err2);
+}
+#endif
+
 // log Gamma_p(a) = p (p - 1) / 4 log pi + sum_{j=1}^p log Gamma(a + (1 - j) / 2), double-double.
 inline DD log_mvgamma(std::int64_t p, double a) {
     DD s = num::kLogPi * (0.25 * static_cast<double>(p * (p - 1)));

@@ -259,7 +259,7 @@ inline void pow_dd(double* out, const double* yh, const double* yl, const double
     }
 }
 
-// out = exp(eh + el), |el| << 1: vForce's exp of the high part times (1 + el), relative error
+// out = exp(eh + el), |el| << 1: ck::exp of the high part times (1 + el), relative error
 // kVfExp + 1 (num::exp_dd with libm's exp replaced).
 inline void exp_dd(double* out, const double* eh, const double* el, int n) {
     ck::exp(out, eh, n);

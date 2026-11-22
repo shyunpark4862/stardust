@@ -29,18 +29,24 @@ struct Exponential {
         if (y.hi < 700.0 && s >= 0x1p-900) return num::exp_dd(-y) / s;
         return num::exp_dd(log_density(y, s));
     }
-    // The scalar definition's first branch with vForce's exp: exp(-y) (1 - y.lo) / s, y = x / s
-    // the same double-double (ckd::ratio): relative error kVfExp + 2 whatever y.
+    // The scalar definition's first branch, y = x / s as q + ql (the quotient and its exact
+    // remainder by fma; ql is not renormalised): exp(-q) (1 - ql) / s, relative error kVfExp + 3
+    // whatever y. x < 0 gives 0; y >= 700, a scale below 2^-900 and x = inf the scalar definition.
     static void pdf_chunk(const Chunk<1>& c, double* out) {
-        double yh[kChunkSize], yl[kChunkSize];
+        double e[kChunkSize], el[kChunkSize];
         bool fast[kChunkSize];
-        ckd::ratio(c.x, c.p[0], yh, yl, c.n);
         for (int i = 0; i < c.n; ++i) {
-            fast[i] = c.x[i] >= 0.0 && yh[i] < 700.0 && c.p[0][i] >= 0x1p-900;  // false for NaN
-            yh[i] = -yh[i], yl[i] = -yl[i];
+            const double x = c.x[i], s = c.p[0][i];
+            const double q = x / s;
+            el[i] = std::fma(-q, s, x) / s;
+            e[i] = -q;
+            fast[i] = (x >= 0.0 && q < 700.0 && s >= 0x1p-900) || x < 0.0;
         }
-        ckd::exp_dd(out, yh, yl, c.n);
-        for (int i = 0; i < c.n; ++i) out[i] /= c.p[0][i];
+        ck::exp(e, e, c.n);
+        for (int i = 0; i < c.n; ++i) {
+            const double v = e[i] * (1.0 - el[i]) / c.p[0][i];  // (not under the select: it vectorizes)
+            out[i] = c.x[i] < 0.0 ? 0.0 : v;
+        }
         ck::fallback(c.n, fast, out, [&](int i) { return pdf(c.x[i], c.p[0][i]); });
     }
     static double logpdf(double x, double s) {
@@ -61,6 +67,16 @@ struct Exponential {
         if (c.same[0]) {
             double l;
             ck::log(&l, c.p[0], 1);
+            if (l >= 0.0) {
+                // s >= 1: |value| = y + log s >= both terms, the bound is at most 6 units for
+                // every x (x < 0 and x / s = inf give -inf as the scalar definition)
+                const double s = c.p[0][0];
+                for (int i = 0; i < c.n; ++i) {
+                    const double v = -(c.x[i] / s) - l;
+                    out[i] = c.x[i] >= 0.0 ? v : -kInf;
+                }
+                return;
+            }
             for (int i = 0; i < c.n; ++i) ls[i] = l;
         } else {
             ck::log(ls, c.p[0], c.n);
@@ -93,17 +109,33 @@ struct Exponential {
         for (int i = 0; i < c.n; ++i) out[i] = c.x[i] > 0.0 ? c.x[i] / c.p[0][i] : 0.0;
         ckd::one_minus_exp(out, out, c.n);
     }
-    // exp(-y) (1 - y.lo) by vForce, y the same double-double: relative error kVfExp + 1.
+    // exp(-q) (1 - ql), y = x / s = q + ql as pdf_chunk's: relative error kVfExp + 2. x <= 0
+    // gives 1; y >= 700 (and x = inf) the scalar definition.
     static void ccdf_chunk(const Chunk<1>& c, double* out) {
-        double yh[kChunkSize], yl[kChunkSize];
+        double e[kChunkSize], el[kChunkSize];
         bool fast[kChunkSize];
-        ckd::ratio(c.x, c.p[0], yh, yl, c.n);
-        for (int i = 0; i < c.n; ++i) yh[i] = -yh[i], yl[i] = -yl[i];
-        ckd::exp_dd(out, yh, yl, c.n);
-        for (int i = 0; i < c.n; ++i) fast[i] = c.x[i] > 0.0 && out[i] >= 0x1p-1000;  // false for NaN
+        for (int i = 0; i < c.n; ++i) {
+            const double x = c.x[i], s = c.p[0][i];
+            const double q = x / s;
+            el[i] = std::fma(-q, s, x) / s;
+            e[i] = -q;
+            fast[i] = q < 700.0 || x <= 0.0;  // false for NaN
+        }
+        ck::exp(e, e, c.n);
+        for (int i = 0; i < c.n; ++i) {
+            const double v = e[i] * (1.0 - el[i]);
+            out[i] = c.x[i] <= 0.0 ? 1.0 : v;
+        }
         ck::fallback(c.n, fast, out, [&](int i) { return ccdf(c.x[i], c.p[0][i]); });
     }
-    // With y = x/s the scalar definition's double-double, e = e^-y by vForce (kVfExp + 1) and
+    // -x / s (one rounding: the scalar definition's double-double rounded), 0 for x <= 0.
+    static void logccdf_chunk(const Chunk<1>& c, double* out) {
+        for (int i = 0; i < c.n; ++i) {
+            const double v = -(c.x[i] / c.p[0][i]);
+            out[i] = c.x[i] > 0.0 ? v : 0.0;
+        }
+    }
+    // With y = x/s the scalar definition's double-double, e = e^-y by ck::exp (kVfExp + 1) and
     // m = 1 - e^-y.hi (ckd::one_minus_exp):
     //   y < log 2:  log(m + (1 - m) y.lo) by vForce: m's bound kTanh (1 - m/2) + 2 (tanh's error
     //               reaches m times 1 / (1 + T) = 1 - m/2) and the sum, over |log m| >= log 2,

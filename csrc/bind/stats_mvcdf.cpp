@@ -19,10 +19,11 @@
 // formulas (up to 3 finite coordinates, normal or t) and NaN with a NaN value;
 // for the QMC (4 or more) it is 3 standard errors over the shifts.
 //
-// The points run on the pool. The QMC points run one per task when there are
-// enough of them, else one after another with each one's lattice on the pool:
-// a point's value never depends on which, nor on the thread count. The t's QMC
-// shares one chi table per distinct df of the call (built from df alone).
+// The points run on the pool. The QMC points run level by level together: each round
+// takes every unfinished point's next level and spreads all their (shift, piece) items
+// over the pool (stats/mvcdf.hpp, QmcRun); a point's value never depends on that, nor on
+// the thread count. The t's QMC shares one chi table per distinct df of the call (built
+// from df alone).
 #include "bind/stats_bind.hpp"
 
 #include "array/ops/pieces.hpp"
@@ -34,6 +35,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -224,42 +226,78 @@ nb::tuple mv_cdf(
                     for (std::int64_t c = c0; c < c1; ++c) chis[c] = chi_table(dfs[c]);
                 }
             );
-            auto one = [&](std::int64_t p) {
-                const std::int64_t b = batch[p];
-                const double* xp = x.data() + p * d;
-                const double* S = cov.data() + b * dd;
-                std::vector<int> idx;
-                for (int i = 0; i < d; ++i)
-                    if (xp[i] < kInf) idx.push_back(i);
-                const int n = static_cast<int>(idx.size());
-                std::vector<double> Sub(static_cast<std::size_t>(n) * n), lim(static_cast<std::size_t>(n));
-                for (int i = 0; i < n; ++i) {
-                    lim[i] = xp[idx[i]];
-                    for (int j = 0; j < n; ++j) {
-                        const int a = std::max(idx[i], idx[j]), c = std::min(idx[i], idx[j]);
-                        Sub[static_cast<std::size_t>(i) * n + j] = S[a * d + c];
-                    }
-                }
-                Problem P;
-                if (std::isfinite(df[b])) P.chi = &chis[std::lower_bound(dfs.begin(), dfs.end(), df[b]) - dfs.begin()];
-                if (!reorder(std::move(Sub), std::move(lim), n, df[b], P)) {
-                    val[p] = err[p] = kNaN;
-                    return;
-                }
-                const std::int64_t cap = max_points > 0 ? max_points : 1000000 * static_cast<std::int64_t>(n);
-                const Estimate e = qmc(P, atol, cap);
-                val[p] = e.value, err[p] = e.error;
-            };
+            // the problems (the reordered factors), one per QMC point
             const std::int64_t nq = static_cast<std::int64_t>(qs.size());
-            if (nq >= parallel::num_threads()) {
-                for_pieces(
-                    nq, 1, std::numeric_limits<std::int64_t>::max() / 2,
-                    [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
-                        for (std::int64_t q = q0; q < q1; ++q) one(qs[static_cast<std::size_t>(q)]);
+            std::vector<Problem> probs(static_cast<std::size_t>(nq));
+            std::vector<std::unique_ptr<QmcRun>> runs(static_cast<std::size_t>(nq));
+            for_pieces(nq, 1, nq * d * d * d * 64, [&](std::int64_t, std::int64_t q0, std::int64_t q1) {
+                for (std::int64_t q = q0; q < q1; ++q) {
+                    const std::int64_t p = qs[static_cast<std::size_t>(q)], b = batch[p];
+                    const double* xp = x.data() + p * d;
+                    const double* S = cov.data() + b * dd;
+                    std::vector<int> idx;
+                    for (int i = 0; i < d; ++i)
+                        if (xp[i] < kInf) idx.push_back(i);
+                    const int n = static_cast<int>(idx.size());
+                    std::vector<double> Sub(static_cast<std::size_t>(n) * n), lim(static_cast<std::size_t>(n));
+                    for (int i = 0; i < n; ++i) {
+                        lim[i] = xp[idx[i]];
+                        for (int j = 0; j < n; ++j) {
+                            const int a = std::max(idx[i], idx[j]), c = std::min(idx[i], idx[j]);
+                            Sub[static_cast<std::size_t>(i) * n + j] = S[a * d + c];
+                        }
                     }
-                );
-            } else {
-                for (std::int64_t p : qs) one(p);
+                    Problem& P = probs[static_cast<std::size_t>(q)];
+                    if (std::isfinite(df[b]))
+                        P.chi = &chis[std::lower_bound(dfs.begin(), dfs.end(), df[b]) - dfs.begin()];
+                    if (!reorder(std::move(Sub), std::move(lim), n, df[b], P)) {
+                        val[p] = err[p] = kNaN;
+                        continue;
+                    }
+                    const std::int64_t cap = max_points > 0 ? max_points : 1000000 * static_cast<std::int64_t>(n);
+                    runs[static_cast<std::size_t>(q)] = std::make_unique<QmcRun>(P, atol, cap);
+                }
+            });
+            // the points' levels in rounds: every unfinished point's next level, all their items
+            // on the pool together (a hard point no longer runs alone on one thread while the
+            // rest wait), then each point's finish() in point order
+            std::vector<std::int64_t> active;
+            for (std::int64_t q = 0; q < nq; ++q)
+                if (runs[static_cast<std::size_t>(q)]) active.push_back(q);
+            std::vector<std::int64_t> off;
+            std::vector<double> part;
+            while (!active.empty()) {
+                const std::int64_t na = static_cast<std::int64_t>(active.size());
+                for_pieces(na, 1, na << 20, [&](std::int64_t, std::int64_t a0, std::int64_t a1) {
+                    for (std::int64_t a = a0; a < a1; ++a) runs[static_cast<std::size_t>(active[a])]->prepare();
+                });
+                off.assign(static_cast<std::size_t>(na + 1), 0);
+                std::int64_t work = 0;
+                for (std::int64_t a = 0; a < na; ++a) {
+                    const QmcRun& r = *runs[static_cast<std::size_t>(active[a])];
+                    off[a + 1] = off[a] + r.items(), work += r.work();
+                }
+                part.assign(static_cast<std::size_t>(off[na]), 0.0);
+                for_pieces(off[na], 1, work, [&](std::int64_t, std::int64_t t0, std::int64_t t1) {
+                    QmcWork w;
+                    for (std::int64_t t = t0; t < t1; ++t) {
+                        const std::int64_t a = std::upper_bound(off.begin(), off.end(), t) - off.begin() - 1;
+                        part[static_cast<std::size_t>(t)] =
+                            runs[static_cast<std::size_t>(active[a])]->item(t - off[a], w);
+                    }
+                });
+                std::vector<std::int64_t> next;
+                for (std::int64_t a = 0; a < na; ++a) {
+                    QmcRun& r = *runs[static_cast<std::size_t>(active[a])];
+                    r.finish(part.data() + off[a]);
+                    if (!r.done()) {
+                        next.push_back(active[a]);
+                        continue;
+                    }
+                    const std::int64_t p = qs[static_cast<std::size_t>(active[a])];
+                    val[p] = r.result().value, err[p] = r.result().error;
+                }
+                active.swap(next);
             }
         }
     }
