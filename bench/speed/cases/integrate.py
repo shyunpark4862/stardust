@@ -258,8 +258,46 @@ def _sample_specs():
 
 def specs() -> list[Spec]:
     """Every planned case, public or not (the C0 scipy timings use them all)."""
-    return (_sample_specs() + _sample_more() + _quad_specs() + _quad_more() + _batch_specs() + _batch_more()
-            + _vector_specs() + _vector_more())  # fmt: skip
+    return (_sample_specs() + _sample_more() + _quad_specs() + _quad_more() + _quad_vectorized() + _batch_specs()
+            + _batch_more() + _vector_specs() + _vector_more())  # fmt: skip
+
+
+def _quad_vectorized():
+    """quad(vectorized=True) (C127): the integrand on sd arrays, one call a rule application, against
+    scipy's quad with the scalar integrand (scipy has no such option) and R's integrate (vectorised by
+    nature: the same rows as the scalar ones)."""
+    import scipy.integrate as si
+
+    import stardust as sd
+
+    I = sd.integrate  # noqa: E741
+    inf = math.inf
+    c = math.pi / 4
+
+    def gauss(x):
+        return sd.exp(-x * x)
+
+    def peak5(x):
+        d = x - c
+        return 4.0**-5 / (d * d + 16.0**-5)
+
+    def osc(x):
+        return sd.abs(sd.sin(200.0 * x))
+
+    def _osc(x):
+        return abs(math.sin(200.0 * x))
+
+    return [
+        Spec("C4", "quad", "quad exp(-x^2) on the real line, vectorized=True", ("quad",),
+             lambda d: lambda: I.quad(gauss, -inf, inf, vectorized=True), lambda d: lambda: si.quad(_gauss, -inf, inf),
+             note="호출 9번(점 30개씩)"),
+        Spec("C4", "quad", "quad peak a=5, vectorized=True", ("quad",),
+             lambda d: lambda: I.quad(peak5, 0.0, 1.0, vectorized=True), lambda d: lambda: si.quad(_peak5, 0.0, 1.0),
+             note="호출 25번(점 21개씩)"),
+        Spec("C4", "quad", "quad |sin(200x)| limit reached, vectorized=True", ("quad",),
+             lambda d: _quiet(lambda: I.quad(osc, 0.0, 10.0, vectorized=True)),
+             lambda d: _quiet(lambda: si.quad(_osc, 0.0, 10.0)), note="구간 50개에 닿는다(status 1), 호출 99번"),
+    ]  # fmt: skip
 
 
 # -- the branches the first plan left out (review of 2026-11-22): the sample rules on a
@@ -607,6 +645,10 @@ R_QUAD = {
     "quad exp(-x) on the half line": ("function(x) exp(-x)", "0", "Inf"),
     "quad |sin(200x)| limit reached": ("function(x) abs(sin(200 * x))", "0", "10"),
 }
+# quad(vectorized=True)'s rows: R's integrand is the same vectorised one
+for _k in ("quad exp(-x^2) on the real line", "quad peak a=5", "quad |sin(200x)| limit reached"):
+    R_QUAD[_k + ", vectorized=True"] = R_QUAD[_k]
+del _k
 R_QUAD_NOTE = "R은 벡터화한 R 피적분함수(규칙마다 한 번 부른다)"
 
 

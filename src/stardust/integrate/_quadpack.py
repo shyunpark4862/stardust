@@ -14,6 +14,7 @@ import math
 import numbers
 
 from .. import _core as _sd
+from ..differentiate._derivative import _shape_text, _values
 from ..optimize._common import (
     _callable,
     _check_bool,
@@ -219,6 +220,40 @@ def _complex_check(func):
     return check
 
 
+def _complex_values(func):
+    """check(value, k) for complex_func=True with vectorized=True: what func returned at k points
+    as a complex128 or float64 sd.ndarray of shape (k,), or the error (the real case's check,
+    tanhsinh's and nsum's, with complex values allowed)."""
+
+    def check(v, k):
+        if isinstance(v, _sd.ndarray):
+            a = v
+        else:
+            if isinstance(v, (str, bytes, bool)) or v is None:
+                raise TypeError(
+                    f"{func}(): 'func' must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}"
+                )
+            if isinstance(v, numbers.Number) or getattr(v, "ndim", None) == 0:
+                raise ValueError(f"{func}(): 'func' must return shape ({k},) like its argument, not a scalar")
+            try:
+                a = _sd.asarray(v)
+            except OverflowError:
+                raise OverflowError(f"{func}(): Python int too large to convert to float64") from None
+            except TypeError, ValueError:
+                raise TypeError(
+                    f"{func}(): 'func' must return an sd.ndarray or a sequence of numbers, not {_type_name(v)}"
+                ) from None
+        if a.dtype == _sd.string:
+            raise TypeError(f"{func}(): 'func' must return numbers, not a string array")
+        if a.dtype == _sd.bool:  # a comparison returned where numbers were meant
+            raise TypeError(f"{func}(): 'func' must return numbers, not a bool array")
+        if tuple(a.shape) != (k,):
+            raise ValueError(f"{func}(): 'func' must return shape ({k},) like its argument, not {_shape_text(a.shape)}")
+        return a if a.dtype in (_sd.complex128, _sd.float64) else a.astype(_sd.float64)
+
+    return check
+
+
 # ---- the results
 
 
@@ -276,10 +311,12 @@ def quad(
     max_p1=50,
     limlst=50,
     complex_func=False,
+    vectorized=False,
 ):
     """The integral of func on [a, b] by QUADPACK (docs/api/integrate.md §2): QAGS on a finite
     range, QAGI on an infinite one, QAGP with break points, QAWO, QAWF, QAWS or QAWC with a
-    weight; the result unpacks into (integral, error)."""
+    weight; the result unpacks into (integral, error). vectorized=True calls func once per rule
+    application with the rule's points as a 1-D float64 array (the same points, the same result)."""
     fn = "quad"
     if not callable(func):
         _callable(func, fn, "func")
@@ -305,12 +342,15 @@ def quad(
         opts = _DEFAULT_OPTS
     else:
         opts = _opts(fn, atol, rtol, limit, points, weight, wvar, max_p1, limlst)
+    if vectorized is not False:
+        _check_bool(vectorized, fn, "vectorized")
     if complex_func is False:
-        return _quad_result(_Q.quad_solve(fn, func, _CHECK[fn], a, b, opts, 0), opts[2])
+        check = _values(fn, "func") if vectorized else _CHECK[fn]
+        return _quad_result(_Q.quad_solve(fn, func, check, a, b, opts, 0, vectorized), opts[2])
     _check_bool(complex_func, fn, "complex_func")
-    check = _complex_check(fn)
-    re = _quad_result(_Q.quad_solve(fn, func, check, a, b, opts, 1), opts[2])
-    im = _quad_result(_Q.quad_solve(fn, func, check, a, b, opts, 2), opts[2])
+    check = _complex_values(fn) if vectorized else _complex_check(fn)
+    re = _quad_result(_Q.quad_solve(fn, func, check, a, b, opts, 1, vectorized), opts[2])
+    im = _quad_result(_Q.quad_solve(fn, func, check, a, b, opts, 2, vectorized), opts[2])
     bad = re if re.status != 0 else im
     return IntegrateResult._quad(
         {

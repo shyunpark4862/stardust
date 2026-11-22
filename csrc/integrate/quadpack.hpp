@@ -27,6 +27,12 @@
 //
 // The arrays are 1-based like the original's (element 0 unused). The integrand is any callable
 // double(double); a C++ exception from it (a Python error) leaves the routine by unwinding.
+//
+// Each rule first lists its points in the order it calls the integrand, computed by the very
+// expressions of the calls, and hands them to prefetch(f, xs, n): an integrand with a member
+// prefetch (quad's vectorized=True, decision C127) evaluates them in one call and serves the
+// rule's calls from that, a plain callable ignores it. The arithmetic after it is unchanged, so
+// the points, the values and every result are the same either way.
 #pragma once
 
 #include <algorithm>
@@ -88,6 +94,12 @@ struct Work {
 
 // ---- the rules
 
+// The points of one rule application, for an integrand that evaluates them together (see the top).
+template <class F>
+inline void prefetch(F& f, const double* xs, int n) {
+    if constexpr (requires { f.prefetch(xs, n); }) f.prefetch(xs, n);
+}
+
 // dqk21: the 21-point Gauss-Kronrod rule (10-point Gauss) on [a, b].
 inline constexpr double kXgk21[11] = {
     0.995657163025808080735527280689003, 0.973906528517171720077964012084452, 0.930157491355708226001207180059508,
@@ -121,6 +133,22 @@ void qk21(F& f, double a, double b, double& result, double& abserr, double& resa
     const double hlgth = 0.5 * (b - a);
     const double dhlgth = std::abs(hlgth);
     double resg = 0.0;
+    {
+        double xs[21];
+        int n = 0;
+        xs[n++] = centr;
+        for (int j = 1; j <= 5; ++j) {
+            const double absc = hlgth * kXgk21[2 * j - 1];
+            xs[n++] = centr - absc;
+            xs[n++] = centr + absc;
+        }
+        for (int j = 1; j <= 5; ++j) {
+            const double absc = hlgth * kXgk21[2 * j - 2];
+            xs[n++] = centr - absc;
+            xs[n++] = centr + absc;
+        }
+        prefetch(f, xs, n);
+    }
     const double fc = f(centr);
     double resk = kWgk21[10] * fc;
     resabs = std::abs(resk);
@@ -183,6 +211,26 @@ void qk15i(
     const double centr = 0.5 * (a + b);
     const double hlgth = 0.5 * (b - a);
     const double tabsc1 = boun + dinf * (1.0 - centr) / centr;
+    {
+        double xs[30];
+        int n = 0;
+        xs[n++] = tabsc1;
+        if (inf == 2) xs[n++] = -tabsc1;
+        for (int j = 0; j < 7; ++j) {
+            const double absc = hlgth * kXgk15[j];
+            const double absc1 = centr - absc;
+            const double absc2 = centr + absc;
+            const double t1 = boun + dinf * (1.0 - absc1) / absc1;
+            const double t2 = boun + dinf * (1.0 - absc2) / absc2;
+            xs[n++] = t1;
+            xs[n++] = t2;
+            if (inf == 2) {
+                xs[n++] = -t1;
+                xs[n++] = -t2;
+            }
+        }
+        prefetch(f, xs, n);
+    }
     double fval1 = f(tabsc1);
     if (inf == 2) fval1 = fval1 + f(-tabsc1);
     const double fc = (fval1 / centr) / centr;
@@ -843,6 +891,22 @@ void qk15w(F& f, const W& w, double a, double b, double& result, double& abserr,
     const double centr = 0.5 * (a + b);
     const double hlgth = 0.5 * (b - a);
     const double dhlgth = std::abs(hlgth);
+    {
+        double xs[15];
+        int n = 0;
+        xs[n++] = centr;
+        for (int j = 1; j <= 3; ++j) {
+            const double absc = hlgth * kXgk15w[2 * j - 1];
+            xs[n++] = centr - absc;
+            xs[n++] = centr + absc;
+        }
+        for (int j = 1; j <= 4; ++j) {
+            const double absc = hlgth * kXgk15w[2 * j - 2];
+            xs[n++] = centr - absc;
+            xs[n++] = centr + absc;
+        }
+        prefetch(f, xs, n);
+    }
     const double fc = f(centr) * w(centr);
     double resg = kWg7w[3] * fc;
     double resk = kWgk15w[7] * fc;
@@ -1200,6 +1264,18 @@ void qc25f(
     if (w.momcom < (maxp1 - 1) && nrmom >= w.momcom) w.momcom = w.momcom + 1;
     const double* mo = w.chebmo.data() + static_cast<std::size_t>(m - 1) * 25;
     // the integrand at the 25 points
+    {
+        double xs[25];
+        int n = 0;
+        xs[n++] = centr + hlgth;
+        xs[n++] = centr;
+        xs[n++] = centr - hlgth;
+        for (int i = 2; i <= 12; ++i) {
+            xs[n++] = std::fma(hlgth, kXcc[i - 1], centr);
+            xs[n++] = std::fma(-hlgth, kXcc[i - 1], centr);
+        }
+        prefetch(f, xs, n);
+    }
     fval[1] = 0.5 * f(centr + hlgth);
     fval[13] = f(centr);
     fval[25] = 0.5 * f(centr - hlgth);
@@ -1694,6 +1770,19 @@ void qc25s(
         hlgth = 0.5 * (br - bl);
         centr = 0.5 * (br + bl);
         fix = b - centr;
+        {
+            double xs[25];
+            int n = 0;
+            xs[n++] = hlgth + centr;
+            xs[n++] = centr;
+            xs[n++] = centr - hlgth;
+            for (int i = 2; i <= 12; ++i) {
+                const double uu = hlgth * kXcc[i - 1];
+                xs[n++] = uu + centr;
+                xs[n++] = centr - uu;
+            }
+            prefetch(f, xs, n);
+        }
         fval[1] = 0.5 * f(hlgth + centr) * std::pow(fix - hlgth, beta);
         fval[13] = f(centr) * std::pow(fix, beta);
         fval[25] = 0.5 * f(centr - hlgth) * std::pow(fix + hlgth, beta);
@@ -1765,6 +1854,19 @@ void qc25s(
         hlgth = 0.5 * (br - bl);
         centr = 0.5 * (br + bl);
         fix = centr - a;
+        {
+            double xs[25];
+            int n = 0;
+            xs[n++] = hlgth + centr;
+            xs[n++] = centr;
+            xs[n++] = centr - hlgth;
+            for (int i = 2; i <= 12; ++i) {
+                const double uu = hlgth * kXcc[i - 1];
+                xs[n++] = uu + centr;
+                xs[n++] = centr - uu;
+            }
+            prefetch(f, xs, n);
+        }
         fval[1] = 0.5 * f(hlgth + centr) * std::pow(fix + hlgth, alfa);
         fval[13] = f(centr) * std::pow(fix, alfa);
         fval[25] = 0.5 * f(centr - hlgth) * std::pow(fix - hlgth, alfa);
@@ -1975,6 +2077,19 @@ void qc25c(F& f, double a, double b, double c, double& result, double& abserr, i
     hlgth = 0.5 * (b - a);
     centr = 0.5 * (b + a);
     neval = 25;
+    {
+        double xs[25];
+        int n = 0;
+        xs[n++] = hlgth + centr;
+        xs[n++] = centr;
+        xs[n++] = centr - hlgth;
+        for (int i = 2; i <= 12; ++i) {
+            const double uu = hlgth * kXcc[i - 1];
+            xs[n++] = uu + centr;
+            xs[n++] = centr - uu;
+        }
+        prefetch(f, xs, n);
+    }
     fval[1] = 0.5 * f(hlgth + centr);
     fval[13] = f(centr);
     fval[25] = 0.5 * f(centr - hlgth);

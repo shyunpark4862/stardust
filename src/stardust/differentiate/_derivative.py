@@ -78,19 +78,21 @@ def _shape_text(shape):
     return "(" + ", ".join(str(s) for s in shape) + ("," if len(shape) == 1 else "") + ")"
 
 
-def _values(func):
+def _values(func, what="f"):
     """check(value, shape) for derivative's kernel: what f returned, as a float64 sd.ndarray of
-    its argument's shape, (k,) (an int) or (k, p) (a tuple), or the error (optimize's form)."""
+    its argument's shape, (k,) (an int) or (k, p) (a tuple), or the error (optimize's form).
+    `what` names the function in the messages (quad's is 'func')."""
 
     def check(v, shape):
         want = (shape,) if isinstance(shape, int) else tuple(shape)
-        a = _real_array(v, func, "f")
+        a = _real_array(v, func, what)
         if a is None:
-            raise ValueError(f"{func}(): 'f' must return shape {_shape_text(want)} like its argument, not a scalar")
-        if tuple(a.shape) != want:
             raise ValueError(
-                f"{func}(): 'f' must return shape {_shape_text(want)} like its argument, not {_shape_text(a.shape)}"
+                f"{func}(): '{what}' must return shape {_shape_text(want)} like its argument, not a scalar"
             )
+        if tuple(a.shape) != want:
+            got = _shape_text(a.shape)
+            raise ValueError(f"{func}(): '{what}' must return shape {_shape_text(want)} like its argument, not {got}")
         return a if a.dtype == _sd.float64 else a.astype(_sd.float64)
 
     return check

@@ -16,6 +16,8 @@ and the errors.
 Since milestone C7: quad_vec (scalar and array values, the rules, norms, infinite ranges, points,
 limits, statuses) and cubature (the three rules in one to four variables, array values, infinite
 limits, points, flipped limits, max_subdivisions, status 3) with their summaries and errors.
+Since decision C127: quad(vectorized=True) on every integral of the collection (func applied point
+by point to the array) and its own cases: sd array integrands, complex_func, statuses, errors.
 The samples and integrands are sd's own operations (the problems' formulas on sd arrays) or the
 math module, so the results do not depend on numpy. Each milestone adds the cases of the
 functions it makes public (docs/design/integrate.md §8).
@@ -74,6 +76,7 @@ def cases(L):
     yield from sample_cases(L)
     yield from fixed_cases(L)
     yield from quad_cases(L)
+    yield from vectorized_cases(L)
     yield from multiple_cases(L)
     yield from elementwise_cases(L)
     yield from adaptive_cases(L)
@@ -253,6 +256,50 @@ def quad_cases(L):
     yield "err quad shape", lambda: I.quad(lambda x: [1.0, 2.0], 0, 1)
     yield "err quad complex value", lambda: I.quad(lambda x: 1j, 0, 1)
     yield "err quad bool value", lambda: I.quad(lambda x: True, 0, 1)
+
+
+def vectorized_cases(L):
+    """quad(vectorized=True) (C127): every integral of the collection with its points, its weight,
+    func applied point by point to the array (the scalar cases' values, bit for bit), sd's own array
+    integrands, complex_func, the statuses and the errors of the value check."""
+    from tests.integrate import problems as P
+
+    sd = L.sd
+    I = sd.integrate  # noqa: E741
+
+    def each(g):
+        return lambda xs: sd.asarray([g(t) for t in xs.tolist()])
+
+    for p in P.INTEGRALS:
+        kw = {"points": list(p.points)} if p.points else {}
+        if p.weight is not None:
+            kw.update(weight=p.weight, wvar=p.wvar)
+        yield f"quad vectorized {p.id}", lambda p=p, kw=kw: I.quad(each(p.f), p.a, p.b, vectorized=True, **kw)
+    yield (
+        "quad vectorized sd gauss line",
+        lambda: I.quad(lambda x: sd.exp(-x * x), -math.inf, math.inf, vectorized=True),
+    )
+    yield "quad vectorized sd peak", lambda: I.quad(lambda x: 4.0**-5 / ((x - math.pi / 4) ** 2 + 16.0**-5), 0.0, 1.0,
+                                                    vectorized=True)  # fmt: skip
+    yield "quad vectorized limit reached", lambda: I.quad(lambda x: sd.abs(sd.sin(200.0 * x)), 0.0, 10.0,
+                                                          vectorized=True)  # fmt: skip
+    yield "quad vectorized status 3", lambda: I.quad(each(lambda x: 1.0 / x if x else math.inf), 0.0, 1.0, limit=10000,
+                                                     vectorized=True)  # fmt: skip
+    yield "quad vectorized nan", lambda: I.quad(each(lambda x: math.nan if x > 0.5 else 1.0), 0.0, 1.0, vectorized=True)
+    yield "quad vectorized inf", lambda: I.quad(each(lambda x: math.inf if x > 0.9 else x), 0.0, 1.0, vectorized=True)
+    yield "quad vectorized qawf left", lambda: I.quad(sd.exp, -math.inf, 1.0, weight="sin", wvar=2.5, vectorized=True)
+    yield "quad vectorized complex", lambda: I.quad(lambda x: sd.cos(3 * x) + 1j * sd.sqrt(x), 0.0, 2.0,
+                                                    complex_func=True, vectorized=True)  # fmt: skip
+    yield "quad vectorized complex real values", lambda: I.quad(lambda x: x, 0.0, 1.0, complex_func=True,
+                                                                vectorized=True)  # fmt: skip
+    yield "quad vectorized list", lambda: I.quad(lambda x: [t * t for t in x.tolist()], 0.0, 1.0, vectorized=True)
+    yield "err quad vectorized", lambda: I.quad(sd.exp, 0, 1, vectorized=1)
+    yield "err quad vectorized shape", lambda: I.quad(lambda x: x[1:], 0, 1, vectorized=True)
+    yield "err quad vectorized scalar", lambda: I.quad(lambda x: 1.0, 0, 1, vectorized=True)
+    yield "err quad vectorized complex value", lambda: I.quad(lambda x: 1j * x, 0, 1, vectorized=True)
+    yield "err quad vectorized bool value", lambda: I.quad(lambda x: x > 0.5, 0, 1, vectorized=True)
+    yield "err quad vectorized complex shape", lambda: I.quad(lambda x: x[:2], 0, 1, complex_func=True,
+                                                              vectorized=True)  # fmt: skip
 
 
 def weight_cases(L):

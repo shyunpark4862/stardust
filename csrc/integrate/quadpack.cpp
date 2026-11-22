@@ -69,6 +69,75 @@ struct Fn {
     double operator()(double x) const { return value(f(x)); }
 };
 
+// quad's vectorized=True (decision C127): the points of one rule application in one call, a new
+// float64 sd.ndarray (n,), the values read from what f returns (a float64 sd.ndarray of that
+// shape as it is, anything else through check(value, n), which gives one or raises; parts 1 and
+// 2 take a complex128 array, or a float64 one as its real part). prefetch() makes the call and
+// the rule's calls of operator() take the values in order; a point that is not the next one
+// listed (none in QUADPACK's rules) is evaluated alone, as an array of one.
+struct VecFn {
+    nb::handle f, check;
+    int part = 0;
+    std::vector<double> xs, vals;
+    std::size_t pos = 0;
+
+    void prefetch(const double* x, int n) {
+        xs.assign(x, x + n);
+        vals.resize(static_cast<std::size_t>(n));
+        pos = 0;
+        eval(x, n, vals.data());
+    }
+
+    void eval(const double* x, int n, double* out) const {
+        const std::int64_t shape[1] = {n};
+        NDArray a = new_array(DType::Float64, shape);
+        if (n) std::memcpy(a.data, x, static_cast<std::size_t>(n) * sizeof(double));
+        nb::object r = f(wrap(std::move(a)));
+        const DType want = part == 0 ? DType::Float64 : DType::Complex128;
+        auto fits = [&](nb::handle h) {
+            if (!is_ndarray(h)) return false;
+            const NDArray& v = as_ndarray(h);
+            return v.ndim == 1 && v.shape[0] == n && (v.dtype == want || (part != 0 && v.dtype == DType::Float64));
+        };
+        if (!fits(r)) r = check(r, n);
+        const NDArray& v = as_ndarray(r);
+        const std::int64_t s = v.strides[0];
+        if (v.dtype == DType::Float64) {
+            for (int i = 0; i < n; ++i) {
+                double t;
+                std::memcpy(&t, v.data + i * s, sizeof t);
+                out[i] = part == 2 ? 0.0 : t;
+            }
+            return;
+        }
+        for (int i = 0; i < n; ++i) {
+            double t[2];
+            std::memcpy(t, v.data + i * s, sizeof t);
+            out[i] = part == 1 ? t[0] : t[1];
+        }
+    }
+
+    double operator()(double x) {
+        if (pos < xs.size() && std::memcmp(&xs[pos], &x, sizeof x) == 0) return vals[pos++];
+        double v;
+        eval(&x, 1, &v);
+        return v;
+    }
+};
+
+// QAWF on (-inf, b] by x -> -x: sign f(-x), its points handed on negated.
+template <class F>
+struct Reflected {
+    F& f;
+    double sign;
+    double operator()(double x) { return sign * f(-x); }
+    void prefetch(const double* x, int n) {
+        std::vector<double> neg(x, x + n);
+        for (double& t : neg) t = -t;
+        qp::prefetch(f, neg.data(), n);
+    }
+};
+
 constexpr double kTol = 1.49e-8;  // scipy's epsabs and epsrel
 constexpr int kMaxp1 = 50, kLimlst = 50;
 
@@ -146,7 +215,7 @@ void quad_weight(F& f, double a, double b, const Opts& o, qp::Work& w, qp::Cycle
             qp::qawfe(f, a, o.wvar0, integr, o.atol, o.limlst, o.limit, o.max_p1, w, r);
         } else {  // (-inf, b]: scipy's x -> -x, f(-x) for the cosine and -f(-x) for the sine
             const double sign = integr == 1 ? 1.0 : -1.0;
-            auto g = [&](double x) { return sign * f(-x); };
+            Reflected<F> g{f, sign};
             qp::qawfe(g, -b, o.wvar0, integr, o.atol, o.limlst, o.limit, o.max_p1, w, r);
         }
         return;
@@ -264,16 +333,22 @@ nb::object cycle_arrays(const qp::Cycles& r) {
 }
 
 nb::object quad_solve(
-    const char* fn, nb::callable f, nb::callable check, double a, double b, nb::handle opts, int part
+    const char* fn, nb::callable f, nb::callable check, double a, double b, nb::handle opts, int part, bool vectorized
 ) {
     return call_named(fn, [&]() -> nb::object {
-        Fn F{f, check, part};
         const Opts o = read_opts(opts);
         qp::Work w;
         qp::Cycles c;
         int limit = 0;
         bool qawf = false;
-        const double r = quad(F, a, b, o, w, limit, c, qawf);
+        double r;
+        if (vectorized) {
+            VecFn F{f, check, part, {}, {}, 0};
+            r = quad(F, a, b, o, w, limit, c, qawf);
+        } else {
+            Fn F{f, check, part};
+            r = quad(F, a, b, o, w, limit, c, qawf);
+        }
         if (qawf) return nb::make_tuple(r, c.abserr, c.neval, c.ier, c.lst, cycle_arrays(c), true);
         return nb::make_tuple(r, w.abserr, w.neval, w.ier, w.last, interval_arrays(w, o.limit), false);
     });
@@ -422,7 +497,7 @@ nb::object nquad_solve(
 void bind_quadpack(nb::module_& m) {
     m.def(
         "quad_solve", &quad_solve, nb::arg("fn"), nb::arg("f"), nb::arg("check"), nb::arg("a"), nb::arg("b"),
-        nb::arg("opts"), nb::arg("part")
+        nb::arg("opts"), nb::arg("part"), nb::arg("vectorized") = false
     );
     m.def(
         "nquad_solve", &nquad_solve, nb::arg("fn"), nb::arg("func"), nb::arg("check"), nb::arg("levels"),
