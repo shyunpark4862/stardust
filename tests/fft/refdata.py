@@ -338,14 +338,19 @@ LONG = ("c/uniform/65536", "c/uniform/65537", "c/uniform/30021", "c/uniform/1048
 # The same for the real path (milestone FT2): an even and an odd Bluestein length, 2^20.
 LONG_REAL = ("r/uniform/65536", "r/uniform/65537", "r/uniform/1048576")
 # The n-dimensional points with Arb computed where they are needed (milestone FT3): the stored nd family
-# has the complex transform of 11-smooth shapes only. Complex shapes with a Bluestein axis (fftn), real
-# shapes (rfftn: the real parts of the nd signal; even, odd and Bluestein last lengths, a Bluestein
-# other axis) and half spectra (irfftn: (shape of the input, output length of the last axis)).
+# has the complex transform of 11-smooth shapes only. Complex shapes (fftn), real shapes (rfftn: the real
+# parts of the nd signal) and half spectra (irfftn: (shape of the input, output length of the last axis)):
+# first the mixed-radix forms (even and odd last lengths, axes and inner lengths of 13 to 31, kappa 17 since
+# decision FT64), then Bluestein axes (a prime factor above 31: 37, 41, 43 and 74 = 2 37, as another axis,
+# as the last axis and as a real axis's inner length).
 ND_KINDS = ("uniform", "wide", "huge", "tiny")
-ND_COMPLEX = ((13, 8), (3, 17, 4), (7, 19), (5, 11, 2))
-ND_REAL = ((6, 10), (5, 7), (3, 4, 9), (13, 8), (6, 17), (4, 26), (2, 3, 4, 5), (16, 24))
+ND_COMPLEX = ((13, 8), (3, 17, 4), (7, 19), (5, 11, 2),
+              (37, 4), (3, 41), (74, 2), (2, 43, 3))  # fmt: skip
+ND_REAL = ((6, 10), (5, 7), (3, 4, 9), (13, 8), (6, 17), (4, 26), (2, 3, 4, 5), (16, 24),
+           (4, 37), (3, 74), (41, 6), (2, 43, 4))  # fmt: skip
 ND_HERMITIAN = (((6, 6), 10), ((5, 4), 7), ((3, 4, 5), 9), ((13, 5), 8), ((6, 9), 17), ((4, 14), 26),
-                ((2, 3, 4, 3), 5), ((16, 13), 24))  # fmt: skip
+                ((2, 3, 4, 3), 5), ((16, 13), 24),
+                ((4, 19), 37), ((3, 38), 74), ((43, 4), 6), ((2, 41, 3), 4))  # fmt: skip
 
 
 def nd_points():

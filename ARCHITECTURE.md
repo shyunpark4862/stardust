@@ -37,7 +37,7 @@
   - `spatial/`은 짝 거리의 합을 자기 순서(타일 순서)로 하므로 linalg의 합에 기대지 않는다(docs/design/spatial.md §3.1). Python 층의 `stardust.spatial`은 `stardust.sparse`(반경 결과의 `tocsr()`)와 `stardust.linalg`(`mahalanobis`의 기본 `VI`)를 쓴다.
   - `graph/`는 sparse의 표준 꼴 CSR(`sparse/format.hpp`)을 읽기만 하고 sparse는 graph를 모른다(docs/design/graph.md §1.4, §6). Python 층의 `stardust.graph`는 `stardust.sparse`(입력, `csr_array` 결과, `LinearOperator`)를 쓴다.
   - `interpolate/`의 선형 커널(`base/lerp.hpp`)과 구간 찾기(`base/interval.hpp`)는 바닥 층에 두고 배열의 `sd.interp`(`array/ops/interp.cpp`)와 함께 쓴다(`base/sincos.hpp`와 같은 자리; docs/design/interpolate.md §1.4, §3.2). 배열은 interpolate를 모른다. Python 층의 `stardust.interpolate`는 `stardust.spatial`(`KDTree`)과 `stardust.sparse`(`design_matrix`)를 쓴다.
-  - `fft/`는 다른 영역을 쓰지 않는다. 첫 판은 모든 길이를 자체 C++로 계산하고 Accelerate의 vDSP를 부르지 않는다(docs/design/fft.md FT30; vDSP의 래퍼 `fft/vdsp.hpp`는 길을 다시 잴 때만 쓴다). Python 층의 `stardust.fft`도 다른 영역을 쓰지 않는다(FFTLog의 계수도 `fft/fftlog.hpp`의 double-double log Γ로 만든다: docs/design/fft.md FT58).
+  - `fft/`는 다른 영역을 쓰지 않는다. 모든 길이를 자체 C++로 계산하고 Accelerate의 vDSP를 부르지 않는다(docs/design/fft.md FT30, FT66; vDSP의 래퍼 `fft/vdsp.hpp`는 라이브러리에 빌드되지 않고 탐침 `tools/fft_probe_kernels.cpp`만 쓴다). Python 층의 `stardust.fft`도 다른 영역을 쓰지 않는다(FFTLog의 계수도 `fft/fftlog.hpp`의 double-double log Γ로 만든다: docs/design/fft.md FT58).
   - Python 층에서 `stardust.integrate`와 `stardust.differentiate`는 인자 검사 도우미(`_callable`, `_check_int`, `_real` 등)를 `stardust.optimize._common`에서, 원소별 무리의 입력(`_inputs`, `_args`, `_shaped`)을 `stardust.optimize._elementwise`에서 가져온다. C++의 반복 고리는 바닥 폴더 `csrc/elementwise/`에 있어 optimize를 거치지 않는다(docs/design/integrate.md C16, §6.3).
   - Python 경계의 공용 도우미 `bind/pyutil.hpp`(배열 받기와 만들기)와 `bind/errors.hpp`(에러 메시지에 공개 함수 이름 붙이기)는 모든 영역의 `ops/`가 쓴다. 영역마다의 바인딩 파일(`bind/<영역>_bind.cpp`)은 맨 위 층이다.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다.
@@ -70,7 +70,7 @@ stardust/
     graph/                      _common, _traversal, _convert, _paths, _tree, _flow(MaximumFlowResult), _matching,
                                 _ordering, _structure, _centrality (docs/design/graph.md §6)
     interpolate/                __init__.py, _common, _ppoly (IP2 마일스톤), _bspline (IP3 마일스톤), _polyint _aaa (IP4 마일스톤), _grid (IP5 마일스톤), _rbf (IP6 마일스톤; docs/design/interpolate.md §6)
-    fft/                        __init__.py (공개 이름은 FT1 마일스톤부터; 계획한 모듈은 docs/design/fft.md §6)
+    fft/                        _common, _basic, _realtransforms, _helper, _fftlog (docs/design/fft.md §6)
     plot/                       _figure(칸·배치·내보내기), _layers, _basic, _sample·_function(함수 그림), _field(두 변수), _stat, _surface(3D), _adapt(곡면의 적응형 표본),
                                 _scene(도형 목록), _text(LaTeX 조판과 글리프 윤곽선의 캐시), _dvi, _ticks, _color, _svg·_pdf·_png
                                 (docs/design/plot.md §7)
@@ -115,8 +115,8 @@ stardust/
                   matching(Hopcroft–Karp와 배정의 LAPJV), ordering(역 Cuthill–McKee, 라플라시안), structure,
                   centrality(PageRank, 매개 중심성; docs/design/graph.md §6)
     interpolate/  search linear (IP1 마일스톤), banded cubic ppoly (IP2 마일스톤), bspline (IP3 마일스톤), polyint aaa (IP4 마일스톤), grid deboor pchip (IP5 마일스톤), rbf (IP6 마일스톤; docs/design/interpolate.md §6)
-    fft/          twiddle(회전 인자), cfft(혼합 기수 Stockham 복소 FFT), bluestein·ddmath, rfft(실수 FFT), plan(계획과 캐시), driver(축 구동기),
-                  basic·helper (FT1–FT3), r2r·args (FT4: DCT·DST), fftlog (FT5: FFTLog), vdsp(vDSP DFT의 래퍼, 다시 잴 때만; docs/design/fft.md §6)
+    fft/          twiddle(회전 인자), cfft(혼합 기수 Stockham 복소 FFT, 4단계, 두 줄 커널), bluestein·ddmath, rfft(실수 FFT), plan(계획과 캐시), driver(축 구동기),
+                  basic·helper·args(변환과 도우미), r2r(DCT·DST), fftlog(FFTLog), vdsp(vDSP DFT의 래퍼, 탐침만; docs/design/fft.md §6)
     plot/         raster(2D 래스터라이저: 면적 누적, 획의 윤곽, 점 찍기, 그림 붙이기), zbuffer(3D 깊이 버퍼), levels(marching squares; docs/design/plot.md §3.5, §5, §6)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,

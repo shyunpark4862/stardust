@@ -1,6 +1,7 @@
 """The proof of the contract's constant (docs/design/fft.md §4.2, decision FT31) holds for the code as
 it is: the butterflies' constants are the nearest doubles, every stage's bound per log2 of its radix is
-below kappa = 8 (tests/fft/proof.py propagates the roundings of csrc/fft/cfft.hpp's butterflies), the
+below kappa = 8 for the radices up to 11 and below kappa = 17 for 13 to 31 (decision FT64; tests/fft/proof.py
+propagates the roundings of csrc/fft/cfft.hpp's butterflies), the
 twiddles of the plans are within mu = 1.5u of the truth (Arb), and Bluestein's rho is what the
 contract's judge computes independently."""
 

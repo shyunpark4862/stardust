@@ -60,8 +60,8 @@ def test_direct_and_gathered_paths_agree():
 
 
 def test_boundary_lengths_of_the_paths():
-    # 11-smooth lengths (mixed radix) next to lengths with a larger prime (Bluestein), and lengths
-    # whose lines fill a task's block differently
+    # 31-smooth lengths (mixed radix, 13 to 31 among them) next to lengths with a larger prime (Bluestein:
+    # 122, 2047, 2049, 9241), and lengths whose lines fill a task's block differently
     for n in (10, 11, 12, 13, 14, 22, 23, 26, 120, 121, 122, 143, 169, 2047, 2048, 2049, 9240, 9241):
         x = S.get(f"c/uniform/{n}").x
         batch = np.stack([x, 2 * x, x[::-1].copy()])
@@ -137,7 +137,7 @@ def test_real_direct_and_gathered_paths_agree():
 
 
 def test_real_boundary_lengths_of_the_paths():
-    # even lengths whose half is 11-smooth or not, odd lengths of both kinds, 1 and 2
+    # even lengths whose half is 31-smooth or not, odd lengths of both kinds, 1 and 2
     for n in (1, 2, 3, 4, 22, 24, 26, 27, 34, 121, 122, 143, 169, 2046, 2048, 2049, 2050, 2054, 18482):
         x = S.get(f"r/uniform/{n}").x
         batch = np.stack([x, 2 * x, x[::-1].copy()])

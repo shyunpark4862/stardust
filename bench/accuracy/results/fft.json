@@ -320,97 +320,29 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-080952-adbb372+": {
-   "commit": "adbb372",
+  "20261123-083633-129299a+": {
+   "commit": "129299a",
    "dirty": true,
    "changed": [
     "API.md",
     "ARCHITECTURE.md",
-    "CMakeLists.txt",
     "README.md",
     "ROADMAP.md",
     "bench/accuracy/fft.py",
-    "bench/accuracy/graph.py",
-    "bench/accuracy/interpolate.py",
-    "bench/accuracy/results/fft.json",
-    "bench/accuracy/results/graph.json",
-    "bench/accuracy/results/interpolate.json",
-    "bench/fft/accuracy.md",
-    "bench/graph/accuracy.md",
-    "bench/interpolate/accuracy.md",
-    "bench/speed/cases/fft.py",
-    "bench/speed/cases/graph.py",
-    "bench/speed/cases/interpolate.py",
-    "csrc/array/ops/interp.cpp",
-    "csrc/base/lerp.hpp",
-    "csrc/bind/fft_bind.cpp",
-    "csrc/bind/graph_bind.cpp",
-    "csrc/bind/interpolate_bind.cpp",
-    "csrc/fft/basic.cpp",
-    "csrc/fft/bluestein.hpp",
-    "csrc/fft/cfft.hpp",
-    "csrc/fft/driver.cpp",
-    "csrc/fft/driver.hpp",
-    "csrc/fft/fft.hpp",
-    "csrc/fft/plan.cpp",
-    "csrc/fft/plan.hpp",
-    "csrc/fft/rfft.hpp",
-    "csrc/graph/flow.cpp",
-    "csrc/graph/graph.hpp",
-    "csrc/graph/graph_mod.hpp",
-    "csrc/graph/input.cpp",
-    "csrc/graph/paths.cpp",
-    "csrc/graph/paths.hpp",
-    "csrc/graph/traversal.cpp",
-    "csrc/graph/yen.cpp",
-    "csrc/interpolate/bspline.cpp",
-    "csrc/interpolate/cubic.cpp",
-    "csrc/interpolate/interpolate.hpp",
-    "csrc/interpolate/linear.cpp",
-    "csrc/interpolate/ppoly.cpp",
-    "csrc/linalg/lapack.hpp",
+    "csrc/fft/twiddle.hpp",
     "docs/api/fft.md",
-    "docs/api/graph.md",
-    "docs/api/interpolate.md",
     "docs/design/fft.md",
-    "docs/design/graph.md",
-    "docs/design/interpolate.md",
-    "src/stardust/_results.py",
     "src/stardust/fft/__init__.py",
-    "src/stardust/fft/_basic.py",
-    "src/stardust/fft/_helper.py",
-    "src/stardust/graph/__init__.py",
-    "src/stardust/graph/_convert.py",
-    "src/stardust/graph/_matching.py",
-    "src/stardust/graph/_paths.py",
-    "src/stardust/interpolate/__init__.py",
-    "tests/fft/data/prototype.json",
-    "tests/fft/proof.py",
+    "src/stardust/fft/_common.py",
     "tests/fft/refdata.py",
     "tests/fft/test_api_surface.py",
+    "tests/fft/test_nd.py",
+    "tests/fft/test_paths.py",
     "tests/fft/test_proof.py",
-    "tests/fft/test_threads.py",
-    "tests/golden/cases_fft.py",
-    "tests/golden/cases_graph.py",
-    "tests/golden/cases_interpolate.py",
-    "tests/golden/data/fft.json",
-    "tests/golden/data/graph.json",
-    "tests/golden/data/interpolate.json",
-    "tests/graph/definitions.py",
-    "tests/graph/refdata.py",
-    "tests/graph/test_api_surface.py",
-    "tests/graph/test_convert.py",
-    "tests/graph/test_layouts.py",
-    "tests/graph/test_threads.py",
-    "tests/interpolate/refdata.py",
-    "tests/interpolate/test_api_surface.py",
-    "tests/interpolate/test_errors.py",
-    "tests/interpolate/test_interp.py",
-    "tests/interpolate/test_linear_bits.py",
-    "tests/interpolate/test_threads.py",
-    "tools/fft_probe_kernels.cpp"
+    "tests/fft/test_reference.py",
+    "tests/golden/cases_fft.py"
    ],
-   "date": "2026-11-23T08:09:52",
+   "date": "2026-11-23T08:36:33",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -503,7 +435,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-083633-129299a+",
    "comparators": {
     "numpy": {
      "forward/pow2": {
@@ -738,7 +670,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-083633-129299a+",
    "comparators": {
     "scipy": {
      "fht/biased": {
@@ -825,7 +757,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-083633-129299a+",
    "comparators": {
     "numpy": {
      "irfft/pow2": {
@@ -911,7 +843,7 @@
    "id": "fft/nd",
    "area": "fft",
    "name": "nd",
-   "points": 116,
+   "points": 180,
    "regions": {
     "fftn/smooth": {
      "points": 26,
@@ -920,6 +852,15 @@
      "bound": 1.0,
      "worst": [
       "nd/tiny/5x11x2"
+     ]
+    },
+    "fftn/bluestein": {
+     "points": 16,
+     "rel_max": 9.787061504690799e-05,
+     "contract": 0.04192708333333333,
+     "bound": 1.0,
+     "worst": [
+      "nd/tiny/3x41"
      ]
     },
     "ifftn/smooth": {
@@ -931,6 +872,15 @@
       "nd/tiny/5x11x2"
      ]
     },
+    "ifftn/bluestein": {
+     "points": 16,
+     "rel_max": 0.00010212585917938225,
+     "contract": 0.04375,
+     "bound": 1.0,
+     "worst": [
+      "nd/tiny/3x41"
+     ]
+    },
     "rfftn/smooth": {
      "points": 32,
      "rel_max": 3.528302632396028e-05,
@@ -938,6 +888,15 @@
      "bound": 1.0,
      "worst": [
       "nd/tiny/3x4x9/real"
+     ]
+    },
+    "rfftn/bluestein": {
+     "points": 16,
+     "rel_max": 9.827499568887991e-05,
+     "contract": 0.040242976461655276,
+     "bound": 1.0,
+     "worst": [
+      "nd/tiny/3x74/real"
      ]
     },
     "irfftn/smooth": {
@@ -948,9 +907,18 @@
      "worst": [
       "nd/tiny/6x6/n=10"
      ]
+    },
+    "irfftn/bluestein": {
+     "points": 16,
+     "rel_max": 9.9841758736352e-05,
+     "contract": 0.03691045796308954,
+     "bound": 1.0,
+     "worst": [
+      "nd/tiny/2x41x3/n=4"
+     ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-083633-129299a+",
    "comparators": {
     "numpy": {
      "fftn/smooth": {
@@ -1327,7 +1295,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-083633-129299a+",
    "comparators": {
     "scipy": {
      "dct1/even": {
@@ -1630,7 +1598,7 @@
      ]
     }
    },
-   "run": "20261123-080952-adbb372+",
+   "run": "20261123-083633-129299a+",
    "comparators": {
     "numpy": {
      "rfft/pow2": {

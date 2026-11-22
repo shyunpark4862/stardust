@@ -5,8 +5,8 @@ hermitian, r2r, nd) once the functions it measures are public. FT1 brings
         line of tests/fft/ref/c2c.npz, plus the long lines the file leaves out (2^16, 65537, 3 10007 and
         2^20: tests/fft/refdata.LONG, decision FT33) with Arb computed where the run is. Regions by
         method and length form: pow2 (2^k), f2k (f 2^k, f in {3, 5, 15}, k >= 3: vDSP's classes, decision
-        FT22), mixed (the other 11-smooth lengths) and bluestein (a prime factor above 11, decision
-        FT36).
+        FT22), mixed (the other 31-smooth lengths) and bluestein (a prime factor above 31, decisions
+        FT36, FT64).
 
 A point is one line, judged by the contract of docs/design/fft.md §4 through tests/fft/refdata.py
 (bound, units; Bluestein lengths with their rho and inner length); rel is the normwise relative error
@@ -24,19 +24,19 @@ FT2 brings
              tests/fft/ref/hermitian.npz, plus the half spectra of the long real lines
 
 with regions by the real path's form (decision FT43): pow2 (2^k), even (another even length whose half
-is 11-smooth: the complex plan of n / 2 and the twiddle pass), odd (an odd 11-smooth length: the complex
+is 31-smooth: the complex plan of n / 2 and the twiddle pass), odd (an odd 31-smooth length: the complex
 plan of n and the Hermitian part) and bluestein (the inner length n / 2 or n has a prime factor above
-11). numpy and scipy are the comparator columns (R has no real transform: it is compared on c2c only).
+31). numpy and scipy are the comparator columns (R has no real transform: it is compared on c2c only).
 
 FT3 brings
 
   nd   fftn (method fftn) and ifftn(norm='forward') (method ifftn) on every array of tests/fft/ref/nd.npz
-       and the complex points of tests/fft/refdata.nd_points (shapes with a Bluestein axis), rfftn (method
+       and the complex points of tests/fft/refdata.nd_points (axes of 13 to 31 and Bluestein axes), rfftn (method
        rfftn) and irfftn(norm='forward') (method irfftn, the parts numpy and scipy drop from a
        non-Hermitian input dropped as theirs) on its real and Hermitian points; Arb computed where the run
        is (small shapes, a second or so). Regions by method and by the axes' paths: smooth (every axis, and
-       a real axis's inner length, 11-smooth) and bluestein (an axis or a real axis's inner length with a
-       prime factor above 11), judged by tests/fft/refdata.bound_nd. numpy (no hfftn: the four methods
+       a real axis's inner length, 31-smooth) and bluestein (an axis or a real axis's inner length with a
+       prime factor above 31: 37, 41, 43, 74), judged by tests/fft/refdata.bound_nd. numpy (no hfftn: the four methods
        above) and scipy are the comparator columns.
 
 FT4 brings
@@ -44,8 +44,8 @@ FT4 brings
   r2r  dct and dst of types 1-4 (methods dct1 .. dst4, norm='backward': unnormalised) on every line of
        tests/fft/ref/r2r.npz, plus the lines of tests/fft/refdata.LONG_R2R (a prime, 2 1009, 2^16 and 65537)
        with Arb where the run is. Regions by method and by the inner length's form (csrc/fft/r2r.hpp,
-       refdata.r2r_inner): even and odd (an 11-smooth inner complex length, from an even or an odd n) and
-       bluestein (an inner length with a prime factor above 11, decision FT53). scipy is the comparator
+       refdata.r2r_inner): even and odd (a 31-smooth inner complex length, from an even or an odd n) and
+       bluestein (an inner length with a prime factor above 31, decisions FT53, FT64). scipy is the comparator
        column (numpy has no DCT).
 
 FT5 brings

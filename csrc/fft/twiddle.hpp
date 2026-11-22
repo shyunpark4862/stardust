@@ -8,7 +8,7 @@
 // call (base/sincos.hpp) and the low part corrects them to first order (sin(h + l) = sin h +
 // l cos h, cos(h + l) = cos h - l sin h; the dropped l^2 terms are below 2^-106). A quarter turn is
 // an exact swap and negation. So w depends on k mod n and n alone, and each part is within about
-// one ULP of the true value (milestone FT1 measures every plan's table against Arb).
+// one ULP of the true value (tests/fft/test_proof.py measures the plans' tables against Arb: at most 1.04u).
 //
 // Milestone FT0 wrote this for the prototype of csrc/fft/cfft.hpp; FT1 keeps it for the plans.
 #pragma once

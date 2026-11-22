@@ -1,6 +1,6 @@
 """docs/api/fft.md and the module agree: every name its signature blocks define is planned or exported,
 nothing else is exported, an exported name's signature is the documented one, and the documented
-signatures follow the area's rules (decisions FT1-FT34 in docs/design/fft.md §1.1)."""
+signatures follow the area's rules (decisions FT1-FT68 in docs/design/fft.md §1.1)."""
 
 import inspect
 import pathlib
@@ -15,10 +15,7 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "fft.md"
 
-# Documented, not implemented yet (docs/design/fft.md §8). A milestone moves its names from here to
-# sd.fft.__all__ (FT1: fft ifft fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len; FT2:
-# rfft irfft hfft ihfft; FT3: fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn; FT4:
-# dct idct dst idst dctn idctn dstn idstn; FT5: fht ifht fhtoffset).
+# Documented, not implemented yet: empty, every documented name is in sd.fft.__all__ (docs/design/fft.md §8).
 PLANNED: set[str] = set()
 LINE = re.compile(r"^(?P<name>[A-Za-z_]\w*)\((?P<sig>.*)\)$")
 # scipy.fft's public names that sd.fft leaves out on purpose (FT2, FT8, FT10)

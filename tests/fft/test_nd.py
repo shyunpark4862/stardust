@@ -109,7 +109,11 @@ FORMS = [  # (shape, s, axes)
     ((4, 6, 10), (9, -1), [2, 0]),
     ((4, 6, 10), None, (-1, -3)),
     ((4, 6, 10), (8,), (1,)),
-    ((3, 13, 8), None, (0, 1)),  # a Bluestein axis
+    ((3, 13, 8), None, (0, 1)),  # an axis of radix 13 (decision FT64)
+    ((3, 37, 8), None, (0, 1)),  # a Bluestein axis (37)
+    ((4, 41), (43, -1), None),  # Bluestein axes, one by padding (43) and one as given (41)
+    ((5, 6, 9), (74,), (1,)),  # a Bluestein axis of 74 = 2 37 (a real axis's inner length 37)
+    ((2, 37, 6), (-1, 74), (1, 2)),  # Bluestein on both axes (37 and 74)
     ((5, 7, 9), (17, 6), (2, 1)),
     ((2, 3, 4, 5), None, None),
 ]

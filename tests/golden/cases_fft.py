@@ -1,9 +1,9 @@
 """Golden cases for sd.fft (tools/golden.py has the contract).
 
 The one-dimensional complex transforms and the helpers (milestone FT1, docs/design/fft.md §8): fft and
-ifft on every length form (2^k, f 2^k, the other 11-smooth lengths with radices 7 and 11, Bluestein for
-prime and composite lengths with a large prime factor) times norm, the edge values (NaN, inf, signed
-zeros, huge and subnormal entries), cutting and zero-padding, every axis of 2-d and 3-d arrays in C, F
+ifft on every length form (2^k, f 2^k, the other 11-smooth lengths with radices 7 and 11, the radices 13
+to 31, Bluestein for prime and composite lengths with a prime factor above 31) times norm, the edge values
+(NaN, inf, signed zeros, huge and subnormal entries), cutting and zero-padding, every axis of 2-d and 3-d arrays in C, F
 and strided layouts, batches large enough to split into many tasks at 3 and 10 threads, one long line,
 the empty batch axis and length 1; fftfreq and rfftfreq (numpy's bits), fftshift and ifftshift on every
 dtype and axes form, next_fast_len and prev_fast_len; the wrong calls (their errors are results).
@@ -13,8 +13,8 @@ and odd (an even length runs the complex plan of n / 2 and a twiddle pass, an od
 and the Hermitian part, decision FT43; Bluestein inner lengths both ways) times norm, the dropped parts of
 a Hermitian input, the default lengths, cutting and padding, the edge values, the layouts and batches, a
 long line, the input dtypes and the wrong calls; and real input to fft and ifft (bool, int64, float64),
-which takes the real path since FT2 (decision FT16; FT1 left it out, decision FT38). The four-step split
-of one long line comes with milestone FT6.
+which takes the real path since FT2 (decision FT16; FT1 left it out, decision FT38). The long lines (2^15
+and more) take the four-step split (milestone FT6, decision FT65).
 
 The n-dimensional transforms (milestone FT3): fft2, ifft2, fftn, ifftn, rfft2, irfft2, rfftn, irfftn,
 hfft2, ihfft2, hfftn and ihfftn on shapes with 2^k, other 11-smooth and Bluestein axes and even and odd
@@ -44,8 +44,8 @@ import numpy as np
 
 NAN, INF = math.nan, math.inf
 NORMS = ("backward", "ortho", "forward")
-# 2^k, f 2^k, other 11-smooth (7, 11, 9 = 3 3, 25 = 5 5, 77 = 7 11), Bluestein (primes, a large prime
-# factor, a prime power)
+# 2^k, f 2^k, other 11-smooth (7, 11, 9 = 3 3, 25 = 5 5, 77 = 7 11), the radices 13 to 31 (13, 17, 169 = 13 13;
+# decision FT64), Bluestein (127, 1009, 2018 = 2 1009, 4097 = 17 241)
 LENGTHS = (1, 2, 3, 4, 5, 7, 8, 11, 16, 24, 40, 64, 120, 1024, 3072, 9, 25, 77, 1000, 2310, 13, 17, 127, 1009,
            2018, 169, 4097)  # fmt: skip
 

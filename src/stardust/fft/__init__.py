@@ -3,15 +3,14 @@ transforms and their helpers (docs/api/fft.md, docs/design/fft.md).
 
 Usage: ``import stardust as sd`` then ``sd.fft.fft(x)``, ``sd.fft.ifft(y, n=1024)`` and
 ``sd.fft.fftfreq(1024, d=0.1)``. The names are scipy.fft's (which include numpy.fft's), in one flat
-namespace; inputs and options follow this library's rules (decisions FT1-FT58 in docs/design/fft.md
+namespace; inputs and options follow this library's rules (decisions FT1-FT68 in docs/design/fft.md
 §1.1): x is an sd.ndarray, options are keyword-only, norm defaults to 'backward'.
 
-The public names come milestone by milestone (docs/design/fft.md §8): FT1 the one-dimensional complex
-transforms (fft, ifft) and the helpers (fftfreq, rfftfreq, fftshift, ifftshift, next_fast_len,
-prev_fast_len), FT2 the one-dimensional real and Hermitian transforms (rfft, irfft, hfft, ihfft), FT3 the
-n-dimensional transforms (fft2, ifft2, fftn, ifftn, rfft2, irfft2, rfftn, irfftn, hfft2, ihfft2, hfftn,
-ihfftn), FT4 the discrete cosine and sine transforms (dct, idct, dst, idst, dctn, idctn, dstn, idstn), FT5
-FFTLog (fht, ifht, fhtoffset).
+The public names (35, docs/api/fft.md): the one-dimensional complex transforms (fft, ifft), the
+one-dimensional real and Hermitian transforms (rfft, irfft, hfft, ihfft), the n-dimensional transforms
+(fft2, ifft2, fftn, ifftn, rfft2, irfft2, rfftn, irfftn, hfft2, ihfft2, hfftn, ihfftn), the discrete cosine
+and sine transforms (dct, idct, dst, idst, dctn, idctn, dstn, idstn), FFTLog (fht, ifht, fhtoffset) and the
+helpers (fftfreq, rfftfreq, fftshift, ifftshift, next_fast_len, prev_fast_len).
 """
 
 from ._basic import (

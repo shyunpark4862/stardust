@@ -3,11 +3,11 @@ stored line of tests/fft/ref/c2c.npz (forward by fft, backward by ifft(norm='for
 unnormalised), of real.npz (rfft, the whole spectrum of fft of real input, ihfft) and of hermitian.npz
 (irfft(norm='forward'), hfft of the conjugate: both unnormalised) is within the contract, on every kind
 of signal (uniform, normal, impulse, constant, sines, wide, huge, tiny) and every length form (2^k,
-f 2^k, the other 11-smooth lengths, Bluestein; even and odd real lengths); and the long lines the files
+f 2^k, the other 31-smooth lengths, Bluestein; even and odd real lengths); and the long lines the files
 leave out (2^16, 65537, 3 10007; decision FT33) with Arb computed here. The n-dimensional transforms
 (milestone FT3): every stored line of nd.npz (fftn, ifftn(norm='forward')) and the points of
-refdata.nd_points (Bluestein axes, rfftn and irfftn on even, odd and Bluestein last lengths, on uniform,
-wide, huge and subnormal values) with Arb computed here, judged by refdata.bound_nd."""
+refdata.nd_points (axes of 13 to 31 and Bluestein axes, rfftn and irfftn on even, odd and Bluestein last
+lengths, on uniform, wide, huge and subnormal values) with Arb computed here, judged by refdata.bound_nd."""
 
 import numpy as np
 import pytest

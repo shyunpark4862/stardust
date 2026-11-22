@@ -1,6 +1,6 @@
 """The argument checks and messages sd.fft's helpers share (docs/api/fft.md §1; decisions FT5, FT6, FT13,
-FT18, FT26 in docs/design/fft.md §1.1). The transforms check theirs natively (csrc/fft/basic.cpp), with
-the same messages.
+FT18, FT26 in docs/design/fft.md §1.1), and FFTLog's data (_fftlog.py). The transforms check theirs
+natively (csrc/fft/args.hpp, basic.cpp, r2r.cpp), with the same messages.
 
 - Data (FT5): an sd.ndarray only; lists and numpy arrays are TypeErrors.
 - int arguments (API.md §2): operator.index's rule, bool is not an int, outside int64 is OverflowError.
