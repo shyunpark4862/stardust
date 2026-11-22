@@ -161,3 +161,93 @@ def test_tree_flow_matching_one_three_ten_threads():
         sd.set_num_threads(threads)
         runs.append(tree_flow_outputs(A, S, F, C, M))
     assert runs[0] == runs[1] == runs[2]
+
+
+def ordering_outputs(A, D):
+    """Every GR4 function's results as hashes: the reverse Cuthill-McKee search, the structural rank and
+    the laplacian's row-block and column-block passes, sparse and dense, past the GIL threshold."""
+    g = sd.graph
+    out = []
+
+    def add(x):
+        if isinstance(x, sd.sparse.sparray):
+            out.extend(hashlib.sha256(np.asarray(a).tobytes()).hexdigest() for a in (x.indptr, x.indices, x.data))
+        elif isinstance(x, tuple):
+            for y in x:
+                add(y)
+        elif isinstance(x, int):
+            out.append(str(x))
+        else:
+            out.append(hashlib.sha256(np.asarray(x).tobytes()).hexdigest())
+
+    for mode in (False, True):
+        add(g.reverse_cuthill_mckee(A, symmetric_mode=mode))
+    add(g.structural_rank(A))
+    for G in (A, D):
+        for normed in (False, True):
+            for out_degree in (False, True):
+                for sym in (False, True):
+                    add(tuple(g.laplacian(G, normed=normed, use_out_degree=out_degree, symmetrized=sym,
+                                          return_diag=True)))  # fmt: skip
+    return out
+
+
+def test_ordering_laplacian_one_three_ten_threads():
+    n = 60000
+    ip, ix, w = random_graph(n, 4, seed=21)
+    A = sd.sparse.csr_array((w, ix, ip), shape=(n, n))
+    r = np.random.Generator(np.random.PCG64(22))
+    D = r.uniform(-1, 1, (700, 700))
+    D[r.random(D.shape) < 0.5] = 0.0
+    runs = []
+    for threads in (1, 3, 10):
+        sd.set_num_threads(threads)
+        runs.append(ordering_outputs(A, D))
+    assert runs[0] == runs[1] == runs[2]
+
+
+def extra_outputs(A, S, B, P):
+    """Every GR5 function's results as hashes: the structure searches past the GIL threshold, PageRank's
+    row blocks and split vector sums (more than 2^16 nodes), the betweenness's source tasks and waves
+    (directed and undirected, weighted and unweighted, both scalings) (milestone GR5)."""
+    g = sd.graph
+    out = []
+
+    def add(x):
+        if isinstance(x, tuple):
+            for y in x:
+                add(y)
+        elif isinstance(x, int):
+            out.append(str(x))
+        else:
+            out.append(hashlib.sha256(np.asarray(x).tobytes()).hexdigest())
+
+    for G in (A, S):
+        add(g.articulation_points(G))
+        add(g.bridges(G))
+        add(g.biconnected_components(G))
+        add(g.core_number(G))
+    for directed in (True, False):
+        for unweighted in (True, False):
+            add(g.pagerank(A, directed=directed, unweighted=unweighted))
+            for normalized, endpoints in ((True, False), (False, True)):
+                add(g.betweenness_centrality(B, directed=directed, unweighted=unweighted, normalized=normalized,
+                                             endpoints=endpoints))  # fmt: skip
+    add(g.pagerank(A, alpha=0.95, personalization=P, dangling=P[::-1], tol=1e-10))
+    return out
+
+
+def test_extra_one_three_ten_threads():
+    n = 80000
+    ip, ix, w = random_graph(n, 3, seed=41)
+    A = sd.sparse.csr_array((w, ix, ip), shape=(n, n))
+    sym_ip, sym_ix, sym_w = random_graph(30000, 2, seed=42, symmetric=True)
+    S = sd.sparse.csr_array((sym_w, sym_ix, sym_ip), shape=(30000, 30000))
+    bp, bx, bw = random_graph(2500, 4, seed=43)
+    B = sd.sparse.csr_array((np.round(bw * 4) / 4 + 0.25, bx, bp), shape=(2500, 2500))  # ties: equal distances
+    P = sd.asarray(np.random.Generator(np.random.PCG64(44)).uniform(0, 1, n))
+    runs = []
+    for threads in (1, 3, 10):
+        sd.set_num_threads(threads)
+        runs.append(extra_outputs(A, S, B, P))
+    assert runs[0] == runs[1] == runs[2]

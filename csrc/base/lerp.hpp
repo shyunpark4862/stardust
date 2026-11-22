@@ -23,6 +23,7 @@
 
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <limits>
 
 namespace sd {
@@ -51,12 +52,8 @@ inline double lerp_nonfinite(double a, double b, double t) {
     return a + t * (b - a);  // outside (or a NaN t): IEEE
 }
 
-}  // namespace detail
-
-// The value at t between a (t = 0) and b (t = 1); outside [0, 1] the line through them.
-inline double lerp(double a, double b, double t) {
-    if (!(std::isfinite(a) && std::isfinite(b))) [[unlikely]]
-        return detail::lerp_nonfinite(a, b, t);
+// lerp for finite a and b: the branch-free form (decision IP26), shared by lerp and lerp_block.
+inline double lerp_finite(double a, double b, double t) {
     const double r1 = t * b + (1.0 - t) * a;  // opposite signs: no cancellation
     double r2 = a + t * (b - a);              // same sign: exact for a == b
     // r2 past b is cut back to b: for t <= 1 on b's side of a, for t > 1 on the other side
@@ -66,6 +63,49 @@ inline double lerp(double a, double b, double t) {
     r = (t == 1.0) ? b : r;
     r = (t == 0.0) ? a : r;
     return (t != t) ? t : r;  // a NaN t (a NaN point) stays NaN: fmin and fmax would drop it
+}
+
+}  // namespace detail
+
+// The value at t between a (t = 0) and b (t = 1); outside [0, 1] the line through them.
+inline double lerp(double a, double b, double t) {
+    if (!(std::isfinite(a) && std::isfinite(b))) [[unlikely]]
+        return detail::lerp_nonfinite(a, b, t);
+    return detail::lerp_finite(a, b, t);
+}
+
+// Whether lerp_block covers a point: x - x0, x1 - x0, a and b finite (|v| <= DBL_MAX fails for inf and NaN).
+inline bool lerp_block_covers(double x, double x0, double x1, double a, double b) {
+    constexpr double kMax = std::numeric_limits<double>::max();
+    return (std::fabs(x1 - x0) <= kMax) & (std::fabs(x - x0) <= kMax) & (std::fabs(a) <= kMax) & (std::fabs(b) <= kMax);
+}
+
+// out[i] = lerp(a[i], b[i], lerp_t(x[i], x0[i], x1[i])) for a block of m points, in one loop the compiler
+// vectorizes: the same operations as lerp_t's common path and lerp_finite, so the same bits, for every point
+// lerp_block_covers. Returns false when some point is not covered (a NaN or infinite point, an overflowing width,
+// a or b not finite): the caller computes those with lerp_t and lerp (decision IP99).
+inline bool lerp_block(
+    const double* x, const double* x0, const double* x1, const double* a, const double* b, double* out, std::int64_t m
+) {
+    bool all = true;
+    for (std::int64_t i = 0; i < m; ++i) {
+        out[i] = detail::lerp_finite(a[i], b[i], (x[i] - x0[i]) / (x1[i] - x0[i]));
+        all &= lerp_block_covers(x[i], x0[i], x1[i], a[i], b[i]);
+    }
+    return all;
+}
+
+// out[i] = lerp(a[i], b[i], t[i]) for a block of m values in one vectorized loop (lerp_finite, the same bits) for
+// finite a[i] and b[i]; returns false when some a[i] or b[i] is not finite, whose out[i] the caller computes with
+// lerp.
+inline bool lerp_ab_block(const double* a, const double* b, const double* t, double* out, std::int64_t m) {
+    constexpr double kMax = std::numeric_limits<double>::max();
+    bool all = true;
+    for (std::int64_t i = 0; i < m; ++i) {
+        out[i] = detail::lerp_finite(a[i], b[i], t[i]);
+        all &= (std::fabs(a[i]) <= kMax) & (std::fabs(b[i]) <= kMax);
+    }
+    return all;
 }
 
 // complex values: the real and imaginary parts with the same t (numpy's interp does the same)

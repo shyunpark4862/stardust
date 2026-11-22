@@ -50,10 +50,11 @@ struct Transposed {
 };
 Transposed transpose(const View& g, const NDArray& indptr, const NDArray& indices, const NDArray& values, bool weights);
 
-// Whether a graph is its own undirected reading: the pattern of g equals that of its transpose t and, when
-// both have values, every stored weight is the undirected_weight of the two directions (bit for bit). No
-// Python object.
-bool symmetric(const View& g, const View& t);
+// Whether a graph is its own undirected reading: its pattern equals its transpose's and, with `weights`
+// (and g.data), every stored weight is the undirected_weight of the two directions (bit for bit). One pass
+// over the entries without making the transpose (a cursor per row); no Python object. no_diagonal: also
+// false when a diagonal entry is stored.
+bool symmetric(const View& g, bool weights, bool no_diagonal = false);
 
 // The undirected weight of the two directions when both are stored (docs/design/graph.md §2.1): the
 // smaller; NaN when either is NaN (numpy's minimum), and of 0.0 and -0.0 the -0.0, so that the

@@ -38,4 +38,5 @@ def csgraph_to_dense(csgraph, /, *, null_value=0):
     name = "csgraph_to_dense"
     null = C.real(null_value, name, "null_value")
     n, indptr, indices, data = C.graph(csgraph, name, values=True)
+    C.room(name, 8 * n * n)
     return _core._to_dense(indptr, indices, data, n, null)

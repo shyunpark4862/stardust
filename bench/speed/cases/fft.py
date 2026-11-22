@@ -4,7 +4,7 @@
 The plan of the area's cases, milestone by milestone: every spec below names its milestone and the
 sd.fft names it needs, and cases() keeps a spec once its names are public (FT1 brings fft, ifft and
 the helpers, FT2 the real and Hermitian transforms, FT3 the n-dimensional ones, FT4 dct and dst,
-FT5 FFTLog). The sizes are those of docs/design/fft.md §5, where milestone FT0 timed the
+FT5 FFTLog, FT6 cases of its new paths). The sizes are those of docs/design/fft.md §5, where milestone FT0 timed the
 comparators and the prototype of the own path. numpy's pocketfft always runs on one thread; scipy
 runs at its default workers=1 and, since sd runs on its pool by default, also at workers=10. R's
 fft runs in the one R session.
@@ -207,30 +207,115 @@ def _r2r_specs():
     for name in ("dct", "dst"):
         for t in (1, 2, 3, 4):
             for n in (1 << 16,) + ((1 << 20,) if t == 2 else ()):
-                refs = (Ref("scipy", lambda d, f=name, t=t: lambda: getattr(_sf(), f)(d["x"], type=t)),)
+                refs = [Ref("scipy", lambda d, f=name, t=t: lambda: getattr(_sf(), f)(d["x"], type=t))]
+                if n == 1 << 20:
+                    refs.append(Ref("scipy workers=10", lambda d, f=name, t=t: lambda: getattr(_sf(), f)(
+                        d["x"], type=t, workers=10), lib="scipy"))  # fmt: skip
                 out.append(Spec("FT4", "r2r", f"{name} type={t}", (name,), _size(n), _data((n,), complex_=False),
-                                lambda d, f=name, t=t: lambda: getattr(_sd(), f)(d["sx"], type=t), refs,
+                                lambda d, f=name, t=t: lambda: getattr(_sd(), f)(d["sx"], type=t), tuple(refs),
                                 quick=(name, t, n) == ("dct", 2, 1 << 16)))  # fmt: skip
+    # milestone FT4's further cases: the inverse (DCT-III), odd and Bluestein lengths (the complex plan of n,
+    # the odd DCT-IV), batches along both axes and a 2-d transform
+    refs = (Ref("scipy", lambda d: lambda: _sf().idct(d["x"])),)
+    out.append(Spec("FT4", "r2r", "idct type=2", ("idct",), _size(1 << 16), _data((1 << 16,), complex_=False),
+                    lambda d: lambda: _sd().idct(d["sx"]), refs, note="the DCT-III path"))  # fmt: skip
+    for t, n, note in ((2, 1155, "odd: the complex plan of n"), (2, 10007, "a prime: Bluestein"),
+                       (4, 1155, "odd: the odd DCT-IV")):  # fmt: skip
+        refs = (Ref("scipy", lambda d, t=t: lambda: _sf().dct(d["x"], type=t)),)
+        out.append(Spec("FT4", "r2r", f"dct type={t}", ("dct",), _size(n), _data((n,), complex_=False),
+                        lambda d, t=t: lambda: _sd().dct(d["sx"], type=t), refs, note=note))  # fmt: skip
+    for axis in (-1, 0):
+        refs = (Ref("scipy", lambda d, a=axis: lambda: _sf().dct(d["x"], axis=a)),
+                Ref("scipy workers=10", lambda d, a=axis: lambda: _sf().dct(d["x"], axis=a, workers=10), lib="scipy"))  # fmt: skip
+        out.append(Spec("FT4", "batch", f"dct axis={axis}", ("dct",), "(1000, 1024)", _data((1000, 1024), complex_=False),
+                        lambda d, a=axis: lambda: _sd().dct(d["sx"], axis=a), refs, quick=axis == -1))  # fmt: skip
+    refs = (Ref("scipy", lambda d: lambda: _sf().dctn(d["x"])),
+            Ref("scipy workers=10", lambda d: lambda: _sf().dctn(d["x"], workers=10), lib="scipy"))  # fmt: skip
+    out.append(Spec("FT4", "nd", "dctn", ("dctn",), "(1024, 1024)", _data((1024, 1024), complex_=False),
+                    lambda d: lambda: _sd().dctn(d["sx"]), refs))  # fmt: skip
     return out
 
 
 def _fftlog_specs():
-    n = 4096
+    """Milestone FT5: fht on logspace(-4, 4, n) samples of r^1.5 e^(-r^2 / 2) (dln = ln(1e8) / (n - 1), mu = 0.5,
+    scipy's optimal offset), ifht with a bias, a batch along the last axis, a new plan each call (sd's plan cache
+    cleared in the timed call: the coefficients' cost, which scipy pays every call) and fhtoffset."""
+    out = []
 
-    def setup():
-        import stardust as sd
+    def data(shape, bias=0.0):
+        def setup():
+            import stardust as sd
 
-        r = np.logspace(-4, 4, n)
-        a = r**1.5 * np.exp(-(r**2) / 2)
-        return {"a": a, "sa": sd.asarray(a), "dln": float(np.log(r[1] / r[0]))}
+            n = shape[-1]
+            r = np.logspace(-4, 4, n)
+            a = np.broadcast_to(r**1.5 * np.exp(-(r**2) / 2), shape).copy()
+            if len(shape) > 1:
+                a *= np.random.Generator(np.random.PCG64([20261123, *shape])).uniform(0.5, 1.5, shape)
+            dln = float(np.log(r[1] / r[0]))
+            off = float(_sf().fhtoffset(dln, 0.5, bias=bias))
+            return {"a": a, "sa": sd.asarray(a), "dln": dln, "off": off, "bias": bias}
 
-    refs = (Ref("scipy", lambda d: lambda: _sf().fht(d["a"], d["dln"], 0.5)),)
-    return [
-        Spec("FT5", "fftlog", "fht", ("fht",), "4096", setup, lambda d: lambda: _sd().fht(d["sa"], d["dln"], 0.5), refs)
-    ]
+        return setup
+
+    def sd_call(name, fresh=False):
+        def make(d):
+            import stardust as sd
+
+            f = getattr(_sd(), name)
+            if fresh:
+                clear = sd._core.fft._fht_cache_clear
+                return lambda: clear() or f(d["sa"], d["dln"], 0.5, offset=d["off"], bias=d["bias"])
+            return lambda: f(d["sa"], d["dln"], 0.5, offset=d["off"], bias=d["bias"])
+
+        return make
+
+    def ref(name):
+        def call(d):
+            return lambda: getattr(_sf(), name)(d["a"], d["dln"], 0.5, offset=d["off"], bias=d["bias"])
+
+        return (Ref("scipy", call),)
+
+    for n in (1 << 12, 1 << 16, 1 << 20):
+        out.append(Spec("FT5", "fftlog", "fht", ("fht",), _size(n), data((n,)), sd_call("fht"), ref("fht"),
+                        quick=n == 1 << 12))  # fmt: skip
+    out.append(Spec("FT5", "fftlog", "ifht bias=0.5", ("ifht",), _size(1 << 12), data((1 << 12,), 0.5), sd_call("ifht"),
+                    ref("ifht"), note="the biases on both sides"))  # fmt: skip
+    out.append(Spec("FT5", "fftlog", "fht", ("fht",), "(1000, 1024)", data((1000, 1024)), sd_call("fht"), ref("fht"),
+                    note="1000 lines along the last axis"))  # fmt: skip
+    for n in (1 << 12, 1 << 16):
+        out.append(Spec("FT5", "fftlog", "fht new plan", ("fht",), _size(n), data((n,)), sd_call("fht", fresh=True),
+                        ref("fht"), note="sd's plan cache cleared each call: the coefficients' cost"))  # fmt: skip
+    refs = (Ref("scipy", lambda d: lambda: _sf().fhtoffset(0.01, 0.5, initial=0.3, bias=0.2)),)
+    out.append(Spec("FT5", "fftlog", "fhtoffset", ("fhtoffset",), "1", dict,
+                    lambda d: lambda: _sd().fhtoffset(0.01, 0.5, initial=0.3, bias=0.2), refs,
+                    note="the call's cost"))  # fmt: skip
+    return out
 
 
-SPECS = _complex_specs() + _helper_specs() + _real_specs() + _nd_specs() + _r2r_specs() + _fftlog_specs()
+def _ft6_specs():
+    """Milestone FT6: lengths with a radix of 13 to 31 (decision FT64; Bluestein before), a first-axis batch of the
+    two-line kernel (decision FT67) and the DCT-I batch (inner length 1023 = 3 11 31)."""
+    out = []
+    for n, note in ((1001, "7 11 13: radix 13"), (32736, "3 11 31 32: radix 31, a four-step")):
+        refs = (Ref("numpy", lambda d: lambda: np.fft.fft(d["x"])), Ref("scipy", lambda d: lambda: _sf().fft(d["x"])))
+        out.append(Spec("FT6", "complex", "fft", ("fft",), _size(n), _data((n,)), lambda d: lambda: _sd().fft(d["sx"]),
+                        refs, note=note))  # fmt: skip
+    refs = (Ref("numpy", lambda d: lambda: np.fft.rfft(d["x"])), Ref("scipy", lambda d: lambda: _sf().rfft(d["x"])))
+    out.append(Spec("FT6", "real", "rfft", ("rfft",), _size(4095), _data((4095,), complex_=False),
+                    lambda d: lambda: _sd().rfft(d["sx"]), refs, note="3^2 5 7 13: radix 13"))  # fmt: skip
+    refs = (Ref("numpy", lambda d: lambda: np.fft.fft(d["x"], axis=0)),
+            Ref("scipy", lambda d: lambda: _sf().fft(d["x"], axis=0)),
+            Ref("scipy workers=10", lambda d: lambda: _sf().fft(d["x"], axis=0, workers=10), lib="scipy"))  # fmt: skip
+    out.append(Spec("FT6", "batch", "fft axis=0", ("fft",), "(1024, 1000)", _data((1024, 1000)),
+                    lambda d: lambda: _sd().fft(d["sx"], axis=0), refs, note="the two-line kernel"))  # fmt: skip
+    refs = (Ref("scipy", lambda d: lambda: _sf().dct(d["x"], type=1)),
+            Ref("scipy workers=10", lambda d: lambda: _sf().dct(d["x"], type=1, workers=10), lib="scipy"))  # fmt: skip
+    out.append(Spec("FT6", "batch", "dct type=1", ("dct",), "(1000, 1024)", _data((1000, 1024), complex_=False),
+                    lambda d: lambda: _sd().dct(d["sx"], type=1), refs, note="inner length 1023 = 3 11 31"))  # fmt: skip
+    return out
+
+
+SPECS = _complex_specs() + _helper_specs() + _real_specs() + _nd_specs() + _r2r_specs() + _fftlog_specs() + _ft6_specs()
 
 
 def _public(names) -> bool:

@@ -256,6 +256,7 @@ nb::object run_yen(
         const int64_t s2[] = {M, n};
         op = wrap(new_array(DType::Int64, s2));
         int64_t* P = reinterpret_cast<int64_t*>(as_ndarray(op).data);
+        const parallel::Unlocked unlocked(M * n >= kParallelWork);
         std::fill(P, P + M * n, kNoNode);
         for (int64_t m = 0; m < M; ++m) {
             const std::vector<int64_t>& v = found[static_cast<size_t>(m)].nodes;

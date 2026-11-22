@@ -2,7 +2,7 @@
 //
 // A distance is the least fixed point of d(v) = min_u fl(d(u) + w(u, v)) (the sources 0): the smallest
 // left-to-right sum over the paths to v. Every relaxation algorithm that stops with no edge left to relax
-// ends there, whatever its order, so the binary-heap Dijkstra, the queue Bellman-Ford, the label-correcting
+// ends there, whatever its order, so the indexed-heap Dijkstra, the queue Bellman-Ford, the label-correcting
 // search on Johnson's potentials and the heap-free dense Dijkstra give the same bits. The predecessors are
 // fixed by the distances alone (predecessors()): the tight edges, the fewest edges, the smallest node.
 //
@@ -43,7 +43,8 @@ struct Owned {
 // pattern only, w left empty).
 Owned undirected(const View& g, bool weights);
 
-// The graph a path function reads: g itself (directed) or its undirected reading kept in `own`.
+// The graph a path function reads: g itself (directed, or undirected when g is symmetric: its own
+// undirected reading) or its undirected reading kept in `own`.
 WGraph reading(const View& g, bool directed, bool weights, Owned& own);
 
 // The weight of the edge u -> v by a binary search of row u; false when there is none.
@@ -65,7 +66,6 @@ struct Work {
         double key;
         int64_t v;
     };
-    std::vector<Item> heap;
     std::vector<uint8_t> flag;
     std::vector<int64_t> order, level, count;
     std::vector<double> key;
@@ -78,17 +78,6 @@ struct Work {
           hk(static_cast<size_t>(n)),
           hv(static_cast<size_t>(n)),
           pos(static_cast<size_t>(n), -1) {}
-    void push(double k, int64_t v) {
-        heap.push_back({k, v});
-        std::push_heap(heap.begin(), heap.end(), later);
-    }
-    Item pop() {
-        std::pop_heap(heap.begin(), heap.end(), later);
-        const Item x = heap.back();
-        heap.pop_back();
-        return x;
-    }
-    static bool later(const Item& a, const Item& b) { return a.key > b.key; }
 
     // An indexed 4-ary heap of (key, node), one entry per node at most (a smaller key moves the entry up
     // in place): Dijkstra's queue. pos[v] is v's slot, -1 when v is not in it; every pos is -1 between

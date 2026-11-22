@@ -2,8 +2,72 @@
  "schema": 1,
  "area": "graph",
  "runs": {
-  "20261123-055811-b48c753+": {
-   "commit": "b48c753",
+  "20261123-061938-adbb372+": {
+   "commit": "adbb372",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/speed/cases/graph.py",
+    "csrc/bind/fft_bind.cpp",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/fft.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/linalg/lapack.hpp",
+    "src/stardust/_results.py",
+    "src/stardust/fft/__init__.py",
+    "src/stardust/graph/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/golden/data/fft.json",
+    "tests/golden/data/graph.json",
+    "tests/graph/definitions.py",
+    "tests/graph/refdata.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_layouts.py",
+    "tests/graph/test_threads.py"
+   ],
+   "date": "2026-11-23T06:19:38",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261123-064954-adbb372+": {
+   "commit": "adbb372",
    "dirty": true,
    "changed": [
     "API.md",
@@ -15,19 +79,131 @@
     "bench/accuracy/graph.py",
     "bench/accuracy/interpolate.py",
     "bench/accuracy/results/fft.json",
+    "bench/accuracy/results/graph.json",
     "bench/fft/accuracy.md",
+    "bench/graph/accuracy.md",
     "bench/speed/cases/fft.py",
     "bench/speed/cases/graph.py",
     "bench/speed/cases/interpolate.py",
+    "csrc/bind/fft_bind.cpp",
     "csrc/bind/graph_bind.cpp",
     "csrc/bind/interpolate_bind.cpp",
     "csrc/fft/basic.cpp",
     "csrc/fft/driver.cpp",
     "csrc/fft/driver.hpp",
+    "csrc/fft/fft.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/interpolate/interpolate.hpp",
+    "csrc/linalg/lapack.hpp",
+    "docs/api/fft.md",
+    "docs/api/graph.md",
+    "docs/api/interpolate.md",
+    "docs/design/fft.md",
+    "docs/design/graph.md",
+    "docs/design/interpolate.md",
+    "src/stardust/_results.py",
+    "src/stardust/fft/__init__.py",
+    "src/stardust/graph/__init__.py",
+    "src/stardust/interpolate/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/golden/cases_interpolate.py",
+    "tests/golden/data/fft.json",
+    "tests/golden/data/graph.json",
+    "tests/graph/definitions.py",
+    "tests/graph/refdata.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_layouts.py",
+    "tests/graph/test_threads.py",
+    "tests/interpolate/refdata.py",
+    "tests/interpolate/test_api_surface.py",
+    "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_threads.py"
+   ],
+   "date": "2026-11-23T06:49:54",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261123-080952-adbb372+": {
+   "commit": "adbb372",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/accuracy/interpolate.py",
+    "bench/accuracy/results/fft.json",
+    "bench/accuracy/results/graph.json",
+    "bench/accuracy/results/interpolate.json",
+    "bench/fft/accuracy.md",
+    "bench/graph/accuracy.md",
+    "bench/interpolate/accuracy.md",
+    "bench/speed/cases/fft.py",
+    "bench/speed/cases/graph.py",
+    "bench/speed/cases/interpolate.py",
+    "csrc/array/ops/interp.cpp",
+    "csrc/base/lerp.hpp",
+    "csrc/bind/fft_bind.cpp",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/bind/interpolate_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/bluestein.hpp",
+    "csrc/fft/cfft.hpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/fft.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/flow.cpp",
+    "csrc/graph/graph.hpp",
     "csrc/graph/graph_mod.hpp",
     "csrc/graph/input.cpp",
-    "csrc/interpolate/banded.hpp",
+    "csrc/graph/paths.cpp",
+    "csrc/graph/paths.hpp",
+    "csrc/graph/traversal.cpp",
+    "csrc/graph/yen.cpp",
+    "csrc/interpolate/bspline.cpp",
+    "csrc/interpolate/cubic.cpp",
     "csrc/interpolate/interpolate.hpp",
+    "csrc/interpolate/linear.cpp",
+    "csrc/interpolate/ppoly.cpp",
+    "csrc/linalg/lapack.hpp",
     "docs/api/fft.md",
     "docs/api/graph.md",
     "docs/api/interpolate.md",
@@ -37,14 +213,17 @@
     "src/stardust/_results.py",
     "src/stardust/fft/__init__.py",
     "src/stardust/fft/_basic.py",
+    "src/stardust/fft/_helper.py",
     "src/stardust/graph/__init__.py",
-    "src/stardust/graph/_common.py",
+    "src/stardust/graph/_convert.py",
+    "src/stardust/graph/_matching.py",
     "src/stardust/graph/_paths.py",
     "src/stardust/interpolate/__init__.py",
-    "src/stardust/interpolate/_ppoly.py",
+    "tests/fft/data/prototype.json",
+    "tests/fft/proof.py",
     "tests/fft/refdata.py",
     "tests/fft/test_api_surface.py",
-    "tests/fft/test_reference.py",
+    "tests/fft/test_proof.py",
     "tests/fft/test_threads.py",
     "tests/golden/cases_fft.py",
     "tests/golden/cases_graph.py",
@@ -55,14 +234,18 @@
     "tests/graph/definitions.py",
     "tests/graph/refdata.py",
     "tests/graph/test_api_surface.py",
+    "tests/graph/test_convert.py",
+    "tests/graph/test_layouts.py",
     "tests/graph/test_threads.py",
     "tests/interpolate/refdata.py",
     "tests/interpolate/test_api_surface.py",
     "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_interp.py",
     "tests/interpolate/test_linear_bits.py",
-    "tests/interpolate/test_threads.py"
+    "tests/interpolate/test_threads.py",
+    "tools/fft_probe_kernels.cpp"
    ],
-   "date": "2026-11-23T05:58:11",
+   "date": "2026-11-23T08:09:52",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -237,7 +420,1350 @@
      ]
     }
    },
-   "run": "20261123-055811-b48c753+"
+   "run": "20261123-080952-adbb372+"
+  },
+  {
+   "id": "graph/betweenness",
+   "area": "graph",
+   "name": "betweenness",
+   "points": 2360,
+   "regions": {
+    "complete/8 weighted": {
+     "points": 16,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "complete/8 unweighted": {
+     "points": 16,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "components/40 weighted": {
+     "points": 80,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.0383000842727483e-16,
+     "contract": 0.02017513736263716,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=True endpoints=False v=10"
+     ]
+    },
+    "components/40 unweighted": {
+     "points": 80,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.8399359207588797e-16,
+     "contract": 0.030819118926471465,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=True endpoints=False v=22"
+     ]
+    },
+    "dag/30 weighted": {
+     "points": 60,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.395203377200569e-16,
+     "contract": 0.022472993827160254,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=True endpoints=False v=24"
+     ]
+    },
+    "dag/30 unweighted": {
+     "points": 60,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 3.1748312856140077e-16,
+     "contract": 0.03445341926471158,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=True endpoints=False v=26"
+     ]
+    },
+    "diamond/4 weighted": {
+     "points": 24,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2688263138573217e-16,
+     "contract": 0.07619047619047606,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=True endpoints=True v=0"
+     ]
+    },
+    "diamond/4 unweighted": {
+     "points": 24,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2688263138573217e-16,
+     "contract": 0.07619047619047606,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=True endpoints=True v=0"
+     ]
+    },
+    "empty/1 weighted": {
+     "points": 2,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "empty/1 unweighted": {
+     "points": 2,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "er/int60 weighted": {
+     "points": 360,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 4.0772777061893975e-16,
+     "contract": 0.022810467525814004,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=True endpoints=False v=50"
+     ]
+    },
+    "er/int60 unweighted": {
+     "points": 360,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 5.869721115238027e-16,
+     "contract": 0.03916277604052491,
+     "bound": 1.0,
+     "worst": [
+      "directed=False normalized=False endpoints=False v=0"
+     ]
+    },
+    "er/sym60 weighted": {
+     "points": 120,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.9783676024167687e-16,
+     "contract": 0.017533823822766394,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=23"
+     ]
+    },
+    "er/sym60 unweighted": {
+     "points": 120,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.3866849994043594e-16,
+     "contract": 0.024209957621172236,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=37"
+     ]
+    },
+    "grid2d/5x5 weighted": {
+     "points": 150,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 4.611740342017923e-16,
+     "contract": 0.05465640022589797,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=False endpoints=False v=7"
+     ]
+    },
+    "grid2d/5x5 unweighted": {
+     "points": 150,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 4.611740342017923e-16,
+     "contract": 0.05465640022589797,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=False endpoints=False v=7"
+     ]
+    },
+    "heavytail/120 weighted": {
+     "points": 240,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.3696773184234269e-16,
+     "contract": 0.0035967803270375103,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=63"
+     ]
+    },
+    "heavytail/120 unweighted": {
+     "points": 240,
+     "ulp_max": 5.0,
+     "ulp_p999": 5.0,
+     "rel_max": 7.752828524043923e-16,
+     "contract": 0.02502912949960608,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=8"
+     ]
+    },
+    "isolated/5 weighted": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "isolated/5 unweighted": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "ladder/20 weighted": {
+     "points": 80,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 4.932765800383032e-16,
+     "contract": 0.031070212895819013,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "ladder/20 unweighted": {
+     "points": 80,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 4.932765800383032e-16,
+     "contract": 0.031070212895819013,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "path/10 weighted": {
+     "points": 20,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2688263138573217e-16,
+     "contract": 0.028571428571428442,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=2"
+     ]
+    },
+    "path/10 unweighted": {
+     "points": 20,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2688263138573217e-16,
+     "contract": 0.028571428571428442,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=2"
+     ]
+    },
+    "star/9 weighted": {
+     "points": 18,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    },
+    "star/9 unweighted": {
+     "points": 18,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "directed=True normalized=True endpoints=False v=0"
+     ]
+    }
+   },
+   "run": "20261123-080952-adbb372+",
+   "comparators": {
+    "networkx": {
+     "complete/8 weighted": {
+      "points": 16,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     },
+     "complete/8 unweighted": {
+      "points": 16,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     },
+     "components/40 weighted": {
+      "points": 80,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.0383000842727483e-16,
+      "contract": 0.02017513736263716,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=True endpoints=False v=10"
+      ]
+     },
+     "components/40 unweighted": {
+      "points": 80,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.8399359207588797e-16,
+      "contract": 0.030819118926471465,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=True endpoints=False v=22"
+      ]
+     },
+     "dag/30 weighted": {
+      "points": 60,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.395203377200569e-16,
+      "contract": 0.022472993827160254,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=True endpoints=False v=24"
+      ]
+     },
+     "dag/30 unweighted": {
+      "points": 60,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 3.1748312856140077e-16,
+      "contract": 0.03445341926471158,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=True endpoints=False v=26"
+      ]
+     },
+     "diamond/4 weighted": {
+      "points": 24,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.2688263138573217e-16,
+      "contract": 0.07619047619047606,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=True endpoints=True v=0"
+      ]
+     },
+     "diamond/4 unweighted": {
+      "points": 24,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.2688263138573217e-16,
+      "contract": 0.07619047619047606,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=True endpoints=True v=0"
+      ]
+     },
+     "empty/1 weighted": {
+      "points": 2,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     },
+     "empty/1 unweighted": {
+      "points": 2,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     },
+     "er/int60 weighted": {
+      "points": 360,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.0772777061893975e-16,
+      "contract": 0.022810467525814004,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=True endpoints=False v=50"
+      ]
+     },
+     "er/int60 unweighted": {
+      "points": 360,
+      "ulp_max": 4.0,
+      "ulp_p999": 4.0,
+      "rel_max": 5.869721115238027e-16,
+      "contract": 0.03916277604052491,
+      "bound": 1.0,
+      "worst": [
+       "directed=False normalized=False endpoints=False v=0"
+      ]
+     },
+     "er/sym60 weighted": {
+      "points": 120,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.9783676024167687e-16,
+      "contract": 0.017533823822766394,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=23"
+      ]
+     },
+     "er/sym60 unweighted": {
+      "points": 120,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.83179825779109e-16,
+      "contract": 0.02739188127928036,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=46"
+      ]
+     },
+     "grid2d/5x5 weighted": {
+      "points": 150,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.0619217391333853e-16,
+      "contract": 0.04814018218623441,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=True v=8"
+      ]
+     },
+     "grid2d/5x5 unweighted": {
+      "points": 150,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.0619217391333853e-16,
+      "contract": 0.04814018218623441,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=True v=8"
+      ]
+     },
+     "heavytail/120 weighted": {
+      "points": 240,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.3696773184234269e-16,
+      "contract": 0.0035967803270375103,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=63"
+      ]
+     },
+     "heavytail/120 unweighted": {
+      "points": 240,
+      "ulp_max": 6.0,
+      "ulp_p999": 6.0,
+      "rel_max": 7.752828524043923e-16,
+      "contract": 0.02502912949960608,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=8"
+      ]
+     },
+     "isolated/5 weighted": {
+      "points": 10,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     },
+     "isolated/5 unweighted": {
+      "points": 10,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     },
+     "ladder/20 weighted": {
+      "points": 80,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.400449172335688e-16,
+      "contract": 0.02771728846544545,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=8"
+      ]
+     },
+     "ladder/20 unweighted": {
+      "points": 80,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.400449172335688e-16,
+      "contract": 0.02771728846544545,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=8"
+      ]
+     },
+     "path/10 weighted": {
+      "points": 20,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.2688263138573217e-16,
+      "contract": 0.028571428571428442,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=2"
+      ]
+     },
+     "path/10 unweighted": {
+      "points": 20,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.2688263138573217e-16,
+      "contract": 0.028571428571428442,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=2"
+      ]
+     },
+     "star/9 weighted": {
+      "points": 18,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     },
+     "star/9 unweighted": {
+      "points": 18,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "directed=True normalized=True endpoints=False v=0"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-064954-adbb372+",
+   "comparator_seconds": 300.0
+  },
+  {
+   "id": "graph/laplacian",
+   "area": "graph",
+   "name": "laplacian",
+   "points": 4943,
+   "regions": {
+    "dangling/50 unnormalized": {
+     "points": 166,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.0010787103074444e-16,
+     "contract": 0.8669796460468522,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=True (9, 41)"
+     ]
+    },
+    "dangling/50 normed": {
+     "points": 772,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.6035464842517e-16,
+     "contract": 0.29510823400769387,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (47, 2)"
+     ]
+    },
+    "er/float100 unnormalized": {
+     "points": 332,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.846994926679656e-16,
+     "contract": 0.7787359397656446,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=True (22, 56)"
+     ]
+    },
+    "er/float100 normed": {
+     "points": 2384,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 3.9301689436830005e-16,
+     "contract": 0.313145103975021,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (84, 25)"
+     ]
+    },
+    "er/symfloat50 unnormalized": {
+     "points": 372,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.851047398840474e-16,
+     "contract": 0.44173651642235345,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (15, 15)"
+     ]
+    },
+    "er/symfloat50 normed": {
+     "points": 666,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.4372531835226745e-16,
+     "contract": 0.31958059830528435,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (48, 47)"
+     ]
+    },
+    "negative/dag30 unnormalized": {
+     "points": 90,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (0, 0)"
+     ]
+    },
+    "selfloop/10 unnormalized": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (0, 0)"
+     ]
+    },
+    "selfloop/10 normed": {
+     "points": 40,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.343586828703486e-16,
+     "contract": 0.16666666666666666,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (1, 2)"
+     ]
+    },
+    "star/9 unnormalized": {
+     "points": 43,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (0, 0)"
+     ]
+    },
+    "star/9 normed": {
+     "points": 48,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.3808992729968522e-16,
+     "contract": 0.12438034902609624,
+     "bound": 1.0,
+     "worst": [
+      "out=False sym=False (0, 6)"
+     ]
+    }
+   },
+   "run": "20261123-080952-adbb372+",
+   "comparators": {
+    "scipy": {
+     "dangling/50 unnormalized": {
+      "points": 166,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.0780839749739275e-16,
+      "contract": 0.8669796460468522,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=True (9, 41)"
+      ]
+     },
+     "dangling/50 normed": {
+      "points": 772,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.6035464842517e-16,
+      "contract": 0.30758789158739774,
+      "bound": 1.0,
+      "worst": [
+       "out=True sym=False (18, 29)"
+      ]
+     },
+     "er/float100 unnormalized": {
+      "points": 332,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.9258486724586553e-16,
+      "contract": 0.7787359397656446,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=True (22, 56)"
+      ]
+     },
+     "er/float100 normed": {
+      "points": 2384,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 3.5065070755134415e-16,
+      "contract": 0.313145103975021,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=False (84, 25)"
+      ]
+     },
+     "er/symfloat50 unnormalized": {
+      "points": 372,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 1.851047398840474e-16,
+      "contract": 0.44173651642235345,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=False (15, 15)"
+      ]
+     },
+     "er/symfloat50 normed": {
+      "points": 666,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.4372531835226745e-16,
+      "contract": 0.3202930916824345,
+      "bound": 1.0,
+      "worst": [
+       "out=True sym=False (1, 3)"
+      ]
+     },
+     "negative/dag30 unnormalized": {
+      "points": 90,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=False (0, 0)"
+      ]
+     },
+     "selfloop/10 unnormalized": {
+      "points": 30,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=False (0, 0)"
+      ]
+     },
+     "selfloop/10 normed": {
+      "points": 40,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.343586828703486e-16,
+      "contract": 0.16666666666666666,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=False (1, 2)"
+      ]
+     },
+     "star/9 unnormalized": {
+      "points": 43,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=False (0, 0)"
+      ]
+     },
+     "star/9 normed": {
+      "points": 48,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.3808992729968522e-16,
+      "contract": 0.12438034902609624,
+      "bound": 1.0,
+      "worst": [
+       "out=False sym=False (0, 6)"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-061938-adbb372+",
+   "comparator_seconds": 300.0
+  },
+  {
+   "id": "graph/pagerank",
+   "area": "graph",
+   "name": "pagerank",
+   "points": 50,
+   "regions": {
+    "bool/30": {
+     "points": 1,
+     "ulp_max": 990.0,
+     "ulp_p999": 990.0,
+     "rel_max": 4.929619689471086e-14,
+     "contract": 0.04847105380119739,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "bool/30 floor": {
+     "points": 1,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 9.001443492442741e-17,
+     "contract": 0.004994303871471956,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "components/40": {
+     "points": 1,
+     "ulp_max": 9363.0,
+     "ulp_p999": 9363.0,
+     "rel_max": 8.04231782456446e-13,
+     "contract": 0.7930788533366033,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "components/40 floor": {
+     "points": 1,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 1.149140372297235e-16,
+     "contract": 0.0076289830948584,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "dangling/50": {
+     "points": 8,
+     "ulp_max": 2348.0,
+     "ulp_p999": 2348.0,
+     "rel_max": 1.3235073808077917e-13,
+     "contract": 0.1317947162718133,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.5, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "dangling/50 floor": {
+     "points": 8,
+     "ulp_max": 10.0,
+     "ulp_p999": 10.0,
+     "rel_max": 9.926955091277279e-16,
+     "contract": 0.017326142849200726,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.5, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "er/float100": {
+     "points": 8,
+     "ulp_max": 4192.0,
+     "ulp_p999": 4192.0,
+     "rel_max": 1.73616284168496e-13,
+     "contract": 0.1725435380388098,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.5, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "er/float100 floor": {
+     "points": 8,
+     "ulp_max": 14.0,
+     "ulp_p999": 14.0,
+     "rel_max": 1.449496989450183e-15,
+     "contract": 0.013155723713384682,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=False, unweighted=False"
+     ]
+    },
+    "er/sym60": {
+     "points": 1,
+     "ulp_max": 1692.0,
+     "ulp_p999": 1692.0,
+     "rel_max": 6.81710592133097e-14,
+     "contract": 0.06698123348990725,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "er/sym60 floor": {
+     "points": 1,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 2.330026143054421e-16,
+     "contract": 0.012417819957920828,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "grid2d/6x6": {
+     "points": 1,
+     "ulp_max": 679.0,
+     "ulp_p999": 679.0,
+     "rel_max": 5.330345857190763e-14,
+     "contract": 0.052756788426672974,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "grid2d/6x6 floor": {
+     "points": 1,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 1.5891116101820823e-16,
+     "contract": 0.013986095768614886,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "heavytail/120": {
+     "points": 1,
+     "ulp_max": 4487.0,
+     "ulp_p999": 4487.0,
+     "rel_max": 5.297255786891248e-14,
+     "contract": 0.05156054645681473,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "heavytail/120 floor": {
+     "points": 1,
+     "ulp_max": 4.0,
+     "ulp_p999": 4.0,
+     "rel_max": 2.1779852196416241e-16,
+     "contract": 0.007672879180501271,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "isolated/5": {
+     "points": 1,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.551115123125783e-17,
+     "contract": 5.4982116991432265e-05,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "isolated/5 floor": {
+     "points": 1,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 5.551115123125783e-17,
+     "contract": 0.005226087549946003,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "path/10": {
+     "points": 1,
+     "ulp_max": 1585.0,
+     "ulp_p999": 1585.0,
+     "rel_max": 1.2449489383464723e-13,
+     "contract": 0.12321809785335554,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "path/10 floor": {
+     "points": 1,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 1.7885142621251905e-16,
+     "contract": 0.01574107922523474,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "selfloop/10": {
+     "points": 1,
+     "ulp_max": 2834.0,
+     "ulp_p999": 2834.0,
+     "rel_max": 2.538891121715919e-13,
+     "contract": 0.25128527366762116,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "selfloop/10 floor": {
+     "points": 1,
+     "ulp_max": 3.0,
+     "ulp_p999": 3.0,
+     "rel_max": 2.498001805406602e-16,
+     "contract": 0.021985423966908446,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "star/9": {
+     "points": 1,
+     "ulp_max": 2436.0,
+     "ulp_p999": 2436.0,
+     "rel_max": 2.7030264654178403e-13,
+     "contract": 0.2665541422877263,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    },
+    "star/9 floor": {
+     "points": 1,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.200791200029766e-16,
+     "contract": 0.01461074666341754,
+     "bound": 1.0,
+     "worst": [
+      "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+     ]
+    }
+   },
+   "run": "20261123-080952-adbb372+",
+   "comparators": {
+    "networkx": {
+     "bool/30": {
+      "points": 1,
+      "ulp_max": 5023.0,
+      "ulp_p999": 5023.0,
+      "rel_max": 1.9190149004693487e-13,
+      "contract": 0.18868935200948392,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "bool/30 floor": {
+      "points": 1,
+      "ulp_max": 5.0,
+      "ulp_p999": 5.0,
+      "rel_max": 2.0862972959860312e-16,
+      "contract": 0.011575479722927105,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "components/40": {
+      "points": 1,
+      "ulp_max": 52333.0,
+      "ulp_p999": 52333.0,
+      "rel_max": 4.494679903164291e-12,
+      "contract": 4.4323485610439155,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "components/40 floor": {
+      "points": 1,
+      "ulp_max": 53.0,
+      "ulp_p999": 53.0,
+      "rel_max": 4.4982391789982615e-15,
+      "contract": 0.2986318423797496,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "dangling/50": {
+      "points": 8,
+      "ulp_max": 12025.0,
+      "ulp_p999": 12025.0,
+      "rel_max": 6.189764173325376e-13,
+      "contract": 0.6059696948423752,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=False, unweighted=False"
+      ]
+     },
+     "dangling/50 floor": {
+      "points": 8,
+      "ulp_max": 15.0,
+      "ulp_p999": 15.0,
+      "rel_max": 1.2147401140527592e-15,
+      "contract": 0.0357186938356035,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=False, unweighted=False"
+      ]
+     },
+     "er/float100": {
+      "points": 8,
+      "ulp_max": 14011.0,
+      "ulp_p999": 14011.0,
+      "rel_max": 3.8429727231801785e-13,
+      "contract": 0.3691289690647964,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=given, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "er/float100 floor": {
+      "points": 8,
+      "ulp_max": 16.0,
+      "ulp_p999": 16.0,
+      "rel_max": 1.249983687065602e-15,
+      "contract": 0.031324638438645774,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.5, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "er/sym60": {
+      "points": 1,
+      "ulp_max": 13022.0,
+      "ulp_p999": 13022.0,
+      "rel_max": 4.313561310870691e-13,
+      "contract": 0.42382744330316935,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "er/sym60 floor": {
+      "points": 1,
+      "ulp_max": 10.0,
+      "ulp_p999": 10.0,
+      "rel_max": 4.4274782686491786e-16,
+      "contract": 0.023596142116937783,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "grid2d/6x6": {
+      "points": 1,
+      "ulp_max": 4423.0,
+      "ulp_p999": 4423.0,
+      "rel_max": 3.4664050826149723e-13,
+      "contract": 0.3430854290588993,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "grid2d/6x6 floor": {
+      "points": 1,
+      "ulp_max": 7.0,
+      "ulp_p999": 7.0,
+      "rel_max": 3.619468809108765e-16,
+      "contract": 0.03185568406356889,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "heavytail/120": {
+      "points": 1,
+      "ulp_max": 15343.0,
+      "ulp_p999": 15343.0,
+      "rel_max": 3.133237786324002e-13,
+      "contract": 0.30497196839500607,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "heavytail/120 floor": {
+      "points": 1,
+      "ulp_max": 14.0,
+      "ulp_p999": 14.0,
+      "rel_max": 3.2877561109338034e-16,
+      "contract": 0.011582519103734186,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "isolated/5": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 5.551115123125783e-17,
+      "contract": 5.4982116991432265e-05,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "isolated/5 floor": {
+      "points": 1,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 5.551115123125783e-17,
+      "contract": 0.005226087549946003,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "path/10": {
+      "points": 1,
+      "ulp_max": 14208.0,
+      "ulp_p999": 14208.0,
+      "rel_max": 1.2164121400452684e-12,
+      "contract": 1.203936848214689,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "path/10 floor": {
+      "points": 1,
+      "ulp_max": 8.0,
+      "ulp_p999": 8.0,
+      "rel_max": 7.905264161393128e-16,
+      "contract": 0.06957584409365355,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "selfloop/10": {
+      "points": 1,
+      "ulp_max": 17574.0,
+      "ulp_p999": 17574.0,
+      "rel_max": 1.5178479589618014e-12,
+      "contract": 1.5022811986351632,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "selfloop/10 floor": {
+      "points": 1,
+      "ulp_max": 19.0,
+      "ulp_p999": 19.0,
+      "rel_max": 1.6391670320378248e-15,
+      "contract": 0.1442664375739499,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "star/9": {
+      "points": 1,
+      "ulp_max": 3963.0,
+      "ulp_p999": 3963.0,
+      "rel_max": 4.4012906691585364e-13,
+      "contract": 0.4340254430676369,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     },
+     "star/9 floor": {
+      "points": 1,
+      "ulp_max": 5.0,
+      "ulp_p999": 5.0,
+      "rel_max": 4.356463539162565e-16,
+      "contract": 0.028921955485035893,
+      "bound": 1.0,
+      "worst": [
+       "alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-064954-adbb372+",
+   "comparator_seconds": 300.0
   },
   {
    "id": "graph/paths",
@@ -730,7 +2256,7 @@
      ]
     }
    },
-   "run": "20261123-055811-b48c753+"
+   "run": "20261123-080952-adbb372+"
   }
  ]
 }

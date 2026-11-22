@@ -16,6 +16,9 @@ void bind_graph(nb::module_& core) {
     graph::bind_tree(m);
     graph::bind_flow(m);
     graph::bind_matching(m);
+    graph::bind_ordering(m);
+    graph::bind_structure(m);
+    graph::bind_centrality(m);
 }
 
 }  // namespace sd

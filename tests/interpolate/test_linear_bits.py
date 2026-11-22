@@ -1,7 +1,8 @@
 """Every linear path gives the same bits (docs/design/interpolate.md §2.2, §3.2): sd.interp and the interpolate
 area's linear path (_core.interpolate.linear, which the k = 1 B-spline and the 1-D linear grid will evaluate through)
 agree on [xp[0], xp[-1]]; a batch of columns is each column alone; complex values are their parts. The k = 1 B-spline
-(milestone IP3) evaluates through the linear path; the grid joins this test when it is public (milestone IP5)."""
+(milestone IP3) evaluates through the linear path; the grid's linear and slinear (milestone IP5) are the same bits,
+tests/interpolate/test_grid.py."""
 
 import math
 

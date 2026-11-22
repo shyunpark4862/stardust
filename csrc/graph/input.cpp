@@ -205,17 +205,23 @@ Transposed transpose(
     return t;
 }
 
-bool symmetric(const View& g, const View& t) {
-    const int64_t n = g.n, nnz = g.nnz();
-    if (!std::equal(g.indptr, g.indptr + n + 1, t.indptr) || !std::equal(g.indices, g.indices + nnz, t.indices))
-        return false;
-    if (g.data && t.data) {
-        for (int64_t k = 0; k < nnz; ++k) {
-            const double a = g.data[k], w = undirected_weight(a, t.data[k]);
-            if (std::memcmp(&a, &w, sizeof(double)) != 0 && !(a != a && w != w)) return false;
+bool symmetric(const View& g, bool weights, bool no_diagonal) {
+    // Row u's entries, met for u ascending, are the mirrors of the next unseen entries of their columns'
+    // rows when the pattern is symmetric (a canonical row v lists its u ascending): one cursor per row.
+    const int64_t n = g.n;
+    std::vector<int64_t> cursor(g.indptr, g.indptr + n);
+    for (int64_t u = 0; u < n; ++u) {
+        for (int64_t k = g.indptr[u], e = g.indptr[u + 1]; k < e; ++k) {
+            const int64_t v = g.indices[k];
+            const int64_t c = cursor[static_cast<size_t>(v)]++;
+            if (c >= g.indptr[v + 1] || g.indices[c] != u || (no_diagonal && v == u)) return false;
+            if (weights && g.data) {
+                const double a = g.data[k], w = undirected_weight(a, g.data[c]);
+                if (std::memcmp(&a, &w, sizeof(double)) != 0 && !(a != a && w != w)) return false;
+            }
         }
     }
-    return true;
+    return true;  // every entry used one place of its column's row and none ran past it: all are used
 }
 
 void bind_input(nb::module_& m) {

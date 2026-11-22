@@ -55,7 +55,10 @@ def min_weight_full_bipartite_matching(biadjacency, /, *, maximize=False):
         raise ValueError(f"{name}(): stored edge weights must be finite")
     if rows == 0 or cols == 0:
         return _empty()
-    status, ri, ci, _, _ = _core._assign_sparse(indptr, indices, data, rows, cols, maximize)
+    if data.size == rows * cols:  # every pair stored: the dense scan, the same assignment (GR45) and faster (GR62)
+        status, ri, ci, _, _ = _core._assign_dense(data.reshape((rows, cols)), maximize)
+    else:
+        status, ri, ci, _, _ = _core._assign_sparse(indptr, indices, data, rows, cols, maximize)
     if status:
         raise ValueError(f"{name}(): no full matching exists")
     return AssignmentResult(C.readonly(ri), C.readonly(ci))

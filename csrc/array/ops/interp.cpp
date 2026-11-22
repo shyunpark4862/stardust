@@ -25,6 +25,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace sd {
@@ -82,6 +83,26 @@ void eval_range(const Line<T>& L, const double* x, T* out, std::int64_t begin, s
             for (std::int64_t i = 0; i < m; ++i) v[i] = wrap_period(x[b0 + i], L.period);
         else std::copy(x + b0, x + b0 + m, v);
         count_le_block(L.xp, L.n, v, m, c, state);
+        if constexpr (std::is_same_v<T, double>) {
+            if (L.n >= 2) {
+                // The interval's nodes and values side by side, then base/lerp.hpp's block kernel (the same bits as
+                // value_at); the points left of everything, at or right of the last node, and those the block
+                // kernel leaves out (NaN, infinite or non-finite values) take value_at.
+                double x0[kBlock], x1[kBlock], a[kBlock], b[kBlock];
+                bool inside = true;
+                for (std::int64_t i = 0; i < m; ++i) {
+                    inside &= (c[i] != 0) & (c[i] != L.n);
+                    const std::int64_t j = std::clamp<std::int64_t>(c[i] - 1, 0, L.n - 2);
+                    x0[i] = L.xp[j], x1[i] = L.xp[j + 1], a[i] = L.fp[j], b[i] = L.fp[j + 1];
+                }
+                T* o = out + b0;
+                if (!(lerp_block(v, x0, x1, a, b, o, m) & inside))
+                    for (std::int64_t i = 0; i < m; ++i)
+                        if (c[i] == 0 || c[i] == L.n || !lerp_block_covers(v[i], x0[i], x1[i], a[i], b[i]))
+                            o[i] = value_at(L, v[i], c[i]);
+                continue;
+            }
+        }
         for (std::int64_t i = 0; i < m; ++i) out[b0 + i] = value_at(L, v[i], c[i]);
     }
 }
@@ -98,12 +119,14 @@ T eval_one(const Line<T>& L, double x) {
 template <typename T>
 void eval_all(const Line<T>& L, const double* x, T* out, std::int64_t m) {
     const std::int64_t log_n = std::max<std::int64_t>(1, static_cast<std::int64_t>(std::log2(L.n + 1)));
-    const std::int64_t work = m * (log_n + 4);  // the search and the kernel
+    // the search and the kernel, ~ns x 6 per point (measured: 4 ns a point in random order among 10^3 nodes), in
+    // tasks of 1024 points: 5000 points then wake the pool (decision IP102)
+    const std::int64_t work = m * (2 * log_n + 8);
+    constexpr std::int64_t kTask = 1024;
     if (work >= kParallelThreshold && parallel::available()) {
-        const std::int64_t tasks = (m + kParallelTask - 1) / kParallelTask;
+        const std::int64_t tasks = (m + kTask - 1) / kTask;
         parallel::parallel_for(
-            tasks,
-            [&](std::int64_t t) { eval_range(L, x, out, t * kParallelTask, std::min(m, (t + 1) * kParallelTask)); },
+            tasks, [&](std::int64_t t) { eval_range(L, x, out, t * kTask, std::min(m, (t + 1) * kTask)); },
             work_ns(work / tasks)
         );
     } else {

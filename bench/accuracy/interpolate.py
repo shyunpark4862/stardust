@@ -41,14 +41,41 @@ IP3 brings (judged through tests/interpolate/refdata.py)
                evaluation contract (refdata.bspline_bound; k1: the linear kernel's) against the exact value of the
                object's own coefficients, and `e2e_rel` against curves.npz. Comparator: scipy.
 
-The plan for the others (docs/design/interpolate.md §7.5):
+IP4 brings (judged through tests/interpolate/refdata.py)
 
-  polynomial   IP4: Barycentric, Krogh and Floater-Hormann on polynomial.npz (the Lebesgue function and
-               sum |l_j y_j| are the contract's scale)
-  aaa          IP4: AAA's residual on the samples and its value against Arb evaluation of the computed
-               rational
-  grid         IP5: RegularGridInterpolator's six methods on grid.npz (the 1-D linear also joins `linear`)
-  rbf          IP6: RBFInterpolator on rbf.npz (eight kernels, smoothing, neighbors)
+  polynomial   BarycentricInterpolator, KroghInterpolator and FloaterHormannInterpolator (d = 3) on polynomial.npz,
+               end to end against the exact interpolant of the float data: regions barycentric, barycentric_d1,
+               barycentric_d2 (refdata.barycentric_bound, its scale the Lebesgue function and sum |l_j y_j|; the
+               derivatives with the nodal values' bound), krogh, krogh_d1, krogh_d2 (refdata.krogh_bound with the
+               table's bound) and floater_hormann (refdata.rational_bound with the weights' gamma_{3d}), with
+               `e2e_rel` relative to max(|value|, max|y|). Comparator: scipy (its objects, the same units).
+  aaa          AAA on the sample sets of tests/interpolate/samples.py: `contract`, its value at the samples,
+               their midpoints and points beyond against the computed rational evaluated exactly (Fractions;
+               Arb for complex data) in units of refdata.rational_bound, and `residual`, max |r(z_i) - f_i| over
+               the samples in units of rtol max|f| (at most 1 when converged). Comparator: scipy (its own
+               rational and evaluation).
+
+IP6 brings (judged through tests/interpolate/refdata.py)
+
+  rbf          RBFInterpolator on rbf.npz, one region per method (the eight kernels, thin_plate_spline_s0.1 with
+               smoothing 0.1, thin_plate_spline_k8 with neighbors = 8): `contract`, the value at each point against
+               the computed coefficients' function evaluated exactly (Arb) in units of refdata.rbf_eval_bound;
+               `solve`, the solve's componentwise backward error in units of refdata.rbf_backward_bound (the computed
+               system, its sytrf factors), with `growth` (|| |L||D||L^T| || / ||A||) per set; `residual`, max
+               |f(y_i) + smoothing_i a_i - d_i| / max|d| at the data points; `e2e_rel` against the exact interpolant
+               of the float data relative to max|ref| (the system's conditioning decides it). The neighbors region
+               has e2e_rel alone (each set is the global interpolant of its points to the bit, tests/interpolate/
+               test_rbf.py). Comparator: scipy (its coefficients with its own system and scipy.linalg.ldl's factors).
+
+IP5 brings (judged through tests/interpolate/refdata.py)
+
+  grid         RegularGridInterpolator on grid.npz (the exact interpolant of the float data), one region per method:
+               linear and slinear in units of the stacked linear contract (refdata.grid_linear_exact), cubic and
+               quintic end to end in units of the tensor spline's evaluation contract with the coefficients'
+               construction bound carried through (refdata.tensor_bound with refdata.tensor_collocation_bound),
+               pchip end to end (no contract: `e2e_rel` and ULP); `e2e_rel` relative to max(|ref|, max|values|).
+               nearest picks a node's value (no rounding) and has no region. Comparator: scipy 1.18.1 with its
+               defaults (cubic and quintic through its iterative solve), in the same units (sd's bound as the scale).
 """
 
 from __future__ import annotations
@@ -412,6 +439,310 @@ def _roots_regions(lib):
                              extra=np.array([float(len(extra))]))}  # fmt: skip
 
 
+def _poly_object(lib, kind, P):
+    if lib == "sd":
+        import stardust as sd
+
+        IP = sd.interpolate
+        kw = {}
+    else:
+        import scipy.interpolate as IP
+
+        kw = {"rng": 0} if kind == "barycentric" else {}
+    if kind == "barycentric":
+        return IP.BarycentricInterpolator(P.xi, P.yi, **kw)
+    if kind == "krogh":
+        return IP.KroghInterpolator(P.xi, P.yi)
+    return IP.FloaterHormannInterpolator(P.xi, P.yi, d=3)
+
+
+def _poly_regions(lib):
+    if lib not in ("sd", "scipy"):
+        return None
+    import math
+    import warnings
+
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+
+    ref = refdata.ref("polynomial")
+
+    def column(method, pid):
+        m = ref.methods[method]
+        pos = np.flatnonzero(ref.inputs["set"][m.index] == pid)
+        order = np.argsort(ref.inputs["index"][m.index[pos]], kind="stable")
+        return m.hi[pos[order]], m.lo[pos[order]]
+
+    acc = {}
+
+    def add(reg, where, err, b, exact, scale):
+        r = acc.setdefault(reg, ([], [], []))
+        r[0].append(where)
+        r[1].append(0.0 if err == 0 else float(err) / b)
+        r[2].append(float(err) / max(abs(exact), scale))
+
+    for pid in S.POLY_IDS:
+        P = S.poly(pid)
+        n = P.xi.size
+        X, Y = [Fraction(float(v)) for v in P.xi], [Fraction(float(v)) for v in P.yi]
+        scale = float(np.max(np.abs(P.yi)))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            k = _poly_object(lib, "krogh", P)
+            tb = refdata.krogh_table_bound(X, Y)
+            c_hat = np.asarray(k.c)[:-1, 0] if lib == "scipy" else np.asarray(k._c)[:, 0]
+            for m, meth in ((0, "value"), (1, "d1"), (2, "d2")):
+                got = np.asarray(k(P.x) if m == 0 else k.derivative(P.x, der=m))
+                hi, lo = column(meth, pid)
+                for j, v in enumerate(P.x):
+                    err = abs(Fraction(float(got[j])) - Fraction(float(hi[j])) - Fraction(float(lo[j])))
+                    b = refdata.krogh_bound(X, c_hat, Fraction(float(v)), m, tb)
+                    add("krogh" + ("" if m == 0 else f"_d{m}"), f"{pid}#{j}", err, b, hi[j], scale)
+        if not P.distinct:
+            continue
+        b_obj = _poly_object(lib, "barycentric", P)
+        D = refdata.differentiation_matrix(X)
+        v_hat, bound, vf = Y, [0.0] * n, P.yi.copy()
+        lam, _ = column("lebesgue", pid)
+        for m, meth in ((0, "value"), (1, "d1"), (2, "d2")):
+            if m:
+                bound = refdata.rational_nodal_bound(D, v_hat, bound)
+                if lib == "sd":
+                    import stardust as sd
+
+                    nodal = sd._core.interpolate.bary_node_derivative(b_obj.xi, b_obj.wi, sd.asarray(vf.reshape(-1, 1)))
+                    vf = np.asarray(nodal)[:, 0]
+                else:  # scipy's nodal values: its D (from its weights) applied once more
+                    vf = _scipy_dmatrix(b_obj) @ vf
+                v_hat = [Fraction(float(t)) for t in vf]
+            got = np.asarray(b_obj(P.x) if m == 0 else b_obj.derivative(P.x, der=m))
+            hi, lo = column(meth, pid)
+            for j, v in enumerate(P.x):
+                err = abs(Fraction(float(got[j])) - Fraction(float(hi[j])) - Fraction(float(lo[j])))
+                V = Fraction(float(v))
+                ell = refdata.lagrange_basis(X, V)
+                q = sum((e * t for e, t in zip(ell, v_hat)), Fraction(0))
+                at = float(sum((abs(e * t) for e, t in zip(ell, v_hat)), Fraction(0)))
+                b = refdata.barycentric_bound(n, at, float(lam[j]), float(q))
+                b += sum(abs(float(e)) * t for e, t in zip(ell, bound))
+                add("barycentric" + ("" if m == 0 else f"_d{m}"), f"{pid}#{j}", err, 1.01 * b, hi[j], scale)
+        f_obj = _poly_object(lib, "fh", P)
+        got = np.asarray(f_obj(P.x))
+        hi, lo = column("fh3", pid)
+        Xs = sorted(X)
+        Ys = [Y[X.index(t)] for t in Xs]
+        W = _fh_weights(Xs, 3)
+        for j, v in enumerate(P.x):
+            V = Fraction(float(v))
+            err = abs(Fraction(float(got[j])) - Fraction(float(hi[j])) - Fraction(float(lo[j])))
+            if V in Xs:
+                b = math.inf
+            else:
+                lam_ = [w / (V - z) for z, w in zip(Xs, W)]
+                den = sum(lam_, Fraction(0))
+                r = sum((t * f for t, f in zip(lam_, Ys)), Fraction(0)) / den
+                sf = sum((abs(t * f) for t, f in zip(lam_, Ys)), Fraction(0))
+                ss = sum((abs(t) for t in lam_), Fraction(0))
+                b = refdata.rational_bound(n, float(sf), float(ss), float(den), float(r), n + 12, n + 11, n + 10)
+            add("floater_hormann", f"{pid}#{j}", err, b, hi[j], scale)
+    return {reg: region(w, contract=np.array(c), bound=1.0, e2e_rel=np.array(e)) for reg, (w, c, e) in acc.items()}
+
+
+def _scipy_dmatrix(b):
+    """scipy's differentiation matrix of a BarycentricInterpolator (its cached c_ij)."""
+    if b._diff_cij is None:
+        b.derivative(b.xi[:1])
+    return b._diff_cij
+
+
+def _fh_weights(X, d):
+    n = len(X)
+    w = []
+    for k in range(n):
+        acc = Fraction(0)
+        for i in range(max(k - d, 0), min(k + 1, n - d)):
+            prod = Fraction(1)
+            for j in range(i, i + d + 1):
+                if j != k:
+                    prod *= abs(X[k] - X[j])
+            acc += 1 / prod
+        w.append(acc if (k - d) % 2 == 0 else -acc)
+    return w
+
+
+def _aaa_regions(lib):
+    if lib not in ("sd", "scipy"):
+        return None
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+    from tests.interpolate.test_aaa import _arb_parts, _exact_parts, _points
+
+    out = {}
+    for aid in S.AAA_IDS:
+        s = S.aaa(aid)
+        if lib == "sd":
+            import stardust as sd
+
+            a = sd.interpolate.AAA(s.z, s.f)
+        else:
+            import scipy.interpolate as si
+
+            a = si.AAA(s.z, s.f)
+        zj, fj, wj = (np.asarray(v) for v in (a.support_points, a.support_values, a.weights))
+        m = zj.size
+        keep = np.isfinite(s.f)
+        q = _points(s.z[keep])
+        got = np.asarray(a(q))
+        real = not np.iscomplexobj(zj)
+        if real:
+            Z, W, F = ([Fraction(float(v)) for v in arr] for arr in (zj, wj, fj))
+        where, con = [], []
+        for k, v in enumerate(q):
+            if v in zj:
+                continue
+            if real:
+                r, sf, ss, den = _exact_parts(Z, W, F, Fraction(float(v)))
+                err = float(abs(Fraction(float(got[k])) - r))
+                b = refdata.rational_bound(m, float(sf), float(ss), float(den), float(r), m + 3, m + 2, m + 1)
+            else:
+                from flint import acb
+
+                r, sf, ss, den = _arb_parts(zj, wj, fj, v)
+                err = float(abs(acb(complex(got[k])) - r).upper())
+                b = refdata.rational_bound(m, float(sf.upper()), float(ss.upper()), float(abs(den).lower()),
+                                           float(abs(r).upper()), 3 * m + 16, 2 * m + 16, 2 * m + 8)  # fmt: skip
+            where.append(f"{aid}#{k}")
+            con.append(err / b)
+        res = np.max(np.abs(np.asarray(a(s.z[keep])) - s.f[keep])) / ((2.0**-52) ** 0.75 * np.max(np.abs(s.f[keep])))
+        out[aid.split("/")[1]] = region(where, contract=np.array(con), bound=1.0, residual=np.array([res]))
+    return out
+
+
+def _rbf_regions(lib):
+    if lib not in ("sd", "scipy"):
+        return None
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+
+    ref = refdata.ref("rbf")
+    sets = np.asarray(ref.inputs["set"])
+    out = {}
+    for method, M in ref.methods.items():
+        kernel, eps, sm, nb = refdata.rbf_options(method)
+        where, con, solve, growth, resid, e2e = [], [], [], [], [], []
+        for sid in sorted(set(sets[M.index])):
+            sc = S.scatter(sid)
+            pos = np.flatnonzero(sets[M.index] == sid)
+            pos = pos[np.argsort(np.asarray(ref.inputs["index"])[M.index[pos]], kind="stable")]
+            if lib == "sd":
+                import stardust as sd
+
+                r = sd.interpolate.RBFInterpolator(sc.y, sc.d, kernel=kernel, epsilon=eps, smoothing=sm, neighbors=nb)
+            else:
+                import scipy.interpolate as si
+
+                r = si.RBFInterpolator(sc.y, sc.d, kernel=kernel, epsilon=eps, smoothing=sm, neighbors=nb)
+            got = np.asarray(r(sc.xi))
+            scale = float(np.max(np.abs(M.hi[pos])))
+            e2e += list(np.abs((got - M.hi[pos]) - M.lo[pos]) / scale)
+            where += [f"{sid}#{k}" for k in range(len(pos))]
+            if nb is not None:
+                continue
+            if lib == "sd":
+                import stardust as sd
+
+                A = np.asarray(sd._core.interpolate.rbf_matrix(sd.asarray(sc.y), r._smoothing, r._kid, eps, r._powers))
+                L, D, _ = (np.asarray(v) for v in sd.linalg.ldl(sd.asarray(A)))
+                c = np.asarray(r._coeffs)
+                pw, sh, scl = np.asarray(r._powers), np.asarray(r._shift), np.asarray(r._scale)
+            else:
+                import scipy.linalg as sl
+                from scipy.interpolate import _rbfinterp_np as rnp
+
+                A, _, sh, scl = rnp._build_system(r.y, r.d, r.smoothing, kernel, eps, r.powers, np)
+                L, D, _ = sl.ldl(A)
+                c, pw = np.asarray(r._coeffs), np.asarray(r.powers)
+            units = float(
+                np.max(refdata.rbf_residual(A, c, sc.d.reshape(-1, 1)) / refdata.rbf_backward_bound(A, c, L, D))
+            )
+            g = refdata.rbf_growth(A, L, D)
+            fit = np.asarray(r(sc.y))
+            res = float(np.max(np.abs(fit + sm * c[: len(sc.y), 0] - sc.d)) / np.max(np.abs(sc.d)))
+            for k, x in enumerate(sc.xi):
+                f, phis, monos, rs = refdata.rbf_exact(kernel, eps, sc.y, x, c[:, 0], pw, sh, scl)
+                b = refdata.rbf_eval_bound(kernel, sc.y.shape[1], c[:, 0], phis, monos, rs, pw)
+                con.append(abs(float(got[k]) - float(f.mid())) / b)
+                solve.append(units)
+                growth.append(g)
+                resid.append(res)
+        if nb is not None:
+            out[method] = region(where, e2e_rel=np.array(e2e))
+        else:
+            out[method] = region(where, contract=np.array(con), bound=1.0, solve=np.array(solve),
+                                 growth=np.array(growth), residual=np.array(resid), e2e_rel=np.array(e2e))  # fmt: skip
+    return out
+
+
+def _grid_regions(lib):
+    if lib not in ("sd", "scipy"):
+        return None
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+
+    if lib == "sd":
+        import stardust as sd
+
+        RGI = sd.interpolate.RegularGridInterpolator
+    else:
+        import scipy.interpolate as si
+
+        RGI = si.RegularGridInterpolator
+    import stardust as sd
+
+    ref = refdata.ref("grid")
+    acc = {}
+    for meth, refm in (("linear", "linear"), ("slinear", "linear"), ("cubic", "cubic"), ("quintic", "quintic"),
+                       ("pchip", "pchip")):  # fmt: skip
+        m = ref.methods[refm]
+        sets = ref.inputs["set"][m.index]
+        for gid in dict.fromkeys(sets.tolist()):
+            G = S.grid(gid)
+            if meth == "slinear" and any(p.size < 2 for p in G.points):
+                continue
+            got = np.asarray(RGI(G.points, G.values, method=meth)(G.xi))
+            mine = sd.interpolate.RegularGridInterpolator(G.points, G.values, method=meth)
+            pts = [np.asarray(p) for p in mine.grid]
+            vals = np.asarray(mine.values)
+            scale = float(np.max(np.abs(G.values)))
+            if meth in ("cubic", "quintic"):
+                k = 3 if meth == "cubic" else 5
+                knots, c2 = mine._spline(k, "accuracy")
+                knots = [np.asarray(t) for t in knots]
+                c = np.asarray(c2).reshape(vals.shape)
+                cb = refdata.tensor_collocation_bound(pts, knots, k, vals)
+            e = acc.setdefault(meth, {"where": [], "contract": [], "ulp": [], "e2e": []})
+            for p in np.flatnonzero(sets == gid):
+                i = int(ref.inputs["index"][m.index[p]])
+                hi, lo = float(m.hi[p]), float(m.lo[p])
+                err = abs(Fraction(float(got[i])) - Fraction(hi) - Fraction(lo))
+                if meth in ("linear", "slinear"):
+                    b = refdata.grid_linear_exact(pts, vals, G.xi[i])[1]
+                elif meth == "pchip":
+                    b = None
+                else:
+                    b = refdata.tensor_bound(knots, c, k, G.xi[i], None, c_bound=cb)
+                e["where"].append(f"{gid}#{i}")
+                if b is not None:
+                    e["contract"].append(0.0 if err == 0 else float(err) / b)
+                e["ulp"].append(float(ulps(got[i], hi)))
+                e["e2e"].append(float(err) / max(abs(hi), scale))
+    out = {}
+    for meth, e in acc.items():
+        kw = {"contract": np.array(e["contract"]), "bound": 1.0} if e["contract"] else {}
+        out[meth] = region(e["where"], ulp=np.array(e["ulp"]), e2e_rel=np.array(e["e2e"]), **kw)
+    return out
+
+
 def sweeps():
     import stardust as sd
 
@@ -426,4 +757,15 @@ def sweeps():
                           compare_libs(_evaluation_regions, ("scipy", "R"), seconds=300.0)))  # fmt: skip
         out.append(Custom("interpolate", "roots", lambda: _roots_regions("sd"),
                           compare_libs(_roots_regions, ("scipy",), seconds=120.0)))  # fmt: skip
+    if "AAA" in sd.interpolate.__all__:
+        out.append(Custom("interpolate", "polynomial", lambda: _poly_regions("sd"),
+                          compare_libs(_poly_regions, ("scipy",), seconds=300.0)))  # fmt: skip
+        out.append(Custom("interpolate", "aaa", lambda: _aaa_regions("sd"),
+                          compare_libs(_aaa_regions, ("scipy",), seconds=120.0)))  # fmt: skip
+    if "RegularGridInterpolator" in sd.interpolate.__all__:
+        out.append(Custom("interpolate", "grid", lambda: _grid_regions("sd"),
+                          compare_libs(_grid_regions, ("scipy",), seconds=120.0)))  # fmt: skip
+    if "RBFInterpolator" in sd.interpolate.__all__:
+        out.append(Custom("interpolate", "rbf", lambda: _rbf_regions("sd"),
+                          compare_libs(_rbf_regions, ("scipy",), seconds=120.0)))  # fmt: skip
     return out

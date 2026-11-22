@@ -50,6 +50,10 @@ MinOnlyResult = namedtuple("MinOnlyResult", ["dist_matrix", "predecessors", "sou
 YenResult = namedtuple("YenResult", ["dist_array", "predecessors"])
 # graph: the assignments (docs/api/graph.md §4, §7; scipy's (row_ind, col_ind))
 AssignmentResult = namedtuple("AssignmentResult", ["row_ind", "col_ind"])
+# graph: laplacian(return_diag=True) (docs/api/graph.md §5, §7; scipy's (laplacian, diag))
+LaplacianResult = namedtuple("LaplacianResult", ["laplacian", "diag"])
+# graph: biconnected_components (docs/api/graph.md §6, §7; every edge and its component)
+BiconnectedComponentsResult = namedtuple("BiconnectedComponentsResult", ["n_components", "edges", "labels"])
 
 # regression: the linear models' diagnostics (docs/api/regression.md §2; statsmodels' het_breuschpagan
 # fields and order). Jarque-Bera's result is sd.htest's class (G165, htest H18, H39). The three

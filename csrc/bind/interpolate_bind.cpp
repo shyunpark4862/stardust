@@ -14,6 +14,10 @@ void bind_interpolate(nb::module_& core) {
     interpolate::bind_cubic(m);
     interpolate::bind_ppoly(m);
     interpolate::bind_bspline(m);
+    interpolate::bind_polyint(m);
+    interpolate::bind_aaa(m);
+    interpolate::bind_grid(m);
+    interpolate::bind_rbf(m);
 }
 
 }  // namespace sd

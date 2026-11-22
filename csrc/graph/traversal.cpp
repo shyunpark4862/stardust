@@ -55,6 +55,15 @@ int64_t* i64_of(nb::object& o) { return reinterpret_cast<int64_t*>(as_ndarray(o)
 // comparison): the searches skip the nodes already found in each row on its own, and only the few new
 // nodes are ordered.
 
+// The nodes found, one bit each (n / 8 bytes: it stays in the first-level cache where a byte per node
+// would not, and every entry a search scans tests it).
+struct Bits {
+    std::vector<uint64_t> w;
+    explicit Bits(int64_t n) : w(static_cast<size_t>((n + 63) / 64), 0) {}
+    bool test(int64_t i) const { return (w[static_cast<size_t>(i >> 6)] >> (i & 63)) & 1; }
+    void set(int64_t i) { w[static_cast<size_t>(i >> 6)] |= uint64_t{1} << (i & 63); }
+};
+
 struct Search {
     std::vector<int64_t> order;  // the nodes in the order found
     std::vector<double> weight;  // tree: the weight of the edge each node was found by (by node)
@@ -62,19 +71,19 @@ struct Search {
 
 // Breadth first: a queue (the order itself). With t, the nodes v finds in its row of g and in its row of
 // t are two ascending runs at the end of the queue, merged into one.
-void bfs(const View& g, const View* t, int64_t s, int64_t* pred, uint8_t* seen, Search& out, bool tree) {
+void bfs(const View& g, const View* t, int64_t s, int64_t* pred, Bits& seen, Search& out, bool tree) {
     std::vector<int64_t>& q = out.order;
     double* W = tree ? out.weight.data() : nullptr;
     std::vector<int64_t> run;
     q.push_back(s);
-    seen[s] = 1;
+    seen.set(s);
     for (size_t head = 0; head < q.size(); ++head) {
         const int64_t v = q[head];
         const size_t qa = q.size();
         for (int64_t k = g.indptr[v], e = g.indptr[v + 1]; k < e; ++k) {
             const int64_t w = g.indices[k];
-            if (seen[w]) continue;
-            seen[w] = 1;
+            if (seen.test(w)) continue;
+            seen.set(w);
             pred[w] = v;
             if (W) W[w] = g.data[k];
             q.push_back(w);
@@ -83,11 +92,11 @@ void bfs(const View& g, const View* t, int64_t s, int64_t* pred, uint8_t* seen, 
         const size_t qb = q.size();
         for (int64_t k = t->indptr[v], e = t->indptr[v + 1]; k < e; ++k) {
             const int64_t w = t->indices[k];
-            if (seen[w]) {
+            if (seen.test(w)) {
                 if (W && pred[w] == v) W[w] = undirected_weight(W[w], t->data[k]);  // found from v in g too
                 continue;
             }
-            seen[w] = 1;
+            seen.set(w);
             pred[w] = v;
             if (W) W[w] = t->data[k];
             q.push_back(w);
@@ -102,62 +111,79 @@ void bfs(const View& g, const View* t, int64_t s, int64_t* pred, uint8_t* seen, 
 }
 
 // Depth first in the order of the recursive search (preorder; at each node the smallest neighbour not yet
-// found next): an explicit stack of nodes, each with the position of its next entry in its row of g (and
-// of t). Each row skips its found nodes on its own; the next node is the smaller of the two heads.
-void dfs(const View& g, const View* t, int64_t s, int64_t* pred, uint8_t* seen, Search& out, bool tree) {
+// found next): an explicit stack of nodes, each with the position of its next entry in its row and the
+// row's end. dfs_one reads g's rows; dfs_two the undirected reading of g with its transpose t: each row
+// skips its found nodes on its own and the next node is the smaller of the two heads.
+void dfs_one(const View& g, int64_t s, int64_t* pred, Bits& seen, Search& out, bool tree) {
     struct Frame {
-        int64_t v, a, b;
+        int64_t v, a, ae;
     };
     double* W = tree ? out.weight.data() : nullptr;
     std::vector<Frame> stack;
-    stack.push_back({s, g.indptr[s], t ? t->indptr[s] : 0});
-    seen[s] = 1;
+    stack.push_back({s, g.indptr[s], g.indptr[s + 1]});
+    seen.set(s);
     out.order.push_back(s);
     while (!stack.empty()) {
         Frame& f = stack.back();
-        const int64_t v = f.v;
-        int64_t w;
-        double wt = 0.0;
-        const int64_t ae = g.indptr[v + 1];
-        while (f.a < ae && seen[g.indices[f.a]]) ++f.a;
-        if (!t) {
-            if (f.a == ae) {
-                stack.pop_back();
-                continue;
-            }
-            w = g.indices[f.a];
-            if (W) wt = g.data[f.a];
-            ++f.a;
-        } else {
-            const int64_t be = t->indptr[v + 1];
-            while (f.b < be && seen[t->indices[f.b]]) ++f.b;
-            const int64_t ja = f.a < ae ? g.indices[f.a] : INT64_MAX;
-            const int64_t jb = f.b < be ? t->indices[f.b] : INT64_MAX;
-            if (ja == INT64_MAX && jb == INT64_MAX) {
-                stack.pop_back();
-                continue;
-            }
-            if (ja < jb) {
-                w = ja;
-                if (W) wt = g.data[f.a];
-                ++f.a;
-            } else if (jb < ja) {
-                w = jb;
-                if (W) wt = t->data[f.b];
-                ++f.b;
-            } else {
-                w = ja;
-                if (W) wt = undirected_weight(g.data[f.a], t->data[f.b]);
-                ++f.a;
-                ++f.b;
-            }
+        int64_t a = f.a;
+        const int64_t ae = f.ae;
+        while (a < ae && seen.test(g.indices[a])) ++a;
+        if (a == ae) {
+            stack.pop_back();
+            continue;
         }
-        seen[w] = 1;
+        const int64_t v = f.v, w = g.indices[a];
+        if (W) W[w] = g.data[a];
+        f.a = a + 1;
+        seen.set(w);
+        pred[w] = v;
+        out.order.push_back(w);
+        stack.push_back({w, g.indptr[w], g.indptr[w + 1]});  // f is not used past this point
+    }
+}
+
+void dfs_two(const View& g, const View& t, int64_t s, int64_t* pred, Bits& seen, Search& out, bool tree) {
+    struct Frame {
+        int64_t v, a, ae, b, be;
+    };
+    double* W = tree ? out.weight.data() : nullptr;
+    std::vector<Frame> stack;
+    stack.push_back({s, g.indptr[s], g.indptr[s + 1], t.indptr[s], t.indptr[s + 1]});
+    seen.set(s);
+    out.order.push_back(s);
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        int64_t a = f.a, b = f.b;
+        const int64_t ae = f.ae, be = f.be;
+        while (a < ae && seen.test(g.indices[a])) ++a;
+        while (b < be && seen.test(t.indices[b])) ++b;
+        const int64_t ja = a < ae ? g.indices[a] : INT64_MAX;
+        const int64_t jb = b < be ? t.indices[b] : INT64_MAX;
+        const int64_t w = std::min(ja, jb);  // the next node: no branch on which row holds it
+        if (w == INT64_MAX) {
+            stack.pop_back();
+            continue;
+        }
+        const bool in_a = ja == w, in_b = jb == w;
+        double wt = 0.0;
+        if (W) wt = !in_b ? g.data[a] : !in_a ? t.data[b] : undirected_weight(g.data[a], t.data[b]);
+        a += in_a;
+        b += in_b;
+        const int64_t v = f.v;
+        f.a = a;
+        f.b = b;
+        seen.set(w);
         pred[w] = v;
         if (W) W[w] = wt;
         out.order.push_back(w);
-        stack.push_back({w, g.indptr[w], t ? t->indptr[w] : 0});  // f is not used past this point
+        // f is not used past this point
+        stack.push_back({w, g.indptr[w], g.indptr[w + 1], t.indptr[w], t.indptr[w + 1]});
     }
+}
+
+void dfs(const View& g, const View* t, int64_t s, int64_t* pred, Bits& seen, Search& out, bool tree) {
+    if (t) dfs_two(g, *t, s, pred, seen, out, tree);
+    else dfs_one(g, s, pred, seen, out, tree);
 }
 
 nb::object traverse(
@@ -170,18 +196,24 @@ nb::object traverse(
     nb::object op = new_vector(DType::Int64, n);
     int64_t* pred = i64_of(op);
     Search out;
-    // The undirected reading: g with its transpose (the pattern's when no weight is read; the indices
-    // stand in for the values then), or g alone when it is symmetric.
+    // The undirected reading: g alone when it is symmetric, else g with its transpose (the pattern's when no
+    // weight is read; the indices stand in for the values then).
+    bool both = false;
+    if (!directed) {
+        const parallel::Unlocked unlocked(unlock);
+        both = !symmetric(g, tree);
+    }
     std::optional<Transposed> t;
-    if (!directed) t.emplace(transpose(g, as_ndarray(ip), as_ndarray(ix), as_ndarray(tree ? dh : ix), tree));
+    if (both) t.emplace(transpose(g, as_ndarray(ip), as_ndarray(ix), as_ndarray(tree ? dh : ix), tree));
     {
         const parallel::Unlocked unlocked(unlock);
-        const View* tv = t && !symmetric(g, t->view) ? &t->view : nullptr;
+        const View* tv = t ? &t->view : nullptr;
         std::fill(pred, pred + n, kNoNode);
-        std::vector<uint8_t> seen(static_cast<size_t>(n), 0);
+        Bits seen(n);
+        out.order.reserve(static_cast<size_t>(n));
         if (tree) out.weight.assign(static_cast<size_t>(n), 0.0);
-        if (depth) dfs(g, tv, s, pred, seen.data(), out, tree);
-        else bfs(g, tv, s, pred, seen.data(), out, tree);
+        if (depth) dfs(g, tv, s, pred, seen, out, tree);
+        else bfs(g, tv, s, pred, seen, out, tree);
     }
     const int64_t found = static_cast<int64_t>(out.order.size());
     if (!tree) {

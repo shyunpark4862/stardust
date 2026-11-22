@@ -26,6 +26,21 @@ linear_sum_assignment (ties, rectangular both ways, +inf and -inf, maximize, sto
 the errors; and large inputs past the GIL threshold at 3 and 10 threads (the largest result 1.6 * 10^5
 int64s). Which of several optima the flow, the matchings and the assignments return is fixed by their scan
 order (decision GR16): these cases guard it.
+
+The ordering, structural rank and laplacian (milestone GR4): reverse_cuthill_mckee (both modes) and
+structural_rank on the small graphs above, on rectangular matrices and on graphs of many ties; laplacian on
+the small graphs with every option (normed, use_out_degree, symmetrized, return_diag, dtype), on signed
+values, stored zeros (-0.0), NaN and inf, cancelling pairs, int64 and bool, and form='lo' through its
+products; and large inputs for the row and column blocks of the laplacian at 3 and 10 threads (the largest
+result 4.9 * 10^5 float64s).
+
+The algorithms scipy lacks (milestone GR5): articulation_points, bridges, biconnected_components and
+core_number on the small graphs above and on cycles, bowties, self loops and one-way edges; pagerank (alpha,
+personalization, dangling, directed, unweighted, tol, zero-weight rows, self loops) and
+betweenness_centrality (directed and undirected, weighted and unweighted, normalized, endpoints, equal
+distances and absorbed steps) and their errors; and large inputs past the GIL threshold at 3 and 10 threads:
+the structure searches, PageRank's row blocks and split sums (more than 2^16 nodes) and the betweenness's
+source tasks and waves (the largest result 7 * 10^4 float64s).
 """
 
 import math
@@ -138,6 +153,8 @@ def cases(L):
 
     yield from _paths_cases(L, graphs)
     yield from _tree_flow_cases(L, graphs)
+    yield from _ordering_cases(L, graphs)
+    yield from _extra_cases(L, graphs)
 
     # wrong calls
     small = graphs["small"]
@@ -444,3 +461,181 @@ def _tree_flow_cases(L, graphs):
     yield "error lsa nan", lambda: GR.linear_sum_assignment(np.array([[np.nan]]))
     yield "error lsa inf maximize", lambda: GR.linear_sum_assignment(np.array([[np.inf, 1.0]]), maximize=True)
     yield "error lsa sparse", lambda: GR.linear_sum_assignment(S.csr_array(np.eye(2)))
+
+
+def _ordering_cases(L, graphs):
+    """The ordering, structural rank and laplacian (milestone GR4)."""
+    sd, np = L.sd, L.np
+    GR = sd.graph
+    S = sd.sparse
+    for name, A in graphs.items():
+        for mode in (False, True):
+            yield (
+                f"reverse_cuthill_mckee {name} {mode}",
+                lambda A=A, m=mode: GR.reverse_cuthill_mckee(A, symmetric_mode=m),
+            )
+        yield f"structural_rank {name}", lambda A=A: GR.structural_rank(A)
+        for normed in (False, True):
+            for out in (False, True):
+                for sym in (False, True):
+                    yield (
+                        f"laplacian {name} {normed} {out} {sym}",
+                        lambda A=A, a=normed, b=out, c=sym: GR.laplacian(
+                            A, normed=a, use_out_degree=b, symmetrized=c, return_diag=True
+                        ),
+                    )
+    r = L.rng(2307)
+    ties = (r.random((30, 30)) < 0.12) | (r.random((30, 30)) < 0.12).T  # many equal degrees
+    rect = (r.random((7, 12)) < 0.3) * 1.0
+    yield "reverse_cuthill_mckee ties", lambda: GR.reverse_cuthill_mckee(ties)
+    yield "reverse_cuthill_mckee ties csr", lambda: GR.reverse_cuthill_mckee(S.csr_array(ties), symmetric_mode=True)
+    yield "structural_rank 7x12", lambda: GR.structural_rank(rect)
+    yield "structural_rank 12x7 csr", lambda: GR.structural_rank(S.csr_array(rect.T.copy()))
+    signed = np.round(r.uniform(-3, 3, (9, 9)) * 2) / 2
+    signed[r.random((9, 9)) < 0.4] = 0.0
+    cancel = S.coo_array(
+        (np.array([1.0, -1.0, 0.0, 2.5, NAN, INF]), (np.array([0, 1, 2, 3, 4, 5]), np.array([1, 0, 3, 2, 5, 4]))),
+        shape=(6, 6),
+    )
+    ints = r.integers(-5, 6, (8, 8))
+    for name, A in (("signed", signed), ("cancel", cancel), ("int", ints), ("int csr", S.csr_array(ints))):
+        for normed in (False, True):
+            for sym in (False, True):
+                yield (
+                    f"laplacian {name} {normed} {sym}",
+                    lambda A=A, a=normed, c=sym: GR.laplacian(A, normed=a, symmetrized=c, return_diag=True),
+                )
+    yield "laplacian dtype float64", lambda: GR.laplacian(ints, dtype="float64", return_diag=True)
+    yield "laplacian dtype int64 normed", lambda: GR.laplacian(signed, normed=True, dtype=sd.int64)
+    x = r.normal(size=9)
+    for name, A in (("dense", signed), ("csr", S.csr_array(signed))):
+        for normed in (False, True):
+            yield (
+                f"laplacian lo {name} {normed}",
+                lambda A=A, a=normed: GR.laplacian(A, normed=a, symmetrized=True, form="lo") @ L.arr(x),
+            )
+
+    # large: the row blocks and column blocks past the GIL threshold
+    n = 40000
+    rows = np.repeat(np.arange(n), 5)
+    cols = (rows + r.integers(1, 3000, n * 5)) % n
+    A = S.coo_array((r.uniform(0.1, 2, n * 5), (rows, cols)), shape=(n, n)).tocsr()
+    yield "large reverse_cuthill_mckee", lambda: GR.reverse_cuthill_mckee(A)
+    yield "large structural_rank", lambda: GR.structural_rank(A)
+    for normed in (False, True):
+        for out in (False, True):
+            for sym in (False, True):
+                yield (
+                    f"large laplacian {normed} {out} {sym}",
+                    lambda a=normed, b=out, c=sym: GR.laplacian(
+                        A, normed=a, use_out_degree=b, symmetrized=c, return_diag=True
+                    ),
+                )
+    D = r.uniform(-1, 1, (700, 700))
+    D[r.random(D.shape) < 0.5] = 0.0
+    for normed in (False, True):
+        for out in (False, True):
+            yield (
+                f"large laplacian dense {normed} {out}",
+                lambda a=normed, b=out: GR.laplacian(np.abs(D) if a else D, normed=a, use_out_degree=b),
+            )
+    yield "large laplacian dense symmetrized", lambda: GR.laplacian(D, symmetrized=True, return_diag=True)
+
+    # wrong calls
+    yield "error rcm not square", lambda: GR.reverse_cuthill_mckee(np.zeros((2, 3)))
+    yield "error rcm symmetric_mode", lambda: GR.reverse_cuthill_mckee(np.eye(2), symmetric_mode=None)
+    yield "error structural_rank 1-D", lambda: GR.structural_rank(np.zeros(3))
+    yield "error laplacian form", lambda: GR.laplacian(np.eye(2), form="function")
+    yield "error laplacian copy", lambda: GR.laplacian(np.eye(2), copy=True)
+    yield "error laplacian dtype", lambda: GR.laplacian(np.eye(2), dtype="bool")
+    yield "error laplacian not square", lambda: GR.laplacian(np.zeros((3, 2)))
+
+
+def _extra_cases(L, graphs):
+    """The articulation points, bridges, biconnected components, core numbers, PageRank and betweenness
+    (milestone GR5)."""
+    sd, np = L.sd, L.np
+    GR = sd.graph
+    S = sd.sparse
+    for name, A in graphs.items():
+        for f in ("articulation_points", "bridges", "biconnected_components", "core_number"):
+            yield f"{f} {name}", lambda A=A, f=f: getattr(GR, f)(A)
+        for directed in (True, False):
+            for unweighted in (True, False):
+                tag = f"{name} {directed} {unweighted}"
+                yield f"pagerank {tag}", lambda A=A, a=directed, b=unweighted: GR.pagerank(A, directed=a, unweighted=b)
+                yield (
+                    f"betweenness_centrality {tag}",
+                    lambda A=A, a=directed, b=unweighted: GR.betweenness_centrality(A, directed=a, unweighted=b),
+                )
+    r = L.rng(2311)
+    cycle = np.roll(np.eye(9), 1, axis=1)
+    bow = np.zeros((7, 7))
+    for i, j in ((0, 1), (1, 2), (0, 2), (2, 3), (3, 4), (2, 4), (4, 5), (5, 6)):
+        bow[i, j] = 1.0
+    loops = np.eye(5) + np.diag(np.ones(4), 1)
+    for name, A in (("cycle", cycle), ("bow", bow), ("loops", loops), ("bow csr", S.csr_array(bow.T.copy()))):
+        for f in ("articulation_points", "bridges", "biconnected_components", "core_number"):
+            yield f"{f} {name}", lambda A=A, f=f: getattr(GR, f)(A)
+    w = np.round(r.uniform(0, 3, (14, 14)) * (r.random((14, 14)) < 0.3) * 2) / 2  # dyadic: many ties
+    p = r.uniform(0, 1, 14)
+    p[[2, 5, 7]] = 0.0
+    for alpha in (0.0, 0.5, 0.85, 0.99):
+        yield f"pagerank alpha {alpha}", lambda a=alpha: GR.pagerank(w, alpha=a)
+    yield "pagerank personalization", lambda: GR.pagerank(w, personalization=p)
+    yield "pagerank dangling", lambda: GR.pagerank(w, dangling=p[::-1].copy())
+    yield "pagerank both ints", lambda: GR.pagerank(w, personalization=[1] * 7 + [0] * 7, dangling=list(range(14)))
+    yield "pagerank tol", lambda: GR.pagerank(w, tol=1e-4)
+    zero_row = S.csr_array((np.array([0.0, 2.0, 1.0]), np.array([1, 2, 0]), np.array([0, 1, 2, 3])), shape=(3, 3))
+    yield "pagerank zero row", lambda: GR.pagerank(zero_row)
+    yield "pagerank self loop", lambda: GR.pagerank(np.array([[1.0, 0], [1.0, 0]]))
+    yield "pagerank empty", lambda: GR.pagerank(np.zeros((0, 0)))
+    for normalized in (False, True):
+        for endpoints in (False, True):
+            for directed in (True, False):
+                yield (
+                    f"betweenness_centrality ties {normalized} {endpoints} {directed}",
+                    lambda a=normalized, b=endpoints, c=directed: GR.betweenness_centrality(
+                        w, normalized=a, endpoints=b, directed=c
+                    ),
+                )
+    absorbed = np.zeros((5, 5))
+    absorbed[0, 3], absorbed[3, 1], absorbed[1, 2], absorbed[2, 4], absorbed[0, 4] = 1e17, 1.0, 1.0, 1.0, 1e17
+    yield "betweenness_centrality absorbed", lambda: GR.betweenness_centrality(absorbed, normalized=False)
+    yield "betweenness_centrality two", lambda: GR.betweenness_centrality(np.ones((2, 2)), endpoints=True)
+
+    # large: the structure past the GIL threshold, PageRank's row blocks and split sums, the betweenness's
+    # source tasks and waves
+    n = 70000
+    rows = np.repeat(np.arange(n), 3)
+    cols = (rows + r.integers(1, 5000, n * 3)) % n
+    A = S.coo_array((r.uniform(0.1, 2, n * 3), (rows, cols)), shape=(n, n)).tocsr()
+    for f in ("articulation_points", "bridges", "biconnected_components", "core_number"):
+        yield f"large {f}", lambda f=f: getattr(GR, f)(A)
+    for directed in (True, False):
+        yield f"large pagerank {directed}", lambda a=directed: GR.pagerank(A, directed=a)
+    pl = r.uniform(0, 1, n)
+    yield "large pagerank unweighted personalization", lambda: GR.pagerank(A, unweighted=True, personalization=pl)
+    m = 1500
+    rows = np.repeat(np.arange(m), 4)
+    cols = (rows + r.integers(1, 200, m * 4)) % m
+    B = S.coo_array((np.round(r.uniform(0.5, 2, m * 4) * 4) / 4, (rows, cols)), shape=(m, m)).tocsr()
+    for directed in (True, False):
+        for unweighted in (True, False):
+            yield (
+                f"large betweenness_centrality {directed} {unweighted}",
+                lambda a=directed, b=unweighted: GR.betweenness_centrality(B, directed=a, unweighted=b, endpoints=a),
+            )
+
+    # wrong calls
+    yield "error pagerank alpha", lambda: GR.pagerank(w, alpha=1.0)
+    yield "error pagerank tol", lambda: GR.pagerank(w, tol=0)
+    yield "error pagerank personalization length", lambda: GR.pagerank(w, personalization=[1.0, 2.0])
+    yield "error pagerank personalization sum", lambda: GR.pagerank(w, personalization=np.zeros(14))
+    yield "error pagerank negative", lambda: GR.pagerank(-w)
+    yield "error pagerank max_iter", lambda: GR.pagerank(w, max_iter=100)
+    yield "error betweenness zero weight", lambda: GR.betweenness_centrality(zero_row)
+    yield "error betweenness k", lambda: GR.betweenness_centrality(w, k=3)
+    yield "error betweenness normalized", lambda: GR.betweenness_centrality(w, normalized=1)
+    yield "error bridges not square", lambda: GR.bridges(np.zeros((2, 3)))
+    yield "error core_number complex", lambda: GR.core_number(np.eye(2) * 1j)

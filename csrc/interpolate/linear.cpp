@@ -26,6 +26,7 @@
 #include <complex>
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 
 namespace sd::interpolate {
 
@@ -61,6 +62,31 @@ void linear_range(const Piecewise<T>& P, const double* x, T* out, std::int64_t b
             for (std::int64_t i = 0; i < m; ++i) v[i] = wrap_periodic(x[b0 + i], lo, hi);
         else std::copy(x + b0, x + b0 + m, v);
         count_le_block(P.x, P.n, v, m, c, state);
+        if constexpr (std::is_same_v<T, double>) {
+            if (P.k == 1) {
+                // One column: the interval's nodes and values side by side, then base/lerp.hpp's block kernel (the
+                // same bits as the loop below); NaN points, points outside under the NaN rule and those the block
+                // kernel leaves out take that loop's way.
+                double x0[kBlock], x1[kBlock], a[kBlock], bb[kBlock];
+                bool inside = true;
+                for (std::int64_t i = 0; i < m; ++i) {
+                    inside &= (v[i] >= lo) & (v[i] <= hi);
+                    const std::int64_t j = interval_of(c[i], P.n);
+                    x0[i] = P.x[j], x1[i] = P.x[j + 1], a[i] = P.y[j], bb[i] = P.y[j + 1];
+                }
+                T* o = out + b0;
+                const bool all = lerp_block(v, x0, x1, a, bb, o, m);
+                if (!(all & (inside | (P.rule != Extrapolate::Nan)))) {
+                    for (std::int64_t i = 0; i < m; ++i) {
+                        const double p = v[i];
+                        if (p != p || (P.rule == Extrapolate::Nan && (p < lo || p > hi))) o[i] = nan_value<T>();
+                        else if (!lerp_block_covers(p, x0[i], x1[i], a[i], bb[i]))
+                            o[i] = lerp(a[i], bb[i], lerp_t(p, x0[i], x1[i]));
+                    }
+                }
+                continue;
+            }
+        }
         for (std::int64_t i = 0; i < m; ++i) {
             T* row = out + (b0 + i) * P.k;
             const double p = v[i];
@@ -80,9 +106,9 @@ void linear_range(const Piecewise<T>& P, const double* x, T* out, std::int64_t b
 template <typename T>
 void linear_all(const Piecewise<T>& P, const double* x, T* out, std::int64_t m) {
     const std::int64_t log_n = std::max<std::int64_t>(1, static_cast<std::int64_t>(std::log2(P.n + 1)));
-    const std::int64_t work = m * (log_n + 4 * P.k);
+    const std::int64_t work = m * (2 * log_n + 8 * P.k);  // sd.interp's estimate and task size (decision IP102)
     if (work >= kParallelThreshold && parallel::available()) {
-        const std::int64_t per = std::max<std::int64_t>(1, kParallelTask / std::max<std::int64_t>(1, P.k));
+        const std::int64_t per = std::max<std::int64_t>(1, 1024 / std::max<std::int64_t>(1, P.k));
         const std::int64_t tasks = (m + per - 1) / per;
         parallel::parallel_for(
             tasks, [&](std::int64_t t) { linear_range(P, x, out, t * per, std::min(m, (t + 1) * per)); },

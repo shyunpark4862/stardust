@@ -30,6 +30,11 @@ def test_every_stage_within_kappa():
     t = proof.table()
     for r, (_eb, _es, per) in t.items():
         assert per <= proof.KAPPA, (r, per)
+    # the radices 13 to 31 (decision FT64): within KAPPA_WIDE, and 13 already above KAPPA
+    wide = proof.table(proof.WIDE_RADICES)
+    for r, (_eb, _es, per) in wide.items():
+        assert proof.KAPPA < per <= proof.KAPPA_WIDE, (r, per)
+    assert proof.KAPPA_WIDE == refdata.KAPPA_WIDE
     # the values the code comment and the design quote (cfft.hpp, docs/design/fft.md §4.2)
     want = {2: 1.414, 4: 4.000, 3: 5.768, 5: 9.912, 7: 13.669, 11: 22.875}
     for r, v in want.items():
@@ -66,7 +71,7 @@ def test_twiddles_of_long_plans_within_mu():
 
 
 def test_bluestein_plan_constants():
-    for n in (13, 127, 1009, 2018, 10007, 30021, 65537):
+    for n in (37, 127, 1009, 2018, 10007, 30021, 65537):
         info = C._plan_info(n)
         assert info["path"] == "bluestein"
         assert info["m"] == refdata.bluestein_m(n)
@@ -74,5 +79,22 @@ def test_bluestein_plan_constants():
         assert set(info["radices"]) <= {2, 3, 4, 5}
         assert info["rho"] >= 1.0
         assert math.isclose(info["rho"], refdata.bluestein_rho(n), rel_tol=1e-9), n
-    for n in (1, 2, 11, 12, 1000, 1024, 2310, 9240, 121):
+    for n in (1, 2, 11, 12, 1000, 1024, 2310, 9240, 121, 13, 31 * 32, 3 * 11 * 31, 13 * 17 * 19, 23 * 29):
         assert C._plan_info(n)["path"] == "mixed"
+
+
+def test_the_path_is_the_prime_factors():
+    # decisions FT36, FT64: the mixed radix exactly for the 31-smooth lengths, Bluestein for the others
+    for n in range(1, 600):
+        assert (C._plan_info(n)["path"] == "mixed") == refdata.is_mixed(n), n
+
+
+def test_four_step_split():
+    # milestone FT6: from 2^15 on a mixed-radix length is n1 n2 with n1 the largest divisor at most sqrt n, and
+    # its radices are those of n1 then n2 (the error count of the stages, docs/design/fft.md §4.2)
+    assert C._plan_info(30030)["n1"] == 0  # 2 3 5 7 11 13, below 2^15
+    for n, n1 in ((1 << 15, 128), (1 << 20, 1024), (3 << 18, 768), (63488, 248), (131220, 324)):
+        info = C._plan_info(n)
+        assert info["path"] == "mixed" and info["n1"] == n1, (n, info["n1"])
+        assert math.prod(info["radices"]) == n
+    assert C._plan_info(65537)["n1"] == 324  # Bluestein's inner length 131220

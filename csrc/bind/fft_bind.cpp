@@ -11,6 +11,8 @@ void bind_fft(nb::module_& core) {
     nb::module_ m = core.def_submodule("fft", "stardust fft native core");
     fft::bind_basic(m);
     fft::bind_helper(m);
+    fft::bind_r2r(m);
+    fft::bind_fftlog(m);
 }
 
 }  // namespace sd

@@ -14,13 +14,18 @@
 // kParallelWork units or more splits and runs without the GIL. Lines along an axis other than the last
 // are gathered and scattered a block of up to kBlockLines at a time (neighbouring lines, so the reads of
 // one position are close together; the block's buffers are the thread's scratch, their lines padded off
-// powers of two); the block changes the memory traffic, not the values.
+// powers of two, copied a 128-byte tile at a time); the block changes the memory traffic, not the values.
+// Milestone FT6: complex lines whose positions stay in the L1 cache go through the two-line kernel of
+// fft/cfft.hpp instead (no gather and scatter, the same bits); a line with a four-step inside (n >= 2^15)
+// runs its own tasks on the pool, so such lines are transformed one after the other.
 #pragma once
 
 #include <cstdint>
 
 #include "array/ndarray.hpp"
+#include "fft/fftlog.hpp"
 #include "fft/plan.hpp"
+#include "fft/r2r.hpp"
 
 namespace sd::fft {
 
@@ -64,5 +69,17 @@ void r2c_axis(const NDArray& x, int axis, int64_t n, bool full, bool conj, doubl
 // n / 2 + 1 entries are used (cut or zero-padded) and the imaginary parts of the DC and (even n) Nyquist
 // entries are dropped, times `scale` (irfft; with `conj`, of conj(x): hfft). out: float64.
 void c2r_axis(const NDArray& x, int axis, int64_t n, bool conj, double scale, NDArray& out);
+
+// r2r_axis (milestone FT4, fft/r2r.hpp): the DCT or DST r of every line of x (bool, int64 or float64; a
+// float64 view of a complex array's real or imaginary parts) along `axis`, cut or zero-padded to n, times
+// `scale` (with orthogonalize's sqrt 2 when r.ortho). out: float64 (any strides; a view of a complex
+// array's parts), possibly x itself.
+void r2r_axis(const NDArray& x, int axis, int64_t n, const R2r& r, double scale, NDArray& out);
+
+// fht_axis (milestone FT5, fft/fftlog.hpp): the fast Hankel transform of plan p (fht, or ifht for an inverse
+// plan) of every line of x (bool, int64 or float64) along `axis` (its length p's n): the input bias, the
+// real transform, the coefficient products, the inverse real transform, the reversal and the output bias.
+// out: float64 (any strides), not x.
+void fht_axis(const NDArray& x, int axis, const FhtPlan& p, NDArray& out);
 
 }  // namespace sd::fft

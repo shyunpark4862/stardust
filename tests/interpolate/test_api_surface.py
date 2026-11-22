@@ -19,18 +19,14 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "interpolate.md"
 
 # Documented, not implemented yet (docs/design/interpolate.md §8). A milestone moves its names from here
 # to sd.interpolate.__all__.
-PLANNED = {
-    # IP4
-    "BarycentricInterpolator", "barycentric_interpolate", "KroghInterpolator", "krogh_interpolate",
-    "FloaterHormannInterpolator", "AAA",
-    # IP5
-    "RegularGridInterpolator", "interpn",
-    # IP6
-    "RBFInterpolator", "NearestNDInterpolator",
-}  # fmt: skip
+PLANNED: set[str] = set()
 IP2 = {"PPoly", "CubicHermiteSpline", "CubicSpline", "PchipInterpolator", "Akima1DInterpolator", "pchip_interpolate"}
 IP3 = {"BSpline", "make_interp_spline"}
-CLASSES = {n for n in PLANNED | IP2 | IP3 if n[0].isupper()}
+IP4 = {"BarycentricInterpolator", "barycentric_interpolate", "KroghInterpolator", "krogh_interpolate",
+       "FloaterHormannInterpolator", "AAA"}  # fmt: skip
+IP5 = {"RegularGridInterpolator", "interpn"}
+IP6 = {"RBFInterpolator", "NearestNDInterpolator"}
+CLASSES = {n for n in PLANNED | IP2 | IP3 | IP4 | IP5 | IP6 if n[0].isupper()}
 PPOLY_FAMILY = ("PPoly", "CubicHermiteSpline", "CubicSpline", "PchipInterpolator", "Akima1DInterpolator")
 INTERP = "interp(x, xp, fp, /, *, left=None, right=None, period=None)"
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
@@ -167,7 +163,7 @@ def test_interp_is_the_array_areas():
 
 
 def test_module_is_wired():
-    assert set(sd.interpolate.__all__) == IP2 | IP3
+    assert set(sd.interpolate.__all__) == IP2 | IP3 | IP4 | IP5 | IP6
     assert not hasattr(sd.interpolate, "interp")
 
 

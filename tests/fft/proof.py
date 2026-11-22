@@ -14,7 +14,9 @@ A stage multiplies the butterfly's outputs by twiddles: the FMA complex product 
 Kornerup, Louvet and Muller, Math. Comp. 86 (2017)) and the twiddle's own error mu (twiddle.hpp; the
 proof takes mu = 1.5u, decision FT31): eta_stage = eta_b + (2u + mu)(1 + eta_b). The transform of
 length n is within prod(1 + eta_stage) - 1 <= kappa L(n) u + O(u^2) whenever every stage has
-eta_stage <= kappa log2(r) u, since sum log2 r = log2 n <= L(n).
+eta_stage <= kappa log2(r) u, since sum log2 r = log2 n <= L(n). kappa = 8 covers the radices up to 11;
+the radices 13 to 31 (milestone FT6, decision FT64) need up to 16.83u per log2 r (31), so a length with one
+of them is held to kappa = 17.
 
 The first-order bounds leave out terms of order u^2 (each rounding's (1 + d) products): with at most
 30 roundings on any path they change a bound by less than 30 u relatively, 10^-14 of it.
@@ -35,7 +37,9 @@ U = 1.0
 MU = 1.5  # the twiddles' error bound (decision FT31)
 CMUL = 2.0  # the FMA complex product
 KAPPA = 8.0
+KAPPA_WIDE = 17.0  # the radices 13 to 31 (decision FT64)
 RADICES = (2, 4, 3, 5, 7, 11)
+WIDE_RADICES = (13, 17, 19, 23, 29, 31)
 
 
 class Val:
@@ -86,7 +90,7 @@ def constants():
     """{p: (c, s)} of cfft.hpp's OddConst: cos and sin of 2 pi m / p as the C++ has them."""
     text = CFFT.read_text()
     out = {}
-    for p in (3, 5, 7, 11):
+    for p in (3, 5, 7, 11) + WIDE_RADICES:
         body = text[text.index(f"struct OddConst<{p}>") :]
         c = re.search(r"c\[\d+\] = \{([^}]*)\}", body).group(1)
         s = re.search(r"s\[\d+\] = \{([^}]*)\}", body).group(1)
@@ -163,11 +167,11 @@ def eta_stage(r) -> float:
     return eb + (CMUL + MU) * (1.0 + eb * 2.0**-53)
 
 
-def table():
+def table(radices=RADICES):
     """{r: (eta_b, eta_stage, eta_stage / log2 r)} in units of u."""
-    return {r: (eta_butterfly(r), eta_stage(r), eta_stage(r) / math.log2(r)) for r in RADICES}
+    return {r: (eta_butterfly(r), eta_stage(r), eta_stage(r) / math.log2(r)) for r in radices}
 
 
 if __name__ == "__main__":
-    for r, (eb, es, per) in table().items():
+    for r, (eb, es, per) in table(RADICES + WIDE_RADICES).items():
         print(f"radix {r:2d}: eta_b {eb:7.3f} u  eta_stage {es:7.3f} u  per log2 r {per:6.3f} u")

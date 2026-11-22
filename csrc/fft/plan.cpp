@@ -10,9 +10,14 @@
 #include <mutex>
 
 #include "fft/ddmath.hpp"
+#include "fft/r2r.hpp"
 #include "parallel/pool.hpp"
 
 namespace sd::fft {
+
+void run_tasks(int64_t ntasks, const std::function<void(int64_t)>& fn, int64_t task_ns) {
+    parallel::parallel_for(ntasks, fn, task_ns);
+}
 
 // ---------------------------------------------------------------- double-double DFT
 
@@ -136,12 +141,17 @@ void BluesteinPlan::run(const double* x, double* y, double* work) const {
     double* const a = work;
     double* const b = work + 2 * m;
     double* const w = work + 4 * m;
-    cmul_line<Swap, false>(x, chirp_.data(), a, n);
+    const double* const c = chirp_.data();
+    const double* const be = beta_.data();
+    // the products by chunks (a long line's on the pool; run_chunks: each entry alone, so no bit changes)
+    run_chunks(n, [&](int64_t i0, int64_t i1) { cmul_line<Swap, false>(x + 2 * i0, c + 2 * i0, a + 2 * i0, i1 - i0); });
     std::memset(a + 2 * n, 0, static_cast<size_t>(2 * (m - n)) * sizeof(double));
     inner_.execute(a, b, w, false);
-    cmul_line<false, false>(b, beta_.data(), b, m);
+    run_chunks(m, [&](int64_t i0, int64_t i1) {
+        cmul_line<false, false>(b + 2 * i0, be + 2 * i0, b + 2 * i0, i1 - i0);
+    });
     inner_.execute(b, a, w, true);
-    cmul_line<false, Swap>(a, chirp_.data(), y, n);
+    run_chunks(n, [&](int64_t i0, int64_t i1) { cmul_line<false, Swap>(a + 2 * i0, c + 2 * i0, y + 2 * i0, i1 - i0); });
 }
 
 void BluesteinPlan::execute(const double* x, double* y, double* work, bool inverse) const {
@@ -165,6 +175,23 @@ int64_t levels(int64_t n) {  // ceil(log2 n), 1 at least
 }  // namespace
 
 Plan::Plan(Kind kind, int64_t n) : kind_(kind), n_(n) {
+    if (kind == Kind::Dct2) {  // DCT-II and DCT-III (fft/r2r.hpp): the real transform of n, its own
+        half_ = std::make_unique<const Plan>(n % 2 == 0 ? Kind::Real : Kind::Complex, n);
+        rtw_ = dct2_twiddles(n);
+        cost_ = half_->cost() + 2 * n;
+        return;
+    }
+    if (kind == Kind::Dct4) {  // DCT-IV: the complex plan of n / 2 (even n) or of n (odd n)
+        if (n % 2 == 0) {
+            half_ = std::make_unique<const Plan>(Kind::Complex, n / 2);
+            rtw_ = dct4_twiddles(n);
+        } else {
+            half_ = std::make_unique<const Plan>(Kind::Complex, n);
+            idx_ = dct4_odd_tables(n);
+        }
+        cost_ = half_->cost() + 2 * n;
+        return;
+    }
     if (kind == Kind::Real) {  // even n (the driver sends odd real lengths to the complex plan of n)
         half_ = std::make_unique<const Plan>(Kind::Complex, n / 2);
         rtw_ = real_twiddles(n);

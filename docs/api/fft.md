@@ -1,8 +1,8 @@
 # sd.fft API
 
-> 상태: **초안** (FT0 마일스톤, 2026-11-23). FT1 마일스톤(2026-11-23)에서 `fft ifft fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len`이, FT2 마일스톤(2026-11-23)에서 `rfft irfft hfft ihfft`가, FT3 마일스톤(2026-11-23)에서 `fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn`이 공개되었다. 아래 시그니처는 numpy 2.5.4의 `numpy.fft`와 scipy 1.18.1의 `scipy.fft`의 이름과 인자 이름에 stardust의 규칙과 FT1–FT34의 결정을 입힌 안이고, 마일스톤 FT1–FT5에서 하나씩 공개된다(docs/design/fft.md §8: 1차원 복소 변환과 도우미는 FT1, 실수·에르미트 1차원은 FT2, 다차원은 FT3, DCT·DST는 FT4, FFTLog는 FT5).
+> 상태: **초안** (FT0 마일스톤, 2026-11-23). FT1 마일스톤(2026-11-23)에서 `fft ifft fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len`이, FT2 마일스톤(2026-11-23)에서 `rfft irfft hfft ihfft`가, FT3 마일스톤(2026-11-23)에서 `fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn`이, FT4 마일스톤(2026-11-23)에서 `dct idct dst idst dctn idctn dstn idstn`이, FT5 마일스톤(2026-11-23)에서 `fht ifht fhtoffset`이 공개되었다. 아래 시그니처는 numpy 2.5.4의 `numpy.fft`와 scipy 1.18.1의 `scipy.fft`의 이름과 인자 이름에 stardust의 규칙과 FT1–FT34의 결정을 입힌 안이고, 마일스톤 FT1–FT5에서 하나씩 공개된다(docs/design/fft.md §8: 1차원 복소 변환과 도우미는 FT1, 실수·에르미트 1차원은 FT2, 다차원은 FT3, DCT·DST는 FT4, FFTLog는 FT5).
 
-- 설계와 결정의 근거는 [docs/design/fft.md](../design/fft.md)(§1.1 FT1–FT52), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/fft.md](../design/fft.md)(§1.1 FT1–FT63), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/fft/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름과 시그니처(`name(...)`)다. 이 이름들이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -61,6 +61,7 @@
 - 축: 범위 밖은 `ValueError`, 중복은 `ValueError`(numpy의 `fftn`·`fftshift`는 두 번 변환하거나 민다), 빈 `axes`는 `ValueError`, `s`의 None 원소는 `TypeError`.
 - 경계에서 틀린 값이나 내부 메시지를 내는 곳은 모두 `ValueError`다: scipy의 `irfft(n=0)`(길이 1의 결과), scipy의 DCT-I N = 1(DUCC0의 `no zero-sized FFTs`가 새어 나온다), numpy·scipy의 `fftfreq(0)`과 `d=0`(`ZeroDivisionError`), scipy의 `next_fast_len(0)`·`prev_fast_len(0)`(0).
 - 결과의 dtype: float32 입력이 없으므로 언제나 complex128·float64다.
+- FFTLog(§6): `offset`·`bias`·`initial`은 키워드만, `dln`의 0·무한대와 다른 인자의 NaN·무한대는 `ValueError`(scipy는 경고와 NaN), 특이한 변환에 경고 없음, `fhtoffset`은 Python float, 계수의 위상이 더 정확해 값이 scipy와 그 위상 오차만큼 다르다.
 
 ## §2. 복소 변환 (FT1, FT3)
 ```
@@ -78,7 +79,7 @@ ifftn(x, /, *, s=None, axes=None, norm='backward')
 - 다차원 판은 `axes`의 축마다 1차원 변환을 거듭한 것이고 `axes`의 뒤에서 앞으로 계산한다(FT25, FT47). 정규화는 N = `s`의 곱의 인자 하나다(FT48; numpy는 축마다 곱한다). 그래서 축 하나의 `fftn`은 `fft`와, `fftn(x)`(`'backward'`)와 `ifftn(x, norm='forward')`는 1차원 변환을 뒤에서 앞으로 이은 것과 비트까지 같다. 실수 입력의 `fftn`은 첫 패스가 실수 길이라 앞쪽 n//2 + 1칸이 `rfftn`과 비트까지 같다. 1차원 입력의 `fft2`는 `ValueError`다(`fft2(): axis -2 is out of bounds for an array of dimension 1`; `[numpy와 다름]`: numpy는 `IndexError`).
 - **길이 1**: `fft`·`ifft`는 입력을 complex128로 바꾼 복사본과 정확히 같다(`norm`의 인자도 1이다).
 - **메시지**(FT42): `fft(): 'n' must be an int or None, not float`, `fft(): 'n' must be at least 1, not 0`, `fft(): 'axis' must be an int, not NoneType`, `fft(): axis 1 is out of bounds for an array of dimension 1`, `fft(): cannot transform an axis of length 0`.
-- **길과 결정성**(FT35–FT37): 소인수가 모두 11 이하인 길이는 자체 혼합 기수, 그 밖은 Bluestein(안쪽 길이는 2n − 1 이상의 가장 작은 2ᵃ3ᵇ5ᶜ)으로 계산한다. 길은 길이로만 정해진다. `ifft(x, norm='forward')`는 실수부와 허수부를 바꾼 입력의 `fft`에서 다시 실수부와 허수부를 바꾼 것과 비트까지 같다.
+- **길과 결정성**(FT35–FT37, FT64, FT65): 소인수가 모두 31 이하인 길이는 자체 혼합 기수(2¹⁵ 이상은 4단계로 한 줄을 여러 스레드가 나눈다), 그 밖은 Bluestein(안쪽 길이는 2n − 1 이상의 가장 작은 2ᵃ3ᵇ5ᶜ)으로 계산한다. 길은 길이로만 정해진다. `ifft(x, norm='forward')`는 실수부와 허수부를 바꾼 입력의 `fft`에서 다시 실수부와 허수부를 바꾼 것과 비트까지 같다.
 - R과의 관계: R의 `fft(z)`는 `fft(z)`, `fft(z, inverse=TRUE)`는 `ifft(z, norm='forward')`(R의 역변환은 1/n을 곱하지 않는다), `mvfft(Z)`는 `fft(Z, axis=0)`이다.
 
 ## §3. 실수와 에르미트 변환 (FT2, FT3)
@@ -115,12 +116,16 @@ idctn(x, /, *, type=2, s=None, axes=None, norm='backward', orthogonalize=None)
 dstn(x, /, *, type=2, s=None, axes=None, norm='backward', orthogonalize=None)
 idstn(x, /, *, type=2, s=None, axes=None, norm='backward', orthogonalize=None)
 ```
-- 정의는 scipy와 같다(형 1–4). `idct(type=k)`는 DCT의 역(형 1과 4는 자기 자신, 2와 3은 서로의 역)에 정규화를 붙인 것이다.
-- **`type`**: 1, 2, 3, 4의 int다. 다른 int는 `ValueError`, int가 아니면 `TypeError`다(`[scipy와 다름]`: scipy는 `type=2.0`에서 바인딩의 시그니처 덤프를 낸다).
-- **`orthogonalize`**(FT19): None(기본)은 `norm == 'ortho'`일 때 True다. True면 형 1–3의 첫(과 끝) 칸에 √2를 곱하고 나눠 행렬을 직교로 만든다. 형 4와 DST-I에는 영향이 없다(scipy와 같다).
+- 정의는 scipy와 같다(형 1–4). `idct(type=k)`는 DCT의 역(형 1과 4는 자기 자신, 2와 3은 서로의 역)에 정규화를 붙인 것이다. 정규화의 N′은 논리 길이(DCT-I은 2(N − 1), DST-I은 2(N + 1), 그 밖은 2N; 다차원은 그 곱)이고 인자 하나를 곱한다(§1.5).
+- **`type`**(FT56): 1, 2, 3, 4의 int다. 다른 int는 `ValueError`(`dct(): 'type' must be 1, 2, 3 or 4, not 5`), int가 아니면 `TypeError`(`dct(): 'type' must be an int, not float`; bool과 None도), int64 밖은 `OverflowError`다(`[scipy와 다름]`: scipy는 `type=2.0`에서 바인딩의 시그니처 덤프를 낸다).
+- **`orthogonalize`**(FT19, FT55): None(기본)은 `norm == 'ortho'`일 때 True다. True면 형 1–3의 첫(과 끝) 칸에 √2를 곱하고 나눠 행렬을 직교로 만든다(DCT-I은 x₀·x_{N−1}과 y₀·y_{N−1}, DCT-II는 y₀, DCT-III은 x₀, DST-II는 y_{N−1}, DST-III은 x_{N−1}). 형 4와 DST-I에는 영향이 없다(scipy와 같다). True, False, None 밖은 `TypeError`다(`'orthogonalize' must be True, False or None, not int`). √2는 fl(√2)를 곱하고 fl(√2)로 나누며 정규화 인자와 따로 반올림한다(scipy는 fl(√2)/2를 곱한다; 값으로 같고 끝자리가 다를 수 있다).
 - **길이의 하한**(FT20): DCT-I은 N ≥ 2다(`dct(): type=1 needs at least 2 points, not 1`; `[scipy와 다름]`: scipy는 DUCC0의 내부 메시지가 새어 나온다). DST-I은 N = 1에서 2x다(scipy와 같다). 다른 형은 N ≥ 1이다.
 - **복소 입력**(FT28): 실수부와 허수부를 따로 변환해 complex128로 돌려준다. 그래서 `dct(x)`는 `dct(x.real) + 1j·dct(x.imag)`와 비트까지 같다(scipy는 값으로 같고 비트는 다를 수 있다).
-- DST-II·III·IV는 부호를 바꾸고 뒤집은 입력의 같은 형 DCT와 비트까지 같다(docs/design/fft.md §3.5).
+- **`n`·`s`·`axis`·`axes`**: 복소·실수 변환과 같은 규칙과 메시지다(§1.4, §2; FT51). `n`·`s`는 자르거나 끝에 0을 채운다. 변환 축의 길이 0은 `ValueError`(`dct(): cannot transform an axis of length 0`; scipy도 `ValueError`), 변환하지 않는 축의 0은 빈 결과다. 인자는 시그니처의 순서(x, `type`, `n`·`s`, `axis`·`axes`, `norm`, `orthogonalize`)로 검사한다.
+- **입력과 결과**: bool·int64·float64는 float64로 바꿔 float64를 낸다. complex128은 complex128을 낸다.
+- **다차원**(FT57): `axes`의 축마다 1차원 판을 뒤에서 앞으로 거듭하고 인자 하나를 마지막에 곱한다. 그래서 축 하나의 `dctn`은 `dct`와, `dctn(x)`(`'backward'`)와 `idctn(x, norm='forward')`는 1차원 변환을 뒤에서 앞으로 이은 것과 비트까지 같다.
+- **길과 결정성**(FT54): 모든 형이 자체 알고리즘이다(vDSP의 DCT는 float 판뿐이다). DCT-I·DST-I은 길이 2(N ∓ 1)의 짝·홀 확장의 실수 FFT, DCT-II·III은 Makhoul의 순서 바꿈과 길이 N의 실수 FFT, DCT-IV는 짝수 N이면 길이 N/2의 복소 FFT, 홀수 N이면 부호를 붙인 순열 위의 길이 N 실수 FFT다. 길은 형과 N으로만 정해지고, 한 줄의 결과는 배치·레이아웃·스레드 수와 무관하다.
+- **비트 관계**: DST-II·III·IV는 부호를 바꾸고 뒤집은 입력의 같은 형 DCT와 비트까지 같다(DST-II(x)_k = DCT-II((−1)ⁿxₙ)_{N−1−k}, DST-III·IV(x)_k = (−1)ᵏ·DCT-III·IV(x를 뒤집은 것)_k; docs/design/fft.md §3.5). `idct(x, type=3, norm='forward')`는 `dct(x, type=2)`와 비트까지 같다(형 2·3의 맞바꿈, 인자 1).
 
 ## §5. 도우미 (FT1)
 ```
@@ -133,7 +138,7 @@ prev_fast_len(target, /, *, real=False)
 ```
 - **`fftfreq`·`rfftfreq`**(FT26): 정수 k = 0, 1, …, −1에 fl(1/fl(n·d))를 곱한 numpy의 계산식 그대로라 numpy와 비트까지 같다. n은 1 이상의 int, d는 0이 아닌 유한한 실수다(d < 0은 받는다; numpy와 같다). n = 0과 d = 0은 `ValueError`다(`fftfreq(): 'n' must be at least 1, not 0`, `fftfreq(): 'd' must be finite and nonzero, not 0.0`; `[numpy와 다름]`: numpy와 scipy는 `ZeroDivisionError`).
 - **`fftshift`·`ifftshift`**: 값을 옮기기만 하므로 `sd.roll`과 비트가 같고 dtype을 지킨다. `axes`는 int, tuple, list, None이다. 중복된 축은 `ValueError`다(`fftshift(): repeated axis`; `[numpy와 다름]`: numpy와 scipy는 그 축을 두 번 민다). 빈 `axes`는 복사본이다.
-- **`next_fast_len`·`prev_fast_len`**(FT18): scipy와 같은 값이다. 복소(`real=False`)는 11-매끄러운 수(소인수가 모두 11 이하), `real=True`는 5-매끄러운 수다. `next_fast_len`은 `target` 이상의 가장 작은 그런 수, `prev_fast_len`은 이하의 가장 큰 그런 수다. `target`은 1 이상의 int다. 0과 음수는 `ValueError`(`next_fast_len(): 'target' must be at least 1, not 0`; `[scipy와 다름]`: scipy는 0에서 0을 돌려준다), 결과가 int64를 넘으면 `ValueError`(`next_fast_len(): the next fast length after … is beyond int64`)다. int64의 모든 `target`을 받는다(`[scipy와 다름]`: scipy는 약 2⁶¹보다 큰 `target`을 `ValueError`, 2⁶³ 이상을 `OverflowError`로 막는다; FT42). 이 길이들이 정확히 Bluestein을 타지 않는 길이다(FT36). R의 `nextn(n)`(기본 인수 2, 3, 5)은 `next_fast_len(n, real=True)`와 같은 값이다.
+- **`next_fast_len`·`prev_fast_len`**(FT18): scipy와 같은 값이다. 복소(`real=False`)는 11-매끄러운 수(소인수가 모두 11 이하), `real=True`는 5-매끄러운 수다. `next_fast_len`은 `target` 이상의 가장 작은 그런 수, `prev_fast_len`은 이하의 가장 큰 그런 수다. `target`은 1 이상의 int다. 0과 음수는 `ValueError`(`next_fast_len(): 'target' must be at least 1, not 0`; `[scipy와 다름]`: scipy는 0에서 0을 돌려준다), 결과가 int64를 넘으면 `ValueError`(`next_fast_len(): the next fast length after … is beyond int64`)다. int64의 모든 `target`을 받는다(`[scipy와 다름]`: scipy는 약 2⁶¹보다 큰 `target`을 `ValueError`, 2⁶³ 이상을 `OverflowError`로 막는다; FT42). 이 길이들은 가장 싼 기수(2–11)만 쓰는 길이다(FT36; 13–31의 소인수도 혼합 기수로 계산하지만 더 느리다, FT64). R의 `nextn(n)`(기본 인수 2, 3, 5)은 `next_fast_len(n, real=True)`와 같은 값이다.
 
 ## §6. FFTLog (FT5)
 ```
@@ -141,8 +146,12 @@ fht(a, dln, mu, /, *, offset=0.0, bias=0.0)
 ifht(A, dln, mu, /, *, offset=0.0, bias=0.0)
 fhtoffset(dln, mu, /, *, initial=0.0, bias=0.0)
 ```
-- 정의와 결과는 scipy와 같다(로그 간격 표본의 빠른 Hankel 변환; FT21). `dln`(로그 간격)과 `mu`(Bessel 함수의 차수)는 변환의 필수 인자라 위치로 받는다(FT32). 입력 `a`는 1차원 이상이고 마지막 축을 변환한다(scipy와 같다).
-- 세부(복소 `loggamma`의 경계, `bias`의 범위, 에러)는 FT5에서 정해 이 절에 적는다.
+- 정의와 결과는 scipy와 같다(로그 간격 표본의 빠른 Hankel 변환, Hamilton의 FFTLog; FT21). `dln`(로그 간격)과 `mu`(Bessel 함수의 차수)는 변환의 필수 인자라 위치로 받고(FT32), `offset`, `bias`, `initial`은 키워드만이다(`[scipy와 다름]`: scipy는 위치도 받는다). 입력은 1차원 이상이고 마지막 축의 줄마다 변환한다(scipy와 같다). 결과는 float64이고 입력과 모양이 같다.
+- **정의**: 길이 n의 줄 a, j_c = (n − 1)/2, q = `bias`에 대해 v_j = a_j·e^(−q(j − j_c)·dln)의 실수 DFT에 U_m/n(m = 0, …, n/2)을 곱해 역실수 DFT를 하고 뒤집은 뒤 e^(−q((j − j_c)·dln + offset))를 곱한다. U_m = 2^q·Γ(x₊ + iy_m)/Γ(x₋ − iy_m)·e^(2iy_m(ln 2 − offset)), x± = (mu + 1 ± q)/2, y_m = πm/(n·dln)이다. `ifht`는 conj U_m으로 나누고 바이어스는 역수다. m = 0과 짝수 n의 m = n/2는 U_m의 실수부만 쓴다(`ifht`는 1/Re U_m; scipy와 같다). `offset`은 출력 격자의 중심 ln k_c = offset − ln r_c이고 `fhtoffset(dln, mu, initial=…, bias=…)`이 `initial`에 가장 가까운 저링잉(low-ringing) 값을 준다(scipy와 같은 식: initial + (arg − round(arg))·dln, 짝수 쪽 반올림).
+- **특이한 변환**(FT60): x₊만 Γ의 극점(0, −1, −2, …)이면 `fht`가, x₋만 극점이면 `ifht`가 특이하고 그 계수(m = 0)를 0으로 둔다(scipy의 고침과 같은 값). 경고는 내지 않는다(§1.4; `[scipy와 다름]`: scipy는 경고한다). 둘 다 극점이면 극한값이다(scipy와 같다). 극점은 정확한 (mu + 1 ± q)/2로 가린다(scipy는 double로 반올림한 값으로 가린다).
+- **인자**(FT61): 데이터(`fht`는 `a`, `ifht`는 `A`)는 `sd.ndarray`이고 bool·int64·float64를 float64로 바꾼다. complex128은 `TypeError`(`fht(): 'a' must be real, not complex128`; scipy도 `TypeError`)다. `dln`, `mu`, `offset`, `bias`, `initial`은 int·float·numpy 실수 스칼라(bool은 `TypeError`)다. `dln`이 0이나 유한하지 않으면 `ValueError`(`fht(): 'dln' must be finite and nonzero, not 0.0`), 다른 인자가 유한하지 않으면 `ValueError`(`fht(): 'mu' must be finite, not nan`)다(`[scipy와 다름]`: scipy는 경고와 NaN을 낸다). 음수 `dln`은 받는다(scipy와 같다). 마지막 축의 길이 0은 `ValueError`(`fht(): cannot transform an axis of length 0`), 다른 축의 0은 빈 결과다. 인자는 시그니처의 순서로 검사한다. `fhtoffset`은 Python float를 돌려준다(scipy는 numpy.float64).
+- **계산**(FT58, FT59): 계수는 double-double의 log Γ로 만들어 한 번 반올림한다(Arb와 견주어 u 이하). scipy는 double의 `loggamma`로 만들어 큰 y(작은 `dln`이나 큰 n)에서 위상이 틀리므로 값이 scipy와 그만큼 다르다(n = 4096이면 노름 상대 1e-11까지, `dln` = 1e-4이면 1e-9까지). 계수와 바이어스는 (n, `dln`, `mu`, `offset`, `bias`, 방향)마다 계획으로 캐시에 둔다(16개·128 MB). 같은 매개변수로 거듭 부르면 실수 FFT 두 번과 곱 한 번이다.
+- **결정성**: 한 줄의 결과는 그 줄의 값과 매개변수로만 정해진다(배치, 레이아웃, 스레드 수, 계획을 언제 어느 스레드 수로 만들었는지와 무관하다).
 
 ## §7. numpy·scipy·R → sd.fft
 
@@ -178,7 +187,9 @@ fhtoffset(dln, mu, /, *, initial=0.0, bias=0.0)
 | `nextn(n)` | `next_fast_len(n, real=True)` |
 
 ## §8. 정확도
-- 참값은 Arb다. 계약은 노름 상대오차의 한계다(FT4, FT27): 길이 n의 복소 변환은 ‖ŷ − y‖ ≤ (8·L(n) + 4)·u·‖y‖ + 8·n·2⁻¹⁰⁷⁴이고(L(n) = ⌈log₂ n⌉, u = 2⁻⁵³; 11보다 큰 소인수가 있는 길이는 L(n) 대신 2·L(m) + 2를 쓰고 한계에 ρ(n) ≈ 2를 곱한다, FT37), 실수·에르미트·다차원·DCT·DST는 같은 꼴을 그 변환에 맞춘 것이다(docs/design/fft.md §4.2, FT31). 원소마다의 상대 정확도는 약속하지 않는다: 참값이 0에 가까운 칸은 다른 칸의 크기만큼 움직일 수 있다(docs/design/fft.md §4.1).
-- FT1 마일스톤의 `fft`·`ifft`는 저장한 모든 Arb 참값과 긴 줄 넷(2¹⁶, 65537, 3·10007, 2²⁰)에서 계약의 0.054 이하였다(numpy·scipy와 같은 크기; docs/design/fft.md §4.4). FT2 마일스톤의 `rfft`, 실수 입력 `fft`, `irfft`는 저장한 실수·에르미트 참값 전부와 긴 실수 줄 셋(2¹⁶, 65537, 2²⁰)에서 계약의 0.049 이하였다. 실수·에르미트 변환의 안쪽 길이(짝수 n은 n/2, 홀수 n은 n)에 11보다 큰 소인수가 있으면 그 길이의 ρ와 안쪽 길이로 계약을 센다(FT45). 반올림 크기의 결과는 numpy·scipy와 끝자리가 다를 수 있다(API.md §4의 규칙 3).
+- 참값은 Arb다. 계약은 노름 상대오차의 한계다(FT4, FT27): 길이 n의 복소 변환은 ‖ŷ − y‖ ≤ (8·L(n) + 4)·u·‖y‖ + 8·n·2⁻¹⁰⁷⁴이고(L(n) = ⌈log₂ n⌉, u = 2⁻⁵³; 13–31의 소인수가 있는 길이는 8 대신 17을 쓰고(FT64), 31보다 큰 소인수가 있는 길이는 L(n) 대신 2·L(m) + 2를 쓰고 한계에 ρ(n) ≈ 2를 곱한다, FT37), 실수·에르미트·다차원·DCT·DST는 같은 꼴을 그 변환에 맞춘 것이다(docs/design/fft.md §4.2, FT31). 원소마다의 상대 정확도는 약속하지 않는다: 참값이 0에 가까운 칸은 다른 칸의 크기만큼 움직일 수 있다(docs/design/fft.md §4.1).
+- FT1 마일스톤의 `fft`·`ifft`는 저장한 모든 Arb 참값과 긴 줄 넷(2¹⁶, 65537, 3·10007, 2²⁰)에서 계약의 0.054 이하였다(numpy·scipy와 같은 크기; docs/design/fft.md §4.4). FT2 마일스톤의 `rfft`, 실수 입력 `fft`, `irfft`는 저장한 실수·에르미트 참값 전부와 긴 실수 줄 셋(2¹⁶, 65537, 2²⁰)에서 계약의 0.049 이하였다. 실수·에르미트 변환의 안쪽 길이(짝수 n은 n/2, 홀수 n은 n)에 31보다 큰 소인수가 있으면 그 길이의 ρ와 안쪽 길이로 계약을 센다(FT45; 13–31은 8 대신 17, FT64). 반올림 크기의 결과는 numpy·scipy와 끝자리가 다를 수 있다(API.md §4의 규칙 3).
 - FT3 마일스톤의 다차원 변환은 저장한 다차원 참값과 Arb를 그 자리에서 구한 점(Bluestein 축, 짝수·홀수·Bluestein의 실수 마지막 축, 에르미트가 아닌 `irfftn` 입력, 넘침 직전과 비정상 수)에서 계약의 0.045 이하였다. 다차원 계약은 축마다의 항을 더한 꼴이다(FT49: Bluestein 축은 그 ρ, `irfftn`·`hfftn`은 마지막 축에 무게 1·√2를 준 입력의 노름).
+- FT4 마일스톤의 DCT·DST는 저장한 r2r 참값 전부와 Arb를 그 자리에서 구한 줄(1009, 2·1009, 2¹⁶, 65537; 비정상 수, 넘침 직전, 사인파)에서 모든 `norm`과 `orthogonalize`에 대해 계약의 0.063 이하였다(scipy와 같은 크기). 계약은 ‖ŷ − y‖ ≤ (8·L(2N + 2) + 8)·u·‖T‖·‖x‖ + 8(2N + 2)·2⁻¹⁰⁷⁴이고(‖T‖는 정규화를 포함한 변환 행렬의 노름), 형의 안쪽 복소 길이(DCT-I은 N − 1, DST-I은 N + 1, 그 밖은 N/2나 N)에 31보다 큰 소인수가 있으면 그 길이의 ρ와 안쪽 길이로 센다(FT53; 13–31은 8 대신 17, FT64).
+- FT5 마일스톤의 `fht`·`ifht`는 Arb로 그 자리에서 구한 338점(길이 1–4096과 2¹⁶, 바이어스 없음·있음, 음수 `dln`, Γ의 극점, 큰 차수, 작은 `dln`; 비정상 수와 큰 값)에서 계약의 0.069 이하였다(scipy는 같은 계약의 4,615배까지). 계약은 ‖Â − A‖ ≤ (2ε_F + 8)·u·‖b_out‖_∞·M·‖B_in a‖ + 바닥이다(ε_F는 길이 n 실수 변환의 κ·L(n) + c₀, M = max\|U_m\|(`ifht`는 max 1/\|U_m\|), B_in·b_out은 입력·출력 바이어스; FT62). `bias=0`이면 \|U_m\| = 1이라 노름 상대오차 (16·L(n) + 16)·u다. (\|mu\| + \|bias\| + 1)/2, π/(2\|dln\|), \|ln 2 − offset\|/(2\|dln\|)가 2³⁶ 이하이고 넘침이 없는 곳에서다. `fhtoffset`은 정확한 값의 반 ulp 안이다.
 - 비트로 지키는 성질: 길이 1의 변환, 2의 거듭제곱 배율(`fft(2·x)`는 `2·fft(x)`), `rfft(x)`와 실수 입력 `fft(x)`의 앞쪽(다차원은 `rfftn`과 `fftn`), 축 하나의 n차원 함수와 1차원 함수, DST와 같은 형 DCT의 관계, `fftshift`와 `roll`, `fftfreq`와 numpy.

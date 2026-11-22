@@ -115,14 +115,23 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/graph/tree.cpp
   csrc/graph/flow.cpp
   csrc/graph/matching.cpp
+  csrc/graph/ordering.cpp
+  csrc/graph/structure.cpp
+  csrc/graph/centrality.cpp
   csrc/interpolate/linear.cpp
   csrc/interpolate/cubic.cpp
   csrc/interpolate/ppoly.cpp
   csrc/interpolate/bspline.cpp
+  csrc/interpolate/polyint.cpp
+  csrc/interpolate/aaa.cpp
+  csrc/interpolate/grid.cpp
+  csrc/interpolate/rbf.cpp
   csrc/fft/plan.cpp
   csrc/fft/driver.cpp
   csrc/fft/basic.cpp
   csrc/fft/helper.cpp
+  csrc/fft/r2r.cpp
+  csrc/fft/fftlog.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp

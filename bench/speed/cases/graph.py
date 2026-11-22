@@ -500,6 +500,7 @@ def _gr3():
 
 def _gr4():
     sym = _graph(10**5, 10, symmetric=True)
+    ties = "scipy breaks the seeds' degree ties by numpy's unstable argsort, sd by index (decision GR52)"
     return [
         Spec(
             "GR4",
@@ -509,7 +510,25 @@ def _gr4():
             "(100000, 100000)",
             sym,
             lambda d: lambda: _g().reverse_cuthill_mckee(d["s"], symmetric_mode=True),
-            (Ref("scipy", lambda d: lambda: _cs().reverse_cuthill_mckee(d["a"], symmetric_mode=True)),),
+            (
+                Ref(
+                    "scipy",
+                    lambda d: lambda: _cs().reverse_cuthill_mckee(d["a"], symmetric_mode=True),
+                    differs=ties,
+                ),
+            ),
+            quick=True,
+        ),
+        Spec(
+            "GR4",
+            "ordering",
+            "reverse_cuthill_mckee d=10",
+            ("reverse_cuthill_mckee",),
+            "(100000, 100000)",
+            _graph(10**5, 10),
+            lambda d: lambda: _g().reverse_cuthill_mckee(d["s"]),
+            (Ref("scipy", lambda d: lambda: _cs().reverse_cuthill_mckee(d["a"]), differs=ties),),
+            note="the pattern of A and its transpose",
         ),
         Spec(
             "GR4",
@@ -529,7 +548,10 @@ def _gr4():
             "(100000, 100000)",
             sym,
             lambda d: lambda: _g().laplacian(d["s"]),
-            (Ref("scipy", lambda d: lambda: _cs().laplacian(d["a"]), differs="scipy returns COO, sd CSR"),),
+            (Ref("scipy", lambda d: lambda: _cs().laplacian(d["a"])),),
+            quick=True,
+            note="scipy returns COO, sd CSR",
+            check=CSR,
         ),
         Spec(
             "GR4",
@@ -539,30 +561,93 @@ def _gr4():
             "(100000, 100000)",
             sym,
             lambda d: lambda: _g().laplacian(d["s"], normed=True),
-            (
-                Ref(
-                    "scipy", lambda d: lambda: _cs().laplacian(d["a"], normed=True), differs="scipy returns COO, sd CSR"
-                ),
-            ),
+            (Ref("scipy", lambda d: lambda: _cs().laplacian(d["a"], normed=True)),),
+            note="scipy returns COO, sd CSR",
+            check=CSR,
+        ),
+        Spec(
+            "GR4",
+            "ordering",
+            "laplacian symmetrized d=10",
+            ("laplacian",),
+            "(100000, 100000)",
+            _graph(10**5, 10),
+            lambda d: lambda: _g().laplacian(d["s"], symmetrized=True),
+            (Ref("scipy", lambda d: lambda: _cs().laplacian(d["a"], symmetrized=True)),),
+            note="A + A^T first; scipy returns COO, sd CSR",
+            check=CSR,
+        ),
+        Spec(
+            "GR4",
+            "ordering",
+            "laplacian dense",
+            ("laplacian",),
+            "(2000, 2000)",
+            _dense(2000),
+            lambda d: lambda: _g().laplacian(d["sw"]),
+            (Ref("scipy", lambda d: lambda: _cs().laplacian(d["w"])),),
         ),
     ]
 
 
 def _nx(fname, directed=False, **kw):
-    """A networkx Ref factory: the graph is converted in the setup's dict once, outside the timing."""
+    """A networkx Ref factory: the graph is converted in the setup's dict once, outside the timing; a
+    generator is drawn into a list, a dict by node is kept (the check orders it)."""
 
     def make(d):
         import networkx as nx
 
         G = _nx_graph(d, directed)
         f = getattr(nx, fname)
-        return lambda: list(f(G, **kw)) if fname != "core_number" else f(G, **kw)
+
+        def call():
+            out = f(G, **kw)
+            return out if isinstance(out, dict) else list(out)
+
+        return call
 
     return make
 
 
+def _by_node(x):
+    """A networkx dict by node as an array in node order."""
+    return np.array([x[v] for v in range(len(x))], dtype=np.float64)
+
+
+def _pairs(edges):
+    """Undirected edges as rows (i, j), i < j, in lexicographic order."""
+    rows = sorted((min(a, b), max(a, b)) for a, b in edges)
+    return np.array(rows, dtype=np.int64).reshape(-1, 2)
+
+
+def _blocks_sd(r):
+    return [np.asarray(r.edges, dtype=np.int64).ravel(), np.asarray(r.labels, dtype=np.int64)]
+
+
+def _blocks_nx(label, comps):
+    """networkx's biconnected_component_edges as sd's form: every edge in lexicographic order and its block,
+    the blocks numbered by their smallest edges."""
+    of = {}
+    for c, comp in enumerate(comps):
+        for a, b in comp:
+            of[(min(a, b), max(a, b))] = c
+    edges = sorted(of)
+    renumber, labels = {}, []
+    for e in edges:
+        labels.append(renumber.setdefault(of[e], len(renumber)))
+    return [np.array(edges, dtype=np.int64).ravel(), np.array(labels, dtype=np.int64)]
+
+
+STRUCTURE_CHECKS = {
+    "articulation_points": Check(ref=lambda label, x: np.sort(np.array(x, dtype=np.int64)), rtol=0.0, agree=1.0),
+    "bridges": Check(sd=lambda x: np.asarray(x).ravel(), ref=lambda label, x: _pairs(x).ravel(), rtol=0.0, agree=1.0),
+    "biconnected_components": Check(sd=_blocks_sd, ref=_blocks_nx, rtol=0.0, agree=1.0),
+    "core_number": Check(ref=lambda label, x: _by_node(x), rtol=0.0, agree=1.0),
+}
+YARDSTICK = "the O(n + E) yardstick of docs/design/graph.md §5: connected components of the same graph"
+
+
 def _gr5():
-    sym = _graph(10**4, 5, symmetric=True)
     out = []
     for name in ("articulation_points", "bridges", "biconnected_components", "core_number"):
         nxname = "biconnected_component_edges" if name == "biconnected_components" else name
@@ -573,13 +658,48 @@ def _gr5():
                 f"{name} symmetric d=5",
                 (name,),
                 "(10000, 10000)",
-                sym,
+                _graph(10**4, 5, symmetric=True),
                 lambda d, f=name: lambda: getattr(_g(), f)(d["s"]),
                 (Ref("networkx", _nx(nxname)),),
-                note="also against connected_components weak of the same graph (docs/design/graph.md §5)",
+                quick=name == "articulation_points",
+                check=STRUCTURE_CHECKS[name],
+                note="few articulation points and bridges at this degree: d=1 has many",
             )
         )
-    out.append(
+        out.append(
+            Spec(
+                "GR5",
+                "structure",
+                f"{name} symmetric d=1",
+                (name,),
+                "(10000, 10000)",
+                _graph(10**4, 1, symmetric=True),
+                lambda d, f=name: lambda: getattr(_g(), f)(d["s"]),
+                (Ref("networkx", _nx(nxname)),),
+                check=STRUCTURE_CHECKS[name],
+            )
+        )
+        out.append(
+            Spec(
+                "GR5",
+                "structure",
+                f"{name} symmetric d=10",
+                (name,),
+                N5,
+                _graph(10**5, 10, symmetric=True),
+                lambda d, f=name: lambda: getattr(_g(), f)(d["s"]),
+                (
+                    Ref(
+                        "scipy connected_components",
+                        lambda d: lambda: _cs().connected_components(d["a"], directed=False),
+                        differs=YARDSTICK,
+                    ),
+                ),
+                note="networkx left out at this size (memory)",
+            )
+        )
+    tight = "networkx stops at tol=1e-6 by successive differences; sd at the proven 1e-12 bound (GR19)"
+    out += [
         Spec(
             "GR5",
             "centrality",
@@ -588,16 +708,43 @@ def _gr5():
             "(10000, 10000)",
             _graph(10**4, 5),
             lambda d: lambda: _g().pagerank(d["s"]),
+            (Ref("networkx", _nx("pagerank", True), differs=tight),),
+            quick=True,
+        ),
+        Spec(
+            "GR5",
+            "centrality",
+            "pagerank tol=1e-6 d=5",
+            ("pagerank",),
+            "(10000, 10000)",
+            _graph(10**4, 5),
+            lambda d: lambda: _g().pagerank(d["s"], tol=1e-6),
             (
                 Ref(
                     "networkx",
                     _nx("pagerank", True),
-                    differs="networkx stops at tol=1e-6 by successive differences; sd at the proven 1e-12 bound",
+                    differs="networkx's tol bounds successive differences, not the error",
                 ),
             ),
-        )
-    )
-    out.append(
+            note="the same tol as networkx's default",
+        ),
+        Spec(
+            "GR5",
+            "centrality",
+            "pagerank d=10",
+            ("pagerank",),
+            N5,
+            _graph(10**5, 10),
+            lambda d: lambda: _g().pagerank(d["s"]),
+            (
+                Ref(
+                    "scipy spmv",
+                    lambda d: lambda: d["a"].T @ np.full(d["n"], 1.0 / d["n"]),
+                    differs="one sparse product: the cost of one step of the iteration",
+                ),
+            ),
+            note="networkx left out at this size (memory)",
+        ),
         Spec(
             "GR5",
             "centrality",
@@ -607,8 +754,42 @@ def _gr5():
             _graph(1000, 5),
             lambda d: lambda: _g().betweenness_centrality(d["s"], unweighted=True),
             (Ref("networkx", _nx("betweenness_centrality", True)),),
-        )
-    )
+            quick=True,
+            check=Check(ref=lambda label, x: _by_node(x), rtol=1e-10),
+        ),
+        Spec(
+            "GR5",
+            "centrality",
+            "betweenness_centrality weighted d=5",
+            ("betweenness_centrality",),
+            "(1000, 1000)",
+            _graph(1000, 5),
+            lambda d: lambda: _g().betweenness_centrality(d["s"]),
+            (Ref("networkx", _nx("betweenness_centrality", True, weight="weight")),),
+            check=Check(ref=lambda label, x: _by_node(x), rtol=1e-10),
+        ),
+        Spec(
+            "GR5",
+            "centrality",
+            "betweenness_centrality unweighted symmetric d=5",
+            ("betweenness_centrality",),
+            "(1000, 1000)",
+            _graph(1000, 5, symmetric=True),
+            lambda d: lambda: _g().betweenness_centrality(d["s"], directed=False, unweighted=True),
+            (Ref("networkx", _nx("betweenness_centrality")),),
+            check=Check(ref=lambda label, x: _by_node(x), rtol=1e-10),
+        ),
+        Spec(
+            "GR5",
+            "centrality",
+            "betweenness_centrality unweighted d=5",
+            ("betweenness_centrality",),
+            "(10000, 10000)",
+            _graph(10**4, 5),
+            lambda d: lambda: _g().betweenness_centrality(d["s"], unweighted=True),
+            note="networkx left out at this size (minutes); sources split over the threads",
+        ),
+    ]
     return out
 
 

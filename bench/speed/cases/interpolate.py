@@ -236,24 +236,86 @@ def _aaa(kind):
     def setup():
         import stardust as sd
 
-        z = np.linspace(-1, 1, 1000)
-        f = np.tan(np.pi * z / 2) if kind == "tan" else np.abs(z)
+        if kind == "spiral":  # scipy's example: 1000 points winding 7.5 times around 0
+            z = np.exp(np.linspace(-0.5, 0.5 + 15j * np.pi, 1000))
+            f = np.tan(np.pi * z / 2)
+        else:
+            z = np.linspace(-1, 1, 1000)
+            f = np.tan(np.pi * z / 2) if kind == "tan" else np.abs(z)
         return {"z": z, "f": f, "sz": sd.asarray(z), "sf": sd.asarray(f)}
 
     return setup
 
 
+def _nodes(n, m, seed=20261127):
+    """n Chebyshev nodes with exp values (Krogh: 20 nodes), m uniform points in [-1, 1]."""
+
+    def setup():
+        import stardust as sd
+
+        x = np.cos(np.pi * np.arange(n) / (n - 1))
+        q = np.random.Generator(np.random.PCG64([seed, n, m])).uniform(-1, 1, m)
+        return {"x": x, "y": np.exp(x), "q": q, "sx": sd.asarray(x), "sy": sd.asarray(np.exp(x)), "sq": sd.asarray(q)}
+
+    return setup
+
+
 def _polynomial_specs():
-    setup = _with(_cheb(10**6), lambda d: _ip().BarycentricInterpolator(d["sx"], d["sy"]),
+    # 10^5 points (docs/design/interpolate.md §5 timed 10^6): scipy evaluates through (points x nodes) arrays, 2.4 GB at
+    # 10^6 points, more than a benchmark process may hold
+    setup = _with(_cheb(10**5), lambda d: _ip().BarycentricInterpolator(d["sx"], d["sy"]),
                   lambda d: _si().BarycentricInterpolator(d["x"], d["y"], rng=0))  # fmt: skip
-    out = [Spec("IP4", "polynomial", "BarycentricInterpolator eval (101 nodes)", ("BarycentricInterpolator",), "10^6 points",
+    out = [Spec("IP4", "polynomial", "BarycentricInterpolator eval (101 nodes)", ("BarycentricInterpolator",), "10^5 points",
                 setup, lambda d: lambda: d["sobj"](d["sq"]), (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),),
                 quick=True)]  # fmt: skip
-    for kind in ("tan", "abs"):
+    out.append(Spec("IP4", "polynomial", "BarycentricInterpolator build", ("BarycentricInterpolator",), "10^4 points",
+                    _nodes(10**4, 1), lambda d: lambda: (lambda w: w / w[0])(_ip().BarycentricInterpolator(d["sx"], d["sy"]).wi),
+                    (Ref("scipy", lambda d: lambda: (lambda w: w / w[0])(
+                        _si().BarycentricInterpolator(d["x"], d["y"], rng=0).wi)),),
+                    note="the weights, O(n^2); compared relative to the first (a common factor apart, IP21)"))  # fmt: skip
+    setup = _with(_cheb(10**5), lambda d: _ip().BarycentricInterpolator(d["sx"], d["sy"]),
+                  lambda d: _si().BarycentricInterpolator(d["x"], d["y"], rng=0))  # fmt: skip
+    out.append(Spec("IP4", "polynomial", "BarycentricInterpolator derivative (101 nodes)", ("BarycentricInterpolator",),
+                    "10^5 points", setup, lambda d: lambda: d["sobj"].derivative(d["sq"], der=2),
+                    (Ref("scipy", lambda d: lambda: d["obj"].derivative(d["q"], der=2)),)))  # fmt: skip
+    setup = _with(_nodes(20, 10**6), lambda d: _ip().KroghInterpolator(d["sx"], d["sy"]),
+                  lambda d: _si().KroghInterpolator(d["x"], d["y"]))  # fmt: skip
+    out.append(Spec("IP4", "polynomial", "KroghInterpolator eval (20 nodes)", ("KroghInterpolator",), "10^6 points",
+                    setup, lambda d: lambda: d["sobj"](d["sq"]), (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),)))  # fmt: skip
+    setup = _with(_nodes(20, 10**5), lambda d: _ip().KroghInterpolator(d["sx"], d["sy"]),
+                  lambda d: _si().KroghInterpolator(d["x"], d["y"]))  # fmt: skip
+    out.append(Spec("IP4", "polynomial", "KroghInterpolator derivatives (20 nodes)", ("KroghInterpolator",),
+                    "10^5 points", setup, lambda d: lambda: d["sobj"].derivatives(d["sq"]),
+                    (Ref("scipy", lambda d: lambda: d["obj"].derivatives(d["q"])),), note="all 20 orders"))  # fmt: skip
+    setup = _with(_nodes(101, 10**5), lambda d: _ip().FloaterHormannInterpolator(d["sx"], d["sy"]),
+                  lambda d: _si().FloaterHormannInterpolator(d["x"], d["y"]))  # fmt: skip
+    out.append(Spec("IP4", "polynomial", "FloaterHormannInterpolator eval (101 nodes)", ("FloaterHormannInterpolator",),
+                    "10^5 points", setup, lambda d: lambda: d["sobj"](d["sq"]),
+                    (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),)))  # fmt: skip
+    for kind in ("tan", "abs", "spiral"):
+        rtol = {"rtol": 1e-13} if kind == "spiral" else {}
         out.append(Spec("IP4", "polynomial", f"AAA {kind}", ("AAA",), "10^3 points", _aaa(kind),
-                        lambda d: lambda: _ip().AAA(d["sz"], d["sf"]),
-                        (Ref("scipy", lambda d: lambda: _si().AAA(d["z"], d["f"]), threads="follow"),)))  # fmt: skip
+                        lambda d, kw=rtol: lambda: _ip().AAA(d["sz"], d["sf"], **kw).support_points,
+                        (Ref("scipy", lambda d, kw=rtol: lambda: _si().AAA(d["z"], d["f"], **kw).support_points,
+                             threads="follow"),),
+                        quick=kind == "abs"))  # fmt: skip
+    setup = _with(_aaa("abs"), lambda d: _ip().AAA(d["sz"], d["sf"]), lambda d: _si().AAA(d["z"], d["f"]))
+    setup2 = _with_points(setup, 10**5)
+    out.append(Spec("IP4", "polynomial", "AAA eval (abs)", ("AAA",), "10^5 points", setup2,
+                    lambda d: lambda: d["sobj"](d["sq"]), (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),)))  # fmt: skip
     return out
+
+
+def _with_points(setup, m, seed=20261128):
+    def wrapped():
+        import stardust as sd
+
+        d = setup()
+        d["q"] = np.random.Generator(np.random.PCG64([seed, m])).uniform(-1, 1, m)
+        d["sq"] = sd.asarray(d["q"])
+        return d
+
+    return wrapped
 
 
 def _grid_specs():
@@ -269,12 +331,13 @@ def _grid_specs():
                     _grid(100, 2, 1), lambda d: lambda: _ip().RegularGridInterpolator(d["spoints"], d["sv"], method="cubic"),
                     (Ref("scipy", lambda d: lambda: _si().RegularGridInterpolator(d["points"], d["v"], method="cubic"),
                          differs="iterative solve (gcrotmk): values within its tolerance"),)))  # fmt: skip
-    for meth, m in (("cubic", 10**5), ("pchip", 10**4)):
+    for meth, m in (("cubic", 10**5), ("quintic", 10**5), ("pchip", 10**4)):
         setup = _with(_grid(100, 2, m), lambda d, k=meth: _ip().RegularGridInterpolator(d["spoints"], d["sv"], method=k),
                       lambda d, k=meth: _si().RegularGridInterpolator(d["points"], d["v"], method=k))  # fmt: skip
+        differs = "iterative solve (gcrotmk): values within its tolerance" if meth != "pchip" else ""
         out.append(Spec("IP5", "grid", f"RegularGridInterpolator {meth} 100x100", ("RegularGridInterpolator",),
                         f"{_count(m)} points", setup, lambda d: lambda: d["sobj"](d["sq"]),
-                        (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),)))  # fmt: skip
+                        (Ref("scipy", lambda d: lambda: d["obj"](d["q"]), differs=differs),)))  # fmt: skip
     return out
 
 
@@ -282,9 +345,9 @@ def _rbf_specs():
     out = []
     for n in (1000, 4000):
         out.append(Spec("IP6", "scattered", "RBFInterpolator build", ("RBFInterpolator",), f"({n}, 2)", _scatter(n, 1),
-                        lambda d: lambda: _ip().RBFInterpolator(d["sy"], d["sd_"]),
-                        (Ref("scipy", lambda d: lambda: _si().RBFInterpolator(d["y"], d["d"]), threads="follow"),),
-                        quick=n == 1000))  # fmt: skip
+                        lambda d: lambda: _ip().RBFInterpolator(d["sy"], d["sd_"])(d["sq"]),
+                        (Ref("scipy", lambda d: lambda: _si().RBFInterpolator(d["y"], d["d"])(d["q"]), threads="follow"),),
+                        quick=n == 1000, note="the system's build and solve, then one point (the result compared)"))  # fmt: skip
     setup = _with(_scatter(1000, 10**4), lambda d: _ip().RBFInterpolator(d["sy"], d["sd_"]),
                   lambda d: _si().RBFInterpolator(d["y"], d["d"]))  # fmt: skip
     out.append(Spec("IP6", "scattered", "RBFInterpolator eval (1000 nodes)", ("RBFInterpolator",), "10^4 points", setup,

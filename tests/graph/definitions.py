@@ -396,3 +396,233 @@ def assignment_exact(cost):
             if i == cur:
                 break
     return sum(C[i][col4row[i]] for i in range(r)), col4row
+
+
+def reverse_cuthill_mckee(n, pairs, symmetric_mode, seed_order=None):
+    """The reverse Cuthill-McKee order of a pattern ({(i, j)} the stored entries; docs/design/graph.md §3.6,
+    decision GR52) as scipy's _reverse_cuthill_mckee runs it: the pattern read is the pairs (symmetric_mode)
+    or the pairs and their transposes; a node's degree is its row length plus 1 for a stored diagonal; the
+    components are searched breadth first from the first unvisited node of seed_order(degrees) (by
+    default the nodes by (degree, index); scipy's is numpy's unstable argsort of the int32 degrees), a
+    node's new neighbours queued by (degree, index); the order is reversed."""
+    rows = [set() for _ in range(n)]
+    for i, j in pairs:
+        rows[i].add(j)
+        if not symmetric_mode:
+            rows[j].add(i)
+    degree = [len(r) + (i in r) for i, r in enumerate(rows)]
+    seeds = sorted(range(n), key=lambda i: (degree[i], i)) if seed_order is None else list(seed_order(degree))
+    seen, order = [False] * n, []
+    for s in seeds:
+        if seen[s]:
+            continue
+        seen[s] = True
+        order.append(s)
+        head = len(order) - 1
+        while head < len(order):
+            i = order[head]
+            head += 1
+            new = [j for j in sorted(rows[i]) if not seen[j]]
+            for j in new:
+                seen[j] = True
+            order.extend(sorted(new, key=lambda j: (degree[j], j)))
+    return order[::-1]
+
+
+# ---- the undirected structure (milestone GR5) ----------------------------------------------------------
+
+
+def simple_edges(n, pairs):
+    """The edges {(i, j): i < j} of the undirected reading of a pattern without its diagonal."""
+    return sorted({(min(i, j), max(i, j)) for i, j in pairs if i != j})
+
+
+def _labels_without(n, edges, node=None, edge=None):
+    """Connected-component labels of the undirected graph without one node (label -1) or one edge."""
+    adj = [[] for _ in range(n)]
+    for e in edges:
+        if e != edge and node not in e:
+            adj[e[0]].append(e[1])
+            adj[e[1]].append(e[0])
+    label = [-1] * n
+    c = 0
+    for s in range(n):
+        if s == node or label[s] >= 0:
+            continue
+        label[s] = c
+        stack = [s]
+        while stack:
+            u = stack.pop()
+            for v in adj[u]:
+                if label[v] < 0:
+                    label[v] = c
+                    stack.append(v)
+        c += 1
+    return label
+
+
+def articulation_points(n, pairs):
+    """The nodes whose removal splits their component: the other nodes of v's component fall into two
+    components or more."""
+    edges = simple_edges(n, pairs)
+    whole = _labels_without(n, edges)
+    out = []
+    for v in range(n):
+        without = _labels_without(n, edges, node=v)
+        mine = {without[u] for u in range(n) if u != v and whole[u] == whole[v]}
+        if len(mine) >= 2:
+            out.append(v)
+    return out
+
+
+def bridges(n, pairs):
+    """The edges whose removal disconnects their two ends, as sorted (i, j), i < j."""
+    edges = simple_edges(n, pairs)
+    out = []
+    for e in edges:
+        label = _labels_without(n, edges, edge=e)
+        if label[e[0]] != label[e[1]]:
+            out.append(e)
+    return out
+
+
+def biconnected_components(n, pairs):
+    """(edges, labels): the edges sorted and each edge's block, numbered by the blocks' smallest edges. Two
+    edges are in one block when they are in one component and no node x separates them: in the graph
+    without x an edge lies in the component of its end other than x (of both ends when neither is x), and
+    the two edges' components agree for every x."""
+    edges = simple_edges(n, pairs)
+    whole = _labels_without(n, edges)
+    keys = [[whole[e[0]]] for e in edges]
+    for x in range(n):
+        label = _labels_without(n, edges, node=x)
+        for k, (a, b) in enumerate(edges):
+            if a == x and b == x:
+                continue
+            keys[k].append(label[b] if a == x else label[a])
+    block, labels = {}, []
+    for k in range(len(edges)):
+        labels.append(block.setdefault(tuple(keys[k]), len(block)))
+    return edges, labels
+
+
+def core_number(n, pairs):
+    """The core number of every node by the definition: the largest k such that the node survives the
+    repeated removal of the nodes of degree below k."""
+    edges = simple_edges(n, pairs)
+    adj = [set() for _ in range(n)]
+    for a, b in edges:
+        adj[a].add(b)
+        adj[b].add(a)
+    core = [0] * n
+    k = 1
+    while True:
+        alive = set(range(n))
+        changed = True
+        while changed:
+            changed = False
+            for v in list(alive):
+                if len(adj[v] & alive) < k:
+                    alive.discard(v)
+                    changed = True
+        if not alive:
+            return core
+        for v in alive:
+            core[v] = k
+        k += 1
+
+
+# ---- betweenness on the computed shortest-path DAG (milestone GR5) ---------------------------------------
+
+
+def float_distances(adj, s):
+    """The least fixed point of d(v) = min fl(d(u) + w) from s (docs/design/graph.md §3.2) for positive
+    weights, by Dijkstra (fl(d + w) >= d keeps a taken node final). adj: [[(v, w)]] with float weights."""
+    n = len(adj)
+    d = [math.inf] * n
+    d[s] = 0.0
+    done = [False] * n
+    heap = [(0.0, s)]
+    while heap:
+        du, u = heapq.heappop(heap)
+        if done[u]:
+            continue
+        done[u] = True
+        for v, w in adj[u]:
+            t = du + w
+            if t < d[v]:
+                d[v] = t
+                heapq.heappush(heap, (t, v))
+    return d
+
+
+def betweenness_dag(n, edges, directed, unweighted):
+    """Brandes over the shortest-path DAG of the computed distances (decision GR58): per source the float
+    distances, the DAG edges u -> v with fl(d(u) + w) == d(v) and (d(u), h(u)) < (d(v), h(v)) (h the
+    breadth-first edge count over the tight edges from s: it orders absorbed steps), and the exact path
+    counts and dependencies (Python integers and Fractions). Returns (raw, stats): raw[v] the exact sum over
+    the ordered pairs (no scaling), with endpoints the separate sums ends[v]; stats the contract's
+    quantities: L (the longest DAG path in edges), dout and din (the largest DAG out- and in-degree) and
+    sigma (the largest path count)."""
+    from fractions import Fraction
+
+    adj = [[] for _ in range(n)]
+    for (u, v), x in sorted(weights(n, edges, directed).items()):
+        if u != v:  # a self loop is never a DAG edge
+            adj[u].append((v, 1.0 if unweighted else float(x)))
+    raw = [Fraction(0)] * n
+    ends = [0] * n
+    stats = {"L": 0, "dout": 0, "din": 0, "sigma": 1}
+    for s in range(n):
+        d = float_distances(adj, s)
+        h = {s: 0}  # the breadth-first edge count over the tight edges
+        queue = [s]
+        for u in queue:
+            for v, x in adj[u]:
+                if v not in h and d[v] != math.inf and d[u] + x == d[v]:
+                    h[v] = h[u] + 1
+                    queue.append(v)
+        order = sorted((v for v in range(n) if d[v] != math.inf), key=lambda v: (d[v], h[v], v))
+        dag = {v: [] for v in order}
+        for u in order:
+            for v, x in adj[u]:
+                if d[v] != math.inf and d[u] + x == d[v] and (d[u], h[u]) < (d[v], h[v]):
+                    dag[u].append(v)
+        preds = {v: [] for v in order}
+        for u in order:
+            for v in dag[u]:
+                preds[v].append(u)
+        sigma = {s: 1}
+        depth = {s: 0}
+        for v in order[1:]:
+            sigma[v] = sum(sigma[u] for u in preds[v])
+            depth[v] = max(depth[u] for u in preds[v]) + 1
+        delta = {}
+        for u in reversed(order):
+            delta[u] = sum((Fraction(sigma[u], sigma[x]) * (1 + delta[x]) for x in dag[u]), Fraction(0))
+        for v in order[1:]:
+            raw[v] += delta[v]
+            ends[v] += 1
+        ends[s] += len(order) - 1
+        stats["L"] = max(stats["L"], max(depth.values()))
+        stats["dout"] = max([stats["dout"]] + [len(x) for x in dag.values()])
+        stats["din"] = max([stats["din"]] + [len(x) for x in preds.values()])
+        stats["sigma"] = max(stats["sigma"], max(sigma.values()))
+    return raw, ends, stats
+
+
+def betweenness_scaled(n, raw, ends, directed, normalized, endpoints):
+    """networkx's endpoints and _rescale over the exact sums of betweenness_dag (Fractions)."""
+    from fractions import Fraction
+
+    bc = [r + (ends[v] if endpoints else 0) for v, r in enumerate(raw)]
+    N = n if endpoints else n - 1
+    if N < 2:
+        return bc
+    if normalized:
+        scale = Fraction(1, N * (N - 1))
+    elif not directed:
+        scale = Fraction(1, 2)
+    else:
+        return bc
+    return [x * scale for x in bc]

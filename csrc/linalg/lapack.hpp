@@ -207,7 +207,8 @@ enum WorkId : lint {
     kOrghr,
     kSytrf,
     kTrsyl3,
-    kOrmqr
+    kOrmqr,
+    kGgev
 };
 
 template <class T>
@@ -497,6 +498,46 @@ inline lint geev(char jobvr, lint n, cplx* a, lint lda, cplx* w, cplx* vr, lint 
     cplx* wk = s.get<cplx>(static_cast<std::size_t>(lwork), Scratch::kWork);
     zgeev_(&no, &jobvr, &n, a, &lda, w, &dummy, &one, vr, &ldvr, wk, &lwork, rw, &info);
     return checked(info, "geev");
+}
+
+// Generalized eigenvalues of the pair (A, B) without vectors (ggev, jobvl = jobvr = 'N'): the i-th is
+// alpha_i / beta_i, infinite when beta_i = 0. Real: (alphar + i alphai) / beta; complex: alpha / beta.
+// a and b are destroyed. info > 0: the QZ iteration failed. An internal wrapper (AAA's poles and zeros,
+// docs/design/interpolate.md §3.6): no public linalg function uses it.
+inline lint ggev(
+    lint n, double* a, lint lda, double* b, lint ldb, double* alphar, double* alphai, double* beta, Scratch& s
+) {
+    lint info = 0, one = 1;
+    const char no = 'N';
+    double dummy = 0;
+    lint lwork =
+        s.sizes({kGgev, n, lda, ldb, 0, esize<double>()}, [&] {
+             lint q_lwork = -1;
+             double q = 0;
+             dggev_(
+                 &no, &no, &n, a, &lda, b, &ldb, alphar, alphai, beta, &dummy, &one, &dummy, &one, &q, &q_lwork, &info
+             );
+             return WorkSizes{work_size(q)};
+         }).work;
+    double* wk = s.get<double>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    dggev_(&no, &no, &n, a, &lda, b, &ldb, alphar, alphai, beta, &dummy, &one, &dummy, &one, wk, &lwork, &info);
+    return checked(info, "ggev");
+}
+inline lint ggev(lint n, cplx* a, lint lda, cplx* b, lint ldb, cplx* alpha, cplx* beta, Scratch& s) {
+    lint info = 0, one = 1;
+    const char no = 'N';
+    cplx dummy{};
+    double* rw = s.get<double>(static_cast<std::size_t>(std::max<lint>(1, 8 * n)), Scratch::kRWork);
+    lint lwork =
+        s.sizes({kGgev, n, lda, ldb, 0, esize<cplx>()}, [&] {
+             lint q_lwork = -1;
+             cplx q{};
+             zggev_(&no, &no, &n, a, &lda, b, &ldb, alpha, beta, &dummy, &one, &dummy, &one, &q, &q_lwork, rw, &info);
+             return WorkSizes{work_size(q)};
+         }).work;
+    cplx* wk = s.get<cplx>(static_cast<std::size_t>(lwork), Scratch::kWork);
+    zggev_(&no, &no, &n, a, &lda, b, &ldb, alpha, beta, &dummy, &one, &dummy, &one, wk, &lwork, rw, &info);
+    return checked(info, "ggev");
 }
 
 // Schur form A = Z T Z^H (gees, no sorting): T overwrites a, Z goes to vs.

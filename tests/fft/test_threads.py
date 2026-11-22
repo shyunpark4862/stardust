@@ -1,10 +1,11 @@
 """Results of the one-dimensional transforms (fft and ifft, and since milestone FT2 rfft, irfft, hfft,
-ihfft and fft of real input) and of the n-dimensional ones (milestone FT3: every axis pass splits its
-lines into tasks) do not depend on the thread count or on Accelerate's thread mode
-(docs/design/fft.md §1.3, §3.7, §7.3): at 1, 3 and 10 threads every case gives the same bytes on inputs
-large enough to split into many tasks (batches along the last and the first axis, mixed-radix and
-Bluestein lengths, one long line), and a child process with VECLIB_MAXIMUM_THREADS=1 gives the same
-SHA-256 as one with Accelerate's default."""
+ihfft and fft of real input), of the n-dimensional ones (milestone FT3: every axis pass splits its lines
+into tasks), of the DCTs and DSTs (milestone FT4: every type, one and n dimensions) and of FFTLog (milestone
+FT5: fht and ifht, their plans made anew at each thread count) do not depend on the thread count or on
+Accelerate's thread mode (docs/design/fft.md §1.3, §3.7, §7.3): at 1, 3 and 10 threads every case gives the
+same bytes on inputs large enough to split into many tasks (batches along the last and the first axis,
+mixed-radix and Bluestein lengths, one long line), and a child process with VECLIB_MAXIMUM_THREADS=1 gives the
+same SHA-256 as one with Accelerate's default."""
 
 import os
 import subprocess
@@ -58,6 +59,24 @@ def _results():
     out.append(F.irfftn(x))
     out.append(F.hfftn(x, s=(90, 31), axes=(1, 0)))
     out.append(F.fft2(sd.asarray(g.uniform(-1, 1, (34, 1009)) + 0.25j)))
+    # the DCTs and DSTs (FT4): every type, even, odd and Bluestein lengths, both axes, n dimensions, complex
+    for shape in ((200, 256), (64, 1009), (40, 1000), (300, 27)):
+        r = sd.asarray(g.uniform(-1, 1, shape))
+        for t in (1, 2, 3, 4):
+            out.append(F.dct(r, type=t))
+            out.append(F.idst(r, type=t, axis=0, norm="ortho"))
+    r = sd.asarray(g.uniform(-1, 1, (48, 64, 20)))
+    out.append(F.dctn(r, type=2))
+    out.append(F.idstn(r, type=4, s=(50, 21), axes=(0, 2), norm="ortho"))
+    out.append(F.dct(sd.asarray(g.uniform(-1, 1, (30, 500)) + 1j * g.uniform(-1, 1, (30, 500))), type=3, axis=0))
+    out.append(F.dct(sd.asarray(g.uniform(-1, 1, 1 << 17)), type=2))
+    # FFTLog (FT5): the plan made anew at each thread count (its coefficients split over the pool), batches of
+    # even, odd and Bluestein lengths, biased and not
+    sd._core.fft._fht_cache_clear()
+    for shape in ((200, 256), (64, 1009), (40, 1000), (1, 1 << 16)):
+        r = sd.asarray(g.uniform(-1, 1, shape))
+        out.append(F.fht(r, 0.01, 0.5, offset=0.3))
+        out.append(F.ifht(r, 0.02, -0.7, offset=1.0, bias=0.4))
     return out
 
 
@@ -83,6 +102,8 @@ for shape in ((200, 128), (30, 1009), (1, 1 << 16)):
     h.update(np.asarray(sd.fft.irfft(sd.asarray(x))).tobytes())
     h.update(np.asarray(sd.fft.fft2(sd.asarray(x))).tobytes())
     h.update(np.asarray(sd.fft.irfftn(sd.asarray(x))).tobytes())
+    h.update(np.asarray(sd.fft.dctn(sd.asarray(x.real), type=2)).tobytes())
+    h.update(np.asarray(sd.fft.dst(sd.asarray(x.imag), type=4, axis=0)).tobytes())
 print(h.hexdigest())
 """
 
@@ -124,3 +145,22 @@ def test_a_row_is_the_row_alone_at_every_thread_count():
             out = got if axis == -1 else got.T
             for k in range(0, lines.shape[0], 7):
                 assert bits_equal(out[k], F.fft(sd.asarray(np.ascontiguousarray(lines[k])))), (t, axis, k)
+
+
+def test_long_lines_and_strided_lines_are_the_line_alone():
+    # milestone FT6: a line of 2^15 or more runs its four-step on the pool (several such lines one after the
+    # other), and complex lines along a first axis go through the two-line kernel or the tiled gather; every
+    # line keeps the bits of the line alone at every thread count
+    g = np.random.default_rng(25)
+    cases = [((3, 63488), -1), ((2, 1 << 15), -1), ((1 << 15, 2), 0), ((1000, 7), 0), ((1024, 9), 0), ((96, 33), 0)]
+    for t in (1, 3, 10):
+        sd.set_num_threads(t)
+        for shape, axis in cases:
+            x = g.uniform(-1, 1, shape) + 1j * g.uniform(-1, 1, shape)
+            for f in (F.fft, F.ifft):
+                got = np.asarray(f(sd.asarray(x), axis=axis, norm="ortho"))
+                lines = x if axis == -1 else x.T
+                out = got if axis == -1 else got.T
+                for k in range(lines.shape[0]):
+                    want = f(sd.asarray(np.ascontiguousarray(lines[k])), norm="ortho")
+                    assert bits_equal(out[k], want), (t, shape, axis, k)

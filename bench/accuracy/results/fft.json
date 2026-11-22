@@ -165,8 +165,72 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-055811-b48c753+": {
-   "commit": "b48c753",
+  "20261123-061921-adbb372+": {
+   "commit": "adbb372",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/speed/cases/graph.py",
+    "csrc/bind/fft_bind.cpp",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/fft.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/linalg/lapack.hpp",
+    "src/stardust/_results.py",
+    "src/stardust/fft/__init__.py",
+    "src/stardust/graph/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/golden/data/fft.json",
+    "tests/golden/data/graph.json",
+    "tests/graph/definitions.py",
+    "tests/graph/refdata.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_layouts.py",
+    "tests/graph/test_threads.py"
+   ],
+   "date": "2026-11-23T06:19:21",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261123-065830-adbb372+": {
+   "commit": "adbb372",
    "dirty": true,
    "changed": [
     "API.md",
@@ -178,19 +242,133 @@
     "bench/accuracy/graph.py",
     "bench/accuracy/interpolate.py",
     "bench/accuracy/results/fft.json",
+    "bench/accuracy/results/graph.json",
     "bench/fft/accuracy.md",
+    "bench/graph/accuracy.md",
     "bench/speed/cases/fft.py",
     "bench/speed/cases/graph.py",
     "bench/speed/cases/interpolate.py",
+    "csrc/bind/fft_bind.cpp",
     "csrc/bind/graph_bind.cpp",
     "csrc/bind/interpolate_bind.cpp",
     "csrc/fft/basic.cpp",
     "csrc/fft/driver.cpp",
     "csrc/fft/driver.hpp",
+    "csrc/fft/fft.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/interpolate/bspline.cpp",
+    "csrc/interpolate/cubic.cpp",
+    "csrc/interpolate/interpolate.hpp",
+    "csrc/linalg/lapack.hpp",
+    "docs/api/fft.md",
+    "docs/api/graph.md",
+    "docs/api/interpolate.md",
+    "docs/design/fft.md",
+    "docs/design/graph.md",
+    "docs/design/interpolate.md",
+    "src/stardust/_results.py",
+    "src/stardust/fft/__init__.py",
+    "src/stardust/graph/__init__.py",
+    "src/stardust/interpolate/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/golden/cases_interpolate.py",
+    "tests/golden/data/fft.json",
+    "tests/golden/data/graph.json",
+    "tests/graph/definitions.py",
+    "tests/graph/refdata.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_layouts.py",
+    "tests/graph/test_threads.py",
+    "tests/interpolate/refdata.py",
+    "tests/interpolate/test_api_surface.py",
+    "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_threads.py"
+   ],
+   "date": "2026-11-23T06:58:30",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261123-080952-adbb372+": {
+   "commit": "adbb372",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/accuracy/interpolate.py",
+    "bench/accuracy/results/fft.json",
+    "bench/accuracy/results/graph.json",
+    "bench/accuracy/results/interpolate.json",
+    "bench/fft/accuracy.md",
+    "bench/graph/accuracy.md",
+    "bench/interpolate/accuracy.md",
+    "bench/speed/cases/fft.py",
+    "bench/speed/cases/graph.py",
+    "bench/speed/cases/interpolate.py",
+    "csrc/array/ops/interp.cpp",
+    "csrc/base/lerp.hpp",
+    "csrc/bind/fft_bind.cpp",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/bind/interpolate_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/bluestein.hpp",
+    "csrc/fft/cfft.hpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/fft.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/flow.cpp",
+    "csrc/graph/graph.hpp",
     "csrc/graph/graph_mod.hpp",
     "csrc/graph/input.cpp",
-    "csrc/interpolate/banded.hpp",
+    "csrc/graph/paths.cpp",
+    "csrc/graph/paths.hpp",
+    "csrc/graph/traversal.cpp",
+    "csrc/graph/yen.cpp",
+    "csrc/interpolate/bspline.cpp",
+    "csrc/interpolate/cubic.cpp",
     "csrc/interpolate/interpolate.hpp",
+    "csrc/interpolate/linear.cpp",
+    "csrc/interpolate/ppoly.cpp",
+    "csrc/linalg/lapack.hpp",
     "docs/api/fft.md",
     "docs/api/graph.md",
     "docs/api/interpolate.md",
@@ -200,14 +378,17 @@
     "src/stardust/_results.py",
     "src/stardust/fft/__init__.py",
     "src/stardust/fft/_basic.py",
+    "src/stardust/fft/_helper.py",
     "src/stardust/graph/__init__.py",
-    "src/stardust/graph/_common.py",
+    "src/stardust/graph/_convert.py",
+    "src/stardust/graph/_matching.py",
     "src/stardust/graph/_paths.py",
     "src/stardust/interpolate/__init__.py",
-    "src/stardust/interpolate/_ppoly.py",
+    "tests/fft/data/prototype.json",
+    "tests/fft/proof.py",
     "tests/fft/refdata.py",
     "tests/fft/test_api_surface.py",
-    "tests/fft/test_reference.py",
+    "tests/fft/test_proof.py",
     "tests/fft/test_threads.py",
     "tests/golden/cases_fft.py",
     "tests/golden/cases_graph.py",
@@ -218,14 +399,18 @@
     "tests/graph/definitions.py",
     "tests/graph/refdata.py",
     "tests/graph/test_api_surface.py",
+    "tests/graph/test_convert.py",
+    "tests/graph/test_layouts.py",
     "tests/graph/test_threads.py",
     "tests/interpolate/refdata.py",
     "tests/interpolate/test_api_surface.py",
     "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_interp.py",
     "tests/interpolate/test_linear_bits.py",
-    "tests/interpolate/test_threads.py"
+    "tests/interpolate/test_threads.py",
+    "tools/fft_probe_kernels.cpp"
    ],
-   "date": "2026-11-23T05:58:11",
+   "date": "2026-11-23T08:09:52",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -264,7 +449,7 @@
      ]
     },
     "forward/mixed": {
-     "points": 97,
+     "points": 144,
      "rel_max": 3.505655791343367e-05,
      "contract": 0.05357142857142857,
      "bound": 1.0,
@@ -273,12 +458,12 @@
      ]
     },
     "forward/bluestein": {
-     "points": 99,
-     "rel_max": 9.911940236217186e-05,
-     "contract": 0.05,
+     "points": 52,
+     "rel_max": 9.493145642615527e-05,
+     "contract": 0.03546910755148741,
      "bound": 1.0,
      "worst": [
-      "c/tiny/13"
+      "c/tiny/127"
      ]
     },
     "backward/pow2": {
@@ -300,7 +485,7 @@
      ]
     },
     "backward/mixed": {
-     "points": 97,
+     "points": 144,
      "rel_max": 3.505655791343367e-05,
      "contract": 0.05357142857142857,
      "bound": 1.0,
@@ -309,7 +494,7 @@
      ]
     },
     "backward/bluestein": {
-     "points": 97,
+     "points": 50,
      "rel_max": 8.023239220533123e-05,
      "contract": 0.029977116704805493,
      "bound": 1.0,
@@ -318,7 +503,7 @@
      ]
     }
    },
-   "run": "20261123-055811-b48c753+",
+   "run": "20261123-080952-adbb372+",
    "comparators": {
     "numpy": {
      "forward/pow2": {
@@ -511,6 +696,93 @@
    "comparator_seconds": 600.0
   },
   {
+   "id": "fft/fftlog",
+   "area": "fft",
+   "name": "fftlog",
+   "points": 338,
+   "regions": {
+    "fht/biased": {
+     "points": 74,
+     "rel_max": 1.4774753391546764e-14,
+     "contract": 0.06938093785777394,
+     "bound": 1.0,
+     "worst": [
+      "reflection/normal/1"
+     ]
+    },
+    "fht/unbiased": {
+     "points": 95,
+     "rel_max": 0.001301045363377443,
+     "contract": 0.030283858167416525,
+     "bound": 1.0,
+     "worst": [
+      "large-mu/normal/2"
+     ]
+    },
+    "ifht/biased": {
+     "points": 74,
+     "rel_max": 9.658422061313727,
+     "contract": 0.036227310969790094,
+     "bound": 1.0,
+     "worst": [
+      "pole-plus/normal/2"
+     ]
+    },
+    "ifht/unbiased": {
+     "points": 95,
+     "rel_max": 0.0012990361545380648,
+     "contract": 0.030084758230107336,
+     "bound": 1.0,
+     "worst": [
+      "large-mu/normal/3"
+     ]
+    }
+   },
+   "run": "20261123-080952-adbb372+",
+   "comparators": {
+    "scipy": {
+     "fht/biased": {
+      "points": 74,
+      "rel_max": 1.1252264158912012e-13,
+      "contract": 31.25225779576494,
+      "bound": 1.0,
+      "worst": [
+       "pole-minus/normal/2"
+      ]
+     },
+     "fht/unbiased": {
+      "points": 95,
+      "rel_max": 6.274312962730582e-05,
+      "contract": 2742.9016211318008,
+      "bound": 1.0,
+      "worst": [
+       "small-dln/normal/2"
+      ]
+     },
+     "ifht/biased": {
+      "points": 74,
+      "rel_max": 9.234833679401811,
+      "contract": 31.25751493047033,
+      "bound": 1.0,
+      "worst": [
+       "pole-minus/normal/2"
+      ]
+     },
+     "ifht/unbiased": {
+      "points": 95,
+      "rel_max": 4.117090040759191e-05,
+      "contract": 4615.154301798887,
+      "bound": 1.0,
+      "worst": [
+       "small-dln/normal/2"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-065830-adbb372+",
+   "comparator_seconds": 600.0
+  },
+  {
    "id": "fft/hermitian",
    "area": "fft",
    "name": "hermitian",
@@ -526,7 +798,7 @@
      ]
     },
     "irfft/even": {
-     "points": 25,
+     "points": 32,
      "rel_max": 2.996743801274878e-05,
      "contract": 0.048838203845783745,
      "bound": 1.0,
@@ -535,8 +807,8 @@
      ]
     },
     "irfft/odd": {
-     "points": 23,
-     "rel_max": 2.33590282644242e-05,
+     "points": 38,
+     "rel_max": 2.5505974774590947e-05,
      "contract": 0.032631538996683,
      "bound": 1.0,
      "worst": [
@@ -544,16 +816,16 @@
      ]
     },
     "irfft/bluestein": {
-     "points": 31,
-     "rel_max": 4.250995795765158e-05,
-     "contract": 0.01592356687898089,
+     "points": 9,
+     "rel_max": 4.482388146195669e-16,
+     "contract": 0.007946166632913903,
      "bound": 1.0,
      "worst": [
-      "h/tiny/17"
+      "h/uniform/61"
      ]
     }
    },
-   "run": "20261123-055811-b48c753+",
+   "run": "20261123-080952-adbb372+",
    "comparators": {
     "numpy": {
      "irfft/pow2": {
@@ -642,43 +914,25 @@
    "points": 116,
    "regions": {
     "fftn/smooth": {
-     "points": 14,
-     "rel_max": 2.1066971903681803e-05,
+     "points": 26,
+     "rel_max": 2.9415768236045968e-05,
      "contract": 0.03409090909090909,
      "bound": 1.0,
      "worst": [
       "nd/tiny/5x11x2"
-     ]
-    },
-    "fftn/bluestein": {
-     "points": 12,
-     "rel_max": 8.767052493880367e-05,
-     "contract": 0.03371035706365048,
-     "bound": 1.0,
-     "worst": [
-      "nd/tiny/7x19"
      ]
     },
     "ifftn/smooth": {
-     "points": 14,
-     "rel_max": 2.1066971903681803e-05,
+     "points": 26,
+     "rel_max": 2.9415768236045968e-05,
      "contract": 0.03409090909090909,
      "bound": 1.0,
      "worst": [
       "nd/tiny/5x11x2"
      ]
     },
-    "ifftn/bluestein": {
-     "points": 12,
-     "rel_max": 9.459188217081448e-05,
-     "contract": 0.036371701042359726,
-     "bound": 1.0,
-     "worst": [
-      "nd/tiny/7x19"
-     ]
-    },
     "rfftn/smooth": {
-     "points": 20,
+     "points": 32,
      "rel_max": 3.528302632396028e-05,
      "contract": 0.028935185185185185,
      "bound": 1.0,
@@ -686,35 +940,17 @@
       "nd/tiny/3x4x9/real"
      ]
     },
-    "rfftn/bluestein": {
-     "points": 12,
-     "rel_max": 9.418956512279799e-05,
-     "contract": 0.04487989886219975,
-     "bound": 1.0,
-     "worst": [
-      "nd/tiny/4x26/real"
-     ]
-    },
     "irfftn/smooth": {
-     "points": 20,
-     "rel_max": 2.7389720507466307e-05,
+     "points": 32,
+     "rel_max": 3.0363942211345184e-05,
      "contract": 0.04375,
      "bound": 1.0,
      "worst": [
       "nd/tiny/6x6/n=10"
      ]
-    },
-    "irfftn/bluestein": {
-     "points": 12,
-     "rel_max": 8.122354541534836e-05,
-     "contract": 0.035162668419323036,
-     "bound": 1.0,
-     "worst": [
-      "nd/tiny/13x5/n=8"
-     ]
     }
    },
-   "run": "20261123-055811-b48c753+",
+   "run": "20261123-080952-adbb372+",
    "comparators": {
     "numpy": {
      "fftn/smooth": {
@@ -869,6 +1105,453 @@
    "comparator_seconds": 600.0
   },
   {
+   "id": "fft/r2r",
+   "area": "fft",
+   "name": "r2r",
+   "points": 1147,
+   "regions": {
+    "dct1/even": {
+     "points": 65,
+     "rel_max": 2.0011095880784955e-16,
+     "contract": 0.028724991408294587,
+     "bound": 1.0,
+     "worst": [
+      "r/normal/10"
+     ]
+    },
+    "dct1/odd": {
+     "points": 62,
+     "rel_max": 2.0593769610596817e-16,
+     "contract": 0.02539908573076213,
+     "bound": 1.0,
+     "worst": [
+      "r/normal/3"
+     ]
+    },
+    "dct1/bluestein": {
+     "points": 12,
+     "rel_max": 3.038744943952094e-16,
+     "contract": 0.006474430998677181,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/42"
+     ]
+    },
+    "dct2/even": {
+     "points": 75,
+     "rel_max": 2.7277061531315183e-16,
+     "contract": 0.0334596813024615,
+     "bound": 1.0,
+     "worst": [
+      "r/wide/12"
+     ]
+    },
+    "dct2/odd": {
+     "points": 58,
+     "rel_max": 1.9962395251542852e-16,
+     "contract": 0.02799521055415455,
+     "bound": 1.0,
+     "worst": [
+      "r/normal/7"
+     ]
+    },
+    "dct2/bluestein": {
+     "points": 11,
+     "rel_max": 4.502536797094478e-16,
+     "contract": 0.005690686808563727,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/2018"
+     ]
+    },
+    "dct3/even": {
+     "points": 75,
+     "rel_max": 2.827073470920954e-16,
+     "contract": 0.04034907345562097,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/24"
+     ]
+    },
+    "dct3/odd": {
+     "points": 58,
+     "rel_max": 2.2815129715851216e-16,
+     "contract": 0.035992461202055494,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/27"
+     ]
+    },
+    "dct3/bluestein": {
+     "points": 11,
+     "rel_max": 4.496419252499893e-16,
+     "contract": 0.009759455542059325,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/41"
+     ]
+    },
+    "dct4/even": {
+     "points": 75,
+     "rel_max": 2.765423840469714e-16,
+     "contract": 0.052415777411688395,
+     "bound": 1.0,
+     "worst": [
+      "r/constant/4"
+     ]
+    },
+    "dct4/odd": {
+     "points": 58,
+     "rel_max": 2.070179055017608e-16,
+     "contract": 0.034728381204497775,
+     "bound": 1.0,
+     "worst": [
+      "r/normal/3"
+     ]
+    },
+    "dct4/bluestein": {
+     "points": 11,
+     "rel_max": 4.0852173048842985e-16,
+     "contract": 0.008594807388670968,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/61"
+     ]
+    },
+    "dst1/even": {
+     "points": 58,
+     "rel_max": 1.9651597089859222e-16,
+     "contract": 0.038936131920663586,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/2"
+     ]
+    },
+    "dst1/odd": {
+     "points": 66,
+     "rel_max": 2.201584271251954e-16,
+     "contract": 0.04182443695091481,
+     "bound": 1.0,
+     "worst": [
+      "r/constant/7"
+     ]
+    },
+    "dst1/bluestein": {
+     "points": 20,
+     "rel_max": 4.530251197385859e-16,
+     "contract": 0.008331339695465527,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/52"
+     ]
+    },
+    "dst2/even": {
+     "points": 75,
+     "rel_max": 2.7537138640831726e-16,
+     "contract": 0.03086223794958609,
+     "bound": 1.0,
+     "worst": [
+      "r/wide/12"
+     ]
+    },
+    "dst2/odd": {
+     "points": 58,
+     "rel_max": 2.0694136445392967e-16,
+     "contract": 0.04240534062575407,
+     "bound": 1.0,
+     "worst": [
+      "r/normal/3"
+     ]
+    },
+    "dst2/bluestein": {
+     "points": 11,
+     "rel_max": 4.505969051063216e-16,
+     "contract": 0.006604220965185251,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/41"
+     ]
+    },
+    "dst3/even": {
+     "points": 75,
+     "rel_max": 3.2437725775443225e-16,
+     "contract": 0.060754430965628936,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/12"
+     ]
+    },
+    "dst3/odd": {
+     "points": 58,
+     "rel_max": 2.7745565387494844e-16,
+     "contract": 0.05206454914179395,
+     "bound": 1.0,
+     "worst": [
+      "r/impulse/9"
+     ]
+    },
+    "dst3/bluestein": {
+     "points": 11,
+     "rel_max": 4.499532906227524e-16,
+     "contract": 0.008388286333996693,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/2018"
+     ]
+    },
+    "dst4/even": {
+     "points": 75,
+     "rel_max": 2.7649146998613835e-16,
+     "contract": 0.052415777411688395,
+     "bound": 1.0,
+     "worst": [
+      "r/constant/4"
+     ]
+    },
+    "dst4/odd": {
+     "points": 58,
+     "rel_max": 1.9642023740686223e-16,
+     "contract": 0.04769872282250899,
+     "bound": 1.0,
+     "worst": [
+      "r/normal/3"
+     ]
+    },
+    "dst4/bluestein": {
+     "points": 11,
+     "rel_max": 4.089756513329507e-16,
+     "contract": 0.009894499904656158,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/41"
+     ]
+    }
+   },
+   "run": "20261123-080952-adbb372+",
+   "comparators": {
+    "scipy": {
+     "dct1/even": {
+      "points": 49,
+      "rel_max": 1.9948455534461858e-16,
+      "contract": 0.024261022632257743,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/10"
+      ]
+     },
+     "dct1/odd": {
+      "points": 55,
+      "rel_max": 2.264179027765035e-16,
+      "contract": 0.02539908573076213,
+      "bound": 1.0,
+      "worst": [
+       "r/normal/3"
+      ]
+     },
+     "dct1/bluestein": {
+      "points": 35,
+      "rel_max": 3.9518900611996244e-16,
+      "contract": 0.005530638748451157,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/2018"
+      ]
+     },
+     "dct2/even": {
+      "points": 68,
+      "rel_max": 3.170036746493218e-16,
+      "contract": 0.029043204834470152,
+      "bound": 1.0,
+      "worst": [
+       "r/normal/12"
+      ]
+     },
+     "dct2/odd": {
+      "points": 44,
+      "rel_max": 2.7201476764973787e-16,
+      "contract": 0.030463059557370182,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/15"
+      ]
+     },
+     "dct2/bluestein": {
+      "points": 32,
+      "rel_max": 6.953657326232052e-16,
+      "contract": 0.0074528385773537445,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/2018"
+      ]
+     },
+     "dct3/even": {
+      "points": 68,
+      "rel_max": 3.18152652102203e-16,
+      "contract": 0.037500414549723665,
+      "bound": 1.0,
+      "worst": [
+       "r/normal/2"
+      ]
+     },
+     "dct3/odd": {
+      "points": 44,
+      "rel_max": 2.284558319285904e-16,
+      "contract": 0.04309635793860105,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/7"
+      ]
+     },
+     "dct3/bluestein": {
+      "points": 32,
+      "rel_max": 8.261551904491249e-16,
+      "contract": 0.011416737486289153,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65537"
+      ]
+     },
+     "dct4/even": {
+      "points": 68,
+      "rel_max": 3.1227948331899195e-16,
+      "contract": 0.04507733485358307,
+      "bound": 1.0,
+      "worst": [
+       "r/wide/4"
+      ]
+     },
+     "dct4/odd": {
+      "points": 44,
+      "rel_max": 2.964642630158012e-16,
+      "contract": 0.04172363576395722,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/49"
+      ]
+     },
+     "dct4/bluestein": {
+      "points": 32,
+      "rel_max": 7.826906014345088e-16,
+      "contract": 0.010816139033067093,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65537"
+      ]
+     },
+     "dst1/even": {
+      "points": 39,
+      "rel_max": 2.058399949494081e-16,
+      "contract": 0.02920139927874438,
+      "bound": 1.0,
+      "worst": [
+       "r/impulse/8"
+      ]
+     },
+     "dst1/odd": {
+      "points": 59,
+      "rel_max": 2.0660392268742561e-16,
+      "contract": 0.03416568211738006,
+      "bound": 1.0,
+      "worst": [
+       "r/constant/13"
+      ]
+     },
+     "dst1/bluestein": {
+      "points": 46,
+      "rel_max": 7.0610960180379655e-16,
+      "contract": 0.009757852734778954,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65536"
+      ]
+     },
+     "dst2/even": {
+      "points": 68,
+      "rel_max": 3.14802122403097e-16,
+      "contract": 0.02674525874248727,
+      "bound": 1.0,
+      "worst": [
+       "r/constant/6"
+      ]
+     },
+     "dst2/odd": {
+      "points": 44,
+      "rel_max": 2.4728219273518044e-16,
+      "contract": 0.04455674967514353,
+      "bound": 1.0,
+      "worst": [
+       "r/normal/3"
+      ]
+     },
+     "dst2/bluestein": {
+      "points": 32,
+      "rel_max": 6.930231582961055e-16,
+      "contract": 0.007989002634352147,
+      "bound": 1.0,
+      "worst": [
+       "r/constant/13"
+      ]
+     },
+     "dst3/even": {
+      "points": 68,
+      "rel_max": 3.1699976796294033e-16,
+      "contract": 0.04456790051414537,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/2"
+      ]
+     },
+     "dst3/odd": {
+      "points": 44,
+      "rel_max": 2.39951307727779e-16,
+      "contract": 0.046220740286201066,
+      "bound": 1.0,
+      "worst": [
+       "r/wide/3"
+      ]
+     },
+     "dst3/bluestein": {
+      "points": 32,
+      "rel_max": 8.249238180754596e-16,
+      "contract": 0.011399732726593358,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65537"
+      ]
+     },
+     "dst4/even": {
+      "points": 68,
+      "rel_max": 3.112813369844126e-16,
+      "contract": 0.05222061891968932,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/6"
+      ]
+     },
+     "dst4/odd": {
+      "points": 44,
+      "rel_max": 2.6197073778722067e-16,
+      "contract": 0.044188054325163637,
+      "bound": 1.0,
+      "worst": [
+       "r/normal/15"
+      ]
+     },
+     "dst4/bluestein": {
+      "points": 32,
+      "rel_max": 7.799281075257045e-16,
+      "contract": 0.010777963644042534,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65537"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-061921-adbb372+",
+   "comparator_seconds": 600.0
+  },
+  {
    "id": "fft/real",
    "area": "fft",
    "name": "real",
@@ -884,7 +1567,7 @@
      ]
     },
     "rfft/even": {
-     "points": 78,
+     "points": 94,
      "rel_max": 2.747403703500192e-05,
      "contract": 0.02963641504233101,
      "bound": 1.0,
@@ -893,8 +1576,8 @@
      ]
     },
     "rfft/odd": {
-     "points": 46,
-     "rel_max": 2.7506532801540365e-05,
+     "points": 74,
+     "rel_max": 2.7841193830391448e-05,
      "contract": 0.02971309956420299,
      "bound": 1.0,
      "worst": [
@@ -902,12 +1585,12 @@
      ]
     },
     "rfft/bluestein": {
-     "points": 84,
-     "rel_max": 0.00011136477532156579,
-     "contract": 0.021052631578947368,
+     "points": 40,
+     "rel_max": 8.317937338986407e-05,
+     "contract": 0.016247139588100687,
      "bound": 1.0,
      "worst": [
-      "r/tiny/13"
+      "r/tiny/127"
      ]
     },
     "fft/pow2": {
@@ -920,7 +1603,7 @@
      ]
     },
     "fft/even": {
-     "points": 78,
+     "points": 94,
      "rel_max": 2.6976417959596766e-05,
      "contract": 0.04191222009298252,
      "bound": 1.0,
@@ -929,8 +1612,8 @@
      ]
     },
     "fft/odd": {
-     "points": 46,
-     "rel_max": 2.3596035865974516e-05,
+     "points": 74,
+     "rel_max": 2.9817220438710704e-05,
      "contract": 0.03860695311371356,
      "bound": 1.0,
      "worst": [
@@ -938,16 +1621,16 @@
      ]
     },
     "fft/bluestein": {
-     "points": 84,
-     "rel_max": 0.00010932980827527258,
-     "contract": 0.02894736842105263,
+     "points": 40,
+     "rel_max": 8.295196168946602e-05,
+     "contract": 0.02288329519450801,
      "bound": 1.0,
      "worst": [
-      "r/tiny/13"
+      "r/tiny/127"
      ]
     }
    },
-   "run": "20261123-055811-b48c753+",
+   "run": "20261123-080952-adbb372+",
    "comparators": {
     "numpy": {
      "rfft/pow2": {

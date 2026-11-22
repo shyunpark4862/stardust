@@ -3,7 +3,7 @@ ifft (milestone FT1), rfft, irfft, hfft and ihfft (milestone FT2), and the n-dim
 fftn, ifftn, rfft2, irfft2, rfftn, irfftn, hfft2, ihfft2, hfftn and ihfftn (milestone FT3).
 
 The arguments are checked and the lines transformed by stardust._core.fft (csrc/fft/basic.cpp): every
-line by the plan of its kind and length (complex: the mixed radix for 11-smooth lengths, Bluestein for the
+line by the plan of its kind and length (complex: the mixed radix for 31-smooth lengths, Bluestein for the
 others; real: the complex plan of n / 2 and one twiddle pass for even n, the complex plan of n and the
 Hermitian part for odd n), so a line has the same bits in any batch, layout and thread count. Real input
 to fft and ifft takes the real path (decision FT16): the first n // 2 + 1 entries of fft(x) are rfft(x)

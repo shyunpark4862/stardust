@@ -151,6 +151,7 @@ int check_x(nb::handle o, bool decreasing_ok) {
     if (a.ndim != 1 || !a.c_contiguous || a.dtype != DType::Float64) throw nb::value_error("'x' must be 1-D float64");
     const auto* x = reinterpret_cast<const double*>(a.data);
     const std::int64_t n = a.shape[0];
+    const parallel::Unlocked unlocked(n >= kParallelThreshold);  // no Python object below
     for (std::int64_t i = 0; i < n; ++i)
         if (!std::isfinite(x[i])) return -1;
     if (n < 2) return 0;
@@ -170,6 +171,7 @@ bool all_finite(nb::handle o) {
     if (a.dtype != DType::Float64 && a.dtype != DType::Complex128) throw nb::type_error("'a' must be inexact");
     const std::int64_t n = a.size() * (a.dtype == DType::Complex128 ? 2 : 1);
     const auto* p = reinterpret_cast<const double*>(a.data);
+    const parallel::Unlocked unlocked(n >= kParallelThreshold);
     bool ok = true;
     for (std::int64_t i = 0; i < n; ++i) ok &= std::isfinite(p[i]);
     return ok;
@@ -258,9 +260,9 @@ nb::object ppoly_eval(nb::handle co, nb::handle xo, nb::handle qo, std::int64_t 
     const auto* xq = reinterpret_cast<const double*>(q.data);
     auto* o = reinterpret_cast<double*>(out.data);
     const std::int64_t log_n = std::max<std::int64_t>(1, static_cast<std::int64_t>(std::log2(B.n + 1)));
-    const std::int64_t work = nq * (log_n + 2 * C.K1 * C.D);
+    const std::int64_t work = nq * (2 * log_n + 2 * C.K1 * C.D);  // as sd.interp's (decision IP102)
     if (work >= kParallelThreshold && parallel::available()) {
-        const std::int64_t per = std::max<std::int64_t>(256, kParallelTask * 4 / std::max<std::int64_t>(1, C.K1 * C.D));
+        const std::int64_t per = std::max<std::int64_t>(256, 4096 / std::max<std::int64_t>(1, C.K1 * C.D));
         const std::int64_t tasks = (nq + per - 1) / per;
         parallel::parallel_for(
             tasks,

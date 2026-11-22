@@ -39,7 +39,22 @@ FT3 brings
        prime factor above 11), judged by tests/fft/refdata.bound_nd. numpy (no hfftn: the four methods
        above) and scipy are the comparator columns.
 
-Later milestones: `r2r` with FT4.
+FT4 brings
+
+  r2r  dct and dst of types 1-4 (methods dct1 .. dst4, norm='backward': unnormalised) on every line of
+       tests/fft/ref/r2r.npz, plus the lines of tests/fft/refdata.LONG_R2R (a prime, 2 1009, 2^16 and 65537)
+       with Arb where the run is. Regions by method and by the inner length's form (csrc/fft/r2r.hpp,
+       refdata.r2r_inner): even and odd (an 11-smooth inner complex length, from an even or an odd n) and
+       bluestein (an inner length with a prime factor above 11, decision FT53). scipy is the comparator
+       column (numpy has no DCT).
+
+FT5 brings
+
+  fftlog  fht and ifht on every point of tests/fft/refdata.fht_points (lengths 1-4096 and 2^16: even, odd and
+          Bluestein inner lengths; the parameter sets of refdata.FHT_PARAMS; standard normal values, and the
+          physical r^(mu + 1) e^(-r^2 / 2), subnormal and huge values on four lengths) with Arb where the run
+          is (refdata.arb_fht), judged by refdata.bound_fht. Regions by direction and by the bias: unbiased
+          (|U_m| = 1) and biased. scipy is the comparator column.
 """
 
 from __future__ import annotations
@@ -61,7 +76,7 @@ def _form(n: int) -> str:
             q = n // f
             if q >= 8 and q & (q - 1) == 0:
                 return "f2k"
-    return "mixed" if refdata.is_smooth11(n) else "bluestein"
+    return "mixed" if refdata.is_mixed(n) else "bluestein"
 
 
 def _lines():
@@ -159,7 +174,7 @@ _REAL_FORMS = ("pow2", "even", "odd", "bluestein")
 def _real_form(n: int) -> str:
     from tests.fft import refdata
 
-    if not refdata.is_smooth11(refdata.real_inner(n)):
+    if not refdata.is_mixed(refdata.real_inner(n)):
         return "bluestein"
     if n & (n - 1) == 0:
         return "pow2"
@@ -273,7 +288,7 @@ def _nd_form(method, s) -> str:
     from tests.fft import refdata
 
     real = method in ("rfftn", "irfftn")
-    smooth = all(refdata.is_smooth11(refdata.real_inner(v) if real and i == len(s) - 1 else v) for i, v in enumerate(s))
+    smooth = all(refdata.is_mixed(refdata.real_inner(v) if real and i == len(s) - 1 else v) for i, v in enumerate(s))
     return "smooth" if smooth else "bluestein"
 
 
@@ -332,6 +347,106 @@ def _nd_regions(lib):
     return out or None
 
 
+def _r2r_form(method: str, n: int) -> str:
+    from tests.fft import refdata
+
+    if not refdata.is_mixed(refdata.r2r_inner(method, n)):
+        return "bluestein"
+    return "even" if n % 2 == 0 else "odd"
+
+
+def _r2r_lines():
+    """(method, signal id, x, n, hi, lo): the stored lines of every method, then the long ones (Arb here)."""
+    from tests.fft import refdata
+    from tests.fft import signals as S
+
+    r = refdata.ref("r2r")
+    for method in refdata.R2R:
+        m = r.methods[method]
+        for j, k in enumerate(m.index):
+            yield method, str(r.inputs["signal"][k]), r.inputs["x"][k], int(r.inputs["n"][k]), m.hi[j], m.lo[j]
+    for sid in refdata.LONG_R2R:
+        s = S.get(sid)
+        for method in refdata.R2R:
+            hi, lo = refdata.arb_r2r(s.x, method)
+            yield method, sid, s.x, s.n, hi, lo
+
+
+def _r2r_regions(lib):
+    from tests.fft import refdata
+
+    if lib == "sd":
+        import stardust as sd
+
+        mod, conv = sd.fft, sd.asarray
+    elif lib == "scipy":
+        import scipy.fft as mod
+
+        conv = np.asarray
+    else:
+        return None
+    pts = {}
+    for method, sid, x, n, hi, lo in _r2r_lines():
+        f = getattr(mod, method[:3])
+        got = np.asarray(f(conv(x), type=int(method[-1])))
+        err = refdata.error(got, hi, lo)
+        ynorm = refdata.norm2(hi)
+        b = refdata.bound("r2r", n, refdata.norm2(x), method=method)
+        p = pts.setdefault(f"{method}/{_r2r_form(method, n)}", {"where": [], "contract": [], "rel": []})
+        p["where"].append(sid)
+        p["contract"].append(refdata.units(err, b))
+        p["rel"].append(err / ynorm if ynorm else (0.0 if err == 0 else np.inf))
+    out = {}
+    for method in refdata.R2R:
+        for form in ("even", "odd", "bluestein"):
+            p = pts.get(f"{method}/{form}")
+            if p:
+                out[f"{method}/{form}"] = region(p["where"], rel=np.array(p["rel"]),
+                                                 contract=np.array(p["contract"]), bound=1.0)  # fmt: skip
+    return out or None
+
+
+def _fht_points():
+    from tests.fft import refdata
+
+    yield from refdata.fht_points(refdata.FHT_LENGTHS + (1 << 16,))
+    yield from refdata.fht_points((16, 63, 64, 1000), ("gauss", "tiny", "huge"))
+
+
+def _fftlog_regions(lib):
+    import warnings
+
+    from tests.fft import refdata
+
+    if lib == "sd":
+        import stardust as sd
+
+        mod, conv = sd.fft, sd.asarray
+    elif lib == "scipy":
+        import scipy.fft as mod
+
+        conv = np.asarray
+    else:
+        return None
+    pts = {}
+    for pid, a, dln, mu, offset, bias in _fht_points():
+        for name in ("fht", "ifht"):
+            hi, lo = refdata.arb_fht(a, dln, mu, offset, bias, name == "ifht")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # scipy warns on the singular sets
+                got = np.asarray(getattr(mod, name)(conv(a), dln, mu, offset=offset, bias=bias))
+            err = refdata.error(got, hi, lo)
+            ynorm = refdata.norm2(hi)
+            b = refdata.bound_fht(a, dln, mu, offset, bias, name == "ifht")
+            key = f"{name}/{'biased' if bias else 'unbiased'}"
+            p = pts.setdefault(key, {"where": [], "contract": [], "rel": []})
+            p["where"].append(pid)
+            p["contract"].append(refdata.units(err, b))
+            p["rel"].append(err / ynorm if ynorm else (0.0 if err == 0 else np.inf))
+    return {k: region(p["where"], rel=np.array(p["rel"]), contract=np.array(p["contract"]), bound=1.0)
+            for k, p in sorted(pts.items())} or None  # fmt: skip
+
+
 def sweeps():
     real, herm = _real_regions("real"), _real_regions("hermitian")
     return [
@@ -339,4 +454,8 @@ def sweeps():
         Custom("fft", "real", lambda: real("sd"), compare_libs(real, ("numpy", "scipy"), seconds=600.0)),
         Custom("fft", "hermitian", lambda: herm("sd"), compare_libs(herm, ("numpy", "scipy"), seconds=600.0)),
         Custom("fft", "nd", lambda: _nd_regions("sd"), compare_libs(_nd_regions, ("numpy", "scipy"), seconds=600.0)),
+        Custom("fft", "r2r", lambda: _r2r_regions("sd"), compare_libs(_r2r_regions, ("scipy",), seconds=600.0)),
+        Custom(
+            "fft", "fftlog", lambda: _fftlog_regions("sd"), compare_libs(_fftlog_regions, ("scipy",), seconds=600.0)
+        ),
     ]

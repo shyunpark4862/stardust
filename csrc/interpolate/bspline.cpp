@@ -14,6 +14,8 @@
 //                derivative steps are scipy's, w = j h / (t[l+m] - t[l+m-j])
 //   value        c[l - k] B_{l-k} first, then one fma per further term, in the order of the coefficients
 //
+// The interval and the basis are interpolate/deboor.hpp's, which the grid's tensor-product splines (grid.cpp) share.
+//
 // The accuracy contracts (docs/design/interpolate.md §4): evaluation within gamma_{6k+1} sum_j |c_j| B~_j(x)
 // plus a floor of subnormal roundings, B~ the recursion run on the absolute values of its terms (B itself inside
 // the base interval without derivatives); construction componentwise within 2 gamma_{8k+8} |A^-1| |A| |c^|.
@@ -46,6 +48,7 @@
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "interpolate/banded.hpp"
+#include "interpolate/deboor.hpp"
 #include "interpolate/search.hpp"
 #include "parallel/pool.hpp"
 
@@ -147,74 +150,10 @@ int check_knots(nb::handle o) {
 
 // ---------------------------------------------------------------- the interval and the basis
 
-// The interval of x (not NaN) from its count of knots at or below it.
-inline std::int64_t knot_interval(std::int64_t count, std::int64_t k, std::int64_t n) {
-    return std::clamp<std::int64_t>(count - 1, k, n - 1);
-}
-
 inline std::int64_t knot_interval_of(const Knots& T, double x) {
     std::int64_t c;
     count_le_lanes<1>(T.t, T.N, &x, &c);
     return knot_interval(c, T.k, T.n);
-}
-
-// h[0 .. k] = B_{l-k+r}^{(nu)}(x) for nu <= k; hh: k + 1 doubles of workspace.
-inline void basis_values(
-    const double* t, std::int64_t k, std::int64_t l, double x, std::int64_t nu, double* h, double* hh
-) {
-    h[0] = 1.0;
-    for (std::int64_t j = 1; j <= k - nu; ++j) {
-        std::copy(h, h + j, hh);
-        h[0] = 0.0;
-        for (std::int64_t m = 1; m <= j; ++m) {
-            const double xb = t[l + m], xa = t[l + m - j];
-            if (xb == xa) {
-                h[m] = 0.0;
-                continue;
-            }
-            const double d = xb - xa;
-            const double left = (xb - x) / d, right = (x - xa) / d;
-            h[m - 1] = h[m - 1] + hh[m - 1] * left;
-            h[m] = hh[m - 1] * right;
-        }
-    }
-    for (std::int64_t j = k - nu + 1; j <= k; ++j) {
-        std::copy(h, h + j, hh);
-        h[0] = 0.0;
-        for (std::int64_t m = 1; m <= j; ++m) {
-            const double xb = t[l + m], xa = t[l + m - j];
-            if (xb == xa) {
-                h[m] = 0.0;
-                continue;
-            }
-            const double w = static_cast<double>(j) * hh[m - 1] / (xb - xa);
-            h[m - 1] = h[m - 1] - w;
-            h[m] = w;
-        }
-    }
-}
-
-// basis_values for a degree K known at compile time and nu = 0: the same operations in the same order (so the
-// same bits), unrolled (evaluation's common case; the loops over a runtime k were 2x its time).
-template <int K>
-inline void basis_fixed(const double* t, std::int64_t l, double x, double* h) {
-    h[0] = 1.0;
-    for (int j = 1; j <= K; ++j) {
-        double hh[K];
-        for (int m = 0; m < j; ++m) hh[m] = h[m];
-        h[0] = 0.0;
-        for (int m = 1; m <= j; ++m) {
-            const double xb = t[l + m], xa = t[l + m - j];
-            if (xb == xa) {
-                h[m] = 0.0;
-                continue;
-            }
-            const double d = xb - xa;
-            const double left = (xb - x) / d, right = (x - xa) / d;
-            h[m - 1] = h[m - 1] + hh[m - 1] * left;
-            h[m] = hh[m - 1] * right;
-        }
-    }
 }
 
 // sum_r c[l - k + r][col] h[r]: the first product, then one fma per term.
@@ -783,12 +722,23 @@ nb::object bspline_to_ppoly(nb::handle to, nb::handle co, std::int64_t k) {
             std::memcpy(a.data(), C.c + (l - k) * D, (k + 1) * D * sizeof(double));
             for (std::int64_t d = 0; d <= k; ++d) {
                 const std::int64_t kk = k - d;  // a[r] belongs to B_{l-kk+r} of degree kk
-                basis_values(T.t, kk, l, x, 0, h.data(), hh.data());
+                switch (kk) {  // the unrolled basis for the small degrees: the same operations (deboor.hpp)
+                    case 0: h[0] = 1.0; break;
+                    case 1: basis_fixed<1>(T.t, l, x, h.data()); break;
+                    case 2: basis_fixed<2>(T.t, l, x, h.data()); break;
+                    case 3: basis_fixed<3>(T.t, l, x, h.data()); break;
+                    case 4: basis_fixed<4>(T.t, l, x, h.data()); break;
+                    case 5: basis_fixed<5>(T.t, l, x, h.data()); break;
+                    default: basis_values(T.t, kk, l, x, 0, h.data(), hh.data());
+                }
                 double* row = o + ((k - d) * m + j) * D;
+                // d! = 1 or 2 divides exactly as a product with its reciprocal (the same rounding of the same
+                // quotient): the divisions that remain are those by 6, 24, ...
+                const double f = fact[d], inv = d <= 2 ? 1.0 / f : 0.0;
                 for (std::int64_t col = 0; col < D; ++col) {
                     double acc = a[col] * h[0];
                     for (std::int64_t r = 1; r <= kk; ++r) acc = std::fma(a[r * D + col], h[r], acc);
-                    row[col] = acc / fact[d];
+                    row[col] = d <= 2 ? acc * inv : acc / f;
                 }
                 if (kk == 0) break;
                 const double fk = static_cast<double>(kk);
@@ -827,18 +777,21 @@ nb::object bspline_from_power(nb::handle xo, nb::handle co, nb::handle to, std::
     std::vector<double> binom(k + 1, 1.0), e(k + 1);
     for (std::int64_t d = 1; d <= k; ++d)
         binom[d] = binom[d - 1] * static_cast<double>(k - d + 1) / static_cast<double>(d);
-    for (std::int64_t j = 0; j < T.n; ++j) {
-        const std::int64_t i = std::min(j, nb_ - 2);
-        std::fill(e.begin(), e.end(), 0.0);
-        e[0] = 1.0;
-        for (std::int64_t r = 1; r <= k; ++r) {
-            const double u = T.t[j + r] - x[i];
-            for (std::int64_t d = r; d >= 1; --d) e[d] = e[d] + u * e[d - 1];
-        }
-        for (std::int64_t col = 0; col < D; ++col) {
-            double acc = 0.0;
-            for (std::int64_t d = 0; d <= k; ++d) acc = acc + cp[((k - d) * m + i) * D + col] * e[d] / binom[d];
-            o[j * D + col] = acc;
+    {  // no Python object inside
+        const parallel::Unlocked unlocked(T.n * (k + 1) * (k + 1 + D) >= kParallelThreshold);
+        for (std::int64_t j = 0; j < T.n; ++j) {
+            const std::int64_t i = std::min(j, nb_ - 2);
+            std::fill(e.begin(), e.end(), 0.0);
+            e[0] = 1.0;
+            for (std::int64_t r = 1; r <= k; ++r) {
+                const double u = T.t[j + r] - x[i];
+                for (std::int64_t d = r; d >= 1; --d) e[d] = e[d] + u * e[d - 1];
+            }
+            for (std::int64_t col = 0; col < D; ++col) {
+                double acc = 0.0;
+                for (std::int64_t d = 0; d <= k; ++d) acc = acc + cp[((k - d) * m + i) * D + col] * e[d] / binom[d];
+                o[j * D + col] = acc;
+            }
         }
     }
     return wrap(std::move(out));

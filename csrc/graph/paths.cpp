@@ -4,7 +4,7 @@
 //   _scan(data)
 //       (nonfinite, negative): whether a stored weight is NaN or +-inf, and whether one is below 0.
 //   _paths(indptr, indices, data, n, sources, method, directed, preds, limit, min_only, flat, negative)
-//       method 'D' (binary-heap Dijkstra), 'BF' (queue Bellman-Ford), 'J' (Johnson: the potentials of the
+//       method 'D' (Dijkstra on an indexed 4-ary heap), 'BF' (queue Bellman-Ford), 'J' (Johnson: the potentials of the
 //       shared negative-cycle check order a Dijkstra that queues a node again when its distance drops),
 //       'dense' (the heap-free Dijkstra on the dense matrix; auto's path for dense graphs) or 'U' (edge
 //       counts: unweighted, data None). sources None: every node. -> (dist, pred or None, source_of or
@@ -98,7 +98,7 @@ Owned undirected(const View& g, bool weights) {
 }
 
 WGraph reading(const View& g, bool directed, bool weights, Owned& own) {
-    if (directed) return WGraph{g.n, g.indptr, g.indices, weights ? g.data : nullptr};
+    if (directed || symmetric(g, weights)) return WGraph{g.n, g.indptr, g.indices, weights ? g.data : nullptr};
     own = undirected(g, weights);
     return WGraph{g.n, own.ip.data(), own.ix.data(), weights ? own.w.data() : nullptr};
 }
@@ -707,9 +707,13 @@ void fw_independent_p(double* C, const double* A, const double* Bm, int64_t* PC,
 }
 
 // D (N x N, N a multiple of B) holds the weights, +inf for no edge and 0 on the diagonal (or a negative
-// self loop's weight); P (or null) the predecessors (i for an edge i -> j, kNoNode elsewhere). Step kb
-// updates the diagonal block, then its row and column (one task per block), then every other block (one
-// task per block): what a block computes depends on the block size alone, not on the thread count.
+// self loop's weight); P (or null) the predecessors (i for an edge i -> j, kNoNode elsewhere). Both are
+// stored block by block (block (bi, bj) is B * B contiguous entries at (bi * nb + bj) * B * B, its rows B
+// apart): a block's 64 rows then lie in one 32 KB run instead of 64 rows N apart, which in the row-major
+// matrix fell into a few cache sets (N a multiple of 1024 bytes) and kept missing. The layout changes no
+// operation. Step kb updates the diagonal block, then its row and column (one task per block), then every
+// other block (one task per block): what a block computes depends on the block size alone, not on the
+// thread count.
 void floyd_warshall_blocks(double* D, int64_t* P, int64_t N, bool split) {
     const int64_t nb = N / B;
     auto run = [&](int64_t ntasks, const std::function<void(int64_t)>& fn) {
@@ -717,22 +721,22 @@ void floyd_warshall_blocks(double* D, int64_t* P, int64_t N, bool split) {
         else
             for (int64_t t = 0; t < ntasks; ++t) fn(t);
     };
-    auto at = [&](int64_t bi, int64_t bj) { return bi * B * N + bj * B; };
+    auto at = [&](int64_t bi, int64_t bj) { return (bi * nb + bj) * B * B; };
     for (int64_t kb = 0; kb < nb; ++kb) {
         const int64_t kk = at(kb, kb);
-        if (P) fw_dependent_p(D + kk, D + kk, D + kk, P + kk, P + kk, N);
-        else fw_dependent(D + kk, D + kk, D + kk, N);
+        if (P) fw_dependent_p(D + kk, D + kk, D + kk, P + kk, P + kk, B);
+        else fw_dependent(D + kk, D + kk, D + kk, B);
         run(2 * (nb - 1), [&](int64_t x) {
             int64_t m = x % (nb - 1);
             m += m >= kb;
             if (x < nb - 1) {  // the row of block kb: C = D[kb][m], A the diagonal block, B = C
                 const int64_t c = at(kb, m);
-                if (P) fw_dependent_p(D + c, D + kk, D + c, P + c, P + c, N);
-                else fw_dependent(D + c, D + kk, D + c, N);
+                if (P) fw_dependent_p(D + c, D + kk, D + c, P + c, P + c, B);
+                else fw_dependent(D + c, D + kk, D + c, B);
             } else {  // the column: C = D[m][kb], A = C, B the diagonal block
                 const int64_t c = at(m, kb);
-                if (P) fw_dependent_p(D + c, D + c, D + kk, P + c, P + kk, N);
-                else fw_dependent(D + c, D + c, D + kk, N);
+                if (P) fw_dependent_p(D + c, D + c, D + kk, P + c, P + kk, B);
+                else fw_dependent(D + c, D + c, D + kk, B);
             }
         });
         run((nb - 1) * (nb - 1), [&](int64_t x) {
@@ -740,15 +744,15 @@ void floyd_warshall_blocks(double* D, int64_t* P, int64_t N, bool split) {
             i += i >= kb;
             j += j >= kb;
             const int64_t c = at(i, j), a = at(i, kb), b = at(kb, j);
-            if (P) fw_independent_p(D + c, D + a, D + b, P + c, P + b, N);
-            else fw_independent(D + c, D + a, D + b, N);
+            if (P) fw_independent_p(D + c, D + a, D + b, P + c, P + b, B);
+            else fw_independent(D + c, D + a, D + b, B);
         });
     }
 }
 
 nb::object run_floyd_warshall(nb::handle ip, nb::handle ix, nb::handle dh, int64_t n, bool directed, bool want_pred) {
     const View g0 = view_arg(ip, ix, dh, n, "_floyd_warshall");
-    const int64_t N = (n + B - 1) / B * B;
+    const int64_t N = (n + B - 1) / B * B, nblk = N / B;
     nb::object od = new_array2(DType::Float64, n, n);
     nb::object op = want_pred ? new_array2(DType::Int64, n, n) : nb::none();
     double* out = ptr<double>(od);
@@ -759,46 +763,41 @@ nb::object run_floyd_warshall(nb::handle ip, nb::handle ix, nb::handle dh, int64
         const parallel::Unlocked unlocked(big);
         Owned own;
         const WGraph g = paths::reading(g0, directed, g0.data != nullptr, own);
-        std::vector<double> Dpad;
-        std::vector<int64_t> Ppad;
-        double* D = out;
-        int64_t* P = pout;
-        if (N != n) {
-            Dpad.resize(static_cast<size_t>(N * N));
-            D = Dpad.data();
-            if (want_pred) {
-                Ppad.resize(static_cast<size_t>(N * N));
-                P = Ppad.data();
-            }
-        }
-        std::fill(D, D + N * N, kInf);
-        if (P) std::fill(P, P + N * N, kNoNode);
-        for (int64_t i = 0; i < N; ++i) D[i * N + i] = 0.0;
+        // the matrices block by block (floyd_warshall_blocks); entry (i, j) at place(i, j)
+        auto place = [&](int64_t i, int64_t j) { return ((i / B) * nblk + j / B) * B * B + (i % B) * B + j % B; };
+        std::vector<double> Dv(static_cast<size_t>(N * N), kInf);
+        std::vector<int64_t> Pv(want_pred ? static_cast<size_t>(N * N) : 0, kNoNode);
+        double* D = Dv.data();
+        int64_t* P = want_pred ? Pv.data() : nullptr;
+        for (int64_t i = 0; i < N; ++i) D[place(i, i)] = 0.0;
         for (int64_t i = 0; i < n; ++i) {
             for (int64_t k = g.ip[i]; k < g.ip[i + 1]; ++k) {
                 const int64_t j = g.ix[k];
                 const double w = g.weight(k);
                 if (j == i) {
-                    if (w < 0) D[i * N + i] = w;  // a negative self loop: a negative cycle
+                    if (w < 0) D[place(i, i)] = w;  // a negative self loop: a negative cycle
                     continue;
                 }
-                D[i * N + j] = w;
-                if (P) P[i * N + j] = i;
+                D[place(i, j)] = w;
+                if (P) P[place(i, j)] = i;
             }
         }
         floyd_warshall_blocks(D, P, N, big && parallel::available());
         int64_t first_negative = -1;
         for (int64_t i = 0; i < n && first_negative < 0; ++i)
-            if (D[i * N + i] < 0) first_negative = i;
+            if (D[place(i, i)] < 0) first_negative = i;
         if (first_negative >= 0) {
             std::vector<uint8_t> all(static_cast<size_t>(n), 1);
             std::vector<double> h;
             cycle = paths::negative_cycle(g, all, h);
             if (cycle < 0) cycle = first_negative;
-        } else if (N != n) {
+        } else {
             for (int64_t i = 0; i < n; ++i) {
-                std::memcpy(out + i * n, D + i * N, static_cast<size_t>(n) * sizeof(double));
-                if (P) std::memcpy(pout + i * n, P + i * N, static_cast<size_t>(n) * sizeof(int64_t));
+                for (int64_t bj = 0; bj < nblk; ++bj) {
+                    const int64_t j0 = bj * B, len = std::min(B, n - j0), from = place(i, j0);
+                    std::memcpy(out + i * n + j0, D + from, static_cast<size_t>(len) * sizeof(double));
+                    if (P) std::memcpy(pout + i * n + j0, P + from, static_cast<size_t>(len) * sizeof(int64_t));
+                }
             }
         }
     }
@@ -905,36 +904,48 @@ nb::object reconstruct(nb::handle ip, nb::handle ix, nb::handle dh, int64_t n, n
     const NDArray& pa = index_matrix(ph, 1, "_reconstruct");
     if (pa.shape[0] != n) throw nb::value_error("_reconstruct(): wrong predecessors");
     const int64_t* pred = reinterpret_cast<const int64_t*>(pa.data);
-    for (int64_t v = 0; v < n; ++v) {
-        if (pred[v] != kNoNode && (pred[v] < 0 || pred[v] >= n))
-            return nb::make_tuple(nb::none(), nb::make_tuple(1, v, pred[v]));
-        if (pred[v] == v) return nb::make_tuple(nb::none(), nb::make_tuple(5, v, v));
-    }
-    Owned own;
-    const WGraph g = paths::reading(g0, directed, true, own);
+    const bool big = n + g0.nnz() >= kParallelWork;
+    // the first predecessor that is not an edge of the graph: (kind, v, value), kind 0 when there is none
+    int64_t kind = 0, bad_v = 0, bad_value = 0, edges = 0;
     std::vector<double> wv(static_cast<size_t>(n), 0.0);
-    int64_t edges = 0;
-    for (int64_t v = 0; v < n; ++v) {
-        if (pred[v] == kNoNode) continue;
-        if (!paths::edge_weight(g, pred[v], v, wv[static_cast<size_t>(v)]))
-            return nb::make_tuple(nb::none(), nb::make_tuple(2, v, pred[v]));
-        ++edges;
+    {
+        const parallel::Unlocked unlocked(big);
+        for (int64_t v = 0; v < n && !kind; ++v) {
+            if (pred[v] != kNoNode && (pred[v] < 0 || pred[v] >= n)) kind = 1, bad_v = v, bad_value = pred[v];
+            else if (pred[v] == v) kind = 5, bad_v = v, bad_value = v;
+        }
+        if (!kind) {
+            Owned own;
+            const WGraph g = paths::reading(g0, directed, true, own);
+            for (int64_t v = 0; v < n; ++v) {
+                if (pred[v] == kNoNode) continue;
+                if (!paths::edge_weight(g, pred[v], v, wv[static_cast<size_t>(v)])) {
+                    kind = 2, bad_v = v, bad_value = pred[v];
+                    break;
+                }
+                ++edges;
+            }
+        }
     }
+    if (kind) return nb::make_tuple(nb::none(), nb::make_tuple(kind, bad_v, bad_value));
     nb::object tp = new_array1(DType::Int64, n + 1), ti = new_array1(DType::Int64, edges),
                td = new_array1(DType::Float64, edges);
     int64_t* P = ptr<int64_t>(tp);
     int64_t* I = ptr<int64_t>(ti);
     double* W = ptr<double>(td);
-    std::fill(P, P + n + 1, 0);
-    for (int64_t v = 0; v < n; ++v)
-        if (pred[v] != kNoNode) ++P[pred[v] + 1];
-    for (int64_t i = 0; i < n; ++i) P[i + 1] += P[i];
-    std::vector<int64_t> next(P, P + n);
-    for (int64_t v = 0; v < n; ++v) {  // children placed in ascending order: canonical rows
-        if (pred[v] == kNoNode) continue;
-        const int64_t at = next[static_cast<size_t>(pred[v])]++;
-        I[at] = v;
-        W[at] = wv[static_cast<size_t>(v)];
+    {
+        const parallel::Unlocked unlocked(big);
+        std::fill(P, P + n + 1, 0);
+        for (int64_t v = 0; v < n; ++v)
+            if (pred[v] != kNoNode) ++P[pred[v] + 1];
+        for (int64_t i = 0; i < n; ++i) P[i + 1] += P[i];
+        std::vector<int64_t> next(P, P + n);
+        for (int64_t v = 0; v < n; ++v) {  // children placed in ascending order: canonical rows
+            if (pred[v] == kNoNode) continue;
+            const int64_t at = next[static_cast<size_t>(pred[v])]++;
+            I[at] = v;
+            W[at] = wv[static_cast<size_t>(v)];
+        }
     }
     return nb::make_tuple(tp, ti, td);
 }

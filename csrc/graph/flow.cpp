@@ -213,10 +213,15 @@ nb::object max_flow(nb::handle ip, nb::handle ix, nb::handle ch, int64_t n, int6
         value += r.flow(static_cast<size_t>(k));
     const int64_t m = static_cast<int64_t>(r.ix.size());
     nb::object op = vec1(DType::Int64, n + 1), oi = vec1(DType::Int64, m), od = vec1(DType::Int64, m);
-    std::copy(r.ip.begin(), r.ip.end(), ptr<int64_t>(op));
-    std::copy(r.ix.begin(), r.ix.end(), ptr<int64_t>(oi));
+    int64_t* P = ptr<int64_t>(op);
+    int64_t* I = ptr<int64_t>(oi);
     int64_t* F = ptr<int64_t>(od);
-    for (size_t k = 0; k < static_cast<size_t>(m); ++k) F[k] = r.flow(k);
+    {
+        const parallel::Unlocked unlocked(m >= kParallelWork);
+        std::copy(r.ip.begin(), r.ip.end(), P);
+        std::copy(r.ix.begin(), r.ix.end(), I);
+        for (size_t k = 0; k < static_cast<size_t>(m); ++k) F[k] = r.flow(k);
+    }
     return nb::make_tuple(value, op, oi, od);
 }
 

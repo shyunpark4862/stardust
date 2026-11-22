@@ -179,3 +179,21 @@ def test_sorted_and_random_points_give_the_same_bits(n):
     b = interp(xs, xp, fp)
     assert bits_equal_any_nan(a[order], b)  # np.sort changes the NaN's payload; sd keeps each point's NaN
     assert bits_equal(interp(xs[::-1].copy(), xp, fp), b[::-1].copy())
+
+
+def test_blocks_and_single_points_give_the_same_bits():
+    # arrays of real values go through base/lerp.hpp's block kernel (decision IP99), a Python scalar through the
+    # scalar kernel: the same bits for every kind of point, the ones the block kernel hands back included
+    g = np.random.default_rng(99)
+    xp = np.sort(g.standard_normal(40))
+    xp[7] = xp[6]  # a repeated node
+    fp = g.standard_normal(40)
+    fp[[3, 11, 12, 20]] = [INF, -INF, NAN, 1e308]
+    x = np.concatenate([g.standard_normal(600) * 2, xp, [NAN, INF, -INF, -0.0, xp[0], xp[-1]]])
+    for kw in ({}, {"left": -2.0, "right": INF}, {"period": 1.5}):
+        got = interp(x, xp, fp, **kw)
+        one = np.array([interp(float(v), xp, fp, **kw) for v in x])
+        assert bits_equal(got, one), kw
+    wide = np.array([-1.7e308, 1.7e308])
+    xw = np.array([-1e308, 0.0, 1e308, 1.6e308] * 70)
+    assert bits_equal(interp(xw, wide, [1.0, 2.0]), np.array([interp(float(v), wide, [1.0, 2.0]) for v in xw]))

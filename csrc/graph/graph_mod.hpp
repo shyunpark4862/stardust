@@ -12,5 +12,8 @@ void bind_yen(nanobind::module_& m);
 void bind_tree(nanobind::module_& m);
 void bind_flow(nanobind::module_& m);
 void bind_matching(nanobind::module_& m);
+void bind_ordering(nanobind::module_& m);
+void bind_structure(nanobind::module_& m);
+void bind_centrality(nanobind::module_& m);
 
 }  // namespace sd::graph

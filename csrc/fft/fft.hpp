@@ -7,5 +7,7 @@ namespace sd::fft {
 
 void bind_basic(nanobind::module_& m);
 void bind_helper(nanobind::module_& m);
+void bind_r2r(nanobind::module_& m);
+void bind_fftlog(nanobind::module_& m);
 
 }  // namespace sd::fft

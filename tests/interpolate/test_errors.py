@@ -267,3 +267,198 @@ def test_singular_collocation_is_linalg_error():
         IP.make_interp_spline(X6, Y6, 3)
     with pytest.raises(TypeError, match=r"^BSpline\(\): unexpected keyword argument 'check_finite'"):
         IP.BSpline(T8, [1.0] * 4, 3, check_finite=True)
+
+
+# ---- the polynomial and rational interpolants (docs/api/interpolate.md §5; milestone IP4)
+
+BI = IP.BarycentricInterpolator([0.0, 1.0, 2.0], [1.0, 0.0, 3.0])
+KI = IP.KroghInterpolator([0.0, 1.0, 2.0], [1.0, 0.0, 3.0])
+AA = IP.AAA([0.0, 0.25, 0.5, 0.75, 1.0], [1.0, 1.25, 1.5, 2.0, 2.5])
+FH = IP.FloaterHormannInterpolator([0.0, 1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 0.0, 1.0, 3.0])
+NOT_DATA = "must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, not str"
+
+CASES_IP4 = [
+    (lambda: IP.BarycentricInterpolator([0.0, 1.0, 1.0], Y[:3]), ValueError,
+     "BarycentricInterpolator(): 'xi' must be distinct: xi[2] = 1.0 repeats an earlier node"),
+    (lambda: IP.BarycentricInterpolator([0.0, math.nan], [1.0, 2.0]), ValueError,
+     "BarycentricInterpolator(): 'xi' must be finite"),
+    (lambda: IP.BarycentricInterpolator([], []), ValueError,
+     "BarycentricInterpolator(): 'xi' must have at least 1 point"),
+    (lambda: IP.BarycentricInterpolator([0.0, 1j], [1.0, 2.0]), TypeError,
+     "BarycentricInterpolator(): 'xi' must be real, not complex128"),
+    (lambda: IP.BarycentricInterpolator([0.0, 1.0], Y[:3]), ValueError,
+     "BarycentricInterpolator(): 'yi' must have as many points as 'xi' (2) along axis 0, not 3"),
+    (lambda: IP.BarycentricInterpolator([0.0, 1.0], [1.0, 2.0], wi=[1.0]), ValueError,
+     "BarycentricInterpolator(): 'wi' must have one weight per node (2,), not (1,)"),
+    (lambda: IP.BarycentricInterpolator([0.0, 1.0], [1.0, 2.0], wi=[1.0, -1.0], axis=1), ValueError,
+     "BarycentricInterpolator(): axis 1 is out of bounds for an array of dimension 1"),
+    (lambda: IP.BarycentricInterpolator([0.0, 1.0], [1.0, 2.0], rng=0), TypeError,
+     "BarycentricInterpolator(): unexpected keyword argument 'rng'"),
+    (lambda: IP.BarycentricInterpolator([0.0, 1.0])(0.5), ValueError,
+     "BarycentricInterpolator(): no values: give them with set_yi()"),
+    (lambda: BI(0.5j), TypeError, "BarycentricInterpolator(): 'x' must be real, not complex"),
+    (lambda: BI.derivative(0.5, der=-1), ValueError, "derivative(): 'der' must be 0 or more, not -1"),
+    (lambda: BI.derivative(0.5, der=1.0), TypeError, "derivative(): 'der' must be an int, not float"),
+    (lambda: BI.derivatives(0.5, der="a"), TypeError, "derivatives(): 'der' must be an int, not str"),
+    (lambda: BI.add_xi([1.0], [2.0]), ValueError,
+     "add_xi(): 'xi' must be distinct: xi[3] = 1.0 repeats an earlier node"),
+    (lambda: BI.add_xi([5.0]), ValueError, "add_xi(): 'yi' is needed: the object has values"),
+    (lambda: BI.add_xi([5.0], [[1.0]]), ValueError, "add_xi(): 'yi' must have the shape (1,), not (1, 1)"),
+    (lambda: BI.set_yi([1.0, 2.0]), ValueError,
+     "set_yi(): 'yi' must have as many points as 'xi' (3) along axis 0, not 2"),
+    (lambda: IP.KroghInterpolator([0.0, 1.0, 0.0], Y[:3]), ValueError,
+     "KroghInterpolator(): a repeated value of 'xi' must follow its equals: xi[2] = 0.0 repeats an earlier node that "
+     "is not next to it"),
+    (lambda: KI(0.5j), TypeError, "KroghInterpolator(): 'x' must be real, not complex"),
+    (lambda: KI.derivative(0.5, der=-2), ValueError, "derivative(): 'der' must be 0 or more, not -2"),
+    (lambda: IP.krogh_interpolate([0.0, 1.0], [1.0, 2.0], 0.5, der=-1), ValueError,
+     "krogh_interpolate(): 'der' must be 0 or more, not -1"),
+    (lambda: IP.barycentric_interpolate([0.0, 0.0], [1.0, 2.0], 0.5), ValueError,
+     "barycentric_interpolate(): 'xi' must be distinct: xi[1] = 0.0 repeats an earlier node"),
+    (lambda: IP.barycentric_interpolate([0.0, 1.0], [1.0, 2.0], 0.5j), TypeError,
+     "barycentric_interpolate(): 'x' must be real, not complex"),
+    (lambda: IP.AAA([0.0, 1.0], [1.0]), ValueError, "AAA(): 'y' must have as many points as 'x' (2), not 1"),
+    (lambda: IP.AAA([0.0, 1.0], [[1.0, 2.0]]), ValueError, "AAA(): 'y' must be 1-D, not 2-D"),
+    (lambda: IP.AAA([0.0, math.inf], [1.0, 2.0]), ValueError, "AAA(): 'x' must be finite"),
+    (lambda: IP.AAA([0.0, 1.0], [1.0, 2.0], rtol=-1.0), ValueError,
+     "AAA(): 'rtol' must be finite and 0 or more, not -1.0"),
+    (lambda: IP.AAA([0.0, 1.0], [1.0, 2.0], rtol="a"), TypeError, "AAA(): 'rtol' must be an int or a float, not str"),
+    (lambda: IP.AAA([0.0, 1.0], [1.0, 2.0], max_terms=0), ValueError, "AAA(): 'max_terms' must be 1 or more, not 0"),
+    (lambda: IP.AAA([0.0, 1.0], [1.0, 2.0], max_terms=1.5), TypeError, "AAA(): 'max_terms' must be an int, not float"),
+    (lambda: IP.AAA([0.0, 1.0], [1.0, 2.0], clean_up=1), TypeError, "AAA(): 'clean_up' must be True or False, not int"),
+    (lambda: IP.AAA([0.0, 1.0], [1.0, 2.0], clean_up_tol=-1e-13), ValueError,
+     "AAA(): 'clean_up_tol' must be finite and 0 or more, not -1e-13"),
+    (lambda: IP.AAA([0.0, 1.0], [math.nan, math.inf]), ValueError, "AAA(): no sample has a finite value"),
+    (lambda: AA.clean_up(clean_up_tol="x"), TypeError, "clean_up(): 'clean_up_tol' must be an int or a float, not str"),
+    (lambda: AA("a"), TypeError, "AAA(): 'z' " + NOT_DATA),
+    (lambda: IP.FloaterHormannInterpolator([0.0, 1.0, 2.0], [1.0, 2.0, 3.0], d=3), ValueError,
+     "FloaterHormannInterpolator(): 'd' must satisfy 0 <= d < n, the number of finite samples (3), not 3"),
+    (lambda: IP.FloaterHormannInterpolator([0.0, 1.0, 1.0], [1.0, 2.0, 3.0], d=1), ValueError,
+     "FloaterHormannInterpolator(): 'points' must be distinct"),
+    (lambda: IP.FloaterHormannInterpolator([0.0, 1j, 2.0], [1.0, 2.0, 3.0]), TypeError,
+     "FloaterHormannInterpolator(): 'points' must be real, not complex128"),
+    (lambda: IP.FloaterHormannInterpolator([0.0, 1.0, 2.0], [1.0, 2.0], d=1), ValueError,
+     "FloaterHormannInterpolator(): 'values' must have as many points as 'points' (3) along axis 0, not 2"),
+    (lambda: IP.FloaterHormannInterpolator([0.0, 1.0, 2.0], [1.0, 2.0, 3.0], d=1.0), TypeError,
+     "FloaterHormannInterpolator(): 'd' must be an int, not float"),
+    (lambda: IP.FloaterHormannInterpolator([0.0, 1.0, 2.0], [[1.0, 2.0]] * 3, d=1).roots(),
+     ValueError, "roots(): the values must be 1-D, not a batch of shape (2,)"),
+    (lambda: FH("a"), TypeError, "FloaterHormannInterpolator(): 'z' " + NOT_DATA),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("k", range(len(CASES_IP4)))
+def test_error_ip4(k):
+    call, exc, msg = CASES_IP4[k]
+    with pytest.raises(exc) as e:
+        call()
+    assert str(e.value) == msg
+
+
+def test_call_shape_ip4():
+    with pytest.raises(TypeError, match=r"^BarycentricInterpolator\(\): takes from 1 to 2 positional arguments but 3"):
+        IP.BarycentricInterpolator([0.0, 1.0], [1.0, 2.0], 0)
+    with pytest.raises(TypeError, match=r"^krogh_interpolate\(\): unexpected keyword argument 'foo'"):
+        IP.krogh_interpolate([0.0, 1.0], [1.0, 2.0], 0.5, foo=1)
+    with pytest.raises(TypeError, match=r"^AAA\(\): unexpected keyword argument 'cleanup_tol'"):
+        IP.AAA([0.0, 1.0], [1.0, 2.0], cleanup_tol=1e-13)  # one spelling: clean_up_tol (IP32)
+
+
+# ---------------------------------------------------------------- IP6: the scattered-data interpolants
+
+Y2 = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.4, 0.7]]
+D5 = [1.0, 2.0, 3.0, 4.0, 5.0]
+RBF = IP.RBFInterpolator(Y2, D5)
+KINDS = "'linear', 'thin_plate_spline', 'cubic', 'quintic', 'multiquadric', 'inverse_multiquadric', " \
+        "'inverse_quadratic' or 'gaussian'"  # fmt: skip
+
+CASES_IP6 = [
+    (lambda: IP.RBFInterpolator([0.0, 1.0], [1.0, 2.0]), ValueError,
+     "RBFInterpolator(): 'y' must have 2 dimensions (points, coordinates), not 1"),
+    (lambda: IP.RBFInterpolator(np.zeros((0, 2)), np.zeros(0)), ValueError,
+     "RBFInterpolator(): 'y' must have at least 1 point"),
+    (lambda: IP.RBFInterpolator([[0.0, math.nan]], [1.0]), ValueError, "RBFInterpolator(): 'y' must be finite"),
+    (lambda: IP.RBFInterpolator([[0.0, 1j]], [1.0]), TypeError, "RBFInterpolator(): 'y' must be real, not complex128"),
+    (lambda: IP.RBFInterpolator(Y2, D5[:4]), ValueError,
+     "RBFInterpolator(): 'd' must have one row per data point (5), not 4"),
+    (lambda: IP.RBFInterpolator(Y2, [1.0, 2.0, math.inf, 4.0, 5.0]), ValueError,
+     "RBFInterpolator(): 'd' must be finite"),
+    (lambda: IP.RBFInterpolator(Y2, D5, kernel="Gaussian", epsilon=1.0), ValueError,
+     f"RBFInterpolator(): 'kernel' must be {KINDS}, not 'Gaussian'"),
+    (lambda: IP.RBFInterpolator(Y2, D5, kernel=1), TypeError, f"RBFInterpolator(): 'kernel' must be {KINDS}, not int"),
+    (lambda: IP.RBFInterpolator(Y2, D5, kernel="gaussian"), ValueError,
+     "RBFInterpolator(): 'epsilon' must be given for kernel 'gaussian' (the default 1 is only for the scale-invariant "
+     "linear, thin_plate_spline, cubic and quintic)"),
+    (lambda: IP.RBFInterpolator(Y2, D5, epsilon=0.0), ValueError,
+     "RBFInterpolator(): 'epsilon' must be finite and positive, not 0.0"),
+    (lambda: IP.RBFInterpolator(Y2, D5, epsilon=math.inf), ValueError,
+     "RBFInterpolator(): 'epsilon' must be finite and positive, not inf"),
+    (lambda: IP.RBFInterpolator(Y2, D5, epsilon="1"), TypeError,
+     "RBFInterpolator(): 'epsilon' must be an int or a float, not str"),
+    (lambda: IP.RBFInterpolator(Y2, D5, smoothing=-1e-300), ValueError,
+     "RBFInterpolator(): 'smoothing' must be finite and 0 or more, not -1e-300"),
+    (lambda: IP.RBFInterpolator(Y2, D5, smoothing=[0.0, 0.1, math.nan, 0.0, 0.0]), ValueError,
+     "RBFInterpolator(): 'smoothing' must be finite and 0 or more"),
+    (lambda: IP.RBFInterpolator(Y2, D5, smoothing=[0.0, 0.1]), ValueError,
+     "RBFInterpolator(): 'smoothing' must be a number or an array of shape (5,), not (2,)"),
+    (lambda: IP.RBFInterpolator(Y2, D5, smoothing=True), TypeError,
+     "RBFInterpolator(): 'smoothing' must be a number or an array, not bool"),
+    (lambda: IP.RBFInterpolator(Y2, D5, degree=0), ValueError,
+     "RBFInterpolator(): 'degree' must be at least 1 for kernel 'thin_plate_spline' (the system may not be solvable "
+     "below it), not 0"),
+    (lambda: IP.RBFInterpolator(Y2, D5, kernel="quintic", degree=-1), ValueError,
+     "RBFInterpolator(): 'degree' must be at least 2 for kernel 'quintic' (the system may not be solvable below it), "
+     "not -1"),
+    (lambda: IP.RBFInterpolator(Y2, D5, kernel="gaussian", epsilon=1.0, degree=-2), ValueError,
+     "RBFInterpolator(): 'degree' must be at least -1, not -2"),
+    (lambda: IP.RBFInterpolator(Y2, D5, degree=1.0), TypeError,
+     "RBFInterpolator(): 'degree' must be an int, not float"),
+    (lambda: IP.RBFInterpolator(Y2, D5, degree=2), ValueError,
+     "RBFInterpolator(): at least 6 data points are required for 'degree' 2 in 2 dimensions, not 5"),
+    (lambda: IP.RBFInterpolator(Y2, D5, neighbors=2), ValueError,
+     "RBFInterpolator(): at least 3 neighbors are required for 'degree' 1 in 2 dimensions, not 2"),
+    (lambda: IP.RBFInterpolator(Y2, D5, neighbors=0), ValueError,
+     "RBFInterpolator(): 'neighbors' must be at least 1, not 0"),
+    (lambda: IP.RBFInterpolator(Y2, D5, neighbors=3.0), TypeError,
+     "RBFInterpolator(): 'neighbors' must be an int, not float"),
+    (lambda: IP.RBFInterpolator(Y2[:4] + [[1.0, 0.0]], D5), sd.linalg.LinAlgError,
+     "RBFInterpolator(): data points 1 and 4 are equal and their smoothing is 0: the system is singular"),
+    (lambda: IP.RBFInterpolator([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]], [1.0, 2.0, 3.0]), sd.linalg.LinAlgError,
+     "RBFInterpolator(): the monomials of degree 1 at the data points do not have full column rank (2/3): the system "
+     "is singular"),
+    (lambda: IP.RBFInterpolator([[0.0], [1.0], [2.0], [3.0], [4.0]], D5, kernel="multiquadric", epsilon=1e-30),
+     sd.linalg.LinAlgError, "RBFInterpolator(): the system of the data points is singular"),
+    (lambda: RBF([0.5, 0.5, 0.5]), ValueError,
+     "RBFInterpolator(): 'x' must have 2 entries on its last axis (the data points' dimension), not 3"),
+    (lambda: RBF(0.5), ValueError, "RBFInterpolator(): 'x' must have at least 1 dimension (points of 2 coordinates)"),
+    (lambda: RBF([0.5j, 0.5]), TypeError, "RBFInterpolator(): 'x' must be real, not complex128"),
+    (lambda: IP.NearestNDInterpolator(Y2, D5[:3]), ValueError,
+     "NearestNDInterpolator(): 'y' must have one row per data point (5), not 3"),
+    (lambda: IP.NearestNDInterpolator([1.0, 2.0], [1.0, 2.0]), ValueError,
+     "NearestNDInterpolator(): 'x' must have 2 dimensions (points, coordinates), not 1"),
+    (lambda: IP.NearestNDInterpolator(Y2, D5, rescale=1), TypeError,
+     "NearestNDInterpolator(): 'rescale' must be True or False, not int"),
+    (lambda: IP.NearestNDInterpolator(Y2, D5)([0.5]), ValueError,
+     "NearestNDInterpolator(): 'xi' must have 2 entries on its last axis (the data points' dimension), not 1"),
+    (lambda: IP.NearestNDInterpolator(Y2, D5)(([0.5], [0.5], [0.5])), ValueError,
+     "NearestNDInterpolator(): a tuple 'xi' must have 2 coordinate arrays, not 3"),
+    (lambda: IP.NearestNDInterpolator(Y2, D5)(([0.5, 0.1], [0.5, 0.2, 0.3])), ValueError,
+     "NearestNDInterpolator(): the arrays of a tuple 'xi' must broadcast together"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("k", range(len(CASES_IP6)))
+def test_error_ip6(k):
+    call, exc, msg = CASES_IP6[k]
+    with pytest.raises(exc) as e:
+        call()
+    assert str(e.value) == msg
+
+
+def test_call_shape_ip6():
+    with pytest.raises(TypeError, match=r"^RBFInterpolator\(\): takes 2 positional arguments but 3"):
+        IP.RBFInterpolator(Y2, D5, 3)
+    with pytest.raises(TypeError, match=r"^RBFInterpolator\(\): unexpected keyword argument 'workers'"):
+        IP.RBFInterpolator(Y2, D5, workers=1)
+    with pytest.raises(TypeError, match=r"^NearestNDInterpolator\(\): unexpected keyword argument 'tree_options'"):
+        IP.NearestNDInterpolator(Y2, D5, tree_options={})  # IP31

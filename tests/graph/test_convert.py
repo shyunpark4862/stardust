@@ -107,6 +107,15 @@ def test_to_dense_of_a_dense_input_reads_the_graph_rule():
     assert np.array_equal(np.asarray(M), want)
 
 
+def test_to_dense_memory_error_before_the_n_squared_output():
+    # checked before allocating (decision GR67): this once allocated tens of GB in a test
+    with pytest.raises(
+        MemoryError,
+        match=r"^csgraph_to_dense\(\): cannot allocate \d+ bytes: more than this machine's physical memory$",
+    ):
+        GR.csgraph_to_dense(sd.sparse.csr_array((10**6, 10**6)))
+
+
 def test_errors():
     for bad in (None, "x", 1j, True, [1.0]):
         with pytest.raises(TypeError, match=r"^csgraph_to_dense\(\): 'null_value' must be an int or a float, not "):

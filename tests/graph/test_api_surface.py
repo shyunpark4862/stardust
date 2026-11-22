@@ -1,6 +1,6 @@
 """docs/api/graph.md and the module agree: every module-level name its signature blocks define is
 planned or exported, nothing else is exported, an exported name's signature is the documented one,
-and the documented signatures follow the area's rules (decisions GR1-GR28 in docs/design/graph.md
+and the documented signatures follow the area's rules (decisions GR1-GR68 in docs/design/graph.md
 §1.1).
 
 A block line is a module name (`name(...)`, or a bare exception class name) or a result field
@@ -18,9 +18,10 @@ from .._api_doc import signature_blocks
 
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "graph.md"
 
-# Documented, not implemented yet (docs/design/graph.md §8). A milestone moves its names from here to
+# The documented names by the milestone that exported them (docs/design/graph.md §8), all now in
 # sd.graph.__all__ (GR1: the traversals, connected_components, topological_sort, the conversion tools;
-# GR2: the shortest paths; GR3: the spanning tree, flow, matchings and assignment).
+# GR2: the shortest paths; GR3: the spanning tree, flow, matchings and assignment; GR4: the ordering,
+# the structural rank and the laplacian; GR5: the structure, PageRank and betweenness).
 GR1 = (
     "connected_components",
     "breadth_first_order",
@@ -49,19 +50,16 @@ GR3 = (
     "min_weight_full_bipartite_matching",
     "linear_sum_assignment",
 )
-PLANNED = {
-    # GR4
-    "reverse_cuthill_mckee",
-    "structural_rank",
-    "laplacian",
-    # GR5
+GR4 = ("reverse_cuthill_mckee", "structural_rank", "laplacian")
+GR5 = (
     "articulation_points",
     "bridges",
     "biconnected_components",
     "core_number",
     "pagerank",
     "betweenness_centrality",
-}
+)
+PLANNED = set()
 RESULTS = {
     "ShortestPathResult",
     "MinOnlyResult",
@@ -181,6 +179,6 @@ def test_shared_options_have_one_spelling():
 
 
 def test_module_is_wired():
-    assert sd.graph.__all__ == list(GR1 + GR2 + GR3)
+    assert sd.graph.__all__ == list(GR1 + GR2 + GR3 + GR4 + GR5)
     for name in MASKED | {"Graph", "graph", "csgraph"}:
         assert not hasattr(sd.graph, name), name

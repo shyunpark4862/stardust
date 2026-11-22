@@ -23,6 +23,18 @@ negative, a list, s without axes, an int); the parts of a non-Hermitian input ir
 and bool input; C, F and strided layouts; arrays large enough that every axis pass splits into many tasks
 at 3 and 10 threads; the empty batch; the wrong calls.
 
+The discrete cosine and sine transforms (milestone FT4): dct, idct, dst and idst of types 1-4 on even, odd
+and Bluestein inner lengths (the real FFT of n, of 2 (n - 1) and 2 (n + 1), the complex FFT of n / 2, the odd
+DCT-IV) times norm, orthogonalize both ways, cutting and padding, the edge values, complex, int64 and bool
+input, the layouts and batches, a long line; dctn, idctn, dstn and idstn over the forms of s and axes; the
+one-point lengths (DCT-I is an error, DST-I is 2x); the wrong calls.
+
+FFTLog (milestone FT5): fht and ifht on even, odd and Bluestein inner lengths (1-4096) and the parameter sets of
+tests/fft/refdata.FHT_PARAMS (unbiased, biased, negative spacing, the poles of Gamma, a large order, a small
+spacing), the edge values, int64 and bool input, the layouts and batches (every line a task at 3 and 10
+threads; each thread count runs in a process of its own, so the plans' coefficients are computed at each),
+fhtoffset, the wrong calls.
+
 The inputs come from fixed literals and L.rng(seed); the largest result is 2^17 complex numbers.
 """
 
@@ -40,6 +52,155 @@ LENGTHS = (1, 2, 3, 4, 5, 7, 8, 11, 16, 24, 40, 64, 120, 1024, 3072, 9, 25, 77, 
 
 def _c(r, shape):
     return r.uniform(-1, 1, shape) + 1j * r.uniform(-1, 1, shape)
+
+
+def _r2r_cases(L, F, a, r, redge, ints, t3, t3r, big3, t2r):
+    """The discrete cosine and sine transforms (milestone FT4)."""
+    rr = L.rng(2340)
+    for n in (1, 2, 3, 4, 5, 7, 8, 11, 13, 16, 17, 24, 26, 34, 64, 100, 127, 1000, 1009, 2018):
+        x = rr.uniform(-1, 1, n)
+        for name in ("dct", "dst"):
+            f = getattr(F, name)
+            for t in (1, 2, 3, 4):
+                for norm in NORMS:
+                    yield f"{name} type={t} n={n} {norm}", lambda f=f, x=x, t=t, norm=norm: f(a(x), type=t, norm=norm)
+    for n in (2, 5, 8, 13, 26, 127, 1000):
+        x = rr.uniform(-1, 1, n)
+        for name in ("idct", "idst"):
+            f = getattr(F, name)
+            for t in (1, 2, 3, 4):
+                for norm in NORMS:
+                    yield f"{name} type={t} n={n} {norm}", lambda f=f, x=x, t=t, norm=norm: f(a(x), type=t, norm=norm)
+                for norm, o in (("backward", True), ("ortho", False), ("forward", True)):
+                    yield (
+                        f"{name} type={t} n={n} {norm} orthogonalize={o}",
+                        (lambda f=f, x=x, t=t, norm=norm, o=o: f(a(x), type=t, norm=norm, orthogonalize=o)),
+                    )
+    for name in ("dct", "dst"):
+        f = getattr(F, name)
+        x = rr.uniform(-1, 1, 9)
+        for t in (1, 2, 3, 4):
+            yield f"{name} type={t} orthogonalize=True", lambda f=f, t=t: f(a(x), type=t, orthogonalize=True)
+            for n in (2, 6, 9, 14):
+                yield f"{name} type={t} cut/pad n={n}", lambda f=f, t=t, n=n: f(a(x), type=t, n=n)
+            for e in (8, 7):
+                yield f"{name} type={t} edge n={e}", lambda f=f, t=t, e=e: f(a(redge[:e]), type=t)
+            yield f"{name} type={t} huge", lambda f=f, t=t: f(a(L.rng(2341).uniform(-1, 1, 64) * 2.0**1010), type=t)
+            yield (
+                f"{name} type={t} subnormal",
+                lambda f=f, t=t: f(a(L.rng(2342).uniform(-1, 1, 127) * 2.0**-1060), type=t),
+            )
+            yield f"{name} type={t} complex", lambda f=f, t=t: f(a(_c(L.rng(2343), (3, 10))), type=t, axis=0)
+            yield f"{name} type={t} int64", lambda f=f, t=t: f(a(ints), type=t)
+            yield f"{name} type={t} bool", lambda f=f, t=t: f(a(ints % 3 == 0), type=t, norm="ortho")
+            yield f"{name} type={t} zeros", lambda f=f, t=t: f(a(np.zeros(6)), type=t)
+            yield f"{name} type={t} 3-d F order axis=1", lambda f=f, t=t: f(a(np.asfortranarray(t3r)), type=t, axis=1)
+            yield f"{name} type={t} strided axis=0", lambda f=f, t=t: f(a(t3r[::-1, 1::2, ::3]), type=t, axis=0)
+            yield f"{name} type={t} empty batch", lambda f=f, t=t: f(a(np.zeros((0, 5))), type=t)
+    yield "dst type=1 one point", lambda: F.dst(a(np.array([2.0])), type=1)
+    yield "dct type=2 one point", lambda: F.dct(a(np.array([2.0])), type=2, norm="ortho")
+    yield "dct type=4 one point", lambda: F.dct(a(np.array([-3.0])), type=4)
+    bigr = L.rng(2344).uniform(-1, 1, (300, 256))
+    for t in (1, 2, 3, 4):
+        yield f"dct type={t} batch 300x256 axis=-1", lambda t=t: F.dct(a(bigr), type=t)
+        yield f"idst type={t} batch 300x256 axis=0", lambda t=t: F.idst(a(bigr), type=t, axis=0, norm="ortho")
+        yield f"dst type={t} batch 64x1009", lambda t=t: F.dst(a(L.rng(2345).uniform(-1, 1, (64, 1009))), type=t)
+    yield "dct type=2 long 2^17", lambda: F.dct(a(L.rng(2346).uniform(-1, 1, 1 << 17)))
+    yield "idct type=4 long 65537", lambda: F.idct(a(L.rng(2347).uniform(-1, 1, 65537)), type=4)
+    for s_, ax in ((None, None), ((5, 3), None), ((9, -1), [2, 0]), (None, (-1, -3)), ((8,), (1,)), (7, None),
+                   ((3, 7, 12), (0, 1, 2))):  # fmt: skip
+        tag = f"s={s_} axes={ax}"
+        for t in (1, 2, 3, 4):
+            yield f"dctn type={t} {tag}", lambda s_=s_, ax=ax, t=t: F.dctn(a(t3r), type=t, s=s_, axes=ax)
+            yield (
+                f"idctn type={t} {tag}",
+                lambda s_=s_, ax=ax, t=t: F.idctn(a(t3r), type=t, s=s_, axes=ax, norm="ortho"),
+            )
+            yield (
+                f"dstn type={t} {tag}",
+                lambda s_=s_, ax=ax, t=t: F.dstn(a(t3r), type=t, s=s_, axes=ax, norm="forward"),
+            )
+            yield f"idstn type={t} {tag}", lambda s_=s_, ax=ax, t=t: F.idstn(a(t3r), type=t, s=s_, axes=ax)
+    yield "dctn complex", lambda: F.dctn(a(t3), type=2)
+    yield "idstn complex ortho", lambda: F.idstn(a(t3), type=3, norm="ortho", axes=(0, 2))
+    yield "dctn int64", lambda: F.dctn(a(ints), type=1)
+    yield "dstn bool", lambda: F.dstn(a(ints % 2 == 0), type=4)
+    yield "dctn orthogonalize=True", lambda: F.dctn(a(t3r), type=3, orthogonalize=True)
+    yield "dctn 48x64x40", lambda: F.dctn(a(big3.real), type=2)
+    yield "idstn 48x64x40 axes=(0, 2)", lambda: F.idstn(a(big3.imag), type=4, axes=(0, 2), norm="ortho")
+    yield "dctn empty batch", lambda: F.dctn(a(np.zeros((0, 4, 6))), axes=(1, 2))
+    xr4 = a(np.arange(4.0))
+    yield "dct type=1 one point", lambda: F.dct(a(np.array([2.0])), type=1)
+    yield "idct type=1 n=1", lambda: F.idct(xr4, type=1, n=1)
+    yield "dctn type=1 axis of one", lambda: F.dctn(a(np.ones((3, 1))), type=1)
+    yield "dct type=5", lambda: F.dct(xr4, type=5)
+    yield "dst type=0", lambda: F.dst(xr4, type=0)
+    yield "dct type=2.0", lambda: F.dct(xr4, type=2.0)
+    yield "dct type=True", lambda: F.dct(xr4, type=True)
+    yield "dct type huge", lambda: F.dct(xr4, type=2**70)
+    yield "dst orthogonalize=1", lambda: F.dst(xr4, orthogonalize=1)
+    yield "idct n=0", lambda: F.idct(xr4, n=0)
+    yield "idst norm=None", lambda: F.idst(xr4, norm=None)
+    yield "dct length 0", lambda: F.dct(a(np.zeros(0)))
+    yield "dct positional type", lambda: F.dct(xr4, 2)
+    yield "dct list", lambda: F.dct([1.0, 2.0])
+    yield "dct workers", lambda: F.dct(xr4, workers=2)
+    yield "dctn repeated axes", lambda: F.dctn(t2r, axes=(0, 0))
+    yield "dstn axes=()", lambda: F.dstn(t2r, axes=())
+    yield "idctn s too long", lambda: F.idctn(t2r, s=(2, 2, 2))
+
+
+def _fftlog_cases(L, F, a):
+    """FFTLog (milestone FT5)."""
+    rr = L.rng(2350)
+    params = (("unbiased", 0.01, 0.5, 0.0, 0.0), ("logspace", None, 0.3, -6 * math.log(10), 0.0),
+              ("reflection", 0.1, -0.7, 1.0, 0.4), ("negative-dln", -0.3, 1.5, 0.2, -0.6),
+              ("poles-both", 0.05, -4.0, 0.0, 1.0), ("pole-plus", 0.05, -3.5, 0.0, 0.5),
+              ("pole-minus", 0.05, -2.5, 0.0, 0.5), ("large-mu", 0.02, 50.5, 0.0, 0.0),
+              ("small-dln", 1e-4, 0.0, 0.0, 0.0))  # fmt: skip
+    for n in (1, 2, 3, 16, 63, 64, 127, 1000, 1009, 2018, 4096):
+        x = rr.standard_normal(n)
+        for name, dln, mu, offset, bias in params:
+            if dln is None:
+                if n < 2:
+                    continue
+                dln = math.log(1e8) / (n - 1)
+            if abs(bias * dln) * n / 2 > 300:
+                continue
+            for fname in ("fht", "ifht"):
+                f = getattr(F, fname)
+                yield f"{fname} {name} n={n}", lambda f=f, x=x, d=dln, m=mu, o=offset, q=bias: f(
+                    a(x), d, m, offset=o, bias=q)  # fmt: skip
+    edge = np.array([1.0, NAN, INF, -0.0, 1e300, 5e-324, -INF, 3.0])
+    yield "fht edge", lambda: F.fht(a(edge), 0.1, 0.5)
+    yield "ifht edge biased", lambda: F.ifht(a(edge), 0.1, 0.5, bias=0.3)
+    yield "fht zeros", lambda: F.fht(a(np.zeros(12)), 0.1, 0.5, bias=0.2)
+    yield "fht subnormal", lambda: F.fht(a(rr.standard_normal(64) * 2.0**-1060), 0.05, 1.0)
+    yield "fht int64", lambda: F.fht(a(np.arange(-5, 11)), 0.2, 0.0)
+    yield "ifht bool", lambda: F.ifht(a(np.arange(15) % 3 == 0), 0.2, 2.0, offset=0.5)
+    big = rr.standard_normal((300, 256))
+    yield "fht batch 300x256", lambda: F.fht(a(big), 0.02, 0.5, offset=0.1)
+    yield "ifht batch 300x256 biased", lambda: F.ifht(a(big), 0.02, 0.5, offset=0.1, bias=-0.3)
+    yield "fht batch F order", lambda: F.fht(a(np.asfortranarray(big[:40, :63])), 0.05, 1.5, bias=0.2)
+    yield "fht batch strided", lambda: F.fht(a(big[::3, ::2]), 0.05, 1.5)
+    t3 = rr.standard_normal((4, 5, 1009))
+    yield "fht 3-d 4x5x1009", lambda: F.fht(a(t3), 0.01, -0.5, offset=0.7, bias=0.1)
+    yield "fht empty batch", lambda: F.fht(a(np.zeros((0, 8))), 0.1, 0.5)
+    yield "fht long 2^16", lambda: F.fht(a(L.rng(2351).standard_normal(1 << 16)), 1e-3, 0.5, offset=0.25)
+    for dln, mu, initial, bias in ((0.1, 2.0, 0.5, 0.0), (0.01, 0.0, -6 * math.log(10), 0.0), (-0.3, 1.5, 0.2, -0.6),
+                                   (1e-4, 0.5, 3.0, 0.8), (2.5, -3.5, 0.0, 0.5), (0.05, 50.5, -1.0, 0.0)):  # fmt: skip
+        name = f"fhtoffset dln={dln} mu={mu} initial={initial:.3g} bias={bias}"
+        yield name, lambda d=dln, m=mu, i=initial, q=bias: F.fhtoffset(d, m, initial=i, bias=q)
+    x8 = a(np.arange(8.0))
+    yield "fht list", lambda: F.fht([1.0, 2.0], 0.1, 0.5)
+    yield "fht complex", lambda: F.fht(a(np.ones(4) + 1j), 0.1, 0.5)
+    yield "fht dln=0", lambda: F.fht(x8, 0.0, 0.5)
+    yield "fht mu=nan", lambda: F.fht(x8, 0.1, NAN)
+    yield "ifht bias=True", lambda: F.ifht(x8, 0.1, 0.5, bias=True)
+    yield "fht length 0", lambda: F.fht(a(np.zeros((3, 0))), 0.1, 0.5)
+    yield "fht positional offset", lambda: F.fht(x8, 0.1, 0.5, 0.0)
+    yield "fht workers", lambda: F.fht(x8, 0.1, 0.5, workers=2)
+    yield "fhtoffset dln=inf", lambda: F.fhtoffset(INF, 0.5)
 
 
 def cases(L):
@@ -250,6 +411,12 @@ def cases(L):
     yield "hfft2 norm=None", lambda: F.hfft2(t2, norm=None)
     yield "ifft2 positional s", lambda: F.ifft2(t2, (4, 4))
     yield "irfft2 workers", lambda: F.irfft2(t2, workers=2)
+
+    # ---- the discrete cosine and sine transforms (FT4): their own scope, so no name above is rebound
+    yield from _r2r_cases(L, F, a, r, redge, ints, t3, t3r, big3, t2r)
+
+    # ---- FFTLog (FT5)
+    yield from _fftlog_cases(L, F, a)
 
     # ---- helpers
     for n in (1, 2, 5, 8, 1001):

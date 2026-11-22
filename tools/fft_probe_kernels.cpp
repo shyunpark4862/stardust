@@ -41,6 +41,11 @@
 
 using namespace sd::fft;
 
+// The library runs a four-step's tasks on its pool (fft/plan.cpp); the probe runs them in order.
+void sd::fft::run_tasks(int64_t ntasks, const std::function<void(int64_t)>& fn, int64_t) {
+    for (int64_t t = 0; t < ntasks; ++t) fn(t);
+}
+
 namespace {
 
 constexpr int64_t kMaxSetupBytes = int64_t{512} << 20;

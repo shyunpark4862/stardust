@@ -84,7 +84,7 @@ def _paths(name, n, indptr, indices, data, src, flat, code, directed, unweighted
 def _floyd_warshall(name, n, indptr, indices, data, directed, preds):
     padded = -(-n // _BLOCK) * _BLOCK
     per = 2 if preds else 1
-    C.room(name, 8 * per * (n * n + (padded * padded if padded != n else 0)))
+    C.room(name, 8 * per * (n * n + padded * padded))  # the result and the blocked work copy (csrc/graph/paths.cpp)
     dist, pred, cycle = _core._floyd_warshall(indptr, indices, data, n, directed, preds)
     if cycle >= 0:
         raise NegativeCycleError(f"{name}(): negative cycle through node {cycle}")

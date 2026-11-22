@@ -4,8 +4,9 @@
 - fftfreq and rfftfreq (FT26) are numpy's formula, k * (1 / (n d)) with numpy's k, computed natively:
   numpy's bits.
 - fftshift and ifftshift are sd.roll by n // 2 (and -(n // 2)) along each axis: the same bits.
-- next_fast_len and prev_fast_len (FT18) are scipy's values: 11-smooth lengths (real=True: 5-smooth),
-  the lengths the library transforms by its mixed radix without Bluestein.
+- next_fast_len and prev_fast_len (FT18) are scipy's values: 11-smooth lengths (real=True: 5-smooth), the
+  lengths the library transforms by its cheapest radices (the mixed radix also takes 13 to 31 since milestone
+  FT6, decision FT64; a larger prime factor goes through Bluestein).
 """
 
 from .. import _core as _sd

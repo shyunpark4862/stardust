@@ -27,6 +27,7 @@
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "interpolate/banded.hpp"
+#include "interpolate/pchip.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -110,6 +111,76 @@ void divided(const Values& V, const double* h, double* D, std::int64_t c0, std::
 // the Schur complement).
 std::int64_t periodic_slopes(const Values& V, const double* h, double* S) {
     const std::int64_t n = V.n, K = V.K, M = n - 2;
+    if (K <= 8) {
+        // Few columns: the factorization, the forward eliminations of the coupling column s2 and of the data, then
+        // one backward pass for both, as spline()'s few-column path: the operations of the batched path below in
+        // the same order for every column, without the matrix, the divided differences or a pass per solve.
+        std::vector<double> w(M), s2(M);
+        double dprev[8], dcur[8];
+        const double am10 = h[n - 3], am1m2 = h[n - 2], am1m1 = 2.0 * (h[n - 2] + h[n - 3]);
+        auto delta = [&](std::int64_t i, std::int64_t j) { return (V.y[(i + 1) * K + j] - V.y[i * K + j]) / h[i]; };
+        double bprev = 0.0, cprev = 0.0, sprev = 0.0;
+        for (std::int64_t j = 0; j < K; ++j) dprev[j] = delta(n - 2, j);
+        for (std::int64_t i = 0; i < M; ++i) {
+            const double hl = i == 0 ? h[n - 2] : h[i - 1];
+            const double s2i = i == 0 ? -h[0] : (i == M - 1 ? -h[n - 4] : 0.0);
+            double* r = S + i * K;
+            const double* p = r - K;
+            if (i == 0) {
+                const double b0 = 2.0 * (hl + h[0]);
+                if (!(b0 > 0.0 && std::isfinite(b0))) return 0;
+                w[0] = 1.0 / b0;
+                bprev = b0;
+                s2[0] = s2i;
+                for (std::int64_t j = 0; j < K; ++j) {
+                    dcur[j] = delta(0, j);
+                    r[j] = 3.0 * (h[0] * dprev[j] + hl * dcur[j]);
+                    dprev[j] = dcur[j];
+                }
+            } else {
+                const double l = h[i] / bprev;
+                const double bi = 2.0 * (hl + h[i]) - l * cprev;
+                if (!(bi > 0.0 && std::isfinite(bi))) return i;
+                w[i] = 1.0 / bi;
+                bprev = bi;
+                s2[i] = s2i - l * sprev;
+                for (std::int64_t j = 0; j < K; ++j) {
+                    dcur[j] = delta(i, j);
+                    r[j] = 3.0 * (h[i] * dprev[j] + hl * dcur[j]);
+                    r[j] = r[j] - l * p[j];
+                    dprev[j] = dcur[j];
+                }
+            }
+            cprev = hl;
+            sprev = s2[i];
+        }
+        s2[M - 1] = s2[M - 1] * w[M - 1];
+        {
+            double* r = S + (M - 1) * K;
+            for (std::int64_t j = 0; j < K; ++j) r[j] = r[j] * w[M - 1];
+        }
+        for (std::int64_t i = M - 2; i >= 0; --i) {
+            const double ci = i == 0 ? h[n - 2] : h[i - 1], wi = w[i];
+            s2[i] = (s2[i] - ci * s2[i + 1]) * wi;
+            double* r = S + i * K;
+            const double* q = r + K;
+            for (std::int64_t j = 0; j < K; ++j) r[j] = (r[j] - ci * q[j]) * wi;
+        }
+        const double den = (am1m1 + am10 * s2[0]) + am1m2 * s2[M - 1];
+        if (!(den > 0.0 && std::isfinite(den))) return n - 2;
+        double* last = S + (n - 2) * K;
+        double* wrap = S + (n - 1) * K;
+        for (std::int64_t j = 0; j < K; ++j) {
+            const double blast = 3.0 * (h[n - 2] * delta(n - 3, j) + h[n - 3] * delta(n - 2, j));
+            last[j] = ((blast - am10 * S[j]) - am1m2 * S[(M - 1) * K + j]) / den;
+        }
+        for (std::int64_t i = 0; i < M; ++i) {
+            double* r = S + i * K;
+            for (std::int64_t j = 0; j < K; ++j) r[j] = r[j] + last[j] * s2[i];
+        }
+        for (std::int64_t j = 0; j < K; ++j) wrap[j] = S[j];
+        return -1;
+    }
     std::vector<double> a(M), b(M), c(M), w(M), s2(M, 0.0), D((n - 1) * K);
     for (std::int64_t i = 0; i < M; ++i) {
         const double hl = i == 0 ? h[n - 2] : h[i - 1];
@@ -156,86 +227,96 @@ std::int64_t periodic_slopes(const Values& V, const double* h, double* S) {
 std::int64_t spline(const Values& V, Bc b0, Bc b1, double* S) {
     const std::int64_t n = V.n, K = V.K;
     const double* x = V.x;
-    std::vector<double> h(n - 1);
-    for (std::int64_t i = 0; i + 1 < n; ++i) h[i] = x[i + 1] - x[i];
+    auto H = [x](std::int64_t i) { return x[i + 1] - x[i]; };  // the spacings, recomputed where they are used
     if (n == 2) {  // scipy: not-a-knot and periodic become the first derivative equal to the slope
         for (Bc* bc : {&b0, &b1}) {
             if (bc->kind == NotAKnot || bc->kind == Periodic) {
                 bc->kind = First;
                 bc->v.resize(K);
-                for (std::int64_t j = 0; j < K; ++j) bc->v[j] = (V.y[K + j] - V.y[j]) / h[0];
+                for (std::int64_t j = 0; j < K; ++j) bc->v[j] = (V.y[K + j] - V.y[j]) / H(0);
             }
         }
     }
     if (n == 3 && b0.kind == Periodic) {  // scipy's closed form: one slope for the three nodes
-        const double w = 1.0 / h[0] + 1.0 / h[1];
+        const double h0 = H(0), h1 = H(1);
+        const double w = 1.0 / h0 + 1.0 / h1;
         for (std::int64_t j = 0; j < K; ++j) {
-            const double d0 = (V.y[K + j] - V.y[j]) / h[0], d1 = (V.y[2 * K + j] - V.y[K + j]) / h[1];
-            S[j] = S[K + j] = S[2 * K + j] = (d0 / h[0] + d1 / h[1]) / w;
+            const double d0 = (V.y[K + j] - V.y[j]) / h0, d1 = (V.y[2 * K + j] - V.y[K + j]) / h1;
+            S[j] = S[K + j] = S[2 * K + j] = (d0 / h0 + d1 / h1) / w;
         }
         return -1;
     }
-    if (b0.kind == Periodic) return periodic_slopes(V, h.data(), S);
-    // the tridiagonal matrix (a: sub, b: diagonal, c: super)
-    std::vector<double> a(n, 0.0), b(n, 0.0), c(n, 0.0), w(n, 0.0);
-    for (std::int64_t i = 1; i + 1 < n; ++i) {
-        a[i] = h[i];
-        b[i] = 2.0 * (h[i - 1] + h[i]);
-        c[i] = h[i - 1];
+    if (b0.kind == Periodic) {
+        std::vector<double> h(n - 1);
+        for (std::int64_t i = 0; i + 1 < n; ++i) h[i] = H(i);
+        return periodic_slopes(V, h.data(), S);
     }
+    // The tridiagonal matrix: row i of the interior is (a, b, c) = (h[i], 2 (h[i - 1] + h[i]), h[i - 1]); the end
+    // rows are row 0's diagonal and superdiagonal (b0d, c0d) and row n - 1's subdiagonal and diagonal (anl, bnl).
     const bool parabola = n == 3 && b0.kind == NotAKnot && b1.kind == NotAKnot;
+    double b0d, c0d, anl, bnl;
     if (parabola) {  // scipy's 3 x 3 system of the parabola through the three points
-        b[0] = 1.0, c[0] = 1.0;
-        a[2] = 1.0, b[2] = 1.0;
+        b0d = 1.0, c0d = 1.0;
+        anl = 1.0, bnl = 1.0;
     } else {
-        if (b0.kind == NotAKnot) b[0] = h[1], c[0] = x[2] - x[0];
-        else if (b0.kind == First) b[0] = 1.0, c[0] = 0.0;
-        else b[0] = 2.0 * h[0], c[0] = h[0];
-        if (b1.kind == NotAKnot) b[n - 1] = h[n - 3], a[n - 1] = x[n - 1] - x[n - 3];
-        else if (b1.kind == First) b[n - 1] = 1.0, a[n - 1] = 0.0;
-        else b[n - 1] = 2.0 * h[n - 2], a[n - 1] = h[n - 2];
+        if (b0.kind == NotAKnot) b0d = H(1), c0d = x[2] - x[0];
+        else if (b0.kind == First) b0d = 1.0, c0d = 0.0;
+        else b0d = 2.0 * H(0), c0d = H(0);
+        if (b1.kind == NotAKnot) bnl = H(n - 3), anl = x[n - 1] - x[n - 3];
+        else if (b1.kind == First) bnl = 1.0, anl = 0.0;
+        else bnl = 2.0 * H(n - 2), anl = H(n - 2);
     }
     // the end rows' right sides for column j (d0, d1: the first two divided differences; dm, dl: the last two)
     const double d0x = n >= 3 ? x[2] - x[0] : 0.0, dnx = n >= 3 ? x[n - 1] - x[n - 3] : 0.0;
     auto start_rhs = [&](std::int64_t j, double d0, double d1) {
         if (parabola) return 2.0 * d0;
-        if (b0.kind == NotAKnot) return (((h[0] + 2.0 * d0x) * h[1]) * d0 + (h[0] * h[0]) * d1) / d0x;
+        const double h0 = H(0);
+        if (b0.kind == NotAKnot) return (((h0 + 2.0 * d0x) * H(1)) * d0 + (h0 * h0) * d1) / d0x;
         if (b0.kind == First) return b0.v[j];
-        return (-0.5 * b0.v[j]) * (h[0] * h[0]) + 3.0 * (V.y[K + j] - V.y[j]);
+        return (-0.5 * b0.v[j]) * (h0 * h0) + 3.0 * (V.y[K + j] - V.y[j]);
     };
     auto end_rhs = [&](std::int64_t j, double dm, double dl) {
         if (parabola) return 2.0 * dl;
+        const double hl = H(n - 2);
         if (b1.kind == NotAKnot) {
-            const double hl = h[n - 2], hm = h[n - 3];
+            const double hm = H(n - 3);
             return ((hl * hl) * dm + ((2.0 * dnx + hl) * hm) * dl) / dnx;
         }
         if (b1.kind == First) return b1.v[j];
-        return (0.5 * b1.v[j]) * (h[n - 2] * h[n - 2]) + 3.0 * (V.y[(n - 1) * K + j] - V.y[(n - 2) * K + j]);
+        return (0.5 * b1.v[j]) * (hl * hl) + 3.0 * (V.y[(n - 1) * K + j] - V.y[(n - 2) * K + j]);
     };
-    auto delta = [&](std::int64_t i, std::int64_t j) { return (V.y[(i + 1) * K + j] - V.y[i * K + j]) / h[i]; };
+    auto delta = [&](std::int64_t i, std::int64_t j) { return (V.y[(i + 1) * K + j] - V.y[i * K + j]) / H(i); };
     if (K <= 8) {
         // Few columns: one forward pass makes the factorization, the right side (the divided differences on the
         // fly) and the forward elimination, then the back substitution: the operations of the batched path below,
-        // in the same order for every column, without its passes over memory.
+        // in the same order for every column, without its passes over memory. The matrix is never stored: the
+        // chain's pivot and superdiagonal stay in registers and only the pivots' reciprocals w are kept for the
+        // back substitution (one array instead of five: a long column was bound by first touching them).
+        std::vector<double> w(n);
         double dprev[8], dcur[8];
-        if (!(b[0] > 0.0 && std::isfinite(b[0]))) return 0;
-        w[0] = 1.0 / b[0];
+        if (!(b0d > 0.0 && std::isfinite(b0d))) return 0;
+        w[0] = 1.0 / b0d;
         for (std::int64_t j = 0; j < K; ++j) {
             dprev[j] = delta(0, j);
             S[j] = start_rhs(j, dprev[j], n >= 3 ? delta(1, j) : 0.0);
         }
+        double bprev = b0d, cprev = c0d;
         for (std::int64_t i = 1; i < n; ++i) {
-            const double l = a[i] / b[i - 1];
-            b[i] = b[i] - l * c[i - 1];
-            if (!(b[i] > 0.0 && std::isfinite(b[i]))) return i;
-            w[i] = 1.0 / b[i];
-            a[i] = l;
+            const bool interior = i + 1 < n;
+            const double hl = H(i - 1), hr = interior ? H(i) : 0.0;
+            const double ai = interior ? hr : anl;
+            const double l = ai / bprev;
+            const double bi = (interior ? 2.0 * (hl + hr) : bnl) - l * cprev;
+            if (!(bi > 0.0 && std::isfinite(bi))) return i;
+            w[i] = 1.0 / bi;
+            bprev = bi;
+            cprev = hl;
             double* r = S + i * K;
             const double* p = r - K;
-            if (i + 1 < n) {
+            if (interior) {
                 for (std::int64_t j = 0; j < K; ++j) {
-                    dcur[j] = delta(i, j);
-                    r[j] = 3.0 * (h[i] * dprev[j] + h[i - 1] * dcur[j]);
+                    dcur[j] = (V.y[(i + 1) * K + j] - V.y[i * K + j]) / hr;
+                    r[j] = 3.0 * (hr * dprev[j] + hl * dcur[j]);
                     r[j] = r[j] - l * p[j];
                     dprev[j] = dcur[j];
                 }
@@ -251,10 +332,20 @@ std::int64_t spline(const Values& V, Bc b0, Bc b1, double* S) {
         for (std::int64_t i = n - 2; i >= 0; --i) {
             double* r = S + i * K;
             const double* q = r + K;
-            for (std::int64_t j = 0; j < K; ++j) r[j] = (r[j] - c[i] * q[j]) * w[i];
+            const double ci = i == 0 ? c0d : H(i - 1), wi = w[i];
+            for (std::int64_t j = 0; j < K; ++j) r[j] = (r[j] - ci * q[j]) * wi;
         }
         return -1;
     }
+    std::vector<double> h(n - 1), a(n, 0.0), b(n, 0.0), c(n, 0.0), w(n, 0.0);
+    for (std::int64_t i = 0; i + 1 < n; ++i) h[i] = H(i);
+    for (std::int64_t i = 1; i + 1 < n; ++i) {
+        a[i] = h[i];
+        b[i] = 2.0 * (h[i - 1] + h[i]);
+        c[i] = h[i - 1];
+    }
+    b[0] = b0d, c[0] = c0d;
+    a[n - 1] = anl, b[n - 1] = bnl;
     const std::int64_t bad = tridiagonal_factor(a.data(), b.data(), c.data(), w.data(), n);
     if (bad >= 0) return bad;
     std::vector<double> D((n - 1) * K);
@@ -302,22 +393,13 @@ nb::object spline_slopes(nb::handle xo, nb::handle yo, int k0, nb::handle v0, in
     std::int64_t bad = -1;
     if (K > 0) {
         const Values V{reinterpret_cast<const double*>(x.data), reinterpret_cast<const double*>(y.data), n, K};
+        const parallel::Unlocked unlocked(n * K >= kParallelThreshold);  // no Python object inside
         bad = spline(V, std::move(b0), std::move(b1), reinterpret_cast<double*>(s.data));
     }
     return nb::make_tuple(wrap(std::move(s)), bad);
 }
 
 // ---------------------------------------------------------------- PCHIP
-
-inline int sgn(double v) { return (v > 0.0) - (v < 0.0); }
-
-// scipy's PchipInterpolator._edge_case: the one-sided three-point estimate, kept monotone
-inline double pchip_edge(double h0, double h1, double m0, double m1) {
-    const double d = ((2.0 * h0 + h1) * m0 - h0 * m1) / (h0 + h1);
-    if (sgn(d) != sgn(m0)) return 0.0;
-    if (sgn(m0) != sgn(m1) && std::fabs(d) > 3.0 * std::fabs(m0)) return 3.0 * m0;
-    return d;
-}
 
 nb::object pchip_slopes(nb::handle xo, nb::handle yo) {
     const NDArray& x = nodes_arg(xo);
@@ -343,13 +425,7 @@ nb::object pchip_slopes(nb::handle xo, nb::handle yo) {
             const double hl = X[i] - X[i - 1], hr = X[i + 1] - X[i];
             const double w1 = 2.0 * hr + hl, w2 = hr + 2.0 * hl;
             for (std::int64_t j = 0; j < K; ++j) {
-                const double ml = slope(i - 1, j), mr = slope(i, j);
-                if (sgn(mr) != sgn(ml) || mr == 0.0 || ml == 0.0) {
-                    S[i * K + j] = 0.0;
-                    continue;
-                }
-                const double whmean = (w1 / ml + w2 / mr) / (w1 + w2);
-                S[i * K + j] = 1.0 / whmean;
+                S[i * K + j] = pchip_interior(w1, w2, slope(i - 1, j), slope(i, j));
             }
         }
     });

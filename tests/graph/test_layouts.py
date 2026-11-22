@@ -1,6 +1,6 @@
 """A dense input of any memory layout reads as the same graph (docs/api/graph.md §1.2): a column slice, an
 F-ordered array, reversed strides and a transposed view give the bytes of their C-ordered copy for every
-function that takes a dense matrix (GR1, GR2, GR3), sd arrays and numpy arrays alike. A strided view once
+function that takes a dense matrix (GR1-GR5), sd arrays and numpy arrays alike. A strided view once
 reached the native conversion as it was (a reshape that returned a view instead of a copy): an internal
 TypeError."""
 
@@ -72,6 +72,22 @@ CALLS = {
     "maximum_bipartite_matching": lambda A: GR.maximum_bipartite_matching(A),
     "min_weight_full_bipartite_matching": lambda A: GR.min_weight_full_bipartite_matching(A),
     "linear_sum_assignment": lambda A: GR.linear_sum_assignment(A),
+    "reverse_cuthill_mckee": lambda A: GR.reverse_cuthill_mckee(A),
+    "reverse_cuthill_mckee symmetric_mode": lambda A: GR.reverse_cuthill_mckee(A, symmetric_mode=True),
+    "structural_rank": lambda A: GR.structural_rank(A),
+    "laplacian": lambda A: GR.laplacian(A, return_diag=True),
+    "laplacian normed symmetrized": lambda A: GR.laplacian(A, normed=True, symmetrized=True),
+    "laplacian out lo": lambda A: GR.laplacian(A, use_out_degree=True, form="lo") @ sd.arange(12.0),
+    "articulation_points": lambda A: GR.articulation_points(A),
+    "bridges": lambda A: GR.bridges(A),
+    "biconnected_components": lambda A: GR.biconnected_components(A),
+    "core_number": lambda A: GR.core_number(A),
+    "pagerank": lambda A: GR.pagerank(A),
+    "pagerank undirected unweighted": lambda A: GR.pagerank(A, directed=False, unweighted=True),
+    "betweenness_centrality": lambda A: GR.betweenness_centrality(A),
+    "betweenness_centrality undirected unweighted": lambda A: GR.betweenness_centrality(
+        A, directed=False, unweighted=True, endpoints=True
+    ),
 }
 FLOW = {"maximum_flow": lambda A: GR.maximum_flow(A, 0, 11)}
 

@@ -13,6 +13,19 @@ Milestone IP3 brought the B-splines: make_interp_spline (k = 0 .. 5, every bc_ty
 n > k, knots given, the orders that pivot, batches, axes, complex values), BSpline (evaluation with derivatives
 and the three outside rules, derivative, antiderivative, integrate, insert_knot, basis_element, design_matrix,
 from_power_basis, k = 1 through the linear path) and PPoly.from_spline, with large cases for the parallel paths.
+Milestone IP4 brought the polynomial and rational interpolants: BarycentricInterpolator (values, derivatives, the
+weights, wi given, add_xi, set_yi, complex values, batches and axes), KroghInterpolator (Hermite data, derivatives),
+barycentric_interpolate, krogh_interpolate, FloaterHormannInterpolator (d = 0 .. 3, complex points, poles, zeros,
+residues, samples dropped) and AAA (the sample sets of tests/interpolate/samples.py, with and without clean_up, a run
+that does not converge, the Froissart doublets of scipy's example), with large cases for the parallel paths. A case
+returns arrays and attributes, not the objects (the encoder would call clean_up()).
+Milestone IP5 brought the regular grids: RegularGridInterpolator (the six methods on 1-, 2- and 3-D grids with
+random spacing, a decreasing axis, an axis of one node, a batch, complex values; the outside rules, NaN points, nu,
+a method other than the object's, the shapes of xi) and interpn, with large cases for the parallel paths (evaluation,
+the coefficients' solves).
+Milestone IP6 brought the scattered-data interpolants: RBFInterpolator (every kernel on uniform, clustered and lattice
+points, smoothing, neighbors with ties, degree -1 and above the minimum, complex values with a batch, one point, a NaN
+point) and NearestNDInterpolator (rescale, ties, a tuple of coordinates), with large cases for the parallel paths.
 """
 
 import math
@@ -172,6 +185,268 @@ def _bspline_cases(L, curves, q):
     )
 
 
+def _rparts(r):
+    return (r.support_points, r.support_values, r.weights, r.errors, r.converged)
+
+
+def _polyint_cases(L, curves, q):
+    np = L.np
+    IP = L.sd.interpolate
+    for name in ("random", "uniform", "spacing", "large", "tiny", "cancel", "two", "three"):
+        x, y = curves[name]
+        qq = x[0] + (x[-1] - x[0]) * q
+        yield (
+            f"BarycentricInterpolator {name}",
+            lambda x=x, y=y, qq=qq: (lambda b: (b.wi, b(qq), b.derivative(qq), b.derivative(qq, der=2),
+                                                b.derivatives(qq[:7], der=4)))(IP.BarycentricInterpolator(x, y)),
+        )  # fmt: skip
+        yield (
+            f"KroghInterpolator {name}",
+            lambda x=x, y=y, qq=qq: (lambda k: (k(qq), k.derivative(qq, der=2), k.derivatives(qq[:7])))(
+                IP.KroghInterpolator(x, y)),
+        )  # fmt: skip
+        for d in (0, 1, 3):
+            if d < x.size:
+                yield (
+                    f"FloaterHormannInterpolator {name} d={d}",
+                    lambda x=x, y=y, qq=qq, d=d: (lambda f: (f.weights, f(qq), f(qq[:9] + 0.25j)))(
+                        IP.FloaterHormannInterpolator(x, y, d=d)),
+                )  # fmt: skip
+    x, y = curves["random"]
+    yb = L.rng(3110).standard_normal((2, 12, 3))
+    yield "BarycentricInterpolator complex", lambda: IP.BarycentricInterpolator(x, y + 1j * y[::-1])(q)
+    yield (
+        "BarycentricInterpolator batch axis",
+        lambda: (lambda b: (b(q.reshape(-1, 1)[:6]), b.derivatives(0.4, der=3), b.yi))(
+            IP.BarycentricInterpolator(x, yb, axis=1)),
+    )  # fmt: skip
+    yield "BarycentricInterpolator wi", lambda: IP.BarycentricInterpolator(x, y, wi=np.ones(12))(q)
+    yield "BarycentricInterpolator one node", lambda: (lambda b: (b.wi, b(q), b.derivative(q)))(
+        IP.BarycentricInterpolator([2.0], [5.0]))  # fmt: skip
+
+    def changed():
+        b = IP.BarycentricInterpolator(x[:6], y[:6])
+        b.add_xi(x[6:], y[6:])
+        first = (b.xi, b.wi, b(q))
+        b.set_yi(2 * y)
+        e = IP.BarycentricInterpolator(x)
+        e.add_xi([7.5])
+        return first + (b(q), b.derivative(q), e.xi, e.wi, e.yi)
+
+    yield "BarycentricInterpolator add_xi set_yi", changed
+    xh = np.array([0.0, 0.0, 1.0, 1.0, 1.0, 2.0])
+    yh = np.array([1.0, 2.0, 0.0, -1.0, 3.0, 1.0])
+    yield "KroghInterpolator hermite", lambda: (lambda k: (k(q * 3 - 0.5), k.derivatives(q[:5] * 2, der=8)))(
+        IP.KroghInterpolator(xh, yh))  # fmt: skip
+    yield "KroghInterpolator complex batch", lambda: IP.KroghInterpolator(xh, np.stack([yh, 1j * yh], axis=1),
+                                                                          axis=0)(q)  # fmt: skip
+    yield "KroghInterpolator axis", lambda: IP.KroghInterpolator(x, yb, axis=1).derivative(q[:4], der=1)
+    yield "barycentric_interpolate", lambda: (IP.barycentric_interpolate(x, y, q),
+                                              IP.barycentric_interpolate(x, y, 0.5, der=[0, 1, 2]))  # fmt: skip
+    yield "krogh_interpolate", lambda: (IP.krogh_interpolate(xh, yh, q), IP.krogh_interpolate(xh, yh, 0.5, der=3))
+    yield "FloaterHormannInterpolator rational parts", lambda: (lambda f: (f.poles(), f.roots(), f.residues()))(
+        IP.FloaterHormannInterpolator(np.linspace(-5, 5, 15), 1 / (1 + np.linspace(-5, 5, 15) ** 2)))  # fmt: skip
+    yield "FloaterHormannInterpolator batch", lambda: IP.FloaterHormannInterpolator(x, yb, axis=1, d=2)(q[:5])
+    yield "FloaterHormannInterpolator dropped", lambda: IP.FloaterHormannInterpolator(
+        x, np.where(np.arange(12) == 4, NAN, y))(q)  # fmt: skip
+    # AAA on samples rebuilt from samples.py's formulas
+    zl = np.linspace(-1, 1, 1000)
+    zc = np.exp(2j * np.pi * np.arange(256) / 256)
+    zn = np.linspace(0, 1, 200)
+    fn = 1 / (zn - 0.5 + 1e-3)
+    fn[[10, 50]] = [NAN, INF]
+    sets = {"tan": (zl, np.tan(np.pi * zl / 2)), "abs": (zl, np.abs(zl)), "circle": (zc, np.exp(zc) / (zc - 1.5)),
+            "nonfinite": (zn, fn)}  # fmt: skip
+    for name, (z, f) in sets.items():
+        for clean in (True, False):
+            yield (
+                f"AAA {name} clean_up={clean}",
+                lambda z=z, f=f, clean=clean: (lambda r: _rparts(r) + (r(q * 2 - 1), r(q[:9] + 0.5j), r.poles(),
+                                                                       r.roots()))(IP.AAA(z, f, clean_up=clean)),
+            )  # fmt: skip
+    yield "AAA residues", lambda: IP.AAA(zc, np.exp(zc) / (zc - 1.5)).residues()
+    yield "AAA max_terms", lambda: _rparts(IP.AAA(zl, np.abs(zl), max_terms=6))
+    yield "AAA rtol", lambda: _rparts(IP.AAA(zl, np.abs(zl), rtol=1e-6))
+
+    def froissart():
+        z = np.exp(1j * 2 * np.pi * np.linspace(0, 1, num=1000))
+        r = IP.AAA(z, np.log(2 + z**4) / (1 - 16 * z**4), rtol=0, max_terms=30, clean_up=False)
+        return (r.clean_up(), r.clean_up(clean_up_tol=1e-8)) + _rparts(r)
+
+    yield "AAA clean_up", froissart
+    yield "AAA tiny", lambda: _rparts(IP.AAA([0.5], [2.0])) + (IP.AAA([0.5], [2.0])(3.0),)
+    # large: the parallel paths
+    xl = np.cos(np.pi * np.arange(3001) / 3000)
+    ql = L.rng(3111).uniform(-1.1, 1.1, 150000)
+    yield "large BarycentricInterpolator", lambda: (lambda b: (b.wi, b(ql), b.derivative(ql[:5000])))(
+        IP.BarycentricInterpolator(xl, np.exp(xl)))  # fmt: skip
+    yield "large KroghInterpolator", lambda: IP.KroghInterpolator(xl[::150], np.exp(xl[::150])).derivatives(ql, der=3)
+    yield "large FloaterHormannInterpolator", lambda: (lambda f: (f.weights, f(ql)))(
+        IP.FloaterHormannInterpolator(xl, np.sin(5 * xl)))  # fmt: skip
+    zz = np.exp(2j * np.pi * np.arange(2000) / 2000)
+    yield "large AAA", lambda: (lambda r: _rparts(r) + (r(ql * (0.5 + 0.3j)),))(IP.AAA(zz, np.exp(zz) / (zz - 1.2)))
+    # wrong calls
+    yield "error barycentric repeated", lambda: IP.BarycentricInterpolator([0.0, 1.0, 0.0], [1.0, 2.0, 3.0])
+    yield "error krogh repeated", lambda: IP.KroghInterpolator([0.0, 1.0, 0.0], [1.0, 2.0, 3.0])
+    yield "error krogh complex x", lambda: IP.KroghInterpolator([0.0, 1.0], [1.0, 2.0])(0.5j)
+    yield "error aaa no finite", lambda: IP.AAA([0.0, 1.0], [NAN, INF])
+    yield "error aaa rtol", lambda: IP.AAA([0.0, 1.0], [1.0, 2.0], rtol=-1.0)
+    yield "error floater d", lambda: IP.FloaterHormannInterpolator([0.0, 1.0], [1.0, 2.0], d=2)
+    yield "error floater residues batch", lambda: IP.FloaterHormannInterpolator([0.0, 1.0, 2.0], [[1.0, 2.0]] * 3,
+                                                                                d=1).residues()  # fmt: skip
+
+
+def _rbf_cases(L):
+    np = L.np
+    IP = L.sd.interpolate
+    r = L.rng(3120)
+    a = np.arange(5) / 4
+    pts = {
+        "uniform2d": r.random((40, 2)),
+        "uniform3d": r.random((30, 3)),
+        "cluster2d": np.array([[0.2, 0.2], [0.8, 0.3], [0.5, 0.9]])[r.integers(0, 3, 40)] + r.normal(0, 0.03, (40, 2)),
+        "lattice2d": np.stack(np.meshgrid(a, a, indexing="ij"), axis=-1).reshape(-1, 2),
+    }
+    kernels = ("linear", "thin_plate_spline", "cubic", "quintic", "multiquadric", "inverse_multiquadric",
+               "inverse_quadratic", "gaussian")  # fmt: skip
+    for name, y in pts.items():
+        d = np.sin(3 * y[:, 0]) + np.cos(2 * y[:, -1])
+        x = np.vstack([y.min(0) + (y.max(0) - y.min(0)) * r.random((12, y.shape[1])), y[:2],
+                       np.full((1, y.shape[1]), NAN)])  # fmt: skip
+        for kern in kernels:
+            eps = None if kern in kernels[:4] else 3.0
+            yield f"RBFInterpolator {name} {kern}", lambda y=y, d=d, x=x, k=kern, e=eps: IP.RBFInterpolator(
+                y, d, kernel=k, epsilon=e)(x)  # fmt: skip
+        yield f"RBFInterpolator {name} smoothing", lambda y=y, d=d, x=x: IP.RBFInterpolator(
+            y, d, smoothing=np.linspace(0, 0.1, len(y)))(x)  # fmt: skip
+        yield f"RBFInterpolator {name} neighbors", lambda y=y, d=d, x=x: (
+            IP.RBFInterpolator(y, d, neighbors=7)(x),
+            IP.RBFInterpolator(y, d, neighbors=3, kernel="linear")(x))  # fmt: skip
+        yield f"NearestNDInterpolator {name}", lambda y=y, d=d, x=x: (
+            IP.NearestNDInterpolator(y, d)(x), IP.NearestNDInterpolator(y, d, rescale=True)(x))  # fmt: skip
+    y, x = pts["uniform2d"], pts["uniform2d"][:5] + 0.01
+    dc = np.stack([y[:, 0], y[:, 1] * 1j], axis=1).reshape(40, 2, 1)
+    yield "RBFInterpolator complex batch", lambda: IP.RBFInterpolator(y, dc, kernel="cubic")(x.reshape(5, 1, 2))
+    yield "RBFInterpolator degree", lambda: (IP.RBFInterpolator(y, y[:, 0], kernel="gaussian", epsilon=2.0,
+                                                                degree=-1)(x),
+                                             IP.RBFInterpolator(y, y[:, 0], degree=3)(x))  # fmt: skip
+    yield "RBFInterpolator one point", lambda: IP.RBFInterpolator([[0.5, 0.5]], [2.0], kernel="linear")([0.0, 1.0])
+    yield "RBFInterpolator neighbors ties", lambda: IP.RBFInterpolator(pts["lattice2d"], pts["lattice2d"][:, 1],
+                                                                       neighbors=2, kernel="linear")(
+        [[0.125, 0.125], [0.375, 0.5], [0.5, 0.625]])  # fmt: skip
+    yield "NearestNDInterpolator ties tuple", lambda: IP.NearestNDInterpolator(pts["lattice2d"], np.arange(25.0))(
+        (np.array([0.125, 0.375, 0.5, 1.0]), np.array([0.125, 0.625, 0.375, 0.875])))  # fmt: skip
+    # large: the parallel paths (the system, the evaluation, the local systems, the nearest points)
+    yl = L.rng(3121).random((600, 2))
+    xl = L.rng(3122).random((20000, 2))
+    yield "large RBFInterpolator", lambda: IP.RBFInterpolator(yl, np.sin(5 * yl[:, 0]) * yl[:, 1])(xl)
+    yb = L.rng(3123).random((3000, 3))
+    yield "large RBFInterpolator neighbors", lambda: IP.RBFInterpolator(yb, np.cos(yb.sum(1)), neighbors=20)(
+        L.rng(3124).random((4000, 3)))  # fmt: skip
+    yield "large NearestNDInterpolator", lambda: IP.NearestNDInterpolator(yb, np.cos(yb.sum(1)))(
+        L.rng(3125).random((100000, 3)))  # fmt: skip
+    # wrong calls
+    yd = pts["uniform2d"][:10].copy()
+    yd[6] = yd[3]
+    t = np.linspace(0, 1, 10)
+    yield "error rbf duplicate", lambda: IP.RBFInterpolator(yd, yd[:, 0])
+    yield "error rbf collinear", lambda: IP.RBFInterpolator(np.column_stack([t, 0.5 * t + 0.25]), t)
+    yield "error rbf smoothing", lambda: IP.RBFInterpolator(yd[:5], t[:5], smoothing=-1.0)
+    yield "error rbf degree", lambda: IP.RBFInterpolator(yd[:5], t[:5], degree=-1)
+    yield "error rbf epsilon", lambda: IP.RBFInterpolator(yd[:5], t[:5], kernel="gaussian")
+    yield "error rbf kernel", lambda: IP.RBFInterpolator(yd[:5], t[:5], kernel="Gaussian", epsilon=1.0)
+    yield "error rbf points", lambda: IP.RBFInterpolator(yd[:5], t[:5])([0.5, 0.5, 0.5])
+    yield "error nearest shape", lambda: IP.NearestNDInterpolator(yd[:5], t[:4])
+
+
+def _grid_cases(L):
+    np = L.np
+    IP = L.sd.interpolate
+    RGI = IP.RegularGridInterpolator
+    r = L.rng(3140)
+
+    def axis(n, desc=False):
+        p = np.sort(np.concatenate([[0.0, 1.0], r.random(n - 2)]))
+        return p[::-1].copy() if desc else p
+
+    a1 = (axis(9),)
+    a2 = (axis(8), axis(7, desc=True))
+    a3 = (axis(6), axis(7), axis(6))
+    v1, v2, v3 = r.standard_normal(9), r.standard_normal((8, 7)), r.standard_normal((6, 7, 6))
+    q1 = np.concatenate([np.linspace(-0.3, 1.3, 33), [NAN, 0.0, 1.0]]).reshape(-1, 1)
+    q2 = np.vstack([r.random((40, 2)) * 1.4 - 0.2, [[NAN, 0.5], [0.0, 1.0], [1.0, 0.0], [0.5, INF]]])
+    q3 = np.vstack([r.random((40, 3)) * 1.4 - 0.2, [[0.5, NAN, 0.5]]])
+    for meth in ("linear", "nearest", "slinear", "cubic", "quintic", "pchip"):
+        for name, pts, v, q in (("1-D", a1, v1, q1), ("2-D", a2, v2, q2), ("3-D", a3, v3, q3)):
+            yield (
+                f"RegularGridInterpolator {meth} {name}",
+                lambda pts=pts, v=v, q=q, m=meth: (
+                    RGI(pts, v, method=m, bounds_error=False, fill_value=None)(q),
+                    RGI(pts, v, method=m, bounds_error=False)(q),
+                    RGI(pts, v, method=m, bounds_error=False, fill_value=-2.5)(q),
+                    RGI(pts, v, method=m)(q[np.all((q >= 0) & (q <= 1) | np.isnan(q), axis=-1)]),
+                ),
+            )
+        yield f"error RegularGridInterpolator {meth} bounds", lambda m=meth: RGI(a2, v2, method=m)(q2)
+        yield f"interpn {meth}", lambda m=meth: IP.interpn(a2, v2, q2[:20] * 0.5 + 0.25, method=m)
+    for meth in ("slinear", "cubic", "quintic"):
+        yield (
+            f"RegularGridInterpolator {meth} nu",
+            lambda m=meth: tuple(RGI(a2, v2, method=m, bounds_error=False, fill_value=None)(q2, nu=nu)
+                                 for nu in ((1, 0), (0, 2), (1, 1), (6, 0))),
+        )  # fmt: skip
+    yb = r.standard_normal((8, 7, 3))
+    yield "RegularGridInterpolator batch", lambda: tuple(RGI(a2, yb, method=m)(q2[:30] * 0.5 + 0.25)
+                                                         for m in ("linear", "nearest", "cubic", "pchip"))  # fmt: skip
+    yield (
+        "RegularGridInterpolator complex",
+        lambda: tuple(
+            RGI(a2, v2 + 1j * v2[::-1], method=m, bounds_error=False, fill_value=1j)(q2) for m in ("linear", "cubic")
+        ),
+    )
+    one = r.standard_normal((1, 7))
+    yield "RegularGridInterpolator one node", lambda: (
+        RGI((np.array([0.5]), a2[1]), one)([[0.5, 0.3]]),
+        RGI((np.array([0.5]), a2[1]), one, method="nearest", bounds_error=False, fill_value=None)([[2.0, 0.3]]),
+    )  # fmt: skip
+    yield "RegularGridInterpolator attributes", lambda: (
+        lambda o: (o.grid, o.values, o.method, o.bounds_error, o.fill_value))(RGI(a2, v2, fill_value=3))  # fmt: skip
+    yield "RegularGridInterpolator method change", lambda: RGI(a2, v2)(q2[:10] * 0.5 + 0.25, method="quintic")
+    yield (
+        "RegularGridInterpolator tuple xi",
+        lambda: (
+            RGI(a2, v2)((np.array([0.1, 0.2]), 0.5)),
+            RGI(a2, v2)((0.25, 0.75)),
+            RGI(a2, v2)([0.1, 0.2, 0.3, 0.4]),
+        ),
+    )
+    yield "RegularGridInterpolator nan values", lambda: (lambda w: RGI(a2, w)(q2[:40] * 0.5 + 0.25))(
+        np.where(np.arange(56).reshape(8, 7) == 24, NAN, v2))  # fmt: skip
+    # large: the parallel paths
+    big = (np.sort(L.rng(3141).random(300)), np.sort(L.rng(3142).random(250)))
+    vb = L.rng(3143).standard_normal((300, 250))
+    qb = L.rng(3144).random((150000, 2)) * 1.2 - 0.1
+    for meth in ("linear", "nearest", "cubic", "pchip"):
+        yield (
+            f"large RegularGridInterpolator {meth}",
+            lambda m=meth: RGI(big, vb, method=m, bounds_error=False, fill_value=None)(
+                qb[:40000] if m == "pchip" else qb
+            ),
+        )
+    # wrong calls
+    yield "error grid method", lambda: RGI(a2, v2, method="Linear")
+    yield "error grid points", lambda: RGI((a2[0], a2[1][[0, 2, 1, 3, 4, 5, 6]]), v2)
+    yield "error grid values shape", lambda: RGI(a2, v2[:7])
+    yield "error grid few points", lambda: RGI((a2[0][:3], a2[1]), v2[:3], method="cubic")
+    yield "error grid bounds", lambda: RGI(a2, v2)([[1.5, 0.5]])
+    yield "error grid fill", lambda: RGI(a2, v2, fill_value=1j)
+    yield "error grid nu", lambda: RGI(a2, v2)([[0.5, 0.5]], nu=(1, 0))
+    yield "error grid xi", lambda: RGI(a2, v2)([[0.5, 0.5, 0.5]])
+    yield "error grid nan cubic", lambda: RGI(a2, np.where(v2 > 1, NAN, v2), method="cubic")
+    yield "error grid complex pchip", lambda: RGI(a2, v2 + 1j, method="pchip")
+    yield "error interpn", lambda: IP.interpn(a2, v2, [[0.5, 0.5]], method="splinef2d")
+
+
 def _curves(L):
     np = L.np
     r = L.rng(3101)
@@ -306,6 +581,9 @@ def cases(L):
 
     yield "PPoly extend", extend
     yield from _bspline_cases(L, curves, q)
+    yield from _polyint_cases(L, curves, q)
+    yield from _grid_cases(L)
+    yield from _rbf_cases(L)
     # large: the parallel paths (evaluation, coefficients, prefix sums over several blocks, pairwise sums, roots)
     n = 40000
     bigx = np.sort(L.rng(3103).random(n))

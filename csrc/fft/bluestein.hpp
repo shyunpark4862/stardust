@@ -1,5 +1,5 @@
-// Bluestein's chirp-z transform for lengths with a prime factor above 11 (docs/design/fft.md §3.3,
-// decision FT36): with w_j = e^(-pi i j^2 / n) and jk = (j^2 + k^2 - (k - j)^2) / 2,
+// Bluestein's chirp-z transform for lengths with a prime factor above 31 (docs/design/fft.md §3.3,
+// decisions FT36, FT64): with w_j = e^(-pi i j^2 / n) and jk = (j^2 + k^2 - (k - j)^2) / 2,
 //     y_k = w_k sum_j (x_j w_j) conj(w_(k-j)),
 // a cyclic convolution of length m >= 2n - 1 (decision FT37: m is the smallest 2^a 3^b 5^c at least
 // 2n - 1) done with the mixed-radix transform of length m: one forward transform, one product with the

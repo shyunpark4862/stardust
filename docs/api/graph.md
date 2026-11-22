@@ -1,9 +1,9 @@
 # sd.graph API
 
-> 상태: **초안** (GR0 마일스톤, 2026-11-23). GR1 마일스톤(2026-11-23)에서 §2의 여덟 이름이, GR2 마일스톤(2026-11-23)에서 §3의 아홉 이름이, GR3 마일스톤(2026-11-23)에서 §4의 다섯 이름이 공개되었다. 아래 시그니처는 scipy 1.18.1의 `scipy.sparse.csgraph`의 이름과 인자 이름(과 `scipy.optimize.linear_sum_assignment`, scipy에 없는 일곱은 networkx 3.7의 뜻)에 stardust의 규칙과 GR1–GR28의 결정을 입힌 안이고, GR1–GR5 마일스톤에서 하나씩 공개된다(docs/design/graph.md §8: 순회·연결 요소·위상 정렬·변환 도구는 GR1, 최단 경로는 GR2, 신장 트리·흐름·매칭·배정은 GR3, 순서·구조적 랭크·라플라시안은 GR4, 더한 알고리즘은 GR5 마일스톤).
+> 상태: **확정** (2026-11-23; 승인(위임)). §2–§6의 공개 이름 31개가 모두 구현되어 있다: 순회·연결 요소·위상 정렬·변환 도구 여덟(§2), 최단 경로 아홉(§3), 신장 트리·흐름·매칭·배정 다섯(§4), 순서·구조적 랭크·라플라시안 셋(§5), scipy에 없는 여섯(§6). 시그니처는 scipy 1.18.1의 `scipy.sparse.csgraph`의 이름과 인자 이름(과 `scipy.optimize.linear_sum_assignment`, scipy에 없는 일곱은 networkx 3.7의 뜻)에 stardust의 규칙과 GR1–GR68의 결정을 입힌 것이다.
 
-- 설계와 결정의 근거는 [docs/design/graph.md](../design/graph.md)(§1.1 GR1–GR49), 공통 규칙은 [API.md](../../API.md)다.
-- 언어 표시가 없는 코드 블록은 `tests/graph/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 예외 클래스는 이름만)과 결과 객체의 필드(`Class.field`)다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
+- 설계와 결정의 근거는 [docs/design/graph.md](../design/graph.md)(§1.1 GR1–GR68), 공통 규칙은 [API.md](../../API.md)다.
+- 언어 표시가 없는 코드 블록은 `tests/graph/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 예외 클래스는 이름만)과 결과 객체의 필드(`Class.field`)다. 모듈 수준의 이름이 공개 이름 전부이고, 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
 
@@ -11,7 +11,7 @@
 - **이름공간은 평평하다**(GR3): 모든 함수가 `sd.graph`에 바로 있다. scipy의 `from scipy.sparse.csgraph import dijkstra`는 `from stardust.graph import dijkstra`이고, `scipy.optimize.linear_sum_assignment`는 `sd.graph.linear_sum_assignment`다(GR4: 같은 배정 문제의 셋이 한곳에 있고 같은 C++ 고리를 쓴다).
 - **이름은 scipy의 것이다**: `csgraph_from_dense`처럼 긴 이름도 그대로 둔다(GR14). scipy에 없는 일곱은 networkx의 이름이다(`topological_sort`, `articulation_points`, `bridges`, `biconnected_components`, `core_number`, `pagerank`, `betweenness_centrality`; GR18). 별칭이 없다.
 - **Graph 클래스가 없다**(GR2): 그래프는 인접 행렬이고 함수는 배열이나 결과 객체를 돌려준다.
-- **데이터와 주된 인자는 위치로, 옵션은 키워드로만** 받는다(GR21). 위치 인자는 그래프와 `i_start`, `source`, `sink`, `K`, `predecessors`뿐이다. `[scipy와 다름]`: scipy의 `connected_components(G, False)`, `dijkstra(G, False)`는 `TypeError`다.
+- **데이터와 주된 인자는 위치로, 옵션은 키워드로만** 받는다(GR21). 위치 인자는 그래프와 `i_start`, `source`, `sink`, `K`, `predecessors`뿐이다. `[scipy와 다름]`: scipy는 `connected_components(G, False)`, `dijkstra(G, False)`처럼 옵션을 위치로도 받고, sd에서는 `TypeError`다.
 - scipy의 `overwrite`(최단 경로·최소 신장 트리), `laplacian`의 `copy`와 `form='function'`, 가린 배열 도구 셋(`csgraph_masked_from_dense csgraph_from_masked csgraph_to_masked`)은 없다(GR14). 주면 모르는 키워드의 `TypeError`다. 입력을 고치지 않고, `form='lo'`가 `form='function'`의 일을 한다.
 - 틀린 호출 모양은 함수 이름으로 시작한다(API.md §2.1): `dijkstra(): unexpected keyword argument 'overwrite'`.
 
@@ -35,15 +35,16 @@
 ### §1.4 에러
 - API.md §2의 종류와 꼴이다. 메시지는 함수 이름으로 시작한다(`dijkstra(): ...`).
 - `NegativeCycleError`는 `ValueError`의 하위 클래스다(`[scipy와 다름]`: scipy의 것은 `Exception`의 하위 클래스).
-- 요청한 출력(모든 쌍의 n² 거리와 선행 노드, `yen`의 K × n)이 물리 메모리보다 크면 할당 전에 `MemoryError`다.
+- 요청한 출력(모든 쌍의 n² 거리와 선행 노드, `yen`의 K × n 선행 노드, `csgraph_to_dense`의 n²)이 물리 메모리보다 크면 할당 전에 `MemoryError`다.
 
 ### §1.5 scipy와 다른 점 (모음)
 - 입력: complex·scipy 희소 객체는 `TypeError`, 밀집 입력의 |w| ≤ 1e-8인 원소도 변(scipy는 모든 csgraph 함수에서 버린다), 저장된 NaN·±inf 무게는 `ValueError`, 경로가 아닌 선행 노드는 `ValueError`(GR38), 노드 인자는 0 … n−1의 int만, 2차원 `indices`는 `ValueError`, 옵션은 키워드만, `overwrite`·`copy`·`form='function'`·가린 배열 도구 없음, `maximum_flow`·`reverse_cuthill_mckee`·`structural_rank`·매칭도 밀집을 받는다.
 - 결과: 색인 배열은 모두 int64(GR10), 스칼라는 Python `int`, 결과 튜플은 namedtuple(GR11), 강한 연결 요소의 번호는 가장 작은 노드 순서, 무향 순회는 합친 이웃의 오름차순, 무향 트리의 저장된 0은 0, `csgraph_to_dense`의 저장된 NaN은 NaN, `'FW'`를 뺀 최단 경로는 방법과 무관, `auto`는 FW를 고르지 않음, `yen`의 같은 길이 경로는 (변 수, 노드 열)의 순서, `construct_dist_matrix`는 원점에서부터 더함, `laplacian`의 희소 결과는 CSR, 최소 신장 트리는 밀집의 작은 원소를 버리지 않는다.
 - 에러: 음수 무게의 `dijkstra`(GR9), NaN `limit`(GR23), 음수 용량(scipy는 0으로 본다), int64를 넘는 흐름(`OverflowError`), 실수 용량(`TypeError`), `NegativeCycleError`는 `ValueError`이고 "요청한 원점에서 닿는 순환" 한 규칙이다.
 - 흐름·매칭·배정: `maximum_flow`의 int64 용량을 int32로 줄이지 않고 흐름이 int64다(scipy는 int32로 줄여 2⁴⁰이 0이 된다; 용량이 int32 안이면 흐름은 scipy와 같다), `min_weight_full_bipartite_matching`의 저장된 0은 무게 0의 짝이다(scipy는 경고와 함께 버린다), 매칭과 배정은 동점에서 scipy와 다른 최적해를 고를 수 있다(GR45, GR47).
+- 순서·라플라시안: `reverse_cuthill_mckee`의 시작 노드의 동점은 번호 순서이고(scipy는 numpy의 불안정 정렬이라 17노드부터 다를 수 있다), `symmetric_mode=False`는 A와 Aᵀ의 패턴의 합집합이다(scipy는 값의 합이라 0이 된 자리가 빠진다; GR52). `laplacian`의 차수는 대각을 뺀 원소의 합(scipy는 전체 합 − 대각; GR54), bool 그래프도 받고(int64; scipy는 `UFuncTypeError`), `form='lo'`는 행렬을 감싸 곱이 array 꼴과 같은 비트다(scipy는 행렬을 만들지 않는다; GR51).
 
-## §2. 순회, 연결 요소, 변환 (GR1 마일스톤)
+## §2. 순회, 연결 요소, 변환
 ```
 connected_components(csgraph, /, *, directed=True, connection='weak', return_labels=True)
 breadth_first_order(csgraph, i_start, /, *, directed=True, return_predecessors=True)
@@ -60,7 +61,7 @@ csgraph_to_dense(csgraph, /, *, null_value=0)
 - **`csgraph_from_dense`**: 정방 밀집 행렬의 원소 가운데 `null_value`와 같은 것(`nan_null`이면 NaN, `infinity_null`이면 ±inf도)을 뺀 나머지를 저장한 `csr_array` float64다. `null_value=None`이면 같음으로 빼는 값이 없고, NaN인 `null_value`는 `nan_null=True`, 무한대인 것은 `infinity_null=True`로 읽는다(scipy와 같다). `null_value`는 int나 float다.
 - **`csgraph_to_dense`**: 저장된 원소를 그 자리에, 나머지를 `null_value`(int나 float)로 채운 (n, n) `sd.ndarray` float64다. 밀집 입력은 그래프 규칙으로 읽는다. sd의 CSR에는 중복 원소가 없고, 저장된 NaN은 NaN이다(`[scipy와 다름]`: scipy는 inf; GR30).
 
-## §3. 최단 경로 (GR2 마일스톤)
+## §3. 최단 경로
 ```
 shortest_path(csgraph, /, *, method='auto', directed=True, return_predecessors=False, unweighted=False, indices=None)
 dijkstra(csgraph, /, *, directed=True, indices=None, return_predecessors=False, unweighted=False, limit=inf, min_only=False)
@@ -85,7 +86,7 @@ NegativeCycleError
 - **`construct_dist_matrix`**: 선행 노드 행렬이 가리키는 경로를 원점에서부터 차례로 더한 거리다. 그래서 FW가 아닌 방법의 `shortest_path`가 돌려준 선행 노드에서 그 거리와 비트까지 같다. `[scipy와 다름]`: scipy는 도착점에서 거꾸로 더한다. 닿지 않는 자리는 `null_value`, 대각은 0이다. `predecessors`는 정수 dtype의 (n, n) 배열이다(scipy의 int32도 받는다). 노드도 −9999도 아닌 값, 그래프에 없는 변, 순환, 원점이 아닌 노드에서 끝나는 사슬은 `ValueError`다(GR38; `[scipy와 다름]`: scipy는 int32만 받고, 없는 변에 inf를 더하며, 순환에서 끝나지 않는다).
 - **`reconstruct_path`**: 선행 노드 1차원 배열이 그리는 트리를 (n, n) `csr_array`로 만든다(변은 부모 → 자식에 그 변의 무게, 무향이면 두 방향의 작은 무게, 무게 0의 변은 저장된 0). 그래프에 없는 변과 자기를 가리키는 선행 노드는 `ValueError`다(GR38; `[scipy와 다름]`: scipy는 말없이 0을 넣거나 버린다). `construct_dist_matrix`와 `reconstruct_path`도 무게를 쓰는 함수라 저장된 NaN·±inf는 `ValueError`다.
 
-## §4. 신장 트리, 흐름, 매칭, 배정 (GR3 마일스톤)
+## §4. 신장 트리, 흐름, 매칭, 배정
 ```
 minimum_spanning_tree(csgraph, /)
 maximum_flow(csgraph, source, sink, /, *, method='dinic')
@@ -100,17 +101,17 @@ linear_sum_assignment(cost_matrix, /, *, maximize=False)
 - **`linear_sum_assignment`**: scipy의 뜻 그대로다. 모든 원소가 짝이고(0도 비용 0), +inf는 고를 수 없는 짝이다. 모든 짝을 고를 수 없으면 `ValueError`(`linear_sum_assignment(): cost matrix is infeasible`), NaN과 −inf는 `ValueError`다. `maximize=True`면 부호를 먼저 바꾸므로 −inf가 고를 수 없는 짝이고 +inf가 `ValueError`다(scipy와 같다; GR46). 직사각을 받고 결과는 `AssignmentResult`다. 입력은 밀집만이다(bool·int64·float64; 희소 배열은 `min_weight_full_bipartite_matching`을 짚는 `TypeError`).
 - 흐름 값과 매칭의 크기는 유일하다. 흐름 자체와 여러 최적 배정 가운데 하나는 행과 이웃을 오름차순으로 보는 고정된 순서의 결과다(GR16). 두 배정 함수는 같은 풀이(Jonker–Volgenant의 시작과 최단 증가 경로; GR45)라 같은 짝이면 같은 배정을 낸다. 정수 비용의 최적은 정확하고, 실수 비용은 정확도 계약 안이다(§9).
 
-## §5. 순서, 구조적 랭크, 라플라시안 (GR4 마일스톤)
+## §5. 순서, 구조적 랭크, 라플라시안
 ```
 reverse_cuthill_mckee(graph, /, *, symmetric_mode=False)
 structural_rank(graph, /)
 laplacian(csgraph, /, *, normed=False, return_diag=False, use_out_degree=False, form='array', dtype=None, symmetrized=False)
 ```
-- **`reverse_cuthill_mckee`**: 띠 폭을 줄이는 순열(int64 (n,))이다. `symmetric_mode=False`면 A + Aᵀ의 패턴이다. 요소마다 차수가 가장 작은 노드 가운데 가장 작은 번호에서 시작하고, 이웃은 (차수, 번호) 순서로 넣고, 요소는 시작 노드의 순서로 이은 뒤 전체를 뒤집는다. 밀집도 받는다.
+- **`reverse_cuthill_mckee`**: 띠 폭을 줄이는 순열(int64 (n,))이다. 패턴만 읽는다(저장된 0·NaN도 변; 밀집은 그래프의 규칙). `symmetric_mode=False`면 A와 Aᵀ의 패턴의 합집합, `True`면 A의 패턴 그대로다. 노드의 차수는 줄 길이에 저장된 대각이면 1을 더한 것이고, 요소마다 방문하지 않은 노드 가운데 (차수, 번호)로 첫 노드에서 너비 우선으로 훑으며 새 이웃은 (차수, 번호) 순서로 넣고, 요소는 시작 노드의 순서로 이은 뒤 전체를 뒤집는다(GR52). scipy와 같은 알고리즘이고 16노드 이하에서 scipy와 같은 순열이다. 밀집도 받는다.
 - **`structural_rank`**: 패턴의 가장 큰 이분 매칭의 크기(Python `int`)다. 직사각을 받고 저장된 0도 원소다.
-- **`laplacian`**: L = D − A(D는 들어오는 무게의 합, `use_out_degree=True`면 나가는 무게의 합; 대각은 무시). `normed=True`면 D^(−1/2) L D^(−1/2)이고 차수 0인 노드는 1로 나눈다. `symmetrized=True`면 A + Aᵀ로 먼저 만든다. 결과는 밀집 입력이면 `sd.ndarray`, 희소면 `csr_array`(`[scipy와 다름]`: scipy는 `coo_array`), `form='lo'`면 `sd.sparse.LinearOperator`다. `return_diag=True`면 `LaplacianResult(laplacian, diag)`다. `dtype=None`이면 입력의 dtype(bool은 int64), `normed`면 float64다. 값을 그대로 쓰므로 NaN·inf는 IEEE로 퍼진다.
+- **`laplacian`**: L = D − A(D는 들어오는 무게의 합, `use_out_degree=True`면 나가는 무게의 합; 대각은 무시). `normed=True`면 D^(−1/2) L D^(−1/2)이고 차수 0인 노드는 1로 나누며 대각은 차수가 0이 아니면 1, 0이면 0이다(scipy와 같다; GR50). `symmetrized=True`면 A + Aᵀ로 먼저 만든다(sd.sparse의 덧셈처럼 정확히 0인 합은 저장하지 않는다; GR53). 결과는 밀집 입력이면 `sd.ndarray`, 희소면 `csr_array`(`[scipy와 다름]`: scipy는 `coo_array`; 패턴은 대각 밖 원소와 대각 전부, A의 저장된 0은 −0.0), `form='lo'`면 그 행렬을 감싼 `sd.sparse.LinearOperator`다(곱이 `laplacian(G) @ x`와 같은 비트; GR51). `return_diag=True`면 `LaplacianResult(laplacian, diag)`이고 `diag`는 차수(`normed`면 √차수, 차수 0은 1)다. `dtype=None`이면 입력의 dtype(bool은 int64), `normed`면 float64다. `dtype`은 None, int64, float64이고 계산한 뒤에 바꾼다(GR54). 값을 그대로 쓰는 행렬 함수라 밀집의 0은 0이고(대각 밖에서 −0.0), NaN·inf는 IEEE로 퍼진다.
 
-## §6. 더한 알고리즘 (GR5 마일스톤; scipy에 없음, 뜻은 networkx)
+## §6. 더한 알고리즘 (scipy에 없음, 뜻은 networkx)
 ```
 articulation_points(csgraph, /)
 bridges(csgraph, /)
@@ -119,9 +120,9 @@ core_number(csgraph, /)
 pagerank(csgraph, /, *, alpha=0.85, personalization=None, dangling=None, directed=True, unweighted=False, tol=1e-12)
 betweenness_centrality(csgraph, /, *, directed=True, unweighted=False, normalized=True, endpoints=False)
 ```
-- **무향의 넷**은 그래프를 언제나 무향으로 본다(두 방향 패턴의 합집합, 대각 무시). `articulation_points`는 지우면 연결 요소가 늘어나는 노드의 오름차순 int64 배열, `bridges`는 그런 변의 (k, 2) int64 배열(행 (i, j), i < j, 사전 순서)이다. `biconnected_components`는 `BiconnectedComponentsResult(n_components, edges, labels)`: `edges`는 모든 변(`bridges`의 꼴, 사전 순서), `labels`는 변마다의 요소 번호이고 번호는 요소의 가장 작은 변의 순서다. `core_number`는 노드마다의 코어 수(int64)이고 k-코어는 `core_number(G) >= k`인 노드다(GR18).
-- **`pagerank`**: x = α·Pᵀx + (1 − α)·v의 해(합 1의 float64 (n,))다. P는 나가는 무게로 정규화한 전이 행렬(`unweighted=True`면 변마다 1, 자기 고리도 변)이고, 나가는 무게가 0인 행은 `dangling` 분포다. 기본 `personalization`은 균등, 기본 `dangling`은 `personalization`이다. `alpha`는 0 이상 1 미만, `personalization`·`dangling`은 길이 n의 음이 아닌 유한 배열이고 합이 0보다 커야 한다(합 1로 정규화한다). 음수 무게는 `ValueError`다. **결과는 해와 ℓ₁로 `tol` 안이다**(증명된 사후 한계로 멈추고 반복 수의 상한이 α와 `tol`로 정해져 `max_iter`가 없다; GR19). `[networkx와 다름]`: networkx는 `tol=1e-6`, `max_iter=100`이고 연속한 반복의 차로 멈춘다.
-- **`betweenness_centrality`**: Brandes의 정의다. 무향이면 (s, t)와 (t, s)를 한 번 세고, `normalized=True`면 유향 1/((n − 1)(n − 2)), 무향 2/((n − 1)(n − 2))를 곱하고, `endpoints=True`면 끝점도 센다(networkx의 뜻과 정규화). float64 (n,)이다. 무게는 0보다 커야 하고(`ValueError`), `unweighted=True`면 패턴만 본다. 표본 어림(`k`, `seed`)은 없다(GR20).
+- **무향의 넷**은 그래프를 언제나 무향으로 본다(두 방향 패턴의 합집합, 대각 무시). `articulation_points`는 지우면 연결 요소가 늘어나는 노드의 오름차순 int64 배열, `bridges`는 그런 변의 (k, 2) int64 배열(행 (i, j), i < j, 사전 순서)이다. `biconnected_components`는 `BiconnectedComponentsResult(n_components, edges, labels)`: `edges`는 모든 변(`bridges`의 꼴, 사전 순서), `labels`는 변마다의 요소 번호이고 번호는 요소의 가장 작은 변의 순서다. `core_number`는 노드마다의 코어 수(int64)이고 k-코어는 `core_number(G) >= k`인 노드다(GR18). 넷 모두 패턴만 읽는다(저장된 0·NaN도 변; 밀집은 그래프의 규칙). `[networkx와 다름]`: `core_number`는 자기 고리를 무시한다(networkx는 에러), `biconnected_components`는 노드 집합이 아니라 변의 분할이다(GR59).
+- **`pagerank`**: x = α·Pᵀx + (1 − α)·v의 해(float64 (n,); 합은 1과 반올림만큼 다르다)다. P는 나가는 무게로 정규화한 전이 행렬(`unweighted=True`면 변마다 1, 자기 고리도 변)이고, 나가는 무게가 0인 행은 `dangling` 분포다. 기본 `personalization`은 균등, 기본 `dangling`은 `personalization`이다. 저장된 무게가 모두 0인 행도 매달린 행이다. `alpha`는 0 이상 1 미만, `tol`은 양의 유한한 수, `personalization`·`dangling`은 길이 n의 음이 아닌 유한한 수의 배열(bool·int64·float64)이고 합이 0보다 커야 한다(합 1로 정규화한다). 음수 무게는 `ValueError`다. **결과는 해와 ℓ₁로 `tol` + F 안이다**(F는 걸음 하나의 반올림을 1 − α로 나눈 것으로 기본 `alpha`에서 (2–4)×10⁻¹⁴쯤; 증명된 사후 한계로 멈추고, 바닥 근처에서는 사전 횟수 ⌈log(tol/2)/log α⌉ + 1에서 멈춘다. 그래서 `max_iter`가 없다; GR19, GR56, GR57). `[networkx와 다름]`: networkx는 `tol=1e-6`, `max_iter=100`이고 연속한 반복의 차로 멈춘다.
+- **`betweenness_centrality`**: Brandes의 정의다. 무향이면 (s, t)와 (t, s)를 한 번 세고, `normalized=True`면 순서쌍의 수 (n − 1)(n − 2)(`endpoints=True`면 n(n − 1))로 나누고(무향은 쌍을 한 번 센 값의 2/((n − 1)(n − 2))배), `endpoints=True`면 끝점도 센다(networkx 3.7의 뜻과 비율; 쌍의 수가 2보다 작으면 그대로). float64 (n,)이다. 최단 경로는 §3의 거리(차례 합)이고 같은 계산 거리의 걸음(흡수)은 너비 우선 변 수로 순서를 정한다(GR58). 저장된 무게는 모두 양의 유한한 수여야 하고(`ValueError`), `unweighted=True`면 패턴만 본다. 표본 어림(`k`, `seed`)은 없다(GR20).
 
 ## §7. 결과 객체 (GR11)
 ```
@@ -153,32 +154,32 @@ MaximumFlowResult.flow
 ## §8. scipy·networkx → sd.graph
 
 **scipy.sparse.csgraph** (scipy 1.18.1의 `__all__` 스물여섯)
-| scipy | sd.graph | 마일스톤 |
-|---|---|---|
-| `connected_components` | 같은 이름, 레이블은 가장 작은 노드 순서 | GR1 |
-| `breadth_first_order depth_first_order breadth_first_tree depth_first_tree` | 같은 이름, 이웃은 번호 오름차순 | GR1 |
-| `csgraph_from_dense csgraph_to_dense` | 같은 이름 | GR1 |
-| `csgraph_masked_from_dense csgraph_from_masked csgraph_to_masked` | 없음(가린 배열이 없다; 무게 0의 변은 저장된 0) | — |
-| `shortest_path dijkstra bellman_ford johnson floyd_warshall yen` | 같은 이름; FW를 뺀 방법은 같은 결과, `auto`는 FW를 고르지 않는다 | GR2 |
-| `construct_dist_matrix reconstruct_path NegativeCycleError` | 같은 이름 | GR2 |
-| `minimum_spanning_tree maximum_flow maximum_bipartite_matching min_weight_full_bipartite_matching` | 같은 이름 | GR3 |
-| `reverse_cuthill_mckee structural_rank laplacian` | 같은 이름(`laplacian`의 `form='function'`과 `copy`는 없다) | GR4 |
+| scipy | sd.graph |
+|---|---|
+| `connected_components` | 같은 이름, 레이블은 가장 작은 노드 순서 |
+| `breadth_first_order depth_first_order breadth_first_tree depth_first_tree` | 같은 이름, 이웃은 번호 오름차순 |
+| `csgraph_from_dense csgraph_to_dense` | 같은 이름 |
+| `csgraph_masked_from_dense csgraph_from_masked csgraph_to_masked` | 없음(가린 배열이 없다; 무게 0의 변은 저장된 0) |
+| `shortest_path dijkstra bellman_ford johnson floyd_warshall yen` | 같은 이름; FW를 뺀 방법은 같은 결과, `auto`는 FW를 고르지 않는다 |
+| `construct_dist_matrix reconstruct_path NegativeCycleError` | 같은 이름 |
+| `minimum_spanning_tree maximum_flow maximum_bipartite_matching min_weight_full_bipartite_matching` | 같은 이름 |
+| `reverse_cuthill_mckee structural_rank laplacian` | 같은 이름(`laplacian`의 `form='function'`과 `copy`는 없다) |
 
 **scipy.optimize**
-| scipy | sd | 마일스톤 |
-|---|---|---|
-| `linear_sum_assignment(cost_matrix, maximize=False)` | `sd.graph.linear_sum_assignment` | GR3 |
+| scipy | sd |
+|---|---|
+| `linear_sum_assignment(cost_matrix, maximize=False)` | `sd.graph.linear_sum_assignment` |
 
 **networkx** (scipy에 없는 것)
-| networkx | sd.graph | 마일스톤 |
-|---|---|---|
-| `topological_sort`, `lexicographical_topological_sort` | `topological_sort`(사전 최소 위상 순서 하나) | GR1 |
-| `articulation_points`, `bridges`, `biconnected_components` | 같은 이름(이중 연결 요소는 변의 분할) | GR5 |
-| `core_number`, `k_core` | `core_number`(k-코어는 `core_number(G) >= k`) | GR5 |
-| `pagerank`, `betweenness_centrality` | 같은 이름 | GR5 |
-| 군집 찾기, 무작위 그래프, 다른 중심성, 표본 매개 중심성 | 없음(나중 후보) | — |
+| networkx | sd.graph |
+|---|---|
+| `topological_sort`, `lexicographical_topological_sort` | `topological_sort`(사전 최소 위상 순서 하나) |
+| `articulation_points`, `bridges`, `biconnected_components` | 같은 이름(이중 연결 요소는 변의 분할) |
+| `core_number`, `k_core` | `core_number`(k-코어는 `core_number(G) >= k`) |
+| `pagerank`, `betweenness_centrality` | 같은 이름 |
+| 군집 찾기, 무작위 그래프, 다른 중심성, 표본 매개 중심성 | 없음(나중 후보) |
 
 ## §9. 정확도
 - 정확한 것(참값과 같다): 연결 요소, 순회, 위상 정렬, 최소 신장 트리, 역 Cuthill–McKee, 구조적 랭크, 매칭의 크기, 흐름 값, 단절점, 다리, 이중 연결 요소, 코어 수.
 - 최단 경로: FW를 뺀 방법끼리 비트까지 같다. 정수 무게(모든 부분합 ≤ 2⁵³)와 `unweighted`는 정확한 최단 거리와 정확히 계산한 선행 노드 규칙과 같다. 일반 무게의 거리는 |d̂ − d\*| ≤ γ_{H−1}·max(Σ_{p̂}|w|, Σ_{p\*}|w|)이고(H는 두 경로 가운데 긴 쪽의 변 수), FW의 거리도 같은 한계다(상수 1, p̂는 FW의 선행 노드가 그리는 경로; GR37).
-- `pagerank`는 ‖x̂ − x\*‖₁ ≤ tol + (반올림 바닥), 매개 중심성은 노드마다의 상대 한계, 배정은 정수 비용에서 정확한 최적이고 일반 비용에서 정확한 비용이 최적 + γ_{2r}·Σ|c|(돌려준 배정과 최적 배정의 합; r은 작은 쪽; GR49) 안, `laplacian`은 줄 합의 한계다(docs/design/graph.md §4). 참값은 정확한 유리수와 Arb다(`tests/graph/refdata.py`).
+- `pagerank`는 ‖x̂ − x\*‖₁ ≤ tol + F, F = γ_K·(1 + 10⁻⁹)/(1 − α)(K는 걸음 하나에서 항이 거치는 반올림의 수; GR56, GR57), 매개 중심성은 노드마다의 상대 한계 γ_K(K는 DAG의 깊이·차수와 n으로 정한다; 참값 0은 정확히 0; GR58), 배정은 정수 비용에서 정확한 최적이고 일반 비용에서 정확한 비용이 최적 + γ_{2r}·Σ|c|(돌려준 배정과 최적 배정의 합; r은 작은 쪽; GR49) 안, `laplacian`은 항 m개의 차수가 γ_k·Σ|A|(k = m, 대칭화면 m + 1), 대칭화의 대각 밖이 γ₁·(|A_ij| + |A_ji|), 정규화의 대각 밖이 상대 (1 + γ_c)/√((1 − ρ_i)(1 − ρ_j)) − 1(ρ = γ_k·Σ|A|/|d|, c = 4, 대칭화면 5) 안이고 그 밖의 원소는 정확하다(GR55). 한계와 잰 값은 docs/design/graph.md §4, 참값은 정확한 유리수와 Arb다(`tests/graph/refdata.py`).

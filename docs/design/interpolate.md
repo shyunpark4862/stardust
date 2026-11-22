@@ -1,12 +1,12 @@
 # 보간 영역 설계 (sd.interpolate)
 
-> 상태: **설계 초안** (2026-11-23). 큰 결정(§1.1 IP1–IP3)은 사용자가 정했다. §9의 질문 스물둘은 모두 추천안으로 정했다(IP4–IP25, 사용자 위임 2026-11-23). IP0 마일스톤은 완료·승인(위임, 2026-11-23)이고 그 결정이 IP26–IP35다. IP1 마일스톤도 완료·승인(위임, 2026-11-23)이고 배열 영역의 `sd.interp`를 공개했다. 그 결정이 IP36–IP41이다. IP2 마일스톤도 완료·승인(위임, 2026-11-23)이고 조각 다항식과 3차 계열(`PPoly CubicHermiteSpline CubicSpline PchipInterpolator Akima1DInterpolator pchip_interpolate`)을 공개했다. 그 결정이 IP42–IP51이다. IP3 마일스톤도 완료·승인(위임, 2026-11-23)이고 B-스플라인(`BSpline`, `make_interp_spline`, `PPoly.from_spline`)을 공개했다. 그 결정이 IP52–IP61이다.
+> 상태: **확정** (2026-11-23). 큰 결정(§1.1 IP1–IP3)은 사용자가 정했고, 나머지 결정(IP4–IP82, IP90–IP107)은 추천안이다(사용자 위임). IP0–IP8은 완료·승인(위임)이다. 모든 공개 이름(`docs/api/interpolate.md`, 배열 영역의 `sd.interp`는 `docs/api/array.md` §8.5)이 구현되어 있고 이 문서는 구현과 맞다.
 
-`sd.interpolate`(점에서 주어진 값을 지나는 함수를 만들고 계산하기)의 확정 사항과 내부 구조의 안을 적는다.
+`sd.interpolate`(점에서 주어진 값을 지나는 함수를 만들고 계산하기)의 확정 사항과 내부 구조를 적는다.
 
-- 공통 규칙은 [DESIGN.md](../../DESIGN.md), 층 구조는 [ARCHITECTURE.md](../../ARCHITECTURE.md), 모든 영역의 API 규칙은 [API.md](../../API.md)에 있다. 공개 함수와 시그니처의 안은 [docs/api/interpolate.md](../api/interpolate.md)다. `sd.interp`(IP2)는 배열 영역의 함수라 IP1 마일스톤에서 `docs/api/array.md` §8.5에 들어갔다.
+- 공통 규칙은 [DESIGN.md](../../DESIGN.md), 층 구조는 [ARCHITECTURE.md](../../ARCHITECTURE.md), 모든 영역의 API 규칙은 [API.md](../../API.md)에 있다. 공개 함수와 시그니처는 [docs/api/interpolate.md](../api/interpolate.md)에 있다. `sd.interp`(IP2)는 배열 영역의 함수라 `docs/api/array.md` §8.5에 있다.
 - 비교 대상은 scipy 1.18.1의 `scipy.interpolate`, numpy 2.5.4의 `numpy.interp`, R 4.6.2의 `stats::approx`·`spline`·`splinefun`이다. R의 보간 패키지(`akima`, `pracma`, `signal`)는 설치되어 있지 않다. 설치하지 않는다(선형과 3차 스플라인만 R과 견준다, §7.4).
-- 바닥은 배열(`csrc/array/`), 바닥 층의 공용 커널(`csrc/base/`), 스레드풀(`csrc/parallel/`), linalg의 LAPACK 래퍼(`csrc/linalg/lapack.hpp`: RBF의 풀이, AAA의 SVD), spatial의 KD 트리(`csrc/spatial/kdtree.hpp`: RBF의 이웃, 가장 가까운 점 보간)다. 선형 커널 하나를 배열의 `sd.interp`와 이 영역이 함께 쓴다(§3.2).
+- 바닥은 배열(`csrc/array/`), 바닥 층의 공용 커널(`csrc/base/`), 스레드풀(`csrc/parallel/`), linalg의 LAPACK 래퍼(`csrc/linalg/lapack.hpp`: RBF의 분해와 랭크 검사, AAA의 SVD와 일반화 고유값), spatial의 KD 트리와 거리 커널(`csrc/spatial/kdtree.hpp`·`metric.hpp`: RBF의 이웃과 거리, 가장 가까운 점 보간), 배열의 NEON 수학 커널(`csrc/array/kernels/vmath.hpp`: RBF 핵의 log·exp)이다. 선형 커널 하나를 배열의 `sd.interp`와 이 영역이 함께 쓴다(§3.2).
 - 이 문서의 잰 값은 Apple M4 Pro, macOS 26.6.2에서 본 것이다. 탐침은 `tools/interpolate_probe.py`(기록은 `tests/interpolate/data/`, 시간과 측정은 `build/logs/interpolate_probe/`)이고 §3.2, §3.3, §3.4, §5가 그 결과를 옮긴다.
 - ε은 float64의 기계 엡실론 2⁻⁵² ≈ 2.22×10⁻¹⁶, u는 단위 반올림 2⁻⁵³(= ε/2), γ_k = ku/(1 − ku)다(spatial.md, sparse.md §4와 같은 기호).
 
@@ -78,9 +78,48 @@
 | IP59 역미분의 누적합 | 열마다 차례 합이다(numpy `cumsum`의 순서, scipy `splantider`와 같은 연산). §3.9의 처음 안(길이로 정한 블록)을 대신한다: 10⁶ 계수의 누적합이 1 ms 아래라 블록이 필요 없고, 열 묶음으로 나눠도 열마다 같은 연산이다 (추천안, 사용자 위임 2026-11-23) |
 | IP60 `make_interp_spline`의 작은 경우 | `bc_type='periodic'`이고 k = 0, 1이면 scipy처럼 끝값을 검사한 뒤 주기가 아닌 스플라인(`extrapolate=True`)이다. 끝점의 도함수 조건이 넘치면(간격이 비정상 수) 그 사실을 말하는 `ValueError`다(scipy도 `ValueError`, "infs or NaNs"). 점은 둘 이상이어야 한다(다른 1차원 보간과 같다) (추천안, 사용자 위임 2026-11-23) |
 | IP61 k = 1의 길 | t[1..n]이 엄격히 증가하면 노드 t[1..n], 값 c[:n]의 선형 길(IP41)로 평가한다: `make_interp_spline(k=1)`과 `BSpline(t, c, 1)`이 세 바깥 규칙 모두에서 그 길과 같은 비트이고 기본 구간에서 `sd.interp`와 같은 비트다. 안쪽 매듭이 겹치면(뛰는 꺾은선) de Boor다 (추천안, 사용자 위임 2026-11-23) |
+| IP62 `add_xi`의 무게 | 더한 뒤의 무게는 모든 노드를 입력 순서로 처음부터 다시 곱한 것이라 같은 노드로 새로 만든 객체와 비트까지 같다. 사용자가 `wi`를 주었어도 그렇다(§3.6). `[scipy와 다름]`: scipy는 있던 무게에 새 인수를 곱해 고치고(용량 척도 4/(max − min)를 곱한 인수), 주어진 `wi`에도 그 인수를 곱해 척도가 섞인다. `wi`를 주어도 노드가 서로 다른지 검사한다(scipy는 `wi`를 주면 검사하지 않는다) (추천안, 사용자 위임 2026-11-23) |
+| IP63 `FloaterHormannInterpolator`의 점 | 점은 실수, 1차원, 유한하고 서로 달라야 한다(`ValueError`). 순서는 어느 것이든 받아 scipy처럼 정렬하고(무게는 정렬한 점의 식이다), 값이 유한하지 않은 표본(배치면 그 행의 어느 열이든)은 scipy처럼 버린다. `d`는 남은 표본 수 n에 대해 0 ≤ d < n이어야 한다. `[scipy와 다름]`: scipy는 같은 점을 `numpy.unique`로 말없이 하나만 남기고, `d`를 버리기 전의 점 수와 견준다(버린 뒤 d ≥ n이면 무게가 모두 0이라 결과가 NaN이다) (추천안, 사용자 위임 2026-11-23) |
+| IP64 차수를 넘는 도함수 | `Barycentric`·`Krogh`의 n차 이상 도함수(n은 노드 수)는 0이고 NaN 평가점에서는 NaN이다(IP52와 같은 규칙; `[scipy와 다름]`: scipy는 NaN 점에서도 0). 그 아래 차수의 NaN 점은 계산 그대로 NaN이다 (추천안, 사용자 위임 2026-11-23) |
+| IP65 유리식의 결과 모양 | `FloaterHormannInterpolator(axis=k)`의 결과는 다른 1차원 보간처럼 평가점의 모양 전체가 `axis` 자리에 들어간다(§2.1). `[scipy와 다름]`: scipy의 `_BarycentricRational`은 평가점의 첫 축만 `axis`로 옮겨, 2차원 이상의 평가점과 0이 아닌 `axis`에서 모양이 다르다 (추천안, 사용자 위임 2026-11-23) |
+| IP66 `wi`의 척도와 `yi`의 모양 | `BarycentricInterpolator.wi`는 참 무게에 공통의 2의 거듭제곱을 곱해 가장 큰 크기가 [0.5, 1)에 오게 한 것이다(공식은 공통 배수와 무관하다; scipy의 무게는 용량 척도가 곱해진 다른 배수다). `yi`는 값의 원래 모양(노드가 `axis`를 따라)이다(`[scipy와 다름]`: scipy의 `yi`는 내부의 (n, r) 꼴이다). 값이 없을 때(`yi=None`) 부르면 `ValueError`다(scipy는 내부 에러) (추천안, 사용자 위임 2026-11-23) |
+| IP67 AAA의 인자와 `converged` | `rtol`은 `None`이거나 유한하고 0 이상, `clean_up_tol`도 유한하고 0 이상, `clean_up`은 `True`·`False`, `max_terms`는 1 이상의 int다(`ValueError`·`TypeError`; scipy는 `rtol`과 `clean_up_tol`을 검사하지 않는다). 유한한 표본이 하나도 없으면 `ValueError`다(scipy는 빈 배열의 `argmax` 에러). 걸음은 min(`max_terms`, 표본 수)까지다(모든 표본이 지지점이면 오차 0으로 멈춘다). `converged`는 멈춤 판정 max\|f − r\| ≤ rtol·max\|f\|가 섰는지다: scipy는 마지막 걸음(m = `max_terms` − 1)에서 수렴해도 경고하므로 그 경우만 scipy의 경고와 뜻이 다르다. 열을 정규화한 SVD에서 노름이 0인 열은 그대로 둔다(scipy는 0으로 나눠 NaN) (추천안, 사용자 위임 2026-11-23) |
+| IP68 무게중심 평가의 세부 | 합은 노드 순서의 차례 합이다(분자는 항마다 fma 하나). 노드와의 거리가 비정상 수라 sⱼ = wⱼ/(x − xⱼ)가 넘치면 가장 가까운 노드의 값이다(scipy는 inf/inf = NaN). 무한한 평가점은 유리식(`AAA`, `FloaterHormannInterpolator`)이면 극한 Σwf/Σw(scipy와 같다; 배치면 열마다, scipy는 모든 열을 한 수로 더한다), 다항식(`Barycentric`)이면 NaN이다(scipy와 같다). 복소 평가는 역수를 2의 거듭제곱으로 맞춘 뒤 구해 제곱이 넘치거나 언더플로하지 않는다 (추천안, 사용자 위임 2026-11-23) |
+| IP69 Krogh의 평가 | 값은 Newton 꼴의 Horner(점마다 fma n − 1번), 도함수는 중심을 x로 옮기는 Horner를 거듭하는 것이다: m번째 걸음이 끝나면 m번 자리가 p⁽ᵐ⁾(x)/m!이다. 값과 각 차수가 한 걸음 줄의 같은 비트라 `__call__`, `derivative(der=m)`, `derivatives()`의 m번 행이 비트까지 같다. scipy는 값을 거듭제곱 곱의 합으로, 도함수를 따로 된 재귀로 계산해 끝자리가 다르다(계약 안). 점의 순서는 입력 그대로이고 Leja 순서로 바꾸지 않는다(§9의 19의 남은 질문): 반복 노드의 도함수 자료는 순서에 묶여 있고, 바꾸면 scipy와 같은 입력에서 반올림이 달라지며, 계약(§4)이 불안정의 크기를 그대로 보인다 (추천안, 사용자 위임 2026-11-23) |
+| IP70 Higham 한계의 확인 | §4의 `Barycentric` 한계를 이 구현의 연산 순서로 증명해 O(u²) 없는 꼴로 고쳤다: N개 노드에서 \|p̂ − p\| ≤ (γ₃ₙ₊₁Σ\|ℓⱼyⱼ\| + γ₃ₙΛ\|p\|)/(1 − γ₃ₙ₋₁Λ)(N = n + 1의 Higham 꼴로 (3n + 4)u, (3n + 3)u 첫 차; 처음 안의 Higham 2004 (3n + 2)u보다 한 칸 큰 것은 마지막 나눗셈을 Λ 항에 넣어서다). 무게의 반올림(입력 순서의 곱, 지수를 따로 셈)이 들어 있다. 증명은 §3.6 (추천안, 사용자 위임 2026-11-23) |
+| IP71 `clean_up`의 SVD와 큰 표본 | 다시 맞추는 SVD는 표본 행이 지지점 수 이상이면 `gesdd`의 'S'다(V^H는 'A'와 같은 행렬이다). scipy는 'A'라 U가 (표본 수)²이고 10⁵ 표본이면 80 GB다. AAA의 열은 걸음마다 더해 M × (걸음 수)만 든다(scipy는 M × `max_terms`를 먼저 잡는다) (추천안, 사용자 위임 2026-11-23) |
+| IP72 다항식·유리식의 속도 사례 크기 | 평가 사례(`Barycentric`, `FloaterHormannInterpolator`, AAA)는 10⁵점이다(§5의 IP0 측정은 10⁶점). scipy는 (평가점 × 노드) 배열로 평가해 10⁶점·101노드에서 프로세스가 2.4 GB를 쥔다. `Krogh` 평가는 노드 20개라 10⁶점 그대로다 (추천안, 사용자 위임 2026-11-23) |
+| IP73 격자의 축 | `points`는 1차원 배열의 튜플이나 리스트다(아니면 `TypeError`). 축마다 1점 이상, 유한, 엄격히 증가하거나 감소해야 한다(`ValueError`; `[scipy와 다름]`: scipy는 무한한 노드를 받는다). 감소하는 축은 만들 때 뒤집고 `grid`와 `values`도 뒤집은 것이다(scipy와 같다). 점이 하나인 축은 `linear`·`nearest`에서 계산에 들지 않는다(그 축을 따라 상수, scipy와 같다) (추천안, 사용자 위임 2026-11-23) |
+| IP74 격자의 유한하지 않은 값 | `cubic`·`quintic`·`pchip`은 값이 유한해야 한다(`ValueError`; scipy도 에러다: 반복 풀이의 "RHS must contain only finite numbers"와 PCHIP의 검사). 방법을 바꾼 호출도 그때 검사한다. `linear`·`nearest`·`slinear`는 IEEE로 퍼뜨리고, 그 규칙은 1차원 선형 길의 것이다: NaN·inf 노드는 그 점의 무게가 0이 아닐 때만 결과에 든다. `[scipy와 다름]`: scipy의 `linear`는 꼭짓점 무게의 합이라 무게가 0인 NaN도 0·NaN으로 칸 전체에 퍼지고, `slinear`는 반복 풀이라 에러다(sd의 `slinear`는 풀이가 없는 `linear`와 같은 함수다) (추천안, 사용자 위임 2026-11-23) |
+| IP75 격자 옵션의 검사 | `bounds_error`는 `True`·`False`만(`TypeError`; scipy는 참·거짓으로 칠 수 있는 무엇이든), `fill_value`는 `None`이거나 수(bool과 배열은 `TypeError`; scipy는 배열과 `True`도 받는다)이고 실수 값에 complex는 scipy처럼 `ValueError`, 속성은 float·complex로 둔다. `nu`는 d개의 0 이상 int의 시퀀스다(스칼라는 `TypeError`, float는 API.md §2의 int 규칙으로 `TypeError`; scipy는 스칼라에 `ValueError`, float를 받는다). 속성은 읽기만 한다 (추천안, 사용자 위임 2026-11-23) |
+| IP76 평가점의 꼴 | `xi`는 (…, d) 배열, d의 배수 길이인 1차원 배열(scipy처럼 (−1, d)로 읽는다), d개 좌표의 튜플(배열과 스칼라가 섞여도 scipy처럼 브로드캐스트)이다. 스칼라만의 튜플은 한 점이라 결과가 Python 스칼라다(0차원 배열이 없다; scipy는 0차원 배열). 스칼라 `xi`는 `ValueError`(scipy는 내부 `IndexError`). 범위 밖의 점은 평가와 한 번에 찾고 가장 작은 축을 말한다(`one of the requested xi is out of bounds in dimension i`, scipy의 문장) (추천안, 사용자 위임 2026-11-23) |
+| IP77 격자 선형의 꼴 | 축마다 구간과 t는 1차원 선형 길의 것(`base/interval.hpp`, `lerp_t`)이고 2ᵈ 꼭짓점을 마지막 축부터 `lerp`로 줄인다. `nearest`도 같은 t다. `slinear`는 `nu`가 없거나 모두 0이면 이 길이고, 아니면 k = 1 텐서곱 B-스플라인의 de Boor다. `fill_value=None`의 바깥은 같은 커널의 늘이기라 무한한 좌표는 그 직선의 값(±inf, 또는 끝값이 같으면 NaN)이다(`[scipy와 다름]`: scipy는 inf·0으로 NaN) (추천안, 사용자 위임 2026-11-23) |
+| IP78 텐서곱 스플라인의 풀이와 평가 | 계수는 축 0부터 차례로, 축마다 `make_interp_spline`의 배치 계(bspline.cpp의 행·띠·기저 그대로, 피벗 없이 풀고 막히면 부분 피벗)를 그 축의 모든 줄에 푼다(줄 묶음 P개 × 열 8개 묶음, 줄과 열마다 같은 연산). 차수마다 한 번 만들어 객체에 둔다(scipy는 방법을 바꾼 호출마다 다시 만든다). 평가는 (k + 1)ᵈ 계수를 마지막 축부터 bspline.cpp의 합(첫 곱, 그 뒤 fma)으로 줄인다. 그래서 1차원은 `make_interp_spline`과 같은 비트다. 기저와 구간은 bspline.cpp와 함께 쓰는 `interpolate/deboor.hpp`다(옮긴 것뿐이라 B-스플라인의 비트는 그대로) (추천안, 사용자 위임 2026-11-23) |
+| IP79 텐서곱 스플라인의 계약 | 만들기: \|ĉ − c\| ≤ Σ_a (⊗_{b>a}\|A_b⁻¹\|)·2γ_{8k+8}\|A_a⁻¹\|\|A_a\|\|R̂_a\| 성분마다(R̂_a는 축 a까지 푼 계수, 1차원 계약을 뒤 축의 정확한 풀이로 옮긴 것; `refdata.tensor_collocation_bound`). 평가: \|ŷ − Σⱼ cⱼ∏_a B_{jₐ}(xₐ)\| ≤ γ_{d(6k+1)}Σⱼ\|cⱼ\|∏_a B̃_{jₐ} + d(6k + 2)·2⁻¹⁰⁷⁴·(1 + 2ᵈΣⱼ\|cⱼ\|)(축마다의 1차원 평가 계약을 쌓은 것: γₐ(1 + γₐ) + γₐ ≤ γ₂ₐ; `refdata.tensor_bound`). 끝에서 끝은 평가 한계에 계수 한계 × ∏B̃를 더한 것이다(§4) (추천안, 사용자 위임 2026-11-23) |
+| IP80 `pchip`의 창 | 축마다 구간 j의 값은 노드 w₀ … w₀ + 3(w₀ = clamp(j − 1, 0, n − 4))의 값으로만 정해진다(j, j + 1의 기울기가 읽는 노드가 모두 그 안이다). 4ᵈ개 값을 마지막 축부터 1차원 PCHIP으로 줄이고, 기울기는 cubic.cpp와 함께 쓰는 `interpolate/pchip.hpp`, 계수와 Horner는 cubic.cpp·ppoly.cpp의 연산 그대로다. 그래서 1차원은 `PchipInterpolator`와, d차원은 scipy의 알고리즘(축마다 `PchipInterpolator`를 접기)에 sd의 `PchipInterpolator`를 넣은 것과 같은 비트다 (추천안, 사용자 위임 2026-11-23) |
+| IP81 격자 선형의 계약 | §4의 처음 안 "γ₆d·Σw_c\|v_c\| 꼴"을 증명한 꼴로 바꾼다: 축마다의 1차원 선형 계약을 쌓은 재귀(층마다 linear_bound(\|â\|, \|b̂\|, t)에 입력의 한계 × (1 − t), t; 바깥은 \|1 − t\|, \|t\|; `refdata.grid_linear_exact`)이고, 안쪽 점에서 닫힌 꼴로 \|ŷ − y\| ≤ d·(γ₁₃M + 3η)(M은 2ᵈ 꼭짓점 값의 최대 크기)다. 1차원 계약이 \|a\| + \|b\|의 꼴이라 무게 Σw_c\|v_c\|의 꼴은 이 커널로는 증명되지 않는다 (추천안, 사용자 위임 2026-11-23) |
+| IP82 격자의 속도 사례 | IP0의 사례 여섯에 `quintic` 평가 100², 10⁵점을 더한다. `cubic`·`quintic`의 scipy 비교는 반복 풀이라 값 검사를 하지 않는다(`differs`) (추천안, 사용자 위임 2026-11-23) |
+| IP90 같은 자료점의 검사 | 만들기 전에 자료점을 (좌표, 색인) 순서로 정렬해 같은 점의 묶음을 찾고, 묶음 안에 `smoothing`이 0인 점이 둘 이상이면 `LinAlgError`다(두 행이 같아 계가 정확히 특이하다). 메시지는 그런 짝 가운데 둘째 점의 색인이 가장 작은 짝을 말한다. 한쪽이라도 `smoothing`이 양수면 풀이에 맡긴다. `neighbors=`에서도 만들 때 검사한다: 두 점이 한 이웃 집합에 들지 않을 수도 있지만 한 자리에 값이 둘인 자료는 보간의 뜻이 없다 (추천안, 사용자 위임 2026-11-23) |
+| IP91 `epsilon`과 거리 | r = ε·‖x − y‖이고 거리는 spatial의 `euclidean` 짝 커널(spatial.md SPT26의 순서와 조심하는 길)이라 `cdist`와 같은 비트다. `[scipy와 다름]`: scipy는 εx와 εy를 먼저 반올림한 뒤 거리를 잰다(반올림 크기만 다르다). `epsilon`은 유한하고 양수여야 한다(`ValueError`; scipy는 0과 음수를 받고, 음수는 εy끼리의 거리라 절댓값처럼 된다) (추천안, 사용자 위임 2026-11-23) |
+| IP92 계의 검사와 풀이 | 단항식 행렬 P(n × q)의 랭크를 풀기 전에 numpy `matrix_rank`의 판정(`gesdd`의 특잇값, 허용 s_max·max(n, q)·ε)으로 보고, q보다 작으면 그 랭크를 말하는 `LinAlgError`다(scipy는 풀이가 실패한 뒤에만 보고, 실패하지 않으면 직선 위의 점에서 10¹¹ 크기의 값을 낸다). 풀이는 `sytrf`(아래 삼각) + `sytrs`(이 마일스톤이 더한 linalg 내부 래퍼)이고, `sytrf`의 정확한 0 피벗이나 유한하지 않은 계수는 "singular"의 `LinAlgError`다. 꼬리의 shift·scale은 scipy의 (max ± min)/2를 0.5·max ± 0.5·min으로 계산한다(넘침이 없고, 반이 비정상 수인 경우를 빼면 같은 비트) (추천안, 사용자 위임 2026-11-23) |
+| IP93 평가점의 모양 | `RBFInterpolator.__call__(x)`와 `NearestNDInterpolator.__call__(xi)`는 (…, d) 배열을 받고 결과는 그 앞 모양에 값의 나머지 모양을 붙인 것이다(scipy의 RBF는 (Q, d)만). 한 점((d,))이고 값이 스칼라면 Python 스칼라다. `NearestNDInterpolator`의 `xi`는 d개 배열(이나 수)의 튜플도 받아 브로드캐스트한다(IP31). `NearestNDInterpolator`는 d = 1도 받는다(scipy는 좌표가 둘 이상이어야 한다) (추천안, 사용자 위임 2026-11-23) |
+| IP94 유한하지 않은 평가점 | NaN 좌표가 있는 점은 NaN이다(§2.1). 무한한 좌표는 전역 RBF가 그 식을 그대로 계산한다(scipy와 같다; `gaussian`이면 다항식 꼬리의 값). 이웃이 있어야 하는 길(`neighbors=`의 국소 RBF, `NearestNDInterpolator`)에서는 유한하지 않은 점이 NaN이다(`[scipy와 다름]`: scipy는 KD 트리의 `ValueError`) (추천안, 사용자 위임 2026-11-23) |
+| IP95 `neighbors ≥ n` | k ≥ n이면 모든 점의 이웃 집합이 전체로 같으므로 만들 때 전역 계를 한 번 푼다. 이웃 길로 푼 것과 같은 계라 같은 비트이고(`test_rbf.py`), 특이한 계의 에러가 부를 때가 아니라 만들 때 난다. scipy는 부를 때마다 n점의 계를 푼다 (추천안, 사용자 위임 2026-11-23) |
+| IP96 국소 계의 묶음 | 평가점마다 `KDTree.query(k)`의 색인을 정렬해 집합으로 하고, 평가점을 (집합의 사전 순서, 점 번호)로 정렬해 같은 집합끼리 묶는다. 집합마다 그 점들만의 shift·scale로 (k + q)차 계를 한 번 풀고(scipy와 같다) 그 집합의 평가점을 계산한다. 집합끼리 병렬이고 국소 계도 LAPACK `sytrf`와 같은 대입이다(작은 계의 대입은 IP101). 한 점의 값은 그 집합만으로 정해져 다른 점, 점의 순서, 부르기의 나눔, 스레드 수와 무관하고, 그 집합의 자료점으로 만든 전역 RBF와 비트까지 같다. 실패한 집합이 여럿이면 점 번호가 가장 작은 점의 집합을 말한다 (추천안, 사용자 위임 2026-11-23) |
+| IP97 RBF의 계약 | §4의 RBF 계약을 이렇게 정한다. (1) 풀이: 성분마다 \|Âĉ − d\| ≤ γ_{4N}(\|Â\| + \|L̂\|\|D̂\|\|L̂\|ᵀ)\|ĉ\|(Higham 정리 11.3의 Bunch–Kaufman 꼴, N = n + q; Â는 계산한 계, L̂·D̂는 그 `sytrf` 인수이고 `sd.linalg.ldl`이 같은 분해다)이고 증가 인자 ‖\|L̂\|\|D̂\|\|L̂\|ᵀ‖∞/‖Â‖∞를 함께 적는다. (2) 평가: 계산한 계수·shift·scale의 정확한 함수 대비 Σⱼ\|ĉⱼ\|Eⱼ(1 + γ_N) + γ_NΣⱼ\|ĉⱼ\|\|φⱼ\| + Σₖ\|b̂ₖ\|\|mₖ\|(γ_{3gₖ}(1 + γ_N) + γ_N), Eⱼ = 1.01γ_{d+5}\|rφ′(r)\| + γ₄\|φⱼ\| + 8·2⁻¹⁰⁷⁴(r의 상대 반올림 γ_{d+5}는 거리 커널과 ε의 곱, γ₄는 핵 식의 반올림; libm의 `log`·`exp`가 1 ULP라는 spatial.md의 가정 L). 끝에서 끝은 계의 조건수가 정해 계약이 없고 정확도 표에 scipy와 나란히 적는다 (추천안, 사용자 위임 2026-11-23) |
+| IP98 `NearestNDInterpolator`의 세부 | 동점은 작은 색인이다(`KDTree.query(k=1)`의 (거리, 색인) 순서). `[scipy와 다름]`: scipy의 트리는 같은 거리의 점 가운데 하나를 정해 두지 않고 고른다(시험 자료의 늘인 격자 198점 가운데 1점에서 다른 점을 골랐다). `rescale=True`는 scipy의 뜻(축마다 평균을 빼고 범위로 나눈다, 범위가 0이면 1)이고 평균은 배열의 pairwise 합이다. 값은 float64·complex128이고 유한하지 않아도 된다(고르기만 한다). `rescale`은 `True`·`False`만 받는다 (추천안, 사용자 위임 2026-11-23) |
+| IP99 선형 커널의 블록 꼴 | `base/lerp.hpp`에 `lerp_block`(점, 두 노드, 두 값에서 t와 값)과 `lerp_ab_block`(두 값과 t)을 더한다: 256점 블록을 한 번의 벡터화된 고리로 계산하고 연산은 `lerp_t`의 흔한 길과 `lerp`의 유한한 길(`detail::lerp_finite`, `lerp`가 함께 쓴다) 그대로라 같은 비트다. 덮지 못한 점(NaN·무한한 점, 넘치는 폭, 유한하지 않은 끝값)이 있는 블록만 그 점을 스칼라 커널로 다시 계산한다. `sd.interp`(실수 값), 이 영역의 선형 길(열 하나), RGI의 `linear`(실수 값, 꼭짓점 64개 이하: 블록의 모든 꼭짓점 값을 먼저 모아 격자 읽기를 겹친다)가 쓴다. 정렬한 평가점의 `sd.interp`(노드 10³)가 3.23 → 2.74 ms(numpy 2.70), RGI `linear` 1000²가 30.4 → 16.3 ms(1스레드), 4.46 → 2.20 ms(10스레드)다(§5) (추천안, 사용자 위임 2026-11-23) |
+| IP100 RBF 핵의 `log`·`exp`와 레인 | `thin_plate_spline`의 log와 `gaussian`의 exp는 배열 영역의 NEON 커널(`array/kernels/vmath.hpp`)의 스칼라 짝 `log1`·`exp1`이다(전: libm). 평가는 평가점 넷을, 계 채우기는 한 열의 칸 둘을 NEON 레인으로 나란히 계산하고 칸마다 스칼라와 같은 연산(거리의 fma 사슬, sqrt, εr, 핵, 자료점 차례의 fma)이라 같은 비트다. 거리의 조심하는 길과 vmath가 덮지 못한 인자(r = 0, |r²| > 708)는 그 레인만 스칼라다. 비트가 바뀌는 것은 두 핵뿐이고(옛 값: libm, 새 값: vmath; 둘 다 1 ULP 안, vmath는 Arb 대비 최대 1 ULP를 잰 것) 평가 계약의 가정 L(1 ULP)이 그대로라 계약은 바뀌지 않는다. 평가 10⁴점(n = 10³)이 55.0 → 19.0 ms(scipy 57.5), 만들기 n = 10³이 7.8 → 5.8 ms다 (추천안, 사용자 위임 2026-11-23) |
+| IP101 RBF 계의 대입 | `sytrf`(Accelerate) 뒤의 대입을 LAPACK `dsytrs`의 단계(교환, L D y = b, Lᵀx = y; 뒤 대입의 내적은 i mod 4의 부분합 넷을 (s₀ + s₁) + (s₂ + s₃)로 묶는다, 크기로만 정한 순서)를 그대로 쓴 `ldlt_solve`로 한다. 국소 계(N = 53)에서 라이브러리의 `dsytrs`가 3.5 µs로 분해(4.25 µs)만큼 들었다. 모든 RBF 결과의 끝자리가 바뀐다(대입의 반올림 순서). 풀이 계약(Higham 정리 11.3의 Bunch–Kaufman 꼴)은 같은 대입이라 그대로다. 분해까지 직접 쓰는 작은 계의 LDLᵀ(IP96이 IP7로 미룬 것)는 쓰지 않는다: 분해의 이득은 4 µs 아래이고 피벗이 `sd.linalg.ldl`(계약 시험이 쓰는 분해)과 같아야 한다. `neighbors=50`이 178 → 145 ms(IP100의 계 채우기 포함)이고, linalg의 내부 래퍼 `lapack::sytrs`는 이 영역에서 더 쓰지 않는다 (추천안, 사용자 위임 2026-11-23) |
+| IP102 점 평가의 병렬 문턱 | `sd.interp`, 이 영역의 선형 길, `PPoly` 평가의 작업량 추정을 점마다 2·log₂n + 8(전: log₂n + 4; 노드 10³의 무작위 순서에서 잰 4 ns에 맞춘다)로, 태스크를 1024점(전: 4096점)으로 한다. 2,000–10,000점의 호출이 10스레드에서 나뉜다(노드 10³, 5000점의 `sd.interp`가 21 → 13 µs). 점마다 한 커널이라 결과는 나눔과 무관하다 (추천안, 사용자 위임 2026-11-23) |
+| IP103 짧은 배치의 삼중대각 | `CubicSpline`의 열 8개 이하 길(IP44)은 행렬을 저장하지 않는다: 안쪽 행의 원소는 노드에서 그 자리에서 만들고 사슬의 피벗과 위 대각은 레지스터에 두며, 뒤 대입에 쓸 피벗의 역수만 배열로 둔다(전: 배열 다섯). periodic의 열 8개 이하 길도 분해, 결합 열과 자료의 앞 대입을 한 번에 훑고 뒤 대입 둘을 한 번에 한다. 같은 연산, 같은 순서라 같은 비트다. 10⁶점 not-a-knot이 12.05 → 8.6 ms, periodic이 17.4 → 10.1 ms(scipy 12.1, 22.2)다 (추천안, 사용자 위임 2026-11-23) |
+| IP104 `PPoly.from_spline`의 기저 | 조각마다의 차수 5 이하 기저는 펼친 `basis_fixed`(같은 연산)이고, d! = 1, 2로 나누기는 역수의 곱이다(2의 거듭제곱이라 같은 몫의 같은 반올림). 같은 비트이고 10⁶ 조각이 31.9 → 21.3 ms(scipy 28.4)다 (추천안, 사용자 위임 2026-11-23) |
+| IP105 쓰지 않는 길 | (1) 긴 열 하나의 삼중대각을 병렬 순환 소거나 양끝에서 만나는 분해로 하지 않는다(§3.9가 IP7로 미룬 것): IP103 뒤 10⁶점의 분해 사슬(행마다 나눗셈·곱·뺄셈, 약 16 사이클)은 8.6 ms 중 3.6 ms이고, 사슬을 반으로 줄여도 1.3배 아래인데 모든 `CubicSpline`의 비트가 바뀐다. (2) AAA의 QR 갱신(§3.6)은 나중 후보로 둔다: 만들기가 이미 scipy보다 빠르고(abs 9.5 ms 대 12.0) 같은 알고리즘의 반올림만 바뀐다. (3) `NearestNDInterpolator`와 `neighbors=`의 질의는 spatial의 `KDTree.query`가 시간의 거의 전부라(10⁶점의 408 ms 중 408 ms) 이 영역에서 고칠 것이 없다 (추천안, 사용자 위임 2026-11-23) |
+| IP106 코드 리뷰의 고침 | (1) `spline_slopes`의 열 8개 이하 길과 periodic, `check_x`·`all_finite`, `BSpline.from_power_basis`의 계산이 크기와 상관없이 GIL을 쥐었다: 문턱(2¹⁵) 이상이면 놓는다(API.md §3). (2) aaa.cpp는 언제나 GIL을 놓았다(`nb::gil_scoped_release`): 다른 커널처럼 작업량 문턱의 `parallel::Unlocked`로 한다. (3) `neighbors=k`의 국소 계는 태스크마다 (k + q)²을 검사 없이 잡았다: 전역 계와 같은 물리 메모리 검사를 만들 때 한다(`MemoryError`). (4) `AAA`·`FloaterHormannInterpolator`의 메서드를 틀리게 부르면 비공개 기반 클래스 `_Rational`의 이름이 나왔다(`_Rational.roots() got an unexpected keyword argument ...`): 클래스마다 제 이름의 사본을 둔다(API.md §2.1의 내부 이름 규칙) (추천안, 사용자 위임 2026-11-23) |
+| IP107 쓰지 않는 linalg 래퍼 | IP6 마일스톤이 `csrc/linalg/lapack.hpp`에 더한 내부 래퍼 `lapack::sytrs`(`dsytrs`/`zhetrs`)를 뺀다: IP101이 RBF의 대입을 이 영역의 `ldlt_solve`로 바꾼 뒤 부르는 곳이 없다. 공개 linalg와 모든 결과는 그대로다. IP4의 `ggev`는 AAA·Floater–Hormann의 극점·영점이 쓰므로 둔다 (추천안, 사용자 위임 2026-11-23) |
 
-### 1.2 범위 (안)
-마일스톤은 §8이다. "IPn"은 그 마일스톤에서 만든다는 뜻이고 "나중"은 첫 판에 넣지 않는 후보다. "?"는 §9의 답에 달렸다.
+### 1.2 범위
+마일스톤 열은 그 이름을 만든 §8의 마일스톤이고 "나중"은 첫 판에 넣지 않은 후보다.
 
 **이름공간**: 모든 공개 이름이 `sd.interpolate`에 바로 있다. scipy의 `from scipy.interpolate import CubicSpline`은 `from stardust.interpolate import CubicSpline`이 된다. 하위 모듈(scipy의 `fitpack`, `interpnd`, `polyint` 같은 옛 모듈 이름)은 없다.
 
@@ -125,7 +164,7 @@
 
 ### 1.4 다른 영역과의 관계
 - **배열**: `sd.interp`는 배열 영역의 함수다(IP2). 선형 커널 `base/lerp.hpp`를 배열의 `array/ops/interp.cpp`와 이 영역의 1차원 선형·k = 1 B-스플라인·격자 선형이 함께 쓴다(같은 x의 sin·cos를 함께 구하는 `base/sincos.hpp`를 배열과 special이 함께 쓰는 것과 같은 자리). 구간 찾기는 배열의 `searchsorted`와 같은 순서 규칙(NaN이 가장 크다)이다(§3.1).
-- **linalg**: RBF의 전역 연립방정식은 대칭 부정치 LDLᵀ(`sytrf`, 래퍼에 `sytrs`를 더한다), AAA는 `gesdd`와 일반화 고유값(`ggev`, §9의 17)을 `linalg/lapack.hpp`로 부른다. 스플라인의 띠 연립방정식은 이 영역의 피벗 없는 풀이다(§3.3, §9의 13). `sd.linalg.solve_banded`와는 끝자리가 다를 수 있다.
+- **linalg**: RBF의 전역 연립방정식은 대칭 부정치 LDLᵀ(`sytrf`; 대입은 이 영역의 `ldlt_solve`, IP101)이고 꼬리의 랭크는 `gesdd`로 본다. AAA는 `gesdd`와 일반화 고유값(`ggev`, 이 영역이 더한 내부 래퍼, §9의 17)을 `linalg/lapack.hpp`로 부른다. 스플라인의 띠 연립방정식은 이 영역의 피벗 없는 풀이다(§3.3, §9의 13). `sd.linalg.solve_banded`와는 끝자리가 다를 수 있다.
 - **spatial**: `RBFInterpolator(neighbors=k)`와 가장 가까운 점 보간은 `KDTree`의 kNN을 쓴다. 동점이 (거리, 색인) 순서로 정해져 있어서(spatial.md SPT4) 이웃 집합이 실행과 스레드 수와 무관하다. scipy는 동점 순서를 약속하지 않아 같은 거리의 이웃이 갈리면 RBF의 국소 계와 가장 가까운 점의 값이 달라질 수 있다.
 - **sparse**: `BSpline.design_matrix`가 `sd.sparse.csr_array`를 돌려준다(Python 층에서만 의존한다).
 - **integrate**: `PPoly.integrate`는 조각 다항식의 정확한 역미분이다. `sd.integrate.quad`와 견줄 수 있지만 서로 쓰지 않는다.
@@ -133,17 +172,17 @@
 
 ---
 
-## 2. API (안)
+## 2. API
 
 ### 2.1 입력
 - **받는 것**: 보간 객체의 생성자, 그 메서드와 호출, 함수 꼴(`pchip_interpolate`, `interpn` …)은 API.md §5의 상위 함수 입력(`sd.ndarray`, 수의 시퀀스, numpy 배열, frame의 `Series`)을 받는다(§9의 3). `sd.interp`는 배열 영역의 함수라 `sd.ndarray`와 Python 스칼라만 받는다.
-- **가로축**(`x`, `xi`, 격자의 `points`, 매듭 `t`, 평가점): float64로 계산한다. bool·int64는 float64로 바꾼다. complex128은 `TypeError`다(`[scipy와 다름]`: scipy는 복소수 평가점의 실수부만 쓰고 `ComplexWarning`을 낸다). 예외는 `AAA`다: 복소평면의 점을 받는다(scipy와 같다).
-- **세로축**(`y`, 계수 `c`, 격자의 `values`, RBF의 `d`): float64 또는 complex128이다. complex를 받는 곳은 scipy와 같다: `PPoly`, `CubicHermiteSpline`, `CubicSpline`, `BSpline`, `make_interp_spline`, `Barycentric`, `Krogh`, `AAA`, RGI의 `pchip`을 뺀 방법, `RBFInterpolator`, `sd.interp`. `PchipInterpolator`와 `Akima1DInterpolator`는 실수만이다(scipy와 같이 `ValueError`; 단조성과 기울기의 부호가 실수의 개념이다; §9의 8).
+- **가로축**(`x`, `xi`, 격자의 `points`, 매듭 `t`, 평가점): float64로 계산한다. bool·int64는 float64로 바꾼다. complex128은 `TypeError`다(`[scipy와 다름]`: scipy는 복소수 평가점의 실수부만 쓰고 `ComplexWarning`을 낸다). 예외는 `AAA`와 `FloaterHormannInterpolator`의 평가점이다: 복소평면의 점을 받는다(scipy와 같다).
+- **세로축**(`y`, 계수 `c`, 격자의 `values`, RBF의 `d`): float64 또는 complex128이다. complex를 받는 곳은 scipy와 같다: `PPoly`, `CubicHermiteSpline`, `CubicSpline`, `BSpline`, `make_interp_spline`, `Barycentric`, `Krogh`, `FloaterHormannInterpolator`, `AAA`, RGI의 `pchip`을 뺀 방법, `RBFInterpolator`, `NearestNDInterpolator`, `sd.interp`. `PchipInterpolator`, `pchip_interpolate`, `Akima1DInterpolator`와 RGI의 `pchip`은 실수만이다(scipy와 같이 `ValueError`; 단조성과 기울기의 부호가 실수의 개념이다; §9의 8).
 - **배치(`axis=`)**: 세로축은 여러 차원이고 `axis`(기본 0, scipy와 같다)가 가로축에 맞는 축이다. 결과의 모양은 scipy와 같다: 평가점의 모양이 `axis` 자리에 들어간다(`CubicSpline(x, y[2, 6, 3], axis=1)(x_new[4, 5])`는 (2, 4, 5, 3)). 배치의 열마다 같은 계산이고 결과가 열마다 독립이다.
-- **가로축의 검사**: 1차원, 유한, 엄격히 증가해야 한다(`ValueError`; scipy와 같다). `PPoly`의 중단점과 RGI의 격자는 scipy처럼 엄격히 감소해도 된다. `Krogh`는 같은 점의 반복이 도함수 자료라서 받는다(scipy와 같다). `Barycentric`은 서로 다른 점이어야 한다(scipy와 같다). `sd.interp`의 `xp`는 줄지 않아야 한다(§2.2).
-- **세로축의 유한성**: 전역 풀이로 계수를 만드는 곳(`CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`, `make_interp_spline`, `RBFInterpolator`)은 `y`가 유한해야 한다(`ValueError`; scipy의 앞 넷과 같고, `check_finite=False`는 없다). 국소 계산(`sd.interp`, RGI의 값, 주어진 계수의 `PPoly`·`BSpline`)은 IEEE로 퍼뜨린다(§9의 16).
+- **가로축의 검사**: 1차원, 유한, 엄격히 증가해야 한다(`ValueError`; scipy와 같다). `PPoly`의 중단점과 RGI의 격자는 scipy처럼 엄격히 감소해도 된다. `Krogh`는 같은 점의 반복이 도함수 자료라서 받는다(scipy와 같다). `Barycentric`과 `FloaterHormannInterpolator`는 서로 다른 점이어야 한다(IP63). `sd.interp`의 `xp`는 줄지 않아야 한다(§2.2).
+- **세로축의 유한성**: 전역 풀이로 계수를 만드는 곳(`CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`, `CubicHermiteSpline`, `make_interp_spline`, `RBFInterpolator`)은 `y`(`dydx`, `d`)가 유한해야 한다(`ValueError`; `RBFInterpolator`만 `[scipy와 다름]`이고, `check_finite=False`는 없다). 국소 계산(`sd.interp`, RGI의 값, 주어진 계수의 `PPoly`·`BSpline`)은 IEEE로 퍼뜨린다(§9의 16).
 - **평가점의 NaN**: 결과는 NaN이다. 어느 보간이든 같다(§2.3).
-- **결과 dtype**: float64이거나, 세로축이 complex면 complex128이다. 결과는 보통의 새 배열이다(결과 객체가 아니다). 0차원 결과는 Python 스칼라다(array.md §2.2; scipy는 0차원 numpy 배열).
+- **결과 dtype**: float64이거나, 세로축이 complex면 complex128이다. 결과는 보통의 새 배열이다(결과 객체가 아니다). 0차원 결과는 Python 스칼라다(docs/api/array.md §1.2; scipy는 0차원 numpy 배열).
 
 ### 2.2 `sd.interp` (IP2, 배열 영역)
 ```
@@ -153,7 +192,7 @@ interp(x, xp, fp, /, *, left=None, right=None, period=None)
 - **`xp`의 검사**: 유한하고 줄지 않아야 한다(`ValueError`, `interp(): 'xp' must be nondecreasing`; `[numpy와 다름]`: numpy는 검사하지 않는다). 같은 값의 반복은 받는다: numpy와 같이 계단(그 점에서 오른쪽 값)이다. `period`가 있으면 정렬은 검사하지 않는다(numpy처럼 감은 뒤 정렬한다). 비용은 `xp` 한 번 훑기다(10⁶점에서 0.14 ms, 같은 크기의 `interp`의 0.3%; §3.2의 측정).
 - **값**: 구간 안은 §3.2의 선형 커널이다. 노드에서는 `fp`의 값 그대로이고, 단조인 `fp`에서는 결과도 단조이고 구간의 두 끝값 사이에 있다. 유한하지 않은 `fp`의 규칙은 numpy와 같다(구간 안에서 한쪽 끝이 ±inf면 그 inf, 두 끝이 반대 부호의 inf면 NaN, NaN 끝이 있으면 NaN; 노드에서는 그 값). complex `fp`는 실수부와 허수부를 따로 계산한다(numpy와 같다).
 - **결과**: `x`의 모양, `fp`의 dtype이다. `x`가 Python 스칼라면 Python `float`·`complex`다(numpy는 `numpy.float64`).
-- `[numpy와 다름]`: 데이터는 위치만, `left`·`right`·`period`는 키워드만이다(numpy는 `interp(x, xp, fp, 0, 1)`처럼 위치로도 받는다). `period=0`은 `ValueError`(numpy와 같다), NaN·inf `period`도 `ValueError`(numpy는 NaN이면 NaN 결과, inf면 감지 않은 값을 이 초안에서 확인함).
+- `[numpy와 다름]`: 데이터는 위치만, `left`·`right`·`period`는 키워드만이다(numpy는 `interp(x, xp, fp, 0, 1)`처럼 위치로도 받는다). `period=0`은 `ValueError`(numpy와 같다), NaN·inf `period`도 `ValueError`(numpy는 NaN이면 NaN 결과, inf면 경고와 함께 감지 않은 값을 낸다).
 - **같은 비트의 약속**: `xp[0] ≤ x ≤ xp[-1]`에서 `sd.interp(x, xp, fp)`는 `make_interp_spline(xp, fp, k=1)(x)`, `BSpline(t, fp, 1)(x)`(같은 매듭), `RegularGridInterpolator((xp,), fp, method='linear' 또는 'slinear')(x)`, `interpn`의 1차원 선형과 비트까지 같다(같은 구간, 같은 t, 같은 커널, §3.2). `xp`에 반복이 없을 때다(B-스플라인과 격자는 반복을 받지 않는다). scipy에서는 이 넷이 서로 다르다: 노드 101개와 평가점 10⁴개에서 1차원 RGI `linear`와 `np.interp`는 54%, RGI `slinear`와 `linear`는 49%, k = 1 `BSpline`과 RGI `slinear`는 78%의 점에서만 비트가 같았다(`tests/interpolate/data/scipy.json`의 `bits/linear_paths`).
 
 ### 2.3 바깥의 규칙 (하나의 규칙과 그 밖)
@@ -198,7 +237,7 @@ PPoly.from_spline(tck, /, *, extrapolate=None)
 ```
 - **클래스**: 모두 Python 클래스이고 계수 배열(`c`: (k + 1, m, …), 높은 차수가 먼저; `x`: (m + 1,))을 쥔다. 뒤의 넷은 `PPoly`의 하위 클래스다(scipy와 같다). 계산은 네이티브 호출 한 번이다. 계수와 중단점은 쓰기 금지 배열이다(생성자가 복사한다; `[scipy와 다름]`: scipy는 쓸 수 있는 배열을 쥐어 고치면 객체가 바뀐다).
 - **구간**: 점 x는 x[i] ≤ x < x[i+1]인 구간 i로 계산하고 x = x[-1]은 마지막 구간이다(scipy와 같다; 불연속인 조각 다항식과 도함수에서 어느 쪽 값인지가 이 규칙이다).
-- **`nu`**: 0 이상의 int다. 차수보다 크면 0이다(scipy와 같다). 음수는 `ValueError`(scipy와 같다; 역미분은 `antiderivative`).
+- **`nu`**: 0 이상의 int다. 차수보다 크면 0이고 NaN 평가점과 `extrapolate=False`의 바깥은 NaN이다(IP52와 같은 규칙). 음수는 `ValueError`(scipy와 같다; 역미분은 `antiderivative`).
 - **`CubicSpline`의 `bc_type`**: `'not-a-knot'`, `'clamped'`, `'natural'`, `'periodic'`, 또는 양 끝의 `(차수, 값)` 튜플이나 그 짝(차수 1, 2; 값은 배치 모양). 끝마다 다른 조건도 받는다(`('natural', 'not-a-knot')`). `'periodic'`은 양 끝 모두여야 하고 `y[0]`과 `y[-1]`이 scipy의 허용(`allclose(rtol=1e-15, atol=1e-15)`) 안이어야 한다(§9의 14). 점이 둘이면 직선, 셋이고 not-a-knot이면 포물선이다(scipy와 같다).
 - **`Akima1DInterpolator`**: `method='akima'`는 Akima(1970), `'makima'`는 수정 Akima다(scipy와 같은 식). 무게 합의 문턱 10⁻⁹·max의 max는 열마다다(IP33). makima는 평평한 구간(같은 값이 셋 이상)이 정확히 평평하다. akima는 구간 안쪽 노드의 기울기가 0이고, 구간 끝 노드가 Akima의 정하지 않은 경우(m₁ = m₂ ≠ m₃ = m₄)면 평균 기울기라 평평하지 않을 수 있다(IP47, scipy와 같다).
 - **`roots`·`solve`**: 조각마다 실근을 찾아 정렬된 1차원 배열로 돌려준다. 배치면 배치 모양의 중첩 list다(`[scipy와 다름]`: scipy는 dtype `object`의 배열이고 sd의 배열에는 object dtype이 없다). `discontinuity=True`면 중단점에서 부호가 바뀌는 점도 근으로 친다. 조각이 0과 같은 다항식이면 그 구간의 왼쪽 끝과 NaN을 넣는다(scipy와 같다, `[0., nan]`). 알고리즘은 §3.5(§9의 15).
@@ -235,11 +274,13 @@ BarycentricInterpolator(xi, yi=None, /, *, axis=0, wi=None)
 barycentric_interpolate(xi, yi, x, /, *, axis=0, der=0)
 KroghInterpolator(xi, yi, /, *, axis=0)
 krogh_interpolate(xi, yi, x, /, *, der=0, axis=0)
+FloaterHormannInterpolator(points, values, /, *, d=3, axis=0)
 AAA(x, y, /, *, rtol=None, max_terms=100, clean_up=True, clean_up_tol=1e-13)
 ```
-- **`BarycentricInterpolator`**: 둘째 무게중심 공식이다. 메서드 `__call__`, `derivative(x, /, *, der=1)`, `derivatives(x, /, *, der=None)`, `add_xi`, `set_yi`(scipy와 같다; 이 둘은 객체를 고친다). 무게는 정해진 순서로 지수를 따로 세는 곱이다(§3.6). `[scipy와 다름]`: `rng`가 없다(scipy는 무게의 넘침을 피하려고 점을 무작위로 섞으므로 같은 입력이 실행마다 끝자리가 다를 수 있다). 노드에서는 그 값 그대로다(scipy와 같다).
-- **`KroghInterpolator`**: Newton 꼴의 Hermite 보간이다. 같은 점의 반복은 도함수 자료다(scipy와 같다). 메서드 `__call__`, `derivative`, `derivatives`. 차수가 높을 때의 경고는 없다(§9의 19).
-- **`AAA`**: scipy의 AAA다(Nakatsukasa–Sète–Trefethen). 점과 값은 실수나 복소수이고, 유한하지 않은 표본은 버린다(scipy와 같다). `rtol` 기본은 ε^(3/4)이다(scipy와 같다). 지지점 고르기의 동점은 앞의 색인이다(scipy의 `argmax`와 같다). `[scipy와 다름]`: `max_terms`에 이르러도 경고가 없고 `converged` 속성이 `False`다. `clean_up()`이 지운 Froissart 쌍의 수를 돌려주는 것은 scipy와 같지만 경고는 없고, 인자 이름은 생성자와 같은 `clean_up_tol`이다(§9의 17, IP32). 노드(지지점)에서는 그 값 그대로다(scipy와 같다).
+- **`BarycentricInterpolator`**: 둘째 무게중심 공식이다. 메서드 `__call__`, `derivative(x, /, *, der=1)`, `derivatives(x, /, *, der=None)`, `add_xi`, `set_yi`(scipy와 같다; 이 둘은 객체를 고친다). 무게는 정해진 순서로 지수를 따로 세는 곱이다(§3.6). `[scipy와 다름]`: `rng`가 없다(scipy는 무게의 넘침을 피하려고 점을 무작위로 섞으므로 같은 입력이 실행마다 끝자리가 다를 수 있다). 노드에서는 그 값 그대로다(scipy와 같다). `add_xi` 뒤의 무게는 새 객체의 무게와 같다(IP62), `wi`는 가장 큰 크기가 [0.5, 1)인 공통 배수이고 `yi`는 값의 원래 모양이다(IP66).
+- **`KroghInterpolator`**: Newton 꼴의 Hermite 보간이다. 같은 점의 반복은 도함수 자료다(scipy와 같다). 메서드 `__call__`, `derivative`, `derivatives`. 차수가 높을 때의 경고는 없다(§9의 19). 같은 값의 노드는 붙어 있어야 한다(scipy와 같이 `ValueError`). n차 이상의 도함수는 0, NaN 점에서는 NaN이다(IP64; `Barycentric`도 같다).
+- **`FloaterHormannInterpolator`**: scipy의 Floater–Hormann이다(IP9). 점은 서로 다른 실수이고 정렬해서 쓰며, 값이 유한하지 않은 표본은 버린다(IP63). 평가점은 실수나 복소수다. 메서드 `poles`, `residues`, `roots`(뒤의 둘은 1차원 값만; scipy와 같다), 속성 `weights`. 결과의 모양은 다른 1차원 보간과 같다(IP65).
+- **`AAA`**: scipy의 AAA다(Nakatsukasa–Sète–Trefethen). 점과 값은 실수나 복소수이고, 유한하지 않은 표본은 버린다(scipy와 같다). `rtol` 기본은 ε^(3/4)이다(scipy와 같다). 지지점 고르기의 동점은 앞의 색인이다(scipy의 `argmax`와 같다). `[scipy와 다름]`: `max_terms`에 이르러도 경고가 없고 `converged` 속성이 `False`다. `clean_up()`이 지운 Froissart 쌍의 수를 돌려주는 것은 scipy와 같지만 경고는 없고, 인자 이름은 생성자와 같은 `clean_up_tol`이다(§9의 17, IP32). 노드(지지점)에서는 그 값 그대로다(scipy와 같다). 인자의 검사와 `converged`의 뜻은 IP67이다.
 
 ### 2.7 격자 (IP5)
 ```
@@ -248,38 +289,43 @@ RegularGridInterpolator.__call__(xi, /, *, method=None, nu=None)
 interpn(points, values, xi, /, *, method='linear', bounds_error=True, fill_value=nan)
 ```
 - `points`는 축마다의 1차원 격자(엄격히 증가하거나 감소; scipy와 같다), `values`는 (n₁, …, n_d, …)이고 뒤의 축은 배치다. `xi`는 (…, d)다. 결과는 (…, 배치)다(scipy와 같다).
-- **방법**: `linear`(축마다의 선형을 차례로, §3.7), `nearest`(가운데에서는 작은 색인; scipy와 같다), `slinear`(k = 1; `linear`와 같은 비트, `[scipy와 다름]`: scipy는 두 길이 끝자리가 다르다), `cubic`, `quintic`(축마다 not-a-knot 스플라인의 텐서곱), `pchip`(축마다 PCHIP). 축마다 필요한 점의 수는 scipy와 같다(`linear`·`nearest`는 1점도 받는다, `cubic` 4점, `quintic` 6점).
-- `cubic`·`quintic`의 계수는 직접 풀이다(§3.7). `[scipy와 다름]`: `solver`, `solver_args`가 없다. scipy는 이 둘의 계수를 반복 풀이(기본 `gcrotmk`)로 구해 결과가 그 허용오차 크기로 틀린다(이 초안에서 2차식 자료 6 × 6의 `cubic`이 참값 25에서 3.6×10⁻¹⁴ 떨어졌다).
+- **방법**: `linear`(축마다의 선형을 차례로, §3.7), `nearest`(가운데에서는 작은 색인; scipy와 같다), `slinear`(k = 1; `linear`와 같은 비트, `[scipy와 다름]`: scipy는 두 길이 끝자리가 다르다), `cubic`, `quintic`(축마다 not-a-knot 스플라인의 텐서곱), `pchip`(축마다 PCHIP). 축마다 필요한 점의 수는 scipy와 같다(`linear`·`nearest`는 1점도 받는다, `slinear` 2점, `cubic`·`pchip` 4점, `quintic` 6점).
+- `cubic`·`quintic`의 계수는 직접 풀이다(§3.7). `[scipy와 다름]`: `solver`, `solver_args`가 없다. scipy는 이 둘의 계수를 반복 풀이(기본 `gcrotmk`)로 구해 결과가 그 허용오차 크기로 틀린다(2차식 자료 6 × 6의 `cubic`이 참값 25 대신 24.999999999999986이다; `tests/interpolate/data/scipy.json`의 `rgi/cubic_quadratic`).
 - `fill_value`는 `values`와 맞는 형의 수이거나 `None`이다(scipy와 같이 complex를 실수 값에 주면 `ValueError`).
 - `__call__`의 `nu`는 축마다의 미분 차수이고 `slinear`, `cubic`, `quintic`에서만 받는다(IP30; scipy와 같다).
+- 축의 검사, 유한하지 않은 값, 옵션의 검사, 평가점의 꼴은 IP73–IP76이다. `cubic`·`quintic`의 계수는 차수마다 한 번 만들어 둔다(IP78).
 
 ### 2.8 흩어진 점 (IP6)
 ```
 RBFInterpolator(y, d, /, *, neighbors=None, smoothing=0.0, kernel='thin_plate_spline', epsilon=None, degree=None)
 RBFInterpolator.__call__(x, /)
+NearestNDInterpolator(x, y, /, *, rescale=False)
+NearestNDInterpolator.__call__(xi, /)
 ```
-- 핵은 scipy의 여덟(`linear thin_plate_spline cubic quintic multiquadric inverse_multiquadric inverse_quadratic gaussian`)이고 `epsilon`과 `degree`의 기본과 검사는 scipy와 같다(척도 불변인 넷은 `epsilon` 기본 1, 다른 넷은 `epsilon`이 있어야 한다). 다항식 항은 자료의 상자로 옮기고 늘린 좌표의 단항식이다(scipy와 같다).
-- `neighbors=k`면 평가점마다 가장 가까운 k개 자료점의 국소 RBF다(k > n이면 n; scipy와 같다). 이웃은 `sd.spatial.KDTree`의 (거리, 색인) 순서다(§1.4). 같은 이웃 집합의 평가점은 한 번 푼 계수를 함께 쓴다(scipy와 같다).
-- `smoothing`, 낮은 `degree`, 같은 자료점은 IP25다. 다항식을 빼는 `degree=-1`도 핵의 최소보다 낮으면 `ValueError`다(IP29).
-- `[scipy와 다름]`: 음수 `smoothing`은 `ValueError`(scipy는 받는다), 같은 자료점이 있고 `smoothing`이 0이면 `LinAlgError`(scipy는 이 초안에서 에러 없이 값을 냈다), `degree`가 핵의 최소보다 낮으면 `ValueError`(scipy는 경고).
+- 핵은 scipy의 여덟(`linear thin_plate_spline cubic quintic multiquadric inverse_multiquadric inverse_quadratic gaussian`)이고 `epsilon`과 `degree`의 기본은 scipy와 같다(척도 불변인 넷은 `epsilon` 기본 1, 다른 넷은 `epsilon`이 있어야 한다). r = ε·‖x − y‖이고 거리는 spatial의 `euclidean` 짝 커널이다(IP91). 다항식 항은 자료의 상자로 옮기고 늘린 좌표의 단항식이다(scipy와 같은 차례).
+- `neighbors=k`면 평가점마다 가장 가까운 k개 자료점의 국소 RBF다(k > n이면 n; scipy와 같다). 이웃은 `sd.spatial.KDTree`의 (거리, 색인) 순서다(§1.4). 같은 이웃 집합의 평가점은 한 번 푼 계수를 함께 쓴다(scipy와 같다; IP96). k ≥ n이면 만들 때 전역 계를 한 번 푼다(IP95).
+- `smoothing`, 낮은 `degree`, 같은 자료점은 IP25·IP90이다. 다항식을 빼는 `degree=-1`도 핵의 최소보다 낮으면 `ValueError`다(IP29). 꼬리의 랭크는 풀기 전에 본다(IP92).
+- 평가점은 (…, d) 배열이다(IP93). NaN 좌표의 점은 NaN, 이웃이 있어야 하는 길에서는 유한하지 않은 점이 NaN이다(IP94).
+- `NearestNDInterpolator`(IP8, IP31, IP98): `KDTree.query(k=1)`의 색인으로 값을 고른다. 동점은 작은 색인이다.
+- `[scipy와 다름]`: 음수 `smoothing`은 `ValueError`(scipy는 받는다), 같은 자료점이 있고 `smoothing`이 0이면 `LinAlgError`(scipy는 에러 없이 값을 낸다), 꼬리의 랭크가 모자라면 `LinAlgError`(scipy는 직선 위의 점에서 10¹¹ 크기의 값을 말없이 낸다), `degree`가 핵의 최소보다 낮으면 `ValueError`(scipy는 0 이상이면 경고, −1이면 말없이 받는다), `epsilon`은 유한한 양수(scipy는 0과 음수를 받는다), 이웃이 있어야 하는 길의 유한하지 않은 점은 NaN(scipy는 `ValueError`), `NearestNDInterpolator`의 동점은 작은 색인(scipy는 정해 두지 않음).
 
 ### 2.9 scipy·numpy와 다른 곳 (모음)
 위의 `[scipy와 다름]`, `[numpy와 다름]`을 모은다. 이유는 그 자리에 있다.
 - 공통: 옵션은 키워드만, 쓰기 금지 계수, `check_finite` 없음(언제나 검사), complex 평가점은 `TypeError`, 0차원 결과는 Python 스칼라, 경고 대신 에러나 상태 속성.
 - `sd.interp`: `xp`의 검사, 키워드만인 `left`·`right`·`period`, 유한하지 않은 `period`는 `ValueError`, 한 점의 `xp`에서도 NaN 평가점은 NaN(IP39), 끝값이 둘 다 −0이면 −0, 노드 사이의 단조와 범위(numpy의 식은 오른쪽 노드 바로 왼쪽에서 구간의 범위를 넘을 수 있다: 폭이 위치와 비슷한 구간 2만 개 중 159개, §3.2).
 - 1차원: k = 1 B-스플라인이 노드에서 정확, `nu < 0`은 `ValueError`, `nu > k`의 바깥은 NaN(IP52), `BSpline(extrapolate=None)`은 `True`(IP52), `from_spline`의 중단점(IP54), 비정상 수 간격의 B-스플라인(IP55), `integrate(extrapolate=False)`의 배치(IP57), `from_power_basis`의 배치와 에러 종류(IP58), `roots`의 배치 결과는 목록, `construct_fast`·`from_bernstein_basis` 없음, `PPoly`의 중단점은 유한하고 엄격히 단조(IP43), `integrate`의 NaN 끝은 NaN(IP49), `roots`가 중근과 붙은 근을 찾음(IP45), 넘치는 계수는 에러(IP36).
-- 다항식·유리식: `Barycentric`의 `rng` 없음, AAA의 `converged`와 경고 없는 `clean_up`, Krogh의 경고 없음.
-- 격자: `slinear`와 `linear`가 같은 비트, `cubic`·`quintic`의 직접 풀이와 `solver` 없음, 옛 방법 없음, NaN 평가점은 NaN.
-- RBF: 음수 `smoothing`, 같은 자료점, 낮은 `degree`가 에러.
+- 다항식·유리식: `Barycentric`의 `rng` 없음, AAA의 `converged`와 경고 없는 `clean_up`, Krogh의 경고 없음, `add_xi`가 무게를 처음부터 다시 셈(IP62), Floater–Hormann의 같은 점은 에러(IP63), 차수를 넘는 도함수의 NaN 점(IP64), 유리식 결과의 모양(IP65), `wi`의 척도와 `yi`의 모양(IP66), AAA 인자의 검사(IP67), 넘치는 sⱼ와 배치의 무한 점(IP68).
+- 격자: `slinear`와 `linear`가 같은 비트, `cubic`·`quintic`의 직접 풀이와 `solver` 없음, 옛 방법 없음, NaN 평가점은 NaN, 무한한 노드는 에러(IP73), NaN 값은 무게가 0이 아닌 점에만 들고 `slinear`도 받는다(IP74), `bounds_error`·`fill_value`·`nu`의 검사(IP75), 스칼라 튜플의 결과는 Python 스칼라(IP76), `fill_value=None`의 무한한 좌표는 직선의 값(IP77).
+- 흩어진 점: 음수 `smoothing`, 같은 자료점, 랭크가 모자란 꼬리, 낮은 `degree`, 0이나 음수의 `epsilon`이 에러(IP25, IP29, IP90–IP92), ε·거리의 r(IP91), (…, d) 평가점(IP93), 이웃 길의 유한하지 않은 점은 NaN(IP94), `NearestNDInterpolator`의 동점은 작은 색인(IP98).
 
 ---
 
-## 3. 수치 방법 (안)
+## 3. 수치 방법
 
 ### 3.1 구간 찾기
 - 평가점마다 구간 번호를 이분 탐색으로 찾는다. 규칙은 오른쪽 열린 구간(x[i] ≤ x < x[i+1], 마지막은 닫힘)이고 정의역 밖은 끝 구간(늘이기)이나 NaN(`False`)이다. 평가점이 정렬되어 있으면 앞 점의 구간에서 시작하는 질주 탐색이 빠르다. 어떤 탐색을 쓰든 구간은 규칙으로 정해지므로 결과는 같다.
-- **구현** (IP1 마일스톤, IP37): `base/interval.hpp`가 점 아래(같은 값 포함)의 노드 수 c를 센다. `sd.interp`는 c를 numpy의 `binary_search_with_guess`처럼 쓰고(c = 0이면 `left`, c = n이면 마지막 노드 또는 `right`, 그 밖은 [xp[c − 1], xp[c]]; 반복 노드는 폭이 0인 구간을 고르지 않아 계단이 된다), 이 영역은 c − 1을 첫 구간과 끝 구간으로 자른다(`interpolate/search.hpp`). 평가점을 위치만으로 256점 블록으로 나누고, 블록이 정렬되어 있으면(NaN 없음) 앞 점의 c에서 1, 2, 4, …칸씩 질주한 뒤 마지막 배가 구간을 반씩 줄이고, 아니면 8점을 나란히 갈래 없이 반씩 줄인다(`searchsorted`의 탐색). 두 길은 같은 c를 내므로 결과는 블록의 길, 태스크 나누기, 스레드 수와 무관하다. 정렬된 평가점에서 노드 10⁶개, 10⁶점이 1스레드 8.1 ms(numpy 9.3), 무작위 순서는 15.2 ms(numpy 171)다(§5).
-- scipy의 `BSpline`은 앞 점의 구간에서 한 칸씩 걷는다. 그래서 무작위 순서의 평가점에서 점마다 O(n)이다: 이 초안에서 평가점 10⁵개가 매듭 10³개에서 11.0 ms, 10⁴개에서 88.5 ms였고 10⁶개 매듭에 10⁶점은 3분 넘게 끝나지 않았다. sd는 순서와 무관하게 O(log n)이다.
+- **구현** (IP1 마일스톤, IP37): `base/interval.hpp`가 점 아래(같은 값 포함)의 노드 수 c를 센다. `sd.interp`는 c를 numpy의 `binary_search_with_guess`처럼 쓰고(c = 0이면 `left`, c = n이면 마지막 노드 또는 `right`, 그 밖은 [xp[c − 1], xp[c]]; 반복 노드는 폭이 0인 구간을 고르지 않아 계단이 된다), 이 영역은 c − 1을 첫 구간과 끝 구간으로 자른다(`interpolate/search.hpp`). 평가점을 위치만으로 256점 블록으로 나누고, 블록이 정렬되어 있으면(NaN 없음) 앞 점의 c에서 1, 2, 4, …칸씩 질주한 뒤 마지막 배가 구간을 반씩 줄이고, 아니면 8점을 나란히 갈래 없이 반씩 줄인다(`searchsorted`의 탐색). 두 길은 같은 c를 내므로 결과는 블록의 길, 태스크 나누기, 스레드 수와 무관하다. 정렬된 평가점에서 노드 10⁶개, 10⁶점의 `sd.interp`가 1스레드 8.5 ms(numpy 9.57), 무작위 순서는 15.2 ms(numpy 172)다(§5).
+- scipy의 `BSpline`은 앞 점의 구간에서 한 칸씩 걷는다. 그래서 무작위 순서의 평가점에서 점마다 O(n)이다: IP0 마일스톤의 탐침에서 평가점 10⁵개가 매듭 10³개에서 11.0 ms, 10⁴개에서 88.5 ms였고 10⁶개 매듭에 10⁶점은 3분 넘게 끝나지 않았다. sd는 순서와 무관하게 O(log n)이다.
 - 감소하는 중단점(`PPoly`, RGI)은 만들 때 뒤집은 사본으로 찾는다(값의 계산은 원래 구간의 다항식이다).
 
 ### 3.2 선형 커널 (`base/lerp.hpp`; IP1)
@@ -289,6 +335,7 @@ RBFInterpolator.__call__(x, /)
 2. t = 0이면 r = a, t = 1이면 r = b다. 그 밖에서 a와 b의 부호가 다르면(0 포함) r = fl(fl(t·b) + fl(fl(1 − t)·a)), 아니면 r = fl(a + fl(t·fl(b − a)))를 b 쪽으로 넘은 값에서 b로 자른다(t ≤ 1에서 b > a면 min(r, b), b < a면 max(r, b); t > 1이면 반대). 유한하지 않은 끝값은 아래의 갈래다.
 
 - 이 꼴은 C++20 `std::lerp`(P0811)의 구성에 양 끝의 갈래(IP27)를 더한 것이다. 코드는 두 식을 모두 계산하고 고르는 갈래 없는 꼴로 쓴다(IP26; 같은 비트).
+- **블록 꼴** (IP7 마일스톤, IP99): `lerp_block`·`lerp_ab_block`이 256점 블록을 한 번의 벡터화된 고리로 계산한다(`lerp_t`의 흔한 길과 유한한 끝값의 꼴 그대로라 같은 비트). 덮지 못한 점(NaN·무한한 점, 넘치는 폭, 유한하지 않은 끝값)이 있는 블록만 그 점을 위의 스칼라 커널로 다시 계산한다.
 - **성질과 증명.** 반올림이 단조라는 것(u ≤ v면 fl(u) ≤ fl(v))과, 표현 가능한 c에 대해 |v| ≤ |c|면 |fl(v)| ≤ |c|라는 것만 쓴다.
   1. *t의 단조와 끝*: x ↦ fl(x − x₀)는 단조이고 폭은 양수로 고정이라 t는 x에 대해 줄지 않는다. x = x₀이면 fl(x − x₀) = 0이라 t = 0, x = x₁이면 분자와 분모가 같은 수라 t = 1이고, x₀ ≤ x ≤ x₁이면 0 ≤ fl(x − x₀) ≤ fl(x₁ − x₀)이라 0 ≤ t ≤ 1이다. 1/2을 곱하는 갈래도 같은 논증이다.
   2. *양 끝에서 정확*: 2번의 첫 두 갈래다(0의 부호까지).
@@ -320,7 +367,7 @@ RBFInterpolator.__call__(x, /)
 ### 3.3 3차 계열의 기울기와 계수 (IP2)
 모든 3차 계열은 노드의 기울기 sᵢ를 구한 뒤 Hermite 꼴로 구간의 계수를 만든다: Δᵢ = (yᵢ₊₁ − yᵢ)/hᵢ, c₃ = (sᵢ + sᵢ₊₁ − 2Δᵢ)/hᵢ², c₂ = (3Δᵢ − 2sᵢ − sᵢ₊₁)/hᵢ, c₁ = sᵢ, c₀ = yᵢ (scipy `CubicHermiteSpline`과 같은 꼴). 계수의 연산 순서는 scipy의 것 하나이고(IP42: t = ((s₀ + s₁) − 2D)/h, c₃ = t/h, c₂ = (D − s₀)/h − t) 모든 3차 계열이 같은 함수로 만든다(IP15). 코드는 `interpolate/cubic.cpp`(기울기, Hermite 계수)와 `interpolate/banded.hpp`(피벗 없는 삼중대각 풀이)다.
 - **`CubicSpline`**: 기울기의 삼중대각 계(hᵢ sᵢ₋₁ + 2(hᵢ₋₁ + hᵢ) sᵢ + hᵢ₋₁ sᵢ₊₁ = 3(hᵢ Δᵢ₋₁ + hᵢ₋₁ Δᵢ))와 끝의 조건이다. not-a-knot은 scipy처럼 첫 행과 끝 행을 삼중대각에 맞춘 꼴로 쓴다. periodic은 순환 계이고 scipy는 띠 풀이 두 번과 한 자리 보정으로 푼다(Sherman–Morrison 꼴).
-  - **풀이** (IP16, IP44): 피벗 없는 Thomas 소거다. 계의 행렬은 배치의 모든 열에 같으므로 한 번 분해하고 열마다 앞·뒤 대입을 한다(열이 8개 이하면 분해·오른쪽·앞 대입을 한 번에 훑는다; 같은 연산이라 같은 비트). 열은 행 안에서 이어져 있어 대입 한 걸음이 한 행의 열을 한꺼번에 계산한다. 분해의 사슬은 lᵢ = aᵢ/uᵢ₋₁, uᵢ = bᵢ − lᵢcᵢ₋₁이고 뒤 대입은 사슬 밖에서 만든 wᵢ = fl(1/uᵢ)을 곱한다.
+  - **풀이** (IP16, IP44, IP103): 피벗 없는 Thomas 소거다. 계의 행렬은 배치의 모든 열에 같으므로 한 번 분해하고 열마다 앞·뒤 대입을 한다(열이 8개 이하면 분해·오른쪽·앞 대입을 한 번에 훑는다; 같은 연산이라 같은 비트). 열은 행 안에서 이어져 있어 대입 한 걸음이 한 행의 열을 한꺼번에 계산한다. 분해의 사슬은 lᵢ = aᵢ/uᵢ₋₁, uᵢ = bᵢ − lᵢcᵢ₋₁이고 뒤 대입은 사슬 밖에서 만든 wᵢ = fl(1/uᵢ)을 곱한다. 열이 8개 이하면 행렬을 저장하지 않고(안쪽 행의 원소는 노드에서 그 자리에서 만든다) wᵢ만 배열로 둔다(IP103; 같은 연산이라 같은 비트).
   - **피벗 없는 풀이의 증명** (IP2 마일스톤). 행렬(scipy의 행): 안쪽 행 i는 [hᵢ, 2(hᵢ₋₁ + hᵢ), hᵢ₋₁]이고, 끝 행은 natural·(2, v)가 [2h₀, h₀], clamped·(1, v)가 [1, 0], not-a-knot이 [h₁, x₂ − x₀](끝은 [xₙ₋₁ − xₙ₋₃, hₙ₋₃]), 점 셋의 양 끝 not-a-knot은 포물선의 [1, 1, 0], [h₁, 2(h₀ + h₁), h₀], [0, 1, 1]이다. 모든 원소가 0 이상이다.
     1. *정확한 피벗은 양수다.* 가정 uᵢ₋₁ ≥ cᵢ₋₁(앞 행의 위 대각)이면 lᵢcᵢ₋₁ = hᵢcᵢ₋₁/uᵢ₋₁ ≤ hᵢ라 uᵢ ≥ 2hᵢ₋₁ + hᵢ ≥ cᵢ = hᵢ₋₁이다. natural(2h₀ ≥ h₀)·clamped(1 ≥ 0)로 시작하면 가정이 처음부터 서고, not-a-knot으로 시작하면 u₀ = h₁ < c₀ = h₀ + h₁이지만 l₁ = h₁/h₁ = 1이라 u₁ = 2(h₀ + h₁) − (h₀ + h₁) = h₀ + h₁ ≥ c₁ = h₀로 둘째 행부터 선다. 끝 행은 natural이 2hₙ₋₂ − hₙ₋₂hₙ₋₃/uₙ₋₂ ≥ hₙ₋₂, clamped가 1, not-a-knot이 hₙ₋₃(1 − (hₙ₋₃ + hₙ₋₂)/uₙ₋₂) > 0(uₙ₋₂ ≥ 2hₙ₋₃ + hₙ₋₂; 점 셋에서 natural로 시작하면 u₁ = 2h₀ + 1.5h₁)이고, 포물선은 1, 2h₀ + h₁, (h₀ + h₁)/(2h₀ + h₁)이다. 그래서 L ≥ 0, U ≥ 0이고 |L||U| = LU = A다.
     2. *계산한 피벗도 양수다.* 안쪽 행과 natural·clamped 끝에서 빼는 값 fl(lᵢcᵢ₋₁)은 대각의 반 이하라(ĉᵢ₋₁/ûᵢ₋₁ ≤ 1 + O(u)) 상쇄가 없다. not-a-knot 시작의 l₁은 같은 double h₁끼리의 나눗셈이라 정확히 1이다. not-a-knot의 끝 피벗만 상쇄가 있고 fl(d/ûₙ₋₂) ≤ 1이면 0 이상이다. 그 조건은 hₙ₋₃ ≳ 6u(hₙ₋₃ + hₙ₋₂)일 때 서고, 아니면 IP44의 에러다(그때는 반올림한 행렬이 작업 정밀도에서 특이하다).
@@ -328,13 +375,13 @@ RBFInterpolator.__call__(x, /)
     4. *앞 오차.* A(ŝ − s) = δb − δAŝ에서 **|ŝ − s| ≤ γ₁₁|A⁻¹|(|A||ŝ| + |b|ₐ)** (모든 경계 조건, 성분마다; `tests/interpolate/refdata.spline_bound`가 γ₁₂로 잰다).
     5. *따름* (natural, clamped): 행마다 대각이 비대각 합의 두 배라 D = diag(A)⁻¹로 B = DA = I + E, ‖E‖∞ ≤ 1/2, ‖B⁻¹‖∞ ≤ 2, ‖B‖∞ ≤ 3/2이고 |A⁻¹||A| = |B⁻¹||B|다. ‖D|b|ₐ‖∞ ≤ (3/2)M(M = maxⱼ|Dⱼ|), ‖s‖∞ ≤ 3M이라 |ŝᵢ − sᵢ| ≤ γ₁₁(3·3M + 2·(3/2)M)(1 + O(u)) ≤ 150uM이다. not-a-knot에는 이 따름이 없다: 끝 행이 대각 우세가 아니어서 간격이 10¹⁰배 다른 spacing/1e10에서 |ŝ − s|/(uM)이 7×10⁹이다(4의 꼴로는 0.07 계약 단위).
     6. *periodic* (scipy의 압축 꼴): Ac(순환 계의 앞 n − 2행·열)는 natural과 같은 양의 대각 우세 삼중대각(첫 행 [2(hₙ₋₂ + h₀), hₙ₋₂])이라 두 풀이(자료의 오른쪽과 결합 열)가 1–4 그대로다. 결합 열의 해 s₂ = Ac⁻¹(−h₀e₀ − hₙ₋₄eₙ₋₃)는 ‖D b₂‖∞ < 1/2에서 ‖s₂‖∞ < 1이고, Schur 보수인 분모 2(hₙ₋₂ + hₙ₋₃) + hₙ₋₃s₂[0] + hₙ₋₂s₂[n − 3]은 hₙ₋₂ + hₙ₋₃ 이상이라(세 배를 넘는 상쇄가 없다) 마지막 기울기와 s = s₁ + sₙ₋₂s₂의 오차가 uM의 상수배다. 상수는 증명 대신 잰다(아래).
-  - **측정** (IP2 마일스톤; `tests/interpolate/test_cubic.py`, `bench/accuracy/interpolate.py`의 `coefficients`): 정확한 유리수의 피벗 없는 소거에서 실수 곡선 21개(n ≥ 4) 모두 natural, clamped, not-a-knot의 max (|L||U|)ᵢⱼ/|Aᵢⱼ|이 정확히 1이다(IP0 마일스톤). 계산한 기울기는 4의 꼴로 natural 0.084, clamped 0.098, not-a-knot 0.069, periodic 0.053 계약 단위이고, uM 단위로 natural 5.4, clamped 4.8, periodic 2.3(5의 150 안)이다. scipy(LAPACK `gbsv`, 부분 피벗)의 기울기를 같은 꼴로 재면 natural 2.99, clamped 3.29, not-a-knot 6.51로 한계를 넘는다(monotone/flats30의 0인 걸음 둘레; 부분 피벗은 성분마다의 역안정성을 주지 않는다). 이 초안의 n = 80 natural에서 scipy는 기울기마다 최대 47 ULP 떨어졌다. 그래서 계약은 성분마다의 상대가 아니라 위의 꼴이다(§4).
+  - **측정** (IP2 마일스톤; `tests/interpolate/test_cubic.py`, `bench/accuracy/interpolate.py`의 `coefficients`): 정확한 유리수의 피벗 없는 소거에서 실수 곡선 21개(n ≥ 4) 모두 natural, clamped, not-a-knot의 max (|L||U|)ᵢⱼ/|Aᵢⱼ|이 정확히 1이다(IP0 마일스톤). 계산한 기울기는 4의 꼴로 natural 0.084, clamped 0.098, not-a-knot 0.069, periodic 0.053 계약 단위이고, uM 단위로 natural 5.4, clamped 4.8, periodic 2.3(5의 150 안)이다. scipy(LAPACK `gbsv`, 부분 피벗)의 기울기를 같은 꼴로 재면 natural 2.99, clamped 3.29, not-a-knot 6.51로 한계를 넘는다(monotone/flats30의 0인 걸음 둘레; 부분 피벗은 성분마다의 역안정성을 주지 않는다). IP0 마일스톤의 탐침(n = 80 natural)에서 scipy는 기울기마다 최대 47 ULP 떨어졌다. 그래서 계약은 성분마다의 상대가 아니라 위의 꼴이다(§4).
 - **`PchipInterpolator`**: Fritsch–Butland의 가중 조화 평균(scipy와 같은 식, 같은 연산 순서 sᵢ = 1/((w₁/Δᵢ₋₁ + w₂/Δᵢ)/(w₁ + w₂))): Δᵢ₋₁Δᵢ ≤ 0이면 sᵢ = 0, w₁ = 2hᵢ + hᵢ₋₁, w₂ = hᵢ + 2hᵢ₋₁. 끝은 scipy의 세 점 한쪽 식과 그 자르기다. 기울기 하나가 이웃 두 구간으로만 정해지는 국소 계산이라 조각으로 나눠 병렬이다.
   - **계약의 증명**: 안쪽은 같은 부호의 항의 합과 곱·나눗셈뿐이라 상대 γ₁₂(D의 γ₃ 포함)이고, 갈래(부호, 0)는 계산한 D의 부호가 정확한 D의 부호와 같아(언더플로가 없으면) 정확하다. 가중 조화 평균은 |s| ≤ 3min(|Δᵢ₋₁|, |Δᵢ|)라(w₂/w₁ ≤ 2) |ŝ − s| ≤ 36uM_loc다. 끝 식은 분자의 상쇄가 γ₇((2h₀ + h₁)|Δ₀| + h₀|Δ₁|)/(h₀ + h₁) ≤ γ₁₀(2|Δ₀| + |Δ₁|)이고, 부호와 3Δ₀ 자르기의 갈래가 반올림으로 바뀌는 경계에서는 두 값이 그 한계 안에서 같다. 그래서 **|ŝᵢ − sᵢ| ≤ 40u·max(그 식이 읽는 |Δ| 둘)**이다(잰 값 0.068).
 - **`Akima1DInterpolator`**: Akima(1970)와 makima의 무게(scipy와 같은 식과 연산 순서, 끝의 가상 기울기 둘씩 포함). 무게 합이 문턱 이하면 두 기울기의 평균이다(scipy와 같다; 문턱의 max는 열마다, IP33). 국소 계산이다.
   - **계약의 증명**: 노드의 창 m₀…m₃(= m[i…i + 3])에서 M을 가장 큰 |m|이라 하면 m의 오차는 E = 3γ₈M 안이다(밖으로 늘인 m 포함). f₁, f₂의 절대오차는 3E + γ₃f, 무게 w = f₂/f₁₂의 오차는 9E/f₁₂ + γ₆, t = m₁ + w(m₂ − m₁)의 오차는 **3E + 6uM + |m₂ − m₁|(9E/f₁₂ + γ₆)**이다(평균 갈래는 2E; `refdata.akima_bound`는 1.5배로 잰다). |m₂ − m₁|/f₁₂가 조건수다: f₁₂가 반올림 크기면 Akima의 기울기 자체가 자료의 반올림으로 정해지지 않는다. 문턱 갈래가 반올림으로 바뀌는 점(f₁₂가 문턱의 상대 u 안)은 계약 밖이다(시험 자료에는 없다). 잰 값 0.29.
 - 점이 둘이면 모든 계열이 직선이다(scipy와 같다).
-- 계수 c₂, c₃은 기울기와 Δ가 유한해도 넘칠 수 있다(값 1e300 둘레, 간격 0.01 둘레). 그 처리는 §9의 23이다.
+- 계수 c₂, c₃은 기울기와 Δ가 유한해도 넘칠 수 있다(값 1e300 둘레, 간격 0.01 둘레). 그때는 만들기의 `ValueError`이고 메시지가 그 구간을 말한다(IP36).
 
 ### 3.4 B-스플라인 (IP3)
 코드는 `interpolate/bspline.cpp`와 `interpolate/banded.hpp`의 `BandSolver`다. 매듭 t는 N = n + k + 1개, 계수 c는 (행, 열)이고 처음 n행만 쓴다(scipy의 관례). complex 계수는 실수부와 허수부를 나란한 double 열로 본다.
@@ -364,29 +411,42 @@ RBFInterpolator.__call__(x, /)
   - **계약의 증명**: ŝ = s(1 + ε)이고 rⱼ = fl(rⱼ₋₁ŝ + âⱼ)는 반올림 하나다. 차수 e인 항의 계수는 e + 1번(최고 차수는 e번)의 (1 + δ)를 거치고, ŝᵉ이 e번의 (1 + ε)를, 도함수의 정수배 곱이 하나를 더한다. 언더플로는 반올림마다 절대 η = 2⁻¹⁰⁷⁵이고 |s|ᵉ로 퍼진다. 그래서 **|p̂ − p(x)| ≤ Σₑ γ₂ₑ₊₂·fₑ|cₑ||s|ᵉ + 2⁻¹⁰⁷⁴Σₑ|s|ᵉ** (e는 미분한 뒤의 차수, fₑ는 그 정수배, s는 정확한 x − xᵢ)다. 노드(s = 0)에서는 상수 계수 그대로다.
 - **`derivative`**: 계수에 d!/(d − ν)!를 곱한다(Python 층의 배열 곱, 반올림 한 번). **`antiderivative`**: 계수를 (d + 1)…(d + ν)로 나누고(반올림 한 번), 차수 q < ν인 상수를 q = ν − 1부터 정한다: c_q[i] = c_q[i − 1] + Σ_{d>q} c_d[i − 1]·C(d, q)·h_{i−1}^{d−q}(앞 조각의 끝에서 그 도함수가 이어지게). Σ는 h의 Horner이고, 누적합은 길이로만 정한 4096조각 블록마다 차례 합을 하고 블록의 오프셋을 차례로 더한다(블록 하나면 그냥 차례 합; 스레드 수와 무관). 상수는 x[0]에서 0이다.
 - **`integrate`**: 조각마다 국소 역미분 F(s) = s·Horner(cₑ/(e + 1))의 차이를 구하고(안쪽 조각은 F(h)), 조각들을 배열의 pairwise 트리로 더한다(`base/pairwise.hpp`의 plan·combine: 2¹⁴조각을 넘으면 잎을 나란히 계산해도 같은 비트). 감소하는 중단점에서도 적분의 방향은 a에서 b다(IP49).
-- **`roots`·`solve`** (§9의 15, IP45): 조각마다 (1) 도함수의 근으로 단조 구간을 나눈다(재귀; 2차는 상쇄 없는 근의 공식), (2) 단조 구간의 양 끝에서 부호가 다르면 double을 순서대로 센 정수에서 이분해 이웃한 두 double까지 좁힌다(언제나 64걸음 이하; 걸음마다 평가 한 번), (3) 이웃 부호가 같은 극값의 값이 평가 계약 안이면 접하는 근으로 넣는다. 부호는 보정한 Horner(오차 없는 곱 fma(r, s, −rs)와 합의 오차를 둘째 Horner로 더한다)로 정해 \|p\|가 u²Σ\|cₑsᵉ\|의 몇 배를 넘는 곳에서 맞다. 늘이는 끝 조각은 Cauchy 한계 1 + max\|cⱼ/c_k\|의 두 배까지만 본다. 조각마다 독립이라 조각으로 나눠 병렬이고, 결과는 구간 순서로 모아 scipy처럼 앞 근과 같은 값을 거르고 중단점의 부호 변화(`discontinuity`)와 0인 조각의 [x[i], nan]을 넣는다. scipy는 3차 이하를 닫힌 식, 그 위를 동반 행렬의 고유값으로 구한다: 중근을 놓치고 2⁻³⁰ 떨어진 두 근을 7×10⁻⁹ 틀린다. 이 마일스톤의 n = 10⁶ 구간에서 sd는 1스레드 0.41초, 10스레드 0.086초, scipy는 1.28초였다.
+- **`roots`·`solve`** (§9의 15, IP45): 조각마다 (1) 도함수의 근으로 단조 구간을 나눈다(재귀; 2차는 상쇄 없는 근의 공식), (2) 단조 구간의 양 끝에서 부호가 다르면 double을 순서대로 센 정수에서 이분해 이웃한 두 double까지 좁힌다(언제나 64걸음 이하; 걸음마다 평가 한 번), (3) 이웃 부호가 같은 극값의 값이 평가 계약 안이면 접하는 근으로 넣는다. 부호는 보정한 Horner(오차 없는 곱 fma(r, s, −rs)와 합의 오차를 둘째 Horner로 더한다)로 정해 \|p\|가 u²Σ\|cₑsᵉ\|의 몇 배를 넘는 곳에서 맞다. 늘이는 끝 조각은 Cauchy 한계 1 + max\|cⱼ/c_k\|의 두 배까지만 본다. 조각마다 독립이라 조각으로 나눠 병렬이고, 결과는 구간 순서로 모아 scipy처럼 앞 근과 같은 값을 거르고 중단점의 부호 변화(`discontinuity`)와 0인 조각의 [x[i], nan]을 넣는다. scipy는 3차 이하를 닫힌 식, 그 위를 동반 행렬의 고유값으로 구한다: 중근을 놓치고 2⁻³⁰ 떨어진 두 근을 7×10⁻⁹ 틀린다. IP2 마일스톤에서 n = 10⁶ 구간이 sd 1스레드 0.41초, 10스레드 0.086초, scipy 1.28초였다.
 - **`extend`**: 계수와 중단점을 이어 붙인 새 배열을 만든다(쓰기 금지 배열을 고치지 않는다; 중단점은 IP43).
 
 ### 3.6 다항식·유리식 (IP4)
-- **`Barycentric`의 무게**: wⱼ = 1/∏ₖ≠ⱼ(xⱼ − xₖ)를 입력 순서로 곱하되 곱마다 `frexp`로 지수를 따로 세어 넘침과 언더플로가 없다. 마지막에 모든 무게를 같은 2ᵉ로 나눠 가장 큰 무게의 지수를 0 둘레에 둔다(공식은 무게의 공통 배수에 무관하다). scipy의 무작위 섞기(`rng`)는 넘침을 피하려는 것이라 필요 없다. 평가는 둘째 공식이고 x가 노드와 같으면 그 값이다(scipy와 같다). 도함수는 scipy와 같은 재귀(Schneider–Werner)다.
-- **`Krogh`**: Hermite 나눗셈 차분표와 Newton 꼴의 Horner다(scipy와 같은 식). 점의 순서는 입력 그대로다(바꾸면 반올림이 달라진다; Leja 순서는 §9의 19에서 다시 본다).
-- **`AAA`** (§9의 17): scipy의 단계 그대로다: 오차가 가장 큰 표본을 지지점으로 더하고, Loewner 행렬의 가장 작은 특이값의 오른쪽 특이벡터(`gesdd`)를 무게로, 조건이 나빠지면(σ₁/σₘᵢₙ > 1/(3ε)) 열을 정규화한 SVD로, 행이 열보다 적으면 영공간으로 한다. 멈춤은 max|f − r| ≤ rtol·‖f‖∞이거나 `max_terms`다. 극점·영점은 화살촉 행렬 쌍의 일반화 고유값(`ggev`), 유수는 scipy의 식이다. `clean_up`은 scipy의 Froissart 판정과 다시 맞추기다.
-  - 반복마다의 SVD가 시간의 거의 전부다(M × m, m ≤ `max_terms`). 열을 더하는 QR 갱신으로 SVD를 줄이는 길은 IP7에서 재 본다(결과는 같은 알고리즘의 반올림 차이).
-- **`FloaterHormannInterpolator`**(§9의 6): 무게는 scipy의 닫힌 식, 평가는 무게중심 꼴이라 `Barycentric`의 평가 커널을 함께 쓴다.
+파일은 `interpolate/polyint.cpp`(무게, 실수 평가 커널, 노드의 도함수 값, Krogh, Floater–Hormann의 무게, 복소 평가 커널)와 `interpolate/aaa.cpp`(AAA의 반복, 극점·영점·유수, `clean_up`)다. 값은 (n, K) 행 우선이고 복소 값은 실수부와 허수부를 나란히 둔 (n, 2K) double이다: 노드와 무게가 실수면 모든 식이 값에 대해 실수 계수의 선형이라 복소 열은 실수 열 둘이다. 한 열은 혼자든 배치 안이든, 어느 스레드에서든 같은 연산이다.
+
+- **`Barycentric`의 무게** (IP21): wⱼ = 1/∏ₖ≠ⱼ(xⱼ − xₖ)를 입력 순서로 곱한다. 차이 d마다 비트로 d = f·2ᵉ(\|f\| ∈ [0.5, 1))로 나눠 f끼리 곱하고 e를 따로 더하며, 256번 곱할 때마다 곱을 다시 [0.5, 1)로 맞춘다(그사이 곱은 2⁻²⁵⁷ 위라 언제나 정상 수다). 2의 거듭제곱 척도는 반올림을 바꾸지 않으므로 이것은 "지수가 끝없는 53비트 곱"과 같은 비트이고 맞추는 빈도와 무관하다. 마지막에 모든 무게에 같은 2^(−T)를 곱해 가장 큰 크기를 [0.5, 1)에 둔다(공식은 공통 배수와 무관하다, IP66). 그보다 2¹¹⁰⁰배 넘게 작은 무게는 0이다(그런 노드는 거리가 10³⁰⁰배 넘게 벌어진 자료에서만 생긴다). 같은 노드는 차이가 정확히 0이라 바로 찾는다. scipy의 무작위 섞기(`rng`)는 넘침을 피하려는 것이라 필요 없다. 노드 n개에 n²번 곱이고 노드 조각으로 나눈다(10⁴노드 79.5 ms / 9.5 ms, scipy 159 ms).
+- **평가 커널** (`Barycentric`, `FloaterHormannInterpolator`와 실수 AAA가 함께 쓴다): sⱼ = wⱼ/(x − xⱼ), 분자 Σsⱼyⱼ(항마다 fma 하나), 분모 Σsⱼ를 노드 순서로 차례로 더하고 나눈다. 열이 하나면 점 여덟을 한 번에(점마다 같은 연산이라 NEON의 `fdiv.2d`가 된다), 열이 여럿이면 점마다 sⱼ를 한 번 만들어 열마다 쓴다. x가 노드와 같거나 sⱼ가 넘치면(분모가 유한하지 않으면) 가장 가까운 노드의 값이다(IP68). 무한한 점은 유리식이면 극한 Σwf/Σw, 다항식이면 NaN이다.
+  - **증명** (IP70, §4의 한계). u = 2⁻⁵³, |θₖ| ≤ γₖ는 반올림 k번의 곱 ∏(1 + δ)^(±1)이다(Higham의 보조정리). 언더플로가 없다고 둔다(무게, sⱼ, 곱). (1) 무게: 차 N − 1번, 곱 N − 2번(첫 곱 1·f는 정확), 역수 한 번이라 ŵⱼ = c·wⱼ(1 + θ₂ₙ₋₂)(c = 2^(−T), N은 노드 수). (2) sⱼ: 차와 나눗셈이 더해져 ŝⱼ = c·λⱼ(1 + θ₂ₙ), λⱼ = wⱼ/(x − xⱼ). (3) 분자의 fma 줄은 항 하나를 많아야 N번 반올림하므로 N̂ = c·Σλⱼyⱼ(1 + θ₃ₙ⁽ʲ⁾), 분모는 N − 1번이라 D̂ = c·Σλⱼ(1 + θ₃ₙ₋₁⁽ʲ⁾). (4) ℓ(x) = ∏(x − xₖ)를 곱하면 ℓλⱼ = ℓⱼ(x)이고 Σℓⱼyⱼ = p, Σℓⱼ = 1이라 N̂ℓ/c = p + e_N, \|e_N\| ≤ γ₃ₙΣ\|ℓⱼyⱼ\|, D̂ℓ/c = 1 + e_D, \|e_D\| ≤ γ₃ₙ₋₁Λ(Λ = Σ\|ℓⱼ\|). (5) p̂ = (N̂/D̂)(1 + δ)에서 p̂ − p = (e_N(1 + δ) + pδ − p·e_D)/(1 + e_D)이고 u\|p\| ≤ uΛ\|p\|라 \|p̂ − p\| ≤ (γ₃ₙ₊₁Σ\|ℓⱼyⱼ\| + γ₃ₙΛ\|p\|)/(1 − γ₃ₙ₋₁Λ)다. p는 float 자료의 정확한 보간 다항식이라 이것은 끝에서 끝의 계약이다. 여덟 점 묶음과 열 여럿의 길도 점마다 같은 연산 순서라 같다.
+- **도함수**: scipy와 같은 재귀다. 노드에서의 미분 행렬 Dᵢⱼ = (wⱼ/wᵢ)/(xᵢ − xⱼ)를 scipy의 연산 순서 wⱼ/((xᵢ − xⱼ)wᵢ)로, Dᵢᵢ = −Σⱼ≠ᵢDᵢⱼ로 만들어(행렬을 저장하지 않고 행마다) v ↦ Dv를 하고, k차 도함수는 Dᵏy를 노드 값으로 한 같은 평가다. Dᵏy는 차수마다 객체에 쌓아 둔다. 한 번의 Dv는 무게의 비(θ₄ₙ₋₄)와 차·곱·나눗셈으로 D̂ᵢⱼ = Dᵢⱼ(1 + θ₄ₙ₋₁), 대각은 N − 2번 더해 θ₅ₙ₋₃, 곱의 합 N번으로 \|(D̂v)ᵢ − (Dv)ᵢ\| ≤ γ₆ₙΣⱼ≠ᵢ\|Dᵢⱼ\|(\|vⱼ\| + \|vᵢ\|)이다. 앞 차수의 오차 e는 \|D\|\|e\|로 옮겨 가고, 평가는 계산한 노드 값의 보간 다항식 q̂에 대한 위의 한계에 Σ\|ℓⱼ(x)\|\|eⱼ\|를 더한다(`refdata.rational_nodal_bound`, 테스트가 정확한 유리수 D로 잰다).
+- **`Krogh`**: scipy의 Hermite 나눗셈 차분표를 열마다 그대로 한다(같은 점이 s번째 반복이면 그 값을 s!로 나눠 다음 단계를 시작하고, 앞 열의 단계 값을 쓴다; 붙어 있지 않은 같은 점은 `ValueError`). 평가는 Newton 꼴의 Horner, 도함수는 IP69의 중심 옮기기다: m번째 걸음은 k = n − 2, …, m에서 bₖ ← bₖ + (x − x₍ₖ₋ₘ₎)bₖ₊₁(fma)이고 끝나면 bₘ = p⁽ᵐ⁾(x)/m!이다. 증명(§4): (1) 차분표: 값마다 정확한 자료의 선형 결합으로 펼치면 항마다 단계당 반올림 셋(차 둘, 나눗셈 하나)과 s!의 나눗셈 하나라 \|ĉₖ − cₖ\| ≤ γ₃ₖ₊₂C̃ₖ이다. C̃는 같은 점화식을 (\|a\| + \|b\|)/\|xᵢ − xₖ\|와 \|y\|/s!로 한 절댓값 표, 곧 펼친 항의 절댓값 합이다. 결과가 비정상 수인 나눗셈은 절대 2⁻¹⁰⁷⁵씩 틀리므로 같은 점화식으로 옮긴 바닥 Ẽ를 더한다. (2) 평가: cⱼ에서 bₘ까지의 길은 m + 1번의 걸음에서 j − m번 자리를 옮기고 옮길 때마다 (x − xₖ) 하나를 곱한다. 항이 지나는 fma는 걸음마다 많아야 max(1, 그 걸음에서 옮긴 수)라 모두 m + 1 + (j − m) 이하, 차의 반올림은 j − m 이하라 항마다 2n − 1 − m 이하다. 그래서 \|p̂⁽ᵐ⁾ − p⁽ᵐ⁾\| ≤ m!(γ₂ₙ₊₁Ã_m + 바닥)이고 Ã_m은 같은 걸음을 \|ĉ\|와 \|x − xₖ\|로 한 값, 바닥은 2⁻¹⁰⁷⁴((m + 1)Ã_m(1) + 1)이다(넣은 오차가 뒤의 길로만 옮겨 가고, 처음 걸음에서 시작한 길의 합이 그 위다). 끝에서 끝은 (1)의 한계를 같은 걸음으로 옮겨 더한다(`refdata.krogh_bound`).
+- **`AAA`** (§9의 17, IP20, IP67): scipy 1.18.1의 단계 그대로이고 실수 자료는 실수 연산(`dgesdd`, `dggev`), 복소 자료는 복소 연산(`zgesdd`, `zggev`)이다. (1) 값이 유한하지 않은 표본을 버리고 점을 정렬해(복소수는 실수부, 허수부 순) 같은 점은 처음 표본만 남긴다(numpy의 `unique`). (2) R은 f의 평균(numpy의 pairwise 합을 그대로 옮김)에서 시작한다. 걸음 m은 남은 표본 가운데 \|f − R\|가 가장 큰 것(같으면 앞, NaN이 있으면 첫 NaN: numpy의 `argmax`)을 지지점으로 하고 Cauchy 열 1/(z − zⱼ)과 Loewner 열 (f − fⱼ)C를 더한다. (3) 무게는 남은 표본 행의 Loewner 행렬을 `gesdd`('S')로 분해한 가장 작은 특이값의 오른쪽 특이벡터다(같은 최솟값이 여럿이면 그 벡터들의 합/√개수). σ₁/σₘᵢₙ > 1/(3ε)가 한 번 되면 그 뒤로는 열을 노름으로 나눈 행렬을 분해하고 무게를 다시 노름으로 나눈다. 행이 열보다 적으면 `gesdd`('A')의 영공간(랭크 문턱 σ_max·ε·max(행, 열)) 기저의 합/√크기다. (4) R = N/D(N = C(wf), D = Cw, 0인 무게의 열은 뺀다)이고 D가 유한하지 않은 행(지지점)은 f다. (5) max\|f − R\| ≤ rtol·max\|f\|이면 수렴, 아니면 min(`max_terms`, 표본 수) 걸음에서 멈춘다. 끝에 0인 무게의 지지점을 뺀다. 몫은 numpy의 것(복소수는 Smith 알고리즘), 합은 식이 주는 순서라 scipy와의 차이는 scipy가 BLAS로 하는 행렬 곱(N, D)의 반올림뿐이다. 시험 자료 넷 모두에서 지지점이 같은 순서로 같다(`tests/interpolate/test_aaa.py`). 오차가 반올림 크기(기본 rtol ε^(3/4)보다 아래)로 내려간 뒤의 걸음은 그 반올림이 고르므로 scipy와 갈릴 수 있다(scipy 문서의 rtol = 0 예에서 33번째 걸음, 오차 2×10⁻¹⁴).
+  - **극점·영점**: 화살촉 행렬 쌍 E = [0 wᵀ; 1 diag(zⱼ)], B = diag(0, 1, …, 1)의 일반화 고유값이다(영점은 E의 첫 행이 (wf)ᵀ). `linalg/lapack.hpp`에 더한 내부 래퍼 `ggev`(벡터 없이, `dggev`/`zggev`)로 구하고 α/β를 numpy처럼 나눠 유한한 것만 남긴다(scipy와 같은 행렬, 같은 Accelerate). 공개 linalg API는 그대로다. 유수는 scipy의 식 N(p)/D′(p)다. 크기 m + 1의 QZ라 지지점 2000개면 15초쯤 든다(scipy도 같은 계산이다).
+  - **`clean_up`**: \|유수\|/(극점과 표본의 거리)가 `clean_up_tol`×(\|f\|의 기하평균)보다 작은 극점마다 가장 가까운 지지점을 빼고, 남은 표본 행의 Loewner 행렬의 마지막 오른쪽 특이벡터로 무게를 다시 맞춘다(scipy와 같다; SVD는 IP71). 찾은 쌍의 수를 돌려준다.
+  - 반복마다의 SVD가 시간의 거의 전부다(M × m, m ≤ `max_terms`). 열을 더하는 QR 갱신으로 SVD를 줄이는 길은 나중 후보로 두었다(IP105; 결과는 같은 알고리즘의 반올림 차이).
+  - **평가와 그 계약**: 실수 지지점·무게·평가점이면 위의 평가 커널이고, 무엇이든 복소수면 복소 커널이다: λⱼ = wⱼ·(1/(z − zⱼ))이고 역수는 (r, m)을 2의 거듭제곱으로 맞춘 (r′, m′)의 conj/(r′² + m′²)(fma)라 제곱이 넘치지 않는다. 계산한 (지지점, 값, 무게) 그대로의 정확한 유리식 r에 대해 \|r̂ − r\| ≤ (γₐΣ\|λⱼfⱼ\| + γ_b\|r\|Σ\|λⱼ\|)/(\|Σλⱼ\| − γ_cΣ\|λⱼ\|)이다. 실수 커널은 (a, b, c) = (N + 3, N + 2, N + 1): ŝⱼ = λⱼ(1 + θ₂)에서 위 (3)–(5)와 같다. 복소 커널은 (3N + 16, 2N + 16, 2N + 8): 차의 반올림이 \|ẑ − z\| ≤ u\|z\|라 역수가 γ₅, 곱이 √2γ₂로 \|λ̂ⱼ − λⱼ\| ≤ γ₈\|λⱼ\|, 성분마다 항당 fma 둘이라 분자의 합이 √2γ₂ₙ ≤ γ₃ₙ, 분모가 √2γₙ₋₁ ≤ γ₂ₙ, 마지막 몫이 γ₇이다(\|r\| ≤ \|r\|Σ\|λ\|/\|Σλ\|로 b에 넣는다).
+- **`FloaterHormannInterpolator`** (IP9, IP63): 무게는 scipy의 닫힌 식 wₖ = (−1)^(k−d)Σᵢ∈Jₖ 1/∏ⱼ₌ᵢ..ᵢ₊ᵈ,ⱼ≠ₖ\|xₖ − xⱼ\|를 scipy와 같은 순서(곱을 차례로, 합을 차례로)로 해 시험 자료에서 scipy와 비트까지 같다. 한 무게의 항은 모두 같은 부호라 차 d번, 곱 d − 1번, 역수 한 번, 합 d번으로 \|ŵₖ − wₖ\| ≤ γ₃d\|wₖ\|(상대)다. 평가는 위의 커널이고(실수 점은 `Barycentric`과 같은 함수), 끝에서 끝은 무게의 상대 오차가 λⱼ에 곱해지므로 (a, b, c)에 3d를 더한 같은 꼴이다.
 
 ### 3.7 격자 (IP5)
 - **`linear`**: 축마다 구간과 t를 §3.1·§3.2로 구하고, 2ᵈ 꼭짓점의 값에서 마지막 축부터 첫 축까지 차례로 선형 커널을 쓴다(축 하나마다 꼭짓점이 반으로 준다). scipy는 꼭짓점 무게의 곱(∏ tᵢ 또는 1 − tᵢ)의 합이다. 차례로 쓰는 꼴은 노드에서 정확하고, 결과가 꼭짓점 값의 최솟값과 최댓값 사이이며, 1차원에서 `sd.interp`와 같은 비트다.
 - **`nearest`**: 축마다 t ≤ 0.5면 왼쪽, 아니면 오른쪽 노드다(scipy와 같다; t는 같은 1번 식).
 - **`slinear`**: k = 1의 텐서곱이고 계산은 `linear`와 같은 함수다.
-- **`cubic`·`quintic`**: 텐서곱 스플라인의 계수는 축마다의 1차원 보간 풀이를 차례로 쓴 것과 정확히 같다(배치 행렬이 크로네커 곱이다). 그래서 축마다 §3.4의 띠 풀이를 그 축의 모든 줄에 한 번씩 쓴다(줄마다 독립이라 병렬). 반복 풀이가 없다. 평가는 축마다 de Boor를 차례로(국소 (k + 1)ᵈ 계수). scipy의 `gcrotmk` 길은 이 초안에서 100² 만들기 4.2 ms, 10⁵점 평가 10.4 ms였다.
-- **`pchip`**: 1차원 PCHIP의 값은 이웃 네 노드로만 정해진다(기울기가 국소). 그래서 평가점마다 4ᵈ개의 값으로 축마다 PCHIP을 차례로 쓰면 scipy의 결과와 같은 함수다. scipy는 평가점마다 첫 축의 줄 전체로 1차원 보간을 새로 만들어 이 초안에서 100² 격자의 10⁴점이 573 ms였다.
+- **`cubic`·`quintic`**: 텐서곱 스플라인의 계수는 축마다의 1차원 보간 풀이를 차례로 쓴 것과 정확히 같다(배치 행렬이 크로네커 곱이다). 그래서 축마다 §3.4의 띠 풀이를 그 축의 모든 줄에 한 번씩 쓴다(줄마다 독립이라 병렬). 반복 풀이가 없다. 평가는 축마다 de Boor를 차례로(국소 (k + 1)ᵈ 계수). scipy의 `gcrotmk` 길은 100² 만들기 4.27 ms, 10⁵점 평가 10.0 ms다(§5).
+- **`pchip`**: 1차원 PCHIP의 값은 이웃 네 노드로만 정해진다(기울기가 국소). 그래서 평가점마다 4ᵈ개의 값으로 축마다 PCHIP을 차례로 쓰면 scipy의 결과와 같은 함수다. scipy는 평가점마다 첫 축의 줄 전체로 1차원 보간을 새로 만들어 100² 격자의 10⁴점이 564 ms다(§5).
+- **구현**(IP5 마일스톤, `interpolate/grid.cpp`): 평가점을 256점 블록으로 나누고 축마다 `count_le_block`으로 구간을 찾는다. 꼭짓점·계수·창의 위치는 첫 축이 가장 높은 자리인 번호이고, 줄이기는 언제나 마지막 축부터다(IP77, IP78, IP80). 범위 밖 검사는 평가와 한 번에 한다(IP76). 텐서곱 계수의 풀이는 축마다 줄 묶음과 8열 묶음으로 나눈다. 1차원에서 선형·`slinear`는 `sd.interp`, `cubic`·`quintic`은 `make_interp_spline`, `pchip`은 `PchipInterpolator`와 비트까지 같다(`tests/interpolate/test_grid.py`).
 
 ### 3.8 RBF (IP6)
-- **계**: [[K + diag(λ), P], [Pᵀ, 0]] [a; b] = [d; 0], K는 핵 φ(ε‖yᵢ − yⱼ‖), P는 옮기고 늘린 좌표의 단항식(scipy와 같다). 대칭 부정치라 LDLᵀ(`sytrf` + `sytrs`, Bunch–Kaufman)로 푼다(scipy의 `dsysv`와 같은 분해). 풀이가 특이하면 `LinAlgError`이고 단항식 행렬의 랭크가 모자라면 그 사실을 말한다(scipy와 같은 판정). 같은 자료점은 만들기 전에 찾는다(§9의 22).
-- **K 만들기**: 짝의 거리는 spatial의 `euclidean` 짝 커널(spatial.md SPT26)과 같은 순서로 구하고, 대칭이라 반쪽만 계산해 복사한다. 행 조각으로 병렬이다.
-- **평가**: 평가점 조각마다 핵 벡터와 계수의 곱이다. 메모리는 조각 크기로 정한 상한이다(scipy의 메모리 예산과 같은 생각). 합의 순서는 자료점 순서의 고정된 꼴이다(조각과 무관).
-- **`neighbors=k`**: 평가점마다 `KDTree.query(k)`의 이웃(정렬된 색인 집합)을 구하고, 같은 집합끼리 묶어(색인 집합의 정렬과 고유화) 집합마다 (k + q)차의 국소 계를 한 번 푼다. 묶음은 집합의 사전 순서라 스레드 수와 무관하다. 국소 계는 작아서(k ≈ 50) LAPACK 호출의 고정비가 크다. 작은 계의 직접 LDLᵀ를 IP7에서 잰다(linalg.md §7.5의 AMX 직렬 문제와 같은 고민).
-- **`NearestNDInterpolator`**(§9의 5): `KDTree.query(k=1)`의 색인으로 값을 고른다. 동점은 작은 색인이다. scipy의 `rescale`은 두고 `tree_options`와 질의 옵션은 뺀다(IP31).
+`csrc/interpolate/rbf.cpp`(핵, 계, 풀이, 평가, 국소 계)와 `src/stardust/interpolate/_rbf.py`(인자, 이웃 질의, `NearestNDInterpolator`)다.
+- **핵**: scipy의 여덟을 같은 식으로 계산한다: `linear` −r, `thin_plate_spline` (r·r)·log r(r = 0이면 0), `cubic` (r·r)·r, `quintic` −((r²·r²)·r), `multiquadric` −√(r·r + 1), `inverse_multiquadric` 1/√(r·r + 1), `inverse_quadratic` 1/(r·r + 1), `gaussian` exp(−(r·r)). log와 exp는 배열 영역의 NEON 커널(`array/kernels/vmath.hpp`)의 스칼라 짝이다(IP100: 레인과 같은 비트, Arb 대비 1 ULP 안). r = ε·‖x − y‖이고 거리는 spatial의 `euclidean` 짝 커널(`spatial/metric.hpp`의 `pair_scalar`와 `euclid_finish`: 차의 제곱을 fma로 차례로 더하고, 합이 아주 작거나 넘치면 2의 거듭제곱으로 늘려 다시 잰다)이라 한 짝의 거리가 `cdist`와 같은 비트다(IP91).
+- **꼬리**: 차수 `degree` 이하의 단항식(scipy의 `combinations_with_replacement` 차례, Python 층이 (q, d)의 지수 배열로 넘긴다)을 x̂ = (x − shift)/scale에서 좌표 차례로 인수를 하나씩 곱해 계산한다. shift = 0.5·max + 0.5·min, scale = 0.5·max − 0.5·min(0이면 1)이고 계의 점들에서 잰다(전역은 모든 자료점, 국소는 그 집합; IP92).
+- **계**: [[K + diag(λ), P], [Pᵀ, 0]] [a; b] = [d; 0](N = n + q)를 열 우선의 아래 삼각에 채운다(대칭). 열 32개씩 병렬이고 칸마다 자기 커널이라 나눔과 무관하게 같은 비트다. 대각은 φ(0) + λᵢ다.
+- **검사**: 같은 자료점(IP90)은 Python 층이 만들기 전에 `rbf_duplicate`(정렬과 같은 행의 묶음)로 본다. P의 랭크는 풀기 전에 numpy `matrix_rank`의 판정으로 본다(`gesdd` 'N', 허용 s_max·max(n, q)·ε; IP92).
+- **풀이**: `sytrf`(Bunch–Kaufman, 아래 삼각) 뒤 LAPACK `dsytrs`의 단계를 그대로 쓴 대입(`ldlt_solve`, IP101)으로 N × s 오른쪽을 열마다 푼다(scipy의 `dsysv`와 같은 분해). complex 값은 실수 열 둘이다(행렬은 실수). 정확한 0 피벗이나 유한하지 않은 계수는 특이하다고 알린다. 전역 계는 (n + q)² × 8바이트를 한 번 잡고 물리 메모리보다 크면 할당 전에 `MemoryError`다.
+- **평가**: 점마다 Σⱼ φ(rⱼ)cⱼ를 자료점 차례로 항마다 fma 하나로 더한 뒤 단항식 항을 같은 꼴로 더한다. 합의 순서는 크기로만 정해져 평가점 조각(병렬)과 무관하다. 평가점 넷을 NEON 레인으로 나란히 계산하고(값 열이 8개 이하일 때), 계 채우기는 한 열의 칸 둘씩이다(IP100; 칸마다 같은 연산). 작업 메모리는 조각마다 열 수만큼이다.
+- **`neighbors=k`**(IP96): Python 층이 유한한 평가점의 `KDTree.query(k)` 색인을 넘기고, `rbf_local`이 행마다 정렬해 집합으로 하고, 평가점을 (집합의 사전 순서, 점 번호)로 정렬해 묶는다. 집합마다 그 점들을 모은 사본에서 위의 계 만들기, 검사, 풀이, 평가를 그대로 쓴다(그래서 그 집합의 전역 RBF와 같은 비트다). 집합끼리 병렬이고 태스크마다 LAPACK 작업 공간(`Scratch`)을 따로 쥔다. 실패는 점 번호가 가장 작은 점의 집합을 상태 코드로 돌려주고 Python 층이 메시지를 만든다. 국소 계는 작아서(k ≈ 50) LAPACK 호출의 고정비가 크다. IP7 마일스톤에서 쟀다(N = 53): `sytrf` 4.25 µs, Accelerate의 `dsytrs` 3.5 µs, 랭크의 `gesdd` 1.8 µs. 대입만 직접 쓰고(IP101) 분해는 Accelerate에 둔다.
+- **`NearestNDInterpolator`**(§9의 5, IP98): 유한한 평가점의 `KDTree.query(k=1)` 색인으로 값을 고른다. 동점은 작은 색인이다. `rescale`은 scipy의 뜻이고 `tree_options`와 질의 옵션은 없다(IP31).
 
 ### 3.9 병렬화와 결정성
 **같은 입력이면 스레드 수와 상관없이 같은 결과다.** 점 하나의 값은 어느 태스크에서든 같은 커널이고, 합이 있는 곳은 크기로만 정한 순서다. 테스트는 1, 2, 3, 7, 10스레드에서 같은 바이트를 확인한다(§7).
@@ -402,29 +462,37 @@ RBFInterpolator.__call__(x, /)
 | `integrate` | pairwise 트리 | 배열의 pairwise 합과 같다 |
 | `roots` | 구간 조각 | 구간마다 독립, 구간 순서로 모은다 |
 | 격자 스플라인의 계수 | 축마다 줄 묶음 | 줄마다 같은 풀이다 |
-| RBF의 K, 평가, 국소 계 | 행 조각, 평가점 조각, 이웃 집합 | 집합은 KD 트리의 전순서로 정해진다 |
+| RBF의 계, 평가, 국소 계 | 열 조각(32열), 평가점 조각, 이웃 집합 | 칸마다 자기 커널이다. 집합은 KD 트리의 전순서로 정해지고 집합마다 같은 계와 풀이다 |
+| 다항식·유리식의 평가, `Barycentric`의 무게와 노드 도함수, Floater–Hormann의 무게 | 평가점 조각, 노드 조각(크기로만) | 점·노드 하나는 한 커널이다(여덟 점 묶음도 점마다 같은 연산) |
+| Krogh의 차분표 | 배치의 열 묶음 | 열마다 같은 점화식이다 |
 | RBF 전역 풀이, AAA의 SVD·고유값 | Accelerate | Accelerate의 스레드 모드가 같으면 같다(linalg.md §1.2) |
 
-- 하나의 긴 열의 삼중대각·띠 풀이는 차례 계산이다(분해와 대입이 앞뒤로 이어진다). 10⁶점 하나는 1스레드 시간이다. 병렬 순환 소거는 반올림이 달라지므로(크기로만 나누면 스레드 수와는 여전히 무관) IP7에서 재 보고 정한다.
-- 병렬 기준값은 배열의 규칙이다(array.md §10.4): 작업량이 float64 연산 2¹⁵개 분량 이상이면 나누고, 그 이상이면 스레드 수와 상관없이 GIL을 놓는다(API.md §3).
+- 하나의 긴 열의 삼중대각·띠 풀이는 차례 계산이다(분해와 대입이 앞뒤로 이어진다). 10⁶점 하나는 1스레드 시간이다. 병렬 순환 소거는 반올림이 달라지므로(크기로만 나누면 스레드 수와는 여전히 무관) IP7 마일스톤에서 재고 쓰지 않기로 했다(IP105).
+- 병렬 기준값은 배열의 규칙이다(array.md §10.4): 작업량이 float64 연산 2¹⁵개 분량 이상이면 나누고, 그 이상이면 스레드 수와 상관없이 GIL을 놓는다(API.md §3). 점 평가(`sd.interp`, 선형 길, `PPoly`)의 작업량은 점마다 2·log₂n + 8(열과 계수가 여럿이면 8 대신 그 수에 비례)이고 태스크는 1024점이다(IP102; 선형 길은 1024 / 열 수, `PPoly`는 4096 / (계수 수 × 열 수)와 256 가운데 큰 것).
 
 ### 3.10 메모리
 - 사용자가 모양으로 요청한 출력(평가점 × 배치, RBF의 (n + q)² 계)은 할당 전에 물리 메모리와 견주어 넘으면 `MemoryError`다(API.md §2).
-- RBF 평가와 RGI 스플라인의 작업 메모리는 조각 크기로 정한 상한이 있다. 전역 RBF는 (n + q)² × 8바이트를 한 번 잡는다(n = 10⁴에서 800 MB).
+- RBF 평가와 RGI 스플라인의 작업 메모리는 조각 크기로 정한 상한이 있다. 전역 RBF는 (n + q)² × 8바이트를 한 번 잡는다(n = 10⁴에서 800 MB). `neighbors=k`는 태스크마다 (k + q)² × 8바이트이고 만들 때 같은 물리 메모리 검사를 한다(IP106).
 - 객체는 계수 배열 하나와 중단점(또는 매듭)을 쥔다. 감소하는 중단점의 뒤집은 사본(§3.1)만 더 든다.
 
 ---
 
-## 4. 정확도 계약 (안)
-참값은 Arb와 정확한 유리수다. 입력이 float64라 자료와 계수는 정확한 유리수이고, 계약은 두 겹으로 적는다. **만들기**: 계산한 계수(기울기, B-스플라인 계수, 무게)를 같은 자료의 정확한 해(유리수 풀이를 올바르게 반올림한 것)와 견준다. **평가**: 계산한 계수가 나타내는 함수를 그 계수 그대로(정확한 유리수로) 평가한 값과 견준다. 두 겹을 합친 끝에서 끝의 오차(정확한 자료의 정확한 보간 대비)는 정확도 표에 보이지만 계약은 두 겹이다. 계약 단위(오차 ÷ 한계)로 적고 경계는 1이다(spatial.md §4와 같은 꼴). 상수는 각 마일스톤에서 증명하고 잰 값은 그때 채운다.
+## 4. 정확도 계약
+참값은 Arb와 정확한 유리수다. 입력이 float64라 자료와 계수는 정확한 유리수이고, 계약은 두 겹으로 적는다. **만들기**: 계산한 계수(기울기, B-스플라인 계수, 무게)를 같은 자료의 정확한 해(유리수 풀이를 올바르게 반올림한 것)와 견준다. **평가**: 계산한 계수가 나타내는 함수를 그 계수 그대로(정확한 유리수로) 평가한 값과 견준다. 두 겹을 합친 끝에서 끝의 오차(정확한 자료의 정확한 보간 대비)는 정확도 표에 보이지만 계약은 두 겹이다. 계약 단위(오차 ÷ 한계)로 적고 경계는 1이다(spatial.md §4와 같은 꼴). 상수의 증명은 §3에 있고, 잰 값은 정확도 표(`bench/interpolate/accuracy.md`)와 테스트의 값이다.
 
 - **선형** (`sd.interp`, k = 1 B-스플라인, 격자 선형의 1차원)
   | 계약 | 메모 |
   |---|---|
   | \|ŷ − y\| ≤ γ₆(\|a\| + \|b\|) + 3η(0 ≤ t ≤ 1), γ₁₀·max(1, \|t\|)·(\|a\| + \|b\|) + 3η(늘이기, IP40), y = (1 − t)a + tb의 정확한 값(t는 x의 정확한 값으로), η = 2⁻¹⁰⁷⁵ | 증명은 §3.2(IP0 마일스톤, 늘이기는 IP1 마일스톤에서 고침). 갈래마다 같은 부호 γ₆·max(\|a\|, \|b\|)와 γ₇·max(1, \|t\|)·max, 반대 부호 γ₅(\|a\| + \|b\|)와 γ₁₀·max(1, \|t\|)·(\|a\| + \|b\|). `tests/interpolate/refdata.linear_bound`. 잰 값(IP1 마일스톤, `bench/accuracy/interpolate.py`의 `linear`): `sd.interp`가 곡선 안 1,736점에서 최대 0.235, 커널 구간 안 1,072점에서 0.500(비정상 수 끝값 tiny-values: 반올림 반 칸이 한계 2⁻¹⁰⁷³의 반), 선형 길의 늘이기 점에서 0.272 계약 단위. 같은 점의 numpy·scipy(k = 1)·R(`approx`)은 곡선 0.259·0.229·0.234, 구간 0.719·0.500·0.719이고 유한하지 않은 값을 낸 점(numpy 60, scipy 64, R 26)은 빼고 잰 것이다 |
   | 노드에서 0 오차, 단조인 자료에서 단조, 구간 끝값 사이 | 정확한 성질(§3.2). hypothesis와 끝점 둘레의 이웃 double로 시험 |
-- **격자 선형** (d차원): \|ŷ − y\| ≤ γ₆d·Σ_c w_c\|v_c\|(w_c는 정확한 꼭짓점 무게, 합 1) 꼴, 노드에서 0 오차, 꼭짓점 값의 범위 안(정확한 성질). `nearest`는 고른 노드의 값 그대로(0 오차)와 동점 규칙.
-- **조각 다항식의 평가** (Horner, IP2 마일스톤에서 증명, §3.5): \|p̂ − p(x)\| ≤ Σₑ γ₂ₑ₊₂·fₑ\|cₑ\|\|s\|ᵉ + 2⁻¹⁰⁷⁴Σₑ\|s\|ᵉ (s = x − xᵢ 정확한 값, e는 미분한 뒤의 차수, fₑ = d!/(d − ν)!), p는 계산한 계수 그대로의 정확한 값(`refdata.ppoly_bound`). 잰 값: 실수 곡선 21개 × 7방법(`CubicSpline` 넷, PCHIP, akima, makima) × ν = 0–3의 평가점(끝 조각을 늘인 바깥 포함)에서 최대 0.48 계약 단위. scipy는 자기 계수를 거듭제곱 합으로 평가해 같은 한계로 1.04다. 끝에서 끝(정확한 자료의 정확한 보간) 상대오차는 spacing/1e10을 빼고 1.4×10⁻¹³ 이하(spacing/1e10은 조건 때문에 2.5×10⁻⁶; scipy 4.1×10⁻⁶).
+- **격자** (IP5 마일스톤에서 증명; IP79, IP81). 잰 값은 `tests/interpolate/test_grid.py`와 정확도 표(`grid`)다.
+  | 대상 | 계약 | 잰 값과 메모 |
+  |---|---|---|
+  | 선형·`slinear`(d차원) | 축마다 1차원 선형 계약을 쌓은 재귀(`refdata.grid_linear_exact`), 안쪽에서 \|ŷ − y\| ≤ d·(γ₁₃M + 3η). 노드에서 0 오차, 꼭짓점 값의 범위 안(정확한 성질). 1차원은 선형 계약 그대로 | grid.npz 400점과 바깥 점에서 0.34(scipy 0.17, `slinear` 0.54). `nearest`는 고른 노드의 값 그대로(0 오차) |
+  | `cubic`·`quintic`의 계수 | 성분마다 Σ_a (⊗_{b>a}\|A_b⁻¹\|)·2γ_{8k+8}\|A_a⁻¹\|\|A_a\|\|R̂_a\|(`refdata.tensor_collocation_bound`) | 시험 격자(grid.npz의 `cubic` 다섯, `quintic` 넷)에서 0.016(`cubic`), 0.0044(`quintic`) |
+  | `cubic`·`quintic`의 평가 | γ_{d(6k+1)}Σⱼ\|cⱼ\|∏B̃ + d(6k + 2)·2⁻¹⁰⁷⁴·(1 + 2ᵈΣ\|cⱼ\|)(`refdata.tensor_bound`; ν > 0, 바깥 포함) | 평가 0.11(`cubic`), 0.10(`quintic`; ν = 0, 1, 2, 안팎). 끝에서 끝(계수 한계를 옮긴 것) 0.012(`cubic`), 0.0045(`quintic`). scipy의 반복 풀이는 같은 단위로 3.0×10⁸, 1.1×10⁸이고 상대오차 1.4×10⁻⁵, 2.6×10⁻⁵(sd 6.6×10⁻¹⁶, 8.3×10⁻¹⁵) |
+  | `pchip` | 계약 없음(1차원 `PchipInterpolator`를 접은 것과 같은 비트, 계수는 scipy와 같은 비트) | 끝에서 끝 상대오차 3.1×10⁻¹⁶(scipy 5.3×10⁻¹⁶), scipy와의 차이는 값 크기의 2.9 ULP 이하(평가점의 38%가 같은 비트) |
+- **조각 다항식의 평가** (Horner, IP2 마일스톤에서 증명, §3.5): \|p̂ − p(x)\| ≤ Σₑ γ₂ₑ₊₂·fₑ\|cₑ\|\|s\|ᵉ + 2⁻¹⁰⁷⁴Σₑ\|s\|ᵉ (s = x − xᵢ 정확한 값, e는 미분한 뒤의 차수, fₑ = d!/(d − ν)!), p는 계산한 계수 그대로의 정확한 값(`refdata.ppoly_bound`). 잰 값: 실수 곡선 21개 × 7방법(`CubicSpline` 넷, PCHIP, akima, makima) × ν = 0–3의 평가점(끝 조각을 늘인 바깥 포함)에서 최대 0.49 계약 단위(akima; 다른 방법 0.46–0.48). scipy는 자기 계수를 거듭제곱 합으로 평가해 같은 한계로 1.04다. 끝에서 끝(정확한 자료의 정확한 보간) 상대오차는 spacing/1e10을 빼고 1.4×10⁻¹³ 이하(spacing/1e10은 조건 때문에 2.5×10⁻⁶; scipy 4.1×10⁻⁶).
 - **3차 계열의 만들기** (IP2 마일스톤에서 증명, §3.3)
   | 대상 | 계약 | 잰 값과 메모 |
   |---|---|---|
@@ -440,19 +508,33 @@ RBFInterpolator.__call__(x, /)
   | 평가(모든 k, ν = 0, …, k + 1, 늘이는 바깥 포함) | \|ŷ − Σⱼ cⱼBⱼ^(ν)(x)\| ≤ γ_{6k+1}·Σⱼ\|cⱼ\|B̃ⱼ(x) + (6k + 2)·2⁻¹⁰⁷⁴·(1 + Σⱼ\|cⱼ\|) (c는 계산한 계수, B̃는 항을 절댓값으로 한 재귀; 기본 구간의 ν = 0에서 B̃ = B; `refdata.bspline_bound`). k = 1, ν = 0은 선형 계약(IP61) | 실수 곡선 23개 × 방법 10의 평가점에서 최대 0.22 계약 단위(`test_bspline.py`). 정확도 표(ν = 0): k2 0.20, k3 0.20, k4 0.20, k5 0.17, natural 0.18, clamped 0.22, periodic 0.17, 0.10, k1 0.27(선형). scipy의 계수를 scipy가 평가하면 같은 한계로 0.22, 0.19, 0.20, 0.20, 0.17, 0.19, 0.13, 0.11이고 k1은 subnormal/x에서 inf |
   | 만들기(`make_interp_spline`의 모든 `bc_type`, 증명이 서는 피벗 없는 계) | \|ĉ − c\| ≤ 2γ_{8k+8}\|A⁻¹\|\|A\|\|ĉ\| 성분마다(A는 정확한 자료의 배치 행렬, periodic은 접힌 계; `refdata.collocation_bound`). k = 0, 1은 c = y 그대로 | k2 0.032, k3 0.024, k4 0.021, k5 0.019, natural 0.021, clamped 0.022, periodic 0.018(k3), 0.0066(k5). scipy는 0.041, 0.034, 0.025, 0.024, natural 4.3×10¹³, clamped 0.030, periodic 0.013, 0.010. 부분 피벗의 길(IP53의 그 밖)은 scipy와 견준다 |
   | 피벗 없는 소거의 성장 | 성분마다 (\|L\|\|U\|)ᵢⱼ ≤ g\|Aᵢⱼ\|, g = 1(도함수 조건 없음, 각 끝의 차수 1, …, r), g < 2(k = 3의 natural) | 정확한 소거에서 잰 값과 같다(§3.4의 측정) |
-- **`Barycentric`**: 둘째 공식의 한계 \|p̂ − p\| ≤ (3n + 4)u·Σⱼ\|ℓⱼ(x)yⱼ\| + (3n + 2)u·Λₙ(x)\|p(x)\| + O(u²)(Higham 2004; 무게의 반올림 포함, 확인은 IP4). 오른쪽은 참값 도구가 Arb로 구한다.
-- **`Krogh`**: 나눗셈 차분표의 앞 오차와 Horner의 한계(차분표의 절댓값으로 적는 꼴, IP4). 점이 많고 고르면 커진다: 계약이 그 크기를 보이고 정확도 표가 잰다.
-- **`AAA`**: (1) 지지점에서 0 오차(정확한 성질), (2) 계산한 (지지점, 값, 무게)의 무게중심 유리식을 Arb로 평가한 값 대비 첫째 공식 꼴의 한계, (3) 수렴한 객체는 표본에서 max\|r(zᵢ) − fᵢ\| ≤ rtol·‖f‖∞(sd의 평가로; 성질). 무게 자체는 SVD의 결과라 계약이 없다(알고리즘의 경로).
-- **RBF**: (1) 풀이의 역오차 ‖Ac − d‖ ≤ K·u·‖A‖·‖ĉ‖(LDLᵀ의 증가 인자를 함께 적는다), (2) 계산한 계수로의 평가가 Arb 평가 대비 γ·Σⱼ\|ĉⱼ\|\|φ(rⱼ)\| + 핵 함수의 반올림(libm의 `log`, `sqrt`, `exp`가 1 ULP라는 가정; spatial.md의 가정 L과 같은 꼴), (3) 자료점에서의 잔차를 표에 적는다.
+- **다항식·유리식** (IP4 마일스톤에서 증명, §3.6; IP70). N은 노드(지지점) 수, 언더플로가 없다고 둔다. 잰 값은 `tests/interpolate/test_polyint.py`·`test_aaa.py`와 정확도 스윕(`polynomial`, `aaa`)이다.
+  | 대상 | 계약 | 잰 값과 메모 |
+  |---|---|---|
+  | `Barycentric`(끝에서 끝, 무게의 반올림 포함) | \|p̂ − p\| ≤ (γ₃ₙ₊₁Σⱼ\|ℓⱼ(x)yⱼ\| + γ₃ₙΛ(x)\|p(x)\|)/(1 − γ₃ₙ₋₁Λ(x)), p는 float 자료의 정확한 보간 다항식, Λ는 Lebesgue 함수(`refdata.barycentric_bound`; polynomial.npz의 `lebesgue`, `abs_terms`). 처음 안의 Higham 2004 첫 차 꼴(O(u²))을 대신한다(IP70) | 0.064(scipy 0.042, 같은 단위). 노드에서 0 오차 |
+  | `Barycentric`의 도함수 | 노드 값 Dᵏy의 한계(차수마다 γ₆ₙΣⱼ≠ᵢ\|Dᵢⱼ\|(\|vⱼ\| + \|vᵢ\|) + \|D\|·앞 차수의 한계) 위에 계산한 노드 값의 평가 한계와 Σ\|ℓⱼ\|·노드 한계(`refdata.rational_nodal_bound`) | 1차 0.022, 2차 0.020(scipy 0.023, 0.018) |
+  | `Krogh`의 차분표 | \|ĉₖ − cₖ\| ≤ γ₃ₖ₊₂C̃ₖ + Ẽₖ(C̃: 절댓값 표, Ẽ: 비정상 수의 바닥; `refdata.krogh_table_bound`) | 0.023 |
+  | `Krogh`의 평가(계산한 계수 대비) | \|p̂⁽ᵐ⁾ − p⁽ᵐ⁾\| ≤ m!(γ₂ₙ₊₁Ã_m(\|ĉ\|) + 2⁻¹⁰⁷⁴((m + 1)Ã_m(1) + 1)), Ã_m은 m + 1번의 Horner 걸음을 절댓값으로 한 것(`refdata.krogh_bound`); 끝에서 끝은 차분표의 한계를 같은 걸음으로 더한다 | 0.10, 끝에서 끝 0.0039(1차 4×10⁻⁵, 2차 1×10⁻⁵; scipy 0.012). 고른 점 30개의 Runge 자료에서 Ã가 커지는 것이 계약에 보인다(경고 없음, IP22) |
+  | 유리식의 평가(계산한 지지점·값·무게 대비) | \|r̂ − r\| ≤ (γₐΣ\|λⱼfⱼ\| + γ_b\|r\|Σ\|λⱼ\|)/(\|Σλⱼ\| − γ_cΣ\|λⱼ\|), λⱼ = wⱼ/(z − zⱼ); 실수 (N + 3, N + 2, N + 1), 복소 (3N + 16, 2N + 16, 2N + 8)(`refdata.rational_bound`) | Floater–Hormann 0.10; AAA tan 0.31, abs 0.096, circle 0.056(복소, Arb), nonfinite 0.24(scipy의 유리식을 scipy가 평가하면 0.31, 0.042, 0.042, 0.27) |
+  | Floater–Hormann의 무게와 끝에서 끝 | \|ŵₖ − wₖ\| ≤ γ₃d\|wₖ\|; 끝에서 끝은 (a, b, c)에 3d를 더한다(polynomial.npz의 `fh3`) | 무게 0.24(scipy와 같은 비트), 끝에서 끝 0.059(scipy 0.068) |
+  | AAA의 성질 | (1) 지지점에서 0 오차(정확한 성질), (2) 수렴한 객체는 표본에서 max\|r(zᵢ) − fᵢ\| ≤ rtol·max\|f\|(sd의 평가로) | (2)의 잰 값(rtol·max\|f\| 단위) tan 7×10⁻⁵, abs 0.38, circle 0.99, nonfinite 1.3×10⁻⁴. 무게 자체는 SVD의 결과라 계약이 없다(알고리즘의 경로) |
+- **RBF** (IP6 마일스톤, IP97; `tests/interpolate/refdata.py`의 RBF 부분, `test_rbf.py`, 정확도 표 `rbf`)
+  | 대상 | 계약 | 잰 값과 메모 |
+  |---|---|---|
+  | 풀이 | 성분마다 \|Âĉ − d\| ≤ γ_{4N}(\|Â\| + \|L̂\|\|D̂\|\|L̂\|ᵀ)\|ĉ\|(Higham 정리 11.3, N = n + q; Â는 계산한 계, L̂·D̂는 그 `sytrf` 인수, 잔차는 오차 없는 곱과 `fsum`으로 정확히; `refdata.rbf_backward_bound`) | 핵 여덟과 `smoothing` 0.1, 시험 자료 다섯 벌에서 최대 0.0099(gaussian; scipy의 계와 그 `scipy.linalg.ldl` 인수로 0.010). 증가 인자 ‖\|L̂\|\|D̂\|\|L̂\|ᵀ‖∞/‖Â‖∞는 1.25–5.96(`thin_plate_spline`이 가장 크다) |
+  | 평가 | 계산한 계수·shift·scale의 정확한 함수(Arb) 대비 Σⱼ\|ĉⱼ\|Eⱼ(1 + γ_N) + γ_NΣⱼ\|ĉⱼ\|\|φⱼ\| + Σₖ\|b̂ₖ\|\|mₖ\|(γ_{3gₖ}(1 + γ_N) + γ_N), Eⱼ = 1.01γ_{d+5}\|rφ′(r)\| + γ₄\|φⱼ\| + 8·2⁻¹⁰⁷⁴(`refdata.rbf_eval_bound`; libm의 `log`·`exp`가 1 ULP라는 가정 L) | 최대 0.056(gaussian; scipy의 계수를 scipy가 평가하면 같은 한계로 0.11) |
+  | 자료점의 잔차, 끝에서 끝 | 계약 없음(계의 조건수) | 잔차 max\|f(yᵢ) + λᵢaᵢ − dᵢ\|/max\|d\|는 linear 4.9×10⁻¹⁶에서 gaussian 2.9×10⁻¹¹(scipy 7.0×10⁻¹⁶, 1.8×10⁻¹¹). 끝에서 끝 상대오차(정확한 자료의 정확한 보간 대비)는 linear 5.1×10⁻¹⁶, thin_plate_spline 7.5×10⁻¹⁶, gaussian(ε = 3) 2.2×10⁻⁷(scipy 6.2×10⁻¹⁶, 8.9×10⁻¹⁶, 2.1×10⁻⁷), `neighbors=8` 2.6×10⁻¹⁶ |
+  | `neighbors=k` | 점마다 그 이웃 집합의 자료점으로 만든 전역 RBF와 같은 비트(그래서 위의 계약을 그대로 진다) | 동점이 많은 격자에서 k = 1, 2, 3, 5, 9; 점의 순서, 반복, 한 점씩 부르기, 1·3·10스레드에서 같은 비트 |
+  | `NearestNDInterpolator` | 고른 자료점의 값 그대로(0 오차), (거리, 색인)이 가장 작은 점 | 무차별 대입(`cdist`)과 같은 점 |
 - **`roots`** (IP2 마일스톤): 돌려준 근 r̂마다 (1) sd가 평가하는 함수 P(fl(t − xᵢ))(P는 계산한 계수 그대로)의 정확한 값이 r̂와 그 이웃 double 사이에서 부호가 바뀌거나 r̂에서 0이고(정확한 유리수로 확인), 그렇지 않으면 \|P(r̂)\|가 보정한 Horner의 오차 2(u\|p\| + γ₂ₖ²Σ\|cₑ\|\|s\|ᵉ) 안이며, (2) 접하는 근이면 \|P(r̂)\|가 평가 계약 안이다. 빠뜨린 근이 없는지는 roots.npz(Arb로 분리한 실근과 중복도)로 본다: 단순근은 4 ULP, 중근은 √(16uΣ\|cₑ\|\|s\|ᵉ) 안에 돌려준 근이 있다. 잰 값: 참값 근 36개를 모두 0 ULP로 찾았다(중근 0.25, 1.5와 2⁻³⁰ 떨어진 두 근 포함). scipy는 중근 둘을 놓치고(missed 2) 붙은 두 근을 7×10⁻⁹ 틀린다.
 - **`integrate`·`antiderivative`·`derivative`** (IP2 마일스톤): `derivative`는 계수마다 곱셈 한 번(정확한 정수배의 상대 u), `antiderivative`의 이동한 계수는 나눗셈 한 번, 상수 c_q[i]는 앞 조각들의 Horner 합 i개의 누적합이라 γ_{i+2k+4}·Σ_{j<i}Σₑ\|cₑ⁽ʲ⁾\|\|h_j\|^{e+1}/(e + 1) 안(블록이 둘 이상이면 블록 수만큼 더한다), 적분은 조각마다 평가 계약 꼴의 Horner와 pairwise 합 γ_{⌈log₂ m⌉+1}이다. 테스트(`tests/interpolate/test_ppoly.py`)는 정확한 유리수의 역미분과 적분 대비 그 한계로 본다.
-- **PCHIP의 단조성** (성질 시험, `tests/interpolate/test_pchip.py`): 단조인 자료(시험 자료의 단조 곡선, 고정 씨앗의 무작위 단조 자료 300개, 걸음이 10⁻³²²–10⁻³⁰⁰인 비정상 수 둘레의 자료 200개, hypothesis 150개(깊은 묶음 1500개); 0인 걸음 포함)에서 (1) 계산한 기울기가 0이거나 Δ와 같은 부호이고 \|sᵢ\| ≤ 3(1 + 4u)\|Δ\| + 2⁻¹⁰⁷⁴(바닥은 IP51), (2) 계산한 계수의 도함수 2차식이 [0, h]에서 계수 계약(위 표의 c₂, c₃ 한계, 비정상 수의 바닥 포함)의 도함수만큼 안에서 자료의 부호를 지킨다(정확한 유리수; IP46: 노드 기울기가 0이면 그 끝의 도함수가 반올림 크기라 정확한 단조는 서지 않는다; IP51: 계수가 비정상 수면 그 반올림이 절대 2⁻¹⁰⁷⁵씩이다), (3) 정렬한 평가점의 값이 평가 계약 안에서만 거꾸로 가고 구간 끝값을 평가 계약 안에서만 넘는다. 셋 다 통과한다. scipy는 이 초안의 무작위 단조 자료 2000개에서 구간 끝값을 최대 3 ULP 넘었다(평가의 반올림; 단조가 깨진 곳은 없었다). makima는 평평한 구간이 정확히 평평하고, akima는 구간 안쪽 노드의 기울기가 0인 것을 시험한다(IP47).
+- **PCHIP의 단조성** (성질 시험, `tests/interpolate/test_pchip.py`): 단조인 자료(시험 자료의 단조 곡선, 고정 씨앗의 무작위 단조 자료 300개, 걸음이 10⁻³²²–10⁻³⁰⁰인 비정상 수 둘레의 자료 200개, hypothesis 150개(깊은 묶음 1500개); 0인 걸음 포함)에서 (1) 계산한 기울기가 0이거나 Δ와 같은 부호이고 \|sᵢ\| ≤ 3(1 + 4u)\|Δ\| + 2⁻¹⁰⁷⁴(바닥은 IP51), (2) 계산한 계수의 도함수 2차식이 [0, h]에서 계수 계약(위 표의 c₂, c₃ 한계, 비정상 수의 바닥 포함)의 도함수만큼 안에서 자료의 부호를 지킨다(정확한 유리수; IP46: 노드 기울기가 0이면 그 끝의 도함수가 반올림 크기라 정확한 단조는 서지 않는다; IP51: 계수가 비정상 수면 그 반올림이 절대 2⁻¹⁰⁷⁵씩이다), (3) 정렬한 평가점의 값이 평가 계약 안에서만 거꾸로 가고 구간 끝값을 평가 계약 안에서만 넘는다. 셋 다 통과한다. IP0 마일스톤의 탐침에서 scipy는 무작위 단조 자료 2000개에서 구간 끝값을 최대 3 ULP 넘었다(평가의 반올림; 단조가 깨진 곳은 없었다). makima는 평평한 구간이 정확히 평평하고, akima는 구간 안쪽 노드의 기울기가 0인 것을 시험한다(IP47).
 - scipy·numpy·R과의 차이는 계약이 아니라 정확도 표의 비교 패키지 열로 보인다.
 
 ---
 
-## 5. 성능 (안)
-`tools/interpolate_probe.py time`이 잰 scipy 1.18.1, numpy 2.5.4, R 4.6.2의 시간이다(ms, 세 번 중 가장 좋은 값(1회로 잰 것은 표시), 기본 설정, 부하 평균 1.3–1.4). scipy와 numpy의 보간 커널은 1스레드다(RBF의 `dsysv`와 AAA의 SVD는 Accelerate). 자료는 [0, 1)의 균등 노드와 표준정규 값, 평가점은 균등 무작위(정렬한 것은 표시). 사례(`bench/speed/cases/interpolate.py`, 36개)는 마일스톤마다 공개되는 이름과 함께 같은 크기를 잰다.
+## 5. 성능
+`tools/interpolate_probe.py time`이 잰 scipy 1.18.1, numpy 2.5.4, R 4.6.2의 시간이다(ms, 세 번 중 가장 좋은 값(1회로 잰 것은 표시), 기본 설정, 부하 평균 1.3–1.4). scipy와 numpy의 보간 커널은 1스레드다(RBF의 `dsysv`와 AAA의 SVD는 Accelerate). 자료는 [0, 1)의 균등 노드와 표준정규 값, 평가점은 균등 무작위(정렬한 것은 표시). 속도 사례(`bench/speed/cases/interpolate.py`, 48개)는 같은 크기를 잰다.
 
 | 일 | scipy | numpy | R | 메모 |
 |---|---:|---:|---:|---|
@@ -478,20 +560,25 @@ RBFInterpolator.__call__(x, /)
 
 - **IP2 마일스톤의 잰 값** (ms, 따뜻한 상태로 일곱 번 중 가장 좋은 값, sd 1스레드 / 10스레드 대 scipy; 속도 사례의 smoke는 한 번 부른 차가운 값이라 따로다): `CubicSpline` 만들기 n = 10⁶ not-a-knot 11.7 / 10.6 (12.1), natural 11.8 / 10.7 (12.1), periodic 17.1 / 16.2 (22.1), n = 10³에 열 1000개 2.2 / 1.9 (12.3); `PchipInterpolator` 7.3 / 1.5 (16.2); akima 4.5 / 1.9 (8.6); 평가 10⁶점 n = 10⁶ 20.7 / 2.4 (136), n = 10³ 3.6 / 0.43 (42.0); `derivative` + `antiderivative` 3.8 / 1.1 (5.7); `integrate` 1.9 / 0.28 (4.0); `roots` n = 10⁶ 405 / 86 (1280), n = 10³ 0.48 / 0.14 (1.2). 긴 열 하나의 기울기는 차례 계산이라(§3.9) 10스레드가 거의 같고, 사슬의 지연(분해의 나눗셈)이 시간의 대부분이다(IP44).
 - **IP3 마일스톤의 잰 값** (ms, 따뜻한 상태로 일곱 번 중 가장 좋은 값, sd 1스레드 / 10스레드 대 scipy): `make_interp_spline` k = 3 n = 10⁶ 21.7 / 17.5 (42.6), natural 21.0 / 17.0 (42.3), periodic 39.7 / 39.6 (48.7), k = 5 n = 10⁵ 3.6 / 2.6 (6.3); 평가 무작위 10⁵점 n = 10³ 0.75 / 0.10 (10.9), n = 10⁴ 0.89 / 0.11 (86.7), 정렬한 10⁶점 n = 10⁶ 10.8 / 1.4 (17.6), 무작위 10⁶점 n = 10⁶ 16.8 / 2.3 (scipy는 3분 넘게 끝나지 않아 재지 않는다); `derivative` + `antiderivative` 2.2 / 2.2 (3.5); `integrate` 1.1 / 1.1 (2.9); `PPoly.from_spline` 31.9 / 6.9 (28.4). 긴 열 하나의 배치 계는 분해와 대입이 차례 계산이라 10스레드에서 행 채우기만 빨라진다.
-- **목표**(IP7에서 확인한다)
+- **IP4 마일스톤의 잰 값** (ms, 따뜻한 상태로 일곱 번 중 가장 좋은 값, sd 1스레드 / 10스레드 대 scipy): `BarycentricInterpolator` 만들기 10⁴노드 79.5 / 9.5 (159), 평가 10⁵점(101노드) 4.7 / 0.58 (26.7), 2차 도함수 10⁵점 4.7 / 0.58 (26.9); `KroghInterpolator` 평가 10⁶점(20노드) 1.5 / 0.29 (10.7), 모든 도함수 10⁵점 9.0 / 1.1 (18.6); `FloaterHormannInterpolator` 평가 10⁵점(101노드) 4.8 / 0.58 (6.0); `AAA` tan 0.11 / 0.10 (0.40), abs 9.5 / 9.5 (12.0), 나선(복소, rtol 10⁻¹³) 2.2 / 2.2 (2.8), 평가 10⁵점 1.9 / 0.23 (2.6). AAA의 만들기는 LAPACK의 SVD가 거의 전부라 스레드로 빨라지지 않는다. 평가 사례는 10⁵점이다(IP72).
+- **IP5 마일스톤의 잰 값** (ms, 따뜻한 상태로 일곱 번 중 가장 좋은 값, sd 1스레드 / 10스레드 대 scipy): `linear` 1000², 10⁶점 29.9 / 8.9 (92.1), 100³, 10⁶점 49.6 / 8.9 (142), `nearest` 1000², 10⁶점 12.9 / 2.0 (98.6); `cubic` 만들기 100² 0.12 / 0.04 (3.6), `quintic` 0.18 / 0.05 (12.7), `cubic` 1000² 8.0 / 1.5; 평가 100², 10⁵점 `cubic` 2.8 / 0.38 (10.6), `quintic` 5.5 / 0.78 (16.9); `pchip` 100², 10⁴점 0.88 / 0.13 (scipy 600, 1회). 1000² `linear`의 10스레드는 격자(8 MB)를 무작위로 읽는 지연이라 3.4배에 그친다.
+- **IP6 마일스톤의 잰 값** (ms, 따뜻한 상태로 일곱 번 중 가장 좋은 값(n = 4000과 이웃·`NearestND`는 세 번), sd 1스레드 / 10스레드 대 scipy): `RBFInterpolator` 만들기 n = 10³ 7.8 / 5.8 (34.8), n = 4000 243 / 204 (1780; 계 채우기는 병렬, `sytrf`는 Accelerate), 평가 10⁴점(n = 10³) 53.3 / 5.9 (57.5), `neighbors=50` n = 10⁵의 10⁴점 177 / 24.3 (243), `NearestNDInterpolator` n = 10⁵의 10⁶점 437 / 50.9 (528). 속도 사례 smoke(한 번 부른 차가운 값)도 같은 크기다.
+- **IP7 마일스톤의 잰 값** (ms, 따뜻한 상태로 잰 가장 좋은 값, 고치기 전과 뒤의 빌드를 번갈아 세 바퀴(기계를 함께 써서 부하 평균 2–2.5), sd 1스레드 / 10스레드, 전 → 뒤; 괄호는 IP0–IP6의 scipy·numpy): `sd.interp` 노드 10³ 정렬한 10⁶점 3.12 / 0.35 → 2.81 / 0.31(numpy 2.68), 무작위 4.90 / 0.55 → 4.66 / 0.51(numpy 37.2, R 10), 노드 10⁶ 정렬 8.82 → 8.48(numpy 9.57)(IP99); `CubicSpline` 만들기 10⁶점 not-a-knot 12.60 / 11.09 → 9.25 / 7.83, natural 12.30 → 9.12(scipy 12.1), periodic 18.17 / 16.23 → 10.96 / 9.50(scipy 22.2)(IP103); `PPoly.from_spline` 33.4 / 5.03 → 21.9 / 3.21(scipy 28.4)(IP104); RGI `linear` 1000² 29.2 / 3.77 → 16.0 / 2.26, 100³ 44.4 / 5.48 → 26.8 / 3.37(scipy 92.1, 142)(IP99); RBF 평가 10⁴점(n = 10³) 55.0 / 5.84 → 19.6 / 2.09(scipy 57.5), 만들기 n = 10³ 7.45 / 5.35 → 5.38 / 4.62(scipy 34.8), `neighbors=50` 181 / 23.2 → 149 / 19.3(scipy 243)(IP100, IP101); 노드 10³의 5000점 `sd.interp` 10스레드 21 → 13 µs(IP102). 다른 사례(3차 계열의 평가·기울기, B-스플라인, 다항식·유리식, AAA, RGI 스플라인·`pchip`·`nearest`, `NearestNDInterpolator`)는 전과 3% 안에서 같고(`integrate` 2.09 → 2.35는 부하의 흔들림; 코드는 그대로), 작은 호출(10점)은 0.8–2.6 µs 그대로다(RBF 만들기 50점 19 → 15 µs, 평가 10점 2.8 → 2.0 µs). 1000² `linear`의 10스레드는 블록에서 꼭짓점 값을 먼저 모아 격자 읽기가 겹치면서 7.1배로 올랐다(IP5 마일스톤의 3.4배는 점마다 읽기를 기다렸다). `NearestNDInterpolator`는 spatial의 `KDTree.query`가 시간의 거의 전부다(IP105).
+- **목표의 확인** (IP7 마일스톤): 평가는 1스레드에서 비교 대상 가운데 가장 빠른 것 이상이다. 하나의 예외는 노드가 적고 평가점이 정렬된 `sd.interp`로 numpy와 같은 크기(2.81 대 2.68; numpy는 기울기를 미리 구한 fma 하나라 IP4의 식보다 연산이 적다)다. 10스레드는 `sd.interp`·`Barycentric`·RBF 평가가 9배 안팎, 3차 계열의 평가 9배, RGI `linear` 7배다. 무작위 순서의 `BSpline` 평가는 n = 10⁴에서 scipy의 89배다. 만들기는 1스레드에서 모두 scipy 이상이다(`from_spline`이 IP104로 뒤집혔다). 긴 열 하나는 사슬 지연이라 스레드로 빨라지지 않는다(IP105). RGI `pchip`은 scipy의 650배, `cubic`·`quintic`은 직접 풀이로 3.6배·2.9배다. RBF는 n = 4000에서 7배(IP6 마일스톤의 값; 이 마일스톤은 n = 10³만 다시 쟀다), `neighbors`와 `NearestND`는 10스레드에서 scipy의 12.6배·11.5배다. `roots`는 n = 10⁶에서 10스레드 4.7배다(IP2 마일스톤의 값; 구간마다의 일이 고르지 않다).
+- **목표**(IP0 마일스톤에서 정한 것; 잰 결과는 위의 목표의 확인)
   - 평가(`sd.interp`, 조각 다항식, B-스플라인, RGI, RBF, `Barycentric`): 1스레드에서 scipy·numpy·R 가운데 가장 빠른 것 이상, 10스레드에서 거의 스레드 수만큼. 무작위 순서의 `BSpline` 평가는 구간 찾기로 수십 배(n = 10⁴에서 scipy의 O(n) 걷기 대비).
   - 만들기: 3차 계열과 B-스플라인은 1스레드에서 scipy 이상(피벗 없는 풀이, 배치 열의 NEON). 긴 열 하나는 차례 계산이라 스레드로 빨라지지 않는다(§3.9).
   - RGI의 `pchip`은 국소 평가로 수백 배, `cubic`·`quintic`은 직접 풀이로 scipy 이상이면서 반복 풀이의 오차가 없다.
   - RBF: 전역 만들기는 K를 병렬로 만들고 분해는 Accelerate라 n = 4000에서 scipy 이상, `neighbors`와 `NearestND`는 KD 트리 질의와 국소 계의 병렬로 10스레드에서 scipy의 5배 이상.
   - `roots`: 구간마다 독립이라 10스레드에서 거의 스레드 수만큼.
-- **나중에 볼 것**: 긴 열 하나의 삼중대각을 병렬 순환 소거로(§3.9), AAA의 QR 갱신(§3.6), 정렬한 평가점의 질주 탐색과 SIMD 평가.
+- **나중 후보**: AAA의 QR 갱신(§3.6, IP105). 긴 열의 병렬 순환 소거(IP105)와 국소 RBF 계의 분해를 직접 쓰는 것(IP101)은 재 보고 쓰지 않기로 했다.
 
 ---
 
-## 6. 층과 파일 (안)
-- **층**: `interpolate/`는 `array/`, `base/`(`lerp.hpp`, 이 영역과 배열이 함께 쓴다), `parallel/`, `linalg/`(`lapack.hpp`: `sytrf`·`sytrs`, `gesdd`, `ggev`), `spatial/`(`kdtree.hpp`: RBF의 이웃, `NearestND`) 위에 있다. 다른 영역은 `interpolate/`를 모른다. `sd.interp`는 배열 영역의 `array/ops/interp.cpp`이고 `base/lerp.hpp`만 함께 쓴다(배열은 다른 영역을 include하지 않는다). Python 층의 `stardust.interpolate`는 `stardust.spatial`(`KDTree`)과 `stardust.sparse`(`design_matrix`)를 쓴다.
-- `bench/areas.py`에서 `interpolate`는 `spatial`·`graph` 뒤, `plot` 앞이다. ARCHITECTURE §1의 그림과 §2의 목록, API.md의 색인 표, README.md의 표, tests/README.md·bench/README.md의 영역 목록에 한 줄씩 있다. `src/stardust/interpolate/__init__.py`는 공개 이름이 없는 뼈대다.
-- `base/lerp.hpp`(IP1; 아래의 파일은 모두 `csrc/` 아래다): §3.2의 t와 선형 커널, 유한하지 않은 끝값의 갈래, 복소수판.
+## 6. 층과 파일
+- **층**: `interpolate/`는 `array/`, `base/`(`lerp.hpp`, 이 영역과 배열이 함께 쓴다), `parallel/`, `linalg/`(`lapack.hpp`: `sytrf`, `gesdd`, `ggev`), `spatial/`(`kdtree.hpp`: RBF의 이웃, `NearestND`; `metric.hpp`: RBF의 거리), 배열의 `array/kernels/vmath.hpp`(RBF 핵의 log·exp) 위에 있다. 다른 영역은 `interpolate/`를 모른다. `sd.interp`는 배열 영역의 `array/ops/interp.cpp`이고 `base/lerp.hpp`만 함께 쓴다(배열은 다른 영역을 include하지 않는다). Python 층의 `stardust.interpolate`는 `stardust.spatial`(`KDTree`)과 `stardust.sparse`(`design_matrix`)를 쓴다.
+- `bench/areas.py`에서 `interpolate`는 `spatial`·`graph` 뒤, `fft`·`plot` 앞이다. ARCHITECTURE §1의 그림과 §2의 목록, API.md의 색인 표, README.md의 표, tests/README.md·bench/README.md의 영역 목록에 한 줄씩 있다.
+- `base/lerp.hpp`(IP1, IP99; 아래의 파일은 모두 `csrc/` 아래다): §3.2의 t와 선형 커널(`lerp_t`, `lerp`, 유한한 끝값의 `detail::lerp_finite`), 유한하지 않은 끝값의 갈래, 복소수판, 256점 블록 꼴 `lerp_block`·`lerp_ab_block`.
 - `base/interval.hpp`(IP1, IP37): 점 아래의 노드 수(갈래 없는 8점 나란한 이분, 질주, 정렬된 블록을 고르는 `count_le_block`). 배열의 `array/ops/interp.cpp`와 `interpolate/search.hpp`가 함께 쓴다.
 - `interpolate/`
   - `search.hpp`(IP1): 구간 번호(노드 수에서), 바깥의 규칙(`extrapolate`의 세 값, 주기의 감기). 감소 중단점은 IP2
@@ -500,17 +587,18 @@ RBFInterpolator.__call__(x, /)
   - `cubic.cpp`(IP2): 3차 계열의 기울기(`CubicSpline`의 경계 조건, PCHIP, Akima·makima), Hermite 계수
   - `ppoly.cpp`(IP2): 평가, `antiderivative`의 상수, `integrate`, `roots`·`solve`, 중단점과 유한성의 검사(`derivative`와 `extend`는 Python 층의 배열 연산)
   - `bspline.cpp`(IP3): 구간과 de Boor(펼친 k = 2–5), 매듭 규칙, 배치 행렬과 `make_interp_spline`의 계(periodic의 Woodbury 포함), 도함수·역미분, 매듭 넣기, 두 표현 사이의 변환, `design_matrix`의 CSR 배열(적분과 k = 1은 Python 층에서 역미분과 선형 길로)
-  - `polyint.cpp`(IP4): `Barycentric`의 무게와 평가·도함수, `Krogh`의 차분표와 평가, (Floater–Hormann)
+  - `polyint.cpp`(IP4): `Barycentric`의 무게와 실수 평가 커널·노드 도함수, `Krogh`의 차분표와 평가, Floater–Hormann의 무게, 복소 무게중심 평가 커널
   - `aaa.cpp`(IP4): AAA의 반복, 극점·유수·영점, `clean_up`
   - `grid.cpp`(IP5): RGI의 `linear`·`nearest`·`slinear`, 텐서곱 스플라인의 축마다 풀이와 평가, `pchip`의 국소 평가
-  - `rbf.cpp`(IP6): 핵, 계 만들기와 풀이, 평가, 이웃 집합의 묶음과 국소 계
+  - `deboor.hpp`(IP5): B-스플라인의 구간과 de Boor 기저(bspline.cpp에서 옮김, grid.cpp와 함께 쓴다), `pchip.hpp`(IP5): PCHIP 노드 기울기(cubic.cpp에서 옮김, grid.cpp와 함께 쓴다)
+  - `rbf.cpp`(IP6, IP7): 핵(레인 꼴 포함), 같은 자료점과 랭크의 검사, 계 만들기, `sytrf` 뒤의 대입 `ldlt_solve`, 평가(`eval_lanes`), 이웃 집합의 묶음과 국소 계
   - `interpolate.hpp`: 파일마다의 `bind_*`
 - 바인딩 `bind/interpolate_bind.cpp`(IP1): `_core.interpolate` 하위 모듈. `sd.interp`의 바인딩은 배열의 바인딩에 있다.
-- `src/stardust/interpolate/` (하위 패키지 없음): `__init__.py`(공개 이름), `_common.py`(입력 정리, 가로축 검사, `extrapolate`·`axis`의 검사, 메시지), `_ppoly.py`(`PPoly`와 3차 계열, `pchip_interpolate`), `_bspline.py`(`BSpline`, `make_interp_spline`; `PPoly.from_spline`은 `_ppoly.py`), `_polyint.py`(`Barycentric`, `Krogh`과 함수 꼴, (Floater–Hormann)), `_aaa.py`, `_grid.py`(`RegularGridInterpolator`, `interpn`), `_rbf.py`(`RBFInterpolator`, (`NearestNDInterpolator`)).
+- `src/stardust/interpolate/` (하위 패키지 없음): `__init__.py`(공개 이름 열여덟의 `__all__`), `_common.py`(입력 정리, 가로축 검사, `extrapolate`·`axis`의 검사, 메시지), `_ppoly.py`(`PPoly`와 3차 계열, `pchip_interpolate`; `PPoly.from_spline` 포함), `_bspline.py`(`BSpline`, `make_interp_spline`), `_polyint.py`(`Barycentric`, `Krogh`과 함수 꼴), `_aaa.py`(`AAA`, `FloaterHormannInterpolator`와 그 비공개 기반 `_Rational`), `_grid.py`(`RegularGridInterpolator`, `interpn`), `_rbf.py`(`RBFInterpolator`, `NearestNDInterpolator`).
 
 ---
 
-## 7. 참값과 검증 (안)
+## 7. 참값과 검증
 다른 영역과 같은 체계다(ARCHITECTURE §6, tests/README.md, bench/README.md). 모든 도구는 `bench/cli.py`의 공통 옵션(영역, `--match`, `--jobs`)을 쓴다. 긴 참값 생성은 프로세스 10개까지, 메모리를 지켜보며(RSS가 평평한지) 돈다.
 
 ### 7.1 시험 데이터 (`tests/interpolate/samples.py`)
@@ -522,49 +610,49 @@ RBFInterpolator.__call__(x, /)
 - 근: 접하는 근, 붙은 두 근, 0과 같은 조각, 중단점의 부호 변화.
 
 ### 7.2 참값 (`tools/interpolate_ref.py` → `tests/interpolate/ref/`, `tests/reffile.py`의 npz)
-- 스플라인의 정확한 계수: 자료가 float64라 `fmpq_mat`의 정확한 풀이로 기울기와 계수를 구해 올바르게 반올림한다(이 초안의 n = 80 natural이 8 ms). B-스플라인은 같은 유리수 풀이와 ‖A⁻¹‖∞.
+- 스플라인의 정확한 계수: 자료가 float64라 `fmpq_mat`의 정확한 풀이로 기울기와 계수를 구해 올바르게 반올림한다(n = 80 natural이 8 ms). B-스플라인은 같은 유리수 풀이와 ‖A⁻¹‖∞.
 - 평가의 참값: 계산한 계수(sd가 만든 것과 참값 계수 둘 다)를 정확한 유리수로 평가한다. 핵 함수가 드는 RBF와 AAA는 Arb의 구간으로 반올림이 정해질 때까지 정밀도를 늘린다.
 - 계약의 오른쪽(Λₙ, Σ\|ℓⱼyⱼ\|, ‖A⁻¹‖∞)과 근의 분리도 Arb다. 파일은 작게 둔다(노드 수백, 평가점 수천).
 - 묶음은 여덟이다(모두 6,925점, 0.7 MiB): `linear`(정확한 a + t(b − a); 2,954), `slopes`(`CubicSpline` 네 조건, PCHIP, Akima·makima의 정확한 기울기; 577), `bspline`(k = 0–5, k = 3의 natural·clamped, k = 3·5의 periodic 계수와 곡선마다의 ‖A⁻¹‖∞; 627), `curves`(그 보간들의 정확한 값, 끝에서 끝; 1,870), `polynomial`(보간 다항식과 두 도함수, Krogh의 Hermite 자료, Lebesgue 함수, Σ\|ℓⱼyⱼ\|, Floater–Hormann d = 3; 378), `grid`(RGI의 linear·cubic·quintic·pchip; 400), `rbf`(핵 여덟과 `smoothing`·`neighbors`, Arb; 83), `roots`(Arb로 분리한 실근과 중복도; 36). 매듭은 scipy의 규칙으로 만들고 scipy의 매듭과 비트까지 같다. 같은 스플라인의 두 구성(`CubicSpline`의 기울기 계와 B-스플라인의 배치 행렬)이 참값에서 같은 것도 테스트가 본다. AAA는 sd가 계산한 무게가 있어야 해서 참값 파일이 없고, 테스트가 그 자리에서 Arb로 평가한다. scipy의 주기 B-스플라인은 바깥 매듭을 double로 x₀ − Δ처럼 계산해 주기가 반올림 크기로만 맞으므로 `k3_periodic`은 `periodic`과 10⁻¹³ 안에서만 같다.
 
 ### 7.3 테스트 (`tests/interpolate/`)
-`test_api_surface.py`(API 문서의 시그니처), `test_interp.py`(`sd.interp`의 numpy 뜻: `left`·`right`·`period`, 반복 노드의 계단, 유한하지 않은 값, `xp`의 검사; 배열 영역의 테스트에도 둔다), `test_lerp.py`(§3.2의 성질: 끝점 정확, 단조, 범위, a = b, 유한하지 않은 끝값; hypothesis), `test_linear_bits.py`(`sd.interp`, k = 1, RGI `linear`·`slinear`, `interpn`의 같은 비트; 늘이기의 k = 1과 `fill_value=None`), `test_ppoly.py`(평가 계약, 미분·역미분·적분, `extend`, 감소하는 중단점, scipy·R 기록), `test_cubic.py`(기울기 계약, 경계 조건마다, n = 2·3, 배치, periodic의 검사, Hermite 계수, IP36), `test_pchip.py`(§4의 단조성 세 겹과 Akima의 평평한 구간), `test_bspline.py`, `test_make_interp_spline.py`, `test_roots.py`, `test_polyint.py`, `test_aaa.py`, `test_grid.py`, `test_rbf.py`, `test_reference.py`(§4의 계약, Arb 참값), `test_errors.py`(§2의 모든 에러와 메시지), `test_threads.py`(1, 2, 3, 7, 10스레드에서 같은 바이트).
+`test_api_surface.py`(API 문서의 시그니처), `test_interp.py`(`sd.interp`의 numpy 뜻: `left`·`right`·`period`, 반복 노드의 계단, 유한하지 않은 값, `xp`의 검사; 배열 영역의 테스트에도 둔다), `test_lerp.py`(§3.2의 성질: 끝점 정확, 단조, 범위, a = b, 유한하지 않은 끝값; hypothesis), `test_linear_bits.py`(`sd.interp`, k = 1, RGI `linear`·`slinear`, `interpn`의 같은 비트; 늘이기의 k = 1과 `fill_value=None`), `test_ppoly.py`(평가 계약, 미분·역미분·적분, `extend`, 감소하는 중단점, scipy·R 기록), `test_cubic.py`(기울기 계약, 경계 조건마다, n = 2·3, 배치, periodic의 검사, Hermite 계수, IP36), `test_pchip.py`(§4의 단조성 세 겹과 Akima의 평평한 구간), `test_bspline.py`, `test_make_interp_spline.py`, `test_roots.py`, `test_polyint.py`, `test_aaa.py`, `test_grid.py`, `test_rbf.py`, `test_reference.py`(§4의 계약, Arb 참값), `test_reference_data.py`(§7.4의 기록과 참값), `test_errors.py`(§2의 모든 에러와 메시지), `test_threads.py`(1, 2, 3, 7, 10스레드에서 같은 바이트).
 - scipy·numpy와는 그 자리에서 견준다: 반올림이 아닌 동작(모양, 구간, 바깥, 에러)은 같고, 값은 계약 안이다.
 
 ### 7.4 scipy·numpy·R의 기록 (`tools/interpolate_probe.py` → `tests/interpolate/data/`)
 - 탐침 도구 하나가 numpy `interp`의 경계와 식, scipy 객체의 경계와 기본값과 시험 자료에서의 값, R의 값, 커널의 측정, 시간을 낸다. 기록: `scipy.json`(713), `numpy.json`(53), `r.json`(94). 모든 기록은 그 자료의 `digest`를 가진다. `tests/interpolate/test_reference_data.py`가 기록이 참값과 맞는 것과 설계가 다르게 정한 동작(§2.9)이 기록에 보이는 것을 본다.
-- R은 `approx`(`rule=2` ↔ `sd.interp`, `rule=1`의 NA ↔ `extrapolate=False`의 NaN), `spline`·`splinefun`의 `natural`·`periodic` ↔ `CubicSpline`만 비교 패키지다. R의 `fmm`(기본)은 끝 조건이 not-a-knot과 다르다(이 초안에서 같은 6점의 x = 0.3이 0.30271 대 0.30143). `monoH.FC`는 Fritsch–Carlson이라 PCHIP(Fritsch–Butland)과 다르다. R의 `approx`는 `x`를 정렬하고 같은 `x`를 평균으로 합치고 NA를 버리므로, 그런 자료는 R 열에서 뺀다.
+- R은 `approx`(`rule=2` ↔ `sd.interp`, `rule=1`의 NA ↔ `extrapolate=False`의 NaN), `spline`·`splinefun`의 `natural`·`periodic` ↔ `CubicSpline`만 비교 패키지다. R의 `fmm`(기본)은 끝 조건이 not-a-knot과 다르다(같은 6점의 x = 0.3이 0.30271 대 0.30143). `monoH.FC`는 Fritsch–Carlson이라 PCHIP(Fritsch–Butland)과 다르다. R의 `approx`는 `x`를 정렬하고 같은 `x`를 평균으로 합치고 NA를 버리므로, 그런 자료는 R 열에서 뺀다.
 
 ### 7.5 정확도·속도 체계와 골든
 - **정확도** (`bench/accuracy/interpolate.py`): 스윕 `linear`(sd·numpy·scipy·R의 선형), `coefficients`(3차 계열과 B-스플라인의 만들기 계약; 비교 패키지 scipy), `evaluation`(조각 다항식·B-스플라인의 평가 계약), `polynomial`(`Barycentric`, `Krogh`), `aaa`, `grid`(RGI의 방법마다), `rbf`, `roots`. 끝에서 끝의 오차도 열로 보인다.
-- **속도** (`bench/speed/cases/interpolate.py`): 사례마다 마일스톤과 필요한 이름을 적어 두고 그 마일스톤이 끝나면 사례가 된다(spatial의 사례 파일과 같은 틀). §5의 크기와 정렬·무작위 평가점, 배치 열. 결과는 값을 견준다.
-- **골든** (`tests/golden/cases_interpolate.py`, 기록 `tests/golden/data/interpolate.json`): 모든 공개 이름 × 경계 자료, 바깥의 세 값, 틀린 호출. 1·3·10스레드의 결과가 모두 같아야 한다. `sd.interp`는 배열의 골든(`cases_array.py`)에도 둔다.
+- **속도** (`bench/speed/cases/interpolate.py`, 48개): 사례마다 그것을 만든 마일스톤과 필요한 이름을 적는다(spatial의 사례 파일과 같은 틀). §5의 크기와 정렬·무작위 평가점, 배치 열. 결과는 값을 견준다(반복 풀이인 scipy RGI `cubic`·`quintic`은 `differs`, IP82).
+- **골든** (`tests/golden/cases_interpolate.py`의 388개, 기록 `tests/golden/data/interpolate.json`): 모든 공개 이름 × 경계 자료, 바깥의 세 값, 틀린 호출, 병렬 길에 드는 큰 사례. 1·3·10스레드의 결과가 모두 같아야 한다. `sd.interp`는 배열의 골든(`cases_array.py`)에도 둔다.
 
 ---
 
-## 8. 마일스톤 (안)
+## 8. 마일스톤
 | 마일스톤 | 내용 | 끝났다는 뜻 |
 |---|---|---|
 | IP0 준비 — 완료·승인(위임, 2026-11-23) | API 문서 초안(`docs/api/interpolate.md`: 모든 공개 이름의 시그니처, scipy·numpy → sd 대응표와 뺀 이름의 바꿔 쓰기, §9의 답), 영역 등록(`bench/areas.py`, ARCHITECTURE, API.md의 색인, README), 시험 데이터(§7.1), 참값 도구(§7.2), 탐침 도구와 기록(§7.4), §3.2 선형 커널의 증명과 numpy 식·안 넷의 측정, 피벗 없는 띠 풀이의 증명 계획, 속도 사례의 틀 | 문서와 도구가 커밋되고 탐침 기록이 있다. §9의 답이 §1.1의 결정으로 옮겨졌다 |
 | IP1 선형과 `sd.interp` — 완료·승인(위임, 2026-11-23) | `base/lerp.hpp`, `sd.interp`(배열 영역의 문서·테스트·골든 포함), 구간 찾기 | 선형 계약과 성질, numpy와 반올림이 아닌 동작이 같음, 속도 사례(numpy, R) |
 | IP2 3차 계열 — 완료·승인(위임, 2026-11-23) | `PPoly`(평가, 미분, 역미분, 적분, 근, `solve`, `extend`), `CubicHermiteSpline`, `CubicSpline`, `PchipInterpolator`, `pchip_interpolate`, `Akima1DInterpolator` | 만들기·평가 계약, PCHIP 단조성, R의 natural·periodic과 비교, 골든, scipy와의 속도 사례 |
 | IP3 B-스플라인 — 완료·승인(위임, 2026-11-23) | `BSpline`(모든 메서드), `make_interp_spline`(모든 k와 `bc_type`), `from_spline`·`from_power_basis`, k = 1의 같은 비트 | 계약, `sd.interp`와 같은 비트, 무작위 순서 평가의 속도 |
-| IP4 다항식·유리식 | `BarycentricInterpolator`, `barycentric_interpolate`, `KroghInterpolator`, `krogh_interpolate`, `AAA`, (Floater–Hormann), linalg 래퍼(`ggev`) | 계약, AAA의 성질과 scipy와 같은 지지점 순서(같은 자료에서), 속도 |
-| IP5 격자 | `RegularGridInterpolator`(방법 여섯), `interpn` | 선형 같은 비트, 스플라인의 직접 풀이 계약, `pchip`의 국소 평가가 scipy와 같은 함수, 속도 |
-| IP6 흩어진 점 | `RBFInterpolator`(전역, `neighbors`), (`NearestNDInterpolator`), linalg 래퍼(`sytrs`) | 역오차·평가 계약, 이웃의 동점이 결과를 바꾸지 않음, 속도 |
-| IP7 성능과 일관성 점검 | 모든 공개 함수를 크기마다 scipy·numpy·R과 견주어 고치기, 문턱(병렬, 탐색, 조각 크기), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 | 속도 표와 정확도 표가 기준선이 되고 §5의 목표를 적은 대로 확인한다 |
-| IP8 문서 | `docs/api/interpolate.md`의 확정, 이 문서를 구현대로 고치기(잰 값, 증명한 상수) | 문서가 코드와 맞고 `test_api_surface`가 통과한다 |
+| IP4 다항식·유리식 — 완료·승인(위임, 2026-11-23) | `BarycentricInterpolator`, `barycentric_interpolate`, `KroghInterpolator`, `krogh_interpolate`, `AAA`, `FloaterHormannInterpolator`, linalg 래퍼(`ggev`) | 계약, AAA의 성질과 scipy와 같은 지지점 순서(같은 자료에서), 속도 |
+| IP5 격자 — 완료·승인(위임, 2026-11-23) | `RegularGridInterpolator`(방법 여섯), `interpn` | 선형 같은 비트, 스플라인의 직접 풀이 계약, `pchip`의 국소 평가가 scipy와 같은 함수, 속도 |
+| IP6 흩어진 점 — 완료·승인(위임, 2026-11-23) | `RBFInterpolator`(전역, `neighbors`), `NearestNDInterpolator`, linalg 래퍼(`sytrs`; IP7이 대입을 직접 쓰고(IP101) IP8이 뺐다(IP107)) | 역오차·평가 계약, 이웃의 동점이 결과를 바꾸지 않음, 속도 |
+| IP7 성능과 일관성 점검 — 완료·승인(위임, 2026-11-23) | 모든 공개 함수를 크기마다 scipy·numpy·R과 견주어 고치기, 문턱(병렬, 탐색, 조각 크기), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 | 속도 표와 정확도 표가 기준선이 되고 §5의 목표를 적은 대로 확인한다 |
+| IP8 문서 — 완료·승인(위임, 2026-11-23) | `docs/api/interpolate.md`의 확정, 이 문서를 구현대로 고치기(잰 값, 정한 상수, 파일), 쓰지 않게 된 linalg 래퍼 `sytrs`의 제거(IP107) | 문서가 코드와 맞고 `test_api_surface`가 통과한다 |
 
-진행 원칙은 다른 영역과 같다: 마일스톤마다 시작 전에 §9의 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. IP1이 선형 커널과 구간 찾기를 만들므로 맨 앞이다. IP2와 IP4는 서로 기대지 않아 나란히 할 수 있다. IP3은 IP2의 띠 풀이를, IP5는 IP1과 IP3을, IP6은 spatial의 `KDTree`를 쓴다. 기존 영역의 결과는 비트까지 같아야 한다(배열에는 새 함수 하나와 바닥의 커널 하나를 더하고, linalg에는 LAPACK 래퍼만 더한다).
+진행 원칙은 다른 영역과 같았다: 마일스톤마다 시작 전에 §9의 질문을 묻고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달하고, 승인받으면 다음으로 간다. IP1이 선형 커널과 구간 찾기를 만들므로 맨 앞이다. IP2와 IP4는 서로 기대지 않아 나란히 할 수 있다. IP3은 IP2의 띠 풀이를, IP5는 IP1과 IP3을, IP6은 spatial의 `KDTree`를 쓴다. 기존 영역의 결과는 비트까지 같아야 한다(배열에는 새 함수 하나와 바닥의 커널 둘(`base/lerp.hpp`, `base/interval.hpp`)을 더했고, linalg에는 내부 LAPACK 래퍼 `ggev`만 더했다).
 
-**나중 후보** (첫 판 밖): `BPoly`·`NdBSpline`·`NdPPoly`(§9의 7), 매끄럽게 하는 스플라인과 최소제곱 스플라인(`sd.smooth`), Qhull 보간(`griddata`, `LinearNDInterpolator`, `CloughTocher2DInterpolator`), 매개변수 곡선(`make_splprep`), 긴 열의 병렬 삼중대각(§3.9).
+**나중 후보** (첫 판 밖): `BPoly`·`NdBSpline`·`NdPPoly`(§9의 7), 매끄럽게 하는 스플라인과 최소제곱 스플라인(`sd.smooth`), Qhull 보간(`griddata`, `LinearNDInterpolator`, `CloughTocher2DInterpolator`), 매개변수 곡선(`make_splprep`), AAA의 QR 갱신(IP105).
 
 ---
 
 ## 9. 마일스톤을 시작하기 전에 물을 것
 1–22는 모두 (a)로 정했다(§1.1 IP4–IP25, 추천안, 사용자 위임 2026-11-23). 23은 IP0 마일스톤의 측정에서 나온 질문이고 IP1 마일스톤에서 (a)로 정했다(IP36).
 
-추천을 (a)에 둔다. 답이 정해지면 IP4부터 §1.1에 옮긴다.
+추천을 (a)에 두었고 답은 §1.1(IP4–IP25, IP36)에 옮겼다.
 
 **IP0 전**
 1. **선형 커널의 식**. (a) §3.2의 꼴(`std::lerp`의 성질: 양 끝 정확, a = b면 a, 단조, 범위 안; t는 올바른 나눗셈 한 번). 추천: 노드에서 정확하니 구간을 어느 쪽으로 골라도 값이 같아 `sd.interp`·k = 1·격자 선형이 같은 비트가 되고, 단조인 자료의 결과가 단조다. 비용은 점마다 나눗셈 하나와 비교 둘이다(IP0에서 잰다). 끝값이 둘 다 −0인 구간은 −0이다(`[numpy와 다름]`: numpy는 +0). (b) numpy의 fma(s, x − xⱼ, fⱼ): 이 휠의 numpy와 거의 같은 비트지만 오른쪽 노드에서 정확하지 않고 범위를 넘는다(§3.2). 구간 규칙이 다른 길끼리 같은 비트가 깨진다. (c) a + t(b − a)(fma): 왼쪽 끝만 정확하다. (d) (1 − t)a + tb: 양 끝은 정확하지만 a = b에서 a가 아닐 수 있고 단조가 아니다.

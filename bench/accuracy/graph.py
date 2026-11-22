@@ -28,7 +28,31 @@ GR3 brings
                The comparator scipy 1.18.1 runs linear_sum_assignment (min_weight_full_bipartite_matching
                for the biadjacency point) on the same problems. Integer costs are exact (the tests).
 
-Later: `laplacian` with GR4, `pagerank` and `betweenness` with GR5.
+GR4 brings
+
+  laplacian    the float points of laplacian.npz (er/symfloat50, er/float100, star/9, dangling/50,
+               negative/dag30 (unnormalized only), selfloop/10; every option of normed, use_out_degree and
+               symmetrized; the integer, bool and empty graphs are exact: the tests), one region per graph
+               and normed / unnormalized, one point per entry the rounding can touch (the degrees and,
+               normed or symmetrized, the off-diagonal entries), in units of the contract
+               (tests/graph/refdata.py laplacian_bound, docs/design/graph.md §4; decision GR55). The
+               comparator scipy 1.18.1 runs laplacian on the same sparse inputs.
+
+GR5 brings
+
+  pagerank     every point of pagerank.npz (11 graphs; alpha 0.5, 0.85, 0.99, personalization, dangling,
+               undirected, unweighted on dangling/50 and er/float100), one region per graph, one point per
+               options: the l1 distance from Arb's solution in units of the contract tol + F (F = gamma_K /
+               (1 - alpha), tests/graph/refdata.py pagerank_bound; decisions GR56, GR57) at the default
+               tol = 1e-12 and, in the region "<graph> floor", at tol = 1e-15 (below the floor F of most
+               points: the iteration then stops on its a priori count), with the entries' largest ulp and
+               relative distance. The comparator networkx 3.7 runs pagerank at the region's tol / n (its
+               successive-difference test), max_iter 10^4, judged by the same bound.
+  betweenness  every point of betweenness.npz (13 graphs; directed and undirected, weighted and unweighted,
+               normalized and endpoints on three of them), one region per graph and weighting, one point per
+               node: the relative distance from the exact-rational Brandes in units of gamma_K
+               (refdata.betweenness_k over the computed DAG, decision GR58; a reference 0 must be 0). The
+               comparator networkx 3.7 runs betweenness_centrality on the same graphs.
 """
 
 from __future__ import annotations
@@ -224,6 +248,206 @@ def _assign_regions(lib):
     return out or None
 
 
+LAPLACIAN_OPTIONS = tuple((out, sym) for out in (False, True) for sym in (False, True))
+
+
+def _laplacian(lib, g, normed, out, sym):
+    """The dense laplacian of a test graph's sparse form by lib (None when lib has none)."""
+    if lib == "sd":
+        import stardust as sd
+        from tests.graph.forms import csr
+
+        return np.asarray(sd.graph.laplacian(csr(g), normed=normed, use_out_degree=out, symmetrized=sym).toarray())
+    if lib == "scipy":
+        import scipy.sparse.csgraph as C
+
+        with np.errstate(all="ignore"):
+            return C.laplacian(g.scipy().copy(), normed=normed, use_out_degree=out, symmetrized=sym).toarray()
+    return None
+
+
+def _laplacian_regions(lib):
+    from tests.graph import graphs as G
+    from tests.graph import refdata
+
+    ref = refdata.ref("laplacian")
+    m = ref.methods["L"]
+    by = collections.defaultdict(list)
+    for j, k in enumerate(m.index):
+        gid = str(ref.inputs["graph"][k])
+        if G.get(gid).data.dtype != np.float64 or gid == "isolated/5":
+            continue
+        by[(gid, bool(ref.inputs["normed"][k]))].append((j, bool(ref.inputs["use_out_degree"][k]),
+                                                         bool(ref.inputs["symmetrized"][k])))  # fmt: skip
+    out = {}
+    for (gid, normed), pts in sorted(by.items()):
+        g = G.get(gid)
+        n = g.n
+        absA = {(i, j): abs(float(w)) for i, j, w in g.edges() if i != j}
+        where, units, ul, rel = [], [], [], []
+        for j, uo, sym in pts:
+            got = _laplacian(lib, g, normed, uo, sym)
+            if got is None:
+                return None
+            hi, lo = m.hi[j].reshape(n, n), m.lo[j].reshape(n, n)
+            terms = refdata.laplacian_terms(n, g.edges(), sym, uo)
+            for a in range(n):
+                for b in range(n):
+                    touched = a == b if not normed else a != b
+                    touched = touched or (sym and a != b and (a, b) in absA and (b, a) in absA)
+                    if not touched or (hi[a, b] == 0 and lo[a, b] == 0 and a != b):
+                        continue
+                    pair = absA.get((a, b), 0.0) + absA.get((b, a), 0.0)
+                    bd = refdata.laplacian_bound(normed, sym, a, b, terms, hi[a, b], pair)
+                    x = float(got[a, b])
+                    where.append(f"out={uo} sym={sym} ({a}, {b})")
+                    units.append(refdata.laplacian_units(x, hi[a, b], lo[a, b], bd))
+                    ul.append(float(ulps(x, float(hi[a, b]))))
+                    rel.append(abs((x - hi[a, b]) - lo[a, b]) / abs(hi[a, b]) if hi[a, b] else abs(x))
+        key = f"{gid} {'normed' if normed else 'unnormalized'}"
+        out[key] = region(where, ulp=np.array(ul), rel=np.array(rel), contract=np.array(units), bound=1.0)
+    return out or None
+
+
+def _pagerank_lib(lib, g, opts, tol):
+    """lib's PageRank of a test graph (numpy), or None when lib has none."""
+    n = g.n
+    if lib == "sd":
+        import stardust as sd
+        from tests.graph.forms import csr
+
+        return np.asarray(sd.graph.pagerank(csr(g), tol=tol, **opts))
+    if lib == "networkx":
+        import networkx as nx
+
+        from tests.graph import graphs as G
+
+        D = nx.DiGraph()
+        D.add_nodes_from(range(n))
+        if opts["directed"]:
+            edges = [(i, j, float(w)) for i, j, w in g.edges()]
+        else:
+            edges = [(i, j, float(w)) for (i, j), w in G.undirected(g).items()]
+        D.add_weighted_edges_from(edges)
+        kw = {"weight": None if opts["unweighted"] else "weight", "alpha": opts["alpha"]}
+        for key in ("personalization", "dangling"):
+            if opts[key] is not None:
+                kw[key] = dict(enumerate(np.asarray(opts[key], dtype=np.float64)))
+        x = nx.pagerank(D, tol=tol / n, max_iter=10**4, **kw)
+        return np.array([x[v] for v in range(n)])
+    return None
+
+
+def _pagerank_regions(lib):
+    from tests.graph import graphs as G
+    from tests.graph import refdata
+    from tests.graph.test_centrality import pagerank_k, reading
+
+    ref = refdata.ref("pagerank")
+    m = ref.methods["x"]
+    by = collections.defaultdict(list)
+    for j, k in enumerate(m.index):
+        by[str(ref.inputs["graph"][k])].append((j, k))
+    out = {}
+    for gid, pts in sorted(by.items()):
+        g = G.get(gid)
+        for floor in (False, True):
+            tol = 1e-15 if floor else 1e-12
+            where, units, ul, rel = [], [], [], []
+            for j, k in pts:
+                pers, dang = ref.inputs["personalization"][k], ref.inputs["dangling"][k]
+                opts = {
+                    "alpha": float(ref.inputs["alpha"][k]),
+                    "personalization": None if pers.size == 0 else pers,
+                    "dangling": None if dang.size == 0 else dang,
+                    "directed": bool(ref.inputs["directed"][k]),
+                    "unweighted": bool(ref.inputs["unweighted"][k]),
+                }
+                x = _pagerank_lib(lib, g, opts, tol)
+                if x is None:
+                    return None
+                hi, lo = m.hi[j], m.lo[j]
+                err = math.fsum(abs((float(a) - b) - c) for a, b, c in zip(x, hi, lo))
+                kk = pagerank_k(g.n, reading(g, opts["directed"]), opts["unweighted"])
+                tag = ", ".join(f"{a}={'given' if isinstance(b, np.ndarray) else b}" for a, b in opts.items())
+                where.append(tag)
+                units.append(err / refdata.pagerank_bound(tol, opts["alpha"], kk))
+                ul.append(float(np.max(ulps(x, hi))) if g.n else 0.0)
+                rel.append(err)
+            key = f"{gid} floor" if floor else gid
+            out[key] = region(where, ulp=np.array(ul), rel=np.array(rel), contract=np.array(units), bound=1.0)
+    return out or None
+
+
+def _betweenness_lib(lib, g, directed, unweighted, normalized, endpoints):
+    if lib == "sd":
+        import stardust as sd
+        from tests.graph.forms import csr
+
+        return np.asarray(
+            sd.graph.betweenness_centrality(
+                csr(g), directed=directed, unweighted=unweighted, normalized=normalized, endpoints=endpoints
+            )
+        )
+    if lib == "networkx":
+        import networkx as nx
+
+        from tests.graph import graphs as G
+
+        D = nx.DiGraph() if directed else nx.Graph()
+        D.add_nodes_from(range(g.n))
+        if directed:
+            D.add_weighted_edges_from((i, j, float(w)) for i, j, w in g.edges() if i != j)
+        else:
+            D.add_weighted_edges_from((i, j, float(w)) for (i, j), w in G.undirected(g).items() if i != j)
+        x = nx.betweenness_centrality(
+            D, normalized=normalized, endpoints=endpoints, weight=None if unweighted else "weight"
+        )
+        return np.array([x[v] for v in range(g.n)])
+    return None
+
+
+def _betweenness_regions(lib):
+    from fractions import Fraction
+
+    from tests.graph import definitions as D
+    from tests.graph import graphs as G
+    from tests.graph import refdata
+
+    ref = refdata.ref("betweenness")
+    m = ref.methods["bc"]
+    by = collections.defaultdict(list)
+    for j, k in enumerate(m.index):
+        by[(str(ref.inputs["graph"][k]), bool(ref.inputs["unweighted"][k]))].append((j, k))
+    out = {}
+    stats = {}
+    for (gid, unweighted), pts in sorted(by.items()):
+        g = G.get(gid)
+        where, units, ul, rel = [], [], [], []
+        for j, k in pts:
+            directed = bool(ref.inputs["directed"][k])
+            normalized, endpoints = bool(ref.inputs["normalized"][k]), bool(ref.inputs["endpoints"][k])
+            if (gid, directed, unweighted) not in stats:
+                _, _, st = D.betweenness_dag(g.n, g.edges(), directed, unweighted)
+                stats[(gid, directed, unweighted)] = refdata.betweenness_k(st["L"], st["dout"], st["din"],
+                                                                           st["sigma"], g.n)  # fmt: skip
+            gk = refdata.gamma(stats[(gid, directed, unweighted)])
+            x = _betweenness_lib(lib, g, directed, unweighted, normalized, endpoints)
+            if x is None:
+                return None
+            for v in range(g.n):
+                want = Fraction(float(m.hi[j][v])) + Fraction(float(m.lo[j][v]))
+                e = abs(Fraction(float(x[v])) - want)
+                r = float(e / want) if want else (0.0 if x[v] == 0 else math.inf)
+                where.append(f"directed={directed} normalized={normalized} endpoints={endpoints} v={v}")
+                units.append(r / gk)
+                ul.append(float(ulps(x[v], m.hi[j][v])))
+                rel.append(r)
+        key = f"{gid} {'unweighted' if unweighted else 'weighted'}"
+        out[key] = region(where, ulp=np.array(ul), rel=np.array(rel), contract=np.array(units), bound=1.0)
+    return out or None
+
+
 def sweeps():
     return [
         Custom("graph", "paths", lambda: _paths_regions("sd"), compare_libs(_paths_regions, ("scipy",), seconds=300.0)),
@@ -232,5 +456,23 @@ def sweeps():
             "assignment",
             lambda: _assign_regions("sd"),
             compare_libs(_assign_regions, ("scipy",), seconds=300.0),
+        ),
+        Custom(
+            "graph",
+            "laplacian",
+            lambda: _laplacian_regions("sd"),
+            compare_libs(_laplacian_regions, ("scipy",), seconds=300.0),
+        ),
+        Custom(
+            "graph",
+            "pagerank",
+            lambda: _pagerank_regions("sd"),
+            compare_libs(_pagerank_regions, ("networkx",), seconds=300.0),
+        ),
+        Custom(
+            "graph",
+            "betweenness",
+            lambda: _betweenness_regions("sd"),
+            compare_libs(_betweenness_regions, ("networkx",), seconds=300.0),
         ),
     ]

@@ -57,15 +57,11 @@ inline std::vector<double> real_twiddles(int64_t n) {
     return w;
 }
 
-// The forward pass: y holds Z_0 .. Z_(h-1) (interleaved) and room for h + 1 entries; on return it holds
-// X_0 .. X_h. w: real_twiddles(2h).
-inline void r2c_post(double* y, int64_t h, const double* w) {
-    const double z0r = y[0], z0i = y[1];
-    y[0] = z0r + z0i, y[1] = 0.0;
-    y[2 * h] = z0r - z0i, y[2 * h + 1] = 0.0;
+// The pairs (k, h - k), k0 <= k < k1, of the forward pass (1 <= k0, 2 (k1 - 1) <= h).
+inline void r2c_post_pairs(double* y, int64_t h, const double* w, int64_t k0, int64_t k1) {
     const float64x2_t half = vdupq_n_f64(0.5);
     const float64x2_t conj = {1.0, -1.0};
-    for (int64_t k = 1; 2 * k <= h; ++k) {
+    for (int64_t k = k0; k < k1; ++k) {
         const float64x2_t zk = vld1q_f64(y + 2 * k);
         const float64x2_t zm = vmulq_f64(vld1q_f64(y + 2 * (h - k)), conj);  // conj Z_(h-k)
         const float64x2_t e = vmulq_f64(vaddq_f64(zk, zm), half);
@@ -80,16 +76,21 @@ inline void r2c_post(double* y, int64_t h, const double* w) {
     }
 }
 
-// The inverse pass: z (h interleaved complex) = Z' of the half spectrum x (h + 1 interleaved complex; the
-// imaginary parts of x_0 and x_h are not read). Conj: the pass of conj(x) (hfft). x and z do not overlap.
-// w: real_twiddles(2h).
+// The forward pass: y holds Z_0 .. Z_(h-1) (interleaved) and room for h + 1 entries; on return it holds
+// X_0 .. X_h. w: real_twiddles(2h). The pairs are independent (run_chunks: a long line's on the pool).
+inline void r2c_post(double* y, int64_t h, const double* w) {
+    const double z0r = y[0], z0i = y[1];
+    y[0] = z0r + z0i, y[1] = 0.0;
+    y[2 * h] = z0r - z0i, y[2 * h + 1] = 0.0;
+    run_chunks(h / 2, [&](int64_t i0, int64_t i1) { r2c_post_pairs(y, h, w, i0 + 1, i1 + 1); });
+}
+
+// The pairs (k, h - k), k0 <= k < k1, of the inverse pass.
 template <bool Conj>
-inline void c2r_pre(const double* x, double* z, int64_t h, const double* w) {
-    const double x0 = x[0], xh = x[2 * h];
-    z[0] = x0 + xh, z[1] = x0 - xh;
+inline void c2r_pre_pairs(const double* x, double* z, int64_t h, const double* w, int64_t k0, int64_t k1) {
     const float64x2_t conj = {1.0, -1.0};
     const float64x2_t itimes = {-1.0, 1.0};
-    for (int64_t k = 1; 2 * k <= h; ++k) {
+    for (int64_t k = k0; k < k1; ++k) {
         float64x2_t xk = vld1q_f64(x + 2 * k);
         float64x2_t xm = vld1q_f64(x + 2 * (h - k));
         if constexpr (Conj) {
@@ -106,6 +107,30 @@ inline void c2r_pre(const double* x, double* z, int64_t h, const double* w) {
         const float64x2_t io = vmulq_f64(vextq_f64(o, o, 1), itimes);  // i o' = (-o.im, o.re)
         vst1q_f64(z + 2 * k, vaddq_f64(a, io));
         if (2 * k != h) vst1q_f64(z + 2 * (h - k), vmulq_f64(vsubq_f64(a, io), conj));
+    }
+}
+
+// The inverse pass: z (h interleaved complex) = Z' of the half spectrum x (h + 1 interleaved complex; the
+// imaginary parts of x_0 and x_h are not read). Conj: the pass of conj(x) (hfft). x and z do not overlap.
+// w: real_twiddles(2h).
+template <bool Conj>
+inline void c2r_pre(const double* x, double* z, int64_t h, const double* w) {
+    const double x0 = x[0], xh = x[2 * h];
+    z[0] = x0 + xh, z[1] = x0 - xh;
+    run_chunks(h / 2, [&](int64_t i0, int64_t i1) { c2r_pre_pairs<Conj>(x, z, h, w, i0 + 1, i1 + 1); });
+}
+
+// The Hermitian projection of an odd-length complex spectrum t (n entries) into y (count <= n entries:
+// k = 0 .. count - 1): y_0 = Re t_0 + 0i, y_k = (t_k + conj t_(n-k)) / 2 (the odd real path, decision
+// FT43; fft/driver.cpp and the DCT kinds of fft/r2r.hpp).
+inline void hermitian_part(const double* t, double* y, int64_t n, int64_t count) {
+    y[0] = t[0], y[1] = 0.0;
+    const float64x2_t half = vdupq_n_f64(0.5);
+    const float64x2_t conj = {1.0, -1.0};
+    for (int64_t k = 1; k < count; ++k) {
+        const float64x2_t a = vld1q_f64(t + 2 * k);
+        const float64x2_t b = vmulq_f64(vld1q_f64(t + 2 * (n - k)), conj);
+        vst1q_f64(y + 2 * k, vmulq_f64(vaddq_f64(a, b), half));
     }
 }
 
