@@ -61,3 +61,112 @@ def test_call_shape():
 
 def test_unsorted_xp_with_a_period_is_sorted_not_refused():
     assert sd.interp(0.5, A([1.0, 0.0]), A([1.0, 0.0]), period=2.0) == 0.5
+
+
+# ---- the cubic family and PPoly (docs/api/interpolate.md §1, §3; milestone IP2)
+
+IP = sd.interpolate
+X, Y = [0.0, 1.0, 2.0, 3.0], [0.0, 1.0, 0.0, 2.0]
+P = IP.PPoly([[1.0, 2.0, 3.0]], X)
+SP = IP.CubicSpline(X, Y)
+
+CASES_IP2 = [
+    (lambda: IP.CubicSpline([0.0, 2.0, 1.0], Y[:3]), ValueError, "CubicSpline(): 'x' must be strictly increasing"),
+    (lambda: IP.CubicSpline([0.0, 1.0, 1.0], Y[:3]), ValueError, "CubicSpline(): 'x' must be strictly increasing"),
+    (lambda: IP.CubicSpline([0.0, math.nan, 1.0], Y[:3]), ValueError, "CubicSpline(): 'x' must be finite"),
+    (lambda: IP.CubicSpline([0.0], [1.0]), ValueError, "CubicSpline(): 'x' must have at least 2 points, not 1"),
+    (lambda: IP.CubicSpline([[0.0, 1.0]], [1.0, 2.0]), ValueError, "CubicSpline(): 'x' must be 1-D, not 2-D"),
+    (lambda: IP.CubicSpline([0.0, 1j], [1.0, 2.0]), TypeError, "CubicSpline(): 'x' must be real, not complex128"),
+    (lambda: IP.CubicSpline(X, [0.0, 1.0, math.inf, 2.0]), ValueError, "CubicSpline(): 'y' must be finite"),
+    (lambda: IP.CubicSpline(X, Y[:3]), ValueError,
+     "CubicSpline(): 'y' must have as many points as 'x' (4) along axis 0, not 3"),
+    (lambda: IP.CubicSpline(X, Y, axis=1), ValueError,
+     "CubicSpline(): axis 1 is out of bounds for an array of dimension 1"),
+    (lambda: IP.CubicSpline(X, Y, axis=0.0), TypeError, "CubicSpline(): 'axis' must be an int, not float"),
+    (lambda: IP.CubicSpline(X, Y, bc_type="foo"), ValueError,
+     "CubicSpline(): 'bc_type' must be 'not-a-knot', 'clamped', 'natural', 'periodic' or (order, value) pairs, "
+     "not 'foo'"),
+    (lambda: IP.CubicSpline(X, Y, bc_type="periodic"), ValueError,
+     "CubicSpline(): 'y' must have equal first and last values along axis 0 for bc_type='periodic' "
+     "(within rtol = atol = 1e-15)"),
+    (lambda: IP.CubicSpline(X, Y, bc_type=("periodic", "natural")), ValueError,
+     "CubicSpline(): bc_type='periodic' applies to both ends at once"),
+    (lambda: IP.CubicSpline(X, Y, bc_type=((3, 0.0), "natural")), ValueError,
+     "CubicSpline(): the derivative order of a boundary condition must be 1 or 2, not 3"),
+    (lambda: IP.CubicSpline(X, Y, bc_type=((1, [0.0, 1.0]), "natural")), ValueError,
+     "CubicSpline(): a boundary value must have the shape (), not (2,)"),
+    (lambda: IP.CubicSpline(X, Y, bc_type=("natural",) * 3), ValueError,
+     "CubicSpline(): 'bc_type' must be one condition or a pair of them, not 3"),
+    (lambda: IP.CubicSpline(X, Y, bc_type=None), TypeError,
+     "CubicSpline(): 'bc_type' must be a str or a pair of conditions, not NoneType"),
+    (lambda: IP.CubicSpline(X, Y, extrapolate="foo"), ValueError,
+     "CubicSpline(): 'extrapolate' must be True, False, 'periodic' or None, not 'foo'"),
+    (lambda: IP.CubicSpline(X, Y, extrapolate=1), TypeError,
+     "CubicSpline(): 'extrapolate' must be True, False, 'periodic' or None, not int"),
+    (lambda: IP.PchipInterpolator(X, [0, 1j, 0, 1]), ValueError,
+     "PchipInterpolator(): 'y' must be real, not complex128"),
+    (lambda: IP.Akima1DInterpolator(X, [0, 1j, 0, 1]), ValueError,
+     "Akima1DInterpolator(): 'y' must be real, not complex128"),
+    (lambda: IP.Akima1DInterpolator(X, Y, method="foo"), ValueError,
+     "Akima1DInterpolator(): 'method' must be 'akima' or 'makima', not 'foo'"),
+    (lambda: IP.CubicHermiteSpline(X, Y, Y[:3]), ValueError,
+     "CubicHermiteSpline(): 'dydx' must have the shape of 'y' (4,), not (3,)"),
+    (lambda: IP.CubicHermiteSpline(X, Y, [0.0, math.nan, 0.0, 0.0]), ValueError,
+     "CubicHermiteSpline(): 'dydx' must be finite"),
+    (lambda: IP.pchip_interpolate(X, Y, 0.5, der=-1), ValueError,
+     "pchip_interpolate(): 'der' must be 0 or more, not -1"),
+    (lambda: IP.pchip_interpolate([0.0, 0.0], [1.0, 2.0], 0.5), ValueError,
+     "pchip_interpolate(): 'x' must be strictly increasing"),
+    (lambda: IP.PPoly([1.0, 2.0], X[:2]), ValueError, "PPoly(): 'c' must have at least 2 dimensions, not 1"),
+    (lambda: IP.PPoly([[1.0, 2.0]], X), ValueError,
+     "PPoly(): 'c' must have one piece per interval of 'x' (3) along axis 1, not 2"),
+    (lambda: IP.PPoly([[1.0, 2.0]], [0.0, 1.0, 1.0]), ValueError,
+     "PPoly(): 'x' must be strictly increasing or strictly decreasing"),
+    (lambda: IP.PPoly([[1.0, 2.0]], [0.0, 1.0, math.inf]), ValueError, "PPoly(): 'x' must be finite"),
+    (lambda: IP.PPoly(np.zeros((0, 3)), X), ValueError, "PPoly(): 'c' must have at least one coefficient per piece"),
+    (lambda: IP.PPoly([[1.0, 2.0, 3.0]], X, axis=1), ValueError,
+     "PPoly(): axis 1 is out of bounds for an array of dimension 1"),
+    (lambda: P(0.5j), TypeError, "PPoly(): 'x' must be real, not complex"),
+    (lambda: P([0.5j]), TypeError, "PPoly(): 'x' must be real, not complex128"),
+    (lambda: P("a"), TypeError,
+     "PPoly(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, not str"),
+    (lambda: P(["a"]), TypeError,
+     "PPoly(): 'x' must be an sd.ndarray, a sequence of numbers, a numpy array or a frame Series, not list"),
+    (lambda: P(0.5, nu=-1), ValueError, "PPoly(): 'nu' must be 0 or more, not -1"),
+    (lambda: P(0.5, nu=1.0), TypeError, "PPoly(): 'nu' must be an int, not float"),
+    (lambda: P(0.5, nu=True), TypeError, "PPoly(): 'nu' must be an int, not bool"),
+    (lambda: SP(0.5, extrapolate="no"), ValueError,
+     "CubicSpline(): 'extrapolate' must be True, False, 'periodic' or None, not 'no'"),
+    (lambda: P.derivative(nu=0.5), TypeError, "derivative(): 'nu' must be an int, not float"),
+    (lambda: P.antiderivative(nu="1"), TypeError, "antiderivative(): 'nu' must be an int, not str"),
+    (lambda: P.integrate("0", 1.0), TypeError, "integrate(): 'a' must be an int or a float, not str"),
+    (lambda: P.integrate(0.0, 1j), TypeError, "integrate(): 'b' must be an int or a float, not complex"),
+    (lambda: P.integrate(0.0, 1.0, extrapolate=3), TypeError,
+     "integrate(): 'extrapolate' must be True, False, 'periodic' or None, not int"),
+    (lambda: P.solve(math.inf), ValueError, "solve(): 'y' must be finite"),
+    (lambda: P.roots(discontinuity=1), TypeError, "roots(): 'discontinuity' must be True or False, not int"),
+    (lambda: P.extend([[1.0]], [2.5]), ValueError,
+     "extend(): 'x' must lie beyond either end of self.x, without touching it"),
+    (lambda: P.extend([[1.0, 2.0]], [4.0]), ValueError,
+     "extend(): 'x' must have one point per piece of 'c' (2), not 1"),
+    (lambda: P.extend([[1.0, 2.0]], [5.0, 4.0]), ValueError, "extend(): 'x' must be strictly increasing, as self.x"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("k", range(len(CASES_IP2)))
+def test_error_ip2(k):
+    call, exc, msg = CASES_IP2[k]
+    with pytest.raises(exc) as e:
+        call()
+    assert str(e.value) == msg
+
+
+def test_call_shape_ip2():
+    with pytest.raises(TypeError, match=r"^CubicSpline\(\): takes 2 positional arguments but 3 were given"):
+        IP.CubicSpline(X, Y, 0)
+    with pytest.raises(TypeError, match=r"^CubicSpline\(\): unexpected keyword argument 'check_finite'"):
+        IP.CubicSpline(X, Y, check_finite=False)
+    with pytest.raises(TypeError, match=r"^pchip_interpolate\(\): unexpected keyword argument 'foo'"):
+        IP.pchip_interpolate(X, Y, 0.5, foo=1)
+    with pytest.raises(TypeError):
+        IP.PPoly([[1.0]], [0.0, 1.0], True)

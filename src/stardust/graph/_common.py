@@ -28,6 +28,15 @@ _core = _sd.graph
 _TAKES = "an sd.sparse array or a dense matrix (an sd.ndarray, a numpy array or a sequence of numbers)"
 
 
+class NegativeCycleError(ValueError):
+    """A cycle of negative weight that a shortest-path search can reach from the nodes it starts at
+    (docs/api/graph.md §3): the distances have no least value then."""
+
+
+# Shown as stardust.graph.NegativeCycleError in tracebacks: the public path, not this module's.
+NegativeCycleError.__module__ = "stardust.graph"
+
+
 def type_name(v):
     return _sd._type_name(v)  # numpy's types keep their module (API.md §2.1)
 
@@ -133,6 +142,26 @@ def real(v, name, arg):
     if r is None:
         raise TypeError(f"{name}(): '{arg}' must be an int or a float, not {type_name(v)}")
     return r
+
+
+def count(v, name, arg):
+    """A count argument: an int of 0 or more (bool and float are TypeErrors)."""
+    t = type(v)
+    if t is bool or t is float or isinstance(v, _sd.ndarray) or (t.__name__ == "bool" and t.__module__ == "numpy"):
+        raise TypeError(f"{name}(): '{arg}' must be an int, not {type_name(v)}")
+    try:
+        k = operator.index(v)
+    except TypeError:
+        raise TypeError(f"{name}(): '{arg}' must be an int, not {type_name(v)}") from None
+    if k < 0:
+        raise ValueError(f"{name}(): '{arg}' must be 0 or more, not {k}")
+    return k
+
+
+def room(name, nbytes):
+    """MemoryError before an output larger than this machine's physical memory (API.md §2)."""
+    if nbytes > _sd._physical_memory():
+        raise MemoryError(f"{name}(): cannot allocate {nbytes} bytes: more than this machine's physical memory")
 
 
 def readonly(a):

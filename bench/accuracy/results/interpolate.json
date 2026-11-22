@@ -2,8 +2,89 @@
  "schema": 1,
  "area": "interpolate",
  "runs": {
-  "20261123-040451-a741a97+": {
-   "commit": "a741a97",
+  "20261123-044551-5d6bfc9+": {
+   "commit": "5d6bfc9",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/accuracy/interpolate.py",
+    "bench/accuracy/results/fft.json",
+    "bench/fft/accuracy.md",
+    "bench/speed/cases/fft.py",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/bind/interpolate_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/interpolate/interpolate.hpp",
+    "docs/api/fft.md",
+    "docs/api/graph.md",
+    "docs/design/fft.md",
+    "docs/design/graph.md",
+    "src/stardust/_results.py",
+    "src/stardust/fft/__init__.py",
+    "src/stardust/fft/_basic.py",
+    "src/stardust/graph/__init__.py",
+    "src/stardust/graph/_common.py",
+    "src/stardust/interpolate/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_basic.py",
+    "tests/fft/test_errors.py",
+    "tests/fft/test_paths.py",
+    "tests/fft/test_reference.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/graph/definitions.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_threads.py",
+    "tests/interpolate/refdata.py",
+    "tests/interpolate/test_api_surface.py",
+    "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_threads.py"
+   ],
+   "date": "2026-11-23T04:45:51",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261123-045535-5d6bfc9+": {
+   "commit": "5d6bfc9",
    "dirty": true,
    "changed": [
     "API.md",
@@ -12,19 +93,59 @@
     "README.md",
     "ROADMAP.md",
     "bench/README.md",
-    "bench/accuracy/__init__.py",
-    "bench/accuracy/sources.py",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/accuracy/interpolate.py",
+    "bench/accuracy/results/fft.json",
+    "bench/accuracy/results/interpolate.json",
     "bench/accuracy/tables.py",
-    "bench/areas.py",
-    "csrc/bind/module.cpp",
-    "docs/api/array.md",
-    "src/stardust/__init__.py",
+    "bench/fft/accuracy.md",
+    "bench/interpolate/accuracy.md",
+    "bench/speed/cases/fft.py",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/bind/interpolate_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/interpolate/interpolate.hpp",
+    "docs/api/fft.md",
+    "docs/api/graph.md",
+    "docs/api/interpolate.md",
+    "docs/design/fft.md",
+    "docs/design/graph.md",
+    "docs/design/interpolate.md",
     "src/stardust/_results.py",
-    "tests/README.md",
-    "tests/golden/cases_array.py",
-    "tests/golden/data/array.json"
+    "src/stardust/fft/__init__.py",
+    "src/stardust/fft/_basic.py",
+    "src/stardust/graph/__init__.py",
+    "src/stardust/graph/_common.py",
+    "src/stardust/interpolate/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_basic.py",
+    "tests/fft/test_errors.py",
+    "tests/fft/test_paths.py",
+    "tests/fft/test_reference.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/golden/cases_interpolate.py",
+    "tests/golden/data/fft.json",
+    "tests/golden/data/graph.json",
+    "tests/golden/data/interpolate.json",
+    "tests/graph/definitions.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_threads.py",
+    "tests/interpolate/refdata.py",
+    "tests/interpolate/test_api_surface.py",
+    "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_threads.py"
    ],
-   "date": "2026-11-23T04:04:51",
+   "date": "2026-11-23T04:55:35",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -38,6 +159,364 @@
   }
  },
  "sweeps": [
+  {
+   "id": "interpolate/coefficients",
+   "area": "interpolate",
+   "name": "coefficients",
+   "points": 3239,
+   "regions": {
+    "natural": {
+     "points": 536,
+     "ulp_max": 5690223472197950.0,
+     "ulp_p999": 5690223472197950.0,
+     "rel_max": 1.4896266722814924,
+     "contract": 0.08429158362379699,
+     "bound": 1.0,
+     "worst": [
+      "random/50#40"
+     ]
+    },
+    "clamped": {
+     "points": 536,
+     "ulp_max": 4181809027921509.0,
+     "ulp_p999": 4181809027921509.0,
+     "rel_max": 0.8672220881836163,
+     "contract": 0.09804688563360947,
+     "bound": 1.0,
+     "worst": [
+      "small/3#1"
+     ]
+    },
+    "not_a_knot": {
+     "points": 536,
+     "ulp_max": 5690220101057488.0,
+     "ulp_p999": 5690220101057488.0,
+     "rel_max": 1.489624940713889,
+     "contract": 0.06892351754280035,
+     "bound": 1.0,
+     "worst": [
+      "random/50#40"
+     ]
+    },
+    "periodic": {
+     "points": 23,
+     "ulp_max": 6.0,
+     "ulp_p999": 6.0,
+     "rel_max": 1.170579620649657e-15,
+     "contract": 0.052694119547182346,
+     "bound": 1.0,
+     "worst": [
+      "periodic/sin16#5"
+     ]
+    },
+    "pchip": {
+     "points": 536,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.7820811460900393e-16,
+     "contract": 0.06832441619625673,
+     "bound": 1.0,
+     "worst": [
+      "uniform/50#0"
+     ]
+    },
+    "akima": {
+     "points": 536,
+     "ulp_max": 1688849860263933.0,
+     "ulp_p999": 1688849860263933.0,
+     "rel_max": 0.19999999999999973,
+     "contract": 0.28961352105973004,
+     "bound": 1.0,
+     "worst": [
+      "small/2#0"
+     ]
+    },
+    "makima": {
+     "points": 536,
+     "ulp_max": 9438207812829188.0,
+     "ulp_p999": 9438207812829188.0,
+     "rel_max": 3.201025641025643,
+     "contract": 0.28961352105973004,
+     "bound": 1.0,
+     "worst": [
+      "small/2#0"
+     ]
+    }
+   },
+   "run": "20261123-045535-5d6bfc9+",
+   "comparators": {
+    "scipy": {
+     "natural": {
+      "points": 536,
+      "ulp_max": 6227645118358859.0,
+      "ulp_p999": 6227645118358859.0,
+      "rel_max": 1.7113784711930253,
+      "contract": 2.989005673080982,
+      "bound": 1.0,
+      "worst": [
+       "monotone/flats30#12"
+      ]
+     },
+     "clamped": {
+      "points": 536,
+      "ulp_max": 5925966238474998.0,
+      "ulp_p999": 5925966238474998.0,
+      "rel_max": 1.5868998932324052,
+      "contract": 3.294400993883657,
+      "bound": 1.0,
+      "worst": [
+       "monotone/flats30#12"
+      ]
+     },
+     "not_a_knot": {
+      "points": 536,
+      "ulp_max": 6227641727995704.0,
+      "ulp_p999": 6227641727995704.0,
+      "rel_max": 1.7113765774527945,
+      "contract": 6.508183020217011,
+      "bound": 1.0,
+      "worst": [
+       "monotone/flats30#12"
+      ]
+     },
+     "periodic": {
+      "points": 23,
+      "ulp_max": 6.0,
+      "ulp_p999": 6.0,
+      "rel_max": 1.170579620649657e-15,
+      "contract": 0.052694119547182346,
+      "bound": 1.0,
+      "worst": [
+       "periodic/sin16#5"
+      ]
+     },
+     "pchip": {
+      "points": 536,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.7820811460900393e-16,
+      "contract": 0.06832441619625673,
+      "bound": 1.0,
+      "worst": [
+       "uniform/50#0"
+      ]
+     },
+     "akima": {
+      "points": 536,
+      "ulp_max": 1688849860263933.0,
+      "ulp_p999": 1688849860263933.0,
+      "rel_max": 0.19999999999999973,
+      "contract": 0.28961352105973004,
+      "bound": 1.0,
+      "worst": [
+       "small/2#0"
+      ]
+     },
+     "makima": {
+      "points": 536,
+      "ulp_max": 9438207812829188.0,
+      "ulp_p999": 9438207812829188.0,
+      "rel_max": 3.201025641025643,
+      "contract": 0.28961352105973004,
+      "bound": 1.0,
+      "worst": [
+       "small/2#0"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparator_seconds": 120.0
+  },
+  {
+   "id": "interpolate/evaluation",
+   "area": "interpolate",
+   "name": "evaluation",
+   "points": 10684,
+   "regions": {
+    "natural": {
+     "points": 1755,
+     "ulp_max": 1003343707832647.0,
+     "ulp_p999": 582930634265317.0,
+     "e2e_rel_max": 2.146219461967433e-06,
+     "contract": 0.48229497879417055,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#28"
+     ]
+    },
+    "clamped": {
+     "points": 1755,
+     "ulp_max": 8.703896377041029e+18,
+     "ulp_p999": 8.698293537580239e+18,
+     "e2e_rel_max": 2.531353932872183e-06,
+     "contract": 0.482317891714593,
+     "bound": 1.0,
+     "worst": [
+      "flat/akima#1"
+     ]
+    },
+    "not_a_knot": {
+     "points": 1755,
+     "ulp_max": 8.652863497609e+18,
+     "ulp_p999": 1071928866784394.0,
+     "e2e_rel_max": 9.252247050178344e-07,
+     "contract": 0.48228814828795447,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#28"
+     ]
+    },
+    "periodic": {
+     "points": 154,
+     "ulp_max": 565417297850376.0,
+     "ulp_p999": 565417297850376.0,
+     "e2e_rel_max": 8.930707547381157e-15,
+     "contract": 0.4645474022185431,
+     "bound": 1.0,
+     "worst": [
+      "periodic/random9#23"
+     ]
+    },
+    "pchip": {
+     "points": 1755,
+     "ulp_max": 551931815962412.0,
+     "ulp_p999": 93725379593285.0,
+     "e2e_rel_max": 9.60292162748687e-14,
+     "contract": 0.48152483861283485,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#28"
+     ]
+    },
+    "akima": {
+     "points": 1755,
+     "ulp_max": 551931815962412.0,
+     "ulp_p999": 171892010421343.0,
+     "e2e_rel_max": 3.7403897973996193e-07,
+     "contract": 0.4860608534220215,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#28"
+     ]
+    },
+    "makima": {
+     "points": 1755,
+     "ulp_max": 1240368701916298.0,
+     "ulp_p999": 551931815962412.0,
+     "e2e_rel_max": 3.740389801840555e-07,
+     "contract": 0.4827341555981745,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#28"
+     ]
+    }
+   },
+   "run": "20261123-045535-5d6bfc9+",
+   "comparators": {
+    "scipy": {
+     "natural": {
+      "points": 1755,
+      "ulp_max": 8.698253197001133e+18,
+      "ulp_p999": 1920539091951869.0,
+      "e2e_rel_max": 7.789696102568115e-07,
+      "contract": 1.0387939947335307,
+      "bound": 1.0,
+      "worst": [
+       "runge/21#15"
+      ]
+     },
+     "clamped": {
+      "points": 1755,
+      "ulp_max": 8.717156623434018e+18,
+      "ulp_p999": 4.3531685845120087e+18,
+      "e2e_rel_max": 4.071443271560336e-06,
+      "contract": 1.0011771966192644,
+      "bound": 1.0,
+      "worst": [
+       "monotone/flats30#109"
+      ]
+     },
+     "not_a_knot": {
+      "points": 1755,
+      "ulp_max": 8.702105497586268e+18,
+      "ulp_p999": 7887362522210799.0,
+      "e2e_rel_max": 2.164075959042771e-06,
+      "contract": 0.8917449442975652,
+      "bound": 1.0,
+      "worst": [
+       "chebyshev/21#92"
+      ]
+     },
+     "periodic": {
+      "points": 154,
+      "ulp_max": 3162258020532488.0,
+      "ulp_p999": 3162258020532488.0,
+      "e2e_rel_max": 9.153975236065685e-15,
+      "contract": 0.6564570817503425,
+      "bound": 1.0,
+      "worst": [
+       "periodic/sin16#54"
+      ]
+     },
+     "pchip": {
+      "points": 1755,
+      "ulp_max": 4.376232008232108e+18,
+      "ulp_p999": 474284941273591.0,
+      "e2e_rel_max": 9.591690140203259e-14,
+      "contract": 0.9436524766063689,
+      "bound": 1.0,
+      "worst": [
+       "chebyshev/21#64"
+      ]
+     },
+     "akima": {
+      "points": 1755,
+      "ulp_max": 4.376232008232108e+18,
+      "ulp_p999": 4.356496540628958e+18,
+      "e2e_rel_max": 7.432599235090226e-07,
+      "contract": 1.039642236455866,
+      "bound": 1.0,
+      "worst": [
+       "uniform/6#5"
+      ]
+     },
+     "makima": {
+      "points": 1755,
+      "ulp_max": 4.376232008232108e+18,
+      "ulp_p999": 103440249350774.0,
+      "e2e_rel_max": 1.0886732131954696e-06,
+      "contract": 0.9995492813687785,
+      "bound": 1.0,
+      "worst": [
+       "monotone/up30#50"
+      ]
+     }
+    },
+    "R": {
+     "natural": {
+      "points": 1631,
+      "e2e_rel_max": 1.668515163067697e-06,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "spacing/1e10#71"
+      ]
+     },
+     "periodic": {
+      "points": 142,
+      "e2e_rel_max": 1.974669079966864e-15,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "periodic/random9#22"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparator_seconds": 300.0
+  },
   {
    "id": "interpolate/linear",
    "area": "interpolate",
@@ -67,7 +546,128 @@
      ]
     }
    },
-   "run": "20261123-040451-a741a97+"
+   "run": "20261123-045535-5d6bfc9+",
+   "comparators": {
+    "numpy": {
+     "curves": {
+      "points": 1708,
+      "ulp_max": 724882569879352.0,
+      "ulp_p999": 182731518082424.0,
+      "rel_max": 0.14307223452969076,
+      "contract": 0.25929560517175954,
+      "bound": 1.0,
+      "excluded": 28,
+      "worst": [
+       "curve/periodic/random9#53"
+      ]
+     },
+     "intervals": {
+      "points": 1040,
+      "ulp_max": 2210547.0,
+      "ulp_p999": 2210547.0,
+      "rel_max": 2.639777402504813e-10,
+      "contract": 0.7190772539449258,
+      "bound": 1.0,
+      "excluded": 32,
+      "worst": [
+       "lerp/wide#6"
+      ]
+     }
+    },
+    "scipy": {
+     "curves": {
+      "points": 1700,
+      "ulp_max": 94774446774897.0,
+      "ulp_p999": 37.0,
+      "rel_max": 0.01870591519210703,
+      "contract": 0.22908095048264138,
+      "bound": 1.0,
+      "excluded": 36,
+      "worst": [
+       "curve/random/50#35"
+      ]
+     },
+     "intervals": {
+      "points": 1044,
+      "ulp_max": 69.0,
+      "ulp_p999": 18.0,
+      "rel_max": 0.0007204610951008645,
+      "contract": 0.5,
+      "bound": 1.0,
+      "excluded": 28,
+      "worst": [
+       "lerp/tiny-values#14"
+      ]
+     }
+    },
+    "R": {
+     "curves": {
+      "points": 1736,
+      "ulp_max": 562949953421312.0,
+      "ulp_p999": 45150224914769.0,
+      "rel_max": 0.1111111111111111,
+      "contract": 0.23418874536490553,
+      "bound": 1.0,
+      "excluded": 0,
+      "worst": [
+       "curve/periodic/random9#52"
+      ]
+     },
+     "intervals": {
+      "points": 1046,
+      "ulp_max": 3484873.0,
+      "ulp_p999": 3140722.0,
+      "rel_max": 4.16133752487221e-10,
+      "contract": 0.7190772539449258,
+      "bound": 1.0,
+      "excluded": 26,
+      "worst": [
+       "lerp/wide#6"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparator_seconds": 120.0
+  },
+  {
+   "id": "interpolate/roots",
+   "area": "interpolate",
+   "name": "roots",
+   "points": 36,
+   "regions": {
+    "pieces": {
+     "points": 36,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "missed_max": 0.0,
+     "extra_max": 1.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "roots/tangent#0"
+     ]
+    }
+   },
+   "run": "20261123-045535-5d6bfc9+",
+   "comparators": {
+    "scipy": {
+     "pieces": {
+      "points": 36,
+      "ulp_max": Infinity,
+      "ulp_p999": Infinity,
+      "missed_max": 2.0,
+      "extra_max": 1.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "roots/tangent#0"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-044551-5d6bfc9+",
+   "comparator_seconds": 120.0
   }
  ]
 }

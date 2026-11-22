@@ -32,4 +32,21 @@ inline constexpr int64_t kBlockDoubles = int64_t{1} << 19;  // a task's line buf
 // the GIL and has checked the arguments; `out` is allocated by the caller.
 void c2c_axis(const NDArray& x, int axis, int64_t n, bool inverse, double scale, NDArray& out);
 
+// The real transforms (milestone FT2, docs/design/fft.md §3.4). An even n runs the real plan of n
+// (fft/rfft.hpp); an odd n runs the complex plan of n on the line with zero imaginary parts and keeps the
+// Hermitian part of the result, (y_k + conj y_(n-k)) / 2 (decision FT43): the exact projection, so the
+// result is exactly Hermitian and its DC imaginary part +0, at one rounding per entry.
+//
+// r2c_axis: the transform of every line of x (bool, int64 or float64) along `axis`, cut or zero-padded
+// to n, times `scale`: the half spectrum (n / 2 + 1 entries: rfft, ihfft) or, with `full`, the whole
+// spectrum with y_(n-k) = conj y_k written from the half (fft and ifft of real input, decision FT16), and
+// with `conj` the conjugate of either (ihfft, ifft). out: complex128.
+void r2c_axis(const NDArray& x, int axis, int64_t n, bool full, bool conj, double scale, NDArray& out);
+
+// c2r_axis: the unnormalised inverse transform of length n of the Hermitian extension of every line of
+// x (any numeric dtype; a real dtype is read as complex with zero imaginary parts) along `axis`, of which
+// n / 2 + 1 entries are used (cut or zero-padded) and the imaginary parts of the DC and (even n) Nyquist
+// entries are dropped, times `scale` (irfft; with `conj`, of conj(x): hfft). out: float64.
+void c2r_axis(const NDArray& x, int axis, int64_t n, bool conj, double scale, NDArray& out);
+
 }  // namespace sd::fft

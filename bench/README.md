@@ -208,7 +208,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 | differentiate | `tests/differentiate/ref`(`derivatives.json`, `mgh.npz`; 기록은 `tests/differentiate/data`; 스윕 `derivative`·`jacobian`·`hessian`·`gradient`) | `tools/differentiate_ref.py` (기록은 `tools/gen_differentiate_scipy.py`) |
 | spatial | `tests/spatial/ref/<묶음>.npz`(`distances`, `counting`, `haversine`, `neighbors`; 다른 라이브러리의 기록은 `tests/spatial/data`: scipy, scikit-learn, R; 스윕은 SPT1부터) | `tools/spatial_ref.py` (기록은 `tools/spatial_probe.py`) |
 | interpolate | `tests/interpolate/ref/<묶음>.npz`(`linear`, `slopes`, `bspline`, `curves`, `polynomial`, `grid`, `rbf`, `roots`; 다른 라이브러리의 기록은 `tests/interpolate/data`: scipy, numpy, R; 스윕은 IP1 마일스톤부터) | `tools/interpolate_ref.py` (기록은 `tools/interpolate_probe.py`) |
-| graph | `tests/graph/ref/<묶음>.npz`(`paths`, `yen`, `assignment`, `pagerank`, `betweenness`, `laplacian`; 다른 라이브러리의 기록은 `tests/graph/data/scipy.json`; 스윕은 GR2 마일스톤부터) | `tools/graph_ref.py` (기록은 `tools/graph_probe.py`) |
+| graph | `tests/graph/ref/<묶음>.npz`(`paths`, `yen`, `assignment`, `pagerank`, `betweenness`, `laplacian`; 다른 라이브러리의 기록은 `tests/graph/data/scipy.json`; 스윕 `paths`는 GR2 마일스톤부터) | `tools/graph_ref.py` (기록은 `tools/graph_probe.py`) |
 | fft | `tests/fft/ref/<묶음>.npz`(`c2c`, `real`, `hermitian`, `r2r`, `nd`; 길이 2¹⁴까지, 그보다 긴 줄은 정확도 체계가 그 자리에서 Arb로 잰다; 다른 라이브러리의 기록은 `tests/fft/data`: numpy, scipy, R, vDSP, 자체 길의 시제품; 스윕은 FT1 마일스톤부터) | `tools/fft_ref.py` (기록은 `tools/fft_probe.py`) |
 | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
 | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |

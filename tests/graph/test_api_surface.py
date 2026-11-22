@@ -19,7 +19,8 @@ from .._api_doc import signature_blocks
 API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "graph.md"
 
 # Documented, not implemented yet (docs/design/graph.md §8). A milestone moves its names from here to
-# sd.graph.__all__ (GR1: the traversals, connected_components, topological_sort, the conversion tools).
+# sd.graph.__all__ (GR1: the traversals, connected_components, topological_sort, the conversion tools;
+# GR2: the shortest paths).
 GR1 = (
     "connected_components",
     "breadth_first_order",
@@ -30,8 +31,7 @@ GR1 = (
     "csgraph_from_dense",
     "csgraph_to_dense",
 )
-PLANNED = {
-    # GR2
+GR2 = (
     "shortest_path",
     "dijkstra",
     "bellman_ford",
@@ -41,6 +41,8 @@ PLANNED = {
     "construct_dist_matrix",
     "reconstruct_path",
     "NegativeCycleError",
+)
+PLANNED = {
     # GR3
     "minimum_spanning_tree",
     "maximum_flow",
@@ -178,6 +180,6 @@ def test_shared_options_have_one_spelling():
 
 
 def test_module_is_wired():
-    assert sd.graph.__all__ == list(GR1)
+    assert sd.graph.__all__ == list(GR1 + GR2)
     for name in MASKED | {"Graph", "graph", "csgraph"}:
         assert not hasattr(sd.graph, name), name

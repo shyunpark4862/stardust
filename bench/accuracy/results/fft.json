@@ -52,8 +52,60 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-040451-a741a97+": {
-   "commit": "a741a97",
+  "20261123-042232-5d6bfc9+": {
+   "commit": "5d6bfc9",
+   "dirty": true,
+   "changed": [
+    "bench/accuracy/fft.py",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "src/stardust/fft/__init__.py",
+    "src/stardust/fft/_basic.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_basic.py",
+    "tests/fft/test_errors.py",
+    "tests/fft/test_paths.py",
+    "tests/fft/test_reference.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/data/fft.json"
+   ],
+   "date": "2026-11-23T04:22:32",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261123-045535-5d6bfc9+": {
+   "commit": "5d6bfc9",
    "dirty": true,
    "changed": [
     "API.md",
@@ -62,19 +114,59 @@
     "README.md",
     "ROADMAP.md",
     "bench/README.md",
-    "bench/accuracy/__init__.py",
-    "bench/accuracy/sources.py",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/accuracy/interpolate.py",
+    "bench/accuracy/results/fft.json",
+    "bench/accuracy/results/interpolate.json",
     "bench/accuracy/tables.py",
-    "bench/areas.py",
-    "csrc/bind/module.cpp",
-    "docs/api/array.md",
-    "src/stardust/__init__.py",
+    "bench/fft/accuracy.md",
+    "bench/interpolate/accuracy.md",
+    "bench/speed/cases/fft.py",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/bind/interpolate_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/interpolate/interpolate.hpp",
+    "docs/api/fft.md",
+    "docs/api/graph.md",
+    "docs/api/interpolate.md",
+    "docs/design/fft.md",
+    "docs/design/graph.md",
+    "docs/design/interpolate.md",
     "src/stardust/_results.py",
-    "tests/README.md",
-    "tests/golden/cases_array.py",
-    "tests/golden/data/array.json"
+    "src/stardust/fft/__init__.py",
+    "src/stardust/fft/_basic.py",
+    "src/stardust/graph/__init__.py",
+    "src/stardust/graph/_common.py",
+    "src/stardust/interpolate/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_basic.py",
+    "tests/fft/test_errors.py",
+    "tests/fft/test_paths.py",
+    "tests/fft/test_reference.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/golden/cases_interpolate.py",
+    "tests/golden/data/fft.json",
+    "tests/golden/data/graph.json",
+    "tests/golden/data/interpolate.json",
+    "tests/graph/definitions.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_threads.py",
+    "tests/interpolate/refdata.py",
+    "tests/interpolate/test_api_surface.py",
+    "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_threads.py"
    ],
-   "date": "2026-11-23T04:04:51",
+   "date": "2026-11-23T04:55:35",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -167,7 +259,7 @@
      ]
     }
    },
-   "run": "20261123-040451-a741a97+",
+   "run": "20261123-045535-5d6bfc9+",
    "comparators": {
     "numpy": {
      "forward/pow2": {
@@ -357,6 +449,364 @@
     }
    },
    "comparators_run": "20261123-035501-a741a97+",
+   "comparator_seconds": 600.0
+  },
+  {
+   "id": "fft/hermitian",
+   "area": "fft",
+   "name": "hermitian",
+   "points": 116,
+   "regions": {
+    "irfft/pow2": {
+     "points": 37,
+     "rel_max": 2.2524247352274723e-05,
+     "contract": 0.04855432626608716,
+     "bound": 1.0,
+     "worst": [
+      "h/constant/8"
+     ]
+    },
+    "irfft/even": {
+     "points": 25,
+     "rel_max": 2.996743801274878e-05,
+     "contract": 0.048838203845783745,
+     "bound": 1.0,
+     "worst": [
+      "h/uniform/18"
+     ]
+    },
+    "irfft/odd": {
+     "points": 23,
+     "rel_max": 2.33590282644242e-05,
+     "contract": 0.032631538996683,
+     "bound": 1.0,
+     "worst": [
+      "h/uniform/21"
+     ]
+    },
+    "irfft/bluestein": {
+     "points": 31,
+     "rel_max": 4.250995795765158e-05,
+     "contract": 0.01592356687898089,
+     "bound": 1.0,
+     "worst": [
+      "h/tiny/17"
+     ]
+    }
+   },
+   "run": "20261123-045535-5d6bfc9+",
+   "comparators": {
+    "numpy": {
+     "irfft/pow2": {
+      "points": 37,
+      "rel_max": 1.4277649767054652e-05,
+      "contract": 0.03049347090936613,
+      "bound": 1.0,
+      "worst": [
+       "h/uniform/4"
+      ]
+     },
+     "irfft/even": {
+      "points": 25,
+      "rel_max": 2.6812970853512065e-05,
+      "contract": 0.0425,
+      "bound": 1.0,
+      "worst": [
+       "h/tiny/100"
+      ]
+     },
+     "irfft/odd": {
+      "points": 23,
+      "rel_max": 2.33590282644242e-05,
+      "contract": 0.03849821754041253,
+      "bound": 1.0,
+      "worst": [
+       "h/uniform/49"
+      ]
+     },
+     "irfft/bluestein": {
+      "points": 31,
+      "rel_max": 2.5505974774590947e-05,
+      "contract": 0.010652786419997036,
+      "bound": 1.0,
+      "worst": [
+       "h/uniform/65537"
+      ]
+     }
+    },
+    "scipy": {
+     "irfft/pow2": {
+      "points": 37,
+      "rel_max": 1.4277649767054652e-05,
+      "contract": 0.03049347090936613,
+      "bound": 1.0,
+      "worst": [
+       "h/uniform/4"
+      ]
+     },
+     "irfft/even": {
+      "points": 25,
+      "rel_max": 2.6812970853512065e-05,
+      "contract": 0.0425,
+      "bound": 1.0,
+      "worst": [
+       "h/tiny/100"
+      ]
+     },
+     "irfft/odd": {
+      "points": 23,
+      "rel_max": 2.33590282644242e-05,
+      "contract": 0.03849821754041253,
+      "bound": 1.0,
+      "worst": [
+       "h/uniform/49"
+      ]
+     },
+     "irfft/bluestein": {
+      "points": 31,
+      "rel_max": 2.5505974774590947e-05,
+      "contract": 0.009913602785774692,
+      "bound": 1.0,
+      "worst": [
+       "h/uniform/65537"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-042232-5d6bfc9+",
+   "comparator_seconds": 600.0
+  },
+  {
+   "id": "fft/real",
+   "area": "fft",
+   "name": "real",
+   "points": 570,
+   "regions": {
+    "rfft/pow2": {
+     "points": 77,
+     "rel_max": 2.2005608534701542e-05,
+     "contract": 0.0418873767248646,
+     "bound": 1.0,
+     "worst": [
+      "r/sine_half/2"
+     ]
+    },
+    "rfft/even": {
+     "points": 78,
+     "rel_max": 2.747403703500192e-05,
+     "contract": 0.02963641504233101,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/10"
+     ]
+    },
+    "rfft/odd": {
+     "points": 46,
+     "rel_max": 2.7506532801540365e-05,
+     "contract": 0.02971309956420299,
+     "bound": 1.0,
+     "worst": [
+      "r/huge/5"
+     ]
+    },
+    "rfft/bluestein": {
+     "points": 84,
+     "rel_max": 0.00011136477532156579,
+     "contract": 0.021052631578947368,
+     "bound": 1.0,
+     "worst": [
+      "r/tiny/13"
+     ]
+    },
+    "fft/pow2": {
+     "points": 77,
+     "rel_max": 2.209786434933044e-05,
+     "contract": 0.0418873767248646,
+     "bound": 1.0,
+     "worst": [
+      "r/sine_half/2"
+     ]
+    },
+    "fft/even": {
+     "points": 78,
+     "rel_max": 2.6976417959596766e-05,
+     "contract": 0.04191222009298252,
+     "bound": 1.0,
+     "worst": [
+      "r/uniform/10"
+     ]
+    },
+    "fft/odd": {
+     "points": 46,
+     "rel_max": 2.3596035865974516e-05,
+     "contract": 0.03860695311371356,
+     "bound": 1.0,
+     "worst": [
+      "r/huge/5"
+     ]
+    },
+    "fft/bluestein": {
+     "points": 84,
+     "rel_max": 0.00010932980827527258,
+     "contract": 0.02894736842105263,
+     "bound": 1.0,
+     "worst": [
+      "r/tiny/13"
+     ]
+    }
+   },
+   "run": "20261123-045535-5d6bfc9+",
+   "comparators": {
+    "numpy": {
+     "rfft/pow2": {
+      "points": 77,
+      "rel_max": 2.417721464009972e-05,
+      "contract": 0.0418873767248646,
+      "bound": 1.0,
+      "worst": [
+       "r/sine_half/2"
+      ]
+     },
+     "rfft/even": {
+      "points": 78,
+      "rel_max": 4.0556911813574266e-05,
+      "contract": 0.03375,
+      "bound": 1.0,
+      "worst": [
+       "r/tiny/100"
+      ]
+     },
+     "rfft/odd": {
+      "points": 46,
+      "rel_max": 2.7506532801540365e-05,
+      "contract": 0.02971309956420299,
+      "bound": 1.0,
+      "worst": [
+       "r/huge/5"
+      ]
+     },
+     "rfft/bluestein": {
+      "points": 84,
+      "rel_max": 2.7841193830391448e-05,
+      "contract": 0.008685910227090737,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65537"
+      ]
+     },
+     "fft/pow2": {
+      "points": 77,
+      "rel_max": 2.6517437219196527e-05,
+      "contract": 0.0418873767248646,
+      "bound": 1.0,
+      "worst": [
+       "r/sine_half/2"
+      ]
+     },
+     "fft/even": {
+      "points": 78,
+      "rel_max": 3.2053005331138566e-05,
+      "contract": 0.03875,
+      "bound": 1.0,
+      "worst": [
+       "r/tiny/100"
+      ]
+     },
+     "fft/odd": {
+      "points": 46,
+      "rel_max": 2.3596035865974516e-05,
+      "contract": 0.051213719951606514,
+      "bound": 1.0,
+      "worst": [
+       "r/huge/7"
+      ]
+     },
+     "fft/bluestein": {
+      "points": 84,
+      "rel_max": 0.00010534899134562184,
+      "contract": 0.029061784897025173,
+      "bound": 1.0,
+      "worst": [
+       "r/tiny/127"
+      ]
+     }
+    },
+    "scipy": {
+     "rfft/pow2": {
+      "points": 77,
+      "rel_max": 2.3828633135447366e-05,
+      "contract": 0.0418873767248646,
+      "bound": 1.0,
+      "worst": [
+       "r/sine_half/2"
+      ]
+     },
+     "rfft/even": {
+      "points": 78,
+      "rel_max": 4.0556911813574266e-05,
+      "contract": 0.03375,
+      "bound": 1.0,
+      "worst": [
+       "r/tiny/100"
+      ]
+     },
+     "rfft/odd": {
+      "points": 46,
+      "rel_max": 2.7506532801540365e-05,
+      "contract": 0.02971309956420299,
+      "bound": 1.0,
+      "worst": [
+       "r/huge/5"
+      ]
+     },
+     "rfft/bluestein": {
+      "points": 84,
+      "rel_max": 2.7841193830391448e-05,
+      "contract": 0.00830527728545874,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65537"
+      ]
+     },
+     "fft/pow2": {
+      "points": 77,
+      "rel_max": 2.3975622206066607e-05,
+      "contract": 0.0418873767248646,
+      "bound": 1.0,
+      "worst": [
+       "r/sine_half/2"
+      ]
+     },
+     "fft/even": {
+      "points": 78,
+      "rel_max": 3.9999516284919345e-05,
+      "contract": 0.0475,
+      "bound": 1.0,
+      "worst": [
+       "r/tiny/100"
+      ]
+     },
+     "fft/odd": {
+      "points": 46,
+      "rel_max": 2.3596035865974516e-05,
+      "contract": 0.03887845753032064,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/75"
+      ]
+     },
+     "fft/bluestein": {
+      "points": 84,
+      "rel_max": 2.9817220438710704e-05,
+      "contract": 0.011745323019522606,
+      "bound": 1.0,
+      "worst": [
+       "r/uniform/65537"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-042232-5d6bfc9+",
    "comparator_seconds": 600.0
   }
  ]

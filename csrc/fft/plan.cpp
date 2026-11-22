@@ -165,6 +165,12 @@ int64_t levels(int64_t n) {  // ceil(log2 n), 1 at least
 }  // namespace
 
 Plan::Plan(Kind kind, int64_t n) : kind_(kind), n_(n) {
+    if (kind == Kind::Real) {  // even n (the driver sends odd real lengths to the complex plan of n)
+        half_ = std::make_unique<const Plan>(Kind::Complex, n / 2);
+        rtw_ = real_twiddles(n);
+        cost_ = half_->cost() + n;
+        return;
+    }
     if (is_mixed_length(n)) {
         mixed_ = std::make_unique<CfftPlan>(n);
         cost_ = n * levels(n);

@@ -9,10 +9,21 @@ meaning for the algorithms scipy lacks), in one flat namespace; inputs and optio
 library's rules (decisions GR1-GR28 in docs/design/graph.md §1.1).
 
 The public names come milestone by milestone (docs/design/graph.md §8): GR1 the traversals, connected
-components, topological sort and the conversion tools.
+components, topological sort and the conversion tools; GR2 the shortest paths.
 """
 
+from ._common import NegativeCycleError
 from ._convert import csgraph_from_dense, csgraph_to_dense
+from ._paths import (
+    bellman_ford,
+    construct_dist_matrix,
+    dijkstra,
+    floyd_warshall,
+    johnson,
+    reconstruct_path,
+    shortest_path,
+    yen,
+)
 from ._traversal import (
     breadth_first_order,
     breadth_first_tree,
@@ -31,4 +42,13 @@ __all__ = [
     "topological_sort",
     "csgraph_from_dense",
     "csgraph_to_dense",
+    "shortest_path",
+    "dijkstra",
+    "bellman_ford",
+    "johnson",
+    "floyd_warshall",
+    "yen",
+    "construct_dist_matrix",
+    "reconstruct_path",
+    "NegativeCycleError",
 ]

@@ -110,7 +110,11 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/spatial/sphere.cpp
   csrc/graph/input.cpp
   csrc/graph/traversal.cpp
+  csrc/graph/paths.cpp
+  csrc/graph/yen.cpp
   csrc/interpolate/linear.cpp
+  csrc/interpolate/cubic.cpp
+  csrc/interpolate/ppoly.cpp
   csrc/fft/plan.cpp
   csrc/fft/driver.cpp
   csrc/fft/basic.cpp

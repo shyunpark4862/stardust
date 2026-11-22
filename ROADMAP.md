@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임)), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1 마일스톤 완료·승인(위임))이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임)), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2 마일스톤 완료·승인(위임))이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -844,7 +844,7 @@
 
 # 그래프 영역 (sd.graph)
 
-> 상태: **구현 중** (2026-11-23). GR0·GR1 마일스톤은 완료·승인(위임, 2026-11-23)이다. 설계는 [docs/design/graph.md](docs/design/graph.md), API의 초안은 [docs/api/graph.md](docs/api/graph.md)다.
+> 상태: **구현 중** (2026-11-23). GR0·GR1·GR2 마일스톤은 완료·승인(위임, 2026-11-23)이다. 설계는 [docs/design/graph.md](docs/design/graph.md), API의 초안은 [docs/api/graph.md](docs/api/graph.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -859,7 +859,7 @@
 |---|---|
 | GR0 준비: API 문서, 영역 등록, 시험 그래프, 참값(정확한 유리수·Arb), scipy·networkx 기록, FW 길의 두 안의 측정, 속도 사례의 틀 | 완료·승인(위임, 2026-11-23) |
 | GR1 순회와 연결 요소: 입력 변환, `csgraph_from_dense csgraph_to_dense`, 순회 넷, `connected_components`, `topological_sort` | 완료·승인(위임, 2026-11-23) |
-| GR2 최단 경로: `shortest_path dijkstra bellman_ford johnson floyd_warshall yen construct_dist_matrix reconstruct_path NegativeCycleError` | 계획 |
+| GR2 최단 경로: `shortest_path dijkstra bellman_ford johnson floyd_warshall yen construct_dist_matrix reconstruct_path NegativeCycleError` | 완료·승인(위임, 2026-11-23) |
 | GR3 신장 트리·흐름·매칭: `minimum_spanning_tree maximum_flow maximum_bipartite_matching min_weight_full_bipartite_matching linear_sum_assignment` | 계획 |
 | GR4 순서·구조적 랭크·라플라시안: `reverse_cuthill_mckee structural_rank laplacian` | 계획 |
 | GR5 더한 알고리즘: `articulation_points bridges biconnected_components core_number pagerank betweenness_centrality` | 계획 |
@@ -878,9 +878,14 @@
 - 결과: 공개 이름 8개(`connected_components breadth_first_order depth_first_order breadth_first_tree depth_first_tree topological_sort csgraph_from_dense csgraph_to_dense`), C++ csrc/graph/(graph.hpp, input.cpp, traversal.cpp, graph_mod.hpp)와 바인딩 csrc/bind/graph_bind.cpp(`_core.graph`), Python src/stardust/graph/(_common.py: 모든 마일스톤이 쓰는 입력 변환과 검사, _traversal.py, _convert.py), 결과 `TraversalResult`·`ConnectedComponentsResult`(src/stardust/_results.py), 테스트 tests/graph/(정의 구현 definitions.py, 입력 꼴 forms.py, test_input.py, test_traversal.py, test_components.py, test_toposort.py, test_convert.py, test_threads.py), 속도 사례 14개(bench/speed/cases/graph.py; 모든 사례의 크기를 id 표기로 고침), 골든 416케이스(tests/golden/cases_graph.py; 기록은 메인 세션).
 - 찾은 것(docs/design/graph.md §2.9, §5): scipy의 무향 트리는 저장된 0을 변 없음으로 읽어 한 방향만이면 inf, 두 방향이면 다른 쪽의 무게를 넣는다. scipy의 `csgraph_to_dense`는 저장된 NaN을 inf로 바꾼다. scipy의 `csgraph_from_dense`는 NaN·무한대 `null_value`를 `nan_null`·`infinity_null`로 읽는다(sd도 같게 했다). 무향 순회에서 두 줄을 원소마다 합치는 꼴은 비교마다 앞 비교를 기다려 한 줄 꼴보다 네 배 느렸고, 줄마다 따로 찾은 노드를 건너뛰고 새 노드만 합치는 꼴로 바꿨다(10.9 → 4.8 ms, scipy 6.7). 밀집 변환은 가지 없는 압축으로 25.6 → 4.1 ms(scipy 40.7, n = 2000).
 
+### GR2 마일스톤. 최단 경로
+- 결정(추천안, 사용자 위임 2026-11-23): docs/design/graph.md §1.1 GR34–GR42(`unweighted=True`는 값을 읽지 않는다; 음수 순환은 모든 방법이 같은 검사 하나로 찾고 그 순환의 가장 작은 노드를 알린다; auto의 밀집 길은 음수 무게가 없을 때만; FW의 계약은 다른 방법과 같은 한계, 상수 1; `construct_dist_matrix`·`reconstruct_path`는 정수 dtype의 선행 노드를 받고 경로가 아니면 `ValueError`; Dijkstra의 큐는 4진 색인 힙; 원점 태스크는 크기로만 1–64개; `yen`의 갈래 탐색은 꼭 맞는 변의 층으로 (합, 변 수, 노드 열)의 첫 경로; FW의 선행 노드는 거리를 바꾸지 않는다).
+- 결과: 공개 이름 9개(`shortest_path dijkstra bellman_ford johnson floyd_warshall yen construct_dist_matrix reconstruct_path NegativeCycleError`), C++ csrc/graph/(paths.hpp, paths.cpp, yen.cpp), Python src/stardust/graph/_paths.py(와 _common.py의 `NegativeCycleError`), 결과 `ShortestPathResult`·`MinOnlyResult`·`YenResult`(src/stardust/_results.py), 테스트 tests/graph/(test_paths.py, test_paths_reference.py, test_paths_methods.py, test_yen.py, test_threads.py에 GR2), 정확도 스윕 `paths`(bench/accuracy/graph.py), 속도 사례 10개(bench/speed/cases/graph.py), 골든 776케이스 더해 1,192(tests/golden/cases_graph.py; 기록은 메인 세션).
+- 찾은 것(docs/design/graph.md §2.9, §4, §5): D, BF, J, auto는 참값의 모든 그래프·원점·읽기에서 바이트까지 같았고, 정수·2진 유리수 무게와 `unweighted`는 참값과 선행 노드 규칙까지 같았다. 일반 무게의 거리는 정의와 FW 모두 계약의 0.995 단위 안(7,639점)이었다. scipy는 최소 신장 트리뿐 아니라 모든 csgraph 함수의 밀집 입력에서 |w| ≤ 1e-8인 원소를 버리고, `construct_dist_matrix`는 int32만 받고 순환인 선행 노드에서 끝나지 않으며, `reconstruct_path`는 없는 변을 말없이 넣거나 버린다. Johnson의 다시 꺼내기는 음수 무게 28–48%의 그래프에서 0번이었다. 이진 힙의 게으른 지우기를 4진 색인 힙으로 바꿔 원점 하나의 Dijkstra가 17.4 → 10.4 ms(n = 10⁵, d = 10)가 됐다. 1스레드에서 scipy보다 `dijkstra` 2.3배, 모든 쌍 2.8–2.9배, `bellman_ford` 1,200배(큐 기반), `yen` 1.7배, `floyd_warshall` 3.98배, auto의 밀집 Dijkstra 2.1배 빨랐다.
+
 # 보간 영역 (sd.interpolate)
 
-> 상태: **설계 초안** (2026-11-23). IP0·IP1 마일스톤은 완료·승인(위임, 2026-11-23)이다(IP1은 배열 영역의 `sd.interp`를 공개했다). 설계는 [docs/design/interpolate.md](docs/design/interpolate.md), API의 초안은 [docs/api/interpolate.md](docs/api/interpolate.md)다.
+> 상태: **설계 초안** (2026-11-23). IP0·IP1·IP2 마일스톤은 완료·승인(위임, 2026-11-23)이다(IP1은 배열 영역의 `sd.interp`를, IP2는 조각 다항식과 3차 계열을 공개했다). 설계는 [docs/design/interpolate.md](docs/design/interpolate.md), API의 초안은 [docs/api/interpolate.md](docs/api/interpolate.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -895,7 +900,7 @@
 |---|---|
 | IP0 준비: API 문서, 영역 등록, 시험 데이터, 참값(정확한 유리수·Arb), scipy·numpy·R 기록, 선형 커널의 증명과 측정, 피벗 없는 띠 풀이의 증명 계획, 속도 사례의 틀 | 완료·승인(위임, 2026-11-23) |
 | IP1 선형과 `sd.interp`: `base/lerp.hpp`, `sd.interp`(배열 영역의 문서·테스트·골든 포함), 구간 찾기 | 완료·승인(위임, 2026-11-23) |
-| IP2 3차 계열: `PPoly CubicHermiteSpline CubicSpline PchipInterpolator pchip_interpolate Akima1DInterpolator` | 계획 |
+| IP2 3차 계열: `PPoly CubicHermiteSpline CubicSpline PchipInterpolator pchip_interpolate Akima1DInterpolator` | 완료·승인(위임, 2026-11-23) |
 | IP3 B-스플라인: `BSpline make_interp_spline` | 계획 |
 | IP4 다항식·유리식: `BarycentricInterpolator barycentric_interpolate KroghInterpolator krogh_interpolate FloaterHormannInterpolator AAA` | 계획 |
 | IP5 격자: `RegularGridInterpolator interpn` | 계획 |
@@ -915,9 +920,14 @@
 - 결과: csrc/base/lerp.hpp(갈래 없는 커널, 유한하지 않은 끝값, 복소수판), csrc/base/interval.hpp, csrc/array/ops/interp.cpp(`sd.interp`, 최상위 `__all__`과 docs/api/array.md §8.5), csrc/interpolate/(search.hpp, linear.cpp, interpolate.hpp)와 csrc/bind/interpolate_bind.cpp(`_core.interpolate`), 테스트 tests/interpolate/(test_interp, test_lerp(hypothesis), test_reference(Arb·유리수 참값), test_linear_bits, test_errors, test_threads(1·2·3·7·10스레드))와 tests/array/test_interp.py, 골든 사례 tests/golden/cases_array.py의 `interp_cases`(40개, 기록은 메인 세션), 정확도 묶음 bench/accuracy/interpolate.py의 `linear`, 속도 사례 4개(IP0의 틀이 `sd.interp` 공개로 켜짐).
 - 찾은 것: 선형 계약 단위의 최대는 곡선 안 0.235, 커널 구간 0.500, 늘이기 0.272(numpy 0.259·0.719, scipy k = 1 0.229·0.500, R 0.234·0.719; 비교 패키지가 유한하지 않은 값을 낸 점은 뺌). IP0 마일스톤의 늘이기 한계가 −1 < t < 0에서 틀렸고(IP40) `refdata.linear_bound`의 η가 0으로 반올림되어 있었다. 1회 측정(smoke, ms; 1스레드 / 10스레드): 노드 10³·무작위 10⁶점 5.3 / 1.3(numpy 37.6, scipy k = 1 106.7, R 9.9), 정렬 3.0 / 0.6(numpy 2.7), 노드 10⁶·무작위 17.5 / 3.2(numpy 176), 정렬 8.2 / 1.6(numpy 9.8). 정렬된 노드 10³은 numpy가 기울기를 미리 구해 1스레드에서 조금 앞선다(IP7 마일스톤에서 본다).
 
+### IP2 마일스톤. 3차 계열 — 완료·승인(위임, 2026-11-23)
+- 결정(추천안, 사용자 위임 2026-11-23): docs/design/interpolate.md §1.1 IP42–IP51(Hermite 계수는 scipy의 연산 순서; `PPoly`의 중단점은 유한하고 엄격히 단조, `extend`도 같다; 삼중대각은 피벗 없는 Thomas에 뒤 대입은 피벗 역수의 곱, 열 8개 이하는 한 번의 훑기, 양수가 아닌 피벗은 에러; 근은 도함수의 근으로 나눈 단조 구간을 double의 순서로 64걸음 이하 이분하고 부호는 보정한 Horner, 접하는 극값은 중근; PCHIP 단조성의 둘째 성질은 계수 계약 안으로 고침; makima만 평평한 구간이 정확히 평평; `'periodic'` 객체의 역미분은 `extrapolate=False`; `integrate`의 NaN 끝은 NaN; 음수 `nu`의 서로 부르기, `__call__`의 int `nu`, `PPoly`의 음수 축; 계수 계약과 PCHIP 단조성의 비정상 수 바닥 2⁻¹⁰⁷⁴).
+- 결과: 공개 이름 6개(`PPoly CubicHermiteSpline CubicSpline PchipInterpolator Akima1DInterpolator pchip_interpolate`), C++ csrc/interpolate/(banded.hpp, cubic.cpp, ppoly.cpp), Python src/stardust/interpolate/(_common.py, _ppoly.py), 테스트 tests/interpolate/(test_cubic, test_ppoly, test_pchip(hypothesis), test_roots; test_errors·test_threads·test_api_surface에 더함)과 refdata의 계약 함수(spline_bound, pchip_bound, akima_bound, ppoly_bound), 정확도 묶음 `coefficients`·`evaluation`·`roots`(bench/interpolate/accuracy.md), 속도 사례 13개(IP0의 틀이 공개로 켜짐), 골든 사례 tests/golden/cases_interpolate.py(105개, 1·3·10스레드 같음; 기록은 메인 세션), 피벗 없는 풀이의 증명(§3.3: 모든 경계 조건의 성분마다 |ŝ − s| ≤ γ₁₁|A⁻¹|(|A||ŝ| + |b|ₐ), natural·clamped는 150uM)과 평가 계약의 증명(§3.5).
+- 찾은 것: 기울기의 계약 단위 최대는 natural 0.084, clamped 0.098, not-a-knot 0.069, periodic 0.053, PCHIP 0.068, Akima 0.29이고 scipy(부분 피벗 `gbsv`)는 같은 꼴로 natural 2.99, clamped 3.29, not-a-knot 6.51이다. 평가는 0.48(scipy의 거듭제곱 합 1.04). PCHIP·Akima의 계수는 시험 곡선 전부에서 scipy와 비트까지 같다. 근은 참값 36개를 모두 0 ULP로 찾았고(중근과 2⁻³⁰ 떨어진 두 근 포함) scipy는 중근 둘을 놓친다. 처음 안과 달랐던 것: 계산한 PCHIP 3차식은 노드 기울기가 0인 끝에서 정확히 단조가 아니다(IP46), akima의 평평한 구간은 Akima의 정하지 않은 경우에 평평하지 않다(IP47), scipy의 `'periodic'` 역미분은 `extrapolate=False`다(IP48). 1스레드 / 10스레드 ms(따뜻한 상태, scipy): `CubicSpline` 만들기 10⁶점 11.7 / 10.6(12.1), periodic 17.1 / 16.2(22.1), 열 1000개 2.2 / 1.9(12.3), PCHIP 7.3 / 1.5(16.2), akima 4.5 / 1.9(8.6), 평가 10⁶점(노드 10⁶) 20.7 / 2.4(136), `roots` 10⁶ 구간 405 / 86(1280). 긴 열 하나의 기울기 풀이는 사슬 지연이라 스레드로 빨라지지 않는다.
+
 # 푸리에 변환 영역 (sd.fft)
 
-> 상태: **설계 초안** (2026-11-23). FT0 마일스톤과 FT1 마일스톤은 완료·승인(위임, 2026-11-23)이다. 설계는 [docs/design/fft.md](docs/design/fft.md), API의 초안은 [docs/api/fft.md](docs/api/fft.md)다.
+> 상태: **설계 초안** (2026-11-23). FT0 마일스톤, FT1 마일스톤, FT2 마일스톤은 완료·승인(위임, 2026-11-23)이다. 설계는 [docs/design/fft.md](docs/design/fft.md), API의 초안은 [docs/api/fft.md](docs/api/fft.md)다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -932,7 +942,7 @@
 |---|---|
 | FT0 준비: API 문서, 영역 등록, 시험 신호, 참값(Arb), numpy·scipy·R·vDSP 기록, FT22의 길 재기(자체 길의 시제품 대 vDSP), 계약의 상수와 증명의 틀, 속도 사례의 틀 | 완료·승인(위임, 2026-11-23) |
 | FT1 1차원 복소와 도우미: 계획과 캐시, 자체 혼합 기수·회전 인자·Bluestein, 축 구동기, `fft ifft fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len` | 완료·승인(위임, 2026-11-23) |
-| FT2 실수와 에르미트 1차원: `rfft irfft hfft ihfft`, 실수 입력의 `fft` | 계획 |
+| FT2 실수와 에르미트 1차원: `rfft irfft hfft ihfft`, 실수 입력의 `fft` | 완료·승인(위임, 2026-11-23) |
 | FT3 다차원: `fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn` | 계획 |
 | FT4 DCT·DST: `dct idct dst idst dctn idctn dstn idstn`(형 1–4) | 계획 |
 | FT5 FFTLog: `fht ifht fhtoffset` | 계획 |
@@ -950,3 +960,8 @@
 - 결정(추천안, 사용자 위임 2026-11-23): docs/design/fft.md §1.1 FT35–FT42(혼합 기수는 기수 4·2·3·5·7·11, 홀수 기수는 FMA 사슬의 실수 꼴, 역변환은 실수부·허수부 바꾸기; Bluestein의 문턱 p₀ = 11; 안쪽 길이는 2n − 1 이상의 가장 작은 2ᵃ3ᵇ5ᶜ이고 chirp와 핵의 변환은 double-double; FT1의 실수 입력은 허수부 0의 복소 길(FT2까지); 단마다 온전한 회전 인자 표; 구동기의 바로 읽기와 32줄 묶음; 4단계는 FT6; 도우미의 경계와 메시지).
 - 결과: csrc/fft/cfft.hpp(일반 혼합 기수), ddmath.hpp·bluestein.hpp·plan.hpp·plan.cpp(double-double, Bluestein, 계획과 캐시), driver.hpp·driver.cpp(축 구동기), basic.cpp·helper.cpp·fft.hpp, csrc/bind/fft_bind.cpp(`_core.fft`); src/stardust/fft/(`fft ifft fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len`); tests/fft/(test_basic, test_helper, test_errors, test_reference, test_paths, test_threads, test_plan_cache, test_proof와 proof.py); 정확도 스윕 bench/accuracy/fft.py의 `c2c`(기준선 bench/accuracy/results/fft.json, 표 bench/fft/accuracy.md), 속도 사례 17개, 골든 케이스 301개(tests/golden/cases_fft.py; 기록은 메인 세션), docs/design/fft.md §3.3, §4.2(나비마다의 증명과 Bluestein의 증명), §4.4, §5, §6.
 - 찾은 것: 기수 2–11의 단은 log₂ r 한 수준마다 3.75–7.62u라 κ = 8 안이고 기수 13은 8.22u라 넘는다(그래서 11-매끄러운 길이 = `next_fast_len`의 집합 = Bluestein을 타지 않는 길이). Bluestein의 핵을 double로 변환하면 증명이 √m만큼 무너져 double-double로 계산했다(ρ(n) ≈ 1.9–2.15, 계획 시간 65537에서 38 ms). 계약 단위 최대 0.054(numpy·scipy와 같은 크기, 가장 큰 값은 비정상 수 입력). 한 줄은 numpy의 1.7–7배, scipy의 1.4–8배 빠르고 (1000, 1024) 배치는 10스레드에서 scipy `workers=10`보다 빠르다. 큰 줄 하나(2²⁰)는 1스레드라 scipy `workers=10`보다 4배 느리다(FT6의 4단계).
+
+### FT2 마일스톤. 실수와 에르미트 1차원 변환
+- 결정(추천안, 사용자 위임 2026-11-23): docs/design/fft.md §1.1 FT43–FT46(짝수 n은 길이 n/2의 복소 계획과 회전 인자 한 번의 처리, 홀수 n은 길이 n의 복소 계획과 에르미트 부분 (y_k + conj y_{n−k})/2; 실수 계획은 안쪽 복소 계획을 스스로 쥔다; 안쪽 길이가 Bluestein인 실수·에르미트 변환의 계약 꼴과 실수 입력 `fft`의 계약; 복소 입력·기본 길이의 메시지, 버리는 허수부는 읽지 않음, 실수 입력 `ifft`는 `conj(fft)`, DC 허수부 +0).
+- 결과: csrc/fft/rfft.hpp(`r2c_post`, `c2r_pre`, `real_twiddles`), plan.hpp·plan.cpp(실수 계획), driver.hpp·driver.cpp(`r2c_axis`, `c2r_axis`, `drive_lines`), basic.cpp(`_r2c`, `_c2r`, 실수 입력의 `_c2c`); src/stardust/fft/(`rfft irfft hfft ihfft`); tests/fft/test_real.py와 test_reference·test_paths·test_threads·test_errors·test_api_surface·test_basic의 실수 변환; 정확도 스윕 bench/accuracy/fft.py의 `real`·`hermitian`(기준선과 표 갱신), 속도 사례 13개(`--smoke`), 골든 케이스 676개(tests/golden/cases_fft.py, 실수 입력의 `fft`를 다시 넣음; 기록은 메인 세션), docs/design/fft.md §3.4, §4.2(실수 길의 오차), §4.4, §4.5, §5, §6, docs/api/fft.md §1.2, §3, §8.
+- 찾은 것: 계약 단위 최대 0.049(numpy·scipy와 같은 크기). `rfft(x)`는 실수 입력 `fft(x)`의 앞쪽과 짝수·홀수 모든 길이에서 비트까지 같다(numpy는 길이 6부터 다르다). 한 줄은 numpy의 1.4–7.6배, scipy의 1.4–9배 빠르고 실수 입력의 `fft`는 같은 값의 복소 입력보다 1.3–1.7배 빠르다. 1스레드의 배치 `rfft`(1000, 1024)는 numpy와 비슷하다(970 대 1,080 µs; 사후 처리가 커널의 약 4분의 1). 사후 처리를 두 자리씩 묶은 NEON 판은 오히려 느렸다. 컴파일러가 −1 곱셈을 부호 바꾸기로 바꿀 수 있어 NaN의 부호는 연산의 꼴에 따라 달라진다(약속하지 않는 부분, FT17).

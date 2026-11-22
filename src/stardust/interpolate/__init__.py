@@ -7,7 +7,24 @@ The names are scipy.interpolate's, in one flat namespace (no submodules); inputs
 library's rules (decisions IP1-IP35 in docs/design/interpolate.md §1.1). numpy's interp is the top-level
 sd.interp of the array area.
 
-The public names come milestone by milestone (docs/design/interpolate.md §8): none yet.
+The public names come milestone by milestone (docs/design/interpolate.md §8): IP2 brought the piecewise
+polynomials and the cubic family.
 """
 
-__all__ = []
+from ._ppoly import (
+    Akima1DInterpolator,
+    CubicHermiteSpline,
+    CubicSpline,
+    PchipInterpolator,
+    PPoly,
+    pchip_interpolate,
+)
+
+__all__ = [
+    "PPoly",
+    "CubicHermiteSpline",
+    "CubicSpline",
+    "PchipInterpolator",
+    "Akima1DInterpolator",
+    "pchip_interpolate",
+]

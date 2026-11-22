@@ -15,7 +15,20 @@ moves by the size of the others, docs/design/fft.md §4.1), so entry-wise distan
 numpy 2.5.4, scipy 1.18.1 and R 4.6.2's stats::fft (forward only) are the comparator columns, computed in
 place on the same lines.
 
-Later milestones: `real` and `hermitian` with FT2, `nd` with FT3, `r2r` with FT4.
+FT2 brings
+
+  real       rfft (method rfft) and the whole spectrum of fft of real input (method fft, against the
+             mirrored half-spectrum reference) on every line of tests/fft/ref/real.npz, plus the long lines
+             of tests/fft/refdata.LONG_REAL (2^16, 65537, 2^20) with Arb where the run is
+  hermitian  irfft(norm='forward') (method irfft: unnormalised) on every line of
+             tests/fft/ref/hermitian.npz, plus the half spectra of the long real lines
+
+with regions by the real path's form (decision FT43): pow2 (2^k), even (another even length whose half
+is 11-smooth: the complex plan of n / 2 and the twiddle pass), odd (an odd 11-smooth length: the complex
+plan of n and the Hermitian part) and bluestein (the inner length n / 2 or n has a prime factor above
+11). numpy and scipy are the comparator columns (R has no real transform: it is compared on c2c only).
+
+Later milestones: `nd` with FT3, `r2r` with FT4.
 """
 
 from __future__ import annotations
@@ -129,7 +142,109 @@ def _r_values(lines):
     return out
 
 
+_REAL_FORMS = ("pow2", "even", "odd", "bluestein")
+
+
+def _real_form(n: int) -> str:
+    from tests.fft import refdata
+
+    if not refdata.is_smooth11(refdata.real_inner(n)):
+        return "bluestein"
+    if n & (n - 1) == 0:
+        return "pow2"
+    return "even" if n % 2 == 0 else "odd"
+
+
+def _whole(half, n):
+    return np.concatenate([half, np.conj(half[1 : (n + 1) // 2][::-1])])
+
+
+def _real_lines(family):
+    """(method, signal id, x, n, hi, lo) of the real or hermitian family: the stored lines, then the long
+    ones (Arb here)."""
+    from tests.fft import refdata
+    from tests.fft import signals as S
+
+    if family == "real":
+        r = refdata.ref("real")
+        m = r.methods["forward"]
+        for j, k in enumerate(m.index):
+            x, n, hi, lo = r.inputs["x"][k], int(r.inputs["n"][k]), m.hi[j], m.lo[j]
+            sid = str(r.inputs["signal"][k])
+            yield "rfft", sid, x, n, hi, lo
+            yield "fft", sid, x, n, _whole(hi, n), _whole(lo, n)
+        for sid in refdata.LONG_REAL:
+            s = S.get(sid)
+            hi, lo = refdata.arb_dft(s.x.astype(np.complex128))
+            yield "rfft", sid, s.x, s.n, hi[: s.n // 2 + 1], lo[: s.n // 2 + 1]
+            yield "fft", sid, s.x, s.n, hi, lo
+        return
+    r = refdata.ref("hermitian")
+    m = r.methods["c2r"]
+    for j, k in enumerate(m.index):
+        yield "irfft", str(r.inputs["signal"][k]), r.inputs["x"][k], int(r.inputs["n"][k]), m.hi[j], m.lo[j]
+    for sid in refdata.LONG_REAL:  # the exact half spectrum of a long real line (rounded), back to n reals
+        s = S.get(sid)
+        hi, _ = refdata.arb_dft(s.x.astype(np.complex128))
+        half = hi[: s.n // 2 + 1]
+        bhi, blo = refdata.arb_dft(_whole(half, s.n), inverse=True)
+        yield "irfft", "h/" + sid[2:], half, s.n, bhi.real, blo.real
+
+
+def _real_compute(lib, method, x, n):
+    if lib == "sd":
+        import stardust as sd
+
+        f = {"rfft": sd.fft.rfft, "fft": sd.fft.fft}.get(method)
+        if f is not None:
+            return np.asarray(f(sd.asarray(x)))
+        return np.asarray(sd.fft.irfft(sd.asarray(x), n=n, norm="forward"))
+    if lib in ("numpy", "scipy"):
+        if lib == "numpy":
+            mod = np.fft
+        else:
+            import scipy.fft as mod
+        if method == "irfft":
+            return mod.irfft(x, n=n, norm="forward")
+        return getattr(mod, method)(x)
+    return None
+
+
+def _real_regions(family):
+    def measure(lib):
+        from tests.fft import refdata
+
+        pts = {}
+        for method, sid, x, n, hi, lo in _real_lines(family):
+            got = _real_compute(lib, method, x, n)
+            if got is None:
+                return None
+            err = refdata.error(got, hi, lo)
+            ynorm = refdata.norm2(hi)
+            if family == "real":
+                b = refdata.bound("real", n, refdata.norm2(x))
+            else:
+                b = refdata.bound("hermitian", n, refdata.hermitian_norm(x, n))
+            p = pts.setdefault(f"{method}/{_real_form(n)}", {"where": [], "contract": [], "rel": []})
+            p["where"].append(sid)
+            p["contract"].append(refdata.units(err, b))
+            p["rel"].append(err / ynorm if ynorm else (0.0 if err == 0 else np.inf))
+        out = {}
+        for method in ("rfft", "fft", "irfft"):
+            for form in _REAL_FORMS:
+                p = pts.get(f"{method}/{form}")
+                if p:
+                    out[f"{method}/{form}"] = region(p["where"], rel=np.array(p["rel"]),
+                                                     contract=np.array(p["contract"]), bound=1.0)  # fmt: skip
+        return out or None
+
+    return measure
+
+
 def sweeps():
+    real, herm = _real_regions("real"), _real_regions("hermitian")
     return [
-        Custom("fft", "c2c", lambda: _regions("sd"), compare_libs(_regions, ("numpy", "scipy", "R"), seconds=600.0))
+        Custom("fft", "c2c", lambda: _regions("sd"), compare_libs(_regions, ("numpy", "scipy", "R"), seconds=600.0)),
+        Custom("fft", "real", lambda: real("sd"), compare_libs(real, ("numpy", "scipy"), seconds=600.0)),
+        Custom("fft", "hermitian", lambda: herm("sd"), compare_libs(herm, ("numpy", "scipy"), seconds=600.0)),
     ]

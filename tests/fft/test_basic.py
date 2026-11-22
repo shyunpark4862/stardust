@@ -91,12 +91,20 @@ def test_length_one_is_a_copy():
 
 
 def test_input_dtypes():
-    # bool, int64 and float64 are taken as float64 values (FT1: through the complex path with zero
-    # imaginary parts until milestone FT2 brings the real path, decision FT38)
+    # bool, int64 and float64 are taken as float64 values and take the real path (decision FT16, since
+    # milestone FT2): the same bits as the float64 input, the first n // 2 + 1 entries those of rfft,
+    # the rest mirrored exactly; within the contract of the complex input's result
     for a in (np.array([True, False, True]), np.array([1, 2, 3, 4]), np.array([0.5, -1.0, 2.0])):
         got = F.fft(sd.asarray(a))
         assert got.dtype == sd.complex128
-        assert bits_equal(got, F.fft(sd.asarray(a.astype(np.complex128))))
+        assert bits_equal(got, F.fft(sd.asarray(a.astype(np.float64))))
+        n = a.size
+        y = np.asarray(got)
+        assert bits_equal(y[: n // 2 + 1], F.rfft(sd.asarray(a)))
+        k = np.arange(1, (n + 1) // 2)
+        assert bits_equal(y[n - k], np.conj(y[k]))
+        c = np.asarray(F.fft(sd.asarray(a.astype(np.complex128))))
+        assert refdata.norm2(y - c) <= 2 * refdata.bound("c2c", n, refdata.norm2(a.astype(np.float64)))
 
 
 def test_empty_batch_axis_and_shapes():

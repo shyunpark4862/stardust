@@ -44,6 +44,10 @@ QueryResult = namedtuple("QueryResult", ["distances", "indices"])
 # graph: the traversals and connected_components (docs/api/graph.md §2, §7; scipy's order of the tuple)
 TraversalResult = namedtuple("TraversalResult", ["node_array", "predecessors"])
 ConnectedComponentsResult = namedtuple("ConnectedComponentsResult", ["n_components", "labels"])
+# graph: the shortest paths (docs/api/graph.md §3, §7; scipy's order of the tuple)
+ShortestPathResult = namedtuple("ShortestPathResult", ["dist_matrix", "predecessors"])
+MinOnlyResult = namedtuple("MinOnlyResult", ["dist_matrix", "predecessors", "sources"])
+YenResult = namedtuple("YenResult", ["dist_array", "predecessors"])
 
 # regression: the linear models' diagnostics (docs/api/regression.md §2; statsmodels' het_breuschpagan
 # fields and order). Jarque-Bera's result is sd.htest's class (G165, htest H18, H39). The three

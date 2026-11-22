@@ -127,7 +127,13 @@ INTRO = {
         "부른다)이다. 바깥은 sd.interp가 numpy처럼 끝값으로 자르므로 재지 않는다. 계약은 tests/interpolate/refdata.py의 "
         "linear_bound다(docs/design/interpolate.md §4: γ₆(|a| + |b|) + 3η). 비교 패키지는 numpy 2.5.4의 interp, scipy "
         "1.18.1의 make_interp_spline(k=1), R 4.6.2의 approx(rule = 2)이고 같은 점에서 그 자리에서 잰다. 비교 패키지가 "
-        "유한하지 않은 값을 낸 점(numpy의 기울기가 비정상 수 간격에서 넘치는 곳 등)은 excluded로 센다."
+        "유한하지 않은 값을 낸 점(numpy의 기울기가 비정상 수 간격에서 넘치는 곳 등)은 excluded로 센다. "
+        "IP2의 세 묶음: coefficients는 3차 계열의 노드 기울기(마지막 노드 빼고, 계수의 c₁)를 slopes.npz와 견주고 계약은 "
+        "refdata의 spline_bound·pchip_bound·akima_bound다. evaluation은 그 객체를 곡선의 평가점(끝 조각은 늘임)에서 "
+        "계산해 자기 계수를 정확한 유리수로 평가한 값과 견주고(계약 ppoly_bound), e2e_rel은 curves.npz(정확한 자료의 정확한 "
+        "보간)와의 끝에서 끝 상대오차다. roots는 roots.npz의 참값 근마다 가장 가까운 근까지의 ulp와 빠뜨린 근(missed)·"
+        "참값에 없는 근(extra)의 수다. 비교 패키지는 scipy(자기 계수와 자기 평가)와 R의 splinefun(natural, periodic; "
+        "끝에서 끝만, 정의역 안)이다."
     ),
     "htest": (
         "참값은 tests/htest/ref의 Arb와 정확한 유리수 참값이다(tools/htest_ref.py; 문제는 tests/htest/problems.py). "

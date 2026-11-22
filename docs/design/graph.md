@@ -1,6 +1,6 @@
 # 그래프 영역 설계 (sd.graph)
 
-> 상태: **설계 초안** (2026-11-23). 큰 결정(§1.1 GR1–GR3)은 사용자가 정했다. §9의 질문은 모두 정했다: 18번(비교 패키지)은 사용자 결정(GR24: networkx만 `.venv`에 설치, 2026-11-23), 나머지는 추천안(GR4–GR23, 사용자 위임 2026-11-23). GR0 마일스톤은 완료·승인(위임, 2026-11-23)이고 그때 FW 길의 측정으로 GR5를 바꿨다(GR25–GR27). GR1 마일스톤(순회, 연결 요소, 위상 정렬, 변환 도구; 공개 이름 8개)은 완료·승인(위임, 2026-11-23)이고 그때 GR29–GR33을 정했다.
+> 상태: **설계 초안** (2026-11-23). 큰 결정(§1.1 GR1–GR3)은 사용자가 정했다. §9의 질문은 모두 정했다: 18번(비교 패키지)은 사용자 결정(GR24: networkx만 `.venv`에 설치, 2026-11-23), 나머지는 추천안(GR4–GR23, 사용자 위임 2026-11-23). GR0 마일스톤은 완료·승인(위임, 2026-11-23)이고 그때 FW 길의 측정으로 GR5를 바꿨다(GR25–GR27). GR1 마일스톤(순회, 연결 요소, 위상 정렬, 변환 도구; 공개 이름 8개)은 완료·승인(위임, 2026-11-23)이고 그때 GR29–GR33을 정했다. GR2 마일스톤(최단 경로; 공개 이름 9개)은 완료·승인(위임, 2026-11-23)이고 그때 GR34–GR42를 정했다.
 
 `sd.graph`(인접 행렬로 주는 그래프의 알고리즘: 순회, 연결 요소, 최단 경로, 신장 트리, 흐름, 매칭, 순서 매기기, 중심성)의 결정과 내부 구조의 안을 적는다.
 
@@ -50,6 +50,15 @@
 | GR31 약한 연결 요소의 병렬 | 저장된 원소가 2¹⁸개 이상이고 풀을 쓸 수 있으면 변 구간 태스크(원소 2¹⁶개씩, 크기로만 나눈다)가 비교 교환으로 큰 뿌리를 작은 뿌리 밑에 잇는 합집합–찾기, 그 밖은 직렬이다. 분할이 유일하고 뿌리가 요소의 가장 작은 노드라 번호가 같다. GR1 마일스톤의 측정(ms, 1스레드 / 10스레드): 원소 10⁵개 0.096 / 0.262, 2 × 10⁵ 0.253 / 0.198, 5 × 10⁵ 0.80 / 0.41, 10⁶ 1.74 / 0.77 (추천안, 사용자 위임 2026-11-23) |
 | GR32 무향 순회의 읽기 | 합친 CSR을 만들지 않는다: sparse의 전치(§3.1)를 한 번 만들고, G가 자기 전치와 같으면(패턴과, 트리면 무게까지) G만, 아니면 G와 전치의 두 줄을 함께 읽는다. 두 줄은 원소마다 합치지 않고 줄마다 찾은 노드를 따로 건너뛰며, 너비 우선은 새로 찾은 두 오름차순 묶음만 합치고 깊이 우선은 두 줄의 머리 가운데 작은 것을 고른다. 원소마다 합치는 꼴은 비교마다 앞의 비교를 기다려 한 줄 꼴보다 네 배 느렸다(n = 10⁵, d = 10의 무향 너비 우선 10.9 ms → 4.8 ms, scipy 6.7 ms) (추천안, 사용자 위임 2026-11-23) |
 | GR33 속도 사례의 크기 | 사례의 크기는 인접 행렬의 모양 `(n, n)`이고(bench/README.md의 id 표기) 나가는 차수 d와 대칭·DAG 같은 그래프의 종류는 사례 이름에 둔다(`connected_components weak d=10 [(100000, 100000)]`) (추천안, 사용자 위임 2026-11-23) |
+| GR34 `unweighted=True`는 값을 읽지 않는다 | 최단 경로 함수(`yen` 포함)의 `unweighted=True`는 패턴만 읽는다: 저장된 NaN·±inf와 음수 무게를 막지 않고(`dijkstra(G, unweighted=True)`도 음수 무게의 그래프를 받는다), 모든 변이 무게 1이다. 무게 없는 `betweenness_centrality`와 같은 구조 함수의 규칙(§2.1)이다 (추천안, 사용자 위임 2026-11-23) |
+| GR35 음수 순환의 공통 검사 | 저장된 음수 무게가 있으면 BF, J, auto(J), `yen`은 계산 전에 같은 검사 하나를 한다: 요청한 원점에서 닿는 노드(패턴의 너비 우선)를 무게 0의 변으로 잇는 가상 뿌리에서 큐 Bellman–Ford(닿는 노드를 오름차순으로 넣는다)를 돌리고, 노드가 닿는 노드 수보다 많이 다시 들어가면 부모 포인터의 순환을 찾아 그 순환의 가장 작은 노드를 알린다(음수 자기 고리는 그 자체로 순환이다). 그래서 메시지의 노드는 방법과 스레드 수와 무관하다(그 검사가 찾은 순환의 가장 작은 노드이고, 모든 음수 순환의 가장 작은 노드는 아니다). 검사가 끝나면 그 값이 J의 퍼텐셜이다. FW는 끝난 뒤 대각의 음수로 알고 같은 검사(모든 노드)로 노드를 정한다(검사가 순환을 못 찾으면 음수 대각의 가장 작은 노드) (추천안, 사용자 위임 2026-11-23) |
+| GR36 auto의 밀집 길과 음수 무게 | auto의 밀집 Dijkstra는 음수 무게가 없을 때만이다. 음수 무게면 밀도와 상관없이 CSR 위의 J다(밀집 J와 같은 비트라 결과는 같고 코드가 하나 준다). 밀도의 문턱은 입력의 저장된 원소 수로 센다(4·nnz ≥ n², 무향도 입력의 nnz; scipy와 같은 셈) (추천안, 사용자 위임 2026-11-23) |
+| GR37 FW의 계약 | FW의 거리는 §4의 3번과 같은 한계 \|d̂ − d\*\| ≤ γ_{H−1}·max(Σ_{p̂}\|w\|, Σ_{p\*}\|w\|), 상수 1이다(p̂는 FW의 선행 노드가 그리는 경로). 블록 FW의 값은 어떤 걸음의 덧셈 나무의 반올림이고 덧셈 나무가 어떤 꼴이든 H개 항의 합은 γ_{H−1}·Σ\|w\| 안이며(Higham), fl(+)와 min이 단조라 그 값은 참 최단 경로를 FW가 잇는 나무의 반올림 이하다. 그래서 블록의 합 깊이를 셀 필요가 없다. GR2 마일스톤의 측정(일반 무게의 참값 7,639점)에서 가장 큰 값이 0.995 단위로 D와 같았다 (추천안, 사용자 위임 2026-11-23) |
+| GR38 `construct_dist_matrix`·`reconstruct_path`의 선행 노드 | 정수 dtype이면 받는다(scipy의 int32도 int64로 바꾼다; 실수·bool은 `TypeError`). 모양은 (n, n)·(n,)이고 아니면 `ValueError`. 노드도 −9999도 아닌 값, 그래프에 없는 변(pred → v), 순환, 원점이 아닌 노드에서 끝나는 사슬, 자기를 가리키는 선행 노드(`reconstruct_path`)는 `ValueError`이고 메시지가 그 자리를 짚는다. 대각의 값은 범위만 보고 읽지 않는다(scipy와 같다). 무게를 쓰는 함수라 저장된 NaN·±inf는 `ValueError`(GR8). `[scipy와 다름]`: scipy의 `construct_dist_matrix`는 int32만 받고 없는 변에 inf를 더하며 순환에서 끝나지 않고, `reconstruct_path`는 없는 변을 말없이 0으로 넣거나 버린다(GR2 마일스톤에서 확인) (추천안, 사용자 위임 2026-11-23) |
+| GR39 Dijkstra의 큐 | 이진 힙의 게으른 지우기 대신 노드마다 한 칸인 4진 색인 힙(키가 작아지면 그 자리에서 올린다)이다. 결과는 고정점이라 같고, n = 10⁵, d = 10의 원점 하나가 17.4 ms → 10.4 ms, n = 2000의 모든 쌍이 388 → 209 ms(1스레드)가 됐다. J(다시 넣기는 꺼낸 노드를 다시 넣는다)와 `yen`의 갈래 탐색도 같은 힙이다 (추천안, 사용자 위임 2026-11-23) |
+| GR40 원점 태스크 | 여러 원점의 계산은 태스크 하나가 원점 1–64개(크기로만: 4096 / (n + E))를 맡고, 원점마다 자기 행을 쓴다. 원점 하나의 답이 정의로 정해지므로 나누기와 스레드 수가 결과를 바꾸지 않는다. 작업량(행 수 × (n + E))이 2¹⁵ 이상이면 GIL을 놓는다 (추천안, 사용자 위임 2026-11-23) |
+| GR41 `yen`의 갈래 탐색 | 갈래 노드에서 뿌리의 차례 합으로 시작하는 Dijkstra가 싱크를 꺼낸 뒤 같은 키의 노드까지 꺼내고 멈춘다(무게 0의 변이 그 노드를 싱크에 이을 수 있다). 그 거리의 꼭 맞는 변을 갈래 노드에서의 너비 우선 변 수로 층을 나누고, 싱크에 닿는 층의 변만 남겨 갈래 노드에서 가장 작은 다음 노드를 차례로 고른다: (합, 변 수, 노드 열)로 가장 앞선 갈래 경로다. 음수 무게면 공통 검사(GR35)의 퍼텐셜로 다시 넣는 탐색을 끝까지 한다. `K`는 int 범위 밖도 받고(있는 경로만큼) `return_predecessors=True`면 K × n × 8바이트를 물리 메모리와 견준다 (추천안, 사용자 위임 2026-11-23) |
+| GR42 FW의 선행 노드와 거리 | 선행 노드를 함께 구해도 거리는 같은 비트다: 두 커널이 같은 FMIN(−0과 +0이면 −0)으로 거리를 정하고, 선행 노드는 합이 더 작을 때만(FMIN이 −0을 고르는 같은 값은 그대로) 바꾼다. 선행 노드를 쓰는 커널은 4 × 4 타일이라 거리만의 4 × 8 타일보다 2배 느리다(n = 1024, 192 ms 대 92 ms, 1스레드) (추천안, 사용자 위임 2026-11-23) |
 
 ### 1.2 범위
 마일스톤은 §8이다. "GRn"이 표의 결정 번호와 마일스톤 이름에 함께 쓰이므로, 이 문서는 마일스톤을 언제나 "GR2 마일스톤"처럼 적는다. "나중"은 첫 판에 넣지 않은 후보다.
@@ -154,16 +163,16 @@ reconstruct_path(csgraph, predecessors, /, *, directed=True)
 NegativeCycleError
 ```
 - **결과는 정의로 정해진다**(§3.2; §9의 2번, 3번): 원점 s에서 v까지의 거리 d̂(v)는 s에서 v로 가는 모든 경로 가운데, 경로의 무게를 **원점에서부터 차례로**(왼쪽에서 오른쪽으로, 0에서 시작해 한 변씩) 더한 float64 값이 가장 작은 것이다. 선행 노드는 §3.2의 규칙(꼭 맞는 변, 가장 적은 변 수, 가장 작은 번호)으로 정한다. **D, BF, J, auto와 `dijkstra`·`bellman_ford`·`johnson`은 같은 입력에서 거리와 선행 노드가 비트까지 같다.** 방법은 빠르기만 바꾼다. FW와 `floyd_warshall`만 블록 Floyd–Warshall의 반올림이다(GR25; 거리는 계약 안, 선행 노드는 GR27). `[scipy와 다름]`: scipy의 D·BF·J는 거리가 같지만(차례 합; 이 초안에서 무게 10⁻⁸–10⁸의 무작위 그래프로 확인) 선행 노드의 동점이 다르고(마름모 그래프에서 D·J는 2, BF·FW는 1), FW는 거리의 끝자리도 다르다(같은 그래프에서 상대 8.7×10⁻¹⁶).
-- **`method`**: `'auto'`, `'D'`, `'BF'`, `'J'`, `'FW'`(scipy와 같은 이름; 그 밖은 `ValueError`, 타입이 틀리면 `TypeError`). auto는 음수 무게가 있으면 J, 없으면 D다(GR26). `indices`가 없고 변이 n²/4개 이상이면 D와 같은 비트의 밀집 Dijkstra로 한다. `[scipy와 다름]`: scipy의 auto는 그 밀도에서 FW다(GR0 마일스톤의 기록: 밀도 0.26부터 FW의 비트). 문턱은 빠르기만 정하고 GR6 마일스톤에서 재서 바꿀 수 있다. `method='FW'`와 `indices`를 함께 주면 `ValueError`다(scipy와 같다).
+- **`method`**: `'auto'`, `'D'`, `'BF'`, `'J'`, `'FW'`(scipy와 같은 이름; 그 밖은 `ValueError`, 타입이 틀리면 `TypeError`). auto는 음수 무게가 있으면 J, 없으면 D다(GR26). 음수 무게가 없고 `indices`가 없고 변(입력의 저장된 원소)이 n²/4개 이상이면 D와 같은 비트의 밀집 Dijkstra로 한다(GR36). `[scipy와 다름]`: scipy의 auto는 그 밀도에서 FW다(GR0 마일스톤의 기록: 밀도 0.26부터 FW의 비트). 문턱은 빠르기만 정하고 GR6 마일스톤에서 재서 바꿀 수 있다. `method='FW'`와 `indices`를 함께 주면 `ValueError`다(scipy와 같다).
 - **결과의 꼴**(scipy와 같다): `indices=None`이면 거리 (n, n) float64, int 하나면 (n,), 1차원이면 (len, n)이다. 닿지 않는 노드는 inf, 선행 노드는 −9999다. `return_predecessors=True`면 `ShortestPathResult(dist_matrix, predecessors)`(선행 노드 int64; scipy는 int32)이고 아니면 거리 배열 하나다. `indices`는 0차원 또는 1차원이고 중복을 받는다(scipy와 같다). 2차원은 `ValueError`다(`[scipy와 다름]`: scipy는 받아 3차원 결과를 낸다).
-- **`unweighted=True`**: 모든 변의 무게를 1로 본다(저장된 0의 변도 변 하나다; scipy와 같다). 거리는 변의 수이고 언제나 정확하다.
+- **`unweighted=True`**: 모든 변의 무게를 1로 본다(저장된 0의 변도 변 하나다; scipy와 같다). 거리는 변의 수이고 언제나 정확하다. 값은 읽지 않는다: 저장된 NaN·±inf와 음수 무게도 막지 않는다(GR34).
 - **`limit`**(`dijkstra`만): 거리 d̂ ≤ `limit`인 노드만 찾고 나머지는 inf, −9999다(경계를 넣는다: 이 초안에서 scipy의 `limit=1`이 거리 1을 넣음을 확인). 0 이상이거나 inf여야 한다. 음수는 `ValueError`(scipy와 같다), NaN도 `ValueError`(`[scipy와 다름]`: scipy는 NaN에서 모든 노드를 inf로 낸다).
 - **`min_only=True`**(`dijkstra`만): 모든 `indices`를 함께 원점으로 둔 거리 하나(`(n,)`)다. `return_predecessors=True`면 `MinOnlyResult(dist_matrix, predecessors, sources)`이고 `sources[v]`는 v의 선행 노드 사슬이 끝나는 원점, 닿지 않으면 −9999다(scipy와 같은 꼴; 동점 규칙은 §3.2). `indices=None`이면 모든 노드가 원점이다(scipy와 같다: 거리가 모두 0).
 - **음수 무게**: `dijkstra`(와 `method='D'`)는 저장된 음수 무게를 `ValueError`로 막는다(§9의 6번; `[scipy와 다름]`: scipy는 `UserWarning`을 내고 값을 낸다). `bellman_ford`, `johnson`, `floyd_warshall`, auto(J를 고른다)는 받는다. 무향 그래프의 음수 변은 그 자체로 음수 순환이다(scipy와 같다).
-- **`NegativeCycleError`**: `sd.graph.NegativeCycleError(ValueError)`다(API.md §2의 영역 고유 예외 규칙; `[scipy와 다름]`: scipy의 것은 `Exception`의 하위 클래스다). **요청한 원점에서 닿을 수 있는 음수 순환이 있으면** 낸다(모든 방법이 같다; `indices=None`이면 그래프 어디든). `[scipy와 다름]`: scipy의 `bellman_ford(indices=0)`은 닿지 않는 순환을 무시하고 `johnson(indices=0)`은 그 순환에서 에러를 낸다(이 초안에서 확인). 메시지는 순환 위의 노드 하나를 적는다(`bellman_ford(): negative cycle through node 3`; 그 노드는 순환 위의 가장 작은 번호다).
+- **`NegativeCycleError`**: `sd.graph.NegativeCycleError(ValueError)`다(API.md §2의 영역 고유 예외 규칙; `[scipy와 다름]`: scipy의 것은 `Exception`의 하위 클래스다). **요청한 원점에서 닿을 수 있는 음수 순환이 있으면** 낸다(모든 방법이 같다; `indices=None`이면 그래프 어디든). `[scipy와 다름]`: scipy의 `bellman_ford(indices=0)`은 닿지 않는 순환을 무시하고 `johnson(indices=0)`은 그 순환에서 에러를 낸다(이 초안에서 확인). 메시지는 순환 위의 노드 하나를 적는다(`bellman_ford(): negative cycle through node 3`; 그 노드는 모든 방법이 같이 쓰는 검사가 찾은 순환 위의 가장 작은 번호다: GR35).
 - **`yen(csgraph, source, sink, K)`**: 고리 없는 s–t 경로 가운데 (차례 합의 길이, 변의 수, 노드 열의 사전 순서)로 앞선 K개다(§3.2). 결과는 `dist_array`(길이 M ≤ K) 하나 또는 `YenResult(dist_array, predecessors)`(M × n, int64)다(scipy와 같은 꼴). 음수 무게는 받고(scipy처럼 J의 퍼텐셜을 쓴다) 음수 순환은 `NegativeCycleError`다. `source == sink`면 길이 0의 경로 하나다(scipy와 같다). `K`는 0 이상의 int다(0이면 빈 결과; scipy와 같다).
-- **`construct_dist_matrix`**: 선행 노드 행렬이 가리키는 경로를 따라 무게를 원점에서부터 차례로 더한 거리다. 그래서 **FW가 아닌 방법에서 `construct_dist_matrix(G, shortest_path(G, return_predecessors=True).predecessors)`는 `shortest_path`의 거리와 비트까지 같다**(FW는 GR27). `[scipy와 다름]`: scipy는 도착점에서 거꾸로 더해 끝자리가 다르다(이 초안에서 무작위 그래프로 확인: scipy의 `construct_dist_matrix`는 거꾸로 합과 같고 자기 `shortest_path`와 다르다). 닿지 않는 자리는 `null_value`다(scipy와 같다).
-- **`reconstruct_path(csgraph, predecessors)`**: 선행 노드 1차원 배열이 그리는 트리를 (n, n) `csr_array`로 만든다(변은 부모 → 자식, scipy와 같다).
+- **`construct_dist_matrix`**: 선행 노드 행렬이 가리키는 경로를 따라 무게를 원점에서부터 차례로 더한 거리다. 그래서 **FW가 아닌 방법에서 `construct_dist_matrix(G, shortest_path(G, return_predecessors=True).predecessors)`는 `shortest_path`의 거리와 비트까지 같다**(FW는 GR27). `[scipy와 다름]`: scipy는 도착점에서 거꾸로 더해 끝자리가 다르다(이 초안에서 무작위 그래프로 확인: scipy의 `construct_dist_matrix`는 거꾸로 합과 같고 자기 `shortest_path`와 다르다). 닿지 않는 자리는 `null_value`다(scipy와 같다). 선행 노드는 정수 dtype의 (n, n)이고 그래프의 경로를 그려야 한다: 노드도 −9999도 아닌 값, 없는 변, 순환, 원점이 아닌 곳에서 끝나는 사슬은 `ValueError`다(GR38; `[scipy와 다름]`: scipy는 int32만 받고 없는 변에 inf를 더하며 순환에서 끝나지 않는다).
+- **`reconstruct_path(csgraph, predecessors)`**: 선행 노드 1차원 배열이 그리는 트리를 (n, n) `csr_array`로 만든다(변은 부모 → 자식에 그 변의 무게, 무향이면 두 방향의 작은 무게, 무게 0의 변은 저장된 0; scipy와 같다). 없는 변과 자기를 가리키는 선행 노드는 `ValueError`다(GR38; `[scipy와 다름]`: scipy는 없는 변을 말없이 0으로 넣거나 버린다).
 - `overwrite`는 없다(§9의 11번): 입력을 고치지 않는다(`[scipy와 다름]`).
 
 ### 2.4 신장 트리, 흐름, 매칭
@@ -238,8 +247,8 @@ csgraph_to_dense(csgraph, /, *, null_value=0)
 
 ### 2.9 scipy와 다른 곳 (모음)
 위의 `[scipy와 다름]`을 모은다. 이유는 그 자리에 있다.
-- 입력: complex는 `TypeError`, scipy 희소 객체는 `TypeError`(변환을 짚는다), 희소 입력의 저장된 NaN·±inf 무게는 `ValueError`, 노드 인자는 0 … n−1의 int만(실수 자르기와 음수 감기 없음), 2차원 `indices`는 `ValueError`, 옵션은 키워드만, `overwrite`·`copy`·`form='function'`·가린 배열 도구 없음, `maximum_flow`·`reverse_cuthill_mckee`·`structural_rank`·매칭도 밀집 입력을 받는다.
-- 결과: 색인 배열은 모두 int64(선행 노드, 레이블, 순서, 순열, 매칭, 흐름), 스칼라는 Python `int`, 강한 연결 요소의 번호는 가장 작은 노드 순서, 무향 순회는 합친 이웃의 오름차순, 무향 트리의 저장된 0은 0(GR29), `csgraph_to_dense`의 저장된 NaN은 NaN(GR30), FW를 뺀 최단 경로의 거리와 선행 노드는 방법과 무관, `auto`는 FW를 고르지 않음, `construct_dist_matrix`는 `shortest_path`와 같은 합 순서, `laplacian`의 희소 결과는 CSR, 최소 신장 트리는 밀집의 작은 원소를 버리지 않는다.
+- 입력: complex는 `TypeError`, scipy 희소 객체는 `TypeError`(변환을 짚는다), 밀집 입력의 |w| ≤ 1e-8인 원소도 변이다(scipy는 최소 신장 트리뿐 아니라 모든 csgraph 함수의 밀집 입력에서 그 원소를 버린다: `dijkstra([[0, 1e-9], [0, 0]], indices=0)`이 [0, inf], GR2 마일스톤에서 확인), 희소 입력의 저장된 NaN·±inf 무게는 `ValueError`, `construct_dist_matrix`·`reconstruct_path`의 선행 노드는 정수 dtype이면 받고 경로가 아니면 `ValueError`(GR38), 노드 인자는 0 … n−1의 int만(실수 자르기와 음수 감기 없음), 2차원 `indices`는 `ValueError`, 옵션은 키워드만, `overwrite`·`copy`·`form='function'`·가린 배열 도구 없음, `maximum_flow`·`reverse_cuthill_mckee`·`structural_rank`·매칭도 밀집 입력을 받는다.
+- 결과: 색인 배열은 모두 int64(선행 노드, 레이블, 순서, 순열, 매칭, 흐름), 스칼라는 Python `int`, 강한 연결 요소의 번호는 가장 작은 노드 순서, 무향 순회는 합친 이웃의 오름차순, 무향 트리의 저장된 0은 0(GR29), `csgraph_to_dense`의 저장된 NaN은 NaN(GR30), FW를 뺀 최단 경로의 거리와 선행 노드는 방법과 무관, `auto`는 FW를 고르지 않음, `yen`의 같은 길이의 경로는 (변 수, 노드 열)의 순서(scipy의 마름모에서 첫 경로는 0–2–3, sd는 0–1–3), `construct_dist_matrix`는 `shortest_path`와 같은 합 순서, `laplacian`의 희소 결과는 CSR, 최소 신장 트리는 밀집의 작은 원소를 버리지 않는다.
 - 에러: 음수 무게의 `dijkstra`, NaN `limit`, 음수 용량, int64를 넘는 흐름(`OverflowError`), 실수 용량(`TypeError`)은 에러이고, `NegativeCycleError`는 `ValueError`의 하위 클래스이며 모든 방법이 "요청한 원점에서 닿는 순환"이라는 한 규칙이다.
 
 ---
@@ -257,7 +266,7 @@ csgraph_to_dense(csgraph, /, *, null_value=0)
 d̂(v) = min over s–v 경로 p = (s = v₀, v₁, …, v_k = v) of L(p), L(p) = fl(…fl(fl(0 + w₁) + w₂) … + w_k)
 다(원점에서부터의 차례 합; 0 + w₁ = w₁은 정확하다). 이완 x ↦ fl(x + w)는 x에 대해 단조이므로, 이 값은 이완 방정식 d(v) = min_u fl(d(u) + w(u, v))(원점은 0)의 **가장 작은 고정점**이고 어떤 이완 순서로 구해도 같다. 음이 아닌 무게에서는 fl(x + w) ≥ x라 순환을 넣어도 값이 작아지지 않아 최솟값이 단순 경로에서 나온다(Dijkstra의 정당성이 반올림 아래에서도 선다; Knuth의 일반화). 그래서:
 - **D**(이진 힙의 Dijkstra), **BF**(큐 기반의 이완: 바뀐 노드만 다시 본다), **J**(아래)는 모두 이 고정점에 도달하고 비트까지 같다. scipy의 D·BF·J도 거리가 차례 합과 같았다(이 초안에서 확인).
-- **J**: Bellman–Ford로 구한 퍼텐셜 h는 **우선순위에만** 쓰고, 거리는 원래 무게의 차례 합으로 쥔다. 반올림 때문에 우선순위가 조금 어긋나 이미 꺼낸 노드가 나중에 더 작아질 수 있으므로, 더 작아지면 다시 넣는다(이완 기반이라 결과는 가장 작은 고정점 그대로다). 퍼텐셜은 요청한 원점에서 닿는 부분 그래프에서만 구한다(§2.3의 음수 순환 규칙). 퍼텐셜이 좋으면 다시 넣기는 드물다(GR2 마일스톤에서 횟수를 잰다).
+- **J**: Bellman–Ford로 구한 퍼텐셜 h는 **우선순위에만** 쓰고, 거리는 원래 무게의 차례 합으로 쥔다. 반올림 때문에 우선순위가 조금 어긋나 이미 꺼낸 노드가 나중에 더 작아질 수 있으므로, 더 작아지면 다시 넣는다(이완 기반이라 결과는 가장 작은 고정점 그대로다). 퍼텐셜은 요청한 원점에서 닿는 부분 그래프에서만 구한다(§2.3의 음수 순환 규칙). 퍼텐셜이 좋으면 다시 넣기는 드물다: GR2 마일스톤에서 음수 무게가 28–48%인 무작위 그래프(n = 2000, d = 6과 n = 5000, d = 10; 무게 + p(u) − p(v))의 원점 20개에서 다시 꺼낸 노드는 0번이었다(꺼낸 39,900번, 100,000번 가운데). 퍼텐셜은 음수 순환의 공통 검사(GR35)가 남긴 값이다. 큐는 4진 색인 힙이다(GR39).
 - **FW**(밀집의 모든 쌍; GR25–GR27): 고전 Floyd–Warshall의 d(i, k) + d(k, j)는 경로를 가운데에서 잇는 합이라 차례 합의 정의와 끝자리가 다르다(scipy에서 상대 3.4–5.4×10⁻¹⁶, GR0 마일스톤의 기록). 처음 안은 `'FW'`도 **밀집 행렬 위에서 원점마다 도는 힙 없는 Dijkstra**로 같은 고정점을 구하는 것이었다. GR0 마일스톤에서 두 시제품을 쟀다(`tools/graph_probe_fw.cpp`, `tools/graph_probe.py fw`; 무게 [0.01, 1.01)의 완전 그래프와 밀도 1/4, 가장 좋은 값(세 번), ms):
 
   | n | 스레드 | 밀집 Dijkstra(가림 꼴) | 밀집 Dijkstra(NaN 꼴) | 블록 FW | 비(NaN 꼴 / FW) | scipy `floyd_warshall` |
@@ -273,7 +282,7 @@ d̂(v) = min over s–v 경로 p = (s = v₀, v₁, …, v_k = v) of L(p), L(p) 
   | 2048 | 10 | 316 | 312 | 130 | 2.41 | |
 
   - 밀집 Dijkstra의 한 걸음은 꺼낸 노드의 행 이완과 다음 노드 찾기를 한 번의 NEON 훑기로 한다. 가림 꼴은 방문한 노드에 +inf를 더해 막고, NaN 꼴은 방문한 키를 NaN으로 두어 FMIN이 그대로 두고 FMINNM이 건너뛰게 한다(64개 블록의 최솟값과 그 블록 안의 첫 색인; 결과는 두 꼴과 이진 힙 Dijkstra가 비트까지 같았다). 원소 하나에 적재 둘·저장 하나·연산 셋이라 레지스터 블록의 min-plus(원소 하나에 연산 둘)보다 원리상 1.5배 무겁고, n = 2048에서는 W(32 MB)가 L2를 넘어 원점마다 W 전체를 메모리에서 읽는다(10스레드의 비 2.4).
-  - 1.3배를 넘으므로 §9의 2번의 규칙대로 `'FW'`는 블록 Floyd–Warshall의 반올림으로 바꿨다(GR25). 블록 크기 64는 고정이고(바꾸면 끝자리가 바뀐다), 블록 하나는 한 태스크가 맡아 스레드 수와 무관하다. 블록 FW는 같은 k 순서의 고전 FW와 같은 갱신을 하지만 단계 3에서 d(i, k)가 같은 블록의 뒤 k까지 갱신된 값이라 고전 FW와도 끝자리가 다를 수 있다. 그래서 FW의 거리는 "블록 FW의 값"으로만 정해지고, 계약(§4)은 같은 꼴의 한계를 GR2 마일스톤에서 세어 적는다. 음수 무게는 그대로 받고 음수 순환은 대각이 음수가 되는 것으로 알린다(GR27).
+  - 1.3배를 넘으므로 §9의 2번의 규칙대로 `'FW'`는 블록 Floyd–Warshall의 반올림으로 바꿨다(GR25). 블록 크기 64는 고정이고(바꾸면 끝자리가 바뀐다), 블록 하나는 한 태스크가 맡아 스레드 수와 무관하다. 블록 FW는 같은 k 순서의 고전 FW와 같은 갱신을 하지만 단계 3에서 d(i, k)가 같은 블록의 뒤 k까지 갱신된 값이라 고전 FW와도 끝자리가 다를 수 있다. 그래서 FW의 거리는 "블록 FW의 값"으로만 정해지고, 계약(§4)은 다른 방법과 같은 한계, 상수 1이다(GR37: 덧셈 나무의 꼴과 무관한 한계라 블록의 합 깊이를 세지 않는다). 선행 노드를 함께 구해도 거리는 같은 비트다(GR42). n이 64의 배수가 아니면 +inf로 채운 행렬에서 돌고 앞 n × n을 옮긴다. 음수 무게는 그대로 받고 음수 순환은 대각이 음수가 되는 것으로 알린다(GR27).
   - auto는 FW를 고르지 않고 밀집한 그래프에서 NaN 꼴의 밀집 Dijkstra를 쓴다(GR26): FW보다 1.3–2.4배 느리지만 scipy의 `floyd_warshall`보다 1스레드에서 2.5배 빠르고 결과가 D와 같다. 음수 무게면 BF의 퍼텐셜로 같은 다시 넣기 규칙을 쓴다(J와 같은 비트).
 - **`unweighted=True`**: 무게 1의 차례 합은 변의 수와 같고 정확하다. 너비 우선(원점마다)으로 구한다.
 - **`limit`**: d̂ ≤ `limit`인 노드에서 멈추는 것은 고정점의 그 부분과 같다(Dijkstra는 `limit`을 넘는 키를 꺼내면 멈춘다).
@@ -288,7 +297,7 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
 
 **Yen.** 경로의 전순서를 (L(p), 변 수, 노드 열의 사전 순서)로 둔다. 갈래 경로(spur)는 뿌리 경로의 차례 합 x에서 시작하는 Dijkstra(갈래 노드의 처음 값이 x)로 구해 전체 경로의 L이 원점에서부터의 차례 합이 되게 하고, 후보 힙도 이 전순서다. 그래서 동점이 많은 그래프에서도 앞선 K개가 데이터로만 정해진다. 작은 그래프에서 모든 고리 없는 경로를 나열한 참값과 정확히 같은지 테스트한다(§7.3).
 
-**음수 순환.** BF(와 J·FW의 퍼텐셜)는 n번째 이완에서도 값이 줄면 순환을 알린다(큐 기반이면 노드마다 넣은 횟수 n). 정확한 합이 음수인 순환은 언제나 걸린다. 정확한 합이 0인데 차례 합의 반올림이 계속 줄어드는 순환은 이론상 걸릴 수 있다(정수 무게에서는 생기지 않는다). 이 경우는 §4에 적는다.
+**음수 순환.** 모든 방법이 같은 검사 하나(GR35: 요청한 원점에서 닿는 노드를 잇는 가상 뿌리의 큐 Bellman–Ford, 다시 넣은 횟수가 닿는 노드 수를 넘으면 부모 포인터의 순환)를 쓰고, 메시지의 노드는 그 순환의 가장 작은 노드다. 원점마다의 BF·J는 그 뒤에도 노드마다 넣은 횟수 n을 넘으면 멈추고 같은 검사로 알린다(아래의 반올림 순환에서만 생긴다). 정확한 합이 음수인 순환은 언제나 걸린다. 정확한 합이 0인데 차례 합의 반올림이 계속 줄어드는 순환은 이론상 걸릴 수 있다(정수 무게에서는 생기지 않는다). 이 경우는 §4에 적는다.
 
 ### 3.3 순회, 연결 요소, 위상 정렬
 - 너비 우선은 배열 큐, 깊이 우선은 명시적 스택(재귀 없음; 노드마다 다음에 볼 이웃의 위치)이다. 이웃 순서는 CSR의 오름차순이라 순서가 데이터로만 정해진다. 무향은 GR32의 두 줄 읽기다. 트리는 노드마다 찾은 변의 무게를 적어 두고 끝에 노드 오름차순으로 부모의 줄에 넣는다(그래서 줄 안이 오름차순인 표준 꼴이다).
@@ -325,7 +334,7 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
 | 병렬 경로 | 나누는 방법 | 결과가 같은 이유 |
 |---|---|---|
 | 입력 변환(밀집 → CSR, `csgraph_to_dense`, 합친 CSR, 전치, 검사) | 행 구간(원소 2¹⁵개씩), 고정 조각의 계수 정렬 | 행 하나는 한 태스크이고 조각 순서가 정해져 있다(sparse.md §2.6) |
-| 여러 원점의 최단 경로(`indices`, 모든 쌍, FW) | 원점 하나가 태스크 하나 | 원점 하나의 결과는 정의로 정해진다(§3.2) |
+| 여러 원점의 최단 경로(`indices`, 모든 쌍, auto의 밀집 Dijkstra) | 원점 1–64개(크기로만 정한 수)가 태스크 하나(GR40) | 원점 하나의 결과는 정의로 정해진다(§3.2) |
 | FW(블록 Floyd–Warshall; GR25) | 단계마다 64 × 64 블록 하나가 태스크 하나, 단계 사이에 장벽 | 블록 하나의 연산 순서가 블록 크기로만 정해진다 |
 | 약한 연결 요소(저장된 원소 2¹⁸개부터; GR31) | 행 구간(원소 2¹⁶개씩) | 분할이 유일하고 번호는 가장 작은 노드 순서다 |
 | 최소 신장 트리의 정렬·Borůvka | 크기로 정한 조각 | 키가 전순서라 트리가 유일하다 |
@@ -347,7 +356,7 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
 
 - **정확한 것**(참값과 같아야 한다): 연결 요소, 순회의 순서와 트리, 위상 정렬, 최소 신장 트리(고른 변의 집합과 자리), 역 Cuthill–McKee, 구조적 랭크, 매칭의 크기, 흐름 값(과 흐름의 보존·용량 조건), 단절점, 다리, 이중 연결 요소, 코어 수. 참값은 작은 그래프에서 정의를 그대로 옮긴 Python 구현(정확한 유리수)이다.
 - **최단 경로**
-  1. **방법과 무관하다**: D, BF, J, auto의 거리와 선행 노드가 비트까지 같다(모든 시험 그래프, 스레드 수마다). FW의 거리는 3번의 꼴의 한계 안이고(블록 FW의 합 깊이로 상수를 GR2 마일스톤에서 정한다), 스레드 수마다 같은 비트다.
+  1. **방법과 무관하다**: D, BF, J, auto의 거리와 선행 노드가 비트까지 같다(모든 시험 그래프, 스레드 수마다). FW의 거리는 3번의 한계 안이고(상수 1, p̂는 FW의 선행 노드가 그리는 경로; GR37), 스레드 수마다 같은 비트다.
   2. **정수 무게(와 `unweighted`)는 정확하다**: 모든 부분합이 2⁵³ 이하이면 거리는 정확한 최단 거리와 같고, 선행 노드는 정확한 유리수로 계산한 §3.2의 규칙과 같다. 동점이 아주 많은 격자에서 동점 규칙을 직접 시험한다.
   3. **일반 무게**: 거리는 그 선행 경로의 차례 합과 비트까지 같다(`construct_dist_matrix`와 같다). 참 최단 거리 d\*와의 차이는 |d̂ − d\*| ≤ γ_{H−1}·max(Σ_{p̂}|w|, Σ_{p\*}|w|)다. H는 돌려준 경로 p̂와 참 최단 경로 p\* 가운데 긴 쪽의 변 수, Σ|w|는 그 경로의 무게 절댓값의 합이다(차례 합의 표준 한계: d̂ = L(p̂) ≥ S(p̂) − γΣ|w| ≥ d\* − γΣ|w|, d̂ ≤ L(p\*) ≤ d\* + γΣ|w|). 음이 아닌 무게면 상대 γ_{H−1}·d\*/(1 − γ_{H−1})다. 참 최단 거리는 정확한 유리수 Dijkstra(작은 그래프), 경로의 정확한 합은 Fraction이다.
   4. **음수 순환**: 정확한 합이 음수인 순환이 요청한 원점에서 닿으면 언제나 `NegativeCycleError`다. 정확한 합이 0인 순환에서 반올림이 값을 계속 줄이면 에러가 날 수 있다(정수 무게에서는 없다). 그 밖에는 에러가 나지 않는다.
@@ -356,6 +365,7 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
 - **`laplacian`**: 차수는 줄 합의 계약 |d̂ − d| ≤ γ_m·Σ|A_ij|(m은 그 줄의 항 수; sparse.md §4와 같은 꼴), `normed`의 원소는 상대 γ_{m+2} + 3u 꼴(√와 두 나눗셈까지; 상수는 GR4 마일스톤에서 세어 적는다). Arb로 견준다.
 - **`pagerank`**: ‖x̂ − x\*‖₁ ≤ tol + γ_{m+3}/(1 − α). x\*는 (I − αMᵀ)x = (1 − α)v(매달린 행을 바꾼 M)를 Arb의 행렬 풀이(`arb_mat.solve`)로 푼 참값, m은 가장 긴 들어오는 줄의 합 깊이다(§3.7). 반올림 바닥이 `tol`보다 크면(아주 큰 차수) 그 바닥에서 멈추고 결과는 위의 한계 안이다.
 - **`betweenness_centrality`**: 노드마다 상대오차 ≤ γ_K·(참값)이다. 모든 항이 음이 아니라 상쇄가 없고, K는 의존 합의 깊이(가장 긴 DAG 경로의 변 수 × 최대 진출 차수)와 σ의 곱셈·나눗셈 수로 정한다(GR5 마일스톤에서 세어 적는다). 참값은 정확한 유리수 Brandes(σ는 Python 정수)다.
+- GR2 마일스톤에서 잰 최단 경로(`bench/accuracy/graph.py`의 `paths`: 일반 무게의 참값 7,639점, 그래프 11개 × 유향·무향): 정의의 거리와 FW의 거리 모두 가장 큰 값이 0.995 단위(heavytail/120 유향), ulp로 2 이하였고, 정수·2진 유리수·bool 무게와 `unweighted`는 참값과 비트까지 같았다(tests/graph/test_paths_reference.py). scipy의 D와 FW도 같은 그래프에서 같은 값이었다(밀집 dense/special6만 scipy가 1e-9의 변을 버려 다르다; §2.9).
 - scipy와의 차이(동점, FW의 끝자리, 거꾸로 더한 `construct_dist_matrix`)는 계약이 아니라 정확도 표의 비교 패키지 열로 보인다.
 
 ---
@@ -384,6 +394,7 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
 - GR0 마일스톤에서 `tools/graph_probe.py time`이 같은 크기를 다시 쟀다(부하 평균 2.2): 대부분 위의 10% 안이고, 다른 것은 `bellman_ford` 884(위 1110), `structural_rank`·`maximum_bipartite_matching` 32.2·32.3(51.5·51.6), `yen` 127(105), `maximum_flow` edmonds_karp 8.32(5.6), 밀집 `min_weight_full_bipartite_matching` 37.4(12.4; `csr_array`로 바꾸는 시간 포함), 희소 29.9(22.6), `laplacian` 9.23 / 12.2(5.21 / 6.64)다. 같은 때의 networkx 3.7(ms): `articulation_points` 16.5, `bridges` 93.9, `biconnected_components` 21.8, `core_number` 15.4(n = 10⁴, d = 5 대칭), `pagerank` 13.5(n = 10⁴, d = 5, tol 10⁻⁶), 무게 없는 `betweenness_centrality` 779(n = 1000, d = 5).
 
 - GR1 마일스톤에서 잰 sd(ms, 가장 좋은 값 일곱 번, 1스레드 / 10스레드, 같은 때의 scipy 1스레드; 부하 평균 1.5–2.2): n = 10⁵, d = 10에서 `connected_components` weak 1.76 / 0.77(scipy 6.92), strong 5.12 / 5.14(5.82), `directed=False` 1.75 / 0.88(7.06), `breadth_first_order` 1.29(1.64), `depth_first_order` 3.01(3.32), 무향 `breadth_first_order` 4.78 / 5.13(6.73), 대칭 그래프의 무향 7.44 / 6.13(18.4), `breadth_first_tree` 1.80(7.58), `depth_first_tree` 3.70(9.08); DAG(노드마다 나가는 변 약 5)의 `topological_sort` 3.09(networkx의 `lexicographical_topological_sort` 239); n = 2000의 절반이 0인 밀집 행렬에서 `csgraph_from_dense` 4.7 / 0.84(42.2), `csgraph_to_dense` 0.85 / 0.24(12.8), 밀집 입력의 `connected_components` 5.1 / 0.94(46.3). 순회와 강한 연결은 직렬이라 10스레드도 같다.
+- GR2 마일스톤에서 잰 sd(ms, 가장 좋은 값 일곱 번, 1스레드 / 10스레드, 같은 때의 scipy 1스레드; 부하 평균 1.4–1.8): n = 10⁵, d = 10에서 `dijkstra` 원점 1개 9.50 / 9.30(21.5), `unweighted` 1.48(9.54), 원점 100개 917 / 128(2181), `min_only` 9.31(23.3); n = 10⁴, d = 10의 `bellman_ford` 원점 1개 0.74(887; 큐 기반이라 양수 무게에서 너비 우선과 비슷하다), `yen` K = 10 74.0(129); n = 2000, d = 10의 모든 쌍 `johnson` 213 / 24.8(621), `dijkstra` 212 / 24.9(586); 밀집 n = 1000의 `floyd_warshall` 92.6 / 14.6(369; 1스레드 3.98배, 64의 배수로 채운 n = 1024의 커널이 거의 전부다), auto의 밀집 Dijkstra 179 / 21.7(376). 선행 노드를 함께 구하는 FW는 192 ms(n = 1024, 1스레드)다.
 - **목표**(GR6 마일스톤에서 확인한다)
   - 모든 함수가 1스레드에서 scipy 이상이다. 직렬 알고리즘은 같은 알고리즘에 sd의 이점(표준 꼴 CSR이라 변환이 없음, int64 색인 그대로, 연속한 배열)만 있으므로 같거나 조금 빠른 것이 목표다. 큰 차이는 검증과 변환에서 난다(scipy는 모든 호출에서 CSR로 바꾸고 float64로 바꾼다).
   - 여러 원점(`indices`, 모든 쌍, auto의 밀집 Dijkstra, `johnson`)과 매개 중심성: 10스레드에서 스레드 수에 가깝게(7배 이상).
@@ -402,8 +413,9 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
   - `graph.hpp`(GR1): CSR 보기(`View`), 배열 인자의 확인(`view_arg`), sparse의 전치를 감싼 `Transposed`, 대칭 확인, 무향 무게(GR29), 표식 상수(−9999), 병렬 기준값. 합친 무향 CSR과 무게 검사는 그것을 쓰는 마일스톤에서 더한다
   - `input.cpp`(GR1): `_dense_csr`(밀집 → CSR, `csgraph_from_dense`의 규칙도), `_to_dense`, `view_arg`, 전치, 대칭 확인
   - `traversal.cpp`(GR1): 너비·깊이 우선 순서와 트리, 약한·강한 연결 요소, 위상 정렬
-  - `paths.hpp`, `paths.cpp`(GR2): §3.2의 고정점(이진 힙 Dijkstra, 큐 기반 BF, 퍼텐셜 J, 밀집 원점마다의 길), 꼭 맞는 변과 선행 노드, 음수 순환, 원점 태스크, `construct_dist_matrix`, `reconstruct_path`
-  - `yen.cpp`(GR2)
+  - `paths.hpp`(GR2): 길 함수가 같이 쓰는 것: 무향 읽기(합친 CSR), 변 찾기, 닿는 노드, 음수 순환의 공통 검사(GR35), 탐색의 작업 공간(4진 색인 힙; GR39), 단일 탐색(Dijkstra, 너비 우선, 큐 BF, 퍼텐셜 J), 선행 노드 규칙
+  - `paths.cpp`(GR2): `_scan`(무게 검사), `_paths`(원점 태스크, 밀집 Dijkstra), `_floyd_warshall`(블록 FW와 선행 노드 커널), `_construct`, `_reconstruct`
+  - `yen.cpp`(GR2): `_yen`(갈래 탐색, 후보의 전순서)
   - `tree.cpp`(GR3): 최소 신장 트리(Kruskal, Borůvka)
   - `flow.cpp`(GR3): Dinic, Edmonds–Karp, 잔여 CSR
   - `matching.cpp`(GR3): Hopcroft–Karp, LAPJVsp와 밀집 최단 증가 경로(공용 고리)
@@ -412,7 +424,7 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
   - `centrality.cpp`(GR5): PageRank, 매개 중심성
   - `graph_mod.hpp`: 파일마다의 `bind_*`
 - 바인딩 `bind/graph_bind.cpp`: `_core.graph` 하위 모듈(GR1 마일스톤부터).
-- `src/stardust/graph/` (하위 패키지 없음): `__init__.py`(공개 이름), `_common.py`(입력을 CSR로, dtype·모양·무게·노드 인자의 검사와 메시지; GR1, `NegativeCycleError`는 GR2), `_traversal.py`, `_paths.py`, `_tree.py`, `_flow.py`(`MaximumFlowResult`), `_matching.py`, `_ordering.py`(RCM, `structural_rank`, `laplacian`), `_structure.py`, `_centrality.py`, `_convert.py`(`csgraph_from_dense`, `csgraph_to_dense`). namedtuple 결과는 `stardust/_results.py`에 있다.
+- `src/stardust/graph/` (하위 패키지 없음): `__init__.py`(공개 이름), `_common.py`(입력을 CSR로, dtype·모양·무게·노드 인자의 검사와 메시지; GR1, `NegativeCycleError`·`count`·`room`은 GR2), `_traversal.py`, `_paths.py`(GR2), `_tree.py`, `_flow.py`(`MaximumFlowResult`), `_matching.py`, `_ordering.py`(RCM, `structural_rank`, `laplacian`), `_structure.py`, `_centrality.py`, `_convert.py`(`csgraph_from_dense`, `csgraph_to_dense`). namedtuple 결과는 `stardust/_results.py`에 있다.
 
 ---
 
@@ -455,7 +467,7 @@ pred(v) = min{u : (u, v) ∈ T, h(u) = h(v) − 1}
 |---|---|---|
 | GR0 준비 | API 문서 초안(`docs/api/graph.md`: 모든 공개 이름의 시그니처, scipy·networkx → sd 대응표, §9의 답), 영역 등록(`bench/areas.py`, ARCHITECTURE, API.md의 색인), 시험 그래프(§7.1), 참값 도구(§7.2), 탐침 도구와 scipy 기록(§7.4), FW 길의 두 안(원점마다 밀집 Dijkstra 대 블록 min-plus FW)의 측정(§9의 2번), 속도 사례의 틀 | 문서와 도구가 커밋되고 탐침 기록이 있다. §9의 답이 §1.1의 결정으로 옮겨졌다 — 완료·승인(위임, 2026-11-23) |
 | GR1 순회와 연결 요소 | 입력 변환(§2.1, §3.1), `csgraph_from_dense csgraph_to_dense`, `breadth_first_order depth_first_order breadth_first_tree depth_first_tree`, `connected_components`, `topological_sort` | 정의 구현과 정확히 같음, scipy와의 차이가 문서대로, 스레드마다 같은 바이트, 속도 사례 — 완료·승인(위임, 2026-11-23) |
-| GR2 최단 경로 | `shortest_path dijkstra bellman_ford johnson floyd_warshall yen construct_dist_matrix reconstruct_path NegativeCycleError`, §3.2의 고정점과 선행 노드 규칙 | D, BF, J, auto가 바이트까지 같음, FW는 계약 안, 정수 무게의 정확한 참값과 같음, 일반 무게의 계약, 음수 순환 규칙, scipy와의 속도 사례 |
+| GR2 최단 경로 | `shortest_path dijkstra bellman_ford johnson floyd_warshall yen construct_dist_matrix reconstruct_path NegativeCycleError`, §3.2의 고정점과 선행 노드 규칙 | D, BF, J, auto가 바이트까지 같음, FW는 계약 안, 정수 무게의 정확한 참값과 같음, 일반 무게의 계약, 음수 순환 규칙, scipy와의 속도 사례 — 완료·승인(위임, 2026-11-23) |
 | GR3 신장 트리·흐름·매칭 | `minimum_spanning_tree maximum_flow maximum_bipartite_matching min_weight_full_bipartite_matching`, `linear_sum_assignment`(§9의 1번) | 유일한 MST, 흐름 값과 최소 절단이 같음, 정수 비용의 정확한 최적, 일반 비용의 계약, 속도 사례 |
 | GR4 순서·구조적 랭크·라플라시안 | `reverse_cuthill_mckee structural_rank laplacian`(`form='lo'` 포함) | scipy와 같은 순열(동점 규칙 확인), Arb 계약, 속도 사례 |
 | GR5 더한 알고리즘 | `articulation_points bridges biconnected_components core_number pagerank betweenness_centrality` | 정의 구현과 정확히 같음(구조 넷), PageRank·매개 중심성의 Arb·정확한 유리수 계약, 스레드마다 같은 바이트, 속도 사례 |

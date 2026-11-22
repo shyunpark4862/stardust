@@ -11,6 +11,8 @@ namespace sd {
 void bind_interpolate(nb::module_& core) {
     nb::module_ m = core.def_submodule("interpolate", "stardust interpolate native core");
     interpolate::bind_linear(m);
+    interpolate::bind_cubic(m);
+    interpolate::bind_ppoly(m);
 }
 
 }  // namespace sd

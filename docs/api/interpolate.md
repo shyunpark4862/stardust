@@ -1,8 +1,8 @@
 # sd.interpolate API
 
-> 상태: **초안** (IP1, 2026-11-23). `sd.interpolate`에 공개된 이름은 아직 없다(IP1 마일스톤은 배열 영역의 `sd.interp`를 공개했다). 아래 시그니처는 scipy 1.18.1의 `scipy.interpolate`의 이름과 인자 이름에 stardust의 규칙과 IP1–IP35의 결정을 입힌 안이고, 마일스톤 IP1–IP6에서 하나씩 공개된다(docs/design/interpolate.md §8: `sd.interp`는 IP1 마일스톤, 조각 다항식과 3차 계열은 IP2 마일스톤, B-스플라인은 IP3 마일스톤, 다항식·유리식은 IP4 마일스톤, 격자는 IP5 마일스톤, 흩어진 점은 IP6 마일스톤).
+> 상태: **초안** (IP2, 2026-11-23). IP2 마일스톤이 조각 다항식과 3차 계열(§3: `PPoly CubicHermiteSpline CubicSpline PchipInterpolator Akima1DInterpolator pchip_interpolate`)을 공개했다(`PPoly.from_spline`은 `BSpline`과 함께 IP3 마일스톤; IP1 마일스톤은 배열 영역의 `sd.interp`를 공개했다). 아래 시그니처는 scipy 1.18.1의 `scipy.interpolate`의 이름과 인자 이름에 stardust의 규칙과 IP1–IP35의 결정을 입힌 안이고, 마일스톤 IP1–IP6에서 하나씩 공개된다(docs/design/interpolate.md §8: `sd.interp`는 IP1 마일스톤, 조각 다항식과 3차 계열은 IP2 마일스톤, B-스플라인은 IP3 마일스톤, 다항식·유리식은 IP4 마일스톤, 격자는 IP5 마일스톤, 흩어진 점은 IP6 마일스톤).
 
-- 설계와 결정의 근거는 [docs/design/interpolate.md](../design/interpolate.md)(§1.1 IP1–IP35), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/interpolate.md](../design/interpolate.md)(§1.1 IP1–IP51), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/interpolate/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name(...)`의 생성자), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 - `sd.interp`는 배열 영역의 함수다(IP2). IP1 마일스톤에서 공개되었고 시그니처와 규칙은 [docs/api/array.md §8.5](array.md)에 있다(`tests/array/test_api_surface.py`가 읽는다). 이 문서의 §2는 이 영역과 함께 쓰는 것만 적는다.
 
@@ -61,7 +61,7 @@
 ### §1.6 scipy·numpy와 다른 점 (모음)
 - 공통: 옵션은 키워드만, 별칭 없음, 쓰기 금지 계수(생성자가 복사한다), `check_finite` 없음, complex 평가점은 `TypeError`, 0차원 결과는 Python 스칼라, 경고 대신 에러나 상태 속성, 선형의 모든 길이 같은 비트, 3차 계열의 계수가 같은 비트.
 - `sd.interp`: `xp`의 검사, 키워드만인 `left`·`right`·`period`, 유한하지 않은 `period`는 `ValueError`, 노드 사이의 단조와 범위, 끝값이 둘 다 −0이면 −0(§2).
-- 1차원: k = 1 B-스플라인이 노드에서 정확, `nu < 0`은 `ValueError`, `roots`의 배치 결과는 중첩 list, 주기 검사의 허용이 하나(IP28), Akima의 문턱은 열마다(IP33).
+- 1차원: k = 1 B-스플라인이 노드에서 정확, `nu < 0`은 `ValueError`(`__call__`의 `nu`는 int만, IP50), `roots`의 배치 결과는 중첩 list, `roots`가 중근과 붙은 근을 찾음(IP45), 주기 검사의 허용이 하나(IP28), Akima의 문턱은 열마다(IP33), `PPoly`의 중단점은 유한하고 엄격히 단조(IP43), `integrate`의 NaN 끝은 NaN(IP49), 넘치는 3차 계수는 `ValueError`(IP36), `PPoly(axis=)`가 음수 축을 받음(IP50).
 - 다항식·유리식: `Barycentric`의 `rng` 없음, AAA의 `converged`와 경고 없는 `clean_up`, `clean_up`의 인자 이름(IP32), Krogh의 경고 없음.
 - 격자: `slinear`와 `linear`가 같은 비트, `cubic`·`quintic`의 직접 풀이와 `solver` 없음, 옛 방법(`cubic_legacy`, `quintic_legacy`, `slinear_legacy`, `interpn`의 `splinef2d`) 없음, NaN 평가점은 NaN.
 - RBF: 음수 `smoothing`, 같은 자료점, 핵의 최소보다 낮은 `degree`(−1 포함)가 에러, `kernel`은 소문자만.
@@ -91,17 +91,17 @@ PchipInterpolator(x, y, /, *, axis=0, extrapolate=None)
 Akima1DInterpolator(x, y, /, *, axis=0, method='akima', extrapolate=None)
 pchip_interpolate(xi, yi, x, /, *, der=0, axis=0)
 ```
-- **`PPoly`**: 계수 `c`는 (k + 1, m, …)이고 높은 차수가 먼저다. 구간 i의 다항식은 지역 변수 s = x − x[i]의 다항식이다. 중단점 `x`는 (m + 1,)이고 엄격히 증가하거나 감소한다. 계수와 중단점은 쓰기 금지 배열이다(생성자가 복사한다; `[scipy와 다름]`: scipy는 쥔 배열을 고치면 객체가 바뀐다). 뒤의 넷(`CubicHermiteSpline`, `CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`)은 `PPoly`의 하위 클래스다(scipy와 같다).
-- **구간**: x[i] ≤ x < x[i+1]인 구간 i로 계산하고 x = x[-1]은 마지막 구간이다(scipy와 같다; 불연속인 조각 다항식과 도함수에서 어느 쪽 값인지가 이 규칙이다).
-- **`nu`**: 0 이상의 int다. 차수보다 크면 0이다. 음수는 `ValueError`다(역미분은 `antiderivative`).
+- **`PPoly`**: 계수 `c`는 (k + 1, m, …)이고 높은 차수가 먼저다. 구간 i의 다항식은 지역 변수 s = x − x[i]의 다항식이다. `axis`가 0이 아니면 받은 `c`는 (…, k + 1, m, …)이고 k + 1이 `axis` 자리다(scipy와 같다; 음수 축도 받는다, IP50). 중단점 `x`는 (m + 1,)이고 유한하며 엄격히 증가하거나 엄격히 감소한다(IP43; `[scipy와 다름]`: scipy는 같은 중단점과 무한한 중단점을 받는다). 계수와 중단점은 쓰기 금지 배열이다(생성자가 복사한다; `[scipy와 다름]`: scipy는 쥔 배열을 고치면 객체가 바뀐다). 주어진 계수의 NaN과 inf는 IEEE로 퍼진다(IP19). 뒤의 넷(`CubicHermiteSpline`, `CubicSpline`, `PchipInterpolator`, `Akima1DInterpolator`)은 `PPoly`의 하위 클래스이고, 계수가 유한하지 않게 되면 만들 때 `ValueError`이고 메시지가 그 구간을 말한다(IP36; scipy는 1e300 둘레의 자료에서 노드에서도 NaN인 객체를 만든다).
+- **구간**: x[i] ≤ x < x[i+1]인 구간 i로 계산하고 x = x[-1]은 마지막 구간이다(감소하는 중단점은 거울 규칙 x[i+1] < x ≤ x[i]; scipy와 같다; 불연속인 조각 다항식과 도함수에서 어느 쪽 값인지가 이 규칙이다).
+- **`nu`**: 0 이상의 int다(`nu=1.0`은 `TypeError`; scipy는 받는다). 차수보다 크면 0이다(NaN 평가점과 `extrapolate=False`의 바깥은 NaN). 음수는 `ValueError`다(역미분은 `antiderivative`). `derivative(nu=-k)`는 `antiderivative(nu=k)`이고 반대도 같다(scipy와 같다). 둘 다 같은 클래스의 객체를 돌려준다(scipy와 같다).
 - **`CubicSpline`의 `bc_type`**: `'not-a-knot'`, `'clamped'`, `'natural'`, `'periodic'`, 또는 양 끝의 `(차수, 값)`(차수 1, 2; 값은 배치 모양)이나 그 짝이다. 끝마다 다른 조건도 받는다(`('natural', 'not-a-knot')`). `'periodic'`은 양 끝 모두여야 하고 `y[0]`과 `y[-1]`이 `allclose(rtol=1e-15, atol=1e-15)` 안이어야 한다(IP17; 메시지는 축 번호를 말한다). 점이 둘이면 직선(clamped는 기울기 0의 3차식), 셋이고 양 끝이 not-a-knot이면 포물선이다(scipy와 같다). 점이 하나면 `ValueError`다.
 - **`PchipInterpolator`**: Fritsch–Butland의 가중 조화 평균과 scipy의 끝 식(세 점 한쪽 식과 그 자르기)이다. 단조인 자료에서 결과가 단조다.
-- **`Akima1DInterpolator`**: `method='akima'`는 Akima(1970), `'makima'`는 수정 Akima다(scipy와 같은 식, 끝의 가상 기울기 둘씩 포함). 무게의 합이 그 열의 최댓값의 10⁻⁹배 이하면 두 기울기의 평균이다(scipy와 같은 문턱; `[scipy와 다름]`: scipy는 최댓값을 모든 열에서 하나로 잡아 한 열의 크기가 다른 열의 기울기를 바꾼다, IP33). 평평한 구간(같은 값이 셋 이상)은 정확히 평평하다.
-- **`roots`·`solve`**: 조각마다 실근을 찾아 정렬된 1차원 배열로 돌려준다. 배치면 배치 모양의 중첩 list다(`[scipy와 다름]`: scipy는 dtype `object`의 배열이다). `discontinuity=True`면 중단점에서 부호가 바뀌는 점도 근이다. 조각이 0과 같으면 그 구간의 왼쪽 끝과 NaN을 넣는다(scipy와 같다). `extrapolate=True`면 첫 조각과 끝 조각의 늘인 다항식의 근도 넣는다(scipy와 같다). 접하는 근(중근)도 찾는다(`[scipy와 다름]`: scipy는 (x − 0.25)²(x + 1) 꼴의 중근을 놓치고, 2⁻³⁰ 떨어진 두 근을 7×10⁻⁹ 틀린다; docs/design/interpolate.md §3.5).
-- **`integrate(a, b)`**: a > b면 부호가 바뀐다. `extrapolate=False`이고 a, b가 정의역 밖이면 NaN, `'periodic'`이면 온전한 주기의 수 × 한 주기의 적분 + 나머지다(scipy와 같다).
-- **`antiderivative`**: 상수는 x[0]에서 0이고 이어지게 고른다. `'periodic'` 객체의 역미분은 `extrapolate=True`다(scipy와 같다).
-- **`extend(c, x)`**: 오른쪽(감소하는 중단점이면 왼쪽)에 구간을 더한다. 객체를 고치는 메서드다(IP12; scipy와 같다). 고친 뒤의 계수도 쓰기 금지 배열이다.
-- **`from_spline(tck)`**: `BSpline`이나 `(t, c, k)` 튜플을 같은 함수의 `PPoly`로 바꾼다.
+- **`Akima1DInterpolator`**: `method='akima'`는 Akima(1970), `'makima'`는 수정 Akima다(scipy와 같은 식, 끝의 가상 기울기 둘씩 포함). 무게의 합이 그 열의 최댓값의 10⁻⁹배 이하면 두 기울기의 평균이다(scipy와 같은 문턱; `[scipy와 다름]`: scipy는 최댓값을 모든 열에서 하나로 잡아 한 열의 크기가 다른 열의 기울기를 바꾼다, IP33). makima는 평평한 구간(같은 값이 셋 이상)이 정확히 평평하다. akima는 그 구간의 안쪽 노드에서 기울기가 0이지만 구간 끝 노드가 Akima의 정하지 않은 경우(양쪽 두 기울기가 각각 같은 경우)면 평균 기울기라 평평하지 않을 수 있다(IP47; scipy와 같다). PCHIP과 Akima의 계수는 시험 자료 전부에서 scipy와 비트까지 같다(IP42).
+- **`roots`·`solve`**: 조각마다 실근을 찾아 정렬된 1차원 배열로 돌려준다. 배치면 배치 모양의 중첩 list다(`[scipy와 다름]`: scipy는 dtype `object`의 배열이다). `discontinuity=True`면 중단점에서 부호가 바뀌는 점도 근이다. 조각이 0과 같으면 그 구간의 왼쪽 끝과 NaN을 넣는다(scipy와 같다). `extrapolate=True`면 첫 조각과 끝 조각의 늘인 다항식의 근도 넣는다(scipy와 같다). `extrapolate='periodic'`은 True로 친다(scipy와 같다). 접하는 근(중근)도 찾고 2⁻³⁰ 떨어진 두 근도 마지막 비트까지 가른다(IP45; `[scipy와 다름]`: scipy는 (x − 0.25)²(x + 1) 꼴의 중근을 놓치고, 2⁻³⁰ 떨어진 두 근을 7×10⁻⁹ 틀린다; docs/design/interpolate.md §3.5). `solve(y)`의 `y`는 유한한 수다. complex 계수는 `ValueError`다(scipy와 같다).
+- **`integrate(a, b)`**: a > b면 부호가 바뀐다. `extrapolate=False`이고 a, b가 정의역 밖이면 NaN, `'periodic'`이면 온전한 주기의 수 × 한 주기의 적분 + 나머지다(scipy와 같다). a나 b가 NaN이면 NaN이다(IP49; `[scipy와 다름]`: scipy는 `ValueError`). 배치면 열마다의 배열, 아니면 Python 스칼라다.
+- **`antiderivative`**: 상수는 x[0]에서 0이고 이어지게 고른다. `'periodic'` 객체의 역미분은 `extrapolate=False`다(IP48; scipy와 같다).
+- **`extend(c, x)`**: 오른쪽(감소하는 중단점이면 왼쪽)에 구간을 더한다. `x`는 새 조각마다 한 점(오른쪽에 더하면 새 조각의 오른쪽 끝)이다. 차수가 다르면 낮은 쪽의 위를 0으로 채운다. 객체를 고치는 메서드다(IP12; scipy와 같다). 고친 뒤의 계수도 쓰기 금지 배열이다. 새 중단점이 끝 중단점과 같으면 `ValueError`다(IP43; scipy는 폭이 0인 조각을 만든다).
+- **`from_spline(tck)`**: `BSpline`이나 `(t, c, k)` 튜플을 같은 함수의 `PPoly`로 바꾼다(IP3 마일스톤에서 `BSpline`과 함께 공개한다).
 - **`pchip_interpolate(xi, yi, x, der=0)`**: `PchipInterpolator(xi, yi, axis=axis)(x, nu=der)`와 같다. `der`가 시퀀스면 각 차수의 결과 list다(scipy와 같다).
 
 ## §4. B-스플라인 (IP3 마일스톤)

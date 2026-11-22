@@ -41,6 +41,13 @@ sqrt(2) 2^-1074 sqrt(n), and the later stages of radices r_i multiply it by sqrt
 over the stages that is below 3.5 sqrt(2) n 2^-1074 (and so below KAPPA n 2^-1074), which also
 covers the final rounding of a subnormal result.
 
+Real and Hermitian transforms (milestone FT2, decision FT43; docs/design/fft.md §3.4, §4.2) run a complex
+transform of the inner length real_inner(n): n / 2 for even n, n for odd n. When that length is
+11-smooth the bound is the one above; when it is a Bluestein length h the bound is Bluestein's with h's
+rho and inner length m, L(n) -> 2 L(m) + 2 (+ 1 for even n: the twiddle pass), and tau(max(m, n)). The
+whole spectrum of fft of real input is held to the "real" bound (the twiddle pass's error, mirrored,
+stays inside it; docs/design/fft.md §4.2).
+
 Bluestein lengths (decisions FT36, FT37; docs/design/fft.md §4.2): the complex transform of a length n
 with a prime factor above 11 is a cyclic convolution of length m, the smallest 2^a 3^b 5^c >= 2n - 1
 (bluestein_m), and rho(n) = max_k |DFT_m(b)_k| / sqrt(n) for the chirp kernel b_l = e^(pi i l^2 / n),
@@ -173,6 +180,13 @@ def bluestein_rho(n: int) -> float:
     return float(np.abs(np.fft.fft(b)).max() / math.sqrt(n))
 
 
+def real_inner(n: int) -> int:
+    """The length of the complex transform inside a real or Hermitian transform of length n (decision
+    FT43): n / 2 for even n (the real plan), n for odd n (the complex plan and the Hermitian part)."""
+    n = int(n)
+    return n // 2 if n % 2 == 0 else n
+
+
 def tau(m: int) -> float:
     """The underflow floor of a transform of length m."""
     return KAPPA * m * TINY
@@ -192,6 +206,11 @@ def bound(kind: str, n, xnorm: float, s: float = 1.0, method: str | None = None)
     if kind == "c2c" and not is_smooth11(n):
         m, rho = bluestein_m(n), bluestein_rho(n)
         return rho * ((KAPPA * (2 * levels(m) + 2) + C0) * U * s * math.sqrt(n) * xnorm + tau(m))
+    if kind in ("real", "hermitian") and not is_smooth11(real_inner(n)):
+        h = real_inner(n)
+        m, rho = bluestein_m(h), bluestein_rho(h)
+        extra = 1 if n % 2 == 0 else 0  # the twiddle pass of an even length: one more level
+        return rho * ((KAPPA * (2 * levels(m) + 2 + extra) + C0) * U * s * math.sqrt(n) * xnorm + tau(max(m, n)))
     if kind in ("c2c", "real", "hermitian"):
         return (KAPPA * levels(n) + C0) * U * s * math.sqrt(n) * xnorm + tau(n)
     if kind == "r2r":
@@ -214,6 +233,8 @@ def units(err: float, b: float) -> float:
 
 # Lines longer than the files hold (decision FT33): their reference computed where it is needed.
 LONG = ("c/uniform/65536", "c/uniform/65537", "c/uniform/30021", "c/uniform/1048576")
+# The same for the real path (milestone FT2): an even and an odd Bluestein length, 2^20.
+LONG_REAL = ("r/uniform/65536", "r/uniform/65537", "r/uniform/1048576")
 
 
 def arb_dft(x, inverse: bool = False):

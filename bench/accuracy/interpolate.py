@@ -13,21 +13,34 @@ IP1 brings
                points: numpy 2.5.4's interp, scipy 1.18.1's make_interp_spline(k=1) and R 4.6.2's
                approx(rule = 2).
 
-The plan for the others (docs/design/interpolate.md §7.5), each judged through tests/interpolate/refdata.py with
-the end-to-end error (against curves.npz) as a column of its own:
+IP2 brings (judged through tests/interpolate/refdata.py, the functions the tests use)
 
-  coefficients IP2, IP3: the slopes (slopes.npz) and B-spline coefficients (bspline.npz, scaled by the
-               ainv_<method> norms) against the exact ones; comparator scipy
-  evaluation   IP2, IP3: the piecewise polynomials and B-splines evaluated from their own coefficients
-               (exact rational evaluation at test time) and end to end (curves.npz); comparators scipy and
-               R's splinefun (natural, periodic)
+  coefficients the node slopes of CubicSpline (natural, clamped, not_a_knot, periodic), PchipInterpolator and
+               Akima1DInterpolator (akima, makima) against slopes.npz in units of their contracts (the spline's
+               componentwise gamma_12 |A^-1|(|A||s| + |b|), PCHIP's 40 u max|D|, Akima's bound with its
+               conditioning), one region per method, at the nodes but the last (the coefficients' c1 there, which
+               is the slope itself for every library); the real curves whose divided differences are doubles and
+               whose coefficients do not overflow. Comparator: scipy (its coefficients' c1).
+  evaluation   the same objects evaluated (nu = 0) at every curve's evaluation points, the end pieces extended, in
+               units of the evaluation contract (ppoly_bound) against the exact value of the object's own
+               coefficients; `e2e_rel` is the end-to-end relative error against curves.npz (the exact data's exact
+               interpolant), relative to max(|value|, max|y|). Comparators: scipy (its own coefficients, its own
+               evaluation) and R's splinefun (natural, periodic; end to end only, inside [x[0], x[-1]]: R's
+               natural spline extrapolates linearly).
+  roots        PPoly.roots(extrapolate=False, discontinuity=False) on roots.npz: per reference root the distance to
+               the nearest returned root in ulps (`missed`: the roots farther than 2^-20 relative), and the
+               returned roots that are none of the references (`extra`). Comparator: scipy.
+
+The plan for the others (docs/design/interpolate.md §7.5):
+
+  coefficients IP3: the B-spline coefficients (bspline.npz, scaled by the ainv_<method> norms); comparator scipy
+  evaluation   IP3: the B-splines
   polynomial   IP4: Barycentric, Krogh and Floater-Hormann on polynomial.npz (the Lebesgue function and
                sum |l_j y_j| are the contract's scale)
   aaa          IP4: AAA's residual on the samples and its value against Arb evaluation of the computed
                rational
   grid         IP5: RegularGridInterpolator's six methods on grid.npz (the 1-D linear also joins `linear`)
   rbf          IP6: RBFInterpolator on rbf.npz (eight kernels, smoothing, neighbors)
-  roots        IP2: PPoly.roots on roots.npz (the roots found and missed)
 """
 
 from __future__ import annotations
@@ -123,10 +136,184 @@ def _linear_regions(lib):
     return out
 
 
+CUBIC = ("natural", "clamped", "not_a_knot", "periodic", "pchip", "akima", "makima")
+_BC = {"natural": ((2, 0.0), (2, 0.0)), "clamped": ((1, 0.0), (1, 0.0)), "not_a_knot": ("not-a-knot", "not-a-knot"),
+       "periodic": ("periodic", "periodic")}  # fmt: skip
+
+
+def _cubic_curves():
+    from tests.interpolate import samples as S
+
+    out = []
+    for cid in S.real_curve_ids():
+        c = S.curve(cid)
+        with np.errstate(all="ignore"):
+            if not np.all(np.isfinite(np.diff(c.y) / np.diff(c.x))) or cid == "large/1e300":
+                continue
+        out.append(c)
+    return out
+
+
+def _cubic_object(lib, meth, c):
+    """lib's interpolant of meth on curve c (None: not made for it), the end pieces extended."""
+    if meth == "periodic" and "periodic" not in c.tags:
+        return None
+    if lib == "sd":
+        import stardust as sd
+
+        mod = sd.interpolate
+    else:
+        import scipy.interpolate as mod
+    if meth in _BC:
+        bc = {"natural": "natural", "clamped": "clamped", "not_a_knot": "not-a-knot", "periodic": "periodic"}[meth]
+        return mod.CubicSpline(c.x, c.y, bc_type=bc)
+    if meth == "pchip":
+        return mod.PchipInterpolator(c.x, c.y)
+    return mod.Akima1DInterpolator(c.x, c.y, method=meth, extrapolate=True)
+
+
+def _slope_bound(meth, c, s):
+    from tests.interpolate import refdata
+
+    if meth in _BC:
+        return refdata.spline_bound(c.x, c.y, _BC[meth], s)
+    if meth == "pchip":
+        return refdata.pchip_bound(c.x, c.y)
+    return refdata.akima_bound(c.x, c.y, meth == "makima")
+
+
+def _coefficient_regions(lib):
+    if lib not in ("sd", "scipy"):
+        return None
+    from tests.interpolate import refdata
+
+    ref = refdata.ref("slopes")
+    out = {}
+    for meth in CUBIC:
+        m = ref.methods[meth]
+        where, con, ul, rel = [], [], [], []
+        for c in _cubic_curves():
+            obj = _cubic_object(lib, meth, c)
+            if obj is None:
+                continue
+            got = np.asarray(obj.c)[2]  # the slopes at the nodes but the last
+            pos = np.flatnonzero(ref.inputs["set"][m.index] == c.id)
+            order = np.argsort(ref.inputs["index"][m.index[pos]], kind="stable")
+            hi, lo = m.hi[pos[order]], m.lo[pos[order]]
+            bound = _slope_bound(meth, c, np.append(got, hi[-1]))
+            for i, g in enumerate(got):
+                err = abs((g - hi[i]) - lo[i])
+                where.append(f"{c.id}#{i}")
+                con.append(0.0 if err == 0 else err / bound[i])
+                ul.append(float(ulps(g, hi[i])))
+                rel.append(err / abs(hi[i]) if hi[i] else err)
+        out[meth] = region(where, ulp=np.array(ul), rel=np.array(rel), contract=np.array(con), bound=1.0)
+    return out
+
+
+def _exact_piece(c, x, i, v):
+    k = c.shape[0] - 1
+    s = Fraction(float(v)) - Fraction(float(x[i]))
+    total = Fraction(0)
+    for j in range(k + 1):
+        total = total * s + Fraction(float(c[j, i]))
+    return total, float(s)
+
+
+def _evaluation_regions(lib):
+    from tests.interpolate import refdata
+
+    if lib not in ("sd", "scipy", "R"):
+        return None
+    curves = refdata.ref("curves")
+    out = {}
+    for meth in CUBIC:
+        if lib == "R" and meth not in ("natural", "periodic"):
+            continue
+        m = curves.methods[meth]
+        where, con, ul, e2e = [], [], [], []
+        for c in _cubic_curves():
+            if meth == "periodic" and "periodic" not in c.tags:
+                continue
+            pos = np.flatnonzero(curves.inputs["set"][m.index] == c.id)
+            order = np.argsort(curves.inputs["index"][m.index[pos]], kind="stable")
+            exact = m.hi[pos[order]]
+            scale = np.max(np.abs(c.y))
+            if lib == "R":
+                from . import rsession
+
+                vals = rsession.evaluate_named(
+                    f"splinefun(X, Y, method = '{'natural' if meth == 'natural' else 'periodic'}')(Q)",
+                    {"X": c.x, "Y": c.y, "Q": c.xe},
+                )
+                coeffs = None
+            else:
+                obj = _cubic_object(lib, meth, c)
+                vals = np.asarray(obj(c.xe, extrapolate=True))
+                coeffs = np.asarray(obj.c)
+            for k, (v, g) in enumerate(zip(c.xe, vals)):
+                if coeffs is None and not c.x[0] <= v <= c.x[-1]:
+                    continue  # R's natural spline extrapolates linearly: inside only
+                where.append(f"{c.id}#{k}")
+                e2e.append(abs(g - exact[k]) / max(abs(exact[k]), scale))
+                if coeffs is None:
+                    continue
+                i = int(min(max(np.searchsorted(c.x, v, side="right") - 1, 0), len(c.x) - 2))
+                want, s = _exact_piece(coeffs, c.x, i, v)
+                err = abs(Fraction(float(g)) - want)
+                con.append(0.0 if err == 0 else float(err) / refdata.ppoly_bound(coeffs[:, i], s))
+                ul.append(float(ulps(g, float(want))))
+        kw = {"contract": np.array(con), "bound": 1.0, "ulp": np.array(ul)} if con else {}
+        out[meth] = region(where, e2e_rel=np.array(e2e), **kw)
+    return out
+
+
+def _roots_regions(lib):
+    if lib not in ("sd", "scipy"):
+        return None
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+
+    ref = refdata.ref("roots")
+    m = ref.methods["root"]
+    where, dist, missed, extra = [], [], [], []
+    for pid in S.PIECES_IDS:
+        P = S.pieces(pid)
+        if lib == "sd":
+            import stardust as sd
+
+            got = np.asarray(sd.interpolate.PPoly(P.c, P.x).roots(extrapolate=False, discontinuity=False))
+        else:
+            import scipy.interpolate as si
+
+            got = si.PPoly(P.c, P.x).roots(extrapolate=False, discontinuity=False)
+        got = got[np.isfinite(got)]
+        pos = np.flatnonzero(ref.inputs["set"][m.index] == pid)
+        refs = m.hi[pos]
+        for k, r in enumerate(refs):
+            d = np.min(np.abs(got - r)) if got.size else np.inf
+            where.append(f"{pid}#{k}")
+            dist.append(d / np.spacing(abs(r)))
+            missed.append(1.0 if d > 2.0**-20 * max(1.0, abs(r)) else 0.0)
+        for r in got:
+            if not refs.size or np.min(np.abs(refs - r)) > 2.0**-20 * max(1.0, abs(r)):
+                extra.append(1.0)
+    return {"pieces": region(where, ulp=np.array(dist), missed=np.array([sum(missed)]),
+                             extra=np.array([float(len(extra))]))}  # fmt: skip
+
+
 def sweeps():
     import stardust as sd
 
-    if not hasattr(sd, "interp"):
-        return []
-    return [Custom("interpolate", "linear", lambda: _linear_regions("sd"),
-                   compare_libs(_linear_regions, ("numpy", "scipy", "R"), seconds=120.0))]  # fmt: skip
+    out = []
+    if hasattr(sd, "interp"):
+        out.append(Custom("interpolate", "linear", lambda: _linear_regions("sd"),
+                          compare_libs(_linear_regions, ("numpy", "scipy", "R"), seconds=120.0)))  # fmt: skip
+    if "CubicSpline" in sd.interpolate.__all__:
+        out.append(Custom("interpolate", "coefficients", lambda: _coefficient_regions("sd"),
+                          compare_libs(_coefficient_regions, ("scipy",), seconds=120.0)))  # fmt: skip
+        out.append(Custom("interpolate", "evaluation", lambda: _evaluation_regions("sd"),
+                          compare_libs(_evaluation_regions, ("scipy", "R"), seconds=300.0)))  # fmt: skip
+        out.append(Custom("interpolate", "roots", lambda: _roots_regions("sd"),
+                          compare_libs(_roots_regions, ("scipy",), seconds=120.0)))  # fmt: skip
+    return out

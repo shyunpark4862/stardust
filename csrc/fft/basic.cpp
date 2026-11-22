@@ -1,7 +1,12 @@
-// fft and ifft of sd.fft (docs/api/fft.md §2; docs/design/fft.md §2.2, §2.4, §2.5; milestone FT1), and
-// the plan cache's tools for the tests (_plan_info, _cache_state, _cache_clear, _twiddles).
+// The one-dimensional transforms of sd.fft (docs/api/fft.md §2, §3; docs/design/fft.md §2.2-§2.5, §3.4):
+// fft and ifft (milestone FT1; real input by the real path since FT2, decision FT16), rfft, irfft, hfft
+// and ihfft (FT2), and the plan cache's tools for the tests (_plan_info, _cache_state, _cache_clear,
+// _twiddles).
 //
-//   _c2c(x, n, axis, norm, inverse) -> the complex transform of every line of x along axis
+//   _c2c(x, n, axis, norm, inverse) -> fft, ifft: complex input by the complex transform of every line,
+//                                      real input by the real transform's whole spectrum
+//   _r2c(x, n, axis, norm, name)    -> rfft, ihfft: the half spectrum of real input
+//   _c2r(x, n, axis, norm, name)    -> irfft, hfft: the real inverse of a Hermitian half spectrum
 //
 // The arguments are checked here, in the order of the signature (x, n, axis, norm), with the messages of
 // API.md §2.1; the Python functions (src/stardust/fft/_basic.py) only fix the call shape.
@@ -77,29 +82,90 @@ int parse_axis(nb::handle o, int ndim) {
     return normalize_axis(v, ndim);
 }
 
+struct Args {
+    const NDArray* x;
+    int64_t n;  // -1: None
+    int axis;
+    Norm norm;
+};
+
+Args parse_args(nb::handle xh, nb::handle nh, nb::handle axh, nb::handle normh) {
+    const NDArray& x = require_ndarray(xh, "x");
+    if (x.dtype == DType::String) throw nb::type_error("'x' must be numeric, not a string array");
+    const int64_t n = parse_length(nh);
+    const int axis = parse_axis(axh, x.ndim);
+    return {&x, n, axis, parse_norm(normh)};
+}
+
+// n, or the axis's length when n is None (a length of 0 is an error).
+int64_t length_or_axis(const Args& a) {
+    if (a.n >= 0) return a.n;
+    const int64_t m = a.x->shape[static_cast<size_t>(a.axis)];
+    if (m == 0) throw nb::value_error("cannot transform an axis of length 0");
+    return m;
+}
+
+NDArray new_result(const NDArray& x, int axis, int64_t len, DType dtype) {
+    std::vector<int64_t> shape(x.shape.begin(), x.shape.begin() + x.ndim);
+    shape[static_cast<size_t>(axis)] = len;
+    return new_array(dtype, shape);
+}
+
 nb::object c2c(nb::handle xh, nb::handle nh, nb::handle axh, nb::handle normh, bool inverse) {
     return call_named(inverse ? "ifft" : "fft", [&]() -> nb::object {
-        const NDArray& x = require_ndarray(xh, "x");
-        if (x.dtype == DType::String) throw nb::type_error("'x' must be numeric, not a string array");
-        int64_t n = parse_length(nh);
-        const int axis = parse_axis(axh, x.ndim);
-        const Norm norm = parse_norm(normh);
-        if (n < 0) {
-            n = x.shape[static_cast<size_t>(axis)];
-            if (n == 0) throw nb::value_error("cannot transform an axis of length 0");
+        const Args a = parse_args(xh, nh, axh, normh);
+        const int64_t n = length_or_axis(a);
+        NDArray out = new_result(*a.x, a.axis, n, DType::Complex128);
+        const double s = norm_factor(a.norm, n, inverse);
+        if (a.x->dtype == DType::Complex128) {
+            c2c_axis(*a.x, a.axis, n, inverse, s, out);
+        } else {  // real input: the real path's whole spectrum (decision FT16); ifft is its conjugate
+            r2c_axis(*a.x, a.axis, n, true, inverse, s, out);
         }
-        std::vector<int64_t> shape(x.shape.begin(), x.shape.begin() + x.ndim);
-        shape[static_cast<size_t>(axis)] = n;
-        NDArray out = new_array(DType::Complex128, shape);
-        c2c_axis(x, axis, n, inverse, norm_factor(norm, n, inverse), out);
         return wrap(std::move(out));
     });
 }
 
-nb::dict plan_info(int64_t n) {
-    const std::shared_ptr<const Plan> p = get_plan(Kind::Complex, n);
+// rfft (the forward direction) and ihfft (conj(rfft) with the inverse direction's factor; numpy's
+// definition).
+nb::object r2c(nb::handle xh, nb::handle nh, nb::handle axh, nb::handle normh, const std::string& name) {
+    const bool h = name == "ihfft";
+    return call_named(h ? "ihfft" : "rfft", [&]() -> nb::object {
+        const Args a = parse_args(xh, nh, axh, normh);
+        if (a.x->dtype == DType::Complex128) throw nb::type_error("'x' must be real, not complex128");
+        const int64_t n = length_or_axis(a);
+        NDArray out = new_result(*a.x, a.axis, n / 2 + 1, DType::Complex128);
+        r2c_axis(*a.x, a.axis, n, false, h, norm_factor(a.norm, n, h), out);
+        return wrap(std::move(out));
+    });
+}
+
+// irfft (the inverse direction) and hfft (irfft of conj(x) with the forward direction's factor; numpy's
+// definition). The default n is 2 (m - 1).
+nb::object c2r(nb::handle xh, nb::handle nh, nb::handle axh, nb::handle normh, const std::string& name) {
+    const bool h = name == "hfft";
+    return call_named(h ? "hfft" : "irfft", [&]() -> nb::object {
+        const Args a = parse_args(xh, nh, axh, normh);
+        int64_t n = a.n;
+        if (n < 0) {
+            const int64_t m = a.x->shape[static_cast<size_t>(a.axis)];
+            if (m == 0) throw nb::value_error("cannot transform an axis of length 0");
+            if (m == 1) throw nb::value_error("the default 'n' = 2 (m - 1) is 0 for an axis of length m = 1; give 'n'");
+            n = 2 * (m - 1);
+        }
+        NDArray out = new_result(*a.x, a.axis, n, DType::Float64);
+        c2r_axis(*a.x, a.axis, n, h, norm_factor(a.norm, n, !h), out);
+        return wrap(std::move(out));
+    });
+}
+
+// The plan of a complex length n, or with real (n even) of the real length n: its path, size and cost.
+nb::dict plan_info(int64_t n, bool real) {
+    if (n < 1 || (real && n % 2 != 0)) throw nb::value_error("_plan_info(): n must be at least 1 (even if real)");
+    const std::shared_ptr<const Plan> p = get_plan(real ? Kind::Real : Kind::Complex, n);
     nb::dict d;
     d["n"] = n;
+    d["kind"] = real ? "real" : "complex";
     d["path"] = p->bluestein() ? "bluestein" : "mixed";
     d["bytes"] = p->bytes();
     d["cost"] = p->cost();
@@ -143,7 +209,15 @@ void bind_basic(nb::module_& m) {
         "_c2c", &c2c, nb::arg("x").none(), nb::arg("n").none(), nb::arg("axis").none(), nb::arg("norm").none(),
         nb::arg("inverse")
     );  // fmt: skip
-    m.def("_plan_info", &plan_info, nb::arg("n"));
+    m.def(
+        "_r2c", &r2c, nb::arg("x").none(), nb::arg("n").none(), nb::arg("axis").none(), nb::arg("norm").none(),
+        nb::arg("name")
+    );  // fmt: skip
+    m.def(
+        "_c2r", &c2r, nb::arg("x").none(), nb::arg("n").none(), nb::arg("axis").none(), nb::arg("norm").none(),
+        nb::arg("name")
+    );  // fmt: skip
+    m.def("_plan_info", &plan_info, nb::arg("n"), nb::arg("real") = false);
     m.def("_cache_state", &cache_state_py);
     m.def("_cache_clear", [] { cache_clear(); });
     m.def("_twiddles", &twiddles, nb::arg("n"));

@@ -1,8 +1,8 @@
 # sd.graph API
 
-> 상태: **초안** (GR0 마일스톤, 2026-11-23). GR1 마일스톤(2026-11-23)에서 §2의 여덟 이름이 공개되었다. 아래 시그니처는 scipy 1.18.1의 `scipy.sparse.csgraph`의 이름과 인자 이름(과 `scipy.optimize.linear_sum_assignment`, scipy에 없는 일곱은 networkx 3.7의 뜻)에 stardust의 규칙과 GR1–GR28의 결정을 입힌 안이고, GR1–GR5 마일스톤에서 하나씩 공개된다(docs/design/graph.md §8: 순회·연결 요소·위상 정렬·변환 도구는 GR1, 최단 경로는 GR2, 신장 트리·흐름·매칭·배정은 GR3, 순서·구조적 랭크·라플라시안은 GR4, 더한 알고리즘은 GR5 마일스톤).
+> 상태: **초안** (GR0 마일스톤, 2026-11-23). GR1 마일스톤(2026-11-23)에서 §2의 여덟 이름이, GR2 마일스톤(2026-11-23)에서 §3의 아홉 이름이 공개되었다. 아래 시그니처는 scipy 1.18.1의 `scipy.sparse.csgraph`의 이름과 인자 이름(과 `scipy.optimize.linear_sum_assignment`, scipy에 없는 일곱은 networkx 3.7의 뜻)에 stardust의 규칙과 GR1–GR28의 결정을 입힌 안이고, GR1–GR5 마일스톤에서 하나씩 공개된다(docs/design/graph.md §8: 순회·연결 요소·위상 정렬·변환 도구는 GR1, 최단 경로는 GR2, 신장 트리·흐름·매칭·배정은 GR3, 순서·구조적 랭크·라플라시안은 GR4, 더한 알고리즘은 GR5 마일스톤).
 
-- 설계와 결정의 근거는 [docs/design/graph.md](../design/graph.md)(§1.1 GR1–GR33), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/graph.md](../design/graph.md)(§1.1 GR1–GR42), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/graph/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 예외 클래스는 이름만)과 결과 객체의 필드(`Class.field`)다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -38,8 +38,8 @@
 - 요청한 출력(모든 쌍의 n² 거리와 선행 노드, `yen`의 K × n)이 물리 메모리보다 크면 할당 전에 `MemoryError`다.
 
 ### §1.5 scipy와 다른 점 (모음)
-- 입력: complex·scipy 희소 객체는 `TypeError`, 저장된 NaN·±inf 무게는 `ValueError`, 노드 인자는 0 … n−1의 int만, 2차원 `indices`는 `ValueError`, 옵션은 키워드만, `overwrite`·`copy`·`form='function'`·가린 배열 도구 없음, `maximum_flow`·`reverse_cuthill_mckee`·`structural_rank`·매칭도 밀집을 받는다.
-- 결과: 색인 배열은 모두 int64(GR10), 스칼라는 Python `int`, 결과 튜플은 namedtuple(GR11), 강한 연결 요소의 번호는 가장 작은 노드 순서, 무향 순회는 합친 이웃의 오름차순, 무향 트리의 저장된 0은 0, `csgraph_to_dense`의 저장된 NaN은 NaN, `'FW'`를 뺀 최단 경로는 방법과 무관, `auto`는 FW를 고르지 않음, `construct_dist_matrix`는 원점에서부터 더함, `laplacian`의 희소 결과는 CSR, 최소 신장 트리는 밀집의 작은 원소를 버리지 않는다.
+- 입력: complex·scipy 희소 객체는 `TypeError`, 밀집 입력의 |w| ≤ 1e-8인 원소도 변(scipy는 모든 csgraph 함수에서 버린다), 저장된 NaN·±inf 무게는 `ValueError`, 경로가 아닌 선행 노드는 `ValueError`(GR38), 노드 인자는 0 … n−1의 int만, 2차원 `indices`는 `ValueError`, 옵션은 키워드만, `overwrite`·`copy`·`form='function'`·가린 배열 도구 없음, `maximum_flow`·`reverse_cuthill_mckee`·`structural_rank`·매칭도 밀집을 받는다.
+- 결과: 색인 배열은 모두 int64(GR10), 스칼라는 Python `int`, 결과 튜플은 namedtuple(GR11), 강한 연결 요소의 번호는 가장 작은 노드 순서, 무향 순회는 합친 이웃의 오름차순, 무향 트리의 저장된 0은 0, `csgraph_to_dense`의 저장된 NaN은 NaN, `'FW'`를 뺀 최단 경로는 방법과 무관, `auto`는 FW를 고르지 않음, `yen`의 같은 길이 경로는 (변 수, 노드 열)의 순서, `construct_dist_matrix`는 원점에서부터 더함, `laplacian`의 희소 결과는 CSR, 최소 신장 트리는 밀집의 작은 원소를 버리지 않는다.
 - 에러: 음수 무게의 `dijkstra`(GR9), NaN `limit`(GR23), 음수 용량, int64를 넘는 흐름(`OverflowError`), 실수 용량(`TypeError`), `NegativeCycleError`는 `ValueError`이고 "요청한 원점에서 닿는 순환" 한 규칙이다.
 
 ## §2. 순회, 연결 요소, 변환 (GR1 마일스톤)
@@ -72,17 +72,17 @@ reconstruct_path(csgraph, predecessors, /, *, directed=True)
 NegativeCycleError
 ```
 - **거리의 정의**(GR5, GR6): 원점 s에서 v까지의 거리는 s–v 경로 가운데 경로의 무게를 원점에서부터 차례로 더한 float64 값이 가장 작은 것이다. 선행 노드는 꼭 맞는 변(fl(d(u) + w(u, v)) = d(v)) 가운데 원점에서 변 수가 가장 적은 것, 그다음 번호가 가장 작은 것이다. 그래서 선행 노드는 무게 0의 변이 있어도 언제나 트리다. `'D'`, `'BF'`, `'J'`, `'auto'`와 `dijkstra`·`bellman_ford`·`johnson`은 이 정의의 같은 비트를 낸다. `[scipy와 다름]`: scipy는 방법마다 선행 노드의 동점이 다르다(마름모 그래프에서 D·J는 2, BF·FW는 1).
-- **`method`**: `'auto'`, `'D'`, `'BF'`, `'J'`, `'FW'`다(그 밖은 `ValueError`, 문자열이 아니면 `TypeError`). `'auto'`는 음수 무게가 있으면 J, 없으면 D다(밀집한 그래프에서는 같은 비트의 힙 없는 밀집 Dijkstra로 빠르게 한다). `[scipy와 다름]`: scipy의 auto는 `indices`가 없고 변이 n²/4개 이상이면 FW를 고른다(GR26). `method='FW'`와 `indices`를 함께 주면 `ValueError`다(scipy와 같다).
-- **`floyd_warshall`과 `method='FW'`**(GR25, GR27): 블록 Floyd–Warshall이다. 거리는 경로를 가운데에서 잇는 합이라 다른 방법과 끝자리가 다를 수 있고(scipy에서도 같은 일이 있다: 상대 8.7×10⁻¹⁶), 정확도 계약 안이며 스레드 수와 무관하다. 선행 노드는 Floyd–Warshall의 갱신(더 작아질 때 pred(i, j) ← pred(k, j))이 정하고(scipy와 같은 규칙), 그 경로를 원점에서부터 다시 더한 값은 FW의 거리와 끝자리가 다를 수 있다.
+- **`method`**: `'auto'`, `'D'`, `'BF'`, `'J'`, `'FW'`다(그 밖은 `ValueError`, 문자열이 아니면 `TypeError`). `'auto'`는 음수 무게가 있으면 J, 없으면 D다(음수 무게가 없고 `indices`가 없고 저장된 원소가 n²/4개 이상이면 같은 비트의 힙 없는 밀집 Dijkstra로 빠르게 한다; GR36). `[scipy와 다름]`: scipy의 auto는 `indices`가 없고 변이 n²/4개 이상이면 FW를 고른다(GR26). `method='FW'`와 `indices`를 함께 주면 `ValueError`다(scipy와 같다).
+- **`floyd_warshall`과 `method='FW'`**(GR25, GR27): 블록 Floyd–Warshall이다. 거리는 경로를 가운데에서 잇는 합이라 다른 방법과 끝자리가 다를 수 있고(scipy에서도 같은 일이 있다: 상대 8.7×10⁻¹⁶), 정확도 계약 안이며 스레드 수와 무관하다. 선행 노드는 Floyd–Warshall의 갱신(더 작아질 때 pred(i, j) ← pred(k, j))이 정하고(scipy와 같은 규칙), 그 경로를 원점에서부터 다시 더한 값은 FW의 거리와 끝자리가 다를 수 있다. 선행 노드를 함께 구해도 거리는 같은 비트다(GR42).
 - **결과의 꼴**(scipy와 같다): `indices=None`이면 (n, n) float64, int 하나면 (n,), 1차원이면 (len, n)이다. 닿지 않으면 inf와 −9999다. `return_predecessors=True`면 `ShortestPathResult(dist_matrix, predecessors)`(선행 노드 int64)다. 2차원 `indices`는 `ValueError`다(`[scipy와 다름]`).
-- **`unweighted=True`**: 모든 변의 무게가 1이다(저장된 0의 변도). 거리는 변의 수이고 정확하다.
+- **`unweighted=True`**: 모든 변의 무게가 1이다(저장된 0의 변도). 거리는 변의 수이고 정확하다. 값은 읽지 않는다: 저장된 NaN·±inf와 음수 무게도 에러가 아니다(GR34).
 - **`limit`**(`dijkstra`만): 거리 ≤ `limit`인 노드만 찾고 나머지는 inf와 −9999다(경계를 넣는다). 0 이상이거나 inf여야 하고 음수와 NaN은 `ValueError`다(`[scipy와 다름]`: scipy는 NaN에서 모든 노드를 inf로 낸다; GR23).
 - **`min_only=True`**(`dijkstra`만): 모든 `indices`를 함께 원점으로 둔 거리 하나 (n,)다. `return_predecessors=True`면 `MinOnlyResult(dist_matrix, predecessors, sources)`이고 `sources[v]`는 v의 선행 노드 사슬이 끝나는 원점(닿지 않으면 −9999)이다.
 - **음수 무게**: `dijkstra`와 `method='D'`는 `ValueError`다(`dijkstra(): negative edge weights are not allowed; use bellman_ford or johnson`; GR9; `[scipy와 다름]`: scipy는 경고와 함께 값을 낸다). `bellman_ford`, `johnson`, `floyd_warshall`, `'auto'`는 받는다. 무향 그래프의 음수 변은 그 자체로 음수 순환이다.
-- **`NegativeCycleError`**: 요청한 원점에서 닿을 수 있는 음수 순환이 있으면 낸다(모든 방법이 같다; `indices=None`이면 그래프 어디든). 메시지는 순환 위의 가장 작은 노드를 적는다(`bellman_ford(): negative cycle through node 3`). `[scipy와 다름]`: scipy의 `bellman_ford(indices=0)`은 닿지 않는 순환을 무시하고 `johnson(indices=0)`은 에러를 낸다.
+- **`NegativeCycleError`**: 요청한 원점에서 닿을 수 있는 음수 순환이 있으면 낸다(모든 방법이 같다; `indices=None`이면 그래프 어디든). 메시지는 모든 방법이 같이 쓰는 검사가 찾은 순환 위의 가장 작은 노드를 적는다(`bellman_ford(): negative cycle through node 3`; 음수 자기 고리는 그 자체로 순환이다; GR35). `[scipy와 다름]`: scipy의 `bellman_ford(indices=0)`은 닿지 않는 순환을 무시하고 `johnson(indices=0)`은 에러를 낸다.
 - **`yen(csgraph, source, sink, K)`**: 고리 없는 s–t 경로 가운데 (원점에서부터의 차례 합, 변의 수, 노드 열의 사전 순서)로 앞선 K개다. 결과는 길이 M ≤ K의 거리 배열 하나 또는 `YenResult(dist_array, predecessors)`(M × n, int64)다. 음수 무게는 받고 음수 순환은 `NegativeCycleError`다. `source == sink`면 길이 0의 경로 하나, `K`는 0 이상의 int다(0이면 빈 결과).
-- **`construct_dist_matrix`**: 선행 노드 행렬이 가리키는 경로를 원점에서부터 차례로 더한 거리다. 그래서 FW가 아닌 방법의 `shortest_path`가 돌려준 선행 노드에서 그 거리와 비트까지 같다. `[scipy와 다름]`: scipy는 도착점에서 거꾸로 더한다. 닿지 않는 자리는 `null_value`다.
-- **`reconstruct_path`**: 선행 노드 1차원 배열이 그리는 트리를 (n, n) `csr_array`로 만든다(변은 부모 → 자식).
+- **`construct_dist_matrix`**: 선행 노드 행렬이 가리키는 경로를 원점에서부터 차례로 더한 거리다. 그래서 FW가 아닌 방법의 `shortest_path`가 돌려준 선행 노드에서 그 거리와 비트까지 같다. `[scipy와 다름]`: scipy는 도착점에서 거꾸로 더한다. 닿지 않는 자리는 `null_value`, 대각은 0이다. `predecessors`는 정수 dtype의 (n, n) 배열이다(scipy의 int32도 받는다). 노드도 −9999도 아닌 값, 그래프에 없는 변, 순환, 원점이 아닌 노드에서 끝나는 사슬은 `ValueError`다(GR38; `[scipy와 다름]`: scipy는 int32만 받고, 없는 변에 inf를 더하며, 순환에서 끝나지 않는다).
+- **`reconstruct_path`**: 선행 노드 1차원 배열이 그리는 트리를 (n, n) `csr_array`로 만든다(변은 부모 → 자식에 그 변의 무게, 무향이면 두 방향의 작은 무게, 무게 0의 변은 저장된 0). 그래프에 없는 변과 자기를 가리키는 선행 노드는 `ValueError`다(GR38; `[scipy와 다름]`: scipy는 말없이 0을 넣거나 버린다). `construct_dist_matrix`와 `reconstruct_path`도 무게를 쓰는 함수라 저장된 NaN·±inf는 `ValueError`다.
 
 ## §4. 신장 트리, 흐름, 매칭, 배정 (GR3 마일스톤)
 ```
@@ -179,5 +179,5 @@ MaximumFlowResult.flow
 
 ## §9. 정확도
 - 정확한 것(참값과 같다): 연결 요소, 순회, 위상 정렬, 최소 신장 트리, 역 Cuthill–McKee, 구조적 랭크, 매칭의 크기, 흐름 값, 단절점, 다리, 이중 연결 요소, 코어 수.
-- 최단 경로: FW를 뺀 방법끼리 비트까지 같다. 정수 무게(모든 부분합 ≤ 2⁵³)와 `unweighted`는 정확한 최단 거리와 정확히 계산한 선행 노드 규칙과 같다. 일반 무게의 거리는 |d̂ − d\*| ≤ γ_{H−1}·max(Σ_{p̂}|w|, Σ_{p\*}|w|)이고(H는 두 경로 가운데 긴 쪽의 변 수), FW의 거리는 같은 꼴의 한계를 GR2 마일스톤에서 세어 적는다.
+- 최단 경로: FW를 뺀 방법끼리 비트까지 같다. 정수 무게(모든 부분합 ≤ 2⁵³)와 `unweighted`는 정확한 최단 거리와 정확히 계산한 선행 노드 규칙과 같다. 일반 무게의 거리는 |d̂ − d\*| ≤ γ_{H−1}·max(Σ_{p̂}|w|, Σ_{p\*}|w|)이고(H는 두 경로 가운데 긴 쪽의 변 수), FW의 거리도 같은 한계다(상수 1, p̂는 FW의 선행 노드가 그리는 경로; GR37).
 - `pagerank`는 ‖x̂ − x\*‖₁ ≤ tol + (반올림 바닥), 매개 중심성은 노드마다의 상대 한계, 배정은 정수 비용에서 정확한 최적, `laplacian`은 줄 합의 한계다(docs/design/graph.md §4). 참값은 정확한 유리수와 Arb다(`tests/graph/refdata.py`).

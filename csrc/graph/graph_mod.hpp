@@ -7,5 +7,7 @@ namespace sd::graph {
 
 void bind_input(nanobind::module_& m);
 void bind_traversal(nanobind::module_& m);
+void bind_paths(nanobind::module_& m);
+void bind_yen(nanobind::module_& m);
 
 }  // namespace sd::graph

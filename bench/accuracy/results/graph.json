@@ -1,0 +1,575 @@
+{
+ "schema": 1,
+ "area": "graph",
+ "runs": {
+  "20261123-045535-5d6bfc9+": {
+   "commit": "5d6bfc9",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/fft.py",
+    "bench/accuracy/graph.py",
+    "bench/accuracy/interpolate.py",
+    "bench/accuracy/results/fft.json",
+    "bench/accuracy/results/interpolate.json",
+    "bench/accuracy/tables.py",
+    "bench/fft/accuracy.md",
+    "bench/interpolate/accuracy.md",
+    "bench/speed/cases/fft.py",
+    "csrc/bind/graph_bind.cpp",
+    "csrc/bind/interpolate_bind.cpp",
+    "csrc/fft/basic.cpp",
+    "csrc/fft/driver.cpp",
+    "csrc/fft/driver.hpp",
+    "csrc/fft/plan.cpp",
+    "csrc/fft/plan.hpp",
+    "csrc/fft/rfft.hpp",
+    "csrc/graph/graph_mod.hpp",
+    "csrc/interpolate/interpolate.hpp",
+    "docs/api/fft.md",
+    "docs/api/graph.md",
+    "docs/api/interpolate.md",
+    "docs/design/fft.md",
+    "docs/design/graph.md",
+    "docs/design/interpolate.md",
+    "src/stardust/_results.py",
+    "src/stardust/fft/__init__.py",
+    "src/stardust/fft/_basic.py",
+    "src/stardust/graph/__init__.py",
+    "src/stardust/graph/_common.py",
+    "src/stardust/interpolate/__init__.py",
+    "tests/fft/refdata.py",
+    "tests/fft/test_api_surface.py",
+    "tests/fft/test_basic.py",
+    "tests/fft/test_errors.py",
+    "tests/fft/test_paths.py",
+    "tests/fft/test_reference.py",
+    "tests/fft/test_threads.py",
+    "tests/golden/cases_fft.py",
+    "tests/golden/cases_graph.py",
+    "tests/golden/cases_interpolate.py",
+    "tests/golden/data/fft.json",
+    "tests/golden/data/graph.json",
+    "tests/golden/data/interpolate.json",
+    "tests/graph/definitions.py",
+    "tests/graph/test_api_surface.py",
+    "tests/graph/test_threads.py",
+    "tests/interpolate/refdata.py",
+    "tests/interpolate/test_api_surface.py",
+    "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_threads.py"
+   ],
+   "date": "2026-11-23T04:55:35",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "graph/paths",
+   "area": "graph",
+   "name": "paths",
+   "points": 15278,
+   "regions": {
+    "absorb/20 directed": {
+     "points": 81,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1e-17,
+     "contract": 0.09007199254740991,
+     "bound": 1.0,
+     "worst": [
+      "absorb/20 s=0 v=2"
+     ]
+    },
+    "absorb/20 directed FW": {
+     "points": 81,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1e-17,
+     "contract": 0.09007199254740991,
+     "bound": 1.0,
+     "worst": [
+      "absorb/20 s=0 v=2"
+     ]
+    },
+    "bigint/over40 directed": {
+     "points": 312,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.304421042893889e-16,
+     "contract": 0.47376127831123244,
+     "bound": 1.0,
+     "worst": [
+      "bigint/over40 s=39 v=25"
+     ]
+    },
+    "bigint/over40 directed FW": {
+     "points": 312,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.304421042893889e-16,
+     "contract": 0.47376127831123244,
+     "bound": 1.0,
+     "worst": [
+      "bigint/over40 s=39 v=25"
+     ]
+    },
+    "dangling/50 directed": {
+     "points": 384,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.0937523562359248e-16,
+     "contract": 0.9691534737444216,
+     "bound": 1.0,
+     "worst": [
+      "dangling/50 s=26 v=8"
+     ]
+    },
+    "dangling/50 directed FW": {
+     "points": 384,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.9038000838229655e-16,
+     "contract": 0.9691534737444216,
+     "bound": 1.0,
+     "worst": [
+      "dangling/50 s=26 v=8"
+     ]
+    },
+    "dense/special6 directed": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 8.27403708540684e-17,
+     "contract": 0.7452590066937581,
+     "bound": 1.0,
+     "worst": [
+      "dense/special6 s=5 v=0"
+     ]
+    },
+    "dense/special6 directed FW": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 8.27403708540684e-17,
+     "contract": 0.7452590066937581,
+     "bound": 1.0,
+     "worst": [
+      "dense/special6 s=5 v=0"
+     ]
+    },
+    "er/float100 directed": {
+     "points": 776,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.15858818266434e-16,
+     "contract": 0.951337928242481,
+     "bound": 1.0,
+     "worst": [
+      "er/float100 s=0 v=12"
+     ]
+    },
+    "er/float100 directed FW": {
+     "points": 776,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.685474337815718e-16,
+     "contract": 0.951337928242481,
+     "bound": 1.0,
+     "worst": [
+      "er/float100 s=0 v=12"
+     ]
+    },
+    "er/symfloat50 directed": {
+     "points": 384,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.623375091997643e-16,
+     "contract": 0.9902227845268124,
+     "bound": 1.0,
+     "worst": [
+      "er/symfloat50 s=0 v=19"
+     ]
+    },
+    "er/symfloat50 directed FW": {
+     "points": 384,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.5645095659146612e-16,
+     "contract": 0.9902227845268124,
+     "bound": 1.0,
+     "worst": [
+      "er/symfloat50 s=0 v=19"
+     ]
+    },
+    "er/wide80 directed": {
+     "points": 632,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.6961201812502203e-16,
+     "contract": 0.8455342898476178,
+     "bound": 1.0,
+     "worst": [
+      "er/wide80 s=8 v=4"
+     ]
+    },
+    "er/wide80 directed FW": {
+     "points": 632,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.980175778557682e-16,
+     "contract": 0.8455342898476178,
+     "bound": 1.0,
+     "worst": [
+      "er/wide80 s=8 v=4"
+     ]
+    },
+    "heavytail/120 directed": {
+     "points": 864,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.0148349972167704e-16,
+     "contract": 0.9948789554828245,
+     "bound": 1.0,
+     "worst": [
+      "heavytail/120 s=33 v=39"
+     ]
+    },
+    "heavytail/120 directed FW": {
+     "points": 864,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.129598967531109e-16,
+     "contract": 0.9948789554828245,
+     "bound": 1.0,
+     "worst": [
+      "heavytail/120 s=33 v=39"
+     ]
+    },
+    "oneway/12 directed": {
+     "points": 34,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "oneway/12 s=0 v=3"
+     ]
+    },
+    "oneway/12 directed FW": {
+     "points": 34,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "oneway/12 s=0 v=3"
+     ]
+    },
+    "twoway/12 directed": {
+     "points": 68,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "twoway/12 s=0 v=3"
+     ]
+    },
+    "twoway/12 directed FW": {
+     "points": 68,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "twoway/12 s=0 v=3"
+     ]
+    },
+    "zero/15 directed": {
+     "points": 109,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "zero/15 s=0 v=1"
+     ]
+    },
+    "zero/15 directed FW": {
+     "points": 109,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "zero/15 s=0 v=1"
+     ]
+    },
+    "absorb/20 undirected": {
+     "points": 133,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1e-17,
+     "contract": 0.09007199254740991,
+     "bound": 1.0,
+     "worst": [
+      "absorb/20 s=0 v=2"
+     ]
+    },
+    "absorb/20 undirected FW": {
+     "points": 133,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1e-17,
+     "contract": 0.09007199254740991,
+     "bound": 1.0,
+     "worst": [
+      "absorb/20 s=0 v=2"
+     ]
+    },
+    "bigint/over40 undirected": {
+     "points": 312,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1.0928440122197888e-16,
+     "contract": 0.49217318862071174,
+     "bound": 1.0,
+     "worst": [
+      "bigint/over40 s=34 v=21"
+     ]
+    },
+    "bigint/over40 undirected FW": {
+     "points": 312,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 1.0928440122197888e-16,
+     "contract": 0.49217318862071174,
+     "bound": 1.0,
+     "worst": [
+      "bigint/over40 s=34 v=21"
+     ]
+    },
+    "dangling/50 undirected": {
+     "points": 384,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.0577863487219072e-16,
+     "contract": 0.8570978817795015,
+     "bound": 1.0,
+     "worst": [
+      "dangling/50 s=41 v=4"
+     ]
+    },
+    "dangling/50 undirected FW": {
+     "points": 384,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.2489613488017474e-16,
+     "contract": 0.8570978817795015,
+     "bound": 1.0,
+     "worst": [
+      "dangling/50 s=41 v=4"
+     ]
+    },
+    "dense/special6 undirected": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 8.27403708540684e-17,
+     "contract": 0.7452590066937581,
+     "bound": 1.0,
+     "worst": [
+      "dense/special6 s=0 v=5"
+     ]
+    },
+    "dense/special6 undirected FW": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 8.27403708540684e-17,
+     "contract": 0.7452590066937581,
+     "bound": 1.0,
+     "worst": [
+      "dense/special6 s=0 v=5"
+     ]
+    },
+    "er/float100 undirected": {
+     "points": 792,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.4976866587102674e-16,
+     "contract": 0.5750824025136222,
+     "bound": 1.0,
+     "worst": [
+      "er/float100 s=75 v=64"
+     ]
+    },
+    "er/float100 undirected FW": {
+     "points": 792,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.8131991795709983e-16,
+     "contract": 0.5750824025136222,
+     "bound": 1.0,
+     "worst": [
+      "er/float100 s=75 v=64"
+     ]
+    },
+    "er/symfloat50 undirected": {
+     "points": 384,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.623375091997643e-16,
+     "contract": 0.9902227845268124,
+     "bound": 1.0,
+     "worst": [
+      "er/symfloat50 s=0 v=19"
+     ]
+    },
+    "er/symfloat50 undirected FW": {
+     "points": 384,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.5645095659146612e-16,
+     "contract": 0.9902227845268124,
+     "bound": 1.0,
+     "worst": [
+      "er/symfloat50 s=0 v=19"
+     ]
+    },
+    "er/wide80 undirected": {
+     "points": 632,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.146505203676548e-16,
+     "contract": 0.9925891912701819,
+     "bound": 1.0,
+     "worst": [
+      "er/wide80 s=79 v=31"
+     ]
+    },
+    "er/wide80 undirected FW": {
+     "points": 632,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.400605806256699e-16,
+     "contract": 0.9925891912701819,
+     "bound": 1.0,
+     "worst": [
+      "er/wide80 s=79 v=31"
+     ]
+    },
+    "heavytail/120 undirected": {
+     "points": 952,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.7028900502944942e-16,
+     "contract": 0.574190055857079,
+     "bound": 1.0,
+     "worst": [
+      "heavytail/120 s=33 v=4"
+     ]
+    },
+    "heavytail/120 undirected FW": {
+     "points": 952,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.7028900502944942e-16,
+     "contract": 0.574190055857079,
+     "bound": 1.0,
+     "worst": [
+      "heavytail/120 s=33 v=4"
+     ]
+    },
+    "oneway/12 undirected": {
+     "points": 68,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "oneway/12 s=0 v=3"
+     ]
+    },
+    "oneway/12 undirected FW": {
+     "points": 68,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "oneway/12 s=0 v=3"
+     ]
+    },
+    "twoway/12 undirected": {
+     "points": 68,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "twoway/12 s=0 v=3"
+     ]
+    },
+    "twoway/12 undirected FW": {
+     "points": 68,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "twoway/12 s=0 v=3"
+     ]
+    },
+    "zero/15 undirected": {
+     "points": 210,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "zero/15 s=0 v=1"
+     ]
+    },
+    "zero/15 undirected FW": {
+     "points": 210,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "zero/15 s=0 v=1"
+     ]
+    }
+   },
+   "run": "20261123-045535-5d6bfc9+"
+  }
+ ]
+}

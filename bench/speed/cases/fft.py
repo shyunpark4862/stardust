@@ -147,6 +147,26 @@ def _real_specs():
     refs = (Ref("numpy", lambda d: lambda: np.fft.fft(d["x"])), Ref("scipy", lambda d: lambda: _sf().fft(d["x"])))
     out.append(Spec("FT2", "real", "fft of real input", ("fft", "rfft"), _size(n), _data((n,), complex_=False),
                     lambda d: lambda: _sd().fft(d["sx"]), refs, note="the real path (decision FT16)"))  # fmt: skip
+    # odd and Bluestein real lengths (decision FT43): 1155 = 3 5 7 11 (the complex plan of n), 10007 (a
+    # prime) and 20014 = 2 10007 (the real plan on a Bluestein half)
+    for n, note in ((1155, "odd: the complex plan of n"), (10007, "a prime: Bluestein"),
+                    (20014, "2 10007: a Bluestein half")):  # fmt: skip
+        refs = (Ref("numpy", lambda d: lambda: np.fft.rfft(d["x"])), Ref("scipy", lambda d: lambda: _sf().rfft(d["x"])))
+        out.append(Spec("FT2", "real", "rfft", ("rfft",), _size(n), _data((n,), complex_=False),
+                        lambda d: lambda: _sd().rfft(d["sx"]), refs, note=note))  # fmt: skip
+    n = 1 << 16
+    refs = (Ref("numpy", lambda d: lambda: np.fft.ihfft(d["x"])), Ref("scipy", lambda d: lambda: _sf().ihfft(d["x"])))
+    out.append(Spec("FT2", "real", "ihfft", ("ihfft",), _size(n), _data((n,), complex_=False),
+                    lambda d: lambda: _sd().ihfft(d["sx"]), refs))  # fmt: skip
+    refs = (Ref("numpy", lambda d: lambda: np.fft.hfft(d["x"])), Ref("scipy", lambda d: lambda: _sf().hfft(d["x"])))
+    out.append(Spec("FT2", "real", "hfft", ("hfft",), _size(n // 2 + 1), _data((n // 2 + 1,)),
+                    lambda d: lambda: _sd().hfft(d["sx"]), refs))  # fmt: skip
+    for axis in (-1, 0):
+        refs = (Ref("numpy", lambda d, a=axis: lambda: np.fft.rfft(d["x"], axis=a)),
+                Ref("scipy", lambda d, a=axis: lambda: _sf().rfft(d["x"], axis=a)),
+                Ref("scipy workers=10", lambda d, a=axis: lambda: _sf().rfft(d["x"], axis=a, workers=10), lib="scipy"))  # fmt: skip
+        out.append(Spec("FT2", "batch", f"rfft axis={axis}", ("rfft",), "(1000, 1024)", _data((1000, 1024), complex_=False),
+                        lambda d, a=axis: lambda: _sd().rfft(d["sx"], axis=a), refs))  # fmt: skip
     return out
 
 

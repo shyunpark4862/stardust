@@ -11,6 +11,8 @@ void bind_graph(nb::module_& core) {
     nb::module_ m = core.def_submodule("graph", "stardust graph native core");
     graph::bind_input(m);
     graph::bind_traversal(m);
+    graph::bind_paths(m);
+    graph::bind_yen(m);
 }
 
 }  // namespace sd

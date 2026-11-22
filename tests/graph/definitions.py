@@ -141,3 +141,104 @@ def topological_sort(n, edges):
 def is_topological(n, edges, order) -> bool:
     pos = {v: k for k, v in enumerate(order)}
     return sorted(order) == list(range(n)) and all(pos[i] < pos[j] for i, j, _ in edges)
+
+
+# ---- shortest paths (milestone GR2; docs/design/graph.md §3.2)
+
+
+def exact_weights(n, edges, directed, unweighted=False):
+    """[[(v, Fraction w)]] per node, ascending, self loops left out; and the set of nodes with a negative
+    self loop (a negative cycle by itself)."""
+    from fractions import Fraction
+
+    adj = [[] for _ in range(n)]
+    loops = set()
+    for (a, b), w in sorted(weights(n, edges, directed).items()):
+        w = Fraction(1) if unweighted else Fraction(w)
+        if a == b:
+            if w < 0:
+                loops.add(a)
+            continue
+        adj[a].append((b, w))
+    return adj, loops
+
+
+def shortest_exact(adj, loops, sources):
+    """The exact shortest distances from the sources together (Fraction, None where unreachable) by a
+    queue Bellman-Ford, or None when a negative cycle (a negative self loop too) is reachable."""
+    from collections import deque
+    from fractions import Fraction
+
+    n = len(adj)
+    d = [None] * n
+    q = deque()
+    for s in sources:
+        if d[s] is None:
+            d[s] = Fraction(0)
+            q.append(s)
+    inq = [d[v] is not None for v in range(n)]
+    count = [0] * n
+    while q:
+        u = q.popleft()
+        inq[u] = False
+        count[u] += 1
+        if count[u] > n + 1:
+            return None
+        for v, w in adj[u]:
+            t = d[u] + w
+            if d[v] is None or t < d[v]:
+                d[v] = t
+                if not inq[v]:
+                    inq[v] = True
+                    q.append(v)
+    if any(d[v] is not None for v in loops):
+        return None
+    return d
+
+
+def predecessors_exact(adj, d, sources):
+    """The rule of docs/design/graph.md §3.2 on exact distances: (pred, edge count h, source of the chain)."""
+    n = len(adj)
+    h = [-1] * n
+    order = []
+    for s in sources:
+        if h[s] < 0:
+            h[s] = 0
+            order.append(s)
+    pred = [-9999] * n
+    k = 0
+    while k < len(order):
+        u = order[k]
+        k += 1
+        for v, w in adj[u]:
+            if d[v] is None or d[u] + w != d[v]:
+                continue
+            if h[v] < 0:
+                h[v], pred[v] = h[u] + 1, u
+                order.append(v)
+            elif h[v] == h[u] + 1 and u < pred[v]:
+                pred[v] = u
+    src = [-9999] * n
+    for v in order:
+        src[v] = v if pred[v] == -9999 else src[pred[v]]
+    return pred, h, src
+
+
+def loopless_paths(adj, s, t):
+    """Every loopless s-t path as (exact length, edge count, nodes), sorted (yen's order)."""
+    from fractions import Fraction
+
+    if s == t:
+        return [(Fraction(0), 0, (s,))]
+    found = []
+    stack = [(s, (s,), Fraction(0))]
+    while stack:
+        u, path, length = stack.pop()
+        for v, w in adj[u]:
+            if v in path:
+                continue
+            if v == t:
+                found.append((length + w, len(path), path + (v,)))
+            else:
+                stack.append((v, path + (v,), length + w))
+    return sorted(found)
