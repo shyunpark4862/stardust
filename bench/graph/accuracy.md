@@ -8,10 +8,24 @@
 - 상대오차: |sd − 참값|/|참값|.
 - 계약 대비: 그 영역의 계약 척도(보장 영역은 상대 1e-14, 아주 작은 값은 절대, mixed는 |오차|/max(1, |값|))로 잰 가장 큰 오차를 한계로 나눈 값. 1 이하가 계약 안이다.
 
-측정: 20261123-045535-5d6bfc9+ (2026-11-23T04:55:35, 5d6bfc9 dirty).
+측정: 20261123-055811-b48c753+ (2026-11-23T05:58:11, b48c753 dirty).
 
 | 함수 | 영역 | 점 | 최대 ULP | 99.9% ULP | 최대 상대오차 | 계약 대비 |
 |---|---|---:|---:|---:|---:|---:|
+| `assignment` | cost/float7x7 min | 1 | 0 | 0 | 0 | 0 |
+| `assignment` | cost/float7x7 max | 1 | 0 | 0 | 0 | 0 |
+| `assignment` | bipartite/float8x8 min | 1 | 0 | 0 | 0 | 0 |
+| `assignment` | bipartite/float8x8 max | 1 | 0 | 0 | 0 | 0 |
+| `assignment` | random 10x10 min | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | random 10x10 max | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | random 25x25 min | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | random 25x25 max | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | random 40x40 min | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | random 40x40 max | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | random 12x30 min | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | random 12x30 max | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | near ties 30x30 min | 4 | 0 | 0 | 0 | 0 |
+| `assignment` | near ties 30x30 max | 4 | 0 | 0 | 0 | 0 |
 | `paths` | absorb/20 directed | 81 | 0 | 0 | 1.00e-17 | 0.09 |
 | `paths` | absorb/20 directed FW | 81 | 0 | 0 | 1.00e-17 | 0.09 |
 | `paths` | bigint/over40 directed | 312 | 2 | 2 | 2.30e-16 | 0.47 |

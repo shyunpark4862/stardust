@@ -83,8 +83,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-045535-5d6bfc9+": {
-   "commit": "5d6bfc9",
+  "20261123-055811-b48c753+": {
+   "commit": "b48c753",
    "dirty": true,
    "changed": [
     "API.md",
@@ -92,25 +92,22 @@
     "CMakeLists.txt",
     "README.md",
     "ROADMAP.md",
-    "bench/README.md",
     "bench/accuracy/fft.py",
     "bench/accuracy/graph.py",
     "bench/accuracy/interpolate.py",
     "bench/accuracy/results/fft.json",
-    "bench/accuracy/results/interpolate.json",
-    "bench/accuracy/tables.py",
     "bench/fft/accuracy.md",
-    "bench/interpolate/accuracy.md",
     "bench/speed/cases/fft.py",
+    "bench/speed/cases/graph.py",
+    "bench/speed/cases/interpolate.py",
     "csrc/bind/graph_bind.cpp",
     "csrc/bind/interpolate_bind.cpp",
     "csrc/fft/basic.cpp",
     "csrc/fft/driver.cpp",
     "csrc/fft/driver.hpp",
-    "csrc/fft/plan.cpp",
-    "csrc/fft/plan.hpp",
-    "csrc/fft/rfft.hpp",
     "csrc/graph/graph_mod.hpp",
+    "csrc/graph/input.cpp",
+    "csrc/interpolate/banded.hpp",
     "csrc/interpolate/interpolate.hpp",
     "docs/api/fft.md",
     "docs/api/graph.md",
@@ -123,12 +120,11 @@
     "src/stardust/fft/_basic.py",
     "src/stardust/graph/__init__.py",
     "src/stardust/graph/_common.py",
+    "src/stardust/graph/_paths.py",
     "src/stardust/interpolate/__init__.py",
+    "src/stardust/interpolate/_ppoly.py",
     "tests/fft/refdata.py",
     "tests/fft/test_api_surface.py",
-    "tests/fft/test_basic.py",
-    "tests/fft/test_errors.py",
-    "tests/fft/test_paths.py",
     "tests/fft/test_reference.py",
     "tests/fft/test_threads.py",
     "tests/golden/cases_fft.py",
@@ -138,14 +134,16 @@
     "tests/golden/data/graph.json",
     "tests/golden/data/interpolate.json",
     "tests/graph/definitions.py",
+    "tests/graph/refdata.py",
     "tests/graph/test_api_surface.py",
     "tests/graph/test_threads.py",
     "tests/interpolate/refdata.py",
     "tests/interpolate/test_api_surface.py",
     "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_linear_bits.py",
     "tests/interpolate/test_threads.py"
    ],
-   "date": "2026-11-23T04:55:35",
+   "date": "2026-11-23T05:58:11",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -163,7 +161,7 @@
    "id": "interpolate/coefficients",
    "area": "interpolate",
    "name": "coefficients",
-   "points": 3239,
+   "points": 6805,
    "regions": {
     "natural": {
      "points": 536,
@@ -241,9 +239,97 @@
      "worst": [
       "small/2#0"
      ]
+    },
+    "k2": {
+     "points": 575,
+     "ulp_max": 2671936.0,
+     "ulp_p999": 2671936.0,
+     "rel_max": 3.7499999119205567e-10,
+     "contract": 0.03213332217853519,
+     "bound": 1.0,
+     "worst": [
+      "monotone/down30#3"
+     ]
+    },
+    "k3": {
+     "points": 572,
+     "ulp_max": 85136320.0,
+     "ulp_p999": 85136320.0,
+     "rel_max": 1.541716699491191e-08,
+     "contract": 0.023864969927480877,
+     "bound": 1.0,
+     "worst": [
+      "uniform/200#3"
+     ]
+    },
+    "k4": {
+     "points": 568,
+     "ulp_max": 6801094337.0,
+     "ulp_p999": 6801094337.0,
+     "rel_max": 1.0092280935133792e-06,
+     "contract": 0.020737742509456272,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#13"
+     ]
+    },
+    "k5": {
+     "points": 563,
+     "ulp_max": 23391433034.0,
+     "ulp_p999": 23391433034.0,
+     "rel_max": 3.7735990307993076e-06,
+     "contract": 0.019337786085888636,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#19"
+     ]
+    },
+    "k3_natural": {
+     "points": 613,
+     "ulp_max": 2402319.0,
+     "ulp_p999": 2402319.0,
+     "rel_max": 3.333336375546931e-10,
+     "contract": 0.021450244267653493,
+     "bound": 1.0,
+     "worst": [
+      "flat/akima#6"
+     ]
+    },
+    "k3_clamped": {
+     "points": 613,
+     "ulp_max": 2528757.0,
+     "ulp_p999": 2528757.0,
+     "rel_max": 3.3333385854896924e-10,
+     "contract": 0.021901491490865545,
+     "bound": 1.0,
+     "worst": [
+      "monotone/up30#5"
+     ]
+    },
+    "k3_periodic": {
+     "points": 29,
+     "ulp_max": 1348573355162595.0,
+     "ulp_p999": 1348573355162595.0,
+     "rel_max": 0.2325008420236702,
+     "contract": 0.018333227196027826,
+     "bound": 1.0,
+     "worst": [
+      "periodic/sin16#14"
+     ]
+    },
+    "k5_periodic": {
+     "points": 33,
+     "ulp_max": 1935716259042787.0,
+     "ulp_p999": 1935716259042787.0,
+     "rel_max": 0.3596225509592739,
+     "contract": 0.006591774822041701,
+     "bound": 1.0,
+     "worst": [
+      "periodic/sin16#9"
+     ]
     }
    },
-   "run": "20261123-045535-5d6bfc9+",
+   "run": "20261123-055811-b48c753+",
    "comparators": {
     "scipy": {
      "natural": {
@@ -332,7 +418,7 @@
    "id": "interpolate/evaluation",
    "area": "interpolate",
    "name": "evaluation",
-   "points": 10684,
+   "points": 23612,
    "regions": {
     "natural": {
      "points": 1755,
@@ -410,9 +496,108 @@
      "worst": [
       "chebyshev/21#28"
      ]
+    },
+    "k1": {
+     "points": 1870,
+     "ulp_max": 336946665519002.0,
+     "ulp_p999": 45150224914769.0,
+     "e2e_rel_max": 2.1350233273051807e-16,
+     "contract": 0.2720073394736076,
+     "bound": 1.0,
+     "worst": [
+      "small/4#0"
+     ]
+    },
+    "k2": {
+     "points": 1835,
+     "ulp_max": 8.723762940556095e+18,
+     "ulp_p999": 8.670762996009395e+18,
+     "e2e_rel_max": 1.915370889985891e-07,
+     "contract": 0.19898146946716683,
+     "bound": 1.0,
+     "worst": [
+      "chebyshev/21#48"
+     ]
+    },
+    "k3": {
+     "points": 1796,
+     "ulp_max": 8.72950073231104e+18,
+     "ulp_p999": 8.679830889144646e+18,
+     "e2e_rel_max": 3.6690035591355743e-07,
+     "contract": 0.19546138344757957,
+     "bound": 1.0,
+     "worst": [
+      "monotone/down30#1"
+     ]
+    },
+    "k4": {
+     "points": 1753,
+     "ulp_max": 8.713050401101069e+18,
+     "ulp_p999": 8.709494298623695e+18,
+     "e2e_rel_max": 6.148023806828912e-05,
+     "contract": 0.19585010768863956,
+     "bound": 1.0,
+     "worst": [
+      "small/5#4"
+     ]
+    },
+    "k5": {
+     "points": 1706,
+     "ulp_max": 8.737097733200141e+18,
+     "ulp_p999": 1.6303837889235694e+16,
+     "e2e_rel_max": 3.7812963357845863e-06,
+     "contract": 0.16563160559524226,
+     "bound": 1.0,
+     "worst": [
+      "cancel/x1e15#1"
+     ]
+    },
+    "k3_natural": {
+     "points": 1830,
+     "ulp_max": 8.714079786635498e+18,
+     "ulp_p999": 1.0439716783272776e+16,
+     "e2e_rel_max": 2.7088897819731777e-07,
+     "contract": 0.18424993993889346,
+     "bound": 1.0,
+     "worst": [
+      "small/2#1"
+     ]
+    },
+    "k3_clamped": {
+     "points": 1830,
+     "ulp_max": 1.3071768729757782e+16,
+     "ulp_p999": 1.0765025431664252e+16,
+     "e2e_rel_max": 2.7088897819731777e-07,
+     "contract": 0.21753989286898276,
+     "bound": 1.0,
+     "worst": [
+      "small/2#1"
+     ]
+    },
+    "k3_periodic": {
+     "points": 154,
+     "ulp_max": 1925137731560772.0,
+     "ulp_p999": 1925137731560772.0,
+     "e2e_rel_max": 7.479467570931719e-15,
+     "contract": 0.165856202043167,
+     "bound": 1.0,
+     "worst": [
+      "periodic/sin16#29"
+     ]
+    },
+    "k5_periodic": {
+     "points": 154,
+     "ulp_max": 8.682889883037921e+18,
+     "ulp_p999": 8.682889883037921e+18,
+     "e2e_rel_max": 5.93040324566596e-14,
+     "contract": 0.10407025425695492,
+     "bound": 1.0,
+     "worst": [
+      "periodic/sin16#27"
+     ]
     }
    },
-   "run": "20261123-045535-5d6bfc9+",
+   "run": "20261123-055811-b48c753+",
    "comparators": {
     "scipy": {
      "natural": {
@@ -546,7 +731,7 @@
      ]
     }
    },
-   "run": "20261123-045535-5d6bfc9+",
+   "run": "20261123-055811-b48c753+",
    "comparators": {
     "numpy": {
      "curves": {
@@ -649,7 +834,7 @@
      ]
     }
    },
-   "run": "20261123-045535-5d6bfc9+",
+   "run": "20261123-055811-b48c753+",
    "comparators": {
     "scipy": {
      "pieces": {

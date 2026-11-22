@@ -20,7 +20,7 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "graph.md"
 
 # Documented, not implemented yet (docs/design/graph.md §8). A milestone moves its names from here to
 # sd.graph.__all__ (GR1: the traversals, connected_components, topological_sort, the conversion tools;
-# GR2: the shortest paths).
+# GR2: the shortest paths; GR3: the spanning tree, flow, matchings and assignment).
 GR1 = (
     "connected_components",
     "breadth_first_order",
@@ -42,13 +42,14 @@ GR2 = (
     "reconstruct_path",
     "NegativeCycleError",
 )
-PLANNED = {
-    # GR3
+GR3 = (
     "minimum_spanning_tree",
     "maximum_flow",
     "maximum_bipartite_matching",
     "min_weight_full_bipartite_matching",
     "linear_sum_assignment",
+)
+PLANNED = {
     # GR4
     "reverse_cuthill_mckee",
     "structural_rank",
@@ -180,6 +181,6 @@ def test_shared_options_have_one_spelling():
 
 
 def test_module_is_wired():
-    assert sd.graph.__all__ == list(GR1 + GR2)
+    assert sd.graph.__all__ == list(GR1 + GR2 + GR3)
     for name in MASKED | {"Graph", "graph", "csgraph"}:
         assert not hasattr(sd.graph, name), name

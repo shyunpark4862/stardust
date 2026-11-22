@@ -8,9 +8,10 @@ library's rules (decisions IP1-IP35 in docs/design/interpolate.md §1.1). numpy'
 sd.interp of the array area.
 
 The public names come milestone by milestone (docs/design/interpolate.md §8): IP2 brought the piecewise
-polynomials and the cubic family.
+polynomials and the cubic family, IP3 the B-splines.
 """
 
+from ._bspline import BSpline, make_interp_spline
 from ._ppoly import (
     Akima1DInterpolator,
     CubicHermiteSpline,
@@ -27,4 +28,6 @@ __all__ = [
     "PchipInterpolator",
     "Akima1DInterpolator",
     "pchip_interpolate",
+    "BSpline",
+    "make_interp_spline",
 ]

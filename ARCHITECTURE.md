@@ -68,7 +68,7 @@ stardust/
     differentiate/              _derivative, _weights, _differences, _result
     spatial/                    _common, _distance, _neighbors, _radius(RadiusResult), _kdtree (docs/design/spatial.md §6)
     graph/                      __init__.py (공개 이름은 GR1 마일스톤부터; 계획한 모듈은 docs/design/graph.md §6)
-    interpolate/                __init__.py, _common, _ppoly (IP2 마일스톤; 계획한 모듈은 docs/design/interpolate.md §6)
+    interpolate/                __init__.py, _common, _ppoly (IP2 마일스톤), _bspline (IP3 마일스톤; 계획한 모듈은 docs/design/interpolate.md §6)
     fft/                        __init__.py (공개 이름은 FT1 마일스톤부터; 계획한 모듈은 docs/design/fft.md §6)
     plot/                       _figure(칸·배치·내보내기), _layers, _basic, _sample·_function(함수 그림), _field(두 변수), _stat, _surface(3D), _adapt(곡면의 적응형 표본),
                                 _scene(도형 목록), _text(LaTeX 조판과 글리프 윤곽선의 캐시), _dvi, _ticks, _color, _svg·_pdf·_png
@@ -110,7 +110,7 @@ stardust/
     spatial/      metric(타일 순서의 짝 커널과 거리마다의 연산), distance(pdist·cdist·배치 거리 함수·squareform; docs/design/spatial.md §3.1),
                   neighbors(kneighbors·radius_neighbors의 전수와 GEMM 고르기; §3.2), kdtree(KD 트리 만들기와 kNN; §3.3, §3.4)
     graph/        (GR1 마일스톤부터; 계획한 파일은 docs/design/graph.md §6)
-    interpolate/  search linear (IP1 마일스톤), banded cubic ppoly (IP2 마일스톤; 나머지 계획한 파일은 docs/design/interpolate.md §6)
+    interpolate/  search linear (IP1 마일스톤), banded cubic ppoly (IP2 마일스톤), bspline (IP3 마일스톤; 나머지 계획한 파일은 docs/design/interpolate.md §6)
     fft/          twiddle(회전 인자), cfft(혼합 기수 Stockham 복소 FFT), rfft(실수 FFT), vdsp(vDSP DFT의 래퍼): FT0 마일스톤의 시제품 헤더이고
                   아직 바인딩하지 않았다(docs/design/fft.md §6)
     plot/         raster(2D 래스터라이저: 면적 누적, 획의 윤곽, 점 찍기, 그림 붙이기), zbuffer(3D 깊이 버퍼), levels(marching squares; docs/design/plot.md §3.5, §5, §6)

@@ -1,5 +1,6 @@
 """Results of the one-dimensional transforms (fft and ifft, and since milestone FT2 rfft, irfft, hfft,
-ihfft and fft of real input) do not depend on the thread count or on Accelerate's thread mode
+ihfft and fft of real input) and of the n-dimensional ones (milestone FT3: every axis pass splits its
+lines into tasks) do not depend on the thread count or on Accelerate's thread mode
 (docs/design/fft.md §1.3, §3.7, §7.3): at 1, 3 and 10 threads every case gives the same bytes on inputs
 large enough to split into many tasks (batches along the last and the first axis, mixed-radix and
 Bluestein lengths, one long line), and a child process with VECLIB_MAXIMUM_THREADS=1 gives the same
@@ -45,6 +46,18 @@ def _results():
     r = g.uniform(-1, 1, 1 << 17)
     out.append(F.rfft(sd.asarray(r)))
     out.append(F.irfft(sd.asarray(r[:65537] + 0.5j)))
+    # the n-dimensional transforms (FT3): passes along the last, middle and first axes, in place and not
+    shape = (96, 128, 20)
+    x = sd.asarray(g.uniform(-1, 1, shape) + 1j * g.uniform(-1, 1, shape))
+    r = sd.asarray(g.uniform(-1, 1, shape))
+    out.append(F.fftn(x))
+    out.append(F.ifftn(x, s=(100, 20), axes=(0, 2), norm="ortho"))
+    out.append(F.fftn(r))
+    out.append(F.rfftn(r))
+    out.append(F.ihfftn(r, axes=(2, 0)))
+    out.append(F.irfftn(x))
+    out.append(F.hfftn(x, s=(90, 31), axes=(1, 0)))
+    out.append(F.fft2(sd.asarray(g.uniform(-1, 1, (34, 1009)) + 0.25j)))
     return out
 
 
@@ -68,6 +81,8 @@ for shape in ((200, 128), (30, 1009), (1, 1 << 16)):
     h.update(np.asarray(sd.fft.ifft(sd.asarray(x), axis=0)).tobytes())
     h.update(np.asarray(sd.fft.rfft(sd.asarray(x.real))).tobytes())
     h.update(np.asarray(sd.fft.irfft(sd.asarray(x))).tobytes())
+    h.update(np.asarray(sd.fft.fft2(sd.asarray(x))).tobytes())
+    h.update(np.asarray(sd.fft.irfftn(sd.asarray(x))).tobytes())
 print(h.hexdigest())
 """
 

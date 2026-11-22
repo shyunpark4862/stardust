@@ -13,6 +13,7 @@ void bind_interpolate(nb::module_& core) {
     interpolate::bind_linear(m);
     interpolate::bind_cubic(m);
     interpolate::bind_ppoly(m);
+    interpolate::bind_bspline(m);
 }
 
 }  // namespace sd

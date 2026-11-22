@@ -59,9 +59,7 @@ def _sources(indices, n, name):
         if bool(_sd.any(bad)):
             v = int(a[int(_sd.argmax(bad))])
             raise ValueError(f"{name}(): 'indices' must hold nodes of the graph (0 .. {n - 1}), not {v}")
-        if not a._flags()["c_contiguous"]:
-            a = _sd.asarray(a.tolist())
-        return a, False
+        return C.contiguous(a), False
     return _sd.asarray([C.node(indices, n, name, "indices")]), True
 
 
@@ -231,9 +229,7 @@ def _predecessors(x, shape, name):
         if a.size:
             raise TypeError(f"{name}(): 'predecessors' must hold ints, not {a.dtype}")
         a = _sd.zeros(shape, dtype=_sd.int64)
-    if not a._flags()["c_contiguous"]:
-        a = _sd.reshape(_sd.reshape(a, (a.size,)), shape)
-    return a
+    return C.contiguous(a)
 
 
 def _pred_error(name, n, err, row=True):

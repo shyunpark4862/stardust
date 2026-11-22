@@ -28,7 +28,18 @@ is 11-smooth: the complex plan of n / 2 and the twiddle pass), odd (an odd 11-sm
 plan of n and the Hermitian part) and bluestein (the inner length n / 2 or n has a prime factor above
 11). numpy and scipy are the comparator columns (R has no real transform: it is compared on c2c only).
 
-Later milestones: `nd` with FT3, `r2r` with FT4.
+FT3 brings
+
+  nd   fftn (method fftn) and ifftn(norm='forward') (method ifftn) on every array of tests/fft/ref/nd.npz
+       and the complex points of tests/fft/refdata.nd_points (shapes with a Bluestein axis), rfftn (method
+       rfftn) and irfftn(norm='forward') (method irfftn, the parts numpy and scipy drop from a
+       non-Hermitian input dropped as theirs) on its real and Hermitian points; Arb computed where the run
+       is (small shapes, a second or so). Regions by method and by the axes' paths: smooth (every axis, and
+       a real axis's inner length, 11-smooth) and bluestein (an axis or a real axis's inner length with a
+       prime factor above 11), judged by tests/fft/refdata.bound_nd. numpy (no hfftn: the four methods
+       above) and scipy are the comparator columns.
+
+Later milestones: `r2r` with FT4.
 """
 
 from __future__ import annotations
@@ -241,10 +252,91 @@ def _real_regions(family):
     return measure
 
 
+def _nd_lines():
+    """(method, signal id, x, s, hi, lo) of every n-dimensional point: the stored arrays, then refdata.nd_points
+    (Arb here). For irfftn, x is the half spectrum as the transform sees it and s the lengths."""
+    from tests.fft import refdata
+
+    r = refdata.ref("nd")
+    for method, name in (("forward", "fftn"), ("backward", "ifftn")):
+        m = r.methods[method]
+        for j, k in enumerate(m.index):
+            shape = tuple(int(v) for v in r.inputs["shape"][k])
+            hi, lo = m.hi[j].reshape(shape), m.lo[j].reshape(shape)
+            yield name, str(r.inputs["signal"][k]), r.inputs["x"][k].reshape(shape), shape, hi, lo
+    names = {"c2c": "fftn", "c2c-backward": "ifftn", "real": "rfftn", "hermitian": "irfftn"}
+    for family, sid, x, shape, hi, lo in refdata.nd_points():
+        yield names[family], sid, x, shape, hi, lo
+
+
+def _nd_form(method, s) -> str:
+    from tests.fft import refdata
+
+    real = method in ("rfftn", "irfftn")
+    smooth = all(refdata.is_smooth11(refdata.real_inner(v) if real and i == len(s) - 1 else v) for i, v in enumerate(s))
+    return "smooth" if smooth else "bluestein"
+
+
+def _nd_compute(lib, method, x, s):
+    if lib == "sd":
+        import stardust as sd
+
+        f = sd.fft
+        sx = sd.asarray(x)
+    elif lib == "numpy":
+        f = np.fft
+        sx = x
+    elif lib == "scipy":
+        import scipy.fft as f
+
+        sx = x
+    else:
+        return None
+    axes = list(range(x.ndim))
+    if method == "fftn":
+        return np.asarray(f.fftn(sx))
+    if method == "ifftn":
+        return np.asarray(f.ifftn(sx, norm="forward"))
+    if method == "rfftn":
+        return np.asarray(f.rfftn(sx))
+    return np.asarray(
+        f.irfftn(sx, s=s, axes=axes, norm="forward") if lib == "numpy" else f.irfftn(sx, s=s, norm="forward")
+    )
+
+
+def _nd_regions(lib):
+    from tests.fft import refdata
+
+    pts = {}
+    for method, sid, x, s, hi, lo in _nd_lines():
+        got = _nd_compute(lib, method, x, s)
+        if got is None:
+            return None
+        err = refdata.error(got, hi, lo)
+        ynorm = refdata.norm2(hi)
+        if method == "irfftn":
+            b = refdata.bound_nd(s, refdata.hermitian_norm_nd(x, s[-1]), real=True)
+        else:
+            b = refdata.bound_nd(s, refdata.norm2(x), real=method == "rfftn")
+        p = pts.setdefault(f"{method}/{_nd_form(method, s)}", {"where": [], "contract": [], "rel": []})
+        p["where"].append(sid)
+        p["contract"].append(refdata.units(err, b))
+        p["rel"].append(err / ynorm if ynorm else (0.0 if err == 0 else np.inf))
+    out = {}
+    for method in ("fftn", "ifftn", "rfftn", "irfftn"):
+        for form in ("smooth", "bluestein"):
+            p = pts.get(f"{method}/{form}")
+            if p:
+                out[f"{method}/{form}"] = region(p["where"], rel=np.array(p["rel"]),
+                                                 contract=np.array(p["contract"]), bound=1.0)  # fmt: skip
+    return out or None
+
+
 def sweeps():
     real, herm = _real_regions("real"), _real_regions("hermitian")
     return [
         Custom("fft", "c2c", lambda: _regions("sd"), compare_libs(_regions, ("numpy", "scipy", "R"), seconds=600.0)),
         Custom("fft", "real", lambda: real("sd"), compare_libs(real, ("numpy", "scipy"), seconds=600.0)),
         Custom("fft", "hermitian", lambda: herm("sd"), compare_libs(herm, ("numpy", "scipy"), seconds=600.0)),
+        Custom("fft", "nd", lambda: _nd_regions("sd"), compare_libs(_nd_regions, ("numpy", "scipy"), seconds=600.0)),
     ]

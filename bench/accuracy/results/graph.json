@@ -2,8 +2,8 @@
  "schema": 1,
  "area": "graph",
  "runs": {
-  "20261123-045535-5d6bfc9+": {
-   "commit": "5d6bfc9",
+  "20261123-055811-b48c753+": {
+   "commit": "b48c753",
    "dirty": true,
    "changed": [
     "API.md",
@@ -11,25 +11,22 @@
     "CMakeLists.txt",
     "README.md",
     "ROADMAP.md",
-    "bench/README.md",
     "bench/accuracy/fft.py",
     "bench/accuracy/graph.py",
     "bench/accuracy/interpolate.py",
     "bench/accuracy/results/fft.json",
-    "bench/accuracy/results/interpolate.json",
-    "bench/accuracy/tables.py",
     "bench/fft/accuracy.md",
-    "bench/interpolate/accuracy.md",
     "bench/speed/cases/fft.py",
+    "bench/speed/cases/graph.py",
+    "bench/speed/cases/interpolate.py",
     "csrc/bind/graph_bind.cpp",
     "csrc/bind/interpolate_bind.cpp",
     "csrc/fft/basic.cpp",
     "csrc/fft/driver.cpp",
     "csrc/fft/driver.hpp",
-    "csrc/fft/plan.cpp",
-    "csrc/fft/plan.hpp",
-    "csrc/fft/rfft.hpp",
     "csrc/graph/graph_mod.hpp",
+    "csrc/graph/input.cpp",
+    "csrc/interpolate/banded.hpp",
     "csrc/interpolate/interpolate.hpp",
     "docs/api/fft.md",
     "docs/api/graph.md",
@@ -42,12 +39,11 @@
     "src/stardust/fft/_basic.py",
     "src/stardust/graph/__init__.py",
     "src/stardust/graph/_common.py",
+    "src/stardust/graph/_paths.py",
     "src/stardust/interpolate/__init__.py",
+    "src/stardust/interpolate/_ppoly.py",
     "tests/fft/refdata.py",
     "tests/fft/test_api_surface.py",
-    "tests/fft/test_basic.py",
-    "tests/fft/test_errors.py",
-    "tests/fft/test_paths.py",
     "tests/fft/test_reference.py",
     "tests/fft/test_threads.py",
     "tests/golden/cases_fft.py",
@@ -57,14 +53,16 @@
     "tests/golden/data/graph.json",
     "tests/golden/data/interpolate.json",
     "tests/graph/definitions.py",
+    "tests/graph/refdata.py",
     "tests/graph/test_api_surface.py",
     "tests/graph/test_threads.py",
     "tests/interpolate/refdata.py",
     "tests/interpolate/test_api_surface.py",
     "tests/interpolate/test_errors.py",
+    "tests/interpolate/test_linear_bits.py",
     "tests/interpolate/test_threads.py"
    ],
-   "date": "2026-11-23T04:55:35",
+   "date": "2026-11-23T05:58:11",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -78,6 +76,169 @@
   }
  },
  "sweeps": [
+  {
+   "id": "graph/assignment",
+   "area": "graph",
+   "name": "assignment",
+   "points": 44,
+   "regions": {
+    "cost/float7x7 min": {
+     "points": 1,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "cost/float7x7"
+     ]
+    },
+    "cost/float7x7 max": {
+     "points": 1,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "cost/float7x7"
+     ]
+    },
+    "bipartite/float8x8 min": {
+     "points": 1,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "bipartite/float8x8"
+     ]
+    },
+    "bipartite/float8x8 max": {
+     "points": 1,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "bipartite/float8x8"
+     ]
+    },
+    "random 10x10 min": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "random 10x10 max": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "random 25x25 min": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "random 25x25 max": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "random 40x40 min": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "random 40x40 max": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "random 12x30 min": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "random 12x30 max": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "near ties 30x30 min": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    },
+    "near ties 30x30 max": {
+     "points": 4,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "seed 0"
+     ]
+    }
+   },
+   "run": "20261123-055811-b48c753+"
+  },
   {
    "id": "graph/paths",
    "area": "graph",
@@ -569,7 +730,7 @@
      ]
     }
    },
-   "run": "20261123-045535-5d6bfc9+"
+   "run": "20261123-055811-b48c753+"
   }
  ]
 }

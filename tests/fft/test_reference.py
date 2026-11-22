@@ -4,7 +4,10 @@ unnormalised), of real.npz (rfft, the whole spectrum of fft of real input, ihfft
 (irfft(norm='forward'), hfft of the conjugate: both unnormalised) is within the contract, on every kind
 of signal (uniform, normal, impulse, constant, sines, wide, huge, tiny) and every length form (2^k,
 f 2^k, the other 11-smooth lengths, Bluestein; even and odd real lengths); and the long lines the files
-leave out (2^16, 65537, 3 10007; decision FT33) with Arb computed here."""
+leave out (2^16, 65537, 3 10007; decision FT33) with Arb computed here. The n-dimensional transforms
+(milestone FT3): every stored line of nd.npz (fftn, ifftn(norm='forward')) and the points of
+refdata.nd_points (Bluestein axes, rfftn and irfftn on even, odd and Bluestein last lengths, on uniform,
+wide, huge and subnormal values) with Arb computed here, judged by refdata.bound_nd."""
 
 import numpy as np
 import pytest
@@ -113,3 +116,45 @@ def test_long_real_lines_within_contract(sid):
     got = np.asarray(F.irfft(sd.asarray(half), n=s.n, norm="forward"))
     b = refdata.bound("hermitian", s.n, refdata.hermitian_norm(half, s.n))
     assert refdata.units(refdata.error(got, hi.real, lo.real), b) < 0.1, sid
+
+
+def test_every_stored_nd_line_within_contract():
+    r = refdata.ref("nd")
+    worst = (0.0, "")
+    for method in ("forward", "backward"):
+        m = r.methods[method]
+        for j, k in enumerate(m.index):
+            shape = tuple(int(v) for v in r.inputs["shape"][k])
+            x = r.inputs["x"][k].reshape(shape)
+            sx = sd.asarray(x)
+            got = F.fftn(sx) if method == "forward" else F.ifftn(sx, norm="forward")
+            u = refdata.units(refdata.error(np.asarray(got).ravel(), m.hi[j], m.lo[j]),
+                              refdata.bound_nd(shape, refdata.norm2(x)))  # fmt: skip
+            assert u <= 1.0, (str(r.inputs["signal"][k]), method, u)
+            worst = max(worst, (u, f"{method} {r.inputs['signal'][k]}"))
+    assert worst[0] < 0.1, worst
+
+
+def test_nd_points_within_contract():
+    worst = {}
+    for family, sid, x, s, hi, lo in refdata.nd_points():
+        sx = sd.asarray(x)
+        if family == "c2c":
+            got, b = F.fftn(sx), refdata.bound_nd(s, refdata.norm2(x))
+        elif family == "c2c-backward":
+            got, b = F.ifftn(sx, norm="forward"), refdata.bound_nd(s, refdata.norm2(x))
+        elif family == "real":
+            got, b = F.rfftn(sx), refdata.bound_nd(s, refdata.norm2(x), real=True)
+            # and the whole spectrum of fftn of real input: the same bound (decision FT45's form)
+            whole = np.asarray(F.fftn(sx))
+            assert np.array_equal(whole[..., : hi.shape[-1]], np.asarray(got), equal_nan=True), sid
+        else:
+            got = F.irfftn(sx, s=s, norm="forward")
+            b = refdata.bound_nd(s, refdata.hermitian_norm_nd(x, s[-1]), real=True)
+            hgot = F.hfftn(sd.asarray(np.conj(x)), s=s)
+            assert refdata.units(refdata.error(np.asarray(hgot), hi, lo), b) <= 1.0, ("hfftn", sid)
+        u = refdata.units(refdata.error(np.asarray(got), hi, lo), b)
+        assert u <= 1.0, (family, sid, u)
+        worst[family] = max(worst.get(family, (0.0, "")), (u, sid))
+    for family, w in worst.items():
+        assert w[0] < 0.2, (family, w)

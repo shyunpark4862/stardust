@@ -9,11 +9,14 @@ meaning for the algorithms scipy lacks), in one flat namespace; inputs and optio
 library's rules (decisions GR1-GR28 in docs/design/graph.md §1.1).
 
 The public names come milestone by milestone (docs/design/graph.md §8): GR1 the traversals, connected
-components, topological sort and the conversion tools; GR2 the shortest paths.
+components, topological sort and the conversion tools; GR2 the shortest paths; GR3 the minimum spanning
+tree, the maximum flow, the matchings and the assignment.
 """
 
 from ._common import NegativeCycleError
 from ._convert import csgraph_from_dense, csgraph_to_dense
+from ._flow import maximum_flow
+from ._matching import linear_sum_assignment, maximum_bipartite_matching, min_weight_full_bipartite_matching
 from ._paths import (
     bellman_ford,
     construct_dist_matrix,
@@ -32,6 +35,7 @@ from ._traversal import (
     depth_first_tree,
     topological_sort,
 )
+from ._tree import minimum_spanning_tree
 
 __all__ = [
     "connected_components",
@@ -51,4 +55,9 @@ __all__ = [
     "construct_dist_matrix",
     "reconstruct_path",
     "NegativeCycleError",
+    "minimum_spanning_tree",
+    "maximum_flow",
+    "maximum_bipartite_matching",
+    "min_weight_full_bipartite_matching",
+    "linear_sum_assignment",
 ]

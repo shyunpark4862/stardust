@@ -48,6 +48,8 @@ ConnectedComponentsResult = namedtuple("ConnectedComponentsResult", ["n_componen
 ShortestPathResult = namedtuple("ShortestPathResult", ["dist_matrix", "predecessors"])
 MinOnlyResult = namedtuple("MinOnlyResult", ["dist_matrix", "predecessors", "sources"])
 YenResult = namedtuple("YenResult", ["dist_array", "predecessors"])
+# graph: the assignments (docs/api/graph.md §4, §7; scipy's (row_ind, col_ind))
+AssignmentResult = namedtuple("AssignmentResult", ["row_ind", "col_ind"])
 
 # regression: the linear models' diagnostics (docs/api/regression.md §2; statsmodels' het_breuschpagan
 # fields and order). Jarque-Bera's result is sd.htest's class (G165, htest H18, H39). The three

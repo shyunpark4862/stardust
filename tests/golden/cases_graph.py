@@ -17,6 +17,15 @@ graphs with ties, zero-weight edges, negative weights, reachable and unreachable
 (NegativeCycleError is a result); and large enough for the parallel paths at 3 and 10 threads: the
 source tasks (indices, all pairs), the blocked Floyd-Warshall's block tasks, auto's dense Dijkstra and the
 rows of construct_dist_matrix (the largest result 4.9 * 10^5 float64s).
+
+The spanning tree, flow, matchings and assignment (milestone GR3): minimum_spanning_tree on the small graphs
+above and on ties, two-way edges, stored -0.0 and negative weights; maximum_flow by both methods on int64 and
+bool capacities (stored zero capacities, self loops, two-way edges, capacities near 2^62 and past int32);
+maximum_bipartite_matching (both perm_types, rectangular); min_weight_full_bipartite_matching and
+linear_sum_assignment (ties, rectangular both ways, +inf and -inf, maximize, stored zeros, infeasible) and
+the errors; and large inputs past the GIL threshold at 3 and 10 threads (the largest result 1.6 * 10^5
+int64s). Which of several optima the flow, the matchings and the assignments return is fixed by their scan
+order (decision GR16): these cases guard it.
 """
 
 import math
@@ -128,6 +137,7 @@ def cases(L):
     yield "large topological_sort", lambda: GR.topological_sort(np.triu(D, 1) != 0)
 
     yield from _paths_cases(L, graphs)
+    yield from _tree_flow_cases(L, graphs)
 
     # wrong calls
     small = graphs["small"]
@@ -317,3 +327,120 @@ def _paths_cases(L, graphs):
     )
     yield "error reconstruct self", lambda: GR.reconstruct_path(small, [0] + [-9999] * 11)
     yield "error positional option dijkstra", lambda: GR.dijkstra(small, False)
+
+
+def _tree_flow_cases(L, graphs):
+    """The spanning tree, flow, matchings and assignment (milestone GR3)."""
+    sd, np = L.sd, L.np
+    GR = sd.graph
+    S = sd.sparse
+    for name, A in graphs.items():
+        yield f"minimum_spanning_tree {name}", lambda A=A: GR.minimum_spanning_tree(A)
+        yield f"maximum_bipartite_matching {name}", lambda A=A: GR.maximum_bipartite_matching(A)
+    r = L.rng(2306)
+    ties = np.round(r.uniform(-2, 2, (14, 14)) * 2) / 2 * (r.random((14, 14)) < 0.4)
+    two = np.zeros((5, 5))
+    two[0, 1], two[1, 0], two[1, 2], two[2, 1], two[3, 4], two[2, 3] = 4, 2, 3, 3, -1, 1
+    negz = S.coo_array(
+        (np.array([0.0, -0.0, -1.0, 2.0]), (np.array([0, 1, 1, 2]), np.array([1, 0, 2, 0]))), shape=(3, 3)
+    )
+    for name, A in (("ties", ties), ("two way 5", two), ("signed zeros", negz), ("ties csr", S.csr_array(ties))):
+        yield f"minimum_spanning_tree {name}", lambda A=A: GR.minimum_spanning_tree(A)
+
+    caps = (r.integers(1, 9, (12, 12)) * (r.random((12, 12)) < 0.35)).astype(np.int64)
+    caps[3, 3] = 4  # a self loop
+    zero_caps = S.coo_array(
+        (np.array([0, 3, 2, 0], np.int64), (np.array([0, 1, 0, 2]), np.array([1, 2, 2, 0]))), shape=(3, 3)
+    )
+    big = np.zeros((6, 6), np.int64)
+    big[0, 1] = big[0, 2] = 2**61
+    big[1, 3] = big[2, 4] = big[3, 5] = big[4, 5] = 2**62
+    big[1, 2] = big[2, 1] = 2**63 - 1
+    past = np.zeros((4, 4), np.int64)
+    past[0, 1], past[1, 3], past[0, 2], past[2, 3] = 2**40, 2**40, 2**32 + 5, 2**32 + 5
+    complete = np.ones((6, 6), np.int64) - np.eye(6, dtype=np.int64)
+    nets = {
+        "random": caps, "random csr": S.csr_array(caps), "bool": caps > 4, "stored zeros": zero_caps,
+        "near 2^62": big, "past int32": S.csr_array(past), "ties": complete,
+    }  # fmt: skip
+    for name, A in nets.items():
+        n = A.shape[0]
+        for method in ("dinic", "edmonds_karp"):
+            yield f"maximum_flow {method} {name}", lambda A=A, m=method, n=n: GR.maximum_flow(A, 0, n - 1, method=m)
+    yield "maximum_flow middle", lambda: GR.maximum_flow(caps, 5, 2)
+
+    stored0 = S.coo_array(
+        (np.r_[np.zeros(4), np.ones(3)], (np.r_[0, 1, 2, 3, 0, 1, 2], np.r_[0, 1, 2, 3, 1, 2, 3])), shape=(4, 4)
+    )  # a perfect matching of stored zeros
+    bip = (r.random((9, 13)) < 0.3) * r.integers(1, 5, (9, 13)).astype(np.float64)
+    for name, A in (("9x13", bip), ("13x9", bip.T.copy()), ("9x13 csr", S.csr_array(bip))):
+        for perm in ("row", "column"):
+            yield (
+                f"maximum_bipartite_matching {name} {perm}",
+                lambda A=A, p=perm: GR.maximum_bipartite_matching(A, perm_type=p),
+            )
+    for name, A in (
+        ("9x13", bip),
+        ("13x9", bip.T.copy()),
+        ("ties", np.ones((6, 6))),
+        ("zeros", stored0),
+    ):
+        for maximize in (False, True):
+            yield (
+                f"min_weight_full_bipartite_matching {name} {maximize}",
+                lambda A=A, m=maximize: GR.min_weight_full_bipartite_matching(A, maximize=m),
+            )
+    costs = {
+        "int": r.integers(0, 9, (10, 10)).astype(np.float64),
+        "rect wide": r.integers(0, 5, (6, 11)),
+        "rect tall": r.integers(0, 5, (11, 6)),
+        "float": r.uniform(-1, 1, (9, 9)),
+        "ties": np.ones((7, 7)),
+        "inf": np.where(r.random((8, 8)) < 0.4, np.inf, r.integers(0, 9, (8, 8))),
+        "bool": r.random((5, 5)) < 0.5,
+        "empty": np.zeros((0, 4)),
+    }
+    for name, C in costs.items():
+        for maximize in (False, True):
+            yield (
+                f"linear_sum_assignment {name} {maximize}",
+                lambda C=C, m=maximize: GR.linear_sum_assignment(C, maximize=m),
+            )
+    yield (
+        "linear_sum_assignment -inf maximize",
+        lambda: GR.linear_sum_assignment(np.where(np.isinf(costs["inf"]), -np.inf, costs["inf"]), maximize=True),
+    )
+
+    # large: past the GIL threshold (serial algorithms; the same bytes at 3 and 10 threads)
+    n = 40000
+    rows = np.repeat(np.arange(n), 4)
+    cols = (rows + r.integers(1, 2000, n * 4)) % n
+    w = np.round(r.uniform(0, 4, n * 4) * 4) / 4
+    A = S.coo_array((w, (rows, cols)), shape=(n, n)).tocsr()
+    yield "large minimum_spanning_tree", lambda: GR.minimum_spanning_tree(A)
+    yield "large maximum_bipartite_matching", lambda: GR.maximum_bipartite_matching(A)
+    F = S.coo_array((r.integers(1, 60, n * 4), (rows, cols)), shape=(n, n)).tocsr()
+    for method in ("dinic", "edmonds_karp"):
+        yield f"large maximum_flow {method}", lambda m=method: GR.maximum_flow(F[:6000, :6000], 0, 5999, method=m)
+    C = r.integers(0, 40, (300, 300)).astype(np.float64)
+    yield "large linear_sum_assignment", lambda: GR.linear_sum_assignment(C)
+    m = 2500
+    M = S.coo_array(
+        (r.uniform(0, 1, m * 8), (np.repeat(np.arange(m), 8), r.integers(0, m, m * 8))), shape=(m, m)
+    ).tocsr()
+    M = M + S.eye_array(m) * 3.0
+    yield "large min_weight_full_bipartite_matching", lambda: GR.min_weight_full_bipartite_matching(M)
+
+    # wrong calls
+    yield "error mst stored nan", lambda: GR.minimum_spanning_tree(graphs["zeros"])
+    yield "error flow float", lambda: GR.maximum_flow(caps.astype(np.float64), 0, 1)
+    yield "error flow negative", lambda: GR.maximum_flow(-caps, 0, 1)
+    yield "error flow overflow", lambda: GR.maximum_flow(np.array([[0, 2**62, 2**62], [0, 0, 1], [0, 0, 0]]), 0, 2)
+    yield "error flow source is sink", lambda: GR.maximum_flow(caps, 1, 1)
+    yield "error flow method", lambda: GR.maximum_flow(caps, 0, 1, method="preflow")
+    yield "error matching perm_type", lambda: GR.maximum_bipartite_matching(bip, perm_type="rows")
+    yield "error no full matching", lambda: GR.min_weight_full_bipartite_matching(np.array([[1.0, 0], [2.0, 0]]))
+    yield "error lsa infeasible", lambda: GR.linear_sum_assignment(np.array([[1.0, np.inf], [2.0, np.inf]]))
+    yield "error lsa nan", lambda: GR.linear_sum_assignment(np.array([[np.nan]]))
+    yield "error lsa inf maximize", lambda: GR.linear_sum_assignment(np.array([[np.inf, 1.0]]), maximize=True)
+    yield "error lsa sparse", lambda: GR.linear_sum_assignment(S.csr_array(np.eye(2)))

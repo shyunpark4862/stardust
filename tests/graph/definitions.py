@@ -242,3 +242,157 @@ def loopless_paths(adj, s, t):
             else:
                 stack.append((v, path + (v,), length + w))
     return sorted(found)
+
+
+def spanning_forest(n, edges):
+    """The minimum spanning forest of the undirected reading under the key (w, min(i, j), max(i, j)) (GR17):
+    {(i, j): w} of the stored places of the chosen edges (the entry that gave the weight; the upper
+    triangle when both directions have the same bits), by Kruskal on that key. Weights are compared
+    exactly (Fraction), -0.0 equal to 0.0."""
+    import struct
+    from fractions import Fraction
+
+    stored = {}  # (i, j) -> w, i != j
+    for i, j, w in edges:
+        if i != j:
+            stored[(i, j)] = float(w)
+    best = {}  # (a, b), a < b -> (weight, place)
+    for (i, j), w in stored.items():
+        a, b = min(i, j), max(i, j)
+        if (a, b) in best:
+            continue
+        up, lo = stored.get((a, b)), stored.get((b, a))
+        if up is None or lo is None:
+            best[(a, b)] = (w, (i, j))
+            continue
+        u = undirected_weight(up, lo)
+        upper = struct.pack("<d", u) == struct.pack("<d", up)  # also when both have the same bits
+        best[(a, b)] = (u, (a, b) if upper else (b, a))
+    order = sorted(best, key=lambda e: (Fraction(best[e][0]), e[0], e[1]))
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            x = parent[x]
+        return x
+
+    out = {}
+    for a, b in order:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+            out[best[(a, b)][1]] = best[(a, b)][0]
+    return out
+
+
+def max_flow_value(n, caps, s, t):
+    """The maximum flow value of {(u, v): capacity} (self loops ignored) by plain augmenting paths on Python
+    integers (no overflow)."""
+    from collections import deque
+
+    res = {}
+    for (u, v), c in caps.items():
+        if u != v:
+            res[(u, v)] = res.get((u, v), 0) + int(c)
+            res.setdefault((v, u), 0)
+    adj = [[] for _ in range(n)]
+    for u, v in res:
+        adj[u].append(v)
+    total = 0
+    while True:
+        pred = {s: None}
+        q = deque([s])
+        while q and t not in pred:
+            u = q.popleft()
+            for v in adj[u]:
+                if v not in pred and res[(u, v)] > 0:
+                    pred[v] = u
+                    q.append(v)
+        if t not in pred:
+            return total
+        d, v = None, t
+        while pred[v] is not None:
+            d = res[(pred[v], v)] if d is None else min(d, res[(pred[v], v)])
+            v = pred[v]
+        v = t
+        while pred[v] is not None:
+            res[(pred[v], v)] -= d
+            res[(v, pred[v])] += d
+            v = pred[v]
+        total += d
+
+
+def matching_size(rows, cols, pairs):
+    """The size of a largest matching of a bipartite graph ({(i, j)} the edges) by augmenting paths."""
+    adj = [[] for _ in range(rows)]
+    for i, j in sorted(pairs):
+        adj[i].append(j)
+    owner = [-1] * cols
+
+    def augment(i, seen):
+        for j in adj[i]:
+            if j in seen:
+                continue
+            seen.add(j)
+            if owner[j] < 0 or augment(owner[j], seen):
+                owner[j] = i
+                return True
+        return False
+
+    limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(max(limit, 4 * (rows + cols) + 100))
+    try:
+        return sum(augment(i, set()) for i in range(rows))
+    finally:
+        sys.setrecursionlimit(limit)
+
+
+def assignment_exact(cost):
+    """(exact optimal cost, col_ind) of the assignment of the rows of a (r, c) cost matrix, r <= c, of least
+    total cost: a list of rows of Python numbers, None for a pair that cannot be chosen. The shortest
+    augmenting path method in exact rationals (Fraction), so the optimum is exact for float costs too;
+    None when no assignment exists. Small matrices only."""
+    from fractions import Fraction
+
+    r = len(cost)
+    c = len(cost[0]) if r else 0
+    C = [[None if x is None else Fraction(x) for x in row] for row in cost]
+    u, v = [Fraction(0)] * r, [Fraction(0)] * c
+    col4row, row4col = [-1] * r, [-1] * c
+    for cur in range(r):
+        shortest, path = [None] * c, [-1] * c
+        done_c, rows = [False] * c, []
+        i, low, sink = cur, Fraction(0), -1
+        while sink < 0:
+            rows.append(i)
+            for j in range(c):
+                if done_c[j] or C[i][j] is None:
+                    continue
+                d = low + C[i][j] - u[i] - v[j]
+                if shortest[j] is None or d < shortest[j]:
+                    shortest[j], path[j] = d, i
+            cand = [j for j in range(c) if not done_c[j] and shortest[j] is not None]
+            if not cand:
+                return None
+            j = min(cand, key=lambda j: (shortest[j], row4col[j] >= 0, j))
+            low = shortest[j]
+            done_c[j] = True
+            if row4col[j] < 0:
+                sink = j
+            else:
+                i = row4col[j]
+        u[cur] += low
+        for i in rows:
+            if i != cur:
+                u[i] += low - shortest[col4row[i]]
+        for j in range(c):
+            if done_c[j]:
+                v[j] -= low - shortest[j]
+        j = sink
+        while True:
+            i = path[j]
+            row4col[j] = i
+            col4row[i], j = j, col4row[i]
+            if i == cur:
+                break
+    return sum(C[i][col4row[i]] for i in range(r)), col4row

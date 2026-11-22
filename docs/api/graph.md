@@ -1,8 +1,8 @@
 # sd.graph API
 
-> 상태: **초안** (GR0 마일스톤, 2026-11-23). GR1 마일스톤(2026-11-23)에서 §2의 여덟 이름이, GR2 마일스톤(2026-11-23)에서 §3의 아홉 이름이 공개되었다. 아래 시그니처는 scipy 1.18.1의 `scipy.sparse.csgraph`의 이름과 인자 이름(과 `scipy.optimize.linear_sum_assignment`, scipy에 없는 일곱은 networkx 3.7의 뜻)에 stardust의 규칙과 GR1–GR28의 결정을 입힌 안이고, GR1–GR5 마일스톤에서 하나씩 공개된다(docs/design/graph.md §8: 순회·연결 요소·위상 정렬·변환 도구는 GR1, 최단 경로는 GR2, 신장 트리·흐름·매칭·배정은 GR3, 순서·구조적 랭크·라플라시안은 GR4, 더한 알고리즘은 GR5 마일스톤).
+> 상태: **초안** (GR0 마일스톤, 2026-11-23). GR1 마일스톤(2026-11-23)에서 §2의 여덟 이름이, GR2 마일스톤(2026-11-23)에서 §3의 아홉 이름이, GR3 마일스톤(2026-11-23)에서 §4의 다섯 이름이 공개되었다. 아래 시그니처는 scipy 1.18.1의 `scipy.sparse.csgraph`의 이름과 인자 이름(과 `scipy.optimize.linear_sum_assignment`, scipy에 없는 일곱은 networkx 3.7의 뜻)에 stardust의 규칙과 GR1–GR28의 결정을 입힌 안이고, GR1–GR5 마일스톤에서 하나씩 공개된다(docs/design/graph.md §8: 순회·연결 요소·위상 정렬·변환 도구는 GR1, 최단 경로는 GR2, 신장 트리·흐름·매칭·배정은 GR3, 순서·구조적 랭크·라플라시안은 GR4, 더한 알고리즘은 GR5 마일스톤).
 
-- 설계와 결정의 근거는 [docs/design/graph.md](../design/graph.md)(§1.1 GR1–GR42), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/graph.md](../design/graph.md)(§1.1 GR1–GR49), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/graph/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 예외 클래스는 이름만)과 결과 객체의 필드(`Class.field`)다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
 
 ## §1. 공통 규칙
@@ -18,7 +18,7 @@
 ### §1.2 입력 (GR7, GR8, GR22)
 - **그래프**는 정방 (n, n) 인접 행렬이다. 행 i, 열 j의 원소가 i → j 변의 무게다.
   - `sd.sparse`의 `csr_array`, `csc_array`, `coo_array`, `dok_array`: **저장된 원소**가 변이고 저장된 0도 무게 0의 변이다(scipy와 같다). CSR이 아니면 한 번 CSR로 바꾼다(COO의 중복은 더한다).
-  - 밀집(`sd.ndarray`, numpy 배열, 수의 중첩 시퀀스, 2차원): **0이 아니고 NaN도 ±inf도 아닌 원소**가 변이다(scipy와 같다). 무게 0의 변은 희소의 저장된 0이나 `csgraph_from_dense(…, null_value=inf)`로 만든다.
+  - 밀집(`sd.ndarray`, numpy 배열, 수의 중첩 시퀀스, 2차원): **0이 아니고 NaN도 ±inf도 아닌 원소**가 변이다(scipy와 같다). 메모리 꼴(열 조각, F 순서, 거꾸로 걷는 보기)은 결과를 바꾸지 않는다(GR48). 무게 0의 변은 희소의 저장된 0이나 `csgraph_from_dense(…, null_value=inf)`로 만든다.
   - scipy의 희소 객체는 `TypeError`다(메시지가 `sd.sparse.csr_array(A)`를 짚는다; GR7). frame의 `DataFrame`도 받지 않는다.
   - dtype은 bool, int64, float64다. 무게를 쓰는 계산은 float64로 한다. complex128은 `TypeError`다(`[scipy와 다름]`: scipy는 허수부를 버리고 `ComplexWarning`을 낸다).
   - 2차원이 아니거나 정방이 아니면 `ValueError`다. 매칭 셋과 `structural_rank`는 직사각을 받는다. n = 0도 받는다(빈 결과).
@@ -40,7 +40,8 @@
 ### §1.5 scipy와 다른 점 (모음)
 - 입력: complex·scipy 희소 객체는 `TypeError`, 밀집 입력의 |w| ≤ 1e-8인 원소도 변(scipy는 모든 csgraph 함수에서 버린다), 저장된 NaN·±inf 무게는 `ValueError`, 경로가 아닌 선행 노드는 `ValueError`(GR38), 노드 인자는 0 … n−1의 int만, 2차원 `indices`는 `ValueError`, 옵션은 키워드만, `overwrite`·`copy`·`form='function'`·가린 배열 도구 없음, `maximum_flow`·`reverse_cuthill_mckee`·`structural_rank`·매칭도 밀집을 받는다.
 - 결과: 색인 배열은 모두 int64(GR10), 스칼라는 Python `int`, 결과 튜플은 namedtuple(GR11), 강한 연결 요소의 번호는 가장 작은 노드 순서, 무향 순회는 합친 이웃의 오름차순, 무향 트리의 저장된 0은 0, `csgraph_to_dense`의 저장된 NaN은 NaN, `'FW'`를 뺀 최단 경로는 방법과 무관, `auto`는 FW를 고르지 않음, `yen`의 같은 길이 경로는 (변 수, 노드 열)의 순서, `construct_dist_matrix`는 원점에서부터 더함, `laplacian`의 희소 결과는 CSR, 최소 신장 트리는 밀집의 작은 원소를 버리지 않는다.
-- 에러: 음수 무게의 `dijkstra`(GR9), NaN `limit`(GR23), 음수 용량, int64를 넘는 흐름(`OverflowError`), 실수 용량(`TypeError`), `NegativeCycleError`는 `ValueError`이고 "요청한 원점에서 닿는 순환" 한 규칙이다.
+- 에러: 음수 무게의 `dijkstra`(GR9), NaN `limit`(GR23), 음수 용량(scipy는 0으로 본다), int64를 넘는 흐름(`OverflowError`), 실수 용량(`TypeError`), `NegativeCycleError`는 `ValueError`이고 "요청한 원점에서 닿는 순환" 한 규칙이다.
+- 흐름·매칭·배정: `maximum_flow`의 int64 용량을 int32로 줄이지 않고 흐름이 int64다(scipy는 int32로 줄여 2⁴⁰이 0이 된다; 용량이 int32 안이면 흐름은 scipy와 같다), `min_weight_full_bipartite_matching`의 저장된 0은 무게 0의 짝이다(scipy는 경고와 함께 버린다), 매칭과 배정은 동점에서 scipy와 다른 최적해를 고를 수 있다(GR45, GR47).
 
 ## §2. 순회, 연결 요소, 변환 (GR1 마일스톤)
 ```
@@ -92,12 +93,12 @@ maximum_bipartite_matching(graph, /, *, perm_type='row')
 min_weight_full_bipartite_matching(biadjacency, /, *, maximize=False)
 linear_sum_assignment(cost_matrix, /, *, maximize=False)
 ```
-- **`minimum_spanning_tree`**: 무향으로 본 그래프의 최소 신장 숲이다. 변을 (무게, min(i, j), max(i, j))로 견주면 답이 하나다(GR17). 결과는 (n, n) `csr_array` float64이고 고른 변은 그 무게를 준 저장 자리(같은 무게면 i < j의 위 삼각)에 있다. 음수 무게는 받는다. `[scipy와 다름]`: scipy는 밀집 입력에서 1e-8보다 작은 원소를 버리고 저장된 NaN·inf 변을 트리에 넣는다.
-- **`maximum_flow`**: `method`는 `'dinic'` 또는 `'edmonds_karp'`다. 결과는 `MaximumFlowResult`(`flow_value`는 Python `int`, `flow`는 반대칭 (n, n) `csr_array` int64)다. 용량은 bool·int64만 받는다(float64는 `TypeError`), 음수 용량은 `ValueError`, 원점에서 나가는 용량의 합이 int64를 넘으면 `OverflowError`다(GR15; `[scipy와 다름]`: scipy는 용량을 int32로 줄여 2⁴⁰의 흐름이 0이 된다). `source == sink`는 `ValueError`다. 밀집도 받는다.
-- **`maximum_bipartite_matching`**: 행 쪽과 열 쪽의 이분 그래프에서 가장 큰 매칭이다. `perm_type='row'`면 열마다 짝지은 행(없으면 −1), `'column'`이면 행마다의 열(int64)이다. 저장된 0도 변이다.
-- **`min_weight_full_bipartite_matching`**: 크기 min(행 수, 열 수)인 매칭 가운데 무게 합이 가장 작은(`maximize=True`면 큰) 것이다. 결과는 `AssignmentResult(row_ind, col_ind)`(int64, `row_ind` 오름차순)다. 그런 매칭이 없으면 `ValueError`다. 저장된 0은 무게 0의 변이다(`[scipy와 다름]`: scipy는 변 없음으로 읽는다).
-- **`linear_sum_assignment`**: scipy의 뜻 그대로다. 모든 원소가 짝이고(0도 비용 0), +inf는 고를 수 없는 짝이다. 모든 짝을 고를 수 없으면 `ValueError`(`linear_sum_assignment(): cost matrix is infeasible`), NaN과 −inf는 `ValueError`다. 직사각을 받고 결과는 `AssignmentResult`다. 입력은 밀집만이다.
-- 흐름 값과 매칭의 크기는 유일하다. 흐름 자체와 여러 최적 배정 가운데 하나는 행과 이웃을 오름차순으로 보는 고정된 순서의 결과다(GR16).
+- **`minimum_spanning_tree`**: 무향으로 본 그래프의 최소 신장 숲이다. 변을 (무게, min(i, j), max(i, j))로 견주면 답이 하나다(GR17). 결과는 (n, n) `csr_array` float64이고 고른 변은 그 무게를 준 저장 자리(두 방향의 비트가 같으면 i < j의 위 삼각; 0.0과 −0.0이면 −0.0의 자리)에 있고 값은 저장된 그대로다(GR43). 음수 무게는 받고 대각은 무시한다. 저장된 NaN·±inf는 `ValueError`다. `[scipy와 다름]`: scipy는 밀집 입력에서 1e-8보다 작은 원소를 버리고 저장된 NaN·inf 변을 트리에 넣는다.
+- **`maximum_flow`**: `method`는 `'dinic'` 또는 `'edmonds_karp'`다. 결과는 `MaximumFlowResult`(`flow_value`는 Python `int`, `flow`는 반대칭 (n, n) `csr_array` int64)다. `flow`의 패턴은 그래프와 그 전치의 패턴이다(저장된 용량 0의 변과 대각의 저장 원소도 흐름 0으로 있다; scipy와 같다; GR44). 두 방법의 흐름 값은 같고, 돌려주는 흐름은 이웃 오름차순의 훑기가 정한다(용량이 int32 안이면 scipy의 흐름과 같다). 용량은 bool·int64만 받는다(float64는 `TypeError`), 음수 용량은 `ValueError`, 원점에서 나가는 용량의 합이 int64를 넘으면 `OverflowError`다(GR15; `[scipy와 다름]`: scipy는 용량을 int32로 줄여 2⁴⁰의 흐름이 0이 된다). `source == sink`는 `ValueError`다. 밀집도 받는다(bool·int64 dtype). 원점의 자기 고리는 넘침 검사에서 뺀다.
+- **`maximum_bipartite_matching`**: 행 쪽과 열 쪽의 이분 그래프에서 가장 큰 매칭이다. `perm_type='row'`면 열마다 짝지은 행(없으면 −1), `'column'`이면 행마다의 열(int64)이다. 저장된 0도 변이다. 탐욕 시작과 Hopcroft–Karp이고 어떤 매칭인지는 행과 이웃을 오름차순으로 보는 차례가 정한다(GR47).
+- **`min_weight_full_bipartite_matching`**: 크기 min(행 수, 열 수)인 매칭 가운데 무게 합이 가장 작은(`maximize=True`면 큰) 것이다. 결과는 `AssignmentResult(row_ind, col_ind)`(int64, `row_ind` 오름차순)다. 그런 매칭이 없으면 `ValueError`(`no full matching exists`)다. 저장된 0은 무게 0의 변이다(`[scipy와 다름]`: scipy는 경고와 함께 변 없음으로 읽는다). 저장된 NaN·±inf는 `ValueError`다.
+- **`linear_sum_assignment`**: scipy의 뜻 그대로다. 모든 원소가 짝이고(0도 비용 0), +inf는 고를 수 없는 짝이다. 모든 짝을 고를 수 없으면 `ValueError`(`linear_sum_assignment(): cost matrix is infeasible`), NaN과 −inf는 `ValueError`다. `maximize=True`면 부호를 먼저 바꾸므로 −inf가 고를 수 없는 짝이고 +inf가 `ValueError`다(scipy와 같다; GR46). 직사각을 받고 결과는 `AssignmentResult`다. 입력은 밀집만이다(bool·int64·float64; 희소 배열은 `min_weight_full_bipartite_matching`을 짚는 `TypeError`).
+- 흐름 값과 매칭의 크기는 유일하다. 흐름 자체와 여러 최적 배정 가운데 하나는 행과 이웃을 오름차순으로 보는 고정된 순서의 결과다(GR16). 두 배정 함수는 같은 풀이(Jonker–Volgenant의 시작과 최단 증가 경로; GR45)라 같은 짝이면 같은 배정을 낸다. 정수 비용의 최적은 정확하고, 실수 비용은 정확도 계약 안이다(§9).
 
 ## §5. 순서, 구조적 랭크, 라플라시안 (GR4 마일스톤)
 ```
@@ -180,4 +181,4 @@ MaximumFlowResult.flow
 ## §9. 정확도
 - 정확한 것(참값과 같다): 연결 요소, 순회, 위상 정렬, 최소 신장 트리, 역 Cuthill–McKee, 구조적 랭크, 매칭의 크기, 흐름 값, 단절점, 다리, 이중 연결 요소, 코어 수.
 - 최단 경로: FW를 뺀 방법끼리 비트까지 같다. 정수 무게(모든 부분합 ≤ 2⁵³)와 `unweighted`는 정확한 최단 거리와 정확히 계산한 선행 노드 규칙과 같다. 일반 무게의 거리는 |d̂ − d\*| ≤ γ_{H−1}·max(Σ_{p̂}|w|, Σ_{p\*}|w|)이고(H는 두 경로 가운데 긴 쪽의 변 수), FW의 거리도 같은 한계다(상수 1, p̂는 FW의 선행 노드가 그리는 경로; GR37).
-- `pagerank`는 ‖x̂ − x\*‖₁ ≤ tol + (반올림 바닥), 매개 중심성은 노드마다의 상대 한계, 배정은 정수 비용에서 정확한 최적, `laplacian`은 줄 합의 한계다(docs/design/graph.md §4). 참값은 정확한 유리수와 Arb다(`tests/graph/refdata.py`).
+- `pagerank`는 ‖x̂ − x\*‖₁ ≤ tol + (반올림 바닥), 매개 중심성은 노드마다의 상대 한계, 배정은 정수 비용에서 정확한 최적이고 일반 비용에서 정확한 비용이 최적 + γ_{2r}·Σ|c|(돌려준 배정과 최적 배정의 합; r은 작은 쪽; GR49) 안, `laplacian`은 줄 합의 한계다(docs/design/graph.md §4). 참값은 정확한 유리수와 Arb다(`tests/graph/refdata.py`).

@@ -1,7 +1,7 @@
 """Every linear path gives the same bits (docs/design/interpolate.md §2.2, §3.2): sd.interp and the interpolate
 area's linear path (_core.interpolate.linear, which the k = 1 B-spline and the 1-D linear grid will evaluate through)
-agree on [xp[0], xp[-1]]; a batch of columns is each column alone; complex values are their parts. The B-spline and
-the grid join this test when they are public (milestones IP3, IP5)."""
+agree on [xp[0], xp[-1]]; a batch of columns is each column alone; complex values are their parts. The k = 1 B-spline
+(milestone IP3) evaluates through the linear path; the grid joins this test when it is public (milestone IP5)."""
 
 import math
 
@@ -73,3 +73,27 @@ def test_shapes_of_the_private_call():
     xp, y = A([0.0, 1.0]), A([[0.0], [1.0]])
     assert LINEAR(A(np.zeros(0)), xp, y, 1).shape == (0, 1)
     assert LINEAR(A([0.5]), xp, A(np.zeros((2, 0))), 1).shape == (1, 0)
+
+
+def test_the_k1_bspline_is_the_linear_path():
+    """make_interp_spline(xp, fp, k=1) and BSpline(t, c, 1) on every curve, the three outside rules, a batch and
+    complex values: the linear path's bits (and so sd.interp's inside)."""
+    IP = sd.interpolate
+    g = np.random.default_rng(10)
+    for cid in S.curve_ids():
+        c = S.curve(cid)
+        if c.n < 2:
+            continue
+        y = np.asarray(c.y)
+        b = IP.make_interp_spline(c.x, y, k=1)
+        cols = np.ascontiguousarray(y.reshape(c.n, -1))
+        for ext, rule in (("periodic", PERIODIC), (False, NAN_OUTSIDE), (True, EXTEND)):
+            got = np.asarray(b(c.xe, extrapolate=ext)).reshape(c.xe.size, -1)
+            assert bits_equal(got, np.asarray(LINEAR(A(c.xe), A(c.x), A(cols), rule))), (cid, ext)
+    xp = np.sort(g.standard_normal(40))
+    y = g.standard_normal((40, 3)) + 1j * g.standard_normal((40, 3))
+    x = g.standard_normal(500)
+    got = np.asarray(IP.make_interp_spline(xp, y, k=1)(x))
+    inside = (x >= xp[0]) & (x <= xp[-1])
+    for k in range(3):
+        assert bits_equal(got[inside, k], np.asarray(sd.interp(A(x[inside]), A(xp), A(y[:, k]))))

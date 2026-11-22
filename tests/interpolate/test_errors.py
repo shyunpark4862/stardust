@@ -170,3 +170,100 @@ def test_call_shape_ip2():
         IP.pchip_interpolate(X, Y, 0.5, foo=1)
     with pytest.raises(TypeError):
         IP.PPoly([[1.0]], [0.0, 1.0], True)
+
+
+# ---- the B-splines (docs/api/interpolate.md §4; milestone IP3)
+
+T8 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+B = IP.BSpline(T8, [1.0, 2.0, 0.0, 1.0], 3)
+X6 = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+Y6 = [0.0, 1.0, 0.0, 2.0, 1.0, 0.0]
+
+CASES_IP3 = [
+    (lambda: IP.BSpline(T8, [1.0, 2.0, 3.0], 3), ValueError,
+     "BSpline(): 'c' must have at least n = len(t) - k - 1 = 4 coefficients along axis 0, not 3"),
+    (lambda: IP.BSpline(T8, [1.0] * 4, -1), ValueError, "BSpline(): 'k' must be 0 or more, not -1"),
+    (lambda: IP.BSpline(T8, [1.0] * 4, 3.0), TypeError, "BSpline(): 'k' must be an int, not float"),
+    (lambda: IP.BSpline(T8[:5], [1.0], 3), ValueError,
+     "BSpline(): 't' must have at least 2k + 2 = 8 knots for degree 3, not 5"),
+    (lambda: IP.BSpline([0.0, 1.0, 0.5, 2.0, 3.0, 4.0, 5.0, 6.0], [1.0] * 4, 3), ValueError,
+     "BSpline(): 't' must be nondecreasing"),
+    (lambda: IP.BSpline([0.0] * 5 + [1.0] * 3, [1.0] * 4, 3), ValueError,
+     "BSpline(): the base interval [t[k], t[n]] = [t[3], t[4]] must not be empty"),
+    (lambda: IP.BSpline(T8[:-1] + [math.inf], [1.0] * 4, 3), ValueError, "BSpline(): 't' must be finite"),
+    (lambda: IP.BSpline(T8, 1.0, 3), ValueError, "BSpline(): 'c' must have at least 1 dimension"),
+    (lambda: B(0.5, nu=-1), ValueError, "BSpline(): 'nu' must be 0 or more, not -1"),
+    (lambda: B(0.5j), TypeError, "BSpline(): 'x' must be real, not complex"),
+    (lambda: B(3.5, extrapolate=2), TypeError,
+     "BSpline(): 'extrapolate' must be True, False, 'periodic' or None, not int"),
+    (lambda: B.derivative(nu=4), ValueError, "derivative(): 'nu' must be at most the degree k = 3, not 4"),
+    (lambda: B.insert_knot(9.0), ValueError,
+     "insert_knot(): 'x' must lie in the base interval [t[k], t[n]] = [3.0, 4.0], not 9.0"),
+    (lambda: B.insert_knot(3.5, m=0), ValueError, "insert_knot(): 'm' must be positive, not 0"),
+    (lambda: IP.BSpline.basis_element([0.0]), ValueError, "basis_element(): 't' must have at least 2 knots, not 1"),
+    (lambda: IP.BSpline.design_matrix([0.0, 9.0], T8, 3), ValueError,
+     "design_matrix(): 'x' must lie in the base interval [t[k], t[n]] = [3.0, 4.0] when extrapolate=False"),
+    (lambda: IP.BSpline.design_matrix([math.nan], T8, 3), ValueError, "design_matrix(): 'x' must be finite"),
+    (lambda: IP.BSpline.design_matrix([[3.5]], T8, 3), ValueError, "design_matrix(): 'x' must be 1-D, not 2-D"),
+    (lambda: IP.BSpline.design_matrix([3.5], T8, 3, extrapolate=None), TypeError,
+     "design_matrix(): 'extrapolate' must be True, False or 'periodic', not NoneType"),
+    (lambda: IP.BSpline.from_power_basis(IP.PchipInterpolator(X, Y)), TypeError,
+     "from_power_basis(): 'pp' must be a CubicSpline, not PchipInterpolator"),
+    (lambda: IP.BSpline.from_power_basis(SP, bc_type="foo"), ValueError,
+     "from_power_basis(): 'bc_type' must be 'not-a-knot', 'natural', 'clamped' or 'periodic', not 'foo'"),
+    (lambda: IP.PPoly.from_spline((T8, [1.0] * 3, 3)), ValueError,
+     "from_spline(): 'c' must have at least n = len(t) - k - 1 = 4 coefficients along axis 0, not 3"),
+    (lambda: IP.PPoly.from_spline(5), TypeError,
+     "from_spline(): 'tck' must be a BSpline or a (t, c, k) tuple, not int"),
+    (lambda: IP.make_interp_spline(X6, Y6, k=-1), ValueError, "make_interp_spline(): 'k' must be 0 or more, not -1"),
+    (lambda: IP.make_interp_spline(X6, Y6, k=5, bc_type="natural"), ValueError,
+     "make_interp_spline(): the knots need 4 derivative conditions at the ends, not 1 + 1"),
+    (lambda: IP.make_interp_spline(X6[:3], Y6[:3], k=3), ValueError,
+     "make_interp_spline(): the knots need 1 derivative condition at the ends, not 0 + 0"),
+    (lambda: IP.make_interp_spline(X6, Y6, k=1, bc_type="natural"), ValueError,
+     "make_interp_spline(): k=1 takes no end conditions in 'bc_type' (unless 't' is given)"),
+    (lambda: IP.make_interp_spline(X6, Y6, k=0, t=X6 + [5.0]), ValueError,
+     "make_interp_spline(): k=0 takes neither 't' nor end conditions in 'bc_type'"),
+    (lambda: IP.make_interp_spline(X6, Y6, bc_type="foo"), ValueError,
+     "make_interp_spline(): 'bc_type' must be None, 'not-a-knot', 'natural', 'clamped', 'periodic' or a pair of "
+     "end conditions, not 'foo'"),
+    (lambda: IP.make_interp_spline(X6, Y6, bc_type=((1, 0.0), (1, 0.0))), ValueError,
+     "make_interp_spline(): an end condition must be a list of (order, value) pairs"),
+    (lambda: IP.make_interp_spline(X6, Y6, bc_type=([(4, 0.0)], [(1, 0.0)])), ValueError,
+     "make_interp_spline(): a derivative order at x[0] must be in [0, k] = [0, 3], not 4"),
+    (lambda: IP.make_interp_spline(X6, Y6[:5] + [3.0], bc_type="periodic"), ValueError,
+     "make_interp_spline(): 'y' must have equal first and last values along axis 0 for bc_type='periodic' "
+     "(within rtol = atol = 1e-15)"),
+    (lambda: IP.make_interp_spline(X6, Y6, bc_type="periodic", t=[0.0] * 4 + [2.0, 3.0] + [5.0] * 4), ValueError,
+     "make_interp_spline(): bc_type='periodic' makes its own knots: 't' must be None"),
+    (lambda: IP.make_interp_spline(X6, Y6, t=[0.0] * 4 + [5.0] * 4), ValueError,
+     "make_interp_spline(): 't' must have at least len(x) + k + 1 = 10 knots, not 8"),
+    (lambda: IP.make_interp_spline(X6, Y6, t=[1.0] * 4 + [2.0, 3.0] + [5.0] * 4), ValueError,
+     "make_interp_spline(): 'x' must lie within the knots: t[k] <= x[0] and x[-1] <= t[-k]"),
+    (lambda: IP.make_interp_spline(X6, Y6[:5]), ValueError,
+     "make_interp_spline(): 'y' must have as many points as 'x' (6) along axis 0, not 5"),
+    (lambda: IP.make_interp_spline(X6, Y6[:5] + [math.nan]), ValueError, "make_interp_spline(): 'y' must be finite"),
+    (lambda: IP.make_interp_spline([0.0, 2.0, 1.0], Y6[:3], k=1), ValueError,
+     "make_interp_spline(): 'x' must be strictly increasing"),
+    (lambda: IP.make_interp_spline(X6, Y6, bc_type=3), TypeError,
+     "make_interp_spline(): 'bc_type' must be None, a str or a pair of end conditions, not int"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("k", range(len(CASES_IP3)))
+def test_error_ip3(k):
+    call, exc, msg = CASES_IP3[k]
+    with pytest.raises(exc) as e:
+        call()
+    assert str(e.value) == msg
+
+
+def test_singular_collocation_is_linalg_error():
+    with pytest.raises(sd.linalg.LinAlgError, match=r"^make_interp_spline\(\): the collocation matrix is singular"):
+        IP.make_interp_spline(X6, Y6, t=[0.0] * 4 + [0.1, 0.2] + [5.0] * 4)  # Schoenberg-Whitney fails
+    with pytest.raises(sd.linalg.LinAlgError, match="singular"):
+        IP.make_interp_spline(X6, Y6, bc_type=([(0, 0.0)], [(1, 0.0)]))  # the value at x[0] twice
+    with pytest.raises(TypeError, match=r"^make_interp_spline\(\): takes 2 positional arguments but 3 were given"):
+        IP.make_interp_spline(X6, Y6, 3)
+    with pytest.raises(TypeError, match=r"^BSpline\(\): unexpected keyword argument 'check_finite'"):
+        IP.BSpline(T8, [1.0] * 4, 3, check_finite=True)

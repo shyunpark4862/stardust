@@ -19,7 +19,9 @@ tests/graph/data/scipy.json and networkx.json hold the comparison libraries' rec
 
 The contract (draft until the milestones measure it; docs/design/graph.md §4), in units of its bound
 (1 or less is within it): a shortest distance d of a path of at most H edges and absolute weight sum S
-is within gamma_{H-1} S of the true distance; integer weights are exact.
+is within gamma_{H-1} S of the true distance; integer weights are exact. An assignment of the smaller side r
+costs at most gamma_{2r} sum(|c|) (over the returned and an optimal assignment) above the optimum; integer
+costs are exact.
 """
 
 from __future__ import annotations
@@ -68,3 +70,18 @@ def units(got: float, hi: float, lo: float, edges: int, abs_sum: float) -> float
     err = abs((got - hi) - lo)
     b = bound(edges, abs_sum)
     return math.inf if b == 0 else err / b
+
+
+def assignment_bound(r: int, abs_sum: float) -> float:
+    """The contract's bound for an assignment's exact cost above the optimum: gamma_{2r} times the sum of
+    |c| over the returned and an optimal assignment (docs/design/graph.md §4; r the smaller side)."""
+    return gamma(2 * r) * abs_sum
+
+
+def assignment_units(excess: float, r: int, abs_sum: float) -> float:
+    """An assignment's exact excess cost over the optimum (>= 0 for a correct reference) in units of the
+    contract's bound (0 when it is optimal)."""
+    if excess <= 0:
+        return 0.0
+    b = assignment_bound(r, abs_sum)
+    return math.inf if b == 0 else excess / b

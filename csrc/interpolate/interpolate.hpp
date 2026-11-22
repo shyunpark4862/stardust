@@ -9,5 +9,6 @@ namespace sd::interpolate {
 void bind_linear(nanobind::module_& m);
 void bind_cubic(nanobind::module_& m);
 void bind_ppoly(nanobind::module_& m);
+void bind_bspline(nanobind::module_& m);
 
 }  // namespace sd::interpolate

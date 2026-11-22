@@ -234,6 +234,36 @@ class PPoly:
             return found[0]
         return _nest(found, batch)
 
+    # ---- from a B-spline ----
+
+    @classmethod
+    def from_spline(cls, tck, /, *, extrapolate=None):
+        """The B-spline tck (a BSpline or a (t, c, k) tuple) as a piecewise polynomial of the same function: the
+        breakpoints are the distinct knots of the base interval [t[k], t[n]], so the two agree under every outside
+        rule (decision IP54); piece j's coefficients are the derivatives at its left breakpoint over d!."""
+        name = "from_spline"
+        from ._bspline import BSpline
+
+        ext = C.extrapolate(extrapolate, name)
+        if isinstance(tck, BSpline):
+            spl = tck
+        elif isinstance(tck, (tuple, list)) and len(tck) == 3:
+            try:
+                spl = BSpline(*tck)
+            except (TypeError, ValueError) as e:
+                msg = str(e)
+                if msg.startswith("BSpline(): "):
+                    raise type(e)(name + "(): " + msg[len("BSpline(): ") :]) from None
+                raise
+        else:
+            raise TypeError(f"{name}(): 'tck' must be a BSpline or a (t, c, k) tuple, not {C.type_name(tck)}")
+        if ext is None:
+            ext = spl.extrapolate if isinstance(tck, BSpline) else True
+        cp, x = _core.bspline_to_ppoly(spl.t, spl._c2(), spl.k)
+        x._set_readonly()
+        c = _readonly(_sd.reshape(cp, (cp.shape[0], cp.shape[1]) + spl._batch()))
+        return cls._make(c, x, ext, spl.axis, True)
+
     # ---- extend ----
 
     def extend(self, c, x, /):

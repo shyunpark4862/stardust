@@ -14,8 +14,21 @@ GR2 brings
           the same methods ('D' or 'J', and 'FW') on the same graphs, judged with its own predecessors.
 
 The graphs with exact sums (integer, dyadic and bool weights; unweighted) are exact and are the tests'
-(tests/graph/test_paths_reference.py). Later: `assignment` with GR3, `laplacian` with GR4, `pagerank` and
-`betweenness` with GR5.
+(tests/graph/test_paths_reference.py).
+
+GR3 brings
+
+  assignment   float costs: the float points of assignment.npz (cost/float7x7 by linear_sum_assignment,
+               bipartite/float8x8 by min_weight_full_bipartite_matching; min and max) and random cost
+               matrices over 10^-4 .. 10^4 of both signs (square and rectangular) and near ties (multiples
+               of 1000 plus parts below 10^-10), one region per shape and min / max, the exact optimum of tests/graph/definitions.py assignment_exact, an exact-
+               rational solver). One point per problem: the exact cost of the returned assignment above the
+               optimum, in units of the contract gamma_{2r} (sum |c| over the returned and an optimal
+               assignment; docs/design/graph.md §4), and its ulp and relative distance from the optimum.
+               The comparator scipy 1.18.1 runs linear_sum_assignment (min_weight_full_bipartite_matching
+               for the biadjacency point) on the same problems. Integer costs are exact (the tests).
+
+Later: `laplacian` with GR4, `pagerank` and `betweenness` with GR5.
 """
 
 from __future__ import annotations
@@ -110,7 +123,114 @@ def _paths_regions(lib):
     return out or None
 
 
+ASSIGN_SHAPES = ((10, 10), (25, 25), (40, 40), (12, 30))
+ASSIGN_SEEDS = 4
+
+
+def _assign(lib, matrix, sparse, maximize):
+    """(row_ind, col_ind) of lib's assignment of a dense cost matrix (sparse: its stored pairs)."""
+    if lib == "sd":
+        import stardust as sd
+
+        if sparse:
+            r = sd.graph.min_weight_full_bipartite_matching(sd.sparse.csr_array(matrix), maximize=maximize)
+        else:
+            r = sd.graph.linear_sum_assignment(matrix, maximize=maximize)
+        return np.asarray(r.row_ind), np.asarray(r.col_ind)
+    if lib == "scipy":
+        if sparse:
+            import scipy.sparse as S
+            import scipy.sparse.csgraph as C
+
+            return C.min_weight_full_bipartite_matching(S.csr_array(matrix), maximize=maximize)
+        from scipy.optimize import linear_sum_assignment
+
+        return linear_sum_assignment(matrix, maximize=maximize)
+    return None
+
+
+def _assign_point(lib, matrix, sparse, maximize, best, opt_abs, r):
+    """(units, ulp, rel) of lib's assignment against the exact optimum best (a Fraction of the minimized
+    costs: -matrix with maximize) whose sum of |c| is opt_abs."""
+    from fractions import Fraction
+
+    from tests.graph import refdata
+
+    got = _assign(lib, matrix, sparse, maximize)
+    if got is None:
+        return None
+    ri, ci = got
+    c = -matrix if maximize else matrix
+    exact = sum((Fraction(float(c[i, j])) for i, j in zip(ri, ci)), Fraction(0))
+    abs_sum = float(np.abs(c[ri, ci]).sum()) + opt_abs
+    hi = float(best)
+    value = float(exact)
+    return (
+        refdata.assignment_units(float(exact - best), r, abs_sum),
+        float(ulps(value, hi)),
+        abs(float(exact - best)) / abs(hi) if hi else abs(value),
+    )
+
+
+def _assign_regions(lib):
+    from tests.graph import definitions as D
+    from tests.graph import graphs as G
+    from tests.graph import refdata
+
+    out = {}
+    ref = refdata.ref("assignment")
+    for k in range(ref.points):
+        gid = str(ref.inputs["graph"][k])
+        g = G.get(gid)
+        if "float" not in g.tags:
+            continue
+        sparse = "cost" not in g.tags
+        M = g.matrix if not sparse else g.dense(np.nan)
+        if sparse:  # the stored pairs only: no pair is +inf for the dense exact solver
+            M = np.where(np.isnan(M), np.inf, M)
+        for kind in ("min", "max"):
+            maximize = kind == "max"
+            c = -M if maximize else M
+            best_exact = D.assignment_exact([[None if not np.isfinite(x) else float(x) for x in row] for row in c])
+            best, opt = best_exact
+            opt_abs = float(np.abs(c[np.arange(len(opt)), opt]).sum())
+            matrix = M if not sparse else np.where(np.isinf(M), 0.0, M)
+            pt = _assign_point(lib, matrix, sparse, maximize, best, opt_abs, min(g.shape))
+            if pt is None:
+                continue
+            out[f"{gid} {kind}"] = region([gid], contract=np.array([pt[0]]), bound=1.0, ulp=np.array([pt[1]]),
+                                          rel=np.array([pt[2]]))  # fmt: skip
+    for family, shape in [("random", s) for s in ASSIGN_SHAPES] + [("near ties", (30, 30))]:
+        for maximize in (False, True):
+            where, units, ul, rel = [], [], [], []
+            for seed in range(ASSIGN_SEEDS):
+                rng = np.random.Generator(np.random.PCG64([seed, *shape]))
+                if family == "random":
+                    M = rng.uniform(-1, 1, shape) * 10.0 ** rng.integers(-4, 5, shape)
+                else:  # many optima of the integer part, told apart only in the last bits
+                    M = rng.integers(0, 4, shape) * 1000.0 + rng.uniform(0, 1e-10, shape)
+                c = -M if maximize else M
+                best, opt = D.assignment_exact(c.tolist())
+                opt_abs = float(np.abs(c[np.arange(shape[0]), opt]).sum())
+                pt = _assign_point(lib, M, False, maximize, best, opt_abs, shape[0])
+                if pt is None:
+                    return None
+                where.append(f"seed {seed}")
+                units.append(pt[0])
+                ul.append(pt[1])
+                rel.append(pt[2])
+            key = f"{family} {shape[0]}x{shape[1]} {'max' if maximize else 'min'}"
+            out[key] = region(where, contract=np.array(units), bound=1.0, ulp=np.array(ul), rel=np.array(rel))
+    return out or None
+
+
 def sweeps():
     return [
-        Custom("graph", "paths", lambda: _paths_regions("sd"), compare_libs(_paths_regions, ("scipy",), seconds=300.0))
+        Custom("graph", "paths", lambda: _paths_regions("sd"), compare_libs(_paths_regions, ("scipy",), seconds=300.0)),
+        Custom(
+            "graph",
+            "assignment",
+            lambda: _assign_regions("sd"),
+            compare_libs(_assign_regions, ("scipy",), seconds=300.0),
+        ),
     ]

@@ -17,10 +17,8 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "fft.md"
 
 # Documented, not implemented yet (docs/design/fft.md §8). A milestone moves its names from here to
 # sd.fft.__all__ (FT1: fft ifft fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len; FT2:
-# rfft irfft hfft ihfft).
+# rfft irfft hfft ihfft; FT3: fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn).
 PLANNED = {
-    # FT3
-    "fft2", "ifft2", "fftn", "ifftn", "rfft2", "irfft2", "rfftn", "irfftn", "hfft2", "ihfft2", "hfftn", "ihfftn",
     # FT4
     "dct", "idct", "dst", "idst", "dctn", "idctn", "dstn", "idstn",
     # FT5
@@ -124,7 +122,8 @@ def test_shared_options_have_one_spelling():
 
 
 def test_module_is_wired():
-    assert sd.fft.__all__ == ["fft", "ifft", "rfft", "irfft", "hfft", "ihfft", "fftfreq", "rfftfreq", "fftshift",
-                              "ifftshift", "next_fast_len", "prev_fast_len"]  # fmt: skip
+    assert sd.fft.__all__ == ["fft", "ifft", "rfft", "irfft", "hfft", "ihfft", "fft2", "ifft2", "fftn", "ifftn",
+                              "rfft2", "irfft2", "rfftn", "irfftn", "hfft2", "ihfft2", "hfftn", "ihfftn", "fftfreq",
+                              "rfftfreq", "fftshift", "ifftshift", "next_fast_len", "prev_fast_len"]  # fmt: skip
     assert sd.fft.__name__ == "stardust.fft"
     assert not hasattr(sd.fft, "set_workers")

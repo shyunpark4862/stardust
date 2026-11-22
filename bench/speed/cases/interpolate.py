@@ -183,11 +183,11 @@ def _cubic_specs():
 def _bspline_specs():
     out = [
         Spec("IP3", "bspline", "make_interp_spline k=3", ("make_interp_spline",), "10^6 points", _line(10**6, 1),
-             lambda d: lambda: _ip().make_interp_spline(d["sx"], d["sy"]),
-             (Ref("scipy", lambda d: lambda: _si().make_interp_spline(d["x"], d["y"])),), quick=True),
+             lambda d: lambda: _ip().make_interp_spline(d["sx"], d["sy"]).c,
+             (Ref("scipy", lambda d: lambda: _si().make_interp_spline(d["x"], d["y"]).c),), quick=True),
         Spec("IP3", "bspline", "make_interp_spline k=5", ("make_interp_spline",), "10^5 points", _line(10**5, 1),
-             lambda d: lambda: _ip().make_interp_spline(d["sx"], d["sy"], k=5),
-             (Ref("scipy", lambda d: lambda: _si().make_interp_spline(d["x"], d["y"], k=5)),)),
+             lambda d: lambda: _ip().make_interp_spline(d["sx"], d["sy"], k=5).c,
+             (Ref("scipy", lambda d: lambda: _si().make_interp_spline(d["x"], d["y"], k=5).c),)),
     ]  # fmt: skip
     for n in (10**3, 10**4):
         setup = _with(_line(n, 10**5), lambda d: _ip().make_interp_spline(d["sx"], d["sy"]),
@@ -199,6 +199,25 @@ def _bspline_specs():
                   lambda d: _si().make_interp_spline(d["x"], d["y"]))  # fmt: skip
     out.append(Spec("IP3", "bspline", "BSpline eval k=3 (10^6 nodes, sorted points)", ("make_interp_spline",), "10^6 points", setup,
                     lambda d: lambda: d["sobj"](d["sq"]), (Ref("scipy", lambda d: lambda: d["obj"](d["q"])),)))  # fmt: skip
+    # random order on a long spline: scipy's walk from the previous interval did not finish in 3 minutes here (§3.1),
+    # so it is timed only at the small sizes above
+    setup = _with(_line(10**6, 10**6), lambda d: _ip().make_interp_spline(d["sx"], d["sy"]), lambda d: None)
+    out.append(Spec("IP3", "bspline", "BSpline eval k=3 (10^6 nodes, random points)", ("make_interp_spline",), "10^6 points",
+                    setup, lambda d: lambda: d["sobj"](d["sq"]), (), quick=True,
+                    note="scipy: minutes (O(n) per point in random order), not timed"))  # fmt: skip
+    built = _with(_line(10**6, 1), lambda d: _ip().make_interp_spline(d["sx"], d["sy"]),
+                  lambda d: _si().make_interp_spline(d["x"], d["y"]))  # fmt: skip
+    out.append(Spec("IP3", "bspline", "BSpline derivative + antiderivative", ("make_interp_spline",), "10^6 points", built,
+                    lambda d: lambda: (d["sobj"].derivative().c, d["sobj"].antiderivative().c),
+                    (Ref("scipy", lambda d: lambda: (d["obj"].derivative().c, d["obj"].antiderivative().c)),)))  # fmt: skip
+    out.append(Spec("IP3", "bspline", "BSpline integrate", ("make_interp_spline",), "10^6 points", built,
+                    lambda d: lambda: d["sobj"].integrate(0.1, 0.9),
+                    (Ref("scipy", lambda d: lambda: d["obj"].integrate(0.1, 0.9)),)))  # fmt: skip
+    out.append(Spec("IP3", "bspline", "PPoly.from_spline", ("make_interp_spline",), "10^6 points", built,
+                    lambda d: lambda: _ip().PPoly.from_spline(d["sobj"]),
+                    (Ref("scipy", lambda d: lambda: _si().PPoly.from_spline(d["obj"]),
+                         differs="breakpoints: every knot, the repeated ones too (sd: the distinct knots of the base "
+                                 "interval, IP54)"),)))  # fmt: skip
     return out
 
 

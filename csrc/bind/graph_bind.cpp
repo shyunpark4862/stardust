@@ -13,6 +13,9 @@ void bind_graph(nb::module_& core) {
     graph::bind_traversal(m);
     graph::bind_paths(m);
     graph::bind_yen(m);
+    graph::bind_tree(m);
+    graph::bind_flow(m);
+    graph::bind_matching(m);
 }
 
 }  // namespace sd

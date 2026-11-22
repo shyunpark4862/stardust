@@ -180,6 +180,25 @@ def _nd_specs():
             Ref("scipy workers=10", lambda d: lambda: _sf().rfftn(d["x"], workers=10), lib="scipy"))  # fmt: skip
     out.append(Spec("FT3", "nd", "rfftn", ("rfftn",), "(256, 256, 256)", _data((256, 256, 256), complex_=False),
                     lambda d: lambda: _sd().rfftn(d["sx"]), refs))  # fmt: skip
+    # milestone FT3's further cases: a small 3-d array (the call's cost and the split of small passes), the
+    # inverse real transform (its complex passes first, decision FT25), the real 2-d transform and ifft2
+    refs = (Ref("numpy", lambda d: lambda: np.fft.fftn(d["x"])), Ref("scipy", lambda d: lambda: _sf().fftn(d["x"])),
+            Ref("scipy workers=10", lambda d: lambda: _sf().fftn(d["x"], workers=10), lib="scipy"))  # fmt: skip
+    out.append(Spec("FT3", "nd", "fftn", ("fftn",), "(64, 64, 64)", _data((64, 64, 64)),
+                    lambda d: lambda: _sd().fftn(d["sx"]), refs, quick=True))  # fmt: skip
+    refs = (Ref("numpy", lambda d: lambda: np.fft.ifft2(d["x"])), Ref("scipy", lambda d: lambda: _sf().ifft2(d["x"])),
+            Ref("scipy workers=10", lambda d: lambda: _sf().ifft2(d["x"], workers=10), lib="scipy"))  # fmt: skip
+    out.append(Spec("FT3", "nd", "ifft2", ("ifft2",), "(1000, 1024)", _data((1000, 1024)),
+                    lambda d: lambda: _sd().ifft2(d["sx"]), refs))  # fmt: skip
+    refs = (Ref("numpy", lambda d: lambda: np.fft.rfft2(d["x"])), Ref("scipy", lambda d: lambda: _sf().rfft2(d["x"])),
+            Ref("scipy workers=10", lambda d: lambda: _sf().rfft2(d["x"], workers=10), lib="scipy"))  # fmt: skip
+    out.append(Spec("FT3", "nd", "rfft2", ("rfft2",), "(2048, 2048)", _data((2048, 2048), complex_=False),
+                    lambda d: lambda: _sd().rfft2(d["sx"]), refs))  # fmt: skip
+    refs = (Ref("numpy", lambda d: lambda: np.fft.irfftn(d["x"], axes=(0, 1, 2))),
+            Ref("scipy", lambda d: lambda: _sf().irfftn(d["x"])),
+            Ref("scipy workers=10", lambda d: lambda: _sf().irfftn(d["x"], workers=10), lib="scipy"))  # fmt: skip
+    out.append(Spec("FT3", "nd", "irfftn", ("irfftn",), "(128, 128, 65)", _data((128, 128, 65)),
+                    lambda d: lambda: _sd().irfftn(d["sx"]), refs, note="the result is (128, 128, 128)"))  # fmt: skip
     return out
 
 

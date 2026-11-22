@@ -1,6 +1,6 @@
 # 고속 푸리에 변환 영역 설계 (sd.fft)
 
-> 상태: **설계 초안** (2026-11-23). 큰 결정(§1.1 FT1–FT4)과 §9의 18번(FT22)은 사용자가 정했다. §9의 나머지 질문은 모두 추천안으로 정했다(FT5–FT28, 사용자 위임 2026-11-23). FT0 마일스톤(준비)은 완료·승인(위임, 2026-11-23)이고 그때의 결정이 FT29–FT34다. FT1 마일스톤(1차원 복소 변환과 도우미)도 완료·승인(위임, 2026-11-23)이고 그때의 결정이 FT35–FT42다. FT2 마일스톤(실수와 에르미트 1차원)도 완료·승인(위임, 2026-11-23)이고 그때의 결정이 FT43–FT46이다. 공개 함수는 `fft ifft rfft irfft hfft ihfft fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len`이다.
+> 상태: **설계 초안** (2026-11-23). 큰 결정(§1.1 FT1–FT4)과 §9의 18번(FT22)은 사용자가 정했다. §9의 나머지 질문은 모두 추천안으로 정했다(FT5–FT28, 사용자 위임 2026-11-23). FT0 마일스톤(준비)은 완료·승인(위임, 2026-11-23)이고 그때의 결정이 FT29–FT34다. FT1 마일스톤(1차원 복소 변환과 도우미)도 완료·승인(위임, 2026-11-23)이고 그때의 결정이 FT35–FT42다. FT2 마일스톤(실수와 에르미트 1차원)도 완료·승인(위임, 2026-11-23)이고 그때의 결정이 FT43–FT46이다. FT3 마일스톤(다차원)도 완료·승인(위임, 2026-11-23)이고 그때의 결정이 FT47–FT52다. 공개 함수는 `fft ifft rfft irfft hfft ihfft fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len`이다.
 
 `sd.fft`(이산 푸리에 변환, 실수·에르미트 변환, 이산 코사인·사인 변환과 그 도우미)의 확정 사항과 내부 구조의 안을 적는다.
 
@@ -65,6 +65,12 @@
 | FT44 실수 계획의 안쪽 계획 | 실수 계획은 길이 n/2의 복소 계획을 캐시에서 빌리지 않고 스스로 만든다(`Plan`의 `half_`). 한 (종류, 길이)가 캐시의 한 칸이고, 계획을 만드는 동안 캐시의 잠금과 GIL을 다시 잡지 않는다. 같은 길이의 복소 계획이 따로 있으면 메모리가 두 번 들지만 같은 비트다(복소 계획은 길이로만 정해진다). 홀수 실수 길이는 실수 계획이 없고 캐시의 복소 계획을 그대로 쓴다 (추천안, 사용자 위임 2026-11-23) |
 | FT45 실수·에르미트 계약의 Bluestein 꼴 | 안쪽 길이 h(짝수 n은 n/2, 홀수 n은 n)가 Bluestein이면 계약은 h의 ρ와 안쪽 길이 m으로 L(n) 대신 2·L(m) + 2(짝수 n은 사후 처리의 몫으로 + 1), 바닥은 τ(max(m, n))다. 실수 입력 `fft`의 전체 스펙트럼은 `rfft` 줄의 계약(같은 꼴, ‖y‖ 대신 s√n‖x‖)을 지킨다: 짝수 n의 사후 처리 오차를 거울에 비춰도 그 한계 안이고(§4.2), 홀수 n은 사영이다. 복소 입력의 Bluestein 꼴(ρ(n), m(n))과는 길이가 달라 두 한계의 크고 작음이 정해지지 않으므로 실수 입력은 실수 길의 한계로 판정한다 (추천안, 사용자 위임 2026-11-23) |
 | FT46 실수·에르미트 1차원의 경계 | `rfft`·`ihfft`의 복소 입력은 `TypeError`(`rfft(): 'x' must be real, not complex128`; 다른 영역의 같은 메시지 꼴). `irfft`·`hfft`의 기본 길이가 0이 되는 길이 1의 축은 `ValueError`(`irfft(): the default 'n' = 2 (m - 1) is 0 for an axis of length m = 1; give 'n'`), 길이 0의 축은 `cannot transform an axis of length 0`이다(`n`을 주면 0을 채운다). 버리는 허수부(DC와 짝수 n의 나이퀴스트)는 읽지 않는다: NaN이 있어도 결과에 들어가지 않는다(numpy·scipy와 같다). 실수 입력의 `ifft`는 `conj(fft(x))`에 역방향 인자를 곱한 것과 비트까지 같다. 실수 입력 `fft`의 DC 허수부는 +0이다(numpy와 같고 `[scipy와 다름]`: scipy는 −0) (추천안, 사용자 위임 2026-11-23) |
+| FT47 다차원 패스의 꼴 | 축마다 구동기를 한 번, `axes`의 뒤에서 앞으로 돈다(FT25). 첫 패스는 입력을 읽어 새 complex128 배열(C 순서)에 쓰고, 뒤의 패스는 그 축의 길이가 그대로면 앞 패스의 배열을 제자리에서 변환한다(한 줄을 다 모은 뒤 흩으므로 바로 읽기와 같은 비트다; 바로 읽기는 제자리에서 끈다). 길이가 바뀌는 패스만 새 배열을 쓴다. 그래서 중간 배열은 많아야 둘이다. `rfftn`은 첫 패스가 실수 패스(`axes`의 마지막 축의 `rfft`)이고, `irfftn`은 마지막 축을 뺀 축의 복소 패스를 뒤에서 앞으로 한 뒤 실수 패스(`irfft`)가 마지막이다. numpy의 `irfftn`은 복소 패스를 앞에서 뒤로 돌지만 그 순서는 반올림만 바꾸고, 버리는 부분(복소 패스 뒤의 DC·나이퀴스트 허수부, n//2 + 1칸 밖)은 같은 정의다. `irfftn`의 첫 복소 패스는 마지막 축을 n//2 + 1칸으로 잘라(짧으면 0을 채워) 읽는다. 실수 입력의 `fftn`·`ifftn`은 첫 패스가 실수 길이라(FT16) `rfftn(x)`가 `fftn(x)`의 앞쪽 n//2 + 1칸과 비트까지 같다. 결과가 비면 계획을 만들지 않는다(FT2의 `rfft`·`irfft`는 빈 배치에서도 길이 n의 계획부터 만들었다: `rfft(zeros((0, 3)), n=2**40)`이 2⁴⁰의 계획을 시도했다. FT3 마일스톤이 고쳤다) (추천안, 사용자 위임 2026-11-23) |
+| FT48 다차원의 정규화 | N은 길이의 곱이다(`irfftn`·`hfftn`은 마지막 축의 출력 길이 n을 센다). 인자 하나(fl(1/N), fl(1/fl(√N)))를 마지막 패스가 곱하고 다른 패스는 곱하지 않는다(1차원과 같은 반올림 한 번). 그래서 축 하나의 n차원 함수는 1차원 함수와 비트까지 같고, `'backward'`의 정변환과 `'forward'`의 역변환(인자 1)은 1차원 변환을 뒤에서 앞으로 이은 것과 비트까지 같다. numpy는 축마다 1/nᵢ을 곱한다(값으로 같고 끝자리가 다를 수 있다) (추천안, 사용자 위임 2026-11-23) |
+| FT49 다차원 계약의 꼴 | 패스마다 그 길이의 줄 변환이므로 축의 항을 더한다: 11-매끄러운 축은 κ·L(nᵢ), Bluestein 축은 ρᵢ·κ(2·L(mᵢ) + 2), 실수 축은 안쪽 길이로 FT45의 꼴(ρ·κ(2·L(m) + 2 + [n 짝수])). 상수 항은 maxᵢρᵢ·c₀ + (축 수 − 1)·c₁, 바닥은 τ(N)·Πᵢ(ρᵢ·m′ᵢ/nᵢ)(m′는 Bluestein의 안쪽 길이, 실수 축은 max(m, n); 패스마다의 바닥의 합의 위 한계)다. 축이 하나면 1차원의 꼴과 같다. ‖y‖의 자리는 s·√N·‖x‖이고(`rfftn`의 반쪽은 전체 스펙트럼의 일부다), `irfftn`·`hfftn`은 ‖X‖_W다: 마지막 축의 칸에 무게 1(k = 0과 짝수 n의 k = n/2)이나 √2(나머지)를 준 2-노름이고 허수부를 버리지 않는다(복소 패스가 버리기 전에 오므로; 축이 하나면 1차원의 ‖X̃‖_H). 판정은 `tests/fft/refdata.bound_nd`다 (추천안, 사용자 위임 2026-11-23) |
+| FT50 구동기의 크기 (FT40을 고침) | 묶음의 버퍼는 스레드의 scratch다(슬롯마다 2¹⁶ double = 512 KB까지 호출 사이에 남기고, 더 크면 태스크가 할당한다). 줄의 간격은 16 double의 배수에 16을 더해 2의 거듭제곱에서 비킨다. 묶음은 min(2¹⁶/줄 간격, ⌈줄 수/64⌉, 128)줄이고 태스크는 max(⌈2¹²/비용⌉, ⌈줄 수/1024⌉)줄(묶음의 배수로 올림)이다. 모두 크기로만 정하고 한 줄의 비트를 바꾸지 않는다(1차원 골든 케이스의 변화 0). 잰 이유: 태스크마다 버퍼를 할당하면 페이지 폴트를 스레드들이 줄 서서 (64, 64, 64)의 축 1 패스가 10스레드에서 285 µs(1스레드 463 µs)였고 고친 뒤 63 µs다. (2048, 2048)의 축 0 패스는 32 KB 간격의 줄 버퍼가 같은 캐시 집합에 몰려 1스레드 26.2 ms였고 간격을 비킨 뒤 17.6 ms다. 몇 줄짜리 태스크 16,384개가 공유 카운터에 몰려 (256, 256, 256)의 `rfft` 패스가 10스레드에서 3.6 ms였고 태스크 수의 상한 뒤 2.0 ms다 (추천안, 사용자 위임 2026-11-23) |
+| FT51 `s`의 꼴과 메시지 | None, int, int의 tuple·list다(`axes`와 같은 꼴; scipy는 int를 받고 numpy는 받지 않는다). 원소는 1 이상이거나 −1(그 축의 입력 길이)이다. bool과 None 원소는 `TypeError`(`fftn(): 's' must be an int or a tuple or list of ints, not NoneType`), 0과 −2 이하는 `ValueError`(`fftn(): the entries of 's' must be at least 1 (or -1), not 0`), int64 밖은 `OverflowError`다. `axes` 없이 준 `s`가 축보다 많으면 `'s' has 3 entries for an array of dimension 2`, 빈 `s`는 `'s' must not be empty`, `axes`와 길이가 다르면 `'s' and 'axes' must have the same length, not 3 and 2`(모두 `ValueError`)다. `irfftn`의 s[−1] = −1은 입력 길이 m이다(numpy·scipy와 같다; 기본값 2(m − 1)이 아니다). 기본 길이가 0이면 `irfftn(): the default s[-1] = 2 (m - 1) is 0 for an axis of length m = 1; give 's'`다 (추천안, 사용자 위임 2026-11-23) |
+| FT52 다차원 에르미트의 비트 | `hfftn(x, norm=a)`는 `irfftn(conj(x), norm=a′)`, `ihfftn(x, norm=a)`는 `conj(rfftn(x, norm=a′))`와 비트까지 같다(a′는 방향을 바꾼 `norm`). 첫 복소 패스가 줄을 모으면서 켤레를 취하고(0 채우기 전이라 채운 칸은 +0), 마지막 패스가 결과의 켤레를 취한다. `hfft2`·`ihfft2`는 `axes=(-2, -1)`의 `hfftn`·`ihfftn`이다 (추천안, 사용자 위임 2026-11-23) |
 
 ### 1.2 범위
 마일스톤은 §8이다. "FTn"은 그 마일스톤에서 만든다는 뜻이고 "나중"은 첫 판에 넣지 않는 후보다.
@@ -179,7 +185,7 @@ ihfftn(x, /, *, s=None, axes=None, norm='backward')
 - **`axis`**: int 하나, 음수는 뒤에서 센다. 범위 밖은 `ValueError`다(`[numpy와 다름]`: numpy와 scipy는 `IndexError: tuple index out of range`. API.md §2는 범위 밖의 축을 `ValueError`로 정하고 배열의 모든 함수가 그렇다).
 - **`n`**: None이면 입력의 그 축 길이(`irfft`·`hfft`는 2(m − 1)). 주면 1 이상의 int다. 입력보다 짧으면 앞에서 자르고 길면 끝에 0을 채운다(numpy·scipy와 같다). 0과 음수는 `ValueError`다(§2.8, numpy·scipy와 같다; `[scipy와 다름]`: scipy 1.18.1의 `irfft(x, n=0)`은 에러 없이 길이 1의 결과를 낸다).
 - **`axes`**: None이면 모든 축(`fft2` 계열은 (−2, −1)). int의 tuple이나 list를 받는다(DESIGN §7: 배열의 `axes`는 리스트도 받는다). 중복된 축은 `ValueError`다(§9의 9번; scipy와 같고 `[numpy와 다름]`: numpy는 같은 축을 두 번 변환한다). 빈 `axes`는 §9의 19번.
-- **`s`**: None이면 각 축의 입력 길이(`irfftn`의 마지막 축은 2(m − 1)). 주면 원소가 1 이상의 int이거나 −1(그 축의 입력 길이를 그대로 쓴다; numpy·scipy가 함께 받는다)인 시퀀스다. numpy가 폐기 예고한 None 원소는 받지 않는다(`TypeError`; scipy도 받지 않는다). `axes`를 함께 주면 길이가 같아야 한다(`ValueError`). `axes` 없이 주면 마지막 len(s)개 축이다(§9의 10번).
+- **`s`**: None이면 각 축의 입력 길이(`irfftn`의 마지막 축은 2(m − 1)). 주면 원소가 1 이상의 int이거나 −1(그 축의 입력 길이를 그대로 쓴다; numpy·scipy가 함께 받는다)인 tuple이나 list, 또는 int 하나다(FT51). numpy가 폐기 예고한 None 원소는 받지 않는다(`TypeError`; scipy도 받지 않는다). `axes`를 함께 주면 길이가 같아야 한다(`ValueError`). `axes` 없이 주면 마지막 len(s)개 축이다(§9의 10번).
 
 ### 2.5 정규화 `norm`
 | `norm` | 정변환(`fft`, `rfft`, `ihfft`, `dct`, …) | 역변환(`ifft`, `irfft`, `hfft`, `idct`, …) |
@@ -331,8 +337,9 @@ vDSP의 DCT는 float 판뿐이라(§3.1) 모든 형을 자체 알고리즘으로
 
 - **FT1 마일스톤의 구동기**(`csrc/fft/driver.cpp`, FT40): 줄이 이미 계획이 읽는 꼴이면 입력에서 바로 읽고 결과에 바로 쓴다. 아니면 이웃한 줄을 32개까지 모아 한 줄씩 변환하고 흩는다(레인에 여러 줄을 나란히 두는 커널은 FT6 마일스톤의 후보다). 4단계는 FT6 마일스톤이다(FT41).
 - **축 구동기**: 변환 축을 따라 줄을 모아(gather) 128바이트로 정렬한 태스크의 버퍼에 놓고(자체 길의 첫 단이 엮은 꼴을 바로 읽는다, §3.3), 계획을 실행하고, 결과 배열의 자리에 흩는다(scatter). 줄의 원래 stride와 정렬은 계산에 들어가지 않는다. 마지막 축이 아닌 축은 여러 줄을 한 번에 모아(예: 줄 4개를 묶어 NEON 레인에 나란히) 캐시를 살린다. 레인마다 같은 연산 순서라서 한 줄씩 한 것과 비트가 같다(spatial.md SPT82와 같은 꼴). 자르기와 0 채우기는 모으는 단계에서 한다.
-- **다차원**: 축마다 구동기를 한 번씩, `axes`의 뒤에서 앞으로 돈다(§2.2). 한 축의 패스가 끝난 중간 결과는 complex128 배열 하나다(결과 배열 자체를 쓰고, `rfftn`·`irfftn`은 실수 쪽 축의 패스에서 크기가 바뀐다).
-- **나누기**: 줄들을 줄 수의 고정된 덩어리로 나눈다. 덩어리의 크기는 n과 줄 수로만 정한다(작업량 n·log₂n·줄 수가 float64 연산 2¹²개 분량 이상인 가장 작은 줄 수, array.md §10.4의 `kParallelTask`). 한 줄은 한 태스크가 처음부터 끝까지 계산한다.
+- **다차원**(FT3 마일스톤, FT47·FT48): 축마다 구동기를 한 번씩, `axes`의 뒤에서 앞으로 돈다(§2.2). 첫 패스가 입력을 읽어 새 complex128 배열에 쓰고, 축의 길이가 그대로인 뒤 패스는 그 배열을 제자리에서 변환한다(모은 줄을 흩으므로 바로 읽기와 비트가 같다). `rfftn`은 첫 패스, `irfftn`은 마지막 패스가 실수 쪽이다. 정규화는 마지막 패스의 인자 하나다. 패스마다 줄을 태스크로 나누므로 각 패스가 병렬이고, 한 줄의 비트는 그 줄의 값과 길이로만 정해지므로 결과가 스레드 수와 입력의 레이아웃과 무관하다(중간 배열은 언제나 C 순서다).
+- **FT3 마일스톤의 묶음과 태스크**(FT50): 묶음의 버퍼는 스레드의 scratch(슬롯마다 512 KB까지 남김)이고 줄 간격을 2의 거듭제곱에서 비킨다. 묶음은 min(2¹⁶/줄 간격, ⌈줄 수/64⌉, 128)줄, 태스크는 max(⌈2¹²/비용⌉, ⌈줄 수/1024⌉)줄이다. 마지막 축이 아닌 축의 패스는 큰 배열에서 메모리에 묶인다: (256, 256, 129)의 축 0 패스가 1스레드에서 22 ms, 같은 수의 줄을 바로 읽는 마지막 축 패스가 10 ms다(scipy 15 ms·20 ms). 여러 줄을 레인에 나란히 두는 커널과 축 패스를 합친 블록 전치가 FT6 마일스톤의 후보다.
+- **나누기**: 줄들을 줄 수의 고정된 덩어리로 나눈다. 덩어리의 크기는 n과 줄 수로만 정한다(작업량 n·log₂n·줄 수가 float64 연산 2¹²개 분량 이상인 가장 작은 줄 수, array.md §10.4의 `kParallelTask`; FT3 마일스톤부터 줄 수의 1/1024 이상, FT50). 한 줄은 한 태스크가 처음부터 끝까지 계산한다.
 - **큰 1차원 변환 하나**(§9의 21번 추천): n ≥ n₄이면 4단계(Bailey)로 n = n₁·n₂(n으로만 정함)를 길이 n₁의 변환 n₂개, 회전 인자 곱, 길이 n₂의 변환 n₁개로 나누고 그 변환들을 풀에서 나눈다. 분해가 스레드 수와 무관하므로 1스레드에서도 같은 4단계를 같은 순서로 하고, 결과는 스레드 수와 무관하다. 1스레드에서도 캐시에 맞는 짧은 변환이 되어 빨라질 수 있다(FT6 마일스톤에서 n₄를 1스레드와 10스레드에서 잰다).
 - **병렬 기준값**: 작업량이 float64 연산 2¹⁵개 분량 이상이면 나누고, 그 이상이면 스레드 수와 상관없이 GIL을 놓는다(API.md §3, array.md §10.4). 풀이 다른 Python 스레드의 일로 바쁘면 1스레드로 돈다(결과는 같다).
 
@@ -347,7 +354,7 @@ vDSP의 DCT는 float 판뿐이라(§3.1) 모든 형을 자체 알고리즘으로
 - 사용자가 모양으로 요청한 결과는 할당 전에 물리 메모리와 견주어 넘으면 `MemoryError`다(API.md §2).
 - 태스크마다의 작업 메모리는 줄 묶음의 버퍼(줄 수 × n × 16바이트, split이면 실수부·허수부 두 배열)와 계획의 작업 버퍼다. 줄 묶음은 태스크마다 2¹⁹개 double(4 MB) 이하로 둔다. 4단계는 n개 complex128의 중간 버퍼 하나(2²⁰에서 16 MB)를 호출마다 더 쓴다.
 - 계획 캐시는 §3.6의 상한 안이다. 자체 계획은 회전 인자 표(원소마다 16바이트, 두 표의 곱이면 √n), Bluestein은 길이 m의 chirp 변환(16m바이트)과 안쪽 계획이다.
-- `rfftn`의 중간 결과는 결과 배열의 크기, `irfftn`의 중간 결과는 입력 크기의 complex128 하나다.
+- 다차원 변환의 중간 배열은 많아야 둘이다(FT47): 길이가 그대로인 패스는 제자리다. `rfftn`의 중간 결과는 결과 배열 자체, `irfftn`의 중간 결과는 마지막 축이 n//2 + 1칸인 complex128 하나다. 묶음 버퍼는 스레드마다 슬롯 넷 × 512 KB까지 호출 사이에 남는다(FT50).
 
 ---
 
@@ -364,10 +371,10 @@ T는 정확한 선형 변환(정규화 인자 s 포함), y = Tx는 참값, ŷ는
 | 변환 | 계약 | ‖T‖·‖x‖의 뜻 |
 |---|---|---|
 | 복소 `fft ifft` | ‖ŷ − y‖ ≤ (κ·L(n) + c₀)·u·‖y‖ + τ | ‖y‖ = s·√n·‖x‖ (정확히) |
-| 복소 다차원 | 같은 꼴, L(n) 대신 Σ L(nᵢ)(축마다), c₀ 대신 c₀ + (축 수 − 1)·c₁ | ‖y‖ = s·√(Πnᵢ)·‖x‖ |
+| 복소 다차원 (FT49) | 같은 꼴, L(n) 대신 Σ L(nᵢ)(축마다; Bluestein 축은 ρᵢ·(2·L(mᵢ) + 2)), c₀ 대신 maxᵢρᵢ·c₀ + (축 수 − 1)·c₁, 바닥 τ(N)·Πᵢ(ρᵢ·m′ᵢ/nᵢ) | ‖y‖ = s·√(Πnᵢ)·‖x‖ |
 | `rfft ihfft` (반쪽 스펙트럼) | ‖ŷ − y‖ ≤ (κ·L(n) + c₀)·u·s·√n·‖x‖ + τ | 반쪽의 노름은 전체 스펙트럼 노름 s√n‖x‖의 1/√2와 1배 사이다 |
 | `irfft hfft` | ‖ŷ − y‖ ≤ (κ·L(n) + c₀)·u·s·√n·‖X̃‖_H + τ | X̃는 정리한 입력(n//2 + 1칸, DC·나이퀴스트의 허수부 버림), ‖X̃‖_H² = \|X̃₀\|² + 2Σ\|X̃ₖ\|² (+ \|X̃_{n/2}\|², 짝수 n): 에르미트 확장의 노름 |
-| `rfftn irfftn hfftn ihfftn` | 위의 둘을 축마다 합친 꼴 | |
+| `rfftn irfftn hfftn ihfftn` (FT49) | 복소 다차원의 꼴에서 마지막 축의 항이 실수 길의 것(안쪽 길이가 Bluestein이면 FT45의 꼴) | `rfftn ihfftn`: s·√N·‖x‖. `irfftn hfftn`: s·√N·‖X‖_W(마지막 축의 칸에 무게 1 또는 √2, 허수부를 버리지 않는다: 복소 패스가 먼저다). 증명: 복소 패스는 마지막 축의 칸마다(열마다) 작용하므로 ‖·‖_W를 √(Πnᵢ)배 하고, 실수 패스의 c2r은 ‖R(v)‖ ≤ √n·‖v‖_W(허수부 버리기는 ‖·‖_W에서 축약)이라 앞 패스들의 오차를 √n배까지만 옮긴다 |
 | `dct dst idct idst` | ‖ŷ − y‖ ≤ (κ·L(M) + c₂)·u·‖T‖·‖x‖ + τ | M = 2N + 2(모든 형의 안쪽 실수 FFT 길이의 위 한계, FT31). ‖T‖는 형과 `norm`·`orthogonalize`마다 닫힌 꼴이다: 직교 판은 1, `'backward'`의 정변환은 DCT-II·DST-II 2√N, DCT-III·IV·DST-III·IV √(2N), DST-I √(2(N + 1)), DCT-I 2√(N − 1) 이하(대각 배율 곱하기 직교 행렬이다; `refdata.norm_r2r`) |
 | 실수 입력 `fft` (전체 스펙트럼, FT45) | `rfft` 줄과 같은 꼴 | 사후 처리의 오차를 거울에 비춘 것도 그 한계 안이다(아래) |
 | 실수·에르미트의 Bluestein 안쪽 길이 (FT45) | 안쪽 길이 h(짝수 n은 n/2, 홀수 n은 n)의 ρ(h)와 m(h)로 L(n) 대신 2·L(m) + 2 + [n 짝수], 한계에 ρ(h)를 곱하고 바닥은 ρ(h)·τ(max(m, n)) | |
@@ -442,10 +449,23 @@ T는 정확한 선형 변환(정규화 인자 s 포함), y = Tx는 참값, ŷ는
 
 - 가장 큰 값은 FT1처럼 비정상 수(`tiny`)와 짧은 줄이다. 안쪽 길이가 Bluestein인 줄은 계약이 ρ로 넓어 단위가 작고, 노름 상대오차의 최댓값은 sd가 numpy·scipy보다 크다(1.1×10⁻⁴ 대 2.8×10⁻⁵, 비정상 수 입력의 짧은 줄; 계약의 0.03 아래).
 
+**FT3 마일스톤의 잰 값** (`bench/accuracy/fft.py`의 `nd`, 표 `bench/fft/accuracy.md`): 저장한 다차원 참값 10개(정·역방향)와 Arb를 그 자리에서 구한 점(`tests/fft/refdata.nd_points`: Bluestein 축이 있는 복소 모양 넷, 실수 모양 여덟(짝수·홀수·Bluestein 마지막 길이), 반쪽 스펙트럼 여덟; 값은 균등, 넓은 크기, 넘침 직전, 비정상 수)이다. 영역은 축의 길(모든 축과 실수 축의 안쪽 길이가 11-매끄러우면 smooth, 아니면 bluestein)이고 판정은 FT49의 꼴이다. 계약 단위의 최댓값이다.
+
+| 영역 | 점 | sd | numpy | scipy |
+|---|---:|---:|---:|---:|
+| `fftn` smooth / bluestein | 14 / 12 | 0.034 / 0.034 | 0.036 / 0.011 | 0.036 / 0.011 |
+| `ifftn` (`'forward'`) smooth / bluestein | 14 / 12 | 0.034 / 0.036 | 0.036 / 0.011 | 0.036 / 0.011 |
+| `rfftn` smooth / bluestein | 20 / 12 | 0.029 / 0.045 | 0.032 / 0.013 | 0.032 / 0.013 |
+| `irfftn` (`'forward'`, 에르미트가 아닌 입력) smooth / bluestein | 20 / 12 | 0.044 / 0.035 | 0.042 / 0.013 | 0.042 / 0.013 |
+
+- 가장 큰 값은 1차원처럼 비정상 수(`tiny`) 입력의 바닥이다. Bluestein 축의 노름 상대오차는 sd가 numpy·scipy보다 크고(9.4×10⁻⁵ 대 2.9×10⁻⁵, 비정상 수 입력) 계약이 ρ로 넓어 단위는 작다.
+- `irfftn`의 점은 에르미트 대칭이 아닌 입력이다: 참값은 numpy·scipy의 순서(복소 패스 뒤에 DC·나이퀴스트 허수부를 버리고 n//2 + 1칸만 읽음)로 Arb에서 구했고(`refdata.arb_irfftn`), 세 라이브러리가 모두 그 참값의 계약 안이다.
+
 ### 4.5 비트로 지키는 성질 (반올림 계약이 아니라 정확한 약속)
 - 한 줄의 결과는 배치, 레이아웃, 스레드 수, Accelerate 모드와 무관하다(§3.7).
 - 길이 1의 변환은 정확하다. 2의 거듭제곱 배율은 넘침·언더플로가 없으면 정확히 옮겨진다: `fft(2·x)`는 `2·fft(x)`와 비트까지 같다(같은 연산에 지수만 다르다).
 - `rfft(x)`는 실수 입력의 `fft(x)`의 앞쪽과, `ihfft`·`hfft`는 정의의 켤레·정규화와(`ihfft(x, norm=a)`는 `conj(rfft(x, norm=a′))`, `hfft(x, norm=a)`는 `irfft(conj(x), norm=a′)`, a′는 방향을 바꾼 `norm`), 실수 입력의 `ifft(x, norm=a′)`는 `conj(fft(x, norm=a))`와 비트까지 같다(§3.4). 실수 입력 `fft`의 y_{n−k} = conj(y_k)는 정확하다. `irfft`의 결과는 버리는 허수부(DC와 짝수 n의 나이퀴스트)와 무관하다.
+- 다차원(FT3 마일스톤): 축 하나의 n차원 함수는 1차원 함수와, `fftn(x)`(`'backward'`)와 `ifftn(x, norm='forward')`는 1차원 변환을 `axes`의 뒤에서 앞으로 이은 것과, `rfftn(x)`는 실수 입력 `fftn(x)`의 앞쪽 n//2 + 1칸과, `hfftn`·`ihfftn`은 켤레와 방향을 바꾼 `irfftn`·`rfftn`과 비트까지 같다(FT48, FT52). `irfftn`의 결과는 마지막 축의 n//2 + 1칸 밖과 무관하다.
 - DST-II·III·IV는 부호를 바꾸고 뒤집은 입력의 DCT와 비트까지 같다(§3.5).
 - `fftshift`·`ifftshift`는 `roll`과, `fftfreq`·`rfftfreq`는 numpy와 비트까지 같다.
 
@@ -508,6 +528,22 @@ FT0 마일스톤의 탐침(`tools/fft_probe.py`의 `time`, `paths`)이 잰 시�
 - 한 줄은 모든 꼴에서 numpy의 1.4–7.6배, scipy의 1.4–9배 빠르다. 실수 입력의 `fft`는 실수 길(FT16) 덕에 같은 값의 complex128 입력보다 1.3–1.7배 빠르다.
 - 1스레드의 배치는 마지막 축 970 µs, 축 0 1,550 µs로 numpy(1,080 / 2,910)와 비슷하거나 빠르다. 한 줄의 커널은 n = 1024에서 안쪽 복소 FFT(길이 512) 약 0.77 µs와 사후 처리 약 0.25 µs다(C++에서 잰 값). 사후 처리를 두 자리씩 split 레지스터로 묶은 판은 더 느려(0.29 µs) 넣지 않았다. 홀수 길이의 실수 전용 나비(FT43), 사후 처리의 1/2 곱셈을 끝으로 모으기(같은 비트), 여러 줄을 레인에 나란히 두는 커널은 FT6 마일스톤의 후보다.
 
+**FT3 마일스톤의 시간** (µs, 일곱 번 가운데 가장 좋은 값, 같은 조건; `bench/speed/cases/fft.py`의 FT3 사례 여섯은 `--smoke`로만 돌렸다)
+| 일 | sd 10스레드 | sd 1스레드 | numpy | scipy | scipy `workers=10` |
+|---|---:|---:|---:|---:|---:|
+| `fft2` (2048, 2048) | 3,420 | 23,000 | 38,500 | 22,900 | 4,120 |
+| `ifft2` (1000, 1024) | 768 | 4,620 | 8,130 | 5,210 | 775 |
+| `fftn` (64, 64, 64) / (32, 32, 32) | 193 / 34.8 | 1,170 / 160 | 1,710 / 238 | 1,170 / 148 | 289 / 117 |
+| `rfft2` (2048, 2048) | 1,660 | 10,800 | 15,600 | 10,500 | 1,460 |
+| `rfftn` (256, 256, 256) | 7,620 | 54,800 | 65,200 | 43,000 | 7,710 |
+| `irfftn` (256, 256, 129) / (128, 128, 65) | 8,310 / 910 | 58,900 / 6,590 | 72,800 / 7,830 | 52,600 / 6,500 | 8,240 / 1,430 |
+| `fft2` (34, 1009) (Bluestein 축) | 105 | 531 | 430 | 407 | 143 |
+| `fftn` (8, 8) / `rfftn` (8, 8) / `irfftn` (8, 5) | 0.88 / 1.0 / 0.88 | 0.83 / 0.79 / 0.88 | 5.5 / 5.5 / 6.2 | 3.5 / 4.1 / 4.0 | — |
+
+- 10스레드의 큰 배열은 scipy `workers=10`의 ±15% 안이다(`fft2` (2048, 2048)는 1.2배 빠르고 `rfft2` (2048, 2048)는 1.14배 느리다). 중간과 작은 배열은 1.4–3.4배 빠르고, 아주 작은 배열의 호출은 numpy의 6배쯤 빠르다.
+- 1스레드는 마지막 축이 아닌 축의 패스가 scipy보다 느리다(`rfftn` (256, 256, 256) 54.8 대 43.0 ms, `fft2` (34, 1009) 531 대 407 µs): 줄을 모으고 흩는 메모리 접근이다(§3.7). 레인에 여러 줄을 나란히 두는 커널이 FT6 마일스톤의 후보다.
+- 1차원 배치는 FT50의 묶음·태스크 크기로 바뀌지 않았다(`fft` (1000, 1024) 10스레드 마지막 축 309, 축 0 403 µs; FT1의 263·473 µs와 잡음 안).
+
 - **목표** (FT6 마일스톤에서 확인하고 표를 기준선으로 둔다)
   - 작은 1차원(n ≤ 4096, 한 줄): numpy의 2배 이상. 호출 비용(입력 검사, 결과 할당, 계획 찾기)은 1 µs 아래를 목표로 하고 계획 찾기는 잠금 하나와 해시 찾기다.
   - 큰 1차원(2¹⁶–2²⁰): 1스레드에서 scipy `workers=1` 이상, 10스레드(4단계)에서 scipy `workers=10` 이상.
@@ -528,8 +564,8 @@ FT0 마일스톤의 탐침(`tools/fft_probe.py`의 `time`, `paths`)이 잰 시�
   - `ddmath.hpp`(FT1): double-double 산술, e^(−2πit/N)의 double-double 값과 그 두 표(`CisTable`), 재귀 DFT의 선언
   - `bluestein.hpp`(FT1): `BluesteinPlan`, `smooth5_at_least`
   - `plan.hpp`, `plan.cpp`(FT1, FT2): 계획(`Plan`: 종류, 길이, 길; FT2 마일스톤의 실수 종류는 짝수 n의 길이 n/2 복소 계획과 회전 인자 표, FT43·FT44), 길 고르기(FT36), Bluestein의 계획과 실행, double-double DFT, 캐시(LRU, 뮤텍스, 32개·256 MB)
-  - `driver.hpp`, `driver.cpp`(FT1, FT2): 축 구동기(바로 읽기, 모으기, 줄 묶음, 흩기, 정규화), 나누기. FT2 마일스톤이 실수 변환의 `r2c_axis`·`c2r_axis`(짝수는 실수 계획, 홀수는 복소 계획과 에르미트 부분·확장, 거울 채우기, 켤레)와 공용 줄 구동 `drive_lines`를 더했다. 4단계는 FT6
-  - `basic.cpp`(FT1, FT2): `_c2c`(`fft`·`ifft`; 실수 입력은 실수 길), `_r2c`(`rfft`·`ihfft`), `_c2r`(`irfft`·`hfft`)의 인자 검사와 실행, 시험용 `_plan_info`(`real=True`면 실수 계획)·`_cache_state`·`_cache_clear`·`_twiddles`
+  - `driver.hpp`, `driver.cpp`(FT1, FT2): 축 구동기(바로 읽기, 모으기, 줄 묶음, 흩기, 정규화), 나누기. FT2 마일스톤이 실수 변환의 `r2c_axis`·`c2r_axis`(짝수는 실수 계획, 홀수는 복소 계획과 에르미트 부분·확장, 거울 채우기, 켤레)와 공용 줄 구동 `drive_lines`를 더했다. FT3 마일스톤이 `c2c_axis`의 제자리 변환과 켤레(`conj_in`, `conj_out`), 스레드의 scratch 버퍼, 2의 거듭제곱에서 비킨 줄 간격, 묶음·태스크 크기(FT50)를 더했다. 4단계는 FT6
+  - `basic.cpp`(FT1, FT2, FT3): `_c2c`(`fft`·`ifft`; 실수 입력은 실수 길), `_r2c`(`rfft`·`ihfft`), `_c2r`(`irfft`·`hfft`), FT3 마일스톤의 `_c2cn`(`fft2 ifft2 fftn ifftn`), `_r2cn`(`rfft2 rfftn ihfft2 ihfftn`), `_c2rn`(`irfft2 irfftn hfft2 hfftn`; `s`·`axes`의 검사, 패스의 순서와 제자리, 정규화)의 인자 검사와 실행, 시험용 `_plan_info`(`real=True`면 실수 계획)·`_cache_state`·`_cache_clear`·`_twiddles`
   - `helper.cpp`(FT1): `_freq`(`fftfreq`·`rfftfreq`), `_fast_len`(`next_fast_len`·`prev_fast_len`)
   - `fft.hpp`: 파일마다의 `bind_*`
   - `rfft.hpp`(FT0, FT2): 짝수 n의 실수 길의 사후 처리 `r2c_post`와 역변환의 사전 처리 `c2r_pre`(에르미트 입력의 버리는 허수부를 읽지 않음, 켤레), 회전 인자 표 `real_twiddles`, FT0 마일스톤의 시제품 `RfftPlan`(탐침용)
@@ -557,7 +593,7 @@ FT0 마일스톤의 탐침(`tools/fft_probe.py`의 `time`, `paths`)이 잰 시�
 - 참값이 스스로를 검사한다(`tests/fft/test_reference_data.py`): 파스발 항등식, 정·역 방향이 지수를 뒤집은 관계(따로 계산했다), DC와 나이퀴스트 칸의 정확한 유리수 합, 상수·임펄스 신호의 정확한 꼴, numpy·scipy가 모든 참값에서 계약의 0.25 안.
 
 ### 7.3 테스트 (`tests/fft/`)
-- `test_api_surface.py`(API 문서의 시그니처), `test_basic.py`(복소 변환: numpy·scipy와 계약 안, 모양·dtype·자르기·0 채우기·`norm`), `test_real.py`(실수·에르미트: 버리는 허수부, 기본 길이, 홀수 n, `rfft` = `fft`의 앞쪽 비트), `test_nd.py`(`s`·`axes`의 모든 꼴, `irfftn`의 순서), `test_realtransforms.py`(형 1–4 × `norm` × `orthogonalize`, 복소 입력, DST와 DCT의 비트 관계), `test_helper.py`(`fftfreq` numpy와 비트, `fftshift` = `roll`, `next_fast_len`·`prev_fast_len`이 scipy와 같은 값), `test_errors.py`, `test_reference.py`(Arb 참값의 모든 점이 계약 안), `test_paths.py`(한 줄의 비트가 배치·레이아웃·축 위치와 무관함, vDSP 집합 경계의 양쪽 길이, 2의 거듭제곱 배율), `test_threads.py`(1, 3, 10스레드에서 같은 바이트; `VECLIB_MAXIMUM_THREADS=1`과 기본 모드의 자식 프로세스가 같은 결과의 SHA-256), `test_plan_cache.py`(상한과 쫓아내기, 쫓겨난 뒤 다시 만든 계획의 같은 비트, Python 스레드 여럿이 같은 길이와 다른 길이를 동시에 부를 때). FT1 마일스톤이 `test_basic.py`, `test_helper.py`, `test_errors.py`, `test_reference.py`, `test_paths.py`, `test_threads.py`, `test_plan_cache.py`와 증명의 검사 `test_proof.py`(`proof.py`: 나비마다의 한계, 상수, 회전 인자, ρ)를 만들었다. FT2 마일스톤이 `test_real.py`를 만들고 `test_reference.py`(실수·에르미트 참값 전부와 긴 실수 줄), `test_paths.py`(실수·에르미트의 레이아웃, 바로 읽기와 모으기, 홀짝 경계, 큰 배치), `test_threads.py`, `test_errors.py`, `test_api_surface.py`에 실수 변환을 더했다.
+- `test_api_surface.py`(API 문서의 시그니처), `test_basic.py`(복소 변환: numpy·scipy와 계약 안, 모양·dtype·자르기·0 채우기·`norm`), `test_real.py`(실수·에르미트: 버리는 허수부, 기본 길이, 홀수 n, `rfft` = `fft`의 앞쪽 비트), `test_nd.py`(`s`·`axes`의 모든 꼴, `irfftn`의 순서), `test_realtransforms.py`(형 1–4 × `norm` × `orthogonalize`, 복소 입력, DST와 DCT의 비트 관계), `test_helper.py`(`fftfreq` numpy와 비트, `fftshift` = `roll`, `next_fast_len`·`prev_fast_len`이 scipy와 같은 값), `test_errors.py`, `test_reference.py`(Arb 참값의 모든 점이 계약 안), `test_paths.py`(한 줄의 비트가 배치·레이아웃·축 위치와 무관함, vDSP 집합 경계의 양쪽 길이, 2의 거듭제곱 배율), `test_threads.py`(1, 3, 10스레드에서 같은 바이트; `VECLIB_MAXIMUM_THREADS=1`과 기본 모드의 자식 프로세스가 같은 결과의 SHA-256), `test_plan_cache.py`(상한과 쫓아내기, 쫓겨난 뒤 다시 만든 계획의 같은 비트, Python 스레드 여럿이 같은 길이와 다른 길이를 동시에 부를 때). FT1 마일스톤이 `test_basic.py`, `test_helper.py`, `test_errors.py`, `test_reference.py`, `test_paths.py`, `test_threads.py`, `test_plan_cache.py`와 증명의 검사 `test_proof.py`(`proof.py`: 나비마다의 한계, 상수, 회전 인자, ρ)를 만들었다. FT2 마일스톤이 `test_real.py`를 만들고 `test_reference.py`(실수·에르미트 참값 전부와 긴 실수 줄), `test_paths.py`(실수·에르미트의 레이아웃, 바로 읽기와 모으기, 홀짝 경계, 큰 배치), `test_threads.py`, `test_errors.py`, `test_api_surface.py`에 실수 변환을 더했다. FT3 마일스톤이 `test_nd.py`(`s`·`axes`의 모든 꼴을 numpy·scipy와 FT49의 계약으로, `irfftn`이 버리는 부분, 비트 관계, 레이아웃, 빈 배치, 에러, numpy·scipy의 기록)를 만들고 `test_reference.py`(저장한 다차원 참값과 `refdata.nd_points`), `test_threads.py`(다차원 패스), `test_api_surface.py`에 다차원 변환을 더했다.
 - hypothesis는 tests/README.md의 프로필을 쓴다: 길이(소인수의 조합), 배치 모양, 축, `n`·`s`의 자르기와 채우기, 값의 크기 범위를 고른다.
 - numpy·scipy와는 그 자리에서 견준다: 같은 입력에서 둘 다 계약 안이고 반올림이 아닌 동작(모양, dtype, 에러의 종류)이 같다. `[numpy와 다름]`·`[scipy와 다름]`은 하나하나 테스트가 확인한다.
 
@@ -578,7 +614,7 @@ FT0 마일스톤의 탐침(`tools/fft_probe.py`의 `time`, `paths`)이 잰 시�
 | FT0 준비 | API 문서 초안(`docs/api/fft.md`: 모든 공개 이름의 시그니처, numpy·scipy·R → sd 대응표, §9의 답), 영역 등록(`bench/areas.py`, ARCHITECTURE, API.md의 색인), 시험 신호(§7.1), 참값 도구(§7.2), 탐침 도구와 기록(§7.4), vDSP의 split·`Interleaved` 비용과 설정 비용 다시 재기, 자체 나비의 오차 한계 증명의 틀(§4.2의 κ, c), 속도 사례의 틀 | 문서와 도구가 커밋되고 탐침 기록이 있다. §9의 답이 §1.1의 결정으로 옮겨졌다. **완료·승인(위임, 2026-11-23)**: FT22의 측정(§3.1, FT29·FT30), 계약의 상수(§4.2, FT31), 참값(FT33), 시제품(FT34) |
 | FT1 1차원 복소와 도우미 | 계획과 캐시(§3.6), 자체 혼합 기수·회전 인자·Bluestein(§3.3), 축 구동기와 나누기(§3.7), `fft ifft`, `fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len` | 정확도 스윕이 계약 안, 한 줄의 비트가 배치·레이아웃·스레드와 무관함, Accelerate 모드와 무관함, 골든, numpy·scipy·R과의 속도 사례 **완료·승인(위임, 2026-11-23)**: 계약 단위 최대 0.054(§4.4), 1·3·10스레드와 레이아웃·Accelerate 모드에서 같은 바이트, 나비마다의 증명(§4.2), 결정 FT35–FT42 |
 | FT2 실수와 에르미트 1차원 | `rfft irfft hfft ihfft`, 자체 실수 길(§3.4), 실수 입력의 `fft`(§9의 12번) | 계약 안, 버리는 허수부와 기본 길이가 numpy·scipy와 같음, `rfft` = `fft`의 앞쪽 비트, 속도 사례 **완료·승인(위임, 2026-11-23)**: 계약 단위 최대 0.049(§4.4), `rfft` = 실수 입력 `fft`의 앞쪽과 켤레 관계가 비트까지 같음, 1·3·10스레드와 레이아웃에서 같은 바이트, 결정 FT43–FT46 |
-| FT3 다차원 | `fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn`, `s`·`axes`의 규칙(§2.4) | `irfftn`의 버리는 부분이 numpy·scipy와 같음, 계약 안, 축 패스의 병렬과 결정성, 속도 사례 |
+| FT3 다차원 | `fft2 ifft2 fftn ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn`, `s`·`axes`의 규칙(§2.4) | `irfftn`의 버리는 부분이 numpy·scipy와 같음, 계약 안, 축 패스의 병렬과 결정성, 속도 사례 **완료·승인(위임, 2026-11-23)**: 계약 단위 최대 0.045(§4.4), 에르미트가 아닌 입력의 `irfftn`이 numpy·scipy의 순서로 구한 Arb 참값의 계약 안, 1·3·10스레드와 레이아웃에서 같은 바이트, 10스레드의 큰 배열은 scipy `workers=10`의 ±15% 안이고 중간·작은 배열은 더 빠름(§5), 결정 FT47–FT52 |
 | FT4 DCT·DST | `dct idct dst idst dctn idctn dstn idstn`(형 1–4, `orthogonalize`; §3.5) | 계약 안, DST와 DCT의 비트 관계, scipy와 경계가 같음(다른 곳은 `[scipy와 다름]`), 속도 사례 |
 | FT5 FFTLog (§9의 17번이 넣기로 하면) | `fht ifht fhtoffset` | scipy와 계약 안, 속도 사례 |
 | FT6 성능과 일관성 점검 | 모든 공개 함수를 크기마다 numpy·scipy·R과 견주어 고치기, 길의 표(vDSP 대 자체를 FT29의 방법으로 다시 잼, FT22), Bluestein 문턱, 4단계 문턱 n₄, 줄 묶음의 크기, 계획 캐시의 상한, 메시지·시그니처의 영역 간 일관성, 코드 리뷰 | 속도 표와 정확도 표가 기준선이 되고 §5의 목표를 적은 대로 확인한다 |

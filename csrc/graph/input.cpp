@@ -5,7 +5,8 @@
 //       canonical CSR of the entries kept, each entry read as a float64 x and left out when use_null and
 //       x == null_value, nan_null and x is NaN, or inf_null and x is +-inf. The graph rule of a dense
 //       matrix is (0, True, True, True); csgraph_from_dense passes its arguments. values: float64 data
-//       (scipy's conversion of the whole matrix first), else only the pattern.
+//       (scipy's conversion of the whole matrix first), else only the pattern. as_int64 (a bool or int64
+//       matrix; maximum_flow's capacities): the values as int64 data instead of float64.
 //   _to_dense(indptr, indices, data, n, null_value)
 //       -> (n, n) float64: null_value everywhere, the stored values at their places (csgraph_to_dense).
 //
@@ -73,8 +74,9 @@ struct Keep {
     }
 };
 
-template <class T>
+template <class T, class V>
 nb::object dense_csr_of(const NDArray& a, const Keep<T>& keep, bool values) {
+    constexpr DType kValues = std::is_same_v<V, double> ? DType::Float64 : DType::Int64;
     const int64_t n = a.shape[0], m = a.shape[1];
     const T* A = reinterpret_cast<const T*>(a.data);
     const int64_t rows_per = std::max<int64_t>(1, kBlockWork / std::max<int64_t>(m, 1));
@@ -97,26 +99,26 @@ nb::object dense_csr_of(const NDArray& a, const Keep<T>& keep, bool values) {
     }
     const int64_t nnz = P[n];
     nb::object oi = new_vector(DType::Int64, nnz);
-    nb::object od = values ? new_vector(DType::Float64, nnz) : nb::none();
+    nb::object od = values ? new_vector(kValues, nnz) : nb::none();
     int64_t* I = reinterpret_cast<int64_t*>(as_ndarray(oi).data);
-    double* D = values ? reinterpret_cast<double*>(as_ndarray(od).data) : nullptr;
+    V* D = values ? reinterpret_cast<V*>(as_ndarray(od).data) : nullptr;
     {
         const parallel::Unlocked unlocked(split);
         run_tasks(ntasks, split, [&](int64_t t) {
             // A row is compacted without branches into a scratch row (every entry written, the position
             // advanced only for a kept one), then copied to its place.
             std::vector<int64_t> si(static_cast<size_t>(m));
-            std::vector<double> sv(values ? static_cast<size_t>(m) : 0);
+            std::vector<V> sv(values ? static_cast<size_t>(m) : 0);
             for (int64_t i = t * rows_per, e = std::min(n, (t + 1) * rows_per); i < e; ++i) {
                 const T* row = A + i * m;
                 int64_t k = 0;
                 if (values) {
                     for (int64_t j = 0; j < m; ++j) {
                         si[static_cast<size_t>(k)] = j;
-                        sv[static_cast<size_t>(k)] = static_cast<double>(row[j]);
+                        sv[static_cast<size_t>(k)] = static_cast<V>(row[j]);
                         k += keep(row[j]);
                     }
-                    std::memcpy(D + P[i], sv.data(), static_cast<size_t>(k) * sizeof(double));
+                    std::memcpy(D + P[i], sv.data(), static_cast<size_t>(k) * sizeof(V));
                 } else {
                     for (int64_t j = 0; j < m; ++j) {
                         si[static_cast<size_t>(k)] = j;
@@ -130,15 +132,24 @@ nb::object dense_csr_of(const NDArray& a, const Keep<T>& keep, bool values) {
     return nb::make_tuple(op, oi, od);
 }
 
-nb::object dense_csr(nb::handle ah, double null, bool use_null, bool nan_null, bool inf_null, bool values) {
+nb::object dense_csr(
+    nb::handle ah, double null, bool use_null, bool nan_null, bool inf_null, bool values, bool as_int64
+) {
     const char* func = "_dense_csr";
     if (!is_ndarray(ah)) wrong(func, "matrix");
     const NDArray& a = as_ndarray(ah);
     if (a.ndim != 2 || !a.c_contiguous) wrong(func, "matrix");
+    if (as_int64 && a.dtype == DType::Float64) wrong(func, "matrix");
     switch (a.dtype) {
-        case DType::Bool: return dense_csr_of<bool>(a, Keep<bool>{null, use_null, nan_null, inf_null}, values);
-        case DType::Int64: return dense_csr_of<int64_t>(a, Keep<int64_t>{null, use_null, nan_null, inf_null}, values);
-        case DType::Float64: return dense_csr_of<double>(a, Keep<double>{null, use_null, nan_null, inf_null}, values);
+        case DType::Bool:
+            if (as_int64) return dense_csr_of<bool, int64_t>(a, Keep<bool>{null, use_null, nan_null, inf_null}, values);
+            return dense_csr_of<bool, double>(a, Keep<bool>{null, use_null, nan_null, inf_null}, values);
+        case DType::Int64:
+            if (as_int64)
+                return dense_csr_of<int64_t, int64_t>(a, Keep<int64_t>{null, use_null, nan_null, inf_null}, values);
+            return dense_csr_of<int64_t, double>(a, Keep<int64_t>{null, use_null, nan_null, inf_null}, values);
+        case DType::Float64:
+            return dense_csr_of<double, double>(a, Keep<double>{null, use_null, nan_null, inf_null}, values);
         default: wrong(func, "matrix");
     }
 }
@@ -210,7 +221,7 @@ bool symmetric(const View& g, const View& t) {
 void bind_input(nb::module_& m) {
     m.def(
         "_dense_csr", &dense_csr, nb::arg("a"), nb::arg("null_value"), nb::arg("use_null"), nb::arg("nan_null"),
-        nb::arg("inf_null"), nb::arg("values")
+        nb::arg("inf_null"), nb::arg("values"), nb::arg("as_int64") = false
     );
     m.def(
         "_to_dense", &to_dense, nb::arg("indptr"), nb::arg("indices"), nb::arg("data"), nb::arg("n"),

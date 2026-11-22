@@ -16,6 +16,13 @@ long line, the input dtypes and the wrong calls; and real input to fft and ifft 
 which takes the real path since FT2 (decision FT16; FT1 left it out, decision FT38). The four-step split
 of one long line comes with milestone FT6.
 
+The n-dimensional transforms (milestone FT3): fft2, ifft2, fftn, ifftn, rfft2, irfft2, rfftn, irfftn,
+hfft2, ihfft2, hfftn and ihfftn on shapes with 2^k, other 11-smooth and Bluestein axes and even and odd
+real last lengths, times norm; every form of s and axes (None, -1, cutting, padding, a subset, any order,
+negative, a list, s without axes, an int); the parts of a non-Hermitian input irfftn drops; real, int64
+and bool input; C, F and strided layouts; arrays large enough that every axis pass splits into many tasks
+at 3 and 10 threads; the empty batch; the wrong calls.
+
 The inputs come from fixed literals and L.rng(seed); the largest result is 2^17 complex numbers.
 """
 
@@ -157,6 +164,92 @@ def cases(L):
     yield "rfft length 0", lambda: F.rfft(a(np.zeros(0)))
     yield "irfft positional n", lambda: F.irfft(x4, 4)
     yield "ihfft workers", lambda: F.ihfft(xr4, workers=2)
+
+    # ---- the n-dimensional transforms (FT3)
+    shapes = ((8, 16), (6, 10), (5, 7), (13, 8), (4, 6, 9), (3, 17, 4), (2, 3, 4, 5))
+    for shape in shapes:
+        x = _c(r, shape)
+        xr = r.uniform(-1, 1, shape)
+        sh = "x".join(map(str, shape))
+        for norm in NORMS:
+            yield f"fftn {sh} {norm}", lambda x=x, norm=norm: F.fftn(a(x), norm=norm)
+            yield f"ifftn {sh} {norm}", lambda x=x, norm=norm: F.ifftn(a(x), norm=norm)
+            yield f"rfftn {sh} {norm}", lambda xr=xr, norm=norm: F.rfftn(a(xr), norm=norm)
+            yield f"irfftn {sh} {norm}", lambda x=x, norm=norm: F.irfftn(a(x), norm=norm)
+            yield f"hfftn {sh} {norm}", lambda x=x, norm=norm: F.hfftn(a(x), norm=norm)
+            yield f"ihfftn {sh} {norm}", lambda xr=xr, norm=norm: F.ihfftn(a(xr), norm=norm)
+            yield f"fftn real {sh} {norm}", lambda xr=xr, norm=norm: F.fftn(a(xr), norm=norm)
+            yield f"ifftn real {sh} {norm}", lambda xr=xr, norm=norm: F.ifftn(a(xr), norm=norm)
+    t3 = _c(r, (4, 6, 10))
+    t3r = t3.real.copy()
+    forms = ((None, None), ((5, 3), None), ((9, -1), [2, 0]), (None, (-1, -3)), ((8,), (1,)), ((3, 7, 12), None),
+             ((4, 6, 11), (0, 1, 2)), (7, None), (None, 1), ((2, 2), (2, 1)))  # fmt: skip
+    for s_, ax in forms:
+        tag = f"s={s_} axes={ax}"
+        yield f"fftn {tag}", lambda s_=s_, ax=ax: F.fftn(a(t3), s=s_, axes=ax)
+        yield f"ifftn {tag}", lambda s_=s_, ax=ax: F.ifftn(a(t3), s=s_, axes=ax, norm="ortho")
+        yield f"rfftn {tag}", lambda s_=s_, ax=ax: F.rfftn(a(t3r), s=s_, axes=ax)
+        yield f"irfftn {tag}", lambda s_=s_, ax=ax: F.irfftn(a(t3), s=s_, axes=ax)
+        yield f"hfftn {tag}", lambda s_=s_, ax=ax: F.hfftn(a(t3), s=s_, axes=ax, norm="forward")
+        yield f"ihfftn {tag}", lambda s_=s_, ax=ax: F.ihfftn(a(t3r), s=s_, axes=ax)
+    m2 = _c(r, (6, 10))
+    for s_ in (None, (6, 10), (4, 13), (-1, 7), (9, 16)):
+        yield f"fft2 s={s_}", lambda s_=s_: F.fft2(a(m2), s=s_)
+        yield f"ifft2 s={s_}", lambda s_=s_: F.ifft2(a(m2), s=s_)
+        yield f"rfft2 s={s_}", lambda s_=s_: F.rfft2(a(m2.real), s=s_)
+        yield f"irfft2 s={s_}", lambda s_=s_: F.irfft2(a(m2), s=s_)
+        yield f"hfft2 s={s_}", lambda s_=s_: F.hfft2(a(m2), s=s_, norm="ortho")
+        yield f"ihfft2 s={s_}", lambda s_=s_: F.ihfft2(a(m2.real), s=s_)
+    yield "fft2 axes=(0, 2)", lambda: F.fft2(a(t3), axes=(0, 2))
+    yield "irfft2 axes=(2, 0)", lambda: F.irfft2(a(t3), axes=(2, 0))
+    # a non-Hermitian input: irfftn drops numpy's and scipy's parts; the entries beyond n // 2 + 1 are never read
+    nh = _c(r, (5, 9))
+    nh2 = nh.copy()
+    nh2[:, 7:] = NAN
+    yield "irfftn non-Hermitian", lambda: F.irfftn(a(nh), s=(5, 12))
+    yield "irfftn non-Hermitian NaN beyond", lambda: F.irfftn(a(nh2), s=(5, 12))
+    yield "irfftn non-Hermitian odd", lambda: F.irfftn(a(nh), s=(6, 11))
+    ndedge = edge[:6].reshape(2, 3)
+    yield "fftn edge", lambda: F.fftn(a(ndedge))
+    yield "irfftn edge", lambda: F.irfftn(a(ndedge))
+    yield "fftn subnormal", lambda: F.fftn(a(_c(L.rng(2330), (13, 8)) * 2.0**-1060))
+    yield "rfftn huge", lambda: F.rfftn(a(L.rng(2331).uniform(-1, 1, (8, 16)) * 2.0**1010))
+    for name, x in (("int64", ints), ("bool", ints % 2 == 0), ("float64", ints * 0.5)):
+        yield f"fftn {name}", lambda x=x: F.fftn(a(x))
+        yield f"rfftn {name}", lambda x=x: F.rfftn(a(x))
+        yield f"irfftn {name}", lambda x=x: F.irfftn(a(x))
+        yield f"ihfft2 {name}", lambda x=x: F.ihfft2(a(x))
+    yield "fftn F order", lambda: F.fftn(a(np.asfortranarray(t3)))
+    yield "irfftn F order", lambda: F.irfftn(a(np.asfortranarray(t3)), axes=(0, 2))
+    yield "rfftn strided", lambda: F.rfftn(a(t3r[::-1, 1::2, ::3]))
+    yield "hfftn strided", lambda: F.hfftn(a(t3[::2, ::-1]))
+    yield "fftn empty batch", lambda: F.fftn(a(np.zeros((0, 4, 6), np.complex128)), axes=(1, 2))
+    yield "irfftn empty batch", lambda: F.irfftn(a(np.zeros((3, 0, 6), np.complex128)), axes=(0, 2))
+    yield "fft2 padded from length 0", lambda: F.fft2(a(np.zeros((3, 0), np.complex128)), s=(3, 2))
+    big3 = _c(L.rng(2332), (48, 64, 40))
+    yield "fftn 48x64x40", lambda: F.fftn(a(big3))
+    yield "ifftn 48x64x40 axes=(0, 2) s", lambda: F.ifftn(a(big3), s=(50, 40), axes=(0, 2))
+    yield "rfftn 48x64x40", lambda: F.rfftn(a(big3.real))
+    yield "irfftn 48x64x40", lambda: F.irfftn(a(big3))
+    yield "hfftn 48x64x40 axes=(1, 0)", lambda: F.hfftn(a(big3), axes=(1, 0), norm="ortho")
+    yield "fft2 34x1009", lambda: F.fft2(a(_c(L.rng(2333), (34, 1009))))
+    yield "irfft2 256x257", lambda: F.irfft2(a(_c(L.rng(2334), (256, 257))))
+    t2 = a(np.ones((4, 6)) + 0j)
+    t2r = a(np.ones((4, 6)))
+    yield "fftn s=(None, 4)", lambda: F.fftn(t2, s=(None, 4))
+    yield "fftn s=(0, 4)", lambda: F.fftn(t2, s=(0, 4))
+    yield "fftn s and axes lengths", lambda: F.fftn(t2, s=(4, 4, 4), axes=(0, 1))
+    yield "fftn s too long", lambda: F.fftn(t2, s=(2, 2, 2))
+    yield "fftn repeated axes", lambda: F.fftn(t2, axes=(1, 1))
+    yield "fftn axes=()", lambda: F.fftn(t2, axes=())
+    yield "fftn s=()", lambda: F.fftn(t2, s=())
+    yield "fft2 1-d", lambda: F.fft2(x4)
+    yield "rfftn complex input", lambda: F.rfftn(t2)
+    yield "irfftn length 1 default", lambda: F.irfftn(a(np.ones((3, 1), np.complex128)))
+    yield "ihfftn axis out of range", lambda: F.ihfftn(t2r, axes=(0, 2))
+    yield "hfft2 norm=None", lambda: F.hfft2(t2, norm=None)
+    yield "ifft2 positional s", lambda: F.ifft2(t2, (4, 4))
+    yield "irfft2 workers", lambda: F.irfft2(t2, workers=2)
 
     # ---- helpers
     for n in (1, 2, 5, 8, 1001):

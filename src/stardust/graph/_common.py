@@ -78,33 +78,75 @@ def dense(x, name, arg):
     _real_dtype(a.dtype, name, arg)
     if a.ndim != 2:
         raise ValueError(f"{name}(): '{arg}' must have 2 dimensions, not {a.ndim}")
-    if not a._flags()["c_contiguous"]:  # a C-ordered copy (reshape flattens in C order)
-        a = _sd.reshape(_sd.reshape(a, (a.size,)), tuple(a.shape))
-    return a
+    return contiguous(a)
+
+
+def contiguous(a):
+    """a as a C-contiguous array: a itself when it is one, else a new C-ordered copy (any strides: a column
+    slice, an F-ordered or a reversed view)."""
+    if a._flags()["c_contiguous"]:
+        return a
+    out = _sd.empty(tuple(a.shape), dtype=a.dtype)
+    out[...] = a
+    return out
+
+
+def _matrix(x, name, arg):
+    """An accepted matrix argument: the sd.sparse array as it is, or a dense one as a C-contiguous sd.ndarray
+    (TypeError for scipy.sparse, a DataFrame, complex and other objects; ValueError unless 2-D)."""
+    if isinstance(x, _sparse.sparray):
+        _real_dtype(x.dtype, name, arg)
+        return x
+    if _is_scipy_sparse(x):
+        raise TypeError(
+            f"{name}(): '{arg}' must be {_TAKES}, not a scipy.sparse {type(x).__name__}; convert it with "
+            "sd.sparse.csr_array(A)"
+        )
+    if type(x).__module__.startswith("stardust.frame"):  # an adjacency matrix is not a table
+        raise TypeError(f"{name}(): '{arg}' must be {_TAKES}, not {type_name(x)}")
+    return dense(x, name, arg)
+
+
+def _csr(a, values):
+    """(indptr, indices, float64 data or None) of an accepted matrix (_matrix's result)."""
+    if isinstance(a, _sparse.sparray):
+        A = a.tocsr()
+        data = None
+        if values:
+            data = A.data if A.dtype == _sd.float64 else A.data.astype(_sd.float64)
+        return A.indptr, A.indices, data
+    return _core._dense_csr(a, 0.0, True, True, True, values)
 
 
 def graph(csgraph, name, *, values=False, arg="csgraph"):
     """(n, indptr, indices, data) of a square graph argument: canonical CSR arrays and, with `values`, the
     float64 weights (else None: the functions that read only the pattern)."""
-    if isinstance(csgraph, _sparse.sparray):
-        _real_dtype(csgraph.dtype, name, arg)
-        n = _square(csgraph.shape, name, arg)
-        A = csgraph.tocsr()
-        data = None
-        if values:
-            data = A.data if A.dtype == _sd.float64 else A.data.astype(_sd.float64)
-        return n, A.indptr, A.indices, data
-    if _is_scipy_sparse(csgraph):
-        raise TypeError(
-            f"{name}(): '{arg}' must be {_TAKES}, not a scipy.sparse {type(csgraph).__name__}; convert it with "
-            "sd.sparse.csr_array(A)"
-        )
-    if type(csgraph).__module__.startswith("stardust.frame"):  # an adjacency matrix is not a table
-        raise TypeError(f"{name}(): '{arg}' must be {_TAKES}, not {type_name(csgraph)}")
-    a = dense(csgraph, name, arg)
+    a = _matrix(csgraph, name, arg)
     n = _square(a.shape, name, arg)
-    indptr, indices, data = _core._dense_csr(a, 0.0, True, True, True, values)
-    return n, indptr, indices, data
+    return (n, *_csr(a, values))
+
+
+def biadjacency(x, name, *, values=False, arg="graph"):
+    """(rows, cols, indptr, indices, data) of a bipartite graph's (rows, cols) biadjacency matrix (the
+    matchings): any 2-D shape, read by the graph rules (stored entries; the dense rule)."""
+    a = _matrix(x, name, arg)
+    if len(a.shape) != 2:
+        raise ValueError(f"{name}(): '{arg}' must have 2 dimensions, not {len(a.shape)}")
+    return (int(a.shape[0]), int(a.shape[1]), *_csr(a, values))
+
+
+def capacities(x, name, arg="csgraph"):
+    """(n, indptr, indices, caps) of a flow network: the capacities as int64 (bool read as 0 and 1). Only
+    bool and int64 matrices: float64 is a TypeError even with integer values (GR15)."""
+    a = _matrix(x, name, arg)
+    n = _square(a.shape, name, arg)
+    if a.dtype not in (_sd.bool, _sd.int64):
+        raise TypeError(f"{name}(): the capacities must be bool or int64, not {a.dtype}")
+    if isinstance(a, _sparse.sparray):
+        A = a.tocsr()
+        caps = A.data if A.dtype == _sd.int64 else A.data.astype(_sd.int64)
+        return n, A.indptr, A.indices, caps
+    return (n, *_core._dense_csr(a, 0.0, True, True, True, True, as_int64=True))
 
 
 def node(v, n, name, arg):

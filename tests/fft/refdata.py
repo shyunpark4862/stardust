@@ -28,7 +28,7 @@ its bound (1 or less is within it): for a transform of length n with L(n) = ceil
 
     complex, real (rfft, ihfft)   ||y_hat - y|| <= (KAPPA L(n) + C0) u s sqrt(n) ||x|| + tau
     hermitian (irfft, hfft)       ||y_hat - y|| <= (KAPPA L(n) + C0) u s sqrt(n) ||x~||_H + tau
-    n-dimensional                 L(n) -> sum of L(n_i), C0 -> C0 + (d - 1) C1
+    n-dimensional                 L(n) -> sum of L(n_i), C0 -> C0 + (d - 1) C1 (bound_nd)
     dct, dst                      ||y_hat - y|| <= (KAPPA L(M) + C2) u s ||T|| ||x|| + tau
     Bluestein lengths             L(n) -> 2 L(m) + 2, the bound and tau times rho(n)
 
@@ -47,6 +47,16 @@ transform of the inner length real_inner(n): n / 2 for even n, n for odd n. When
 rho and inner length m, L(n) -> 2 L(m) + 2 (+ 1 for even n: the twiddle pass), and tau(max(m, n)). The
 whole spectrum of fft of real input is held to the "real" bound (the twiddle pass's error, mirrored,
 stays inside it; docs/design/fft.md §4.2).
+
+n-dimensional transforms (milestone FT3, decision FT49; docs/design/fft.md §4.2): one pass per axis, each
+the line transform of its length, so the bound adds the axes' level terms (a Bluestein axis or a real axis
+with a Bluestein inner length its own term times its rho, as in one dimension) and takes C0 times the
+largest rho plus C1 per further axis (bound_nd). ||y|| is s sqrt(N) ||x|| with N the product of the
+lengths (rfftn: its half spectrum is part of the whole one); irfftn and hfftn use ||X||_W
+(hermitian_norm_nd: the weights of ||.||_H along the last axis, the imaginary parts kept, since the
+complex passes come before the real one drops them). The floor tau(N) grows by rho m / n for each
+Bluestein axis (the product: an upper bound on the sum of the passes' floors). With one axis bound_nd is
+bound's one-dimensional form.
 
 Bluestein lengths (decisions FT36, FT37; docs/design/fft.md §4.2): the complex transform of a length n
 with a prime factor above 11 is a cyclic convolution of length m, the smallest 2^a 3^b 5^c >= 2n - 1
@@ -192,16 +202,50 @@ def tau(m: int) -> float:
     return KAPPA * m * TINY
 
 
+def axis_term(n: int, real: bool = False) -> tuple[float, float, int]:
+    """(level term, rho, floor length) of one axis of length n: KAPPA L(n), 1 and n for an 11-smooth
+    (inner) length; for a Bluestein length its KAPPA (2 L(m) + 2) (a real axis: + KAPPA for an even n's
+    twiddle pass), rho and m (a real axis: max(m, n)), as bound's one-dimensional forms."""
+    n = int(n)
+    h = real_inner(n) if real else n
+    if is_smooth11(h):
+        return KAPPA * levels(n), 1.0, n
+    m, rho = bluestein_m(h), bluestein_rho(h)
+    extra = 1 if real and n % 2 == 0 else 0
+    return KAPPA * (2 * levels(m) + 2 + extra), rho, (max(m, n) if real else m)
+
+
+def bound_nd(lengths, xnorm: float, s: float = 1.0, real: bool = False) -> float:
+    """The contract's bound on ||y_hat - y|| for an n-dimensional transform of the given lengths (in the
+    order of the axes; with real, the last is the real axis of rfftn, irfftn, hfftn and ihfftn), input
+    norm xnorm (irfftn: hermitian_norm_nd) and normalisation factor s (see the module's docstring)."""
+    lengths = [int(v) for v in lengths]
+    terms = [axis_term(v, real and i == len(lengths) - 1) for i, v in enumerate(lengths)]
+    count = math.prod(lengths)
+    lv = sum(rho * t for t, rho, _ in terms)
+    c = max(rho for _, rho, _ in terms) * C0 + (len(lengths) - 1) * C1
+    floor = tau(count) * math.prod(rho * m / v for (_, rho, m), v in zip(terms, lengths))
+    return (lv + c) * U * s * math.sqrt(count) * xnorm + floor
+
+
+def hermitian_norm_nd(x, n: int) -> float:
+    """||X||_W of an n-dimensional half spectrum x (already cut or padded to n // 2 + 1 along the last axis):
+    the 2-norm with the entries of the last axis weighted by 1 (k = 0 and, for even n, k = n / 2) or
+    sqrt(2) (the others), imaginary parts kept. With one axis use hermitian_norm (they drop them)."""
+    x = np.asarray(x, np.complex128)
+    w = np.full(x.shape[-1], math.sqrt(2.0))
+    w[0] = 1.0
+    if n % 2 == 0 and x.shape[-1] == n // 2 + 1:
+        w[-1] = 1.0
+    return norm2(x * w)
+
+
 def bound(kind: str, n, xnorm: float, s: float = 1.0, method: str | None = None) -> float:
     """The contract's bound on ||y_hat - y|| (absolute) for a transform of the given kind:
     "c2c", "real", "hermitian" (xnorm: ||x~||_H), "nd" (n: the shape), or "r2r" (method: dct1 ..
     dst4), with input norm xnorm and normalisation factor s."""
     if kind == "nd":
-        shape = tuple(int(v) for v in n)
-        count = math.prod(shape)
-        lv = sum(levels(v) for v in shape)
-        c = C0 + (len(shape) - 1) * C1
-        return (KAPPA * lv + c) * U * s * math.sqrt(count) * xnorm + tau(count)
+        return bound_nd(n, xnorm, s)
     n = int(n)
     if kind == "c2c" and not is_smooth11(n):
         m, rho = bluestein_m(n), bluestein_rho(n)
@@ -235,6 +279,41 @@ def units(err: float, b: float) -> float:
 LONG = ("c/uniform/65536", "c/uniform/65537", "c/uniform/30021", "c/uniform/1048576")
 # The same for the real path (milestone FT2): an even and an odd Bluestein length, 2^20.
 LONG_REAL = ("r/uniform/65536", "r/uniform/65537", "r/uniform/1048576")
+# The n-dimensional points with Arb computed where they are needed (milestone FT3): the stored nd family
+# has the complex transform of 11-smooth shapes only. Complex shapes with a Bluestein axis (fftn), real
+# shapes (rfftn: the real parts of the nd signal; even, odd and Bluestein last lengths, a Bluestein
+# other axis) and half spectra (irfftn: (shape of the input, output length of the last axis)).
+ND_KINDS = ("uniform", "wide", "huge", "tiny")
+ND_COMPLEX = ((13, 8), (3, 17, 4), (7, 19), (5, 11, 2))
+ND_REAL = ((6, 10), (5, 7), (3, 4, 9), (13, 8), (6, 17), (4, 26), (2, 3, 4, 5), (16, 24))
+ND_HERMITIAN = (((6, 6), 10), ((5, 4), 7), ((3, 4, 5), 9), ((13, 5), 8), ((6, 9), 17), ((4, 14), 26),
+                ((2, 3, 4, 3), 5), ((16, 13), 24))  # fmt: skip
+
+
+def nd_points():
+    """(family, signal id, x, s, hi, lo) of the n-dimensional points with Arb references: family "c2c"
+    (fftn, unnormalised; also ifftn with norm='forward' via the backward reference), "real" (rfftn: the
+    half spectrum) and "hermitian" (irfftn(x, s, norm='forward')). x is the input as the transform sees it
+    (for hermitian: n // 2 + 1 entries along the last axis), s the transform's lengths."""
+    from . import signals as S
+
+    for kind in ND_KINDS:
+        for shape in ND_COMPLEX:
+            sig = S.get(S.sid("nd", kind, shape))
+            hi, lo = arb_dftn(sig.x)
+            yield "c2c", sig.id, sig.x, shape, hi, lo
+            hi, lo = arb_dftn(sig.x, inverse=True)
+            yield "c2c-backward", sig.id, sig.x, shape, hi, lo
+        for shape in ND_REAL:
+            sig = S.get(S.sid("nd", kind, shape))
+            x = np.ascontiguousarray(sig.x.real)
+            hi, lo = arb_dftn(x.astype(np.complex128))
+            h = shape[-1] // 2 + 1
+            yield "real", sig.id + "/real", x, shape, hi[..., :h], lo[..., :h]
+        for shape, n in ND_HERMITIAN:
+            sig = S.get(S.sid("nd", kind, shape))
+            hi, lo = arb_irfftn(sig.x, n)
+            yield "hermitian", sig.id + f"/n={n}", sig.x, shape[:-1] + (n,), hi, lo
 
 
 def arb_dft(x, inverse: bool = False):
@@ -268,3 +347,120 @@ def arb_dft(x, inverse: bool = False):
         return hi, lo
     finally:
         ctx.prec = old
+
+
+def _acb_settled(vals, prec_limit_scale):
+    from flint import arb
+
+    limit = arb(prec_limit_scale) * arb(2) ** -120
+    return all(a.real.rad() <= limit and a.imag.rad() <= limit for a in vals)
+
+
+def _to_dd(vals, shape):
+    """(hi, lo) complex128 arrays of a flat list of acb midpoints (double-double)."""
+    from flint import arb
+
+    hi = np.empty(len(vals), np.complex128)
+    lo = np.empty(len(vals), np.complex128)
+    for k, a in enumerate(vals):
+        re, im = a.real.mid(), a.imag.mid()
+        h_re, h_im = float(re), float(im)
+        hi[k] = complex(h_re, h_im)
+        lo[k] = complex(float(re - arb(h_re)), float(im - arb(h_im)))
+    return hi.reshape(shape), lo.reshape(shape)
+
+
+def _acb_dft_axis(a, axis: int, inverse: bool):
+    """The unnormalised DFT (sign -, or + with inverse) of the object array a of acb along axis, exact
+    (interval arithmetic)."""
+    from flint import acb
+
+    moved = np.moveaxis(a, axis, -1)
+    flat = moved.reshape(-1, moved.shape[-1])
+    out = np.empty_like(flat)
+    for i, row in enumerate(flat):
+        v = [z.conjugate() for z in row] if inverse else list(row)
+        y = acb.dft(v)
+        out[i] = [z.conjugate() for z in y] if inverse else y
+    return np.moveaxis(out.reshape(moved.shape), -1, axis)
+
+
+def _acb_array(x):
+    from flint import acb
+
+    x = np.asarray(x, np.complex128)
+    a = np.empty(x.shape, dtype=object)
+    for idx in np.ndindex(x.shape):
+        z = x[idx]
+        a[idx] = acb(float(z.real), float(z.imag))
+    return a
+
+
+def _settle(compute):
+    """compute() -> object array of acb at the working precision, repeated at doubled precision until every
+    entry is settled to 2^-120 of the result's 2-norm (as arb_dft); (hi, lo) of the result."""
+    from flint import ctx
+
+    old = ctx.prec
+    prec = 192
+    try:
+        while True:
+            ctx.prec = prec
+            y = compute()
+            flat = list(y.ravel())
+            scale = norm2(np.array([complex(float(a.real.mid()), float(a.imag.mid())) for a in flat]))
+            if _acb_settled(flat, scale) or prec >= 1536:
+                return _to_dd(flat, y.shape)
+            prec *= 2
+    finally:
+        ctx.prec = old
+
+
+def arb_dftn(x, inverse: bool = False):
+    """(hi, lo): the unnormalised n-dimensional DFT over every axis of the complex array x (sign -, or +
+    with inverse) by Arb, settled and kept as arb_dft does. For the small shapes of the n-dimensional
+    tests and accuracy sweep (milestone FT3)."""
+
+    def compute():
+        a = _acb_array(x)
+        for axis in range(a.ndim):
+            a = _acb_dft_axis(a, axis, inverse)
+        return a
+
+    return _settle(compute)
+
+
+def arb_irfftn(x, n: int):
+    """(hi, lo) real parts: irfftn(x, s=(..., n), norm='forward') exactly (unnormalised): the inverse DFT
+    over every axis but the last of the half spectrum x (already cut or padded to n // 2 + 1 along the
+    last axis), then along the last the inverse DFT of the Hermitian extension of each line with the
+    imaginary parts of its DC and (even n) Nyquist entries dropped -- numpy's and scipy's order, which
+    decides what a non-Hermitian input loses."""
+    x = np.asarray(x, np.complex128)
+    h = n // 2 + 1
+    assert x.shape[-1] == h
+
+    def compute():
+        from flint import acb
+
+        a = _acb_array(x)
+        for axis in range(a.ndim - 1):
+            a = _acb_dft_axis(a, axis, True)
+        flat = a.reshape(-1, h)
+        out = np.empty((flat.shape[0], n), dtype=object)
+        for i, row in enumerate(flat):
+            e = [acb(0)] * n
+            e[0] = acb(row[0].real)
+            for j in range(1, h):
+                z = row[j]
+                if 2 * j == n:
+                    z = acb(z.real)
+                e[j] = z
+                if j != n - j:
+                    e[n - j] = z.conjugate()
+            y = acb.dft([v.conjugate() for v in e])
+            out[i] = [acb(v.real) for v in y]  # the conjugate's real part
+        return out.reshape(x.shape[:-1] + (n,))
+
+    hi, lo = _settle(compute)
+    return hi.real, lo.real

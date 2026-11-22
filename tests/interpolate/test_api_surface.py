@@ -20,8 +20,6 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "interpolate.md"
 # Documented, not implemented yet (docs/design/interpolate.md §8). A milestone moves its names from here
 # to sd.interpolate.__all__.
 PLANNED = {
-    # IP3
-    "BSpline", "make_interp_spline",
     # IP4
     "BarycentricInterpolator", "barycentric_interpolate", "KroghInterpolator", "krogh_interpolate",
     "FloaterHormannInterpolator", "AAA",
@@ -31,7 +29,8 @@ PLANNED = {
     "RBFInterpolator", "NearestNDInterpolator",
 }  # fmt: skip
 IP2 = {"PPoly", "CubicHermiteSpline", "CubicSpline", "PchipInterpolator", "Akima1DInterpolator", "pchip_interpolate"}
-CLASSES = {n for n in PLANNED | IP2 if n[0].isupper()}
+IP3 = {"BSpline", "make_interp_spline"}
+CLASSES = {n for n in PLANNED | IP2 | IP3 if n[0].isupper()}
 PPOLY_FAMILY = ("PPoly", "CubicHermiteSpline", "CubicSpline", "PchipInterpolator", "Akima1DInterpolator")
 INTERP = "interp(x, xp, fp, /, *, left=None, right=None, period=None)"
 LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<sig>.*)\))?$")
@@ -168,15 +167,14 @@ def test_interp_is_the_array_areas():
 
 
 def test_module_is_wired():
-    assert set(sd.interpolate.__all__) == IP2
+    assert set(sd.interpolate.__all__) == IP2 | IP3
     assert not hasattr(sd.interpolate, "interp")
 
 
 def test_exported_methods_match_api_md():
-    # the methods and attributes of the exported classes (PPoly.from_spline comes with BSpline, milestone IP3)
-    later = {("PPoly", "from_spline")}
+    # the methods and attributes of the exported classes
     for cls, name, sig in entries():
-        if cls not in sd.interpolate.__all__ or (cls, name) in later:
+        if cls not in sd.interpolate.__all__:
             continue
         member = getattr(getattr(sd.interpolate, cls), name)
         if sig is None:

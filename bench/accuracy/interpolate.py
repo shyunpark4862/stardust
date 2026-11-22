@@ -31,10 +31,18 @@ IP2 brings (judged through tests/interpolate/refdata.py, the functions the tests
                the nearest returned root in ulps (`missed`: the roots farther than 2^-20 relative), and the
                returned roots that are none of the references (`extra`). Comparator: scipy.
 
+IP3 brings (judged through tests/interpolate/refdata.py)
+
+  coefficients also the B-spline coefficients of make_interp_spline (k2 .. k5, k3_natural, k3_clamped,
+               k3_periodic, k5_periodic; one region per method; k0 and k1 copy y) against bspline.npz in units of
+               the construction contract 2 gamma_{8k+8} |A^-1| |A| |c| (refdata.collocation_bound); the real curves
+               the method allows (subnormal/x's natural and clamped overflow: left out). Comparator: scipy.
+  evaluation   also the B-splines (the same methods and k1, nu = 0, the end pieces extended) in units of the
+               evaluation contract (refdata.bspline_bound; k1: the linear kernel's) against the exact value of the
+               object's own coefficients, and `e2e_rel` against curves.npz. Comparator: scipy.
+
 The plan for the others (docs/design/interpolate.md §7.5):
 
-  coefficients IP3: the B-spline coefficients (bspline.npz, scaled by the ainv_<method> norms); comparator scipy
-  evaluation   IP3: the B-splines
   polynomial   IP4: Barycentric, Krogh and Floater-Hormann on polynomial.npz (the Lebesgue function and
                sum |l_j y_j| are the contract's scale)
   aaa          IP4: AAA's residual on the samples and its value against Arb evaluation of the computed
@@ -182,6 +190,98 @@ def _slope_bound(meth, c, s):
     return refdata.akima_bound(c.x, c.y, meth == "makima")
 
 
+def _bspline_object(lib, method, c):
+    """lib's make_interp_spline of a bspline.npz method on curve c (None: the method does not apply)."""
+    from tests.interpolate import refdata
+
+    k, bc = refdata.bspline_args(method)
+    if (bc == "periodic" and "periodic" not in c.tags) or (bc in ("natural", "clamped") and c.id == "subnormal/x"):
+        return None
+    if c.n < (2 if bc in ("natural", "clamped") else k + 1):
+        return None
+    if lib == "sd":
+        import stardust as sd
+
+        return sd.interpolate.make_interp_spline(c.x, c.y, k=k, bc_type=bc)
+    import scipy.interpolate as si
+
+    try:
+        return si.make_interp_spline(c.x, c.y, k=k, bc_type=bc)
+    except ValueError:  # subnormal/x for k >= 2: scipy's collocation matrix overflows (its weights' reciprocals)
+        return None
+
+
+def _bspline_coefficient_regions(lib):
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+
+    ref = refdata.ref("bspline")
+    out = {}
+    for method in refdata.BSPLINE_METHODS[2:]:
+        m = ref.methods[method]
+        k, bc = refdata.bspline_args(method)
+        where, con, ul, rel = [], [], [], []
+        for cid in S.real_curve_ids():
+            c = S.curve(cid)
+            pos = np.flatnonzero(ref.inputs["set"][m.index] == cid)
+            obj = _bspline_object(lib, method, c) if pos.size else None
+            if obj is None:
+                continue
+            order = np.argsort(ref.inputs["index"][m.index[pos]], kind="stable")
+            hi, lo = m.hi[pos[order]], m.lo[pos[order]]
+            got = np.asarray(obj.c, dtype=float)
+            bound = refdata.collocation_bound(c.x, np.asarray(obj.t), k, bc, got)
+            for i, g in enumerate(got):
+                err = abs((g - hi[i]) - lo[i])
+                where.append(f"{cid}#{i}")
+                con.append(0.0 if err == 0 else err / bound[i])
+                ul.append(float(ulps(g, hi[i])))
+                rel.append(err / abs(hi[i]) if hi[i] else err)
+        out[method] = region(where, ulp=np.array(ul), rel=np.array(rel), contract=np.array(con), bound=1.0)
+    return out
+
+
+def _bspline_evaluation_regions(lib):
+    from tests.interpolate import refdata
+    from tests.interpolate import samples as S
+
+    curves = refdata.ref("curves")
+    out = {}
+    for method in refdata.BSPLINE_METHODS[1:]:
+        m = curves.methods[method]
+        k, _ = refdata.bspline_args(method)
+        where, con, ul, e2e = [], [], [], []
+        for cid in S.real_curve_ids():
+            c = S.curve(cid)
+            obj = _bspline_object(lib, method, c)
+            pos = np.flatnonzero(curves.inputs["set"][m.index] == cid)
+            if obj is None or not pos.size:
+                continue
+            order = np.argsort(curves.inputs["index"][m.index[pos]], kind="stable")
+            exact = m.hi[pos[order]]
+            scale = np.max(np.abs(c.y))
+            t, cc = np.asarray(obj.t), np.asarray(obj.c)
+            vals = np.asarray(obj(c.xe, extrapolate=True))
+            for i, (v, g) in enumerate(zip(c.xe, vals)):
+                want = refdata.bspline_exact(t, cc, k, v)
+                if k == 1:  # the linear kernel's contract on the interval of v
+                    j = refdata.knot_interval(t, 1, v)
+                    a, b, x0, x1 = float(cc[j - 1]), float(cc[j]), float(t[j]), float(t[j + 1])
+                    tt = float((Fraction(float(v)) - Fraction(x0)) / (Fraction(x1) - Fraction(x0)))
+                    bound = refdata.linear_bound(a, b, tt)
+                else:
+                    bound = refdata.bspline_bound(t, cc, k, v)
+                if not np.isfinite(bound):
+                    continue
+                err = abs(Fraction(float(g)) - want) if np.isfinite(g) else np.inf
+                where.append(f"{cid}#{i}")
+                con.append(0.0 if err == 0 else float(err) / bound)
+                ul.append(float(ulps(g, float(want))))
+                e2e.append(abs(g - exact[i]) / max(abs(exact[i]), scale))
+        out[method] = region(where, contract=np.array(con), bound=1.0, ulp=np.array(ul), e2e_rel=np.array(e2e))
+    return out
+
+
 def _coefficient_regions(lib):
     if lib not in ("sd", "scipy"):
         return None
@@ -208,7 +308,15 @@ def _coefficient_regions(lib):
                 ul.append(float(ulps(g, hi[i])))
                 rel.append(err / abs(hi[i]) if hi[i] else err)
         out[meth] = region(where, ulp=np.array(ul), rel=np.array(rel), contract=np.array(con), bound=1.0)
+    if _has("BSpline"):
+        out.update(_bspline_coefficient_regions(lib))
     return out
+
+
+def _has(name):
+    import stardust as sd
+
+    return name in sd.interpolate.__all__
 
 
 def _exact_piece(c, x, i, v):
@@ -265,6 +373,8 @@ def _evaluation_regions(lib):
                 ul.append(float(ulps(g, float(want))))
         kw = {"contract": np.array(con), "bound": 1.0, "ulp": np.array(ul)} if con else {}
         out[meth] = region(where, e2e_rel=np.array(e2e), **kw)
+    if lib != "R" and _has("BSpline"):
+        out.update(_bspline_evaluation_regions(lib))
     return out
 
 

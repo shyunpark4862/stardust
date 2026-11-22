@@ -376,12 +376,47 @@ def _gr2():
     return out
 
 
+def _mst_weights(x):
+    """A spanning tree as its sorted weights: the forest is unique, but the place of an edge stored both
+    ways with the same weight is sd's upper triangle and scipy's own choice."""
+    return [np.sort(np.asarray(x.tocsr().data, dtype=np.float64))]
+
+
+MST = Check(sd=_mst_weights, ref=lambda label, x: _mst_weights(x))
+FLOW = Check(sd=lambda r: [np.asarray(r.flow_value)], ref=lambda label, r: [np.asarray(int(r.flow_value))])
+MATCHED = Check(  # the size of the matching (which one is fixed by each side's scan order)
+    sd=lambda m: [np.asarray(int((np.asarray(m) >= 0).sum()))],
+    ref=lambda label, m: [np.asarray(int((np.asarray(m) >= 0).sum()))],
+)
+
+
 def _gr3():
     def lsa_setup():
         import stardust as sd
 
         c = np.random.Generator(np.random.PCG64(4)).uniform(0, 1, (1000, 1000))
         return {"c": c, "sc": sd.asarray(c)}
+
+    def mwfbm_dense_setup():
+        import scipy.sparse as S
+
+        import stardust as sd
+
+        c = np.random.Generator(np.random.PCG64(5)).uniform(0.01, 1.01, (1000, 1000))
+        return {"a": S.csr_array(c), "s": sd.sparse.csr_array(c)}
+
+    def mwfbm_sparse_setup():
+        import scipy.sparse as S
+
+        import stardust as sd
+        from tests.graph.graphs import random_graph
+
+        n = 5000
+        indptr, indices, data = random_graph(n, 20, seed=20261127)
+        a = S.csr_array(S.csr_array((data, indices, indptr), shape=(n, n)) + S.eye_array(n) * 2.0)
+        a.sort_indices()
+        s = sd.sparse.csr_array((a.data, a.indices.astype(np.int64), a.indptr.astype(np.int64)), shape=(n, n))
+        return {"a": a, "s": s}
 
     return [
         Spec(
@@ -394,6 +429,7 @@ def _gr3():
             lambda d: lambda: _g().minimum_spanning_tree(d["s"]),
             (Ref("scipy", lambda d: lambda: _cs().minimum_spanning_tree(d["a"])),),
             quick=True,
+            check=MST,
         ),
         Spec(
             "GR3",
@@ -404,6 +440,7 @@ def _gr3():
             _graph(10**4, 10, int_caps=True),
             lambda d: lambda: _g().maximum_flow(d["s"], 0, 9999),
             (Ref("scipy", lambda d: lambda: _cs().maximum_flow(d["a"], 0, 9999)),),
+            check=FLOW,
         ),
         Spec(
             "GR3",
@@ -414,6 +451,7 @@ def _gr3():
             _graph(10**4, 10, int_caps=True),
             lambda d: lambda: _g().maximum_flow(d["s"], 0, 9999, method="edmonds_karp"),
             (Ref("scipy", lambda d: lambda: _cs().maximum_flow(d["a"], 0, 9999, method="edmonds_karp")),),
+            check=FLOW,
         ),
         Spec(
             "GR3",
@@ -424,6 +462,28 @@ def _gr3():
             _graph(10**5, 10),
             lambda d: lambda: _g().maximum_bipartite_matching(d["s"]),
             (Ref("scipy", lambda d: lambda: _cs().maximum_bipartite_matching(d["a"])),),
+            check=MATCHED,
+        ),
+        Spec(
+            "GR3",
+            "tree_flow",
+            "min_weight_full_bipartite_matching dense",
+            ("min_weight_full_bipartite_matching",),
+            "(1000, 1000)",
+            mwfbm_dense_setup,
+            lambda d: lambda: _g().min_weight_full_bipartite_matching(d["s"]),
+            (Ref("scipy", lambda d: lambda: _cs().min_weight_full_bipartite_matching(d["a"])),),
+        ),
+        Spec(
+            "GR3",
+            "tree_flow",
+            "min_weight_full_bipartite_matching d=20",
+            ("min_weight_full_bipartite_matching",),
+            "(5000, 5000)",
+            mwfbm_sparse_setup,
+            lambda d: lambda: _g().min_weight_full_bipartite_matching(d["s"]),
+            (Ref("scipy", lambda d: lambda: _cs().min_weight_full_bipartite_matching(d["a"])),),
+            note="20 random pairs per row and the diagonal",
         ),
         Spec(
             "GR3",

@@ -113,3 +113,51 @@ def test_paths_one_three_ten_threads():
         sd.set_num_threads(threads)
         runs.append(path_outputs(A, N, D))
     assert runs[0] == runs[1] == runs[2]
+
+
+def tree_flow_outputs(A, S, F, C, M):
+    """Every GR3 function's results as bytes: the minimum spanning tree's sort and union-find, both flows,
+    Hopcroft-Karp and the shared assignment solver, all on inputs past the GIL threshold (milestone GR3)."""
+    g = sd.graph
+    out = []
+
+    def add(x):
+        if isinstance(x, sd.sparse.sparray):
+            out.extend(hashlib.sha256(np.asarray(a).tobytes()).hexdigest() for a in (x.indptr, x.indices, x.data))
+        elif isinstance(x, tuple):
+            for y in x:
+                add(y)
+        else:
+            out.append(hashlib.sha256(np.asarray(x).tobytes()).hexdigest())
+
+    add(g.minimum_spanning_tree(A))
+    add(g.minimum_spanning_tree(S))
+    for method in ("dinic", "edmonds_karp"):
+        r = g.maximum_flow(F, 0, F.shape[0] - 1, method=method)
+        out.append(str(r.flow_value))
+        add(r.flow)
+    add(g.maximum_bipartite_matching(A))
+    add(g.maximum_bipartite_matching(A[:, :30000], perm_type="column"))
+    add(tuple(g.linear_sum_assignment(C)))
+    add(tuple(g.linear_sum_assignment(C[:150], maximize=True)))
+    add(tuple(g.min_weight_full_bipartite_matching(M)))
+    return out
+
+
+def test_tree_flow_matching_one_three_ten_threads():
+    n = 60000
+    ip, ix, w = random_graph(n, 4, seed=11)
+    A = sd.sparse.csr_array((w, ix, ip), shape=(n, n))
+    sym_ip, sym_ix, sym_w = random_graph(20000, 6, seed=12, symmetric=True)
+    S = sd.sparse.csr_array((np.round(sym_w * 8) / 8, sym_ix, sym_ip), shape=(20000, 20000))  # many ties
+    r = np.random.Generator(np.random.PCG64(13))
+    fp, fx, _ = random_graph(8000, 8, seed=14)
+    F = sd.sparse.csr_array((r.integers(1, 100, fx.size), fx, fp), shape=(8000, 8000))
+    C = r.integers(0, 50, (400, 400)).astype(np.float64)
+    mp, mx, mw = random_graph(3000, 10, seed=15)
+    M = sd.sparse.csr_array((mw, mx, mp), shape=(3000, 3000)) + sd.sparse.eye_array(3000) * 2.0
+    runs = []
+    for threads in (1, 3, 10):
+        sd.set_num_threads(threads)
+        runs.append(tree_flow_outputs(A, S, F, C, M))
+    assert runs[0] == runs[1] == runs[2]

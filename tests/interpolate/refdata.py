@@ -240,3 +240,137 @@ def hermite_bound(h, s0, s1, d):
     b3 = gamma(8) * (s0 + s1 + 2 * d) / h**2 + 2.0**-1074 * (1 + 3 / h + 2 / h**2)
     b2 = gamma(7) * (3 * d + 2 * s0 + s1) / h + 2.0**-1074 * (2 + 3 / h)
     return 1.01 * b3, 1.01 * b2
+
+
+# ---------------------------------------------------------------- B-splines (IP3)
+#
+#   evaluation      |y^ - sum_j c_j B_j^(nu)(x)| <= gamma_{6k+1} sum_j |c_j| B~_j(x) + (6k + 2) 2^-1074
+#                   (1 + sum_j |c_j|) (bspline_bound): c the computed coefficients, B~ the recursion of the basis
+#                   (scipy's, with the weights as two quotients) run on the absolute values of its terms (B itself
+#                   inside the base interval for nu = 0); the floor counts the subnormal roundings; a sum that
+#                   overflows makes the bound infinite (large/1e300's high derivatives)
+#   construction    |c^ - c| <= 2 gamma_{8k+8} |A^-1| |A| |c^| componentwise (collocation_bound): A the collocation
+#                   matrix of the exact data (the periodic splines' folded one), the factor 2 the growth of the
+#                   elimination without pivoting (docs/design/interpolate.md §3.4); k = 0, 1 copy y exactly
+
+BSPLINE_METHODS = ("k0", "k1", "k2", "k3", "k4", "k5", "k3_natural", "k3_clamped", "k3_periodic", "k5_periodic")
+
+
+def bspline_args(method):
+    """(k, bc_type) of make_interp_spline for a method of bspline.npz."""
+    k = int(method[1])
+    for bc in ("natural", "clamped", "periodic"):
+        if method.endswith(bc):
+            return k, bc
+    return k, None
+
+
+def knot_interval(t, k, x):
+    """The l in [k, n - 1] with t[l] <= x < t[l + 1] (x >= t[n]: n - 1; x < t[k]: k), n = len(t) - k - 1."""
+    n = len(t) - k - 1
+    count = sum(1 for v in t if v <= x)
+    return min(max(count - 1, k), n - 1)
+
+
+def _basis(t, k, l, x, nu, zero, absolute=False):
+    """The recursion of csrc/interpolate/bspline.cpp (scipy's _deBoor_D): values of B_{l-k} .. B_l (or their
+    derivatives of order nu) at x, in the arithmetic of the given numbers (Fractions: exact); absolute=True runs it
+    on the absolute values of its terms."""
+    h = [zero] * (k + 1)
+    h[0] = zero + 1
+    a = abs if absolute else (lambda v: v)
+    for j in range(1, k - nu + 1):
+        hh = h[:j]
+        h[0] = zero
+        for m in range(1, j + 1):
+            xb, xa = t[l + m], t[l + m - j]
+            if xb == xa:
+                h[m] = zero
+                continue
+            d = xb - xa
+            h[m - 1] = h[m - 1] + a(hh[m - 1]) * a((xb - x) / d)
+            h[m] = a(hh[m - 1]) * a((x - xa) / d)
+    for j in range(k - nu + 1, k + 1):
+        hh = h[:j]
+        h[0] = zero
+        for m in range(1, j + 1):
+            xb, xa = t[l + m], t[l + m - j]
+            if xb == xa:
+                h[m] = zero
+                continue
+            w = j * a(hh[m - 1]) / a(xb - xa)
+            h[m - 1] = h[m - 1] + w if absolute else h[m - 1] - w
+            h[m] = w
+    return h
+
+
+def bspline_exact(t, c, k, x, nu=0):
+    """sum_j c_j B_j^(nu)(x) exactly (a Fraction) for float knots, coefficients and point (x not NaN)."""
+    from fractions import Fraction
+
+    if nu > k:
+        return Fraction(0)
+    T = [Fraction(float(v)) for v in t]
+    X = Fraction(float(x))
+    l = knot_interval(T, k, X)
+    h = _basis(T, k, l, X, nu, Fraction(0))
+    return sum((Fraction(float(c[l - k + r])) * h[r] for r in range(k + 1)), Fraction(0))
+
+
+def bspline_bound(t, c, k, x, nu=0):
+    """The evaluation contract at x for one column of computed coefficients c (floats)."""
+    if nu > k:
+        return 0.0
+    t = [float(v) for v in t]
+    l = knot_interval(t, k, float(x))
+    hb = _basis(t, k, l, float(x), nu, 0.0, absolute=True)
+    s = sum(abs(float(c[l - k + r])) * hb[r] for r in range(k + 1))
+    cs = sum(abs(float(c[l - k + r])) for r in range(k + 1))
+    return 1.01 * gamma(6 * k + 1) * s + 1.01 * (6 * k + 2) * 2.0**-1074 * (1 + cs)
+
+
+def collocation_matrix(x, t, k, bc):
+    """make_interp_spline's matrix for the exact data, in floats (each entry the exact value rounded once): the
+    interpolation rows and, for bc 'natural' / 'clamped', the second / first derivative at both ends; 'periodic'
+    the folded matrix of the n - 1 unknowns d (c_j = d_{j mod (n - 1)}). Rows in any order (the bound does not
+    depend on it)."""
+    from fractions import Fraction
+
+    import numpy as np
+
+    T = [Fraction(float(v)) for v in t]
+    X = [Fraction(float(v)) for v in x]
+    n, nt = len(X), len(T) - k - 1
+    if bc == "periodic":
+        m = n - 1
+        A = np.zeros((m, m))
+        for i in range(m):
+            l = knot_interval(T, k, X[i])
+            for r, b in enumerate(_basis(T, k, l, X[i], 0, Fraction(0))):
+                A[i, (l - k + r) % m] += float(b)
+        return A
+    rows = []
+    points = [(v, 0) for v in X]
+    if bc in ("natural", "clamped"):
+        nu = 2 if bc == "natural" else 1
+        points += [(X[0], nu), (X[-1], nu)]
+    for v, nu in points:
+        row = np.zeros(nt)
+        l = knot_interval(T, k, v)
+        for r, b in enumerate(_basis(T, k, l, v, nu, Fraction(0))):
+            row[l - k + r] = float(b)
+        rows.append(row)
+    return np.array(rows)
+
+
+def collocation_bound(x, t, k, bc, c_hat):
+    """The construction contract, one bound per coefficient: 2 gamma_{8k+8} |A^-1| |A| |c^|."""
+    import numpy as np
+
+    A = collocation_matrix(x, t, k, bc)
+    c = np.abs(np.asarray(c_hat, float))
+    m = A.shape[0]
+    out = 2 * gamma(8 * k + 8) * (np.abs(np.linalg.inv(A)) @ (np.abs(A) @ c[:m]))
+    if bc == "periodic":
+        out = out[np.arange(len(c)) % m]
+    return 1.01 * out

@@ -4,6 +4,7 @@
 #include <arm_neon.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -28,8 +29,43 @@ Buffer doubles(int64_t count) {  // 128-byte aligned (a cache line; alignment ne
     return Buffer(static_cast<double*>(p));
 }
 
-Buffer maybe_doubles(bool need, int64_t count) {  // a task allocates only the buffers its path uses
-    return need ? doubles(count) : Buffer();
+// The stride (doubles) of a line of `count` doubles in a task's block buffer: a multiple of 16 (the lines
+// stay 128-byte aligned) and never a multiple of a large power of two, so the lines of a block do not
+// fall into the same cache sets (a length of 2^k would otherwise put every line of the block there).
+int64_t line_stride(int64_t count) { return (count + 15) / 16 * 16 + 16; }
+
+// One of a task's buffers. Up to kScratchKeep doubles it is the thread's own scratch, kept from task to
+// task and call to call (a fresh allocation per task costs page faults, which the threads of a call
+// serialise on; milestone FT3); a larger one is allocated for the task. A task runs on one thread from
+// start to end and tasks do not nest, so a slot has one user at a time.
+inline constexpr int64_t kScratchKeep = int64_t{1} << 16;  // doubles per slot: 512 KB
+enum Slot : int { kWork = 0, kIn = 1, kRes = 2, kTmp = 3, kSlots = 4 };
+
+struct Scratch {
+    double* p = nullptr;
+    Buffer own;
+    double* get() const { return p; }
+};
+
+Scratch scratch(Slot slot, int64_t count) {
+    thread_local std::array<Buffer, kSlots> mem;
+    thread_local std::array<int64_t, kSlots> cap{};
+    Scratch s;
+    if (count <= kScratchKeep) {
+        if (cap[slot] < count) {
+            mem[slot] = doubles(count);
+            cap[slot] = count;
+        }
+        s.p = mem[slot].get();
+    } else {
+        s.own = doubles(count);
+        s.p = s.own.get();
+    }
+    return s;
+}
+
+Scratch maybe_scratch(bool need, Slot slot, int64_t count) {  // a task takes only the buffers its path uses
+    return need ? scratch(slot, count) : Scratch();
 }
 
 void scale_line(double* y, int64_t count, double s) {  // count doubles times s, one rounding each
@@ -72,6 +108,22 @@ inline double read_real(DType t, const std::byte* p) {
     }
 }
 
+// The lines of a block: one on the direct path, else as many as fit a scratch slot (line_doubles: the longer
+// of a line's input and output buffers), at most kBlockLines and at most lines / kBlockShare (a small call
+// still makes tasks for every thread).
+int64_t block_lines(bool direct, int64_t line_doubles, int64_t lines) {
+    if (direct) return 1;
+    const int64_t fit = kScratchKeep / line_stride(line_doubles);
+    return std::clamp<int64_t>(std::min(fit, (lines + kBlockShare - 1) / kBlockShare), 1, kBlockLines);
+}
+
+// The lines of a task (decisions FT40, FT50): enough for kTaskWork units of work and for at most kMaxTasks
+// tasks, a multiple of the block. The sizes alone decide it, and a line's bits never depend on it.
+int64_t lines_per_task(int64_t lines, int64_t cost, int64_t block) {
+    int64_t per = std::max<int64_t>({(kTaskWork + cost - 1) / cost, (lines + kMaxTasks - 1) / kMaxTasks, 1});
+    return (per + block - 1) / block * block;
+}
+
 // The lines of x along `axis` and their partners in out, split into tasks of consecutive lines as
 // c2c_axis does (sizes alone decide). make_task() gives a task's callable, run(xp, op, g) on g <= block
 // lines at the input and output pointers xp[k], op[k], which owns the task's buffers.
@@ -89,8 +141,7 @@ void drive_lines(const NDArray& x, int axis, const NDArray& out, int64_t cost, i
     }
     if (lines == 0) return;
     const double total = static_cast<double>(lines) * static_cast<double>(cost);
-    int64_t per_task = std::max<int64_t>((kTaskWork + cost - 1) / cost, 1);
-    per_task = (per_task + block - 1) / block * block;
+    const int64_t per_task = lines_per_task(lines, cost, block);
     const int64_t ntasks = (lines + per_task - 1) / per_task;
     const bool big = total >= static_cast<double>(kParallelWork);
     const std::byte* const xbase = x.data;
@@ -139,9 +190,6 @@ void drive_lines(const NDArray& x, int axis, const NDArray& out, int64_t cost, i
     }
 }
 
-int64_t block_lines(bool direct, int64_t line_doubles) {
-    return direct ? 1 : std::clamp<int64_t>(kBlockDoubles / std::max<int64_t>(2 * line_doubles, 1), 1, kBlockLines);
-}
 
 // y (count interleaved complex) times s, conjugated when Conj: one rounding per part (the conjugation is
 // exact, so its order with the scaling does not matter).
@@ -176,6 +224,7 @@ void mirror(double* y, int64_t n) {
 }  // namespace
 
 void r2c_axis(const NDArray& x, int axis, int64_t n, bool full, bool conj, double scale, NDArray& out) {
+    if (out.size() == 0) return;  // no line: no plan either (n may be any length)
     const bool even = n % 2 == 0;
     const std::shared_ptr<const Plan> plan = get_plan(even ? Kind::Real : Kind::Complex, n);
     const int64_t nin = x.shape[static_cast<size_t>(axis)];
@@ -188,29 +237,31 @@ void r2c_axis(const NDArray& x, int axis, int64_t n, bool full, bool conj, doubl
     const bool xdirect = even && dt == DType::Float64 && xstride == 8 && nin >= n;
     const bool xcontig = dt == DType::Float64 && xstride == 8;
     const bool odirect = ostride == 16;
-    const int64_t block = block_lines(xdirect && odirect, 2 * n);
+    const int64_t block = block_lines(xdirect && odirect, std::max(n, 2 * nout), out.size() / nout);
     const int64_t work_doubles = plan->work_doubles();
+    const int64_t ldi = line_stride(n), ldo = line_stride(2 * nout);
 
     auto make_task = [&] {
-        return [&, work = doubles(work_doubles), in = maybe_doubles(!xdirect, block * n),
-                res = maybe_doubles(!odirect, block * 2 * nout),
-                tmp = maybe_doubles(!even, 4 * n)](const std::byte* const* xp, std::byte* const* op, int64_t g) {
+        return [&, work = scratch(kWork, work_doubles), in = maybe_scratch(!xdirect, kIn, block * ldi),
+                res = maybe_scratch(!odirect, kRes, block * ldo),
+                tmp = maybe_scratch(!even, kTmp, 4 * n)](const std::byte* const* xp, std::byte* const* op, int64_t g) {
             if (!xdirect) {  // gather: float64 values, cut or zero-padded to n
                 double* const b = in.get();
                 if (xcontig) {
-                    for (int64_t k = 0; k < g; ++k) std::memcpy(b + k * n, xp[k], static_cast<size_t>(8 * cnt));
+                    for (int64_t k = 0; k < g; ++k) std::memcpy(b + k * ldi, xp[k], static_cast<size_t>(8 * cnt));
                 } else {
                     for (int64_t i = 0; i < cnt; ++i) {
-                        for (int64_t k = 0; k < g; ++k) b[k * n + i] = read_real(dt, xp[k] + i * xstride);
+                        for (int64_t k = 0; k < g; ++k) b[k * ldi + i] = read_real(dt, xp[k] + i * xstride);
                     }
                 }
                 if (cnt < n) {
-                    for (int64_t k = 0; k < g; ++k) std::memset(b + k * n + cnt, 0, static_cast<size_t>(8 * (n - cnt)));
+                    for (int64_t k = 0; k < g; ++k)
+                        std::memset(b + k * ldi + cnt, 0, static_cast<size_t>(8 * (n - cnt)));
                 }
             }
             for (int64_t k = 0; k < g; ++k) {
-                const double* src = xdirect ? reinterpret_cast<const double*>(xp[k]) : in.get() + k * n;
-                double* y = odirect ? reinterpret_cast<double*>(op[k]) : res.get() + k * 2 * nout;
+                const double* src = xdirect ? reinterpret_cast<const double*>(xp[k]) : in.get() + k * ldi;
+                double* y = odirect ? reinterpret_cast<double*>(op[k]) : res.get() + k * ldo;
                 if (even) {
                     plan->r2c(src, y, work.get());
                 } else {
@@ -226,7 +277,7 @@ void r2c_axis(const NDArray& x, int axis, int64_t n, bool full, bool conj, doubl
             if (!odirect) {  // scatter
                 const double* const r = res.get();
                 for (int64_t i = 0; i < nout; ++i) {
-                    for (int64_t k = 0; k < g; ++k) std::memcpy(op[k] + i * ostride, r + k * 2 * nout + 2 * i, 16);
+                    for (int64_t k = 0; k < g; ++k) std::memcpy(op[k] + i * ostride, r + k * ldo + 2 * i, 16);
                 }
             }
         };
@@ -235,6 +286,7 @@ void r2c_axis(const NDArray& x, int axis, int64_t n, bool full, bool conj, doubl
 }
 
 void c2r_axis(const NDArray& x, int axis, int64_t n, bool conj, double scale, NDArray& out) {
+    if (out.size() == 0) return;  // no line: no plan either
     const bool even = n % 2 == 0;
     const std::shared_ptr<const Plan> plan = get_plan(even ? Kind::Real : Kind::Complex, n);
     const int64_t nin = x.shape[static_cast<size_t>(axis)];
@@ -246,31 +298,32 @@ void c2r_axis(const NDArray& x, int axis, int64_t n, bool conj, double scale, ND
     const bool xdirect = dt == DType::Complex128 && xstride == 16 && nin >= half;
     const bool xcontig = dt == DType::Complex128 && xstride == 16;
     const bool odirect = ostride == 8;
-    const int64_t block = block_lines(xdirect && odirect, 2 * half);
+    const int64_t block = block_lines(xdirect && odirect, std::max(2 * half, n), out.size() / n);
     const int64_t work_doubles = plan->work_doubles();
+    const int64_t ldi = line_stride(2 * half), ldo = line_stride(n);
 
     auto make_task = [&] {
-        return [&, work = doubles(work_doubles), in = maybe_doubles(!xdirect, block * 2 * half),
-                res = maybe_doubles(!odirect, block * n),
-                tmp = doubles(even ? n : 4 * n)](const std::byte* const* xp, std::byte* const* op, int64_t g) {
+        return [&, work = scratch(kWork, work_doubles), in = maybe_scratch(!xdirect, kIn, block * ldi),
+                res = maybe_scratch(!odirect, kRes, block * ldo),
+                tmp = scratch(kTmp, even ? n : 4 * n)](const std::byte* const* xp, std::byte* const* op, int64_t g) {
             if (!xdirect) {  // gather: complex values, cut or zero-padded to n / 2 + 1
                 double* const b = in.get();
                 if (xcontig) {
-                    for (int64_t k = 0; k < g; ++k) std::memcpy(b + k * 2 * half, xp[k], static_cast<size_t>(16 * cnt));
+                    for (int64_t k = 0; k < g; ++k) std::memcpy(b + k * ldi, xp[k], static_cast<size_t>(16 * cnt));
                 } else {
                     for (int64_t i = 0; i < cnt; ++i) {
-                        for (int64_t k = 0; k < g; ++k) read_entry(dt, xp[k] + i * xstride, b + k * 2 * half + 2 * i);
+                        for (int64_t k = 0; k < g; ++k) read_entry(dt, xp[k] + i * xstride, b + k * ldi + 2 * i);
                     }
                 }
                 if (cnt < half) {
                     for (int64_t k = 0; k < g; ++k) {
-                        std::memset(b + k * 2 * half + 2 * cnt, 0, static_cast<size_t>(16 * (half - cnt)));
+                        std::memset(b + k * ldi + 2 * cnt, 0, static_cast<size_t>(16 * (half - cnt)));
                     }
                 }
             }
             for (int64_t k = 0; k < g; ++k) {
-                const double* src = xdirect ? reinterpret_cast<const double*>(xp[k]) : in.get() + k * 2 * half;
-                double* y = odirect ? reinterpret_cast<double*>(op[k]) : res.get() + k * n;
+                const double* src = xdirect ? reinterpret_cast<const double*>(xp[k]) : in.get() + k * ldi;
+                double* y = odirect ? reinterpret_cast<double*>(op[k]) : res.get() + k * ldo;
                 if (even) {
                     if (conj) {
                         plan->c2r<true>(src, y, tmp.get(), work.get());
@@ -294,7 +347,7 @@ void c2r_axis(const NDArray& x, int axis, int64_t n, bool conj, double scale, ND
             if (!odirect) {  // scatter
                 const double* const r = res.get();
                 for (int64_t i = 0; i < n; ++i) {
-                    for (int64_t k = 0; k < g; ++k) std::memcpy(op[k] + i * ostride, r + k * n + i, 8);
+                    for (int64_t k = 0; k < g; ++k) std::memcpy(op[k] + i * ostride, r + k * ldo + i, 8);
                 }
             }
         };
@@ -302,7 +355,9 @@ void c2r_axis(const NDArray& x, int axis, int64_t n, bool conj, double scale, ND
     drive_lines(x, axis, out, plan->cost() + n, block, make_task);
 }
 
-void c2c_axis(const NDArray& x, int axis, int64_t n, bool inverse, double scale, NDArray& out) {
+void c2c_axis(
+    const NDArray& x, int axis, int64_t n, bool inverse, double scale, NDArray& out, bool conj_in, bool conj_out
+) {
     const int nd = x.ndim;
     std::vector<int64_t> dims, xs, os;  // the other axes, in order
     int64_t lines = 1;
@@ -320,15 +375,15 @@ void c2c_axis(const NDArray& x, int axis, int64_t n, bool inverse, double scale,
     const int64_t ostride = out.strides[static_cast<size_t>(axis)];
     const int64_t cnt = std::min(nin, n);
     const DType dt = x.dtype;
-    const bool direct = dt == DType::Complex128 && xstride == 16 && ostride == 16 && nin >= n;
+    const bool in_place = x.data == out.data;
+    const bool direct = dt == DType::Complex128 && xstride == 16 && ostride == 16 && nin >= n && !in_place && !conj_in;
     const bool xcontig = dt == DType::Complex128 && xstride == 16;
     const bool ocontig = ostride == 16;
-    const int64_t block = direct ? 1 : std::clamp<int64_t>(kBlockDoubles / std::max<int64_t>(4 * n, 1), 1, kBlockLines);
+    const int64_t block = block_lines(direct, 2 * n, lines);
 
     const int64_t cost = plan->cost();
     const double total = static_cast<double>(lines) * static_cast<double>(cost);
-    int64_t per_task = std::max<int64_t>((kTaskWork + cost - 1) / cost, 1);
-    per_task = (per_task + block - 1) / block * block;
+    const int64_t per_task = lines_per_task(lines, cost, block);
     const int64_t ntasks = (lines + per_task - 1) / per_task;
     const bool big = total >= static_cast<double>(kParallelWork);
     const int64_t work_doubles = plan->work_doubles();
@@ -357,17 +412,18 @@ void c2c_axis(const NDArray& x, int axis, int64_t n, bool inverse, double scale,
                 idx[u] = 0;
             }
         };
-        const Buffer work = doubles(work_doubles);
+        const Scratch work = scratch(kWork, work_doubles);
         if (direct) {
             for (int64_t l = l0; l < l1; ++l) {
                 double* y = reinterpret_cast<double*>(obase + ooff);
                 plan->execute(reinterpret_cast<const double*>(xbase + xoff), y, work.get(), inverse);
-                if (scale != 1.0) scale_line(y, 2 * n, scale);
+                finish_line(y, n, scale, conj_out);
                 advance();
             }
             return;
         }
-        const Buffer in = doubles(block * 2 * n), res = doubles(block * 2 * n);
+        const int64_t ld = line_stride(2 * n);
+        const Scratch in = scratch(kIn, block * ld), res = scratch(kRes, block * ld);
         const std::byte* xp[kBlockLines];
         std::byte* op[kBlockLines];
         for (int64_t l = l0; l < l1; l += block) {
@@ -378,33 +434,39 @@ void c2c_axis(const NDArray& x, int axis, int64_t n, bool inverse, double scale,
             }
             // gather
             if (xcontig) {
-                for (int64_t k = 0; k < g; ++k) std::memcpy(in.get() + k * 2 * n, xp[k], static_cast<size_t>(16 * cnt));
+                for (int64_t k = 0; k < g; ++k) std::memcpy(in.get() + k * ld, xp[k], static_cast<size_t>(16 * cnt));
             } else if (dt == DType::Complex128) {
                 for (int64_t i = 0; i < cnt; ++i) {
-                    for (int64_t k = 0; k < g; ++k) std::memcpy(in.get() + k * 2 * n + 2 * i, xp[k] + i * xstride, 16);
+                    for (int64_t k = 0; k < g; ++k) std::memcpy(in.get() + k * ld + 2 * i, xp[k] + i * xstride, 16);
                 }
             } else {
                 for (int64_t i = 0; i < cnt; ++i) {
-                    for (int64_t k = 0; k < g; ++k) read_entry(dt, xp[k] + i * xstride, in.get() + k * 2 * n + 2 * i);
+                    for (int64_t k = 0; k < g; ++k) read_entry(dt, xp[k] + i * xstride, in.get() + k * ld + 2 * i);
+                }
+            }
+            if (conj_in) {
+                for (int64_t k = 0; k < g; ++k) {
+                    double* const b = in.get() + k * ld;
+                    for (int64_t i = 0; i < cnt; ++i) b[2 * i + 1] = -b[2 * i + 1];
                 }
             }
             if (cnt < n) {
                 for (int64_t k = 0; k < g; ++k) {
-                    std::memset(in.get() + k * 2 * n + 2 * cnt, 0, static_cast<size_t>(16 * (n - cnt)));
+                    std::memset(in.get() + k * ld + 2 * cnt, 0, static_cast<size_t>(16 * (n - cnt)));
                 }
             }
             // transform
             for (int64_t k = 0; k < g; ++k) {
-                double* y = res.get() + k * 2 * n;
-                plan->execute(in.get() + k * 2 * n, y, work.get(), inverse);
-                if (scale != 1.0) scale_line(y, 2 * n, scale);
+                double* y = res.get() + k * ld;
+                plan->execute(in.get() + k * ld, y, work.get(), inverse);
+                finish_line(y, n, scale, conj_out);
             }
             // scatter
             if (ocontig) {
-                for (int64_t k = 0; k < g; ++k) std::memcpy(op[k], res.get() + k * 2 * n, static_cast<size_t>(16 * n));
+                for (int64_t k = 0; k < g; ++k) std::memcpy(op[k], res.get() + k * ld, static_cast<size_t>(16 * n));
             } else {
                 for (int64_t i = 0; i < n; ++i) {
-                    for (int64_t k = 0; k < g; ++k) std::memcpy(op[k] + i * ostride, res.get() + k * 2 * n + 2 * i, 16);
+                    for (int64_t k = 0; k < g; ++k) std::memcpy(op[k] + i * ostride, res.get() + k * ld + 2 * i, 16);
                 }
             }
         }
