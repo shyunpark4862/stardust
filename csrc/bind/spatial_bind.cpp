@@ -10,6 +10,8 @@ namespace sd {
 void bind_spatial(nb::module_& core) {
     nb::module_ m = core.def_submodule("spatial", "stardust spatial native core");
     spatial::bind_distance(m);
+    spatial::bind_kdtree(m);
+    spatial::bind_neighbors(m);
 }
 
 }  // namespace sd

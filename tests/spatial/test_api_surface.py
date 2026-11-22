@@ -18,12 +18,7 @@ API = pathlib.Path(__file__).parents[2] / "docs" / "api" / "spatial.md"
 
 # Documented, not implemented yet (docs/design/spatial.md §8): SPT1 made the distances public. A
 # milestone moves its names from here to sd.spatial.__all__.
-PLANNED = {
-    # SPT2
-    "kneighbors", "radius_neighbors",
-    # SPT3, SPT4
-    "KDTree",
-}  # fmt: skip
+PLANNED: set[str] = set()  # SPT1-SPT3 made every module-level name public
 CLASSES = {"KDTree", "QueryResult", "RadiusResult"}
 METRICS = ("euclidean", "sqeuclidean", "cityblock", "chebyshev", "minkowski", "seuclidean", "mahalanobis", "cosine",
            "correlation", "canberra", "braycurtis", "hamming", "jaccard", "haversine")  # fmt: skip
@@ -136,5 +131,39 @@ def test_shared_options_have_one_spelling():
 
 
 def test_module_is_wired():
-    assert len(sd.spatial.__all__) == 17  # SPT1: pdist, cdist, squareform and the fourteen distance functions
+    # SPT1: pdist, cdist, squareform and the fourteen distance functions; SPT3: KDTree
+    assert {"pdist", "cdist", "squareform", "KDTree"} <= set(sd.spatial.__all__)
+    assert len([n for n in sd.spatial.__all__ if n not in ("kneighbors", "radius_neighbors")]) == 18
     assert not hasattr(sd.spatial, "distance")
+    assert {"kneighbors", "radius_neighbors"} <= set(sd.spatial.__all__)  # SPT2
+
+
+def test_radius_result_members_match_api_md():
+    # SPT2: RadiusResult (not exported) has the documented fields and tocsr()
+    from stardust.spatial._radius import RadiusResult
+
+    for c, name, sig in entries():
+        if c == "RadiusResult":
+            member = getattr(RadiusResult, name)
+            assert isinstance(member, property) if sig is None else callable(member), name
+    assert not hasattr(sd.spatial, "RadiusResult")
+
+
+# KDTree's methods of SPT4, documented and not implemented yet (docs/design/spatial.md §8)
+PLANNED_METHODS = {"query_ball_point", "query_ball_tree", "query_pairs", "count_neighbors", "sparse_distance_matrix"}
+
+
+def test_kdtree_members_match_api_md():
+    # SPT3: the constructor, query and the attributes are public with the documented signatures
+    cls = sd.spatial.KDTree
+    for c, name, sig in entries():
+        if c != "KDTree":
+            continue
+        if name in PLANNED_METHODS:
+            assert not hasattr(cls, name), name
+            continue
+        member = getattr(cls, name)
+        if sig is None:
+            assert isinstance(member, property), name
+        else:
+            assert str(inspect.signature(member))[1:-1] == "self, " + sig, name

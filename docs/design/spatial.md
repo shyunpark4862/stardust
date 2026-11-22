@@ -1,6 +1,6 @@
 # 공간 영역 설계 (sd.spatial)
 
-> 상태: **설계 초안** (2026-11-22). 큰 결정(§1.1 SPT1–SPT5)은 사용자가 정했다. §9의 질문 스물은 모두 추천안으로 정했다(SPT6–SPT25, 사용자 위임 2026-11-22). SPT0(준비)을 마쳤다: API 초안 `docs/api/spatial.md`, 시험 점·참값·탐침의 도구와 기록, §3.2의 상수와 증명, 짝 커널 두 순서의 측정(SPT22의 결과는 타일 순서, §3.1), §5의 다시 잰 시간. SPT0에서 정한 것은 SPT26–SPT28이다. SPT1(거리)을 마쳤다: `pdist cdist squareform`과 거리 함수 열넷, 타일 순서의 짝 커널(`csrc/spatial/metric.hpp`), 잰 정확도 계약(§4), SPT1에서 정한 것은 SPT29–SPT36이다. 거리 부분(§2.1, §2.2, §3.1, §4의 거리, §6의 파일)은 구현과 맞다. 나머지는 안이다.
+> 상태: **설계 초안** (2026-11-22). 큰 결정(§1.1 SPT1–SPT5)은 사용자가 정했다. §9의 질문 스물은 모두 추천안으로 정했다(SPT6–SPT25, 사용자 위임 2026-11-22). SPT0(준비)을 마쳤다: API 초안 `docs/api/spatial.md`, 시험 점·참값·탐침의 도구와 기록, §3.2의 상수와 증명, 짝 커널 두 순서의 측정(SPT22의 결과는 타일 순서, §3.1), §5의 다시 잰 시간. SPT0에서 정한 것은 SPT26–SPT28이다. SPT1(거리)을 마쳤다: `pdist cdist squareform`과 거리 함수 열넷, 타일 순서의 짝 커널(`csrc/spatial/metric.hpp`), 잰 정확도 계약(§4), SPT1에서 정한 것은 SPT29–SPT36이다. SPT2(축약과 전수 이웃)를 마쳤다: `kneighbors radius_neighbors`, `RadiusResult`와 `tocsr()`, §3.2의 GEMM 고르기와 직접 전수(`csrc/spatial/neighbors.cpp`), SPT2에서 정한 것은 SPT37–SPT49다. SPT3(KD 트리와 kNN)을 마쳤다: `KDTree`(결정적인 중앙값 만들기, 속성, 피클)와 `query`(§3.3, §3.4의 가지치기 증명; `csrc/spatial/kdtree.hpp`, `kdtree.cpp`), SPT3에서 정한 것은 SPT50–SPT62다. 거리 부분(§2.1, §2.2, §3.1, §4의 거리)과 SPT2 부분(§2.3, §2.5의 `RadiusResult`, §3.2, §3.6, §6의 파일), SPT3 부분(§2.4의 만들기·속성·`query`, §3.3, §3.4의 kNN)은 구현과 맞다. 나머지는 안이다.
 
 `sd.spatial`(점 사이의 거리와 가장 가까운 이웃 찾기)의 확정 사항과 내부 구조의 안을 적는다.
 
@@ -53,6 +53,32 @@
 | SPT34 기본 `VI`와 유한하지 않은 자료 | 자료에 NaN·inf가 있어 공분산이 유한하지 않으면 기본 `VI`는 NaN 행렬이고 모든 거리가 NaN이다(scipy와 같은 결과; `inv()`의 `ValueError`를 내지 않는다). 공분산이 특이하면 `LinAlgError`(`pdist(): the covariance of the data is singular, so the default 'VI' does not exist; give 'VI'`)다. 까닭: 거리 함수는 NaN을 퍼뜨린다(SPT12) (추천안, 사용자 위임 2026-11-22) |
 | SPT35 `hamming`·`jaccard`의 두 dtype | `u`와 `v`(`XA`와 `XB`)의 dtype이 다르면 하나라도 float64면 float64, 아니면 int64(bool과 int64)로 맞춘 뒤 비교한다. 가중 bool 행은 바이트 비교의 한 짝 커널이다(비트 묶음은 가중치 없는 bool만). 까닭: 배열의 형 승격과 같은 규칙이고, 개수가 정확해 어느 길이든 같은 값이다 (추천안, 사용자 위임 2026-11-22) |
 | SPT36 SPT0 시제품의 자리 | `csrc/spatial/`의 `pair_kernel.hpp`(두 순서의 시제품)는 지우지 않고 `tools/spatial_probe_pair_kernel.hpp`로 옮긴다. 라이브러리의 커널은 `metric.hpp`다. 까닭: `tools/spatial_probe.py kernels`가 SPT22의 측정을 다시 할 수 있어야 하고, 라이브러리 밖의 코드는 `csrc/`에 두지 않는다 (추천안, 사용자 위임 2026-11-22) |
+| SPT37 상한과 반경의 판정 | `kneighbors`는 거리 d̂ < `distance_upper_bound`인 짝만 이웃으로 친다(기본 inf에서도). 그래서 거리가 inf이거나 NaN인 짝(넘치는 `sqeuclidean`, 영벡터의 `cosine`, 0/0의 `braycurtis`)은 나오지 않고 그 자리는 (inf, mB)다. `radius_neighbors`는 d̂ ≤ r이라 r = inf면 inf인 짝을 넣고 NaN인 짝은 넣지 않는다. 까닭: `KDTree.query`가 상한을 처음 T로 두고 엄격한 비교로 넣는 것과 한 규칙이 되고(같은 결과의 약속), NaN에는 순서가 없다. scipy의 트리도 제곱합이 넘친 점을 상한 inf에서 빼므로 반올림이 아닌 동작이 같다 (추천안, 사용자 위임 2026-11-22) |
+| SPT38 전수 길의 계산 | 전수 길은 `cdist`의 구동기(타일, 짝 하나씩의 구동기, 데이터마다의 준비)를 블록마다 그대로 부른다(`csrc/spatial/distance.cpp`의 `CdistBlocks`, 선언은 `neighbors.hpp`). 따로 전수 커널을 두지 않는다. 까닭: 거리가 만들어질 때부터 `cdist`와 같은 비트이고 마무리 함수의 두 번째 사본이 없다. 블록마다 `XB`의 판을 다시 싸는 비용은 `XA` 64행의 블록에서 1/64이고, `cosine`의 정규화는 블록마다 다시 해 약 10%다 (추천안, 사용자 위임 2026-11-22) |
+| SPT39 L̃의 계산 | §3.2의 꼴을 그대로 쓰고(상수도 그대로) NEON 두 레인으로 행 하나의 블록 전체에 한 번에 구한다. 레인과 스칼라가 같은 IEEE 연산(덧셈, 곱셈, 뺄셈, √, 비교)이라 같은 값이다. 버리지 못하는 짝(t > 0이나 v ≥ 2⁻⁵⁰⁰가 아님, NaN 포함)은 L̃ = −inf로 적는다. 까닭: 짝마다의 거르기가 GEMM 길의 시간을 정하고(n = 3에서 1스레드 짝당 약 1.4 ns), 정리 3이 그 꼴에 대해 증명되었다 (추천안, 사용자 위임 2026-11-22) |
+| SPT40 GEMM 고르기를 쓰는 곳(n₀) | 가중치 없는 `euclidean`·`sqeuclidean`(과 `minkowski` p = 2)에서 12 ≤ n ≤ 2¹⁶이고 mB ≥ 64일 때다. 그 밖은 직접 전수다. 까닭: 4000² k = 1에서 10스레드는 n = 12에서 같고(3.29 대 3.37 ms) n = 16에서 GEMM이 11%, n = 64에서 2.3배, n = 512에서 3.4배 빠르다. 1스레드에서는 n ≈ 8에서 갈린다. SPT28은 2²¹ − 2까지 허락하지만 n > 2¹⁶의 행은 태스크마다의 메모리만 늘고 이득이 없다 (추천안, 사용자 위임 2026-11-22) |
+| SPT41 첫 후보의 규칙 | 블록을 시작할 때 힙이 차 있지 않으면 모자라는 수만큼 L̃가 가장 작은 짝(−inf가 먼저, 같으면 열 번호)을 먼저 다시 계산해 T를 정한다. §3.2의 "Ê가 가장 작은 k개" 대신 이미 구한 L̃로 고르고(â가 같으면 L̃는 Ê에 단조), 블록을 한 번 훑는 크기 k의 작은 힙으로 고른다. 고른 짝은 L̃ 자리에 NaN을 적어 훑기에서 건너뛴다. 까닭: 결과와 무관하고, 처음 판의 `nth_element`가 k = 1에서 4배 느렸다(4000² n = 3 1스레드 73 대 18 ms) (추천안, 사용자 위임 2026-11-22) |
+| SPT42 나누기 | `XA`를 행 조각(전수 64행; GEMM은 256행까지이고 `XA`가 허락하면 조각이 32개 이상이 되게 줄이고 2¹⁹/n행 이하)으로 나누고, 조각이 32개보다 적으면 `XB`를 4096행 이상의 구간으로도 나눈다. (조각, 구간)마다 한 태스크의 힙이고, 구간들의 정렬된 목록을 (d̂, j)로 합친다. 태스크의 힙은 2¹⁶자리 이하다(k가 크면 조각의 행을 줄인다). 모두 크기로만 정한다. 까닭: (d̂, j)가 전순서라 어떻게 나눠도 답이 같고, 질의가 적은 호출(질의 20개 × 10⁶점)도 스레드를 다 쓴다 (추천안, 사용자 위임 2026-11-22) |
+| SPT43 중심 빼기 | GEMM 길은 언제나 중심을 뺀다. c는 `XB`의 열 평균이고 4096행씩의 부분합을 그 순서로 더한다. 까닭: c가 무엇이든 증명이 서므로 결정적이기만 하면 되고, 원점 근처의 자료에서도 손해가 없다(1e8 + [0, 1)¹⁶ 4000²에서 원점 근처와 같은 시간, 2.97 ms) (추천안, 사용자 위임 2026-11-22) |
+| SPT44 `RadiusResult`의 자리와 생성자 | `src/stardust/spatial/_radius.py`(§6 초안의 `_result.py` 대신)이고 생성자는 `RadiusResult(indptr, indices, distances, shape)`다. 받은 배열을 검사하지도 복사하지도 않고 쓰기 금지로 만든다(부르는 쪽, 네이티브 찾기가 꼴을 보장한다). 피클하지 않는다(`sd.ndarray`가 피클되지 않는다). 까닭: SPT4의 `query_ball_point`·`query_ball_tree`가 같은 생성자로 만든다 (추천안, 사용자 위임 2026-11-22) |
+| SPT45 큰 k와 순위 | 네이티브 찾기는 min(max(k), mB)개만 찾고 Python 층이 넘는 순위를 (inf, mB)로 채운다. k가 시퀀스면 그 순위의 열을 고른다. 요청한 결과(mA × 순위 수 × 16바이트)를 할당 전에 물리 메모리와 견준다. 까닭: k = 10⁹ 같은 호출이 태스크마다 k자리의 힙을 잡지 않는다 (추천안, 사용자 위임 2026-11-22) |
+| SPT46 `r`의 꼴 | 실수 하나, 또는 (mA,)·(1,)·0차원 배열이다. 2차원 이상과 다른 길이는 `ValueError`다. 까닭: `query_ball_point`의 "x의 배치 모양으로 브로드캐스트"를 `XA`의 행 축 하나에 쓴 것이다 (추천안, 사용자 위임 2026-11-22) |
+| SPT47 공통 검사 | 데이터의 유한성 `finite()`와 반경 `radius()`를 `_common.py`에 두고, `k`와 상한은 SPT3이 둔 `k_ranks()`·`upper_bound()`를 쓴다. 메시지: `kneighbors(): 'XA' must be finite`, `radius_neighbors(): 'r' must be a nonnegative number or inf, not -1`. 까닭: `KDTree`의 메서드와 같은 말과 같은 함수다 (추천안, 사용자 위임 2026-11-22) |
+| SPT48 반경 결과 모으기 | 태스크마다 행별 목록을 모은 뒤, 개수의 누적합으로 `indptr`를 만들고 태스크마다 제자리에 복사한다. 결과 크기의 두 배가 잠깐 든다. 까닭: 한 번 훑기로 끝나고(개수를 먼저 세는 두 번 훑기는 거리를 두 번 계산한다), 복사는 찾기에 비해 작다 (추천안, 사용자 위임 2026-11-22) |
+| SPT49 `XA`의 차원 | `kneighbors`·`radius_neighbors`의 `XA`는 `cdist`처럼 2차원만 받는다(점 하나도 (1, n)). 1차원은 `ValueError`다. 까닭: 편의 함수는 `cdist`의 행 고르기이고, 점 하나의 스칼라 결과는 `KDTree.query`의 꼴이다 (추천안, 사용자 위임 2026-11-22) |
+| SPT50 트리 만들기의 꼴 | 점이 `leafsize`보다 많은 노드는 상자의 폭이 0이어도(같은 점뿐이어도) 나눈다. 그래서 노드 수와 앞순회 번호가 n과 `leafsize`로만 정해진다(노드 수 c ↦ 1 + N(⌊c/2⌋) + N(⌈c/2⌉)). 잎 안의 점은 원래 색인 순서로 둔다. `size`는 같은 점이 많은 데이터에서 scipy와 다르다(scipy는 폭이 0인 노드를 잎으로 둔다: 같은 점 50개에서 scipy 1, sd 15). 까닭: 병렬 만들기가 노드 자리를 미리 셀 수 있고, 트리가 `nth_element`의 구현과도 무관한 데이터의 함수가 된다 (추천안, 사용자 위임 2026-11-22) |
+| SPT51 가지치기의 한계 | 노드의 한계는 노드 상자에서 x에 가장 가까운 점 c(cᵢ = min(max(xᵢ, loᵢ), hiᵢ), 정확)까지의 짝 커널 거리 b다. 노드마다 새로 구하고(증분 갱신이 아님), b > fl(fl(T·c) + η)일 때만 친다(c = 1 + 4(m + 12)u, η = 2⁻¹⁰⁷⁰; p = inf는 b > T). 증명은 거리 계약(§4)만 쓴다(§3.4). 까닭: scipy식 증분 갱신은 반올림이 쌓이는 경로를 따로 증명해야 하고, 한계 하나가 점 하나의 거리 값(O(m))이라 잎의 점 수(≈ `leafsize`)에 비해 작다 (추천안, 사용자 위임 2026-11-22) |
+| SPT52 p = 2의 제곱합 비교 | 잎의 점과 노드 한계는 먼저 제곱합 r로 견준다. r이 보통 범위 [2⁻⁹⁶⁸, DBL_MAX]이고 r > fl(fl(T·T)·(1 + 8u))면 √ 없이 버린다(그때 d̂ > T가 보장된다, §3.4). 그 밖은 d̂를 구해 그대로 견준다. 까닭: 결과는 그대로이고 1스레드 `query`(10⁶점, m = 3, 질의 10⁴개)가 k = 1에서 17.7 → 8.6 ms, k = 10에서 39.5 → 22.4 ms가 되었다(scipy 9.4, 28.9 ms) (추천안, 사용자 위임 2026-11-22) |
+| SPT53 병렬 만들기 | n·max(m, 1) ≥ 2¹⁵이면 점이 max(2¹², n/64)개 이하인 하위 트리를 태스크로 만들고(크기로만 정함), 그 위의 노드는 호출 스레드가 나눈다(큰 노드의 상자, 정렬 키 채우기, 행 옮기기는 2¹⁴점 조각으로 풀에서). 나누기는 행 자체를 옮겨 노드의 점이 이어진 행이 되게 하고, 키는 (좌표, 행 자리) 16바이트에 동점일 때만 원래 색인을 읽는다. 까닭: 모든 훑기가 이어 읽기가 되어 10⁶점 m = 3의 1스레드 만들기가 335 → 225 ms(scipy 230–260 ms), 10스레드 79 ms다. 상자의 최솟값·최댓값은 정확한 연산이라 조각으로 나눠도 같은 트리다 (추천안, 사용자 위임 2026-11-22) |
+| SPT54 질의의 병렬 | 질의점 64개가 태스크 하나다(크기로만 정함). 질의점 하나는 한 태스크가 처음부터 끝까지 찾는다. 작업량 질의 수 × max(m, 1) × 64가 2¹⁵ 이상이면 나누고 스레드 수와 상관없이 GIL을 놓는다. 까닭: 결과가 스레드 수와 무관하고, 질의 10⁴개가 태스크 157개라 10스레드에 고르게 나뉜다 (추천안, 사용자 위임 2026-11-22) |
+| SPT55 `k`의 꼴 | 1 이상의 int, 또는 1 이상의 int 시퀀스(list, tuple, 1차원 정수 배열; 순서와 중복은 자유, scipy의 뜻: 돌려줄 순위의 목록)다. 힙은 min(max k, n)개만 둔다. int64를 넘으면 `OverflowError`다. 까닭: scipy의 시퀀스 뜻을 그대로 받고(`k=[3, 1]`, `k=[2, 2]`도 scipy가 받는다), 큰 k가 n개 넘게 메모리를 쓰지 않는다 (추천안, 사용자 위임 2026-11-22) |
+| SPT56 피클 | `data`의 바이트와 n, m, `leafsize`로 다시 만든다(`__reduce__`). 까닭: `sd.ndarray`가 피클되지 않는다(`cannot pickle 'ndarray' object`; 희소 배열도 같다). 만들기가 결정적이라 다시 만든 트리는 노드·상자·색인이 바이트까지 같다(테스트가 확인한다) (추천안, 사용자 위임 2026-11-22) |
+| SPT57 `data`의 사본 | 입력 순서의 읽기 전용 사본은 Python 객체가 쥐고, 트리는 잎 순서의 사본을 따로 쥔다(메모리 2·n·m·8바이트; 10⁶ × 3에서 24 MB 더). 까닭: `data`를 읽을 때 복사가 없고 처음 읽을 때 만드는 것보다 단순하다. 메모리가 문제가 되면 SPT6에서 다시 본다(§3.3) (추천안, 사용자 위임 2026-11-22) |
+| SPT58 인자 검사의 공용 자리 | `k`, 트리의 `p`, `distance_upper_bound`의 검사와 메시지는 `_common.py`의 `k_ranks`, `tree_p`, `upper_bound`, `real` 하나다(`query(): 'k' must be at least 1, not 0`, `every entry of 'k' must be at least 1, not 0`, `'k' must not be an empty sequence`, `'k' must be an int or a sequence of ints, not bool`, `'p' must be a number of at least 1 or inf, not 0.5`, `'distance_upper_bound' must be a nonnegative number or inf, not -1.0`). 까닭: `kneighbors`가 같은 규칙(§2.3)을 같은 함수로 쓸 수 있다 (추천안, 사용자 위임 2026-11-22) |
+| SPT59 전수 길의 자리 | `query`가 길을 고르는 곳은 `_kdtree._search` 하나이고 SPT3에서는 언제나 트리다. SPT21의 전수 길(문턱)은 SPT6에서 재서 그 자리에 더한다. 까닭: 결과가 길과 무관하므로(§1.3) 고르기는 빠르기만 바꾸고, 문턱은 `kneighbors`의 GEMM 고르기(SPT2)와 함께 재야 한다 (추천안, 사용자 위임 2026-11-22) |
+| SPT60 `repr` | `KDTree(n=1000, m=3, leafsize=10)` 한 줄이다(API.md §2.3의 꼴). 까닭: 트리의 속은 공개하지 않으므로 만든 인자와 크기만 보인다 (추천안, 사용자 위임 2026-11-22) |
+| SPT61 빈 트리 | n = 0이면 빈 잎 하나(`size` 1)이고 `mins`·`maxes`는 0, 질의는 모두 (inf, 0)이다(scipy와 같다). m = 0이면 모든 거리가 0이라 결과는 색인 순서다(scipy는 만들기에서 `IndexError`). 까닭: scipy와 같은 결과이고, 없는 축은 빈 합의 정의(§2.1)를 따른다 (추천안, 사용자 위임 2026-11-22) |
+| SPT62 질의점의 검사 | x는 1차원 이상의 (…, m)이고(스칼라는 상위 함수 입력의 `TypeError`), 마지막 축이 m이 아니면 `query(): 'x' must have 3 entries on its last axis (the tree's m), not 2`, NaN·inf는 `query(): 'x' must be finite`다(SPT12). 유한성은 네이티브 층이 질의 전에 한 번 훑는다. 까닭: 메시지가 데이터의 `KDTree(): 'data' must be finite`와 같은 꼴이고, 훑기가 질의보다 훨씬 싸다 (추천안, 사용자 위임 2026-11-22) |
 
 ### 1.2 범위 (안)
 마일스톤은 §8이다. "SPTn"은 그 마일스톤에서 만든다는 뜻이고 "나중"은 첫 판에 넣지 않는 후보다.
@@ -175,7 +201,8 @@ kneighbors(XA, XB, /, *, k=1, metric='euclidean', p=None, w=None, V=None, VI=Non
 radius_neighbors(XA, XB, r, /, *, metric='euclidean', p=None, w=None, V=None, VI=None, return_length=False)
 ```
 - `XA`의 행마다 `XB`에서 가장 가까운 k개(또는 거리가 r 이하인 모두)를 찾는다. 전체 거리 행렬을 만들지 않는다(§3.6의 메모리).
-- **결과는 정의로 정해진다**: `kneighbors(XA, XB, k=k)`는 `cdist(XA, XB)`의 각 행을 (거리, 열 번호)로 정렬해 앞 k개를 고른 것과 같고, 거리는 그 원소와 비트까지 같다. Minkowski 계열(`euclidean`, `sqeuclidean`, `cityblock`, `chebyshev`, `minkowski` p ≥ 1)에서는 `KDTree(XB).query(XA, k=k, p=…)`와도 비트까지 같다. 어떤 길(전수, GEMM 고르기, 트리)로 계산할지는 거리 이름과 모양(mA, mB, n, k)으로만 고르고(§3.4), 길은 결과를 바꾸지 않는다.
+- **결과는 정의로 정해진다**: `kneighbors(XA, XB, k=k)`는 `cdist(XA, XB)`의 각 행에서 거리가 `distance_upper_bound`보다 작은 원소를 (거리, 열 번호)로 정렬해 앞 k개를 고른 것과 같고(모자라면 (inf, mB)), 거리는 그 원소와 비트까지 같다. 그래서 거리가 inf이거나 NaN인 짝은 기본 상한 inf에서도 나오지 않는다(SPT37). `radius_neighbors`는 그 행에서 d̂ ≤ r인 열 전부(오름차순)다. Minkowski 계열(`euclidean`, `sqeuclidean`, `cityblock`, `chebyshev`, `minkowski` p ≥ 1)에서는 `KDTree(XB).query(XA, k=k, p=…)`와도 비트까지 같다. 어떤 길(전수, GEMM 고르기, 트리)로 계산할지는 거리 이름과 모양(mA, mB, n, k)으로만 고르고(§3.4), 길은 결과를 바꾸지 않는다. SPT2의 길은 직접 전수와 GEMM 고르기 둘이다(SPT40); 트리 길은 SPT3 뒤에 문턱을 재어(SPT6) 더한다.
+- **입력**: `XA`·`XB`는 `cdist`처럼 2차원이다(SPT49). 거리 이름, 그 인자, 기본 `V`·`VI`도 `cdist`와 같다. 데이터는 유한해야 한다(SPT12). `k`와 `distance_upper_bound`는 `KDTree.query`의 규칙(SPT55, SPT19), `r`은 실수 하나나 (mA,)로 브로드캐스트되는 배열이다(SPT46). 큰 k는 SPT45다.
 - k = 1이 축약이다: sklearn의 `pairwise_distances_argmin_min(X, Y)`는 `kneighbors(X, Y)`의 `(distances, indices)`다(풀기 순서만 반대). `[sklearn과 다름]`: sklearn은 전개식이라 거리가 틀릴 수 있고(§3.2), 이 함수는 언제나 직접 계산한 거리다.
 - 모든 거리 이름을 받는다(트리를 쓸 수 없는 거리는 전수와 GEMM 고르기로 한다). 결과의 모양과 채움은 `KDTree.query`의 규칙이다(§2.4).
 - 이름은 sklearn `NearestNeighbors`의 두 메서드 이름이다(scipy에는 이 일을 하는 함수가 없다; §9의 2번).
@@ -193,12 +220,12 @@ KDTree.sparse_distance_matrix(other, max_distance, /, *, p=2.0)
 - **클래스**: `KDTree`는 Python 클래스이고 C++ 트리(네이티브 객체)를 필드로 쥔다. frame의 `Series`, 희소 배열과 같은 데이터 구조의 예외다(ARCHITECTURE §3; sparse의 DOK가 네이티브 해시 맵을 쥐는 것과 같은 꼴). 계산은 네이티브 호출 한 번이다.
 - **만들기**: `data`는 (n, m)이다(1차원과 3차원 이상은 `ValueError`, scipy와 같다). 데이터는 언제나 복사한다: 트리가 자기 사본을 잎 순서로 놓고 쥔다(`[scipy와 다름]`: scipy는 복사하지 않을 수 있어 만든 뒤에 원본을 고치면 답이 틀린다고 적는다. 희소 생성자가 색인을 언제나 복사하는 것과 같은 이유다). n = 0도 받는다(질의는 모두 채움 값). m = 0도 받는다(모든 거리가 0; scipy는 질의에서 `IndexError`다).
 - **옵션**: `leafsize`만 둔다(1 이상의 int; bool·실수는 `TypeError`, `[scipy와 다름]`: scipy는 2.5를 2로 자른다). `balanced_tree`, `compact_nodes`, `copy_data`, `boxsize`는 없다(§9의 13번, 15번). 트리는 언제나 중앙값으로 나누고 노드 상자를 실제 점의 범위로 줄인다(scipy의 기본과 같은 꼴, §3.3). 결과는 `leafsize`와 무관하다(빠르기만 바뀐다).
-- **속성**: `data`(쓰기 금지 (n, m) float64, 입력 순서), `n`, `m`, `leafsize`, `maxes`, `mins`(쓰기 금지 (m,)), `size`(노드 수). scipy의 `tree`, `indices`, `boxsize`는 없다. 피클할 수 있다(같은 데이터와 `leafsize`로 다시 만든다; 만들기가 결정적이라 같은 트리다).
+- **속성**: `data`(쓰기 금지 (n, m) float64, 입력 순서), `n`, `m`, `leafsize`, `maxes`, `mins`(쓰기 금지 (m,); n = 0이면 0, scipy와 같다), `size`(노드 수; 같은 점이 많으면 scipy와 다르다, SPT50). scipy의 `tree`, `indices`, `boxsize`는 없다. `repr`는 `KDTree(n=1000, m=3, leafsize=10)`이다(SPT60). 피클과 `copy`는 같은 데이터와 `leafsize`로 다시 만든다(SPT56; `sd.ndarray`가 피클되지 않아 데이터의 바이트를 담는다; 만들기가 결정적이라 같은 트리다).
 - **`p`**: 1 이상의 실수나 inf다(scipy와 같다; 1 미만은 `ValueError`). p = 1, 2, inf는 `cityblock`, `euclidean`, `chebyshev`와, 그 밖의 p는 `minkowski(p=)`와 같은 커널이다.
 - **`query`**: 데이터 점 가운데 x에 가장 가까운 k개다.
   - x는 (…, m)이다. 마지막 축이 m이 아니면 `ValueError`.
   - `k`는 1 이상의 int거나 1 이상의 int 시퀀스(1부터 센 순위의 목록, scipy의 뜻)다. 0, 음수, 빈 시퀀스는 `ValueError`, bool·실수는 `TypeError`다(`[scipy와 다름]`: scipy 1.18.1은 `k=True`와 `k=2.0`을 받고, `k=0`은 numpy 내부 메시지의 `ValueError`이며, `k=[0]`은 프로세스를 죽인다(세그먼트 오류, 이 초안에서 확인함)).
-  - 결과는 `QueryResult(distances, indices)`이고 scipy처럼 `d, i = tree.query(x)`로 풀린다(§2.5). 모양은 scipy와 같다: k가 int면 (…, k)이고 k = 1이면 마지막 축을 없앤다. k가 시퀀스면 (…, len(k))다. x가 (m,)이고 k = 1이면 Python `float`와 `int`다(0차원 결과는 Python 스칼라, array.md §2.2; scipy는 `float`와 `numpy.int64`).
+  - 결과는 `QueryResult(distances, indices)`이고 scipy처럼 `d, i = tree.query(x)`로 풀린다(§2.5). 시퀀스 `k`는 순서와 중복이 자유다(scipy와 같다, SPT55). 모양은 scipy와 같다: k가 int면 (…, k)이고 k = 1이면 마지막 축을 없앤다. k가 시퀀스면 (…, len(k))다. x가 (m,)이고 k = 1이면 Python `float`와 `int`다(0차원 결과는 Python 스칼라, array.md §2.2; scipy는 `float`와 `numpy.int64`).
   - **순서**: 각 행은 (거리, 색인)의 사전 순서다. 같은 거리는 색인이 작은 것이 먼저다. 이것을 약속한다(`[scipy와 다름]`: scipy는 약속하지 않고 실제로도 다르다: 같은 점 6개에서 scipy의 순서는 `[1, 2, 3, 4, 5, 0]`, sklearn은 `[5, 2, 4, 0, 1, 3]`이다). 비교하는 거리는 돌려주는 값 그대로다(제곱 거리가 아니다; §3.4).
   - **채움**: 찾은 이웃이 k보다 적으면(k > n, 또는 `distance_upper_bound`) 남은 자리는 거리 inf, 색인 n이다(scipy와 같다. sklearn은 k > n이면 에러다).
   - **`distance_upper_bound`**: 거리가 이 값보다 **작은** 이웃만 돌려준다(scipy와 같이 엄격한 부등호; 거리가 꼭 1인 점은 상한 1에서 빠진다). 0 이상의 실수나 inf여야 한다(`[scipy와 다름]`: scipy는 p = 2에서 상한을 제곱해 비교하므로 −1이 1처럼 동작하고, NaN이면 모든 자리가 채움 값이다; §9의 14번).
@@ -214,7 +241,7 @@ KDTree.sparse_distance_matrix(other, max_distance, /, *, p=2.0)
 
 ### 2.5 결과 객체
 - **`QueryResult(distances, indices)`**: `query`와 `kneighbors`가 함께 쓰는 namedtuple이다(`stardust._results`, DESIGN §9.7). 두 함수는 같은 것을 돌려주므로 이름이 하나다. 배열은 쓰기 금지다(API.md §2.2).
-- **`RadiusResult`**: `query_ball_point`, `query_ball_tree`, `radius_neighbors`가 함께 쓰는 결과 클래스다(`stardust.spatial`의 `_result.py`; htest처럼 클래스를 내보내지 않는다, §9의 12번).
+- **`RadiusResult`**: `query_ball_point`, `query_ball_tree`, `radius_neighbors`가 함께 쓰는 결과 클래스다(`stardust.spatial`의 `_radius.py`, SPT44; htest처럼 클래스를 내보내지 않는다, §9의 12번). 생성자 `RadiusResult(indptr, indices, distances, shape)`는 받은 배열을 검사하거나 복사하지 않고 쓰기 금지로 만든다(SPT4의 반경 질의도 이것으로 만든다).
   - 필드: `indptr`(int64, 행 수 + 1), `indices`(int64), `distances`(float64), `shape`(행 수, 데이터 점 수). 행 i의 이웃은 `indices[indptr[i]:indptr[i+1]]`이고 색인 오름차순, 그 거리는 같은 자리의 `distances`다. 배열은 쓰기 금지이고 읽을 때 복사하지 않는다(API.md §2.2).
   - `tocsr()`: `sd.sparse.csr_array((distances, indices, indptr), shape=shape)`다. 색인이 이미 표준 꼴(정렬, 중복 없음)이라 sparse의 표준 꼴 규칙(sparse.md §2.3)을 그대로 만족한다. 부를 때마다 새 배열이다(희소 배열의 `data`는 쓸 수 있어야 하므로 거리를 복사한다; 색인도 희소 생성자의 규칙대로 복사하고 검사한다. 비용은 찾기에 비해 작다. 재서 크면 SPT6에서 다시 본다).
   - **거리 0인 짝**: 같은 점(자기 자신, 중복된 점)의 거리 0은 **저장된 0**으로 들어간다. `nnz`가 그 짝을 세고, `count_nonzero()`는 세지 않는다. 지우려면 `eliminate_zeros()`를 부른다. 이유: 희소 행렬의 저장 자리가 이웃 그래프의 변이다. 0을 지우면 중복된 점과 자기 자신이 이웃 목록에서 사라져 `indices`와 `.tocsr()`의 자리가 서로 다른 것을 말하게 된다. scipy의 `sparse_distance_matrix`도 0인 짝을 저장한다(이 초안에서 확인: 같은 두 점의 `coo_array`는 nnz 4, `dok_array`는 nnz 4에 `count_nonzero()` 0).
@@ -310,28 +337,32 @@ GEMM은 후보를 빨리 고르는 데만 쓰고, 돌려주는 값과 경계의 
 - 여유를 줄이는 것(γ 대신 합의 깊이 m, (X + Y)² 대신 더 좁은 한계)은 빠르기에만 영향이 있다. 위의 상수는 SPT2에서 다시 계산 비율을 재 보고 필요하면 좁힌다(증명과 함께).
 - **대체 길**: 노름 n̂이나 (‖x′‖ + ‖y′‖)²이 유한하지 않으면(좌표가 약 1e154를 넘음) 그 질의·블록은 GEMM 없이 직접 전수로 간다. 이웃 찾기의 입력은 유한하므로(§2.1) NaN은 오지 않는다.
 - **결과는 GEMM과 무관하다**: 고르기가 참 후보를 빠뜨리지 않으므로 마지막 답은 직접 커널만으로 정해진다. 그래서 결과는 Accelerate의 스레드 모드(`VECLIB_MAXIMUM_THREADS`)와도 무관하다(linalg의 결과와 다른 점이다). GEMM 블록의 크기와 순서는 빠르기만 바꾼다.
-- **어디에 쓰나**: GEMM 고르기는 n이 어느 크기(n₀, SPT2에서 잼; scipy의 `cdist`가 n = 3에서 sklearn의 GEMM보다 빨랐다, §5) 이상일 때의 `kneighbors`·`radius_neighbors`와 그 길로 가는 `query`다. `pdist`·`cdist`는 모든 거리를 돌려주므로 쓰지 않는다.
+- **어디에 쓰나**: GEMM 고르기는 가중치 없는 `euclidean`·`sqeuclidean`(`minkowski` p = 2 포함)에서 12 ≤ n ≤ 2¹⁶이고 mB ≥ 64일 때의 `kneighbors`·`radius_neighbors`와 그 길로 가는 `query`다(n₀ = 12, SPT40). `pdist`·`cdist`는 모든 거리를 돌려주므로 쓰지 않는다.
+- **구현** (SPT2, `csrc/spatial/neighbors.cpp`): 태스크(SPT42)마다 `XA` 조각의 옮긴 행 x′와 그 n̂·R을 한 번 구하고, `XB`를 블록(2048행까지, 2¹⁹/n행 이하)으로 나눠 블록마다 옮긴 행 y′를 만들어 `dgemm`으로 G = X′Y′ᵀ를 구한다(n̂ᵧ·Rᵧ는 호출마다 한 번 구해 둔다: `XB`의 행마다 두 double). 블록과 조각의 n̂이 유한하지 않거나 (max Rₓ + max Rᵧ)²이 넘치면 그 블록은 대체 길이다(모든 짝을 다시 계산). 행마다 L̃를 NEON으로 한 번에 구하고(SPT39), kNN은 첫 후보의 규칙(SPT41) 뒤에 T = 힙의 맨 위로 훑고, 반경은 T = r로 훑는다. 다시 계산은 `pair_scalar<SqOp>`와 `euclid_finish`·`sq_finish`로 `cdist`의 타일 레인과 같은 비트다.
+- **잰 고르기** (4000², 표준정규, 10스레드; ms): n = 3 2.2(직접)/3.1(GEMM), n = 16 3.9/3.4, n = 64 10.7/4.7, n = 512 75.5/22.3. 1스레드 n = 3에서 GEMM 길의 거르기가 짝당 약 1.4 ns다. 1e8 + [0, 1)¹⁶의 먼 군집도 원점 근처와 같은 시간이다(2.97 ms: 중심 빼기). 적대적 순서(질의에서 먼 점부터 가까운 점 순으로 정렬한 `XB`, 20000 × 32, k = 10)에서는 블록마다 많은 짝이 T를 줄여 GEMM 길이 직접 전수보다 1.3배 느리다(55.8 대 42.6 ms; 답은 같다).
 - **넓히기(나중)**: 같은 틀은 고르기를 위한 어떤 변환에도 쓴다. 변환의 반올림을 여유에 넣으면 된다: `seuclidean`·가중 `euclidean`(좌표에 √(1/V)·√w를 곱함), `mahalanobis`(VI의 Cholesky 인자로 옮김, VI가 양정치일 때), `cosine`(정규화한 행의 유클리드). 첫 판은 `euclidean`과 `sqeuclidean`만이다.
 
-### 3.3 KD 트리 만들기
-- **나누기**: 노드마다 점들의 범위가 가장 넓은 축(같으면 번호가 작은 축)을 고르고, 그 축의 좌표로 (값, 색인)의 전순서를 써서 가운데 자리 ⌊n_node/2⌋에서 `nth_element`로 나눈다(sklearn의 `IndexComparator`와 같은 비교). 전순서라 두 쪽의 점 **집합**이 하나로 정해진다(같은 좌표가 많아도). 그래서 트리의 모양은 데이터와 `leafsize`로만 정해지고, `nth_element`의 구현, 스레드 수, 만드는 순서와 무관하다.
+### 3.3 KD 트리 만들기 (SPT3에서 구현, `csrc/spatial/kdtree.cpp`)
+- **나누기**: 점이 `leafsize`보다 많은 노드마다 점들의 범위가 가장 넓은 축(같으면 번호가 작은 축)을 고르고, 그 축의 좌표로 (값, 색인)의 전순서를 써서 가운데 자리 ⌊n_node/2⌋에서 `nth_element`로 나눈다(sklearn의 `IndexComparator`와 같은 비교). 전순서라 두 쪽의 점 **집합**이 하나로 정해진다(같은 좌표가 많아도). 상자의 폭이 0이어도 나누고(SPT50), 잎 안의 점은 원래 색인 순서로 둔다. 그래서 트리는 데이터와 `leafsize`의 함수이고, `nth_element`의 구현, 스레드 수, 만드는 순서와 무관하다.
   - scipy의 기본(`balanced_tree=True`)도 중앙값이다. scipy의 다른 길(미끄러지는 중점)은 두지 않는다(§9의 13번).
 - **노드 상자**: 노드의 실제 점들의 최솟값·최댓값이다(scipy의 `compact_nodes=True`와 같은 꼴). 가지치기의 거리 한계는 이 상자로 구한다. 나누는 값과 같은 좌표가 양쪽에 있어도 상자가 실제 범위라 한계가 맞다.
-- **배치**: 노드 크기가 n과 `leafsize`로만 정해지므로 노드 수와 앞순회 번호를 미리 셀 수 있다. 노드 배열을 한 번에 잡고 하위 트리를 태스크로 나눠 만든다(위 몇 단계는 호출 스레드, 그 아래는 풀; 각 하위 트리는 자기 자리에만 쓴다). 결과는 직렬로 만든 것과 바이트까지 같다.
-- **데이터 사본**: 점들을 잎 순서로 옮긴 (n, m) 사본과 원래 색인(int64)을 쥔다. 잎의 점이 메모리에 붙어 있어 잎 안의 거리 계산이 이어 읽기다. 공개 속성 `data`는 입력 순서의 사본이다(§2.4; 같은 메모리를 두 번 쥐는 비용은 SPT3에서 재서, 크면 `data`를 처음 읽을 때 만든다).
-- **비용**: O(n log n)이다. scipy의 n = 10⁶, m = 3 만들기가 246 ms(1스레드)였다(§5).
+- **배치**: 노드 크기가 n과 `leafsize`로만 정해지므로 노드 수(c ↦ 1 + N(⌊c/2⌋) + N(⌈c/2⌉), c ≤ `leafsize`면 1)와 앞순회 번호(왼쪽 자식은 다음 번호, 오른쪽 자식은 그 뒤 왼쪽 하위 트리의 노드 수만큼 건넌 번호)를 미리 셀 수 있다. 노드 배열을 한 번에 잡고, n·max(m, 1) ≥ 2¹⁵이면 점이 max(2¹², n/64)개 이하인 하위 트리를 태스크로 나눠 만든다(그 위는 호출 스레드; 큰 노드의 상자·키·행 옮기기는 2¹⁴점 조각으로 풀; 각 하위 트리는 자기 자리에만 쓴다; SPT53). 결과는 직렬로 만든 것과 바이트까지 같다(테스트가 1, 3, 10스레드의 노드·상자·색인 바이트를 견준다).
+- **행 옮기기**: 나누기는 행 자체를 옮긴다. 노드의 점이 트리 사본의 이어진 행 [s, e)라 상자의 훑기와 키 채우기가 이어 읽기다. 키는 (좌표, 행 자리)의 16바이트이고 동점일 때만 원래 색인을 읽는다. `nth_element` 뒤 행과 색인을 키 순서로 임시 버퍼에 모았다가 되돌려 쓴다.
+- **데이터 사본**: 만들기가 끝나면 그 행이 곧 잎 순서의 (n, m) 사본이고 원래 색인(int64)과 함께 쥔다. 잎의 점이 메모리에 붙어 있어 잎 안의 거리 계산이 이어 읽기다. 공개 속성 `data`는 Python 객체가 쥐는 입력 순서의 읽기 전용 사본이다(SPT57: 메모리 2·n·m·8바이트, 10⁶ × 3에서 24 MB 더).
+- **비용**: O(n log n)이다. n = 10⁶, m = 3에서 1스레드 225–235 ms(scipy 230–260, sklearn 207–240), 10스레드 79–82 ms다(§5). 10스레드가 3배 남짓에 머무는 것은 위 여섯 단계의 `nth_element`가 호출 스레드에서 돌기 때문이다(SPT6의 후보: 나누기의 병렬 분할).
 
-### 3.4 질의
-- **거리와 비교**: 잎의 점은 §3.1의 직접 커널로 거리를 구한다. 순서와 판정은 돌려주는 값 d̂로 한다. p = 2에서 비교를 제곱합으로 먼저 하고(ŝ < ŝ_top이면 거의 언제나 d̂ < d̂_top), √는 경계(제곱합의 비교가 d̂의 동점일 수 있는 상대 4u 안)에서만 구한다. 제곱합만으로 순서를 정하면 √의 반올림이 두 값을 같게 만들 때 색인의 순서가 틀린다.
+### 3.4 질의 (kNN은 SPT3에서 구현, `csrc/spatial/kdtree.hpp`)
+- **거리와 비교**: 잎의 점은 §3.1의 직접 커널로 거리를 구한다(p = 1, 2, inf는 `cityblock`·`euclidean`·`chebyshev`의 `pair_scalar`, 그 밖의 p는 `minkowski_pair`; `cdist`·`minkowski`와 같은 비트). 순서와 판정은 돌려주는 값 d̂로 한다. p = 2에서는 제곱합 r로 먼저 걸러 낸다(SPT52): r이 보통 범위 [2⁻⁹⁶⁸, DBL_MAX](신중한 경로가 아니라 d̂ = RN(√r))이고 r > A(T) = fl(fl(T·T)·(1 + 8u))면 d̂ > T가 보장되어 √ 없이 버린다. 증명: T²이 보통 수면 fl(T·T) ≥ T²(1 − u)라 A(T) ≥ T²(1 + 5u)이고, r > A(T)면 √r·(1 − u) > T이므로 d̂ = RN(√r) ≥ √r(1 − u) > T다. T²이 보통 범위 아래면 √r ≥ 2⁻⁴⁸⁴ > T라 그대로 맞고, T = inf면 A = inf라 아무것도 버리지 않는다. 그 밖의 점은 d̂를 구해 (d̂, 색인)으로 견준다. 제곱합만으로 순서를 정하면 √의 반올림이 두 값을 같게 만들 때 색인의 순서가 틀리므로, 넣을지 말지는 언제나 d̂로 정한다.
   - scipy는 제곱의 자리에서 r²과 비교한다. 그래서 돌려준 거리가 r과 같은데도 빠지거나 그 반대인 경계가 있을 수 있다(무작위 시험에서 r = 계산한 거리일 때 √(d²) ≤ r와 d² ≤ r²이 2,000번 가운데 460번(23%) 달랐다; `tests/spatial/data/scipy.json`). sd의 판정은 돌려주는 거리 그 자체라 결과와 거리가 언제나 맞는다.
-- **가지치기는 보수적으로**: 상자까지의 거리 한계 lb도 부동소수로 구하므로 참 한계보다 조금 클 수 있다. 가지를 치는 조건은 lb > T·(1 + 4(m + 2)u)이고(엄격한 부등호), 그래서 T와 같은 거리(동점)이고 색인이 더 작은 점이 있는 노드는 치지 않는다. 여유는 빠르기에만 영향이 있다(아주 작다).
-- **kNN**: 깊이 우선, 가까운 자식 먼저, 질의마다 크기 k의 (d̂, 색인) 최대 힙이다. scipy처럼 상자 거리를 차원마다 덧셈으로 고쳐 가며(증분) 구한다. `distance_upper_bound`는 처음 T다. k가 시퀀스면 max(k)개를 찾고 그 순위만 고른다.
+- **가지치기는 보수적으로**(SPT51): 노드의 한계 b는 노드 상자에서 x에 가장 가까운 점 c(cᵢ = min(max(xᵢ, loᵢ), hiᵢ), 정확한 연산)까지의 같은 커널의 거리다. 상자 안의 모든 점 y는 좌표마다 |yᵢ − xᵢ| ≥ |cᵢ − xᵢ|라 참 거리가 D(x, y) ≥ D(x, c)다. T가 점이 이겨야 할 거리(힙이 덜 찼으면 `distance_upper_bound`, 찼으면 맨 위의 거리)일 때 b > T₁ = fl(fl(T·c) + η)이면 친다(c = 1 + 4(m + 12)u, η = 2⁻¹⁰⁷⁰; c는 1 위의 간격이 2u라 정확하다). 증명: 거리 계약(§4)이 |d̂ − D| ≤ κD + 2⁻¹⁰⁷⁴이고 p ≥ 1에서 κ ≤ (m + 11)u다(`euclidean` γₘ₊₃/2 + u, `cityblock` γₘ₊₂, `minkowski` 4u + (γₘ + 4u)/p + 2u; 합의 깊이 ≤ m). 곱의 반올림은 절대 2⁻¹⁰⁷⁵ 안이고 합은 절대 오차가 없으므로 T₁ ≥ T·c(1 − u)² + (η − 2⁻¹⁰⁷⁵)(1 − u)다. 그러면 d̂(y) ≥ (1 − κ)D(x, c) − 2⁻¹⁰⁷⁴ ≥ (1 − κ)(b − 2⁻¹⁰⁷⁴)/(1 + κ) − 2⁻¹⁰⁷⁴ > T다: c(1 − u)²(1 − κ)/(1 + κ) ≥ 1 + (2m + 24)u − O(m²u²) > 1이고 η가 2⁻¹⁰⁷⁴의 네 배보다 크다. 그래서 친 노드의 점은 모두 T보다 **엄격히** 멀어 이웃도, 동점(같은 거리에 색인이 작은 점)도 빠지지 않는다. p = inf의 커널은 올바르게 반올림한 차이의 최댓값이라 |yᵢ − xᵢ|마다 단조이고 d̂(y) ≥ b가 정확히 서므로 b > T 그대로다. p = 2의 노드도 합 r이 보통 범위면 r > A(T₁)로 견준다(그때 b > T₁). 한계는 노드마다 새로 구한다(증분 갱신이 아님; 한계 하나가 점 하나의 거리 값이다). 여유는 빠르기에만 영향이 있다(아주 작다).
+- **kNN**: 깊이 우선이다. 내부 노드에서 두 자식의 한계를 구해 작은 쪽(같으면 왼쪽)을 먼저 내려가고, 돌아오면 다른 쪽을 그때의 T로 다시 견준다. 질의마다 크기 min(k, n)의 (d̂, 색인) 최대 힙이다. `distance_upper_bound`는 힙이 찰 때까지의 T이고 판정은 d̂ < 상한이다. k가 시퀀스면 max(k)개를 찾고 그 순위만 고른다(없는 순위는 (inf, n)).
 - **반경**: 노드의 lb > r·(1 + 4(m + 2)u)면 치고, 상자의 먼 쪽 한계 ub·(1 + 4(m + 2)u) < r면 노드 전체가 안이다. 전체가 안인 노드도 거리를 돌려줘야 하므로 거리는 계산한다(개수만 묻는 `return_length`와 `count_neighbors`는 계산하지 않고 노드의 점 수를 더한다). 행마다 찾은 (색인, 거리)를 색인으로 정렬해 쓴다.
 - **짝**(`query_pairs`, `query_ball_tree`, `sparse_distance_matrix`): 두 트리를 함께 내려가는 이중 트리 순회다(노드 쌍의 상자 사이 거리로 치고 넣는다). `query_pairs`는 한 트리 안에서 i < j만 센다. 결과는 행(i)마다 모아 정렬한다.
 - **`count_neighbors`**: Gray–Moore의 이중 트리 셈이다(scipy와 같은 알고리즘의 틀). r 여럿은 한 번의 순회로 센다. 노드 쌍의 거리 범위가 r의 경계를 걸치지 않으면 점 수의 곱(가중이면 노드 가중치 합의 곱)을 그 칸에 한 번에 더한다. 걸치는 잎 쌍은 직접 d̂ ≤ rₖ로 센다. 정수 셈은 정확하다. 가중 셈은 float64 합이라 순서가 비트를 정한다: 순회를 고정된 깊이의 노드 쌍 태스크로 나누고 태스크의 부분합을 태스크 번호 순서로 더한다(크기로만 정함).
 - **트리 대신 전수로 가도 된다**: 결과가 길과 무관하므로(§1.3) `query`는 모양(n, m, 질의 수, k)을 보고 GEMM 고르기의 전수로 가도 된다. m이 크면 KD 트리는 전수보다 느리다(scipy의 n = 10⁵, m = 16 무작위 점에서 질의 10⁴개 k = 10이 8.9초다. 같은 일의 GEMM은 1.6×10¹⁰ 플롭이라 수십 ms다). 문턱은 SPT6에서 잰다(§9의 16번).
-- **병렬**: 질의점을 크기로만 정한 조각(예: 256점)으로 나눈다. 질의 하나는 한 태스크가 처음부터 끝까지 계산하므로 순회 순서가 스레드와 무관하다. 반경 결과는 조각마다 버퍼에 모은 뒤 조각 순서로 잇는다(`indptr`은 조각마다의 개수의 누적합).
-- **`kneighbors`·`radius_neighbors`의 길**: 거리 이름과 모양으로만 고른다. Minkowski 계열이고 m이 작으면 `XB`로 트리를 만들어 질의한다. `euclidean`·`sqeuclidean`이고 m ≥ n₀면 GEMM 고르기의 전수다. 그 밖의 거리는 직접 전수다(`XB`를 L2 블록으로 나눠 질의 블록마다 훑고, 질의마다 (d̂, 색인) 힙). 어느 길이든 결과는 같다.
+- **병렬**: 질의점을 크기로만 정한 조각(kNN은 64점, SPT54)으로 나눈다. 질의 하나는 한 태스크가 처음부터 끝까지 계산하므로 순회 순서가 스레드와 무관하다. 반경 결과는 조각마다 버퍼에 모은 뒤 조각 순서로 잇는다(`indptr`은 조각마다의 개수의 누적합).
+- **전수 길의 자리**: `query`가 길을 고르는 곳은 `src/stardust/spatial/_kdtree.py`의 `_search` 하나이고 SPT3에서는 언제나 트리다(SPT59). 위의 전수 길은 SPT6에서 문턱을 재서 거기에 더한다.
+- **`kneighbors`·`radius_neighbors`의 길**: 거리 이름과 모양으로만 고른다. `euclidean`·`sqeuclidean`이고 n ≥ n₀ = 12(SPT40)면 GEMM 고르기의 전수다. 그 밖은 직접 전수다(SPT38: `XA` 64행 × `XB` 블록의 `cdist`를 `cdist`의 구동기로 구해 질의마다 (d̂, 색인) 힙이나 반경 목록에 넣는다). 어느 길이든 결과는 같다. Minkowski 계열의 작은 m에서 `XB`로 트리를 만들어 질의하는 길은 SPT3 뒤에 문턱을 재어(SPT6) 더한다.
 
 ### 3.5 병렬화와 결정성
 **같은 입력이면 스레드 수, 경로, Accelerate의 스레드 모드와 상관없이 같은 결과다.** 거리 값은 짝마다 한 커널이고(BLAS를 부르지 않으므로 Accelerate 모드와도 무관하다, SPT26), 이웃의 집합과 순서는 (d̂, 색인)의 전순서로 정해진다. 테스트는 1, 2, 3, 7, 10스레드에서 같은 바이트를 확인한다(§7).
@@ -361,8 +392,8 @@ GEMM은 후보를 빨리 고르는 데만 쓰고, 돌려주는 값과 경계의 
 
 ### 3.6 메모리
 - 사용자가 모양으로 요청한 출력(`pdist`의 n(n−1)/2, `cdist`의 mA·mB, `kneighbors`의 mA·k)은 할당 전에 물리 메모리와 견주어 넘으면 `MemoryError`다(API.md §2).
-- 축약과 이웃 찾기의 작업 메모리는 입력과 무관한 상한이 있다: 태스크마다 GEMM 타일(안: 256 × 2048 float64 = 4 MB)과 힙. 10스레드에서 약 40 MB다. 전체 (mA, mB) 행렬을 만들지 않는다(SPT1).
-- 반경 결과는 찾은 짝의 수에 비례한다(`indices` 8바이트 + `distances` 8바이트). 개수만 필요하면 `return_length`, `count_neighbors`가 색인을 모으지 않는다.
+- 축약과 이웃 찾기의 작업 메모리는 입력과 무관한 상한이 있다(SPT2에서 만든 대로): 직접 길은 태스크마다 거리 블록 2¹⁶개 double(512 KB)과 `cdist` 구동기가 싸는 `XB` 블록(2¹⁸개 double 이하), GEMM 길은 태스크마다 옮긴 행(조각과 블록 각각 2¹⁹개 double 이하), G(256 × 2048 = 4 MB 이하), L̃의 줄이다. 힙은 태스크마다 2¹⁶자리(1 MB) 이하이고, k가 그보다 크면 조각이 한 행이라 k자리다. `XB`가 구간으로 나뉘면 구간마다의 목록이 2²²자리 이하다. 10스레드에서 약 100 MB 아래다. GEMM 길은 `XB`의 행마다 두 double(n̂ᵧ, Rᵧ)을 더 쥔다. 전체 (mA, mB) 행렬을 만들지 않는다(SPT1).
+- 반경 결과는 찾은 짝의 수에 비례한다(`indices` 8바이트 + `distances` 8바이트). 태스크마다 모은 뒤 제자리에 복사하므로 결과 크기의 두 배가 잠깐 든다(SPT48). 개수만 필요하면 `return_length`, `count_neighbors`가 색인을 모으지 않는다.
 - `KDTree`: 잎 순서의 사본 n·m·8 + 색인 n·8 + 노드(상자 2m·8 + 32바이트) × 약 2n/`leafsize` + 입력 순서의 `data` n·m·8(§3.3).
 
 ---
@@ -432,6 +463,36 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 - 1스레드에서 scipy 이상이 아닌 것은 `minkowski`(짝·항마다의 `pow`가 시간을 정하고, 짝마다의 뉴턴 걸음이 `pow` 하나를 더한다: 9% 느림), `haversine`(sklearn의 묶음 libm보다 약 3배 느림, §3.1), `mahalanobis`(1000² n = 16에서 76 대 75 ms)다. SPT6에서 다시 본다. n = 512의 `cdist`는 §5의 어림(1스레드 0.55초, 10스레드 60 ms)과 같다.
 - n = 3에서 처음에는 짝마다의 마무리(합을 꺼내 스칼라 √와 신중한 경로 검사, 결과 복사)가 시간의 대부분이라 scipy보다 느렸다(4000² 18.5 대 11.5 ms). 마무리를 두 짝씩 NEON으로 하고 출력에 바로 쓰게 바꿔 10.5 ms가 되었다(비트는 같다).
 
+**SPT2의 이웃 찾기**(2026-11-22; ms, `bench/speed/cases/spatial.py`를 `--smoke`로 한 번씩 부른 값이라 잡음이 크다. 기준선이 아니다. sklearn은 BLAS의 스레드를 따른다(1스레드 열은 BLAS 1스레드). 표준정규, 부하 평균 약 1.2):
+
+| 일 | sd 1 | sd 10 | sklearn 1 | sklearn 10 |
+|---|---:|---:|---:|---:|
+| `kneighbors` k = 1, 4000², n = 3 (직접) | 18.5 | 3.25 | 29.5 (`argmin_min`) | 5.04 |
+| `kneighbors` k = 1, 4000², n = 64 (GEMM) | 27.4 | 4.91 | 29.2 (`argmin_min`) | 8.60 |
+| `kneighbors` k = 1, 4000², n = 512 (GEMM) | 58.3 | 23.0 | 53.4 (`argmin_min`) | 40.0 |
+| `kneighbors` k = 10, 4000², n = 3 / 64 / 512 | 25.2 / 34.3 / 98.9 | 2.97 / 5.11 / 23.1 | 29.5 / 33.9 / 56.1 (brute) | 8.08 / 18.9 / 34.2 |
+| `radius_neighbors` 4000², n = 3 / 64 (행마다 약 10개) | 17.2 / 28.4 | 2.38 / 5.11 | 19.9 / 23.7 (brute) | 7.31 / 10.2 |
+| `kneighbors` k = 5, 질의 20개 × 10⁶점, n = 3 (구간으로 나눔) | 26.9 | 3.61 | 47.5 (brute) | 6.36 |
+| `kneighbors` k = 5 `cosine`, 2000², n = 64 (직접) | 29.5 | 4.00 | 40.0 (brute) | 32.9 |
+
+- 10스레드에서는 모든 사례가 sklearn보다 빠르고 §5 목표(`argmin_min`의 1.5배 안)를 넘는다. 1스레드에서 n = 512의 k = 10은 sklearn의 1.8배 느리다: k개를 다시 계산하는 짝 커널(n = 512에서 짝 하나가 512항)과 첫 후보의 규칙이 시간을 더한다. SPT6에서 다시 본다.
+- 결과는 sklearn과 견줬다: `radius_neighbors`의 모든 행(sklearn의 행을 색인으로 정렬)과 k = 10의 색인·거리가 상대 10⁻⁶ 안에서 같았다.
+
+**SPT3의 KD 트리**(2026-11-22; ms, `bench/speed/cases/spatial.py`의 `tree` 사례 여섯을 `--smoke`로 한 번씩 부른 값, 부하 평균 1.4–2. [0, 1)ᵐ 균등, 질의 10⁴개. 기준선이 아닌 개발 중의 확인이고, 결과는 scipy와 견줘 모든 색인과 거리가 맞았다):
+
+| 일 | sd 1스레드 | sd 10스레드 | scipy | scipy `workers=-1` | sklearn |
+|---|---:|---:|---:|---:|---:|
+| `KDTree` 만들기 10⁵점, m = 3 | 20.3 | 8.7 | 18.7 | — | 16.2 |
+| `KDTree` 만들기 10⁶점, m = 3 | 235 | 79.3 | 260 | — | 240 |
+| `query` 10⁶점, m = 3, k = 1 | 12.1 | 1.54 | 13.7 | 3.15 | 26.3 |
+| `query` 10⁶점, m = 3, k = 10 | 26.4 | 3.25 | 31.8 | 5.36 | 53.1 |
+| `query` 10⁵점, m = 16, k = 1 | 2289 | 243 | 5510 | 517 | 4337 |
+| `query` 10⁵점, m = 16, k = 10 | 5022 | 546 | 11350 | 1166 | 5969 |
+
+- 10스레드에서 모든 사례가 scipy `workers=-1`보다 빠르다(§5의 트리 목표). 1스레드 만들기는 scipy와 비슷하다(10⁵점에서 1.09배 느리고 10⁶점에서 1.1배 빠르다). 10스레드 만들기가 3배에 머무는 까닭은 §3.3이다.
+- 처음 구현(점마다 √, 순열을 통한 훑기)은 1스레드 `query` k = 10이 39.5 ms, 만들기 10⁶점이 335 ms였다. 제곱합 거르기(SPT52)와 행 옮기기(SPT53)로 위의 값이 되었다(결과는 같다).
+- m = 16은 트리가 전수보다 느린 영역이다(§3.4: 같은 일의 GEMM 고르기는 수십 ms). SPT21의 전수 길(SPT59의 자리)을 SPT6에서 더한다.
+
 - **목표**(SPT6에서 확인한다)
   - `pdist`·`cdist`: 1스레드에서 scipy 이상(같은 직접 계산에 NEON), 10스레드에서 거의 스레드 수만큼. n이 큰 `cdist`는 sklearn의 GEMM만큼 빠를 수 없다: 모든 거리를 직접 계산하므로 n·mA·mB의 뺄셈과 FMA가 하한이다(n = 512, 4000²에서 짝·항 8.2×10⁹개; SPT0의 타일 커널은 1스레드에서 짝·항마다 약 0.07 ns(§3.1의 n = 512)라 1스레드 약 0.55초, 10스레드 약 60 ms를 어림한다). 이것은 SPT2가 정한 정확도의 값이다.
   - `kneighbors`(k = 1, n ≥ n₀): sklearn `pairwise_distances_argmin_min`의 1.5배 안(같은 GEMM에 다시 계산과 중심 빼기를 더한다).
@@ -446,14 +507,13 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 - `csrc/spatial/`
   - `metric.hpp`(SPT1): 거리마다의 연산(Op)과 두 커널 `tile<Op, R, W>`·`pair_scalar<Op, W>`, 신중한 경로, `minkowski`·`mahalanobis`·`haversine`의 짝 함수, 데이터마다의 준비(정규화, 평균, 비트 묶음). SPT0의 시제품 `pair_kernel.hpp`는 `tools/spatial_probe_pair_kernel.hpp`로 옮겼다(SPT36)
   - `distance.cpp`(SPT1): `_pdist`, `_cdist`, `_paired`(배치 거리 함수), `_squareform_tomatrix`, `_squareform_tovector`와 구동기(타일, 짝 하나씩, 태스크 나누기), `spatial.hpp`가 `bind_*`를 알린다
-  - `hybrid.hpp`: §3.2의 GEMM 고르기(중심 빼기, 여유, 블록 순회)
-  - `heap.hpp`: (d̂, 색인) 최대 힙과 행마다의 반경 버퍼
-  - `kdtree.hpp`, `kdtree.cpp`: 만들기(§3.3), 노드 배열, 피클의 상태
-  - `query.cpp`: kNN, 반경, 개수(§3.4)
+  - `neighbors.hpp`, `neighbors.cpp`(SPT2): `CdistBlocks`(`distance.cpp`가 구현하는 블록마다의 `cdist`, SPT38)의 선언, `_kneighbors`·`_radius_neighbors`, (d̂, 색인) 최대 힙, 나누기(SPT42), §3.2의 GEMM 고르기(중심 빼기, 여유, 블록 순회). 초안의 `hybrid.hpp`·`heap.hpp`·`brute.cpp` 셋을 한 파일로 했다
+  - `kdtree.hpp`(SPT3): 트리의 꼴(`KdTree`, `KdNode`), 질의점과 점의 거리(`KdEuclid`, `KdCity`, `KdCheb`, `KdMink`: §3.1의 커널), 가지치기의 문턱(`KdCut`), kNN 찾기(`KdSearch`)와 그 증명의 주석
+  - `kdtree.cpp`(SPT3): 만들기(§3.3), `_KDTree` 바인딩(만들기, 속성, `query`, 테스트용 `_state`)
+  - `query.cpp`: 반경, 개수(§3.4; SPT4)
   - `dual.cpp`: 이중 트리의 짝과 `count_neighbors`
-  - `brute.cpp`: `kneighbors`·`radius_neighbors`의 전수 길
 - 바인딩 `bind/spatial_bind.cpp`(SPT1): `_core.spatial` 하위 모듈.
-- `src/stardust/spatial/` (하위 패키지 없음): `__init__.py`(공개 이름), `_common.py`(입력 정리, `metric`과 인자의 검사, 메시지; SPT1), `_distance.py`(`pdist cdist squareform`과 거리 함수, 기본 `V`·`VI`; SPT1), `_neighbors.py`(`kneighbors radius_neighbors`), `_kdtree.py`(`KDTree`), `_result.py`(`RadiusResult`). `QueryResult`는 `stardust/_results.py`에 더한다.
+- `src/stardust/spatial/` (하위 패키지 없음): `__init__.py`(공개 이름), `_common.py`(입력 정리, `metric`과 인자의 검사, 메시지; SPT1), `_distance.py`(`pdist cdist squareform`과 거리 함수, 기본 `V`·`VI`; SPT1), `_neighbors.py`(`kneighbors radius_neighbors`; SPT2), `_kdtree.py`(`KDTree`; SPT3), `_radius.py`(`RadiusResult`; SPT2, SPT44). `QueryResult`는 `stardust/_results.py`에 더한다.
 
 ---
 
@@ -472,6 +532,8 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 
 ### 7.3 테스트 (`tests/spatial/`)
 - `test_api_surface.py`(API 문서의 시그니처), `test_distance.py`(거리마다의 정의, `w`, `V`, `VI`, 경계의 값, 배치, 대칭, `pdist`와 `cdist`의 비트, scipy와 계약 안), `test_squareform.py`, `test_pair_kernel.py`(§3.1의 타일 순서: 묶음 커널과 짝 하나의 비트, 덩어리 경계 31·32·33과 길이 경계마다, n < 16에서 `vector_norm`과 같은 비트, `chebyshev`는 언제나 같은 비트), `test_neighbors.py`(`kneighbors`·`radius_neighbors`가 같은 커널의 전수와 정확히 같음: 길마다, 거리마다), `test_hybrid.py`(§7.1의 적대적 데이터와 hypothesis로 GEMM 고르기가 답을 바꾸지 않음; 고르기를 끈 비공개 길과 비교), `test_kdtree.py`(만들기의 불변식, 노드 상자, 피클, 스레드마다 같은 트리), `test_query.py`(k, k 시퀀스, 모양, 채움, 상한, 동점 순서, scipy와 집합이 같음), `test_radius.py`, `test_pairs.py`, `test_count.py`(가중 포함), `test_reference.py`(§4 이웃의 2번과 3번, Arb 참값), `test_errors.py`(§2의 모든 에러와 메시지), `test_threads.py`(1, 2, 3, 7, 10스레드에서 같은 바이트; `VECLIB_MAXIMUM_THREADS` 1과 기본에서 이웃 결과가 같음).
+- SPT2에서 만든 것: `test_neighbors.py`(모든 거리·가중·dtype·`haversine`에서 `cdist`로 만든 정의와 색인·거리의 비트가 같음을 세 길(자동, 직접, GEMM)마다; 블록과 구간이 여럿인 크기, k > mB, 빈 쪽, n = 0, 순위의 k, 엄격한 상한과 inf·NaN 거리의 제외; §7.1의 적대적 집합 열셋(먼 군집, 1 ULP 껍질, 중복, 동점, 넘침 직전·넘침·언더플로의 좌표)과 경계 반경; hypothesis의 군집(중심 0–1e15, 퍼짐 1e-6–1e3, 반올림한 동점, 중복)에서 GEMM 길; `RadiusResult`의 필드·쓰기 금지·`tocsr()`의 저장된 0), `test_neighbors_reference.py`(§4 이웃 2번: 격자 집합에서 Arb의 (RN(d), 색인) 순서와 거리; 3번: 일반 집합에서 계약 η 안의 참 kNN; scipy `KDTree` 기록과 집합, sklearn `argmin_min` 기록), `test_neighbors_errors.py`, `test_neighbors_threads.py`(1, 3, 10스레드에서 같은 바이트; `VECLIB_MAXIMUM_THREADS=1`과 기본 모드의 자식 프로세스가 같은 결과의 SHA-256).
+- SPT3에서 만든 것: `test_kdtree.py`(만들기의 불변식: 가장 넓은 축의 (좌표, 색인) 중앙값, 상자가 점의 범위, 노드 수와 앞순회 번호, 잎의 색인 순서, 같은 점이 많은 데이터, n = 0과 m = 0; 속성과 쓰기 금지, 데이터의 복사, 입력의 꼴, 피클과 `copy`가 바이트까지 같은 트리, 1·3·10스레드의 같은 트리 바이트, 생성자의 모든 에러), `test_kdtree_query.py`(§4 이웃의 1–3번: `cdist`로 만든 전수와 색인·거리의 비트가 같음을 무작위·중복·동점·격자·군집·먼 군집·1e±200·비정상 수·DBL_MAX 둘레·m = 64에서 `leafsize` 1, 3, 10, 64와 p = 1, 2, inf, 1.5, 3마다, hypothesis; 격자 참값과 (RN(d), 색인) 정렬이 정확히 같음; 일반 참값에서 계약 안의 참 kNN; 모양과 형, 채움, 엄격한 상한, k의 모든 꼴, scipy와 그 기록, 1·3·10스레드의 같은 바이트, `query`의 모든 에러).
 - SPT1에서 만든 것: `test_distance.py`(scipy 1.18.1과 그 기록, sklearn의 `haversine`, R의 `dist`, 경계의 값, 배치, dtype, 입력), `test_pair_kernel.py`(묶음 커널과 짝 하나의 비트를 모든 거리·길이 경계·남는 행과 열·NaN과 inf에서, hypothesis 포함; n < 16의 `vector_norm`, `chebyshev`와 `ord=inf`, p = 1, 2, inf; 신중한 경로), `test_squareform.py`, `test_reference.py`(Arb 참값의 모든 점이 계약 안), `test_errors.py`, `test_threads.py`(1, 3, 10스레드에서 같은 바이트).
 - hypothesis는 tests/README.md의 프로필을 쓴다(quick은 짧게, deep은 길게). 적대적 생성기는 군집의 중심, 퍼짐, 동점의 수, m, k를 고른다.
 - scipy·sklearn과는 그 자리에서 견준다: 거리는 계약 안, 이웃은 동점이 없는 데이터에서 같은 집합과 순서, 동점이 있으면 같은 집합(scipy의 순서는 약속이 아니다).
@@ -494,8 +556,8 @@ SPT0에서 다시 잰 scipy 1.18.1과 sklearn 1.9.1의 시간이다(`tools/spati
 |---|---|---|
 | SPT0 준비 | API 문서 초안(`docs/api/spatial.md`: 모든 공개 이름의 시그니처, scipy·sklearn → sd 대응표, §9의 답), 영역 등록(`bench/areas.py`, ARCHITECTURE, API.md의 색인), 시험 데이터(§7.1), 참값 도구(§7.2), 탐침 도구와 기록(§7.4), §3.2의 상수와 증명의 마무리, 짝 커널의 두 안(§3.1의 `vector_norm`과 같은 순서 대 타일 순서)과 GEMM의 동시 호출(AMX) 측정, 속도 사례의 틀 | 문서와 도구가 커밋되고 탐침 기록이 있다. §9의 답이 §1.1의 결정으로 옮겨졌다 |
 | SPT1 거리 — **완료·승인(위임, 2026-11-22)** | `pdist cdist squareform`, 거리 함수 열넷(`haversine` 포함, SPT9), `w`·`V`·`VI`, 배치, bool의 비트 묶음 | 정확도 스윕이 계약 안, 타일 순서의 비트 테스트(SPT22·SPT26: 묶음 커널과 짝 하나, n < 16에서 `vector_norm`), 골든, scipy·R과의 속도 사례 |
-| SPT2 축약과 전수 이웃 | `kneighbors radius_neighbors`, `QueryResult`, `RadiusResult`와 `tocsr()`, GEMM 고르기(§3.2)와 직접 전수 | 같은 커널의 전수와 정확히 같음(모든 거리, 적대적 데이터, hypothesis), Accelerate 모드와 무관함, sklearn과의 속도 사례 |
-| SPT3 KD 트리와 kNN | `KDTree`(만들기, 속성, 피클), `query`(k, k 시퀀스, 상한, p) | §4 이웃의 1–3번, 스레드마다 같은 트리와 결과, scipy와의 속도 사례 |
+| SPT2 축약과 전수 이웃 — **완료·승인(위임, 2026-11-22)** | `kneighbors radius_neighbors`, `QueryResult`, `RadiusResult`와 `tocsr()`, GEMM 고르기(§3.2)와 직접 전수 | 같은 커널의 전수와 정확히 같음(모든 거리, 적대적 데이터, hypothesis), Accelerate 모드와 무관함, sklearn과의 속도 사례 |
+| SPT3 KD 트리와 kNN — **완료·승인(위임, 2026-11-22)** | `KDTree`(만들기, 속성, 피클), `query`(k, k 시퀀스, 상한, p) | §4 이웃의 1–3번, 스레드마다 같은 트리와 결과, scipy와의 속도 사례 |
 | SPT4 반경·짝·개수 | `query_ball_point query_ball_tree query_pairs count_neighbors sparse_distance_matrix` | 같은 커널의 전수와 같음, 가중 셈의 결정성, scipy와 집합이 같음, 속도 사례 |
 | SPT5 BallTree (건너뜀) | `BallTree`와 그 거리들 | 열지 않는다: SPT8이 첫 판에서 뺐다(나중 후보). SPT6에서 KD 트리가 칠 수 없는 거리의 전수 시간을 재 보고 다시 본다 |
 | SPT6 성능과 일관성 점검 | 모든 공개 함수를 크기마다 scipy·sklearn·R과 견주어 고치기, 길의 문턱(n₀, 트리 대 전수, `leafsize`, 블록 크기) 정하기, 메시지·시그니처의 영역 간 일관성, 코드 리뷰 | 속도 표와 정확도 표가 기준선이 되고 §5의 목표를 적은 대로 확인한다 |

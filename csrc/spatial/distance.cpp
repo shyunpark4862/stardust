@@ -18,10 +18,14 @@
 // one-pair kernel, which gives the same bits. Work is cut into tasks by size alone (row blocks and panel
 // chunks; pdist's row groups balanced by their pairs), each pair written by one task, so the result does
 // not depend on the thread count. From kParallelWork pair-terms a call splits and runs without the GIL.
+//
+// CdistBlocks (spatial/neighbors.hpp) runs the same drivers on one block of rows at a time: the direct path of
+// kneighbors and radius_neighbors (csrc/spatial/neighbors.cpp), with _cdist's bits.
 #include "array/ndarray.hpp"
 #include "bind/pyutil.hpp"
 #include "parallel/pool.hpp"
 #include "spatial/metric.hpp"
+#include "spatial/neighbors.hpp"
 #include "spatial/spatial.hpp"
 
 #include <nanobind/stl/string.h>
@@ -855,6 +859,56 @@ nb::tuple squareform_tovector(nb::handle x, bool checks) {
 }
 
 }  // namespace
+
+// ---- blocks of a cdist (spatial/neighbors.hpp: kneighbors and radius_neighbors) ----------------
+
+struct CdistBlocks::Impl {
+    Mat a, b, vi;
+    Plan plan;
+};
+
+CdistBlocks::CdistBlocks(
+    nb::handle xa, nb::handle xb, const std::string& metric, double p, nb::handle w, nb::handle aux, const char* func
+)
+    : impl_(std::make_unique<Impl>()) {
+    Impl& s = *impl_;
+    s.a = mat_arg(xa, func, 2);
+    s.b = mat_arg(xb, func, 2);
+    if (s.a.cols != s.b.cols || s.a.dtype != s.b.dtype)
+        throw nb::type_error((std::string(func) + "(): sides differ").c_str());
+    s.plan = make_plan(metric, p, w, aux, s.a.cols, s.a.dtype, s.vi, func);
+}
+
+CdistBlocks::~CdistBlocks() = default;
+
+int64_t CdistBlocks::rows_a() const { return impl_->a.rows; }
+int64_t CdistBlocks::rows_b() const { return impl_->b.rows; }
+int64_t CdistBlocks::cols() const { return impl_->a.cols; }
+int64_t CdistBlocks::pair_cost() const { return spatial::pair_cost(impl_->plan); }
+
+int CdistBlocks::gemm_kind() const {
+    const Plan& p = impl_->plan;
+    if (p.weighted || p.dtype != DType::Float64) return 0;
+    if (p.metric == Metric::Euclidean) return 1;
+    return p.metric == Metric::SqEuclidean ? 2 : 0;
+}
+
+const double* CdistBlocks::a_f64() const { return impl_->a.f64(); }
+const double* CdistBlocks::b_f64() const { return impl_->b.f64(); }
+
+void CdistBlocks::block(int64_t i0, int64_t i1, int64_t j0, int64_t j1, double* out) const {
+    const Impl& s = *impl_;
+    auto view = [](const Mat& m, int64_t r0, int64_t r1) {
+        Mat v;
+        v.data = m.data + r0 * m.cols * itemsize(m.dtype);
+        v.rows = r1 - r0;
+        v.cols = m.cols;
+        v.dtype = m.dtype;
+        return v;
+    };
+    const Mat sa = view(s.a, i0, i1), sb = view(s.b, j0, j1);
+    run(Call{&sa, &sb, out, &s.plan});
+}
 
 void bind_distance(nb::module_& m) {
     m.def(

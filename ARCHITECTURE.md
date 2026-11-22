@@ -60,7 +60,7 @@ stardust/
                                 _interface, _interop, _result, _common
     integrate/                  _quadpack, _quad_vec, _cubature, _tanhsinh, _samples, _rules, _gauss, _result
     differentiate/              _derivative, _weights, _differences, _result
-    spatial/                    __init__.py (공개 이름은 SPT1부터; 계획한 모듈은 docs/design/spatial.md §6)
+    spatial/                    _common, _distance, _neighbors, _radius(RadiusResult), _kdtree (docs/design/spatial.md §6)
 
   csrc/
     base/         buffer(참조 카운트 메모리 블록), dtype(DType enum), pairwise(pairwise 합의 정의),
@@ -94,7 +94,8 @@ stardust/
     htest/        parametric rank correlation contingency proportion gof gof2 multicomp resampling와 헤더(정확한 분포, 점근 분포, MLE, 레인)
     sparse/       format canonical convert construct index binop arith spmv spgemm reduce dok triangular direct iterative
                   krylov arpack svds parallel
-    spatial/      metric(타일 순서의 짝 커널과 거리마다의 연산), distance(pdist·cdist·배치 거리 함수·squareform; docs/design/spatial.md §3.1)
+    spatial/      metric(타일 순서의 짝 커널과 거리마다의 연산), distance(pdist·cdist·배치 거리 함수·squareform; docs/design/spatial.md §3.1),
+                  neighbors(kneighbors·radius_neighbors의 전수와 GEMM 고르기; §3.2), kdtree(KD 트리 만들기와 kNN; §3.3, §3.4)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
                   nary_bind.hpp(원소별 함수의 공통 바인딩), pyutil, errors

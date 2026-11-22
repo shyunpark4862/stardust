@@ -109,7 +109,12 @@ INTRO = {
         "반올림, cosine·correlation은 절대와 상대를 섞은 한계, mahalanobis는 |z|ᵀ|VI||z|에 대한 한계, haversine은 20u다. "
         "비교 패키지는 scipy 1.18.1(같은 이름의 거리 함수), scikit-learn 1.9.1(euclidean_distances·manhattan_distances·"
         "cosine_distances·haversine_distances: 전개식과 1 − cos의 꼴), R 4.6.2의 stats::dist(euclidean·manhattan·maximum·"
-        "minkowski, 좌표가 음이 아닌 정상 수이고 0/0 항이 없는 짝의 canberra(R의 항은 |x − y|/|x + y|이고 분모가 DBL_MIN 아래인 항을 빼고 비율을 다시 맞춘다), counting의 jaccard에 binary)이고 같은 짝에서 그 자리에서 잰다."
+        "minkowski, 좌표가 음이 아닌 정상 수이고 0/0 항이 없는 짝의 canberra(R의 항은 |x − y|/|x + y|이고 분모가 DBL_MIN 아래인 항을 빼고 비율을 다시 맞춘다), counting의 jaccard에 binary)이고 같은 짝에서 그 자리에서 잰다. neighbors 묶음(SPT2)은 neighbors.npz의 질의마다 "
+        "k = 5 이웃(sd.spatial.kneighbors; euclidean·cityblock·chebyshev)이 점 하나이고 거리와 점 집합이 영역이다: 격자 집합은 "
+        "Arb의 (RN(d), 색인) 순서와 거리가 같으면 0, 아니면 inf이고, 그 밖은 계약 η 안의 참 kNN인지(돌려준 점의 참 거리 ≤ "
+        "d₍ₖ₎(1 + η), 빠진 점 ≥ d₍ₖ₎(1 − η))를 ηd₍ₖ₎ 단위로 잰다. 비교 패키지는 scipy의 KDTree.query와 scikit-learn의 "
+        "NearestNeighbors(algorithm='brute')다. kdtree 묶음(SPT3)은 같은 점과 판정을 sd.spatial.KDTree(X).query(Q, k=5, "
+        "p=1·2·inf)로 재고, 비교 패키지는 scipy와 scikit-learn의 KDTree.query다."
     ),
     "htest": (
         "참값은 tests/htest/ref의 Arb와 정확한 유리수 참값이다(tools/htest_ref.py; 문제는 tests/htest/problems.py). "

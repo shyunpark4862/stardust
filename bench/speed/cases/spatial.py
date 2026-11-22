@@ -20,7 +20,7 @@ from typing import Callable
 
 import numpy as np
 
-from ..registry import Case, Ref, RRef
+from ..registry import Case, Check, Ref, RRef
 
 
 @dataclasses.dataclass(frozen=True)
@@ -35,6 +35,7 @@ class Spec:
     refs: tuple = ()
     quick: bool = False
     note: str = ""
+    check: Check = dataclasses.field(default_factory=Check)
 
 
 def _normal(ma, mb, n, seed=20261122):
@@ -176,17 +177,79 @@ def _neighbor_specs():
         out.append(Spec("SPT2", "neighbors", "kneighbors k=10", ("kneighbors",), f"(4000, {n})", _normal(4000, 4000, n),
                         lambda d: lambda: _sp().kneighbors(d["sa"], d["sb"], k=10),
                         (Ref("sklearn brute", _nn_brute(10), threads="follow"),)))  # fmt: skip
+    for n in (3, 64):
+        out.append(Spec("SPT2", "neighbors", "radius_neighbors", ("radius_neighbors",), f"(4000, {n})",
+                        _with_radius(_normal(4000, 4000, n)), lambda d: lambda: _sp().radius_neighbors(d["sa"], d["sb"], d["r"]),
+                        (Ref("sklearn brute", _nn_radius(), threads="follow"),),
+                        note="r: about 10 neighbours per row", check=RADIUS_CHECK))  # fmt: skip
+    out.append(Spec("SPT2", "neighbors", "kneighbors k=5 20 rows", ("kneighbors",), "(1000000, 3)",
+                    _normal(20, 10**6, 3), lambda d: lambda: _sp().kneighbors(d["sa"], d["sb"], k=5),
+                    (Ref("sklearn brute", _nn_brute(5), threads="follow"),), note="20 query rows; XB cut into segments"))  # fmt: skip
+    out.append(Spec("SPT2", "neighbors", "kneighbors k=5 cosine", ("kneighbors",), "(2000, 64)",
+                    _normal(2000, 2000, 64), lambda d: lambda: _sp().kneighbors(d["sa"], d["sb"], k=5, metric="cosine"),
+                    (Ref("sklearn brute", _nn_brute(5, "cosine"), threads="follow",
+                         differs="1 - cos (cancellation)"),), note="direct path"))  # fmt: skip
     return out
 
 
-def _nn_brute(k):
+def _with_radius(base, per_row=10):
+    """The setup with r: the distance of about per_row neighbours, from the first rows' sorted distances."""
+
+    def setup():
+        d = base()
+        a, b = d["a"][:50], d["b"]
+        dist = np.sqrt(((a[:, None, :] - b[None, :, :]) ** 2).sum(-1))
+        d["r"] = float(np.median(np.sort(dist, axis=1)[:, per_row - 1]))
+        return d
+
+    return setup
+
+
+def _radius_sd(r):
+    """RadiusResult as (indices, distances) row after row (the rows' indices increasing)."""
+    return np.concatenate([np.asarray(r.indices, dtype=np.float64), np.asarray(r.distances)])
+
+
+def _radius_ref(label, v):
+    """sklearn's (distances, indices) object arrays, each row sorted by index as sd's."""
+    dist, ind = v
+    order = [np.argsort(i, kind="stable") for i in ind]
+    idx = np.concatenate([i[o] for i, o in zip(ind, order)]).astype(np.float64)
+    return np.concatenate([idx, np.concatenate([d[o] for d, o in zip(dist, order)])])
+
+
+RADIUS_CHECK = Check(sd=_radius_sd, ref=_radius_ref)
+
+
+def _nn_radius():
     def make(d):
         from sklearn.neighbors import NearestNeighbors
 
-        nn = NearestNeighbors(n_neighbors=k, algorithm="brute").fit(d["b"])
+        nn = NearestNeighbors(radius=d["r"], algorithm="brute").fit(d["b"])
+        return lambda: nn.radius_neighbors(d["a"])
+
+    return make
+
+
+def _nn_brute(k, metric="euclidean"):
+    def make(d):
+        from sklearn.neighbors import NearestNeighbors
+
+        nn = NearestNeighbors(n_neighbors=k, algorithm="brute", metric=metric).fit(d["b"])
         return lambda: nn.kneighbors(d["a"])
 
     return make
+
+
+def _tree_range(t):
+    """A built tree as what the smoke check compares: (n, m) and the data's range per axis."""
+    if hasattr(t, "get_arrays"):  # scikit-learn's KDTree: its data
+        x = np.asarray(t.get_arrays()[0])
+        return np.concatenate([x.shape, x.min(axis=0), x.max(axis=0)]).astype(float)
+    return np.concatenate([[t.n, t.m], np.asarray(t.mins), np.asarray(t.maxes)]).astype(float)
+
+
+BUILD_CHECK = Check(sd=_tree_range, ref=lambda label, t: _tree_range(t), rtol=0.0, atol=0.0)
 
 
 def _tree_specs():
@@ -196,7 +259,8 @@ def _tree_specs():
         out.append(Spec("SPT3", "tree", "KDTree build m=3", ("KDTree",), f"10^{exp} points", _uniform(npts, 3, 1),
                         lambda d: lambda: _sp().KDTree(d["sx"]),
                         (Ref("scipy", lambda d: (lambda S: lambda: S.KDTree(d["x"]))(_scipy_s())),
-                         Ref("sklearn", lambda d: (lambda K: lambda: K(d["x"]))(_sk_tree())))))  # fmt: skip
+                         Ref("sklearn", lambda d: (lambda K: lambda: K(d["x"]))(_sk_tree()))),
+                        check=BUILD_CHECK))  # fmt: skip
     for m, npts in ((3, 10**6), (16, 10**5)):
         for k in (1, 10):
             refs = (
@@ -206,7 +270,8 @@ def _tree_specs():
             )
             out.append(Spec("SPT3", "tree", f"query m={m} k={k}", ("KDTree",), "10^4 points", _tree_setup(npts, m, 10**4),
                             lambda d, k=k: lambda: d["sT"].query(d["sq"], k=k), refs, quick=(m, k) == (3, 10)))  # fmt: skip
-    out.append(Spec("SPT4", "tree", "query_ball_point m=3", ("KDTree",), "10^4 points", _tree_setup(10**6, 3, 10**4),
+    out.append(Spec("SPT4", "tree", "query_ball_point m=3", ("KDTree.query_ball_point",), "10^4 points",
+                    _tree_setup(10**6, 3, 10**4),
                     lambda d: lambda: d["sT"].query_ball_point(d["sq"], BALL_R),
                     (Ref("scipy", lambda d: lambda: d["T"].query_ball_point(d["q"], BALL_R)),
                      Ref("scipy workers=-1", lambda d: lambda: d["T"].query_ball_point(d["q"], BALL_R, workers=-1),
@@ -232,13 +297,17 @@ SPECS = _distance_specs() + _neighbor_specs() + _tree_specs()
 def _public(names) -> bool:
     import stardust as sd
 
-    return all(n in sd.spatial.__all__ for n in names)
+    def public(name):  # "KDTree.query_ball_point": a method of a public class (SPT4 adds methods to SPT3's class)
+        cls, _, attr = name.partition(".")
+        return cls in sd.spatial.__all__ and (not attr or hasattr(getattr(sd.spatial, cls), attr))
+
+    return all(public(n) for n in names)
 
 
 def cases() -> list[Case]:
     return [
         Case(area="spatial", group=s.group, name=s.name, size=s.size, setup=s.setup, sd=s.sd, refs=s.refs,
-             quick=s.quick, note=s.note)
+             quick=s.quick, note=s.note, check=s.check)
         for s in SPECS
         if _public(s.needs)
     ]  # fmt: skip

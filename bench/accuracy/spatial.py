@@ -15,7 +15,22 @@ also squared, manhattan_distances, cosine_distances and haversine_distances: its
 1 - cos forms) and R 4.6.2's stats::dist (euclidean, manhattan, maximum, minkowski, canberra on the
 pairs of nonnegative, normal coordinates without 0/0 terms: R's terms are |x - y| / |x + y|, and it
 drops the terms whose denominator is below DBL_MIN and rescales for them; binary for the counting jaccard).
-`neighbors` joins with SPT2 and SPT3.
+
+SPT2 adds
+
+  neighbors  the k = 5 nearest of every query of neighbors.npz (euclidean, cityblock, chebyshev: the
+             methods p2, p1, pinf) by sd.spatial.kneighbors, one region per metric and point set, one point
+             per query. The contract (docs/design/spatial.md §4 neighbours 2 and 3): on the lattice sets the
+             answer is the Arb order (RN(d), index) with the distances RN(d) (0 when it is, inf when not);
+             elsewhere every returned point's true distance is at most d_(k)(1 + eta) and every other one's
+             at least d_(k)(1 - eta) (units: the largest excess over d_(k) in eta d_(k)). ulp: the returned
+             k-th distance against the reference at its index. Comparators: scipy's KDTree.query and
+             scikit-learn's NearestNeighbors(algorithm='brute') with the same metric.
+
+SPT3 adds
+
+  kdtree     the same points and judgement through sd.spatial.KDTree(X).query(Q, k=5, p=1, 2, inf), with
+             scipy's and scikit-learn's KDTree.query as the comparators.
 """
 
 from __future__ import annotations
@@ -25,6 +40,8 @@ import numpy as np
 from .common import Custom, compare_libs, region, ulps
 
 FAMILIES = ("distances", "counting", "haversine")
+NEIGHBOR_K = 5
+_NN_METHODS = (("p2", "euclidean", 2.0), ("p1", "cityblock", 1.0), ("pinf", "chebyshev", np.inf))
 _REFUSED = object()
 
 # sklearn's functions for a method of the references (None: sklearn has no such distance)
@@ -168,6 +185,87 @@ def _r_regions(family):
     return out or None
 
 
+def _knn(lib, metric, p, Q, X):
+    """lib's k nearest (distances, indices) of the rows of Q in X (None: lib has no such search)."""
+    k = NEIGHBOR_K
+    if lib == "sd":
+        import stardust as sd
+
+        d, i = sd.spatial.kneighbors(Q, X, k=k, metric=metric)
+        return np.asarray(d), np.asarray(i)
+    if lib == "scipy":
+        import scipy.spatial as S
+
+        return S.KDTree(X).query(Q, k=k, p=p)
+    if lib == "sklearn":
+        from sklearn.neighbors import NearestNeighbors
+
+        name = {"euclidean": "euclidean", "cityblock": "manhattan", "chebyshev": "chebyshev"}[metric]
+        return NearestNeighbors(n_neighbors=k, algorithm="brute", metric=name).fit(X).kneighbors(Q)
+    return None
+
+
+def _tree_knn(lib, metric, p, Q, X):
+    """The `kdtree` sweep (SPT3): the k nearest by a KD tree, sd.spatial.KDTree(X).query(Q, k=, p=) against
+    scipy's and scikit-learn's KDTree.query (the same judgement as `neighbors`)."""
+    k = NEIGHBOR_K
+    if lib == "sd":
+        import stardust as sd
+
+        d, i = sd.spatial.KDTree(X).query(Q, k=k, p=p)
+        return np.asarray(d), np.asarray(i)
+    if lib == "scipy":
+        import scipy.spatial as S
+
+        return S.KDTree(X).query(Q, k=k, p=p)
+    if lib == "sklearn":
+        from sklearn.neighbors import KDTree
+
+        name = {"euclidean": "euclidean", "cityblock": "manhattan", "chebyshev": "chebyshev"}[metric]
+        return KDTree(X, metric=name).query(Q, k=k)
+    return None
+
+
+def _neighbor_regions(lib, knn=None):
+    from tests.spatial import points as P
+    from tests.spatial import refdata
+
+    r = refdata.ref("neighbors")
+    out = {}
+    for method, metric, p in _NN_METHODS:
+        m = r.methods[method]
+        for sid in P.ids("neighbors"):
+            rows = [k for k in range(r.points) if r.inputs["set"][k] == sid]
+            s = P.get(sid)
+            Q = np.array([r.inputs["query"][k] for k in rows])
+            got = (knn or _knn)(lib, metric, p, Q, s.x)
+            if got is None:
+                continue
+            d, i = np.asarray(got[0], dtype=np.float64), np.asarray(got[1], dtype=np.int64)
+            lattice = "lattice" in s.tags
+            eta = max(refdata.bound(metric, 1.0, n=s.n) - refdata.ETA, 2.0**-52)
+            where, units, ul = [], [], []
+            for q, k in enumerate(rows):
+                hi, lo = m.hi[k], m.lo[k]
+                true = hi + lo
+                dk = d[q, -1]
+                if lattice:
+                    want = np.lexsort((np.arange(hi.size), hi))[:NEIGHBOR_K]
+                    ok = np.array_equal(i[q], want) and np.array_equal(d[q], hi[want])
+                    units.append(0.0 if ok else np.inf)
+                else:
+                    mask = np.zeros(true.size, bool)
+                    mask[i[q]] = True
+                    over = max(
+                        float(np.max(true[mask] - dk, initial=0.0)), float(np.max(dk - true[~mask], initial=0.0))
+                    )
+                    units.append(over / (eta * dk) if dk > 0 else (0.0 if over == 0 else np.inf))
+                ul.append(float(ulps(dk, hi[i[q, -1]])))
+                where.append(f"{sid}#{int(r.inputs['pair'][k])}")
+            out[f"{metric}/{sid}"] = region(where, ulp=np.array(ul), contract=np.array(units), bound=1.0)
+    return out or None
+
+
 def sweeps():
     out = []
     for fam in FAMILIES:
@@ -179,4 +277,8 @@ def sweeps():
             return _regions(fam, lib)
 
         out.append(Custom("spatial", fam, run, compare_libs(measure, ("scipy", "sklearn", "R"), seconds=120.0)))
+    out.append(Custom("spatial", "neighbors", lambda: _neighbor_regions("sd"),
+                      compare_libs(_neighbor_regions, ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
+    out.append(Custom("spatial", "kdtree", lambda: _neighbor_regions("sd", _tree_knn),
+                      compare_libs(lambda lib: _neighbor_regions(lib, _tree_knn), ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
     return out

@@ -53,6 +53,47 @@
     "Boost": "boostorg/math 75cb4c4 2026-11-18",
     "Boost in sd.special": "4682f44"
    }
+  },
+  "20261122-233815-842c07a+": {
+   "commit": "842c07a",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/spatial.py",
+    "bench/accuracy/tables.py",
+    "bench/areas.py",
+    "bench/speed/cases/spatial.py",
+    "csrc/bind/module.cpp",
+    "csrc/bind/spatial_bind.cpp",
+    "csrc/spatial/distance.cpp",
+    "csrc/spatial/spatial.hpp",
+    "docs/api/spatial.md",
+    "docs/design/spatial.md",
+    "src/stardust/__init__.py",
+    "src/stardust/spatial/__init__.py",
+    "src/stardust/spatial/_common.py",
+    "tests/README.md",
+    "tests/golden/cases_spatial.py",
+    "tests/golden/data/spatial.json",
+    "tests/spatial/test_api_surface.py"
+   ],
+   "date": "2026-11-22T23:38:15",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   }
   }
  },
  "sweeps": [
@@ -107,6 +148,7 @@
      ]
     }
    },
+   "run": "20261122-233815-842c07a+",
    "comparators": {
     "scipy": {
      "hamming": {
@@ -172,9 +214,8 @@
      }
     }
    },
-   "comparator_seconds": 120.0,
-   "run": "20261122-225345-3e3a1b4+",
-   "comparators_run": "20261122-225345-3e3a1b4+"
+   "comparators_run": "20261122-225345-3e3a1b4+",
+   "comparator_seconds": 120.0
   },
   {
    "id": "spatial/distances",
@@ -436,6 +477,7 @@
      ]
     }
    },
+   "run": "20261122-233815-842c07a+",
    "comparators": {
     "scipy": {
      "braycurtis": {
@@ -856,9 +898,8 @@
      }
     }
    },
-   "comparator_seconds": 120.0,
-   "run": "20261122-225345-3e3a1b4+",
-   "comparators_run": "20261122-225345-3e3a1b4+"
+   "comparators_run": "20261122-225345-3e3a1b4+",
+   "comparator_seconds": 120.0
   },
   {
    "id": "spatial/haversine",
@@ -878,6 +919,7 @@
      ]
     }
    },
+   "run": "20261122-233815-842c07a+",
    "comparators": {
     "sklearn": {
      "haversine": {
@@ -894,9 +936,746 @@
      }
     }
    },
-   "comparator_seconds": 120.0,
-   "run": "20261122-225345-3e3a1b4+",
-   "comparators_run": "20261122-225345-3e3a1b4+"
+   "comparators_run": "20261122-225345-3e3a1b4+",
+   "comparator_seconds": 120.0
+  },
+  {
+   "id": "spatial/kdtree",
+   "area": "spatial",
+   "name": "kdtree",
+   "points": 924,
+   "regions": {
+    "euclidean/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "euclidean/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "euclidean/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "euclidean/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "euclidean/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "euclidean/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "euclidean/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "euclidean/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "euclidean/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "euclidean/nn/normal3": {
+     "points": 50,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.2576249515806719,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#17"
+     ]
+    },
+    "euclidean/nn/normal16": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.14606624187583742,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#7"
+     ]
+    },
+    "euclidean/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.26024744909219255,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#6"
+     ]
+    },
+    "cityblock/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "cityblock/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "cityblock/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "cityblock/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "cityblock/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "cityblock/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "cityblock/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "cityblock/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "cityblock/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "cityblock/nn/normal3": {
+     "points": 50,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.27354876939539596,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#18"
+     ]
+    },
+    "cityblock/nn/normal16": {
+     "points": 30,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "contract": 0.16199915083627603,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#26"
+     ]
+    },
+    "cityblock/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#0"
+     ]
+    },
+    "chebyshev/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "chebyshev/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "chebyshev/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "chebyshev/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "chebyshev/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "chebyshev/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "chebyshev/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "chebyshev/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "chebyshev/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "chebyshev/nn/normal3": {
+     "points": 50,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#0"
+     ]
+    },
+    "chebyshev/nn/normal16": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#0"
+     ]
+    },
+    "chebyshev/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#0"
+     ]
+    }
+   },
+   "run": "20261122-233815-842c07a+"
+  },
+  {
+   "id": "spatial/neighbors",
+   "area": "spatial",
+   "name": "neighbors",
+   "points": 924,
+   "regions": {
+    "euclidean/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "euclidean/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "euclidean/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "euclidean/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "euclidean/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "euclidean/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "euclidean/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "euclidean/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "euclidean/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "euclidean/nn/normal3": {
+     "points": 50,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.2576249515806719,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#17"
+     ]
+    },
+    "euclidean/nn/normal16": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.14606624187583742,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#7"
+     ]
+    },
+    "euclidean/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.26024744909219255,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#6"
+     ]
+    },
+    "cityblock/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "cityblock/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "cityblock/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "cityblock/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "cityblock/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "cityblock/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "cityblock/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "cityblock/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "cityblock/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "cityblock/nn/normal3": {
+     "points": 50,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.27354876939539596,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#18"
+     ]
+    },
+    "cityblock/nn/normal16": {
+     "points": 30,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "contract": 0.16199915083627603,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#26"
+     ]
+    },
+    "cityblock/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#0"
+     ]
+    },
+    "chebyshev/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "chebyshev/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "chebyshev/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "chebyshev/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "chebyshev/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "chebyshev/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "chebyshev/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "chebyshev/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "chebyshev/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "chebyshev/nn/normal3": {
+     "points": 50,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#0"
+     ]
+    },
+    "chebyshev/nn/normal16": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#0"
+     ]
+    },
+    "chebyshev/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#0"
+     ]
+    }
+   },
+   "run": "20261122-233815-842c07a+"
   }
  ]
 }

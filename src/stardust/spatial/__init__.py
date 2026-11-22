@@ -8,7 +8,7 @@ sd.spatial.distance); inputs and options follow this library's rules (decisions 
 docs/design/spatial.md §1.1).
 
 The public names come milestone by milestone (docs/design/spatial.md §8): SPT1 the distances (pdist,
-cdist, squareform and the fourteen distance functions).
+cdist, squareform and the fourteen distance functions), SPT3 KDTree with its query.
 """
 
 from ._distance import (
@@ -30,6 +30,8 @@ from ._distance import (
     sqeuclidean,
     squareform,
 )
+from ._kdtree import KDTree
+from ._neighbors import kneighbors, radius_neighbors
 
 __all__ = [
     "pdist",
@@ -49,4 +51,7 @@ __all__ = [
     "minkowski",
     "seuclidean",
     "sqeuclidean",
+    "KDTree",
+    "kneighbors",
+    "radius_neighbors",
 ]

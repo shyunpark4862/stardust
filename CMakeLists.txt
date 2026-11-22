@@ -102,6 +102,8 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/sparse/arpack.cpp
   csrc/sparse/svds.cpp
   csrc/spatial/distance.cpp
+  csrc/spatial/kdtree.cpp
+  csrc/spatial/neighbors.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp

@@ -167,3 +167,109 @@ def broadcast(a, b, name, ua, ub):
             raise ValueError(f"{name}(): shapes could not be broadcast together: {tuple(ua)} {tuple(ub)}")
         out.append(y if x == 1 else x)
     return tuple(out)
+
+
+# ---- the neighbour searches' options (KDTree.query, kneighbors; docs/api/spatial.md §4, SPT55, SPT58) ----
+
+
+def real(v, name, arg):
+    """An int-or-float option as a float (numpy's floats too); TypeError for anything else."""
+    r = _real_option(v, name, arg)
+    if r is None and type(v).__module__ == "numpy" and getattr(getattr(v, "dtype", None), "kind", "") == "f":
+        r = float(v)
+    if r is None:
+        raise TypeError(f"{name}(): '{arg}' must be an int or a float, not {type_name(v)}")
+    return r
+
+
+def tree_p(p, name):
+    """The Minkowski p of a tree search: at least 1, or inf (scipy's rule; NaN is a ValueError)."""
+    r = real(p, name, "p")
+    if not r >= 1.0:
+        raise ValueError(f"{name}(): 'p' must be a number of at least 1 or inf, not {p!r}")
+    return r
+
+
+def upper_bound(v, name):
+    """distance_upper_bound: nonnegative or inf (SPT19; scipy squares it, so -1 acts as 1 there)."""
+    r = real(v, name, "distance_upper_bound")
+    if not r >= 0.0:
+        raise ValueError(f"{name}(): 'distance_upper_bound' must be a nonnegative number or inf, not {v!r}")
+    return r
+
+
+def _int(v):
+    from ..sparse._common import is_int
+
+    return is_int(v)
+
+
+_INT64_MAX = 2**63 - 1
+
+
+def k_ranks(k, name):
+    """k checked: an int k >= 1 as itself (the ranks 1 .. k), or a sequence of ints >= 1 (a list, a
+    tuple or a 1-D integer array; any order, repeats allowed: scipy's meaning of the ranks to return) as
+    a list. bool and floats are TypeErrors; 0, negatives and an empty sequence ValueErrors (SPT55; scipy
+    takes k=True and k=2.0, and k=[0] kills its process)."""
+    import operator
+
+    what = "an int or a sequence of ints"
+    if _int(k):
+        k = operator.index(k)
+        if k < 1:
+            raise ValueError(f"{name}(): 'k' must be at least 1, not {k}")
+        if k > _INT64_MAX:
+            raise OverflowError(f"{name}(): 'k' is out of range")
+        return k
+    if isinstance(k, (list, tuple)):
+        items = list(k)
+    elif isinstance(k, _sd.ndarray) or type(k).__module__ == "numpy":
+        if getattr(k, "ndim", 0) != 1:
+            raise TypeError(f"{name}(): 'k' must be {what}, not a {getattr(k, 'ndim', 0)}-D array")
+        items = k.tolist()
+    else:
+        raise TypeError(f"{name}(): 'k' must be {what}, not {type_name(k)}")
+    if not items:
+        raise ValueError(f"{name}(): 'k' must not be an empty sequence")
+    for v in items:
+        if not _int(v):
+            raise TypeError(f"{name}(): 'k' must be {what}, not a sequence holding {type_name(v)}")
+    items = [operator.index(v) for v in items]
+    bad = next((v for v in items if v < 1), None)
+    if bad is not None:
+        raise ValueError(f"{name}(): every entry of 'k' must be at least 1, not {bad}")
+    if max(items) > _INT64_MAX:
+        raise OverflowError(f"{name}(): 'k' is out of range")
+    return items
+
+
+# ---- kneighbors and radius_neighbors (SPT2; docs/api/spatial.md §1.2, §3, §4) ----
+
+
+def finite(a, name, arg):
+    """ValueError unless every entry of the data is finite (SPT12: the neighbour searches); bool and int64
+    data always are."""
+    if a.dtype == _sd.float64 and a.size and not bool(_sd.all(_sd.isfinite(a))):
+        raise ValueError(f"{name}(): '{arg}' must be finite")
+
+
+def radius(r, name, rows):
+    """The radius of radius_neighbors (query_ball_point's rule): a nonnegative number or inf, or an array
+    of them that broadcasts to (rows,); NaN and negatives are ValueErrors (scipy compares r squared, so -1
+    acts as 1 there). As a float64 (rows,) array."""
+    sd = _sd
+    if isinstance(r, (int, float)) or type(r).__module__ == "numpy" and getattr(r, "ndim", 1) == 0:
+        v = real(r, name, "r")
+        if not v >= 0.0:
+            raise ValueError(f"{name}(): 'r' must be a nonnegative number or inf, not {r!r}")
+        return sd.full((rows,), v)
+    try:
+        a = data(r, name, "r")
+    except TypeError:
+        raise TypeError(f"{name}(): 'r' must be a number or an array of numbers, not {type_name(r)}") from None
+    if a.ndim > 1 or a.ndim == 1 and a.shape[0] not in (1, rows):
+        raise ValueError(f"{name}(): 'r' of shape {tuple(a.shape)} does not broadcast to the {rows} rows of 'XA'")
+    if a.size and not bool(sd.all(a >= 0.0)):  # NaN too
+        raise ValueError(f"{name}(): every entry of 'r' must be a nonnegative number or inf")
+    return sd.broadcast_to(a, (rows,)).copy()  # contiguous, the caller's array untouched
