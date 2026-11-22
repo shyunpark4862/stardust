@@ -79,7 +79,12 @@ def common_dtype(a, b):
     return (a if a.dtype == t else a.astype(t)), (b if b.dtype == t else b.astype(t))
 
 
+_METRIC_SET = frozenset(METRICS)
+
+
 def metric(v, name):
+    if type(v) is str and v in _METRIC_SET:  # the common case without _choice's checks (small calls, SPT6)
+        return v
     return _choice(v, name, "metric", METRICS)
 
 

@@ -66,8 +66,9 @@ def check_invariants(t, x):
 
 @pytest.mark.parametrize(
     ("n", "m", "leafsize"),
-    [(0, 3, 10), (1, 2, 10), (10, 3, 10), (11, 3, 10), (200, 3, 1), (513, 4, 7), (1000, 1, 10), (300, 0, 5)],
-)
+    [(0, 3, 10), (1, 2, 10), (10, 3, 10), (11, 3, 10), (200, 3, 1), (513, 4, 7), (1000, 1, 10), (300, 0, 5),
+     (70000, 3, 3000)],  # the last: the pool's selection at the top (SPT79)
+)  # fmt: skip
 def test_build_invariants(n, m, leafsize):
     x = np.random.default_rng(n + 7 * m).standard_normal((n, m))
     check_invariants(S.KDTree(x, leafsize=leafsize), x)
@@ -82,6 +83,17 @@ def test_build_invariants_with_many_equal_coordinates():
     assert t.size == node_count(700, 4)  # split even with no width (SPT50; scipy stops there)
     s = P.get("dup/3")
     check_invariants(S.KDTree(s.x), s.x)
+
+
+def test_build_invariants_of_the_pool_selection_with_ties():
+    # SPT79: the top nodes are split by a sampled band and nth_element on it; many equal coordinates put
+    # the band's ends among ties, broken by the index
+    g = np.random.default_rng(3)
+    x = g.integers(0, 4, (90000, 2)).astype(np.float64)
+    check_invariants(S.KDTree(x, leafsize=5000), x)
+    x = np.zeros((70000, 2))
+    x[::7, 1] = 1.0
+    check_invariants(S.KDTree(x, leafsize=5000), x)
 
 
 def test_attributes():

@@ -4,8 +4,9 @@ milestone SPT2).
 The arguments are checked here as cdist checks them (the metric and its options, the data, the default V
 and VI from XA over XB), and the data must be finite (SPT12). The search is stardust._core.spatial's
 (csrc/spatial/neighbors.cpp): every distance it returns or compares is cdist's value of the pair, so the
-answer is fixed by the definition whatever the path (direct, or the GEMM pre-selection of §3.2 for
-euclidean and sqeuclidean), the thread count or Accelerate's thread mode.
+answer is fixed by the definition whatever the path (direct, the GEMM pre-selection of §3.2 for
+euclidean and sqeuclidean, or a KD tree over XB for the Minkowski metrics, SPT73), the thread count or
+Accelerate's thread mode. path (tests): 0 by shape, 1 direct, 2 GEMM, 3 the tree.
 """
 
 import math
@@ -39,6 +40,35 @@ def _sides(name, XA, XB, metric, p, w, V, VI):
     return A, B, km, pv, wv, aux
 
 
+# The KD-tree path (SPT73): the metrics a KDTree searches, with their p; any other metric, weights or
+# p < 1 take the brute force. The tree's kernels are cdist's and its order is (d, j), so the answer is the
+# same on every path (docs/design/spatial.md §1.3); the path only changes the time.
+_TREE_P = {"euclidean": 2.0, "cityblock": 1.0, "chebyshev": math.inf}
+
+
+def _tree_p(km, pv, wv):
+    if wv is not None:
+        return None
+    if km in _TREE_P:
+        return _TREE_P[km]
+    return pv if km == "minkowski" and pv >= 1.0 else None
+
+
+def _use_tree(path, tp, ma, mb, n, k=1):
+    """Whether a search goes through a KD tree over XB (decision SPT73, measured in SPT6): forced (path 3),
+    or few columns and enough rows on both sides that building the tree pays. minkowski's brute force
+    takes a pow per term, so its tree pays from smaller shapes."""
+    if tp is None:
+        return False
+    if path:
+        return path == 3
+    if n < 1:
+        return False
+    if tp not in (1.0, 2.0, math.inf):  # minkowski
+        return n <= 8 and mb >= 1024 and ma * mb >= 1 << 17
+    return n <= 4 and k <= 32 and mb >= 2048 and (ma >= 2048 or (ma >= 512 and mb >= 32768))
+
+
 def _ranks(k, name):
     """(the largest rank, the ranks as a list or None for 1 .. k, squeeze: k is the int 1)."""
     kk = C.k_ranks(k, name)  # an int, or the ranks as a list
@@ -56,7 +86,11 @@ def _knn(name, XA, XB, k, metric, p, w, V, VI, distance_upper_bound, path=0):
     width = kmax if ranks is None else len(ranks)
     C.check_alloc(16 * ma * width, name)
     kc = max(1, min(kmax, mb))  # ranks past the data points are the fill (inf, mB)
-    d, i = _core._kneighbors(A, B, km, pv, wv, aux, kc, ub, path)
+    tp = _tree_p(km, pv, wv)
+    if _use_tree(path, tp, ma, mb, A.shape[1], kc):
+        d, i = _core._KDTree(B, 10).query(A, sd.arange(1, kc + 1, dtype=sd.int64), tp, ub)
+    else:
+        d, i = _core._kneighbors(A, B, km, pv, wv, aux, kc, ub, 0 if path == 3 else path)
     if ranks is None:
         if kmax > kc:
             d = sd.concat([d, sd.full((ma, kmax - kc), math.inf)], axis=1)
@@ -78,7 +112,12 @@ def _radius(name, XA, XB, r, metric, p, w, V, VI, return_length, path=0):
     C.flag(return_length, name, "return_length")
     A, B, km, pv, wv, aux = _sides(name, XA, XB, metric, p, w, V, VI)
     rr = C.radius(r, name, A.shape[0])
-    out = _core._radius_neighbors(A, B, km, pv, wv, aux, rr, return_length, path)
+    tp = _tree_p(km, pv, wv)
+    if _use_tree(path, tp, A.shape[0], B.shape[0], A.shape[1]):
+        Ac = A if A._flags()["c_contiguous"] else A.copy()
+        out = _core._ball_point(_core._KDTree(B, 10), Ac, rr, tp, return_length)
+    else:
+        out = _core._radius_neighbors(A, B, km, pv, wv, aux, rr, return_length, 0 if path == 3 else path)
     if return_length:
         return out
     indptr, indices, distances = out

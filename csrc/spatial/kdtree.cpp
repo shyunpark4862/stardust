@@ -9,6 +9,7 @@
 //                                 ub >= 0 or inf -> (distances (Q, R) float64, indices (Q, R) int64):
 //                                 the ranks-th nearest by (distance, index) with distance < ub, the
 //                                 missing ones inf and n
+//   t.data()                      new (n, m) float64: the data in input order (from the leaf-order copy)
 //   t._state()                    (indices, starts, ends, rights, boxes): the tree's arrays, for the tests
 //
 // Every query point is searched by one task from start to end; the tasks are blocks of kQueryBlock points
@@ -42,8 +43,24 @@ constexpr int64_t kParallelWork = 1 << 15;
 constexpr int64_t kBoxChunk = 1 << 14;     // points a task scans for the box of a node at the top
 constexpr int64_t kSubtreeMin = 1 << 12;   // the smallest subtree built as one task
 constexpr int64_t kSubtreeShare = 64;      // ... or n / 64 points, whichever is larger (SPT53)
+constexpr int64_t kLevelNodes = 4;         // nodes of a top level split side by side (SPT79)
 constexpr int64_t kQueryBlock = 64;        // query points a task searches (SPT54)
 constexpr int64_t kQueryWorkPerPoint = 64;  // the work units of one query point per coordinate
+
+// One row of m doubles: inline copies for the small m of a tree (a std::copy of 24 bytes is a memmove call).
+inline void copy_row(const double* src, int64_t m, double* dst) {
+    switch (m) {
+        case 1: dst[0] = src[0]; return;
+        case 2: __builtin_memcpy_inline(dst, src, 16); return;
+        case 3: __builtin_memcpy_inline(dst, src, 24); return;
+        case 4: __builtin_memcpy_inline(dst, src, 32); return;
+        case 5: __builtin_memcpy_inline(dst, src, 40); return;
+        case 6: __builtin_memcpy_inline(dst, src, 48); return;
+        case 7: __builtin_memcpy_inline(dst, src, 56); return;
+        case 8: __builtin_memcpy_inline(dst, src, 64); return;
+        default: std::copy(src, src + m, dst);
+    }
+}
 
 template <class F>
 void run_tasks(int64_t ntasks, bool split, F&& fn) {
@@ -129,8 +146,7 @@ struct Builder {
         run_tasks(chunks, split, [&](int64_t k) {
             for (int64_t j = k * kBoxChunk, end = std::min(c, (k + 1) * kBoxChunk); j < end; ++j) {
                 const int64_t from = keys[static_cast<size_t>(j)].pos;
-                const double* p = row(from);
-                std::copy(p, p + m, rows.data() + j * m);
+                copy_row(row(from), m, rows.data() + j * m);
                 ids[static_cast<size_t>(j)] = t.idx[static_cast<size_t>(from)];
             }
         });
@@ -139,6 +155,68 @@ struct Builder {
             std::copy(rows.data() + j0 * m, rows.data() + j1 * m, row(s + j0));
             std::copy(ids.begin() + j0, ids.begin() + j1, t.idx.begin() + s + j0);
         });
+    }
+
+    // keys[0 .. want) become the want smallest under `less` (a total order), on the pool (SPT79): two keys of
+    // a sorted sample around rank `want` bracket the band of keys between them; chunks count the keys below
+    // and in the band, scatter below / band / above into place, and nth_element runs on the band alone.
+    // False (nothing changed) when the node is small or the band misses rank `want`: the caller's
+    // nth_element then does it. Either way the set in front is the one the total order fixes.
+    template <class Less>
+    bool select_on_pool(int64_t want, const Less& less) {
+        const int64_t c = static_cast<int64_t>(keys.size());
+        constexpr int64_t kSample = 1 << 12, kMargin = 48;
+        if (c < 16 * kSample) return false;
+        const int64_t stride = c / kSample;
+        std::vector<Key> sample(static_cast<size_t>(kSample));
+        for (int64_t j = 0; j < kSample; ++j) sample[static_cast<size_t>(j)] = keys[static_cast<size_t>(j * stride)];
+        std::sort(sample.begin(), sample.end(), less);
+        const int64_t at = want / stride;
+        const Key plo = sample[static_cast<size_t>(std::max<int64_t>(0, at - kMargin))];
+        const Key phi = sample[static_cast<size_t>(std::min<int64_t>(kSample - 1, at + kMargin))];
+        const int64_t chunks = (c + kBoxChunk - 1) / kBoxChunk;
+        std::vector<int64_t> nb(static_cast<size_t>(chunks)), nm(static_cast<size_t>(chunks));
+        auto side = [&](const Key& k) { return less(k, plo) ? 0 : (less(phi, k) ? 2 : 1); };
+        run_tasks(chunks, true, [&](int64_t q) {
+            int64_t b = 0, md = 0;
+            for (int64_t j = q * kBoxChunk, end = std::min(c, (q + 1) * kBoxChunk); j < end; ++j) {
+                const int sd_ = side(keys[static_cast<size_t>(j)]);
+                b += sd_ == 0;
+                md += sd_ == 1;
+            }
+            nb[static_cast<size_t>(q)] = b;
+            nm[static_cast<size_t>(q)] = md;
+        });
+        int64_t B = 0, M = 0;
+        for (int64_t q = 0; q < chunks; ++q) {
+            B += nb[static_cast<size_t>(q)];
+            M += nm[static_cast<size_t>(q)];
+        }
+        if (!(B <= want && want < B + M)) return false;
+        std::vector<int64_t> ob(static_cast<size_t>(chunks)), om(static_cast<size_t>(chunks)),
+            oa(static_cast<size_t>(chunks));
+        int64_t pb = 0, pm = B, pa = B + M;
+        for (int64_t q = 0; q < chunks; ++q) {
+            const int64_t len = std::min(c, (q + 1) * kBoxChunk) - q * kBoxChunk;
+            ob[static_cast<size_t>(q)] = pb;
+            om[static_cast<size_t>(q)] = pm;
+            oa[static_cast<size_t>(q)] = pa;
+            pb += nb[static_cast<size_t>(q)];
+            pm += nm[static_cast<size_t>(q)];
+            pa += len - nb[static_cast<size_t>(q)] - nm[static_cast<size_t>(q)];
+        }
+        std::vector<Key> out(static_cast<size_t>(c));
+        run_tasks(chunks, true, [&](int64_t q) {
+            int64_t b = ob[static_cast<size_t>(q)], md = om[static_cast<size_t>(q)], a = oa[static_cast<size_t>(q)];
+            for (int64_t j = q * kBoxChunk, end = std::min(c, (q + 1) * kBoxChunk); j < end; ++j) {
+                const Key& k = keys[static_cast<size_t>(j)];
+                const int sd_ = side(k);
+                out[static_cast<size_t>(sd_ == 0 ? b++ : (sd_ == 1 ? md++ : a++))] = k;
+            }
+        });
+        std::nth_element(out.begin() + B, out.begin() + want, out.begin() + B + M, less);
+        keys.swap(out);
+        return true;
     }
 
     // A leaf: its points in index order (the tree does not depend on nth_element's arrangement).
@@ -176,9 +254,11 @@ struct Builder {
                 keys[static_cast<size_t>(j)] = Key{m ? row(s + j)[dim] : 0.0, s + j};
         });
         const int64_t* idx = t.idx.data();
-        std::nth_element(keys.begin(), keys.begin() + (mid - s), keys.end(), [idx](const Key& a, const Key& b) {
+        auto less = [idx](const Key& a, const Key& b) {
             return a.key < b.key || (a.key == b.key && idx[a.pos] < idx[b.pos]);
-        });
+        };
+        if (!(par && select_on_pool(mid - s, less)))
+            std::nth_element(keys.begin(), keys.begin() + (mid - s), keys.end(), less);
         move_rows(s, e, par);
         t.nodes[static_cast<size_t>(node)] = KdNode{s, e, node + 1 + count(mid - s)};
         return mid;
@@ -199,20 +279,6 @@ struct Builder {
     struct Task {
         int64_t node, s, e;
     };
-
-    // The top of the tree on the calling thread down to subtrees of at most `grain` points, which are
-    // collected (in preorder) for the pool.
-    void top(int64_t node, int64_t s, int64_t e, int64_t grain, std::vector<Task>& tasks) {
-        if (e - s <= grain || e - s <= leafsize) {
-            tasks.push_back({node, s, e});
-            return;
-        }
-        box_of(node, s, e, true);
-        const int64_t mid = split(node, s, e, true);
-        const int64_t right = t.nodes[static_cast<size_t>(node)].right;
-        top(node + 1, s, mid, grain, tasks);
-        top(right, mid, e, grain, tasks);
-    }
 };
 
 }  // namespace
@@ -234,7 +300,7 @@ KdTree kd_build(const double* src, int64_t n, int64_t m, int64_t ld, int64_t lea
     run_tasks(chunks, split, [&](int64_t c) {
         for (int64_t i = c * kBoxChunk, e = std::min(n, (c + 1) * kBoxChunk); i < e; ++i) {
             t.idx[static_cast<size_t>(i)] = i;
-            std::copy(src + i * ld, src + i * ld + m, t.data.data() + i * m);
+            copy_row(src + i * ld, m, t.data.data() + i * m);
         }
     });
     Builder b{m, leafsize, t, {}, {}, {}, {}};
@@ -245,8 +311,38 @@ KdTree kd_build(const double* src, int64_t n, int64_t m, int64_t ld, int64_t lea
         b.serial(0, 0, n);
         return t;
     }
-    std::vector<Builder::Task> tasks;
-    b.top(0, 0, n, std::max(kSubtreeMin, n / kSubtreeShare), tasks);
+    // The top of the tree level by level down to subtrees of at most `grain` points (SPT79): a level of a
+    // few nodes splits them one after another, each on the pool (box, keys, rows by chunks); a level of
+    // kLevelNodes or more splits its nodes side by side, each on one thread. Either way a node's split is
+    // fixed by its points, so the tree is the same bytes.
+    const int64_t grain = std::max(kSubtreeMin, n / kSubtreeShare);
+    std::vector<Builder::Task> tasks, level{{0, 0, n}};
+    while (!level.empty()) {
+        std::vector<Builder::Task> work, next;
+        for (const auto& k : level) (k.e - k.s <= grain || k.e - k.s <= leafsize ? tasks : work).push_back(k);
+        std::vector<int64_t> mids(work.size());
+        const int64_t nw = static_cast<int64_t>(work.size());
+        if (nw >= kLevelNodes) {
+            run_tasks(nw, true, [&](int64_t i) {
+                const auto& k = work[static_cast<size_t>(i)];
+                Builder local{m, leafsize, t, b.counts, {}, {}, {}};
+                local.box_of(k.node, k.s, k.e, false);
+                mids[static_cast<size_t>(i)] = local.split(k.node, k.s, k.e, false);
+            });
+        } else {
+            for (int64_t i = 0; i < nw; ++i) {
+                const auto& k = work[static_cast<size_t>(i)];
+                b.box_of(k.node, k.s, k.e, true);
+                mids[static_cast<size_t>(i)] = b.split(k.node, k.s, k.e, true);
+            }
+        }
+        for (int64_t i = 0; i < nw; ++i) {
+            const auto& k = work[static_cast<size_t>(i)];
+            next.push_back({k.node + 1, k.s, mids[static_cast<size_t>(i)]});
+            next.push_back({t.nodes[static_cast<size_t>(k.node)].right, mids[static_cast<size_t>(i)], k.e});
+        }
+        level = std::move(next);
+    }
     run_tasks(static_cast<int64_t>(tasks.size()), true, [&](int64_t i) {
         const auto& k = tasks[static_cast<size_t>(i)];
         Builder local{m, leafsize, t, b.counts, {}, {}, {}};
@@ -307,20 +403,17 @@ NDArray f64_vector(const double* v, int64_t m) {
     return out;
 }
 
-KdTree* new_tree(nb::handle data, int64_t leafsize) {
+KdTree new_tree(nb::handle data, int64_t leafsize) {
     const Rows r = rows_arg(data, "_KDTree");
     if (leafsize < 1) throw nb::value_error("_KDTree(): leafsize < 1");
     bool finite = true;
-    auto* t = new KdTree();
+    KdTree t;
     {
         const parallel::Unlocked unlocked(r.rows * std::max<int64_t>(r.cols, 1) >= kParallelWork);
         finite = all_finite(r);
-        if (finite) *t = kd_build(r.p, r.rows, r.cols, r.ld, leafsize);
+        if (finite) t = kd_build(r.p, r.rows, r.cols, r.ld, leafsize);
     }
-    if (!finite) {
-        delete t;
-        throw nb::value_error("KDTree(): 'data' must be finite");
-    }
+    if (!finite) throw nb::value_error("KDTree(): 'data' must be finite");
     return t;
 }
 
@@ -396,6 +489,20 @@ nb::tuple tree_query(const KdTree& t, nb::handle xh, nb::handle ranks_h, double 
     return nb::make_tuple(wrap(std::move(d)), wrap(std::move(i)));
 }
 
+// The data in input order (n, m), from the leaf-order copy: row idx[i] is row i of the tree's data.
+NDArray tree_data(const KdTree& t) {
+    const int64_t shape[] = {t.n, t.m};
+    NDArray out = new_array(DType::Float64, shape);
+    double* o = reinterpret_cast<double*>(out.data);
+    const parallel::Unlocked unlocked(t.n * std::max<int64_t>(t.m, 1) >= kParallelWork);
+    const int64_t chunks = (t.n + kBoxChunk - 1) / kBoxChunk;
+    run_tasks(chunks, t.n * std::max<int64_t>(t.m, 1) >= kParallelWork, [&](int64_t c) {
+        for (int64_t i = c * kBoxChunk, e = std::min(t.n, (c + 1) * kBoxChunk); i < e; ++i)
+            copy_row(t.data.data() + i * t.m, t.m, o + t.idx[static_cast<size_t>(i)] * t.m);
+    });
+    return out;
+}
+
 nb::tuple tree_state(const KdTree& t) {
     const int64_t nn = static_cast<int64_t>(t.nodes.size());
     const int64_t s1[] = {t.n}, s2[] = {nn}, s3[] = {nn, 2 * t.m};
@@ -420,11 +527,7 @@ void bind_kdtree(nb::module_& m) {
     nb::class_<KdTree>(m, "_KDTree")
         .def(
             "__init__",
-            [](KdTree* self, nb::handle data, int64_t leafsize) {
-                KdTree* t = new_tree(data, leafsize);
-                new (self) KdTree(std::move(*t));
-                delete t;
-            },
+            [](KdTree* self, nb::handle data, int64_t leafsize) { new (self) KdTree(new_tree(data, leafsize)); },
             nb::arg("data"), nb::arg("leafsize")
         )
         .def_ro("n", &KdTree::n)
@@ -439,6 +542,7 @@ void bind_kdtree(nb::module_& m) {
         )
         .def("maxes", [](const KdTree& t) { return wrap(f64_vector(t.box.data() + t.m, t.m)); })
         .def("query", &tree_query, nb::arg("x"), nb::arg("ranks"), nb::arg("p"), nb::arg("ub"))
+        .def("data", [](const KdTree& t) { return wrap(tree_data(t)); })
         .def("_state", &tree_state);
 }
 

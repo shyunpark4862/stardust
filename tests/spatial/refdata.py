@@ -26,7 +26,7 @@ of it when correctly rounded, and the double-double reference holds nothing fine
     euclidean, w_euclidean          (gamma_{m+3} / 2 + u) d
     seuclidean                      (gamma_{m+4} / 2 + u) d (the rounding of 1 / V too)
     sqeuclidean, cityblock          gamma_{m+2} s; w_sqeuclidean gamma_{m+3} s
-    minkowski                       (4u + (gamma_m + 2 c_pow) / p + c_pow) d, c_pow = 2u (SPT30)
+    minkowski                       (4u + (gamma_m + 2 c_pow) / p + c_pow) d, c_pow = gamma_2 (SPT30, SPT80)
     canberra                        gamma_{m+3} d; braycurtis gamma_{2m+3} d
     cosine                          u (3 sqrt(d) + (2m + 8) d) + (m + 4)^2 u^2 (SPT29: normalized rows)
     correlation                     cosine's + 2 (rho_x^2 + rho_y^2), rho = gamma_{2m+2} max|x_i| sqrt(sum w)
@@ -52,7 +52,7 @@ DATA = pathlib.Path(__file__).parent / "data"
 FAMILIES = ("distances", "counting", "haversine", "neighbors")
 U = 2.0**-53
 TILE_BLOCK = 32  # the tile order's block of terms (csrc/spatial/metric.hpp, SPT26)
-C_POW = 2 * U  # libm pow within one ULP (SPT0)
+C_POW = 2 * U / (1 - 2 * U)  # gamma_2: libm pow within one ULP (SPT0), and p = 3's (a a) a (SPT80)
 ETA = 2.0**-1074
 C_HAVERSINE = 20.0  # SPT31
 

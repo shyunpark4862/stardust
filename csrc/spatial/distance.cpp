@@ -484,6 +484,33 @@ void cdist_scalar(int64_t ma, int64_t mb, int64_t n, int64_t cost, double* out, 
     });
 }
 
+// The same drivers for kernels that take up to kLanes pairs of one row at a time (SPT6: mahalanobis):
+// f(i, j0, cnt, scratch, o) writes the distances of row i with rows j0 .. j0 + cnt of the second side
+// into o[0 .. cnt); scratch holds 2 kLanes n doubles per task.
+template <class F>
+void cdist_lanes(int64_t ma, int64_t mb, int64_t n, int64_t cost, double* out, F f) {
+    if (ma == 0 || mb == 0) return;
+    const int64_t per = std::max<int64_t>(1, kTaskWork / std::max<int64_t>(1, mb * cost));
+    for_tasks((ma + per - 1) / per, ma * mb * cost, [&](int64_t t) {
+        std::vector<double> scratch(static_cast<size_t>(2 * kLanes * std::max<int64_t>(n, 1)));
+        for (int64_t i = t * per, e = std::min(ma, (t + 1) * per); i < e; ++i)
+            for (int64_t j = 0; j < mb; j += kLanes)
+                f(i, j, static_cast<int>(std::min<int64_t>(kLanes, mb - j)), scratch.data(), out + i * mb + j);
+    });
+}
+
+template <class F>
+void pdist_lanes(int64_t m, int64_t n, int64_t cost, double* out, F f) {
+    if (m < 2) return;
+    const std::vector<int64_t> bounds = pdist_bounds(m, 1, cost);
+    for_tasks(static_cast<int64_t>(bounds.size()) - 1, m * (m - 1) / 2 * cost, [&](int64_t t) {
+        std::vector<double> scratch(static_cast<size_t>(2 * kLanes * std::max<int64_t>(n, 1)));
+        for (int64_t i = bounds[t]; i < bounds[t + 1]; ++i)
+            for (int64_t j = i + 1; j < m; j += kLanes)
+                f(i, j, static_cast<int>(std::min<int64_t>(kLanes, m - j)), scratch.data(), out + cond_index(i, j, m));
+    });
+}
+
 template <class F>
 void pdist_scalar(int64_t m, int64_t n, int64_t cost, double* out, F f) {
     if (m < 2) return;
@@ -534,6 +561,12 @@ struct Call {
         const int64_t cost = pair_cost(*plan);
         if (b) cdist_scalar(a->rows, b->rows, plan->n, cost, out, f);
         else pdist_scalar(a->rows, plan->n, cost, out, f);
+    }
+    template <class F>
+    void lanes(F f) const {
+        const int64_t cost = pair_cost(*plan);
+        if (b) cdist_lanes(a->rows, b->rows, plan->n, cost, out, f);
+        else pdist_lanes(a->rows, plan->n, cost, out, f);
     }
     const Mat& second() const { return b ? *b : *a; }
 };
@@ -642,8 +675,14 @@ void run(const Call& c) {
         }
         case Metric::Mahalanobis: {
             const Mat &A = *c.a, &B = c.second();
-            c.scalar([&](int64_t i, int64_t j, double* z) {
-                return mahalanobis_pair(A.row<double>(i), B.row<double>(j), p.vi, n, z);
+            c.lanes([&](int64_t i, int64_t j0, int cnt, double* scratch, double* o) {
+                const double* xs[kLanes];
+                const double* ys[kLanes];
+                for (int l = 0; l < cnt; ++l) {
+                    xs[l] = A.row<double>(i);
+                    ys[l] = B.row<double>(j0 + l);
+                }
+                mahalanobis_lanes(xs, ys, cnt, p.vi, n, scratch, o);
             });
             return;
         }
@@ -691,8 +730,23 @@ void paired_run(const Mat& U, const Mat& V, const Plan& p, double* out) {
         cu = cosines(U);
         cv = cosines(V);
     }
+    if (p.metric == Metric::Mahalanobis) {  // kLanes pairs at a time, the bits of mahalanobis_pair
+        for_tasks((P + per - 1) / per, P * cost, [&](int64_t t) {
+            std::vector<double> scratch(static_cast<size_t>(2 * kLanes * std::max<int64_t>(n, 1)));
+            const double* xs[kLanes];
+            const double* ys[kLanes];
+            for (int64_t k = t * per, e = std::min(P, (t + 1) * per); k < e; k += kLanes) {
+                const int cnt = static_cast<int>(std::min<int64_t>(kLanes, e - k));
+                for (int l = 0; l < cnt; ++l) {
+                    xs[l] = U.row<double>(k + l);
+                    ys[l] = V.row<double>(k + l);
+                }
+                mahalanobis_lanes(xs, ys, cnt, p.vi, n, scratch.data(), out + k);
+            }
+        });
+        return;
+    }
     for_tasks((P + per - 1) / per, P * cost, [&](int64_t t) {
-        std::vector<double> scratch(static_cast<size_t>(p.metric == Metric::Mahalanobis ? n : 0));
         for (int64_t k = t * per, e = std::min(P, (t + 1) * per); k < e; ++k) {
             double d = 0.0;
             if (p.metric == Metric::Hamming || p.metric == Metric::Jaccard) {
@@ -742,7 +796,6 @@ void paired_run(const Mat& U, const Mat& V, const Plan& p, double* out) {
                     d = w ? minkowski_pair<true>(x, y, p.wp(), n, p.root)
                           : minkowski_pair<false>(x, y, nullptr, n, p.root);
                     break;
-                case Metric::Mahalanobis: d = mahalanobis_pair(x, y, p.vi, n, scratch.data()); break;
                 case Metric::Haversine:
                     d = haversine_pair(x[0], x[1], cu[static_cast<size_t>(k)], y[0], y[1], cv[static_cast<size_t>(k)]);
                     break;

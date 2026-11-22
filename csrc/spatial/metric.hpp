@@ -30,7 +30,7 @@
 //                path), then the WSq kernel and d = s / 2 clipped to 2 (SPT29: ||x^ - y^||^2 / 2, no
 //                cancellation of 1 - c for nearly parallel rows). correlation centers the rows first
 //                (weighted mean; a constant row gets its value as the mean exactly, so it is NaN).
-//   minkowski    sum of |z|^p (std::pow; W: fma(w, |z|^p, t), and w z for w = 0 so that a NaN or inf
+//   minkowski    sum of |z|^p (std::pow, p = 3 (|z| |z|) |z|; W: fma(w, |z|^p, t), and w z for w = 0 so a NaN or inf
 //                there still propagates), then the root (SPT30: pow(s, 1/p) and, when 1/p is not a
 //                power of two, one Newton step against pow(r, p)). Careful path: |z_i| / max |z| (a
 //                power of two would overflow or underflow |z'|^p for large p), times max |z|.
@@ -255,18 +255,62 @@ inline void tile(const double* const* x, const double* panel, const double* w, i
     }
 }
 
-// The same sums for one pair: s[0 .. K).
-template <class Op, bool W, class T = double>
-inline void pair_scalar(const T* x, const T* y, const double* w, int64_t n, double* s) {
+// G full blocks of one pair from term b side by side (G independent chains, each block's own sequential
+// chain from 0), their sums combined into s in block order (s = t when `first`).
+template <class Op, bool W, int G, class T>
+inline void pair_blocks(const T* x, const T* y, const double* w, int64_t b, bool first, double* s) {
+    constexpr int K = Op::K;
+    double t[G][K];
+    for (int g = 0; g < G; ++g)
+        for (int k = 0; k < K; ++k) t[g][k] = 0.0;
+    for (int64_t i = 0; i < kBlock; ++i)
+        for (int g = 0; g < G; ++g) {
+            const int64_t q = b + g * kBlock + i;
+            Op::step(t[g], x[q], y[q], W ? w[q] : 1.0);
+        }
+    for (int g = 0; g < G; ++g)
+        for (int k = 0; k < K; ++k) s[k] = first && g == 0 ? t[g][k] : Op::combine(s[k], t[g][k]);
+}
+
+// The sums of a pair longer than one block (pair_scalar): the blocks are independent chains, so they run
+// side by side (up to 8 at a time, SPT6) and are combined in block order: the same operations on the same
+// values as one block after another, so the same bits, without waiting on one chain of n fma.
+template <class Op, bool W, class T>
+[[gnu::noinline]] void pair_scalar_long(const T* x, const T* y, const double* w, int64_t n, double* s) {
     constexpr int K = Op::K;
     for (int k = 0; k < K; ++k) s[k] = 0.0;
-    for (int64_t b = 0; b < n; b += kBlock) {
+    int64_t b = 0;
+    for (; b + 8 * kBlock <= n; b += 8 * kBlock) pair_blocks<Op, W, 8>(x, y, w, b, b == 0, s);
+    if (b + 4 * kBlock <= n) {
+        pair_blocks<Op, W, 4>(x, y, w, b, b == 0, s);
+        b += 4 * kBlock;
+    }
+    if (b + 2 * kBlock <= n) {
+        pair_blocks<Op, W, 2>(x, y, w, b, b == 0, s);
+        b += 2 * kBlock;
+    }
+    for (; b < n; b += kBlock) {
         double t[K];
         for (int k = 0; k < K; ++k) t[k] = 0.0;
         const int64_t e = std::min(n, b + kBlock);
         for (int64_t i = b; i < e; ++i) Op::step(t, x[i], y[i], W ? w[i] : 1.0);
         for (int k = 0; k < K; ++k) s[k] = b == 0 ? t[k] : Op::combine(s[k], t[k]);
     }
+}
+
+// The same sums for one pair: s[0 .. K). A pair of one block (the tree's points, short rows) is its chain
+// alone, inlined where it is called; a longer one is pair_scalar_long.
+template <class Op, bool W, class T = double>
+[[gnu::always_inline]] inline void pair_scalar(const T* x, const T* y, const double* w, int64_t n, double* s) {
+    constexpr int K = Op::K;
+    if (n > kBlock) {
+        pair_scalar_long<Op, W, T>(x, y, w, n, s);
+        return;
+    }
+    double t[K];
+    for (int k = 0; k < K; ++k) t[k] = 0.0;
+    for (int64_t i = 0; i < n; ++i) Op::step(t, x[i], y[i], W ? w[i] : 1.0);
+    for (int k = 0; k < K; ++k) s[k] = t[k];
 }
 
 // ---- careful paths ---------------------------------------------------------------------------
@@ -344,8 +388,13 @@ struct Root {  // s^(1/p) (SPT30)
     }
 };
 
+// |z|^p: std::pow, or for p = 3 the products (a a) a (SPT80: a relative error of at most (1 + u)^2 - 1 <=
+// gamma_2, the contract's c_pow; pow costs about five times the two products).
+inline double power(double a, double p, bool cube) { return cube ? (a * a) * a : std::pow(a, p); }
+
 template <bool W>
 inline double minkowski_sum(const double* x, const double* y, const double* w, int64_t n, double p, double scale) {
+    const bool cube = p == 3.0;
     double s = 0.0;
     for (int64_t b = 0; b < n; b += kBlock) {
         double t = 0.0;
@@ -353,8 +402,8 @@ inline double minkowski_sum(const double* x, const double* y, const double* w, i
         for (int64_t i = b; i < end; ++i) {
             const double z = x[i] - y[i];
             const double a = scale == 1.0 ? std::fabs(z) : std::fabs(z) / scale;
-            if constexpr (W) t = w[i] > 0 ? std::fma(w[i], std::pow(a, p), t) : (scale == 1.0 ? t + w[i] * z : t);
-            else t = t + std::pow(a, p);
+            if constexpr (W) t = w[i] > 0 ? std::fma(w[i], power(a, p, cube), t) : (scale == 1.0 ? t + w[i] * z : t);
+            else t = t + power(a, p, cube);
         }
         s = b == 0 ? t : s + t;
     }
@@ -410,17 +459,66 @@ inline double mahalanobis_pair(const double* x, const double* y, const double* v
     return std::ldexp(std::sqrt(quad_form(vi, zbuf, n)), k);
 }
 
+// Up to kLanes pairs (x[l], y[l]), l < cnt, side by side: lane l runs mahalanobis_pair's first pass for
+// pair l (t_i = dot(VI row i, z) and q = sum z_i t_i in the tile order, each fma the same operation on
+// the same values), so q has the same bits. out[l] = sqrt(q), except for the lanes whose q needs the
+// careful path, which are finished by mahalanobis_pair itself. scratch: 2 kLanes n doubles. (SPT6: the
+// pairs fill the NEON lanes; one pair alone is a chain of dependent fma.)
+inline constexpr int kLanes = 8;
+inline void mahalanobis_lanes(
+    const double* const* x, const double* const* y, int cnt, const double* vi, int64_t n, double* scratch, double* out
+) {
+    double* Z = scratch;              // Z[i * 8 + l] = z_l[i]
+    double* Tv = scratch + kLanes * n;  // Tv[i * 8 + l] = t_i of pair l
+    for (int64_t i = 0; i < n; ++i)
+        for (int l = 0; l < kLanes; ++l) Z[i * kLanes + l] = l < cnt ? x[l][i] - y[l][i] : 0.0;
+    for (int64_t i = 0; i < n; ++i) {
+        const double* a = vi + i * n;
+        float64x2_t s[4];
+        for (int64_t b = 0; b < n; b += kBlock) {
+            float64x2_t t[4] = {f2_zero(), f2_zero(), f2_zero(), f2_zero()};
+            const int64_t e = std::min(n, b + kBlock);
+            for (int64_t j = b; j < e; ++j) {
+                const float64x2_t av = vdupq_n_f64(a[j]);
+                for (int c = 0; c < 4; ++c) t[c] = vfmaq_f64(t[c], av, vld1q_f64(Z + j * kLanes + 2 * c));
+            }
+            for (int c = 0; c < 4; ++c) s[c] = b == 0 ? t[c] : vaddq_f64(s[c], t[c]);
+        }
+        for (int c = 0; c < 4; ++c) vst1q_f64(Tv + i * kLanes + 2 * c, n ? s[c] : f2_zero());
+    }
+    float64x2_t q[4] = {f2_zero(), f2_zero(), f2_zero(), f2_zero()};
+    for (int64_t b = 0; b < n; b += kBlock) {
+        float64x2_t t[4] = {f2_zero(), f2_zero(), f2_zero(), f2_zero()};
+        const int64_t e = std::min(n, b + kBlock);
+        for (int64_t i = b; i < e; ++i)
+            for (int c = 0; c < 4; ++c)
+                t[c] = vfmaq_f64(t[c], vld1q_f64(Z + i * kLanes + 2 * c), vld1q_f64(Tv + i * kLanes + 2 * c));
+        for (int c = 0; c < 4; ++c) q[c] = b == 0 ? t[c] : vaddq_f64(q[c], t[c]);
+    }
+    double qs[kLanes];
+    for (int c = 0; c < 4; ++c) vst1q_f64(qs + 2 * c, q[c]);
+    for (int l = 0; l < cnt; ++l) {
+        const double v = qs[l];
+        if (!(std::fabs(v) < kTiny || std::fabs(v) > kHuge) || v != v) out[l] = std::sqrt(v);
+        else out[l] = mahalanobis_pair(x[l], y[l], vi, n, scratch);  // the careful path (scratch is free now)
+    }
+}
+
 // ---- haversine -------------------------------------------------------------------------------
 
-// (phi1, lam1), (phi2, lam2) in radians; c1 = cos phi1, c2 = cos phi2 (precomputed per row)
+// (phi1, lam1), (phi2, lam2) in radians; c1 = cos phi1, c2 = cos phi2 (precomputed per row). SPT81: d = 2
+// asin(sqrt(h)) while h <= 1/2 (d <= pi/2, where asin's condition number is at most 1.3), else d = pi - 2
+// asin(sqrt(g)) with g the cancellation-free 1 - h above (g <= 1/2 there too, the antipode's digits kept):
+// one asin for SPT31's atan2, and g with its sine only for the far half.
 inline double haversine_pair(double f1, double l1, double c1, double f2, double l2, double c2) {
     const SinCos a = sincos((f2 - f1) * 0.5), b = sincos((l2 - l1) * 0.5);
-    const double ss = std::sin((f1 + f2) * 0.5);
     const double sb2 = b.s * b.s;
     const double h = a.s * a.s + (c1 * c2) * sb2;
+    if (h <= 0.5) return 2.0 * std::asin(std::sqrt(h));
+    const double ss = std::sin((f1 + f2) * 0.5);
     const double ac = a.c * b.c, sd_ = ss * b.s;
     const double g = ac * ac + sd_ * sd_;
-    return 2.0 * std::atan2(std::sqrt(h), std::sqrt(g));
+    return 0x1.921fb54442d18p+1 - 2.0 * std::asin(std::sqrt(g));
 }
 
 // ---- rows prepared once ----------------------------------------------------------------------

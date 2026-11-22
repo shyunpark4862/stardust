@@ -318,38 +318,68 @@ nb::object pairs_with(const KdTree& A, const Dist& dist, const KdCut& cut, doubl
         });
     }
     if (over.load()) too_large("query_pairs");
-    // rows by i (a counting sort in task order), then each row sorted by j
-    std::vector<int64_t> start(static_cast<size_t>(A.n + 1), 0);
+    // rows by i, then each row by j (SPT77): the pairs are cut by blocks of kRowBlock rows straight into the
+    // output (a count per task and block; each task's place in a block from the prefix sums in (block, task)
+    // order), then each block is put in (i, j) order on its own (a counting sort by i, then each row by j).
+    // Every step but the prefix sums runs on the pool; the result is the sorted list whatever the order.
+    constexpr int64_t kRowBlock = 1 << 12;
+    const int64_t ntask = static_cast<int64_t>(found.size());
+    const int64_t nblk = std::max<int64_t>(1, (A.n + kRowBlock - 1) / kRowBlock);
     int64_t K = 0;
-    for (const auto& f : found) {
-        for (const Pair& e : f) ++start[static_cast<size_t>(e.i + 1)];
-        K += static_cast<int64_t>(f.size());
-    }
-    for (int64_t i = 0; i < A.n; ++i) start[static_cast<size_t>(i + 1)] += start[static_cast<size_t>(i)];
+    for (const auto& f : found) K += static_cast<int64_t>(f.size());
     nb::object out = new_array_of(DType::Int64, {K, 2});
     int64_t* O = reinterpret_cast<int64_t*>(as_ndarray(out).data);
     {
         const bool par = split && K >= kParallelWork;
         const parallel::Unlocked unlocked(par);
-        std::vector<int64_t> at(start.begin(), start.end() - 1);
-        for (auto& f : found) {
+        std::vector<int64_t> at(static_cast<size_t>(ntask * nblk), 0);
+        run_tasks(ntask, par, [&](int64_t t) {
+            int64_t* c = at.data() + t * nblk;
+            for (const Pair& e : found[static_cast<size_t>(t)]) ++c[e.i / kRowBlock];
+        });
+        std::vector<int64_t> bstart(static_cast<size_t>(nblk + 1), 0);
+        int64_t acc = 0;
+        for (int64_t b = 0; b < nblk; ++b) {
+            bstart[static_cast<size_t>(b)] = acc;
+            for (int64_t t = 0; t < ntask; ++t) {
+                const int64_t c = at[static_cast<size_t>(t * nblk + b)];
+                at[static_cast<size_t>(t * nblk + b)] = acc;
+                acc += c;
+            }
+        }
+        bstart[static_cast<size_t>(nblk)] = acc;
+        run_tasks(ntask, par, [&](int64_t t) {
+            int64_t* c = at.data() + t * nblk;
+            std::vector<Pair>& f = found[static_cast<size_t>(t)];
             for (const Pair& e : f) {
-                const int64_t k = at[static_cast<size_t>(e.i)]++;
+                const int64_t k = c[e.i / kRowBlock]++;
                 O[2 * k] = e.i;
                 O[2 * k + 1] = e.j;
             }
             std::vector<Pair>().swap(f);
-        }
-        constexpr int64_t kRowBlock = 1 << 12;
-        run_tasks((A.n + kRowBlock - 1) / kRowBlock, par, [&](int64_t t) {
-            std::vector<int64_t> row;
-            for (int64_t i = t * kRowBlock, e = std::min(A.n, (t + 1) * kRowBlock); i < e; ++i) {
-                const int64_t s0 = start[static_cast<size_t>(i)], s1 = start[static_cast<size_t>(i + 1)];
-                if (s1 - s0 < 2) continue;
-                row.clear();
-                for (int64_t k = s0; k < s1; ++k) row.push_back(O[2 * k + 1]);
+        });
+        run_tasks(nblk, par, [&](int64_t b) {
+            const int64_t s0 = bstart[static_cast<size_t>(b)], s1 = bstart[static_cast<size_t>(b + 1)];
+            if (s1 - s0 < 2) return;
+            const int64_t r0 = b * kRowBlock, rows = std::min(kRowBlock, A.n - r0);
+            std::vector<int64_t> pos(static_cast<size_t>(rows + 1), 0), tmp(static_cast<size_t>(2 * (s1 - s0)));
+            for (int64_t k = s0; k < s1; ++k) ++pos[static_cast<size_t>(O[2 * k] - r0 + 1)];
+            for (int64_t r = 0; r < rows; ++r) pos[static_cast<size_t>(r + 1)] += pos[static_cast<size_t>(r)];
+            std::vector<int64_t> put(pos.begin(), pos.end() - 1);
+            for (int64_t k = s0; k < s1; ++k) {
+                const int64_t q = put[static_cast<size_t>(O[2 * k] - r0)]++;
+                tmp[static_cast<size_t>(2 * q)] = O[2 * k];
+                tmp[static_cast<size_t>(2 * q + 1)] = O[2 * k + 1];
+            }
+            std::copy(tmp.begin(), tmp.end(), O + 2 * s0);
+            for (int64_t r = 0; r < rows; ++r) {
+                const int64_t a0 = s0 + pos[static_cast<size_t>(r)], a1 = s0 + pos[static_cast<size_t>(r + 1)];
+                if (a1 - a0 < 2) continue;
+                std::vector<int64_t> row;
+                row.reserve(static_cast<size_t>(a1 - a0));
+                for (int64_t k = a0; k < a1; ++k) row.push_back(O[2 * k + 1]);
                 std::sort(row.begin(), row.end());
-                for (int64_t k = s0; k < s1; ++k) O[2 * k + 1] = row[static_cast<size_t>(k - s0)];
+                for (int64_t k = a0; k < a1; ++k) O[2 * k + 1] = row[static_cast<size_t>(k - a0)];
             }
         });
     }

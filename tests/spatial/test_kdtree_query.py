@@ -144,6 +144,31 @@ def test_k_forms_and_upper_bound():
     assert t.query(x[0], k=10, distance_upper_bound=math.nextafter(exact, INF)).distances.tolist()[4] == exact
 
 
+def test_brute_force_path_of_high_m():
+    # SPT21, SPT75: for p = 2 and many columns for the number of points, query takes kneighbors' brute force
+    # over the data in input order; the result is the tree's, bit for bit, for every k form and bound
+    from stardust.spatial import _kdtree as K
+
+    g = np.random.default_rng(15)
+    for n, m in ((3000, 12), (500, 8), (40, 3)):
+        assert K._brute_pays(n, m, 1)
+        data, x = g.random((n, m)), g.random((70, m))
+        data[5] = data[3]  # a duplicate: a tie broken by the index
+        t = S.KDTree(data)
+        d = cdist_p(x, data, 2.0)
+        for k in (1, 7, [3, 1], [2, n + 5]):
+            for ub in (INF, float(np.sort(d[0])[3])):
+                ranks = sd.asarray(
+                    [k] if isinstance(k, int) and k == 1 else (list(range(1, k + 1)) if isinstance(k, int) else k),
+                    dtype=sd.int64,
+                )
+                td, ti = t._tree.query(sd.asarray(x), ranks, 2.0, ub)
+                got = t.query(x, k=k, distance_upper_bound=ub)
+                gd, gi = np.asarray(got.distances).reshape(len(x), -1), np.asarray(got.indices).reshape(len(x), -1)
+                assert bits_equal(gd, np.asarray(td)) and np.array_equal(gi, np.asarray(ti)), (n, m, k, ub)
+    assert not K._brute_pays(10**6, 3, 10) and not K._brute_pays(10**5, 10, 1) and not K._brute_pays(0, 16, 1)
+
+
 def test_overflowing_distances_are_never_neighbours():
     # SPT37 (kneighbors' rule, the same here): a neighbour has distance < distance_upper_bound, so a pair
     # whose distance overflows to inf is padding even with the default bound inf

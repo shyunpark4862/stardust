@@ -1,7 +1,8 @@
 """kneighbors and radius_neighbors are their definition (docs/api/spatial.md §3, docs/design/spatial.md
 §2.3, §3.2, §4 neighbours 1): the k smallest (d, j) of cdist's row with d < distance_upper_bound, padded
 with (inf, mB); the j with d <= r, increasing. The distances are cdist's bits, and the answer is the same
-on every path (direct, and the GEMM pre-selection of euclidean and sqeuclidean forced on and off),
+on every path (direct, the GEMM pre-selection of euclidean and sqeuclidean, and the KD tree over XB of the
+Minkowski metrics, each forced on and off),
 for every metric, on the adversarial sets of §7.1 (far-from-origin clusters where the expanded form loses
 every digit, duplicates, ties, a shell of distances 1 ULP apart, squares near overflow and underflow), and
 on hypothesis' clusters."""
@@ -54,7 +55,7 @@ def same_bits(a, b):
     return a.shape == b.shape and a.dtype == b.dtype and a.tobytes() == b.tobytes()
 
 
-def check_knn(A, B, k, metric="euclidean", ub=INF, paths=(0, 1, 2), **kw):
+def check_knn(A, B, k, metric="euclidean", ub=INF, paths=(0, 1, 2, 3), **kw):
     D = np.asarray(S.cdist(A, B, metric=metric, **kw))
     wd, wi = brute_knn(D, k, ub)
     for path in paths:
@@ -66,7 +67,7 @@ def check_knn(A, B, k, metric="euclidean", ub=INF, paths=(0, 1, 2), **kw):
         assert same_bits(d, wd), (metric, path)
 
 
-def check_radius(A, B, r, metric="euclidean", paths=(0, 1, 2), **kw):
+def check_radius(A, B, r, metric="euclidean", paths=(0, 1, 2, 3), **kw):
     D = np.asarray(S.cdist(A, B, metric=metric, **kw))
     wp, wi, wd = brute_radius(D, r)
     for path in paths:
@@ -136,6 +137,31 @@ def test_many_blocks_and_segments():
     A2, B2 = _normal(700, 3000, 17, 6)
     check_knn(A2, B2, 2)
     check_radius(A2, B2, 4.0, paths=(1, 2))
+
+
+def test_far_to_near_order():
+    # XB sorted from far to near the queries: every GEMM block lowers T, so the block's candidates are many
+    # and the k of smallest L~ go first (SPT72); the block-wide bound (SPT71) drops the rest
+    g = np.random.default_rng(11)
+    B, A = g.standard_normal((9000, 16)), g.standard_normal((40, 16))
+    B = B[np.argsort(-np.linalg.norm(B - A.mean(axis=0), axis=1), kind="stable")]
+    for k in (1, 3, 10):
+        check_knn(A, B, k, paths=(1, 2))
+        check_knn(A, B, k, "sqeuclidean", paths=(2,))
+    check_knn(A[:1], B, 5, paths=(2,))
+
+
+def test_paths_chosen_by_shape():
+    # shapes where the automatic path is the GEMM pre-selection (n = 3, many rows) and the KD tree over XB
+    # (SPT73, SPT74): the same answer as the forced paths
+    A, B = _normal(2100, 2100, 3, 12)
+    check_knn(A, B, 4)
+    check_knn(A, B, 4, "sqeuclidean")
+    check_knn(A, B, 2, "cityblock")
+    check_radius(A, B, 0.1)
+    A, B = _normal(300, 1100, 5, 13)
+    check_knn(A, B, 3, "minkowski", p=1.5)
+    check_radius(A, B, 1.0, "minkowski", p=1.5)
 
 
 def test_shapes_and_edges():
@@ -243,6 +269,19 @@ def clusters(draw):
         A[0] = B[0]
     k = draw(st.integers(1, 15))
     return A, B, k
+
+
+@settings(deadline=None)
+@given(
+    clusters(), st.sampled_from([("euclidean", {}), ("cityblock", {}), ("chebyshev", {}), ("minkowski", {"p": 3.0})])
+)
+def test_hypothesis_tree_path_is_the_definition(case, mk):
+    A, B, k = case
+    metric, kw = mk
+    check_knn(A, B, k, metric, paths=(3,), **kw)
+    if B.shape[0] and A.shape[0]:
+        D = np.asarray(S.cdist(A, B, metric=metric, **kw))
+        check_radius(A, B, D[:, min(k, D.shape[1]) - 1].copy(), metric, paths=(3,), **kw)
 
 
 @settings(deadline=None)

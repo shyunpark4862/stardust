@@ -68,11 +68,16 @@ constexpr int64_t kDirectPack = 1 << 18;    // doubles of the XB rows a direct b
 constexpr int64_t kGemmRows = 256;          // XA rows of a GEMM chunk (at most)
 constexpr int64_t kGemmCols = 2048;         // XB rows of a GEMM block (at most)
 constexpr int64_t kGemmData = 1 << 19;      // doubles of a chunk's or a block's moved rows (at most)
-// The GEMM pre-selection is used for kGemmMinN <= n <= kGemmMaxN (decision SPT40; SPT28 allows it up to
-// 2^21 - 2: longer rows gain nothing) and from kGemmMinRowsB rows of XB.
-constexpr int64_t kGemmMinN = 12;
+// The GEMM pre-selection is used for kGemmMinN <= n <= kGemmMaxN (SPT28 allows it up to 2^21 - 2: longer
+// rows gain nothing), from kGemmMinRowsA rows of XA and kGemmMinRowsB rows of XB (kGemmMinRowsBWide for
+// n >= kGemmWideN): below them the moved copy, the norms and the small GEMM blocks cost more than they save
+// (decision SPT74, measured in SPT6; it was 12 <= n, 64 rows of XB in SPT40).
+constexpr int64_t kGemmMinN = 1;
 constexpr int64_t kGemmMaxN = 1 << 16;
-constexpr int64_t kGemmMinRowsB = 64;
+constexpr int64_t kGemmMinRowsA = 64;
+constexpr int64_t kGemmMinRowsB = 2048;
+constexpr int64_t kGemmWideN = 8;
+constexpr int64_t kGemmMinRowsBWide = 1024;
 constexpr int64_t kMeanRows = 4096;  // rows of a partial column sum of XB
 
 template <class F>
@@ -87,6 +92,13 @@ void for_tasks(int64_t ntasks, int64_t work, F&& fn) {
 }
 
 inline int64_t ceil_div(int64_t a, int64_t b) { return (a + b - 1) / b; }
+
+// ma x mb pairs of `cost` pair-terms, saturated (no output bounds ma mb here, so the product may pass int64)
+inline int64_t work_of(int64_t ma, int64_t mb, int64_t cost) {
+    const double w =
+        static_cast<double>(ma) * static_cast<double>(std::max<int64_t>(mb, 1)) * static_cast<double>(cost);
+    return w >= 0x1p62 ? (int64_t{1} << 62) : static_cast<int64_t>(w);
+}
 inline int64_t down8(int64_t v) { return std::max<int64_t>(8, v / 8 * 8); }
 
 // ---- (d, j) and the heaps ------------------------------------------------------------------------
@@ -154,6 +166,11 @@ Layout layout(int64_t ma, int64_t mb, int64_t qa_max, int64_t k) {
     L.seg = std::max<int64_t>(8, ceil_div(std::max<int64_t>(mb, 1), S) + 7) / 8 * 8;
     L.S = mb == 0 ? 1 : ceil_div(mb, L.seg);
     return L;
+}
+
+// XA rows of a direct chunk: kDirectRows, fewer for a small XA so that it still makes kMinTasks chunks.
+int64_t direct_rows(int64_t ma) {
+    return std::clamp<int64_t>((ceil_div(std::max<int64_t>(ma, 1), kMinTasks) + 7) / 8 * 8, 8, kDirectRows);
 }
 
 int64_t direct_block(int64_t rows, int64_t n) {
@@ -257,15 +274,61 @@ inline double pair_d(const double* x, const double* y, int64_t n, bool sq) {
     return sq ? sq_finish<false>(s, x, y, nullptr, n) : euclid_finish<false>(s, x, y, nullptr, n);
 }
 
-// What the GEMM path keeps for a call: the column mean c of XB and, per XB row, the moved row's squared
-// norm and R.
+// The block-wide bound of the pre-selection (SPT71). With a_max = fl(R_x + max R_y over a block of XB rows),
+// every step of L~ is monotone in a (the products, sums and square roots round monotonically; Delta~ and
+// e grow with a, t and v shrink as they grow), so L'(t') = fl(c2 fl(fl(sqrt(t')) - e_max)) with t' =
+// fl(E^ - Delta~(a_max)) is at most the pair's own L~, and t' > 0, v' >= 2^-500 imply the pair's t > 0,
+// v >= 2^-500. L' is nondecreasing in t', so for a threshold T a value tau with L'(next(tau)) > T proves
+// L~ > T for every t' > tau: such a pair is dropped after an add, a subtract and a compare. The other
+// pairs get their own L~ (lower_one). The answer is the same (only provably dropped pairs are skipped).
+struct Fast {
+    double dmax = 0.0, emax = 0.0;
+    bool sq = false;
+    const Consts* K = nullptr;
+
+    void set(double amax, const Consts& k, bool s) {
+        K = &k;
+        sq = s;
+        const double aa = amax * amax;
+        dmax = k.c1 * aa + k.eta0;
+        emax = 0x1p-50 * amax + 0x1p-1074;
+    }
+    // L'(t) (-inf when the pair could not be dropped)
+    double lower(double t) const {
+        if (!(t > 0.0)) return -kInf;
+        const double v = std::sqrt(t) - emax;
+        if (!(v >= kVMin)) return -kInf;
+        if (sq) {
+            const double vv = v * v;
+            return vv * K->c5;
+        }
+        return K->c2 * v;
+    }
+    // A tau with L'(next(tau)) > T (inf: none found, nothing is dropped fast).
+    double tau(double T) const {
+        if (!(T < kInf) || !(T >= 0.0)) return kInf;
+        const double r = sq ? std::sqrt(T / K->c5) : T / K->c2;
+        double t = (r * (1.0 + 0x1p-40) + emax) * (1.0 + 0x1p-40);
+        t = t * t * (1.0 + 0x1p-40);
+        for (int it = 0; it < 64 && t < kInf; ++it) {
+            if (lower(std::nextafter(t, kInf)) > T) return t;
+            t = t * (1.0 + 0x1p-20) + 0x1p-1000;
+        }
+        return kInf;
+    }
+};
+
+// What the GEMM path keeps for a call: the column mean c of XB, per XB row the moved row's squared norm
+// and R, and (when it fits in kMovedCopy doubles) the moved rows themselves, made once for all tasks.
 struct Hybrid {
     int64_t n = 0;
     bool sq = false;
     Consts K{1};
-    std::vector<double> c, nb, rb;
+    std::vector<double> c, nb, rb, moved;
     int64_t qa = 1, bb = 8;  // chunk rows (at most), block rows
 };
+
+constexpr int64_t kMovedCopy = int64_t{1} << 27;  // doubles of the moved XB kept for a call (1 GB)
 
 void prepare_hybrid(Hybrid& hy, const CdistBlocks& cb, bool sq) {
     const int64_t mb = cb.rows_b(), n = cb.cols();
@@ -291,21 +354,24 @@ void prepare_hybrid(Hybrid& hy, const CdistBlocks& cb, bool sq) {
         hy.c[static_cast<size_t>(i)] = hy.c[static_cast<size_t>(i)] / static_cast<double>(mb);
     hy.nb.resize(static_cast<size_t>(mb));
     hy.rb.resize(static_cast<size_t>(mb));
+    const bool keep = mb * n <= kMovedCopy;
+    if (keep) hy.moved.resize(static_cast<size_t>(mb * n));
     for_tasks(chunks, mb * n, [&](int64_t t) {
-        std::vector<double> y(static_cast<size_t>(n));
+        std::vector<double> scratch(keep ? 0 : static_cast<size_t>(n));
         for (int64_t j = t * kMeanRows, e = std::min(mb, (t + 1) * kMeanRows); j < e; ++j) {
-            for (int64_t i = 0; i < n; ++i) y[static_cast<size_t>(i)] = B[j * n + i] - hy.c[static_cast<size_t>(i)];
-            const double s = sumsq_tile(y.data(), n);
+            double* y = keep ? hy.moved.data() + j * n : scratch.data();
+            for (int64_t i = 0; i < n; ++i) y[i] = B[j * n + i] - hy.c[static_cast<size_t>(i)];
+            const double s = sumsq_tile(y, n);
             hy.nb[static_cast<size_t>(j)] = s;
             hy.rb[static_cast<size_t>(j)] = radius_of(s, hy.K);
         }
     });
 }
 
-// One task of the GEMM path: rows [i0, i1) of XA against rows [s0, s1) of XB. `visit(r, j0, w, lt, x)`
-// is called per row r and block [j0, j0 + w) with the bounds lt (scratch the visit may overwrite; null:
-// the block cannot use the pre-selection, every pair is a candidate); it decides the candidates and
-// recomputes them.
+// One task of the GEMM path: rows [i0, i1) of XA against rows [s0, s1) of XB. `visit(r, j0, w, g, nx, rx,
+// fast, x)` is called per row r and block [j0, j0 + w) with the row of G = x' y'^T (null: the block cannot
+// use the pre-selection, every pair is a candidate), the moved row's squared norm and R, the block-wide
+// bound (Fast), and the row itself; it decides the candidates and recomputes them.
 template <class Visit>
 void gemm_task(const CdistBlocks& cb, const Hybrid& hy, int64_t i0, int64_t i1, int64_t s0, int64_t s1, Visit visit) {
     const int64_t n = hy.n, rows = i1 - i0;
@@ -323,7 +389,9 @@ void gemm_task(const CdistBlocks& cb, const Hybrid& hy, int64_t i0, int64_t i1, 
         ra_max = std::max(ra_max, ra[static_cast<size_t>(r)]);
     }
     const int64_t bb = hy.bb;
-    std::vector<double> bp(static_cast<size_t>(bb * n)), g(static_cast<size_t>(rows * bb)), lt(static_cast<size_t>(bb));
+    const bool keep = !hy.moved.empty();
+    std::vector<double> bp(keep ? 0 : static_cast<size_t>(bb * n)), g(static_cast<size_t>(rows * bb));
+    Fast fast;
     for (int64_t j0 = s0; j0 < s1; j0 += bb) {
         const int64_t w = std::min(s1, j0 + bb) - j0;
         bool ok = a_ok;
@@ -335,21 +403,43 @@ void gemm_task(const CdistBlocks& cb, const Hybrid& hy, int64_t i0, int64_t i1, 
         const double am = ra_max + rb_max;
         ok = ok && std::isfinite(am * am);  // the fallback of §3.2: coordinates beyond about 1e154
         if (ok) {
-            for (int64_t q = 0; q < w; ++q) {
-                double* o = bp.data() + q * n;
-                for (int64_t i = 0; i < n; ++i) o[i] = B[(j0 + q) * n + i] - c[i];
+            const double* yb = hy.moved.data() + j0 * n;
+            if (!keep) {
+                for (int64_t q = 0; q < w; ++q) {
+                    double* o = bp.data() + q * n;
+                    for (int64_t i = 0; i < n; ++i) o[i] = B[(j0 + q) * n + i] - c[i];
+                }
+                yb = bp.data();
             }
-            blas::gemm<double>(CblasNoTrans, CblasTrans, rows, w, n, ap.data(), n, bp.data(), n, g.data(), w);
+            blas::gemm<double>(CblasNoTrans, CblasTrans, rows, w, n, ap.data(), n, yb, n, g.data(), w);
         }
         for (int64_t r = 0; r < rows; ++r) {
-            if (ok)
-                lower_row(
-                    g.data() + r * w, hy.nb.data() + j0, hy.rb.data() + j0, w, na[static_cast<size_t>(r)],
-                    ra[static_cast<size_t>(r)], hy.K, hy.sq, lt.data()
-                );
-            visit(r, j0, w, ok ? lt.data() : nullptr, A + (i0 + r) * n);
+            const double rx = ra[static_cast<size_t>(r)];
+            if (ok) fast.set(rx + rb_max, hy.K, hy.sq);
+            visit(r, j0, w, ok ? g.data() + r * w : nullptr, na[static_cast<size_t>(r)], rx, fast, A + (i0 + r) * n);
         }
     }
+}
+
+// The pairs q < w of a row that the block-wide bound cannot drop (t' <= tau, or NaN), into idx.
+inline int64_t survivors(
+    const double* g, const double* ny, int64_t w, double nx, const Fast& f, double tau, int64_t* idx
+) {
+    int64_t cnt = 0;
+    const float64x2_t vnx = vdupq_n_f64(nx), vd = vdupq_n_f64(f.dmax), vt = vdupq_n_f64(tau);
+    int64_t q = 0;
+    for (; q + 2 <= w; q += 2) {
+        const float64x2_t gv = vld1q_f64(g + q);
+        const float64x2_t e_hat = vsubq_f64(vaddq_f64(vnx, vld1q_f64(ny + q)), vaddq_f64(gv, gv));
+        const uint64x2_t drop = vcgtq_f64(vsubq_f64(e_hat, vd), vt);
+        if (vgetq_lane_u64(drop, 0) == 0) idx[cnt++] = q;
+        if (vgetq_lane_u64(drop, 1) == 0) idx[cnt++] = q + 1;
+    }
+    for (; q < w; ++q) {
+        const double e_hat = (nx + ny[q]) - (g[q] + g[q]);
+        if (!(e_hat - f.dmax > tau)) idx[cnt++] = q;
+    }
+    return cnt;
 }
 
 // ---- kneighbors ---------------------------------------------------------------------------------
@@ -358,7 +448,8 @@ bool use_gemm(const CdistBlocks& cb, int path) {
     const int64_t n = cb.cols();
     if (cb.gemm_kind() == 0 || n < 1 || n > kGemmMaxN || cb.rows_b() == 0 || path == 1) return false;
     if (path == 2) return true;
-    return n >= kGemmMinN && cb.rows_b() >= kGemmMinRowsB;
+    const int64_t min_b = n >= kGemmWideN ? kGemmMinRowsBWide : kGemmMinRowsB;
+    return n >= kGemmMinN && cb.rows_a() >= kGemmMinRowsA && cb.rows_b() >= min_b;
 }
 
 // The direct path for one task: heaps[r] for XA row i0 + r over XB rows [s0, s1).
@@ -380,44 +471,95 @@ void knn_direct(const CdistBlocks& cb, int64_t i0, int64_t i1, int64_t s0, int64
     }
 }
 
-// The GEMM path for one task. A block whose heap is not full first recomputes the pairs of smallest L~
-// that it still needs (the first block's rule of §3.2, decision SPT41), so that T is set early: one pass
-// over the bounds with a small heap of (L~, column), then the taken columns are marked NaN in lt so the
-// scan skips them (no bound is NaN otherwise: lower_row writes -inf for a pair it cannot drop).
+// The GEMM path for one task. A block whose heap is not full first recomputes the pairs it still needs of
+// smallest E^ (the first block's rule of §3.2, decision SPT41, with E^ for L~: SPT72), so that T is set
+// early; if the heap is still not full, every other pair's L~ is compared with T. A block whose heap is
+// full drops most pairs by the block-wide bound (Fast) and collects the rest with L~ <= T; when they are
+// many (data sorted from far to near, where every block lowers T), the k of smallest L~ are recomputed
+// first, which sets T for the others (SPT72). Any of these orders gives the same answer: the heap ends
+// with the k smallest (d, j) of the pairs not proven beyond T.
 void knn_gemm(
     const CdistBlocks& cb, const Hybrid& hy, int64_t i0, int64_t i1, int64_t s0, int64_t s1, double upper, Heap* heaps
 ) {
-    const int64_t n = hy.n;
+    const int64_t n = hy.n, k = heaps[0].k;
     const double* B = cb.b_f64();
-    std::vector<Nb> pick(static_cast<size_t>(std::min(hy.bb, heaps[0].k)));
-    gemm_task(cb, hy, i0, i1, s0, s1, [&](int64_t r, int64_t j0, int64_t w, double* lt, const double* x) {
-        Heap& h = heaps[r];
-        auto take = [&](int64_t j) {
-            const double d = pair_d(x, B + j * n, n, hy.sq);
-            if (d < upper) h.push({d, j});
-        };
-        if (!lt) {
-            for (int64_t q = 0; q < w; ++q) take(j0 + q);
-            return;
-        }
-        if (!h.full()) {
-            Heap sel{pick.data(), std::min(h.k - h.size, w), 0};
-            for (int64_t q = 0; q < w; ++q)
-                if (lt[q] < upper && (!sel.full() || lt[q] < sel.h[0].d)) sel.push({lt[q], q});
-            for (int64_t e = 0; e < sel.size; ++e) {
-                const int64_t q = sel.h[e].j;
-                take(j0 + q);
-                lt[q] = std::numeric_limits<double>::quiet_NaN();
+    std::vector<Nb> pick(static_cast<size_t>(std::min(hy.bb, k)));
+    std::vector<double> lt(static_cast<size_t>(hy.bb));
+    std::vector<int64_t> idx(static_cast<size_t>(hy.bb));
+    std::vector<char> taken(static_cast<size_t>(hy.bb), 0);
+    std::vector<Nb> cand;
+    gemm_task(
+        cb, hy, i0, i1, s0, s1,
+        [&](int64_t r, int64_t j0, int64_t w, const double* g, double nx, double rx, const Fast& fast,
+            const double* x) {
+            Heap& h = heaps[r];
+            auto take = [&](int64_t j) {
+                const double d = pair_d(x, B + j * n, n, hy.sq);
+                if (d < upper) h.push({d, j});
+            };
+            if (!g) {
+                for (int64_t q = 0; q < w; ++q) take(j0 + q);
+                return;
+            }
+            const double* ny = hy.nb.data() + j0;
+            const double* ry = hy.rb.data() + j0;
+            int64_t picked = 0;  // pairs taken first (marked in `taken`)
+            if (!h.full()) {
+                // the pairs of smallest E^ first: any choice gives the same answer, E^ is cheap and close to L~
+                Heap sel{pick.data(), std::min(h.k - h.size, w), 0};
+                for (int64_t q = 0; q < w; ++q) {
+                    const double e_hat = (nx + ny[q]) - (g[q] + g[q]);
+                    if (!sel.full() || e_hat < sel.h[0].d) sel.push({e_hat, q});
+                }
+                picked = sel.size;
+                for (int64_t e = 0; e < picked; ++e) {
+                    const int64_t q = sel.h[e].j;
+                    take(j0 + q);
+                    taken[static_cast<size_t>(q)] = 1;
+                }
+                if (!h.full()) {  // still fewer than k below the bound: every L~ against T
+                    lower_row(g, ny, ry, w, nx, rx, hy.K, hy.sq, lt.data());
+                    double T = h.bound();
+                    for (int64_t q = 0; q < w; ++q) {
+                        if (taken[static_cast<size_t>(q)]) continue;
+                        const double l = lt[q];
+                        if (!(l < upper) || l > T) continue;  // L~ <= d^: the pair cannot qualify
+                        take(j0 + q);
+                        T = h.bound();
+                    }
+                    for (int64_t e = 0; e < picked; ++e) taken[static_cast<size_t>(sel.h[e].j)] = 0;
+                    return;
+                }
+            }
+            double T = h.bound();
+            const int64_t cnt = survivors(g, ny, w, nx, fast, fast.tau(T), idx.data());
+            cand.clear();
+            for (int64_t e = 0; e < cnt; ++e) {
+                const int64_t q = idx[static_cast<size_t>(e)];
+                if (picked && taken[static_cast<size_t>(q)]) continue;
+                const double l = lower_one(g[q], ny[q], ry[q], nx, rx, hy.K, hy.sq);
+                if (l <= T) cand.push_back({l, q});  // -inf too: a pair that cannot be dropped
+            }
+            if (picked)
+                for (int64_t q = 0; q < w; ++q) taken[static_cast<size_t>(q)] = 0;
+            if (static_cast<int64_t>(cand.size()) > 2 * k) {
+                std::nth_element(cand.begin(), cand.begin() + (k - 1), cand.end(), before);
+                for (int64_t e = 0; e < k; ++e) take(j0 + cand[static_cast<size_t>(e)].j);
+                T = h.bound();
+                for (size_t e = static_cast<size_t>(k); e < cand.size(); ++e) {
+                    if (cand[e].d > T) continue;
+                    take(j0 + cand[e].j);
+                    T = h.bound();
+                }
+                return;
+            }
+            for (const Nb& e : cand) {
+                if (e.d > T) continue;
+                take(j0 + e.j);
+                T = h.bound();
             }
         }
-        double T = h.bound();
-        for (int64_t q = 0; q < w; ++q) {
-            const double l = lt[q];
-            if (!(l < upper) || l > T) continue;  // L~ <= d^: the pair cannot qualify (NaN: taken)
-            take(j0 + q);
-            T = h.bound();
-        }
-    });
+    );
 }
 
 nb::object new_array_of(DType t, std::initializer_list<int64_t> shape) {
@@ -446,7 +588,7 @@ nb::tuple kneighbors_py(
     const bool gemm = use_gemm(cb, path);
     Hybrid hy;
     if (gemm) prepare_hybrid(hy, cb, cb.gemm_kind() == 2);
-    const Layout L = layout(ma, mb, gemm ? hy.qa : kDirectRows, k);
+    const Layout L = layout(ma, mb, gemm ? hy.qa : direct_rows(ma), k);
     std::vector<Nb> segs;
     std::vector<int64_t> segn;
     if (L.S > 1) {
@@ -459,7 +601,7 @@ nb::tuple kneighbors_py(
             I[i * k + q] = q < cnt ? e[q].j : mb;
         }
     };
-    const int64_t work = ma * std::max<int64_t>(mb, 1) * (gemm ? std::max<int64_t>(n, 1) : cb.pair_cost());
+    const int64_t work = work_of(ma, mb, gemm ? std::max<int64_t>(n, 1) : cb.pair_cost());
     for_tasks(L.nA * L.S, work, [&](int64_t t) {
         const int64_t a = t / L.S, s = t % L.S;
         const int64_t i0 = a * L.qa, i1 = std::min(ma, i0 + L.qa), s0 = std::min(mb, s * L.seg),
@@ -539,9 +681,9 @@ nb::object radius_py(
     const bool gemm = use_gemm(cb, path);
     Hybrid hy;
     if (gemm) prepare_hybrid(hy, cb, cb.gemm_kind() == 2);
-    const Layout L = layout(ma, mb, gemm ? hy.qa : kDirectRows, 0);
+    const Layout L = layout(ma, mb, gemm ? hy.qa : direct_rows(ma), 0);
     std::vector<Found> found(static_cast<size_t>(L.nA * L.S));
-    const int64_t work = ma * std::max<int64_t>(mb, 1) * (gemm ? std::max<int64_t>(n, 1) : cb.pair_cost());
+    const int64_t work = work_of(ma, mb, gemm ? std::max<int64_t>(n, 1) : cb.pair_cost());
     for_tasks(L.nA * L.S, work, [&](int64_t t) {
         const int64_t a = t / L.S, s = t % L.S;
         const int64_t i0 = a * L.qa, i1 = std::min(ma, i0 + L.qa), s0 = std::min(mb, s * L.seg),
@@ -555,14 +697,29 @@ nb::object radius_py(
         };
         if (gemm) {
             const double* B = cb.b_f64();
-            gemm_task(cb, hy, i0, i1, s0, s1, [&](int64_t r, int64_t j0, int64_t wd, double* lt, const double* x) {
-                const double rr = R[i0 + r];
-                for (int64_t q = 0; q < wd; ++q) {
-                    if (lt && lt[q] > rr) continue;  // L~ <= d^: d^ > r
-                    const double d = pair_d(x, B + (j0 + q) * n, n, hy.sq);
-                    if (d <= rr) hit(r, j0 + q, d);
+            std::vector<int64_t> idx(static_cast<size_t>(hy.bb));
+            gemm_task(
+                cb, hy, i0, i1, s0, s1,
+                [&](int64_t r, int64_t j0, int64_t wd, const double* g, double nx, double rx, const Fast& fast,
+                    const double* x) {
+                    const double rr = R[i0 + r];
+                    auto test = [&](int64_t q) {
+                        const double d = pair_d(x, B + (j0 + q) * n, n, hy.sq);
+                        if (d <= rr) hit(r, j0 + q, d);
+                    };
+                    if (!g) {
+                        for (int64_t q = 0; q < wd; ++q) test(q);
+                        return;
+                    }
+                    const double *ny = hy.nb.data() + j0, *ry = hy.rb.data() + j0;
+                    const int64_t cnt = survivors(g, ny, wd, nx, fast, fast.tau(rr), idx.data());
+                    for (int64_t e = 0; e < cnt; ++e) {
+                        const int64_t q = idx[static_cast<size_t>(e)];
+                        if (lower_one(g[q], ny[q], ry[q], nx, rx, hy.K, hy.sq) > rr) continue;  // L~ <= d^: d^ > r
+                        test(q);
+                    }
                 }
-            });
+            );
         } else {
             const int64_t bb = direct_block(rows, n);
             std::vector<double> buf(static_cast<size_t>(rows * std::min(bb, std::max<int64_t>(s1 - s0, 1))));

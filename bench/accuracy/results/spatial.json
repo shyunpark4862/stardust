@@ -54,36 +54,28 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261123-001012-3ca4562+": {
-   "commit": "3ca4562",
+  "20261123-010204-f80ddd4+": {
+   "commit": "f80ddd4",
    "dirty": true,
    "changed": [
-    "API.md",
-    "ARCHITECTURE.md",
-    "CMakeLists.txt",
-    "README.md",
     "ROADMAP.md",
-    "bench/README.md",
-    "bench/accuracy/sources.py",
-    "bench/accuracy/spatial.py",
-    "bench/areas.py",
-    "bench/speed/cases/spatial.py",
-    "csrc/bind/module.cpp",
-    "csrc/bind/spatial_bind.cpp",
-    "csrc/spatial/kdtree.hpp",
-    "csrc/spatial/spatial.hpp",
+    "csrc/spatial/distance.cpp",
+    "csrc/spatial/dual.cpp",
+    "csrc/spatial/kdtree.cpp",
+    "csrc/spatial/metric.hpp",
+    "csrc/spatial/neighbors.cpp",
     "docs/api/spatial.md",
     "docs/design/spatial.md",
-    "src/stardust/__init__.py",
-    "src/stardust/spatial/__init__.py",
     "src/stardust/spatial/_common.py",
     "src/stardust/spatial/_kdtree.py",
-    "tests/README.md",
-    "tests/golden/cases_spatial.py",
+    "src/stardust/spatial/_neighbors.py",
     "tests/golden/data/spatial.json",
-    "tests/spatial/test_api_surface.py"
+    "tests/spatial/refdata.py",
+    "tests/spatial/test_kdtree.py",
+    "tests/spatial/test_kdtree_query.py",
+    "tests/spatial/test_neighbors.py"
    ],
-   "date": "2026-11-23T00:10:12",
+   "date": "2026-11-23T01:02:04",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -464,7 +456,7 @@
      ]
     }
    },
-   "run": "20261123-001012-3ca4562+"
+   "run": "20261123-010204-f80ddd4+"
   },
   {
    "id": "spatial/counting",
@@ -517,7 +509,7 @@
      ]
     }
    },
-   "run": "20261123-001012-3ca4562+",
+   "run": "20261123-010204-f80ddd4+",
    "comparators": {
     "scipy": {
      "hamming": {
@@ -685,7 +677,7 @@
      "ulp_max": 6.0,
      "ulp_p999": 6.0,
      "rel_max": 6.85646096818549e-16,
-     "contract": 0.19749689628509456,
+     "contract": 0.19749689628509454,
      "bound": 1.0,
      "worst": [
       "uniform/2#13"
@@ -704,9 +696,9 @@
     },
     "minkowski_p3": {
      "points": 645,
-     "ulp_max": 2.0,
-     "ulp_p999": 2.0,
-     "rel_max": 2.929587332459143e-16,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 1.9361571807268418e-16,
      "contract": 0.20576825864893872,
      "bound": 1.0,
      "worst": [
@@ -827,7 +819,7 @@
      "points": 645,
      "ulp_max": 2.0,
      "ulp_p999": 2.0,
-     "rel_max": 2.2148409961004441e-16,
+     "rel_max": 2.0655923948240912e-16,
      "contract": 0.22326242735109855,
      "bound": 1.0,
      "worst": [
@@ -846,7 +838,7 @@
      ]
     }
    },
-   "run": "20261123-001012-3ca4562+",
+   "run": "20261123-010204-f80ddd4+",
    "comparators": {
     "scipy": {
      "braycurtis": {
@@ -1288,7 +1280,7 @@
      ]
     }
    },
-   "run": "20261123-001012-3ca4562+",
+   "run": "20261123-010204-f80ddd4+",
    "comparators": {
     "sklearn": {
      "haversine": {
@@ -1675,7 +1667,7 @@
      ]
     }
    },
-   "run": "20261123-001012-3ca4562+"
+   "run": "20261123-010204-f80ddd4+"
   },
   {
    "id": "spatial/neighbors",
@@ -2044,7 +2036,7 @@
      ]
     }
    },
-   "run": "20261123-001012-3ca4562+"
+   "run": "20261123-010204-f80ddd4+"
   }
  ]
 }

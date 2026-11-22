@@ -2,7 +2,8 @@
 
 A Python class holding the native tree (stardust._core.spatial._KDTree, csrc/spatial/kdtree.cpp), a data
 structure like the sparse arrays and frame's Series (ARCHITECTURE §3). The data are always copied: the
-tree keeps its own copy in leaf order, and `data` is a read-only copy in input order. The build is
+tree keeps its own copy in leaf order, and `data` is a read-only copy in input order, made from it on first
+use (decision SPT76: one copy of the data unless `data` is read). The build is
 deterministic (decision SPT50: median splits under the total order (coordinate, index)), so a pickled
 tree is rebuilt from its data and leafsize into the same tree.
 
@@ -43,11 +44,31 @@ def _leafsize(v):
     return v
 
 
-def _search(tree, X, ranks, p, ub):
-    """The k-nearest search of the rows of X (Q, m). The path is the tree; decision SPT21 lets a query of
-    a shape where kneighbors' brute force is faster (high m, few points) take that path instead, with the
-    same result (docs/design/spatial.md §1.3). SPT6 measures the threshold and adds the switch here."""
-    return tree._tree.query(X, ranks, p, ub)
+def _brute_pays(n, m, k):
+    """Whether kneighbors' brute force (the GEMM pre-selection) beats the tree for p = 2 (decisions SPT21,
+    SPT75, measured in SPT6, docs/design/spatial.md §5): the tree's work per query grows about as 2^(5m/6)
+    and falls a little with k, the brute force's as n."""
+    return n > 0 and m * 5 / 6 + 0.25 * math.log2(k) + 7 - math.log2(n) >= 0.5
+
+
+def _search(tree, X, ranks, p, ub, kmax):
+    """The k-nearest search of the rows of X (Q, m), (distances, indices) of the ranks. The path is the
+    tree, or for p = 2 and a shape where kneighbors' brute force is faster (high m for the number of points)
+    that brute force over the data in input order (SPT21, SPT75): the same kernel and the same order (d, j),
+    so the same result (docs/design/spatial.md §1.3)."""
+    n = tree.n
+    if not (p == 2.0 and _brute_pays(n, tree.m, kmax)):
+        return tree._tree.query(X, ranks, p, ub)
+    sd = _sd
+    C.finite(X, "query", "x")
+    kc = min(kmax, n)
+    d, i = _core._kneighbors(X, tree.data, "euclidean", 2.0, None, None, kc, ub, 0)
+    q = X.shape[0]
+    if kmax > kc:  # ranks past the data points are the fill (inf, n)
+        d = sd.concat([d, sd.full((q, 1), math.inf)], axis=1)
+        i = sd.concat([i, sd.full((q, 1), n, dtype=sd.int64)], axis=1)
+    cols = sd.minimum(ranks - 1, kc)
+    return d[:, cols], i[:, cols]
 
 
 class KDTree:
@@ -62,9 +83,8 @@ class KDTree:
         a = C.data(data, name, "data")
         if a.ndim != 2:
             raise ValueError(f"{name}(): 'data' must have 2 dimensions, not {a.ndim}")
-        own = _readonly(a.copy())  # always a copy: changing the input afterwards changes nothing here
-        self._tree = _core._KDTree(own, ls)  # checks that the data are finite
-        self._data = own
+        self._tree = _core._KDTree(a, ls)  # a copy in leaf order; checks that the data are finite
+        self._data = None  # the input-order copy, made from the tree's on first use (SPT76)
         self._mins = _readonly(self._tree.mins())
         self._maxes = _readonly(self._tree.maxes())
 
@@ -72,7 +92,10 @@ class KDTree:
 
     @property
     def data(self):
-        """The data (n, m) float64 in input order, read-only."""
+        """The data (n, m) float64 in input order, read-only (a copy: changing the input afterwards changes
+        nothing here)."""
+        if self._data is None:
+            self._data = _readonly(self._tree.data())
         return self._data
 
     @property
@@ -106,7 +129,7 @@ class KDTree:
         return f"KDTree(n={self.n}, m={self.m}, leafsize={self.leafsize})"
 
     def __reduce__(self):  # rebuilt from the data and leafsize: the same tree (SPT50, SPT56)
-        return (_rebuild, (memoryview(self._data).tobytes(), self.n, self.m, self.leafsize))
+        return (_rebuild, (memoryview(self.data).tobytes(), self.n, self.m, self.leafsize))
 
     # ---- queries ----
 
@@ -127,7 +150,7 @@ class KDTree:
         ncol = kk if isinstance(kk, int) else len(kk)
         C.check_alloc(16 * q * ncol, name)
         ranks = sd.arange(1, kk + 1, dtype=sd.int64) if isinstance(kk, int) else sd.asarray(kk, dtype=sd.int64)
-        d, i = _search(self, sd.reshape(X, (q, m)), ranks, pv, ub)
+        d, i = _search(self, sd.reshape(X, (q, m)), ranks, pv, ub, kk if isinstance(kk, int) else max(kk))
         if kk == 1:  # an int k = 1: the last axis dropped
             if not batch:
                 return QueryResult(float(d[0, 0]), int(i[0, 0]))
