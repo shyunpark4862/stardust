@@ -124,8 +124,9 @@ void for_elements(std::size_t k, Fn&& fn) {
 // each (tanhsinh 64 - 2^19, nsum's direct sums up to 2^24, derivative 2 - order): fn(r0, r1) over
 // [0, k) split over the threads when the work, k elements of about w points each, reaches kParallel
 // points, in pieces of about kTask points (at least one element) and at least kWoken pieces, so
-// that a pool's sleeping workers join (csrc/parallel/pool.cpp wakes them for more than 16 tasks;
-// htest H141's for_pieces_woken). Which thread runs a piece never changes an element's arithmetic.
+// that a pool's sleeping workers join (csrc/parallel/pool.cpp wakes them at once for a job of more
+// than 16 tasks of unknown length; parallel_for's task_ns overload would do without the floor).
+// Which thread runs a piece never changes an element's arithmetic.
 // for_elements itself (the optimize functions, one point per element) is unchanged (C22).
 constexpr std::size_t kWoken = 17;
 

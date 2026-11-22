@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <new>
 #include <string>
 
@@ -34,14 +35,67 @@ private:
     std::string msg_;
 };
 
+// The blocks that hold a Buffer and its reference count (one size: the
+// shared_ptr control block allocate_shared makes), kept per thread for reuse.
+// A tiny `x + y` spent ~15 of its ~80 ns in malloc and free of that block; a
+// thread's own list needs no lock, and a block freed on another thread simply
+// joins that thread's list (the memory is malloc's either way). At most
+// kCached blocks per thread (~35 KB); the rest go back to free().
+struct BlockCache {
+    static constexpr int kCached = 64;
+    void* blocks[kCached];
+    int count;  // -1 once the thread's flusher ran: no caching any more
+};
+thread_local BlockCache t_cache{};  // trivially destructible: usable to the thread's very end
+
+// Frees the cached blocks when the thread ends (pool workers on a resize).
+struct CacheFlusher {
+    ~CacheFlusher() {
+        for (int i = 0; i < t_cache.count; ++i) std::free(t_cache.blocks[i]);
+        t_cache.count = -1;
+    }
+};
+thread_local CacheFlusher t_flusher;
+
+template <typename T>
+struct CachedAlloc {
+    using value_type = T;
+    CachedAlloc() = default;
+    template <typename U>
+    CachedAlloc(const CachedAlloc<U>&) {}
+    T* allocate(std::size_t n) {
+        static_assert(alignof(T) <= 16);  // what malloc guarantees on macOS
+        if (n == 1 && t_cache.count > 0) return static_cast<T*>(t_cache.blocks[--t_cache.count]);
+        if (n == 1 && t_cache.count == 0) (void)&t_flusher;  // registers the flusher on first use
+        void* p = std::malloc(n * sizeof(T));
+        if (p == nullptr) throw std::bad_alloc();
+        return static_cast<T*>(p);
+    }
+    void deallocate(T* p, std::size_t n) {
+        if (n == 1 && t_cache.count >= 0 && t_cache.count < BlockCache::kCached) {
+            if (t_cache.count == 0) (void)&t_flusher;
+            t_cache.blocks[t_cache.count++] = p;
+            return;
+        }
+        std::free(p);
+    }
+    template <typename U>
+    bool operator==(const CachedAlloc<U>&) const {
+        return true;
+    }
+};
+
+std::shared_ptr<Buffer> make_buffer() { return std::allocate_shared<Buffer>(CachedAlloc<Buffer>{}, Buffer::Key{}); }
+
 }  // namespace
 
 std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
-    auto buf = std::make_shared<Buffer>(Key{});  // the Buffer and its reference count, together
+    auto buf = make_buffer();  // the Buffer and its reference count, together
     buf->size_ = nbytes;
     if (static_cast<std::size_t>(nbytes) <= kInline) {
-        buf->data_ = buf->inline_;
-        if (zeroed) std::memset(buf->inline_, 0, static_cast<std::size_t>(nbytes));
+        const auto addr = reinterpret_cast<std::uintptr_t>(buf->inline_);
+        buf->data_ = buf->inline_ + (((addr + kAlignment - 1) & ~(std::uintptr_t{kAlignment} - 1)) - addr);
+        if (zeroed) std::memset(buf->data_, 0, static_cast<std::size_t>(nbytes));
         return buf;
     }
     // A request larger than the machine's physical memory can never be filled: the
@@ -62,7 +116,7 @@ std::shared_ptr<Buffer> Buffer::allocate(std::int64_t nbytes, bool zeroed) {
 }
 
 std::shared_ptr<Buffer> Buffer::adopt(const Py_buffer& view) {
-    auto buf = std::make_shared<Buffer>(Key{});
+    auto buf = make_buffer();
     buf->external_ = true;
     buf->view_ = view;
     buf->data_ = static_cast<std::byte*>(view.buf);

@@ -21,6 +21,11 @@ namespace nb = nanobind;
 // axis is indexed by an int (docs/design/array.md §2.2).
 nb::object getitem(nb::handle x, nb::handle key);
 
+// x[key] for keys of Python ints and slices only (no other item kind, every int
+// in range): the element or the view, without the general key machinery; an
+// invalid object for any other key (getitem then decides, and raises).
+nb::object getitem_fast(nb::handle x, PyObject* key);
+
 // x[key] = value: value (array, nested list or Python scalar) is broadcast to
 // the selected shape and converted upward only (docs/design/array.md §2.5).
 // With repeated advanced indices the last write wins.

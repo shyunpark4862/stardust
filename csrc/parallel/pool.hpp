@@ -43,7 +43,32 @@ bool available();
 // One task is a plain call that leaves the GIL as it is; so does a call from
 // inside a task, which holds none (docs/design/array.md §10.2). An exception
 // from a task is rethrown here. Tasks must not touch Python objects.
+//
+// Workers that have been idle for ~100 us sleep, and waking them is worth it
+// only for a long enough job: a wake-up costs the caller ~0.7 us per worker
+// (at most 3; those pass it on to the rest) and arrives ~6 us later, so 10
+// threads win from about 20 us of work (kWakeWorkNs). Without an estimate of the task length
+// (the overload below), a job of more than 16 tasks wakes them at once, one
+// of 2 or 3 tasks wakes a worker per further task at once (too few tasks to
+// time), and one of 4-16 tasks wakes them as soon as the calling thread,
+// timing its own first tasks, sees that the rest is worth it. So a few long
+// tasks (folds, solves, frame chunks) no longer run on the caller alone, and
+// a short job of 4-16 tasks never pays for a wake-up.
 void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn);
+
+// The same, for a caller that knows roughly how long one task takes
+// (nanoseconds on one core; 0 or less: unknown, as above): ntasks x task_ns
+// of kWakeWorkNs or more wakes min(ntasks - 1, sleeping) workers at once,
+// less never wakes anyone (workers still spinning from the last job join
+// either way). Few long tasks then get every worker from the start instead of
+// after the caller's first task (4 tasks of 100 us: 107 us against 208), and a
+// short job of many tasks no longer pays for a wake-up. Only the speed
+// depends on it.
+void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn, std::int64_t task_ns);
+
+// The work (nanoseconds, all tasks together) from which a job wakes sleeping
+// workers (see parallel_for).
+inline constexpr std::int64_t kWakeWorkNs = 20'000;
 
 // Releases the GIL for the lifetime of the object, if this thread holds it:
 // inside a task, or under another GilRelease, it does nothing, so releases

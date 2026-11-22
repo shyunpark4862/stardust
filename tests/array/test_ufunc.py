@@ -122,12 +122,16 @@ BINARY = {
     "bitwise_left_shift": {I},
     "bitwise_right_shift": {I},
 }
-# float64 functions that run on vForce: accurate to 8 ULP by contract
+# float64 functions that run on vForce or on the area's NEON kernels (exp, expm1, log1p,
+# cos: array/kernels/vmath.hpp): accurate to 8 ULP by contract
 # (docs/api/array.md §6.4); and pow (libm, whose exact forms for the exponents 2, -1 and
 # 0.5 are correctly rounded where numpy's libm is not, docs/design/array.md §5.4).
 # Everything else must match numpy bit for bit.
 VFORCE = {
     "exp",
+    "expm1",
+    "log1p",
+    "cos",
     "log",
     "log2",
     "log10",

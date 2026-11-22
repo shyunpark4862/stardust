@@ -16,6 +16,8 @@
 #include "array/ops/pieces.hpp"
 #include "parallel/pool.hpp"
 
+#include <arm_neon.h>
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -202,8 +204,20 @@ nb::tuple nonzero(nb::handle x) {
     visit_dtype(a.dtype, [&]<typename T>(std::type_identity<T>) {
         const T* p = reinterpret_cast<const T*>(c.data);
         for_pieces(size, kNonzeroChunk, size, [&](std::int64_t t, std::int64_t b, std::int64_t e) {
-            std::int64_t k = 0;
-            for (std::int64_t i = b; i < e; ++i) k += truthy(p[i]);
+            std::int64_t k = 0, i = b;
+            if constexpr (std::is_same_v<T, bool>) {
+                // Bytes (0 or 1), sixteen at a time into byte counters, widened
+                // every 255 steps (as count_nonzero; the bool loop was a third of
+                // a sparse nonzero).
+                const auto* q = reinterpret_cast<const std::uint8_t*>(p);
+                while (i + 16 <= e) {
+                    uint8x16_t c = vdupq_n_u8(0);
+                    const std::int64_t stop = std::min(e - 15, i + 255 * 16);
+                    for (; i < stop; i += 16) c = vaddq_u8(c, vld1q_u8(q + i));
+                    k += vaddlvq_u8(c);
+                }
+            }
+            for (; i < e; ++i) k += truthy(p[i]);
             start[t + 1] = k;
         });
         for (std::int64_t t = 0; t < chunks; ++t) start[t + 1] += start[t];
@@ -221,7 +235,32 @@ nb::tuple nonzero(nb::handle x) {
             const std::int64_t end_k = start[t + 1];
             if (nd == 1) {
                 std::int64_t* o = dst[0];
-                for (std::int64_t i = b; i < e; ++i) {
+                std::int64_t i = b;
+                // Blocks of 16 counted first (a vectorized count): a block with no
+                // nonzero is skipped whole, a full one written as a run, so a sparse
+                // mask costs a count per block instead of a store per element (10^6
+                // with 1% nonzero: 276 us against numpy's 210).
+                constexpr std::int64_t kRun = 16;
+                for (; i + kRun <= e; i += kRun) {
+                    std::int64_t c = 0;
+                    if constexpr (std::is_same_v<T, bool>) {
+                        const uint8x16_t v = vld1q_u8(reinterpret_cast<const std::uint8_t*>(p + i));
+                        c = vmaxvq_u8(v) == 0 ? 0 : vminvq_u8(v) != 0 ? kRun : 1;  // 1: some, not all
+                    } else {
+                        for (std::int64_t j = 0; j < kRun; ++j) c += truthy(p[i + j]);
+                    }
+                    if (c == 0) continue;
+                    if (c == kRun) {
+                        for (std::int64_t j = 0; j < kRun; ++j) o[k + j] = i + j;
+                        k += kRun;
+                        continue;
+                    }
+                    for (std::int64_t j = 0; j < kRun; ++j) {
+                        if (k < end_k) o[k] = i + j;
+                        k += truthy(p[i + j]);
+                    }
+                }
+                for (; i < e; ++i) {
                     if (k < end_k) o[k] = i;
                     k += truthy(p[i]);
                 }
@@ -306,56 +345,92 @@ nb::object searchsorted(nb::handle x1, nb::handle x2, nb::handle side_obj, nb::h
         }
         keys_obj = gather_named(x1, sorter_obj);  // x1 in sorted order
     }
-    // Both sides contiguous in the promoted dtype: x1 is searched where it
-    // lies (a copy made one key search O(n), not O(log n)), and so are the values.
-    auto contiguous = [d](const NDArray& v) {
-        if (v.dtype == d && v.c_contiguous) return v;
-        NDArray c = new_array(d, v.shape_span());
-        if (c.size() > 0) assign(c, v);
-        return c;
-    };
-    const NDArray keys = contiguous(as_ndarray(keys_obj));
+    // x1 is searched where it lies, in its own dtype and layout: each probe of
+    // the binary search reads one key and converts it to the promoted dtype (the
+    // conversion assign() would make). Copying x1 first cost O(n) on every call
+    // with an int64 x1 and float values, or a strided x1; a search is O(log n).
+    const NDArray& keys = as_ndarray(keys_obj);
+    const std::int64_t n = keys.shape[0];
+    const std::int64_t ks = keys.strides[0];
 
     const bool scalar = !is_ndarray(x2);
-    NDArray vals;
-    if (scalar) {
-        // Converted straight to the promoted dtype (docs/api/array.md §1.5): an
-        // int outside int64 is an OverflowError only when that dtype is an
-        // integer one. The C++ asarray, so the message is "searchsorted(): ".
-        nb::list one_value;
-        one_value.append(x2);
-        vals = as_ndarray(asarray(one_value, dtype_object(d), nb::none()));
-    } else {
-        vals = contiguous(as_ndarray(x2));
+    std::int64_t one_result = 0;
+    NDArray vals, out;
+    if (!scalar) {
+        const NDArray& v0 = as_ndarray(x2);
+        vals = v0.dtype == d && v0.c_contiguous ? v0 : NDArray{};
+        if (vals.ndim == 0) {  // the values in the promoted dtype, contiguous
+            vals = new_array(d, v0.shape_span());
+            if (vals.size() > 0) assign(vals, v0);
+        }
+        out = new_array(DType::Int64, vals.shape_span());
     }
-    NDArray out = new_array(DType::Int64, vals.shape_span());
-    std::int64_t* o = reinterpret_cast<std::int64_t*>(out.data);
-    const std::int64_t n = keys.size(), m = vals.size();
+    std::int64_t* o = scalar ? &one_result : reinterpret_cast<std::int64_t*>(out.data);
+    const std::int64_t m = scalar ? 1 : vals.size();
     visit_dtype(d, [&]<typename T>(std::type_identity<T>) {
         if constexpr (!ops::is_cplx<T>) {
-            const T* k = reinterpret_cast<const T*>(keys.data);
-            const T* v = reinterpret_cast<const T*>(vals.data);
+            // The value of a scalar x2, converted straight to the promoted dtype
+            // (docs/api/array.md §1.5): an int outside int64 is an OverflowError only
+            // when that dtype is an integer one.
+            T scalar_value{};
+            if (scalar) scalar_value = scalar_from_python<T>(x2, *v_dtype);
+            const T* v = scalar ? &scalar_value : reinterpret_cast<const T*>(vals.data);
             // left: the first i with not (k[i] < v); right: the first i with v < k[i].
-            auto run = [&](std::int64_t begin, std::int64_t end) {
-                for (std::int64_t j = begin; j < end; ++j) {
-                    const T* at = right ? std::upper_bound(k, k + n, v[j], before<T>)
-                                        : std::lower_bound(k, k + n, v[j], before<T>);
-                    o[j] = at - k;
+            // So the answer is the number of keys k with below(k, v). Branch-free
+            // halving (a select per step, never a misprediction), and kLanes values
+            // searched side by side: every value of a group halves the same lengths,
+            // and their probes are independent loads, so kLanes cache misses are in
+            // flight at once instead of one (10^5 values in 10^6 keys: one at a time,
+            // a chain of dependent misses per value).
+            auto below = [right](T k, T vj) { return right ? !before<T>(vj, k) : before<T>(k, vj); };
+            constexpr int kLanes = 8;
+            auto search = [&](auto&& key) {
+                return [&, key](std::int64_t begin, std::int64_t end) {
+                    if (n == 0) {
+                        std::fill(o + begin, o + end, 0);
+                        return;
+                    }
+                    auto group = [&]<int L>(std::int64_t j) {
+                        std::int64_t base[L] = {};
+                        for (std::int64_t len = n; len > 1;) {
+                            const std::int64_t half = len / 2;
+                            for (int l = 0; l < L; ++l)
+                                base[l] = below(key(base[l] + half), v[j + l]) ? base[l] + half : base[l];
+                            len -= half;
+                        }
+                        for (int l = 0; l < L; ++l) o[j + l] = base[l] + below(key(base[l]), v[j + l]);
+                    };
+                    std::int64_t j = begin;
+                    for (; j + kLanes <= end; j += kLanes) group.template operator()<kLanes>(j);
+                    for (; j < end; ++j) group.template operator()<1>(j);
+                };
+            };
+            auto launch = [&](auto&& run) {
+                const std::int64_t work = m * std::max<std::int64_t>(1, static_cast<std::int64_t>(std::log2(n + 1)));
+                if (work >= kParallelThreshold && parallel::available()) {
+                    const std::int64_t tasks = (m + kParallelTask - 1) / kParallelTask;
+                    parallel::parallel_for(tasks, [&](std::int64_t t) {
+                        run(t * kParallelTask, std::min(m, (t + 1) * kParallelTask));
+                    });
+                } else {
+                    const parallel::Unlocked unlocked(work >= kParallelThreshold);
+                    run(0, m);
                 }
             };
-            const std::int64_t work = m * std::max<std::int64_t>(1, static_cast<std::int64_t>(std::log2(n + 1)));
-            if (work >= kParallelThreshold && parallel::available()) {
-                const std::int64_t tasks = (m + kParallelTask - 1) / kParallelTask;
-                parallel::parallel_for(tasks, [&](std::int64_t t) {
-                    run(t * kParallelTask, std::min(m, (t + 1) * kParallelTask));
-                });
+            if (keys.dtype == d && ks == static_cast<std::int64_t>(sizeof(T))) {
+                const T* k = reinterpret_cast<const T*>(keys.data);
+                launch(search([k](std::int64_t i) { return k[i]; }));
             } else {
-                const parallel::Unlocked unlocked(work >= kParallelThreshold);
-                run(0, m);
+                visit_dtype(keys.dtype, [&]<typename K>(std::type_identity<K>) {
+                    if constexpr (!ops::is_cplx<K>) {
+                        const std::byte* kp = keys.data;
+                        launch(search([kp, ks](std::int64_t i) { return cast_value<T>(load_as<K>(kp + i * ks)); }));
+                    }
+                });
             }
         }
     });
-    if (scalar) return to_python(o[0]);
+    if (scalar) return to_python(one_result);
     return wrap(std::move(out));
 }
 

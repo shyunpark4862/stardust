@@ -34,6 +34,11 @@ inline constexpr int kMaxOperands = 5;
 // The shortest piece of the innermost axis a parallel run hands out
 // (docs/design/array.md §10.4).
 inline constexpr std::int64_t kMinInnerPiece = 1024;
+// At most this many pieces per run (NdIter::cap_pieces): a long run of a weighted
+// kernel was cut into ~0.5 us pieces, and their pickup cost showed (exp of 10^7
+// on 10 threads: 19,500 pieces, 2.0 ms; at most 256: 1.15 ms; 1 thread 9.9 ms).
+// A constant, so the cut still depends on the shape alone.
+inline constexpr std::int64_t kMaxPieces = 256;
 
 // The signature every kernel ("inner loop") has: process n elements; operand
 // k starts at args[k] and advances strides[k] bytes per element. As in numpy,
@@ -93,6 +98,10 @@ public:
     // own (ufuncs), since the inner runs get shorter and come in tile order.
     void allow_tiles() { tiles_ok_ = true; }
 
+    // Caps run()'s pieces at kMaxPieces (longer pieces for long runs). The
+    // array's ufuncs set it; plan() of an iterator without it is unchanged.
+    void cap_pieces() { capped_ = true; }
+
     // How run() cuts the work: `tasks` pieces of `chunk` indices along
     // `axis` (tasks == 1: not split), and the work in bytes it counted.
     // Depends on the shape, layout and dtypes only, never on the thread
@@ -117,6 +126,7 @@ private:
     std::array<Dims, kMaxOperands> strides_;
     std::array<std::byte*, kMaxOperands> data_{};
     bool tiles_ok_ = false;
+    bool capped_ = false;
 };
 
 }  // namespace sd

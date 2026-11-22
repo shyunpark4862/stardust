@@ -58,7 +58,11 @@ private:
     std::int64_t size_ = 0;
     bool external_ = false;
     Py_buffer view_{};
-    alignas(kAlignment) std::byte inline_[kInline];
+    // Room for kInline bytes from the first kAlignment boundary inside it. The
+    // member itself is aligned to 16 only: a type aligned beyond 16 makes
+    // make_shared go through aligned operator new (malloc_type_aligned_alloc),
+    // which was a tenth of a tiny `x + y` (docs/design/array.md §11).
+    alignas(16) std::byte inline_[kInline + kAlignment - 16];
 };
 
 }  // namespace sd

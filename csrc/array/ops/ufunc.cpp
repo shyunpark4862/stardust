@@ -114,6 +114,7 @@ void run_loop(
     for (size_t j = 0; j < outs.size(); ++j) ops[ins.size() + j] = operand(outs[j]);
     NdIter it(shape, std::span(ops.data(), ins.size() + outs.size()));
     it.allow_tiles();  // ufunc kernels treat every element on its own
+    it.cap_pieces();
     if (buffered.needed()) it.run(&buffered_loop, &buffered, Split::Elementwise, weight);
     else it.run(loop, nullptr, Split::Elementwise, weight);
 }
@@ -216,6 +217,62 @@ bool overlap_in_chunks(
     return true;
 }
 
+// Small calls with one new result, every array operand contiguous in the same
+// order with the result's shape and already of its loop dtype, scalars broadcast
+// (stride 0): the loop runs once over the flat memory, as the iterator would
+// after coalescing, without building one (or copying the operands). Only below
+// the work at which the iterator would use the pool (NdIter::plan), so it is
+// the same single kernel call on the same thread: the same bits. An invalid
+// object: not this case. s3 + t3s spent a quarter of its 150 ns in the
+// iterator and the operand copies (docs/design/array.md §11).
+nb::object launch_contiguous(
+    std::span<const nb::handle> objs, std::span<const DType> in_types, DType result, Loop loop, std::int64_t weight
+) {
+    const size_t nin = objs.size();
+    const NDArray* first = nullptr;
+    bool c = true, f = true;
+    std::int64_t bytes = itemsize(result);
+    for (size_t k = 0; k < nin; ++k) {
+        if (!is_ndarray(objs[k])) continue;
+        const NDArray& a = as_ndarray(objs[k]);
+        if (a.dtype != in_types[k]) return {};
+        if (first == nullptr) first = &a;
+        else if (!std::ranges::equal(a.shape_span(), first->shape_span())) return {};
+        c = c && a.c_contiguous;
+        f = f && a.f_contiguous;
+        bytes = std::max(bytes, a.itemsize());
+    }
+    if (first == nullptr || (!c && !f)) return {};
+    const std::int64_t n = first->size();
+    // NdIter::run's rule: fewer than three arrays moved (scalars are not) count for less
+    const std::int64_t arrays = std::ranges::count_if(objs, [](nb::handle o) { return is_ndarray(o); }) + 1;
+    const std::int64_t work = weight * std::min<std::int64_t>(bytes, 8) * n;
+    if ((arrays < 3 ? work / 3 * arrays : work) >= 8 * kParallelThreshold) return {};
+    alignas(16) std::byte buf[kMaxInputs][16];
+    std::array<std::byte*, kMaxOperands> args;
+    std::array<std::int64_t, kMaxOperands> strides;
+    for (size_t k = 0; k < nin; ++k) {
+        if (is_ndarray(objs[k])) {
+            const NDArray& a = as_ndarray(objs[k]);
+            args[k] = a.data;
+            strides[k] = a.itemsize();
+        } else {
+            const DType kind = *scalar_dtype(objs[k]);
+            visit_dtype(in_types[k], [&]<typename T>(std::type_identity<T>) {
+                *reinterpret_cast<T*>(buf[k]) = scalar_from_python<T>(objs[k], kind);
+            });
+            args[k] = buf[k];
+            strides[k] = 0;
+        }
+    }
+    // C order unless every array is F-ordered (and not also C: 1-D, or extent-1 axes).
+    NDArray res = c ? new_array(result, first->shape_span()) : new_array_like(*first, result);
+    args[nin] = res.data;
+    strides[nin] = res.itemsize();
+    if (n > 0) loop(args.data(), n, strides.data(), nullptr);
+    return wrap(std::move(res));
+}
+
 // Steps 3 and 4 (see ufunc.hpp): convert, then run into out= or a new array.
 // With nout > 1 the loop writes nout results of dtype `result`, returned as
 // a tuple; there is no out= then (the caller passes None).
@@ -231,6 +288,8 @@ nb::object launch(
     const size_t nin = objs.size();
     if (out_obj.is_none() && std::ranges::none_of(objs, [](nb::handle o) { return is_ndarray(o); }))
         return launch_scalars(objs, in_types, result, loop, nout);
+    if (out_obj.is_none() && nout == 1)
+        if (nb::object r = launch_contiguous(objs, in_types, result, loop, weight); r.is_valid()) return r;
     std::array<NDArray, kMaxInputs> ins;
     std::array<std::span<const std::int64_t>, kMaxInputs> shapes;  // fixed arrays: no allocation per call
     size_t narrays = 0;
@@ -366,18 +425,25 @@ nb::object clip(nb::handle x, nb::handle lo, nb::handle hi, nb::handle out) {
 
 bool is_operand(nb::handle o) { return is_ndarray(o) || scalar_dtype(o).has_value(); }
 
-nb::object run_unary(const LoopTable& table, nb::handle x, nb::handle out, const char* symbol) {
+nb::object run_unary(
+    const LoopTable& table, nb::handle x, nb::handle out, const char* symbol, const LoopWeights& weights
+) {
     const DType d = operand_dtype(x, "x");
     const DType loop = select(table, d, std::span(&d, 1), symbol);
     const nb::handle objs[] = {x};
     check_int_scalars(objs, d);
-    return launch(
-        objs, std::span(&loop, 1), table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop, out
-    );
+    const int k = static_cast<int>(loop);
+    return launch(objs, std::span(&loop, 1), table[k].out, table[k].loop, out, 1, weights[k]);
 }
 
 nb::object run_binary(
-    const LoopTable& table, bool no_bool_inputs, nb::handle a, nb::handle b, nb::handle out, const char* symbol
+    const LoopTable& table,
+    bool no_bool_inputs,
+    nb::handle a,
+    nb::handle b,
+    nb::handle out,
+    const char* symbol,
+    const LoopWeights& weights
 ) {
     const DType dtypes[] = {operand_dtype(a, "x1"), operand_dtype(b, "x2")};
     if (no_bool_inputs && (dtypes[0] == DType::Bool || dtypes[1] == DType::Bool)) no_loop(dtypes, symbol);
@@ -386,7 +452,8 @@ nb::object run_binary(
     const nb::handle objs[] = {a, b};
     check_int_scalars(objs, promoted);
     const DType types[] = {loop, loop};
-    return launch(objs, types, table[static_cast<int>(loop)].out, table[static_cast<int>(loop)].loop, out);
+    const int k = static_cast<int>(loop);
+    return launch(objs, types, table[k].out, table[k].loop, out, 1, weights[k]);
 }
 
 nb::object run_nary(

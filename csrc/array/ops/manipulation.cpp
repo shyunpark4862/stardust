@@ -388,23 +388,30 @@ nb::object tile(nb::handle x, nb::handle reps_obj) {
 nb::tuple unstack(nb::handle x, nb::handle axis_obj) {
     const NDArray& a = require_ndarray(x);
     const int axis = normalize_axis(parse_int(axis_obj, "axis"), a.ndim);
-    nb::list out;
-    for (std::int64_t i = 0; i < a.shape[axis]; ++i) {
-        NDArray v = view_of(x);
-        v.data += i * a.strides[axis];
-        for (int d = axis; d + 1 < a.ndim; ++d) {
-            v.shape[d] = a.shape[d + 1];
-            v.strides[d] = a.strides[d + 1];
-        }
-        v.ndim = a.ndim - 1;
-        if (v.ndim == 0)  // no 0-d arrays: a 1-D x unstacks into Python scalars
-            out.append(load_python(a.dtype, v.data));
-        else {
-            v.update_flags();
-            out.append(wrap(std::move(v)));
-        }
+    const std::int64_t n = a.shape[axis];
+    nb::object out = nb::steal(PyTuple_New(static_cast<Py_ssize_t>(n)));  // filled in place: no list, no copy
+    if (!out.is_valid()) throw nb::python_error();
+    // One view described once; each item is a copy of it at its own offset.
+    NDArray v = view_of(x);
+    for (int d = axis; d + 1 < a.ndim; ++d) {
+        v.shape[d] = a.shape[d + 1];
+        v.strides[d] = a.strides[d + 1];
     }
-    return nb::tuple(out);
+    v.ndim = a.ndim - 1;
+    if (v.ndim > 0) v.update_flags();
+    for (std::int64_t i = 0; i < n; ++i) {
+        const std::byte* p = a.data + i * a.strides[axis];
+        nb::object item;
+        if (v.ndim == 0) {  // no 0-d arrays: a 1-D x unstacks into Python scalars
+            item = load_python(a.dtype, p);
+        } else {
+            NDArray w = v;
+            w.data = const_cast<std::byte*>(p);
+            item = wrap(std::move(w));
+        }
+        PyTuple_SET_ITEM(out.ptr(), static_cast<Py_ssize_t>(i), item.release().ptr());
+    }
+    return nb::borrow<nb::tuple>(out);
 }
 
 // --------------------------------------------------------------- meshgrid

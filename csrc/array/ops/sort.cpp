@@ -487,9 +487,155 @@ struct SortCfg {
     bool descending, stable;
 };
 
+// ---- short lanes: a sorting network --------------------------------------
+// A lane of at most kNetworkMax elements (sort(x, axis=1) of a (125000, 8)
+// array) is sorted in registers by Batcher's odd-even merge network, each
+// compare-exchange a pair of selects, with ties broken by the original index:
+// the stable order (equal values -- -0.0 and +0.0 included -- keep their input
+// order; NaNs, set apart first, too), with no branch to mispredict and no
+// buffer. The merge sort it replaces took 60 ns per lane of 8, numpy 17.
+inline constexpr std::int64_t kNetworkMax = 16;
+
+struct NetworkPair {
+    int a, b;
+};
+
+// Batcher's network on 16 without the comparators that touch an element at or
+// past M (as if those held +inf, which never moves), as a compile-time list.
+template <int M>
+constexpr auto network_pairs() {
+    constexpr int N = kNetworkMax;
+    struct List {
+        NetworkPair pairs[80] = {};  // Batcher's network on 16 has 63 comparators
+        int size = 0;
+    } l;
+    for (int p = 1; p < N; p <<= 1)
+        for (int k = p; k >= 1; k >>= 1)
+            for (int j = k % p; j + k < N; j += 2 * k)
+                for (int i = 0; i < k && i + j + k < N; ++i)
+                    if ((i + j) / (2 * p) == (i + j + k) / (2 * p) && i + j + k < M)
+                        l.pairs[l.size++] = {i + j, i + j + k};
+    return l;
+}
+
+// a[0, M) sorted in place, ai carrying the original indices: every
+// compare-exchange unrolled, so the values stay in registers.
+template <typename T, int M, bool Descending>
+inline void network_run(T* a, std::int64_t* ai) {
+    static constexpr auto list = network_pairs<M>();
+    T v[M > 0 ? M : 1];
+    std::int64_t ix[M > 0 ? M : 1];
+    for (int k = 0; k < M; ++k) v[k] = a[k], ix[k] = ai[k];
+    auto cas = [&](int p, int q) {
+        const T vp = v[p], vq = v[q];
+        const std::int64_t ip = ix[p], iq = ix[q];
+        // q goes first: strictly before in the order, or equal and earlier in the
+        // input. Bitwise, not ||/&&: no branch (the values are never NaN here).
+        const bool lt = Descending ? vp < vq : vq < vp;
+        const bool swap = lt | ((vp == vq) & (iq < ip));
+        v[p] = swap ? vq : vp;
+        v[q] = swap ? vp : vq;
+        ix[p] = swap ? iq : ip;
+        ix[q] = swap ? ip : iq;
+    };
+    [&]<std::size_t... K>(std::index_sequence<K...>) {
+        (cas(list.pairs[K].a, list.pairs[K].b), ...);
+    }(std::make_index_sequence<static_cast<std::size_t>(list.size)>{});
+    for (int k = 0; k < M; ++k) a[k] = v[k], ai[k] = ix[k];
+}
+
+// Values only (sort): a[0, M) by compare-and-select alone, no index to carry
+// (a level of the network is one compare and two selects deep). Equal values are
+// indistinguishable except -0.0 and +0.0: the caller rewrites their signs.
+template <typename T, int M, bool Descending>
+inline void network_values(T* a) {
+    static constexpr auto list = network_pairs<M>();
+    T v[M > 0 ? M : 1];
+    for (int k = 0; k < M; ++k) v[k] = a[k];
+    auto cas = [&](int p, int q) {
+        const T vp = v[p], vq = v[q];
+        const bool swap = Descending ? vp < vq : vq < vp;
+        v[p] = swap ? vq : vp;
+        v[q] = swap ? vp : vq;
+    };
+    [&]<std::size_t... K>(std::index_sequence<K...>) {
+        (cas(list.pairs[K].a, list.pairs[K].b), ...);
+    }(std::make_index_sequence<static_cast<std::size_t>(list.size)>{});
+    for (int k = 0; k < M; ++k) a[k] = v[k];
+}
+
+// The lane's values sorted into v, the stable order (sort_lane, short lanes).
+template <typename T>
+inline void network_sort_values(const std::byte* x, std::int64_t stride, std::int64_t n, bool descending, T* v) {
+    std::int64_t nans = 0;
+    std::uint32_t zero_signs = 0;  // the signs of the zeros, in input order (bit z: the z-th zero)
+    int zeros = 0, negative = 0;
+    if constexpr (ops::is_float<T>) {
+        for (std::int64_t i = 0; i < n; ++i) nans += std::isnan(load_as<T>(x + i * stride));
+    }
+    std::int64_t rest = descending ? nans : 0, nan = descending ? 0 : n - nans;
+    for (std::int64_t i = 0; i < n; ++i) {
+        const T e = load_as<T>(x + i * stride);
+        if constexpr (ops::is_float<T>) {
+            if (e == 0) {
+                const bool neg = std::signbit(e);
+                zero_signs |= static_cast<std::uint32_t>(neg) << zeros;
+                ++zeros;
+                negative += neg;
+            }
+        }
+        v[is_nan(e) ? nan++ : rest++] = e;
+    }
+    T* a = v + (descending ? nans : 0);
+    const std::int64_t m = n - nans;
+    [&]<int... M>(std::integer_sequence<int, M...>) {
+        if (descending) ((m == M ? network_values<T, M, true>(a) : void()), ...);
+        else ((m == M ? network_values<T, M, false>(a) : void()), ...);
+    }(std::make_integer_sequence<int, kNetworkMax + 1>{});
+    if constexpr (ops::is_float<T>) {
+        if (negative > 0 && negative < zeros) {  // both signs: the zero run in input order (stable)
+            std::int64_t z = 0;
+            while (a[z] != 0) ++z;
+            for (int k = 0; k < zeros; ++k) a[z + k] = (zero_signs >> k) & 1 ? T(-0.0) : T(0.0);
+        }
+    }
+}
+
+// The lane sorted into v (values) and ix (their original indices): NaNs (floats)
+// set apart at the end (ascending) or the start (descending) in input order, the
+// rest by the network.
+template <typename T>
+inline void network_sort(
+    const std::byte* x, std::int64_t stride, std::int64_t n, bool descending, T* v, std::int64_t* ix
+) {
+    std::int64_t nans = 0;
+    if constexpr (ops::is_float<T>) {
+        for (std::int64_t i = 0; i < n; ++i) nans += std::isnan(load_as<T>(x + i * stride));
+    }
+    std::int64_t rest = descending ? nans : 0, nan = descending ? 0 : n - nans;
+    for (std::int64_t i = 0; i < n; ++i) {
+        const T e = load_as<T>(x + i * stride);
+        const std::int64_t at = is_nan(e) ? nan++ : rest++;
+        v[at] = e;
+        ix[at] = i;
+    }
+    T* a = v + (descending ? nans : 0);
+    std::int64_t* ai = ix + (descending ? nans : 0);
+    [&]<int... M>(std::integer_sequence<int, M...>) {
+        if (descending) ((n - nans == M ? network_run<T, M, true>(a, ai) : void()), ...);
+        else ((n - nans == M ? network_run<T, M, false>(a, ai) : void()), ...);
+    }(std::make_integer_sequence<int, kNetworkMax + 1>{});
+}
+
 template <typename T>
 void sort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
     const SortCfg& cfg = *static_cast<const SortCfg*>(c.user);
+    if (c.n <= kNetworkMax) {
+        T v[kNetworkMax];
+        network_sort_values<T>(x, c.x_stride, c.n, cfg.descending, v);
+        for (std::int64_t i = 0; i < c.n; ++i) *reinterpret_cast<T*>(o + i * c.o_stride) = v[i];
+        return;
+    }
     const LaneBuffer<T> buf(c.n, 0);
     const std::int64_t nans =
         load_split_nans<T>(x, c.x_stride, c.n, buf.get(), cfg.descending, [](std::int64_t, T v) { return v; });
@@ -500,6 +646,13 @@ void sort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
 template <typename T>
 void argsort_lane(const std::byte* x, std::byte* o, const LaneCtx& c) {
     const SortCfg& cfg = *static_cast<const SortCfg*>(c.user);
+    if (c.n <= kNetworkMax) {  // the stable order for stable=False too (any order of ties is valid there)
+        T v[kNetworkMax];
+        std::int64_t ix[kNetworkMax];
+        network_sort<T>(x, c.x_stride, c.n, cfg.descending, v, ix);
+        for (std::int64_t i = 0; i < c.n; ++i) *reinterpret_cast<std::int64_t*>(o + i * c.o_stride) = ix[i];
+        return;
+    }
     const LaneBuffer<Keyed<T>> buf(c.n, 0);
     const std::int64_t nans = load_split_nans<T>(
         x, c.x_stride, c.n, buf.get(), cfg.descending, [](std::int64_t i, T v) { return Keyed<T>{v, i}; }

@@ -14,6 +14,8 @@
 #include "array/ops/shape.hpp"
 #include "array/ops/ufunc.hpp"
 
+#include <cstring>
+#include <new>
 #include <string>
 #include <type_traits>
 
@@ -131,10 +133,40 @@ PyType_Slot ndarray_slots[] = {
     {0, nullptr},
 };
 
+template <typename T>
+T load_as_unaligned(const std::byte* p) {
+    T v;
+    std::memcpy(&v, p, sizeof(T));
+    return v;
+}
+
+// A Python scalar for each element, the lists made at their final size
+// (PyList_New + SET_ITEM: append's growth was a fifth of fm.tolist(), and the
+// last axis is one typed loop).
+PyObject* new_scalar(DType d, const std::byte* p) {
+    switch (d) {
+        case DType::Bool: return Py_NewRef(*reinterpret_cast<const bool*>(p) ? Py_True : Py_False);
+        case DType::Int64: return PyLong_FromLongLong(load_as_unaligned<std::int64_t>(p));
+        case DType::Float64: return PyFloat_FromDouble(load_as_unaligned<double>(p));
+        default: {
+            const complex128 z = load_as_unaligned<complex128>(p);
+            return PyComplex_FromDoubles(z.real(), z.imag());
+        }
+    }
+}
+
 nb::object tolist(const NDArray& a, int depth, const std::byte* p) {
     if (depth == a.ndim) return load_python(a.dtype, p);
-    nb::list out;
-    for (std::int64_t i = 0; i < a.shape[depth]; ++i) out.append(tolist(a, depth + 1, p + i * a.strides[depth]));
+    const std::int64_t n = a.shape[depth], st = a.strides[depth];
+    nb::object out = nb::steal(PyList_New(static_cast<Py_ssize_t>(n)));
+    if (!out.is_valid()) throw nb::python_error();
+    PyObject* list = out.ptr();
+    for (std::int64_t i = 0; i < n; ++i) {
+        PyObject* item =
+            depth + 1 == a.ndim ? new_scalar(a.dtype, p + i * st) : tolist(a, depth + 1, p + i * st).release().ptr();
+        if (item == nullptr) throw nb::python_error();
+        PyList_SET_ITEM(list, static_cast<Py_ssize_t>(i), item);
+    }
     return out;
 }
 
@@ -161,6 +193,53 @@ struct ArrayIterator {
     nb::object array;
     std::int64_t next = 0, stop = 0;
 };
+
+// A C++ exception from a type slot as the Python error nanobind would set for
+// it: only what the slots below can meet (a Python error, memory).
+void set_error_from_exception() {
+    try {
+        throw;
+    } catch (nb::python_error& e) { e.restore(); } catch (const std::bad_alloc&) {
+        PyErr_NoMemory();
+    } catch (const std::exception& e) { PyErr_SetString(PyExc_RuntimeError, e.what()); }
+}
+
+// __next__ as the type slot (no method lookup and nanobind dispatch per item:
+// list(x) of 10^4 paid ~10 ns per element there), ending without raising
+// StopIteration.
+PyObject* iterator_next(PyObject* self) {
+    ArrayIterator& it = *nb::inst_ptr<ArrayIterator>(nb::handle(self));
+    if (it.next >= it.stop) return nullptr;
+    try {
+        return item_along_axis0(it.array, it.next++).release().ptr();
+    } catch (...) {
+        set_error_from_exception();
+        return nullptr;
+    }
+}
+
+PyType_Slot iterator_slots[] = {
+    {Py_tp_iter, reinterpret_cast<void*>(PyObject_SelfIter)},
+    {Py_tp_iternext, reinterpret_cast<void*>(iterator_next)},
+    {0, nullptr},
+};
+
+// x[key] as the type slot: the common keys (ints and slices, basic_fast in
+// indexing.cpp) are answered here; anything else, and any error, goes to the
+// bound __getitem__ (nanobind's dispatch and exception translation). The
+// method lookup and dispatch were a fifth of x[5] (~50 ns).
+PyObject* g_getitem = nullptr;  // the bound function, set by bind_ndarray (owned by the type's dict)
+
+PyObject* array_subscript(PyObject* self, PyObject* key) {
+    try {
+        nb::object r = getitem_fast(nb::handle(self), key);
+        if (r.is_valid()) return r.release().ptr();
+    } catch (...) {
+        PyErr_Clear();  // the general path below raises it properly
+    }
+    PyObject* args[] = {self, key};
+    return PyObject_Vectorcall(g_getitem, args, 2, nullptr);
+}
 
 // ---- operators: thin wrappers over the elementwise functions --------------
 // An operand we do not take (a list, a numpy array, None) gives
@@ -248,7 +327,7 @@ nb::object format_call(const char* fn, nb::handle self) {
 
 void bind_ndarray(nb::module_& m) {
     auto cls =
-        nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots))
+        nb::class_<NDArray>(m, "ndarray", nb::type_slots(ndarray_slots), nb::pooled(256))
             .def_prop_ro("T", named(".T", &transpose_2d))
             .def_prop_ro("mT", named(".mT", &matrix_transpose))
             .def(
@@ -387,6 +466,7 @@ void bind_ndarray(nb::module_& m) {
             .def("__index__", [](const NDArray&) -> int {
                 throw nb::type_error("an array cannot be used as an index");
             });
+    g_ndarray_type = reinterpret_cast<PyTypeObject*>(cls.ptr());  // is_ndarray, wrap (bind/pyutil.hpp)
     using namespace ops;
     def_arith<Add>(cls, "__add__", "__radd__", "__iadd__", "+", "+=");
     def_arith<Subtract>(cls, "__sub__", "__rsub__", "__isub__", "-", "-=");
@@ -454,13 +534,14 @@ void bind_ndarray(nb::module_& m) {
 
     bind_dlpack(m, cls);  // from_dlpack, __dlpack__, __dlpack_device__
 
-    auto it_cls = nb::class_<ArrayIterator>(m, "_ArrayIterator")
-                      .def("__iter__", [](nb::handle self) { return nb::borrow(self); })
-                      .def("__next__", [](ArrayIterator& it) {
-                          if (it.next >= it.stop) throw nb::stop_iteration();
-                          return item_along_axis0(it.array, it.next++);
-                      });
+    auto it_cls = nb::class_<ArrayIterator>(m, "_ArrayIterator", nb::type_slots(iterator_slots));
     use_short_type_name(it_cls);
+
+    // x[key]: the slot above in front of the bound __getitem__ (set last: a later
+    // __getitem__ assignment would put Python's generic slot back).
+    g_getitem = nb::object(cls.attr("__getitem__")).ptr();
+    reinterpret_cast<PyTypeObject*>(cls.ptr())->tp_as_mapping->mp_subscript = &array_subscript;
+    PyType_Modified(reinterpret_cast<PyTypeObject*>(cls.ptr()));
 }
 
 }  // namespace sd

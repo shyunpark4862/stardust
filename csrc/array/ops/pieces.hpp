@@ -29,7 +29,7 @@ void for_pieces(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
     }
     const parallel::Unlocked unlocked(true);
     if (pieces > 1 && parallel::available()) {
-        parallel::parallel_for(pieces, run);
+        parallel::parallel_for(pieces, run, work_ns(work / pieces));
     } else {
         for (std::int64_t t = 0; t < pieces; ++t) run(t);
     }

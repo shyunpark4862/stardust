@@ -34,8 +34,10 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <chrono>
 #include <cstdint>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include <Accelerate/Accelerate.h>
@@ -81,6 +83,33 @@ std::vector<std::int64_t> pool_smoke_test(std::int64_t ntasks) {
     return out;
 }
 
+// A measurement of the pool's wake-up rule (tools only): `reps` jobs of
+// `ntasks` tasks that each busy-wait `work_ns`, `pause_us` apart (the workers
+// fall asleep after ~100 us), parallel_for given `hint_ns` (0: unknown).
+// Returns each job's time in ns, measured around the parallel_for.
+std::vector<std::int64_t> pool_wake_bench(
+    std::int64_t ntasks, std::int64_t work_ns, std::int64_t hint_ns, std::int64_t pause_us, std::int64_t reps
+) {
+    using clock = std::chrono::steady_clock;
+    std::vector<std::int64_t> out;
+    sd::parallel::GilRelease release;
+    for (std::int64_t r = 0; r < reps; ++r) {
+        const auto resume = clock::now() + std::chrono::microseconds(pause_us);
+        while (clock::now() < resume) std::this_thread::sleep_for(std::chrono::microseconds(50));
+        const auto t0 = clock::now();
+        sd::parallel::parallel_for(
+            ntasks,
+            [&](std::int64_t) {
+                const auto until = clock::now() + std::chrono::nanoseconds(work_ns);
+                while (clock::now() < until) {}
+            },
+            hint_ns
+        );
+        out.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - t0).count());
+    }
+    return out;
+}
+
 }  // namespace
 
 NB_MODULE(_core, m) {
@@ -107,6 +136,7 @@ NB_MODULE(_core, m) {
     sd::bind_matmul(m);
     m.def("_build_info", &build_info, "Toolchain facts captured at compile time.");
     m.def("_pool_smoke_test", &pool_smoke_test, nb::arg("ntasks"));
+    m.def("_pool_wake_bench", &pool_wake_bench);
     // API.md §3. Results never depend on the thread count
     // (docs/design/array.md §10.5).
     m.def(

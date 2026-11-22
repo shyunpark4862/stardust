@@ -73,9 +73,12 @@ T pairwise_parallel(std::int64_t n, std::int64_t leaf, const SumLeaf& sum_leaf) 
     return pairwise::combine(n, leaf, part);
 }
 
+// `threshold`: the length from which the leaves run on the pool -- a plain
+// sum streams at ~0.07 ns per element, so ten threads win only from
+// kReduceThreshold; a dearer leaf (nansum's NaN select) passes a lower one.
 template <typename Get>
-double pairwise_sum_mt(std::int64_t n, const Get& get) {
-    if (n < kParallelThreshold || !parallel::available()) return pairwise_sum(0, n, get);
+double pairwise_sum_mt(std::int64_t n, const Get& get, std::int64_t threshold = kReduceThreshold) {
+    if (n < threshold || !parallel::available()) return pairwise_sum(0, n, get);
     return pairwise_parallel<double>(n, kLeaf, [&](std::int64_t b, std::int64_t m) { return pairwise_sum(b, m, get); });
 }
 
@@ -90,7 +93,7 @@ double pairwise_squares(std::int64_t begin, std::int64_t n, const Dev& dev) {
 
 template <typename Dev>
 double pairwise_squares_mt(std::int64_t n, const Dev& dev) {
-    if (n < kParallelThreshold || !parallel::available()) return pairwise_squares(0, n, dev);
+    if (n < kReduceThreshold || !parallel::available()) return pairwise_squares(0, n, dev);
     return pairwise_parallel<double>(n, kLeaf, [&](std::int64_t b, std::int64_t m) {
         return pairwise_squares(b, m, dev);
     });
@@ -98,7 +101,7 @@ double pairwise_squares_mt(std::int64_t n, const Dev& dev) {
 
 template <typename Get>
 complex128 pairwise_sum_complex_mt(std::int64_t n, const Get& get) {
-    if (n < kParallelThreshold || !parallel::available()) return pairwise_sum_complex(0, n, get);
+    if (n < kReduceThreshold || !parallel::available()) return pairwise_sum_complex(0, n, get);
     return pairwise_parallel<complex128>(n, kLeaf / 2, [&](std::int64_t b, std::int64_t m) {
         return pairwise_sum_complex(b, m, get);
     });
@@ -269,7 +272,7 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             return;
         }
         if constexpr (order_free<Op, T>) {
-            if (n >= kParallelThreshold && parallel::available()) {
+            if (n >= kReduceThreshold && parallel::available()) {
                 // A long run with one output (a full reduction): pieces in parallel.
                 const std::int64_t pieces = (n + kParallelTask - 1) / kParallelTask;
                 auto part = std::make_unique_for_overwrite<T[]>(static_cast<size_t>(pieces));  // not vector<bool>
@@ -291,17 +294,35 @@ void reduce_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             // A typed contiguous read lets the NaN select vectorize (2x on 1e7).
             if (s[0] == sizeof(T)) {
                 const T* xp = reinterpret_cast<const T*>(x);
-                acc = acc + pairwise_sum_mt(n, [xp](std::int64_t i) {
-                          const T v = xp[i];
-                          return v != v ? T(0) : v;
-                      });
+                acc = acc + pairwise_sum_mt(
+                                n,
+                                [xp](std::int64_t i) {
+                                    const T v = xp[i];
+                                    return v != v ? T(0) : v;
+                                },
+                                kParallelThreshold
+                            );
             } else {
                 acc = acc + pairwise_sum_mt(n, at);
             }
         } else if constexpr (std::is_same_v<Op, ops::Add> && ops::is_float<T>) {
-            acc = acc + pairwise_sum_mt(n, at);
+            // Contiguous: a typed accessor, so the leaf's 16 chains load vectors (the
+            // byte-strided one gathered scalars: 0.096 against 0.050 ns per element in
+            // cache). The same terms in the same tree: the same bits.
+            if (s[0] == sizeof(T)) {
+                const T* xp = reinterpret_cast<const T*>(x);
+                acc = acc + pairwise_sum_mt(n, [xp](std::int64_t i) { return xp[i]; });
+            } else {
+                acc = acc + pairwise_sum_mt(n, at);
+            }
         } else if constexpr (std::is_same_v<Op, ops::Add> && ops::is_cplx<T>) {
-            const complex128 p = pairwise_sum_complex_mt(n, at);
+            complex128 p;
+            if (s[0] == sizeof(T)) {  // typed, as above
+                const T* xp = reinterpret_cast<const T*>(x);
+                p = pairwise_sum_complex_mt(n, [xp, &value](std::int64_t i) { return value(xp[i]); });
+            } else {
+                p = pairwise_sum_complex_mt(n, at);
+            }
             acc = {acc.real() + p.real(), acc.imag() + p.imag()};
         } else if constexpr (std::is_same_v<Op, ops::Multiply> && (ops::is_float<T> || ops::is_cplx<T>)) {
             if (s[0] == sizeof(T)) {
@@ -447,6 +468,18 @@ void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             return q;
         };
         if (s[2] == 0) {  // inner-axis: pairwise, like sum
+            if (s[0] == sizeof(T) && s[1] == 0) {  // contiguous x, one mean: typed loads
+                const T* xp = reinterpret_cast<const T*>(x);
+                const T mv = load_as<T>(m);
+                *reinterpret_cast<double*>(o) += pairwise_sum_mt(n, [xp, mv](std::int64_t i) {
+                    const T v = xp[i];
+                    const T d = v - mv;
+                    const double q = std::fma(d.real(), d.real(), d.imag() * d.imag());
+                    if constexpr (SkipNan) return v.real() != v.real() || v.imag() != v.imag() ? 0.0 : q;
+                    return q;
+                });
+                return;
+            }
             *reinterpret_cast<double*>(o) += pairwise_sum_mt(n, sq);
             return;
         }
@@ -459,6 +492,17 @@ void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
             return d;
         };
         if (s[2] == 0) {  // inner-axis: pairwise, like sum
+            if (s[0] == sizeof(T) && s[1] == 0) {  // contiguous x, one mean: typed loads (as in reduce_loop)
+                const T* xp = reinterpret_cast<const T*>(x);
+                const T mv = load_as<T>(m);
+                *reinterpret_cast<double*>(o) += pairwise_squares_mt(n, [xp, mv](std::int64_t i) {
+                    const T v = xp[i];
+                    const T d = v - mv;
+                    if constexpr (SkipNan) return v != v ? 0.0 : d;
+                    return d;
+                });
+                return;
+            }
             *reinterpret_cast<double*>(o) += pairwise_squares_mt(n, dev);
             return;
         }
@@ -472,59 +516,60 @@ void sq_dev_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, 
 
 // ---- argmin / argmax over one lane (index order, so ties keep the first) ----
 
-// float64, contiguous: two lanes, each keeping its best value and where it
-// was. Strict > keeps the first index within a lane; between the lanes a tie
-// goes to the smaller index. NaNs are only noted on the way (any NaN wins,
-// the first one) and then located by a scalar rescan, as they are rare.
+// float64, contiguous: two passes, as int64 below -- the extreme value by four
+// independent FMAX/FMIN chains (NaN-propagating: a NaN anywhere makes it NaN;
+// -0 < +0), then the first index holding it (x == best: -0 and +0 are equal,
+// so the first zero of the two wins, as with a strict compare; the first NaN
+// when best is NaN). The one-pass index tracking was a chain of dependent
+// selects, 0.5 ns an element (10^6: 510 us, numpy 560).
 // SkipNan (nanargmin/nanargmax): a NaN reads as +inf (min) or -inf (max),
-// numpy's replacement, so it never wins over a number and the first of
-// equal values still wins.
+// numpy's replacement: FMAXNM/FMINNM pass over NaNs, and when the extreme is
+// that far end (or NaN: all NaN) the first NaN or far value wins.
 template <bool Max, bool SkipNan = false>
 std::int64_t neon_arg_extreme(const double* x, std::int64_t n) {
     const double far = Max ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
-    const float64x2_t farv = vdupq_n_f64(far);
-    auto load = [&](const double* p) {
-        const float64x2_t v = vld1q_f64(p);
-        if constexpr (SkipNan) return vbslq_f64(vceqq_f64(v, v), v, farv);
-        else return v;
+    auto pick = [](float64x2_t a, float64x2_t b) {
+        if constexpr (SkipNan) return Max ? vmaxnmq_f64(a, b) : vminnmq_f64(a, b);
+        else return Max ? vmaxq_f64(a, b) : vminq_f64(a, b);
     };
-    float64x2_t best = load(x);
-    int64x2_t at = {0, 1}, idx = {0, 1};
-    const int64x2_t two = vdupq_n_s64(2);
-    uint64x2_t ordered = vceqq_f64(best, best);  // all-ones while a lane has seen no NaN (x == x)
-    std::int64_t i = 2;
-    for (; i + 2 <= n; i += 2) {
-        const float64x2_t v = load(x + i);
-        idx = vaddq_s64(idx, two);
-        const uint64x2_t better = Max ? vcgtq_f64(v, best) : vcltq_f64(v, best);
-        best = vbslq_f64(better, v, best);
-        at = vbslq_s64(better, idx, at);
-        if constexpr (!SkipNan) ordered = vandq_u64(ordered, vceqq_f64(v, v));
+    double best;
+    std::int64_t i = 0;
+    if (n >= 8) {
+        float64x2_t m0 = vld1q_f64(x), m1 = vld1q_f64(x + 2), m2 = vld1q_f64(x + 4), m3 = vld1q_f64(x + 6);
+        for (i = 8; i + 8 <= n; i += 8) {
+            m0 = pick(m0, vld1q_f64(x + i));
+            m1 = pick(m1, vld1q_f64(x + i + 2));
+            m2 = pick(m2, vld1q_f64(x + i + 4));
+            m3 = pick(m3, vld1q_f64(x + i + 6));
+        }
+        const float64x2_t m = pick(pick(m0, m1), pick(m2, m3));
+        best = SkipNan ? (Max ? vmaxnmvq_f64(m) : vminnmvq_f64(m)) : (Max ? vmaxvq_f64(m) : vminvq_f64(m));
+    } else {
+        best = x[0];
+        i = 1;
     }
-    if (!SkipNan && vminvq_u32(vreinterpretq_u32_u64(ordered)) == 0)  // some lane met a NaN
-        for (std::int64_t k = 0;; ++k)
-            if (std::isnan(x[k])) return k;
-    double b0 = vgetq_lane_f64(best, 0), b1 = vgetq_lane_f64(best, 1);
-    std::int64_t a0 = vgetq_lane_s64(at, 0), a1 = vgetq_lane_s64(at, 1);
-    double b = b0;
-    std::int64_t a = a0;
-    if (Max ? (b1 > b0 || (b1 == b0 && a1 < a0)) : (b1 < b0 || (b1 == b0 && a1 < a0))) {
-        b = b1;
-        a = a1;
+    for (; i < n; ++i) {
+        const float64x1_t a = vdup_n_f64(best), b = vdup_n_f64(x[i]);
+        if constexpr (SkipNan) best = vget_lane_f64(Max ? vmaxnm_f64(a, b) : vminnm_f64(a, b), 0);
+        else best = vget_lane_f64(Max ? vmax_f64(a, b) : vmin_f64(a, b), 0);
     }
-    for (; i < n; ++i) {  // the odd last element
-        double v = x[i];
-        if constexpr (SkipNan) {
-            if (v != v) v = far;
+    std::int64_t k = 0;
+    if (best != best || (SkipNan && best == far)) {  // a NaN (the first); SkipNan: the first NaN or far value
+        if constexpr (!SkipNan) {
+            for (;; ++k)
+                if (x[k] != x[k]) return k;
         } else {
-            if (std::isnan(v)) return i;
-        }
-        if (Max ? v > b : v < b) {
-            b = v;
-            a = i;
+            for (;; ++k)
+                if (x[k] != x[k] || x[k] == far) return k;
         }
     }
-    return a;
+    const float64x2_t bv = vdupq_n_f64(best);
+    for (; k + 4 <= n; k += 4) {
+        const uint64x2_t e = vorrq_u64(vceqq_f64(vld1q_f64(x + k), bv), vceqq_f64(vld1q_f64(x + k + 2), bv));
+        if (vmaxvq_u32(vreinterpretq_u32_u64(e))) break;
+    }
+    for (;; ++k)
+        if (x[k] == best) return k;
 }
 
 // int64, contiguous: two passes over the data -- the extreme value with four

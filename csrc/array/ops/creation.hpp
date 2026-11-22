@@ -7,11 +7,19 @@
 
 #include <nanobind/nanobind.h>
 
+#include <optional>
+
 namespace sd {
 
 namespace nb = nanobind;
 
 nb::object asarray(nb::handle obj, nb::handle dtype, nb::handle copy);
+
+// An exact numpy.ndarray of one of the four dtypes (native byte order, aligned,
+// a bool one holding only 0 and 1) as a view of its memory, read from numpy's C
+// struct; an invalid object for anything else, and when dtype= differs or copy is
+// True (asarray.cpp). asarray and from_dlpack try it first.
+nb::object share_numpy_array(nb::handle obj, std::optional<DType> dtype, std::optional<bool> copy);
 
 nb::object zeros(nb::handle shape, nb::handle dtype);
 nb::object ones(nb::handle shape, nb::handle dtype);

@@ -28,6 +28,7 @@
 
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
@@ -180,6 +181,31 @@ void int_matmul(const Mat& a, const Mat& b, std::int64_t* c) {
     }
 }
 
+// float64 products of at most kTinyMatmul multiply-adds: a BLAS call and the
+// general driver's shape vectors cost more than the arithmetic (3x4 @ 4x3:
+// about 120 of 200 ns). Each element is sum_p a[i,p] b[p,j] accumulated with
+// fma in p order (i-p-j loops, so a row of b and of c are walked together);
+// deterministic, not BLAS's bits.
+inline constexpr std::int64_t kTinyMatmul = 512;
+
+void tiny_matmul(const Mat& a, const Mat& b, double* c) {
+    const std::int64_t m = a.rows, k = a.cols, n = b.cols;
+    for (std::int64_t i = 0; i < m; ++i) {
+        double* crow = c + i * n;
+        for (std::int64_t j = 0; j < n; ++j) crow[j] = 0.0;
+        for (std::int64_t p = 0; p < k; ++p) {
+            const double aip = load_as<double>(a.p + i * a.rs + p * a.cs);
+            const std::byte* brow = b.p + p * b.rs;
+            if (b.cs == sizeof(double)) {
+                const double* bp = reinterpret_cast<const double*>(brow);
+                for (std::int64_t j = 0; j < n; ++j) crow[j] = std::fma(aip, bp[j], crow[j]);
+            } else {
+                for (std::int64_t j = 0; j < n; ++j) crow[j] = std::fma(aip, load_as<double>(brow + j * b.cs), crow[j]);
+            }
+        }
+    }
+}
+
 }  // namespace
 
 // Batched BLAS on the pool (docs/design/array.md §9.4):
@@ -203,6 +229,16 @@ nb::object matmul(nb::handle x1, nb::handle x2) {
         throw nb::value_error(("the last axis of 'x1' (" + std::to_string(k) +
                                ") must match the second-to-last axis of 'x2' (" + std::to_string(kb) + ")")
                                   .c_str());
+
+    if (d == DType::Float64 && a.ndim == 2 && b.ndim == 2 && m * n * k <= kTinyMatmul) {
+        const std::int64_t shape[] = {m, n};
+        NDArray out = new_array(d, shape);
+        tiny_matmul(
+            {a.data, m, k, a.strides[0], a.strides[1]}, {b.data, k, n, b.strides[0], b.strides[1]},
+            reinterpret_cast<double*>(out.data)
+        );
+        return wrap(std::move(out));
+    }
 
     // Batch axes: everything before the matrix axes, broadcast together.
     const int a_batch = a_vec ? 0 : a.ndim - 2, b_batch = b_vec ? 0 : b.ndim - 2;

@@ -8,6 +8,8 @@
 
 namespace sd {
 
+PyTypeObject* g_ndarray_type = nullptr;
+
 namespace {
 
 // Borrowed: the module attributes (sd.bool, ...) own the five objects, and
@@ -301,8 +303,18 @@ std::string sparse_hint(const std::string& f) {
 
 NDArray view_of(nb::handle x) {
     const NDArray& a = as_ndarray(x);
-    NDArray v = a;
-    v.base = a.base.is_valid() ? a.base : nb::borrow(x);
+    NDArray v = NDArray::meta_of(a);
+    if (a.base.is_valid()) {
+        // x is a view or holds foreign memory: the same owner, and the same Buffer,
+        // which may be the export (Py_buffer) that pins the foreign memory.
+        v.base = a.base;
+        v.buffer = a.buffer;
+    } else {
+        // x owns its memory: the reference to x keeps x's Buffer alive, so the view
+        // holds no Buffer of its own (no shared count to bump per view; views are
+        // made and dropped a lot, docs/design/array.md §11).
+        v.base = nb::borrow(x);
+    }
     return v;
 }
 

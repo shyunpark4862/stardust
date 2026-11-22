@@ -10,6 +10,7 @@
 #include <nanobind/nanobind.h>
 
 #include <initializer_list>
+#include <new>
 #include <optional>
 #include <array>
 #include <span>
@@ -106,7 +107,16 @@ int normalize_axis(std::int64_t axis, int ndim);
 // argument in messages (permute_dims calls it "axes").
 std::vector<int> parse_axes(nb::handle o, int ndim, const char* what = "axis");
 
-inline bool is_ndarray(nb::handle o) { return nb::isinstance<NDArray>(o); }
+// The Python type of sd.ndarray, set once by bind_ndarray (bind/array_bind.cpp).
+// is_ndarray and wrap use it directly: nb::isinstance<NDArray> and nb::cast
+// look the type up in nanobind's type_info hash table on every call, which was
+// a tenth of a tiny `x + y` (docs/design/array.md §11).
+extern PyTypeObject* g_ndarray_type;
+
+inline bool is_ndarray(nb::handle o) {
+    PyTypeObject* t = Py_TYPE(o.ptr());
+    return t == g_ndarray_type || (g_ndarray_type != nullptr && PyType_IsSubtype(t, g_ndarray_type));
+}
 inline NDArray& as_ndarray(nb::handle o) { return *nb::inst_ptr<NDArray>(o); }
 // as_ndarray, with a TypeError naming the argument when `o` is not an array. A sparse array of
 // sd.sparse raises SparseOperand (a TypeError), to which rethrow_named adds what to use instead.
@@ -114,7 +124,14 @@ NDArray& require_ndarray(nb::handle o, const char* what = "x");
 
 // Whether `o` is a sparse array of sd.sparse (its class's module is stardust.sparse).
 bool is_sparse_array(nb::handle o);
-inline nb::object wrap(NDArray&& a) { return nb::cast(std::move(a)); }
+// A new Python array object holding `a` (moved in). The instance comes from
+// nanobind's pool of ndarray objects (nb::pooled, bind/array_bind.cpp).
+inline nb::object wrap(NDArray&& a) {
+    nb::object o = nb::inst_alloc(nb::handle(reinterpret_cast<PyObject*>(g_ndarray_type)));
+    new (nb::inst_ptr<NDArray>(o)) NDArray(std::move(a));
+    nb::inst_mark_ready(o);
+    return o;
+}
 
 // A new array object over the same memory as array `x`, ready to have its
 // data/shape/strides edited (call update_flags() afterwards). Its `base` is

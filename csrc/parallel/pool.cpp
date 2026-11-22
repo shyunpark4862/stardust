@@ -5,6 +5,7 @@
 #include <sys/qos.h>
 #include <sys/sysctl.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -19,8 +20,24 @@ namespace {
 
 thread_local bool t_in_task = false;
 
-// Jobs of at most this many tasks do not wake sleeping workers (Pool::run).
+// A job of more than this many tasks, its task length unknown, wakes sleeping
+// workers at once; a smaller one only once the caller has timed its own first
+// tasks (Pool::run).
 constexpr std::int64_t kWakeTasks = 16;
+// A job of at most this many tasks, their length unknown, wakes a worker per
+// task beyond the caller's at once: after its first task the caller would take
+// the last one itself, so timing it cannot help, and a caller splits work this
+// coarsely only when the tasks are long (2 tasks of 20 us: 27 us against 40;
+// 2 of 0.5 us: 1.7 against 1.1).
+constexpr std::int64_t kEagerTasks = 3;
+
+// The sleeping workers the caller signals itself (Pool::wake).
+constexpr std::int64_t kDirectWakes = 3;
+
+// The generic timer of the core: a register read, a few ns (steady_clock
+// takes ~20 ns, too much to read after every task of a microsecond).
+inline std::uint64_t ticks() { return __builtin_arm_rsr64("cntvct_el0"); }
+inline std::uint64_t ticks_per_second() { return __builtin_arm_rsr64("cntfrq_el0"); }
 
 // Spin-wait for up to kSpin before sleeping. Measured by the clock, not by
 // iterations: the ARM `yield` hint takes a cycle or two, so a count that
@@ -68,7 +85,7 @@ public:
         busy_ = false;
     }
 
-    void run(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
+    void run(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn, std::int64_t task_ns) {
         // Another Python thread's job is running (it holds the pool while its
         // GIL is released): do this one serially rather than wait or
         // oversubscribe (docs/design/array.md §10.1). workers_ is read only once the
@@ -94,13 +111,24 @@ public:
         }
         // Spinning workers see the new generation by themselves. Sleeping
         // ones are woken only for a job long enough to repay it: a wake-up
-        // takes ~25 us to arrive and ~5 us of the caller's time to send,
-        // while a task is ~0.5-1.5 us, so the caller alone finishes a short
-        // job before a woken worker would start (40,000-element x + x after a
-        // 2 ms pause: 16 us with the wake-up, 11 us without, 1 thread 12 us).
-        // Which thread runs a task never changes the result (§10.5).
-        if (ntasks > kWakeTasks) cv_work_.notify_all();
-        work();  // the calling thread takes tasks too
+        // takes ~6 us to arrive (~5 more for relayed ones) and ~0.7 us of the
+        // caller's time per signal, so the caller alone finishes a short job
+        // before a woken worker would start (busy-wait tasks after a 1 ms pause, median: 8 x 1 us 14 us
+        // woken, 8 alone; 8 x 3 us 17.5 against 24; 32 x 1 us 20 against 32).
+        // How long the job is: the caller's estimate when it gives one; else
+        // many tasks count as long, 2-3 tasks too (kEagerTasks), and for the
+        // rest the caller times its own first tasks (work(true)): 16 tasks of
+        // 20 us, 91 us against 320 alone. Which thread runs a task never
+        // changes the result (§10.5).
+        bool probe = false;
+        if (task_ns > 0) {
+            if (ntasks * task_ns >= kWakeWorkNs) wake(ntasks - 1);
+        } else if (ntasks > kWakeTasks || ntasks <= kEagerTasks) {
+            wake(ntasks - 1);
+        } else {
+            probe = true;
+        }
+        work(probe);  // the calling thread takes tasks too
         // The tasks are all taken: close the job, then wait only for the
         // workers that joined it (they may still be running a task). A
         // worker that wakes later sees the job closed and leaves it alone,
@@ -132,14 +160,57 @@ private:
         t_in_task = false;
     }
 
-    void work() {
+    // Wakes up to k sleeping workers: kDirectWakes of them here, and the
+    // first of those passes the rest on (relay_), so the caller pays for at
+    // most kDirectWakes signals. A broadcast to 9 sleepers took the caller
+    // ~10 us (8 tasks of 0.5 us after a 1 ms pause: 14 us woken, 4 alone; 3
+    // signals and a relay: 10), while a relayed worker arrives only ~5 us
+    // after the first (4 tasks of 20 us: 33 us with 1 direct signal, 27 with
+    // 3). The job was published under m_, so a worker that goes to sleep later
+    // sees it and does not wait; one already asleep is counted in sleepers_.
+    void wake(std::int64_t k) {
+        const int asleep = sleepers_.load(std::memory_order_relaxed);
+        if (asleep == 0 || k <= 0) return;
+        k = std::min<std::int64_t>(k, asleep);
+        const std::int64_t direct = std::min(k, kDirectWakes);
+        if (k > direct) relay_.store(k - direct, std::memory_order_relaxed);
+        for (std::int64_t i = 0; i < direct; ++i) cv_work_.notify_one();
+    }
+
+    // k more workers, from a woken worker passing a wake-up on.
+    void signal(std::int64_t k) {
+        if (k >= sleepers_.load(std::memory_order_relaxed)) {
+            cv_work_.notify_all();
+        } else {
+            for (std::int64_t i = 0; i < k; ++i) cv_work_.notify_one();
+        }
+    }
+
+    // Takes tasks until none are left. `probe` (the caller, in a job of few
+    // tasks of unknown length): after each task, estimate the work left from
+    // the time per task so far, and wake sleeping workers once it reaches
+    // kWakeWorkNs with two tasks or more still untaken.
+    void work(bool probe = false) {
         t_in_task = true;
+        const std::uint64_t start = probe ? ticks() : 0;
+        std::int64_t mine = 0;
         for (std::int64_t t; (t = next_.fetch_add(1)) < ntasks_;) {
             try {
                 (*job_)(t);
             } catch (...) {
                 std::lock_guard lock(m_);
                 if (!error_) error_ = std::current_exception();
+            }
+            if (probe) {
+                ++mine;
+                const std::int64_t left = ntasks_ - next_.load(std::memory_order_relaxed);
+                if (left < 2) {
+                    probe = false;  // the caller takes the last one itself
+                } else if ((ticks() - start) * static_cast<std::uint64_t>(left) >=
+                           wake_ticks_ * static_cast<std::uint64_t>(mine)) {
+                    wake(left);
+                    probe = false;
+                }
             }
         }
         t_in_task = false;
@@ -167,7 +238,14 @@ private:
                 // was the remaining ~18 us of a small parallel call,
                 // docs/design/array.md §10.1.)
                 std::unique_lock lock(m_);
+                sleepers_.fetch_add(1, std::memory_order_relaxed);
                 cv_work_.wait(lock, [&] { return stop_ || fresh(); });
+                sleepers_.fetch_sub(1, std::memory_order_relaxed);
+                lock.unlock();
+                // Pass the caller's wake-up on (Pool::wake), unless the job is over.
+                if (const std::int64_t r = relay_.exchange(0, std::memory_order_relaxed);
+                    r > 0 && !(state_.load(std::memory_order_acquire) & kClosed))
+                    signal(r);
             }
             if (stop_flag_) return;
             // Join the job seen, only while it is open: one compare-and-swap
@@ -216,7 +294,10 @@ private:
     std::condition_variable cv_work_, cv_done_;
     const std::function<void(std::int64_t)>* job_ = nullptr;
     std::int64_t ntasks_ = 0;
-    std::atomic<std::int64_t> next_{0};
+    // next_ and state_ on cache lines of their own (128 bytes on M4): the
+    // participants' fetch_add on next_ no longer invalidates the line the idle
+    // spinners poll, nor the other way round.
+    alignas(128) std::atomic<std::int64_t> next_{0};
     // The job's state in one word: the generation (bits 32-63), whether the
     // job is closed (bit 31: every task taken, the caller waiting) and how
     // many workers joined it and have not left yet (bits 0-30).
@@ -224,12 +305,16 @@ private:
     static constexpr std::uint64_t kClosed = std::uint64_t{1} << 31;
     static constexpr std::uint64_t kCount = kClosed - 1;
     static std::uint64_t generation(std::uint64_t s) { return s >> kGenShift; }
-    std::atomic<std::uint64_t> state_{0};
-    bool stop_ = false;
+    alignas(128) std::atomic<std::uint64_t> state_{0};
+    alignas(128) bool stop_ = false;
     std::atomic<bool> stop_flag_{false};  // stop_, readable while spinning
     std::exception_ptr error_;
     std::atomic<bool> busy_{false};
     std::atomic<int> nthreads_{1};
+    std::atomic<int> sleepers_{0};  // workers waiting on cv_work_ (changed under m_)
+    std::atomic<std::int64_t> relay_{0};  // workers the next woken worker is to wake (Pool::wake)
+    // kWakeWorkNs in ticks() units
+    const std::uint64_t wake_ticks_ = ticks_per_second() * static_cast<std::uint64_t>(kWakeWorkNs) / 1'000'000'000u;
 };
 
 // The pool, made on first use. Never destroyed: joining threads during
@@ -273,7 +358,9 @@ void set_num_threads(int n) { pool().resize(n); }
 bool available() { return !t_in_task && pool().threads() > 1 && !pool().busy(); }
 
 
-void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) {
+void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn) { parallel_for(ntasks, fn, 0); }
+
+void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& fn, std::int64_t task_ns) {
     if (ntasks <= 0) return;
     // One task or a nested call: a plain loop on this thread, the GIL left as
     // it is (docs/design/array.md §10.2 -- one task is the caller's own size
@@ -288,7 +375,7 @@ void parallel_for(std::int64_t ntasks, const std::function<void(std::int64_t)>& 
         for (std::int64_t t = 0; t < ntasks; ++t) fn(t);
         return;
     }
-    pool().run(ntasks, fn);  // spread on the pool (or serial if another thread's job holds it)
+    pool().run(ntasks, fn, task_ns);  // spread on the pool (or serial if another thread's job holds it)
 }
 
 GilRelease::GilRelease() {

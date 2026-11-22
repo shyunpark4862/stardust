@@ -4,7 +4,6 @@
 #include "parallel/pool.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <string>
 
 namespace sd {
@@ -162,6 +161,7 @@ NdIter::Plan NdIter::plan(Split split, std::int64_t weight) const {
     // (docs/design/array.md §10.4): 10-element pieces made it 2.7x slower than one
     // thread; 256, 1024, 4096 gave 1.50, 0.91, 1.11 ms (one thread 1.05).
     if (axis == ndim_ - 1 && ndim_ > 1) chunk = std::max<std::int64_t>(chunk, kMinInnerPiece);
+    if (capped_) chunk = std::max<std::int64_t>(chunk, (extent + kMaxPieces - 1) / kMaxPieces);
     p.axis = axis;
     p.chunk = chunk;
     p.tasks = (extent + chunk - 1) / chunk;
@@ -175,19 +175,34 @@ void NdIter::run(Loop kernel, void* ctx, Split split, std::int64_t weight) const
         return;
     }
     const Plan p = plan(split, weight);
-    if (p.work < 8 * kParallelThreshold) {  // small: on the calling thread, the GIL kept
+    // An elementwise run moves one array per operand that is not broadcast
+    // along the run: the threshold counts three (x + y); a copy, abs(x) or
+    // x + 1.5 moves two and won on 10 threads only from ~1.5x the elements
+    // (2^15: copy 3.02 / 3.08 us, abs 3.33 / 3.67, x + 1.5 3.71 / 3.56; 46K:
+    // 1.2-1.3x faster). Only when the pool starts depends on it, not the plan.
+    std::int64_t moved = p.work;
+    if (split == Split::Elementwise && p.work >= 8 * kParallelThreshold) {
+        int arrays = 0;
+        for (int k = 0; k < nop_; ++k) arrays += strides_[k][ndim_ - 1] != 0 || shape_[ndim_ - 1] == 1;
+        if (arrays < 3) moved = p.work / 3 * std::max(arrays, 1);
+    }
+    if (moved < 8 * kParallelThreshold) {  // small: on the calling thread, the GIL kept
         run_serial(kernel, ctx);
         return;
     }
     if (p.tasks > 1 && parallel::available()) {
         const std::int64_t extent = shape_[p.axis];
-        parallel::parallel_for(p.tasks, [&](std::int64_t t) {
-            NdIter piece = *this;
-            const std::int64_t begin = t * p.chunk;
-            piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
-            for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
-            piece.run_serial(kernel, ctx);
-        });
+        parallel::parallel_for(
+            p.tasks,
+            [&](std::int64_t t) {
+                NdIter piece = *this;
+                const std::int64_t begin = t * p.chunk;
+                piece.shape_[p.axis] = std::min(extent, begin + p.chunk) - begin;
+                for (int k = 0; k < nop_; ++k) piece.data_[k] += begin * strides_[k][p.axis];
+                piece.run_serial(kernel, ctx);
+            },
+            work_ns(p.work / 8 / p.tasks)
+        );
         return;
     }
     // On the calling thread: one thread, a busy pool, or no axis to cut.

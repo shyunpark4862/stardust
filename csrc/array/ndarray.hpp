@@ -74,6 +74,14 @@ struct NDArray {
         return *this;
     }
 
+    // A copy of o's description (data, dtype, shape, strides, flags) without its
+    // buffer or base: for a view whose owner the caller sets (view_of).
+    static NDArray meta_of(const NDArray& o) {
+        NDArray v;
+        v.copy_meta(o);
+        return v;
+    }
+
 private:
     void copy_meta(const NDArray& o) {
         data = o.data;

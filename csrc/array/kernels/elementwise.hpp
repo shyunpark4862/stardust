@@ -55,6 +55,10 @@ inline void in_place_blocks(R* o, std::int64_t n, F&& f, const P*... in) {
 template <typename Op, typename T>
 void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, void*) {
     using R = unary_result_t<Op, T>;
+    if constexpr (ops::is_float<T> && vmath_unary<Op> != nullptr) {  // the area's NEON kernels, any layout
+        vmath_unary_run(vmath_unary<Op>, args[0], s[0], args[1], s[1], n);
+        return;
+    }
     if constexpr (ops::is_float<T> && vforce_unary<Op> != nullptr) {  // Accelerate vForce, any layout
         vforce_unary_run(vforce_unary<Op>, args[0], s[0], args[1], s[1], n);
         return;
@@ -111,6 +115,29 @@ void unary_loop(std::byte* const* args, std::int64_t n, const std::int64_t* s, v
                 vst1q_s64(
                     o + i + 2, vsubq_s64(vreinterpretq_s64_u64(vcltzq_s64(v1)), vreinterpretq_s64_u64(vcgtzq_s64(v1)))
                 );
+            }
+            for (; i < n; ++i) o[i] = Op::f(x[i]);
+            return;
+        }
+        if constexpr (std::is_same_v<Op, ops::Abs> && std::is_same_v<T, complex128>) {
+            // Two values at a time, parts split by the load: complex_abs's main case
+            // sqrt(fma(re, re, im * im)) when both larger parts lie in [2^-500, 2^500]
+            // (so neither is 0, inf or NaN), else complex_abs per value: the same bits.
+            // complex_abs's branches kept the loop scalar (10^6: 1.85 ms, R 1.46).
+            const double* xp = reinterpret_cast<const double*>(x);
+            const float64x2_t big = vdupq_n_f64(0x1p500), small = vdupq_n_f64(0x1p-500);
+            std::int64_t i = 0;
+            for (; i + 2 <= n; i += 2) {
+                const float64x2x2_t v = vld2q_f64(xp + 2 * i);
+                const float64x2_t re = vabsq_f64(v.val[0]), im = vabsq_f64(v.val[1]);
+                const float64x2_t larger = vmaxq_f64(re, im);
+                const uint64x2_t ok = vandq_u64(vcleq_f64(larger, big), vcgeq_f64(larger, small));
+                if (vminvq_u32(vreinterpretq_u32_u64(ok)) != 0) {
+                    vst1q_f64(o + i, vsqrtq_f64(vfmaq_f64(vmulq_f64(im, im), re, re)));
+                } else {
+                    o[i] = Op::f(x[i]);
+                    o[i + 1] = Op::f(x[i + 1]);
+                }
             }
             for (; i < n; ++i) o[i] = Op::f(x[i]);
             return;

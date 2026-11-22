@@ -435,7 +435,112 @@ nb::object from_buffer(nb::handle obj, std::optional<DType> dtype, std::optional
     return wrap(std::move(dst));
 }
 
+// ---- a numpy array, shared without the buffer protocol ----
+//
+// sd.asarray(numpy_float64_array) through PyObject_GetBuffer cost 110 ns against
+// numpy's own asarray at 21: numpy rebuilds and compares its format string on
+// every export (half of the call), and the Py_buffer bookkeeping added the rest.
+// For an exact numpy.ndarray of one of our four element types in native byte
+// order, the description is read from numpy's public C struct instead
+// (numpy/_core/include/numpy/ndarraytypes.h: PyArrayObject_fields and the
+// leading fields of PyArray_Descr, the same in numpy 1.x and 2.x), and the
+// memory is kept alive by a reference to the array, which is what an export
+// does too: numpy refuses to resize an array someone else references. The
+// result is the one the buffer path gives (same view, same .base, same
+// writeability). Anything else -- another type or byte order, unaligned
+// memory, a dtype= or copy= that needs a copy -- returns an invalid object and
+// takes the buffer path.
+struct NumpyArrayFields {
+    PyObject_HEAD char* data;
+    int nd;
+    Py_ssize_t* dimensions;
+    Py_ssize_t* strides;
+    PyObject* base;
+    PyObject* descr;
+    int flags;
+};
+struct NumpyDescrHead {
+    PyObject_HEAD PyTypeObject* typeobj;
+    char kind;
+    char type;
+    char byteorder;
+    char former_flags;
+    int type_num;
+};
+constexpr int kNpyWriteable = 0x0400;  // NPY_ARRAY_WRITEABLE
+constexpr int kNpyWarnOnWrite = 1 << 31;  // NPY_ARRAY_WARN_ON_WRITE: exported read-only, as numpy does
+
+// numpy.ndarray's type object, recognised by name once (numpy is never imported here).
+bool is_numpy_ndarray(PyObject* o) {
+    static PyTypeObject* type = nullptr;
+    PyTypeObject* t = Py_TYPE(o);
+    if (t == type) return true;
+    if (type != nullptr || std::strcmp(t->tp_name, "numpy.ndarray") != 0 ||
+        t->tp_basicsize < static_cast<Py_ssize_t>(sizeof(NumpyArrayFields)))
+        return false;
+    type = t;  // a static type of numpy's extension module: lives as long as the process
+    return true;
+}
+
+nb::object share_numpy(nb::handle obj, std::optional<DType> dtype, std::optional<bool> copy) {
+    if (copy == true || !is_numpy_ndarray(obj.ptr())) return {};
+    const auto* np = reinterpret_cast<const NumpyArrayFields*>(obj.ptr());
+    const auto* descr = reinterpret_cast<const NumpyDescrHead*>(np->descr);
+    if (descr == nullptr || (descr->byteorder != '=' && descr->byteorder != '<' && descr->byteorder != '|')) return {};
+    DType d;
+    switch (descr->type_num) {
+        case 0: d = DType::Bool; break;  // NPY_BOOL
+        case 7:  // NPY_LONG (8 bytes here)
+        case 9: d = DType::Int64; break;  // NPY_LONGLONG
+        case 12: d = DType::Float64; break;  // NPY_DOUBLE
+        case 15: d = DType::Complex128; break;  // NPY_CDOUBLE
+        default: return {};
+    }
+    static_assert(sizeof(long) == 8, "NPY_LONG is taken as int64");
+    if (dtype && *dtype != d) return {};
+    if (np->nd < 1 || np->nd > kMaxNdim) return {};  // the buffer path raises
+    NDArray a;
+    a.dtype = d;
+    a.ndim = np->nd;
+    const std::int64_t w = itemsize(d);
+    const auto align = static_cast<std::uintptr_t>(w == 16 ? 8 : w);
+    if (reinterpret_cast<std::uintptr_t>(np->data) % align != 0) return {};
+    std::int64_t count = 1;
+    for (int k = 0; k < a.ndim; ++k) {
+        a.shape[k] = np->dimensions[k];
+        a.strides[k] = np->strides[k];
+        if (a.strides[k] % static_cast<std::int64_t>(align) != 0) return {};
+        count *= a.shape[k];
+    }
+    // An empty numpy array may carry strides of 0, where its buffer export gives the
+    // C-contiguous ones: the buffer path keeps those.
+    if (count == 0) return {};
+    a.data = reinterpret_cast<std::byte*>(np->data);
+    a.update_flags();
+    if (d == DType::Bool) {  // only 0 and 1 may be shared (as in from_buffer)
+        std::uint8_t any = 0;
+        if (a.c_contiguous) {
+            const auto* q = reinterpret_cast<const std::uint8_t*>(a.data);
+            for (std::int64_t i = 0; i < count; ++i) any |= q[i];
+        } else {
+            for_each_element<1>(a.shape_span(), {a.data}, {a.strides.data()}, [&](std::byte* p) {
+                any |= *reinterpret_cast<const std::uint8_t*>(p);
+            });
+        }
+        if (any > 1) return {};
+    }
+    a.writeable = (np->flags & kNpyWriteable) != 0 && (np->flags & kNpyWarnOnWrite) == 0;
+    // No Buffer: `base`, a reference to the numpy array, is what keeps the memory
+    // alive (every view of it copies that reference), as for the views of any array.
+    a.base = nb::borrow(obj);
+    return wrap(std::move(a));
+}
+
 }  // namespace
+
+nb::object share_numpy_array(nb::handle obj, std::optional<DType> dtype, std::optional<bool> copy) {
+    return share_numpy(obj, dtype, copy);
+}
 
 nb::object asarray(nb::handle obj, nb::handle dtype_obj, nb::handle copy_obj) {
     const std::optional<DType> dtype = parse_dtype(dtype_obj);
@@ -448,6 +553,7 @@ nb::object asarray(nb::handle obj, nb::handle dtype_obj, nb::handle copy_obj) {
         if (copy == false) throw nb::value_error("copy=False, but a dtype conversion requires a copy");
         return wrap(cast_copy(a, target));
     }
+    if (nb::object r = share_numpy(obj, dtype, copy); r.is_valid()) return r;
     if (scalar_dtype(obj)) throw nb::value_error(kNoZeroDim);
     if (is_seq(obj.ptr())) {
         if (copy == false) throw nb::value_error("copy=False, but a list or tuple can only be converted by copying");

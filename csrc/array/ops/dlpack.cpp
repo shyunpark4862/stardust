@@ -7,6 +7,7 @@
 // capsule to "used_..." and calls the deleter when it is done.
 
 #include "array/ops/dlpack.hpp"
+#include "array/ops/creation.hpp"
 
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
@@ -242,6 +243,9 @@ nb::object from_dlpack(nb::handle x, nb::handle device, nb::handle copy_obj) {
         if (!cpu) throw nb::type_error(("'device' must be None or the CPU device (1, 0), not " + bad).c_str());
         if (!*cpu) throw nb::value_error("'device' must be None or the CPU device (1, 0)");
     }
+    // A numpy array: the view its __dlpack__ would describe, without the two calls
+    // and the capsules (240 ns against numpy's own from_dlpack at 114).
+    if (nb::object r = share_numpy_array(x, std::nullopt, copy); r.is_valid()) return r;
     // Each attribute looked up once, the names, the keyword names and the version
     // tuple made once, and the call a vectorcall (the generic attribute and keyword
     // path: 252 ns per import of a numpy array, numpy's own from_dlpack 114).
