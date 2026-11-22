@@ -17,6 +17,11 @@ Column take(const Column& col, const Column& positions);
 // take(nonzero(mask)).
 Column filter(const Column& col, const Column& mask);
 
+// filter() of several columns by one mask, in parallel across the columns
+// too (a wide frame of short columns had nothing to split per column).
+// `positions` is nonzero(mask), for the string columns.
+std::vector<Column> filter_columns(const std::vector<Column>& cols, const Column& mask, const Column& positions);
+
 // Positions (int64) of the rows of a bool mask that are True; NA counts as
 // False (docs/api/frame.md §1.4).
 Column nonzero(const Column& mask);
@@ -45,6 +50,14 @@ Column concat(const std::vector<Column>& cols);
 
 // int64 start, start + step, ... (n values), wrapping as int64 arithmetic does.
 Column arange(std::int64_t start, std::int64_t step, std::int64_t n);
+
+// The aranges (start, step, length) one after another, written once (the
+// labels of concat over RangeIndexes).
+Column concat_ranges(
+    const std::vector<std::int64_t>& starts,
+    const std::vector<std::int64_t>& steps,
+    const std::vector<std::int64_t>& lengths
+);
 
 // Positions given by position (int64, no NA, negative ones counting from the
 // end) as positions in [0, n), with the index of the first one outside

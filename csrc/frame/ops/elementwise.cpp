@@ -8,6 +8,8 @@
 
 #include <nanobind/nanobind.h>
 
+#include <arm_neon.h>
+
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
@@ -86,7 +88,20 @@ template <class R, class A, class B, bool CanNA = false, class F>
 Column map2(const Column& a, const Column& b, int scalar_side, DType result, F f) {
     const std::int64_t n = scalar_side == 1 ? b.length : a.length;
     Column out = make_fixed(result, n);
-    out.validity = and_validity(a, b, scalar_side, n);
+    std::int64_t known_nulls = -1;
+    if (!CanNA && (a.validity != nullptr) != (b.validity != nullptr)) {
+        // NA on one column side only, its bitmap starting at row 0: the
+        // result's NA rows are exactly its own, so the result shares its
+        // bitmap (never written: Buffers are copied before a write,
+        // docs/design/frame.md §5.2) and its NA count.
+        const int side = a.validity ? 1 : 2;
+        const Column& c = side == 1 ? a : b;
+        if (side != scalar_side && c.offset == 0) {
+            out.validity = c.validity;
+            known_nulls = c.null_count;
+        }
+    }
+    if (known_nulls < 0) out.validity = and_validity(a, b, scalar_side, n);
     R* o = reinterpret_cast<R*>(out.values->data());
     // Chunks are multiples of 64 rows, so tasks never share a bitmap byte.
     // Each task copies its inputs into locals: captures live in the closure
@@ -109,14 +124,55 @@ Column map2(const Column& a, const Column& b, int scalar_side, DType result, F f
             });
         });
     } else {
+        // NA rows get 0 in the same loop (docs/design/frame.md §4.5): the
+        // chunk's validity expanded to a byte per row, one select per row --
+        // not a second pass over the values (finish_fixed).
+        const std::uint8_t* vbits =
+            out.validity ? reinterpret_cast<const std::uint8_t*>(out.validity->data()) : nullptr;
         visit_inputs<A, B>(a, b, scalar_side, [&](auto x, auto y) {
             for_chunks(n, [&, x, y](std::int64_t lo, std::int64_t hi) {
                 const auto xx = x;  // locals, not captures: see the comment above
                 const auto yy = y;
                 R* oo = o;
-                for (std::int64_t i = lo; i < hi; ++i) oo[i] = f(xx[i], yy[i]);
+                if (!vbits) {
+                    for (std::int64_t i = lo; i < hi; ++i) oo[i] = f(xx[i], yy[i]);
+                    return;
+                }
+                if constexpr (sizeof(R) == 8) {
+                    // Eight rows per bitmap byte: the results, then each pair
+                    // ANDed with a 64-bit mask per row built from the byte
+                    // (NEON bit test) -- no byte-per-row mask in memory.
+                    static const std::uint64_t kBit[8] = {1, 2, 4, 8, 16, 32, 64, 128};
+                    const std::uint8_t* vb = vbits;
+                    std::int64_t i = lo;  // a multiple of 8
+                    for (; i + 8 <= hi; i += 8) {
+                        R r[8];
+                        for (int k = 0; k < 8; ++k) r[k] = f(xx[i + k], yy[i + k]);
+                        const uint64x2_t byte = vdupq_n_u64(vb[i >> 3]);
+                        for (int q = 0; q < 4; ++q) {
+                            uint64x2_t v;
+                            std::memcpy(&v, r + 2 * q, 16);
+                            v = vandq_u64(v, vtstq_u64(byte, vld1q_u64(kBit + 2 * q)));
+                            std::memcpy(oo + i + 2 * q, &v, 16);
+                        }
+                    }
+                    for (; i < hi; ++i) oo[i] = bitmap::get(vb, i) ? f(xx[i], yy[i]) : R{};
+                } else {
+                    std::uint8_t m[kChunkRows];
+                    const std::int64_t len = hi - lo;
+                    bitmap::expand(vbits + lo / 8, len, m);  // lo is a multiple of 8
+                    for (std::int64_t i = 0; i < len; ++i) {
+                        const R r = f(xx[lo + i], yy[lo + i]);
+                        oo[lo + i] = m[i] ? r : R{};
+                    }
+                }
             });
         });
+        if (out.validity) {
+            out.null_count = known_nulls >= 0 ? known_nulls : n - bitmap::count_set(vbits, 0, n);
+            if (out.null_count == 0) out.validity.reset();
+        }
+        return out;
     }
     finish_fixed(out);
     return out;

@@ -33,16 +33,32 @@ inline constexpr std::int64_t kChunkRows = 1 << 14;
 // Number of for_chunks chunks of n rows (for per-chunk partial results).
 inline std::int64_t num_chunks(std::int64_t n) { return (n + kChunkRows - 1) / kChunkRows; }
 
+// About how long one unit of `work` (an element of a simple pass, times the
+// kernel's `cost`) takes on one core: f + g ran at 0.19 ns an element at
+// 2^18 rows, a filter or a hash more but with a larger cost. The pool uses
+// the estimate only to decide whether sleeping workers are worth waking
+// (parallel/pool.hpp: from kWakeWorkNs of work); results never depend on it.
+inline constexpr std::int64_t kWorkPerNs = 4;
+
+// parallel_for of `ntasks` tasks of about `task_ns` each (0: unknown, the
+// pool times its first tasks). Which thread runs a task never changes a result.
+template <class F>
+void parallel_tasks(std::int64_t ntasks, F&& fn, std::int64_t task_ns = 0) {
+    parallel::parallel_for(ntasks, fn, task_ns);
+}
+
 // parallel_for for work at or above kParallelThreshold, with the GIL released
 // whatever the thread count and the task count (docs/api/frame.md §12):
 // parallel_for releases it from two tasks on, and a single task is the
 // caller's to cover (parallel/pool.hpp). Inside a task, or under an Unlocked,
 // the GIL is not held and this is parallel_for alone. Tasks must not touch
-// Python objects.
+// Python objects. `work` (elements times cost, all tasks; 0: unknown) gives
+// the pool its estimate of a task's length (kWorkPerNs).
 template <class F>
-void run_unlocked(std::int64_t ntasks, F&& fn) {
+void run_unlocked(std::int64_t ntasks, F&& fn, std::int64_t work = 0) {
     const parallel::Unlocked unlocked(true);
-    parallel::parallel_for(ntasks, fn);
+    const std::int64_t task_ns = work > 0 && ntasks > 0 ? std::max<std::int64_t>(1, work / kWorkPerNs / ntasks) : 0;
+    parallel_tasks(ntasks, fn, task_ns);
 }
 
 // f(lo, hi) for every chunk [lo, hi) of [0, n): kChunkRows rows each, the
@@ -62,7 +78,7 @@ void for_chunks(std::int64_t n, F&& f, std::int64_t cost = 1) {
         for (std::int64_t t = 0; t < ntasks; ++t) task(t);
         return;
     }
-    run_unlocked(ntasks, task);
+    run_unlocked(ntasks, task, n * cost);
 }
 
 // Releases the GIL for a serial stretch of `work` (elements, roughly) at or

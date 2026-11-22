@@ -256,6 +256,35 @@ DType reduction_dtype(std::string_view op, DType dt) {
 
 Column na_scalar(DType dt) { return na_value(dt); }
 
+std::vector<Column> reduce_columns(
+    std::string_view op, const std::vector<Column>& cols, bool skipna, double correction
+) {
+    std::vector<Column> out(cols.size());
+    std::int64_t longest = 0, total = 0;
+    for (const Column& c : cols) {
+        longest = std::max(longest, c.length);
+        total += c.length;
+    }
+    if (cols.size() < 2 || longest >= kParallelThreshold || total < kParallelThreshold || !parallel::available()) {
+        for (std::size_t j = 0; j < cols.size(); ++j) out[j] = reduce(op, cols[j], skipna, correction);
+        return out;
+    }
+    // The errors reduce() can raise, in column order, before any task runs.
+    for (const Column& c : cols)
+        if (op != "count") {
+            if (op == "first" || op == "last") throw nb::value_error("first/last are groupby reductions");
+            reduction_dtype(op, c.dtype);
+        }
+    run_unlocked(
+        static_cast<std::int64_t>(cols.size()),
+        [&](std::int64_t j) {
+            out[static_cast<std::size_t>(j)] = reduce(op, cols[static_cast<std::size_t>(j)], skipna, correction);
+        },
+        total
+    );
+    return out;
+}
+
 Column reduce(std::string_view op, const Column& c, bool skipna, double correction) {
     const std::int64_t count = c.length - c.null_count;
     if (op == "count") return scalar<std::int64_t>(DType::Int64, count);

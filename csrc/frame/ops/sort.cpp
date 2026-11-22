@@ -8,8 +8,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <numeric>
+#include <string_view>
 
 namespace nb = nanobind;
 
@@ -56,9 +58,13 @@ void split_na(
 }
 
 void sort_by(const Column& key, bool ascending, bool na_last, std::vector<std::int64_t>& order) {
+    // Without NA the rows are sorted in place; with NA the rows with a value
+    // are sorted and the NA rows put before or after them.
     std::vector<std::int64_t> valid_rows, na_rows;
-    split_na(key, order, valid_rows, na_rows);
-    const auto nv = static_cast<std::int64_t>(valid_rows.size());
+    const bool has_na = key.validity && key.null_count > 0;
+    if (has_na) split_na(key, order, valid_rows, na_rows);
+    std::vector<std::int64_t>& rows = has_na ? valid_rows : order;
+    const auto nv = static_cast<std::int64_t>(rows.size());
 
     if (key.dtype == DType::String) {
         // Ranks of the distinct strings stand in for the strings, so that a
@@ -71,26 +77,27 @@ void sort_by(const Column& key, bool ascending, bool na_last, std::vector<std::i
         order_rows(key, distinct);
         std::vector<std::uint64_t> rank(static_cast<std::size_t>(f.ngroups));
         for (std::size_t r = 0; r < distinct.size(); ++r) rank[code[distinct[r]]] = r;
-        std::vector<std::uint64_t> keys(valid_rows.size());
+        std::vector<std::uint64_t> keys(rows.size());
         for_chunks(nv, [&](std::int64_t lo, std::int64_t hi) {
             for (std::int64_t j = lo; j < hi; ++j) {
-                const std::uint64_t k = rank[code[valid_rows[j]]];
+                const std::uint64_t k = rank[code[rows[j]]];
                 keys[j] = ascending ? k : ~k;
             }
         });
         // A rank is below the number of distinct strings: that count's bytes
         // are all the digits there are (radix.hpp).
-        radix_sort(keys, valid_rows, digits_for(distinct.empty() ? 0 : distinct.size() - 1));
+        radix_sort(keys, rows, digits_for(distinct.empty() ? 0 : distinct.size() - 1));
     } else {
-        std::vector<std::uint64_t> keys(valid_rows.size());
+        std::vector<std::uint64_t> keys(rows.size());
         for_chunks(nv, [&](std::int64_t lo, std::int64_t hi) {
             for (std::int64_t j = lo; j < hi; ++j) {
-                const std::uint64_t k = radix_key(key, valid_rows[j]);
+                const std::uint64_t k = radix_key(key, rows[j]);
                 keys[j] = ascending ? k : ~k;  // the reverse order; equal keys stay equal, so ties keep their order
             }
         });
-        radix_sort(keys, valid_rows, key.dtype == DType::Bool ? 1 : 8);  // a bool key is one byte (radix.hpp)
+        radix_sort(keys, rows, key.dtype == DType::Bool ? 1 : 8);  // a bool key is one byte (radix.hpp)
     }
+    if (!has_na) return;
 
     std::size_t at = 0;
     auto put = [&](const std::vector<std::int64_t>& part) {
@@ -106,21 +113,69 @@ void sort_by(const Column& key, bool ascending, bool na_last, std::vector<std::i
     }
 }
 
+// True when one key without NA already has its rows in order (ties
+// included: a stable sort keeps them): one read of the column.
+bool already_sorted(const Column& key, bool ascending) {
+    const std::int64_t n = key.length;
+    if (n < 2) return true;
+    if (key.validity && key.null_count > 0) return false;
+    std::atomic<bool> ok{true};
+    auto check = [&](auto&& in_order) {
+        // Chunk [lo, hi) also checks the pair (lo - 1, lo) across its boundary.
+        for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+            if (!ok.load(std::memory_order_relaxed)) return;
+            bool good = true;
+            for (std::int64_t j = std::max<std::int64_t>(lo, 1); j < hi; ++j) good &= in_order(j - 1, j);
+            if (!good) ok.store(false, std::memory_order_relaxed);
+        });
+    };
+    if (key.dtype == DType::String) {
+        check([&](std::int64_t a, std::int64_t b) {
+            const std::string_view x = key.string_at(a), y = key.string_at(b);
+            return ascending ? x <= y : x >= y;
+        });
+    } else if (key.dtype == DType::Int64) {
+        const auto* v = key.data<std::int64_t>();
+        check([&](std::int64_t a, std::int64_t b) { return ascending ? v[a] <= v[b] : v[a] >= v[b]; });
+    } else {
+        check([&](std::int64_t a, std::int64_t b) {
+            const std::uint64_t x = radix_key(key, a), y = radix_key(key, b);
+            return ascending ? x <= y : x >= y;
+        });
+    }
+    return ok.load();
+}
+
 }  // namespace
 
-Column argsort(const std::vector<Column>& keys, const std::vector<bool>& ascending, const std::vector<bool>& na_last) {
+std::optional<Column> argsort(
+    const std::vector<Column>& keys, const std::vector<bool>& ascending, const std::vector<bool>& na_last
+) {
     if (keys.empty() || ascending.size() != keys.size() || na_last.size() != keys.size())
         throw nb::value_error("argsort: one direction and one NA position per key");
     const std::int64_t n = keys[0].length;
     for (const Column& k : keys)
         if (k.length != n) throw nb::value_error("argsort: keys must have the same length");
+    if (keys.size() == 1 && already_sorted(keys[0], ascending[0])) return std::nullopt;
     std::vector<std::int64_t> order(static_cast<std::size_t>(n));
     std::iota(order.begin(), order.end(), std::int64_t{0});
     // Several keys: sort by the last key first, then each earlier key with a
     // stable sort, so the first key decides and later keys break its ties.
     for (std::size_t j = keys.size(); j-- > 0;) sort_by(keys[j], ascending[j], na_last[j], order);
+    // Rows already in order: nothing to take (an already sorted column, or
+    // keys all equal).
+    std::atomic<bool> identity{true};
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        bool same = true;
+        for (std::int64_t j = lo; j < hi; ++j) same &= order[static_cast<std::size_t>(j)] == j;
+        if (!same) identity.store(false, std::memory_order_relaxed);
+    });
+    if (identity.load()) return std::nullopt;
     Column out = make_fixed(DType::Int64, n);
-    std::copy(order.begin(), order.end(), reinterpret_cast<std::int64_t*>(out.values->data()));
+    {
+        const Unlocked unlocked(n);
+        std::memcpy(out.values->data(), order.data(), static_cast<std::size_t>(n) * sizeof(std::int64_t));
+    }
     return out;
 }
 

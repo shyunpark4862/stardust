@@ -25,13 +25,23 @@ public:
     // first last, with the dtypes and NA rules of docs/api/frame.md §6 and §7.3.
     Column reduce(std::string_view op, const Column& col, bool skipna, double correction) const;
 
+    // reduce() of several columns, the columns in parallel when the work is
+    // large and each column's is small (a wide frame's 100 columns of 10^5
+    // rows were each below the threshold). Errors are checked in column order first.
+    std::vector<Column> reduce_columns(
+        std::string_view op, const std::vector<Column>& cols, bool skipna, double correction
+    ) const;
+
 private:
     template <class F>
     void for_groups(F f) const;
+    template <class Row>
+    Column reduce_with(std::string_view op, const Column& col, bool skipna, double correction, Row row) const;
 
     std::int64_t ngroups_;
     std::vector<std::int64_t> start_;  // group g's rows are rows_[start_[g], start_[g + 1])
-    std::vector<std::int64_t> rows_;
+    std::vector<std::int64_t> rows_;   // empty when contiguous_: then row j is j
+    bool contiguous_ = false;
 };
 
 // The order of groups by their keys, ascending (docs/api/frame.md §7.2): `keys` hold one

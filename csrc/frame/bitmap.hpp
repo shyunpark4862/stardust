@@ -27,7 +27,13 @@ inline std::int64_t count_set(const std::uint8_t* bits, std::int64_t start, std:
     };
     if (first == last) return __builtin_popcount(bits[first] & byte_mask(start & 7, ((end - 1) & 7) + 1));
     std::int64_t count = __builtin_popcount(bits[first] & byte_mask(start & 7, 8));
-    for (std::int64_t b = first + 1; b < last; ++b) count += __builtin_popcount(bits[b]);
+    std::int64_t b = first + 1;
+    for (; b + 8 <= last; b += 8) {  // eight bytes per popcount
+        std::uint64_t w;
+        std::memcpy(&w, bits + b, 8);
+        count += __builtin_popcountll(w);
+    }
+    for (; b < last; ++b) count += __builtin_popcount(bits[b]);
     count += __builtin_popcount(bits[last] & byte_mask(0, ((end - 1) & 7) + 1));
     return count;
 }

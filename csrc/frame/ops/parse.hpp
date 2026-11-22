@@ -150,6 +150,12 @@ inline bool eisel_lemire(std::uint64_t w, std::int64_t q, std::uint64_t& bits) {
 inline bool eight_digits(std::uint64_t v) {
     return !(((v + 0x4646464646464646ULL) | (v - 0x3030303030303030ULL)) & 0x8080808080808080ULL);
 }
+// The last `keep` (0..8) of the 8 bytes of v (a little-endian load), the
+// bytes before them '0'.
+inline std::uint64_t keep_last(std::uint64_t v, std::int64_t keep) {
+    const std::uint64_t low = keep == 0 ? ~std::uint64_t{0} : (std::uint64_t{1} << (8 * (8 - keep))) - 1;
+    return (v & ~low) | (0x3030303030303030ULL & low);
+}
 inline std::uint64_t parse_eight(std::uint64_t v) {
     v -= 0x3030303030303030ULL;
     v = (v * 10) + (v >> 8);  // pairs of digits
@@ -171,6 +177,59 @@ inline const char* read_digits(const char* p, const char* end, std::uint64_t& w)
     }
     while (p < end && is_digit(*p)) w = w * 10 + static_cast<std::uint64_t>(*p++ - '0');
     return p;
+}
+
+inline constexpr std::uint64_t kPow10u[9] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000};
+
+// The common decimal form [+-]? digits [. digits] (no exponent, at most 19
+// digits; `begin` as for parse_int64, the last 8 bytes must be readable), read
+// with few branches: the fraction in whole groups of eight (SWAR) and its
+// last 1-7 digits as one more group, read from the last 8 bytes of the text
+// with the bytes before them set to '0'. Knowing where the text ends, the
+// group count comes from the length instead of a test per digit: 9 ns
+// instead of 12 for a float's repr (parse_decimal). False: not that form
+// (parse_decimal decides).
+inline bool fast_decimal(const char* s, const char* end, double& out, const char* begin) {
+    const char* p = s;
+    const bool negative = *p == '-';
+    p += negative | (*p == '+');
+    const char* const ip = p;
+    std::uint64_t w = 0;
+    while (p < end && is_digit(*p)) w = w * 10 + static_cast<std::uint64_t>(*p++ - '0');
+    std::int64_t ndigits = p - ip, q = 0;
+    if (p < end) {
+        if (*p != '.') return false;
+        const char* const f = ++p;
+        const std::int64_t F = end - f, groups = F >> 3, r = F & 7;
+        for (std::int64_t i = 0; i < groups; ++i) {
+            std::uint64_t v;
+            std::memcpy(&v, f + 8 * i, 8);
+            if (!eight_digits(v)) return false;
+            w = w * 100000000 + parse_eight(v);
+        }
+        if (r) {
+            if (end - 8 < begin) return false;
+            std::uint64_t v;
+            std::memcpy(&v, end - 8, 8);
+            v = keep_last(v, r);
+            if (!eight_digits(v)) return false;
+            w = w * kPow10u[r] + parse_eight(v);
+        }
+        ndigits += F;
+        q = -F;
+    }
+    if (ndigits == 0 || ndigits > 19) return false;  // more digits: leading zeros may not count (parse_decimal)
+    // Eisel-Lemire for every value (it rounds exact cases correctly too): no
+    // branch on whether Clinger's fast path applies, which 16- and
+    // 17-digit floats in one column made unpredictable.
+    double d = 0.0;
+    if (w != 0) {
+        std::uint64_t bits;
+        if (!eisel_lemire(w, q, bits)) return false;
+        std::memcpy(&d, &bits, sizeof d);
+    }
+    out = negative ? -d : d;
+    return true;
 }
 
 enum class Parsed { Ok, Bad, Slow };  // Slow: valid text this fast path leaves to the slow one
@@ -249,11 +308,30 @@ inline double slow_double(std::string_view s) {
 // docs/design/frame.md §10.4):
 // 1 for an int64, 0 when `s` is not int_grammar, -1 when it is but the
 // value is beyond int64.
-inline int parse_int64(std::string_view s, std::int64_t& v) {
+//
+// `begin`: where readable memory starts before the text (the text's own
+// start when null). Up to 16 digits are read as two groups of eight from the
+// last 16 bytes before the text's end, the bytes before the digits set to
+// '0': no test per digit, no branch on the length.
+inline int parse_int64(std::string_view s, std::int64_t& v, const char* begin = nullptr) {
     const char* p = s.data();
     const char* const end = p + s.size();
     bool negative = false;
     if (p < end && (*p == '+' || *p == '-')) negative = *p++ == '-';
+    const std::int64_t len = end - p;
+    if (len >= 1 && len <= 16 && end - 16 >= (begin ? begin : s.data())) {
+        std::uint64_t lo, hi;
+        std::memcpy(&lo, end - 8, 8);
+        std::memcpy(&hi, end - 16, 8);
+        // Keep the last `len` bytes of hi:lo, the rest '0'.
+        const std::int64_t keep_lo = std::min<std::int64_t>(len, 8), keep_hi = len - keep_lo;
+        lo = detail::keep_last(lo, keep_lo);
+        hi = detail::keep_last(hi, keep_hi);
+        if (!detail::eight_digits(lo) || !detail::eight_digits(hi)) return 0;
+        const std::uint64_t w = detail::parse_eight(hi) * 100000000 + detail::parse_eight(lo);  // < 10^16: in range
+        v = negative ? -static_cast<std::int64_t>(w) : static_cast<std::int64_t>(w);
+        return 1;
+    }
     const char* const digits = p;
     std::uint64_t w = 0;
     p = detail::read_digits(p, end, w);
@@ -271,11 +349,14 @@ inline int parse_int64(std::string_view s, std::int64_t& v) {
 // underflow give +-inf and +-0.0 (and subnormals) as Python's float() does.
 inline double to_double(std::string_view s) {
     double d;
+    if (!s.empty() && detail::fast_decimal(s.data(), s.data() + s.size(), d, s.data())) return d;
     return detail::parse_decimal(s, d) == detail::Parsed::Ok ? d : detail::slow_double(s);
 }
 
 // float_grammar and to_double in one pass: false when `s` is not a float.
-inline bool parse_double(std::string_view s, double& out) {
+// `begin`: as for parse_int64.
+inline bool parse_double(std::string_view s, double& out, const char* begin = nullptr) {
+    if (!s.empty() && detail::fast_decimal(s.data(), s.data() + s.size(), out, begin ? begin : s.data())) return true;
     switch (detail::parse_decimal(s, out)) {
         case detail::Parsed::Ok: return true;
         case detail::Parsed::Bad: return false;

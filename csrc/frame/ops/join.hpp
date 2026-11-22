@@ -19,4 +19,7 @@ std::pair<Column, Column> join_indices(
     const std::vector<Column>& left, const std::vector<Column>& right, std::string_view how
 );
 
+// Whether int64 positions are exactly 0, 1, ..., length - 1.
+bool is_arange(const Column& positions);
+
 }  // namespace sd::frame

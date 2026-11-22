@@ -48,10 +48,14 @@ double pairwise_parallel(std::int64_t n, const Tree& tree, std::int64_t cost) {
     if (n <= kPairwiseLeaf || n * cost < kParallelThreshold) return tree(0, n);
     const pairwise::Leaves leaves = pairwise::plan(n, kPairwiseLeaf, /*complex=*/false);
     std::vector<double> part(leaves.size());
-    run_unlocked(static_cast<std::int64_t>(part.size()), [&](std::int64_t t) {
-        const auto k = static_cast<std::size_t>(t);
-        part[k] = tree(leaves[k].first, leaves[k].second);
-    });
+    run_unlocked(
+        static_cast<std::int64_t>(part.size()),
+        [&](std::int64_t t) {
+            const auto k = static_cast<std::size_t>(t);
+            part[k] = tree(leaves[k].first, leaves[k].second);
+        },
+        n * cost
+    );
     return pairwise::combine(n, kPairwiseLeaf, part);
 }
 

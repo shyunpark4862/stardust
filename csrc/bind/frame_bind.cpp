@@ -195,6 +195,13 @@ void bind_column(nb::module_& m) {
         },
         nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"), kFunc
     );
+    m.def(
+        "reduce_columns",
+        [](std::string_view op, const std::vector<Column>& cols, bool skipna, double correction, const Func& func) {
+            return named_call(func, [&] { return sd::frame::reduce_columns(op, cols, skipna, correction); });
+        },
+        nb::arg("op"), nb::arg("cols"), nb::arg("skipna"), nb::arg("correction"), kFunc
+    );
     nb::class_<sd::frame::Groups>(m, "Groups")
         .def(nb::init<const Column&, std::int64_t>(), nb::arg("codes"), nb::arg("ngroups"))
         .def("sizes", &sd::frame::Groups::sizes)
@@ -203,48 +210,106 @@ void bind_column(nb::module_& m) {
             [](const sd::frame::Groups& g, std::string_view op, const Column& col, bool skipna, double correction,
                const Func& func) { return named_call(func, [&] { return g.reduce(op, col, skipna, correction); }); },
             nb::arg("op"), nb::arg("col"), nb::arg("skipna"), nb::arg("correction"), kFunc
+        )
+        .def(
+            "reduce_columns",
+            [](const sd::frame::Groups& g, std::string_view op, const std::vector<Column>& cols, bool skipna,
+               double correction, const Func& func) {
+                return named_call(func, [&] { return g.reduce_columns(op, cols, skipna, correction); });
+            },
+            nb::arg("op"), nb::arg("cols"), nb::arg("skipna"), nb::arg("correction"), kFunc
         );
     m.def("sort_groups", &sd::frame::sort_groups, nb::arg("keys"));
+    m.def("unique_sorted", &sd::frame::unique_sorted, nb::arg("col"));
+    m.def("filter_columns", &sd::frame::filter_columns, nb::arg("cols"), nb::arg("mask"), nb::arg("positions"));
     m.def("argsort", &sd::frame::argsort, nb::arg("keys"), nb::arg("ascending"), nb::arg("na_last"));
     m.def(
         "join_indices",
+        // (left positions, right positions); left positions None when they are 0, 1, ... (every left row
+        // once, in order: the left columns are used as they are).
         [](const std::vector<Column>& left, const std::vector<Column>& right, std::string_view how, const Func& func) {
-            return named_call(func, [&] { return sd::frame::join_indices(left, right, how); });
+            return named_call(func, [&] {
+                auto [l, r] = sd::frame::join_indices(left, right, how);
+                std::optional<Column> lpos;
+                if (l.length != left[0].length || !sd::frame::is_arange(l)) lpos = std::move(l);
+                return std::make_pair(std::move(lpos), std::move(r));
+            });
         },
         nb::arg("left"), nb::arg("right"), nb::arg("how"), kFunc
     );
+    auto csv_options = [](std::string_view sep, bool header, std::vector<std::string> names,
+                          std::vector<std::string> usecols, std::unordered_map<std::string, std::string> dtypes,
+                          std::optional<std::string_view> all_dtype, std::vector<std::string> na_values,
+                          std::int64_t nrows) {
+        sd::frame::CsvOptions opt;
+        opt.sep = sep[0];
+        opt.header = header;
+        opt.names = std::move(names);
+        opt.usecols = std::move(usecols);
+        for (const auto& [k, v] : dtypes) opt.dtypes.emplace(k, sd::frame::parse_dtype(v));
+        if (all_dtype) opt.all_dtype = sd::frame::parse_dtype(*all_dtype);
+        opt.na_values = std::move(na_values);
+        opt.nrows = nrows;
+        return opt;
+    };
     m.def(
         "read_csv",
-        [](nb::bytes data, std::string_view sep, bool header, std::vector<std::string> names,
-           std::vector<std::string> usecols, std::unordered_map<std::string, std::string> dtypes,
-           std::optional<std::string_view> all_dtype, std::vector<std::string> na_values, std::int64_t nrows) {
+        [csv_options](
+            nb::bytes data, std::string_view sep, bool header, std::vector<std::string> names,
+            std::vector<std::string> usecols, std::unordered_map<std::string, std::string> dtypes,
+            std::optional<std::string_view> all_dtype, std::vector<std::string> na_values, std::int64_t nrows
+        ) {
             return sd::call_named("read_csv", [&] {
-                sd::frame::CsvOptions opt;
-                opt.sep = sep[0];
-                opt.header = header;
-                opt.names = std::move(names);
-                opt.usecols = std::move(usecols);
-                for (const auto& [k, v] : dtypes) opt.dtypes.emplace(k, sd::frame::parse_dtype(v));
-                if (all_dtype) opt.all_dtype = sd::frame::parse_dtype(*all_dtype);
-                opt.na_values = std::move(na_values);
-                opt.nrows = nrows;
+                const sd::frame::CsvOptions opt = csv_options(
+                    sep, header, std::move(names), std::move(usecols), std::move(dtypes), all_dtype,
+                    std::move(na_values), nrows
+                );
                 return sd::frame::read_csv(data.c_str(), data.size(), opt);
             });
         },
         nb::arg("data"), nb::arg("sep"), nb::arg("header"), nb::arg("names"), nb::arg("usecols"), nb::arg("dtypes"),
         nb::arg("all_dtype").none(), nb::arg("na_values"), nb::arg("nrows")
     );
+    // read_csv of a whole regular file: its bytes are read here, in parallel
+    // pieces without the GIL, instead of a serial f.read() into a bytes
+    // object (2 ms of a 7 ms 40 MB read on 10 threads). None when a read
+    // fails: the caller reads the file itself and so raises its OSError.
     m.def(
-        "csv_records_end",
-        [](nb::bytes data, std::int64_t records) {
-            return sd::frame::csv_records_end(data.c_str(), data.size(), records);
+        "read_csv_fd",
+        [csv_options](
+            int fd, std::int64_t size, std::string_view sep, bool header, std::vector<std::string> names,
+            std::vector<std::string> usecols, std::unordered_map<std::string, std::string> dtypes,
+            std::optional<std::string_view> all_dtype, std::vector<std::string> na_values
+        ) -> std::optional<std::pair<std::vector<std::string>, std::vector<Column>>> {
+            return sd::call_named(
+                "read_csv", [&]() -> std::optional<std::pair<std::vector<std::string>, std::vector<Column>>> {
+                    const sd::frame::CsvOptions opt = csv_options(
+                        sep, header, std::move(names), std::move(usecols), std::move(dtypes), all_dtype,
+                        std::move(na_values), -1
+                    );
+                    std::optional<sd::frame::FileBytes> data = sd::frame::read_fd(fd, size);
+                    if (!data) return std::nullopt;
+                    return sd::frame::read_csv(data->data.get(), static_cast<std::size_t>(data->size), opt);
+                }
+            );
         },
-        nb::arg("data"), nb::arg("records")
+        nb::arg("fd"), nb::arg("size"), nb::arg("sep"), nb::arg("header"), nb::arg("names"), nb::arg("usecols"),
+        nb::arg("dtypes"), nb::arg("all_dtype").none(), nb::arg("na_values")
+    );
+    // (end, seen, inside) of csv_scan_records: one block of a file read for nrows=.
+    m.def(
+        "csv_scan_records",
+        [](nb::bytes data, std::int64_t records, bool inside) {
+            const sd::frame::CsvScan r = sd::frame::csv_scan_records(data.c_str(), data.size(), records, inside);
+            return std::make_tuple(r.end, r.seen, r.inside);
+        },
+        nb::arg("data"), nb::arg("records"), nb::arg("inside")
     );
     m.def("binary_op", &sd::frame::binary_op, nb::arg("op"), nb::arg("a"), nb::arg("b"), nb::arg("scalar_side"));
     m.def("unary_op", &sd::frame::unary_op, nb::arg("op"), nb::arg("a"));
     m.def("isnan", &sd::frame::isnan, nb::arg("col"));
     m.def("arange", &sd::frame::arange, nb::arg("start"), nb::arg("step"), nb::arg("n"));
+    m.def("concat_ranges", &sd::frame::concat_ranges, nb::arg("starts"), nb::arg("steps"), nb::arg("lengths"));
     m.def("wrap_positions", &sd::frame::wrap_positions, nb::arg("positions"), nb::arg("n"));
     m.def("full", &sd::frame::full, nb::arg("value"), nb::arg("n"));
     // (codes, first, ngroups) of the rows of `cols` taken together.

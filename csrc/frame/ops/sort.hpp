@@ -3,6 +3,7 @@
 
 #include "frame/column.hpp"
 
+#include <optional>
 #include <vector>
 
 namespace sd::frame {
@@ -11,6 +12,9 @@ namespace sd::frame {
 // has its own direction and NA position; equal rows keep their order (a
 // stable sort). Numbers and bools go through an LSD radix sort on 64-bit
 // keys, strings through ranks of their distinct values.
-Column argsort(const std::vector<Column>& keys, const std::vector<bool>& ascending, const std::vector<bool>& na_last);
+// None when the rows are already in that order (nothing to take).
+std::optional<Column> argsort(
+    const std::vector<Column>& keys, const std::vector<bool>& ascending, const std::vector<bool>& na_last
+);
 
 }  // namespace sd::frame

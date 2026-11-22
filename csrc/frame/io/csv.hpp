@@ -1,14 +1,14 @@
 // read_csv's core (docs/api/frame.md §10, docs/design/frame.md §10): RFC 4180
 // tokenizing over a NEON structural index, then per-column type inference
-// while building. When the pool can run in parallel the body is cut into
-// 512 KB byte chunks, tokenized and built on the pool; with nrows, or when
-// the pool cannot run in parallel (one thread, or busy), it is a single
-// chunk read serially. The result is the same either way
+// while building. The body is cut into byte chunks (64 KB to 512 KB), each
+// indexed and then parsed column by column, on the pool when it can run in
+// parallel. The result is the same however the body is cut
 // (docs/design/frame.md §10.6).
 #pragma once
 
 #include "frame/column.hpp"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -28,10 +28,27 @@ struct CsvOptions {
     std::int64_t nrows = -1;                       // -1: all
 };
 
-// The number of bytes from `data` up to the end of its first `records`
-// records (line feeds outside quotes), or -1 when it holds fewer. read_csv's
-// nrows= reads the file only that far.
-std::int64_t csv_records_end(const char* data, std::size_t size, std::int64_t records);
+// Records (line feeds outside quotes) of one block of a file read in pieces,
+// for read_csv's nrows= (it reads the file only as far as needed). From the
+// quote state `inside` at the block's start: `end` is the byte just after
+// the `records`-th record end in the block, or -1 when the block holds fewer;
+// `seen` the records counted (up to `records`); `inside` the state at the
+// block's end (when end is -1).
+struct CsvScan {
+    std::int64_t end;
+    std::int64_t seen;
+    bool inside;
+};
+CsvScan csv_scan_records(const char* data, std::size_t size, std::int64_t records, bool inside);
+
+// The bytes of the open file `fd` from offset 0, `size` of them expected (its
+// size when opened; a file that grew is read to its end): pieces of 4 MB
+// read in parallel with pread, without the GIL. nullopt when a read fails.
+struct FileBytes {
+    std::unique_ptr<char[]> data;
+    std::int64_t size = 0;
+};
+std::optional<FileBytes> read_fd(int fd, std::int64_t size);
 
 // (column names, columns) of the CSV text in [data, data + size).
 std::pair<std::vector<std::string>, std::vector<Column>> read_csv(

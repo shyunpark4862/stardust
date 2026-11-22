@@ -49,7 +49,7 @@ def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, 
 
     lcols = [left._column(k, "merge") for k in lkeys]
     rcols = [right._column(k, "merge") for k in rkeys]
-    lpos, rpos = _core.join_indices(lcols, rcols, how, func="merge")
+    lpos, rpos = _core.join_indices(lcols, rcols, how, func="merge")  # lpos None: every left row once, in order
 
     merged = set(lkeys) if on is not None else set()  # one key column per name with on=
     overlap = (set(left._cols) & set(right._cols)) - merged
@@ -60,9 +60,13 @@ def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, 
             raise ValueError(f"merge(): result column {name!r} appears twice; choose other suffixes")
         out[name] = col
 
-    no_left = _core.binary_op("eq", lpos, Column.from_list([-1], None, None), 2).nonzero()
+    # Rows with no left row: only right and outer joins have them.
+    if how in ("right", "outer") and lpos is not None:
+        no_left = _core.binary_op("eq", lpos, Column.from_list([-1], None, None), 2).nonzero()
+    else:
+        no_left = ()
     for k, c in left._cols.items():
-        col = c.take(lpos)
+        col = c if lpos is None else c.take(lpos)  # shared, copy-on-write (docs/design/frame.md §5.2)
         if k in merged and len(no_left):  # rows that only the right side has take the right key value
             col = col.share()
             col.set_rows(no_left, right._cols[k].take(rpos).take(no_left))
@@ -72,7 +76,7 @@ def merge(left, right, /, *, how="inner", on=None, left_on=None, right_on=None, 
             continue
         put(k + suffixes[1] if k in overlap else k, c.take(rpos))
 
-    result = DataFrame._new(out, RangeIndex(len(lpos)))
+    result = DataFrame._new(out, RangeIndex(len(rpos)))
     if sort:
         keys = [out[k] for k in lkeys] if on is not None else _sort_keys(out, lkeys, rkeys, overlap, suffixes, no_left)
         result = result._take(_sort.order(keys), ignore_index=True)
@@ -149,4 +153,8 @@ def _concat_labels(indexes):
     if len(dtypes) != 1:
         raise TypeError("concat(): cannot join int64 labels with string labels")
     names = {i.name for i in indexes}
-    return Index._new(_core.concat([i._column() for i in indexes]), names.pop() if len(names) == 1 else None)
+    name = names.pop() if len(names) == 1 else None
+    if all(isinstance(i, RangeIndex) for i in indexes):  # the labels written once, not made and then copied
+        ranges = [(i.start, i.step, len(i)) for i in indexes]
+        return Index._new(_core.concat_ranges(*(list(x) for x in zip(*ranges))), name)
+    return Index._new(_core.concat([i._column() for i in indexes]), name)

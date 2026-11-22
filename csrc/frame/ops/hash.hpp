@@ -14,6 +14,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -36,9 +37,10 @@ struct Fmix64 {
 // Strings (docs/design/frame.md §8.4): eight bytes per step. Each 8-byte word is folded into the
 // state with a 64x64 -> 128-bit multiply whose two halves are XORed (the
 // "mum" mix of the wyhash family): one multiply spreads every input bit over
-// the whole word. The last partial word is read byte-safely; the length is
-// mixed in so "a" and "a\0" differ; fmix64 finishes, so the low bits (the
-// Swiss tag) and the group bits are well mixed.
+// the whole word. The last partial word is read without leaving the string
+// (overlapping loads, as wyhash); the length is mixed in so "a" and "a\0"
+// differ; fmix64 finishes, so the low bits (the Swiss tag) and the group
+// bits are well mixed.
 struct HashBytes {
     static std::uint64_t mum(std::uint64_t a, std::uint64_t b) {
         const unsigned __int128 r = static_cast<unsigned __int128>(a) * b;
@@ -49,14 +51,32 @@ struct HashBytes {
         const char* p = s.data();
         std::size_t n = s.size();
         std::uint64_t h = k0 ^ (static_cast<std::uint64_t>(n) * k1);
-        for (; n >= 8; p += 8, n -= 8) {
+        if (n >= 8) {
+            const char* const end = p + n;
+            for (; n > 8; p += 8, n -= 8) {
+                std::uint64_t w;
+                std::memcpy(&w, p, 8);
+                h = mum(w ^ k1, h ^ k0);
+            }
+            // The last 1-8 bytes: the 8 bytes that end the string, shifted
+            // so the bytes already mixed drop out (no byte-by-byte copy).
             std::uint64_t w;
-            std::memcpy(&w, p, 8);
-            h = mum(w ^ k1, h ^ k0);
+            std::memcpy(&w, end - 8, 8);
+            w >>= 8 * (8 - n);
+            return Fmix64{}(mum(w ^ k1, h ^ k0));
         }
-        if (n > 0) {
-            std::uint64_t w = 0;
-            std::memcpy(&w, p, n);
+        if (n > 0) {  // 1-7 bytes: two overlapping loads of 4, or the bytes one by one
+            std::uint64_t w;
+            if (n >= 4) {
+                std::uint32_t a, b;
+                std::memcpy(&a, p, 4);
+                std::memcpy(&b, p + n - 4, 4);
+                w = (std::uint64_t{b} << 32) | a;
+            } else {
+                w = static_cast<std::uint64_t>(static_cast<unsigned char>(p[0])) |
+                    static_cast<std::uint64_t>(static_cast<unsigned char>(p[n / 2])) << 8 |
+                    static_cast<std::uint64_t>(static_cast<unsigned char>(p[n - 1])) << 16;
+            }
             h = mum(w ^ k1, h ^ k0);
         }
         return Fmix64{}(h);
@@ -350,7 +370,11 @@ std::vector<std::int64_t> Partitioned<Key, Hash>::build(
     // strings keep their hash, computed once (rehashing would read the bytes again).
     constexpr bool kInline = std::is_same_v<Key, std::uint64_t>;
     constexpr int kBits = 8;
-    const int bits = n >= kParallelThreshold && parallel::available() ? kBits : 0;
+    // Strings cost several times an 8-byte key per row (hashing and
+    // comparing bytes): they split from a quarter of the rows (10^5 string
+    // rows were serial, at 1.3 ms).
+    const std::int64_t cost = kInline ? 1 : 4;
+    const int bits = n * cost >= kParallelThreshold && parallel::available() ? kBits : 0;
     const std::size_t P = std::size_t{1} << bits;
     shift_ = 64 - bits;
     tables_ = std::vector<SwissTable<Key, Hash>>(P);
@@ -571,9 +595,38 @@ struct Factorized {
     std::int64_t ngroups = 0;
 };
 
+// Integer keys in a small range [lo, lo + span) need no hashing: a table
+// with one slot per possible key (a direct-address table) gives the same
+// codes, with one memory access per row and no hash, tag or probe
+// (docs/design/frame.md §8). Used for int64 and bool columns whose values
+// span at most kDirectSpan(n) keys.
+struct DirectRange {
+    std::int64_t lo = 0, span = 0;
+};
+
+// The largest span a direct table is used for at n rows: twice the rows
+// (and at least 2^16), so the table (4 bytes a slot) is at most as big as
+// the codes it makes; never beyond 2^28 slots.
+inline std::int64_t direct_span_limit(std::int64_t n) {
+    return std::min<std::int64_t>(std::max<std::int64_t>(2 * n, std::int64_t{1} << 16), std::int64_t{1} << 28);
+}
+
+// The range of an int64 or bool column's values (NA rows hold 0, which
+// counts) when a direct table fits it; nullopt otherwise.
+std::optional<DirectRange> direct_range(const Column& col);
+
+// factorize through a direct table: the codes factorize gives (first
+// appearance, NA rows sharing one code). `code_of`, when not null, receives
+// the table: 1 + the code of key lo + k at k, 0 for keys that never appear.
+Factorized factorize_direct(const Column& col, DirectRange r, std::vector<std::int32_t>* code_of = nullptr);
+
 // Codes for the rows of one column. Keys follow docs/api/frame.md §1.6: NaN
 // equals NaN, 0.0 equals -0.0, and all NA rows share one code.
 Factorized factorize(const Column& col);
+
+// unique_values of an int64 or bool column whose values span a small range
+// (direct_range): the distinct values in order, NA last; nullopt otherwise.
+std::optional<Column> unique_sorted(const Column& col);
 
 // Codes for rows of several columns taken together (a row's key is the
 // tuple of its values). Each column is factorized, the codes are combined
@@ -608,6 +661,10 @@ private:
     std::vector<std::int64_t> codes_;
     std::int64_t ngroups_ = 0;
     std::int64_t na_code_ = -1;  // the build's NA code, taken out of the numbering
+    // Integer keys in a small range: a direct table, 1 + the code of key
+    // lo + k at k (0: absent), instead of the hash tables.
+    std::optional<DirectRange> direct_;
+    std::vector<std::int32_t> code_of_;
     std::unique_ptr<Partitioned<std::uint64_t, Fmix64>> words_;
     std::unique_ptr<Partitioned<std::string_view, HashBytes>> strings_;
 };

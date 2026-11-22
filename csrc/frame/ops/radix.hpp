@@ -47,51 +47,203 @@ inline std::uint64_t string_prefix(std::string_view s) {
     return k;
 }
 
-// Stable LSD radix sort of `rows` by 64-bit keys: `digits` passes of one
-// byte, least significant first (eight by default). The caller sets fewer
-// digits only from what the keys are, never from their values: bools (one
-// byte) and ranks below a count of distinct values (the bytes of that
-// count). A higher byte that is the same in every key -- 0, or 0xff for a
-// reversed key -- orders nothing, so leaving it out gives the same order.
-// Every pass of the `digits` runs, whatever the data (no skipping of
-// constant digits).
+// Stable LSD radix sort of `rows` by 64-bit keys, least significant byte
+// first. `digits` (eight by default) bounds the bytes that can differ: the
+// caller sets fewer only from what the keys are (bools: one byte; ranks
+// below a count of distinct values: the bytes of that count).
 //
-// In parallel (docs/design/frame.md §9.5): each pass counts the digit per chunk of positions,
-// gives every (digit, chunk) pair its place -- digit by digit, and within a
-// digit chunk by chunk -- and then each chunk scatters its elements to its
-// own places. An element's place is exactly the one the serial pass gives
-// it, so the order is the same for any thread count (docs/design/frame.md §11.5).
+// One read of the keys first (scan_keys) finds what the data needs:
+//  - keys already in order (non-decreasing): nothing moves;
+//  - keys in reverse order (non-increasing): the runs of equal keys are
+//    reversed as wholes, each keeping its own order (reverse_runs);
+//  - otherwise only the bytes that differ between keys get a pass: either
+//    the bytes of (key - min) up to the highest set one, or the bytes where
+//    some keys differ, whichever is fewer. A byte that is the same in every
+//    key orders nothing, so a pass over it would leave every row in place.
+// Every path ends in the one stable order, so the data only sets the cost
+// (int64 keys 0..10^6 take 3 passes instead of 8, an already sorted column
+// one read).
+//
+// In parallel (docs/design/frame.md §9.5): each pass counts the digit per
+// chunk of positions, gives every (digit, chunk) pair its place -- digit by
+// digit, and within a digit chunk by chunk -- and then each chunk scatters
+// its elements to its own places. An element's place is exactly the one the
+// serial pass gives it, so the order is the same for any thread count.
 //
 // Serial: when no pass would be split -- one thread, or too few keys for
-// the scatter to reach the threshold -- a serial sort runs instead: all
-// eight histograms in one read of the keys, no per-chunk tables. The same
-// stable sort, so the same order; at 1k-10k keys it is 25-29% faster than
-// eight counting passes (docs/design/frame.md §9.5).
-inline void radix_sort_serial(std::vector<std::uint64_t>& keys, std::vector<std::int64_t>& rows, int digits = 8) {
+// the scatter to reach the threshold -- all the histograms come from one
+// read of the keys, with no per-chunk tables.
+
+// From this many keys a serial sort may use digits wider than a byte
+// (plan_passes): below it, clearing and summing 2,048-entry histograms
+// costs more than the passes it saves.
+inline constexpr std::int64_t kWideRadixKeys = std::int64_t{1} << 15;
+
+// What one read of the keys tells the sort.
+struct KeyScan {
+    bool nondecreasing = true;
+    bool nonincreasing = true;
+    std::uint64_t lo = ~std::uint64_t{0}, hi = 0;          // min and max
+    std::uint64_t ones = 0, zeros = ~std::uint64_t{0};      // OR and AND of all keys
+};
+
+inline KeyScan scan_range(const std::uint64_t* k, std::int64_t lo, std::int64_t hi) {
+    KeyScan s;
+    std::uint64_t mn = ~std::uint64_t{0}, mx = 0, o = 0, a = ~std::uint64_t{0};
+    bool up = true, down = true;
+    std::uint64_t prev = k[lo];
+    for (std::int64_t j = lo; j < hi; ++j) {
+        const std::uint64_t x = k[j];
+        up &= prev <= x;
+        down &= prev >= x;
+        prev = x;
+        mn = std::min(mn, x);
+        mx = std::max(mx, x);
+        o |= x;
+        a &= x;
+    }
+    s.nondecreasing = up;
+    s.nonincreasing = down;
+    s.lo = mn;
+    s.hi = mx;
+    s.ones = o;
+    s.zeros = a;
+    return s;
+}
+
+inline KeyScan scan_keys(const std::vector<std::uint64_t>& keys) {
+    const auto n = static_cast<std::int64_t>(keys.size());
+    const std::uint64_t* k = keys.data();
+    const std::size_t C = static_cast<std::size_t>(num_chunks(n));
+    std::vector<KeyScan> part(C);
+    for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
+        part[static_cast<std::size_t>(lo / kChunkRows)] = scan_range(k, lo, hi);
+    });
+    KeyScan s;
+    for (std::size_t c = 0; c < C; ++c) {
+        const KeyScan& p = part[c];
+        s.nondecreasing &= p.nondecreasing;
+        s.nonincreasing &= p.nonincreasing;
+        if (c > 0) {  // the chunk boundary
+            const std::uint64_t a = k[static_cast<std::int64_t>(c) * kChunkRows - 1],
+                                b = k[static_cast<std::int64_t>(c) * kChunkRows];
+            s.nondecreasing &= a <= b;
+            s.nonincreasing &= a >= b;
+        }
+        s.lo = std::min(s.lo, p.lo);
+        s.hi = std::max(s.hi, p.hi);
+        s.ones |= p.ones;
+        s.zeros &= p.zeros;
+    }
+    return s;
+}
+
+// keys non-increasing: the stable ascending order is the runs of equal keys
+// from last to first, each run in its own order.
+inline void reverse_runs(std::vector<std::uint64_t>& keys, std::vector<std::int64_t>& rows) {
+    const auto n = static_cast<std::int64_t>(keys.size());
+    std::vector<std::uint64_t> keys2(static_cast<std::size_t>(n));
+    std::vector<std::int64_t> rows2(static_cast<std::size_t>(n));
+    std::int64_t at = 0;
+    for (std::int64_t b = n; b > 0;) {
+        std::int64_t a = b - 1;
+        while (a > 0 && keys[a - 1] == keys[b - 1]) --a;
+        for (std::int64_t j = a; j < b; ++j, ++at) {
+            keys2[at] = keys[j];
+            rows2[at] = rows[j];
+        }
+        b = a;
+    }
+    keys.swap(keys2);
+    rows.swap(rows2);
+}
+
+// The passes a sort needs: the shift and width (bits) of each digit, low
+// first, and the offset subtracted from every key before its digits are read.
+struct RadixPlan {
+    int shifts[8];
+    int widths[8];
+    int npass = 0;
+    std::uint64_t offset = 0;
+};
+
+// Byte digits: either the bytes of (key - min) up to its highest set one or
+// the bytes where some keys differ, whichever is fewer. `wide` (a serial
+// sort of many keys) also weighs digits of up to 11 bits over the bits of
+// (key - min): a pass costs about the same up to 11 bits (1M keys: 1.5 ms
+// for 8, 9, 10 or 11), so keys spanning 17-22 bits take 2 passes, not 3. Not
+// for a split sort: 2,048 output streams per task overflowed the caches
+// (docs/design/frame.md §9.5).
+inline RadixPlan plan_passes(const KeyScan& s, int digits, bool wide = false) {
+    RadixPlan by_mask, by_range;
+    const std::uint64_t differ = s.ones ^ s.zeros;  // bits that are not the same in every key
+    for (int d = 0; d < digits; ++d)
+        if ((differ >> (8 * d)) & 0xff) {
+            by_mask.shifts[by_mask.npass] = 8 * d;
+            by_mask.widths[by_mask.npass++] = 8;
+        }
+    const std::uint64_t span = s.hi - s.lo;
+    by_range.offset = s.lo;
+    const int bits = span == 0 ? 0 : 64 - __builtin_clzll(span);
+    const int max_width = wide ? 11 : 8;
+    const int npass = (bits + max_width - 1) / max_width;
+    for (int d = 0, at = 0; d < npass; ++d) {
+        // Bytes; wide digits: the bits left, spread evenly over the passes left.
+        const int w = wide ? (bits - at + (npass - d) - 1) / (npass - d) : 8;
+        by_range.shifts[d] = at;
+        by_range.widths[d] = w;
+        at += w;
+    }
+    by_range.npass = npass;
+    return by_range.npass <= by_mask.npass ? by_range : by_mask;
+}
+
+inline void radix_passes_serial(std::vector<std::uint64_t>& keys, std::vector<std::int64_t>& rows, const RadixPlan& p) {
     const std::size_t n = keys.size();
-    std::vector<std::array<std::int64_t, 256>> count(static_cast<std::size_t>(digits));
-    for (auto& h : count) h.fill(0);
-    for (std::uint64_t k : keys)
-        for (int d = 0; d < digits; ++d) ++count[d][(k >> (8 * d)) & 0xff];
+    const std::uint64_t off = p.offset;
+    std::vector<std::int64_t> count(static_cast<std::size_t>(p.npass) << 11, 0);  // 2^11 per pass
+    for (std::uint64_t k : keys) {
+        const std::uint64_t x = k - off;
+        for (int d = 0; d < p.npass; ++d)
+            ++count[(static_cast<std::size_t>(d) << 11) + ((x >> p.shifts[d]) & ((1u << p.widths[d]) - 1))];
+    }
     std::vector<std::uint64_t> keys2(n);
     std::vector<std::int64_t> rows2(n);
-    for (int d = 0; d < digits; ++d) {
-        std::int64_t next[256];  // local: the row stores below cannot alias it
-        next[0] = 0;
-        for (int b = 1; b < 256; ++b) next[b] = next[b - 1] + count[d][b - 1];
-        const int shift = 8 * d;
+    std::vector<std::int64_t> next_(std::size_t{1} << 11);
+    for (int d = 0; d < p.npass; ++d) {
+        const int shift = p.shifts[d];
+        const std::uint64_t mask = (std::uint64_t{1} << p.widths[d]) - 1;
+        const std::int64_t* c = count.data() + (static_cast<std::size_t>(d) << 11);
+        std::int64_t* next = next_.data();  // a local pointer: the row stores below cannot alias it
+        std::int64_t at = 0;
+        for (std::uint64_t b = 0; b <= mask; ++b) {
+            next[b] = at;
+            at += c[b];
+        }
         const std::uint64_t* k = keys.data();
         const std::int64_t* r = rows.data();
         std::uint64_t* k2 = keys2.data();
         std::int64_t* r2 = rows2.data();
         for (std::size_t j = 0; j < n; ++j) {
-            const std::int64_t to = next[(k[j] >> shift) & 0xff]++;
+            const std::int64_t to = next[((k[j] - off) >> shift) & mask]++;
             k2[to] = k[j];
             r2[to] = r[j];
         }
         keys.swap(keys2);
         rows.swap(rows2);
     }
+}
+
+// The serial sort on its own (a task's or a short run's sort).
+inline void radix_sort_serial(std::vector<std::uint64_t>& keys, std::vector<std::int64_t>& rows, int digits = 8) {
+    if (keys.size() < 2) return;
+    const KeyScan s = scan_range(keys.data(), 0, static_cast<std::int64_t>(keys.size()));
+    if (s.nondecreasing) return;
+    if (s.nonincreasing) {
+        reverse_runs(keys, rows);
+        return;
+    }
+    radix_passes_serial(keys, rows, plan_passes(s, digits, keys.size() >= kWideRadixKeys));
 }
 
 // The number of byte digits that holds every value up to `max_key`
@@ -104,18 +256,30 @@ inline int digits_for(std::uint64_t max_key) {
 
 inline void radix_sort(std::vector<std::uint64_t>& keys, std::vector<std::int64_t>& rows, int digits = 8) {
     const auto n = static_cast<std::int64_t>(keys.size());
-    if (n == 0) return;
-    if (!parallel::available() || n * 2 < kParallelThreshold) {  // 2: the scatter's cost below
-        Unlocked unlocked(n * 2);  // the GIL rule of the passes it replaces (docs/design/frame.md §9.5)
-        radix_sort_serial(keys, rows, digits);
+    if (n < 2) return;
+    // Split from the threshold on: below it the serial sort's wider digits
+    // (fewer passes) beat byte passes on the pool (10^5 keys: 0.44 ms against 0.57).
+    const bool split = parallel::available() && n >= kParallelThreshold;
+    const Unlocked unlocked(split ? 0 : n * 2);  // the GIL rule of the passes (docs/design/frame.md §9.5)
+    const KeyScan s = split ? scan_keys(keys) : scan_range(keys.data(), 0, n);
+    if (s.nondecreasing) return;
+    if (s.nonincreasing) {
+        const Unlocked u(n);
+        reverse_runs(keys, rows);
+        return;
+    }
+    const RadixPlan p = plan_passes(s, digits, !split && n >= kWideRadixKeys);
+    if (!split) {
+        radix_passes_serial(keys, rows, p);
         return;
     }
     const std::size_t C = static_cast<std::size_t>(num_chunks(n));
     std::vector<std::int64_t> at(C * 256);
     std::vector<std::uint64_t> keys2(static_cast<std::size_t>(n));
     std::vector<std::int64_t> rows2(static_cast<std::size_t>(n));
-    for (int d = 0; d < digits; ++d) {
-        const int shift = 8 * d;
+    const std::uint64_t off = p.offset;
+    for (int d = 0; d < p.npass; ++d) {
+        const int shift = p.shifts[d];
         for_chunks(n, [&](std::int64_t lo, std::int64_t hi) {
             // Four histograms, summed at the end: runs of one digit would
             // otherwise chain every increment on the one before it.
@@ -123,8 +287,8 @@ inline void radix_sort(std::vector<std::uint64_t>& keys, std::vector<std::int64_
             const std::uint64_t* k = keys.data();
             std::int64_t j = lo;
             for (; j + 4 <= hi; j += 4)
-                for (int u = 0; u < 4; ++u) ++h[u][(k[j + u] >> shift) & 0xff];
-            for (; j < hi; ++j) ++h[0][(k[j] >> shift) & 0xff];
+                for (int u = 0; u < 4; ++u) ++h[u][((k[j + u] - off) >> shift) & 0xff];
+            for (; j < hi; ++j) ++h[0][((k[j] - off) >> shift) & 0xff];
             std::int64_t* out = at.data() + lo / kChunkRows * 256;
             for (int b = 0; b < 256; ++b) out[b] = std::int64_t{h[0][b]} + h[1][b] + h[2][b] + h[3][b];
         });
@@ -148,7 +312,7 @@ inline void radix_sort(std::vector<std::uint64_t>& keys, std::vector<std::int64_
                 std::uint64_t* k2 = keys2.data();
                 std::int64_t* r2 = rows2.data();
                 for (std::int64_t j = lo; j < hi; ++j) {
-                    const std::int64_t to = next[(k[j] >> shift) & 0xff]++;
+                    const std::int64_t to = next[((k[j] - off) >> shift) & 0xff]++;
                     k2[to] = k[j];
                     r2[to] = r[j];
                 }

@@ -41,7 +41,15 @@ std::uint8_t* add_validity(Column& col) {
 std::shared_ptr<Buffer> rebased_validity(const Column& col) {
     if (!col.validity) return nullptr;
     auto out = Buffer::allocate(bitmap::num_bytes(col.length), /*zeroed=*/false);
-    bitmap::copy_bits(col.validity_bits(), col.offset, col.length, reinterpret_cast<std::uint8_t*>(out->data()));
+    auto* o = reinterpret_cast<std::uint8_t*>(out->data());
+    if (col.offset % 8 == 0) {  // whole bytes: a copy, then the unused high bits of the last byte cleared
+        const Unlocked unlocked(col.length);
+        std::memcpy(o, col.validity_bits() + col.offset / 8, static_cast<std::size_t>(bitmap::num_bytes(col.length)));
+        if (col.length & 7)
+            o[bitmap::num_bytes(col.length) - 1] &= static_cast<std::uint8_t>((1u << (col.length & 7)) - 1);
+        return out;
+    }
+    bitmap::copy_bits(col.validity_bits(), col.offset, col.length, o);
     return out;
 }
 

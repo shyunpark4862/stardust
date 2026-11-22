@@ -1,6 +1,7 @@
 """read_csv (docs/api/frame.md §10)."""
 
 import os
+import stat
 
 from .. import _calls
 from . import _core
@@ -23,19 +24,20 @@ def _str_list(value, what):  # for read_csv()
 def _read_records(f, records):
     """The file's bytes up to the end of its first `records` records (all of
     it when it has fewer): with nrows=, the file is read in growing blocks
-    and no further than needed."""
-    parts, size, block = [], 0, 1 << 16
-    while True:
+    and no further than needed, each block scanned once."""
+    parts, block, inside = [], 1 << 16, False
+    while records > 0:
         more = f.read(block)
         if not more:
-            return b"".join(parts)
-        parts.append(more)
-        size += len(more)
-        data = b"".join(parts)
-        end = _core.csv_records_end(data, records)
+            break
+        end, seen, inside = _core.csv_scan_records(more, records, inside)
         if end >= 0:
-            return data[:end]
-        parts, block = [data], max(block, size)  # doubling: each byte is scanned a few times at most
+            parts.append(more[:end])
+            break
+        parts.append(more)
+        records -= seen
+        block *= 2
+    return b"".join(parts)
 
 
 @_calls.function
@@ -78,10 +80,19 @@ def read_csv(
         raise ValueError(f"read_csv(): 'nrows' must be >= 0, not {nrows}")
 
     with open(os.fspath(path), "rb") as f:
-        data = f.read() if nrows is None else _read_records(f, nrows + (1 if header else 0))
-    out_names, cols = _core.read_csv(
-        data, sep, header, names, usecols, dtypes, all_dtype, na_values, -1 if nrows is None else nrows
-    )
+        result = None
+        if nrows is None:
+            st = os.fstat(f.fileno())
+            if stat.S_ISREG(st.st_mode):  # the core reads the file itself, in parallel
+                result = _core.read_csv_fd(
+                    f.fileno(), st.st_size, sep, header, names, usecols, dtypes, all_dtype, na_values
+                )
+        if result is None:  # not a regular file, or a read failed (f.read() raises the OSError)
+            data = f.read() if nrows is None else _read_records(f, nrows + (1 if header else 0))
+            # With nrows=, `data` holds no record past the first nrows: the core reads it
+            # all, in parallel (its own nrows= limit reads in order).
+            result = _core.read_csv(data, sep, header, names, usecols, dtypes, all_dtype, na_values, -1)
+    out_names, cols = result
     unknown = [k for k in dtypes if k not in out_names]
     if unknown:
         raise KeyError(f"read_csv(): 'dtype' names columns that are not read: {unknown}")

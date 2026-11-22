@@ -271,6 +271,11 @@ class Series(Reductions):
     # --- selection and assignment (docs/api/frame.md §5) ---
 
     def _take(self, positions, ignore_index=False):
+        """The rows at `positions`; None: every row in order (an already sorted
+        Series), sharing the column (copy-on-write, docs/design/frame.md §5.2)."""
+        if positions is None:
+            index = RangeIndex(len(self._col)) if ignore_index else _unmoved_index(self._index)
+            return Series._new(self._col, index, self._name)
         index = RangeIndex(len(positions)) if ignore_index else self._index._take(positions)
         return Series._new(self._col.take(positions), index, self._name)
 
@@ -383,3 +388,11 @@ def _defer():  # a DataFrame answers DataFrame-Series operations (with a TypeErr
 
 
 _ops.attach(Series, _defer)
+
+
+def _unmoved_index(index):
+    """The index of rows taken in their own order: an Index is kept; a
+    RangeIndex becomes the Index of its labels, as taking rows gives."""
+    if isinstance(index, RangeIndex):
+        return index._take(_core.arange(0, 1, len(index)))
+    return index

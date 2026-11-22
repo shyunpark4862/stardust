@@ -37,6 +37,9 @@ def duplicated(cols, keep, func):
 def unique_values(col):
     """The distinct values of `col` in sorted order, NA last (docs/api/frame.md §4.2):
     one representative per key, ordered as groupby orders its groups."""
+    direct = _core.unique_sorted(col)  # integers in a small range: no hashing, no sort
+    if direct is not None:
+        return direct
     _, first, _ = codes([col])
     reps = col.take(first)
     return reps.take(_core.sort_groups([reps]))

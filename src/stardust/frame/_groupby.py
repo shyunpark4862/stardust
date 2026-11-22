@@ -113,7 +113,15 @@ class GroupBy(Reductions):
 
     def _reduce(self, op, skipna, correction, func=None):  # the Reductions methods (docs/api/frame.md §7.3)
         func = func or op  # sum() is named sum; agg("sum") names agg
-        return self._result({k: self._apply(op, k, func, skipna, correction) for k in self._values}, func)
+        if op not in AGG_FUNCS:
+            raise ValueError(f"{func}(): unknown aggregation {op!r}; use one of {', '.join(AGG_FUNCS)}")
+        if op == "size" or len(self._values) < 2:
+            return self._result({k: self._apply(op, k, func, skipna, correction) for k in self._values}, func)
+        # all value columns in one call: the columns run in parallel (Groups.reduce_columns)
+        cols = self._state().groups.reduce_columns(
+            op, [self._df._cols[k] for k in self._values], skipna, correction, func=func
+        )
+        return self._result(dict(zip(self._values, cols)), func)
 
     def first(self, *, skipna=True):
         """Each group's first value that is not NA (skipna=False: its first row's value)."""

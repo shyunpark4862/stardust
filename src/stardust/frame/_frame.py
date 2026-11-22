@@ -8,7 +8,7 @@ from ._errors import check_bool, check_choice, check_int, name_list, named, type
 from ._index import Index, RangeIndex, _IndexBase, ensure_index
 from ._na import NA
 from ._reduce import Reductions, own_reductions
-from ._series import Series, fill_column
+from ._series import Series, _unmoved_index, fill_column
 
 Column = _core.Column
 
@@ -141,11 +141,10 @@ class DataFrame(Reductions):
     def __getitem__(self, key):
         """df["a"] (a Series), df[["a", "b"]] (a DataFrame) or df[mask] (rows) (docs/api/frame.md §5.3)."""
         if isinstance(key, Series):  # rows by a bool mask: each column compacted directly (docs/design/frame.md §7.3)
-            sel = ("mask", _select.aligned_mask(key, self._index))
-            return DataFrame._new(
-                {k: _select.select_column(c, sel) for k, c in self._cols.items()},
-                _select.select_index(self._index, sel),
-            )
+            mask = _select.aligned_mask(key, self._index)
+            positions = mask.nonzero()  # the index's labels, and the string columns' rows
+            cols = _core.filter_columns(list(self._cols.values()), mask, positions)
+            return DataFrame._new(dict(zip(self._cols, cols)), self._index._take(positions))
         if isinstance(key, _NAME_LISTS) or _column.is_ndarray(key):  # as .loc's column place (docs/api/frame.md §5.3)
             names = _check_columns(key)
             return DataFrame._new({k: self._column(k) for k in names}, self._index)
@@ -187,6 +186,11 @@ class DataFrame(Reductions):
         return DataFrame._new(cols, target)
 
     def _take(self, positions, ignore_index=False):
+        """The rows at `positions`; None: every row in order (already sorted),
+        sharing the columns (copy-on-write, docs/design/frame.md §5.2)."""
+        if positions is None:
+            index = RangeIndex(len(self._index)) if ignore_index else _unmoved_index(self._index)
+            return DataFrame._new(dict(self._cols), index)
         index = RangeIndex(len(positions)) if ignore_index else self._index._take(positions)
         return DataFrame._new({k: c.take(positions) for k, c in self._cols.items()}, index)
 
@@ -203,7 +207,7 @@ class DataFrame(Reductions):
     def _reduce(self, op, skipna, correction):
         """One row, labelled by the operation, each column keeping its own result
         dtype (docs/api/frame.md §6.2). A column the operation does not apply to raises."""
-        cols = {k: _core.reduce(op, c, skipna, correction, op) for k, c in self._cols.items()}
+        cols = dict(zip(self._cols, _core.reduce_columns(op, list(self._cols.values()), skipna, correction, op)))
         return DataFrame._new(cols, Index._new(Column.from_list([op], NA, "string")))
 
     def sort_values(self, by, /, *, descending=False, stable=True, na_position="last", ignore_index=False):
