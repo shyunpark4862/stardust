@@ -161,13 +161,15 @@ def _padded(mask):
     return out
 
 
-def refine(fn, U, V, P, scale, zcut):
+def refine(fn, U, V, P, scale, zcut, levels=2):
     """Samples again where the first grid asks for it. fn(U, V) -> (X, Y, Z) takes and returns 2-D
     arrays. Returns None when nothing asks, ROUGH when more than MAX_FIRST of the cells do (the
     caller samples the whole grid finer instead), else (keep, parts, asked):
     `keep` the cells of the first grid that stay, `parts` a list of ((X, Y, Z), keep) of grids
     (m, K + 1, K + 1) with the cells of each that are drawn (None: all), and `asked` the cells
     of the first grid that were sampled again."""
+    if levels == 0:
+        return None
     ask = asks(P, scale, zcut)
     count = int(sd.sum(ask))
     ny, nx = ask.shape
@@ -183,7 +185,7 @@ def refine(fn, U, V, P, scale, zcut):
     bounds = (float(sd.min(U)), float(sd.max(U)), float(sd.min(V)), float(sd.max(V)))
     ask2 = asks(P1, scale, zcut)
     count2 = int(sd.sum(ask2))
-    if 0 < count2 <= MAX_SECOND:
+    if levels > 1 and 0 < count2 <= MAX_SECOND:
         p, a, b = sd.nonzero(ask2)
         U2, V2 = _children(U1, V1, ask2)
         P2 = _call(fn, U2, V2)

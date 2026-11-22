@@ -27,7 +27,14 @@ SS = 3  # samples per pixel along each direction
 LIGHT = (-0.35, 0.45, 0.82)
 GRID = (0.88, 0.88, 0.89, 1.0)  # the grid on the faces behind the scene
 EDGE = (0.72, 0.72, 0.74, 1.0)  # those faces' outlines
-MESH_DARK, MESH_ALPHA = 0.42, 0.6  # mesh lines: the surface's own colour darkened
+MESH_DARK, MESH_ALPHA = 0.36, 0.62  # mesh lines: the surface's own colour darkened
+LONE = _color.CMAP  # the colour map of a cell's only surface
+MESH, MESH_WIDTH = 24, 0.42  # cells of the mesh a side; the lines' width (bp)
+CONTOURS, CONTOUR_WIDTH = 14, 0.6  # levels of the floor contours aimed at; their width (bp)
+# The shading (csrc/plot/zbuffer.hpp, View3::shade): ambient; key, fill and rim light; the darkening
+# of faces turned away; the key light's broad gloss (strength, exponent) and sharp highlight
+# (strength, exponent); the fill light's gloss.
+SHADE = (0.52, 0.36, 0.20, 0.10, 0.03, 0.18, 5.0, 0.30, 70.0, 0.12)
 
 
 class Space(_layers.Layer):
@@ -35,7 +42,8 @@ class Space(_layers.Layer):
 
     def __init__(self, azimuth, elevation, perspective):
         self.az, self.el, self.perspective = azimuth, elevation, perspective
-        self.surfaces = []  # (X, Y, Z 2-D sd arrays, colour spec, mesh, alpha, what _adapt added or None)
+        # (X, Y, Z 2-D sd arrays, colour spec, mesh cells, alpha, what _adapt added or None, floor contour levels)
+        self.surfaces = []
         self.curves = []  # (x, y, z 1-D arrays, rgba, width)
         self.points = []  # (x, y, z arrays, rgba, size)
         self.zlim = None  # a user's z range
@@ -193,10 +201,11 @@ class Space(_layers.Layer):
             zr[0],
             zr[1],
             *_unit(LIGHT),
+            *SHADE,
         ]
-        vert, tri, lines, counts, discs = self._buffers(lo, hi, th, k, BOX)
+        vert, tri, lines, counts, widths, discs = self._buffers(lo, hi, th, k, BOX)
         if vert or lines or discs:
-            rgba = _core_plot.render3(iw, ih, SS, view, vert, tri, lines, counts, 0.55 * k, discs)
+            rgba = _core_plot.render3(iw, ih, SS, view, vert, tri, lines, counts, widths, discs)
             scene.add(_scene.Image(fr.x, fr.y, fr.w, fr.h, iw, ih, rgba, smooth=True))
 
         # the axes: the bottom edges nearest the eye for x and y, the upright edge at the side for z
@@ -274,12 +283,12 @@ class Space(_layers.Layer):
         def box(k, a):
             return (a - lo[k]) * (2.0 * BOX[k] / (hi[k] - lo[k])) - BOX[k]
 
-        vert, tri, lines, counts, discs = [], [], [], [], []
+        vert, tri, lines, counts, widths, discs = [], [], [], [], [], []
         base = 0
         several = len(self.surfaces) > 1
-        for X, Y, Z, spec, mesh, alpha, fine in self.surfaces:
+        for X, Y, Z, spec, mesh, alpha, fine, contours in self.surfaces:
             if isinstance(spec, Auto):  # no colour given: by height alone, a palette colour among several
-                spec = _color.fill_of(spec.rgba, 0.18) if several else "viridis"
+                spec = _color.fill_of(spec.rgba, 0.18) if several else LONE
 
             def colours(Zs, spec=spec):
                 if isinstance(spec, (str, list)):  # a colour map by height: a named one, or anchors
@@ -305,6 +314,23 @@ class Space(_layers.Layer):
                     cells = cells[sd.reshape(keep, (-1,))]
                 tri.append(bytes(memoryview(sd.reshape(cells, (-1,)))))
                 base += count
+            if contours:
+                # the level curves of the first grid on the floor of the box, coloured as the surface is
+                grid = _field.Grid(X[0, :].tolist(), Y[:, 0].tolist(), Z)
+                for v in _ticks.linear(lo[2], hi[2], contours):
+                    if not lo[2] < v < hi[2]:
+                        continue
+                    cx, cy = _field.Cells(None, None, None, None, v, "surface", polish=False, grid=grid).arrays()
+                    m = cx.shape[0]
+                    if m == 0:
+                        continue
+                    (r, g, b), _ = colours(sd.full((m,), v))
+                    full = sd.stack(
+                        [box(0, cx), box(1, cy), sd.full((m,), -BOX[2]), r, g, b, sd.full((m,), 1.0)], axis=1
+                    )
+                    lines.append(bytes(memoryview(sd.reshape(full, (-1,)))))
+                    counts.append(m)
+                    widths.append(CONTOUR_WIDTH * k)
             if not mesh:
                 continue
             mesh_alpha = MESH_ALPHA * (0.4 + 0.6 * alpha)
@@ -318,11 +344,12 @@ class Space(_layers.Layer):
                 )
                 lines.append(bytes(memoryview(sd.reshape(full, (-1,)))))
                 counts += cnts
+                widths += [MESH_WIDTH * k] * len(cnts)
                 continue
             ny, nx = X.shape
             x, y, z = box(0, X), box(1, Y), box(2, Z)
             (r, g, b), _ = colours(Z)
-            sy, sx = mesh_steps(ny, nx)
+            sy, sx = mesh_steps(ny, nx, mesh)
             for rows, n_each in (
                 (sd.stack([x[::sy, :], y[::sy, :], z[::sy, :]], axis=2), nx),
                 (sd.stack([x[:, ::sx].T, y[:, ::sx].T, z[:, ::sx].T], axis=2), ny),
@@ -337,6 +364,7 @@ class Space(_layers.Layer):
                 full = sd.stack([pts[:, 0], pts[:, 1], pts[:, 2], *colour], axis=1)
                 lines.append(bytes(memoryview(sd.reshape(full, (-1,)))))
                 counts += [n_each] * m
+                widths += [MESH_WIDTH * k] * m
         for x, y, z, rgba, _width in self.curves:
             x, y, z = _clip(x, y, z, lo, hi)
             n = x.shape[0]
@@ -345,12 +373,13 @@ class Space(_layers.Layer):
                 bytes(memoryview(sd.reshape(sd.stack([box(0, x), box(1, y), box(2, z), *colour], axis=1), (-1,))))
             )
             counts.append(n)
+            widths.append((1.0 if _width is None else _width) * k)
         for x, y, z, rgba, size in self.points:
             n = x.shape[0]
             rad = (th["marker_size"] if size is None else size) / 2 * k
             cols = [box(0, x), box(1, y), box(2, z), sd.full((n,), rad), *[sd.full((n,), c) for c in rgba]]
             discs.append(bytes(memoryview(sd.reshape(sd.stack(cols, axis=1), (-1,)))))
-        return b"".join(vert), b"".join(tri), b"".join(lines), counts, b"".join(discs)
+        return b"".join(vert), b"".join(tri), b"".join(lines), counts, widths, b"".join(discs)
 
 
 def _clip(x, y, z, lo, hi):
@@ -403,11 +432,34 @@ def _clip(x, y, z, lo, hi):
     return tuple(sd.asarray(c) if c else sd.zeros(0) for c in out)
 
 
-def mesh_steps(ny, nx):
-    return max(1, (ny - 1) // 20), max(1, (nx - 1) // 20)
+def mesh_steps(ny, nx, count):
+    """Every how many rows and columns of the grid a mesh line runs, for `count` cells of the mesh a side."""
+    return max(1, round((ny - 1) / count)), max(1, round((nx - 1) / count))
 
 
-def _fine(fn, X, Y, P, zlim, mesh, graph):
+def _mesh(who, mesh):
+    """The cells of the mesh a side: True the default, False (0) none, or an int."""
+    if isinstance(mesh, bool):
+        return MESH if mesh else 0
+    if not isinstance(mesh, int):
+        raise TypeError(f"{who}(): 'mesh' must be a bool or an int, not {_type_name(mesh)}")
+    if not 1 <= mesh <= 400:
+        raise ValueError(f"{who}(): 'mesh' must be between 1 and 400")
+    return mesh
+
+
+def _contours(who, contours):
+    """The levels of the floor contours aimed at: True the default, False (0) none, or an int."""
+    if isinstance(contours, bool):
+        return CONTOURS if contours else 0
+    if not isinstance(contours, int):
+        raise TypeError(f"{who}(): 'contours' must be a bool or an int, not {_type_name(contours)}")
+    if not 1 <= contours <= 100:
+        raise ValueError(f"{who}(): 'contours' must be between 1 and 100")
+    return contours
+
+
+def _fine(fn, X, Y, P, zlim, mesh, graph, levels):
     """What adaptive sampling adds to a surface's first grid (None: nothing): the cells that
     stay, the finer grids, and the mesh lines."""
     lo, hi = [], []
@@ -424,11 +476,11 @@ def _fine(fn, X, Y, P, zlim, mesh, graph):
         scale = [2.0 * b / max(hi[k] - lo[k], 1e-300) for k, b in enumerate(BOX_GRAPH)]
     else:
         scale = [2.0 / max(max(hi[k] - lo[k] for k in range(3)), 1e-300)] * 3
-    out = _adapt.refine(fn, X, Y, P, scale, zcut)
+    out = _adapt.refine(fn, X, Y, P, scale, zcut, levels)
     if out is None or out is _adapt.ROUGH:
         return out
     keep, parts, asked = out
-    return keep, parts, _adapt.mesh_lines(fn, X, Y, asked, *mesh_steps(*X.shape)) if mesh else None
+    return keep, parts, _adapt.mesh_lines(fn, X, Y, asked, *mesh_steps(*X.shape, mesh)) if mesh else None
 
 
 def _unit(v):
@@ -478,7 +530,7 @@ def _space(self, who, azimuth, elevation, perspective):
 
 class Auto:
     """The colour of a surface that was given none: decided when the cell is drawn, by how many
-    surfaces it holds. Alone it is coloured by height (viridis; the user's choice, 2026-11-22);
+    surfaces it holds. Alone it is coloured by height (LONE);
     among several each takes its palette colour whole, a little lightened (the light does the
     modelling), so that surfaces drawn together stay apart."""
 
@@ -516,35 +568,39 @@ def surface(
     *,
     zlim=None,
     mesh=True,
+    contours=False,
     color=None,
     cmap=None,
     alpha=1.0,
+    samples=None,
+    refine=None,
     azimuth=-60.0,
     elevation=30.0,
     perspective=True,
 ):
-    who = "surface"
+    who, graph = "surface", True
     _callable(f, who, "f")
     x0, x1, y0, y1 = _field._box(who, x0, x1, y0, y1)
-    _check_bool(mesh, who, "mesh")
+    mesh = _mesh(who, mesh)
     spec, alpha = _colour(self, who, color, cmap), _alpha(who, alpha)
     if zlim is not None:
         if not isinstance(zlim, (tuple, list)) or len(zlim) != 2:
             raise TypeError(f"{who}(): 'zlim' must be a pair (low, high), not {_type_name(zlim)}")
         zlim = _interval(who, zlim[0], zlim[1], "zlim[0]", "zlim[1]")
-    X, Y = sd.meshgrid(sd.linspace(x0, x1, N + 1), sd.linspace(y0, y1, N + 1), indexing="xy")
+    (nx, ny), levels = _sample.knobs(who, samples, refine, (N + 1, N + 1), 2, pair=True, most=2000)
+    X, Y = sd.meshgrid(sd.linspace(x0, x1, nx), sd.linspace(y0, y1, ny), indexing="xy")
 
     def fn(U, V):
         return U, V, _field.call2(f, U, V, who)
 
     Z = fn(X, Y)[2]
-    fine = _fine(fn, X, Y, (X, Y, Z), zlim, mesh, True)
+    fine = _fine(fn, X, Y, (X, Y, Z), zlim, mesh, True, levels)
     if fine is _adapt.ROUGH:  # rough everywhere: the whole grid finer, once
-        n = N * _adapt.FINER
-        X, Y = sd.meshgrid(sd.linspace(x0, x1, n + 1), sd.linspace(y0, y1, n + 1), indexing="xy")
+        mx, my = (nx - 1) * _adapt.FINER + 1, (ny - 1) * _adapt.FINER + 1
+        X, Y = sd.meshgrid(sd.linspace(x0, x1, mx), sd.linspace(y0, y1, my), indexing="xy")
         Z, fine = fn(X, Y)[2], None
     sp = _space(self, who, azimuth, elevation, perspective)
-    sp.surfaces.append((X, Y, Z, spec, mesh, alpha, fine))
+    sp.surfaces.append((X, Y, Z, spec, mesh, alpha, fine, _contours(who, contours) if graph else 0))
     sp.equal = False  # a graph: the height has its own scale
     if zlim is not None:
         sp.zlim = zlim
@@ -566,34 +622,53 @@ def parametric_surface(
     color=None,
     cmap=None,
     alpha=1.0,
+    samples=None,
+    refine=None,
     azimuth=-60.0,
     elevation=30.0,
     perspective=True,
 ):
-    who = "parametric_surface"
+    who, graph, contours = "parametric_surface", False, False
     for g, name in ((fx, "fx"), (fy, "fy"), (fz, "fz")):
         _callable(g, who, name)
     u0, u1 = _interval(who, u0, u1, "u0", "u1")
     v0, v1 = _interval(who, v0, v1, "v0", "v1")
-    _check_bool(mesh, who, "mesh")
+    mesh = _mesh(who, mesh)
     spec, alpha = _colour(self, who, color, cmap), _alpha(who, alpha)
-    U, V = sd.meshgrid(sd.linspace(u0, u1, N + 1), sd.linspace(v0, v1, N + 1), indexing="xy")
+    (nu, nv), levels = _sample.knobs(who, samples, refine, (N + 1, N + 1), 2, pair=True, most=2000)
+    U, V = sd.meshgrid(sd.linspace(u0, u1, nu), sd.linspace(v0, v1, nv), indexing="xy")
 
     def fn(U, V):
         return tuple(_field.call2(g, U, V, who, name) for g, name in ((fx, "fx"), (fy, "fy"), (fz, "fz")))
 
     X, Y, Z = fn(U, V)
-    fine = _fine(fn, U, V, (X, Y, Z), None, mesh, False)
+    fine = _fine(fn, U, V, (X, Y, Z), None, mesh, False, levels)
     if fine is _adapt.ROUGH:  # rough everywhere: the whole grid finer, once
-        n = N * _adapt.FINER
-        U, V = sd.meshgrid(sd.linspace(u0, u1, n + 1), sd.linspace(v0, v1, n + 1), indexing="xy")
+        mu, mv = (nu - 1) * _adapt.FINER + 1, (nv - 1) * _adapt.FINER + 1
+        U, V = sd.meshgrid(sd.linspace(u0, u1, mu), sd.linspace(v0, v1, mv), indexing="xy")
         (X, Y, Z), fine = fn(U, V), None
     sp = _space(self, who, azimuth, elevation, perspective)
-    sp.surfaces.append((X, Y, Z, spec, mesh, alpha, fine))
+    sp.surfaces.append((X, Y, Z, spec, mesh, alpha, fine, _contours(who, contours) if graph else 0))
     return self._touch()
 
 
-def curve3d(self, fx, fy, fz, a, b, /, *, color=None, width=None, azimuth=-60.0, elevation=30.0, perspective=True):
+def curve3d(
+    self,
+    fx,
+    fy,
+    fz,
+    a,
+    b,
+    /,
+    *,
+    samples=None,
+    refine=None,
+    color=None,
+    width=None,
+    azimuth=-60.0,
+    elevation=30.0,
+    perspective=True,
+):
     who = "curve3d"
     for g, name in ((fx, "fx"), (fy, "fy"), (fz, "fz")):
         _callable(g, who, name)
@@ -607,7 +682,8 @@ def curve3d(self, fx, fy, fz, a, b, /, *, color=None, width=None, azimuth=-60.0,
 
     # Sampled as a plane curve is (_sample): on the screen of this cell's camera, with the bulk of
     # the first samples as the view, so the samples close in on the turns and the curve stops at a pole.
-    t0 = _sample.first_grid(a, b)
+    n, depth = _sample.knobs(who, samples, refine, _sample.N0 + 1, _sample.DEPTH, most=200000)
+    t0 = _sample.first_grid(a, b, n - 1)
     first = at(t0)
     rs = [_sample.robust_range(v) for v in first]
     mid = [0.5 * (r[0] + r[1]) for r in rs]
@@ -624,7 +700,7 @@ def curve3d(self, fx, fy, fz, a, b, /, *, color=None, width=None, azimuth=-60.0,
         )
 
     view = (-0.9, 0.9)
-    found = _sample.refine(lambda t: screen(at(t)), t0, *screen(first), view, view)
+    found = _sample.refine(lambda t: screen(at(t)), t0, *screen(first), view, view, depth)
     x, y, z = _sample.cut(found, at(found.t))
     sp.curves.append((x, y, z, c, width))
     return self._touch()

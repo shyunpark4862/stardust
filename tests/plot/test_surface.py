@@ -17,10 +17,12 @@ from . import figures
 P = sd.plot
 TOP = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]  # looking down the z axis: x right, y up
 LIGHT = [0.0, 0.0, 1.0]
+# a plain shading for these tests: ambient and the key light, one small highlight, no fill or rim light
+SHADE = [0.34, 0.56, 0.0, 0.0, 0.12, 0.0, 1.0, 0.30, 32.0, 0.0]
 
 
 def view(scale=10.0, cx=10.0, cy=10.0, distance=0.0, zlo=-9.0, zhi=9.0, rot=TOP):
-    return [*rot, distance, scale, cx, cy, zlo, zhi, *LIGHT]
+    return [*rot, distance, scale, cx, cy, zlo, zhi, *LIGHT, *SHADE]
 
 
 def square(z, rgb, half=0.5, alpha=1.0):
@@ -36,7 +38,7 @@ def pixel(px, w, x, y):
 
 
 def render(vert, tri, lines=b"", counts=(), discs=b"", ss=2, **kw):
-    return core.render3(20, 20, ss, view(**kw), vert, tri, lines, list(counts), 1.0, discs)
+    return core.render3(20, 20, ss, view(**kw), vert, tri, lines, list(counts), [1.0] * len(counts), discs)
 
 
 def test_the_nearest_surface_wins_whatever_the_order():
@@ -137,15 +139,16 @@ def test_heights_outside_the_range_are_cut_and_edges_are_smoothed():
 def test_render3_checks_its_input():
     v, t = square(0.0, (1.0, 0.0, 0.0))
     for args, message in (
-        ((0, 20, 2, view(), v, t, b"", [], 1.0, b""), "picture size out of range"),
-        ((20, 20, 2, view()[:5], v, t, b"", [], 1.0, b""), "view needs 18 numbers"),
-        ((20, 20, 2, view(), v[:-8], t, b"", [], 1.0, b""), "vertices, triangles, lines or discs have the wrong size"),
-        ((20, 20, 2, view(), v, t, b"\0" * 56, [2], 1.0, b""), "line_counts do not add up to the points"),
+        ((0, 20, 2, view(), v, t, b"", [], [], b""), "picture size out of range"),
+        ((20, 20, 2, view()[:5], v, t, b"", [], [], b""), "view needs 18 or 28 numbers"),
+        ((20, 20, 2, view(), v[:-8], t, b"", [], [], b""), "vertices, triangles, lines or discs have the wrong size"),
+        ((20, 20, 2, view(), v, t, b"\0" * 56, [2], [1.0], b""), "line_counts do not add up to the points"),
+        ((20, 20, 2, view(), v, t, b"\0" * 56, [1], [], b""), "a width for every strip"),
     ):
         with pytest.raises(ValueError, match=message):
             core.render3(*args)
     bad = array("q", [0, 1, 99]).tobytes()  # an index out of range: the triangle is left out
-    assert set(core.render3(20, 20, 2, view(), v, bad, b"", [], 1.0, b"")) == {0}
+    assert set(core.render3(20, 20, 2, view(), v, bad, b"", [], [], b"")) == {0}
 
 
 def space_of(fig):
@@ -156,11 +159,11 @@ def test_surface_builds_one_space_with_the_first_camera():
     fig = P.surface(lambda x, y: x * y, -1, 2, -3, 4, azimuth=10, elevation=20, perspective=False)
     sp = space_of(fig)
     assert isinstance(sp, _surface.Space) and (sp.az, sp.el, sp.perspective, sp.equal) == (10.0, 20.0, False, False)
-    X, Y, Z, spec, mesh, alpha, fine = sp.surfaces[0]
+    X, Y, Z, spec, mesh, alpha, fine, contours = sp.surfaces[0]
     assert (
         tuple(X.shape) == (_surface.N + 1, _surface.N + 1)
         and isinstance(spec, _surface.Auto)
-        and mesh is True
+        and mesh == _surface.MESH
         and alpha == 1.0
     )
     assert sp.limits() == ([-1.0, -3.0, -6.0], [2.0, 4.0, 8.0]) and fig._cell.frame is False
@@ -232,14 +235,19 @@ def test_3d_errors():
         (
             lambda: P.surface(f, 0, 1, 0, 1, cmap="jet"),
             ValueError,
-            "surface(): 'cmap' must be 'viridis', 'magma', 'cividis' or 'rdbu', not 'jet'",
+            "surface(): 'cmap' must be 'cool', 'viridis', 'magma', 'cividis', 'rdbu', 'spectral', 'coolwarm', "
+            "'sunrise' or 'lagoon', not 'jet'",
         ),
         (
             lambda: P.surface(f, 0, 1, 0, 1, cmap="magma", color="red"),
             ValueError,
             "surface(): 'color' and 'cmap' cannot both be given",
         ),
-        (lambda: P.surface(f, 0, 1, 0, 1, mesh=1), TypeError, "surface(): 'mesh' must be True or False, not int"),
+        (
+            lambda: P.surface(f, 0, 1, 0, 1, mesh="x"),
+            TypeError,
+            "surface(): 'mesh' must be a bool or an int, not str",
+        ),
         (
             lambda: P.line([0.0, 1.0], [0.0, 1.0]).surface(f, 0, 1, 0, 1),
             ValueError,
@@ -368,7 +376,7 @@ def test_a_space_curve_is_sampled_where_it_turns_and_cut_at_a_pole():
 
 def test_a_surface_rough_everywhere_is_sampled_finer_as_a_whole():
     rough = P.surface(lambda x, y: sd.sin(30 * x) * sd.sin(30 * y), -1, 1, -1, 1)
-    X, _, _, _, _, _, fine = space_of(rough).surfaces[0]
+    X, _, _, _, _, _, fine, _ = space_of(rough).surfaces[0]
     assert tuple(X.shape) == (3 * _surface.N + 1, 3 * _surface.N + 1) and fine is None
 
 
@@ -384,3 +392,32 @@ def test_a_triangle_is_cut_at_the_height_range_before_it_is_projected():
     rows = [y for y in range(20) if any(pixel(px, 20, x, y)[3] for x in range(20))]
     top = 15.0 - 10.0 * 0.5 * 7.0 / 7.0  # the row of height 0.5 on the axis (the triangle is in the plane y = 0)
     assert rows and min(rows) >= top - 1.5 and max(rows) <= 15  # from the base up to the cut, no further
+
+
+def test_mesh_count_and_floor_contours():
+    f = lambda x, y: x * x - y * y  # noqa: E731
+    plain = space_of(P.surface(f, -1, 1, -1, 1, mesh=False))
+    lo, hi = plain.limits()
+    th, box = {"marker_size": 3.0}, _surface.BOX_GRAPH
+    assert plain._buffers(lo, hi, th, 1.0, box)[3] == []  # no lines at all
+    for mesh, lines in ((True, 2 * (_surface.MESH + 1)), (10, 22), (40, 82)):
+        counts = space_of(P.surface(f, -1, 1, -1, 1, mesh=mesh))._buffers(lo, hi, th, 1.0, box)[3]
+        assert len(counts) == lines, mesh
+    sp = space_of(P.surface(f, -1, 1, -1, 1, mesh=False, contours=True))
+    _, _, lines, counts, widths, _ = sp._buffers(lo, hi, th, 2.0, box)
+    assert 8 <= len(counts) <= 20 and set(widths) == {_surface.CONTOUR_WIDTH * 2.0}
+    pts = array("d", lines)
+    assert set(pts[2::7]) <= {-box[2], math.nan} or all(z == -box[2] or z != z for z in pts[2::7])  # on the floor
+    assert len(space_of(P.surface(f, -1, 1, -1, 1, mesh=False, contours=5))._buffers(lo, hi, th, 1.0, box)[3]) < len(
+        counts
+    )
+    torus = P.parametric_surface(lambda u, v: sd.cos(u), lambda u, v: sd.sin(u), lambda u, v: v, 0, 6, 0, 1)
+    assert space_of(torus).surfaces[0][7] == 0  # a parametric surface has no floor contours
+    for bad, kind, text in (
+        (dict(mesh=0), ValueError, "'mesh' must be between 1 and 400"),
+        (dict(mesh=1.5), TypeError, "'mesh' must be a bool or an int, not float"),
+        (dict(contours=101), ValueError, "'contours' must be between 1 and 100"),
+        (dict(contours="a"), TypeError, "'contours' must be a bool or an int, not str"),
+    ):
+        with pytest.raises(kind, match=text):
+            P.surface(f, -1, 1, -1, 1, **bad)

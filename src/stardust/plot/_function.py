@@ -85,7 +85,21 @@ def _add_curve(fig, c, xr, yr, yclip, color, width, style, label, kind):
 
 
 def function(
-    self, f, a, b, /, *, ylim=None, asymptotes=False, color=None, width=None, style="-", label=None, labels=None
+    self,
+    f,
+    a,
+    b,
+    /,
+    *,
+    ylim=None,
+    asymptotes=False,
+    samples=None,
+    refine=None,
+    color=None,
+    width=None,
+    style="-",
+    label=None,
+    labels=None,
 ):
     who = "function"
     fs = list(f) if isinstance(f, (list, tuple)) else [f]
@@ -117,7 +131,8 @@ def function(
         _color.parse(color, who, "color", palette) if color is not None else self._cell.next_color(palette) for _ in fs
     ]
     xr = (a, b)
-    t0 = _sample.first_grid(a, b)
+    n, depth = _sample.knobs(who, samples, refine, _sample.N0 + 1, _sample.DEPTH, most=200000)
+    t0 = _sample.first_grid(a, b, n - 1)
     firsts = [call(g, t0, who, "f") for g in fs]
     if ylim is not None:
         yr, clipped, yclip = ylim, (False, False), ylim
@@ -136,7 +151,7 @@ def function(
         yclip = (lo if clipped[0] else lo - grow, hi if clipped[1] else hi + grow)
     poles_all = []
     for k, (g, y0) in enumerate(zip(fs, firsts)):
-        c = _sample.refine(lambda t, g=g: (t, call(g, t, who, "f")), t0, t0, y0, xr, yr)
+        c = _sample.refine(lambda t, g=g: (t, call(g, t, who, "f")), t0, t0, y0, xr, yr, depth)
         osc = _add_curve(self, c, xr, yr, yclip, colors[k], width, style, labels[k] if labels else None, who)
         poles_all += c.poles
         e = self._cell.layers[-1].extent("y", False)
@@ -162,12 +177,13 @@ def function(
     return self._touch()
 
 
-def _plane(self, who, g, a, b, color, width, style, label):
+def _plane(self, who, g, a, b, samples, refine, color, width, style, label):
     """A curve in the plane from g(t) -> (x, y): equal units on both axes."""
     width, style, label = _opt_real(who, "width", width), _style(who, style), _label(who, label)
     palette = self._root._palette
     c0 = _color.parse(color, who, "color", palette) if color is not None else self._cell.next_color(palette)
-    t0 = _sample.first_grid(a, b)
+    n, depth = _sample.knobs(who, samples, refine, _sample.N0 + 1, _sample.DEPTH, most=200000)
+    t0 = _sample.first_grid(a, b, n - 1)
     x0, y0 = g(t0)
 
     def full(v):
@@ -181,7 +197,7 @@ def _plane(self, who, g, a, b, color, width, style, label):
     span = max(xr[1] - xr[0], (yr[1] - yr[0]) * _sample.W0 / _sample.H0)
     xr = (xr[0], xr[0] + span)
     yr = (yr[0], yr[0] + span * _sample.H0 / _sample.W0)
-    c = _sample.refine(g, t0, x0, y0, xr, yr)
+    c = _sample.refine(g, t0, x0, y0, xr, yr, depth)
     x, y = _sample.with_breaks(c)
     self._cell.layers.append(_layers.Line(x, y, c0, width, style, label))
     self._cell.aspect = 1.0
@@ -191,17 +207,27 @@ def _plane(self, who, g, a, b, color, width, style, label):
     return self._touch()
 
 
-def parametric(self, fx, fy, a, b, /, *, color=None, width=None, style="-", label=None):
+def parametric(self, fx, fy, a, b, /, *, samples=None, refine=None, color=None, width=None, style="-", label=None):
     who = "parametric"
     _callable(fx, who, "fx")
     _callable(fy, who, "fy")
     a, b = _interval(who, a, b)
     return _plane(
-        self, who, lambda t: (call(fx, t, who, "fx"), call(fy, t, who, "fy")), a, b, color, width, style, label
+        self,
+        who,
+        lambda t: (call(fx, t, who, "fx"), call(fy, t, who, "fy")),
+        a,
+        b,
+        samples,
+        refine,
+        color,
+        width,
+        style,
+        label,
     )
 
 
-def polar(self, r, a, b, /, *, color=None, width=None, style="-", label=None):
+def polar(self, r, a, b, /, *, samples=None, refine=None, color=None, width=None, style="-", label=None):
     who = "polar"
     _callable(r, who, "r")
     a, b = _interval(who, a, b)
@@ -210,7 +236,7 @@ def polar(self, r, a, b, /, *, color=None, width=None, style="-", label=None):
         rho = call(r, t, who, "r")
         return rho * sd.cos(t), rho * sd.sin(t)
 
-    return _plane(self, who, g, a, b, color, width, style, label)
+    return _plane(self, who, g, a, b, samples, refine, color, width, style, label)
 
 
 METHODS = {"function": function, "parametric": parametric, "polar": polar}

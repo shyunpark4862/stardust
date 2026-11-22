@@ -37,6 +37,7 @@ constexpr int kBand = 48;
 constexpr int kLayers = 12;  // translucent layers kept per sample, from the nearest
 constexpr double kSolid = 0.999;  // an alpha from here on is opaque
 constexpr double kFill[3] = {0.7285, -0.2428, 0.6406};  // the fill light: from the right, a little below, in front
+constexpr double kRim[3] = {0.0, 0.6, -0.8};  // the rim light: from behind, above
 
 inline P project(const View3& v, const double* s, double k) {
     const double x = v.rot[0] * s[0] + v.rot[1] * s[1] + v.rot[2] * s[2];
@@ -66,7 +67,7 @@ std::vector<std::uint8_t> render3(
     const double* lines,
     const std::int64_t* line_counts,
     std::size_t nstrips,
-    double line_width,
+    const double* line_widths,
     const double* discs,
     std::size_t ndiscs
 ) {
@@ -104,7 +105,7 @@ std::vector<std::uint8_t> render3(
     };
     for (std::size_t t = 0; t < ntri; ++t) {
         const double* v[3];
-        bool ok = true, out = false;
+        bool ok = true, out = false, under = false, over = false;
         for (int k = 0; k < 3; ++k) {
             const std::int64_t i = triangles[3 * t + k];
             if (i < 0 || static_cast<std::size_t>(i) >= nvert) {
@@ -113,9 +114,12 @@ std::vector<std::uint8_t> render3(
             }
             v[k] = vertices + 10 * i;
             for (int c = 0; c < 3; ++c) ok = ok && std::isfinite(v[k][c]);
-            out = out || v[k][2] < view.zlo || v[k][2] > view.zhi;
+            under = under || v[k][2] < view.zlo;
+            over = over || v[k][2] > view.zhi;
         }
-        if (!ok) continue;
+        // a triangle that leaves through the top and through the bottom spans a pole: no wall is drawn there
+        if (!ok || (under && over)) continue;
+        out = under || over;
         if (!out) {
             emit(v[0], v[1], v[2]);
             continue;
@@ -150,10 +154,10 @@ std::vector<std::uint8_t> render3(
     }
 
     std::vector<Quad> quads;
-    const double hw = std::max(0.5 * line_width * ss, 0.35);
     std::size_t at = 0;
     for (std::size_t s = 0; s < nstrips; ++s) {
         const std::size_t count = static_cast<std::size_t>(std::max<std::int64_t>(line_counts[s], 0));
+        const double hw = std::max(0.5 * line_widths[s] * ss, 0.35);
         for (std::size_t i = 0; i + 1 < count; ++i) {
             const double* a = lines + 7 * (at + i);
             const double* b = a + 7;
@@ -190,6 +194,8 @@ std::vector<std::uint8_t> render3(
     const double hl =
         std::sqrt(lx * lx + ly * ly + (lz + 1.0) * (lz + 1.0));  // the half vector of the light and the view (0, 0, 1)
     const double hx = lx / hl, hy = ly / hl, hz = (lz + 1.0) / hl;
+    const double fl = std::sqrt(kFill[0] * kFill[0] + kFill[1] * kFill[1] + (kFill[2] + 1.0) * (kFill[2] + 1.0));
+    const double fx = kFill[0] / fl, fy = kFill[1] / fl, fz = (kFill[2] + 1.0) / fl;  // the fill light's half vector
 
     // The colour of a surface sample (straight, in o) and its alpha. A translucent sheet seen at a
     // slant is looked through along a longer way: its alpha grows towards the outline.
@@ -209,17 +215,14 @@ std::vector<std::uint8_t> render3(
             vy *= sgn;
             vz *= sgn;
             facing = vz;
-            // a key light, a weaker fill light from the other side, and the ambient part;
-            // faces turned away from the viewer are a little darker, which rounds the forms
+            const double* k = view.shade;
             const double key = std::max(0.0, vx * lx + vy * ly + vz * lz);
             const double fill = std::max(0.0, vx * kFill[0] + vy * kFill[1] + vz * kFill[2]);
-            shade = (0.34 + 0.56 * key + 0.20 * fill) * (0.88 + 0.12 * vz);
+            const double rim = std::max(0.0, vx * kRim[0] + vy * kRim[1] + vz * kRim[2]);
+            shade = (k[0] + k[1] * key + k[2] * fill + k[3] * rim) * (1.0 - k[4] + k[4] * vz);
             const double nh = std::max(0.0, vx * hx + vy * hy + vz * hz);
-            double p = nh * nh;  // nh^32: a small, clear highlight
-            p *= p;
-            p *= p;
-            p *= p;
-            spec = 0.30 * p * p;
+            const double nf = std::max(0.0, vx * fx + vy * fy + vz * fz);
+            spec = k[5] * std::pow(nh, k[6]) + k[7] * std::pow(nh, k[8]) + k[9] * std::pow(nf, k[6]);
         }
         double al = w0 * tr.v[0][9] + w1 * tr.v[1][9] + w2 * tr.v[2][9];
         if (tr.glass) al = 1.0 - std::pow(1.0 - std::min(al, 1.0), 1.0 / std::max(facing, 0.3));

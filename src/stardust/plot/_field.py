@@ -24,7 +24,7 @@ NX, NY = 320, 240  # cells of the grid for curves and regions
 FINE = 4  # a cell near a curve or a region's edge is sampled this many times finer along each direction
 MAX_NEAR = 0.35
 _PLACES = (0.5, 0.33, 0.67, 0.2, 0.8, 0.42, 0.58, 0.1, 0.9)  # along a level curve, where its number may stand
-DX, DY = 480, 360  # samples of a density or a phase portrait
+DX0, DY0 = 480, 360  # samples of a density or a phase portrait
 
 
 def call2(f, X, Y, who, arg="f"):
@@ -285,14 +285,17 @@ def _parse(self, who, color):
     return _color.parse(color, who, "color", palette) if color is not None else self._cell.next_color(palette)
 
 
-def implicit(self, f, x0, x1, y0, y1, /, *, level=0.0, color=None, width=None, style="-", label=None):
+def implicit(
+    self, f, x0, x1, y0, y1, /, *, level=0.0, samples=None, refine=None, color=None, width=None, style="-", label=None
+):
     who = "implicit"
     _callable(f, who, "f")
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
     level = real(level, who, "level")
     width, style, label = _opt_real(who, "width", width), _style(who, style), _label(who, label)
-    xs, ys, F = grid(f, x0, x1, y0, y1, NX, NY, who)
-    X, Y = Cells(f, *near(f, xs, ys, F, level, who), level, who).arrays()
+    (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
+    xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
+    X, Y = Cells(f, *(near(f, xs, ys, F, level, who) if deep else (xs, ys, F)), level, who).arrays()
     layer = _layers.Line(X, Y, _parse(self, who, color), width, style, label)
     layer.extent = lambda axis, positive: (x0, x1, (x0, x1)) if axis == "x" else (y0, y1, (y0, y1))
     self._cell.layers.append(layer)
@@ -300,13 +303,14 @@ def implicit(self, f, x0, x1, y0, y1, /, *, level=0.0, color=None, width=None, s
     return self._touch()
 
 
-def region(self, f, x0, x1, y0, y1, /, *, color=None, alpha=0.3, label=None):
+def region(self, f, x0, x1, y0, y1, /, *, samples=None, refine=None, color=None, alpha=0.3, label=None):
     who = "region"
     _callable(f, who, "f")
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
     a, label = _alpha(who, alpha), _label(who, label)
-    xs, ys, F = grid(f, x0, x1, y0, y1, NX, NY, who)
-    ops, xy = Cells(f, *near(f, xs, ys, F, 0.0, who), 0.0, who).inside()
+    (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
+    xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
+    ops, xy = Cells(f, *(near(f, xs, ys, F, 0.0, who) if deep else (xs, ys, F)), 0.0, who).inside()
     self._cell.layers.append(Fill(ops, xy, (x0, x1, y0, y1), _color.with_alpha(_parse(self, who, color), a), label))
     self._cell.aspect = 1.0
     return self._touch()
@@ -326,11 +330,27 @@ def _levels(who, levels, lo, hi):
     return out
 
 
-def _cmap(who, cmap, default="viridis"):
+def _cmap(who, cmap, default=_color.CMAP):
     return default if cmap is None else _check_choice(cmap, who, "cmap", tuple(_color.CMAPS))
 
 
-def contour(self, f, x0, x1, y0, y1, /, *, levels=10, filled=False, labels=True, cmap=None, color=None):
+def contour(
+    self,
+    f,
+    x0,
+    x1,
+    y0,
+    y1,
+    /,
+    *,
+    levels=10,
+    filled=False,
+    labels=True,
+    samples=None,
+    refine=None,
+    cmap=None,
+    color=None,
+):
     who = "contour"
     _callable(f, who, "f")
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
@@ -340,14 +360,15 @@ def contour(self, f, x0, x1, y0, y1, /, *, levels=10, filled=False, labels=True,
         raise ValueError(f"{who}(): 'color' and 'cmap' cannot both be given")
     one = _color.parse(color, who, "color", self._root._palette) if color is not None else None
     name = _cmap(who, cmap)
-    xs, ys, F = grid(f, x0, x1, y0, y1, NX, NY, who)
+    (nx, ny), deep = _sample.knobs(who, samples, refine, (NX + 1, NY + 1), 1, pair=True)
+    xs, ys, F = grid(f, x0, x1, y0, y1, nx - 1, ny - 1, who)
     r = _layers.finite_range(sd.reshape(F, (-1,)))
     if r is None:
         raise ValueError(f"{who}(): 'f' has no finite value on the grid")
     # the levels are spread over the bulk of the values: a pole does not take them all
     rr = _sample.robust_range(sd.reshape(F, (-1,)))
     lv = _levels(who, levels, rr[0], rr[1])
-    if len(lv) > 1:
+    if len(lv) > 1 and deep:
         xs, ys, F = swift(f, xs, ys, F, lv, who)
     whole = Grid(xs, ys, F)
     box = (x0, x1, y0, y1)
@@ -400,13 +421,14 @@ def _picture(F, vmin, vmax, table):
     return _core_plot.colormap(bytes(memoryview(sd.reshape(flipped, (-1,)))), vmin, vmax, table)
 
 
-def density(self, f, x0, x1, y0, y1, /, *, cmap=None, vmin=None, vmax=None, colorbar=True):
+def density(self, f, x0, x1, y0, y1, /, *, samples=None, cmap=None, vmin=None, vmax=None, colorbar=True):
     who = "density"
     _callable(f, who, "f")
     x0, x1, y0, y1 = _box(who, x0, x1, y0, y1)
     name = _cmap(who, cmap)
     _check_bool(colorbar, who, "colorbar")
     # the samples are the centres of the picture's pixels
+    (DX, DY), _ = _sample.knobs(who, samples, None, (DX0, DY0), 0, pair=True)
     hx, hy = (x1 - x0) / DX, (y1 - y0) / DY
     x = sd.linspace(x0 + hx / 2, x1 - hx / 2, DX)
     y = sd.linspace(y0 + hy / 2, y1 - hy / 2, DY)
@@ -425,12 +447,13 @@ def density(self, f, x0, x1, y0, y1, /, *, cmap=None, vmin=None, vmax=None, colo
     return self._touch()
 
 
-def phase(self, f, re0, re1, im0, im1, /, *, contours=True):
+def phase(self, f, re0, re1, im0, im1, /, *, samples=None, contours=True):
     who = "phase"
     _callable(f, who, "f")
     x0, x1 = _interval(who, re0, re1, "re0", "re1")
     y0, y1 = _interval(who, im0, im1, "im0", "im1")
     _check_bool(contours, who, "contours")
+    (DX, DY), _ = _sample.knobs(who, samples, None, (DX0, DY0), 0, pair=True)
     hx, hy = (x1 - x0) / DX, (y1 - y0) / DY
     x = sd.linspace(x0 + hx / 2, x1 - hx / 2, DX)
     y = sd.linspace(y1 - hy / 2, y0 + hy / 2, DY)  # the top row first

@@ -21,6 +21,18 @@
 - **`group=`**: 무리를 나누는 값(열 이름이거나 자료와 길이가 같은 시퀀스)이다. 무리마다 팔레트의 색을 받고 범례가 생긴다. `color=`는 색 하나이고 열 이름이 아니다. 둘을 함께 주면 `ValueError`다.
 - 유한하지 않은 값: NaN인 점은 그리지 않고 선은 그 자리에서 끊긴다. 에러가 아니다. frame의 결측값은 NaN이다.
 
+### §1.2a 표본의 조절: `samples`와 `refine`
+- 함수를 받는 그림은 모두 표본을 알아서 고르고, 두 인자로 그것을 조절한다. 둘 다 `None`이면 아래의 기본값이다.
+- **`samples`**: 첫 격자의 점의 수(한 방향)다. 두 변수의 그림은 수 하나(두 방향 같게)거나 `(가로, 세로)` 쌍이다. 3 이상이고, 곡선은 20만, 격자는 한 방향 4000(곡면은 2000)까지다.
+- **`refine`**: 첫 격자의 한 조각을 더 쪼개는 횟수의 한계다. `0`이면 적응형 표본을 끄고 첫 격자만 쓴다(극점에서 선을 끊는 것도 하지 않는다).
+
+| 그림 | `samples`의 기본 | `refine`의 기본(최대) | 한 번 쪼개면 |
+|---|---|---|---|
+| `function` `parametric` `polar` `curve3d` | 257 | 10 | 구간을 반으로 |
+| `surface` `parametric_surface` | 121 × 121 | 2 | 칸을 4 × 4로 |
+| `implicit` `region` `contour` | 321 × 241 | 1 | 칸을 4 × 4로 |
+| `density` `phase` | 480 × 360 (화소) | 없음 | |
+
 ### §1.3 색, 선, 점
 - **색**은 이름(`black white gray grey silver red green blue yellow orange purple brown pink cyan magenta`, CSS의 값), `'#rrggbb'`·`'#rrggbbaa'`, 0과 1 사이의 수 셋이나 넷의 튜플, 팔레트의 번호 `'C0'`–`'C9'`다.
 - **선의 꼴** `style=`: `'-'`, `'--'`, `':'`, `'-.'`. **점의 꼴** `shape=`: `'o'`, `'s'`, `'^'`, `'v'`, `'D'`, `'+'`, `'x'`.
@@ -117,9 +129,9 @@ annotate(s, xy, xytext, /, *, arrow=True, size=None, color=None, **figure)
 
 ### §4.2 곡선
 ```
-function(f, a, b, /, *, ylim=None, asymptotes=False, color=None, width=None, style='-', label=None, labels=None, **figure)
-parametric(fx, fy, a, b, /, *, color=None, width=None, style='-', label=None, **figure)
-polar(r, a, b, /, *, color=None, width=None, style='-', label=None, **figure)
+function(f, a, b, /, *, ylim=None, asymptotes=False, samples=None, refine=None, color=None, width=None, style='-', label=None, labels=None, **figure)
+parametric(fx, fy, a, b, /, *, samples=None, refine=None, color=None, width=None, style='-', label=None, **figure)
+polar(r, a, b, /, *, samples=None, refine=None, color=None, width=None, style='-', label=None, **figure)
 ```
 - `function`은 y = f(x)를 [a, b]에서 그린다. 표본은 굽은 곳에서 알아서 촘촘해지고, 극점과 뜀에서 선이 끊기며, y의 범위는 본체에 맞춰 잡힌다(설계 §4). `ylim=(low, high)`를 주면 자동 범위를 쓰지 않는다.
 - `asymptotes=True`는 찾은 극점마다 가는 세로 점선을 그린다(§10의 15).
@@ -127,33 +139,34 @@ polar(r, a, b, /, *, color=None, width=None, style='-', label=None, **figure)
 
 ### §4.3 음함수와 영역
 ```
-implicit(f, x0, x1, y0, y1, /, *, level=0.0, color=None, width=None, style='-', label=None, **figure)
-region(f, x0, x1, y0, y1, /, *, color=None, alpha=0.3, label=None, **figure)
+implicit(f, x0, x1, y0, y1, /, *, level=0.0, samples=None, refine=None, color=None, width=None, style='-', label=None, **figure)
+region(f, x0, x1, y0, y1, /, *, samples=None, refine=None, color=None, alpha=0.3, label=None, **figure)
 ```
 - `f`는 같은 모양의 배열 둘(x, y)을 받아 배열을 돌려준다. `implicit`는 f(x, y) = level인 곡선, `region`은 f(x, y) > 0인 곳을 칠한다.
 
 ### §4.4 두 변수의 함수
 ```
-contour(f, x0, x1, y0, y1, /, *, levels=10, filled=False, labels=True, cmap=None, color=None, **figure)
-density(f, x0, x1, y0, y1, /, *, cmap=None, vmin=None, vmax=None, colorbar=True, **figure)
-phase(f, re0, re1, im0, im1, /, *, contours=True, **figure)
+contour(f, x0, x1, y0, y1, /, *, levels=10, filled=False, labels=True, samples=None, refine=None, cmap=None, color=None, **figure)
+density(f, x0, x1, y0, y1, /, *, samples=None, cmap=None, vmin=None, vmax=None, colorbar=True, **figure)
+phase(f, re0, re1, im0, im1, /, *, samples=None, contours=True, **figure)
 ```
 - `levels`는 개수(int)이거나 값의 시퀀스다. 개수면 눈금과 같은 규칙으로 "고운" 값을 고른다.
 - `contour`의 `levels`가 개수면 수준은 값의 대부분이 있는 범위에서 고르게 뽑는다(극점 둘레의 큰 값은 뺀다). 함수가 빨리 변하는 곳은 알아서 4배 촘촘히 잰다.
 - `contour`의 `labels`는 수준선 위에 그 값을 적는다. 숫자는 칸 안에서 서로 닿지 않는 자리를 골라 서고, 자리가 없는 수준은 숫자 없이 둔다. `filled=True`면 숫자 대신 색 막대가 붙는다.
 - `implicit`와 `region`은 곡선이 지나는 곳 가까이만 가로세로 4배로 다시 잰다: 스치는 곡선, 뾰족점, 두 가지가 만나는 점이 또렷하다.
-- `cmap`은 연속 색의 이름이다: `'viridis'`(기본), `'magma'`, `'cividis'`, 발산형 `'rdbu'`.
+- `cmap`은 연속 색의 이름이다. 기본은 어디서나 `'cool'`이다(아래 하늘색, 가운데 보라, 위 빨강; 양 끝이 어둡지 않다). 그 밖에 밝은 `'spectral'`, `'coolwarm'`, `'sunrise'`, `'lagoon'`, 지각적으로 고른 `'viridis'`, `'magma'`, `'cividis'`, 발산형 `'rdbu'`가 있다.
 - `phase`는 복소 함수의 위상 그림이다. `f`는 complex128 배열을 받아 complex128 배열을 돌려준다. 위상이 색상, 크기가 밝기의 띠다.
 - 격자 자료(이미 계산한 값의 배열)의 열지도는 §5의 `heatmap`이다. 격자 자료의 등고선은 아직 없다(함수를 받는 `contour`만 있다).
 
 ### §4.5 3D
 ```
-surface(f, x0, x1, y0, y1, /, *, zlim=None, mesh=True, color=None, cmap=None, alpha=1.0, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
-parametric_surface(fx, fy, fz, u0, u1, v0, v1, /, *, mesh=True, color=None, cmap=None, alpha=1.0, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
-curve3d(fx, fy, fz, a, b, /, *, color=None, width=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
+surface(f, x0, x1, y0, y1, /, *, zlim=None, mesh=True, contours=False, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
+parametric_surface(fx, fy, fz, u0, u1, v0, v1, /, *, mesh=True, color=None, cmap=None, alpha=1.0, samples=None, refine=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
+curve3d(fx, fy, fz, a, b, /, *, samples=None, refine=None, color=None, width=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
 scatter3d(x, y, z, /, *, data=None, group=None, color=None, size=None, azimuth=-60.0, elevation=30.0, perspective=True, **figure)
 ```
-- 곡면은 음영과 격자선(`mesh`)이 있는 그림으로 굽고, 상자 축과 눈금과 글자는 벡터로 얹는다(PL9). `cmap`을 주면 높이로 색을 정하고, `color`를 주면 한 색에 음영만 준다. 둘 다 주지 않으면 칸에 곡면이 하나일 때는 `cmap='viridis'`이고, 여럿일 때는 곡면마다 팔레트의 색을 차례로 받는다. 빛은 고정이다(왼쪽 위 앞의 주광과 반대쪽의 약한 보조광, 곡면의 두 면을 똑같이 밝힌다).
+- 곡면은 음영과 격자선(`mesh`)이 있는 그림으로 굽고, 상자 축과 눈금과 글자는 벡터로 얹는다(PL9). `cmap`을 주면 높이로 색을 정하고, `color`를 주면 한 색에 음영만 준다. 둘 다 주지 않으면 칸에 곡면이 하나일 때는 `cmap='cool'`(아래 하늘색, 가운데 보라, 위 빨강)이고, 여럿일 때는 곡면마다 팔레트의 색을 차례로 받는다. 빛은 고정이다: 왼쪽 위 앞의 주광, 반대쪽의 보조광, 뒤쪽의 테두리광 셋이고, 넓은 광택과 또렷한 반사광이 얹힌다. 곡면의 두 면을 똑같이 밝힌다.
+- `mesh`는 격자선이다: `True`(한 방향 24칸), `False`, 또는 칸의 수. `contours`는 상자의 바닥에 그리는 등고선이다: `True`(수준 약 14개), `False`, 또는 수준의 수(눈금 규칙으로 고른다). 등고선은 곡면과 같은 색을 받는다.
 - `alpha`는 곡면의 불투명도다(0보다 크고 1 이하). 반투명한 곡면은 뒤의 것이 비치고, 여러 장이 겹치거나 서로 뚫고 지나가도 깊이 순서대로 비친다(12겹까지).
 - 꺾이는 곳, 극점의 옆구리, 정의역의 가장자리는 알아서 더 촘촘히 잰다(첫 격자의 16배까지). `f`는 그때마다 배열 하나로 불린다.
 - `curve3d`는 곡선이 꺾이는 곳을 알아서 더 촘촘히 잰다. 값이 달아나는 곳(극점)에서는 선을 끊고, 축은 값의 대부분이 있는 범위로 잡아 상자의 면에서 선을 자른다.

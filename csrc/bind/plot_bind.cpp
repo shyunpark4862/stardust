@@ -165,14 +165,15 @@ void bind_plot(nb::module_& core) {
             return nb::bytes(reinterpret_cast<const char*>(px.data()), px.size());
         });
     m.def(
-        "render3",
-        [](int width, int height, int ss, const std::vector<double>& view, nb::bytes vertices, nb::bytes triangles,
-           nb::bytes lines, const std::vector<std::int64_t>& line_counts, double line_width, nb::bytes discs) {
+        "render3", [](int width, int height, int ss, const std::vector<double>& view, nb::bytes vertices,
+                      nb::bytes triangles, nb::bytes lines, const std::vector<std::int64_t>& line_counts,
+                      const std::vector<double>& line_widths, nb::bytes discs) {
             if (width < 1 || height < 1 || ss < 1 || ss > 8 ||
                 static_cast<long long>(width) * height * ss * ss > (1LL << 28)) {
                 throw std::invalid_argument("picture size out of range");
             }
-            if (view.size() != 18) throw std::invalid_argument("view needs 18 numbers");
+            if (view.size() != 18 && view.size() != 28) throw std::invalid_argument("view needs 18 or 28 numbers");
+            if (line_widths.size() != line_counts.size()) throw std::invalid_argument("a width for every strip");
             if (vertices.size() % (10 * sizeof(double)) != 0 || triangles.size() % (3 * sizeof(std::int64_t)) != 0 ||
                 lines.size() % (7 * sizeof(double)) != 0 || discs.size() % (8 * sizeof(double)) != 0) {
                 throw std::invalid_argument("vertices, triangles, lines or discs have the wrong size");
@@ -186,6 +187,9 @@ void bind_plot(nb::module_& core) {
             v.zlo = view[13];
             v.zhi = view[14];
             for (int i = 0; i < 3; ++i) v.light[i] = view[15 + i];
+            if (view.size() == 28) {
+                for (int i = 0; i < 10; ++i) v.shade[i] = view[18 + i];
+            }
             std::vector<double> vert(vertices.size() / sizeof(double)), ln(lines.size() / sizeof(double)),
                 ds(discs.size() / sizeof(double));
             std::vector<std::int64_t> tri(triangles.size() / sizeof(std::int64_t));
@@ -199,7 +203,7 @@ void bind_plot(nb::module_& core) {
                 throw std::invalid_argument("line_counts do not add up to the points");
             const std::vector<std::uint8_t> px = plot::render3(
                 width, height, ss, v, vert.data(), vert.size() / 10, tri.data(), tri.size() / 3, ln.data(),
-                line_counts.data(), line_counts.size(), line_width, ds.data(), ds.size() / 8
+                line_counts.data(), line_counts.size(), line_widths.data(), ds.data(), ds.size() / 8
             );
             return nb::bytes(reinterpret_cast<const char*>(px.data()), px.size());
         }

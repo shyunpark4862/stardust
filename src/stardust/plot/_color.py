@@ -97,7 +97,10 @@ PALETTES = {
 
 # Continuous maps as evenly spaced anchors, interpolated linearly in sRGB: the perceptually
 # uniform viridis, magma and cividis, and the diverging ColorBrewer RdBu (low values red).
+CMAP = "cool"  # the colour map every plot takes when none is given
 CMAPS = {
+    # the default (the user's choice, 2026-11-23): sky blue, violet, red, bright from end to end
+    "cool": ("#35c9f2", "#4aa6ee", "#6f86e6", "#9a6fd8", "#c45cb8", "#e44c86", "#f4433f"),
     "viridis": (
         "#440154",
         "#482878",
@@ -147,6 +150,11 @@ CMAPS = {
         "#2166ac",
         "#053061",
     ),
+    # bright ramps for surfaces: no dark end, so that the shading and the gloss show everywhere
+    "spectral": ("#3f7fc4", "#4fb3c8", "#8fd3a4", "#e6ee9c", "#fdd06f", "#f99555", "#e4523f"),
+    "coolwarm": ("#4a6fd8", "#7b9ff0", "#aec7f5", "#dddcdc", "#f5b89c", "#ea7f65", "#cc3b34"),
+    "sunrise": ("#4e6fd0", "#7f79d9", "#b47fd1", "#e186b4", "#f59a8c", "#f9bb6e", "#f6df6a"),
+    "lagoon": ("#3f66c9", "#3d90d6", "#3fb6cf", "#57d0b4", "#8fe09a", "#c9ea8a", "#f3ee8c"),
 }
 
 

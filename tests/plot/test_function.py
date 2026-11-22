@@ -234,7 +234,7 @@ def test_contours_levels_colours_and_labels():
     f = lambda x, y: x * x + y * y  # noqa: E731
     fig = P.contour(f, -2, 2, -2, 2, levels=[1, 2, 3])
     *lines, labels = fig._cell.layers
-    assert len(lines) == 3 and [la.color for la in lines] == [_color.cmap("viridis", t) for t in (0.0, 0.5, 1.0)]
+    assert len(lines) == 3 and [la.color for la in lines] == [_color.cmap(_color.CMAP, t) for t in (0.0, 0.5, 1.0)]
     assert [s for s, *_ in labels.items] == ["$1$", "$2$", "$3$"] and labels.strings() == ["$1$", "$2$", "$3$"]
     for line, level in zip(lines, (1, 2, 3)):
         assert max(abs(x * x + y * y - level) for x, y in finite(line)) < 1e-5
@@ -256,7 +256,8 @@ def test_contours_levels_colours_and_labels():
         (
             lambda: P.contour(f, -2, 2, -2, 2, cmap="jet"),
             ValueError,
-            "contour(): 'cmap' must be 'viridis', 'magma', 'cividis' or 'rdbu', not 'jet'",
+            "contour(): 'cmap' must be 'cool', 'viridis', 'magma', 'cividis', 'rdbu', 'spectral', 'coolwarm', "
+            "'sunrise' or 'lagoon', not 'jet'",
         ),
         (
             lambda: P.contour(f, -2, 2, -2, 2, cmap="magma", color="red"),
@@ -283,22 +284,22 @@ def test_contours_levels_colours_and_labels():
 def test_density_is_a_picture_with_a_colour_bar():
     fig = P.density(lambda x, y: x + 0 * y, 0, 1, 0, 2, cmap="magma")
     (pic,) = fig._cell.layers
-    assert (pic.iw, pic.ih, pic.smooth, pic.box) == (_field.DX, _field.DY, True, (0.0, 1.0, 0.0, 2.0))
+    assert (pic.iw, pic.ih, pic.smooth, pic.box) == (_field.DX0, _field.DY0, True, (0.0, 1.0, 0.0, 2.0))
     table = _color.table("magma")
     row = pic.rgba[: 4 * pic.iw]
     assert row[:4] == table[:4] and row[-4:] == table[-4:]  # the lowest value to the highest across a row
     assert pic.rgba[: 4 * pic.iw] == pic.rgba[-4 * pic.iw :]  # constant along y
     lo, hi = fig._cell.colorbar[1:]
-    assert lo == pytest.approx(0.5 / _field.DX) and hi == pytest.approx(1 - 0.5 / _field.DX)  # the pixel centres
+    assert lo == pytest.approx(0.5 / _field.DX0) and hi == pytest.approx(1 - 0.5 / _field.DX0)  # the pixel centres
     with_bar, without = measure(fig), measure(P.density(lambda x, y: x + 0 * y, 0, 1, 0, 2, colorbar=False))
     assert (
         with_bar.right > without.right + 15 and with_bar.xa.lo == 0.0 and with_bar.ya.hi == 2.0
     )  # no padding around a picture
     images = [i for i in fig._root._build("t").items if isinstance(i, _scene.Image)]
-    assert [(i.iw, i.ih) for i in images] == [(_field.DX, _field.DY), (1, 256)]
+    assert [(i.iw, i.ih) for i in images] == [(_field.DX0, _field.DY0), (1, 256)]
     held = P.density(lambda x, y: x + 0 * y, 0, 1, 0, 2, vmin=0.25, vmax=0.5)._cell.layers[0].rgba
     assert (
-        held[:4] == _color.table("viridis")[:4] and held[4 * 400 : 4 * 401] == _color.table("viridis")[-4:]
+        held[:4] == _color.table(_color.CMAP)[:4] and held[4 * 400 : 4 * 401] == _color.table(_color.CMAP)[-4:]
     )  # clamped to the ends
     with pytest.raises(ValueError, match=r"density\(\): 'vmin' must be less than 'vmax'"):
         P.density(lambda x, y: x, 0, 1, 0, 1, vmin=1, vmax=1)
@@ -325,7 +326,7 @@ def test_phase_portrait_colours():
 
 
 def test_core_colour_helpers():
-    table = _color.table("viridis")
+    table = _color.table(_color.CMAP)
     v = array("d", [-1.0, 0.0, 0.5, 1.0, 2.0, math.nan, math.inf]).tobytes()
     out = core.colormap(v, 0.0, 1.0, table)
     assert out[:4] == out[4:8] == table[:4] and out[12:16] == out[16:20] == out[24:28] == table[-4:]
@@ -437,3 +438,44 @@ def test_level_curves_in_the_core_and_contours_by_a_pole():
     assert busy._cell.colorbar is not None and not any(
         isinstance(layer, _field.ContourLabels) for layer in busy._cell.layers
     )
+
+
+def test_samples_and_refine_set_the_sampling():
+    """Every function plot takes the two: the points of the first grid, and how often a piece of
+    it may be divided again (0: the first grid as it is)."""
+    assert P.function(sd.sin, 0, 6, samples=11, refine=0).info[0].n == 11
+    assert P.function(sd.sin, 0, 6, samples=1001).info[0].n == 1001
+    plain = P.function(sd.tan, -3, 3, refine=0).info[0]
+    assert plain.n == 257 and plain.poles == () and len(P.function(sd.tan, -3, 3).info[0].poles) == 2
+    coarse, deep = (P.function(lambda x: sd.sin(1 / x), 0.01, 1, refine=r).info[0].n for r in (2, 10))
+    assert 257 < coarse < deep
+    assert P.parametric(sd.cos, sd.sin, 0, 6, samples=50, refine=0).info[0].n == 50
+    assert P.polar(lambda t: 1 + 0 * t, 0, 6, samples=50, refine=0).info[0].n == 50
+    circle = lambda x, y: x * x + y * y - 1  # noqa: E731
+    few = P.implicit(circle, -2, 2, -2, 2, samples=41, refine=0)._cell.layers[0].x.shape[0]
+    assert few < P.implicit(circle, -2, 2, -2, 2, samples=41)._cell.layers[0].x.shape[0]
+    assert P.region(circle, -2, 2, -2, 2, samples=(31, 21), refine=0) is not None
+    assert P.contour(circle, -2, 2, -2, 2, samples=51, refine=0) is not None
+    pic = P.density(lambda x, y: x * y, 0, 1, 0, 1, samples=(20, 10))._cell.layers[0]
+    assert (pic.iw, pic.ih) == (20, 10) and P.phase(lambda z: z, -1, 1, -1, 1, samples=30)._cell.layers[0].iw == 30
+    pole = lambda x, y: 1 / (x * x + y * y)  # noqa: E731
+    sp = P.surface(pole, -1, 1, -1, 1, samples=(41, 61), refine=1)._cell.layers[0].surfaces[0]
+    assert tuple(sp[0].shape) == (61, 41) and len(sp[6][1]) == 1  # one level of finer cells
+    assert P.surface(pole, -1, 1, -1, 1, refine=0)._cell.layers[0].surfaces[0][6] is None
+    assert (
+        P.curve3d(sd.cos, sd.sin, lambda t: t, 0, 60, samples=100, refine=0)._cell.layers[0].curves[0][0].shape[0]
+        == 100
+    )
+    for bad, kind, text in (
+        (dict(samples=2), ValueError, "'samples' must be between 3 and 200000"),
+        (dict(samples=2.5), TypeError, "'samples' must be an int, not float"),
+        (dict(samples=(3, 4)), TypeError, "'samples' must be an int, not tuple"),
+        (dict(refine=11), ValueError, "'refine' must be between 0 and 10"),
+        (dict(refine=True), TypeError, "'refine' must be an int, not bool"),
+    ):
+        with pytest.raises(kind, match=text):
+            P.function(sd.sin, 0, 1, **bad)
+    with pytest.raises(ValueError, match=r"surface\(\): 'samples' as a pair must hold 2 numbers, not 3"):
+        P.surface(pole, -1, 1, -1, 1, samples=(3, 4, 5))
+    with pytest.raises(ValueError, match=r"implicit\(\): 'refine' must be between 0 and 1"):
+        P.implicit(circle, -2, 2, -2, 2, refine=2)

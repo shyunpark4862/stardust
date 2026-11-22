@@ -16,6 +16,7 @@ Screen means a reference plot of W0 x H0 units (4:3); a unit is about a third of
 import math
 
 from .. import _core as sd
+from .._core import _type_name
 
 W0, H0 = 1000.0, 750.0
 N0 = 256  # intervals of the first grid
@@ -78,11 +79,49 @@ def _screen(x, y, xr, yr):
     return (x - xr[0]) * sx, (y - yr[0]) * sy
 
 
-def refine(g, t, x, y, xr, yr):
-    hmin = (float(t[-1]) - float(t[0])) / N0 / 2.0**DEPTH
-    for _ in range(DEPTH + 2):
+def knobs(who, samples, refine, default, deepest, pair=False, most=4000):
+    """The two sampling arguments every function plot takes, checked: `samples`, the points of
+    the first grid along a direction (an int, or for a `pair` also two of them; None: the
+    default), and `refine`, how many times at most a piece of that grid is divided again (0 to
+    `deepest`; 0 turns the adaptive sampling off; None: `deepest`)."""
+
+    def count(v, arg):
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise TypeError(
+                f"{who}(): '{arg}' must be an int{' or a pair of ints' if pair else ''}, not {_type_name(v)}"
+            )
+        if not 3 <= v <= most:
+            raise ValueError(f"{who}(): '{arg}' must be between 3 and {most}")
+        return v
+
+    if samples is None:
+        n = default
+    elif pair and isinstance(samples, (tuple, list)):
+        if len(samples) != 2:
+            raise ValueError(f"{who}(): 'samples' as a pair must hold 2 numbers, not {len(samples)}")
+        n = (count(samples[0], "samples[0]"), count(samples[1], "samples[1]"))
+    else:
+        n = count(samples, "samples")
+        n = (n, n) if pair else n
+    if refine is None:
+        return n, deepest
+    if isinstance(refine, bool) or not isinstance(refine, int):
+        raise TypeError(f"{who}(): 'refine' must be an int, not {_type_name(refine)}")
+    if not 0 <= refine <= deepest:
+        raise ValueError(f"{who}(): 'refine' must be between 0 and {deepest}")
+    return n, refine
+
+
+def refine(g, t, x, y, xr, yr, depth=DEPTH):
+    """Adds samples where the curve bends on the screen (the turn between two segments sharper
+    than BEND) and at the edges of its domain, halving an interval of the first grid t at most
+    `depth` times; then finds the breaks. With depth 0 the first grid is the curve as it is."""
+    n0 = max(t.shape[0] - 1, 1)
+    cap = max(CAP, 2 * t.shape[0])
+    hmin = (float(t[-1]) - float(t[0])) / n0 / 2.0**depth
+    for _ in range(depth + 2 if depth else 0):
         n = t.shape[0]
-        if n >= CAP:
+        if n >= cap:
             break
         u, v = _screen(x, y, xr, yr)
         fin = sd.isfinite(u) & sd.isfinite(v)
@@ -104,15 +143,15 @@ def refine(g, t, x, y, xr, yr):
         if not bool(sd.any(want)):
             break
         tm = (t[:-1] + t[1:])[want] * 0.5
-        if n + tm.shape[0] > CAP:
-            tm = tm[: CAP - n]
+        if n + tm.shape[0] > cap:
+            tm = tm[: cap - n]
         xm, ym = g(tm)
         t = sd.concat([t, tm])
         order = sd.argsort(t, stable=True)
         t, x, y = sd.take(t, order), sd.take(sd.concat([x, xm]), order), sd.take(sd.concat([y, ym]), order)
     c = Curve()
     c.t, c.x, c.y = t, x, y
-    c.capped = t.shape[0] >= CAP
+    c.capped = depth > 0 and t.shape[0] >= cap
     u, v = _screen(x, y, xr, yr)
     fin = sd.isfinite(u) & sd.isfinite(v)
     both = fin[1:] & fin[:-1]
@@ -121,7 +160,8 @@ def refine(g, t, x, y, xr, yr):
     du = sd.abs(u[1:] - u[:-1])
     narrow = dt <= 2.0 * hmin
     # a narrowest interval that still jumps on the screen
-    brk = both & narrow & ((dv > JUMP) | (du > JUMP))
+    # (without refinement nothing was narrowed down: a steep segment is not known to be a break)
+    brk = both & narrow & ((dv > JUMP) | (du > JUMP)) & (depth > 0)
     idx = [int(i) for i in sd.nonzero(brk)[0].tolist()]
     c.breaks, c.poles, c.jumps = idx, [], []
     last_t, last_kind = None, None
