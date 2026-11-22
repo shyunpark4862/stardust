@@ -117845,6 +117845,1469 @@ true
 "msg": "an array cannot be converted to int"
 }
 },
+"interp 2d points": {
+"r": {
+"nd": "float64",
+"shape": [
+3,
+4
+],
+"strides": [
+32,
+8
+],
+"v": [
+"0x1.29c92206f0345p+0",
+"-0x1.494dcff45d400p-6",
+"-0x1.26ff8300747a0p-1",
+"0x1.0b673a980c200p+0",
+"0x1.59042b2f733d1p+0",
+"0x1.5c68292ccc8a8p+0",
+"0x1.767e776ac02bbp-1",
+"0x1.376ff232947a6p-1",
+"0x1.f86a08f7554fbp-1",
+"0x1.feb32b8f2062bp-1",
+"0x1.694220614920dp+0",
+"0x1.ce8c72a77f824p-3"
+]
+}
+},
+"interp 2d xp err": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "interp(): 'xp' must be 1-D"
+}
+},
+"interp F-order points": {
+"r": {
+"nd": "float64",
+"shape": [
+4,
+6
+],
+"strides": [
+48,
+8
+],
+"v": [
+"0x1.50a77fd49e78bp-1",
+"0x1.35693d01f26d8p+0",
+"-0x1.7bce1385832ffp-1",
+"-0x1.f1fb97d21fd90p-3",
+"0x1.140094c2be965p+0",
+"0x1.0d44fc36e2bafp+0",
+"0x1.a45f8116d1597p-2",
+"0x1.15eb7716432b8p+0",
+"0x1.7d66e38dd58d8p+0",
+"-0x1.12c81bda29e8dp-1",
+"-0x1.a81fb8ba795a0p-4",
+"0x1.1af1146d48b38p-2",
+"-0x1.2c35323b91051p-1",
+"0x1.be4aa2d9e39f0p+0",
+"0x1.f6c7618734029p+0",
+"0x1.31df65e42be15p-2",
+"0x1.9d66c9922acc0p+0",
+"0x1.411c6508f853bp+1",
+"-0x1.13c6a94bdbe97p-1",
+"-0x1.84701a5d18f7fp-1",
+"0x1.169fdba36a9e8p+1",
+"0x1.1d1c072631b1bp-1",
+"-0x1.c1b90599c89dcp-2",
+"0x1.f461c95fabd44p-2"
+]
+}
+},
+"interp basic": {
+"r": {
+"nd": "float64",
+"shape": [
+15
+],
+"strides": [
+8
+],
+"v": [
+"0x1.8000000000000p+1",
+"0x1.8000000000000p+1",
+"0x1.5555555555556p-2",
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p-1",
+"0x0.0p+0",
+"0x1.2aaaaaaaaaaaap+0",
+"0x1.4000000000000p+1",
+"-0x1.deb851eb851ebp+1",
+"-0x1.0000000000000p+2",
+"-0x1.0000000000000p+2",
+"nan",
+"-0x1.0000000000000p+2",
+"0x1.8000000000000p+1",
+"0x0.0p+0"
+]
+}
+},
+"interp bool values": {
+"r": {
+"nd": "float64",
+"shape": [
+15
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.3333333333334p-2",
+"0x0.0p+0",
+"0x0.0p+0",
+"0x0.0p+0",
+"0x0.0p+0",
+"nan",
+"0x0.0p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+}
+},
+"interp complex": {
+"r": {
+"nd": "complex128",
+"shape": [
+15
+],
+"strides": [
+16
+],
+"v": [
+[
+"0x1.8000000000000p+1",
+"-0x1.0000000000000p+2"
+],
+[
+"0x1.8000000000000p+1",
+"-0x1.0000000000000p+2"
+],
+[
+"0x1.5555555555556p-2",
+"0x1.5555555555550p-2"
+],
+[
+"-0x1.0000000000000p+0",
+"0x1.4000000000000p+1"
+],
+[
+"-0x1.0000000000000p-1",
+"0x1.4000000000000p+0"
+],
+[
+"0x0.0p+0",
+"0x0.0p+0"
+],
+[
+"0x1.2aaaaaaaaaaaap+0",
+"-0x1.dddddddddddddp-2"
+],
+[
+"0x1.4000000000000p+1",
+"-0x1.0000000000000p+0"
+],
+[
+"-0x1.deb851eb851ebp+1",
+"0x1.6b851eb851eb8p+1"
+],
+[
+"-0x1.0000000000000p+2",
+"0x1.8000000000000p+1"
+],
+[
+"-0x1.0000000000000p+2",
+"0x1.8000000000000p+1"
+],
+[
+"nan",
+"0x0.0p+0"
+],
+[
+"-0x1.0000000000000p+2",
+"0x1.8000000000000p+1"
+],
+[
+"0x1.8000000000000p+1",
+"-0x1.0000000000000p+2"
+],
+[
+"0x0.0p+0",
+"0x0.0p+0"
+]
+]
+}
+},
+"interp complex left": {
+"r": {
+"nd": "complex128",
+"shape": [
+15
+],
+"strides": [
+16
+],
+"v": [
+[
+"0x1.0000000000000p+1",
+"-0x1.8000000000000p+1"
+],
+[
+"0x1.8000000000000p+1",
+"0x1.0000000000000p+0"
+],
+[
+"0x1.5555555555556p-2",
+"0x1.0000000000000p+0"
+],
+[
+"-0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+],
+[
+"-0x1.0000000000000p-1",
+"0x1.0000000000000p+0"
+],
+[
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+],
+[
+"0x1.2aaaaaaaaaaaap+0",
+"0x1.0000000000000p+0"
+],
+[
+"0x1.4000000000000p+1",
+"0x1.0000000000000p+0"
+],
+[
+"-0x1.deb851eb851ebp+1",
+"0x1.0000000000000p+0"
+],
+[
+"-0x1.0000000000000p+2",
+"0x1.0000000000000p+0"
+],
+[
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+],
+[
+"nan",
+"0x0.0p+0"
+],
+[
+"0x1.0000000000000p+0",
+"0x0.0p+0"
+],
+[
+"0x1.0000000000000p+1",
+"-0x1.8000000000000p+1"
+],
+[
+"0x0.0p+0",
+"0x1.0000000000000p+0"
+]
+]
+}
+},
+"interp complex x err": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "interp(): 'x' must be real, not complex128"
+}
+},
+"interp complex xp err": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "interp(): 'xp' must be real, not complex128"
+}
+},
+"interp empty points": {
+"r": {
+"nd": "float64",
+"shape": [
+0,
+3
+],
+"strides": [
+24,
+8
+],
+"v": []
+}
+},
+"interp empty xp err": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "interp(): 'xp' must not be empty"
+}
+},
+"interp int inputs": {
+"r": {
+"nd": "float64",
+"shape": [
+4
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p-1",
+"0x1.4000000000000p+1",
+"0x1.4000000000000p+2"
+]
+}
+},
+"interp large": {
+"r": {
+"chunk": 1172,
+"chunks": "3524c6b41c2dd380cb3094b34f3604b636e1ed07b36eb3db8f6249aa4e1a867b431e530346139be68b19a294c5466c5dd8abc8e2b009b6108bf79387ef90ebd72fd3878792b3abb114e0c693520b186274906eae5123a703b4c7a120bee809bcae2626d7c946449f3ed9d38002bcf084132ef434ac40b8e93290ed6a8b79876fa11ef7f8d4a556ba1507172d1d2f6bb24c1dfb754b49e38bf1c162018a86a883658c4a17fb7744bc79f06299aa6eef1f9f21123b7828bdb55869182f734b7d8e0d732601c42a801b8259e423fe10fadb04fcd1a051d519a3fb938a331cb24f6772be09aab68d88fb516a21c740969c5978ec87aa90de3e4fa499aec550db9a3dcbbda3ee9f3cb8a7828aaaa8253396cc0405d959d32f6dcf63c0811effa61c66b020290454eedc060f7147e9e760e446bad078e822c78fb30f97be58f4c18fa0be63630b691193b822a5c73ab6d89c66700bc7614d3694a4d2aae8b8e07e90418739b59e42a708f6b0e61f770ba850d48479feb2b9794edac617e449141236aad15f008259841cb5c0b5c2960f0b24652efd70bf5e63a0d1fb615bd5376e12a5e7d36800a54aca32b3572adeec188830ec15d91fdd83c0add8240e114b63927f241df23600e08522fbd4f5561cb6dfc9e006c22c942ec6a6f3d0a6acea1b72b0156cb9ceb3744357bf24a09c85fda55317f12ec10ecad9c6eac79e40bd74945cb56187febf89f021294e1ab34a1b0ea68cd9067aa56fe2ae59d4b993183906e9efced2dc2dde0a4d3405466d6cfb25d69fb80aba3dbe38026472d4a730c3c30317c359c02134b67cee1d7f02487dfb962daf77775a018082f8f5ea7625863eca7694ed88cd69e59123145c9c96cf7434b4bc59e0b267e061f0a9d8eeb996377b43bdceaccce440ac0e2a581b0c558cd35dc55762b680080595083e55a655841498cde3d99457c2cd2124deeea418e9541521b754495b587fc753c1de451d5323d4ed36fdbac83e143a2b6696ecb92a9b96ff1af5caabad42c2835bb35c43c46af5fba5077c49ce02e07dac0635797fc001ade375f0286c8d1ab28bb99e24f6a1b7be8ccff55ff93f109e1e5dd481290ab528a61a1ca116d38d74034f1de66bd0aaa99541db5dbb596b17da9405c964b88a73a9b01a07d48a18627b431532c37a56d437fda8cbab139387f9359c140a3025c395545d72acb1ffc845921c8b7f869de56cb46a89837ef5c672f3049b17b6d8b00f94a578d44361289e9d239252353a0b57f37b840069344a695eb28a49968ac675200a7a317c176c1145320804202b2b281ac58fbb3ed5ae7d40bacc28c391d7f2697571e60624a9168b47e194bb130cae4d760f696c70578bdfe5a7233deb708f67831f3c908f4b227922bc6f0f0c2f2bd7e9957bf0ea13fab5cb9b627b6dc1408641c563cf6ed3411afddce85b",
+"n": 300000,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.89fd1b4788ee4p-2"
+],
+[
+1,
+"-0x1.d3247bd15e23ap-3"
+],
+[
+2,
+"0x1.245571688d5d6p-2"
+],
+[
+3,
+"0x1.4ac57b29b8d32p-2"
+],
+[
+18750,
+"0x1.9989e5b81795fp-1"
+],
+[
+37500,
+"0x1.e876501ed66b8p-1"
+],
+[
+56250,
+"-0x1.c197200ae7bd2p+0"
+],
+[
+75000,
+"-0x1.f8870f8ab01a1p-3"
+],
+[
+93750,
+"-0x1.c21d5a446364ap-2"
+],
+[
+112500,
+"0x1.dbb2336e6702cp-1"
+],
+[
+131250,
+"-0x1.e5ea96b3199b0p-2"
+],
+[
+150000,
+"0x1.e4e089a1293f4p-2"
+],
+[
+168750,
+"0x1.49f8cde025970p-1"
+],
+[
+187500,
+"-0x1.666b974f8b324p+0"
+],
+[
+206250,
+"-0x1.1488a386981fap-1"
+],
+[
+225000,
+"-0x1.abd7b985cd977p-2"
+],
+[
+243750,
+"0x1.4e8c5dc2365ecp-1"
+],
+[
+262500,
+"-0x1.a6cb7cf934ccap-2"
+],
+[
+281250,
+"-0x1.20b2b55391a52p-1"
+],
+[
+299996,
+"0x1.39a29b33f5761p-5"
+],
+[
+299997,
+"-0x1.fb7c31955d1efp-3"
+],
+[
+299998,
+"0x1.5969b6f7ed8b0p-3"
+],
+[
+299999,
+"-0x1.819320031f2b8p-3"
+]
+],
+"sha": "533856fe4860d26310086b2810623a0f",
+"shape": [
+300000
+],
+"strides": [
+8
+]
+}
+},
+"interp large complex": {
+"r": {
+"chunk": 1172,
+"chunks": "6e882cfd9854cc392e6a672ecded4de98b3070df42d9986e28c7781645099aaab2c88d3e503740f073117122aaf44d7d4a0921d9adc83b27e82d2ecd50c886880c835e203853c24f4c92c8cb426abcea25c373495db69537df161611f2c57dcbc431d094e0ebf19179e54738b730c1260d1da9fce427315d48073982ce6abfaf300a5017cda24c83b8dccf6e93ca95addd4760f9eaa507da14cd880eba7957e6729083ac32e9e149e885252fcb6edd13518e5d2e632d6b750631516147507b6f5acc1b96074658a17a40713b74ea9b1945fba577dd1aa1b701aea972bf49115660da96f0d9ed522c8e4e05612b403fb01c0da5b495e585b1f94e369b4bfebc31daa63a528efbc6ecd894173770462b0b14236381311d54a81ea1b2ecf1f7ef1d8d8ace2469d4bf29d6cced34e32924052b520235bb72d53f6407d104a43fb84145b36601a8f3400ab6873161d4e20b13394503a1efb9ec61592e2a6c7d4e3dff7cc5e6d7374c562b17a6d13108d370ad51e892bc674022c7d570c01120efbb2c33de26e86ce301c67623d7a217921326d8f610edbca8836e32714bce7b64cf309c718860c06121312ccf9661af18529dbbadbed33069b31da0c628949be98866a82f1dedddc1326d94033c1dd1a35d5111e9e0c694bf5696619e62da821df35a723bf5ef6b70d8dfb85e6d9aadfe2a5b67f1fa92807acb100a96449d2eabea8990cab0a5318ecf6144aef9f24d392674e0927a35bdb07bb1770c8af94c813823fd965001af6afe2cc96f45872a6c339075c25a40337e80a6ceca63ec865d544d332def7815b57ac3cf8764151077850b3b21b877f8e214be4e985fedc80df2b7935ae456ece8dc3f6221e947ce7534d374991706ba12ecfc28fb6755a85e7025043e28cda5dcb3364772e915c2b160f0ad1817674e7d58a90355f0ea02bc55ba8557c740b8c2738d69814f5a8d75d533a8dc83d4709d0410a9572586e7e6f0babd679c782390b95f182a2f5d5be09db79e3b122d3ca20a7bd4d122f70e1a08ebc1d9c5e5dd043210406c29b8475320c599d643b9de06ff47b69eb1c0c535cadbf9eddaf0397764dcef08c40a982a4a037bf66e6258efa4e3e66baf6652e52985dece54f6a4b65748f704c6994146062622c248259391ab1d27dc4f0bd4955787a4164839297f33f611de1441de225df8746692bc52aa4cc9f6e9a67e95761a5e66e0c1106567508c51c325f0bb88f152ed7283ac93965e71f78412e995a262f329007ad24161f372602d23096780d62c47ddf4cf692b5a75fb852484f905d9b2344fe44aec9c31b0900468ba8d385e3512aff58706dd123630a8d17376d15d7b2223a84d43dcfcd30d9f0b863add2a12153f6f88b053f252c844d972daa5c0f1a263d96a84ab68002f1ee48aa99f5d9f2fc0ac8017e5cbebe20928fc195d96b7",
+"n": 300000,
+"nd": "complex128",
+"sample": [
+[
+0,
+[
+"0x1.89fd1b4788ee4p-2",
+"0x1.637ae8e72d412p-1"
+]
+],
+[
+1,
+[
+"-0x1.d3247bd15e23ap-3",
+"0x1.2aad5e32fe047p-1"
+]
+],
+[
+2,
+[
+"0x1.245571688d5d6p-2",
+"0x1.6c4de5ac3bc5cp-3"
+]
+],
+[
+3,
+[
+"0x1.4ac57b29b8d32p-2",
+"0x1.d6fab309fa994p-1"
+]
+],
+[
+18750,
+[
+"0x1.9989e5b81795fp-1",
+"0x1.63d2e1e798e8ap-1"
+]
+],
+[
+37500,
+[
+"0x1.e876501ed66b8p-1",
+"0x1.053b44beefac8p-1"
+]
+],
+[
+56250,
+[
+"-0x1.c197200ae7bd2p+0",
+"-0x1.42cb671b8c511p+0"
+]
+],
+[
+75000,
+[
+"-0x1.f8870f8ab01a1p-3",
+"-0x1.ee48f188bcc2cp-4"
+]
+],
+[
+93750,
+[
+"-0x1.c21d5a446364ap-2",
+"-0x1.52d9762aed533p-1"
+]
+],
+[
+112500,
+[
+"0x1.dbb2336e6702cp-1",
+"0x1.02a996bebbe41p-2"
+]
+],
+[
+131250,
+[
+"-0x1.e5ea96b3199b0p-2",
+"-0x1.4bacaa287f86fp+0"
+]
+],
+[
+150000,
+[
+"0x1.e4e089a1293f4p-2",
+"0x1.e05607ea1e960p-2"
+]
+],
+[
+168750,
+[
+"0x1.49f8cde025970p-1",
+"0x1.6245e3df9eed6p-1"
+]
+],
+[
+187500,
+[
+"-0x1.666b974f8b324p+0",
+"-0x1.391e33734c498p-1"
+]
+],
+[
+206250,
+[
+"-0x1.1488a386981fap-1",
+"0x1.10d710e1613cdp+0"
+]
+],
+[
+225000,
+[
+"-0x1.abd7b985cd977p-2",
+"0x1.2213c47b2bbd8p+0"
+]
+],
+[
+243750,
+[
+"0x1.4e8c5dc2365ecp-1",
+"-0x1.1bae8e55ef1f4p-1"
+]
+],
+[
+262500,
+[
+"-0x1.a6cb7cf934ccap-2",
+"0x1.d1f5757435004p-1"
+]
+],
+[
+281250,
+[
+"-0x1.20b2b55391a52p-1",
+"-0x1.502f553252912p-2"
+]
+],
+[
+299996,
+[
+"0x1.39a29b33f5761p-5",
+"0x1.6aa3964a85214p+0"
+]
+],
+[
+299997,
+[
+"-0x1.fb7c31955d1efp-3",
+"0x1.7503d8be43477p-1"
+]
+],
+[
+299998,
+[
+"0x1.5969b6f7ed8b0p-3",
+"-0x1.21fa94f17af72p-1"
+]
+],
+[
+299999,
+[
+"-0x1.819320031f2b8p-3",
+"-0x1.e7e25b5efdc19p-2"
+]
+]
+],
+"sha": "9064323641c7d085fdfead12b0417b88",
+"shape": [
+300000
+],
+"strides": [
+16
+]
+}
+},
+"interp large period": {
+"r": {
+"chunk": 1172,
+"chunks": "9f1bc5b1fd57c7ccfbddbbb68adbf3bc1e639ccba6618f4c1856c781c443f074f042614de3f320c89ae7130a3e0b9dcb9f11099976e1ce32b9292ad396a24cd5fe9bf7c4cafc28b6cd8d0b3498f9a1789e56fd2ff8ec882c959d2f0a3916b2404de91f947ed9aa1b16b1379d54c1396088b68eb26dff8b3c501dd5e9d1db0a3e94141fa3ab6cb50a7d912931f1c26b1267f360ed545c14877460904c776d979fab5be9b1fb9351edb206191109cff683a86c1a91c8be47b76aabac7b86232b5197a31cbcfdaca64906c237e521f458d6af3c5736458586578bc7ea6ffd0685c692f1762e089d85e74558a29d7896c1634686a89d98859ab6e7387bc4886e4d873258a4ea3c8a8ba19f7ebee9e5d187ef004a3b08e8ebd28433415f34098287d62fb90b37cd6c65b755de839fef56fb2e2d0af120a293251ea5035091ac41e29e44c0b9f8f2d362c1dccee18f47fa84e993866d4873164387d357091e5340e8d87673c51642a979281b60f3d64c926df6f470e2296e6f593b0740b89d20e0d5dc780d635d1f3fea7e20478003f1eda7ab4548c3927d760ad0617a5c96aa664b3a082a9edbe47c67d2385d7b7b705e5302108b0e3181979e3afe09263802578412b8f1e60f0ef3ebce52a3d09b887998fda58e8243188eb6997810d04639e89c17dfc85fd0f7fb6f371d3635112ac33adce4b10585d94fcdb3eeb07f116ad303e10e2f96410e2a3e2497133bf58bfa77de7a9e44dae724ccbccc6050f5a6b667ce26f367e26ac411e7392f497de7233aed32844579a5371ae6da133c77330d5cf7d6287386ed8b4b12eba3222fdd78fc05e9cd14ccd3373f7e7313b9a2b79a785e7d4307b3a37007d5eaa2450f2f3e6140c9177507771b2ac33fb7b5ff4e1c42867576473e1d956bb762e3e6162c1c2db86a31c5eb77940543eb5f1df09de7c99e68bbf1f965e24049042cfabe0d2926e21c553f5f32433f68da6dd3f927136059f32b180c2ea2a96960972ce819994ee3471567ba1ec1107c403de6807e033b4949290160f13d221aa512637445e08b72fa54afcde6280889e0b469977ea1f39ced9d16ac69f8f60be0d9fb8f999c7fc17554ae75c6b93552e9d58c8a577245e2999ee3f678c47a53ccb7276efe1c562240cfadceccb600408304745d2408b80193875445e4b2b02a8f58d1f092dd4e1317dc1d0a9b6e2795a9976f536032f24ecf19ddc535ba822f2c8d0db86173ada9c28e2073cdc707e06900322a77bb4d42594fe86c9cc54f128f526870f602ea06f1fecc6c79da56119ec63dfb2d7b8e4e4f8b60b4cbc3cd9ae8c2e51b1b02994044bf73b002498adcaf15c39c66fc5994973fa48c31aacfd4ab00f22e29b7fe857db70ec4b81caea1bcb25de2a30d0cd811527f0982fa1feb4c476a2f8a67a3a4789ba24ca1d4235eb9b0135ea3bd6338",
+"n": 300000,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.5b06330241b1fp-3"
+],
+[
+1,
+"0x1.1e8f539db8766p-1"
+],
+[
+2,
+"0x1.574d8cb39955ap+0"
+],
+[
+3,
+"-0x1.99bf5cba4a962p-1"
+],
+[
+18750,
+"0x1.5c1accfeff441p+0"
+],
+[
+37500,
+"-0x1.17e53d00ee9d9p-1"
+],
+[
+56250,
+"0x1.4d44114439864p-2"
+],
+[
+75000,
+"-0x1.aaa0c82714aeap-7"
+],
+[
+93750,
+"0x1.5ec01cb522f9bp-1"
+],
+[
+112500,
+"0x1.4509b36be1861p+0"
+],
+[
+131250,
+"0x1.7e311f33f61b8p-4"
+],
+[
+150000,
+"-0x1.62e910acdabd0p-1"
+],
+[
+168750,
+"-0x1.1932a97cf0058p-5"
+],
+[
+187500,
+"0x1.f194298a55154p-1"
+],
+[
+206250,
+"0x1.9ce814c611462p-2"
+],
+[
+225000,
+"-0x1.dbfd67321ed17p-5"
+],
+[
+243750,
+"-0x1.ed6aa9b38a191p-1"
+],
+[
+262500,
+"0x1.94be484be558dp-1"
+],
+[
+281250,
+"0x1.d2d4b960d8256p-1"
+],
+[
+299996,
+"0x1.086e91f02b0bcp-2"
+],
+[
+299997,
+"-0x1.c05987540d6a7p-1"
+],
+[
+299998,
+"-0x1.071b4d1d7932dp-1"
+],
+[
+299999,
+"-0x1.5c6ccdca80af1p-4"
+]
+],
+"sha": "8d5132e73f64a5ae84ced032e2b701c7",
+"shape": [
+300000
+],
+"strides": [
+8
+]
+}
+},
+"interp large small xp": {
+"r": {
+"chunk": 1172,
+"chunks": "822c9b780f5c088ce8f98f8294e7c5950963f4a9fa9946988a3e6044960d505bd2931568d50d00a817030f95f3e3319c730430472e27a3e2de1678f31075d4c656b2d460cdebeb9231d6e4afec0dabfa1f9ce43c8e9e76dc746e5afe3d4ca4925c1143d9f63ef710a162463f15fe1ccf33a4806623385242010c169d18c2635fb616f74f9486c7ff4582fb3ec0119e634aeb355d50d9311971b93f75403ef4906e44324d944002e692e38fb116562d2c11ef36acc0998217fd57463caced19899d7c16ad0e79643d666d5c24962b7907d6870a7a7d24ea17ccc40f0dcef5490cad0d1fd060e5bcc19fd4ed65836e76cbd7252e25468d134a17b1b181ec094f2ce3516ddd09aa67901d0dd32732b5726dc55828fafe52fcf14837e853896d1673141b02a638d4bceafe9ed20b5c3cf02213f2d398654088be2860163c2af93d5e6e6a1a588856c4049167a758bc142b74c17fa58270beb7b3016eb7a8ca4ba47c324100662a66c9cc589c9d56359e89641ae21ec1de0347bfbb58da9b7c435ebfe19e1926456884a2fd28c2f52ace9e267691d73ae61f778c26343b55209d74df7c54182c36c3a6f6bd01dc204bce18bab52c57c1767d5b0c5e9b82e842335447ee708b452d408b6b995a836de03ec615b8d09f82d144427ba0178a8bb087f432d16d082a5a8a535c446583c36e9537022ec68dd58ad06c2428d60401416456296c16c9b24ca54e0cdd60f9fc31e36335c554b5118bd73d34a0714f5f38c9025403591a7b24bb296fde7cf7b40673a468d999d603614fcde7f8f3928517379d848770b3b65e4fa5937ad995b12643be9a858980373e7e037533b7ed133e3d19f5fa1f8ebd806c16fe3dddf06f78e1f9ab33ed58d35230b47d09bd3fb01260dcd9055a586ace8abdf5378d4b19827019cd5221bcad1f090f01fd9e0b064533437db10dfc0103fac0d1c87d6f636e265245a363b3e701a1452dfd21f29da281cbd17319f0a108ab0c0995a95d45032d7543ef722e95a40aae34291892c3763d65da7b4af8fc5b18deb4eb0ab206525f20cb8b25ee43e3edca5375784805b5a61d732a9bcf14d8fa119f6d22d31d2e639afe0166813df715b005076d513b849c3dd45d177d78506a024722fe3662d50664be6777d14286335a834a57d6a73991ff71bc1748a32599c45338c215567b28a067e33426342d1ba06eb7896a664d07ae3d727519506be50f067b83f3316c56036db19254be4e8e14896bee7de675d0440f5563b3338ea24c98866f4eaa97bb7c923d1c66433d4a75a5b74ccf6eaaa5795c9b59f178a04a663af1b01e06832b2093355614aee380d4fb392d598335ac5005aae52f53e098cdd50659fe2a4321cc553bb6ce63a0c640a8125299079517259c287744d4723423d003a9c7df11430bad9c2529b1667a4b9ecfad80a2d336836a",
+"n": 300000,
+"nd": "float64",
+"sample": [
+[
+0,
+"-0x1.040d8cce30ae8p-4"
+],
+[
+1,
+"0x1.e369b5983ade3p+0"
+],
+[
+2,
+"-0x1.bee7982713a00p-8"
+],
+[
+3,
+"0x1.cf2cf0b2d64c9p-3"
+],
+[
+18750,
+"-0x1.aee282428b3a0p-4"
+],
+[
+37500,
+"-0x1.f6ef9a51ad979p-1"
+],
+[
+56250,
+"0x1.884238c7789b8p-4"
+],
+[
+75000,
+"-0x1.ac9aeabf5aa50p-3"
+],
+[
+93750,
+"0x1.b60c612455270p+0"
+],
+[
+112500,
+"0x1.36ddf0331eec6p+0"
+],
+[
+131250,
+"0x1.4430d260d8930p-3"
+],
+[
+150000,
+"-0x1.763702e14c700p-2"
+],
+[
+168750,
+"0x1.cd569076ec3e8p+0"
+],
+[
+187500,
+"-0x1.774dc2f37f234p-1"
+],
+[
+206250,
+"-0x1.2a211ea73470cp-2"
+],
+[
+225000,
+"0x1.b4b5d0edaa360p-2"
+],
+[
+243750,
+"-0x1.664bdfef78735p-1"
+],
+[
+262500,
+"-0x1.dc1fa6505c494p-1"
+],
+[
+281250,
+"-0x1.7c1af074f0788p-2"
+],
+[
+299996,
+"0x1.002fab1dcd10cp+1"
+],
+[
+299997,
+"0x1.ab278a41cff80p-3"
+],
+[
+299998,
+"0x1.80f16ad04ebc3p+0"
+],
+[
+299999,
+"0x1.67dd1e04b0830p+0"
+]
+],
+"sha": "6e12659a12af9fed2bf77571099386f9",
+"shape": [
+300000
+],
+"strides": [
+8
+]
+}
+},
+"interp large sorted": {
+"r": {
+"chunk": 1172,
+"chunks": "d19ec5a83905556c7ac02cc6e5fec4fbeb978afbfc7f59cf306dd13d248e6fac6959585eed50e2f2cc28eaef7eff3a881d0c128be3dbdf8c51161663f37d5a23e84bdc1180fcf323e5c7e45a5c243f1d79fc9966dfb89eb900b2408415be9361a6090df15345d03170bd449339b28283261f3afbaf37d6d33dd92b4a11759f134eecae45c6ca7f806eaa79b3eec72a2e3e5293d41b9abe6cde8f54c985d9156f6c5e92ec364c7e2b32317ee3de74389e2d8e7b2950362d307b7f7de5aecbd67318512975d6f3a1bc40c566d529a357f8a7421b8df19f1be2b59e61509f0977806d68b3a6ad7c03e28957f898f2ca702a5ae826d3879f72e5fa6280bbf0e2e102803a2f714294ba2d948580c76e2d56d4ad9fa88a3f677389c97e527b54ce2594efda853efe94a11f3b81fff55a52ce6c537c9d1c940516460e497aaae52db29ac8a1a843ae162c8b979935c4de45149e7a3ad3cabc6defda6b76df1b3aacf1d71cfd25bf61deccbe27293a9c87833d87b749a092419b83cd28c4f3a21e32ddbfbac2ec0bbb719f52ffad6be25d2f41661e7e216fc5f7f5eb11cd4b0f4874374d18ec40d6becf496446b8f4b491e727bc869f84e7007728c1b86fa89814c732ecadc86161d38cdb0483f02abfac424d0e34491f10e614a1f4a5b01ee4b2567577af81b0748eaf0cd68af3c363122f4477767973ce0902309fe269d376d241c068da50d735e5a06637ebe56d9b939b3049fb7155b794ddd424b9934d773037ec55a723d24e715603398e4ae8715971e7eeb4215884120da01893e9dc4f2449d79f806a83535ebb09cd1274d7a958801c2eae1878f67fbd6956545d4259759a59443e1db79e0801ad605e6493a7d992c09ba8d8aae2a1c8bbf582773e5422f522440a984f32d6783c2c1179abc1968b706aec349e9b5e280d08200c3f4dd45c2a6b4f98255d18787a0e4194aa6908538e93a8226c0d6883c2271f1de52beb967700cac6ed97c6f806ce5e3c03be42ed545e31bcde8bfec58bbfd496892e8dccde16b77dc69669437434d617670eaac05008219b2145f45f05c35cd909a49fbf861218ea706ed81bcf0c0ecfdd48e6cd9dc1226dfc21e0aa246dbac262a5048509a2f0cbdf183e2e062aa03769840261feaae9d2500915102676e6fa9a3dda6e68decdf7bb4094600b96a4b7d5b84e0a7b8b021d36a0d344cdfd2a33e922a69fef45d93c54ad99626a137ff218533f708174cb34ec5ee042562994293b15564aeceeec48fa40159c1b97b0c8009001573581c5f4465aed04b97e564dbbf65cc15205f0ba89bb32461afe067d0181febd7cf6ca780e833439d6a8bb048730d10e9fcda6ec2a1a19c9e31d43cdb04fa5533bbddc07c9c51b63b68cd441383469fabe4518b325b4a86ed70225b2ee787e8e6f632266bab23a6e8014272362f60aa8e8ec",
+"n": 300000,
+"nd": "float64",
+"sample": [
+[
+0,
+"0x1.59cc91e36f6e8p+0"
+],
+[
+1,
+"0x1.59cc91e36f6e8p+0"
+],
+[
+2,
+"0x1.59cc91e36f6e8p+0"
+],
+[
+3,
+"-0x1.b33a0a24cdd1cp-2"
+],
+[
+18750,
+"-0x1.7c040b5576975p-1"
+],
+[
+37500,
+"0x1.b2978ef304276p-1"
+],
+[
+56250,
+"-0x1.84d2f649aa242p-2"
+],
+[
+75000,
+"-0x1.06a1d183422c6p-1"
+],
+[
+93750,
+"0x1.e040004dc5633p-1"
+],
+[
+112500,
+"-0x1.330aa314d3dcdp-2"
+],
+[
+131250,
+"0x1.3c6ad8de7b95bp-1"
+],
+[
+150000,
+"0x1.fad6b034c87fep-2"
+],
+[
+168750,
+"-0x1.b53e44d9968cbp-1"
+],
+[
+187500,
+"0x1.4eae97546840cp-2"
+],
+[
+206250,
+"-0x1.17c36283fddd4p-4"
+],
+[
+225000,
+"-0x1.c16ce1b718cd4p-1"
+],
+[
+243750,
+"0x1.73b58c86ef6cfp-3"
+],
+[
+262500,
+"-0x1.9896c9bb71794p+0"
+],
+[
+281250,
+"-0x1.404d07a01a42cp-1"
+],
+[
+299996,
+"-0x1.90a5b7e76c075p-2"
+],
+[
+299997,
+"-0x1.90a5b7e76c075p-2"
+],
+[
+299998,
+"-0x1.90a5b7e76c075p-2"
+],
+[
+299999,
+"-0x1.90a5b7e76c075p-2"
+]
+],
+"sha": "8d2442159eb45aa07ed2c5c637e8a46c",
+"shape": [
+300000
+],
+"strides": [
+8
+]
+}
+},
+"interp left complex err": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "interp(): 'left' must be an int or a float, not complex"
+}
+},
+"interp left right": {
+"r": {
+"nd": "float64",
+"shape": [
+15
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.3000000000000p+3",
+"0x1.8000000000000p+1",
+"0x1.5555555555556p-2",
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p-1",
+"0x0.0p+0",
+"0x1.2aaaaaaaaaaaap+0",
+"0x1.4000000000000p+1",
+"-0x1.deb851eb851ebp+1",
+"-0x1.0000000000000p+2",
+"nan",
+"nan",
+"nan",
+"-0x1.3000000000000p+3",
+"0x0.0p+0"
+]
+}
+},
+"interp length err": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "interp(): 'fp' must be as long as 'xp'"
+}
+},
+"interp list err": {
+"r": {
+"error": "builtins.TypeError",
+"msg": "interp(): 'x' must be an sd.ndarray or a bool, int or float, not list"
+}
+},
+"interp nan xp err": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "interp(): 'xp' must be finite"
+}
+},
+"interp nonfinite values": {
+"r": {
+"nd": "float64",
+"shape": [
+5
+],
+"strides": [
+8
+],
+"v": [
+"inf",
+"inf",
+"0x1.0000000000000p+0",
+"nan",
+"nan"
+]
+}
+},
+"interp one node": {
+"r": {
+"nd": "float64",
+"shape": [
+15
+],
+"strides": [
+8
+],
+"v": [
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"nan",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2",
+"0x1.c000000000000p+2"
+]
+}
+},
+"interp one node left right": {
+"r": {
+"nd": "float64",
+"shape": [
+15
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+1",
+"nan",
+"0x1.0000000000000p+1",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0"
+]
+}
+},
+"interp opposite infinities": {
+"r": {
+"nd": "float64",
+"shape": [
+5
+],
+"strides": [
+8
+],
+"v": [
+"-inf",
+"nan",
+"nan",
+"nan",
+"inf"
+]
+}
+},
+"interp period": {
+"r": {
+"nd": "float64",
+"shape": [
+6
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.8000000000000p+1",
+"0x1.8000000000000p+0",
+"0x0.0p+0",
+"0x1.0000000000000p+0",
+"nan"
+]
+}
+},
+"interp period complex": {
+"r": {
+"nd": "complex128",
+"shape": [
+50
+],
+"strides": [
+16
+],
+"v": [
+[
+"-0x1.be011ef7e8182p-2",
+"-0x1.aa660ce8e81d5p-2"
+],
+[
+"-0x1.2b5de782fc7d7p+0",
+"-0x1.f4672cc61ca18p-3"
+],
+[
+"-0x1.25bb23ef2a40dp+0",
+"0x1.7229488cc2644p-2"
+],
+[
+"-0x1.916f693c07d2cp-3",
+"0x1.35b667fd175e1p+0"
+],
+[
+"0x1.5579709c2e946p-1",
+"0x1.9428000fce44bp+0"
+],
+[
+"-0x1.0ec8fbe2a485ap+0",
+"-0x1.d559ccebb64d0p-4"
+],
+[
+"-0x1.75a699376b20ep-1",
+"0x1.4834f4cba4b66p-1"
+],
+[
+"0x1.0886e12c99f42p+0",
+"0x1.bc408c660c547p+0"
+],
+[
+"-0x1.4bc00161b6068p-1",
+"0x1.04406cff580c3p+0"
+],
+[
+"0x1.9ca7efbe8b336p-3",
+"0x1.6137656d964c4p+0"
+],
+[
+"-0x1.b77d7c98b246fp-1",
+"0x1.ca229df5915dbp-2"
+],
+[
+"0x1.cd90ecfa24d24p-2",
+"0x1.7c7ed9b7e15c0p+0"
+],
+[
+"-0x1.e0a7601ee175cp-1",
+"0x1.9934cc302923cp-2"
+],
+[
+"-0x1.ef9f834ede46cp-1",
+"0x1.1b60102a96318p-3"
+],
+[
+"-0x1.c60f2d496e0f0p-1",
+"0x1.78009a2055779p-2"
+],
+[
+"0x1.ee8ee813e7fe0p-4",
+"-0x1.27c9ee8c689e3p-2"
+],
+[
+"0x1.092804f6c80d9p+0",
+"0x1.bc856fe40f86dp+0"
+],
+[
+"0x1.050466e34d16fp+0",
+"0x1.bac07109b5c4ap+0"
+],
+[
+"-0x1.288ae2fcc290ap+0",
+"0x1.e5772caeb04e0p-5"
+],
+[
+"0x1.1ac22ae5ab40dp-1",
+"-0x1.e1a948e73a0e0p-1"
+],
+[
+"-0x1.bdb4cb221f737p-1",
+"0x1.e9f1f31365bbap-2"
+],
+[
+"-0x1.70311ff33fc33p-1",
+"0x1.4e833cc0bf4f4p-1"
+],
+[
+"-0x1.8ba98ebf86292p-1",
+"-0x1.4961c741548a6p+0"
+],
+[
+"0x1.3a6cca86a4c85p-1",
+"-0x1.08bfe28ddb41fp+0"
+],
+[
+"0x1.155fca57f2b00p+0",
+"0x1.9cd83d80af1f6p+0"
+],
+[
+"-0x1.7e4f433e2cc4cp-1",
+"0x1.3e3464be0ec2ap-1"
+],
+[
+"-0x1.7de97fbd679e4p-2",
+"-0x1.0500bfe880a72p-2"
+],
+[
+"-0x1.a22bf7f56606ap-2",
+"0x1.64b7dfa1f1a08p-2"
+],
+[
+"-0x1.9235c4c07f8dep-1",
+"0x1.2737838e47320p-1"
+],
+[
+"-0x1.756cfe530816fp-1",
+"0x1.48777f8e33cf2p-1"
+],
+[
+"-0x1.1359dc4aa8e45p-1",
+"0x1.104ea40f5ef63p+0"
+],
+[
+"0x1.63f52d9b6bd18p-1",
+"0x1.97408b8d013d6p+0"
+],
+[
+"-0x1.aa396179bdbc4p-5",
+"-0x1.c86099e6a2228p-6"
+],
+[
+"0x1.282a4fee5f3fcp-1",
+"0x1.8a78a31fb28f6p+0"
+],
+[
+"0x1.a4e5d46a4b5c8p-4",
+"0x1.566925cb05222p+0"
+],
+[
+"-0x1.396bc8d9a9fc7p+0",
+"-0x1.39d5f9d3b9eb2p+1"
+],
+[
+"0x1.9de2e808d0290p-1",
+"0x1.48d594dd8b828p+0"
+],
+[
+"-0x1.b971b1a490c83p-1",
+"0x1.bf1eb6cec0093p-2"
+],
+[
+"0x1.c4b09f6600430p-2",
+"0x1.0ba6fff975e0ap-1"
+],
+[
+"0x1.5dcb30d92b4abp-2",
+"-0x1.3eb79f671fe21p-1"
+],
+[
+"-0x1.a73b504c33984p-2",
+"-0x1.6fa1b9497744bp-2"
+],
+[
+"0x1.33d41c10c2caap-2",
+"0x1.6c1081bb1d308p+0"
+],
+[
+"0x1.27e14c5ef7840p-5",
+"-0x1.49c37cdfab9f9p-3"
+],
+[
+"-0x1.889b945f48ff9p-1",
+"0x1.324f127852be0p-1"
+],
+[
+"-0x1.229e4b44d6f67p+0",
+"0x1.64653edfed86ep-1"
+],
+[
+"-0x1.4ffec4e03e76ep+0",
+"-0x1.aa49ee3bf0690p-1"
+],
+[
+"-0x1.91ce11d351377p-1",
+"0x1.27af4d0914736p-1"
+],
+[
+"-0x1.156aee80742c0p-1",
+"-0x1.619f9062bf33cp-1"
+],
+[
+"0x1.df344fe5adea8p-1",
+"0x1.b198bc126c012p+0"
+],
+[
+"-0x1.3881b30a24fafp+0",
+"-0x1.38a7efef33a76p+1"
+]
+]
+}
+},
+"interp period nan err": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "interp(): 'period' must be finite and nonzero"
+}
+},
+"interp period unsorted": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"0x1.6000000000000p+1",
+"0x1.2aaaaaaaaaaabp+0"
+]
+}
+},
+"interp period zero err": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "interp(): 'period' must be finite and nonzero"
+}
+},
+"interp repeated nodes": {
+"r": {
+"nd": "float64",
+"shape": [
+15
+],
+"strides": [
+8
+],
+"v": [
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+0",
+"0x1.8000000000000p+0",
+"0x1.c000000000000p+0",
+"0x1.0000000000000p+2",
+"0x1.1666666666666p+2",
+"0x1.3000000000000p+2",
+"0x1.4000000000000p+2",
+"0x1.4000000000000p+2",
+"0x1.4000000000000p+2",
+"nan",
+"0x1.4000000000000p+2",
+"0x1.0000000000000p+0",
+"0x1.0000000000000p+2"
+]
+}
+},
+"interp scalar": {
+"r": {
+"f": "0x1.2aaaaaaaaaaaap+0"
+}
+},
+"interp scalar int": {
+"r": {
+"f": "0x1.aaaaaaaaaaaaap+0"
+}
+},
+"interp scalar nan": {
+"r": {
+"f": "nan"
+}
+},
+"interp signed zeros": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"-0x0.0p+0",
+"-0x0.0p+0",
+"-0x0.0p+0"
+]
+}
+},
+"interp strided": {
+"r": {
+"nd": "float64",
+"shape": [
+14
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.e3a37cf9c0e70p-4",
+"0x1.a3bf9f1a4f988p+0",
+"0x1.75b3c3252324fp-1",
+"0x1.956c3c917f964p-3",
+"-0x1.a88f836da8f3ap-3",
+"-0x1.4b574c1b89ae3p+0",
+"-0x1.23f3ccd4ab5d4p-1",
+"0x1.da48c7b896898p-3",
+"0x1.1588bd4515073p+1",
+"-0x1.77eaaa1043f09p-2",
+"-0x1.5c43ded52a3e0p+0",
+"-0x1.32d49e4cc8775p-1",
+"-0x1.dbf7f4b073b4bp-1",
+"0x1.6bd54ea380d9ep+0"
+]
+}
+},
+"interp subnormal width": {
+"r": {
+"nd": "float64",
+"shape": [
+2
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.0000000000000p+0",
+"-0x1.0000000000000p+0"
+]
+}
+},
+"interp unsorted xp err": {
+"r": {
+"error": "builtins.ValueError",
+"msg": "interp(): 'xp' must be nondecreasing"
+}
+},
+"interp wide interval": {
+"r": {
+"nd": "float64",
+"shape": [
+3
+],
+"strides": [
+8
+],
+"v": [
+"-0x1.0000000000000p-52",
+"-0x1.9999999999998p-3",
+"-0x1.6666666666666p+1"
+]
+}
+},
 "iop iadd b pyscalar b": {
 "r": {
 "items": [

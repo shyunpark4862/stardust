@@ -1,0 +1,16 @@
+// The graph area: the submodule stardust._core.graph (docs/design/graph.md §6).
+#include "bind/graph_bind.hpp"
+
+#include "graph/graph_mod.hpp"
+
+namespace nb = nanobind;
+
+namespace sd {
+
+void bind_graph(nb::module_& core) {
+    nb::module_ m = core.def_submodule("graph", "stardust graph native core");
+    graph::bind_input(m);
+    graph::bind_traversal(m);
+}
+
+}  // namespace sd

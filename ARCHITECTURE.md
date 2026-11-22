@@ -4,16 +4,19 @@
 
 ## 1. 층 구조
 
-영역은 열넷이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate, spatial, plot(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다. plot(그림)은 맨 위 층이다: 모든 영역의 결과를 받고 어느 영역도 plot을 모른다(docs/design/plot.md §1.4).
+영역은 열일곱이다: array, linalg, frame, special, stats, regression, random, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, plot(`bench/areas.py`의 순서). Python 하위 모듈 하나와 `csrc/`의 디렉터리 하나가 영역 하나다. plot(그림)은 맨 위 층이다: 모든 영역의 결과를 받고 어느 영역도 plot을 모른다(docs/design/plot.md §1.4).
 
 ```
  Python:  sd   sd.linalg   sd.frame   sd.special   sd.stats   sd.regression   sd.random   sd.optimize
-          sd.htest   sd.sparse   sd.integrate   sd.differentiate   sd.spatial   sd.plot
+          sd.htest   sd.sparse   sd.integrate   sd.differentiate   sd.spatial   sd.graph   sd.interpolate   sd.fft   sd.plot
             │       │          │           │            │            │               │            │
  bind/ ─────┴───────┴──────────┴───────────┴────────────┴────────────┴───────────────┴────────────┴──  _core 확장 모듈 하나
                                                         │
                      htest/      ──▶ stats/, special/, random/, array/, parallel/
                      spatial/    ──▶ array/, base/, parallel/, accelerate/(이웃 찾기의 GEMM 고르기)
+                     graph/      ──▶ sparse/(표준 꼴 CSR 읽기와 전치), array/, base/, parallel/
+                     interpolate/ ──▶ array/, base/(lerp·interval: 배열의 interp와 함께 쓰는 선형 커널과 구간 찾기), parallel/, linalg/(LAPACK 래퍼: RBF의 풀이, AAA의 SVD), spatial/(KD 트리: RBF의 이웃)
+                     fft/        ──▶ array/, base/(sincos: 회전 인자), parallel/
                      sparse/     ──▶ linalg/, array/, base/, parallel/, accelerate/(Accelerate의 희소 LU와 BLAS)
                      regression/ ──▶ linalg/, special/, random/, htest/(Jarque–Bera의 중심 합), parallel/
                      optimize/   ──▶ linalg/, differentiate/(차분의 간격), elementwise/(원소별 반복 고리)
@@ -32,6 +35,9 @@
   - `frame/`은 `array/`를 모른다. 둘을 잇는 코드는 `frame/interop.{hpp,cpp}` 한 곳에만 둔다 (DESIGN §4.3). `array/` 헤더를 include하는 frame 파일은 `interop.cpp` 하나다. 다른 frame 파일은 `interop.hpp`(Column과 nanobind만 쓰는 선언)를 통해 부른다 (docs/design/frame.md §5.4).
   - `stats/`는 special의 커널(불완전 감마·베타, 오차함수 등)과 random의 생성기를 쓴다. `regression/`은 linalg의 LAPACK 래퍼, special의 double-double·오차함수·감마·로지스틱 함수, random의 생성기, htest의 중심 합 커널(`htest/normality.hpp`: `jarque_bera()`), parallel의 스레드풀(`parallel/pool.hpp`)을 쓴다. Python 쪽에서 `regression.nls`는 optimize의 최소제곱(`csrc/optimize/lsq.cpp`)을 쓴다.
   - `spatial/`은 짝 거리의 합을 자기 순서(타일 순서)로 하므로 linalg의 합에 기대지 않는다(docs/design/spatial.md §3.1). Python 층의 `stardust.spatial`은 `stardust.sparse`(반경 결과의 `tocsr()`)와 `stardust.linalg`(`mahalanobis`의 기본 `VI`)를 쓴다.
+  - `graph/`는 sparse의 표준 꼴 CSR(`sparse/format.hpp`)을 읽기만 하고 sparse는 graph를 모른다(docs/design/graph.md §1.4, §6). Python 층의 `stardust.graph`는 `stardust.sparse`(입력, `csr_array` 결과, `LinearOperator`)를 쓴다.
+  - `interpolate/`의 선형 커널(`base/lerp.hpp`)과 구간 찾기(`base/interval.hpp`)는 바닥 층에 두고 배열의 `sd.interp`(`array/ops/interp.cpp`)와 함께 쓴다(`base/sincos.hpp`와 같은 자리; docs/design/interpolate.md §1.4, §3.2). 배열은 interpolate를 모른다. Python 층의 `stardust.interpolate`는 `stardust.spatial`(`KDTree`)과 `stardust.sparse`(`design_matrix`)를 쓴다.
+  - `fft/`는 다른 영역을 쓰지 않는다. 첫 판은 모든 길이를 자체 C++로 계산하고 Accelerate의 vDSP를 부르지 않는다(docs/design/fft.md FT30; vDSP의 래퍼 `fft/vdsp.hpp`는 길을 다시 잴 때만 쓴다). Python 층의 `stardust.fft`도 다른 영역을 쓰지 않는다(FFTLog는 `stardust.special`의 복소 `loggamma`를 쓴다).
   - Python 층에서 `stardust.integrate`와 `stardust.differentiate`는 인자 검사 도우미(`_callable`, `_check_int`, `_real` 등)를 `stardust.optimize._common`에서, 원소별 무리의 입력(`_inputs`, `_args`, `_shaped`)을 `stardust.optimize._elementwise`에서 가져온다. C++의 반복 고리는 바닥 폴더 `csrc/elementwise/`에 있어 optimize를 거치지 않는다(docs/design/integrate.md C16, §6.3).
   - Python 경계의 공용 도우미 `bind/pyutil.hpp`(배열 받기와 만들기)와 `bind/errors.hpp`(에러 메시지에 공개 함수 이름 붙이기)는 모든 영역의 `ops/`가 쓴다. 영역마다의 바인딩 파일(`bind/<영역>_bind.cpp`)은 맨 위 층이다.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다.
@@ -61,19 +67,23 @@ stardust/
     integrate/                  _quadpack, _quad_vec, _cubature, _tanhsinh, _samples, _rules, _gauss, _result
     differentiate/              _derivative, _weights, _differences, _result
     spatial/                    _common, _distance, _neighbors, _radius(RadiusResult), _kdtree (docs/design/spatial.md §6)
+    graph/                      __init__.py (공개 이름은 GR1 마일스톤부터; 계획한 모듈은 docs/design/graph.md §6)
+    interpolate/                __init__.py (공개 이름은 IP2 마일스톤부터; 계획한 모듈은 docs/design/interpolate.md §6)
+    fft/                        __init__.py (공개 이름은 FT1 마일스톤부터; 계획한 모듈은 docs/design/fft.md §6)
     plot/                       _figure(칸·배치·내보내기), _layers, _basic, _sample·_function(함수 그림), _field(두 변수), _stat, _surface(3D), _adapt(곡면의 적응형 표본),
                                 _scene(도형 목록), _text(LaTeX 조판과 글리프 윤곽선의 캐시), _dvi, _ticks, _color, _svg·_pdf·_png
                                 (docs/design/plot.md §7)
 
   csrc/
     base/         buffer(참조 카운트 메모리 블록), dtype(DType enum), pairwise(pairwise 합의 정의),
-                  saturate(float64 → int64 명시적 변환), int_sum(int64의 정확한 합), sincos(같은 x의 sin·cos)
+                  saturate(float64 → int64 명시적 변환), int_sum(int64의 정확한 합), sincos(같은 x의 sin·cos),
+                  lerp(선형 커널), interval(구간 찾기; 배열의 interp와 interpolate가 함께 쓴다)
     parallel/     pool(스레드풀 하나, GIL 해제, FirstRow, Unlocked)
     accelerate/   blas(dot, gemv, gemm), vforce(연산과 무관한 vForce 래퍼)
     array/        ndarray  iter  convert  parallel_limits
                   kernels/  elementwise buffered cast scalar_ops reduce sort simd_sort neon vforce vmath
                   ops/      asarray copy creation indexing manipulation shape matmul reduction
-                            covariance quantile histogram searching sort ufunc lanes pieces dlpack dtype_info
+                            covariance quantile histogram searching interp sort ufunc lanes pieces dlpack dtype_info
     linalg/       args batch pack cost errors input outblock pyrefs types pairwise fastsum lapack
                   ops/      lu basic norms vnorm factor qr spectral svals nonsym special expm common
     frame/        column bitmap convert parallel interop
@@ -99,6 +109,10 @@ stardust/
                   krylov arpack svds parallel
     spatial/      metric(타일 순서의 짝 커널과 거리마다의 연산), distance(pdist·cdist·배치 거리 함수·squareform; docs/design/spatial.md §3.1),
                   neighbors(kneighbors·radius_neighbors의 전수와 GEMM 고르기; §3.2), kdtree(KD 트리 만들기와 kNN; §3.3, §3.4)
+    graph/        (GR1 마일스톤부터; 계획한 파일은 docs/design/graph.md §6)
+    interpolate/  search linear (IP1 마일스톤; 나머지 계획한 파일은 docs/design/interpolate.md §6)
+    fft/          twiddle(회전 인자), cfft(혼합 기수 Stockham 복소 FFT), rfft(실수 FFT), vdsp(vDSP DFT의 래퍼): FT0 마일스톤의 시제품 헤더이고
+                  아직 바인딩하지 않았다(docs/design/fft.md §6)
     plot/         raster(2D 래스터라이저: 면적 누적, 획의 윤곽, 점 찍기, 그림 붙이기), zbuffer(3D 깊이 버퍼), levels(marching squares; docs/design/plot.md §3.5, §5, §6)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
@@ -126,7 +140,7 @@ stardust/
 
   tools/
     test.py  golden.py  coverage.py    테스트, 골든, 커버리지 (tests/README.md)
-    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize, htest, sparse, integrate, differentiate, spatial)
+    <영역>_ref.py                      Arb 참값 생성기 (special, stats, array, linalg, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft)
     arbref.py  regref.py  mvref.py  mvcdfref.py   생성기가 함께 쓰는 Arb 도우미와 식
     gen_*.py                           C++ 계수 표(csrc/*/coeffs, frame의 pow5_table)와 다른 라이브러리의 기록(R, scipy, Fortran)
     check.py  format.py  check_refs.py  procrun.py  vendor_boost_math.py
@@ -141,7 +155,7 @@ stardust/
 - **"얇은 Python, 두꺼운 C++"**: 계산은 C++에 있고, Python은 인자 정리, 결과 객체, 메시지를 맡는다.
   - 예외: `Series`, `DataFrame`, 분포 객체(`sd.stats`), 회귀·최적화의 결과 객체는 Python 클래스다.
 - **확장 모듈은 `_core` 하나다** (DESIGN §3.2).
-  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다). spatial의 `_core.spatial`은 공개 함수가 생기는 SPT1부터다.
+  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다). spatial의 `_core.spatial`은 공개 함수가 생기는 SPT1부터다. graph의 `_core.graph`는 GR1 마일스톤부터, interpolate의 `_core.interpolate`는 IP1 마일스톤부터, fft의 `_core.fft`는 FT1 마일스톤부터다.
   - nanobind 타입 테이블이 하나라서, C++ 어디서든 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 배열을 직접 받는다.
 - **linalg는 배열을 C++에서 직접 주고받는다.**
   - 입력은 `const NDArray&`이고, 결과는 linalg가 정한 strides로 `new_array_strided(dtype, shape, strides, nbytes)`가 `NDArray`를 직접 만든다. 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C-order, 길이 0인 축도 그대로 곱함)은 linalg의 정책이라 linalg에 두고, 메모리와 플래그만 배열이 맡는다.

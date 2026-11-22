@@ -846,6 +846,22 @@ count_nonzero(x, /, *, axis=None, keepdims=False)
   - `x2`의 Python int는 승격한 dtype이 int64일 때만 int64 범위 안이어야 한다(§1.5). 예: float64 `x1`에 `2**70`은 정상이다.
 - **`count_nonzero`**: `x != 0`인 원소 수(int64)다. `axis`, `keepdims`는 리덕션과 같다(§7.2). NaN은 0이 아니다.
 
+### §8.5 `interp`
+```
+interp(x, xp, fp, /, *, left=None, right=None, period=None)
+```
+- numpy의 `interp`다. `xp`(1차원)와 `fp`(같은 길이)가 주는 꺾은선을 `x`의 각 점에서 계산한다. 선형 보간의 다른 길(`sd.interpolate`의 k = 1 B-스플라인, 격자의 선형)과 같은 커널이다(docs/design/interpolate.md §2.2, §3.2).
+- **입력**: `x`는 `sd.ndarray` 또는 Python 스칼라(bool, int, float), `xp`와 `fp`는 1차원 `sd.ndarray`다(리스트는 `TypeError`, §1.1). bool·int64는 float64로 바꾼다. `x`와 `xp`의 complex는 `TypeError`다. `fp`는 complex128도 받는다: 실수부와 허수부를 같은 위치로 따로 계산한다.
+- **`xp`의 검사**: 유한하고 줄지 않아야 한다(`ValueError`: `interp(): 'xp' must be finite`, `interp(): 'xp' must be nondecreasing`). `[numpy와 다름]`: numpy는 검사하지 않아 `interp([0.5, 1.5, 2.5], [0, 2, 1, 3], [0, 10, 20, 30])`이 에러 없이 `[2.5, 7.5, 27.5]`다. 같은 값의 반복은 받는다: numpy와 같이 계단이고 그 점에서는 오른쪽 값이다(`interp(1.0, [0, 1, 1, 2], [0, 1, 5, 6])`은 5.0). 빈 `xp`, 길이가 다른 `fp`, 1차원이 아닌 `xp`·`fp`는 `ValueError`다.
+- **바깥**: `x < xp[0]`은 `left`(기본 `fp[0]`), `x > xp[-1]`은 `right`(기본 `fp[-1]`)다. `left`·`right`는 수다(실수 `fp`에는 int나 float, complex `fp`에는 complex도). `xp`가 한 점이면 그 왼쪽은 `left`, 그 점은 `fp[0]`, 오른쪽은 `right`다.
+- **`period`**: 있으면 `left`·`right`를 무시하고 `xp`와 `x`를 그 주기로 감는다(numpy처럼 `xp % period`를 정렬하고 양 끝에 한 점씩 더한다). 감은 뒤 정렬하므로 `xp`의 순서는 검사하지 않는다(유한해야 하는 것은 같다). 감은 값이 같은 노드는 원래 순서를 지킨다. 음수는 그 절댓값이다. 0, NaN, inf는 `ValueError`다(`[numpy와 다름]`: numpy는 0만 에러이고 NaN이면 모든 값이 NaN, inf면 경고와 함께 감지 않은 값을 낸다).
+- **값**: 노드에서는 `fp`의 값 그대로다(0의 부호까지). 구간 안에서는 단조인 `fp`의 결과가 단조이고 구간의 두 끝값 사이에 있다. 오차는 |결과 − y| ≤ γ₆(|a| + |b|) + 3η다(y는 정확한 값, a·b는 구간의 끝값, γ₆ = 6u/(1 − 6u), u = 2⁻⁵³, η = 2⁻¹⁰⁷⁵). `[numpy와 다름]`: numpy의 식 fma(s, x − xⱼ, fⱼ)는 오른쪽 노드 바로 왼쪽에서 구간의 범위를 넘을 수 있고, 끝자리가 다를 수 있다.
+  - 끝값이 둘 다 −0이면 구간 안도 −0이다(`[numpy와 다름]`: numpy는 +0).
+  - 유한하지 않은 `fp`는 numpy와 같다: 노드에서는 그 값, 구간 안에서 한쪽 끝이 ±inf면 그 inf, 같은 부호의 inf 둘이면 그 inf, 반대 부호의 inf나 NaN 끝이 있으면 NaN이다.
+  - `x`의 NaN은 NaN이다(complex `fp`는 numpy처럼 허수부가 0인 NaN). `[numpy와 다름]`: numpy는 `xp`가 한 점이면 NaN에도 `fp[0]`을 낸다.
+- **결과**: `x`의 shape, `fp`의 dtype(bool·int64는 float64)이다. `x`가 Python 스칼라면 Python `float`·`complex`다(numpy는 `numpy.float64`). 스레드 수와 상관없이 같은 비트다.
+- `[numpy와 다름]`: `left`·`right`·`period`는 키워드만이다(numpy는 `interp(x, xp, fp, 0, 1)`도 받는다).
+
 ---
 
 ## §9. 행렬곱

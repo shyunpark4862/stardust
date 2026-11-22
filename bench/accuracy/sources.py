@@ -381,6 +381,9 @@ def sweeps(areas=None):
         "integrate": lambda: _module("integrate").sweeps(),
         "differentiate": lambda: _module("differentiate").sweeps(),
         "spatial": lambda: _module("spatial").sweeps(),
+        "graph": lambda: _module("graph").sweeps(),
+        "interpolate": lambda: _module("interpolate").sweeps(),
+        "fft": lambda: _module("fft").sweeps(),
     }
     out = []
     for a in check_areas(areas):

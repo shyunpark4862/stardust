@@ -1,10 +1,12 @@
 """stardust: a library that rebuilds arrays, linear algebra, dataframes,
 special functions, statistics, random numbers, regression, optimization, hypothesis tests,
-sparse arrays, numerical integration and differentiation, and spatial distances and neighbours.
+sparse arrays, numerical integration and differentiation, spatial distances and neighbours,
+graph algorithms, interpolation and Fourier transforms.
 
 Usage: ``import stardust as sd``. The top level is the array area (docs/api/array.md);
 the others are sd.linalg, sd.frame, sd.special, sd.stats, sd.random, sd.regression,
-sd.optimize, sd.htest, sd.sparse, sd.integrate, sd.differentiate, sd.spatial and sd.plot.
+sd.optimize, sd.htest, sd.sparse, sd.integrate, sd.differentiate, sd.spatial, sd.graph,
+sd.interpolate, sd.fft and sd.plot.
 """
 
 import math as _math
@@ -80,6 +82,7 @@ from ._core import (
     iinfo,
     imag,
     int64,
+    interp,
     isdtype,
     isfinite,
     isinf,
@@ -352,6 +355,7 @@ __all__ = [
     "nonzero",
     "count_nonzero",
     "searchsorted",
+    "interp",
     "diff",
     # sorting, sets, linear algebra
     "sort",
@@ -380,4 +384,7 @@ from . import sparse  # noqa: E402  (sd.sparse)
 from . import integrate  # noqa: E402  (sd.integrate)
 from . import differentiate  # noqa: E402  (sd.differentiate)
 from . import spatial  # noqa: E402  (sd.spatial)
+from . import graph  # noqa: E402  (sd.graph)
+from . import interpolate  # noqa: E402  (sd.interpolate)
+from . import fft  # noqa: E402  (sd.fft)
 from . import plot  # noqa: E402  (sd.plot; TeX is looked for when a figure is first drawn)

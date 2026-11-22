@@ -1,0 +1,363 @@
+{
+ "schema": 1,
+ "area": "fft",
+ "runs": {
+  "20261123-035501-a741a97+": {
+   "commit": "a741a97",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/__init__.py",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/tables.py",
+    "bench/areas.py",
+    "csrc/bind/module.cpp",
+    "docs/api/array.md",
+    "src/stardust/__init__.py",
+    "src/stardust/_results.py",
+    "tests/README.md",
+    "tests/golden/cases_array.py"
+   ],
+   "date": "2026-11-23T03:55:01",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": "boostorg/math 75cb4c4 2026-11-18",
+    "Boost in sd.special": "4682f44"
+   }
+  },
+  "20261123-040451-a741a97+": {
+   "commit": "a741a97",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/__init__.py",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/tables.py",
+    "bench/areas.py",
+    "csrc/bind/module.cpp",
+    "docs/api/array.md",
+    "src/stardust/__init__.py",
+    "src/stardust/_results.py",
+    "tests/README.md",
+    "tests/golden/cases_array.py",
+    "tests/golden/data/array.json"
+   ],
+   "date": "2026-11-23T04:04:51",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "fft/c2c",
+   "area": "fft",
+   "name": "c2c",
+   "points": 630,
+   "regions": {
+    "forward/pow2": {
+     "points": 81,
+     "rel_max": 2.400585742921273e-05,
+     "contract": 0.03991125541939779,
+     "bound": 1.0,
+     "worst": [
+      "c/sine_half/16"
+     ]
+    },
+    "forward/f2k": {
+     "points": 40,
+     "rel_max": 2.209257155691875e-05,
+     "contract": 0.04122550869478341,
+     "bound": 1.0,
+     "worst": [
+      "c/huge/24"
+     ]
+    },
+    "forward/mixed": {
+     "points": 97,
+     "rel_max": 3.505655791343367e-05,
+     "contract": 0.05357142857142857,
+     "bound": 1.0,
+     "worst": [
+      "c/tiny/7"
+     ]
+    },
+    "forward/bluestein": {
+     "points": 99,
+     "rel_max": 9.911940236217186e-05,
+     "contract": 0.05,
+     "bound": 1.0,
+     "worst": [
+      "c/tiny/13"
+     ]
+    },
+    "backward/pow2": {
+     "points": 79,
+     "rel_max": 2.400585742921273e-05,
+     "contract": 0.03723290268670736,
+     "bound": 1.0,
+     "worst": [
+      "c/sine_half/8"
+     ]
+    },
+    "backward/f2k": {
+     "points": 40,
+     "rel_max": 2.5046100478693596e-05,
+     "contract": 0.041666666666666664,
+     "bound": 1.0,
+     "worst": [
+      "c/tiny/24"
+     ]
+    },
+    "backward/mixed": {
+     "points": 97,
+     "rel_max": 3.505655791343367e-05,
+     "contract": 0.05357142857142857,
+     "bound": 1.0,
+     "worst": [
+      "c/tiny/7"
+     ]
+    },
+    "backward/bluestein": {
+     "points": 97,
+     "rel_max": 8.023239220533123e-05,
+     "contract": 0.029977116704805493,
+     "bound": 1.0,
+     "worst": [
+      "c/tiny/127"
+     ]
+    }
+   },
+   "run": "20261123-040451-a741a97+",
+   "comparators": {
+    "numpy": {
+     "forward/pow2": {
+      "points": 81,
+      "rel_max": 2.4689007978859198e-05,
+      "contract": 0.041259765625,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/1024"
+      ]
+     },
+     "forward/f2k": {
+      "points": 40,
+      "rel_max": 1.8784575359020198e-05,
+      "contract": 0.03277305172173066,
+      "bound": 1.0,
+      "worst": [
+       "c/huge/40"
+      ]
+     },
+     "forward/mixed": {
+      "points": 97,
+      "rel_max": 3.505655791343367e-05,
+      "contract": 0.05357142857142857,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/7"
+      ]
+     },
+     "forward/bluestein": {
+      "points": 99,
+      "rel_max": 8.451961926973824e-05,
+      "contract": 0.031578947368421054,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/127"
+      ]
+     },
+     "backward/pow2": {
+      "points": 79,
+      "rel_max": 2.4981185588076465e-05,
+      "contract": 0.041748046875,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/1024"
+      ]
+     },
+     "backward/f2k": {
+      "points": 40,
+      "rel_max": 2.0818902048958488e-05,
+      "contract": 0.034375,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/120"
+      ]
+     },
+     "backward/mixed": {
+      "points": 97,
+      "rel_max": 3.505655791343367e-05,
+      "contract": 0.05357142857142857,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/7"
+      ]
+     },
+     "backward/bluestein": {
+      "points": 97,
+      "rel_max": 8.268223624213523e-05,
+      "contract": 0.030892448512585814,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/127"
+      ]
+     }
+    },
+    "scipy": {
+     "forward/pow2": {
+      "points": 81,
+      "rel_max": 2.4689007978859198e-05,
+      "contract": 0.041259765625,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/1024"
+      ]
+     },
+     "forward/f2k": {
+      "points": 40,
+      "rel_max": 1.8784575359020198e-05,
+      "contract": 0.03284513891638803,
+      "bound": 1.0,
+      "worst": [
+       "c/huge/40"
+      ]
+     },
+     "forward/mixed": {
+      "points": 97,
+      "rel_max": 3.505655791343367e-05,
+      "contract": 0.05357142857142857,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/7"
+      ]
+     },
+     "forward/bluestein": {
+      "points": 99,
+      "rel_max": 8.451961926973824e-05,
+      "contract": 0.031578947368421054,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/127"
+      ]
+     },
+     "backward/pow2": {
+      "points": 79,
+      "rel_max": 2.4981185588076465e-05,
+      "contract": 0.041748046875,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/1024"
+      ]
+     },
+     "backward/f2k": {
+      "points": 40,
+      "rel_max": 2.0818902048958488e-05,
+      "contract": 0.034375,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/120"
+      ]
+     },
+     "backward/mixed": {
+      "points": 97,
+      "rel_max": 3.505655791343367e-05,
+      "contract": 0.05357142857142857,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/7"
+      ]
+     },
+     "backward/bluestein": {
+      "points": 97,
+      "rel_max": 8.268223624213523e-05,
+      "contract": 0.030892448512585814,
+      "bound": 1.0,
+      "worst": [
+       "c/tiny/127"
+      ]
+     }
+    },
+    "R": {
+     "forward/pow2": {
+      "points": 81,
+      "rel_max": 2.400585742921273e-05,
+      "contract": 0.08368052411250154,
+      "bound": 1.0,
+      "worst": [
+       "c/normal/8"
+      ]
+     },
+     "forward/f2k": {
+      "points": 40,
+      "rel_max": 2.90202877046088e-05,
+      "contract": 0.08578546480825054,
+      "bound": 1.0,
+      "worst": [
+       "c/uniform/768"
+      ]
+     },
+     "forward/mixed": {
+      "points": 97,
+      "rel_max": 3.505655791343367e-05,
+      "contract": 0.1080658642353719,
+      "bound": 1.0,
+      "worst": [
+       "c/uniform/63"
+      ]
+     },
+     "forward/bluestein": {
+      "points": 99,
+      "rel_max": 3.3072894496854094e-05,
+      "contract": 2.8634331575418983,
+      "bound": 1.0,
+      "worst": [
+       "c/uniform/65537"
+      ]
+     }
+    }
+   },
+   "comparators_run": "20261123-035501-a741a97+",
+   "comparator_seconds": 600.0
+  }
+ ]
+}

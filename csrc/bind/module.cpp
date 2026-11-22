@@ -3,7 +3,10 @@
 #include "bind/array_bind.hpp"
 #include "bind/differentiate_bind.hpp"
 #include "bind/errors.hpp"
+#include "bind/fft_bind.hpp"
 #include "bind/frame_bind.hpp"
+#include "bind/graph_bind.hpp"
+#include "bind/interpolate_bind.hpp"
 #include "bind/htest_bind.hpp"
 #include "bind/integrate_bind.hpp"
 #include "bind/linalg_bind.hpp"
@@ -25,6 +28,7 @@
 #include "array/ops/manipulation.hpp"
 #include "array/ops/quantile.hpp"
 #include "array/ops/searching.hpp"
+#include "array/ops/interp.hpp"
 #include "array/ops/reduction.hpp"
 #include "array/ops/shape.hpp"
 #include "array/ops/sort.hpp"
@@ -132,6 +136,7 @@ NB_MODULE(_core, m) {
     sd::bind_covariance(m);
     sd::bind_manipulation(m);
     sd::bind_searching(m);
+    sd::bind_interp(m);
     sd::bind_dtype_info(m);
     sd::bind_histogram(m);
     sd::bind_sort(m);
@@ -176,5 +181,8 @@ NB_MODULE(_core, m) {
     sd::bind_htest(m);  // after stats (its distributions) and the array
     sd::bind_sparse(m);  // after linalg (its LinAlgError) and the array
     sd::bind_spatial(m);  // after the array (it returns ndarrays)
+    sd::bind_graph(m);  // after the array (it returns ndarrays)
+    sd::bind_interpolate(m);  // after the array (it returns ndarrays)
+    sd::bind_fft(m);  // after the array (it returns ndarrays)
     sd::bind_plot(m);  // on its own: the rasterizer takes plain numbers and bytes
 }

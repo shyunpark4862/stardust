@@ -263,6 +263,7 @@ def cases(L):
         covariance,
         counting,
         index_more,
+        interp_cases,
         tensordot_vecdot,
         threads,
         printing,
@@ -2541,6 +2542,83 @@ def index_more(c):
         lambda: A.searchsorted(c.lit([1.0, 2.0]), probes["f"], sorter=c.lit([0, 5], "i")),
     )
     yield "searchsorted list err", lambda: A.searchsorted([1.0, 2.0], 1.5)
+
+
+# ---------------------------------------------------------------- interp (docs/api/array.md §8.5)
+
+
+def interp_cases(c):
+    A = c.A
+    xp = c.lit([-2.0, -0.5, 0.0, 1.5, 4.0])
+    fp = c.lit([3.0, -1.0, 0.0, 2.5, -4.0])
+    x = c.lit([-3.0, -2.0, -1.0, -0.5, -0.25, 0.0, 0.7, 1.5, 3.9, 4.0, 5.0, NAN, INF, -INF, -0.0])
+    yield "interp basic", lambda: A.interp(x, xp, fp)
+    yield "interp left right", lambda: A.interp(x, xp, fp, left=-9.5, right=NAN)
+    yield "interp scalar", lambda: A.interp(0.7, xp, fp)
+    yield "interp scalar int", lambda: A.interp(1, xp, fp)
+    yield "interp scalar nan", lambda: A.interp(NAN, xp, fp)
+    yield "interp 2d points", lambda: A.interp(c.S("f", (3, 4), 500), xp, fp)
+    yield "interp F-order points", lambda: A.interp(c.S("f", (6, 4), 501).T, xp, fp)
+    yield "interp strided", lambda: A.interp(c.S("f", (40,), 502)[::3], xp[::2], fp[::2])
+    yield "interp int inputs", lambda: A.interp(c.lit([0, 1, 3, 9], "i"), c.lit([0, 2, 4], "i"), c.lit([1, 0, 5], "i"))
+    yield "interp bool values", lambda: A.interp(x, c.lit([0.0, 1.0]), c.lit([True, False]))
+    yield "interp complex", lambda: A.interp(x, xp, fp + 1j * fp[::-1])
+    yield "interp complex left", lambda: A.interp(x, xp, fp + 1j, left=2 - 3j, right=1)
+    yield "interp one node", lambda: A.interp(x, c.lit([0.5]), c.lit([7.0]))
+    yield "interp one node left right", lambda: A.interp(x, c.lit([0.5]), c.lit([7.0]), left=1.0, right=2.0)
+    yield (
+        "interp repeated nodes",
+        lambda: A.interp(x, c.lit([-1.0, 0.0, 0.0, 0.0, 2.0]), c.lit([1.0, 2.0, 3.0, 4.0, 5.0])),
+    )
+    yield "interp signed zeros", lambda: A.interp(c.lit([0.0, 0.5, 1.0]), c.lit([0.0, 1.0]), c.lit([-0.0, -0.0]))
+    nf = c.lit([0.0, 0.25, 1.0, 1.5, 2.0])
+    yield "interp nonfinite values", lambda: A.interp(nf, c.lit([0.0, 1.0, 2.0]), c.lit([INF, 1.0, NAN]))
+    yield "interp opposite infinities", lambda: A.interp(nf, c.lit([0.0, 2.0]), c.lit([-INF, INF]))
+    yield (
+        "interp wide interval",
+        lambda: A.interp(c.lit([0.0, 1e307, 1.4e308]), c.lit([-1e308, 1.5e308]), c.lit([2.0, -3.0])),
+    )
+    yield (
+        "interp subnormal width",
+        lambda: A.interp(c.lit([1e-310, 1.00000000000001e-310]), c.lit([1e-310, 1e-310 + 3e-320]), c.lit([-1.0, 2.0])),
+    )
+    yield (
+        "interp period",
+        lambda: A.interp(
+            c.lit([-180.0, -10.0, 5.0, 190.0, 370.0, NAN]),
+            c.lit([-170.0, 10.0, 170.0, 350.0]),
+            c.lit([0.0, 1.0, 2.0, 3.0]),
+            period=-360.0,
+        ),
+    )
+    yield (
+        "interp period unsorted",
+        lambda: A.interp(c.lit([5.0, 175.0]), c.lit([190.0, -10.0, 10.0]), c.lit([1.0, 2.0, 3.0]), period=360),
+    )
+    yield (
+        "interp period complex",
+        lambda: A.interp(c.S("f", (50,), 503), c.S("f", (12,), 504), c.S("c", (12,), 505), period=0.75),
+    )
+    yield "interp empty points", lambda: A.interp(c.S("f", (0, 3), 506), xp, fp)
+    big_xp = A.sort(c.S("f", (100_000,), 507))
+    big_fp = c.S("f", (100_000,), 508)
+    big_x = c.S("f", (300_000,), 509)
+    yield "interp large", lambda: A.interp(big_x, big_xp, big_fp)
+    yield "interp large sorted", lambda: A.interp(A.sort(big_x), big_xp, big_fp)
+    yield "interp large small xp", lambda: A.interp(big_x, xp, fp)
+    yield "interp large complex", lambda: A.interp(big_x, big_xp, big_fp + 1j * big_fp[::-1])
+    yield "interp large period", lambda: A.interp(big_x, big_xp, big_fp, period=0.37)
+    yield "interp unsorted xp err", lambda: A.interp(x, c.lit([0.0, 2.0, 1.0]), fp[:3])
+    yield "interp nan xp err", lambda: A.interp(x, c.lit([0.0, NAN]), fp[:2])
+    yield "interp empty xp err", lambda: A.interp(x, c.S("f", (0,), 510), c.S("f", (0,), 510))
+    yield "interp length err", lambda: A.interp(x, xp, fp[:3])
+    yield "interp 2d xp err", lambda: A.interp(x, c.S("f", (2, 3), 511), c.S("f", (2, 3), 512))
+    yield "interp complex x err", lambda: A.interp(c.lit([1j]), xp, fp)
+    yield "interp complex xp err", lambda: A.interp(x, xp + 0j, fp)
+    yield "interp list err", lambda: A.interp([0.5], xp, fp)
+    yield "interp period zero err", lambda: A.interp(x, xp, fp, period=0)
+    yield "interp period nan err", lambda: A.interp(x, xp, fp, period=NAN)
+    yield "interp left complex err", lambda: A.interp(x, xp, fp, left=1j)
 
 
 # ---------------------------------------------------------------- tensordot, vecdot

@@ -36,6 +36,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/array/ops/quantile.cpp
   csrc/array/ops/reduction.cpp
   csrc/array/ops/searching.cpp
+  csrc/array/ops/interp.cpp
   csrc/array/ops/shape.cpp
   csrc/array/ops/sort.cpp
   csrc/array/ops/ufunc.cpp
@@ -107,6 +108,13 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/spatial/query.cpp
   csrc/spatial/dual.cpp
   csrc/spatial/sphere.cpp
+  csrc/graph/input.cpp
+  csrc/graph/traversal.cpp
+  csrc/interpolate/linear.cpp
+  csrc/fft/plan.cpp
+  csrc/fft/driver.cpp
+  csrc/fft/basic.cpp
+  csrc/fft/helper.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -139,6 +147,9 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/integrate_bind.cpp
   csrc/bind/sparse_bind.cpp
   csrc/bind/spatial_bind.cpp
+  csrc/bind/graph_bind.cpp
+  csrc/bind/interpolate_bind.cpp
+  csrc/bind/fft_bind.cpp
   csrc/bind/plot_bind.cpp
   csrc/plot/levels.cpp
   csrc/plot/raster.cpp

@@ -19,6 +19,9 @@ HEAD = {
     "integrate": "sd.integrate",
     "differentiate": "sd.differentiate",
     "spatial": "sd.spatial",
+    "graph": "sd.graph",
+    "interpolate": "sd.interpolate",
+    "fft": "sd.fft",
 }
 MV = "mv/"  # the stats area's multivariate group: its sweeps' name prefix
 MV_HEAD = "sd.stats 다변량·행렬 분포"
@@ -115,6 +118,16 @@ INTRO = {
         "d₍ₖ₎(1 + η), 빠진 점 ≥ d₍ₖ₎(1 − η))를 ηd₍ₖ₎ 단위로 잰다. 비교 패키지는 scipy의 KDTree.query와 scikit-learn의 "
         "NearestNeighbors(algorithm='brute')다. kdtree 묶음(SPT3)은 같은 점과 판정을 sd.spatial.KDTree(X).query(Q, k=5, "
         "p=1·2·inf)로 재고, 비교 패키지는 scipy와 scikit-learn의 KDTree.query다."
+    ),
+    "interpolate": (
+        "참값은 tests/interpolate/ref의 정확한 유리수 참값이다(tools/interpolate_ref.py; 시험 데이터는 "
+        "tests/interpolate/samples.py). linear 묶음(IP1)은 linear.npz의 정확한 a + t(b − a)를 한 번 반올림한 값과 "
+        "sd.interp를 견준다: curves 영역은 실수 곡선마다 [x[0], x[-1]] 안의 평가점(곡선 전체로 부른다), intervals 영역은 "
+        "선형 커널의 구간(끝점 둘레의 이웃 double, 반대 부호, 거의 같은 값, ±0, 비정상 수와 넘치는 폭)의 안쪽 점(두 노드로 "
+        "부른다)이다. 바깥은 sd.interp가 numpy처럼 끝값으로 자르므로 재지 않는다. 계약은 tests/interpolate/refdata.py의 "
+        "linear_bound다(docs/design/interpolate.md §4: γ₆(|a| + |b|) + 3η). 비교 패키지는 numpy 2.5.4의 interp, scipy "
+        "1.18.1의 make_interp_spline(k=1), R 4.6.2의 approx(rule = 2)이고 같은 점에서 그 자리에서 잰다. 비교 패키지가 "
+        "유한하지 않은 값을 낸 점(numpy의 기울기가 비정상 수 간격에서 넘치는 곳 등)은 excluded로 센다."
     ),
     "htest": (
         "참값은 tests/htest/ref의 Arb와 정확한 유리수 참값이다(tools/htest_ref.py; 문제는 tests/htest/problems.py). "

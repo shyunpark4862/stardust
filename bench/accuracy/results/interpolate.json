@@ -1,0 +1,73 @@
+{
+ "schema": 1,
+ "area": "interpolate",
+ "runs": {
+  "20261123-040451-a741a97+": {
+   "commit": "a741a97",
+   "dirty": true,
+   "changed": [
+    "API.md",
+    "ARCHITECTURE.md",
+    "CMakeLists.txt",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
+    "bench/accuracy/__init__.py",
+    "bench/accuracy/sources.py",
+    "bench/accuracy/tables.py",
+    "bench/areas.py",
+    "csrc/bind/module.cpp",
+    "docs/api/array.md",
+    "src/stardust/__init__.py",
+    "src/stardust/_results.py",
+    "tests/README.md",
+    "tests/golden/cases_array.py",
+    "tests/golden/data/array.json"
+   ],
+   "date": "2026-11-23T04:04:51",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "ca7bc42e79f8787828558247f67e206132d2d8dffbc91df5fd67a7c324b31431",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "interpolate/linear",
+   "area": "interpolate",
+   "name": "linear",
+   "points": 2808,
+   "regions": {
+    "curves": {
+     "points": 1736,
+     "ulp_max": 45150224914769.0,
+     "ulp_p999": 59.0,
+     "rel_max": 0.005162326363232884,
+     "contract": 0.23491625849761733,
+     "bound": 1.0,
+     "worst": [
+      "curve/uniform/50#73"
+     ]
+    },
+    "intervals": {
+     "points": 1072,
+     "ulp_max": 5619883.0,
+     "ulp_p999": 4919897.0,
+     "rel_max": 0.0007204610951008645,
+     "contract": 0.5,
+     "bound": 1.0,
+     "worst": [
+      "lerp/tiny-values#14"
+     ]
+    }
+   },
+   "run": "20261123-040451-a741a97+"
+  }
+ ]
+}

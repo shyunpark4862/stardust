@@ -19,6 +19,9 @@ AREAS = (
     "integrate",
     "differentiate",
     "spatial",
+    "graph",
+    "interpolate",
+    "fft",
     "plot",
 )
 
