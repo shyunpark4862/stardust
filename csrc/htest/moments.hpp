@@ -23,6 +23,7 @@
 #include <arm_neon.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -64,6 +65,41 @@ struct Acc {
     void add(DD v) { add(v.hi, v.lo); }
     void add(const Acc& o) { add(o.hi, o.lo); }
     DD value() const { return std::isfinite(hi) ? dd::two_sum(hi, lo) : DD{hi, 0.0}; }
+};
+
+// n default-constructed T, on the stack up to N (a lane's per-block parts: one block for a
+// sample up to kBlock, where a heap vector per lane cost more than the lane's sums -- macOS's
+// free() reads the clock)
+template <class T, std::size_t N>
+struct SmallBuf {
+    T local[N];
+    std::vector<T> heap;
+    T* p;
+    explicit SmallBuf(std::size_t n) : local{}, p(local) {
+        if (n > N) heap.resize(n), p = heap.data();
+    }
+    T& operator[](std::size_t i) { return p[i]; }
+    const T& operator[](std::size_t i) const { return p[i]; }
+    SmallBuf(const SmallBuf&) = delete;
+    SmallBuf& operator=(const SmallBuf&) = delete;
+};
+
+// A lane kernel's buffer, the thread's own (Slot: one per buffer a lane holds at once), cleared:
+// a batch's short lanes would otherwise allocate and free each buffer per lane (macOS's free()
+// reads the clock, ~100 ns a pair). One grown past 2^16 elements is given back after the lane.
+template <class T, int Slot>
+struct LaneBuf {
+    std::vector<T>& v;
+    LaneBuf() : v(store()) { v.clear(); }
+    ~LaneBuf() {
+        if (v.capacity() > (1u << 16)) std::vector<T>().swap(v);
+    }
+    static std::vector<T>& store() {
+        thread_local std::vector<T> s;
+        return s;
+    }
+    LaneBuf(const LaneBuf&) = delete;
+    LaneBuf& operator=(const LaneBuf&) = delete;
 };
 
 // x = a + b of two doubles, normalized.
@@ -251,6 +287,11 @@ template <class Src>
 inline bool contig(const Src&, std::int64_t, const double*&, const double*&, bool&) {
     return false;
 }
+// A source of paired differences (Diff below) whose two lanes are contiguous: their rows.
+template <class Src>
+inline bool contig_pair(const Src&, std::int64_t, const double*&, const double*&) {
+    return false;
+}
 
 namespace neon {
 // chains (c[i], c[i + 1]) as registers
@@ -269,6 +310,16 @@ inline void add(float64x2_t& hi, float64x2_t& lo, float64x2_t x, float64x2_t y, 
     hi = vbslq_f64(ok, s, hi), lo = vbslq_f64(ok, nl, lo);
 }
 inline float64x2_t low(const double* xl, std::int64_t j) { return xl ? vld1q_f64(xl + j) : vdupq_n_f64(0.0); }
+// Diff::get on two lanes: h + l = x - y (two_sum, l = 0 where h is not finite), ok where neither
+// is NaN
+inline void diff(float64x2_t x, float64x2_t y, float64x2_t& h, float64x2_t& l, uint64x2_t& ok) {
+    const float64x2_t ny = vnegq_f64(y);
+    const float64x2_t s = vaddq_f64(x, ny), bb = vsubq_f64(s, x);
+    const float64x2_t e = vaddq_f64(vsubq_f64(x, vsubq_f64(s, bb)), vsubq_f64(ny, bb));
+    const uint64x2_t fin = vcleq_f64(vabsq_f64(s), vdupq_n_f64(std::numeric_limits<double>::max()));
+    h = s, l = vbslq_f64(fin, e, vdupq_n_f64(0.0));
+    ok = vandq_u64(vceqq_f64(x, x), vceqq_f64(y, y));
+}
 // the lanes kept: not NaN, or all of them
 inline uint64x2_t kept(float64x2_t u, bool skip) { return skip ? vceqq_f64(u, u) : vdupq_n_u64(~0ull); }
 }  // namespace neon
@@ -279,7 +330,20 @@ inline void block_max(const Src& src, std::int64_t r, std::int64_t j0, std::int6
     const double *x, *xl;
     bool skip;
     std::int64_t j = j0;
-    if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
+    if ((j0 & 3) == 0 && contig_pair(src, r, x, xl)) {
+        float64x2_t m01 = float64x2_t{m[0], m[1]}, m23 = float64x2_t{m[2], m[3]};
+        const float64x2_t zero = vdupq_n_f64(0.0);
+        for (; j + 4 <= j1; j += 4) {
+            float64x2_t ha, la, hb, lb;
+            uint64x2_t oka, okb;
+            neon::diff(vld1q_f64(x + j), vld1q_f64(xl + j), ha, la, oka);
+            neon::diff(vld1q_f64(x + j + 2), vld1q_f64(xl + j + 2), hb, lb, okb);
+            m01 = vmaxq_f64(m01, vbslq_f64(vandq_u64(oka, vceqq_f64(ha, ha)), vabsq_f64(ha), zero));
+            m23 = vmaxq_f64(m23, vbslq_f64(vandq_u64(okb, vceqq_f64(hb, hb)), vabsq_f64(hb), zero));
+        }
+        m[0] = vgetq_lane_f64(m01, 0), m[1] = vgetq_lane_f64(m01, 1);
+        m[2] = vgetq_lane_f64(m23, 0), m[3] = vgetq_lane_f64(m23, 1);
+    } else if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
         float64x2_t m01 = float64x2_t{m[0], m[1]}, m23 = float64x2_t{m[2], m[3]};
         const float64x2_t zero = vdupq_n_f64(0.0);
         for (; j + 4 <= j1; j += 4) {
@@ -305,7 +369,29 @@ inline void block_sum(
     const double *x, *xl;
     bool skip;
     std::int64_t j = j0;
-    if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
+    if ((j0 & 3) == 0 && contig_pair(src, r, x, xl)) {
+        float64x2_t h01, l01, h23, l23;
+        neon::load(a, 0, h01, l01);
+        neon::load(a, 2, h23, l23);
+        const float64x2_t vf = vdupq_n_f64(f);
+        int64x2_t nc = vdupq_n_s64(0);
+        uint64x2_t all = vdupq_n_u64(~0ull);
+        for (; j + 4 <= j1; j += 4) {
+            float64x2_t hu, lu, hv, lv;
+            uint64x2_t oku, okv;
+            neon::diff(vld1q_f64(x + j), vld1q_f64(xl + j), hu, lu, oku);
+            neon::diff(vld1q_f64(x + j + 2), vld1q_f64(xl + j + 2), hv, lv, okv);
+            neon::add(h01, l01, vmulq_f64(hu, vf), vmulq_f64(lu, vf), oku);
+            neon::add(h23, l23, vmulq_f64(hv, vf), vmulq_f64(lv, vf), okv);
+            nc = vsubq_s64(nc, vreinterpretq_s64_u64(oku));
+            nc = vsubq_s64(nc, vreinterpretq_s64_u64(okv));
+            all = vandq_u64(all, vandq_u64(oku, okv));
+        }
+        neon::store(a, 0, h01, l01);
+        neon::store(a, 2, h23, l23);
+        cnt += vgetq_lane_s64(nc, 0) + vgetq_lane_s64(nc, 1);
+        if (!(vgetq_lane_u64(all, 0) & vgetq_lane_u64(all, 1))) nan = true;
+    } else if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
         float64x2_t h01, l01, h23, l23;
         neon::load(a, 0, h01, l01);
         neon::load(a, 2, h23, l23);
@@ -343,7 +429,8 @@ inline void block_ss(const Src& src, std::int64_t r, std::int64_t j0, std::int64
     const double *x, *xl;
     bool skip;
     std::int64_t j = j0;
-    if ((j0 & 3) == 0 && contig(src, r, x, xl, skip)) {
+    const bool pair = (j0 & 3) == 0 && contig_pair(src, r, x, xl);
+    if (pair || ((j0 & 3) == 0 && contig(src, r, x, xl, skip))) {
         float64x2_t h01, l01, h23, l23;
         neon::load(a, 0, h01, l01);
         neon::load(a, 2, h23, l23);
@@ -359,13 +446,26 @@ inline void block_ss(const Src& src, std::int64_t r, std::int64_t j0, std::int64
             const float64x2_t pl = vfmaq_f64(vnegq_f64(p), s, s);
             q = vaddq_f64(pl, vmulq_f64(dl, vaddq_f64(vmulq_f64(two, s), dl)));
         };
-        for (; j + 4 <= j1; j += 4) {
-            const float64x2_t u = vld1q_f64(x + j), v = vld1q_f64(x + j + 2);
-            float64x2_t pu, qu, pv, qv;
-            sq(u, neon::low(xl, j), pu, qu);
-            sq(v, neon::low(xl, j + 2), pv, qv);
-            neon::add(h01, l01, pu, qu, neon::kept(u, skip));
-            neon::add(h23, l23, pv, qv, neon::kept(v, skip));
+        if (pair) {
+            for (; j + 4 <= j1; j += 4) {
+                float64x2_t hu, lu, hv, lv, pu, qu, pv, qv;
+                uint64x2_t oku, okv;
+                neon::diff(vld1q_f64(x + j), vld1q_f64(xl + j), hu, lu, oku);
+                neon::diff(vld1q_f64(x + j + 2), vld1q_f64(xl + j + 2), hv, lv, okv);
+                sq(hu, lu, pu, qu);
+                sq(hv, lv, pv, qv);
+                neon::add(h01, l01, pu, qu, oku);
+                neon::add(h23, l23, pv, qv, okv);
+            }
+        } else {
+            for (; j + 4 <= j1; j += 4) {
+                const float64x2_t u = vld1q_f64(x + j), v = vld1q_f64(x + j + 2);
+                float64x2_t pu, qu, pv, qv;
+                sq(u, neon::low(xl, j), pu, qu);
+                sq(v, neon::low(xl, j + 2), pv, qv);
+                neon::add(h01, l01, pu, qu, neon::kept(u, skip));
+                neon::add(h23, l23, pv, qv, neon::kept(v, skip));
+            }
         }
         neon::store(a, 0, h01, l01);
         neon::store(a, 2, h23, l23);
@@ -379,13 +479,92 @@ inline void block_ss(const Src& src, std::int64_t r, std::int64_t j0, std::int64
     });
 }
 
+// The sum of squared deviations in double: d = (x f - mean.hi) + (l f - mean.lo), within ~1.5 eps of the double-double
+// deviation (one rounded subtraction of doubles is within eps/2 of its result, whatever the
+// cancellation), d^2 within 2.5 eps, and the squares, all positive, summed by a fixed tree: 64
+// elements as eight NEON lanes of eight (7 eps), the lanes pairwise (3), the 64-element sums
+// pairwise (7 more for a block of 8192): the block's sum within ~20 eps of the exact one, against
+// 2048 eps for one chain. The statistics that only take ratios, roots and sums of ss (t, F, Welch,
+// Alexander-Govern, Levene's F of |x - c|) keep their contract with it; Bartlett's, whose terms
+// cancel when the variances agree, asks for the double-double sums (exact_ss).
+template <class Src>
+inline double block_ss_plain(const Src& src, std::int64_t r, std::int64_t j0, std::int64_t j1, double f, DD mean) {
+    const double *x, *xl;
+    bool skip = false;
+    const bool pair = (j0 & 3) == 0 && contig_pair(src, r, x, xl);
+    const bool flat = !pair && (j0 & 3) == 0 && contig(src, r, x, xl, skip);
+    // any other layout: the block's elements gathered first (with whether each is kept), so a lane
+    // gives the same bits alone and inside a batch
+    thread_local std::vector<double> gh, gl;
+    thread_local std::vector<std::uint64_t> gk;
+    if (!pair && !flat) {
+        const auto m = static_cast<std::size_t>(j1 - j0);
+        gh.resize(m), gl.resize(m), gk.resize(m);
+        for (std::int64_t j = j0; j < j1; ++j) {
+            double h, l;
+            const bool ok = src.get(r, j, h, l);
+            const auto q = static_cast<std::size_t>(j - j0);
+            gh[q] = ok ? h : 0.0, gl[q] = ok ? l : 0.0, gk[q] = ok ? ~0ull : 0ull;
+        }
+    }
+    const float64x2_t vf = vdupq_n_f64(f), nmh = vdupq_n_f64(-mean.hi), nml = vdupq_n_f64(-mean.lo);
+    const float64x2_t zero = vdupq_n_f64(0.0);
+    // the squared deviation of the two elements from j, zero where left out
+    auto sq = [&](std::int64_t j) {
+        float64x2_t h, l;
+        uint64x2_t ok;
+        if (pair) {
+            neon::diff(vld1q_f64(x + j), vld1q_f64(xl + j), h, l, ok);
+        } else if (flat) {
+            h = vld1q_f64(x + j), l = neon::low(xl, j), ok = neon::kept(h, skip);
+        } else {
+            const auto q = static_cast<std::size_t>(j - j0);
+            h = vld1q_f64(gh.data() + q), l = vld1q_f64(gl.data() + q), ok = vld1q_u64(gk.data() + q);
+        }
+        const float64x2_t d = vaddq_f64(vaddq_f64(vmulq_f64(h, vf), nmh), vaddq_f64(vmulq_f64(l, vf), nml));
+        return vbslq_f64(ok, vmulq_f64(d, d), zero);
+    };
+    double part[kBlock / 64 + 1];
+    int np = 0;
+    std::int64_t j = j0;
+    for (; j + 64 <= j1; j += 64) {
+        float64x2_t a0 = sq(j), a1 = sq(j + 2), a2 = sq(j + 4), a3 = sq(j + 6);
+        for (std::int64_t k = j + 8; k < j + 64; k += 8) {
+            a0 = vaddq_f64(a0, sq(k)), a1 = vaddq_f64(a1, sq(k + 2));
+            a2 = vaddq_f64(a2, sq(k + 4)), a3 = vaddq_f64(a3, sq(k + 6));
+        }
+        const float64x2_t t = vaddq_f64(vaddq_f64(a0, a1), vaddq_f64(a2, a3));
+        part[np++] = vgetq_lane_f64(t, 0) + vgetq_lane_f64(t, 1);
+    }
+    // the rest (fewer than 64) in order, then the parts pairwise
+    double rest = 0.0;
+    for (; j < j1; ++j) {
+        double h, l;
+        if (src.get(r, j, h, l)) {
+            const double d = (h * f - mean.hi) + (l * f - mean.lo);
+            rest += d * d;
+        }
+    }
+    part[np++] = rest;
+    for (int w = 1; w < np; w *= 2)
+        for (int i = 0; i + w < np; i += 2 * w) part[i] += part[i + w];
+    return part[0];
+}
+
 // The moments of every lane of a source: src.get(r, j, h, l) sets element j of lane r to
 // h + l and returns false for a NaN element (left out; the lane is bad unless omit). Two
 // passes over (lane, block) items on the pool, combined in order. unit: per-lane exponents e
-// (the values taken as x 2^-e; unit_exponent), or null.
+// (the values taken as x 2^-e; unit_exponent), or null. The mean is a double-double; ss is
+// block_ss_plain's double unless exact_ss.
 template <class Src>
 void lane_moments(
-    const Src& src, std::int64_t lanes, std::int64_t n, bool omit, Moments* out, const int* unit = nullptr
+    const Src& src,
+    std::int64_t lanes,
+    std::int64_t n,
+    bool omit,
+    Moments* out,
+    const int* unit = nullptr,
+    bool exact_ss = false
 ) {
     const std::int64_t nb = blocks_of(n);
     const std::int64_t items = lanes * nb;
@@ -394,8 +573,8 @@ void lane_moments(
         std::int64_t cnt = 0;
         bool nan = false;
     };
-    std::vector<Part> p1(static_cast<std::size_t>(items));
-    std::vector<Acc> p2(static_cast<std::size_t>(items));
+    SmallBuf<Part, 4> p1(static_cast<std::size_t>(items));
+    SmallBuf<Acc, 4> p2(static_cast<std::size_t>(items));
     auto factor = [&](std::int64_t r) { return unit && unit[r] ? std::ldexp(1.0, -unit[r]) : 1.0; };
     each_block(lanes, n, [&](std::int64_t it, std::int64_t r, std::int64_t j0, std::int64_t j1) {
         const double f = factor(r);
@@ -423,6 +602,10 @@ void lane_moments(
         if (m.bad || m.n == 0 || !std::isfinite(m.mean.hi)) return;
         const double f = factor(r);
         const DD mean = m.mean;
+        if (!exact_ss) {
+            p2[static_cast<std::size_t>(it)] = Acc{block_ss_plain(src, r, j0, j1, f, mean), 0.0};
+            return;
+        }
         Acc4 a;
         block_ss(src, r, j0, j1, f, mean, a);
         p2[static_cast<std::size_t>(it)] = a.total();
@@ -483,6 +666,13 @@ struct Diff {
         return true;
     }
 };
+inline bool contig_pair(const Diff& d, std::int64_t r, const double*& x, const double*& y) {
+    const auto z = static_cast<std::int64_t>(sizeof(double));
+    if (d.a.s1 != z || d.b.s1 != z) return false;
+    x = reinterpret_cast<const double*>(d.a.data + r * d.a.s0),
+    y = reinterpret_cast<const double*>(d.b.data + r * d.b.s0);
+    return true;
+}
 
 // One lane of double-doubles (hi[j] + lo[j], no NaNs; lo may be null): levene's deviations.
 struct Vec {
@@ -501,6 +691,16 @@ inline bool contig(const Vec& v, std::int64_t, const double*& hi, const double*&
 // A lane's values without its NaNs (all of them under propagate: the caller has checked).
 inline bool gather(const Rows& a, std::int64_t r, bool omit, std::vector<double>& v) {
     v.clear();
+    if (a.s1 == static_cast<std::int64_t>(sizeof(double))) {  // a contiguous lane without NaN: one copy
+        const auto* x = reinterpret_cast<const double*>(a.data + r * a.s0);
+        bool nan = false;
+        for (std::int64_t j = 0; j < a.n; ++j) nan |= x[j] != x[j];
+        if (!nan) {
+            v.assign(x, x + a.n);
+            return false;
+        }
+    }
+    v.reserve(static_cast<std::size_t>(a.n));
     bool nan = false;
     for (std::int64_t j = 0; j < a.n; ++j) {
         const double x = a.at(r, j);
@@ -511,6 +711,110 @@ inline bool gather(const Rows& a, std::int64_t r, bool omit, std::vector<double>
         v.push_back(x);
     }
     return nan && !omit;
+}
+
+// ---- selection ---------------------------------------------------------------------------
+//
+// The k-th smallest of n doubles (no NaN) by radix selection: the order-preserving keys' top 11
+// bits below those every key shares (one pass for the smallest and largest key) counted, the
+// bucket holding rank k kept (its keys gathered), the next 11 bits of those, and so on until at
+// most 512 are left, which nth_element finishes: two or three passes over the data, against
+// nth_element's ~8 ns an element (a sample of up to 2048: nth_element on a copy). -0 orders
+// before +0 here: they are equal values, and the callers use the value.
+inline std::uint64_t order_key(double x) {
+    const auto u = std::bit_cast<std::uint64_t>(x);
+    return (u >> 63) ? ~u : (u | (1ull << 63));
+}
+inline double from_order_key(std::uint64_t k) { return std::bit_cast<double>((k >> 63) ? (k & ~(1ull << 63)) : ~k); }
+inline double select_kth(const double* v, std::int64_t n, std::int64_t k) {
+    if (n <= 2048) {  // (a short sample: the histograms would cost more than they save)
+        double w[2048];
+        std::copy(v, v + n, w);
+        std::nth_element(w, w + k, w + n);
+        return w[k];
+    }
+    constexpr int kBits = 11;
+    constexpr std::uint32_t kBuckets = 1u << kBits;
+    std::uint32_t hist[kBuckets];
+    std::vector<std::uint64_t> cur;  // the kept keys, once gathered
+    bool gathered = false;
+    std::uint64_t prefix = 0, mask = 0;  // the bits fixed so far
+    std::int64_t m = n;                  // the keys with that prefix
+    // f(key) for every key with the prefix
+    auto each = [&](auto&& f) {
+        if (gathered) {
+            for (const std::uint64_t key : cur) f(key);
+        } else {
+            for (std::int64_t i = 0; i < n; ++i) {
+                const std::uint64_t key = order_key(v[i]);
+                if ((key & mask) == prefix) f(key);
+            }
+        }
+    };
+    // the bits every key shares (from the smallest and largest key) need no pass
+    std::uint64_t lo_key = ~0ull, hi_key = 0;
+    for (std::int64_t i = 0; i < n; ++i) {
+        const std::uint64_t key = order_key(v[i]);
+        lo_key = std::min(lo_key, key), hi_key = std::max(hi_key, key);
+    }
+    if (lo_key == hi_key) return from_order_key(lo_key);
+    const int top = 63 - std::countl_zero(lo_key ^ hi_key);  // the highest bit that differs
+    if (top < 63) mask = ~((2ull << top) - 1), prefix = lo_key & mask;
+    for (int shift = top + 1 - kBits;; shift -= kBits) {
+        const int sh = std::max(shift, 0);
+        const std::uint64_t bm = shift >= 0 ? kBuckets - 1 : (1u << (kBits + shift)) - 1;
+        std::fill(hist, hist + kBuckets, 0u);
+        each([&](std::uint64_t key) { ++hist[(key >> sh) & bm]; });
+        std::uint32_t b = 0;
+        while (k >= hist[b]) k -= hist[b++];
+        prefix |= static_cast<std::uint64_t>(b) << sh, mask |= bm << sh;
+        const std::int64_t left = hist[b];
+        if (shift <= 0) return from_order_key(prefix);  // every bit fixed
+        if (left <= 512 || left < m) {
+            std::vector<std::uint64_t> next;
+            next.reserve(static_cast<std::size_t>(left));
+            each([&](std::uint64_t key) {
+                if ((key & mask) == prefix) next.push_back(key);
+            });
+            if (left <= 512) {
+                std::nth_element(next.begin(), next.begin() + k, next.end());
+                return from_order_key(next[static_cast<std::size_t>(k)]);
+            }
+            cur.swap(next), gathered = true, m = left;
+        }
+    }
+}
+
+// The median's two middle order statistics of v[0, n) (n >= 1, no NaN): lo = x_(h-1), hi = x_(h),
+// h = n / 2 (lo only for an even n): hi selected, lo the largest value below it or hi itself
+// (when hi is repeated below rank h).
+inline void select_middle(const double* v, std::int64_t n, double& lo, double& hi) {
+    const std::int64_t h = n / 2;
+    hi = select_kth(v, n, h);
+    lo = hi;
+    if (n % 2) return;
+    // the count below hi and the largest value below it (NEON, four chains: max and counts are
+    // exact in any order)
+    const float64x2_t vh = vdupq_n_f64(hi), ninf = vdupq_n_f64(-kInf);
+    float64x2_t m0 = ninf, m1 = ninf;
+    int64x2_t c0 = vdupq_n_s64(0), c1 = vdupq_n_s64(0);
+    std::int64_t i = 0;
+    for (; i + 4 <= n; i += 4) {
+        const float64x2_t x0 = vld1q_f64(v + i), x1 = vld1q_f64(v + i + 2);
+        const uint64x2_t b0 = vcltq_f64(x0, vh), b1 = vcltq_f64(x1, vh);
+        c0 = vsubq_s64(c0, vreinterpretq_s64_u64(b0)), c1 = vsubq_s64(c1, vreinterpretq_s64_u64(b1));
+        m0 = vmaxq_f64(m0, vbslq_f64(b0, x0, ninf)), m1 = vmaxq_f64(m1, vbslq_f64(b1, x1, ninf));
+    }
+    const int64x2_t cs = vaddq_s64(c0, c1);
+    const float64x2_t ms = vmaxq_f64(m0, m1);
+    std::int64_t less = vgetq_lane_s64(cs, 0) + vgetq_lane_s64(cs, 1);
+    double mb = std::max(vgetq_lane_f64(ms, 0), vgetq_lane_f64(ms, 1));
+    for (; i < n; ++i) {
+        const bool b = v[i] < hi;
+        less += b;
+        mb = b ? std::max(mb, v[i]) : mb;
+    }
+    if (less == h) lo = mb;
 }
 
 // A double-double key with a tag (fligner: the group), ordered by value.

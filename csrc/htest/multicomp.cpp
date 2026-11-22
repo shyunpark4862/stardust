@@ -186,7 +186,14 @@ nb::tuple combine(nb::handle p, nb::handle w, int method, bool omit) {
     if (weighted) rw = Rows(rows_arg(w));
     Outs out(2, r.lanes);
     each_lane(r.lanes, std::max<std::int64_t>(1, r.n) * 64, [&](std::int64_t l) {
-        std::vector<double> v, ws;
+        // (a short lane, a batch's, reuses its thread's buffers: a heap block per lane cost more
+        // than the lane's sums)
+        thread_local std::vector<double> tv, tws;
+        std::vector<double> ov, ows;
+        const bool reuse = r.n <= 4096;
+        std::vector<double>& v = reuse ? tv : ov;
+        std::vector<double>& ws = reuse ? tws : ows;
+        v.clear(), ws.clear();
         bool nan = false;
         for (std::int64_t j = 0; j < r.n; ++j) {
             const double x = r.at(l, j), y = weighted ? rw.at(l, j) : 1.0;

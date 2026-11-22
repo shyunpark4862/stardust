@@ -331,7 +331,9 @@ Out5 wilcoxon_lane(std::vector<Signed>& d, int zm, bool corr, int alt, int req, 
     const auto n_all = static_cast<std::int64_t>(d.size());
     std::int64_t nz = 0;
     for (const Signed& v : d) nz += v.sign == 0;
-    std::vector<Key> keys;
+    LaneBuf<Key, 0> bk;
+    std::vector<Key>& keys = bk.v;
+    keys.reserve(d.size());
     for (const Signed& v : d)
         if (!(zm == kWilcox && v.sign == 0)) keys.push_back(Key{v.hi, v.lo, static_cast<std::int32_t>(v.sign + 1)});
     sort_keys(keys);
@@ -339,7 +341,8 @@ Out5 wilcoxon_lane(std::vector<Signed>& d, int zm, bool corr, int alt, int req, 
     std::int64_t twoRp = 0, twoRm = 0, twoRz = 0;
     i128 T3 = 0;
     bool ties = false;
-    std::vector<std::int64_t> nonzero;  // doubled ranks of the nonzero differences
+    LaneBuf<std::int64_t, 0> bz;
+    std::vector<std::int64_t>& nonzero = bz.v;  // doubled ranks of the nonzero differences
     tie_runs(keys, [&](std::int64_t b, std::int64_t t, std::int64_t first) {
         const std::int64_t a = 2 * b + t + 1;
         const std::int64_t cp = tag_count(keys, first, t, 2), cm = tag_count(keys, first, t, 0);
@@ -391,12 +394,26 @@ Out5 wilcoxon_lane(std::vector<Signed>& d, int zm, bool corr, int alt, int req, 
             }
             le = count_ratio(below, tot), ge = count_ratio(above, tot);
         } else {
-            const std::vector<DD> c = exact::signed_rank_probs(a);
-            Acc below, above;
-            for (std::int64_t s = 0; s <= std::min(lo_s, S); ++s) below.add(c[static_cast<std::size_t>(s)]);
-            for (std::int64_t s = S; s >= std::max<std::int64_t>(hi_s, 0); --s)
-                above.add(c[static_cast<std::size_t>(s)]);
-            le = to_double(below.value()), ge = to_double(above.value());
+            // T is symmetric about S / 2: P(T <= v) for v <= S / 2 from the lower half, else
+            // 1 - P(T <= S - v - 1) (at least 1/2: no cancellation); P(T >= w) = P(T <= S - w)
+            auto lower_arg = [&](std::int64_t v) { return v <= S / 2 ? v : S - v - 1; };
+            const std::int64_t vl = lower_arg(lo_s), vg = lower_arg(S - hi_s);
+            const std::int64_t L = std::clamp<std::int64_t>(std::max(vl, vg), 0, S / 2);
+            thread_local std::vector<double> ph, pl;
+            exact::signed_rank_lower(a, L, ph, pl);
+            auto cdf = [&](std::int64_t v) {  // P(T <= v), v <= L
+                Acc t;
+                for (std::int64_t q = 0; q <= v; ++q)
+                    t.add(ph[static_cast<std::size_t>(q)], pl[static_cast<std::size_t>(q)]);
+                return t.value();
+            };
+            auto tail = [&](std::int64_t v) {  // P(T <= v) for any v
+                if (v < 0) return 0.0;
+                if (v >= S) return 1.0;
+                if (v <= S / 2) return to_double(cdf(v));
+                return to_double(DD{1.0, 0.0} - cdf(S - v - 1));
+            };
+            le = tail(lo_s), ge = tail(S - hi_s);
         }
         o.p = alt == kLess ? le : (alt == kGreater ? ge : std::min(1.0, 2.0 * std::min(le, ge)));
         return o;
@@ -527,8 +544,10 @@ nb::tuple two_sample(nb::handle x, nb::handle y, bool omit, int outs, Lane&& lan
     const std::vector<Rows> s{Rows(rows_arg(x)), Rows(rows_arg(y))};
     Outs out(outs, s[0].lanes);
     each_lane(s[0].lanes, 32 * total_n(s), [&](std::int64_t r) {
-        std::vector<Key> keys;
-        std::vector<std::int64_t> n;
+        LaneBuf<Key, 0> bk;
+        LaneBuf<std::int64_t, 1> bn;
+        std::vector<Key>& keys = bk.v;
+        std::vector<std::int64_t>& n = bn.v;
         const bool nan = lane_keys(s, r, keys, n);
         lane(keys, n[0], n[1], nan && !omit, out, r);
     });
@@ -574,7 +593,8 @@ nb::tuple wilcoxon(nb::handle x, nb::handle y, int zm, bool corr, int alt, int r
     if (paired) b = Rows(rows_arg(y));
     Outs out(5, a.lanes);
     each_lane(a.lanes, 32 * a.n, [&](std::int64_t r) {
-        std::vector<Signed> d;
+        LaneBuf<Signed, 0> bd;
+        std::vector<Signed>& d = bd.v;
         bool nan = false, bad = false;
         for (std::int64_t j = 0; j < a.n; ++j) {
             const double u = a.at(r, j), v = paired ? b.at(r, j) : 0.0;
@@ -699,8 +719,10 @@ nb::tuple kruskal(nb::list samples, bool omit) {
     const auto k = static_cast<std::int64_t>(s.size());
     Outs out(3, s[0].lanes);
     each_lane(s[0].lanes, 32 * total_n(s), [&](std::int64_t r) {
-        std::vector<Key> keys;
-        std::vector<std::int64_t> n;
+        LaneBuf<Key, 0> bk;
+        LaneBuf<std::int64_t, 1> bn;
+        std::vector<Key>& keys = bk.v;
+        std::vector<std::int64_t>& n = bn.v;
         const bool nan = lane_keys(s, r, keys, n);
         double h = kNaN, p = kNaN;
         const bool empty = std::any_of(n.begin(), n.end(), [](std::int64_t v) { return v == 0; });
@@ -801,7 +823,8 @@ nb::tuple median_test(nb::list samples, int ties, bool correction, double lam, b
     double* tab = reinterpret_cast<double*>(table.data);
     each_lane(lanes, 8 * total_n(s), [&](std::int64_t r) {
         // the lane's values, sample by sample (start[i] where sample i begins)
-        std::vector<double> v, w;
+        LaneBuf<double, 0> bv;
+        std::vector<double>& v = bv.v;
         std::vector<std::int64_t> start(static_cast<std::size_t>(k + 1), 0);
         bool nan = false, empty = false;
         for (std::int64_t i = 0; i < k; ++i) {
@@ -818,13 +841,12 @@ nb::tuple median_test(nb::list samples, int ties, bool correction, double lam, b
         double* row = tab + r * 2 * k;
         std::fill(row, row + 2 * k, 0.0);
         if (!(nan && !omit) && !empty) {
-            w = v;
-            const auto N = static_cast<std::int64_t>(w.size());
-            const auto mid = w.begin() + N / 2;
-            std::nth_element(w.begin(), mid, w.end());
-            DD M{*mid, 0.0};
+            const auto N = static_cast<std::int64_t>(v.size());
+            double lo, hi;
+            select_middle(v.data(), N, lo, hi);  // (radix selection, htest/moments.hpp)
+            DD M{hi, 0.0};
             if (N % 2 == 0) {
-                const DD s2 = dd::two_sum(*std::max_element(w.begin(), mid), *mid);
+                const DD s2 = dd::two_sum(lo, hi);
                 M = DD{0.5 * s2.hi, 0.5 * s2.lo};
             }
             med = M.hi;

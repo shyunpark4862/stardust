@@ -139,7 +139,7 @@ bool constant(DD ss, DD mean, std::int64_t n) {
 template <int K, class Body>
 void block_sums(std::int64_t n, Acc (&tot)[K], Body&& body) {
     const std::int64_t nb = blocks_of(n);
-    std::vector<Acc> part(static_cast<std::size_t>(nb * K));
+    SmallBuf<Acc, 4 * K> part(static_cast<std::size_t>(nb * K));
     each_block(1, n, [&](std::int64_t b, std::int64_t, std::int64_t j0, std::int64_t j1) {
         Acc4 a[K];
         body(j0, j1, a);
@@ -192,8 +192,43 @@ inline vdd::D2 centred(const double* v, std::int64_t j, vdd::V f, vdd::V nmh, vd
     return vdd::add(vdd::two_sum(vmulq_f64(vld1q_f64(v + j), f), nmh), nml);
 }
 
-// Sxx, Syy, Sxy
+// Sxy in the chains of a[2]; Sxx and Syy in double into a[0].c[0] and a[1].c[0]: 64 elements as
+// eight lanes of eight, the 64-element sums pairwise (positive terms: ~20 eps); the elements left
+// (fewer than 64) are the caller's
 std::int64_t products_neon(
+    const double* x, const double* y, double fx, double fy, DD mx, DD my, std::int64_t j0, std::int64_t j1, Acc4* a
+) {
+    using namespace vdd;
+    Chains c2(a[2]);
+    const V vx = vdupq_n_f64(fx), vy = vdupq_n_f64(fy);
+    const V nxh = vdupq_n_f64(-mx.hi), nxl = vdupq_n_f64(-mx.lo), nyh = vdupq_n_f64(-my.hi), nyl = vdupq_n_f64(-my.lo);
+    double px[kBlock / 64], py[kBlock / 64];
+    int np = 0;
+    std::int64_t j = j0;
+    for (; j + 64 <= j1; j += 64) {
+        V sx[4], sy[4];
+        for (int q = 0; q < 4; ++q) sx[q] = sy[q] = vdupq_n_f64(0.0);
+        for (std::int64_t k = j; k < j + 64; k += 8)
+            for (int q = 0; q < 4; ++q) {
+                const D2 u = centred(x, k + 2 * q, vx, nxh, nxl), v = centred(y, k + 2 * q, vy, nyh, nyl);
+                const V ud = vaddq_f64(u.hi, u.lo), vd = vaddq_f64(v.hi, v.lo);
+                sx[q] = vaddq_f64(sx[q], vmulq_f64(ud, ud)), sy[q] = vaddq_f64(sy[q], vmulq_f64(vd, vd));
+                c2.add(q & 1, mul(u, v));
+            }
+        const V tx = vaddq_f64(vaddq_f64(sx[0], sx[1]), vaddq_f64(sx[2], sx[3]));
+        const V ty = vaddq_f64(vaddq_f64(sy[0], sy[1]), vaddq_f64(sy[2], sy[3]));
+        px[np] = vgetq_lane_f64(tx, 0) + vgetq_lane_f64(tx, 1);
+        py[np++] = vgetq_lane_f64(ty, 0) + vgetq_lane_f64(ty, 1);
+    }
+    for (int w = 1; w < np; w *= 2)
+        for (int i = 0; i + w < np; i += 2 * w) px[i] += px[i + w], py[i] += py[i + w];
+    if (np) a[0].c[0].add(px[0]), a[1].c[0].add(py[0]);
+    c2.put(a[2]);
+    return j;
+}
+
+// Sxx, Syy, Sxy all in double-doubles (r near +-1, where q = 1 - r^2 needs b = Sxy / Sxx to ~1e-30)
+std::int64_t products_dd_neon(
     const double* x, const double* y, double fx, double fy, DD mx, DD my, std::int64_t j0, std::int64_t j1, Acc4* a
 ) {
     using namespace vdd;
@@ -258,8 +293,8 @@ RQ corr_rq(const double* x, const double* y, std::int64_t n) {
     RQ o;
     if (n < 2) return o;
     const std::int64_t nb = blocks_of(n);
-    std::vector<double> pmx(static_cast<std::size_t>(nb)), pmy(static_cast<std::size_t>(nb));
-    std::vector<char> bad(static_cast<std::size_t>(nb), 0);
+    SmallBuf<double, 4> pmx(static_cast<std::size_t>(nb)), pmy(static_cast<std::size_t>(nb));
+    SmallBuf<char, 4> bad(static_cast<std::size_t>(nb));
     each_block(1, n, [&](std::int64_t b, std::int64_t, std::int64_t j0, std::int64_t j1) {
         double mx = 0.0, my = 0.0;
         for (std::int64_t j = j0; j < j1; ++j) {
@@ -300,15 +335,21 @@ RQ corr_rq(const double* x, const double* y, std::int64_t n) {
     // the centred values (formed again in the residual pass rather than kept: the same bits)
     auto xc = [&](std::int64_t j) { return dd::two_sum(x[j] * fx, -mxd.hi) + (-mxd.lo); };
     auto yc = [&](std::int64_t j) { return dd::two_sum(y[j] * fy, -myd.hi) + (-myd.lo); };
+    // Sxx and Syy sums of positive squares in double by a fixed tree (htest/moments.hpp
+    // block_ss_plain's: ~20 eps, so r and q = 1 - r^2 stay within ~4e-15), Sxy, which cancels as r
+    // goes to 0, in double-doubles
     Acc s2[3];
     block_sums<3>(n, s2, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
-        for4(products_neon(x, y, fx, fy, mxd, myd, j0, j1, a), j1, [&](std::int64_t j, auto k) {
-            const DD u = xc(j), v = yc(j);
-            const DD uu = u * u, vv = v * v, uv = u * v;
-            a[0].c[k].add(uu.hi, uu.lo);
-            a[1].c[k].add(vv.hi, vv.lo);
+        const std::int64_t j = products_neon(x, y, fx, fy, mxd, myd, j0, j1, a);
+        double sxx = 0.0, syy = 0.0;
+        for4(j, j1, [&](std::int64_t i, auto k) {
+            const DD u = xc(i), v = yc(i);
+            const DD uv = u * v;
+            const double ud = u.hi + u.lo, vd = v.hi + v.lo;
+            sxx += ud * ud, syy += vd * vd;
             a[2].c[k].add(uv.hi, uv.lo);
         });
+        a[0].c[1].add(sxx), a[1].c[1].add(syy);
     });
     const DD Sxx = s2[0].value(), Syy = s2[1].value();
     DD Sxy = s2[2].value();
@@ -323,7 +364,19 @@ RQ corr_rq(const double* x, const double* y, std::int64_t n) {
         o.w = w;
         o.q = DD{1.0, 0.0} - w;
     } else {
-        const DD b = Sxy / Sxx;
+        // (the products again, all in double-doubles: the residuals' sum is q times Syy, and a
+        // slope off by d adds d^2 Sxx to it, so b needs Sxx's every digit when q is small)
+        Acc sd2[3];
+        block_sums<3>(n, sd2, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
+            for4(products_dd_neon(x, y, fx, fy, mxd, myd, j0, j1, a), j1, [&](std::int64_t j, auto k) {
+                const DD u = xc(j), v = yc(j);
+                const DD uu = u * u, vv = v * v, uv = u * v;
+                a[0].c[k].add(uu.hi, uu.lo);
+                a[1].c[k].add(vv.hi, vv.lo);
+                a[2].c[k].add(uv.hi, uv.lo);
+            });
+        });
+        const DD b = sd2[2].value() / sd2[0].value();
         Acc s3[1];
         block_sums<1>(n, s3, [&](std::int64_t j0, std::int64_t j1, Acc4* a) {
             for4(residuals_neon(x, y, fx, fy, mxd, myd, b, j0, j1, a), j1, [&](std::int64_t j, auto k) {
@@ -332,7 +385,7 @@ RQ corr_rq(const double* x, const double* y, std::int64_t n) {
                 a[0].c[k].add(e2.hi, e2.lo);
             });
         });
-        o.q = s3[0].value() / Syy;
+        o.q = s3[0].value() / sd2[1].value();
         if (o.q.hi > 0.5) o.q = DD{1.0, 0.0} - w;  // (rounding past the branch's side: take 1 - r^2)
         if (o.q.hi < 0.0) o.q = DD{0.0, 0.0};
         o.w = DD{1.0, 0.0} - o.q;

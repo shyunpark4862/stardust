@@ -57,7 +57,7 @@ const int* units_ptr(const std::vector<int>& u) { return u.empty() ? nullptr : u
 int unit_at(const std::vector<int>& u, std::int64_t r) { return u.empty() ? 0 : u[static_cast<std::size_t>(r)]; }
 
 // the samples of one lane in one unit (unit_exponent of their largest magnitude)
-int to_common_unit(std::vector<std::vector<double>*> vs) {
+int to_common_unit(const std::vector<std::vector<double>*>& vs) {
     double m = 0.0;
     for (const auto* v : vs)
         for (double x : *v) m = std::max(m, std::fabs(x));
@@ -452,26 +452,26 @@ KLane bartlett(const Moments* g, std::int64_t k) {
 // (g = int(proportiontocut n), the mean of the middle n - 2g order statistics). v is reordered
 // by the trimmed mean; the median is a selection in a copy (a long sample sorted on the pool, else
 // nth_element: the same values), so v keeps the data's order.
-DD center_of(std::vector<double>& v, int center, double ptc) {
-    const auto n = static_cast<std::int64_t>(v.size());
+// (the mean and the median read the values only: x may be the data's row)
+DD center_of_values(const double* x, std::int64_t n, int center) {
     if (n == 0) return {kNaN, 0.0};
-    if (center == kMean) return moments_of(v.data(), nullptr, n).mean;
-    if (center == kTrimmed) return trimmed(v, ptc).mean;
-    const std::int64_t h = n / 2;
-    std::vector<double> w(v);
-    double hi, lo = kNaN;
-    if (n >= (1 << 16) && parallel::available()) {
-        sort_values(w);
-        hi = w[static_cast<std::size_t>(h)];
-        if (n % 2 == 0) lo = w[static_cast<std::size_t>(h - 1)];
-    } else {
-        std::nth_element(w.begin(), w.begin() + h, w.end());
-        hi = w[static_cast<std::size_t>(h)];
-        if (n % 2 == 0) lo = *std::max_element(w.begin(), w.begin() + h);
+    if (center == kMean) {  // (a long sample: the blocked NEON kernel; one chain of sums is ~1 ns an element)
+        if (n < (1 << 16)) return moments_of(x, nullptr, n).mean;
+        Moments m;
+        lane_moments(Vec{x, nullptr}, 1, n, false, &m);
+        return m.mean;
     }
+    double hi, lo;
+    select_middle(x, n, lo, hi);
     if (n % 2) return {hi, 0.0};
     const DD s = dd::two_sum(lo, hi);
     return {0.5 * s.hi, 0.5 * s.lo};
+}
+DD center_of(std::vector<double>& v, int center, double ptc) {
+    const auto n = static_cast<std::int64_t>(v.size());
+    if (n == 0) return {kNaN, 0.0};
+    if (center != kTrimmed) return center_of_values(v.data(), n, center);
+    return trimmed(v, ptc).mean;
 }
 
 // |x - c| as a double-double
@@ -499,52 +499,89 @@ double fligner_score(double r2, double N) {
 KLane levene_lane(const std::vector<Rows>& s, std::int64_t r, bool omit, int center, double ptc, bool fligner) {
     const auto k = static_cast<std::int64_t>(s.size());
     KLane o;
-    std::vector<std::vector<double>> v(static_cast<std::size_t>(k));
-    std::vector<DD> c(static_cast<std::size_t>(k));
-    for (std::int64_t i = 0; i < k; ++i) {
-        if (gather(s[static_cast<std::size_t>(i)], r, omit, v[static_cast<std::size_t>(i)])) return o;
+    // a short lane (a batch's) reuses its thread's buffers: a heap block per group and lane cost
+    // more than the lane's sums (macOS's free() reads the clock)
+    std::int64_t total = 0;
+    for (const Rows& g : s) total += g.n;
+    const bool reuse = total <= (1 << 16);
+    thread_local std::vector<std::vector<double>> tv;
+    thread_local std::vector<double> tzh, tzl;
+    std::vector<std::vector<double>> ov;
+    std::vector<double> ozh, ozl;
+    std::vector<std::vector<double>>& v = reuse ? tv : ov;
+    v.resize(static_cast<std::size_t>(k));
+    SmallBuf<DD, 16> c(static_cast<std::size_t>(k));
+    // each group's values: its row itself when contiguous without NaN, of magnitudes that need no
+    // unit, and centred by the mean or median (which only read it); else gathered (NaNs left out,
+    // scaled to a common unit; the trimmed mean reorders them)
+    SmallBuf<const double*, 16> xp(static_cast<std::size_t>(k));
+    SmallBuf<std::int64_t, 16> xn(static_cast<std::size_t>(k));
+    bool view = center != kTrimmed;
+    double mx = 0.0;
+    for (std::int64_t i = 0; i < k && view; ++i) {
+        const Rows& g = s[static_cast<std::size_t>(i)];
+        if (g.s1 != static_cast<std::int64_t>(sizeof(double))) {
+            view = false;
+            break;
+        }
+        const auto* x = reinterpret_cast<const double*>(g.data + r * g.s0);
+        bool nan = false;
+        for (std::int64_t j = 0; j < g.n; ++j) nan |= x[j] != x[j], mx = std::max(mx, std::fabs(x[j]));
+        view = !nan;
+        xp[static_cast<std::size_t>(i)] = x, xn[static_cast<std::size_t>(i)] = g.n;
     }
-    std::vector<std::vector<double>*> all_v;
-    for (auto& x : v) all_v.push_back(&x);
-    to_common_unit(all_v);
+    view = view && unit_exponent(mx) == 0;
+    if (!view) {
+        for (std::int64_t i = 0; i < k; ++i) {
+            if (gather(s[static_cast<std::size_t>(i)], r, omit, v[static_cast<std::size_t>(i)])) return o;
+        }
+        std::vector<std::vector<double>*> all_v;
+        all_v.reserve(static_cast<std::size_t>(k));
+        for (std::int64_t i = 0; i < k; ++i) all_v.push_back(&v[static_cast<std::size_t>(i)]);
+        to_common_unit(all_v);
+        for (std::int64_t i = 0; i < k; ++i) {
+            xp[static_cast<std::size_t>(i)] = v[static_cast<std::size_t>(i)].data();
+            xn[static_cast<std::size_t>(i)] = static_cast<std::int64_t>(v[static_cast<std::size_t>(i)].size());
+        }
+    }
     double N = 0.0;
     for (std::int64_t i = 0; i < k; ++i) {
-        // (in place: the order of a group's values does not matter below, and is the same for
-        // the lane alone and in a batch)
-        c[static_cast<std::size_t>(i)] = center_of(v[static_cast<std::size_t>(i)], center, ptc);
-        N += static_cast<double>(v[static_cast<std::size_t>(i)].size());
+        // (the trimmed mean in place: the order of a group's values does not matter below, and is
+        // the same for the lane alone and in a batch)
+        const auto q = static_cast<std::size_t>(i);
+        c[q] = view ? center_of_values(xp[q], xn[q], center) : center_of(v[q], center, ptc);
+        xp[q] = view ? xp[q] : v[q].data();
+        N += static_cast<double>(xn[q]);
     }
     o.dfn = static_cast<double>(k - 1);
     if (!fligner) o.dfd = N - static_cast<double>(k);
     for (std::int64_t i = 0; i < k; ++i)
-        if (v[static_cast<std::size_t>(i)].empty()) return o;
+        if (xn[static_cast<std::size_t>(i)] == 0) return o;
     if (!fligner) {
-        std::vector<Moments> m(static_cast<std::size_t>(k));
-        std::vector<double> zh, zl;
+        SmallBuf<Moments, 16> m(static_cast<std::size_t>(k));
+        std::vector<double>& zh = reuse ? tzh : ozh;
+        std::vector<double>& zl = reuse ? tzl : ozl;
         for (std::int64_t i = 0; i < k; ++i) {
-            const std::vector<double>& x = v[static_cast<std::size_t>(i)];
-            const auto nx = static_cast<std::int64_t>(x.size());
+            const double* x = xp[static_cast<std::size_t>(i)];
+            const std::int64_t nx = xn[static_cast<std::size_t>(i)];
             const DD ci = c[static_cast<std::size_t>(i)];
-            zh.resize(x.size()), zl.resize(x.size());
+            zh.resize(static_cast<std::size_t>(nx)), zl.resize(static_cast<std::size_t>(nx));
             for_pieces(nx, kTask, nx, [&](std::int64_t, std::int64_t b, std::int64_t e) {
                 for (std::int64_t j = b; j < e; ++j) {
-                    const DD z = abs_dev(x[static_cast<std::size_t>(j)], ci);
+                    const DD z = abs_dev(x[j], ci);
                     zh[static_cast<std::size_t>(j)] = z.hi, zl[static_cast<std::size_t>(j)] = z.lo;
                 }
             });
             // (the blocked kernel: on the pool for a long lane alone, the same bits inside a batch)
-            lane_moments(
-                Vec{zh.data(), zl.data()}, 1, static_cast<std::int64_t>(x.size()), false,
-                &m[static_cast<std::size_t>(i)]
-            );
+            lane_moments(Vec{zh.data(), zl.data()}, 1, nx, false, &m[static_cast<std::size_t>(i)]);
         }
-        return anova(m.data(), k);
+        return anova(m.p, k);
     }
     std::vector<Key> keys(static_cast<std::size_t>(N));
     std::int64_t at = 0;
     for (std::int64_t i = 0; i < k; ++i) {
-        const std::vector<double>& x = v[static_cast<std::size_t>(i)];
-        const auto nx = static_cast<std::int64_t>(x.size());
+        const double* x = xp[static_cast<std::size_t>(i)];
+        const std::int64_t nx = xn[static_cast<std::size_t>(i)];
         const DD ci = c[static_cast<std::size_t>(i)];
         for_pieces(nx, kTask, nx, [&](std::int64_t, std::int64_t b, std::int64_t e) {
             for (std::int64_t j = b; j < e; ++j) {
@@ -586,7 +623,7 @@ KLane levene_lane(const std::vector<Rows>& s, std::int64_t r, bool omit, int cen
     if (N < 2.0 || m2 <= e * e) return o;
     double num = 0.0;
     for (std::int64_t i = 0; i < k; ++i) {
-        const auto ni = static_cast<double>(v[static_cast<std::size_t>(i)].size());
+        const auto ni = static_cast<double>(xn[static_cast<std::size_t>(i)]);
         const double d = to_double(gs[static_cast<std::size_t>(i)].value() / ni - mean);
         num += ni * d * d;
     }
@@ -620,7 +657,7 @@ nb::tuple kgroups(int kind, nb::list samples, bool omit, int center, double ptc)
     const std::vector<int> u = units_of(mx);
     for (std::int64_t i = 0; i < k; ++i) {
         const Rows& g = s[static_cast<std::size_t>(i)];
-        lane_moments(Plain{g}, lanes, g.n, omit, mi.data(), units_ptr(u));
+        lane_moments(Plain{g}, lanes, g.n, omit, mi.data(), units_ptr(u), kind == kBartlett);
         for (std::int64_t r = 0; r < lanes; ++r)
             m[static_cast<std::size_t>(r * k + i)] = mi[static_cast<std::size_t>(r)];
     }

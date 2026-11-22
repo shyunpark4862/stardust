@@ -20,6 +20,10 @@
 #pragma once
 
 #include "htest/moments.hpp"
+#include "parallel/pool.hpp"
+#include "htest/vdd.hpp"
+
+#include <arm_neon.h>
 
 #include <algorithm>
 #include <bit>
@@ -153,6 +157,36 @@ struct AnsariCounts {
 
 // ---- double-double counts -----------------------------------------------------------------
 
+// a + b of two nonnegative double-doubles: the high parts' two_sum, the low parts added to its
+// error once, renormalized (the counts are sums of positive terms: ~2^-104 a step whatever the
+// order, without operator+'s second two_sum)
+inline vdd::D2 add_pos(vdd::D2 a, vdd::D2 b) {
+    const vdd::D2 s = vdd::two_sum(a.hi, b.hi);
+    return vdd::quick_two_sum(s.hi, vaddq_f64(s.lo, vaddq_f64(a.lo, b.lo)));
+}
+inline DD add_pos(DD a, DD b) {
+    const DD s = dd::two_sum(a.hi, b.hi);
+    return dd::quick_two_sum(s.hi, s.lo + (a.lo + b.lo));
+}
+
+// out[s] = out[s] + in[s] (* w, unless w is 1) for s in [0, n): two entries a NEON register (vld2
+// splits the double-doubles' high and low parts), add_pos and vdd.hpp's operator*, the scalar
+// operations lane by lane; the rows do not overlap.
+inline void dd_axpy(DD* out, const DD* in, std::int64_t n, DD w) {
+    const bool one = w.hi == 1.0 && w.lo == 0.0;
+    std::int64_t s = 0;
+    const vdd::D2 wv{vdupq_n_f64(w.hi), vdupq_n_f64(w.lo)};
+    for (; s + 2 <= n; s += 2) {
+        const float64x2x2_t o = vld2q_f64(&out[s].hi), x = vld2q_f64(&in[s].hi);
+        const vdd::D2 xv{x.val[0], x.val[1]};
+        const vdd::D2 r = add_pos(vdd::D2{o.val[0], o.val[1]}, one ? xv : vdd::mul(xv, wv));
+        float64x2x2_t st;
+        st.val[0] = r.hi, st.val[1] = r.lo;
+        vst2q_f64(&out[s].hi, st);
+    }
+    for (; s < n; ++s) out[s] = add_pos(out[s], one ? in[s] : in[s] * w);
+}
+
 // The distribution of the sum of c scores drawn without replacement from groups of equal scores
 // (score v[g] >= 0, multiplicity t[g]): counts by sum s = 0..smax (smax >= the largest sum). A
 // dynamic programme over the groups, the number chosen and the sum; every update adds positive
@@ -179,11 +213,7 @@ inline std::vector<DD> grouped_counts(
                 const DD* in = dp.data() + (j - cc) * S;
                 const std::int64_t shift = cc * vg, hi = std::min(smax, from + shift);
                 const DD wc = w[static_cast<std::size_t>(cc)];
-                if (wc.hi == 1.0 && wc.lo == 0.0) {
-                    for (std::int64_t s = shift; s <= hi; ++s) out[s] = out[s] + in[s - shift];
-                } else {
-                    for (std::int64_t s = shift; s <= hi; ++s) out[s] = out[s] + in[s - shift] * wc;
-                }
+                dd_axpy(out + shift, in, hi - shift + 1, wc);
                 r = std::max(r, hi);
             }
             reach[static_cast<std::size_t>(j)] = r;
@@ -207,21 +237,97 @@ inline std::vector<u128> signed_rank_counts(const std::vector<std::int64_t>& a) 
     }
     return c;
 }
-inline std::vector<DD> signed_rank_probs(const std::vector<std::int64_t>& a) {
-    std::int64_t S = 0;
-    for (std::int64_t x : a) S += x;
-    std::vector<DD> c(static_cast<std::size_t>(S + 1), DD{0.0, 0.0});
-    c[0] = DD{1.0, 0.0};
-    std::int64_t top = 0;
-    for (std::int64_t x : a) {
-        top += x;
-        for (std::int64_t s = top; s >= 0; --s) {
-            DD v = c[static_cast<std::size_t>(s)];
-            if (s >= x) v = v + c[static_cast<std::size_t>(s - x)];
-            c[static_cast<std::size_t>(s)] = DD{0.5 * v.hi, 0.5 * v.lo};
+// The same as probabilities P(T = s) for s = 0..L only, L <= floor(sum a / 2): the lower half of
+// a distribution symmetric about sum a / 2. Each step's distribution is symmetric about its own
+// half sum c / 2 and is kept for s <= min(L, c / 2) alone; the one or two entries the next step
+// needs above that are the mirrored ones below. Each entry is (x(s) + x(s - a)) / 2 of positive
+// double-doubles (the sum without renormalizing its low parts twice; the halving is exact), in
+// NEON two entries a register, four at once, from the top down (an entry's inputs are at or below
+// it, read before the chunk is written); a long one's steps on the pool, into a second array.
+// Work: about n min(L, sum a / 2), a quarter of signed_rank_counts' n (sum a) / 2 per entry in
+// double-doubles.
+inline void signed_rank_lower(
+    const std::vector<std::int64_t>& a, std::int64_t L, std::vector<double>& ph, std::vector<double>& pl
+) {
+    ph.assign(static_cast<std::size_t>(L + 1), 0.0), pl.assign(static_cast<std::size_t>(L + 1), 0.0);
+    double* h = ph.data();
+    double* l = pl.data();
+    h[0] = 1.0;
+    std::int64_t cum = 0, H = 0;  // the sum so far, and the top entry kept: min(L, cum / 2)
+    auto one = [&](std::int64_t s, double oh, double ol, double xh, double xl) {
+        const DD t = dd::two_sum(oh, xh);
+        const DD v = dd::quick_two_sum(t.hi, t.lo + (ol + xl));
+        h[s] = 0.5 * v.hi, l[s] = 0.5 * v.lo;
+    };
+    // a long distribution on the pool: each step from the old array into a second one (the same
+    // operations per entry, so the same bits), fixed pieces of kPiece entries
+    constexpr std::int64_t kPiece = 1 << 13;
+    std::vector<double> qh, ql;
+    for (const std::int64_t x : a) {
+        const std::int64_t c2 = cum + x, H2 = std::min(L, c2 / 2);
+        if (H2 >= 4 * kPiece && parallel::available()) {
+            qh.resize(ph.size()), ql.resize(pl.size());
+            double *nh = qh.data(), *nl = ql.data();
+            const double *oh = h, *ol = l;
+            for_pieces_woken(H2 + 1, kPiece, (H2 + 1) * 8, [&](std::int64_t, std::int64_t s0, std::int64_t s1) {
+                const float64x2_t half = vdupq_n_f64(0.5);
+                std::int64_t s = s0;
+                auto put = [&](std::int64_t q, double ah, double al, double bh, double bl) {
+                    const DD t = dd::two_sum(ah, bh);
+                    const DD v = dd::quick_two_sum(t.hi, t.lo + (al + bl));
+                    nh[q] = 0.5 * v.hi, nl[q] = 0.5 * v.lo;
+                };
+                for (; s < s1 && s < x && s <= H; ++s) nh[s] = 0.5 * oh[s], nl[s] = 0.5 * ol[s];
+                for (; s + 4 <= s1 && s + 3 <= H; s += 4)
+                    for (int k = 0; k < 4; k += 2) {
+                        const float64x2_t ah = vld1q_f64(oh + s + k), al = vld1q_f64(ol + s + k);
+                        const float64x2_t bh = vld1q_f64(oh + s + k - x), bl = vld1q_f64(ol + s + k - x);
+                        const float64x2_t t = vaddq_f64(ah, bh), bb = vsubq_f64(t, ah);
+                        const float64x2_t e = vaddq_f64(vsubq_f64(ah, vsubq_f64(t, bb)), vsubq_f64(bh, bb));
+                        const float64x2_t w = vaddq_f64(e, vaddq_f64(al, bl));
+                        const float64x2_t vh = vaddq_f64(t, w), vl = vsubq_f64(w, vsubq_f64(vh, t));
+                        vst1q_f64(nh + s + k, vmulq_f64(half, vh)), vst1q_f64(nl + s + k, vmulq_f64(half, vl));
+                    }
+                for (; s < s1; ++s) {
+                    const std::int64_t m = s <= H ? s : cum - s;  // above H: the mirrored entry
+                    put(s, m >= 0 ? oh[m] : 0.0, m >= 0 ? ol[m] : 0.0, s >= x ? oh[s - x] : 0.0,
+                        s >= x ? ol[s - x] : 0.0);
+                }
+            });
+            ph.swap(qh), pl.swap(ql);
+            h = ph.data(), l = pl.data();
+            cum = c2, H = H2;
+            continue;
         }
+        // the entries above H: their own old value is the mirror cum - s (below H, not yet written)
+        std::int64_t s = H2;
+        for (; s > H; --s) {
+            const std::int64_t m = cum - s;
+            const double xh = s >= x ? h[s - x] : 0.0, xl = s >= x ? l[s - x] : 0.0;
+            one(s, m >= 0 ? h[m] : 0.0, m >= 0 ? l[m] : 0.0, xh, xl);
+        }
+        // s <= H: both inputs kept
+        const float64x2_t half = vdupq_n_f64(0.5);
+        for (; s - 3 >= x; s -= 4) {
+            const std::int64_t b = s - 3;
+            const float64x2_t oh0 = vld1q_f64(h + b), oh1 = vld1q_f64(h + b + 2);
+            const float64x2_t ol0 = vld1q_f64(l + b), ol1 = vld1q_f64(l + b + 2);
+            const float64x2_t xh0 = vld1q_f64(h + b - x), xh1 = vld1q_f64(h + b - x + 2);
+            const float64x2_t xl0 = vld1q_f64(l + b - x), xl1 = vld1q_f64(l + b - x + 2);
+            auto vone = [&](float64x2_t oh, float64x2_t ol, float64x2_t xh, float64x2_t xl, double* ho, double* lo) {
+                const float64x2_t t = vaddq_f64(oh, xh), bb = vsubq_f64(t, oh);
+                const float64x2_t e = vaddq_f64(vsubq_f64(oh, vsubq_f64(t, bb)), vsubq_f64(xh, bb));
+                const float64x2_t w = vaddq_f64(e, vaddq_f64(ol, xl));
+                const float64x2_t vh = vaddq_f64(t, w), vl = vsubq_f64(w, vsubq_f64(vh, t));
+                vst1q_f64(ho, vmulq_f64(half, vh)), vst1q_f64(lo, vmulq_f64(half, vl));
+            };
+            vone(oh0, ol0, xh0, xl0, h + b, l + b);
+            vone(oh1, ol1, xh1, xl1, h + b + 2, l + b + 2);
+        }
+        for (; s >= x; --s) one(s, h[s], l[s], h[s - x], l[s - x]);
+        for (; s >= 0; --s) h[s] *= 0.5, l[s] *= 0.5;  // (exact)
+        cum = c2, H = H2;
     }
-    return c;
 }
 
 // ---- Page's L -----------------------------------------------------------------------------

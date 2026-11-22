@@ -210,12 +210,16 @@ enum Ci { kNormal = 0, kAgresti = 1, kExact = 2, kWilson = 3, kWilsonCC = 4, kJe
 // The Wilson quadratic (n + z^2) t^2 - (2x + z^2) t + x^2 / n = 0 of x successes (x a count, or a
 // count -+ 1/2 for the continuity correction): its larger root, a sum of positive terms, and the
 // smaller one as the product x^2 / (n (n + z^2)) over it (no cancellation).
-DD wilson_big(double x, double n, double z, DD z2) {
-    const DD disc = z2 + dd::two_prod(x, n - x) * 4.0 / n;
-    return (D(2.0 * x) + z2 + sqrt_dd(disc) * z) / ((z2 + n) * 2.0);
+// Wilson's ends in double: every operation adds, multiplies, divides or takes the square root of
+// positive numbers (the lower end as x^2 / ((z^2 + n) n) / upper, not as a difference), so each end
+// is within ~4 ulp of its value (six roundings, sqrt halving its argument's), well inside the
+// 1e-14 of the contract (H7: each end against itself); the double-doubles bought nothing there.
+double wilson_big(double x, double n, double z, double z2) {
+    const double disc = z2 + 4.0 * (x * (n - x)) / n;
+    return (2.0 * x + z2 + std::sqrt(disc) * z) / (2.0 * (z2 + n));
 }
-DD wilson_small(double x, double n, double z, DD z2) {
-    return dd::two_prod(x, x) / ((z2 + n) * n) / wilson_big(x, n, z, z2);
+double wilson_small(double x, double n, double z, double z2) {
+    return x * x / ((z2 + n) * n) / wilson_big(x, n, z, z2);
 }
 
 // log C(n, j) as a double-double
@@ -327,18 +331,16 @@ void binom_interval(double k, double n, double alpha, int method, int alt, doubl
             break;
         }
         case kWilson: {
-            const double z = zn;
-            const DD z2 = dd::two_prod(z, z);
-            const DD big = wilson_big(k, n, z, z2);  // (wilson_small(k, ...)'s denominator too)
-            lo = k == 0.0 ? 0.0 : clip01(to_double(dd::two_prod(k, k) / ((z2 + n) * n) / big));
-            hi = k == n ? 1.0 : clip01(to_double(big));
+            const double z = zn, z2 = z * z;
+            const double big = wilson_big(k, n, z, z2);  // (wilson_small(k, ...)'s denominator too)
+            lo = k == 0.0 ? 0.0 : clip01(k * k / ((z2 + n) * n) / big);
+            hi = k == n ? 1.0 : clip01(big);
             break;
         }
         case kWilsonCC: {
-            const double z = zn;
-            const DD z2 = dd::two_prod(z, z);
-            lo = k == 0.0 ? 0.0 : to_double(wilson_small(k - 0.5, n, z, z2));
-            hi = k == n ? 1.0 : to_double(wilson_big(k + 0.5, n, z, z2));
+            const double z = zn, z2 = z * z;
+            lo = k == 0.0 ? 0.0 : wilson_small(k - 0.5, n, z, z2);
+            hi = k == n ? 1.0 : wilson_big(k + 0.5, n, z, z2);
             break;
         }
         case kJeffreys: lo = beta_icdf(as, k + 0.5, n - k + 0.5), hi = beta_iccdf(as, k + 0.5, n - k + 0.5); break;
@@ -915,6 +917,15 @@ void wald_type(const Counts& k, int compare, int method, double v, double& z, do
     if (compare == kDiff) {  // wald, agresti-caffo: the adjusted proportions' difference
         const double a = method == kAgrestiCaffo ? 1.0 : 0.0;
         const double c1 = k.c1 + a, n1 = k.n1 + 2.0 * a, c2 = k.c2 + a, n2 = k.n2 + 2.0 * a;
+        if (v == 0.0 && n1 * n2 < 0x1p53) {
+            // integer counts whose products are exact in double: the difference is one rounded
+            // quotient of exact integers (no cancellation left), the variance a sum of positive
+            // terms, z within a few ulp
+            const double d = (c1 * n2 - c2 * n1) / (n1 * n2);
+            const double vv = c1 * (n1 - c1) / n1 / n1 / n1 + c2 * (n2 - c2) / n2 / n2 / n2;
+            z = vv > 0.0 ? d / std::sqrt(vv) : kNaN, var = vv;
+            return;
+        }
         const DD d = quot(c1, n1) - quot(c2, n2) - v;
         const DD vv = dd::two_prod(c1, n1 - c1) / n1 / n1 / n1 + dd::two_prod(c2, n2 - c2) / n2 / n2 / n2;
         z = over_sqrt(d, vv), var = to_double(vv);
@@ -959,7 +970,15 @@ nb::tuple prop2_test(
         } else {
             wald_type(k, compare, method, v, z, var);
         }
-        // the sample's difference, ratio and odds ratio: exact rationals rounded once
+        // the sample's difference, ratio and odds ratio: exact rationals rounded once (counts whose
+        // products stay below 2^53: exact in double, and one division rounds correctly)
+        if (k.n1 * k.n2 < 0x1p53) {
+            auto fq = [](double nn, double d) { return d == 0.0 ? (nn == 0.0 ? kNaN : kInf) : nn / d; };
+            out.p[0][l] = z, out.p[2][l] = var, out.p[3][l] = p1, out.p[4][l] = p0;
+            out.p[5][l] = (k.c1 * k.n2 - k.c2 * k.n1) / (k.n1 * k.n2);
+            out.p[6][l] = fq(k.c1 * k.n2, k.n1 * k.c2), out.p[7][l] = fq(k.c1 * (k.n2 - k.c2), (k.n1 - k.c1) * k.c2);
+            return;
+        }
         const i128 C1 = static_cast<i128>(k.c1), N1 = static_cast<i128>(k.n1), C2 = static_cast<i128>(k.c2),
                    N2 = static_cast<i128>(k.n2);
         const double diff = to_double(exact::to_dd(C1 * N2 - C2 * N1) / exact::to_dd(N1 * N2));
@@ -1111,6 +1130,18 @@ void prop2_interval(
         double l1, u1, l2, u2;
         binom_interval(k.c1, k.n1, alpha, kWilson, kTwoSided, l1, u1, z);
         binom_interval(k.c2, k.n2, alpha, kWilson, kTwoSided, l2, u2, z);
+        if (k.n1 * k.n2 < 0x1p53) {
+            // counts whose products are exact in double: d one rounded quotient of exact integers,
+            // p_i = q_i + r_i from the quotient's exact remainder, the half widths sums of
+            // positive squares; each end within a few ulp of itself and of the half width (the
+            // Wilson ends' own ~4 ulp dominate, as their rounding did in double-doubles)
+            const double q1 = k.c1 / k.n1, r1 = std::fma(-q1, k.n1, k.c1) / k.n1;
+            const double q2 = k.c2 / k.n2, r2 = std::fma(-q2, k.n2, k.c2) / k.n2;
+            const double d = (k.c1 * k.n2 - k.c2 * k.n1) / (k.n1 * k.n2);
+            const double e1 = (q1 - l1) + r1, e2 = (u2 - q2) - r2, e3 = (q2 - l2) + r2, e4 = (u1 - q1) - r1;
+            lo = d - std::sqrt(e1 * e1 + e2 * e2), hi = d + std::sqrt(e3 * e3 + e4 * e4);
+            return;
+        }
         const DD p1 = quot(k.c1, k.n1), p2 = quot(k.c2, k.n2), d = p1 - p2;
         const DD e1 = p1 - l1, e2 = D(u2) - p2, e3 = p2 - l2, e4 = D(u1) - p1;
         lo = to_double(d - sqrt_dd(e1 * e1 + e2 * e2)), hi = to_double(d + sqrt_dd(e3 * e3 + e4 * e4));

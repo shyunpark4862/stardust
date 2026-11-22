@@ -8,7 +8,10 @@
 //                        logarithms are of size n and a term would lose n ulps. The terms that
 //                        matter are found first in double (those within e^-100 of the largest),
 //                        then summed with their double-double logarithms in fixed chunks, in
-//                        parallel for many terms. Down to the subnormals: no cut to 0.
+//                        parallel for many terms. Down to the subnormals: no cut to 0. From n = 4096,
+//                        where the terms turn over thousands of j, the sum is first taken as the
+//                        integral of their analytic continuation (smirnov_integral below; ~100
+//                        terms instead of n, the same value to 3e-16).
 //   kolmogorov_sf(x)     Kolmogorov's limit Q(x) = 2 sum_{k >= 1} (-1)^(k-1) e^(-2 k^2 x^2) for x >= 1
 //                        (x^2 split as hi + lo, so e^(-2x^2) is right to an ulp in the deep tail),
 //                        1 - sqrt(2 pi)/x sum_{k >= 1} e^(-(2k-1)^2 pi^2 / (8 x^2)) below.
@@ -34,6 +37,7 @@
 
 #include "parallel/pool.hpp"
 #include "special/dd.hpp"
+#include "special/ops/gamma.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -73,6 +77,88 @@ inline DD bt_log(double n, double j, DD c, DD nd, DD lgn, DD logd) {
 
 }  // namespace detail
 
+// The term's logarithm at a real x (the analytic continuation: log C(n, x) by loggamma), and its
+// derivative in double (to find the peak).
+inline DD bt_log_x(double x, double n, DD c, DD nd, DD lgn, DD logd) {
+    const DD X{x, 0.0}, N{n, 0.0};
+    const DD a = (c - X) / n, b = (nd + X) / n;
+    const DD lc = lgn - dd::loggamma(X + 1.0) - dd::loggamma(N - X + 1.0);
+    return lc + dd::log_pos(a) * (N - X) + dd::log_pos(b) * (X - 1.0) + logd;
+}
+inline double bt_dlog_x(double x, double n, double c, double nd) {
+    using special::Digamma;
+    return Digamma::f(n - x + 1.0) - Digamma::f(x + 1.0) - std::log((c - x) / n) - (n - x) / (c - x) +
+           std::log((nd + x) / n) + (x - 1.0) / (nd + x);
+}
+
+// The Birnbaum-Tingey sum of a large n as an integral: the terms are the values at the integers
+// of an analytic function T(x) (log C(n, x) by loggamma) that turns over a width sigma of
+// thousands, and where T and its derivatives are negligible at both ends (x = 0, x = J), the
+// Euler-Maclaurin formula leaves sum_j T(j) = int_0^J T(x) dx up to an exponentially small
+// remainder (Poisson summation: about e^(-2 pi^2 sigma^2) for a bell of width sigma). The
+// integral is the trapezoid rule on a lattice from the peak (found by bisection on T'/T),
+// halved until two levels agree to 2^-44 (the rule's error falls as e^(-const / h)), each level
+// walked out until a term is below 2^-70 of the largest; a walk that leaves [0, J] while its last
+// term is not that small leaves the level unresolved. false where it does not apply: the peak
+// at an end, sigma < 30, T(0) not negligible, or no agreement within 4096 terms (then the sum).
+// Measured against the sum for n = 3e3 to 1e6 and n d^2 from 0.1 to 400: within 3e-16 relative,
+// in ~100 terms (n d^2 >= 1) to ~5000 (n d^2 = 0.09), against n terms for the sum.
+inline bool smirnov_integral(std::int64_t ni, double d, DD c, DD nd, double J, double& out) {
+    const double n = static_cast<double>(ni);
+    double lo = 0.5, hi = J - 0.5;
+    if (!(hi > lo) || !(bt_dlog_x(lo, n, c.hi, nd.hi) > 0.0) || !(bt_dlog_x(hi, n, c.hi, nd.hi) < 0.0)) return false;
+    for (int it = 0; it < 200 && hi - lo > 1e-6 * std::max(1.0, lo); ++it) {
+        const double m = 0.5 * (lo + hi);
+        (bt_dlog_x(m, n, c.hi, nd.hi) > 0.0 ? lo : hi) = m;
+    }
+    const double xs = 0.5 * (lo + hi), h = std::max(1.0, 1e-4 * xs);
+    const double d2 = (bt_dlog_x(xs + h, n, c.hi, nd.hi) - bt_dlog_x(xs - h, n, c.hi, nd.hi)) / (2.0 * h);
+    if (!(d2 < 0.0)) return false;
+    const double sig = 1.0 / std::sqrt(-d2);
+    if (!(sig >= 30.0)) return false;
+    const DD lgn = dd::loggamma(DD{n + 1.0, 0.0}), logd = dd::log_pos(d);
+    const DD Lpk = bt_log_x(xs, n, c, nd, lgn, logd);
+    auto term = [&](double x) {
+        const DD l = bt_log_x(x, n, c, nd, lgn, logd) - Lpk;
+        return l.hi < -745.0 ? 0.0 : exp_dd(l);
+    };
+    if (!(term(0.0) <= 0x1p-70)) return false;  // the first term counts: the sum, not the integral
+    const double H0 = 0.25 * sig;
+    dd::Sum sum;
+    double mx = 0.0, prev = 0.0;
+    int count = 0;
+    for (int level = 0; level < 12 && count < 4096; ++level) {
+        const double step = std::ldexp(H0, -level), stride = level ? 2.0 * step : step;
+        const double first = level ? xs + step : xs;
+        bool resolved = true;
+        for (int side = 0; side < 2; ++side) {
+            double last = std::numeric_limits<double>::infinity();
+            for (int j = 0;; ++j) {
+                const double x = side ? first - (j + 1) * stride : first + j * stride;
+                if (x < 0.0 || x > J) {
+                    resolved = resolved && last <= 0x1p-70 * mx;
+                    break;
+                }
+                const double o = term(x);
+                ++count;
+                sum.add(o);
+                mx = std::max(mx, o);
+                const bool outside = side ? x < xs - sig : x > xs + sig;
+                if (outside && o <= 0x1p-70 * mx && o <= last) break;
+                last = o;
+            }
+        }
+        const double T = sum.total() * step;
+        if (level > 0 && resolved && std::fabs(T - prev) <= 0x1p-44 * T) {
+            out = exp_dd(Lpk + dd::log(DD{T, 0.0}));
+            return true;
+        }
+        prev = T;
+    }
+    return false;
+}
+inline constexpr std::int64_t kSmirnovIntegralN = 4096;  // from this n the integral is tried first
+
 inline double smirnov_sf(std::int64_t n, double d) {
     if (n <= 0 || d != d) return kNaN;
     if (d <= 0.0) return 1.0;
@@ -84,6 +170,10 @@ inline double smirnov_sf(std::int64_t n, double d) {
     if (top == c.hi && c.lo < 0.0) top -= 1.0;
     const auto J = static_cast<std::int64_t>(top);
     const DD nd = dd::two_prod(nn, d);
+    if (n >= kSmirnovIntegralN) {
+        double v;
+        if (smirnov_integral(n, d, c, nd, top, v)) return v;
+    }
     // screening in double: log C(n, j) by its ratios, the logarithms of a and b in double
     std::vector<double> L(static_cast<std::size_t>(J + 1));
     const double ld = std::log(d), cn = c.hi;
@@ -199,35 +289,64 @@ inline DD dmtw_cdf(std::int64_t n, double d) {
         for (std::int64_t i = 0; i < m; ++i) gp = gp * g;
         at(m - 1, 0) = at(m - 1, 0) + gp * inv[mz];
     }
-    std::vector<DD> v(mz, DD{0.0, 0.0}), w(mz);
-    v[static_cast<std::size_t>(k - 1)] = {1.0, 0.0};
+    // the matrix's high and low parts apart, the vector's too: v H as rows of axpys into the
+    // columns' sums (Ogita, Rump and Oishi's Dot2: the product's error by fma, the sum's by
+    // two_sum, both into the low sum), each column's terms still added in row order. Independent
+    // columns in the inner loop vectorize; the old column-wise dd::Sum chained every term.
+    std::vector<double> Hh(mz * mz), Hl(mz * mz);
+    for (std::size_t i = 0; i < mz * mz; ++i) Hh[i] = H[i].hi, Hl[i] = H[i].lo;
+    std::vector<double> vh(mz, 0.0), vl(mz, 0.0), sh(mz), sl(mz);
+    vh[static_cast<std::size_t>(k - 1)] = 1.0;
     std::int64_t ex = 0;  // the vector is v 2^ex
+    // columns [j0, j1) of v H into (sh, sl): the rows from j0 - 1 on (above the subdiagonal H is
+    // zero, but in column 0)
+    auto columns = [&](std::size_t j0, std::size_t j1) {
+        for (std::size_t j = j0; j < j1; ++j) sh[j] = 0.0, sl[j] = 0.0;
+        for (std::size_t i = j0 == 0 ? 0 : j0 - 1; i < mz; ++i) {
+            const double a = vh[i], b = vl[i];
+            const double* __restrict hh = Hh.data() + i * mz;
+            const double* __restrict hl = Hl.data() + i * mz;
+            double* __restrict s = sh.data();
+            double* __restrict c = sl.data();
+            const std::size_t je = std::min(j1, i + 2);
+            for (std::size_t j = j0; j < je; ++j) {
+                const double p = a * hh[j];
+                double e = std::fma(a, hh[j], -p);
+                e = std::fma(a, hl[j], e);
+                e = std::fma(b, hh[j], e);
+                const double x = s[j] + p, bb = x - s[j];
+                c[j] += ((s[j] - (x - bb)) + (p - bb)) + e;
+                s[j] = x;
+            }
+        }
+    };
+    // many columns: fixed blocks of 32 on the pool (each column's sum is the same whatever the
+    // thread count)
+    constexpr std::size_t kCols = 32;
+    const std::size_t blocks = (mz + kCols - 1) / kCols;
     const bool split = m >= 96;
     for (std::int64_t t = 1; t <= n; ++t) {
-        // column j of v H: the rows from j - 1 on (above it H is zero, but in column 0)
-        auto column = [&](std::int64_t j) {
-            dd::Sum s;
-            for (std::int64_t i = std::max<std::int64_t>(0, j - 1); i < m; ++i)
-                s.add(v[static_cast<std::size_t>(i)] * at(i, j));
-            w[static_cast<std::size_t>(j)] = s.value();
-        };
         if (split) {
-            parallel::parallel_for(m, [&](std::int64_t j) { column(j); });
+            parallel::parallel_for(static_cast<std::int64_t>(blocks), [&](std::int64_t b) {
+                const auto j0 = static_cast<std::size_t>(b) * kCols;
+                columns(j0, std::min(mz, j0 + kCols));
+            });
         } else {
-            for (std::int64_t j = 0; j < m; ++j) column(j);
+            columns(0, mz);
         }
         double big = 0.0;
-        for (std::int64_t j = 0; j < m; ++j) {
-            v[static_cast<std::size_t>(j)] = w[static_cast<std::size_t>(j)] * static_cast<double>(t) / nn;
-            big = std::max(big, std::fabs(v[static_cast<std::size_t>(j)].hi));
+        for (std::size_t j = 0; j < mz; ++j) {
+            const DD r = dd::quick_two_sum(sh[j], sl[j]) * static_cast<double>(t) / nn;
+            vh[j] = r.hi, vl[j] = r.lo;
+            big = std::max(big, std::fabs(r.hi));
         }
         if (big > 0x1p300 || (big > 0.0 && big < 0x1p-300)) {
             const int e = std::ilogb(big);
-            for (DD& x : v) x = dd::ldexp(x, -e);
+            for (std::size_t j = 0; j < mz; ++j) vh[j] = std::ldexp(vh[j], -e), vl[j] = std::ldexp(vl[j], -e);
             ex += e;
         }
     }
-    const DD r = v[static_cast<std::size_t>(k - 1)];
+    const DD r{vh[static_cast<std::size_t>(k - 1)], vl[static_cast<std::size_t>(k - 1)]};
     return dd::ldexp(r, static_cast<int>(std::clamp<std::int64_t>(ex, -3000, 3000)));
 }
 

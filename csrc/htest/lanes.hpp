@@ -47,30 +47,25 @@ struct Outs {
     }
 };
 
-// for_pieces (array/ops/pieces.hpp: the same pieces, so the same bits), but a job of a few long
-// pieces wakes the sleeping workers too. The pool wakes them only for a job of more than 16
-// tasks (csrc/parallel/pool.cpp kWakeTasks: a wake-up costs ~25 us against tasks of ~1 us), so
-// two to sixteen pieces of a heavy test (a tukey_hsd p-value is ~4 ms) ran on the calling thread
-// and the workers that happened to be spinning. Pieces of at least kHeavyPiece elements of work
-// (~50 us and more) are padded with empty tasks past that count.
-inline constexpr std::int64_t kHeavyPiece = 1 << 15;
-inline constexpr std::int64_t kWakeTasks = 17;
+// for_pieces (array/ops/pieces.hpp: the same pieces, so the same bits) with the job's length
+// told to the pool (parallel_for's task_ns, `work` in elements of ~1 ns): a few long pieces of a
+// heavy test (a batch's p-values, one long lane's blocks) wake the sleeping workers from the
+// start, a short job never pays for a wake-up.
 template <class F>
 void for_pieces_woken(std::int64_t n, std::int64_t per, std::int64_t work, F&& fn) {
     per = std::max<std::int64_t>(per, 1);
     const std::int64_t pieces = (n + per - 1) / per;
-    if (work < kParallelThreshold || pieces < 2 || pieces >= kWakeTasks || work / pieces < kHeavyPiece) {
+    if (work < kParallelThreshold || pieces < 2) {
         for_pieces(n, per, work, fn);
         return;
     }
     const parallel::Unlocked unlocked(true);
+    auto run = [&](std::int64_t t) { fn(t, t * per, std::min(n, (t + 1) * per)); };
     if (!parallel::available()) {
-        for (std::int64_t t = 0; t < pieces; ++t) fn(t, t * per, std::min(n, (t + 1) * per));
+        for (std::int64_t t = 0; t < pieces; ++t) run(t);
         return;
     }
-    parallel::parallel_for(kWakeTasks, [&](std::int64_t t) {
-        if (t < pieces) fn(t, t * per, std::min(n, (t + 1) * per));
-    });
+    parallel::parallel_for(pieces, run, work / pieces);
 }
 
 // fn(r) for every lane on the pool, `cost` the work of one lane in elements (roughly)

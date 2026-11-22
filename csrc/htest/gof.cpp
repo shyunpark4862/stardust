@@ -36,10 +36,13 @@
 #include "stats/dist/normal.hpp"
 #include "stats/engine.hpp"
 
+#include <arm_neon.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace nb = nanobind;
@@ -77,7 +80,8 @@ bool lane_values(const Rows& a, std::int64_t r, bool omit, std::vector<double>& 
 // 2 sum E log(E/O) = 2 sum E g_0 - 2 sum (O - E)). The terms of the first sum are never negative,
 // so a statistic near 0 (O close to E) keeps its digits: scipy's direct sum of O log(O/E) cancels
 // to the first order (9.9e-8 relative at O - E = 1e-3, E = 1e6). Pearson's (lambda = 1) is
-// scipy's sum (O - E)^2 / E. The terms g_a are htest/divergence.hpp's.
+// scipy's sum (O - E)^2 / E, in double (positive terms: a few ulps). The terms g_a are
+// htest/divergence.hpp's. The cells go in fixed blocks, on the pool for a long lane.
 
 using div::g1;
 using div::ga;
@@ -87,87 +91,237 @@ struct PdLane {
     double stat = kNaN, p = kNaN, df = kNaN, rel = 0.0;
 };
 
-PdLane pd_lane(const Rows& o, const Rows* e, std::int64_t r, double lam, double ddof, bool omit) {
-    namespace dd = special::dd;
-    PdLane out;
-    std::vector<double> ov, ev;
+// A lane of a source as a pointer: the row itself when contiguous (direct: the caller's sums
+// tell whether a NaN is there), else the values gathered into buf (NaN pairs left out under omit).
+// false: a NaN under 'propagate'.
+bool pd_gather(
+    const Rows& o,
+    const Rows* e,
+    std::int64_t r,
+    bool omit,
+    std::vector<double>& ob,
+    std::vector<double>& eb,
+    const double*& ov,
+    const double*& ev,
+    std::int64_t& k
+) {
+    ob.clear(), eb.clear();
     for (std::int64_t j = 0; j < o.n; ++j) {
         const double x = o.at(r, j), y = e ? e->at(r, j) : 0.0;
         if (x != x || y != y) {
             if (omit) continue;
-            return out;
+            return false;
         }
-        ov.push_back(x);
-        if (e) ev.push_back(y);
+        ob.push_back(x);
+        if (e) eb.push_back(y);
     }
-    const auto k = static_cast<std::int64_t>(ov.size());
+    ov = ob.data(), ev = e ? eb.data() : nullptr, k = static_cast<std::int64_t>(ob.size());
+    return true;
+}
+
+// The sum of v[0, k) in eight chains (element i into chain i mod 8, combined in order; NEON,
+// two chains a register: one Neumaier chain is latency-bound).
+Acc sum8(const double* v, std::int64_t k) {
+    float64x2_t h[4], l[4];
+    for (int q = 0; q < 4; ++q) h[q] = vdupq_n_f64(0.0), l[q] = vdupq_n_f64(0.0);
+    const float64x2_t zero = vdupq_n_f64(0.0);
+    const uint64x2_t all = vdupq_n_u64(~0ull);
+    std::int64_t i = 0;
+    for (; i + 8 <= k; i += 8)
+        for (int q = 0; q < 4; ++q) neon::add(h[q], l[q], vld1q_f64(v + i + 2 * q), zero, all);
+    Acc c[8];
+    for (int q = 0; q < 4; ++q) {
+        c[2 * q].hi = vgetq_lane_f64(h[q], 0), c[2 * q + 1].hi = vgetq_lane_f64(h[q], 1);
+        c[2 * q].lo = vgetq_lane_f64(l[q], 0), c[2 * q + 1].lo = vgetq_lane_f64(l[q], 1);
+    }
+    for (; i < k; ++i) c[i & 7].add(v[i]);
+    Acc t = c[0];
+    for (int q = 1; q < 8; ++q) t.add(c[q]);
+    return t;
+}
+
+// The sums of cells [b, f): pos the nonnegative terms, lin the differences O - E (exact, as
+// double-doubles), raw scipy's terms of the cells the rearranged form does not cover.
+struct PdSums {
+    Acc pos, lin, raw;
+    void add(const PdSums& o) { pos.add(o.pos), lin.add(o.lin), raw.add(o.raw); }
+};
+void pd_cells(const double* ov, const double* ev, DD emean, double lam, std::int64_t b, std::int64_t f, PdSums& s) {
+    const double aa = lam + 1.0;
+    // Pearson's terms d^2 / E (the terms are positive: a few ulps; scipy's sum) in four chains,
+    // cell i into chain i mod 4 (NEON: chains 0, 1 and 2, 3 in two registers, the same operations
+    // lane by lane); a cell the form does not cover is masked out and added to raw after
+    if (lam == 1.0) {
+        Acc4 c;
+        float64x2_t h01, l01, h23, l23;
+        neon::load(c, 0, h01, l01);
+        neon::load(c, 2, h23, l23);
+        const float64x2_t vE = vdupq_n_f64(emean.hi), vEl = vdupq_n_f64(emean.lo), zero = vdupq_n_f64(0.0);
+        const float64x2_t big = vdupq_n_f64(std::numeric_limits<double>::max());
+        uint64x2_t all = vdupq_n_u64(~0ull);
+        auto term = [&](std::int64_t j, float64x2_t& t, uint64x2_t& ok) {
+            const float64x2_t x = vld1q_f64(ov + j), E = ev ? vld1q_f64(ev + j) : vE;
+            const float64x2_t d = vsubq_f64(vsubq_f64(x, E), ev ? zero : vEl);
+            t = vdivq_f64(vmulq_f64(d, d), E);
+            // E > 0, E finite, x >= 0, x finite (false for NaN)
+            ok = vandq_u64(
+                vandq_u64(vcgtq_f64(E, zero), vcleq_f64(E, big)), vandq_u64(vcgeq_f64(x, zero), vcleq_f64(x, big))
+            );
+        };
+        std::int64_t i = b;
+        for (; i + 4 <= f; i += 4) {
+            float64x2_t t0, t1;
+            uint64x2_t k0, k1;
+            term(i, t0, k0);
+            term(i + 2, t1, k1);
+            neon::add(h01, l01, t0, zero, k0);
+            neon::add(h23, l23, t1, zero, k1);
+            all = vandq_u64(all, vandq_u64(k0, k1));
+        }
+        neon::store(c, 0, h01, l01);
+        neon::store(c, 2, h23, l23);
+        const bool clean = vgetq_lane_u64(all, 0) & vgetq_lane_u64(all, 1);
+        auto covered = [](double x, double E) { return E > 0.0 && std::isfinite(E) && x >= 0.0 && std::isfinite(x); };
+        for (std::int64_t j = i; j < f; ++j) {
+            const double x = ov[j], E = ev ? ev[j] : emean.hi;
+            if (!covered(x, E)) continue;
+            const double d = (x - E) - (ev ? 0.0 : emean.lo);
+            c.c[j & 3].add(d * d / E);
+        }
+        s.pos.add(c.total());
+        for (std::int64_t j = clean ? i : b; j < f; ++j) {
+            const double x = ov[j], E = ev ? ev[j] : emean.hi;
+            if (!covered(x, E)) s.raw.add(scipy_term(lam, x, E));
+        }
+        return;
+    }
+    // the covered cells of a block packed (delta, 2 E, O - E), their terms as one block
+    // (divergence.hpp g1_block, ga_block: NEON), the sums in four chains (packed cell q into chain
+    // q mod 4, combined in order)
+    alignas(16) double t[div::kGBlock], g[div::kGBlock], w[div::kGBlock], dh[div::kGBlock], dl[div::kGBlock];
+    Acc4 pos, lin;
+    const float64x2_t vEh = vdupq_n_f64(emean.hi), vEl = vdupq_n_f64(emean.lo), zero = vdupq_n_f64(0.0);
+    const float64x2_t big = vdupq_n_f64(std::numeric_limits<double>::max()), two = vdupq_n_f64(2.0);
+    for (std::int64_t i0 = b; i0 < f; i0 += div::kGBlock) {
+        const std::int64_t i1 = std::min(f, i0 + div::kGBlock);
+        int m = 0;
+        // every cell of the block covered (the usual case): packed two at a time in NEON, the
+        // scalar loop's operations lane by lane
+        uint64x2_t all = vdupq_n_u64(~0ull);
+        std::int64_t i = i0;
+        for (; i + 2 <= i1; i += 2) {
+            const float64x2_t x = vld1q_f64(ov + i), E = ev ? vld1q_f64(ev + i) : vEh;
+            all = vandq_u64(
+                all,
+                vandq_u64(
+                    vandq_u64(vcgtq_f64(E, zero), vcleq_f64(E, big)), vandq_u64(vcgeq_f64(x, zero), vcleq_f64(x, big))
+                )
+            );
+        }
+        if ((vgetq_lane_u64(all, 0) & vgetq_lane_u64(all, 1)) && (i1 - i0) % 2 == 0) {
+            for (i = i0; i < i1; i += 2, m += 2) {
+                const float64x2_t x = vld1q_f64(ov + i), Eh = ev ? vld1q_f64(ev + i) : vEh, El = ev ? zero : vEl;
+                const float64x2_t nE = vnegq_f64(Eh);
+                const float64x2_t sh = vaddq_f64(x, nE), bb = vsubq_f64(sh, x);
+                const float64x2_t sl = vaddq_f64(vsubq_f64(x, vsubq_f64(sh, bb)), vsubq_f64(nE, bb));
+                vst1q_f64(t + m, vdivq_f64(vaddq_f64(vsubq_f64(sh, El), sl), Eh));
+                vst1q_f64(w + m, vmulq_f64(two, Eh));
+                vst1q_f64(dh + m, sh), vst1q_f64(dl + m, vsubq_f64(sl, El));
+            }
+            i = i1;
+        } else {
+            i = i0;
+        }
+        for (; i < i1; ++i) {
+            const double x = ov[i];
+            const DD E = ev ? DD{ev[i], 0.0} : emean;
+            if (!(E.hi > 0.0) || x < 0.0 || !std::isfinite(E.hi) || !std::isfinite(x)) {
+                s.raw.add(scipy_term(lam, x, E.hi));
+                continue;
+            }
+            const DD d = dd::two_sum(x, -E.hi);  // O - E = d - E.lo
+            t[m] = ((d.hi - E.lo) + d.lo) / E.hi;
+            w[m] = 2.0 * E.hi, dh[m] = d.hi, dl[m] = d.lo - E.lo;
+            ++m;
+        }
+        if (lam == 0.0) div::g1_block(t, g, m);
+        else div::ga_block(lam == -1.0 ? 0.0 : aa, t, g, m);
+        // chains (0, 1) and (2, 3) as registers, the scalar adds lane by lane
+        float64x2_t ph01, pl01, ph23, pl23, lh01, ll01, lh23, ll23;
+        neon::load(pos, 0, ph01, pl01), neon::load(pos, 2, ph23, pl23);
+        neon::load(lin, 0, lh01, ll01), neon::load(lin, 2, lh23, ll23);
+        const uint64x2_t yes = vdupq_n_u64(~0ull);
+        int q = 0;
+        for (; q + 4 <= m; q += 4) {
+            neon::add(ph01, pl01, vmulq_f64(vld1q_f64(w + q), vld1q_f64(g + q)), zero, yes);
+            neon::add(ph23, pl23, vmulq_f64(vld1q_f64(w + q + 2), vld1q_f64(g + q + 2)), zero, yes);
+            neon::add(lh01, ll01, vld1q_f64(dh + q), vld1q_f64(dl + q), yes);
+            neon::add(lh23, ll23, vld1q_f64(dh + q + 2), vld1q_f64(dl + q + 2), yes);
+        }
+        neon::store(pos, 0, ph01, pl01), neon::store(pos, 2, ph23, pl23);
+        neon::store(lin, 0, lh01, ll01), neon::store(lin, 2, lh23, ll23);
+        for (; q < m; ++q) {
+            pos.c[q & 3].add(w[q] * g[q]);
+            lin.c[q & 3].add(dh[q], dl[q]);
+        }
+    }
+    s.pos.add(pos.total());
+    s.lin.add(lin.total());
+}
+
+PdLane pd_lane(const Rows& o, const Rows* e, std::int64_t r, double lam, double ddof, bool omit) {
+    PdLane out;
+    std::vector<double> ob, eb;
+    const double *ov = nullptr, *ev = nullptr;
+    std::int64_t k = o.n;
+    Acc so, se;
+    // a contiguous lane is read in place; its sums are NaN when a value is (or for inf - inf: the
+    // gathered values give that sum again), and then the values are gathered
+    const auto dsz = static_cast<std::int64_t>(sizeof(double));
+    bool direct = o.s1 == dsz && (!e || e->s1 == dsz);
+    if (direct) {
+        ov = reinterpret_cast<const double*>(o.data + r * o.s0);
+        ev = e ? reinterpret_cast<const double*>(e->data + r * e->s0) : nullptr;
+        so = sum8(ov, k);
+        if (ev) se = sum8(ev, k);
+        direct = so.hi == so.hi && se.hi == se.hi;
+    }
+    if (!direct) {
+        if (!pd_gather(o, e, r, omit, ob, eb, ov, ev, k)) return out;
+        so = sum8(ov, k);
+        if (ev) se = sum8(ev, k);
+    }
     if (k == 0) return out;
     out.df = static_cast<double>(k) - 1.0 - ddof;
-    Acc so;
-    for (double x : ov) so.add(x);
     DD emean{0.0, 0.0};
-    if (e) {
-        Acc se;
-        for (double y : ev) se.add(y);
+    if (ev) {
         const double a = to_double(so.value()), b = to_double(se.value());
         out.rel = std::fabs(a - b) / std::min(a, b);
     } else {
         emean = so.value() / static_cast<double>(k);
     }
-    Acc pos, lin, raw;
-    const double aa = lam + 1.0;
-    // cell i's terms: into raw (scipy's term), pos alone (Pearson's), or pos and lin
-    struct Term {
-        DD a, d;
-        int kind;
-    };
-    auto term = [&](std::int64_t i) -> Term {
-        const double x = ov[static_cast<std::size_t>(i)];
-        const DD E = e ? DD{ev[static_cast<std::size_t>(i)], 0.0} : emean;
-        if (!(E.hi > 0.0) || x < 0.0 || !std::isfinite(E.hi) || !std::isfinite(x))
-            return {DD{scipy_term(lam, x, E.hi), 0.0}, DD{0.0, 0.0}, 0};
-        const DD d = dd::two_sum(x, -E.hi) - E.lo;  // O - E
-        if (lam == 1.0) return {(d * d) / E.hi, d, 1};
-        const double t = (d.hi + d.lo) / E.hi;
-        const double g = lam == 0.0 ? g1(t) : (lam == -1.0 ? ga(0.0, t) : ga(aa, t));
-        return {DD{2.0 * E.hi * g, 0.0}, d, 2};
-    };
-    auto add = [&](const Term& t) {
-        if (t.kind == 0) raw.add(t.a.hi);
-        else if (t.kind == 1) pos.add(t.a);
-        else pos.add(t.a.hi), lin.add(t.d);
-    };
-    // the terms on the pool for a long lane alone, added in order (the same bits)
-    const std::int64_t cost = lam == 1.0 ? 8 : 48;
-    if (k * cost < kParallelThreshold || k < 2 * kTask || !parallel::available()) {
-        for (std::int64_t i = 0; i < k; ++i) {  // (term and add in one, as written out)
-            const double x = ov[static_cast<std::size_t>(i)];
-            const DD E = e ? DD{ev[static_cast<std::size_t>(i)], 0.0} : emean;
-            if (!(E.hi > 0.0) || x < 0.0 || !std::isfinite(E.hi) || !std::isfinite(x)) {
-                raw.add(scipy_term(lam, x, E.hi));
-                continue;
-            }
-            const DD d = dd::two_sum(x, -E.hi) - E.lo;  // O - E
-            if (lam == 1.0) {
-                pos.add((d * d) / E.hi);
-                continue;
-            }
-            const double t = (d.hi + d.lo) / E.hi;
-            pos.add(2.0 * E.hi * (lam == 0.0 ? g1(t) : (lam == -1.0 ? ga(0.0, t) : ga(aa, t))));
-            lin.add(d);
-        }
+    // fixed blocks of kBlock cells (on the pool for a long lane), their sums added in order: the
+    // bits do not depend on the thread count
+    PdSums tot;
+    const std::int64_t nb = blocks_of(k);
+    if (nb == 1) {
+        pd_cells(ov, ev, emean, lam, 0, k, tot);
     } else {
-        std::vector<Term> ts(static_cast<std::size_t>(k));
-        for_pieces(k, kTask, k * cost, [&](std::int64_t, std::int64_t b, std::int64_t f) {
-            for (std::int64_t i = b; i < f; ++i) ts[static_cast<std::size_t>(i)] = term(i);
+        std::vector<PdSums> part(static_cast<std::size_t>(nb));
+        const std::int64_t cost = lam == 1.0 ? 2 : 24;
+        for_pieces_woken(nb, 1, k * cost, [&](std::int64_t, std::int64_t b0, std::int64_t b1) {
+            for (std::int64_t q = b0; q < b1; ++q)
+                pd_cells(
+                    ov, ev, emean, lam, q * kBlock, std::min(k, (q + 1) * kBlock), part[static_cast<std::size_t>(q)]
+                );
         });
-        for (const Term& t : ts) add(t);
+        for (const PdSums& q : part) tot.add(q);
     }
-    const double coef = lam == -1.0 ? -2.0 : (lam == 1.0 ? 0.0 : 2.0 / aa);
-    Acc tot = pos;
-    tot.add(lin.value() * coef);
-    tot.add(raw.value());
-    out.stat = to_double(tot.value());
+    const double coef = lam == -1.0 ? -2.0 : (lam == 1.0 ? 0.0 : 2.0 / (lam + 1.0));
+    Acc sum = tot.pos;
+    sum.add(tot.lin.value() * coef);
+    sum.add(tot.raw.value());
+    out.stat = to_double(sum.value());
     out.p = (out.df > 0.0 && out.stat == out.stat) ? chi2_sf(out.stat, out.df) : kNaN;
     return out;
 }
@@ -202,7 +356,9 @@ nb::tuple jarque_bera(nb::handle x, bool omit) {
     const Rows a(rows_arg(x));
     Outs out(2, a.lanes);
     each_lane(a.lanes, 16 * a.n, [&](std::int64_t r) {
-        std::vector<double> v, part;
+        LaneBuf<double, 0> bv;
+        LaneBuf<double, 1> bp;
+        std::vector<double>&v = bv.v, &part = bp.v;
         CentralSums cs;
         double stat = kNaN, p = kNaN;
         if (lane_sums(a, r, omit, v, part, cs)) {
@@ -272,7 +428,9 @@ nb::tuple dagostino(int kind, nb::handle x, int alt, bool omit) {
     const Rows a(rows_arg(x));
     Outs out(2, a.lanes);
     each_lane(a.lanes, 16 * a.n, [&](std::int64_t r) {
-        std::vector<double> v, part;
+        LaneBuf<double, 0> bv;
+        LaneBuf<double, 1> bp;
+        std::vector<double>&v = bv.v, &part = bp.v;
         CentralSums cs;
         double stat = kNaN, p = kNaN;
         if (lane_sums(a, r, omit, v, part, cs)) {
@@ -430,7 +588,8 @@ nb::tuple shapiro(nb::handle x, bool omit) {
     const Rows a(rows_arg(x));
     Outs out(2, a.lanes);
     each_lane(a.lanes, 64 * a.n, [&](std::int64_t r) {
-        std::vector<double> v;
+        LaneBuf<double, 0> bv;
+        std::vector<double>& v = bv.v;
         SwLane l;
         if (!lane_values(a, r, omit, v)) l = shapiro_lane(v);
         out.p[0][r] = l.w, out.p[1][r] = l.p;
@@ -627,7 +786,8 @@ nb::tuple anderson(nb::handle x, int dist, bool omit) {
     const Rows a(rows_arg(x));
     Outs out(2, a.lanes);
     each_lane(a.lanes, 64 * a.n, [&](std::int64_t r) {
-        std::vector<double> v;
+        LaneBuf<double, 0> bv;
+        std::vector<double>& v = bv.v;
         AdLane l;
         if (!lane_values(a, r, omit, v)) l = anderson_lane(v, dist);
         out.p[0][r] = l.a2, out.p[1][r] = l.p;
