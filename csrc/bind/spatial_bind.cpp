@@ -12,6 +12,8 @@ void bind_spatial(nb::module_& core) {
     spatial::bind_distance(m);
     spatial::bind_kdtree(m);
     spatial::bind_neighbors(m);
+    spatial::bind_query(m);
+    spatial::bind_dual(m);
 }
 
 }  // namespace sd

@@ -86,6 +86,12 @@ struct KdEuclid {  // p = 2
     }
     static bool plain(double s) { return s >= kTiny && s <= kHuge; }
     static double above(double T) { return (T * T) * (1.0 + 0x1p-50); }
+    // A plain sum s <= below(T) has d^ <= T: s <= fl(T T) (1 - 8u) (1 + u) < T^2 when T^2 is normal, so
+    // sqrt(s) < T and RN(sqrt(s)) <= T. Outside the normal range of T^2 no sum passes (-1).
+    static double below(double T) {
+        const double t = T * T;
+        return t >= 0x1p-1022 && t <= kHuge ? t * (1.0 - 0x1p-50) : -1.0;
+    }
 };
 struct KdCity {  // p = 1
     int64_t m;
@@ -97,6 +103,7 @@ struct KdCity {  // p = 1
     double finish(double s, const double*, const double*) const { return s; }
     static bool plain(double) { return true; }
     static double above(double T) { return T; }
+    static double below(double T) { return T; }
 };
 struct KdCheb {  // p = inf
     int64_t m;
@@ -108,6 +115,7 @@ struct KdCheb {  // p = inf
     double finish(double s, const double*, const double*) const { return s; }
     static bool plain(double) { return true; }
     static double above(double T) { return T; }
+    static double below(double T) { return T; }
 };
 struct KdMink {  // any other p >= 1
     int64_t m;
@@ -116,6 +124,7 @@ struct KdMink {  // any other p >= 1
     double finish(double s, const double*, const double*) const { return s; }
     static bool plain(double) { return true; }
     static double above(double T) { return T; }
+    static double below(double T) { return T; }
 };
 
 // The threshold a node's bound must exceed to be cut, for a search radius T (see the top of this file).
@@ -125,6 +134,79 @@ struct KdCut {
     KdCut(int64_t m, bool chebyshev) : c(1.0 + static_cast<double>(m + 12) * 0x1p-51), exact(chebyshev) {}
     double operator()(double T) const { return exact ? T : (T * c) + 0x1p-1070; }  // inf stays inf
 };
+
+// ---- bounds between two boxes (SPT4: the radius, pair and count queries; SPT63) ---------------------------
+//
+// A box is (lo, hi) per axis; a query point x is the box (x, x). The bounds are kernel distances of two
+// points a, b made of box corners, so they are computed like any pair and the proof above applies.
+//
+// near(A, B): a_i, b_i are the corners across the gap of axis i (hi^A_i and lo^B_i when lo^B_i > hi^A_i,
+// lo^A_i and hi^B_i when lo^A_i > hi^B_i, else 0 and 0), so |a_i - b_i| is the gap exactly and D(a, b) <=
+// D(x, y) for every x in A and y in B. A node pair is cut for a radius T when the bound exceeds KdCut(T):
+// every pair of it then has d^ > T (the proof above, with D(x, c) replaced by D(a, b)). For a point and
+// a box this is SPT51's clamp point.
+//
+// far(A, B): a_i, b_i are the corners of the larger rounded difference of fl(hi^B_i - lo^A_i) and
+// fl(hi^A_i - lo^B_i) (the first on a tie). The largest true |x_i - y_i| over the boxes, f_i, is the larger
+// of the two true differences; rounding is monotone, so the chosen true difference t_i is f_i unless both
+// round to the same R, and then t_i >= f_i (1 - u) / (1 + u) >= f_i (1 - 2u) (a subnormal difference is
+// exact). The p-norms are monotone and homogeneous, so D(x, y) <= D(f) <= D(a, b) / (1 - 2u). With the
+// distance contract d^(x, y) <= (1 + kappa) D(x, y) + 2^-1074 and D(a, b) <= (b^ + 2^-1074) / (1 - kappa)
+// for the bound b^ = d^(a, b):
+//     d^(x, y) <= (1 + kappa) / ((1 - kappa) (1 - 2u)) (b^ + 2^-1074) + 2^-1074 <= fl(fl(b^ c) + eta),
+// since c (1 - u)^2 >= 1 + (4m + 46) u - O(u^2) exceeds (1 + kappa) / ((1 - kappa) (1 - 2u)) <= 1 + (2m + 24) u
+// + O(u^2) (kappa <= (m + 11) u) and (eta - 2^-1075) (1 - u) > 15 2^-1074 covers the absolute terms. So
+// every pair of a node pair has d^ <= T as soon as KdCut(b^) <= T: the whole node pair is inside. A
+// difference that overflows makes b^ = inf, inside only for T = inf, which holds for any finite data. For
+// p = inf the kernel is the largest correctly rounded |x_i - y_i|, monotone in each, so d^(x, y) <= b^
+// exactly and the test is b^ <= T (KdCut is exact there).
+struct KdPair {
+    std::vector<double> a, b;
+    explicit KdPair(int64_t m) : a(static_cast<size_t>(m)), b(static_cast<size_t>(m)) {}
+
+    void near(const double* loA, const double* hiA, const double* loB, const double* hiB, int64_t m) {
+        for (int64_t i = 0; i < m; ++i) {
+            const size_t k = static_cast<size_t>(i);
+            if (loB[i] > hiA[i]) {
+                a[k] = hiA[i];
+                b[k] = loB[i];
+            } else if (loA[i] > hiB[i]) {
+                a[k] = loA[i];
+                b[k] = hiB[i];
+            } else {
+                a[k] = 0.0;
+                b[k] = 0.0;
+            }
+        }
+    }
+    void far(const double* loA, const double* hiA, const double* loB, const double* hiB, int64_t m) {
+        for (int64_t i = 0; i < m; ++i) {
+            const size_t k = static_cast<size_t>(i);
+            if (hiB[i] - loA[i] >= hiA[i] - loB[i]) {
+                a[k] = loA[i];
+                b[k] = hiB[i];
+            } else {
+                a[k] = hiA[i];
+                b[k] = loB[i];
+            }
+        }
+    }
+};
+
+// The kernel distance of a pair (the sum, then the finish).
+template <class Dist>
+inline double kd_distance(const Dist& dist, const double* x, const double* y) {
+    return dist.finish(dist.raw(x, y), x, y);
+}
+
+// Whether the pair (x, y) is proven beyond T1 (a plain sum above T1's square says so without the root;
+// a plain sum at or below it is not cut, which only prunes less).
+template <class Dist>
+inline bool kd_beyond(const Dist& dist, const double* x, const double* y, double T1) {
+    const double s = dist.raw(x, y);
+    if (Dist::plain(s)) return s > Dist::above(T1);
+    return dist.finish(s, x, y) > T1;
+}
 
 // One query's search: the k nearest (k >= 1, at most n kept) with distance < ub, as (distance, index).
 template <class Dist>

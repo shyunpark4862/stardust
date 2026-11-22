@@ -115,6 +115,8 @@ def _scipy_d():
 R_DIST = "dist(matrix(r_a, nrow = r_m), method = '{}')"
 R_DATA = {"r_a": "r_a", "r_m": "r_m"}
 BALL_R = (10 / 10**6 * 3 / (4 * np.pi)) ** (1 / 3)  # about 10 points of 10^6 uniform ones in the unit cube
+PAIR_R = (10 / 10**5 * 3 / (4 * np.pi)) ** (1 / 3)  # about 10 points of 10^5 uniform ones
+COUNT_R = np.linspace(0.001, 0.05, 20)  # count_neighbors' 20 radii (docs/design/spatial.md §7.5)
 
 
 def _distance_specs():
@@ -275,8 +277,91 @@ def _tree_specs():
                     lambda d: lambda: d["sT"].query_ball_point(d["sq"], BALL_R),
                     (Ref("scipy", lambda d: lambda: d["T"].query_ball_point(d["q"], BALL_R)),
                      Ref("scipy workers=-1", lambda d: lambda: d["T"].query_ball_point(d["q"], BALL_R, workers=-1),
-                         lib="scipy")), note="mean about 10 points per query"))  # fmt: skip
+                         lib="scipy")), note="mean about 10 points per query", check=ROWS_CHECK))  # fmt: skip
+    out.append(Spec("SPT4", "tree", "query_ball_point return_length m=3", ("KDTree.query_ball_point",), "10^4 points",
+                    _tree_setup(10**6, 3, 10**4),
+                    lambda d: lambda: d["sT"].query_ball_point(d["sq"], BALL_R, return_length=True),
+                    (Ref("scipy", lambda d: lambda: d["T"].query_ball_point(d["q"], BALL_R, return_length=True)),
+                     Ref("scipy workers=-1", lambda d: lambda: d["T"].query_ball_point(d["q"], BALL_R, workers=-1,
+                                                                                       return_length=True),
+                         lib="scipy")), note="the counts only"))  # fmt: skip
+    pairs = _pair_setup(10**5, 3)
+    out.append(Spec("SPT4", "tree", "query_ball_tree m=3", ("KDTree.query_ball_tree",), "10^5 points", pairs,
+                    lambda d: lambda: d["sT"].query_ball_tree(d["sU"], PAIR_R),
+                    (Ref("scipy", lambda d: lambda: d["T"].query_ball_tree(d["U"], PAIR_R)),),
+                    note="two trees of 10^5 points, about 10 neighbours each", check=ROWS_CHECK))  # fmt: skip
+    out.append(Spec("SPT4", "tree", "query_pairs m=3", ("KDTree.query_pairs",), "10^5 points", pairs,
+                    lambda d: lambda: d["sT"].query_pairs(PAIR_R),
+                    (Ref("scipy ndarray", lambda d: lambda: d["T"].query_pairs(PAIR_R, output_type="ndarray")),
+                     Ref("scipy set", lambda d: lambda: d["T"].query_pairs(PAIR_R))),
+                    note="about 5 pairs per point; scipy's default is a set", check=PAIRS_CHECK))  # fmt: skip
+    out.append(Spec("SPT4", "tree", "count_neighbors m=3", ("KDTree.count_neighbors",), "10^5 points", pairs,
+                    lambda d: lambda: d["sT"].count_neighbors(d["sU"], PAIR_R),
+                    (Ref("scipy", lambda d: lambda: d["T"].count_neighbors(d["U"], PAIR_R)),), quick=True,
+                    check=Check(rtol=0.0, atol=0.0)))  # fmt: skip
+    out.append(Spec("SPT4", "tree", "count_neighbors 20 radii m=3", ("KDTree.count_neighbors",), "10^5 points", pairs,
+                    lambda d: lambda: d["sT"].count_neighbors(d["sU"], COUNT_R),
+                    (Ref("scipy", lambda d: lambda: d["T"].count_neighbors(d["U"], COUNT_R)),),
+                    check=Check(rtol=0.0, atol=0.0)))  # fmt: skip
+    out.append(Spec("SPT4", "tree", "count_neighbors 20 radii weighted m=3", ("KDTree.count_neighbors",),
+                    "10^5 points", pairs,
+                    lambda d: lambda: d["sT"].count_neighbors(d["sU"], COUNT_R, weights=(d["sw"], d["sv"])),
+                    (Ref("scipy", lambda d: lambda: d["T"].count_neighbors(d["U"], COUNT_R,
+                                                                           weights=(d["w"], d["v"]))),),
+                    note="weights in [0, 1)", check=Check(rtol=1e-12)))  # fmt: skip
+    out.append(Spec("SPT4", "tree", "sparse_distance_matrix m=3", ("KDTree.sparse_distance_matrix",), "10^5 points",
+                    pairs, lambda d: lambda: d["sT"].sparse_distance_matrix(d["sU"], PAIR_R),
+                    (Ref("scipy coo_array", lambda d: lambda: d["T"].sparse_distance_matrix(d["U"], PAIR_R,
+                                                                                           output_type="coo_array")),
+                     Ref("scipy dok_matrix", lambda d: lambda: d["T"].sparse_distance_matrix(d["U"], PAIR_R))),
+                    note="sd gives a csr_array; scipy's default is a dok_matrix", check=SPARSE_CHECK))  # fmt: skip
     return out
+
+
+def _pair_setup(npts, m, seed=20261126):
+    """Two sets of uniform points with their trees built in the setup, and weights."""
+
+    def setup():
+        import scipy.spatial as S
+
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, npts, m]))
+        x, y, w, v = g.random((npts, m)), g.random((npts, m)), g.random(npts), g.random(npts)
+        return {"x": x, "y": y, "w": w, "v": v, "T": S.KDTree(x), "U": S.KDTree(y), "sw": sd.asarray(w),
+                "sv": sd.asarray(v), "sT": sd.spatial.KDTree(sd.asarray(x)),
+                "sU": sd.spatial.KDTree(sd.asarray(y))}  # fmt: skip
+
+    return setup
+
+
+def _rows_sd(r):
+    """RadiusResult as its indices row after row (increasing within a row)."""
+    return np.asarray(r.indices, dtype=np.float64)
+
+
+def _rows_ref(label, v):
+    """scipy's lists (a list or an object array of lists) as sd's rows: each row sorted."""
+    return np.concatenate([np.sort(np.asarray(row, dtype=np.float64)) for row in v] or [np.zeros(0)])
+
+
+def _pairs_ref(label, v):
+    a = np.array(sorted(v), dtype=np.int64).reshape(-1, 2) if isinstance(v, set) else np.asarray(v)
+    return a[np.lexsort((a[:, 1], a[:, 0]))].astype(np.float64).ravel()
+
+
+def _sparse(m):
+    """A sparse matrix (sd's or scipy's) as its CSR indices and data, rows sorted."""
+    if hasattr(m, "tocsr") and type(m).__module__.startswith("scipy"):
+        c = m.tocsr()
+        c.sort_indices()
+        return np.concatenate([c.indices.astype(np.float64), c.data])
+    return np.concatenate([np.asarray(m.indices, dtype=np.float64), np.asarray(m.data)])
+
+
+ROWS_CHECK = Check(sd=_rows_sd, ref=_rows_ref, rtol=0.0, atol=0.0)
+PAIRS_CHECK = Check(sd=lambda a: np.asarray(a, dtype=np.float64).ravel(), ref=_pairs_ref, rtol=0.0, atol=0.0)
+SPARSE_CHECK = Check(sd=_sparse, ref=lambda label, m: _sparse(m), rtol=1e-14)
 
 
 def _scipy_s():

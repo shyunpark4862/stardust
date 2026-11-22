@@ -1,6 +1,6 @@
 # sd.spatial API
 
-> 상태: **초안** (SPT0, 2026-11-22; SPT1·SPT2·SPT3 반영 2026-11-22). §2(거리)와 §3(`kneighbors`, `radius_neighbors`), §4의 `KDTree`(생성자, 속성, `query`), §5의 `QueryResult`·`RadiusResult`는 공개되었고 구현과 맞다. `KDTree`의 반경·짝·개수 메서드는 SPT4에서 공개된다. 나머지 이름은 아직 공개되지 않았다. 아래 시그니처는 scipy 1.18.1의 `scipy.spatial`(`distance`, `KDTree`)의 이름과 인자 이름에 stardust의 규칙과 SPT1–SPT28의 결정을 입힌 안이고, 마일스톤 SPT1–SPT4에서 하나씩 공개된다(docs/design/spatial.md §8: 거리는 SPT1, `kneighbors`·`radius_neighbors`와 결과 객체는 SPT2, `KDTree`와 `query`는 SPT3, 반경·짝·개수는 SPT4).
+> 상태: **초안** (SPT0, 2026-11-22; SPT1·SPT2·SPT3·SPT4 반영 2026-11-22). §2(거리)와 §3(`kneighbors`, `radius_neighbors`), §4의 `KDTree`(생성자, 속성, `query`와 반경·짝·개수의 다섯 메서드), §5의 `QueryResult`·`RadiusResult`는 공개되었고 구현과 맞다. 계획한 모든 이름이 공개되었다. 아래 시그니처는 scipy 1.18.1의 `scipy.spatial`(`distance`, `KDTree`)의 이름과 인자 이름에 stardust의 규칙과 SPT1–SPT28의 결정을 입힌 안이고, 마일스톤 SPT1–SPT4에서 하나씩 공개된다(docs/design/spatial.md §8: 거리는 SPT1, `kneighbors`·`radius_neighbors`와 결과 객체는 SPT2, `KDTree`와 `query`는 SPT3, 반경·짝·개수는 SPT4).
 
 - 설계와 결정의 근거는 [docs/design/spatial.md](../design/spatial.md)(§1.1 SPT1–SPT28), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/spatial/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 이름(`name(...)`, 클래스는 `name(...)`의 생성자), 클래스의 메서드(`Class.method(...)`)와 속성(`Class.attr`)이다. 모듈 수준의 이름이 계획한 공개 이름 전부이고, 공개된 것은 시그니처가 블록과 같아야 한다.
@@ -33,11 +33,11 @@
 ### §1.4 에러
 - API.md §2의 종류와 꼴이다. 공개 함수의 에러는 `pdist(): `로 시작하고, 메서드는 메서드 이름(`query(): `), 생성자는 클래스 이름(`KDTree(): `)이다. 경고는 내지 않는다.
 - scipy가 조용히 받는 틀린 인자는 에러다(§1.5의 목록). 거리가 쓰지 않는 인자는 `TypeError`다: `pdist(): 'p' applies only to metric='minkowski'`(scipy는 바인딩의 시그니처 덤프).
-- 요청한 출력(`pdist`의 m(m−1)/2, `cdist`의 mA·mB, `kneighbors`의 mA·k)이 물리 메모리보다 크면 할당 전에 `MemoryError`다(API.md §2).
+- 요청한 출력(`pdist`의 m(m−1)/2, `cdist`의 mA·mB, `kneighbors`의 mA·k)이 물리 메모리보다 크면 할당 전에 `MemoryError`다(API.md §2). 크기를 미리 알 수 없는 `KDTree`의 목록(`query_ball_point`, `query_ball_tree`, `query_pairs`, `sparse_distance_matrix`)은 찾은 짝이 물리 메모리를 넘을 수가 되면 찾기를 멈추고 `MemoryError`(`query_pairs(): the result is larger than this machine's physical memory`)다(docs/design/spatial.md SPT68).
 
 ### §1.5 scipy·sklearn과 다른 점 (모음)
 - 거리: 별칭과 대문자 이름 없음, `metric`과 그 인자는 키워드만, 쓰지 않는 인자는 `TypeError`, complex는 `TypeError`, `p ≤ 0`·NaN `p`·`w`의 NaN·inf·0 이하의 `V`는 `ValueError`, `chebyshev`와 `canberra`는 NaN을 퍼뜨린다, `euclidean`·`minkowski`는 중간값이 넘쳐도 유한한 거리다, 모든 거리 함수가 (…, n) 배치를 받는다, `hamming`·`jaccard`는 int64를 그대로 비교한다, 호출 가능한 `metric`과 `out=` 없음.
-- 이웃: 동점은 (거리, 색인), 데이터는 언제나 복사, `leafsize`만, `k`·`leafsize`는 int만, `k=0`·`k=[0]`·음수·NaN 반경과 상한은 `ValueError`, 반경 결과는 `RadiusResult`이고 언제나 색인 순서, `query_pairs`는 정렬된 배열, `sparse_distance_matrix`는 `csr_array`, `workers`·`eps`·`boxsize`·`return_sorted`·`output_type` 없음, `kneighbors`의 거리는 언제나 직접 계산(`[sklearn과 다름]`: sklearn의 전개식은 1e8 + [0, 1)³의 점들에서 거리를 모두 0으로, 가장 가까운 점을 20개 가운데 하나도 맞히지 못했다; docs/design/spatial.md §3.2).
+- 이웃: 동점은 (거리, 색인), 데이터는 언제나 복사, `leafsize`만, `k`·`leafsize`는 int만, `k=0`·`k=[0]`·음수·NaN 반경과 상한·NaN 무게는 `ValueError`, 반경 결과는 `RadiusResult`이고 언제나 색인 순서, `query_pairs`는 정렬된 배열(scipy의 `output_type='ndarray'`도 정렬되어 있지 않다), `sparse_distance_matrix`는 `csr_array`, `workers`·`eps`·`boxsize`·`return_sorted`·`output_type` 없음, `kneighbors`의 거리는 언제나 직접 계산(`[sklearn과 다름]`: sklearn의 전개식은 1e8 + [0, 1)³의 점들에서 거리를 모두 0으로, 가장 가까운 점을 20개 가운데 하나도 맞히지 못했다; docs/design/spatial.md §3.2).
 
 ## §2. 거리 (SPT1)
 ```
@@ -132,14 +132,15 @@ KDTree.size
   - 각 행은 (거리, 색인) 순서다(§1.3). 결과는 정의로 정해진다: `cdist(x, data)`(p = 1, 2, inf는 `cityblock`·`euclidean`·`chebyshev`, 그 밖의 p는 `metric='minkowski', p=p`)의 각 행을 (거리, 색인)으로 정렬해 상한보다 작은 앞 k개를 고른 것과 같고, 거리는 그 원소와 비트까지 같다. `leafsize`와 스레드 수는 빠르기만 바꾼다.
   - **채움**: 찾은 이웃이 k보다 적으면(k > n, 또는 `distance_upper_bound`) 남은 자리는 거리 inf, 색인 n이다(scipy와 같다; sklearn은 k > n이면 에러다).
   - **`distance_upper_bound`**: 거리가 이 값보다 **작은** 이웃만이다(엄격한 부등호; scipy와 같다). 0 이상의 실수나 inf여야 한다(`[scipy와 다름]`: scipy는 상한을 제곱해 비교해 −1이 1처럼 동작하고, NaN이면 모든 자리가 채움 값이다).
-- **`query_ball_point(x, r)`**: 거리가 r **이하**인 데이터 점이다(경계를 넣는다; scipy와 같다). r은 0 이상의 실수나 inf, 또는 x의 배치 모양으로 브로드캐스트되는 배열이다. 음수·NaN은 `ValueError`다(`[scipy와 다름]`: scipy는 r = −1을 r = 1처럼, NaN을 빈 목록으로 다룬다). 판정은 돌려주는 거리 그 자체다(scipy는 제곱의 자리에서 비교해, 돌려줄 거리가 r과 같은 짝의 판정이 무작위 시험의 23%에서 √의 자리와 갈렸다).
+- **`query_ball_point(x, r)`**: 거리가 r **이하**인 데이터 점이다(경계를 넣는다; scipy와 같다). r은 0 이상의 실수나 inf, 또는 x의 배치 모양을 바꾸지 않고 브로드캐스트되는 배열이다(numpy의 규칙; 점 하나 (m,)에 (1,)은 받지 않는다, scipy와 같다). 음수·NaN은 `ValueError`다(`[scipy와 다름]`: scipy는 r = −1을 r = 1처럼, NaN을 빈 목록으로 다룬다). 판정은 돌려주는 거리 그 자체다(scipy는 제곱의 자리에서 비교해, 돌려줄 거리가 r과 같은 짝의 판정이 무작위 시험의 23%에서 √의 자리와 갈렸다).
   - 결과는 `RadiusResult`다(§5). x의 배치 축은 C 순서로 펼쳐 행이 된다. 점 하나 (m,)도 행 하나의 결과다(`[scipy와 다름]`: scipy는 점 하나면 list, 여럿이면 list의 object 배열이다).
   - 행 안은 색인 오름차순이다(`[scipy와 다름]`: scipy의 기본은 점 하나면 정렬하지 않고 여럿이면 정렬한다).
   - `return_length=True`면 행마다의 개수를 int64 배열(x의 배치 모양; 점 하나면 Python `int`)로 돌려준다(scipy와 같다).
-- **`query_ball_tree(other, r)`**: `self`의 점마다 `other`의 점 가운데 거리가 r 이하인 것이다. 결과는 `RadiusResult`이고 모양은 (self.n, other.n)이다. `other`는 `KDTree`이고(아니면 `TypeError`) `other.m`이 다르면 `ValueError`다.
-- **`query_pairs(r)`**: i < j이고 거리가 r 이하인 짝이다. (k, 2) int64 배열이고 (i, j)의 사전 순서다(`[scipy와 다름]`: scipy의 기본은 순서 없는 `set`이다).
-- **`count_neighbors(other, r)`**: `self`의 점 x₁과 `other`의 점 x₂의 순서쌍 가운데 거리가 r 이하인 것의 수다(`other`가 `self`면 (i, i)와 (i, j)·(j, i)를 모두 센다; scipy와 같다). r은 실수 하나나 1차원 배열이다. `cumulative=False`면 r은 줄지 않아야 하고 결과의 i번째는 r[i−1] < d ≤ r[i]의 수다(첫째는 d ≤ r[0]). `weights`는 scipy의 꼴이다(배열 하나는 `other`가 `self`일 때만, 튜플 `(w_self, w_other)`의 한쪽은 None일 수 있다). 가중이면 짝의 가중치 곱의 합이고 순서는 데이터와 트리로만 정해진다(SPT25; 스레드 수와 무관하다). 결과는 r이 실수 하나면 Python `int`(가중이면 `float`), 배열이면 int64(가중이면 float64) 배열이다(scipy와 같다).
-- **`sparse_distance_matrix(other, max_distance)`**: 거리가 `max_distance` 이하인 짝의 거리를 담은 `sd.sparse.csr_array` (self.n, other.n)이다. `self.query_ball_tree(other, max_distance).tocsr()`와 같다. 거리가 0인 짝은 저장된 0이다(§5). `[scipy와 다름]`: scipy의 기본은 `dok_matrix`이고 `output_type`으로 형식을 고른다. 형식을 바꾸려면 `asformat`을 쓴다.
+  - 결과는 정의로 정해진다: `radius_neighbors(x, data, r)`(p = 1, 2, inf는 `metric='cityblock'`·`'euclidean'`·`'chebyshev'`, 그 밖의 p는 `metric='minkowski', p=p`)와 바이트까지 같다. 질의점에 NaN·inf가 있으면 `ValueError`(`query_ball_point(): 'x' must be finite`)다.
+- **`query_ball_tree(other, r)`**: `self`의 점마다 `other`의 점 가운데 거리가 r 이하인 것이다. 결과는 `RadiusResult`이고 모양은 (self.n, other.n)이며 `radius_neighbors(self.data, other.data, r)`와 바이트까지 같다. r은 0 이상의 실수 하나나 inf다. `other`는 `KDTree`이고(아니면 `TypeError`: `query_ball_tree(): 'other' must be a KDTree, not list`) `other.m`이 다르면 `ValueError`(`query_ball_tree(): 'other' must have the same m as this tree (3), not 2`)다.
+- **`query_pairs(r)`**: i < j이고 거리가 r 이하인 짝이다. (k, 2) int64 배열이고 (i, j)의 사전 순서다(`[scipy와 다름]`: scipy의 기본은 순서 없는 `set`이고 `output_type='ndarray'`도 scipy 순회의 순서다). `pdist(data)`의 원소가 r 이하인 짝 (i, j)와 같다. r은 실수 하나다. 보통의 새 배열이라 쓸 수 있다.
+- **`count_neighbors(other, r)`**: `self`의 점 x₁과 `other`의 점 x₂의 순서쌍 가운데 거리가 r 이하인 것의 수다(`other`가 `self`면 (i, i)와 (i, j)·(j, i)를 모두 센다; scipy와 같다). r은 실수 하나나 1차원 배열이다. `cumulative=False`면 r은 줄지 않아야 하고 결과의 i번째는 r[i−1] < d ≤ r[i]의 수다(첫째는 d ≤ r[0]). `cumulative=True`의 r은 순서와 중복이 자유다. r은 0 이상이거나 inf이고 음수·NaN은 `ValueError`, 2차원 이상도 `ValueError`다(`[scipy와 다름]`: scipy는 r = NaN에서 모든 짝을, 음수 r에서도 짝을 센다). `weights`는 scipy의 꼴이다(배열 하나는 `other`가 `self`일 때만, 튜플 `(w_self, w_other)`의 한쪽은 None일 수 있고 `(None, None)`은 가중치 없음). 가중치는 1차원, 점마다 하나, 유한해야 한다(음수는 받는다; `[scipy와 다름]`: scipy는 NaN 무게로 NaN을 낸다). 가중이면 짝의 가중치 곱의 합이고 순서는 데이터와 트리로만 정해진다(SPT25; 스레드 수와 무관하다). 결과는 r이 실수 하나(numpy 스칼라와 0차원 배열도)면 Python `int`(가중이면 `float`), 배열이면 int64(가중이면 float64) 배열이다(scipy와 같다). 정수 셈은 `cdist(self.data, other.data)`(p의 거리)의 원소 가운데 r 이하인 것의 수와 정확히 같다.
+- **`sparse_distance_matrix(other, max_distance)`**: 거리가 `max_distance` 이하인 짝의 거리를 담은 `sd.sparse.csr_array` (self.n, other.n)이다. `max_distance`는 0 이상의 실수 하나나 inf다. `self.query_ball_tree(other, max_distance).tocsr()`와 같다. 거리가 0인 짝은 저장된 0이다(§5). `[scipy와 다름]`: scipy의 기본은 `dok_matrix`이고 `output_type`으로 형식을 고른다. 형식을 바꾸려면 `asformat`을 쓴다.
 
 ## §5. 결과 객체 (SPT17)
 ```

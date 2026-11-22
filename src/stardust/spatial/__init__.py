@@ -8,7 +8,8 @@ sd.spatial.distance); inputs and options follow this library's rules (decisions 
 docs/design/spatial.md §1.1).
 
 The public names come milestone by milestone (docs/design/spatial.md §8): SPT1 the distances (pdist,
-cdist, squareform and the fourteen distance functions), SPT3 KDTree with its query.
+cdist, squareform and the fourteen distance functions), SPT2 kneighbors and radius_neighbors, SPT3 KDTree
+with its query, SPT4 KDTree's radius, pair and count queries.
 """
 
 from ._distance import (

@@ -104,6 +104,8 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/spatial/distance.cpp
   csrc/spatial/kdtree.cpp
   csrc/spatial/neighbors.cpp
+  csrc/spatial/query.cpp
+  csrc/spatial/dual.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -136,12 +138,12 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/integrate_bind.cpp
   csrc/bind/sparse_bind.cpp
   csrc/bind/spatial_bind.cpp
-  csrc/bind/module.cpp)
-
   csrc/bind/plot_bind.cpp
   csrc/plot/levels.cpp
   csrc/plot/raster.cpp
   csrc/plot/zbuffer.cpp
+  csrc/bind/module.cpp)
+
 target_include_directories(_core PRIVATE csrc)
 # Boost.Math (headers only, the subset sd.special calls; third_party/boost_math/README.md).
 # SYSTEM: its headers are not held to our warning flags.

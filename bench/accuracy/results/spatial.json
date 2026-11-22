@@ -54,8 +54,8 @@
     "Boost in sd.special": "4682f44"
    }
   },
-  "20261122-233815-842c07a+": {
-   "commit": "842c07a",
+  "20261123-001012-3ca4562+": {
+   "commit": "3ca4562",
    "dirty": true,
    "changed": [
     "API.md",
@@ -66,24 +66,24 @@
     "bench/README.md",
     "bench/accuracy/sources.py",
     "bench/accuracy/spatial.py",
-    "bench/accuracy/tables.py",
     "bench/areas.py",
     "bench/speed/cases/spatial.py",
     "csrc/bind/module.cpp",
     "csrc/bind/spatial_bind.cpp",
-    "csrc/spatial/distance.cpp",
+    "csrc/spatial/kdtree.hpp",
     "csrc/spatial/spatial.hpp",
     "docs/api/spatial.md",
     "docs/design/spatial.md",
     "src/stardust/__init__.py",
     "src/stardust/spatial/__init__.py",
     "src/stardust/spatial/_common.py",
+    "src/stardust/spatial/_kdtree.py",
     "tests/README.md",
     "tests/golden/cases_spatial.py",
     "tests/golden/data/spatial.json",
     "tests/spatial/test_api_surface.py"
    ],
-   "date": "2026-11-22T23:38:15",
+   "date": "2026-11-23T00:10:12",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -97,6 +97,375 @@
   }
  },
  "sweeps": [
+  {
+   "id": "spatial/ball",
+   "area": "spatial",
+   "name": "ball",
+   "points": 924,
+   "regions": {
+    "euclidean/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "euclidean/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "euclidean/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "euclidean/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "euclidean/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "euclidean/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "euclidean/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "euclidean/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "euclidean/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "euclidean/nn/normal3": {
+     "points": 50,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#0"
+     ]
+    },
+    "euclidean/nn/normal16": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#0"
+     ]
+    },
+    "euclidean/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#0"
+     ]
+    },
+    "cityblock/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "cityblock/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "cityblock/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "cityblock/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "cityblock/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "cityblock/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "cityblock/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "cityblock/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "cityblock/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "cityblock/nn/normal3": {
+     "points": 50,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#0"
+     ]
+    },
+    "cityblock/nn/normal16": {
+     "points": 30,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#0"
+     ]
+    },
+    "cityblock/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#0"
+     ]
+    },
+    "chebyshev/far/1e8": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e8#0"
+     ]
+    },
+    "chebyshev/far/1e15": {
+     "points": 20,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "far/1e15#0"
+     ]
+    },
+    "chebyshev/shell/3": {
+     "points": 3,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "shell/3#0"
+     ]
+    },
+    "chebyshev/dup/3": {
+     "points": 10,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "dup/3#0"
+     ]
+    },
+    "chebyshev/ties/2": {
+     "points": 5,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "ties/2#0"
+     ]
+    },
+    "chebyshev/lattice/int2d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int2d#0"
+     ]
+    },
+    "chebyshev/lattice/int3d": {
+     "points": 40,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/int3d#0"
+     ]
+    },
+    "chebyshev/lattice/bigint3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/bigint3#0"
+     ]
+    },
+    "chebyshev/lattice/dyadic3": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "lattice/dyadic3#0"
+     ]
+    },
+    "chebyshev/nn/normal3": {
+     "points": 50,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal3#0"
+     ]
+    },
+    "chebyshev/nn/normal16": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/normal16#0"
+     ]
+    },
+    "chebyshev/nn/mixture8": {
+     "points": 30,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "nn/mixture8#0"
+     ]
+    }
+   },
+   "run": "20261123-001012-3ca4562+"
+  },
   {
    "id": "spatial/counting",
    "area": "spatial",
@@ -148,7 +517,7 @@
      ]
     }
    },
-   "run": "20261122-233815-842c07a+",
+   "run": "20261123-001012-3ca4562+",
    "comparators": {
     "scipy": {
      "hamming": {
@@ -477,7 +846,7 @@
      ]
     }
    },
-   "run": "20261122-233815-842c07a+",
+   "run": "20261123-001012-3ca4562+",
    "comparators": {
     "scipy": {
      "braycurtis": {
@@ -919,7 +1288,7 @@
      ]
     }
    },
-   "run": "20261122-233815-842c07a+",
+   "run": "20261123-001012-3ca4562+",
    "comparators": {
     "sklearn": {
      "haversine": {
@@ -1306,7 +1675,7 @@
      ]
     }
    },
-   "run": "20261122-233815-842c07a+"
+   "run": "20261123-001012-3ca4562+"
   },
   {
    "id": "spatial/neighbors",
@@ -1675,7 +2044,7 @@
      ]
     }
    },
-   "run": "20261122-233815-842c07a+"
+   "run": "20261123-001012-3ca4562+"
   }
  ]
 }

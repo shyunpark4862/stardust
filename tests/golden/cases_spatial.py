@@ -10,7 +10,11 @@ dtype; the wrong calls (their errors are results). kneighbors and radius_neighbo
 metric, the GEMM pre-selection's sizes, a far cluster, ranks, the upper bound, RadiusResult and its tocsr().
 KDTree and query (milestone SPT3): the build's attributes and node counts, every p, k as an int and as
 ranks, the upper bound, duplicates and ties, n = 0 and m = 0, a set large enough for the parallel build
-and query, the wrong calls.
+and query, the wrong calls. The radius, pair and count queries (milestone SPT4): query_ball_point (one
+radius, per-point radii, return_length), query_ball_tree, query_pairs, count_neighbors (one and many radii,
+binned, weighted in every form) and sparse_distance_matrix for every p, boundary radii on a lattice,
+duplicates, huge and tiny coordinates, empty trees, sets large enough for many tasks at 3 and 10 threads
+(the weighted sums' task order), the wrong calls.
 The inputs come from fixed literals and L.rng(seed); the largest result is 1.8 * 10^5 doubles.
 """
 
@@ -193,6 +197,7 @@ def cases(L):
 
     yield from _neighbor_cases(L)
     yield from _kdtree_cases(L)
+    yield from _kdtree_radius_cases(L)
 
 
 def _neighbor_cases(L):
@@ -300,3 +305,106 @@ def _kdtree_cases(L):
     yield "error query bound", lambda: t.query(a(q), distance_upper_bound=-1.0)
     yield "error query columns", lambda: t.query(a(np.zeros((2, 2))))
     yield "error query inf", lambda: t.query(a(np.array([INF, 0.0, 0.0])))
+
+
+def _kdtree_radius_cases(L):
+    """The radius, pair and count queries (milestone SPT4): every p, the boundary (radii equal to lattice
+    distances), per-point radii, return_length, duplicates, huge and tiny coordinates, n = 0, 2 * 10^4 and
+    1.5 * 10^4 points (many tasks of the dual-tree walk at 3 and 10 threads; the weighted sums are added in
+    task order), the weight forms, the wrong calls."""
+    S = L.sd.spatial
+    a = L.arr
+    r = L.rng(705)
+    grid = np.array(np.meshgrid(*[np.arange(-3.0, 4.0)] * 2)).reshape(2, -1).T  # lattice distances: ties
+    small = np.round(r.standard_normal((40, 3)) * 2) / 2
+    other = np.vstack([small[:6], np.round(r.standard_normal((30, 3)) * 2) / 2 + 0.25])
+    q = np.vstack([small[:5], np.round(r.standard_normal((6, 3)) * 2) / 2 + 0.25])
+    big = r.standard_normal((20_000, 3))
+    big[::6] = np.round(big[::6], 1)
+    bigo = r.standard_normal((15_000, 3))
+    bigo[:1000] = big[:1000]
+    bigq = r.standard_normal((3000, 3))
+    w = r.standard_normal(40)
+    wo = r.random(36)
+    wbig, wbigo = r.random(20_000), r.standard_normal(15_000)
+    rs = [0.0, 0.5, 1.0, 1.5, 3.0, INF]
+
+    def tree(x, **kw):
+        return S.KDTree(a(x), **kw)
+
+    for p in (1, 2, INF, 1.5, 3):
+        yield f"query_ball_point p={p}", lambda p=p: tree(small, leafsize=3).query_ball_point(a(q), 1.0, p=p)
+        yield (
+            f"query_ball_point lattice p={p}",
+            lambda p=p: tree(grid).query_ball_point(a(np.array([[0.0, 0.0], [0.5, 0.5], [3.0, -3.0]])), 2.0, p=p),
+        )
+        yield f"query_ball_tree p={p}", lambda p=p: tree(small).query_ball_tree(tree(other), 1.0, p=p)
+        yield f"query_pairs p={p}", lambda p=p: tree(small, leafsize=4).query_pairs(1.0, p=p)
+        yield f"query_pairs lattice p={p}", lambda p=p: tree(grid).query_pairs(2.0, p=p)
+        yield f"count_neighbors p={p}", lambda p=p: tree(small).count_neighbors(tree(other), rs, p=p)
+        yield f"count_neighbors self p={p}", lambda p=p: tree(grid).count_neighbors(tree(grid), 2.0, p=p)
+        yield f"sparse_distance_matrix p={p}", lambda p=p: tree(small).sparse_distance_matrix(tree(other), 1.0, p=p)
+        yield f"query_ball_point big p={p}", lambda p=p: tree(big).query_ball_point(a(bigq), 0.1, p=p)
+        yield f"query_pairs big p={p}", lambda p=p: tree(big).query_pairs(0.02, p=p)
+        yield (
+            f"count_neighbors big weighted p={p}",
+            lambda p=p: tree(big).count_neighbors(
+                tree(bigo), np.linspace(0.0, 0.2, 9), p=p, weights=(a(wbig), a(wbigo))
+            ),
+        )
+    yield "query_ball_point radii", lambda: tree(small).query_ball_point(a(q), a(np.linspace(0.0, 2.0, 11)))
+    yield (
+        "query_ball_point batch",
+        lambda: tree(small).query_ball_point(a(q[:6].reshape(2, 3, 3)), a(np.array([[0.5], [1.5]]))),
+    )
+    yield "query_ball_point one point", lambda: tree(small).query_ball_point(a(q[0]), 1.5)
+    yield "query_ball_point length", lambda: tree(small).query_ball_point(a(q), 1.5, return_length=True)
+    yield "query_ball_point length one", lambda: tree(small).query_ball_point(a(q[0]), 1.5, return_length=True)
+    yield "query_ball_point length big", lambda: tree(big).query_ball_point(a(bigq), 0.3, return_length=True)
+    yield "query_ball_point inf", lambda: tree(small[:8]).query_ball_point(a(q[:3]), INF)
+    yield "query_ball_point huge", lambda: tree(small * 1e200).query_ball_point(a(q * 1e200), 1e200)
+    yield "query_ball_point tiny", lambda: tree(small * 1e-200).query_ball_point(a(q * 1e-200), 1e-200)
+    yield "query_ball_point empty tree", lambda: tree(np.zeros((0, 3))).query_ball_point(a(q[:2]), 1.0)
+    yield "query_ball_tree self", lambda: tree(small).query_ball_tree(tree(small), 0.5)
+    yield "query_ball_tree big", lambda: tree(big).query_ball_tree(tree(bigo), 0.03)
+    yield "query_pairs empty", lambda: tree(np.zeros((0, 3))).query_pairs(1.0)
+    yield "query_pairs no columns", lambda: tree(np.zeros((4, 0))).query_pairs(0.0)
+    yield "count_neighbors one radius", lambda: tree(small).count_neighbors(tree(other), 1.0)
+    yield "count_neighbors binned", lambda: tree(small).count_neighbors(tree(other), rs, cumulative=False)
+    yield "count_neighbors unsorted", lambda: tree(small).count_neighbors(tree(other), [1.5, 0.5, 1.0, 0.5])
+    yield "count_neighbors weights tuple", lambda: tree(small).count_neighbors(tree(other), rs, weights=(a(w), a(wo)))
+    yield (
+        "count_neighbors weights one side",
+        lambda: tree(small).count_neighbors(tree(other), 1.0, weights=(None, a(wo))),
+    )
+    yield (
+        "count_neighbors weights none none",
+        lambda: tree(small).count_neighbors(tree(other), 1.0, weights=(None, None)),
+    )
+    yield (
+        "count_neighbors weights self",
+        lambda: (lambda t: t.count_neighbors(t, rs, weights=a(w), cumulative=False))(tree(small)),
+    )
+    yield "count_neighbors empty r", lambda: tree(small).count_neighbors(tree(other), a(np.zeros(0)))
+    yield "count_neighbors big many radii", lambda: tree(big).count_neighbors(tree(bigo), np.linspace(0.0, 0.5, 200))
+    yield "sparse_distance_matrix zeros", lambda: tree(small).sparse_distance_matrix(tree(small), 0.0)
+    yield "sparse_distance_matrix big", lambda: tree(big).sparse_distance_matrix(tree(bigo), 0.03)
+
+    # ---- wrong calls
+    t = tree(small)
+    yield "error query_ball_point r negative", lambda: t.query_ball_point(a(q), -1.0)
+    yield "error query_ball_point r nan", lambda: t.query_ball_point(a(q), NAN)
+    yield "error query_ball_point r shape", lambda: t.query_ball_point(a(q), [1.0, 2.0])
+    yield "error query_ball_point return_length", lambda: t.query_ball_point(a(q), 1.0, return_length=1)
+    yield "error query_ball_point x", lambda: t.query_ball_point(a(np.zeros((2, 2))), 1.0)
+    yield "error query_ball_tree other", lambda: t.query_ball_tree(a(small), 1.0)
+    yield "error query_ball_tree m", lambda: t.query_ball_tree(tree(np.zeros((3, 2))), 1.0)
+    yield "error query_pairs r", lambda: t.query_pairs(-1.0)
+    yield "error query_pairs positional p", lambda: t.query_pairs(1.0, 2.0)
+    yield "error count_neighbors r", lambda: t.count_neighbors(t, [0.5, NAN])
+    yield "error count_neighbors r 2-D", lambda: t.count_neighbors(t, [[0.5]])
+    yield "error count_neighbors binned", lambda: t.count_neighbors(t, [1.0, 0.5], cumulative=False)
+    yield "error count_neighbors weights", lambda: t.count_neighbors(tree(other), 1.0, weights=a(w))
+    yield "error count_neighbors weights length", lambda: t.count_neighbors(t, 1.0, weights=(a(w[:5]), None))
+    yield "error count_neighbors weights nan", lambda: t.count_neighbors(t, 1.0, weights=a(np.full(40, NAN)))
+    yield "error sparse_distance_matrix max_distance", lambda: t.sparse_distance_matrix(t, NAN)

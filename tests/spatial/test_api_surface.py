@@ -149,18 +149,11 @@ def test_radius_result_members_match_api_md():
     assert not hasattr(sd.spatial, "RadiusResult")
 
 
-# KDTree's methods of SPT4, documented and not implemented yet (docs/design/spatial.md §8)
-PLANNED_METHODS = {"query_ball_point", "query_ball_tree", "query_pairs", "count_neighbors", "sparse_distance_matrix"}
-
-
 def test_kdtree_members_match_api_md():
-    # SPT3: the constructor, query and the attributes are public with the documented signatures
+    # SPT3, SPT4: the constructor, the queries and the attributes are public with the documented signatures
     cls = sd.spatial.KDTree
     for c, name, sig in entries():
         if c != "KDTree":
-            continue
-        if name in PLANNED_METHODS:
-            assert not hasattr(cls, name), name
             continue
         member = getattr(cls, name)
         if sig is None:

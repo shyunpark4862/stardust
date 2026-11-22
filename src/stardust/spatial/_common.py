@@ -273,3 +273,50 @@ def radius(r, name, rows):
     if a.size and not bool(sd.all(a >= 0.0)):  # NaN too
         raise ValueError(f"{name}(): every entry of 'r' must be a nonnegative number or inf")
     return sd.broadcast_to(a, (rows,)).copy()  # contiguous, the caller's array untouched
+
+
+# ---- KDTree's radius, pair and count queries (SPT4; docs/api/spatial.md §4, decisions SPT63-) ----
+
+
+def scalar_radius(r, name, arg="r"):
+    """A radius of one value (query_ball_tree, query_pairs, sparse_distance_matrix): a nonnegative number or
+    inf; NaN and negatives are ValueErrors (scipy compares r squared, so -1 acts as 1 there)."""
+    if type(r).__module__ == "numpy" and type(r).__name__ == "ndarray" and r.ndim == 0:
+        r = r[()]  # numpy's 0-d array: its scalar
+    v = real(r, name, arg)
+    if not v >= 0.0:
+        raise ValueError(f"{name}(): '{arg}' must be a nonnegative number or inf, not {r!r}")
+    return v
+
+
+def ball_radius(r, name, batch):
+    """query_ball_point's r: a nonnegative number or inf, or an array of them that broadcasts to the batch
+    shape of x (numpy's rule, the batch shape unchanged); as a float64 array of prod(batch) entries in C
+    order."""
+    sd = _sd
+    rows = math.prod(batch)
+    if isinstance(r, (int, float)) or type(r).__module__ == "numpy" and getattr(r, "ndim", 1) == 0:
+        return sd.full((rows,), scalar_radius(r, name))
+    try:
+        a = data(r, name, "r")
+    except TypeError:
+        raise TypeError(f"{name}(): 'r' must be a number or an array of numbers, not {type_name(r)}") from None
+    shape = tuple(a.shape)
+    ok = len(shape) <= len(batch) and all(s in (1, b) for s, b in zip(shape[::-1], batch[::-1]))
+    if not ok:
+        raise ValueError(f"{name}(): 'r' of shape {shape} does not broadcast to the batch shape {tuple(batch)} of 'x'")
+    if a.size and not bool(sd.all(a >= 0.0)):  # NaN too
+        raise ValueError(f"{name}(): every entry of 'r' must be a nonnegative number or inf")
+    return sd.reshape(sd.broadcast_to(a, tuple(batch)).copy(), (rows,))
+
+
+def tree_other(other, name, m):
+    """The other KDTree of query_ball_tree, count_neighbors and sparse_distance_matrix: a KDTree of the same
+    m (scipy's rule)."""
+    from ._kdtree import KDTree
+
+    if not isinstance(other, KDTree):
+        raise TypeError(f"{name}(): 'other' must be a KDTree, not {type_name(other)}")
+    if other.m != m:
+        raise ValueError(f"{name}(): 'other' must have the same m as this tree ({m}), not {other.m}")
+    return other

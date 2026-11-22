@@ -31,6 +31,17 @@ SPT3 adds
 
   kdtree     the same points and judgement through sd.spatial.KDTree(X).query(Q, k=5, p=1, 2, inf), with
              scipy's and scikit-learn's KDTree.query as the comparators.
+
+SPT4 adds
+
+  ball       sd.spatial.KDTree(X).query_ball_point(q, r, p=) with r the 5th smallest reference distance
+             RN(d) of the query (a boundary: points at exactly r are in), one region per metric and point
+             set. The contract: on the lattice sets the points are those with RN(d) <= r and their
+             distances RN(d); elsewhere every returned point's true distance is at most r(1 + eta) and
+             every other one's at least r(1 - eta) (units: the largest excess over r in eta r). ulp: the
+             largest returned distance against its reference. Comparators: scipy's
+             KDTree.query_ball_point and scikit-learn's KDTree.query_radius (points only; their
+             distances are not compared).
 """
 
 from __future__ import annotations
@@ -266,6 +277,69 @@ def _neighbor_regions(lib, knn=None):
     return out or None
 
 
+def _ball(lib, metric, p, q, X, r):
+    """lib's points within r of q (indices, distances or None), or None when lib has no such search."""
+    if lib == "sd":
+        import stardust as sd
+
+        res = sd.spatial.KDTree(X).query_ball_point(q, r, p=p)
+        return np.asarray(res.indices, dtype=np.int64), np.asarray(res.distances)
+    if lib == "scipy":
+        import scipy.spatial as S
+
+        return np.sort(np.asarray(S.KDTree(X).query_ball_point(q, r, p=p), dtype=np.int64)), None
+    if lib == "sklearn":
+        from sklearn.neighbors import KDTree
+
+        name = {"euclidean": "euclidean", "cityblock": "manhattan", "chebyshev": "chebyshev"}[metric]
+        return np.sort(KDTree(X, metric=name).query_radius(q[None, :], r)[0].astype(np.int64)), None
+    return None
+
+
+def _ball_regions(lib):
+    """The `ball` sweep (SPT4): query_ball_point at a boundary radius, judged as the docstring says."""
+    from tests.spatial import points as P
+    from tests.spatial import refdata
+
+    r = refdata.ref("neighbors")
+    out = {}
+    for method, metric, p in _NN_METHODS:
+        m = r.methods[method]
+        for sid in P.ids("neighbors"):
+            s = P.get(sid)
+            lattice = "lattice" in s.tags
+            eta = max(refdata.bound(metric, 1.0, n=s.n) - refdata.ETA, 2.0**-52)
+            where, units, ul = [], [], []
+            for k in (k for k in range(r.points) if r.inputs["set"][k] == sid):
+                hi, lo = m.hi[k], m.lo[k]
+                true = hi + lo
+                rad = float(np.sort(hi)[NEIGHBOR_K - 1])
+                got = _ball(lib, metric, p, np.asarray(r.inputs["query"][k], dtype=np.float64), s.x, rad)
+                if got is None:
+                    break
+                idx, dist = got
+                if lattice:
+                    want = np.nonzero(hi <= rad)[0]
+                    ok = np.array_equal(idx, want) and (dist is None or np.array_equal(dist, hi[want]))
+                    units.append(0.0 if ok else np.inf)
+                else:
+                    mask = np.zeros(true.size, bool)
+                    mask[idx] = True
+                    over = max(
+                        float(np.max(true[mask] - rad, initial=0.0)), float(np.max(rad - true[~mask], initial=0.0))
+                    )
+                    units.append(over / (eta * rad) if rad > 0 else (0.0 if over == 0 else np.inf))
+                if dist is not None and dist.size:
+                    j = int(np.argmax(dist))
+                    ul.append(float(ulps(dist[j], hi[idx[j]])))
+                else:
+                    ul.append(0.0)
+                where.append(f"{sid}#{int(r.inputs['pair'][k])}")
+            if where:
+                out[f"{metric}/{sid}"] = region(where, ulp=np.array(ul), contract=np.array(units), bound=1.0)
+    return out or None
+
+
 def sweeps():
     out = []
     for fam in FAMILIES:
@@ -281,4 +355,6 @@ def sweeps():
                       compare_libs(_neighbor_regions, ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
     out.append(Custom("spatial", "kdtree", lambda: _neighbor_regions("sd", _tree_knn),
                       compare_libs(lambda lib: _neighbor_regions(lib, _tree_knn), ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
+    out.append(Custom("spatial", "ball", lambda: _ball_regions("sd"),
+                      compare_libs(_ball_regions, ("scipy", "sklearn"), seconds=120.0)))  # fmt: skip
     return out
